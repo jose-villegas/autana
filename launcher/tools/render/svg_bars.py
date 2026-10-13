@@ -5,6 +5,7 @@ page's theme, so text uses one grey that reads on GitHub's light and dark
 backgrounds instead of a prefers-color-scheme switch. Text drawn on a bar
 is dark on light fills and white on the dark overlay."""
 from html import escape
+import math
 from pathlib import Path
 from byte_sizes import size_label
 
@@ -73,8 +74,16 @@ def bars(command, title, subtitle, rows, scale, captions=(), legend=(), axis=(),
     legend_rows = -(-len(legend) // ((_WIDTH - _MARGIN) // legend_spacing))
     height = (_TOP + len(rows) * row_height + (len(captions) + legend_rows + 1) * _CAPTION_SPACING
               + len(axis) * _CAPTION_SPACING + _FOOTER_HEIGHT)
+    # Labels after a bar's end widen the chart rather than run off its edge.
+    chart_width = _WIDTH
+    if not headline:
+        for _, segments, end, *note in rows:
+            bar_end = _LEFT + sum(count for _, count, _ in segments) * BAR_WIDTH / scale + _END_GAP
+            notes = note[0] if note and isinstance(note[0], tuple) else tuple(note[:1])
+            longest = max([len(end) * _FONT_SIZE] + [len(value) * _NOTE_SIZE for value in notes if value])
+            chart_width = max(chart_width, math.ceil(bar_end + longest * _GLYPH_WIDTH + _MARGIN))
     lines = ['<!-- GENERATED FILE - do not edit.', escape(command, quote=False).replace('--', '&#45;&#45;'), '-->',
-             f'<svg xmlns="http://www.w3.org/2000/svg" width="{_WIDTH}" viewBox="0 0 {_WIDTH} {height}" role="img">',
+             f'<svg xmlns="http://www.w3.org/2000/svg" width="{chart_width}" viewBox="0 0 {chart_width} {height}" role="img">',
              f'<title>{escape(title)}</title>',
              f'<style>text{{fill:{_TEXT_FILL};font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;'
              f'font-size:{_FONT_SIZE}px}}.title{{font-size:{_TITLE_SIZE}px;font-weight:600}}'

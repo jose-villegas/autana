@@ -81,6 +81,16 @@ class MemoryChartTests(unittest.TestCase):
         for label in ('0.6 KB', '0x3fc88000', '0x3fc88400', '0x40378000', '1 KB = 1024 B'):
             self.assertIn(label, text)
 
+    def test_end_labels_widen_the_chart_instead_of_overflowing(self):
+        import svg_bars
+        short = ET.fromstring(svg_bars.bars('c', 't', 's', [('a', [('a', 1, '#000')], 'x')], 1))
+        long_label = 'x' * 200
+        wide = ET.fromstring(svg_bars.bars('c', 't', 's', [('a', [('a', 1, '#000')], long_label)], 1))
+        end = next(node for node in wide.iter('{http://www.w3.org/2000/svg}text') if node.text == long_label)
+        needed = float(end.get('x')) + len(long_label) * svg_bars._FONT_SIZE * svg_bars._GLYPH_WIDTH
+        self.assertGreater(int(wide.get('width')), int(short.get('width')))
+        self.assertLessEqual(needed, int(wide.get('width')))
+
     def test_charts_show_their_ceiling(self):
         from byte_sizes import total_label
         pool = ''.join(ET.fromstring(memory.chart('pool', self.body())).itertext())
