@@ -35,7 +35,7 @@ extern mu_Context ui_ctx;
 #define UI_BAND_BIN_MARGIN_DIVISOR 4
 #define UI_BAND_BIN_MAX                                                                                                \
     (UI_BAND_BIN_MEASURED_PEAK                                                                                         \
-     + (UI_BAND_BIN_MEASURED_PEAK + UI_BAND_BIN_MARGIN_DIVISOR - 1) / UI_BAND_BIN_MARGIN_DIVISOR)
+     + ((UI_BAND_BIN_MEASURED_PEAK + UI_BAND_BIN_MARGIN_DIVISOR - 1) / UI_BAND_BIN_MARGIN_DIVISOR))
 
 /* One boot-lifetime PSRAM bin; allocation failure uses full-band replay. */
 void ui_band_init(void);
