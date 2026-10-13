@@ -1079,6 +1079,13 @@ class LockCommandTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             autana.status(["extra"])
 
+    def test_run_child_globals_after_separator_are_untouched(self):
+        flags, words = autana.pop_globals(["lock", "run", "--", "autana", "--wait", "0", "status"])
+        self.assertEqual(flags, {})
+        command = forwarded_command(autana.lock_run, words[2:])
+        self.assertEqual(command[command.index("run") + 1:],
+                         ["--", "autana", "--wait", "0", "status"])
+
     def test_release_forwards_the_token(self):
         with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
             autana.release(["deadbeef"])

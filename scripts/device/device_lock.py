@@ -7,6 +7,7 @@ import getpass
 import json
 import math
 import os
+import re
 import socket
 import statistics
 import sys
@@ -46,10 +47,14 @@ LOCK_PROTOCOL = 3
 # A person's reservation has no heartbeat, so this is the only thing that
 # frees a forgotten one. Running `hand` again renews it.
 HUMAN_RESERVATION_SECONDS = 3600
-PROCESS_SNAPSHOT_FLAG = 0x00000002
-PROCESS_NAME_CHARS = 260
-WINDOWS_COMMAND_SHELL = "cmd.exe"
-WINDOWS_PYTHON = "python.exe"
+PROCESS_BASIC_INFORMATION = 0
+PROCESS_COMMAND_LINE_INFORMATION = 60
+WINDOWS_AUTANA_HOST = re.compile(
+    r'^\s*(?:'
+    r'(?:"[^"\n]*[\\/]cmd\.exe"|(?:\S*[\\/])?cmd\.exe)\s+'
+    r'(?:/[^c\s]+\s+)*/c\s+"*(?:[^"\r\n]*[\\/])?autana\.cmd(?:"|\s|$)'
+    r'|(?:"(?:[^"\n]*[\\/])?python[\d.]*(?:\.exe)?"|(?:\S*[\\/])?python[\d.]*(?:\.exe)?)\s+'
+    r'"?[^"\r\n]*[\\/]scripts[\\/]autana[\\/]autana\.py(?:"|\s|$))', re.IGNORECASE)
 # The fields that decide something: who a record is, whether a lock is live,
 # stale or dead, or a waiter's place in the FIFO, and so must be readable
 # off ANY record, of any age or protocol, without guessing: boards() reads
@@ -89,44 +94,51 @@ def default_owner():
 
 
 def caller_pid():
-    """The invoking shell, skipping the Windows autana.cmd launcher."""
+    """The invoking process outside the Windows launcher and interpreter shims."""
     parent = os.getppid()
     if os.name != "nt":
         return parent
     import ctypes
     from ctypes import wintypes
 
-    class ProcessEntry(ctypes.Structure):
-        _fields_ = [("size", wintypes.DWORD), ("usage", wintypes.DWORD),
-                    ("pid", wintypes.DWORD), ("heap", ctypes.c_size_t),
-                    ("module", wintypes.DWORD), ("threads", wintypes.DWORD),
-                    ("parent", wintypes.DWORD), ("priority", wintypes.LONG),
-                    ("flags", wintypes.DWORD), ("name", wintypes.WCHAR * PROCESS_NAME_CHARS)]
+    class BasicInformation(ctypes.Structure):
+        _fields_ = [("reserved", ctypes.c_void_p), ("peb", ctypes.c_void_p),
+                    ("reserved_pair", ctypes.c_void_p * 2), ("pid", ctypes.c_size_t),
+                    ("parent", ctypes.c_size_t)]
+
+    class UnicodeString(ctypes.Structure):
+        _fields_ = [("length", wintypes.USHORT), ("maximum", wintypes.USHORT),
+                    ("buffer", ctypes.c_void_p)]
 
     kernel = windows_kernel32()
-    kernel.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
-    kernel.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
-    kernel.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.POINTER(ProcessEntry)]
-    kernel.Process32NextW.argtypes = kernel.Process32FirstW.argtypes
-    handle = kernel.CreateToolhelp32Snapshot(PROCESS_SNAPSHOT_FLAG, 0)
-    if handle == wintypes.HANDLE(-1).value:
-        raise OSError("could not find the invoking shell; use --pid")
-    try:
-        entry = ProcessEntry(size=ctypes.sizeof(ProcessEntry))
-        parents = {}
-        found = kernel.Process32FirstW(handle, ctypes.byref(entry))
-        while found:
-            parents[entry.pid] = (entry.parent, entry.name.lower())
-            found = kernel.Process32NextW(handle, ctypes.byref(entry))
-    finally:
-        kernel.CloseHandle(handle)
-    while parent in parents and (parents[parent][1] == WINDOWS_COMMAND_SHELL or
-                                 (parents[parent][1] == WINDOWS_PYTHON and
-                                  parents.get(parents[parent][0], (None, None))[1] == WINDOWS_COMMAND_SHELL)):
-        parent = parents[parent][0]
-    if parent not in parents:
-        raise OSError("invoking shell exited; use --pid")
-    return parent
+    query = ctypes.WinDLL("ntdll").NtQueryInformationProcess
+    query.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p,
+                      wintypes.ULONG, ctypes.POINTER(wintypes.ULONG)]
+    query.restype = wintypes.LONG
+    while parent:
+        handle = kernel.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, parent)
+        if not handle:
+            raise OSError("could not find the invoking shell; use --pid")
+        try:
+            basic = BasicInformation()
+            needed = wintypes.ULONG()
+            if query(handle, PROCESS_BASIC_INFORMATION, ctypes.byref(basic),
+                     ctypes.sizeof(basic), ctypes.byref(needed)) < 0:
+                raise OSError("could not read the invoking process parent; use --pid")
+            query(handle, PROCESS_COMMAND_LINE_INFORMATION, None, 0, ctypes.byref(needed))
+            if not needed.value:
+                raise OSError("could not read the invoking process command line; use --pid")
+            buffer = ctypes.create_string_buffer(needed.value)
+            if query(handle, PROCESS_COMMAND_LINE_INFORMATION, buffer, len(buffer), ctypes.byref(needed)) < 0:
+                raise OSError("could not read the invoking process command line; use --pid")
+            text = UnicodeString.from_buffer(buffer)
+            command = ctypes.wstring_at(text.buffer, text.length // ctypes.sizeof(wintypes.WCHAR))
+            if not WINDOWS_AUTANA_HOST.match(command):
+                return parent
+            parent = basic.parent
+        finally:
+            kernel.CloseHandle(handle)
+    raise OSError("invoking shell exited; use --pid")
 
 
 def normalise_board(serial):
@@ -409,7 +421,7 @@ class LockStore:
             expires = lock.get("expires_at")
             if expires is not None:
                 return "hold lapsed" if self.now() >= expires else ""
-            if lock.get("pid") is None:
+            if not lock.get("until_released"):
                 return ""
             return ("dead process" if lock.get("host") == socket.gethostname()
                     and not self.is_alive(lock["pid"]) else "")
@@ -542,14 +554,16 @@ class LockStore:
             lock = self.read_json(self.lock_path(board))
             if not lock or lock.get("token") != token or self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
                 return False
-            lock.pop("heartbeat_at", None)
-            lock.pop("pid", None)
+            now = self.now()
+            lock.update(heartbeat_at=now,
+                        pid=0 if seconds is not None else (pid if pid is not None else os.getpid()))
+            lock.pop("until_released", None)
             lock.pop("expires_at", None)
             lock.update(kind="human" if human else "hold", purpose=note)
             if seconds is not None:
-                lock["expires_at"] = self.now() + seconds
+                lock["expires_at"] = now + seconds
             else:
-                lock["pid"] = pid
+                lock["until_released"] = True
             self.write_json(self.lock_path(board), lock)
             return True
 
@@ -557,7 +571,8 @@ class LockStore:
         with self.guard(board):
             lock = self.read_json(self.lock_path(board))
             if lock and lock.get("kind") == "human" and not self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
-                lock.update(owner=owner, purpose=note, expires_at=self.now() + HUMAN_RESERVATION_SECONDS)
+                lock.update(owner=owner, purpose=note, heartbeat_at=self.now(),
+                            expires_at=self.now() + HUMAN_RESERVATION_SECONDS)
                 self.write_json(self.lock_path(board), lock)
                 return lock["token"], True
         held = self.acquire(board, owner, "hand", wait=wait, on_wait=on_wait, purpose=note)

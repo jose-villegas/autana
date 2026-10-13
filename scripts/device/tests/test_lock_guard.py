@@ -117,6 +117,36 @@ class HoldProcessTests(Store):
         self.environment = dict(os.environ, _AUTANA_DEVICE_LOCK_ROOT=str(self.store.root))
         self.environment.pop(device.TOKEN_ENV, None)
 
+    @unittest.skipUnless(os.name == "nt", "Windows launcher callers")
+    def test_windows_launcher_preserves_the_real_caller(self):
+        launcher = ENGINE / "tools" / "autana.cmd"
+        for shell, suffix in (("powershell.exe", ".ps1"), ("cmd.exe", ".cmd")):
+            with self.subTest(shell=shell):
+                script = self.root / ("caller" + suffix)
+                invocation = f'"{launcher}" --board {BOARD_A} lock take --until-released bench'
+                script.write_text(("& " + invocation + "\nStart-Sleep -Seconds 2\n") if suffix == ".ps1"
+                                  else ("@echo off\ncall " + invocation + "\nping -n 3 127.0.0.1 >nul\n"))
+                command = ([shell, "-NoProfile", "-File", str(script)] if suffix == ".ps1"
+                           else [shell, "/c", str(script)])
+                process = subprocess.Popen(command, env=self.environment, stdout=subprocess.PIPE,
+                                           stderr=subprocess.PIPE, text=True)
+                self.addCleanup(lambda p=process: p.kill() if p.poll() is None else None)
+                stdout, stderr = process.communicate(timeout=20)
+                self.assertEqual(process.returncode, 0, stderr)
+                record = self.store.read_json(self.store.lock_path(BOARD_A))
+                self.assertEqual(record["pid"], process.pid)
+                self.assertEqual(record["token"], stdout.strip())
+                self.store.release(BOARD_A, record["token"])
+
+    def start_waiter(self):
+        waiter = subprocess.Popen(self.command("run", "--", sys.executable, "-c", "pass"),
+                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                  env=self.environment)
+        self.addCleanup(lambda: waiter.kill() if waiter.poll() is None else None)
+        time.sleep(0.2)
+        self.assertIsNone(waiter.poll())
+        return waiter
+
     def test_take_blocks_a_waiter_until_release_and_until_lapse(self):
         for duration in (None, "1"):
             words = ["take", "--for", duration, "bench"] if duration else ["take", "bench"]
@@ -124,12 +154,7 @@ class HoldProcessTests(Store):
             self.assertEqual(taken.returncode, 0, taken.stderr)
             token = taken.stdout.strip()
             self.assertEqual(taken.stdout, token + "\n")
-            waiter = subprocess.Popen(self.command("run", "--", sys.executable, "-c", "pass"),
-                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                                      env=self.environment)
-            self.addCleanup(lambda: waiter.kill() if waiter.poll() is None else None)
-            time.sleep(0.2)
-            self.assertIsNone(waiter.poll())
+            waiter = self.start_waiter()
             if duration is None:
                 released = self.run_command("release", "--token", token, env=self.environment)
                 self.assertEqual(released.returncode, 0, released.stderr)
@@ -140,12 +165,7 @@ class HoldProcessTests(Store):
         taken = self.run_command("take", "bench", env=self.environment)
         token = taken.stdout.strip()
         self.assertEqual(taken.returncode, 0, taken.stderr)
-        waiter = subprocess.Popen(self.command("run", "--", sys.executable, "-c", "pass"),
-                                  stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                                  env=self.environment)
-        self.addCleanup(lambda: waiter.kill() if waiter.poll() is None else None)
-        time.sleep(0.2)
-        self.assertIsNone(waiter.poll())
+        waiter = self.start_waiter()
         nested = self.run_command("run", "--", sys.executable, "-c", "pass",
                                   env=dict(self.environment, **{device.TOKEN_ENV: token}))
         self.assertEqual(nested.returncode, 0, nested.stderr)
@@ -288,10 +308,10 @@ class HoldProcessTests(Store):
         self.assertEqual(taken.returncode, 0, taken.stderr)
         started = time.monotonic()
         nested = self.run_command("run", "--", sys.executable, "-c",
-                                  "import time; time.sleep(5)",
+                                  "import time; time.sleep(15)",
                                   env=dict(self.environment, **{device.TOKEN_ENV: token}))
         self.assertNotEqual(nested.returncode, 0)
-        self.assertLess(time.monotonic() - started, 4)
+        self.assertLess(time.monotonic() - started, 2 * device.HeldLock.HEARTBEAT_SECONDS)
         self.assertIn("lock was lost", nested.stderr)
 
 
@@ -963,6 +983,8 @@ class BuildDirectoryLockTests(Store):
         """Runs `first` until its build is under way, then `second`; lets the
         first build finish once the second is seen blocked on the lock, or
         has finished on its own."""
+        self.first_started.clear()
+        self.release_first.clear()
         threads = [threading.Thread(target=first, name="first"),
                    threading.Thread(target=second, name="second")]
         with mock.patch.object(device, "run_to_end", side_effect=fake_flash.scripts(
@@ -987,17 +1009,15 @@ class BuildDirectoryLockTests(Store):
     def autana_build(self, variant="dev"):
         return lambda: device.build_worktree(self.worktree, variant)
 
-    def test_two_flash_builds_of_one_directory_take_turns(self):
-        self.run_threads(self.flash_build(), self.flash_build())
-        self.assertGreater(self.tries["second"], 0)
-        self.assertEqual(self.events, ["first starts", "first ends",
-                                       "second starts", "second ends"])
-
-    def test_autana_build_waits_for_a_flash_build_of_the_same_variant(self):
-        self.run_threads(self.flash_build("dev"), self.autana_build("dev"))
-        self.assertGreater(self.tries["second"], 0)
-        self.assertEqual(self.events, ["first starts", "first ends",
-                                       "second starts", "second ends"])
+    def test_builds_of_one_variant_take_turns(self):
+        for second in (self.flash_build(), self.autana_build("dev")):
+            with self.subTest(second=second):
+                self.events.clear()
+                self.tries.clear()
+                self.run_threads(self.flash_build(), second)
+                self.assertGreater(self.tries["second"], 0)
+                self.assertEqual(self.events, ["first starts", "first ends",
+                                               "second starts", "second ends"])
 
     def test_autana_build_of_another_variant_does_not_wait(self):
         self.run_threads(self.flash_build("dev"), self.autana_build("diag"))
@@ -1334,13 +1354,12 @@ class DurationTests(Store):
         store = device_lock.LockStore(self.root / "locks", now=lambda: clock[0])
         store.acquire(BOARD_A, "alice", "flash")
         ticket = store.enqueue(BOARD_A, "bob", "send")
-        waiter = device.HeldLock.__new__(device.HeldLock)
-        waiter.store, waiter.board, waiter.last_notice = store, BOARD_A, None
-        interval = device.HeldLock.NOTICE_SECONDS
+        notice_state = {}
+        interval = device.WAIT_NOTICE_SECONDS
         with contextlib.redirect_stderr(io.StringIO()) as notices:
             for offset in (0, interval - 0.01, interval):
                 clock[0] = 1000.0 + offset
-                waiter.wait_notice(ticket)
+                device.wait_notice(store, BOARD_A, notice_state, ticket)
         # Two notices fire (offset 0 and interval; the middle one is too soon),
         # and each now prints two lines: the holder's, then the queue place.
         self.assertEqual(len(notices.getvalue().splitlines()), 4)
@@ -1349,10 +1368,9 @@ class DurationTests(Store):
         store = device_lock.LockStore(self.root / "locks", now=lambda: 1000.0)
         store.reserve_human(BOARD_A, "maintainer", "on the bench")
         ticket = store.enqueue(BOARD_A, "bob", "send")
-        waiter = device.HeldLock.__new__(device.HeldLock)
-        waiter.store, waiter.board, waiter.last_notice = store, BOARD_A, None
+        notice_state = {}
         with contextlib.redirect_stderr(io.StringIO()) as notices:
-            waiter.wait_notice(ticket)
+            device.wait_notice(store, BOARD_A, notice_state, ticket)
         self.assertIn("board reserved by maintainer: on the bench - waiting "
                       "(1h left, unless renewed", notices.getvalue())
 

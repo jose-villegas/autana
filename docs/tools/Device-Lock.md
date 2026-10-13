@@ -81,7 +81,10 @@ with the global `--lock-token` flag to each board command, then release it:
 
 ```sh
 token=$(autana lock take --for 3600 inspecting the panel)
-autana --lock-token "$token" flash && autana --lock-token "$token" open APP_NAME && autana --lock-token "$token" screenshot; autana lock release "$token"
+autana --lock-token "$token" flash
+autana --lock-token "$token" open APP_NAME
+autana --lock-token "$token" screenshot
+autana lock release "$token"
 ```
 
 The default timed hold lasts one hour, and `--for` cannot exceed that hour.
@@ -231,12 +234,15 @@ session:
 
 There is no setting for another folder: the lock is one per machine, and a
 folder chosen per checkout or per shell would split it. Linux ignores `TMPDIR`
-so two jobs with different temp folders still exclude each other. Per board, with
+so two jobs with different temp folders still exclude each other; an install older
+than this rule used `$TMPDIR/autana-device` there, and until every copy on the
+machine is updated the two do not exclude each other (the lock protocol number
+cannot help: an older install never looks in the new folder). Per board, with
 `:` in the serial number written as `_`:
 
 | File | What it is |
 |---|---|
-| `<serial>.json` | The lock: `owner`, `board`, `kind`, `purpose`, `acquired_at`, `host`, `token`, `protocol`, `autana_version`; a running command also has `heartbeat_at` and `pid`, a timed hold has `expires_at`, and an until-released hold has `pid`. `purpose` is what `status` shows. The `token` names this lock; `lock take` prints it, and a holder's child processes inherit it for `lock release` without an argument. `status` never prints it. |
+| `<serial>.json` | The lock: `owner`, `board`, `kind`, `purpose`, `acquired_at`, `heartbeat_at`, `pid`, `host`, `token`, `protocol`, `autana_version`; a timed hold has `expires_at` and `pid: 0`, and an until-released hold has `until_released: true` and the owner process id. `heartbeat_at` is when a hold was written. `purpose` is what `status` shows. The `token` names this lock; `lock take` prints it, and a holder's child processes inherit it for `lock release` without an argument. `status` never prints it. |
 | `<serial>.queue/` | One ticket per waiting command, in FIFO order; a dead waiter's is discarded. |
 | `<serial>.last.json` | The previous holder, one only: overwritten each time a lock ends, for the message in step 5. |
 | `<serial>.seen.json` | Names a board once found on USB, so `lock hand` and `lock take-back` can still reach it when it has since dropped off. Delete it to make this machine forget the board. |

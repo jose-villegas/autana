@@ -536,19 +536,45 @@ def require_unlost():
         raise LockLost()
 
 
+WAIT_NOTICE_SECONDS = 30
+
+
+def wait_notice(store, board, state, ticket):
+    now = store.now()
+    if state.get("last_notice") is not None and now - state["last_notice"] < WAIT_NOTICE_SECONDS:
+        return
+    state["last_notice"] = now
+    status = store.status(board)
+    if status["lock"]:
+        lock = status["lock"]
+        print(f"board held by {lock['owner']} "
+              f"{device_lock.holder_version_text(lock)} - waiting", file=sys.stderr)
+    elif status["human"]:
+        human = status["human"]
+        left = device_lock.human_left_text(human, now)
+        print(f"board reserved by {human['owner']}: {human.get('note')} - waiting "
+              f"({left + ', unless renewed; ' if left else ''}`autana status`, "
+              "`autana lock take-back`)", file=sys.stderr)
+    place = next((index for index, item in enumerate(status["queue"], 1)
+                  if item["ticket"] == ticket), None)
+    if place:
+        estimate = device_lock.queue_estimates(
+            status, now, device_lock.duration_history(store.root)).get(ticket)
+        print(f"waiting for board: queue place {place}; estimated start "
+              f"{device_lock.format_estimate(estimate)}", file=sys.stderr)
+
+
 class HeldLock:
     """One board held for one command. The command's duration is recorded
     when it ends, with an error when it raised, set `error`, or lost the lock."""
 
     HEARTBEAT_SECONDS = 5
-    NOTICE_SECONDS = 30
-    BORROW_POLL_SECONDS = 0.1
 
     def __init__(self, store, board, owner, kind, wait, announce_waiters=False):
         self.store = store
         self.announce_waiters = announce_waiters
         self.board = board
-        self.last_notice = None
+        self.notice_state = {}
         token = os.environ.get(TOKEN_ENV)
         self.borrowed = bool(token)
         self.keep_seconds = None
@@ -573,32 +599,11 @@ class HeldLock:
         self.error = None
 
     def wait_notice(self, ticket):
-        now = self.store.now()
-        if self.last_notice is not None and now - self.last_notice < self.NOTICE_SECONDS:
-            return
-        self.last_notice = now
-        status = self.store.status(self.board)
-        if status["lock"]:
-            lock = status["lock"]
-            print(f"board held by {lock['owner']} "
-                  f"{device_lock.holder_version_text(lock)} - waiting", file=sys.stderr)
-        elif status["human"]:
-            human = status["human"]
-            left = device_lock.human_left_text(human, now)
-            print(f"board reserved by {human['owner']}: {human.get('note')} - waiting "
-                  f"({left + ', unless renewed; ' if left else ''}`autana status`, "
-                  "`autana lock take-back`)", file=sys.stderr)
-        place = next((index for index, item in enumerate(status["queue"], 1)
-                      if item["ticket"] == ticket), None)
-        if place:
-            estimate = device_lock.queue_estimates(
-                status, now, device_lock.duration_history(self.store.root)).get(ticket)
-            print(f"waiting for board: queue place {place}; estimated start "
-                  f"{device_lock.format_estimate(estimate)}", file=sys.stderr)
+        wait_notice(self.store, self.board, self.notice_state, ticket)
 
     def keep_alive(self):
         if self.borrowed:
-            while not self.stop.wait(self.BORROW_POLL_SECONDS):
+            while not self.stop.wait(self.HEARTBEAT_SECONDS):
                 if not self.store.check_token(self.board, self.held["token"]):
                     self.lost.set()
                     return
@@ -2075,10 +2080,9 @@ def main(argv=None):
         if args.command == "check-token":
             return 0 if store.check_token(board, args.token) else 1
         if args.command == "hand-to-human":
-            notice = HeldLock.__new__(HeldLock)
-            notice.store, notice.board, notice.last_notice = store, board, None
+            notice_state = {}
             reservation_id, renewed = store.reserve_human(board, args.owner, args.note,
-                                                          wait=args.wait, on_wait=notice.wait_notice)
+                                                          wait=args.wait, on_wait=lambda ticket: wait_notice(store, board, notice_state, ticket))
             if reservation_id is None:
                 raise LockBusy("device lock was not acquired: " + device_lock.busy_text(store.status(board), store.now()))
             if args.until_back is None:
@@ -2094,10 +2098,9 @@ def main(argv=None):
         if args.command == "take":
             if args.pid is not None and (not args.until_released or args.pid <= 0):
                 parser.error("--pid needs --until-released and a positive pid")
-            notice = HeldLock.__new__(HeldLock)
-            notice.store, notice.board, notice.last_notice = store, board, None
+            notice_state = {}
             held = store.acquire(board, args.owner, "take", wait=args.wait,
-                                 on_wait=notice.wait_notice, purpose=" ".join(args.note))
+                                 on_wait=lambda ticket: wait_notice(store, board, notice_state, ticket), purpose=" ".join(args.note))
             if not held:
                 raise LockBusy("device lock was not acquired: " + device_lock.busy_text(store.status(board), store.now()))
             pid = (args.pid or os.getppid()) if args.until_released else None

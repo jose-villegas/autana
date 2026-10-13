@@ -93,7 +93,7 @@ class LivenessTests(unittest.TestCase):
         self.assertFalse(device_lock.process_alive(0x7FFFFFF0))
 
 
-class LockTests(unittest.TestCase):
+class ClockStoreTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.clock = Clock()
@@ -104,12 +104,15 @@ class LockTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+
+class LockTests(ClockStoreTests):
+
     def test_timed_hold_ignores_dead_pid_and_heartbeat(self):
         held = self.lock.acquire("COM5", "one", "take")
         self.assertTrue(self.lock.hold("COM5", held["token"], "bench", seconds=2))
         record = self.lock.read_json(self.lock.lock_path("COM5"))
-        self.assertNotIn("heartbeat_at", record)
-        self.assertNotIn("pid", record)
+        self.assertEqual(record["heartbeat_at"], self.clock.now())
+        self.assertEqual(record["pid"], 0)
         self.clock.advance(1)
         self.assertTrue(self.lock.check_token("COM5", held["token"]))
         self.clock.advance(1)
@@ -436,27 +439,18 @@ class LockTests(unittest.TestCase):
                          {"acquired", "released", "human-reserved",
                           "human-cleared", "waiting", "gave-up"})
 
-    def test_dead_lock_holder_on_this_host_is_reclaimed(self):
-        ticket = self.lock.enqueue("COM5", "dead", "flash", pid=1)
-        self.lock.write_json(self.lock.lock_path("COM5"), {
-            "acquired_at": 1000, "heartbeat_at": 1000,
-            "expected_build_id": "", "host": device_lock.socket.gethostname(),
-            "owner": "dead", "pid": 99, "port": "COM5", "purpose": "flash",
-            "token": "old", "protocol": device_lock.LOCK_PROTOCOL,
-        })
-        held = self.lock.claim("COM5", ticket)
-        self.assertIn("reclaimed lock from dead for flash (dead process)",
-                      held.log)
-
-    def test_live_lock_holder_is_not_reclaimed(self):
-        ticket = self.lock.enqueue("COM5", "live", "flash", pid=1)
-        self.lock.write_json(self.lock.lock_path("COM5"), {
-            "acquired_at": 1000, "heartbeat_at": 1000,
-            "expected_build_id": "", "host": device_lock.socket.gethostname(),
-            "owner": "live", "pid": 1, "port": "COM5", "purpose": "flash",
-            "token": "old", "protocol": device_lock.LOCK_PROTOCOL,
-        })
-        self.assertIsNone(self.lock.claim("COM5", ticket, stale_seconds=600))
+    def test_local_holder_liveness_controls_reclaim(self):
+        for pid, alive in ((99, False), (1, True)):
+            with self.subTest(pid=pid):
+                ticket = self.lock.enqueue("COM5", "waiter", "flash", pid=1)
+                self.write_holder(pid)
+                held = self.lock.claim("COM5", ticket)
+                if alive:
+                    self.assertIsNone(held)
+                    self.lock.cancel("COM5", ticket)
+                else:
+                    self.assertIn("reclaimed lock from gone for screenshot (dead process)", held.log)
+                    self.lock.release("COM5", held["token"])
 
     def test_dead_lock_holder_on_other_host_is_not_reclaimed_by_pid(self):
         ticket = self.lock.enqueue("COM5", "remote", "flash", pid=1)
@@ -526,21 +520,12 @@ class LockTests(unittest.TestCase):
         self.assertEqual(self.lock.status("COM5")["queue"], [])
 
 
-class HumanReservationExpiryTests(unittest.TestCase):
+class HumanReservationExpiryTests(ClockStoreTests):
     """A person's reservation has no heartbeat, so it lapses after
     HUMAN_RESERVATION_SECONDS unless the same owner reserves again."""
 
     HOUR = 3600
 
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.clock = Clock()
-        self.lock = device_lock.LockStore(
-            Path(self.temp.name), self.clock.now,
-            lambda pid: pid in (1, device_lock.os.getpid()))
-
-    def tearDown(self):
-        self.temp.cleanup()
 
     def claim(self, owner="agent"):
         ticket = self.lock.enqueue("COM5", owner, "flash", pid=1)
@@ -890,21 +875,12 @@ class PreviousHolderTests(unittest.TestCase):
         self.assertIn("Still running from it: 1", text)
 
 
-class ProtocolTests(unittest.TestCase):
+class ProtocolTests(ClockStoreTests):
     """LOCK_PROTOCOL: the mutex is guard() (an O_CREAT|O_EXCL file); these JSON
     records are the state it protects. A protocol mismatch is never a reason
     to stop: two machines with different-aged autana installs still have to
     work the same board, only information shown in status and while waiting."""
 
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.clock = Clock()
-        self.lock = device_lock.LockStore(
-            Path(self.temp.name), self.clock.now,
-            lambda pid: pid in (1, device_lock.os.getpid()))
-
-    def tearDown(self):
-        self.temp.cleanup()
 
     def write_foreign_lock(self, protocol, pid=99, autana_version="9.9.9"):
         """pid 99 is dead per this test class's is_alive (only 1 and this
@@ -1050,18 +1026,17 @@ class LockRecordShapeTests(unittest.TestCase):
     why), add a new entry here for the new protocol, and keep the old one;
     never edit an existing entry to make a red test green without doing that."""
 
+    HOLD_KEYS = frozenset({"acquired_at", "board", "host", "owner", "kind", "purpose",
+                           "token", "protocol", "autana_version", "pid", "heartbeat_at"})
     GOLDEN_KEYS = {
         3: {
             "lock": frozenset({"acquired_at", "board", "heartbeat_at", "host", "owner", "pid",
                                "kind", "purpose", "token", "protocol", "autana_version"}),
             "ticket": frozenset({"board", "created_at", "owner", "pid", "kind", "purpose",
                                  "sequence", "ticket", "protocol", "autana_version"}),
-            "human": frozenset({"acquired_at", "board", "host", "owner", "kind", "purpose",
-                                "token", "protocol", "autana_version", "expires_at"}),
-            "hold": frozenset({"acquired_at", "board", "host", "owner", "kind", "purpose",
-                               "token", "protocol", "autana_version", "expires_at"}),
-            "pid_hold": frozenset({"acquired_at", "board", "host", "owner", "kind", "purpose",
-                                   "token", "protocol", "autana_version", "pid"}),
+            "human": HOLD_KEYS | {"expires_at"},
+            "hold": HOLD_KEYS | {"expires_at"},
+            "pid_hold": HOLD_KEYS | {"until_released"},
             "last": frozenset({"board", "owner", "purpose", "pid", "host", "token", "acquired_at",
                                "ended_at", "how", "protocol", "autana_version"}),
         },
@@ -1122,6 +1097,23 @@ class LockRecordShapeTests(unittest.TestCase):
         self.lock.reserve_human("COM5", "me", "note")
         human = self.lock.read_json(self.lock.lock_path("COM5"))
         self.assertEqual(set(human), self.golden("human"))
+
+    def test_holds_keep_core_liveness_fields(self):
+        for seconds, human, pid in ((10, False, None), (10, True, None),
+                                    (None, False, os.getpid()), (None, False, None)):
+            with self.subTest(seconds=seconds, human=human):
+                held = self.lock.acquire("COM5", "me", "take")
+                self.assertTrue(self.lock.hold("COM5", held["token"], "bench",
+                                               seconds=seconds, pid=pid, human=human))
+                record = self.lock.read_json(self.lock.lock_path("COM5"))
+                self.assertIsInstance(record["heartbeat_at"], (int, float))
+                self.assertEqual(record["pid"], 0 if seconds else os.getpid())
+                with mock.patch.object(self.lock, "is_alive", side_effect=AssertionError("pid probe")):
+                    if seconds:
+                        self.assertTrue(self.lock.check_token("COM5", held["token"]))
+                self.assertEqual(set(record), self.golden("human" if human else
+                                                         "hold" if seconds else "pid_hold"))
+                self.lock.release("COM5", held["token"])
 
     def test_the_last_holder_records_keys_match_the_golden_set(self):
         held = self.lock.acquire("COM5", "me", "flash")
