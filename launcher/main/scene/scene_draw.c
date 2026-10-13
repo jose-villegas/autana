@@ -110,7 +110,8 @@ draw_active(int quarter, int width, int height) {
     if (count == 0) {
         return;
     }
-    const render_view_t view = r3d_scene_view_at(&camera->lens, (viewport_t){width, height, quarter});
+    const render_view_t view =
+        camera_view(&camera->lens, &scene->locals[camera->entity], (viewport_t){width, height, quarter});
     rendered = render_context_draw(render_context_main(), scene->instances, count, &view, camera->clear);
 }
 

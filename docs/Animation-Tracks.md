@@ -146,7 +146,7 @@ resolved set.
 fields and sets each target's dirty bit when supplied. Pass `bound + first`
 to apply a range starting later in the array. The sampler normalizes quaternion
 keys. A component's declaration sits beside its struct, for example
-`R3D_SCENE_CAMERA_FIELDS` in `render/r3d_scene.h`; [Binding any field](#binding-any-field)
+`CAMERA_FIELDS` in `scene/camera/camera.h`; [Binding any field](#binding-any-field)
 says how resolution works.
 
 ## Sampling
