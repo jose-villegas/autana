@@ -58,7 +58,6 @@ TIER_POLICY = (
 )
 CHARTS = {"pool": "docs/memory/images/internal-pool.svg", "components": "docs/memory/images/iram-components.svg"}
 RUNTIME_HEAP = "docs/memory/data/runtime-heap.txt"
-HEAP_PROFILE = "launcher/tools/device/device_profiles/esp32s3.sh"
 RUNTIME_LABEL = "In use at runtime (floor)"
 DIFFERENCES_HEADING = "### Differs between variants"
 COMPONENT_TOP_COUNT = 8
@@ -552,35 +551,6 @@ def parse_runtime_heap(text):
     return captures
 
 
-def update_heap_profile(root, runtime, write=False):
-    """The host arena uses the diagnostics heap's boot reading."""
-    capture = runtime["diag"]
-    if "unmeasured" in capture:
-        raise ValueError("heap profile requires a measured diag boot capture")
-    reading = capture["phases"]["boot"]
-    source = f'{RUNTIME_HEAP} BUILD_ID={capture["build_id"]} phase=boot'
-    values = {"DP_FREE_HEAP_BYTES": str(reading["free"]),
-              "DP_LARGEST_FREE_BLOCK_BYTES": str(reading["largest"]),
-              "DP_FREE_HEAP_SOURCE": json.dumps(source),
-              "DP_LARGEST_FREE_BLOCK_SOURCE": json.dumps(source)}
-    path = root / HEAP_PROFILE
-    original = path.read_bytes().decode("utf-8")
-    retained = re.search(r"(?m)^DP_FREE_HEAP_BYTES=(\d+)", original)
-    if write and retained and reading["free"] < int(retained[1]):
-        raise ValueError(f"heap profile: diag boot reports {reading['free']} B, "
-                         f"{int(retained[1]) - reading['free']} B below the retained host arena; "
-                         "reduction requires host allocation-fixture validation; profile unchanged")
-    updated = original
-    for name, value in values.items():
-        updated, count = re.subn(r"(?m)^" + name + r"=[^\r\n]*", lambda match: name + "=" + value, updated)
-        if count != 1:
-            raise ValueError(f"heap profile: expected one {name}")
-    if write:
-        path.write_bytes(updated.encode("utf-8"))
-    elif updated != original:
-        raise ValueError("heap profile differs from diag boot capture; run memory_map.py --write")
-
-
 def read_runtime_heap(root):
     return parse_runtime_heap((root / RUNTIME_HEAP).read_text(encoding="utf-8"))
 
@@ -924,7 +894,6 @@ def main():
             update_budgets(args.root, builds)
             return 0
         if args.check:
-            update_heap_profile(args.root, read_runtime_heap(args.root))
             return 0
         body = render(builds, root=args.root)
         blocks = {BLOCK: body, TIERS_BLOCK: render_tiers(builds, args.root), HEADROOM_BLOCK: render_headroom(builds, root=args.root)}
@@ -936,7 +905,6 @@ def main():
                 apply_tables(args.root, tables)
             for kind, name in CHARTS.items():
                 write_chart(kind, body, args.root / name, root=args.root)
-            update_heap_profile(args.root, read_runtime_heap(args.root), write=True)
         elif args.tables:
             args.tables.mkdir(parents=True, exist_ok=True)
             for name, text in blocks.items():

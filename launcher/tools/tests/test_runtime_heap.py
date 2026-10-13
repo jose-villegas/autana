@@ -61,27 +61,6 @@ class RuntimeHeapTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'overlay'):
                 svg_bars.bars('test', 'test', '', rows, 200, overlays=overlays)
 
-    def test_profile_capture_owner_preserves_bytes_and_checks_drift(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            path = root / memory.HEAP_PROFILE
-            path.parent.mkdir(parents=True)
-            original = (b'# keep\r\nDP_FREE_HEAP_BYTES=1\r\nDP_FREE_HEAP_SOURCE="old"\r\n'
-                        b'DP_LARGEST_FREE_BLOCK_BYTES=1\r\nDP_LARGEST_FREE_BLOCK_SOURCE="old"\r\n')
-            path.write_bytes(original)
-            with self.assertRaisesRegex(ValueError, 'profile'):
-                memory.update_heap_profile(root, self.capture(), write=False)
-            memory.update_heap_profile(root, self.capture(), write=True)
-            memory.update_heap_profile(root, self.capture(), write=False)
-            self.assertIn(b'DP_FREE_HEAP_BYTES=512\r\n', path.read_bytes())
-            self.assertIn(b'abc-diag phase=boot', path.read_bytes())
-            smaller = self.capture()
-            smaller['diag']['phases']['boot']['free'] = 400
-            with self.assertRaisesRegex(ValueError, '112 B below the retained host arena'):
-                memory.update_heap_profile(root, smaller, write=True)
-            self.assertIn(b'DP_FREE_HEAP_BYTES=512\r\n', path.read_bytes())
-            self.assertEqual(path.read_bytes().count(b'\r\n'), original.count(b'\r\n'))
-
     def test_headroom_uses_runtime_total(self):
         line = memory.runtime_headline('dev', self.capture()['dev'], 1024, 64, 'abc-dev', 656)
         self.assertIn('free of its 1.2 KB internal heap', line)

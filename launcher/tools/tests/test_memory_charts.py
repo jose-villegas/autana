@@ -29,8 +29,7 @@ def chart_cli(doc, build):
     replacements = dict(render_tiers=lambda builds, root, runtime=None: 'tier fixture',
                         render_headroom=lambda builds, runtime=None, root=None: 'headroom fixture', ROOT=doc.parent,
                         read_build=lambda *args: build, build_sites=lambda *args: ([], lambda site: True),
-                        check=lambda *args, **kwargs: [], idf_pin=lambda *args: {'commit': 'fixture'},
-                        update_heap_profile=lambda *args, **kwargs: None)
+                        check=lambda *args, **kwargs: [], idf_pin=lambda *args: {'commit': 'fixture'})
     with contextlib.ExitStack() as stack:
         for name, value in replacements.items():
             stack.enter_context(patch.object(memory, name, value))
