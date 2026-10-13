@@ -289,7 +289,7 @@ on a clean build directory, which is what makes it a trap.
 ## runsuite: the everyday device loop
 
 A diag build (`CONFIG_LAUNCHER_SELFTEST` on, `AUTORUN` off) answers
-`runsuite <suite>` on the console (`console/console_runsuite.c`, one of the
+`runsuite <suite>` on the console (`console/verbs/console_runsuite.c`, one of the
 verbs `launcher/main/console/console.c` dispatches); `autana suite <name>`
 sends it. `screenshot` (`console_screenshot.c`) is another verb: it dumps
 the frame on screen. `runsuite <suite_function_name>` runs exactly that one

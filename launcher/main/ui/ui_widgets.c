@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "gfx/draw/gfx_draw.h"
 #include "gfx/draw/gfx_font_roles.h"
 #include "ui/ui.h"
 #include "ui/ui_icons.h"
@@ -15,6 +16,15 @@
 #define TILE_LABEL_GAP  4
 #define CHEVRON_SIDE    24
 #define LIST_GAP        4
+
+ui_theme_t
+ui_theme_from_style(const mu_Style* style) {
+    return (ui_theme_t){.button_face = style->colors[MU_COLOR_BUTTON],
+                        .accent_face = style->colors[MU_COLOR_BUTTONFOCUS],
+                        .text = style->colors[MU_COLOR_TEXT],
+                        .on_accent = style->colors[MU_COLOR_TEXT],
+                        .text_scale = GFX_GLYPH_SCALE};
+}
 
 static void
 draw_spans(mu_Context* ctx, const ui_span_t* spans, int n) {

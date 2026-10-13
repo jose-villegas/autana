@@ -40,8 +40,8 @@ typedef struct {
     char what[ASSET_NAME_MAX];
 } scene_failure_t;
 
-/* Loads the scene `id` beside any already loaded: its entry, every mesh it
- * names and its camera's clip, from `pack`, or for scene_load() from the
+/* Loads the scene `id` beside any already loaded: its entry, every mesh, skin,
+ * skeleton and clip it names, from `pack`, or for scene_load() from the
  * asset pack `id`, held until the scene unloads. NULL on failure, and
  * `why`, which may be NULL, says why; a success sets it to SCENE_OK. */
 scene_t* scene_load(const char* id, scene_failure_t* why);

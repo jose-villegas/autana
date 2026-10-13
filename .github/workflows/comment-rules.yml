@@ -194,6 +194,9 @@ jobs:
       - name: Trust the checkout
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
+      - name: The image is the ESP-IDF launcher/idf-pin.json records
+        run: python3 scripts/deps/idf_pin.py check
+
       - name: Every name, file and heading a comment cites exists
         env:
           STAGED_TEXT_GATE: "true"

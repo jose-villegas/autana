@@ -95,6 +95,9 @@ continues if the PMIC does not acknowledge or the restart does not occur.
   `idf: ">=6.1"`; CI builds on the exact commit `launcher/idf-pin.json` names
   ([Framework-Versions.md](../tools/Framework-Versions.md)). Several versions
   can coexist; they are keyed by `IDF_PATH`.
+- On another ESP-IDF commit the IRAM budget check reports a mismatch as a
+  drift note instead of failing, and `memory_map.py --update-budgets` refuses
+  to run.
 - On Windows, `launcher/tools/build/idf.sh` invokes `export.bat` through
   `cmd` with the MSYS environment removed. A working `idf.py` or PowerShell
   activation alone is insufficient: `export.bat` must have batch-compatible

@@ -705,8 +705,224 @@ test_unsigned_64_clamp_covers_extremes_and_crosses_the_word_boundary(void) {
     TEST_ASSERT_EQUAL_UINT64(UINT64_MAX - 1, mathi_clamp_u64(UINT64_MAX, UINT64_MAX - 1, UINT64_MAX - 1));
 }
 
+/* mathi_lerp_u8() */
+
+static void
+test_lerp_hits_its_endpoints_exactly(void) {
+    TEST_ASSERT_EQUAL_INT32(1000, mathi_lerp_u8(1000, 5000, 0));
+    TEST_ASSERT_EQUAL_INT32(5000, mathi_lerp_u8(1000, 5000, 255));
+}
+
+static void
+test_lerp_is_between_its_endpoints_throughout(void) {
+    for (int u = 0; u <= 255; u++) {
+        const int32_t v = mathi_lerp_u8(1000, 5000, (uint8_t)u);
+        TEST_ASSERT_TRUE_MESSAGE(v >= 1000 && v <= 5000, "a lerp must never overshoot either endpoint");
+    }
+}
+
+static void
+test_lerp_works_the_same_shrinking_as_growing(void) {
+    /* b < a: the span is negative, and the lerp should still walk from a
+     * down to b rather than assuming growth. */
+    TEST_ASSERT_EQUAL_INT32(5000, mathi_lerp_u8(5000, 1000, 0));
+    TEST_ASSERT_EQUAL_INT32(1000, mathi_lerp_u8(5000, 1000, 255));
+
+    int32_t last = 6000;
+    for (int u = 0; u <= 255; u++) {
+        const int32_t v = mathi_lerp_u8(5000, 1000, (uint8_t)u);
+        TEST_ASSERT_TRUE_MESSAGE(v <= last, "lerping toward a smaller value must decrease monotonically");
+        last = v;
+    }
+}
+
+static void
+test_lerp_handles_a_span_too_wide_for_int32_untouched(void) {
+    /* (b - a) * t overflows int32 for a wide span; the int64 step keeps the result strictly between the endpoints. */
+    const int32_t a = -1000000000;
+    const int32_t b = 1000000000;
+    TEST_ASSERT_EQUAL_INT32(a, mathi_lerp_u8(a, b, 0));
+    TEST_ASSERT_EQUAL_INT32(b, mathi_lerp_u8(a, b, 255));
+    const int32_t mid = mathi_lerp_u8(a, b, 128);
+    TEST_ASSERT_TRUE_MESSAGE(mid > a && mid < b, "a wide span must still land strictly between its endpoints, not "
+                                                 "wrap around from an overflowing intermediate");
+}
+
+static void
+test_mathf_lerp(void) {
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, mathf_lerp(0.0F, 8.0F, 0.0F));
+    TEST_ASSERT_EQUAL_FLOAT(8.0F, mathf_lerp(0.0F, 8.0F, 1.0F));
+    TEST_ASSERT_EQUAL_FLOAT(6.0F, mathf_lerp(8.0F, 0.0F, 0.25F));
+}
+
+static void
+test_mathi_lerp(void) {
+    static const int32_t endpoints[][2] = {
+        {0, INT32_MAX - 1}, {0, INT32_MAX}, {-1, INT32_MAX}, {0, INT32_MIN + 1}, {0, INT32_MIN}, {1, INT32_MIN},
+    };
+    const int32_t steps = 3;
+    for (size_t i = 0; i < sizeof endpoints / sizeof endpoints[0]; i++) {
+        const int32_t a = endpoints[i][0], b = endpoints[i][1];
+        const int32_t expected = (int32_t)((int64_t)a + ((int64_t)b - a) / steps);
+        TEST_ASSERT_EQUAL_INT32(expected, mathi_lerp(a, b, 1, steps));
+    }
+    TEST_ASSERT_EQUAL_INT32(INT32_MIN, mathi_lerp(INT32_MIN, INT32_MAX, 0, INT32_MAX));
+    TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathi_lerp(INT32_MIN, INT32_MAX, INT32_MAX, INT32_MAX));
+    TEST_ASSERT_EQUAL_INT32(INT32_MIN, mathi_lerp(INT32_MAX, INT32_MIN, INT32_MAX, INT32_MAX));
+    TEST_ASSERT_EQUAL_INT32(-1, mathi_lerp(INT32_MIN, INT32_MAX, 1, 2));
+    TEST_ASSERT_EQUAL_INT32(0, mathi_lerp(INT32_MAX, INT32_MIN, 1, 2));
+    TEST_ASSERT_EQUAL_INT32(1, mathi_lerp(2, -1, 1, 2));
+    TEST_ASSERT_EQUAL_INT32(-1, mathi_lerp(-2, 1, 1, 2));
+}
+
+static void
+test_mathi_lerp_u8(void) {
+    TEST_ASSERT_EQUAL_INT32(INT32_MIN, mathi_lerp_u8(INT32_MIN, INT32_MAX, 0));
+    TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathi_lerp_u8(INT32_MIN, INT32_MAX, UINT8_MAX));
+    TEST_ASSERT_EQUAL_INT32(1, mathi_lerp_u8(2, -1, UINT8_MAX / 2));
+}
+
+static void
+test_maths_lerp(void) {
+    TEST_ASSERT_EQUAL_INT32(INT16_MIN, maths_lerp(INT16_MIN, INT16_MAX, 0, INT32_MAX));
+    TEST_ASSERT_EQUAL_INT32(INT16_MAX, maths_lerp(INT16_MIN, INT16_MAX, INT32_MAX, INT32_MAX));
+    TEST_ASSERT_EQUAL_INT32(-1, maths_lerp(INT16_MIN, INT16_MAX, 1, 2));
+    TEST_ASSERT_EQUAL_INT32(1, maths_lerp(2, -1, 1, 2));
+}
+
+static void
+test_mathx_lerp(void) {
+    const int32_t span = 3;
+    const int32_t weight = MATHX_ONE / 4;
+    TEST_ASSERT_EQUAL_INT32(1, mathx_lerp(0, span, weight));
+    TEST_ASSERT_EQUAL_INT32(-1, mathx_lerp(0, -span, weight));
+    TEST_ASSERT_EQUAL_INT32(-2, mathx_lerp(0, -span, MATHX_ONE - weight));
+    TEST_ASSERT_EQUAL_INT32(span - 1, mathx_lerp(span, 0, weight));
+    TEST_ASSERT_EQUAL_INT32(0, mathx_lerp(0, MATHX_ONE, 0));
+    TEST_ASSERT_EQUAL_INT32(MATHX_ONE, mathx_lerp(0, MATHX_ONE, MATHX_ONE));
+    TEST_ASSERT_EQUAL_INT32(MATHX_ONE / 2, mathx_lerp(MATHX_ONE, 0, MATHX_ONE / 2));
+    TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathx_lerp(INT32_MAX - 1, INT32_MAX, 2 * MATHX_ONE));
+    TEST_ASSERT_EQUAL_INT32(INT32_MIN, mathx_lerp(INT32_MIN + 1, INT32_MIN, 2 * MATHX_ONE));
+    TEST_ASSERT_EQUAL_INT32(-1, mathx_lerp(INT32_MIN, INT32_MAX, MATHX_ONE));
+}
+
+static void
+test_mathf_repeat(void) {
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, mathf_repeat(8.0F, 4.0F));
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, mathf_repeat(-8.0F, 4.0F));
+    TEST_ASSERT_EQUAL_FLOAT(3.0F, mathf_repeat(-1.0F, 4.0F));
+    TEST_ASSERT_EQUAL_FLOAT(nextafterf(4.0F, 0.0F), mathf_repeat(nextafterf(4.0F, 0.0F), 4.0F));
+    TEST_ASSERT_TRUE(mathf_repeat(nextafterf(4.0F, 0.0F), 4.0F) < 4.0F);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, mathf_repeat(-FLT_MIN, 1.0F));
+}
+
+static void
+test_mathf_wrap(void) {
+    const float lo = 1.5F, hi = 4.0F;
+    TEST_ASSERT_EQUAL_FLOAT(3.5F, mathf_wrap(1.0F, lo, hi));
+    const float rounded = mathf_wrap(nextafterf(1.0F, 0.0F), 1.0F, 2.0F);
+    TEST_ASSERT_TRUE(rounded < 2.0F);
+    TEST_ASSERT_EQUAL_FLOAT(1.0F, rounded);
+    TEST_ASSERT_EQUAL_FLOAT(-4.0F, mathf_wrap(0.0F, -4.0F, -2.0F));
+    TEST_ASSERT_EQUAL_FLOAT(-3.0F, mathf_wrap(-5.0F, -4.0F, -2.0F));
+    TEST_ASSERT_EQUAL_FLOAT(-4.0F, mathf_wrap(-2.0F, -4.0F, -2.0F));
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, mathf_wrap(-FLT_MIN, 0.0F, 1.0F));
+    TEST_ASSERT_EQUAL_FLOAT(nextafterf(4.0F, 0.0F), mathf_wrap(nextafterf(4.0F, 0.0F), 0.0F, 4.0F));
+    TEST_ASSERT_TRUE(mathf_wrap(nextafterf(4.0F, 0.0F), 0.0F, 4.0F) < 4.0F);
+}
+
+#define DEFINE_SCALAR_BOUND_TESTS(P, A, LO, HI)                                                                        \
+    static void test_##P##_min(void) {                                                                                 \
+        A(LO, P##_min(LO, HI));                                                                                        \
+        A(LO, P##_min(HI, LO));                                                                                        \
+    }                                                                                                                  \
+    static void test_##P##_max(void) {                                                                                 \
+        A(HI, P##_max(LO, HI));                                                                                        \
+        A(HI, P##_max(HI, LO));                                                                                        \
+    }                                                                                                                  \
+    static void test_##P##_clamp(void) {                                                                               \
+        A(LO, P##_clamp(LO, LO, HI));                                                                                  \
+        A(HI, P##_clamp(HI, LO, HI));                                                                                  \
+        A(0, P##_clamp(0, LO, HI));                                                                                    \
+        A(0, P##_clamp(LO, 0, HI));                                                                                    \
+        A(0, P##_clamp(HI, LO, 0));                                                                                    \
+    }
+
+#define DEFINE_SCALAR_INTEGER_RANGE_TESTS(P, LO, HI)                                                                   \
+    static void test_##P##_repeat(void) {                                                                              \
+        TEST_ASSERT_EQUAL_INT32(0, P##_repeat(-8, 4));                                                                 \
+        TEST_ASSERT_EQUAL_INT32(3, P##_repeat(-1, 4));                                                                 \
+        TEST_ASSERT_EQUAL_INT32(3, P##_repeat(3, 4));                                                                  \
+        TEST_ASSERT_EQUAL_INT32(0, P##_repeat(8, 4));                                                                  \
+        TEST_ASSERT_EQUAL_INT32(0, P##_repeat(LO, 1));                                                                 \
+    }                                                                                                                  \
+    static void test_##P##_wrap(void) {                                                                                \
+        TEST_ASSERT_EQUAL_INT32(-3, P##_wrap(-5, -4, -2));                                                             \
+        TEST_ASSERT_EQUAL_INT32(-4, P##_wrap(-2, -4, -2));                                                             \
+        TEST_ASSERT_EQUAL_INT32(LO, P##_wrap(HI, LO, HI));                                                             \
+    }
+
+DEFINE_SCALAR_BOUND_TESTS(mathf, TEST_ASSERT_EQUAL_FLOAT, -4.0F, 4.0F)
+DEFINE_SCALAR_BOUND_TESTS(maths, TEST_ASSERT_EQUAL_INT32, INT16_MIN, INT16_MAX)
+DEFINE_SCALAR_BOUND_TESTS(mathx, TEST_ASSERT_EQUAL_INT32, INT32_MIN, INT32_MAX)
+DEFINE_SCALAR_INTEGER_RANGE_TESTS(maths, INT16_MIN, INT16_MAX)
+DEFINE_SCALAR_INTEGER_RANGE_TESTS(mathx, INT32_MIN, INT32_MAX)
+
+static void
+test_mathf_repeat_preserves_decimal_remainders(void) {
+    static const float values[] = {20561.0F, -20561.0F, 3.3F, -3.3F};
+    const float len = 0.001F, tiny = -0.0000001F;
+    TEST_ASSERT_TRUE(mathf_repeat(tiny, len) == tiny + len);
+    for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
+        const float remainder = fmodf(values[i], len);
+        const float expected = remainder < 0 ? remainder + len : remainder;
+        const float got = mathf_repeat(values[i], len);
+        TEST_ASSERT_TRUE(got >= 0 && got < len);
+        TEST_ASSERT_TRUE(got == expected);
+    }
+}
+
+static void
+test_float_ranges_with_decimal_lengths(void) {
+    static const float values[] = {3.3F, -3.3F, 6.6F, -6.6F};
+    const float len = 1.1F, lo = 0, hi = len;
+    for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
+        const float r = mathf_repeat(values[i], len), w = mathf_wrap(values[i], lo, hi);
+        TEST_ASSERT_TRUE(r >= 0 && r < len);
+        TEST_ASSERT_TRUE(w >= lo && w < hi);
+    }
+}
+
 void
 suite_math_numbers(void) {
+    RUN_TEST(test_mathf_lerp);
+    RUN_TEST(test_mathi_lerp);
+    RUN_TEST(test_mathi_lerp_u8);
+    RUN_TEST(test_maths_lerp);
+    RUN_TEST(test_mathx_lerp);
+    RUN_TEST(test_float_ranges_with_decimal_lengths);
+    RUN_TEST(test_mathf_repeat);
+    RUN_TEST(test_mathf_repeat_preserves_decimal_remainders);
+    RUN_TEST(test_mathf_wrap);
+    RUN_TEST(test_mathf_min);
+    RUN_TEST(test_mathf_max);
+    RUN_TEST(test_mathf_clamp);
+    RUN_TEST(test_maths_min);
+    RUN_TEST(test_maths_max);
+    RUN_TEST(test_maths_clamp);
+    RUN_TEST(test_mathx_min);
+    RUN_TEST(test_mathx_max);
+    RUN_TEST(test_mathx_clamp);
+    RUN_TEST(test_maths_repeat);
+    RUN_TEST(test_maths_wrap);
+    RUN_TEST(test_mathx_repeat);
+    RUN_TEST(test_mathx_wrap);
+
+    RUN_TEST(test_lerp_hits_its_endpoints_exactly);
+    RUN_TEST(test_lerp_is_between_its_endpoints_throughout);
+    RUN_TEST(test_lerp_works_the_same_shrinking_as_growing);
+    RUN_TEST(test_lerp_handles_a_span_too_wide_for_int32_untouched);
+
     RUN_TEST(test_unsigned_64_repeat_preserves_high_clock_bits_and_wide_periods);
     RUN_TEST(test_unsigned_64_clamp_covers_extremes_and_crosses_the_word_boundary);
     RUN_TEST(test_scalar_clamp_maps_nonfinite_values_to_bounds);

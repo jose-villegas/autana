@@ -680,6 +680,10 @@ class BuildCommandTests(unittest.TestCase):
         _, built = self.build("diag", "--perf-scope")
         built.assert_called_once_with("C:/wt", "diag", ["--perf-scope"])
 
+    def test_configure_is_forwarded_to_the_build(self):
+        _, built = self.build("rel", "--configure")
+        built.assert_called_once_with("C:/wt", "release", ["--configure"])
+
     def test_hot_tunables_are_forwarded_to_the_build(self):
         _, built = self.build("diag", "--hot-tunables")
         built.assert_called_once_with("C:/wt", "diag", ["--hot-tunables"])

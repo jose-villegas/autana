@@ -3,13 +3,13 @@
 **Status:** approved; steps 1, 2 and 4 are built
 ([Animation-Tracks.md](../Animation-Tracks.md),
 [Skeleton-and-Skin.md](../render/Skeleton-and-Skin.md), `scene/scene.h`);
-SCNE camera rows still carry `clip` and `node` rather than an animator row,
+camera paths load as animator rows,
 and step 3 (boot) is not built.
 
 A clip is a set of bindings: each names the object path, component and field
 a curve drives. `anim_bind()` resolves a scene clip against caller-supplied
 objects and field declarations once, so no string is compared per frame.
-Boot binding and authored animator rows are planned below.
+Boot binding is planned below; authored animator rows are implemented.
 
 The curves use `anim_track_t`, `anim_track_sample()` and glTF interpolations.
 
@@ -68,10 +68,10 @@ same way (the camera's is `R3D_SCENE_CAMERA_FIELDS` in
 `launcher/main/render/r3d_scene.h`). See
 [Binding any field](../Animation-Tracks.md#binding-any-field).
 
-Lights are baked offline and materials are baked into vertex colours, so the
-device has neither yet. A clip that binds a light's intensity today fails at
-load with the binding named; it is not skipped. When a runtime light or
-material component lands, its field list is what makes it animatable.
+Materials are baked into vertex colours, and runtime lights declare no
+animatable fields yet. A clip that binds a light's intensity fails at load
+with the binding named; it is not skipped. Adding a field list to a light or
+material component makes its declared fields animatable.
 
 ## 4. Resolve once, sample every frame
 
@@ -96,7 +96,7 @@ assumes it [A], and the placement is built from it when the entity is dirty.
 
 | Case | How |
 |---|---|
-| Camera animation | the camera entity has a property animator playing the camera row's `clip`, with `node` as its binding alias. An authored animator row (`entity`, clip id, wrap) is planned |
+| Camera animation | an animator on the camera entity plays the path clip, its tracks bound through `ANIM_TARGET_SELF` |
 | Lens animation | a `camera` `half_fov_short_tan` binding on the camera entity |
 | Boot animation (a camera and a space transform) | boot is not a scene, so it passes `anim_bind` a small table of its two objects instead of a scene [A]; its clip and keys need no new source |
 | Skinned clips | a `skeleton` component on the mesh entity exposes its joints as a subtree: `path` continues from the entity into joint names (`root/spine/neck`), `component` is `transform`. Joint bindings resolve once. Blending two clips samples each into scratch values and mixes them before writing; that belongs to the skinning work, and the resolved form allows it |

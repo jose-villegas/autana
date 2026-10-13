@@ -1,6 +1,6 @@
 /*
  * mathx: Q16.16 fixed-point scalar operations for the math templates
- * (math_template.h).
+ * (docs/math/README.md).
  *
  * Operations saturate, except the mathx_dot2c(), mathx_dot3c() and
  * mathx_dot3_narrow() fast paths, which wrap and floor; saturation turns
@@ -144,4 +144,34 @@ mathx_wadd(int32_t a, int32_t b) {
 static inline int32_t
 mathx_wmul(int32_t a, int32_t b) {
     return mathx_mul(a, b);
+}
+
+static inline int32_t
+mathx_lerp(int32_t a, int32_t b, int32_t t) {
+    return mathx_add(a, mathx_mul(mathx_sub(b, a), t));
+}
+
+static inline int32_t
+mathx_min(int32_t a, int32_t b) {
+    return mathi_min(a, b);
+}
+
+static inline int32_t
+mathx_max(int32_t a, int32_t b) {
+    return mathi_max(a, b);
+}
+
+static inline int32_t
+mathx_clamp(int32_t v, int32_t lo, int32_t hi) {
+    return mathi_clamp(v, lo, hi);
+}
+
+static inline int32_t
+mathx_repeat(int32_t v, int32_t len) {
+    return mathi_repeat(v, len);
+}
+
+static inline int32_t
+mathx_wrap(int32_t v, int32_t lo, int32_t hi) {
+    return mathi_wrap(v, lo, hi);
 }

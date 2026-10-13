@@ -13,8 +13,8 @@
 
 /* Which physical edge of the screen the home gesture currently lives on.
  * The caller decides this (see shell_exit_edge_for_quarter()) by
- * working out which edge is opposite the USB connector for the board's
- * current orientation. */
+ * mapping the logical canvas's bottom edge to the physical panel at the
+ * current quarter turn. */
 typedef enum {
     GESTURE_EDGE_TOP,
     GESTURE_EDGE_BOTTOM,

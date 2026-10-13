@@ -190,8 +190,10 @@ Update it in the same edit that changes the code it describes.
 
 Every module of the firmware opens with a header: one sentence, in its .h or
 its .c, saying what it is (`name: ...`). A suite's test names say what it
-proves, so a suite needs none. `scripts/gates/check_file_headers.py` fails a
-module without one, and CI runs it.
+proves, so a suite needs none. A header that declares nothing is not a
+module: a folder is described by its `README.md`.
+`scripts/gates/check_file_headers.py` fails a module without a header and a
+header that declares nothing, and CI runs it.
 
 Shape follows OpenBSD `style(9)`: a one-line `/* ... */`, a `VERY important`
 one-liner in a three-line block, or real sentences filled like a paragraph.

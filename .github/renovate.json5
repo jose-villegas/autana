@@ -96,7 +96,7 @@
         'blender/blender',
       ],
       labels: ['needs-board-perf'],
-      prBodyNotes: ['This bump can change the firmware: it merges only with a board perf comparison against main. Run `launcher/tools/perf/perf_compare.sh origin/main <this branch> --suite ...`, post the result, then remove the `needs-board-perf` label. A regression blocks it until fixed.'],
+      prBodyNotes: ['This bump can change the firmware: it merges only after a board perf comparison against main. Run a seeded `launcher/tools/perf/perf_compare.sh origin/main <this branch> --suite ...`, post its summary (improved, unchanged and regressed rows, with magnitudes) for the maintainer to judge, then remove the `needs-board-perf` label.'],
     },
     // A new Blender re-exports every skinned mesh: a rebake, opened from the dashboard.
     {matchDepNames: ['blender/blender'], groupName: 'Blender', groupSlug: 'blender', dependencyDashboardApproval: true},

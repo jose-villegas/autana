@@ -80,17 +80,17 @@ class LocalHookTests(ShellGateTestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_header_pair_uses_staged_companion(self):
-        self.write('launcher/main/gfx/sample.h', '/* Portable sample. */\n#pragma once\n')
+        self.write('launcher/main/gfx/sample.h', '/* Portable sample. */\n#pragma once\nint sample(void);\n')
         self.write('launcher/main/gfx/sample.c', '#include "gfx/sample.h"\n')
         result = self.gate('check-text-rules-staged.sh')
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.write('launcher/main/gfx/sample.h', '#pragma once\n')
+        self.write('launcher/main/gfx/sample.h', '#pragma once\nint sample(void);\n')
         result = self.gate('check-text-rules-staged.sh')
         self.assertNotEqual(result.returncode, 0)
         self.assertIn('no header comment', result.stdout + result.stderr)
 
     def test_deleting_the_only_module_header_is_checked(self):
-        self.write('launcher/main/gfx/sample.h', '/* Portable sample. */\n#pragma once\n')
+        self.write('launcher/main/gfx/sample.h', '/* Portable sample. */\n#pragma once\nint sample(void);\n')
         self.write('launcher/main/gfx/sample.c', 'int sample;\n')
         self.git('-c', 'core.hooksPath=', 'commit', '-qm', 'module')
         self.git('rm', 'launcher/main/gfx/sample.h')

@@ -15,7 +15,7 @@
  */
 #include "console/console.h"
 #if CONFIG_LAUNCHER_SELFTEST
-#include "console/console_runsuite.h"
+#include "console/verbs/console_runsuite.h"
 #endif
 
 #include <stdio.h>
@@ -62,12 +62,6 @@ console_take_unclaimed_line(char* out, size_t out_size) {
     }
     console_copy_text(out, out_size, item);
     return true;
-}
-
-void
-console_reply_stdio(const char* line) {
-    printf("%s\n", line);
-    fflush(stdout);
 }
 
 /* Line endings stay LF, untranslated: console_task() accepts either
