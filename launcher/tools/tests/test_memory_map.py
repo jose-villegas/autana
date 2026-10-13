@@ -392,7 +392,7 @@ print(m.render(builds))
 
     def test_probe_row_excludes_split_aliases_and_checks_config(self):
         baseline = {"sections": {".iram0.text": (0, 12), ".iram0.text_end": (0, 400), ".dram0.data": (0, 8), ".dram0.dummy": (0, 900)}, "constants": {"_heap_start": 100}}
-        measured = {"sections": {".iram0.text": (0, 8), ".iram0.text_end": (0, 800), ".dram0.data": (0, 4), ".dram0.dummy": (0, 300)}, "constants": {"_heap_start": 90}, "config": {"CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH": "y", "CONFIG_RINGBUF_PLACE_ISR_FUNCTIONS_INTO_FLASH": "y"}}
+        measured = {"sections": {".iram0.text": (0, 8), ".iram0.text_end": (0, 800), ".dram0.data": (0, 4), ".dram0.dummy": (0, 300)}, "constants": {"_heap_start": 90}, "config": dict(probe.OPTIONS["ringbuf-to-flash"]["config"])}
         self.assertEqual(probe.result_row("ringbuf-to-flash", baseline, measured)[1:4], (4, 4, -10))
         measured["config"] = {}
         self.assertEqual(probe.result_row("ringbuf-to-flash", baseline, measured)[1], "config rejected")
@@ -485,10 +485,16 @@ print(m.render(builds))
         for symbol in probe.PRESENT_QUEUE_CALLS:
             self.assertIn(f"queue:{symbol} (noflash_text)", fragment)
         self.assertNotIn("(default)", fragment)
-        baseline = {"inputs": [memory.Input("libhal.a", "spi_flash_hal_gpspi.c.obj", "gpspi_fn", 4), memory.Input("libother.a", "spi_flash_hal_gpspi.c.obj", "other", 4)]}
+        baseline = {"inputs": [memory.Input("libesp_hal_mspi.a", "spi_flash_hal_gpspi.c.obj", "gpspi_fn", 4),
+                               memory.Input("libhal.a", "spi_flash_hal_gpspi.c.obj", "old_fn", 4),
+                               memory.Input("libhal.a", "spi_flash_hal.c.obj", "unrelated", 4)]}
         fragment = probe.scratch_fragment("gpspi-flash-hal", "", self.root, baseline)
-        self.assertIn("spi_flash_hal_gpspi:gpspi_fn (default)", fragment)
-        self.assertNotIn("other", fragment)
+        for archive, symbol in (("libesp_hal_mspi.a", "gpspi_fn"), ("libhal.a", "old_fn")):
+            block = fragment[fragment.index(f"archive: {archive}"):]
+            self.assertIn(f"spi_flash_hal_gpspi:{symbol} (default)", block.split("[mapping:")[0])
+        self.assertNotIn("unrelated", fragment)
+        # Nothing placed: no mapping, which the linker-fragment parser would reject when empty.
+        self.assertEqual(probe.scratch_fragment("gpspi-flash-hal", "kept", self.root, {"inputs": []}), "kept")
 
     def test_build_sites_header_and_c_guards(self):
         compiler = shutil.which("gcc") or shutil.which("clang")

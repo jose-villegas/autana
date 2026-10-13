@@ -24,7 +24,8 @@ CHART_PATH = "docs/memory/images/iram-what-if.svg"
 WHAT_IF_COMMAND = "python launcher/tools/build/iram_what_if.py launcher/build launcher/build.dev launcher/build.diag --work launcher/build/iram-what-if --jobs 6 --write"
 DEFAULT_JOBS = 2
 OPTIONS = {
-    "ringbuf-to-flash": {"variants": VARIANTS, "config": {"CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH": "y", "CONFIG_RINGBUF_PLACE_ISR_FUNCTIONS_INTO_FLASH": "y"}},
+    # ESP-IDF 6.1 keeps ring-buffer code in flash unless RINGBUF_IN_IRAM; only the ISR functions remain.
+    "ringbuf-to-flash": {"variants": VARIANTS, "config": {"CONFIG_RINGBUF_PLACE_ISR_FUNCTIONS_INTO_FLASH": "y"}},
     "silent-assertions": {"variants": (MAIN_VARIANT,), "config": {"CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_ENABLE": "n", "CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT": "y", "CONFIG_COMPILER_OPTIMIZATION_CHECKS_SILENT": "y"}},
     "unused-flash-chips": {"variants": (MAIN_VARIANT,), "config": {"CONFIG_SPI_FLASH_SUPPORT_" + vendor + "_CHIP": "n" for vendor in ("ISSI", "MXIC", "GD", "WINBOND", "BOYA", "TH", "MXIC_OPI")}},
     "encrypted-read-write": {"variants": (MAIN_VARIANT,), "config": {"CONFIG_SPI_FLASH_ENABLE_ENCRYPTED_READ_WRITE": "n"}},
@@ -44,10 +45,13 @@ def scratch_fragment(name, original, idf, baseline):
     if name == "noflash-text":
         return original.replace("(noflash)", "(noflash_text)")
     if name == "gpspi-flash-hal":
-        symbols = sorted({item.symbol for item in baseline["inputs"]
-                          if item.archive == "libhal.a" and item.object.startswith("spi_flash_hal_gpspi")})
-        return original + "\n[mapping:memory_probe]\narchive: libhal.a\nentries:\n" + "\n".join(
-            f"    spi_flash_hal_gpspi:{symbol} (default)" for symbol in symbols) + "\n"
+        # The archive comes from the build: the HAL moved between archives across IDF versions.
+        placed = sorted({(item.archive, item.symbol) for item in baseline["inputs"]
+                         if item.object.startswith("spi_flash_hal_gpspi")})
+        return original + "".join(
+            f"\n[mapping:memory_probe_{index}]\narchive: {archive}\nentries:\n" + "\n".join(
+                f"    spi_flash_hal_gpspi:{symbol} (default)" for name, symbol in placed if name == archive) + "\n"
+            for index, archive in enumerate(sorted({archive for archive, _ in placed})))
     if name == "freertos-non-isr":
         # FREERTOS_IN_IRAM=n is IDF's own split: non-ISR FreeRTOS to flash, FromISR and
         # context-switch code in IRAM. The queue calls a present waits on stay in IRAM here.
@@ -71,7 +75,7 @@ def result_row(name, baseline, measured):
     if wrong:
         return name, "config rejected", "not measured", "not measured", ", ".join(wrong)
     change = {"noflash-text": "our `(noflash)` entries become `(noflash_text)`",
-              "gpspi-flash-hal": "libhal `spi_flash_hal_gpspi*` to flash",
+              "gpspi-flash-hal": "the flash HAL's `spi_flash_hal_gpspi*` to flash",
               "freertos-non-isr": "CONFIG_FREERTOS_IN_IRAM=n (IDF's split) with present-path queue calls kept in IRAM; SPI_MASTER_IN_IRAM depends on it and drops too"}
     return (name, iram_bytes(baseline["sections"]) - iram_bytes(measured["sections"]),
             dram_bytes(baseline["sections"]) - dram_bytes(measured["sections"]),
