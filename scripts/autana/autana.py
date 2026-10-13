@@ -31,7 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402  (path must be set up first)
-from espressif import IDF_PIN, idf_commit, idf_drift, idf_path, idf_pin, idf_python, install_note  # noqa: E402
+from espressif import idf_python, idf_note_lines, require_idf  # noqa: E402
 from version import __version__  # noqa: E402
 from device_capture import BUILD_ID_REQUEST, PERF_SEGMENT  # noqa: E402
 
@@ -284,22 +284,19 @@ def variant_request(verb, args, flags, project):
         dirty = " (dirty)" if git("-C", project, "status", "--porcelain") else ""
         where = f"{current_branch} @ {commit}{dirty}"
     print(f"autana {verb}: {variant} of {where}", flush=True)
-    idf_note(project)
+    idf_note(project, emit=False)
     return asked, variant, seen
 
 
-def idf_note(project):
-    """Name the selected installation and any explicit override's drift."""
+def idf_note(project, emit=True):
+    """Validate before dispatch; the build shell emits its resolved installation note."""
     try:
-        print(install_note(project), flush=True)
+        if emit:
+            print("\n".join(idf_note_lines(project)), flush=True)
+        else:
+            require_idf(project)
     except (ValueError, OSError) as error:
         sys.exit(str(error))
-    os.environ["_AUTANA_IDF_NOTED"] = "1"
-    commit = idf_commit(idf_path(project))
-    if commit and (Path(project) / IDF_PIN).is_file():
-        for drift in idf_drift({"commit": commit}, idf_pin(Path(project))):
-            print(f"note: ESP-IDF {drift}; CI builds on the pin "
-                  "(docs/tools/Framework-Versions.md)", flush=True)
 
 
 def flash(args):

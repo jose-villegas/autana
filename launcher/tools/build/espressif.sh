@@ -1,6 +1,7 @@
 #!/bin/sh
-# ESP-IDF tools resolution shares the Python owner. Set ESPRESSIF_SCRIPT_DIR
-# to this module's folder before sourcing it from POSIX sh.
+# This shell adapter owns no selection rules; espressif.py owns them.
+# Set ESPRESSIF_SCRIPT_DIR before sourcing: POSIX sh has no portable way
+# for a sourced file to find itself ($0 names its caller).
 
 espressif_tools_root() {
     . "$ESPRESSIF_SCRIPT_DIR/../../../scripts/lib/python.sh"

@@ -5,8 +5,9 @@ of something this tree uses but does not define.
     outside = outside_vocabulary()      # None when no ESP-IDF is installed
     outside.functions, outside.constants, outside.has_path("hal/spi_ll.h")
 
-ESP-IDF is the checkout espressif.idf_path() finds ($IDF_PATH, else
-~/esp/esp-idf); the C library is the headers of every xtensa-esp-elf
+ESP-IDF is the checkout espressif.idf_path() finds (the pin unless
+a process IDF_PATH overrides it, else the legacy checkout guess). The C
+library is the headers of every xtensa-esp-elf
 toolchain under espressif_tools_root(). From ESP-IDF's components/ and
 tools/ it takes every file a doc can cite by path; what C code declares:
 prototypes, definitions, #defines, enum values, type names, with comments
@@ -37,7 +38,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
-from espressif import espressif_tools_root, idf_path  # noqa: E402  (path must be set up first)
+from espressif import IDF_PIN, espressif_tools_root, idf_path  # noqa: E402  (path must be set up first)
 
 SCANNED = ("components", "tools")
 # Files per worker task; a smaller scan is read in-process, cheaper than
@@ -233,7 +234,7 @@ def outside_vocabulary(idf=None, tools_root=None, cache_dir=None):
 
 def no_idf():
     """Why there is no outside vocabulary, for a gate to print."""
-    return f"no ESP-IDF at {idf_path()} (set IDF_PATH)"
+    return f"no ESP-IDF at {idf_path()} (install ESP-IDF pinned by {IDF_PIN}, or set IDF_PATH for this command)"
 
 
 def required_missing(outside):

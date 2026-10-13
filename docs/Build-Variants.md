@@ -28,12 +28,8 @@ Each image has its own build directory so one never reconfigures another:
 | dev | DEVELOPMENT | `autana build dev`, `autana flash dev` | `build.dev/` |
 | diag | DEVELOPMENT + SELFTEST | `autana build diag`, `autana flash diag`, `autana selftest` | `build.diag/` |
 
-On Windows the directory names are junctions to short external build paths;
-on Linux they remain in-tree unless `build_root` selects an external root.
-Each variant owns its generated `sdkconfig` and ESP-IDF identity stamp. A
-checkout path or commit change reconfigures that variant from scratch. See
-[Build and flash](tools/Autana-CLI.md#build-and-flash) for install selection,
-build roots and process overrides.
+See [Where builds live](tools/Autana-CLI.md#where-builds-live) for variant
+paths and their ESP-IDF identity stamps.
 
 `autana build` needs no board and takes no board lock; what it runs is
 `launcher/tools/build/build.sh` with the variant's flag (`--dev`, `--diag`),

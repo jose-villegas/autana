@@ -23,7 +23,8 @@ file counted twice:
   database (stripped) and has no bundled libc for the target (given
   `--sysroot`/`--gcc-toolchain` pointing at the same `xtensa-esp-elf` GCC
   install ESP-IDF itself uses, found under the ESP-IDF tools root:
-  `$IDF_TOOLS_PATH` when set, else `~/.espressif`).
+  the tools paired with the resolved ESP-IDF checkout; see
+  [Which ESP-IDF](Autana-CLI.md#which-esp-idf)).
 - **`launcher/test/run_tests.sh --print-sources`/`--print-flags`**: the
   same host-portable file list and flags that script proves compile,
   used for whatever the diagnostics build's database does not contain: the

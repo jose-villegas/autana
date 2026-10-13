@@ -102,7 +102,7 @@ def what_if(template, directory, project, selected=None, before_build=None, jobs
             print(f"scratch build: {name or 'baseline'} -> {log}", flush=True)
             if before_build:
                 subprocess.run(before_build, check=True)
-            command = ['bash', '-c', '. "$1"; idf_init "$2" "" "$3" || exit; idf -B "$4" -D "SDKCONFIG=$5" reconfigure && idf_in "$2" ninja -j "$6" -C "$4" launcher.elf && sh "$3/write_build_id.sh" "$4" "$7"',
+            command = ['bash', '-c', '. "$1"; idf_init "$2" "$3" || exit; idf -B "$4" -D "SDKCONFIG=$5" reconfigure && idf_in "$2" ninja -j "$6" -C "$4" launcher.elf && sh "$3/write_build_id.sh" "$4" "$7"',
                        'memory-map', str(ROOT / 'launcher/tools/build/idf.sh'), str(launcher.resolve()),
                        str(ROOT / 'launcher/tools/build'), str(build.resolve()), str(config.resolve()), str(jobs), variant]
             environment = dict(os.environ, IDF_PATH=str(idf))

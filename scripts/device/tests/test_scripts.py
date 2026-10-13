@@ -4,6 +4,7 @@ runs wrong is the end-to-end tests' job (FlashImageScriptTests). It also runs
 build.sh with the ESP-IDF stubbed."""
 
 import os
+import json
 import re
 import shutil
 import subprocess
@@ -72,14 +73,25 @@ class BuildShConfigureTests(unittest.TestCase):
     # `build` it also leaves an image.
     FAKE_IDF_PY = """import os, shutil, sys
 args = sys.argv[1:]
+directory = args[args.index("-B") + 1]
 with open(os.environ["FAKE_LOG"], "a") as log:
     log.write(" ".join(args) + "\\n")
-directory = args[args.index("-B") + 1]
+if os.environ.get("FAKE_ENV_LOG"):
+    import json
+    with open(os.environ["FAKE_ENV_LOG"], "w") as log:
+        json.dump({**{key: os.environ.get(key) for key in ("IDF_PATH", "IDF_TOOLS_PATH")}, "build_directory": directory}, log)
 os.makedirs(directory, exist_ok=True)
 shutil.copy(os.environ["FAKE_SDKCONFIG"], os.path.join(directory, "sdkconfig"))
 if args[-1] == "build":
     for image in ("launcher.elf", "launcher.bin"):
         open(os.path.join(directory, image), "w").write("image")
+if os.environ.get("FAKE_REPOINT"):
+    from pathlib import Path
+    launcher = Path(os.environ["FAKE_LAUNCHER"])
+    sys.path.insert(0, str(launcher / "tools/build"))
+    import build_paths
+    (launcher.parent / "autana.local.toml").write_text("build_root = '" + (launcher.parent / "second").as_posix() + "'\\n")
+    build_paths.prepare(launcher, "build.dev")
 """
 
     def setUp(self):
@@ -88,7 +100,7 @@ if args[-1] == "build":
         except RuntimeError as error:
             self.skipTest(str(error))
 
-    def run_build_sh(self, flags, sdkconfig, previous_idf=None):
+    def run_build_sh(self, flags, sdkconfig, previous_idf=None, pinned=False, missing=False, repoint=False):
         """Returns the result, the fake's logged argv lines and the files
         left in the launcher folder."""
         with tempfile.TemporaryDirectory() as directory:
@@ -104,6 +116,19 @@ if args[-1] == "build":
             shutil.copy(ENGINE / "scripts/quiet.sh", root / "scripts" / "quiet.sh")
             export = fake_esp_idf.stub_esp_idf(root / "stubs", self.FAKE_IDF_PY)
             (root / "sdkconfig").write_text(sdkconfig)
+            if pinned:
+                git = ['git', '-c', 'user.name=test', '-c', 'user.email=test@example.org']
+                subprocess.run([*git, 'init', '-q', str(export.parent)], check=True)
+                subprocess.run([*git, '-C', str(export.parent), 'add', '.'], check=True)
+                subprocess.run([*git, '-C', str(export.parent), 'commit', '-qm', str(root)], check=True)
+                commit = subprocess.check_output(['git', '-C', str(export.parent), 'rev-parse', 'HEAD'], text=True).strip()
+                (root / 'launcher/idf-pin.json').write_text(json.dumps({
+                    'commit': commit, 'image': 'espressif/idf:release-v6.1@sha256:test'}))
+                (root / 'tools/python_env/idf6.1_py3.14_env').mkdir(parents=True)
+                with (root / 'autana.local.toml').open('a') as config:
+                    config.write(f"idf_installs = ['{export.parent.as_posix()}']\n")
+                if missing:
+                    (export.parent / '.git/HEAD').write_text('0' * len(commit))
             if previous_idf:
                 sys.path.insert(0, str(ENGINE / "launcher/tools/build"))
                 import build_paths
@@ -112,23 +137,79 @@ if args[-1] == "build":
                 build_paths.stamp(build, selected if previous_idf == "matching" else {**selected, "commit": "old"})
                 (build / "sentinel").write_text("configured output")
             environment = dict(os.environ, FAKE_LOG=(root / "log").as_posix(),
-                               FAKE_SDKCONFIG=str(root / "sdkconfig"))
-            result = subprocess.run([self.bash, (tools / "build.sh").as_posix(), *flags, export.as_posix()],
+                               FAKE_SDKCONFIG=str(root / "sdkconfig"), IDF_PATH=str(export.parent),
+                               FAKE_ENV_LOG=str(root / "env-log.json"))
+            if repoint:
+                environment["FAKE_REPOINT"] = "1"
+                environment["FAKE_LAUNCHER"] = str(root / "launcher")
+            if pinned:
+                environment.pop("IDF_PATH", None)
+                environment.pop("IDF_TOOLS_PATH", None)
+            result = subprocess.run([self.bash, (tools / "build.sh").as_posix(), *flags],
                                     capture_output=True, text=True, timeout=120,
                                     stdin=subprocess.DEVNULL, env=environment)
+            result.idf_environment = json.loads((root / 'env-log.json').read_text()) if (root / 'env-log.json').exists() else {}
+            result.expected_idf = export.parent
+            result.expected_tools = root / 'tools'
+            prepared = Path(result.idf_environment['build_directory']) if result.idf_environment else None
+            result.prepared_files = {p.relative_to(prepared).as_posix() for p in prepared.rglob('*') if p.is_file()} if prepared else set()
             log = (root / "log").read_text().splitlines() if (root / "log").exists() else []
             files = {name + "/" + path.relative_to(root / "launcher" / name).as_posix()
                      for name in self.DIRECTORIES.values() if (root / "launcher" / name).exists()
                      for path in (root / "launcher" / name).rglob("*") if path.is_file()}
-            log = [re.sub(r"(?:[A-Za-z]:)?[^ ]*/b/[^ ]*/(build(?:\.[a-z]+)?)(/sdkconfig)?",
-                          r"\1\2", line) for line in log]
+            log = [re.sub(r"/b/[0-9a-f]{8}/", "/b/<hash>/", line.replace(root.as_posix(), "<root>").replace(str(root), "<root>")) for line in log]
         return result, log, files
 
-    def test_idf_identity_reconfigures_stale_output_only(self):
+    def test_build_id_stays_in_prepared_directory_after_repoint(self):
+        result, _, _ = self.run_build_sh(['--dev'], self.SDKCONFIGS['dev'], repoint=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('build_id.txt', result.prepared_files)
+
+    def test_first_build_does_not_preconfigure(self):
+        result, log, _ = self.run_build_sh(['--dev'], self.SDKCONFIGS['dev'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(len(log), 1)
+        self.assertTrue(log[0].endswith(' build'))
+
+    def test_build_receives_external_path(self):
+        result, log, _ = self.run_build_sh(['--dev'], self.SDKCONFIGS['dev'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('-B <root>/b/<hash>/build.dev ', log[0])
+
+    def test_sdkconfig_receives_external_path(self):
+        result, log, _ = self.run_build_sh(['--dev'], self.SDKCONFIGS['dev'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('SDKCONFIG=<root>/b/<hash>/build.dev/sdkconfig', log[0])
+
+    def test_pinned_shell_exports_checkout(self):
+        result, _, _ = self.run_build_sh(['--dev'], self.SDKCONFIGS['dev'], pinned=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(Path(result.idf_environment['IDF_PATH']), result.expected_idf)
+
+    def test_pinned_shell_exports_tools(self):
+        result, _, _ = self.run_build_sh(['--dev'], self.SDKCONFIGS['dev'], pinned=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(Path(result.idf_environment['IDF_TOOLS_PATH']), result.expected_tools)
+
+    def test_pinned_shell_names_install_once(self):
+        result, log, _ = self.run_build_sh(['--dev'], self.SDKCONFIGS['dev'], pinned=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual((result.stdout + result.stderr).count('pinned), tools'), 1)
+        self.assertEqual(len(log), 1)
+
+    def test_missing_pin_runs_no_idf(self):
+        result, log, _ = self.run_build_sh(['--dev'], self.SDKCONFIGS['dev'], pinned=True, missing=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('git clone', result.stdout + result.stderr)
+        self.assertEqual(log, [])
+
+    def test_stale_identity_clears_output(self):
         stale, _, stale_files = self.run_build_sh(["--dev", "--configure"], self.SDKCONFIGS["dev"], "stale")
         self.assertEqual(stale.returncode, 0, stale.stdout + stale.stderr)
         self.assertIn("reconfiguring from scratch", stale.stdout + stale.stderr)
         self.assertNotIn("build.dev/sentinel", stale_files)
+
+    def test_matching_identity_keeps_output(self):
         matched, _, matched_files = self.run_build_sh(["--dev", "--configure"], self.SDKCONFIGS["dev"], "matching")
         self.assertEqual(matched.returncode, 0, matched.stdout + matched.stderr)
         self.assertNotIn("reconfiguring from scratch", matched.stdout + matched.stderr)
@@ -140,6 +221,7 @@ if args[-1] == "build":
             with self.subTest(variant=variant):
                 built, built_log, built_files = self.run_build_sh(self.FLAGS[variant], sdkconfig)
                 self.assertEqual(built.returncode, 0, built.stderr + built.stdout)
+                self.assertEqual(len(built_log), 1, built_log)
                 self.assertTrue(built_log[-1].endswith(" build"), built_log)
                 self.assertIn(directory + "/build_id.txt", built_files)
                 configured, log, files = self.run_build_sh([*self.FLAGS[variant], "--configure"], sdkconfig)
@@ -147,7 +229,8 @@ if args[-1] == "build":
                 self.assertIn("configured, nothing built", configured.stdout)
                 self.assertEqual(len(log), 1, log)
                 self.assertTrue(log[0].endswith(" reconfigure"), log)
-                self.assertIn("-B " + directory + " ", log[0])
+                self.assertRegex(log[0], r"-B <root>/b/<hash>/" + re.escape(directory) + " ")
+                self.assertRegex(log[0], r"SDKCONFIG=<root>/b/<hash>/" + re.escape(directory) + "/sdkconfig")
                 self.assertEqual(log[0].rsplit(" ", 1)[0], built_log[0].rsplit(" ", 1)[0])
                 self.assertIn(directory + "/sdkconfig", files)
                 self.assertNotIn(directory + "/build_id.txt", files)

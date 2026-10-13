@@ -1106,6 +1106,31 @@ class FlashDefaultPathTests(unittest.TestCase):
         self.assertTrue(autana_config.BOARD_ENV.startswith("_AUTANA_"))
 
 
+class PreparedSnapshotTests(unittest.TestCase):
+    """The in-tree link can change while the prepared target stays locked."""
+    def test_snapshot_uses_locked_path_after_repoint(self):
+        import build_paths
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            worktree = fake_flash.worktree(root / 'project')
+            launcher = worktree / 'launcher'
+            (launcher / 'tools/build/build_paths.py').touch()
+            config = worktree / autana_config.CONFIG_NAME
+            config.write_text(f"build_root = '{(root / 'first').as_posix()}'\n")
+            locked = build_paths.prepare(launcher, device.BUILD_DIRS['dev'])
+            image = root / 'image'
+
+            def build(command, lost=None, **options):
+                fake_flash.write_image(locked, 'locked-dev')
+                config.write_text(f"build_root = '{(root / 'second').as_posix()}'\n")
+                redirected = build_paths.prepare(launcher, device.BUILD_DIRS['dev'])
+                fake_flash.write_image(redirected, 'redirected-dev')
+
+            with mock.patch.object(device, 'run_to_end', side_effect=build):
+                result = device.build_snapshot(['unused'], launcher / device.BUILD_DIRS['dev'], image)
+            self.assertEqual(result, 'locked-dev')
+
+
 class BuildWorktreeTests(unittest.TestCase):
     """build_worktree(), behind `autana build`: the build half of a flash,
     touching no board and no lock."""
@@ -1128,8 +1153,10 @@ class BuildWorktreeTests(unittest.TestCase):
         code, calls = self.main("diag", ["--perf-scope"])
         self.assertEqual(code, 0)
         (command, lost, options), = calls
-        self.assertEqual([Path(command[1]).name] + command[2:],
+        self.assertEqual([Path(command[1]).name] + command[2:-2],
                          ["build.sh", "--diag", "--perf-scope"])
+        self.assertEqual(command[-2], "--prepared-build")
+        self.assertEqual(Path(command[-1]).name, device.BUILD_DIRS["diag"])
         self.assertIsNone(lost)
         self.assertNotIn(autana_config.TOKEN_ENV, options["env"])
 

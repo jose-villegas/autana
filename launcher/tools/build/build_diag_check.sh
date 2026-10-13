@@ -31,7 +31,7 @@
 # for local use; CI scores the whole tree instead).
 #
 # The build is `autana build diag`, which runs build.sh; ESP-IDF is the one
-# under $IDF_PATH.
+# selected by espressif.py.
 
 set -euo pipefail
 
@@ -71,7 +71,8 @@ suite_static_data_gate() {
     # The directory goes in as its own argument so Git Bash converts it for a
     # Windows Python; inside the -c string it would stay a /c/... path.
     IDF_PYTHON=$("$PYTHON" -c "import sys; sys.path.insert(0, sys.argv[1]); from espressif import idf_python; print(idf_python())" "$DIR")
-    "$IDF_PYTHON" "$IDF_PATH/tools/idf_size.py" --files --format csv "$DIR/../../build.diag/launcher.map" |
+    BUILD_IDF=$("$PYTHON" -c "import json, sys; print(json.load(open(sys.argv[1]))['idf_path'])" "$DIR/../../build.diag/project_description.json")
+    "$IDF_PYTHON" "$BUILD_IDF/tools/idf_size.py" --files --format csv "$DIR/../../build.diag/launcher.map" |
         "$PYTHON" "$DIR/../quality/suite_static_data_gate.py"
 }
 

@@ -9,7 +9,7 @@
 | [build_paths.py](build_paths.py) | Prepares variant build links and resets incompatible ESP-IDF configuration. |
 | [idf_variant.sh](idf_variant.sh) | Selects ESP-IDF configuration for a build variant. |
 | [layout_pad.py](layout_pad.py), [layout_pad.h](layout_pad.h) | The seeded padding behind `--layout-seed`: the seed-to-size mapping, the never-run pad it places ahead of each source's code and rodata, and the post-link check that it landed there. |
-| [espressif.py](espressif.py) | Finds the local ESP-IDF Python and tool installation. |
+| [espressif.py](espressif.py) | Selects the ESP-IDF checkout (the pin unless IDF_PATH overrides it), its tools and its Python. |
 | [espressif.sh](espressif.sh) | Finds the local Espressif tools from shell scripts. |
 | [find_cc.sh](find_cc.sh) | Finds a host C compiler. |
 | [host_make.sh](host_make.sh) | Finds GNU make and picks a job count for incremental host builds. |

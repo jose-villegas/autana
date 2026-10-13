@@ -11,6 +11,8 @@ def stub_esp_idf(stubs, idf_py_source):
     stubs = Path(stubs)
     stubs.mkdir(parents=True, exist_ok=True)
     (stubs / "idf_stub.py").write_text(idf_py_source)
+    (stubs / "tools/cmake").mkdir(parents=True, exist_ok=True)
+    (stubs / "tools/cmake/version.cmake").write_text("set(IDF_VERSION_MAJOR 6)\nset(IDF_VERSION_MINOR 1)\n")
     # One stub per platform: cmd would run a POSIX idf.py found first on
     # PATH through the .py file association instead of idf.py.bat.
     if os.name == "nt":

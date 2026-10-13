@@ -1,7 +1,13 @@
 """ESP-IDF checkout, paired tools and interpreter resolution.
 
-Explicit process overrides win. Otherwise pinned projects select an installed
-checkout at the pinned commit, ignoring Windows installer environment defaults.
+Process IDF_PATH overrides the pin; Windows installer IDF_PATH is a candidate.
+
+    from espressif import idf_path, espressif_tools_root, idf_python
+    checkout = idf_path()           # best effort, may not exist
+    tools = espressif_tools_root()  # usable without a checkout
+    python = idf_python()           # paired tools, or this interpreter
+
+Build entry points use require_idf() to validate the selected installation.
 Shell callers use this module's CLI; no persistent environment is changed.
 """
 import json
@@ -9,8 +15,12 @@ import glob
 import os
 import re
 import sys
-from functools import lru_cache
+import subprocess
 from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(PROJECT_ROOT / "scripts/lib"))
+import autana_config
 
 VERSION = re.compile(r"idf(\d+)\.(\d+)_py(\d+)\.(\d+)_env")
 ESP_CLANG = re.compile(r"esp-(\d+\.\d+\.\d+)")
@@ -18,12 +28,13 @@ ESP_CLANG = re.compile(r"esp-(\d+\.\d+\.\d+)")
 
 def espressif_tools_root():
     """The tools installation paired with the selected ESP-IDF."""
-    return resolved_idf()[1]
+    explicit = _override("IDF_TOOLS_PATH", os.environ, persistent_environment)
+    return Path(explicit).resolve() if explicit else find_idf()[1]
 
 
 def idf_path(project=None):
     """The explicit checkout or the first installed checkout matching the pin."""
-    return resolved_idf(str(project) if project else None)[0]
+    return find_idf(project)[0]
 
 
 IDF_PIN = "launcher/idf-pin.json"
@@ -38,26 +49,13 @@ def idf_pin(root=Path(__file__).resolve().parents[3]):
 
 def idf_commit(idf):
     """The commit the ESP-IDF checkout at `idf` is at, or None when it is not one."""
+    if not (Path(idf) / ".git").exists():
+        return None
     try:
-        gitdir = Path(idf) / ".git"
-        if gitdir.is_file():
-            gitdir = Path(idf) / gitdir.read_text().strip().removeprefix("gitdir: ")
-        head = (gitdir / "HEAD").read_text().strip()
-        if not head.startswith("ref: "):
-            return head
-        ref = head.removeprefix("ref: ")
-        common = gitdir
-        if (gitdir / "commondir").is_file():
-            common = gitdir / (gitdir / "commondir").read_text().strip()
-        for directory in (gitdir, common):
-            if (directory / ref).is_file():
-                return (directory / ref).read_text().strip()
-        for line in (common / "packed-refs").read_text().splitlines():
-            if line.endswith(" " + ref):
-                return line.split()[0]
+        result = subprocess.run(["git", "-C", str(idf), "rev-parse", "HEAD"], capture_output=True, text=True)
     except OSError:
-        pass
-    return None
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
 
 
 def esp_clang(tools_json):
@@ -93,12 +91,13 @@ def idf_python():
     """`IDF_PYTHON_ENV_PATH` (set once ESP-IDF's export script is sourced)
     when paired with the selected install, then a matching checkout version
     under espressif_tools_root(), then this interpreter."""
+    # POSIX exports put ESP-IDF's Python on PATH before launching this process.
     if os.name != "nt":
         return sys.executable
-    checkout, tools = resolved_idf()
+    checkout, tools = find_idf()
     project = idf_project()
     pinned_project = (project / IDF_PIN).is_file()
-    if pinned_project:
+    if pinned_project and (checkout / "tools/cmake/version.cmake").is_file():
         major, minor = checkout_version(checkout)
         env_pattern = f"idf{major}.{minor}_*_env"
     else:
@@ -115,17 +114,17 @@ def idf_python():
     return found[-1] if found else sys.executable
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
 REGISTRY_ENV = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
 
 
-def persistent_environment(key):
+def persistent_environment(key, locations=None):
     """Windows installer defaults, with user settings taking precedence."""
     if os.name != "nt":
         return None
     import winreg
-    for hive, location in ((winreg.HKEY_CURRENT_USER, "Environment"),
-                           (winreg.HKEY_LOCAL_MACHINE, REGISTRY_ENV)):
+    for hive, location in (locations if locations is not None else
+                           ((winreg.HKEY_CURRENT_USER, "Environment"),
+                            (winreg.HKEY_LOCAL_MACHINE, REGISTRY_ENV))):
         try:
             with winreg.OpenKey(hive, location) as registry:
                 return winreg.QueryValueEx(registry, key)[0]
@@ -135,12 +134,14 @@ def persistent_environment(key):
 
 
 def checkout_version(idf):
+    """The checkout's major and minor version for pairing its Python environment."""
     text = (Path(idf) / "tools/cmake/version.cmake").read_text()
     return tuple(re.search(r"set\(IDF_VERSION_" + part + r"\s+(\d+)\)", text).group(1)
                  for part in ("MAJOR", "MINOR"))
 
 
 def install_commands(pin, home=None, checkout=None):
+    """Commands to install a missing pinned checkout, or just its missing tools."""
     tag = pin["image"].split(":", 1)[1].split("@", 1)[0].removeprefix("release-")
     folder = Path("C:/Espressif") / tag if os.name == "nt" else (home or Path.home()) / "esp" / tag
     existing = checkout is not None
@@ -156,36 +157,36 @@ def install_commands(pin, home=None, checkout=None):
             f"git submodule update --init --recursive\n{installer}")
 
 
-def resolve_idf(project=PROJECT_ROOT, *, environ=None, roots=None,
-                persistent=persistent_environment, home=None):
-    """Resolve a project's checkout and tools; injectable search roots support isolated installs."""
-    sys.path.insert(0, str(PROJECT_ROOT / "scripts/lib"))
-    import autana_config
-    project = Path(project)
+def _override(key, env, persistent):
+    value = env.get(key)
+    default = persistent(key) if os.name == "nt" else None
+    if value and default and os.path.normcase(os.path.abspath(value)) == os.path.normcase(os.path.abspath(default)):
+        return None
+    return value
+
+
+def find_idf(project=None, *, environ=None, roots=None,
+             persistent=persistent_environment, home=None):
+    """Best-effort checkout and tools paths; missing installs keep legacy guesses.
+
+    Explicit process IDF_PATH wins; otherwise all candidates are searched for
+    the pin. Tools-only callers can supply IDF_TOOLS_PATH without a checkout.
+    """
+    project = Path(project or idf_project())
     env = os.environ if environ is None else environ
     home = Path.home() if home is None else Path(home)
-    if not (project / IDF_PIN).is_file():
-        return (Path(env.get("IDF_PATH") or home / "esp/esp-idf"),
-                Path(env.get("IDF_TOOLS_PATH") or home / ".espressif"))
-    pin = idf_pin(project)
-    config = autana_config.load(project)
-
-    def explicit(key):
-        value = env.get(key)
-        default = persistent(key) if os.name == "nt" else None
-        return value if value and (not default or os.path.normcase(os.path.abspath(value)) !=
-                                  os.path.normcase(os.path.abspath(default))) else None
-
-    selected = explicit("IDF_PATH")
-    if not selected:
-        candidates = [autana_config.path_value(value, project) for value in config.get("idf_installs", [])]
-        default = persistent("IDF_PATH") if os.name == "nt" else None
+    selected = _override("IDF_PATH", env, persistent)
+    default = persistent("IDF_PATH") if os.name == "nt" else None
+    pin = idf_pin(project) if (project / IDF_PIN).is_file() else None
+    if not selected and pin:
+        candidates = [autana_config.path_value(value, project)
+                      for value in autana_config.load(project).get("idf_installs", [])]
         if default:
             candidates.append(Path(default))
         if roots is None:
             roots = [home / "esp"]
             if os.name == "nt":
-                roots.insert(0, Path("C:/Espressif"))
+                roots = [Path("C:/Espressif"), Path("C:/Espressif/frameworks"), *roots]
         for root in roots:
             candidates.extend(sorted(Path(root).glob("*")))
         for candidate in candidates:
@@ -195,62 +196,74 @@ def resolve_idf(project=PROJECT_ROOT, *, environ=None, roots=None,
                     break
             if selected:
                 break
-    if not selected:
-        raise ValueError("No installed ESP-IDF matches the pin. Run:\n" + install_commands(pin, home))
-    selected = Path(selected).resolve()
-    tools = explicit("IDF_TOOLS_PATH")
-    if not tools:
-        major, minor = checkout_version(selected)
-        for candidate in (selected.parent / "tools", home / ".espressif"):
-            if any(path.is_dir() for path in (candidate / "python_env").glob(f"idf{major}.{minor}_*")):
+    checkout = Path(selected or env.get("IDF_PATH") or home / "esp/esp-idf")
+    tools = _override("IDF_TOOLS_PATH", env, persistent)
+    if not tools and (checkout / "tools/cmake/version.cmake").is_file():
+        major, minor = checkout_version(checkout)
+        candidates = [checkout.parent / "tools"]
+        default_tools = persistent("IDF_TOOLS_PATH") if os.name == "nt" else None
+        if default_tools:
+            candidates.append(Path(default_tools))
+        candidates.append(home / ".espressif")
+        for candidate in candidates:
+            if any(path.is_dir() for path in (candidate / "python_env").glob(f"idf{major}.{minor}_*_env")):
                 tools = candidate
                 break
-    if not tools:
-        raise ValueError(f"No tools installed for ESP-IDF at {selected}. Run:\n" + install_commands(pin, home, selected))
-    return selected, Path(tools).resolve()
+    return checkout.resolve(), Path(tools or env.get("IDF_TOOLS_PATH") or home / ".espressif").resolve()
 
 
-@lru_cache(maxsize=None)
-def _resolved_idf(project, checkout, tools, home):
-    return resolve_idf(project, environ={"IDF_PATH": checkout, "IDF_TOOLS_PATH": tools}, home=Path(home))
+def require_idf(project=None, **search):
+    """Require a usable checkout and matching tools, with actionable install commands."""
+    project = Path(project or idf_project())
+    checkout, tools = find_idf(project, **search)
+    pin = idf_pin(project) if (project / IDF_PIN).is_file() else None
+    override = _override("IDF_PATH", search.get("environ", os.environ),
+                         search.get("persistent", persistent_environment))
+    if pin and (not (checkout / "tools/cmake/version.cmake").is_file() or
+                (not override and idf_commit(checkout) != pin["commit"])):
+        commands = install_commands(pin, search.get("home"))
+        raise ValueError("No installed ESP-IDF matches the pin. Run:\n" + commands)
+    if pin:
+        major, minor = checkout_version(checkout)
+        if not any(path.is_dir() for path in (tools / "python_env").glob(f"idf{major}.{minor}_*_env")):
+            raise ValueError(f"No tools installed for ESP-IDF at {checkout}. Run:\n" +
+                             install_commands(pin, search.get("home"), checkout))
+    return checkout, tools
 
 
 def idf_project():
-    sys.path.insert(0, str(PROJECT_ROOT / "scripts/lib"))
-    import autana_config
+    """The command's selected project, or this repository for standalone tooling."""
     project = autana_config.project_dir()
     return project if os.environ.get(autana_config.PROJECT_ENV) or (project / "launcher/CMakeLists.txt").is_file() else PROJECT_ROOT
 
 
-def resolved_idf(project=None):
-    return _resolved_idf(str(project or idf_project()),
-                         os.environ.get("IDF_PATH"), os.environ.get("IDF_TOOLS_PATH"), str(Path.home()))
-
-
-def install_note(project=None):
+def idf_note_lines(project=None):
+    """The validated installation line and any off-pin note for CLI entry points."""
     project = Path(project or idf_project())
-    checkout, tools = resolved_idf(str(project))
+    checkout, tools = require_idf(project)
     commit = idf_commit(checkout)
-    pinned = (project / IDF_PIN).is_file() and commit == idf_pin(project)["commit"]
-    return f"ESP-IDF {checkout} ({(commit or 'unknown')[:8]}, {'pinned' if pinned else 'override'}), tools {tools}"
+    pin = idf_pin(project) if (project / IDF_PIN).is_file() else None
+    pinned = pin is not None and commit == pin["commit"]
+    lines = [f"ESP-IDF {checkout} ({(commit or 'unknown')[:8]}, {'pinned' if pinned else 'override'}), tools {tools}"]
+    if pin:
+        for drift in idf_drift({"commit": commit}, pin):
+            lines.append(f"note: ESP-IDF {drift}; CI builds on the pin (docs/tools/Framework-Versions.md)")
+    return lines
 
 
 def main():
     import shlex
     try:
         project = Path(sys.argv[2]) if len(sys.argv) > 2 else idf_project()
-        checkout, tools = resolved_idf(str(project))
         verb = sys.argv[1]
         if verb == "env":
+            checkout, tools = require_idf(project)
             print("IDF_PATH=" + shlex.quote(str(checkout)))
             print("IDF_TOOLS_PATH=" + shlex.quote(str(tools)))
         elif verb == "tools":
-            print(tools)
+            print(espressif_tools_root())
         elif verb == "note":
-            print(install_note(project))
-            if (project / IDF_PIN).is_file():
-                for drift in idf_drift({"commit": idf_commit(checkout)}, idf_pin(project)):
-                    print(f"note: ESP-IDF {drift}; CI builds on the pin (docs/tools/Framework-Versions.md)")
+            print("\n".join(idf_note_lines(project)))
         else:
             raise ValueError(f"unknown ESP-IDF query: {verb}")
     except (ValueError, OSError) as error:

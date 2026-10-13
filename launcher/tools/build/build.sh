@@ -8,7 +8,7 @@
 #
 # Usage:
 #   tools/build/build.sh [--dev|--diag] [--autorun] [--perf-scope]
-#                        [--layout-seed N] [--hot-tunables] [--configure] [--verbose] [IDF_EXPORT]
+#                        [--layout-seed N] [--hot-tunables] [--configure] [--verbose]
 #
 #   --verbose   stream and save the build output. The full stream is in the
 #               printed log path in either mode.
@@ -36,8 +36,7 @@
 #   --configure  only configure the variant's build directory, compile nothing:
 #               writes its sdkconfig and compile_commands.json, and no image.
 #               For a tool that reads which sources a variant compiles.
-#   IDF_EXPORT  path to ESP-IDF's export script: export.bat on Windows,
-#               export.sh elsewhere. Default: the resolved pinned install.
+#   IDF_PATH set for this command selects another checkout.
 #
 # Run from anywhere (it cds to launcher/ itself); double-click from Explorer
 # if .sh is associated with Git Bash, or right-click launcher/tools/build/ ->
@@ -71,7 +70,7 @@ VARIANT=release
 PERF_SCOPE=0
 AUTORUN=0
 VERBOSE=0
-IDF_EXPORT_ARG=""
+PREPARED_BUILD=""
 LAYOUT_SEED=0
 HOT_TUNABLES=0
 CONFIGURE=0
@@ -90,15 +89,9 @@ while [ $# -gt 0 ]; do
         --verbose) VERBOSE=1; shift ;;
         -h|--help) sed -n '2,/^# the cost of the way in/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         --)        shift; break ;;
+        --prepared-build) PREPARED_BUILD=$2; shift 2 ;;
         -*)        echo "unknown option: $1" >&2; exit 2 ;;
-        *)
-            if [ -n "$IDF_EXPORT_ARG" ]; then
-                echo "too many positional arguments" >&2
-                exit 2
-            fi
-            IDF_EXPORT_ARG=$1
-            shift
-            ;;
+        *) echo "unexpected argument: $1" >&2; exit 2 ;;
     esac
 done
 export VERBOSE
@@ -130,13 +123,13 @@ esac
 . "$SCRIPT_DIR/idf.sh"
 # shellcheck source=../../../scripts/quiet.sh
 . "$SCRIPT_DIR/../../../scripts/quiet.sh"
-idf_init "$LAUNCHER_DIR" "$IDF_EXPORT_ARG" "$SCRIPT_DIR" || exit 2
+idf_init "$LAUNCHER_DIR" "$SCRIPT_DIR" || exit 2
 . "$SCRIPT_DIR/idf_variant.sh"
 
-idf_variant_prepare "$LAUNCHER_DIR" "$BUILD_DIR" || exit 2
+idf_variant_prepare "$LAUNCHER_DIR" "$BUILD_DIR" "$PREPARED_BUILD" || exit 2
 
 # A passing build's stream belongs in build.log under the build directory.
-QUIET_LOG="$LAUNCHER_DIR/$BUILD_DIR/build.log"
+QUIET_LOG="$IDF_VARIANT_BUILD/build.log"
 quiet_begin "$QUIET_LOG"
 
 quiet_finish() {
@@ -168,11 +161,11 @@ if [ "$CONFIGURE" -eq 1 ]; then
     VARIANT_OPTIONS="$VARIANT_OPTIONS --configure"
 fi
 # shellcheck disable=SC2086
-quiet_run build idf_variant_build "$LAUNCHER_DIR" "$VARIANT" "$BUILD_DIR" $VARIANT_OPTIONS
+quiet_run build idf_variant_build "$LAUNCHER_DIR" "$VARIANT" "$IDF_VARIANT_BUILD" $VARIANT_OPTIONS
 
 if [ "$CONFIGURE" -eq 1 ]; then
     echo "=== Done - $BUILD_DIR configured, nothing built: $BUILD_DIR/compile_commands.json ==="
     exit 0
 fi
-sh "$SCRIPT_DIR/write_build_id.sh" "$LAUNCHER_DIR/$BUILD_DIR" "$VARIANT"
-echo "=== Done - $BUILD_DIR built, build id $(tr -d '\r\n' < "$LAUNCHER_DIR/$BUILD_DIR/build_id.txt") ==="
+sh "$SCRIPT_DIR/write_build_id.sh" "$IDF_VARIANT_BUILD" "$VARIANT"
+echo "=== Done - $BUILD_DIR built, build id $(tr -d '\r\n' < "$IDF_VARIANT_BUILD/build_id.txt") ==="

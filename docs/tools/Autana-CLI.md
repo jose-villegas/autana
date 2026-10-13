@@ -67,8 +67,6 @@ CI builds through it too. `autana flash` runs that same build with no board
 lock held and snapshots the image it built, then, under the board's lock,
 `scripts/device/flash_image.sh` writes that snapshot, the one script that
 opens the port.
-Both print a note when the ESP-IDF they build with is not the commit
-`launcher/idf-pin.json` pins ([Framework-Versions.md](Framework-Versions.md)).
 `BUILD_ID` identifies the image by its ELF hash; see
 [what a flash proves](Flash-and-Captures.md#what-a-flash-proves).
 It proves the write, not the boot.
@@ -78,46 +76,59 @@ that project it adds the branch, commit and whether it is dirty; never
 required, so a project built from a tarball or a non-git checkout still
 builds and flashes.
 
-ESP-IDF is selected by `launcher/tools/build/espressif.py`. An explicit
-`IDF_PATH` for the process wins and an off-pin checkout prints a drift note.
-On Windows, a value equal to the installer default in the registry is not an
-explicit override. Otherwise the resolver searches `idf_installs`, the
-installer checkout, and known folders under `C:\Espressif` and `~/esp` for
-the commit in `launcher/idf-pin.json`. A missing pinned checkout fails with clone,
-checkout, submodule and install commands. Every build names its checkout and
-paired tools installation.
+### Which ESP-IDF
+
+`launcher/tools/build/espressif.py` selects the checkout. Every build names
+its checkout and paired tools; an off-pin checkout prints a drift note.
+
+| Order | Checkout selection |
+|---|---|
+| Process `IDF_PATH` | Any commit. On Windows, the installer's stored value does not count as an override, including case or slash differences. On Linux, a profile sourcing `export.sh` does count. |
+| `idf_installs` | Checkouts or their parent install folders, in list order, matching the commit in `launcher/idf-pin.json`. |
+| Installer `IDF_PATH` (Windows) | A candidate matching the pin, with HKCU preferred over HKLM. |
+| Known folders | Folders under `C:\Espressif` (including `frameworks/`) and `~/esp`, matching the pin. |
+
+Without a match, a build stops and prints the clone, checkout, submodule and
+install commands. Tools come from a process `IDF_TOOLS_PATH`, or the
+checkout's sibling `tools/`, the installer's tools root, then `~/.espressif`.
+The paired tools must contain a Python environment for the checkout's major
+and minor version. Missing tools print an install command for that checkout.
 
 For one command in Git Bash:
 
 ```sh
-IDF_PATH="$HOME/esp/custom-idf" IDF_TOOLS_PATH="$HOME/esp/custom-tools" autana build dev
+IDF_PATH="$HOME/esp/custom-idf" autana build dev
 ```
 
-In PowerShell, use a child process to keep the override scoped:
+In PowerShell, scope the override to a child process:
 
 ```powershell
-powershell -NoProfile -Command '& { $env:IDF_PATH="$HOME\esp\custom-idf"; $env:IDF_TOOLS_PATH="$HOME\esp\custom-tools"; autana build dev }'
+powershell -NoProfile -Command { $env:IDF_PATH = 'C:\Espressif\my-idf'; autana build dev }
 ```
 
-Tools come from an explicit `IDF_TOOLS_PATH`, or the install folder's
-`tools/`, then `~/.espressif`, with a Python environment matching the selected
-checkout's major and minor version. Resolution never changes persistent
-settings.
+autana never changes environment variables or the registry. Its child build
+process receives the selected checkout and tools.
 
-Windows builds live under `%LOCALAPPDATA%\autana\b`, or `build_root` when
-configured. The resolver hashes the absolute launcher directory into a stable
-folder, records it in `owner.txt`, and keeps `launcher/build*` as directory
-junctions. ESP-IDF receives the real short path for both `-B` and `SDKCONFIG`,
-which avoids Windows object-path limits. Linux builds stay in-tree unless
-`build_root` is set, in which case the in-tree names are symlinks. Existing
-in-tree build output is replaced with a link. Build folders whose recorded
-owner no longer exists are pruned when preparing a build.
+### Where builds live
 
-Each variant records its ESP-IDF commit and path after configuration. A
-mismatch clears its generated configuration and build output before
-reconfiguring. An unstamped folder is checked through its CMake metadata and
-reconfigured when the identity cannot be verified. Build logs and the build
-lock survive this reset.
+Windows builds use short paths to stay within Windows object-path limits:
+
+```text
+launcher\build.dev -> %LOCALAPPDATA%\autana\b\<hash>\build.dev
+                                             <hash>\owner.txt
+```
+
+`owner.txt` names the absolute launcher directory whose hash selects the
+folder. `build_root` selects another root. Linux stays in-tree unless
+`build_root` is set; its in-tree names then become symlinks. Windows uses
+junctions. ESP-IDF receives the real path for both `-B` and `SDKCONFIG`.
+
+The first build deletes an existing in-tree build folder and links it to the
+external target. Builds prune folders whose recorded checkout no longer
+exists. Each variant records its ESP-IDF path and commit after a successful
+configure or build. A folder configured for another ESP-IDF is emptied,
+except `build.log` and the build lock. An unstamped, non-empty folder is
+emptied once; successful configuration stamps it.
 
 ## Tests
 
@@ -332,7 +343,7 @@ A CI job that should fail rather than queue writes `autana --wait 0 <command>`.
 | Key | Meaning |
 |---|---|
 | `idf_installs` | ESP-IDF checkouts or folders holding `esp-idf/`, searched in list order before known installs. |
-| `build_root` | External build root; Windows defaults to `%LOCALAPPDATA%\autana\b`, Linux stays in-tree without it. |
+| `build_root` | External build root; see [Where builds live](#where-builds-live). |
 | `docs_extra` | A list of extra Markdown files or folders `autana docs` searches, relative to the project. |
 | `records` | Where captures and `index.jsonl` land; `.records/device` in the checkout without it. |
 | `lock_hook` | A shell command run on every device lock event ([events and environment](Device-Lock.md#lock-events)). |

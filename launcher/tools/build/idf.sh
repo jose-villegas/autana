@@ -1,28 +1,32 @@
 #!/bin/sh
-# Run ESP-IDF commands in a process-scoped environment. Windows calls use
-# a batch shim to remove MSYSTEM before running ESP-IDF's export script.
+# ESP-IDF refuses Git Bash's MSYSTEM. The batch shim deletes it and runs
+# export.bat while keeping sequencing and error handling in POSIX sh.
+# Measured alternatives:
+#   env -u MSYSTEM python     -> MSYS re-injects MSYSTEM
+#   MSYSTEM= python           -> guard tests presence, not value
+#   cmd /c "set MSYSTEM=&& ?"  -> nested quotes corrupt argv
+#   cmd /c shim.bat ?         -> argv and semicolons survive
+# Linux sources export.sh directly.
 
 _IDF_DIR=""
 _IDF_EXPORT=""
 _IDF_SHIM=""
 
+# Resolve substitutions here: failures inside caller arguments do not fail
+# the call. _IDF_ state avoids blanking a caller's environment variables.
+# idf_init <launcher-dir> [tools-dir]; $0 names the caller, so callers outside
+# this tools directory must supply it explicitly.
 idf_init() {
     _IDF_DIR="$1"
-    _IDF_TOOLS="${3:-$(cd "$(dirname "$0")" && pwd)}"
+    _IDF_TOOLS="${2:-$(cd "$(dirname "$0")" && pwd)}"
     . "$_IDF_TOOLS/../../../scripts/lib/python.sh"
     _IDF_PYTHON=$(find_python) || return 1
-    if [ -n "${2:-}" ]; then
-        IDF_PATH=$(dirname "$2")
-        export IDF_PATH
-    fi
     _IDF_ENV=$("$_IDF_PYTHON" "$_IDF_TOOLS/espressif.py" env "$_IDF_DIR/..") || return 1
     eval "$_IDF_ENV"
     export IDF_PATH IDF_TOOLS_PATH
-    _IDF_EXPORT="${2:-$(idf_default_export)}" || return 1
+    _IDF_EXPORT="$(idf_default_export)" || return 1
     _IDF_SHIM="$_IDF_TOOLS/idf_shim.bat"
-    if [ "${_AUTANA_IDF_NOTED:-}" != 1 ]; then
-        "$_IDF_PYTHON" "$_IDF_TOOLS/espressif.py" note "$_IDF_DIR/.." || return 1
-    fi
+    "$_IDF_PYTHON" "$_IDF_TOOLS/espressif.py" note "$_IDF_DIR/.." || return 1
 }
 
 # The resolver selects the pin unless a process override selects a checkout.
@@ -55,6 +59,8 @@ idf_in() {
     _IDF_IN_DIR=$1
     shift
     if idf_needs_shim; then
+        # cmd needs cygpath paths, but ordinary argv must not be pre-quoted:
+        # inline quotes reach the batch shim literally and corrupt arguments.
         IDF_SHIM_DIR="$(cygpath -w "$_IDF_IN_DIR")" \
         IDF_SHIM_EXPORT="$_IDF_EXPORT" \
         cmd //c "$(cygpath -w "$_IDF_SHIM")" "$@"

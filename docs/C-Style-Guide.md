@@ -252,7 +252,7 @@ comment or an engine document (`check_comment_layers.py`). The last two take
 their vocabulary from the tree itself, so neither needs updating when code
 moves. A function the firmware
 calls but does not define resolves when ESP-IDF or its toolchain's C library
-declares it, read from the checkout at `IDF_PATH`. ESP-IDF counts for every
+declares it, read from the resolved ESP-IDF checkout. ESP-IDF counts for every
 chip it supports, so a name declared only for another chip passes too; that is
 check's known limit. It runs inside the ESP-IDF image, and a run without
 ESP-IDF counts such names rather than failing on them.

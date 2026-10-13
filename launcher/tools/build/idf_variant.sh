@@ -7,7 +7,12 @@
 
 # Prepare before logs or locks create an in-tree build folder.
 idf_variant_prepare() {
-    IDF_VARIANT_BUILD=$("$_IDF_PYTHON" "$_IDF_TOOLS/build_paths.py" prepare "$1" "$2") || return 1
+    if [ -n "${3:-}" ]; then
+        IDF_VARIANT_BUILD=$3
+        "$_IDF_PYTHON" "$_IDF_TOOLS/build_paths.py" reset "$1" "$3" || return 1
+    else
+        IDF_VARIANT_BUILD=$("$_IDF_PYTHON" "$_IDF_TOOLS/build_paths.py" prepare "$1" "$2") || return 1
+    fi
 }
 
 idf_variant_disagreement() {
@@ -111,8 +116,7 @@ idf_variant_build() {
         shift
     done
 
-    idf_variant_prepare "$launcher_dir" "$build_dir" || return 1
-    config="$IDF_VARIANT_BUILD/sdkconfig"
+    config="$build_dir/sdkconfig"
     if [ -f "$config" ]; then
         stale=""
         for fragment in $(printf '%s' "$IDF_VARIANT_DEFAULTS" | tr ';' ' '); do
@@ -148,13 +152,9 @@ idf_variant_build() {
     # config in its build directory while SDKCONFIG_DEFAULTS selects its seed.
     # The layout seed is always passed: the CMake cache would otherwise keep
     # the last seed a build directory was given.
-    set -- -B "$IDF_VARIANT_BUILD" -D SDKCONFIG_DEFAULTS="$IDF_VARIANT_DEFAULTS" \
+    set -- -B "$build_dir" -D SDKCONFIG_DEFAULTS="$IDF_VARIANT_DEFAULTS" \
         -D LAUNCHER_LAYOUT_SEED="$layout_seed" -D TUNE_HOT_LIVE="$hot_tunables" \
         -D SDKCONFIG="$config"
-    if [ "$idf_verb" = build ] && ! "$_IDF_PYTHON" "$_IDF_TOOLS/build_paths.py" configured "$launcher_dir" "$build_dir"; then
-        idf "$@" reconfigure || return $?
-        "$_IDF_PYTHON" "$_IDF_TOOLS/build_paths.py" stamp "$launcher_dir" "$build_dir" || return 1
-    fi
     idf "$@" "$idf_verb" || return $?
     "$_IDF_PYTHON" "$_IDF_TOOLS/build_paths.py" stamp "$launcher_dir" "$build_dir" || return 1
 
@@ -163,7 +163,7 @@ idf_variant_build() {
         echo "$build_dir/sdkconfig: $disagreement" >&2
         return 1
     fi
-    if [ "$idf_verb" = build ] && [ ! -f "$launcher_dir/$build_dir/launcher.bin" ]; then
+    if [ "$idf_verb" = build ] && [ ! -f "$build_dir/launcher.bin" ]; then
         echo "build reported success but produced no binary at $build_dir/launcher.bin" >&2
         return 1
     fi

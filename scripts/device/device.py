@@ -1053,7 +1053,7 @@ def build_directory_lock(build_dir):
             print("waiting for another build in " + str(build_dir), file=sys.stderr)
             while not try_lock_file(handle):
                 time.sleep(BUILD_LOCK_POLL_SECONDS)
-        yield
+        yield build_dir
 
 
 def snapshot_image(build_dir, image_dir):
@@ -1117,9 +1117,9 @@ def remove_image_directory(image):
 def build_snapshot(build, build_dir, image_dir, **popen):
     """Runs `build` and snapshots its image, holding the build directory
     throughout and no board lock at all. Returns the build id."""
-    with build_directory_lock(build_dir):
-        run_to_end(build, None, **dict(popen, env=script_environment(popen.get("env"))))
-        return snapshot_image(build_dir, image_dir)
+    with build_directory_lock(build_dir) as prepared:
+        run_to_end(build + (["--prepared-build", prepared.as_posix()] if prepared else []), None, **dict(popen, env=script_environment(popen.get("env"))))
+        return snapshot_image(prepared or build_dir, image_dir)
 
 
 def build_worktree(worktree, variant, build_flags=()):
@@ -1131,8 +1131,8 @@ def build_worktree(worktree, variant, build_flags=()):
         raise RuntimeError("build tool not found: " + str(worktree / BUILD_SCRIPT))
     build, _ = flash_commands(git_bash(), worktree, variant, build_flags)
     try:
-        with build_directory_lock(build_directory(worktree, variant)):
-            run_to_end(build, None, cwd=worktree, stdin=subprocess.DEVNULL,
+        with build_directory_lock(build_directory(worktree, variant)) as prepared:
+            run_to_end(build + (["--prepared-build", prepared.as_posix()] if prepared else []), None, cwd=worktree, stdin=subprocess.DEVNULL,
                        env=script_environment())
     except subprocess.CalledProcessError as failed:
         return failed.returncode
