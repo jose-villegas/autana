@@ -80,6 +80,8 @@ TOOLS = pathlib.Path(__file__).resolve().parents[1]
 REPO = TOOLS.parents[1]
 sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(REPO / "scripts/gates"))
+sys.path.insert(0, str(REPO / "scripts/lib"))
+from autana_config import user_cache_dir
 
 from build import packages  # noqa: E402
 from build.c_header import read_define  # noqa: E402
@@ -157,10 +159,7 @@ def default_cache():
     """AUTANA_BAKE_CACHE when a process sets it (a build with a cache of its own), else the user cache."""
     if os.environ.get(CACHE_VARIABLE):
         return pathlib.Path(os.environ[CACHE_VARIABLE])
-    for name in ("LOCALAPPDATA", "XDG_CACHE_HOME"):
-        if os.environ.get(name):
-            return pathlib.Path(os.environ[name]) / "autana" / "bakes"
-    return pathlib.Path.home() / ".cache" / "autana" / "bakes"
+    return user_cache_dir() / "bakes"
 
 
 def digest(value):

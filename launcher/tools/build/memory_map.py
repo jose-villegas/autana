@@ -409,6 +409,7 @@ def build_variant(build):
 
 
 def read_build(build, root=ROOT):
+    build = build.resolve()
     metadata = json.loads((build / "project_description.json").read_text(encoding="utf-8"))
     elf = build / metadata["app_elf"]
     elf_symbols = symbols(find_tool("nm"), elf)
