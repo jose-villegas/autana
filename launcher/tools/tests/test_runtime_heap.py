@@ -61,7 +61,7 @@ class RuntimeHeapTests(unittest.TestCase):
         self.assertEqual(int(heap.attrib['data-bytes']), 656)
         text = ''.join(tree.itertext())
         self.assertIn('free 0.3 KB, largest 0.2 KB of 1 KB', text)
-        self.assertIn('after Sand', text)
+        self.assertIn('after opening the app that leaves the least', text)
         self.assertIn('IRAM left before the next 256 B split step: 0 B', text)
         self.assertIn('every byte comes from the heap (free 0.3 KB)', text)
         self.assertNotIn('capture from build', text)
@@ -87,6 +87,17 @@ class RuntimeHeapTests(unittest.TestCase):
         reading = self.capture()['dev']
         self.assertEqual(memory.iram_headroom(80, 16), 64)
         self.assertIn(
-            'dev: 0.3 KB free internal heap at its floor (after Sand), largest block 0.2 KB, '
+            'dev: 0.3 KB free internal heap at its floor (after opening the app that leaves the least), largest block 0.2 KB, '
             'of the 1 KB shared pool; IRAM can grow 64 B before it costs heap.',
-            memory.runtime_headline('dev', reading, 1024, 64, 'abc-dev'))
+            memory.runtime_headline('dev', reading, 1024, 64, 'abc-dev', 656))
+
+    def test_unmeasured_build_states_why_and_draws_no_runtime_share(self):
+        reason = 'this build has no console'
+        capture = memory.parse_runtime_heap(f'BUILD_ID=abc-release\nunmeasured: {reason}\n')['release']
+        self.assertIsNone(memory.runtime_floor(capture))
+        headline = memory.runtime_headline('release', capture, 1024, 64, 'abc-release', 656)
+        self.assertIn(f'0.6 KB linked internal heap (not measured at runtime: {reason})', headline)
+        for bad in ('BUILD_ID=abc-release\nunmeasured: x\nphase=boot HEAP free=1 largest=1\n',
+                    'BUILD_ID=abc-release\nphase=boot HEAP free=1 largest=1\nunmeasured: x\n'):
+            with self.assertRaises(ValueError):
+                memory.parse_runtime_heap(bad)

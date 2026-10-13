@@ -521,8 +521,12 @@ def parse_runtime_heap(text):
             captures[variant] = current
             separated = False
             continue
+        unmeasured = re.fullmatch(r"unmeasured: (\S.*)", line)
+        if unmeasured and current is not None and not current["phases"] and "unmeasured" not in current:
+            current["unmeasured"] = unmeasured[1]
+            continue
         phase = re.fullmatch(r"phase=(boot|app:.+) (HEAP .+|\[[^\]]+\].+)", line)
-        if current is None or not phase or phase[1] in current["phases"]:
+        if current is None or "unmeasured" in current or not phase or phase[1] in current["phases"]:
             raise ValueError(f"runtime heap line {line_number}: missing build or invalid phase: {line}")
         reading = re.fullmatch(r"HEAP free=(\d+) largest=(\d+)", phase[2])
         resolution = 1
@@ -535,8 +539,8 @@ def parse_runtime_heap(text):
         if largest > free:
             raise ValueError(f"runtime heap line {line_number}: largest block exceeds free bytes")
         current["phases"][phase[1]] = dict(free=free, largest=largest, resolution=resolution)
-    if not captures or any("boot" not in capture["phases"] for capture in captures.values()):
-        raise ValueError("runtime heap: every captured variant requires a boot phase")
+    if not captures or any("boot" not in capture["phases"] and "unmeasured" not in capture for capture in captures.values()):
+        raise ValueError("runtime heap: every captured variant requires a boot phase or an unmeasured reason")
     return captures
 
 
@@ -545,6 +549,9 @@ def read_runtime_heap(root):
 
 
 def runtime_floor(capture):
+    """The phase with the least free heap, or None for a build the capture could not measure."""
+    if "unmeasured" in capture:
+        return None
     apps = [(phase, reading) for phase, reading in capture["phases"].items() if phase.startswith("app:")]
     return min(apps or [("boot", capture["phases"]["boot"])], key=lambda item: item[1]["free"])
 
@@ -555,8 +562,11 @@ def iram_headroom(slack, pad):
 
 
 def runtime_note(capture, build_id):
+    if runtime_floor(capture) is None:
+        return "not measured at runtime: " + capture["unmeasured"]
     phase, reading = runtime_floor(capture)
-    note = "after " + phase.removeprefix("app:")
+    # Engine docs name no app; the capture file keeps which one it was.
+    note = "after boot" if phase == "boot" else "after opening the app that leaves the least"
     if reading["resolution"] == KB_BYTES:
         note += "; POST at boot only (KiB resolution)" if phase == "boot" else "; POST (KiB resolution)"
     if capture["build_id"] != build_id:
@@ -564,7 +574,10 @@ def runtime_note(capture, build_id):
     return note
 
 
-def runtime_headline(variant, capture, pool, slack, build_id):
+def runtime_headline(variant, capture, pool, slack, build_id, heap):
+    if runtime_floor(capture) is None:
+        return (f"{variant}: {size_label(heap)} linked internal heap ({runtime_note(capture, build_id)}) "
+                f"of the {size_label(pool)} shared pool; IRAM can grow {slack} B before it costs heap.")
     _, reading = runtime_floor(capture)
     return (f"{variant}: {size_label(reading['free'])} free internal heap at its floor "
             f"({runtime_note(capture, build_id)}), largest block {size_label(reading['largest'])}, "
@@ -587,7 +600,9 @@ def render_tiers(builds, root, runtime=None):
     for build in builds:
         size, heap = pool_range(*build["regions"]["dram0_0_seg"], build["constants"]["_heap_start"])
         pools.append(f"{build['variant']} {size_label(size)} ({size} B)")
-        heaps.append(f"{build['variant']} {size_label(heap)} linked, {size_label(runtime_floor(runtime[build['variant']])[1]['free'])} free at floor")
+        floor = runtime_floor(runtime[build["variant"]])
+        heaps.append(f"{build['variant']} {size_label(heap)} linked, " +
+                     (f"{size_label(floor[1]['free'])} free at floor" if floor else "not measured at runtime"))
     shared = release["regions"]["dram0_0_seg"][1]
     pool = f"{size_label(shared)} ({shared} B)" if all(build["regions"]["dram0_0_seg"][1] == shared for build in builds) else "; ".join(pools)
     config = release["config"]
@@ -624,7 +639,8 @@ def render(builds, runtime=None, root=ROOT):
     for build in builds:
         lines.extend([runtime_headline(build["variant"], runtime[build["variant"]],
                                        build["regions"]["dram0_0_seg"][1],
-                                       iram_headroom(build["slack"], build["pad"]), build["build_id"]), ""])
+                                       iram_headroom(build["slack"], build["pad"]), build["build_id"],
+                                       pool_range(*build["regions"]["dram0_0_seg"], build["constants"]["_heap_start"])[1]), ""])
     pin = idf_pin()
     for commit in dict.fromkeys(b["idf_commit"] for b in builds if commit_drift(b["idf_commit"], pin["commit"])):
         lines.extend([f"Built on IDF {commit[:12]}; launcher/idf-pin.json pins {pin['commit'][:12]}, so measured bytes can differ from the budgets.", ""])
@@ -749,15 +765,17 @@ def chart(kind, body, runtime=None, root=ROOT):
             if sum(counts) != size:
                 raise ValueError(f"{variant}: pool segments do not sum to shared alias")
             capture = runtime[variant]
-            _, reading = runtime_floor(capture)
+            floor = runtime_floor(capture)
             left = iram_headroom(slack, int(region("Prefetch pad", variant)))
             step = int(region("Split granularity", variant))
+            headroom = f"free {size_label(floor[1]['free'])}" if floor else f"linked heap {size_label(heap)}"
             rows.append((variant, [(label, count, fill) for (label, fill), count in zip(legend, counts)],
-                         f"free {size_label(reading['free'])}, largest {size_label(reading['largest'])} of {size_label(size)}",
+                         (f"free {size_label(floor[1]['free'])}, largest {size_label(floor[1]['largest'])} of {size_label(size)}" if floor
+                          else f"linked heap {size_label(heap)} of {size_label(size)}"),
                          (runtime_note(capture, build_ids[variant]),
-                          f"IRAM left before the next {step} B split step: {left} B; past it, every byte comes from the heap (free {size_label(reading['free'])})")))
+                          f"IRAM left before the next {step} B split step: {left} B; past it, every byte comes from the heap ({headroom})")))
             # An older capture can exceed this linked heap; overlay widths cannot be negative.
-            overlays.append([(RUNTIME_LABEL, heap_start - int(start, 16), max(0, heap - reading["free"]), RUNTIME_FILL)])
+            overlays.append([(RUNTIME_LABEL, heap_start - int(start, 16), max(0, heap - floor[1]["free"]), RUNTIME_FILL)] if floor else [])
             scales.append(size)
         start, end, _ = alias("dram0_0_seg", variants[0])
         iram_start, _, _ = alias("iram0_0_seg", variants[0])

@@ -198,7 +198,7 @@ class MemoryChartTests(unittest.TestCase):
                                constants={'_heap_start': 0x3fc88080}, size={'layout': [{'name': 'DIRAM', 'used': 128}]},
                                align=256, pad=16, slack=0, inputs=inputs, owned={}, report=[(site, 12, ['draw'])]))
         body = memory.render(builds)
-        self.assertIn('dev: 0.3 KB free internal heap at its floor (after Sand), largest block 0.2 KB, of the 1 KB shared pool; IRAM can grow 0 B before it costs heap.', body)
+        self.assertIn('dev: 0.3 KB free internal heap at its floor (after opening the app that leaves the least), largest block 0.2 KB, of the 1 KB shared pool; IRAM can grow 0 B before it costs heap.', body)
         from doc_tables import parse_table
         headers, rows = parse_table(body, 'IRAM component')
         self.assertIn('Placement', headers)
