@@ -84,9 +84,9 @@ grid_open(grid_mesh_t* g) {
         .leaf = true,
     };
     g->mesh = (r3d_lit_mesh_t){
-        .positions = (const int16_t(*)[3])g->positions,
-        .colors = (const uint8_t(*)[3])g->colors,
-        .triangles = (const uint16_t(*)[3])g->triangles,
+        .positions = (const int16_t (*)[3])g->positions,
+        .colors = (const uint8_t (*)[3])g->colors,
+        .triangles = (const uint16_t (*)[3])g->triangles,
         .clusters = &g->cluster,
         .nodes = &g->node,
         .vertex_count = side * side,

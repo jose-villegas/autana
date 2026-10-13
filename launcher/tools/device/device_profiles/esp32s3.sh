@@ -17,8 +17,8 @@ DP_STATUS=measured
 # What a test fixture's locals actually live inside on device. The host's
 # stack is megabytes, which is why a 24 KB fixture array passed on a laptop
 # and panic-looped the board twice.
-DP_MAIN_TASK_STACK_BYTES=3584
-DP_MAIN_TASK_STACK_SOURCE="ESP-IDF esp32s3 default; not overridden in sdkconfig.defaults"
+DP_MAIN_TASK_STACK_BYTES=3648
+DP_MAIN_TASK_STACK_SOURCE="CONFIG_ESP_MAIN_TASK_STACK_SIZE in sdkconfig.defaults.diag, the build every suite runs in"
 
 # Per-function stack-frame ceiling the host checker enforces on test code.
 # Justified in launcher/test/check_stack_usage.py's header; short version:
@@ -74,24 +74,24 @@ DP_DMA_MAX_TRANSACTION_SOURCE="ESP-IDF spi_ll.h SPI_LL_DMA_MAX_BIT_LEN (18-bit t
 
 # --- toolchain and codegen -------------------------------------------------
 DP_TOOLCHAIN_PREFIX=xtensa-esp32s3-elf
-DP_TOOLCHAIN_SOURCE="ESP-IDF v5.5 tools/tools.json, xtensa-esp-elf esp-14.2.0_20260121"
+DP_TOOLCHAIN_SOURCE="ESP-IDF tools/tools.json at the launcher/idf-pin.json commit, xtensa-esp-elf esp-15.2.0_20251204"
 
 # ISA-targeting flags. These are for a cross build ONLY and must never be
 # copied onto a host compile; that is the whole distinction this file draws.
 DP_ARCH_FLAGS="-mlongcalls -fno-builtin-memcpy -fno-builtin-memset -fno-builtin-bzero -mdisable-hardware-atomics"
-DP_ARCH_FLAGS_SOURCE="launcher/build.dev/toolchain/cflags, read from a real S3 build, 2026-09-13"
+DP_ARCH_FLAGS_SOURCE="launcher/build.dev/toolchain/cflags, read from a real S3 build, 2026-10-13"
 
 # Codegen-SHAPING flags: they change what code the compiler emits for
 # portable C, not which instruction set it emits it in, so a host harness
 # that wants to predict device cost must use them too.
 #
 # -fno-jump-tables / -fno-tree-switch-conversion come from ESP-IDF's own
-# top-level CMakeLists.txt (v5.5, line 273) and are target-independent, so
+# top-level CMakeLists.txt and are target-independent, so
 # every switch is a compare chain on every IDF target. Attempt 19's
 # dispatcher regression was partly this.
 DP_CODEGEN_FLAGS="-O2 -fno-jump-tables -fno-tree-switch-conversion -fstrict-volatile-bitfields -ffunction-sections -fdata-sections"
-DP_STD_FLAG="-std=gnu17"
-DP_CODEGEN_SOURCE="launcher/build.dev/compile_commands.json, sand_reactions.c entry, read from a real S3 build, 2026-09-13"
+DP_STD_FLAG="-std=gnu23"
+DP_CODEGEN_SOURCE="launcher/build.dev/compile_commands.json, sand_reactions.c entry, read from a real S3 build, 2026-10-13"
 
 # --- instruction cache -----------------------------------------------------
 # The S3's icache is Kconfig-selectable (CONFIG_ESP32S3_INSTRUCTION_CACHE_*);
@@ -112,4 +112,4 @@ DP_QEMU_SYSTEM_BIN=qemu-system-xtensa
 DP_QEMU_MACHINE=esp32s3
 DP_QEMU_CPU=
 DP_QEMU_ESPRESSIF_TARGET=esp32s3
-DP_QEMU_SOURCE="IDF v5.5 tools/tools.json: qemu-xtensa supported_targets ['esp32','esp32s3'], inspected 2026-09-03"
+DP_QEMU_SOURCE="ESP-IDF tools/tools.json at the pinned commit: qemu-xtensa esp_develop_9.2.2_20260417, supported_targets ['esp32','esp32s3'], inspected 2026-10-13"

@@ -204,7 +204,7 @@ list(APPEND app_srcs ${discovered_apps})
 set(app_reqs math microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash esp_partition
              fatfs esp_driver_sdmmc sdmmc
-             esp_driver_usb_serial_jtag vfs nvs_flash esp_app_format espcoredump
+             esp_driver_usb_serial_jtag esp_driver_uart vfs nvs_flash esp_app_format espcoredump
              waveshare__esp_lcd_sh8601 espressif__esp_lcd_touch espressif__esp_lcd_co5300
              # perfmon, unity and esp_mm (a perf suite's cache control) are
              # listed unconditionally, NOT inside the block below: ESP-IDF
@@ -343,6 +343,18 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     # (tools/build/check_no_soft_double.py) names any soft-double routine the
     # image still pulls in.
     target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=double-promotion -Werror=float-conversion)
+
+    # Optimisation flags measured on the pinned GCC (launcher/idf-pin.json):
+    # re-measure each on and off when its major version changes
+    # (docs/tools/Framework-Versions.md).
+    # Extension dead-code elimination, on at -O2, costs this component's hot
+    # loops up to 2% by the frame-budget perf suites (GCC 15.2: packed gas
+    # step 37.9 -> 37.2 ms, 20 px gathered present 241 -> 236 us without it).
+    target_compile_options(${COMPONENT_LIB} PRIVATE -fno-ext-dce)
+    # -O3 scheduling removes pipeline bubbles -O2 leaves in the skinning and
+    # lighting kernels' float chains (GCC 15.2, suite_skin_light_perf, one
+    # core: fused_direct_1 2692 -> 1906 us, fused_renormalised_1 2902 -> 2296).
+    set_property(SOURCE "${CMAKE_CURRENT_LIST_DIR}/render/skin/r3d_skinning.c" APPEND PROPERTY COMPILE_OPTIONS "-O3")
 
     # The packer owns input discovery, including demo manifests, and runs on
     # every build so deleted manifests drop their demos. Unchanged packs and

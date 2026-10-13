@@ -53,6 +53,19 @@ class MemoryMapTests(unittest.TestCase):
         found = self.source("#define HOT_CODE IRAM_ATTR\n/* Cache-off caller. IRAM budget: 4 B */\nstatic void HOT_CODE foo(void) {}")
         self.assertEqual(found[0].entries, [("foo", "foo")])
 
+    def test_budget_comment_owns_unattributed_function(self):
+        sites = self.source("/* Cache-off caller. IRAM budget: 4 B */\nstatic void foo(void) {}")
+        self.assertEqual(len(sites), 1)
+        self.assertEqual(sites[0].entries, [("foo", "foo")])
+        self.assertEqual(sites[0].reason, "Cache-off caller.")
+        report = self.check(sites, [memory.Input("libmain.a", "foo.c.obj", "foo", 4)])
+        self.assertEqual(report[0][1:], (4, ["foo"]))
+
+    def test_budget_comment_without_iram_fails_budget(self):
+        sites = self.source("/* Cache-off caller. IRAM budget: 4 B */\nstatic void foo(void) {}")
+        with self.assertRaisesRegex(ValueError, "measured 0 B, budget 4 B"):
+            self.check(sites, [])
+
     def test_over_budget(self):
         sites = self.source("/* Cache-off caller. IRAM budget: 4 B */\nstatic void IRAM_ATTR foo(void) {}")
         with self.assertRaisesRegex(ValueError, "set the budget"):

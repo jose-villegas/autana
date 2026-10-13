@@ -1844,7 +1844,8 @@ test_quenching_makes_steam_but_burning_out_makes_smoke(void) {
     sand_set_mobility(&s, 0);
     sand_fill_box(&s, 0, H - 1, W, H, FIRE);
 
-    bool found_smoke = false, found_steam = false;
+    bool found_smoke = false;
+    bool found_steam = false;
     for (int i = 0; i < 2 * (MATERIAL_VARIANTS - 1); i++) {
         sand_step(&s, 0, 1000, 0);
         for (int y = 0; y < H; y++) {

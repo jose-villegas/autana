@@ -583,8 +583,8 @@ find_nearest_empty(const sand_t* s, int x, int y, int px, int py, int sight, uin
      * smoke's 24 makes four copies worth it. */
 #pragma GCC unroll 4
     for (int k = 1; k <= sight; k++) {
-        const int sx = x + px * k;
-        const int sy = y + py * k;
+        const int sx = x + (px * k);
+        const int sy = y + (py * k);
         if ((unsigned)sx >= (unsigned)s->w || (unsigned)sy >= (unsigned)s->h) {
             return 0;
         }

@@ -108,6 +108,17 @@ class SharedToolsTests(unittest.TestCase):
                     first = self.candidate(tool + '-19', '20')
                     self.assertEqual(pinned_tool.resolve(tool), (first, '20'))
 
+    def test_companion_driver_requires_pinned_major(self):
+        tidy = self.candidate('clang-tidy-19', '19.1.2')
+        driver = self.candidate('clang-19', '18.1.2')
+        version = lambda path: self.versions.get(os.path.normcase(path))
+        with mock.patch.object(pinned_tool, 'tool_version', side_effect=version), \
+             mock.patch.dict(os.environ, {'CLANG_ANY_VERSION': '1'}):
+            with self.assertRaises(SystemExit):
+                pinned_tool.resolve('clang', companion=tidy)
+            self.versions[os.path.normcase(driver)] = '19.1.2'
+            self.assertEqual(pinned_tool.resolve('clang', companion=tidy), (driver, '19'))
+
     def test_native_conversion_on_windows_and_linux(self):
         with mock.patch.object(native_path.os, 'name', 'nt'):
             self.assertEqual(native_path.to_native('/c/space here/a.c'), 'c:/space here/a.c')

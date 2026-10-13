@@ -113,10 +113,27 @@ dependencies:
       registry_url: https://components.espressif.com/
       type: service
     version: 1.1.1
+  espressif/usb:
+    component_hash: 99eee72ea224d9117d4c342442717a1f20bf8112e2ab5d7d7038b827874f4c92
+    dependencies:
+    - name: idf
+      require: private
+      version: '>=5.5.3'
+    source:
+      registry_url: https://components.espressif.com/
+      type: service
+    targets:
+    - esp32s2
+    - esp32s3
+    - esp32s31
+    - esp32p4
+    - esp32h4
+    - linux
+    version: 1.6.0
   idf:
     source:
       type: idf
-    version: 5.5.5
+    version: 6.1.0
   waveshare/esp_lcd_sh8601:
     component_hash: af135de8ee4a036bcff17bde98e6a96e02202d388fecf6004363e3d3e047943a
     dependencies:
@@ -139,8 +156,9 @@ direct_dependencies:
 - espressif/esp_lcd_touch
 - espressif/esp_lcd_touch_cst816s
 - espressif/esp_lcd_touch_ft5x06
+- espressif/usb
 - idf
 - waveshare/esp_lcd_sh8601
-manifest_hash: 289c60441d389c5a48d7e58ff9aaaa0dca284d01d20b111ff2b95acded3cd002
+manifest_hash: 73abeade3d6d2e0b28dee5db3e5f9c793f79f3c8596e15aea0d9822ce76cb7fe
 target: esp32s3
-version: 2.0.0
+version: 3.0.0

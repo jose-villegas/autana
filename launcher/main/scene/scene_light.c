@@ -21,7 +21,7 @@ scene_skin_light_allocate(scene_skinned_renderer_t* skin) {
     }
     memset(storage, 0, end);
     skin->light_storage = storage;
-    skin->colors = (uint8_t(*)[R3D_SKIN_LIGHT_CHANNELS])(void*)((uint8_t*)storage + layout.colors);
+    skin->colors = (uint8_t (*)[R3D_SKIN_LIGHT_CHANNELS])(void*)((uint8_t*)storage + layout.colors);
     skin->normal_palette = (mat3f_t*)(void*)((uint8_t*)storage + layout.normals);
     return true;
 }

@@ -52,7 +52,7 @@ cert-err33-c	main/apps/sand/tests/suite_sand_gunpowder.c	9
 cert-err33-c	main/apps/sand/tests/suite_sand_impulse.c	13
 cert-err33-c	main/apps/sand/tests/suite_sand_liquid_depth.c	24
 cert-err33-c	main/apps/sand/tests/suite_sand_materials.c	4
-cert-err33-c	main/apps/sand/tests/suite_sand_perf.c	6
+cert-err33-c	main/apps/sand/tests/suite_sand_perf.c	4
 cert-err33-c	main/apps/sand/tests/suite_sand_reaction_encoding.c	18
 cert-err33-c	main/apps/sand/tests/suite_sand_roots.c	21
 cert-err33-c	main/apps/sand/tests/suite_sand_scenes.c	41
