@@ -30,6 +30,16 @@ typedef struct {
  * holds. */
 extern mu_Context ui_ctx;
 
+/* The measured options/menu peak has a quarter-capacity margin for UI growth. */
+#define UI_BAND_BIN_MEASURED_PEAK  203
+#define UI_BAND_BIN_MARGIN_DIVISOR 4
+#define UI_BAND_BIN_MAX                                                                                                \
+    (UI_BAND_BIN_MEASURED_PEAK                                                                                         \
+     + (UI_BAND_BIN_MEASURED_PEAK + UI_BAND_BIN_MARGIN_DIVISOR - 1) / UI_BAND_BIN_MARGIN_DIVISOR)
+
+/* One boot-lifetime PSRAM bin; allocation failure uses full-band replay. */
+void ui_band_init(void);
+
 /* Set by ui_invalidate()/ui_init() (ui_build.c), read and cleared by
  * ui_end()/ui_end_for_bands() (ui.c); see ui.h's ui_invalidate() comment. */
 extern bool ui_invalidated;

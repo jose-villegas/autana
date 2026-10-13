@@ -238,15 +238,6 @@ void ui_replay_band(int row0, int row1);
 /* Full band replays in the current frame; reset by ui_end_for_bands(). */
 uint32_t ui_band_fallback_count(void);
 
-#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_SELFTEST
-/* Caller-owned, suitably aligned storage remains live through replay.
- * NULL restores the default bin; switching discards the pending frame. */
-void ui_band_bin_use(void* storage, size_t capacity_bytes);
-size_t ui_band_bin_bytes(void);
-size_t ui_band_bin_need(void);
-size_t ui_band_bin_entry_bytes(void);
-#endif
-
 /* Queues a plain opaque rect for the NEXT ui_end_for_bands() call to bin
  * alongside its own microui commands, for pixels to show in band mode
  * that were never built through microui, such as the shell's own

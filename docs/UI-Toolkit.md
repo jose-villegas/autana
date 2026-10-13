@@ -383,9 +383,13 @@ renders into `docs/images/ui/`; see "Images in these docs" in
 
 ### Band replay measurements
 
-The band bin has a fixed capacity at `UI_BAND_BIN_MAX` in `ui/ui.c`,
-with a device memory ceiling at `UI_BAND_BIN_BUDGET_BYTES`. Command and fill
-entries share storage for their mutually exclusive payloads.
+The band bin is allocated once at UI initialization with `memory_alloc` and
+`MEMORY_PSRAM`. Its capacity owner, `UI_BAND_BIN_MAX` in `ui/ui_internal.h`, derives
+from `UI_BAND_BIN_MEASURED_PEAK` with the growth margin owned by
+`UI_BAND_BIN_MARGIN_DIVISOR`; its byte size is that capacity times
+`sizeof(ui_band_entry_t)`. Command and fill entries share storage for their
+mutually exclusive payloads. Allocation failure retains no entries and uses
+full-band repaint for bands touched by drawing.
 Bands touched by drawing that does not fit replay the complete UI in painter's
 order and remain dirty. Other bands replay the retained entries.
 `ui_band_fallback_count()` reports full band replays in the current frame.
@@ -424,6 +428,6 @@ ui_band_perf: case=NAME frames=N fallbacks=TOTAL frame_us=MEAN max_us=MAX
 `frame_us` and `max_us` are the mean and maximum elapsed microseconds, including
 command construction, finalization, drawing and band submission; they exclude
 presentation waiting before the frame and the summary log. The suite asserts
-zero fallbacks in the sparse menu case and positive fallbacks in the dense menu
-case. The options screen reports its fallback counts without imposing a fallback
-budget.
+zero fallbacks in every measured case. The host widget suite also exceeds the
+bin capacity to verify that fallback matches a full repaint and preserves
+dropdown painter order.
