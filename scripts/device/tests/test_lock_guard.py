@@ -119,10 +119,15 @@ class HoldProcessTests(Store):
         self.environment = dict(os.environ, _AUTANA_DEVICE_LOCK_ROOT=str(self.store.root))
         self.environment.pop(device.TOKEN_ENV, None)
 
-    def start_process(self, command, env=None):
+    def start_process(self, command, env=None, ready=None, **options):
         process = subprocess.Popen(command, env=env or self.environment,
-                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, **options)
         self.addCleanup(lambda: process.kill() if process.poll() is None else None)
+        if ready is not None:
+            deadline = time.monotonic() + 20
+            while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.05)
+            self.assertTrue(ready.exists())
         return process
 
     def wait_for_queue(self, count, *, dead_pid=None):
@@ -374,14 +379,8 @@ class HoldProcessTests(Store):
                   "exec('while not finish.exists() and time.monotonic()<deadline: time.sleep(0.05)'); "
                   "assert finish.exists()")
         options = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {}
-        long = subprocess.Popen(self.command("run", "--", sys.executable, "-c", source),
-                                env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, **options)
-        self.addCleanup(lambda: long.kill() if long.poll() is None else None)
-        deadline = time.monotonic() + 10
-        while not ready.exists() and long.poll() is None and time.monotonic() < deadline:
-            time.sleep(0.05)
-        self.assertTrue(ready.exists())
+        long = self.start_process(self.command("run", "--", sys.executable, "-c", source),
+                                  env=environment, ready=ready, **options)
         short = self.run_command("run", "--", sys.executable, "-c", "pass", env=environment)
         self.assertEqual(short.returncode, 0, short.stderr)
         self.assertIsNone(long.poll())
@@ -586,13 +585,7 @@ class HoldProcessTests(Store):
             options["startupinfo"] = startup
         else:
             options["start_new_session"] = True
-        process = subprocess.Popen([sys.executable, "-c", driver], env=self.environment,
-                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, **options)
-        self.addCleanup(lambda: process.kill() if process.poll() is None else None)
-        deadline = time.monotonic() + 20
-        while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
-            time.sleep(0.05)
-        self.assertTrue(ready.exists())
+        process = self.start_process([sys.executable, "-c", driver], ready=ready, **options)
         if os.name == "nt":
             sender = ("import ctypes,time; k=ctypes.WinDLL('kernel32'); k.FreeConsole(); "
                       f"assert k.AttachConsole({process.pid}); "
@@ -692,11 +685,7 @@ class HoldProcessTests(Store):
         source = ("import pathlib,time; "
                   f"pathlib.Path({str(ready)!r}).touch(); time.sleep(15)")
         nested = self.start_process(self.command("run", "--", sys.executable, "-c", source),
-                                    env=dict(self.environment, **{device.TOKEN_ENV: token}))
-        deadline = time.monotonic() + 20
-        while not ready.exists() and nested.poll() is None and time.monotonic() < deadline:
-            time.sleep(0.05)
-        self.assertTrue(ready.exists())
+                                    env=dict(self.environment, **{device.TOKEN_ENV: token}), ready=ready)
         with self.store.guard(BOARD_A):
             record = self.store.read_json(self.store.lock_path(BOARD_A))
             self.assertEqual(record["token"], token)
