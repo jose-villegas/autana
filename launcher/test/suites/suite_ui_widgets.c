@@ -1306,6 +1306,9 @@ test_ui_swatch_grid_tiles_the_rect_exactly(void) {
 
 static void test_menu_band_frame_cost(void);
 static void test_options_band_frame_cost(void);
+#ifndef DEVICE_BUILD
+static void test_band_bin_capacity_changes(void);
+#endif
 
 void
 run_ui_widgets_suite(void) {
@@ -1330,6 +1333,7 @@ run_ui_widgets_suite(void) {
 #ifndef DEVICE_BUILD
     RUN_TEST(test_menu_band_frame_cost);
     RUN_TEST(test_options_band_frame_cost);
+    RUN_TEST(test_band_bin_capacity_changes);
     RUN_TEST(test_dense_bands_match_a_full_repaint);
     RUN_TEST(test_closing_the_list_restores_the_pixels_under_it);
     RUN_TEST(test_open_list_stays_on_top_during_held_and_idle_partial_frames);
@@ -1364,6 +1368,32 @@ paint_menu_band(int row0, int row1, gfx_color_t* target) {
 }
 
 static bool band_icons_owned;
+static void* band_option_storage;
+static sand_mode_swatch_t* band_swatches;
+static const char* band_option = "C";
+static const char* band_ram = "internal";
+static size_t band_worst_bytes;
+static bool band_sizing;
+static bool band_complete_bin;
+
+enum { BAND_OPTION_C, BAND_OPTION_B, BAND_OPTION_C_PLUS, BAND_OPTION_COUNT };
+
+static const char* const BAND_OPTION_NAMES[] = {"C", "B", "C+"};
+
+typedef struct {
+    int32_t frame_us[MENU_FRAMES];
+    uint32_t fallbacks[MENU_FRAMES];
+    size_t need_bytes;
+} band_samples_t;
+
+static band_samples_t* band_samples;
+
+static void
+free_band_option(void) {
+    ui_band_bin_use(NULL, 0);
+    memory_free(band_option_storage);
+    band_option_storage = NULL;
+}
 
 static void
 restore_menu_band_fixture(void) {
@@ -1371,6 +1401,10 @@ restore_menu_band_fixture(void) {
         ui_icon_set_release(&sand_icon_set);
         band_icons_owned = false;
     }
+    memory_free(band_samples);
+    band_samples = NULL;
+    memory_free(band_swatches);
+    band_swatches = NULL;
     ui_clear_band_overlay();
     gfx_mode_exit();
     fixture();
@@ -1379,25 +1413,62 @@ restore_menu_band_fixture(void) {
 #endif
 }
 
-typedef struct {
-    int32_t frame_us[MENU_FRAMES];
-    uint32_t fallbacks[MENU_FRAMES];
-} band_samples_t;
-
 static void
 report_band_case(const char* name, band_samples_t* samples) {
+    if (samples->need_bytes > band_worst_bytes) {
+        band_worst_bytes = samples->need_bytes;
+    }
     uint32_t total_fallbacks = 0;
     for (int frame = 0; frame < MENU_FRAMES; frame++) {
         total_fallbacks += samples->fallbacks[frame];
     }
     const perf_stats_t stats = perf_stats_compute(samples->frame_us, MENU_FRAMES);
 #ifdef DEVICE_BUILD
-    ESP_LOGI("ui_band_perf", "case=%s frames=%d fallbacks=%lu frame_us=%lld max_us=%lld", name, MENU_FRAMES,
-             (unsigned long)total_fallbacks, (long long)stats.avg, (long long)stats.max);
+    if (band_sizing) {
+        ESP_LOGI("ui_band_perf", "case=%s need_entries=%u need_bytes=%u", name,
+                 (unsigned)(samples->need_bytes / ui_band_bin_entry_bytes()), (unsigned)samples->need_bytes);
+    } else {
+        ESP_LOGI("ui_band_perf",
+                 "option=%s case=%s frames=%d fallbacks=%lu frame_us=%lld max_us=%lld bin_bytes=%u bin_ram=%s "
+                 "bin_entries=%u",
+                 band_option, name, MENU_FRAMES, (unsigned long)total_fallbacks, (long long)stats.avg,
+                 (long long)stats.max, (unsigned)ui_band_bin_bytes(), band_ram,
+                 (unsigned)(ui_band_bin_bytes() / ui_band_bin_entry_bytes()));
+    }
 #else
     (void)total_fallbacks;
     (void)stats;
+    (void)band_option;
+    (void)band_ram;
 #endif
+}
+
+static void
+sample_band_need(void) {
+    const size_t need = ui_band_bin_need();
+    if (need > band_samples->need_bytes) {
+        band_samples->need_bytes = need;
+    }
+}
+
+static void
+sample_band_frame(int frame, int64_t began_us) {
+    band_samples->frame_us[frame] = (int32_t)(timing_now_us() - began_us);
+    band_samples->fallbacks[frame] = ui_band_fallback_count();
+    sample_band_need();
+    if (band_complete_bin) {
+        TEST_ASSERT_TRUE(ui_band_bin_bytes() >= ui_band_bin_need());
+    }
+    if (!band_sizing && ui_band_bin_bytes() >= ui_band_bin_need()) {
+        TEST_ASSERT_EQUAL_UINT32(0, band_samples->fallbacks[frame]);
+    }
+}
+
+static void
+allocate_band_samples(void) {
+    band_samples = memory_alloc(sizeof *band_samples, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(band_samples);
+    memset(band_samples, 0, sizeof *band_samples);
 }
 
 static void
@@ -1416,6 +1487,7 @@ test_menu_band_frame_cost(void) {
         const input_t idle = {0};
         const input_t* warmup[] = {&idle, &idle, &contact.press, &contact.hold};
         const int commands = dense ? MENU_DENSE_COMMANDS : 0;
+        allocate_band_samples();
         for (size_t i = 0; i < sizeof warmup / sizeof warmup[0]; i++) {
             gfx_present_begin();
             gfx_present_wait();
@@ -1424,9 +1496,9 @@ test_menu_band_frame_cost(void) {
             ui_end_for_bands(MENU_BACKGROUND);
             gfx_invalidate();
             gfx_band_run(paint_menu_band, NULL);
+            sample_band_need();
         }
         TEST_ASSERT_TRUE(dropdown_open);
-        band_samples_t samples = {0};
         for (int frame = 0; frame < MENU_FRAMES; frame++) {
             gfx_present_begin();
             gfx_present_wait();
@@ -1436,16 +1508,11 @@ test_menu_band_frame_cost(void) {
             ui_end_for_bands(MENU_BACKGROUND);
             gfx_invalidate();
             gfx_band_run(paint_menu_band, NULL);
-            samples.frame_us[frame] = (int32_t)(timing_now_us() - began_us);
-            const uint32_t fallbacks = ui_band_fallback_count();
-            samples.fallbacks[frame] = fallbacks;
-            if (dense) {
-                TEST_ASSERT_GREATER_THAN_UINT32(0, fallbacks);
-            } else {
-                TEST_ASSERT_EQUAL_UINT32(0, fallbacks);
-            }
+            sample_band_frame(frame, began_us);
         }
-        report_band_case(dense ? "dense_menu" : "sparse_menu", &samples);
+        report_band_case(dense ? "dense_menu" : "sparse_menu", band_samples);
+        memory_free(band_samples);
+        band_samples = NULL;
     }
 #ifndef DEVICE_BUILD
     TEST_ASSERT_EQUAL_UINT(guard_trips, gfx_fb_guard_trips_for_test());
@@ -1454,10 +1521,41 @@ test_menu_band_frame_cost(void) {
     suite_clear_test_cleanup();
 }
 
+static void
+test_band_option_allocation(void) {
+    TEST_ASSERT_NOT_NULL_MESSAGE(band_option_storage, "measurement bin allocation failed");
+}
+
 void
 run_ui_band_perf_suite(void) {
+    ui_band_bin_use(NULL, 0);
+    band_complete_bin = false;
+    band_sizing = true;
+    band_worst_bytes = 0;
     RUN_TEST(test_menu_band_frame_cost);
     RUN_TEST(test_options_band_frame_cost);
+    band_sizing = false;
+    const size_t worst_bytes = band_worst_bytes;
+    for (int option = BAND_OPTION_C; option < BAND_OPTION_COUNT; option++) {
+        const size_t bytes = option == BAND_OPTION_C ? ui_band_bin_bytes() : worst_bytes;
+        band_option = BAND_OPTION_NAMES[option];
+        band_complete_bin = option != BAND_OPTION_C;
+        band_ram = option == BAND_OPTION_B ? "psram" : "internal";
+        if (option != BAND_OPTION_C) {
+            band_option_storage = memory_alloc(bytes, option == BAND_OPTION_B ? MEMORY_PSRAM : MEMORY_INTERNAL);
+            RUN_TEST(test_band_option_allocation);
+            if (band_option_storage == NULL) {
+                break;
+            }
+            ui_band_bin_use(band_option_storage, bytes);
+        }
+        RUN_TEST(test_menu_band_frame_cost);
+        RUN_TEST(test_options_band_frame_cost);
+        free_band_option();
+    }
+    band_option = BAND_OPTION_NAMES[BAND_OPTION_C];
+    band_ram = "internal";
+    band_complete_bin = false;
 }
 
 SUITE_REGISTER_ON_REQUEST(run_ui_band_perf_suite);
@@ -1504,24 +1602,26 @@ measure_options_band_case(bool open, const char* name, const options_screen_labe
     const input_t idle = {0};
     const input_t* warmup[] = {&idle, &idle, open ? &contact.press : &idle, open ? &contact.hold : &idle,
                                open ? &contact.release : &idle};
+    allocate_band_samples();
     for (size_t i = 0; i < sizeof warmup / sizeof warmup[0]; i++) {
         gfx_present_begin();
         gfx_present_wait();
         ui_clear_band_overlay();
         options_band_frame(warmup[i], &menu, labels);
+        sample_band_need();
     }
     TEST_ASSERT_EQUAL_INT(open ? 2 : 1, ui_context()->root_list.idx);
-    band_samples_t samples = {0};
     for (int frame = 0; frame < MENU_FRAMES; frame++) {
         gfx_present_begin();
         gfx_present_wait();
         ui_clear_band_overlay();
         const int64_t began_us = timing_now_us();
         options_band_frame(&idle, &menu, labels);
-        samples.frame_us[frame] = (int32_t)(timing_now_us() - began_us);
-        samples.fallbacks[frame] = ui_band_fallback_count();
+        sample_band_frame(frame, began_us);
     }
-    report_band_case(name, &samples);
+    report_band_case(name, band_samples);
+    memory_free(band_samples);
+    band_samples = NULL;
 }
 
 static void
@@ -1534,18 +1634,55 @@ test_options_band_frame_cost(void) {
     TEST_ASSERT_TRUE(ui_icon_set_load(&sand_icon_set));
     const gfx_mode_request_t request = {.layout = GFX_LAYOUT_BANDS};
     TEST_ASSERT_EQUAL(GFX_LAYOUT_BANDS, gfx_mode_enter(&request)->layout);
-    sand_mode_swatch_t swatches[SAND_COLOUR_MODE_COUNT];
+    band_swatches = memory_alloc(SAND_COLOUR_MODE_COUNT * sizeof *band_swatches, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(band_swatches);
     sand_mode_swatches(sand_dither_none_lut, sand_palette256_lut, GFX_INDEXED_PALETTE_SIZE, SAND_PALETTE_UI_ENTRIES,
-                       swatches);
+                       band_swatches);
     const options_screen_labels_t labels = {
         .quality_names = BAND_QUALITY_NAMES,
         .quality_count = sizeof BAND_QUALITY_NAMES / sizeof BAND_QUALITY_NAMES[0],
         .dither_names = BAND_DITHER_NAMES,
         .dither_count = GFX_DITHER_MODE_COUNT,
-        .mode_swatches = swatches,
+        .mode_swatches = band_swatches,
     };
     measure_options_band_case(false, "sand_options_closed", &labels);
     measure_options_band_case(true, "sand_options_dither_open", &labels);
     restore_menu_band_fixture();
     suite_clear_test_cleanup();
 }
+
+#ifndef DEVICE_BUILD
+static void
+restore_band_capacity_fixture(void) {
+    free_band_option();
+    restore_menu_band_fixture();
+}
+
+static void
+test_band_bin_capacity_changes(void) {
+    TEST_ASSERT_TRUE(gfx_init());
+    suite_set_test_cleanup(restore_band_capacity_fixture);
+    fixture();
+    const input_t idle = {0};
+    build_menu_frame(&idle, 0, MENU_DENSE_COMMANDS);
+    ui_end_for_bands(MENU_BACKGROUND);
+    const size_t need = ui_band_bin_need();
+    TEST_ASSERT_TRUE(need > ui_band_bin_bytes());
+    band_option_storage = memory_alloc(need, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(band_option_storage);
+    ui_band_bin_use(band_option_storage, need);
+    TEST_ASSERT_EQUAL_UINT(need, ui_band_bin_bytes());
+    build_menu_frame(&idle, 0, MENU_DENSE_COMMANDS);
+    ui_end_for_bands(MENU_BACKGROUND);
+    TEST_ASSERT_EQUAL_UINT(need, ui_band_bin_need());
+    ui_replay_band(0, GFX_HEIGHT);
+    TEST_ASSERT_EQUAL_UINT32(0, ui_band_fallback_count());
+    ui_band_bin_use(band_option_storage, 0);
+    build_menu_frame(&idle, 0, MENU_DENSE_COMMANDS);
+    ui_end_for_bands(MENU_BACKGROUND);
+    ui_replay_band(0, GFX_HEIGHT);
+    TEST_ASSERT_EQUAL_UINT32(1, ui_band_fallback_count());
+    restore_band_capacity_fixture();
+    suite_clear_test_cleanup();
+}
+#endif

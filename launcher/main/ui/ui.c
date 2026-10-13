@@ -535,6 +535,37 @@ static ui_band_entry_t ui_band_bin[UI_BAND_BIN_MAX];
 #ifdef ESP_PLATFORM
 _Static_assert(sizeof ui_band_bin <= UI_BAND_BIN_BUDGET_BYTES, "band bin fits its internal RAM budget");
 #endif
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_SELFTEST
+static ui_band_entry_t* ui_band_storage = ui_band_bin;
+static size_t ui_band_capacity = UI_BAND_BIN_MAX;
+static size_t ui_band_need;
+
+void
+ui_band_bin_use(void* storage, size_t capacity_bytes) {
+    ui_clear_band_overlay();
+    ui_band_storage = storage != NULL ? storage : ui_band_bin;
+    ui_band_capacity = storage != NULL ? capacity_bytes / sizeof(ui_band_bin[0]) : UI_BAND_BIN_MAX;
+}
+
+size_t
+ui_band_bin_bytes(void) {
+    return ui_band_capacity * sizeof(ui_band_bin[0]);
+}
+
+size_t
+ui_band_bin_need(void) {
+    return ui_band_need * sizeof(ui_band_bin[0]);
+}
+
+size_t
+ui_band_bin_entry_bytes(void) {
+    return sizeof(ui_band_bin[0]);
+}
+#else
+#define ui_band_storage  ui_band_bin
+#define ui_band_capacity UI_BAND_BIN_MAX
+#endif
+
 static int ui_band_bin_count;
 static uint32_t ui_band_overflow;
 static uint32_t ui_band_background;
@@ -603,8 +634,11 @@ command_row_range(const mu_Command* cmd, int* y0, int* y1) {
  * pixels beyond the retained prefix. Those bands replay the complete stream. */
 static ui_band_entry_t*
 bin_entry(const ui_band_entry_t* entry) {
-    if (ui_band_bin_count < UI_BAND_BIN_MAX) {
-        ui_band_entry_t* stored = &ui_band_bin[ui_band_bin_count++];
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_SELFTEST
+    ui_band_need++;
+#endif
+    if ((size_t)ui_band_bin_count < ui_band_capacity) {
+        ui_band_entry_t* stored = &ui_band_storage[ui_band_bin_count++];
         *stored = *entry;
         return stored;
     }
@@ -654,7 +688,7 @@ hash_band_entries(int row0, int row1) {
     uint64_t h = 1469598103934665603ull;
 
     for (int i = 0; i < ui_band_bin_count; i++) {
-        const ui_band_entry_t* e = &ui_band_bin[i];
+        const ui_band_entry_t* e = &ui_band_storage[i];
         if (!e->always && !(e->y0 < row1 && e->y1 > row0)) {
             continue;
         }
@@ -720,6 +754,9 @@ ui_end_for_bands(uint32_t background_rgb) {
 #endif
 
     ui_band_bin_count = 0;
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_SELFTEST
+    ui_band_need = 0;
+#endif
     const int n = ui_ctx.root_list.idx;
 
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
@@ -783,7 +820,7 @@ replay_full_band(void) {
 static void
 replay_binned_band(int row0, int row1) {
     for (int i = 0; i < ui_band_bin_count; i++) {
-        const ui_band_entry_t* e = &ui_band_bin[i];
+        const ui_band_entry_t* e = &ui_band_storage[i];
         if (!e->always && !(e->y0 < row1 && e->y1 > row0)) {
             continue;
         }
