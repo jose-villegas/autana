@@ -124,7 +124,7 @@ typedef struct {
 } scene_renderer_t;
 
 typedef struct {
-    r3d_scene_camera_t lens;
+    camera_t lens;
     scene_entity_t entity;
     uint16_t clear; /* panel pixel format */
 } scene_camera_t;
