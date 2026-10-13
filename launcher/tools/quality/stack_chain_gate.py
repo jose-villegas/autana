@@ -283,7 +283,7 @@ def main(argv):
                 if done.returncode != 0:
                     failed = True
                     print("stack_chain_gate: %s did not compile:\n%s"
-                          % (source, done.stderr[-600:]), file=sys.stderr)
+                          % (source, done.stderr), file=sys.stderr)
         return not failed
 
     shared_jobs = app_jobs(db)

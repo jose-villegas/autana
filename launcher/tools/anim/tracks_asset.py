@@ -15,6 +15,7 @@ import math
 import pathlib
 import re
 import struct
+from build.c_header import read_define
 import sys
 import tomllib
 
@@ -27,6 +28,7 @@ TYPE = b"TRCK"
 VERSION = 2
 HEADER = struct.Struct("<HHIIIB3x")
 ROW = struct.Struct("<HHIIIHBB4x")
+BINDING_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/anim/anim_binding.h"
 HEADER_SIZE = 20
 ROW_SIZE = 24
 AT_VERSION, AT_ROOT, AT_PAD = 0, 16, 17
@@ -287,7 +289,7 @@ def load_source(path):
     return path.parent / values["source"], values["animation"]
 
 
-def bake(path):
+def bake(path, node=None):
     """The entry's bytes for a .anim.toml."""
     source, animation = load_source(path)
     try:
@@ -295,6 +297,11 @@ def bake(path):
     except (OSError, ValueError) as error:
         raise TracksError("%s: source %s: %s" % (path, source, error)) from error
     tracks, duration_ms, root = clip_tracks(document, binary, find_animation(document, animation, source))
+    if node is not None:
+        target = read_define(BINDING_OWNER, "ANIM_TARGET_SELF")
+        tracks = [dict(track, path=target) for track in tracks if track["path"] == node]
+        if not tracks or root != ROOT_SCENE:
+            raise TracksError(f"{path}: camera node {node!r} has no property tracks")
     try:
         return encode(tracks, duration_ms, root)
     except (ValueError, OverflowError) as error:

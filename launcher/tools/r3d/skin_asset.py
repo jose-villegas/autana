@@ -1,20 +1,27 @@
-"""SKIN v1 encoding and LMSH position matching; docs/render/Skeleton-and-Skin.md."""
+"""SKIN v2 encoding and LMSH position matching; docs/render/Skeleton-and-Skin.md."""
 
 import math
 import struct
+from pathlib import Path
+from build.c_header import read_define
 
 from anim import skeleton_asset
 from gltf import gltf_read
 from r3d import gltf_skin, mesh_asset
+from r3d.import_settings import SKIN_LIGHTING
 
 TYPE = b'SKIN'
-VERSION = 1
+OWNER = Path(__file__).resolve().parents[2] / 'main/render/r3d_skin.h'
+VERSION = read_define(OWNER, 'R3D_SKIN_VERSION')
+LIGHTING_MODES = {name: read_define(OWNER, 'R3D_SKIN_LIGHT_' + name.upper())
+                  for name in SKIN_LIGHTING}
 ALIGNMENT = 4
 INFLUENCES = (2, 4)
 DEFAULT_INFLUENCES = 2
 WEIGHT_SUM = 255
 NORMAL_SCALE = 127
-HEADER = struct.Struct('<HBBIII')
+HEADER = struct.Struct('<HBBIIIB3B')
+AT_LIGHTING_MODE = HEADER.size - struct.calcsize('<B3B')
 # mesh_asset owns the LMSH position layout.
 MESH_POSITION = struct.Struct('<3h')
 MATRIX = struct.Struct('<12f')
@@ -24,7 +31,9 @@ MATRIX_AFFINE_TOLERANCE = 1e-6
 
 NORMAL_ATTRIBUTE = 'NORMAL'  # magic: the glTF 2.0 vertex attribute name, not an engine token
 
-def encode(inverse_binds, vertices, influences=DEFAULT_INFLUENCES):
+def encode(inverse_binds, vertices, influences=DEFAULT_INFLUENCES, lighting_mode=LIGHTING_MODES['direct']):
+    if lighting_mode not in LIGHTING_MODES.values():
+        raise ValueError('SKIN: unknown lighting mode')
     if influences not in INFLUENCES:
         raise ValueError('SKIN: influences must be 2 or 4')
     if not 1 <= len(inverse_binds) <= skeleton_asset.JOINT_MAX:
@@ -37,7 +46,7 @@ def encode(inverse_binds, vertices, influences=DEFAULT_INFLUENCES):
     matrix_off = HEADER.size
     vertices_off = matrix_off + len(inverse_binds) * MATRIX.size
     try:
-        entry = HEADER.pack(VERSION, len(inverse_binds), influences, len(vertices), matrix_off, vertices_off)
+        entry = HEADER.pack(VERSION, len(inverse_binds), influences, len(vertices), matrix_off, vertices_off, lighting_mode, 0, 0, 0)
         entry += b''.join(MATRIX.pack(*matrix) for matrix in inverse_binds)
         entry += b''.join(record.pack(*joints, *weights, *normal) for joints, weights, normal in vertices)
     except (struct.error, OverflowError) as error:
@@ -49,9 +58,11 @@ def encode(inverse_binds, vertices, influences=DEFAULT_INFLUENCES):
 def decode(entry):
     if len(entry) < HEADER.size:
         raise ValueError('SKIN: truncated header')
-    version, count, influences, vertices, matrix_off, vertices_off = HEADER.unpack_from(entry)
+    version, count, influences, vertices, matrix_off, vertices_off, mode, *padding = HEADER.unpack_from(entry)
     if version != VERSION:
         raise ValueError('SKIN: unknown version')
+    if mode not in LIGHTING_MODES.values() or any(padding):
+        raise ValueError('SKIN: lighting mode or nonzero padding')
     if influences not in INFLUENCES or not 1 <= count <= skeleton_asset.JOINT_MAX:
         raise ValueError('SKIN: influences or joint count')
     record = struct.Struct(f'<{influences}B{influences}B3bB')
@@ -72,7 +83,7 @@ def decode(entry):
                 or any(abs(n) > NORMAL_SCALE for n in normal) or not any(normal)):
             raise ValueError(f'SKIN: invalid vertex {index}')
         rows.append((joints, weights, normal))
-    return matrices, rows, influences
+    return matrices, rows, influences, mode
 
 
 def quantize_position(position, position_scale):
@@ -139,7 +150,7 @@ def match_vertices(positions, position_scale, source_positions, source_normals, 
     return vertices
 
 
-def bake(document, binary, mesh_node, mesh_entry, influences=DEFAULT_INFLUENCES):
+def bake(document, binary, mesh_node, mesh_entry, influences=DEFAULT_INFLUENCES, lighting_mode=LIGHTING_MODES['direct']):
     ordered, rows, name = skeleton_asset.rig(document, mesh_node)
     node = document['nodes'][mesh_node]
     skin = document['skins'][node['skin']]
@@ -175,4 +186,4 @@ def bake(document, binary, mesh_node, mesh_entry, influences=DEFAULT_INFLUENCES)
     inverse = [tuple(matrices[skin['joints'].index(j)][:12]) for j in ordered]
     mesh, scale = mesh_positions(mesh_entry)
     vertices = match_vertices(mesh, scale, positions, normals, joints, weights, influences)
-    return name, skeleton_asset.encode(rows), encode(inverse, vertices, influences)
+    return name, skeleton_asset.encode(rows), encode(inverse, vertices, influences, lighting_mode)

@@ -201,7 +201,7 @@ rgb_mix(uint32_t a, uint32_t b, int amount) {
     uint32_t mixed = 0;
     for (int shift = 0; shift <= 16; shift += 8) {
         const int from = (int)((a >> shift) & 0xffU);
-        mixed |= (uint32_t)(from + (((int)(b >> shift & 0xff) - from) * amount / 100)) << shift;
+        mixed |= (uint32_t)mathi_lerp(from, (int)(b >> shift & 0xff), amount, 100) << shift;
     }
     return mixed;
 }

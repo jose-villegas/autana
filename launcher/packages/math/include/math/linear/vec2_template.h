@@ -1,12 +1,13 @@
 /*
  * vec2_template: the two-component vector for one number type; see
- * math_template.h for the macro arguments. Its swizzles are
+ * docs/math/README.md for the macro arguments. Its swizzles are
  * vec_swizzle_template.h's.
  */
 #pragma once
 
 #include <stdbool.h>
 
+#include "math/linear/vec_ops_template.h"
 #include "math/linear/vec_swizzle_template.h"
 
 #define MATH_DEFINE_VEC2(P, T, W, OPS)                                                                                 \
@@ -15,11 +16,7 @@
         T x, y;                                                                                                        \
     } P##_t;                                                                                                           \
                                                                                                                        \
-    /* a + b = (ax + bx, ay + by). Arguments are by value, so a result may reuse either. */                            \
-    static inline P##_t P##_add(P##_t a, P##_t b) { return (P##_t){OPS##_add(a.x, b.x), OPS##_add(a.y, b.y)}; }        \
-                                                                                                                       \
-    /* a - b = (ax - bx, ay - by) */                                                                                   \
-    static inline P##_t P##_sub(P##_t a, P##_t b) { return (P##_t){OPS##_sub(a.x, b.x), OPS##_sub(a.y, b.y)}; }        \
+    MATH_DEFINE_VEC_OPS(P, OPS, 2)                                                                                     \
                                                                                                                        \
     /* a * s = (ax*s, ay*s), in the number type's own units (Q16.16 for fixed). */                                     \
     static inline P##_t P##_scale(P##_t a, T s) { return (P##_t){OPS##_mul(a.x, s), OPS##_mul(a.y, s)}; }              \

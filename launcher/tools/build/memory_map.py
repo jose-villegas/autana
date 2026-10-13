@@ -2,7 +2,7 @@
 """Account for internal memory and enforce budgets at IRAM placement sites.
 
 python launcher/tools/build/memory_map.py --source-only [--root ROOT]
-python launcher/tools/build/memory_map.py --check BUILD...
+python launcher/tools/build/memory_map.py --check [--require-pin] BUILD...
 python launcher/tools/build/memory_map.py BUILD... --update-budgets (all pinned variants)
 python launcher/tools/build/memory_map.py BUILD... --write
 python launcher/tools/build/memory_map.py BUILD... --tables DIR
@@ -33,7 +33,8 @@ from layout_pad import placed_sections
 sys.path.insert(0, str(ROOT / "scripts/gates"))
 from c_comments import scan
 
-BUDGET = re.compile(r"IRAM budget: ((?:(?:release|dev|diag) )?\d+ B(?:, (?:(?:release|dev|diag) )?\d+ B)*)")
+VARIANT_PATTERN = "|".join(map(re.escape, VARIANTS))
+BUDGET = re.compile(r"IRAM budget: ((?:(?:" + VARIANT_PATTERN + r") )?\d+ B(?:, (?:(?:" + VARIANT_PATTERN + r") )?\d+ B)*)")
 ATTRIBUTE = re.compile(r"\b(?:\w*IRAM_ATTR|\w*IRAM\w*_ATTR)\b|__attribute__\s*\(\(\s*section\s*\(\s*\"\.iram[^\"]*\"")
 PLACEMENT = re.compile(r"\((?:noflash\w*|iram\w*)\)")
 CONFIG_PLACEMENT = re.compile(r"CONFIG_\w*(?:(?:IN_IRAM|PLACE_\w*INTO_IRAM)\w*=y|PLACE_\w*INTO_FLASH=n)")
@@ -84,10 +85,13 @@ def components(root, metadata=None):
     if metadata is None:
         launcher = root / "launcher"
         cmake = (launcher / "CMakeLists.txt").read_text(encoding="utf-8")
-        extras = re.search(r"set\(EXTRA_COMPONENT_DIRS\s+([^)]*)\)", cmake)
+        declarations = re.findall(r"\bset\s*\(\s*EXTRA_COMPONENT_DIRS\b\s*([^)]*)\)", cmake, re.I)
+        if len(declarations) > 1 or re.search(r"\blist\s*\(\s*APPEND\s+EXTRA_COMPONENT_DIRS\b", cmake, re.I):
+            raise ValueError("unsupported repeated EXTRA_COMPONENT_DIRS declaration")
+        extras = declarations[0] if declarations else None
         parents = [launcher / "components"]
         if extras:
-            for entry in re.findall(r'"([^";]+)"|([^\s";]+)', extras[1]):
+            for entry in re.findall(r'"([^";]+)"|([^\s";]+)', extras):
                 value = next(part for part in entry if part).replace("${CMAKE_CURRENT_LIST_DIR}", str(launcher))
                 if "$" in value:
                     raise ValueError(f"unsupported EXTRA_COMPONENT_DIRS: {value}")
@@ -110,7 +114,7 @@ def parse_budget(reason):
         raise ValueError("mixed plain and per-variant IRAM budget syntax")
     if clause[0].isdigit():
         return int(clause.split()[0])
-    entries = re.findall(r"(release|dev|diag) (\d+) B", clause)
+    entries = re.findall(r"(" + VARIANT_PATTERN + r") (\d+) B", clause)
     if len(dict(entries)) != len(entries):
         raise ValueError("duplicate IRAM budget variant")
     return {name: int(value) for name, value in entries}
@@ -178,9 +182,14 @@ def sites(root, owned=None):
     return found
 
 
+def commit_drift(commit, pinned_commit):
+    """How a build's ESP-IDF commit differs from the pinned one, or "" when it is the pin."""
+    return "; ".join(idf_drift({"commit": commit}, {"commit": pinned_commit}))
+
+
 def check(placements, inputs, variant, owned, active, idf_commit=None, pinned_commit=None, exact=True):
     errors = []
-    drift = "; ".join(idf_drift({"commit": idf_commit}, {"commit": pinned_commit})) if idf_commit is not None else None
+    drift = commit_drift(idf_commit, pinned_commit) if idf_commit is not None else None
     used = Counter()
     names = {}
     for item in inputs:
@@ -391,6 +400,14 @@ def map_inputs(text, elf_symbols):
     return inputs, sections, constants
 
 
+def build_variant(build):
+    build_id = (build / "build_id.txt").read_text(encoding="utf-8").strip()
+    variant = build_id.rsplit("-", 1)[-1]
+    if variant not in VARIANTS:
+        raise ValueError(f"unknown build variant: {build_id}")
+    return build_id, variant
+
+
 def read_build(build, root=ROOT):
     metadata = json.loads((build / "project_description.json").read_text(encoding="utf-8"))
     elf = build / metadata["app_elf"]
@@ -409,10 +426,7 @@ def read_build(build, root=ROOT):
     config = configuration((build / "sdkconfig").read_text(encoding="utf-8"))
     regions = {name: (int(address, 16), int(size, 16)) for name, address, size in
                re.findall(r"^(iram0_0_seg|dram0_0_seg)\s+(0x[\da-f]+)\s+(0x[\da-f]+)", maptext, re.M)}
-    build_id = (build / "build_id.txt").read_text(encoding="utf-8").strip()
-    variant = build_id.rsplit("-", 1)[-1]
-    if variant not in VARIANTS:
-        raise ValueError(f"unknown build variant: {build_id}")
+    build_id, variant = build_variant(build)
     return dict(build=build, metadata=metadata, owned=components(root, metadata), build_id=build_id, variant=variant, idf_commit=idf_commit(metadata["idf_path"]), inputs=inputs, sections=sections, constants=constants,
                 size=size, align=align, pad=pad, slack=slack, config=config, regions=regions)
 
@@ -426,7 +440,7 @@ def update_budgets(root, builds):
         raise ValueError("budget update missing variants: " + ", ".join(missing))
     pin = idf_pin(root)
     for build in builds:
-        drift = "; ".join(idf_drift({"commit": build["idf_commit"]}, pin))
+        drift = commit_drift(build["idf_commit"], pin["commit"])
         if drift:
             raise ValueError(f"cannot update budgets: {drift}")
     measured, files = {}, {}
@@ -440,11 +454,11 @@ def update_budgets(root, builds):
         text, edits = files[name]
         prefix = "".join(text.splitlines(keepends=True)[:line - 1])
         matches = list(BUDGET.finditer(prefix))
-        if not matches:
-            raise ValueError(f"{name}:{line}: budget clause is not contiguous")
         values = set(sizes.values())
         clause = str(next(iter(values))) + " B" if len(values) == 1 else ", ".join(
             f"{variant} {sizes[variant]} B" for variant in VARIANTS if variant in sizes)
+        previous = matches[-1].group(1)
+        print(f"{name}:{line}: {previous} -> {clause}")
         edits.append((matches[-1].start(1), matches[-1].end(1), clause))
     for name, (text, edits) in files.items():
         for start, end, clause in sorted(edits, reverse=True):
@@ -461,6 +475,9 @@ def render(builds):
     if release is None:
         raise ValueError("documentation tables require a release build")
     lines = [f"> Generated by: `{REGENERATE}`", "", "Bytes from each build's ELF, link map, sdkconfig and ESP-IDF size JSON. Heap is a link-time range, not runtime free memory.", ""]
+    pin = idf_pin()
+    for commit in dict.fromkeys(b["idf_commit"] for b in builds if commit_drift(b["idf_commit"], pin["commit"])):
+        lines.extend([f"Built on IDF {commit[:12]}; launcher/idf-pin.json pins {pin['commit'][:12]}, so measured bytes can differ from the budgets.", ""])
     rows = []
     for name in ("iram0_0_seg", "dram0_0_seg"):
         rows.append((name + " shared alias", *(f"{hex(b['regions'][name][0])}–{hex(sum(b['regions'][name]))} ({b['regions'][name][1]} B)" for b in builds)))
@@ -532,6 +549,7 @@ def main():
     modes.add_argument("--tables", type=Path)
     modes.add_argument("--check", action="store_true")
     modes.add_argument("--update-budgets", action="store_true")
+    parser.add_argument("--require-pin", action="store_true", help="fail when a build differs from the pinned IDF commit")
     args = parser.parse_args()
     try:
         if args.source_only:
@@ -544,11 +562,14 @@ def main():
         pin = idf_pin(args.root)
         errors = []
         for build in builds:
-            placements, active = build_sites(args.root.resolve(), build)
             try:
+                placements, active = build_sites(args.root.resolve(), build)
+                drift = commit_drift(build["idf_commit"], pin["commit"])
+                if args.require_pin and drift:
+                    errors.append(f"{build['variant']}: IDF drift: {drift}")
                 build["report"] = check(placements, build["inputs"], build["variant"], build["owned"], active, build["idf_commit"], pin["commit"], exact=not args.update_budgets)
             except ValueError as error:
-                errors.append(str(error))
+                errors.append(f"{build['variant']}: {error}")
                 continue
             if args.update_budgets:
                 continue

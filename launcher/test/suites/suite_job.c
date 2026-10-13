@@ -87,6 +87,17 @@ test_the_context_limit_accepts_its_boundary_and_rejects_the_next_byte(void) {
 }
 
 #ifndef DEVICE_BUILD
+static void
+test_a_host_split_reports_inline_and_finishes_both_ranges(void) {
+    int first = 0;
+    int second = 0;
+    job_test_ctx_t a = {.value = 0, .observed = &first};
+    job_test_ctx_t b = {.value = 0, .observed = &second};
+    TEST_ASSERT_FALSE(job_run_split(job_test_increment, &a, &b, sizeof a));
+    TEST_ASSERT_EQUAL_INT(1, first);
+    TEST_ASSERT_EQUAL_INT(1, second);
+}
+
 /* The contract a caller whose job blocks on the caller's own progress relies
  * on: no core 1, no run at all. Inline is what it must never be. */
 static void
@@ -109,6 +120,18 @@ job_test_slow(void* ctx) {
     const job_slow_ctx_t* const work = ctx;
     timing_sleep_ms(20);
     *work->finished = true;
+}
+
+static void
+test_an_idle_worker_split_runs_both_halves_on_device(void) {
+    TEST_ASSERT_TRUE(job_wait(JOB_TEST_WAIT_MS));
+    int first = 0;
+    int second = 0;
+    const job_test_ctx_t a = {.value = 0, .observed = &first};
+    const job_test_ctx_t b = {.value = 0, .observed = &second};
+    TEST_ASSERT_TRUE(job_run_split(job_test_increment, &a, &b, sizeof a));
+    TEST_ASSERT_EQUAL_INT(1, first);
+    TEST_ASSERT_EQUAL_INT(1, second);
 }
 
 static void
@@ -143,8 +166,10 @@ suite_job(void) {
     RUN_TEST(test_the_context_limit_accepts_its_boundary_and_rejects_the_next_byte);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_a_host_try_refuses_rather_than_running_inline);
+    RUN_TEST(test_a_host_split_reports_inline_and_finishes_both_ranges);
 #endif
 #ifdef DEVICE_BUILD
+    RUN_TEST(test_an_idle_worker_split_runs_both_halves_on_device);
     RUN_TEST(test_a_try_on_an_idle_worker_reaches_core_1);
     RUN_TEST(test_a_try_refuses_while_a_job_is_outstanding);
 #endif

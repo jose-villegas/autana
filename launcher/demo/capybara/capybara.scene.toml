@@ -1,4 +1,4 @@
-# The capybara on a meadow under one sun: direct light only, baked per vertex.
+# An idle capybara lit at runtime on a baked meadow under one sun.
 tonemap_white = 0.3
 
 [ambient]
@@ -32,9 +32,12 @@ background = 0x9CC0E6
 [[objects]]
 name = "capybara"
 
-[objects.mesh_renderer]
+[objects.skinned_renderer]
 mesh = "capybara.import.toml"
-bake = true
+
+[objects.animator]
+default_clip = "idle"
+wrap = "loop"
 
 [[objects]]
 name = "meadow"

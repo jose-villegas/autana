@@ -1,6 +1,6 @@
 /*
  * vec2x: a 2-component vector of a Q16.16. The operations are
- * vec2_template.h's; math_template.h says how they are made.
+ * vec2_template.h's; docs/math/README.md says how they are made.
  */
 #pragma once
 
@@ -10,3 +10,4 @@
 #include "math/scalar/mathx.h"
 
 MATH_DEFINE_VEC2(vec2x, int32_t, int32_t, mathx)
+MATH_DEFINE_VEC_LERP(vec2x, int32_t, mathx, 2)

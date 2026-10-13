@@ -2,7 +2,7 @@
  * Host-only suite: the shell's system registry runs every phase over the
  * registered systems in `order`, then by name, hands each the time it was
  * given, and skips a system that leaves a phase NULL. Its fake systems exist
- * only inside each test; the real list is put back even after a failure.
+ * only inside each test; tearDown puts the real list back, even after a failure.
  */
 
 #include "suites.h"
@@ -13,6 +13,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "test_cleanup.h"
 #include "unity.h"
 
 #include "shell/shell_system.h"
@@ -21,8 +22,7 @@
 #define CALL_LEN    32
 #define SYSTEMS_MAX 3
 
-/* The running test's own buffers, freed by the next fixture() if a failed
- * assertion skipped the test's end. */
+/* The running test's own buffers, freed by tearDown through restore(). */
 static char (*calls)[CALL_LEN];
 static int call_count;
 static shell_system_t* systems;
@@ -53,6 +53,7 @@ fixture(void) {
     call_count = 0;
     real_list = shell_system_swap_for_test(NULL);
     swapped = true;
+    suite_add_test_cleanup(restore);
 }
 
 static void
@@ -146,7 +147,6 @@ test_every_phase_runs_the_systems_by_order_whatever_order_they_registered_in(voi
         phases[p].run(16);
         expect_calls(phases[p].phase, by_order, 3, &phases[p], 16);
     }
-    restore();
 }
 
 static void
@@ -172,7 +172,6 @@ test_systems_with_the_same_order_run_by_name_whichever_registered_first(void) {
             phases[p].run(16);
             expect_calls(cases[i].case_name, by_name, 2, &phases[p], 16);
         }
-        restore();
     }
 }
 
@@ -191,7 +190,6 @@ test_each_system_is_given_the_passes_own_time(void) {
             phases[p].run(dts[i]);
             expect_calls(phases[p].phase, both, 2, &phases[p], dts[i]);
         }
-        restore();
     }
 }
 
@@ -210,7 +208,6 @@ test_a_system_whose_phase_is_null_is_skipped_by_that_phase_alone(void) {
         phases[p].run(16);
         expect_calls(phases[p].phase, &runs[p], 1, &phases[p], 16);
     }
-    restore();
 }
 
 static void
@@ -229,7 +226,6 @@ test_the_present_overlaps_when_any_system_asks_and_never_by_default(void) {
 
     fixture();
     TEST_ASSERT_FALSE_MESSAGE(shell_systems_overlap_present(), "an empty registry");
-    restore();
 
     for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
         fixture();
@@ -238,7 +234,6 @@ test_the_present_overlaps_when_any_system_asks_and_never_by_default(void) {
         shell_system_register(&systems[0]);
         shell_system_register(&systems[1]);
         TEST_ASSERT_EQUAL_MESSAGE(cases[i].overlaps, shell_systems_overlap_present(), cases[i].name);
-        restore();
     }
 }
 
@@ -249,7 +244,6 @@ run_shell_system_suite(void) {
     RUN_TEST(test_each_system_is_given_the_passes_own_time);
     RUN_TEST(test_a_system_whose_phase_is_null_is_skipped_by_that_phase_alone);
     RUN_TEST(test_the_present_overlaps_when_any_system_asks_and_never_by_default);
-    restore();
 }
 
 #else

@@ -127,7 +127,7 @@ def compare(args, target, directory):
             image = gltf_preview.render(rendered, camera, positions, size, lit=[tuple(rgb) for rgb in mesh.rgb.tolist()])
             images.append(image)
             variant_positions.append(positions)
-            _, records, _ = skin_asset.decode(skin)
+            _, records, _, _ = skin_asset.decode(skin)
             packed_reference = quantized_reference(asset, reference_pose, ordered, records, mesh.pos, args.scale)
             error = max(math.dist(a, b) for a, b in zip(positions, packed_reference))
             stats.append(dict(clip=clip, ms=ms, influences=influences, max_position_error=error,

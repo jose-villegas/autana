@@ -23,7 +23,7 @@ def make_tree(root, page_extra="", template_extra="", header_extra="", skip_sect
         body = "#define MATH_DEFINE_X(P) \\\n" + FUNCTION + (template_extra if family == "vec2" else "")
         if family == empty_template:
             body = "#define MATH_DEFINE_X(P)\n"
-        (math / (family + "_template.h")).write_text(body)
+        (math / (family + "_template.h")).write_text(body.replace("MATH_DEFINE_X", "MATH_DEFINE_" + family.upper()))
     for directory, body in (("scalar", scalar_extra), ("motion", outside_extra)):
         headers = math.parent / directory
         headers.mkdir()
@@ -115,6 +115,33 @@ class CheckMathDocs(unittest.TestCase):
     def test_a_template_function_missing_from_the_page_fails(self):
         extra = "    static inline int P##_wobble(int a) { return a; } \\\n"
         self.assertTrue(any("P_wobble(" in p for p in problems_for(template_extra=extra)))
+
+    def test_nested_definers_bind_renamed_operation_parameters(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            make_tree(root, template_extra="    MATH_FORWARD(P, wobble)\n")
+            math = root / check_math_docs.MATH
+            (math / "vec_ops_template.h").write_text(
+                "#define MATH_FORWARD(P, NAME) MATH_OP(P, NAME)\n"
+                "#define MATH_OP(P, OP) static inline int P##_##OP(int a) { return a; }\n"
+            )
+            self.assertEqual(
+                ["docs/math/README.md: the vec2 section lacks `P_wobble(`"],
+                check_math_docs.check(root),
+            )
+            page = root / check_math_docs.PAGE
+            page.write_text(page.read_text().replace("### vec2\n", "### vec2\n`P_wobble(a)`\n"))
+            self.assertEqual([], check_math_docs.check(root))
+
+    def test_recursive_definers_stop_at_a_cycle(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            make_tree(root, template_extra="    MATH_CYCLE(P)\n")
+            (root / check_math_docs.MATH / "vec_ops_template.h").write_text(
+                "#define MATH_CYCLE(P) MATH_BACK(P)\n"
+                "#define MATH_BACK(P) MATH_CYCLE(P)\n"
+            )
+            self.assertEqual([], check_math_docs.check(root))
 
     def test_a_hand_written_function_the_page_lacks_fails(self):
         extra = "static inline int\nvec2f_wobble(int a) {\n    return a;\n}\n"

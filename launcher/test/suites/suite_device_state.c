@@ -7,7 +7,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "console/device_state.h"
+#include "console/capture/device_state.h"
 
 static void
 test_full_state_formats_exactly(void) {

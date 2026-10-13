@@ -10,8 +10,8 @@ an .icons.toml, a .curve.toml or a folder searched for these roots; with none,
 launcher/main is searched. An app's demo_assets.toml adds launcher/demo/NAME
 for each NAME in its `demo` list; one inside launcher/demo is refused. A
 folder reached twice is searched once. A root is a file nothing else names:
-NAME.scene.toml is pack NAME, holding the scene entry NAME, every mesh its
-renderers name and the clip its camera flies; an NAME.import.toml no scene
+NAME.scene.toml is pack NAME, holding the scene entry NAME, every mesh, skin, skeleton
+and clip it names; an NAME.import.toml no scene
 places is pack NAME, holding its variants; an NAME.anim.toml no scene names
 is pack NAME, holding its one clip; an NAME.image.toml is pack NAME, holding
 its one picture; an NAME.icons.toml is pack NAME, holding an image entry per
@@ -252,7 +252,17 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
         raise SettingsError("no baked mesh at " + ", ".join(missing) + "; run mesh_import.py first")
     result = {}
     for name, sources in sorted(packs.items()):
-        entry_rows = [pack_entry(key, source, engine_frame=False) for key, source in sorted(sources.items())]
+        camera_nodes = {}
+        for source in sources.values():
+            if source.name.endswith(SCENE):
+                for obj in load_scene(source).objects:
+                    path = obj.component.path if obj.kind == "camera" else None
+                    if path:
+                        previous = camera_nodes.setdefault(path.animation, path.node)
+                        if previous != path.node:
+                            raise SettingsError(f"{source}: camera clip {path.clip!r} selects different nodes")
+        entry_rows = [pack_entry(key, source, engine_frame=False, camera_node=camera_nodes.get(source.resolve()),
+                                 cache=cache, offline=offline) for key, source in sorted(sources.items())]
         mesh_rows = [(key, original_packs[name][key], data) for key, kind, data in entry_rows
                      if kind == LIT_MESH and original_packs[name][key].resolve() in jobs]
         additions = skin_pack.entries(mesh_rows, jobs, cache or bake.default_cache(), offline, max_influences)
@@ -267,7 +277,7 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
     return result
 
 
-def pack_entry(key, source, engine_frame=True):
+def pack_entry(key, source, engine_frame=True, camera_node=None, cache=None, offline=False):
     """The pack entry `key`: a scene, clip, picture or icon baked from its
     file, or a curve table, else a mesh's bytes; a scene, clip or mesh in the engine frame unless
     `engine_frame` is false (the skin step matches the source-frame mesh)."""
@@ -279,9 +289,9 @@ def pack_entry(key, source, engine_frame=True):
         if source.name.endswith(ICONS):
             return key, image_asset.TYPE, icons_asset.bake(source, key)
         if source.name.endswith(SCENE):
-            kind, data = scene_asset.TYPE, scene_asset.bake(source)
+            kind, data = scene_asset.TYPE, scene_asset.bake(source, cache, offline)
         elif source.name.endswith(CLIP):
-            kind, data = tracks_asset.TYPE, tracks_asset.bake(source)
+            kind, data = tracks_asset.TYPE, tracks_asset.bake(source, camera_node)
         else:
             kind, data = LIT_MESH, source.read_bytes()
         return key, kind, to_engine(kind, data) if engine_frame else data

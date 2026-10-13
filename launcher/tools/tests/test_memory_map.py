@@ -1,5 +1,7 @@
 """Small source and map fixtures for the internal-memory gate."""
 import sys
+import contextlib
+import io
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -7,6 +9,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "build"))
 import memory_map as memory
+import compile_db
+import espressif
 from doc_tables import markdown
 import iram_what_if as probe
 import json
@@ -30,9 +34,8 @@ class MemoryMapTests(unittest.TestCase):
         path.write_text(text)
         return memory.sites(self.root)
 
-    def check(self, placements, inputs, config=None, active=None):
+    def check(self, placements, inputs, config=None, active=None, variant="release"):
         config = config or {}
-        variant = "diag" if config.get("CONFIG_LAUNCHER_SELFTEST") == "y" else "dev" if config.get("CONFIG_LAUNCHER_DEVELOPMENT") == "y" else "release"
         for site in placements:
             if site.path.endswith(".lf") and isinstance(site.entries, bool):
                 site.entries = memory.fragment_entries(site, self.root, config)
@@ -113,18 +116,17 @@ class MemoryMapTests(unittest.TestCase):
         _, sections, _ = memory.map_inputs(".iram0.text_end\n  0x40380101 0xff\n", {})
         self.assertEqual(sections[".iram0.text_end"], (0x40380101, 255))
 
-    def build(self, config, size):
+    def build(self, config, size, variant="release"):
         placements = self.source("/* Cache-off caller. IRAM budget: release 4 B, dev 8 B, diag 8 B */\nstatic void IRAM_ATTR foo(void) {}", "launcher/main/apps/demo/nested/foo.c")
         inputs = [memory.Input("libmain.a", "foo.c.obj", "foo", size)]
-        variant = "dev" if config.get("CONFIG_LAUNCHER_DEVELOPMENT") == "y" else "release"
-        return dict(variant=variant, build_id="abcdef123456-" + variant, idf_commit="fixture-idf", config=config, inputs=inputs, owned=memory.components(self.root), report=self.check(placements, inputs, config),
+        return dict(variant=variant, build_id="abcdef123456-" + variant, idf_commit="fixture-idf", config=config, inputs=inputs, owned=memory.components(self.root), report=self.check(placements, inputs, config, variant=variant),
                     sections={".iram0.text": (0x40380000, size), ".dram0.data": (0x3fc80100, 16), ".dram0.bss": (0x3fc80110, 16)},
                     align=256, pad=16, slack=256-size, constants={"_heap_start": 0x3fc80120},
                     regions={"iram0_0_seg": (0x40380000, 1024), "dram0_0_seg": (0x3fc80000, 1024)},
                     size={"layout": [{"name": "DIRAM", "used": size+32}]})
 
     def test_generated_block_stable(self):
-        release, dev = self.build({"CONFIG_LAUNCHER_RELEASE": "y"}, 4), self.build({"CONFIG_LAUNCHER_DEVELOPMENT": "y"}, 8)
+        release, dev = self.build({"CONFIG_LAUNCHER_RELEASE": "y"}, 4), self.build({"CONFIG_LAUNCHER_DEVELOPMENT": "y"}, 8, variant="dev")
         second = memory.Site("launcher/main/bar.c", 2, "engine", "Interrupt latency.", {"release": 4, "dev": 8}, "libmain.a", [("bar", "bar")])
         for build, count in ((release, 4), (dev, 8)):
             build["inputs"] += [memory.Input("libmain.a", "bar.c.obj", "bar", count), memory.Input("libfixed.a", "same.c.obj", "same", 4)]
@@ -145,6 +147,11 @@ class MemoryMapTests(unittest.TestCase):
         self.assertNotIn("libfixed.a", differs)
         self.assertNotIn("literal_only", differs)
         self.assertIn("extra.c.obj:extra (4 B)", differs)
+        row = next(line for line in differs.splitlines() if line.startswith("| libmain.a |"))
+        self.assertEqual(row.split("|")[-3:-1], ["  ", " extra.c.obj:extra (4 B) "])
+        self.assertIn("Built on IDF fixture-idf; launcher/idf-pin.json pins " + memory.idf_pin()["commit"][:12], body)
+        with patch.object(memory, "idf_pin", return_value={"commit": "fixture-idf"}):
+            self.assertNotIn("measured bytes can differ", memory.render([release, dev]))
         self.assertEqual(body.count("abcdef123456-release"), 1)
         self.assertIn("IDF fixture-idf", body)
         self.assertIn("\u2013", body)
@@ -177,7 +184,7 @@ print(m.render(builds))
         self.assertEqual(outputs[0], outputs[1])
 
     def test_documentation_needs_release_build(self):
-        build = self.build({"CONFIG_LAUNCHER_DEVELOPMENT": "y"}, 8)
+        build = self.build({"CONFIG_LAUNCHER_DEVELOPMENT": "y"}, 8, variant="dev")
         with self.assertRaisesRegex(ValueError, "release build"):
             memory.render([build])
 
@@ -337,7 +344,7 @@ print(m.render(builds))
     def test_variant_budget_missing(self):
         site=memory.Site("foo.c",1,"engine","Cache latency.",{"release":4},"libmain.a",[("foo","foo")])
         with self.assertRaisesRegex(ValueError,"missing dev"):
-            self.check([site],[memory.Input("libmain.a","foo.c.obj","foo",4)],{"CONFIG_LAUNCHER_DEVELOPMENT":"y"})
+            self.check([site],[memory.Input("libmain.a","foo.c.obj","foo",4)], variant="dev")
 
     def test_probe_selection_and_identity(self):
         self.assertIn("silent-assertions",probe.experiments("release"))
@@ -651,6 +658,180 @@ print(m.render(builds))
             done=subprocess.run([sys.executable,script,"--source-only","--root",str(self.root)],capture_output=True,text=True)
             self.assertEqual(done.returncode,expected,done.stderr)
 
+
+
+class GateRegressions(unittest.TestCase):
+    def test_compile_source_spellings(self):
+        for source in ("arbitrary.c", "C:/w/dir/arbitrary.c", r"C:\w\dir\arbitrary.c", "c:/w/dir/arbitrary.c"):
+            with self.subTest(source=source):
+                entry = {"file": "C:/w/dir/arbitrary.c", "directory": "C:/w/dir",
+                         "arguments": ["cc", "-DKEEP=y", "-c", source, "-o", "out.o", "-MF", "out.d", "-MT", "target", "-MQ", "quoted"]}
+                self.assertEqual(compile_db.compile_flags(entry), ["cc", "-DKEEP=y"])
+                entry.pop("arguments")
+                entry["command"] = f'cc -DKEEP=y -c "{source}" -o out.o -MF out.d -MT target -MQ quoted'
+                self.assertEqual(compile_db.compile_flags(entry), ["cc", "-DKEEP=y"])
+
+    def test_windows_response_and_quotes(self):
+        with patch.object(compile_db.os, "name", "nt"):
+            entry = {"file": "C:/w dir/foo.c", "directory": "C:/w dir",
+                     "command": '"cc.exe" @"file.rsp" "-Iinclude path" -c "foo.c" -o "out.o"'}
+            self.assertEqual(compile_db.compile_flags(entry), ["cc.exe", "@file.rsp", "-Iinclude path"])
+
+    def test_main_pin_controls_exactness(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "launcher").mkdir()
+            pin = root / "launcher/idf-pin.json"
+            site = memory.Site("foo.c", 1, "engine", "Cache latency.", 4, "libmain.a", [("foo", "foo")])
+            build = dict(variant="release", idf_commit="measured", owned={"libmain.a"},
+                         inputs=[memory.Input("libmain.a", "foo.c.obj", "foo", 8)])
+            for commit, flags, status in (("measured", [], 1), ("other", [], 0), ("other", ["--require-pin"], 1)):
+                pin.write_text(json.dumps({"commit": commit}))
+                output = io.StringIO()
+                with patch.object(sys, "argv", ["memory_map.py", "fixture", "--root", str(root), "--check", *flags]), patch.object(memory, "read_build", return_value=build), patch.object(memory, "build_sites", return_value=([site], lambda site: True)), contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
+                    self.assertEqual(memory.main(), status)
+                if status == 0:
+                    self.assertIn("NOTE IDF drift: commit measured here, other pinned", output.getvalue())
+
+    def test_unknown_build_suffix(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory)
+            for suffix in (*memory.VARIANTS, "unexpected"):
+                (build / "build_id.txt").write_text("identity-" + suffix)
+                if suffix in memory.VARIANTS:
+                    self.assertEqual(memory.build_variant(build), ("identity-" + suffix, suffix))
+                else:
+                    with self.assertRaisesRegex(ValueError, "unknown build variant"):
+                        memory.build_variant(build)
+
+    def test_all_build_problems_are_reported(self):
+        site = memory.Site("foo.c", 1, "engine", "Cache latency.", {"release": 4}, "libmain.a", [("foo", "foo")])
+        builds = [dict(variant=variant, idf_commit="pinned", owned={"libmain.a"},
+                       inputs=[memory.Input("libmain.a", "foo.c.obj", "foo", 8), memory.Input("libmain.a", "other.c.obj", "other", 2)])
+                  for variant in memory.VARIANTS]
+        output = io.StringIO()
+        with patch.object(sys, "argv", ["memory_map.py", "--check", *memory.VARIANTS]), patch.object(memory, "idf_pin", return_value={"commit": "pinned"}), patch.object(memory, "read_build", side_effect=builds), patch.object(memory, "build_sites", return_value=([site], lambda site: True)), contextlib.redirect_stderr(output):
+            self.assertEqual(memory.main(), 1)
+        for variant in memory.VARIANTS:
+            self.assertIn(variant + ":", output.getvalue())
+        self.assertEqual(output.getvalue().count("no site"), len(memory.VARIANTS))
+        self.assertIn("set the budget to 8 B", output.getvalue())
+        for variant in memory.VARIANTS[1:]:
+            self.assertIn("missing " + variant, output.getvalue())
+
+    def test_live_empty_site_fails_under_drift(self):
+        site = memory.Site("foo.c", 1, "engine", "Cache latency.", 4, "libmain.a", [("foo", "foo")])
+        with contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(ValueError, "placed nothing"):
+            memory.check([site], [], "release", {"libmain.a"}, lambda site: True, "local", "pin")
+
+    def test_source_component_declarations(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            component = root / "launcher/custom/chosen"
+            component.mkdir(parents=True)
+            (component / "foo.c").write_text("/* Cache latency. IRAM budget: 4 B */\nvoid IRAM_ATTR foo(void) {}")
+            cmake = root / "launcher/CMakeLists.txt"
+            cmake.write_text("set(EXTRA_COMPONENT_DIRS ${CMAKE_CURRENT_LIST_DIR}/custom)\n")
+            self.assertEqual(memory.sites(root)[0].path, "launcher/custom/chosen/foo.c")
+            for extra in ("set(EXTRA_COMPONENT_DIRS custom)", "set(EXTRA_COMPONENT_DIRS)", "list(APPEND EXTRA_COMPONENT_DIRS custom)"):
+                cmake.write_text("set(EXTRA_COMPONENT_DIRS custom)\n" + extra)
+                with self.assertRaisesRegex(ValueError, "EXTRA_COMPONENT_DIRS"):
+                    memory.components(root)
+            cmake.write_text("set(EXTRA_COMPONENT_DIRS ${UNSUPPORTED}/custom)")
+            with self.assertRaisesRegex(ValueError, "unsupported EXTRA_COMPONENT_DIRS"):
+                memory.components(root)
+
+    def test_stack_jobs_reuse_filtered_flags(self):
+        sys.path.insert(0, str(memory.ROOT / "launcher/tools/quality"))
+        import stack_chain_gate
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "foo.c"
+            source.write_text("void root(void) {}")
+            db = root / "compile_commands.json"
+            db.write_text(json.dumps([{"directory": str(root), "file": str(source),
+                                       "arguments": ["cc", "-DKEEP=y", "-c", "foo.c", "-o", "foo.o", "-MF", "foo.d", "-MT", "target", "-MQ", "quoted"]}]))
+            jobs = stack_chain_gate.app_jobs(str(db), str(root))
+            self.assertEqual(jobs, [(["cc", "-DKEEP=y"], str(root), str(source).replace("\\", "/"))])
+
+    def test_default_pin_reader(self):
+        expected = json.loads((memory.ROOT / "launcher/idf-pin.json").read_text())
+        self.assertEqual(espressif.idf_pin(), expected)
+
+    def test_probe_config_prefix_and_bss(self):
+        rewritten = probe.rewrite_config("CONFIG_A=y\nCONFIG_AB=y\n", {"CONFIG_A": "n"})
+        self.assertEqual(memory.configuration(rewritten), {"CONFIG_A": "n", "CONFIG_AB": "y"})
+        baseline = dict(sections={".dram0.data": (0, 8), ".dram0.bss": (0, 16)}, constants={"_heap_start": 100})
+        measured = dict(sections={".dram0.data": (0, 4), ".dram0.bss": (0, 8)}, constants={"_heap_start": 88}, config=probe.OPTIONS["ringbuf-to-flash"]["config"])
+        self.assertEqual(probe.result_row("ringbuf-to-flash", baseline, measured)[2:4], (12, -12))
+
+    def test_probe_main_two_variant_baselines_and_failures(self):
+        from types import SimpleNamespace
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            launcher = root / "launcher"
+            (launcher / "main").mkdir(parents=True)
+            defaults = launcher / "sdkconfig.defaults"
+            fragment = launcher / "main/linker.lf"
+            original_defaults = "CONFIG_A=y\nCONFIG_AB=y\n"
+            original_fragment = "original (noflash)"
+            defaults.write_text(original_defaults)
+            fragment.write_text(original_fragment)
+            builds = []
+            for variant in ("release", "dev"):
+                build = root / variant
+                build.mkdir()
+                (build / "build_id.txt").write_text("template-" + variant)
+                (build / "project_description.json").write_text(json.dumps({"idf_path": "idf"}))
+                (build / "sdkconfig").write_text("CONFIG_A=y\nCONFIG_AB=y\nCONFIG_LAUNCHER_SELFTEST=y\n")
+                builds.append(str(build))
+            options = {"first": {"variants": ("release",), "config": {"CONFIG_A": "n"}},
+                       "second": {"variants": ("release", "dev"), "config": {"CONFIG_A": "n"}}}
+            def measured(variant, size):
+                return dict(build_id="fresh-" + variant, idf_commit="local", inputs=[],
+                            sections={".iram0.text": (0, size)}, constants={"_heap_start": 100}, config={"CONFIG_A": "n"})
+            snapshots = []
+            def run(command, **kwargs):
+                snapshots.append((command[-1], defaults.read_text(), fragment.read_text()))
+                return SimpleNamespace(returncode=1 if len(snapshots) == 2 else 0)
+            argv = ["iram_what_if.py", *builds, "--work", str(root)]
+            with patch.object(sys, "argv", argv), patch.dict(probe.OPTIONS, options, clear=True), patch.object(probe, "scratch_tree", return_value=root), patch.object(probe.shutil, "copytree"), patch.object(probe.subprocess, "run", side_effect=run), patch.object(probe, "read_build", side_effect=[measured("release", 20), measured("release", 12), measured("dev", 40), measured("dev", 24)]), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(probe.main(), 0)
+            body = (root / (probe.WHAT_IF_BLOCK + ".md")).read_text()
+            self.assertIn("| release | first | build failed |", body)
+            self.assertIn("| release | second | 8 |", body)
+            self.assertIn("| dev | second | 16 |", body)
+            self.assertNotIn("| dev | first |", body)
+            self.assertIn("Baseline builds: fresh-release (IDF local); fresh-dev (IDF local)", body)
+            self.assertEqual([snapshot[0] for snapshot in snapshots], ["release", "release", "release", "dev", "dev"])
+            for index in (0, 3):
+                self.assertEqual(snapshots[index][1:], (original_defaults, original_fragment))
+            for index in (1, 2, 4):
+                self.assertEqual(snapshots[index][1], "CONFIG_AB=y\n")
+            self.assertEqual(defaults.read_text(), original_defaults)
+            self.assertEqual(fragment.read_text(), original_fragment)
+            with patch.object(sys, "argv", argv), patch.dict(probe.OPTIONS, options, clear=True), patch.object(probe, "scratch_tree", return_value=root), patch.object(probe.shutil, "copytree"), patch.object(probe.subprocess, "run", return_value=SimpleNamespace(returncode=1)), patch.object(probe, "read_build") as read, contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(probe.main(), 1)
+                read.assert_not_called()
+            self.assertIn("baseline build failed", output.getvalue())
+
+    def test_doc_stages_tables_keep_their_previous_text(self):
+        import test_doc_stages
+        calls = []
+        def compare(headers, rows):
+            rows = list(rows)
+            text = memory.markdown(headers, rows)
+            expected = "\n".join(["| " + " | ".join(headers) + " |",
+                                  "|" + "|".join("---" for _ in headers) + "|",
+                                  *("| " + " | ".join(map(str, row)) + " |" for row in rows)]) + "\n"
+            self.assertEqual(text, expected)
+            calls.append(text)
+            return text
+        suite = unittest.defaultTestLoader.loadTestsFromTestCase(test_doc_stages.DocStagesTests)
+        with patch.object(test_doc_stages.stages, "markdown", side_effect=compare):
+            result = unittest.TextTestRunner(stream=io.StringIO()).run(suite)
+        self.assertTrue(result.wasSuccessful(), result.errors or result.failures)
+        self.assertTrue(calls)
 
 
 if __name__ == "__main__":

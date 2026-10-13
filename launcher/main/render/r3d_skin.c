@@ -9,6 +9,11 @@
 
 static asset_status_t
 read_header(asset_view_t entry, r3d_skin_t* out) {
+    const uint8_t mode = entry.data[R3D_SKIN_AT_LIGHTING_MODE];
+    if ((mode != R3D_SKIN_LIGHT_DIRECT && mode != R3D_SKIN_LIGHT_RENORMALISED && mode != R3D_SKIN_LIGHT_TABLE)
+        || !asset_entry_zero(entry, R3D_SKIN_AT_PAD, R3D_SKIN_HEADER_SIZE)) {
+        return ASSET_ERR_FORMAT;
+    }
     const uint8_t joints = entry.data[R3D_SKIN_AT_JOINTS];
     const uint8_t influences = entry.data[R3D_SKIN_AT_INFLUENCES];
     if (joints == 0 || joints > ANIM_SKELETON_JOINT_MAX
@@ -31,6 +36,7 @@ read_header(asset_view_t entry, r3d_skin_t* out) {
     *out = (r3d_skin_t){
         .joint_count = joints,
         .influences = influences,
+        .lighting_mode = mode,
         .vertex_count = vertices,
         .inverse_binds = (const float (*)[R3D_SKIN_MATRIX_WIDTH])(const void*)(entry.data + inverse),
         .vertices = entry.data + records,

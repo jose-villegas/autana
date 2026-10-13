@@ -9,13 +9,10 @@
 #include "app/app.h"
 #include "input/gesture.h"
 #include "input/input.h"
+#include "shell/shell_home_edge.h"
 
 /* Once, before the first pass: the launcher showing, its backdrop level. */
 void shell_apps_init(void);
-
-/* The physical edge the content's logical bottom lies on at `quarter`, where
- * the home swipe starts. */
-gesture_edge_t shell_exit_edge_for_quarter(int quarter);
 
 /* `next` becomes the running app: its enter() now, its first frame() on the
  * next pass, after a full redraw. */

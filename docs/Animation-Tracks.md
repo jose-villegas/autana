@@ -289,8 +289,9 @@ Apps configure an entity with `scene_animator_set_clips()` and control it with
 `scene_animator_play()`, `scene_animator_set_speed()` and
 `scene_animator_set_paused()`. Clip count and names come from scene queries.
 Asset ids are resolved once; the scene owns the animator, binding arrays and
-buffers. SCNE camera rows create property animators automatically. Their source
-node names are aliases for their camera entities during binding.
+buffers. A camera `path` loads as an animator on the camera's entity; the
+pack build keeps the path node's tracks and names them `ANIM_TARGET_SELF`,
+which binds to the animator's own entity.
 
 Property clips bind strictly against scene transforms and camera lens fields;
 every binding must resolve, and unkeyed fields retain their values. They require
@@ -315,7 +316,7 @@ Advancement widens the millisecond product before wrapping; a fractional
 accumulator retains sub-millisecond steps. Conversion to float seconds happens
 after integer wrap/clamp through `anim_clip_seconds()`.
 
-Every scene playback slot loops; play-once clips are planned.
+A scene animator loops or clamps, as its scene file's `wrap` sets.
 Each entity has one animator of one clip kind; a property clip (NULL skeleton)
 cannot replace the skeleton animator on a skinned entity. Controls on an empty
 or frozen PREVIOUS slot return false.

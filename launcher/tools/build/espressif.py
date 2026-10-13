@@ -9,6 +9,9 @@ for matching locally (idf_pin()).
     python = idf_python()           # falls back to sys.executable if not found
     pin = idf_pin()                 # launcher/idf-pin.json
 
+It also reads the pinned IDF image and commit (idf_pin(), launcher/idf-pin.json)
+and names a build's drift from it (idf_drift()).
+
 idf_python() searches only on Windows: elsewhere ESP-IDF's export script
 puts its Python on PATH, so sys.executable is already the right one.
 """

@@ -1,11 +1,16 @@
 """Compiler arguments shared by analysis, preprocessing and stack measurements."""
 import os
+import ntpath
+import posixpath
 from pathlib import Path
 import shlex
 
 
 def compile_flags(entry):
     command = entry.get("arguments") or shlex.split(entry["command"], posix=os.name != "nt")
+    directory = entry.get("directory", "")
+    path = ntpath if os.name == "nt" or ntpath.splitdrive(entry["file"])[0] else posixpath
+    source = path.normcase(path.normpath(path.join(directory, entry["file"].replace("\\", "/"))))
     filtered = []
     skip = False
     for arg in command:
@@ -29,6 +34,6 @@ def compile_flags(entry):
                                                "directory": entry["directory"]}))
         elif arg in {"-o", "-MF", "-MT", "-MQ"}:
             skip = True
-        elif arg not in {"-c", "-MD", "-MMD", "-MP"} and arg.replace("\\", "/") != entry["file"].replace("\\", "/"):
+        elif arg not in {"-c", "-MD", "-MMD", "-MP"} and path.normcase(path.normpath(path.join(directory, arg.replace("\\", "/")))) != source:
             filtered.append(arg)
     return filtered

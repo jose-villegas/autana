@@ -13,7 +13,7 @@
 #include "scene/scene.h"
 #include "scene/scene_shell.h"
 
-/* Absent ambient contributes zero; SCNE v1 carries no tone map. */
+/* Absent ambient contributes zero. */
 #define SCENE_AMBIENT_INTENSITY_NONE  0.0F
 #define SCENE_TONEMAP_WHITE_NONE      0.0F
 #define SCENE_LIGHT_INTENSITY_DEFAULT 0.0F
@@ -40,8 +40,26 @@ typedef r3d_placement_t scene_placement_t;
 /* The scene pack entry, written by tools/r3d/scene_asset.py; the layout is
  * in docs/render/Scene-Files.md. Its rows are read in place, so they are the
  * entry's bytes, little-endian as the device is. */
-#define SCENE_ASSET         ASSET_TYPE('S', 'C', 'N', 'E')
-#define SCENE_ASSET_VERSION 1U
+#define SCENE_ASSET                   ASSET_TYPE('S', 'C', 'N', 'E')
+#define SCENE_ASSET_VERSION           2U
+#define SCENE_LIGHT_KIND_DIRECTIONAL  1U
+#define SCENE_ASSET_DEFAULT_CLIP_NONE 0xFFFFU
+#define SCENE_ASSET_HEADER_SIZE       56U
+#define SCENE_ASSET_AT_COUNTS         2U
+#define SCENE_ASSET_AT_OFFSETS        20U
+
+typedef enum {
+    SCENE_ASSET_NAMES,
+    SCENE_ASSET_TRANSFORMS,
+    SCENE_ASSET_RENDERERS,
+    SCENE_ASSET_CAMERAS,
+    SCENE_ASSET_LIGHTS,
+    SCENE_ASSET_SKINS,
+    SCENE_ASSET_ANIMATORS,
+    SCENE_ASSET_CLIPS,
+    SCENE_ASSET_SETTINGS,
+    SCENE_ASSET_PART_COUNT
+} scene_asset_part_t;
 
 typedef struct {
     uint16_t entity, pad;
@@ -51,18 +69,46 @@ typedef struct {
 typedef struct {
     uint16_t entity, pad;
     float half_fov_short_tan, near_z;
-    uint32_t clear_rgb;        /* 0xRRGGBB */
-    char clip[ASSET_NAME_MAX]; /* empty: the camera has no path */
-    char node[ASSET_NAME_MAX]; /* the clip's node that is the camera */
+    uint32_t clear_rgb; /* 0xRRGGBB */
 } scene_asset_camera_t;
+
+typedef struct {
+    vec3f_t ambient_color;
+    float ambient_intensity, tonemap_white;
+} scene_asset_settings_t;
+
+typedef struct {
+    uint16_t entity;
+    uint8_t kind, pad;
+    vec3f_t color;
+    float intensity;
+} scene_asset_light_t;
+
+typedef struct {
+    uint16_t entity, pad;
+    char mesh[ASSET_NAME_MAX], skin[ASSET_NAME_MAX], skeleton[ASSET_NAME_MAX];
+} scene_asset_skinned_renderer_t;
+
+typedef struct {
+    uint16_t entity, clip_count;
+    uint32_t first_clip;
+    uint16_t default_clip;
+    uint8_t wrap, pad;
+} scene_asset_animator_t;
 
 /* An opened entry. Holds no copy: the pack must outlive it. */
 typedef struct {
     uint16_t entity_count, renderer_count, camera_count;
+    uint16_t light_count, skinned_renderer_count, animator_count, clip_count;
     const char (*names)[ASSET_NAME_MAX];
     const scene_placement_t* transforms;
     const scene_asset_renderer_t* renderers;
     const scene_asset_camera_t* cameras;
+    const scene_asset_light_t* lights;
+    const scene_asset_skinned_renderer_t* skinned_renderers;
+    const scene_asset_animator_t* animators;
+    const char (*clips)[ASSET_NAME_MAX];
+    const scene_asset_settings_t* settings;
 } scene_asset_t;
 
 /* Checks every row once and returns the first failure: ASSET_ERR_VERSION,
@@ -98,10 +144,15 @@ typedef struct {
     const anim_joint_bound_t** joint_tables;
     int* counts;
     uint8_t root;
+    anim_wrap_t wrap;
     bool dirty, posed;
 } scene_animator_t;
 
-typedef enum { SCENE_SKIN_LIGHT_DIRECT, SCENE_SKIN_LIGHT_RENORMALISED, SCENE_SKIN_LIGHT_TABLE } scene_skin_light_mode_t;
+typedef enum {
+    SCENE_SKIN_LIGHT_DIRECT = R3D_SKIN_LIGHT_DIRECT,
+    SCENE_SKIN_LIGHT_RENORMALISED = R3D_SKIN_LIGHT_RENORMALISED,
+    SCENE_SKIN_LIGHT_TABLE = R3D_SKIN_LIGHT_TABLE
+} scene_skin_light_mode_t;
 
 typedef struct {
     r3d_skin_t skin;
@@ -121,6 +172,7 @@ struct scene {
     scene_asset_t asset;
     char id[ASSET_NAME_MAX];
     bool holds_pack; /* loaded by scene_load(): a use of pack `id` */
+    int renderer_count;
     int animator_count, skeleton_animator_count;
     int light_count;
     r3d_skin_lights_t world_lights;
@@ -170,9 +222,14 @@ void scene_animation_release(scene_t* scene);
 void scene_animation_step(scene_t* scene, uint32_t dt_ms);
 void scene_animate_range(scene_t* scene, int first, int count, uint32_t dt_ms);
 bool scene_skin_light_set_mode(scene_t* scene, scene_entity_t entity, scene_skin_light_mode_t mode);
+bool scene_skin_light_apply_mode(scene_t* scene, scene_entity_t entity, scene_skinned_renderer_t* skin,
+                                 scene_skin_light_mode_t mode);
 void scene_skin_light_table_release(scene_t* scene, scene_entity_t entity);
 bool scene_skin_light_allocate(scene_skinned_renderer_t* skin);
 void scene_skin_light_prepare(scene_t* scene, scene_entity_t entity);
+bool scene_light_color_fits(vec3f_t linear_rgb);
+r3d_skin_light_transfer_t* scene_light_transfer_take(const scene_t* scene);
+bool scene_lights_allocate(scene_t* scene);
 void scene_lights_prepare(scene_t* scene);
 void scene_skin_range(scene_t* scene, int first, int count);
 
