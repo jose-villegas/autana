@@ -89,9 +89,8 @@ def default_owner():
     return f"{user}@{socket.gethostname()}:{os.getpid()}"
 
 
-def caller_pid():
+def caller_pid(explicit=None):
     """The invoking process outside the Windows launcher and interpreter shims."""
-    explicit = os.environ.get(CALLER_PID_ENV)
     if explicit:
         return int(explicit)
     parent = os.getppid()

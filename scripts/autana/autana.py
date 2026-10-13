@@ -30,10 +30,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
+import device_lock  # noqa: E402  (path must be set up first)
 import autana_config  # noqa: E402  (path must be set up first)
 from espressif import idf_python  # noqa: E402
 from version import __version__  # noqa: E402
 from device_capture import BUILD_ID_REQUEST, PERF_SEGMENT  # noqa: E402
+
+# The launcher hint belongs to this invocation; children resolve their own caller.
+CALLER_PID = os.environ.pop(device_lock.CALLER_PID_ENV, None)
 
 EXIT_BUSY = autana_config.EXIT_BUSY
 EXIT_INTERRUPTED = autana_config.EXIT_INTERRUPTED
@@ -561,7 +566,7 @@ def release(args):
 
 def take(args):
     if "--until-released" in args and "--pid" not in args:
-        args = ["--pid", str(device_module().device_lock.caller_pid()), *args]
+        args = ["--pid", str(device_lock.caller_pid(CALLER_PID)), *args]
     return subprocess.call(device_command("take", *args))
 
 

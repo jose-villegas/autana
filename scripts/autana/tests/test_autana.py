@@ -1100,6 +1100,40 @@ class LockCommandTests(unittest.TestCase):
     """status/release/hand/take-back: thin pass-throughs to device.py's own
     lock-level commands."""
 
+    def test_nested_autana_consumes_only_its_own_caller_pid(self):
+        probe = """
+import json, os, subprocess, sys
+from unittest import mock
+sys.path.insert(0, sys.argv[1])
+import autana
+lock = autana.device_module().device_lock
+with mock.patch.object(autana, "device_command", side_effect=lambda *args: list(args)), \
+     mock.patch.object(autana.subprocess, "call", return_value=0) as called:
+    autana.take(["--until-released", "note"])
+command = called.call_args.args[0]
+seen = {"environment": lock.CALLER_PID_ENV in os.environ,
+        "caller": int(command[command.index("--pid") + 1])}
+if len(sys.argv) == 3:
+    relay = "import subprocess, sys; print(subprocess.check_output(sys.argv[1:], text=True), end='')"
+    child = subprocess.check_output(
+        [sys.executable, "-c", relay, sys.executable, "-c", sys.argv[2], sys.argv[1], sys.argv[2], "child"],
+        text=True, timeout=30)
+    seen["child"] = json.loads(child)
+else:
+    seen["parent"] = os.getppid()
+print(json.dumps(seen))
+"""
+        result = autana.subprocess.check_output(
+            [sys.executable, "-c", probe, str(AUTANA), probe],
+            env=dict(os.environ, **{device_lock.CALLER_PID_ENV: str(os.getpid())}),
+            text=True, timeout=60)
+        seen = json.loads(result)
+        self.assertFalse(seen["environment"])
+        self.assertEqual(seen["caller"], os.getpid())
+        self.assertFalse(seen["child"]["environment"])
+        self.assertEqual(seen["child"]["caller"], seen["child"]["parent"])
+        self.assertNotEqual(seen["child"]["caller"], os.getpid())
+
     def test_status_takes_no_arguments_and_calls_device(self):
         with mock.patch.object(autana.subprocess, "call", return_value=0) as called:
             code = autana.status([])
