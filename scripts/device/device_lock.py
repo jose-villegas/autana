@@ -166,7 +166,18 @@ def process_alive(pid):
 LINUX_EXITED_PROCESS_STATES = frozenset(("Z", "X"))
 
 
+def linux_stat_fields(pid):
+    """Fields after /proc's parenthesised command name, or None if unreadable."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="replace")
+        return stat[stat.rindex(")") + 2:].split() or None
+    except (OSError, ValueError):
+        return None
+
+
 def posix_process_alive(pid, kill=None):
+    """Only proven absence makes a holder dead. Linux zombies and exited
+    processes cannot own the board; an unreadable stat leaves them alive."""
     kill = kill or os.kill
     try:
         kill(pid, 0)
@@ -175,12 +186,9 @@ def posix_process_alive(pid, kill=None):
     except OSError:
         return True
     if sys.platform.startswith("linux"):
-        try:
-            stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="replace")
-            state = stat[stat.rindex(")") + 2:].split()[0]
-            return state not in LINUX_EXITED_PROCESS_STATES
-        except (OSError, ValueError, IndexError):
-            pass
+        fields = linux_stat_fields(pid)
+        if fields:
+            return fields[0] not in LINUX_EXITED_PROCESS_STATES
     return True
 
 
@@ -253,13 +261,14 @@ def windows_process_start(pid):
 
 def posix_process_start(pid):
     """When `pid` began, in epoch seconds, or None where /proc cannot say."""
+    fields = linux_stat_fields(pid)
+    if fields is None:
+        return None
     try:
-        with open(f"/proc/{pid}/stat", encoding="utf-8", errors="replace") as stream:
-            stat = stream.read()
         with open("/proc/stat", encoding="utf-8") as stream:
             boot = next(int(line.split()[1]) for line in stream if line.startswith("btime"))
         # Field 22, counted from after the parenthesised command name.
-        ticks = int(stat[stat.rindex(")") + 2:].split()[19])
+        ticks = int(fields[19])
         return boot + ticks / os.sysconf("SC_CLK_TCK")
     except (OSError, ValueError, IndexError, StopIteration):
         return None

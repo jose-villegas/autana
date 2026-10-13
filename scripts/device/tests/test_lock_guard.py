@@ -255,8 +255,7 @@ class HoldProcessTests(Store):
                            capture_output=True)
         else:
             import signal
-            stat = Path(f"/proc/{ticket['pid']}/stat").read_text()
-            autana_pid = int(stat[stat.rindex(")") + 2:].split()[1])
+            autana_pid = int(device_lock.linux_stat_fields(ticket["pid"])[1])
             os.kill(autana_pid, signal.SIGKILL)
         first.communicate(timeout=15)
         self.wait_for_queue(1, dead_pid=ticket["pid"])
@@ -545,10 +544,9 @@ class HoldProcessTests(Store):
         self.assertEqual(taken.returncode, 0, taken.stderr)
         finish.touch()
         deadline = time.monotonic() + CANCELLATION_TIMEOUT_SECONDS
-        stat = Path(f"/proc/{owner.pid}/stat")
-        while stat.read_text().rsplit(")", 1)[1].split()[0] != "Z" and time.monotonic() < deadline:
+        while device_lock.linux_stat_fields(owner.pid)[0] != "Z" and time.monotonic() < deadline:
             time.sleep(0.05)
-        self.assertEqual(stat.read_text().rsplit(")", 1)[1].split()[0], "Z")
+        self.assertEqual(device_lock.linux_stat_fields(owner.pid)[0], "Z")
         self.assertFalse(device_lock.process_alive(owner.pid))
         next_command = self.run_command("run", "--", sys.executable, "-c", "pass",
                                         env=self.environment)

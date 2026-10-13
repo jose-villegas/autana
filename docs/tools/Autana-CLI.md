@@ -285,7 +285,7 @@ optional and gitignored, and `autana help config` lists its keys.
 | Global option | Sets |
 |---|---|
 | `--lock-token TOKEN` | Run a board command inside the live hold named by `TOKEN`. A wrong, released or lapsed token fails at once with exit 1. A holder's child processes inherit it. |
-| `--wait SECONDS` | How long a board command waits for the lock, across every step it runs: 600 s without it, `0` fails at once with exit 75. `lock wait` alone has no cap without it. A console line (`tune`, `buildid`, `screenshot`, a line sent as typed) is refused at once without it rather than waited for. |
+| `--wait SECONDS` | How long a board command waits for the lock, across every step it runs: 600 s without it, `0` fails at once with exit 75. `lock wait` has no cap without it. A console line (`tune`, `buildid`, `screenshot`, a line sent as typed) is refused at once without it rather than waited for. |
 | `--owner NAME` | The name this run holds the lock under, as `NAME:<pid>`; `<user>@<host>:<pid>` without it. Name each CI job. |
 | `--board SERIAL` | The board's USB serial number; without it, see [Which board](Device-Lock.md#which-board). |
 

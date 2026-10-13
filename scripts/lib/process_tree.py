@@ -55,9 +55,9 @@ def create_kill_on_close_job(breakaway_ok=False, kernel=None):
 
 def bind_parent_lifetime(parent_pid):
     """Linux: SIGKILL this child when its parent dies, even by SIGKILL.
-    A parent already gone before prctl sends no signal, so that case kills
-    itself. The signal follows the thread that forked: keep
-    `with device_process(...)` on the thread that waits."""
+    If the parent is already gone when prctl runs, no signal comes, so the
+    child kills itself. The signal follows the thread that started the child:
+    start it from the thread that waits for it."""
     import ctypes
     prctl = ctypes.CDLL(None, use_errno=True).prctl
 

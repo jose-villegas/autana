@@ -190,6 +190,7 @@ OWNER_ENV = "_AUTANA_OWNER"
 BOARD_ENV = autana_config.BOARD_ENV
 TOKEN_ENV = autana_config.TOKEN_ENV
 PROJECT_ENV = autana_config.PROJECT_ENV
+# Must exceed device.py's unwind, including lock_group/lock_job GRACE_SECONDS.
 INTERRUPT_GRACE_SECONDS = 5
 
 
@@ -644,11 +645,12 @@ def hand(args):
     command = device_command("hand-to-human", "--note", " ".join(args), *wait)
     if not wait:
         return call_device(command)
+    process = None
     try:
         with device_process(command) as process:
             return process.wait()
     except KeyboardInterrupt:
-        if process.returncode != EXIT_INTERRUPTED:
+        if process is None or process.returncode != EXIT_INTERRUPTED:
             print("human reservation wait interrupted")
         return EXIT_INTERRUPTED
 

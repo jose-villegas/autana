@@ -120,10 +120,9 @@ Cancelling it gives up that place so the next waiter moves up.
 | `autana lock take inspecting the panel > token.txt &` then `wait $!` | `$p = Start-Process autana -ArgumentList 'lock','take','inspecting the panel' -RedirectStandardOutput token.txt -NoNewWindow -PassThru; $null = $p.Handle` then `$p.WaitForExit(); $p.ExitCode` |
 | Cancel with `kill $!`. | Cancel with `taskkill /T /F /PID $p.Id`. |
 
-Check the exit code before reading the token from `token.txt`: `wait $!`
-returns it on Linux; `$p.ExitCode` reports it on PowerShell. Reading
-`$p.Handle` before waiting makes `ExitCode` available in PowerShell 5.1.
-Read the token only after exit 0.
+`wait $!` returns take's exit code on Linux, `$p.ExitCode` on PowerShell;
+read `token.txt` only after exit 0. In PowerShell 5.1 `ExitCode` stays empty
+unless `$p.Handle` is read before the wait.
 
 `autana lock wait` is for when you only want to know the board is free. It
 never takes the board or a queue place and delays nobody. It returns 0 when
@@ -421,8 +420,8 @@ lock is gone.
 
 | | What the lock is tied to | If the holder dies |
 |---|---|---|
-| CLI child | `device.py` lives and dies with the `autana` that started it: a Windows job assigned before the child resumes; `PR_SET_PDEATHSIG` on Linux. | The kernel ends the device child. On Linux the signal follows the thread that forked, so the thread using `device_process` must also wait for it. |
-| Windows | A job object the holder joins when it takes the lock. Every process it starts inherits the job, grandchildren of dead parents included. | The kernel closes the job and ends every member. A process started with `CREATE_BREAKAWAY_FROM_JOB` can leave the device child's job but remains in autana's job. |
+| CLI child | `device.py` lives and dies with the `autana` that started it: a Windows job assigned before the child resumes; `PR_SET_PDEATHSIG` on Linux. | The kernel ends the device child. |
+| Windows | A job object the holder joins when it takes the lock. Every process it starts inherits the job, grandchildren of dead parents included. | The kernel closes the job and ends every member. A process started with `CREATE_BREAKAWAY_FROM_JOB` can leave this job; under `autana` it stays in the CLI child's job and ends with `autana`. |
 | Linux | A scope tag: each command tags its descendants independently of the board token, found through `/proc`. A small watchdog holds the read end of a pipe. | The pipe closes, and the watchdog ends every process still carrying that tag. A process that scrubs its environment or runs as another user is out of reach. |
 
 A holder that ends normally gives the processes it started two seconds, ends

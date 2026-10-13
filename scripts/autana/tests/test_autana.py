@@ -1231,6 +1231,13 @@ print(json.dumps(seen))
         started.return_value.terminate.assert_not_called()
         output.assert_not_called()
 
+    def test_hand_interrupt_before_child_binding_returns_interrupted(self):
+        with mock.patch.object(autana, "launch_process_tree", side_effect=KeyboardInterrupt), \
+                mock.patch("builtins.print") as printed:
+            code = autana.hand(["--until-back", "10", "download mode"])
+        self.assertEqual(code, autana.EXIT_INTERRUPTED)
+        printed.assert_called_once_with("human reservation wait interrupted")
+
     def test_hand_rejects_until_back_without_seconds(self):
         with self.assertRaises(SystemExit):
             autana.hand(["--until-back", "enter mode"])
