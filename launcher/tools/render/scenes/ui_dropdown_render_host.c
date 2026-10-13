@@ -1,8 +1,8 @@
 /*
  * ui_dropdown_render_host, ui_dropdown() on its own, driven by a scripted
  * finger: open it, drag its list down and back up, pick another item, then
- * all of it again from the new pick. Twelve items near the bottom of the
- * canvas, so the list opens upward and has to scroll.
+ * all of it again from the new pick. Twelve items fit neither above nor
+ * below the dropdown, so the list overlays the canvas and has to scroll.
  *
  * Touch comes from the script below by frame, not the harness's declared
  * steps: a drag needs a new position every frame, which a step table would

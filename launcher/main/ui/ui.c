@@ -30,19 +30,25 @@
 #include "ui/ui.h"
 
 #include <assert.h>
+#include <limits.h>
 
 #include "esp_log.h"
 
 #include "build/build_variant.h"
+#include "core/memory.h"
+#include "core/timing.h"
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/draw/gfx_target.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "math/scalar/mathi.h"
+#include "services/tune.h"
 #include "ui/ui_bridge.h"
 #include "ui/ui_icons.h"
 #include "ui/ui_internal.h"
+
+static uint32_t ui_band_fallbacks;
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static const char* TAG = "ui";
@@ -55,6 +61,30 @@ report_command_list_high_water(int used) {
         command_list_high_water = used;
         ESP_LOGI(TAG, "command list high water: %d / %d bytes", used, MU_COMMANDLIST_SIZE);
     }
+}
+#endif
+
+#if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
+TUNE_OWNER(ui);
+TUNE(ui, band_stats_frames, 0, 0, 600);
+static int64_t ui_band_cost_us;
+static bool ui_band_stats_pending;
+#endif
+
+#if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
+static void
+report_band_stats(uint32_t fallbacks, int64_t cost_us) {
+    ESP_LOGI(TAG, "band stats: fallbacks=%lu ui_us=%lld commands=%d roots=%d", (unsigned long)fallbacks,
+             (long long)cost_us, ui_ctx.command_list.idx, ui_ctx.root_list.idx);
+    band_stats_frames--;
+}
+
+static void
+finish_band_stats(void) {
+    if (ui_band_stats_pending && band_stats_frames > 0) {
+        report_band_stats(ui_band_fallbacks, ui_band_cost_us);
+    }
+    ui_band_stats_pending = false;
 }
 #endif
 
@@ -204,26 +234,41 @@ draw_command(const mu_Command* cmd) {
     }
 }
 
-/* One canvas's commands.
- *
- * Walked directly rather than through mu_next_command(), which follows the
- * jump chain across every container; the entire point here is to paint one
- * container and leave the others alone. */
+/* Nested heads skip their canvas. Stop at this root's tail before its
+ * painter-order jump: mu_next_command() continues into other roots. */
+static bool
+next_canvas_command(const mu_Container* cnt, mu_Command** cmd) {
+    if (*cmd == NULL) {
+        *cmd = cnt->head;
+    }
+    assert((*cmd)->base.size > 0);
+    *cmd = (mu_Command*)((char*)*cmd + (*cmd)->base.size);
+    while ((const char*)*cmd < (const char*)cnt->tail) {
+        if ((*cmd)->type != MU_COMMAND_JUMP) {
+            return true;
+        }
+        assert((const char*)(*cmd)->jump.dst > (const char*)*cmd);
+        *cmd = (*cmd)->jump.dst;
+    }
+    return false;
+}
+
+#ifndef ESP_PLATFORM
+void (*ui_canvas_painted_for_test)(const mu_Container*);
+#endif
+
 static void
 paint_canvas(const mu_Container* cnt) {
-    const char* p = (const char*)cnt->head + cnt->head->base.size;
-    const char* end = (const char*)cnt->tail;
-
-    while (p < end) {
-        const mu_Command* cmd = (const mu_Command*)p;
-        if (cmd->base.size <= 0) {
-            break; /* corrupt list: stop rather than spin */
-        }
+    mu_Command* cmd = NULL;
+    while (next_canvas_command(cnt, &cmd)) {
         draw_command(cmd);
-        p += cmd->base.size;
     }
-
     gfx_clear_clip();
+#ifndef ESP_PLATFORM
+    if (ui_canvas_painted_for_test != NULL) {
+        ui_canvas_painted_for_test(cnt);
+    }
+#endif
 }
 
 /* FNV-1a (docs/Citations.md#29). Cheap, and only ever run over the few
@@ -231,13 +276,13 @@ paint_canvas(const mu_Container* cnt) {
  * none of it is used. */
 static uint64_t
 hash_canvas(const mu_Container* cnt) {
-    const unsigned char* p = (const unsigned char*)cnt->head + cnt->head->base.size;
-    const unsigned char* end = (const unsigned char*)cnt->tail;
-
     uint64_t h = 1469598103934665603ull;
-    while (p < end) {
-        h ^= *p++;
-        h *= 1099511628211ull;
+    mu_Command* cmd = NULL;
+    while (next_canvas_command(cnt, &cmd)) {
+        const unsigned char* p = (const unsigned char*)cmd;
+        for (int i = 0; i < cmd->base.size; i++) {
+            h = (h ^ p[i]) * 1099511628211ull;
+        }
     }
     return h;
 }
@@ -361,10 +406,17 @@ repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
 
 bool
 ui_end(uint32_t background_rgb) {
+#if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
+    finish_band_stats();
+#endif
+    ui_band_fallbacks = 0;
     if (gfx_frame_expanded()) {
         ui_end_for_bands(background_rgb);
         return true;
     }
+#if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
+    const int64_t began_us = band_stats_frames > 0 ? timing_now_us() : 0;
+#endif
     mu_end(&ui_ctx);
     ui_end_pointer_frame();
 
@@ -381,6 +433,11 @@ ui_end(uint32_t background_rgb) {
     const bool drew = repaint_marked_canvases(n, repaint, background_rgb);
 
     ui_invalidated = false;
+#if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
+    if (began_us != 0) {
+        report_band_stats(0, timing_now_us() - began_us);
+    }
+#endif
     return drew;
 }
 
@@ -390,7 +447,14 @@ ui_end(uint32_t background_rgb) {
  * with no backdrop call: whoever drew under it has already drawn that part. */
 bool
 ui_end_over(ui_backdrop_fn paint_backdrop) {
+#if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
+    finish_band_stats();
+#endif
+    ui_band_fallbacks = 0;
     assert(!gfx_frame_expanded());
+#if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
+    const int64_t began_us = band_stats_frames > 0 ? timing_now_us() : 0;
+#endif
     mu_end(&ui_ctx);
     ui_end_pointer_frame();
 
@@ -418,6 +482,11 @@ ui_end_over(ui_backdrop_fn paint_backdrop) {
     const bool drew = repaint_marked_canvases(n, repaint, UI_NO_BACKGROUND);
 
     ui_invalidated = false;
+#if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
+    if (began_us != 0) {
+        report_band_stats(0, timing_now_us() - began_us);
+    }
+#endif
     return drew;
 }
 
@@ -441,28 +510,41 @@ typedef enum {
 } ui_band_entry_kind_t;
 
 typedef struct {
+    union {
+        const mu_Command* cmd;
+
+        struct {
+            mu_Rect rect;
+            mu_Color color;
+        };
+    };
+
     ui_band_entry_kind_t kind;
-    const mu_Command* cmd; /* UI_BAND_ENTRY_COMMAND only */
-    mu_Rect rect;          /* UI_BAND_ENTRY_FILL_RECT only */
-    mu_Color color;        /* UI_BAND_ENTRY_FILL_RECT only */
-    int y0, y1;            /* this entry's own row range, ignored when always is true */
-    bool always;           /* replay regardless of a band's own range: UI_BAND_ENTRY_CLIP_RESET,
+    int y0, y1;  /* this entry's own row range, ignored when always is true */
+    bool always; /* replay regardless of a band's own range: UI_BAND_ENTRY_CLIP_RESET,
                                 and any command type command_row_range() does not
                                 recognise (currently just MU_COMMAND_CLIP, whose
                                 effect is state for what follows, not pixels of
                                 its own) */
 } ui_band_entry_t;
 
-/* Headroom, not a tight fit; see gfx_dirty.h's own SUITE_MAX comment for
- * the same reasoning. A typical screen here is a handful of commands per
- * window plus one boundary marker; this leaves room for several such
- * windows in one frame. */
-#define UI_BAND_BIN_MAX 64
-
-static ui_band_entry_t ui_band_bin[UI_BAND_BIN_MAX];
-static int ui_band_bin_count;
-
 #define UI_EXTRA_RECT_MAX 4
+
+static ui_band_entry_t* ui_band_bin;
+static bool ui_band_bin_initialized;
+
+void
+ui_band_init(void) {
+    if (!ui_band_bin_initialized) {
+        ui_band_bin_initialized = true;
+        ui_band_bin = memory_alloc(UI_BAND_BIN_MAX * sizeof *ui_band_bin, MEMORY_PSRAM);
+    }
+}
+
+static int ui_band_bin_count;
+static uint32_t ui_band_overflow;
+static uint32_t ui_band_background;
+static bool ui_band_active;
 
 typedef struct {
     int x, y, w, h;
@@ -471,6 +553,7 @@ typedef struct {
 
 static ui_extra_rect_t extra_rects[UI_EXTRA_RECT_MAX];
 static int extra_rect_count;
+static int replay_rect_count;
 
 void
 ui_queue_band_overlay_rect(int x, int y, int w, int h, uint32_t rgb) {
@@ -522,27 +605,37 @@ command_row_range(const mu_Command* cmd, int* y0, int* y1) {
     }
 }
 
-static void
-bin_fill_rect(mu_Rect rect, mu_Color color) {
-    if (ui_band_bin_count >= UI_BAND_BIN_MAX) {
-        return;
+/* Omitted clip commands carry state, but only omitted drawing can change
+ * pixels beyond the retained prefix. Those bands replay the complete stream. */
+static ui_band_entry_t*
+bin_entry(const ui_band_entry_t* entry) {
+    if (ui_band_bin != NULL && ui_band_bin_count < UI_BAND_BIN_MAX) {
+        ui_band_entry_t* stored = &ui_band_bin[ui_band_bin_count++];
+        *stored = *entry;
+        return stored;
     }
-    ui_band_entry_t* e = &ui_band_bin[ui_band_bin_count++];
-    e->kind = UI_BAND_ENTRY_FILL_RECT;
-    e->rect = rect;
-    e->color = color;
-    e->y0 = rect.y;
-    e->y1 = rect.y + rect.h;
-    e->always = false;
+    if (!entry->always) {
+        for (int b = 0; b < GFX_HEIGHT / GFX_BAND_HEIGHT; b++) {
+            const int row0 = b * GFX_BAND_HEIGHT;
+            if (entry->y0 < row0 + GFX_BAND_HEIGHT && entry->y1 > row0) {
+                ui_band_overflow |= UINT32_C(1) << b;
+            }
+        }
+    }
+    return NULL;
 }
 
-/* One hash per possible band slot, sized for the smallest GFX_BAND_HEIGHT
- * (16) regardless of which one this build actually uses; a build using a
- * taller band simply leaves the tail unused. Compared and updated once per
- * ui_end_for_bands() call, this is the UI's own contribution to band
- * mode's per-band dirty decision (gfx_band_dirty(), gfx_mode.c): a band whose
- * bound commands hash the same as last frame drew nothing new. */
-#define UI_BAND_HASH_MAX (GFX_HEIGHT / 16)
+static void
+bin_fill_rect(mu_Rect rect, mu_Color color) {
+    const ui_band_entry_t entry = {
+        .kind = UI_BAND_ENTRY_FILL_RECT, .rect = rect, .color = color, .y0 = rect.y, .y1 = rect.y + rect.h};
+    (void)bin_entry(&entry);
+}
+
+/* Overflowed bands cannot hash omitted content, so remain dirty until their
+ * complete stream fits the bin again. Other bands retain their hashes. */
+#define UI_BAND_HASH_MAX (GFX_HEIGHT / GFX_BAND_HEIGHT)
+_Static_assert(UI_BAND_HASH_MAX <= sizeof(uint32_t) * CHAR_BIT, "overflow mask holds every band");
 static uint64_t ui_band_hash[UI_BAND_HASH_MAX];
 
 /* FNV-1a, folded over whatever bytes make up an entry's own content,
@@ -599,9 +692,10 @@ mark_changed_ui_bands(void) {
     for (int b = 0; b < band_count && b < UI_BAND_HASH_MAX; b++) {
         const int row0 = b * mode->band_height;
         const uint64_t h = hash_band_entries(row0, row0 + mode->band_height);
-        if (h != ui_band_hash[b]) {
+        const bool overflow = (ui_band_overflow & (UINT32_C(1) << b)) != 0;
+        if (overflow || h != ui_band_hash[b]) {
             gfx_mark_dirty(0, row0, mode->width, mode->band_height);
-            ui_band_hash[b] = h;
+            ui_band_hash[b] = overflow ? 0 : h;
         }
     }
 }
@@ -610,10 +704,20 @@ void
 ui_clear_band_overlay(void) {
     ui_band_bin_count = 0;
     extra_rect_count = 0;
+    ui_band_active = false;
+    ui_band_overflow = 0;
 }
 
 void
 ui_end_for_bands(uint32_t background_rgb) {
+#if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
+    finish_band_stats();
+    const int64_t began_us = band_stats_frames > 0 ? timing_now_us() : 0;
+#endif
+    ui_band_active = true;
+    ui_band_overflow = 0;
+    ui_band_fallbacks = 0;
+    ui_band_background = background_rgb;
     mu_end(&ui_ctx);
     ui_end_pointer_frame();
 
@@ -631,40 +735,59 @@ ui_end_for_bands(uint32_t background_rgb) {
             bin_fill_rect(canvas_physical_rect(cnt), ui_rgb(background_rgb));
         }
 
-        const char* p = (const char*)cnt->head + cnt->head->base.size;
-        const char* end = (const char*)cnt->tail;
-        while (p < end) {
-            const mu_Command* cmd = (const mu_Command*)p;
-            if (cmd->base.size <= 0) {
-                break; /* corrupt list: stop rather than spin */
-            }
-            if (ui_band_bin_count < UI_BAND_BIN_MAX) {
-                ui_band_entry_t* e = &ui_band_bin[ui_band_bin_count++];
-                e->kind = UI_BAND_ENTRY_COMMAND;
-                e->cmd = cmd;
-                e->always = !command_row_range(cmd, &e->y0, &e->y1);
-            }
-            p += cmd->base.size;
+        mu_Command* cmd = NULL;
+        while (next_canvas_command(cnt, &cmd)) {
+            ui_band_entry_t entry = {.kind = UI_BAND_ENTRY_COMMAND, .cmd = cmd};
+            entry.always = !command_row_range(cmd, &entry.y0, &entry.y1);
+            (void)bin_entry(&entry);
         }
 
-        if (ui_band_bin_count < UI_BAND_BIN_MAX) {
-            ui_band_entry_t* e = &ui_band_bin[ui_band_bin_count++];
-            e->kind = UI_BAND_ENTRY_CLIP_RESET;
-            e->always = true;
-        }
+        const ui_band_entry_t reset = {.kind = UI_BAND_ENTRY_CLIP_RESET, .cmd = cnt->tail, .always = true};
+        (void)bin_entry(&reset);
     }
 
     for (int i = 0; i < extra_rect_count; i++) {
         const ui_extra_rect_t* r = &extra_rects[i];
         bin_fill_rect(mu_rect(r->x, r->y, r->w, r->h), ui_rgb(r->rgb));
     }
+    replay_rect_count = extra_rect_count;
     extra_rect_count = 0;
-
     mark_changed_ui_bands();
+#if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
+    ui_band_cost_us = began_us != 0 ? timing_now_us() - began_us : 0;
+    ui_band_stats_pending = began_us != 0;
+#endif
 }
 
-void
-ui_replay_band(int row0, int row1) {
+static bool
+band_overflows(int row0, int row1) {
+    for (int b = 0; b < UI_BAND_HASH_MAX; b++) {
+        if (b * GFX_BAND_HEIGHT < row1 && (b + 1) * GFX_BAND_HEIGHT > row0
+            && (ui_band_overflow & (UINT32_C(1) << b)) != 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void
+replay_full_band(void) {
+    for (int i = 0; i < ui_ctx.root_list.idx; i++) {
+        const mu_Container* cnt = ui_ctx.root_list.items[i];
+        if (ui_band_background != UI_NO_BACKGROUND) {
+            const mu_Rect r = canvas_physical_rect(cnt);
+            gfx_fill_rect(r.x, r.y, r.w, r.h, gfx_rgb(ui_band_background));
+        }
+        paint_canvas(cnt);
+    }
+    for (int i = 0; i < replay_rect_count; i++) {
+        const ui_extra_rect_t* r = &extra_rects[i];
+        gfx_fill_rect(r->x, r->y, r->w, r->h, gfx_rgb(r->rgb));
+    }
+}
+
+static void
+replay_binned_band(int row0, int row1) {
     for (int i = 0; i < ui_band_bin_count; i++) {
         const ui_band_entry_t* e = &ui_band_bin[i];
         if (!e->always && !(e->y0 < row1 && e->y1 > row0)) {
@@ -675,7 +798,46 @@ ui_replay_band(int row0, int row1) {
             case UI_BAND_ENTRY_FILL_RECT:
                 gfx_fill_rect(e->rect.x, e->rect.y, e->rect.w, e->rect.h, mu_color_to_gfx(e->color));
                 break;
-            case UI_BAND_ENTRY_CLIP_RESET: gfx_clear_clip(); break;
+            case UI_BAND_ENTRY_CLIP_RESET: gfx_clear_clip();
+#ifndef ESP_PLATFORM
+                if (ui_canvas_painted_for_test != NULL) {
+                    for (int root = 0; root < ui_ctx.root_list.idx; root++) {
+                        const mu_Container* cnt = ui_ctx.root_list.items[root];
+                        if (cnt->tail == e->cmd) {
+                            ui_canvas_painted_for_test(cnt);
+                        }
+                    }
+                }
+#endif
+                break;
         }
     }
+    gfx_clear_clip();
+}
+
+void
+ui_replay_band(int row0, int row1) {
+    if (!ui_band_active) {
+        return;
+    }
+#if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
+    const int64_t began_us = ui_band_stats_pending && band_stats_frames > 0 ? timing_now_us() : 0;
+#endif
+    if (band_overflows(row0, row1)) {
+        ui_band_fallbacks++;
+        replay_full_band();
+    } else {
+        replay_binned_band(row0, row1);
+    }
+
+#if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
+    if (began_us != 0) {
+        ui_band_cost_us += timing_now_us() - began_us;
+    }
+#endif
+}
+
+uint32_t
+ui_band_fallback_count(void) {
+    return ui_band_fallbacks;
 }
