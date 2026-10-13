@@ -347,6 +347,9 @@ class PackStep(unittest.TestCase):
             load.reset_mock()
             self.assertEqual(skin_pack.rig_ids('mesh', settings, explicit_cache), ('mesh.skin', 'armature'))
             load.assert_called_once_with(settings, explicit_cache, False)
+            load.reset_mock()
+            self.assertEqual(skin_pack.rig_ids('mesh', settings, explicit_cache, True), ('mesh.skin', 'armature'))
+            load.assert_called_once_with(settings, explicit_cache, True)
 
     def test_rig_ids_require_a_rig(self):
         from types import SimpleNamespace

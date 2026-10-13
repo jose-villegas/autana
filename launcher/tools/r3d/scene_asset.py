@@ -10,7 +10,6 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from asset.asset_pack import NAME_BYTES
 from build.c_header import read_define
 from r3d.import_settings import ANIM_WRAPS, SettingsError, color_fits, load_scene
-from r3d.scene_name import scene_id
 from r3d import skin_pack
 
 OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_internal.h"
@@ -42,9 +41,12 @@ class SceneError(ValueError):
     """An authored scene or mapped row violates the scene format."""
 
 
-_owner_header_size = read_define(OWNER, "SCENE_ASSET_HEADER_SIZE")
-if HEADER.size != _owner_header_size:
-    raise SceneError(f"scene header size {HEADER.size} differs from {_owner_header_size} in {OWNER}")
+def check_header(owner_size):
+    if HEADER.size != owner_size:
+        raise SceneError(f"scene header size {HEADER.size} differs from {owner_size} in {OWNER}")
+
+
+check_header(read_define(OWNER, "SCENE_ASSET_HEADER_SIZE"))
 
 
 def mesh_ids(scene):
