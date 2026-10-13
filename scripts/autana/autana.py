@@ -30,10 +30,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
+from process_tree import launch_process_tree, close_process_tree  # noqa: E402
+import device_lock  # noqa: E402  (path must be set up first)
 import autana_config  # noqa: E402  (path must be set up first)
 from espressif import idf_python, idf_note_lines, require_idf  # noqa: E402
 from version import __version__  # noqa: E402
 from device_capture import BUILD_ID_REQUEST, PERF_SEGMENT  # noqa: E402
+
+# The launcher hint belongs to this invocation; children resolve their own caller.
+CALLER_PID = os.environ.pop(device_lock.CALLER_PID_ENV, None)
 
 EXIT_BUSY = autana_config.EXIT_BUSY
 EXIT_INTERRUPTED = autana_config.EXIT_INTERRUPTED
@@ -55,7 +61,7 @@ def owner():
     override = os.environ.get(OWNER_ENV)
     if override:
         return f"{override}:{os.getpid()}"
-    return device_module().device_lock.default_owner()
+    return device_lock.default_owner()
 
 
 def git(*args):
@@ -184,6 +190,8 @@ OWNER_ENV = "_AUTANA_OWNER"
 BOARD_ENV = autana_config.BOARD_ENV
 TOKEN_ENV = autana_config.TOKEN_ENV
 PROJECT_ENV = autana_config.PROJECT_ENV
+# Must exceed device.py's unwind, including lock_group/lock_job GRACE_SECONDS.
+INTERRUPT_GRACE_SECONDS = 5
 
 
 def device_command(*args, wait=None):
@@ -199,6 +207,37 @@ def device_command(*args, wait=None):
     if wait:
         command += ["--wait", str(wait)]
     return command + list(args)
+
+
+@contextlib.contextmanager
+def device_process(command, **options):
+    """Keep the device child with this CLI while sharing console interrupts."""
+    process = launch_process_tree(command, parent_lifetime=True, new_session=False, **options)
+    try:
+        yield process
+    except KeyboardInterrupt:
+        try:
+            process.wait(timeout=INTERRUPT_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            pass
+        raise
+    finally:
+        if process.poll() is None:
+            process.terminate()
+            process.wait()
+        close_process_tree(process)
+
+
+def call_device(command):
+    with device_process(command) as process:
+        return process.wait()
+
+
+def capture_device(command, **options):
+    with device_process(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                        **options) as process:
+        stdout, stderr = process.communicate()
+        return subprocess.CompletedProcess(command, process.returncode, stdout, stderr)
 
 
 def reject_unknown(cmd, args, allowed=()):
@@ -250,17 +289,17 @@ def follow(log, finished):
 def run_streaming_its_log(command):
     finished = threading.Event()
     follower = None
-    process = subprocess.Popen(command, stdout=subprocess.PIPE, text=True, bufsize=1)
-    for line in process.stdout:
-        print(line, end="", flush=True)
-        if follower is None and line.startswith("flash log: "):
-            follower = threading.Thread(target=follow, args=(line[len("flash log: "):].strip(), finished))
-            follower.start()
-    code = process.wait()
-    finished.set()
-    if follower is not None:
-        follower.join()
-    return code
+    with device_process(command, stdout=subprocess.PIPE, text=True, bufsize=1) as process:
+        for line in process.stdout:
+            print(line, end="", flush=True)
+            if follower is None and line.startswith("flash log: "):
+                follower = threading.Thread(target=follow, args=(line[len("flash log: "):].strip(), finished))
+                follower.start()
+        code = process.wait()
+        finished.set()
+        if follower is not None:
+            follower.join()
+        return code
 
 
 def variant_request(verb, args, flags, project):
@@ -318,7 +357,7 @@ def flash(args):
         command.append("--hot-tunables")
     if seed is not None:
         command += ["--layout-seed", seed]
-    return subprocess.call(command) if quiet else run_streaming_its_log(command)
+    return call_device(command) if quiet else run_streaming_its_log(command)
 
 
 def build_diag_check(project):
@@ -444,16 +483,16 @@ def monitor(args):
         command += ["--elf", elf]
     if out:
         command += ["--out", out]
-    process = subprocess.Popen(command)
-    interrupted = False
-    # Ctrl+C reaches device.py too; it saves the capture before exiting.
-    while True:
-        try:
-            return process.wait()
-        except KeyboardInterrupt:
-            if interrupted:
-                return EXIT_INTERRUPTED
-            interrupted = True
+    with device_process(command) as process:
+        interrupted = False
+        # Ctrl+C reaches device.py too; it saves the capture before exiting.
+        while True:
+            try:
+                return process.wait()
+            except KeyboardInterrupt:
+                if interrupted:
+                    return EXIT_INTERRUPTED
+                interrupted = True
 
 
 def reset(args):
@@ -478,7 +517,7 @@ def reset(args):
             command += ["--seconds", str(seconds)]
     if verbose:
         command.append("--verbose")
-    return subprocess.call(command)
+    return call_device(command)
 
 
 def coredump(args):
@@ -495,7 +534,7 @@ def coredump(args):
         command.append("--erase")
     if elf:
         command += ["--elf", elf]
-    return subprocess.call(command)
+    return call_device(command)
 
 
 def selftest(args):
@@ -529,7 +568,7 @@ def selftest(args):
         command.append("--hot-tunables")
     if out:
         command += ["--out", out]
-    return subprocess.call(command)
+    return call_device(command)
 
 
 BATCH_USAGE = ("usage: autana batch <suite> [<suite> ...] [--runs N] [--perf-scope] [--verbose] "
@@ -556,8 +595,8 @@ def status(args):
     """Every board, whether it is free, and if not who has it and until when."""
     reject_unknown("status", args, ("--json",))
     if read_json_flag(args, "usage: autana status [--json]"):
-        return subprocess.call(device_command("status", "--json"))
-    return subprocess.call(device_command("status"))
+        return call_device(device_command("status", "--json"))
+    return call_device(device_command("status"))
 
 
 def release(args):
@@ -568,36 +607,51 @@ def release(args):
     if len(args) > 1 or not token:
         sys.exit("usage: autana lock release [<token>] - without one, the "
                  "token of the command that holds the lock, inside that command")
-    return subprocess.call(device_command("release", "--token", token))
+    return call_device(device_command("release", "--token", token))
+
+
+def take(args):
+    if "--until-released" in args and "--pid" not in args:
+        args = ["--pid", str(device_lock.caller_pid(CALLER_PID)), *args]
+    return call_device(device_command("take", *args))
+
+
+def lock_wait(args):
+    reject_unknown("lock wait", args)
+    if args:
+        sys.exit("usage: autana lock wait [--wait <seconds>]")
+    cap = os.environ.get(WAIT_ENV)
+    return call_device(device_command("wait-free", *(["--cap", cap] if cap is not None else [])))
+
+
+def lock_run(args):
+    if "--" not in args:
+        sys.exit("usage: autana lock run [--keep-on-failure <seconds>] -- <command...>")
+    return call_device(device_command("run", *args))
 
 
 def hand(args):
-    """Reserve the board for a maintainer sitting at it; autana refuses new
-    work against it until `autana lock take-back`, or an hour after the last
-    `lock hand`, which running it again renews."""
+    """Reserve the board for a maintainer sitting at it. New work waits until
+    `autana lock take-back`, or an hour after the last `lock hand`, which
+    running it again renews."""
     usage = "usage: autana lock hand [--until-back <seconds>] <note...>"
     wait = []
     if args and args[0] == "--until-back":
         if len(args) < 3:
             sys.exit(usage)
-        wait = ["--wait", args[1]]
+        wait = ["--until-back", args[1]]
         args = args[2:]
     if not args:
         sys.exit(usage)
     command = device_command("hand-to-human", "--note", " ".join(args), *wait)
     if not wait:
-        return subprocess.call(command)
-    process = subprocess.Popen(command)
+        return call_device(command)
+    process = None
     try:
-        return process.wait()
+        with device_process(command) as process:
+            return process.wait()
     except KeyboardInterrupt:
-        try:
-            code = process.wait(timeout=1)
-        except subprocess.TimeoutExpired:
-            process.terminate()
-            process.wait()
-            code = None
-        if code != EXIT_INTERRUPTED:
+        if process is None or process.returncode != EXIT_INTERRUPTED:
             print("human reservation wait interrupted")
         return EXIT_INTERRUPTED
 
@@ -607,7 +661,7 @@ def take_back(args):
     reject_unknown("lock take-back", args)
     if args:
         sys.exit("usage: autana lock take-back")
-    return subprocess.call(device_command("take-back"))
+    return call_device(device_command("take-back"))
 
 
 SUITE_REGISTRATION = re.compile(r"SUITE_REGISTER(_ON_REQUEST)?\(\s*([A-Za-z_]\w*)\s*\)")
@@ -756,7 +810,7 @@ def suite(args):
         command += ["--out", out]
     if expect_build_id:
         command += ["--expect-build-id", expect_build_id]
-    return subprocess.call(command)
+    return call_device(command)
 
 
 # A console line is asked from a prompt somebody is sitting at: a board another
@@ -787,7 +841,7 @@ def board_holder():
     Every line of a console session is a device.py of its own under one
     autana, so a lock this autana already holds is not somebody else's and
     the session does not refuse itself."""
-    result = subprocess.run(device_command("status", "--json"), capture_output=True, text=True)
+    result = capture_device(device_command("status", "--json"), text=True)
     try:
         boards = json.loads(result.stdout)["boards"]
     except (ValueError, KeyError, TypeError):
@@ -798,6 +852,9 @@ def board_holder():
         return ""
     board = candidates[0]
     holder = board["holder"]
+    token = os.environ.get(TOKEN_ENV)
+    if token and device_lock.LockStore().check_token(board["board"], token):
+        return ""
     if board["state"] == "held" and holder["owner"] != owner():
         return f"held by {holder['owner']} for {holder['purpose']}"
     return ""
@@ -825,7 +882,7 @@ def send(line, reply="TUNE", optional=False, seconds=None, until=None):
         command.append("--optional")
     if seconds is not None:
         command += ["--seconds", str(seconds)]
-    result = subprocess.run(command, capture_output=True, text=True)
+    result = capture_device(command, text=True)
     if result.stderr.strip():
         print(result.stderr.strip(), file=sys.stderr)
     return result.returncode, [answer for answer in result.stdout.splitlines() if answer.startswith(reply)]
@@ -889,7 +946,7 @@ def capture_screenshot(out, view):
         command += ["--out", out]
     if view:
         command.append(view)
-    return subprocess.call(command)
+    return call_device(command)
 
 
 def freeze(args):
@@ -1223,8 +1280,8 @@ def perf_collect(seconds):
     """The console for `seconds`, as text, from device.py's own listen."""
     with tempfile.TemporaryDirectory() as folder:
         capture = Path(folder) / "perf.log"
-        result = subprocess.run(device_command("listen", "--seconds", str(seconds), "--out", str(capture)),
-                                capture_output=True, text=True)
+        result = capture_device(device_command("listen", "--seconds", str(seconds), "--out", str(capture)),
+                                text=True)
         if result.returncode != 0:
             print((result.stderr or result.stdout).strip(), file=sys.stderr)
             return result.returncode, ""
@@ -1403,13 +1460,13 @@ def alias(old, new, handler):
     return wrapped
 
 
-LOCK_VERBS = {"release": release, "hand": hand, "take-back": take_back}
+LOCK_VERBS = {"wait": lock_wait, "take": take, "run": lock_run, "release": release, "hand": hand, "take-back": take_back}
 DEBUG_VERBS = {"freeze": freeze, "resume": resume, "step": step, "touch": touch, "imu": imu,
               "framewatch": framewatch}
 
 
 def lock(args):
-    """`autana lock <verb>`: release/hand/take-back, the lock-sharing
+    """`autana lock <verb>`: wait/take/run/release/hand/take-back, the lock-sharing
     commands a session reaches for far less than `status`, which stays
     top-level on its own."""
     if not args or args[0] not in LOCK_VERBS:
@@ -1426,6 +1483,17 @@ def debug(args):
         sys.exit("usage: autana debug <" + "|".join(DEBUG_VERBS) + "> ...")
     verb, rest = args[0], args[1:]
     return DEBUG_VERBS[verb](rest)
+
+
+LOCK_USAGES = (
+    ("lock run [--keep-on-failure <seconds>] -- <command...>", "hold the board while a command runs"),
+    ("lock take [--for <seconds> | --until-released [--pid <pid>]] <note...>", "hold the board across commands; print its token"),
+    ("lock wait", "wait until free without taking the board; --wait caps it"),
+    ("lock release [<token>]", "release a lock this session holds, given its token"),
+    ("lock hand [--until-back <seconds>] <note...>",
+     "reserve the board for a person at it for an hour; run again to renew"),
+    ("lock take-back", "clear that reservation"),
+)
 
 
 # (key, title, commands). `autana help <key>` shows one group; each usage is
@@ -1495,11 +1563,7 @@ COMMAND_GROUPS = (
     )),
     ("lock", "Sharing the board", (
         Command("status", status, (("status [--json]", "who holds the board, and who waits"),)),
-        Command("lock", lock, (
-            ("lock release [<token>]", "release a lock this session holds, given its token"),
-            ("lock hand [--until-back <seconds>] <note...>",
-             "reserve the board for a person at it for an hour; run again to renew"),
-            ("lock take-back", "clear that reservation"))),
+        Command("lock", lock, LOCK_USAGES),
     )),
     ("debug", "Debug", (
         Command("debug", debug, (
@@ -1545,6 +1609,7 @@ USAGE_WIDTH = 34
 # own usage line (`autana help flags` instead) since most commands take most
 # of these and repeating them on every line was unreadable.
 BOARD_FLAGS = (
+    ("--lock-token TOKEN", "run inside this board's live hold", "every board command"),
     ("--wait SECONDS", "how long to wait for the board's lock; 0 fails at once (exit 75)",
      "every board command"),
     ("--owner NAME", "the lock owner's label",
@@ -1680,9 +1745,9 @@ def install_completion():
     readline.parse_and_bind("tab: complete")
 
 
-GLOBALS = ("--wait", "--owner", "--board", "--project")
+GLOBALS = ("--wait", "--owner", "--board", "--project", "--lock-token")
 _GLOBAL_ENV = {"--wait": WAIT_ENV, "--owner": OWNER_ENV, "--board": BOARD_ENV,
-               "--project": PROJECT_ENV}
+               "--project": PROJECT_ENV, "--lock-token": TOKEN_ENV}
 
 # Flags typed before a bare `autana`: they hold for the whole console session.
 session_flags = {}
@@ -1699,6 +1764,8 @@ def project_of(value):
 # files key on (device_lock.normalise_board); an owner is a label the lock
 # appends `:pid` to and prints, so it holds no whitespace.
 GLOBAL_CHECKS = {
+    "--lock-token": ("a non-empty token without whitespace", "autana --lock-token TOKEN screenshot",
+                     lambda v: v if v and not re.search(r"\s", v) else None),
     "--wait": ("a non-negative integer number of seconds", "autana --wait 0 monitor 5",
                lambda v: v if v.isascii() and v.isdigit() else None),
     "--owner": ("a name without whitespace", "autana --owner ci-7 flash",
@@ -1729,6 +1796,9 @@ def pop_globals(words):
     queue = list(words)
     while queue:
         word = queue.pop(0)
+        if word == "--":
+            rest.extend([word, *queue])
+            break
         flag, equals, value = word.partition("=")
         if flag not in GLOBALS:
             rest.append(word)
