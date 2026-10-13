@@ -60,6 +60,7 @@ it readable; a flag works the same wherever the table below says it applies.
 | `autana build diag --check` | The diagnostics build plus the complexity ratchet: `launcher/tools/build/build_diag_check.sh`, unchanged; no board. |
 | `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope] [--layout-seed N] [--hot-tunables]` | Build and flash this project; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. `--layout-seed N`: the seeded layout. |
 | `autana buildid [--json]` | The `BUILD_ID` the board is running, to check against what was flashed. |
+| `autana heap [--json]` | Free bytes and largest block in the internal DMA pool (`MEMORY_DMA`); development builds only. |
 
 `autana build` is the way to build: it runs `launcher/tools/build/build.sh`,
 holding only the build directory so two builds of one variant take turns, and
@@ -237,6 +238,7 @@ before running it.
 |---|---|
 | `status` | `boards`, one object per board; the fields are in [Device-Lock.md](Device-Lock.md#exit-codes-and-json-status). |
 | `buildid` | `build_id` |
+| `heap` | `free`, `largest` (bytes in `MEMORY_DMA`) |
 | `apps` | `apps`: `name`, `running` |
 | `suite list` | `suites`: `name`, `source`, `on_request`, `device_only` |
 | `tune` | `tunables`: `name`, `value`, `min`, `max`, `default` |

@@ -32,8 +32,8 @@ from doc_tables import markdown, parse_table, collapsed
 import svg_bars
 from compile_db import compile_flags
 from generated_blocks import apply_tables, block_body
-from byte_sizes import MB_BYTES, share_label, size_label, total_label
-from svg_bars import IDF_FILL, OURS_FILL, SLACK_FILL, DRAM_FILL, HEAP_FILL
+from byte_sizes import KB_BYTES, MB_BYTES, share_label, size_label, total_label
+from svg_bars import IDF_FILL, OURS_FILL, SLACK_FILL, DRAM_FILL, HEAP_FILL, RUNTIME_FILL
 sys.path.insert(0, str(ROOT / "launcher/tools/device"))
 from device_profile import load, require
 from espressif import idf_commit, idf_drift, idf_pin, idf_python
@@ -56,6 +56,8 @@ TIER_POLICY = (
     ("Flash", "executable code, ordinary `static const` tables and mapped assets", "account for cache misses on bulk or scattered reads"),
 )
 CHARTS = {"pool": "docs/memory/images/internal-pool.svg", "components": "docs/memory/images/iram-components.svg"}
+RUNTIME_HEAP = "docs/memory/data/runtime-heap.txt"
+RUNTIME_LABEL = "In use at runtime (floor)"
 DIFFERENCES_HEADING = "### Differs between variants"
 COMPONENT_TOP_COUNT = 8
 REGENERATE = "python launcher/tools/build/memory_map.py launcher/build launcher/build.dev launcher/build.diag --write"
@@ -499,7 +501,78 @@ def pool_range(start, size, heap_start):
     return size, start + size - heap_start
 
 
-def render_tiers(builds, root):
+def parse_runtime_heap(text):
+    """Strict board capture grammar; POST retains its truncated KiB resolution."""
+    captures = {}
+    current = None
+    separated = True
+    for line_number, line in enumerate(text.splitlines(), 1):
+        if not line.strip():
+            separated = True
+            current = None
+            continue
+        build = re.fullmatch(r"BUILD_ID=(\S+)", line)
+        if build:
+            build_id = build[1]
+            variant = build_id.rsplit("-", 1)[-1]
+            if not separated or variant not in VARIANTS or variant in captures:
+                raise ValueError(f"runtime heap line {line_number}: invalid or duplicate build {build_id}")
+            current = dict(build_id=build_id, phases={})
+            captures[variant] = current
+            separated = False
+            continue
+        phase = re.fullmatch(r"phase=(boot|app:.+) (HEAP .+|\[[^\]]+\].+)", line)
+        if current is None or not phase or phase[1] in current["phases"]:
+            raise ValueError(f"runtime heap line {line_number}: missing build or invalid phase: {line}")
+        reading = re.fullmatch(r"HEAP free=(\d+) largest=(\d+)", phase[2])
+        resolution = 1
+        if reading is None:
+            reading = re.fullmatch(r"\[[^\]\r\n]+\]\s+memory\s+(\d+) KiB free, DMA block (\d+) KiB", phase[2])
+            resolution = KB_BYTES
+        if reading is None:
+            raise ValueError(f"runtime heap line {line_number}: invalid reading: {phase[2]}")
+        free, largest = (int(value) * resolution for value in reading.groups())
+        if largest > free:
+            raise ValueError(f"runtime heap line {line_number}: largest block exceeds free bytes")
+        current["phases"][phase[1]] = dict(free=free, largest=largest, resolution=resolution)
+    if not captures or any("boot" not in capture["phases"] for capture in captures.values()):
+        raise ValueError("runtime heap: every captured variant requires a boot phase")
+    return captures
+
+
+def read_runtime_heap(root):
+    return parse_runtime_heap((root / RUNTIME_HEAP).read_text(encoding="utf-8"))
+
+
+def runtime_floor(capture):
+    apps = [(phase, reading) for phase, reading in capture["phases"].items() if phase.startswith("app:")]
+    return min(apps or [("boot", capture["phases"]["boot"])], key=lambda item: item[1]["free"])
+
+
+def iram_headroom(slack, pad):
+    # The prefetch pad must remain after added instructions to keep the split fixed.
+    return max(0, slack - pad)
+
+
+def runtime_note(capture, build_id):
+    phase, reading = runtime_floor(capture)
+    note = "after " + phase.removeprefix("app:")
+    if reading["resolution"] == KB_BYTES:
+        note += "; POST at boot only (KiB resolution)" if phase == "boot" else "; POST (KiB resolution)"
+    if capture["build_id"] != build_id:
+        note += f"; capture from build {capture['build_id']}"
+    return note
+
+
+def runtime_headline(variant, capture, pool, slack, build_id):
+    _, reading = runtime_floor(capture)
+    return (f"{variant}: {size_label(reading['free'])} free internal heap at its floor "
+            f"({runtime_note(capture, build_id)}), largest block {size_label(reading['largest'])}, "
+            f"of the {size_label(pool)} shared pool; IRAM can grow {slack} B before it costs heap.")
+
+
+def render_tiers(builds, root, runtime=None):
+    runtime = read_runtime_heap(root) if runtime is None else runtime
     builds = sorted(builds, key=lambda build: VARIANTS.index(build["variant"]))
     release = next(build for build in builds if build["variant"] == MAIN_VARIANT)
     paths = ("launcher/main/app/app_arena.h", "launcher/main/gfx/gfx.h")
@@ -514,7 +587,7 @@ def render_tiers(builds, root):
     for build in builds:
         size, heap = pool_range(*build["regions"]["dram0_0_seg"], build["constants"]["_heap_start"])
         pools.append(f"{build['variant']} {size_label(size)} ({size} B)")
-        heaps.append(f"{build['variant']} {size_label(heap)}")
+        heaps.append(f"{build['variant']} {size_label(heap)} linked, {size_label(runtime_floor(runtime[build['variant']])[1]['free'])} free at floor")
     shared = release["regions"]["dram0_0_seg"][1]
     pool = f"{size_label(shared)} ({shared} B)" if all(build["regions"]["dram0_0_seg"][1] == shared for build in builds) else "; ".join(pools)
     config = release["config"]
@@ -535,11 +608,12 @@ def render_tiers(builds, root):
     )
     rows = [(tier, size, placement, rule) for (tier, placement, rule), size in zip(TIER_POLICY, sizes)]
     return (f"> Generated by: `{REGENERATE}`\n\n" + markdown(["Tier", "Size", "Current placement", "Rule"], rows)
-            + "\nKB = 1024 B; MB = 1024 KB. Internal heap is a linked range, not runtime free memory.\n"
+            + "\nKB = 1024 B; MB = 1024 KB. Linked heap ranges and measured free floors are distinct; runtime readings come from `memory/data/runtime-heap.txt`.\n"
             + "Arena and framebuffer sizes come from source headers, flash size from the build's sdkconfig and partitions from the partition table it names, chip totals from the device profile (datasheet), and pool/heap from the build.\n")
 
 
-def render(builds):
+def render(builds, runtime=None, root=ROOT):
+    runtime = read_runtime_heap(root) if runtime is None else runtime
     builds = sorted(builds, key=lambda b: VARIANTS.index(b["variant"]))
     labels = [b["variant"] for b in builds]
     headers = [f"{b['build_id']} (IDF {b['idf_commit'][:12]})" for b in builds]
@@ -547,6 +621,10 @@ def render(builds):
     if release is None:
         raise ValueError(f"documentation tables require a {MAIN_VARIANT} build")
     lines = [f"> Generated by: `{REGENERATE}`", "", "Bytes from each build's ELF, link map, sdkconfig and ESP-IDF size JSON. Heap is a link-time range, not runtime free memory.", ""]
+    for build in builds:
+        lines.extend([runtime_headline(build["variant"], runtime[build["variant"]],
+                                       build["regions"]["dram0_0_seg"][1],
+                                       iram_headroom(build["slack"], build["pad"]), build["build_id"]), ""])
     pin = idf_pin()
     for commit in dict.fromkeys(b["idf_commit"] for b in builds if commit_drift(b["idf_commit"], pin["commit"])):
         lines.extend([f"Built on IDF {commit[:12]}; launcher/idf-pin.json pins {pin['commit'][:12]}, so measured bytes can differ from the budgets.", ""])
@@ -618,10 +696,10 @@ def render(builds):
     return "\n".join(lines)
 
 
-def chart(kind, body):
+def chart(kind, body, runtime=None, root=ROOT):
     if kind not in CHARTS:
         raise ValueError(f"unknown chart kind: {kind}")
-    headers, components = parse_table(body, "IRAM component", ("Placement", MAIN_VARIANT))
+    headers, components = parse_table(body, "IRAM component", ("Placement",))
     variants = [variant for variant in VARIANTS if variant in headers]
     _, regions = parse_table(body, "Region / boundary", variants)
     _, sites_table = parse_table(body, "Placement site", variants)
@@ -648,7 +726,12 @@ def chart(kind, body):
         return start, end, int(size)
     command = chart_command(kind)
     if kind == "pool":
-        rows, scales = [], []
+        runtime = read_runtime_heap(root) if runtime is None else runtime
+        build_ids = {variant: match[1] for variant in variants
+                     for match in [re.search(r"(?:Builds: |; )([^ ;]+-" + re.escape(variant) + r") \(IDF ", body)] if match}
+        if len(build_ids) != len(variants):
+            raise ValueError("pool chart: missing build ids")
+        rows, scales, overlays = [], [], []
         legend = [("ESP-IDF IRAM", IDF_FILL), ("IRAM we place", OURS_FILL),
                   ("Split slack incl. pad", SLACK_FILL), ("DRAM data + BSS", DRAM_FILL),
                   ("Internal heap", HEAP_FILL)]
@@ -665,14 +748,22 @@ def chart(kind, body):
             counts = (iram - ours[variant], ours[variant], slack, dram, heap)
             if sum(counts) != size:
                 raise ValueError(f"{variant}: pool segments do not sum to shared alias")
+            capture = runtime[variant]
+            _, reading = runtime_floor(capture)
+            left = iram_headroom(slack, int(region("Prefetch pad", variant)))
+            step = int(region("Split granularity", variant))
             rows.append((variant, [(label, count, fill) for (label, fill), count in zip(legend, counts)],
-                         f"{share_label(heap, size)} heap"))
+                         f"free {size_label(reading['free'])}, largest {size_label(reading['largest'])} of {size_label(size)}",
+                         (runtime_note(capture, build_ids[variant]),
+                          f"IRAM left before the next {step} B split step: {left} B; past it, every byte comes from the heap (free {size_label(reading['free'])})")))
+            # An older capture can exceed this linked heap; overlay widths cannot be negative.
+            overlays.append([(RUNTIME_LABEL, heap_start - int(start, 16), max(0, heap - reading["free"]), RUNTIME_FILL)])
             scales.append(size)
-        start, end, _ = alias("dram0_0_seg", MAIN_VARIANT)
-        iram_start, _, _ = alias("iram0_0_seg", MAIN_VARIANT)
-        return svg_bars.bars(command, "Shared internal memory pool", "Linked ranges in address order; heap is not runtime free memory", rows, max(scales),
-                             (f"IRAM alias starts at {iram_start}; axis shows the DRAM alias", "1 KB = 1024 B"), legend,
-                             (start, end, f"pool {total_label(max(scales))}"), inside=True)
+        start, end, _ = alias("dram0_0_seg", variants[0])
+        iram_start, _, _ = alias("iram0_0_seg", variants[0])
+        return svg_bars.bars(command, "Shared internal memory pool", "Measured free floor and largest block; linked ranges in address order", rows, max(scales),
+                             (f"IRAM alias starts at {iram_start}; axis shows the DRAM alias", "1 KB = 1024 B"), [*legend, (RUNTIME_LABEL, RUNTIME_FILL)],
+                             (start, end, f"pool {total_label(max(scales))}"), inside=True, overlays=overlays, headline=True)
     def idf_parts(variant):
         """ESP-IDF-placed bytes by archive, and the unattributed linker fill."""
         parts, fill = Counter(), None
@@ -701,8 +792,8 @@ def chart_command(kind):
     return f"python launcher/tools/build/memory_map.py --chart {kind} {CHARTS[kind]}"
 
 
-def write_chart(kind, body, output):
-    svg_bars.write(output, chart(kind, body))
+def write_chart(kind, body, output, root=ROOT):
+    svg_bars.write(output, chart(kind, body, root=root))
 
 
 def main():
@@ -721,7 +812,7 @@ def main():
     try:
         if args.chart:
             kind, out = args.chart
-            write_chart(kind, block_body(args.root, BLOCK), out)
+            write_chart(kind, block_body(args.root, BLOCK), out, root=args.root)
             return 0
         if args.source_only:
             placements = sites(args.root)
@@ -755,7 +846,7 @@ def main():
             return 0
         if args.check:
             return 0
-        body = render(builds)
+        body = render(builds, root=args.root)
         tiers = render_tiers(builds, args.root)
         if args.write:
             with tempfile.TemporaryDirectory() as directory:
@@ -764,13 +855,13 @@ def main():
                 (tables / (TIERS_BLOCK + ".md")).write_text(tiers, encoding="utf-8")
                 apply_tables(args.root, tables)
             for kind, name in CHARTS.items():
-                write_chart(kind, body, args.root / name)
+                write_chart(kind, body, args.root / name, root=args.root)
         elif args.tables:
             args.tables.mkdir(parents=True, exist_ok=True)
             (args.tables / (BLOCK + ".md")).write_text(body, encoding="utf-8")
             (args.tables / (TIERS_BLOCK + ".md")).write_text(tiers, encoding="utf-8")
             for kind, name in CHARTS.items():
-                write_chart(kind, body, args.tables / name)
+                write_chart(kind, body, args.tables / name, root=args.root)
         else:
             print(body)
             print(tiers)

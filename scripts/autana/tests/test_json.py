@@ -24,6 +24,27 @@ class JsonReadTests(unittest.TestCase):
             self.assertEqual(command(args), 0)
         return json.loads(stream.getvalue())
 
+    def test_heap_reply_and_failure(self):
+        reply = "HEAP free=123456 largest=54321"
+        self.assertEqual(autana.parse_heap(reply), {"free": 123456, "largest": 54321})
+        with mock.patch.object(autana, "send", return_value=(0, [reply])) as send:
+            self.assertEqual(self.output(autana.heap, ["--json"]),
+                             {"free": 123456, "largest": 54321})
+            send.assert_called_once_with("HEAP", reply="HEAP")
+        stream = io.StringIO()
+        with mock.patch.object(autana, "send", return_value=(0, [reply])), contextlib.redirect_stdout(stream):
+            self.assertEqual(autana.heap([]), 0)
+        self.assertEqual(stream.getvalue(), reply + "\n")
+        for result, expected in (((0, []), 1), ((7, []), 7)):
+            with mock.patch.object(autana, "send", return_value=result):
+                self.assertEqual(autana.heap([]), expected)
+        for args in (["extra"], ["--json", "--json"], ["--unknown"]):
+            with self.assertRaises(SystemExit):
+                autana.heap(args)
+        for reply in ("HEAP free=x largest=1", "HEAP free=1", "OTHER free=1 largest=1"):
+            with self.assertRaises(ValueError):
+                autana.parse_heap(reply)
+
     def test_buildid_reply(self):
         self.assertEqual(autana.parse_buildid("BUILD_ID=abc123"), {"build_id": "abc123"})
         with mock.patch.object(autana, "send", return_value=(0, ["BUILD_ID=abc123"])):

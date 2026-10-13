@@ -22,6 +22,10 @@ import shutil
 
 class MemoryMapTests(unittest.TestCase):
     def setUp(self):
+        capture = Path(__file__).parent / 'fixtures/runtime-heap.txt'
+        patcher = patch.object(memory, 'read_runtime_heap', return_value=memory.parse_runtime_heap(capture.read_text()))
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -172,13 +176,14 @@ class MemoryMapTests(unittest.TestCase):
             build["owned"] = list(build["owned"])
         fixture.write_text(json.dumps(builds))
         program = """import json, sys
+from pathlib import Path
 sys.path.insert(0, sys.argv[1])
 import memory_map as m
 builds=json.load(open(sys.argv[2]))
 for b in builds:
  b['inputs']=[m.Input(**i) for i in b['inputs']]
  b['report']=[(m.Site(**s),size,names) for s,size,names in b['report']]
-print(m.render(builds))
+print(m.render(builds, runtime=m.parse_runtime_heap(Path('launcher/tools/tests/fixtures/runtime-heap.txt').read_text())))
 """
         outputs = [subprocess.check_output([sys.executable, "-c", program, str(memory.ROOT / "launcher/tools/build"), str(fixture)], env=dict(os.environ, PYTHONHASHSEED=seed)) for seed in ("1", "53")]
         self.assertEqual(outputs[0], outputs[1])

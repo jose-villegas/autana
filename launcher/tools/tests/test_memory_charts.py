@@ -14,6 +14,9 @@ from doc_tables import markdown
 
 
 def chart_documents(doc):
+    capture = doc.parent / memory.RUNTIME_HEAP
+    capture.parent.mkdir(parents=True, exist_ok=True)
+    capture.write_bytes((Path(__file__).parent / 'fixtures/runtime-heap.txt').read_bytes())
     tiers = doc.parent / 'tiers.md'
     tiers.parent.mkdir(parents=True, exist_ok=True)
     for path, block in ((doc, memory.BLOCK), (tiers, memory.TIERS_BLOCK)):
@@ -22,7 +25,7 @@ def chart_documents(doc):
 
 @contextlib.contextmanager
 def chart_cli(doc, build):
-    replacements = dict(render_tiers=lambda builds, root: 'tier fixture', ROOT=doc.parent,
+    replacements = dict(render_tiers=lambda builds, root, runtime=None: 'tier fixture', ROOT=doc.parent,
                         read_build=lambda *args: build, build_sites=lambda *args: ([], lambda site: True),
                         check=lambda *args, **kwargs: [], idf_pin=lambda *args: {'commit': 'fixture'})
     with contextlib.ExitStack() as stack:
@@ -39,17 +42,23 @@ BASELINES = [dict(build_id='abc-release', idf_commit='fixture',
 
 
 class MemoryChartTests(unittest.TestCase):
+    def setUp(self):
+        capture = Path(__file__).parent / 'fixtures/runtime-heap.txt'
+        patcher = patch.object(memory, 'read_runtime_heap', return_value=memory.parse_runtime_heap(capture.read_text()))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def body(self):
         regions = [('iram0_0_seg shared alias', '0x40378000–0x40378400 (1024 B)'),
                    ('dram0_0_seg shared alias', '0x3fc88000–0x3fc88400 (1024 B)'),
                    ('.iram0.text', 256), ('.iram0.text_end', 16),
-                   ('Slack including pad', 16), ('.dram0.data', 32),
+                   ('Split granularity', 256), ('Prefetch pad', 16), ('Slack including pad', 16), ('.dram0.data', 32),
                    ('.dram0.bss', 64), ('_data_start', '0x3fc88110'),
                    ('_heap_start', '0x3fc88170')]
         components = [('libmain.a', 'our sites', 16), ('liblcd.a', 'our sites', 16)]
         components += [(f'libpart{i}.a', 'IDF', 20) for i in range(10)]
         components += [('Linker fill / split slack', 'unattributed', 40)]
-        return (markdown(['Region / boundary', 'release'], regions) + '\n' +
+        return ('Builds: abc-release (IDF fixture)\n' + markdown(['Region / boundary', 'release'], regions) + '\n' +
                 markdown(['IRAM component', 'Placement', 'release'], components) + '\n' +
                 markdown(['Placement site', 'Symbols', 'release', 'Budget B', 'Reason'],
                          [('a:1', 'f', 32, 32, 'Interrupt latency.')]))
@@ -62,7 +71,7 @@ class MemoryChartTests(unittest.TestCase):
         pool = next(row for row in regions if row['Region / boundary'] == 'dram0_0_seg shared alias')
         scale = int(pool['release'].split('(')[1].split()[0])
         tree = ET.fromstring(memory.chart('pool', body))
-        segments = tree.findall('.//{*}rect[@data-bytes]')
+        segments = [s for s in tree.findall('.//{*}rect[@data-bytes]') if s.attrib['data-label'] != 'In use at runtime (floor)']
         self.assertEqual([int(s.attrib['data-bytes']) for s in segments], [224, 32, 16, 96, 656])
         for segment in segments:
             self.assertAlmostEqual(float(segment.attrib['width']), int(segment.attrib['data-bytes']) * BAR_WIDTH / scale, delta=0.01)
@@ -74,7 +83,7 @@ class MemoryChartTests(unittest.TestCase):
         from byte_sizes import share_label, total_label
         pool = ''.join(ET.fromstring(memory.chart('pool', self.body())).itertext())
         self.assertIn(f'pool {total_label(1024)}', pool)
-        self.assertIn(f'{share_label(656, 1024)} heap', pool)
+        self.assertIn('free 0 KB, largest 0 KB of 1 KB', pool)
         components = ET.fromstring(memory.chart('components', self.body()))
         counts = [int(rect.attrib['data-bytes']) for rect in components.findall('.//{*}rect[@data-bytes]')]
         text = ''.join(components.itertext())
@@ -189,6 +198,7 @@ class MemoryChartTests(unittest.TestCase):
                                constants={'_heap_start': 0x3fc88080}, size={'layout': [{'name': 'DIRAM', 'used': 128}]},
                                align=256, pad=16, slack=0, inputs=inputs, owned={}, report=[(site, 12, ['draw'])]))
         body = memory.render(builds)
+        self.assertIn('dev: 0.3 KB free internal heap at its floor (after Sand), largest block 0.2 KB, of the 1 KB shared pool; IRAM can grow 0 B before it costs heap.', body)
         from doc_tables import parse_table
         headers, rows = parse_table(body, 'IRAM component')
         self.assertIn('Placement', headers)
@@ -206,7 +216,7 @@ class MemoryChartTests(unittest.TestCase):
             doc = Path(directory) / 'map.md'
             chart_documents(doc)
             build = dict(variant='release', idf_commit='fixture', inputs=[], owned={})
-            with chart_cli(doc, build), patch.object(memory, 'render', return_value=self.body()), patch.object(sys, 'argv', ['memory_map.py', 'fixture', '--write']):
+            with chart_cli(doc, build), patch.object(memory, 'render', side_effect=lambda *args, **kwargs: self.body()), patch.object(sys, 'argv', ['memory_map.py', 'fixture', '--write']):
                 self.assertEqual(memory.main(), 0)
             for name in memory.CHARTS.values():
                 svg = (doc.parent / name).read_bytes()
@@ -240,6 +250,8 @@ class MemoryChartTests(unittest.TestCase):
 
 
 class MemoryTierTests(unittest.TestCase):
+    setUp = MemoryChartTests.setUp
+
     def test_tiers_derive_constants_partitions_and_chart_heap(self):
         from doc_tables import parse_table
         with tempfile.TemporaryDirectory() as directory:
@@ -267,7 +279,8 @@ class MemoryTierTests(unittest.TestCase):
             heap = chart.find('.//{*}rect[@data-label="Internal heap"]')
             expected = memory.size_label(int(heap.attrib['data-bytes']))
             for variant in memory.VARIANTS:
-                self.assertIn(f'{variant} {expected}', sizes['Internal SRAM'])
+                self.assertIn(f'{variant} {expected} linked', sizes['Internal SRAM'])
+                self.assertIn('free at floor', sizes['Internal SRAM'])
             self.assertIn('1 KB (1024 B) shared IRAM/DRAM pool', sizes['Internal SRAM'])
             self.assertIn('2 MB app arena', sizes['PSRAM'])
             self.assertIn('64 KB full framebuffer', sizes['PSRAM'])
