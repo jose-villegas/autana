@@ -34,16 +34,19 @@ it there, and an ESP-IDF release line newer than the pin's tag is a warning
 in the refresh run. Each bump pull request names the standing
 ticket for routine bumps; a migration gets its own.
 
-## No bump costs performance
+## A bump is measured on the board
 
 A bump that can change what the board runs is not mergeable on a green CI
-alone: it must not make the firmware slower. The ESP-IDF refresh and the
+alone: an update should not make the firmware slower. The ESP-IDF refresh and the
 microui, Waveshare BSP, meshoptimizer, ufbx and Blender bumps carry the
 `needs-board-perf` label, and the Board perf check fails while it is there.
 Compare the bump with main on the board, seeded,
 `launcher/tools/perf/perf_compare.sh origin/main <bump branch> --suite ...`
-(`--help` lists the options), post the result on the pull request, then remove
-the label. A regression blocks the bump until it is fixed. Bumps that cannot
+(`--help` lists the options), post its summary on the pull request (the
+improved, unchanged and regressed rows, with their magnitudes), then remove the
+label. The maintainer weighs the summary: small regressions can be banked and
+checked later, while one that is large, or worse everywhere, holds the bump.
+Bumps that cannot
 change the firmware (Python and Node, their packages, Actions, the runner) are
 exempt.
 

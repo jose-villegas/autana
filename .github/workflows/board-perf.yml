@@ -1,10 +1,11 @@
 name: Board perf
 
-# No update may cost the firmware performance. A bump that can change what the
-# board runs (the ESP-IDF refresh, a vendored or baked upstream) carries the
-# needs-board-perf label, and this check fails until a person compares it with
-# main on the board, posts the result and removes the label. Which bumps carry
-# it, and how to compare: docs/tools/Framework-Versions.md.
+# An update should not cost the firmware performance. A bump that can change
+# what the board runs (the ESP-IDF refresh, a vendored or baked upstream)
+# carries the needs-board-perf label, and this check fails until a person
+# compares it with main on the board, posts the summary for the maintainer to
+# judge and removes the label. Which bumps carry it, and how to compare:
+# docs/tools/Framework-Versions.md.
 
 on:
   pull_request:
@@ -18,5 +19,5 @@ jobs:
       - name: The bump has a board perf comparison
         if: contains(github.event.pull_request.labels.*.name, 'needs-board-perf')
         run: |
-          echo "::error::This bump can change the firmware. Compare it with main on the board (launcher/tools/perf/perf_compare.sh origin/main ${{ github.head_ref }} --suite ...), post the result here, then remove the needs-board-perf label. A regression blocks it until fixed."
+          echo "::error::This bump can change the firmware. Compare it with main on the board (launcher/tools/perf/perf_compare.sh origin/main ${{ github.head_ref }} --suite ...), post the summary here (improved, unchanged and regressed rows, with magnitudes) for the maintainer to judge, then remove the needs-board-perf label."
           exit 1
