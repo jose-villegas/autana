@@ -34,9 +34,8 @@
 #               (tools/build/layout_pad.py), to sample the cache layouts a
 #               timing could have landed on. 0, the default, is the plain build.
 #   --configure  only configure the variant's build directory, compile nothing:
-#               writes its sdkconfig and compile_commands.json in about a
-#               minute and a half instead of a full build, and no image. For
-#               an editor's language server, or a tool that reads which
+#               writes its sdkconfig and compile_commands.json, and no image.
+#               For an editor's language server, or a tool that reads which
 #               sources a variant compiles. Works with every variant flag.
 #   IDF_EXPORT  path to ESP-IDF's export script: export.bat on Windows,
 #               export.sh elsewhere. Default: the one under $IDF_PATH.
