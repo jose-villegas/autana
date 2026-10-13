@@ -1,7 +1,5 @@
 /*
- * gfx_internal: the state gfx's own files share, and the calls that cross
- * between them. Nothing outside gfx/ includes it; every other file goes
- * through gfx.h, gfx_draw.h, gfx_present.h, gfx_mode.h or gfx_debug.h.
+ * gfx_internal: state and calls shared only by gfx/present/ sources.
  */
 #pragma once
 
@@ -27,8 +25,6 @@
  * all, matching gfx_fb_guard.h. */
 extern gfx_color_t* fb;
 extern gfx_mode_t current_mode;
-extern bool band_render_active;
-extern gfx_target_t strip_target;
 
 bool alloc_full_framebuffer(void);
 gfx_indexed_frame_t indexed_frame(void);
@@ -38,25 +34,10 @@ gfx_indexed_frame_t indexed_frame(void);
 void expand_rows(int y0, int y1, gfx_color_t* destination);
 void clear_expanded_frame(bool free_picture);
 
-/* gfx_draw.c: the clip rectangle an overlay replay saves around itself. */
-extern gfx_box_t clip;
-
 /* True for the whole GFX_LAYOUT_BANDS mode. */
 static inline bool
 band_is_transient(void) {
     return current_mode.layout == GFX_LAYOUT_BANDS;
-}
-
-/* What every pixel-writing primitive draws into: the whole framebuffer, or
- * the band currently being rendered; see gfx_target.h for why a target
- * carries its own row range rather than every primitive checking
- * band_render_active for itself. */
-static inline gfx_target_t
-current_target(void) {
-    if (band_render_active) {
-        return strip_target;
-    }
-    return (gfx_target_t){fb, 0, GFX_HEIGHT, GFX_WIDTH};
 }
 
 /* Presentation state and the heal queue band mode resets. */

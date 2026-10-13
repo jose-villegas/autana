@@ -1,16 +1,8 @@
 /*
- * gfx_target: the buffer every pixel-writing gfx_* primitive actually
- * writes into: the whole framebuffer in GFX_LAYOUT_FULL_FB, or one band's
- * own buffer while a band is being rendered in GFX_LAYOUT_BANDS
- * (gfx_mode.h). A standalone, ESP-IDF-free module, the same reason
- * gfx_dirty.h is, so a host suite can drive the real clip-and-translate
- * arithmetic without a panel or a framebuffer.
- *
- * Every primitive already clips to the app's own clip rect (gfx_set_clip());
- * a target additionally clips to its own row range and, for a band buffer,
- * shorter than the whole screen, translates an absolute row into that
- * buffer's own local row 0. Full-fb mode's target (y0 0, height GFX_HEIGHT)
- * makes both of those a no-op, which is what keeps it byte-identical.
+ * gfx_target: a framebuffer or band buffer with absolute row bounds.
+ * Primitives intersect present's clip rectangle with the target, then
+ * translate absolute rows into local buffer rows. Pure arithmetic lets
+ * host suites verify clipping and translation without a panel.
  */
 #pragma once
 

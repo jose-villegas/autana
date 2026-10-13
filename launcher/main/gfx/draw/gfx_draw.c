@@ -1,5 +1,5 @@
 #include "gfx/draw/gfx_draw.h"
-#include "gfx/gfx_internal.h"
+#include "gfx/present/gfx_dirty.h"
 #include "gfx/present/gfx_fb_guard.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_present_guard.h"
@@ -7,9 +7,6 @@
 #include "services/tune.h"
 
 #include <string.h>
-
-/* Current clip rectangle, as inclusive-exclusive bounds. */
-gfx_box_t clip;
 
 TUNE_OWNER(gfx);
 
@@ -25,8 +22,8 @@ TUNE(gfx, tight_fill_marks, 1, 0, 1);
  * tight_fill_marks to the constant 1 (services/tune.h), so the branch and
  * mark_band() call below cost nothing there. */
 static inline void
-mark_fill(int x0, int y0, int x1, int y1) {
-    if (band_render_active) {
+mark_fill(bool in_band, int x0, int y0, int x1, int y1) {
+    if (in_band) {
         return;
     }
     if (tight_fill_marks) {
@@ -34,15 +31,6 @@ mark_fill(int x0, int y0, int x1, int y1) {
     } else {
         mark_band(y0, y1);
     }
-}
-
-/* Colour */
-
-/* Pack 0xRRGGBB to RGB565, byte-swapped: the panel takes the high byte
- * first, the CPU stores the low byte first, and DMA sends memory as it lies. */
-gfx_color_t
-gfx_rgb(uint32_t rgb) {
-    return GFX_RGB(rgb);
 }
 
 /* Clipping */
@@ -53,19 +41,14 @@ gfx_set_clip(int x, int y, int w, int h) {
     int x1 = x + w;
     int y1 = y + h;
 
-    clip.x0 = x < 0 ? 0 : x;
-    clip.y0 = y < 0 ? 0 : y;
-    clip.x1 = x1 > GFX_WIDTH ? GFX_WIDTH : x1;
-    clip.y1 = y1 > GFX_HEIGHT ? GFX_HEIGHT : y1;
+    gfx_clip_restore(
+        (gfx_box_t){x < 0 ? 0 : x, y < 0 ? 0 : y, x1 > GFX_WIDTH ? GFX_WIDTH : x1, y1 > GFX_HEIGHT ? GFX_HEIGHT : y1});
 }
 
 void
 gfx_clear_clip(void) {
     GFX_PRESENT_GUARD();
-    clip.x0 = 0;
-    clip.y0 = 0;
-    clip.x1 = GFX_WIDTH;
-    clip.y1 = GFX_HEIGHT;
+    gfx_clip_restore((gfx_box_t){0, 0, GFX_WIDTH, GFX_HEIGHT});
 }
 
 /* Primitives */
@@ -74,11 +57,12 @@ gfx_clear_clip(void) {
  * band every frame, so dirty tracking applies only to the framebuffer. */
 void
 gfx_clear(gfx_color_t color) {
+    const gfx_target_t target = gfx_present_target();
+    const bool in_band = gfx_present_in_band();
     GFX_PRESENT_GUARD();
     if (!GFX_REQUIRE_FRAMEBUFFER()) {
         return;
     }
-    const gfx_target_t target = current_target();
     const uint32_t pair = ((uint32_t)color << 16) | color;
     uint32_t* words = (uint32_t*)target.buf;
     const int count = (target.stride * target.height) / 2;
@@ -87,13 +71,16 @@ gfx_clear(gfx_color_t color) {
         words[i] = pair;
     }
 
-    if (!band_render_active) {
+    if (!in_band) {
         gfx_mark_all_dirty();
     }
 }
 
 void
 gfx_pixel(int x, int y, gfx_color_t color) {
+    const gfx_target_t target = gfx_present_target();
+    const gfx_box_t clip = gfx_clip_save();
+    const bool in_band = gfx_present_in_band();
     GFX_PRESENT_GUARD();
     if (!GFX_REQUIRE_FRAMEBUFFER()) {
         return;
@@ -101,24 +88,22 @@ gfx_pixel(int x, int y, gfx_color_t color) {
     if (x < clip.x0 || x >= clip.x1) {
         return;
     }
-    const gfx_target_t target = current_target();
     const gfx_box_t rect = gfx_target_clip_rect(target, clip, (gfx_box_t){x, y, x + 1, y + 1});
     if (rect.y0 >= rect.y1) {
         return;
     }
     gfx_target_row(target, y)[x] = color;
-    if (!band_render_active) {
+    if (!in_band) {
         mark_band(y, y + 1);
     }
 }
 
 /* One pixel of a line. */
 static void
-plot(int x, int y, gfx_color_t color, unsigned flags) {
+plot(gfx_target_t target, gfx_box_t clip, int x, int y, gfx_color_t color, unsigned flags) {
     if (x < clip.x0 || x >= clip.x1) {
         return;
     }
-    const gfx_target_t target = current_target();
     const gfx_box_t rect = gfx_target_clip_rect(target, clip, (gfx_box_t){x, y, x + 1, y + 1});
     if (rect.y0 >= rect.y1) {
         return;
@@ -130,7 +115,7 @@ plot(int x, int y, gfx_color_t color, unsigned flags) {
 
 /* Bresenham (docs/Citations.md#30), treats both axes alike, no case analysis. */
 static void
-walk(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
+walk(gfx_target_t target, gfx_box_t clip, int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
     const int dx = mathi_abs(x1 - x0);
     const int dy = -mathi_abs(y1 - y0);
     const int sx = x0 < x1 ? 1 : -1;
@@ -140,7 +125,7 @@ walk(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
 
     for (;;) {
         if (!(first && (flags & GFX_LINE_OPEN))) {
-            plot(x0, y0, color, flags);
+            plot(target, clip, x0, y0, color, flags);
         }
         first = false;
 
@@ -163,30 +148,20 @@ walk(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
  * underestimating leaves stale. */
 static void
 draw_line(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
+    const gfx_target_t target = gfx_present_target();
+    const gfx_box_t clip = gfx_clip_save();
+    const bool in_band = gfx_present_in_band();
     if (!gfx_box_clip_segment(&clip, &x0, &y0, &x1, &y1)) {
         return;
     }
 
-    int bx0 = mathi_min(x0, x1), bx1 = mathi_max(x0, x1) + 1;
-    int by0 = mathi_min(y0, y1), by1 = mathi_max(y0, y1) + 1;
+    const gfx_box_t box = gfx_box_intersect(
+        (gfx_box_t){mathi_min(x0, x1), mathi_min(y0, y1), mathi_max(x0, x1) + 1, mathi_max(y0, y1) + 1}, clip);
 
-    if (bx0 < clip.x0) {
-        bx0 = clip.x0;
-    }
-    if (by0 < clip.y0) {
-        by0 = clip.y0;
-    }
-    if (bx1 > clip.x1) {
-        bx1 = clip.x1;
-    }
-    if (by1 > clip.y1) {
-        by1 = clip.y1;
-    }
+    walk(target, clip, x0, y0, x1, y1, color, flags);
 
-    walk(x0, y0, x1, y1, color, flags);
-
-    if (!band_render_active && bx0 < bx1 && by0 < by1) {
-        dirty_mark(bx0, by0, bx1 - bx0, by1 - by0);
+    if (!in_band && box.x0 < box.x1 && box.y0 < box.y1) {
+        dirty_mark(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
     }
 }
 
@@ -210,14 +185,17 @@ gfx_line_ex(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
 
 void
 gfx_fill_rect(int x, int y, int w, int h, gfx_color_t color) {
+    const gfx_target_t target = gfx_present_target();
+    const gfx_box_t clip = gfx_clip_save();
+    const bool in_band = gfx_present_in_band();
     GFX_PRESENT_GUARD();
     if (!GFX_REQUIRE_FRAMEBUFFER()) {
         return;
     }
     int x0, y0, x1, y1;
-    gfx_target_fill_rect(current_target(), clip.x0, clip.y0, clip.x1, clip.y1, x, y, w, h, color, &x0, &y0, &x1, &y1);
+    gfx_target_fill_rect(target, clip.x0, clip.y0, clip.x1, clip.y1, x, y, w, h, color, &x0, &y0, &x1, &y1);
 
-    mark_fill(x0, y0, x1, y1);
+    mark_fill(in_band, x0, y0, x1, y1);
 }
 
 /*
@@ -232,13 +210,13 @@ gfx_fill_rect(int x, int y, int w, int h, gfx_color_t color) {
 
 /* Dither coverage avoids framebuffer reads; blending reads each destination pixel. */
 static inline __attribute__((always_inline)) void
-fill_rect_alpha(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha, bool blend) {
+fill_rect_alpha(gfx_target_t target, gfx_box_t clip, bool in_band, int x, int y, int w, int h, gfx_color_t color,
+                uint8_t alpha, bool blend) {
     GFX_PRESENT_GUARD();
     if (!GFX_REQUIRE_FRAMEBUFFER() || alpha == 0) {
         return;
     }
 
-    const gfx_target_t target = current_target();
     const gfx_box_t rect = gfx_target_clip_rect(target, clip, (gfx_box_t){x, y, x + w, y + h});
 
     for (int row = rect.y0; row < rect.y1; row++) {
@@ -252,17 +230,17 @@ fill_rect_alpha(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha, bo
         }
     }
 
-    mark_fill(rect.x0, rect.y0, rect.x1, rect.y1);
+    mark_fill(in_band, rect.x0, rect.y0, rect.x1, rect.y1);
 }
 
 void
 gfx_fill_rect_dither(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha) {
-    fill_rect_alpha(x, y, w, h, color, alpha, false);
+    fill_rect_alpha(gfx_present_target(), gfx_clip_save(), gfx_present_in_band(), x, y, w, h, color, alpha, false);
 }
 
 void
 gfx_fill_rect_blend(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha) {
-    fill_rect_alpha(x, y, w, h, color, alpha, true);
+    fill_rect_alpha(gfx_present_target(), gfx_clip_save(), gfx_present_in_band(), x, y, w, h, color, alpha, true);
 }
 
 /* `dp`/`sp` start at column `x0`; only the columns `p` passes are copied. */
@@ -298,6 +276,9 @@ blit_dither_row(gfx_color_t* dp, const gfx_color_t* sp, int x0, int x1, const bo
  * draw_image()). */
 void
 gfx_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_stride, uint8_t alpha) {
+    const gfx_target_t target = gfx_present_target();
+    const gfx_box_t clip = gfx_clip_save();
+    const bool in_band = gfx_present_in_band();
     GFX_PRESENT_GUARD();
     if (!GFX_REQUIRE_FRAMEBUFFER()) {
         return;
@@ -306,7 +287,6 @@ gfx_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_stri
         return;
     }
 
-    const gfx_target_t target = current_target();
     const gfx_box_t rect = gfx_target_clip_rect(target, clip, (gfx_box_t){x, y, x + w, y + h});
     if (rect.x0 >= rect.x1 || rect.y0 >= rect.y1) {
         return;
@@ -333,7 +313,7 @@ gfx_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_stri
         blit_dither_row(dst + rect.x0, s, rect.x0, rect.x1, p);
     }
 
-    if (!band_render_active) {
+    if (!in_band) {
         mark_band(rect.y0, rect.y1);
     }
 }
@@ -360,8 +340,8 @@ gfx_text_scaled(int x, int y, const char* text, gfx_color_t color, int scale) {
 
 /* Draws `font` glyph or nothing if `ch` is out of range. */
 static inline __attribute__((always_inline)) void
-draw_glyph_font(const gfx_font_t* font, int x, int y, unsigned char ch, gfx_color_t color, int scale, int turn,
-                bool halo) {
+draw_glyph_font(gfx_target_t target, gfx_box_t clip, bool in_band, const gfx_font_t* font, int x, int y,
+                unsigned char ch, gfx_color_t color, int scale, int turn, bool halo) {
     /* One filled rect per coalesced box of set bits, not one per run
      * per row: gfx_font_glyph_run_boxes() merges a vertical stroke's
      * identical run across every row it spans into one box, so
@@ -379,13 +359,18 @@ draw_glyph_font(const gfx_font_t* font, int x, int y, unsigned char ch, gfx_colo
             gfx_font_run_box_rect(font, x, y, boxes[i].row0, boxes[i].row1, boxes[i].col0, boxes[i].col1, scale, turn,
                                   &rx, &ry, &rw, &rh);
         }
-        gfx_fill_rect(rx, ry, rw, rh, color);
+        int x0, y0, x1, y1;
+        gfx_target_fill_rect(target, clip.x0, clip.y0, clip.x1, clip.y1, rx, ry, rw, rh, color, &x0, &y0, &x1, &y1);
+        mark_fill(in_band, x0, y0, x1, y1);
     }
 }
 
 static inline __attribute__((always_inline)) void
 draw_text_font(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns, const gfx_font_t* font,
                bool halo) {
+    const gfx_target_t target = gfx_present_target();
+    const gfx_box_t clip = gfx_clip_save();
+    const bool in_band = gfx_present_in_band();
     GFX_PRESENT_GUARD();
     if (!GFX_REQUIRE_FRAMEBUFFER()) {
         return;
@@ -407,7 +392,6 @@ draw_text_font(int x, int y, const char* text, gfx_color_t color, int scale, int
      * on-screen row extent; see gfx_font_row_run_rect()'s own comment. */
     const int char_h = (turn & 1) ? font->cell_w * scale : font->cell_h * scale;
     const int pad = halo ? 1 : 0;
-    const gfx_target_t target = current_target();
 
     for (const char* p = text; *p != '\0'; p++) {
         const unsigned char ch = (unsigned char)*p;
@@ -418,7 +402,7 @@ draw_text_font(int x, int y, const char* text, gfx_color_t color, int scale, int
          * GFX_LAYOUT_FULL_FB, where the target spans the full screen and
          * this is never false. */
         if (gfx_target_row_range_overlaps(target, y - pad, y + char_h + pad)) {
-            draw_glyph_font(font, x, y, ch, color, scale, turn, halo);
+            draw_glyph_font(target, clip, in_band, font, x, y, ch, color, scale, turn, halo);
         }
         const int adv = gfx_font_advance(font, ch, scale);
         x += step[turn][0] * adv;
@@ -442,17 +426,9 @@ gfx_text_font_halo(int x, int y, const char* text, gfx_color_t color, int scale,
     draw_text_font(x, y, text, color, scale, quarter_turns, font, true);
 }
 
-/*
- * A second copy of the three glyph functions rather than one core threaded
- * with an alpha parameter, deliberately: gfx_text_font() is the single
- * font-aware path every text call in the tree goes through, and keeping it
- * provably unchanged beats trusting a compiler to fold an `alpha == 255`
- * check back out of it at every call site forever.
- */
-
 static void
-draw_rotated_font_pixel_dither(const gfx_font_t* font, int x, int y, int row, int col, int scale, int turn,
-                               gfx_color_t color, uint8_t alpha) {
+draw_rotated_font_pixel_dither(gfx_target_t target, gfx_box_t clip, bool in_band, const gfx_font_t* font, int x, int y,
+                               int row, int col, int scale, int turn, gfx_color_t color, uint8_t alpha) {
     int px, py;
     switch (turn) {
         case 1:
@@ -472,12 +448,12 @@ draw_rotated_font_pixel_dither(const gfx_font_t* font, int x, int y, int row, in
             py = row;
             break;
     }
-    gfx_fill_rect_dither(x + px * scale, y + py * scale, scale, scale, color, alpha);
+    fill_rect_alpha(target, clip, in_band, x + px * scale, y + py * scale, scale, scale, color, alpha, false);
 }
 
 static void
-draw_glyph_font_dither(const gfx_font_t* font, int x, int y, unsigned char ch, gfx_color_t color, int scale, int turn,
-                       uint8_t alpha) {
+draw_glyph_font_dither(gfx_target_t target, gfx_box_t clip, bool in_band, const gfx_font_t* font, int x, int y,
+                       unsigned char ch, gfx_color_t color, int scale, int turn, uint8_t alpha) {
     if (ch < font->first || (unsigned)(ch - font->first) >= font->count) {
         return;
     }
@@ -491,7 +467,7 @@ draw_glyph_font_dither(const gfx_font_t* font, int x, int y, unsigned char ch, g
         }
         for (int col = 0; col < font->cell_w; col++) {
             if (bits & (1 << col)) {
-                draw_rotated_font_pixel_dither(font, x, y, row, col, scale, turn, color, alpha);
+                draw_rotated_font_pixel_dither(target, clip, in_band, font, x, y, row, col, scale, turn, color, alpha);
             }
         }
     }
@@ -502,6 +478,9 @@ draw_glyph_font_dither(const gfx_font_t* font, int x, int y, unsigned char ch, g
 void
 gfx_text_font_dither(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns,
                      const gfx_font_t* font, uint8_t alpha) {
+    const gfx_target_t target = gfx_present_target();
+    const gfx_box_t clip = gfx_clip_save();
+    const bool in_band = gfx_present_in_band();
     GFX_PRESENT_GUARD();
     if (!GFX_REQUIRE_FRAMEBUFFER()) {
         return;
@@ -521,7 +500,7 @@ gfx_text_font_dither(int x, int y, const char* text, gfx_color_t color, int scal
 
     for (const char* p = text; *p != '\0'; p++) {
         const unsigned char ch = (unsigned char)*p;
-        draw_glyph_font_dither(font, x, y, ch, color, scale, turn, alpha);
+        draw_glyph_font_dither(target, clip, in_band, font, x, y, ch, color, scale, turn, alpha);
         const int adv = gfx_font_advance(font, ch, scale);
         x += step[turn][0] * adv;
         y += step[turn][1] * adv;

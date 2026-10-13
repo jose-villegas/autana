@@ -7,7 +7,15 @@
 
 #include <stdbool.h>
 
+#include "gfx/draw/gfx_target.h"
 #include "gfx/gfx.h"
+
+/* The framebuffer, or the band being rendered. */
+gfx_target_t gfx_present_target(void);
+/* Band drawing and overlay replay skip dirty marks. */
+bool gfx_present_in_band(void);
+gfx_box_t gfx_clip_save(void);
+void gfx_clip_restore(gfx_box_t clip);
 
 /* QSPI clock for the panel: 16.5 ms of bus a full frame at 40 MHz, 8.2 at
  * 80. 80 needs every strip sent from internal DMA RAM (strip_bounce),

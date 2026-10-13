@@ -17,7 +17,8 @@ it draws with; `present/` holds `gfx_present.c` (the present task and send
 paths), `gfx_mode.c` (modes and buffers), `gfx_debug.c` and the pure headers
 they send with; `image/` holds `gfx_image.c`, the reader of a picture's pack
 entry ([the image entry](assets/README.md#the-image-entry)); `gfx/gfx_internal.h`
-holds the state they share. The
+holds the state shared only by `present/`. Draw reads its target and clip
+through `gfx_present.h`. The
 panel link itself, QSPI and each revision's init sequence, is
 `board/board_panel.c`. For what an app owes the shell see
 [`Building-an-App.md`](Building-an-App.md); for the panel constraints these choices obey see

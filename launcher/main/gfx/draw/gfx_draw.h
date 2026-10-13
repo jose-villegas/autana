@@ -20,13 +20,6 @@
 #define GFX_CHAR_W      (8 * GFX_GLYPH_SCALE)
 #define GFX_CHAR_H      (8 * GFX_GLYPH_SCALE)
 
-/* Convert 0xRRGGBB to the panel's pixel format.
- *
- * GFX_RGB in gfx_color.h does the same thing in a constant expression, which
- * is what lets a colour table live in flash rather than RAM. Both go through
- * one definition, so they cannot drift apart. */
-gfx_color_t gfx_rgb(uint32_t rgb);
-
 void gfx_clear(gfx_color_t color);
 
 void gfx_fill_rect(int x, int y, int w, int h, gfx_color_t color);

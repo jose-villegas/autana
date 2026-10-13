@@ -1,8 +1,8 @@
 #include "gfx/present/gfx_mode.h"
 #include "core/memory.h"
 #include "core/timing.h"
-#include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx_internal.h"
+#include "gfx/gfx_test.h"
 #include "gfx/present/gfx_band_run.h"
 #include "gfx/present/gfx_fb_guard.h"
 #include "gfx/present/gfx_full_redraw.h"
@@ -37,13 +37,48 @@ static gfx_band_overlay_fn frame_overlay;
  * a framebuffer to send at all. */
 gfx_mode_t current_mode;
 
-/* The band ring's own buffers; current_target() (gfx_internal.h) reads
- * strip_target for every primitive. */
+/* The band ring's own buffers. */
 static gfx_color_t* band_buf[GFX_BAND_SLOTS];
 static gfx_band_ring_t band_ring;
 static int band_current_slot;
-bool band_render_active;
-gfx_target_t strip_target;
+static bool band_render_active;
+static gfx_target_t strip_target;
+static gfx_box_t clip;
+static const gfx_box_t full_clip = {0, 0, GFX_WIDTH, GFX_HEIGHT};
+
+#ifndef ESP_PLATFORM
+void
+gfx_band_begin_for_test(int row) {
+    band_render_active = true;
+    strip_target = (gfx_target_t){fb + row * GFX_WIDTH, row, GFX_BAND_HEIGHT, GFX_WIDTH};
+}
+
+void
+gfx_band_end_for_test(void) {
+    band_render_active = false;
+}
+#endif
+
+gfx_target_t
+gfx_present_target(void) {
+    return band_render_active ? strip_target : (gfx_target_t){fb, 0, GFX_HEIGHT, GFX_WIDTH};
+}
+
+bool
+gfx_present_in_band(void) {
+    return band_render_active;
+}
+
+gfx_box_t
+gfx_clip_save(void) {
+    return clip;
+}
+
+void
+gfx_clip_restore(gfx_box_t saved) {
+    clip = saved;
+}
+
 static int band_render_row0;
 static int band_render_height;
 
@@ -255,7 +290,7 @@ gfx_init(void) {
 #endif
     reset_mode_to_full_fb();
     gfx_fb_guard_set_available(true);
-    gfx_clear_clip();
+    gfx_clip_restore(full_clip);
     gfx_mark_all_dirty();
 #ifdef ESP_PLATFORM
     ESP_LOGI(TAG,
@@ -325,16 +360,16 @@ expand_rows(int y0, int y1, gfx_color_t* destination) {
     const gfx_target_t target = {destination, y0, y1 - y0, GFX_WIDTH};
     gfx_target_paired_rows(target, half_image, NULL, 0, GFX_WIDTH / 2, NULL, y0, y1 - y0, true);
     if (frame_overlay != NULL) {
-        const gfx_box_t saved_clip = clip;
+        const gfx_box_t saved_clip = gfx_clip_save();
         strip_target = target;
         band_render_active = true;
         gfx_fb_guard_set_available(true);
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
         gfx_present_guard_replaying = true;
 #endif
-        gfx_clear_clip();
+        gfx_clip_restore(full_clip);
         frame_overlay(y0, y1);
-        clip = saved_clip;
+        gfx_clip_restore(saved_clip);
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
         gfx_present_guard_replaying = false;
 #endif
@@ -364,7 +399,7 @@ gfx_reset_for_test(void) {
     free_full_framebuffer();
     current_mode = (gfx_mode_t){0};
     gfx_fb_guard_set_available(false);
-    gfx_clear_clip();
+    gfx_clip_restore(full_clip);
 }
 #endif
 
@@ -437,7 +472,7 @@ gfx_mode_exit(void) {
             }
         }
 #endif
-        gfx_clear_clip();
+        gfx_clip_restore(full_clip);
         gfx_mark_all_dirty();
     }
     reset_mode_to_full_fb();
