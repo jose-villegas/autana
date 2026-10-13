@@ -192,6 +192,7 @@ draw_menu(const input_t* input, uint32_t dt_ms) {
 
     const render_lab_menu_screen_state_t state = {
         .scene_name = current_scene()->name,
+        .controls = current_scene()->controls,
     };
     const render_lab_menu_screen_result_t result = render_lab_menu_screen_draw(ctx, &state, dt_ms);
 
@@ -293,10 +294,7 @@ render_lab_update(uint32_t dt_ms, const input_t* input) {
     }
 }
 
-/* "render scenes" lists every scene's key and name and which one shows;
- * "render scene <key>" switches to the scene with exactly that key, at the
- * next frame. Replies are "RENDER ..." lines then "RENDER_END", or
- * "RENDER_ERR <why>", so a script can measure one scene alike on any build. */
+/* "render scenes" lists each scene's key and name and which one shows; "render scene <key>" switches to that exact key at the next frame. Replies are "RENDER ..." lines then "RENDER_END", or "RENDER_ERR <why>". Other words go to the showing scene's console hook, if it has one. */
 static bool
 render_lab_console(const char* args) {
     if (strcmp(args, "scenes") == 0) {
@@ -321,7 +319,7 @@ render_lab_console(const char* args) {
         (void)fflush(stdout);
         return true;
     }
-    return false;
+    return current_scene()->console != NULL && current_scene()->console(args, console_reply_stdio);
 }
 
 APP_CONSOLE("render", render_lab_console);

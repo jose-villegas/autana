@@ -33,6 +33,8 @@ typedef struct {
     int icon_side; /* beside a label; a tile sizes its own to fill it */
 } ui_theme_t;
 
+ui_theme_t ui_theme_from_style(const mu_Style* style);
+
 typedef enum { UI_ALIGN_LEFT, UI_ALIGN_CENTRE, UI_ALIGN_RIGHT } ui_align_t;
 
 typedef struct {

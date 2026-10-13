@@ -35,6 +35,21 @@ static const ui_theme_t THEME = {
     .icon_side = 32,
 };
 
+static void
+test_theme_from_style_maps_widget_colors(void) {
+    ui_init();
+    mu_Style style = *ui_context()->style;
+    for (int i = 0; i < MU_COLOR_MAX; i++) {
+        style.colors[i] = (mu_Color){(uint8_t)i, (uint8_t)(i + 1), (uint8_t)(i + 2), (uint8_t)(i + 3)};
+    }
+    const ui_theme_t theme = ui_theme_from_style(&style);
+    TEST_ASSERT_EQUAL_MEMORY(&style.colors[MU_COLOR_BUTTON], &theme.button_face, sizeof(mu_Color));
+    TEST_ASSERT_EQUAL_MEMORY(&style.colors[MU_COLOR_BUTTONFOCUS], &theme.accent_face, sizeof(mu_Color));
+    TEST_ASSERT_EQUAL_MEMORY(&style.colors[MU_COLOR_TEXT], &theme.text, sizeof(mu_Color));
+    TEST_ASSERT_EQUAL_MEMORY(&style.colors[MU_COLOR_TEXT], &theme.on_accent, sizeof(mu_Color));
+    TEST_ASSERT_EQUAL_INT(GFX_GLYPH_SCALE, theme.text_scale);
+}
+
 static const mu_Rect BUTTON = {40, 100, 240, 60};
 
 typedef struct {
@@ -1126,6 +1141,7 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_the_last_row_of_a_list_taller_than_the_screen_can_be_picked);
     RUN_TEST(test_a_drag_scroll_sticks_through_later_frames);
     RUN_TEST(test_ui_swatch_grid_tiles_the_rect_exactly);
+    RUN_TEST(test_theme_from_style_maps_widget_colors);
 }
 
 SUITE_REGISTER(run_ui_widgets_suite);
