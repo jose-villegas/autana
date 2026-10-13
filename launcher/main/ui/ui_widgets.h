@@ -81,10 +81,10 @@ typedef struct {
     const char* label;
 } ui_dropdown_item_t;
 
-/* Where a dropdown's open list goes: below `anchor` when `count` rows of
- * `row_h` fit above `canvas_h - margin`, above it when they fit there, and
- * otherwise filling whichever side has more room, where it scrolls. The
- * list never covers the dropdown itself. */
+/* List rows fit below the anchor first, then above. Otherwise the opaque
+ * list overlays the canvas, including its anchor, between the margins.
+ * It uses the rows' full height when possible and scrolls only beyond the
+ * canvas height minus its margins. */
 mu_Rect ui_dropdown_list_rect(mu_Rect anchor, int count, int row_h, int canvas_h, int margin);
 
 /* Where a list `list_h` tall opens scrolled to: `selected` centred when it

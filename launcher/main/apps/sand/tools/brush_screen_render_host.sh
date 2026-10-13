@@ -14,6 +14,7 @@ main/apps/sand/material.c
 main/apps/sand/material_palette.c
 main/apps/sand/sand_ui.c
 main/ui/ui_bridge.c
+main/ui/ui.c
 main/ui/ui_build.c
 main/ui/ui_canvas_marks.c
 main/ui/ui_icons.c

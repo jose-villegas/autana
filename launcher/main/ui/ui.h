@@ -30,6 +30,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "gfx/draw/gfx_font.h"
@@ -233,6 +234,9 @@ void ui_clear_band_overlay(void);
  * app's own band content. Commands replay in the same back-to-front,
  * within-canvas order ui_end() itself would paint them in. */
 void ui_replay_band(int row0, int row1);
+
+/* Full band replays in the current frame; reset by ui_end_for_bands(). */
+uint32_t ui_band_fallback_count(void);
 
 /* Queues a plain opaque rect for the NEXT ui_end_for_bands() call to bin
  * alongside its own microui commands, for pixels to show in band mode
