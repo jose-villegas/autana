@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import idf_pin
@@ -71,6 +72,13 @@ class IdfPinTests(unittest.TestCase):
         self.assertEqual(idf_pin.newer_line("release-v5.5", tags), "release-v6.1")
         self.assertIsNone(idf_pin.newer_line("release-v6.1", tags))
         self.assertEqual(idf_pin.newer_line("release-v5.5", {"results": [{"name": "release-v5.10"}]}), "release-v5.10")
+
+    def test_newer_line_command_reads_the_listing_on_stdin(self):
+        listing = io.StringIO(json.dumps({"results": [{"name": "release-v9.9"}]}))
+        out = io.StringIO()
+        with mock.patch.object(idf_pin.sys, "stdin", listing), contextlib.redirect_stdout(out):
+            self.assertEqual(idf_pin.main(["newer-line"]), 0)
+        self.assertEqual(out.getvalue().strip(), "release-v9.9")
 
 
 if __name__ == "__main__":

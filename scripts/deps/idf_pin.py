@@ -64,7 +64,7 @@ def main(argv=None):
         print(idf_image_tag(pin["image"]) if args.field == "tag" else pin[args.field])
         return 0
     if args.command == "newer-line":
-        line = newer_line(tag(idf_pin()["image"]), json.load(sys.stdin))
+        line = newer_line(idf_image_tag(idf_pin()["image"]), json.load(sys.stdin))
         if line:
             print(line)
         return 0
