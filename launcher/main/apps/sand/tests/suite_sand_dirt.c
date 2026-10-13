@@ -394,7 +394,8 @@ test_soil_dries_biased_by_the_neighbour_it_just_watered(void) {
 
     bool done[W];
     memset(done, 0, sizeof done);
-    bool saw_any_dry = false, saw_biased_dry = false;
+    bool saw_any_dry = false;
+    bool saw_biased_dry = false;
 
     for (int i = 0; i < 4000; i++) {
         sand_step(&s, 0, 1000, 0);

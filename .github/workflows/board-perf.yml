@@ -1,0 +1,23 @@
+name: Board perf
+
+# An update should not cost the firmware performance. A bump that can change
+# what the board runs (the ESP-IDF refresh, a vendored or baked upstream)
+# carries the needs-board-perf label, and this check fails until a person
+# compares it with main on the board, posts the summary for the maintainer to
+# judge and removes the label. Which bumps carry it, and how to compare:
+# docs/tools/Framework-Versions.md.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+jobs:
+  board-perf:
+    name: Board perf compared
+    runs-on: ubuntu-24.04
+    steps:
+      - name: The bump has a board perf comparison
+        if: contains(github.event.pull_request.labels.*.name, 'needs-board-perf')
+        run: |
+          echo "::error::This bump can change the firmware. Compare it with main on the board (launcher/tools/perf/perf_compare.sh origin/main ${{ github.head_ref }} --suite ...), post the summary here (improved, unchanged and regressed rows, with magnitudes) for the maintainer to judge, then remove the needs-board-perf label."
+          exit 1

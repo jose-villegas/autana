@@ -53,6 +53,19 @@ class MemoryMapTests(unittest.TestCase):
         found = self.source("#define HOT_CODE IRAM_ATTR\n/* Cache-off caller. IRAM budget: 4 B */\nstatic void HOT_CODE foo(void) {}")
         self.assertEqual(found[0].entries, [("foo", "foo")])
 
+    def test_budget_comment_owns_unattributed_function(self):
+        sites = self.source("/* Cache-off caller. IRAM budget: 4 B */\nstatic void foo(void) {}")
+        self.assertEqual(len(sites), 1)
+        self.assertEqual(sites[0].entries, [("foo", "foo")])
+        self.assertEqual(sites[0].reason, "Cache-off caller.")
+        report = self.check(sites, [memory.Input("libmain.a", "foo.c.obj", "foo", 4)])
+        self.assertEqual(report[0][1:], (4, ["foo"]))
+
+    def test_budget_comment_without_iram_fails_budget(self):
+        sites = self.source("/* Cache-off caller. IRAM budget: 4 B */\nstatic void foo(void) {}")
+        with self.assertRaisesRegex(ValueError, "measured 0 B, budget 4 B"):
+            self.check(sites, [])
+
     def test_over_budget(self):
         sites = self.source("/* Cache-off caller. IRAM budget: 4 B */\nstatic void IRAM_ATTR foo(void) {}")
         with self.assertRaisesRegex(ValueError, "set the budget"):
@@ -392,7 +405,7 @@ print(m.render(builds))
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
             memory.check(sites, inputs, "release", memory.components(self.root), lambda site: True, "local-commit", "pinned-commit")
-        self.assertIn("build local-commit, pin pinned-commit", output.getvalue())
+        self.assertIn("commit local-commit here, pinned-commit pinned", output.getvalue())
         with self.assertRaisesRegex(ValueError, "set the budget to 8 B"):
             memory.check(sites, inputs, "release", memory.components(self.root), lambda site: True, "pinned-commit", "pinned-commit")
         with self.assertRaisesRegex(ValueError, "no site"):
@@ -504,7 +517,7 @@ print(m.render(builds))
         ld.mkdir(parents=True)
         (ld / "sections.ld").write_text(".iram0.text_end : { . = ALIGN(256); }")
         (ld / "memory.ld").write_text("")
-        with patch.object(memory, "symbols", return_value={}), patch.object(memory, "find_tool", return_value="nm"), patch.object(memory, "run", side_effect=[json.dumps({"layout": []}), "idf-commit\n"]):
+        with patch.object(memory, "symbols", return_value={}), patch.object(memory, "find_tool", return_value="nm"), patch.object(memory, "run", return_value=json.dumps({"layout": []})), patch.object(memory, "idf_commit", return_value="idf-commit"):
             measured = memory.read_build(build, self.root)
         self.assertEqual(measured["owned"], {"libchosen.a": self.root / "launcher/components/chosen"})
         self.assertEqual(measured["build_id"], "123456abcdef-diag")
@@ -678,7 +691,7 @@ class GateRegressions(unittest.TestCase):
                 with patch.object(sys, "argv", ["memory_map.py", "fixture", "--root", str(root), "--check", *flags]), patch.object(memory, "read_build", return_value=build), patch.object(memory, "build_sites", return_value=([site], lambda site: True)), contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
                     self.assertEqual(memory.main(), status)
                 if status == 0:
-                    self.assertIn("NOTE IDF drift: build measured, pin other", output.getvalue())
+                    self.assertIn("NOTE IDF drift: commit measured here, other pinned", output.getvalue())
 
     def test_unknown_build_suffix(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -47,7 +47,7 @@ disc_count_walk(int radius) {
     int x = radius;
 
     for (int dy = 0; dy <= radius; dy++) {
-        while (x > 0 && x * x + dy * dy > r2) {
+        while (x > 0 && (x * x) + (dy * dy) > r2) {
             x--;
         }
         const int row = 2 * x + 1;
@@ -94,7 +94,7 @@ queue_outward_impulse(disc_walk_t* w, int dx, int dy) {
     const int cx = w->cx;
     const int cy = w->cy;
     const int mat_filter = w->mat_filter;
-    if (dx * dx + dy * dy > w->r2) {
+    if ((dx * dx) + (dy * dy) > w->r2) {
         return;
     }
 

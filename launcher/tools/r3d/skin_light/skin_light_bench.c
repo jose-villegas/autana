@@ -471,8 +471,8 @@ main(int argc, char** argv) {
         return 1;
     }
     const size_t n = (size_t)d.frames * d.vertices;
-    uint8_t(*ref)[3] = malloc(n * 3);
-    uint8_t(*got)[3] = malloc(n * 3);
+    uint8_t (*ref)[3] = malloc(n * 3);
+    uint8_t (*got)[3] = malloc(n * 3);
     uint16_t* sheet = malloc(VARIANT_N * d.vertices * sizeof(uint16_t));
     static result_t results[VARIANT_N][LIGHT_COUNT_N];
     unsigned reference = 0;
@@ -492,7 +492,7 @@ main(int argc, char** argv) {
             if (VARIANTS[vi].kind == K_SKIN) {
                 continue;
             }
-            uint8_t(*mine)[3] = vi == reference ? ref : got;
+            uint8_t (*mine)[3] = vi == reference ? ref : got;
             score(&d, mine, ref, &results[vi][li]);
             if (LIGHT_COUNTS[li] == SHEET_LIGHTS) {
                 const unsigned run = vi == reference ? 0 : sheet_runs++;

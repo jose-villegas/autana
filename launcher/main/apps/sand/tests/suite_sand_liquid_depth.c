@@ -710,7 +710,9 @@ test_the_blend_has_no_jump_crossing_45_degrees(void) {
     int lum[BLEND_SWEEP_N];
     for (size_t i = 0; i < BLEND_SWEEP_N; i++) {
         const int gx = BLEND_SWEEP[i].gx, gy = BLEND_SWEEP[i].gy;
-        bool vdom, vrev, hrev;
+        bool vdom;
+        bool vrev;
+        bool hrev;
         unsigned ax, ay, scale_q8;
         ray_walk_frame_facts(gx, gy, &vdom, &vrev, &hrev, &ax, &ay, &scale_q8);
 
@@ -2040,7 +2042,9 @@ flash_test_free(void) {
 static void
 flash_test_frame_reset(int gx, int gy, int grid_w, int grid_h, bool gate, ray_walk_state_t* st, bool* vdom_prev,
                        bool* vrev_prev, bool* hrev_prev, bool* fired) {
-    bool vdom, vrev, hrev;
+    bool vdom;
+    bool vrev;
+    bool hrev;
     unsigned ax, ay, scale_q8;
     ray_walk_frame_facts(gx, gy, &vdom, &vrev, &hrev, &ax, &ay, &scale_q8);
 
@@ -2087,7 +2091,9 @@ flash_test_paint_row(int cy, bool vdom, bool vrev, bool hrev, unsigned ax, unsig
 /* Leaves flash_displayed[] with LAST-PAINTED depth of every cell. */
 static void
 flash_test_paint(int gx, int gy, bool wake_fired) {
-    bool vdom, vrev, hrev;
+    bool vdom;
+    bool vrev;
+    bool hrev;
     unsigned ax, ay, scale_q8;
     ray_walk_frame_facts(gx, gy, &vdom, &vrev, &hrev, &ax, &ay, &scale_q8);
 
@@ -2404,7 +2410,9 @@ static const struct {
  * `depth_out` */
 static void
 shadow_test_coherent_pass(int gx, int gy, unsigned depth_out[]) {
-    bool vdom, vrev, hrev;
+    bool vdom;
+    bool vrev;
+    bool hrev;
     unsigned ax, ay, scale_q8;
     ray_walk_frame_facts(gx, gy, &vdom, &vrev, &hrev, &ax, &ay, &scale_q8);
 

@@ -17,8 +17,8 @@ _Static_assert(sizeof(scene_placement_t) == 48 && sizeof(scene_asset_renderer_t)
                    && sizeof(scene_asset_settings_t) == 20,
                "SCNE mapped row layouts");
 _Static_assert(SCENE_ASSET_AT_COUNTS == sizeof(uint16_t)
-                   && SCENE_ASSET_AT_OFFSETS == SCENE_ASSET_AT_COUNTS + SCENE_ASSET_PART_COUNT * sizeof(uint16_t)
-                   && SCENE_ASSET_HEADER_SIZE == SCENE_ASSET_AT_OFFSETS + SCENE_ASSET_PART_COUNT * sizeof(uint32_t),
+                   && SCENE_ASSET_AT_OFFSETS == SCENE_ASSET_AT_COUNTS + (SCENE_ASSET_PART_COUNT * sizeof(uint16_t))
+                   && SCENE_ASSET_HEADER_SIZE == SCENE_ASSET_AT_OFFSETS + (SCENE_ASSET_PART_COUNT * sizeof(uint32_t)),
                "SCNE header matches its part count");
 _Static_assert(sizeof(((scene_asset_t*)0)->names) == sizeof(void*), "mapped view pointer width");
 
@@ -31,7 +31,7 @@ static const void*
 section(asset_view_t entry, int part, size_t row) {
     const uint32_t offset = asset_read_u32(entry.data + SCENE_ASSET_AT_OFFSETS + (part * sizeof(uint32_t)));
     if (offset % ENTRY_ALIGNMENT != 0 || offset < SCENE_ASSET_HEADER_SIZE
-        || (uint64_t)offset + (uint64_t)count(entry, part) * row > entry.size) {
+        || (uint64_t)offset + ((uint64_t)count(entry, part) * row) > entry.size) {
         return NULL;
     }
     return entry.data + offset;

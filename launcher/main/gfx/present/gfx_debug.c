@@ -132,13 +132,11 @@ restore_border(gfx_color_t* buf, int stride, int w, int h, const gfx_color_t* sa
 _Static_assert(OVERLAY_CELL_SAVE_PIXELS + OVERLAY_LEAF_SAVE_PIXELS <= GATHER_MAX_PIXELS,
                "overlay save/restore scratch must fit inside gather_buf");
 
-static inline gfx_color_t (*overlay_cell_save(void))[BORDER_PIXELS] {
-    return (gfx_color_t(*)[BORDER_PIXELS])gather_buf;
-}
+static inline gfx_color_t (*overlay_cell_save(void))
+    [BORDER_PIXELS] { return (gfx_color_t(*)[BORDER_PIXELS])gather_buf; }
 
-static inline gfx_color_t (*overlay_leaf_save(void))[LEAF_BORDER_PIXELS] {
-    return (gfx_color_t(*)[LEAF_BORDER_PIXELS])(gather_buf + OVERLAY_CELL_SAVE_PIXELS);
-}
+static inline gfx_color_t (*overlay_leaf_save(void))
+    [LEAF_BORDER_PIXELS] { return (gfx_color_t(*)[LEAF_BORDER_PIXELS])(gather_buf + OVERLAY_CELL_SAVE_PIXELS); }
 
 /* Shared by send_full_row() and gather_and_send(), never live at once:
  * the frame loop is single-threaded. Read while the save scratch in

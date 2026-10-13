@@ -1,7 +1,6 @@
-// Unit tests for the pure parts of check-mermaid.mjs: fence extraction and
-// the line-number rewrite. Nothing here touches mmdc, git, or the
-// filesystem, so it runs with plain `node --test`, no mermaid-cli or
-// Chrome required.
+// Unit tests for the pure parts of check-mermaid.mjs: fence extraction, the
+// line-number rewrite and which mmdc runs. Nothing here runs mmdc or git, so it
+// runs with plain `node --test`, no mermaid-cli or Chrome required.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -13,7 +12,12 @@ import {
   findLiteralNewlineInStateDiagram,
   findBrowserOnPath,
   browserConfigArgs,
+  mmdcCommand,
+  pinnedVersion,
 } from '../check-mermaid.mjs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 test('extracts a single fenced block with its start line', () => {
   const text = ['intro', '```mermaid', 'graph TD', 'A --> B', '```', 'outro'].join('\n');
@@ -154,4 +158,28 @@ test('names the browser to mmdc through a Puppeteer config, unless the caller ga
 
 test('a browser the user named through PUPPETEER_EXECUTABLE_PATH beats one found on PATH', () => {
   assert.deepEqual(browserConfigArgs([], '/usr/bin/chromium', '/tmp/p.json', '/opt/chrome'), []);
+});
+
+test('runs the pinned mmdc once npm ci installed it, else the one on PATH', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mermaid-pin-'));
+  try {
+    assert.equal(mmdcCommand(dir), 'mmdc');
+    const bin = join(dir, 'node_modules', '.bin');
+    mkdirSync(bin, { recursive: true });
+    const name = process.platform === 'win32' ? 'mmdc.cmd' : 'mmdc';
+    writeFileSync(join(bin, name), '');
+    assert.equal(mmdcCommand(dir), join(bin, name));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the pinned version is the exact one package.json names', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mermaid-pin-'));
+  try {
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ dependencies: { '@mermaid-js/mermaid-cli': '1.2.3' } }));
+    assert.equal(pinnedVersion(dir), '1.2.3');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

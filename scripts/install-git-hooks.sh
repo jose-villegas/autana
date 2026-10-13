@@ -96,7 +96,7 @@ for hook in "$HOOKS_DIR"/*; do
 done
 echo ""
 echo "Pre-commit checks staged formatting, executable bits and CI's file-scoped text rules."
-echo "It needs clang-format 19 and Python with scripts/gates/requirements.txt installed."
+echo "It needs the clang-format of the esp-clang release launcher/idf-pin.json pins, and Python with scripts/gates/requirements.txt."
 echo "See docs/C-Style-Guide.md. Pre-push checks branch names and runs host tests"
 echo "with --sanitize when a pushed range changes C or headers. See docs/Testing-Guide.md."
 echo "Skip a hook with git commit --no-verify or git push --no-verify."
