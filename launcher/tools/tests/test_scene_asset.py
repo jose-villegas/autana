@@ -2,6 +2,7 @@
 scene file says, what it refuses to read, and the pack build_pack makes of a
 scene. The firmware's reader of the same bytes is suite_scene.c."""
 
+import importlib
 import pathlib
 import math
 import struct
@@ -66,6 +67,28 @@ class SceneFiles(unittest.TestCase):
 
 
 class SceneEntryTests(SceneFiles):
+    def test_header_size_mismatch_raises_scene_error(self):
+        from build import c_header
+        original = scene_asset.__dict__.copy()
+        read_define = c_header.read_define
+        owner_size = HEADER.size + 1
+
+        def mismatched_size(owner, name):
+            if owner == scene_asset.OWNER and name == "SCENE_ASSET_HEADER_SIZE":
+                return owner_size
+            return read_define(owner, name)
+
+        try:
+            with mock.patch.object(c_header, "read_define", side_effect=mismatched_size):
+                with self.assertRaises(ValueError) as raised:
+                    importlib.reload(scene_asset)
+                self.assertIsInstance(raised.exception, scene_asset.SceneError)
+                for value in (str(HEADER.size), str(owner_size), str(scene_asset.OWNER)):
+                    self.assertIn(value, str(raised.exception))
+        finally:
+            scene_asset.__dict__.clear()
+            scene_asset.__dict__.update(original)
+
     def test_multiple_cameras_and_their_clips_share_the_scene_pack(self):
         (self.root / "clips" / "tour.anim.toml").write_text(CLIP)
         second = lens("clips/tour.anim.toml").replace('name = "camera"', 'name = "tour"')
