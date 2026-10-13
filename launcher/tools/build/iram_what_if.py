@@ -34,8 +34,11 @@ OPTIONS = {
     "heap-to-flash": {"variants": VARIANTS, "config": {"CONFIG_SPI_MASTER_IN_IRAM": "n", "CONFIG_SPI_MASTER_ISR_IN_IRAM": "n", "CONFIG_HEAP_PLACE_FUNCTION_INTO_FLASH": "y"}},
     "noflash-text": {"variants": VARIANTS, "config": {}},
     "gpspi-flash-hal": {"variants": (MAIN_VARIANT,), "config": {}},
-    "freertos-non-isr": {"variants": VARIANTS, "config": {}},
+    "freertos-non-isr": {"variants": VARIANTS, "config": {"CONFIG_FREERTOS_IN_IRAM": "n"}},
 }
+# The FreeRTOS queue calls every present waits on; freertos-non-isr keeps them in IRAM.
+PRESENT_QUEUE_CALLS = ("xQueueGenericSend", "xQueueReceive", "xQueueSemaphoreTake")
+
 
 def scratch_fragment(name, original, idf, baseline):
     if name == "noflash-text":
@@ -46,13 +49,10 @@ def scratch_fragment(name, original, idf, baseline):
         return original + "\n[mapping:memory_probe]\narchive: libhal.a\nentries:\n" + "\n".join(
             f"    spi_flash_hal_gpspi:{symbol} (default)" for symbol in symbols) + "\n"
     if name == "freertos-non-isr":
-        text = (idf / "components/freertos/linker.lf").read_text(encoding="utf-8")
-        start = text.index("if FREERTOS_PLACE_FUNCTIONS_INTO_FLASH = y:")
-        selections = sorted(set(re.findall(r"^\s*(\w+)\s*:\s*(\w+)\s+\(default\)", text[start:], re.M)))
-        # Queue APIs are in the measured present path; ISR APIs must retain cache-off reachability.
-        keep = {"xQueueGenericSend", "xQueueReceive", "xQueueSemaphoreTake", "xQueueGiveFromISR", "xQueueGenericSendFromISR", "xQueueReceiveFromISR"}
-        entries = [f"    {obj}:{symbol} (default)" for obj, symbol in selections if "FromISR" not in symbol and symbol not in keep and not obj.startswith("port")]
-        return original + "\n[mapping:memory_probe]\narchive: libfreertos.a\nentries:\n" + "\n".join(entries) + "\n"
+        # FREERTOS_IN_IRAM=n is IDF's own split: non-ISR FreeRTOS to flash, FromISR and
+        # context-switch code in IRAM. The queue calls a present waits on stay in IRAM here.
+        return original + "\n[mapping:memory_probe]\narchive: libfreertos.a\nentries:\n" + "\n".join(
+            f"    queue:{symbol} (noflash_text)" for symbol in PRESENT_QUEUE_CALLS) + "\n"
     return original
 
 
@@ -77,7 +77,7 @@ def result_row(name, baseline, measured):
         return iram_bytes({section: size for section, (_, size) in build["sections"].items()})
     change = {"noflash-text": "our `(noflash)` entries become `(noflash_text)`",
               "gpspi-flash-hal": "libhal `spi_flash_hal_gpspi*` to flash",
-              "freertos-non-isr": "IDF's flash-placement selections, except FromISR, port and present-path queue calls"}
+              "freertos-non-isr": "CONFIG_FREERTOS_IN_IRAM=n (IDF's split) with present-path queue calls kept in IRAM; SPI_MASTER_IN_IRAM depends on it and drops too"}
     return (name, iram_in(baseline) - iram_in(measured),
             dram_bytes(baseline) - dram_bytes(measured),
             measured["constants"]["_heap_start"] - baseline["constants"]["_heap_start"],

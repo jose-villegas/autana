@@ -480,13 +480,11 @@ print(m.render(builds, runtime=m.parse_runtime_heap(Path('launcher/tools/tests/f
     def test_fragment_experiments_preserve_required_placements(self):
         original = "foo (noflash)\nbar (noflash_text)\nbaz (iram)\n"
         self.assertEqual(probe.scratch_fragment("noflash-text", original, self.root, {}), "foo (noflash_text)\nbar (noflash_text)\nbaz (iram)\n")
-        freertos = self.root / "components/freertos/linker.lf"
-        freertos.parent.mkdir(parents=True)
-        freertos.write_text("if FREERTOS_PLACE_FUNCTIONS_INTO_FLASH = y:\n    tasks:vTaskDelay (default)\n    tasks:xTaskNotifyFromISR (default)\n    port:portYield (default)\n    portasm:helper (default)\n    queue:xQueueGenericSend (default)\n    queue:xQueueReceive (default)\n    queue:xQueueSemaphoreTake (default)\n")
+        self.assertEqual(probe.OPTIONS["freertos-non-isr"]["config"], {"CONFIG_FREERTOS_IN_IRAM": "n"})
         fragment = probe.scratch_fragment("freertos-non-isr", "", self.root, {})
-        self.assertIn("tasks:vTaskDelay (default)", fragment)
-        for excluded in ("FromISR", "port:", "portasm:", "xQueueGenericSend", "xQueueReceive", "xQueueSemaphoreTake"):
-            self.assertNotIn(excluded, fragment)
+        for symbol in probe.PRESENT_QUEUE_CALLS:
+            self.assertIn(f"queue:{symbol} (noflash_text)", fragment)
+        self.assertNotIn("(default)", fragment)
         baseline = {"inputs": [memory.Input("libhal.a", "spi_flash_hal_gpspi.c.obj", "gpspi_fn", 4), memory.Input("libother.a", "spi_flash_hal_gpspi.c.obj", "other", 4)]}
         fragment = probe.scratch_fragment("gpspi-flash-hal", "", self.root, baseline)
         self.assertIn("spi_flash_hal_gpspi:gpspi_fn (default)", fragment)
