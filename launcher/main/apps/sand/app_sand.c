@@ -1,39 +1,8 @@
 /*
- * app_sand - falling sand, poured with a finger and steered by tilting.
- *
- * Three pieces, each of which knows nothing about the others:
- *   sand.c  the automaton   - pure, host-tested, no idea a screen exists
- *   imu.c   the QMI8658     - raw counts, no idea what they will be used for
- *   here    the wiring      - grid size, colours, axis mapping, rendering
- *
- * WHY THE GRID IS COARSER THAN THE SCREEN
- *
- * A cell per pixel would be 368 x 448 = 165 KB of grid and four times the
- * work of the finest quality every step, so a cell is a square block of
- * `cell` x `cell` pixels, and `cell` is chosen from
- * the options screen rather than fixed: ULTRA (2 px) gives a 184 x 224 grid, or
- * 41 KB; HIGH (3 px) gives 122 x 149, or 18 KB; NORMAL (4 px, the default)
- * gives 92 x 112, or 10 KB; LOW (6 px) gives 61 x 74, or about 4.5 KB;
- * VERY LOW (8 px) gives 46 x 56, or about 2.5 KB. All five still read as
- * grains rather than bricks - the choice trades fineness for the step budget
- * a finer grid costs, not for whether it looks right.
- *
- * Every allocation below is sized for the finest quality (2 px) regardless of
- * which one is active, so switching quality on the menu never reallocates
- * anything - it just changes how much of the same buffer is in use.
- *
- * `cell` need not divide 368 or 448 evenly - grid_w/grid_h floor, so a
- * remainder just leaves an unredrawn margin at most cell-1 px wide along the
- * right and bottom edges, not an out-of-bounds write. At 2 px it divides
- * both evenly and there is no margin at all, but at 3 px it does not: 122 * 3
- * = 366 and 149 * 3 = 447, leaving a 2 px strip on the right and a 1 px strip
- * on the bottom that the grid never touches. At 6 px the margin is the
- * largest of any tier: 61 * 6 = 366 and 74 * 6 = 444, a 2 px strip on the
- * right and a 4 px strip on the bottom. That is harmless only because
- * the colour of an empty cell and the menu's background are the same value,
- * 0x0A0C14, see COL_BACKGROUND, so the untouched strip is indistinguishable
- * from the screen around it. start_sim() still clears the screen explicitly
- * before the first frame rather than leaning on that coincidence alone.
+ * The simulation uses a coarser grid than the screen to fit its frame budget.
+ * Buffers are sized for the finest quality so changing quality needs no
+ * reallocation. Grid dimensions round down; clearing the screen on entry
+ * leaves any uncovered edge in the background colour.
  */
 
 #include <stdio.h>
@@ -53,8 +22,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
-#include "input/imu.h"
-#include "input/imu_rotation.h"
+#include "input/input.h"
 #include "input/tilt.h"
 #include "material_palette.h"
 #include "math/scalar/fixed.h"
@@ -625,10 +593,6 @@ start_sim(void) {
     sand_enable_impulses(&sim, buffers.impulse_buf, APP_IMPULSE_MAX);
     tilt_reset(&tilt, IMU_COUNTS_PER_G);
 
-    if (!imu_init()) {
-        ESP_LOGW(TAG, "No IMU - falling back to fixed downward gravity");
-    }
-
     ESP_LOGI(TAG, "%d x %d grid, %d bytes, %d px cells", grid_w, grid_h, grid_w * grid_h, cell);
 
     apply_gfx_action(sand_colour_on_start_sim(&colour_state, (sand_colour_mode_t)color_mode));
@@ -1069,21 +1033,17 @@ static int pending_awake_blocks, pending_awake_cells;
 #endif
 
 static void
-read_gravity_input(uint32_t dt_ms, imu_sample_t* sample, int* gx, int* gy, int* flow, int* jostle, int* rotation) {
+read_gravity_input(uint32_t dt_ms, input_motion_t* motion, int* gx, int* gy, int* flow, int* jostle) {
     *gx = 0;
     *gy = IMU_COUNTS_PER_G;
     *flow = 256;
     *jostle = 0;
-    *rotation = 0;
 
-    if (!imu_read(sample)) {
+    if (!input_read_motion(motion)) {
         return;
     }
 
-    *rotation = imu_rotation_level(sample);
-
-    const vec2i_t gravity = imu_gravity_screen(sample);
-    tilt_update(&tilt, gravity.x, gravity.y, sample->az, *rotation, dt_ms);
+    tilt_update(&tilt, motion->gravity.x, motion->gravity.y, motion->gravity_z, motion->turn_rate, dt_ms);
 
     *gx = tilt_x(&tilt);
     *gy = tilt_y(&tilt);
@@ -1169,7 +1129,7 @@ handle_pour_input(const input_t* input, uint32_t dt_ms) {
  * against. The simulation itself uses the dithered direction, which changes
  * every frame by design and would be useless to log. */
 static void
-log_direction_change(int gx, int gy, int jostle, const imu_sample_t* sample) {
+log_direction_change(int gx, int gy, int jostle, const input_motion_t* motion) {
     static int last_dx = 99, last_dy = 99;
     int dx, dy;
     sand_gravity_direction(gx, gy, &dx, &dy);
@@ -1179,7 +1139,7 @@ log_direction_change(int gx, int gy, int jostle, const imu_sample_t* sample) {
     ESP_LOGI(TAG,
              "down is (%+d,%+d)  smoothed (%+6d,%+6d)  "
              "raw (%+6d,%+6d)  shake %d",
-             dx, dy, gx, gy, sample->ax, sample->ay, jostle);
+             dx, dy, gx, gy, motion->gravity.x, motion->gravity.y, jostle);
     last_dx = dx;
     last_dy = dy;
 }
@@ -1381,9 +1341,9 @@ sand_update(uint32_t dt_ms, const input_t* input) {
         return;
     }
 
-    int gx, gy, flow, jostle, rotation;
-    imu_sample_t sample = {0};
-    read_gravity_input(dt_ms, &sample, &gx, &gy, &flow, &jostle, &rotation);
+    int gx, gy, flow, jostle;
+    input_motion_t motion = {0};
+    read_gravity_input(dt_ms, &motion, &gx, &gy, &flow, &jostle);
 
     label_dirty_this_frame = label_left_ms > 0;
     if (label_dirty_this_frame) {
@@ -1395,7 +1355,7 @@ sand_update(uint32_t dt_ms, const input_t* input) {
     } else if (!input->down) {
         input_ready = true;
     }
-    log_direction_change(gx, gy, jostle, &sample);
+    log_direction_change(gx, gy, jostle, &motion);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
     const int64_t t0 = timing_now_us();

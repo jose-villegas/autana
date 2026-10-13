@@ -1,6 +1,6 @@
 /*
  * input: touch, buttons and motion. Touch and buttons arrive once a frame
- * in input_t; motion is read through imu_read(). input_t lives below
+ * in input_t; motion is read through input_read_motion(). input_t lives below
  * app/app.h so no input/ header includes upward. The shell's calls that
  * fill it are in input_shell.h.
  */
@@ -9,6 +9,8 @@
 #include <stdbool.h>
 
 #include "input/buttons.h"
+#include "input/imu_sample.h"
+#include "math/linear/vec2i.h"
 
 /* Touch state for the current frame.
  *
@@ -28,3 +30,13 @@ typedef struct {
     button_t boot;
     button_t power;
 } input_t;
+
+typedef struct {
+    vec2i_t gravity; /* in-plane, screen axes, IMU_COUNTS_PER_G per g */
+    int gravity_z;   /* out of plane, same units */
+    int turn_rate;   /* how fast the board turns, 0-255 (imu_rotation_level) */
+} input_motion_t;
+
+/* One sensor read (an I2C transaction: call it only in frames that need it).
+ * False when there is no sensor or no reading. */
+bool input_read_motion(input_motion_t* out);

@@ -17,8 +17,6 @@
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "input/gesture.h"
-#include "input/imu.h"
-#include "input/imu_rotation.h"
 #include "input/input.h"
 #include "input/tilt.h"
 #include "profile/frame_cost.h"
@@ -229,12 +227,11 @@ static tilt_t launcher_tilt;
  * every frame, not at the orientation logic's own slower pace. */
 static void
 feed_launcher_gravity(uint32_t dt_ms) {
-    imu_sample_t sample;
-    if (!imu_read(&sample)) {
+    input_motion_t motion;
+    if (!input_read_motion(&motion)) {
         return;
     }
-    const vec2i_t gravity = imu_gravity_screen(&sample);
-    tilt_update(&launcher_tilt, gravity.x, gravity.y, sample.az, imu_rotation_level(&sample), dt_ms);
+    tilt_update(&launcher_tilt, motion.gravity.x, motion.gravity.y, motion.gravity_z, motion.turn_rate, dt_ms);
     ui_ridge_set_gravity(tilt_x(&launcher_tilt), tilt_y(&launcher_tilt), tilt_strength(&launcher_tilt),
                          tilt_shake(&launcher_tilt));
 }

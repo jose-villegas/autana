@@ -12,13 +12,13 @@
 #include "math/linear/vec2i.h"
 
 /* Starts the touch and button polling tasks and the motion sensor. A missing
- * sensor is logged and leaves imu_read() reporting nothing. */
+ * sensor is logged and leaves input_read_motion() reporting nothing. */
 void input_start(void);
 
 /* Fills `out`'s touch and buttons for this frame and clears the edges they
  * latched. */
 void input_poll(input_t* out);
 
-/* Reads the motion sensor and fills `gravity` in screen axes
- * (imu_gravity_screen()). False when there is no sensor or no reading. */
+/* Reads motion and fills `gravity` in screen axes. False when there is no
+ * sensor or no reading. */
 bool input_read_gravity(vec2i_t* gravity);
