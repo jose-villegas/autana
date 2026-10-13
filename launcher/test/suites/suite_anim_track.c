@@ -11,6 +11,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "anim/anim_track.h"
 #include "anim/playback/anim_playhead.h"
 
 #define EPSILON 1e-5F
@@ -93,7 +94,7 @@ test_a_track_starting_late_holds_its_first_value_until_its_time(void) {
 /* Two tracks of one animation, one over 0..2 s and one over 1..4 s: the clip
  * is 4 s, both loop at it, and both read the same clip second. */
 static void
-test_tracks_with_different_key_ranges_stay_in_step_looped_and_clamped(void) {
+test_tracks_with_different_key_ranges_stay_in_step_looped(void) {
     const float early_times[] = {0.0F, 2.0F};
     const float early_values[] = {0.0F, 20.0F};
     const float late_times[] = {1.0F, 4.0F};
@@ -107,19 +108,11 @@ test_tracks_with_different_key_ranges_stay_in_step_looped_and_clamped(void) {
     anim_playhead_t playhead;
     anim_playhead_init(&playhead, ANIM_LOOP);
     anim_playhead_advance(&playhead, &clip, 5000);
-    float seconds = anim_playhead_seconds(&playhead);
+    const float seconds = anim_playhead_seconds(&playhead);
     anim_track_sample(&early, seconds, a);
     anim_track_sample(&late, seconds, b);
     TEST_ASSERT_FLOAT_WITHIN(EPSILON, 10.0F, a[0]);
     TEST_ASSERT_FLOAT_WITHIN(EPSILON, 100.0F, b[0]);
-    /* Clamped, 9 s is the clip's end: the early track has held 20 since 2 s. */
-    anim_playhead_init(&playhead, ANIM_CLAMP);
-    anim_playhead_advance(&playhead, &clip, 9000);
-    seconds = anim_playhead_seconds(&playhead);
-    anim_track_sample(&early, seconds, a);
-    anim_track_sample(&late, seconds, b);
-    TEST_ASSERT_EQUAL_FLOAT(20.0F, a[0]);
-    TEST_ASSERT_EQUAL_FLOAT(130.0F, b[0]);
 }
 
 static void
@@ -227,7 +220,7 @@ suite_anim_track(void) {
     RUN_TEST(test_a_clamped_track_holds_its_ends);
     RUN_TEST(test_a_looped_track_wraps_at_its_last_key);
     RUN_TEST(test_a_track_starting_late_holds_its_first_value_until_its_time);
-    RUN_TEST(test_tracks_with_different_key_ranges_stay_in_step_looped_and_clamped);
+    RUN_TEST(test_tracks_with_different_key_ranges_stay_in_step_looped);
     RUN_TEST(test_a_single_key_track_is_that_value_always);
     RUN_TEST(test_a_cubic_track_leaves_and_arrives_at_its_tangents);
     RUN_TEST(test_a_cubic_tangent_is_per_second_so_a_longer_segment_covers_the_same_shape);

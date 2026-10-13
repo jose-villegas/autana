@@ -59,8 +59,8 @@ anim_layer_weight(const anim_layer_t* l) {
 }
 
 static void
-sample_slot(const anim_layer_t* layer, const anim_slot_t* slot, const anim_skeleton_t* skeleton,
-            const anim_joint_bound_t* const* bound, const int* counts, anim_pose_t* out) {
+sample_slot(const anim_slot_t* slot, const anim_skeleton_t* skeleton, const anim_joint_bound_t* const* bound,
+            const int* counts, anim_pose_t* out) {
     anim_pose_rest(skeleton, out);
     const float seconds = anim_playhead_seconds(&slot->playhead);
     anim_sample_pose(bound[slot->clip], counts[slot->clip], seconds, out);
@@ -70,9 +70,9 @@ const anim_pose_t*
 anim_layer_pose(anim_layer_t* layer, const anim_skeleton_t* skeleton, const anim_joint_bound_t* const* bound,
                 const int* counts) {
     assert(layer->current.clip != ANIM_LAYER_CLIP_NONE);
-    sample_slot(layer, &layer->current, skeleton, bound, counts, &layer->shown);
+    sample_slot(&layer->current, skeleton, bound, counts, &layer->shown);
     if (!layer->frozen_previous && layer->previous.clip != ANIM_LAYER_CLIP_NONE) {
-        sample_slot(layer, &layer->previous, skeleton, bound, counts, &layer->frozen);
+        sample_slot(&layer->previous, skeleton, bound, counts, &layer->frozen);
     }
     if (layer->frozen_previous || layer->previous.clip != ANIM_LAYER_CLIP_NONE) {
         anim_pose_blend(&layer->frozen, &layer->shown, anim_layer_weight(layer), &layer->shown);
