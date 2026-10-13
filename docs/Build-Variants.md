@@ -32,7 +32,8 @@ reconfigures another:
 `autana build` needs no board and takes no lock; what it runs is
 `launcher/tools/build/build.sh` with the variant's flag (`--dev`, `--diag`),
 and CI builds every variant the same way. `--configure` stops after CMake's
-configure step: the variant's `sdkconfig` and `compile_commands.json`, nothing compiled.
+configure step: the variant's `sdkconfig` and `compile_commands.json`,
+nothing compiled.
 
 ---
 

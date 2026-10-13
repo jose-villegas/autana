@@ -24,7 +24,8 @@ idf_variant_disagreement() {
 
 # idf_variant_build <launcher-dir> <release|dev|diag> <build-dir> [options]
 # Options: --autorun, --perf-scope, --qemu, --layout-seed <n>, --defaults <fragment> <symbol>,
-# --configure (reconfigure only: sdkconfig and compile_commands.json, no compile).
+# --hot-tunables, --configure (reconfigure only: sdkconfig and compile_commands.json,
+# no compile).
 idf_variant_build() {
     launcher_dir=$1
     variant=$2
@@ -38,7 +39,6 @@ idf_variant_build() {
     layout_seed=0
     hot_tunables=0
     idf_verb=build
-    banner=Building
 
     case "$variant" in
         release) IDF_VARIANT_REQUIRED=CONFIG_LAUNCHER_RELEASE ;;
@@ -81,7 +81,6 @@ idf_variant_build() {
                 ;;
             --configure)
                 idf_verb=reconfigure
-                banner=Configuring
                 ;;
             --hot-tunables)
                 [ "$variant" != release ] || { echo "--hot-tunables needs dev or diag" >&2; return 2; }
@@ -125,6 +124,8 @@ idf_variant_build() {
         fi
     fi
 
+    banner=Building
+    [ "$idf_verb" = build ] || banner=Configuring
     if [ "$perf_scope" -eq 1 ]; then
         echo "=== $banner $build_dir (perf scope) ==="
     else
