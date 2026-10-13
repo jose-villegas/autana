@@ -121,7 +121,7 @@ display_orientation_sample(display_orientation_t* o, int64_t now_us, display_gra
     if (now_us < o->next_sample_us) {
         return false;
     }
-    o->next_sample_us = now_us + (int64_t)DISPLAY_SAMPLE_MS * 1000;
+    o->next_sample_us = now_us + ((int64_t)DISPLAY_SAMPLE_MS * 1000);
 
     vec2i_t gravity;
     if (!read(&gravity)) {

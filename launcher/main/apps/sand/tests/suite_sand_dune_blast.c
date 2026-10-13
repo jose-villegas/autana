@@ -240,7 +240,7 @@ record_footprint(const sand_t* g, uint8_t* footprint, int w, int h) {
             if (sand_at(g, x, y) == SAND_EMPTY) {
                 continue;
             }
-            footprint_set(footprint, (size_t)y * (size_t)w + (size_t)x);
+            footprint_set(footprint, ((size_t)y * (size_t)w) + (size_t)x);
             b.count++;
             bbox_extend_inclusive(x, y, &b.min_x, &b.max_x, &b.min_y, &b.max_y);
         }
@@ -444,7 +444,7 @@ water_within(const sand_t* s, int cx, int cy, int r) {
                 continue;
             }
             const int dx = x - cx, dy = y - cy;
-            if (dx * dx + dy * dy > r * r) {
+            if ((dx * dx) + (dy * dy) > r * r) {
                 continue;
             }
             if (CELL_MATERIAL(sand_at(s, x, y)) == MAT_WATER) {
@@ -464,7 +464,7 @@ empty_within(const sand_t* s, int cx, int cy, int r) {
                 continue;
             }
             const int dx = x - cx, dy = y - cy;
-            if (dx * dx + dy * dy > r * r) {
+            if ((dx * dx) + dy * dy > r * r) {
                 continue;
             }
             if (sand_at(s, x, y) == SAND_EMPTY) {
@@ -498,7 +498,7 @@ carve_circle_empty(sand_t* g, int w, int h, int cx, int cy, int r) {
                 continue;
             }
             const int ddx = x - cx, ddy = y - cy;
-            if (ddx * ddx + ddy * ddy <= r * r) {
+            if ((ddx * ddx) + (ddy * ddy) <= r * r) {
                 sand_set(g, x, y, SAND_EMPTY);
             }
         }

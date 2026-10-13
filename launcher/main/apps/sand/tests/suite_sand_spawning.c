@@ -234,7 +234,7 @@ disc_cells(int radius) {
     int n = 0;
     for (int dy = -radius; dy <= radius; dy++) {
         for (int dx = -radius; dx <= radius; dx++) {
-            n += (dx * dx + dy * dy <= radius * radius) ? 1 : 0;
+            n += ((dx * dx) + (dy * dy) <= radius * radius) ? 1 : 0;
         }
     }
     return n;

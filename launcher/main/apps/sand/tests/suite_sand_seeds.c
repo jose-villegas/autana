@@ -1065,9 +1065,9 @@ test_a_plant_on_dry_soil_stays_where_it_is(void) {
     for (int x = 0; x < W; x++) {
         sand_set(&s, x, H - 1, STONE);
         sand_set(&s, x, H - 2,
-                 x == W / 2 + 1  ? STONE
-                 : x > W / 2 + 1 ? CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX)
-                                 : CELL_SOIL(MAT_DIRT, 0, 0));
+                 x == (W / 2) + 1  ? STONE
+                 : x > (W / 2) + 1 ? CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX)
+                                   : CELL_SOIL(MAT_DIRT, 0, 0));
     }
     sand_set(&s, 1, H - 3, MATX(MATX_PLANT));
 

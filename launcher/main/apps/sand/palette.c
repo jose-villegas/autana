@@ -50,8 +50,8 @@ palette_tile_rect(int index, int count, int cols, int screen_w, int screen_h, in
     const int col = index % cols;
     const int row_count = row_tile_count(row, count, cols);
 
-    *x = row_left_x(row_count, screen_w) + col * PALETTE_TILE;
-    *y = panel_top_y(count, cols, screen_h) + row * PALETTE_TILE;
+    *x = row_left_x(row_count, screen_w) + (col * PALETTE_TILE);
+    *y = panel_top_y(count, cols, screen_h) + (row * PALETTE_TILE);
     *w = PALETTE_TILE;
     *h = PALETTE_TILE;
 }
@@ -61,7 +61,7 @@ palette_hit(int px, int py, int count, int cols, int screen_w, int screen_h) {
     const int top = panel_top_y(count, cols, screen_h);
     const int rows = PALETTE_ROWS(count, cols);
 
-    if (py < top || py >= top + rows * PALETTE_TILE) {
+    if (py < top || py >= top + (rows * PALETTE_TILE)) {
         return -1;
     }
     const int row = (py - top) / PALETTE_TILE;

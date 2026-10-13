@@ -408,7 +408,7 @@ draw_disc(int x, int y, int diameter, gfx_color_t c) {
 
     for (int dy = -r; dy <= r; dy++) {
         int dx = r;
-        while (dx > 0 && dx * dx + dy * dy > r * r) {
+        while (dx > 0 && (dx * dx) + (dy * dy) > r * r) {
             dx--;
         }
         gfx_fill_rect(x - dx, y + dy, 2 * dx + 1, 1, c);
