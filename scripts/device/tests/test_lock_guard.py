@@ -256,6 +256,9 @@ class HoldProcessTests(Store):
         else:
             import signal
             autana_pid = int(device_lock.linux_stat_fields(ticket["pid"])[1])
+            arguments = Path(f"/proc/{autana_pid}/cmdline").read_bytes().split(b"\0")
+            self.assertIn(str(ENGINE / "scripts/autana/autana.py").encode(), arguments,
+                          "refusing to kill a process that is not the autana interpreter")
             os.kill(autana_pid, signal.SIGKILL)
         first.communicate(timeout=15)
         self.wait_for_queue(1, dead_pid=ticket["pid"])
@@ -263,6 +266,11 @@ class HoldProcessTests(Store):
         stdout, stderr = next_waiter.communicate(timeout=15)
         self.assertEqual(next_waiter.returncode, 0, stdout + stderr)
         self.assertFalse(self.store.lock_path(BOARD_A).exists())
+
+    @unittest.skipUnless(os.name == "nt", "Windows program launching Git Bash")
+    def test_powershell_git_bash_drops_inherited_caller(self):
+        self.environment[device_lock.CALLER_PID_ENV] = str(os.getpid())
+        self.test_powershell_git_bash_preserves_caller()
 
     @unittest.skipUnless(os.name == "nt", "Windows program launching Git Bash")
     def test_powershell_git_bash_preserves_caller(self):

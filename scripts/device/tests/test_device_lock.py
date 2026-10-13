@@ -59,6 +59,13 @@ class LivenessTests(unittest.TestCase):
                 self.assertEqual(device_lock.posix_process_alive(4242, lambda *unused: None),
                                  state == "S")
 
+    def test_linux_live_holder_with_exited_state_in_name_stays_alive(self):
+        fields = ["S", "1"]
+        with mock.patch.object(device_lock.sys, "platform", "linux"), \
+                mock.patch.object(Path, "read_text", return_value="4242 (name) Z trap) " + " ".join(fields)):
+            self.assertEqual(device_lock.linux_stat_fields(4242), fields)
+            self.assertTrue(device_lock.posix_process_alive(4242, lambda *unused: None))
+
     def test_linux_unreadable_stat_stays_alive(self):
         with mock.patch.object(device_lock.sys, "platform", "linux"), \
                 mock.patch.object(Path, "read_text", side_effect=PermissionError):
@@ -122,6 +129,20 @@ class ClockStoreTests(unittest.TestCase):
 
 
 class LockTests(ClockStoreTests):
+
+    def test_hold_preserves_original_acquisition_time(self):
+        for options in ({"seconds": 2}, {"pid": 1}, {"seconds": 2, "human": True}):
+            with self.subTest(options=options):
+                held = self.lock.acquire("COM5", "one", "run")
+                acquired_at = held["acquired_at"]
+                self.clock.advance(1)
+                try:
+                    self.assertTrue(self.lock.hold("COM5", held["token"], "bench", **options))
+                    record = self.lock.read_json(self.lock.lock_path("COM5"))
+                    self.assertEqual(record["acquired_at"], acquired_at)
+                    self.assertEqual(record["heartbeat_at"], self.clock.now())
+                finally:
+                    self.lock.release("COM5", held["token"])
 
     def test_timed_hold_ignores_dead_pid_and_heartbeat(self):
         held = self.lock.acquire("COM5", "one", "take")
