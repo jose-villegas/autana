@@ -159,7 +159,7 @@ class HoldGuardTests(Store):
         self.assertNotIn("lock held for", output.getvalue())
 
     def test_pid_and_duration_limits(self):
-        for words in (("take", "--for", "3601", "bench"),
+        for words in (("take", "--for", str(device_lock.HOLD_MAX_SECONDS + 1), "bench"),
                       ("take", "--pid", "1", "bench"),
                       ("take", "--until-released", "--pid", "0", "bench"),
                       ("take", "--until-released", "bench")):
