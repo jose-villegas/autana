@@ -13,23 +13,6 @@ archive: libmain.a
 entries:
     * (patchable_entries_default)
 
-# A present's own code in IRAM: from flash, a narrow strip went from ~236 us to
-# ~398 us with the cache cold (suite_gfx test_narrow_present_counters). Setup, other
-# present modes and the SPI driver's own queue keep their configured placement.
-# CONFIG_LAUNCHER_DEVELOPMENT adds overlays, send auditing and raw-full dispatch,
-# so dev and diag are larger.
-# IRAM budget: release 801 B, dev 3993 B, diag 3993 B
-[mapping:present_gfx]
-archive: libmain.a
-entries:
-    gfx_present:gfx_present (noflash)
-    gfx_present:gfx_present_begin (noflash)
-    gfx_present:gfx_present_wait (noflash)
-    gfx_present:run_present_normal (noflash)
-    gfx_present:gather_and_send (noflash)
-    gfx_present:send_fb_rows (noflash)
-    gfx_present:present_task_fn (noflash)
-
 # Avoid cache misses in the LCD dispatch and SPI completion path used by every present.
 # IRAM budget: 1574 B
 [mapping:present_lcd]

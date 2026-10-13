@@ -53,6 +53,59 @@ class MemoryMapTests(unittest.TestCase):
         found = self.source("#define HOT_CODE IRAM_ATTR\n/* Cache-off caller. IRAM budget: 4 B */\nstatic void HOT_CODE foo(void) {}")
         self.assertEqual(found[0].entries, [("foo", "foo")])
 
+    def test_attribute_alias_define_site(self):
+        sites = self.source("/* Cache latency. IRAM budget: release 8 B, dev 12 B, diag 12 B */\n#define HOT_CODE IRAM_ATTR\nstatic void HOT_CODE foo(void) {}\nstatic void HOT_CODE bar(void) {}")
+        self.assertEqual(len(sites), 1)
+        self.assertEqual(sites[0].line, 2)
+        self.assertEqual(sites[0].entries, [("foo", "foo"), ("foo", "bar")])
+        build = dict(build=self.root, owned=memory.components(self.root), config={})
+        for alive, expected in (({(self.root / "launcher/main/foo.c", 3)}, True), (set(), False)):
+            with patch.object(memory, "preprocessed_lines", return_value=alive):
+                placements, active = memory.build_sites(self.root, build)
+                self.assertEqual(active(placements[0]), expected)
+        for variant, size in (("release", 4), ("dev", 6), ("diag", 6)):
+            self.assertEqual(self.check(sites, [memory.Input("libmain.a", "foo.c.obj", name, size)
+                                              for name in ("foo", "bar")], variant=variant)[0][1], size * 2)
+
+    def test_clone_attributed_to_base_site(self):
+        sites = self.source("/* Cache latency. IRAM budget: 4 B */\nstatic void IRAM_ATTR foo(void) {}")
+        for suffix in ("$isra$0", "$constprop$0", "$part$0", "$cold", "$constprop$0$isra$0",
+                       ".isra.0", ".constprop.0", ".part.0", ".cold", ".constprop.0.isra.0"):
+            with self.subTest(suffix=suffix):
+                report = self.check(sites, [memory.Input("libmain.a", "foo.c.obj", "foo" + suffix, 4)])
+                self.assertEqual(report[0][1:], (4, ["foo" + suffix]))
+                with self.assertRaisesRegex(ValueError, "no site"):
+                    self.check(sites, [memory.Input("libmain.a", "other.c.obj", "foo" + suffix, 4)])
+
+        sites = self.source("/* Cache latency. IRAM budget: 8 B */\nstatic void IRAM_ATTR foo(void) {}")
+        text = ".iram0.text 0x40380000 0x8\n .iram1.0.literal 0x40380000 0x4 main/libmain.a(foo.c.obj)\n .iram1.0 0x40380004 0x4 main/libmain.a(foo.c.obj)\n"
+        inputs, _, _ = memory.map_inputs(text, {0x40380004: ("foo", 2), 0x40380006: ("foo$part$0", 2)})
+        self.assertEqual(self.check(sites, inputs)[0][1], 8)
+
+    def test_escaped_clone_map_gate(self):
+        for archive in ("libmain.a", "libesp_lcd.a"):
+            for output in (".flash.text", ".iram0.text"):
+                with self.subTest(archive=archive, output=output):
+                    budget = 4 if output == ".flash.text" else 8
+                    sites = self.source(f"# Cache latency. IRAM budget: {budget} B\n[mapping:hot]\narchive: {archive}\nentries:\n    gfx_present:gather_and_send (noflash)\n", "launcher/main/linker.lf")
+                    text = f".iram0.text 0x40380000 0x4\n .text.gather_and_send 0x40380000 0x4 esp-idf/main/{archive}(gfx_present.c.obj)\n{output} 0x4207053c 0x4\n .text.gather_and_send.isra.0\n  0x4207053c 0x4 esp-idf/main/{archive}(gfx_present.c.obj)\n"
+                    inputs, _, _ = memory.map_inputs(text, {})
+                    if output == ".flash.text":
+                        with self.assertRaisesRegex(ValueError, r"linker.lf:2:.*gather_and_send.isra.0.*\.flash.text.*source.*clones"):
+                            self.check(sites, inputs)
+                        for other in ("other.a(gfx_present.c.obj)", f"{archive}(other.c.obj)"):
+                            base, clone = text.split(output, 1)
+                            inputs, _, _ = memory.map_inputs(base + output + clone.replace(f"{archive}(gfx_present.c.obj)", other), {})
+                            self.assertEqual(self.check(sites, inputs)[0][1], budget)
+                    else:
+                        self.assertEqual(self.check(sites, inputs)[0][1], budget)
+
+        sites = self.source("/* Cache latency. IRAM budget: 4 B */\nstatic void IRAM_ATTR gather_and_send(void) {}")
+        text = ".flash.text 0x4207053c 0x4\n .iram1.0 0x4207053c 0x4 main/libmain.a(foo.c.obj)\n"
+        inputs, _, _ = memory.map_inputs(text, {0x4207053c: ("gather_and_send$isra$0", 4)})
+        with self.assertRaisesRegex(ValueError, r"foo.c:2:.*gather_and_send\$isra\$0.*\.flash.text.*source.*clones"):
+            self.check(sites, inputs)
+
     def test_budget_comment_owns_unattributed_function(self):
         sites = self.source("/* Cache-off caller. IRAM budget: 4 B */\nstatic void foo(void) {}")
         self.assertEqual(len(sites), 1)

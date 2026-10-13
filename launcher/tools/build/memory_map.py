@@ -18,7 +18,7 @@ import re
 import subprocess
 import sys
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 VARIANTS = ("release", "dev", "diag")
@@ -38,6 +38,7 @@ BUDGET = re.compile(r"IRAM budget: ((?:(?:" + VARIANT_PATTERN + r") )?\d+ B(?:, 
 ATTRIBUTE = re.compile(r"\b(?:\w*IRAM_ATTR|\w*IRAM\w*_ATTR)\b|__attribute__\s*\(\(\s*section\s*\(\s*\"\.iram[^\"]*\"")
 PLACEMENT = re.compile(r"\((?:noflash\w*|iram\w*)\)")
 CONFIG_PLACEMENT = re.compile(r"CONFIG_\w*(?:(?:IN_IRAM|PLACE_\w*INTO_IRAM)\w*=y|PLACE_\w*INTO_FLASH=n)")
+CLONE_SUFFIX = re.compile(r"(?:[.$][a-z_]+[.$]\d+|[.$]cold)+$")
 BLOCK = "internal-memory-map"
 DOC = ROOT / "docs/notes/Board-and-Memory.md"
 REGENERATE = "python launcher/tools/build/memory_map.py launcher/build launcher/build.dev launcher/build.diag --write"
@@ -53,6 +54,7 @@ class Site:
     budget: int | dict | None
     archive: str
     entries: list | bool
+    uses: list = field(default_factory=list)
 
     @property
     def label(self):
@@ -66,6 +68,7 @@ class Input:
     symbol: str
     size: int
     literal: bool = False
+    output: str = ".iram0.text"
 
 
 def preceding_comment(lines, index, kind):
@@ -126,11 +129,19 @@ def sites(root, owned=None):
     paths = sorted({p for base in owned.values() for p in base.rglob("*") if p.suffix in {".c", ".h", ".lf"}})
     paths += sorted((root / "launcher").glob("sdkconfig.defaults*"))
     attribute_aliases = set()
+    alias_sites = {}
+    alias_uses = []
+    budget_aliases = set()
     for path in paths:
         if path.suffix in {".c", ".h"}:
             for alias, expression in re.findall(r"^#define\s+(\w+)\s+(.+)$", path.read_text(encoding="utf-8"), re.M):
                 if ATTRIBUTE.search(expression):
                     attribute_aliases.add(alias)
+            lines = path.read_text(encoding="utf-8").splitlines()
+            for index, line in enumerate(lines):
+                define = re.match(r"#define\s+(\w+)\s+(.+)$", line)
+                if define and define.group(1) in attribute_aliases and BUDGET.search(preceding_comment(lines, index, "c")):
+                    budget_aliases.add(define.group(1))
     for path in paths:
         name = path.relative_to(root).as_posix()
         owner = "/".join(name.split("/")[:4]) + "/" if "/apps/" in name else "engine"
@@ -139,21 +150,31 @@ def sites(root, owned=None):
                     for comment in scan(path, "\n".join(lines))} if path.suffix in {".c", ".h"} else {}
         for index, line in enumerate(lines):
             if path.suffix in {".c", ".h"}:
-                if line.lstrip().startswith(("//", "/*", "*", "#")):
+                define = re.match(r"#define\s+(\w+)\s+(.+)$", line)
+                budget_alias = define and define.group(1) in attribute_aliases and BUDGET.search(comments.get(index, ""))
+                if line.lstrip().startswith(("//", "/*", "*", "#")) and not budget_alias:
                     continue
                 attributed = ATTRIBUTE.search(line) or any(re.search(r"\b" + re.escape(alias) + r"\b", line)
                                                             for alias in attribute_aliases)
                 if not attributed and "IRAM budget:" not in comments.get(index, ""):
                     continue
-                declaration = " ".join(lines[index:index + 5]).split(";", 1)[0]
-                declaration = re.sub(r"__attribute__\s*\(\(.*?\)\)", "", declaration)
-                function = re.search(r"\b(\w+)\s*\([^;{}]*\)\s*\{", declaration)
-                if not function:
-                    if not attributed:
-                        continue
-                    raise ValueError(f"{name}:{index + 1}: unsupported IRAM declaration")
-                entries = [(path.stem, function.group(1))]
                 archive = next(archive for archive, directory in owned.items() if path.resolve().is_relative_to(directory.resolve()))
+                if budget_alias:
+                    entries = []
+                else:
+                    declaration = " ".join(lines[index:index + 5]).split(";", 1)[0]
+                    declaration = re.sub(r"__attribute__\s*\(\(.*?\)\)", "", declaration)
+                    function = re.search(r"\b(\w+)\s*\([^;{}]*\)\s*\{", declaration)
+                    if not function:
+                        if not attributed:
+                            continue
+                        raise ValueError(f"{name}:{index + 1}: unsupported IRAM declaration")
+                    entries = [(path.stem, function.group(1))]
+                    aliases = [alias for alias in attribute_aliases if re.search(r"\b" + re.escape(alias) + r"\b", line)]
+                    if aliases:
+                        alias_uses.append((aliases, name, index + 1, archive, entries))
+                        if any(alias in budget_aliases for alias in aliases):
+                            continue
                 kind = "c"
             elif path.suffix == ".lf":
                 if not re.match(r"\[mapping:", line):
@@ -178,7 +199,16 @@ def sites(root, owned=None):
             reason = BUDGET.sub("", reason).strip()
             if not re.search(r"[A-Za-z][^.?!]*[.?!]", reason) or len(re.findall(r"[A-Za-z]+", reason)) < 2 or re.search(r"\b(?:TODO|TBD|FIXME)\b", reason, re.I):
                 raise ValueError(f"{name}:{index + 1}: missing IRAM reason beyond budget")
-            found.append(Site(name, index + 1, owner, reason, budget, archive, entries))
+            site = Site(name, index + 1, owner, reason, budget, archive, entries)
+            found.append(site)
+            if path.suffix in {".c", ".h"} and budget_alias:
+                alias_sites[define.group(1)] = site
+    for aliases, name, line, archive, entries in alias_uses:
+        for alias in aliases:
+            site = alias_sites.get(alias)
+            if site and site.archive == archive:
+                site.entries.extend(entry for entry in entries if entry not in site.entries)
+                site.uses.append((name, line))
     return found
 
 
@@ -187,15 +217,33 @@ def commit_drift(commit, pinned_commit):
     return "; ".join(idf_drift({"commit": commit}, {"commit": pinned_commit}))
 
 
-def check(placements, inputs, variant, owned, active, idf_commit=None, pinned_commit=None, exact=True):
+def clone_base(symbol):
+    return CLONE_SUFFIX.sub("", symbol)
+
+
+def site_matches(site, item):
+    return fnmatch.fnmatch(item.archive, site.archive) and any(
+        fnmatch.fnmatch(item.object.removesuffix(".obj").removesuffix(".o").removesuffix(".c"), obj)
+        and fnmatch.fnmatch(clone_base(item.symbol), symbol) for obj, symbol in site.entries)
+
+
+def check(placements, inputs, variant, owned, active, idf_commit=None, pinned_commit=None, exact=True, placed_inputs=None):
     errors = []
     drift = commit_drift(idf_commit, pinned_commit) if idf_commit is not None else None
     used = Counter()
     names = {}
+    for item in inputs if placed_inputs is None else placed_inputs:
+        if item.output.startswith(".iram") or clone_base(item.symbol) == item.symbol:
+            continue
+        for site in placements:
+            if site_matches(site, item):
+                message = f"{site.label}: clone {item.symbol} is in {item.output}; place it in source to follow clones"
+                if message not in errors:
+                    errors.append(message)
     for item in inputs:
-        matches = [site for site in placements if fnmatch.fnmatch(item.archive, site.archive)
-                   and any(fnmatch.fnmatch(item.object.removesuffix(".obj").removesuffix(".o").removesuffix(".c"), obj)
-                           and fnmatch.fnmatch(item.symbol, symbol) for obj, symbol in site.entries)]
+        if not item.output.startswith(".iram"):
+            continue
+        matches = [site for site in placements if site_matches(site, item)]
         if len(matches) > 1:
             # A function attribute and a mapping may describe the same code; the function owns its budget.
             matches = sorted(matches, key=lambda site: site.path.endswith(".lf"))[:1]
@@ -310,7 +358,7 @@ def build_sites(root, build):
             site.entries = fragment_entries(site, root, build["config"])
             enabled[site.label] = bool(site.entries)
         else:
-            enabled[site.label] = (root / site.path, site.line) in alive
+            enabled[site.label] = any((root / path, line) in alive for path, line in site.uses) if site.uses else (root / site.path, site.line) in alive
     return placements, lambda site: enabled[site.label]
 
 
@@ -369,7 +417,7 @@ def map_inputs(text, elf_symbols):
         if constant:
             constants[constant.group(2)] = int(constant.group(1), 16)
     for output, input_section, address, size, origin in placed_sections(text.splitlines()):
-        if not output or not output.startswith(".iram"):
+        if not output or not (output.startswith(".iram") or input_section.startswith((".text.", ".literal.", ".iram"))):
             continue
         match = re.search(r"([^/\\\s]+\.a)\(([^)]+)\)", origin)
         if not match:
@@ -378,25 +426,26 @@ def map_inputs(text, elf_symbols):
         if not size:
             continue
         if input_section.startswith(".iram") and input_section.endswith(".literal"):
-            literals.append((archive, obj, input_section.removesuffix(".literal"), size))
+            literals.append((archive, obj, input_section.removesuffix(".literal"), size, output))
             continue
         if input_section.startswith((".text.", ".literal.")):
             symbol = input_section.split(".", 2)[2]
-            inputs.append(Input(archive, obj, symbol, size, input_section.startswith(".literal.")))
+            inputs.append(Input(archive, obj, symbol, size, input_section.startswith(".literal."), output))
         else:
             members = [(name, count) for start in addresses[bisect_left(addresses, address):bisect_left(addresses, address + size)]
                        for name, count in [elf_symbols[start]] if count and not name.startswith("$")]
-            if len(members) == 1:
-                inputs.append(Input(archive, obj, members[0][0], size))
+            if members and len({clone_base(name) for name, _ in members}) == 1:
                 iram_names[(archive, obj, input_section)] = members[0][0]
+            if len(members) == 1:
+                inputs.append(Input(archive, obj, members[0][0], size, output=output))
             elif members:
                 total = sum(count for _, count in members)
                 for number, (name, count) in enumerate(members):
-                    inputs.append(Input(archive, obj, name, count + (size - total if number == 0 else 0)))
+                    inputs.append(Input(archive, obj, name, count + (size - total if number == 0 else 0), output=output))
             else:
-                inputs.append(Input(archive, obj, input_section, size))
-    for archive, obj, key, size in literals:
-        inputs.append(Input(archive, obj, iram_names.get((archive, obj, key), key + ".literal"), size, True))
+                inputs.append(Input(archive, obj, input_section, size, output=output))
+    for archive, obj, key, size, output in literals:
+        inputs.append(Input(archive, obj, iram_names.get((archive, obj, key), key + ".literal"), size, True, output))
     return inputs, sections, constants
 
 
@@ -414,7 +463,8 @@ def read_build(build, root=ROOT):
     elf_symbols = symbols(find_tool("nm"), elf)
     mapfile = elf.with_suffix(".map")
     maptext = mapfile.read_text(encoding="utf-8")
-    inputs, sections, constants = map_inputs(maptext, elf_symbols)
+    placed_inputs, sections, constants = map_inputs(maptext, elf_symbols)
+    inputs = [item for item in placed_inputs if item.output.startswith(".iram")]
     size = json.loads(run(idf_python(), str(Path(metadata["idf_path"]) / "tools/idf_size.py"),
                           "--format", "json2", str(mapfile)))
     scripts = build / "esp-idf/esp_system/ld"
@@ -427,7 +477,7 @@ def read_build(build, root=ROOT):
     regions = {name: (int(address, 16), int(size, 16)) for name, address, size in
                re.findall(r"^(iram0_0_seg|dram0_0_seg)\s+(0x[\da-f]+)\s+(0x[\da-f]+)", maptext, re.M)}
     build_id, variant = build_variant(build)
-    return dict(build=build, metadata=metadata, owned=components(root, metadata), build_id=build_id, variant=variant, idf_commit=idf_commit(metadata["idf_path"]), inputs=inputs, sections=sections, constants=constants,
+    return dict(build=build, metadata=metadata, owned=components(root, metadata), build_id=build_id, variant=variant, idf_commit=idf_commit(metadata["idf_path"]), inputs=inputs, placed_inputs=placed_inputs, sections=sections, constants=constants,
                 size=size, align=align, pad=pad, slack=slack, config=config, regions=regions)
 
 
@@ -567,7 +617,7 @@ def main():
                 drift = commit_drift(build["idf_commit"], pin["commit"])
                 if args.require_pin and drift:
                     errors.append(f"{build['variant']}: IDF drift: {drift}")
-                build["report"] = check(placements, build["inputs"], build["variant"], build["owned"], active, build["idf_commit"], pin["commit"], exact=not args.update_budgets)
+                build["report"] = check(placements, build["inputs"], build["variant"], build["owned"], active, build["idf_commit"], pin["commit"], exact=not args.update_budgets, placed_inputs=build.get("placed_inputs"))
             except ValueError as error:
                 errors.append(f"{build['variant']}: {error}")
                 continue
