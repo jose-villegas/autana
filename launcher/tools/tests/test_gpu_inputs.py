@@ -157,7 +157,7 @@ class InputContractTests(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
-        self.root = Path(directory.name)
+        self.root = Path(directory.name).resolve()
 
     def test_named_files_all_bases_tracked_only_and_single_line(self):
         tools = self.root / 'launcher/tools'
@@ -187,7 +187,8 @@ class InputContractTests(unittest.TestCase):
         self.assertEqual(outputs[0], outputs[1])
         self.assertEqual(outputs[0]['host flags'], '-I include -O1')
         for listing, message in [('host.o: host.c\n', 'no flags'),
-                                  (f'flags -O1\nhost.o: {self.root}/outside.c\n', 'outside')]:
+                                  (f'flags -O1\nhost.o: {self.root}/outside.c\n', 'outside'),
+                                  ('flags -O1\nhost.o: ../outside.c\n', 'outside')]:
             with mock.patch.object(stages, 'ROOT', root), mock.patch.object(
                     stages.subprocess, 'run', return_value=NS(stdout=listing)):
                 with self.assertRaisesRegex(ValueError, message):
