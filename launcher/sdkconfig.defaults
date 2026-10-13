@@ -55,7 +55,7 @@ CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB=y
 CONFIG_ESP32S3_DATA_CACHE_64KB=y
 CONFIG_ESP32S3_DATA_CACHE_LINE_64B=y
 
-# 120 MHz octal PSRAM and 120 MHz flash, EXPERIMENTAL in ESP-IDF 5.5. Quad
+# 120 MHz octal PSRAM and 120 MHz flash, behind ESP-IDF's experimental features. Quad
 # flash paired with octal PSRAM needs both at 120 MHz. The flash
 # (XM25QH128C) runs in its supported high-performance mode only with the
 # dummy-cycle-aware bootloader, and the PSRAM sample point is retuned as
@@ -73,8 +73,8 @@ CONFIG_SPIRAM_TIMING_TUNING_POINT_VIA_TEMPERATURE_SENSOR=y
 CONFIG_BOOTLOADER_FLASH_DC_AWARE=y
 CONFIG_SPI_FLASH_HPM_ENA=y
 
-# The present's queue and semaphore calls run from IRAM; the SPI option
-# below depends on it.
+# FreeRTOS runs from IRAM, so a present's queue and semaphore calls skip the
+# flash cache; SPI_MASTER_IN_IRAM below depends on it.
 CONFIG_FREERTOS_IN_IRAM=y
 # The SPI queue every present goes through runs from IRAM, as the rest of a
 # present's own code does (main/linker.lf).

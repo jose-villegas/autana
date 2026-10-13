@@ -169,7 +169,8 @@ fixture(int lights) {
     return f;
 }
 
-/* Keep normalisation ahead of ambient loads to avoid spills across the reciprocal call. */
+/* GCC's tree-sink moves normalisation past the ambient loads and spills across the
+ * reciprocal call; the exact_separate rows time this function. */
 #if defined(__GNUC__) && !defined(__clang__)
 #pragma GCC push_options
 #pragma GCC optimize("no-tree-sink")
