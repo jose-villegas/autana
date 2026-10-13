@@ -17,12 +17,6 @@
 
 #define LANDSCAPE_QUARTER 1
 
-/* microui clips a window to the rect it had on the previous frame, so the
- * first frame after the canvas turns is cut to the old shape. The device
- * shows the correct shape one frame later; a preview is one frame, so it
- * takes the second. */
-#define SETTLE_FRAMES     2
-
 static bool initialized;
 
 static app_t preview_render_lab = {.name = "Render Lab", .summary = "Software rendering experiments"};
@@ -98,9 +92,7 @@ editor_runtime_render(editor_screen_t screen, uint16_t* pixels, int width, int h
     const input_t no_input = {0};
     ui_set_transform(landscape ? ui_transform_quarter_turn(LANDSCAPE_QUARTER, GFX_WIDTH, GFX_HEIGHT)
                                : ui_transform_identity());
-    for (int frame = 0; frame < SETTLE_FRAMES; frame++) {
-        render_launcher(&no_input);
-    }
+    render_launcher(&no_input);
     copy_framebuffer(pixels, width, height, portrait);
     return true;
 }
