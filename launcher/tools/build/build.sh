@@ -8,7 +8,7 @@
 #
 # Usage:
 #   tools/build/build.sh [--dev|--diag] [--autorun] [--perf-scope]
-#                        [--layout-seed N] [--hot-tunables] [--verbose] [IDF_EXPORT]
+#                        [--layout-seed N] [--hot-tunables] [--configure] [--verbose] [IDF_EXPORT]
 #
 #   --verbose   stream and save the build output. The full stream is in the
 #               printed log path in either mode.
@@ -33,6 +33,11 @@
 #   --layout-seed N  pad every source's code and rodata by sizes seed N picks
 #               (tools/build/layout_pad.py), to sample the cache layouts a
 #               timing could have landed on. 0, the default, is the plain build.
+#   --configure  only configure the variant's build directory, compile nothing:
+#               writes its sdkconfig and compile_commands.json in about a
+#               minute and a half instead of a full build, and no image. For
+#               an editor's language server, or a tool that reads which
+#               sources a variant compiles. Works with every variant flag.
 #   IDF_EXPORT  path to ESP-IDF's export script: export.bat on Windows,
 #               export.sh elsewhere. Default: the one under $IDF_PATH.
 #
@@ -71,6 +76,7 @@ VERBOSE=0
 IDF_EXPORT_ARG=""
 LAYOUT_SEED=0
 HOT_TUNABLES=0
+CONFIGURE=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -82,6 +88,7 @@ while [ $# -gt 0 ]; do
         --layout-seed)
             [ $# -ge 2 ] || { echo "--layout-seed needs a number" >&2; exit 2; }
             LAYOUT_SEED=$2; shift 2 ;;
+        --configure) CONFIGURE=1; shift ;;
         --verbose) VERBOSE=1; shift ;;
         -h|--help) sed -n '2,/^# the cost of the way in/p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         --)        shift; break ;;
@@ -157,8 +164,15 @@ VARIANT_OPTIONS="$VARIANT_OPTIONS --layout-seed $LAYOUT_SEED"
 if [ "$HOT_TUNABLES" -eq 1 ]; then
     VARIANT_OPTIONS="$VARIANT_OPTIONS --hot-tunables"
 fi
+if [ "$CONFIGURE" -eq 1 ]; then
+    VARIANT_OPTIONS="$VARIANT_OPTIONS --configure"
+fi
 # shellcheck disable=SC2086
 quiet_run build idf_variant_build "$LAUNCHER_DIR" "$VARIANT" "$BUILD_DIR" $VARIANT_OPTIONS
 
+if [ "$CONFIGURE" -eq 1 ]; then
+    echo "=== Done - $BUILD_DIR configured, nothing built: $BUILD_DIR/compile_commands.json ==="
+    exit 0
+fi
 sh "$SCRIPT_DIR/write_build_id.sh" "$LAUNCHER_DIR/$BUILD_DIR" "$VARIANT"
 echo "=== Done - $BUILD_DIR built, build id $(tr -d '\r\n' < "$LAUNCHER_DIR/$BUILD_DIR/build_id.txt") ==="

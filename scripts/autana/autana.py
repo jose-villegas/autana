@@ -331,7 +331,7 @@ def build(args):
             sys.exit("usage: autana build diag --check")
         return build_diag_check(project)
     seed, args = pop_layout_seed(args)
-    _, variant, seen = variant_request("build", args, ("--perf-scope", "--hot-tunables"), project)
+    _, variant, seen = variant_request("build", args, ("--perf-scope", "--hot-tunables", "--configure"), project)
     refuse_release_seed(seed, variant)
     if "--hot-tunables" in seen and variant == "release":
         sys.exit("autana: --hot-tunables needs dev or diag")
@@ -1422,8 +1422,8 @@ def debug(args):
 COMMAND_GROUPS = (
     ("build", "Build and flash", (
         Command("build", build, (
-            ("build [rel|dev|diag] [--perf-scope] [--layout-seed N] [--hot-tunables]",
-             "build this project, no board; dev when omitted; a seed N > 0 pads the layout, 0 is the plain build"),
+            ("build [rel|dev|diag] [--perf-scope] [--layout-seed N] [--hot-tunables] [--configure]",
+             "build this project, no board; dev when omitted; a seed N > 0 pads the layout, 0 is the plain build; --configure only writes sdkconfig and compile_commands.json"),
             ("build diag --check", "the diagnostics build plus the complexity ratchet, no board"))),
         Command("flash", flash, (
             ("flash [rel|dev|diag] [--quiet] [--perf-scope] [--layout-seed N] [--hot-tunables]",
