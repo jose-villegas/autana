@@ -347,6 +347,11 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     # image still pulls in.
     target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=double-promotion -Werror=float-conversion)
 
+    # GCC's extension dead-code elimination (-fext-dce, on at -O2) left the
+    # sand step's gas passes and the narrow-strip presents up to 2% slower on
+    # the board.
+    target_compile_options(${COMPONENT_LIB} PRIVATE -fno-ext-dce)
+
     # The packer owns input discovery, including demo manifests, and runs on
     # every build so deleted manifests drop their demos. Unchanged packs and
     # the image retain their timestamps. The image flashes to the "assets"
