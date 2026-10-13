@@ -277,10 +277,6 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     launcher_glob(render_srcs "${CMAKE_CURRENT_LIST_DIR}/render/*.c")
     set_source_files_properties(${render_srcs} PROPERTIES
         COMPILE_OPTIONS "-falign-functions=${CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE}")
-    # The per-vertex skinning and lighting kernels: -O3 scheduling removes the
-    # pipeline bubbles -O2 leaves in their float chains; suite_skin_light_perf's
-    # fused rows run 18-28% faster on the board.
-    set_property(SOURCE "${CMAKE_CURRENT_LIST_DIR}/render/skin/r3d_skinning.c" APPEND PROPERTY COMPILE_OPTIONS "-O3")
 endif()
 
 # LAUNCHER_LAYOUT_SEED > 0 pads every source of this component by a size its
@@ -347,10 +343,15 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     # image still pulls in.
     target_compile_options(${COMPONENT_LIB} PRIVATE -Werror=double-promotion -Werror=float-conversion)
 
-    # GCC's extension dead-code elimination (-fext-dce, on at -O2) left the
-    # sand step's gas passes and the narrow-strip presents up to 2% slower on
-    # the board.
+    # Optimisation flags measured on the pinned GCC (launcher/idf-pin.json):
+    # re-measure each on and off when its major version changes
+    # (docs/tools/Framework-Versions.md).
+    # Extension dead-code elimination, on at -O2, costs this component's hot
+    # loops up to 2% by the frame-budget perf suites.
     target_compile_options(${COMPONENT_LIB} PRIVATE -fno-ext-dce)
+    # -O3 scheduling removes pipeline bubbles -O2 leaves in the skinning and
+    # lighting kernels' float chains, measured by suite_skin_light_perf.
+    set_property(SOURCE "${CMAKE_CURRENT_LIST_DIR}/render/skin/r3d_skinning.c" APPEND PROPERTY COMPILE_OPTIONS "-O3")
 
     # The packer owns input discovery, including demo manifests, and runs on
     # every build so deleted manifests drop their demos. Unchanged packs and
