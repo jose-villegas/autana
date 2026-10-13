@@ -13,12 +13,14 @@
 
 static const char TAG[] = "input";
 
+_Static_assert(INPUT_GRAVITY_PER_G == IMU_COUNTS_PER_G, "input_read_motion() passes sensor counts through");
+
 void
 input_start(void) {
     touch_start();
     buttons_start();
     if (!imu_init()) {
-        ESP_LOGW(TAG, "No IMU - display orientation stays upright");
+        ESP_LOGW(TAG, "No IMU - motion reads report nothing");
     }
 }
 

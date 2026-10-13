@@ -622,7 +622,7 @@ start_sim(void) {
      * allocation failure shows up at start_sim() rather than on the first
      * tap in BOOM mode. */
     sand_enable_impulses(&sim, buffers.impulse_buf, APP_IMPULSE_MAX);
-    tilt_reset(&tilt, IMU_COUNTS_PER_G);
+    tilt_reset(&tilt, INPUT_GRAVITY_PER_G);
 
     ESP_LOGI(TAG, "%d x %d grid, %d bytes, %d px cells", grid_w, grid_h, grid_w * grid_h, cell);
 
@@ -1066,7 +1066,7 @@ static int pending_awake_blocks, pending_awake_cells;
 static void
 read_gravity_input(uint32_t dt_ms, input_motion_t* motion, int* gx, int* gy, int* flow, int* jostle) {
     *gx = 0;
-    *gy = IMU_COUNTS_PER_G;
+    *gy = INPUT_GRAVITY_PER_G;
     *flow = 256;
     *jostle = 0;
 

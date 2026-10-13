@@ -330,7 +330,7 @@ shell_step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
 void
 shell_apps_init(void) {
     gfx_set_frame_overlay(shell_frame_overlay);
-    tilt_reset(&launcher_tilt, IMU_COUNTS_PER_G);
+    tilt_reset(&launcher_tilt, INPUT_GRAVITY_PER_G);
 }
 
 #if CONFIG_LAUNCHER_SELFTEST

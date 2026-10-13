@@ -9,7 +9,6 @@
 #include <stdbool.h>
 
 #include "input/buttons.h"
-#include "input/imu_sample.h"
 #include "math/linear/vec2i.h"
 
 /* Touch state for the current frame.
@@ -31,10 +30,13 @@ typedef struct {
     button_t power;
 } input_t;
 
+/* The unit of input_motion_t's gravity: counts per g. */
+#define INPUT_GRAVITY_PER_G 4096
+
 typedef struct {
-    vec2i_t gravity; /* in-plane, screen axes, IMU_COUNTS_PER_G per g */
+    vec2i_t gravity; /* in-plane, screen axes, INPUT_GRAVITY_PER_G per g */
     int gravity_z;   /* out of plane, same units */
-    int turn_rate;   /* how fast the board turns, 0-255 (imu_rotation_level) */
+    int turn_rate;   /* how fast the board turns, 0-255 */
 } input_motion_t;
 
 /* One sensor read (an I2C transaction: call it only in frames that need it).
