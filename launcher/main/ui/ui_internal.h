@@ -30,6 +30,16 @@ typedef struct {
  * holds. */
 extern mu_Context ui_ctx;
 
+/* The measured options/menu peak has a quarter-capacity margin for UI growth. */
+#define UI_BAND_BIN_MEASURED_PEAK  203
+#define UI_BAND_BIN_MARGIN_DIVISOR 4
+#define UI_BAND_BIN_MAX                                                                                                \
+    (UI_BAND_BIN_MEASURED_PEAK                                                                                         \
+     + ((UI_BAND_BIN_MEASURED_PEAK + UI_BAND_BIN_MARGIN_DIVISOR - 1) / UI_BAND_BIN_MARGIN_DIVISOR))
+
+/* One boot-lifetime PSRAM bin; allocation failure uses full-band replay. */
+void ui_band_init(void);
+
 /* Set by ui_invalidate()/ui_init() (ui_build.c), read and cleared by
  * ui_end()/ui_end_for_bands() (ui.c); see ui.h's ui_invalidate() comment. */
 extern bool ui_invalidated;
@@ -70,3 +80,8 @@ void ui_to_logical(int x, int y, int* lx, int* ly);
  * draw_command() and command_row_range() (ui.c) both need this to know what
  * a MU_COMMAND_TEXT command actually measures as. */
 ui_font_scaled_t ui_resolve_font_scaled(mu_Font font);
+
+#ifndef ESP_PLATFORM
+/* Observes completed canvas paints without retaining device-side trace storage. */
+extern void (*ui_canvas_painted_for_test)(const mu_Container*);
+#endif
