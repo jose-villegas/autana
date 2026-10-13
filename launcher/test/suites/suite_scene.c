@@ -1044,6 +1044,41 @@ test_encoder_authored_components_load_and_reach_runtime(void) {
 }
 
 static void
+test_authored_animator_clip_array_allocation_failure_releases_memory(void) {
+    fixture();
+    asset_pack_t pack;
+    void* buffer = NULL;
+    TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_file_open(getenv("AUTANA_SCENE_PROBE"), &pack, &buffer));
+    const size_t internal = memory_free_bytes(MEMORY_INTERNAL);
+    const size_t psram = memory_free_bytes(MEMORY_PSRAM);
+
+    enum { ALLOCATION_SWEEP_LIMIT = 64 };
+
+    bool completed = false;
+    for (int allocation = 0; allocation < ALLOCATION_SWEEP_LIMIT; allocation++) {
+        scene_fail_allocation_after = allocation;
+        scene_failure_t why;
+        scene_t* loaded = scene_load_from(&pack, "authored", &why);
+        scene_fail_allocation_after = -1;
+        if (loaded != NULL) {
+            TEST_ASSERT_GREATER_THAN_INT(0, allocation);
+            TEST_ASSERT_EQUAL_INT(SCENE_OK, why.status);
+            scene_unload(loaded);
+            completed = true;
+        } else {
+            TEST_ASSERT_EQUAL_INT(SCENE_ERR_MEMORY, why.status);
+        }
+        TEST_ASSERT_EQUAL_UINT(internal, memory_free_bytes(MEMORY_INTERNAL));
+        TEST_ASSERT_EQUAL_UINT(psram, memory_free_bytes(MEMORY_PSRAM));
+        if (completed) {
+            break;
+        }
+    }
+    asset_file_release(buffer);
+    TEST_ASSERT_TRUE(completed);
+}
+
+static void
 test_encoder_authored_two_skin_allocation_failures_release_lighting(void) {
     fixture();
     asset_pack_t pack;
@@ -1144,7 +1179,6 @@ test_scene_load_holds_its_pack_until_the_last_scene_from_it_unloads(void) {
     TEST_ASSERT_EQUAL_INT(SCENE_ERR_ASSET, why.status);
     TEST_ASSERT_EQUAL_INT(ASSET_ERR_NO_PACK, why.asset);
     remove_pack("test_pair");
-    test_asset_dir_restore();
 }
 
 /* A load that fails gives its use of the pack back. */
@@ -1161,7 +1195,6 @@ test_a_scene_that_fails_to_load_does_not_hold_its_pack(void) {
     TEST_ASSERT_NULL(scene_load("test_broken", &why));
     TEST_ASSERT_EQUAL_INT_MESSAGE(ASSET_ERR_NO_PACK, why.asset, "the damaged file was read again");
     remove_pack("test_broken");
-    test_asset_dir_restore();
 }
 #endif
 
@@ -3086,6 +3119,7 @@ run_scene_suite(void) {
     RUN_TEST(test_authored_clip_ids_require_nonempty_terminated_text);
     RUN_TEST(test_authored_rows_and_refusals);
     RUN_TEST(test_encoder_authored_components_load_and_reach_runtime);
+    RUN_TEST(test_authored_animator_clip_array_allocation_failure_releases_memory);
     RUN_TEST(test_encoder_authored_two_skin_allocation_failures_release_lighting);
     RUN_TEST(test_a_scene_the_tools_bake_loads_as_its_file_says);
 #endif

@@ -201,4 +201,4 @@ through scene attachment, animation, split ranges, bounds and drawing.
 ## Current limits
 
 Playback limits are in [Animation tracks](../Animation-Tracks.md#scene-playback);
-authored SCNE animator and lighting rows are planned.
+authoring limits are in [Skinned Meshes](Skinned-Meshes.md#5-current-limits).

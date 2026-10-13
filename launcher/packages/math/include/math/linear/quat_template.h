@@ -1,7 +1,7 @@
 /*
  * quat_template: a rotation as x, y, z, w, unit length, Hamilton product,
  * acting on a vector as q * v * q^-1, for one number type; see
- * math_template.h for the macro arguments. The frame is left-handed, with
+ * docs/math/README.md for the macro arguments. The frame is left-handed, with
  * x right, y up and z forward: a positive angle about +y turns +z toward
  * +x. Angles are radians for float and turns for fixed point. normalize and from_basis need a square root and a
  * divide, so they are a macro of their own.

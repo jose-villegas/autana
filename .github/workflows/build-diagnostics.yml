@@ -26,7 +26,10 @@ jobs:
       - uses: ./.github/actions/idf-build
         with:
           cache-name: dev
-          command: ../tools/autana build dev --project ..
+          command: >-
+            ../tools/autana build dev --project ..
+            && cd ..
+            && python3 launcher/tools/build/memory_map.py --check --require-pin launcher/build.dev
 
   # An instrument rather than a gate (see sdkconfig.defaults.diag_perf), so
   # a pull request does not wait on it: main and a manual run build it.
@@ -40,7 +43,8 @@ jobs:
       - uses: ./.github/actions/idf-build
         with:
           cache-name: diag-perf
-          command: ../tools/autana build diag --perf-scope --project ..
+          command: >-
+            ../tools/autana build diag --perf-scope --project ..
 
   build-diagnostics:
     name: Build (diagnostics and complexity gate)
@@ -63,3 +67,4 @@ jobs:
             && python3 launcher/tools/quality/misra_tidy_gate.py
             && python3 launcher/tools/build/check_no_soft_double.py launcher/build.diag
             && python3 launcher/tools/render/code_layout.py --check launcher/build.diag
+            && python3 launcher/tools/build/memory_map.py --check --require-pin launcher/build.diag
