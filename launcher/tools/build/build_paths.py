@@ -68,6 +68,8 @@ def prepare(launcher, name):
         owner = folder / OWNER_FILE
         if owner.is_file():
             owner_path = owner.read_text(encoding='utf-8').strip()
+            # An owner path from the other OS (WSL and Windows can share this
+            # root) cannot be tested from here; keep its folder.
             if (os.name != 'nt' and re.match(r'^[A-Za-z]:', owner_path)) or (os.name == 'nt' and owner_path.startswith('/')):
                 continue
             if Path(owner_path).exists():

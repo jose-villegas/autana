@@ -18,7 +18,7 @@
 # ESP-IDF cannot be driven from Git Bash: idf_tools.py refuses outright when
 # MSYSTEM is set, and Git Bash always sets it. cmd's `set VAR=` deletes a
 # variable where bash can only blank it, and ESP-IDF ships export.bat, so a
-# nine-line .bat shim (idf_shim.bat, beside this file) is enough, and every
+# short .bat shim (idf_shim.bat, beside this file) is enough, and every
 # conditional, loop and error path stays here in sh. Measured before being
 # written, because each step had a plausible-looking alternative that does
 # not work:

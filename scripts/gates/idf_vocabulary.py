@@ -6,7 +6,8 @@ of something this tree uses but does not define.
     outside.functions, outside.constants, outside.has_path("hal/spi_ll.h")
 
 ESP-IDF is the checkout espressif.idf_path() finds (the pin unless
-a process IDF_PATH overrides it, else the legacy checkout guess). The C
+a process IDF_PATH overrides it, else ~/esp/esp-idf when nothing is
+installed). The C
 library is the headers of every xtensa-esp-elf
 toolchain under espressif_tools_root(). From ESP-IDF's components/ and
 tools/ it takes every file a doc can cite by path; what C code declares:

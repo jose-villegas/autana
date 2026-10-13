@@ -9,6 +9,7 @@
 # Usage:
 #   tools/build/build.sh [--dev|--diag] [--autorun] [--perf-scope]
 #                        [--layout-seed N] [--hot-tunables] [--configure] [--verbose]
+#                        [--prepared-build DIR]
 #
 #   --verbose   stream and save the build output. The full stream is in the
 #               printed log path in either mode.
@@ -36,7 +37,11 @@
 #   --configure  only configure the variant's build directory, compile nothing:
 #               writes its sdkconfig and compile_commands.json, and no image.
 #               For a tool that reads which sources a variant compiles.
-#   IDF_PATH set for this command selects another checkout.
+#   --prepared-build DIR  build into DIR, the variant folder build_paths.py
+#               already prepared (autana flash does, so it can snapshot it).
+#
+#   ESP-IDF: the checkout at the commit in launcher/idf-pin.json; IDF_PATH set
+#   for this command selects another.
 #
 # Run from anywhere (it cds to launcher/ itself); double-click from Explorer
 # if .sh is associated with Git Bash, or right-click launcher/tools/build/ ->

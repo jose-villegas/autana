@@ -1042,18 +1042,22 @@ def try_lock_file(handle):
 def build_directory_lock(build_dir):
     """Holds `build_dir` for one build and its snapshot, so two builds of one
     worktree's variant never interleave in one directory. An OS file lock:
-    the system drops it with the process that held it."""
+    the system drops it with the process that held it. Yields the folder
+    build_paths.py prepared, to pass to build.sh as --prepared-build, or None
+    for a project older than build_paths.py, whose build.sh has no such option
+    (autana is one tool for every checkout, perf_compare's old revisions too)."""
     build_dir = Path(build_dir)
+    prepared = None
     if (build_dir.parent / "tools/build/build_paths.py").is_file():
         from build_paths import prepare
-        build_dir = prepare(build_dir.parent, build_dir.name)
+        build_dir = prepared = prepare(build_dir.parent, build_dir.name)
     build_dir.mkdir(parents=True, exist_ok=True)
     with open(build_dir / BUILD_LOCK, "a+b") as handle:
         if not try_lock_file(handle):
             print("waiting for another build in " + str(build_dir), file=sys.stderr)
             while not try_lock_file(handle):
                 time.sleep(BUILD_LOCK_POLL_SECONDS)
-        yield build_dir
+        yield prepared
 
 
 def snapshot_image(build_dir, image_dir):

@@ -124,8 +124,8 @@ folder. `build_root` selects another root. Linux stays in-tree unless
 junctions. ESP-IDF receives the real path for both `-B` and `SDKCONFIG`.
 
 The first build deletes an existing in-tree build folder and links it to the
-external target. Builds prune folders whose recorded checkout no longer
-exists. Each variant records its ESP-IDF path and commit after a successful
+external target. Builds delete the folders of launcher directories that no
+longer exist. Each variant records its ESP-IDF path and commit after a successful
 configure or build. A folder configured for another ESP-IDF is emptied,
 except `build.log` and the build lock. An unstamped, non-empty folder is
 emptied once; successful configuration stamps it.

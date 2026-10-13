@@ -167,7 +167,8 @@ def _override(key, env, persistent):
 
 def find_idf(project=None, *, environ=None, roots=None,
              persistent=persistent_environment, home=None):
-    """Best-effort checkout and tools paths; missing installs keep legacy guesses.
+    """Best-effort checkout and tools paths; with no install found it
+    falls back to ~/esp/esp-idf and ~/.espressif.
 
     Explicit process IDF_PATH wins; otherwise all candidates are searched for
     the pin. Tools-only callers can supply IDF_TOOLS_PATH without a checkout.

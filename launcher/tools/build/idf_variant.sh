@@ -1,11 +1,16 @@
 #!/bin/sh
 
 # Variant build helper, sourced after idf.sh: idf_variant_build <launcher-dir>
-# <release|dev|diag> <build-dir> [options]. A build directory keeps its own
+# <release|dev|diag> <build-dir> [options], <build-dir> the folder
+# idf_variant_prepare returned. A build directory keeps its own
 # sdkconfig, so remove one made from stale or different defaults before it
 # silently builds the wrong image; assert the selected symbols afterward.
 
-# Prepare before logs or locks create an in-tree build folder.
+# idf_variant_prepare <launcher-dir> <build-name> [prepared-dir]: sets
+# IDF_VARIANT_BUILD to the real build folder, linked from
+# <launcher-dir>/<build-name> (build_paths.py); with prepared-dir it only
+# resets that folder if it was configured for another ESP-IDF. Run it before
+# logs or locks create an in-tree folder.
 idf_variant_prepare() {
     if [ -n "${3:-}" ]; then
         IDF_VARIANT_BUILD=$3
@@ -156,7 +161,6 @@ idf_variant_build() {
         -D LAUNCHER_LAYOUT_SEED="$layout_seed" -D TUNE_HOT_LIVE="$hot_tunables" \
         -D SDKCONFIG="$config"
     idf "$@" "$idf_verb" || return $?
-    "$_IDF_PYTHON" "$_IDF_TOOLS/build_paths.py" stamp "$launcher_dir" "$build_dir" || return 1
 
     disagreement="$(idf_variant_disagreement "$config")" || disagreement=""
     if [ -n "$disagreement" ]; then
