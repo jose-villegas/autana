@@ -633,13 +633,15 @@ static const mu_Rect MENU_ANCHOR = {40, 140, 300, MENU_ROW_HEIGHT};
 static const ui_dropdown_item_t MENU_ITEMS[] = {
     {.label = "IDLE"}, {.label = "WALK"}, {.label = "FAST"}, {.label = "GALLOP"}, {.label = "BOUND"}};
 
+static int menu_pick;
+
 static void
-build_menu_frame(const input_t* in, int revision, int commands) {
+build_menu_frame(const input_t* in, int revision, int commands, bool scrollable) {
     ui_begin(in);
     mu_Context* ctx = ui_context();
     if (ui_scroll_view_begin(ctx, "Menu", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME,
                              ui_scroll_view_default(), 16)) {
-        ui_dropdown(ctx, "pick", MENU_ANCHOR, MENU_ITEMS, MENU_ITEM_COUNT, 0, &THEME);
+        menu_pick = ui_dropdown(ctx, "pick", MENU_ANCHOR, MENU_ITEMS, MENU_ITEM_COUNT, 0, &THEME);
         dropdown_open = ui_dropdown_is_open(ctx, "pick");
         const mu_Color saved_text = ctx->style->colors[MU_COLOR_TEXT];
         ctx->style->colors[MU_COLOR_TEXT] = ui_rgb(MENU_INK);
@@ -648,7 +650,7 @@ build_menu_frame(const input_t* in, int revision, int commands) {
         mu_Real value = revision;
         mu_layout_set_next(ctx, (mu_Rect){60, 250, 180, 30}, 0);
         mu_slider(ctx, &value, 0, MENU_FRAMES);
-        mu_layout_set_next(ctx, (mu_Rect){60, 320, 180, 30}, 0);
+        mu_layout_set_next(ctx, (mu_Rect){60, scrollable ? ui_height() : 320, 180, 30}, scrollable);
         mu_label(ctx, "BOOT to close");
         for (int i = 0; i < commands; i++) {
             mu_draw_rect(ctx, (mu_Rect){60 + i, 212 + revision, 1, 100}, ui_rgb(MENU_INK));
@@ -656,6 +658,53 @@ build_menu_frame(const input_t* in, int revision, int commands) {
         ctx->style->colors[MU_COLOR_TEXT] = saved_text;
         ui_scroll_view_end(ctx);
     }
+}
+
+static void
+test_opening_release_cannot_pick_an_overlay_row(void) {
+    const int motion_pixels = 2;
+    fixture();
+    const input_t idle = {0};
+    input_t touch = {
+        .down = true, .pressed = true, .x = MENU_ANCHOR.x + MENU_ANCHOR.w / 2, .y = MENU_ANCHOR.y + MENU_ANCHOR.h / 2};
+    build_menu_frame(&idle, 0, 0, true);
+    end_frame();
+    build_menu_frame(&idle, 0, 0, true);
+    end_frame();
+    build_menu_frame(&touch, 0, 0, true);
+    end_frame();
+    touch.pressed = false;
+    for (int frame = 0; frame < UI_DROPDOWN_CLOSE_FRAMES; frame++) {
+        touch.y += frame < motion_pixels;
+        build_menu_frame(&touch, 0, 0, true);
+        end_frame();
+        TEST_ASSERT_EQUAL_INT(-1, menu_pick);
+    }
+    touch.down = false;
+    touch.released = true;
+    build_menu_frame(&touch, 0, 0, true);
+    end_frame();
+    TEST_ASSERT_EQUAL_INT_MESSAGE(-1, menu_pick, "opening release must not pick the overlay row under the finger");
+    for (int frame = 0; frame < UI_DROPDOWN_CLOSE_FRAMES; frame++) {
+        build_menu_frame(&idle, 0, 0, true);
+        end_frame();
+        TEST_ASSERT_TRUE(dropdown_open);
+    }
+    const mu_Rect list = ui_dropdown_list_rect(MENU_ANCHOR, MENU_ITEM_COUNT, MENU_ROW_HEIGHT, ui_height(), UI_MARGIN);
+    touch = (input_t){.down = true, .pressed = true, .x = list.x + list.w / 2, .y = list.y + MENU_ROW_HEIGHT / 2};
+    build_menu_frame(&touch, 0, 0, true);
+    end_frame();
+    int picked = menu_pick;
+    touch.pressed = false;
+    build_menu_frame(&touch, 0, 0, true);
+    end_frame();
+    picked = menu_pick >= 0 ? menu_pick : picked;
+    touch.down = false;
+    touch.released = true;
+    build_menu_frame(&touch, 0, 0, true);
+    end_frame();
+    picked = menu_pick >= 0 ? menu_pick : picked;
+    TEST_ASSERT_EQUAL_INT(0, picked);
 }
 
 #ifndef DEVICE_BUILD
@@ -701,7 +750,7 @@ static void
 menu_frame(const input_t* in, bool bands, int revision) {
     last_menu_canvas = NULL;
     menu_window_painted = false;
-    build_menu_frame(in, revision, MENU_DENSE_COMMANDS);
+    build_menu_frame(in, revision, MENU_DENSE_COMMANDS, false);
     finish_menu_frame(bands);
 }
 
@@ -1332,6 +1381,7 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_a_slider_drag_uses_raw_moves_after_its_aimed_press);
     RUN_TEST(test_an_icon_leaves_less_room_for_the_label);
     RUN_TEST(test_text_aligns_to_either_edge_or_the_centre);
+    RUN_TEST(test_opening_release_cannot_pick_an_overlay_row);
     RUN_TEST(test_a_list_goes_below_its_dropdown_when_it_fits);
     RUN_TEST(test_a_list_grows_upward_from_a_dropdown_near_the_bottom);
     RUN_TEST(test_a_list_too_tall_for_either_side_overlays_the_canvas);
@@ -1474,7 +1524,7 @@ test_menu_band_frame_cost(void) {
             gfx_present_begin();
             gfx_present_wait();
             ui_clear_band_overlay();
-            build_menu_frame(warmup[i], 0, commands);
+            build_menu_frame(warmup[i], 0, commands, false);
             ui_end_for_bands(MENU_BACKGROUND);
             gfx_invalidate();
             gfx_band_run(paint_menu_band, NULL);
@@ -1485,7 +1535,7 @@ test_menu_band_frame_cost(void) {
             gfx_present_wait();
             ui_clear_band_overlay();
             const int64_t began_us = timing_now_us();
-            build_menu_frame(&idle, frame / MENU_REVISION_FRAMES, commands);
+            build_menu_frame(&idle, frame / MENU_REVISION_FRAMES, commands, false);
             ui_end_for_bands(MENU_BACKGROUND);
             gfx_invalidate();
             gfx_band_run(paint_menu_band, NULL);

@@ -374,6 +374,26 @@ dither_rect(bool landscape) {
 }
 
 static void
+test_held_dither_opening_touch_with_small_motion_does_not_pick(void) {
+    const int motion_pixels = 2;
+    tap_fixture(SAND_COLOUR_16, false);
+    const mu_Rect dither = dither_rect(false);
+    const int x = dither.x + dither.w / 2;
+    int y = dither.y + dither.h / 2;
+    TEST_ASSERT_FALSE(any_hit(options_frame(true, true, false, x, y)));
+    for (int frame = 0; frame < UI_DROPDOWN_CLOSE_FRAMES; frame++) {
+        y += frame < motion_pixels;
+        TEST_ASSERT_FALSE(any_hit(options_frame(true, false, false, x, y)));
+    }
+    TEST_ASSERT_FALSE(any_hit(options_frame(false, false, true, x, y)));
+    for (int frame = 0; frame < UI_DROPDOWN_CLOSE_FRAMES; frame++) {
+        TEST_ASSERT_FALSE(any_hit(options_frame(false, false, false, x, y)));
+    }
+    const mu_Rect list = ui_dropdown_list_rect(dither, DITHER_COUNT, dither.h, canvas_h(false), UI_MARGIN);
+    TEST_ASSERT_EQUAL_INT(0, tap_at(list.x + list.w / 2, list.y + dither.h / 2).dither);
+}
+
+static void
 test_the_dither_dropdown_picks_from_its_list(void) {
     tap_fixture(SAND_COLOUR_16, false);
     const mu_Rect dither = dither_rect(false);
@@ -467,6 +487,7 @@ run_options_screen_suite(void) {
     RUN_TEST(test_a_landscape_tap_on_a_tile_reports_its_colour_mode);
     RUN_TEST(test_apply_takes_no_tap_while_nothing_is_pending);
     RUN_TEST(test_apply_takes_a_tap_once_something_is_pending);
+    RUN_TEST(test_held_dither_opening_touch_with_small_motion_does_not_pick);
     RUN_TEST(test_the_dither_dropdown_picks_from_its_list);
     RUN_TEST(test_a_landscape_tap_picks_the_open_dither_list_row);
     RUN_TEST(test_a_drag_leaves_the_fitting_dither_list_unscrolled_landscape);

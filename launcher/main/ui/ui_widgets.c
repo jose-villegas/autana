@@ -186,6 +186,7 @@ static struct {
     mu_Container* list;
     int scroll;
     bool scroll_pending;
+    bool opening_touch;
     int close_in;
     int drawn_frame;
 } live;
@@ -233,12 +234,16 @@ draw_dropdown_list(mu_Context* ctx, const char* id, mu_Rect anchor, const ui_dro
             .selected = i == selected,
         };
         mu_layout_set_next(ctx, mu_rect(0, i * anchor.h, row_w, anchor.h), 1);
-        if (ui_icon_button(ctx, row_id, mu_layout_next(ctx), &row, theme)) {
+        if (ui_icon_button(ctx, row_id, mu_layout_next(ctx), &row, theme) && !live.opening_touch) {
             picked = i;
             live.close_in = UI_DROPDOWN_CLOSE_FRAMES;
         }
     }
     mu_end_window(ctx);
+    /* A deferred tap can deliver DOWN and UP together while the list opens over its anchor. */
+    if (!ctx->mouse_down) {
+        live.opening_touch = false;
+    }
     ctx->style->padding = saved_padding;
     return picked;
 }
@@ -293,6 +298,7 @@ ui_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const ui_dropdown_item_t
         live.scroll = ui_dropdown_list_scroll(selected, count, r.h, list.h);
         live.scroll_pending = true;
         live.close_in = 0;
+        live.opening_touch = true;
         live.drawn_frame = ctx->frame;
     }
     if (!ui_dropdown_is_open(ctx, id)) {
