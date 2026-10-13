@@ -415,9 +415,12 @@ note_send_failure(esp_err_t err) {
 }
 
 /* Packs the box into the next strip_bounce slot and queues it, the same
- * ring send_fb_rows() uses, so copying one run overlaps sending the last. */
-/* The linker fragment needs one stable symbol to keep this function in IRAM. */
-static __attribute__((noclone)) void
+ * ring send_fb_rows() uses, so copying one run overlaps sending the last.
+ * noclone gives the linker fragment one stable symbol to keep in IRAM. */
+#if __has_attribute(noclone)
+__attribute__((noclone))
+#endif
+static void
 gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_end, bool refined, int* queued,
                 gfx_color_t border) {
     x0 = mathi_even_floor(x0);
