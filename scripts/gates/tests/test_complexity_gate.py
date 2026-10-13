@@ -4,6 +4,7 @@ import json
 import subprocess
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -11,6 +12,8 @@ QUALITY = Path(__file__).resolve().parents[3] / "launcher/tools/quality"
 sys.path.insert(0, str(QUALITY))
 
 import complexity_gate  # noqa: E402
+import pinned_tool
+import compile_db
 
 DATA_ONLY = """\
 /* GENERATED FILE - do not edit. */
@@ -86,6 +89,16 @@ class EmptyScanGuardTest(unittest.TestCase):
             self.run_gate(files, changed=False)
 
 
+class DriverResolutionTest(unittest.TestCase):
+    def test_versioned_analyzer_uses_same_major_driver(self):
+        tidy = f"/usr/bin/clang-tidy-{pinned_tool.PINNED_MAJOR}"
+        driver = tidy.replace("clang-tidy", "clang")
+        with mock.patch.object(complexity_gate, "resolve_clang_tidy", return_value=(tidy, pinned_tool.PINNED_MAJOR)), \
+             mock.patch.object(pinned_tool, "tool_version", return_value=pinned_tool.PINNED_VERSION) as version:
+            self.assertEqual(Path(complexity_gate.resolve_analysis_clang()), Path(driver))
+        version.assert_called_once_with(str(Path(driver)))
+
+
 class DeviceCommandTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -95,8 +108,8 @@ class DeviceCommandTest(unittest.TestCase):
         self.source.parent.mkdir(parents=True)
         self.source.touch()
         self.db = self.launcher / "compile_commands.json"
-        patch = mock.patch.object(complexity_gate, "resolve_clang_tidy",
-                                  return_value=("/esp/bin/clang-tidy", "21"))
+        patch = mock.patch.object(complexity_gate, "resolve_analysis_clang",
+                                  return_value="/esp/bin/clang")
         patch.start()
         self.addCleanup(patch.stop)
         if hasattr(complexity_gate, "clang_accepts_flag"):
@@ -114,7 +127,35 @@ class DeviceCommandTest(unittest.TestCase):
             "file": str(self.source), "directory": str(self.launcher),
             "command": f'"/tool chain/bin/gcc" @"{response}" -Werror -c "{self.source}"',
         }]), encoding="utf-8")
-        return complexity_gate.build_idf_entries("/tool chain")[str(self.source.resolve())]
+        argv = complexity_gate.build_idf_entries("/tool chain")[str(self.source.resolve())]
+        return argv
+
+    def test_posix_quoted_compiler_path_is_unquoted(self):
+        compiler = "/tool chain/bin/gcc"
+        specs = "-specs=/build dir/picolibc.specs"
+        self.db.write_text(json.dumps([{
+            "file": str(self.source), "directory": str(self.launcher),
+            "command": f"'{compiler}' '{specs}' -c '{self.source}'",
+        }]), encoding="utf-8")
+        with mock.patch.object(compile_db, "os", SimpleNamespace(name="posix")), \
+             mock.patch.object(complexity_gate, "gcc_libc_includes", return_value=()) as probe:
+            complexity_gate.build_idf_entries("/tool chain")
+        probe.assert_called_once_with(compiler, (specs,), str(self.launcher))
+
+    def test_arguments_expand_relative_response_file(self):
+        response = self.launcher / "flags with spaces.rsp"
+        response.write_text('"-specs=/build dir/picolibc.specs"', encoding="utf-8")
+        self.db.write_text(json.dumps([{
+            "file": str(self.source), "directory": str(self.launcher),
+            "arguments": ["/tool chain/bin/gcc", "@" + response.name, "-c", str(self.source)],
+        }]), encoding="utf-8")
+        with mock.patch.object(complexity_gate, "gcc_libc_includes", return_value=()) as probe:
+            argv = complexity_gate.build_idf_entries("/tool chain")[str(self.source.resolve())]
+        probe.assert_called_once_with("/tool chain/bin/gcc",
+                                      ("-specs=/build dir/picolibc.specs",), str(self.launcher))
+        self.assertEqual(argv[0], "/tool chain/bin/gcc")
+        self.assertEqual(argv[-1], str(self.source))
+        self.assertFalse(any(arg.startswith(("@", "-specs=")) for arg in argv))
 
     def test_rejected_flag_is_dropped(self):
         rejected = subprocess.CompletedProcess([], 1, "", "clang: error: unknown argument: '-fno-ext-dce'")
@@ -171,12 +212,13 @@ class DeviceCommandTest(unittest.TestCase):
         probe.assert_called_once_with("/tool chain/bin/gcc",
                                       ("-specs=/build dir/picolibc.specs",), str(self.launcher))
         self.assertNotIn("-specs=", command)
-        self.assertIn('-isystem "/tool chain/picolibc/include"', command)
-        self.assertIn('--sysroot="/tool chain/xtensa-esp-elf"', command)
+        self.assertIn("-isystem", command)
+        self.assertIn("/tool chain/picolibc/include", command)
+        self.assertIn("--sysroot=/tool chain/xtensa-esp-elf", command)
 
     def test_only_entry_padding_attribute_is_neutralized(self):
         command = self.entries("")
-        self.assertIn('"-Dpatchable_function_entry(...)="', command)
+        self.assertIn("-Dpatchable_function_entry(...)=", command)
         self.assertNotIn("-Wno-unknown-attributes", command)
         self.assertNotIn("-Wno-error=unknown-attributes", command)
 

@@ -1,5 +1,6 @@
-"""Compiler arguments shared by preprocessing and stack graph measurements."""
+"""Compiler arguments shared by analysis, preprocessing and stack measurements."""
 import os
+from pathlib import Path
 import shlex
 
 
@@ -17,6 +18,15 @@ def compile_flags(entry):
                 arg = arg.replace('\\"', '"')
         if skip:
             skip = False
+        elif arg.startswith("@"):
+            response = Path(entry["directory"]) / arg[1:]
+            try:
+                text = response.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                filtered.append(arg)
+            else:
+                filtered.extend(compile_flags({"command": text, "file": entry["file"],
+                                               "directory": entry["directory"]}))
         elif arg in {"-o", "-MF", "-MT", "-MQ"}:
             skip = True
         elif arg not in {"-c", "-MD", "-MMD", "-MP"} and arg.replace("\\", "/") != entry["file"].replace("\\", "/"):
