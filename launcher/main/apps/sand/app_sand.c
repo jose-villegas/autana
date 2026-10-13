@@ -1,8 +1,39 @@
 /*
- * The simulation uses a coarser grid than the screen to fit its frame budget.
- * Buffers are sized for the finest quality so changing quality needs no
- * reallocation. Grid dimensions round down; clearing the screen on entry
- * leaves any uncovered edge in the background colour.
+ * app_sand - falling sand, poured with a finger and steered by tilting.
+ *
+ * Three pieces, each of which knows nothing about the others:
+ *   sand.c  the automaton   - pure, host-tested, no idea a screen exists
+ *   input/  the motion      - gravity in screen axes, no idea it pours sand
+ *   here    the wiring      - grid size, colours, axis mapping, rendering
+ *
+ * WHY THE GRID IS COARSER THAN THE SCREEN
+ *
+ * A cell per pixel would be 368 x 448 = 165 KB of grid and four times the
+ * work of the finest quality every step, so a cell is a square block of
+ * `cell` x `cell` pixels, and `cell` is chosen from
+ * the options screen rather than fixed: ULTRA (2 px) gives a 184 x 224 grid, or
+ * 41 KB; HIGH (3 px) gives 122 x 149, or 18 KB; NORMAL (4 px, the default)
+ * gives 92 x 112, or 10 KB; LOW (6 px) gives 61 x 74, or about 4.5 KB;
+ * VERY LOW (8 px) gives 46 x 56, or about 2.5 KB. All five still read as
+ * grains rather than bricks - the choice trades fineness for the step budget
+ * a finer grid costs, not for whether it looks right.
+ *
+ * Every allocation below is sized for the finest quality (2 px) regardless of
+ * which one is active, so switching quality on the menu never reallocates
+ * anything - it just changes how much of the same buffer is in use.
+ *
+ * `cell` need not divide 368 or 448 evenly - grid_w/grid_h floor, so a
+ * remainder just leaves an unredrawn margin at most cell-1 px wide along the
+ * right and bottom edges, not an out-of-bounds write. At 2 px it divides
+ * both evenly and there is no margin at all, but at 3 px it does not: 122 * 3
+ * = 366 and 149 * 3 = 447, leaving a 2 px strip on the right and a 1 px strip
+ * on the bottom that the grid never touches. At 6 px the margin is the
+ * largest of any tier: 61 * 6 = 366 and 74 * 6 = 444, a 2 px strip on the
+ * right and a 4 px strip on the bottom. That is harmless only because
+ * the colour of an empty cell and the menu's background are the same value,
+ * 0x0A0C14, see COL_BACKGROUND, so the untouched strip is indistinguishable
+ * from the screen around it. start_sim() still clears the screen explicitly
+ * before the first frame rather than leaning on that coincidence alone.
  */
 
 #include <stdio.h>
@@ -1138,7 +1169,7 @@ log_direction_change(int gx, int gy, int jostle, const input_motion_t* motion) {
     }
     ESP_LOGI(TAG,
              "down is (%+d,%+d)  smoothed (%+6d,%+6d)  "
-             "raw (%+6d,%+6d)  shake %d",
+             "gravity (%+6d,%+6d)  shake %d",
              dx, dy, gx, gy, motion->gravity.x, motion->gravity.y, jostle);
     last_dx = dx;
     last_dy = dy;

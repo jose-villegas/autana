@@ -9,7 +9,6 @@
 
 #include "input/buttons.h"
 #include "input/imu.h"
-#include "input/imu_rotation.h"
 #include "input/touch.h"
 
 static const char TAG[] = "input";
@@ -35,9 +34,7 @@ input_read_motion(input_motion_t* out) {
     if (!imu_read(&sample)) {
         return false;
     }
-    out->gravity = imu_gravity_screen(&sample);
-    out->gravity_z = sample.az;
-    out->turn_rate = imu_rotation_level(&sample);
+    *out = (input_motion_t){imu_gravity_screen(&sample), sample.az, imu_rotation_level(&sample)};
     return true;
 }
 
