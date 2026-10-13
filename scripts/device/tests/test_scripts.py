@@ -2,9 +2,11 @@
 shellcheck's errors when shellcheck is installed. A line that parses but
 runs wrong is the end-to-end tests' job (FlashImageScriptTests)."""
 
+import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -50,6 +52,52 @@ class ScriptSyntaxTests(unittest.TestCase):
                                  *(path.relative_to(ENGINE).as_posix() for path in scripts())],
                                 cwd=ENGINE, capture_output=True, text=True, timeout=300)
         self.assertEqual(result.returncode, 0, result.stdout[-3000:])
+
+
+class IdfVariantConfigureTests(unittest.TestCase):
+    """idf_variant_build with `idf` stubbed to record its arguments and write
+    the sdkconfig a variant would get: --configure reconfigures, with the
+    defaults the build uses, and still checks the generated symbols."""
+
+    def run_variant(self, variant, options, sdkconfig):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "wanted").write_text(sdkconfig)
+            script = ('. "$SCRIPT"; idf() { echo "$*" > "$ROOT/idf.args"; mkdir -p "$ROOT/b";'
+                      ' cp "$ROOT/wanted" "$ROOT/b/sdkconfig"; }; idf_variant_build "$ROOT" "$1" b $2')
+            result = subprocess.run(
+                ["sh", "-c", script, "sh", variant, options], capture_output=True, text=True,
+                timeout=60, env=dict(os.environ, ROOT=root.as_posix(), SCRIPT=(
+                    ENGINE / "launcher/tools/build/idf_variant.sh").as_posix()))
+            args = (root / "idf.args").read_text()
+        return result, args
+
+    def test_configure_reconfigures_with_the_builds_defaults(self):
+        built, build_args = self.run_variant("dev", "", "CONFIG_LAUNCHER_DEVELOPMENT=y")
+        configured, args = self.run_variant("dev", "--configure", "CONFIG_LAUNCHER_DEVELOPMENT=y")
+        self.assertEqual(built.returncode, 1, "a build with no launcher.bin must still fail")
+        self.assertEqual(configured.returncode, 0, configured.stderr)
+        self.assertTrue(args.rstrip().endswith("reconfigure"), args)
+        self.assertTrue(build_args.rstrip().endswith("build"), build_args)
+        self.assertEqual(args.rsplit(" ", 1)[0], build_args.rsplit(" ", 1)[0])
+        self.assertIn("Configuring b", configured.stdout)
+
+    def test_configure_still_refuses_a_wrong_sdkconfig(self):
+        result, _ = self.run_variant("dev", "--configure", "CONFIG_LAUNCHER_SELFTEST=y")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("CONFIG_LAUNCHER_DEVELOPMENT is not set", result.stderr)
+
+    def test_configure_refuses_a_forbidden_symbol(self):
+        result, _ = self.run_variant(
+            "dev", "--configure", "CONFIG_LAUNCHER_DEVELOPMENT=y\nCONFIG_LAUNCHER_QEMU=y")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("CONFIG_LAUNCHER_QEMU is set", result.stderr)
+
+    def test_build_sh_skips_the_build_id_when_configuring(self):
+        text = (ENGINE / "launcher/tools/build/build.sh").read_text()
+        configured = text.index('"$CONFIGURE" -eq 1 ]; then\n    echo')
+        self.assertLess(configured, text.index("write_build_id.sh"))
+        self.assertIn("exit 0", text[configured:text.index("write_build_id.sh")])
 
 
 if __name__ == "__main__":
