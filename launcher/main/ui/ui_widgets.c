@@ -97,7 +97,7 @@ begin_control(mu_Context* ctx, const char* id, mu_Rect r, bool enabled, bool sel
 
 int
 ui_icon_button_label_width(int button_w, bool has_icon, const ui_theme_t* theme) {
-    return button_w - 2 * BUTTON_PAD - (has_icon ? theme->icon_side + BUTTON_ICON_GAP : 0);
+    return button_w - (2 * BUTTON_PAD) - (has_icon ? theme->icon_side + BUTTON_ICON_GAP : 0);
 }
 
 /* The icon at the left and the label centred in `label_w` after it. */
@@ -321,8 +321,8 @@ mu_Rect
 ui_tile_icon_rect(mu_Rect r, const ui_theme_t* theme) {
     const int label_h = gfx_font_height(gfx_font_ui(), theme->text_scale);
     int side = r.h - 2 * TILE_PAD - label_h - TILE_LABEL_GAP;
-    if (side > r.w - 2 * TILE_PAD) {
-        side = r.w - 2 * TILE_PAD;
+    if (side > r.w - (2 * TILE_PAD)) {
+        side = r.w - (2 * TILE_PAD);
     }
     return mu_rect(r.x + (r.w - side) / 2, r.y + TILE_PAD, side, side);
 }

@@ -268,7 +268,7 @@ assert_rgb_block_span(const gfx_color_t* fb, int n) {
     enum { PAINT_W = 4, MAX_N = 8 };
 
     for (int dy = 0; dy < MAX_N; dy++) {
-        for (int x = 0; x < PAINT_W * n + 1; x++) {
+        for (int x = 0; x < (PAINT_W * n) + 1; x++) {
             const gfx_color_t px = fb[(dy * GFX_WIDTH) + x];
             if (dy >= n || x < n || x >= 3 * n) {
                 TEST_ASSERT_EQUAL_HEX16(0x1234, px);

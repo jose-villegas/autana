@@ -56,7 +56,7 @@ it readable; a flag works the same wherever the table below says it applies.
 
 | Command | What it does |
 |---|---|
-| `autana build [rel\|dev\|diag] [--perf-scope] [--layout-seed N] [--hot-tunables]` | Build this project, no board and no lock; `dev` when omitted. `--hot-tunables` (dev/diag): build with live hot-path knobs; `suite` needs `--flash`. `--layout-seed N`: pad the layout by seed N ([Layout-Noise.md](Layout-Noise.md)); 0, the default, is the plain build. Prints the build's log path and verdict, and its failing lines on a failure; exits with the build's status. |
+| `autana build [rel\|dev\|diag] [--perf-scope] [--layout-seed N] [--hot-tunables] [--configure]` | Build this project, no board and no lock; `dev` when omitted. `--hot-tunables` (dev/diag): build with live hot-path knobs; `suite` needs `--flash`. `--layout-seed N`: pad the layout by seed N ([Layout-Noise.md](Layout-Noise.md)); 0, the default, is the plain build. `--configure`: only write the variant's `sdkconfig` and `compile_commands.json`, compiling nothing. Prints the build's log path and verdict, and its failing lines on a failure; exits with the build's status. |
 | `autana build diag --check` | The diagnostics build plus the complexity ratchet: `launcher/tools/build/build_diag_check.sh`, unchanged; no board. |
 | `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope] [--layout-seed N] [--hot-tunables]` | Build and flash this project; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. `--layout-seed N`: the seeded layout. |
 | `autana buildid [--json]` | The `BUILD_ID` the board is running, to check against what was flashed. |
@@ -67,6 +67,8 @@ CI builds through it too. `autana flash` runs that same build with no board
 lock held and snapshots the image it built, then, under the board's lock,
 `scripts/device/flash_image.sh` writes that snapshot, the one script that
 opens the port.
+Both print a note when the ESP-IDF they build with is not the commit
+`launcher/idf-pin.json` pins ([Framework-Versions.md](Framework-Versions.md)).
 `BUILD_ID` identifies the image by its ELF hash; see
 [what a flash proves](Flash-and-Captures.md#what-a-flash-proves).
 It proves the write, not the boot.

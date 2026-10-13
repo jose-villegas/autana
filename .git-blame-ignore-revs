@@ -1,2 +1,5 @@
 # Line-ending renormalisation: no content change.
 63268fcc6747406a80a96e3ba16a574369b1fb08
+
+# clang-format 21 reformat (ESP-IDF 6.1 pins esp-clang 21): no content change.
+52bfab48b3e44c72973841ec89988ff70c4bc09d
