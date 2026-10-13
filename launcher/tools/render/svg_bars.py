@@ -95,19 +95,22 @@ def bars(command, title, subtitle, rows, scale, captions=(), legend=(), axis=(),
             width = count * BAR_WIDTH / scale
             lines.append(f'<rect x="{x:.2f}" y="{y}" width="{width:.2f}" height="{_BAR_HEIGHT}" '
                          f'fill="{fill}" data-label="{escape(name, quote=True)}" data-bytes="{count}"><title>{escape(name)}: {count} B</title></rect>')
-            label_width, label_css = width, 'inside'
-            for overlay_name, offset, overlay_count, overlay_fill in row_overlays:
+            # (x, label) pairs; an overlay with its own words labels both of its parts.
+            labels = [(x, inside_label(name, count, width) if inside else None, 'inside')]
+            for overlay_name, offset, overlay_count, overlay_fill, *words in row_overlays:
                 if offset == offset_bytes:
                     if not 0 <= overlay_count <= count:
                         raise ValueError(f'{label}: runtime overlay exceeds segment')
-                    if overlay_count:
-                        label_width = overlay_count * BAR_WIDTH / scale
-                        label_css = 'overlay-inside'
-                    lines.append(f'<rect x="{x:.2f}" y="{y}" width="{overlay_count * BAR_WIDTH / scale:.2f}" height="{_BAR_HEIGHT}" '
+                    overlay_width = overlay_count * BAR_WIDTH / scale
+                    lines.append(f'<rect x="{x:.2f}" y="{y}" width="{overlay_width:.2f}" height="{_BAR_HEIGHT}" '
                                  f'fill="{overlay_fill}" data-label="{escape(overlay_name, quote=True)}" data-bytes="{overlay_count}"><title>{escape(overlay_name)}: {overlay_count} B</title></rect>')
-            fitted = inside_label(name, count, label_width) if inside else None
-            if fitted:
-                lines.append(text(f'{x + _INSIDE_PAD:.2f}', y + _TEXT_OFFSET, fitted, css=label_css))
+                    if overlay_count and words and inside:
+                        covered, rest = words
+                        labels = [(x, inside_label(covered, overlay_count, overlay_width), 'overlay-inside'),
+                                  (x + overlay_width, inside_label(rest, count - overlay_count, width - overlay_width), 'inside')]
+            for label_x, fitted, css in labels:
+                if fitted:
+                    lines.append(text(f'{label_x + _INSIDE_PAD:.2f}', y + _TEXT_OFFSET, fitted, css=css))
             x += width
             offset_bytes += count
         if not headline:

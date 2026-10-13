@@ -65,6 +65,11 @@ class RuntimeHeapTests(unittest.TestCase):
         self.assertIn('IRAM left before the next 256 B split step: 0 B', text)
         self.assertIn('every byte comes from the heap (free 0.3 KB)', text)
         self.assertNotIn('capture from build', text)
+        # The heap's parts are labelled by what they are, not by the whole heap's size.
+        inside = [node.text for node in tree.iter('{http://www.w3.org/2000/svg}text') if node.get('class') in ('inside', 'overlay-inside')]
+        self.assertIn(f'in use {memory.size_label(656 - 320)}', inside)
+        self.assertIn(f'free {memory.size_label(320)}', inside)
+        self.assertNotIn(memory.size_label(656), inside)
         mismatch = ''.join(ET.fromstring(memory.chart('pool', body.replace('abc-dev', 'new-dev'), capture)).itertext())
         self.assertIn('capture from build abc-dev', mismatch)
 

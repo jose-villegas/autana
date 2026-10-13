@@ -1,0 +1,16 @@
+BUILD_ID=fc2a2d39ed23-release
+unmeasured: release has no console, and its POST boot line is lost in the USB reset gap
+
+BUILD_ID=ef3ac11008ed-dev
+phase=boot HEAP free=101231 largest=65536
+phase=app:Diagnostics HEAP free=101207 largest=65536
+phase=app:Falling Sand HEAP free=101127 largest=65536
+phase=app:Input Lab HEAP free=101207 largest=65536
+phase=app:Render Lab HEAP free=97963 largest=63488
+
+BUILD_ID=fbbede4eb4fc-diag
+phase=boot HEAP free=85763 largest=51200
+phase=app:Diagnostics HEAP free=85739 largest=51200
+phase=app:Falling Sand HEAP free=85659 largest=51200
+phase=app:Input Lab HEAP free=85739 largest=51200
+phase=app:Render Lab HEAP free=82495 largest=49152

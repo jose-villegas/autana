@@ -19,13 +19,15 @@ def chart_documents(doc):
     capture.write_bytes((Path(__file__).parent / 'fixtures/runtime-heap.txt').read_bytes())
     tiers = doc.parent / 'tiers.md'
     tiers.parent.mkdir(parents=True, exist_ok=True)
-    for path, block in ((doc, memory.BLOCK), (tiers, memory.TIERS_BLOCK)):
+    headroom = doc.parent / 'headroom.md'
+    for path, block in ((doc, memory.BLOCK), (tiers, memory.TIERS_BLOCK), (headroom, memory.HEADROOM_BLOCK)):
         path.write_text(f'<!-- generated: {block} -->\n<!-- /generated: {block} -->\n', encoding='utf-8')
 
 
 @contextlib.contextmanager
 def chart_cli(doc, build):
-    replacements = dict(render_tiers=lambda builds, root, runtime=None: 'tier fixture', ROOT=doc.parent,
+    replacements = dict(render_tiers=lambda builds, root, runtime=None: 'tier fixture',
+                        render_headroom=lambda builds, runtime=None, root=None: 'headroom fixture', ROOT=doc.parent,
                         read_build=lambda *args: build, build_sites=lambda *args: ([], lambda site: True),
                         check=lambda *args, **kwargs: [], idf_pin=lambda *args: {'commit': 'fixture'})
     with contextlib.ExitStack() as stack:
@@ -198,7 +200,9 @@ class MemoryChartTests(unittest.TestCase):
                                constants={'_heap_start': 0x3fc88080}, size={'layout': [{'name': 'DIRAM', 'used': 128}]},
                                align=256, pad=16, slack=0, inputs=inputs, owned={}, report=[(site, 12, ['draw'])]))
         body = memory.render(builds)
-        self.assertIn('dev: 0.3 KB free internal heap at its floor (after opening the app that leaves the least), largest block 0.2 KB, of the 1 KB shared pool; IRAM can grow 0 B before it costs heap.', body)
+        self.assertIn('dev: 0.3 KB free internal heap at its floor (after opening the app that leaves the least), largest block 0.2 KB, of the 1 KB shared pool; IRAM can grow 0 B before it costs heap.',
+                      memory.render_headroom(builds))
+        self.assertNotIn('free internal heap at its floor', body)
         from doc_tables import parse_table
         headers, rows = parse_table(body, 'IRAM component')
         self.assertIn('Placement', headers)
@@ -224,6 +228,7 @@ class MemoryChartTests(unittest.TestCase):
                 ET.fromstring(svg)
             self.assertIn('Placement', doc.read_text())
             self.assertIn('tier fixture', (doc.parent / 'tiers.md').read_text())
+            self.assertIn('headroom fixture', (doc.parent / 'headroom.md').read_text())
 
     def test_tables_charts_match_chart_mode(self):
         build = dict(variant='release', build_id='abc-release', idf_commit='fixture',

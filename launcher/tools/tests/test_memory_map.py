@@ -183,7 +183,7 @@ builds=json.load(open(sys.argv[2]))
 for b in builds:
  b['inputs']=[m.Input(**i) for i in b['inputs']]
  b['report']=[(m.Site(**s),size,names) for s,size,names in b['report']]
-print(m.render(builds, runtime=m.parse_runtime_heap(Path('launcher/tools/tests/fixtures/runtime-heap.txt').read_text())))
+print(m.render(builds))
 """
         outputs = [subprocess.check_output([sys.executable, "-c", program, str(memory.ROOT / "launcher/tools/build"), str(fixture)], env=dict(os.environ, PYTHONHASHSEED=seed)) for seed in ("1", "53")]
         self.assertEqual(outputs[0], outputs[1])
