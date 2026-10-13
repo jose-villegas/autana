@@ -231,8 +231,7 @@ feed_launcher_gravity(uint32_t dt_ms) {
     if (!input_read_motion(&motion)) {
         return;
     }
-    const vec3i_t a = motion.acceleration;
-    tilt_update(&launcher_tilt, a.x, a.y, a.z, motion.turn_speed, dt_ms);
+    tilt_update(&launcher_tilt, motion.acceleration, motion.turn_speed, dt_ms);
     ui_ridge_set_gravity(tilt_x(&launcher_tilt), tilt_y(&launcher_tilt), tilt_strength(&launcher_tilt),
                          tilt_shake(&launcher_tilt));
 }

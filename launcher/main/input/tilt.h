@@ -18,6 +18,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "math/linear/vec3i.h"
+
 /* Time constants, in milliseconds: how long the filter takes to cover about
  * two thirds of the distance to a new reading.
  *
@@ -72,15 +74,15 @@ typedef struct {
  * "is this reading actually gravity?" answerable. */
 void tilt_reset(tilt_t* t, int counts_per_g);
 
-/* Feed one sample. (gx, gy) is gravity in SCREEN axes and `gz` is the
- * component through the screen, needed only for the magnitude, but
- * needed: without it a flat device looks identical to free fall.
+/* Feed one sample. `accel` is input_motion_t's acceleration, SCREEN axes:
+ * x and y steer; z is needed only for the magnitude, but needed: without
+ * it a flat device looks identical to free fall.
  * `turn_speed` is deg/s from the GYROSCOPE, setting only how quickly the
  * filter tracks (full speed at TILT_TURN_FULL_DPS); deliberately not what
  * shaking is read from. The first
  * sample after a reset is adopted exactly, so whatever follows it does
  * not visibly swing into place on its first frame. */
-void tilt_update(tilt_t* t, int gx, int gy, int gz, int turn_speed, uint32_t dt_ms);
+void tilt_update(tilt_t* t, vec3i_t accel, int turn_speed, uint32_t dt_ms);
 
 /* Which way is down in the screen plane, in input units. */
 int tilt_x(const tilt_t* t);

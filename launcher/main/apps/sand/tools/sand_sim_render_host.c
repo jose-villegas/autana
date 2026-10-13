@@ -164,7 +164,7 @@ drive_tilt(const render_frame_t* frame, int* gx, int* gy) {
     const double radians = board_angle(frame->index) * 0.017453292519943295;
     const int sx = (int)lround(256.0 * sin(radians));
     const int sy = (int)lround(256.0 * cos(radians));
-    tilt_update(&tilt, -sy, sx, 0, SIMULATED_TURN_DPS, frame->dt_ms);
+    tilt_update(&tilt, (vec3i_t){-sy, sx, 0}, SIMULATED_TURN_DPS, frame->dt_ms);
     *gx = tilt_x(&tilt);
     *gy = tilt_y(&tilt);
     if (angles != NULL) {

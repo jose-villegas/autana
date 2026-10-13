@@ -1074,8 +1074,7 @@ read_gravity_input(uint32_t dt_ms, input_motion_t* motion, int* gx, int* gy, int
         return;
     }
 
-    const vec3i_t a = motion->acceleration;
-    tilt_update(&tilt, a.x, a.y, a.z, motion->turn_speed, dt_ms);
+    tilt_update(&tilt, motion->acceleration, motion->turn_speed, dt_ms);
 
     *gx = tilt_x(&tilt);
     *gy = tilt_y(&tilt);
