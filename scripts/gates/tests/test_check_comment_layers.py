@@ -23,6 +23,23 @@ class ProblemsTest(unittest.TestCase):
                 target.write_text(text, encoding="utf-8")
             return check_comment_layers.problems(str(root))
 
+    def test_only_valid_generated_check_commands_are_metadata(self):
+        marker = "<!-- generated: budget check: python sand/report.py --check -->"
+        self.assertEqual(self.problems({"docs/Gfx.md": marker + "\n"}), [])
+        cases = (
+            "sand prose",
+            "<!-- generated: budget check: python gen.py --> <!-- sand comment -->",
+            "<!-- generated: budget check: python gen.py --> sand prose -->",
+            "<!-- sand comment -->",
+            "<!-- generated: Bad_Name check: python sand/report.py -->",
+            "<!-- generated: budget check: sand",
+            "<!-- /generated: budget check: sand -->",
+            "<!-- generated: sand check: python report.py -->",
+        )
+        for text in cases:
+            with self.subTest(text=text):
+                self.assertTrue(self.problems({"docs/Gfx.md": text + "\n"}))
+
     def test_a_lower_layer_comment_naming_an_app_fails(self):
         found = self.problems({"launcher/main/gfx/gfx.c": "/* sand calls this */\nint x;\n"})
         self.assertEqual(found, ["launcher/main/gfx/gfx.c:1: comment names sand"])

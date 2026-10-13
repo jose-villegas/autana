@@ -64,12 +64,6 @@ console_take_unclaimed_line(char* out, size_t out_size) {
     return true;
 }
 
-void
-console_reply_stdio(const char* line) {
-    printf("%s\n", line);
-    fflush(stdout);
-}
-
 /* Line endings stay LF, untranslated: console_task() accepts either
  * terminator itself, and translating would turn one keypress's '\r' into
  * two line endings. */
