@@ -35,6 +35,10 @@ class ParseDependenciesTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "dependency scan failed"):
                 compile_db.dependencies(entry)
 
+    def test_output_and_dependency_flags_are_dropped_with_their_value_joined_or_apart(self):
+        arguments = ["cc", "-DKEEP=y", "-MFdeps.d", "-MTx", "-MQy", "-oout.o", "-o", "out.o", "-MF", "d.d", "-c", "a.c"]
+        self.assertEqual(compile_db.compile_flags({"file": "a.c", "arguments": arguments}), ["cc", "-DKEEP=y"])
+
 
 @unittest.skipUnless(has_compiler(), "needs sh and a C compiler")
 class DependenciesTests(unittest.TestCase):

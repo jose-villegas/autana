@@ -34,6 +34,8 @@ def compile_flags(entry):
                 filtered.extend(compile_flags({"command": text, "file": entry["file"], "directory": directory}))
         elif arg in {"-o", "-MF", "-MT", "-MQ"}:
             skip = True
+        elif arg.startswith(("-o", "-MF", "-MT", "-MQ")):
+            continue
         elif arg not in {"-c", "-MD", "-MMD", "-MP"} and path.normcase(path.normpath(path.join(directory, arg.replace("\\", "/")))) != source:
             filtered.append(arg)
     return filtered
