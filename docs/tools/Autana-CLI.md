@@ -43,6 +43,7 @@ it readable; a flag works the same wherever the table below says it applies.
 
 | Flag | What it does | Commands |
 |---|---|---|
+| `--lock-token TOKEN` | Global; see [Settings](#settings). | every board command |
 | `--wait SECONDS` | Global; see [Settings](#settings). | every board command |
 | `--owner NAME` | Global; see [Settings](#settings). | every board command |
 | `--board SERIAL` | Global; see [Settings](#settings). | every board command |
@@ -181,8 +182,11 @@ The two raw levels below gesture, `touch` and `imu`, live under
 | Command | What it does |
 |---|---|
 | `autana status [--json]` | Every board, plugged in or locked: free or held, the holder with local start, elapsed and estimated free time, and the FIFO waiters with estimated starts. A board off USB is listed without a port. |
+| `autana lock run [--keep-on-failure <seconds>] -- <command...>` | Hold the board while the child command runs. The child inherits its lock token. A failed command can leave a timed hold for inspection. |
+| `autana lock take [--for <seconds> \| --until-released [--pid <pid>]] <note...>` | Wait for the board and print a token for commands in this session. A timed hold lasts at most an hour; an until-released hold ends when its owner process dies. |
 | `autana lock release [<token>]` | Release the lock a command of this session holds, before it would have. Given a lock's token, or, run from inside the command that holds the lock, without one. |
-| `autana lock hand [--until-back <seconds>] <note...>` | Reserve the board for a person for an hour and emit `human-reserved`; running it again renews the hour, and an unrenewed reservation lapses. Refused while a command holds the board. With `--until-back`, wait until it is taken back or lapses. |
+| `autana lock wait` | Wait until the board is free without taking it or queueing; no cap without `--wait`. |
+| `autana lock hand [--until-back <seconds>] <note...>` | Wait for the board and reserve it for a person for an hour; running it again renews the hour. With `--until-back`, wait until it is taken back or lapses. |
 | `autana lock take-back` | Clear that reservation. |
 
 A board is named by its USB serial number, so the lock follows it across
@@ -280,7 +284,8 @@ optional and gitignored, and `autana help config` lists its keys.
 
 | Global option | Sets |
 |---|---|
-| `--wait SECONDS` | How long a board command waits for the lock, across every step it runs: 600 s without it, `0` fails at once with exit 75. A console line (`tune`, `buildid`, `screenshot`, a line sent as typed) is refused at once without it rather than waited for. |
+| `--lock-token TOKEN` | Run a board command inside the live hold named by `TOKEN`. A wrong, released or lapsed token fails at once with exit 1. A holder's child processes inherit it. |
+| `--wait SECONDS` | How long a board command waits for the lock, across every step it runs: 600 s without it, `0` fails at once with exit 75. `lock wait` has no cap without it. A console line (`tune`, `buildid`, `screenshot`, a line sent as typed) is refused at once without it rather than waited for. |
 | `--owner NAME` | The name this run holds the lock under, as `NAME:<pid>`; `<user>@<host>:<pid>` without it. Name each CI job. |
 | `--board SERIAL` | The board's USB serial number; without it, see [Which board](Device-Lock.md#which-board). |
 
