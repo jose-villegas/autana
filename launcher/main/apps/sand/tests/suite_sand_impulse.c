@@ -1936,7 +1936,10 @@ test_a_blast_queues_impulses_on_every_side_of_the_centre(void) {
                                   "a fully packed grid's neighbours qualifies, so all 8 slots must "
                                   "have been used");
 
-    bool saw_up = false, saw_down = false, saw_left = false, saw_right = false;
+    bool saw_up = false;
+    bool saw_down = false;
+    bool saw_left = false;
+    bool saw_right = false;
     for (int i = 0; i < s.impulse_count; i++) {
         switch (s.impulse_buf[i].dir) {
             case 4: saw_up = true; break;
