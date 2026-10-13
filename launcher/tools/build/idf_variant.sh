@@ -161,6 +161,7 @@ idf_variant_build() {
         -D LAUNCHER_LAYOUT_SEED="$layout_seed" -D TUNE_HOT_LIVE="$hot_tunables" \
         -D SDKCONFIG="$config"
     idf "$@" "$idf_verb" || return $?
+    "$_IDF_PYTHON" "$_IDF_TOOLS/build_paths.py" stamp "$launcher_dir" "$build_dir" || return 1
 
     disagreement="$(idf_variant_disagreement "$config")" || disagreement=""
     if [ -n "$disagreement" ]; then
