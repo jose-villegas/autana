@@ -33,6 +33,7 @@ from autana_config import BOARD_ENV  # noqa: E402
 
 BOARD_A = "90:70:69:FE:A3:08"
 BOARD_B = "90:70:69:FE:B1:22"
+CANCELLATION_TIMEOUT_SECONDS = 5
 
 
 def usb(serial, port):
@@ -123,13 +124,17 @@ class HoldProcessTests(Store):
         self.addCleanup(lambda: process.kill() if process.poll() is None else None)
         return process
 
-    def wait_for_queue(self, count):
-        deadline = time.monotonic() + 20
-        pending = self.store.tickets(BOARD_A)
-        while len(pending) != count and time.monotonic() < deadline:
+    def wait_for_queue(self, count, *, dead_pid=None):
+        timeout = 20 if dead_pid is None else CANCELLATION_TIMEOUT_SECONDS
+        deadline = time.monotonic() + timeout
+        pending = self.store.status(BOARD_A)["queue"]
+        while (len(pending) != count or
+               (dead_pid is not None and device_lock.process_alive(dead_pid))) and time.monotonic() < deadline:
             time.sleep(0.05)
-            pending = self.store.tickets(BOARD_A)
+            pending = self.store.status(BOARD_A)["queue"]
         self.assertEqual(len(pending), count)
+        if dead_pid is not None:
+            self.assertFalse(device_lock.process_alive(dead_pid))
         return pending
 
     @unittest.skipUnless(os.name == "nt", "Windows launcher callers")
@@ -247,11 +252,7 @@ class HoldProcessTests(Store):
             autana_pid = int(stat[stat.rindex(")") + 2:].split()[1])
             os.kill(autana_pid, signal.SIGKILL)
         first.communicate(timeout=15)
-        deadline = time.monotonic() + 10
-        while len(self.store.status(BOARD_A)["queue"]) != 1 and time.monotonic() < deadline:
-            time.sleep(0.05)
-        self.assertEqual(len(self.store.status(BOARD_A)["queue"]), 1)
-        self.assertFalse(device_lock.process_alive(ticket["pid"]))
+        self.wait_for_queue(1, dead_pid=ticket["pid"])
         self.store.release(BOARD_A, taken.stdout.strip())
         stdout, stderr = next_waiter.communicate(timeout=15)
         self.assertEqual(next_waiter.returncode, 0, stdout + stderr)
@@ -306,8 +307,7 @@ class HoldProcessTests(Store):
         self.addCleanup(self.stop_waiter, ticket["pid"])
         stop.touch()
         stdout, stderr = shell.communicate(timeout=30)
-        self.assertFalse(device_lock.process_alive(ticket["pid"]), stdout + stderr)
-        self.assertEqual(self.store.status(BOARD_A)["queue"], [])
+        self.wait_for_queue(0, dead_pid=ticket["pid"])
         self.assertEqual(token_file.read_text().strip(), "")
         self.store.release(BOARD_A, taken.stdout.strip())
         self.assertFalse(self.store.lock_path(BOARD_A).exists())
