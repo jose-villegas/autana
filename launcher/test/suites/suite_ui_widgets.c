@@ -7,10 +7,15 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "perf_stats.h"
 #include "suites.h"
 #include "test_cleanup.h"
 #include "unity.h"
 
+#include "apps/sand/sand_mode_swatches.h"
+#include "apps/sand/sand_palette256.h"
+#include "apps/sand/ui/options_screen.h"
+#include "apps/sand/ui/sand_icons.h"
 #include "core/memory.h"
 #include "core/timing.h"
 #include "gfx/present/gfx_mode.h"
@@ -1300,6 +1305,7 @@ test_ui_swatch_grid_tiles_the_rect_exactly(void) {
 }
 
 static void test_menu_band_frame_cost(void);
+static void test_options_band_frame_cost(void);
 
 void
 run_ui_widgets_suite(void) {
@@ -1323,6 +1329,7 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_closing_the_list_restores_the_closed_drawing);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_menu_band_frame_cost);
+    RUN_TEST(test_options_band_frame_cost);
     RUN_TEST(test_dense_bands_match_a_full_repaint);
     RUN_TEST(test_closing_the_list_restores_the_pixels_under_it);
     RUN_TEST(test_open_list_stays_on_top_during_held_and_idle_partial_frames);
@@ -1347,6 +1354,7 @@ run_ui_widgets_suite(void) {
 }
 
 SUITE_REGISTER(run_ui_widgets_suite);
+SUITE_READS(run_ui_widgets_suite, SAND_PACK);
 
 static void
 paint_menu_band(int row0, int row1, gfx_color_t* target) {
@@ -1355,13 +1363,40 @@ paint_menu_band(int row0, int row1, gfx_color_t* target) {
     ui_replay_band(row0, row1);
 }
 
+static bool band_icons_owned;
+
 static void
 restore_menu_band_fixture(void) {
+    if (band_icons_owned) {
+        ui_icon_set_release(&sand_icon_set);
+        band_icons_owned = false;
+    }
     ui_clear_band_overlay();
     gfx_mode_exit();
     fixture();
 #ifndef DEVICE_BUILD
     gfx_reset_for_test();
+#endif
+}
+
+typedef struct {
+    int32_t frame_us[MENU_FRAMES];
+    uint32_t fallbacks[MENU_FRAMES];
+} band_samples_t;
+
+static void
+report_band_case(const char* name, band_samples_t* samples) {
+    uint32_t total_fallbacks = 0;
+    for (int frame = 0; frame < MENU_FRAMES; frame++) {
+        total_fallbacks += samples->fallbacks[frame];
+    }
+    const perf_stats_t stats = perf_stats_compute(samples->frame_us, MENU_FRAMES);
+#ifdef DEVICE_BUILD
+    ESP_LOGI("ui_band_perf", "case=%s frames=%d fallbacks=%lu frame_us=%lld max_us=%lld", name, MENU_FRAMES,
+             (unsigned long)total_fallbacks, (long long)stats.avg, (long long)stats.max);
+#else
+    (void)total_fallbacks;
+    (void)stats;
 #endif
 }
 
@@ -1391,6 +1426,7 @@ test_menu_band_frame_cost(void) {
             gfx_band_run(paint_menu_band, NULL);
         }
         TEST_ASSERT_TRUE(dropdown_open);
+        band_samples_t samples = {0};
         for (int frame = 0; frame < MENU_FRAMES; frame++) {
             gfx_present_begin();
             gfx_present_wait();
@@ -1400,20 +1436,16 @@ test_menu_band_frame_cost(void) {
             ui_end_for_bands(MENU_BACKGROUND);
             gfx_invalidate();
             gfx_band_run(paint_menu_band, NULL);
-            const int64_t frame_us = timing_now_us() - began_us;
+            samples.frame_us[frame] = (int32_t)(timing_now_us() - began_us);
             const uint32_t fallbacks = ui_band_fallback_count();
-#ifdef DEVICE_BUILD
-            ESP_LOGI("ui_band_perf", "dense=%d frame=%d fallbacks=%lu frame_us=%lld", dense, frame,
-                     (unsigned long)fallbacks, (long long)frame_us);
-#else
-            (void)frame_us;
-#endif
+            samples.fallbacks[frame] = fallbacks;
             if (dense) {
                 TEST_ASSERT_GREATER_THAN_UINT32(0, fallbacks);
             } else {
                 TEST_ASSERT_EQUAL_UINT32(0, fallbacks);
             }
         }
+        report_band_case(dense ? "dense_menu" : "sparse_menu", &samples);
     }
 #ifndef DEVICE_BUILD
     TEST_ASSERT_EQUAL_UINT(guard_trips, gfx_fb_guard_trips_for_test());
@@ -1425,6 +1457,95 @@ test_menu_band_frame_cost(void) {
 void
 run_ui_band_perf_suite(void) {
     RUN_TEST(test_menu_band_frame_cost);
+    RUN_TEST(test_options_band_frame_cost);
 }
 
 SUITE_REGISTER_ON_REQUEST(run_ui_band_perf_suite);
+SUITE_READS(run_ui_band_perf_suite, SAND_PACK);
+
+#define BAND_QUALITY_NORMAL 2
+#define OPTIONS_BACKGROUND  0x0A0C14
+
+static const char* const BAND_QUALITY_NAMES[] = {"ULTRA", "HIGH", "NORMAL", "LOW", "VERY LOW"};
+static const char* const BAND_DITHER_NAMES[GFX_DITHER_MODE_COUNT] = {
+    "NONE", "CELL CHECKER", "CELL BAYER2", "PIXEL CHECKER2", "PIXEL BAYER4",
+};
+static const sand_options_t BAND_OPTIONS = {
+    .quality = BAND_QUALITY_NORMAL,
+    .color = SAND_COLOUR_16,
+    .dither = GFX_DITHER_CELL_BAYER2,
+};
+
+static void
+paint_options_band(int row0, int row1, gfx_color_t* target) {
+    (void)target;
+    gfx_fill_rect(0, row0, GFX_WIDTH, row1 - row0, gfx_rgb(OPTIONS_BACKGROUND));
+    ui_replay_band(row0, row1);
+}
+
+static void
+options_band_frame(const input_t* input, const sand_menu_t* menu, const options_screen_labels_t* labels) {
+    ui_begin(input);
+    options_screen_draw(ui_context(), menu, BAND_OPTIONS, labels);
+    ui_end_for_bands(OPTIONS_BACKGROUND);
+    gfx_invalidate();
+    gfx_band_run(paint_options_band, NULL);
+}
+
+static void
+measure_options_band_case(bool open, const char* name, const options_screen_labels_t* labels) {
+    const sand_menu_t menu = {.screen = SAND_MENU_OPTIONS, .draft = BAND_OPTIONS};
+    fixture();
+    ui_set_transform(ui_transform_quarter_turn(0, GFX_WIDTH, GFX_HEIGHT));
+    options_screen_layout_t layout;
+    options_screen_layout(ui_width(), ui_height(), &layout);
+    const contact_t contact =
+        transformed_contact(layout.dither.x + layout.dither.w / 2, layout.dither.y + layout.dither.h / 2);
+    const input_t idle = {0};
+    const input_t* warmup[] = {&idle, &idle, open ? &contact.press : &idle, open ? &contact.hold : &idle,
+                               open ? &contact.release : &idle};
+    for (size_t i = 0; i < sizeof warmup / sizeof warmup[0]; i++) {
+        gfx_present_begin();
+        gfx_present_wait();
+        ui_clear_band_overlay();
+        options_band_frame(warmup[i], &menu, labels);
+    }
+    TEST_ASSERT_EQUAL_INT(open ? 2 : 1, ui_context()->root_list.idx);
+    band_samples_t samples = {0};
+    for (int frame = 0; frame < MENU_FRAMES; frame++) {
+        gfx_present_begin();
+        gfx_present_wait();
+        ui_clear_band_overlay();
+        const int64_t began_us = timing_now_us();
+        options_band_frame(&idle, &menu, labels);
+        samples.frame_us[frame] = (int32_t)(timing_now_us() - began_us);
+        samples.fallbacks[frame] = ui_band_fallback_count();
+    }
+    report_band_case(name, &samples);
+}
+
+static void
+test_options_band_frame_cost(void) {
+#ifndef DEVICE_BUILD
+    TEST_ASSERT_TRUE(gfx_init());
+#endif
+    suite_set_test_cleanup(restore_menu_band_fixture);
+    band_icons_owned = !sand_icon_set.loaded;
+    TEST_ASSERT_TRUE(ui_icon_set_load(&sand_icon_set));
+    const gfx_mode_request_t request = {.layout = GFX_LAYOUT_BANDS};
+    TEST_ASSERT_EQUAL(GFX_LAYOUT_BANDS, gfx_mode_enter(&request)->layout);
+    sand_mode_swatch_t swatches[SAND_COLOUR_MODE_COUNT];
+    sand_mode_swatches(sand_dither_none_lut, sand_palette256_lut, GFX_INDEXED_PALETTE_SIZE, SAND_PALETTE_UI_ENTRIES,
+                       swatches);
+    const options_screen_labels_t labels = {
+        .quality_names = BAND_QUALITY_NAMES,
+        .quality_count = sizeof BAND_QUALITY_NAMES / sizeof BAND_QUALITY_NAMES[0],
+        .dither_names = BAND_DITHER_NAMES,
+        .dither_count = GFX_DITHER_MODE_COUNT,
+        .mode_swatches = swatches,
+    };
+    measure_options_band_case(false, "sand_options_closed", &labels);
+    measure_options_band_case(true, "sand_options_dither_open", &labels);
+    restore_menu_band_fixture();
+    suite_clear_test_cleanup();
+}

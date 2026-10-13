@@ -406,22 +406,24 @@ Compare frames with zero and positive fallback counts on the same screen to meas
 cost. The request expires after N reports; zero disables it. Check the running
 build id before and after each capture.
 
-In a self-test build, the on-request suite `run_ui_band_perf_suite` replays the
-shared dropdown-menu fixture through the real band ring with and without dense
-drawing. Its warm-up frames are presented before the measured range. Each
-revision is replayed on consecutive measured frames, covering changing and
-steady sparse content. Deferred cleanup restores
-the full framebuffer even when an assertion fails. The host widget suite runs
-the same fixture with the engine icon pack. Run it with
-`autana suite run_ui_band_perf_suite --flash`. Each case
-reports the frame range owned by `MENU_FRAMES` in `suite_ui_widgets.c`:
+In a self-test build, the on-request suite `run_ui_band_perf_suite` measures
+the options screen with its dither dropdown closed and open, and the shared
+sparse and dense dropdown-menu fixture through the real band ring. Warm-up frames are presented before each measured range.
+The menu fixture repeats each revision on consecutive frames, covering changing
+and steady sparse content. Deferred cleanup restores the full framebuffer even
+when an assertion fails. The host widget suite runs the same cases with the
+engine and screen icon packs. Run the device suite with
+`autana suite run_ui_band_perf_suite --flash`. Each case collects the frame
+range owned by `MENU_FRAMES` in `suite_ui_widgets.c` in memory, then reports:
 
 ```text
-ui_band_perf: dense=<0|1> frame=<index> fallbacks=<bands> frame_us=<microseconds>
+ui_band_perf: case=NAME frames=N fallbacks=TOTAL frame_us=MEAN max_us=MAX
 ```
 
-`frame_us` includes command construction, finalization, drawing and band
-submission; it excludes the log itself. The suite asserts zero fallbacks in
-the sparse case and positive fallbacks in the dense case. It complements the
-live-screen reports above: launcher home and the options screen use their real
-application drawing, while this suite forces a busy dropdown through band replay.
+`fallbacks` is the total number of full band replays across the measured frames.
+`frame_us` and `max_us` are the mean and maximum elapsed microseconds, including
+command construction, finalization, drawing and band submission; they exclude
+presentation waiting before the frame and the summary log. The suite asserts
+zero fallbacks in the sparse menu case and positive fallbacks in the dense menu
+case. The options screen reports its fallback counts without imposing a fallback
+budget.
