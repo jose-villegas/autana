@@ -10,6 +10,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from asset.asset_pack import NAME_BYTES
 from build.c_header import read_define
 from r3d.import_settings import ANIM_WRAPS, SettingsError, color_fits, load_scene
+from r3d.scene_name import scene_id
 from r3d import skin_pack
 
 OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_internal.h"
@@ -23,7 +24,6 @@ AMBIENT_NONE = read_define(OWNER, "SCENE_AMBIENT_INTENSITY_NONE")
 TONEMAP_NONE = read_define(OWNER, "SCENE_TONEMAP_WHITE_NONE")
 DEFAULT_CLIP_NONE = read_define(OWNER, "SCENE_ASSET_DEFAULT_CLIP_NONE")
 WRAPS = {name: read_define(ANIM_OWNER, "ANIM_WRAP_" + name.upper()) for name in ANIM_WRAPS}
-SUFFIX = ".scene.toml"
 PARTS = ("names", "transforms", "renderers", "cameras", "lights", "skinned_renderers", "animators", "clips", "settings")
 HEADER = struct.Struct(f"<{1 + len(PARTS)}H{len(PARTS)}I")
 U16_MAX = (1 << 16) - 1
@@ -45,10 +45,6 @@ class SceneError(ValueError):
 _owner_header_size = read_define(OWNER, "SCENE_ASSET_HEADER_SIZE")
 if HEADER.size != _owner_header_size:
     raise SceneError(f"scene header size {HEADER.size} differs from {_owner_header_size} in {OWNER}")
-
-
-def scene_id(path):
-    return pathlib.Path(path).name.removesuffix(SUFFIX)
 
 
 def mesh_ids(scene):
