@@ -75,6 +75,8 @@ build/
 # Variant build directories, e.g. build.diag from `autana flash diag`.
 # Each variant keeps its own sdkconfig so it never disturbs the normal build.
 build.*/
+/launcher/build
+/launcher/build.*
 managed_components/
 sdkconfig.old
 /launcher/sdkconfig

@@ -36,7 +36,8 @@ BUILD_DIR="$TEST_DIR/build/su-device"
 
 # shellcheck source=../tools/device/device_profile.sh
 . "$TEST_DIR/../tools/device/device_profile.sh"
-. "$TEST_DIR/../tools/build/espressif.sh"
+ESPRESSIF_SCRIPT_DIR="$TEST_DIR/../tools/build"
+. "$ESPRESSIF_SCRIPT_DIR/espressif.sh"
 # shellcheck source=../tools/build/packages.sh
 . "$TEST_DIR/../tools/build/packages.sh"
 device_profile_load "" "$TEST_DIR/../tools/device/device_profiles" || exit 1
