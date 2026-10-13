@@ -15,7 +15,8 @@ diag: 83.1 KB free of its 268.6 KB internal heap at its floor (after opening the
 IRAM and DRAM are two address aliases of one internal SRAM pool, so every
 byte of code placed in IRAM is a byte less for static data and the internal
 heap. Each bar is one build variant, to scale, in address order. Linked heap
-ranges are not runtime free memory.
+ranges are not runtime free memory. A measured bar's last segment is the heap
+outside the linked pool, taken from the board capture.
 
 ![Shared internal pool by variant](images/internal-pool.svg)
 
