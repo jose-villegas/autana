@@ -19,4 +19,4 @@ members = backend.members
 reap = backend.reap
 survivors_extra = backend.survivors_extra
 process_name = backend.process_name
-process_start = backend.process_start
+from device_lock import process_start
