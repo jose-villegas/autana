@@ -23,7 +23,9 @@ idf_variant_disagreement() {
 }
 
 # idf_variant_build <launcher-dir> <release|dev|diag> <build-dir> [options]
-# Options: --autorun, --perf-scope, --qemu, --layout-seed <n>, --defaults <fragment> <symbol>.
+# Options: --autorun, --perf-scope, --qemu, --layout-seed <n>, --defaults <fragment> <symbol>,
+# --hot-tunables, --configure (reconfigure only: sdkconfig and compile_commands.json,
+# no compile).
 idf_variant_build() {
     launcher_dir=$1
     variant=$2
@@ -36,6 +38,7 @@ idf_variant_build() {
     perf_scope=0
     layout_seed=0
     hot_tunables=0
+    idf_verb=build
 
     case "$variant" in
         release) IDF_VARIANT_REQUIRED=CONFIG_LAUNCHER_RELEASE ;;
@@ -75,6 +78,9 @@ idf_variant_build() {
                 IDF_VARIANT_DEFAULTS="$IDF_VARIANT_DEFAULTS;sdkconfig.defaults.qemu"
                 IDF_VARIANT_REQUIRED="$IDF_VARIANT_REQUIRED CONFIG_LAUNCHER_QEMU"
                 IDF_VARIANT_FORBIDDEN=$(printf '%s\n' "$IDF_VARIANT_FORBIDDEN" | sed 's/CONFIG_LAUNCHER_QEMU//')
+                ;;
+            --configure)
+                idf_verb=reconfigure
                 ;;
             --hot-tunables)
                 [ "$variant" != release ] || { echo "--hot-tunables needs dev or diag" >&2; return 2; }
@@ -118,10 +124,12 @@ idf_variant_build() {
         fi
     fi
 
+    banner=Building
+    [ "$idf_verb" = build ] || banner=Configuring
     if [ "$perf_scope" -eq 1 ]; then
-        echo "=== Building $build_dir (perf scope) ==="
+        echo "=== $banner $build_dir (perf scope) ==="
     else
-        echo "=== Building $build_dir ==="
+        echo "=== $banner $build_dir ==="
     fi
     # shellcheck disable=SC2086
     echo "=== $build_dir/sdkconfig must have:" $IDF_VARIANT_REQUIRED "==="
@@ -135,14 +143,14 @@ idf_variant_build() {
     # The layout seed is always passed: the CMake cache would otherwise keep
     # the last seed a build directory was given.
     idf -B "$build_dir" -D SDKCONFIG_DEFAULTS="$IDF_VARIANT_DEFAULTS"         -D LAUNCHER_LAYOUT_SEED="$layout_seed" -D TUNE_HOT_LIVE="$hot_tunables" \
-        -D SDKCONFIG="$build_dir/sdkconfig" build || return $?
+        -D SDKCONFIG="$build_dir/sdkconfig" "$idf_verb" || return $?
 
     disagreement="$(idf_variant_disagreement "$config")" || disagreement=""
     if [ -n "$disagreement" ]; then
         echo "$build_dir/sdkconfig: $disagreement" >&2
         return 1
     fi
-    if [ ! -f "$launcher_dir/$build_dir/launcher.bin" ]; then
+    if [ "$idf_verb" = build ] && [ ! -f "$launcher_dir/$build_dir/launcher.bin" ]; then
         echo "build reported success but produced no binary at $build_dir/launcher.bin" >&2
         return 1
     fi
