@@ -1,7 +1,7 @@
 /*
  * track_host: prints what a clip's tracks hold every N milliseconds, read
  * from the clip's TRCK entry in an asset pack through the same
- * anim_tracks_from_pack(), anim_playhead_t and anim_track_sample() the
+ * anim_tracks_from_pack(), anim_playhead_advance() and anim_track_sample() the
  * firmware calls. One program for every clip: track_host.py builds it once.
  *
  *   track_host --pack PACK --clip ID [--from MS] [--every MS] [--until MS] [--clamp]
