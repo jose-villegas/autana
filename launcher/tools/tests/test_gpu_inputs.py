@@ -193,6 +193,17 @@ class InputContractTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, message):
                     stages.host_inputs(root / 'scene')
 
+    def test_host_escaped_space_dependency_is_hashed_under_real_name(self):
+        header = self.root / 'my dir/host.h'
+        header.parent.mkdir()
+        header.write_text('#define VALUE 1\n')
+        listing = 'flags -O1\nhost.o: my\\ dir/host.h\n'
+        with mock.patch.object(stages, 'ROOT', self.root), mock.patch.object(
+                stages.subprocess, 'run', return_value=NS(stdout=listing)):
+            self.assertEqual(stages.host_inputs(self.root / 'scene'),
+                             {'host flags': '-O1',
+                              'host my dir/host.h': stages.content_checksum(header).decode()})
+
     def test_host_header_bytes_move_fingerprint_with_same_listing(self):
         header = self.root / 'host.h'
         header.write_text('#define VALUE 1\n')

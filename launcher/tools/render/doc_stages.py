@@ -19,6 +19,7 @@ TOOLS = ROOT / "launcher/tools"
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from build import compile_db
 from generated_blocks import apply_tables, tracked_files
 from doc_tables import markdown
 from layout_measure import MEAN_RE, parse_report
@@ -102,19 +103,17 @@ def host_inputs(scene_path):
     """Compile flags and the compiler's -MM list (sources and project headers), repo-relative.
     System headers and compiler identity/version are not counted."""
     def relative(token):
-        if not token.startswith("/"):
-            return token
-        path = Path(token).resolve()
-        if not path.is_relative_to(ROOT):
+        path = Path(token).resolve() if Path(token).is_absolute() else None
+        if path is not None and not path.is_relative_to(ROOT):
             raise ValueError(f"the host build reads {token}, outside the repository")
-        return path.relative_to(ROOT).as_posix()
+        return path.relative_to(ROOT).as_posix() if path is not None else token
 
     listing = subprocess.run(["sh", HOST_SCRIPT, scene_path, "--deps"], cwd=ROOT, capture_output=True,
                              text=True, check=True).stdout
     flags, _, deps = listing.partition("\n")
     if not flags.startswith("flags "):
         raise ValueError(f"{HOST_SCRIPT.name} --deps printed no flags line")
-    files = {relative(token) for token in deps.replace("\\\n", " ").split() if not token.endswith(":")}
+    files = {relative(token) for token in compile_db.parse_dependencies(deps, directory=ROOT)}
     return {"host flags": " ".join(relative(token) for token in flags.split()[1:]),
             **{f"host {name}": content_checksum(ROOT / name).decode() for name in sorted(files)}}
 
