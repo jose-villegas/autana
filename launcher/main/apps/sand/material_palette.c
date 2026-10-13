@@ -10,8 +10,9 @@
  * gfx_color_t just to ask what a material IS.
  *
  * The palette itself is `const`, so it costs 512 bytes of flash and no RAM.
- * Named RGB888 intermediates keep macro interpolation bounded; the tables
- * convert those colours to panel format at compile time.
+ * Intermediate colours are named enum constants, so nested interpolation
+ * expands once rather than once per use; the tables convert them to panel
+ * format at compile time.
  */
 #include "material_palette.h"
 
