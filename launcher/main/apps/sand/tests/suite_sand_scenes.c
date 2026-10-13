@@ -1237,7 +1237,7 @@ static void
 build_tree_grove_canopy(sand_t* s, int cx, int top) {
     for (int dy = -TREE_GROVE_CANOPY_R; dy <= TREE_GROVE_CANOPY_R; dy++) {
         for (int dx = -TREE_GROVE_CANOPY_R; dx <= TREE_GROVE_CANOPY_R; dx++) {
-            if (dx * dx + dy * dy > TREE_GROVE_CANOPY_R * TREE_GROVE_CANOPY_R) {
+            if ((dx * dx) + (dy * dy) > TREE_GROVE_CANOPY_R * TREE_GROVE_CANOPY_R) {
                 continue;
             }
             const int x = cx + dx, y = top + dy;

@@ -1561,7 +1561,7 @@ wood_leaf_row_pass(const uint8_t* row, const uint8_t* above, const uint8_t* belo
 static void
 wood_leaf_row_window(const uint8_t* big, int w, int h, int y, const uint8_t** row, const uint8_t** above,
                      const uint8_t** below) {
-    *row = big + (size_t)y * w;
+    *row = big + ((size_t)y * w);
     *above = (y > 0) ? *row - w : NULL;
     *below = (y < h - 1) ? *row + w : NULL;
 }
@@ -3549,8 +3549,8 @@ clock_row_measure(int frames, bool pouring, int* frame_index) {
         input_t in = {0};
         in.down = pouring;
         in.pressed = pouring && *frame_index == 0;
-        in.x = 150 + (*frame_index * 7) % 60;
-        in.y = 120 + (*frame_index * 3) % 40;
+        in.x = 150 + ((*frame_index * 7) % 60);
+        in.y = 120 + ((*frame_index * 3) % 40);
         clock_row_frame(&in, &w.present_us);
     }
     w.present_us /= frames;
