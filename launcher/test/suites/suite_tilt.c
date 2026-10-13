@@ -384,9 +384,23 @@ test_each_sensor_axis_lands_on_its_screen_axis(void) {
     }
 }
 
+/* imu_turn_speed: absolute rates summed over all three axes, in deg/s; the
+ * accelerometer plays no part. */
+static void
+test_turn_speed_sums_absolute_rates_in_dps(void) {
+    const int dps = 100;
+    const imu_sample_t turning = {
+        .gx = -dps * IMU_COUNTS_PER_DPS, .gy = dps * IMU_COUNTS_PER_DPS, .gz = dps * IMU_COUNTS_PER_DPS};
+    TEST_ASSERT_EQUAL_INT(3 * dps, imu_turn_speed(&turning));
+
+    const imu_sample_t still = {.ax = ONE_G, .ay = -ONE_G, .az = ONE_G};
+    TEST_ASSERT_EQUAL_INT(0, imu_turn_speed(&still));
+}
+
 void
 run_tilt_suite(void) {
     RUN_TEST(test_each_sensor_axis_lands_on_its_screen_axis);
+    RUN_TEST(test_turn_speed_sums_absolute_rates_in_dps);
     RUN_TEST(test_turning_the_board_does_not_read_as_shaking);
     RUN_TEST(test_shaking_registers_as_shaking);
     RUN_TEST(test_a_still_board_is_not_shaking);
