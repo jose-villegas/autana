@@ -34,19 +34,15 @@ EXIT_BUSY = autana_config.EXIT_BUSY
 GUARD_STALE_SECONDS = 30
 # The mutex is guard() below (an O_CREAT|O_EXCL file), not an OS byte-range
 # lock; the JSON files are the state it protects, not locks themselves. This
-# numbers THAT state's shape, purely as a bump reminder pinned by the golden
-# key-snapshot test in test_device_lock.py: bump it whenever a record's
-# fields change, or a reclaim rule does, in a way an older reader would
-# misinterpret, add that protocol's entry there and keep the old ones. Nothing
-# here ever refuses a record over its value; two installs of different ages
-# still have to work the same board, so a mismatch is shown as information
-# (status, a wait notice), never a reason to stop. Protocol 2: a person's
-# reservation expires (expires_at) and the last holder is kept (.last.json).
-# Protocol 3: timed and pid-bound holds share the command lock record.
+# numbers the state shape. Differences are shown, never refused for running
+# commands. Readers older than protocol 3 take timed and human holds at once,
+# and until-released holds after the stale window. Protocol 3 ignores protocol-2
+# .human.json reservations. Update every copy sharing a board.
 LOCK_PROTOCOL = 3
-# A person's reservation has no heartbeat, so this is the only thing that
-# frees a forgotten one. Running `hand` again renews it.
-HUMAN_RESERVATION_SECONDS = 3600
+HOLD_MAX_SECONDS = 3600
+# A person's reservation has no heartbeat; `hand` renews its expiry.
+HUMAN_RESERVATION_SECONDS = HOLD_MAX_SECONDS
+CALLER_PID_ENV = "_AUTANA_CALLER_PID"
 PROCESS_BASIC_INFORMATION = 0
 PROCESS_COMMAND_LINE_INFORMATION = 60
 WINDOWS_AUTANA_HOST = re.compile(
@@ -95,6 +91,9 @@ def default_owner():
 
 def caller_pid():
     """The invoking process outside the Windows launcher and interpreter shims."""
+    explicit = os.environ.get(CALLER_PID_ENV)
+    if explicit:
+        return int(explicit)
     parent = os.getppid()
     if os.name != "nt":
         return parent
@@ -423,14 +422,24 @@ class LockStore:
                 return "hold lapsed" if self.now() >= expires else ""
             if not lock.get("until_released"):
                 return ""
-            return ("dead process" if lock.get("host") == socket.gethostname()
-                    and not self.is_alive(lock["pid"]) else "")
+            if lock.get("host") != socket.gethostname():
+                return ""
+            import lock_scope
+            return "" if self.owner_alive(lock, lock_scope) else "dead process"
         same_host = lock.get("host") == socket.gethostname()
         if same_host and not self.is_alive(lock["pid"]):
             return "dead process"
         if self.is_stale(lock, stale_seconds):
             return "heartbeat expiry"
         return ""
+
+    def owner_alive(self, record, scope):
+        if not self.is_alive(record["pid"]):
+            return False
+        started = scope.process_start(record["pid"])
+        acquired = record.get("acquired_at")
+        return not (started is not None and isinstance(acquired, (int, float))
+                    and started > acquired + PID_REUSE_SLACK_SECONDS)
 
     def claim(self, board, ticket, stale_seconds=DEFAULT_STALE_SECONDS):
         held, evicted, reason = self._claim(board, ticket, stale_seconds)
@@ -528,11 +537,14 @@ class LockStore:
             self.write_json(self.lock_path(board), lock)
             return True
 
-    def check_token(self, board, token, stale_seconds=DEFAULT_STALE_SECONDS):
+    def live_lock(self, board, token, stale_seconds=DEFAULT_STALE_SECONDS):
         with self.guard(board):
             lock = self.read_json(self.lock_path(board))
-            return bool(lock and lock.get("token") == token and
-                        not self.reclaim_reason(lock, stale_seconds))
+            return (lock if lock and lock.get("token") == token and
+                    not self.reclaim_reason(lock, stale_seconds) else None)
+
+    def check_token(self, board, token, stale_seconds=DEFAULT_STALE_SECONDS):
+        return self.live_lock(board, token, stale_seconds) is not None
 
     def release(self, board, token):
         lock = self._release(board, token)
@@ -555,7 +567,7 @@ class LockStore:
             if not lock or lock.get("token") != token or self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
                 return False
             now = self.now()
-            lock.update(heartbeat_at=now,
+            lock.update(acquired_at=now, heartbeat_at=now,
                         pid=0 if seconds is not None else (pid if pid is not None else os.getpid()))
             lock.pop("until_released", None)
             lock.pop("expires_at", None)
@@ -593,6 +605,7 @@ class LockStore:
         device_hook.emit("human-cleared", board, lock["owner"], note=lock.get("purpose", ""))
 
     def status(self, board, stale_seconds=DEFAULT_STALE_SECONDS):
+        """Live holders and queued work; reclaimable records count as free."""
         with self.guard(board):
             self.prune_crashed_waiters(board)
             lock = self.read_json(self.lock_path(board))
@@ -769,13 +782,8 @@ def previous_holder_alive(store, last, scope):
         return []
     alive = []
     pid = last.get("pid")
-    if isinstance(pid, int) and pid != os.getpid() and store.is_alive(pid):
-        started = scope.process_start(pid)
-        acquired = last.get("acquired_at")
-        reused = (started is not None and isinstance(acquired, (int, float))
-                  and started > acquired + PID_REUSE_SLACK_SECONDS)
-        if not reused:
-            alive.append((pid, scope.process_name(pid)))
+    if isinstance(pid, int) and pid != os.getpid() and store.owner_alive(last, scope):
+        alive.append((pid, scope.process_name(pid)))
     for extra in scope.survivors_extra(last):
         if extra != pid and extra != os.getpid():
             alive.append((extra, scope.process_name(extra)))

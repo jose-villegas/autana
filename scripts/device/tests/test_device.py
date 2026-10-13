@@ -819,7 +819,7 @@ class HumanWaitTests(unittest.TestCase):
     def test_timeout_keeps_reservation(self):
         code, output = self.hand("--until-back", "2")
         self.assertEqual(code, device_lock.EXIT_BUSY)
-        self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait timed out")
+        self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait timed out; the reservation stands")
         self.assertEqual(self.store.status(BOARD)["human"]["note"], "download mode")
 
     def test_interrupt_keeps_reservation(self):
@@ -857,7 +857,7 @@ class HumanWaitTests(unittest.TestCase):
         self.on_sleep = renew
         code, output = self.hand("--until-back", "3")
         self.assertEqual(code, device_lock.EXIT_BUSY)
-        self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait timed out")
+        self.assertEqual(output.call_args_list[-1].args[0], "human reservation wait timed out; the reservation stands")
 
 
 class SlugTests(unittest.TestCase):
@@ -1163,6 +1163,7 @@ class FlashCommandLineTests(unittest.TestCase):
         with mock.patch.object(device, "board_for_lock", return_value=BOARD), \
              mock.patch.object(device, "build_image", fake_build_image), \
              mock.patch.object(device, "write_image", side_effect=fake_write_image), \
+             mock.patch.object(device, "await_console", side_effect=lambda args, board, build_id, acquired, connection: connection.close()), \
              mock.patch.object(device.device_lock, "LockStore", return_value=store):
             device.main(argv)
         connection.close.assert_called_once_with()
@@ -1176,7 +1177,7 @@ class FlashCommandLineTests(unittest.TestCase):
             worktree = fake_flash.worktree(Path(directory) / "engine")
             store = mock_store()
             store.root = Path(directory) / "lock"
-            connection = FakeConnection([])
+            connection = FakeConnection([b"BUILD_ID=abc\n" + device.CONSOLE_UP])
             with recorded_serial(connection, Path(directory) / "records"), \
                  mock.patch.object(device, "board_for_lock", return_value=BOARD), \
                  mock.patch.object(device.device_lock, "LockStore", return_value=store), \

@@ -72,15 +72,23 @@ autana repeatedly. Ctrl+C ends the child and releases the lock. A failed child
 also releases it unless `--keep-on-failure <seconds>` leaves a timed hold; the
 token and an early release command then print on stderr.
 
-```sh
-autana lock run -- bash -c "autana flash && autana open APP_NAME && autana screenshot"
-```
+Build outside the board lock, then hold it across the board commands:
+
+| Linux | Windows PowerShell |
+|---|---|
+| `autana build` | `autana build` |
+| `autana lock run -- sh -c 'autana flash && autana open APP_NAME && autana screenshot'` | `autana lock run -- pwsh -c 'autana flash; if ($LASTEXITCODE) { exit $LASTEXITCODE }; autana open APP_NAME; if ($LASTEXITCODE) { exit $LASTEXITCODE }; autana screenshot; exit $LASTEXITCODE'` |
 
 For separate shell commands, `take` prints a token alone on stdout. Pass it
 with the global `--lock-token` flag to each board command, then release it:
 
-```sh
-token=$(autana lock take --for 3600 inspecting the panel)
+| Linux | Windows PowerShell |
+|---|---|
+| `token=$(autana lock take inspecting the panel)` | `$token = autana lock take inspecting the panel` |
+
+These commands work in either shell:
+
+```text
 autana --lock-token "$token" flash
 autana --lock-token "$token" open APP_NAME
 autana --lock-token "$token" screenshot
@@ -90,11 +98,26 @@ autana lock release "$token"
 The default timed hold lasts one hour, and `--for` cannot exceed that hour.
 `--until-released` instead ties the hold to the invoking process, or to
 `--pid <pid>`; it ends when that process exits on this host. A token from a
-released or lapsed hold fails with exit 75 immediately. `status` shows time
-left for a timed hold and age for an until-released hold. The token is kept in
-the lock record and child environments, never in a profile or persistent
-environment setting. `lock hand` makes a timed hold for a person; repeating
-it renews the same hold, and `take-back` ends it.
+released or lapsed hold, or a wrong token, fails with exit 1 immediately. `status` shows time
+left for a timed hold and age for an until-released hold. A holder's children inherit the token.
+Borrowed commands reap their own descendants when they end. Commands sharing
+a token may run in parallel; an open serial port still excludes another user.
+`take` and `hand` inside a live hold fail immediately. `run --keep-on-failure`
+inside another hold is a usage error.
+
+### From a script or a background job
+
+Run `autana lock take <note>` in the background to get the board without
+polling. It holds a FIFO queue place, and its exit, with the token on stdout,
+is the notification that the board is yours. Cancelling it gives up that
+place so the next waiter moves up.
+
+`autana lock wait` is for when you only want to know the board is free. It
+never takes the board or a queue place and delays nobody. It returns 0 when
+no live holder or person's reservation remains, including when a record
+lapses or its owner dies. Another caller may take the board immediately.
+`autana lock wait --wait <seconds>` exits 75 if that cap runs out; without
+`--wait`, it waits without a cap.
 
 ## Board busy?
 
@@ -242,7 +265,7 @@ cannot help: an older install never looks in the new folder). Per board, with
 
 | File | What it is |
 |---|---|
-| `<serial>.json` | The lock: `owner`, `board`, `kind`, `purpose`, `acquired_at`, `heartbeat_at`, `pid`, `host`, `token`, `protocol`, `autana_version`; a timed hold has `expires_at` and `pid: 0`, and an until-released hold has `until_released: true` and the owner process id. `heartbeat_at` is when a hold was written. `purpose` is what `status` shows. The `token` names this lock; `lock take` prints it, and a holder's child processes inherit it for `lock release` without an argument. `status` never prints it. |
+| `<serial>.json` | The lock: `owner`, `board`, `kind`, `purpose`, `acquired_at`, `heartbeat_at`, `pid`, `host`, `token`, `protocol`, `autana_version`; a timed hold or person's reservation has `expires_at` and `pid: 0`, and an until-released hold has `until_released: true` and the owner process id. `heartbeat_at` is when a hold was written. `purpose` is what `status` shows. The `token` names this lock; `lock take` prints it, and a holder's child processes inherit it for `lock release` without an argument. `status` never prints it. |
 | `<serial>.queue/` | One ticket per waiting command, in FIFO order; a dead waiter's is discarded. |
 | `<serial>.last.json` | The previous holder, one only: overwritten each time a lock ends, for the message in step 5. |
 | `<serial>.seen.json` | Names a board once found on USB, so `lock hand` and `lock take-back` can still reach it when it has since dropped off. Delete it to make this machine forget the board. |
@@ -264,8 +287,8 @@ alone fall back once more to the only board this machine has ever seen.
 | Exit code | Meaning |
 |---|---|
 | `0` | Success. For `lock hand --until-back`: the reservation was taken back or lapsed. |
-| `1` | Any other failure, including `device lock was lost`. |
-| `75` | The board was busy: `device lock was not acquired`, with `--wait 0` or after the wait ran out. A wrong, released or lapsed token also fails at once with this code. `lock hand --until-back` uses it when its wait runs out or the reservation is replaced. |
+| `1` | Any other failure, including `device lock was lost` or a dead token (released, lapsed or wrong). |
+| `75` | The board was busy: `device lock was not acquired`, with `--wait 0` or after the wait ran out. Safe to retry on this code alone. `lock wait` uses it when its cap runs out. `lock hand --until-back` uses it when its wait runs out or the reservation is replaced. |
 | `130` | Ctrl+C: the second one on `monitor`, or the first on `lock hand --until-back`, which leaves the reservation in place. |
 | `2` | `device.py` itself, for a bad command line. |
 
@@ -320,13 +343,13 @@ checkout started it. Name a CI job with `autana --owner NAME`, run its commands 
 current directory (`autana help build`). A report script calls `autana
 selftest`, `autana suite` or `autana flash`.
 
-Installs of different ages can still meet at one board. Every record carries
-its `protocol` number and `autana_version`, and a difference is only shown,
-never refused. Protocol 3 puts timed and process-bound holds in the same lock
-record as running commands. A running command is reclaimed from its process
-and heartbeat; a timed hold from its expiry; an until-released hold from its
-owner process on this host. Install the same autana version in every checkout
-that shares a board.
+Autana runs as one system copy on PATH. Every record carries its `protocol`
+number and `autana_version`; for running commands a difference is shown,
+never refused. Protocol 3 keeps holds and running commands in one record.
+An install older than protocol 3 takes the board from a timed hold or a
+person's reservation at once, and from an until-released hold after the
+stale window. Protocol 3 does not see a protocol-2 `.human.json` reservation
+from before the upgrade. Update every copy that shares a board.
 
 ### Forcing a stuck lock clear
 
@@ -385,7 +408,7 @@ lock is gone.
 | | What the lock is tied to | If the holder dies |
 |---|---|---|
 | Windows | A job object the holder joins when it takes the lock. Every process it starts inherits the job, grandchildren of dead parents included. | The kernel closes the job and ends every member. A process started with `CREATE_BREAKAWAY_FROM_JOB` can leave it. |
-| Linux | A token: every process the holder starts carries the lock's token in its environment, found through `/proc`. A small watchdog the holder starts holds the read end of a pipe. | The pipe closes, and the watchdog ends every process still carrying the token. A process that scrubs its environment or runs as another user is out of reach. |
+| Linux | A scope tag: each command tags its descendants independently of the board token, found through `/proc`. A small watchdog holds the read end of a pipe. | The pipe closes, and the watchdog ends every process still carrying that tag. A process that scrubs its environment or runs as another user is out of reach. |
 
 A holder that ends normally gives the processes it started two seconds, ends
 the rest and prints their pids, then releases. Work that was already running
@@ -404,16 +427,25 @@ heartbeat: it lapses one hour after the last `lock hand`.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Waiting: a command needs the board
-    Waiting --> Holding: first in line
-    Waiting --> [*]: gave up (exit 75)
-    Holding --> [*]: command ends, leftovers stopped, board freed
-    Holding --> Reclaimed: holder died, or silent 10 min
-    Reclaimed --> [*]: next in line takes the board
+    direction LR
+    state "Running command" as Running
+    state "Timed hold" as Timed
+    state "Until released" as Process
+    state "Person's hold" as Human
+    [*] --> Waiting: needs the board
+    Waiting --> Running: first in FIFO
+    Waiting --> [*]: timeout or cancellation
+    Running --> Timed: take with duration<br/>or failed run with keep flag
+    Running --> Process: take until released
+    Running --> Human: hand
+    Running --> Free: command ends<br/>descendants stopped
+    Running --> Free: dead or stale
+    Timed --> Free: release or lapse
+    Process --> Free: release or owner dies
+    Human --> Human: hand renews
+    Human --> Free: take-back or lapse
+    Free --> [*]: next waiter may acquire
 ```
-
-A person's reservation (`autana lock hand`) blocks every command until
-`take-back` or an hour without renewal.
 
 ## Related
 

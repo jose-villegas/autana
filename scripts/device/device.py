@@ -15,6 +15,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import uuid
 import time
 from datetime import datetime
 from pathlib import Path
@@ -106,6 +107,10 @@ class NoBoard(RuntimeError):
 class LockLost(RuntimeError):
     def __init__(self, message="device lock was lost"):
         super().__init__(message)
+
+
+class DeadToken(RuntimeError):
+    pass
 
 
 class LockBusy(RuntimeError):
@@ -566,7 +571,8 @@ def wait_notice(store, board, state, ticket):
 
 class HeldLock:
     """One board held for one command. The command's duration is recorded
-    when it ends, with an error when it raised, set `error`, or lost the lock."""
+    when it ends, with an error when it raised, set `error`, or lost the lock.
+    A borrower uses a validated snapshot and reaps only its own descendants."""
 
     HEARTBEAT_SECONDS = 5
 
@@ -579,9 +585,10 @@ class HeldLock:
         self.borrowed = bool(token)
         self.keep_seconds = None
         if token:
-            if not store.check_token(board, token):
-                raise LockBusy("lock token is not live on this board (released, lapsed or never ours)")
-            self.held = device_lock.Held(store.read_json(store.lock_path(board)), "")
+            record = store.live_lock(board, token)
+            if record is None:
+                raise DeadToken("lock token is not live on this board (released, lapsed or wrong)")
+            self.held = device_lock.Held(record, "")
         else:
             self.held = store.acquire(board, owner, kind, wait=wait, on_wait=self.wait_notice,
                                       purpose=command_label(kind))
@@ -627,28 +634,15 @@ class HeldLock:
     def __enter__(self):
         self.previous_lock = getattr(ACTIVE_LOCK, "held", None)
         ACTIVE_LOCK.held = self
-        if self.borrowed:
-            self.thread.start()
-            return self
         self.previous_token = os.environ.get(TOKEN_ENV)
-        lock_scope.enter(self.held["token"])
+        scope_tag = uuid.uuid4().hex if self.borrowed else self.held["token"]
+        lock_scope.enter(scope_tag)
         os.environ[TOKEN_ENV] = self.held["token"]
         self.members_before = set(lock_scope.members())
         self.thread.start()
         return self
 
     def __exit__(self, error_type, error_value, unused_traceback):
-        if self.borrowed:
-            self.stop.set()
-            self.thread.join()
-            lost = self.lost.is_set() or not self.store.check_token(self.board, self.held["token"])
-            ACTIVE_LOCK.held = self.previous_lock
-            device_lock.record_duration(self.kind, time.monotonic() - self.started,
-                                        str(error_value) if error_type else
-                                        str(LockLost()) if lost else self.error, self.store.root)
-            if lost and error_type is None:
-                raise LockLost()
-            return
         self.stop.set()
         try:
             self.thread.join()
@@ -666,7 +660,9 @@ class HeldLock:
             if survivors:
                 print("device lock released with process(es) still running that could not "
                       "be stopped: " + ", ".join(map(str, survivors)), file=sys.stderr)
-            if self.keep_seconds is not None and not lost:
+            if self.borrowed:
+                pass
+            elif self.keep_seconds is not None and not lost:
                 if self.store.hold(self.board, self.held["token"], command_label(self.kind),
                                    seconds=self.keep_seconds):
                     print(f"lock held for {self.keep_seconds:g}s; token {self.held['token']}; "
@@ -1026,7 +1022,7 @@ def run_to_end(command, lost=None, timeout=None, **options):
                 break
             except subprocess.TimeoutExpired:
                 if lost is not None and lost.is_set():
-                    raise LockLost("device lock was lost during the flash; the flash was stopped")
+                    raise LockLost("device lock was lost during the command; the command was stopped")
                 if deadline is not None and time.monotonic() >= deadline:
                     raise subprocess.TimeoutExpired(command, timeout)
     except BaseException:
@@ -1848,7 +1844,7 @@ def human_wait_seconds(value):
 
 def hold_seconds(value):
     seconds = human_wait_seconds(value)
-    if seconds > device_lock.HUMAN_RESERVATION_SECONDS:
+    if seconds > device_lock.HOLD_MAX_SECONDS:
         raise argparse.ArgumentTypeError("hold exceeds one hour; use --until-released")
     return seconds
 
@@ -1869,7 +1865,7 @@ def wait_for_human_release(store, board, reservation_id, seconds):
                 return device_lock.EXIT_BUSY
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                print("human reservation wait timed out")
+                print("human reservation wait timed out; the reservation stands")
                 return device_lock.EXIT_BUSY
             time.sleep(min(1.0, remaining))
     except KeyboardInterrupt:
@@ -1929,6 +1925,8 @@ def main(argv=None):
     run = subparsers.add_parser("run")
     run.add_argument("--keep-on-failure", type=hold_seconds)
     run.add_argument("child", nargs=argparse.REMAINDER)
+    wait_parser = subparsers.add_parser("wait-free")
+    wait_parser.add_argument("--cap", type=human_wait_seconds)
     subparsers.add_parser("take-back")
     check_token = subparsers.add_parser(
         "check-token", help="exit 0 when --token is the live lock on the board, else 1")
@@ -2072,9 +2070,26 @@ def main(argv=None):
         board = board_for_lock(store, args.board,
                                remembered=args.command in ("hand-to-human", "take-back"))
         token = os.environ.get(TOKEN_ENV)
-        if token and args.command not in ("release", "check-token", "take", "hand-to-human", "take-back"):
+        if token and args.command in ("take", "hand-to-human"):
+            record = store.live_lock(board, token)
+            if record:
+                raise DeadToken("already inside hold " + record["owner"])
+        if token and args.command == "run" and args.keep_on_failure is not None:
+            parser.error("--keep-on-failure is unavailable inside another hold")
+        # Validate a borrowed token before any build starts.
+        if token and args.command not in ("release", "check-token", "take", "hand-to-human", "take-back", "wait-free"):
             if not store.check_token(board, token):
-                raise LockBusy("lock token is not live on this board (released, lapsed or never ours)")
+                raise DeadToken("lock token is not live on this board (released, lapsed or wrong)")
+        if args.command == "wait-free":
+            deadline = None if args.cap is None else time.monotonic() + args.cap
+            while True:
+                state = store.status(board)
+                if not state["lock"] and not state["human"]:
+                    return 0
+                if deadline is not None and time.monotonic() >= deadline:
+                    return device_lock.EXIT_BUSY
+                time.sleep(FLASH_POLL_SECONDS if deadline is None else
+                           min(FLASH_POLL_SECONDS, max(0, deadline - time.monotonic())))
         if args.command == "release":
             return 0 if store.release(board, args.token) else 1
         if args.command == "check-token":
@@ -2098,14 +2113,16 @@ def main(argv=None):
         if args.command == "take":
             if args.pid is not None and (not args.until_released or args.pid <= 0):
                 parser.error("--pid needs --until-released and a positive pid")
+            if args.until_released and args.pid is None:
+                parser.error("--until-released requires --pid")
             notice_state = {}
             held = store.acquire(board, args.owner, "take", wait=args.wait,
                                  on_wait=lambda ticket: wait_notice(store, board, notice_state, ticket), purpose=" ".join(args.note))
             if not held:
                 raise LockBusy("device lock was not acquired: " + device_lock.busy_text(store.status(board), store.now()))
-            pid = (args.pid or os.getppid()) if args.until_released else None
+            pid = args.pid if args.until_released else None
             seconds = None if args.until_released else (args.seconds if args.seconds is not None
-                                                       else device_lock.HUMAN_RESERVATION_SECONDS)
+                                                       else device_lock.HOLD_MAX_SECONDS)
             if not store.hold(board, held["token"], " ".join(args.note), seconds=seconds, pid=pid):
                 raise LockBusy("device lock was lost before the hold was recorded")
             print(held["token"])
@@ -2129,8 +2146,11 @@ def main(argv=None):
             extra_flags = (["--perf-scope"] if args.perf_scope else []) + layout_flags(args)
             with build_image(args, board, extra_flags) as built, \
                     HeldLock(store, board, args.owner, "flash", args.wait) as held:
-                _, connection = write_image(built, store, board, held)
-                connection.close()
+                build_id, connection = write_image(built, store, board, held)
+                if args.variant in ("dev", "diag"):
+                    await_console(args, board, build_id, held.held["acquired_at"], connection)
+                else:
+                    connection.close()
         elif args.command == "send":
             if not args.until:
                 args.until = [args.reply + "_OK", args.reply + "_ERR", args.reply + "_END"]

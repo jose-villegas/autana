@@ -23,7 +23,7 @@ ERROR_MORE_DATA = 234
 PROCESS_TERMINATE = 0x0001
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 
-TOKEN_VARIABLE = "_AUTANA_DEVICE_LOCK_TOKEN"
+TOKEN_VARIABLE = "_AUTANA_LOCK_SCOPE_TAG"
 
 _job = None
 _kernel32 = None
@@ -73,7 +73,7 @@ def enter(token=None):
     job = create_job(kernel32)
     if job and kernel32.AssignProcessToJobObject(job, kernel32.GetCurrentProcess()):
         _job = job
-        # Where a holder's own children find the token `lock release` wants.
+        # Descendant scope is independent of authority to borrow the board.
         _previous_token = os.environ.get(TOKEN_VARIABLE)
         if token:
             os.environ[TOKEN_VARIABLE] = token

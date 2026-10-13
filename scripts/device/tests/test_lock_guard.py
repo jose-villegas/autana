@@ -138,6 +138,122 @@ class HoldProcessTests(Store):
                 self.assertEqual(record["token"], stdout.strip())
                 self.store.release(BOARD_A, record["token"])
 
+    @unittest.skipUnless(os.name == "nt", "Git Bash caller on Windows")
+    def test_git_bash_take_uses_shell_winpid(self):
+        bash = Path(os.environ.get("ProgramFiles", "C:/Program Files")) / "Git/bin/bash.exe"
+        self.assertTrue(bash.is_file())
+        launcher = (ENGINE / "tools/autana").as_posix()
+        command = [str(bash), "-c",
+                   'cat /proc/$$/winpid; '
+                   f'token=$("{launcher}" --board {BOARD_A} lock take --until-released bench); '
+                   'printf "%s\\n" "$token"; sleep 1']
+        shell = subprocess.Popen(command, env=self.environment, stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: shell.kill() if shell.poll() is None else None)
+        caller = int(shell.stdout.readline().strip())
+        token = shell.stdout.readline().strip()
+        self.assertTrue(token)
+        record = self.store.status(BOARD_A)["lock"]
+        self.assertIsNotNone(record)
+        self.assertEqual(record["pid"], caller)
+        self.assertEqual(record["token"], token)
+        shell.communicate(timeout=10)
+        self.assertIsNotNone(self.store.status(BOARD_A)["reclaimable"])
+
+    def test_wait_observes_release_lapse_death_and_never_enqueues(self):
+        for ending in ("release", "lapse", "death", "human"):
+            with self.subTest(ending=ending):
+                owner = None
+                if ending == "death":
+                    owner = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"],
+                                             env=self.environment)
+                    self.addCleanup(lambda p=owner: p.kill() if p.poll() is None else None)
+                    words = ("take", "--until-released", "--pid", str(owner.pid), "bench")
+                elif ending == "human":
+                    words = ("hand-to-human", "--note", "bench")
+                else:
+                    words = ("take", "--for", "2" if ending == "lapse" else "30", "bench")
+                taken = self.run_command(*words, env=self.environment)
+                self.assertEqual(taken.returncode, 0, taken.stderr)
+                before = self.store.lock_path(BOARD_A).read_bytes()
+                waiter = subprocess.Popen(self.command("wait-free", "--cap", "5"),
+                                          env=self.environment, stdout=subprocess.PIPE,
+                                          stderr=subprocess.PIPE, text=True)
+                self.addCleanup(lambda p=waiter: p.kill() if p.poll() is None else None)
+                time.sleep(0.2)
+                self.assertEqual(self.store.tickets(BOARD_A), [])
+                self.assertEqual(self.store.lock_path(BOARD_A).read_bytes(), before)
+                self.assertEqual(self.run_command("wait-free", "--cap", "0",
+                                                 env=self.environment).returncode, device_lock.EXIT_BUSY)
+                if ending == "release":
+                    self.run_command("release", "--token", taken.stdout.strip(), env=self.environment)
+                elif ending == "human":
+                    self.store.end_human(BOARD_A)
+                elif owner is not None:
+                    owner.kill()
+                    owner.wait(timeout=5)
+                stdout, stderr = waiter.communicate(timeout=10)
+                self.assertEqual(waiter.returncode, 0, stdout + stderr)
+                self.assertEqual(self.store.tickets(BOARD_A), [])
+                self.assertIsNone(self.store.status(BOARD_A)["lock"])
+                if ending in ("death", "lapse"):
+                    self.assertEqual(self.store.lock_path(BOARD_A).read_bytes(), before)
+                    self.store.release(BOARD_A, taken.stdout.strip())
+
+    def test_cancelled_take_gives_up_fifo_place(self):
+        taken = self.run_command("take", "bench", env=self.environment)
+        self.assertEqual(taken.returncode, 0, taken.stderr)
+        first = subprocess.Popen(self.command("take", "cancelled"), env=self.environment,
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        self.addCleanup(lambda: first.kill() if first.poll() is None else None)
+        deadline = time.monotonic() + 5
+        while not self.store.tickets(BOARD_A) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        [ticket] = self.store.tickets(BOARD_A)
+        next_waiter = self.start_waiter()
+        deadline = time.monotonic() + 5
+        while len(self.store.tickets(BOARD_A)) != 2 and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertEqual(len(self.store.tickets(BOARD_A)), 2)
+        first.kill()
+        first.communicate(timeout=5)
+        state = self.store.status(BOARD_A)
+        self.assertEqual(len(state["queue"]), 1)
+        self.assertNotEqual(state["queue"][0]["ticket"], ticket["ticket"])
+        self.run_command("release", "--token", taken.stdout.strip(), env=self.environment)
+        stdout, stderr = next_waiter.communicate(timeout=10)
+        self.assertEqual(next_waiter.returncode, 0, stdout + stderr)
+        self.assertEqual(self.store.tickets(BOARD_A), [])
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux detached descendants")
+    def test_borrow_reaps_its_detached_child_and_preserves_sibling(self):
+        taken = self.run_command("take", "bench", env=self.environment)
+        token = taken.stdout.strip()
+        self.assertEqual(taken.returncode, 0, taken.stderr)
+        environment = dict(self.environment, **{device.TOKEN_ENV: token})
+        sibling = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"],
+                                   env=environment)
+        self.addCleanup(lambda: sibling.kill() if sibling.poll() is None else None)
+        child_file = self.root / "child-pid"
+        source = ("import os,subprocess,sys,pathlib; "
+                  f"assert os.environ[{device.TOKEN_ENV!r}] == {token!r}; "
+                  "p=subprocess.Popen([sys.executable,'-c','import time; time.sleep(30)'], "
+                  "start_new_session=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); "
+                  f"pathlib.Path({str(child_file)!r}).write_text(str(p.pid))")
+        result = self.run_command("run", "--", sys.executable, "-c", source, env=environment)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        pid = int(child_file.read_text())
+        self.addCleanup(subprocess.run, ["kill", "-KILL", str(pid)], capture_output=True)
+        import lock_group
+        self.assertFalse(lock_group.tagged(pid, token))
+        try:
+            environment = Path(f"/proc/{pid}/environ").read_bytes()
+        except FileNotFoundError:
+            environment = b""
+        self.assertFalse(environment)
+        self.assertIsNone(sibling.poll())
+        self.assertEqual(self.store.status(BOARD_A)["lock"]["token"], token)
+
     def start_waiter(self):
         waiter = subprocess.Popen(self.command("run", "--", sys.executable, "-c", "pass"),
                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
@@ -169,10 +285,10 @@ class HoldProcessTests(Store):
         nested = self.run_command("run", "--", sys.executable, "-c", "pass",
                                   env=dict(self.environment, **{device.TOKEN_ENV: token}))
         self.assertEqual(nested.returncode, 0, nested.stderr)
-        self.assertIsNone(waiter.poll())
+        self.assertEqual(self.store.status(BOARD_A)["lock"]["token"], token)
         wrong = self.run_command("run", "--", sys.executable, "-c", "pass",
                                  env=dict(self.environment, **{device.TOKEN_ENV: "wrong"}))
-        self.assertEqual(wrong.returncode, device_lock.EXIT_BUSY)
+        self.assertEqual(wrong.returncode, 1)
         self.assertIn("not live", wrong.stderr)
         self.assertEqual(len(self.store.tickets(BOARD_A)), 1)
         self.run_command("release", "--token", token, env=self.environment)
@@ -211,7 +327,7 @@ class HoldProcessTests(Store):
                 self.run_command("release", "--token", token, env=self.environment)
             nested = self.run_command("run", "--", sys.executable, "-c", "pass",
                                       env=dict(self.environment, **{device.TOKEN_ENV: token}))
-            self.assertEqual(nested.returncode, device_lock.EXIT_BUSY)
+            self.assertEqual(nested.returncode, 1)
             self.assertIn("not live", nested.stderr)
             self.assertEqual(self.store.tickets(BOARD_A), [])
 
@@ -233,7 +349,7 @@ class HoldProcessTests(Store):
         self.assertEqual(next_command.returncode, 0, next_command.stderr)
         self.assertIn("dead process", next_command.stderr)
 
-    def test_autana_token_flag_runs_inside_hold_without_changing_parent_environment(self):
+    def test_autana_token_flag_runs_inside_hold(self):
         taken = self.run_command("take", "bench", env=self.environment)
         token = taken.stdout.strip()
         self.assertEqual(taken.returncode, 0, taken.stderr)
@@ -248,9 +364,8 @@ class HoldProcessTests(Store):
                                 "--lock-token", "wrong", "lock", "run", "--",
                                 sys.executable, "-c", "pass"],
                                capture_output=True, text=True, env=self.environment, timeout=20)
-        self.assertEqual(wrong.returncode, device_lock.EXIT_BUSY)
+        self.assertEqual(wrong.returncode, 1)
         self.assertEqual(self.store.tickets(BOARD_A), [])
-        self.assertNotIn(device.TOKEN_ENV, os.environ)
         self.assertEqual(self.store.status(BOARD_A)["lock"]["token"], token)
         self.run_command("release", "--token", token, env=self.environment)
 
@@ -649,6 +764,22 @@ class FlashTests(Store):
                 yield
             finally:
                 self.output = output.getvalue()
+
+    def test_flash_waits_for_console_under_lock_except_release(self):
+        for variant in ("dev", "diag", "release"):
+            with self.subTest(variant=variant):
+                args = self.args(variant)
+                def console(args, board, build_id, acquired_at, connection):
+                    self.assertEqual(build_id, "abc")
+                    self.assertTrue(self.store.check_token(board, device.ACTIVE_LOCK.held.held["token"]))
+                    connection.close()
+                with self.scripts(), mock.patch.object(device.device_lock, "LockStore", return_value=self.store), \
+                        mock.patch.object(device, "board_for_lock", return_value=BOARD_A), \
+                        mock.patch.object(device, "await_console", side_effect=console) as awaited:
+                    self.assertEqual(device.main(["--board", BOARD_A, "flash", "--variant", variant,
+                                                  "--worktree", args.worktree]), 0)
+                self.assertEqual(awaited.call_count, int(variant != "release"))
+                self.assertIsNone(self.store.status(BOARD_A)["lock"])
 
     def flash(self, store=None, variant="dev", out=None, **fakes):
         store = store or self.store

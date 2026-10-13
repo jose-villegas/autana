@@ -241,6 +241,43 @@ class BoardHolderTests(unittest.TestCase):
         self.assertEqual(self.holder_seen(json.dumps({"boards": [held, free]})), "")
 
 
+class BorrowedConsoleTests(unittest.TestCase):
+    def test_live_dead_and_missing_token_use_inprocess_validation(self):
+        for token, live in (("live", True), ("dead", False), ("", False)):
+            with self.subTest(token=token), \
+                    mock.patch.dict(os.environ, {autana.TOKEN_ENV: token}), \
+                    mock.patch.object(autana.subprocess, "run", return_value=mock.Mock(stdout=busy_status())), \
+                    mock.patch.object(autana.subprocess, "call") as call, \
+                    mock.patch.object(autana.device_module().device_lock, "LockStore") as store:
+                store.return_value.check_token.return_value = live
+                result = autana.board_holder()
+                self.assertEqual(bool(result), not live)
+                self.assertEqual(store.return_value.check_token.call_count, int(bool(token)))
+                if token:
+                    store.return_value.check_token.assert_called_once_with("90:70:69:FE:A3:08", token)
+                call.assert_not_called()
+
+    def test_wait_caps_only_when_requested(self):
+        for cap in (None, "0", "3"):
+            environment = {name: value for name, value in os.environ.items() if name != autana.WAIT_ENV}
+            if cap is not None:
+                environment[autana.WAIT_ENV] = cap
+            with mock.patch.dict(os.environ, environment, clear=True), project_call() as call:
+                self.assertEqual(autana.lock_wait([]), 0)
+            command = call.call_args.args[0]
+            self.assertIn("wait-free", command)
+            self.assertEqual("--cap" in command, cap is not None)
+            if cap is not None:
+                self.assertEqual(value_after(command, "--cap"), cap)
+
+    def test_token_validation_rejects_empty_and_whitespace(self):
+        for token in ("", " ", "two words"):
+            code, called = run_main(["--lock-token", token, "status"])
+            self.assertNotEqual(code, 0)
+            called.assert_not_called()
+
+
+
 class DeviceVerbCommandTests(unittest.TestCase):
     """freeze/resume/step/touch/imu: each is a thin line-builder over
     send(), so the contract worth pinning is what line, reply and mode each

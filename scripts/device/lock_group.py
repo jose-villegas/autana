@@ -1,8 +1,8 @@
 """What a lock holder started, on Linux, so nothing can keep the serial port
 after the lock is gone.
 
-Every process the holder starts is tagged through the environment: the lock's
-token is exported as _AUTANA_DEVICE_LOCK_TOKEN and inherited, so /proc names
+Every process the holder starts is tagged through the environment: a scope
+tag is inherited separately from the lock token, so /proc names
 the holder's descendants through any number of exited parents, which a process
 tree walk cannot (an orphan is reparented to init). PR_SET_PDEATHSIG covers
 only direct children and a subreaper dies with the holder, so neither can end
@@ -18,7 +18,7 @@ import subprocess
 import sys
 import time
 
-TOKEN_VARIABLE = "_AUTANA_DEVICE_LOCK_TOKEN"
+TOKEN_VARIABLE = "_AUTANA_LOCK_SCOPE_TAG"
 GRACE_SECONDS = 2.0
 POLL_SECONDS = 0.05
 WATCHDOG_PATIENCE_SECONDS = 10.0

@@ -565,6 +565,14 @@ def take(args):
     return subprocess.call(device_command("take", *args))
 
 
+def lock_wait(args):
+    reject_unknown("lock wait", args)
+    if args:
+        sys.exit("usage: autana lock wait [--wait <seconds>]")
+    cap = os.environ.get(WAIT_ENV)
+    return subprocess.call(device_command("wait-free", *(["--cap", cap] if cap is not None else [])))
+
+
 def lock_run(args):
     if "--" not in args:
         sys.exit("usage: autana lock run [--keep-on-failure <seconds>] -- <command...>")
@@ -572,8 +580,7 @@ def lock_run(args):
 
 
 def hand(args):
-    """Reserve the board for a maintainer sitting at it; autana refuses new
-    work against it until `autana lock take-back`, or an hour after the last
+    """Reserve the board for a maintainer sitting at it; new work waits for it until `autana lock take-back`, or an hour after the last
     `lock hand`, which running it again renews."""
     usage = "usage: autana lock hand [--until-back <seconds>] <note...>"
     wait = []
@@ -799,8 +806,7 @@ def board_holder():
     board = candidates[0]
     holder = board["holder"]
     token = os.environ.get(TOKEN_ENV)
-    if token and subprocess.call(device_command("check-token", "--token", token),
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0:
+    if token and device_module().device_lock.LockStore().check_token(board["board"], token):
         return ""
     if board["state"] == "held" and holder["owner"] != owner():
         return f"held by {holder['owner']} for {holder['purpose']}"
@@ -1407,7 +1413,7 @@ def alias(old, new, handler):
     return wrapped
 
 
-LOCK_VERBS = {"take": take, "run": lock_run, "release": release, "hand": hand, "take-back": take_back}
+LOCK_VERBS = {"wait": lock_wait, "take": take, "run": lock_run, "release": release, "hand": hand, "take-back": take_back}
 DEBUG_VERBS = {"freeze": freeze, "resume": resume, "step": step, "touch": touch, "imu": imu,
               "framewatch": framewatch}
 
@@ -1430,6 +1436,17 @@ def debug(args):
         sys.exit("usage: autana debug <" + "|".join(DEBUG_VERBS) + "> ...")
     verb, rest = args[0], args[1:]
     return DEBUG_VERBS[verb](rest)
+
+
+LOCK_USAGES = (
+    ("lock run [--keep-on-failure <seconds>] -- <command...>", "hold the board while a command runs"),
+    ("lock take [--for <seconds> | --until-released [--pid <pid>]] <note...>", "hold the board across commands; print its token"),
+    ("lock wait", "wait until free without taking the board; --wait caps it"),
+    ("lock release [<token>]", "release a lock this session holds, given its token"),
+    ("lock hand [--until-back <seconds>] <note...>",
+     "reserve the board for a person at it for an hour; run again to renew"),
+    ("lock take-back", "clear that reservation"),
+)
 
 
 # (key, title, commands). `autana help <key>` shows one group; each usage is
@@ -1499,13 +1516,7 @@ COMMAND_GROUPS = (
     )),
     ("lock", "Sharing the board", (
         Command("status", status, (("status [--json]", "who holds the board, and who waits"),)),
-        Command("lock", lock, (
-            ("lock run [--keep-on-failure <seconds>] -- <command...>", "hold the board while a command runs"),
-            ("lock take [--for <seconds> | --until-released [--pid <pid>]] <note...>", "hold the board across commands; print its token"),
-            ("lock release [<token>]", "release a lock this session holds, given its token"),
-            ("lock hand [--until-back <seconds>] <note...>",
-             "reserve the board for a person at it for an hour; run again to renew"),
-            ("lock take-back", "clear that reservation"))),
+        Command("lock", lock, LOCK_USAGES),
     )),
     ("debug", "Debug", (
         Command("debug", debug, (
