@@ -12,6 +12,20 @@ import process_tree
 
 
 class ProcessTreeTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux parent death signal")
+    def test_parent_resolves_prctl_before_child_calls_it(self):
+        import ctypes
+        kernel = Mock()
+        kernel.prctl.return_value = 0
+        with patch.object(ctypes, 'CDLL', return_value=kernel) as loaded:
+            bind = process_tree.bind_parent_lifetime(os.getpid())
+            loaded.assert_called_once()
+            kernel.prctl.assert_not_called()
+        with patch.object(process_tree.os, 'getppid', return_value=os.getpid()):
+            bind()
+        kernel.prctl.assert_called_once_with(process_tree.PR_SET_PDEATHSIG,
+                                             process_tree.signal.SIGKILL, 0, 0, 0)
+
     @unittest.skipUnless(os.name == 'nt', 'Windows job assignment')
     def test_job_failure_degrades_and_assignment_precedes_resume(self):
         import ctypes

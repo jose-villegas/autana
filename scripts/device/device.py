@@ -2078,7 +2078,8 @@ def main(argv=None):
             record = store.live_lock(board, token)
             if record:
                 raise TokenRefused("already inside hold " + record["owner"])
-            raise TokenRefused("lock token is not live on this board (released, lapsed or wrong)")
+            raise TokenRefused("lock token is not live on this board (released, lapsed or wrong); "
+                               f"unset {TOKEN_ENV} in this shell or drop --lock-token")
         if token and args.command == "run" and args.keep_on_failure is not None:
             parser.error("--keep-on-failure is unavailable inside another hold")
         # Validate a borrowed token before any build starts.

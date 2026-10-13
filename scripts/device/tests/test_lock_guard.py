@@ -110,8 +110,9 @@ class HoldProcessTests(Store):
                 "--wait", wait, *words]
 
     def run_command(self, *words, env=None):
+        options = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {}
         return subprocess.run(self.command(*words), capture_output=True, text=True,
-                              env=env, timeout=20)
+                              env=env, timeout=20, **options)
 
     def setUp(self):
         super().setUp()
@@ -286,11 +287,11 @@ class HoldProcessTests(Store):
             script.write_text(
                 f"$p = Start-Process '{launcher}' -ArgumentList '--board','{BOARD_A}',"
                 f"'lock','take','queued' -RedirectStandardOutput '{token_file}' "
-                "-NoNewWindow -PassThru\n"
+                "-NoNewWindow -PassThru; $null = $p.Handle\n"
                 "$deadline = (Get-Date).AddSeconds(30)\n"
                 f"while (!(Test-Path '{stop}') -and (Get-Date) -lt $deadline) "
                 "{ Start-Sleep -Milliseconds 50 }\n"
-                "taskkill /T /F /PID $p.Id | Out-Null\n$p.WaitForExit()\n")
+                "taskkill /T /F /PID $p.Id | Out-Null\n$p.WaitForExit(); $p.ExitCode\n")
             command = ["powershell.exe", "-NoProfile", "-File", str(script)]
         else:
             import shlex
@@ -311,6 +312,44 @@ class HoldProcessTests(Store):
         self.assertEqual(token_file.read_text().strip(), "")
         self.store.release(BOARD_A, taken.stdout.strip())
         self.assertFalse(self.store.lock_path(BOARD_A).exists())
+
+    def test_background_take_checks_exit_code_before_token(self):
+        environment = dict(self.environment, **{BOARD_ENV: BOARD_A})
+        environment["PATH"] = str(ENGINE / "tools") + os.pathsep + environment["PATH"]
+        token_file = self.root / "background-token.txt"
+        for busy in (False, True):
+            with self.subTest(busy=busy):
+                if busy:
+                    taken = self.run_command("take", "bench", env=self.environment)
+                    self.assertEqual(taken.returncode, 0, taken.stderr)
+                if os.name == "nt":
+                    script = self.root / "background-exit.ps1"
+                    wait_args = "'--wait','0'," if busy else ""
+                    script.write_text(
+                        "$p = Start-Process autana -ArgumentList "
+                        f"{wait_args}'lock','take','inspecting the panel' "
+                        f"-RedirectStandardOutput '{token_file}' -NoNewWindow -PassThru; "
+                        "$null = $p.Handle\n$p.WaitForExit(); $p.ExitCode\n")
+                    command = ["powershell.exe", "-NoProfile", "-File", str(script)]
+                else:
+                    import shlex
+                    script = self.root / "background-exit.sh"
+                    wait_args = "--wait 0 " if busy else ""
+                    script.write_text(
+                        f"autana {wait_args}lock take inspecting the panel "
+                        f"> {shlex.quote(str(token_file))} &\nwait $!\nexit $?\n")
+                    command = ["bash", str(script)]
+                result = subprocess.run(command, env=environment, capture_output=True,
+                                        text=True, timeout=20)
+                code = int(result.stdout.strip()) if os.name == "nt" else result.returncode
+                self.assertEqual(code, device_lock.EXIT_BUSY if busy else 0, result.stderr)
+                token = token_file.read_text().strip()
+                if busy:
+                    self.assertEqual(token, "")
+                    self.store.release(BOARD_A, taken.stdout.strip())
+                else:
+                    self.assertTrue(self.store.check_token(BOARD_A, token))
+                    self.store.release(BOARD_A, token)
 
     def stop_waiter(self, pid):
         if os.name == "nt":
@@ -333,13 +372,14 @@ class HoldProcessTests(Store):
                   f"finish=pathlib.Path({str(finish)!r}); "
                   "deadline=time.monotonic()+15; "
                   "exec('while not finish.exists() and time.monotonic()<deadline: time.sleep(0.05)'); "
-                  "assert finish.exists(); time.sleep(3)")
+                  "assert finish.exists()")
+        options = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if os.name == "nt" else {}
         long = subprocess.Popen(self.command("run", "--", sys.executable, "-c", source),
                                 env=environment, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True)
+                                text=True, **options)
         self.addCleanup(lambda: long.kill() if long.poll() is None else None)
         deadline = time.monotonic() + 10
-        while not ready.exists() and time.monotonic() < deadline:
+        while not ready.exists() and long.poll() is None and time.monotonic() < deadline:
             time.sleep(0.05)
         self.assertTrue(ready.exists())
         short = self.run_command("run", "--", sys.executable, "-c", "pass", env=environment)
@@ -360,9 +400,8 @@ class HoldProcessTests(Store):
         self.wait_for_queue(2)
         first.kill()
         first.communicate(timeout=5)
-        state = self.store.status(BOARD_A)
-        self.assertEqual(len(state["queue"]), 1)
-        self.assertNotEqual(state["queue"][0]["ticket"], ticket["ticket"])
+        [pending] = self.wait_for_queue(1, dead_pid=ticket["pid"])
+        self.assertNotEqual(pending["ticket"], ticket["ticket"])
         self.run_command("release", "--token", taken.stdout.strip(), env=self.environment)
         stdout, stderr = next_waiter.communicate(timeout=10)
         self.assertEqual(next_waiter.returncode, 0, stdout + stderr)
@@ -492,6 +531,90 @@ class HoldProcessTests(Store):
         self.assertEqual(next_command.returncode, 0, next_command.stderr)
         self.assertIn("dead process", next_command.stderr)
 
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux zombie owner")
+    def test_until_released_reclaims_unreaped_owner(self):
+        finish = self.root / "owner-finish"
+        source = ("import pathlib,time; "
+                  f"finish=pathlib.Path({str(finish)!r}); "
+                  "deadline=time.monotonic()+20; "
+                  "exec('while not finish.exists() and time.monotonic()<deadline: time.sleep(0.05)')")
+        owner = self.start_process([sys.executable, "-c", source])
+        self.addCleanup(owner.wait, timeout=5)
+        taken = self.run_command("take", "--until-released", "--pid", str(owner.pid),
+                                 "bench", env=self.environment)
+        self.assertEqual(taken.returncode, 0, taken.stderr)
+        finish.touch()
+        deadline = time.monotonic() + CANCELLATION_TIMEOUT_SECONDS
+        stat = Path(f"/proc/{owner.pid}/stat")
+        while stat.read_text().rsplit(")", 1)[1].split()[0] != "Z" and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertEqual(stat.read_text().rsplit(")", 1)[1].split()[0], "Z")
+        self.assertFalse(device_lock.process_alive(owner.pid))
+        next_command = self.run_command("run", "--", sys.executable, "-c", "pass",
+                                        env=self.environment)
+        self.assertEqual(next_command.returncode, 0, next_command.stderr)
+        self.assertIn("dead process", next_command.stderr)
+        owner.wait(timeout=5)
+
+    def test_streamed_console_interrupt_releases_its_lock(self):
+        import signal
+        ready = self.root / "interrupt-ready"
+        source = ("import pathlib,signal,time; signal.signal(signal.SIGINT,signal.SIG_IGN); "
+                  f"pathlib.Path({str(ready)!r}).touch(); time.sleep(30)")
+        child = self.root / "interrupt-device.py"
+        child.write_text(
+            f"import sys; sys.path.insert(0, {str(DEVICE)!r})\n"
+            "import device,device_lock,subprocess,time\n"
+            f"with device.HeldLock(device_lock.LockStore(), {BOARD_A!r}, 'test', 'run', 5):\n"
+            f"    subprocess.Popen({[sys.executable, '-c', source]!r})\n"
+            "    deadline = time.monotonic()+30\n"
+            "    try:\n"
+            "        while time.monotonic()<deadline: print('streaming',flush=True); time.sleep(0.05)\n"
+            "    finally:\n"
+            "        print('unwinding',flush=True); time.sleep(0.2)\n")
+        driver = (f"import sys; sys.path.insert(0, {str(ENGINE / 'scripts/autana')!r}); "
+                  "import autana; "
+                  + ("import ctypes; ctypes.WinDLL('kernel32').SetConsoleCtrlHandler(None,False); "
+                     if os.name == "nt" else "")
+                  + f"autana.run_streaming_its_log({[sys.executable, '-u', str(child)]!r})")
+        options = {}
+        if os.name == "nt":
+            options["creationflags"] = subprocess.CREATE_NEW_CONSOLE
+            startup = subprocess.STARTUPINFO()
+            startup.dwFlags = subprocess.STARTF_USESHOWWINDOW
+            startup.wShowWindow = subprocess.SW_HIDE
+            options["startupinfo"] = startup
+        else:
+            options["start_new_session"] = True
+        process = subprocess.Popen([sys.executable, "-c", driver], env=self.environment,
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, **options)
+        self.addCleanup(lambda: process.kill() if process.poll() is None else None)
+        deadline = time.monotonic() + 20
+        while not ready.exists() and process.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertTrue(ready.exists())
+        if os.name == "nt":
+            sender = ("import ctypes,time; k=ctypes.WinDLL('kernel32'); k.FreeConsole(); "
+                      f"assert k.AttachConsole({process.pid}); "
+                      "assert k.SetConsoleCtrlHandler(None,True); "
+                      "assert k.GenerateConsoleCtrlEvent(0,0); time.sleep(0.2)")
+            subprocess.run([sys.executable, "-c", sender], check=True, timeout=5,
+                           creationflags=subprocess.CREATE_NO_WINDOW)
+        else:
+            os.killpg(process.pid, signal.SIGINT)
+        stdout, stderr = process.communicate(timeout=15)
+        self.assertFalse(self.store.lock_path(BOARD_A).exists(), stdout + stderr)
+        last = self.store.read_json(self.store.last_path(BOARD_A))
+        self.assertEqual(last["how"], "released")
+
+    def test_stale_take_token_names_how_to_clear_it(self):
+        result = self.run_command("take", "bench", env=dict(
+            self.environment, **{device.TOKEN_ENV: "stale"}))
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("unset " + device.TOKEN_ENV, result.stderr)
+        self.assertIn("drop --lock-token", result.stderr)
+        self.assertEqual(self.store.tickets(BOARD_A), [])
+
     def test_autana_token_flag_runs_inside_hold(self):
         taken = self.run_command("take", "bench", env=self.environment)
         token = taken.stdout.strip()
@@ -561,16 +684,29 @@ class HoldProcessTests(Store):
         self.assertIn("dead process", next_command.stderr)
 
     def test_nested_command_stops_when_its_timed_hold_lapses(self):
-        taken = self.run_command("take", "--for", "2", "bench", env=self.environment)
+        taken = self.run_command("take", "--for", str(device_lock.HOLD_MAX_SECONDS), "bench",
+                                 env=self.environment)
         token = taken.stdout.strip()
         self.assertEqual(taken.returncode, 0, taken.stderr)
+        ready = self.root / "borrow-ready"
+        source = ("import pathlib,time; "
+                  f"pathlib.Path({str(ready)!r}).touch(); time.sleep(15)")
+        nested = self.start_process(self.command("run", "--", sys.executable, "-c", source),
+                                    env=dict(self.environment, **{device.TOKEN_ENV: token}))
+        deadline = time.monotonic() + 20
+        while not ready.exists() and nested.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+        self.assertTrue(ready.exists())
+        with self.store.guard(BOARD_A):
+            record = self.store.read_json(self.store.lock_path(BOARD_A))
+            self.assertEqual(record["token"], token)
+            record["expires_at"] = self.store.now()
+            self.store.write_json(self.store.lock_path(BOARD_A), record)
         started = time.monotonic()
-        nested = self.run_command("run", "--", sys.executable, "-c",
-                                  "import time; time.sleep(15)",
-                                  env=dict(self.environment, **{device.TOKEN_ENV: token}))
+        stdout, stderr = nested.communicate(timeout=2 * device.HeldLock.HEARTBEAT_SECONDS)
         self.assertNotEqual(nested.returncode, 0)
         self.assertLess(time.monotonic() - started, 2 * device.HeldLock.HEARTBEAT_SECONDS)
-        self.assertIn("lock was lost", nested.stderr)
+        self.assertIn("lock was lost", stderr)
 
 
 class PrimitiveGuardTests(Store):

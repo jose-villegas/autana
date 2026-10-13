@@ -109,16 +109,21 @@ inside another hold is a usage error.
 ### From a script or a background job
 
 Run `autana lock take <note>` in the background to get the board without
-polling. It holds a FIFO queue place, and its exit, with the token on stdout,
-is the notification that the board is yours. Cancelling it gives up that
-place so the next waiter moves up.
+polling. It holds a FIFO queue place and waits as long as the global `--wait`
+allows (600 seconds without it). Exit 0, with the token on stdout, is the
+notification that the board is yours. A timeout exits 75 with nothing on
+stdout. For a longer wait, use `autana --wait <seconds> lock take <note>`.
+Cancelling it gives up that place so the next waiter moves up.
 
 | Linux | Windows PowerShell |
 |---|---|
-| `autana lock take inspecting the panel > token.txt &` then `wait $!` | `$p = Start-Process autana -ArgumentList 'lock','take','inspecting the panel' -RedirectStandardOutput token.txt -NoNewWindow -PassThru` then `$p.WaitForExit()` |
+| `autana lock take inspecting the panel > token.txt &` then `wait $!` | `$p = Start-Process autana -ArgumentList 'lock','take','inspecting the panel' -RedirectStandardOutput token.txt -NoNewWindow -PassThru; $null = $p.Handle` then `$p.WaitForExit(); $p.ExitCode` |
 | Cancel with `kill $!`. | Cancel with `taskkill /T /F /PID $p.Id`. |
 
-Read the token from `token.txt` after the command ends.
+Check the exit code before reading the token from `token.txt`: `wait $!`
+returns it on Linux; `$p.ExitCode` reports it on PowerShell. Reading
+`$p.Handle` before waiting makes `ExitCode` available in PowerShell 5.1.
+Read the token only after exit 0.
 
 `autana lock wait` is for when you only want to know the board is free. It
 never takes the board or a queue place and delays nobody. It returns 0 when
@@ -351,8 +356,9 @@ checkout started it. Name a CI job with `autana --owner NAME`, run its commands 
 current directory (`autana help build`). A report script calls `autana
 selftest`, `autana suite` or `autana flash`.
 
-Every record carries its `protocol` number and `autana_version`; for running commands a difference is shown,
-never refused. Protocol 3 keeps holds and running commands in one record.
+Every record carries its `protocol` number and `autana_version`; for running
+commands a difference is shown, never refused. Protocol 3 keeps holds and
+running commands in one record.
 An install older than protocol 3 takes the board from a timed hold or a
 person's reservation at once, and from an until-released hold after the
 stale window. Protocol 3 does not see protocol-2 `.human.json` reservations.
@@ -401,8 +407,9 @@ python scripts/device/device.py --owner ci-7 --wait 0 run-suite run_gfx_suite --
 
 `--owner` names the holder, and `--wait` is the lock wait in
 seconds. `release --token <t>`, `take`, `run`, `hand-to-human --note <n>`,
-`take-back` and `wait-free` are what `autana lock` calls; `check-token --token <t>` exits 0 when the token is the
-board's live lock, which `flash_image.sh` asks before it opens the port.
+`take-back` and `wait-free` are what `autana lock` calls;
+`check-token --token <t>` exits 0 when the token is the board's live lock,
+which `flash_image.sh` asks before it opens the port.
 
 ## How it works
 
@@ -414,7 +421,8 @@ lock is gone.
 
 | | What the lock is tied to | If the holder dies |
 |---|---|---|
-| Windows | A job object the holder joins when it takes the lock. Every process it starts inherits the job, grandchildren of dead parents included. | The kernel closes the job and ends every member. A process started with `CREATE_BREAKAWAY_FROM_JOB` can leave it. |
+| CLI child | `device.py` lives and dies with the `autana` that started it: a Windows job assigned before the child resumes; `PR_SET_PDEATHSIG` on Linux. | The kernel ends the device child. On Linux the signal follows the thread that forked, so the thread using `device_process` must also wait for it. |
+| Windows | A job object the holder joins when it takes the lock. Every process it starts inherits the job, grandchildren of dead parents included. | The kernel closes the job and ends every member. A process started with `CREATE_BREAKAWAY_FROM_JOB` can leave the device child's job but remains in autana's job. |
 | Linux | A scope tag: each command tags its descendants independently of the board token, found through `/proc`. A small watchdog holds the read end of a pipe. | The pipe closes, and the watchdog ends every process still carrying that tag. A process that scrubs its environment or runs as another user is out of reach. |
 
 A holder that ends normally gives the processes it started two seconds, ends
@@ -429,11 +437,10 @@ logs `reclaimed lock from <owner> for <command> (dead process | heartbeat
 expiry)`. A holder whose heartbeat is refused (its lock was replaced, or it
 went stale while it was paused) has lost the board: a capture stops at its
 next read, the next port open refuses, a flash in progress is ended, and the
-command fails with `device lock was lost`. A person's reservation has no
-heartbeat: it lapses one hour after the last `lock hand`.
-Timed holds have no heartbeat and lapse at their expiry. Until-released
-holds have no heartbeat and remain until released or their owner exits on
-this host; a reused pid also counts as an exited owner.
+command fails with `device lock was lost`. Holds have no heartbeat: a
+person's reservation lapses one hour after the last `lock hand`, a timed
+hold at its expiry, and an until-released hold when it is released or its
+owner exits on this host (a reused pid or a zombie counts as exited).
 
 ```mermaid
 stateDiagram-v2

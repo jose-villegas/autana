@@ -51,6 +51,19 @@ class LivenessTests(unittest.TestCase):
         self.assertTrue(device_lock.posix_process_alive(
             4242, self.kill_raising(OSError(errno.EIO, "io"))))
 
+    def test_linux_zombie_and_exited_states_are_dead(self):
+        for state in ("Z", "X", "S"):
+            with self.subTest(state=state), \
+                    mock.patch.object(device_lock.sys, "platform", "linux"), \
+                    mock.patch.object(Path, "read_text", return_value=f"4242 (name (nested)) {state} 1"):
+                self.assertEqual(device_lock.posix_process_alive(4242, lambda *unused: None),
+                                 state == "S")
+
+    def test_linux_unreadable_stat_stays_alive(self):
+        with mock.patch.object(device_lock.sys, "platform", "linux"), \
+                mock.patch.object(Path, "read_text", side_effect=PermissionError):
+            self.assertTrue(device_lock.posix_process_alive(4242, lambda *unused: None))
+
     def detached_sleeper(self):
         """A live process on a DIFFERENT console from this one, the case an
         agent under Git Bash and one under PowerShell or Codex are in."""

@@ -54,13 +54,20 @@ def create_kill_on_close_job(breakaway_ok=False, kernel=None):
 
 
 def bind_parent_lifetime(parent_pid):
-    """Linux direct children must die even when their parent receives SIGKILL."""
+    """Linux: SIGKILL this child when its parent dies, even by SIGKILL.
+    A parent already gone before prctl sends no signal, so that case kills
+    itself. The signal follows the thread that forked: keep
+    `with device_process(...)` on the thread that waits."""
     import ctypes
-    kernel = ctypes.CDLL(None, use_errno=True)
-    if kernel.prctl(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0) != 0:
-        raise OSError(ctypes.get_errno(), "cannot bind child to parent lifetime")
-    if os.getppid() != parent_pid:
-        os.kill(os.getpid(), signal.SIGKILL)
+    prctl = ctypes.CDLL(None, use_errno=True).prctl
+
+    def bind():
+        if prctl(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0) != 0:
+            raise OSError(ctypes.get_errno(), "cannot bind child to parent lifetime")
+        if os.getppid() != parent_pid:
+            os.kill(os.getpid(), signal.SIGKILL)
+
+    return bind
 
 
 def launch_process_tree(command, *, parent_lifetime=False, new_session=True, **options):
@@ -69,7 +76,7 @@ def launch_process_tree(command, *, parent_lifetime=False, new_session=True, **o
         options["start_new_session"] = new_session
         if parent_lifetime and sys.platform.startswith("linux"):
             parent_pid = os.getpid()
-            options["preexec_fn"] = lambda: bind_parent_lifetime(parent_pid)
+            options["preexec_fn"] = bind_parent_lifetime(parent_pid)
         return subprocess.Popen(command, **options)
     import ctypes
     from ctypes import wintypes

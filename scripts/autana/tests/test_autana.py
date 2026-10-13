@@ -1221,6 +1221,7 @@ print(json.dumps(seen))
         with mock.patch.object(autana, "launch_process_tree") as started, \
              mock.patch("builtins.print") as output:
             started.return_value.wait.side_effect = [KeyboardInterrupt, autana.EXIT_INTERRUPTED]
+            started.return_value.returncode = autana.EXIT_INTERRUPTED
             code = autana.hand(["--until-back", "10", "download mode"])
         self.assertEqual(code, autana.EXIT_INTERRUPTED)
         started.return_value.terminate.assert_not_called()
@@ -1239,6 +1240,19 @@ print(json.dumps(seen))
     def test_take_back_rejects_arguments(self):
         with self.assertRaises(SystemExit):
             autana.take_back(["extra"])
+
+
+class DeviceProcessInterruptTests(unittest.TestCase):
+    def test_interrupt_waits_for_device_cleanup(self):
+        process = mock.Mock()
+        process.poll.return_value = 130
+        process.wait.return_value = 130
+        with mock.patch.object(autana, "launch_process_tree", return_value=process):
+            with self.assertRaises(KeyboardInterrupt):
+                with autana.device_process(["device"]):
+                    raise KeyboardInterrupt
+        process.wait.assert_called_once_with(timeout=autana.INTERRUPT_GRACE_SECONDS)
+        process.terminate.assert_not_called()
 
 
 class TuneCommandTests(unittest.TestCase):

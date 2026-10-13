@@ -190,6 +190,7 @@ OWNER_ENV = "_AUTANA_OWNER"
 BOARD_ENV = autana_config.BOARD_ENV
 TOKEN_ENV = autana_config.TOKEN_ENV
 PROJECT_ENV = autana_config.PROJECT_ENV
+INTERRUPT_GRACE_SECONDS = 5
 
 
 def device_command(*args, wait=None):
@@ -213,6 +214,12 @@ def device_process(command, **options):
     process = launch_process_tree(command, parent_lifetime=True, new_session=False, **options)
     try:
         yield process
+    except KeyboardInterrupt:
+        try:
+            process.wait(timeout=INTERRUPT_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            pass
+        raise
     finally:
         if process.poll() is None:
             process.terminate()
@@ -626,19 +633,13 @@ def hand(args):
     command = device_command("hand-to-human", "--note", " ".join(args), *wait)
     if not wait:
         return call_device(command)
-    with device_process(command) as process:
-        try:
+    try:
+        with device_process(command) as process:
             return process.wait()
-        except KeyboardInterrupt:
-            try:
-                code = process.wait(timeout=1)
-            except subprocess.TimeoutExpired:
-                process.terminate()
-                process.wait()
-                code = None
-            if code != EXIT_INTERRUPTED:
-                print("human reservation wait interrupted")
-            return EXIT_INTERRUPTED
+    except KeyboardInterrupt:
+        if process.returncode != EXIT_INTERRUPTED:
+            print("human reservation wait interrupted")
+        return EXIT_INTERRUPTED
 
 
 def take_back(args):

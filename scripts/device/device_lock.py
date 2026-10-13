@@ -150,8 +150,8 @@ def normalise_board(serial):
 
 
 def process_alive(pid):
-    """Only a pid that demonstrably does not exist counts as dead. Every other
-    outcome answers alive: this decides whether one owner may take the board
+    """Only a process demonstrably absent or exited counts as dead. Every
+    other outcome answers alive: this decides whether one owner may take the board
     from another, and a wrongly reclaimed lock corrupts somebody's capture
     while a wrongly held one only waits out its heartbeat."""
     if pid == os.getpid():
@@ -163,6 +163,9 @@ def process_alive(pid):
     return posix_process_alive(pid)
 
 
+LINUX_EXITED_PROCESS_STATES = frozenset(("Z", "X"))
+
+
 def posix_process_alive(pid, kill=None):
     kill = kill or os.kill
     try:
@@ -171,6 +174,13 @@ def posix_process_alive(pid, kill=None):
         return False
     except OSError:
         return True
+    if sys.platform.startswith("linux"):
+        try:
+            stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="replace")
+            state = stat[stat.rindex(")") + 2:].split()[0]
+            return state not in LINUX_EXITED_PROCESS_STATES
+        except (OSError, ValueError, IndexError):
+            pass
     return True
 
 
