@@ -455,7 +455,7 @@ is future work.
   `sand_step()`, `material_frame_set_gravity(&paint_frame.material, gx, gy)`,
   and local depth's per-frame setup. There is exactly one gravity source
   reaching shading, and it already goes through the tilt filter.
-- Magnitude: `IMU_COUNTS_PER_G` is 4096; host-side test fixtures use
+- Magnitude: `INPUT_GRAVITY_PER_G` is 4096; host-side test fixtures use
   gravity pairs of magnitude ~1000 (e.g. `(500, 866)` for 30 degrees) as
   "the same order of magnitude," not an exact unit match.
 - The tilt filter (`tilt.h`): `TILT_TAU_STILL_MS` 260, `TILT_TAU_MOVING_MS`
