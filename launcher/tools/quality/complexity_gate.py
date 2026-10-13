@@ -143,7 +143,7 @@ def resolve_analysis_clang():
 
 def find_xtensa_toolchain_root():
     """The xtensa-esp-elf GCC install esp-clang needs pointed at
-    (--sysroot/--gcc-toolchain) to resolve newlib's platform_include shims:
+    (--sysroot/--gcc-toolchain) to resolve IDF's libc include_next shims:
     esp-clang carries no libc of its own for this target. Same
     glob-and-take-newest convention as the esp-clang lookup above, under
     the same ESP-IDF tools root."""
