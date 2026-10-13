@@ -18,7 +18,7 @@ entries:
 # present modes and the SPI driver's own queue keep their configured placement.
 # CONFIG_LAUNCHER_DEVELOPMENT adds overlays, send auditing and raw-full dispatch,
 # so dev and diag are larger.
-# IRAM budget: release 801 B, dev 3997 B, diag 3997 B
+# IRAM budget: release 801 B, dev 3993 B, diag 3993 B
 [mapping:present_gfx]
 archive: libmain.a
 entries:

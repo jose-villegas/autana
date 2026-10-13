@@ -159,6 +159,6 @@ direct_dependencies:
 - espressif/usb
 - idf
 - waveshare/esp_lcd_sh8601
-manifest_hash: 289c60441d389c5a48d7e58ff9aaaa0dca284d01d20b111ff2b95acded3cd002
+manifest_hash: 73abeade3d6d2e0b28dee5db3e5f9c793f79f3c8596e15aea0d9822ce76cb7fe
 target: esp32s3
 version: 3.0.0
