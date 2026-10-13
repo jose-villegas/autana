@@ -176,7 +176,8 @@ pmu_take_events(bool* short_press, bool* long_press) {
 static void
 poll_once(void) {
     const bool boot_down = gpio_get_level(BOARD_BOOT_GPIO) == 0; /* active low */
-    bool short_press = false, long_press = false;
+    bool short_press = false;
+    bool long_press = false;
     if (pmu_ready) {
         pmu_take_events(&short_press, &long_press);
     }
