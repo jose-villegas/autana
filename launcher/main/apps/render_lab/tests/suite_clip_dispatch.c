@@ -181,8 +181,8 @@ test_boot_clip_opening_touch_does_not_select_overlay_row(void) {
         const int item = 1;
         const char* expected = scene_animator_clip_name(scene, subject, item);
         touch = (input_t){.down = true, .pressed = true};
-        ui_transform_point(ui_effective_transform(), list->body.x + list->body.w / 2,
-                           list->body.y + item * UI_ROW_HEIGHT + UI_ROW_HEIGHT / 2 - list->scroll.y, &touch.x,
+        ui_transform_point(ui_effective_transform(), list->body.x + (list->body.w / 2),
+                           list->body.y + (item * UI_ROW_HEIGHT) + (UI_ROW_HEIGHT / 2) - list->scroll.y, &touch.x,
                            &touch.y);
         render_lab_test_frame(false, &touch);
         touch.pressed = false;

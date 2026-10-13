@@ -378,8 +378,8 @@ test_held_dither_opening_touch_with_small_motion_does_not_pick(void) {
     const int motion_pixels = 2;
     tap_fixture(SAND_COLOUR_16, false);
     const mu_Rect dither = dither_rect(false);
-    const int x = dither.x + dither.w / 2;
-    int y = dither.y + dither.h / 2;
+    const int x = dither.x + (dither.w / 2);
+    int y = dither.y + (dither.h / 2);
     TEST_ASSERT_FALSE(any_hit(options_frame(true, true, false, x, y)));
     for (int frame = 0; frame < UI_DROPDOWN_CLOSE_FRAMES; frame++) {
         y += frame < motion_pixels;
@@ -390,7 +390,7 @@ test_held_dither_opening_touch_with_small_motion_does_not_pick(void) {
         TEST_ASSERT_FALSE(any_hit(options_frame(false, false, false, x, y)));
     }
     const mu_Rect list = ui_dropdown_list_rect(dither, DITHER_COUNT, dither.h, canvas_h(false), UI_MARGIN);
-    TEST_ASSERT_EQUAL_INT(0, tap_at(list.x + list.w / 2, list.y + dither.h / 2).dither);
+    TEST_ASSERT_EQUAL_INT(0, tap_at(list.x + (list.w / 2), list.y + (dither.h / 2)).dither);
 }
 
 static void
