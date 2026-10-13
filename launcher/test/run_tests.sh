@@ -122,6 +122,7 @@ $TEST_DIR/test_fence.c
 $MAIN_DIR/app/app_arena.c
 $MAIN_DIR/app/app_registry.c
 $MAIN_DIR/shell/shell_system.c
+$MAIN_DIR/shell/shell_home_edge.c
 $MAIN_DIR/shell/shell_frame.c
 $MAIN_DIR/input/touch_fsm.c
 $MAIN_DIR/input/touch_calib.c

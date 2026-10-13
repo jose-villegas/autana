@@ -75,6 +75,7 @@ set(app_srcs
     "shell/scene_system.c"
     "shell/shell.c"
     "shell/shell_apps.c"
+    "shell/shell_home_edge.c"
     "shell/shell_frame.c"
     "shell/shell_system.c"
     "core/job.c"
