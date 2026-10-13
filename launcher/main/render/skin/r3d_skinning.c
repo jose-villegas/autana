@@ -37,7 +37,7 @@ r3d_skin_output_init(const r3d_lit_mesh_t* bind, void* block, size_t bytes, r3d_
         return false;
     }
     uint8_t* p = block;
-    out->positions = (int16_t(*)[3])(void*)p;
+    out->positions = (int16_t (*)[3])(void*)p;
     out->clusters = (r3d_lit_cluster_t*)(void*)(p + cluster_offset(bind));
     out->nodes = (r3d_lit_node_t*)(void*)(p + node_offset(bind));
     if (bind->cluster_count != 0) {
@@ -47,7 +47,7 @@ r3d_skin_output_init(const r3d_lit_mesh_t* bind, void* block, size_t bytes, r3d_
         memcpy(out->nodes, bind->nodes, (size_t)bind->node_count * sizeof *out->nodes);
     }
     out->mesh = *bind;
-    out->mesh.positions = (const int16_t(*)[3])out->positions;
+    out->mesh.positions = (const int16_t (*)[3])out->positions;
     out->mesh.colors = bind->colors;
     out->mesh.clusters = out->clusters;
     out->mesh.nodes = out->nodes;
@@ -202,9 +202,9 @@ skin_lit_range(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t
                uint8_t (*light)[R3D_SKIN_LIGHT_CHANNELS], int influences, int mode) {
     const uint8_t* vertices = skin->vertices;
     const size_t stride = skin->vertex_stride;
-    const int16_t(*positions)[POSITION_AXES] = bind->positions;
-    const uint8_t(*colors)[R3D_SKIN_LIGHT_CHANNELS] = bind->colors;
-    int16_t(*posed)[POSITION_AXES] = out->positions;
+    const int16_t (*positions)[POSITION_AXES] = bind->positions;
+    const uint8_t (*colors)[R3D_SKIN_LIGHT_CHANNELS] = bind->colors;
+    int16_t (*posed)[POSITION_AXES] = out->positions;
     for (int c = first; c < first + count; c++) {
         r3d_lit_cluster_t* cluster = &out->clusters[c];
         empty_bounds(cluster->lo, cluster->hi);
@@ -244,7 +244,7 @@ r3d_skin_clusters(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4
 
 #define SKIN_LIGHT_KERNEL(name, mode)                                                                                  \
     void name(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first, int count,        \
-              r3d_skin_output_t* out, const mat3f_t* normals, const r3d_skin_lights_t* lights, uint8_t(*light)[3]) {   \
+              r3d_skin_output_t* out, const mat3f_t* normals, const r3d_skin_lights_t* lights, uint8_t (*light)[3]) {  \
         assert(lights != NULL && normals != NULL);                                                                     \
         assert(lights->count >= 0 && lights->count <= R3D_SKIN_LIGHT_MAX);                                             \
         const r3d_skin_lights_t prepared = *lights;                                                                    \

@@ -92,8 +92,8 @@ frustum_planes(const r3d_lens_t* lens, plane_t planes[PLANE_COUNT]) {
     };
     for (int p = 0; p < PLANE_COUNT; p++) {
         for (int j = 0; j < 4; j++) {
-            planes[p].w[j] =
-                in_lens[p][0] * lens->m.m[0][j] + in_lens[p][1] * lens->m.m[1][j] + in_lens[p][2] * lens->m.m[2][j];
+            planes[p].w[j] = (in_lens[p][0] * lens->m.m[0][j]) + (in_lens[p][1] * lens->m.m[1][j])
+                             + (in_lens[p][2] * lens->m.m[2][j]);
         }
         planes[p].w[3] += in_lens[p][3];
     }

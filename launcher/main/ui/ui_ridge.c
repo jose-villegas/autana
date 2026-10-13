@@ -1360,7 +1360,7 @@ pluck_from_shaking(void) {
     if (ridge->shake < SHAKE_THRESHOLD) {
         return;
     }
-    ridge->shake_seed = ridge->shake_seed * 1664525U + 1013904223U;
+    ridge->shake_seed = (ridge->shake_seed * 1664525U) + 1013904223U;
     spring_line_poke(&ridge->line, (int)((ridge->shake_seed >> 8) % RIDGE_COLUMNS), SHAKE_HALF_WIDTH,
                      (ridge->shake_seed & 0x80U ? 1 : -1) * (MATHX_ONE / 128) * ridge->shake);
 }

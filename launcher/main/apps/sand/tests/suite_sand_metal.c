@@ -238,7 +238,7 @@ test_watered_dirt_steaming_precedes_resolving_when_it_happens(void) {
  * 0.918^STEAM_TEST_PODS - with 200 pods, about 1 in 27 million. */
 #define STEAM_TEST_PODS    200
 #define STEAM_TEST_SPACING 4
-#define STEAM_TEST_W       (2 + STEAM_TEST_SPACING * STEAM_TEST_PODS + 2)
+#define STEAM_TEST_W       (2 + (STEAM_TEST_SPACING * STEAM_TEST_PODS) + 2)
 #define STEAM_TEST_H       6
 
 static void

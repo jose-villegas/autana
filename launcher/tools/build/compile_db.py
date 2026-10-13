@@ -1,4 +1,4 @@
-"""Compiler arguments shared by preprocessing and stack graph measurements."""
+"""Compiler arguments shared by analysis, preprocessing and stack measurements."""
 import os
 import ntpath
 import posixpath
@@ -22,6 +22,14 @@ def compile_flags(entry):
                 arg = arg.replace('\\"', '"')
         if skip:
             skip = False
+        elif arg.startswith("@"):
+            try:
+                with open(path.join(directory, arg[1:]), encoding="utf-8", errors="replace") as response:
+                    text = response.read()
+            except OSError:
+                filtered.append(arg)
+            else:
+                filtered.extend(compile_flags({"command": text, "file": entry["file"], "directory": directory}))
         elif arg in {"-o", "-MF", "-MT", "-MQ"}:
             skip = True
         elif arg not in {"-c", "-MD", "-MMD", "-MP"} and path.normcase(path.normpath(path.join(directory, arg.replace("\\", "/")))) != source:

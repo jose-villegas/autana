@@ -41,8 +41,8 @@ if ! node --version >/dev/null 2>&1; then
     exit 0
 fi
 
-if ! mmdc --version >/dev/null 2>&1; then
-    echo "pre-commit: mermaid validation skipped, mmdc (mermaid-cli) not found on PATH" >&2
+if ! node scripts/gates/check-mermaid.mjs --probe >/dev/null 2>&1; then
+    echo "pre-commit: mermaid validation skipped, no mmdc (npm ci --prefix scripts/gates/mermaid)" >&2
     exit 0
 fi
 

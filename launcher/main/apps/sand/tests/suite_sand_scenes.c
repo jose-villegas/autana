@@ -150,7 +150,7 @@ note_pair_contact(bool (*seen)[ALL_PAIRS_SPAWN_COUNT], int m, int nb, int* found
  * names an extended static or gunpowder, not a material_id_t. */
 static int
 count_all_pairs_contacts(const sand_t* s, int top) {
-    bool(*seen)[ALL_PAIRS_SPAWN_COUNT] = calloc(ALL_PAIRS_SPAWN_COUNT, sizeof *seen);
+    bool (*seen)[ALL_PAIRS_SPAWN_COUNT] = calloc(ALL_PAIRS_SPAWN_COUNT, sizeof *seen);
     TEST_ASSERT_NOT_NULL_MESSAGE(seen, "the pair-coverage map must fit in what the framebuffer leaves");
 
     int found = 0;
@@ -1237,7 +1237,7 @@ static void
 build_tree_grove_canopy(sand_t* s, int cx, int top) {
     for (int dy = -TREE_GROVE_CANOPY_R; dy <= TREE_GROVE_CANOPY_R; dy++) {
         for (int dx = -TREE_GROVE_CANOPY_R; dx <= TREE_GROVE_CANOPY_R; dx++) {
-            if (dx * dx + dy * dy > TREE_GROVE_CANOPY_R * TREE_GROVE_CANOPY_R) {
+            if ((dx * dx) + (dy * dy) > TREE_GROVE_CANOPY_R * TREE_GROVE_CANOPY_R) {
                 continue;
             }
             const int x = cx + dx, y = top + dy;

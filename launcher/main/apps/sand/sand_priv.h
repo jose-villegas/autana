@@ -29,7 +29,7 @@
 #define SAND_PASS_END(s, pass) FRAME_COST_END(pass##_mark, "sand." #pass)
 #endif
 
-#define SAND_CHUNK_SIDE_MIN (2 * SAND_LIQUID_SIGHT + 1)
+#define SAND_CHUNK_SIDE_MIN ((2 * SAND_LIQUID_SIGHT) + 1)
 
 _Static_assert(SAND_CHUNK_SIDE_MIN > 2 * SAND_LIQUID_SIGHT,
                "a chunk must clear the furthest a split pass reads or transfers");
