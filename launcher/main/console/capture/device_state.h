@@ -46,7 +46,7 @@ void device_state_read(device_state_t* out);
  *
  * `input` is passed in, not read here: this function has no notion of "the
  * current frame" on its own; see console_screenshot_dump()'s own comment
- * (console/console_screenshot.h) for why its caller passes the exact
+ * (console/verbs/console_screenshot.h) for why its caller passes the exact
  * input_t the frame being captured was drawn with. */
 static inline void
 device_state_format_json(const device_state_t* state, const input_t* input, char out[DEVICE_STATE_JSON_MAX]) {

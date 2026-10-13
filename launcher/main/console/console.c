@@ -15,7 +15,7 @@
  */
 #include "console/console.h"
 #if CONFIG_LAUNCHER_SELFTEST
-#include "console/console_runsuite.h"
+#include "console/verbs/console_runsuite.h"
 #endif
 
 #include <stdio.h>
