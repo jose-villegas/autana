@@ -46,7 +46,8 @@ Compare the bump with main on the board, seeded,
 improved, unchanged and regressed rows, with their magnitudes), then remove the
 label. The maintainer weighs the summary: small regressions can be banked and
 checked later, while one that is large, or worse everywhere, holds the bump.
-Bumps that cannot
+A new GCC major also re-measures each optimisation flag in
+`launcher/main/CMakeLists.txt`'s pinned-GCC block on and off. Bumps that cannot
 change the firmware (Python and Node, their packages, Actions, the runner) are
 exempt.
 

@@ -82,7 +82,7 @@ report_case(const scale_case_t* test_case) {
     start_us = timing_now_us();
     start_cycles = esp_cpu_get_cycle_count();
     for (int i = 0; i < SAMPLES; i++) {
-        const upscale_job_t bottom = {&scale, &picture, destination, middle, GFX_HEIGHT - middle};
+        upscale_job_t bottom = {&scale, &picture, destination, middle, GFX_HEIGHT - middle};
         TEST_ASSERT_TRUE(job_run_core1(upscale_job, &top, sizeof top));
         upscale_job(&bottom);
         TEST_ASSERT_TRUE(job_wait(1000));

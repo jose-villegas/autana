@@ -10,11 +10,9 @@
  * gfx_color_t just to ask what a material IS.
  *
  * The palette itself is `const`, so it costs 512 bytes of flash and no RAM.
- * Writing it out by hand would be 256 unreadable, unmaintainable literals,
- * so the material colours are interpolated by macro instead - ugly to read
- * once, and the alternative is either a table nobody can safely edit, or
- * building it at startup and paying for it in the resource there is least
- * of.
+ * Intermediate colours are named enum constants, so nested interpolation
+ * expands once rather than once per use; the tables convert them to panel
+ * format at compile time.
  */
 #include "material_palette.h"
 
@@ -25,23 +23,15 @@
 /* `sh` of the way from `lo` to `hi`, out of 15. */
 #define LERP_RGB(lo, hi, sh) GFX_LERP_RGB888(lo, hi, sh, 15)
 
-#ifdef ANALYSIS_SCAN
-/* The tables below nest LERP inside LERP, so any stub that keeps both colour
- * arguments still doubles per level: 143,000 tokens for one row of stone
- * grain, past cppcheck's MISRA deadline. Stubbed for the tables only: LERP
- * goes back to LERP_RGB below them, so the functions are analysed as written. */
-#define LERP(lo, hi, sh) ((uint32_t)(sh))
-#else
-#define LERP(lo, hi, sh) LERP_RGB(lo, hi, sh)
-#endif
+#define LERP(lo, hi, sh)     LERP_RGB(lo, hi, sh)
 
 /* glass MAT_GLASS case needs small tilt for finer gradient than palette steps */
-#define LERP8(lo, hi, fr) GFX_LERP_RGB888(lo, hi, fr, 255)
+#define LERP8(lo, hi, fr)    GFX_LERP_RGB888(lo, hi, fr, 255)
 
 /* One shade per variant, dry to wet; the saturated level takes the full wet
  * colour. */
-#define DIRT_DRY          0x9A7B52
-#define DIRT_WET          0x3A2A18
+#define DIRT_DRY             0x9A7B52
+#define DIRT_WET             0x3A2A18
 
 #define SOIL_SHADES                                                                                                    \
     GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 0)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 1)), GFX_RGB(LERP(DIRT_DRY, DIRT_WET, 2)),  \
@@ -70,17 +60,19 @@
  * see material_wood_leaf_wave() and wood_colours()).
  * Both anchored on leaf's own green, not wood's colour - even at rest this
  * should read as leaf, just a darker shade of it. */
-#define WOOD_LEAF_TINT_LO LERP(0x468F26, 0x000000, 6)
-#define WOOD_LEAF_TINT_HI LERP(0x468F26, 0x8CD24E, 3)
+enum {
+    WOOD_LEAF_TINT_LO = LERP(0x468F26, 0x000000, 6),
+    WOOD_LEAF_TINT_HI = LERP(0x468F26, 0x8CD24E, 3),
+};
 
 /* Hot walls appear visibly hot. */
-#define STONE_FROST       0xCEDCE8
-#define STONE_AMBIENT     0x5F6673
-#define STONE_NEUTRAL     0x8A7466
-#define STONE_GLOW        0x9E3A18
-#define STONE_MOLTEN      0xE8752A
+#define STONE_FROST   0xCEDCE8
+#define STONE_AMBIENT 0x5F6673
+#define STONE_NEUTRAL 0x8A7466
+#define STONE_GLOW    0x9E3A18
+#define STONE_MOLTEN  0xE8752A
 
-#define STONE_COOL(v)     LERP(STONE_FROST, STONE_AMBIENT, ((v) * 15) / (SAND_AMBIENT_HEAT > 0 ? SAND_AMBIENT_HEAT : 1))
+#define STONE_COOL(v) LERP(STONE_FROST, STONE_AMBIENT, ((v) * 15) / (SAND_AMBIENT_HEAT > 0 ? SAND_AMBIENT_HEAT : 1))
 #define STONE_WARM(v)                                                                                                  \
     LERP(STONE_AMBIENT, STONE_NEUTRAL,                                                                                 \
          (((v) - SAND_AMBIENT_HEAT) * 15)                                                                              \
@@ -90,9 +82,28 @@
          (((v) - SAND_SHOCK_HEAT) * 15)                                                                                \
              / (SAND_SHOCK_HEAT < MATERIAL_VARIANTS - 1 ? MATERIAL_VARIANTS - 1 - SAND_SHOCK_HEAT : 1))
 
-#define STONE_RGB(v) ((v) <= SAND_AMBIENT_HEAT ? STONE_COOL(v) : (v) < SAND_SHOCK_HEAT ? STONE_WARM(v) : STONE_HOT(v))
+#define STONE_RGB(v)     ((v) <= SAND_AMBIENT_HEAT ? STONE_COOL(v) : (v) < SAND_SHOCK_HEAT ? STONE_WARM(v) : STONE_HOT(v))
 
-#define STONE_AT(v)  GFX_RGB(STONE_RGB(v))
+#define STONE_DARK(rgb)  LERP((rgb), 0x000000, 3)
+#define STONE_LIGHT(rgb) LERP((rgb), 0xFFFFFF, 3)
+
+#define STONE_VARIANT_COLOURS(v)                                                                                       \
+    STONE_RGB_##v = STONE_RGB(v), STONE_EDGE_##v = LERP(STONE_RGB_##v, STONE_EDGE_AMBIENT, 10),                        \
+    STONE_DARK_##v = STONE_DARK(STONE_RGB_##v), STONE_LIGHT_##v = STONE_LIGHT(STONE_RGB_##v),                          \
+    STONE_EDGE_DARK_##v = STONE_DARK(STONE_EDGE_##v), STONE_EDGE_LIGHT_##v = STONE_LIGHT(STONE_EDGE_##v)
+
+#define STONE_COLOURS(a, b, c, d)                                                                                      \
+    STONE_VARIANT_COLOURS(a), STONE_VARIANT_COLOURS(b), STONE_VARIANT_COLOURS(c), STONE_VARIANT_COLOURS(d)
+
+enum {
+    STONE_EDGE_AMBIENT = STONE_RGB(SAND_AMBIENT_HEAT),
+    STONE_COLOURS(0, 1, 2, 3),
+    STONE_COLOURS(4, 5, 6, 7),
+    STONE_COLOURS(8, 9, 10, 11),
+    STONE_COLOURS(12, 13, 14, 15),
+};
+
+#define STONE_AT(v) GFX_RGB(STONE_RGB_##v)
 
 #define STONE_SHADES                                                                                                   \
     STONE_AT(0), STONE_AT(1), STONE_AT(2), STONE_AT(3), STONE_AT(4), STONE_AT(5), STONE_AT(6), STONE_AT(7),            \
@@ -396,7 +407,7 @@ static const gfx_color_t palette[256] = {
 #define GLASS_RGB(v)        ((v) <= SAND_AMBIENT_HEAT ? GLASS_COOL(v) : (v) < SAND_SHOCK_HEAT ? GLASS_WARM(v) : GLASS_HOT(v))
 
 /* Blends the TEMPERATURE toward ambient rather than the RGB endpoints the way
- * STONE_EDGE_RGB does: averaging HOT's orange with ambient's colour directly
+ * stone edges do: averaging HOT's orange with ambient's colour directly
  * saturates to an unrelated green, where blending the value first and only
  * then mapping it through GLASS_RGB keeps every edge on COOL/WARM/HOT's own
  * ramp. */
@@ -406,22 +417,18 @@ static const gfx_color_t palette[256] = {
 #define GLASS_EDGE_V(v)                                                                                                \
     (((v) >= SAND_SHOCK_HEAT && GLASS_EDGE_V_RAW(v) < SAND_SHOCK_HEAT) ? SAND_SHOCK_HEAT : GLASS_EDGE_V_RAW(v))
 #define GLASS_EDGE_RGB(v)    GLASS_RGB(GLASS_EDGE_V(v))
-#define STONE_EDGE_RGB(v)    LERP(STONE_RGB(v), STONE_RGB(SAND_AMBIENT_HEAT), 10)
 
 /* GLASS_SHIMMER via COOL. Mix WARM/HOT for icy blue to muddy yellow-green.
  * White stays, brighter. */
 #define GLASS_GRADIENT_HI(v) ((v) <= SAND_AMBIENT_HEAT ? GLASS_SHIMMER : 0xFFFFFF)
 
-#define STONE_DARK(rgb)      LERP((rgb), 0x000000, 3)
-#define STONE_LIGHT(rgb)     LERP((rgb), 0xFFFFFF, 3)
+#define GRAIN8(lo, hi, k)    GFX_RGB(LERP((lo), (hi), (k) * 15 / 7))
 
-#define STONE_GRAIN(rgb, k)  GFX_RGB(LERP(STONE_DARK(rgb), STONE_LIGHT(rgb), (k) * 15 / 7))
+#define GRAIN8_ROW(lo, hi)                                                                                             \
+    {GRAIN8(lo, hi, 0), GRAIN8(lo, hi, 1), GRAIN8(lo, hi, 2), GRAIN8(lo, hi, 3),                                       \
+     GRAIN8(lo, hi, 4), GRAIN8(lo, hi, 5), GRAIN8(lo, hi, 6), GRAIN8(lo, hi, 7)}
 
-#define STONE_SPECKLE(v, k)  STONE_GRAIN(STONE_RGB(v), k)
-
-#define STONE_SPECKLE_ROW(v)                                                                                           \
-    {STONE_SPECKLE(v, 0), STONE_SPECKLE(v, 1), STONE_SPECKLE(v, 2), STONE_SPECKLE(v, 3),                               \
-     STONE_SPECKLE(v, 4), STONE_SPECKLE(v, 5), STONE_SPECKLE(v, 6), STONE_SPECKLE(v, 7)}
+#define STONE_SPECKLE_ROW(v) GRAIN8_ROW(STONE_DARK_##v, STONE_LIGHT_##v)
 
 static const gfx_color_t stone_speckle[MATERIAL_VARIANTS][8] = {
     STONE_SPECKLE_ROW(0),  STONE_SPECKLE_ROW(1),  STONE_SPECKLE_ROW(2),  STONE_SPECKLE_ROW(3),
@@ -430,14 +437,15 @@ static const gfx_color_t stone_speckle[MATERIAL_VARIANTS][8] = {
     STONE_SPECKLE_ROW(12), STONE_SPECKLE_ROW(13), STONE_SPECKLE_ROW(14), STONE_SPECKLE_ROW(15),
 };
 
-#define STONE_EDGE_SPECKLE(v, k) STONE_GRAIN(STONE_EDGE_RGB(v), k)
-
-#define STONE_EDGE_ROW(v)                                                                                              \
-    {STONE_EDGE_SPECKLE(v, 0), STONE_EDGE_SPECKLE(v, 1), STONE_EDGE_SPECKLE(v, 2), STONE_EDGE_SPECKLE(v, 3),           \
-     STONE_EDGE_SPECKLE(v, 4), STONE_EDGE_SPECKLE(v, 5), STONE_EDGE_SPECKLE(v, 6), STONE_EDGE_SPECKLE(v, 7)}
+#define STONE_EDGE_ROW(v) GRAIN8_ROW(STONE_EDGE_DARK_##v, STONE_EDGE_LIGHT_##v)
 
 /* UNLIT wood speckled; burning logs glow uniformly. */
-#define WOOD_GRAIN(k) GFX_RGB(LERP(LERP(WOOD_UNLIT, 0x000000, 3), LERP(WOOD_UNLIT, 0xFFFFFF, 2), (k) * 15 / 7))
+enum {
+    WOOD_GRAIN_DARK = LERP(WOOD_UNLIT, 0x000000, 3),
+    WOOD_GRAIN_LIGHT = LERP(WOOD_UNLIT, 0xFFFFFF, 2),
+};
+
+#define WOOD_GRAIN(k) GRAIN8(WOOD_GRAIN_DARK, WOOD_GRAIN_LIGHT, k)
 
 static const gfx_color_t wood_grain[8] = {
     WOOD_GRAIN(0), WOOD_GRAIN(1), WOOD_GRAIN(2), WOOD_GRAIN(3),
@@ -484,17 +492,22 @@ static const gfx_color_t wood_grain[8] = {
 #define ROOT_STEP(k)       LERP(ROOT_DARK, ROOT_OLD, (k) * 15 / (ROOT_SHADES - 1))
 #define ROOT_STEP_LIGHT(k) LERP(ROOT_LIGHT, ROOT_OLD_LIGHT, (k) * 15 / (ROOT_SHADES - 1))
 
+enum {
+    ROOT_STEP_0 = ROOT_STEP(0),
+    ROOT_STEP_LIGHT_0 = ROOT_STEP_LIGHT(0),
+    ROOT_STEP_1 = ROOT_STEP(1),
+    ROOT_STEP_LIGHT_1 = ROOT_STEP_LIGHT(1),
+    ROOT_STEP_2 = ROOT_STEP(2),
+    ROOT_STEP_LIGHT_2 = ROOT_STEP_LIGHT(2),
+    ROOT_STEP_3 = ROOT_STEP(3),
+    ROOT_STEP_LIGHT_3 = ROOT_STEP_LIGHT(3),
+};
+
 /* 0 or 1: tip; 2: one child; 3: junction; >3: collar or thicket middle. */
 static inline unsigned
 root_shade(unsigned n) {
     return n <= 1u ? 0u : n == 2u ? 1u : n == 3u ? 2u : (ROOT_SHADES - 1u);
 }
-
-#define GRAIN8(lo, hi, k) GFX_RGB(LERP((lo), (hi), (k) * 15 / 7))
-
-#define GRAIN8_ROW(lo, hi)                                                                                             \
-    {GRAIN8(lo, hi, 0), GRAIN8(lo, hi, 1), GRAIN8(lo, hi, 2), GRAIN8(lo, hi, 3),                                       \
-     GRAIN8(lo, hi, 4), GRAIN8(lo, hi, 5), GRAIN8(lo, hi, 6), GRAIN8(lo, hi, 7)}
 
 static const gfx_color_t plant_grain[8] = GRAIN8_ROW(PLANT_DARK, PLANT_LIGHT);
 static const gfx_color_t ice_grain[8] = GRAIN8_ROW(ICE_DARK, ICE_LIGHT);
@@ -504,10 +517,10 @@ static const gfx_color_t metal_grain[8] = GRAIN8_ROW(METAL_DARK, METAL_LIGHT);
 static const gfx_color_t metal_shine = GFX_RGB(LERP(METAL_LIGHT, 0xFFFFFF, 11));
 /* One grain row per shade step, fresh first, see ROOT_OLD above. */
 static const gfx_color_t root_grain[ROOT_SHADES][8] = {
-    GRAIN8_ROW(ROOT_STEP(0), ROOT_STEP_LIGHT(0)),
-    GRAIN8_ROW(ROOT_STEP(1), ROOT_STEP_LIGHT(1)),
-    GRAIN8_ROW(ROOT_STEP(2), ROOT_STEP_LIGHT(2)),
-    GRAIN8_ROW(ROOT_STEP(3), ROOT_STEP_LIGHT(3)),
+    GRAIN8_ROW(ROOT_STEP_0, ROOT_STEP_LIGHT_0),
+    GRAIN8_ROW(ROOT_STEP_1, ROOT_STEP_LIGHT_1),
+    GRAIN8_ROW(ROOT_STEP_2, ROOT_STEP_LIGHT_2),
+    GRAIN8_ROW(ROOT_STEP_3, ROOT_STEP_LIGHT_3),
 };
 _Static_assert(ROOT_SHADES == 4, "root_grain[] above spells out one row per shade - add a row here too");
 
@@ -517,12 +530,6 @@ static const gfx_color_t stone_edge_speckle[MATERIAL_VARIANTS][8] = {
     STONE_EDGE_ROW(8),  STONE_EDGE_ROW(9),  STONE_EDGE_ROW(10), STONE_EDGE_ROW(11),
     STONE_EDGE_ROW(12), STONE_EDGE_ROW(13), STONE_EDGE_ROW(14), STONE_EDGE_ROW(15),
 };
-
-#ifdef ANALYSIS_SCAN
-/* Last table is behind us, see LERP's own stub above. */
-#undef LERP
-#define LERP(lo, hi, sh) LERP_RGB(lo, hi, sh)
-#endif
 
 /* Adjust if rim highlight is too strong or faint */
 #define SPEC_STRENGTH 10

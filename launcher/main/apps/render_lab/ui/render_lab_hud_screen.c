@@ -38,7 +38,7 @@ draw_scene_title(mu_Context* ctx, const char* title, uint8_t alpha, const int ro
     while (row < HUD_CORNER_ROWS && box.x < row_right[row] + HUD_LINE_GAP_PX) {
         row++;
     }
-    box.y = HUD_INSET_PX + row * (h + HUD_LINE_GAP_PX);
+    box.y = HUD_INSET_PX + (row * (h + HUD_LINE_GAP_PX));
     mu_draw_rect(ctx, box, ui_rgb(RENDER_LAB_BACKGROUND_RGB));
 
     mu_Color ink = ctx->style->colors[MU_COLOR_TEXT];

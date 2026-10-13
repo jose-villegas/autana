@@ -15,8 +15,6 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 
-static const char* TAG = "job";
-
 #define JOB_CORE1_STACK_BYTES 3072
 /* Gfx presents at priority 5; rendering must preempt engine work. */
 #define JOB_CORE1_PRIORITY    3
@@ -176,7 +174,7 @@ job_wait(unsigned timeout_ms) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     if (!job_timeout_logged) {
         const int64_t elapsed_us = timing_now_us() - start_us;
-        ESP_LOGE(TAG, "core-1 job %p timed out after %lld us", (void*)job_fn, (long long)elapsed_us);
+        ESP_LOGE("job", "core-1 job %p timed out after %lld us", (void*)job_fn, (long long)elapsed_us);
         job_timeout_logged = true;
     }
 #endif

@@ -494,10 +494,10 @@ typedef struct {
 static int
 root_weight(const int* nd, int away_x, int away_y, int gx, int gy) {
     int wgt = 1;
-    if (nd[0] * away_x + nd[1] * away_y > 0) {
+    if ((nd[0] * away_x) + (nd[1] * away_y) > 0) {
         wgt += ROOT_WEIGHT_AWAY; /* carries on away from its parent */
     }
-    if (nd[0] * gx + nd[1] * gy > 0) {
+    if ((nd[0] * gx) + (nd[1] * gy) > 0) {
         wgt += ROOT_WEIGHT_DOWN; /* reaches down */
     }
     return wgt;

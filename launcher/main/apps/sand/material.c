@@ -306,7 +306,9 @@ const material_t materials[MATERIAL_ROWS] = {
      * repose, or scatter. */
     [MATERIAL_ROW(MAT_EXTENDED)] =
         {
-            .name = "Extended", .kind = KIND_STATIC, .density = 181, /* stone's figure: undisplaceable, and it
+            .name = "Extended",
+            .kind = KIND_STATIC,
+            .density = 181, /* stone's figure: undisplaceable, and it
                               * smothers a buried flame the way stone
                               * does. A named extended static overrides
                               * this via its own dislodge_density. */

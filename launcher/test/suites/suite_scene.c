@@ -2402,7 +2402,7 @@ test_failed_second_camera_releases_the_first_animator(void) {
     scene_asset_t asset;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&fx.pack, "test_aliases", SCENE_ASSET, &entry));
     TEST_ASSERT_EQUAL_INT(ASSET_OK, scene_asset_open(entry, &asset));
-    char(*clips)[ASSET_NAME_MAX] = (char(*)[ASSET_NAME_MAX])(uintptr_t)asset.clips;
+    char (*clips)[ASSET_NAME_MAX] = (char (*)[ASSET_NAME_MAX])(uintptr_t)asset.clips;
     memset(clips[1], 0, ASSET_NAME_MAX);
     memcpy(clips[1], "nowhere", sizeof "nowhere");
     const size_t before = memory_free_bytes(MEMORY_PSRAM);
@@ -2803,7 +2803,7 @@ test_face_color_skin_refuses_lights_and_lit_attachment(void) {
     scene_t* scene = rig_fixture("rig.skin2", NULL);
     const scene_entity_t entity = scene_find(scene, "red"), light = scene_find(scene, "camera");
     scene_skinned_renderer_t* skin = &scene->skinned_renderers[entity];
-    const uint8_t(*colors)[R3D_SKIN_LIGHT_CHANNELS] = skin->bind.colors;
+    const uint8_t (*colors)[R3D_SKIN_LIGHT_CHANNELS] = skin->bind.colors;
     skin->bind.colors = NULL;
     static const uint16_t face_colors[] = {0};
     skin->bind.face_colors = face_colors;

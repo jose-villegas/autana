@@ -17,7 +17,7 @@
 #define QSPI_DATA_LINES 4
 
 /* As many strips as one present can queue before it collects any. */
-#define PENDING_MAX     (STRIP_COUNT * GRID_COLS + 2)
+#define PENDING_MAX     ((STRIP_COUNT * GRID_COLS) + 2)
 
 static int64_t pending_due_us[PENDING_MAX];
 static int pending_head;
