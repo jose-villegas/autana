@@ -53,12 +53,14 @@ open_model(const asset_pack_t* pack, anim_skeleton_t* skeleton, r3d_skin_t* skin
 #include "esp_cpu.h"
 #include "esp_log.h"
 #include "perf_stats.h"
+#include "profile/frame_cost.h"
 #include "render/skin/r3d_skin_light_internal.h"
 
-#define CLIP_ID      "gallop"
-#define POSE_SECONDS 0.2F
-#define SAMPLES      100
-#define WARMUP       8
+#define CLIP_ID           "gallop"
+#define POSE_SECONDS      0.2F
+#define SAMPLES           100
+#define WARMUP            8
+#define XTPERF_ITERATIONS 100
 static const char* TAG = "skin_light_perf";
 static const char TEST_PREFIX[] = "test_";
 static const vec3f_t DIRECTIONS[] = {
@@ -261,8 +263,8 @@ quality(fixture_t* f, kernel_t kind) {
              (double)error_sum / (f->bind.vertex_count * R3D_SKIN_LIGHT_CHANNELS), checksum);
 }
 
-static void
-measure(kernel_t kind, int lights, const char* label) {
+static fixture_t*
+fixture_for_kernel(kernel_t kind, int lights) {
     fixture_t* f = fixture(lights);
     const bool table_mode = kind == TABLE || kind == TABLE_BUILD;
     if (table_mode) {
@@ -270,6 +272,13 @@ measure(kernel_t kind, int lights, const char* label) {
         f->lights.table = f->table;
         f->lights.table_scale = r3d_skin_light_table_build(&f->lights, f->table);
     }
+    return f;
+}
+
+static void
+measure(kernel_t kind, int lights, const char* label) {
+    fixture_t* f = fixture_for_kernel(kind, lights);
+    const bool table_mode = kind == TABLE || kind == TABLE_BUILD;
     const char* mode = table_mode ? "table" : kind == DIRECT ? "direct" : "renormalised";
     ESP_LOGI(
         TAG,
@@ -308,6 +317,50 @@ measure(kernel_t kind, int lights, const char* label) {
     heap_report("released");
 }
 
+/* Events share a warmed, fixed pose; a zero count is valid for an unused hardware path. */
+static void
+measure_xtperf_kernel(kernel_t kind, const char* row) {
+    fixture_t* f = fixture_for_kernel(kind, 1);
+    uint64_t total_cycles = 0;
+    uint64_t total_insn = 0;
+    for (int e = 0; e < frame_cost_event_count(); e++) {
+        for (int i = 0; i < WARMUP; i++) {
+            kernel(f, kind);
+        }
+        const frame_cost_event_t* const event = frame_cost_event_at(e);
+        TEST_ASSERT_TRUE_MESSAGE(frame_cost_count_begin(e), "disarm frame_cost before measuring counters");
+        for (int i = 0; i < XTPERF_ITERATIONS; i++) {
+            kernel(f, kind);
+        }
+        uint32_t cycles = 0;
+        uint32_t value = 0;
+        const bool counted = frame_cost_count_end(&cycles, &value);
+        ESP_LOGI("xtperf", "scene=%s event=%s cycles_per_step=%u value_per_step=%u steps=%d%s", row, event->name,
+                 (unsigned)(cycles / XTPERF_ITERATIONS), (unsigned)(value / XTPERF_ITERATIONS), XTPERF_ITERATIONS,
+                 counted ? "" : " overflow=counters");
+        total_cycles += cycles;
+        if (strcmp(event->name, FRAME_COST_DEFAULT_EVENT) == 0) {
+            total_insn += value;
+        }
+        timing_yield();
+    }
+    release();
+    suite_clear_test_cleanup();
+    TEST_ASSERT_TRUE_MESSAGE(total_cycles > 0, "the cycle counter never moved");
+    TEST_ASSERT_TRUE_MESSAGE(total_insn > 0, "the retired-instruction counter never moved");
+}
+
+static void
+test_xtensa_counters(void) {
+#if CONFIG_LAUNCHER_QEMU
+    TEST_IGNORE_MESSAGE("QEMU does not model the performance monitor");
+#endif
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, esp_cpu_get_core_id(), "perfmon counters must be measured on core 0");
+    measure_xtperf_kernel(DIRECT, "fused_direct_1");
+    measure_xtperf_kernel(RENORMALISED, "fused_renormalised_1");
+    measure_xtperf_kernel(TABLE, "fused_table_1");
+}
+
 #define PERF_TEST(name, kind, lights)                                                                                  \
     static void name(void) { measure(kind, lights, #name); }
 #define LIGHT_COUNT_TESTS(prefix, kind)                                                                                \
@@ -326,6 +379,7 @@ LIGHT_COUNT_TESTS(exact_separate, EXACT_SEPARATE)
 
 void
 suite_skin_light_perf(void) {
+    RUN_TEST(test_xtensa_counters);
     RUN_TEST(test_normal_palette_build);
     RUN_TEST(test_skin_only);
     RUN_TEST(test_fused_direct_1);
