@@ -1,7 +1,7 @@
 <!-- GENERATED FILE - do not edit.
 python launcher/tools/build/memory_map.py &#45;&#45;chart pool docs/memory/images/internal-pool.svg
 -->
-<svg xmlns="http://www.w3.org/2000/svg" width="1040" viewBox="0 0 1040 412" role="img">
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" viewBox="0 0 1040 436" role="img">
 <title>Shared internal memory pool</title>
 <style>text{fill:#737c86;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:15px}.title{font-size:18px;font-weight:600}.note{font-size:12px}.inside{fill:#1f2328}</style>
 <text x="16" y="40" text-anchor="start" class="title">Shared internal memory pool</text>
@@ -15,7 +15,7 @@ python launcher/tools/build/memory_map.py &#45;&#45;chart pool docs/memory/image
 <text x="359.41" y="113" text-anchor="start" class="inside">61.3 KB</text>
 <rect x="470.95" y="96" width="369.05" height="24" fill="#2da44e" data-label="Internal heap" data-bytes="197072"><title>Internal heap: 197072 B</title></rect>
 <text x="476.95" y="113" text-anchor="start" class="inside">Internal heap 192.5 KB</text>
-<text x="852.00" y="113" text-anchor="start">192.5 KB heap</text>
+<text x="852.00" y="113" text-anchor="start">192.5 / 333.8 KB heap</text>
 <text x="188" y="157" text-anchor="end">dev</text>
 <rect x="200.00" y="140" width="156.70" height="24" fill="#8c959f" data-label="ESP-IDF IRAM" data-bytes="83678"><title>ESP-IDF IRAM: 83678 B</title></rect>
 <text x="206.00" y="157" text-anchor="start" class="inside">81.7 KB</text>
@@ -25,7 +25,7 @@ python launcher/tools/build/memory_map.py &#45;&#45;chart pool docs/memory/image
 <text x="375.23" y="157" text-anchor="start" class="inside">74.7 KB</text>
 <rect x="512.45" y="140" width="327.55" height="24" fill="#2da44e" data-label="Internal heap" data-bytes="174912"><title>Internal heap: 174912 B</title></rect>
 <text x="518.45" y="157" text-anchor="start" class="inside">Internal heap 170.8 KB</text>
-<text x="852.00" y="157" text-anchor="start">170.8 KB heap</text>
+<text x="852.00" y="157" text-anchor="start">170.8 / 333.8 KB heap</text>
 <text x="188" y="201" text-anchor="end">diag</text>
 <rect x="200.00" y="184" width="158.12" height="24" fill="#8c959f" data-label="ESP-IDF IRAM" data-bytes="84438"><title>ESP-IDF IRAM: 84438 B</title></rect>
 <text x="206.00" y="201" text-anchor="start" class="inside">82.5 KB</text>
@@ -35,20 +35,21 @@ python launcher/tools/build/memory_map.py &#45;&#45;chart pool docs/memory/image
 <text x="376.67" y="201" text-anchor="start" class="inside">88.8 KB</text>
 <rect x="541.02" y="184" width="298.98" height="24" fill="#2da44e" data-label="Internal heap" data-bytes="159656"><title>Internal heap: 159656 B</title></rect>
 <text x="547.02" y="201" text-anchor="start" class="inside">Internal heap 155.9 KB</text>
-<text x="852.00" y="201" text-anchor="start">155.9 KB heap</text>
+<text x="852.00" y="201" text-anchor="start">155.9 / 333.8 KB heap</text>
 <line x1="200" y1="228" x2="840" y2="228" stroke="#8c959f"/>
 <text x="200" y="252" text-anchor="start">0x3fc88000</text>
 <text x="840" y="252" text-anchor="end">0x3fcdb700</text>
-<text x="16" y="276" text-anchor="start">IRAM alias starts at 0x40378000; axis shows the DRAM alias</text>
-<text x="16" y="300" text-anchor="start">1 KB = 1024 B</text>
-<rect x="16" y="334" width="17" height="17" fill="#8c959f"/>
-<text x="40" y="348" text-anchor="start">ESP-IDF IRAM</text>
-<rect x="216" y="334" width="17" height="17" fill="#e36209"/>
-<text x="240" y="348" text-anchor="start">IRAM we place</text>
-<rect x="416" y="334" width="17" height="17" fill="#b1bac4"/>
-<text x="440" y="348" text-anchor="start">Split slack incl. pad</text>
-<rect x="616" y="334" width="17" height="17" fill="#4c8bf5"/>
-<text x="640" y="348" text-anchor="start">DRAM data + BSS</text>
-<rect x="816" y="334" width="17" height="17" fill="#2da44e"/>
-<text x="840" y="348" text-anchor="start">Internal heap</text>
+<text x="840" y="276" text-anchor="end">pool 341,760 B = 333.8 KB</text>
+<text x="16" y="300" text-anchor="start">IRAM alias starts at 0x40378000; axis shows the DRAM alias</text>
+<text x="16" y="324" text-anchor="start">1 KB = 1024 B</text>
+<rect x="16" y="358" width="17" height="17" fill="#8c959f"/>
+<text x="40" y="372" text-anchor="start">ESP-IDF IRAM</text>
+<rect x="216" y="358" width="17" height="17" fill="#e36209"/>
+<text x="240" y="372" text-anchor="start">IRAM we place</text>
+<rect x="416" y="358" width="17" height="17" fill="#b1bac4"/>
+<text x="440" y="372" text-anchor="start">Split slack incl. pad</text>
+<rect x="616" y="358" width="17" height="17" fill="#4c8bf5"/>
+<text x="640" y="372" text-anchor="start">DRAM data + BSS</text>
+<rect x="816" y="358" width="17" height="17" fill="#2da44e"/>
+<text x="840" y="372" text-anchor="start">Internal heap</text>
 </svg>

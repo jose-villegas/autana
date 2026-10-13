@@ -56,13 +56,14 @@ def inside_label(name, count, width):
 
 def bars(command, title, subtitle, rows, scale, captions=(), legend=(), axis=(), inside=False):
     """`rows` are (label, segments, end) or (label, segments, end, note);
-    each segment is (name, bytes, fill). `inside` writes each segment's
+    each segment is (name, bytes, fill). `axis` is (start, end) labels,
+    optionally followed by the ceiling. `inside` writes each segment's
     size on it where it fits."""
     if scale <= 0:
         raise ValueError('chart scale must be positive')
     legend_rows = -(-len(legend) // ((_WIDTH - _MARGIN) // _LEGEND_SPACING))
     height = (_TOP + len(rows) * _ROW_HEIGHT + (len(captions) + legend_rows + 1) * _CAPTION_SPACING
-              + (2 * _CAPTION_SPACING if axis else 0) + _FOOTER_HEIGHT)
+              + len(axis) * _CAPTION_SPACING + _FOOTER_HEIGHT)
     lines = ['<!-- GENERATED FILE - do not edit.', escape(command, quote=False).replace('--', '&#45;&#45;'), '-->',
              f'<svg xmlns="http://www.w3.org/2000/svg" width="{_WIDTH}" viewBox="0 0 {_WIDTH} {height}" role="img">',
              f'<title>{escape(title)}</title>',
@@ -92,6 +93,10 @@ def bars(command, title, subtitle, rows, scale, captions=(), legend=(), axis=(),
         lines.append(f'<line x1="{_LEFT}" y1="{y}" x2="{_LEFT + BAR_WIDTH}" y2="{y}" stroke="{_AXIS_FILL}"/>')
         y += _CAPTION_SPACING
         lines.extend((text(_LEFT, y, axis[0]), text(_LEFT + BAR_WIDTH, y, axis[1], 'end')))
+        # A third axis label is the ceiling, under the axis end.
+        for extra in axis[2:]:
+            y += _CAPTION_SPACING
+            lines.append(text(_LEFT + BAR_WIDTH, y, extra, 'end'))
     y += _CAPTION_SPACING
     for index, caption in enumerate(captions):
         lines.append(text(_MARGIN, y + index * _CAPTION_SPACING, caption))

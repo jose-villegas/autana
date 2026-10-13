@@ -32,7 +32,7 @@ from doc_tables import markdown, parse_table, collapsed
 import svg_bars
 from compile_db import compile_flags
 from generated_blocks import apply_tables, block_body
-from byte_sizes import MB_BYTES, size_label
+from byte_sizes import MB_BYTES, share_label, size_label, total_label
 from svg_bars import IDF_FILL, OURS_FILL, SLACK_FILL, DRAM_FILL, HEAP_FILL
 sys.path.insert(0, str(ROOT / "launcher/tools/device"))
 from device_profile import load, require
@@ -489,6 +489,12 @@ def update_budgets(root, builds):
     print(f"Updated IRAM budgets: {len(measured)} active sites")
 
 
+def iram_bytes(sizes):
+    """IRAM a build links, from section sizes by name; .iram0.text_end is
+    only the alignment the split rounds up to."""
+    return sum(size for name, size in sizes.items() if name.startswith(".iram") and name != ".iram0.text_end")
+
+
 def pool_range(start, size, heap_start):
     return size, start + size - heap_start
 
@@ -574,7 +580,7 @@ def render(builds):
     component_rows = [(name, placement, *(c[(name, placement)] for c in placements))
                       for name in names for placement in ("our sites", "IDF")
                       if any(c[(name, placement)] for c in placements)]
-    component_rows.append(("Linker fill / split slack", "unattributed", *(sum(size for key, (_, size) in b["sections"].items() if key.startswith(".iram") and key != ".iram0.text_end") - sum(c.values()) for b, c in zip(builds, components))))
+    component_rows.append(("Linker fill / split slack", "unattributed", *(iram_bytes({key: size for key, (_, size) in b["sections"].items()}) - sum(c.values()) for b, c in zip(builds, components))))
     lines += [collapsed("IRAM components by placement", markdown(["IRAM component", "Placement", *labels], component_rows))]
     reports = [b["report"] for b in builds]
     rows = []
@@ -648,7 +654,7 @@ def chart(kind, body):
                   ("Internal heap", HEAP_FILL)]
         for variant in variants:
             start, end, size = alias("dram0_0_seg", variant)
-            iram = sum(int(region(name, variant)) for name in region_rows if name.startswith('.iram') and name != '.iram0.text_end')
+            iram = iram_bytes({name: int(region(name, variant)) for name in region_rows if name.startswith(".iram")})
             slack = int(region("Slack including pad", variant))
             data_start, heap_start = (int(region(name, variant), 16) for name in ("_data_start", "_heap_start"))
             if iram + slack != data_start - int(start, 16):
@@ -660,28 +666,35 @@ def chart(kind, body):
             if sum(counts) != size:
                 raise ValueError(f"{variant}: pool segments do not sum to shared alias")
             rows.append((variant, [(label, count, fill) for (label, fill), count in zip(legend, counts)],
-                         f"{size_label(heap)} heap"))
+                         f"{share_label(heap, size)} heap"))
             scales.append(size)
         start, end, _ = alias("dram0_0_seg", MAIN_VARIANT)
         iram_start, _, _ = alias("iram0_0_seg", MAIN_VARIANT)
         return svg_bars.bars(command, "Shared internal memory pool", "Linked ranges in address order; heap is not runtime free memory", rows, max(scales),
-                             (f"IRAM alias starts at {iram_start}; axis shows the DRAM alias", "1 KB = 1024 B"), legend, (start, end), inside=True)
-    idf = Counter()
-    fill = None
-    for row in components:
-        if row["Placement"] == "IDF":
-            idf[row["IRAM component"]] += int(row[MAIN_VARIANT])
-        elif row["IRAM component"] == "Linker fill / split slack":
-            fill = int(row[MAIN_VARIANT]) - int(region("Slack including pad", MAIN_VARIANT))
-    if fill is None:
-        raise ValueError("IRAM component: missing row Linker fill / split slack")
+                             (f"IRAM alias starts at {iram_start}; axis shows the DRAM alias", "1 KB = 1024 B"), legend,
+                             (start, end, f"pool {total_label(max(scales))}"), inside=True)
+    def idf_parts(variant):
+        """ESP-IDF-placed bytes by archive, and the unattributed linker fill."""
+        parts, fill = Counter(), None
+        for row in components:
+            if row["Placement"] == "IDF":
+                parts[row["IRAM component"]] += int(row[variant])
+            elif row["IRAM component"] == "Linker fill / split slack":
+                fill = int(row[variant]) - int(region("Slack including pad", variant))
+        if fill is None:
+            raise ValueError("IRAM component: missing row Linker fill / split slack")
+        return parts, fill
+    idf, fill = idf_parts(MAIN_VARIANT)
     ordered = sorted(idf.items(), key=lambda item: (-item[1], item[0]))
     selected = [(name.removeprefix('lib').removesuffix('.a'), count) for name, count in ordered[:COMPONENT_TOP_COUNT]]
     selected.extend([("other", sum(count for _, count in ordered[COMPONENT_TOP_COUNT:])), ("Linker fill", fill)])
-    rows = [(label, [(label, count, IDF_FILL)], f"{count} B") for label, count in selected]
-    totals = [f"{variant}: {sum(int(row[variant]) for row in components if row['Placement'] == 'IDF')} B IDF-placed" for variant in variants]
-    return svg_bars.bars(command, f"ESP-IDF IRAM by component — {MAIN_VARIANT}", f"Top {COMPONENT_TOP_COUNT} archives; remaining archives summed as other", rows,
-                         max(count for _, count in selected), ("; ".join(totals), "Unattributed linker fill excludes split slack and prefetch pad."))
+    total = sum(count for _, count in selected)
+    rows = [(label, [(label, count, IDF_FILL)], f"{count} B, {count / total:.1%}") for label, count in selected]
+    totals = [f"{variant} {total_label(sum(parts.values()) + rest)}" for variant in variants for parts, rest in [idf_parts(variant)]]
+    return svg_bars.bars(command, f"ESP-IDF IRAM by component — {MAIN_VARIANT}",
+                         f"Shares of {total_label(total)} ESP-IDF IRAM incl. linker fill; top {COMPONENT_TOP_COUNT} archives, the rest summed as other", rows,
+                         max(count for _, count in selected), ("ESP-IDF IRAM incl. linker fill: " + "; ".join(totals),
+                                                               "Unattributed linker fill excludes split slack and prefetch pad."))
 
 
 def chart_command(kind):

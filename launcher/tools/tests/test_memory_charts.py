@@ -32,6 +32,12 @@ def chart_cli(doc, build):
         yield
 
 
+# One release baseline linking 1000 B of IRAM; .iram0.text_end is alignment, not code.
+BASELINE_IRAM = 1000
+BASELINES = [dict(build_id='abc-release', idf_commit='fixture',
+                  sections={'.iram0.text': (0, BASELINE_IRAM), '.iram0.text_end': (0, 16)})]
+
+
 class MemoryChartTests(unittest.TestCase):
     def body(self):
         regions = [('iram0_0_seg shared alias', '0x40378000–0x40378400 (1024 B)'),
@@ -64,6 +70,17 @@ class MemoryChartTests(unittest.TestCase):
         for label in ('0.6 KB', '0x3fc88000', '0x3fc88400', '0x40378000', '1 KB = 1024 B'):
             self.assertIn(label, text)
 
+    def test_charts_show_their_ceiling(self):
+        from byte_sizes import share_label, total_label
+        pool = ''.join(ET.fromstring(memory.chart('pool', self.body())).itertext())
+        self.assertIn(f'pool {total_label(1024)}', pool)
+        self.assertIn(f'{share_label(656, 1024)} heap', pool)
+        components = ET.fromstring(memory.chart('components', self.body()))
+        counts = [int(rect.attrib['data-bytes']) for rect in components.findall('.//{*}rect[@data-bytes]')]
+        text = ''.join(components.itertext())
+        self.assertIn(total_label(sum(counts)), text)
+        self.assertIn(f'{counts[0]} B, {counts[0] / sum(counts):.1%}', text)
+
     def test_components_other_sums_remainder(self):
         tree = ET.fromstring(memory.chart('components', self.body()))
         other = tree.find('.//{*}rect[@data-label="other"]')
@@ -80,7 +97,7 @@ class MemoryChartTests(unittest.TestCase):
             memory.chart('pool', self.body().replace('| f | 32 |', '| f | 31 |'))
 
     def test_what_if_sorted_and_variant_labels(self):
-        body = probe.render_results([], [
+        body = probe.render_results(BASELINES, [
             ('release', 'small', 20, 0, -32, 'a'),
             ('release', 'large', 100, 0, -128, 'b'),
             ('dev', 'large', 120, 0, -128, 'b'),
@@ -91,10 +108,18 @@ class MemoryChartTests(unittest.TestCase):
         for label in ('not additive', 'dev 120', 'heap +128 B', 'only-diag (diag)'):
             self.assertIn(label, text)
 
+    def test_what_if_ceiling_is_the_baseline_iram(self):
+        body = probe.render_results(BASELINES, [('release', 'small', 20, 0, -32, 'a')])
+        text = ''.join(ET.fromstring(probe.chart(body)).itertext())
+        self.assertIn(f'{BASELINE_IRAM:,} B', text)
+        self.assertIn(f'20 B, {20 / BASELINE_IRAM:.1%}', text)
+        with self.assertRaisesRegex(ValueError, 'no release IRAM total'):
+            probe.chart(body.replace(f'IRAM {BASELINE_IRAM} B', 'no IRAM'))
+
     def test_what_if_unmeasured_rows(self):
         for status in ('config rejected', 'build failed'):
             with self.subTest(status=status):
-                body = probe.render_results([], [
+                body = probe.render_results(BASELINES, [
                     ('release', 'failed', status, 'not measured', 'not measured', 'a'),
                     ('release', 'positive', 20, 0, -32, 'b'),
                     ('dev', 'positive', status, 'not measured', 'not measured', 'c')])
@@ -103,20 +128,20 @@ class MemoryChartTests(unittest.TestCase):
                 text = ''.join(tree.itertext())
                 self.assertIn(status, text)
                 self.assertLess(text.index('positive'), text.index('failed'))
-                failed_only = probe.render_results([], [
+                failed_only = probe.render_results(BASELINES, [
                     ('release', 'failed', status, 'not measured', 'not measured', 'a')])
                 self.assertEqual(ET.fromstring(probe.chart(failed_only)).findall('.//{*}rect[@data-bytes]'), [])
 
     def test_what_if_non_positive_rows(self):
-        body = probe.render_results([], [
+        body = probe.render_results(BASELINES, [
             ('release', 'grew', -20, 0, 32, 'a'),
             ('release', 'zero', 0, 0, 0, 'b')])
         tree = ET.fromstring(probe.chart(body))
         self.assertEqual(tree.findall('.//{*}rect[@data-bytes]'), [])
         self.assertIn('IRAM grew 20 B; heap -32 B', ''.join(tree.itertext()))
-        self.assertIn('0 B; heap +0 B', ''.join(tree.itertext()))
+        self.assertIn('0 B, 0.0%; heap +0 B', ''.join(tree.itertext()))
         from svg_bars import BAR_WIDTH
-        mixed = probe.render_results([], [
+        mixed = probe.render_results(BASELINES, [
             ('release', 'grew', -20, 0, 32, 'a'),
             ('release', 'positive', 10, 0, -16, 'b')])
         tree = ET.fromstring(probe.chart(mixed))

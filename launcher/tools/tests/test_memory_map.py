@@ -352,7 +352,7 @@ print(m.render(builds))
         self.assertEqual(probe.experiments("diag",["ringbuf-to-flash","i2c-isr"]),["ringbuf-to-flash"])
         with self.assertRaisesRegex(ValueError,"unknown"):
             probe.experiments("release",["unknown"])
-        baselines = [{"build_id": "id-a-release", "idf_commit": "local-idf"}]
+        baselines = [{"build_id": "id-a-release", "idf_commit": "local-idf", "sections": {}}]
         body = probe.render_results(baselines, [("release", "a", 4, 0, 0, "reason")])
         self.assertEqual(body.count("id-a-release"), 1)
         self.assertIn("local-idf", body)
@@ -554,7 +554,7 @@ print(m.render(builds))
         build.mkdir()
         (build / "project_description.json").write_text(json.dumps({"idf_path": "idf"}))
         (build / "build_id.txt").write_text("old-release")
-        baseline = {"build_id": "new-release", "idf_commit": "local"}
+        baseline = {"build_id": "new-release", "idf_commit": "local", "sections": {}}
         for name in ("first", "second"):
             with patch.object(sys, "argv", ["iram_what_if.py", str(build), "--work", str(self.root)]), patch.object(probe, "scratch_tree", return_value=self.root) as snapshot, patch.object(probe.shutil, "copytree"), patch.object(probe, "what_if", return_value=(baseline, [("release", name, 4, 0, 0, "reason")])), contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(probe.main(), 0)
@@ -802,7 +802,7 @@ class GateRegressions(unittest.TestCase):
             self.assertIn("| release | second | 8 |", body)
             self.assertIn("| dev | second | 16 |", body)
             self.assertNotIn("| dev | first |", body)
-            self.assertIn("Baseline builds: fresh-release (IDF local); fresh-dev (IDF local)", body)
+            self.assertIn("Baseline builds: fresh-release (IDF local, IRAM 20 B); fresh-dev (IDF local, IRAM 40 B)", body)
             self.assertEqual([snapshot[0] for snapshot in snapshots], ["release", "release", "release", "dev", "dev"])
             for index in (0, 3):
                 self.assertEqual(snapshots[index][1:], (original_defaults, original_fragment))
