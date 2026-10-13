@@ -70,10 +70,17 @@ its scene by name rather than through the menu:
 
 | Command | Does |
 |---|---|
+| `autana render clips` | the showing scene's clips, and which one the picker holds; a scene without a clip picker does not answer |
+| `autana render clip <name> [blend_ms]` | plays that clip, blending over blend_ms, which the picker then keeps (its current blend when omitted) |
 | `autana render scenes` | every scene's key and name, and which one is showing |
 | `autana render scene <key>` | switches to the scene with exactly that key, such as `sponza`, `sponza-lite` or `sponza-flat-fitted` |
 | `autana tune render_lab.scale <n>` | the fixed render scale in hundredths of the panel: 200 is half size |
 | `autana tune render_lab.budget <ms>` | dynamic resolution on a lit-mesh scene; 0 turns it off |
+
+The Capybara scene's BOOT menu holds the same clip picker: the CLIP
+dropdown plays the chosen clip over the BLEND slider's time.
+
+![The clip picker and the capybara walking, on the board](images/clip-picker/board-picker.png)
 
 A screenshot's state carries an `app` object naming the scene, whether the
 menu is open and the scale, so two captures can
