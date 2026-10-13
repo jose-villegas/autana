@@ -19,10 +19,10 @@
 #include "unity.h"
 
 #include "console/console_frame_request.h"
-#include "console/console_inject_parse.h"
-#include "console/console_navigation_parse.h"
-#include "console/console_perf_parse.h"
 #include "console/console_verbs.h"
+#include "console/verbs/console_inject_parse.h"
+#include "console/verbs/console_navigation_parse.h"
+#include "console/verbs/console_perf_parse.h"
 
 #define REPLIES_MAX 8
 

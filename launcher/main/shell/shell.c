@@ -35,11 +35,11 @@
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "console/console.h"
 #include "console/console_frame_request.h"
-#include "console/console_frame_watch.h"
-#include "console/console_freeze.h"
-#include "console/console_navigation_parse.h"
-#include "console/console_screenshot.h"
 #include "console/console_verbs.h"
+#include "console/verbs/console_frame_watch.h"
+#include "console/verbs/console_freeze.h"
+#include "console/verbs/console_navigation_parse.h"
+#include "console/verbs/console_screenshot.h"
 #endif
 
 #if CONFIG_LAUNCHER_SELFTEST

@@ -4,14 +4,14 @@
  * only posts a frame request, since this task may not draw (console.c); the shell
  * frame loop streams it with console_screenshot_dump(). Development only.
  */
-#include "console/console_screenshot.h"
+#include "console/verbs/console_screenshot.h"
 #include "console/console.h"
 #include "console/console_frame_request.h"
 #include "console/console_verbs.h"
 
-#include "console/device_state.h"
-#include "console/json_splice.h"
-#include "console/screenshot.h"
+#include "console/capture/device_state.h"
+#include "console/capture/json_splice.h"
+#include "console/capture/screenshot.h"
 #include "core/memory.h"
 #include "profile/frame_watch.h"
 

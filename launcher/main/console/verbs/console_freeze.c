@@ -1,7 +1,7 @@
 /*
  * console_freeze: FREEZE, RESUME and STEP. See console_freeze.h.
  */
-#include "console/console_freeze.h"
+#include "console/verbs/console_freeze.h"
 #include "console/console_verbs.h"
 
 #include "esp_log.h"

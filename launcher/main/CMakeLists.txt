@@ -116,23 +116,23 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
     list(APPEND app_srcs
         "console/console_verbs.c"
         "console/console.c"
-        "console/console_buildid.c"
-        "console/console_freeze.c"
+        "console/verbs/console_buildid.c"
+        "console/verbs/console_freeze.c"
         "console/console_frame_request.c"
-        "console/console_frame_watch.c"
-        "console/console_navigation.c"
-        "console/console_perf.c"
-        "console/console_tune.c"
-        "console/console_screenshot.c"
-        "console/device_state.c"
+        "console/verbs/console_frame_watch.c"
+        "console/verbs/console_navigation.c"
+        "console/verbs/console_perf.c"
+        "console/verbs/console_tune.c"
+        "console/verbs/console_screenshot.c"
+        "console/capture/device_state.c"
     )
 endif()
 if(CONFIG_LAUNCHER_SELFTEST)
-    list(APPEND app_srcs "console/console_runsuite.c")
+    list(APPEND app_srcs "console/verbs/console_runsuite.c")
 endif()
 if(CONFIG_LAUNCHER_DEVELOPMENT)
     list(APPEND app_srcs
-        "console/console_inject.c"
+        "console/verbs/console_inject.c"
         "input/touch_inject_fsm.c"
         "input/touch_gesture.c"
     )
