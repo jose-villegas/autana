@@ -95,6 +95,13 @@ class DeviceCommandTest(unittest.TestCase):
         self.source.parent.mkdir(parents=True)
         self.source.touch()
         self.db = self.launcher / "compile_commands.json"
+        patch = mock.patch.object(complexity_gate, "resolve_clang_tidy",
+                                  return_value=("/esp/bin/clang-tidy", "21"))
+        patch.start()
+        self.addCleanup(patch.stop)
+        if hasattr(complexity_gate, "clang_accepts_flag"):
+            complexity_gate.clang_accepts_flag.cache_clear()
+            self.addCleanup(complexity_gate.clang_accepts_flag.cache_clear)
         for name, value in (("LAUNCHER_DIR", self.launcher), ("IDF_DB_PATH", self.db)):
             patch = mock.patch.object(complexity_gate, name, value)
             patch.start()
@@ -109,15 +116,53 @@ class DeviceCommandTest(unittest.TestCase):
         }]), encoding="utf-8")
         return complexity_gate.build_idf_entries("/tool chain")[str(self.source.resolve())]
 
-    def test_gcc15_flags_are_removed_from_response_files(self):
-        with mock.patch.object(complexity_gate.subprocess, "run") as probe:
-            command = self.entries("-fno-malloc-dce -fzero-init-padding-bits=all -mlongcalls -funknown-option")
-        self.assertNotIn("-mlongcalls", command)
-        self.assertNotIn("-fno-malloc-dce", command)
-        self.assertNotIn("-fzero-init-padding-bits=all", command)
-        self.assertIn("-funknown-option", command)
+    def test_rejected_flag_is_dropped(self):
+        rejected = subprocess.CompletedProcess([], 1, "", "clang: error: unknown argument: '-fno-ext-dce'")
+        with mock.patch.object(complexity_gate.subprocess, "run", return_value=rejected) as probe:
+            command = self.entries("-fno-ext-dce")
+        self.assertNotIn("-fno-ext-dce", command)
         self.assertIn("-Werror", command)
-        probe.assert_not_called()
+        probe.assert_called_once()
+
+    def test_unused_flag_is_dropped(self):
+        unused = subprocess.CompletedProcess(
+            [], 1, "", "clang: error: argument unused during compilation: '-mlongcalls' "
+            "[-Werror,-Wunused-command-line-argument]")
+        with mock.patch.object(complexity_gate.subprocess, "run", return_value=unused) as probe:
+            command = self.entries("-mlongcalls")
+        self.assertNotIn("-mlongcalls", command)
+        self.assertIn("-Werror", command)
+        self.assertIn("-Werror", probe.call_args.args[0])
+
+    def test_accepted_flag_is_kept(self):
+        accepted = subprocess.CompletedProcess([], 0, "", "")
+        with mock.patch.object(complexity_gate.subprocess, "run", return_value=accepted) as probe:
+            command = self.entries("-fno-malloc-dce")
+        self.assertIn("-fno-malloc-dce", command)
+        probe.assert_called_once()
+        self.assertEqual(Path(probe.call_args.args[0][0]), Path("/esp/bin/clang"))
+        self.assertEqual(probe.call_args.kwargs["input"], "")
+        self.assertIn("-fsyntax-only", probe.call_args.args[0])
+        self.assertIn("--target=xtensa-esp-elf", probe.call_args.args[0])
+
+    def test_probe_runs_once_per_flag(self):
+        accepted = subprocess.CompletedProcess([], 0, "", "")
+        with mock.patch.object(complexity_gate.subprocess, "run", return_value=accepted) as probe:
+            for _ in range(2):
+                self.entries("-fno-ext-dce -mtext-section-literals -fno-ext-dce")
+        self.assertEqual(probe.call_count, 2)
+
+    def test_probe_diagnostics_are_fatal(self):
+        for diagnostic in ("clang: error: invalid value 'bad' in '-mcpu=bad'",
+                           "<stdin>:1:1: error: expected identifier",
+                           "clang: error: unknown argument: '-other-flag'",
+                           "clang: error: unknown argument: '-mcpu=bad'" + chr(10) +
+                           "<stdin>:1:1: error: expected identifier"):
+            with self.subTest(diagnostic=diagnostic):
+                result = subprocess.CompletedProcess([], 1, "", diagnostic)
+                with mock.patch.object(complexity_gate.subprocess, "run", return_value=result):
+                    with self.assertRaisesRegex(SystemExit, "Clang flag probe failed"):
+                        self.entries("-mcpu=bad")
 
     def test_specs_are_replaced_with_gcc_libc_search_order(self):
         with mock.patch.object(complexity_gate, "gcc_libc_includes",

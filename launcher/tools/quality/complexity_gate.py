@@ -104,18 +104,13 @@ VENDORED_REFERENCES = {
         "third_party/upstream/microui/src/microui.h",
 }
 
-# ESP-IDF's GCC-only flags cannot be parsed by esp-clang. ANALYSIS_SCAN
-# also skips table uses of macros, so its unused-macro warning differs from
-# the firmware compile.
-BAD_GCC_FLAGS = {
-    "-fno-tree-switch-conversion",
-    "-fstrict-volatile-bitfields",
-    "-mdisable-hardware-atomics",
-    "-mlongcalls",
-    "-fno-malloc-dce",
-    "-fzero-init-padding-bits=all",
-    "-Werror=unused-macros",
-}
+# ANALYSIS_SCAN skips table uses of macros, so its unused-macro warning
+# differs from the firmware compile.
+ANALYSIS_UNUSED_MACROS_FLAG = "-Werror=unused-macros"
+CLANG_PROBE_TIMEOUT_SECONDS = 15
+CLANG_REJECTED_FLAG_RE = re.compile(
+    r"^.*error: (?:unknown argument|argument unused during compilation): "
+    r"'(?P<flag>[^']+)'(?: \[-Werror,-Wunused-command-line-argument\])?$")
 
 SPEC_FLAGS_RE = re.compile(r'(?<!\S)(?:"--?specs=[^"]+"|--?specs=(?:"[^"]+"|\S+))')
 GCC_INCLUDE_START = "#include <...> search starts here:"
@@ -137,6 +132,13 @@ BARE_ERROR_RE = re.compile(r"^error: (?P<msg>.+)$")
 
 def resolve_clang_tidy():
     return resolve("clang-tidy")
+
+
+def resolve_analysis_clang():
+    """Probe with the driver shipped alongside the analyzer being used."""
+    clang_tidy, _ = resolve_clang_tidy()
+    tidy_path = Path(clang_tidy)
+    return str(tidy_path.with_name("clang" + tidy_path.suffix))
 
 
 def find_xtensa_toolchain_root():
@@ -415,7 +417,7 @@ def scan_vendored(clang_tidy, db_path, sources):
 def inline_response_file(cmd):
     """ESP-IDF's generated compile commands hand most flags to the
     compiler via a GCC-style @"file" response file rather than inline;
-    inlined here so BAD_GCC_FLAGS can be stripped from all of it, not just
+    inlined here so rejected flags can be stripped from all of it, not just
     whatever half of the command happens to sit outside the file."""
     m = RESPONSE_FILE_RE.search(cmd)
     if not m:
@@ -450,6 +452,23 @@ def gcc_libc_includes(compiler, specs, directory):
     return includes
 
 
+@lru_cache(maxsize=None)
+def clang_accepts_flag(clang, flag, target):
+    """Unknown or unused flags are rejected in the analyzer's syntax-only mode.
+    Other probe failures must not hide invalid compile commands."""
+    result = subprocess.run([clang, f"--target={target}", "-Werror", "-fsyntax-only", "-x", "c", "-", flag],
+                            input="", capture_output=True, text=True,
+                            env={**os.environ, "LC_ALL": "C"},
+                            timeout=CLANG_PROBE_TIMEOUT_SECONDS)
+    if result.returncode == 0:
+        return True
+    errors = [line for line in result.stderr.splitlines() if "error:" in line]
+    if errors and all((match := CLANG_REJECTED_FLAG_RE.fullmatch(line)) and
+                      match.group("flag") == flag for line in errors):
+        return False
+    sys.exit(f"FAIL: Clang flag probe failed for {flag}: {result.stderr}")
+
+
 def build_idf_entries(toolchain_root, vendored=False):
     """Device commands for first-party sources or modified vendored sources.
     Strip GCC-only flags, resolve specs-selected libc headers through GCC,
@@ -457,6 +476,7 @@ def build_idf_entries(toolchain_root, vendored=False):
     padding changes machine code placement only, so analysis omits it."""
     if not IDF_DB_PATH.exists():
         return {}
+    clang = resolve_analysis_clang()
     db = json.loads(IDF_DB_PATH.read_text(encoding="utf-8"))
     sysroot = f"{toolchain_root}/xtensa-esp-elf"
     entries = {}
@@ -479,7 +499,10 @@ def build_idf_entries(toolchain_root, vendored=False):
         specs = tuple(flag.replace('"', '') for flag in SPEC_FLAGS_RE.findall(cmd))
         includes = gcc_libc_includes(compiler, specs, e["directory"])
         cmd = SPEC_FLAGS_RE.sub("", cmd)
-        cmd = " ".join(t for t in cmd.split() if t not in BAD_GCC_FLAGS)
+        cmd = " ".join(t for t in cmd.split()
+                       if t != ANALYSIS_UNUSED_MACROS_FLAG and
+                       (not t.strip('"').startswith(("-f", "-m")) or
+                        clang_accepts_flag(clang, t.strip('"'), Path(sysroot).name)))
         cmd += "".join(f' -isystem "{path}"' for path in includes)
         cmd += (f' --sysroot="{sysroot}" --gcc-toolchain="{toolchain_root}"'
                 ' -Wno-unknown-warning-option -Wno-string-plus-int'
@@ -570,6 +593,10 @@ def build_compile_db():
     ]
     if host_sysroot:
         host_flags.append(f"--sysroot={host_sysroot}")
+    clang = resolve_analysis_clang()
+    host_flags = [flag for flag in host_flags
+                  if not flag.startswith(("-f", "-m")) or
+                  clang_accepts_flag(clang, flag, host_target)]
     host_entries = {}
     for src in host_sources:
         resolved = str(Path(src).resolve())
