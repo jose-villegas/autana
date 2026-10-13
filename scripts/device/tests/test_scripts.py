@@ -216,17 +216,19 @@ if os.environ.get("FAKE_REPOINT"):
         self.assertIn("reconfiguring from scratch", stale.stdout + stale.stderr)
         self.assertNotIn("build.dev/sentinel", stale_files)
 
+    def assert_kept(self, result, sentinel, files):
+        """A build that succeeded without resetting its folder, `sentinel` still in `files`."""
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("reconfiguring from scratch", result.stdout + result.stderr)
+        self.assertIn(sentinel, files)
+
     def test_matching_identity_keeps_output(self):
         matched, _, matched_files = self.run_build_sh(["--dev", "--configure"], self.SDKCONFIGS["dev"], "matching")
-        self.assertEqual(matched.returncode, 0, matched.stdout + matched.stderr)
-        self.assertNotIn("reconfiguring from scratch", matched.stdout + matched.stderr)
-        self.assertIn("build.dev/sentinel", matched_files)
+        self.assert_kept(matched, "build.dev/sentinel", matched_files)
 
     def test_second_build_on_the_same_idf_keeps_the_build_folder(self):
         result, _, _ = self.run_build_sh(["--dev"], self.SDKCONFIGS["dev"], rebuild=True)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertNotIn("reconfiguring from scratch", result.stdout + result.stderr)
-        self.assertIn("sentinel", result.prepared_files)
+        self.assert_kept(result, "sentinel", result.prepared_files)
 
     def test_configure_reconfigures_with_the_builds_arguments(self):
         for variant, sdkconfig in self.SDKCONFIGS.items():

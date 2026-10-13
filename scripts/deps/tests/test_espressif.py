@@ -123,29 +123,26 @@ class ResolutionTests(unittest.TestCase):
         self.assertNotIn('git clone', str(failure.exception))
         self.assertIn(str(self.idf), str(failure.exception))
 
-    @unittest.skipUnless(os.name == 'nt', 'Windows interpreter pairing')
-    def test_python_rejects_other_minor(self):
+    def python_with_env(self, candidate):
+        """idf_python() with the paired tools' 6.1 python present and
+        IDF_PYTHON_ENV_PATH naming `candidate`'s environment; returns both."""
         good = self.tools / 'python_env/idf6.1_py3.14_env/Scripts/python.exe'
         good.parent.mkdir()
         good.touch()
-        bad = self.tools / 'python_env/idf5.5_py3.14_env/Scripts/python.exe'
-        bad.parent.mkdir(parents=True)
-        bad.touch()
-        with mock.patch.object(espressif, 'find_idf', return_value=(self.idf, self.tools)), \
-             mock.patch.object(espressif, 'idf_project', return_value=self.project), \
-             mock.patch.dict(os.environ, {'IDF_PYTHON_ENV_PATH': str(bad.parent.parent)}):
-            self.assertEqual(Path(espressif.idf_python()), good)
+        candidate.parent.mkdir(parents=True)
+        candidate.touch()
+        with mock.patch.object(espressif, 'find_idf', return_value=(self.idf, self.tools)),              mock.patch.object(espressif, 'idf_project', return_value=self.project),              mock.patch.dict(os.environ, {'IDF_PYTHON_ENV_PATH': str(candidate.parent.parent)}):
+            return Path(espressif.idf_python()), good
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows interpreter pairing')
+    def test_python_rejects_other_minor(self):
+        chosen, good = self.python_with_env(self.tools / 'python_env/idf5.5_py3.14_env/Scripts/python.exe')
+        self.assertEqual(chosen, good)
 
     @unittest.skipUnless(os.name == 'nt', 'Windows interpreter pairing')
     def test_python_ignores_right_minor_outside_paired_tools(self):
-        good = self.tools / 'python_env/idf6.1_py3.14_env/Scripts/python.exe'
-        good.parent.mkdir()
-        good.touch()
-        outside = self.root / 'elsewhere/python_env/idf6.1_py3.14_env/Scripts/python.exe'
-        outside.parent.mkdir(parents=True)
-        outside.touch()
-        with mock.patch.object(espressif, 'find_idf', return_value=(self.idf, self.tools)),              mock.patch.object(espressif, 'idf_project', return_value=self.project),              mock.patch.dict(os.environ, {'IDF_PYTHON_ENV_PATH': str(outside.parent.parent)}):
-            self.assertEqual(Path(espressif.idf_python()), good)
+        chosen, good = self.python_with_env(self.root / 'elsewhere/python_env/idf6.1_py3.14_env/Scripts/python.exe')
+        self.assertEqual(chosen, good)
 
 
 @unittest.skipUnless(os.name == 'nt', 'real winreg reads')
