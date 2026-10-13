@@ -1,21 +1,52 @@
 #!/bin/sh
-# ESP-IDF refuses Git Bash's MSYSTEM. The batch shim deletes it and runs
-# export.bat while keeping sequencing and error handling in POSIX sh.
-# Measured alternatives:
-#   env -u MSYSTEM python     -> MSYS re-injects MSYSTEM
-#   MSYSTEM= python           -> guard tests presence, not value
-#   cmd /c "set MSYSTEM=&& ?"  -> nested quotes corrupt argv
-#   cmd /c shim.bat ?         -> argv and semicolons survive
-# Linux sources export.sh directly.
+#
+# Run idf.py, or any command that needs ESP-IDF's environment, from a POSIX
+# shell on any platform. Source this and call idf() or idf_in().
+#
+#   . "$(dirname "$0")/idf.sh"
+#   idf_init "/path/to/launcher" || exit $?
+#   idf -B build build                           || exit $?
+#   idf_in <dir> python -m esptool ...           || exit $?
+#
+# Which ESP-IDF: espressif.py decides (the checkout at the commit in
+# launcher/idf-pin.json, unless IDF_PATH is set for the command); idf_init
+# asks it once and passes that checkout and its tools to every call, for that
+# process only.
+#
+# WHY THE SHIM
+#
+# ESP-IDF cannot be driven from Git Bash: idf_tools.py refuses outright when
+# MSYSTEM is set, and Git Bash always sets it. cmd's `set VAR=` deletes a
+# variable where bash can only blank it, and ESP-IDF ships export.bat, so a
+# nine-line .bat shim (idf_shim.bat, beside this file) is enough, and every
+# conditional, loop and error path stays here in sh. Measured before being
+# written, because each step had a plausible-looking alternative that does
+# not work:
+#
+#   env -u MSYSTEM python     -> MSYSTEM=MINGW64  (MSYS re-injects it)
+#   MSYSTEM= python           -> present but empty; the guard tests presence
+#   cmd /c "set MSYSTEM=&& ..." -> works, but nested quotes reach argv literally
+#   cmd /c shim.bat ...       -> works, argv intact, semicolons survive
+#
+# On Linux none of this applies: export.sh is sourced and idf.py called directly.
 
 _IDF_DIR=""
 _IDF_EXPORT=""
 _IDF_SHIM=""
 
-# Resolve substitutions here: failures inside caller arguments do not fail
-# the call. _IDF_ state avoids blanking a caller's environment variables.
-# idf_init <launcher-dir> [tools-dir]; $0 names the caller, so callers outside
-# this tools directory must supply it explicitly.
+# idf_init <launcher-dir> [tools-dir]
+#
+# The checkout is resolved in here rather than by the caller: a substitution
+# that fails inside an argument leaves the command's status at 0, so
+# `idf_init "$dir" "$(...)"` would carry on with no ESP-IDF at all.
+#
+# State is kept in _IDF_-prefixed variables: sourcing a file that declares a
+# plain name would silently blank a caller's variable of that name.
+#
+# tools-dir defaults to the calling script's own directory, which is right
+# for everything in launcher/tools/. Pass it explicitly from anywhere else;
+# `$0` is the CALLER's path, and POSIX sh has no portable way for a sourced
+# file to find itself.
 idf_init() {
     _IDF_DIR="$1"
     _IDF_TOOLS="${2:-$(cd "$(dirname "$0")" && pwd)}"
@@ -29,7 +60,8 @@ idf_init() {
     "$_IDF_PYTHON" "$_IDF_TOOLS/espressif.py" note "$_IDF_DIR/.." || return 1
 }
 
-# The resolver selects the pin unless a process override selects a checkout.
+# The export script of the checkout idf_init selected; on Windows it goes to
+# cmd, so it is spelled as a Windows path.
 idf_default_export() {
     if idf_needs_shim; then
         _IDF_DEFAULT="$IDF_PATH/export.bat"
