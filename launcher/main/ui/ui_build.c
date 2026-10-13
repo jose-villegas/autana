@@ -287,6 +287,7 @@ ui_invalidate(void) {
 
 void
 ui_init(void) {
+    ui_band_init();
     mu_init(&ui_ctx);
     ui_ctx.text_width = measure_text_width;
     ui_ctx.text_height = measure_text_height;
