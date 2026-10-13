@@ -19,10 +19,7 @@
 #include "freertos/semphr.h"
 #endif
 
-/* gfx_mode.c: the framebuffer, the mode it is held in, and the strip being
- * rendered (a band, or an expanded frame's overlay replay). band_render_active
- * is true only while one is; outside it band mode has no valid target at
- * all, matching gfx_fb_guard.h. */
+/* gfx_mode.c: the framebuffer and the mode it is held in. */
 extern gfx_color_t* fb;
 extern gfx_mode_t current_mode;
 

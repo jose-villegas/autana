@@ -13,7 +13,10 @@
 
 #include "gfx_shared_state.h"
 
+#include <stdlib.h>
+#include <string.h>
 #include "gfx/draw/gfx_draw.h"
+#include "gfx/draw/gfx_font_roles.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_test.h"
 #include "gfx/present/gfx_band_run.h"
@@ -108,6 +111,160 @@ test_draw_between_present_begin_and_wait_trips_the_present_guard(void) {
     TEST_ASSERT_EQUAL_UINT(before + 2, gfx_present_guard_trips);
 }
 
+enum { INK = UINT16_MAX, BAND_ROW = GFX_BAND_HEIGHT, ALPHA_OPAQUE = UINT8_MAX };
+
+enum { DRAW_CLEAR, DRAW_PIXEL, DRAW_LINE, DRAW_FILL, DRAW_DITHER, DRAW_BLEND, DRAW_BLIT, DRAW_TEXT, DRAW_TEXT_DITHER };
+
+static void
+primitive(int kind) {
+    const gfx_font_t* font = gfx_font_ui();
+    switch (kind) {
+        case DRAW_CLEAR: gfx_clear(INK); break;
+        case DRAW_PIXEL: gfx_pixel(DRAWN_X, BAND_ROW, INK); break;
+        case DRAW_LINE: gfx_line(DRAWN_X, BAND_ROW, DRAWN_X + SIZE, BAND_ROW + SIZE, INK); break;
+        case DRAW_FILL: gfx_fill_rect(DRAWN_X, BAND_ROW, SIZE, SIZE, INK); break;
+        case DRAW_DITHER: gfx_fill_rect_dither(DRAWN_X, BAND_ROW, SIZE, SIZE, INK, ALPHA_OPAQUE); break;
+        case DRAW_BLEND: gfx_fill_rect_blend(DRAWN_X, BAND_ROW, SIZE, SIZE, INK, ALPHA_OPAQUE); break;
+        case DRAW_BLIT: gfx_blit_dither(DRAWN_X, BAND_ROW, 1, 1, &(const gfx_color_t){INK}, 1, ALPHA_OPAQUE); break;
+        case DRAW_TEXT: gfx_text_font(DRAWN_X, BAND_ROW, "H", INK, 1, 0, font); break;
+        case DRAW_TEXT_DITHER: gfx_text_font_dither(DRAWN_X, BAND_ROW, "H", INK, 1, 0, font, ALPHA_OPAQUE); break;
+    }
+}
+
+static void
+check_band_marks(int kind) {
+    fixture();
+    gfx_band_begin_for_test(BAND_ROW);
+    primitive(kind);
+    gfx_band_end_for_test();
+    TEST_ASSERT_FALSE(gfx_region_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT));
+    primitive(kind);
+    TEST_ASSERT_TRUE(gfx_region_dirty(DRAWN_X, BAND_ROW, SIZE, SIZE));
+}
+
+static void
+test_band_target_writes_only_local_rows(void) {
+    fixture();
+    gfx_clear(0);
+    gfx_present();
+    gfx_band_begin_for_test(BAND_ROW);
+    gfx_clear(INK);
+    gfx_fill_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, INK);
+    gfx_band_end_for_test();
+    const gfx_color_t* pixels = gfx_framebuffer();
+    for (int y = 0; y < GFX_HEIGHT; y++) {
+        for (int x = 0; x < GFX_WIDTH; x++) {
+            const gfx_color_t expected = y >= BAND_ROW && y < BAND_ROW + GFX_BAND_HEIGHT ? INK : 0;
+            TEST_ASSERT_EQUAL_HEX16(expected, pixels[y * GFX_WIDTH + x]);
+        }
+    }
+}
+
+static void
+test_clip_edges_match_independent_clamps(void) {
+    fixture();
+    static const int xs[] = {-SIZE, 0, SIZE, GFX_WIDTH, GFX_WIDTH + SIZE};
+    static const int ys[] = {-SIZE, 0, SIZE, GFX_HEIGHT, GFX_HEIGHT + SIZE};
+    static const int widths[] = {-SIZE, 0, SIZE, GFX_WIDTH + SIZE};
+    static const int heights[] = {-SIZE, 0, SIZE, GFX_HEIGHT + SIZE};
+    for (size_t i = 0; i < sizeof xs / sizeof *xs; i++) {
+        for (size_t j = 0; j < sizeof ys / sizeof *ys; j++) {
+            for (size_t k = 0; k < sizeof widths / sizeof *widths; k++) {
+                for (size_t l = 0; l < sizeof heights / sizeof *heights; l++) {
+                    gfx_set_clip(xs[i], ys[j], widths[k], heights[l]);
+                    const gfx_box_t actual = gfx_clip_save();
+                    const gfx_box_t expected = {mathi_max(xs[i], 0), mathi_max(ys[j], 0),
+                                                mathi_min(xs[i] + widths[k], GFX_WIDTH),
+                                                mathi_min(ys[j] + heights[l], GFX_HEIGHT)};
+                    TEST_ASSERT_EQUAL_MEMORY(&expected, &actual, sizeof actual);
+                    gfx_clear(0);
+                    gfx_fill_rect(-SIZE, -SIZE, GFX_WIDTH + SIZE * 2, GFX_HEIGHT + SIZE * 2, INK);
+                    const gfx_color_t* pixels = gfx_framebuffer();
+                    for (int y = 0; y < GFX_HEIGHT; y++) {
+                        for (int x = 0; x < GFX_WIDTH; x++) {
+                            const bool inside =
+                                x >= expected.x0 && x < expected.x1 && y >= expected.y0 && y < expected.y1;
+                            TEST_ASSERT_EQUAL_HEX16(inside ? INK : 0, pixels[y * GFX_WIDTH + x]);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+static gfx_color_t* text_pixels;
+
+static void
+release_text_pixels(void) {
+    free(text_pixels);
+    text_pixels = NULL;
+    gfx_reset_for_test();
+}
+
+static void
+check_text_clip(int kind) {
+    fixture();
+    const gfx_font_t* font = gfx_font_ui();
+    const size_t bytes = sizeof *text_pixels * font->cell_w * font->cell_h;
+    text_pixels = malloc(bytes);
+    suite_set_test_cleanup(release_text_pixels);
+    TEST_ASSERT_NOT_NULL(text_pixels);
+    gfx_clear(0);
+    primitive(kind);
+    for (int row = 0; row < font->cell_h; row++) {
+        memcpy(text_pixels + row * font->cell_w, gfx_framebuffer() + (BAND_ROW + row) * GFX_WIDTH + DRAWN_X,
+               sizeof *text_pixels * font->cell_w);
+    }
+    const int left = DRAWN_X + font->cell_w / 2;
+    const int top = BAND_ROW + font->cell_h / 2;
+    gfx_clear(0);
+    gfx_present();
+    gfx_set_clip(left, top, font->cell_w, font->cell_h);
+    primitive(kind);
+    int ink = 0;
+    for (int y = 0; y < GFX_HEIGHT; y++) {
+        for (int x = 0; x < GFX_WIDTH; x++) {
+            const bool inside = x >= left && x < left + font->cell_w && y >= top && y < top + font->cell_h;
+            const gfx_color_t expected = inside && x < DRAWN_X + font->cell_w && y < BAND_ROW + font->cell_h
+                                             ? text_pixels[(y - BAND_ROW) * font->cell_w + x - DRAWN_X]
+                                             : 0;
+            TEST_ASSERT_EQUAL_HEX16(expected, gfx_framebuffer()[y * GFX_WIDTH + x]);
+            if (expected != 0) {
+                ink++;
+                TEST_ASSERT_TRUE(gfx_region_dirty(x, y, 1, 1));
+            }
+        }
+    }
+    TEST_ASSERT_GREATER_THAN_INT(0, ink);
+    TEST_ASSERT_FALSE(gfx_region_dirty(OTHER_X, OTHER_Y, SIZE, SIZE));
+}
+
+#define BAND_MARK_TEST(name, kind)                                                                                     \
+    static void test_band_marks_##name(void) { check_band_marks(kind); }
+
+BAND_MARK_TEST(clear, DRAW_CLEAR)
+BAND_MARK_TEST(pixel, DRAW_PIXEL)
+BAND_MARK_TEST(line, DRAW_LINE)
+BAND_MARK_TEST(fill, DRAW_FILL)
+BAND_MARK_TEST(dither, DRAW_DITHER)
+BAND_MARK_TEST(blend, DRAW_BLEND)
+BAND_MARK_TEST(blit, DRAW_BLIT)
+BAND_MARK_TEST(text, DRAW_TEXT)
+BAND_MARK_TEST(text_dither, DRAW_TEXT_DITHER)
+
+#undef BAND_MARK_TEST
+
+static void
+test_clip_text(void) {
+    check_text_clip(DRAW_TEXT);
+}
+
+static void
+test_clip_text_dither(void) {
+    check_text_clip(DRAW_TEXT_DITHER);
+}
+
 enum { BAND_MAX = GFX_HEIGHT / 16 };
 
 static int band_draws;
@@ -154,6 +311,19 @@ run_gfx_shared_state_suite(void) {
     gfx_shared_state_t saved;
     gfx_shared_state_save(&saved);
 #ifndef DEVICE_BUILD
+    RUN_TEST(test_band_target_writes_only_local_rows);
+    RUN_TEST(test_clip_edges_match_independent_clamps);
+    RUN_TEST(test_band_marks_clear);
+    RUN_TEST(test_band_marks_pixel);
+    RUN_TEST(test_band_marks_line);
+    RUN_TEST(test_band_marks_fill);
+    RUN_TEST(test_band_marks_dither);
+    RUN_TEST(test_band_marks_blend);
+    RUN_TEST(test_band_marks_blit);
+    RUN_TEST(test_band_marks_text);
+    RUN_TEST(test_band_marks_text_dither);
+    RUN_TEST(test_clip_text);
+    RUN_TEST(test_clip_text_dither);
     RUN_TEST(test_box_marking_draw_is_seen_by_the_presenter);
     RUN_TEST(test_row_marking_draw_is_seen_by_the_presenter);
     RUN_TEST(test_draw_is_refused_while_a_mode_has_freed_the_framebuffer);

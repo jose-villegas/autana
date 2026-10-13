@@ -10,10 +10,12 @@
 #include "gfx/draw/gfx_target.h"
 #include "gfx/gfx.h"
 
-/* The framebuffer, or the band being rendered. */
+/* What draw writes into: the framebuffer, or the band or replay strip being drawn. */
 gfx_target_t gfx_present_target(void);
-/* Band drawing and overlay replay skip dirty marks. */
+/* True while a band or an overlay replay is drawn; draw marks nothing dirty then. */
 bool gfx_present_in_band(void);
+/* Save and restore the clip verbatim, including empty boxes. Restore does not
+ * clamp; callers must supply a saved clip or a screen-intersected box. */
 gfx_box_t gfx_clip_save(void);
 void gfx_clip_restore(gfx_box_t clip);
 

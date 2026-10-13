@@ -16,12 +16,14 @@
 #include <stdint.h>
 
 #include "build/build_variant.h"
+#include "gfx/draw/gfx_box.h"
 #include "gfx/draw/gfx_color.h"
 
 /* The panel's size as literals, so no caller needs the board's headers; the
  * present side asserts them against the board's own values. */
-#define GFX_WIDTH  368
-#define GFX_HEIGHT 448
+#define GFX_WIDTH      368
+#define GFX_HEIGHT     448
+#define GFX_SCREEN_BOX ((gfx_box_t){0, 0, GFX_WIDTH, GFX_HEIGHT})
 
 /* The band ring's compile-time band height (gfx_mode.h, gfx_band.h), a
  * divisor of GFX_HEIGHT (448): 64, 32 or 16. 32 is the default absent a

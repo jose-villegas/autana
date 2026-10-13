@@ -127,11 +127,9 @@ gfx_text_height(void) {
 void gfx_text_font(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns,
                    const gfx_font_t* font);
 
-/* gfx_text_font(), but every glyph pixel is drawn through
- * gfx_fill_rect_dither() at `alpha` instead of solid: text that fades
- * rather than cuts. A deliberately separate function, not a parameter
- * added to gfx_text_font() itself; see gfx_draw.c's own comment above the
- * definition for why. */
+/* Dithered glyph pixels at `alpha` let text fade. The separate path keeps
+ * opaque text free of alpha checks; see the comment above
+ * draw_rotated_font_pixel_dither() in gfx_draw.c. */
 void gfx_text_font_dither(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns,
                           const gfx_font_t* font, uint8_t alpha);
 

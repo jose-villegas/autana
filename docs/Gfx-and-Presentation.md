@@ -7,7 +7,7 @@ tracker, and the present path. A caller includes the header for what it does:
 | --- | --- |
 | [`gfx/gfx.h`](../launcher/main/gfx/gfx.h) | the framebuffer: its size, `gfx_init()`, `gfx_framebuffer()` |
 | [`gfx/draw/gfx_draw.h`](../launcher/main/gfx/draw/gfx_draw.h) | primitives, text and clipping |
-| [`gfx/present/gfx_present.h`](../launcher/main/gfx/present/gfx_present.h) | dirty marking, present, the panel clock, heal |
+| [`gfx/present/gfx_present.h`](../launcher/main/gfx/present/gfx_present.h) | draw's target and clip, dirty marking, present, the panel clock, heal |
 | [`gfx/present/gfx_mode.h`](../launcher/main/gfx/present/gfx_mode.h) | modes, readback, the indexed image and its LUTs |
 | [`gfx/present/gfx_debug.h`](../launcher/main/gfx/present/gfx_debug.h) | development-build overlays and send counts |
 | [`gfx/image/gfx_image.h`](../launcher/main/gfx/image/gfx_image.h) | a picture read in place from its pack entry |
@@ -18,9 +18,8 @@ paths), `gfx_mode.c` (modes and buffers), `gfx_debug.c` and the pure headers
 they send with; `image/` holds `gfx_image.c`, the reader of a picture's pack
 entry ([the image entry](assets/README.md#the-image-entry)); `gfx/gfx_internal.h`
 holds the state shared only by `present/`. Draw reads its target and clip
-through `gfx_present.h`. The
-panel link itself, QSPI and each revision's init sequence, is
-`board/board_panel.c`. For what an app owes the shell see
+through `gfx_present.h`. The panel link itself, QSPI and each revision's init
+sequence, is `board/board_panel.c`. For what an app owes the shell see
 [`Building-an-App.md`](Building-an-App.md); for the panel constraints these choices obey see
 [`notes/Display-and-Rendering.md`](notes/Display-and-Rendering.md).
 

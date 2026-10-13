@@ -41,10 +41,11 @@ gfx_mode_t current_mode;
 static gfx_color_t* band_buf[GFX_BAND_SLOTS];
 static gfx_band_ring_t band_ring;
 static int band_current_slot;
+/* True only during a band or expanded overlay replay; outside it band mode
+ * has no valid target, matching gfx_fb_guard.h. */
 static bool band_render_active;
 static gfx_target_t strip_target;
 static gfx_box_t clip;
-static const gfx_box_t full_clip = {0, 0, GFX_WIDTH, GFX_HEIGHT};
 
 #ifndef ESP_PLATFORM
 void
@@ -290,7 +291,7 @@ gfx_init(void) {
 #endif
     reset_mode_to_full_fb();
     gfx_fb_guard_set_available(true);
-    gfx_clip_restore(full_clip);
+    gfx_clip_restore(GFX_SCREEN_BOX);
     gfx_mark_all_dirty();
 #ifdef ESP_PLATFORM
     ESP_LOGI(TAG,
@@ -367,7 +368,7 @@ expand_rows(int y0, int y1, gfx_color_t* destination) {
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
         gfx_present_guard_replaying = true;
 #endif
-        gfx_clip_restore(full_clip);
+        gfx_clip_restore(GFX_SCREEN_BOX);
         frame_overlay(y0, y1);
         gfx_clip_restore(saved_clip);
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
@@ -399,7 +400,7 @@ gfx_reset_for_test(void) {
     free_full_framebuffer();
     current_mode = (gfx_mode_t){0};
     gfx_fb_guard_set_available(false);
-    gfx_clip_restore(full_clip);
+    gfx_clip_restore(GFX_SCREEN_BOX);
 }
 #endif
 
@@ -472,7 +473,7 @@ gfx_mode_exit(void) {
             }
         }
 #endif
-        gfx_clip_restore(full_clip);
+        gfx_clip_restore(GFX_SCREEN_BOX);
         gfx_mark_all_dirty();
     }
     reset_mode_to_full_fb();

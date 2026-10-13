@@ -1,8 +1,8 @@
 /*
- * gfx_target: a framebuffer or band buffer with absolute row bounds.
- * Primitives intersect present's clip rectangle with the target, then
- * translate absolute rows into local buffer rows. Pure arithmetic lets
- * host suites verify clipping and translation without a panel.
+ * gfx_target: framebuffer or band buffer with absolute row bounds.
+ * Primitives intersect present's clip with the target and translate to local
+ * rows. For full framebuffers, clip-to-rows and translation are no-ops.
+ * Pure arithmetic lets host suites verify both without a panel.
  */
 #pragma once
 
