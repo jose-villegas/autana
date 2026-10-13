@@ -2313,7 +2313,11 @@ class IdfNoteTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             (Path(folder) / "launcher").mkdir()
             (Path(folder) / "launcher" / "idf-pin.json").write_text(json.dumps({"commit": pinned_commit}))
-            with mock.patch.object(autana, "idf_commit", return_value=local_commit),                  mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            import espressif
+            with mock.patch.object(espressif, "idf_commit", return_value=local_commit), \
+                 mock.patch.object(espressif, "require_idf", return_value=(Path(folder), Path(folder))), \
+                 mock.patch.object(espressif, "idf_path", return_value=Path(folder)), \
+                 mock.patch("sys.stdout", new_callable=io.StringIO) as out:
                 autana.idf_note(folder)
         return out.getvalue()
 
@@ -2323,9 +2327,11 @@ class IdfNoteTests(unittest.TestCase):
         self.assertIn("b" * 40, printed)
         self.assertIn("a" * 40, printed)
 
-    def test_the_pinned_commit_or_no_esp_idf_prints_nothing(self):
-        self.assertEqual(self.note("a" * 40), "")
-        self.assertEqual(self.note(""), "")
+    def test_every_build_names_the_installation(self):
+        self.assertIn("aaaaaaaa, pinned", self.note("a" * 40))
+
+    def test_override_label(self):
+        self.assertIn("bbbbbbbb, override", self.note("b" * 40))
 
 
 if __name__ == "__main__":

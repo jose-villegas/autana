@@ -2,7 +2,8 @@
 
 set -eu
 
-. "$(dirname "$0")/espressif.sh"
+ESPRESSIF_SCRIPT_DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+. "$ESPRESSIF_SCRIPT_DIR/espressif.sh"
 
 ELF=${1:-build/launcher.elf}
 NM=${NM:-xtensa-esp32s3-elf-nm}

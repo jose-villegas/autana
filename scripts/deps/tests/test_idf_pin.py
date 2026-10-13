@@ -7,6 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 import idf_pin
@@ -61,13 +62,23 @@ class IdfPinTests(unittest.TestCase):
         self.assertEqual(json.loads(path.read_text()), {
             "image": "espressif/idf:release-v5.5@sha256:abc", "commit": self.commit,
             "image_date": "2026-10-12", "esp_clang": "19.1.2"})
-        self.assertEqual(idf_pin.tag("espressif/idf:release-v5.5@sha256:abc"), "release-v5.5")
+        self.assertEqual(idf_pin.idf_image_tag("espressif/idf:release-v5.5@sha256:abc"), "release-v5.5")
+
+    def test_a_registry_port_is_not_the_tag(self):
+        self.assertEqual(idf_pin.idf_image_tag("registry:5000/espressif/idf:release-v6.1@sha256:abc"), "release-v6.1")
 
     def test_only_a_newer_release_line_is_named(self):
         tags = {"results": [{"name": n} for n in ("latest", "release-v5.5", "release-v6.1", "release-v6.0", "v6.1.1", "release-v5.10")]}
         self.assertEqual(idf_pin.newer_line("release-v5.5", tags), "release-v6.1")
         self.assertIsNone(idf_pin.newer_line("release-v6.1", tags))
         self.assertEqual(idf_pin.newer_line("release-v5.5", {"results": [{"name": "release-v5.10"}]}), "release-v5.10")
+
+    def test_newer_line_command_reads_the_listing_on_stdin(self):
+        listing = io.StringIO(json.dumps({"results": [{"name": "release-v9.9"}]}))
+        out = io.StringIO()
+        with mock.patch.object(idf_pin.sys, "stdin", listing), contextlib.redirect_stdout(out):
+            self.assertEqual(idf_pin.main(["newer-line"]), 0)
+        self.assertEqual(out.getvalue().strip(), "release-v9.9")
 
 
 if __name__ == "__main__":

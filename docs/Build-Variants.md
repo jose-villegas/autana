@@ -20,8 +20,7 @@ that reason. Two further options narrow a SELFTEST image:
 and the `LAUNCHER_SELFTEST_SCOPE_*` choice (which suites are compiled at
 all).
 
-That is three images, each with its own build directory so one never
-reconfigures another:
+Each image has its own build directory so one never reconfigures another:
 
 | image | flags | built by | directory |
 |---|---|---|---|
@@ -29,7 +28,10 @@ reconfigures another:
 | dev | DEVELOPMENT | `autana build dev`, `autana flash dev` | `build.dev/` |
 | diag | DEVELOPMENT + SELFTEST | `autana build diag`, `autana flash diag`, `autana selftest` | `build.diag/` |
 
-`autana build` needs no board and takes no lock; what it runs is
+See [Where builds live](tools/Autana-CLI.md#where-builds-live) for variant
+paths and their ESP-IDF identity stamps.
+
+`autana build` needs no board and takes no board lock; what it runs is
 `launcher/tools/build/build.sh` with the variant's flag (`--dev`, `--diag`),
 and CI builds every variant the same way. `--configure` stops after CMake's
 configure step: the variant's `sdkconfig` and `compile_commands.json`,

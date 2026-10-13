@@ -398,7 +398,9 @@ cores, with no board and therefore no port to share. Any number of
 instances run at once.
 
 ```sh
-python "$IDF_PATH/tools/idf_tools.py" install qemu-xtensa   # once
+. launcher/tools/build/idf.sh
+idf_init "$PWD/launcher" "$PWD/launcher/tools/build"
+idf_in "$PWD/launcher" python "$IDF_PATH/tools/idf_tools.py" install qemu-xtensa # once
 ./launcher/test/run_qemu_tests.sh --perf-scope             # build + run
 ./launcher/test/run_qemu_tests.sh --perf-scope --icount --no-build
 ./launcher/test/run_qemu_tests.sh --suite suite_job --screenshot shot.png

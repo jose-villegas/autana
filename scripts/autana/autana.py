@@ -34,7 +34,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
 from process_tree import launch_process_tree, close_process_tree  # noqa: E402
 import device_lock  # noqa: E402  (path must be set up first)
 import autana_config  # noqa: E402  (path must be set up first)
-from espressif import IDF_PIN, idf_commit, idf_drift, idf_path, idf_pin, idf_python  # noqa: E402
+from espressif import idf_python, idf_note_lines, require_idf  # noqa: E402
 from version import __version__  # noqa: E402
 from device_capture import BUILD_ID_REQUEST, PERF_SEGMENT  # noqa: E402
 
@@ -323,18 +323,19 @@ def variant_request(verb, args, flags, project):
         dirty = " (dirty)" if git("-C", project, "status", "--porcelain") else ""
         where = f"{current_branch} @ {commit}{dirty}"
     print(f"autana {verb}: {variant} of {where}", flush=True)
-    idf_note(project)
+    idf_note(project, emit=False)
     return asked, variant, seen
 
 
-def idf_note(project):
-    """A note, and nothing more, when the ESP-IDF a build here uses is not
-    the commit `project`'s launcher/idf-pin.json pins."""
-    commit = idf_commit(idf_path())
-    if commit and (Path(project) / IDF_PIN).is_file():
-        for drift in idf_drift({"commit": commit}, idf_pin(Path(project))):
-            print(f"note: ESP-IDF {drift}; CI builds on the pin "
-                  "(docs/tools/Framework-Versions.md)", flush=True)
+def idf_note(project, emit=True):
+    """Validate before dispatch; the build shell emits its resolved installation note."""
+    try:
+        if emit:
+            print("\n".join(idf_note_lines(project)), flush=True)
+        else:
+            require_idf(project)
+    except (ValueError, OSError) as error:
+        sys.exit(str(error))
 
 
 def flash(args):

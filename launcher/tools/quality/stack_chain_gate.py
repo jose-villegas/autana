@@ -245,7 +245,7 @@ def object_name(source, marker_root):
 
 
 def main(argv):
-    build = os.path.abspath(argv[1] if len(argv) > 1
+    build = os.path.realpath(argv[1] if len(argv) > 1
                             else os.path.join(LAUNCHER, "build.diag"))
     db = os.path.join(build, "compile_commands.json")
     if not os.path.isfile(db):

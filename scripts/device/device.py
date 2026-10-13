@@ -36,6 +36,7 @@ TOKEN_ENV = autana_config.TOKEN_ENV
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "device"))
 from espressif import espressif_tools_root, idf_path, idf_python  # noqa: E402  (path must be set up first)
+from build_paths import BUILD_LOCK  # noqa: E402
 
 
 COMMAND_ENV = autana_config.COMMAND_ENV
@@ -1039,7 +1040,6 @@ FLASH_SCRIPT = Path("scripts") / "device" / "flash_image.sh"
 VARIANT_FLAGS = {"release": [], "dev": ["--dev"], "diag": ["--diag"]}
 VARIANT_CONSOLE = {"release": False, "dev": True, "diag": True}
 BUILD_DIRS = {"release": "build", "dev": "build.dev", "diag": "build.diag"}
-BUILD_LOCK = "autana-build.lock"
 BUILD_LOCK_POLL_SECONDS = 0.2
 FLASH_ARGS_FILE = re.compile(r"^0x[0-9a-fA-F]+\s+(\S+)\s*$")
 
@@ -1085,15 +1085,22 @@ def try_lock_file(handle):
 def build_directory_lock(build_dir):
     """Holds `build_dir` for one build and its snapshot, so two builds of one
     worktree's variant never interleave in one directory. An OS file lock:
-    the system drops it with the process that held it."""
+    the system drops it with the process that held it. Yields the folder
+    build_paths.py prepared, to pass to build.sh as --prepared-build, or None
+    for a project older than build_paths.py, whose build.sh has no such option
+    (autana is one tool for every checkout, perf_compare's old revisions too)."""
     build_dir = Path(build_dir)
+    prepared = None
+    if (build_dir.parent / "tools/build/build_paths.py").is_file():
+        from build_paths import prepare
+        build_dir = prepared = prepare(build_dir.parent, build_dir.name)
     build_dir.mkdir(parents=True, exist_ok=True)
     with open(build_dir / BUILD_LOCK, "a+b") as handle:
         if not try_lock_file(handle):
             print("waiting for another build in " + str(build_dir), file=sys.stderr)
             while not try_lock_file(handle):
                 time.sleep(BUILD_LOCK_POLL_SECONDS)
-        yield
+        yield prepared
 
 
 def snapshot_image(build_dir, image_dir):
@@ -1157,9 +1164,9 @@ def remove_image_directory(image):
 def build_snapshot(build, build_dir, image_dir, **popen):
     """Runs `build` and snapshots its image, holding the build directory
     throughout and no board lock at all. Returns the build id."""
-    with build_directory_lock(build_dir):
-        run_to_end(build, None, **dict(popen, env=script_environment(popen.get("env"))))
-        return snapshot_image(build_dir, image_dir)
+    with build_directory_lock(build_dir) as prepared:
+        run_to_end(build + (["--prepared-build", prepared.as_posix()] if prepared else []), None, **dict(popen, env=script_environment(popen.get("env"))))
+        return snapshot_image(prepared or build_dir, image_dir)
 
 
 def build_worktree(worktree, variant, build_flags=()):
@@ -1171,8 +1178,8 @@ def build_worktree(worktree, variant, build_flags=()):
         raise RuntimeError("build tool not found: " + str(worktree / BUILD_SCRIPT))
     build, _ = flash_commands(git_bash(), worktree, variant, build_flags)
     try:
-        with build_directory_lock(build_directory(worktree, variant)):
-            run_to_end(build, None, cwd=worktree, stdin=subprocess.DEVNULL,
+        with build_directory_lock(build_directory(worktree, variant)) as prepared:
+            run_to_end(build + (["--prepared-build", prepared.as_posix()] if prepared else []), None, cwd=worktree, stdin=subprocess.DEVNULL,
                        env=script_environment())
     except subprocess.CalledProcessError as failed:
         return failed.returncode
