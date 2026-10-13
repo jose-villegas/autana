@@ -1130,14 +1130,34 @@ class PreparedSnapshotTests(unittest.TestCase):
                 result = device.build_snapshot(['unused'], launcher / device.BUILD_DIRS['dev'], image)
             self.assertEqual(result, 'locked-dev')
 
+    def snapshot_command(self, with_build_paths):
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = fake_flash.worktree(Path(directory) / 'project')
+            launcher = worktree / 'launcher'
+            if with_build_paths:
+                (launcher / 'tools/build/build_paths.py').touch()
+            else:
+                self.assertFalse((launcher / 'tools/build/build_paths.py').exists())
+            with mock.patch.object(device, 'run_to_end') as run,                  mock.patch.object(device, 'snapshot_image', return_value='id'):
+                device.build_snapshot(['build.sh'], launcher / device.BUILD_DIRS['dev'], Path(directory) / 'image')
+            return run.call_args.args[0]
+
+    def test_snapshot_of_an_old_project_passes_no_prepared_build(self):
+        self.assertEqual(self.snapshot_command(False), ['build.sh'])
+
+    def test_snapshot_passes_prepared_build_when_the_project_has_build_paths(self):
+        self.assertIn('--prepared-build', self.snapshot_command(True))
+
 
 class BuildWorktreeTests(unittest.TestCase):
     """build_worktree(), behind `autana build`: the build half of a flash,
     touching no board and no lock."""
 
-    def main(self, variant, flags=(), run=None):
+    def main(self, variant, flags=(), run=None, build_paths=False):
         with tempfile.TemporaryDirectory() as directory:
             worktree = fake_flash.worktree(Path(directory) / "engine")
+            if build_paths:
+                (worktree / "launcher/tools/build/build_paths.py").touch()
             calls = []
             with mock.patch.object(device, "run_to_end",
                                    side_effect=run or (lambda command, lost=None, **options:
@@ -1150,7 +1170,7 @@ class BuildWorktreeTests(unittest.TestCase):
         return code, calls
 
     def test_builds_the_variant_with_no_board_and_no_lock(self):
-        code, calls = self.main("diag", ["--perf-scope"])
+        code, calls = self.main("diag", ["--perf-scope"], build_paths=True)
         self.assertEqual(code, 0)
         (command, lost, options), = calls
         self.assertEqual([Path(command[1]).name] + command[2:-2],
@@ -1159,6 +1179,12 @@ class BuildWorktreeTests(unittest.TestCase):
         self.assertEqual(Path(command[-1]).name, device.BUILD_DIRS["diag"])
         self.assertIsNone(lost)
         self.assertNotIn(autana_config.TOKEN_ENV, options["env"])
+
+    def test_an_old_project_gets_no_prepared_build_option(self):
+        code, calls = self.main("diag", ["--perf-scope"])
+        self.assertEqual(code, 0)
+        (command, _, _), = calls
+        self.assertEqual([Path(command[1]).name] + command[2:], ["build.sh", "--diag", "--perf-scope"])
 
     def test_a_failed_build_is_the_commands_exit_status(self):
         def failing(command, lost=None, **unused_options):

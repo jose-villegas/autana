@@ -136,6 +136,17 @@ class ResolutionTests(unittest.TestCase):
              mock.patch.dict(os.environ, {'IDF_PYTHON_ENV_PATH': str(bad.parent.parent)}):
             self.assertEqual(Path(espressif.idf_python()), good)
 
+    @unittest.skipUnless(os.name == 'nt', 'Windows interpreter pairing')
+    def test_python_ignores_right_minor_outside_paired_tools(self):
+        good = self.tools / 'python_env/idf6.1_py3.14_env/Scripts/python.exe'
+        good.parent.mkdir()
+        good.touch()
+        outside = self.root / 'elsewhere/python_env/idf6.1_py3.14_env/Scripts/python.exe'
+        outside.parent.mkdir(parents=True)
+        outside.touch()
+        with mock.patch.object(espressif, 'find_idf', return_value=(self.idf, self.tools)),              mock.patch.object(espressif, 'idf_project', return_value=self.project),              mock.patch.dict(os.environ, {'IDF_PYTHON_ENV_PATH': str(outside.parent.parent)}):
+            self.assertEqual(Path(espressif.idf_python()), good)
+
 
 @unittest.skipUnless(os.name == 'nt', 'real winreg reads')
 class RegistryTests(unittest.TestCase):

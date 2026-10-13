@@ -100,7 +100,7 @@ if os.environ.get("FAKE_REPOINT"):
         except RuntimeError as error:
             self.skipTest(str(error))
 
-    def run_build_sh(self, flags, sdkconfig, previous_idf=None, pinned=False, missing=False, repoint=False):
+    def run_build_sh(self, flags, sdkconfig, previous_idf=None, pinned=False, missing=False, repoint=False, rebuild=False):
         """Returns the result, the fake's logged argv lines and the files
         left in the launcher folder."""
         with tempfile.TemporaryDirectory() as directory:
@@ -145,9 +145,16 @@ if os.environ.get("FAKE_REPOINT"):
             if pinned:
                 environment.pop("IDF_PATH", None)
                 environment.pop("IDF_TOOLS_PATH", None)
-            result = subprocess.run([self.bash, (tools / "build.sh").as_posix(), *flags],
-                                    capture_output=True, text=True, timeout=120,
-                                    stdin=subprocess.DEVNULL, env=environment)
+            def build():
+                return subprocess.run([self.bash, (tools / "build.sh").as_posix(), *flags],
+                                      capture_output=True, text=True, timeout=120,
+                                      stdin=subprocess.DEVNULL, env=environment)
+            result = build()
+            if rebuild:
+                # Leave a file in the real build folder, then build again.
+                folder = Path(json.loads((root / "env-log.json").read_text())["build_directory"])
+                (folder / "sentinel").write_text("configured output")
+                result = build()
             result.idf_environment = json.loads((root / 'env-log.json').read_text()) if (root / 'env-log.json').exists() else {}
             result.expected_idf = export.parent
             result.expected_tools = root / 'tools'
@@ -214,6 +221,12 @@ if os.environ.get("FAKE_REPOINT"):
         self.assertEqual(matched.returncode, 0, matched.stdout + matched.stderr)
         self.assertNotIn("reconfiguring from scratch", matched.stdout + matched.stderr)
         self.assertIn("build.dev/sentinel", matched_files)
+
+    def test_second_build_on_the_same_idf_keeps_the_build_folder(self):
+        result, _, _ = self.run_build_sh(["--dev"], self.SDKCONFIGS["dev"], rebuild=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("reconfiguring from scratch", result.stdout + result.stderr)
+        self.assertIn("sentinel", result.prepared_files)
 
     def test_configure_reconfigures_with_the_builds_arguments(self):
         for variant, sdkconfig in self.SDKCONFIGS.items():
