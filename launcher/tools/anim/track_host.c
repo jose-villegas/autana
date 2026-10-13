@@ -1,7 +1,20 @@
 /*
- * track_host: samples pack tracks through the firmware playhead and sampler.
- * track_host.py builds it once. The printed clock is 64-bit to avoid overflow.
- * --poses loops from zero. --every must be nonzero.
+ * track_host: prints what a clip's tracks hold every N milliseconds, read
+ * from the clip's TRCK entry in an asset pack through the same
+ * anim_tracks_from_pack(), anim_playhead_t and anim_track_sample() the
+ * firmware calls. One program for every clip: track_host.py builds it once.
+ *
+ *   track_host --pack PACK --clip ID [--from MS] [--every MS] [--until MS] [--clamp]
+ *   track_host --pack PACK --clip ID [--every MS] [--until MS] --poses NODE W H TAN NEAR
+ *
+ * By default one line per track per sample time: `<t_ms> <path:CCCC.field> <value...>`,
+ * from --from (0) to --until (the clip's duration). With --poses it prints the
+ * poses file r3d's triangle_sizes reads, for the camera node NODE: its
+ * translation as the eye, the way its rotation turns glTF's -Z as the
+ * forward, over the lens and size given, from 0 and looping, so --from and
+ * --clamp are refused with it. --poses comes last. --every 0 is refused.
+ * The clock counts in 64 bits, so a step past an --until near the u32
+ * maximum ends the run instead of wrapping to 0.
  */
 #include <inttypes.h>
 #include <stdbool.h>

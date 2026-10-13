@@ -12,7 +12,7 @@ The format is glTF 2.0's own animation model<sup>[[17]](Citations.md#17)</sup>, 
 or any other exporter plays back as it was made.
 
 ```mermaid
-flowchart TD
+flowchart LR
     Author["Blender, any glTF exporter, or camera keys<br/><i>.glb, .fbx or .keys.toml</i>"] --> Anim["NAME.anim.toml<br/><i>source and animation name</i>"]
     Anim --> Pack["build_pack.py<br/><i>a TRCK entry in its pack</i>"]
     Pack --> Open["anim_tracks_from_pack(), anim_tracks_find()<br/><i>tracks pointing into the pack</i>"]
