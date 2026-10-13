@@ -15,6 +15,8 @@ on:
       - 'scripts/gates/package.json'
       - 'scripts/gates/package-lock.json'
       - '.github/workflows/math.yml'
+      - '.node-version'
+      - '.github/actions/host-tools/**'
   pull_request:
     paths:
       - '**/*.md'
@@ -22,6 +24,8 @@ on:
       - 'scripts/gates/package.json'
       - 'scripts/gates/package-lock.json'
       - '.github/workflows/math.yml'
+      - '.node-version'
+      - '.github/actions/host-tools/**'
   workflow_dispatch:
 
 concurrency:
@@ -31,9 +35,10 @@ concurrency:
 jobs:
   check-math:
     name: Math formulas
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/host-tools
 
       - name: Install the pinned mathjax-full and markdown-it
         run: npm ci --prefix scripts/gates
