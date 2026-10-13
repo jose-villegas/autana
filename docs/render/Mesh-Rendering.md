@@ -14,7 +14,8 @@ them. The layers are in [Firmware-Architecture.md](../Firmware-Architecture.md).
 
 ## What a scene uses
 
-A scene that draws a baked mesh includes `render/r3d.h`;
+A scene includes `render/r3d_lit_mesh.h` for the mesh, `render/raster.h`
+to draw, and `render/viewport.h` for the viewport;
 one that projects points and segments takes `render/r3d_project_x.h`.
 Both use `render_view_t` for the per-frame perspective fit and picture basis.
 
@@ -55,7 +56,6 @@ exactly.
 
 | File | What it is |
 |---|---|
-| `r3d.h` | What a scene includes: it brings in the headers below it down to the mesh format |
 | `render_view.h` | The frame view and its pose-and-lens builder |
 | `r3d_instance.h` | A mesh and its optional baked placement: what the raster draws |
 | `raster.h` | An array of instances drawn on both cores, optionally upscaled into a destination picture |
