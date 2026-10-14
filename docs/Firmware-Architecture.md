@@ -37,16 +37,16 @@ screen.
 ## Layers
 
 Each row may include any lower row, never a higher row or another folder in
-its own row. The tier key is the first path component. `main.c` starts the
-board and calls `shell_run()`; the shell reaches apps through `app/app.h`
-callbacks. System-owned applications live under `shell/apps/` and share the
-shell tier. The inventory is `launcher/main/`; the include gate's order is
-`LAYER_ROWS` in `scripts/gates/check_style_audit.py`.
+its own row. Project apps under `apps/` and system apps under `shell/apps/`
+share the apps tier; other folders use their first path component.
+`main.c` starts the board and calls `shell_run()`; the shell reaches apps
+through `app/app.h` callbacks. The inventory is `launcher/main/`; the
+include gate's order is `LAYER_ROWS` in `scripts/gates/check_style_audit.py`.
 
 | Band | Row, top first | Responsibility |
 |---|---|---|
-| system | `apps` | project applications |
-| system | `shell` | frame loop, app switching, system screens and applications |
+| system | `apps` | project and system applications |
+| system | `shell` | frame loop, app switching and system screens |
 | system | `boot selftest console` | startup, hardware checks and development console |
 | system | `app` | callbacks, registry and app arena |
 | engine | `ui scene` | UI toolkit and scene entities, camera and systems |
@@ -345,11 +345,11 @@ every host render scene, and every on-device test that presents more than
 ## Apps in the build
 
 How to write one is [Building-an-App.md](Building-an-App.md). What matters
-architecturally: the build globs `apps/**/*.c` and `shell/apps/**/*.c`, and each app registers itself
-from its own file, so adding or deleting an app touches no other file, and
-the component is linked `WHOLE_ARCHIVE` because nothing references an app by
-name. A bench-only app declares itself the same way: a
-`development_only.cmake` in its folder leaves it out when
+architecturally: the build globs `apps/**/*.c` and `shell/apps/**/*.c`, and
+each app registers itself from its own file, so adding or deleting an app
+touches no other file. The component is linked `WHOLE_ARCHIVE` because
+nothing references an app by name. A bench-only app declares itself the
+same way: a `development_only.cmake` in its folder leaves it out when
 `CONFIG_LAUNCHER_DEVELOPMENT` is off, so the build names no application and deleting
 the folder deletes the declaration. What each build variant carries is
 [Build-Variants.md](Build-Variants.md).

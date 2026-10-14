@@ -1,3 +1,4 @@
 # Panel backend
 
-The null panel backend for emulated presentation. Presentation and backend tests may include these headers.
+The null panel backend for emulated presentation. It exercises the send
+path without a physical panel.

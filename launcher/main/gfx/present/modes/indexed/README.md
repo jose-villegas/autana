@@ -1,3 +1,4 @@
 # Indexed layout
 
-Indexed framebuffer layout values. Presentation owns this mode; layout clients include gfx/present/gfx_mode.h.
+Indexed framebuffer layout values. Presentation expands palette indices
+into panel pixels.

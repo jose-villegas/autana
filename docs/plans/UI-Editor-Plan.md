@@ -35,7 +35,7 @@ remain privileged shell code outside the public toolkit.
 | command-line baker | `editor_layout_bake`, wrapped by `launcher/tools/gen/bake_ui_layout.py` | validates before emitting a C header |
 | editor window | `editor/src/main.cpp` | hierarchy, orientation canvases, inspector, undo, explicit Save and Bake |
 | geometry constraints | `editor/include/editor/runtime.h` | panel dimensions and `UI_TAP_MIN` |
-| brush geometry | `apps/sand/ui/brush_screen_layout.h` | `brush_screen_layout()` computes rectangles |
+| brush geometry | `apps/sand/ui/brush_screen.h` | `brush_screen_layout()` computes rectangles |
 | brush host rendering | `apps/sand/tools/brush_screen_render_host.c` | real screen drawing in both orientations |
 | independent brush checks | `suite_brush_screen.c` | bounds, overlap, segment widths, tap targets and text fit |
 | framebuffer preview pattern | `launcher/tools/render/` | host-portable drawing code renders into a buffer |
