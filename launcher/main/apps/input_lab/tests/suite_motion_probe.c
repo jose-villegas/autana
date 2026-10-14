@@ -49,10 +49,10 @@ test_bubble_uses_inverse_shell_rotation(void) {
     const vec2i_t expected[] = {
         {TEST_RING_RADIUS, 0}, {0, -TEST_RING_RADIUS}, {-TEST_RING_RADIUS, 0}, {0, TEST_RING_RADIUS}};
     for (unsigned q = 0; q < sizeof expected / sizeof expected[0]; q++) {
-        const vec2i_t dot = motion_probe_bubble(INPUT_ACCEL_ONE_G, 0, TEST_RING_RADIUS, q);
+        const vec2i_t dot = motion_probe_bubble(INPUT_ACCEL_ONE_G, 0, TEST_RING_RADIUS, (int)q);
         TEST_ASSERT_EQUAL_INT(expected[q].x, dot.x);
         TEST_ASSERT_EQUAL_INT(expected[q].y, dot.y);
-        const vec2i_t down = motion_probe_bubble(0, INPUT_ACCEL_ONE_G, TEST_RING_RADIUS, q);
+        const vec2i_t down = motion_probe_bubble(0, INPUT_ACCEL_ONE_G, TEST_RING_RADIUS, (int)q);
         TEST_ASSERT_EQUAL_INT(-expected[q].y, down.x);
         TEST_ASSERT_EQUAL_INT(expected[q].x, down.y);
     }
