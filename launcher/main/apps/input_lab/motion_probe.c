@@ -5,6 +5,7 @@
 
 #include "math/linear/math_const.h"
 #include "math/linear/vec_convert.h"
+#include "ui/ui_transform.h"
 
 #define DEGREES_PER_RADIAN (MOTION_PROBE_FULL_TURN_DEG / MATH_TAU)
 #define FIXED_RADIX        10
@@ -23,9 +24,13 @@ motion_probe_measure(vec3i_t acceleration) {
 }
 
 vec2i_t
-motion_probe_bubble(int x, int y, int radius) {
-    return (vec2i_t){(int)lroundf((float)x * (float)radius / INPUT_ACCEL_ONE_G),
-                     (int)lroundf((float)y * (float)radius / INPUT_ACCEL_ONE_G)};
+motion_probe_bubble(int x, int y, int radius, int quarter) {
+    const ui_transform_t inverse = ui_transform_quarter_turn(-quarter, 0, 0);
+    int ox;
+    int oy;
+    ui_transform_point(inverse, (int)lroundf((float)x * (float)radius / INPUT_ACCEL_ONE_G),
+                       (int)lroundf((float)y * (float)radius / INPUT_ACCEL_ONE_G), &ox, &oy);
+    return (vec2i_t){ox, oy};
 }
 
 int

@@ -45,17 +45,18 @@ test_near_flat_preserves_small_plane_signal(void) {
 }
 
 static void
-test_bubble_uses_panel_axes(void) {
-    const vec2i_t samples[] = {
-        {INPUT_ACCEL_ONE_G, 0}, {0, INPUT_ACCEL_ONE_G}, {-INPUT_ACCEL_ONE_G, 0}, {0, -INPUT_ACCEL_ONE_G}};
+test_bubble_uses_inverse_quarter_rotation(void) {
     const vec2i_t expected[] = {
-        {TEST_RING_RADIUS, 0}, {0, TEST_RING_RADIUS}, {-TEST_RING_RADIUS, 0}, {0, -TEST_RING_RADIUS}};
-    for (size_t i = 0; i < sizeof samples / sizeof samples[0]; i++) {
-        const vec2i_t dot = motion_probe_bubble(samples[i].x, samples[i].y, TEST_RING_RADIUS);
-        TEST_ASSERT_EQUAL_INT(expected[i].x, dot.x);
-        TEST_ASSERT_EQUAL_INT(expected[i].y, dot.y);
+        {TEST_RING_RADIUS, 0}, {0, -TEST_RING_RADIUS}, {-TEST_RING_RADIUS, 0}, {0, TEST_RING_RADIUS}};
+    for (unsigned q = 0; q < sizeof expected / sizeof expected[0]; q++) {
+        const vec2i_t dot = motion_probe_bubble(INPUT_ACCEL_ONE_G, 0, TEST_RING_RADIUS, (int)q);
+        TEST_ASSERT_EQUAL_INT(expected[q].x, dot.x);
+        TEST_ASSERT_EQUAL_INT(expected[q].y, dot.y);
+        const vec2i_t down = motion_probe_bubble(0, INPUT_ACCEL_ONE_G, TEST_RING_RADIUS, (int)q);
+        TEST_ASSERT_EQUAL_INT(-expected[q].y, down.x);
+        TEST_ASSERT_EQUAL_INT(expected[q].x, down.y);
     }
-    const vec2i_t half = motion_probe_bubble(INPUT_ACCEL_ONE_G / 2, -INPUT_ACCEL_ONE_G / 2, TEST_RING_RADIUS);
+    const vec2i_t half = motion_probe_bubble(INPUT_ACCEL_ONE_G / 2, -INPUT_ACCEL_ONE_G / 2, TEST_RING_RADIUS, 0);
     TEST_ASSERT_EQUAL_INT(TEST_RING_RADIUS / 2, half.x);
     TEST_ASSERT_EQUAL_INT(-TEST_RING_RADIUS / 2, half.y);
 }
@@ -70,10 +71,13 @@ test_ring_extents(void) {
 
 static void
 test_bubble_rounding_and_unclamped_signal(void) {
-    const vec2i_t rounded = motion_probe_bubble(INPUT_ACCEL_ONE_G / 3, -INPUT_ACCEL_ONE_G / 3, TEST_RING_RADIUS);
-    TEST_ASSERT_EQUAL_INT(27, rounded.x);
-    TEST_ASSERT_EQUAL_INT(-27, rounded.y);
-    const vec2i_t dot = motion_probe_bubble(2 * INPUT_ACCEL_ONE_G, -2 * INPUT_ACCEL_ONE_G, TEST_RING_RADIUS);
+    const vec2i_t expected[] = {{-27, -27}, {-27, 27}, {27, 27}};
+    for (int q = 1; q < 4; q++) {
+        const vec2i_t dot = motion_probe_bubble(INPUT_ACCEL_ONE_G / 3, -INPUT_ACCEL_ONE_G / 3, TEST_RING_RADIUS, q);
+        TEST_ASSERT_EQUAL_INT(expected[q - 1].x, dot.x);
+        TEST_ASSERT_EQUAL_INT(expected[q - 1].y, dot.y);
+    }
+    const vec2i_t dot = motion_probe_bubble(2 * INPUT_ACCEL_ONE_G, -2 * INPUT_ACCEL_ONE_G, TEST_RING_RADIUS, 0);
     TEST_ASSERT_EQUAL_INT(2 * TEST_RING_RADIUS, dot.x);
     TEST_ASSERT_EQUAL_INT(-2 * TEST_RING_RADIUS, dot.y);
 }
@@ -121,7 +125,7 @@ run_motion_probe_suite(void) {
     RUN_TEST(test_flat_upright_face_down_and_diagonals);
     RUN_TEST(test_bearing_axes_and_magnitudes);
     RUN_TEST(test_near_flat_preserves_small_plane_signal);
-    RUN_TEST(test_bubble_uses_panel_axes);
+    RUN_TEST(test_bubble_uses_inverse_quarter_rotation);
     RUN_TEST(test_ring_extents);
 }
 

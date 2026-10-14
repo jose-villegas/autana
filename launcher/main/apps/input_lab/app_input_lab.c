@@ -17,7 +17,7 @@
  *
  * The motion page shows acceleration, gravity angles, a bubble level and
  * the tilt filter, with a 10 Hz "motion ..." console line. Numbers stay in
- * panel axes; the whole page stays in the fixed panel frame.
+ * panel axes; the whole page stays fixed in the default landscape orientation.
  */
 
 #include <math.h>
@@ -149,8 +149,9 @@ start_round(void) {
         tilt_reset(&tilt, INPUT_ACCEL_ONE_G);
         have_motion = false;
         motion_log_ms = 0;
-        screen_w = GFX_WIDTH;
-        screen_h = GFX_HEIGHT;
+        const bool sideways = (DISPLAY_DEFAULT_QUARTER % 2) != 0;
+        screen_w = sideways ? GFX_HEIGHT : GFX_WIDTH;
+        screen_h = sideways ? GFX_WIDTH : GFX_HEIGHT;
     } else {
         place_target();
     }
@@ -364,7 +365,7 @@ read_motion(uint32_t dt_ms) {
 
 static mu_Rect
 motion_dot_rect(int x, int y, motion_ring_t ring, int side) {
-    const vec2i_t offset = motion_probe_bubble(x, y, ring.radius);
+    const vec2i_t offset = motion_probe_bubble(x, y, ring.radius, DISPLAY_DEFAULT_QUARTER);
     const mu_Rect bounds = ring.bounds;
     return mu_rect(mathi_clamp(ring.cx + offset.x - (side / 2), bounds.x, bounds.x + bounds.w - side),
                    mathi_clamp(ring.cy + offset.y - (side / 2), bounds.y, bounds.y + bounds.h - side), side, side);
@@ -413,9 +414,10 @@ draw_motion(mu_Context* ctx) {
 
     const int top = HUD_TOP + (MOTION_HUD_ROWS * HUD_LINE_H) + MOTION_MARGIN;
     const int bottom = screen_h - (2 * MOTION_MARGIN) - (2 * HUD_LINE_H);
-    const int radius = mathi_min(MOTION_RING_RADIUS, mathi_min((bottom - top) / 2, (screen_w / 2) - MOTION_MARGIN));
-    const int cx = GFX_WIDTH / 2;
-    const int cy = GFX_HEIGHT / 2;
+    const int cx = screen_w / 2;
+    const int cy = screen_h / 2;
+    const int vertical_radius = mathi_min(cy - top, bottom - cy);
+    const int radius = mathi_min(MOTION_RING_RADIUS, mathi_min(vertical_radius, cx - MOTION_MARGIN));
     const motion_ring_t ring = {cx, cy, radius,
                                 mu_rect(MOTION_MARGIN, top, screen_w - (2 * MOTION_MARGIN), bottom - top)};
     for (int row = -radius; row <= radius; row += ARC_STEP) {
@@ -482,7 +484,7 @@ input_lab_frame(uint32_t dt_ms, const input_t* input) {
     update_page(dt_ms, input);
 
     if (mode == MODE_MOTION) {
-        ui_set_transform(ui_transform_identity());
+        ui_set_transform(ui_transform_quarter_turn(DISPLAY_DEFAULT_QUARTER, GFX_WIDTH, GFX_HEIGHT));
     }
     mu_Context* ctx = ui_context();
     ui_begin(input);
