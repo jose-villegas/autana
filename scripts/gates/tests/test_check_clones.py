@@ -41,6 +41,21 @@ READY = shutil.which("node") is not None and gate.ENGINE.is_file()
 SKIP_REASON = "Install Node.js and run npm ci --prefix scripts/gates"
 
 
+def repository_commands(root):
+    def git(*args):
+        return gate.git(root, *args).decode().strip()
+    def commit():
+        git("add", "-A")
+        git("commit", "-m", "test: source")
+    return git, commit
+
+
+def init_repository(git):
+    git("init", "-b", "main")
+    git("config", "user.email", "test@example.invalid")
+    git("config", "user.name", "Test")
+
+
 @unittest.skipUnless(READY or os.environ.get("CI"), SKIP_REASON)
 class CloneTests(unittest.TestCase):
     def scan(self, files, minimum=30):
@@ -112,20 +127,14 @@ class CloneTests(unittest.TestCase):
     def test_whole_gate_committed_changes(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
-            def git(*args):
-                return gate.git(root, *args).decode().strip()
-            def commit():
-                git("add", ".")
-                git("commit", "-m", "test: source")
+            git, commit = repository_commands(root)
             def check(expected, message):
                 output = io.StringIO()
                 with contextlib.redirect_stdout(output):
                     result = gate.main([], root=root)
                 self.assertEqual(result, expected, output.getvalue())
                 self.assertIn(message, output.getvalue())
-            git("init", "-b", "main")
-            git("config", "user.email", "test@example.invalid")
-            git("config", "user.name", "Test")
+            init_repository(git)
             original = root / "launcher/main/a.c"
             original.parent.mkdir(parents=True)
             original.write_text(BLOCK, encoding="utf-8")
@@ -150,14 +159,8 @@ class CloneTests(unittest.TestCase):
     def test_whole_gate_splitting_a_file_keeps_its_clone(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
-            def git(*args):
-                return gate.git(root, *args).decode().strip()
-            def commit():
-                git("add", "-A")
-                git("commit", "-m", "test: source")
-            git("init", "-b", "main")
-            git("config", "user.email", "test@example.invalid")
-            git("config", "user.name", "Test")
+            git, commit = repository_commands(root)
+            init_repository(git)
             whole = root / "launcher/main/whole.c"
             whole.parent.mkdir(parents=True)
             # Mostly comment, so git sees the split as a deletion, not a rename.
@@ -319,9 +322,7 @@ class CloneTests(unittest.TestCase):
             def git(*args):
                 return subprocess.run(["git", *args], cwd=root, check=True,
                                       capture_output=True, text=True).stdout.strip()
-            git("init", "-b", "main")
-            git("config", "user.email", "test@example.invalid")
-            git("config", "user.name", "Test")
+            init_repository(git)
             for name in ("a.c", "b.c"):
                 target = root / "launcher/main" / name
                 target.parent.mkdir(parents=True, exist_ok=True)

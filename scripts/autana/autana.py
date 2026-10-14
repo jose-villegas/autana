@@ -429,6 +429,25 @@ def framewatch(args):
     return 0
 
 
+def heap(args):
+    """Runtime free bytes, largest block and total internal DMA heap."""
+    reject_unknown("heap", args, ("--json",))
+    json_output = read_json_flag(args, "usage: autana heap [--json]")
+    code, replies = send("HEAP", reply="HEAP")
+    if code != 0 or not replies:
+        return code or 1
+    print(json.dumps(parse_heap(replies[-1])) if json_output else replies[-1])
+    return 0
+
+
+def parse_heap(reply):
+    match = re.fullmatch(r"HEAP free=(\d+) largest=(\d+) total=(\d+)", reply)
+    if not match:
+        raise ValueError(f"invalid HEAP reply: {reply}")
+    free, largest, total = map(int, match.groups())
+    return {"free": free, "largest": largest, "total": total}
+
+
 def parse_framewatch(reply):
     return reply.removeprefix("FRAMEWATCH ").strip()
 
@@ -1510,6 +1529,8 @@ COMMAND_GROUPS = (
              "build and flash this project; dev when omitted"),)),
         Command("buildid", buildid, (
             ("buildid [--json]", "the BUILD_ID the board is running"),)),
+        Command("heap", heap, (
+            ("heap [--json]", "free internal heap and largest block (development builds)"),)),
     )),
     ("tests", "Tests", (
         Command("suite", suite, (
