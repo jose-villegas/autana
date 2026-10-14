@@ -34,7 +34,7 @@
 #include "apps/sand/sand_paint_row.h"
 #include "apps/sand/sand_palette256.h"
 #include "gfx/gfx.h"
-#include "gfx/present/gfx_indexed.h"
+#include "gfx/present/gfx_mode.h"
 #include "input/tilt.h"
 #include "math/scalar/fixed.h"
 
