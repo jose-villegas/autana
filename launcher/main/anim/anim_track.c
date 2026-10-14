@@ -4,6 +4,7 @@
 #include <stdbool.h>
 
 #include "math/linear/quatf.h"
+#include "math/scalar/mathf.h"
 
 static const float*
 key_value(const anim_track_t* track, int key) {
@@ -72,7 +73,7 @@ blend(const anim_track_t* track, int lo, float seconds, float* out) {
         const float* a = key_value(track, lo);
         const float* b = key_value(track, lo + 1);
         for (int i = 0; i < track->width; i++) {
-            out[i] = a[i] + ((b[i] - a[i]) * s);
+            out[i] = mathf_lerp(a[i], b[i], s);
         }
     }
 }
@@ -91,16 +92,6 @@ segment_at(const anim_track_t* track, float seconds) {
         }
     }
     return lo;
-}
-
-float
-anim_clip_seconds(const anim_clip_t* clip, uint32_t t_ms, anim_wrap_t wrap) {
-    if (wrap == ANIM_LOOP && clip->duration_ms > 0) {
-        t_ms %= clip->duration_ms;
-    } else if (t_ms > clip->duration_ms) {
-        t_ms = clip->duration_ms;
-    }
-    return (float)t_ms * 0.001F;
 }
 
 void

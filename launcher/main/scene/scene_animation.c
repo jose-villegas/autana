@@ -421,7 +421,7 @@ apply_property(scene_t* scene, scene_animator_t* a, uint32_t dt_ms) {
     }
     const anim_slot_t* slot = &a->layer.current;
     const scene_animator_clip_t* clip = &a->clips[slot->clip];
-    anim_apply(clip->fields, clip->tracks.count, anim_playhead_seconds(&slot->playhead, &clip->tracks.clip));
+    anim_apply(clip->fields, clip->tracks.count, anim_playhead_seconds(&slot->playhead));
     for (int i = 0; i < clip->tracks.count; i++) {
         const ptrdiff_t entity = clip->fields[i].dirty - scene->flags;
         scene->locals[entity].cached = false;

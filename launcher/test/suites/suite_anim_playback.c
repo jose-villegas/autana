@@ -29,7 +29,7 @@ test_playhead_long_loop_clamp_pause_and_fractional_speed(void) {
     anim_playhead_init(p, ANIM_LOOP);
     anim_playhead_advance(p, &l.clips[0], 3999999001U);
     TEST_ASSERT_EQUAL_UINT32(1, p->t_ms);
-    TEST_ASSERT_FLOAT_WITHIN(1e-6F, 0.001F, anim_playhead_seconds(p, &l.clips[0]));
+    TEST_ASSERT_FLOAT_WITHIN(1e-6F, 0.001F, anim_playhead_seconds(p));
     anim_playhead_advance(p, &l.clips[0], UINT32_MAX);
     TEST_ASSERT_EQUAL_UINT32(296, p->t_ms);
     TEST_ASSERT_TRUE(anim_playhead_set_speed(p, 0.5F));
@@ -46,7 +46,8 @@ test_playhead_long_loop_clamp_pause_and_fractional_speed(void) {
     anim_playhead_advance(p, &l.clips[0], UINT32_MAX);
     TEST_ASSERT_EQUAL_UINT32(1000, p->t_ms);
     const anim_clip_t empty = {0};
-    TEST_ASSERT_EQUAL_FLOAT(0, anim_playhead_seconds(p, &empty));
+    anim_playhead_advance(p, &empty, 0);
+    TEST_ASSERT_EQUAL_FLOAT(0, anim_playhead_seconds(p));
     release(&l);
 }
 
