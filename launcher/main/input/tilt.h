@@ -1,17 +1,9 @@
 /*
- * tilt, turning raw accelerometer counts into a direction worth steering
+ * tilt, turning accelerometer readings into a direction worth steering
  * something with: which way is down in the plane of the screen, how hard,
  * and how much the device is being shaken.
  *
- * Pure logic, no sensor and no clock: samples and elapsed time are passed in,
- * so the whole thing is testable on a host.
- *
- * An accelerometer measures gravity PLUS whatever else is accelerating the
- * board, and one reading cannot tell the two apart. Most of what this header
- * declares exists to work around that: a trust gate on magnitude, a strength
- * scalar so a flat board settles rather than stops dead, and a shake level
- * read off the accelerometer rather than the gyroscope. See
- * docs/notes/Input-and-Sensors.md for the reasoning behind each.
+ * Readings mix gravity and motion; see docs/notes/Input-and-Sensors.md.
  */
 #pragma once
 

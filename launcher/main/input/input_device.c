@@ -15,10 +15,11 @@
 
 static const char TAG[] = "input";
 
-#define IMU_SETTINGS_SPACE   "imu"
-#define IMU_SETTINGS_ACCEL_X "accel_x"
-#define IMU_SETTINGS_ACCEL_Y "accel_y"
-#define IMU_SETTINGS_ACCEL_Z "accel_z"
+#define IMU_SETTINGS_SPACE       "imu"
+#define IMU_SETTINGS_ACCEL_X     "accel_x"
+#define IMU_SETTINGS_ACCEL_Y     "accel_y"
+#define IMU_SETTINGS_ACCEL_Z     "accel_z"
+#define IMU_SETTINGS_ACCEL_VALID "accel_valid"
 
 static const char* const ACCEL_KEYS[] = {IMU_SETTINGS_ACCEL_X, IMU_SETTINGS_ACCEL_Y, IMU_SETTINGS_ACCEL_Z};
 static imu_calib_t accel_calib;
@@ -34,7 +35,9 @@ input_start(void) {
     for (int axis = 0; axis < 3; axis++) {
         found[axis] = settings_read_i32(IMU_SETTINGS_SPACE, ACCEL_KEYS[axis], &saved[axis]);
     }
-    accel_calib = imu_calib_from_saved(found, saved);
+    int32_t marker = 0;
+    const bool committed = settings_read_i32(IMU_SETTINGS_SPACE, IMU_SETTINGS_ACCEL_VALID, &marker) && marker == 1;
+    accel_calib = imu_calib_from_saved(committed, found, saved);
     touch_start();
     buttons_start();
     if (!imu_init()) {
@@ -50,9 +53,10 @@ input_accel_offset(void) {
 bool
 input_set_accel_offset(vec3i_t offset) {
     const int32_t saved[] = {offset.x, offset.y, offset.z};
-    const bool found[] = {true, true, true};
-    const imu_calib_t calib = imu_calib_from_saved(found, saved);
-    if (!vec3i_equal(calib.offset, offset)) {
+    if (!imu_calib_valid(offset)) {
+        return false;
+    }
+    if (!settings_write_i32(IMU_SETTINGS_SPACE, IMU_SETTINGS_ACCEL_VALID, 0)) {
         return false;
     }
     for (int axis = 0; axis < 3; axis++) {
@@ -60,7 +64,10 @@ input_set_accel_offset(vec3i_t offset) {
             return false;
         }
     }
-    accel_calib = calib;
+    if (!settings_write_i32(IMU_SETTINGS_SPACE, IMU_SETTINGS_ACCEL_VALID, 1)) {
+        return false;
+    }
+    accel_calib = (imu_calib_t){.offset = offset};
     return true;
 }
 

@@ -23,11 +23,26 @@ imu_calib_apply(const imu_calib_t* calib, vec3i_t raw) {
 }
 
 imu_calib_t
-imu_calib_from_saved(const bool found[3], const int32_t saved[3]) {
+imu_calib_from_saved(bool committed, const bool found[3], const int32_t saved[3]) {
+    if (!committed) {
+        return (imu_calib_t){0};
+    }
     for (int axis = 0; axis < 3; axis++) {
-        if (!found[axis] || saved[axis] < -IMU_CALIB_OFFSET_MAX || saved[axis] > IMU_CALIB_OFFSET_MAX) {
+        if (!found[axis]) {
             return (imu_calib_t){0};
         }
     }
-    return (imu_calib_t){.offset = {saved[0], saved[1], saved[2]}};
+    const vec3i_t offset = {saved[0], saved[1], saved[2]};
+    return imu_calib_valid(offset) ? (imu_calib_t){.offset = offset} : (imu_calib_t){0};
+}
+
+bool
+imu_calib_valid(vec3i_t offset) {
+    const int32_t axes[] = {offset.x, offset.y, offset.z};
+    for (int axis = 0; axis < 3; axis++) {
+        if (axes[axis] < -IMU_CALIB_OFFSET_MAX || axes[axis] > IMU_CALIB_OFFSET_MAX) {
+            return false;
+        }
+    }
+    return true;
 }

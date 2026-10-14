@@ -1,8 +1,8 @@
 /*
  * input_shell: the shell's side of input: starting the touch, button and
  * motion drivers, reading touch and buttons each frame into the input_t an
- * app is handed, and reading gravity in screen axes on demand. System
- * calibration controls also live here. Defined in input_device.c, device only.
+ * app is handed, and reading gravity in screen axes on demand.
+ * An app never calls these. Defined in input_device.c, device only.
  */
 #pragma once
 
@@ -25,5 +25,6 @@ bool input_read_gravity(vec2i_t* gravity);
 
 /* The Q12 g screen-axis offset subtracted on every motion read. */
 vec3i_t input_accel_offset(void);
-/* Saves and applies on the next read; zero clears. False if invalid or not saved. */
+/* Stores the offset and applies it from the next input_read_motion(); zero clears. False, leaving the live
+ * offset unchanged, if an axis exceeds IMU_CALIB_OFFSET_MAX or a write fails. */
 bool input_set_accel_offset(vec3i_t offset);

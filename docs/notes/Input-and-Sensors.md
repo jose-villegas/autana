@@ -66,22 +66,23 @@ the front, +x tips the bottom edge toward the viewer, +y turns the right edge aw
 ### Calibration round
 
 A tap on the development Motion page starts a calibration round when idle.
-Taps during a round are ignored. BOOT abandons the round and selects another
-page. Its prompts name the face and edges as seen on the pinned
+Taps during a round are ignored. Prompts name the face and edges as seen on the pinned
 `DISPLAY_DEFAULT_QUARTER` page; measurements stay in panel axes.
 
 `input_read_motion()` subtracts the stored accelerometer offset before any
 consumer filters or reads acceleration. The settings service stores Q12 g
 screen-axis counts in space `imu`, keys `accel_x`, `accel_y`, `accel_z`.
-Missing keys or any offset beyond `IMU_CALIB_OFFSET_MAX` select zero offset.
+A save writes `accel_valid` as 0, then the axes, then `accel_valid` as 1.
+A missing marker, a marker other than 1, missing axes or any offset beyond
+`IMU_CALIB_OFFSET_MAX` select zero offset. A failed write leaves the live offset unchanged.
 Scale is reported but never applied; gyro readings remain raw.
 
 The Motion page shows the stored offset. Its raw acceleration display, bubble
 and `motion raw` log reconstruct sensor counts by adding that offset back.
 The round measures calibrated samples, so the fitted offset is a residual.
-On completion, SAVE stores the current offset plus this residual; CLEAR stores
-zero. Successful actions return to the Motion page. Failed saves log a warning
-and leave the result available for retry. `imu_calib saved` logs Q12 counts;
+SAVE stores the current offset plus this residual; CLEAR stores zero. The results
+HUD labels the residual, while `calib` logs the absolute sensor offset in mg.
+`imu_calib saved` logs Q12 counts;
 `imu_calib cleared` confirms zero offset.
 
 ```mermaid
@@ -93,8 +94,14 @@ stateDiagram-v2
     Settling --> Settling: motion or reading gap
     Measuring --> Settling: motion or reading gap
     Measuring --> Prompt: next pose
-    Measuring --> Done: final pose
-    Done --> [*]
+    Measuring --> Results: final pose
+    Results --> [*]: SAVE stored
+    Results --> [*]: CLEAR stored
+    Results --> Results: save failed
+    Prompt --> [*]: BOOT
+    Settling --> [*]: BOOT
+    Measuring --> [*]: BOOT
+    Results --> [*]: BOOT
 ```
 
 Settling uses recent per-axis accelerometer and gyro means. Thresholds and
