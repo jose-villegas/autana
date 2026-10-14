@@ -83,7 +83,9 @@ class SharedToolsTests(unittest.TestCase):
         binary.write_text('fixture')
         self.versions[os.path.normcase(str(binary))] = '19'
         elsewhere = self.root / 'other'
-        with mock.patch.object(pinned_tool, 'espressif_tools_root', lambda: elsewhere),              mock.patch.object(pinned_tool, 'pinned_tools_root', lambda: pinned),              mock.patch.object(subprocess, 'run', side_effect=self.version_run):
+        with mock.patch.object(pinned_tool, 'espressif_tools_root', lambda: elsewhere), \
+             mock.patch.object(pinned_tool, 'pinned_tools_root', lambda: pinned), \
+             mock.patch.object(subprocess, 'run', side_effect=self.version_run):
             self.assertEqual(pinned_tool.resolve('clang-format'), (str(binary), '19'))
 
     def test_the_pinned_release_beats_another_patch_of_its_major(self):

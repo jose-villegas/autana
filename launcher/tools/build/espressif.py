@@ -1,6 +1,6 @@
 """ESP-IDF checkout, paired tools and interpreter resolution.
 
-Process IDF_PATH overrides the pin; Windows installer IDF_PATH is a candidate.
+Process IDF_PATH overrides the pin (pinned_tools_root ignores it); Windows installer IDF_PATH is a candidate.
 
     from espressif import idf_path, espressif_tools_root, idf_python
     checkout = idf_path()           # best effort, may not exist
@@ -44,7 +44,9 @@ def pinned_tools_root(project=None, **search):
     """The tools installation of the ESP-IDF checkout the pin selects, whatever
     IDF_PATH / IDF_TOOLS_PATH say, so a gate pinned to the CI image's tools
     still finds them while a session's environment points at another install."""
-    env = {k: v for k, v in os.environ.items() if k not in ("IDF_PATH", "IDF_TOOLS_PATH")}
+    base = search.pop("environ", None)
+    env = {k: v for k, v in (os.environ if base is None else base).items()
+           if k not in ("IDF_PATH", "IDF_TOOLS_PATH")}
     return find_idf(project, environ=env, **search)[1]
 
 

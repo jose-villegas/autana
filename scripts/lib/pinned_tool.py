@@ -30,7 +30,7 @@ def tool_version(binary):
 
 
 def tool_roots():
-    """The tools installation the environment selects, then the one the pin selects."""
+    """The tools installations the environment and the pin select."""
     return list(dict.fromkeys((espressif_tools_root(), pinned_tools_root())))
 
 
