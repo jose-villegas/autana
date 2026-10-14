@@ -38,6 +38,7 @@ from c_comments import sources as comment_sources, scan  # noqa: E402
 from tracked import tracked_files  # noqa: E402
 from check_doc_citations import CITATIONS, CITED_BY  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
+from build.apps import APP_ROOTS  # noqa: E402
 from build.packages import FIRST_PARTY  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools/render"))
 from generated_blocks import MARKER  # noqa: E402
@@ -45,7 +46,7 @@ from generated_blocks import MARKER  # noqa: E402
 # Below the apps: all of launcher/main/ except app folders, the packages and the
 # test tree. A new folder is checked from the day it exists.
 ENGINE = (*FIRST_PARTY, "launcher/test/")
-APPS = ("launcher/main/apps", "launcher/main/shell/apps")
+APPS = tuple("launcher/main/" + root for root in APP_ROOTS)
 
 
 def below_apps(rp):
