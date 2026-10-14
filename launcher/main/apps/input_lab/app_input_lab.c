@@ -27,6 +27,7 @@
 #include "esp_log.h"
 
 #include "app/app.h"
+#include "apps/input_lab/imu_probe.h"
 #include "apps/input_lab/motion_probe.h"
 #include "apps/input_lab/touch_probe.h"
 #include "core/timing.h"
@@ -59,10 +60,10 @@ static const char* TAG = "input_lab";
 #define ARC_STEP             2
 #define MOTION_G_TEXT_SIZE   16
 #define MOTION_MILLI_DIGITS  3
-#define MOTION_MILLI_SCALE   1000
 #define OFFSET_DIGITS        1
 #define OFFSET_SCALE         10
 #define MOTION_HUD_TEXT_SIZE 96
+#define MOTION_US_PER_MS     1000
 #define MOTION_LOG_PERIOD_MS 100
 #define MOTION_RING_RADIUS   88
 #define MOTION_DOT_SIDE      7
@@ -89,9 +90,11 @@ static const char* const MODE_NAMES[MODE_COUNT] = {"random", "grid", "bezel", "m
 static lab_mode_t mode;
 static tilt_t tilt;
 static input_motion_t motion;
+static imu_probe_round_t imu_round;
 static motion_probe_t motion_probe;
 static bool have_motion;
 static uint32_t motion_log_ms;
+static int64_t motion_read_us;
 static rng_t rng;
 static int grid_order[GRID_COUNT];
 static int grid_next;
@@ -149,6 +152,8 @@ start_round(void) {
         tilt_reset(&tilt, INPUT_ACCEL_ONE_G);
         have_motion = false;
         motion_log_ms = 0;
+        motion_read_us = timing_now_us();
+        imu_round = (imu_probe_round_t){0};
         const bool sideways = (DISPLAY_DEFAULT_QUARTER % 2) != 0;
         screen_w = sideways ? GFX_HEIGHT : GFX_WIDTH;
         screen_h = sideways ? GFX_WIDTH : GFX_HEIGHT;
@@ -356,11 +361,77 @@ read_motion(uint32_t dt_ms) {
     motion_probe = motion_probe_measure(motion.acceleration);
     if (motion_log_ms >= MOTION_LOG_PERIOD_MS) {
         motion_log_ms %= MOTION_LOG_PERIOD_MS;
-        ESP_LOGI(TAG, "motion raw %d,%d,%d tilt %d bearing %d filt %d,%d str %d shake %d turn %d",
-                 motion.acceleration.x, motion.acceleration.y, motion.acceleration.z,
-                 (int)lroundf(motion_probe.tilt_deg), motion_probe.bearing_deg, tilt_x(&tilt), tilt_y(&tilt),
-                 tilt_strength(&tilt), tilt_shake(&tilt), motion.turn_speed);
+        ESP_LOGI(
+            TAG, "motion raw %d,%d,%d tilt %d bearing %d filt %d,%d str %d shake %d turn %d rot %d,%d,%d quarter %d",
+            motion.acceleration.x, motion.acceleration.y, motion.acceleration.z, (int)lroundf(motion_probe.tilt_deg),
+            motion_probe.bearing_deg, tilt_x(&tilt), tilt_y(&tilt), tilt_strength(&tilt), tilt_shake(&tilt),
+            motion.turn_speed, motion.rotation.x, motion.rotation.y, motion.rotation.z, display_quarter_now());
     }
+}
+
+static void
+log_imu_pose(void) {
+    const int pose = imu_round.pose - 1;
+    const imu_probe_average_t* average = &imu_round.poses[pose];
+    const input_motion_t mean = imu_probe_average_read(average);
+    ESP_LOGI(TAG, "pose %s %d %d %d %d %d %d %d", imu_probe_pose_name(pose), mean.acceleration.x, mean.acceleration.y,
+             mean.acceleration.z, mean.rotation.x, mean.rotation.y, mean.rotation.z, average->n);
+    if (imu_round.active) {
+        return;
+    }
+    const imu_probe_fit_t f = imu_round.fit;
+    ESP_LOGI(TAG, "calib x off %d scale %d y off %d scale %d z off %d scale %d gyro %d,%d,%d", f.offset_mg.x,
+             f.scale_ppm.x, f.offset_mg.y, f.scale_ppm.y, f.offset_mg.z, f.scale_ppm.z, f.gyro_mdps.x, f.gyro_mdps.y,
+             f.gyro_mdps.z);
+}
+
+static void
+update_imu_round(uint32_t dt_ms, const input_t* input) {
+    if (input->pressed && !imu_round.active) {
+        imu_probe_start(&imu_round, DISPLAY_DEFAULT_QUARTER);
+        ESP_LOGI(TAG, "round imu quarter %d", DISPLAY_DEFAULT_QUARTER);
+    }
+    read_motion(dt_ms);
+    const int64_t now_us = timing_now_us();
+    const int64_t elapsed_ms = (now_us - motion_read_us) / MOTION_US_PER_MS;
+    motion_read_us = now_us;
+    /* The probe needs the real reading gap: the shell clamps frame time, hiding stalls
+     * that must discard settling and measurement windows. */
+    const uint32_t read_dt_ms = elapsed_ms > UINT32_MAX ? UINT32_MAX : (uint32_t)elapsed_ms;
+    if (imu_probe_update(&imu_round, have_motion ? &motion : NULL, read_dt_ms)) {
+        log_imu_pose();
+    }
+}
+
+static void
+draw_imu_round(mu_Context* ctx) {
+    char line[MOTION_HUD_TEXT_SIZE];
+    if (imu_round.active) {
+        char label[IMU_PROBE_LABEL_SIZE];
+        imu_probe_pose_label(imu_round.pose, label, sizeof label);
+        snprintf(line, sizeof line, "%s  POSE %d/%d", label, imu_round.pose + 1, IMU_PROBE_POSE_COUNT);
+        hud_line(ctx, 0, line);
+        if (imu_round.settle_ms < IMU_PROBE_SETTLE_MS) {
+            hud_line(ctx, 1, "HOLD STILL");
+        } else {
+            snprintf(line, sizeof line, "MEASURING %u%%",
+                     (unsigned)(imu_round.window_ms * IMU_PROBE_PERCENT / IMU_PROBE_WINDOW_MS));
+            hud_line(ctx, 1, line);
+        }
+        hud_line(ctx, 3, "BOOT TO LEAVE ROUND");
+        return;
+    }
+    const imu_probe_fit_t f = imu_round.fit;
+    const int off[] = {f.offset_mg.x, f.offset_mg.y, f.offset_mg.z};
+    const int scale[] = {f.scale_ppm.x, f.scale_ppm.y, f.scale_ppm.z};
+    const int gyro[] = {f.gyro_mdps.x, f.gyro_mdps.y, f.gyro_mdps.z};
+    static const char* const axes[] = {"X", "Y", "Z"};
+    for (int axis = 0; axis < 3; axis++) {
+        snprintf(line, sizeof line, "%s OFF %dMG SCALE %dPPM GYRO %dMDPS", axes[axis], off[axis], scale[axis],
+                 gyro[axis]);
+        hud_line(ctx, axis, line);
+    }
+    hud_line(ctx, 3, "TAP FOR ANOTHER ROUND");
 }
 
 static mu_Rect
@@ -377,6 +448,10 @@ draw_motion(mu_Context* ctx) {
         hud_line(ctx, 0, "NO MOTION SENSOR");
         return;
     }
+    if (imu_round.active || imu_round.pose == IMU_PROBE_POSE_COUNT) {
+        draw_imu_round(ctx);
+        return;
+    }
     char line[MOTION_HUD_TEXT_SIZE];
 
     enum { VALUE_X, VALUE_Y, VALUE_Z, VALUE_MAGNITUDE, VALUE_PLANE, VALUE_FILTER_X, VALUE_FILTER_Y, VALUE_COUNT };
@@ -388,7 +463,7 @@ draw_motion(mu_Context* ctx) {
     char values[VALUE_COUNT][MOTION_G_TEXT_SIZE];
     for (size_t i = 0; i < sizeof counts / sizeof counts[0]; i++) {
         motion_probe_format_fixed(values[i], sizeof values[i],
-                                  (int)lroundf(counts[i] * MOTION_MILLI_SCALE / INPUT_ACCEL_ONE_G), MOTION_MILLI_DIGITS,
+                                  (int)lroundf(counts[i] * IMU_PROBE_MILLI / INPUT_ACCEL_ONE_G), MOTION_MILLI_DIGITS,
                                   i != VALUE_MAGNITUDE && i != VALUE_PLANE);
     }
     if (snprintf(line, sizeof line, "X%s Y%s Z%s MAG%sG", values[VALUE_X], values[VALUE_Y], values[VALUE_Z],
@@ -436,8 +511,8 @@ draw_motion(mu_Context* ctx) {
                UI_ALIGN_CENTRE);
     ui_text_in(ctx, mu_rect(screen_w / 2, bottom, screen_w / 2, HUD_LINE_H), "FILTER", ui_rgb(COL_MOTION_FILTER),
                MOTION_HUD_SCALE, UI_ALIGN_CENTRE);
-    ui_text_in(ctx, mu_rect(0, bottom + HUD_LINE_H, screen_w, HUD_LINE_H), "RING 1G  0 DEG=+X CW",
-               ui_rgb(COL_MOTION_RING), MOTION_HUD_SCALE, UI_ALIGN_CENTRE);
+    ui_text_in(ctx, mu_rect(0, bottom + HUD_LINE_H, screen_w, HUD_LINE_H), "TAP TO CALIBRATE", ui_rgb(COL_MOTION_RING),
+               MOTION_HUD_SCALE, UI_ALIGN_CENTRE);
 }
 
 static void
@@ -451,7 +526,7 @@ resize_page(void) {
 static void
 update_page(uint32_t dt_ms, const input_t* input) {
     if (mode == MODE_MOTION) {
-        read_motion(dt_ms);
+        update_imu_round(dt_ms, input);
         return;
     }
     track_touch(dt_ms, input);
