@@ -25,7 +25,7 @@ from doc_tables import markdown
 from layout_measure import MEAN_RE, parse_report
 from r3d.process_budget import WSL_MEMORY_REQUIRED_BYTES, WINDOWS_MEMORY_REQUIRED_BYTES
 from r3d.import_settings import content_checksum, load_import_settings, source_files
-from r3d.scene_asset import scene_id
+from r3d.scene_name import scene_id
 
 HOST_SCRIPT = ROOT / "launcher/tools/render/scene_viewer.sh"
 RESULTS = ROOT / "launcher/tools/results/doc_images"

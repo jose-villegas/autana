@@ -20,7 +20,7 @@ from anim import tracks_asset  # noqa: E402
 from asset import asset_pack  # noqa: E402
 from asset.asset_directory import build_directory, parse_directory  # noqa: E402
 from asset.asset_pack import PackError, build_pack as make_pack, parse_pack  # noqa: E402
-from r3d import build_pack, scene_asset
+from r3d import build_pack, scene_asset, scene_name
 from asset.engine_frame import to_engine
 from test_engine_frame import mesh_entry  # noqa: E402
 from r3d.import_settings import SettingsError, load_scene  # noqa: E402
@@ -364,7 +364,7 @@ class TreeTests(unittest.TestCase):
         scenes = [path for path in build_pack.input_files([build_pack.DEFAULT_SEARCH]) if path.name.endswith(build_pack.SCENE)]
         self.assertTrue(scenes, "no scene file found: the tree test would pass for nothing")
         for path in scenes:
-            name = scene_asset.scene_id(path)
+            name = scene_name.scene_id(path)
             self.assertIn(name, packs, f"{path.name} makes no pack")
             entries = parse_pack(packs[name])
             self.assertEqual(entries[name][0], scene_asset.TYPE)
