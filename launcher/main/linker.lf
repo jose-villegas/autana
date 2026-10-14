@@ -18,7 +18,8 @@ entries:
 # present modes and the SPI driver's own queue keep their configured placement.
 # CONFIG_LAUNCHER_DEVELOPMENT adds overlays, send auditing and raw-full dispatch,
 # so dev and diag are larger.
-# IRAM budget: release 801 B, dev 3993 B, diag 3993 B
+# gather_and_send is noclone so its constprop/isra clone cannot escape noflash.
+# IRAM budget: release 979 B, dev 3936 B, diag 3936 B
 [mapping:present_gfx]
 archive: libmain.a
 entries:

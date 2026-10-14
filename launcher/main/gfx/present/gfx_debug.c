@@ -1,7 +1,7 @@
 #include "gfx/present/gfx_debug.h"
 #include "core/memory.h"
 #include "core/timing.h"
-#include "gfx/draw/gfx_draw.h"
+#include "gfx/draw/gfx_color.h"
 #include "gfx/gfx_internal.h"
 #include "gfx/present/gfx_present_guard.h"
 
@@ -210,7 +210,7 @@ gfx_set_send_audit(bool on) {
         send_shadow = NULL;
         return;
     }
-    send_shadow = memory_alloc((size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t), MEMORY_PSRAM);
+    send_shadow = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
     if (send_shadow == NULL) {
         ESP_LOGE(TAG, "send audit: no room for the shadow framebuffer - staying off");
         return;

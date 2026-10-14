@@ -220,18 +220,17 @@ system icons), not code; it keeps its place under L1.
 
 ### Untangling gfx first (S1)
 
-Draw and present share state through `gfx/gfx_internal.h` (the framebuffer,
-the band target, the clip), and present calls `gfx_rgb()` and
-`gfx_clear_clip()`. Before draw can sit in a band above present `[M]`:
+Present owns the framebuffer, band target and clip. Draw reads them through
+`gfx/present/gfx_present.h`:
 
 ```c
-/* gfx/gfx_present.h: present's face to draw */
-gfx_target_t gfx_present_target(void);   /* the framebuffer, or the band being rendered */
-gfx_box_t gfx_clip_save(void);           /* the clip lives wholly in present */
+gfx_target_t gfx_present_target(void);
+bool gfx_present_in_band(void);
+gfx_box_t gfx_clip_save(void);
 void gfx_clip_restore(gfx_box_t clip);
 ```
 
-`gfx_rgb()` joins `gfx_color.h`; nothing outside `gfx/` includes
+`gfx_rgb()` is inline in `gfx_color.h`. Only `gfx/present/` sources include
 `gfx_internal.h`.
 
 ### Include tiers in `check_style_audit.py`

@@ -1658,8 +1658,8 @@ expanded_fixture(void) {
     show("test_pair", NULL);
     free(fx.pixels);
     free(fx.held);
-    fx.pixels = memory_alloc(sizeof(*fx.pixels) * GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
-    fx.held = memory_alloc(sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
+    fx.pixels = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
+    fx.held = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(fx.pixels);
     TEST_ASSERT_NOT_NULL(fx.held);
     gfx_set_frame_overlay(NULL);
@@ -1682,7 +1682,7 @@ expanded_picture(void) {
     for (int y = 0; y < GFX_HEIGHT; y++) {
         gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
     }
-    TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT));
+    TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, GFX_FRAMEBUFFER_BYTES));
     TEST_ASSERT_EQUAL_HEX16(CLEAR, fx.pixels[0]);
     TEST_ASSERT_TRUE(fx.pixels[(GFX_HEIGHT / 2) * GFX_WIDTH + GFX_WIDTH / 2] != CLEAR);
     gfx_mode_exit();
@@ -1741,7 +1741,7 @@ test_failed_half_allocation_keeps_full_upscale_unexpanded(void) {
     TEST_ASSERT_NULL(half);
     TEST_ASSERT_FALSE(gfx_frame_expanded());
     TEST_ASSERT_TRUE(gfx_region_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT));
-    TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, full, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT));
+    TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, full, GFX_FRAMEBUFFER_BYTES));
 }
 
 static void
@@ -1756,7 +1756,7 @@ test_non_half_compose_upscales_to_the_full_destination(void) {
     TEST_ASSERT_FALSE(scene_compose(16, 0, &target));
     TEST_ASSERT_EQUAL_HEX16(SENTINEL, target.half_pixels[0]);
     TEST_ASSERT_FALSE(gfx_frame_expanded());
-    TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, gfx_framebuffer(), sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT));
+    TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, gfx_framebuffer(), GFX_FRAMEBUFFER_BYTES));
 }
 
 static void
@@ -1774,6 +1774,34 @@ build_expanded_ui(ui_text_style_t style) {
 }
 
 static void
+clip_overlay(int row0, int row1) {
+    const gfx_box_t actual = gfx_clip_save();
+    const gfx_box_t expected = GFX_SCREEN_BOX;
+    TEST_ASSERT_EQUAL_MEMORY(&expected, &actual, sizeof actual);
+    gfx_set_clip(0, row0, GFX_WIDTH, row1 - row0);
+    gfx_fill_rect(0, row0, GFX_WIDTH, row1 - row0, UINT16_MAX);
+}
+
+static void
+test_expanded_overlay_resets_and_restores_clip(void) {
+    expanded_fixture();
+    TEST_ASSERT_NOT_NULL(gfx_half_picture());
+    gfx_expand_frame();
+    const gfx_box_t narrow = {GFX_WIDTH / 4, GFX_HEIGHT / 4, GFX_WIDTH / 2, GFX_HEIGHT / 2};
+    gfx_set_clip(narrow.x0, narrow.y0, narrow.x1 - narrow.x0, narrow.y1 - narrow.y0);
+    gfx_set_frame_overlay(clip_overlay);
+    for (int y = 0; y < GFX_HEIGHT; y++) {
+        gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
+        const gfx_box_t actual = gfx_clip_save();
+        TEST_ASSERT_EQUAL_MEMORY(&narrow, &actual, sizeof actual);
+        for (int x = 0; x < GFX_WIDTH; x++) {
+            TEST_ASSERT_EQUAL_HEX16(UINT16_MAX, fx.pixels[y * GFX_WIDTH + x]);
+        }
+    }
+    gfx_set_frame_overlay(NULL);
+}
+
+static void
 test_ui_replay_over_expanded_scene_matches_full_frame(void) {
     expanded_picture();
     for (int style = UI_TEXT_PLAIN; style <= UI_TEXT_SHADOWED; style++) {
@@ -1782,7 +1810,7 @@ test_ui_replay_over_expanded_scene_matches_full_frame(void) {
             ui_init();
             ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
             build_expanded_ui((ui_text_style_t)style);
-            memcpy(fx.held, gfx_framebuffer(), sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT);
+            memcpy(fx.held, gfx_framebuffer(), GFX_FRAMEBUFFER_BYTES);
             scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
             const scene_target_t half = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
             TEST_ASSERT_TRUE(scene_compose(0, 0, &half));
@@ -1796,7 +1824,7 @@ test_ui_replay_over_expanded_scene_matches_full_frame(void) {
                 gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
             }
             TEST_ASSERT_EQUAL_UINT(trips, gfx_fb_guard_trips_for_test());
-            TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT));
+            TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, GFX_FRAMEBUFFER_BYTES));
             gfx_present();
         }
     }
@@ -1823,7 +1851,7 @@ test_shell_expanded_pass_replays_build_mark_without_raw_writes(void) {
     for (int y = 0; y < GFX_HEIGHT; y++) {
         gfx_read_panel_row(y, fx.held + (size_t)y * GFX_WIDTH);
     }
-    TEST_ASSERT_TRUE(memcmp(fx.held, fx.pixels, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT) != 0);
+    TEST_ASSERT_TRUE(memcmp(fx.held, fx.pixels, GFX_FRAMEBUFFER_BYTES) != 0);
     gfx_present();
 }
 
@@ -1844,7 +1872,7 @@ test_paused_or_empty_expanded_scene_retains_its_picture(void) {
         for (int y = 0; y < GFX_HEIGHT; y++) {
             gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
         }
-        TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT));
+        TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, GFX_FRAMEBUFFER_BYTES));
         gfx_present();
     }
     const scene_target_t full = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, NULL};
@@ -1876,7 +1904,7 @@ test_expanded_frame_without_ui_does_not_replay_the_previous_hud(void) {
     for (int y = 0; y < GFX_HEIGHT; y++) {
         gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
     }
-    TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT));
+    TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, GFX_FRAMEBUFFER_BYTES));
 }
 
 #endif
@@ -2138,14 +2166,19 @@ test_property_animation_moves_a_drawn_entity(void) {
 }
 
 static void
-test_camera_seek_invalidates_the_entity_matrix(void) {
+test_paused_camera_seek_wraps_or_clamps_and_invalidates_the_entity_matrix(void) {
     fixture();
     scene_t* scene = show("test_flight", NULL);
     const scene_entity_t camera = scene_find(scene, "camera");
     TEST_ASSERT_TRUE(scene_entity_transform(scene, camera)->cached);
-    TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, 500));
+    const uint32_t duration_ms = scene_animator_clip_duration_ms(scene, camera, 0);
+    TEST_ASSERT_TRUE(scene_animator_set_paused(scene, camera, SCENE_ANIMATOR_CURRENT, true));
+    TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, duration_ms + duration_ms / 2));
     scene_transform_t sampled = *scene_entity_transform(scene, camera);
     TEST_ASSERT_EQUAL_FLOAT(2.5F, transformf_matrix(&sampled).m[0][3]);
+    scene->animators[camera].layer.current.playhead.wrap = ANIM_CLAMP;
+    TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, duration_ms + duration_ms / 2));
+    TEST_ASSERT_EQUAL_FLOAT(5.0F, scene_entity_transform(scene, camera)->position.x);
     TEST_ASSERT_TRUE((scene->flags[camera] & SCENE_FLAG_DIRTY) != 0);
 }
 
@@ -3144,7 +3177,7 @@ run_scene_suite(void) {
     RUN_TEST(test_attachment_count_mismatches_preserve_previous_components);
     RUN_TEST(test_scene_open_refuses_shear_and_reflection_naming_the_entity);
     RUN_TEST(test_property_animation_moves_a_drawn_entity);
-    RUN_TEST(test_camera_seek_invalidates_the_entity_matrix);
+    RUN_TEST(test_paused_camera_seek_wraps_or_clamps_and_invalidates_the_entity_matrix);
     RUN_TEST(test_inactive_property_target_invalidates_its_entity_matrix);
     RUN_TEST(test_unchanged_poses_skip_skinning_and_refit);
     RUN_TEST(test_previous_slot_pause_and_empty_or_frozen_controls);
@@ -3155,6 +3188,7 @@ run_scene_suite(void) {
     RUN_TEST(test_paused_or_empty_expanded_scene_retains_its_picture);
     RUN_TEST(test_expanded_scene_in_separate_picture_matches_upscale);
     RUN_TEST(test_expanded_frame_lifecycle_and_raw_draw_guard);
+    RUN_TEST(test_expanded_overlay_resets_and_restores_clip);
     RUN_TEST(test_ui_replay_over_expanded_scene_matches_full_frame);
     RUN_TEST(test_non_half_compose_upscales_to_the_full_destination);
     RUN_TEST(test_failed_half_allocation_keeps_full_upscale_unexpanded);

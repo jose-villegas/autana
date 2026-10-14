@@ -62,10 +62,6 @@ typedef struct {
     uint32_t duration_ms; /* the last key of any track */
 } anim_clip_t;
 
-/* Clip seconds for `t_ms`: wrapped by integer milliseconds so a long run
- * keeps its resolution, and held at the duration when clamped. */
-float anim_clip_seconds(const anim_clip_t* clip, uint32_t t_ms, anim_wrap_t wrap);
-
 /* Writes `width` floats. Before the first key and after the last, the end
  * value, as glTF defines. */
 void anim_track_sample(const anim_track_t* track, float seconds, float out[ANIM_WIDTH_MAX]);
