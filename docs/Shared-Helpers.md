@@ -7,7 +7,7 @@ Search the [generated catalogue](#catalogue) for an existing owner before writin
 <!-- generated: shared-helpers check: python launcher/tools/gen/shared_helpers.py --check -->
 | Owner | Purpose | Public names |
 |---|---|---|
-| [editor/include/editor/runtime.h](../editor/include/editor/runtime.h) | Host access to firmware rendering, geometry and UI constraints. | `EDITOR_SCREEN_COUNT, EDITOR_SCREEN_LAUNCHER, editor_runtime_init, editor_runtime_panel_height, editor_runtime_panel_width, editor_runtime_render, editor_runtime_tap_min, editor_screen_t` |
+| [editor/include/editor/runtime.h](../editor/include/editor/runtime.h) | Host toolkit initialization, geometry and UI constraints. | `editor_runtime_init, editor_runtime_panel_height, editor_runtime_panel_width, editor_runtime_tap_min` |
 | [editor/runtime/host/esp_log.h](../editor/runtime/host/esp_log.h) | esp_log: no-op ESP logging for the host firmware renderer. | `ESP_LOGE, ESP_LOGI, ESP_LOGW` |
 | [editor/src/core/dockspace.h](../editor/src/core/dockspace.h) | dockspace: editor dockspace layout and reset controls. | `draw_editor_dockspace` |
 | [editor/src/core/edit_history.h](../editor/src/core/edit_history.h) | edit_history: document snapshots with undo, redo and saved-state tracking. | `EditHistory, can_redo, can_undo, commit, mark_saved, redo, sync_dirty, undo` |

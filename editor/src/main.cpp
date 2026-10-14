@@ -1,4 +1,4 @@
-/* Desktop editing and firmware-backed previews of authored layouts. */
+/* Desktop editing of authored UI layouts. */
 #define SDL_MAIN_HANDLED
 
 #include <SDL.h>
@@ -66,22 +66,20 @@ hit_test(const ScreenLayout& layout, float x, float y) {
     return std::nullopt;
 }
 
-// A screen the firmware draws. One with a document is edited here; one
-// without is previewed through the same renderer and nothing more.
+// Documents own the editable geometry for each project screen.
 struct SystemScreen {
     const char* title;
-    editor_screen_t runtime_screen;
     std::optional<LayoutDocument> document;
     std::optional<LayoutEditHistory> history;
     std::size_t selected = 0;
 };
 
 bool
-render_preview(Preview& preview, const SystemScreen& screen) {
+render_preview(Preview& preview) {
     std::string error;
-    return editor_runtime_render(screen.runtime_screen, preview.surface.pixels(), preview.surface.width(),
-                                 preview.surface.height())
-           && preview.surface.upload(error);
+    std::fill_n(preview.surface.pixels(),
+                static_cast<std::size_t>(preview.surface.width()) * preview.surface.height(), std::uint16_t{});
+    return preview.surface.upload(error);
 }
 
 std::filesystem::path
@@ -107,12 +105,12 @@ bake_layout(const LayoutDocument& document, std::string& error) {
 }
 
 bool
-create_preview(SDL_Renderer* renderer, Preview& preview, const SystemScreen& screen) {
+create_preview(SDL_Renderer* renderer, Preview& preview) {
     std::string error;
     if (!preview.surface.create(renderer, error)) {
         return false;
     }
-    return render_preview(preview, screen);
+    return render_preview(preview);
 }
 
 void constrain_rect(LayoutRect& rect, const ScreenLayout& layout);
@@ -262,7 +260,7 @@ draw_menu_and_shortcuts(const SystemScreen& screen, bool valid) {
             requests.save = ImGui::MenuItem("Save", "Ctrl+S", false, dirty && valid);
             ImGui::Separator();
             requests.bake =
-                ImGui::MenuItem("Bake firmware layout", nullptr, false, screen.document.has_value() && !dirty && valid);
+                ImGui::MenuItem("Bake layout", nullptr, false, screen.document.has_value() && !dirty && valid);
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Edit")) {
@@ -394,7 +392,7 @@ draw_inspector(EditorState& state, MenuRequests& requests) {
         ImGui::TextColored(ImVec4(1.0f, 0.72f, 0.35f, 1.0f), "Unsaved");
     }
     ImGui::BeginDisabled(document.dirty() || !valid);
-    requests.bake |= ImGui::Button("Bake firmware layout");
+    requests.bake |= ImGui::Button("Bake layout");
     ImGui::EndDisabled();
     ImGui::End();
     return changed;
@@ -418,7 +416,7 @@ draw_problems(const EditorState& state) {
         ImGui::Separator();
         ImGui::TextWrapped("%s", state.notice.c_str());
     }
-    ImGui::TextDisabled("Save updates authored JSON; Bake explicitly regenerates firmware geometry.");
+    ImGui::TextDisabled("Save updates authored JSON; Bake explicitly regenerates project geometry.");
     ImGui::End();
 }
 
@@ -490,7 +488,7 @@ draw_editor(EditorState& state, Preview& landscape, Preview& portrait) {
 int
 main() {
     EditorState state;
-    state.screens.push_back({"Launcher", EDITOR_SCREEN_LAUNCHER, std::nullopt, std::nullopt});
+    state.screens.push_back({"Layout", std::nullopt, std::nullopt});
 
     SDL_SetMainReady();
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0) {
@@ -515,7 +513,7 @@ main() {
     }
 
     if (!editor_runtime_init()) {
-        std::fprintf(stderr, "Firmware runtime initialization failed\n");
+        std::fprintf(stderr, "Toolkit runtime initialization failed\n");
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
         SDL_Quit();
@@ -539,8 +537,8 @@ main() {
                       editor_runtime_panel_width());
     Preview portrait("Portrait", LayoutOrientation::Portrait, editor_runtime_panel_width(),
                      editor_runtime_panel_height());
-    if (!create_preview(renderer, landscape, state.screens[state.active])
-        || !create_preview(renderer, portrait, state.screens[state.active])) {
+    if (!create_preview(renderer, landscape)
+        || !create_preview(renderer, portrait)) {
         std::fprintf(stderr, "Preview texture creation failed: %s\n", SDL_GetError());
         portrait.surface.reset();
         landscape.surface.reset();
@@ -569,8 +567,7 @@ main() {
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
         if (draw_editor(state, landscape, portrait)) {
-            const SystemScreen& screen = state.screens[state.active];
-            if (!render_preview(landscape, screen) || !render_preview(portrait, screen)) {
+            if (!render_preview(landscape) || !render_preview(portrait)) {
                 state.notice = std::string("Preview update failed: ") + SDL_GetError();
             }
         }

@@ -1,23 +1,23 @@
 # Editor
 
-The host-side authoring tool. Its document model validates, saves and bakes
-authored layouts. The window previews the launcher **through the firmware's
-own UI and gfx code**, compiled for the host, in both orientations. The
-plan is [`docs/plans/UI-Editor-Plan.md`](../docs/plans/UI-Editor-Plan.md).
+The host-side UI authoring tool. Its document model validates, saves and
+bakes layouts. The window provides geometry canvases in both orientations;
+project loading and registered draw entries are planned in
+[`docs/plans/UI-Editor-Plan.md`](../docs/plans/UI-Editor-Plan.md).
 
-The device runtime stays under `launcher/`. SDL2, Dear ImGui and C++ are
+The runtime links the public `ui/`, `draw/` and `gfx/` code with shared
+packages. It links no shell or app source. SDL2, Dear ImGui and C++ are
 host-only and never enter an ESP-IDF component graph.
 
 ## Layouts and the preview
 
-```mermaid
-flowchart LR
-    JSON["launcher/main/ui/<br/>&lt;screen&gt;_layout.json"] -->|load / save| DOC["LayoutDocument<br/><i>src/layout_document</i>"]
-    DOC -->|"Bake: bake_header()"| HEADER["&lt;screen&gt;_layout_generated.h"]
-    HEADER --> FW["firmware build"]
-    SRC["firmware ui/ + gfx/"] -->|compiled for the host| RT["editor_runtime_render()<br/><i>runtime/runtime.c</i>"]
-    RT --> PREVIEW["the launcher,<br/>both orientations side by side"]
-```
+| Data or code | Owner | Use |
+|---|---|---|
+| `<screen>_layout.json` | project folder | load and save an authored document |
+| `LayoutDocument` | `src/layout_document` | validation, edits and header emission |
+| `<screen>_layout_generated.h` | project build | static geometry for a screen |
+| `runtime/runtime.c` | editor toolkit runtime | initialization, dimensions and tap constraints |
+| orientation canvases | editor window | inspect and manipulate geometry |
 
 - **The JSON is the source.** It names its screen and declares its elements
   (`id`, `label`, `interactive`), then gives one rect per element for
@@ -42,22 +42,20 @@ editor/
 │   ├── layout_document.*     one document type for every authored screen
 │   └── core/                 reusable: dockspace, edit history, RGB565 texture
 ├── include/editor/runtime.h  the C boundary the editor renders through
-├── runtime/runtime.c         firmware ui/ + gfx/ on the host; never an IDF component
+├── runtime/runtime.c         public ui/ + draw/ + gfx/ on the host; never an IDF component
 └── tests/                    CTest: GoogleTest and C runtime tests
 ```
 
-The launcher is the listed screen, as a preview only: it is a flowed
-scrolling list, which a table of fixed rects cannot express.
+Project draw registration is planned. The launcher has no preview here; its
+hand-written drawing belongs to `shell/ui/`.
 
 ## Adding a screen
 
-1. Write `launcher/main/ui/<screen>_layout.json` and bake it.
-2. Give the screen a draw function that takes the baked struct, split from
-   its frame, and a frame entry that takes a layout in place of the baked one.
-3. Add the screen to `editor_screen_t`, give `editor_runtime_render()` a
-   layout argument that `runtime.c` passes to that entry, and add the screen's
-   sources to `editor_runtime` in `CMakeLists.txt`.
-4. Load its document in the screen list in `main.cpp`.
+The project interface will open a folder containing each screen's
+`<screen>_layout.json` and registered draw entry. Draw entries take the same
+layout value that the project build reads from its baked table. The first
+authored document is the brush screen; the editor itself names no project
+screen.
 
 ## Build
 
@@ -71,14 +69,14 @@ To bake outside the window, run:
 
 ```sh
 cd launcher
-python tools/gen/bake_ui_layout.py main/ui/<screen>_layout.json main/ui/<screen>_layout_generated.h
+python tools/gen/bake_ui_layout.py <project>/<screen>_layout.json <project>/<screen>_layout_generated.h
 ```
 
 `bake_ui_layout.py` configures its headless tree in `editor/build-bake` once and
 builds `editor_layout_bake` incrementally on every run. Validation and emission
 belong to C++. The generated-file drift gate checks each layout header against
 its JSON through `bake_ui_layout.py`. Panel dimensions and tap constraints
-come from the firmware through `editor_runtime_*`. Invalid-document fixtures
+come from the toolkit through `editor_runtime_*`. Invalid-document fixtures
 pair a document with the error substring its rule must report.
 
 The executable is `editor/build/autana_editor`. SDL2, Dear ImGui,
@@ -101,10 +99,10 @@ CTest is the single entry point.
 | `editor_document.*` (GoogleTest) | load, validate, save, bake, wrong rect count; fixtures assert their named rule; JSON re-serialises byte for byte |
 | `editor_core.*` (GoogleTest) | edit history: undo, redo, saved revision |
 | `editor_layout_bake_c` (C) | the baker output compiles as C against `ui_layout.h` and matches the fixture rect |
-| `editor_runtime_smoke` (C) | the launcher renders in both orientations; invalid buffers and dimensions are refused |
-| `editor_ridge_backdrop` (C) | the launcher over its ridge: idle sends nothing, a touch wakes it, and at rest the screen is the settled one exactly |
+| `editor_runtime_smoke` (C) | toolkit initialization and shared layout constraints |
 
 The window itself - SDL and Dear ImGui glue - has no automated coverage.
+Shell backdrop coverage is in `launcher/test/suites/suite_ridge_backdrop.c`.
 
 ```sh
 python -m pip install gcovr==8.6

@@ -1,4 +1,4 @@
-# Host editor, firmware preview runtime and shared layout baker.
+# Host UI editor, toolkit runtime and shared layout baker.
 cmake_minimum_required(VERSION 3.24)
 
 project(autana_editor LANGUAGES C CXX)
@@ -47,7 +47,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
-# Every gfx source but the device-only *_device.c.
+# Public drawing and presentation, excluding device-only backends.
 file(GLOB_RECURSE gfx_srcs CONFIGURE_DEPENDS
     ${LAUNCHER_DIR}/main/gfx/*.c
     ${LAUNCHER_DIR}/main/draw/*.c)
@@ -56,7 +56,6 @@ list(FILTER gfx_srcs EXCLUDE REGEX "_device\\.c$")
 add_library(editor_runtime STATIC
     runtime/runtime.c
     ${gfx_srcs}
-    ${LAUNCHER_DIR}/main/app/app_registry.c
     ${LAUNCHER_DIR}/main/asset/asset_file.c
     ${LAUNCHER_DIR}/main/asset/asset_pack.c
     ${LAUNCHER_DIR}/main/asset/asset_table.c
@@ -68,14 +67,10 @@ add_library(editor_runtime STATIC
     ${LAUNCHER_DIR}/main/ui/ui_build.c
     ${LAUNCHER_DIR}/main/ui/ui_canvas_marks.c
     ${LAUNCHER_DIR}/main/ui/ui_icons.c
-    ${LAUNCHER_DIR}/main/shell/ui/ui_launcher.c
-    ${LAUNCHER_DIR}/main/shell/ui/ui_launcher_draw.c
     ${LAUNCHER_DIR}/main/ui/ui_pointer.c
     ${LAUNCHER_DIR}/main/ui/ui_snap.c
-    ${LAUNCHER_DIR}/main/shell/ui/ui_ridge.c
     ${LAUNCHER_DIR}/main/ui/ui_scroll.c
     ${LAUNCHER_DIR}/main/ui/ui_widgets.c
-    ${LAUNCHER_DIR}/main/services/tune.c
     ${LAUNCHER_DIR}/components/microui/src/microui.c
 )
 target_include_directories(editor_runtime
@@ -249,15 +244,6 @@ if(BUILD_TESTING)
     add_executable(editor_layout_bake_c_test tests/layout_bake_c_test.c "${EDITOR_SAMPLE_HEADER}")
     target_include_directories(editor_layout_bake_c_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}" ${LAUNCHER_DIR}/main)
     add_test(NAME editor_layout_bake_c COMMAND editor_layout_bake_c_test)
-
-    add_executable(editor_ridge_backdrop_test tests/ridge_backdrop_test.c)
-    target_include_directories(editor_ridge_backdrop_test PRIVATE
-        runtime/host
-        ${LAUNCHER_DIR}/main
-        ${LAUNCHER_DIR}/components/microui/include
-    )
-    target_link_libraries(editor_ridge_backdrop_test PRIVATE editor_runtime)
-    add_test(NAME editor_ridge_backdrop COMMAND editor_ridge_backdrop_test)
 
     add_executable(editor_layout_document_test tests/layout_document_test.cpp)
     target_link_libraries(editor_layout_document_test PRIVATE editor_document GTest::gmock_main)

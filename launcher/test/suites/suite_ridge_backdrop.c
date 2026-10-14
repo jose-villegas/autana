@@ -9,12 +9,19 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "editor/runtime.h"
+#include "suites.h"
+
+#ifndef DEVICE_BUILD
+
+#include "test_cleanup.h"
+#include "unity.h"
 
 #include "app/app.h"
+#include "core/memory.h"
 #include "draw/gfx_dither.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
+#include "gfx/present/gfx_test.h"
 #include "shell/ui/ui_launcher.h"
 #include "shell/ui/ui_ridge.h"
 #include "ui/ui.h"
@@ -56,7 +63,7 @@ frame(bool touching, bool pressed) {
 
 static gfx_color_t*
 snapshot(void) {
-    gfx_color_t* copy = malloc(PIXELS * sizeof *copy);
+    gfx_color_t* copy = memory_alloc(PIXELS * sizeof *copy, MEMORY_PSRAM);
     if (copy != NULL) {
         memcpy(copy, gfx_framebuffer(), PIXELS * sizeof *copy);
     }
@@ -72,11 +79,35 @@ lit_pixels(const gfx_color_t* pixels) {
     return lit;
 }
 
-int
-main(void) {
-    if (!editor_runtime_init()) {
-        return 1;
+static void
+release(void) {
+    app_registry_reset_for_test();
+    gfx_heal_restore_defaults();
+    gfx_reset_for_test();
+}
+
+static void
+fixture(app_t* apps, size_t count) {
+    suite_set_test_cleanup(release);
+    app_registry_reset_for_test();
+    for (size_t i = 0; i < count; i++) {
+        app_register(&apps[i]);
     }
+    TEST_ASSERT_TRUE(gfx_init());
+    ui_ridge_reset_for_test();
+    ui_ridge_restart_boot_for_test();
+    ui_launcher_init();
+    failures = 0;
+}
+
+static void
+test_launcher_backdrop_motion_and_rest(void) {
+    app_t apps[] = {
+        {.name = "Alpha", .summary = "First screen"},
+        {.name = "Beta", .summary = "Second screen"},
+        {.name = "Gamma", .summary = "Third screen"},
+    };
+    fixture(apps, sizeof apps / sizeof *apps);
     ui_set_transform(ui_transform_identity());
 
     /* Still first: breathing and the wave never rest, and what follows is
@@ -85,7 +116,7 @@ main(void) {
     frame(false, false);
     gfx_color_t* reference = snapshot();
     if (reference == NULL) {
-        return 1;
+        TEST_FAIL_MESSAGE("no memory for the frame copy");
     }
     ui_ridge_paint_reference_for_test(reference);
     const int phase_rows = gfx_dither_pattern(GFX_DITHER_SCANLINES4)->height;
@@ -97,7 +128,7 @@ main(void) {
                         != 0;
     }
     expect(shaped, "the engine pack supplies the shaped ridge, not the level fallback");
-    free(reference);
+    memory_free(reference);
 
     /* Held upright in portrait from the first frame: down is the panel's +y,
      * a quarter turn from the landscape pose boot hands over in. */
@@ -106,7 +137,7 @@ main(void) {
     frame(false, false);
     gfx_color_t* as_boot_left_it = snapshot();
     if (as_boot_left_it == NULL) {
-        return 1;
+        TEST_FAIL_MESSAGE("no memory for the frame copy");
     }
     expect(as_boot_left_it[0] != 0, "the backdrop is visible behind the launcher");
     expect(lit_pixels(as_boot_left_it) > 8000, "the backdrop and the app rows are drawn");
@@ -132,11 +163,11 @@ main(void) {
     expect(turning_frames > 10, "then it turns toward level over many frames, not in one jump");
     expect(frames_until_level < FRAMES_TO_REST, "and stops turning");
     expect(memcmp(as_boot_left_it, gfx_framebuffer(), PIXELS * sizeof *as_boot_left_it) != 0, "the line has turned");
-    free(as_boot_left_it);
+    memory_free(as_boot_left_it);
 
     gfx_color_t* settled = snapshot();
     if (settled == NULL) {
-        return 1;
+        TEST_FAIL_MESSAGE("no memory for the frame copy");
     }
     ui_ridge_settle();
     ui_invalidate();
@@ -193,6 +224,21 @@ main(void) {
     expect(memcmp(settled, gfx_framebuffer(), PIXELS * sizeof *settled) == 0,
            "on exactly the settled screen: the motion left nothing behind");
 
-    free(settled);
-    return failures;
+    memory_free(settled);
+    TEST_ASSERT_EQUAL_INT(0, failures);
 }
+
+void
+suite_ridge_backdrop(void) {
+    ui_ridge_reset_for_test();
+    RUN_TEST(test_launcher_backdrop_motion_and_rest);
+}
+
+#else
+
+void
+suite_ridge_backdrop(void) {}
+
+#endif
+
+SUITE_REGISTER(suite_ridge_backdrop);
