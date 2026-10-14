@@ -69,7 +69,11 @@ shake_from_sample(const tilt_t* t, int gx, int gy, int gz) {
 }
 
 void
-tilt_update(tilt_t* t, int gx, int gy, int gz, int rotation, uint32_t dt_ms) {
+tilt_update(tilt_t* t, vec3i_t accel, int turn_speed, uint32_t dt_ms) {
+    const int gx = accel.x;
+    const int gy = accel.y;
+    const int gz = accel.z;
+
     /* Worked out before anything else returns early. A sample rejected by the
      * trust gate below is precisely a sample where the device is being thrown
      * around, which is exactly the sample that has the most to say about how
@@ -119,6 +123,7 @@ tilt_update(tilt_t* t, int gx, int gy, int gz, int rotation, uint32_t dt_ms) {
         dt_ms = TILT_MAX_DT_MS;
     }
 
+    int rotation = turn_speed * 255 / TILT_TURN_FULL_DPS;
     if (rotation < 0) {
         rotation = 0;
     } else if (rotation > 255) {

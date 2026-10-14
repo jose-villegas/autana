@@ -380,3 +380,54 @@ pixel fails until the new picture is looked at and re-pinned with
 `--update-baseline`. `launcher/tools/render/render_doc_images.sh` turns those
 renders into `docs/images/ui/`; see "Images in these docs" in
 [`tools/Render-Harness.md`](tools/Render-Harness.md).
+
+### Band replay measurements
+
+The band bin is allocated once at UI initialization with `memory_alloc` and
+`MEMORY_PSRAM`. Its capacity owner, `UI_BAND_BIN_MAX` in `ui/ui_internal.h`, derives
+from `UI_BAND_BIN_MEASURED_PEAK` with the growth margin owned by
+`UI_BAND_BIN_MARGIN_DIVISOR`; its byte size is that capacity times
+`sizeof(ui_band_entry_t)`. Command and fill entries share storage for their
+mutually exclusive payloads. Allocation failure retains no entries and uses
+full-band repaint for bands touched by drawing.
+Bands touched by drawing that does not fit replay the complete UI in painter's
+order and remain dirty. Other bands replay the retained entries.
+`ui_band_fallback_count()` reports full band replays in the current frame.
+
+On a development build, `autana tune ui.band_stats_frames N` requests the next
+N UI frame reports. Capture them with `autana monitor 30`. Repeat on launcher
+home, an options screen, and a busy menu with its dropdown open:
+
+```text
+ui: band stats: fallbacks=<bands> ui_us=<microseconds> commands=<bytes> roots=<canvases>
+```
+
+`ui_us` measures UI finalization and painting, including binning and band replay;
+it excludes command construction, application drawing, panel transfer and the
+report itself. Band-frame reports appear at the next UI finalization, even
+when unchanged bands skip painting. Full-frame painting reports zero fallbacks.
+Compare frames with zero and positive fallback counts on the same screen to measure the fallback
+cost. The request expires after N reports; zero disables it. Check the running
+build id before and after each capture.
+
+In a self-test build, the on-request suite `run_ui_band_perf_suite` measures
+the options screen with its dither dropdown closed and open, and the shared
+sparse and dense dropdown-menu fixture through the real band ring. Warm-up frames are presented before each measured range.
+The menu fixture repeats each revision on consecutive frames, covering changing
+and steady sparse content. Deferred cleanup restores the full framebuffer even
+when an assertion fails. The host widget suite runs the same cases with the
+engine and screen icon packs. Run the device suite with
+`autana suite run_ui_band_perf_suite --flash`. Each case collects the frame
+range owned by `MENU_FRAMES` in `suite_ui_widgets.c` in memory, then reports:
+
+```text
+ui_band_perf: case=NAME frames=N fallbacks=TOTAL frame_us=MEAN max_us=MAX
+```
+
+`fallbacks` is the total number of full band replays across the measured frames.
+`frame_us` and `max_us` are the mean and maximum elapsed microseconds, including
+command construction, finalization, drawing and band submission; they exclude
+presentation waiting before the frame and the summary log. The suite asserts
+zero fallbacks in every measured case. The host widget suite also exceeds the
+bin capacity to verify that fallback matches a full repaint and preserves
+dropdown painter order.

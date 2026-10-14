@@ -6,11 +6,15 @@
 #include "apps/render_lab/render_lab_clips.h"
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "core/memory.h"
+#include "display/display.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_present_guard.h"
 #include "scene/scene_internal.h"
 #include "test_cleanup.h"
 #include "ui/ui.h"
+#include "ui/ui_internal.h"
+#include "ui/ui_transform.h"
+#include "ui/ui_widgets.h"
 #include "unity.h"
 
 #define DISPATCH_BLEND_MS 300
@@ -119,6 +123,81 @@ test_boot_menu_draws_controls_only_for_animated_scene(void) {
 }
 
 static void
+test_boot_clip_opening_touch_does_not_select_overlay_row(void) {
+    dispatch_fixture_t* f = fixture();
+
+    enum { HOLD_FRAMES = 8, MOTION_PIXELS = 2, OVERLAPPED_ROW = 2 };
+
+    for (int motion = 0; motion <= MOTION_PIXELS; motion += MOTION_PIXELS) {
+        enter(f, "capybara");
+        /* The fixture resets the transform; the shell supplies landscape on the board. */
+        ui_set_transform(ui_transform_quarter_turn(DISPLAY_LANDSCAPE, GFX_WIDTH, GFX_HEIGHT));
+        TEST_ASSERT_EQUAL_INT(GFX_HEIGHT, ui_width());
+        TEST_ASSERT_EQUAL_INT(GFX_WIDTH, ui_height());
+        render_lab_test_frame(false, NULL);
+        const input_t boot = {.boot = {.pressed = true}};
+        render_lab_test_frame(false, &boot);
+        render_lab_test_frame(false, NULL);
+        input_t touch = {.down = true, .pressed = true};
+        bool found = false;
+        mu_Command* command = NULL;
+        while (mu_next_command(ui_context(), &command)) {
+            if (command->type == MU_COMMAND_TEXT && strcmp(command->text.str, "idle") == 0) {
+                ui_transform_point(ui_effective_transform(), command->text.pos.x, command->text.pos.y, &touch.x,
+                                   &touch.y);
+                found = true;
+                break;
+            }
+        }
+        TEST_ASSERT_TRUE(found);
+        render_lab_test_frame(false, &touch);
+        touch.pressed = false;
+        for (int frame = 0; frame < HOLD_FRAMES; frame++) {
+            touch.y += frame < motion;
+            render_lab_test_frame(false, &touch);
+        }
+        touch.down = false;
+        touch.released = true;
+        render_lab_test_frame(false, &touch);
+        TEST_ASSERT_EQUAL_INT(2, ui_context()->root_list.idx);
+        const mu_Container* overlay = ui_context()->root_list.items[1];
+        TEST_ASSERT_TRUE(overlay->open);
+        TEST_ASSERT_EQUAL_INT(UI_MARGIN, overlay->rect.y);
+        const mu_Vec2 opening = ui_context()->mouse_pos;
+        TEST_ASSERT_TRUE(opening.x >= overlay->body.x && opening.x < overlay->body.x + overlay->body.w);
+        const int covered_row = (opening.y - overlay->body.y + overlay->scroll.y) / UI_ROW_HEIGHT;
+        TEST_ASSERT_EQUAL_INT(OVERLAPPED_ROW, covered_row);
+        scene_t* scene = render_lab_test_loaded_scene("capybara");
+        const scene_entity_t subject = scene_find(scene, "capybara");
+        const scene_animator_t* animator = &scene->animators[subject];
+        TEST_ASSERT_EQUAL_STRING_MESSAGE("idle", scene_animator_clip_name(scene, subject, animator->layer.current.clip),
+                                         "opening release must not play the overlay row under the finger");
+        for (int frame = 0; frame < UI_DROPDOWN_CLOSE_FRAMES; frame++) {
+            render_lab_test_frame(false, NULL);
+            TEST_ASSERT_EQUAL_INT(2, ui_context()->root_list.idx);
+            TEST_ASSERT_TRUE(ui_context()->root_list.items[1]->open);
+        }
+        const mu_Container* list = ui_context()->root_list.items[1];
+        const int item = 1;
+        const char* expected = scene_animator_clip_name(scene, subject, item);
+        touch = (input_t){.down = true, .pressed = true};
+        ui_transform_point(ui_effective_transform(), list->body.x + (list->body.w / 2),
+                           list->body.y + (item * UI_ROW_HEIGHT) + (UI_ROW_HEIGHT / 2) - list->scroll.y, &touch.x,
+                           &touch.y);
+        render_lab_test_frame(false, &touch);
+        touch.pressed = false;
+        for (int frame = 0; frame < HOLD_FRAMES; frame++) {
+            render_lab_test_frame(false, &touch);
+        }
+        touch.down = false;
+        touch.released = true;
+        render_lab_test_frame(false, &touch);
+        TEST_ASSERT_EQUAL_STRING(expected, scene_animator_clip_name(scene, subject, animator->layer.current.clip));
+        leave(f);
+    }
+}
+
+static void
 test_cleanup_finishes_present_without_tripping_guard(void) {
     dispatch_fixture_t* f = fixture();
     enter(f, "capybara");
@@ -134,6 +213,7 @@ test_cleanup_finishes_present_without_tripping_guard(void) {
 void
 run_clip_dispatch_suite(void) {
 #ifdef DEVICE_BUILD
+    RUN_TEST(test_boot_clip_opening_touch_does_not_select_overlay_row);
     RUN_TEST(test_boot_menu_draws_controls_only_for_animated_scene);
     RUN_TEST(test_scene_console_dispatch_and_repeated_exit_release_heap);
     RUN_TEST(test_cleanup_finishes_present_without_tripping_guard);

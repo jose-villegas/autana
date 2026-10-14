@@ -36,7 +36,7 @@ targets_for(scene_t* scene, scene_entity_t owner) {
     }
     for (int c = 0; c < scene->asset.camera_count; c++) {
         const int e = scene->cameras[c].entity;
-        out.components[(e * 2) + 1] = (anim_component_ref_t){&R3D_SCENE_CAMERA_FIELDS, &scene->cameras[c].lens};
+        out.components[(e * 2) + 1] = (anim_component_ref_t){&CAMERA_FIELDS, &scene->cameras[c].lens};
         out.targets[e].component_count = 2;
     }
     const anim_target_t first = out.targets[0];
@@ -421,7 +421,7 @@ apply_property(scene_t* scene, scene_animator_t* a, uint32_t dt_ms) {
     }
     const anim_slot_t* slot = &a->layer.current;
     const scene_animator_clip_t* clip = &a->clips[slot->clip];
-    anim_apply(clip->fields, clip->tracks.count, anim_playhead_seconds(&slot->playhead, &clip->tracks.clip));
+    anim_apply(clip->fields, clip->tracks.count, anim_playhead_seconds(&slot->playhead));
     for (int i = 0; i < clip->tracks.count; i++) {
         const ptrdiff_t entity = clip->fields[i].dirty - scene->flags;
         scene->locals[entity].cached = false;

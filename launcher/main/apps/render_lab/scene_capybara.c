@@ -86,7 +86,7 @@ static bool
 frame_subject(void) {
     const scene_entity_t subject = scene_find(capybara, CAPYBARA_SUBJECT);
     camera_entity = scene_find(capybara, CAPYBARA_CAMERA);
-    const r3d_scene_camera_t* lens = scene_camera_lens(capybara, CAPYBARA_CAMERA);
+    const camera_t* lens = scene_camera_lens(capybara, CAPYBARA_CAMERA);
     if (subject == SCENE_ENTITY_NONE || camera_entity == SCENE_ENTITY_NONE || lens == NULL
         || scene_entity_mesh(capybara, subject) == NULL) {
         fail("no capybara or camera");

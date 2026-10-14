@@ -51,8 +51,8 @@
  * see palette.h's PALETTE_FITS for the same reasoning applied to the other
  * panel in this app. 368 is the tighter height of the two, so it is the one
  * that actually constrains BLOCK_H above. */
-_Static_assert(BLOCK_H <= 368 - 2 * UI_MARGIN, "the brush screen's three panels are taller than the "
-                                               "shorter of the two real canvases (448x368) allows");
+_Static_assert(BLOCK_H <= 368 - (2 * UI_MARGIN), "the brush screen's three panels are taller than the "
+                                                 "shorter of the two real canvases (448x368) allows");
 
 /* Lays `n` equal-width segments across `row`, with `gap` between
  * neighbours, any leftover pixel split evenly on the outside - the same

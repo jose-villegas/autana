@@ -16,6 +16,9 @@ on:
       - 'launcher/test/qemu/**'
       - 'launcher/test/run_qemu_tests.sh'
       - 'launcher/sdkconfig.defaults.qemu'
+      - '.python-version'
+      - 'launcher/idf-pin.json'
+      - '.github/actions/**'
   workflow_dispatch:
 
 concurrency:
@@ -31,17 +34,17 @@ env:
 jobs:
   qemu-tests:
     name: Every suite under QEMU
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # Espressif's QEMU rebuilt with launcher/test/qemu/patches, which
       # qemu_run.py runs in place of the prebuilt one. Built only when no
       # cache holds this QEMU version and patch set; patched_qemu.py names
       # the directory and removes any other, so one entry is saved per pair.
       - id: qemu-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: launcher/build.qemu-xtensa
           key: qemu-xtensa-
@@ -68,13 +71,13 @@ jobs:
       - if: >-
           ${{ !cancelled() && steps.qemu-built.outputs.name != ''
           && steps.qemu-cache.outputs.cache-matched-key != format('qemu-xtensa-{0}', steps.qemu-built.outputs.name) }}
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: launcher/build.qemu-xtensa
           key: qemu-xtensa-${{ steps.qemu-built.outputs.name }}
 
       - if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: qemu-serial-log
           path: launcher/build.qemu/qemu_serial.log
@@ -84,7 +87,7 @@ jobs:
       # against this build's ELF (a local build of the same commit links
       # differently), and qemu_run.py reruns the image as downloaded.
       - if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: qemu-image
           path: |

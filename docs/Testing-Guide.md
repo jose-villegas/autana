@@ -242,8 +242,8 @@ Worker-task calls are separate; a dispatcher's synchronous fallback remains
 on its caller's stack. The conservative maximum includes clipping paths,
 which a device's high-water mark may not encounter with an interrupt.
 The gate counts frames only in the source files it recompiles. Uncompiled
-libraries, including newlib's printf family (about 800 bytes for
-`_vfprintf_r`), esp_log and FreeRTOS, are not counted. There is no library
+libraries, including the C library's printf family, esp_log and FreeRTOS,
+are not counted. There is no library
 allowance; `timing.c`'s board stack-watermark check covers the remaining
 stack use. Source-line pointer checks and private function qualification
 come from compiler graphs.
@@ -398,7 +398,9 @@ cores, with no board and therefore no port to share. Any number of
 instances run at once.
 
 ```sh
-python "$IDF_PATH/tools/idf_tools.py" install qemu-xtensa   # once
+. launcher/tools/build/idf.sh
+idf_init "$PWD/launcher" "$PWD/launcher/tools/build"
+idf_in "$PWD/launcher" python "$IDF_PATH/tools/idf_tools.py" install qemu-xtensa # once
 ./launcher/test/run_qemu_tests.sh --perf-scope             # build + run
 ./launcher/test/run_qemu_tests.sh --perf-scope --icount --no-build
 ./launcher/test/run_qemu_tests.sh --suite suite_job --screenshot shot.png

@@ -72,7 +72,7 @@ def split_poses(fit, poses):
 def viewer_args(job, frames, dt_ms, scene):
     """The scene viewer's arguments that draw `job`'s object alone, portrait,
     for `frames` frames `dt_ms` apart along the scene camera's path."""
-    from r3d.scene_asset import scene_id
+    from r3d.scene_name import scene_id
     return f"--scene {scene_id(scene)} --object {job.object.name} --quarter 0 --frames {frames} --dt {dt_ms}"
 
 

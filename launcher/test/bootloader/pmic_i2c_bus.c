@@ -333,9 +333,11 @@ gpio_ll_get_level(gpio_dev_t* hw, uint32_t gpio_num) {
 }
 
 void
-gpio_ll_matrix_out_default(gpio_dev_t* hw, uint32_t gpio_num) {
+gpio_ll_set_output_signal_matrix_source(gpio_dev_t* hw, uint32_t gpio_num, uint32_t signal_idx, bool out_inv) {
     (void)hw;
     (void)gpio_num;
+    (void)signal_idx;
+    (void)out_inv;
     gpio_calls++;
 }
 

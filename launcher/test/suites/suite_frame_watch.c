@@ -352,20 +352,24 @@ allocate_and_free(void) {
     free((void*)block);
 }
 
-/* Three call sites of their own, so the heap hook must tell them apart. */
+/* Three call sites of their own, so the heap hook must tell them apart. Each
+ * asks for a different size: identical bodies would be folded into one
+ * function, and so one call site. */
+#define SITE_BYTES 24
+
 static __attribute__((noinline)) void
 allocate_here_0(void) {
-    free(malloc(24));
+    free(malloc(SITE_BYTES));
 }
 
 static __attribute__((noinline)) void
 allocate_here_1(void) {
-    free(malloc(24));
+    free(malloc(SITE_BYTES + 1));
 }
 
 static __attribute__((noinline)) void
 allocate_here_2(void) {
-    free(malloc(24));
+    free(malloc(SITE_BYTES + 2));
 }
 
 /* The RUN_TEST wrapper already watches this test; its verdict is taken here

@@ -55,14 +55,14 @@ from asset.engine_frame import to_engine  # noqa: E402
 from gfx import icons_asset, image_asset, curve_asset  # noqa: E402
 from asset.asset_pack import PackError, build_pack, parse_pack  # noqa: E402
 from asset.asset_directory import build_directory, parse_directory  # noqa: E402
-from r3d import scene_asset, skin_asset, skin_pack  # noqa: E402
+from r3d import scene_asset, scene_name, skin_asset, skin_pack  # noqa: E402
 from r3d.import_settings import SettingsError, albedo_jobs, load_demo_assets, load_import_settings, load_scene  # noqa: E402
 from r3d.mesh_asset import TYPE as LIT_MESH  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 DEFAULT_SEARCH = REPO / "launcher" / "main"
 DEMO = REPO / "launcher" / "demo"
-SCENE, IMPORT, CLIP = ".scene.toml", ".import.toml", tracks_asset.SUFFIX
+SCENE, IMPORT, CLIP = scene_name.SUFFIX, ".import.toml", tracks_asset.SUFFIX
 IMAGE, ICONS = image_asset.SUFFIX, icons_asset.SUFFIX
 CURVE = curve_asset.SUFFIX
 ROOTS = (IMPORT, SCENE, CLIP, IMAGE, ICONS, CURVE)
@@ -109,7 +109,7 @@ def add_entry(entries, key, source, root):
 def scene_entries(path, scene):
     """{entry id: its source} of a scene's pack: its entry, its meshes and every camera's clip."""
     entries = {}
-    add_entry(entries, scene_asset.scene_id(path), path, path)
+    add_entry(entries, scene_name.scene_id(path), path, path)
     for item in scene.renderers:
         add_entry(entries, item.asset_name, item.asset_path, path)
     for camera in (obj for obj in scene.objects if obj.kind == "camera"):

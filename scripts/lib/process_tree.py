@@ -8,6 +8,7 @@ JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x2000
 JOB_OBJECT_LIMIT_BREAKAWAY_OK = 0x800
 JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
 CREATE_SUSPENDED = 0x4
+PR_SET_PDEATHSIG = 1
 
 
 def windows_job_binding(kernel=None):
@@ -52,10 +53,30 @@ def create_kill_on_close_job(breakaway_ok=False, kernel=None):
     return None
 
 
-def launch_process_tree(command, **options):
+def bind_parent_lifetime(parent_pid):
+    """Linux: SIGKILL this child when its parent dies, even by SIGKILL.
+    If the parent is already gone when prctl runs, no signal comes, so the
+    child kills itself. The signal follows the thread that started the child:
+    start it from the thread that waits for it."""
+    import ctypes
+    prctl = ctypes.CDLL(None, use_errno=True).prctl
+
+    def bind():
+        if prctl(PR_SET_PDEATHSIG, signal.SIGKILL, 0, 0, 0) != 0:
+            raise OSError(ctypes.get_errno(), "cannot bind child to parent lifetime")
+        if os.getppid() != parent_pid:
+            os.kill(os.getpid(), signal.SIGKILL)
+
+    return bind
+
+
+def launch_process_tree(command, *, parent_lifetime=False, new_session=True, **options):
     """Start command as one stoppable tree: a new session on POSIX, a job assigned before it runs on Windows."""
     if os.name != "nt":
-        options["start_new_session"] = True
+        options["start_new_session"] = new_session
+        if parent_lifetime and sys.platform.startswith("linux"):
+            parent_pid = os.getpid()
+            options["preexec_fn"] = bind_parent_lifetime(parent_pid)
         return subprocess.Popen(command, **options)
     import ctypes
     from ctypes import wintypes

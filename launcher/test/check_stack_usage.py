@@ -9,14 +9,14 @@ Why this exists: two device panics in this project's history were "Stack
 protection fault" loops, both caused by a test fixture declaring a huge local
 array: a 4 KB comparison buffer, and later an impulse_t[4096] (24 KB). Both
 passed green on the host, whose stack is megabytes; this board's main task
-stack (CONFIG_ESP_MAIN_TASK_STACK_SIZE) is 3,584 bytes, shared with Unity,
+stack (DP_MAIN_TASK_STACK_BYTES) is under 4 KB, shared with Unity,
 printf, and the call chain above the fixture. The host build
 cannot reproduce a stack panic; it can only predict one, statically, from
 the frame sizes GCC/Clang already compute for their own prologues. This gate
 is that prediction, run every time the host suite runs.
 
 The ceiling (DP_TEST_FRAME_CEILING_BYTES, see launcher/tools/device/device_profiles/
-esp32s3.sh) is 1024 bytes: comfortably below the 3,584-byte device stack
+esp32s3.sh) is 1024 bytes: comfortably below the device stack
 (generous margin given that stack is shared with Unity and the interpreter
 chain above a fixture, not just the fixture's own frame), yet it catches
 both historical panics (24 KB and 4 KB) with two orders of magnitude to
@@ -59,7 +59,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
 import device_profile  # noqa: E402  (path must be set up first)
 
 
-# Pre-existing stack-frame debt against the 3,584-byte device stack, measured
+# Pre-existing stack-frame debt against the device stack, measured
 # once (host frames, 2026-09-03) so the gate can land without either
 # raising the ceiling to match the worst of them or leaving every one of
 # them permanently red. This is NOT a permission slip: each value is the

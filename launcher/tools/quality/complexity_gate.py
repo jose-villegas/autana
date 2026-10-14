@@ -38,9 +38,11 @@ import re
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from functools import lru_cache
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "build"))
+from compile_db import compile_flags
 from espressif import espressif_tools_root  # noqa: E402  (path must be set up first)
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/lib"))
 from pinned_tool import PINNED_MAJOR, resolve
@@ -102,17 +104,18 @@ VENDORED_REFERENCES = {
         "third_party/upstream/microui/src/microui.h",
 }
 
-# ESP-IDF's GCC-only flags cannot be parsed by esp-clang. ANALYSIS_SCAN
-# also skips table uses of macros, so its unused-macro warning differs from
-# the firmware compile.
-BAD_GCC_FLAGS = {
-    "-fno-tree-switch-conversion",
-    "-fstrict-volatile-bitfields",
-    "-mdisable-hardware-atomics",
-    "-Werror=unused-macros",
-}
+# ANALYSIS_SCAN skips table uses of macros, so its unused-macro warning
+# differs from the firmware compile.
+ANALYSIS_UNUSED_MACROS_FLAG = "-Werror=unused-macros"
+CLANG_PROBE_TIMEOUT_SECONDS = 15
+CLANG_REJECTED_FLAG_RE = re.compile(
+    r"^.*error: (?:unknown argument|argument unused during compilation): "
+    r"'(?P<flag>[^']+)'(?: \[-Werror,-Wunused-command-line-argument\])?$")
 
-RESPONSE_FILE_RE = re.compile(r'@"([^"]+)"')
+GCC_INCLUDE_START = "#include <...> search starts here:"
+GCC_INCLUDE_END = "End of search list."
+GCC_PROBE_TIMEOUT_SECONDS = 15
+LIBC_HEADER = "stdio.h"
 
 DIAG_RE = re.compile(
     r"^(?P<file>.+):(?P<line>\d+):\d+: warning: function '(?P<name>[^']+)' "
@@ -128,9 +131,15 @@ def resolve_clang_tidy():
     return resolve("clang-tidy")
 
 
+def resolve_analysis_clang():
+    """Probe with a validated driver matching the pinned LLVM major."""
+    clang_tidy, _ = resolve_clang_tidy()
+    return resolve("clang", companion=clang_tidy)[0]
+
+
 def find_xtensa_toolchain_root():
     """The xtensa-esp-elf GCC install esp-clang needs pointed at
-    (--sysroot/--gcc-toolchain) to resolve newlib's platform_include shims:
+    (--sysroot/--gcc-toolchain) to resolve IDF's libc include_next shims:
     esp-clang carries no libc of its own for this target. Same
     glob-and-take-newest convention as the esp-clang lookup above, under
     the same ESP-IDF tools root."""
@@ -401,34 +410,54 @@ def scan_vendored(clang_tidy, db_path, sources):
     return scores
 
 
-def inline_response_file(cmd):
-    """ESP-IDF's generated compile commands hand most flags to the
-    compiler via a GCC-style @"file" response file rather than inline;
-    inlined here so BAD_GCC_FLAGS can be stripped from all of it, not just
-    whatever half of the command happens to sit outside the file."""
-    m = RESPONSE_FILE_RE.search(cmd)
-    if not m:
-        return cmd
-    try:
-        rf_text = Path(m.group(1)).read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return cmd
-    return cmd[:m.start()] + rf_text + cmd[m.end():]
+@lru_cache(maxsize=None)
+def gcc_libc_includes(compiler, specs, directory):
+    """Clang does not interpret GCC specs, which select the firmware's libc.
+    Query GCC with those specs and keep its libc header order, without
+    substituting GCC's private intrinsic headers for clang's own."""
+    if not specs:
+        return ()
+    probe = [compiler, *specs, "-E", "-v", "-x", "c", "-"]
+    result = subprocess.run(probe, input="", capture_output=True, text=True,
+                            cwd=directory, env={**os.environ, "LC_ALL": "C"},
+                            timeout=GCC_PROBE_TIMEOUT_SECONDS)
+    if result.returncode:
+        sys.exit(f"FAIL: GCC libc include probe failed: {result.stderr}")
+    _, start, tail = result.stderr.partition(GCC_INCLUDE_START)
+    search, end, _ = tail.partition(GCC_INCLUDE_END)
+    includes = tuple(str((Path(directory) / line.strip()).resolve())
+                     for line in search.splitlines()
+                     if line.strip() and (Path(directory) / line.strip() / LIBC_HEADER).is_file())
+    if not start or not end or not includes:
+        sys.exit("FAIL: GCC specs probe reported no libc include directories")
+    return includes
+
+
+@lru_cache(maxsize=None)
+def clang_accepts_flag(clang, flag, target):
+    """Unknown or unused flags are rejected in the analyzer's syntax-only mode.
+    Other probe failures must not hide invalid compile commands."""
+    result = subprocess.run([clang, f"--target={target}", "-Werror", "-fsyntax-only", "-x", "c", "-", flag],
+                            input="", capture_output=True, text=True,
+                            env={**os.environ, "LC_ALL": "C"},
+                            timeout=CLANG_PROBE_TIMEOUT_SECONDS)
+    if result.returncode == 0:
+        return True
+    errors = [line for line in result.stderr.splitlines() if "error:" in line]
+    if errors and all((match := CLANG_REJECTED_FLAG_RE.fullmatch(line)) and
+                      match.group("flag") == flag for line in errors):
+        return False
+    sys.exit(f"FAIL: Clang flag probe failed for {flag}: {result.stderr}")
 
 
 def build_idf_entries(toolchain_root, vendored=False):
-    """launcher/build.diag/compile_commands.json, restricted to this
-    project's own main/, packages/ and test/ trees (excluding vendored code and
-    apps/*/tools/, which the firmware never links), or, with `vendored`,
-    to only the vendored .c files in VENDORED_REFERENCES, with the flags esp-idf
-    generated for xtensa-esp32s3-elf-gcc adjusted for esp-clang: the three
-    GCC-only flags it does not recognise stripped, and --sysroot/
-    --gcc-toolchain added so its `#include_next` chain into newlib
-    resolves. Real device flags otherwise; this is what makes
-    hardware-facing files (app_*.c, gfx/, ui.c, boot/, board/, the
-    input/ drivers) measurable at all."""
+    """Device commands for first-party sources or modified vendored sources.
+    Strip GCC-only flags, resolve specs-selected libc headers through GCC,
+    and supply the toolchain sysroot for IDF's include_next shims. Entry
+    padding changes machine code placement only, so analysis omits it."""
     if not IDF_DB_PATH.exists():
         return {}
+    clang = resolve_analysis_clang()
     db = json.loads(IDF_DB_PATH.read_text(encoding="utf-8"))
     sysroot = f"{toolchain_root}/xtensa-esp-elf"
     entries = {}
@@ -446,11 +475,19 @@ def build_idf_entries(toolchain_root, vendored=False):
             continue
         elif is_vendored(str(rel)) or "tools" in parts:
             continue
-        cmd = inline_response_file(e.get("command", ""))
-        cmd = " ".join(t for t in cmd.split() if t not in BAD_GCC_FLAGS)
-        cmd += (f' --sysroot="{sysroot}" --gcc-toolchain="{toolchain_root}"'
-                ' -Wno-unknown-warning-option -Wno-string-plus-int')
-        entries[str(path.resolve())] = cmd
+        argv = compile_flags(e)
+        compiler = argv[0]
+        specs = tuple(flag for flag in argv if flag.startswith(("-specs=", "--specs=")))
+        includes = gcc_libc_includes(compiler, specs, e["directory"])
+        argv = [arg for arg in argv if arg not in specs and arg != ANALYSIS_UNUSED_MACROS_FLAG and
+                (not arg.startswith(("-f", "-m")) or
+                 clang_accepts_flag(clang, arg, Path(sysroot).name))]
+        for include in includes:
+            argv += ["-isystem", include]
+        argv += [f"--sysroot={sysroot}", f"--gcc-toolchain={toolchain_root}",
+                 "-Wno-unknown-warning-option", "-Wno-string-plus-int",
+                 "-Dpatchable_function_entry(...)=", str(path)]
+        entries[str(path.resolve())] = argv
     if not vendored:
         for rel, (sibling_rel, variant_symbol) in VARIANT_ONLY_FILES.items():
             sibling = str((LAUNCHER_DIR / sibling_rel).resolve())
@@ -459,13 +496,13 @@ def build_idf_entries(toolchain_root, vendored=False):
                 continue
             # Same folder, so only the file name differs: after either
             # separator, since a Windows database writes backslashes.
-            borrowed, swaps = re.subn(
+            borrowed = [re.sub(
                 r"(?<=[\\/])" + re.escape(Path(sibling_rel).name) + r"(?!\w)",
-                lambda _m: Path(rel).name, entries[sibling])
-            if swaps == 0:
+                lambda _m: Path(rel).name, arg) for arg in entries[sibling]]
+            if borrowed == entries[sibling]:
                 sys.exit(f"{sibling_rel}'s compile command does not name it; "
                          f"cannot borrow it for {rel}")
-            entries[target] = f"{borrowed} -D{variant_symbol}=1"
+            entries[target] = borrowed + [f"-D{variant_symbol}=1"]
     return entries
 
 
@@ -536,6 +573,10 @@ def build_compile_db():
     ]
     if host_sysroot:
         host_flags.append(f"--sysroot={host_sysroot}")
+    clang = resolve_analysis_clang()
+    host_flags = [flag for flag in host_flags
+                  if not flag.startswith(("-f", "-m")) or
+                  clang_accepts_flag(clang, flag, host_target)]
     host_entries = {}
     for src in host_sources:
         resolved = str(Path(src).resolve())
@@ -556,12 +597,7 @@ def build_compile_db():
     db_json = []
     for path, cmd in {**all_entries, **vendored_entries}.items():
         entry = {"directory": str(LAUNCHER_DIR), "file": path}
-        # IDF entries stay a "command" string (built by text surgery on
-        # ESP-IDF's own string); host/tools entries are a real argv list
-        # (built here token by token); "arguments" needs no tokenising on
-        # the way back in, which a hand-built string does and a Windows
-        # path's own backslashes can trip.
-        entry["arguments" if isinstance(cmd, list) else "command"] = cmd
+        entry["arguments"] = cmd
         db_json.append(entry)
     db_path = BUILD_DIR / "compile_commands.json"
     db_path.write_text(json.dumps(db_json, indent=2), encoding="utf-8")

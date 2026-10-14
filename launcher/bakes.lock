@@ -39,10 +39,10 @@ host = "Linux x86_64"
 [[bake]]
 output = "sponza.atrium_fitted.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "c5979cf1691982327bcc659ca01d15f8a302ef69b69e273d92c9b3b2ea5749ad"
-sha256 = "9388b5504e45928af73ffa899ab088567b2613e3cf7c4f4e736fd0d23b197bd0"
-size = 143700
-run = 38208771126
+key = "ff6ab1f0222a9f1eef4a99775b4ba3353926043ddae149e9278500c0340db084"
+sha256 = "3820aa010134bec4eba26df37cc44363ebc16a38cf985835eba9bc00fa8587a4"
+size = 143648
+run = 38491888315
 host = "Linux x86_64"
 
 [[bake]]
@@ -57,10 +57,10 @@ host = "Linux x86_64"
 [[bake]]
 output = "sponza.atrium_fitted_full.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "753ddad0b4fe525375ea530ebb6d6ab84c8bec6b68eec1b94e276a67a04fad50"
-sha256 = "5e638e6176efe6b70473812b0e888d557608bbde896be3236cee3add9e25e8c8"
-size = 278448
-run = 38208771126
+key = "ebf644d8934583fc3f0eddcb492c9b364c9f0c137d6e995570792ea10b643129"
+sha256 = "bc5eddd456e930727a4791ba9f3285990feb5fdfda0fdc7234df917488eb4cc0"
+size = 278592
+run = 38491888315
 host = "Linux x86_64"
 
 [[bake]]
@@ -84,10 +84,10 @@ host = "Linux x86_64"
 [[bake]]
 output = "sponza.atrium_flat_fitted.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "3b57c16518349dda25f8d3bc0c2cc8e0d58e6f6e39e244d1139e28fb08d1c353"
-sha256 = "49924ba14469235bcf6ca8dcb4f3295835859c72aa09d55e60808439d7698c4d"
-size = 251332
-run = 38208771126
+key = "202ac331b6795492477a6fd5d5629d1388e31f75487024ce7b81ef485e708d22"
+sha256 = "bae90f0bfdf1e258b0531199ee51d5e77f51bdd364576548a016214f6159b5fc"
+size = 250736
+run = 38491888315
 host = "Linux x86_64"
 
 [[bake]]
@@ -112,15 +112,15 @@ host = "Linux x86_64"
 # and sampler code. bake.py lock writes them; bake.py check samples them again.
 
 [[poses]]
-key = "0b36f746475d6b97b358c145dbb8fc678c7e8fec755de7b849872cab3f41454a"
-poses = "85b37cc70bf0ef7b0266dc4544245f8e3cda49285612042ec2d4bd539b3fe768"
-count = 364
+key = "23f588142efb921ac5935874e6945956d9919fa78d81012d7205df4c37ceba68"
+poses = "b6acfc414c2402cacdcd7dcf258cec6d9919473936dddab517719c46d029d430"
+count = 37
 clip = "launcher/demo/sponza/flythrough.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "1054d989b254461508221c8d29a13d9efd4b2f82aca7f120ea986cdb3d3768d8"
-poses = "b6acfc414c2402cacdcd7dcf258cec6d9919473936dddab517719c46d029d430"
-count = 37
+key = "c8ee10bf033bf40e4aa38762d6886136dd5fdc70acf8a8f16350571550e1b683"
+poses = "85b37cc70bf0ef7b0266dc4544245f8e3cda49285612042ec2d4bd539b3fe768"
+count = 364
 clip = "launcher/demo/sponza/flythrough.anim.toml"
 host = "Windows AMD64"

@@ -1,7 +1,7 @@
 #include "gfx/present/gfx_present.h"
 #include "build/build_variant.h"
 #include "core/memory.h"
-#include "gfx/draw/gfx_draw.h"
+#include "gfx/draw/gfx_color.h"
 #include "gfx/gfx_internal.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_full_redraw.h"
@@ -16,6 +16,7 @@
 #ifdef ESP_PLATFORM
 #include "board/board.h"
 #include "board/board_panel.h"
+#include "esp_attr.h"
 #include "esp_log.h"
 #include "freertos/task.h"
 #if CONFIG_LAUNCHER_QEMU
@@ -27,7 +28,16 @@ _Static_assert(GFX_WIDTH == BSP_LCD_H_RES && GFX_HEIGHT == BSP_LCD_V_RES, "gfx.h
 _Static_assert(GFX_HEAL_STRIP_ROWS <= STRIP_HEIGHT, "a heal strip must fit one strip bounce slot");
 
 #ifdef ESP_PLATFORM
+/* Present code runs from IRAM so a present after a cold instruction cache
+ * does not wait on flash fetches. An attribute, not a linker.lf entry,
+ * places it: the compiler's clones of a function inherit the attribute, and
+ * a mapping entry names only the original. Development overlays, send
+ * auditing and raw-full dispatch make dev and diag larger.
+ * IRAM budget: release 2900 B, dev 3932 B, diag 3932 B */
+#define GFX_PRESENT_IRAM_ATTR IRAM_ATTR
 static const char* TAG = "gfx";
+#else
+#define GFX_PRESENT_IRAM_ATTR
 #endif
 
 /* The one instance of the state gfx_dirty.h, gfx_full_redraw.h and
@@ -204,7 +214,7 @@ static void run_present_raw_full(void);
  * interrupt esp_lcd installs lands on this core; see board_panel_bring_up().
  * After reporting bring-up, waits for a notification per present and gives
  * present_done_sem back once everything queued has actually landed. */
-static void
+static void GFX_PRESENT_IRAM_ATTR
 present_task_fn(void* arg) {
     (void)arg;
 
@@ -416,7 +426,7 @@ note_send_failure(esp_err_t err) {
 
 /* Packs the box into the next strip_bounce slot and queues it, the same
  * ring send_fb_rows() uses, so copying one run overlaps sending the last. */
-static void
+static void GFX_PRESENT_IRAM_ATTR
 gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_end, bool refined, int* queued,
                 gfx_color_t border) {
     x0 = mathi_even_floor(x0);
@@ -472,7 +482,7 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
 /* Queues framebuffer rows [y0, y1) through the next strip_bounce slot. At
  * most STRIP_HEIGHT rows. Returns whether the panel accepted the transfer:
  * false means no strip_sent give is coming for it. */
-bool
+bool GFX_PRESENT_IRAM_ATTR
 send_fb_rows(int y0, int y1) {
     gfx_color_t* const slot = strip_bounce[strip_bounce_next];
     strip_bounce_next = (strip_bounce_next + 1) % STRIP_BOUNCE_SLOTS;
@@ -724,7 +734,7 @@ send_dirty_rows(int* queued) {
  * (gfx_set_present_async(false)), either way, on whichever core called it,
  * since strip_sent is an ordinary FreeRTOS semaphore and the panel's own
  * strip-sent interrupt is core-agnostic about who it wakes. */
-static void
+static void GFX_PRESENT_IRAM_ATTR
 run_present_normal(void) {
     panel_clock_apply();
     present_send_failed = false;
@@ -802,7 +812,7 @@ dispatch_present(void) {
     run_present_normal();
 }
 
-void
+void GFX_PRESENT_IRAM_ATTR
 gfx_present_begin(void) {
     frame_watch_presented();
     gfx_present_guard_begin();
@@ -813,7 +823,7 @@ gfx_present_begin(void) {
     dispatch_present();
 }
 
-void
+void GFX_PRESENT_IRAM_ATTR
 gfx_present_wait(void) {
     if (!band_is_transient() && present_async_on) {
         xSemaphoreTake(present_done_sem, portMAX_DELAY);
@@ -844,7 +854,7 @@ gfx_present_wait(void) {
 
 #endif /* ESP_PLATFORM: the presentation pipeline */
 
-void
+void GFX_PRESENT_IRAM_ATTR
 gfx_present(void) {
     gfx_present_begin();
     gfx_present_wait();

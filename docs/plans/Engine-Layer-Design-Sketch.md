@@ -1,7 +1,7 @@
 # Engine layer: design sketch
 
 **Status:** every section approved; a final read before it merges.
-The scene transform and animator calls in section 2 exist; the rest has not moved. `[M]` marks the maintainer's decision or constraint.
+The scene transform and animator calls in section 2 exist and the scene camera is in `scene/camera/`; the rest has not moved. `[M]` marks the maintainer's decision or constraint.
 
 The firmware becomes three bands over the shared packages: the **platform**
 (board, panel, input, present, core), the **engine** (scene, render, anim,
@@ -106,7 +106,7 @@ Every item in this section is approved.
 
 | System | Public face today | As the rule wants it | Gap |
 |---|---|---|---|
-| scene | `scene_load(id)`, `scene_find(name)`, `scene_set_transform()`, `scene_entity_set_enabled()`, `scene_animator_*()`, `scene_renderer_set_skin()`, `scene_activate(scene, "camera name")`; packed per scene (`locals[]`, `flags[]`, `renderers[]`, `cameras[]`, `animators[]`, `skinned_renderers[]`), private in `scene_internal.h` | components `transform`, `renderer`, `camera`, `animator`, get/set on an entity; the camera activated by entity | the camera is named by string; `scene_camera_lens()` returns a render struct |
+| scene | `scene_load(id)`, `scene_find(name)`, `scene_set_transform()`, `scene_entity_set_enabled()`, `scene_animator_*()`, `scene_renderer_set_skin()`, `scene_activate(scene, "camera name")`; packed per scene (`locals[]`, `flags[]`, `renderers[]`, `cameras[]`, `animators[]`, `skinned_renderers[]`), private in `scene_internal.h` | components `transform`, `renderer`, `camera`, `animator`, get/set on an entity; the camera activated by entity | the camera is named by string |
 | render | apps call `raster_draw()`, `render_view_make()`, `r3d_pipeline_*` directly | no app call: a `renderer` component draws, an active `camera` entity views; render settings (resolution) are a scene-level component `[M]` | a bench app's tests drive the raster directly: they move to render's own tests |
 | anim | the animator component and `scene_animator_*()`; sampler, binding, pose and layer stay behind `scene/scene.h`; boot calls `anim_tracks_*` and samples its tracks directly | `animator` component and `scene_animator_play()` (the animation sketch's face); sampler and binding private | boot's animation is not a scene |
 | asset | apps call `asset_store_pack()`, `asset_pack_find()` | no per-frame system: a component names content by asset id `[M]`, resolved when the scene loads or the component attaches; pack format and store private | direct store calls from apps |
@@ -120,7 +120,7 @@ Every item in this section is approved.
 | `gfx/present/gfx_present.h` | `gfx_present_begin()`, `gfx_present_wait()` in bench scenes | the scene system, which already overlaps the present |
 | `gfx/present/gfx_indexed.h` | `gfx_indexed_*` (index image mode) | the gfx face |
 | `gfx/present/gfx_debug.h` | `gfx_debug_overlay()` in diagnostics | system band, with diagnostics (below) |
-| `input/imu.h`, `imu_rotation.h` | `imu_init()`, `imu_read()`, `imu_gravity_screen()` | `input_start()` (the shell's), `input_read_gravity()` and the frame's `input_t` |
+| `input/imu.h` | `imu_init()`, `imu_read()`, `imu_gravity_screen()` | `input_start()` (the shell's) and `input_read_motion()` (done in S1); diagnostics' raw reads go to the system band with it |
 | `scene/scene_shell.h` ("Apps never include this") in a host tool | `scene_shell_render()`, `scene_shell_compose()` | one public host-frame call on the scene's face |
 | `render/r3d_pipeline.h` in perf suites | `r3d_pipeline_*` | render's own tests |
 | `selftest/*` in diagnostics | self-test results | diagnostics becomes a system app under `shell/apps/` `[M]` |
@@ -217,22 +217,20 @@ system icons), not code; it keeps its place under L1.
 | `render/viewport.h` | `display/` | S2 |
 | `render/r3d_project.h`, `r3d_project_x.h` | stay in `render/` for now `[M]`: they include `render/render_view.h`, so the maths package cannot take them until they take plain values | |
 | `render/r3d.h` | deleted, its six includers name what they use | S1 |
-| scene camera types in `render/r3d_scene.h` | `scene/camera/` | S1 |
 
 ### Untangling gfx first (S1)
 
-Draw and present share state through `gfx/gfx_internal.h` (the framebuffer,
-the band target, the clip), and present calls `gfx_rgb()` and
-`gfx_clear_clip()`. Before draw can sit in a band above present `[M]`:
+Present owns the framebuffer, band target and clip. Draw reads them through
+`gfx/present/gfx_present.h`:
 
 ```c
-/* gfx/gfx_present.h: present's face to draw */
-gfx_target_t gfx_present_target(void);   /* the framebuffer, or the band being rendered */
-gfx_box_t gfx_clip_save(void);           /* the clip lives wholly in present */
+gfx_target_t gfx_present_target(void);
+bool gfx_present_in_band(void);
+gfx_box_t gfx_clip_save(void);
 void gfx_clip_restore(gfx_box_t clip);
 ```
 
-`gfx_rgb()` joins `gfx_color.h`; nothing outside `gfx/` includes
+`gfx_rgb()` is inline in `gfx_color.h`. Only `gfx/present/` sources include
 `gfx_internal.h`.
 
 ### Include tiers in `check_style_audit.py`

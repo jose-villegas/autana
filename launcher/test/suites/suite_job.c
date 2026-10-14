@@ -127,7 +127,7 @@ test_an_idle_worker_split_runs_both_halves_on_device(void) {
     TEST_ASSERT_TRUE(job_wait(JOB_TEST_WAIT_MS));
     int first = 0;
     int second = 0;
-    const job_test_ctx_t a = {.value = 0, .observed = &first};
+    job_test_ctx_t a = {.value = 0, .observed = &first};
     const job_test_ctx_t b = {.value = 0, .observed = &second};
     TEST_ASSERT_TRUE(job_run_split(job_test_increment, &a, &b, sizeof a));
     TEST_ASSERT_EQUAL_INT(1, first);

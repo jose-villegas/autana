@@ -43,6 +43,7 @@ it readable; a flag works the same wherever the table below says it applies.
 
 | Flag | What it does | Commands |
 |---|---|---|
+| `--lock-token TOKEN` | Global; see [Settings](#settings). | every board command |
 | `--wait SECONDS` | Global; see [Settings](#settings). | every board command |
 | `--owner NAME` | Global; see [Settings](#settings). | every board command |
 | `--board SERIAL` | Global; see [Settings](#settings). | every board command |
@@ -60,6 +61,7 @@ it readable; a flag works the same wherever the table below says it applies.
 | `autana build diag --check` | The diagnostics build plus the complexity ratchet: `launcher/tools/build/build_diag_check.sh`, unchanged; no board. |
 | `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope] [--layout-seed N] [--hot-tunables]` | Build and flash this project; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. `--layout-seed N`: the seeded layout. |
 | `autana buildid [--json]` | The `BUILD_ID` the board is running, to check against what was flashed. |
+| `autana heap [--json]` | Free bytes and largest block in the internal DMA pool (`MEMORY_DMA`); development builds only. |
 
 `autana build` is the way to build: it runs `launcher/tools/build/build.sh`,
 holding only the build directory so two builds of one variant take turns, and
@@ -75,6 +77,60 @@ Both print a banner naming the project and variant; when git answers for
 that project it adds the branch, commit and whether it is dirty; never
 required, so a project built from a tarball or a non-git checkout still
 builds and flashes.
+
+### Which ESP-IDF
+
+`launcher/tools/build/espressif.py` selects the checkout. Every build names
+its checkout and paired tools; an off-pin checkout prints a drift note.
+
+| Order | Checkout selection |
+|---|---|
+| Process `IDF_PATH` | Any commit. On Windows, the installer's stored value does not count as an override, including case or slash differences. On Linux, a profile sourcing `export.sh` does count. |
+| `idf_installs` | Checkouts or their parent install folders, in list order, matching the commit in `launcher/idf-pin.json`. |
+| Installer `IDF_PATH` (Windows) | A candidate matching the pin, with HKCU preferred over HKLM. |
+| Known folders | Folders under `C:\Espressif` (including `frameworks/`) and `~/esp`, matching the pin. |
+
+Without a match, a build stops and prints the clone, checkout, submodule and
+install commands. Tools come from a process `IDF_TOOLS_PATH`, or the
+checkout's sibling `tools/`, the installer's tools root, then `~/.espressif`.
+The paired tools must contain a Python environment for the checkout's major
+and minor version. Missing tools print an install command for that checkout.
+
+For one command in Git Bash:
+
+```sh
+IDF_PATH="$HOME/esp/custom-idf" autana build dev
+```
+
+In PowerShell, scope the override to a child process:
+
+```powershell
+powershell -NoProfile -Command { $env:IDF_PATH = 'C:\Espressif\my-idf'; autana build dev }
+```
+
+autana never changes environment variables or the registry. Its child build
+process receives the selected checkout and tools.
+
+### Where builds live
+
+Windows builds use short paths to stay within Windows object-path limits:
+
+```text
+launcher\build.dev -> %LOCALAPPDATA%\autana\b\<hash>\build.dev
+                                             <hash>\owner.txt
+```
+
+`owner.txt` names the absolute launcher directory whose hash selects the
+folder. `build_root` selects another root. Linux stays in-tree unless
+`build_root` is set; its in-tree names then become symlinks. Windows uses
+junctions. ESP-IDF receives the real path for both `-B` and `SDKCONFIG`.
+
+The first build deletes an existing in-tree build folder and links it to the
+external target. Builds delete the folders of launcher directories that no
+longer exist. Each variant records its ESP-IDF path and commit after a successful
+configure or build. A folder configured for another ESP-IDF is emptied,
+except `build.log` and the build lock. An unstamped, non-empty folder is
+emptied once; successful configuration stamps it.
 
 ## Tests
 
@@ -179,8 +235,11 @@ The two raw levels below gesture, `touch` and `imu`, live under
 | Command | What it does |
 |---|---|
 | `autana status [--json]` | Every board, plugged in or locked: free or held, the holder with local start, elapsed and estimated free time, and the FIFO waiters with estimated starts. A board off USB is listed without a port. |
+| `autana lock run [--keep-on-failure <seconds>] -- <command...>` | Hold the board while the child command runs. The child inherits its lock token. A failed command can leave a timed hold for inspection. |
+| `autana lock take [--for <seconds> \| --until-released [--pid <pid>]] <note...>` | Wait for the board and print a token for commands in this session. A timed hold lasts at most an hour; an until-released hold ends when its owner process dies. |
 | `autana lock release [<token>]` | Release the lock a command of this session holds, before it would have. Given a lock's token, or, run from inside the command that holds the lock, without one. |
-| `autana lock hand [--until-back <seconds>] <note...>` | Reserve the board for a person for an hour and emit `human-reserved`; running it again renews the hour, and an unrenewed reservation lapses. Refused while a command holds the board. With `--until-back`, wait until it is taken back or lapses. |
+| `autana lock wait` | Wait until the board is free without taking it or queueing; no cap without `--wait`. |
+| `autana lock hand [--until-back <seconds>] <note...>` | Wait for the board and reserve it for a person for an hour; running it again renews the hour. With `--until-back`, wait until it is taken back or lapses. |
 | `autana lock take-back` | Clear that reservation. |
 
 A board is named by its USB serial number, so the lock follows it across
@@ -235,6 +294,7 @@ before running it.
 |---|---|
 | `status` | `boards`, one object per board; the fields are in [Device-Lock.md](Device-Lock.md#exit-codes-and-json-status). |
 | `buildid` | `build_id` |
+| `heap` | `free`, `largest` (bytes in `MEMORY_DMA`) |
 | `apps` | `apps`: `name`, `running` |
 | `suite list` | `suites`: `name`, `source`, `on_request`, `device_only` |
 | `tune` | `tunables`: `name`, `value`, `min`, `max`, `default` |
@@ -278,7 +338,8 @@ optional and gitignored, and `autana help config` lists its keys.
 
 | Global option | Sets |
 |---|---|
-| `--wait SECONDS` | How long a board command waits for the lock, across every step it runs: 600 s without it, `0` fails at once with exit 75. A console line (`tune`, `buildid`, `screenshot`, a line sent as typed) is refused at once without it rather than waited for. |
+| `--lock-token TOKEN` | Run a board command inside the live hold named by `TOKEN`. A wrong, released or lapsed token fails at once with exit 1. A holder's child processes inherit it. |
+| `--wait SECONDS` | How long a board command waits for the lock, across every step it runs: 600 s without it, `0` fails at once with exit 75. `lock wait` has no cap without it. A console line (`tune`, `buildid`, `screenshot`, a line sent as typed) is refused at once without it rather than waited for. |
 | `--owner NAME` | The name this run holds the lock under, as `NAME:<pid>`; `<user>@<host>:<pid>` without it. Name each CI job. |
 | `--board SERIAL` | The board's USB serial number; without it, see [Which board](Device-Lock.md#which-board). |
 
@@ -288,11 +349,15 @@ A CI job that should fail rather than queue writes `autana --wait 0 <command>`.
 
 | Key | Meaning |
 |---|---|
+| `idf_installs` | ESP-IDF checkouts or folders holding `esp-idf/`, searched in list order before known installs. |
+| `build_root` | External build root; see [Where builds live](#where-builds-live). |
 | `docs_extra` | A list of extra Markdown files or folders `autana docs` searches, relative to the project. |
 | `records` | Where captures and `index.jsonl` land; `.records/device` in the checkout without it. |
 | `lock_hook` | A shell command run on every device lock event ([events and environment](Device-Lock.md#lock-events)). |
 
 ```toml
+idf_installs = ['C:\Espressif\v6.1']
+build_root = 'C:\autana-builds'
 docs_extra = ["notes/bench.md", "~/Documents/design-notes"]
 records = "~/autana-records"
 lock_hook = "python ~/bin/on_lock.py"

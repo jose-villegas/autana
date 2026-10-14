@@ -1,5 +1,5 @@
 #include "gfx/draw/gfx_draw.h"
-#include "gfx/gfx_internal.h"
+#include "gfx/present/gfx_dirty.h"
 #include "gfx/present/gfx_fb_guard.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_present_guard.h"
@@ -7,9 +7,6 @@
 #include "services/tune.h"
 
 #include <string.h>
-
-/* Current clip rectangle, as inclusive-exclusive bounds. */
-gfx_box_t clip;
 
 TUNE_OWNER(gfx);
 
@@ -21,12 +18,25 @@ TUNE_OWNER(gfx);
  * fault in an app's own marking, on the device, without a reflash. */
 TUNE(gfx, tight_fill_marks, 1, 0, 1);
 
+typedef struct {
+    gfx_target_t target;
+    gfx_box_t clip;
+    bool in_band;
+} draw_state_t;
+
+/* Only after GFX_PRESENT_GUARD and GFX_REQUIRE_FRAMEBUFFER: overlay replay
+ * rewrites the target and clip while a present runs. */
+static inline draw_state_t
+draw_state(void) {
+    return (draw_state_t){gfx_present_target(), gfx_clip_save(), gfx_present_in_band()};
+}
+
 /* What every rect and blit primitive marks with. A release build folds
  * tight_fill_marks to the constant 1 (services/tune.h), so the branch and
  * mark_band() call below cost nothing there. */
 static inline void
-mark_fill(int x0, int y0, int x1, int y1) {
-    if (band_render_active) {
+mark_fill(const draw_state_t* state, int x0, int y0, int x1, int y1) {
+    if (state->in_band) {
         return;
     }
     if (tight_fill_marks) {
@@ -36,36 +46,18 @@ mark_fill(int x0, int y0, int x1, int y1) {
     }
 }
 
-/* Colour */
-
-/* Pack 0xRRGGBB to RGB565, byte-swapped: the panel takes the high byte
- * first, the CPU stores the low byte first, and DMA sends memory as it lies. */
-gfx_color_t
-gfx_rgb(uint32_t rgb) {
-    return GFX_RGB(rgb);
-}
-
 /* Clipping */
 
 void
 gfx_set_clip(int x, int y, int w, int h) {
     GFX_PRESENT_GUARD();
-    int x1 = x + w;
-    int y1 = y + h;
-
-    clip.x0 = x < 0 ? 0 : x;
-    clip.y0 = y < 0 ? 0 : y;
-    clip.x1 = x1 > GFX_WIDTH ? GFX_WIDTH : x1;
-    clip.y1 = y1 > GFX_HEIGHT ? GFX_HEIGHT : y1;
+    gfx_clip_restore(gfx_box_intersect((gfx_box_t){x, y, x + w, y + h}, GFX_SCREEN_BOX));
 }
 
 void
 gfx_clear_clip(void) {
     GFX_PRESENT_GUARD();
-    clip.x0 = 0;
-    clip.y0 = 0;
-    clip.x1 = GFX_WIDTH;
-    clip.y1 = GFX_HEIGHT;
+    gfx_clip_restore(GFX_SCREEN_BOX);
 }
 
 /* Primitives */
@@ -78,16 +70,16 @@ gfx_clear(gfx_color_t color) {
     if (!GFX_REQUIRE_FRAMEBUFFER()) {
         return;
     }
-    const gfx_target_t target = current_target();
+    const draw_state_t state = draw_state();
     const uint32_t pair = ((uint32_t)color << 16) | color;
-    uint32_t* words = (uint32_t*)target.buf;
-    const int count = (target.stride * target.height) / 2;
+    uint32_t* words = (uint32_t*)state.target.buf;
+    const int count = (state.target.stride * state.target.height) / 2;
 
     for (int i = 0; i < count; i++) {
         words[i] = pair;
     }
 
-    if (!band_render_active) {
+    if (!state.in_band) {
         gfx_mark_all_dirty();
     }
 }
@@ -98,39 +90,38 @@ gfx_pixel(int x, int y, gfx_color_t color) {
     if (!GFX_REQUIRE_FRAMEBUFFER()) {
         return;
     }
-    if (x < clip.x0 || x >= clip.x1) {
+    const draw_state_t state = draw_state();
+    if (x < state.clip.x0 || x >= state.clip.x1) {
         return;
     }
-    const gfx_target_t target = current_target();
-    const gfx_box_t rect = gfx_target_clip_rect(target, clip, (gfx_box_t){x, y, x + 1, y + 1});
+    const gfx_box_t rect = gfx_target_clip_rect(state.target, state.clip, (gfx_box_t){x, y, x + 1, y + 1});
     if (rect.y0 >= rect.y1) {
         return;
     }
-    gfx_target_row(target, y)[x] = color;
-    if (!band_render_active) {
+    gfx_target_row(state.target, y)[x] = color;
+    if (!state.in_band) {
         mark_band(y, y + 1);
     }
 }
 
 /* One pixel of a line. */
 static void
-plot(int x, int y, gfx_color_t color, unsigned flags) {
-    if (x < clip.x0 || x >= clip.x1) {
+plot(const draw_state_t* state, int x, int y, gfx_color_t color, unsigned flags) {
+    if (x < state->clip.x0 || x >= state->clip.x1) {
         return;
     }
-    const gfx_target_t target = current_target();
-    const gfx_box_t rect = gfx_target_clip_rect(target, clip, (gfx_box_t){x, y, x + 1, y + 1});
+    const gfx_box_t rect = gfx_target_clip_rect(state->target, state->clip, (gfx_box_t){x, y, x + 1, y + 1});
     if (rect.y0 >= rect.y1) {
         return;
     }
-    gfx_color_t* const dst = &gfx_target_row(target, y)[x];
+    gfx_color_t* const dst = &gfx_target_row(state->target, y)[x];
 
     *dst = (flags & GFX_LINE_ADD) ? gfx_color_add(*dst, color) : color;
 }
 
 /* Bresenham (docs/Citations.md#30), treats both axes alike, no case analysis. */
 static void
-walk(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
+walk(const draw_state_t* state, int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
     const int dx = mathi_abs(x1 - x0);
     const int dy = -mathi_abs(y1 - y0);
     const int sx = x0 < x1 ? 1 : -1;
@@ -140,7 +131,7 @@ walk(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
 
     for (;;) {
         if (!(first && (flags & GFX_LINE_OPEN))) {
-            plot(x0, y0, color, flags);
+            plot(state, x0, y0, color, flags);
         }
         first = false;
 
@@ -163,30 +154,18 @@ walk(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
  * underestimating leaves stale. */
 static void
 draw_line(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
-    if (!gfx_box_clip_segment(&clip, &x0, &y0, &x1, &y1)) {
+    const draw_state_t state = draw_state();
+    if (!gfx_box_clip_segment(&state.clip, &x0, &y0, &x1, &y1)) {
         return;
     }
 
-    int bx0 = mathi_min(x0, x1), bx1 = mathi_max(x0, x1) + 1;
-    int by0 = mathi_min(y0, y1), by1 = mathi_max(y0, y1) + 1;
+    const gfx_box_t box = gfx_box_intersect(
+        (gfx_box_t){mathi_min(x0, x1), mathi_min(y0, y1), mathi_max(x0, x1) + 1, mathi_max(y0, y1) + 1}, state.clip);
 
-    if (bx0 < clip.x0) {
-        bx0 = clip.x0;
-    }
-    if (by0 < clip.y0) {
-        by0 = clip.y0;
-    }
-    if (bx1 > clip.x1) {
-        bx1 = clip.x1;
-    }
-    if (by1 > clip.y1) {
-        by1 = clip.y1;
-    }
+    walk(&state, x0, y0, x1, y1, color, flags);
 
-    walk(x0, y0, x1, y1, color, flags);
-
-    if (!band_render_active && bx0 < bx1 && by0 < by1) {
-        dirty_mark(bx0, by0, bx1 - bx0, by1 - by0);
+    if (!state.in_band && box.x0 < box.x1 && box.y0 < box.y1) {
+        dirty_mark(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
     }
 }
 
@@ -214,10 +193,12 @@ gfx_fill_rect(int x, int y, int w, int h, gfx_color_t color) {
     if (!GFX_REQUIRE_FRAMEBUFFER()) {
         return;
     }
+    const draw_state_t state = draw_state();
     int x0, y0, x1, y1;
-    gfx_target_fill_rect(current_target(), clip.x0, clip.y0, clip.x1, clip.y1, x, y, w, h, color, &x0, &y0, &x1, &y1);
+    gfx_target_fill_rect(state.target, state.clip.x0, state.clip.y0, state.clip.x1, state.clip.y1, x, y, w, h, color,
+                         &x0, &y0, &x1, &y1);
 
-    mark_fill(x0, y0, x1, y1);
+    mark_fill(&state, x0, y0, x1, y1);
 }
 
 /*
@@ -232,17 +213,15 @@ gfx_fill_rect(int x, int y, int w, int h, gfx_color_t color) {
 
 /* Dither coverage avoids framebuffer reads; blending reads each destination pixel. */
 static inline __attribute__((always_inline)) void
-fill_rect_alpha(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha, bool blend) {
-    GFX_PRESENT_GUARD();
-    if (!GFX_REQUIRE_FRAMEBUFFER() || alpha == 0) {
+fill_rect_alpha(const draw_state_t* state, int x, int y, int w, int h, gfx_color_t color, uint8_t alpha, bool blend) {
+    if (alpha == 0) {
         return;
     }
 
-    const gfx_target_t target = current_target();
-    const gfx_box_t rect = gfx_target_clip_rect(target, clip, (gfx_box_t){x, y, x + w, y + h});
+    const gfx_box_t rect = gfx_target_clip_rect(state->target, state->clip, (gfx_box_t){x, y, x + w, y + h});
 
     for (int row = rect.y0; row < rect.y1; row++) {
-        gfx_color_t* dst = gfx_target_row(target, row);
+        gfx_color_t* dst = gfx_target_row(state->target, row);
         for (int col = rect.x0; col < rect.x1; col++) {
             if (blend) {
                 dst[col] = gfx_color_mix(dst[col], color, alpha);
@@ -252,17 +231,27 @@ fill_rect_alpha(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha, bo
         }
     }
 
-    mark_fill(rect.x0, rect.y0, rect.x1, rect.y1);
+    mark_fill(state, rect.x0, rect.y0, rect.x1, rect.y1);
 }
 
 void
 gfx_fill_rect_dither(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha) {
-    fill_rect_alpha(x, y, w, h, color, alpha, false);
+    GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
+    const draw_state_t state = draw_state();
+    fill_rect_alpha(&state, x, y, w, h, color, alpha, false);
 }
 
 void
 gfx_fill_rect_blend(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha) {
-    fill_rect_alpha(x, y, w, h, color, alpha, true);
+    GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return;
+    }
+    const draw_state_t state = draw_state();
+    fill_rect_alpha(&state, x, y, w, h, color, alpha, true);
 }
 
 /* `dp`/`sp` start at column `x0`; only the columns `p` passes are copied. */
@@ -302,12 +291,12 @@ gfx_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_stri
     if (!GFX_REQUIRE_FRAMEBUFFER()) {
         return;
     }
+    const draw_state_t state = draw_state();
     if (alpha == 0) {
         return;
     }
 
-    const gfx_target_t target = current_target();
-    const gfx_box_t rect = gfx_target_clip_rect(target, clip, (gfx_box_t){x, y, x + w, y + h});
+    const gfx_box_t rect = gfx_target_clip_rect(state.target, state.clip, (gfx_box_t){x, y, x + w, y + h});
     if (rect.x0 >= rect.x1 || rect.y0 >= rect.y1) {
         return;
     }
@@ -322,7 +311,7 @@ gfx_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_stri
             continue;
         }
 
-        gfx_color_t* dst = gfx_target_row(target, row);
+        gfx_color_t* dst = gfx_target_row(state.target, row);
         const gfx_color_t* s = src + (size_t)(row - y) * (size_t)src_stride + (rect.x0 - x);
 
         if (p[0] && p[1] && p[2] && p[3]) {
@@ -333,7 +322,7 @@ gfx_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_stri
         blit_dither_row(dst + rect.x0, s, rect.x0, rect.x1, p);
     }
 
-    if (!band_render_active) {
+    if (!state.in_band) {
         mark_band(rect.y0, rect.y1);
     }
 }
@@ -360,14 +349,11 @@ gfx_text_scaled(int x, int y, const char* text, gfx_color_t color, int scale) {
 
 /* Draws `font` glyph or nothing if `ch` is out of range. */
 static inline __attribute__((always_inline)) void
-draw_glyph_font(const gfx_font_t* font, int x, int y, unsigned char ch, gfx_color_t color, int scale, int turn,
-                bool halo) {
-    /* One filled rect per coalesced box of set bits, not one per run
-     * per row: gfx_font_glyph_run_boxes() merges a vertical stroke's
-     * identical run across every row it spans into one box, so
-     * gfx_font_run_box_rect() covers it with one gfx_fill_rect() call
-     * regardless of which glyph axis a turn maps onto the screen's
-     * narrow one. */
+draw_glyph_font(const draw_state_t* state, const gfx_font_t* font, int x, int y, unsigned char ch, gfx_color_t color,
+                int scale, int turn, bool halo) {
+    /* Coalesced run boxes merge identical runs across rows, so a vertical
+     * stroke needs one target fill regardless of which glyph axis a turn
+     * maps onto the screen's narrow one. */
     gfx_font_run_box_t boxes[GFX_FONT_RUN_BOXES_MAX];
     const int n = gfx_font_glyph_run_boxes(font, ch, boxes, GFX_FONT_RUN_BOXES_MAX);
     for (int i = 0; i < n; i++) {
@@ -379,35 +365,40 @@ draw_glyph_font(const gfx_font_t* font, int x, int y, unsigned char ch, gfx_colo
             gfx_font_run_box_rect(font, x, y, boxes[i].row0, boxes[i].row1, boxes[i].col0, boxes[i].col1, scale, turn,
                                   &rx, &ry, &rw, &rh);
         }
-        gfx_fill_rect(rx, ry, rw, rh, color);
+        int x0, y0, x1, y1;
+        gfx_target_fill_rect(state->target, state->clip.x0, state->clip.y0, state->clip.x1, state->clip.y1, rx, ry, rw,
+                             rh, color, &x0, &y0, &x1, &y1);
+        mark_fill(state, x0, y0, x1, y1);
     }
+}
+
+static const int text_step[4][2] = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
+
+static inline bool
+text_entry(draw_state_t* state, int* scale, int* turn) {
+    GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return false;
+    }
+    *state = draw_state();
+    *scale = mathi_max(*scale, 1);
+    *turn = ((*turn % 4) + 4) % 4;
+    return true;
 }
 
 static inline __attribute__((always_inline)) void
 draw_text_font(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns, const gfx_font_t* font,
                bool halo) {
-    GFX_PRESENT_GUARD();
-    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+    draw_state_t state;
+    int turn = quarter_turns;
+    if (!text_entry(&state, &scale, &turn)) {
         return;
     }
-    if (scale < 1) {
-        scale = 1;
-    }
-
-    const int turn = ((quarter_turns % 4) + 4) % 4;
-
-    static const int step[4][2] = {
-        {1, 0},  /* upright:        left to right */
-        {0, 1},  /* quarter turn:   top to bottom */
-        {-1, 0}, /* upside down:    right to left */
-        {0, -1}, /* three quarters: bottom to top */
-    };
 
     /* A quarter turn of 1 or 3 swaps which cell dimension becomes the
      * on-screen row extent; see gfx_font_row_run_rect()'s own comment. */
     const int char_h = (turn & 1) ? font->cell_w * scale : font->cell_h * scale;
     const int pad = halo ? 1 : 0;
-    const gfx_target_t target = current_target();
 
     for (const char* p = text; *p != '\0'; p++) {
         const unsigned char ch = (unsigned char)*p;
@@ -417,12 +408,12 @@ draw_text_font(int x, int y, const char* text, gfx_color_t color, int scale, int
          * one walk's worth of work overall, the same as it costs in
          * GFX_LAYOUT_FULL_FB, where the target spans the full screen and
          * this is never false. */
-        if (gfx_target_row_range_overlaps(target, y - pad, y + char_h + pad)) {
-            draw_glyph_font(font, x, y, ch, color, scale, turn, halo);
+        if (gfx_target_row_range_overlaps(state.target, y - pad, y + char_h + pad)) {
+            draw_glyph_font(&state, font, x, y, ch, color, scale, turn, halo);
         }
         const int adv = gfx_font_advance(font, ch, scale);
-        x += step[turn][0] * adv;
-        y += step[turn][1] * adv;
+        x += text_step[turn][0] * adv;
+        y += text_step[turn][1] * adv;
     }
 }
 
@@ -442,17 +433,11 @@ gfx_text_font_halo(int x, int y, const char* text, gfx_color_t color, int scale,
     draw_text_font(x, y, text, color, scale, quarter_turns, font, true);
 }
 
-/*
- * A second copy of the three glyph functions rather than one core threaded
- * with an alpha parameter, deliberately: gfx_text_font() is the single
- * font-aware path every text call in the tree goes through, and keeping it
- * provably unchanged beats trusting a compiler to fold an `alpha == 255`
- * check back out of it at every call site forever.
- */
-
+/* Separate dither glyphs keep every opaque text call free of an alpha == 255
+ * test in draw_glyph_font(). */
 static void
-draw_rotated_font_pixel_dither(const gfx_font_t* font, int x, int y, int row, int col, int scale, int turn,
-                               gfx_color_t color, uint8_t alpha) {
+draw_rotated_font_pixel_dither(const draw_state_t* state, const gfx_font_t* font, int x, int y, int row, int col,
+                               int scale, int turn, gfx_color_t color, uint8_t alpha) {
     int px, py;
     switch (turn) {
         case 1:
@@ -472,12 +457,12 @@ draw_rotated_font_pixel_dither(const gfx_font_t* font, int x, int y, int row, in
             py = row;
             break;
     }
-    gfx_fill_rect_dither(x + px * scale, y + py * scale, scale, scale, color, alpha);
+    fill_rect_alpha(state, x + px * scale, y + py * scale, scale, scale, color, alpha, false);
 }
 
 static void
-draw_glyph_font_dither(const gfx_font_t* font, int x, int y, unsigned char ch, gfx_color_t color, int scale, int turn,
-                       uint8_t alpha) {
+draw_glyph_font_dither(const draw_state_t* state, const gfx_font_t* font, int x, int y, unsigned char ch,
+                       gfx_color_t color, int scale, int turn, uint8_t alpha) {
     if (ch < font->first || (unsigned)(ch - font->first) >= font->count) {
         return;
     }
@@ -491,7 +476,7 @@ draw_glyph_font_dither(const gfx_font_t* font, int x, int y, unsigned char ch, g
         }
         for (int col = 0; col < font->cell_w; col++) {
             if (bits & (1 << col)) {
-                draw_rotated_font_pixel_dither(font, x, y, row, col, scale, turn, color, alpha);
+                draw_rotated_font_pixel_dither(state, font, x, y, row, col, scale, turn, color, alpha);
             }
         }
     }
@@ -502,28 +487,17 @@ draw_glyph_font_dither(const gfx_font_t* font, int x, int y, unsigned char ch, g
 void
 gfx_text_font_dither(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns,
                      const gfx_font_t* font, uint8_t alpha) {
-    GFX_PRESENT_GUARD();
-    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+    draw_state_t state;
+    int turn = quarter_turns;
+    if (!text_entry(&state, &scale, &turn)) {
         return;
     }
-    if (scale < 1) {
-        scale = 1;
-    }
-
-    const int turn = ((quarter_turns % 4) + 4) % 4;
-
-    static const int step[4][2] = {
-        {1, 0},
-        {0, 1},
-        {-1, 0},
-        {0, -1},
-    };
 
     for (const char* p = text; *p != '\0'; p++) {
         const unsigned char ch = (unsigned char)*p;
-        draw_glyph_font_dither(font, x, y, ch, color, scale, turn, alpha);
+        draw_glyph_font_dither(&state, font, x, y, ch, color, scale, turn, alpha);
         const int adv = gfx_font_advance(font, ch, scale);
-        x += step[turn][0] * adv;
-        y += step[turn][1] * adv;
+        x += text_step[turn][0] * adv;
+        y += text_step[turn][1] * adv;
     }
 }

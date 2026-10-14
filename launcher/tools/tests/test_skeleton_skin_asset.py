@@ -330,6 +330,27 @@ class PackStep(unittest.TestCase):
                 self.assertEqual(read.call_count, 1)
             skin_pack.source_rig.cache_clear()
 
+    def test_rig_ids_resolve_default_and_explicit_cache(self):
+        from types import SimpleNamespace
+        from unittest import mock
+        from bake import bake
+        from r3d import skin_pack
+        import skin_probe
+        document, buffers = skin_probe.rig()
+        node = next(index for index, item in enumerate(document['nodes']) if 'skin' in item)
+        settings = SimpleNamespace(path='rig.import.toml')
+        default_cache = bake.default_cache()
+        explicit_cache = default_cache / 'explicit'
+        with mock.patch.object(skin_pack, 'load_rig', return_value=(None, document, buffers, node)) as load:
+            self.assertEqual(skin_pack.rig_ids('mesh', settings), ('mesh.skin', 'armature'))
+            load.assert_called_once_with(settings, default_cache, False)
+            load.reset_mock()
+            self.assertEqual(skin_pack.rig_ids('mesh', settings, explicit_cache), ('mesh.skin', 'armature'))
+            load.assert_called_once_with(settings, explicit_cache, False)
+            load.reset_mock()
+            self.assertEqual(skin_pack.rig_ids('mesh', settings, explicit_cache, True), ('mesh.skin', 'armature'))
+            load.assert_called_once_with(settings, explicit_cache, True)
+
     def test_rig_ids_require_a_rig(self):
         from types import SimpleNamespace
         from unittest import mock
