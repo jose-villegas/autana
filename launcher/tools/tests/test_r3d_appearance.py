@@ -94,6 +94,12 @@ def write_flat_start(directory, count=4):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class AppearanceMeshTests(unittest.TestCase):
+    def test_coverage_pool_keeps_holes_but_excludes_held_out_samples(self):
+        from r3d.appearance_simplify import coverage_pool
+
+        self.assertEqual(coverage_pool([0, 2, 1, 3, 0, 4], [2, 4]), [1, 3, 5])
+        self.assertEqual(coverage_pool([0, 1, 1], [1]), [2])
+
     def test_projection_casts_the_reference_pinhole_rays(self):
         try:
             from r3d.reference_render import camera_rays
@@ -109,6 +115,28 @@ class AppearanceMeshTests(unittest.TestCase):
             self.assertAlmostEqual(ndc[0], 2 * (x + 0.5) / width - 1, places=9)
             self.assertAlmostEqual(ndc[1], 1 - 2 * (y + 0.5) / height, places=9)
             self.assertTrue(-1.0 < ndc[2] < 1.0)
+
+    def test_held_out_matching_uses_eye_and_forward_across_projection_sizes(self):
+        from r3d.appearance_simplify import held_out_indices
+        from r3d.fitted_variant import poses_text
+
+        poses = [[0, 0, 3, 0, 0, -1], [1, 0, 3, 0, 0, -1], [0, 0, 3, 1, 0, -1]]
+        with tempfile.TemporaryDirectory() as directory:
+            coverage_path = pathlib.Path(directory) / "coverage.txt"
+            held_out_path = pathlib.Path(directory) / "held_out.txt"
+            coverage_path.write_text(poses_text(40, 40, 0.8, 0.5, poses))
+            held_out_path.write_text(poses_text(24, 40, 0.6, 0.5, [poses[0]]))
+            self.assertEqual(held_out_indices(coverage_path, held_out_path), [0])
+
+    def test_invalid_coverage_flags_fail_before_loading_a_scene(self):
+        from r3d import appearance_simplify as appearance
+
+        for flags in (["--coverage-weight", "-1"], ["--coverage-weight", "nan"], ["--mine-every", "0"]):
+            with self.subTest(flags=flags), mock.patch.object(appearance, "load_scene") as scene:
+                with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                    appearance.main(["--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
+                                     "--reference", "reference", "--out", "out", *flags])
+                scene.assert_not_called()
 
     def test_seam_vertices_share_one_position(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -202,7 +230,7 @@ class PruneAndCostTests(unittest.TestCase):
                         calls.coverage.return_value = np.ones(len(mesh.tris))
                         calls.prune.return_value = pruned
                         calls.write_mesh.return_value = len(pruned.tris)
-                        appearance.main(["--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
+                        appearance.main(["--coverage-weight", "0", "--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
                                          "--reference", "reference", "--coverage-poses", "coverage.txt",
                                          "--budget", str(len(pruned.tris)), "--out", directory])
                     self.assertEqual([call[0] for call in calls.mock_calls],
@@ -234,7 +262,7 @@ class PruneAndCostTests(unittest.TestCase):
                     write_mesh=mock.DEFAULT) as calls:
                 calls["optimise"].return_value = (points, rgb, [1.0])
                 calls["write_mesh"].return_value = len(mesh.tris)
-                appearance.main(["--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
+                appearance.main(["--coverage-weight", "0", "--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
                                  "--reference", "reference", "--out", directory])
             calls["optimise"].assert_called_once()
             calls["coverage"].assert_not_called()
@@ -400,6 +428,73 @@ class PathVisibilityTests(unittest.TestCase):
 
 @unittest.skipIf(np is None or not GPU, "needs CUDA, PyTorch and nvdiffrast")
 class AppearanceFitTests(unittest.TestCase):
+    def test_coverage_closes_an_unwelded_wall_gap_at_a_pool_only_pose(self):
+        from r3d.appearance_simplify import COVERAGE_WEIGHT, Renderer, coverage_targets, mine_coverage, optimise
+
+        size = (64, 64)
+        points = np.array([[-1, -1, 0], [0, -1, 0], [0, 1, 0], [-1, 1, 0],
+                           [0, -1, 0], [1, -1, 0], [1, 1, 0], [0, 1, 0]], dtype=float)
+        mesh = FitMesh(points, np.ones((8, 3)), np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]]),
+                       np.ones(4, dtype=bool), 64, np.arange(8))
+        matrix = projection([0, 0, 3], [0, 0, -1], *size, 0.62, 0.5)
+        pool = [(matrix, None, None, [0, 0, 3])]
+        masks = coverage_targets(mesh, pool, size)
+        opened = points.copy()
+        opened[:4, 0] -= 0.06
+        opened[4:, 0] += 0.06
+        opened_mesh = mesh._replace(points=opened)
+        renderer = Renderer(mesh.tris, mesh.double, mesh.vertex_point, size, "cuda")
+        training = projection([5, 0, 3], [0, 0, -1], *size, 0.62, 0.5)
+        views = [(training, np.ones((*size, 3), dtype=np.float32))]
+        options = dict(steps=250, batch=1, lr_position=0.003, lr_colour=0, laplacian=0,
+                       report=0, clear=(1, 1, 1))
+        matrices = [cuda(matrix)]
+        self.assertGreater(mine_coverage(renderer, cuda(opened), matrices, masks)[1][0], 0)
+        for seed in (1, 7):
+            with self.subTest(seed=seed):
+                baseline = optimise(opened_mesh, views, size, seed=seed, **options)
+                off = optimise(opened_mesh, views, size, seed=seed, coverage_weight=0, coverage_views=pool, **options)
+                np.testing.assert_array_equal(baseline[0], off[0])
+                np.testing.assert_array_equal(baseline[2], off[2])
+                fitted, _rgb, history = optimise(opened_mesh, views, size, seed=seed, coverage_weight=COVERAGE_WEIGHT,
+                                                mine_every=5, coverage_views=pool, coverage_masks=masks, **options)
+                self.assertEqual(mine_coverage(renderer, cuda(fitted), matrices, masks)[1], [0])
+                np.testing.assert_allclose(history, baseline[2], atol=1e-5)
+
+    def test_mining_keeps_only_holes_and_excludes_held_out_samples(self):
+        from r3d.appearance_simplify import Renderer, coverage_targets, mine_coverage
+
+        with tempfile.TemporaryDirectory() as directory:
+            mesh = start_mesh(write_start(directory))
+        size = (48, 40)
+        matrix = projection([0, 0, 3], [0, 0, -1], *size, 0.62, 0.5)
+        away = projection([8, 0, 3], [0, 0, -1], *size, 0.62, 0.5)
+        views = [(matrix,), (away,), (matrix,)]
+        masks = coverage_targets(mesh, views, size)
+        render = Renderer(mesh.tris, mesh.double, mesh.vertex_point, size, "cuda")
+        hard, holes = mine_coverage(render, cuda(mesh.points + [5, 0, 0]),
+                                    [cuda(view[0]) for view in views], masks, [2])
+        self.assertEqual(hard, [0])
+        self.assertGreater(holes[0], 0)
+        self.assertEqual(holes[1], 0)
+        self.assertEqual(holes[2], 0)
+
+    def test_colour_history_excludes_the_coverage_loss(self):
+        from r3d.appearance_simplify import COVERAGE_WEIGHT, coverage_targets, optimise
+
+        with tempfile.TemporaryDirectory() as directory:
+            mesh = start_mesh(write_start(directory))
+        size = (48, 40)
+        matrix = projection([0, 0, 3], [0, 0, -1], *size, 0.62, 0.5)
+        pool = [(matrix,)]
+        masks = coverage_targets(mesh, pool, size)
+        moved = mesh._replace(points=mesh.points + [0.2, 0, 0])
+        views = [(matrix, np.zeros((size[1], size[0], 3), dtype=np.float32))]
+        options = dict(steps=1, batch=1, lr_position=0, lr_colour=0, laplacian=0, report=0)
+        off = optimise(moved, views, size, **options)
+        on = optimise(moved, views, size, coverage_weight=COVERAGE_WEIGHT, coverage_views=pool, coverage_masks=masks, **options)
+        self.assertEqual(off[2], on[2])
+
     def test_image_error_falls(self):
         from r3d.appearance_simplify import Renderer, optimise
 

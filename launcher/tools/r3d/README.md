@@ -234,7 +234,7 @@ the training poses:
 
 ```sh
 "$GPU_ENV/bin/python3" launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.mesh \
-    --poses train.txt --reference reference_train --out fitted
+    --poses train.txt --reference reference_train --coverage-poses coverage.txt --held-out held_out.txt --out fitted
 ```
 
 To score a fitted mesh, pack it in place of the tracked one, as
@@ -268,10 +268,27 @@ samples the camera's path every
 with their normals in portrait and landscape so the fit holds the panel either
 way up at `fit.poses.size`. `fit` fits with
 `fit.optimise.steps`, `fit.optimise.batch`, `fit.optimise.laplacian` and
-`fit.optimise.normal_weight`, prunes the fitted geometry to `fit.prune.budget`
+`fit.optimise.normal_weight`. Coverage mining uses the named defaults
+`COVERAGE_WEIGHT` and `MINE_EVERY` in `appearance_simplify.py`, overridden by
+`--coverage-weight` and `--mine-every` on its command line. It prunes the
+fitted geometry to `fit.prune.budget`
 and writes the renderer's mesh into the work folder. A refit is not
 bit-identical, the GPU's sums being unordered, so the lock pins the bytes a fit
 made.
+
+Coverage targets are the start mesh's drawn pixels at
+`fit.prune.coverage_every_ms` camera-path poses, using the same facing rules
+as the colour renderer. Antialiased alpha gives silhouette position gradients;
+backing triangles count too. Mining at step zero and every `--mine-every`
+steps keeps only poses with background pixels where the start covered. Each
+step samples up to `--batch` hard poses for a coverage-only loss: the mean
+start-masked missing alpha over all view pixels, weighted in ΔE76 per fully
+open pixel. These poses need no Mitsuba images. `--held-out` supplies the
+held-out poses; matching eye and forward samples are excluded from mining.
+The colour history and `loss.txt` contain only the colour term. Reports
+separately print coverage loss, hard-pool size and holed-pose counts for the
+start, fit and pruned mesh. `--coverage-weight 0` disables targets, mining and
+extra renders. Coverage sampling is included in the reference key.
 
 ### Reference on the GPU
 

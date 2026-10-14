@@ -462,6 +462,25 @@ flowchart LR
     H --> C[render_compare.py score, sheets, heatmaps]
 ```
 
+Coverage uses the start mesh's drawn pixels at the
+`fit.prune.coverage_every_ms` camera-path poses as its target. The
+antialiased alpha of every drawn triangle, backing included, provides
+position gradients at silhouettes. Mining at step zero and every
+`--mine-every` steps keeps poses where the fit shows background on a
+start-covered pixel. Each step samples up to `batch` of those poses with
+a coverage term only: `--coverage-weight` times the mean start-masked
+missing alpha over all view pixels, in ΔE76 per fully open pixel. No
+reference image is needed for these views. Matching held-out eye and
+forward samples never enter the hard pool. The defaults live at
+`COVERAGE_WEIGHT` and `MINE_EVERY` in `appearance_simplify.py`;
+`--coverage-weight 0` disables mining and extra renders.
+
+Colour history, `loss.txt` and the printed mean ΔE76 exclude coverage,
+normal, Laplacian and cost penalties. Coverage loss and hard-pool size are
+reported separately, together with holed-pose counts for the start, fitted
+and pruned mesh. Pruning counts shown pixels at the recipe's coverage
+spacing; this sampling is part of the reference cache key.
+
 Colour alone permits geometry that matches one view but differs from another.
 `normal_weight` weighs $`\mathcal{E}_n`$: mean
 L1 fitted/reference normal difference where both cover a pixel. The reference
