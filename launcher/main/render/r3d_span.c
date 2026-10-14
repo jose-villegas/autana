@@ -270,7 +270,7 @@ step_edge(edge_t* e) {
     }
 }
 
-static RENDER_ENTRY_OFFSET(6) void
+static RENDER_IRAM_ATTR void
 walk_rows(const r3d_span_target_t* target, const fill_t* f, int32_t row[ATTRIBUTES], int y0, int y1, edge_t* left,
           edge_t* right) {
     for (int y = y0; y < y1; y++) {
@@ -452,7 +452,7 @@ r3d_span_plane_in_range(int32_t top, int32_t dx, int32_t dy, int32_t max, r3d_sp
     return low >= 0 && high <= max;
 }
 
-RENDER_ENTRY_OFFSET(8) bool
+RENDER_IRAM_ATTR bool
 r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, r3d_span_box_t box) {
     for (int y = box.y0; y < box.y1; y++) {
         const uint16_t* depth = gfx_render_target_depth(&target->rows, y);
@@ -509,7 +509,7 @@ set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3]
     return true;
 }
 
-static RENDER_ENTRY_OFFSET(10) void
+static RENDER_IRAM_ATTR void
 r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                        const r3d_span_vertex_t* c, const uint16_t* face) {
     const r3d_span_vertex_t* v0 = a;

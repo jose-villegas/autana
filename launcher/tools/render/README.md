@@ -22,20 +22,24 @@
 | [render_watch.c](render_watch.c) | Fails a scene whose frames keep allocating or printing. |
 | [render_watch.h](render_watch.h) | Frame watch declarations for the host renderer. |
 | [render_masks.json](render_masks.json) | Named masks for image comparisons. |
-| [code_layout.py](code_layout.py) | Reports, writes, and checks each `RENDER_ENTRY_OFFSET` function and its machine loops within an instruction-cache line. |
+| [code_layout.py](code_layout.py) | Reports, writes, and checks each measured function and its machine loops within an instruction-cache line. |
 | [check_avi.py](check_avi.py) | Validates AVI structure and frame metadata. |
 | [scenes/](scenes/) | Engine render scenes and their pinned baselines. |
 | [tests/](tests/) | The harness checking its own frame watch against a fixture scene, and code_layout.py's own tests. |
 
 ## Pinned code layout
 
-`code_layout.py` reads the Xtensa tools and instruction-cache line size from a
-firmware build. The build gates check address-independent rows in each source folder's
-`code_layout.txt`. The checker discovers these files under `launcher/main/`:
+`code_layout.py` reads Xtensa tools and the build's cache-line size. Each
+`code_layout.txt` under `launcher/main/` pins function entries and the loops
+inside them no longer than `SMALL_LOOP_MAX_LINES` cache lines; a back-edge must
+target its own function. A loop row is keyed by its kind (`loop`, `loopnez`,
+`loopgtz`, or a branch mnemonic plus `-back`) and its branch's source line
+relative to the function's first line: a codegen change elsewhere keeps the
+keys, a source edit inside the function re-keys the rows below it.
 
 ```sh
-python launcher/tools/render/code_layout.py --check launcher/build.diag
-python launcher/tools/render/code_layout.py --write --baseline launcher/main/render/code_layout.txt launcher/build.diag
+python launcher/tools/render/code_layout.py --check launcher/build
+python launcher/tools/render/code_layout.py --write --baseline launcher/main/apps/sand/code_layout.txt launcher/build
 ```
 
 A baseline uses source entry markers unless it carries `# Functions: baseline`,
@@ -44,10 +48,8 @@ which selects the functions recorded in its table without adding entry padding.
 without it, the baseline applies to `CONFIG_LAUNCHER_SELFTEST` builds. `--write`
 preserves these headers. `--baseline PATH` selects one owner for reporting,
 checking or writing. Missing symbols and changed sizes, loop offsets or
-cache-line spans fail the check.
-
-For a changed baseline, the checker prints the measurement and re-recording
-instruction.
+cache-line spans fail the check, which prints the measurement and
+re-recording instruction.
 
 ## Meshlet size captures
 

@@ -67,7 +67,7 @@ class LocalHookTests(ShellGateTestCase):
         return result
 
     def test_personal_path_is_read_from_index(self):
-        path = 'launcher/main/render/code_layout.txt'
+        path = 'launcher/main/apps/sand/code_layout.txt'
         bad = '/Users/' + 'someone/scratch\n'
         self.write(path, bad)
         (self.root / path).write_text('portable\n')
