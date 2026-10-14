@@ -42,8 +42,7 @@ python launcher/tools/render/code_layout.py --check launcher/build
 python launcher/tools/render/code_layout.py --write --baseline launcher/main/apps/sand/code_layout.txt launcher/build
 ```
 
-A baseline uses source entry markers unless it carries `# Functions: baseline`,
-which selects the functions recorded in its table without adding entry padding.
+A baseline checks the functions its folder pins with `CODE_ENTRY_OFFSET`.
 `# Config: CONFIG_NAME` selects the build whose sdkconfig enables that option;
 without it, the baseline applies to `CONFIG_LAUNCHER_SELFTEST` builds. `--write`
 preserves these headers. `--baseline PATH` selects one owner for reporting,

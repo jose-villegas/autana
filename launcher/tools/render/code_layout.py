@@ -20,8 +20,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[3]
 LAUNCHER = REPO / "launcher"
 SOURCES = LAUNCHER / "main"
-PINNED = re.compile(r"RENDER_ENTRY_OFFSET\(\d+\)\s+\w+\s+(\w+)\(")
-BASELINE_FUNCTIONS_HEADER = "# Functions: baseline"
+PINNED = re.compile(r"CODE_ENTRY_OFFSET\(\d+\)\s+\w+\s+(\w+)\(")
 CONFIG_HEADER = "# Config: "
 DEFAULT_BASELINE_CONFIG = "CONFIG_LAUNCHER_SELFTEST"
 LAYOUT_HEADER = "function\tkind\toffset\tbytes\tlines\tsource_line"
@@ -47,13 +46,6 @@ def baselines(root):
         if functions:
             owners.add(source.parent)
             pins.setdefault(source.parent, []).extend(functions)
-    for baseline in root.rglob("code_layout.txt"):
-        text = baseline.read_text(encoding="utf-8")
-        if BASELINE_FUNCTIONS_HEADER not in text.splitlines():
-            continue
-        recorded = parse_layout(text)
-        functions = pins.setdefault(baseline.parent, [])
-        functions.extend(row.function for row in recorded if row.kind == "function" and row.function not in functions)
     return {owner / "code_layout.txt": pins.get(owner, []) for owner in sorted(owners)}
 
 
@@ -372,10 +364,7 @@ def main(argv=None):
             entries = layout_entries(elf, args.nm or find_tool("nm"), args.objdump or find_tool("objdump"), line_size, functions)
             rows = layout_rows(entries, line_size)
             if args.write:
-                metadata = [
-                    line for line in text.splitlines()
-                    if line == BASELINE_FUNCTIONS_HEADER or line.startswith(CONFIG_HEADER)
-                ]
+                metadata = [line for line in text.splitlines() if line.startswith(CONFIG_HEADER)]
                 baseline.write_text(format_layout(rows, build_name(requested_build), metadata), encoding="utf-8", newline="\n")
                 print("wrote %s (%d rows, %d-byte lines)" % (baseline, len(rows), line_size))
             elif args.check:
