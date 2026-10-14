@@ -179,6 +179,19 @@ class StyleAuditTest(unittest.TestCase):
         self.assertEqual(len(findings), 1)
         self.assertIn("apps/", findings[0].message)
 
+    def test_system_apps_use_the_app_layer(self):
+        cases = (
+            ("shell/shell.c", "shell/apps/x/x.h", 1),
+            ("shell/apps/x/x.c", "apps/y/y.h", 0),
+        )
+        for source, target, expected in cases:
+            with self.subTest(source=source):
+                findings = self.audit("INCLUDE-DIRECTION", {
+                    "launcher/main/" + source: f'#include "{target}"\n',
+                    "launcher/main/" + target: "#pragma once\n",
+                })
+                self.assertEqual(len(findings), expected)
+
     def test_apps_own_sources_are_never_a_source_for_include_direction(self):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)

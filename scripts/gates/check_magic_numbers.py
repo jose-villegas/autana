@@ -41,7 +41,8 @@ from c_includes import resolve_include
 from idf_vocabulary import FLOW, WORD
 from check_generated_files import is_generated
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher/tools"))
-from build.packages import FIRST_PARTY  # noqa: E402
+from build.packages import FIRST_PARTY
+from build.apps import app_part  # noqa: E402
 
 RARE_MINIMUM = 300
 ROUND_MULTIPLE = 100
@@ -255,7 +256,8 @@ def scan(texts, candidates=None, *, direct):
 def module(path):
     parts = PurePosixPath(path).parts
     if parts[:2] == ("launcher", "main"):
-        return "/".join(parts[2:4]) if parts[2] == "apps" else parts[2]
+        app = app_part(path)
+        return app.removeprefix("launcher/main/") if app else parts[2]
     return "/".join(parts[:2]) if parts[0] == "launcher" else parts[0]
 
 

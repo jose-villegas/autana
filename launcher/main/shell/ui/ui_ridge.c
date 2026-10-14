@@ -1229,7 +1229,7 @@ ui_ridge_settle(void) {
     }
 }
 
-#if CONFIG_LAUNCHER_SELFTEST || !defined(ESP_PLATFORM)
+#if BUILD_VARIANT_SELFTEST_OR_HOST
 void
 ui_ridge_reset_for_test(void) {
     allocate_once();
@@ -1278,7 +1278,7 @@ ui_ridge_paint_reference_for_test(gfx_color_t* out) {
 }
 #endif
 
-#if CONFIG_LAUNCHER_SELFTEST || !defined(ESP_PLATFORM)
+#if BUILD_VARIANT_SELFTEST_OR_HOST
 bool
 ui_ridge_dissolving_for_test(void) {
     allocate_once();

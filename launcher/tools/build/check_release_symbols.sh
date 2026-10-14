@@ -34,17 +34,15 @@ if ! "$NM" --defined-only "$ELF" >"$symbols_file"; then
     exit 2
 fi
 
-apps_dir="$(dirname "$0")/../../main/apps"
-if [ ! -d "$apps_dir" ]; then
-    echo "no apps directory at $apps_dir" >&2
-    exit 2
-fi
+# shellcheck source=packages.sh
+. "$ESPRESSIF_SCRIPT_DIR/packages.sh"
 
 development_only_apps=
-for marker in "$apps_dir"/*/development_only.cmake; do
+for app_dir in $(app_directories "$ESPRESSIF_SCRIPT_DIR/../.."); do
+    marker="${app_dir}development_only.cmake"
     [ -f "$marker" ] || continue
-    app=$(basename "$(dirname "$marker")")
-    if ! grep -q "^APP_REGISTER(app_${app});" "$apps_dir/$app/app_${app}.c" 2>/dev/null; then
+    app=$(basename "${app_dir%/}")
+    if ! grep -q "^APP_REGISTER(app_${app});" "${app_dir}app_${app}.c" 2>/dev/null; then
         echo "$marker: app_${app}.c does not register app_${app}" >&2
         exit 2
     fi

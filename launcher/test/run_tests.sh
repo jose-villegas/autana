@@ -236,7 +236,7 @@ done
 # scripts, report generators) is excluded the same way CMake excludes it:
 # by folder, not depth, so a future two-level-deep non-tools folder is swept
 # in rather than silently skipped.
-for f in $(find "$MAIN_DIR/apps" "$MAIN_DIR/shell/apps" -name '*.c' ! -path '*/tools/*' | sort); do
+for f in $(find $(app_directories "$TEST_DIR/..") -name '*.c' ! -path '*/tools/*' | sort); do
     [ -e "$f" ] || continue
     case "$(basename "$f")" in
         app_*.c | scene_*.c) continue ;;

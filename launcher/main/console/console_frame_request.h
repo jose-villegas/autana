@@ -19,11 +19,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "build/build_variant.h"
 #include "console/console_verbs.h"
 #include "freertos/FreeRTOS.h"
 
 /* RUNSUITE exists where the suites do: a self-test image and the host runner. */
-#if CONFIG_LAUNCHER_SELFTEST || !defined(ESP_PLATFORM)
+#if BUILD_VARIANT_SELFTEST_OR_HOST
 #include "console/verbs/console_runsuite.h"
 #define CONSOLE_FRAME_HAS_RUNSUITE 1
 #endif
