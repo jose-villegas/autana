@@ -68,8 +68,8 @@ imu_probe_average_read(const imu_probe_average_t* average) {
  * Offset is mg, sensitivity ppm (unity = IMU_PROBE_SCALE_ONE), gyro offset mdps. */
 imu_probe_fit_t
 imu_probe_fit(const imu_probe_average_t poses[IMU_PROBE_POSE_COUNT], int quarter) {
-    float up[3] = {0};
-    float down[3] = {0};
+    int32_t up[3] = {0};
+    int32_t down[3] = {0};
     float gyro[3] = {0};
     int n = 0;
     for (int pose = 0; pose < IMU_PROBE_POSE_COUNT; pose++) {
@@ -79,7 +79,7 @@ imu_probe_fit(const imu_probe_average_t poses[IMU_PROBE_POSE_COUNT], int quarter
         const vec3i_t direction = imu_probe_pose_direction(pose, quarter);
         const int d[] = {direction.x, direction.y, direction.z};
         for (int axis = 0; axis < 3; axis++) {
-            const float mean = (float)poses[pose].acceleration[axis] / (float)poses[pose].n;
+            const int32_t mean = mathf_round_i32((float)poses[pose].acceleration[axis] / (float)poses[pose].n);
             if (d[axis] > 0) {
                 up[axis] = mean;
             }
@@ -90,17 +90,19 @@ imu_probe_fit(const imu_probe_average_t poses[IMU_PROBE_POSE_COUNT], int quarter
         }
         n += poses[pose].n;
     }
+    const imu_calib_fit_t fit = imu_calib_fit((vec3i_t){up[0], up[1], up[2]}, (vec3i_t){down[0], down[1], down[2]});
+    const int32_t counts[] = {fit.calib.offset.x, fit.calib.offset.y, fit.calib.offset.z};
     int offset[3];
-    int scale[3];
     int rate[3];
     for (int axis = 0; axis < 3; axis++) {
-        offset[axis] = (int)mathf_round_i32((up[axis] + down[axis]) * IMU_PROBE_MILLI / (2 * INPUT_ACCEL_ONE_G));
-        scale[axis] = (int)mathf_round_i32((up[axis] - down[axis]) * IMU_PROBE_SCALE_ONE / (2 * INPUT_ACCEL_ONE_G));
+        offset[axis] = (int)mathf_round_i32((float)counts[axis] * IMU_PROBE_MILLI / INPUT_ACCEL_ONE_G);
         rate[axis] =
             n > 0 ? (int)mathf_round_i32(gyro[axis] * IMU_PROBE_MILLI / ((float)n * INPUT_ROTATION_ONE_DPS)) : 0;
     }
-    return (imu_probe_fit_t){
-        {offset[0], offset[1], offset[2]}, {scale[0], scale[1], scale[2]}, {rate[0], rate[1], rate[2]}};
+    return (imu_probe_fit_t){.offset_mg = {offset[0], offset[1], offset[2]},
+                             .scale_ppm = fit.scale_ppm,
+                             .gyro_mdps = {rate[0], rate[1], rate[2]},
+                             .calib = fit.calib};
 }
 
 void

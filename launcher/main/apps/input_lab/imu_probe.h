@@ -3,11 +3,12 @@
 
 #include <stddef.h>
 
+#include "input/imu_calib.h"
 #include "input/input.h"
 
 #define IMU_PROBE_LABEL_SIZE      16
 #define IMU_PROBE_MILLI           1000
-#define IMU_PROBE_SCALE_ONE       1000000
+#define IMU_PROBE_SCALE_ONE       IMU_CALIB_SCALE_ONE
 #define IMU_PROBE_PERCENT         100
 #define IMU_PROBE_ACCEL_DEPARTURE (INPUT_ACCEL_ONE_G * 80 / IMU_PROBE_MILLI)
 /* Measured rest gyro noise: about 1 dps sigma per axis, peaks of +/-4 dps. */
@@ -35,6 +36,7 @@ typedef struct {
 
 typedef struct {
     vec3i_t offset_mg, scale_ppm, gyro_mdps;
+    imu_calib_t calib;
 } imu_probe_fit_t;
 
 typedef struct {

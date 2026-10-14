@@ -33,6 +33,7 @@
 #include "core/timing.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
+#include "input/input_shell.h"
 #include "input/tilt.h"
 #include "math/scalar/mathi.h"
 #include "services/tune.h"
@@ -90,6 +91,7 @@ static const char* const MODE_NAMES[MODE_COUNT] = {"random", "grid", "bezel", "m
 static lab_mode_t mode;
 static tilt_t tilt;
 static input_motion_t motion;
+static vec3i_t raw_acceleration;
 static imu_probe_round_t imu_round;
 static motion_probe_t motion_probe;
 static bool have_motion;
@@ -357,15 +359,16 @@ read_motion(uint32_t dt_ms) {
         motion_log_ms %= MOTION_LOG_PERIOD_MS;
         return;
     }
+    raw_acceleration = vec3i_add(motion.acceleration, input_accel_offset());
     tilt_update(&tilt, motion.acceleration, motion.turn_speed, dt_ms);
     motion_probe = motion_probe_measure(motion.acceleration);
     if (motion_log_ms >= MOTION_LOG_PERIOD_MS) {
         motion_log_ms %= MOTION_LOG_PERIOD_MS;
-        ESP_LOGI(
-            TAG, "motion raw %d,%d,%d tilt %d bearing %d filt %d,%d str %d shake %d turn %d rot %d,%d,%d quarter %d",
-            motion.acceleration.x, motion.acceleration.y, motion.acceleration.z, (int)lroundf(motion_probe.tilt_deg),
-            motion_probe.bearing_deg, tilt_x(&tilt), tilt_y(&tilt), tilt_strength(&tilt), tilt_shake(&tilt),
-            motion.turn_speed, motion.rotation.x, motion.rotation.y, motion.rotation.z, display_quarter_now());
+        ESP_LOGI(TAG,
+                 "motion raw %d,%d,%d tilt %d bearing %d filt %d,%d str %d shake %d turn %d rot %d,%d,%d quarter %d",
+                 raw_acceleration.x, raw_acceleration.y, raw_acceleration.z, (int)lroundf(motion_probe.tilt_deg),
+                 motion_probe.bearing_deg, tilt_x(&tilt), tilt_y(&tilt), tilt_strength(&tilt), tilt_shake(&tilt),
+                 motion.turn_speed, motion.rotation.x, motion.rotation.y, motion.rotation.z, display_quarter_now());
     }
 }
 
@@ -387,7 +390,7 @@ log_imu_pose(void) {
 
 static void
 update_imu_round(uint32_t dt_ms, const input_t* input) {
-    if (input->pressed && !imu_round.active) {
+    if (input->pressed && !imu_round.active && imu_round.pose != IMU_PROBE_POSE_COUNT) {
         imu_probe_start(&imu_round, DISPLAY_DEFAULT_QUARTER);
         ESP_LOGI(TAG, "round imu quarter %d", DISPLAY_DEFAULT_QUARTER);
     }
@@ -431,7 +434,29 @@ draw_imu_round(mu_Context* ctx) {
                  gyro[axis]);
         hud_line(ctx, axis, line);
     }
-    hud_line(ctx, 3, "TAP FOR ANOTHER ROUND");
+    const ui_theme_t theme = ui_theme_from_style(ctx->style);
+    const int top = HUD_TOP + (MOTION_HUD_ROWS * HUD_LINE_H) + MOTION_MARGIN;
+    const int width = (screen_w - 3 * MOTION_MARGIN) / 2;
+    const ui_widget_button_t save = {.label = "SAVE", .enabled = true};
+    const ui_widget_button_t clear = {.label = "CLEAR", .enabled = true};
+    const bool saving =
+        ui_icon_button(ctx, "imu-save", mu_rect(MOTION_MARGIN, top, width, 2 * HUD_LINE_H), &save, &theme);
+    const bool clearing = ui_icon_button(
+        ctx, "imu-clear", mu_rect(2 * MOTION_MARGIN + width, top, width, 2 * HUD_LINE_H), &clear, &theme);
+    if (saving || clearing) {
+        const vec3i_t offset = clearing ? (vec3i_t){0} : vec3i_add(input_accel_offset(), f.calib.offset);
+        if (!input_set_accel_offset(offset)) {
+            ESP_LOGW(TAG, "imu_calib could not save offset");
+        } else {
+            if (clearing) {
+                ESP_LOGI(TAG, "imu_calib cleared");
+            } else {
+                ESP_LOGI(TAG, "imu_calib saved %d %d %d", (int)offset.x, (int)offset.y, (int)offset.z);
+            }
+            imu_round = (imu_probe_round_t){0};
+        }
+    }
+    hud_line(ctx, 3, "BOOT TO LEAVE RESULTS");
 }
 
 static mu_Rect
@@ -456,10 +481,9 @@ draw_motion(mu_Context* ctx) {
 
     enum { VALUE_X, VALUE_Y, VALUE_Z, VALUE_MAGNITUDE, VALUE_PLANE, VALUE_FILTER_X, VALUE_FILTER_Y, VALUE_COUNT };
 
-    const float counts[VALUE_COUNT] = {(float)motion.acceleration.x, (float)motion.acceleration.y,
-                                       (float)motion.acceleration.z, motion_probe.magnitude_counts,
-                                       motion_probe.plane_counts,    (float)tilt_x(&tilt),
-                                       (float)tilt_y(&tilt)};
+    const float counts[VALUE_COUNT] = {
+        (float)raw_acceleration.x, (float)raw_acceleration.y, (float)raw_acceleration.z, motion_probe.magnitude_counts,
+        motion_probe.plane_counts, (float)tilt_x(&tilt),      (float)tilt_y(&tilt)};
     char values[VALUE_COUNT][MOTION_G_TEXT_SIZE];
     for (size_t i = 0; i < sizeof counts / sizeof counts[0]; i++) {
         motion_probe_format_fixed(values[i], sizeof values[i],
@@ -487,7 +511,10 @@ draw_motion(mu_Context* ctx) {
     }
     hud_line(ctx, 3, line);
 
-    const int top = HUD_TOP + (MOTION_HUD_ROWS * HUD_LINE_H) + MOTION_MARGIN;
+    const vec3i_t offset = input_accel_offset();
+    snprintf(line, sizeof line, "OFFSET %d %d %d Q12", (int)offset.x, (int)offset.y, (int)offset.z);
+    hud_line(ctx, MOTION_HUD_ROWS, line);
+    const int top = HUD_TOP + ((MOTION_HUD_ROWS + 1) * HUD_LINE_H) + MOTION_MARGIN;
     const int bottom = screen_h - (2 * MOTION_MARGIN) - (2 * HUD_LINE_H);
     const int cx = screen_w / 2;
     const int cy = screen_h / 2;
@@ -503,8 +530,7 @@ draw_motion(mu_Context* ctx) {
         mu_draw_rect(ctx, mu_rect(cx - left, cy + row, width, ARC_STEP), ui_rgb(COL_MOTION_RING));
         mu_draw_rect(ctx, mu_rect(cx + left - width + 1, cy + row, width, ARC_STEP), ui_rgb(COL_MOTION_RING));
     }
-    mu_draw_rect(ctx, motion_dot_rect(motion.acceleration.x, motion.acceleration.y, ring, MOTION_DOT_SIDE),
-                 ui_rgb(COL_MISS));
+    mu_draw_rect(ctx, motion_dot_rect(raw_acceleration.x, raw_acceleration.y, ring, MOTION_DOT_SIDE), ui_rgb(COL_MISS));
     mu_draw_box(ctx, motion_dot_rect(tilt_x(&tilt), tilt_y(&tilt), ring, MOTION_FILTER_SIDE),
                 ui_rgb(COL_MOTION_FILTER));
     ui_text_in(ctx, mu_rect(0, bottom, screen_w / 2, HUD_LINE_H), "RAW", ui_rgb(COL_MISS), MOTION_HUD_SCALE,
