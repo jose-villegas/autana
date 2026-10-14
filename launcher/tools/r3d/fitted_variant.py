@@ -137,8 +137,6 @@ def prepare_references(inputs, work):
     from r3d.mesh_import import camera_path_poses
     from r3d.reference_render import render_sets
 
-    if inputs.size is None:
-        raise SettingsError("a fit needs fit.poses.size")
     scene, spacing = inputs.scene(), SimpleNamespace(**inputs.poses)
     visibility = SimpleNamespace(size=inputs.size, every_ms=None)
     work.mkdir(parents=True, exist_ok=True)

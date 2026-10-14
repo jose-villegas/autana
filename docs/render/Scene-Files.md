@@ -327,11 +327,11 @@ optional refinement, fitting, then coverage pruning to budget:
 
 ```mermaid
 flowchart LR
-    V[path visibility<br/>on the source] --> S[simplify to more<br/>than the budget]
-    S --> P[prune to the budget]
-    P --> R[refine a coarse fit<br/>optional]
+    V[region visibility<br/>on the source] --> S[simplify to more<br/>than the budget]
+    S --> R[refine a coarse fit<br/>optional]
     R --> F[fit: ΔE, Laplacian,<br/>normals, cost]
-    F --> W[write_lit_mesh]
+    F --> P[prune the fitted mesh<br/>to the budget]
+    P --> W[write_lit_mesh]
 ```
 
 Each pose of a dense set counts the pixels $`a_t`$ each fitted triangle
