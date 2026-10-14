@@ -151,7 +151,7 @@ def camera_path_poses(scene, visibility, every_ms=None, either_way_up=True):
 
 def fidelity_poses(scene, object_name, frames, dt):
     """frames + 1 poses of the scene camera's path, dt ms apart from time zero,
-    at the visibility size of OBJECT_fitted, so the traced reference matches the
+    at the pose size of OBJECT_fitted's `fit.poses.size`, so the traced reference matches the
     one that renderer was fitted against."""
     from anim import track_host
     job = next(item for item in scene.renderers if item.object.name == object_name + "_fitted")
