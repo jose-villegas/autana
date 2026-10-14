@@ -33,6 +33,7 @@
 #include "display/display.h"
 #include "gfx/gfx.h"
 #include "input/tilt.h"
+#include "math/scalar/mathi.h"
 #include "services/tune.h"
 #include "ui/ui.h"
 #include "ui/ui_style.h"
@@ -57,11 +58,15 @@ static const char* TAG = "input_lab";
 #define BEZEL_DRAG_PX        4
 #define ARC_STEP             2
 #define MOTION_G_TEXT_SIZE   16
+#define MOTION_MILLI_DIGITS  3
+#define MOTION_MILLI_SCALE   1000
+#define OFFSET_DIGITS        1
+#define OFFSET_SCALE         10
 #define MOTION_HUD_TEXT_SIZE 96
 #define MOTION_LOG_PERIOD_MS 100
 #define MOTION_RING_RADIUS   88
 #define MOTION_DOT_SIDE      7
-#define MOTION_FILTER_SIDE   3
+#define MOTION_FILTER_SIDE   11
 #define MOTION_MARGIN        16
 #define MOTION_HUD_ROWS      4
 #define MOTION_HUD_SCALE     1
@@ -73,6 +78,11 @@ static const char* TAG = "input_lab";
 #define COL_MOTION_RING      0x607080
 
 typedef enum { MODE_RANDOM, MODE_GRID, MODE_BEZEL, MODE_MOTION, MODE_COUNT } lab_mode_t;
+
+typedef struct {
+    int cx, cy, radius;
+    mu_Rect bounds;
+} motion_ring_t;
 
 static const char* const MODE_NAMES[MODE_COUNT] = {"random", "grid", "bezel", "motion"};
 
@@ -270,13 +280,6 @@ draw_corner_arcs(mu_Context* ctx) {
     }
 }
 
-/* Tenths, since this build's printf may carry no float support. */
-static void
-format_tenths(char* out, size_t len, float v) {
-    const int t = (int)(v * 10.0f + (v < 0 ? -0.5f : 0.5f));
-    snprintf(out, len, "%s%d.%d", t < 0 ? "-" : "+", abs(t) / 10, abs(t) % 10);
-}
-
 static void
 hud_line(mu_Context* ctx, int row, const char* text) {
     ui_text_in(ctx, mu_rect(0, HUD_TOP + row * HUD_LINE_H, screen_w, HUD_LINE_H), text, ui_rgb(COL_HUD),
@@ -292,14 +295,18 @@ draw_offsets(mu_Context* ctx) {
     snprintf(line, sizeof line, "%s %d  HITS %d%%", mode == MODE_GRID ? "GRID" : "RANDOM", stats.taps, hit_pct);
     hud_line(ctx, 0, line);
 
-    format_tenths(mean, sizeof mean, touch_probe_mean_dx(&stats));
-    format_tenths(spread, sizeof spread, touch_probe_spread_dx(&stats));
-    snprintf(line, sizeof line, "DX %s SD %s", mean, spread + 1);
+    motion_probe_format_fixed(mean, sizeof mean, (int)lroundf(touch_probe_mean_dx(&stats) * OFFSET_SCALE),
+                              OFFSET_DIGITS, true);
+    motion_probe_format_fixed(spread, sizeof spread, (int)lroundf(touch_probe_spread_dx(&stats) * OFFSET_SCALE),
+                              OFFSET_DIGITS, false);
+    snprintf(line, sizeof line, "DX %s SD %s", mean, spread);
     hud_line(ctx, 1, line);
 
-    format_tenths(mean, sizeof mean, touch_probe_mean_dy(&stats));
-    format_tenths(spread, sizeof spread, touch_probe_spread_dy(&stats));
-    snprintf(line, sizeof line, "DY %s SD %s", mean, spread + 1);
+    motion_probe_format_fixed(mean, sizeof mean, (int)lroundf(touch_probe_mean_dy(&stats) * OFFSET_SCALE),
+                              OFFSET_DIGITS, true);
+    motion_probe_format_fixed(spread, sizeof spread, (int)lroundf(touch_probe_spread_dy(&stats) * OFFSET_SCALE),
+                              OFFSET_DIGITS, false);
+    snprintf(line, sizeof line, "DY %s SD %s", mean, spread);
     hud_line(ctx, 2, line);
 }
 
@@ -342,23 +349,17 @@ read_motion(uint32_t dt_ms) {
         motion_log_ms %= MOTION_LOG_PERIOD_MS;
         ESP_LOGI(TAG, "motion raw %d,%d,%d tilt %d bearing %d filt %d,%d str %d shake %d turn %d",
                  motion.acceleration.x, motion.acceleration.y, motion.acceleration.z,
-                 (int)lroundf(motion_probe.tilt_deg),
-                 (int)lroundf(motion_probe.bearing_deg) % MOTION_PROBE_FULL_TURN_DEG, tilt_x(&tilt), tilt_y(&tilt),
+                 (int)lroundf(motion_probe.tilt_deg), motion_probe.bearing_deg, tilt_x(&tilt), tilt_y(&tilt),
                  tilt_strength(&tilt), tilt_shake(&tilt), motion.turn_speed);
     }
 }
 
-static void
-format_g(char* out, size_t len, float counts) {
-    const int milli = (int)lroundf(counts * MOTION_PROBE_MILLI_SCALE / INPUT_ACCEL_ONE_G);
-    snprintf(out, len, "%c%d.%0*d", milli < 0 ? '-' : '+', abs(milli) / MOTION_PROBE_MILLI_SCALE,
-             MOTION_PROBE_MILLI_DIGITS, abs(milli) % MOTION_PROBE_MILLI_SCALE);
-}
-
-static void
-draw_motion_dot(mu_Context* ctx, int x, int y, int radius, int cx, int cy, int side, uint32_t color) {
-    const vec2i_t offset = motion_probe_bubble(x, y, radius, display_quarter_now());
-    mu_draw_rect(ctx, mu_rect(cx + offset.x - side / 2, cy + offset.y - side / 2, side, side), ui_rgb(color));
+static mu_Rect
+motion_dot_rect(int x, int y, motion_ring_t ring, int side) {
+    const vec2i_t offset = motion_probe_bubble(x, y, ring.radius, display_quarter_now());
+    const mu_Rect bounds = ring.bounds;
+    return mu_rect(mathi_clamp(ring.cx + offset.x - side / 2, bounds.x, bounds.x + bounds.w - side),
+                   mathi_clamp(ring.cy + offset.y - side / 2, bounds.y, bounds.y + bounds.h - side), side, side);
 }
 
 static void
@@ -368,34 +369,36 @@ draw_motion(mu_Context* ctx) {
         return;
     }
     char line[MOTION_HUD_TEXT_SIZE];
-    char x[MOTION_G_TEXT_SIZE], y[MOTION_G_TEXT_SIZE], z[MOTION_G_TEXT_SIZE];
-    char magnitude[MOTION_G_TEXT_SIZE], plane[MOTION_G_TEXT_SIZE];
-    format_g(x, sizeof x, motion.acceleration.x);
-    format_g(y, sizeof y, motion.acceleration.y);
-    format_g(z, sizeof z, motion.acceleration.z);
-    format_g(magnitude, sizeof magnitude, motion_probe.magnitude_counts);
-    format_g(plane, sizeof plane, motion_probe.plane_counts);
-    snprintf(line, sizeof line, "X%s Y%s Z%s |A|%sG", x, y, z, magnitude + 1);
+
+    enum { VALUE_X, VALUE_Y, VALUE_Z, VALUE_MAGNITUDE, VALUE_PLANE, VALUE_FILTER_X, VALUE_FILTER_Y, VALUE_COUNT };
+
+    const float counts[VALUE_COUNT] = {
+        motion.acceleration.x,     motion.acceleration.y, motion.acceleration.z, motion_probe.magnitude_counts,
+        motion_probe.plane_counts, tilt_x(&tilt),         tilt_y(&tilt)};
+    char values[VALUE_COUNT][MOTION_G_TEXT_SIZE];
+    for (size_t i = 0; i < sizeof counts / sizeof counts[0]; i++) {
+        motion_probe_format_fixed(values[i], sizeof values[i],
+                                  (int)lroundf(counts[i] * MOTION_MILLI_SCALE / INPUT_ACCEL_ONE_G), MOTION_MILLI_DIGITS,
+                                  i != VALUE_MAGNITUDE && i != VALUE_PLANE);
+    }
+    snprintf(line, sizeof line, "X%s Y%s Z%s MAG%sG", values[VALUE_X], values[VALUE_Y], values[VALUE_Z],
+             values[VALUE_MAGNITUDE]);
     hud_line(ctx, 0, line);
     snprintf(line, sizeof line, "TILT %d DEG FROM FLAT", (int)lroundf(motion_probe.tilt_deg));
     hud_line(ctx, 1, line);
-    snprintf(line, sizeof line, "BEARING %d DEG PLANE %sG",
-             (int)lroundf(motion_probe.bearing_deg) % MOTION_PROBE_FULL_TURN_DEG, plane + 1);
+    snprintf(line, sizeof line, "BEARING %d DEG PLANE %sG", motion_probe.bearing_deg, values[VALUE_PLANE]);
     hud_line(ctx, 2, line);
-    format_g(x, sizeof x, tilt_x(&tilt));
-    format_g(y, sizeof y, tilt_y(&tilt));
-    snprintf(line, sizeof line, "F %s,%s S%d K%d T%d", x, y, tilt_strength(&tilt), tilt_shake(&tilt),
-             motion.turn_speed);
+    snprintf(line, sizeof line, "F %s,%s S%d K%d T%d", values[VALUE_FILTER_X], values[VALUE_FILTER_Y],
+             tilt_strength(&tilt), tilt_shake(&tilt), motion.turn_speed);
     hud_line(ctx, 3, line);
 
     const int top = HUD_TOP + MOTION_HUD_ROWS * HUD_LINE_H + MOTION_MARGIN;
-    const int bottom = screen_h - MOTION_MARGIN - 2 * HUD_LINE_H;
-    int radius = (bottom - top) / 2;
-    radius = radius < MOTION_RING_RADIUS ? radius : MOTION_RING_RADIUS;
-    const int width_radius = screen_w / 2 - MOTION_MARGIN;
-    radius = radius < width_radius ? radius : width_radius;
+    const int bottom = screen_h - 2 * MOTION_MARGIN - 2 * HUD_LINE_H;
+    const int radius = mathi_min(MOTION_RING_RADIUS, mathi_min((bottom - top) / 2, screen_w / 2 - MOTION_MARGIN));
     const int cx = screen_w / 2;
     const int cy = (top + bottom) / 2;
+    const motion_ring_t ring = {cx, cy, radius,
+                                mu_rect(MOTION_MARGIN, top, screen_w - 2 * MOTION_MARGIN, bottom - top)};
     for (int row = -radius; row <= radius; row += ARC_STEP) {
         const int extent = motion_probe_ring_extent(radius, row);
         const int previous = row > -radius ? motion_probe_ring_extent(radius, row - ARC_STEP) : 0;
@@ -404,13 +407,15 @@ draw_motion(mu_Context* ctx) {
         mu_draw_rect(ctx, mu_rect(cx - left, cy + row, width, ARC_STEP), ui_rgb(COL_MOTION_RING));
         mu_draw_rect(ctx, mu_rect(cx + left - width + 1, cy + row, width, ARC_STEP), ui_rgb(COL_MOTION_RING));
     }
-    draw_motion_dot(ctx, motion.acceleration.x, motion.acceleration.y, radius, cx, cy, MOTION_DOT_SIDE, COL_MISS);
-    draw_motion_dot(ctx, tilt_x(&tilt), tilt_y(&tilt), radius, cx, cy, MOTION_FILTER_SIDE, COL_MOTION_FILTER);
+    mu_draw_rect(ctx, motion_dot_rect(motion.acceleration.x, motion.acceleration.y, ring, MOTION_DOT_SIDE),
+                 ui_rgb(COL_MISS));
+    mu_draw_box(ctx, motion_dot_rect(tilt_x(&tilt), tilt_y(&tilt), ring, MOTION_FILTER_SIDE),
+                ui_rgb(COL_MOTION_FILTER));
     ui_text_in(ctx, mu_rect(0, bottom, screen_w / 2, HUD_LINE_H), "RAW", ui_rgb(COL_MISS), MOTION_HUD_SCALE,
                UI_ALIGN_CENTRE);
     ui_text_in(ctx, mu_rect(screen_w / 2, bottom, screen_w / 2, HUD_LINE_H), "FILTER", ui_rgb(COL_MOTION_FILTER),
                MOTION_HUD_SCALE, UI_ALIGN_CENTRE);
-    ui_text_in(ctx, mu_rect(0, bottom + HUD_LINE_H, screen_w, HUD_LINE_H), "RING 1G  BEARING 0=+X, +TOWARD +Y",
+    ui_text_in(ctx, mu_rect(0, bottom + HUD_LINE_H, screen_w, HUD_LINE_H), "RING 1G  0 DEG=+X CW",
                ui_rgb(COL_MOTION_RING), MOTION_HUD_SCALE, UI_ALIGN_CENTRE);
 }
 
