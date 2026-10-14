@@ -28,7 +28,7 @@ LAYOUT_HEADER = "function\tkind\toffset\tbytes\tlines\tsource_line"
 # Larger loop bodies are dominated by code size, not cache-line placement.
 SMALL_LOOP_MAX_LINES = 4
 LayoutRow = namedtuple("LayoutRow", "function kind offset bytes lines source_line")
-LayoutEntry = namedtuple("LayoutEntry", "function kind address bytes lines source_line", defaults=(0,))
+LayoutEntry = namedtuple("LayoutEntry", "function kind address bytes lines source_line")
 
 
 class LayoutError(Exception):
@@ -182,6 +182,8 @@ def line_span(start, end, line_size):
 def layout_entries(elf, nm, objdump, line_size, functions=None):
     if functions is None:
         functions = [function for group in baselines(SOURCES).values() for function in group]
+    if not functions:
+        return []
     located = {name: (address, size) for address, (name, size) in symbols(nm, elf, functions).items()}
     missing = [function for function in functions if function not in located]
     if missing:
@@ -190,7 +192,7 @@ def layout_entries(elf, nm, objdump, line_size, functions=None):
     source_addresses = []
     for function in functions:
         address, size = located[function]
-        entries.append(LayoutEntry(function, "function", address, size, line_span(address, address + size, line_size)))
+        entries.append(LayoutEntry(function, "function", address, size, line_span(address, address + size, line_size), 0))
         source_addresses.append(address)
         for instruction_address, size, mnemonic, operands in skip_pools(*instructions(objdump, elf, function, address + size)):
             target = target_of(operands)
@@ -200,32 +202,31 @@ def layout_entries(elf, nm, objdump, line_size, functions=None):
                 start, end, kind = target, instruction_address + size, mnemonic + "-back"
             else:
                 continue
-            if 0 < end - start <= SMALL_LOOP_MAX_LINES * line_size:
-                entries.append(LayoutEntry(function, kind, start, end - start, line_span(start, end, line_size)))
+            if end > start and line_span(start, end, line_size) <= SMALL_LOOP_MAX_LINES:
+                entries.append(LayoutEntry(function, kind, start, end - start, line_span(start, end, line_size), 0))
                 source_addresses.append(instruction_address)
-    if entries:
-        locations = []
-        # Inline instructions need the caller's line in the pinned function.
-        for location in run(find_tool("addr2line"), "-a", "-i", "-e", str(elf),
-                            *("0x%x" % address for address in source_addresses)).splitlines():
-            if re.fullmatch(r"0x[0-9a-fA-F]+", location):
-                locations.append("")
-            elif locations:
-                locations[-1] = location
-        if len(locations) != len(entries):
-            raise LayoutError("addr2line returned an incomplete source map for %s" % elf)
-        first_lines = {}
-        for index, (entry, location) in enumerate(zip(entries, locations)):
-            match = re.match(r"(.+):(\d+)(?:\s.*)?$", location)
-            if not match or int(match[2]) == 0:
-                raise LayoutError("no source line for %s at 0x%x" % (entry.function, source_addresses[index]))
-            source, line = match[1], int(match[2])
-            if entry.kind == "function":
-                first_lines[entry.function] = (source, line)
-            first_source, first_line = first_lines[entry.function]
-            if source != first_source:
-                raise LayoutError("%s loop source differs from its function: %s" % (entry.function, location))
-            entries[index] = entry._replace(source_line=line - first_line)
+    locations = []
+    # Inline instructions need the caller's line in the pinned function.
+    for location in run(find_tool("addr2line"), "-a", "-i", "-e", str(elf),
+                        *("0x%x" % address for address in source_addresses)).splitlines():
+        if re.fullmatch(r"0x[0-9a-fA-F]+", location):
+            locations.append("")
+        elif locations:
+            locations[-1] = location
+    if len(locations) != len(entries):
+        raise LayoutError("addr2line returned an incomplete source map for %s" % elf)
+    first_lines = {}
+    for index, (entry, location) in enumerate(zip(entries, locations)):
+        match = re.match(r"(.+):(\d+)(?:\s.*)?$", location)
+        if not match or int(match[2]) == 0:
+            raise LayoutError("no source line for %s at 0x%x" % (entry.function, source_addresses[index]))
+        source, line = match[1], int(match[2])
+        if entry.kind == "function":
+            first_lines[entry.function] = (source, line)
+        first_source, first_line = first_lines[entry.function]
+        if source != first_source:
+            raise LayoutError("%s loop source differs from its function: %s" % (entry.function, location))
+        entries[index] = entry._replace(source_line=line - first_line)
     return entries
 
 
@@ -356,6 +357,11 @@ def main(argv=None):
             if not owners:
                 raise LayoutError("no baseline source folder for %s" % args.baseline)
         sdkconfig = (build / "sdkconfig").read_text(encoding="utf-8")
+        if (args.check or args.write) and not any(
+            baseline_applies(path.read_text(encoding="utf-8") if path.is_file() else "", sdkconfig)
+            for path in owners
+        ):
+            raise LayoutError("no baseline applies to build %s" % requested_build)
         failed = False
         for baseline, functions in owners.items():
             text = baseline.read_text(encoding="utf-8") if baseline.is_file() else ""
