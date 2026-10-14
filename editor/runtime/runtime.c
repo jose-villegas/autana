@@ -10,9 +10,9 @@
 
 #include "app/app.h"
 #include "gfx/gfx.h"
+#include "shell/ui/ui_launcher.h"
+#include "shell/ui/ui_ridge.h"
 #include "ui/ui.h"
-#include "ui/ui_launcher.h"
-#include "ui/ui_ridge.h"
 #include "ui/ui_transform.h"
 
 #define LANDSCAPE_QUARTER 1

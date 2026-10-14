@@ -149,8 +149,8 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
-            gate_tree.write(root, "launcher/main/render/r3d_project.h", "#pragma once\n")
-            gate_tree.write(root, "launcher/main/gfx/gfx.c", '#include "render/r3d_project.h"\n')
+            gate_tree.write(root, "launcher/main/scene/scene.h", "#pragma once\n")
+            gate_tree.write(root, "launcher/main/ui/ui.c", '#include "scene/scene.h"\n')
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(len(findings), 1)
@@ -158,8 +158,7 @@ class StyleAuditTest(unittest.TestCase):
 
     def test_include_direction_judges_the_resolved_file_not_the_spelling(self):
         # A relative include from gfx/ into ui/ must be caught before
-        # INCLUDE-LAYER's own --fix ever runs, since it reaches sideways
-        # within the same tier either way.
+        # INCLUDE-LAYER's own --fix ever runs, since it reaches upward either way.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
@@ -204,8 +203,8 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
-            gate_tree.write(root, "launcher/main/gfx/present/gfx_dirty.h", "#pragma once\n")
-            gate_tree.write(root, "launcher/main/gfx/gfx.c", '#include "gfx/present/gfx_dirty.h"\n')
+            gate_tree.write(root, "launcher/main/gfx/present/send/gfx_dirty.h", "#pragma once\n")
+            gate_tree.write(root, "launcher/main/gfx/gfx.c", '#include "gfx/present/send/gfx_dirty.h"\n')
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(findings, [])
@@ -220,8 +219,8 @@ class StyleAuditTest(unittest.TestCase):
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(len(findings), 1)
 
-    def test_display_and_input_may_not_include_each_other_and_gfx_not_display(self):
-        # display/ is handed gravity by the shell; neither it nor input/ reads the other.
+    def test_input_may_include_display_but_display_not_input_and_gfx_not_display(self):
+        # Input maps gestures into the display viewport; display does not read input.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
@@ -235,8 +234,7 @@ class StyleAuditTest(unittest.TestCase):
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(sorted(f.path for f in findings),
-                         ["launcher/main/display/display_device.c", "launcher/main/gfx/gfx.c",
-                          "launcher/main/input/input_device.c"])
+                         ["launcher/main/display/display_device.c", "launcher/main/gfx/gfx.c"])
 
     def test_boot_and_selftest_may_not_include_each_other(self):
         with tempfile.TemporaryDirectory() as temp:

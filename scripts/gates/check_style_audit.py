@@ -314,12 +314,19 @@ def _fix_include_layer(root, path, text):
 
 # RULE: a folder may include only a strictly lower tier of
 # docs/Firmware-Architecture.md's "Layers" (LAYER_ROWS below, one string per
-# row, top first; the folders in a row share a tier). A system header such
+# row, top first, grouped into system, engine and platform bands; folders
+# in a row share a tier). A system header such
 # as "driver/temperature_sensor.h" never resolves to a layer, and a package
 # (launcher/packages/) sits under every row: PACKAGE-INCLUDE keeps it there.
 
-LAYER_ROWS = ("apps", "shell", "boot selftest", "ui console scene", "app", "display input", "render", "gfx", "anim",
-              "asset", "services", "profile", "core", "board", "build")
+LAYER_ROWS = (
+    # System
+    "apps", "shell", "boot selftest console", "app",
+    # Engine
+    "ui scene", "render", "draw anim", "asset",
+    # Platform
+    "input", "display", "gfx", "services", "profile", "core", "board", "build",
+)
 LAYER_TIER = {layer: tier for tier, row in enumerate(LAYER_ROWS) for layer in row.split()}
 LAYER_DIRS = tuple(layer for layer in LAYER_TIER if layer != "apps")
 

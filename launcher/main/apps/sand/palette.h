@@ -19,7 +19,7 @@
  */
 #pragma once
 
-#include "gfx/draw/gfx_draw.h"
+#include "draw/gfx_draw.h"
 #include "gfx/gfx.h"
 
 /* WHY DERIVED, NOT FIXED: fixing the column count at compile time bakes

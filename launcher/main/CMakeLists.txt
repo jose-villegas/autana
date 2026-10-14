@@ -13,9 +13,9 @@ set(app_srcs
     "display/display.c"
     "display/display_device.c"
     "display/panel_clock.c"
-    "gfx/draw/gfx_draw.c"
-    "gfx/image/gfx_image.c"
-    "gfx/draw/icon.c"
+    "draw/gfx_draw.c"
+    "draw/gfx_image.c"
+    "draw/icon.c"
     "gfx/present/gfx_debug.c"
     "gfx/present/gfx_mode.c"
     "gfx/present/gfx_present.c"
@@ -34,11 +34,11 @@ set(app_srcs
     "ui/ui_build.c"
     "ui/ui_canvas_marks.c"
     "ui/ui_icons.c"
-    "ui/ui_launcher.c"
-    "ui/ui_launcher_draw.c"
+    "shell/ui/ui_launcher.c"
+    "shell/ui/ui_launcher_draw.c"
     "ui/ui_pointer.c"
     "ui/ui_snap.c"
-    "ui/ui_ridge.c"
+    "shell/ui/ui_ridge.c"
     "ui/ui_scroll.c"
     "ui/ui_widgets.c"
     "anim/anim_track.c"
@@ -99,7 +99,7 @@ function(launcher_glob output)
 endfunction()
 
 if(CONFIG_LAUNCHER_QEMU)
-    list(APPEND app_srcs "gfx/present/gfx_null_panel_device.c")
+    list(APPEND app_srcs "gfx/present/panel/gfx_null_panel_device.c")
 endif()
 
 # The frame's view modes: a development tool, with nothing calling them in a
@@ -159,7 +159,8 @@ list(APPEND app_srcs "board/board_esp32s3.c" "board/board_panel.c")
 # The script pass only cares about REQUIRES, so plain globbing is fine there.
 # (This is the same early pass that makes a Kconfig-gated REQUIRES silently
 # fail; see the note on unity below.)
-launcher_glob(discovered_apps "${CMAKE_CURRENT_LIST_DIR}/apps/*.c")
+launcher_glob(discovered_apps "${CMAKE_CURRENT_LIST_DIR}/apps/*.c"
+    "${CMAKE_CURRENT_LIST_DIR}/shell/apps/*.c")
 
 # apps/<name>/tools/ is an app's host-side tooling, not firmware. The glob
 # above is recursive and WHOLE_ARCHIVE force-links whatever it finds, so a
@@ -180,7 +181,8 @@ list(FILTER discovered_apps EXCLUDE REGEX "/suite_[^/]*\\.c$")
 # so deleting the folder deletes the declaration.
 if(NOT CONFIG_LAUNCHER_DEVELOPMENT)
     launcher_glob(development_only_markers
-        "${CMAKE_CURRENT_LIST_DIR}/apps/*/development_only.cmake")
+        "${CMAKE_CURRENT_LIST_DIR}/apps/*/development_only.cmake"
+        "${CMAKE_CURRENT_LIST_DIR}/shell/apps/*/development_only.cmake")
     list(FILTER development_only_markers INCLUDE REGEX
         "/apps/[^/]+/development_only\\.cmake$")
     foreach(marker IN LISTS development_only_markers)
@@ -231,6 +233,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
     if(CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF)
         launcher_glob(perf_scope_files
             "${CMAKE_CURRENT_LIST_DIR}/apps/*/scope_perf.cmake"
+            "${CMAKE_CURRENT_LIST_DIR}/shell/apps/*/scope_perf.cmake"
             "${CMAKE_CURRENT_LIST_DIR}/../test/scope_perf.cmake")
         set(perf_scope_srcs "")
         foreach(perf_scope_file IN LISTS perf_scope_files)

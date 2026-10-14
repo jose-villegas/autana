@@ -89,7 +89,8 @@ SELFTEST build (`selftest/selftest.c` is only added to `app_srcs` under
 A diagnostics build compiles **every** suite, and a full run takes the time
 [Testing-Guide.md](Testing-Guide.md#recommended-practice) gives.
 Perf-scoped compiles only the sources declared in
-`launcher/test/scope_perf.cmake` and `launcher/main/apps/*/scope_perf.cmake`,
+`launcher/test/scope_perf.cmake`, `launcher/main/apps/*/scope_perf.cmake` and
+`launcher/main/shell/apps/*/scope_perf.cmake`,
 so a performance capture does not pay for every other suite too. The same
 glob discovers engine and app manifests; each appends its suite sources and
 link dependencies to `perf_scope_srcs` using `CMAKE_CURRENT_LIST_DIR` paths.

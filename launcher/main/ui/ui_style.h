@@ -1,37 +1,6 @@
-/*
- * ui_style: how a control's frame is drawn, separately from what it is.
- *
- * microui decides WHAT to draw (a button here, at this rect, in this state);
- * this decides HOW that frame looks. The split exists because the two change
- * for different reasons: adding a control is a UI question, and giving every
- * control a raised edge is a looks question that should not require touching
- * a single call site.
- *
- * The hook is microui's own. mu_Context carries a draw_frame function
- * pointer, and every frame (button, checkbox, slider, scrollbar, window
- * background) goes through it with a rect and a colour id. ui.c replaces it
- * (see styled_draw_frame there), so a style applies everywhere at once and
- * nothing in components/microui/ is patched.
- *
- * PURE GEOMETRY, SEPARATE FROM DRAWING
- *
- * The same split gfx/draw/icon.h makes, for the same reason: ui_bezel_spans() returns
- * WHERE the rectangles go and touches nothing else, so a host test can check
- * the shape (see test/suites/suite_ui_style.c) without linking gfx or even
- * microui.c. Nothing here calls a microui function: mu_rect() is a real
- * function in microui.c, so the rectangles below are built as compound
- * literals rather than through it, which is what keeps this header linkable
- * on its own.
- *
- * A STYLE MUST EMIT COMMANDS, NOT PIXELS
- *
- * It would be simpler to reach for gfx_fill_rect() and paint the edges
- * directly. That would break the thing ui.c exists to provide: the repaint
- * skip works by hashing microui's command list, so anything drawn outside
- * that list is invisible to the hash and would survive on screen as a stale
- * edge after the control underneath it changed. Styles produce spans; ui.c
- * turns spans into mu_draw_rect() calls; the hash sees all of it.
- */
+/* UI style geometry. Styles emit commands rather than pixels so command-list
+ * hashing sees their changes. Pure spans keep geometry tests independent
+ * of drawing and microui functions. */
 #pragma once
 
 #include <stdbool.h>

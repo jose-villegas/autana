@@ -1,6 +1,6 @@
 # gfx
 
-The offline half of `main/gfx/image/`: bakes a PNG, or an icon cut from an
+The offline half of `main/draw/`: bakes a PNG, or an icon cut from an
 atlas or an SVG, into a pack entry the firmware draws in place. The entry's layout is
 [the image entry](../../../docs/assets/README.md#the-image-entry). Nothing
 here runs on the board.

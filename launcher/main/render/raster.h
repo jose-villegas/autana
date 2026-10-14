@@ -10,7 +10,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "gfx/gfx_render_target.h"
+#include "gfx/target/gfx_render_target.h"
 #include "render/r3d_instance.h"
 #include "render/raster_attachment.h"
 #include "render/render_view.h"

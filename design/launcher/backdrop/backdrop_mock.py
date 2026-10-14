@@ -1,7 +1,7 @@
 """Look mock of the launcher backdrop in landscape: a flat background, two
 back ridge layers and the front fill carrying the sky gradient, each drawn
 with screen-fixed scanline dither, and a tap and a strum on the spring line.
-The figures are the firmware defaults (launcher/main/ui/ui_ridge.c and
+The figures are the firmware defaults (launcher/main/shell/ui/ui_ridge.c and
 ridge_theme.h), without the breath; it renders pluck.gif to judge the look
 without a board.
 

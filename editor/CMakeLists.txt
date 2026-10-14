@@ -48,7 +48,9 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(nlohmann_json)
 
 # Every gfx source but the device-only *_device.c.
-file(GLOB_RECURSE gfx_srcs CONFIGURE_DEPENDS ${LAUNCHER_DIR}/main/gfx/*.c)
+file(GLOB_RECURSE gfx_srcs CONFIGURE_DEPENDS
+    ${LAUNCHER_DIR}/main/gfx/*.c
+    ${LAUNCHER_DIR}/main/draw/*.c)
 list(FILTER gfx_srcs EXCLUDE REGEX "_device\\.c$")
 
 add_library(editor_runtime STATIC
@@ -66,11 +68,11 @@ add_library(editor_runtime STATIC
     ${LAUNCHER_DIR}/main/ui/ui_build.c
     ${LAUNCHER_DIR}/main/ui/ui_canvas_marks.c
     ${LAUNCHER_DIR}/main/ui/ui_icons.c
-    ${LAUNCHER_DIR}/main/ui/ui_launcher.c
-    ${LAUNCHER_DIR}/main/ui/ui_launcher_draw.c
+    ${LAUNCHER_DIR}/main/shell/ui/ui_launcher.c
+    ${LAUNCHER_DIR}/main/shell/ui/ui_launcher_draw.c
     ${LAUNCHER_DIR}/main/ui/ui_pointer.c
     ${LAUNCHER_DIR}/main/ui/ui_snap.c
-    ${LAUNCHER_DIR}/main/ui/ui_ridge.c
+    ${LAUNCHER_DIR}/main/shell/ui/ui_ridge.c
     ${LAUNCHER_DIR}/main/ui/ui_scroll.c
     ${LAUNCHER_DIR}/main/ui/ui_widgets.c
     ${LAUNCHER_DIR}/main/services/tune.c

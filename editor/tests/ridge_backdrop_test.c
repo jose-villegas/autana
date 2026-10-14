@@ -12,12 +12,12 @@
 #include "editor/runtime.h"
 
 #include "app/app.h"
-#include "gfx/draw/gfx_dither.h"
+#include "draw/gfx_dither.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
+#include "shell/ui/ui_launcher.h"
+#include "shell/ui/ui_ridge.h"
 #include "ui/ui.h"
-#include "ui/ui_launcher.h"
-#include "ui/ui_ridge.h"
 #include "ui/ui_transform.h"
 
 #define FRAME_MS       16

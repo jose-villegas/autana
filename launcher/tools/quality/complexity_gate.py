@@ -88,7 +88,7 @@ EXCLUDED_MAIN_FILES = {
 # own symbol is defined for it, since what such a file calls is often
 # declared only under that symbol.
 VARIANT_ONLY_FILES = {
-    "main/gfx/present/gfx_null_panel_device.c": ("main/gfx/present/gfx_present.c", "CONFIG_LAUNCHER_QEMU"),
+    "main/gfx/present/panel/gfx_null_panel_device.c": ("main/gfx/present/gfx_present.c", "CONFIG_LAUNCHER_QEMU"),
 }
 
 VENDORED_DIR_NAMES = {"components", "managed_components"}

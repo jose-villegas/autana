@@ -184,9 +184,10 @@ $MAIN_DIR/ui/ui_bridge.c
 $MAIN_DIR/ui/ui_build.c
 $MAIN_DIR/ui/ui_canvas_marks.c
 $MAIN_DIR/ui/ui_icons.c
-$MAIN_DIR/ui/ui_launcher_draw.c
+$MAIN_DIR/shell/ui/ui_launcher.c
+$MAIN_DIR/shell/ui/ui_launcher_draw.c
 $MAIN_DIR/ui/ui_pointer.c
-$MAIN_DIR/ui/ui_ridge.c
+$MAIN_DIR/shell/ui/ui_ridge.c
 $MAIN_DIR/ui/ui_snap.c
 $MAIN_DIR/ui/ui_scroll.c
 $MAIN_DIR/ui/ui_widgets.c
@@ -202,8 +203,8 @@ SOURCES="$SOURCES
 $(package_sources "$LAUNCHER_DIR")
 $(package_suites "$LAUNCHER_DIR")"
 
-# Every gfx source but the device-only *_device.c, found rather than listed.
-for gfx_src in $(find "$MAIN_DIR/gfx" -name '*.c' ! -name '*_device.c' | sort); do
+# Drawing and presentation sources, excluding device-only backends.
+for gfx_src in $(find "$MAIN_DIR/gfx" "$MAIN_DIR/draw" -name '*.c' ! -name '*_device.c' | sort); do
     SOURCES="$SOURCES
 $gfx_src"
 done
@@ -235,7 +236,7 @@ done
 # scripts, report generators) is excluded the same way CMake excludes it:
 # by folder, not depth, so a future two-level-deep non-tools folder is swept
 # in rather than silently skipped.
-for f in $(find "$MAIN_DIR/apps" -name '*.c' ! -path '*/tools/*' | sort); do
+for f in $(find "$MAIN_DIR/apps" "$MAIN_DIR/shell/apps" -name '*.c' ! -path '*/tools/*' | sort); do
     [ -e "$f" ] || continue
     case "$(basename "$f")" in
         app_*.c | scene_*.c) continue ;;

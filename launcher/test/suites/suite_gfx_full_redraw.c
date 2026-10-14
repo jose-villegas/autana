@@ -14,8 +14,8 @@
 
 #include "gfx_shared_state.h"
 
-#include "gfx/present/gfx_dirty.h"
-#include "gfx/present/gfx_full_redraw.h"
+#include "gfx/present/send/gfx_dirty.h"
+#include "gfx/present/send/gfx_full_redraw.h"
 
 static void
 fixture(void) {

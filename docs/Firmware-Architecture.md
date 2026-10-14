@@ -18,7 +18,7 @@ home when the app exits. Each frame has one owner per step:
 ![The launcher, rendered on a host with the release build's apps](images/overview/launcher-home.png)
 
 *The launcher on a host render: fixture entries over the ridge backdrop
-(`ui/ui_ridge.c`).*
+(`shell/ui/ui_ridge.c`).*
 
 **Three words that are not interchangeable**, because the code uses all three
 and means something different by each:
@@ -26,7 +26,7 @@ and means something different by each:
 | | |
 |---|---|
 | **shell** | the frame loop and the app switching: `shell/`, whose log tag, shared with `main.c`'s boot lines, is `shell`; `main.c` starts the board and calls `shell_run()` |
-| **launcher** | the home screen the shell draws when no app is running: `ui/ui_launcher.c` |
+| **launcher** | the home screen the shell draws when no app is running: `shell/ui/ui_launcher.c` |
 | **boot** | what runs once before the loop exists: `main.c`'s startup and the animation in `boot/`. The power-on self test and the suite runner in `selftest/` run then too, and an app may run either again later |
 
 The top-level folder `launcher/` is the whole firmware, not the home
@@ -36,74 +36,32 @@ screen.
 
 ## Layers
 
-Each row may include anything in a row below it, never a row above or a
-folder beside it in the same row. The top row is the two callers, and
-neither includes the other: `main.c` starts the board and calls
-`shell_run()`, and the apps. The shell reaches an app only through the
-callbacks `app/app.h` declares. Folders that touch hardware are marked.
-`ls launcher/main/<folder>` is the inventory; this is the shape.
+Each row may include any lower row, never a higher row or another folder in
+its own row. The tier key is the first path component. `main.c` starts the
+board and calls `shell_run()`; the shell reaches apps through `app/app.h`
+callbacks. System-owned applications live under `shell/apps/` and share the
+shell tier. The inventory is `launcher/main/`; the include gate's order is
+`LAYER_ROWS` in `scripts/gates/check_style_audit.py`.
 
-```mermaid
-flowchart TB
-    classDef hw fill:#8a3d3d,color:#fff
-
-    subgraph R1["callers"]
-        Apps["apps/<br/><i>one folder per app</i>"]
-        Main["main.c<br/><i>boot order, then shell_run()</i>"]
-    end
-    subgraph R2["the runtime"]
-        Shell["shell/<br/><i>the frame loop, app switching, engine systems</i>"]
-    end
-    subgraph R3["boot and self test"]
-        Boot["boot/<br/><i>the startup animation</i>"]
-        Selftest["selftest/<br/><i>power-on self test, the on-board suite runner</i>"]:::hw
-    end
-    subgraph R4["UI, console and scenes"]
-        Ui["ui/<br/><i>microui, launcher</i>"]
-        Console["console/<br/><i>serial verbs, dev builds</i>"]:::hw
-        Scene["scene/<br/><i>scenes loaded by name, the active camera</i>"]
-    end
-    subgraph R5["the app contract"]
-        App["app/<br/><i>the shell/app contract, the app list, the app arena</i>"]
-    end
-    subgraph R6["panel and sensors"]
-        Display["display/<br/><i>orientation from the gravity it is handed, panel clock, panel start</i>"]:::hw
-        Input["input/<br/><i>touch, buttons, IMU, gesture</i>"]:::hw
-    end
-    subgraph R7["rendering"]
-        Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
-    end
-    subgraph R7b["drawing"]
-        Gfx["gfx/<br/><i>the one framebuffer, draw/ into it, present/ it</i>"]:::hw
-    end
-    subgraph R8["animation"]
-        Anim["anim/<br/><i>keyed tracks sampled over time, tweens and easing</i>"]
-    end
-    subgraph R9["content"]
-        Asset["asset/<br/><i>content packs, read in place</i>"]:::hw
-    end
-    subgraph R10["device services"]
-        Services["services/<br/><i>settings, tunables, build id</i>"]:::hw
-    end
-    subgraph R11["frame measurement"]
-        Profile["profile/<br/><i>frame cost, frame watch</i>"]:::hw
-    end
-    subgraph R12["the platform core"]
-        Core["core/<br/><i>two-core jobs, memory placement, time</i>"]:::hw
-    end
-    subgraph R13["board"]
-        Board["board/<br/><i>this board's pins, peripherals and panel link</i>"]:::hw
-    end
-    subgraph R14["the build switch"]
-        Build["build/<br/><i>which build variant this is</i>"]
-    end
-    subgraph R15["packages: launcher/packages/"]
-        Math["math/<br/><i>scalars per number type, vectors to transforms, motion</i>"]
-    end
-
-    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R7b --> R8 --> R9 --> R10 --> R11 --> R12 --> R13 --> R14 --> R15
-    Shell -.->|"calls through app/app.h"| Apps
-```
+| Band | Row, top first | Responsibility |
+|---|---|---|
+| system | `apps` | project applications |
+| system | `shell` | frame loop, app switching, system screens and applications |
+| system | `boot selftest console` | startup, hardware checks and development console |
+| system | `app` | callbacks, registry and app arena |
+| engine | `ui scene` | UI toolkit and scene entities, camera and systems |
+| engine | `render` | transform, clip, projection and rasterization |
+| engine | `draw anim` | pixel drawing and animation sampling |
+| engine | `asset` | content packs and read-in-place entries |
+| platform | `input` | touch, buttons, motion and gestures |
+| platform | `display` | viewport, orientation and panel clock |
+| platform | `gfx` | target value types, framebuffer and presentation |
+| platform | `services` | settings, tunables and build identity |
+| platform | `profile` | frame cost and frame watch |
+| platform | `core` | jobs, memory placement and time |
+| platform | `board` | pins and device drivers |
+| platform | `build` | build-variant declarations |
+| packages | `math` | independent shared base, checked by PACKAGE-INCLUDE |
 
 - **Includes are layer-qualified**: `"gfx/gfx.h"`, not `"gfx.h"`, even
   between two files in the same folder, so an app reaching past `ui` into
@@ -387,12 +345,12 @@ every host render scene, and every on-device test that presents more than
 ## Apps in the build
 
 How to write one is [Building-an-App.md](Building-an-App.md). What matters
-architecturally: the build globs `apps/**/*.c` and each app registers itself
+architecturally: the build globs `apps/**/*.c` and `shell/apps/**/*.c`, and each app registers itself
 from its own file, so adding or deleting an app touches no other file, and
 the component is linked `WHOLE_ARCHIVE` because nothing references an app by
 name. A bench-only app declares itself the same way: a
 `development_only.cmake` in its folder leaves it out when
-`CONFIG_LAUNCHER_DEVELOPMENT` is off, so the build names no app and deleting
+`CONFIG_LAUNCHER_DEVELOPMENT` is off, so the build names no application and deleting
 the folder deletes the declaration. What each build variant carries is
 [Build-Variants.md](Build-Variants.md).
 

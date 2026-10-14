@@ -20,9 +20,9 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "gfx/draw/gfx_draw.h"
-#include "gfx/draw/gfx_font.h"
-#include "gfx/draw/gfx_target.h"
+#include "draw/gfx_draw.h"
+#include "draw/gfx_font.h"
+#include "gfx/target/gfx_target.h"
 
 /* gfx_font_8x8: the real, shipped font */
 

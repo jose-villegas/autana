@@ -184,7 +184,7 @@ accumulators the pause built up.
 ### A screen over a backdrop that is drawn
 
 `ui_end_over(paint_backdrop)` is `ui_end()` for a backdrop that is a picture
-and not a colour; the launcher's ridge (`ui/ui_ridge.c`) is the model.
+and not a colour; the launcher's ridge (`shell/ui/ui_ridge.c`) is the model.
 
 1. `paint_backdrop` paints the whole screen. It is called only when the UI
    itself changed, and every canvas is then painted over it.
