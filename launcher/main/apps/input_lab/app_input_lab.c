@@ -287,27 +287,25 @@ hud_line(mu_Context* ctx, int row, const char* text) {
 }
 
 static void
+hud_offset_line(mu_Context* ctx, int row, const char* label, float mean, float spread) {
+    char line[64];
+    char mean_text[24], spread_text[24];
+    motion_probe_format_fixed(mean_text, sizeof mean_text, (int)lroundf(mean * OFFSET_SCALE), OFFSET_DIGITS, true);
+    motion_probe_format_fixed(spread_text, sizeof spread_text, (int)lroundf(spread * OFFSET_SCALE), OFFSET_DIGITS,
+                              false);
+    snprintf(line, sizeof line, "%s %s SD %s", label, mean_text, spread_text);
+    hud_line(ctx, row, line);
+}
+
+static void
 draw_offsets(mu_Context* ctx) {
     char line[64];
-    char mean[24], spread[24];
     const int hit_pct = stats.taps > 0 ? (100 * stats.hits + stats.taps / 2) / stats.taps : 0;
 
     snprintf(line, sizeof line, "%s %d  HITS %d%%", mode == MODE_GRID ? "GRID" : "RANDOM", stats.taps, hit_pct);
     hud_line(ctx, 0, line);
-
-    motion_probe_format_fixed(mean, sizeof mean, (int)lroundf(touch_probe_mean_dx(&stats) * OFFSET_SCALE),
-                              OFFSET_DIGITS, true);
-    motion_probe_format_fixed(spread, sizeof spread, (int)lroundf(touch_probe_spread_dx(&stats) * OFFSET_SCALE),
-                              OFFSET_DIGITS, false);
-    snprintf(line, sizeof line, "DX %s SD %s", mean, spread);
-    hud_line(ctx, 1, line);
-
-    motion_probe_format_fixed(mean, sizeof mean, (int)lroundf(touch_probe_mean_dy(&stats) * OFFSET_SCALE),
-                              OFFSET_DIGITS, true);
-    motion_probe_format_fixed(spread, sizeof spread, (int)lroundf(touch_probe_spread_dy(&stats) * OFFSET_SCALE),
-                              OFFSET_DIGITS, false);
-    snprintf(line, sizeof line, "DY %s SD %s", mean, spread);
-    hud_line(ctx, 2, line);
+    hud_offset_line(ctx, 1, "DX", touch_probe_mean_dx(&stats), touch_probe_spread_dx(&stats));
+    hud_offset_line(ctx, 2, "DY", touch_probe_mean_dy(&stats), touch_probe_spread_dy(&stats));
 }
 
 static void
