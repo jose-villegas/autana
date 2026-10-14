@@ -192,131 +192,163 @@ step_edge(edge_t* e) {
     }
 }
 
+/* Separate register windows keep the row walk's edges out of the pixel loops. */
+static RENDER_IRAM_ATTR __attribute__((noinline)) void
+fill_flat(uint16_t* depth, uint16_t* color, int count, uint16_t z, uint16_t face) {
+    for (int i = 0; i < count; i++) {
+        if (z > depth[i]) {
+            depth[i] = z;
+            color[i] = face;
+        }
+    }
+}
+
+static RENDER_IRAM_ATTR __attribute__((noinline)) void
+fill_solid(uint16_t* depth, uint16_t* color, int count, int32_t z, int32_t dz, uint16_t face) {
+    for (int i = 0; i < count; i++) {
+        const uint16_t zq = (uint16_t)(z >> R3D_DEPTH_SHIFT);
+        if (zq > depth[i]) {
+            depth[i] = zq;
+            color[i] = face;
+        }
+        z += dz;
+    }
+}
+
+typedef struct {
+    int32_t value[ATTRIBUTES];
+    int32_t step[ATTRIBUTES];
+} span_values_t;
+
+/* Packing after the depth test bounds live temporaries to the register window. */
+static RENDER_IRAM_ATTR __attribute__((noinline, optimize("no-schedule-insns"))) void
+fill_gouraud(uint16_t* depth, uint16_t* color, int count, const span_values_t* span) {
+    int32_t z = span->value[0], r = span->value[1], g = span->value[2], b = span->value[3];
+    const int32_t dz = span->step[0], dr = span->step[1], dg = span->step[2], db = span->step[3];
+    for (int i = 0; i < count; i++) {
+        const uint16_t zq = (uint16_t)(z >> R3D_DEPTH_SHIFT);
+        if (zq > depth[i]) {
+            depth[i] = zq;
+            color[i] = r3d_span_pack(r, g, b);
+        }
+        z += dz;
+        r += dr;
+        g += dg;
+        b += db;
+    }
+}
+
 /* The left edge may lie outside the screen, where the plane can exceed
  * int32. Unsigned carries preserve its low bits until a visible start. */
 static RENDER_IRAM_ATTR void
-walk_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1, edge_t* left,
-          edge_t* right) {
+walk_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1, edge_t* left_edge,
+          edge_t* right_edge) {
+    edge_t left = *left_edge;
+    edge_t right = *right_edge;
     const int last_column = target->rows.width - 1;
     if (r3d_span_stop_after == 2) {
         for (int y = y0; y < y1; y++) {
-            step_edge(left);
-            step_edge(right);
+            step_edge(&left);
+            step_edge(&right);
         }
+        *left_edge = left;
+        *right_edge = right;
         return;
     }
     if (f->flat) {
         for (int y = y0; y < y1; y++) {
-            const int x_first = left->q < 0 ? 0 : left->q;
-            const int x_last = right->q - 1 > last_column ? last_column : right->q - 1;
+            const int x_first = left.q < 0 ? 0 : left.q;
+            const int x_last = right.q - 1 > last_column ? last_column : right.q - 1;
             if (x_first <= x_last && r3d_span_stop_after != 3) {
                 uint16_t* depth = gfx_render_target_depth(&target->rows, y);
                 uint16_t* color = gfx_render_target_color(&target->rows, y);
-                for (int x = x_first; x <= x_last; x++) {
-                    if (f->flat_z > depth[x]) {
-                        depth[x] = f->flat_z;
-                        color[x] = f->flat_color;
-                    }
-                }
+                fill_flat(depth + x_first, color + x_first, x_last - x_first + 1, f->flat_z, f->flat_color);
             }
-            step_edge(left);
-            step_edge(right);
+            step_edge(&left);
+            step_edge(&right);
         }
+        *left_edge = left;
+        *right_edge = right;
         return;
     }
     const gradients_t* g = f->g;
     if (f->face != NULL) {
         uint32_t carried = row[0];
-        const uint32_t increment = (uint32_t)g->dy[0] + (uint32_t)g->dx[0] * (uint32_t)left->qs;
+        const uint32_t increment = (uint32_t)g->dy[0] + (uint32_t)g->dx[0] * (uint32_t)left.qs;
         const uint32_t extra_increment = increment + (uint32_t)g->dx[0];
         for (int y = y0; y < y1; y++) {
-            const int x_first = left->q < 0 ? 0 : left->q;
-            const int x_last = right->q - 1 > last_column ? last_column : right->q - 1;
+            const int x_first = left.q < 0 ? 0 : left.q;
+            const int x_last = right.q - 1 > last_column ? last_column : right.q - 1;
             if (x_first <= x_last && r3d_span_stop_after != 3) {
                 int32_t z = (int32_t)carried;
                 int32_t dz = g->dx[0];
-                if (left->q < 0) {
-                    z = (int32_t)(carried + (uint32_t)dz * (uint32_t)-left->q);
+                if (left.q < 0) {
+                    z = (int32_t)(carried + (uint32_t)dz * (uint32_t)-left.q);
                 }
                 if (!g->in_range) {
                     clamp_span(0, x_last - x_first, &z, &dz);
                 }
                 uint16_t* depth = gfx_render_target_depth(&target->rows, y);
                 uint16_t* color = gfx_render_target_color(&target->rows, y);
-                for (int x = x_first; x <= x_last; x++) {
-                    const uint16_t zq = (uint16_t)(z >> R3D_DEPTH_SHIFT);
-                    if (zq > depth[x]) {
-                        depth[x] = zq;
-                        color[x] = f->flat_color;
-                    }
-                    z += dz;
-                }
+                fill_solid(depth + x_first, color + x_first, x_last - x_first + 1, z, dz, f->flat_color);
             }
-            left->q += left->qs;
-            left->r += left->rs;
-            if (left->r >= left->d) {
-                left->r -= left->d;
-                left->q++;
+            left.q += left.qs;
+            left.r += left.rs;
+            if (left.r >= left.d) {
+                left.r -= left.d;
+                left.q++;
                 carried += extra_increment;
             } else {
                 carried += increment;
             }
-            step_edge(right);
+            step_edge(&right);
         }
         row[0] = carried;
+        *left_edge = left;
+        *right_edge = right;
         return;
     }
     uint32_t increment[ATTRIBUTES];
     uint32_t extra_increment[ATTRIBUTES];
     for (int k = 0; k < ATTRIBUTES; k++) {
-        increment[k] = (uint32_t)g->dy[k] + (uint32_t)g->dx[k] * (uint32_t)left->qs;
+        increment[k] = (uint32_t)g->dy[k] + (uint32_t)g->dx[k] * (uint32_t)left.qs;
         extra_increment[k] = increment[k] + (uint32_t)g->dx[k];
     }
     for (int y = y0; y < y1; y++) {
-        const int x_first = left->q < 0 ? 0 : left->q;
-        const int x_last = right->q - 1 > last_column ? last_column : right->q - 1;
+        const int x_first = left.q < 0 ? 0 : left.q;
+        const int x_last = right.q - 1 > last_column ? last_column : right.q - 1;
         if (x_first <= x_last && r3d_span_stop_after != 3) {
-            int32_t v[ATTRIBUTES];
-            int32_t d[ATTRIBUTES];
+            span_values_t span;
             for (int k = 0; k < ATTRIBUTES; k++) {
                 uint32_t start = row[k];
-                d[k] = g->dx[k];
-                if (left->q < 0) {
-                    start += (uint32_t)d[k] * (uint32_t)-left->q;
+                span.step[k] = g->dx[k];
+                if (left.q < 0) {
+                    start += (uint32_t)span.step[k] * (uint32_t)-left.q;
                 }
-                v[k] = (int32_t)start;
+                span.value[k] = (int32_t)start;
                 if (!g->in_range) {
-                    clamp_span(k, x_last - x_first, &v[k], &d[k]);
+                    clamp_span(k, x_last - x_first, &span.value[k], &span.step[k]);
                 }
             }
             uint16_t* depth = gfx_render_target_depth(&target->rows, y);
             uint16_t* color = gfx_render_target_color(&target->rows, y);
-            int32_t z = v[0], r = v[1], gg = v[2], b = v[3];
-            for (int x = x_first; x <= x_last; x++) {
-                const uint16_t zq = (uint16_t)(z >> R3D_DEPTH_SHIFT);
-                if (zq > depth[x]) {
-                    depth[x] = zq;
-                    color[x] = r3d_span_pack(r, gg, b);
-                }
-                z += d[0];
-                r += d[1];
-                gg += d[2];
-                b += d[3];
-            }
+            fill_gouraud(depth + x_first, color + x_first, x_last - x_first + 1, &span);
         }
         const uint32_t* advance = increment;
-        left->q += left->qs;
-        left->r += left->rs;
-        if (left->r >= left->d) {
-            left->r -= left->d;
-            left->q++;
+        left.q += left.qs;
+        left.r += left.rs;
+        if (left.r >= left.d) {
+            left.r -= left.d;
+            left.q++;
             advance = extra_increment;
         }
         for (int k = 0; k < ATTRIBUTES; k++) {
             row[k] += advance[k];
         }
-        step_edge(right);
+        step_edge(&right);
     }
+    *left_edge = left;
+    *right_edge = right;
 }
 
 /* Every writer of the target over one span. */
