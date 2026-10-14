@@ -34,11 +34,10 @@ typedef struct {
 #define INPUT_ACCEL_ONE_G      4096
 #define INPUT_ROTATION_ONE_DPS 64
 
-/* Raw acceleration is Q12 g: x right, y down, z out of the panel.
- * This left-handed frame reads +1 g on y upright and -1 g on z face up.
- * Signed `rotation` is Q6 deg/s in the same axes: x=-gy, y=gx, z=gz;
- * signs pass through that mapping, without an axial-vector correction.
- * `turn_speed` remains |gx|+|gy|+|gz| in whole deg/s, unsigned and axisless. */
+/* Raw acceleration: Q12 g in screen axes (x right, y down, z out).
+ * Rotation: Q6 deg/s, x=-gy, y=gx, z=gz. Measured right-hand sense:
+ * +z clockwise from front, +x bottom edge toward viewer, +y right edge away.
+ * turn_speed is unsigned |gx|+|gy|+|gz| in deg/s. */
 typedef struct {
     vec3i_t acceleration;
     int turn_speed;

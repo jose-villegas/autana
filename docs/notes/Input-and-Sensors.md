@@ -60,6 +60,9 @@ one I2C read per call, into `input_motion_t`:
 | `rotation` | signed raw gyro counts, Q6 deg/s (`INPUT_ROTATION_ONE_DPS`), in the same panel axes: x = -gy, y = gx, z = gz |
 | `turn_speed` | deg/s, the sum of the gyroscope's absolute rates over all three axes: a speed, no sign or axis |
 
+Measured rotation follows the right-hand rule on the screen axes: +z is clockwise from
+the front, +x tips the bottom edge toward the viewer, +y turns the right edge away.
+
 ### Calibration round
 
 A tap on the development Motion page starts a calibration round when idle
@@ -96,13 +99,48 @@ windows. `pose` lines contain rounded Q12 g and Q6 deg/s means and sample
 counts; `calib` reports offsets in mg, sensitivity in ppm (unity is 1000000),
 and gyro offsets in mdps.
 
-`python motion_fit.py boot.log warm.log
---window-seconds 10` prints fits and consecutive-round differences, first and
-last elapsed-time-window gyro means, and quarter transitions with tilt and
-raw acceleration. Supply one boot per capture and hold the board still in
-both endpoint windows. The first window starts at the first Motion log, so
-it represents boot only when recording starts near boot. The 10 Hz Motion
-log records the shell quarter even though the page remains pinned.
+The Motion log records the shell quarter even though the page remains pinned.
+The tool reports calibration fits and consecutive-round differences, the longest
+still stretch before the first calibration round, and flat face-up quarter shares.
+Stillness requires turn speed at most 15 deg/s and tilt within 2 degrees of the
+stretch's start; a gap above 250 ms ends the stretch. The first and last windows
+default to 60 seconds and may overlap. Flat samples require tilt below 10 degrees,
+negative z and the same turn limit; transitions require consecutive flat-still
+samples. Thresholds are named in `motion_fit.py`.
+
+#### Measured on the board
+
+The captures are kept outside the repository. Supply their locations to
+the tool; the command below uses plain capture names:
+
+```sh
+python motion_fit.py cjsd1-round1.log cjsd1-round2.log
+```
+
+All vectors below are x,y,z; gyro values and noise are mdps, offsets mg and
+scales ppm. The incomplete calibration round is excluded from the fit comparison.
+
+| Measurement | Capture 1 | Capture 2 (after power cycle) |
+|---|---|---|
+| Accel offset | 104,22,-107 | 109,22,-106 |
+| Accel scale | 1008886,996951,993883 | 1009651,997281,994040 |
+| Round-mean gyro | -6585,2606,-665 | -6642,1525,-628 |
+| Pre-round still uptime s | 70.487-76.937 | 58.510-408.115 |
+| First 60 s gyro / samples | -6017,2366,-755 / 65 | -7637,1593,-702 / 596 |
+| Last 60 s gyro / samples | -6017,2366,-755 / 65 | -7584,1064,-632 / 597 |
+| Still gyro noise sigma | 910,1077,1010 | 918,1008,1035 |
+| Flat-still samples | 1296 | 6940 |
+| Quarter shares q0,q1,q2,q3 % | 0.2,0.0,0.0,99.8 | 0.0,0.0,0.0,100.0 |
+| Median flat bearing degrees | 16 | 17 |
+| Flat-still transitions | 2: 95.544 s 3 -> 0; 95.655 s 0 -> 3 | 0 |
+
+- Accel error is mostly offset: x +104 to +109 mg, y +22 mg, z -107 to -106 mg; scale errors are x +0.8886 to +0.9651%, y -0.3049 to -0.2719%, z -0.6117 to -0.5960%.
+- Across the power cycle, offset differences are 5,0,1 mg and scale differences 0.0765,0.0330,0.0157 percentage points.
+- At rest, x stays -7.637 to -7.584 dps, y drifts +1.593 to +1.064 dps, and z is -0.702 to -0.632 dps, with sigma about 1 dps per axis; round means are -6.585,+2.606,-0.665 and -6.642,+1.525,-0.628 dps, motivating M2 bias tracking rather than a stored constant.
+- Flat face up settles on q3 in 99.8% and 100.0% of still samples across held quarters: the +x offset supplies about 0.1 g in-plane at bearing 16-17 degrees; display.c has no flat gate, motivating M3 flat hold and z lockout.
+
+Rotation sense is measured across both captures: gravity change agrees with
+`dg/dt = -(omega x g)` (fitted gain -0.4 at 10 Hz; sign agreement about 2:1 over roughly 550 tipping samples).
 
 ## The two buttons are not the same kind of device
 

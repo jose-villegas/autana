@@ -71,24 +71,29 @@ test_mapping_and_pose_names(void) {
 }
 
 static void
+check_departure_sample(int axis, bool gyro, int sign, int side) {
+    imu_probe_round_t* round = calloc(1, sizeof *round);
+    TEST_ASSERT_NOT_NULL(round);
+    imu_probe_start(round, 0);
+    input_motion_t sample = fixture();
+    imu_probe_update(round, &sample, TEST_DT_MS);
+    const int departure = sign * ((gyro ? IMU_PROBE_GYRO_DEPARTURE : IMU_PROBE_ACCEL_DEPARTURE) + side);
+    const vec3i_t delta = {axis == 0 ? departure : 0, axis == 1 ? departure : 0, axis == 2 ? departure : 0};
+    if (gyro) {
+        sample.rotation = vec3i_add(sample.rotation, delta);
+    } else {
+        sample.acceleration = vec3i_add(sample.acceleration, delta);
+    }
+    imu_probe_update(round, &sample, TEST_DT_MS);
+    TEST_ASSERT_EQUAL_UINT32(side < 0 ? TEST_DT_MS : 0, round->settle_ms);
+    free(round);
+}
+
+static void
 check_departure(int axis, bool gyro) {
     for (int sign = -1; sign <= 1; sign += 2) {
         for (int side = -1; side <= 1; side++) {
-            imu_probe_round_t* round = calloc(1, sizeof *round);
-            TEST_ASSERT_NOT_NULL(round);
-            imu_probe_start(round, 0);
-            input_motion_t sample = fixture();
-            imu_probe_update(round, &sample, TEST_DT_MS);
-            const int departure = sign * ((gyro ? IMU_PROBE_GYRO_DEPARTURE : IMU_PROBE_ACCEL_DEPARTURE) + side);
-            const vec3i_t delta = {axis == 0 ? departure : 0, axis == 1 ? departure : 0, axis == 2 ? departure : 0};
-            if (gyro) {
-                sample.rotation = vec3i_add(sample.rotation, delta);
-            } else {
-                sample.acceleration = vec3i_add(sample.acceleration, delta);
-            }
-            imu_probe_update(round, &sample, TEST_DT_MS);
-            TEST_ASSERT_EQUAL_UINT32(side < 0 ? TEST_DT_MS : 0, round->settle_ms);
-            free(round);
+            check_departure_sample(axis, gyro, sign, side);
         }
     }
 }

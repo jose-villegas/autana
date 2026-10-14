@@ -20,19 +20,56 @@ class MotionFitTest(unittest.TestCase):
         self.assertEqual(3, len(motion))
         self.assertEqual((32, -64, 0), motion[0]["rotation"])
 
-    def test_endpoints_use_elapsed_time_and_include_boundary(self):
-        _, motion = self.fixture()
-        first, last = motion_fit.endpoints(motion, 10)
-        self.assertEqual(2, len(first))
-        self.assertEqual(2, len(last))
-        self.assertEqual((750, -750, 0), motion_fit.gyro_mean(first))
-        self.assertEqual((1250, -250, 250), motion_fit.gyro_mean(last))
+    def test_rest_excludes_rounds_motion_and_tilt_departure(self):
+        def sample(ms, tilt=6, turn=10, before_round=True):
+            return {"ms": ms, "tilt": tilt, "turn": turn, "before_round": before_round,
+                    "rotation": (64, 128, -64), "raw": (400, 100, -4096),
+                    "bearing": 16, "quarter": 3}
+        samples = [sample(0), sample(100), sample(200, tilt=9),
+                   sample(300), sample(400), sample(500), sample(600, turn=30),
+                   sample(700, before_round=False), sample(800, before_round=False)]
+        rest = motion_fit.rest_stretch(samples)
+        self.assertEqual([300, 400, 500], [s["ms"] for s in rest])
+        first, last = motion_fit.endpoints(rest, 0.1)
+        self.assertEqual([300, 400], [s["ms"] for s in first])
+        self.assertEqual([400, 500], [s["ms"] for s in last])
+        self.assertEqual((1000, 2000, -1000), motion_fit.gyro_mean(first))
         self.assertIsNone(motion_fit.gyro_mean([]))
+        self.assertEqual([], motion_fit.rest_stretch(samples[-2:]))
 
-    def test_quarter_transition_retains_flatness_evidence(self):
-        _, motion = self.fixture()
-        [(old, sample)] = motion_fit.transitions(motion)
-        self.assertEqual((1, 2, 0), (old, sample["quarter"], sample["tilt"]))
+    def test_still_limits_and_gap_boundary(self):
+        _, samples = self.fixture()
+        base = dict(samples[0], before_round=True, turn=motion_fit.STILL_TURN_LIMIT_DPS)
+        band = motion_fit.STILL_TILT_BAND_DEG
+        gap = motion_fit.MAX_SAMPLE_GAP_MS
+        samples = [dict(base, ms=0, tilt=0), dict(base, ms=gap, tilt=band),
+                   dict(base, ms=2 * gap + 1, tilt=band)]
+        self.assertEqual(samples[:2], motion_fit.rest_stretch(samples))
+        self.assertEqual([], motion_fit.rest_stretch([dict(base, turn=base["turn"] + 1)]))
+        self.assertEqual([samples[1]], motion_fit.flat_samples([
+            dict(base, tilt=motion_fit.FLAT_TILT_LIMIT_DEG), samples[1]]))
+
+    def test_parse_marks_samples_after_first_round(self):
+        line = "I (100) motion raw 1,2,-4096 tilt 6 bearing 16 turn 10 rot 1,2,3 quarter 3"
+        _, samples = motion_fit.parse([line, "round imu quarter 1", line])
+        self.assertEqual([True, False], [s["before_round"] for s in samples])
+        self.assertEqual((16, 10), (samples[0]["bearing"], samples[0]["turn"]))
+
+    def test_flat_quarters_and_transitions_exclude_handling_and_gaps(self):
+        _, samples = self.fixture()
+        base = samples[0]
+        samples = [dict(base, ms=i * 100, quarter=q, bearing=16)
+                   for i, q in enumerate((1, 3, 3, 2, 3, 3))]
+        samples[3]["turn"] = motion_fit.STILL_TURN_LIMIT_DPS + 1
+        samples[4]["raw"] = (0, 0, 4096)
+        samples.append(dict(base, ms=5000, quarter=0, tilt=motion_fit.FLAT_TILT_LIMIT_DEG))
+        flat = motion_fit.flat_samples(samples)
+        self.assertEqual([1, 3, 3, 3], [s["quarter"] for s in flat])
+        [(old, sample)] = motion_fit.transitions(samples)
+        self.assertEqual((1, 3, 100), (old, sample["quarter"], sample["ms"]))
+        text = motion_fit.report([("flat", [], samples)], 60)
+        self.assertIn("0.0,25.0,0.0,75.0", text)
+        self.assertIn("16", text)
 
     def test_report_delta_and_restarted_incomplete_round(self):
         rounds, motion = self.fixture()
@@ -46,7 +83,7 @@ class MotionFitTest(unittest.TestCase):
     def test_c_log_formats_parse(self):
         source = (Path(__file__).parents[1] / "app_input_lab.c").read_text()
         for prefix, regex, values, expected in (
-            ("motion", motion_fit.MOTION, tuple(range(1, 15)), ("1", "2", "3", "4", "11", "12", "13", "14")),
+            ("motion", motion_fit.MOTION, tuple(range(1, 15)), ("1", "2", "3", "4", "5", "10", "11", "12", "13", "14")),
             ("pose", motion_fit.POSE, ("face_up", 1, -2, 3, -4, 5, -6, 7), ("face_up", "1 -2 3 -4 5 -6 7")),
             ("calib", motion_fit.CALIB, tuple(range(1, 10)), tuple(map(str, range(1, 10)))),
         ):
@@ -61,8 +98,8 @@ class MotionFitTest(unittest.TestCase):
     def test_cli_rejects_uptime_reset(self):
         with tempfile.TemporaryDirectory() as directory:
             capture = Path(directory) / "reset.log"
-            capture.write_text("I (2000) motion raw 0,0,0 tilt 0 rot 1,2,3 quarter 1\n"
-                               "I (1000) motion raw 0,0,0 tilt 0 rot 1,2,3 quarter 1\n")
+            capture.write_text("I (2000) motion raw 0,0,0 tilt 0 bearing 0 turn 1 rot 1,2,3 quarter 1\n"
+                               "I (1000) motion raw 0,0,0 tilt 0 bearing 0 turn 1 rot 1,2,3 quarter 1\n")
             result = subprocess.run([sys.executable, motion_fit.__file__, str(capture)], capture_output=True, text=True)
             self.assertEqual(2, result.returncode)
             self.assertIn("uptime resets", result.stderr)
