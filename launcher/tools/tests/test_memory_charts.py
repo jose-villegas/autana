@@ -229,7 +229,7 @@ class MemoryChartTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             doc = Path(directory) / 'map.md'
             chart_documents(doc)
-            build = dict(variant='release', idf_commit='fixture', inputs=[], owned={})
+            build = dict(variant='release', idf_commit='fixture', inputs=[], placed_inputs=[], linker_entries=(), owned={})
             with chart_cli(doc, build), patch.object(memory, 'render', side_effect=lambda *args, **kwargs: self.body()), patch.object(sys, 'argv', ['memory_map.py', 'fixture', '--write']):
                 self.assertEqual(memory.main(), 0)
             for name in memory.CHARTS.values():
@@ -247,6 +247,7 @@ class MemoryChartTests(unittest.TestCase):
                      constants={'_data_start': 0x3fc88020, '_heap_start': 0x3fc88080},
                      size={'layout': [{'name': 'DIRAM', 'used': 128}]}, align=256, pad=16, slack=0,
                      inputs=[memory.Input('libpart.a', 'part.c.obj', 'part', 32)], owned={}, report=[])
+        build.update(placed_inputs=build['inputs'], linker_entries=())
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             doc = root / 'map.md'
