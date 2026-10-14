@@ -50,7 +50,8 @@ class ResolutionTests(unittest.TestCase):
 
     def test_commit_ignores_the_git_hook_environment(self):
         other = self.checkout(self.root / 'other-repo')
-        hook = {'GIT_DIR': str(other / '.git'), 'GIT_WORK_TREE': str(other)}
+        hook = {'GIT_DIR': str(other / '.git'), 'GIT_WORK_TREE': str(other),
+                'GIT_INDEX_FILE': str(other / '.git/index')}
         with mock.patch.dict(os.environ, hook):
             self.assertEqual(espressif.idf_commit(self.idf), self.commit)
             self.assertEqual(self.resolve(environ=dict(hook))[0], self.idf.resolve())
