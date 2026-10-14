@@ -26,8 +26,8 @@ triangles = 8672
 
 [[variants]]
 name = "sponza_fitted"
-triangles = 9973
+triangles = 15000
 
 [[variants]]
 name = "sponza_fitted_full"
-triangles = 19988
+triangles = 33000

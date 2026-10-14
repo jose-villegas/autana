@@ -623,10 +623,10 @@ class FittedBakeTests(FittedBakeCase):
 
                 self.assertNotEqual(self.reference_key(step), unchanged)
 
-    def test_the_visibility_size_changes_the_reference_key(self):
+    def test_the_fit_pose_size_changes_the_reference_key(self):
         def widen(job):
-            width, height = job.renderer.visibility.size
-            job.renderer.visibility.size = (width + 1, height)
+            width, height = job.renderer.fit.size
+            job.renderer.fit.size = (width + 1, height)
 
         self.assertNotEqual(self.reference_key(widen), self.reference_key(lambda job: None))
 

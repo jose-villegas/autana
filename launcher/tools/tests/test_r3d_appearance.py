@@ -10,6 +10,8 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from unittest import mock
+from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -119,7 +121,7 @@ class AppearanceMeshTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             mesh = start_mesh(write_start(directory))
             points, rgb = mesh[0] + [0.25, -0.5, 0.125], 1.0 - mesh[1]
-            write_mesh(pathlib.Path(directory) / "out", "card", points, rgb, mesh)
+            write_mesh(pathlib.Path(directory) / "out", "card", mesh._replace(points=points, rgb=rgb))
             back = read_lit_mesh(pathlib.Path(directory) / "out" / "card.mesh")
         q, colours, _tris, _double, _face = finest_triangles(back)
         written = {(tuple(p), tuple(c)) for p, c in zip(q, colours)}
@@ -143,7 +145,7 @@ class AppearanceMeshTests(unittest.TestCase):
             self.assertEqual(len(mesh.rgb), len(mesh.tris))
             self.assertEqual(len(mesh.points), len(mesh.vertex_point), "a flat start welds by position alone")
             points, rgb = mesh.points + [0.25, 0.0, 0.0], 1.0 - mesh.rgb
-            write_mesh(pathlib.Path(directory) / "out", "flat", points, rgb, mesh)
+            write_mesh(pathlib.Path(directory) / "out", "flat", mesh._replace(points=points, rgb=rgb))
             back = read_lit_mesh(pathlib.Path(directory) / "out" / "flat.mesh")
         q, colours, tris, _double, face = finest_triangles(back)
         self.assertIsNone(colours)
@@ -158,7 +160,7 @@ class AppearanceMeshTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             mesh = start_mesh(write_start(directory))
             points, rgb = mesh[0] + np.random.default_rng(3).normal(0.0, 0.05, mesh[0].shape), mesh[1][::-1].copy()
-            count = write_mesh(pathlib.Path(directory) / "out", "card", points, rgb, mesh)
+            count = write_mesh(pathlib.Path(directory) / "out", "card", mesh._replace(points=points, rgb=rgb))
             self.assertLessEqual(count, len(mesh[2]))
             back = read_lit_mesh(pathlib.Path(directory) / "out" / "card.mesh")
             q, _rgb, tris, _double, _face = finest_triangles(back)
@@ -175,6 +177,73 @@ class AppearanceMeshTests(unittest.TestCase):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class PruneAndCostTests(unittest.TestCase):
+    def test_main_prunes_fitted_geometry_and_colours_before_writing(self):
+        from r3d import appearance_simplify as appearance
+
+        with tempfile.TemporaryDirectory() as directory:
+            for flat in (False, True):
+                with self.subTest(flat=flat):
+                    mesh = start_mesh(write_start(directory))._replace(flat=flat)
+                    if flat:
+                        mesh = mesh._replace(rgb=np.full((len(mesh.tris), 3), 0.5))
+                    points, rgb = mesh.points + 1, mesh.rgb / 2
+                    fitted = mesh._replace(points=points, rgb=rgb)
+                    pruned = prune(fitted, np.ones(len(mesh.tris)), len(mesh.tris) - 1)
+                    calls = mock.Mock()
+                    with mock.patch.multiple(appearance,
+                            load_scene=mock.Mock(return_value=SimpleNamespace(camera=SimpleNamespace(
+                                component=SimpleNamespace(background=0)))),
+                            start_mesh=mock.Mock(return_value=mesh),
+                            load_views=mock.Mock(return_value=(["training"], (24, 20))),
+                            pose_views=mock.Mock(return_value=["coverage"]),
+                            optimise=calls.optimise, coverage=calls.coverage, prune=calls.prune,
+                            write_mesh=calls.write_mesh):
+                        calls.optimise.return_value = (points, rgb, [1.0])
+                        calls.coverage.return_value = np.ones(len(mesh.tris))
+                        calls.prune.return_value = pruned
+                        calls.write_mesh.return_value = len(pruned.tris)
+                        appearance.main(["--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
+                                         "--reference", "reference", "--coverage-poses", "coverage.txt",
+                                         "--budget", str(len(pruned.tris)), "--out", directory])
+                    self.assertEqual([call[0] for call in calls.mock_calls],
+                                     ["optimise", "coverage", "prune", "write_mesh"])
+                    covered, views, size = calls.coverage.call_args.args
+                    np.testing.assert_array_equal(covered.points, points)
+                    np.testing.assert_array_equal(covered.rgb, rgb)
+                    self.assertEqual((views, size), (["coverage"], (24, 20)))
+                    written = calls.write_mesh.call_args.args
+                    self.assertEqual(len(written), 3)
+                    self.assertIs(written[2], pruned)
+                    pruned_mesh, shown, budget = calls.prune.call_args.args
+                    self.assertIs(pruned_mesh, covered)
+                    self.assertIs(shown, calls.coverage.return_value)
+                    self.assertEqual(budget, len(pruned.tris))
+
+    def test_main_without_a_budget_optimises_and_writes_without_pruning(self):
+        from r3d import appearance_simplify as appearance
+
+        with tempfile.TemporaryDirectory() as directory:
+            mesh = start_mesh(write_start(directory))
+            points, rgb = mesh.points + 1, mesh.rgb / 2
+            with mock.patch.multiple(appearance,
+                    load_scene=mock.Mock(return_value=SimpleNamespace(camera=SimpleNamespace(
+                        component=SimpleNamespace(background=0)))),
+                    start_mesh=mock.Mock(return_value=mesh),
+                    load_views=mock.Mock(return_value=(["training"], (24, 20))),
+                    optimise=mock.DEFAULT, coverage=mock.DEFAULT, prune=mock.DEFAULT,
+                    write_mesh=mock.DEFAULT) as calls:
+                calls["optimise"].return_value = (points, rgb, [1.0])
+                calls["write_mesh"].return_value = len(mesh.tris)
+                appearance.main(["--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
+                                 "--reference", "reference", "--out", directory])
+            calls["optimise"].assert_called_once()
+            calls["coverage"].assert_not_called()
+            calls["prune"].assert_not_called()
+            written = calls["write_mesh"].call_args.args
+            self.assertEqual(len(written), 3)
+            np.testing.assert_array_equal(written[2].points, points)
+            np.testing.assert_array_equal(written[2].rgb, rgb)
+
     def test_pruning_keeps_the_budget_and_what_shows_most(self):
         mesh = FitMesh(np.zeros((9, 3)), np.zeros((9, 3)), np.arange(18).reshape(6, 3) % 9, np.zeros(6), 8, np.arange(9))
         shown = np.array([0, 50, 3, 0, 900, 7])

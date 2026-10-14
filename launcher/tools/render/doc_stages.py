@@ -11,6 +11,7 @@ import statistics
 import subprocess
 import sys
 from typing import NamedTuple
+from types import SimpleNamespace
 
 INPUTS_PYTHON_MINIMUM = (3, 12)
 
@@ -31,6 +32,7 @@ HOST_SCRIPT = ROOT / "launcher/tools/render/scene_viewer.sh"
 RESULTS = ROOT / "launcher/tools/results/doc_images"
 WEIGHTS = ROOT / "launcher/tools/r3d/board_cost_weights.txt"
 VARIANTS = ("lite", "flat", "fitted", "fitted-full", "flat-fitted")
+PATH_CULL_SAMPLING = SimpleNamespace(every_ms=100, size=(184, 224), samples=3, margin=8)
 
 
 class Fitted(NamedTuple):
@@ -317,7 +319,7 @@ def board(args, out, work):
     scene = load_scene(scene_path)
     job = placed_variant(scene, args.object + "_fitted")
     every_ms = job.renderer.fit.held_out_every_ms
-    poses = camera_path_poses(scene, job.renderer.visibility, every_ms, either_way_up=False)
+    poses = camera_path_poses(scene, job.renderer.fit, every_ms, either_way_up=False)
     for capture in args.capture:
         capture_viewport(capture, poses[:2])
     frame_values = board_frames(args.capture, [(name, index * every_ms // 1000) for name in (id, "lite")
@@ -393,7 +395,7 @@ def bake_worker(scene, job, path_cull, prefix, baked_name, work, recorder=None):
     if path_cull:
         from r3d.light import visible_from_path
         from r3d.ray_query import RayQuery
-        visibility = job.renderer.visibility
+        visibility = PATH_CULL_SAMPLING
         width, height, lens, near, poses = camera_path_poses(scene, visibility)
         seen = visible_from_path(geometry.positions, geometry.tris, geometry.tri_double,
             RayQuery(geometry.positions, geometry.tris),
@@ -411,7 +413,7 @@ def smoke_prepare(scene_path, scene, job, inputs):
     from r3d.reference_render import main as reference_main
     inputs.mkdir(exist_ok=True)
     shutil.copyfile(job.asset_path, inputs / f"{job.renderer.variant.name}.mesh")
-    width, height, lens, near, poses = camera_path_poses(scene, job.renderer.visibility, 5000, either_way_up=False)
+    width, height, lens, near, poses = camera_path_poses(scene, job.renderer.fit, 5000, either_way_up=False)
     for name in ("train", "train_landscape", "held_out", "coverage"):
         (inputs / f"{name}.txt").write_text(poses_text(32, 40, lens, near, poses[:2]))
     for name in ("reference", "reference_landscape", "reference_held_out"):
