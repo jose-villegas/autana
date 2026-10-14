@@ -40,6 +40,12 @@ class ResolutionTests(unittest.TestCase):
         search.update(kwargs)
         return (espressif.require_idf if required else espressif.find_idf)(self.project, **search)
 
+    def test_pinned_tools_root_ignores_the_environment_selection(self):
+        other = str(self.root / 'other')
+        with mock.patch.dict(os.environ, {'IDF_PATH': other, 'IDF_TOOLS_PATH': other}):
+            self.assertEqual(espressif.pinned_tools_root(self.project, roots=[self.root / 'esp'],
+                             home=self.root, persistent=lambda key: None), self.tools.resolve())
+
     def test_no_install_lookups_do_not_raise(self):
         checkout, tools = self.resolve(roots=[])
         self.assertEqual(checkout, self.root / 'esp/esp-idf')

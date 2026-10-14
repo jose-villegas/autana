@@ -33,6 +33,9 @@ class SharedToolsTests(unittest.TestCase):
             'CLANG_FORMAT_ANY_VERSION': '', 'CLANG_TIDY_ANY_VERSION': ''})
         self.env.start()
         self.addCleanup(self.env.stop)
+        roots = mock.patch.object(pinned_tool, 'pinned_tools_root', lambda: self.root)
+        roots.start()
+        self.addCleanup(roots.stop)
         # The fixtures' own pin, so a bump of launcher/idf-pin.json changes nothing here.
         for name, value in (('PINNED_VERSION', '19.1.2'), ('PINNED_MAJOR', '19')):
             patch = mock.patch.object(pinned_tool, name, value)
@@ -71,6 +74,17 @@ class SharedToolsTests(unittest.TestCase):
                     self.versions[os.path.normcase(versioned)] = 'unparseable'
                     self.versions[os.path.normcase(plain)] = '19'
                     self.assertEqual(pinned_tool.resolve(tool), (plain, '19'))
+
+    def test_the_pinned_install_is_searched_whatever_the_environment_selects(self):
+        pinned = self.root / 'pinned'
+        folder = pinned / 'tools/esp-clang/esp-19.1.2_x/esp-clang/bin'
+        folder.mkdir(parents=True)
+        binary = folder / ('clang-format.exe' if os.name == 'nt' else 'clang-format')
+        binary.write_text('fixture')
+        self.versions[os.path.normcase(str(binary))] = '19'
+        elsewhere = self.root / 'other'
+        with mock.patch.object(pinned_tool, 'espressif_tools_root', lambda: elsewhere),              mock.patch.object(pinned_tool, 'pinned_tools_root', lambda: pinned),              mock.patch.object(subprocess, 'run', side_effect=self.version_run):
+            self.assertEqual(pinned_tool.resolve('clang-format'), (str(binary), '19'))
 
     def test_the_pinned_release_beats_another_patch_of_its_major(self):
         near = self.candidate('clang-format', '19.1.7')
