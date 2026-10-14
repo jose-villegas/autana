@@ -22,6 +22,10 @@ import shutil
 
 class MemoryMapTests(unittest.TestCase):
     def setUp(self):
+        capture = Path(__file__).parent / 'fixtures/runtime-heap.txt'
+        patcher = patch.object(memory, 'read_runtime_heap', return_value=memory.parse_runtime_heap(capture.read_text()))
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -297,11 +301,11 @@ class MemoryMapTests(unittest.TestCase):
         self.assertIn("| Slack including pad | 252 | 248 |", body)
         self.assertIn("| launcher/main/apps/demo/ |", body)
         self.assertIn("| 4 | 8 | release 4, dev 8, diag 8 | Cache-off caller. |", body)
-        self.assertIn("| libmain.a | ours | 8 | 20 |", body)
-        self.assertIn("| libfixed.a | IDF / managed | 4 | 4 |", body)
+        self.assertIn("| libmain.a | our sites | 8 | 20 |", body)
+        self.assertIn("| libfixed.a | IDF | 4 | 4 |", body)
         self.assertIn("| Linker fill / split slack | unattributed | -8 | -20 |", body)
         self.assertIn("| extra | not built | 4 |", body)
-        differs = body.split("#### Differs between variants")[1].split("#### Release shared block")[0]
+        differs = body.split(memory.DIFFERENCES_HEADING)[1]
         self.assertNotIn("libfixed.a", differs)
         self.assertNotIn("literal_only", differs)
         self.assertIn("extra.c.obj:extra (4 B)", differs)
@@ -313,9 +317,9 @@ class MemoryMapTests(unittest.TestCase):
         self.assertEqual(body.count("abcdef123456-release"), 1)
         self.assertIn("IDF fixture-idf", body)
         self.assertIn("\u2013", body)
-        self.assertIn('iram["IRAM<br/>4 B"]', body)
+        self.assertNotIn('```mermaid', body)
         release["sections"][".iram0.text_end"] = (0, 100)
-        self.assertIn('iram["IRAM<br/>4 B"]', memory.render([release, dev]))
+        self.assertIn("| Linker fill / split slack | unattributed | -8 | -20 |", memory.render([release, dev]))
         del release["sections"][".iram0.text_end"]
         for build in (release, dev):
             build["inputs"].reverse()
@@ -330,6 +334,7 @@ class MemoryMapTests(unittest.TestCase):
             build["owned"] = list(build["owned"])
         fixture.write_text(json.dumps(builds))
         program = """import json, sys
+from pathlib import Path
 sys.path.insert(0, sys.argv[1])
 import memory_map as m
 builds=json.load(open(sys.argv[2]))
@@ -511,7 +516,7 @@ print(m.render(builds))
         self.assertEqual(probe.experiments("diag",["ringbuf-to-flash","i2c-isr"]),["ringbuf-to-flash"])
         with self.assertRaisesRegex(ValueError,"unknown"):
             probe.experiments("release",["unknown"])
-        baselines = [{"build_id": "id-a-release", "idf_commit": "local-idf"}]
+        baselines = [{"build_id": "id-a-release", "idf_commit": "local-idf", "sections": {}}]
         body = probe.render_results(baselines, [("release", "a", 4, 0, 0, "reason")])
         self.assertEqual(body.count("id-a-release"), 1)
         self.assertIn("local-idf", body)
@@ -546,7 +551,7 @@ print(m.render(builds))
 
     def test_probe_row_excludes_split_aliases_and_checks_config(self):
         baseline = {"sections": {".iram0.text": (0, 12), ".iram0.text_end": (0, 400), ".dram0.data": (0, 8), ".dram0.dummy": (0, 900)}, "constants": {"_heap_start": 100}}
-        measured = {"sections": {".iram0.text": (0, 8), ".iram0.text_end": (0, 800), ".dram0.data": (0, 4), ".dram0.dummy": (0, 300)}, "constants": {"_heap_start": 90}, "config": {"CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH": "y", "CONFIG_RINGBUF_PLACE_ISR_FUNCTIONS_INTO_FLASH": "y"}}
+        measured = {"sections": {".iram0.text": (0, 8), ".iram0.text_end": (0, 800), ".dram0.data": (0, 4), ".dram0.dummy": (0, 300)}, "constants": {"_heap_start": 90}, "config": dict(probe.OPTIONS["ringbuf-to-flash"]["config"])}
         self.assertEqual(probe.result_row("ringbuf-to-flash", baseline, measured)[1:4], (4, 4, -10))
         measured["config"] = {}
         self.assertEqual(probe.result_row("ringbuf-to-flash", baseline, measured)[1], "config rejected")
@@ -634,17 +639,21 @@ print(m.render(builds))
     def test_fragment_experiments_preserve_required_placements(self):
         original = "foo (noflash)\nbar (noflash_text)\nbaz (iram)\n"
         self.assertEqual(probe.scratch_fragment("noflash-text", original, self.root, {}), "foo (noflash_text)\nbar (noflash_text)\nbaz (iram)\n")
-        freertos = self.root / "components/freertos/linker.lf"
-        freertos.parent.mkdir(parents=True)
-        freertos.write_text("if FREERTOS_PLACE_FUNCTIONS_INTO_FLASH = y:\n    tasks:vTaskDelay (default)\n    tasks:xTaskNotifyFromISR (default)\n    port:portYield (default)\n    portasm:helper (default)\n    queue:xQueueGenericSend (default)\n    queue:xQueueReceive (default)\n    queue:xQueueSemaphoreTake (default)\n")
+        self.assertEqual(probe.OPTIONS["freertos-non-isr"]["config"], {"CONFIG_FREERTOS_IN_IRAM": "n"})
         fragment = probe.scratch_fragment("freertos-non-isr", "", self.root, {})
-        self.assertIn("tasks:vTaskDelay (default)", fragment)
-        for excluded in ("FromISR", "port:", "portasm:", "xQueueGenericSend", "xQueueReceive", "xQueueSemaphoreTake"):
-            self.assertNotIn(excluded, fragment)
-        baseline = {"inputs": [memory.Input("libhal.a", "spi_flash_hal_gpspi.c.obj", "gpspi_fn", 4), memory.Input("libother.a", "spi_flash_hal_gpspi.c.obj", "other", 4)]}
+        for symbol in probe.PRESENT_QUEUE_CALLS:
+            self.assertIn(f"queue:{symbol} (noflash_text)", fragment)
+        self.assertNotIn("(default)", fragment)
+        baseline = {"inputs": [memory.Input("libesp_hal_mspi.a", "spi_flash_hal_gpspi.c.obj", "gpspi_fn", 4),
+                               memory.Input("libhal.a", "spi_flash_hal_gpspi.c.obj", "old_fn", 4),
+                               memory.Input("libhal.a", "spi_flash_hal.c.obj", "unrelated", 4)]}
         fragment = probe.scratch_fragment("gpspi-flash-hal", "", self.root, baseline)
-        self.assertIn("spi_flash_hal_gpspi:gpspi_fn (default)", fragment)
-        self.assertNotIn("other", fragment)
+        for archive, symbol in (("libesp_hal_mspi.a", "gpspi_fn"), ("libhal.a", "old_fn")):
+            block = fragment[fragment.index(f"archive: {archive}"):]
+            self.assertIn(f"spi_flash_hal_gpspi:{symbol} (default)", block.split("[mapping:")[0])
+        self.assertNotIn("unrelated", fragment)
+        # Nothing placed: no mapping, which the linker-fragment parser would reject when empty.
+        self.assertEqual(probe.scratch_fragment("gpspi-flash-hal", "kept", self.root, {"inputs": []}), "kept")
 
     def test_build_sites_header_and_c_guards(self):
         compiler = shutil.which("gcc") or shutil.which("clang")
@@ -719,7 +728,7 @@ print(m.render(builds))
         build.mkdir()
         (build / "project_description.json").write_text(json.dumps({"idf_path": "idf"}))
         (build / "build_id.txt").write_text("old-release")
-        baseline = {"build_id": "new-release", "idf_commit": "local"}
+        baseline = {"build_id": "new-release", "idf_commit": "local", "sections": {}}
         for name in ("first", "second"):
             with patch.object(sys, "argv", ["iram_what_if.py", str(build), "--work", str(self.root)]), patch.object(probe, "scratch_tree", return_value=self.root) as snapshot, patch.object(probe.shutil, "copytree"), patch.object(probe, "what_if", return_value=(baseline, [("release", name, 4, 0, 0, "reason")])), contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(probe.main(), 0)
@@ -828,6 +837,12 @@ print(m.render(builds))
 
 
 class GateRegressions(unittest.TestCase):
+    def setUp(self):
+        capture = Path(__file__).parent / 'fixtures/runtime-heap.txt'
+        patcher = patch.object(memory, 'read_runtime_heap', return_value=memory.parse_runtime_heap(capture.read_text()))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_compile_source_spellings(self):
         for source in ("arbitrary.c", "C:/w/dir/arbitrary.c", r"C:\w\dir\arbitrary.c", "c:/w/dir/arbitrary.c"):
             with self.subTest(source=source):
@@ -972,7 +987,7 @@ class GateRegressions(unittest.TestCase):
             self.assertIn("| release | second | 8 |", body)
             self.assertIn("| dev | second | 16 |", body)
             self.assertNotIn("| dev | first |", body)
-            self.assertIn("Baseline builds: fresh-release (IDF local); fresh-dev (IDF local)", body)
+            self.assertIn("Baseline builds: fresh-release (IDF local, IRAM 20 B); fresh-dev (IDF local, IRAM 40 B)", body)
             self.assertEqual([snapshot[0] for snapshot in snapshots], ["release", "release", "release", "dev", "dev"])
             for index in (0, 3):
                 self.assertEqual(snapshots[index][1:], (original_defaults, original_fragment))

@@ -1,4 +1,5 @@
-"""Write CPU fidelity tables from the doc-image run's comparison logs."""
+"""Markdown tables for generated doc blocks: write, parse back and collapse
+them, plus the CPU fidelity tables from the doc-image run's comparison logs."""
 import argparse
 import pathlib
 import re
@@ -16,6 +17,53 @@ def markdown(headers, rows):
     headers = [cell(value) for value in headers]
     lines = ["| " + " | ".join(headers) + " |", "|" + "|".join("---" for _ in headers) + "|"]
     return "\n".join(lines + ["| " + " | ".join(map(cell, row)) + " |" for row in rows]) + "\n"
+
+
+def table_rows(text, include_empty=False):
+    """Yield line number, headers and cells; include_empty also yields header-only tables with no cells."""
+    lines = text.splitlines()
+    number = 0
+    cells = lambda row: [cell.strip().replace('\\|', '|') for cell in re.split(r'(?<!\\)\|', row.strip())[1:-1]]
+    while number + 1 < len(lines):
+        header, divider = lines[number].strip(), lines[number + 1].strip()
+        if not (header.startswith("|") and divider.startswith("|") and
+                re.fullmatch(r"[| :\-]+", divider)):
+            number += 1
+            continue
+        headings = cells(header)
+        number += 2
+        if include_empty and (number == len(lines) or not lines[number].lstrip().startswith("|")):
+            yield number, headings, []
+        while number < len(lines) and lines[number].lstrip().startswith("|"):
+            yield number + 1, headings, cells(lines[number])
+            number += 1
+
+
+
+def parse_table(body, key, required=()):
+    tables = []
+    previous = None
+    for line, headers, cells in table_rows(body, include_empty=True):
+        if key not in headers:
+            continue
+        if headers is not previous:
+            missing = set(required) - set(headers)
+            if missing:
+                raise ValueError(f'{key}: missing columns: {", ".join(sorted(missing))}')
+            tables.append((headers, []))
+            previous = headers
+        if not cells:
+            continue
+        if len(cells) != len(headers):
+            raise ValueError(f'{key}: malformed table row: {body.splitlines()[line - 1]}')
+        tables[-1][1].append(dict(zip(headers, cells)))
+    if len(tables) != 1:
+        raise ValueError(f'{key}: expected one table, found {len(tables)}')
+    return tables[0]
+
+
+def collapsed(summary, table):
+    return f'<details><summary>{summary}</summary>\n\n{table}\n</details>\n'
 
 
 def scores(path):

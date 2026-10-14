@@ -6,6 +6,7 @@ owners of settings; device tools provide measurements for the running image.
 
 | Reference | Scope |
 |---|---|
+| [../memory/Internal-Memory-Map.md](../memory/Internal-Memory-Map.md) | internal pool, IRAM placement budgets, variant differences and isolated experiments |
 | [Board-and-Memory.md](Board-and-Memory.md) | hardware inventory, memory placement, caches, static and heap budgets, storage |
 | [Display-and-Rendering.md](Display-and-Rendering.md) | panel initialization, DMA lifetime, clocks, dirty sends, screenshots and tearing |
 | [Input-and-Sensors.md](Input-and-Sensors.md) | touch reports and calibration, sensor axes, PMU and GPIO buttons, tilt filtering |

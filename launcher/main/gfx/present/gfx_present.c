@@ -28,11 +28,11 @@ _Static_assert(GFX_WIDTH == BSP_LCD_H_RES && GFX_HEIGHT == BSP_LCD_V_RES, "gfx.h
 _Static_assert(GFX_HEAL_STRIP_ROWS <= STRIP_HEIGHT, "a heal strip must fit one strip bounce slot");
 
 #ifdef ESP_PLATFORM
-/* Present code stays in IRAM: from flash a narrow strip took ~398 us against
- * ~236 us with the cache cold (suite_gfx test_narrow_present_counters).
- * Placed by attribute, not linker.lf, because a mapping entry misses the
- * compiler's clones of a function, which then stay in flash. Development
- * overlays, send auditing and raw-full dispatch make dev and diag larger.
+/* Present code runs from IRAM so a present after a cold instruction cache
+ * does not wait on flash fetches. An attribute, not a linker.lf entry,
+ * places it: the compiler's clones of a function inherit the attribute, and
+ * a mapping entry names only the original. Development overlays, send
+ * auditing and raw-full dispatch make dev and diag larger.
  * IRAM budget: release 2920 B, dev 4001 B, diag 4001 B */
 #define GFX_PRESENT_IRAM_ATTR IRAM_ATTR
 static const char* TAG = "gfx";

@@ -86,5 +86,6 @@ class RefreshBranchTests(unittest.TestCase):
         self.assertEqual(git("branch", "--list", "refresh", cwd=self.remote), "")
 
 
+
 if __name__ == "__main__":
     unittest.main()
