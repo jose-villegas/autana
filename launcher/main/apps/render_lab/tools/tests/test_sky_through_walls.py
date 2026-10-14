@@ -24,10 +24,10 @@ import host_render  # noqa: E402
 
 try:
     import numpy as np
-    from scipy import ndimage
 
     from r3d.poses import sample_camera_rows
     from r3d.import_settings import load_scene
+    from pinhole_rays import enclosed_sky
     from render_compare import expand_565, read_video
 except ImportError:  # pragma: no cover - the tool tests' environment has them
     np = None
@@ -55,10 +55,7 @@ def clear_colour():
 def sky_pixels(frame, sky):
     """(enclosed, open): the pixels of colour `sky` in an (h, w, 3) RGB frame not connected to its top row, and
     those that are."""
-    mask = (frame == np.array(sky)).all(axis=2)
-    labels, _ = ndimage.label(mask)
-    top = labels[0][labels[0] > 0]
-    enclosed = mask & ~np.isin(labels, top)
+    mask, enclosed = enclosed_sky(frame, sky)
     return int(enclosed.sum()), int(mask.sum() - enclosed.sum())
 
 
