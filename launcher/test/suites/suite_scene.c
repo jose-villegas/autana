@@ -1658,8 +1658,8 @@ expanded_fixture(void) {
     show("test_pair", NULL);
     free(fx.pixels);
     free(fx.held);
-    fx.pixels = memory_alloc(sizeof(*fx.pixels) * GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
-    fx.held = memory_alloc(sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT, MEMORY_PSRAM);
+    fx.pixels = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
+    fx.held = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(fx.pixels);
     TEST_ASSERT_NOT_NULL(fx.held);
     gfx_set_frame_overlay(NULL);
@@ -1682,7 +1682,7 @@ expanded_picture(void) {
     for (int y = 0; y < GFX_HEIGHT; y++) {
         gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
     }
-    TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT));
+    TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, GFX_FRAMEBUFFER_BYTES));
     TEST_ASSERT_EQUAL_HEX16(CLEAR, fx.pixels[0]);
     TEST_ASSERT_TRUE(fx.pixels[(GFX_HEIGHT / 2) * GFX_WIDTH + GFX_WIDTH / 2] != CLEAR);
     gfx_mode_exit();
@@ -1741,7 +1741,7 @@ test_failed_half_allocation_keeps_full_upscale_unexpanded(void) {
     TEST_ASSERT_NULL(half);
     TEST_ASSERT_FALSE(gfx_frame_expanded());
     TEST_ASSERT_TRUE(gfx_region_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT));
-    TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, full, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT));
+    TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, full, GFX_FRAMEBUFFER_BYTES));
 }
 
 static void
@@ -1756,7 +1756,7 @@ test_non_half_compose_upscales_to_the_full_destination(void) {
     TEST_ASSERT_FALSE(scene_compose(16, 0, &target));
     TEST_ASSERT_EQUAL_HEX16(SENTINEL, target.half_pixels[0]);
     TEST_ASSERT_FALSE(gfx_frame_expanded());
-    TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, gfx_framebuffer(), sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT));
+    TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, gfx_framebuffer(), GFX_FRAMEBUFFER_BYTES));
 }
 
 static void
@@ -1810,7 +1810,7 @@ test_ui_replay_over_expanded_scene_matches_full_frame(void) {
             ui_init();
             ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
             build_expanded_ui((ui_text_style_t)style);
-            memcpy(fx.held, gfx_framebuffer(), sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT);
+            memcpy(fx.held, gfx_framebuffer(), GFX_FRAMEBUFFER_BYTES);
             scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
             const scene_target_t half = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
             TEST_ASSERT_TRUE(scene_compose(0, 0, &half));
@@ -1824,7 +1824,7 @@ test_ui_replay_over_expanded_scene_matches_full_frame(void) {
                 gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
             }
             TEST_ASSERT_EQUAL_UINT(trips, gfx_fb_guard_trips_for_test());
-            TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT));
+            TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, GFX_FRAMEBUFFER_BYTES));
             gfx_present();
         }
     }
@@ -1851,7 +1851,7 @@ test_shell_expanded_pass_replays_build_mark_without_raw_writes(void) {
     for (int y = 0; y < GFX_HEIGHT; y++) {
         gfx_read_panel_row(y, fx.held + (size_t)y * GFX_WIDTH);
     }
-    TEST_ASSERT_TRUE(memcmp(fx.held, fx.pixels, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT) != 0);
+    TEST_ASSERT_TRUE(memcmp(fx.held, fx.pixels, GFX_FRAMEBUFFER_BYTES) != 0);
     gfx_present();
 }
 
@@ -1872,7 +1872,7 @@ test_paused_or_empty_expanded_scene_retains_its_picture(void) {
         for (int y = 0; y < GFX_HEIGHT; y++) {
             gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
         }
-        TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT));
+        TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, GFX_FRAMEBUFFER_BYTES));
         gfx_present();
     }
     const scene_target_t full = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, NULL};
@@ -1904,7 +1904,7 @@ test_expanded_frame_without_ui_does_not_replay_the_previous_hud(void) {
     for (int y = 0; y < GFX_HEIGHT; y++) {
         gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
     }
-    TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, sizeof(*fx.held) * GFX_WIDTH * GFX_HEIGHT));
+    TEST_ASSERT_EQUAL_INT(0, memcmp(fx.held, fx.pixels, GFX_FRAMEBUFFER_BYTES));
 }
 
 #endif
