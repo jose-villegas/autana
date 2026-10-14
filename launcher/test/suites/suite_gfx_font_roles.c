@@ -5,7 +5,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "gfx/draw/gfx_font_roles.h"
+#include "draw/gfx_font_roles.h"
 
 /* gfx_font_ui(): the UI/body-text role */
 

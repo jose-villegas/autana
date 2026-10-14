@@ -14,7 +14,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / 'launcher/tools/build'))
-from espressif import espressif_tools_root, idf_pin
+from espressif import espressif_tools_root, idf_pin, pinned_tools_root
 
 PINNED_VERSION = idf_pin()['esp_clang']
 PINNED_MAJOR = PINNED_VERSION.split('.')[0]
@@ -29,6 +29,11 @@ def tool_version(binary):
     return match.group(1) if result.returncode == 0 and match else None
 
 
+def tool_roots():
+    """The tools installations the environment and the pin select."""
+    return list(dict.fromkeys((espressif_tools_root(), pinned_tools_root())))
+
+
 def candidates(tool, companion=None):
     siblings = []
     if companion:
@@ -41,8 +46,9 @@ def candidates(tool, companion=None):
     names = [os.environ.get('CLANG_TIDY')] if tool == 'clang-tidy' else []
     names += [which(name) for name in (f'{tool}-{PINNED_MAJOR}', tool)]
     found = []
-    for suffix in ('', '.exe'):
-        found.extend(glob.glob(str(espressif_tools_root() / 'tools/esp-clang/*/esp-clang/bin' / (tool + suffix))))
+    for root in tool_roots():
+        for suffix in ('', '.exe'):
+            found.extend(glob.glob(str(root / 'tools/esp-clang/*/esp-clang/bin' / (tool + suffix))))
     key = lambda p: tuple(int(x) if x.isdigit() else x for x in re.split(r'(\d+)', p))
     return siblings + [name for name in names if name] + sorted(found, key=key, reverse=True)
 
@@ -68,10 +74,11 @@ def resolve(tool, companion=None):
     if fallback and not companion and os.environ.get(escape) == '1':
         print(f'WARNING: using {tool} {fallback[1]}, not the pinned {PINNED_MAJOR}.x.', file=sys.stderr)
         return fallback
+    searched = ', '.join(str(r / 'tools/esp-clang') for r in tool_roots())
     found = f'Found {tool} {fallback[1]} ({fallback[0]})' if fallback else f'No usable {tool} found'
     sys.exit(f'{found}; this gate requires {tool} {PINNED_MAJOR}.x. '
              f'Install LLVM {PINNED_MAJOR} or ESP-IDF (searched PATH and '
-             f'{espressif_tools_root()}/tools/esp-clang). '
+             f'{searched}). '
              + (f'Set {escape}=1 for an informational run with another major.' if not companion else ''))
 
 

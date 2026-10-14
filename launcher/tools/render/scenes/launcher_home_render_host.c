@@ -26,9 +26,9 @@
 #include "gfx/gfx.h"
 #include "launcher_home_render_setup.h"
 #include "render_host.h"
+#include "shell/ui/ui_launcher.h"
+#include "shell/ui/ui_ridge.h"
 #include "ui/ui.h"
-#include "ui/ui_launcher.h"
-#include "ui/ui_ridge.h"
 
 static bool tilt_sweep;
 static int scene_quarter;

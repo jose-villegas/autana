@@ -1,231 +1,98 @@
-# Plan: a UI editor, and the layout format underneath it
+# UI editor: authoring a project's screens
 
-**Status**: the document model, validation, editing controls and layout baker
-exist in [`editor/`](../../editor/README.md). The launcher is a preview;
-no firmware screen has an authored document.
+The editor authors screens as data, previews through the project's draw code,
+and bakes tables for the project's build. It opens a project folder rather
+than naming firmware screens. The project supplies `<screen>_layout.json`
+and one registered draw entry per screen.
 
-The objective is a tool where a screen is **authored visually and edited
-again later**, not screenshotted and re-typed. The brush screen should open
-in it as an editable instance. The
-[rendering roadmap](Autana-Rendering-Roadmap.md#platformer-with-parallax-and-2d-lighting)
-proposes a separate level editor that previews through the simulation.
+**Status:** the document model, validation, editing controls and layout baker
+exist in [`editor/`](../../editor/README.md). Project loading and registered
+draw entries are planned; no project screen has an authored document.
+The first document is the brush screen.
 
----
+## Project boundary
 
-## What exists
-
-| piece | where |
+| Owner | Responsibility |
 |---|---|
-| authored layout | `launcher/main/ui/<screen>_layout.json`: the screen's name, its elements (`id`, `label`, `interactive`) and one rect per element per orientation |
-| generator | `bake_header()` in `editor/src/layout_document.cpp`, exposed by `editor_layout_bake`; every C identifier derives from the JSON's `screen` |
-| baked table | `<screen>_layout_generated.h`, the only form a device screen links |
-| document | `editor/src/layout_document.{h,cpp}`, one type for every screen, owning the rules and header emission |
-| renderer | `editor/runtime/runtime.c`: the firmware's `ui/` and `gfx.c` compiled for the host |
-| shell | `editor/src/main.cpp`: SDL2 + Dear ImGui; hierarchy, both orientations side by side, inspector, undo, explicit save and bake |
+| editor | open a project folder, list its registered screens, edit their documents, call their draw entries |
+| project folder | `<screen>_layout.json`, screen draw entries and the project's assets |
+| `ui/`, `draw/`, `gfx/` | public toolkit, drawing and presentation compiled for the host |
+| project build | link `<screen>_layout_generated.h`; no JSON parser or editor dependency |
+| `shell/ui/` | launcher and ridge as hand-written C using the public toolkit |
 
-A screen becomes editable with three things: its JSON, a draw function taking
-the baked struct plus a frame entry that accepts a layout in its place, and
-an entry in `runtime.c` (with a layout argument on `editor_runtime_render()`)
-and in the screen list in `main.cpp`.
+The editor links no shell or app source. A project draw entry accepts a layout
+value so direct manipulation needs no compiler, subprocess or generated
+header in the preview loop. The launcher has no editor preview until the
+shell opens as a project. System gestures, app switching and boot handoff
+remain privileged shell code outside the public toolkit.
 
-The format holds **rects and nothing else**. Of the six layout concepts and
-the text constraint described below, none is expressed yet; every rect is
-absolute per orientation. A flowed list such as the launcher needs more
-than fixed rects, so the launcher is only previewed.
+## Existing owners
 
-## The render half already runs in this repo
+| Piece | Owner | Current surface |
+|---|---|---|
+| document and validation | `editor/src/layout_document.{h,cpp}` | screen name, elements and a rectangle per orientation |
+| header emission | `bake_header()` in `editor/src/layout_document.cpp` | identifiers derived from the JSON's `screen` |
+| command-line baker | `editor_layout_bake`, wrapped by `launcher/tools/gen/bake_ui_layout.py` | validates before emitting a C header |
+| editor window | `editor/src/main.cpp` | hierarchy, orientation canvases, inspector, undo, explicit Save and Bake |
+| geometry constraints | `editor/include/editor/runtime.h` | panel dimensions and `UI_TAP_MIN` |
+| brush geometry | `apps/sand/ui/brush_screen.h` | `brush_screen_layout()` computes rectangles |
+| brush host rendering | `apps/sand/tools/brush_screen_render_host.c` | real screen drawing in both orientations |
+| independent brush checks | `suite_brush_screen.c` | bounds, overlap, segment widths, tap targets and text fit |
+| framebuffer preview pattern | `launcher/tools/render/` | host-portable drawing code renders into a buffer |
 
-The render harness (`launcher/tools/render/`) compiles the firmware's
-host-portable C: `main/gfx/gfx.c` plus a scene such as `main/boot/boot_anim.c`,
-unmodified, and renders **a real frame by the real firmware code** on the
-host. Authored data reaches it as a baked header or an asset pack built
-from its source, so a draft can be baked and rendered without touching the
-committed source.
+Save and Bake are separate actions. The document writes one rectangle per
+line, keeping diffs reviewable. The generated-file banner names the
+regenerate command; the drift gate verifies the committed output.
 
-That is the architecture, running, for one payload. A level editor proposes
-it for a second. This plan is the third:
+## Layout data
 
-| | authored data | generator | rendered by |
-|---|---|---|---|
-| boot animation | `boot_anim_motion.glb`, `boot_anim_timeline.json` | `tracks_asset.py` (a pack), `gen_boot_anim_timeline.py` | real `boot_anim.c` + `gfx.c` on host |
-| level editor | material blocks | bake to a header | real sand code on host |
-| **UI editor (this)** | **a screen's layout** | **bake to a header** | **real `gfx.c` + pure geometry on host** |
+| Concept | Current format | Planned addition when a screen needs it |
+|---|---|---|
+| screen and elements | `screen`, `id`, `label`, `interactive` | project registration binds the screen to its draw entry |
+| orientations | absolute rectangles for portrait and landscape | the same document drives both previews |
+| composition | rectangles only | vertical stacks, fixed or fill heights, gaps, margins, centred slack and rows |
+| text | label string | string source, scale policy and box validated together |
 
-They are not three tools. They are one pattern with three payloads, and the
-render half is already proven.
+Validation refuses overlap, out-of-bounds rectangles and interactive targets
+smaller than `UI_TAP_MIN`. Text validation must also refuse a string that
+does not fit its box at the chosen scale. A long label must retain the
+screen's type hierarchy. Add layout concepts from concrete screen needs;
+there is no general constraint solver.
 
-## The one thing that has to change
+The project build consumes static tables. Layout parsing, validation and
+composition belong to authoring and baking, with no runtime solver or
+allocation required on the target.
 
-`brush_screen_layout()` computes rects from arithmetic over `#define`s:
-`HEADER_H`, `MODE_H`, `SIZE_H`, gaps, `UI_MARGIN`, a centred remainder. **An
-editor cannot edit arithmetic, only data.**
+## Native editor
 
-So a screen becomes authored JSON, baked by a generator into a header that
-the same pure function consumes. Exactly the move the boot animation already
-made, and the fifth instance of the generated-file convention in launcher/tools/gen/README.md
-(banner naming the regenerate command, generator validates before emitting,
-shipped artifact tested independently of the generator).
+| Choice | Purpose |
+|---|---|
+| SDL2 | cross-platform window, input and framebuffer texture |
+| Dear ImGui | docking, hierarchy, inspector, menus and text editing |
+| C++ confined to `editor/` | desktop authoring; the toolkit keeps a C boundary |
+| in-process C drawing | mutate a layout, call the project's draw entry, upload pixels |
+| CMake and CTest | standalone build and tests, outside the project target's build |
+| pinned fetched dependencies | build-directory dependencies without vendoring |
 
-**The device never sees the editor, and never sees JSON.** It links a static
-baked table: no runtime layout engine, no solver, no allocation, no RAM
-cost: the same deal fonts, icons and the boot timeline already have. That
-distinction is the whole reason this is affordable here and LVGL was not:
-the cost of a retained UI system is paid at build time, on a laptop, or it
-is not paid at all.
+Windows and Linux use one source tree. A browser remains a possible target
+for the same portable drawing code, rather than a separate renderer.
 
-## What already exists, and does not need building
+## Work to complete
 
-- **The render path.** `apps/sand/tools/brush_screen_render_host.c` renders the
-  screen at both orientations, on a host, through the real `gfx.c` and the
-  real `ui_style.h` / `ui_slider.h` / `gfx/draw/icon.h` geometry. That is what a
-  `/render` endpoint needs; it is already written.
-- **Host-linkable everything.** `gfx.c` (behind its `ESP_PLATFORM` guards),
-  the pure geometry headers, the baked icon atlases, and `microui.c`: the
-  last of these linked for `suite_ui_pointer_microui.c` and available now.
-- **The validation.** `suite_brush_screen.c` already asserts, at both
-  368x448 and 448x368: everything inside the canvas, no panel overlap, equal
-  segment widths, a `UI_TAP_MIN` floor on every tap target, and every fixed string
-  measured against its own rect.
-
-That last one matters more than it looks; see below.
-
-## The data model: grow it from need, and do not build a solver
-
-The trap is a general constraint system. That is the LVGL mistake relocated
-to build time: it makes the model unbounded and turns the editor into a
-programming language with a mouse.
-
-What the screens in this tree actually need today is roughly six concepts: a
-vertical stack, fixed-versus-fill heights, gaps, margins, centred slack, and
-rows within a panel. Express those, and add a seventh when a real screen
-demands it rather than in anticipation.
-
-**Text is a first-class constrained thing, not a string dropped in a rect.**
-Both real defects the brush screen shipped were text-versus-box (a value
-box sized by eye at 64px for a string needing 80, and a caption row 232px
-wide for wording needing 240) and the weakness the host preview then found
-in portrait is a *scale policy* failing: a long material name steps down
-until it is the same size as the caption above it, and the type hierarchy
-collapses. So an entry carries its string source, its scale policy and its
-box **together**. An editor that cannot say "this will not fit at this
-scale" would let you draw those same bugs, visually, and call it a design.
-
-## The editor is a native app, and renders in-process
-
-Two decisions, and the first one forces the second.
-
-**Native, cross-platform, not a web page.** One source tree runs on
-Windows and Linux, with nothing Windows-specific. Web stays a
-*target*, something the engine may one day be built for, never the way
-the editor draws itself.
-
-**It links the firmware's host-portable C in-process**, rather than spawning
-a renderer and reading back an image. A spawned renderer recompiles whenever
-its payload is baked into a header the C reads; there is no way around it there. Layout-as-data removes that tax entirely: nothing
-is generated to preview a change, so the editor can mutate a struct, call
-the same layout and draw code the firmware calls, and re-render at frame
-rate. Direct manipulation needs that: dragging a panel through a subprocess
-round trip per frame is not the same product.
-
-That choice also serves the web goal instead of fighting it: the same
-host-portable C compiles under Emscripten, so a browser preview later is the
-same code, not a second implementation of it.
-
-### The shell: SDL2 + Dear ImGui
-
-Cross-platform makes the *dependency* the deciding question, not the widget
-set.
-
-**SDL2 + Dear ImGui** is the shell. SDL supplies the window, input and the
-texture the framebuffer is blitted into; Dear ImGui supplies docking, the
-hierarchy, the inspector, menus and text editing. The price is a C++
-toolchain, confined to `editor/`: it links the firmware's C through one C
-header (`editor/include/editor/runtime.h`) and never enters an ESP-IDF
-component graph. All four dependencies are fetched at configure time at a
-pinned tag, never vendored.
-
-**raylib + raygui** is the pure-C alternative. It makes a first preview
-cheaper, and then the hierarchy, inspector, docking and text input become
-editor chrome to write by hand.
-
-**SDL2 + microui** would build the editor with the toolkit it edits: every
-gap in `ui/` found by daily use. It loses on the same count, harder: microui
-has no real text input, no file dialogs and no docking.
-
-**Build with CMake.** ESP-IDF already uses it, so it is not a new tool for
-anyone on any platform. The editor is never part of the firmware build, and
-is absent from `idf.py` and from `test/run_tests.sh`; its own suite is CTest,
-run by `.github/workflows/host-tests.yml`.
-
-## Phases
-
-1. **Layout as authored data.** A screen's JSON, a generator, a baked header,
-   and the screen's draw function reading the table. *Not built for any
-   screen; the generator and baker exist.*
-
-   For a screen that already computes its rects, the acceptance is that its
-   suite passes untouched and **the baked rects are identical to what the
-   function produced**. Same discipline the icon baker used: a generator
-   that cannot reproduce known-good output is not ready to produce new
-   output. `brush_screen_layout()` is the first such screen.
-
-2. **Validation in the generator.** It refuses, at bake time and for every
-   orientation, a layout that overlaps, leaves the canvas or drops an
-   interactive element below `UI_TAP_MIN`. *Exists*, mirrored in the document
-   so the editor reports the same problems while dragging. **Not yet: a string
-   in a box it does not fit**, the defect this plan cares most about. The host
-   suite keeps its own assertions as the independent witness: the generator
-   checking itself is not a test.
-
-3. **The editor shell.** A native window that links the layout and draw code
-   directly and renders both orientations side by side. No server, no
-   subprocess, no recompile in the preview loop. *Exists.*
-
-4. **Direct manipulation.** Drag and resize on the canvas, numeric edits in
-   the inspector, undo and redo, writing back to the JSON. *Exists.* The
-   document writes the file itself, one rect per line, so an edit's diff is
-   the rects that moved: a format only a GUI can produce is a format nobody
-   can review.
-
-5. **A second screen proves the model.** After the brush screen, the palette:
-   a format that has expressed one screen has proven nothing about being a
-   format, and both need the stack, fill and text concepts the format still
-   lacks.
-
-6. **Cost overlays.** The panel's bands and dirty cells drawn over the canvas
-   in the user's orientation, optional snapping to them, and a per-element
-   cost hint: the same reactive text costs a hundred times more across
-   bands than along one. Guidance in the tool, never a rule in the format.
-
-## Considered and rejected
-
-- **A runtime layout engine.** The thing microui was chosen over. Layout
-  resolved on device costs RAM and cycles for a picture that is identical
-  every frame; bake it instead.
-- **A general constraint solver.** Unbounded model, unbounded editor, and
-  every screen in this tree is a stack of panels. Revisit only when a real
-  screen cannot be expressed.
-- **Round-tripping generated C.** The generated header is output and never
-  input: the convention every other generated file here already follows.
-  Parsing back what a generator emitted is how the authored source and the
-  artifact drift.
-- **A JavaScript reimplementation of the renderer for the editor.** The
-  preview renders through the real C rather than a JS twin. A preview that is
-  not the shipping renderer is a preview of something that does not exist.
-
-- **A browser-hosted editor at all.** A layout editor wants direct
-  manipulation, and that wants in-process rendering.
-
-- **Anything platform-specific**: Win32, WinUI, GTK-only. One source
-  tree has to serve Windows and Linux, which is the same bar every
-  shell script here already meets.
-- **Editing the mockup instead.** A design image is an input to authoring,
-  not the authored artifact. The brush screen already diverges from its
-  mockup in two accepted places, and those decisions live in the plan, not
-  in a PNG.
+| Work | Acceptance |
+|---|---|
+| project folder and draw registration | the editor names no target-specific screen; each project registers its own entries |
+| first document: brush screen | baked rectangles equal `brush_screen_layout()`; the independent screen suite and pinned render stay unchanged |
+| text fit validation | document and baker report the same string, scale and box errors; independent host assertions remain |
+| live project preview | dragging mutates layout data and calls the real draw entry in both orientations |
+| palette screen | a second screen exercises shared composition and text concepts |
+| optional cost overlays | dirty cells and bands shown in the user's orientation, with snapping and per-element hints outside the format |
+| shell project | the shell opens through the same project interface, keeping privileged hooks out of the toolkit |
 
 ## Related
 
-- [`../Building-a-Screen.md`](../Building-a-Screen.md): how a screen is built by hand today
-- [`../tools/Icon-Baker.md`](../tools/Icon-Baker.md): the same authored-data-to-baked-header pattern, for artwork
-- [`Autana-Rendering-Roadmap.md`](Autana-Rendering-Roadmap.md): the engine direction this serves
+- [Building a screen](../Building-a-Screen.md)
+- [Text and fonts](../Text-and-Fonts.md)
+- [Render harness](../tools/Render-Harness.md)
+- [Generated files](../../launcher/tools/gen/README.md)
+- [Engine layer](Engine-Layer-Design-Sketch.md)

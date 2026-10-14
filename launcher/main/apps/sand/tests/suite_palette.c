@@ -16,7 +16,7 @@
 
 #include "apps/sand/palette.h"
 #include "apps/sand/sand_brushes.h"
-#include "gfx/draw/gfx_draw.h"
+#include "draw/gfx_draw.h"
 
 /* palette_cols(): the derivation itself */
 

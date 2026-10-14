@@ -17,8 +17,8 @@
 
 #include "gfx_shared_state.h"
 
-#include "gfx/draw/gfx_box.h"
-#include "gfx/present/gfx_dirty.h"
+#include "gfx/present/send/gfx_dirty.h"
+#include "gfx/target/gfx_box.h"
 
 /* gfx_dirty.h's state is gfx's one instance; every test starts it empty. */
 static void

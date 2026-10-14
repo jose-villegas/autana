@@ -12,7 +12,7 @@
 #include "app/app_arena.h"
 #include "core/memory.h"
 #include "display/display.h"
-#include "gfx/draw/gfx_draw.h"
+#include "draw/gfx_draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
@@ -25,10 +25,10 @@
 #include "shell/shell_apps.h"
 #include "shell/shell_frame.h"
 #include "shell/shell_system.h"
+#include "shell/ui/ui_launcher.h"
+#include "shell/ui/ui_ridge.h"
 #include "ui/ui.h"
 #include "ui/ui_anchor.h"
-#include "ui/ui_launcher.h"
-#include "ui/ui_ridge.h"
 
 #include "esp_log.h"
 

@@ -4,8 +4,10 @@
 #include <string.h>
 
 #include "app/app.h"
+#include "apps/render_lab/ui/render_lab_hud_screen.h"
+#include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "build/build_variant.h"
-#include "gfx/draw/gfx_draw.h"
+#include "draw/gfx_draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
@@ -14,8 +16,6 @@
 #include "render_lab_view.h"
 #include "scene/scene.h"
 #include "services/tune.h"
-#include "ui/render_lab_hud_screen.h"
-#include "ui/render_lab_menu_screen.h"
 #include "ui/ui.h"
 
 extern const render_lab_scene_t scene_sponza;

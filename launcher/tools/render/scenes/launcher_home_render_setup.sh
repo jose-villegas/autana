@@ -9,11 +9,11 @@ main/ui/ui_build.c
 main/ui/ui_canvas_marks.c
 main/ui/ui_icons.c
 main/ui/ui_widgets.c
-main/ui/ui_launcher.c
-main/ui/ui_launcher_draw.c
+main/shell/ui/ui_launcher.c
+main/shell/ui/ui_launcher_draw.c
 main/ui/ui_pointer.c
 main/ui/ui_snap.c
-main/ui/ui_ridge.c
+main/shell/ui/ui_ridge.c
 main/ui/ui_scroll.c
 main/services/tune.c
 components/microui/src/microui.c

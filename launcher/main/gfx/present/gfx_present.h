@@ -7,8 +7,8 @@
 
 #include <stdbool.h>
 
-#include "gfx/draw/gfx_target.h"
 #include "gfx/gfx.h"
+#include "gfx/target/gfx_target.h"
 
 /* What draw writes into: the framebuffer, or the band or replay strip being drawn. */
 gfx_target_t gfx_present_target(void);

@@ -7,7 +7,7 @@
 
 #include "unity.h"
 
-#include "gfx/present/gfx_indexed.h"
+#include "gfx/present/modes/indexed/gfx_indexed.h"
 
 static gfx_color_t* lut;
 static gfx_color_t* scratch;

@@ -15,6 +15,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "display/viewport.h"
 #include "math/linear/mat4f.h"
 #include "math/scalar/mathi.h"
 #include "render/r3d_instance.h"
@@ -22,7 +23,6 @@
 #include "render/r3d_span.h"
 #include "render/raster.h"
 #include "render/render_view.h"
-#include "render/viewport.h"
 
 #if defined(ESP_PLATFORM)
 #include "sdkconfig.h"

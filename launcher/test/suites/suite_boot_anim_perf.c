@@ -35,7 +35,7 @@
 #include "boot/boot_anim.h"
 #include "boot/boot_anim_timeline.h"
 #include "core/timing.h"
-#include "gfx/draw/gfx_draw.h"
+#include "draw/gfx_draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 

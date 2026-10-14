@@ -27,7 +27,7 @@
 #include "unity.h"
 
 #include "boot/boot_anim.h"
-#include "gfx/draw/gfx_font_roles.h"
+#include "draw/gfx_font_roles.h"
 
 #include <stdlib.h>
 
@@ -35,8 +35,8 @@
 #include <stdio.h>
 
 #include "gfx/gfx.h"
-#include "gfx/gfx_test.h"
 #include "gfx/present/gfx_mode.h"
+#include "gfx/present/gfx_test.h"
 #include "test_anim_tracks.h"
 #include "test_asset_dir.h"
 #include "test_cleanup.h"

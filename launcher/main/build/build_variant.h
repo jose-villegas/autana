@@ -35,3 +35,10 @@
 #else
 #define BUILD_VARIANT_DEVELOPMENT_OR_HOST 0
 #endif
+
+/* 1 in a self-test device build and on a host, where suite hooks are tested. */
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_SELFTEST
+#define BUILD_VARIANT_SELFTEST_OR_HOST 1
+#else
+#define BUILD_VARIANT_SELFTEST_OR_HOST 0
+#endif

@@ -19,11 +19,11 @@
 #include "apps/render_lab/sponza_content.h"
 #include "asset/asset_store.h"
 #include "core/memory.h"
+#include "display/viewport.h"
 #include "r3d_lit_mesh_expect.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_pipeline.h"
 #include "render/raster.h"
-#include "render/viewport.h"
 #include "scene/scene.h"
 #include "sponza_suite.h"
 

@@ -35,6 +35,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/t
 from generated_blocks import MARKER as GENERATED_BLOCK  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
 from build import packages  # noqa: E402
+from build.apps import app_part  # noqa: E402
 import strip_comment_rules  # noqa: E402
 from tracked import tracked_files  # noqa: E402
 
@@ -314,16 +315,29 @@ def _fix_include_layer(root, path, text):
 
 # RULE: a folder may include only a strictly lower tier of
 # docs/Firmware-Architecture.md's "Layers" (LAYER_ROWS below, one string per
-# row, top first; the folders in a row share a tier). A system header such
+# row, top first, grouped into system, engine and platform bands; folders
+# in a row share a tier). A system header such
 # as "driver/temperature_sensor.h" never resolves to a layer, and a package
 # (launcher/packages/) sits under every row: PACKAGE-INCLUDE keeps it there.
 
-LAYER_ROWS = ("apps", "shell", "boot selftest", "ui console scene", "app", "display input", "render", "gfx", "anim",
-              "asset", "services", "profile", "core", "board", "build")
+LAYER_ROWS = (
+    # System
+    "apps", "shell", "boot selftest console", "app",
+    # Engine
+    "ui scene", "render", "draw anim", "asset",
+    # Platform
+    "input", "display", "gfx", "services", "profile", "core", "board", "build",
+)
 LAYER_TIER = {layer: tier for tier, row in enumerate(LAYER_ROWS) for layer in row.split()}
 LAYER_DIRS = tuple(layer for layer in LAYER_TIER if layer != "apps")
 
 INCLUDE_DIRECTION_EXCEPTIONS = {}
+
+
+def layer_of(parts):
+    if app_part(pathlib.PurePosixPath("launcher/main", *parts)):
+        return "apps"
+    return parts[0] if parts else None
 
 
 def _layer_dirs_match(root):
@@ -342,9 +356,9 @@ def _layer_dirs_match(root):
     unknown = sorted(found - set(LAYER_TIER))
     if unknown:
         raise ValueError(
-            f"launcher/main has folder(s) {unknown} that LAYER_TIER (check_style_audit.py) "
+            f"launcher/main has folder(s) {unknown} that LAYER_ROWS (check_style_audit.py) "
             "does not know about - add them to the tier table (and to "
-            "Firmware-Architecture.md's diagram) before this rule can trust its own order.")
+            "Firmware-Architecture.md's Layers section) before this rule can trust its own order.")
 
 
 @c_line_rule("INCLUDE-DIRECTION")
@@ -355,10 +369,10 @@ def rule_include_direction(root, path, text):
     except ValueError:
         return
     parts = rel_to_main.parts
-    if not parts or parts[0] == "apps" or parts[0] not in LAYER_TIER:
+    source_layer = layer_of(parts)
+    if source_layer == "apps" or source_layer not in LAYER_TIER:
         return
     _layer_dirs_match(root)
-    source_layer = parts[0]
     source_tier = LAYER_TIER[source_layer]
     source_base = (rel_to_main.parent / rel_to_main.stem).as_posix()
     for number, line in enumerate(text.splitlines(), 1):
@@ -373,7 +387,7 @@ def rule_include_direction(root, path, text):
             target_rel = resolved.relative_to(main_dir.resolve())
         except ValueError:
             continue
-        target_layer = target_rel.parts[0] if target_rel.parts else None
+        target_layer = layer_of(target_rel.parts)
         if target_layer is None or target_layer == source_layer or target_layer not in LAYER_TIER:
             continue
         if LAYER_TIER[target_layer] > source_tier:

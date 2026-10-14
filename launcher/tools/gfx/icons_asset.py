@@ -1,7 +1,7 @@
 """Icons as image pack entries: a NAME.icons.toml describes a set, and each
 icon in it bakes to its own one-bit image entry (gfx/image_asset.py's
 encode_mono()), named by the icon. This module cuts the icons out of their
-sources; main/gfx/draw/icon.h draws them.
+sources; main/draw/icon.h draws them.
 
 A NAME.icons.toml names a PNG atlas of equal cells and lists the icons, each
 a cell of the atlas or a pixelarticons SVG beside it:

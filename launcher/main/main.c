@@ -23,9 +23,9 @@
 #include "selftest/post_ui.h"
 #include "services/build_id.h"
 #include "shell/shell.h"
+#include "shell/ui/ui_launcher.h"
+#include "shell/ui/ui_ridge.h"
 #include "ui/ui.h"
-#include "ui/ui_launcher.h"
-#include "ui/ui_ridge.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "console/console.h"
