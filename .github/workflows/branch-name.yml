@@ -17,6 +17,8 @@ jobs:
 
   pr-ticket:
     name: PR ticket
+    # Workflow-opened PRs (generated doc refreshes) have no backlog ticket.
+    if: github.event.pull_request.user.type != 'Bot'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
