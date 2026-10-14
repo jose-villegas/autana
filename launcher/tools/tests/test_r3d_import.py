@@ -44,7 +44,7 @@ VARIANT_OUTPUT = '[output]\n'
 FLAT_FIT = ('fit = { budget = 8, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 20, '
             'batch = 4, laplacian = 10.0, normal_weight = 1.0 }\n')
 FIT = ('[objects.mesh_renderer.fit.prune]\nbudget = 8\ncoverage_every_ms = 100\n'
-       '[objects.mesh_renderer.fit.poses]\ntrain_every_ms = 1000\nheld_out_every_ms = 5000\n'
+       '[objects.mesh_renderer.fit.poses]\nsize = [184, 224]\ntrain_every_ms = 1000\nheld_out_every_ms = 5000\n'
        '[objects.mesh_renderer.fit.optimise]\nsteps = 20\nbatch = 4\nlaplacian = 10.0\nnormal_weight = 1.0\n'
        '')
 INDIRECT = 'indirect = { bounces = 2, rays = 8 }\n'
@@ -331,6 +331,12 @@ class SceneTests(unittest.TestCase):
         scene = load_scene(self.lit(extra, body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT))
         fit = scene.renderers[0].renderer.fit
         self.assertEqual((fit.budget, fit.normal_weight), (8, 1.0))
+        self.assertEqual(fit.size, (184, 224))
+        options = {"body": SIMPLIFY + VARIANT, "output": VARIANT_OUTPUT}
+        self.lit_rejects(r"fit.poses.size", extra.replace("size = [184, 224]\n", ""), **options)
+        for size in ("[0, 224]", "[184, -1]", "[true, 224]", "[184.0, 224]", "[184]", '"184,224"'):
+            with self.subTest(size=size):
+                self.lit_rejects(r"fit.poses.size", extra.replace("[184, 224]", size), **options)
         self.lit_rejects("fit.hashes is gone", extra + "[objects.mesh_renderer.fit.hashes]\nsha256 = \"ab\"\n",
                          body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT)
         options = {"body": SIMPLIFY + VARIANT, "output": VARIANT_OUTPUT}

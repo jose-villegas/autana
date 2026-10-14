@@ -93,6 +93,27 @@ jobs:
       - name: Every needed key has a row and every row is needed
         run: python launcher/tools/bake/bake.py check
 
+  sky-through-walls:
+    name: Sky through walls
+    if: github.event_name == 'pull_request'
+    needs: lock
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: ./.github/actions/host-tools
+
+      - name: Fetch locked bakes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python launcher/tools/bake/bake.py fetch
+
+      - name: Install the r3d requirements
+        run: pip install -r launcher/tools/r3d/requirements.txt
+
+      - name: Check the full camera flythrough for enclosed sky
+        run: python -m unittest discover -s launcher/main/apps/render_lab/tools/tests -p test_sky_through_walls.py
+
   publish:
     name: Publish locked bakes
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

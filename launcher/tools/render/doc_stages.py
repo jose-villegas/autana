@@ -317,7 +317,7 @@ def board(args, out, work):
     scene = load_scene(scene_path)
     job = placed_variant(scene, args.object + "_fitted")
     every_ms = job.renderer.fit.held_out_every_ms
-    poses = camera_path_poses(scene, job.renderer.visibility, every_ms, either_way_up=False)
+    poses = camera_path_poses(scene, job.renderer.fit, every_ms, either_way_up=False)
     for capture in args.capture:
         capture_viewport(capture, poses[:2])
     frame_values = board_frames(args.capture, [(name, index * every_ms // 1000) for name in (id, "lite")
@@ -411,7 +411,7 @@ def smoke_prepare(scene_path, scene, job, inputs):
     from r3d.reference_render import main as reference_main
     inputs.mkdir(exist_ok=True)
     shutil.copyfile(job.asset_path, inputs / f"{job.renderer.variant.name}.mesh")
-    width, height, lens, near, poses = camera_path_poses(scene, job.renderer.visibility, 5000, either_way_up=False)
+    width, height, lens, near, poses = camera_path_poses(scene, job.renderer.fit, 5000, either_way_up=False)
     for name in ("train", "train_landscape", "held_out", "coverage"):
         (inputs / f"{name}.txt").write_text(poses_text(32, 40, lens, near, poses[:2]))
     for name in ("reference", "reference_landscape", "reference_held_out"):

@@ -142,7 +142,7 @@ def face_sample_options(value, where):
 
 FIT_GROUPS = {
     "prune": ("budget", "coverage_every_ms"),
-    "poses": ("train_every_ms", "held_out_every_ms"),
+    "poses": ("size", "train_every_ms", "held_out_every_ms"),
     "optimise": ("steps", "batch", "laplacian", "normal_weight"),
 }
 FIT_KEYS = tuple(key for keys in FIT_GROUPS.values() for key in keys)
@@ -171,6 +171,10 @@ def load_fit(value, variant, where):
     fit = SimpleNamespace(**{key: values[key] for key in FIT_KEYS})
     for key in ("budget", "train_every_ms", "held_out_every_ms", "coverage_every_ms", "steps", "batch"):
         setattr(fit, key, count(values[key], f"{where}.{key}"))
+    size = values["size"]
+    if not isinstance(size, list) or len(size) != 2:
+        raise SettingsError(f"{where}.poses.size must be [width, height]")
+    fit.size = tuple(count(component, f"{where}.poses.size") for component in size)
     fit.laplacian = number(values["laplacian"], f"{where}.laplacian")
     fit.normal_weight = number(values["normal_weight"], f"{where}.normal_weight")
     if fit.budget > variant.triangles:

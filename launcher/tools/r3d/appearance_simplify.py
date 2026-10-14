@@ -510,16 +510,17 @@ def main(argv=None):
         if args.refine_to is not None:
             fitted = refine(mesh, triangle_error(mesh, views, size, clear), args.refine_to)
             log(f"refined {len(mesh.tris)} -> {len(fitted.tris)} triangles")
+        cost = None if args.cost_model is None else load_cost(args.cost_model)[0]
+        points, rgb, history = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,
+                                        args.laplacian, clear=clear, cost=cost, cost_weight=args.cost_weight,
+                                        scale=args.scale, normal_weight=args.normal_weight)
+        fitted = fitted._replace(points=points, rgb=rgb)
         if args.budget is not None:
             shown = coverage(fitted, pose_views(args.coverage_poses, args.scale) if args.coverage_poses else views, size)
             pruned = prune(fitted, shown, args.budget)
             log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: {np.count_nonzero(shown == 0)} never shown")
             fitted = pruned
-        cost = None if args.cost_model is None else load_cost(args.cost_model)[0]
-        points, rgb, history = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,
-                                        args.laplacian, clear=clear, cost=cost, cost_weight=args.cost_weight,
-                                        scale=args.scale, normal_weight=args.normal_weight)
-        count = write_mesh(out, name, points, rgb, fitted)
+        count = write_mesh(out, name, fitted.points, fitted.rgb, fitted)
         np.savetxt(out / "loss.txt", np.array(history), fmt="%.4f")
         print(f"{out}: {count} triangles, mean dE76 {np.mean(history[:20]):.3f} -> {np.mean(history[-20:]):.3f}")
     # The fit's cached device memory goes back for a reference set traced next in this process.
