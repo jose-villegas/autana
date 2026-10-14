@@ -1,0 +1,141 @@
+#include "apps/input_lab/imu_probe.h"
+
+#include <math.h>
+
+#include "ui/ui_transform.h"
+
+const char*
+imu_probe_pose_name(int pose, bool log_name) {
+    static const char* const labels[IMU_PROBE_POSE_COUNT] = {"FACE UP",         "FACE DOWN",     "LEFT EDGE DOWN",
+                                                             "RIGHT EDGE DOWN", "TOP EDGE DOWN", "BOTTOM EDGE DOWN"};
+    static const char* const names[IMU_PROBE_POSE_COUNT] = {"face_up",    "face_down", "left_down",
+                                                            "right_down", "top_down",  "bottom_down"};
+    return log_name ? names[pose] : labels[pose];
+}
+
+vec3i_t
+imu_probe_pose_direction(int pose, int quarter) {
+    if (pose == IMU_PROBE_FACE_UP || pose == IMU_PROBE_FACE_DOWN) {
+        return (vec3i_t){0, 0, pose == IMU_PROBE_FACE_UP ? -1 : 1};
+    }
+    const int x = pose == IMU_PROBE_LEFT_DOWN ? -1 : pose == IMU_PROBE_RIGHT_DOWN ? 1 : 0;
+    const int y = pose == IMU_PROBE_TOP_DOWN ? -1 : pose == IMU_PROBE_BOTTOM_DOWN ? 1 : 0;
+    int px, py;
+    ui_transform_point(ui_transform_quarter_turn(quarter, 0, 0), x, y, &px, &py);
+    return (vec3i_t){px, py, 0};
+}
+
+void
+imu_probe_average_add(imu_probe_average_t* average, input_motion_t sample) {
+    const int a[] = {sample.acceleration.x, sample.acceleration.y, sample.acceleration.z};
+    const int r[] = {sample.rotation.x, sample.rotation.y, sample.rotation.z};
+    for (int axis = 0; axis < 3; axis++) {
+        average->acceleration[axis] += a[axis];
+        average->rotation[axis] += r[axis];
+    }
+    average->n++;
+}
+
+input_motion_t
+imu_probe_average_read(const imu_probe_average_t* average) {
+    if (average->n == 0) {
+        return (input_motion_t){0};
+    }
+    int a[3], r[3];
+    for (int axis = 0; axis < 3; axis++) {
+        a[axis] = (int)lround((double)average->acceleration[axis] / average->n);
+        r[axis] = (int)lround((double)average->rotation[axis] / average->n);
+    }
+    return (input_motion_t){.acceleration = {a[0], a[1], a[2]}, .rotation = {r[0], r[1], r[2]}};
+}
+
+/* Six-position offset and sensitivity: docs/Citations.md#67.
+ * Offset is mg, sensitivity ppm (unity = IMU_PROBE_SCALE_ONE), gyro offset mdps. */
+imu_probe_fit_t
+imu_probe_fit(const imu_probe_average_t poses[IMU_PROBE_POSE_COUNT], int quarter) {
+    double up[3] = {0}, down[3] = {0}, gyro[3] = {0};
+    int n = 0;
+    for (int pose = 0; pose < IMU_PROBE_POSE_COUNT; pose++) {
+        const vec3i_t direction = imu_probe_pose_direction(pose, quarter);
+        const int d[] = {direction.x, direction.y, direction.z};
+        for (int axis = 0; axis < 3; axis++) {
+            const double mean = poses[pose].n > 0 ? (double)poses[pose].acceleration[axis] / poses[pose].n : 0;
+            if (d[axis] > 0) {
+                up[axis] = mean;
+            }
+            if (d[axis] < 0) {
+                down[axis] = mean;
+            }
+            gyro[axis] += (double)poses[pose].rotation[axis];
+        }
+        n += poses[pose].n;
+    }
+    int offset[3], scale[3], rate[3];
+    for (int axis = 0; axis < 3; axis++) {
+        offset[axis] = (int)lround((up[axis] + down[axis]) * IMU_PROBE_MILLI / (2 * INPUT_ACCEL_ONE_G));
+        scale[axis] = (int)lround((up[axis] - down[axis]) * IMU_PROBE_SCALE_ONE / (2 * INPUT_ACCEL_ONE_G));
+        rate[axis] = n > 0 ? (int)lround(gyro[axis] * IMU_PROBE_MILLI / (n * INPUT_ROTATION_ONE_DPS)) : 0;
+    }
+    return (imu_probe_fit_t){
+        {offset[0], offset[1], offset[2]}, {scale[0], scale[1], scale[2]}, {rate[0], rate[1], rate[2]}};
+}
+
+void
+imu_probe_start(imu_probe_round_t* round, int quarter) {
+    *round = (imu_probe_round_t){.active = true, .quarter = quarter};
+}
+
+static bool
+still(imu_probe_round_t* round, input_motion_t sample, uint32_t dt_ms) {
+    const int a[] = {sample.acceleration.x, sample.acceleration.y, sample.acceleration.z};
+    const int r[] = {sample.rotation.x, sample.rotation.y, sample.rotation.z};
+    const float weight = (float)dt_ms / (IMU_PROBE_RECENT_MS + (float)dt_ms);
+    bool stable = round->primed;
+    for (int axis = 0; axis < 3; axis++) {
+        if (!round->primed) {
+            round->recent_accel[axis] = (float)a[axis];
+            round->recent_gyro[axis] = (float)r[axis];
+        }
+        stable = stable && fabsf((float)a[axis] - round->recent_accel[axis]) < IMU_PROBE_ACCEL_DEPARTURE
+                 && fabsf((float)r[axis] - round->recent_gyro[axis]) < IMU_PROBE_GYRO_DEPARTURE;
+        round->recent_accel[axis] += weight * ((float)a[axis] - round->recent_accel[axis]);
+        round->recent_gyro[axis] += weight * ((float)r[axis] - round->recent_gyro[axis]);
+    }
+    round->primed = true;
+    const vec3i_t direction = imu_probe_pose_direction(round->pose, round->quarter);
+    return stable && vec3i_dot(direction, sample.acceleration) >= IMU_PROBE_GRAVITY_MIN;
+}
+
+bool
+imu_probe_update(imu_probe_round_t* round, input_motion_t sample, uint32_t dt_ms) {
+    if (!round->active || dt_ms == 0) {
+        return false;
+    }
+    if (dt_ms > IMU_PROBE_MAX_GAP_MS) {
+        round->primed = false;
+    }
+    if (!still(round, sample, dt_ms)) {
+        round->settle_ms = 0;
+        round->window_ms = 0;
+        round->window = (imu_probe_average_t){0};
+        return false;
+    }
+    if (round->settle_ms < IMU_PROBE_SETTLE_MS) {
+        round->settle_ms += dt_ms;
+        return false;
+    }
+    imu_probe_average_add(&round->window, sample);
+    round->window_ms += dt_ms;
+    if (round->window_ms < IMU_PROBE_WINDOW_MS) {
+        return false;
+    }
+    round->poses[round->pose++] = round->window;
+    round->primed = false;
+    round->settle_ms = round->window_ms = 0;
+    round->window = (imu_probe_average_t){0};
+    if (round->pose == IMU_PROBE_POSE_COUNT) {
+        round->active = false;
+        round->fit = imu_probe_fit(round->poses, round->quarter);
+    }
+    return true;
+}

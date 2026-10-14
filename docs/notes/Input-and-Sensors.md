@@ -57,7 +57,40 @@ one I2C read per call, into `input_motion_t`:
 | Field | Meaning |
 |---|---|
 | `acceleration` | raw accelerometer, unfiltered: screen axes (x right, y down, z out of the screen), pointing the way down at rest, in Q12 g (`INPUT_ACCEL_ONE_G`). Upright reads +1 g on y, flat and screen up -1 g on z |
+| `rotation` | signed raw gyro counts, Q6 deg/s (`INPUT_ROTATION_ONE_DPS`), in the same panel axes: x = -gy, y = gx, z = gz |
 | `turn_speed` | deg/s, the sum of the gyroscope's absolute rates over all three axes: a speed, no sign or axis |
+
+### Calibration round
+
+The development Motion page starts or restarts a calibration round
+on a tap. BOOT selects another page. Its prompts name the face and edges as
+seen on the pinned `DISPLAY_DEFAULT_QUARTER` page; measurements stay in panel
+axes. No measured correction is applied to input readings.
+
+Each pose settles against recent per-axis accelerometer and gyro means,
+checks that the expected axis carries most of gravity, then averages a timed
+window. Motion or a reading gap restarts settling. Thresholds and durations
+are owned by `imu_probe.h`; constant gyro bias
+does not prevent settling. Align each pose carefully: the gravity gate
+rejects wrong poses but does not establish precision alignment.
+
+For each axis, the positive and negative gravity windows give
+`offset = (up + down) / 2` and
+`scale = (up - down) / (2 * INPUT_ACCEL_ONE_G)`, the diagonal six-position
+calibration model described by STMicroelectronics AN4508
+[[67]](../Citations.md#67). This measures offset and sensitivity, not cross-axis
+misalignment. The gyro zero-rate estimate averages samples across all pose
+windows. `pose` lines contain rounded Q12 g and Q6 deg/s means and sample
+counts; `calib` reports offsets in mg, sensitivity in ppm (unity is 1000000),
+and gyro offsets in mdps.
+
+`python motion_fit.py boot.log warm.log
+--window-seconds 10` prints fits and consecutive-round differences, first and
+last elapsed-time-window gyro means, and quarter transitions with tilt and
+raw acceleration. Supply one boot per capture and hold the board still in
+both endpoint windows. The first window starts at the first Motion log, so
+it represents boot only when recording starts near boot. The 10 Hz Motion
+log records the shell quarter even though the page remains pinned.
 
 ## The two buttons are not the same kind of device
 
