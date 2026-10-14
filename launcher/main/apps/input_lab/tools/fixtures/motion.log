@@ -1,0 +1,8 @@
+I (100) input_lab: round imu quarter 1
+I (200) input_lab: pose face_up 0 0 -4096 32 -64 0 100
+I (300) input_lab: calib x off 1 scale 1000000 y off -2 scale 1001000 z off 3 scale 999000 gyro 500,-1000,0
+I (400) input_lab: motion raw 0,0,-4096 tilt 0 bearing 0 filt 0,0 str 0 shake 0 turn 1 rot 32,-64,0 quarter 1
+I (10400) input_lab: motion raw 0,0,-4096 tilt 0 bearing 0 filt 0,0 str 0 shake 0 turn 1 rot 64,-32,0 quarter 2
+I (20400) input_lab: motion raw 0,0,-4096 tilt 0 bearing 0 filt 0,0 str 0 shake 0 turn 1 rot 96,0,32 quarter 2
+I (20500) input_lab: round imu quarter 1
+I (20600) input_lab: calib x off 2 scale 1000010 y off -4 scale 1001020 z off 6 scale 999030 gyro 600,-800,300

@@ -8,7 +8,7 @@
 
 #include <stdint.h>
 
-#include "math/linear/vec2i.h"
+#include "math/linear/vec3i.h"
 
 /* Raw sensor counts, in the chip's own axes.
  *
@@ -30,9 +30,14 @@ typedef struct {
  * from tilting the board: held upright the sensor reads about +1 g on its
  * X axis and roughly zero on Y, so the chip's X runs down the screen and its
  * Y runs across it pointing left, hence the negation. */
+static inline vec3i_t
+imu_axes_screen(int x, int y, int z) {
+    return (vec3i_t){-y, x, z};
+}
+
 static inline vec2i_t
 imu_gravity_screen(const imu_sample_t* s) {
-    return (vec2i_t){-s->ay, s->ax};
+    return vec3i_xy(imu_axes_screen(s->ax, s->ay, s->az));
 }
 
 /* How fast the board is TURNING, in deg/s summed over the gyroscope's three
