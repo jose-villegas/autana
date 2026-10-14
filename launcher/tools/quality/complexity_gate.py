@@ -494,11 +494,11 @@ def build_idf_entries(toolchain_root, vendored=False):
             target = str((LAUNCHER_DIR / rel).resolve())
             if sibling not in entries or target in entries:
                 continue
-            # Same folder, so only the file name differs: after either
-            # separator, since a Windows database writes backslashes.
-            borrowed = [re.sub(
-                r"(?<=[\\/])" + re.escape(Path(sibling_rel).name) + r"(?!\w)",
-                lambda _m: Path(rel).name, arg) for arg in entries[sibling]]
+            # The two may sit in different folders, so the whole relative
+            # path is swapped, in either separator: a Windows database writes
+            # backslashes.
+            borrowed = [arg.replace(sibling_rel, rel).replace(
+                sibling_rel.replace("/", "\\"), rel.replace("/", "\\")) for arg in entries[sibling]]
             if borrowed == entries[sibling]:
                 sys.exit(f"{sibling_rel}'s compile command does not name it; "
                          f"cannot borrow it for {rel}")

@@ -114,7 +114,7 @@ fails the ratchet as unmeasured until a build catches the database up.
 
 A file only a build variant compiles (`gfx/present/panel/gfx_null_panel_device.c`, which
 exists for `CONFIG_LAUNCHER_QEMU` alone) is in no diagnostics build's database
-at all. `VARIANT_ONLY_FILES` names a sibling in the same folder whose compile command
+at all. `VARIANT_ONLY_FILES` names a sibling file whose compile command
 it borrows, and the variant's own symbol, which is defined for it: what such
 a file calls is often declared only under that symbol, and an undeclared
 function is a parse error the gate never accepts. So such a file is measured
