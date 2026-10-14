@@ -30,29 +30,27 @@ test_ega16_is_bit_identical_to_cga16(void) {
 }
 
 static void
+assert_ends(const draw_palette_t* palette, int count, gfx_color_t first, gfx_color_t last) {
+    TEST_ASSERT_EQUAL_INT(count, palette->count);
+    TEST_ASSERT_EQUAL_HEX16(first, palette->entries[0]);
+    TEST_ASSERT_EQUAL_HEX16(last, palette->entries[count - 1]);
+}
+
+static void
 test_pico8_16_first_and_last_entries(void) {
-    TEST_ASSERT_EQUAL_INT(16, draw_palette_pico8_16.count);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x000000), draw_palette_pico8_16.entries[0]);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFFCCAA), draw_palette_pico8_16.entries[15]);
+    assert_ends(&draw_palette_pico8_16, 16, GFX_RGB(0x000000), GFX_RGB(0xFFCCAA));
 }
 
 static void
 test_db16_and_db32_sizes_and_known_entries(void) {
-    TEST_ASSERT_EQUAL_INT(16, draw_palette_db16.count);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x140C1C), draw_palette_db16.entries[0]);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xDEEED6), draw_palette_db16.entries[15]);
-
-    TEST_ASSERT_EQUAL_INT(32, draw_palette_db32.count);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x000000), draw_palette_db32.entries[0]);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x8A6F30), draw_palette_db32.entries[31]);
+    assert_ends(&draw_palette_db16, 16, GFX_RGB(0x140C1C), GFX_RGB(0xDEEED6));
+    assert_ends(&draw_palette_db32, 32, GFX_RGB(0x000000), GFX_RGB(0x8A6F30));
 }
 
 static void
 test_grayscale16_is_evenly_spaced(void) {
-    TEST_ASSERT_EQUAL_INT(16, draw_palette_grayscale16.count);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x000000), draw_palette_grayscale16.entries[0]);
+    assert_ends(&draw_palette_grayscale16, 16, GFX_RGB(0x000000), GFX_RGB(0xFFFFFF));
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x888888), draw_palette_grayscale16.entries[8]);
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFFFFFF), draw_palette_grayscale16.entries[15]);
 }
 
 static void

@@ -42,7 +42,7 @@ text_width(const char* text, int scale) {
  * inside the mapped box; walking glyphs from a mapped point instead drifts
  * the string off at every quarter but the first. */
 static void
-draw_text(const report_pen_t* pen, int x, int y, const char* text, int scale, gfx_color_t colour) {
+report_text(const report_pen_t* pen, int x, int y, const char* text, int scale, gfx_color_t colour) {
     const draw_font_t* font = draw_font_ui();
     const mu_Rect box =
         ui_transform_rect(pen->transform, (mu_Rect){x, y, text_width(text, scale), draw_font_height(font, scale)});
@@ -54,7 +54,7 @@ draw_text(const report_pen_t* pen, int x, int y, const char* text, int scale, gf
 
 static void
 draw_centred(const report_pen_t* pen, mu_Rect where, const char* text, int scale, gfx_color_t colour) {
-    draw_text(pen, where.x, where.y, text, scale, colour);
+    report_text(pen, where.x, where.y, text, scale, colour);
 }
 
 static bool
@@ -89,7 +89,7 @@ draw_wrapped(report_pen_t* pen, int indent, const char* text, gfx_color_t colour
 
         memcpy(line, text + wrapped.start, (size_t)wrapped.len);
         line[wrapped.len] = '\0';
-        draw_text(pen, row.x + indent * pen->layout.glyph_w, row.y, line, POST_LAYOUT_REPORT_SCALE, colour);
+        report_text(pen, row.x + indent * pen->layout.glyph_w, row.y, line, POST_LAYOUT_REPORT_SCALE, colour);
     }
 }
 
@@ -113,9 +113,9 @@ draw_entry(report_pen_t* pen, const post_result_t* r, bool failed) {
         return false;
     }
 
-    draw_text(pen, row.x, row.y, mark, POST_LAYOUT_REPORT_SCALE, mark_colour);
-    draw_text(pen, row.x + POST_LAYOUT_MARK_CHARS * pen->layout.glyph_w, row.y, r->name, POST_LAYOUT_REPORT_SCALE,
-              gfx_rgb(HEADING_RGB));
+    report_text(pen, row.x, row.y, mark, POST_LAYOUT_REPORT_SCALE, mark_colour);
+    report_text(pen, row.x + POST_LAYOUT_MARK_CHARS * pen->layout.glyph_w, row.y, r->name, POST_LAYOUT_REPORT_SCALE,
+                gfx_rgb(HEADING_RGB));
 
     if (r->detail[0] == '\0') {
         return true;

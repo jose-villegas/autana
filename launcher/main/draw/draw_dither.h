@@ -49,7 +49,7 @@ draw_dither_pattern(draw_dither_pattern_id_t id) {
         [DRAW_DITHER_BAYER4_2PX] = {NULL, 4, 4, 2, 2, 16},
         [DRAW_DITHER_CLUSTER4] = {draw_dither_cluster4, 4, 4, 1, 1, 16},
         [DRAW_DITHER_CLUSTER8] = {draw_dither_cluster8, 8, 8, 1, 1, 64},
-        [DRAW_DITHER_BLUE32] = {draw_dither_blue32, 32, 32, 1, 1, 1024},
+        [DRAW_DITHER_BLUE32] = {draw_dither_blue32, 32, 32, 1, 1, DRAW_DITHER_MAX_LEVELS},
         [DRAW_DITHER_SCANLINES4] = {NULL, 1, 4, 1, 1, 4},
         [DRAW_DITHER_HATCH4] = {NULL, 4, 1, 1, 1, 4},
     };

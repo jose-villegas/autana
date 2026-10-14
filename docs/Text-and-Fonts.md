@@ -11,13 +11,13 @@ There is no font rasterizer on the device. A font is a bitmap table in flash.
 
 ```mermaid
 flowchart LR
-    BMP["font8x8_basic.h<br/>1 bpp bitmap"] --> F8["gfx_font_8x8"]
-    F8 --> DESC["gfx_font_t"]
-    DESC --> ROLE["gfx_font_roles.h<br/>gfx_font_ui()"]
-    ROLE --> GT["gfx_text*()"]
+    BMP["font8x8_basic.h<br/>1 bpp bitmap"] --> F8["draw_font_8x8"]
+    F8 --> DESC["draw_font_t"]
+    DESC --> ROLE["draw_font_roles.h<br/>draw_font_ui()"]
+    ROLE --> GT["draw_text*()"]
     ROLE --> UI["ui.c: microui text"]
     ROLE --> BOOT["boot_anim.c title"]
-    GT --> DRAW["gfx_text_font()"]
+    GT --> DRAW["draw_text_font()"]
     UI --> DRAW
     BOOT --> DRAW
 ```
