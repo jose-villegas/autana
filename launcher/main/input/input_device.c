@@ -15,6 +15,8 @@ static const char TAG[] = "input";
 
 _Static_assert(INPUT_ACCEL_ONE_G == IMU_COUNTS_PER_G, "input_read_motion() passes sensor counts through");
 
+_Static_assert(INPUT_ROTATION_ONE_DPS == IMU_COUNTS_PER_DPS, "rotation passes sensor counts through");
+
 void
 input_start(void) {
     touch_start();
@@ -36,7 +38,9 @@ input_read_motion(input_motion_t* out) {
     if (!imu_read(&sample)) {
         return false;
     }
-    *out = (input_motion_t){vec3i_from_xy(imu_gravity_screen(&sample), sample.az), imu_turn_speed(&sample)};
+    *out = (input_motion_t){.acceleration = imu_axes_screen(sample.ax, sample.ay, sample.az),
+                            .turn_speed = imu_turn_speed(&sample),
+                            .rotation = imu_axes_screen(sample.gx, sample.gy, sample.gz)};
     return true;
 }
 

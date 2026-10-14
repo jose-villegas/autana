@@ -12,7 +12,7 @@ fit.
 | Stage | Where it runs | What dominates | Why |
 |---|---|---|---|
 | Reference set | GPU runner: Mitsuba CUDA (OptiX), Mitsuba LLVM where OptiX does not load | the bounced light: Mitsuba's path integrator at every primary hit | one set per reference key |
-| Start (mesh bake) | hosted runner, CPU | the camera-path visibility pass: NumPy bookkeeping around up to 100 rounds of `RayQuery.all_hits`, single-threaded | the same pass as every mesh |
+| Start (mesh bake) | hosted runner, CPU | the camera-path visibility pass: single-threaded NumPy bookkeeping around `RayQuery.hit_rounds`; rays stop at their first drawn hit plus the tie distance | the same pass as every mesh |
 | Fit | GPU (torch, nvdiffrast) | the optimiser steps | already on the GPU |
 | Mesh bake (CI) | hosted runner, CPU | the same Mitsuba and NumPy work, minutes per mesh | not a problem today |
 
