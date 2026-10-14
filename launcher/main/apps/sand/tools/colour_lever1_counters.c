@@ -14,7 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "gfx/present/gfx_indexed.h"
+#include "gfx/present/gfx_mode.h"
 #include "material.h"
 #include "material_palette.h"
 #include "sand.h"

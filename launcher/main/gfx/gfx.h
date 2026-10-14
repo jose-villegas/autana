@@ -1,23 +1,14 @@
-/*
- * gfx: framebuffer ownership.
- *
- * Everything on this device draws into ONE full-screen RGB565 framebuffer that
- * this module owns. The shell and every app share it; nothing else allocates a
- * buffer of its own. At 368x448x2 it is 322 KiB of PSRAM, and a second one
- * costs a per-frame PSRAM copy no app can afford; see
- * docs/Gfx-and-Presentation.md.
- *
- * Drawing into it is gfx/draw/gfx_draw.h; sending it to the panel is
- * gfx/present/gfx_present.h; the mode it is held in is gfx/present/gfx_mode.h.
- */
+/* Framebuffer ownership. The shell and applications share one RGB565
+ * framebuffer; a second full-size buffer would require a per-frame PSRAM
+ * copy. Drawing belongs to draw/gfx_draw.h, presentation to gfx/present/. */
 #pragma once
 
 #include <stdbool.h>
 #include <stdint.h>
 
 #include "build/build_variant.h"
-#include "gfx/draw/gfx_box.h"
-#include "gfx/draw/gfx_color.h"
+#include "gfx/target/gfx_box.h"
+#include "gfx/target/gfx_color.h"
 
 /* The panel's size as literals, so no caller needs the board's headers; the
  * present side asserts them against the board's own values. */

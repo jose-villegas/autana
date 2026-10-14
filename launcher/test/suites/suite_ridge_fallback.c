@@ -7,10 +7,10 @@
 
 #include "asset/asset_store.h"
 #include "core/memory.h"
-#include "gfx/draw/gfx_dither.h"
+#include "draw/gfx_dither.h"
 #include "gfx/gfx.h"
-#include "gfx/gfx_test.h"
-#include "ui/ui_ridge.h"
+#include "gfx/present/gfx_test.h"
+#include "shell/ui/ui_ridge.h"
 
 /* The level fallback leaves broad regions of solid land and shaded sky. */
 #define MIN_REGION_PIXELS (GFX_WIDTH / 4)

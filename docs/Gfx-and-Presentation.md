@@ -6,18 +6,18 @@ tracker, and the present path. A caller includes the header for what it does:
 | Header | What it declares |
 | --- | --- |
 | [`gfx/gfx.h`](../launcher/main/gfx/gfx.h) | the framebuffer: its size, `gfx_init()`, `gfx_framebuffer()` |
-| [`gfx/draw/gfx_draw.h`](../launcher/main/gfx/draw/gfx_draw.h) | primitives, text and clipping |
+| [`draw/gfx_draw.h`](../launcher/main/draw/gfx_draw.h) | primitives, text and clipping |
 | [`gfx/present/gfx_present.h`](../launcher/main/gfx/present/gfx_present.h) | draw's target and clip, dirty marking, present, the panel clock, heal |
 | [`gfx/present/gfx_mode.h`](../launcher/main/gfx/present/gfx_mode.h) | modes, readback, the indexed image and its LUTs |
 | [`gfx/present/gfx_debug.h`](../launcher/main/gfx/present/gfx_debug.h) | development-build overlays and send counts |
-| [`gfx/image/gfx_image.h`](../launcher/main/gfx/image/gfx_image.h) | a picture read in place from its pack entry |
+| [`draw/gfx_image.h`](../launcher/main/draw/gfx_image.h) | a picture read in place from its pack entry |
 
-The code splits the same way: `draw/` holds `gfx_draw.c` and the pure headers
-it draws with; `present/` holds `gfx_present.c` (the present task and send
-paths), `gfx_mode.c` (modes and buffers), `gfx_debug.c` and the pure headers
-they send with; `image/` holds `gfx_image.c`, the reader of a picture's pack
-entry ([the image entry](assets/README.md#the-image-entry)); `gfx/gfx_internal.h`
-holds the state shared only by `present/`. Draw reads its target and clip
+`draw/` owns primitives, images, icons, fonts, palettes and dithering.
+`gfx/target/` holds pixel colour, boxes, draw targets and render-target
+attachments. `gfx/present/` owns the framebuffer and presentation, with
+layout values under `modes/`, send policy under `send/` and emulated panel
+backends under `panel/`. `gfx_internal.h` holds state shared only by
+presentation. Draw reads its target and clip
 through `gfx_present.h`. The panel link itself, QSPI and each revision's init
 sequence, is `board/board_panel.c`. For what an app owes the shell see
 [`Building-an-App.md`](Building-an-App.md); for the panel constraints these choices obey see
@@ -303,8 +303,8 @@ the same `gfx_present_begin()` / `gfx_present_wait()` as the default mode.
 | `gfx_indexed_set_dither()` | the spatial dither pattern for 16-colour mode |
 
 All four are safe only between frames. Palettes are a gfx type
-(`gfx/draw/gfx_palette.h`, entries 0-15 reserved by `GFX_PALETTE_UI_ENTRIES`);
-curated ones ship in `gfx/draw/gfx_palette_standard.h`, chosen at runtime by name.
+(`draw/gfx_palette.h`, entries 0-15 reserved by `GFX_PALETTE_UI_ENTRIES`);
+curated ones ship in `draw/gfx_palette_standard.h`, chosen at runtime by name.
 Building one is the app's work. The two steps every palette then needs,
 the colour -> index map and the dither table, are
 `tools/gen/gfx_palette_gen.h`: host-only, in OKLab<sup>[[35]](Citations.md#35)</sup>, never in the firmware

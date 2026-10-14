@@ -9,7 +9,7 @@
 
 #include <stdbool.h>
 
-#include "gfx/image/gfx_image.h"
+#include "draw/gfx_image.h"
 #include "microui.h"
 
 /* One icon: its entry's name in the pack, and what an icon-only control

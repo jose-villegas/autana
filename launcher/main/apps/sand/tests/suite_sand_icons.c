@@ -21,7 +21,7 @@
 #include "unity.h"
 
 #include "apps/sand/ui/sand_icons.h"
-#include "gfx/draw/icon.h"
+#include "draw/icon.h"
 
 /* Icon `id`, which the app pack the suites run with must hold. */
 static const gfx_image_t*

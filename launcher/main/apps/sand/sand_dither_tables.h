@@ -1,7 +1,7 @@
 /* sand_dither_tables: which generated sand_palette256.h table each 16-colour dither mode expands through. */
 #pragma once
 
-#include "gfx/present/gfx_indexed.h"
+#include "gfx/present/gfx_mode.h"
 #include "sand_palette256.h"
 
 static inline const gfx_color_t*
