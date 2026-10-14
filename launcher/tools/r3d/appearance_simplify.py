@@ -5,10 +5,8 @@ simplification, Hasselgren et al. 2021). A smooth mesh fits a colour per
 vertex, a flat one a colour per triangle.
 
     python launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.mesh \\
-        --poses POSES.txt --reference DIR [--poses ... --reference ...] --out DIR [--per-shot]
-
-Coverage uses --coverage-poses and excludes --held-out samples;
---coverage-weight 0 disables it.
+        --poses POSES.txt --reference DIR [--poses ... --reference ...] --out DIR [--per-shot] \\
+        --coverage-poses POSES.txt --held-out POSES.txt [--coverage-weight W] [--mine-every N]
 
 --start is a baked smooth or flat mesh, usually the simplifier's output at the
 triangle budget. Each --poses file (tools/anim/track_host.py) pairs with
@@ -16,7 +14,9 @@ the --reference directory reference_render.py wrote for it; --scene is the
 scene they were rendered from, whose camera background shows where nothing
 is drawn. All pairs train one mesh; with --per-shot each pair trains its
 own. A mesh is written as NAME.mesh by the same writer as mesh_import.py,
-under DIR, or DIR/shot<k>, and as a coloured OBJ beside it.
+under DIR, or DIR/shot<k>, and as a coloured OBJ beside it. Coverage uses
+--coverage-poses and excludes --held-out samples, with --coverage-weight
+and --mine-every controlling its penalty and mining cadence; --coverage-weight 0 disables it.
 
 The optimiser needs PyTorch with CUDA and nvdiffrast; see the README.
 """
@@ -44,6 +44,7 @@ from render_compare import lab  # noqa: E402
 FAR = 1.0e5
 COVERAGE_WEIGHT = 50.0
 MINE_EVERY = 250
+# Pose text round-trips can round the same sampled eye and forward differently.
 POSE_TOLERANCE = 1e-6
 
 
@@ -93,10 +94,9 @@ def projection(eye, forward, width, height, lens, near):
 
 
 def pose_views(poses_path, scale):
-    """[(clip matrix, None, None, eye)] for every pose of a poses file: views
-    with no target, for counting what each triangle shows."""
+    """Target-free views and scaled render size for counting shown pixels."""
     width, height, lens, near, poses = read_poses(poses_path)
-    return [(projection(pose[:3], pose[3:], width, height, lens, near), None, None, pose[:3]) for pose in poses]
+    return [(projection(pose[:3], pose[3:], width, height, lens, near), None, None, pose[:3]) for pose in poses], (width * scale, height * scale)
 
 
 def load_views(pairs, scale):
@@ -204,7 +204,7 @@ class Renderer:
         width, height = self.size
         rast, _ = self.dr.rasterize(self.context, clip, tris, resolution=[height, width])
         alpha = (rast[..., 3:] > 0).to(clip.dtype)
-        return self.dr.antialias(alpha.contiguous(), rast, clip, tris)[0, ..., 0].flip(0)
+        return self.dr.antialias(alpha.contiguous(), rast, clip, tris)[0, ..., 0]
 
     def normals(self, points, clip_matrix, eye, clip=None):
         """(per-pixel world normal turned toward `eye`, covered mask): the
@@ -243,8 +243,14 @@ def held_out_indices(coverage_path, held_out_path):
     """Coverage samples matching a held-out eye and forward; projection size may differ."""
     poses = read_poses(coverage_path)[-1]
     held_out = read_poses(held_out_path)[-1]
-    return [index for index, pose in enumerate(poses)
-            if any(np.allclose(pose, other, rtol=0, atol=POSE_TOLERANCE) for other in held_out)]
+    matched = set()
+    for other in held_out:
+        indices = [index for index, pose in enumerate(poses)
+                   if np.allclose(pose, other, rtol=0, atol=POSE_TOLERANCE)]
+        if not indices:
+            raise ValueError("held-out pose has no coverage match: coverage_every_ms must include held_out_every_ms samples")
+        matched.update(indices)
+    return sorted(matched)
 
 
 def coverage_pool(hole_counts, excluded):
@@ -253,26 +259,26 @@ def coverage_pool(hole_counts, excluded):
     return [index for index, holes in enumerate(hole_counts) if holes and index not in excluded]
 
 
-def coverage_targets(mesh, views, size, device="cuda"):
-    """Start-covered pixels, rasterised once without gradients using Renderer facing rules.
-    The start is closed at the cracks confirmed by pinhole rays, so it needs no extra Mitsuba render."""
+def visible(mesh, views, size, device="cuda"):
+    """Visible triangle IDs for each view, without gradients."""
     import torch
 
     render = Renderer(mesh.tris, mesh.double, mesh.vertex_point, size, device, flat=mesh.flat)
     points = torch.as_tensor(mesh.points, dtype=torch.float32, device=device)
-    with torch.no_grad():
-        return [(render.visible_ids(points, torch.as_tensor(view[0], dtype=torch.float32, device=device)) >= 0).flip(0)
-                for view in views]
+    for matrix, *_rest in views:
+        with torch.no_grad():
+            ids = render.visible_ids(points, torch.as_tensor(matrix, dtype=torch.float32, device=device))
+        yield ids
 
 
-def mine_coverage(render, points, matrices, targets, excluded=()):
+def coverage_targets(mesh, views, size, device="cuda"):
+    """The target is the mesh being fitted, so it needs no reference image."""
+    return [ids >= 0 for ids in visible(mesh, views, size, device)]
+
+
+def mine_coverage(mesh, views, size, targets, excluded=(), device="cuda"):
     """Hard poses and per-pose hole-pixel counts, without a reference image or gradients."""
-    import torch
-
-    excluded = set(excluded)
-    with torch.no_grad():
-        holes = [0 if index in excluded else int((target & (render.visible_ids(points, matrix) < 0).flip(0)).sum())
-                 for index, (matrix, target) in enumerate(zip(matrices, targets))]
+    holes = [int((target & (ids < 0)).sum()) for target, ids in zip(targets, visible(mesh, views, size, device))]
     return coverage_pool(holes, excluded), holes
 
 
@@ -281,14 +287,9 @@ def coverage(mesh, views, size, device="cuda"):
     triangle no view sees, small for a sliver or a speck."""
     import torch
 
-    render = Renderer(mesh.tris, mesh.double, mesh.vertex_point, size, device, flat=mesh.flat)
-    points = torch.as_tensor(mesh.points, dtype=torch.float32, device=device)
     total = torch.zeros(len(mesh.tris), dtype=torch.int64, device=device)
-    with torch.no_grad():
-        for matrix, *_rest in views:
-            ids = render.visible_ids(points, torch.as_tensor(matrix, dtype=torch.float32, device=device))
-            ids = ids[ids >= 0]
-            total += torch.bincount(ids, minlength=len(mesh.tris))
+    for ids in visible(mesh, views, size, device):
+        total += torch.bincount(ids[ids >= 0], minlength=len(mesh.tris))
     return total.cpu().numpy()
 
 
@@ -437,6 +438,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     points0, rgb0, tris, double, _scale, vertex_point, flat = mesh
     torch.manual_seed(seed)
     rng = np.random.default_rng(seed)
+    coverage_rng = np.random.default_rng(seed)
     diagonal = float(np.linalg.norm(points0.max(axis=0) - points0.min(axis=0)))
     renderers = {}
 
@@ -460,12 +462,10 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     if normal_weight and any(normal is None for normal in normals):
         raise ValueError("a normal term needs the reference's normal buffers: reference_render.py --normals")
     if coverage_weight:
-        if mine_every < 1 or coverage_weight < 0 or not coverage_views:
-            raise ValueError("coverage needs a positive cadence, nonnegative weight and coverage poses")
+        if mine_every < 1 or coverage_weight < 0 or not coverage_views or not coverage_masks:
+            raise ValueError("coverage needs a positive cadence, nonnegative weight, coverage poses and masks")
         coverage_render = Renderer(tris, double, vertex_point, coverage_size or size, device, flat=flat)
         coverage_matrices = [torch.as_tensor(view[0], dtype=torch.float32, device=device) for view in coverage_views]
-        if not coverage_masks:
-            coverage_masks = coverage_targets(mesh, coverage_views, coverage_size or size, device)
         hard = []
     adam = torch.optim.Adam([{"params": [points], "lr": lr_position * diagonal}, {"params": [colours], "lr": lr_colour}])
     schedule = torch.optim.lr_scheduler.LambdaLR(adam, lambda step: 0.1 ** (step / max(steps, 1)))
@@ -473,8 +473,8 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     started = time.time()
     for step in range(steps):
         if coverage_weight and step % mine_every == 0:
-            hard, _holes = mine_coverage(coverage_render, points, coverage_matrices, coverage_masks,
-                                         coverage_excluded)
+            hard, _holes = mine_coverage(mesh._replace(points=points), coverage_views, coverage_size or size,
+                                         coverage_masks, coverage_excluded, device)
         chosen = rng.choice(len(views), size=min(batch, len(views)), replace=False)
         adam.zero_grad()
         error, predicted, colour_error, coverage_loss = 0.0, 0.0, 0.0, 0.0
@@ -492,13 +492,11 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
                 error = error + normal_weight * distance / len(chosen)
         drift = ((uniform_laplacian(points, edges) - rest) / edge_length).pow(2).sum(dim=1).mean()
         if coverage_weight and hard:
-            selected = rng.choice(hard, size=min(batch, len(hard)), replace=False)
+            selected = coverage_rng.choice(hard, size=min(batch, len(hard)), replace=False)
             for i in selected:
                 alpha = coverage_render.alpha(points, coverage_matrices[i])
                 coverage_loss = coverage_loss + coverage_weight * ((1 - alpha) * coverage_masks[i]).mean() / len(selected)
-        loss = error + laplacian * drift + cost_weight * predicted
-        if coverage_weight:
-            loss = loss + coverage_loss
+        loss = error + laplacian * drift + cost_weight * predicted + coverage_loss
         loss.backward()
         adam.step()
         schedule.step()
@@ -569,6 +567,9 @@ def main(argv=None):
         parser.error("give one --reference per --poses")
     if not np.isfinite(args.coverage_weight) or args.coverage_weight < 0 or args.mine_every < 1:
         parser.error("coverage weight must be finite and nonnegative; mine-every must be positive")
+    if args.coverage_weight and not args.score and (not args.coverage_poses or not args.held_out):
+        parser.error("coverage needs --coverage-poses and --held-out")
+    coverage_views, coverage_size = pose_views(args.coverage_poses, args.scale) if args.coverage_poses else (None, None)
     scene = load_scene(args.scene)
     if scene.camera is None:
         parser.error("--scene needs a camera")
@@ -595,11 +596,6 @@ def main(argv=None):
             log(f"refined {len(mesh.tris)} -> {len(fitted.tris)} triangles")
         coverage_options = {}
         if args.coverage_weight:
-            if not args.coverage_poses or not args.held_out:
-                parser.error("coverage needs --coverage-poses and --held-out")
-            coverage_views = pose_views(args.coverage_poses, args.scale)
-            width, height, *_rest = read_poses(args.coverage_poses)
-            coverage_size = (width * args.scale, height * args.scale)
             masks = coverage_targets(fitted, coverage_views, coverage_size)
             excluded = held_out_indices(args.coverage_poses, args.held_out)
             coverage_options = dict(coverage_weight=args.coverage_weight, mine_every=args.mine_every,
@@ -607,12 +603,7 @@ def main(argv=None):
                                     coverage_excluded=excluded, coverage_size=coverage_size)
 
             def report_holes(label, current):
-                import torch
-
-                render = Renderer(current.tris, current.double, current.vertex_point, coverage_size, "cuda", flat=current.flat)
-                points = torch.as_tensor(current.points, dtype=torch.float32, device="cuda")
-                matrices = [torch.as_tensor(view[0], dtype=torch.float32, device="cuda") for view in coverage_views]
-                _hard, holes = mine_coverage(render, points, matrices, masks)
+                _hard, holes = mine_coverage(current, coverage_views, coverage_size, masks)
                 log(f"coverage holes {label}: {sum(count > 0 for count in holes)}/{len(holes)} poses, {sum(holes)} pixels")
 
             report_holes("start", fitted)
@@ -624,9 +615,8 @@ def main(argv=None):
         if args.coverage_weight:
             report_holes("after fit", fitted)
         if args.budget is not None:
-            prune_views = coverage_views if args.coverage_weight else (
-                pose_views(args.coverage_poses, args.scale) if args.coverage_poses else views)
-            shown = coverage(fitted, prune_views, coverage_size if args.coverage_weight else size)
+            shown = coverage(fitted, coverage_views if args.coverage_poses else views,
+                             coverage_size if args.coverage_poses else size)
             pruned = prune(fitted, shown, args.budget)
             log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: {np.count_nonzero(shown == 0)} never shown")
             fitted = pruned
