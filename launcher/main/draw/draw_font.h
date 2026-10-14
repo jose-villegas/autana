@@ -230,8 +230,8 @@ typedef struct {
  * of one per row, before rotation, so the merge is turn-independent. At
  * most cell_w/2 runs open at once (an alternating bit pattern), well
  * under DRAW_FONT_MAX_OPEN_RUNS for the one 1bpp font shipped (8 wide).
- * Returns boxes written, capped at `max_out` like dirty_leaf_rects()
- * (gfx_dirty.h); ch outside the font's range yields zero. */
+ * Returns boxes written, capped at `max_out`; ch outside the font's
+ * range yields zero. */
 static inline int
 draw_font_glyph_run_boxes(const draw_font_t* f, unsigned char ch, draw_font_run_box_t* out, int max_out) {
     if (ch < f->first || (unsigned)(ch - f->first) >= f->count) {

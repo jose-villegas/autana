@@ -102,14 +102,17 @@ test_draw_between_present_begin_and_wait_trips_the_present_guard(void) {
     fixture();
     gfx_present_begin();
     const unsigned before = gfx_present_guard_trips;
+    const unsigned rect_guard_checks = 2;
+    const unsigned pixel_guard_checks = 1;
+    /* Rectangles guard surface access and box marking; pixels mark rows. */
     draw_rect(DRAWN_X, DRAWN_Y, SIZE, SIZE, 0x1234);
-    TEST_ASSERT_EQUAL_UINT(before + 1, gfx_present_guard_trips);
+    TEST_ASSERT_EQUAL_UINT(before + rect_guard_checks, gfx_present_guard_trips);
     draw_pixel(DRAWN_X, DRAWN_Y, 0x1234);
-    TEST_ASSERT_EQUAL_UINT(before + 2, gfx_present_guard_trips);
+    TEST_ASSERT_EQUAL_UINT(before + rect_guard_checks + pixel_guard_checks, gfx_present_guard_trips);
     gfx_present_wait();
 
     draw_rect(DRAWN_X, DRAWN_Y, SIZE, SIZE, 0x1234);
-    TEST_ASSERT_EQUAL_UINT(before + 2, gfx_present_guard_trips);
+    TEST_ASSERT_EQUAL_UINT(before + rect_guard_checks + pixel_guard_checks, gfx_present_guard_trips);
 }
 
 enum { INK = UINT16_MAX, BAND_ROW = GFX_BAND_HEIGHT, ALPHA_OPAQUE = UINT8_MAX };

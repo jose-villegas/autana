@@ -678,8 +678,8 @@
 7	launcher/main/apps/sand/tools/shading_palette.c:1673	write_swatches
 7	launcher/main/boot/boot_anim.c:452	draw_heads
 7	launcher/main/boot/boot_anim.c:263	floor_ring_steps
-7	launcher/main/draw/draw.c:180	draw_line
-7	launcher/main/draw/draw.c:402	draw_text_font
+7	launcher/main/draw/draw.c:180	line_walk
+7	launcher/main/draw/draw.c:402	text_font
 7	launcher/main/gfx/present/gfx_debug.c:159	gfx_set_leaf_overlay
 7	launcher/main/gfx/present/gfx_debug.c:430	mark_band_overlay
 7	launcher/main/gfx/present/gfx_mode.c:299	gfx_mode_enter

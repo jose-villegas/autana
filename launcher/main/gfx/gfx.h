@@ -9,6 +9,7 @@
 #include "build/build_variant.h"
 #include "gfx/target/gfx_box.h"
 #include "gfx/target/gfx_color.h"
+#include "gfx/target/gfx_target.h"
 
 /* The panel's size as literals, so no caller needs the board's headers; the
  * present side asserts them against the board's own values. */
@@ -41,5 +42,23 @@ bool gfx_init(void);
 
 /* Direct access, for renderers that write pixels in bulk (the 3D rasterizer
  * writes here directly rather than going through draw_pixel per fragment).
- * Whatever is written must be marked with gfx_mark_dirty() (gfx_present.h). */
+ * Whatever is written must be marked with gfx_mark_dirty(). */
 gfx_color_t* gfx_framebuffer(void);
+
+/* A draw writes into the framebuffer, band or replay strip, with its
+ * current clip and dirty-marking policy. */
+typedef struct {
+    gfx_target_t target;
+    gfx_box_t clip;
+    bool marks;
+} gfx_surface_t;
+
+/* Checks present-in-flight, then framebuffer availability. False skips
+ * the draw before reading drawing state. */
+bool gfx_draw_begin(gfx_surface_t* out);
+
+/* The caller intersects the box with the screen before setting it. */
+void gfx_set_clip_box(gfx_box_t clip);
+void gfx_mark_dirty(int x, int y, int w, int h);
+void gfx_mark_rows_dirty(int y0, int y1);
+void gfx_mark_all_dirty(void);

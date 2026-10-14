@@ -2,6 +2,7 @@
 #include "build/build_variant.h"
 #include "core/memory.h"
 #include "gfx/present/gfx_debug.h"
+#include "gfx/present/gfx_fb_guard.h"
 #include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_present_guard.h"
 #include "gfx/present/send/gfx_full_redraw.h"
@@ -938,3 +939,24 @@ gfx_present_raw_full_frame_for_test(void) {
 }
 #endif /* ESP_PLATFORM */
 #endif
+
+bool
+gfx_draw_begin(gfx_surface_t* out) {
+    GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return false;
+    }
+    *out = (gfx_surface_t){gfx_present_target(), gfx_clip_save(), !gfx_present_in_band()};
+    return true;
+}
+
+void
+gfx_set_clip_box(gfx_box_t clip) {
+    GFX_PRESENT_GUARD();
+    gfx_clip_restore(clip);
+}
+
+void
+gfx_mark_rows_dirty(int y0, int y1) {
+    mark_band(y0, y1);
+}

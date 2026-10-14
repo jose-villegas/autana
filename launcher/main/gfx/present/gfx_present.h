@@ -66,13 +66,6 @@ void gfx_full_redraw_clear_pending(void);
  * looks like a frozen or partially stale screen, not a crash.
  */
 
-/* Declare that a rectangle of the framebuffer has changed. Tracked as a real
- * box per grid cell, not just which cell: a caller that knows it only
- * touched part of a cell may end up sending less than the whole thing. */
-void gfx_mark_dirty(int x, int y, int w, int h);
-
-void gfx_mark_all_dirty(void);
-
 /* Whether any recorded dirt overlaps this rectangle. The tracker uses
  * leaf-sized regions for precise marks and full cells for band marks. */
 bool gfx_region_dirty(int x, int y, int w, int h);
