@@ -12,7 +12,7 @@ renderer's shading is), samples the
 scene camera's path for training,
 held-out and pruning poses, and renders the training references with their
 normals into DIR. `fit`, in the GPU environment of appearance_simplify.py,
-prunes the start to the recipe's budget, fits it with the recipe's settings
+fits the start with the recipe's settings, prunes it to the recipe's budget
 and writes the renderer's mesh into DIR. bake/bake.py bakes the start as a mesh
 of its own and the references once per ReferenceInputs into the bake cache,
 keyed, and its lock records what the start and the fit made.
@@ -105,7 +105,7 @@ class ReferenceInputs:
     indirect: SimpleNamespace
     tonemap_white: float
     camera: SimpleNamespace       # the scene camera: lens, background and path
-    size: tuple                   # the camera-path visibility size the poses are sampled at
+    size: tuple                   # the fit recipe's pose size
     poses: dict                   # the fit recipe's POSE_SPACING fields
 
     def job(self):
@@ -122,11 +122,9 @@ POSE_SPACING = ("train_every_ms", "held_out_every_ms", "coverage_every_ms")
 
 
 def reference_inputs(job, scene):
-    """The ReferenceInputs of a fitted renderer; its size is None without camera_path visibility, which
-    prepare_references refuses."""
+    """The reference inputs of a fitted renderer, with its recipe's pose size."""
     renderer = job.renderer
-    visibility = renderer.visibility
-    size = tuple(visibility.size) if visibility is not None and visibility.source == "camera_path" else None
+    size = tuple(renderer.fit.size)
     return ReferenceInputs(settings=job.settings, bake=job.bake, lights=scene.lights, indirect=scene.indirect,
                            tonemap_white=scene.tonemap_white, camera=scene.camera.component, size=size,
                            poses={name: getattr(renderer.fit, name) for name in POSE_SPACING})
@@ -140,7 +138,7 @@ def prepare_references(inputs, work):
     from r3d.reference_render import render_sets
 
     if inputs.size is None:
-        raise SettingsError("a fit needs camera_path visibility: its poses come from the path")
+        raise SettingsError("a fit needs fit.poses.size")
     scene, spacing = inputs.scene(), SimpleNamespace(**inputs.poses)
     visibility = SimpleNamespace(size=inputs.size, every_ms=None)
     work.mkdir(parents=True, exist_ok=True)
@@ -162,8 +160,6 @@ def prepare(scene_path, scene, job, work, recorder=None):
     from r3d.mesh_import import write_baked
 
     inputs = reference_inputs(job, scene)
-    if inputs.size is None:
-        raise SettingsError(f"{job.renderer.variant.name} needs camera_path visibility: its poses come from the path")
     work.mkdir(parents=True, exist_ok=True)
     start = write_baked(job, scene, work, job.renderer.variant.name, recorder=recorder)
     training = prepare_references(inputs, work)

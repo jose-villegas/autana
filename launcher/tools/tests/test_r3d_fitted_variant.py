@@ -286,7 +286,7 @@ class SweepTests(unittest.TestCase):
         start = SimpleNamespace(tris=[0])
         poses = (2, 3, 0.5, 1.0, [[0, 0, 0, 0, 0, -1], [1, 0, 0, 0, 0, -1]])
         renderer = SimpleNamespace(variant=SimpleNamespace(name="tiny_fitted"),
-                                   fit=SimpleNamespace(train_every_ms=1, held_out_every_ms=2, coverage_every_ms=1),
+                                   fit=SimpleNamespace(size=(2, 3), train_every_ms=1, held_out_every_ms=2, coverage_every_ms=1),
                                    visibility=SimpleNamespace(source="camera_path", size=(2, 3)))
         job = SimpleNamespace(settings=SimpleNamespace(path="settings"), bake=SimpleNamespace(), renderer=renderer,
                               object=SimpleNamespace(name="tiny"))
@@ -328,23 +328,23 @@ class SweepTests(unittest.TestCase):
                                    start=work / start_name)
             self.assertEqual(target.read_bytes(), fitted_bytes)
 
-    def test_reference_inputs_have_no_size_without_camera_path_visibility(self):
-        fit = SimpleNamespace(train_every_ms=1, held_out_every_ms=2, coverage_every_ms=3)
+    def test_reference_inputs_read_fit_pose_size_for_any_visibility(self):
+        fit = SimpleNamespace(size=(8, 6), train_every_ms=1, held_out_every_ms=2, coverage_every_ms=3)
         scene = SimpleNamespace(lights=[], indirect=None, tonemap_white=1.0, camera=SimpleNamespace(component=None))
         size = (8, 6)
         for source in ("camera_region", None):
             visibility = None if source is None else SimpleNamespace(source=source, size=size)
             job = SimpleNamespace(settings=None, bake=None, renderer=SimpleNamespace(fit=fit, visibility=visibility))
-            self.assertIsNone(fitted_variant.reference_inputs(job, scene).size, source)
+            self.assertEqual(fitted_variant.reference_inputs(job, scene).size, size, source)
         job.renderer.visibility = SimpleNamespace(source="camera_path", size=size)
         self.assertEqual(fitted_variant.reference_inputs(job, scene).size, size)
 
-    def test_a_reference_set_is_refused_for_inputs_without_a_visibility_size(self):
+    def test_a_reference_set_is_refused_for_inputs_without_a_pose_size(self):
         inputs = fitted_variant.ReferenceInputs(
             settings=None, bake=None, lights=[], indirect=None, tonemap_white=1.0, camera=None, size=None, poses={})
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory) / "references"
-            with self.assertRaisesRegex(fitted_variant.SettingsError, "camera_path visibility"):
+            with self.assertRaisesRegex(fitted_variant.SettingsError, "fit.poses.size"):
                 fitted_variant.prepare_references(inputs, work)
             self.assertFalse(work.exists(), "nothing is written before the refusal")
 

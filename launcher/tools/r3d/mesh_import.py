@@ -156,7 +156,7 @@ def fidelity_poses(scene, object_name, frames, dt):
     from anim import track_host
     job = next(item for item in scene.renderers if item.object.name == object_name + "_fitted")
     camera = scene.camera.component
-    return track_host.poses(camera.path.animation, camera.path.node, dt, *job.renderer.visibility.size,
+    return track_host.poses(camera.path.animation, camera.path.node, dt, *job.renderer.fit.size,
                             camera.half_fov_short_tan, camera.near_z, until_ms=(frames + 1) * dt,
                             number_format=".9g")
 
