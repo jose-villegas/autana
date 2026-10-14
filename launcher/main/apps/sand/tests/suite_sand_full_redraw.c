@@ -18,8 +18,8 @@
 
 #include "app/app.h"
 #include "core/memory.h"
+#include "draw/gfx_draw.h"
 #include "esp_log.h"
-#include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_present.h"

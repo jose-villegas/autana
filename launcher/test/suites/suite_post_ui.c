@@ -12,7 +12,7 @@
 #include "unity.h"
 
 #include "display/display.h"
-#include "gfx/draw/gfx_font_roles.h"
+#include "draw/gfx_font_roles.h"
 #include "selftest/post_layout.h"
 
 /* The panel, and the panel turned on its side. The logical canvas the report

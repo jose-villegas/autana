@@ -32,8 +32,8 @@
 #include "display/display.h"
 #include "launcher_home_render_setup.h"
 #include "render_host.h"
+#include "shell/ui/ui_launcher.h"
 #include "ui/ui.h"
-#include "ui/ui_launcher.h"
 
 static uint32_t now_ms;
 static boot_anim_motion_t motion;

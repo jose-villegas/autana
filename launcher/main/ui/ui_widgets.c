@@ -4,8 +4,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "gfx/draw/gfx_draw.h"
-#include "gfx/draw/gfx_font_roles.h"
+#include "draw/gfx_draw.h"
+#include "draw/gfx_font_roles.h"
 #include "ui/ui.h"
 #include "ui/ui_icons.h"
 #include "ui/ui_style.h"

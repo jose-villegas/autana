@@ -20,7 +20,7 @@
 
 #include "unity.h"
 
-#include "gfx/draw/gfx_draw.h"
+#include "draw/gfx_draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "ui/ui.h"

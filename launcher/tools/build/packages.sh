@@ -35,3 +35,10 @@ package_sources() {
 package_suites() {
     find "$1"/packages/*/tests -name 'suite_*.c' 2>/dev/null | sort
 }
+
+app_directories() {
+    for app_dir in "$1"/main/apps/*/ "$1"/main/shell/apps/*/; do
+        [ -d "$app_dir" ] && printf '%s\n' "$app_dir"
+    done
+    return 0
+}

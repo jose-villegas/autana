@@ -14,7 +14,7 @@
 #include "unity.h"
 
 #include "asset/asset_store.h"
-#include "gfx/image/gfx_image.h"
+#include "draw/gfx_image.h"
 #include "test_pack.h"
 #include "ui/ui_icons.h"
 

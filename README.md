@@ -46,7 +46,7 @@ The test runner prints a verdict and saves its full log. It compiles and runs th
 - **Input Lab:** tap small targets and see how far the touch panel's reading lands from where you aimed; the numbers behind the touch correction, explained in the [input notes](docs/notes/Input-and-Sensors.md).
 - **Diagnostics:** a hardware self-test report and developer controls in development builds. The power-on check runs in every build. [Build variants](docs/Build-Variants.md) explains which tools ship in each image.
 
-Each app lives in its own folder under `launcher/main/apps/`. The shell calls an app once per frame and presents its drawing to the panel. [Building an App](docs/Building-an-App.md) shows the smallest implementation; [Firmware Architecture](docs/Firmware-Architecture.md) explains how the pieces fit.
+Project applications live under `launcher/main/apps/`; system applications live under `launcher/main/shell/apps/`. The shell calls an app once per frame and presents its drawing to the panel. [Building an App](docs/Building-an-App.md) shows the smallest implementation; [Firmware Architecture](docs/Firmware-Architecture.md) explains how the pieces fit.
 
 ## Run it on the board
 

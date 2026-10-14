@@ -9,7 +9,7 @@
 
 #include "gfx/gfx.h"
 #include "input/input.h"
-#include "ui/ui_ridge.h"
+#include "shell/ui/ui_ridge.h"
 
 typedef enum {
     ARM_IDLE,

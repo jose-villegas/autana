@@ -1,5 +1,5 @@
 /*
- * Portable suite: gfx/image/gfx_image, the IMAG pack entry. Every check the
+ * Portable suite: draw/gfx_image, the IMAG pack entry. Every check the
  * reader makes, against entries built here; on both, the boot picture in its
  * shipped pack opens as one panel.
  */
@@ -14,8 +14,8 @@
 
 #include "asset/asset_store.h"
 #include "boot/boot_anim.h"
+#include "draw/gfx_image.h"
 #include "gfx/gfx.h"
-#include "gfx/image/gfx_image.h"
 #include "test_alloc.h"
 #include "test_pack.h"
 

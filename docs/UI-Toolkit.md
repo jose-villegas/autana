@@ -242,7 +242,7 @@ ui_set_button_style(UI_BUTTON_BEZEL);   /* every frame */
 | `ui_draw_icon()` | an icon (a one-bit `gfx_image_t` from a pack) filling a rect, in one colour, or a short text when there is no icon |
 
 `ui_draw_icon()` turns an icon's rows into one `mu_draw_rect()` per run,
-through `icon_walk_blocks()` (`gfx/draw/icon.h`), so an icon costs no new
+through `icon_walk_blocks()` (`draw/icon.h`), so an icon costs no new
 `MU_ICON_*` id and no patch to microui. The system icons come from the
 engine pack through `ui_icon()` (`ui/ui_icons.h`), loaded by `ui_init()`;
 an app's icons are a `ui_icon_set_t` in the app's own pack, which the app

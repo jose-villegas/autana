@@ -205,8 +205,8 @@ render_scene_build() {
     done
 
     _rs_files="$_rs_tools/render/render_host.c $_rs_tools/render/render_video.c $_rs_tools/render/render_watch.c"
-    # Every scene draws through gfx: all of it but the device-only *_device.c.
-    _rs_files="$_rs_files $(find "$_rs_launcher/main/gfx" -name '*.c' ! -name '*_device.c' | sort | tr '
+    # Every scene uses drawing and presentation, excluding device-only backends.
+    _rs_files="$_rs_files $(find "$_rs_launcher/main/gfx" "$_rs_launcher/main/draw" -name '*.c' ! -name '*_device.c' | sort | tr '
 ' ' ')"
     # And through the packages (tools/build/packages.sh), all of each.
     _rs_files="$_rs_files $(package_sources "$_rs_launcher" | tr '

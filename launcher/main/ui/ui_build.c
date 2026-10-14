@@ -27,8 +27,8 @@
 static const char* TAG = "ui";
 #endif
 
-#include "gfx/draw/gfx_draw.h"
-#include "gfx/draw/gfx_font_roles.h"
+#include "draw/gfx_draw.h"
+#include "draw/gfx_font_roles.h"
 #include "gfx/gfx.h"
 #include "services/tune.h"
 #include "ui/ui_bridge.h"

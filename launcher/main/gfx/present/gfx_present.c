@@ -1,11 +1,11 @@
 #include "gfx/present/gfx_present.h"
 #include "build/build_variant.h"
 #include "core/memory.h"
-#include "gfx/draw/gfx_color.h"
-#include "gfx/gfx_internal.h"
 #include "gfx/present/gfx_debug.h"
-#include "gfx/present/gfx_full_redraw.h"
+#include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_present_guard.h"
+#include "gfx/present/send/gfx_full_redraw.h"
+#include "gfx/target/gfx_color.h"
 #include "math/scalar/mathi.h"
 #include "profile/frame_watch.h"
 
@@ -20,7 +20,7 @@
 #include "esp_log.h"
 #include "freertos/task.h"
 #if CONFIG_LAUNCHER_QEMU
-#include "gfx/present/gfx_null_panel.h"
+#include "gfx/present/panel/gfx_null_panel.h"
 #endif
 
 _Static_assert(GFX_WIDTH == BSP_LCD_H_RES && GFX_HEIGHT == BSP_LCD_V_RES, "gfx.h's panel size must be the board's");

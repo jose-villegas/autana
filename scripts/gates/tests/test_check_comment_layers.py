@@ -16,7 +16,7 @@ class ProblemsTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             for app in apps:
-                (root / "launcher/main/apps" / app).mkdir(parents=True)
+                (root / ("launcher/main/shell/apps" if app == "diagnostics" else "launcher/main/apps") / app).mkdir(parents=True)
             for path, text in files.items():
                 target = root / path
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -41,8 +41,10 @@ class ProblemsTest(unittest.TestCase):
                 self.assertTrue(self.problems({"docs/Gfx.md": text + "\n"}))
 
     def test_a_lower_layer_comment_naming_an_app_fails(self):
-        found = self.problems({"launcher/main/gfx/gfx.c": "/* sand calls this */\nint x;\n"})
-        self.assertEqual(found, ["launcher/main/gfx/gfx.c:1: comment names sand"])
+        for app in ("sand", "diagnostics"):
+            with self.subTest(app=app):
+                found = self.problems({"launcher/main/gfx/gfx.c": f"/* {app} calls this */\nint x;\n"})
+                self.assertEqual(found, [f"launcher/main/gfx/gfx.c:1: comment names {app}"])
 
     def test_every_folder_below_the_apps_is_checked_without_being_listed(self):
         for path in ("launcher/main/app/app.h", "launcher/main/selftest/post.c",
@@ -53,7 +55,8 @@ class ProblemsTest(unittest.TestCase):
 
     def test_an_app_may_name_itself(self):
         self.assertEqual(self.problems({
-            "launcher/main/apps/sand/sand.c": "/* sand steps here */\nint x;\n"}), [])
+            "launcher/main/apps/sand/sand.c": "/* sand steps here */\nint x;\n",
+            "launcher/main/shell/apps/diagnostics/app_diagnostics.c": "/* diagnostics checks here */\nint x;\n"}), [])
 
     def test_an_engine_document_line_naming_an_app_fails(self):
         found = self.problems({"docs/notes/Panel.md": "# Panel\n\nSand fell to 11 fps.\n"})

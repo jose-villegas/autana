@@ -116,7 +116,7 @@ TUNE(ridge, theme_rgb, 0x1199C8, 0, 0xffffff);
   `TUNE_GENERATION(ridge)` goes up on every `SET` or `RESET` of one of that
   owner's tunables, and of no one else's, and the owner rebuilds when it
   differs from the one it last built for. It is the constant 0 in release.
-  `ui/ui_ridge.c` is the model.
+  `shell/ui/ui_ridge.c` is the model.
 - A `SET` is written from the console listener's task, not the frame loop. A
   tunable is one aligned word, so its reader sees the old value or the new.
 

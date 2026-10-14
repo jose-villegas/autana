@@ -26,8 +26,8 @@ same. Every checked-in output, from the banner each one carries:
 | [iram-what-if.svg](../../../docs/memory/images/iram-what-if.svg) | [iram_what_if.py](../build/iram_what_if.py) | `./` | `python launcher/tools/build/iram_what_if.py --chart docs/memory/images/iram-what-if.svg` |
 | [boot_anim_curve.h](../../main/boot/boot_anim_curve.h) | [gen_zeta_curve.py](gen_zeta_curve.py) | `launcher/` | `python tools/gen/gen_zeta_curve.py > main/boot/boot_anim_curve.h` |
 | [boot_anim_timeline.h](../../main/boot/boot_anim_timeline.h) | [gen_boot_anim_timeline.py](gen_boot_anim_timeline.py) | `launcher/` | `python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json main/boot/boot_anim_motion.glb > main/boot/boot_anim_timeline.h` |
-| [gfx_dither_patterns_generated.h](../../main/gfx/draw/gfx_dither_patterns_generated.h) | [gen_gfx_dither_patterns.py](gen_gfx_dither_patterns.py) | `launcher/` | `python tools/gen/gen_gfx_dither_patterns.py main/gfx/draw/gfx_dither_patterns_generated.h` |
-| [gfx_palette_standard_generated.h](../../main/gfx/draw/gfx_palette_standard_generated.h) | [gen_gfx_palette_standard.py](gen_gfx_palette_standard.py) | `launcher/` | `python tools/gen/gen_gfx_palette_standard.py > main/gfx/draw/gfx_palette_standard_generated.h` |
+| [gfx_dither_patterns_generated.h](../../main/draw/gfx_dither_patterns_generated.h) | [gen_gfx_dither_patterns.py](gen_gfx_dither_patterns.py) | `launcher/` | `python tools/gen/gen_gfx_dither_patterns.py main/draw/gfx_dither_patterns_generated.h` |
+| [gfx_palette_standard_generated.h](../../main/draw/gfx_palette_standard_generated.h) | [gen_gfx_palette_standard.py](gen_gfx_palette_standard.py) | `launcher/` | `python tools/gen/gen_gfx_palette_standard.py > main/draw/gfx_palette_standard_generated.h` |
 | [r3d_skin_light_directions.h](../../main/render/skin/r3d_skin_light_directions.h) | [gen_skin_light_directions.sh](gen_skin_light_directions.sh) | `launcher/` | `sh tools/gen/gen_skin_light_directions.sh > main/render/skin/r3d_skin_light_directions.h` |
 <!-- /generated: generated-files -->
 

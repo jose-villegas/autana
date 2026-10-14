@@ -1,6 +1,6 @@
 """The image pack entry (IMAG): a picture baked from the NAME.image.toml beside
 its PNG, and read back. The one writer of the entry, and its reader on the
-host; main/gfx/image/gfx_image.c is the firmware's.
+host; main/draw/gfx_image.c is the firmware's.
 
 A NAME.image.toml names its source, a PNG in its own folder, and how many
 quarter turns clockwise take the source to the stored pixels; the pack id is

@@ -11,11 +11,11 @@
 
 #include "asset/asset_store.h"
 #include "boot/boot_anim.h"
-#include "gfx/draw/gfx_color.h"
+#include "draw/gfx_image.h"
 #include "gfx/gfx.h"
-#include "gfx/image/gfx_image.h"
+#include "gfx/target/gfx_color.h"
 #include "math/motion/spring_line.h"
-#include "ui/ui_ridge.h"
+#include "shell/ui/ui_ridge.h"
 
 #define VIEW_W               RIDGE_CURVE_POINTS
 #define VIEW_H               RIDGE_CURVE_VIEW_H

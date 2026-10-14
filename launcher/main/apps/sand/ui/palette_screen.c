@@ -1,6 +1,6 @@
 #include "palette_screen.h"
 
-#include "gfx/draw/gfx_color.h"
+#include "gfx/target/gfx_color.h"
 #include "ui/ui.h"
 #include "ui/ui_style.h"
 

@@ -8,7 +8,7 @@
 #include <string.h>
 #include <time.h>
 
-#include "gfx/draw/gfx_color.h"
+#include "gfx/target/gfx_color.h"
 #include "math/linear/vec3f.h"
 #include "skin_light_baseline.h"
 

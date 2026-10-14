@@ -7,7 +7,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "gfx/gfx_render_target.h"
+#include "gfx/target/gfx_render_target.h"
 
 /* How rows are filled, chosen once per size. All but UPSCALE_BLOCKS write
  * what the maps say, pixel for pixel; it repeats each pixel `factor` times. */

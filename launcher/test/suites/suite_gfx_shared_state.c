@@ -16,13 +16,13 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include "gfx/draw/gfx_draw.h"
-#include "gfx/draw/gfx_font_roles.h"
+#include "draw/gfx_draw.h"
+#include "draw/gfx_font_roles.h"
 #include "gfx/gfx.h"
-#include "gfx/gfx_test.h"
-#include "gfx/present/gfx_band_run.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
+#include "gfx/present/gfx_test.h"
+#include "gfx/present/modes/band/gfx_band_run.h"
 #include "test_cleanup.h"
 
 #ifndef DEVICE_BUILD

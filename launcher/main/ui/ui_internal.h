@@ -9,7 +9,7 @@
 
 #include <stdbool.h>
 
-#include "gfx/draw/gfx_font.h"
+#include "draw/gfx_font.h"
 #include "microui.h"
 #include "ui/ui_canvas_marks.h"
 #include "ui/ui_pointer.h"

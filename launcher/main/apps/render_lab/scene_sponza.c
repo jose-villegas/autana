@@ -14,7 +14,7 @@
 
 #include "esp_log.h"
 
-#include "gfx/draw/gfx_draw.h"
+#include "draw/gfx_draw.h"
 #include "gfx/present/gfx_present.h"
 #include "render/context/render_context.h"
 #include "render_lab.h"

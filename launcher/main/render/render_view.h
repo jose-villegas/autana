@@ -5,8 +5,8 @@
  */
 #pragma once
 
+#include "display/viewport.h"
 #include "math/linear/transformf.h"
-#include "render/viewport.h"
 
 typedef struct {
     vec3f_t position, screen_x, screen_y, forward;

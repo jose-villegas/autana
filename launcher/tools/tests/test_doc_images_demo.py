@@ -135,6 +135,9 @@ class DocImageFailureTest(unittest.TestCase):
             helper = root / "scripts/lib/run.sh"
             helper.parent.mkdir(parents=True)
             shutil.copyfile(ROOT / "scripts/lib/run.sh", helper)
+            packages = root / "launcher/tools/build/packages.sh"
+            packages.parent.mkdir(parents=True)
+            shutil.copyfile(ROOT / "launcher/tools/build/packages.sh", packages)
             demo = root / "launcher/demo/gallery/gallery.scene.toml"
             demo.parent.mkdir(parents=True)
             demo.touch()

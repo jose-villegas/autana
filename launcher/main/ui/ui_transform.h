@@ -29,8 +29,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "gfx/draw/gfx_font.h"
-#include "gfx/draw/icon.h"
+#include "draw/gfx_font.h"
+#include "draw/icon.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathx.h"
 #include "microui.h"
@@ -210,11 +210,8 @@ ui_transform_icon_emit(void* ctx, int x, int y, int w, int h) {
     ic->emit(ic->ctx, dst.x, dst.y, dst.w, dst.h);
 }
 
-/* icon_walk_blocks() (gfx/draw/icon.h), with each emitted run mapped through `t`
- * before `emit` sees it, not just the enclosing `box`: transforming only
- * the box lands it correctly but leaves the glyph inside it upright under
- * any quarter turn, the bug MU_COMMAND_RECT/_TEXT never had. `box` is
- * LOGICAL, the same one microui's command carries. */
+/* Every icon run must turn with its logical box; turning only the box
+ * places the icon correctly but leaves the glyph upright. */
 static inline void
 ui_transform_icon_blocks(ui_transform_t t, const gfx_image_t* icon, mu_Rect box, icon_emit_fn emit, void* ctx) {
     ui_transform_icon_ctx_t ic = {.t = t, .box_x = box.x, .box_y = box.y, .emit = emit, .ctx = ctx};

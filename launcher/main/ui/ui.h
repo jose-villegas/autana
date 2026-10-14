@@ -33,8 +33,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "gfx/draw/gfx_font.h"
-#include "gfx/draw/icon.h"
+#include "draw/gfx_font.h"
+#include "draw/icon.h"
 #include "input/input.h"
 #include "microui.h"
 #include "ui/ui_style.h"

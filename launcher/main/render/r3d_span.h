@@ -10,7 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "gfx/gfx_render_target.h"
+#include "gfx/target/gfx_render_target.h"
 
 typedef struct r3d_span_writer r3d_span_writer_t;
 

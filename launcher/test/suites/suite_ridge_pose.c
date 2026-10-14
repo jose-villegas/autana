@@ -6,7 +6,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "ui/ridge_pose.h"
+#include "shell/ui/ridge_pose.h"
 
 #define TAU_MS         200
 #define HOLD_MS        500u

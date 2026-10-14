@@ -18,7 +18,7 @@ home when the app exits. Each frame has one owner per step:
 ![The launcher, rendered on a host with the release build's apps](images/overview/launcher-home.png)
 
 *The launcher on a host render: fixture entries over the ridge backdrop
-(`ui/ui_ridge.c`).*
+(`shell/ui/ui_ridge.c`).*
 
 **Three words that are not interchangeable**, because the code uses all three
 and means something different by each:
@@ -26,7 +26,7 @@ and means something different by each:
 | | |
 |---|---|
 | **shell** | the frame loop and the app switching: `shell/`, whose log tag, shared with `main.c`'s boot lines, is `shell`; `main.c` starts the board and calls `shell_run()` |
-| **launcher** | the home screen the shell draws when no app is running: `ui/ui_launcher.c` |
+| **launcher** | the home screen the shell draws when no app is running: `shell/ui/ui_launcher.c` |
 | **boot** | what runs once before the loop exists: `main.c`'s startup and the animation in `boot/`. The power-on self test and the suite runner in `selftest/` run then too, and an app may run either again later |
 
 The top-level folder `launcher/` is the whole firmware, not the home
@@ -36,72 +36,81 @@ screen.
 
 ## Layers
 
-Each row may include anything in a row below it, never a row above or a
-folder beside it in the same row. The top row is the two callers, and
-neither includes the other: `main.c` starts the board and calls
-`shell_run()`, and the apps. The shell reaches an app only through the
-callbacks `app/app.h` declares. Folders that touch hardware are marked.
-`ls launcher/main/<folder>` is the inventory; this is the shape.
+Each row may include any lower row, never a higher row or another folder in
+its own row. Project apps under `apps/` and system apps under `shell/apps/`
+share the apps tier; other folders use their first path component.
+`main.c` starts the board and calls `shell_run()`; the shell reaches apps
+through `app/app.h` callbacks. The inventory is `launcher/main/`; the
+include gate's order is `LAYER_ROWS` in `scripts/gates/check_style_audit.py`.
+Folders that touch hardware are marked.
 
 ```mermaid
 flowchart TB
     classDef hw fill:#8a3d3d,color:#fff
 
-    subgraph R1["callers"]
-        Apps["apps/<br/><i>one folder per app</i>"]
-        Main["main.c<br/><i>boot order, then shell_run()</i>"]
+    subgraph System["system"]
+        subgraph R1["apps"]
+            Apps["apps/ and shell/apps/<br/><i>one folder per app; system apps stay in the core</i>"]
+        end
+        subgraph R2["the runtime"]
+            Shell["shell/<br/><i>frame loop, app switching, system screens in shell/ui/</i>"]
+        end
+        subgraph R3["boot, self test, console"]
+            Boot["boot/<br/><i>the startup animation</i>"]
+            Selftest["selftest/<br/><i>power-on self test, the on-board suite runner</i>"]:::hw
+            Console["console/<br/><i>serial verbs, dev builds</i>"]:::hw
+        end
+        subgraph R4["the app contract"]
+            App["app/<br/><i>callbacks, the app list, the app arena</i>"]
+        end
     end
-    subgraph R2["the runtime"]
-        Shell["shell/<br/><i>the frame loop, app switching, engine systems</i>"]
+    subgraph Engine["engine"]
+        subgraph R5["UI and scenes"]
+            Ui["ui/<br/><i>the microui toolkit</i>"]
+            Scene["scene/<br/><i>entities, components, the active camera</i>"]
+        end
+        subgraph R6["rendering"]
+            Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
+        end
+        subgraph R7["drawing and animation"]
+            Draw["draw/<br/><i>shapes, text, images, palettes into a target</i>"]
+            Anim["anim/<br/><i>keyed tracks sampled over time, tweens</i>"]
+        end
+        subgraph R8["content"]
+            Asset["asset/<br/><i>content packs, read in place</i>"]:::hw
+        end
     end
-    subgraph R3["boot and self test"]
-        Boot["boot/<br/><i>the startup animation</i>"]
-        Selftest["selftest/<br/><i>power-on self test, the on-board suite runner</i>"]:::hw
+    subgraph Platform["platform"]
+        subgraph R9["input"]
+            Input["input/<br/><i>touch, buttons, motion, gesture</i>"]:::hw
+        end
+        subgraph R10["display"]
+            Display["display/<br/><i>viewport, orientation, panel clock</i>"]:::hw
+        end
+        subgraph R11["presentation"]
+            Gfx["gfx/<br/><i>target types, the framebuffer, present/</i>"]:::hw
+        end
+        subgraph R12["device services"]
+            Services["services/<br/><i>settings, tunables, build id</i>"]:::hw
+        end
+        subgraph R13["frame measurement"]
+            Profile["profile/<br/><i>frame cost, frame watch</i>"]:::hw
+        end
+        subgraph R14["the platform core"]
+            Core["core/<br/><i>two-core jobs, memory placement, time</i>"]:::hw
+        end
+        subgraph R15["board"]
+            Board["board/<br/><i>pins, peripherals, panel link</i>"]:::hw
+        end
+        subgraph R16["the build switch"]
+            Build["build/<br/><i>which build variant this is</i>"]
+        end
     end
-    subgraph R4["UI, console and scenes"]
-        Ui["ui/<br/><i>microui, launcher</i>"]
-        Console["console/<br/><i>serial verbs, dev builds</i>"]:::hw
-        Scene["scene/<br/><i>scenes loaded by name, the active camera</i>"]
-    end
-    subgraph R5["the app contract"]
-        App["app/<br/><i>the shell/app contract, the app list, the app arena</i>"]
-    end
-    subgraph R6["panel and sensors"]
-        Display["display/<br/><i>orientation from the gravity it is handed, panel clock, panel start</i>"]:::hw
-        Input["input/<br/><i>touch, buttons, IMU, gesture</i>"]:::hw
-    end
-    subgraph R7["rendering"]
-        Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
-    end
-    subgraph R7b["drawing"]
-        Gfx["gfx/<br/><i>the one framebuffer, draw/ into it, present/ it</i>"]:::hw
-    end
-    subgraph R8["animation"]
-        Anim["anim/<br/><i>keyed tracks sampled over time, tweens and easing</i>"]
-    end
-    subgraph R9["content"]
-        Asset["asset/<br/><i>content packs, read in place</i>"]:::hw
-    end
-    subgraph R10["device services"]
-        Services["services/<br/><i>settings, tunables, build id</i>"]:::hw
-    end
-    subgraph R11["frame measurement"]
-        Profile["profile/<br/><i>frame cost, frame watch</i>"]:::hw
-    end
-    subgraph R12["the platform core"]
-        Core["core/<br/><i>two-core jobs, memory placement, time</i>"]:::hw
-    end
-    subgraph R13["board"]
-        Board["board/<br/><i>this board's pins, peripherals and panel link</i>"]:::hw
-    end
-    subgraph R14["the build switch"]
-        Build["build/<br/><i>which build variant this is</i>"]
-    end
-    subgraph R15["packages: launcher/packages/"]
-        Math["math/<br/><i>scalars per number type, vectors to transforms, motion</i>"]
+    subgraph R17["packages: launcher/packages/"]
+        Math["math/<br/><i>scalars to transforms, checked by PACKAGE-INCLUDE</i>"]
     end
 
-    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R7b --> R8 --> R9 --> R10 --> R11 --> R12 --> R13 --> R14 --> R15
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> R10 --> R11 --> R12 --> R13 --> R14 --> R15 --> R16 --> R17
     Shell -.->|"calls through app/app.h"| Apps
 ```
 
@@ -387,12 +396,12 @@ every host render scene, and every on-device test that presents more than
 ## Apps in the build
 
 How to write one is [Building-an-App.md](Building-an-App.md). What matters
-architecturally: the build globs `apps/**/*.c` and each app registers itself
-from its own file, so adding or deleting an app touches no other file, and
-the component is linked `WHOLE_ARCHIVE` because nothing references an app by
-name. A bench-only app declares itself the same way: a
-`development_only.cmake` in its folder leaves it out when
-`CONFIG_LAUNCHER_DEVELOPMENT` is off, so the build names no app and deleting
+architecturally: the build globs `apps/**/*.c` and `shell/apps/**/*.c`, and
+each app registers itself from its own file, so adding or deleting an app
+touches no other file. The component is linked `WHOLE_ARCHIVE` because
+nothing references an app by name. A bench-only app declares itself the
+same way: a `development_only.cmake` in its folder leaves it out when
+`CONFIG_LAUNCHER_DEVELOPMENT` is off, so the build names no application and deleting
 the folder deletes the declaration. What each build variant carries is
 [Build-Variants.md](Build-Variants.md).
 

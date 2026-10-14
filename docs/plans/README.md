@@ -6,7 +6,7 @@ Designs written before or during the work they describe. Each plan's own
 | | |
 |---|---|
 | [Autana-Rendering-Roadmap.md](Autana-Rendering-Roadmap.md) | Future rendering work, automated regression gates and the three target games. |
-| [UI-Editor-Plan.md](UI-Editor-Plan.md) | A UI editor and the authored, baked layout format underneath it. |
+| [UI-Editor-Plan.md](UI-Editor-Plan.md) | UI editor: authoring a project's screens, with project loading, draw registration and baked layouts. |
 | [Settings-App-Plan.md](Settings-App-Plan.md) | Splitting Diagnostics into a Settings app, and unifying SELFTEST/diagnostics naming. |
 | [Networking-Plan.md](Networking-Plan.md) | What the board's radios allow, their RAM cost, and updating the firmware over the air. |
 | [Log-Level-Plan.md](Log-Level-Plan.md) | A compile-time log-level ceiling per build variant. |

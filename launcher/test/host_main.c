@@ -15,9 +15,9 @@
 
 #include "heap_arena.h"
 #include "pack_reads.h"
+#include "shell/ui/ui_ridge.h"
 #include "suites.h"
 #include "ui/ui.h"
-#include "ui/ui_ridge.h"
 #include "unity.h"
 
 /* Unity requires these once per binary. The runner owns the memory audit. */

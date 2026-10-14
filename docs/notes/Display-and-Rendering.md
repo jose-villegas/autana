@@ -63,7 +63,7 @@ panel received them correctly.
 A panel transaction has setup cost as well as payload cost. Sending one row
 per call can cost more than a larger merged transfer. Gather and run-merging
 thresholds `GATHER_MAX_PIXELS` and `LEAF_REFINE_MAX_RUNS` in
-`launcher/main/gfx/present/gfx_dirty.h` are fitted for 40 MHz; remeasure on the
+`launcher/main/gfx/present/send/gfx_dirty.h` are fitted for 40 MHz; remeasure on the
 device before changing the clock or those thresholds.
 
 ## Dirty-region costs
@@ -73,7 +73,7 @@ narrow changes, short wide changes and separated marks against each other.
 Use those tests for current costs rather than transferring isolated timings
 between clocks or render modes. Geometry and marking ownership are in
 [Dirty tracking](../Gfx-and-Presentation.md#dirty-tracking) and
-`launcher/main/gfx/present/gfx_dirty.h`.
+`launcher/main/gfx/present/send/gfx_dirty.h`.
 
 Full-width partial bands are contiguous and need no gather packing. Narrow
 runs use bounce slots; the queued transfer must finish before its slot is

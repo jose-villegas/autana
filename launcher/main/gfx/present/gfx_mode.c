@@ -1,13 +1,13 @@
 #include "gfx/present/gfx_mode.h"
 #include "core/memory.h"
 #include "core/timing.h"
-#include "gfx/gfx_internal.h"
-#include "gfx/gfx_test.h"
-#include "gfx/present/gfx_band_run.h"
 #include "gfx/present/gfx_fb_guard.h"
-#include "gfx/present/gfx_full_redraw.h"
+#include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_present_guard.h"
+#include "gfx/present/gfx_test.h"
+#include "gfx/present/modes/band/gfx_band_run.h"
+#include "gfx/present/send/gfx_full_redraw.h"
 
 #include <assert.h>
 #include <stdlib.h>
