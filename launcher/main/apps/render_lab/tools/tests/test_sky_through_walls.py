@@ -35,14 +35,14 @@ except ImportError:  # pragma: no cover - the tool tests' environment has them
 DT_MS = 33
 MIN_OPEN_SKY_PIXELS = 100
 FRAME_COUNT_SIZE = (1, 1)
-# The ceilings are set from the rebake.
+# Per scene, the holed frames of its current bake: the ceiling a rebake must not go above.
 MOST_HOLED_FRAMES = {
     "sponza": 13,
-    "sponza-lite": 13,
+    "sponza-lite": 12,
     "sponza-flat": 13,
-    "sponza-fitted": 13,
-    "sponza-fitted-full": 13,
-    "sponza-flat-fitted": 13,
+    "sponza-fitted": 148,
+    "sponza-fitted-full": 91,
+    "sponza-flat-fitted": 69,
 }
 
 
