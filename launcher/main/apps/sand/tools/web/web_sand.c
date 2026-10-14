@@ -216,7 +216,7 @@ web_step(uint32_t dt_ms, int ax, int ay, int az) {
     if (!ready) {
         return;
     }
-    tilt_update(&tilt, landscape ? -ay : ax, landscape ? ax : ay, az, 0, dt_ms);
+    tilt_update(&tilt, (vec3i_t){landscape ? -ay : ax, landscape ? ax : ay, az}, 0, dt_ms);
     const int gx = tilt_x(&tilt);
     const int gy = tilt_y(&tilt);
     gravity_x = gx;
