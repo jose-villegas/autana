@@ -153,8 +153,9 @@ offsets measured fastest on the board. The diagnostics build gate in
 `launcher/tools/build/build_diag_check.sh` runs
 `launcher/tools/render/code_layout.py --check` against
 source-local `code_layout.txt` baselines for the selected build configuration,
-including `launcher/main/render/code_layout.txt`, checking function and machine-loop
-offsets, sizes and cache-line spans. When a row changes, compare revisions
+including `launcher/main/render/code_layout.txt`: function entries and loops up to
+four cache lines, with in-function back-edges and relative source-line keys;
+offsets, sizes and cache-line spans are checked. When a row changes, compare revisions
 with the Sponza performance suite through `launcher/tools/perf/perf_compare.sh`.
 If the layout is slower, retune `RENDER_ENTRY_OFFSET`, then regenerate the
 table with `python launcher/tools/render/code_layout.py --write --baseline launcher/main/render/code_layout.txt launcher/build.diag`.

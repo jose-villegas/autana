@@ -29,9 +29,10 @@
 
 ## Pinned code layout
 
-`code_layout.py` reads the Xtensa tools and instruction-cache line size from a
-firmware build. The build gates check address-independent rows in each source folder's
-`code_layout.txt`. The checker discovers these files under `launcher/main/`:
+`code_layout.py` reads Xtensa tools and the build's cache-line size. Each
+`code_layout.txt` under `launcher/main/` pins function entries and loop bodies
+up to four cache lines. Back-edges stay inside the function; loop keys use the
+branch's line relative to the function's first line (`loop` for zero-overhead loops).
 
 ```sh
 python launcher/tools/render/code_layout.py --check launcher/build.diag
@@ -45,9 +46,6 @@ without it, the baseline applies to `CONFIG_LAUNCHER_SELFTEST` builds. `--write`
 preserves these headers. `--baseline PATH` selects one owner for reporting,
 checking or writing. Missing symbols and changed sizes, loop offsets or
 cache-line spans fail the check.
-
-For a changed baseline, the checker prints the measurement and re-recording
-instruction.
 
 ## Meshlet size captures
 
