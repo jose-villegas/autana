@@ -1230,8 +1230,21 @@ ui_ridge_settle(void) {
 }
 
 #if BUILD_VARIANT_SELFTEST_OR_HOST
+static bool test_owns_state;
+
+void
+ui_ridge_release_for_test(void) {
+    if (test_owns_state) {
+        memory_free(ridge);
+        ridge = NULL;
+        allocation_tried = false;
+        test_owns_state = false;
+    }
+}
+
 void
 ui_ridge_reset_for_test(void) {
+    test_owns_state = ridge == NULL;
     allocate_once();
     if (ridge == NULL) {
         return;

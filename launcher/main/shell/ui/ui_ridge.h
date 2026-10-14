@@ -45,6 +45,8 @@ void ui_ridge_paint(void);
 #if BUILD_VARIANT_SELFTEST_OR_HOST
 /* Starts a device perf arm from the settled landscape state. */
 void ui_ridge_reset_for_test(void);
+/* Release state created by the test reset; pre-existing state and the curve remain shared. */
+void ui_ridge_release_for_test(void);
 /* Puts the boot hold and the ambient ease-in back at their start. */
 void ui_ridge_restart_boot_for_test(void);
 /* A full paint of the ridge as it stands into `out`, one framebuffer's

@@ -5,8 +5,6 @@
  */
 
 #include <stdbool.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "suites.h"
@@ -35,15 +33,9 @@
 #define TOUCH_X        60
 #define TOUCH_Y        400
 
-static int failures;
-
-static void
-expect(bool ok, const char* what) {
-    if (!ok) {
-        failures++;
-        fprintf(stderr, "FAILED: %s\n", what);
-    }
-}
+static gfx_color_t* reference;
+static gfx_color_t* as_boot_left_it;
+static gfx_color_t* settled;
 
 static bool
 frame(bool touching, bool pressed) {
@@ -81,7 +73,14 @@ lit_pixels(const gfx_color_t* pixels) {
 
 static void
 release(void) {
+    memory_free(reference);
+    memory_free(as_boot_left_it);
+    memory_free(settled);
+    reference = NULL;
+    as_boot_left_it = NULL;
+    settled = NULL;
     app_registry_reset_for_test();
+    ui_ridge_release_for_test();
     gfx_heal_restore_defaults();
     gfx_reset_for_test();
 }
@@ -97,7 +96,6 @@ fixture(app_t* apps, size_t count) {
     ui_ridge_reset_for_test();
     ui_ridge_restart_boot_for_test();
     ui_launcher_init();
-    failures = 0;
 }
 
 static void
@@ -114,7 +112,7 @@ test_launcher_backdrop_motion_and_rest(void) {
      * about what the launcher costs when nothing moves. */
     ui_ridge_set_ambient(false);
     frame(false, false);
-    gfx_color_t* reference = snapshot();
+    reference = snapshot();
     if (reference == NULL) {
         TEST_FAIL_MESSAGE("no memory for the frame copy");
     }
@@ -127,26 +125,27 @@ test_launcher_backdrop_motion_and_rest(void) {
                            GFX_WIDTH * sizeof *reference)
                         != 0;
     }
-    expect(shaped, "the engine pack supplies the shaped ridge, not the level fallback");
+    TEST_ASSERT_TRUE_MESSAGE(shaped, "the engine pack supplies the shaped ridge, not the level fallback");
     memory_free(reference);
+    reference = NULL;
 
     /* Held upright in portrait from the first frame: down is the panel's +y,
      * a quarter turn from the landscape pose boot hands over in. */
     ui_ridge_set_gravity(0, INPUT_ACCEL_ONE_G, 256, 0);
     frame(false, false);
     frame(false, false);
-    gfx_color_t* as_boot_left_it = snapshot();
+    as_boot_left_it = snapshot();
     if (as_boot_left_it == NULL) {
         TEST_FAIL_MESSAGE("no memory for the frame copy");
     }
-    expect(as_boot_left_it[0] != 0, "the backdrop is visible behind the launcher");
-    expect(lit_pixels(as_boot_left_it) > 8000, "the backdrop and the app rows are drawn");
+    TEST_ASSERT_TRUE_MESSAGE(as_boot_left_it[0] != 0, "the backdrop is visible behind the launcher");
+    TEST_ASSERT_TRUE_MESSAGE(lit_pixels(as_boot_left_it) > 8000, "the backdrop and the app rows are drawn");
 
     int held_frames_sending = 0;
     for (int i = 0; i < 30; i++) {
         held_frames_sending += frame(false, false);
     }
-    expect(held_frames_sending == 0, "the line keeps boot's pose at first, whatever gravity says");
+    TEST_ASSERT_TRUE_MESSAGE(held_frames_sending == 0, "the line keeps boot's pose at first, whatever gravity says");
 
     /* Near the end the pose moves less per frame than is worth redrawing, so
      * quiet frames come in runs before it has arrived: only a long run means
@@ -160,31 +159,34 @@ test_launcher_backdrop_motion_and_rest(void) {
         quiet_run = sends || turning_frames == 0 ? 0 : quiet_run + 1;
         frames_until_level++;
     }
-    expect(turning_frames > 10, "then it turns toward level over many frames, not in one jump");
-    expect(frames_until_level < FRAMES_TO_REST, "and stops turning");
-    expect(memcmp(as_boot_left_it, gfx_framebuffer(), PIXELS * sizeof *as_boot_left_it) != 0, "the line has turned");
+    TEST_ASSERT_TRUE_MESSAGE(turning_frames > 10, "then it turns toward level over many frames, not in one jump");
+    TEST_ASSERT_TRUE_MESSAGE(frames_until_level < FRAMES_TO_REST, "and stops turning");
+    TEST_ASSERT_TRUE_MESSAGE(memcmp(as_boot_left_it, gfx_framebuffer(), PIXELS * sizeof *as_boot_left_it) != 0,
+                             "the line has turned");
     memory_free(as_boot_left_it);
+    as_boot_left_it = NULL;
 
-    gfx_color_t* settled = snapshot();
+    settled = snapshot();
     if (settled == NULL) {
         TEST_FAIL_MESSAGE("no memory for the frame copy");
     }
     ui_ridge_settle();
     ui_invalidate();
     frame(false, false);
-    expect(memcmp(settled, gfx_framebuffer(), PIXELS * sizeof *settled) == 0,
-           "where it stopped is exactly level, not merely close, and leaves pixels unchanged");
-    expect(!frame(false, false), "a level, untouched launcher sends nothing");
+    TEST_ASSERT_TRUE_MESSAGE(memcmp(settled, gfx_framebuffer(), PIXELS * sizeof *settled) == 0,
+                             "where it stopped is exactly level, not merely close, and leaves pixels unchanged");
+    TEST_ASSERT_TRUE_MESSAGE(!frame(false, false), "a level, untouched launcher sends nothing");
 
-    expect(frame(true, true), "a touch sets the ridge moving on the frame it lands");
+    TEST_ASSERT_TRUE_MESSAGE(frame(true, true), "a touch sets the ridge moving on the frame it lands");
     frame(true, false);
     frame(false, false);
     int moving_frames = 0;
     for (int i = 0; i < 20; i++) {
         moving_frames += frame(false, false);
     }
-    expect(moving_frames == 20, "the wave keeps sending while it travels");
-    expect(memcmp(settled, gfx_framebuffer(), PIXELS * sizeof *settled) != 0, "the line is displaced");
+    TEST_ASSERT_TRUE_MESSAGE(moving_frames == 20, "the wave keeps sending while it travels");
+    TEST_ASSERT_TRUE_MESSAGE(memcmp(settled, gfx_framebuffer(), PIXELS * sizeof *settled) != 0,
+                             "the line is displaced");
 
     /* Only pixels that change are sent, so the spring's last sub-pixel
      * wobbles leave quiet frames between sends: rest is a long quiet run. */
@@ -194,10 +196,10 @@ test_launcher_backdrop_motion_and_rest(void) {
         still_run = frame(false, false) ? 0 : still_run + 1;
         frames_until_quiet++;
     }
-    expect(frames_until_quiet < FRAMES_TO_REST, "the line comes to rest");
-    expect(!frame(false, false) && !frame(false, false), "and then sends nothing again");
-    expect(memcmp(settled, gfx_framebuffer(), PIXELS * sizeof *settled) == 0,
-           "at rest the screen is the settled one exactly");
+    TEST_ASSERT_TRUE_MESSAGE(frames_until_quiet < FRAMES_TO_REST, "the line comes to rest");
+    TEST_ASSERT_TRUE_MESSAGE(!frame(false, false) && !frame(false, false), "and then sends nothing again");
+    TEST_ASSERT_TRUE_MESSAGE(memcmp(settled, gfx_framebuffer(), PIXELS * sizeof *settled) == 0,
+                             "at rest the screen is the settled one exactly");
 
     /* Breathing and the wave: the launcher draws on, never strays far from
      * the ridge, and turned off again is back on the settled screen with
@@ -212,25 +214,21 @@ test_launcher_backdrop_motion_and_rest(void) {
         most_lit = lit > most_lit ? lit : most_lit;
         least_lit = lit < least_lit ? lit : least_lit;
     }
-    expect(ambient_frames_sending > 300, "with its ambient motion on, the ridge keeps moving");
-    expect(least_lit > lit_pixels(settled) * 8 / 10 && most_lit < lit_pixels(settled) * 12 / 10,
-           "and the backdrop stays whole while it moves: nothing it covers goes dark");
+    TEST_ASSERT_TRUE_MESSAGE(ambient_frames_sending > 300, "with its ambient motion on, the ridge keeps moving");
+    TEST_ASSERT_TRUE_MESSAGE(least_lit > lit_pixels(settled) * 8 / 10 && most_lit < lit_pixels(settled) * 12 / 10,
+                             "and the backdrop stays whole while it moves: nothing it covers goes dark");
 
     ui_ridge_set_ambient(false);
     for (int i = 0; i < 40; i++) {
         frame(false, false);
     }
-    expect(!frame(false, false), "turned off, the launcher is idle again");
-    expect(memcmp(settled, gfx_framebuffer(), PIXELS * sizeof *settled) == 0,
-           "on exactly the settled screen: the motion left nothing behind");
-
-    memory_free(settled);
-    TEST_ASSERT_EQUAL_INT(0, failures);
+    TEST_ASSERT_TRUE_MESSAGE(!frame(false, false), "turned off, the launcher is idle again");
+    TEST_ASSERT_TRUE_MESSAGE(memcmp(settled, gfx_framebuffer(), PIXELS * sizeof *settled) == 0,
+                             "on exactly the settled screen: the motion left nothing behind");
 }
 
 void
 suite_ridge_backdrop(void) {
-    ui_ridge_reset_for_test();
     RUN_TEST(test_launcher_backdrop_motion_and_rest);
 }
 
