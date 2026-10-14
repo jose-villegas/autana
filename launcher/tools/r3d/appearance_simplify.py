@@ -436,13 +436,14 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     return points.detach().cpu().numpy().astype(np.float64), colours.detach().cpu().numpy().astype(np.float64), history
 
 
-def write_mesh(out_dir, name, points, rgb, mesh):
+def write_mesh(out_dir, name, mesh):
     """The fitted mesh as <name>.mesh and <name>.obj, a flat one's OBJ with
     three vertices of each triangle's colour; returns the baked mesh's
     triangle count."""
     from r3d.lit_mesh import write_lit_mesh
 
-    positions = points[mesh.vertex_point]
+    positions = mesh.points[mesh.vertex_point]
+    rgb = mesh.rgb
     colours = np.clip(np.rint(rgb * 255.0), 0, 255)
     out_dir = pathlib.Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -510,18 +511,19 @@ def main(argv=None):
         if args.refine_to is not None:
             fitted = refine(mesh, triangle_error(mesh, views, size, clear), args.refine_to)
             log(f"refined {len(mesh.tris)} -> {len(fitted.tris)} triangles")
+        cost = None if args.cost_model is None else load_cost(args.cost_model)[0]
+        points, rgb, history = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,
+                                        args.laplacian, clear=clear, cost=cost, cost_weight=args.cost_weight,
+                                        scale=args.scale, normal_weight=args.normal_weight)
+        fitted = fitted._replace(points=points, rgb=rgb)
         if args.budget is not None:
             shown = coverage(fitted, pose_views(args.coverage_poses, args.scale) if args.coverage_poses else views, size)
             pruned = prune(fitted, shown, args.budget)
             log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: {np.count_nonzero(shown == 0)} never shown")
             fitted = pruned
-        cost = None if args.cost_model is None else load_cost(args.cost_model)[0]
-        points, rgb, history = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,
-                                        args.laplacian, clear=clear, cost=cost, cost_weight=args.cost_weight,
-                                        scale=args.scale, normal_weight=args.normal_weight)
-        count = write_mesh(out, name, points, rgb, fitted)
-        np.savetxt(out / "loss.txt", np.array(history), fmt="%.4f")
-        print(f"{out}: {count} triangles, mean dE76 {np.mean(history[:20]):.3f} -> {np.mean(history[-20:]):.3f}")
+        count = write_mesh(out, name, fitted)
+        np.savetxt(out / "loss.txt", np.array(history), fmt="%.4f", header="mean dE76 before pruning")
+        print(f"{out}: {count} triangles, mean dE76 before pruning {np.mean(history[:20]):.3f} -> {np.mean(history[-20:]):.3f}")
     # The fit's cached device memory goes back for a reference set traced next in this process.
     torch = sys.modules.get("torch")
     if torch is not None and torch.cuda.is_available():

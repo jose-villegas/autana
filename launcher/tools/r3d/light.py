@@ -105,7 +105,8 @@ def visible_from_path(p, tri_v, double, intersector, poses, width, height, lens,
     Rays start at the `near` plane and pass a single-sided face seen from
     behind, as the rasterizer clips and culls; such a face's twin wound the
     other way is what the ray sees. `poses` are (eye, forward) rows; see
-    camera_rays for the rest."""
+    camera_rays for the rest. Each ray stops after a hit beyond its first
+    drawn distance plus `tie`; rays with no drawn hit continue to the query limit."""
     from r3d.poses import camera_rays
 
     a, b, c = p[tri_v[:, 0]], p[tri_v[:, 1]], p[tri_v[:, 2]]
@@ -118,15 +119,17 @@ def visible_from_path(p, tri_v, double, intersector, poses, width, height, lens,
         origin, direction = camera_rays(width, height, lens, pose[:3], pose[3:], samples, margin)
         ahead = pose[3:] / np.linalg.norm(pose[3:])
         origin = origin + direction * (near / (direction @ ahead))[:, None]
-        hit, ray, where = intersector.all_hits(origin, direction)
-        if len(hit) == 0:
-            continue
-        distance = ((where - origin[ray]) * direction[ray]).sum(axis=1)
-        drawn = double[hit] | ((normal[hit] * direction[ray]).sum(axis=1) < 0)
-        shown = np.where(drawn, hit, twin[hit])
         nearest = np.full(len(origin), np.inf)
-        np.minimum.at(nearest, ray[shown >= 0], distance[shown >= 0])
-        seen[shown[(shown >= 0) & (distance <= nearest[ray] + tie)]] = True
+        active = np.ones(len(origin), dtype=bool)
+        for hit, ray, where in intersector.hit_rounds(origin, direction, active):
+            distance = ((where - origin[ray]) * direction[ray]).sum(axis=1)
+            drawn = double[hit] | ((normal[hit] * direction[ray]).sum(axis=1) < 0)
+            shown = np.where(drawn, hit, twin[hit])
+            valid = shown >= 0
+            nearest[ray[valid]] = np.minimum(nearest[ray[valid]], distance[valid])
+            within = distance <= nearest[ray] + tie
+            seen[shown[valid & within]] = True
+            active[ray[~within]] = False
     reached = np.zeros(len(tri_v), dtype=bool)
     reached[group[seen]] = True
     seen = reached[group]

@@ -31,18 +31,17 @@ typedef struct {
 } input_t;
 
 /* One g of acceleration: input_motion_t's acceleration is Q12 g. */
-#define INPUT_ACCEL_ONE_G 4096
+#define INPUT_ACCEL_ONE_G      4096
+#define INPUT_ROTATION_ONE_DPS 64
 
-/* `acceleration` is the raw accelerometer: gravity plus whatever else moves
- * the board, unfiltered (tilt_t derives a steady gravity from it). Screen
- * axes, pointing the way down at rest: x right, y down, z out of the screen
- * (a left-handed frame: x cross y points into the screen), so upright reads
- * +1 g on y and flat, screen up, -1 g on z. `turn_speed`
- * is how fast the board turns, in deg/s: |x|+|y|+|z| of the gyroscope's
- * rates, unsigned, with no axis. */
+/* Raw acceleration: Q12 g in screen axes (x right, y down, z out).
+ * Rotation: Q6 deg/s, x=-gy, y=gx, z=gz. Measured right-hand sense:
+ * +z clockwise from front, +x bottom edge toward viewer, +y right edge away.
+ * turn_speed is unsigned |gx|+|gy|+|gz| in deg/s. */
 typedef struct {
     vec3i_t acceleration;
     int turn_speed;
+    vec3i_t rotation;
 } input_motion_t;
 
 /* One sensor read (an I2C transaction: call it only in frames that need it).
