@@ -663,6 +663,23 @@ test_scalar_rounding_preserves_large_integers_and_half_away_ties(void) {
 }
 
 static void
+test_scalar_int16_rounding_saturates_and_preserves_half_neighbors(void) {
+    static const float edges[] = {NAN, -INFINITY, INFINITY, -FLT_MAX, FLT_MAX, INT16_MIN, INT16_MAX, 0, -0.0F};
+    static const int16_t expected[] = {INT16_MIN, INT16_MIN, INT16_MAX, INT16_MIN, INT16_MAX,
+                                       INT16_MIN, INT16_MAX, 0,         0};
+    for (size_t i = 0; i < sizeof edges / sizeof edges[0]; i++) {
+        TEST_ASSERT_EQUAL_INT16(expected[i], mathf_round_i16(edges[i]));
+    }
+    for (int whole = INT16_MIN; whole < INT16_MAX; whole++) {
+        const float half = (float)whole + 0.5F;
+        const float neighbors[] = {nextafterf(half, -INFINITY), half, nextafterf(half, INFINITY)};
+        for (size_t i = 0; i < sizeof neighbors / sizeof neighbors[0]; i++) {
+            TEST_ASSERT_EQUAL_INT16((int16_t)roundf(neighbors[i]), mathf_round_i16(neighbors[i]));
+        }
+    }
+}
+
+static void
 test_transform_matrix_refusals_and_shear_tolerance_boundary(void) {
     mat4f_t matrix = mat4f_identity();
     transformf_t pose;
@@ -927,6 +944,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_unsigned_64_clamp_covers_extremes_and_crosses_the_word_boundary);
     RUN_TEST(test_scalar_clamp_maps_nonfinite_values_to_bounds);
     RUN_TEST(test_scalar_rounding_preserves_large_integers_and_half_away_ties);
+    RUN_TEST(test_scalar_int16_rounding_saturates_and_preserves_half_neighbors);
     RUN_TEST(test_transform_matrix_refusals_and_shear_tolerance_boundary);
     RUN_TEST(test_integer_repeat_and_wrap_cover_negative_values_and_int_limits);
     RUN_TEST(test_unsigned_repeat_keeps_clock_precision_and_clamp_covers_the_range);
