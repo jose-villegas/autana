@@ -328,7 +328,7 @@ coverage pruning to budget:
 
 ```mermaid
 flowchart LR
-    V[region visibility<br/>on the source] --> S[simplify to more<br/>than the budget]
+    V[visibility<br/>on the source] --> S[simplify to more<br/>than the budget]
     S --> R[refine a coarse fit<br/>optional]
     R --> F[fit: ΔE, Laplacian,<br/>normals, cost]
     F --> P[prune the fitted mesh<br/>to the budget]
