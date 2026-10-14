@@ -6,7 +6,6 @@
 
 #include "core/job.h"
 #include "profile/frame_cost.h"
-#include "render/code_layout.h"
 #include "render/r3d_pipeline.h"
 #include "render/upscale.h"
 #include "services/tune.h"
@@ -337,7 +336,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     }
 }
 
-CODE_ENTRY_OFFSET(4) raster_stats_t
+raster_stats_t
 raster_draw(const raster_t* raster, const render_view_t* view) {
     raster_stats_t stats = {0, 0};
     draw_instances(raster, view, &stats);
@@ -372,12 +371,12 @@ raster_census(const raster_t* raster, const render_view_t* view) {
     return stats;
 }
 
-CODE_ENTRY_OFFSET(4) void
+void
 raster_draw_culled(const raster_t* raster, const render_view_t* view) {
     draw_instances(raster, view, NULL);
 }
 
-CODE_ENTRY_OFFSET(12) void
+void
 raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
     assert(raster->upscaled && destination != NULL);
     assert(raster->width > 0 && raster->height > 0);

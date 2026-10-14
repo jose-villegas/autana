@@ -1,6 +1,8 @@
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest import mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -106,13 +108,129 @@ class PoolTests(unittest.TestCase):
         self.assertEqual([ins[2] for ins in kept], ["beqz", "j", "l32i.n", "addi.n", "retw.n"])
 
 
+class SmallLoopTests(unittest.TestCase):
+    def entries(self, found, start=0x1000, first_line=20, line_size=32, locations=None):
+        def output(tool, *args):
+            self.assertEqual(tool, "addr2line")
+            self.assertEqual(args[:4], ("-a", "-i", "-e", "image.elf"))
+            if locations is not None:
+                return locations
+            return "\n".join("%s\ninline.h:111\nwalk.c:%d" %
+                             (address, first_line if int(address, 16) == start else first_line + 41)
+                             for address in args[4:])
+
+        with mock.patch.object(code_layout, "symbols", return_value={start: ("walk_rows", 512)}), \
+                mock.patch.object(code_layout, "instructions", return_value=(found, None)), \
+                mock.patch.object(code_layout, "find_tool", return_value="addr2line"), \
+                mock.patch.object(code_layout, "run", side_effect=output) as lookup:
+            entries = code_layout.layout_entries(Path("image.elf"), "nm", "objdump", line_size, ["walk_rows"])
+        return entries, lookup.call_count
+
+    def test_a_jump_before_the_function_is_not_a_loop(self):
+        entries, _ = self.entries([(0x1006, 3, "j", "0fff <outside>")])
+        self.assertEqual([entry.kind for entry in entries], ["function"])
+
+    def test_back_edges_at_the_line_span_limit_are_recorded(self):
+        for line_size in (16, 32, 64):
+            limit = code_layout.SMALL_LOOP_MAX_LINES * line_size
+            with self.subTest(line_size=line_size):
+                entries, _ = self.entries([
+                    (0x1000 + limit - 4, 3, "bnez", "a2, 1000 <walk_rows>"),
+                    (0x1000 + limit - 3, 3, "j", "1000 <walk_rows>"),
+                    (0x1000 + limit - 2, 3, "j", "1000 <walk_rows>"),
+                ], line_size=line_size)
+                self.assertEqual([entry.bytes for entry in entries[1:]], [limit - 1, limit])
+
+    def test_hardware_loops_at_the_line_span_limit_are_recorded(self):
+        for line_size in (16, 32, 64):
+            limit = code_layout.SMALL_LOOP_MAX_LINES * line_size
+            for mnemonic in ("loop", "loopnez", "loopgtz"):
+                with self.subTest(line_size=line_size, mnemonic=mnemonic):
+                    entries, _ = self.entries([(0x103d, 3, mnemonic,
+                                                "%x <walk_rows+end>" % (0x1040 + limit))],
+                                              line_size=line_size)
+                    self.assertEqual([entry.bytes for entry in entries[1:]], [limit])
+
+    def test_hardware_loops_over_the_line_span_limit_are_dropped(self):
+        for line_size in (16, 32, 64):
+            limit = code_layout.SMALL_LOOP_MAX_LINES * line_size
+            for mnemonic in ("loop", "loopnez", "loopgtz"):
+                with self.subTest(line_size=line_size, mnemonic=mnemonic):
+                    entries, _ = self.entries([(0x103d, 3, mnemonic,
+                                                "%x <walk_rows+end>" % (0x1040 + limit + 1))],
+                                              line_size=line_size)
+                    self.assertEqual(entries[1:], [])
+
+    def test_a_short_body_spanning_too_many_lines_is_dropped(self):
+        for line_size in (16, 32, 64):
+            limit = code_layout.SMALL_LOOP_MAX_LINES * line_size
+            with self.subTest(line_size=line_size):
+                entries, _ = self.entries([(0x1001 + limit - 3, 3, "bnez", "a2, 1001 <walk_rows+1>")],
+                                          line_size=line_size)
+                self.assertEqual(entries[1:], [])
+
+    def test_a_self_jump_is_not_a_back_edge(self):
+        entries, _ = self.entries([(0x1006, 3, "j", "1006 <walk_rows+6>")])
+        self.assertEqual([entry.kind for entry in entries], ["function"])
+
+    def test_an_empty_loop_span_is_dropped(self):
+        entries, _ = self.entries([(0x1006, 3, "loop", "1009 <walk_rows+9>")])
+        self.assertEqual([entry.kind for entry in entries], ["function"])
+
+    def test_incomplete_source_records_raise(self):
+        with self.assertRaisesRegex(code_layout.LayoutError, "incomplete source map"):
+            self.entries([(0x1020, 3, "j", "1008 <walk_rows+8>")],
+                         locations="0x1000\nwalk.c:20\n")
+
+    def test_unknown_source_line_raises(self):
+        with self.assertRaisesRegex(code_layout.LayoutError, "no source line"):
+            self.entries([], locations="0x1000\n??:0\n")
+
+    def test_zero_source_line_raises(self):
+        with self.assertRaisesRegex(code_layout.LayoutError, "no source line"):
+            self.entries([], locations="0x1000\nwalk.c:0\n")
+
+    def test_outermost_loop_source_must_match_the_function(self):
+        with self.assertRaisesRegex(code_layout.LayoutError, "loop source differs"):
+            self.entries([(0x1020, 3, "j", "1008 <walk_rows+8>")],
+                         locations="0x1000\ninline.h:111\nwalk.c:20\n"
+                                   "0x1020\nwalk.c:61\nother.c:61\n")
+
+    def test_single_frame_source_records_are_handled(self):
+        entries, _ = self.entries([(0x1020, 3, "j", "1008 <walk_rows+8>")],
+                                  locations="0x1000\nwalk.c:20\n0x1020\nwalk.c:61\n")
+        self.assertEqual([entry.source_line for entry in entries], [0, 41])
+
+    def test_an_inserted_loop_does_not_renumber_other_lines(self):
+        def row(kind, line, offset, size):
+            return SimpleNamespace(function="walk_rows", kind=kind, source_line=line,
+                                   offset=offset, bytes=size, lines=2)
+        baseline = [row("function", 0, 0, 200), row("bbci-back", 41, 12, 31),
+                    row("bbci-back", 41, 8, 40), row("bbci-back", 60, 8, 40)]
+        actual = [baseline[0], row("bbci-back", 20, 4, 30), *baseline[1:]]
+        self.assertEqual(code_layout.layout_differences(baseline, actual),
+                         ["walk_rows bbci-back@+20: row added"])
+        self.assertEqual(code_layout.layout_differences(baseline, baseline[:2] + baseline[3:]),
+                         ["walk_rows bbci-back@+41[2]: row removed"])
+
+    def test_relative_lines_and_whole_cache_line_shifts_match(self):
+        before, calls = self.entries([(0x1020, 3, "j", "1008 <walk_rows+8>")])
+        after, shifted_calls = self.entries([(0x1060, 3, "j", "1048 <walk_rows+8>")],
+                                            start=0x1040, first_line=120)
+        self.assertEqual(before[1].source_line, 41)
+        self.assertEqual(after[1].source_line, 41)
+        self.assertEqual((calls, shifted_calls), (1, 1))
+        self.assertEqual(code_layout.layout_differences(code_layout.layout_rows(before, 32),
+                                                       code_layout.layout_rows(after, 32)), [])
+
+
 class LayoutCheckTests(unittest.TestCase):
     BASELINE = """\
 # Generated by: python launcher/tools/render/code_layout.py --write launcher/build.diag
-function\tkind\toffset\tbytes\tlines
-raster_draw\tfunction\t0\t40\t2
-raster_draw\tloop\t4\t20\t1
-shade_span\tfunction\t8\t48\t2
+function\tkind\toffset\tbytes\tlines\tsource_line
+raster_draw\tfunction\t0\t40\t2\t0
+raster_draw\tloop\t4\t20\t1\t41
+shade_span\tfunction\t8\t48\t2\t0
 """
 
     def differences(self, current):
@@ -125,17 +243,75 @@ shade_span\tfunction\t8\t48\t2
 
     def test_an_offset_change_names_the_row(self):
         current = self.BASELINE.replace("raster_draw\tloop\t4", "raster_draw\tloop\t6")
-        self.assertEqual(self.differences(current), ["raster_draw loop[1]: offset 4 -> 6"])
+        self.assertEqual(self.differences(current), ["raster_draw loop@+41: offset 4 -> 6"])
 
     def test_a_loop_line_count_change_names_the_row(self):
         current = self.BASELINE.replace("raster_draw\tloop\t4\t20\t1", "raster_draw\tloop\t4\t20\t2")
-        self.assertEqual(self.differences(current), ["raster_draw loop[1]: lines 1 -> 2"])
+        self.assertEqual(self.differences(current), ["raster_draw loop@+41: lines 1 -> 2"])
 
     def test_an_added_or_removed_pin_names_the_function(self):
-        added = self.BASELINE + "new_draw\tfunction\t16\t24\t2\n"
-        removed = self.BASELINE.replace("shade_span\tfunction\t8\t48\t2\n", "")
+        added = self.BASELINE + "new_draw\tfunction\t16\t24\t2\t0\n"
+        removed = self.BASELINE.replace("shade_span\tfunction\t8\t48\t2\t0\n", "")
         self.assertEqual(self.differences(added), ["new_draw function: pin added"])
         self.assertEqual(self.differences(removed), ["shade_span function: pin removed"])
+
+    def test_old_five_column_rows_raise(self):
+        with self.assertRaisesRegex(code_layout.LayoutError, "six tab-separated columns"):
+            code_layout.parse_layout(code_layout.LAYOUT_HEADER + "\nwalk_rows\tloop\t0\t20\t1\n")
+
+    def test_noninteger_source_line_raises(self):
+        with self.assertRaisesRegex(code_layout.LayoutError, "source_line must be integers"):
+            code_layout.parse_layout(self.BASELINE.replace("\t41\n", "\tunknown\n"))
+
+    def test_source_lines_round_trip_including_negative_values(self):
+        rows = [code_layout.LayoutRow("walk_rows", "function", 0, 40, 2, 0),
+                code_layout.LayoutRow("walk_rows", "loop", 4, 20, 1, -7),
+                code_layout.LayoutRow("walk_rows", "loop", 4, 20, 1, 41)]
+        self.assertEqual(code_layout.parse_layout(code_layout.format_layout(rows)), rows)
+
+    def test_duplicate_keys_keep_their_ordinals(self):
+        expected = code_layout.parse_layout(self.BASELINE)
+        second = expected[1]._replace(bytes=24)
+        expected.append(second)
+        actual = expected[:-1] + [second._replace(offset=6)]
+        self.assertEqual(code_layout.layout_differences(expected, actual),
+                         ["raster_draw loop@+41[2]: offset 4 -> 6"])
+        self.assertEqual(len(code_layout.indexed_rows(expected, {"raster_draw"})), 3)
+
+    def test_committed_baselines_parse_with_the_current_header(self):
+        paths = sorted(code_layout.SOURCES.rglob("code_layout.txt"))
+        self.assertTrue(paths)
+        for path in paths:
+            with self.subTest(path=path):
+                self.assertTrue(code_layout.parse_layout(path.read_text(encoding="utf-8")))
+
+
+class ConfigurationCheckTests(unittest.TestCase):
+    def test_check_without_an_applicable_baseline_fails(self):
+        self.assert_no_baseline_fails("--check")
+
+    def test_write_without_an_applicable_baseline_fails(self):
+        self.assert_no_baseline_fails("--write")
+
+    def assert_no_baseline_fails(self, mode):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            build = root / "build.diag"
+            build.mkdir()
+            (build / "launcher.elf").touch()
+            (build / "sdkconfig").write_text("CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE=32\n"
+                                             "CONFIG_LAUNCHER_SELFTEST=y\n")
+            baseline = root / "code_layout.txt"
+            baseline.write_text(code_layout.CONFIG_HEADER + "CONFIG_LAUNCHER_RELEASE\n" +
+                                code_layout.LAYOUT_HEADER + "\n")
+            with mock.patch.object(code_layout, "baselines", return_value={baseline: ["walk_rows"]}), \
+                    mock.patch.object(code_layout, "layout_entries") as entries, \
+                    mock.patch("sys.stderr") as stderr:
+                self.assertEqual(code_layout.main([mode, str(build)]), 2)
+            entries.assert_not_called()
+            message = "".join(call.args[0] for call in stderr.write.call_args_list)
+            self.assertIn("no baseline applies", message)
+            self.assertIn(str(build), message)
 
 
 if __name__ == "__main__":

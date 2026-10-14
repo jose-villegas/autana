@@ -145,19 +145,19 @@ The direct C sources in `launcher/main/render/` receive
 `launcher/main/CMakeLists.txt`. Function placement within an instruction-cache
 line stays fixed when unrelated code ahead of it grows or shrinks. Alignment
 stabilizes timing; it does not select the fastest loop offsets. Explicit function
-alignment attributes take precedence and their offsets are baseline-checked. Hot functions,
-in `launcher/main/render/` or elsewhere, carry `CODE_ENTRY_OFFSET` from
-`launcher/main/render/code_layout.h`: a cache-line start and
-never-executed `nop.n` padding ahead of the entry places their loops at the
-offsets measured fastest on the board. The diagnostics build gate in
-`launcher/tools/build/build_diag_check.sh` runs
+alignment attributes take precedence and their offsets are baseline-checked. The draw
+path's entry functions carry `RENDER_IRAM_ATTR` from
+`launcher/main/render/code_layout.h` and run from IRAM, where no cache line
+applies. A hot flash function can carry `CODE_ENTRY_OFFSET` from the same header: it
+starts the function on a cache line, whatever code links ahead of it, and
+never-executed `nop.n` padding ahead of the entry places its loops at the
+offsets measured fastest on the board. The release build workflow runs
 `launcher/tools/render/code_layout.py --check` against
-source-local `code_layout.txt` baselines for the selected build configuration,
-including `launcher/main/render/code_layout.txt`, checking function and machine-loop
-offsets, sizes and cache-line spans. When a row changes, compare revisions
-with the Sponza performance suite through `launcher/tools/perf/perf_compare.sh`.
-If the layout is slower, retune `CODE_ENTRY_OFFSET`, then regenerate the
-table with `python launcher/tools/render/code_layout.py --write --baseline launcher/main/render/code_layout.txt launcher/build.diag`.
+source-local `code_layout.txt` baselines for the selected build configuration.
+Rows cover function entries and the small loops inside them; the checker
+compares offsets, sizes and cache-line spans. When a row changes, compare revisions
+with the performance suite that owns the function through `launcher/tools/perf/perf_compare.sh`,
+then re-record the baseline with `--write --baseline`.
 See [Pinned code layout](../../launcher/tools/render/README.md#pinned-code-layout).
 
 Do not use `-falign-loops` for this on Xtensa. GCC aligns the label after a
