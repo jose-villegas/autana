@@ -62,7 +62,9 @@ def idf_commit(idf):
     if not (Path(idf) / ".git").exists():
         return None
     try:
-        result = subprocess.run(["git", "-C", str(idf), "rev-parse", "HEAD"], capture_output=True, text=True)
+        # A git hook exports GIT_DIR and friends, which would outrank -C.
+        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        result = subprocess.run(["git", "-C", str(idf), "rev-parse", "HEAD"], capture_output=True, text=True, env=env)
     except OSError:
         return None
     return result.stdout.strip() if result.returncode == 0 else None
