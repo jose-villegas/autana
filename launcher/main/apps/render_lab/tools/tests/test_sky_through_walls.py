@@ -1,15 +1,11 @@
-"""Sky through the walls of the scene's region-visibility bakes, counted along the camera path.
+"""Sky enclosed by walls over one whole camera flythrough at the device frame step.
 
-    python -m unittest discover -s launcher/main/apps/render_lab/tools/tests
+    python -m unittest discover -s launcher/main/apps/render_lab/tools/tests -p test_sky_through_walls.py
 
-Builds the host renderer once, flies each scene in MOST_HOLED_FRAMES over its
-camera path (FRAMES frames, DT_MS apart), and counts per frame the pixels of
-the clear colour that are not connected to the top row: sky showing where a
-wall should be. A frame with more than HOLE_PIXELS of them is holed; a bake
-may have no more holed frames than MOST_HOLED_FRAMES allows. The roof
-opening seen straight up is enclosed sky too: the current bakes' holed
-frames are the few that look up through it.
-
+Builds the host renderer once and samples the scene camera clip with sample_camera_rows
+at DT_MS intervals to determine the frame count. ANY clear-colour pixel not
+connected to the top row makes a frame holed, including four-pixel pinholes.
+The roof opening also counts when enclosed.
 Needs the r3d environment (launcher/tools/r3d/requirements.txt).
 """
 import pathlib
@@ -30,15 +26,24 @@ try:
     import numpy as np
     from scipy import ndimage
 
+    from r3d.poses import sample_camera_rows
     from r3d.import_settings import load_scene
     from render_compare import expand_565, read_video
 except ImportError:  # pragma: no cover - the tool tests' environment has them
     np = None
 
-FRAMES, DT_MS = 600, 50
-HOLE_PIXELS = 50
-# Per scene, the holed frames of its current bake: the ceiling a rebake must not go above.
-MOST_HOLED_FRAMES = {"sponza": 8, "sponza-flat": 8, "sponza-lite": 8}
+DT_MS = 33
+MIN_OPEN_SKY_PIXELS = 100
+FRAME_COUNT_SIZE = (1, 1)
+# The ceilings are set from the rebake.
+MOST_HOLED_FRAMES = {
+    "sponza": 13,
+    "sponza-lite": 13,
+    "sponza-flat": 13,
+    "sponza-fitted": 13,
+    "sponza-fitted-full": 13,
+    "sponza-flat-fitted": 13,
+}
 
 
 def clear_colour():
@@ -68,11 +73,25 @@ class SkyCount(unittest.TestCase):
         frame[7, 6:8] = sky  # a hole at the bottom edge
         self.assertEqual(sky_pixels(frame, sky), (10, 24))
 
+    def test_enclosed_one_pixel_and_two_by_two_sky_count(self):
+        sky = (156, 195, 231)
+        for side in (1, 2):
+            with self.subTest(side=side):
+                frame = np.zeros((6, 6, 3), dtype=np.uint8)
+                frame[:1] = sky
+                frame[3:3 + side, 2:2 + side] = sky
+                self.assertEqual(sky_pixels(frame, sky), (side * side, 6))
+
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class SkyThroughWalls(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        scene = load_scene(SCENE)
+        camera = scene.camera.component
+        cls.frames = len(sample_camera_rows(
+            camera.path.animation, camera.path.node, DT_MS, *FRAME_COUNT_SIZE,
+            camera.half_fov_short_tan, camera.near_z)[4])
         cls.out = pathlib.Path(tempfile.mkdtemp(prefix="sky_through_walls_"))
         run, cls.binary = host_render.run(cls.out, "--build-only")
         cls.build_output = run.stdout + run.stderr
@@ -89,19 +108,20 @@ class SkyThroughWalls(unittest.TestCase):
     def assert_few_holed_frames(self, scene, most):
         self.assertTrue(self.binary.exists(), self.build_output[-2000:])
         video = self.out / f"{scene}.avi"
-        run = subprocess.run([str(self.binary), "--quarter", "1", "--no-hud", "--scene", scene, "--frames", str(FRAMES),
+        run = subprocess.run([str(self.binary), "--quarter", "1", "--no-hud", "--scene", scene, "--frames", str(self.frames),
                               "--dt", str(DT_MS), "-o", str(self.out / f"{scene}.bmp"), "--video", str(video)],
                              capture_output=True, text=True, timeout=600)
         self.assertEqual(run.returncode, 0, run.stderr[-2000:])
         sky = clear_colour()
         counts = [sky_pixels(frame, sky) for frame in read_video(video)[1]]
         video.unlink()
-        self.assertEqual(len(counts), FRAMES)
+        self.assertEqual(len(counts), self.frames)
         # The path looks up at the open roof, so sky open to the top must turn up: that proves the clear colour
         # matched, so a count of no holes is real.
-        self.assertTrue(any(open_ > HOLE_PIXELS for _, open_ in counts), f"{scene}: no sky found")
-        holed = [frame for frame, (enclosed, _) in enumerate(counts) if enclosed > HOLE_PIXELS]
-        self.assertLessEqual(len(holed), most, f"{scene}: holed frames {holed}")
+        self.assertTrue(any(open_ >= MIN_OPEN_SKY_PIXELS for _, open_ in counts), f"{scene}: no sky found")
+        holed = [frame for frame, (enclosed, _) in enumerate(counts) if enclosed > 0]
+        print(f"{scene}: {len(holed)}/{self.frames} holed frames (ceiling {most})", flush=True)
+        self.assertLessEqual(len(holed), most, f"{scene}: {len(holed)} holed frames exceeds {most}")
 
 
 if __name__ == "__main__":

@@ -214,6 +214,7 @@ budget = 8672
 coverage_every_ms = 100
 
 [objects.mesh_renderer.fit.poses]
+size = [184, 224]
 train_every_ms = 1000
 held_out_every_ms = 5000
 
@@ -232,8 +233,8 @@ normal_weight = 1.0
 | `visibility: camera_path` | `source = "camera_path"`, `every_ms`, `size`; `samples`, `margin` | Keeps triangles first seen from sampled camera-path views. | Off. | [visibility: camera_path](#visibility-camera_path) |
 | `shading: smooth` | `"smooth"` | Stores baked colour at vertices. | `"smooth"`. | [shading: smooth](#shading-smooth) |
 | `shading: flat` | `flat = { fixed = N }` / `flat = { auto = { min, max, area } }` | Stores one averaged RGB565 colour per face. | Off. | [shading: flat](#shading-flat) |
-| `fit.prune` | `budget`, `coverage_every_ms` | Prunes visible geometry to the triangle budget. | Required in `fit`; the cost weight is `fitted_variant.py sweep --cost-weights`, not a scene key. | [fit.prune](#fitprune) |
-| `fit.poses` | `train_every_ms`, `held_out_every_ms` | Selects training and held-out camera-path poses. | Required in `fit`. | [fit.poses](#fitposes) |
+| `fit.prune` | `budget`, `coverage_every_ms` | Prunes the fitted mesh to the triangle budget. | Required in `fit`; the cost weight is `fitted_variant.py sweep --cost-weights`, not a scene key. | [fit.prune](#fitprune) |
+| `fit.poses` | `size`, `train_every_ms`, `held_out_every_ms` | Selects training and held-out camera-path poses. | Required in `fit`. | [fit.poses](#fitposes) |
 | `fit.optimise` | `steps`, `batch`, `laplacian`, `normal_weight` | Sets optimiser steps, batch size and loss weights. | Required in `fit`. | [fit.optimise](#fitoptimise) |
 | `indirect: off` | `indirect = false` | Bakes this renderer without bounce light. | Bounce light on when the scene recipe is present. | [indirect: off](#indirect-off) |
 
@@ -319,24 +320,28 @@ nothing tracked changes.
 `coverage_every_ms` samples the camera path for the dense pose set pruning
 counts pixels over.
 
-The stages are path visibility, simplify above the target, prune to budget,
-optional warm start, then fitting:
+Source visibility is the renderer's [`visibility`](#visibility-camera_region)
+(region by default). A region source keeps the backing surfaces that
+simplification and fitting would otherwise expose. The stages are source
+visibility, simplify above the target, optional warm start, fitting, then
+coverage pruning to budget:
 
 ```mermaid
 flowchart LR
-    V[path visibility<br/>on the source] --> S[simplify to more<br/>than the budget]
-    S --> P[prune to the budget]
-    P --> R[refine a coarse fit<br/>optional]
+    V[visibility<br/>on the source] --> S[simplify to more<br/>than the budget]
+    S --> R[refine a coarse fit<br/>optional]
     R --> F[fit: ΔE, Laplacian,<br/>normals, cost]
-    F --> W[write_lit_mesh]
+    F --> P[prune the fitted mesh<br/>to the budget]
+    P --> W[write_lit_mesh]
 ```
 
-[Path visibility](#visibility-camera_path) spends budget only on surfaces the
-path draws. Each pose of a dense set counts the pixels $`a_t`$ each triangle
+Each pose of a dense set counts the pixels $`a_t`$ each fitted triangle
 shows; pruning removes zero-coverage triangles first, then the least-covered,
-to the budget. A warm start splits the worst fitted triangles along their
-longest edge, grows the mesh to a larger budget, and fits it again. Generated
-tables compare the current budget and cost settings.
+to the budget. Coverage uses fitted positions and fitted per-face colours for
+flat meshes, so visibility is judged on the geometry that is drawn. A warm
+start splits the worst fitted triangles along their longest edge, grows the
+mesh to a larger budget, and fits it again. Generated tables compare the
+current budget and cost settings.
 
 The cost model predicts pose time $`\hat t_v`$ from a non-negative least-squares
 fit<sup>[[6]](../Citations.md#6)</sup> to board frame times: a constant; clusters in view $`N_{s,v}`$; drawn
@@ -356,6 +361,9 @@ README.
 
 #### fit.poses
 
+`size = [width, height]` is required: two positive integers setting the pose
+resolution for training, held-out references and coverage. Coverage widens
+this view to cover both panel orientations.
 `train_every_ms` samples the camera path for fitting; of those samples, poses
 at multiples of `held_out_every_ms` (time 0 aside) are held out of training and
 used only for scoring.
@@ -513,7 +521,7 @@ and a learning rate decaying geometrically. It changes the rest:
 | Image term | L1 on log-tonemapped sRGB | mean CIE 1976 $`\Delta E^*_{ab}`$<sup>[[4]](../Citations.md#4)</sup> |
 | Laplacian weight | decays during the fit | constant $`\lambda`$; the drift is measured in start mean edge lengths |
 | Further terms | none | $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../Citations.md#6)</sup> |
-| Triangle budget | set by the start | the start's, pruned to `budget` by coverage before the fit; a refined fitted mesh can be the start |
+| Triangle budget | set by the start | the fitted mesh's, pruned to `budget` by coverage after fitting; a refined fitted mesh can be the start |
 
 #### indirect: off
 

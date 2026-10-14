@@ -21,6 +21,58 @@ POWERSHELL = Path("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
 
 
 class DocStagesTests(unittest.TestCase):
+    def test_path_cull_has_its_own_sampling_for_region_visibility(self):
+        from types import SimpleNamespace as NS
+        import numpy as np
+        from r3d import mesh_import, lit_mesh, light, ray_query
+        baked = NS(object=NS(name="hall"), renderer=NS(variant=NS(name="full")))
+        scene = NS(renderers=[baked])
+        job = NS(renderer=NS(visibility=NS(source="camera_region", rounds=2)))
+        geometry = NS(positions=np.zeros((3, 3)), tris=np.array([[0, 1, 2]]),
+                      tri_double=np.array([False]), rgb=np.zeros((3, 3)), scale={})
+        poses = (224, 224, .5, 1, [[0, 0, 0, 0, 0, -1]])
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.object(mesh_import, "bake_geometry", return_value=geometry), \
+                mock.patch.object(mesh_import, "write_baked"), \
+                mock.patch.object(mesh_import, "camera_path_poses", return_value=poses) as sample, \
+                mock.patch.object(ray_query, "RayQuery"), \
+                mock.patch.object(light, "visible_from_path", return_value=np.array([True])) as visible, \
+                mock.patch.object(lit_mesh, "write_lit_mesh"):
+            stages.bake_worker(scene, job, True, "full", "hall", Path(directory))
+        settings = sample.call_args.args[1]
+        self.assertEqual((settings.every_ms, settings.size, settings.samples, settings.margin),
+                         (100, (184, 224), 3, 8))
+        self.assertEqual(visible.call_args.args[4:], (poses[-1], *poses[:4], 3, 8))
+
+    def test_board_and_smoke_sample_the_fit_with_region_visibility(self):
+        from types import SimpleNamespace as NS
+        from r3d import import_settings, fitted_variant, mesh_import, reference_render
+        fit = NS(size=(8, 6), held_out_every_ms=2000)
+        job = NS(renderer=NS(fit=fit, visibility=NS(source="camera_region", rounds=2),
+                             variant=NS(name="full")), asset_path=Path("start.mesh"), object=NS(name="hall"))
+        scene = NS(renderers=[job])
+        args = NS(build_commit=None, capture=[], scene=Path("room.scene.toml"), object="hall")
+        poses = (8, 6, .5, 1, [[0, 0, 0, 0, 0, -1]])
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "tables").mkdir()
+            with mock.patch.object(import_settings, "load_scene", return_value=scene), \
+                    mock.patch.object(fitted_variant, "placed_variant", return_value=job), \
+                    mock.patch.object(mesh_import, "camera_path_poses", return_value=poses) as sample, \
+                    mock.patch.object(stages.subprocess, "check_output", return_value=b"commit"), \
+                    mock.patch.object(stages.subprocess, "run", return_value=NS(returncode=0)), \
+                    mock.patch.object(stages, "board_means", return_value=dict.fromkeys(("room", *stages.VARIANTS), 1)), \
+                    mock.patch.object(stages, "board_frames", side_effect=ValueError("stop before cost fitting")):
+                with self.assertRaisesRegex(ValueError, "stop before cost fitting"):
+                    stages.board(args, root, root)
+            sample.assert_called_once_with(scene, fit, fit.held_out_every_ms, either_way_up=False)
+            with mock.patch.object(mesh_import, "camera_path_poses", return_value=poses) as sample, \
+                    mock.patch.object(stages.shutil, "copyfile"), \
+                    mock.patch.object(reference_render, "main") as render:
+                stages.smoke_prepare(args.scene, scene, job, root / "inputs")
+            sample.assert_called_once_with(scene, fit, 5000, either_way_up=False)
+            self.assertEqual(render.call_count, 3)
+
     def test_viewer_host_build_receives_the_scene(self):
         from r3d.bake_fidelity import build_host
         with mock.patch("r3d.bake_fidelity.subprocess.run") as run:
