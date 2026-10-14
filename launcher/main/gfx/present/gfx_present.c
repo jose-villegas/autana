@@ -959,5 +959,6 @@ gfx_set_clip_box(gfx_box_t clip) {
 void
 gfx_mark_rows_dirty(int y0, int y1) {
     GFX_PRESENT_GUARD();
-    mark_band(y0, y1);
+    /* mark_band() trusts clipped rows; a public caller's need not be. */
+    mark_band(mathi_max(y0, 0), mathi_min(y1, GFX_HEIGHT));
 }

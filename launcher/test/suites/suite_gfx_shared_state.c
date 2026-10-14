@@ -48,6 +48,18 @@ assert_marked_only_where_drawn(void) {
     TEST_ASSERT_FALSE(gfx_region_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT));
 }
 
+/* A public caller may pass rows past either screen edge; only on-screen
+ * rows are marked. */
+static void
+test_row_marks_outside_the_screen_mark_nothing(void) {
+    fixture();
+    gfx_mark_rows_dirty(-SIZE, 0);
+    gfx_mark_rows_dirty(GFX_HEIGHT, GFX_HEIGHT + SIZE);
+    TEST_ASSERT_FALSE(gfx_region_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT));
+    gfx_mark_rows_dirty(-SIZE, 1);
+    TEST_ASSERT_TRUE(gfx_region_dirty(0, 0, 1, 1));
+}
+
 static void
 test_box_marking_draw_is_seen_by_the_presenter(void) {
     fixture();
@@ -452,6 +464,7 @@ run_gfx_shared_state_suite(void) {
     RUN_TEST(test_band_marks_text_dither);
     RUN_TEST(test_clip_text);
     RUN_TEST(test_clip_text_dither);
+    RUN_TEST(test_row_marks_outside_the_screen_mark_nothing);
     RUN_TEST(test_box_marking_draw_is_seen_by_the_presenter);
     RUN_TEST(test_row_marking_draw_is_seen_by_the_presenter);
     RUN_TEST(test_draw_is_refused_while_a_mode_has_freed_the_framebuffer);

@@ -5,9 +5,9 @@ tracker, and the present path. A caller includes the header for what it does:
 
 | Header | What it declares |
 | --- | --- |
-| [`gfx/gfx.h`](../launcher/main/gfx/gfx.h) | the framebuffer: its size, `gfx_init()`, `gfx_framebuffer()` |
+| [`gfx/gfx.h`](../launcher/main/gfx/gfx.h) | the framebuffer: its size, `gfx_init()`, `gfx_framebuffer()`; draw's surface (`gfx_draw_begin()`, `gfx_set_clip_box()`) and dirty marking |
 | [`draw/draw.h`](../launcher/main/draw/draw.h) | primitives, text and clipping |
-| [`gfx/present/gfx_present.h`](../launcher/main/gfx/present/gfx_present.h) | draw's target and clip, dirty marking, present, the panel clock, heal |
+| [`gfx/present/gfx_present.h`](../launcher/main/gfx/present/gfx_present.h) | present, the panel clock, heal |
 | [`gfx/present/gfx_mode.h`](../launcher/main/gfx/present/gfx_mode.h) | modes, readback, the indexed image and its LUTs |
 | [`gfx/present/gfx_debug.h`](../launcher/main/gfx/present/gfx_debug.h) | development-build overlays and send counts |
 | [`draw/draw_image.h`](../launcher/main/draw/draw_image.h) | a picture read in place from its pack entry |
@@ -17,8 +17,9 @@ tracker, and the present path. A caller includes the header for what it does:
 attachments. `gfx/present/` owns the framebuffer and presentation, with
 layout values under `modes/`, send policy under `send/` and emulated panel
 backends under `panel/`. `gfx_internal.h` holds state shared only by
-presentation. Draw reads its target and clip
-through `gfx_present.h`. The panel link itself, QSPI and each revision's init
+presentation. Draw reaches presentation only
+through `gfx.h`: `gfx_draw_begin()` hands it the target, clip and whether to
+mark, and the `gfx_mark_*` calls record what it wrote. The panel link itself, QSPI and each revision's init
 sequence, is `board/board_panel.c`. For what an app owes the shell see
 [`Building-an-App.md`](Building-an-App.md); for the panel constraints these choices obey see
 [`notes/Display-and-Rendering.md`](notes/Display-and-Rendering.md).
@@ -121,8 +122,8 @@ full-framebuffer app runs.
 
 ## Dirty tracking
 
-`gfx_dirty.h`: inline functions over one tracker defined in `gfx_present.c`,
-so marking inlines into the fill and pixel hot paths. One tracker serves all three modes.
+`gfx_dirty.h`: inline functions over one tracker defined in `gfx_present.c`;
+draw reaches them through `gfx_mark_dirty()` and `gfx_mark_rows_dirty()`. One tracker serves all three modes.
 
 Two ways in. `dirty_mark()` takes a real box and may narrow a cell; the
 rect and blit primitives use it, so a glyph dirties the glyph. `mark_band()`
