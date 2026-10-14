@@ -23,7 +23,7 @@
 #include "unity.h"
 
 #include "bbox_extend.h"
-#include "gfx/draw/icon.h"
+#include "draw/icon.h"
 #include "ui/ui_icons.h"
 
 /* System icon `id`, which the engine pack the suites run with must hold. */

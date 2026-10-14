@@ -16,14 +16,14 @@
 #include "unity.h"
 
 #include "core/memory.h"
-#include "gfx/draw/gfx_color.h"
+#include "display/viewport.h"
 #include "gfx/gfx.h"
+#include "gfx/target/gfx_color.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster.h"
 #include "render/raster_show.h"
-#include "render/viewport.h"
 #include "services/tune.h"
 
 #define W 64

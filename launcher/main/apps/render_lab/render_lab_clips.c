@@ -7,8 +7,8 @@
 #include <string.h>
 
 #include "core/memory.h"
+#include "draw/gfx_draw.h"
 #include "esp_log.h"
-#include "gfx/draw/gfx_draw.h"
 #include "ui/ui.h"
 #include "ui/ui_widgets.h"
 

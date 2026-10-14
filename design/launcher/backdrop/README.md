@@ -7,7 +7,7 @@ strum at 2.5 s. `backdrop_mock.py` renders it from the firmware defaults.
 
 | Part | Value |
 |---|---|
-| Colours | one seed, `#1199C8`; background, sky top and bottom and both back layers are fixed OKLCH lightness roles of it (`ridge_theme_from_rgb()` in `launcher/main/ui/ridge_theme.h`) |
+| Colours | one seed, `#1199C8`; background, sky top and bottom and both back layers are fixed OKLCH lightness roles of it (`ridge_theme_from_rgb()` in `launcher/main/shell/ui/ridge_theme.h`) |
 | Background | flat, above every layer |
 | Fill below the front ridge | the sky gradient along gravity, turning in 1.5 degree steps (`gradient_steps`) and catching up once the board holds still |
 | Layer shape | Cerro Autana's ridge, offset -70 / -30 / 0 px, each with its own wave: 5 / 8 / 6 px high, 260 / 200 / 164 px long, 6.0 / 4.3 / 2.6 s |
@@ -18,7 +18,7 @@ strum at 2.5 s. `backdrop_mock.py` renders it from the firmware defaults.
 | Orientation cue | past 45 degrees the layers are drawn along columns instead of rows, which redraws the ridge's steep folds visibly; kept as a snap that says the orientation changed, two degrees of hysteresis either way so it never flickers |
 
 Each value is a live tunable (the `TUNE(ridge, …)` block in
-`launcher/main/ui/ui_ridge.c`, which owns the current figures), and the fill
+`launcher/main/shell/ui/ui_ridge.c`, which owns the current figures), and the fill
 pattern is selectable (`fill_pattern`). Because the dither is fixed to the
 screen, pixels a curve did not cross stay identical between frames, and a
 repaint sends only the pixels it changed.

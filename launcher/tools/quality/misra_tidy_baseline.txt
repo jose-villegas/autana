@@ -1,6 +1,6 @@
 # check	file	count
 bugprone-narrowing-conversions	main/console/verbs/console_screenshot.c	1
-bugprone-unused-return-value	main/apps/diagnostics/ui/toggles_screen.c	6
+bugprone-unused-return-value	main/shell/apps/diagnostics/ui/toggles_screen.c	6
 bugprone-unused-return-value	main/apps/input_lab/app_input_lab.c	6
 bugprone-unused-return-value	main/apps/render_lab/ui/render_lab_hud_screen.c	1
 bugprone-unused-return-value	main/apps/render_lab/ui/render_lab_menu_screen.c	1
@@ -35,7 +35,7 @@ bugprone-unused-return-value	main/console/verbs/console_screenshot.c	2
 bugprone-unused-return-value	main/console/verbs/console_tune.c	2
 bugprone-unused-return-value	main/ui/ui_widgets.c	2
 bugprone-unused-return-value	main/services/tune.c	5
-cert-err33-c	main/apps/diagnostics/ui/toggles_screen.c	6
+cert-err33-c	main/shell/apps/diagnostics/ui/toggles_screen.c	6
 cert-err33-c	main/apps/input_lab/app_input_lab.c	6
 cert-err33-c	main/apps/render_lab/tools/render_lab_render_host.c	1
 cert-err33-c	main/apps/render_lab/ui/render_lab_hud_screen.c	1
@@ -133,7 +133,7 @@ readability-isolate-declaration	main/boot/boot_anim.c	17
 readability-isolate-declaration	main/selftest/post_ui.c	1
 readability-isolate-declaration	main/console/verbs/console_inject.c	2
 readability-isolate-declaration	main/display/display.c	1
-readability-isolate-declaration	main/gfx/draw/gfx_draw.c	5
+readability-isolate-declaration	main/draw/gfx_draw.c	5
 readability-isolate-declaration	main/gfx/present/gfx_mode.c	1
 readability-isolate-declaration	main/gfx/present/gfx_present.c	3
 readability-isolate-declaration	main/input/buttons.c	1
@@ -198,10 +198,10 @@ readability-math-missing-parentheses	main/boot/boot_anim.c	8
 readability-math-missing-parentheses	main/selftest/post_layout.c	1
 readability-math-missing-parentheses	main/selftest/post_ui.c	2
 readability-math-missing-parentheses	main/console/verbs/console_screenshot.c	4
-readability-math-missing-parentheses	main/gfx/draw/gfx_draw.c	4
+readability-math-missing-parentheses	main/draw/gfx_draw.c	4
 readability-math-missing-parentheses	main/gfx/present/gfx_debug.c	23
 readability-math-missing-parentheses	main/gfx/present/gfx_mode.c	3
-readability-math-missing-parentheses	main/gfx/present/gfx_null_panel_device.c	1
+readability-math-missing-parentheses	main/gfx/present/panel/gfx_null_panel_device.c	1
 readability-math-missing-parentheses	main/gfx/present/gfx_present.c	10
 readability-math-missing-parentheses	main/input/tilt.c	10
 readability-math-missing-parentheses	main/input/touch_calib.c	10

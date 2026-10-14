@@ -8,7 +8,7 @@
 
 #include "asset/asset_store.h"
 #include "core/memory.h"
-#include "gfx/draw/gfx_color.h"
+#include "gfx/target/gfx_color.h"
 #include "math/scalar/mathi.h"
 #include "scene/scene_internal.h"
 

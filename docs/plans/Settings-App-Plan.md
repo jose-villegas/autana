@@ -5,11 +5,11 @@ SELFTEST; open: extract the toggles into Settings, then the
 SELFTEST/diagnostics rename.
 
 The Diagnostics app ships whole under `CONFIG_LAUNCHER_DEVELOPMENT`
-(`launcher/main/CMakeLists.txt`'s `apps/diagnostics/` exclusion), so a
+(`launcher/main/CMakeLists.txt`'s `shell/apps/diagnostics/` exclusion), so a
 `--dev` build reaches the gfx debug-overlay checkboxes. Only the
 self-test runner (the button, its result line, `selftest_run()`) is
 narrowed further, to `CONFIG_LAUNCHER_SELFTEST`
-(`launcher/main/apps/diagnostics/app_diagnostics.c`'s `#if
+(`launcher/main/shell/apps/diagnostics/app_diagnostics.c`'s `#if
 CONFIG_LAUNCHER_SELFTEST` guards).
 
 Step 1 (the Settings extraction) is open, and is a UI/
@@ -27,14 +27,14 @@ Two vocabularies name the same flag today:
 
 - `CONFIG_LAUNCHER_SELFTEST` (Kconfig), `selftest/selftest.c`, `selftest_run()`:
   the code that actually runs the suites calls this "selftest."
-- `main/apps/diagnostics/`, `app_diagnostics`, `build.diag/`,
+- `main/shell/apps/diagnostics/`, `app_diagnostics`, `build.diag/`,
   `build.sh --diag`,
   `sdkconfig.defaults.diag`, `.github/workflows/build-diagnostics.yml`:
   the app, the tooling, the CI workflow, and the prose docs all call this
   "diagnostics."
 
 A straight rename (pick one word, sed it everywhere) would paper over a
-real conceptual seam rather than close it. `main/apps/diagnostics/app_diagnostics.c`
+real conceptual seam rather than close it. `main/shell/apps/diagnostics/app_diagnostics.c`
 is two different screens' worth of concerns wearing one
 page, gated at two different granularities:
 

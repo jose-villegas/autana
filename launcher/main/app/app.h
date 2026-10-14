@@ -16,7 +16,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "gfx/present/gfx_band_run.h"
+#include "gfx/present/modes/band/gfx_band_run.h"
 #include "input/gesture.h"
 #include "input/input.h"
 

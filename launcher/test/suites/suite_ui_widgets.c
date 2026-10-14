@@ -22,11 +22,11 @@
 #ifdef DEVICE_BUILD
 #include "esp_log.h"
 #endif
-#include "gfx/draw/gfx_draw.h"
-#include "gfx/draw/gfx_font_roles.h"
+#include "draw/gfx_draw.h"
+#include "draw/gfx_font_roles.h"
 #include "gfx/gfx.h"
-#include "gfx/gfx_test.h"
 #include "gfx/present/gfx_present.h"
+#include "gfx/present/gfx_test.h"
 #include "input/input.h"
 #include "ui/ui.h"
 #include "ui/ui_bridge.h"

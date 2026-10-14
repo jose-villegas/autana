@@ -7,8 +7,8 @@
 
 #include "unity.h"
 
-#include "gfx/draw/gfx_palette_standard.h"
-#include "gfx/present/gfx_indexed.h"
+#include "draw/gfx_palette_standard.h"
+#include "gfx/present/modes/indexed/gfx_indexed.h"
 
 #ifndef DEVICE_BUILD
 

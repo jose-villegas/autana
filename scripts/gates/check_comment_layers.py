@@ -38,18 +38,19 @@ from c_comments import sources as comment_sources, scan  # noqa: E402
 from tracked import tracked_files  # noqa: E402
 from check_doc_citations import CITATIONS, CITED_BY  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
+from build.apps import APP_ROOTS  # noqa: E402
 from build.packages import FIRST_PARTY  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools/render"))
 from generated_blocks import MARKER  # noqa: E402
 
-# Below the apps: all of launcher/main/ except apps/, the packages and the
+# Below the apps: all of launcher/main/ except app folders, the packages and the
 # test tree. A new folder is checked from the day it exists.
 ENGINE = (*FIRST_PARTY, "launcher/test/")
-APPS = "launcher/main/apps"
+APPS = tuple("launcher/main/" + root for root in APP_ROOTS)
 
 
 def below_apps(rp):
-    return rp.startswith(ENGINE) and not rp.startswith(APPS + "/")
+    return rp.startswith(ENGINE) and not rp.startswith(tuple(folder + "/" for folder in APPS))
 
 # The diagnostics build is the variant behind build.diag, which every layer
 # may name; the app that happens to share the word is what this forbids.
@@ -59,7 +60,8 @@ VARIANT = re.compile(
 
 
 def app_names(root="."):
-    return sorted(p.name for p in (pathlib.Path(root) / APPS).iterdir() if p.is_dir())
+    return sorted(p.name for folder in APPS if (pathlib.Path(root) / folder).is_dir()
+                  for p in (pathlib.Path(root) / folder).iterdir() if p.is_dir())
 
 
 def name_pattern(names):

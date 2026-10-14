@@ -22,19 +22,19 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "gfx/draw/gfx_color.h"
-#include "gfx/draw/gfx_draw.h"
-#include "gfx/draw/gfx_font_roles.h"
-#include "gfx/draw/icon.h"
+#include "apps/sand/ui/brush_screen.h"
+#include "apps/sand/ui/sand_icons.h"
+#include "draw/gfx_draw.h"
+#include "draw/gfx_font_roles.h"
+#include "draw/icon.h"
 #include "gfx/gfx.h"
+#include "gfx/target/gfx_color.h"
 #include "material.h"
 #include "material_palette.h"
 #include "render_host.h"
 #include "sand_brushes.h"
 #include "sand_swatch.h"
 #include "sand_ui.h"
-#include "ui/brush_screen.h"
-#include "ui/sand_icons.h"
 #include "ui/ui.h" /* UI_MARGIN, UI_SLIDER_KNOB_W only */
 #include "ui/ui_slider.h"
 #include "ui/ui_style.h"
