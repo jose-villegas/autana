@@ -57,6 +57,7 @@ sand_skip_sites_report(void) {
 #include "build/build_variant.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
+#include "render/code_layout.h"
 #include "sand_limits.h"
 #include "sand_liquid_move.h"
 
@@ -1392,14 +1393,6 @@ build_xflow(xflow_t* f, int gx, int gy) {
     f->bias_dg_q8 = bx * f->dg[0] + by * f->dg[1];
 }
 
-/* PINNED at 16, not left to the compiler: an unpinned attribute can bind to
- * whatever definition follows it rather than to this function, letting an
- * unrelated change silently shift sand_step()'s alignment and regress
- * performance. 32 costs about 4.5% on liquid-free controls for nothing; 16 is
- * near-free and still starts within a 32-byte cache block. */
-
-/* CHECK WITH objdump, NOT the diff: .text.sand_step should read 2**4. Binding
- * to the wrong symbol still compiles and passes everything. */
 /* A mobility of 0 or 255 always admits the move; only a value between them
  * draws a roll. Asked of the global override when it is set, and otherwise of
  * every liquid actually present. */
@@ -1885,7 +1878,7 @@ run_sweep_split(sand_t* s, int dx, int dy) {
     }
 }
 
-__attribute__((aligned(16))) void
+CODE_ENTRY_OFFSET(8) void
 sand_step(sand_t* s, int gx, int gy, int jostle) {
     /* Emitters act first per step, before gravity, mimicking
      * sand_spawn_cell() calls. This allows new grains to move immediately.
