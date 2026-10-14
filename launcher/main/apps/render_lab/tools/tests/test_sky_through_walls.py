@@ -2,10 +2,10 @@
 
     python -m unittest discover -s launcher/main/apps/render_lab/tools/tests -p test_sky_through_walls.py
 
-Builds the host renderer once and samples the scene camera clip with track_host
+Builds the host renderer once and samples the scene camera clip with sample_camera_rows
 at DT_MS intervals to determine the frame count. ANY clear-colour pixel not
 connected to the top row makes a frame holed, including four-pixel pinholes.
-The roof opening also counts when enclosed; each scene has its own ceiling.
+The roof opening also counts when enclosed.
 Needs the r3d environment (launcher/tools/r3d/requirements.txt).
 """
 import pathlib
@@ -26,15 +26,16 @@ try:
     import numpy as np
     from scipy import ndimage
 
-    from anim import track_host
-    from r3d.poses import parse_pose_rows
+    from r3d.poses import sample_camera_rows
     from r3d.import_settings import load_scene
     from render_compare import expand_565, read_video
 except ImportError:  # pragma: no cover - the tool tests' environment has them
     np = None
 
 DT_MS = 33
-# Placeholder ceilings; measure each scene's locked rebake before setting its regression budget.
+MIN_OPEN_SKY_PIXELS = 100
+FRAME_COUNT_SIZE = (1, 1)
+# The ceilings are set from the rebake.
 MOST_HOLED_FRAMES = {
     "sponza": 13,
     "sponza-lite": 13,
@@ -72,6 +73,15 @@ class SkyCount(unittest.TestCase):
         frame[7, 6:8] = sky  # a hole at the bottom edge
         self.assertEqual(sky_pixels(frame, sky), (10, 24))
 
+    def test_enclosed_one_pixel_and_two_by_two_sky_count(self):
+        sky = (156, 195, 231)
+        for side in (1, 2):
+            with self.subTest(side=side):
+                frame = np.zeros((6, 6, 3), dtype=np.uint8)
+                frame[:1] = sky
+                frame[3:3 + side, 2:2 + side] = sky
+                self.assertEqual(sky_pixels(frame, sky), (side * side, 6))
+
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class SkyThroughWalls(unittest.TestCase):
@@ -79,9 +89,9 @@ class SkyThroughWalls(unittest.TestCase):
     def setUpClass(cls):
         scene = load_scene(SCENE)
         camera = scene.camera.component
-        size = next(job.renderer.fit.size for job in scene.renderers if job.renderer.fit is not None)
-        cls.frames = len(parse_pose_rows(track_host.poses(
-            camera.path.animation, camera.path.node, DT_MS, *size, camera.half_fov_short_tan, camera.near_z))[4])
+        cls.frames = len(sample_camera_rows(
+            camera.path.animation, camera.path.node, DT_MS, *FRAME_COUNT_SIZE,
+            camera.half_fov_short_tan, camera.near_z)[4])
         cls.out = pathlib.Path(tempfile.mkdtemp(prefix="sky_through_walls_"))
         run, cls.binary = host_render.run(cls.out, "--build-only")
         cls.build_output = run.stdout + run.stderr
@@ -108,7 +118,7 @@ class SkyThroughWalls(unittest.TestCase):
         self.assertEqual(len(counts), self.frames)
         # The path looks up at the open roof, so sky open to the top must turn up: that proves the clear colour
         # matched, so a count of no holes is real.
-        self.assertTrue(any(open_ > 0 for _, open_ in counts), f"{scene}: no sky found")
+        self.assertTrue(any(open_ >= MIN_OPEN_SKY_PIXELS for _, open_ in counts), f"{scene}: no sky found")
         holed = [frame for frame, (enclosed, _) in enumerate(counts) if enclosed > 0]
         print(f"{scene}: {len(holed)}/{self.frames} holed frames (ceiling {most})", flush=True)
         self.assertLessEqual(len(holed), most, f"{scene}: {len(holed)} holed frames exceeds {most}")

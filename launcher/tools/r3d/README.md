@@ -260,7 +260,8 @@ $PY tools/r3d/fitted_variant.py SCENE.scene.toml --mesh NAME --work scratch prep
 `NAME` is the fitted scene object, or its variant when only one object fits that variant.
 
 `prepare` bakes the start (the import's geometry steps at the variant's
-`triangles`, lit by the scene's bake, flat when the renderer's shading is), samples the camera's path every
+`triangles`, lit by the scene's bake, flat when the renderer's shading is),
+samples the camera's path every
 `fit.poses.train_every_ms`, holds out the multiples of
 `fit.poses.held_out_every_ms`, samples it again every
 `fit.prune.coverage_every_ms` for pruning, and renders the training references
@@ -268,8 +269,9 @@ with their normals in portrait and landscape so the fit holds the panel either
 way up at `fit.poses.size`. `fit` fits with
 `fit.optimise.steps`, `fit.optimise.batch`, `fit.optimise.laplacian` and
 `fit.optimise.normal_weight`, prunes the fitted geometry to `fit.prune.budget`
-and writes the renderer's mesh into the work folder. A refit is not bit-identical, the GPU's sums being unordered, so the
-lock pins the bytes a fit made.
+and writes the renderer's mesh into the work folder. A refit is not
+bit-identical, the GPU's sums being unordered, so the lock pins the bytes a fit
+made.
 
 ### Reference on the GPU
 

@@ -102,6 +102,12 @@ def count(value, where):
     return value
 
 
+def pixel_size(value, where) -> tuple[int, int]:
+    if not isinstance(value, list) or len(value) != 2:
+        raise SettingsError(f"{where} must be [width, height]")
+    return tuple(count(component, where) for component in value)
+
+
 def colour_rgb(value, where):
     """A colour as 0xRRGGBB."""
     value = integer(value, where)
@@ -171,10 +177,7 @@ def load_fit(value, variant, where):
     fit = SimpleNamespace(**{key: values[key] for key in FIT_KEYS})
     for key in ("budget", "train_every_ms", "held_out_every_ms", "coverage_every_ms", "steps", "batch"):
         setattr(fit, key, count(values[key], f"{where}.{key}"))
-    size = values["size"]
-    if not isinstance(size, list) or len(size) != 2:
-        raise SettingsError(f"{where}.poses.size must be [width, height]")
-    fit.size = tuple(count(component, f"{where}.poses.size") for component in size)
+    fit.size = pixel_size(values["size"], f"{where}.poses.size")
     fit.laplacian = number(values["laplacian"], f"{where}.laplacian")
     fit.normal_weight = number(values["normal_weight"], f"{where}.normal_weight")
     if fit.budget > variant.triangles:
@@ -217,14 +220,12 @@ def load_visibility(table, where="visibility"):
         check_keys(table, ("rounds",), where, optional=("source",))
         return SimpleNamespace(source=source, rounds=count(table["rounds"], f"{where}.rounds"))
     check_keys(table, ("every_ms", "size"), where, optional=("source", "samples", "margin"))
-    size = table["size"]
-    if not isinstance(size, list) or len(size) != 2:
-        raise SettingsError(f"{where}.size must be [width, height]")
+    size = pixel_size(table["size"], f"{where}.size")
     margin = integer(table.get("margin", 0), f"{where}.margin")
     if margin < 0:
         raise SettingsError(f"{where}.margin cannot be negative")
     return SimpleNamespace(source=source, every_ms=count(table["every_ms"], f"{where}.every_ms"),
-                           size=(count(size[0], f"{where}.size"), count(size[1], f"{where}.size")),
+                           size=size,
                            samples=count(table.get("samples", 3), f"{where}.samples"), margin=margin)
 
 
@@ -707,6 +708,9 @@ def load_scene(path):
         raise SettingsError("scene sky is read by no placed mesh: only baked renderers read it")
     sources = {item.renderer.visibility.source for item in jobs if item.renderer.visibility}
     camera_path = cameras[0].component.path if cameras else None
+    for item in jobs:
+        if item.renderer.fit and camera_path is None:
+            raise SettingsError(f"scene.objects {item.object.name!r} mesh_renderer.fit needs the scene camera path")
     bounced = bool(bake and bake.indirect and any(item.renderer.indirect for item in jobs if item.renderer.bake))
     if bake and bake.ao:
         scaled = any(light["type"] == "ambient" for light in lights) or (bake.ao.indirect and bounced)
