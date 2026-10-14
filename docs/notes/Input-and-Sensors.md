@@ -107,11 +107,10 @@ For each axis, the positive and negative gravity windows give
 `scale = (up - down) / (2 * INPUT_ACCEL_ONE_G)`, the diagonal six-position
 calibration model described by STMicroelectronics AN4508
 [[67]](../Citations.md#67). This measures offset and sensitivity, not cross-axis
-misalignment. `input/imu_calib.c` owns the offset and sensitivity fit. The gyro zero-rate
-estimate averages samples across all pose
-windows. `pose` lines contain rounded Q12 g and Q6 deg/s means and sample
-counts; `calib` reports offsets in mg, sensitivity in ppm (unity is 1000000),
-and gyro offsets in mdps.
+misalignment. `input/imu_calib.c` owns the offset and sensitivity fit. The gyro
+zero-rate estimate averages samples across all pose windows. `pose` lines contain
+rounded Q12 g and Q6 deg/s means and sample counts; `calib` reports offsets in
+mg, sensitivity in ppm (unity is 1000000), and gyro offsets in mdps.
 
 The Motion log records the shell quarter even though the page remains pinned.
 The tool reports calibration fits and consecutive-round differences, the longest

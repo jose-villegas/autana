@@ -383,8 +383,9 @@ log_imu_pose(void) {
         return;
     }
     const imu_probe_fit_t f = imu_round.fit;
-    ESP_LOGI(TAG, "calib x off %d scale %d y off %d scale %d z off %d scale %d gyro %d,%d,%d", f.offset_mg.x,
-             f.scale_ppm.x, f.offset_mg.y, f.scale_ppm.y, f.offset_mg.z, f.scale_ppm.z, f.gyro_mdps.x, f.gyro_mdps.y,
+    const vec3i_t offset_mg = imu_probe_offset_mg(&f);
+    ESP_LOGI(TAG, "calib x off %d scale %d y off %d scale %d z off %d scale %d gyro %d,%d,%d", offset_mg.x,
+             f.scale_ppm.x, offset_mg.y, f.scale_ppm.y, offset_mg.z, f.scale_ppm.z, f.gyro_mdps.x, f.gyro_mdps.y,
              f.gyro_mdps.z);
 }
 
@@ -406,8 +407,8 @@ update_imu_round(uint32_t dt_ms, const input_t* input) {
     }
 }
 
-static void
-draw_imu_round(mu_Context* ctx) {
+static bool
+draw_imu_round(mu_Context* ctx, bool* clear_result) {
     char line[MOTION_HUD_TEXT_SIZE];
     if (imu_round.active) {
         char label[IMU_PROBE_LABEL_SIZE];
@@ -422,10 +423,11 @@ draw_imu_round(mu_Context* ctx) {
             hud_line(ctx, 1, line);
         }
         hud_line(ctx, 3, "BOOT TO LEAVE ROUND");
-        return;
+        return false;
     }
     const imu_probe_fit_t f = imu_round.fit;
-    const int off[] = {f.offset_mg.x, f.offset_mg.y, f.offset_mg.z};
+    const vec3i_t offset_mg = imu_probe_offset_mg(&f);
+    const int off[] = {offset_mg.x, offset_mg.y, offset_mg.z};
     const int scale[] = {f.scale_ppm.x, f.scale_ppm.y, f.scale_ppm.z};
     const int gyro[] = {f.gyro_mdps.x, f.gyro_mdps.y, f.gyro_mdps.z};
     static const char* const axes[] = {"X", "Y", "Z"};
@@ -443,20 +445,27 @@ draw_imu_round(mu_Context* ctx) {
         ui_icon_button(ctx, "imu-save", mu_rect(MOTION_MARGIN, top, width, 2 * HUD_LINE_H), &save, &theme);
     const bool clearing = ui_icon_button(
         ctx, "imu-clear", mu_rect(2 * MOTION_MARGIN + width, top, width, 2 * HUD_LINE_H), &clear, &theme);
-    if (saving || clearing) {
-        const vec3i_t offset = clearing ? (vec3i_t){0} : vec3i_add(input_accel_offset(), f.calib.offset);
-        if (!input_set_accel_offset(offset)) {
-            ESP_LOGW(TAG, "imu_calib could not save offset");
-        } else {
-            if (clearing) {
-                ESP_LOGI(TAG, "imu_calib cleared");
-            } else {
-                ESP_LOGI(TAG, "imu_calib saved %d %d %d", (int)offset.x, (int)offset.y, (int)offset.z);
-            }
-            imu_round = (imu_probe_round_t){0};
-        }
-    }
+    *clear_result = clearing;
     hud_line(ctx, 3, "BOOT TO LEAVE RESULTS");
+    return saving || clearing;
+}
+
+static void
+store_imu_result(bool save, bool clear) {
+    if (!save) {
+        return;
+    }
+    const vec3i_t offset = clear ? (vec3i_t){0} : imu_probe_saved_offset(input_accel_offset(), &imu_round.fit);
+    if (!input_set_accel_offset(offset)) {
+        ESP_LOGW(TAG, "imu_calib could not save offset");
+        return;
+    }
+    if (clear) {
+        ESP_LOGI(TAG, "imu_calib cleared");
+    } else {
+        ESP_LOGI(TAG, "imu_calib saved %d %d %d", (int)offset.x, (int)offset.y, (int)offset.z);
+    }
+    imu_round = (imu_probe_round_t){0};
 }
 
 static mu_Rect
@@ -474,7 +483,9 @@ draw_motion(mu_Context* ctx) {
         return;
     }
     if (imu_round.active || imu_round.pose == IMU_PROBE_POSE_COUNT) {
-        draw_imu_round(ctx);
+        bool clear = false;
+        const bool save = draw_imu_round(ctx, &clear);
+        store_imu_result(save, clear);
         return;
     }
     char line[MOTION_HUD_TEXT_SIZE];
