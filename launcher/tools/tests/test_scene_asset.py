@@ -66,6 +66,23 @@ class SceneFiles(unittest.TestCase):
 
 
 class SceneEntryTests(SceneFiles):
+    def test_header_size_mismatch_raises_scene_error(self):
+        owner_size = HEADER.size + 1
+        with self.assertRaises(SceneError) as raised:
+            scene_asset.check_header(owner_size)
+        for value in (str(HEADER.size), str(owner_size), str(scene_asset.OWNER)):
+            self.assertIn(value, str(raised.exception))
+
+    def test_skinned_renderer_forwards_cache_and_offline(self):
+        import_file = write_import(self.root, "rig.import.toml", source='[source]\npath = "rig.glb"\ncredit = "test"\n')
+        objects = renderer("rig.import.toml").replace("mesh_renderer", "skinned_renderer")
+        scene = load_scene(self.scene(objects))
+        document, binary = rig()
+        cache = self.root / "cache"
+        with mock.patch("r3d.skin_pack.load_rig", return_value=(import_file, document, binary, 5)) as load:
+            scene_asset.encode(scene, cache, True)
+            load.assert_called_once_with(scene.renderers[0].settings, cache, True)
+
     def test_multiple_cameras_and_their_clips_share_the_scene_pack(self):
         (self.root / "clips" / "tour.anim.toml").write_text(CLIP)
         second = lens("clips/tour.anim.toml").replace('name = "camera"', 'name = "tour"')

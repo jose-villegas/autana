@@ -652,6 +652,13 @@ class PosesTests(FittedBakeCase):
                                                  "launcher/packages/math/"))
                                  or path == "launcher/tools/anim/track_host.c" for path in native))
 
+    def test_scene_writer_is_outside_consumers(self):
+        for stage in ("mesh", "reference", "fit"):
+            with self.subTest(stage=stage):
+                files = bake.stage_files(stage)
+                self.assertNotIn("r3d/scene_asset.py",
+                                 {path.relative_to(TOOLS).as_posix() for path in files})
+
     def test_encoder_padding_changes_lock_row_key_but_keeps_stage_keys(self):
         from anim import tracks_asset
 

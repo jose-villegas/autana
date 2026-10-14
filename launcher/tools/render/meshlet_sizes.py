@@ -117,7 +117,7 @@ def table(scene_path, captures, bakes, object_name=None):
     poses = sample_camera_path(camera.path.animation, camera.path.node, 5000, width, height,
                                camera.half_fov_short_tan, camera.near_z)
     from r3d.build_pack import pack_bytes
-    from r3d.scene_asset import scene_id
+    from r3d.scene_name import scene_id
     packs = {}
     with tempfile.TemporaryDirectory() as directory:
         work = pathlib.Path(directory)

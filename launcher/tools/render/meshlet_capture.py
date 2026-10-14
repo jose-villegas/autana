@@ -10,7 +10,7 @@ ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 from r3d import rebake
 from r3d.import_settings import load_scene
-from r3d.scene_asset import scene_id
+from r3d.scene_name import scene_id
 from build.scratch import scratch_tree
 
 DEFAULT_WORK = ROOT / "launcher/tools/results/meshlet-sizes"
