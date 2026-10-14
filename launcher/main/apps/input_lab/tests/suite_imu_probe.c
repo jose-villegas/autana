@@ -1,12 +1,12 @@
 #include "suites.h"
 #include "unity.h"
 
-#include <math.h>
 #include <stdlib.h>
 
 #include "apps/input_lab/imu_probe.h"
 #include "display/display.h"
 #include "input/imu_sample.h"
+#include "math/scalar/mathf_round.h"
 
 #define TEST_DT_MS 20
 
@@ -137,7 +137,7 @@ test_movement_resets_window(void) {
     TEST_ASSERT_NOT_NULL(round);
     imu_probe_start(round, 0);
     input_motion_t sample = fixture();
-    for (int ms = 0; ms < IMU_PROBE_SETTLE_MS + 2 * TEST_DT_MS; ms += TEST_DT_MS) {
+    for (int ms = 0; ms < IMU_PROBE_SETTLE_MS + (2 * TEST_DT_MS); ms += TEST_DT_MS) {
         imu_probe_update(round, &sample, TEST_DT_MS);
     }
     TEST_ASSERT_TRUE(round->window.n > 0);
@@ -183,7 +183,7 @@ test_missing_reading(void) {
     TEST_ASSERT_NOT_NULL(round);
     imu_probe_start(round, 0);
     const input_motion_t sample = fixture();
-    for (int ms = 0; ms < IMU_PROBE_SETTLE_MS + 2 * TEST_DT_MS; ms += TEST_DT_MS) {
+    for (int ms = 0; ms < IMU_PROBE_SETTLE_MS + (2 * TEST_DT_MS); ms += TEST_DT_MS) {
         imu_probe_update(round, &sample, TEST_DT_MS);
     }
     TEST_ASSERT_TRUE(round->window.n > 0);
@@ -342,8 +342,8 @@ test_empty_pose_ignored(void) {
 static void
 test_synthetic_fit(void) {
     const int offset[] = {INPUT_ACCEL_ONE_G / 16, -INPUT_ACCEL_ONE_G / 8, INPUT_ACCEL_ONE_G / 32};
-    const int span[] = {INPUT_ACCEL_ONE_G + INPUT_ACCEL_ONE_G / 16, INPUT_ACCEL_ONE_G - INPUT_ACCEL_ONE_G / 8,
-                        INPUT_ACCEL_ONE_G + INPUT_ACCEL_ONE_G / 32};
+    const int span[] = {INPUT_ACCEL_ONE_G + (INPUT_ACCEL_ONE_G / 16), INPUT_ACCEL_ONE_G - (INPUT_ACCEL_ONE_G / 8),
+                        INPUT_ACCEL_ONE_G + (INPUT_ACCEL_ONE_G / 32)};
     for (int q = 0; q < 4; q++) {
         imu_probe_round_t* round = calloc(1, sizeof *round);
         TEST_ASSERT_NOT_NULL(round);
@@ -352,7 +352,7 @@ test_synthetic_fit(void) {
             const vec3i_t d = imu_probe_pose_direction(pose, q);
             input_motion_t sample = fixture();
             sample.acceleration =
-                (vec3i_t){offset[0] + d.x * span[0], offset[1] + d.y * span[1], offset[2] + d.z * span[2]};
+                (vec3i_t){offset[0] + (d.x * span[0]), offset[1] + (d.y * span[1]), offset[2] + (d.z * span[2])};
             sample.rotation = (vec3i_t){(pose + 1) * INPUT_ROTATION_ONE_DPS, -2 * (pose + 1) * INPUT_ROTATION_ONE_DPS,
                                         3 * (pose + 1) * INPUT_ROTATION_ONE_DPS};
             for (int n = 0; n <= pose; n++) {
@@ -363,13 +363,13 @@ test_synthetic_fit(void) {
         const int got_off[] = {round->fit.offset_mg.x, round->fit.offset_mg.y, round->fit.offset_mg.z};
         const int got_scale[] = {round->fit.scale_ppm.x, round->fit.scale_ppm.y, round->fit.scale_ppm.z};
         for (int axis = 0; axis < 3; axis++) {
-            TEST_ASSERT_EQUAL_INT((int)lround((double)offset[axis] * IMU_PROBE_MILLI / INPUT_ACCEL_ONE_G),
+            TEST_ASSERT_EQUAL_INT((int)mathf_round_i32((float)offset[axis] * IMU_PROBE_MILLI / INPUT_ACCEL_ONE_G),
                                   got_off[axis]);
-            TEST_ASSERT_EQUAL_INT((int)lround((double)span[axis] * IMU_PROBE_SCALE_ONE / INPUT_ACCEL_ONE_G),
+            TEST_ASSERT_EQUAL_INT((int)mathf_round_i32((float)span[axis] * IMU_PROBE_SCALE_ONE / INPUT_ACCEL_ONE_G),
                                   got_scale[axis]);
         }
-        TEST_ASSERT_EQUAL_INT((int)lround(13.0 * IMU_PROBE_MILLI / 3), round->fit.gyro_mdps.x);
-        TEST_ASSERT_EQUAL_INT((int)lround(-26.0 * IMU_PROBE_MILLI / 3), round->fit.gyro_mdps.y);
+        TEST_ASSERT_EQUAL_INT((int)mathf_round_i32(13.0F * IMU_PROBE_MILLI / 3), round->fit.gyro_mdps.x);
+        TEST_ASSERT_EQUAL_INT((int)mathf_round_i32(-26.0F * IMU_PROBE_MILLI / 3), round->fit.gyro_mdps.y);
         TEST_ASSERT_EQUAL_INT(13 * IMU_PROBE_MILLI, round->fit.gyro_mdps.z);
         free(round);
     }

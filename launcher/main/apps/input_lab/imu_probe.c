@@ -2,6 +2,7 @@
 
 #include <ctype.h>
 #include <math.h>
+#include "math/scalar/mathf_round.h"
 
 #include "ui/ui_transform.h"
 
@@ -32,7 +33,8 @@ imu_probe_pose_direction(int pose, int quarter) {
     }
     const int x = pose == IMU_PROBE_LEFT_DOWN ? -1 : pose == IMU_PROBE_RIGHT_DOWN ? 1 : 0;
     const int y = pose == IMU_PROBE_TOP_DOWN ? -1 : pose == IMU_PROBE_BOTTOM_DOWN ? 1 : 0;
-    int px, py;
+    int px;
+    int py;
     ui_transform_point(ui_transform_quarter_turn(quarter, 0, 0), x, y, &px, &py);
     return (vec3i_t){px, py, 0};
 }
@@ -53,10 +55,11 @@ imu_probe_average_read(const imu_probe_average_t* average) {
     if (average->n == 0) {
         return (input_motion_t){0};
     }
-    int a[3], r[3];
+    int a[3];
+    int r[3];
     for (int axis = 0; axis < 3; axis++) {
-        a[axis] = (int)lround((double)average->acceleration[axis] / average->n);
-        r[axis] = (int)lround((double)average->rotation[axis] / average->n);
+        a[axis] = (int)mathf_round_i32((float)average->acceleration[axis] / (float)average->n);
+        r[axis] = (int)mathf_round_i32((float)average->rotation[axis] / (float)average->n);
     }
     return (input_motion_t){.acceleration = {a[0], a[1], a[2]}, .rotation = {r[0], r[1], r[2]}};
 }
@@ -65,7 +68,9 @@ imu_probe_average_read(const imu_probe_average_t* average) {
  * Offset is mg, sensitivity ppm (unity = IMU_PROBE_SCALE_ONE), gyro offset mdps. */
 imu_probe_fit_t
 imu_probe_fit(const imu_probe_average_t poses[IMU_PROBE_POSE_COUNT], int quarter) {
-    double up[3] = {0}, down[3] = {0}, gyro[3] = {0};
+    float up[3] = {0};
+    float down[3] = {0};
+    float gyro[3] = {0};
     int n = 0;
     for (int pose = 0; pose < IMU_PROBE_POSE_COUNT; pose++) {
         if (poses[pose].n == 0) {
@@ -74,22 +79,25 @@ imu_probe_fit(const imu_probe_average_t poses[IMU_PROBE_POSE_COUNT], int quarter
         const vec3i_t direction = imu_probe_pose_direction(pose, quarter);
         const int d[] = {direction.x, direction.y, direction.z};
         for (int axis = 0; axis < 3; axis++) {
-            const double mean = (double)poses[pose].acceleration[axis] / poses[pose].n;
+            const float mean = (float)poses[pose].acceleration[axis] / (float)poses[pose].n;
             if (d[axis] > 0) {
                 up[axis] = mean;
             }
             if (d[axis] < 0) {
                 down[axis] = mean;
             }
-            gyro[axis] += (double)poses[pose].rotation[axis];
+            gyro[axis] += (float)poses[pose].rotation[axis];
         }
         n += poses[pose].n;
     }
-    int offset[3], scale[3], rate[3];
+    int offset[3];
+    int scale[3];
+    int rate[3];
     for (int axis = 0; axis < 3; axis++) {
-        offset[axis] = (int)lround((up[axis] + down[axis]) * IMU_PROBE_MILLI / (2 * INPUT_ACCEL_ONE_G));
-        scale[axis] = (int)lround((up[axis] - down[axis]) * IMU_PROBE_SCALE_ONE / (2 * INPUT_ACCEL_ONE_G));
-        rate[axis] = n > 0 ? (int)lround(gyro[axis] * IMU_PROBE_MILLI / (n * INPUT_ROTATION_ONE_DPS)) : 0;
+        offset[axis] = (int)mathf_round_i32((up[axis] + down[axis]) * IMU_PROBE_MILLI / (2 * INPUT_ACCEL_ONE_G));
+        scale[axis] = (int)mathf_round_i32((up[axis] - down[axis]) * IMU_PROBE_SCALE_ONE / (2 * INPUT_ACCEL_ONE_G));
+        rate[axis] =
+            n > 0 ? (int)mathf_round_i32(gyro[axis] * IMU_PROBE_MILLI / ((float)n * INPUT_ROTATION_ONE_DPS)) : 0;
     }
     return (imu_probe_fit_t){
         {offset[0], offset[1], offset[2]}, {scale[0], scale[1], scale[2]}, {rate[0], rate[1], rate[2]}};
