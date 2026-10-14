@@ -60,7 +60,7 @@ void gfx_full_redraw_clear_pending(void);
 /*
  * gfx_present() sends only the horizontal bands that changed: the panel
  * holds the rest in its own GRAM, and sending is almost the whole cost of a
- * frame. Every gfx_* drawing call marks what it touched and gfx_clear()
+ * frame. Every gfx_* drawing call marks what it touched and draw_clear()
  * marks the whole screen, so most callers never touch this. Code writing
  * through gfx_framebuffer() directly MUST mark what it wrote; forgetting
  * looks like a frozen or partially stale screen, not a crash.

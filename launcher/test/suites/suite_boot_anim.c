@@ -27,7 +27,7 @@
 #include "unity.h"
 
 #include "boot/boot_anim.h"
-#include "draw/gfx_font_roles.h"
+#include "draw/draw_font_roles.h"
 
 #include <stdlib.h>
 
@@ -1362,7 +1362,7 @@ test_the_live_end_of_the_curve_is_drawn_thicker(void) {
 
 /* The title tests use the UI font role, which draw_title() draws with. */
 
-#define TITLE_FONT (gfx_font_ui())
+#define TITLE_FONT (draw_font_ui())
 
 static void
 test_the_wobble_is_exactly_flat_once_a_letter_has_arrived(void) {
@@ -1466,8 +1466,8 @@ test_a_letter_starts_off_panel_to_the_left(void) {
 /* Regression guard for the bug boot_anim_title_letter()'s own comment in
  * boot_anim.h describes: a fixed per-letter cell, `i * (8 * SCALE +
  * GAP)`, is correct only for a MONOSPACE font. Checks the real formula
- * directly against gfx_font_text_width() (the same pure sum-of-advances
- * function gfx_font.h's own suite already pins against a synthetic
+ * directly against draw_font_text_width() (the same pure sum-of-advances
+ * function draw_font.h's own suite already pins against a synthetic
  * proportional font) rather than a second, hand-derived copy of the
  * arithmetic that could make the same mistake twice. */
 static void
@@ -1481,11 +1481,11 @@ test_final_x_matches_the_advance_sum(void) {
 
     for (int i = 0; i < BOOT_ANIM_TITLE_LEN; i++) {
         const vec2i_t p = boot_anim_title_letter(TITLE_FONT, i, arrived);
-        const int prefix_w = gfx_font_text_width(TITLE_FONT, BOOT_ANIM_TITLE, i, BOOT_ANIM_TITLE_SCALE);
+        const int prefix_w = draw_font_text_width(TITLE_FONT, BOOT_ANIM_TITLE, i, BOOT_ANIM_TITLE_SCALE);
         const int expected_x = BOOT_ANIM_TITLE_VIEW_X + prefix_w + i * BOOT_ANIM_TITLE_GAP;
         TEST_ASSERT_EQUAL_INT_MESSAGE(expected_x, p.x,
                                       "a landed letter's x must be VIEW_X plus the ADVANCE SUM of "
-                                      "every letter before it (gfx_font_text_width(), proportional) "
+                                      "every letter before it (draw_font_text_width(), proportional) "
                                       "plus i*GAP of tracking - not a fixed per-letter cell, which "
                                       "is only correct for a monospace font");
     }
@@ -1670,7 +1670,7 @@ expect_the_rest_pose(const char* dir) {
     const bool from_pack = motion.from_pack;
     const bool is_rest = !from_pack && motion.clip.duration_ms == rest.clip.duration_ms
                          && same_node(&motion.camera, &rest.camera) && same_node(&motion.space, &rest.space);
-    const gfx_image_t no_photo = {0};
+    const draw_image_t no_photo = {0};
     boot_anim_draw_frame(&motion, &no_photo, now_ms);
     boot_anim_motion_release(&motion);
     TEST_ASSERT_FALSE_MESSAGE(from_pack, "the motion came from the pack");
@@ -1784,9 +1784,9 @@ write_picture(int version, int width, int height) {
     uint8_t* bytes = malloc(capacity);
     TEST_ASSERT_NOT_NULL(bytes);
     test_pack_t pack = test_pack_begin(bytes, capacity, 1);
-    uint8_t* entry = test_pack_add(&pack, BOOT_PHOTO, GFX_IMAGE_ASSET, entry_size);
+    uint8_t* entry = test_pack_add(&pack, BOOT_PHOTO, DRAW_IMAGE_ASSET, entry_size);
     test_pack_put16(entry, version);
-    test_pack_put16(entry + 2, GFX_IMAGE_RGB565);
+    test_pack_put16(entry + 2, DRAW_IMAGE_RGB565);
     test_pack_put16(entry + 4, width);
     test_pack_put16(entry + 6, height);
     test_pack_put32(entry + 8, (uint32_t)width);
@@ -1798,7 +1798,7 @@ write_picture(int version, int width, int height) {
 }
 
 static void
-load_photo_from(const char* dir, gfx_image_t* out) {
+load_photo_from(const char* dir, draw_image_t* out) {
     test_asset_dir_use(dir);
     boot_anim_photo_load(out);
     test_asset_dir_restore();
@@ -1806,7 +1806,7 @@ load_photo_from(const char* dir, gfx_image_t* out) {
 
 /* The lit pixels of the shipped motion's frame at `now_ms` drawn over `photo`. */
 static int
-lit_over(const gfx_image_t* photo, uint32_t now_ms) {
+lit_over(const draw_image_t* photo, uint32_t now_ms) {
     boot_anim_motion_t motion;
     boot_anim_motion_load(&motion);
     boot_anim_draw_frame(&motion, photo, now_ms);
@@ -1826,7 +1826,7 @@ expect_no_photograph(const char* dir) {
     const uint32_t now_ms = BOOT_ANIM_IMAGE_START_MS + BOOT_ANIM_IMAGE_FADE_MS;
     TEST_ASSERT_EQUAL_UINT8(255, boot_anim_ink(now_ms));
 
-    gfx_image_t photo;
+    draw_image_t photo;
     load_photo_from(dir, &photo);
     const bool no_pixels = photo.pixels == NULL;
     const int without = lit_over(&photo, now_ms);
@@ -1835,8 +1835,8 @@ expect_no_photograph(const char* dir) {
     /* One black row repeated down the panel: a stride of 0. */
     gfx_color_t* black = calloc(GFX_WIDTH, sizeof(gfx_color_t));
     TEST_ASSERT_NOT_NULL(black);
-    const gfx_image_t covered = {
-        .pixels = black, .format = GFX_IMAGE_RGB565, .width = GFX_WIDTH, .height = GFX_HEIGHT, .stride = 0};
+    const draw_image_t covered = {
+        .pixels = black, .format = DRAW_IMAGE_RGB565, .width = GFX_WIDTH, .height = GFX_HEIGHT, .stride = 0};
     const int title_only = lit_over(&covered, now_ms);
     free(black);
 
@@ -1849,7 +1849,7 @@ expect_no_photograph(const char* dir) {
  * pack, not the one that failed. */
 static void
 expect_a_good_picture_loads_next(void) {
-    gfx_image_t photo;
+    draw_image_t photo;
     boot_anim_photo_load(&photo);
     const bool from_pack = photo.pixels != NULL;
     boot_anim_photo_release(&photo);
@@ -1863,7 +1863,7 @@ test_with_no_pack_the_scene_stays_where_the_photograph_would_be(void) {
 
 static void
 test_with_a_picture_not_one_panel_the_scene_stays_and_nothing_stays_mounted(void) {
-    write_picture(GFX_IMAGE_VERSION, 2, 2);
+    write_picture(DRAW_IMAGE_VERSION, 2, 2);
     expect_no_photograph(".");
     (void)remove(PICTURE_PACK);
     expect_a_good_picture_loads_next();
@@ -1871,7 +1871,7 @@ test_with_a_picture_not_one_panel_the_scene_stays_and_nothing_stays_mounted(void
 
 static void
 test_with_a_malformed_picture_the_scene_stays_and_nothing_stays_mounted(void) {
-    write_picture(GFX_IMAGE_VERSION + 1, 2, 2);
+    write_picture(DRAW_IMAGE_VERSION + 1, 2, 2);
     expect_no_photograph(".");
     (void)remove(PICTURE_PACK);
     expect_a_good_picture_loads_next();
@@ -1885,7 +1885,7 @@ test_the_crossfade_ends_on_the_shipped_photograph(void) {
         TEST_ASSERT_TRUE(gfx_init());
     }
     suite_set_test_cleanup(gfx_reset_for_test);
-    gfx_image_t photo;
+    draw_image_t photo;
     boot_anim_photo_load(&photo);
     if (photo.pixels == NULL) {
         TEST_FAIL_MESSAGE("the boot picture did not load from its pack: see the log above");

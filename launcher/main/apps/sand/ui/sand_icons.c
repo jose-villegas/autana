@@ -17,16 +17,16 @@ static const ui_icon_name_t NAMES[SAND_ICON_COUNT] = {
     [SAND_ICON_DITHER_FIRST + GFX_DITHER_PIXEL_BAYER4] = {"dither_pixel_bayer4", ""},
 };
 
-static gfx_image_t icons[SAND_ICON_COUNT];
+static draw_image_t icons[SAND_ICON_COUNT];
 
 ui_icon_set_t sand_icon_set = {SAND_PACK, NAMES, SAND_ICON_COUNT, icons, false};
 
-const gfx_image_t*
+const draw_image_t*
 sand_icon(sand_icon_id_t id) {
     return ui_icon_set_get(&sand_icon_set, (int)id);
 }
 
-const gfx_image_t*
+const draw_image_t*
 sand_dither_icon(gfx_dither_mode_t mode) {
     return ui_icon_set_get(&sand_icon_set, SAND_ICON_DITHER_FIRST + (int)mode);
 }

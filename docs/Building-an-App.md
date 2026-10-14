@@ -25,13 +25,13 @@ the shell, not `CMakeLists.txt`:
 
 ```c
 #include "app/app.h"
-#include "draw/gfx_draw.h"
+#include "draw/draw.h"
 
 static void yours_enter(void) { /* reset state */ }
 
 static void yours_frame(uint32_t dt_ms, const input_t* input) {
-    gfx_clear(gfx_rgb(0x101010));
-    gfx_text(20, 20, "hello", gfx_rgb(0xFFFFFF));
+    draw_clear(gfx_rgb(0x101010));
+    draw_text(20, 20, "hello", gfx_rgb(0xFFFFFF));
 }
 
 static void yours_exit(void) { /* release what enter() took */ }

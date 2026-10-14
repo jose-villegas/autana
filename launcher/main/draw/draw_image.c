@@ -1,4 +1,4 @@
-#include "draw/gfx_image.h"
+#include "draw/draw_image.h"
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -17,13 +17,13 @@ enum {
 };
 
 asset_status_t
-gfx_image_open(asset_view_t entry, gfx_image_t* out) {
-    *out = (gfx_image_t){0};
+draw_image_open(asset_view_t entry, draw_image_t* out) {
+    *out = (draw_image_t){0};
     if (entry.size < HEADER_SIZE) {
         return ASSET_ERR_BOUNDS;
     }
     const uint8_t* at = entry.data;
-    if (asset_read_u16(at) != GFX_IMAGE_VERSION) {
+    if (asset_read_u16(at) != DRAW_IMAGE_VERSION) {
         return ASSET_ERR_VERSION;
     }
     const uint16_t width = asset_read_u16(at + AT_WIDTH);
@@ -31,9 +31,9 @@ gfx_image_open(asset_view_t entry, gfx_image_t* out) {
     const uint32_t stride = asset_read_u32(at + AT_STRIDE);
     const uint32_t pixels = asset_read_u32(at + AT_PIXELS);
     const uint16_t format = asset_read_u16(at + AT_FORMAT);
-    const bool mono = format == GFX_IMAGE_MONO1;
-    if ((format != GFX_IMAGE_RGB565 && !mono) || width == 0 || height == 0 || stride < width || pixels < HEADER_SIZE
-        || (mono && (stride % GFX_IMAGE_MONO1_STRIDE_STEP) != 0)) {
+    const bool mono = format == DRAW_IMAGE_MONO1;
+    if ((format != DRAW_IMAGE_RGB565 && !mono) || width == 0 || height == 0 || stride < width || pixels < HEADER_SIZE
+        || (mono && (stride % DRAW_IMAGE_MONO1_STRIDE_STEP) != 0)) {
         return ASSET_ERR_FORMAT;
     }
     const uint64_t last_row = (uint64_t)stride * (height - 1U);
@@ -42,8 +42,8 @@ gfx_image_open(asset_view_t entry, gfx_image_t* out) {
     if ((!mono && ((uintptr_t)at + pixels) % PIXEL_ALIGN != 0) || end > entry.size) {
         return ASSET_ERR_BOUNDS;
     }
-    *out = (gfx_image_t){
-        .format = (gfx_image_format_t)format,
+    *out = (draw_image_t){
+        .format = (draw_image_format_t)format,
         .width = width,
         .height = height,
         .stride = stride,

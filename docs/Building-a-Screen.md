@@ -59,7 +59,7 @@ autana screenshot --framebuffer -o shot.png  # lossless PNG, does not reset
 ```
 
 A screen can also be rendered on a host, with no board and no flash cycle,
-through the real drawing code and the real `gfx_draw.c`:
+through the real drawing code and the real `draw.c`:
 
 ```sh
 ./launcher/tools/render/render_all_scenes.sh        # every declared scene
@@ -129,7 +129,7 @@ Most of what a screen needs is already built that way: check
 
 ### More than one text size
 
-`ui_set_font_scaled(gfx_font_ui(), scale)`. The UI font is the 1bpp 8x8
+`ui_set_font_scaled(draw_font_ui(), scale)`. The UI font is the 1bpp 8x8
 bitmap, so integer scales stay crisp.
 
 **Do not add a render-time global for a UI setting.** Anything read at
@@ -140,7 +140,7 @@ scale) are free. Ask which kind you are adding before you add it.
 
 ### Text that must fit
 
-Measure it: `ui_measure_text()`, or `gfx_font_text_width()` in a host test.
+Measure it: `ui_measure_text()`, or `draw_font_text_width()` in a host test.
 Fonts, scales and text styles are in [`Text-and-Fonts.md`](Text-and-Fonts.md).
 
 ### A list of rows that may overflow
@@ -170,7 +170,7 @@ panels, tracks and status indicators, not pictograms.
 ### A panel over a paused app
 
 1. `ui_end(UI_NO_BACKGROUND)` so the frozen app survives in the gaps.
-2. Dim it **once** with `gfx_fill_rect_blend(0, 0, GFX_WIDTH, GFX_HEIGHT,
+2. Dim it **once** with `draw_rect_blend(0, 0, GFX_WIDTH, GFX_HEIGHT,
    black, alpha)`, once per repaint of the backdrop, never per frame: the
    blend reads the pixel it writes, so a second pass darkens the first.
    Repaint the backdrop and dim again on a full-redraw request or a turn.

@@ -1,6 +1,6 @@
 /* Framebuffer ownership. The shell and applications share one RGB565
  * framebuffer; a second full-size buffer would require a per-frame PSRAM
- * copy. Drawing belongs to draw/gfx_draw.h, presentation to gfx/present/. */
+ * copy. Drawing belongs to draw/draw.h, presentation to gfx/present/. */
 #pragma once
 
 #include <stdbool.h>
@@ -40,6 +40,6 @@ _Static_assert(GFX_BAND_HEIGHT % 2 == 0, "a band's row range must round to even 
 bool gfx_init(void);
 
 /* Direct access, for renderers that write pixels in bulk (the 3D rasterizer
- * writes here directly rather than going through gfx_pixel per fragment).
+ * writes here directly rather than going through draw_pixel per fragment).
  * Whatever is written must be marked with gfx_mark_dirty() (gfx_present.h). */
 gfx_color_t* gfx_framebuffer(void);

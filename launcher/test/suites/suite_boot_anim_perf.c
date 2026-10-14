@@ -35,7 +35,7 @@
 #include "boot/boot_anim.h"
 #include "boot/boot_anim_timeline.h"
 #include "core/timing.h"
-#include "draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 
@@ -49,7 +49,7 @@ extern void draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_
 extern void draw_axes(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view);
 extern int32_t draw_curve(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view);
 extern void draw_zeros(int32_t pen_t_q8, uint8_t ink, const boot_anim_view_t* view);
-extern void draw_image(const gfx_image_t* photo, uint8_t ink, uint8_t reveal);
+extern void draw_image(const draw_image_t* photo, uint8_t ink, uint8_t reveal);
 extern void draw_title(uint32_t now_ms, uint8_t ink);
 
 static const char* TAG = "boot_anim_perf";
@@ -162,14 +162,14 @@ typedef struct {
     uint32_t now_ms;
     uint8_t ink;
     uint8_t reveal;
-    const gfx_image_t* photo;
+    const draw_image_t* photo;
     bool draw_scene;
     bool draw_title;
     boot_anim_view_t view;
 } checkpoint_frame_t;
 
 static __attribute__((noinline)) void
-sample_checkpoint(const boot_anim_motion_t* motion, const gfx_image_t* photo, uint32_t now_ms, checkpoint_frame_t* f) {
+sample_checkpoint(const boot_anim_motion_t* motion, const draw_image_t* photo, uint32_t now_ms, checkpoint_frame_t* f) {
     f->now_ms = now_ms;
     f->ink = boot_anim_ink(now_ms);
     f->reveal = boot_anim_photo_reveal(now_ms);
@@ -283,7 +283,7 @@ report_checkpoint(const checkpoint_t* cp) {
 }
 
 static void
-run_checkpoint(const boot_anim_motion_t* motion, const gfx_image_t* photo, const checkpoint_t* cp) {
+run_checkpoint(const boot_anim_motion_t* motion, const draw_image_t* photo, const checkpoint_t* cp) {
     samples = malloc(sizeof(frame_sample_t) * SAMPLES_PER_CHECKPOINT);
     stat_scratch = malloc(sizeof(int32_t) * SAMPLES_PER_CHECKPOINT);
     if (samples == NULL || stat_scratch == NULL) {
@@ -312,7 +312,7 @@ test_boot_anim_performance_by_checkpoint(void) {
 #if CONFIG_LAUNCHER_QEMU
     TEST_IGNORE_MESSAGE("performance requires the device clock and display");
 #endif
-    gfx_clear_clip();
+    draw_clear_clip();
     gfx_invalidate();
 
     checkpoint_t checkpoints[7];
@@ -326,7 +326,7 @@ test_boot_anim_performance_by_checkpoint(void) {
     }
     /* Boot mounts the photograph's pack inside frame
      * BOOT_ANIM_PHOTO_MOUNT_FRAME, which costs this on top of its drawing. */
-    gfx_image_t photo;
+    draw_image_t photo;
     const int64_t mount_start = timing_now_us();
     boot_anim_photo_load(&photo);
     const int64_t mount_us = timing_now_us() - mount_start;

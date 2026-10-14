@@ -1,9 +1,9 @@
 /*===========================================================================
  * GENERATED FILE - do not edit.
  *
- *     python tools/gen/gen_gfx_palette_standard.py > main/draw/gfx_palette_standard_generated.h
+ *     python tools/gen/gen_draw_palette_standard.py > main/draw/draw_palette_standard_generated.h
  *
- * Two formulaic 256-entry palettes for gfx_palette_standard.c: a
+ * Two formulaic 256-entry palettes for draw_palette_standard.c: a
  * VGA-style default (16 EGA + a 216-colour web-safe RGB lattice +
  * enough grays to reach 256) and a plain 256-level grayscale ramp.
  *===========================================================================*/
@@ -11,7 +11,7 @@
 
 #include "gfx/target/gfx_color.h"
 
-static const gfx_color_t gfx_palette_vga256_entries[256] = {
+static const gfx_color_t draw_palette_vga256_entries[256] = {
     GFX_RGB(0x000000), GFX_RGB(0x0000AA), GFX_RGB(0x00AA00), GFX_RGB(0x00AAAA), GFX_RGB(0xAA0000), GFX_RGB(0xAA00AA), GFX_RGB(0xAA5500), GFX_RGB(0xAAAAAA),
     GFX_RGB(0x555555), GFX_RGB(0x5555FF), GFX_RGB(0x55FF55), GFX_RGB(0x55FFFF), GFX_RGB(0xFF5555), GFX_RGB(0xFF55FF), GFX_RGB(0xFFFF55), GFX_RGB(0xFFFFFF),
     GFX_RGB(0x000033), GFX_RGB(0x000066), GFX_RGB(0x000099), GFX_RGB(0x0000CC), GFX_RGB(0x0000FF), GFX_RGB(0x003300), GFX_RGB(0x003333), GFX_RGB(0x003366),
@@ -46,7 +46,7 @@ static const gfx_color_t gfx_palette_vga256_entries[256] = {
     GFX_RGB(0xB0B0B0), GFX_RGB(0xB8B8B8), GFX_RGB(0xC0C0C0), GFX_RGB(0xC8C8C8), GFX_RGB(0xD0D0D0), GFX_RGB(0xD8D8D8), GFX_RGB(0xE0E0E0), GFX_RGB(0xE8E8E8),
 };
 
-static const gfx_color_t gfx_palette_grayscale256_entries[256] = {
+static const gfx_color_t draw_palette_grayscale256_entries[256] = {
     GFX_RGB(0x000000), GFX_RGB(0x010101), GFX_RGB(0x020202), GFX_RGB(0x030303), GFX_RGB(0x040404), GFX_RGB(0x050505), GFX_RGB(0x060606), GFX_RGB(0x070707),
     GFX_RGB(0x080808), GFX_RGB(0x090909), GFX_RGB(0x0A0A0A), GFX_RGB(0x0B0B0B), GFX_RGB(0x0C0C0C), GFX_RGB(0x0D0D0D), GFX_RGB(0x0E0E0E), GFX_RGB(0x0F0F0F),
     GFX_RGB(0x101010), GFX_RGB(0x111111), GFX_RGB(0x121212), GFX_RGB(0x131313), GFX_RGB(0x141414), GFX_RGB(0x151515), GFX_RGB(0x161616), GFX_RGB(0x171717),

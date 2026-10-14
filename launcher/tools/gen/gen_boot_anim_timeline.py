@@ -189,7 +189,7 @@ def validate(cfg):
              (timing["image_start_ms"], timing["image_fade_ms"]))
 
     if timing["title_scale"] < 1:
-        fail("title_scale must be at least 1 (%r given) - gfx_text_font() "
+        fail("title_scale must be at least 1 (%r given) - draw_text_font() "
              "clamps anything below that to 1 anyway, so a 0 here reads as "
              "an authored intent the renderer silently ignores" %
              (timing["title_scale"],))
@@ -344,7 +344,7 @@ TIMING_ORDER = [
      "drop shadow offset, pixels down (negative is up)"),
     ("title_shadow_alpha", "BOOT_ANIM_TITLE_SHADOW_ALPHA",
      "shadow density, 0..255 - 0 invisible, 255 solid, between is a "
-     "dithered fake transparency (see gfx_fill_rect_dither() in gfx_draw.c)"),
+     "dithered fake transparency (see draw_rect_dither() in draw.c)"),
     ("image_start_ms", "BOOT_ANIM_IMAGE_START_MS",
      "the photograph starts crossing in as the function crosses out"),
     ("image_fade_ms", "BOOT_ANIM_IMAGE_FADE_MS",
@@ -445,7 +445,7 @@ def main():
     # existed keeps landing the title exactly where it always did" reason.
     timing.setdefault("title_x_px", 170)
     # title_shadow_dx/dy are newer again; the shadow used to be a fixed
-    # (1, 1) two gfx_text_font() calls always drew, so 1/1 is what keeps
+    # (1, 1) two draw_text_font() calls always drew, so 1/1 is what keeps
     # a file baked before this existed looking exactly the same rather
     # than silently losing its shadow.
     timing.setdefault("title_shadow_dx", 1)

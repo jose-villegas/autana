@@ -767,7 +767,7 @@ the cheapest moment to capture it, and the only thing that stops it returning.
 
 `suite_gfx.c` covers what a host structurally cannot:
 
-- **Framebuffer read-back**: after `gfx_fill_rect`, count the pixels that
+- **Framebuffer read-back**: after `draw_rect`, count the pixels that
   actually changed and assert it is exactly `w*h`, with neighbours untouched.
 - **Clipping at every edge**, including rectangles straddling the boundary. If
   clipping were wrong this would corrupt memory rather than fail politely.

@@ -9,7 +9,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "draw/gfx_font_roles.h"
+#include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
 #include "input/input.h"
 #include "ui/ui.h"
@@ -87,13 +87,13 @@ assert_strings_fit(bool landscape) {
     layout_for(landscape, &lay);
 
     TEST_ASSERT_LESS_OR_EQUAL_INT(lay.header.w - 2 * UI_MARGIN,
-                                  gfx_font_text_width(gfx_font_ui(), TITLE_SCREEN_TITLE, -1, lay.title_scale));
+                                  draw_font_text_width(draw_font_ui(), TITLE_SCREEN_TITLE, -1, lay.title_scale));
     TEST_ASSERT_LESS_OR_EQUAL_INT(
-        lay.subtitle.w, gfx_font_text_width(gfx_font_ui(), TITLE_SCREEN_SUBTITLE, -1, sand_ui_theme.text_scale));
+        lay.subtitle.w, draw_font_text_width(draw_font_ui(), TITLE_SCREEN_SUBTITLE, -1, sand_ui_theme.text_scale));
     for (int i = 0; i < SAND_TITLE_BUTTON_COUNT; i++) {
         const char* label = title_screen_label((sand_title_button_t)i);
         TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(ui_icon_button_label_width(lay.buttons[i].w, true, &sand_ui_theme),
-                                              gfx_font_text_width(gfx_font_ui(), label, -1, sand_ui_theme.text_scale),
+                                              draw_font_text_width(draw_font_ui(), label, -1, sand_ui_theme.text_scale),
                                               label);
     }
 }

@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "selftest/post_layout.h"
 #include "ui/ui_transform.h"
@@ -35,7 +35,7 @@ typedef struct {
 
 static int
 text_width(const char* text, int scale) {
-    return gfx_font_text_width(gfx_font_ui(), text, -1, scale);
+    return draw_font_text_width(draw_font_ui(), text, -1, scale);
 }
 
 /* The string's LOGICAL box is mapped, not its origin, then glyph 0 is placed
@@ -43,13 +43,13 @@ text_width(const char* text, int scale) {
  * the string off at every quarter but the first. */
 static void
 draw_text(const report_pen_t* pen, int x, int y, const char* text, int scale, gfx_color_t colour) {
-    const gfx_font_t* font = gfx_font_ui();
+    const draw_font_t* font = draw_font_ui();
     const mu_Rect box =
-        ui_transform_rect(pen->transform, (mu_Rect){x, y, text_width(text, scale), gfx_font_height(font, scale)});
+        ui_transform_rect(pen->transform, (mu_Rect){x, y, text_width(text, scale), draw_font_height(font, scale)});
 
     int gx, gy;
     ui_text_glyph0_origin(font, box, pen->quarter, scale, &gx, &gy);
-    gfx_text_font(gx, gy, text, colour, scale, pen->quarter, font);
+    draw_text_font(gx, gy, text, colour, scale, pen->quarter, font);
 }
 
 static void
@@ -194,14 +194,14 @@ post_ui_draw_report(const post_ui_report_t* report) {
         .has_footer = report->footer != NULL,
     };
     report_pen_t pen = {
-        .layout = post_layout_for_report(gfx_font_ui(), upright ? GFX_WIDTH : GFX_HEIGHT,
+        .layout = post_layout_for_report(draw_font_ui(), upright ? GFX_WIDTH : GFX_HEIGHT,
                                          upright ? GFX_HEIGHT : GFX_WIDTH, &entries),
         .lines = {0},
         .transform = ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT),
         .quarter = quarter,
     };
 
-    gfx_clear(gfx_rgb(BG_RGB));
+    draw_clear(gfx_rgb(BG_RGB));
 
     const int failures = post_failure_count();
     const gfx_color_t title_colour = failures ? gfx_rgb(FAIL_RGB) : gfx_rgb(HEADING_RGB);

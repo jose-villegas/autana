@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #include "apps/render_lab/render_lab.h"
-#include "draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "ui/ui.h"
 
 /* The panel's bezel hides about 15 px along every edge. */
@@ -13,7 +13,7 @@
 /* Opaque backing keeps HUD text legible over the scene. */
 static mu_Rect
 draw_text_box(mu_Context* ctx, const char* text, int x, int y) {
-    const mu_Rect box = mu_rect(x, y, gfx_text_width(text, -1) + 8, gfx_text_height() + 4);
+    const mu_Rect box = mu_rect(x, y, draw_text_width(text, -1) + 8, draw_text_height() + 4);
     mu_draw_rect(ctx, box, ui_rgb(RENDER_LAB_BACKGROUND_RGB));
     mu_layout_set_next(ctx, box, 0);
     mu_text(ctx, text);
@@ -30,8 +30,8 @@ draw_scene_title(mu_Context* ctx, const char* title, uint8_t alpha, const int ro
     if (alpha == 0) {
         return;
     }
-    const int w = gfx_text_width(title, -1) + 8;
-    const int h = gfx_text_height() + 4;
+    const int w = draw_text_width(title, -1) + 8;
+    const int h = draw_text_height() + 4;
     mu_Rect box = ui_centered_rect(ui_width(), w, h, HUD_INSET_PX);
 
     int row = 0;
@@ -59,7 +59,7 @@ render_lab_hud_screen_draw(mu_Context* ctx, const render_lab_hud_screen_state_t*
         const mu_Rect fps_box = draw_text_box(ctx, fps_line, x, HUD_INSET_PX);
         /* The fps row is reserved at its widest reading, so the title does
          * not change rows as the number gains a digit. */
-        int row_right[HUD_CORNER_ROWS] = {fps_box.x + gfx_text_width("999.9 fps", -1) + 8, 0};
+        int row_right[HUD_CORNER_ROWS] = {fps_box.x + draw_text_width("999.9 fps", -1) + 8, 0};
         if (state->status != NULL) {
             const mu_Rect status_box = draw_text_box(ctx, state->status, x, fps_box.y + fps_box.h + HUD_LINE_GAP_PX);
             row_right[1] = status_box.x + status_box.w;

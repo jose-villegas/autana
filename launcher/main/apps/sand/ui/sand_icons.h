@@ -30,7 +30,7 @@ typedef enum {
 extern ui_icon_set_t sand_icon_set;
 
 /* Icon `id`, or NULL without the pack. */
-const gfx_image_t* sand_icon(sand_icon_id_t id);
+const draw_image_t* sand_icon(sand_icon_id_t id);
 
 /* The swatch of dither mode `mode`, or NULL without the pack. */
-const gfx_image_t* sand_dither_icon(gfx_dither_mode_t mode);
+const draw_image_t* sand_dither_icon(gfx_dither_mode_t mode);

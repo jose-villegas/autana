@@ -31,8 +31,8 @@
 #include "anim/tween.h"
 #include "boot/boot_anim_curve.h"
 #include "boot/boot_anim_timeline.h"
-#include "draw/gfx_font.h"
-#include "draw/gfx_image.h"
+#include "draw/draw_font.h"
+#include "draw/draw_image.h"
 #include "gfx/target/gfx_color.h"
 #include "math/linear/transformf.h"
 #include "math/linear/vec2i.h"
@@ -73,11 +73,11 @@ void boot_anim_motion_release(boot_anim_motion_t* motion);
  * picture's pack entry, mounting its pack. On any failure, including a picture
  * that is not one panel, it logs why and leaves no pixels, so the animation
  * draws on without it. */
-void boot_anim_photo_load(gfx_image_t* out);
+void boot_anim_photo_load(draw_image_t* out);
 
 /* Drops the pack boot_anim_photo_load() mounted, if it did (`photo` has
  * pixels), and leaves no pixels in `photo`. */
-void boot_anim_photo_release(gfx_image_t* photo);
+void boot_anim_photo_release(draw_image_t* photo);
 
 typedef struct {
     transformf_t camera;
@@ -500,16 +500,16 @@ boot_anim_title_wave(int i, uint32_t now_ms) {
 
 /* Row starts at a FIXED BOOT_ANIM_TITLE_VIEW_X/Y, not read live: the
  * target a letter flies toward has to stay put for the whole flight.
- * final_x sums each letter's real advance via gfx_font_text_width(), not
+ * final_x sums each letter's real advance via draw_font_text_width(), not
  * `i * cell_w`: a fixed per-cell reckoning is wrong for a proportional
  * font, where narrow/wide glyphs do not share one width; see
  * test_final_x_matches_the_advance_sum() in suite_boot_anim.c. */
 static inline vec2i_t
-boot_anim_title_letter(const gfx_font_t* font, int i, uint32_t now_ms) {
+boot_anim_title_letter(const draw_font_t* font, int i, uint32_t now_ms) {
     const uint32_t start = BOOT_ANIM_TITLE_START_MS + (uint32_t)i * BOOT_ANIM_TITLE_STAGGER_MS;
     const uint8_t u8 = tween_ease_out(tween_ramp(now_ms, start, BOOT_ANIM_TITLE_FLIGHT_MS));
 
-    const int prefix_w = gfx_font_text_width(font, BOOT_ANIM_TITLE, i, BOOT_ANIM_TITLE_SCALE);
+    const int prefix_w = draw_font_text_width(font, BOOT_ANIM_TITLE, i, BOOT_ANIM_TITLE_SCALE);
     const int final_x = BOOT_ANIM_TITLE_VIEW_X + prefix_w + i * BOOT_ANIM_TITLE_GAP;
     const int start_x = final_x - BOOT_ANIM_TITLE_ENTRY_PX;
 
@@ -681,7 +681,7 @@ boot_anim_finale_reach(uint32_t now_ms) {
 
 /* Host render tests call this directly and read the firmware framebuffer.
  * `photo` with no pixels draws the scene through to the end in its place. */
-void boot_anim_draw_frame(const boot_anim_motion_t* motion, const gfx_image_t* photo, uint32_t now_ms);
+void boot_anim_draw_frame(const boot_anim_motion_t* motion, const draw_image_t* photo, uint32_t now_ms);
 
 /* What the picture dissolves INTO. Unset, the last frames fade to black and
  * whatever follows cuts in. Set, each of them starts from `paint`'s picture

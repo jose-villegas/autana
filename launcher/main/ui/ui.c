@@ -37,7 +37,7 @@
 #include "build/build_variant.h"
 #include "core/memory.h"
 #include "core/timing.h"
-#include "draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
@@ -104,7 +104,7 @@ typedef struct {
 static void
 icon_fill_emit(void* ctx_, int x, int y, int w, int h) {
     const icon_fill_ctx_t* fc = ctx_;
-    gfx_fill_rect(x, y, w, h, fc->color);
+    draw_rect(x, y, w, h, fc->color);
 }
 
 /* microui colour to the panel's own, alpha dropped; a style works in
@@ -120,7 +120,7 @@ draw_text_command(const mu_Command* cmd, ui_transform_t t) {
     const mu_Color ink = cmd->text.color;
     const mu_Color halo = ui_text_halo(ink);
     const ui_font_scaled_t fs = ui_resolve_font_scaled(cmd->text.font);
-    const gfx_font_t* font = fs.font;
+    const draw_font_t* font = fs.font;
     const int scale = fs.scale;
     const int quarter = ui_transform_quarter(t);
 
@@ -132,11 +132,11 @@ draw_text_command(const mu_Command* cmd, ui_transform_t t) {
      * string off at quarter turns 1-3. Mapping the LOGICAL box
      * instead (the same one used to size it) keeps it exact, like
      * every other command. */
-    const int tw = gfx_font_text_width(font, cmd->text.str, -1, scale);
-    const int th = gfx_font_height(font, scale);
+    const int tw = draw_font_text_width(font, cmd->text.str, -1, scale);
+    const int th = draw_font_height(font, scale);
     const mu_Rect box = ui_transform_rect(t, (mu_Rect){cmd->text.pos.x, cmd->text.pos.y, tw, th});
 
-    /* gfx_text_font()'s (x, y) is the FIRST GLYPH's cell, not a
+    /* draw_text_font()'s (x, y) is the FIRST GLYPH's cell, not a
      * corner of the box; see ui_text_glyph0_origin()'s own comment
      * (ui_transform.h) for the full derivation. Extracted there, not
      * kept inline, so it's testable against a synthetic proportional
@@ -151,7 +151,7 @@ draw_text_command(const mu_Command* cmd, ui_transform_t t) {
      * dithered form, so a fading string is drawn as ink alone. */
     if (ink.a < 255) {
         if (ink.a > 0) {
-            gfx_text_font_dither(mx, my, cmd->text.str, mu_color_to_gfx(ink), scale, quarter, font, ink.a);
+            draw_text_font_dither(mx, my, cmd->text.str, mu_color_to_gfx(ink), scale, quarter, font, ink.a);
         }
         return;
     }
@@ -160,8 +160,8 @@ draw_text_command(const mu_Command* cmd, ui_transform_t t) {
         /* Ink follows the halo so the outline does not cover glyphs. */
         const gfx_color_t halo_color = mu_color_to_gfx(halo);
         const gfx_color_t ink_color = mu_color_to_gfx(ink);
-        gfx_text_font_halo(mx, my, cmd->text.str, halo_color, scale, quarter, font);
-        gfx_text_font(mx, my, cmd->text.str, ink_color, scale, quarter, font);
+        draw_text_font_halo(mx, my, cmd->text.str, halo_color, scale, quarter, font);
+        draw_text_font(mx, my, cmd->text.str, ink_color, scale, quarter, font);
         return;
     }
 
@@ -180,7 +180,7 @@ draw_text_command(const mu_Command* cmd, ui_transform_t t) {
          * down-and-right on screen would fall down-and-right in
          * LOGICAL space instead, a different physical direction once
          * turn is nonzero. */
-        gfx_text_font(mx + passes[i].dx, my + passes[i].dy, cmd->text.str, color, scale, quarter, font);
+        draw_text_font(mx + passes[i].dx, my + passes[i].dy, cmd->text.str, color, scale, quarter, font);
     }
 }
 
@@ -198,7 +198,7 @@ draw_command(const mu_Command* cmd) {
                 break;
             }
             const mu_Rect r = ui_transform_rect(t, cmd->rect.rect);
-            gfx_fill_rect(r.x, r.y, r.w, r.h, mu_color_to_gfx(c));
+            draw_rect(r.x, r.y, r.w, r.h, mu_color_to_gfx(c));
             break;
         }
 
@@ -213,20 +213,20 @@ draw_command(const mu_Command* cmd) {
              * collapses a tree yet to ask for them. */
             const mu_Color c = cmd->icon.color;
             const gfx_color_t color = mu_color_to_gfx(c);
-            const gfx_image_t* check = cmd->icon.id == MU_ICON_CHECK ? ui_icon(UI_ICON_CHECK) : NULL;
+            const draw_image_t* check = cmd->icon.id == MU_ICON_CHECK ? ui_icon(UI_ICON_CHECK) : NULL;
             if (check != NULL) {
                 icon_fill_ctx_t fc = {.color = color};
                 ui_transform_icon_blocks(t, check, cmd->icon.rect, icon_fill_emit, &fc);
             } else {
                 const mu_Rect r = ui_transform_rect(t, cmd->icon.rect);
-                gfx_fill_rect(r.x + r.w / 3, r.y + r.h / 3, r.w / 3, r.h / 3, color);
+                draw_rect(r.x + r.w / 3, r.y + r.h / 3, r.w / 3, r.h / 3, color);
             }
             break;
         }
 
         case MU_COMMAND_CLIP: {
             const mu_Rect r = ui_transform_rect(t, cmd->clip.rect);
-            gfx_set_clip(r.x, r.y, r.w, r.h);
+            draw_set_clip(r.x, r.y, r.w, r.h);
             break;
         }
 
@@ -263,7 +263,7 @@ paint_canvas(const mu_Container* cnt) {
     while (next_canvas_command(cnt, &cmd)) {
         draw_command(cmd);
     }
-    gfx_clear_clip();
+    draw_clear_clip();
 #ifndef ESP_PLATFORM
     if (ui_canvas_painted_for_test != NULL) {
         ui_canvas_painted_for_test(cnt);
@@ -368,7 +368,7 @@ clear_vanished_canvases(uint32_t background_rgb) {
     const int n = take_vanished_canvases(vanished);
     for (int i = 0; i < n; i++) {
         if (background_rgb != UI_NO_BACKGROUND) {
-            gfx_fill_rect(vanished[i].x, vanished[i].y, vanished[i].w, vanished[i].h, gfx_rgb(background_rgb));
+            draw_rect(vanished[i].x, vanished[i].y, vanished[i].w, vanished[i].h, gfx_rgb(background_rgb));
         } else {
             gfx_request_full_redraw();
         }
@@ -389,7 +389,7 @@ repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
          * marks its own bands, so nothing else needs marking here. */
         if (background_rgb != UI_NO_BACKGROUND) {
             const mu_Rect phys = canvas_physical_rect(cnt);
-            gfx_fill_rect(phys.x, phys.y, phys.w, phys.h, gfx_rgb(background_rgb));
+            draw_rect(phys.x, phys.y, phys.w, phys.h, gfx_rgb(background_rgb));
         }
 
         paint_canvas(cnt);
@@ -505,7 +505,7 @@ typedef enum {
     UI_BAND_ENTRY_FILL_RECT,  /* an opaque rect with no mu_Command behind it:
                                  a canvas's own background, or a queued
                                  overlay (ui_queue_band_overlay_rect()) */
-    UI_BAND_ENTRY_CLIP_RESET, /* paint_canvas()'s own trailing gfx_clear_clip(),
+    UI_BAND_ENTRY_CLIP_RESET, /* paint_canvas()'s own trailing draw_clear_clip(),
                                   replayed at the same point in the stream */
 } ui_band_entry_kind_t;
 
@@ -580,8 +580,8 @@ command_row_range(const mu_Command* cmd, int* y0, int* y1) {
         }
         case MU_COMMAND_TEXT: {
             const ui_font_scaled_t fs = ui_resolve_font_scaled(cmd->text.font);
-            const int tw = gfx_font_text_width(fs.font, cmd->text.str, -1, fs.scale);
-            const int th = gfx_font_height(fs.font, fs.scale);
+            const int tw = draw_font_text_width(fs.font, cmd->text.str, -1, fs.scale);
+            const int th = draw_font_height(fs.font, fs.scale);
             const mu_Rect box = ui_transform_rect(t, (mu_Rect){cmd->text.pos.x, cmd->text.pos.y, tw, th});
             *y0 = box.y;
             *y1 = box.y + box.h;
@@ -776,13 +776,13 @@ replay_full_band(void) {
         const mu_Container* cnt = ui_ctx.root_list.items[i];
         if (ui_band_background != UI_NO_BACKGROUND) {
             const mu_Rect r = canvas_physical_rect(cnt);
-            gfx_fill_rect(r.x, r.y, r.w, r.h, gfx_rgb(ui_band_background));
+            draw_rect(r.x, r.y, r.w, r.h, gfx_rgb(ui_band_background));
         }
         paint_canvas(cnt);
     }
     for (int i = 0; i < replay_rect_count; i++) {
         const ui_extra_rect_t* r = &extra_rects[i];
-        gfx_fill_rect(r->x, r->y, r->w, r->h, gfx_rgb(r->rgb));
+        draw_rect(r->x, r->y, r->w, r->h, gfx_rgb(r->rgb));
     }
 }
 
@@ -796,9 +796,9 @@ replay_binned_band(int row0, int row1) {
         switch (e->kind) {
             case UI_BAND_ENTRY_COMMAND: draw_command(e->cmd); break;
             case UI_BAND_ENTRY_FILL_RECT:
-                gfx_fill_rect(e->rect.x, e->rect.y, e->rect.w, e->rect.h, mu_color_to_gfx(e->color));
+                draw_rect(e->rect.x, e->rect.y, e->rect.w, e->rect.h, mu_color_to_gfx(e->color));
                 break;
-            case UI_BAND_ENTRY_CLIP_RESET: gfx_clear_clip();
+            case UI_BAND_ENTRY_CLIP_RESET: draw_clear_clip();
 #ifndef ESP_PLATFORM
                 if (ui_canvas_painted_for_test != NULL) {
                     for (int root = 0; root < ui_ctx.root_list.idx; root++) {
@@ -812,7 +812,7 @@ replay_binned_band(int row0, int row1) {
                 break;
         }
     }
-    gfx_clear_clip();
+    draw_clear_clip();
 }
 
 void

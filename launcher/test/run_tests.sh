@@ -191,7 +191,7 @@ $MAIN_DIR/shell/ui/ui_ridge.c
 $MAIN_DIR/ui/ui_snap.c
 $MAIN_DIR/ui/ui_scroll.c
 $MAIN_DIR/ui/ui_widgets.c
-$MAIN_DIR/../tools/gen/gfx_palette_gen.c
+$MAIN_DIR/../tools/gen/draw_palette_gen.c
 $MAIN_DIR/../tools/r3d/triangle_sizes.c
 $TEST_DIR/../components/microui/src/microui.c
 "
