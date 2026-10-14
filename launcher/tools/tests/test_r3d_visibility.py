@@ -18,6 +18,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 try:
     import numpy as np
     from tests import soup
+    from tests.test_r3d_ray_query import all_hits
 
     from r3d import mesh_import
     from r3d.light import coincident_faces, visible_from_path, visible_from_region
@@ -77,7 +78,6 @@ class CoincidentFaceTests(unittest.TestCase):
         self.assertEqual(visible(positions, tris, intersector, tie=0.1).tolist(), [True] * 4)
         self.assertEqual(visible(positions, tris, intersector, tie=0.01).tolist(), [True, True, False, False])
 
-
     def reference(self, positions, tris, double, intersector, poses, tie):
         normal = np.cross(positions[tris[:, 1]] - positions[tris[:, 0]],
                           positions[tris[:, 2]] - positions[tris[:, 0]])
@@ -88,7 +88,7 @@ class CoincidentFaceTests(unittest.TestCase):
             origin, direction = camera_rays(16, 12, 0.62, pose[:3], pose[3:], 2, 0)
             ahead = pose[3:] / np.linalg.norm(pose[3:])
             origin += direction * (0.5 / (direction @ ahead))[:, None]
-            hit, ray, where = intersector.all_hits(origin, direction)
+            hit, ray, where = all_hits(intersector, origin, direction)
             distance = ((where - origin[ray]) * direction[ray]).sum(axis=1)
             drawn = double[hit] | ((normal[hit] * direction[ray]).sum(axis=1) < 0)
             shown = np.where(drawn, hit, twin[hit])
@@ -136,7 +136,7 @@ class CoincidentFaceTests(unittest.TestCase):
             return first_hits(origins, directions)
 
         with mock.patch.object(intersector, "first_hits", side_effect=counting):
-            intersector.all_hits(origin, direction)
+            all_hits(intersector, origin, direction)
             all_rays = sum(counted)
             counted.clear()
             kept = visible(positions, tris, intersector)
