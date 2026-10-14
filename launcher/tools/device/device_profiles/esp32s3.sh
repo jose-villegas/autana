@@ -32,7 +32,9 @@ DP_TEST_FRAME_CEILING_SOURCE="derived from DP_MAIN_TASK_STACK_BYTES; see check_s
 # Internal heap free after gfx_init() (HEAPMARK). The framebuffer lives in
 # PSRAM on this board (gfx_init() allocates it as MEMORY_PSRAM), so it is not
 # subtracted here; PSRAM is not counted: hot allocations (sand grids and
-# the like) are meant to stay internal.
+# the like) are meant to stay internal. This is an earlier point than the
+# runtime floor in docs/memory/data/runtime-heap.txt, read once the shell is
+# ready, so the two are different readings.
 DP_FREE_HEAP_BYTES=130635
 DP_FREE_HEAP_SOURCE="HEAPMARK after gfx_init, full-scope diag build 05b7141e2a28, board capture 2026-09-16. PSRAM is not counted: hot allocations are meant to stay internal"
 
@@ -47,12 +49,16 @@ DP_LARGEST_FREE_BLOCK_SOURCE="HEAPMARK after gfx_init, full-scope diag build 05b
 DP_LARGEST_ALLOC_BYTES=41216
 DP_LARGEST_ALLOC_SOURCE="one sand grid (184x224), unchanged by the port"
 
+# Total on-chip SRAM; the IRAM/DRAM pool is part of it. Not a free figure.
+DP_SRAM_BYTES=524288
+DP_SRAM_SOURCE="docs/Citations.md#66 section 4.1.2.1"
+
 # Total PSRAM capacity, not a post-boot free figure the way DP_FREE_HEAP_BYTES
 # is. No post-init free-PSRAM measurement is recorded anywhere in this file, so
 # a test that wants realistic PSRAM headroom charges its own buffers (the
 # framebuffer included) against this pool via heap_caps_malloc, same as device.
 DP_PSRAM_BYTES=8388608
-DP_PSRAM_SOURCE="ESP32-S3R8 package, 8 MB octal (launcher/sdkconfig.defaults CONFIG_SPIRAM_MODE_OCT); docs/notes/Board-and-Memory.md board table, PSRAM row"
+DP_PSRAM_SOURCE="ESP32-S3R8 package, 8 MB octal (launcher/sdkconfig.defaults CONFIG_SPIRAM_MODE_OCT); docs/Citations.md#66 section 1.2"
 
 # Below this many bytes, an allocation that names neither MALLOC_CAP_INTERNAL
 # nor MALLOC_CAP_SPIRAM tries internal RAM before PSRAM; at or above it, PSRAM

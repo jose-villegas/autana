@@ -118,6 +118,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/console_verbs.c"
         "console/console.c"
         "console/verbs/console_buildid.c"
+        "console/verbs/console_heap.c"
         "console/verbs/console_freeze.c"
         "console/console_frame_request.c"
         "console/verbs/console_frame_watch.c"

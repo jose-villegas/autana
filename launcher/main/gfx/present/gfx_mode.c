@@ -113,7 +113,7 @@ static bool band_snapshot_complete;
 
 bool
 alloc_full_framebuffer(void) {
-    const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
+    const size_t bytes = GFX_FRAMEBUFFER_BYTES;
     fb = memory_alloc(bytes, MEMORY_PSRAM);
 #ifdef ESP_PLATFORM
     if (fb == NULL) {
@@ -186,7 +186,7 @@ free_indexed_image(void) {
 
 static bool
 alloc_band_snapshot(void) {
-    const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
+    const size_t bytes = GFX_FRAMEBUFFER_BYTES;
     band_snapshot = memory_alloc(bytes, MEMORY_PSRAM);
     band_snapshot_bands = 0;
     band_snapshot_filling = false;
@@ -261,7 +261,7 @@ gfx_init(void) {
     ESP_LOGI(TAG,
              "%dx%d framebuffer at %p, %u bytes in PSRAM; heap free %u, "
              "largest PSRAM block %u",
-             GFX_WIDTH, GFX_HEIGHT, (void*)fb, (unsigned)(GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t)),
+             GFX_WIDTH, GFX_HEIGHT, (void*)fb, (unsigned)GFX_FRAMEBUFFER_BYTES,
              (unsigned)memory_free_bytes(MEMORY_8BIT), (unsigned)memory_largest_block(MEMORY_PSRAM));
 #endif
     return true;

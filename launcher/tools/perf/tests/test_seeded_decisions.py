@@ -359,6 +359,8 @@ class RevisionTests(unittest.TestCase):
             source = pathlib.Path(tool.__file__).parent
             for name in ("perf_compare.sh", "perf_compare.py", "layout_measure.py", "seed_statistics.py"):
                 (perf/name).write_bytes((source/name).read_bytes())
+            (root/"launcher/tools/render").mkdir(parents=True)
+            (root/"launcher/tools/render/doc_tables.py").write_bytes((source.parent/"render/doc_tables.py").read_bytes())
             (root/"scripts/lib").mkdir(parents=True)
             (root/"scripts/lib/python.sh").write_bytes((source.parents[2]/"scripts/lib/python.sh").read_bytes())
             (root/"scripts/lib/process_tree.py").write_bytes((source.parents[2]/"scripts/lib/process_tree.py").read_bytes())

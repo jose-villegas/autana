@@ -62,7 +62,7 @@ test_full_redraw_repaints_a_stale_rect_and_sends_every_strip(void) {
     app_sand.frame(0, &idle);
     gfx_present();
 
-    const size_t fb_bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
+    const size_t fb_bytes = GFX_FRAMEBUFFER_BYTES;
     gfx_color_t* reference = memory_alloc(fb_bytes, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL_MESSAGE(reference, "could not allocate a framebuffer-sized reference copy");
     memcpy(reference, gfx_framebuffer(), fb_bytes);
