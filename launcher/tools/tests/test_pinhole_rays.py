@@ -57,19 +57,28 @@ class PinholeRays(unittest.TestCase):
         self.assertEqual(sample.call_args.kwargs['until_ms'], 66)
 
     def test_shown_excludes_hidden_triangle(self):
+        import drjit as dr
         mesh = self.mesh('stack', [[-4, -4, -2], [4, -4, -2], [0, 4, -2],
                                    [-4, -4, -3], [4, -4, -3], [0, 4, -3]])
-        self.assertEqual(self.tool.count_shown(mesh, (5, 5, 1, 0.1, [self.pose]), (5, 5), variant='scalar_rgb'), (1, 2))
+        for variant in ('scalar_rgb', self.tool.LLVM_VARIANT):
+            with self.subTest(variant=variant):
+                if variant == self.tool.LLVM_VARIANT and not dr.has_backend(dr.JitBackend.LLVM):
+                    self.skipTest('the LLVM variant needs libLLVM')
+                self.assertEqual(self.tool.count_shown(mesh, (5, 5, 1, 0.1, [self.pose]), (5, 5), variant=variant),
+                                 (1, 2))
+
+    def first_hit(self, mesh):
+        query, normals, double = self.tool.mesh_query(mesh, 'scalar_rgb')
+        origin, direction = self.tool.pose_rays(1, 1, 1, 0.1, self.pose)
+        tri, depth = self.tool.front_hits(query, normals, double, origin, direction)
+        self.assertGreaterEqual(tri[0], 0)
+        return depth[0]
 
     def test_back_faces_pass_through_and_near_plane_clips(self):
         mesh = self.mesh('sides', [[-4, -4, -0.05], [4, -4, -0.05], [0, 4, -0.05],
                                    [0, 4, -1], [4, -4, -1], [-4, -4, -1],
                                    [-4, -4, -2], [4, -4, -2], [0, 4, -2]])
-        query, normals, double = self.tool.mesh_query(mesh, 'scalar_rgb')
-        origin, direction = self.tool.pose_rays(1, 1, 1, 0.1, self.pose)
-        tri, depth = self.tool.front_hits(query, normals, double, origin, direction)
-        self.assertGreaterEqual(tri[0], 0)
-        self.assertAlmostEqual(depth[0], 1.9, places=5)
+        self.assertAlmostEqual(self.first_hit(mesh), 1.9, places=5)
 
     def test_shown_uses_fit_spacing_and_square_coverage_view(self):
         output = io.StringIO()
@@ -82,14 +91,6 @@ class PinholeRays(unittest.TestCase):
         self.assertEqual(count.call_args.args[1][:4], (5, 5, 5 / 3, 0.1))
         self.assertIn('triangles 2; shown 1', output.getvalue())
 
-    def test_llvm_shown_excludes_hidden_triangle(self):
-        import drjit as dr
-        if not dr.has_backend(dr.JitBackend.LLVM):
-            self.skipTest('the LLVM variant needs libLLVM')
-        mesh = self.mesh('stack', [[-4, -4, -2], [4, -4, -2], [0, 4, -2],
-                                   [-4, -4, -3], [4, -4, -3], [0, 4, -3]])
-        self.assertEqual(self.tool.count_shown(mesh, (5, 5, 1, 0.1, [self.pose]), (5, 5)), (1, 2))
-
     def test_against_depth_categories(self):
         np = self.np
         self.assertEqual(self.tool.classify_against([11.5, 12, np.inf, 5], [10, 10, 10, np.inf]),
@@ -97,11 +98,7 @@ class PinholeRays(unittest.TestCase):
 
     def test_double_sided_back_face_is_drawn(self):
         mesh = self.mesh('double', [[0, 4, -1], [4, -4, -1], [-4, -4, -1]], double=[True])
-        query, normals, double = self.tool.mesh_query(mesh, 'scalar_rgb')
-        origin, direction = self.tool.pose_rays(1, 1, 1, 0.1, self.pose)
-        tri, depth = self.tool.front_hits(query, normals, double, origin, direction)
-        self.assertGreaterEqual(tri[0], 0)
-        self.assertAlmostEqual(depth[0], 0.9, places=5)
+        self.assertAlmostEqual(self.first_hit(mesh), 0.9, places=5)
 
 
 if __name__ == '__main__':
