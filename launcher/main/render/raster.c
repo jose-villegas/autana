@@ -337,7 +337,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     }
 }
 
-RENDER_ENTRY_OFFSET(4) raster_stats_t
+RENDER_IRAM_ATTR raster_stats_t
 raster_draw(const raster_t* raster, const render_view_t* view) {
     raster_stats_t stats = {0, 0};
     draw_instances(raster, view, &stats);
@@ -372,12 +372,12 @@ raster_census(const raster_t* raster, const render_view_t* view) {
     return stats;
 }
 
-RENDER_ENTRY_OFFSET(4) void
+RENDER_IRAM_ATTR void
 raster_draw_culled(const raster_t* raster, const render_view_t* view) {
     draw_instances(raster, view, NULL);
 }
 
-RENDER_ENTRY_OFFSET(12) void
+RENDER_IRAM_ATTR void
 raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
     assert(raster->upscaled && destination != NULL);
     assert(raster->width > 0 && raster->height > 0);

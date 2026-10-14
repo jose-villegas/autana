@@ -145,20 +145,20 @@ The direct C sources in `launcher/main/render/` receive
 `launcher/main/CMakeLists.txt`. Function placement within an instruction-cache
 line stays fixed when unrelated code ahead of it grows or shrinks. Alignment
 stabilizes timing; it does not select the fastest loop offsets. Explicit function
-alignment attributes take precedence and their offsets are baseline-checked. Hot functions
-in `launcher/main/render/` also carry `RENDER_ENTRY_OFFSET` from
-`launcher/main/render/code_layout.h`:
-never-executed `nop.n` padding ahead of the entry places their loops at the
+alignment attributes take precedence and their offsets are baseline-checked. The draw
+path's entry functions carry `RENDER_IRAM_ATTR` from
+`launcher/main/render/code_layout.h` and run from IRAM, where no cache line
+applies. A hot flash function can carry `RENDER_ENTRY_OFFSET` from the same header:
+never-executed `nop.n` padding ahead of the entry places its loops at the
 offsets measured fastest on the board. The diagnostics build gate in
 `launcher/tools/build/build_diag_check.sh` runs
 `launcher/tools/render/code_layout.py --check` against
-source-local `code_layout.txt` baselines for the selected build configuration,
-including `launcher/main/render/code_layout.txt`: function entries and loops up to
+source-local `code_layout.txt` baselines for the selected build configuration:
+function entries and loops up to
 four cache lines, with in-function back-edges and relative source-line keys;
 offsets, sizes and cache-line spans are checked. When a row changes, compare revisions
-with the Sponza performance suite through `launcher/tools/perf/perf_compare.sh`.
-If the layout is slower, retune `RENDER_ENTRY_OFFSET`, then regenerate the
-table with `python launcher/tools/render/code_layout.py --write --baseline launcher/main/render/code_layout.txt launcher/build.diag`.
+with the performance suite that owns the function through `launcher/tools/perf/perf_compare.sh`,
+then re-record the baseline with `--write --baseline`.
 See [Pinned code layout](../../launcher/tools/render/README.md#pinned-code-layout).
 
 Do not use `-falign-loops` for this on Xtensa. GCC aligns the label after a
