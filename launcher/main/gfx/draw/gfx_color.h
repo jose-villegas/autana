@@ -29,6 +29,13 @@ typedef uint16_t gfx_color_t;
  * layout. Usable in a constant expression. */
 #define GFX_RGB(rgb) ((gfx_color_t)((GFX_RGB565(rgb) >> 8) | (GFX_RGB565(rgb) << 8)))
 
+/* Pack 0xRRGGBB to RGB565, byte-swapped: the panel takes the high byte
+ * first, the CPU stores the low byte first, and DMA sends memory as it lies. */
+static inline gfx_color_t
+gfx_rgb(uint32_t rgb) {
+    return GFX_RGB(rgb);
+}
+
 /* 0xRRGGBB `t` of `n` of the way from `lo` to `hi`, per channel, truncated.
  * A constant expression, so colour tables built from it stay in .rodata. */
 #define GFX_LERP_RGB888_CH(lo, hi, shift, t, n)                                                                        \
