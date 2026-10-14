@@ -41,13 +41,22 @@ class MotionFitTest(unittest.TestCase):
         _, samples = self.fixture()
         base = dict(samples[0], before_round=True, turn=motion_fit.STILL_TURN_LIMIT_DPS)
         band = motion_fit.STILL_TILT_BAND_DEG
-        gap = motion_fit.MAX_SAMPLE_GAP_MS
+        gap = motion_fit.MAX_LOG_GAP_MS
         samples = [dict(base, ms=0, tilt=0), dict(base, ms=gap, tilt=band),
                    dict(base, ms=2 * gap + 1, tilt=band)]
         self.assertEqual(samples[:2], motion_fit.rest_stretch(samples))
         self.assertEqual([], motion_fit.rest_stretch([dict(base, turn=base["turn"] + 1)]))
         self.assertEqual([samples[1]], motion_fit.flat_samples([
             dict(base, tilt=motion_fit.FLAT_TILT_LIMIT_DEG), samples[1]]))
+
+    def test_rest_prefers_timestamp_span_over_sample_count(self):
+        _, samples = self.fixture()
+        base = dict(samples[0], before_round=True)
+        dense = [dict(base, ms=ms) for ms in range(0, 101, 10)]
+        sparse = [dict(base, ms=ms) for ms in range(1000, 2001, 200)]
+        for runs in (dense + sparse, sparse + [dict(s, ms=s["ms"] + 3000) for s in dense]):
+            with self.subTest(timestamps=[s["ms"] for s in runs]):
+                self.assertEqual(sparse, motion_fit.rest_stretch(runs))
 
     def test_parse_marks_samples_after_first_round(self):
         line = "I (100) motion raw 1,2,-4096 tilt 6 bearing 16 turn 10 rot 1,2,3 quarter 3"

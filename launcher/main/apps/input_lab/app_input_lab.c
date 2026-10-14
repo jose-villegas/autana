@@ -63,6 +63,7 @@ static const char* TAG = "input_lab";
 #define OFFSET_DIGITS        1
 #define OFFSET_SCALE         10
 #define MOTION_HUD_TEXT_SIZE 96
+#define MOTION_US_PER_MS     1000
 #define MOTION_LOG_PERIOD_MS 100
 #define MOTION_RING_RADIUS   88
 #define MOTION_DOT_SIDE      7
@@ -93,6 +94,7 @@ static imu_probe_round_t imu_round;
 static motion_probe_t motion_probe;
 static bool have_motion;
 static uint32_t motion_log_ms;
+static int64_t motion_read_us;
 static rng_t rng;
 static int grid_order[GRID_COUNT];
 static int grid_next;
@@ -150,6 +152,7 @@ start_round(void) {
         tilt_reset(&tilt, INPUT_ACCEL_ONE_G);
         have_motion = false;
         motion_log_ms = 0;
+        motion_read_us = timing_now_us();
         imu_round = (imu_probe_round_t){0};
         const bool sideways = (DISPLAY_DEFAULT_QUARTER % 2) != 0;
         screen_w = sideways ? GFX_HEIGHT : GFX_WIDTH;
@@ -389,7 +392,13 @@ update_imu_round(uint32_t dt_ms, const input_t* input) {
         ESP_LOGI(TAG, "round imu quarter %d", DISPLAY_DEFAULT_QUARTER);
     }
     read_motion(dt_ms);
-    if (imu_probe_update(&imu_round, have_motion ? &motion : NULL, dt_ms)) {
+    const int64_t now_us = timing_now_us();
+    const int64_t elapsed_ms = (now_us - motion_read_us) / MOTION_US_PER_MS;
+    motion_read_us = now_us;
+    /* The probe needs the real reading gap: the shell clamps frame time, hiding stalls
+     * that must discard settling and measurement windows. */
+    const uint32_t read_dt_ms = elapsed_ms > UINT32_MAX ? UINT32_MAX : (uint32_t)elapsed_ms;
+    if (imu_probe_update(&imu_round, have_motion ? &motion : NULL, read_dt_ms)) {
         log_imu_pose();
     }
 }

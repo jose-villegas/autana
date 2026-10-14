@@ -15,7 +15,7 @@ DEFAULT_WINDOW_SECONDS = 60
 STILL_TILT_BAND_DEG = 2
 STILL_TURN_LIMIT_DPS = 15
 FLAT_TILT_LIMIT_DEG = 10
-MAX_SAMPLE_GAP_MS = 250
+MAX_LOG_GAP_MS = 250
 TRANSITION_PREVIEW_COUNT = 5
 QUARTERS = range(4)
 AXES = ("x", "y", "z")
@@ -69,20 +69,24 @@ def gyro_mean(samples):
 
 
 def rest_stretch(motion):
-    longest, run = [], []
-    for sample in motion:
+    longest_start, longest_end = 0, 0
+    run_start = None
+    for index, sample in enumerate(motion):
         if not sample["before_round"]:
             break
         if sample["turn"] > STILL_TURN_LIMIT_DPS:
-            run = []
+            run_start = None
             continue
-        if run and (sample["ms"] - run[-1]["ms"] > MAX_SAMPLE_GAP_MS
-                    or abs(sample["tilt"] - run[0]["tilt"]) > STILL_TILT_BAND_DEG):
-            run = []
-        run.append(sample)
-        if len(run) > len(longest):
-            longest = run.copy()
-    return longest
+        if run_start is not None and (
+                sample["ms"] - motion[index - 1]["ms"] > MAX_LOG_GAP_MS
+                or abs(sample["tilt"] - motion[run_start]["tilt"]) > STILL_TILT_BAND_DEG):
+            run_start = None
+        if run_start is None:
+            run_start = index
+        span = sample["ms"] - motion[run_start]["ms"]
+        if longest_end == 0 or span > motion[longest_end - 1]["ms"] - motion[longest_start]["ms"]:
+            longest_start, longest_end = run_start, index + 1
+    return motion[longest_start:longest_end]
 
 
 def flat_samples(motion):
@@ -94,7 +98,7 @@ def transitions(motion):
     flat_times = {s["ms"] for s in flat_samples(motion)}
     return [(a["quarter"], b) for a, b in zip(motion, motion[1:])
             if a["ms"] in flat_times and b["ms"] in flat_times
-            and b["ms"] - a["ms"] <= MAX_SAMPLE_GAP_MS
+            and b["ms"] - a["ms"] <= MAX_LOG_GAP_MS
             and a["quarter"] != b["quarter"]]
 
 
@@ -112,7 +116,7 @@ def vector(values):
 def report(captures, seconds):
     out = ["Offsets: mg; scales: ppm (unity 1000000); gyro: mdps. Delta compares consecutive completed rounds.",
            f"Still: turn <= {STILL_TURN_LIMIT_DPS} dps; rest tilt within {STILL_TILT_BAND_DEG} deg of stretch start.",
-           f"Rest: longest pre-round stretch; gaps <= {MAX_SAMPLE_GAP_MS} ms; endpoint windows may overlap.",
+           f"Rest: longest pre-round stretch; gaps <= {MAX_LOG_GAP_MS} ms; endpoint windows may overlap.",
            f"Flat face-up: tilt < {FLAT_TILT_LIMIT_DEG} deg, z < 0, still turn limit.",
            "", "| Capture / round | Poses | Offset xyz | Scale xyz | Gyro xyz | Delta off / scale / gyro |",
            "|---|---|---|---|---|---|"]
