@@ -1,8 +1,23 @@
 /*
- * app_input_lab: touch precision, panel bounds and live motion input.
- * BOOT cycles random targets, a shuffled grid, bezel arcs and a motion
- * page with gravity angles, a bubble level and the tilt filter. Touch
- * probes and bezel adjustments are logged on release; motion logs at 10 Hz.
+ * app_input_lab: measures how precisely the touch panel reports a tap. A
+ * small magenta square appears on the screen; tap it, and on release the tap
+ * is scored against its centre before the next one appears. The running hit
+ * rate and offset sit at the top, and every tap is logged to the console as
+ * one "probe" line for probe_fit.py. BOOT cycles random targets, a shuffled
+ * 5x5 grid and a bezel page, and starts a fresh round.
+ *
+ * Each probe records its first, settled and release samples in screen and
+ * panel coordinates, as the touch driver delivers them; its `cal` field says
+ * whether the driver's correction was on, so only `cal 0` rounds refit it.
+ *
+ * The bezel page draws an arc in every corner; dragging up or down changes
+ * its radius until the arcs sit on the edge of the glass, and each release
+ * logs it. Sliding off each edge there fills in the panel range, logged at
+ * the end of every round.
+ *
+ * The motion page shows acceleration, gravity angles, a bubble level and
+ * the tilt filter, with a 10 Hz "motion ..." console line. Numbers stay in
+ * input axes; the bubble turns with the screen.
  */
 
 #include <math.h>
@@ -50,7 +65,10 @@ static const char* TAG = "input_lab";
 #define MOTION_MARGIN        16
 #define MOTION_HUD_ROWS      4
 #define MOTION_HUD_SCALE     1
-#define COL_MOTION_RAW       0xFFB020
+#define COL_HIT              0x40E060
+#define COL_MISS             0xFFB020
+#define COL_TARGET           0xFF00FF
+#define COL_HUD              0xE0E0E0
 #define COL_MOTION_FILTER    0x40E0FF
 #define COL_MOTION_RING      0x607080
 
@@ -238,7 +256,7 @@ drag_bezel(const input_t* input) {
  * began so the steep end of the curve has no gaps. */
 static void
 draw_corner_arcs(mu_Context* ctx) {
-    const mu_Color ink = ui_rgb(0xFF00FF);
+    const mu_Color ink = ui_rgb(COL_TARGET);
     for (int row = 0; row < bezel_radius; row += ARC_STEP) {
         const int inset = display_panel_corner_inset(bezel_radius, screen_h, row);
         const int before =
@@ -261,7 +279,7 @@ format_tenths(char* out, size_t len, float v) {
 
 static void
 hud_line(mu_Context* ctx, int row, const char* text) {
-    ui_text_in(ctx, mu_rect(0, HUD_TOP + row * HUD_LINE_H, screen_w, HUD_LINE_H), text, ui_rgb(0xE0E0E0),
+    ui_text_in(ctx, mu_rect(0, HUD_TOP + row * HUD_LINE_H, screen_w, HUD_LINE_H), text, ui_rgb(COL_HUD),
                mode == MODE_MOTION ? MOTION_HUD_SCALE : HUD_SCALE, UI_ALIGN_CENTRE);
 }
 
@@ -304,10 +322,10 @@ draw_hud(mu_Context* ctx) {
 static void
 draw_target(mu_Context* ctx) {
     if (have_last_tap) {
-        const mu_Color mark = last_hit ? ui_rgb(0x40E060) : ui_rgb(0xFFB020);
+        const mu_Color mark = last_hit ? ui_rgb(COL_HIT) : ui_rgb(COL_MISS);
         mu_draw_rect(ctx, mu_rect(last_x - MARK_SIDE / 2, last_y - MARK_SIDE / 2, MARK_SIDE, MARK_SIDE), mark);
     }
-    mu_draw_rect(ctx, mu_rect(target.x, target.y, target.side, target.side), ui_rgb(0xFF00FF));
+    mu_draw_rect(ctx, mu_rect(target.x, target.y, target.side, target.side), ui_rgb(COL_TARGET));
 }
 
 static void
@@ -386,9 +404,9 @@ draw_motion(mu_Context* ctx) {
         mu_draw_rect(ctx, mu_rect(cx - left, cy + row, width, ARC_STEP), ui_rgb(COL_MOTION_RING));
         mu_draw_rect(ctx, mu_rect(cx + left - width + 1, cy + row, width, ARC_STEP), ui_rgb(COL_MOTION_RING));
     }
-    draw_motion_dot(ctx, motion.acceleration.x, motion.acceleration.y, radius, cx, cy, MOTION_DOT_SIDE, COL_MOTION_RAW);
+    draw_motion_dot(ctx, motion.acceleration.x, motion.acceleration.y, radius, cx, cy, MOTION_DOT_SIDE, COL_MISS);
     draw_motion_dot(ctx, tilt_x(&tilt), tilt_y(&tilt), radius, cx, cy, MOTION_FILTER_SIDE, COL_MOTION_FILTER);
-    ui_text_in(ctx, mu_rect(0, bottom, screen_w / 2, HUD_LINE_H), "RAW", ui_rgb(COL_MOTION_RAW), MOTION_HUD_SCALE,
+    ui_text_in(ctx, mu_rect(0, bottom, screen_w / 2, HUD_LINE_H), "RAW", ui_rgb(COL_MISS), MOTION_HUD_SCALE,
                UI_ALIGN_CENTRE);
     ui_text_in(ctx, mu_rect(screen_w / 2, bottom, screen_w / 2, HUD_LINE_H), "FILTER", ui_rgb(COL_MOTION_FILTER),
                MOTION_HUD_SCALE, UI_ALIGN_CENTRE);
@@ -397,41 +415,57 @@ draw_motion(mu_Context* ctx) {
 }
 
 static void
+resize_page(void) {
+    if (ui_width() == screen_w && ui_height() == screen_h) {
+        return;
+    }
+    if (mode == MODE_MOTION) {
+        screen_w = ui_width();
+        screen_h = ui_height();
+    } else {
+        place_target();
+    }
+}
+
+static void
+update_page(uint32_t dt_ms, const input_t* input) {
+    if (mode == MODE_MOTION) {
+        read_motion(dt_ms);
+        return;
+    }
+    track_touch(dt_ms, input);
+    if (mode == MODE_BEZEL) {
+        drag_bezel(input);
+    }
+}
+
+static void
+draw_page(mu_Context* ctx) {
+    if (mode == MODE_MOTION) {
+        draw_motion(ctx);
+        return;
+    }
+    draw_hud(ctx);
+    if (mode == MODE_BEZEL) {
+        draw_corner_arcs(ctx);
+    } else {
+        draw_target(ctx);
+    }
+}
+
+static void
 input_lab_frame(uint32_t dt_ms, const input_t* input) {
     if (input->boot.pressed) {
         mode = (lab_mode_t)((mode + 1) % MODE_COUNT);
         start_round();
     }
-    if (ui_width() != screen_w || ui_height() != screen_h) {
-        if (mode == MODE_MOTION) {
-            screen_w = ui_width();
-            screen_h = ui_height();
-        } else {
-            place_target();
-        }
-    }
-    if (mode == MODE_MOTION) {
-        read_motion(dt_ms);
-    } else {
-        track_touch(dt_ms, input);
-        if (mode == MODE_BEZEL) {
-            drag_bezel(input);
-        }
-    }
+    resize_page();
+    update_page(dt_ms, input);
 
     mu_Context* ctx = ui_context();
     ui_begin(input);
     if (ui_begin_screen(ctx, "Input Lab", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
-        if (mode == MODE_MOTION) {
-            draw_motion(ctx);
-        } else {
-            draw_hud(ctx);
-            if (mode == MODE_BEZEL) {
-                draw_corner_arcs(ctx);
-            } else {
-                draw_target(ctx);
-            }
-        }
+        draw_page(ctx);
         mu_end_window(ctx);
     }
     ui_end(COL_BACKGROUND);
