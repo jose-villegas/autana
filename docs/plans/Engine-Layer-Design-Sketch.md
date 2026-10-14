@@ -120,7 +120,7 @@ Every item in this section is approved.
 | `gfx/present/gfx_present.h` | `gfx_present_begin()`, `gfx_present_wait()` in bench scenes | the scene system, which already overlaps the present |
 | `gfx/present/gfx_indexed.h` | `gfx_indexed_*` (index image mode) | the gfx face |
 | `gfx/present/gfx_debug.h` | `gfx_debug_overlay()` in diagnostics | system band, with diagnostics (below) |
-| `input/imu.h`, `imu_rotation.h` | `imu_init()`, `imu_read()`, `imu_gravity_screen()` | `input_start()` (the shell's), `input_read_gravity()` and the frame's `input_t` |
+| `input/imu.h` | `imu_init()`, `imu_read()`, `imu_gravity_screen()` | `input_start()` (the shell's) and `input_read_motion()` (done in S1); diagnostics' raw reads go to the system band with it |
 | `scene/scene_shell.h` ("Apps never include this") in a host tool | `scene_shell_render()`, `scene_shell_compose()` | one public host-frame call on the scene's face |
 | `render/r3d_pipeline.h` in perf suites | `r3d_pipeline_*` | render's own tests |
 | `selftest/*` in diagnostics | self-test results | diagnostics becomes a system app under `shell/apps/` `[M]` |

@@ -13,12 +13,14 @@
 
 static const char TAG[] = "input";
 
+_Static_assert(INPUT_ACCEL_ONE_G == IMU_COUNTS_PER_G, "input_read_motion() passes sensor counts through");
+
 void
 input_start(void) {
     touch_start();
     buttons_start();
     if (!imu_init()) {
-        ESP_LOGW(TAG, "No IMU - display orientation stays upright");
+        ESP_LOGW(TAG, "No IMU - motion reads report nothing");
     }
 }
 
@@ -29,11 +31,21 @@ input_poll(input_t* out) {
 }
 
 bool
-input_read_gravity(vec2i_t* gravity) {
+input_read_motion(input_motion_t* out) {
     imu_sample_t sample;
     if (!imu_read(&sample)) {
         return false;
     }
-    *gravity = imu_gravity_screen(&sample);
+    *out = (input_motion_t){vec3i_from_xy(imu_gravity_screen(&sample), sample.az), imu_turn_speed(&sample)};
+    return true;
+}
+
+bool
+input_read_gravity(vec2i_t* gravity) {
+    input_motion_t motion;
+    if (!input_read_motion(&motion)) {
+        return false;
+    }
+    *gravity = vec3i_xy(motion.acceleration);
     return true;
 }

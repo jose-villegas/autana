@@ -51,6 +51,14 @@ its orientation handling, rather than mapping sensor X directly to screen X.
 The accelerometer measures gravity plus linear acceleration; the gyroscope
 measures angular velocity, not tilt angle.
 
+Apps read both through `input_read_motion()` (`launcher/main/input/input.h`),
+one I2C read per call, into `input_motion_t`:
+
+| Field | Meaning |
+|---|---|
+| `acceleration` | raw accelerometer, unfiltered: screen axes (x right, y down, z out of the screen), pointing the way down at rest, in Q12 g (`INPUT_ACCEL_ONE_G`). Upright reads +1 g on y, flat and screen up -1 g on z |
+| `turn_speed` | deg/s, the sum of the gyroscope's absolute rates over all three axes: a speed, no sign or axis |
+
 ## The two buttons are not the same kind of device
 
 | Button | Signal | Interpretation |
