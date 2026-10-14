@@ -27,9 +27,6 @@
 #include "gfx/gfx.h"
 #include "gfx/gfx_test.h"
 #include "gfx/present/gfx_present.h"
-#ifndef DEVICE_BUILD
-#include "gfx/gfx_internal.h"
-#endif
 #include "input/input.h"
 #include "ui/ui.h"
 #include "ui/ui_bridge.h"
@@ -751,10 +748,9 @@ finish_menu_frame(bool bands) {
     if (bands) {
         ui_end_for_bands(MENU_BACKGROUND);
         for (int row = 0; row < GFX_HEIGHT; row += GFX_BAND_HEIGHT) {
-            band_render_active = true;
-            strip_target = (gfx_target_t){gfx_framebuffer() + row * GFX_WIDTH, row, GFX_BAND_HEIGHT, GFX_WIDTH};
+            gfx_band_begin_for_test(row);
             ui_replay_band(row, row + GFX_BAND_HEIGHT);
-            band_render_active = false;
+            gfx_band_end_for_test();
         }
     } else {
         ui_end(MENU_BACKGROUND);
