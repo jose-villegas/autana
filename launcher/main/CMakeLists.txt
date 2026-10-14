@@ -280,8 +280,8 @@ if(CONFIG_LAUNCHER_SELFTEST)
         COMPILE_OPTIONS "-include;${CMAKE_CURRENT_LIST_DIR}/../test/timing.h")
 endif()
 
-# The software rasteriser's per-pixel loops run from flash through the
-# instruction cache, so where each function starts inside a cache line moves
+# Render code outside IRAM runs from flash through the instruction cache,
+# so where each function starts inside a cache line moves
 # the frame time by a fraction of a percent whenever unrelated code ahead of
 # it in the link grows or shrinks. Starting every render function on a cache
 # line makes its timing independent of link order.

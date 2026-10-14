@@ -4,9 +4,9 @@
 Each source folder owns code_layout.txt for its measured functions. Entry
 markers also select functions, so an unrecorded marker fails the check.
 
-  python launcher/tools/render/code_layout.py launcher/build.diag
-  python launcher/tools/render/code_layout.py --write launcher/build.diag
-  python launcher/tools/render/code_layout.py --check launcher/build.diag
+  python launcher/tools/render/code_layout.py launcher/build
+  python launcher/tools/render/code_layout.py --write launcher/build
+  python launcher/tools/render/code_layout.py --check launcher/build
 """
 
 import argparse
@@ -24,9 +24,11 @@ PINNED = re.compile(r"RENDER_ENTRY_OFFSET\(\d+\)\s+\w+\s+(\w+)\(")
 BASELINE_FUNCTIONS_HEADER = "# Functions: baseline"
 CONFIG_HEADER = "# Config: "
 DEFAULT_BASELINE_CONFIG = "CONFIG_LAUNCHER_SELFTEST"
-LAYOUT_HEADER = "function\tkind\toffset\tbytes\tlines"
-LayoutRow = namedtuple("LayoutRow", "function kind offset bytes lines")
-LayoutEntry = namedtuple("LayoutEntry", "function kind address bytes lines")
+LAYOUT_HEADER = "function\tkind\toffset\tbytes\tlines\tsource_line"
+# Larger loop bodies are dominated by code size, not cache-line placement.
+SMALL_LOOP_MAX_LINES = 4
+LayoutRow = namedtuple("LayoutRow", "function kind offset bytes lines source_line")
+LayoutEntry = namedtuple("LayoutEntry", "function kind address bytes lines source_line")
 
 
 class LayoutError(Exception):
@@ -180,44 +182,65 @@ def line_span(start, end, line_size):
 def layout_entries(elf, nm, objdump, line_size, functions=None):
     if functions is None:
         functions = [function for group in baselines(SOURCES).values() for function in group]
+    if not functions:
+        return []
     located = {name: (address, size) for address, (name, size) in symbols(nm, elf, functions).items()}
     missing = [function for function in functions if function not in located]
     if missing:
         raise LayoutError("pinned functions missing from %s: %s" % (elf, ", ".join(missing)))
     entries = []
+    source_addresses = []
     for function in functions:
         address, size = located[function]
-        entries.append(LayoutEntry(function, "function", address, size, line_span(address, address + size, line_size)))
+        entries.append(LayoutEntry(function, "function", address, size, line_span(address, address + size, line_size), 0))
+        source_addresses.append(address)
         for instruction_address, size, mnemonic, operands in skip_pools(*instructions(objdump, elf, function, address + size)):
             target = target_of(operands)
             if mnemonic in ("loop", "loopnez", "loopgtz") and target is not None:
-                start = instruction_address + size
-                entries.append(LayoutEntry(function, mnemonic, start, target - start, line_span(start, target, line_size)))
-            elif target is not None and target < instruction_address and (mnemonic == "j" or mnemonic.startswith("b")):
-                end = instruction_address + size
-                entries.append(
-                    LayoutEntry(
-                        function,
-                        mnemonic + "-back",
-                        target,
-                        end - target,
-                        line_span(target, end, line_size),
-                    )
-                )
+                start, end, kind = instruction_address + size, target, mnemonic
+            elif target is not None and address <= target < instruction_address and (mnemonic == "j" or mnemonic.startswith("b")):
+                start, end, kind = target, instruction_address + size, mnemonic + "-back"
+            else:
+                continue
+            if end > start and line_span(start, end, line_size) <= SMALL_LOOP_MAX_LINES:
+                entries.append(LayoutEntry(function, kind, start, end - start, line_span(start, end, line_size), 0))
+                source_addresses.append(instruction_address)
+    locations = []
+    # Inline instructions need the caller's line in the pinned function.
+    for location in run(find_tool("addr2line"), "-a", "-i", "-e", str(elf),
+                        *("0x%x" % address for address in source_addresses)).splitlines():
+        if re.fullmatch(r"0x[0-9a-fA-F]+", location):
+            locations.append("")
+        elif locations:
+            locations[-1] = location
+    if len(locations) != len(entries):
+        raise LayoutError("addr2line returned an incomplete source map for %s" % elf)
+    first_lines = {}
+    for index, (entry, location) in enumerate(zip(entries, locations)):
+        match = re.match(r"(.+):(\d+)(?:\s.*)?$", location)
+        if not match or int(match[2]) == 0:
+            raise LayoutError("no source line for %s at 0x%x" % (entry.function, source_addresses[index]))
+        source, line = match[1], int(match[2])
+        if entry.kind == "function":
+            first_lines[entry.function] = (source, line)
+        first_source, first_line = first_lines[entry.function]
+        if source != first_source:
+            raise LayoutError("%s loop source differs from its function: %s" % (entry.function, location))
+        entries[index] = entry._replace(source_line=line - first_line)
     return entries
 
 
 def layout_rows(entries, line_size):
-    return [LayoutRow(entry.function, entry.kind, entry.address % line_size, entry.bytes, entry.lines) for entry in entries]
+    return [LayoutRow(entry.function, entry.kind, entry.address % line_size, entry.bytes, entry.lines, entry.source_line) for entry in entries]
 
 
-def format_layout(rows, build="launcher/build.diag", metadata=()):
+def format_layout(rows, build="launcher/build", metadata=()):
     lines = [
         "# Generated by: python launcher/tools/render/code_layout.py --write %s" % build,
         *metadata,
         LAYOUT_HEADER,
     ]
-    lines.extend("%s\t%s\t%d\t%d\t%d" % row for row in rows)
+    lines.extend("%s\t%s\t%d\t%d\t%d\t%d" % row for row in rows)
     return "\n".join(lines) + "\n"
 
 
@@ -234,12 +257,12 @@ def parse_layout(text):
             header_seen = True
             continue
         fields = line.split("\t")
-        if len(fields) != 5:
-            raise LayoutError("layout line %d: expected five tab-separated columns" % line_number)
+        if len(fields) != 6:
+            raise LayoutError("layout line %d: expected six tab-separated columns" % line_number)
         try:
             rows.append(LayoutRow(fields[0], fields[1], *(int(value) for value in fields[2:])))
         except ValueError as exc:
-            raise LayoutError("layout line %d: offset, bytes and lines must be integers" % line_number) from exc
+            raise LayoutError("layout line %d: offset, bytes, lines and source_line must be integers" % line_number) from exc
     if not header_seen:
         raise LayoutError("layout has no %r header" % LAYOUT_HEADER)
     return rows
@@ -251,17 +274,18 @@ def indexed_rows(rows, functions):
     for row in rows:
         if row.function not in functions:
             continue
-        key = (row.function, row.kind)
+        key = (row.function, row.kind, row.source_line)
         counts[key] += 1
-        indexed[(row.function, row.kind, counts[key])] = row
+        indexed[(*key, counts[key])] = row
     return indexed
 
 
 def row_name(key):
-    function, kind, ordinal = key
+    function, kind, source_line, ordinal = key
     if kind == "function":
         return "%s function" % function
-    return "%s %s[%d]" % (function, kind, ordinal)
+    name = "%s %s@%+d" % (function, kind, source_line)
+    return name if ordinal == 1 else "%s[%d]" % (name, ordinal)
 
 
 def layout_differences(expected, actual):
@@ -292,12 +316,12 @@ def layout_differences(expected, actual):
 
 
 def display_report(entries, line_size):
-    print("| function | kind | address | offset | bytes | lines |")
-    print("|---|---|---:|---:|---:|---:|")
+    print("| function | kind | address | offset | bytes | lines | source_line |")
+    print("|---|---|---:|---:|---:|---:|---:|")
     for entry in entries:
         print(
-            "| %s | %s | 0x%08x | %d | %d | %d |"
-            % (entry.function, entry.kind, entry.address, entry.address % line_size, entry.bytes, entry.lines)
+            "| %s | %s | 0x%08x | %d | %d | %d | %d |"
+            % (entry.function, entry.kind, entry.address, entry.address % line_size, entry.bytes, entry.lines, entry.source_line)
         )
 
 
@@ -316,7 +340,7 @@ def main(argv=None):
     parser.add_argument("--baseline", type=Path, help="select one source folder baseline")
     parser.add_argument("--nm", help="Xtensa nm override")
     parser.add_argument("--objdump", help="Xtensa objdump override")
-    parser.add_argument("build", nargs="?", default=str(LAUNCHER / "build.diag"))
+    parser.add_argument("build", nargs="?", default=str(LAUNCHER / "build"))
     args = parser.parse_args(argv)
 
     try:
@@ -333,6 +357,11 @@ def main(argv=None):
             if not owners:
                 raise LayoutError("no baseline source folder for %s" % args.baseline)
         sdkconfig = (build / "sdkconfig").read_text(encoding="utf-8")
+        if (args.check or args.write) and not any(
+            baseline_applies(path.read_text(encoding="utf-8") if path.is_file() else "", sdkconfig)
+            for path in owners
+        ):
+            raise LayoutError("no baseline applies to build %s" % requested_build)
         failed = False
         for baseline, functions in owners.items():
             text = baseline.read_text(encoding="utf-8") if baseline.is_file() else ""
