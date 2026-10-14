@@ -22,19 +22,19 @@
 #include "imgui_impl_sdlrenderer2.h"
 
 #include "core/dockspace.h"
-#include "core/rgb565_texture.h"
 #include "editor/runtime.h"
 #include "layout_document.h"
 
 namespace {
 
-struct Preview {
+struct Canvas {
     const char* name;
     LayoutOrientation orientation;
-    Rgb565Texture surface;
+    int width;
+    int height;
 
-    Preview(const char* preview_name, LayoutOrientation preview_orientation, int width, int height)
-        : name(preview_name), orientation(preview_orientation), surface(width, height) {}
+    Canvas(const char* canvas_name, LayoutOrientation canvas_orientation, int canvas_width, int canvas_height)
+        : name(canvas_name), orientation(canvas_orientation), width(canvas_width), height(canvas_height) {}
 };
 
 enum class DragMode {
@@ -74,14 +74,6 @@ struct SystemScreen {
     std::size_t selected = 0;
 };
 
-bool
-render_preview(Preview& preview) {
-    std::string error;
-    std::fill_n(preview.surface.pixels(),
-                static_cast<std::size_t>(preview.surface.width()) * preview.surface.height(), std::uint16_t{});
-    return preview.surface.upload(error);
-}
-
 std::filesystem::path
 baked_header_path(const LayoutDocument& document) {
     return document.path().parent_path() / (document.screen() + "_layout_generated.h");
@@ -104,33 +96,23 @@ bake_layout(const LayoutDocument& document, std::string& error) {
     }
 }
 
-bool
-create_preview(SDL_Renderer* renderer, Preview& preview) {
-    std::string error;
-    if (!preview.surface.create(renderer, error)) {
-        return false;
-    }
-    return render_preview(preview);
-}
-
 void constrain_rect(LayoutRect& rect, const ScreenLayout& layout);
 
-// `editable` is null for a screen with no authored layout: the image is
-// shown and nothing on it can be selected.
+// An empty canvas has no authored geometry to select.
 bool
-draw_preview(Preview& preview, ScreenLayout* editable, std::size_t& selected, LayoutOrientation& active_orientation,
-             CanvasInteraction& interaction, float available_width) {
-    ImGui::TextUnformatted(preview.name);
+draw_canvas(Canvas& canvas, ScreenLayout* editable, std::size_t& selected, LayoutOrientation& active_orientation,
+            CanvasInteraction& interaction, float available_width) {
+    ImGui::TextUnformatted(canvas.name);
     ImGui::SameLine();
-    ImGui::TextDisabled("%d x %d", preview.surface.width(), preview.surface.height());
+    ImGui::TextDisabled("%d x %d", canvas.width, canvas.height);
 
-    const float scale = std::min(1.0f, available_width / static_cast<float>(preview.surface.width()));
-    const ImVec2 size(preview.surface.width() * scale, preview.surface.height() * scale);
+    const float scale = std::min(1.0f, available_width / static_cast<float>(canvas.width));
+    const ImVec2 size(canvas.width * scale, canvas.height * scale);
     const ImVec2 image_position = ImGui::GetCursorScreenPos();
-    const std::string canvas_id = std::string("##canvas-") + layout_orientation_id(preview.orientation);
+    const std::string canvas_id = std::string("##canvas-") + layout_orientation_id(canvas.orientation);
     ImGui::InvisibleButton(canvas_id.c_str(), size, ImGuiButtonFlags_MouseButtonLeft);
-    ImGui::GetWindowDrawList()->AddImage(reinterpret_cast<ImTextureID>(preview.surface.native_handle()), image_position,
-                                         ImVec2(image_position.x + size.x, image_position.y + size.y));
+    ImGui::GetWindowDrawList()->AddRectFilled(
+        image_position, ImVec2(image_position.x + size.x, image_position.y + size.y), IM_COL32_BLACK);
 
     if (!editable) {
         return false;
@@ -160,16 +142,16 @@ draw_preview(Preview& preview, ScreenLayout* editable, std::size_t& selected, La
         if (hit) {
             const bool resize = *hit == selected && over_resize_handle;
             selected = *hit;
-            active_orientation = preview.orientation;
+            active_orientation = canvas.orientation;
             interaction.mode = resize ? DragMode::Resize : DragMode::Move;
-            interaction.orientation = preview.orientation;
+            interaction.orientation = canvas.orientation;
             interaction.element_index = *hit;
             interaction.original = layout.rects[*hit];
             interaction.pointer_origin = pointer;
         }
     }
 
-    if (interaction.mode != DragMode::None && interaction.orientation == preview.orientation) {
+    if (interaction.mode != DragMode::None && interaction.orientation == canvas.orientation) {
         if (!ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
             interaction.mode = DragMode::None;
         } else {
@@ -322,24 +304,24 @@ draw_hierarchy(EditorState& state) {
 }
 
 bool
-draw_previews(EditorState& state, Preview& landscape, Preview& portrait) {
+draw_canvases(EditorState& state, Canvas& landscape, Canvas& portrait) {
     SystemScreen& screen = state.screens[state.active];
     bool changed = false;
 
     ImGui::SetNextWindowSize(ImVec2(950, 620), ImGuiCond_FirstUseEver);
-    ImGui::Begin("Preview");
+    ImGui::Begin("Canvas");
     ImGui::TextDisabled(screen.document ? "Click to select, drag to move, or drag the cyan corner to resize."
-                                        : "Preview only: this screen has no authored layout.");
+                                        : "Canvas only: this screen has no authored layout.");
     const float gap = ImGui::GetStyle().ItemSpacing.x;
     const float half = (ImGui::GetContentRegionAvail().x - gap) * 0.5f;
     ImGui::BeginChild("Landscape", ImVec2(half, 0), ImGuiChildFlags_Borders);
-    changed |= draw_preview(landscape, screen.document ? &screen.document->layout(landscape.orientation) : nullptr,
-                            screen.selected, state.orientation, state.interaction, ImGui::GetContentRegionAvail().x);
+    changed |= draw_canvas(landscape, screen.document ? &screen.document->layout(landscape.orientation) : nullptr,
+                           screen.selected, state.orientation, state.interaction, ImGui::GetContentRegionAvail().x);
     ImGui::EndChild();
     ImGui::SameLine();
     ImGui::BeginChild("Portrait", ImVec2(0, 0), ImGuiChildFlags_Borders);
-    changed |= draw_preview(portrait, screen.document ? &screen.document->layout(portrait.orientation) : nullptr,
-                            screen.selected, state.orientation, state.interaction, ImGui::GetContentRegionAvail().x);
+    changed |= draw_canvas(portrait, screen.document ? &screen.document->layout(portrait.orientation) : nullptr,
+                           screen.selected, state.orientation, state.interaction, ImGui::GetContentRegionAvail().x);
     ImGui::EndChild();
     ImGui::End();
     return changed;
@@ -442,19 +424,16 @@ save_and_bake(EditorState& state, const MenuRequests& requests) {
     }
 }
 
-// Returns true when the previews no longer show the active screen's state.
-bool
-draw_editor(EditorState& state, Preview& landscape, Preview& portrait) {
+void
+draw_editor(EditorState& state, Canvas& landscape, Canvas& portrait) {
     const std::size_t screen_before = state.active;
     SystemScreen* screen = &state.screens[state.active];
     const bool valid = !screen->document || screen->document->validate().empty();
     MenuRequests requests = draw_menu_and_shortcuts(*screen, valid);
-    bool preview_changed = false;
 
     if (requests.undo || requests.redo) {
         state.interaction.mode = DragMode::None;
         if (requests.undo ? screen->history->undo(*screen->document) : screen->history->redo(*screen->document)) {
-            preview_changed = true;
             state.notice = requests.undo ? "Undo" : "Redo";
         }
     }
@@ -464,23 +443,20 @@ draw_editor(EditorState& state, Preview& landscape, Preview& portrait) {
     if (state.active != screen_before) {
         screen = &state.screens[state.active];
         requests = {};
-        preview_changed = true;
     }
 
     const bool was_canvas_editing = state.interaction.mode != DragMode::None;
-    if (draw_previews(state, landscape, portrait)) {
+    if (draw_canvases(state, landscape, portrait)) {
         screen->document->mark_dirty();
-        preview_changed = true;
         state.notice.clear();
     }
     if (was_canvas_editing && state.interaction.mode == DragMode::None) {
         screen->history->commit(*screen->document);
     }
 
-    preview_changed |= draw_inspector(state, requests);
+    draw_inspector(state, requests);
     save_and_bake(state, requests);
     draw_problems(state);
-    return preview_changed;
 }
 
 } // namespace
@@ -512,14 +488,6 @@ main() {
         return 1;
     }
 
-    if (!editor_runtime_init()) {
-        std::fprintf(stderr, "Toolkit runtime initialization failed\n");
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return 1;
-    }
-
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
     ImGuiIO& io = ImGui::GetIO();
@@ -533,24 +501,10 @@ main() {
     ImGui_ImplSDL2_InitForSDLRenderer(window, renderer);
     ImGui_ImplSDLRenderer2_Init(renderer);
 
-    Preview landscape("Landscape", LayoutOrientation::Landscape, editor_runtime_panel_height(),
-                      editor_runtime_panel_width());
-    Preview portrait("Portrait", LayoutOrientation::Portrait, editor_runtime_panel_width(),
-                     editor_runtime_panel_height());
-    if (!create_preview(renderer, landscape)
-        || !create_preview(renderer, portrait)) {
-        std::fprintf(stderr, "Preview texture creation failed: %s\n", SDL_GetError());
-        portrait.surface.reset();
-        landscape.surface.reset();
-        ImGui_ImplSDLRenderer2_Shutdown();
-        ImGui_ImplSDL2_Shutdown();
-        ImGui::DestroyContext();
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return 1;
-    }
-
+    Canvas landscape("Landscape", LayoutOrientation::Landscape, editor_runtime_panel_height(),
+                     editor_runtime_panel_width());
+    Canvas portrait("Portrait", LayoutOrientation::Portrait, editor_runtime_panel_width(),
+                    editor_runtime_panel_height());
     bool running = true;
     while (running) {
         SDL_Event event;
@@ -566,11 +520,7 @@ main() {
         ImGui_ImplSDLRenderer2_NewFrame();
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
-        if (draw_editor(state, landscape, portrait)) {
-            if (!render_preview(landscape) || !render_preview(portrait)) {
-                state.notice = std::string("Preview update failed: ") + SDL_GetError();
-            }
-        }
+        draw_editor(state, landscape, portrait);
         ImGui::Render();
 
         SDL_SetRenderDrawColor(renderer, 18, 18, 20, 255);
@@ -579,8 +529,6 @@ main() {
         SDL_RenderPresent(renderer);
     }
 
-    portrait.surface.reset();
-    landscape.surface.reset();
     ImGui_ImplSDLRenderer2_Shutdown();
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();

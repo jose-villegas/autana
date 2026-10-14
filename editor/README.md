@@ -5,18 +5,18 @@ bakes layouts. The window provides geometry canvases in both orientations;
 project loading and registered draw entries are planned in
 [`docs/plans/UI-Editor-Plan.md`](../docs/plans/UI-Editor-Plan.md).
 
-The runtime links the public `ui/`, `draw/` and `gfx/` code with shared
-packages. It links no shell or app source. SDL2, Dear ImGui and C++ are
+The runtime reads panel dimensions and UI constraints from firmware
+headers. It links no renderer, shell or app source. SDL2, Dear ImGui and C++ are
 host-only and never enter an ESP-IDF component graph.
 
-## Layouts and the preview
+## Layout data flow
 
 | Data or code | Owner | Use |
 |---|---|---|
 | `<screen>_layout.json` | project folder | load and save an authored document |
 | `LayoutDocument` | `src/layout_document` | validation, edits and header emission |
 | `<screen>_layout_generated.h` | project build | static geometry for a screen |
-| `runtime/runtime.c` | editor toolkit runtime | initialization, dimensions and tap constraints |
+| `runtime/runtime.c` | editor geometry runtime | dimensions and tap constraints |
 | orientation canvases | editor window | inspect and manipulate geometry |
 
 - **The JSON is the source.** It names its screen and declares its elements
@@ -27,7 +27,7 @@ host-only and never enter an ESP-IDF component graph.
   `layout_document.cpp` emits firmware geometry. The editor calls it in-process
   on an explicit Bake; `editor_layout_bake` calls it from the command line.
   A device screen links the baked table: no JSON, no parser, no layout solver.
-- **Save and Bake are separate**, so a preview edit cannot silently change a
+- **Save and Bake are separate**, so a canvas edit cannot silently change a
   device build. Both refuse a layout with problems.
 - **One rule set.** Inside the canvas, no overlap, and at least
   `UI_TAP_MIN` in each dimension for an `interactive` element. `LayoutDocument`
@@ -38,12 +38,12 @@ host-only and never enter an ESP-IDF component graph.
 ```
 editor/
 ├── src/
-│   ├── main.cpp              the window: hierarchy, previews, inspector, problems
+│   ├── main.cpp              the window: hierarchy, canvases, inspector, problems
 │   ├── layout_document.*     one document type for every authored screen
-│   └── core/                 reusable: dockspace, edit history, RGB565 texture
-├── include/editor/runtime.h  the C boundary the editor renders through
-├── runtime/runtime.c         public ui/ + draw/ + gfx/ on the host; never an IDF component
-└── tests/                    CTest: GoogleTest and C runtime tests
+│   └── core/                 reusable: dockspace and edit history
+├── include/editor/runtime.h  panel dimensions and tap constraints from firmware headers
+├── runtime/runtime.c         shared header constants; never an IDF component
+└── tests/                    CTest: GoogleTest and baked C layout tests
 ```
 
 Project draw registration is planned. The launcher has no preview here; its
@@ -99,10 +99,8 @@ CTest is the single entry point.
 | `editor_document.*` (GoogleTest) | load, validate, save, bake, wrong rect count; fixtures assert their named rule; JSON re-serialises byte for byte |
 | `editor_core.*` (GoogleTest) | edit history: undo, redo, saved revision |
 | `editor_layout_bake_c` (C) | the baker output compiles as C against `ui_layout.h` and matches the fixture rect |
-| `editor_runtime_smoke` (C) | toolkit initialization and shared layout constraints |
 
 The window itself - SDL and Dear ImGui glue - has no automated coverage.
-Shell backdrop coverage is in `launcher/test/suites/suite_ridge_backdrop.c`.
 
 ```sh
 python -m pip install gcovr==8.6
