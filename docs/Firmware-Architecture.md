@@ -41,8 +41,8 @@ its own row. Project apps under `apps/` and system apps under `shell/apps/`
 share the apps tier; other folders use their first path component.
 `main.c` starts the board and calls `shell_run()`; the shell reaches apps
 through `app/app.h` callbacks. The inventory is `launcher/main/`; the
-include gate's order is `LAYER_ROWS` in `scripts/gates/check_style_audit.py`. Folders that touch
-hardware are marked.
+include gate's order is `LAYER_ROWS` in `scripts/gates/check_style_audit.py`.
+Folders that touch hardware are marked.
 
 ```mermaid
 flowchart TB
