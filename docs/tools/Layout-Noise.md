@@ -35,8 +35,7 @@ all other code of its link rule, so the code pad opens with one `l32r` of a
 literal of its own. After every seeded link, `layout_pad.py --check` reads the
 map and fails the build unless each pad leads its object's code and rodata.
 Functions in `render/` that run from flash start on a cache line and a pad is a whole number of
-lines, so in-line offsets hold for every seed;
-`launcher/tools/render/code_layout.py --check` passes on a seeded build. A release build refuses a seed.
+lines, so in-line offsets hold for every seed. A release build refuses a seed.
 
 A seeded image has its own `BUILD_ID`, and the same seed builds the same image.
 
