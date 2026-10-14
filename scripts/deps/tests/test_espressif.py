@@ -48,11 +48,13 @@ class ResolutionTests(unittest.TestCase):
         env = {'IDF_PATH': other, 'IDF_TOOLS_PATH': other}
         self.assertEqual(espressif.pinned_tools_root(self.project, environ=env, **search), self.tools.resolve())
 
-    def test_idf_commit_reads_the_checkout_inside_a_git_hook(self):
-        # A hook runs with GIT_DIR naming the repository being committed to.
+    def test_commit_ignores_the_git_hook_environment(self):
         other = self.checkout(self.root / 'other-repo')
-        with mock.patch.dict(os.environ, {'GIT_DIR': str(other / '.git')}):
+        hook = {'GIT_DIR': str(other / '.git'), 'GIT_WORK_TREE': str(other),
+                'GIT_INDEX_FILE': str(other / '.git/index')}
+        with mock.patch.dict(os.environ, hook):
             self.assertEqual(espressif.idf_commit(self.idf), self.commit)
+            self.assertEqual(self.resolve(environ=dict(hook))[0], self.idf.resolve())
 
     def test_no_install_lookups_do_not_raise(self):
         checkout, tools = self.resolve(roots=[])

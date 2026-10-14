@@ -62,8 +62,10 @@ def idf_commit(idf):
     if not (Path(idf) / ".git").exists():
         return None
     try:
-        # A git hook exports GIT_DIR and friends, which would outrank -C.
-        env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        # A git hook runs with GIT_DIR and friends set for its own repository,
+        # which would answer for that repository instead of `idf`.
+        local = subprocess.run(["git", "rev-parse", "--local-env-vars"], capture_output=True, text=True).stdout.split()
+        env = {k: v for k, v in os.environ.items() if k not in local}
         result = subprocess.run(["git", "-C", str(idf), "rev-parse", "HEAD"], capture_output=True, text=True, env=env)
     except OSError:
         return None
