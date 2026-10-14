@@ -1,7 +1,7 @@
 /*
  * draw: the drawing primitives, into the framebuffer (gfx.h) or the
- * band being rendered (gfx_band_run.h), clipped and marked dirty for the
- * present side (gfx_present.h).
+ * band being rendered (gfx_band_run.h), clipped and marked dirty through
+ * gfx.h.
  *
  * Colours are given as plain 0xRRGGBB so callers never deal with the panel's
  * byte-swapped RGB565 layout; gfx_rgb() handles that conversion.

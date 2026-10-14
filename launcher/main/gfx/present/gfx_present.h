@@ -10,15 +10,6 @@
 #include "gfx/gfx.h"
 #include "gfx/target/gfx_target.h"
 
-/* What draw writes into: the framebuffer, or the band or replay strip being drawn. */
-gfx_target_t gfx_present_target(void);
-/* True while a band or an overlay replay is drawn; draw marks nothing dirty then. */
-bool gfx_present_in_band(void);
-/* Save and restore the clip verbatim, including empty boxes. Restore does not
- * clamp; callers must supply a saved clip or a screen-intersected box. */
-gfx_box_t gfx_clip_save(void);
-void gfx_clip_restore(gfx_box_t clip);
-
 /* QSPI clock for the panel: 16.5 ms of bus a full frame at 40 MHz, 8.2 at
  * 80. 80 needs every strip sent from internal DMA RAM (strip_bounce),
  * exceeds the panel's rated 50 MHz, and can leave stray pixels in a
@@ -56,15 +47,6 @@ bool gfx_full_redraw_pending(void);
  * once it has read the flag and decided whether to invoke an app's
  * invalidate(), before that pass's frame() runs. */
 void gfx_full_redraw_clear_pending(void);
-
-/*
- * gfx_present() sends only the horizontal bands that changed: the panel
- * holds the rest in its own GRAM, and sending is almost the whole cost of a
- * frame. Every gfx_* drawing call marks what it touched and draw_clear()
- * marks the whole screen, so most callers never touch this. Code writing
- * through gfx_framebuffer() directly MUST mark what it wrote; forgetting
- * looks like a frozen or partially stale screen, not a crash.
- */
 
 /* Whether any recorded dirt overlaps this rectangle. The tracker uses
  * leaf-sized regions for precise marks and full cells for band marks. */

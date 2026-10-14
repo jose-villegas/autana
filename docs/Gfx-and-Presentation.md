@@ -32,7 +32,7 @@ changed.
 
 ```mermaid
 flowchart TB
-    DRAW["gfx_* draw calls<br/>or direct writes"] --> TGT["gfx_target.h<br/>clip + translate"]
+    DRAW["draw_* calls<br/>or direct writes"] --> TGT["gfx_target.h<br/>clip + translate"]
     TGT --> SEL{"gfx_mode_current()"}
     SEL -->|"GFX_LAYOUT_FULL_FB"| FB["framebuffer<br/>368 x 448 RGB565, PSRAM"]
     SEL -->|"GFX_LAYOUT_BANDS"| BR["2-slot band ring<br/>internal DMA RAM"]

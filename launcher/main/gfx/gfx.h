@@ -59,6 +59,11 @@ bool gfx_draw_begin(gfx_surface_t* out);
 
 /* The caller intersects the box with the screen before setting it. */
 void gfx_set_clip_box(gfx_box_t clip);
+
+/* gfx_present() sends only what changed: the panel holds the rest in its own
+ * GRAM, and sending is almost the whole cost of a frame. Every draw_* call
+ * marks what it touched; code writing through gfx_framebuffer() MUST mark
+ * what it wrote, or the screen shows stale, not a crash. */
 /* Tracked as a real box per grid cell, so a caller that touched part of a
  * cell may send less than all of it; rows claim whole cells. */
 void gfx_mark_dirty(int x, int y, int w, int h);

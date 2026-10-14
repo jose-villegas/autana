@@ -20,6 +20,7 @@
 #ifndef DEVICE_BUILD
 #include "draw/draw.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_test.h"

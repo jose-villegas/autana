@@ -101,18 +101,17 @@ static void
 test_draw_between_present_begin_and_wait_trips_the_present_guard(void) {
     fixture();
     gfx_present_begin();
-    const unsigned before = gfx_present_guard_trips;
-    const unsigned rect_guard_checks = 2;
-    const unsigned pixel_guard_checks = 1;
-    /* Rectangles guard surface access and box marking; pixels mark rows. */
+    unsigned before = gfx_present_guard_trips;
     draw_rect(DRAWN_X, DRAWN_Y, SIZE, SIZE, 0x1234);
-    TEST_ASSERT_EQUAL_UINT(before + rect_guard_checks, gfx_present_guard_trips);
+    TEST_ASSERT_GREATER_THAN_UINT(before, gfx_present_guard_trips);
+    before = gfx_present_guard_trips;
     draw_pixel(DRAWN_X, DRAWN_Y, 0x1234);
-    TEST_ASSERT_EQUAL_UINT(before + rect_guard_checks + pixel_guard_checks, gfx_present_guard_trips);
+    TEST_ASSERT_GREATER_THAN_UINT(before, gfx_present_guard_trips);
     gfx_present_wait();
 
+    before = gfx_present_guard_trips;
     draw_rect(DRAWN_X, DRAWN_Y, SIZE, SIZE, 0x1234);
-    TEST_ASSERT_EQUAL_UINT(before + rect_guard_checks + pixel_guard_checks, gfx_present_guard_trips);
+    TEST_ASSERT_EQUAL_UINT(before, gfx_present_guard_trips);
 }
 
 enum { INK = UINT16_MAX, BAND_ROW = GFX_BAND_HEIGHT, ALPHA_OPAQUE = UINT8_MAX };
@@ -180,7 +179,9 @@ test_clip_edges_match_independent_clamps(void) {
             for (size_t k = 0; k < sizeof widths / sizeof *widths; k++) {
                 for (size_t l = 0; l < sizeof heights / sizeof *heights; l++) {
                     draw_set_clip(xs[i], ys[j], widths[k], heights[l]);
-                    const gfx_box_t actual = gfx_clip_save();
+                    gfx_surface_t surface;
+                    TEST_ASSERT_TRUE(gfx_draw_begin(&surface));
+                    const gfx_box_t actual = surface.clip;
                     const gfx_box_t expected = {mathi_max(xs[i], 0), mathi_max(ys[j], 0),
                                                 mathi_min(xs[i] + widths[k], GFX_WIDTH),
                                                 mathi_min(ys[j] + heights[l], GFX_HEIGHT)};

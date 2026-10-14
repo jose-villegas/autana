@@ -151,7 +151,7 @@ sequenceDiagram
     end
     S->>A: invalidate() if a full redraw is pending
     S->>A: frame(dt_ms, input)
-    A->>G: gfx_* draws
+    A->>G: draw_* calls
     alt band mode: GFX_LAYOUT_BANDS
         S->>G: gfx_band_run(draw_band, ui_replay_band)
     end
