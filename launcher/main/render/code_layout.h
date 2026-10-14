@@ -7,7 +7,12 @@
  * owner's code_layout.txt; measure and retune changed layouts on the board
  * before regenerating it. */
 
+#ifdef ESP_PLATFORM
 #include "sdkconfig.h"
 
 #define CODE_ENTRY_OFFSET(slots)                                                                                       \
     __attribute__((aligned(CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE), patchable_function_entry(slots, slots)))
+#else
+/* A host build has no instruction cache to place code in. */
+#define CODE_ENTRY_OFFSET(slots)
+#endif
