@@ -1076,9 +1076,10 @@ below it before the tree it belongs to can use any.
 
 The release build gate checks `sand_step` and its machine loops against
 `launcher/main/apps/sand/code_layout.txt`, recording function size, cache-line
-offsets and spans. The entry retains its 16-byte alignment; its predecessor
-has no placement attribute. Device performance suites measure the resulting
-timings.
+offsets and spans. `CODE_ENTRY_OFFSET` starts `sand_step` on an
+instruction-cache line, so code linked ahead of it no longer moves those
+offsets; only a change to `sand_step` itself does. Device performance suites
+measure the resulting timings.
 
 Every number below came from `timing_now_us()` on real hardware, via
 the device-only tests in `suite_sand_perf.c` (`#ifdef DEVICE_BUILD`), not

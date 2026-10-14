@@ -98,7 +98,7 @@ upscale_mapped_rows(const upscale_t* scale, const uint16_t* source, const uint16
     }
 }
 
-RENDER_ENTRY_OFFSET(4) void
+CODE_ENTRY_OFFSET(4) void
 upscale_rows(const upscale_t* scale, const gfx_render_target_t* picture, uint16_t clear, uint16_t* destination,
              int first_row, int row_count) {
     assert(scale != NULL);

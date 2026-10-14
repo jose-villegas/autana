@@ -1,9 +1,13 @@
 #pragma once
 
 /* Where an inner loop sits within an instruction-cache line moves the frame
- * time. Render functions start on a line; this puts `slots` two-byte nop.n,
- * never executed, ahead of a hot one's entry so its loops land at the offsets
- * that ran fastest. launcher/tools/build/build_diag_check.sh checks
- * code_layout.txt; measure and
- * retune changed layouts on the board before regenerating it. */
-#define RENDER_ENTRY_OFFSET(slots) __attribute__((patchable_function_entry(slots, slots)))
+ * time. A pinned function starts on a line, whatever code links ahead of it;
+ * `slots` two-byte nop.n, never executed, then sit ahead of its entry so its
+ * loops land at the offsets that ran fastest. code_layout.py checks the
+ * owner's code_layout.txt; measure and retune changed layouts on the board
+ * before regenerating it. */
+
+#include "sdkconfig.h"
+
+#define CODE_ENTRY_OFFSET(slots)                                                                                       \
+    __attribute__((aligned(CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE), patchable_function_entry(slots, slots)))
