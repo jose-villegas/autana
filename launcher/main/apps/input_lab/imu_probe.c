@@ -65,7 +65,7 @@ imu_probe_average_read(const imu_probe_average_t* average) {
 }
 
 /* Six-position offset and sensitivity: docs/Citations.md#67.
- * Accel offset is calib.offset in Q12 counts; imu_probe_offset_mg converts it.
+ * Accel offset is calib.offset in Q12 counts; imu_probe_mg converts it.
  * Sensitivity is ppm (unity = IMU_PROBE_SCALE_ONE), gyro offset mdps. */
 imu_probe_fit_t
 imu_probe_fit(const imu_probe_average_t poses[IMU_PROBE_POSE_COUNT], int quarter) {
@@ -106,7 +106,7 @@ imu_probe_saved_offset(vec3i_t stored, const imu_probe_fit_t* fit) {
 }
 
 vec3i_t
-imu_probe_offset_mg(vec3i_t q12) {
+imu_probe_mg(vec3i_t q12) {
     const int32_t counts[] = {q12.x, q12.y, q12.z};
     int offset[3];
     for (int axis = 0; axis < 3; axis++) {

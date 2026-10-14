@@ -383,7 +383,7 @@ log_imu_pose(void) {
         return;
     }
     const imu_probe_fit_t f = imu_round.fit;
-    const vec3i_t offset_mg = imu_probe_offset_mg(imu_probe_saved_offset(input_accel_offset(), &f));
+    const vec3i_t offset_mg = imu_probe_mg(imu_probe_saved_offset(input_accel_offset(), &f));
     ESP_LOGI(TAG, "calib x off %d scale %d y off %d scale %d z off %d scale %d gyro %d,%d,%d", offset_mg.x,
              f.scale_ppm.x, offset_mg.y, f.scale_ppm.y, offset_mg.z, f.scale_ppm.z, f.gyro_mdps.x, f.gyro_mdps.y,
              f.gyro_mdps.z);
@@ -428,7 +428,7 @@ draw_imu_round(mu_Context* ctx) {
         return IMU_ACTION_NONE;
     }
     const imu_probe_fit_t f = imu_round.fit;
-    const vec3i_t offset_mg = imu_probe_offset_mg(f.calib.offset);
+    const vec3i_t offset_mg = imu_probe_mg(f.calib.offset);
     const int off[] = {offset_mg.x, offset_mg.y, offset_mg.z};
     const int scale[] = {f.scale_ppm.x, f.scale_ppm.y, f.scale_ppm.z};
     const int gyro[] = {f.gyro_mdps.x, f.gyro_mdps.y, f.gyro_mdps.z};
@@ -492,8 +492,8 @@ draw_motion(mu_Context* ctx) {
 
     enum { VALUE_X, VALUE_Y, VALUE_Z, VALUE_MAGNITUDE, VALUE_PLANE, VALUE_FILTER_X, VALUE_FILTER_Y, VALUE_COUNT };
 
-    const vec3i_t raw_mg = imu_probe_offset_mg(raw_acceleration);
-    const vec3i_t filtered_mg = imu_probe_offset_mg((vec3i_t){tilt_x(&tilt), tilt_y(&tilt), 0});
+    const vec3i_t raw_mg = imu_probe_mg(raw_acceleration);
+    const vec3i_t filtered_mg = imu_probe_mg((vec3i_t){tilt_x(&tilt), tilt_y(&tilt), 0});
     const int mg[VALUE_COUNT] = {raw_mg.x,
                                  raw_mg.y,
                                  raw_mg.z,

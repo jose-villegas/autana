@@ -55,7 +55,8 @@ void imu_probe_average_add(imu_probe_average_t* average, input_motion_t sample);
 input_motion_t imu_probe_average_read(const imu_probe_average_t* average);
 imu_probe_fit_t imu_probe_fit(const imu_probe_average_t poses[IMU_PROBE_POSE_COUNT], int quarter);
 vec3i_t imu_probe_saved_offset(vec3i_t stored, const imu_probe_fit_t* fit);
-vec3i_t imu_probe_offset_mg(vec3i_t q12);
+/* Q12 g counts to mg, rounded. */
+vec3i_t imu_probe_mg(vec3i_t q12);
 void imu_probe_start(imu_probe_round_t* round, int quarter);
 /* Returns true once per completed pose. NULL means no reading this frame. */
 bool imu_probe_update(imu_probe_round_t* round, const input_motion_t* sample, uint32_t dt_ms);

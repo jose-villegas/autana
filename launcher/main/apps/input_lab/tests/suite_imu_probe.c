@@ -314,7 +314,7 @@ test_empty_fit(void) {
     imu_probe_average_t* poses = calloc(IMU_PROBE_POSE_COUNT, sizeof *poses);
     TEST_ASSERT_NOT_NULL(poses);
     const imu_probe_fit_t fit = imu_probe_fit(poses, 0);
-    const vec3i_t values[] = {imu_probe_offset_mg(fit.calib.offset), fit.scale_ppm, fit.gyro_mdps};
+    const vec3i_t values[] = {imu_probe_mg(fit.calib.offset), fit.scale_ppm, fit.gyro_mdps};
     for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
         TEST_ASSERT_EQUAL_INT(0, values[i].x);
         TEST_ASSERT_EQUAL_INT(0, values[i].y);
@@ -374,7 +374,7 @@ test_synthetic_fit(void) {
         TEST_ASSERT_EQUAL_INT(offset[0], round->fit.calib.offset.x);
         TEST_ASSERT_EQUAL_INT(offset[1], round->fit.calib.offset.y);
         TEST_ASSERT_EQUAL_INT(offset[2], round->fit.calib.offset.z);
-        const vec3i_t offset_mg = imu_probe_offset_mg(round->fit.calib.offset);
+        const vec3i_t offset_mg = imu_probe_mg(round->fit.calib.offset);
         const int got_off[] = {offset_mg.x, offset_mg.y, offset_mg.z};
         const int got_scale[] = {round->fit.scale_ppm.x, round->fit.scale_ppm.y, round->fit.scale_ppm.z};
         for (int axis = 0; axis < 3; axis++) {
@@ -459,12 +459,12 @@ test_complete_round(void) {
         TEST_ASSERT_FALSE(round->active);
         TEST_ASSERT_EQUAL_INT(IMU_PROBE_POSE_COUNT, round->pose);
         TEST_ASSERT_EQUAL_INT(IMU_PROBE_SCALE_ONE, round->fit.scale_ppm.x);
-        TEST_ASSERT_EQUAL_INT(0, imu_probe_offset_mg(round->fit.calib.offset).x);
+        TEST_ASSERT_EQUAL_INT(0, imu_probe_mg(round->fit.calib.offset).x);
         const input_motion_t sample = fixture();
         TEST_ASSERT_EQUAL_INT(IMU_PROBE_SCALE_ONE, round->fit.scale_ppm.y);
         TEST_ASSERT_EQUAL_INT(IMU_PROBE_SCALE_ONE, round->fit.scale_ppm.z);
-        TEST_ASSERT_EQUAL_INT(0, imu_probe_offset_mg(round->fit.calib.offset).y);
-        TEST_ASSERT_EQUAL_INT(0, imu_probe_offset_mg(round->fit.calib.offset).z);
+        TEST_ASSERT_EQUAL_INT(0, imu_probe_mg(round->fit.calib.offset).y);
+        TEST_ASSERT_EQUAL_INT(0, imu_probe_mg(round->fit.calib.offset).z);
         TEST_ASSERT_EQUAL_INT(10 * IMU_PROBE_MILLI, round->fit.gyro_mdps.x);
         TEST_ASSERT_EQUAL_INT(-10 * IMU_PROBE_MILLI, round->fit.gyro_mdps.y);
         TEST_ASSERT_EQUAL_INT(0, round->fit.gyro_mdps.z);
