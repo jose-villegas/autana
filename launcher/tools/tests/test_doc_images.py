@@ -22,6 +22,9 @@ class EngineDocImageFailureTest(unittest.TestCase):
             helper.parent.mkdir(parents=True)
             shutil.copyfile(ROOT / "scripts/lib/run.sh", helper)
             shutil.copyfile(ROOT / "launcher/tools/render/gif_from_avi.sh", script.parent / "gif_from_avi.sh")
+            packages = root / "launcher/tools/build/packages.sh"
+            packages.parent.mkdir(parents=True)
+            shutil.copyfile(ROOT / "launcher/tools/build/packages.sh", packages)
             setup = SCRIPT.read_text(encoding="utf-8").split("# The one orphan report:")[0]
             script.write_text(setup + command, encoding="utf-8")
             return subprocess.run(["sh", script.as_posix()], capture_output=True, text=True)
