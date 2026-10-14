@@ -26,7 +26,7 @@ read_header(asset_view_t entry, r3d_skin_t* out) {
     const uint8_t stride = (influences * 2) + R3D_SKIN_RECORD_TAIL;
     const uint64_t inverse_end = (uint64_t)inverse + (joints * R3D_SKIN_MATRIX_WIDTH * sizeof(float));
     if (inverse % R3D_SKIN_ALIGNMENT != 0 || records % R3D_SKIN_ALIGNMENT != 0 || inverse < R3D_SKIN_HEADER_SIZE
-        || records < inverse_end || (uint64_t)records + (uint64_t)vertices * stride != entry.size) {
+        || records < inverse_end || (uint64_t)records + ((uint64_t)vertices * stride) != entry.size) {
         return ASSET_ERR_BOUNDS;
     }
     if (!asset_entry_zero(entry, R3D_SKIN_HEADER_SIZE, inverse)
@@ -38,7 +38,7 @@ read_header(asset_view_t entry, r3d_skin_t* out) {
         .influences = influences,
         .lighting_mode = mode,
         .vertex_count = vertices,
-        .inverse_binds = (const float(*)[R3D_SKIN_MATRIX_WIDTH])(const void*)(entry.data + inverse),
+        .inverse_binds = (const float (*)[R3D_SKIN_MATRIX_WIDTH])(const void*)(entry.data + inverse),
         .vertices = entry.data + records,
         .vertex_stride = stride,
     };

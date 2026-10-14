@@ -242,7 +242,7 @@ test_open_air_gas_rise_rate_stays_at_its_baseline(void) {
         }
         TEST_ASSERT_LESS_THAN_INT_MESSAGE(GAS_RISE_H, final_row,
                                           "setup: every open-air trial must retain its gas grain");
-        total_rise += GAS_RISE_H / 2 - final_row;
+        total_rise += (GAS_RISE_H / 2) - final_row;
     }
 
     TEST_ASSERT_INT_WITHIN_MESSAGE(

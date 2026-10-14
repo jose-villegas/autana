@@ -7,17 +7,31 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "perf_stats.h"
 #include "suites.h"
+#include "test_cleanup.h"
 #include "unity.h"
 
+#include "apps/sand/sand_mode_swatches.h"
+#include "apps/sand/sand_palette256.h"
+#include "apps/sand/ui/options_screen.h"
+#include "apps/sand/ui/sand_icons.h"
+#include "core/memory.h"
+#include "core/timing.h"
+#include "gfx/present/gfx_mode.h"
+#ifdef DEVICE_BUILD
+#include "esp_log.h"
+#endif
 #include "gfx/draw/gfx_draw.h"
 #include "gfx/draw/gfx_font_roles.h"
 #include "gfx/gfx.h"
 #include "gfx/gfx_test.h"
+#include "gfx/present/gfx_present.h"
 #include "input/input.h"
 #include "ui/ui.h"
 #include "ui/ui_bridge.h"
 #include "ui/ui_internal.h"
+#include "ui/ui_scroll.h"
 #include "ui/ui_transform.h"
 #include "ui/ui_widgets.h"
 
@@ -152,6 +166,19 @@ test_a_disabled_button_takes_no_tap(void) {
     TEST_ASSERT_FALSE(tap(&w));
 }
 
+typedef struct {
+    input_t press, hold, release;
+} contact_t;
+
+static contact_t
+transformed_contact(int x, int y) {
+    int px, py;
+    ui_transform_point(ui_effective_transform(), x, y, &px, &py);
+    return (contact_t){.press = {.down = true, .pressed = true, .x = px, .y = py},
+                       .hold = {.down = true, .x = px, .y = py},
+                       .release = {.released = true, .x = px, .y = py}};
+}
+
 static void
 test_a_reachable_touch_outside_a_button_submits_it(void) {
     const widget_t w = {.enabled = true};
@@ -159,20 +186,16 @@ test_a_reachable_touch_outside_a_button_submits_it(void) {
         fixture();
         const ui_transform_t transform = ui_transform_quarter_turn(turn, GFX_WIDTH, GFX_HEIGHT);
         ui_set_transform(transform);
-        int x, y;
-        ui_transform_point(transform, BUTTON.x - 20, BUTTON.y + BUTTON.h / 2, &x, &y);
+        const contact_t contact = transformed_contact(BUTTON.x - 20, BUTTON.y + BUTTON.h / 2);
         const input_t idle = {0};
-        const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
-        const input_t hold = {.down = true, .x = x, .y = y};
-        const input_t release = {.released = true, .x = x, .y = y};
 
         widget_frame(&w, &idle);
         widget_frame(&w, &idle);
-        bool hit = widget_frame(&w, &press);
+        bool hit = widget_frame(&w, &contact.press);
         for (int i = 0; i < 4; i++) {
-            hit |= widget_frame(&w, &hold);
+            hit |= widget_frame(&w, &contact.hold);
         }
-        hit |= widget_frame(&w, &release);
+        hit |= widget_frame(&w, &contact.release);
         TEST_ASSERT_TRUE_MESSAGE(hit, turn == 0 ? "portrait reachable touch" : "landscape reachable touch");
     }
 }
@@ -295,17 +318,15 @@ overlaps(mu_Rect a, mu_Rect b) {
 }
 
 static void
-test_a_list_too_tall_for_either_side_fills_the_roomier_one(void) {
+test_a_list_too_tall_for_either_side_overlays_the_canvas(void) {
     const mu_Rect anchor = {20, 120, 200, 44};
     const mu_Rect list = ui_dropdown_list_rect(anchor, 5, 44, 300, 16);
-    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(anchor.y + anchor.h - 1, list.y, "more room below than above");
-    TEST_ASSERT_EQUAL_INT(300 - 16, list.y + list.h);
-    TEST_ASSERT_FALSE(overlaps(list, anchor));
-
-    const mu_Rect low = {20, 200, 200, 44};
-    const mu_Rect up = ui_dropdown_list_rect(low, 5, 44, 300, 16);
-    TEST_ASSERT_EQUAL_INT(16, up.y);
-    TEST_ASSERT_FALSE(overlaps(up, low));
+    TEST_ASSERT_EQUAL_INT(16, list.y);
+    TEST_ASSERT_EQUAL_INT(5 * 44, list.h);
+    TEST_ASSERT_TRUE(overlaps(list, anchor));
+    const mu_Rect landscape = ui_dropdown_list_rect((mu_Rect){20, 120, 200, 62}, 5, 62, 368, 16);
+    TEST_ASSERT_EQUAL_INT(5 * 62, landscape.h);
+    TEST_ASSERT_EQUAL_INT(0, ui_dropdown_list_scroll(4, 5, 62, landscape.h));
 }
 
 /* The exact pixel where ui_dropdown_list_rect() switches sides: a list
@@ -341,7 +362,7 @@ test_a_list_taller_than_the_screen_stays_inside_it(void) {
     TEST_ASSERT_LESS_THAN_INT(10 * 44, list.h);
     TEST_ASSERT_GREATER_OR_EQUAL_INT(16, list.y);
     TEST_ASSERT_LESS_OR_EQUAL_INT(300 - 16, list.y + list.h);
-    TEST_ASSERT_FALSE(overlaps(list, anchor));
+    TEST_ASSERT_TRUE(overlaps(list, anchor));
 }
 
 static void
@@ -371,6 +392,7 @@ static const mu_Rect DROPDOWN = {40, 60, 240, 44};
 
 static bool dropdown_open;
 static bool paint_frames;
+static const uint32_t MENU_BACKGROUND = 0x0A0C14;
 
 /* One frame of a window holding only the dropdown; returns its pick. */
 static int
@@ -386,7 +408,7 @@ dropdown_frame(const input_t* in, int selected) {
         mu_end_window(ui_context());
     }
     if (paint_frames) {
-        ui_end(0x0A0C14);
+        ui_end(MENU_BACKGROUND);
     } else {
         end_frame();
     }
@@ -609,6 +631,94 @@ test_closing_the_list_restores_the_closed_drawing(void) {
                               "a picked close must also redraw the dropdown's own closed chevron");
 }
 
+enum {
+    MENU_INK = 0xFF00FF,
+    MENU_FRAMES = 12,
+    MENU_REVISION_FRAMES = 2,
+    MENU_DENSE_COMMANDS = 80,
+    MENU_OVERFLOW_COMMANDS = UI_BAND_BIN_MAX + 1,
+    MENU_ROW_HEIGHT = 62,
+    MENU_ITEM_COUNT = 5
+};
+
+static const mu_Rect MENU_ANCHOR = {40, 140, 300, MENU_ROW_HEIGHT};
+static const ui_dropdown_item_t MENU_ITEMS[] = {
+    {.label = "IDLE"}, {.label = "WALK"}, {.label = "FAST"}, {.label = "GALLOP"}, {.label = "BOUND"}};
+
+static int menu_pick;
+
+static void
+build_menu_frame(const input_t* in, int revision, int commands, bool scrollable) {
+    ui_begin(in);
+    mu_Context* ctx = ui_context();
+    if (ui_scroll_view_begin(ctx, "Menu", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME,
+                             ui_scroll_view_default(), 16)) {
+        menu_pick = ui_dropdown(ctx, "pick", MENU_ANCHOR, MENU_ITEMS, MENU_ITEM_COUNT, 0, &THEME);
+        dropdown_open = ui_dropdown_is_open(ctx, "pick");
+        const mu_Color saved_text = ctx->style->colors[MU_COLOR_TEXT];
+        ctx->style->colors[MU_COLOR_TEXT] = ui_rgb(MENU_INK);
+        mu_layout_set_next(ctx, (mu_Rect){60, 212, 180, 30}, 0);
+        mu_label(ctx, revision % 2 ? "CHANGED" : "LABEL");
+        mu_Real value = revision;
+        mu_layout_set_next(ctx, (mu_Rect){60, 250, 180, 30}, 0);
+        mu_slider(ctx, &value, 0, MENU_FRAMES);
+        mu_layout_set_next(ctx, (mu_Rect){60, scrollable ? ui_height() : 320, 180, 30}, scrollable);
+        mu_label(ctx, "BOOT to close");
+        for (int i = 0; i < commands; i++) {
+            mu_draw_rect(ctx, (mu_Rect){60 + i, 212 + revision, 1, 100}, ui_rgb(MENU_INK));
+        }
+        ctx->style->colors[MU_COLOR_TEXT] = saved_text;
+        ui_scroll_view_end(ctx);
+    }
+}
+
+static void
+test_opening_release_cannot_pick_an_overlay_row(void) {
+    const int motion_pixels = 2;
+    fixture();
+    const input_t idle = {0};
+    input_t touch = {
+        .down = true, .pressed = true, .x = MENU_ANCHOR.x + MENU_ANCHOR.w / 2, .y = MENU_ANCHOR.y + MENU_ANCHOR.h / 2};
+    build_menu_frame(&idle, 0, 0, true);
+    end_frame();
+    build_menu_frame(&idle, 0, 0, true);
+    end_frame();
+    build_menu_frame(&touch, 0, 0, true);
+    end_frame();
+    touch.pressed = false;
+    for (int frame = 0; frame < UI_DROPDOWN_CLOSE_FRAMES; frame++) {
+        touch.y += frame < motion_pixels;
+        build_menu_frame(&touch, 0, 0, true);
+        end_frame();
+        TEST_ASSERT_EQUAL_INT(-1, menu_pick);
+    }
+    touch.down = false;
+    touch.released = true;
+    build_menu_frame(&touch, 0, 0, true);
+    end_frame();
+    TEST_ASSERT_EQUAL_INT_MESSAGE(-1, menu_pick, "opening release must not pick the overlay row under the finger");
+    for (int frame = 0; frame < UI_DROPDOWN_CLOSE_FRAMES; frame++) {
+        build_menu_frame(&idle, 0, 0, true);
+        end_frame();
+        TEST_ASSERT_TRUE(dropdown_open);
+    }
+    const mu_Rect list = ui_dropdown_list_rect(MENU_ANCHOR, MENU_ITEM_COUNT, MENU_ROW_HEIGHT, ui_height(), UI_MARGIN);
+    touch = (input_t){.down = true, .pressed = true, .x = list.x + list.w / 2, .y = list.y + MENU_ROW_HEIGHT / 2};
+    build_menu_frame(&touch, 0, 0, true);
+    end_frame();
+    int picked = menu_pick;
+    touch.pressed = false;
+    build_menu_frame(&touch, 0, 0, true);
+    end_frame();
+    picked = menu_pick >= 0 ? menu_pick : picked;
+    touch.down = false;
+    touch.released = true;
+    build_menu_frame(&touch, 0, 0, true);
+    end_frame();
+    picked = menu_pick >= 0 ? menu_pick : picked;
+    TEST_ASSERT_EQUAL_INT(0, picked);
+}
+
 #ifndef DEVICE_BUILD
 static uint64_t
 framebuffer_rect_hash(mu_Rect r) {
@@ -622,12 +732,178 @@ framebuffer_rect_hash(mu_Rect r) {
     return h;
 }
 
+static const mu_Container* last_menu_canvas;
+static bool menu_window_painted;
+
+static void
+record_menu_canvas(const mu_Container* canvas) {
+    if (canvas == ui_context()->root_list.items[0]) {
+        menu_window_painted = true;
+    }
+    last_menu_canvas = canvas;
+}
+
+static void
+finish_menu_frame(bool bands) {
+    if (bands) {
+        ui_end_for_bands(MENU_BACKGROUND);
+        for (int row = 0; row < GFX_HEIGHT; row += GFX_BAND_HEIGHT) {
+            gfx_band_begin_for_test(row);
+            ui_replay_band(row, row + GFX_BAND_HEIGHT);
+            gfx_band_end_for_test();
+        }
+    } else {
+        ui_end(MENU_BACKGROUND);
+    }
+}
+
+static void
+menu_frame(const input_t* in, bool bands, int revision) {
+    last_menu_canvas = NULL;
+    menu_window_painted = false;
+    build_menu_frame(in, revision, MENU_DENSE_COMMANDS, false);
+    finish_menu_frame(bands);
+}
+
+static void
+overflow_frame(bool bands, int revision) {
+    const input_t idle = {0};
+    ui_begin(&idle);
+    mu_Context* ctx = ui_context();
+    if (ui_begin_screen(ctx, "Overflow", MU_OPT_NOTITLE | MU_OPT_NOFRAME)) {
+        for (int i = 0; i < MENU_OVERFLOW_COMMANDS; i++) {
+            mu_draw_rect(ctx, (mu_Rect){BUTTON.x + revision, BUTTON.y, BUTTON.w, BUTTON.h}, ui_rgb(MENU_INK));
+        }
+        mu_end_window(ctx);
+    }
+    finish_menu_frame(bands);
+}
+
+static uint64_t
+owned_command_hash(const mu_Container* canvas) {
+    mu_Context* ctx = ui_context();
+    uint64_t hash = 1469598103934665603ull;
+    mu_Command* cmd = NULL;
+    while (mu_next_command(ctx, &cmd)) {
+        const mu_Container* owner = NULL;
+        for (int i = 0; i < ctx->root_list.idx; i++) {
+            const mu_Container* root = ctx->root_list.items[i];
+            if ((char*)cmd > (char*)root->head && (char*)cmd < (char*)root->tail
+                && (owner == NULL || (char*)root->head > (char*)owner->head)) {
+                owner = root;
+            }
+        }
+        if (owner == canvas) {
+            const unsigned char* bytes = (const unsigned char*)cmd;
+            for (int i = 0; i < cmd->base.size; i++) {
+                hash = (hash ^ bytes[i]) * 1099511628211ull;
+            }
+        }
+    }
+    return hash;
+}
+
+static void
+assert_menu_list_on_top(void) {
+    const mu_Rect logical =
+        ui_dropdown_list_rect(MENU_ANCHOR, MENU_ITEM_COUNT, MENU_ROW_HEIGHT, ui_height(), UI_MARGIN);
+    const mu_Rect list = ui_transform_rect(ui_effective_transform(), logical);
+    mu_Context* ctx = ui_context();
+    TEST_ASSERT_TRUE(dropdown_open);
+    TEST_ASSERT_EQUAL_INT(2, ctx->root_list.idx);
+    const mu_Container* top = ctx->root_list.items[ctx->root_list.idx - 1];
+    TEST_ASSERT_EQUAL_MEMORY(&logical, &top->rect, sizeof logical);
+    if (menu_window_painted) {
+        TEST_ASSERT_EQUAL_PTR_MESSAGE(top, last_menu_canvas, "the list must repaint after its window");
+    }
+    const gfx_color_t* fb = gfx_framebuffer();
+    for (int y = list.y; y < list.y + list.h; y++) {
+        for (int x = list.x; x < list.x + list.w; x++) {
+            TEST_ASSERT_NOT_EQUAL_MESSAGE(gfx_rgb(MENU_INK), fb[y * GFX_WIDTH + x],
+                                          "menu ink must not bleed through the opaque list");
+        }
+    }
+}
+
+static void
+menu_repaint_frames(bool bands) {
+    TEST_ASSERT_TRUE(gfx_init());
+    fixture();
+    ui_set_transform(ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT));
+    ui_canvas_painted_for_test = record_menu_canvas;
+    gfx_clear(gfx_rgb(MENU_BACKGROUND));
+    const contact_t contact = transformed_contact(MENU_ANCHOR.x + 20, MENU_ANCHOR.y + 20);
+    const input_t idle = {0};
+    menu_frame(&idle, bands, 0);
+    menu_frame(&idle, bands, 0);
+    int ink_x, ink_y;
+    ui_transform_point(ui_effective_transform(), 80, 230, &ink_x, &ink_y);
+    TEST_ASSERT_EQUAL_MESSAGE(gfx_rgb(MENU_INK), gfx_framebuffer()[ink_y * GFX_WIDTH + ink_x],
+                              "dense menu commands must all be painted before opening the list");
+    menu_frame(&contact.press, bands, 0);
+    for (int frame = 0; frame < MENU_FRAMES; frame++) {
+        const input_t* in = frame < MENU_FRAMES / 2    ? &contact.hold
+                            : frame == MENU_FRAMES / 2 ? &contact.release
+                                                       : &idle;
+        menu_frame(in, bands, frame / 3);
+        assert_menu_list_on_top();
+        gfx_present();
+        if (!bands) {
+            const mu_Container* window = ui_context()->root_list.items[0];
+            TEST_ASSERT_EQUAL_MESSAGE(owned_command_hash(window), ui_canvas_hash[window - ui_context()->containers],
+                                      "a canvas hash must contain only its own drawing commands");
+        }
+    }
+    ui_canvas_painted_for_test = NULL;
+    gfx_reset_for_test();
+}
+
+static void
+test_open_list_stays_on_top_during_held_and_idle_partial_frames(void) {
+    menu_repaint_frames(false);
+}
+
+static void
+test_open_list_stays_on_top_during_held_and_idle_band_frames(void) {
+    menu_repaint_frames(true);
+}
+
+static void
+test_dense_bands_match_a_full_repaint(void) {
+    TEST_ASSERT_TRUE(gfx_init());
+    fixture();
+    ui_set_transform(ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT));
+    const input_t idle = {0};
+    overflow_frame(false, 0);
+    overflow_frame(false, 0);
+    const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
+    gfx_color_t* expected = memory_alloc(bytes, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(expected);
+    overflow_frame(false, 1);
+    memcpy(expected, gfx_framebuffer(), bytes);
+    gfx_clear(gfx_rgb(MENU_BACKGROUND));
+    overflow_frame(true, 1);
+    TEST_ASSERT_GREATER_THAN_UINT32(0, ui_band_fallback_count());
+    TEST_ASSERT_EQUAL_MEMORY(expected, gfx_framebuffer(), bytes);
+    memory_free(expected);
+    fixture();
+    ui_begin(&idle);
+    if (ui_begin_screen(ui_context(), "Sparse", MU_OPT_NOTITLE | MU_OPT_NOFRAME)) {
+        mu_draw_rect(ui_context(), BUTTON, ui_rgb(MENU_INK));
+        mu_end_window(ui_context());
+    }
+    ui_end_for_bands(MENU_BACKGROUND);
+    ui_replay_band(0, GFX_HEIGHT);
+    TEST_ASSERT_EQUAL_UINT32(0, ui_band_fallback_count());
+    gfx_reset_for_test();
+}
+
 static void
 test_closing_the_list_restores_the_pixels_under_it(void) {
     TEST_ASSERT_TRUE(gfx_init());
     fixture();
     paint_frames = true;
-    gfx_clear(gfx_rgb(0x0A0C14));
+    gfx_clear(gfx_rgb(MENU_BACKGROUND));
 
     const input_t idle = {0};
     dropdown_frame(&idle, 0);
@@ -758,7 +1034,8 @@ test_a_drag_scroll_sticks_through_later_frames(void) {
     const int py = list.y + list.h / 2;
 
     many_frame_scroll(cx, py, MANY_COUNT / 2, 0);
-    many_frame_scroll(cx, py, MANY_COUNT / 2, 20);
+    /* The overlay opens near the bottom scroll limit; drag toward earlier rows. */
+    many_frame_scroll(cx, py, MANY_COUNT / 2, -20);
 
     const int dragged = many_list_scroll(list);
     const int opened_scroll = ui_dropdown_list_scroll(MANY_COUNT / 2, MANY_COUNT, DROPDOWN.h, list.h);
@@ -1102,6 +1379,9 @@ test_ui_swatch_grid_tiles_the_rect_exactly(void) {
     }
 }
 
+static void test_menu_band_frame_cost(void);
+static void test_options_band_frame_cost(void);
+
 void
 run_ui_widgets_suite(void) {
     RUN_TEST(test_an_enabled_button_reports_a_tap);
@@ -1112,9 +1392,10 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_a_slider_drag_uses_raw_moves_after_its_aimed_press);
     RUN_TEST(test_an_icon_leaves_less_room_for_the_label);
     RUN_TEST(test_text_aligns_to_either_edge_or_the_centre);
+    RUN_TEST(test_opening_release_cannot_pick_an_overlay_row);
     RUN_TEST(test_a_list_goes_below_its_dropdown_when_it_fits);
     RUN_TEST(test_a_list_grows_upward_from_a_dropdown_near_the_bottom);
-    RUN_TEST(test_a_list_too_tall_for_either_side_fills_the_roomier_one);
+    RUN_TEST(test_a_list_too_tall_for_either_side_overlays_the_canvas);
     RUN_TEST(test_a_list_switches_sides_at_the_exact_pixel_of_room);
     RUN_TEST(test_a_tap_on_a_listed_item_picks_it_and_closes_the_list);
     RUN_TEST(test_the_list_closes_within_the_close_frame_budget);
@@ -1123,7 +1404,12 @@ run_ui_widgets_suite(void) {
     RUN_TEST(test_the_chevron_lags_the_lists_own_open_flag_by_one_frame);
     RUN_TEST(test_closing_the_list_restores_the_closed_drawing);
 #ifndef DEVICE_BUILD
+    RUN_TEST(test_menu_band_frame_cost);
+    RUN_TEST(test_options_band_frame_cost);
+    RUN_TEST(test_dense_bands_match_a_full_repaint);
     RUN_TEST(test_closing_the_list_restores_the_pixels_under_it);
+    RUN_TEST(test_open_list_stays_on_top_during_held_and_idle_partial_frames);
+    RUN_TEST(test_open_list_stays_on_top_during_held_and_idle_band_frames);
 #endif
     RUN_TEST(test_a_list_that_fits_does_not_scroll);
     RUN_TEST(test_only_a_real_press_draws_a_button_pressed);
@@ -1145,3 +1431,244 @@ run_ui_widgets_suite(void) {
 }
 
 SUITE_REGISTER(run_ui_widgets_suite);
+SUITE_READS(run_ui_widgets_suite, SAND_PACK);
+
+static void
+paint_menu_band(int row0, int row1, gfx_color_t* target) {
+    (void)target;
+    gfx_fill_rect(0, row0, GFX_WIDTH, row1 - row0, gfx_rgb(MENU_BACKGROUND));
+    ui_replay_band(row0, row1);
+}
+
+static const gfx_mode_request_t BAND_MODE_REQUEST = {.layout = GFX_LAYOUT_BANDS};
+
+static bool band_icons_owned;
+static sand_mode_swatch_t* band_swatches;
+
+typedef struct {
+    int32_t frame_us[MENU_FRAMES];
+    uint32_t fallbacks[MENU_FRAMES];
+} band_samples_t;
+
+static band_samples_t* band_samples;
+
+enum { BAND_OPTIONS_WARMUP_FRAMES = 5 };
+
+typedef struct {
+    sand_menu_t menu;
+    options_screen_labels_t labels;
+    options_screen_layout_t layout;
+    contact_t contact;
+    input_t idle;
+    const input_t* warmup[BAND_OPTIONS_WARMUP_FRAMES];
+} band_options_fixture_t;
+
+static band_options_fixture_t* band_options_fixture;
+
+static void
+restore_menu_band_fixture(void) {
+    if (band_icons_owned) {
+        ui_icon_set_release(&sand_icon_set);
+        band_icons_owned = false;
+    }
+    memory_free(band_samples);
+    band_samples = NULL;
+    memory_free(band_options_fixture);
+    band_options_fixture = NULL;
+    memory_free(band_swatches);
+    band_swatches = NULL;
+    ui_clear_band_overlay();
+    gfx_mode_exit();
+    fixture();
+#ifndef DEVICE_BUILD
+    gfx_reset_for_test();
+#endif
+}
+
+static void
+report_band_case(const char* name, band_samples_t* samples) {
+    uint32_t total_fallbacks = 0;
+    for (int frame = 0; frame < MENU_FRAMES; frame++) {
+        total_fallbacks += samples->fallbacks[frame];
+    }
+    const perf_stats_t stats = perf_stats_compute(samples->frame_us, MENU_FRAMES);
+#ifdef DEVICE_BUILD
+    ESP_LOGI("ui_band_perf", "case=%s frames=%d fallbacks=%lu frame_us=%lld max_us=%lld", name, MENU_FRAMES,
+             (unsigned long)total_fallbacks, (long long)stats.avg, (long long)stats.max);
+#else
+    (void)name;
+    (void)total_fallbacks;
+    (void)stats;
+#endif
+}
+
+static void
+sample_band_frame(int frame, int64_t began_us) {
+    band_samples->frame_us[frame] = (int32_t)(timing_now_us() - began_us);
+    band_samples->fallbacks[frame] = ui_band_fallback_count();
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(0, band_samples->fallbacks[frame], "product cases must fit the band bin");
+}
+
+static void
+allocate_band_samples(void) {
+    band_samples = memory_alloc(sizeof *band_samples, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(band_samples);
+    memset(band_samples, 0, sizeof *band_samples);
+}
+
+static void
+test_menu_band_frame_cost(void) {
+#ifndef DEVICE_BUILD
+    TEST_ASSERT_TRUE(gfx_init());
+    const unsigned guard_trips = gfx_fb_guard_trips_for_test();
+#endif
+    suite_set_test_cleanup(restore_menu_band_fixture);
+    TEST_ASSERT_EQUAL(GFX_LAYOUT_BANDS, gfx_mode_enter(&BAND_MODE_REQUEST)->layout);
+    for (int dense = 0; dense <= 1; dense++) {
+        fixture();
+        ui_set_transform(ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT));
+        const contact_t contact = transformed_contact(MENU_ANCHOR.x + 20, MENU_ANCHOR.y + 20);
+        const input_t idle = {0};
+        const input_t* warmup[] = {&idle, &idle, &contact.press, &contact.hold};
+        const int commands = dense ? MENU_DENSE_COMMANDS : 0;
+        allocate_band_samples();
+        for (size_t i = 0; i < sizeof warmup / sizeof warmup[0]; i++) {
+            gfx_present_begin();
+            gfx_present_wait();
+            ui_clear_band_overlay();
+            build_menu_frame(warmup[i], 0, commands, false);
+            ui_end_for_bands(MENU_BACKGROUND);
+            gfx_invalidate();
+            gfx_band_run(paint_menu_band, NULL);
+        }
+        TEST_ASSERT_TRUE(dropdown_open);
+        for (int frame = 0; frame < MENU_FRAMES; frame++) {
+            gfx_present_begin();
+            gfx_present_wait();
+            ui_clear_band_overlay();
+            const int64_t began_us = timing_now_us();
+            build_menu_frame(&idle, frame / MENU_REVISION_FRAMES, commands, false);
+            ui_end_for_bands(MENU_BACKGROUND);
+            gfx_invalidate();
+            gfx_band_run(paint_menu_band, NULL);
+            sample_band_frame(frame, began_us);
+        }
+        report_band_case(dense ? "dense_menu" : "sparse_menu", band_samples);
+        memory_free(band_samples);
+        band_samples = NULL;
+    }
+#ifndef DEVICE_BUILD
+    TEST_ASSERT_EQUAL_UINT(guard_trips, gfx_fb_guard_trips_for_test());
+#endif
+    restore_menu_band_fixture();
+    suite_clear_test_cleanup();
+}
+
+void
+run_ui_band_perf_suite(void) {
+    RUN_TEST(test_menu_band_frame_cost);
+    RUN_TEST(test_options_band_frame_cost);
+}
+
+SUITE_REGISTER_ON_REQUEST(run_ui_band_perf_suite);
+SUITE_READS(run_ui_band_perf_suite, SAND_PACK);
+
+#define BAND_QUALITY_NORMAL 2
+#define OPTIONS_BACKGROUND  0x0A0C14
+
+static const char* const BAND_QUALITY_NAMES[] = {"ULTRA", "HIGH", "NORMAL", "LOW", "VERY LOW"};
+static const char* const BAND_DITHER_NAMES[GFX_DITHER_MODE_COUNT] = {
+    "NONE", "CELL CHECKER", "CELL BAYER2", "PIXEL CHECKER2", "PIXEL BAYER4",
+};
+static const sand_options_t BAND_OPTIONS = {
+    .quality = BAND_QUALITY_NORMAL,
+    .color = SAND_COLOUR_16,
+    .dither = GFX_DITHER_CELL_BAYER2,
+};
+
+static void
+paint_options_band(int row0, int row1, gfx_color_t* target) {
+    (void)target;
+    gfx_fill_rect(0, row0, GFX_WIDTH, row1 - row0, gfx_rgb(OPTIONS_BACKGROUND));
+    ui_replay_band(row0, row1);
+}
+
+static void
+options_band_frame(const input_t* input, const sand_menu_t* menu, const options_screen_labels_t* labels) {
+    ui_begin(input);
+    options_screen_draw(ui_context(), menu, BAND_OPTIONS, labels);
+    ui_end_for_bands(OPTIONS_BACKGROUND);
+    gfx_invalidate();
+    gfx_band_run(paint_options_band, NULL);
+}
+
+/* Setup temporaries must leave the stack before the drawing call chain. */
+static __attribute__((noinline)) void
+prepare_options_band_case(bool open) {
+    fixture();
+    ui_set_transform(ui_transform_quarter_turn(0, GFX_WIDTH, GFX_HEIGHT));
+    band_options_fixture_t* const f = band_options_fixture;
+    options_screen_layout(ui_width(), ui_height(), &f->layout);
+    f->contact =
+        transformed_contact(f->layout.dither.x + f->layout.dither.w / 2, f->layout.dither.y + f->layout.dither.h / 2);
+    f->warmup[0] = &f->idle;
+    f->warmup[1] = &f->idle;
+    f->warmup[2] = open ? &f->contact.press : &f->idle;
+    f->warmup[3] = open ? &f->contact.hold : &f->idle;
+    f->warmup[4] = open ? &f->contact.release : &f->idle;
+}
+
+static void
+measure_options_band_case(bool open, const char* name) {
+    prepare_options_band_case(open);
+    band_options_fixture_t* const f = band_options_fixture;
+    allocate_band_samples();
+    for (size_t i = 0; i < BAND_OPTIONS_WARMUP_FRAMES; i++) {
+        gfx_present_begin();
+        gfx_present_wait();
+        ui_clear_band_overlay();
+        options_band_frame(f->warmup[i], &f->menu, &f->labels);
+    }
+    TEST_ASSERT_EQUAL_INT(open ? 2 : 1, ui_context()->root_list.idx);
+    for (int frame = 0; frame < MENU_FRAMES; frame++) {
+        gfx_present_begin();
+        gfx_present_wait();
+        ui_clear_band_overlay();
+        const int64_t began_us = timing_now_us();
+        options_band_frame(&f->idle, &f->menu, &f->labels);
+        sample_band_frame(frame, began_us);
+    }
+    report_band_case(name, band_samples);
+    memory_free(band_samples);
+    band_samples = NULL;
+}
+
+static void
+test_options_band_frame_cost(void) {
+#ifndef DEVICE_BUILD
+    TEST_ASSERT_TRUE(gfx_init());
+#endif
+    suite_set_test_cleanup(restore_menu_band_fixture);
+    band_icons_owned = !sand_icon_set.loaded;
+    TEST_ASSERT_TRUE(ui_icon_set_load(&sand_icon_set));
+    TEST_ASSERT_EQUAL(GFX_LAYOUT_BANDS, gfx_mode_enter(&BAND_MODE_REQUEST)->layout);
+    band_swatches = memory_alloc(SAND_COLOUR_MODE_COUNT * sizeof *band_swatches, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(band_swatches);
+    sand_mode_swatches(sand_dither_none_lut, sand_palette256_lut, GFX_INDEXED_PALETTE_SIZE, SAND_PALETTE_UI_ENTRIES,
+                       band_swatches);
+    band_options_fixture = memory_alloc(sizeof *band_options_fixture, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(band_options_fixture);
+    memset(band_options_fixture, 0, sizeof *band_options_fixture);
+    band_options_fixture->menu = (sand_menu_t){.screen = SAND_MENU_OPTIONS, .draft = BAND_OPTIONS};
+    band_options_fixture->labels = (options_screen_labels_t){
+        .quality_names = BAND_QUALITY_NAMES,
+        .quality_count = sizeof BAND_QUALITY_NAMES / sizeof BAND_QUALITY_NAMES[0],
+        .dither_names = BAND_DITHER_NAMES,
+        .dither_count = GFX_DITHER_MODE_COUNT,
+        .mode_swatches = band_swatches,
+    };
+    measure_options_band_case(false, "sand_options_closed");
+    measure_options_band_case(true, "sand_options_dither_open");
+    restore_menu_band_fixture();
+    suite_clear_test_cleanup();
+}

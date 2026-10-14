@@ -6,10 +6,9 @@
 # it out of the build directory.
 #
 # Usage:
-#   scripts/device/flash_image.sh IMAGE_DIR [IDF_EXPORT]
+#   scripts/device/flash_image.sh IMAGE_DIR
 #
 #   IMAGE_DIR      a snapshot: flash_args, every file it lists, build_id.txt.
-#   IDF_EXPORT     ESP-IDF's export script, as for build.sh.
 #
 # esptool writes the snapshot directly, never `idf.py flash`, whose target
 # rebuilds first and writes whatever the build directory holds by then.
@@ -24,15 +23,12 @@
 set -euo pipefail
 
 IMAGE_DIR=""
-IDF_EXPORT_ARG=""
 while [ $# -gt 0 ]; do
     case "$1" in
         -*) echo "unknown option: $1" >&2; exit 2 ;;
         *)
             if [ -z "$IMAGE_DIR" ]; then
                 IMAGE_DIR=$1
-            elif [ -z "$IDF_EXPORT_ARG" ]; then
-                IDF_EXPORT_ARG=$1
             else
                 echo "too many positional arguments" >&2
                 exit 2
@@ -70,7 +66,7 @@ COM_PORT=$("$PYTHON" "$SCRIPT_DIR/device.py" --board "$_AUTANA_BOARD" resolve-po
 
 # shellcheck source=../../launcher/tools/build/idf.sh
 . "$LAUNCHER_DIR/tools/build/idf.sh"
-idf_init "$LAUNCHER_DIR" "$IDF_EXPORT_ARG" "$LAUNCHER_DIR/tools/build" || exit 2
+idf_init "$LAUNCHER_DIR" "$LAUNCHER_DIR/tools/build" || exit 2
 
 BUILD_ID=$(tr -d '\r\n' < "$IMAGE_DIR/build_id.txt")
 echo "=== Writing $BUILD_ID to $COM_PORT ==="

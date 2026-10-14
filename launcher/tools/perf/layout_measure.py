@@ -14,6 +14,8 @@ from seed_statistics import t_quantile
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "scripts/lib"))
+sys.path.insert(0, str(REPO / "launcher/tools/render"))
+from doc_tables import table_rows  # noqa: E402
 from process_tree import stop_process_tree, launch_process_tree, close_process_tree  # noqa: E402
 from device_capture import RESULT_RE, BUILD_ID_RE as BUILD_LINE  # noqa: E402
 
@@ -24,14 +26,9 @@ def cell(text):
 
 
 def parse_markdown(text):
-    lines = text.splitlines()
     collected = {}
-    for index in range(len(lines) - 2):
-        if not (lines[index].startswith("|") and lines[index + 1].startswith("|")):
-            continue
-        headers = [cell(part) for part in lines[index].strip("|").split("|")]
-        if not all(re.fullmatch(r"\s*:?-{3,}:?\s*", part) for part in lines[index + 1].strip("|").split("|")):
-            continue
+    for _, headings, cells in table_rows(text):
+        headers = [cell(part) for part in headings]
         lowered = [header.lower() for header in headers]
         if not any(name in lowered[0] for name in ("test", "name", "scenario", "run", "mesh")):
             continue
@@ -41,15 +38,10 @@ def parse_markdown(text):
             value_index = 1
         if value_index is None:
             continue
-        rows = {}
-        for line in lines[index + 2:]:
-            if not line.startswith("|"):
-                break
-            parts = [cell(part) for part in line.strip("|").split("|")]
-            if len(parts) <= value_index or not NUMBER_RE.fullmatch(parts[value_index]):
-                continue
-            rows[parts[0]] = int(parts[value_index])
-        collected.update(rows)
+        parts = [cell(part) for part in cells]
+        if len(parts) <= value_index or not NUMBER_RE.fullmatch(parts[value_index]):
+            continue
+        collected[parts[0]] = int(parts[value_index])
     return collected
 
 

@@ -157,7 +157,7 @@ class InputContractTests(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
-        self.root = Path(directory.name)
+        self.root = Path(directory.name).resolve()
 
     def test_named_files_all_bases_tracked_only_and_single_line(self):
         tools = self.root / 'launcher/tools'
@@ -187,11 +187,23 @@ class InputContractTests(unittest.TestCase):
         self.assertEqual(outputs[0], outputs[1])
         self.assertEqual(outputs[0]['host flags'], '-I include -O1')
         for listing, message in [('host.o: host.c\n', 'no flags'),
-                                  (f'flags -O1\nhost.o: {self.root}/outside.c\n', 'outside')]:
+                                  (f'flags -O1\nhost.o: {self.root}/outside.c\n', 'outside'),
+                                  ('flags -O1\nhost.o: ../outside.c\n', 'outside')]:
             with mock.patch.object(stages, 'ROOT', root), mock.patch.object(
                     stages.subprocess, 'run', return_value=NS(stdout=listing)):
                 with self.assertRaisesRegex(ValueError, message):
                     stages.host_inputs(root / 'scene')
+
+    def test_host_escaped_space_dependency_is_hashed_under_real_name(self):
+        header = self.root / 'my dir/host.h'
+        header.parent.mkdir()
+        header.write_text('#define VALUE 1\n')
+        listing = 'flags -O1\nhost.o: my\\ dir/host.h\n'
+        with mock.patch.object(stages, 'ROOT', self.root), mock.patch.object(
+                stages.subprocess, 'run', return_value=NS(stdout=listing)):
+            self.assertEqual(stages.host_inputs(self.root / 'scene'),
+                             {'host flags': '-O1',
+                              'host my dir/host.h': stages.content_checksum(header).decode()})
 
     def test_host_header_bytes_move_fingerprint_with_same_listing(self):
         header = self.root / 'host.h'
@@ -347,7 +359,7 @@ class RecordedInputsTests(unittest.TestCase):
         names = []
         for step in steps[gate + 1:]:
             self.assertIn("steps.gate.outputs.render == 'true'", step.get('if', ''))
-            if step.get('uses') == 'actions/upload-artifact@v4':
+            if step.get('uses', '').startswith('actions/upload-artifact@'):
                 names.append(step['with']['name'])
         self.assertCountEqual(names, [prefix + '${{ needs.fingerprint.outputs.fingerprint }}'
                                       for prefix in records.RECORD_PREFIXES])

@@ -1,4 +1,5 @@
 #pragma once
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "soc/gpio_struct.h"
@@ -11,4 +12,4 @@ void gpio_ll_output_disable(gpio_dev_t* hw, uint32_t gpio_num);
 void gpio_ll_input_enable(gpio_dev_t* hw, uint32_t gpio_num);
 void gpio_ll_set_level(gpio_dev_t* hw, uint32_t gpio_num, uint32_t level);
 int gpio_ll_get_level(gpio_dev_t* hw, uint32_t gpio_num);
-void gpio_ll_matrix_out_default(gpio_dev_t* hw, uint32_t gpio_num);
+void gpio_ll_set_output_signal_matrix_source(gpio_dev_t* hw, uint32_t gpio_num, uint32_t signal_idx, bool out_inv);

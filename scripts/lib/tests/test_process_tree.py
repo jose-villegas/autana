@@ -4,6 +4,7 @@ import io
 import os
 from pathlib import Path
 import sys
+import subprocess
 import unittest
 from unittest.mock import Mock, patch
 
@@ -12,6 +13,33 @@ import process_tree
 
 
 class ProcessTreeTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux parent death signal")
+    def test_parent_resolves_prctl_before_child_calls_it(self):
+        import ctypes
+        kernel = Mock()
+        kernel.prctl.return_value = 0
+        with patch.object(ctypes, 'CDLL', return_value=kernel) as loaded:
+            bind = process_tree.bind_parent_lifetime(os.getpid())
+            loaded.assert_called_once()
+            kernel.prctl.assert_not_called()
+        with patch.object(process_tree.os, 'getppid', return_value=os.getpid()):
+            bind()
+        kernel.prctl.assert_called_once_with(process_tree.PR_SET_PDEATHSIG,
+                                             process_tree.signal.SIGKILL, 0, 0, 0)
+
+    @unittest.skipUnless(sys.platform.startswith("linux"), "Linux parent death signal")
+    def test_changed_parent_kills_child_before_command_runs(self):
+        for parent_pid in (os.getpid(), os.getppid()):
+            with self.subTest(parent_pid=parent_pid):
+                child = subprocess.Popen([sys.executable, "-c", "print('command ran')"],
+                                         preexec_fn=process_tree.bind_parent_lifetime(parent_pid),
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                self.addCleanup(lambda p=child: (p.kill(), p.wait()) if p.poll() is None else None)
+                stdout, stderr = child.communicate(timeout=10)
+                self.assertEqual(child.returncode, 0 if parent_pid == os.getpid()
+                                 else -process_tree.signal.SIGKILL, stderr)
+                self.assertEqual(stdout, "command ran\n" if parent_pid == os.getpid() else "")
+
     @unittest.skipUnless(os.name == 'nt', 'Windows job assignment')
     def test_job_failure_degrades_and_assignment_precedes_resume(self):
         import ctypes

@@ -74,10 +74,17 @@ class RefreshBranchTests(unittest.TestCase):
         main = git("rev-parse", "main", cwd=self.remote).strip()
         self.assertEqual(git("rev-parse", "refresh~1", cwd=self.remote).strip(), main)
 
+    def test_files_alone_need_no_tables(self):
+        write(self.run / "launcher/idf-pin.json", "{}\n")
+        self.assertTrue(refresh_branch.refresh(self.run, "refresh", "refresh", None, ["launcher/idf-pin.json"]))
+        self.assertEqual(self.branch_file("launcher/idf-pin.json"), "{}\n")
+        self.assertIn("The table moved.", self.branch_file("docs/old.md"))
+
     def test_nothing_is_pushed_when_main_already_matches_the_run(self):
         write(self.tables / "t.md", TABLE.format(1))
         self.assertFalse(self.refresh(images=()))
         self.assertEqual(git("branch", "--list", "refresh", cwd=self.remote), "")
+
 
 
 if __name__ == "__main__":

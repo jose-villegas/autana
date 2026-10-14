@@ -73,7 +73,7 @@ watching_this_task(void) {
 }
 
 /* Heap hooks and their callees must remain callable while flash cache is disabled.
- * IRAM budget: 129 B */
+ * IRAM budget: 130 B */
 static IRAM_ATTR void
 record(frame_watch_kind_t kind, uintptr_t site) {
     uint32_t index = __atomic_load_n(&pending_head, __ATOMIC_RELAXED);
@@ -107,7 +107,7 @@ record(frame_watch_kind_t kind, uintptr_t site) {
 #pragma GCC diagnostic ignored "-Wframe-address"
 
 /* Heap hooks and their callees must remain callable while flash cache is disabled.
- * IRAM budget: 378 B */
+ * IRAM budget: 419 B */
 static IRAM_ATTR __attribute__((noinline)) uintptr_t
 heap_call_site(void) {
     _Static_assert(CALLER_DEPTH_MAX == 6, "the walk below is unrolled to CALLER_DEPTH_MAX");
@@ -122,9 +122,9 @@ heap_call_site(void) {
 
 #pragma GCC diagnostic pop
 
-/* Heap hooks and their callees must remain callable while flash cache is disabled.
- * IRAM budget: 22 B */
-IRAM_ATTR void
+/* Heap hooks and their callees must remain callable while flash cache is disabled;
+ * IDF's declaration in esp_heap_caps.h places this one in IRAM. IRAM budget: 22 B */
+void
 esp_heap_trace_alloc_hook(void* ptr, size_t size, uint32_t caps) {
     (void)ptr;
     (void)size;
@@ -134,9 +134,9 @@ esp_heap_trace_alloc_hook(void* ptr, size_t size, uint32_t caps) {
     }
 }
 
-/* Heap hooks and their callees must remain callable while flash cache is disabled.
- * IRAM budget: 22 B */
-IRAM_ATTR void
+/* Heap hooks and their callees must remain callable while flash cache is disabled;
+ * IDF's declaration in esp_heap_caps.h places this one in IRAM. IRAM budget: 22 B */
+void
 esp_heap_trace_free_hook(void* ptr) {
     (void)ptr;
     if (watching_this_task()) {

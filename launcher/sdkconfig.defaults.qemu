@@ -16,9 +16,11 @@ CONFIG_BOOTLOADER_FLASH_DC_AWARE=n
 CONFIG_SPI_FLASH_HPM_DIS=y
 CONFIG_IDF_EXPERIMENTAL_FEATURES=n
 
-# QEMU exposes UART0 as its serial port, not the USB-Serial-JTAG console
-# the board uses.
+# QEMU exposes UART0 and no USB-Serial-JTAG PHY; the secondary USB
+# console's connection monitor waits for a BBPLL calibration QEMU does not
+# model.
 CONFIG_ESP_CONSOLE_UART_DEFAULT=y
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
 
 # No panel answers, so graphics presents to a null panel.
 CONFIG_LAUNCHER_QEMU=y

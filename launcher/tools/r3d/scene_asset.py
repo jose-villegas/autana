@@ -11,7 +11,6 @@ from asset.asset_pack import NAME_BYTES
 from build.c_header import read_define
 from r3d.import_settings import ANIM_WRAPS, SettingsError, color_fits, load_scene
 from r3d import skin_pack
-from bake import bake as bake_tools
 
 OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_internal.h"
 ANIM_OWNER = OWNER.parents[1] / "anim/anim_track.h"
@@ -24,10 +23,8 @@ AMBIENT_NONE = read_define(OWNER, "SCENE_AMBIENT_INTENSITY_NONE")
 TONEMAP_NONE = read_define(OWNER, "SCENE_TONEMAP_WHITE_NONE")
 DEFAULT_CLIP_NONE = read_define(OWNER, "SCENE_ASSET_DEFAULT_CLIP_NONE")
 WRAPS = {name: read_define(ANIM_OWNER, "ANIM_WRAP_" + name.upper()) for name in ANIM_WRAPS}
-SUFFIX = ".scene.toml"
 PARTS = ("names", "transforms", "renderers", "cameras", "lights", "skinned_renderers", "animators", "clips", "settings")
 HEADER = struct.Struct(f"<{1 + len(PARTS)}H{len(PARTS)}I")
-assert HEADER.size == read_define(OWNER, "SCENE_ASSET_HEADER_SIZE")
 U16_MAX = (1 << 16) - 1
 NAME = struct.Struct(f"<{NAME_BYTES}s")
 TRANSFORM = struct.Struct("<12f")
@@ -44,8 +41,12 @@ class SceneError(ValueError):
     """An authored scene or mapped row violates the scene format."""
 
 
-def scene_id(path):
-    return pathlib.Path(path).name.removesuffix(SUFFIX)
+def check_header(owner_size):
+    if HEADER.size != owner_size:
+        raise SceneError(f"scene header size {HEADER.size} differs from {owner_size} in {OWNER}")
+
+
+check_header(read_define(OWNER, "SCENE_ASSET_HEADER_SIZE"))
 
 
 def mesh_ids(scene):
@@ -62,7 +63,6 @@ def field(value, what):
 def encode(scene, cache=None, offline=False):
     """Encode authored rows; resolve skin and skeleton ids through the pack's rig owner."""
     objects = scene.objects
-    cache = cache or bake_tools.default_cache()
     index = {obj.name: i for i, obj in enumerate(objects)}
     rows = {part: [] for part in PARTS}
     rows["names"] = [(field(obj.name, "entity"),) for obj in objects]

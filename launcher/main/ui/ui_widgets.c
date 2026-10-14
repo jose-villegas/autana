@@ -97,7 +97,7 @@ begin_control(mu_Context* ctx, const char* id, mu_Rect r, bool enabled, bool sel
 
 int
 ui_icon_button_label_width(int button_w, bool has_icon, const ui_theme_t* theme) {
-    return button_w - 2 * BUTTON_PAD - (has_icon ? theme->icon_side + BUTTON_ICON_GAP : 0);
+    return button_w - (2 * BUTTON_PAD) - (has_icon ? theme->icon_side + BUTTON_ICON_GAP : 0);
 }
 
 /* The icon at the left and the label centred in `label_w` after it. */
@@ -155,10 +155,8 @@ ui_dropdown_list_rect(mu_Rect anchor, int count, int row_h, int canvas_h, int ma
     if (h <= room_above) {
         return mu_rect(anchor.x, anchor.y - LIST_GAP - h, anchor.w, h);
     }
-    if (room_below >= room_above) {
-        return mu_rect(anchor.x, below, anchor.w, room_below);
-    }
-    return mu_rect(anchor.x, margin, anchor.w, room_above);
+    const int room = canvas_h - (2 * margin);
+    return mu_rect(anchor.x, margin, anchor.w, h < room ? h : room);
 }
 
 int
@@ -198,6 +196,7 @@ static struct {
     mu_Container* list;
     int scroll;
     bool scroll_pending;
+    bool opening_touch;
     int close_in;
     int drawn_frame;
 } live;
@@ -245,12 +244,16 @@ draw_dropdown_list(mu_Context* ctx, const char* id, mu_Rect anchor, const ui_dro
             .selected = i == selected,
         };
         mu_layout_set_next(ctx, mu_rect(0, i * anchor.h, row_w, anchor.h), 1);
-        if (ui_icon_button(ctx, row_id, mu_layout_next(ctx), &row, theme)) {
+        if (ui_icon_button(ctx, row_id, mu_layout_next(ctx), &row, theme) && !live.opening_touch) {
             picked = i;
             live.close_in = UI_DROPDOWN_CLOSE_FRAMES;
         }
     }
     mu_end_window(ctx);
+    /* A deferred tap can deliver DOWN and UP together while the list opens over its anchor. */
+    if (!ctx->mouse_down) {
+        live.opening_touch = false;
+    }
     ctx->style->padding = saved_padding;
     return picked;
 }
@@ -305,6 +308,7 @@ ui_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const ui_dropdown_item_t
         live.scroll = ui_dropdown_list_scroll(selected, count, r.h, list.h);
         live.scroll_pending = true;
         live.close_in = 0;
+        live.opening_touch = true;
         live.drawn_frame = ctx->frame;
     }
     if (!ui_dropdown_is_open(ctx, id)) {
@@ -317,8 +321,8 @@ mu_Rect
 ui_tile_icon_rect(mu_Rect r, const ui_theme_t* theme) {
     const int label_h = gfx_font_height(gfx_font_ui(), theme->text_scale);
     int side = r.h - 2 * TILE_PAD - label_h - TILE_LABEL_GAP;
-    if (side > r.w - 2 * TILE_PAD) {
-        side = r.w - 2 * TILE_PAD;
+    if (side > r.w - (2 * TILE_PAD)) {
+        side = r.w - (2 * TILE_PAD);
     }
     return mu_rect(r.x + (r.w - side) / 2, r.y + TILE_PAD, side, side);
 }

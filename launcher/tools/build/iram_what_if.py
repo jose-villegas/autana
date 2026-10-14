@@ -10,45 +10,54 @@ from pathlib import Path
 import re
 import shutil
 import subprocess
-from memory_map import ROOT, DOC, read_build, VARIANTS, build_variant
-from generated_blocks import replace_block
-from doc_tables import markdown
+from memory_map import ROOT, read_build, VARIANTS, MAIN_VARIANT, build_variant, iram_bytes, dram_bytes
+from generated_blocks import replace_block, block_owners, block_body
+from doc_tables import markdown, parse_table, collapsed
+import svg_bars
+from byte_sizes import total_label
+from svg_bars import OURS_FILL
 from scratch import scratch_tree
 from code_layout import LayoutError
+from build_paths import prepare
 
 WHAT_IF_BLOCK = "internal-memory-what-if"
+CHART_PATH = "docs/memory/images/iram-what-if.svg"
 WHAT_IF_COMMAND = "python launcher/tools/build/iram_what_if.py launcher/build launcher/build.dev launcher/build.diag --work launcher/build/iram-what-if --jobs 6 --write"
 DEFAULT_JOBS = 2
 OPTIONS = {
-    "ringbuf-to-flash": {"variants": VARIANTS, "config": {"CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH": "y", "CONFIG_RINGBUF_PLACE_ISR_FUNCTIONS_INTO_FLASH": "y"}},
-    "silent-assertions": {"variants": ("release",), "config": {"CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_ENABLE": "n", "CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT": "y", "CONFIG_COMPILER_OPTIMIZATION_CHECKS_SILENT": "y"}},
-    "unused-flash-chips": {"variants": ("release",), "config": {"CONFIG_SPI_FLASH_SUPPORT_" + vendor + "_CHIP": "n" for vendor in ("ISSI", "MXIC", "GD", "WINBOND", "BOYA", "TH", "MXIC_OPI")}},
-    "encrypted-read-write": {"variants": ("release",), "config": {"CONFIG_SPI_FLASH_ENABLE_ENCRYPTED_READ_WRITE": "n"}},
-    "libc-locks": {"variants": ("release",), "config": {"CONFIG_LIBC_LOCKS_PLACE_IN_IRAM": "n"}},
-    "i2c-isr": {"variants": ("release",), "config": {"CONFIG_I2C_MASTER_ISR_HANDLER_IN_IRAM": "n"}},
+    # ESP-IDF 6.1 keeps ring-buffer code in flash unless RINGBUF_IN_IRAM; only the ISR functions remain.
+    "ringbuf-to-flash": {"variants": VARIANTS, "config": {"CONFIG_RINGBUF_PLACE_ISR_FUNCTIONS_INTO_FLASH": "y"}},
+    "silent-assertions": {"variants": (MAIN_VARIANT,), "config": {"CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_ENABLE": "n", "CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_SILENT": "y", "CONFIG_COMPILER_OPTIMIZATION_CHECKS_SILENT": "y"}},
+    "unused-flash-chips": {"variants": (MAIN_VARIANT,), "config": {"CONFIG_SPI_FLASH_SUPPORT_" + vendor + "_CHIP": "n" for vendor in ("ISSI", "MXIC", "GD", "WINBOND", "BOYA", "TH", "MXIC_OPI")}},
+    "encrypted-read-write": {"variants": (MAIN_VARIANT,), "config": {"CONFIG_SPI_FLASH_ENABLE_ENCRYPTED_READ_WRITE": "n"}},
+    "libc-locks": {"variants": (MAIN_VARIANT,), "config": {"CONFIG_LIBC_LOCKS_PLACE_IN_IRAM": "n"}},
+    "i2c-isr": {"variants": (MAIN_VARIANT,), "config": {"CONFIG_I2C_MASTER_ISR_HANDLER_IN_IRAM": "n"}},
     "dynamic-log-level": {"variants": VARIANTS, "config": {"CONFIG_LOG_TAG_LEVEL_IMPL_NONE": "y", "CONFIG_LOG_DYNAMIC_LEVEL_CONTROL": "n"}},
     "heap-to-flash": {"variants": VARIANTS, "config": {"CONFIG_SPI_MASTER_IN_IRAM": "n", "CONFIG_SPI_MASTER_ISR_IN_IRAM": "n", "CONFIG_HEAP_PLACE_FUNCTION_INTO_FLASH": "y"}},
     "noflash-text": {"variants": VARIANTS, "config": {}},
-    "gpspi-flash-hal": {"variants": ("release",), "config": {}},
-    "freertos-non-isr": {"variants": VARIANTS, "config": {}},
+    "gpspi-flash-hal": {"variants": (MAIN_VARIANT,), "config": {}},
+    "freertos-non-isr": {"variants": VARIANTS, "config": {"CONFIG_FREERTOS_IN_IRAM": "n"}},
 }
+# The FreeRTOS queue calls every present waits on; freertos-non-isr keeps them in IRAM.
+PRESENT_QUEUE_CALLS = ("xQueueGenericSend", "xQueueReceive", "xQueueSemaphoreTake")
+
 
 def scratch_fragment(name, original, idf, baseline):
     if name == "noflash-text":
         return original.replace("(noflash)", "(noflash_text)")
     if name == "gpspi-flash-hal":
-        symbols = sorted({item.symbol for item in baseline["inputs"]
-                          if item.archive == "libhal.a" and item.object.startswith("spi_flash_hal_gpspi")})
-        return original + "\n[mapping:memory_probe]\narchive: libhal.a\nentries:\n" + "\n".join(
-            f"    spi_flash_hal_gpspi:{symbol} (default)" for symbol in symbols) + "\n"
+        # The archive comes from the build: the HAL moved between archives across IDF versions.
+        placed = sorted({(item.archive, item.symbol) for item in baseline["inputs"]
+                         if item.object.startswith("spi_flash_hal_gpspi")})
+        return original + "".join(
+            f"\n[mapping:memory_probe_{index}]\narchive: {archive}\nentries:\n" + "\n".join(
+                f"    spi_flash_hal_gpspi:{symbol} (default)" for name, symbol in placed if name == archive) + "\n"
+            for index, archive in enumerate(sorted({archive for archive, _ in placed})))
     if name == "freertos-non-isr":
-        text = (idf / "components/freertos/linker.lf").read_text(encoding="utf-8")
-        start = text.index("if FREERTOS_PLACE_FUNCTIONS_INTO_FLASH = y:")
-        selections = sorted(set(re.findall(r"^\s*(\w+)\s*:\s*(\w+)\s+\(default\)", text[start:], re.M)))
-        # Queue APIs are in the measured present path; ISR APIs must retain cache-off reachability.
-        keep = {"xQueueGenericSend", "xQueueReceive", "xQueueSemaphoreTake", "xQueueGiveFromISR", "xQueueGenericSendFromISR", "xQueueReceiveFromISR"}
-        entries = [f"    {obj}:{symbol} (default)" for obj, symbol in selections if "FromISR" not in symbol and symbol not in keep and not obj.startswith("port")]
-        return original + "\n[mapping:memory_probe]\narchive: libfreertos.a\nentries:\n" + "\n".join(entries) + "\n"
+        # FREERTOS_IN_IRAM=n is IDF's own split: non-ISR FreeRTOS to flash, FromISR and
+        # context-switch code in IRAM. The queue calls a present waits on stay in IRAM here.
+        return original + "\n[mapping:memory_probe]\narchive: libfreertos.a\nentries:\n" + "\n".join(
+            f"    queue:{symbol} (noflash_text)" for symbol in PRESENT_QUEUE_CALLS) + "\n"
     return original
 
 
@@ -66,22 +75,18 @@ def result_row(name, baseline, measured):
     wrong = [key for key, value in values.items() if measured["config"].get(key, "n") != value]
     if wrong:
         return name, "config rejected", "not measured", "not measured", ", ".join(wrong)
-    def bytes_in(build, prefix):
-        return sum(size for section, (_, size) in build["sections"].items() if section.startswith(prefix)
-                   and section not in {".dram0.dummy", ".iram0.text_end"})
     change = {"noflash-text": "our `(noflash)` entries become `(noflash_text)`",
-              "gpspi-flash-hal": "libhal `spi_flash_hal_gpspi*` to flash",
-              "freertos-non-isr": "IDF's flash-placement selections, except FromISR, port and present-path queue calls"}
-    return (name, bytes_in(baseline, ".iram") - bytes_in(measured, ".iram"),
-            bytes_in(baseline, ".dram") - bytes_in(measured, ".dram"),
+              "gpspi-flash-hal": "the flash HAL's `spi_flash_hal_gpspi*` to flash",
+              "freertos-non-isr": "CONFIG_FREERTOS_IN_IRAM=n (IDF's split) with present-path queue calls kept in IRAM; SPI_MASTER_IN_IRAM depends on it and drops too"}
+    return (name, iram_bytes(baseline["sections"]) - iram_bytes(measured["sections"]),
+            dram_bytes(baseline["sections"]) - dram_bytes(measured["sections"]),
             measured["constants"]["_heap_start"] - baseline["constants"]["_heap_start"],
             change.get(name, ", ".join(f"{k}={v}" for k, v in values.items())))
 
 
 def what_if(template, directory, project, selected=None, before_build=None, jobs=DEFAULT_JOBS):
     launcher = project / "launcher"
-    build = launcher / "build.memory"
-    build.mkdir(exist_ok=True)
+    build = prepare(launcher, "build.memory")
     config = build / "sdkconfig"
     original_config = (template["build"] / "sdkconfig").read_text(encoding="utf-8")
     original_lf = (launcher / "main/linker.lf").read_text(encoding="utf-8")
@@ -102,7 +107,7 @@ def what_if(template, directory, project, selected=None, before_build=None, jobs
             print(f"scratch build: {name or 'baseline'} -> {log}", flush=True)
             if before_build:
                 subprocess.run(before_build, check=True)
-            command = ['bash', '-c', '. "$1"; idf_init "$2" "" "$3" || exit; idf -B "$4" -D "SDKCONFIG=$5" reconfigure && idf_in "$2" ninja -j "$6" -C "$4" launcher.elf && sh "$3/write_build_id.sh" "$4" "$7"',
+            command = ['bash', '-c', '. "$1"; idf_init "$2" "$3" || exit; idf -B "$4" -D "SDKCONFIG=$5" reconfigure && idf_in "$2" ninja -j "$6" -C "$4" launcher.elf && sh "$3/write_build_id.sh" "$4" "$7"',
                        'memory-map', str(ROOT / 'launcher/tools/build/idf.sh'), str(launcher.resolve()),
                        str(ROOT / 'launcher/tools/build'), str(build.resolve()), str(config.resolve()), str(jobs), variant]
             environment = dict(os.environ, IDF_PATH=str(idf))
@@ -136,27 +141,90 @@ def experiments(variant, selected=None):
 
 
 def render_results(baselines, rows):
-    legend = "; ".join(f"{b['build_id']} (IDF {b['idf_commit'][:12]})" for b in baselines)
-    return f"> Generated by: `{WHAT_IF_COMMAND}`\n\nBytes are deltas against a fresh baseline build of each variant, made from a snapshot of the tracked tree on the IDF commit named below; that commit can differ from launcher/idf-pin.json, and CI does not refresh this table. Latency and cache-off safety are not board-measured. Positive IRAM/DRAM deltas are bytes freed. Heap-start delta is negative when the heap grows. Each row is isolated; savings are not additive.\n\nBaseline builds: {legend}\n\n" + markdown(["Variant", "Experiment", "IRAM freed B", "DRAM freed B", "Heap-start delta B", "Change"], rows)
+    legend = "; ".join(f"{b['build_id']} (IDF {b['idf_commit'][:12]}, IRAM {iram_bytes(b['sections'])} B)"
+                       for b in baselines)
+    return f"> Generated by: `{WHAT_IF_COMMAND}`\n\nBytes are deltas against a fresh baseline build of each variant, made from a snapshot of the tracked tree on the IDF commit named below; that commit can differ from launcher/idf-pin.json, and CI does not refresh this table. Latency and cache-off safety are not board-measured. Positive IRAM/DRAM deltas are bytes freed. Heap-start delta is negative when the heap grows. Each row is isolated; savings are not additive.\n\nBaseline builds: {legend}\n\n" + collapsed("Isolated experiment measurements", markdown(["Variant", "Experiment", "IRAM freed B", "DRAM freed B", "Heap-start delta B", "Change"], rows))
+
+
+def chart(body):
+    _, table = parse_table(body, "Experiment", ("Variant", "IRAM freed B", "Heap-start delta B"))
+    ceiling = re.search(rf"\S+-{MAIN_VARIANT} \(IDF [^,]+, IRAM (\d+) B\)", body)
+    if ceiling is None:
+        raise ValueError(f"Baseline builds: no {MAIN_VARIANT} IRAM total")
+    iram = int(ceiling.group(1))
+    experiments_by_name = {}
+    for row in table:
+        key = (row["Experiment"], row["Variant"])
+        if key in experiments_by_name:
+            raise ValueError(f"duplicate experiment: {key}")
+        experiments_by_name[key] = row
+    selected = [row for row in table if row["Variant"] == MAIN_VARIANT or (row["Experiment"], MAIN_VARIANT) not in experiments_by_name]
+    def freed_bytes(row):
+        value = row["IRAM freed B"]
+        return int(value) if value not in {"config rejected", "build failed"} else 0
+
+    selected.sort(key=lambda row: (-max(0, freed_bytes(row)), row["Experiment"], row["Variant"]))
+    if not selected:
+        raise ValueError("Experiment: no measured rows")
+    rows = []
+    for row in selected:
+        name, variant = row["Experiment"], row["Variant"]
+        freed = freed_bytes(row)
+        measured = row["IRAM freed B"] not in {"config rejected", "build failed"}
+        if measured:
+            heap = -int(row["Heap-start delta B"])
+            end = f"IRAM grew {-freed} B; heap {heap:+d} B" if freed < 0 else f"{freed} B, {freed / iram:.1%}; heap {heap:+d} B"
+        else:
+            end = row["IRAM freed B"]
+        extra = []
+        if variant == MAIN_VARIANT:
+            for other in VARIANTS[1:]:
+                measured = experiments_by_name.get((name, other))
+                if measured and (measured['IRAM freed B'], measured['Heap-start delta B']) != (row['IRAM freed B'], row['Heap-start delta B']):
+                    suffix = f"{other} {measured['IRAM freed B']}"
+                    if measured['Heap-start delta B'] != row['Heap-start delta B'] and measured['Heap-start delta B'] != 'not measured':
+                        suffix += f" (heap {-int(measured['Heap-start delta B']):+d} B)"
+                    extra.append(suffix)
+        label = name if variant == MAIN_VARIANT else f"{name} ({variant})"
+        rows.append((label, [(name, freed, OURS_FILL)] if freed > 0 else [], end, ", ".join(extra)))
+    return svg_bars.bars(chart_command(),
+                         "IRAM freed per experiment", f"Share of {MAIN_VARIANT} IRAM, {total_label(iram)}; {MAIN_VARIANT} unless marked; each experiment isolated, savings are not additive", rows,
+                         max(1, max(freed_bytes(row) for row in selected)), ("Heap gained is the negated heap-start delta. Latency and cache-off safety are not board-measured.",))
+
+
+def chart_command():
+    return f"python launcher/tools/build/iram_what_if.py --chart {CHART_PATH}"
+
+
+def write_chart(body, output):
+    svg_bars.write(output, chart(body))
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("builds", nargs="+", type=Path)
-    parser.add_argument("--work", required=True, type=Path)
+    parser.add_argument("builds", nargs="*", type=Path)
+    parser.add_argument("--work", type=Path)
+    parser.add_argument("--root", type=Path, default=ROOT)
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--chart", type=Path)
     parser.add_argument("--experiment", action="append", choices=OPTIONS)
     parser.add_argument("--before-build", nargs="+")
-    parser.add_argument("--write", action="store_true")
+    modes.add_argument("--write", action="store_true")
     parser.add_argument("--jobs", type=int, default=DEFAULT_JOBS)
     args = parser.parse_args()
     if args.jobs < 1:
         parser.error("--jobs must be positive")
     try:
+        if args.chart:
+            write_chart(block_body(args.root, WHAT_IF_BLOCK), args.chart)
+            return 0
+        if not args.builds or args.work is None:
+            parser.error("builds and --work required unless --chart")
         builds = [dict(build=build, metadata=json.loads((build / "project_description.json").read_text(encoding="utf-8")),
                        variant=build_variant(build)[1]) for build in args.builds]
         (args.work / (WHAT_IF_BLOCK + ".md")).unlink(missing_ok=True)
-        project = scratch_tree(args.work, ROOT, fresh=True)
-        shutil.copytree(ROOT / "launcher/managed_components", project / "launcher/managed_components", dirs_exist_ok=True)
+        project = scratch_tree(args.work, args.root, fresh=True)
+        shutil.copytree(args.root / "launcher/managed_components", project / "launcher/managed_components", dirs_exist_ok=True)
         baselines, rows = [], []
         for build in builds:
             baseline, measured = what_if(build, args.work, project, args.experiment, args.before_build, args.jobs)
@@ -165,7 +233,9 @@ def main():
         body = render_results(baselines, rows)
         (args.work / (WHAT_IF_BLOCK + ".md")).write_text(body, encoding="utf-8")
         if args.write:
-            replace_block(DOC, WHAT_IF_BLOCK, body)
+            svg = chart(body)
+            replace_block(args.root / block_owners(args.root)[WHAT_IF_BLOCK], WHAT_IF_BLOCK, body)
+            svg_bars.write(args.root / CHART_PATH, svg)
         return 0
     except (ValueError, OSError, LayoutError, subprocess.SubprocessError) as error:
         print(f"FAIL IRAM what-if: {error}")

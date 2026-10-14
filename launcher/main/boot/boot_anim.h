@@ -26,8 +26,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "anim/anim_track.h"
 #include "anim/anim_transform.h"
+#include "anim/playback/anim_playhead.h"
 #include "anim/tween.h"
 #include "boot/boot_anim_curve.h"
 #include "boot/boot_anim_timeline.h"
@@ -86,7 +86,10 @@ typedef struct {
 
 static inline boot_anim_timeline_state_t
 boot_anim_timeline_sample(const boot_anim_motion_t* motion, uint32_t now_ms) {
-    const float seconds = anim_clip_seconds(&motion->clip, now_ms, ANIM_CLAMP);
+    anim_playhead_t playhead;
+    anim_playhead_init(&playhead, ANIM_CLAMP);
+    anim_playhead_advance(&playhead, &motion->clip, now_ms);
+    const float seconds = anim_playhead_seconds(&playhead);
     boot_anim_timeline_state_t st;
     st.camera = anim_transform_sample(&motion->camera, seconds);
     st.space = anim_transform_sample(&motion->space, seconds);

@@ -22,6 +22,10 @@ import shutil
 
 class MemoryMapTests(unittest.TestCase):
     def setUp(self):
+        capture = Path(__file__).parent / 'fixtures/runtime-heap.txt'
+        patcher = patch.object(memory, 'read_runtime_heap', return_value=memory.parse_runtime_heap(capture.read_text()))
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
@@ -52,6 +56,177 @@ class MemoryMapTests(unittest.TestCase):
     def test_attribute_alias(self):
         found = self.source("#define HOT_CODE IRAM_ATTR\n/* Cache-off caller. IRAM budget: 4 B */\nstatic void HOT_CODE foo(void) {}")
         self.assertEqual(found[0].entries, [("foo", "foo")])
+
+    def test_attribute_alias_define_site(self):
+        sites = self.source("/* Cache latency. IRAM budget: release 8 B, dev 12 B, diag 12 B */\n#define HOT_CODE IRAM_ATTR\nstatic void HOT_CODE foo(void) {}\nstatic void HOT_CODE bar(void) {}")
+        self.assertEqual(len(sites), 1)
+        self.assertEqual(sites[0].line, 2)
+        self.assertEqual(sites[0].entries, [("foo", "foo"), ("foo", "bar")])
+        build = dict(build=self.root, owned=memory.components(self.root), config={})
+        for alive, expected in (({(self.root / "launcher/main/foo.c", 3)}, True), (set(), False)):
+            with patch.object(memory, "preprocessed_lines", return_value=alive):
+                placements, active = memory.build_sites(self.root, build)
+                self.assertEqual(active(placements[0]), expected)
+        for variant, size in (("release", 4), ("dev", 6), ("diag", 6)):
+            self.assertEqual(self.check(sites, [memory.Input("libmain.a", "foo.c.obj", name, size)
+                                              for name in ("foo", "bar")], variant=variant)[0][1], size * 2)
+
+    def test_clone_attributed_to_base_site(self):
+        sites = self.source("/* Cache latency. IRAM budget: 4 B */\nstatic void IRAM_ATTR foo(void) {}")
+        for suffix in ("$isra$0", "$constprop$0", "$part$0", "$cold", "$constprop$0$isra$0",
+                       ".isra.0", ".constprop.0", ".part.0", ".cold", ".constprop.0.isra.0"):
+            with self.subTest(suffix=suffix):
+                report = self.check(sites, [memory.Input("libmain.a", "foo.c.obj", "foo" + suffix, 4)])
+                self.assertEqual(report[0][1:], (4, ["foo" + suffix]))
+                with self.assertRaisesRegex(ValueError, "no site"):
+                    self.check(sites, [memory.Input("libmain.a", "other.c.obj", "foo" + suffix, 4)])
+
+        sites = self.source("/* Cache latency. IRAM budget: 8 B */\nstatic void IRAM_ATTR foo(void) {}")
+        text = ".iram0.text 0x40380000 0x8\n .iram1.0.literal 0x40380000 0x4 main/libmain.a(foo.c.obj)\n .iram1.0 0x40380004 0x4 main/libmain.a(foo.c.obj)\n"
+        inputs, _, _ = memory.map_inputs(text, {0x40380004: ("foo", 2), 0x40380006: ("foo$part$0", 2)})
+        self.assertEqual(self.check(sites, inputs)[0][1], 8)
+
+    def fragment_build(self, mappings, batch=False):
+        fragment = self.root / "linker fragment.lf"
+        fragment.write_text(json.dumps(mappings), encoding="utf-8")
+        package = self.root / "tools/ldgen/ldgen"
+        package.mkdir(parents=True, exist_ok=True)
+        (package / "__init__.py").write_text("")
+        (package / "fragments.py").write_text("import json\nfrom pathlib import Path\nfrom types import SimpleNamespace\nclass Mapping:\n def __init__(self, record):\n  self.archive, self.entries = record\ndef parse_fragment_file(path, config):\n return SimpleNamespace(fragments=[Mapping(r) for r in json.loads(Path(path).read_text())])\n")
+        (package / "sdkconfig.py").write_text("import os\nfrom pathlib import Path\nclass SDKConfig:\n def __init__(self, kconfig, config):\n  assert Path(kconfig).read_text() == 'fixture kconfig'\n  assert Path(config).read_text() == 'fixture config'\n  assert os.environ['LDGEN_FIXTURE'] == 'loaded'\n")
+        (self.root / "Kconfig").write_text("fixture kconfig")
+        (self.root / "sdkconfig").write_text("fixture config")
+        (self.root / "config.env").write_text(json.dumps({"LDGEN_FIXTURE": "loaded"}))
+        command = (f'python "{package.parent / "ldgen.py"}" --fragments-list "{fragment}" '
+                   f'--config "{self.root / "sdkconfig"}" --kconfig "{self.root / "Kconfig"}" --env-file "{self.root / "config.env"}"')
+        if batch:
+            (self.root / "ldgen.bat").write_text(command)
+            command = "ldgen.bat"
+        command = command.replace("$", "$$").replace(":", "$:")
+        (self.root / "build.ninja").write_text(f"build esp-idf/esp_system/ld/sections.ld : CUSTOM_COMMAND\n  COMMAND = {command}\n", encoding="utf-8")
+        return self.root
+
+    def test_ldgen_fragment_entries(self):
+        mappings = [["libidf.a", [["foo", "foo", "noflash"], ["foo", "foo", "noflash_text"],
+                                 ["all", None, "noflash"], ["ignored", "ignored", "default"], ["bar", "bar", "iram"]]]]
+        for batch in (False, True):
+            with self.subTest(batch=batch), patch.object(memory, "idf_python", return_value=sys.executable):
+                entries = memory.iram_entries(self.fragment_build(mappings, batch))
+                self.assertEqual(entries, [["libidf.a", "bar.*", "bar"], ["libidf.a", "foo.*", "foo"]])
+                inputs = [memory.Input("libidf.a", "foo.c.obj", "foo$part$12", 4, output=".flash.text")]
+                with self.assertRaisesRegex(ValueError, r"ldgen: libidf.a:foo.\*:foo:.*map the whole object.*cannot name clones"):
+                    memory.check([], inputs, "release", {}, lambda site: True, linker_entries=entries)
+
+    def test_ldgen_requires_fragment_inputs(self):
+        for text in ("", "build esp-idf/esp_system/ld/sections.ld : CUSTOM_COMMAND\n  COMMAND = python ldgen.py\n"):
+            (self.root / "build.ninja").write_text(text)
+            with self.assertRaisesRegex(ValueError, "ldgen"):
+                memory.iram_entries(self.root)
+
+    def test_missing_base_clone_in_flash(self):
+        build = self.fragment_build([["libidf.a", [["foo", "foo", "noflash"]]]])
+        inputs, _, _ = memory.map_inputs(".flash.text 0x42000000 0x4\n .text.foo.isra.0 0x42000000 0x4 main/libidf.a(foo.c.obj)\n", {})
+        with patch.object(memory, "idf_python", return_value=sys.executable), self.assertRaisesRegex(ValueError, "clone foo.isra.0 is in .flash.text"):
+            memory.check([], inputs, "release", {}, lambda site: True, linker_entries=memory.iram_entries(build))
+
+    def test_owned_clone_escape_hint(self):
+        with self.assertRaisesRegex(ValueError, "mark it IRAM_ATTR in source so its clones are placed with it"):
+            memory.check([], [memory.Input("libmain.a", "foo.c.obj", "foo.isra.0", 4, output=".flash.text")],
+                         "release", {"libmain.a"}, lambda site: True, linker_entries=[("libmain.a", "foo.*", "foo")])
+
+    def test_other_archive_and_object_clones_are_not_escapes(self):
+        for archive, obj in (("libother.a", "foo.c.obj"), ("libmain.a", "other.c.obj")):
+            with self.subTest(archive=archive, obj=obj):
+                self.assertEqual(memory.check([], [memory.Input(archive, obj, "foo.isra.0", 4, output=".flash.text")],
+                                              "release", {}, lambda site: True, linker_entries=[("libmain.a", "foo.*", "foo")]), [])
+
+    def test_base_function_in_flash_is_not_clone_escape(self):
+        self.assertEqual(memory.check([], [memory.Input("libmain.a", "foo.c.obj", "foo", 4, output=".flash.text")],
+                                      "release", {}, lambda site: True, linker_entries=[("libmain.a", "foo.*", "foo")]), [])
+
+    def test_check_cli_clone_escape_and_flash_budget(self):
+        sites = self.source("/* Cache latency. IRAM budget: 8 B */\nstatic void IRAM_ATTR foo(void) {}")
+        for output, status in ((".flash.text", 1), (".iram0.text", 0)):
+            with self.subTest(output=output):
+                text = (".iram0.text 0x40380000 0x8\n .text.foo 0x40380000 0x4 main/libmain.a(foo.c.obj)\n"
+                        f"{output} 0x42000000 0x4\n .text.foo.isra.0\n  0x42000000 0x4 main/libmain.a(foo.c.obj)\n"
+                        ".flash.text 0x42000004 0x40\n .text.foo 0x42000004 0x40 main/libmain.a(foo.c.obj)\n")
+                placed, _, _ = memory.map_inputs(text, {})
+                build = dict(variant="release", idf_commit="pin", owned=memory.components(self.root),
+                             inputs=[item for item in placed if item.output.startswith(".iram")], placed_inputs=placed,
+                             linker_entries=[("libmain.a", "foo.*", "foo")])
+                capture = io.StringIO()
+                with patch.object(sys, "argv", ["memory_map.py", "--check", "fixture"]), patch.object(memory, "read_build", return_value=build), patch.object(memory, "build_sites", return_value=(sites, lambda site: True)), patch.object(memory, "idf_pin", return_value={"commit": "pin"}), contextlib.redirect_stdout(capture), contextlib.redirect_stderr(capture):
+                    self.assertEqual(memory.main(), status)
+                self.assertIn("clone foo.isra.0 is in .flash.text" if status else "8 B", capture.getvalue())
+
+    def test_clone_suffix_shape(self):
+        for suffix in (".const_prop.123", "$const_prop$123", ".part.10.cold"):
+            self.assertEqual(memory.clone_base("foo" + suffix), "foo")
+        for name in ("foo.isra.0_tail", "foo.isra.", "foo.isra.x", "foo.cold_tail", "foo.part.0.bar"):
+            self.assertEqual(memory.clone_base(name), name)
+
+    def test_map_outputs_and_admitted_sections(self):
+        for output in (".flash.text", ".rtc.text", ".other"):
+            text = (f"{output} 0x42000000 0x30\n"
+                    " .literal.foo 0x42000000 0x4 main/libmain.a(foo.c.obj)\n"
+                    " .iram1.0.literal 0x42000004 0x4 main/libmain.a(foo.c.obj)\n"
+                    " .iram1.0 0x42000008 0x8 main/libmain.a(foo.c.obj)\n"
+                    " .iram2.0 0x42000010 0x4 main/libmain.a(foo.c.obj)\n"
+                    " .data.foo 0x42000014 0x4 main/libmain.a(foo.c.obj)\n"
+                    " .text.foo 0x42000018 0x0 main/libmain.a(foo.c.obj)\n"
+                    " .text.bar 0x42000018 0x4 standalone.obj\n")
+            inputs, _, _ = memory.map_inputs(text, {0x42000008: ("foo", 4), 0x4200000c: ("foo$part$12", 4)})
+            self.assertEqual([(i.symbol, i.size, i.literal, i.output) for i in inputs],
+                             [("foo", 4, True, output), ("foo", 4, False, output),
+                              ("foo$part$12", 4, False, output), (".iram2.0", 4, False, output), ("foo", 4, True, output)])
+
+    def test_literal_name_for_unrelated_members(self):
+        text = ".iram0.text 0x40380000 0xc\n .iram1.0.literal 0x40380000 0x4 main/libmain.a(foo.c.obj)\n .iram1.0 0x40380004 0x8 main/libmain.a(foo.c.obj)\n"
+        inputs, _, _ = memory.map_inputs(text, {0x40380004: ("foo", 4), 0x40380008: ("bar", 4)})
+        self.assertEqual(inputs[-1].symbol, ".iram1.0.literal")
+
+    def test_single_member_in_non_iram_output(self):
+        inputs, _, _ = memory.map_inputs(".flash.text 0x42000000 0x4\n .iram1.0 0x42000000 0x4 main/libmain.a(foo.c.obj)\n", {0x42000000: ("foo$part$0", 4)})
+        self.assertEqual([(i.symbol, i.output) for i in inputs], [("foo$part$0", ".flash.text")])
+
+    def test_iram_output_admits_unspecialized_input(self):
+        inputs, _, _ = memory.map_inputs(".iram0.text 0x40380000 0x4\n .custom 0x40380000 0x4 main/libmain.a(foo.c.obj)\n", {})
+        self.assertEqual([(i.symbol, i.size) for i in inputs], [(".custom", 4)])
+
+    def test_alias_use_with_budgeted_and_unbudgeted_aliases(self):
+        found = self.source("/* Cache latency. IRAM budget: 4 B */\n#define HOT_CODE IRAM_ATTR\n#define OTHER_CODE IRAM_ATTR\nstatic void HOT_CODE OTHER_CODE foo(void) {}")
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].entries, [("foo", "foo")])
+
+    def test_alias_uses_activity_archive_and_dedup(self):
+        self.source("/* Cache latency. IRAM budget: 4 B */\n#define HOT_CODE IRAM_ATTR\nstatic void HOT_CODE foo(void) {}\nstatic void HOT_CODE foo(void) {}")
+        self.source("static void HOT_CODE outside(void) {}", "launcher/components/other/other.c")
+        found = memory.sites(self.root)
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0].entries, [("foo", "foo")])
+        build = dict(build=self.root, owned=memory.components(self.root), config={})
+        for lines, expected in (([3], True), ([4], True), ([], False)):
+            with patch.object(memory, "preprocessed_lines", return_value={(self.root / "launcher/main/foo.c", line) for line in lines}):
+                placements, active = memory.build_sites(self.root, build)
+                self.assertEqual(active(placements[0]), expected)
+
+    def test_alias_detection_requires_attribute_and_word_boundary(self):
+        found = self.source("#define HOT_CODE IRAM_ATTR\n/* Ordinary macro. IRAM budget: 4 B */\n#define NOT_CODE ordinary\nstatic void NOT_CODE ignored(void) {}\nstatic void HOT_CODE_SUFFIX unrelated(void) {}\n/* Cache latency. IRAM budget: 4 B */\nstatic void HOT_CODE foo(void) {}")
+        self.assertEqual([(site.line, site.entries) for site in found], [(7, [("foo", "foo")])])
+
+    def test_budget_comment_owns_unattributed_function(self):
+        sites = self.source("/* Cache-off caller. IRAM budget: 4 B */\nstatic void foo(void) {}")
+        self.assertEqual(len(sites), 1)
+        self.assertEqual(sites[0].entries, [("foo", "foo")])
+        self.assertEqual(sites[0].reason, "Cache-off caller.")
+        report = self.check(sites, [memory.Input("libmain.a", "foo.c.obj", "foo", 4)])
+        self.assertEqual(report[0][1:], (4, ["foo"]))
+
+    def test_budget_comment_without_iram_fails_budget(self):
+        sites = self.source("/* Cache-off caller. IRAM budget: 4 B */\nstatic void foo(void) {}")
+        with self.assertRaisesRegex(ValueError, "measured 0 B, budget 4 B"):
+            self.check(sites, [])
 
     def test_over_budget(self):
         sites = self.source("/* Cache-off caller. IRAM budget: 4 B */\nstatic void IRAM_ATTR foo(void) {}")
@@ -126,11 +301,11 @@ class MemoryMapTests(unittest.TestCase):
         self.assertIn("| Slack including pad | 252 | 248 |", body)
         self.assertIn("| launcher/main/apps/demo/ |", body)
         self.assertIn("| 4 | 8 | release 4, dev 8, diag 8 | Cache-off caller. |", body)
-        self.assertIn("| libmain.a | ours | 8 | 20 |", body)
-        self.assertIn("| libfixed.a | IDF / managed | 4 | 4 |", body)
+        self.assertIn("| libmain.a | our sites | 8 | 20 |", body)
+        self.assertIn("| libfixed.a | IDF | 4 | 4 |", body)
         self.assertIn("| Linker fill / split slack | unattributed | -8 | -20 |", body)
         self.assertIn("| extra | not built | 4 |", body)
-        differs = body.split("#### Differs between variants")[1].split("#### Release shared block")[0]
+        differs = body.split(memory.DIFFERENCES_HEADING)[1]
         self.assertNotIn("libfixed.a", differs)
         self.assertNotIn("literal_only", differs)
         self.assertIn("extra.c.obj:extra (4 B)", differs)
@@ -142,9 +317,9 @@ class MemoryMapTests(unittest.TestCase):
         self.assertEqual(body.count("abcdef123456-release"), 1)
         self.assertIn("IDF fixture-idf", body)
         self.assertIn("\u2013", body)
-        self.assertIn('iram["IRAM<br/>4 B"]', body)
+        self.assertNotIn('```mermaid', body)
         release["sections"][".iram0.text_end"] = (0, 100)
-        self.assertIn('iram["IRAM<br/>4 B"]', memory.render([release, dev]))
+        self.assertIn("| Linker fill / split slack | unattributed | -8 | -20 |", memory.render([release, dev]))
         del release["sections"][".iram0.text_end"]
         for build in (release, dev):
             build["inputs"].reverse()
@@ -159,6 +334,7 @@ class MemoryMapTests(unittest.TestCase):
             build["owned"] = list(build["owned"])
         fixture.write_text(json.dumps(builds))
         program = """import json, sys
+from pathlib import Path
 sys.path.insert(0, sys.argv[1])
 import memory_map as m
 builds=json.load(open(sys.argv[2]))
@@ -269,6 +445,7 @@ print(m.render(builds))
         app = memory.Site("launcher/main/apps/demo/nested/foo.c", 1, "launcher/main/apps/demo/", "Cache latency.", 4, "libmain.a", [("foo", "foo")])
         engine = memory.Site("launcher/main/bar.c", 1, "engine", "Cache latency.", 8, "libmain.a", [("bar", "bar")])
         build = {"variant": "dev", "idf_commit": "fixture", "config": {"CONFIG_LAUNCHER_DEVELOPMENT": "y"}, "owned": {"libmain.a"}, "inputs": [memory.Input("libmain.a", "foo.c.obj", "foo", 4), memory.Input("libmain.a", "bar.c.obj", "bar", 8)]}
+        build.update(placed_inputs=build["inputs"], linker_entries=[])
         output = io.StringIO()
         with patch.object(sys, "argv", ["memory_map.py", "--check", "fixture"]), patch.object(memory, "read_build", return_value=build), patch.object(memory, "build_sites", return_value=([app, engine], lambda site: True)), patch.object(memory, "render", side_effect=AssertionError("check rendered tables")), patch.object(memory, "idf_pin", return_value={"commit": "fixture"}), contextlib.redirect_stdout(output):
             self.assertEqual(memory.main(), 0)
@@ -339,7 +516,7 @@ print(m.render(builds))
         self.assertEqual(probe.experiments("diag",["ringbuf-to-flash","i2c-isr"]),["ringbuf-to-flash"])
         with self.assertRaisesRegex(ValueError,"unknown"):
             probe.experiments("release",["unknown"])
-        baselines = [{"build_id": "id-a-release", "idf_commit": "local-idf"}]
+        baselines = [{"build_id": "id-a-release", "idf_commit": "local-idf", "sections": {}}]
         body = probe.render_results(baselines, [("release", "a", 4, 0, 0, "reason")])
         self.assertEqual(body.count("id-a-release"), 1)
         self.assertIn("local-idf", body)
@@ -374,7 +551,7 @@ print(m.render(builds))
 
     def test_probe_row_excludes_split_aliases_and_checks_config(self):
         baseline = {"sections": {".iram0.text": (0, 12), ".iram0.text_end": (0, 400), ".dram0.data": (0, 8), ".dram0.dummy": (0, 900)}, "constants": {"_heap_start": 100}}
-        measured = {"sections": {".iram0.text": (0, 8), ".iram0.text_end": (0, 800), ".dram0.data": (0, 4), ".dram0.dummy": (0, 300)}, "constants": {"_heap_start": 90}, "config": {"CONFIG_RINGBUF_PLACE_FUNCTIONS_INTO_FLASH": "y", "CONFIG_RINGBUF_PLACE_ISR_FUNCTIONS_INTO_FLASH": "y"}}
+        measured = {"sections": {".iram0.text": (0, 8), ".iram0.text_end": (0, 800), ".dram0.data": (0, 4), ".dram0.dummy": (0, 300)}, "constants": {"_heap_start": 90}, "config": dict(probe.OPTIONS["ringbuf-to-flash"]["config"])}
         self.assertEqual(probe.result_row("ringbuf-to-flash", baseline, measured)[1:4], (4, 4, -10))
         measured["config"] = {}
         self.assertEqual(probe.result_row("ringbuf-to-flash", baseline, measured)[1], "config rejected")
@@ -392,7 +569,7 @@ print(m.render(builds))
         output = io.StringIO()
         with contextlib.redirect_stdout(output):
             memory.check(sites, inputs, "release", memory.components(self.root), lambda site: True, "local-commit", "pinned-commit")
-        self.assertIn("build local-commit, pin pinned-commit", output.getvalue())
+        self.assertIn("commit local-commit here, pinned-commit pinned", output.getvalue())
         with self.assertRaisesRegex(ValueError, "set the budget to 8 B"):
             memory.check(sites, inputs, "release", memory.components(self.root), lambda site: True, "pinned-commit", "pinned-commit")
         with self.assertRaisesRegex(ValueError, "no site"):
@@ -462,17 +639,21 @@ print(m.render(builds))
     def test_fragment_experiments_preserve_required_placements(self):
         original = "foo (noflash)\nbar (noflash_text)\nbaz (iram)\n"
         self.assertEqual(probe.scratch_fragment("noflash-text", original, self.root, {}), "foo (noflash_text)\nbar (noflash_text)\nbaz (iram)\n")
-        freertos = self.root / "components/freertos/linker.lf"
-        freertos.parent.mkdir(parents=True)
-        freertos.write_text("if FREERTOS_PLACE_FUNCTIONS_INTO_FLASH = y:\n    tasks:vTaskDelay (default)\n    tasks:xTaskNotifyFromISR (default)\n    port:portYield (default)\n    portasm:helper (default)\n    queue:xQueueGenericSend (default)\n    queue:xQueueReceive (default)\n    queue:xQueueSemaphoreTake (default)\n")
+        self.assertEqual(probe.OPTIONS["freertos-non-isr"]["config"], {"CONFIG_FREERTOS_IN_IRAM": "n"})
         fragment = probe.scratch_fragment("freertos-non-isr", "", self.root, {})
-        self.assertIn("tasks:vTaskDelay (default)", fragment)
-        for excluded in ("FromISR", "port:", "portasm:", "xQueueGenericSend", "xQueueReceive", "xQueueSemaphoreTake"):
-            self.assertNotIn(excluded, fragment)
-        baseline = {"inputs": [memory.Input("libhal.a", "spi_flash_hal_gpspi.c.obj", "gpspi_fn", 4), memory.Input("libother.a", "spi_flash_hal_gpspi.c.obj", "other", 4)]}
+        for symbol in probe.PRESENT_QUEUE_CALLS:
+            self.assertIn(f"queue:{symbol} (noflash_text)", fragment)
+        self.assertNotIn("(default)", fragment)
+        baseline = {"inputs": [memory.Input("libesp_hal_mspi.a", "spi_flash_hal_gpspi.c.obj", "gpspi_fn", 4),
+                               memory.Input("libhal.a", "spi_flash_hal_gpspi.c.obj", "old_fn", 4),
+                               memory.Input("libhal.a", "spi_flash_hal.c.obj", "unrelated", 4)]}
         fragment = probe.scratch_fragment("gpspi-flash-hal", "", self.root, baseline)
-        self.assertIn("spi_flash_hal_gpspi:gpspi_fn (default)", fragment)
-        self.assertNotIn("other", fragment)
+        for archive, symbol in (("libesp_hal_mspi.a", "gpspi_fn"), ("libhal.a", "old_fn")):
+            block = fragment[fragment.index(f"archive: {archive}"):]
+            self.assertIn(f"spi_flash_hal_gpspi:{symbol} (default)", block.split("[mapping:")[0])
+        self.assertNotIn("unrelated", fragment)
+        # Nothing placed: no mapping, which the linker-fragment parser would reject when empty.
+        self.assertEqual(probe.scratch_fragment("gpspi-flash-hal", "kept", self.root, {"inputs": []}), "kept")
 
     def test_build_sites_header_and_c_guards(self):
         compiler = shutil.which("gcc") or shutil.which("clang")
@@ -499,17 +680,23 @@ print(m.render(builds))
         (build / "project_description.json").write_text(json.dumps(metadata))
         (build / "build_id.txt").write_text("123456abcdef-diag\n")
         (build / "sdkconfig").write_text("CONFIG_LAUNCHER_SELFTEST=y\n")
-        (build / "launcher.map").write_text("iram0_0_seg 0x40380000 0x400\ndram0_0_seg 0x3fc80000 0x400\n.iram0.text 0x40380000 0x4\n")
+        (build / "launcher.map").write_text("iram0_0_seg 0x40380000 0x400\ndram0_0_seg 0x3fc80000 0x400\n.iram0.text 0x40380000 0x4\n .text.foo 0x40380000 0x4 main/libchosen.a(foo.c.obj)\n.flash.text 0x42000000 0x4\n .text.foo.part.0 0x42000000 0x4 main/libchosen.a(foo.c.obj)\n")
         ld = build / "esp-idf/esp_system/ld"
         ld.mkdir(parents=True)
         (ld / "sections.ld").write_text(".iram0.text_end : { . = ALIGN(256); }")
         (ld / "memory.ld").write_text("")
-        with patch.object(memory, "symbols", return_value={}), patch.object(memory, "find_tool", return_value="nm"), patch.object(memory, "run", side_effect=[json.dumps({"layout": []}), "idf-commit\n"]):
+        fragment = build / "linker.lf"
+        fragment.write_text("[mapping:hot]\narchive: libchosen.a\nentries:\n    foo:foo (noflash)\n")
+        (build / "build.ninja").write_text("build esp-idf/esp_system/ld/sections.ld : CUSTOM_COMMAND linker.lf\n  COMMAND = python idf/tools/ldgen/ldgen.py --config sdkconfig --kconfig Kconfig --env-file config.env --fragments-list linker.lf\n")
+        with patch.object(memory, "symbols", return_value={}), patch.object(memory, "find_tool", return_value="nm"), patch.object(memory, "run", side_effect=[json.dumps({"layout": []}), json.dumps([["libchosen.a", "foo.*", "foo"]])]), patch.object(memory, "idf_commit", return_value="idf-commit"):
             measured = memory.read_build(build, self.root)
         self.assertEqual(measured["owned"], {"libchosen.a": self.root / "launcher/components/chosen"})
         self.assertEqual(measured["build_id"], "123456abcdef-diag")
         self.assertEqual(measured["variant"], "diag")
         self.assertEqual(measured["idf_commit"], "idf-commit")
+        self.assertEqual([i.output for i in measured["inputs"]], [".iram0.text"])
+        self.assertEqual([i.output for i in measured["placed_inputs"]], [".iram0.text", ".flash.text"])
+        self.assertEqual(measured["linker_entries"], [["libchosen.a", "foo.*", "foo"]])
 
     def test_probe_baseline_is_built_even_without_selected_experiments(self):
         from types import SimpleNamespace
@@ -526,7 +713,7 @@ print(m.render(builds))
         self.assertIs(result, baseline)
         self.assertEqual(rows, [])
         self.assertEqual(run.call_count, 1)
-        read.assert_called_once_with(launcher / "build.memory", project)
+        read.assert_called_once_with((launcher / "build.memory").resolve(), project)
         self.assertEqual((launcher / "main/linker.lf").read_text(), "original fragment")
         measured = dict(baseline, sections={".iram0.text": (0, 8)}, config=probe.OPTIONS["ringbuf-to-flash"]["config"])
         with patch.object(probe.subprocess, "run", return_value=SimpleNamespace(returncode=0)) as run, patch.object(probe, "read_build", side_effect=[baseline, measured]):
@@ -541,7 +728,7 @@ print(m.render(builds))
         build.mkdir()
         (build / "project_description.json").write_text(json.dumps({"idf_path": "idf"}))
         (build / "build_id.txt").write_text("old-release")
-        baseline = {"build_id": "new-release", "idf_commit": "local"}
+        baseline = {"build_id": "new-release", "idf_commit": "local", "sections": {}}
         for name in ("first", "second"):
             with patch.object(sys, "argv", ["iram_what_if.py", str(build), "--work", str(self.root)]), patch.object(probe, "scratch_tree", return_value=self.root) as snapshot, patch.object(probe.shutil, "copytree"), patch.object(probe, "what_if", return_value=(baseline, [("release", name, 4, 0, 0, "reason")])), contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(probe.main(), 0)
@@ -626,6 +813,8 @@ print(m.render(builds))
         source = self.root / "launcher/main/foo.c"
         source.write_bytes(source.read_bytes().replace(b"\r\n", b"\n").replace(b"\n", b"\r\n"))
         self.assertNotIn(b"\r\r\n", source.read_bytes())
+        for build in builds:
+            build.update(placed_inputs=build["inputs"], linker_entries=[])
         def build_sites(root, build):
             return memory.sites(root), lambda site: site.entries[0][1] == "foo" or build["variant"] != "release"
         arguments = ["memory_map.py", "--root", str(self.root), "--update-budgets", "release", "dev", "diag"]
@@ -648,6 +837,12 @@ print(m.render(builds))
 
 
 class GateRegressions(unittest.TestCase):
+    def setUp(self):
+        capture = Path(__file__).parent / 'fixtures/runtime-heap.txt'
+        patcher = patch.object(memory, 'read_runtime_heap', return_value=memory.parse_runtime_heap(capture.read_text()))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_compile_source_spellings(self):
         for source in ("arbitrary.c", "C:/w/dir/arbitrary.c", r"C:\w\dir\arbitrary.c", "c:/w/dir/arbitrary.c"):
             with self.subTest(source=source):
@@ -672,13 +867,14 @@ class GateRegressions(unittest.TestCase):
             site = memory.Site("foo.c", 1, "engine", "Cache latency.", 4, "libmain.a", [("foo", "foo")])
             build = dict(variant="release", idf_commit="measured", owned={"libmain.a"},
                          inputs=[memory.Input("libmain.a", "foo.c.obj", "foo", 8)])
+            build.update(placed_inputs=build["inputs"], linker_entries=[])
             for commit, flags, status in (("measured", [], 1), ("other", [], 0), ("other", ["--require-pin"], 1)):
                 pin.write_text(json.dumps({"commit": commit}))
                 output = io.StringIO()
                 with patch.object(sys, "argv", ["memory_map.py", "fixture", "--root", str(root), "--check", *flags]), patch.object(memory, "read_build", return_value=build), patch.object(memory, "build_sites", return_value=([site], lambda site: True)), contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
                     self.assertEqual(memory.main(), status)
                 if status == 0:
-                    self.assertIn("NOTE IDF drift: build measured, pin other", output.getvalue())
+                    self.assertIn("NOTE IDF drift: commit measured here, other pinned", output.getvalue())
 
     def test_unknown_build_suffix(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -696,6 +892,8 @@ class GateRegressions(unittest.TestCase):
         builds = [dict(variant=variant, idf_commit="pinned", owned={"libmain.a"},
                        inputs=[memory.Input("libmain.a", "foo.c.obj", "foo", 8), memory.Input("libmain.a", "other.c.obj", "other", 2)])
                   for variant in memory.VARIANTS]
+        for build in builds:
+            build.update(placed_inputs=build["inputs"], linker_entries=[])
         output = io.StringIO()
         with patch.object(sys, "argv", ["memory_map.py", "--check", *memory.VARIANTS]), patch.object(memory, "idf_pin", return_value={"commit": "pinned"}), patch.object(memory, "read_build", side_effect=builds), patch.object(memory, "build_sites", return_value=([site], lambda site: True)), contextlib.redirect_stderr(output):
             self.assertEqual(memory.main(), 1)
@@ -789,7 +987,7 @@ class GateRegressions(unittest.TestCase):
             self.assertIn("| release | second | 8 |", body)
             self.assertIn("| dev | second | 16 |", body)
             self.assertNotIn("| dev | first |", body)
-            self.assertIn("Baseline builds: fresh-release (IDF local); fresh-dev (IDF local)", body)
+            self.assertIn("Baseline builds: fresh-release (IDF local, IRAM 20 B); fresh-dev (IDF local, IRAM 40 B)", body)
             self.assertEqual([snapshot[0] for snapshot in snapshots], ["release", "release", "release", "dev", "dev"])
             for index in (0, 3):
                 self.assertEqual(snapshots[index][1:], (original_defaults, original_fragment))

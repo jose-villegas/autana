@@ -557,7 +557,7 @@ sand_spawn_cell_share(sand_t* s, int cx, int cy, int radius, cell_t spec, int sh
 
     for (int dy = -radius; dy <= radius; dy++) {
         for (int dx = -radius; dx <= radius; dx++) {
-            if (dx * dx + dy * dy > r2) {
+            if ((dx * dx) + dy * dy > r2) {
                 continue;
             }
             const int x = cx + dx;

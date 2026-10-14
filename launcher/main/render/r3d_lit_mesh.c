@@ -3,6 +3,7 @@
 #include <limits.h>
 #include <math.h>
 #include <stddef.h>
+#include "asset/asset_bytes.h"
 #include "asset/asset_entry.h"
 
 /* The entry's bytes are the structs' own layout, written by lit_mesh.py. */
@@ -33,8 +34,7 @@ enum {
 
 static uint32_t
 word(const uint8_t* data, int index) {
-    const uint8_t* at = data + ((size_t)index * 4U);
-    return (uint32_t)at[0] | ((uint32_t)at[1] << 8) | ((uint32_t)at[2] << 16) | ((uint32_t)at[3] << 24);
+    return asset_read_u32(data + ((size_t)index * sizeof(uint32_t)));
 }
 
 /* A pointer to `count` items of `bytes` each at `offset`, or NULL when they

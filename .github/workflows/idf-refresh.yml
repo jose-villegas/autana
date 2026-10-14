@@ -1,0 +1,123 @@
+name: ESP-IDF refresh
+
+# Everything that moves with ESP-IDF, refreshed where ESP-IDF is: once a week
+# this pins the newest image of launcher/idf-pin.json's tag (its commit and
+# esp-clang read from inside it) and mirrors it to GHCR, re-solves
+# launcher/dependencies.lock to the newest components its manifests allow,
+# rebuilds the three variants and rewrites the IRAM budgets they measure, then
+# opens one pull request with all of it. Anything else a check finds is named by that check. A release line
+# newer than the pin's tag is a migration: the run warns and stays on the
+# pinned line. Every other framework's bump comes from Renovate
+# (.github/renovate.json5); docs/tools/Framework-Versions.md draws both.
+
+on:
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: idf-refresh
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+  pull-requests: write
+
+env:
+  REFRESH_BRANCH: feature/esp-idf-refresh
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  refresh:
+    name: Pin the newest ESP-IDF image and components
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/host-tools
+
+      - name: Newer release lines are migrations
+        run: |
+          newer=$(curl -fsSL 'https://hub.docker.com/v2/repositories/espressif/idf/tags?name=release-v&page_size=100' \
+            | python3 scripts/deps/idf_pin.py newer-line)
+          if [ -n "$newer" ]; then
+            echo "::warning::ESP-IDF $newer exists, newer than the pinned line: moving to it is a migration with its own ticket."
+          fi
+
+      - name: Pin the newest image of the tag
+        id: pin
+        run: |
+          echo "before=$(python3 scripts/deps/idf_pin.py show commit)" >> "$GITHUB_OUTPUT"
+          tag=$(python3 scripts/deps/idf_pin.py show tag)
+          docker pull -q "espressif/idf:$tag"
+          digest=$(docker inspect --format '{{index .RepoDigests 0}}' "espressif/idf:$tag")
+          date=$(docker inspect --format '{{.Created}}' "espressif/idf:$tag" | cut -c1-10)
+          docker run --rm -v "$GITHUB_WORKSPACE:/app" -w /app "espressif/idf:$tag" /bin/bash -c \
+            'git config --global --add safe.directory "*" && python3 scripts/deps/idf_pin.py write --image "$0" --date "$1"' \
+            "espressif/idf:$tag@${digest#*@}" "$date"
+          echo "after=$(python3 scripts/deps/idf_pin.py show commit)" >> "$GITHUB_OUTPUT"
+
+      # CI pulls the pinned image from here (scripts/ci/idf_image.sh), not Docker Hub's anonymous
+      # quota. crane copies the manifests byte for byte, so the mirror keeps the pinned digest.
+      - name: Mirror the pinned image to GHCR
+        env:
+          # renovate: datasource=github-releases depName=google/go-containerregistry
+          CRANE_VERSION: v0.22.1
+        run: |
+          release="https://github.com/google/go-containerregistry/releases/download/$CRANE_VERSION"
+          cd "$RUNNER_TEMP"
+          curl -fsSLO "$release/go-containerregistry_Linux_x86_64.tar.gz"
+          curl -fsSL "$release/checksums.txt" | grep ' go-containerregistry_Linux_x86_64.tar.gz$' | sha256sum -c -
+          tar -xzf go-containerregistry_Linux_x86_64.tar.gz crane
+          cd "$GITHUB_WORKSPACE"
+          image=$(python3 scripts/deps/idf_pin.py show image)
+          echo "$GH_TOKEN" | "$RUNNER_TEMP/crane" auth login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          "$RUNNER_TEMP/crane" copy "$image" "ghcr.io/$GITHUB_REPOSITORY_OWNER/esp-idf:$(python3 scripts/deps/idf_pin.py show tag)"
+
+      - uses: ./.github/actions/idf-build
+        with:
+          cache-name: idf-refresh
+          lock-may-change: 'true'
+          command: >-
+            idf.py -B build.deps update-dependencies
+            && ../tools/autana build rel --project ..
+            && ../tools/autana build dev --project ..
+            && ../tools/autana build diag --project ..
+            && cd ..
+            && python3 launcher/tools/build/memory_map.py launcher/build launcher/build.dev launcher/build.diag --update-budgets
+
+      # refresh_branch.py rebuilds the branch on the current main from the changed files, so a
+      # main that moved meanwhile (a workflow file, above all) never blocks the push.
+      - name: Commit the refresh and open or update the PR, or close a stale one
+        env:
+          BEFORE: ${{ steps.pin.outputs.before }}
+          AFTER: ${{ steps.pin.outputs.after }}
+          TITLE: 'build: refresh ESP-IDF, its components and the budgets they measure'
+        run: |
+          set +e
+          python scripts/ci/refresh_branch.py "$REFRESH_BRANCH" "$TITLE" $(git diff --name-only)
+          code=$?
+          set -e
+          if [ "$code" -eq 3 ]; then
+            python scripts/ci/refresh_pr.py close "ESP-IDF, its components and the budgets they measure already match main."
+            exit 0
+          fi
+          [ "$code" -eq 0 ] || exit "$code"
+          {
+            echo "The newest \`$(python3 scripts/deps/idf_pin.py show tag)\` image and the newest components its manifests allow, made by \`.github/workflows/idf-refresh.yml\` on ${GITHUB_SHA::7}."
+            echo
+            if [ "$BEFORE" != "$AFTER" ]; then
+              echo "ESP-IDF: [\`${BEFORE::10}\` → \`${AFTER::10}\`](https://github.com/espressif/esp-idf/compare/$BEFORE...$AFTER)"
+              echo
+            fi
+            echo "| File | Change |"
+            echo "|---|---|"
+            git diff --numstat HEAD~1 | awk '{printf "| `%s` | +%s −%s |\n", $3, $1, $2}'
+            echo
+            echo "Checks do not start on a PR opened by the workflow: close and reopen it to run CI."
+            echo
+            echo "This bump changes the firmware: it merges only after a board perf comparison against main. Run a seeded \`launcher/tools/perf/perf_compare.sh origin/main $REFRESH_BRANCH --suite ...\`, post its summary (improved, unchanged and regressed rows, with magnitudes) for the maintainer to judge, then remove the \`needs-board-perf\` label."
+            echo
+            echo "Ticket: xwxi"
+          } > "$RUNNER_TEMP/body.md"
+          python scripts/ci/refresh_pr.py sync "$TITLE" "$RUNNER_TEMP/body.md" needs-board-perf

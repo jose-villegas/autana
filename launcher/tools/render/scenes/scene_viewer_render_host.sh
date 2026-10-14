@@ -18,7 +18,7 @@ main/render/context/render_context.c
 main/anim/anim_track.c
 main/anim/anim_tracks.c
 main/render/r3d_span.c
-main/render/r3d_scene.c
+main/scene/camera/camera.c
 main/scene/scene.c
 main/scene/scene_animation.c
 main/scene/scene_light.c

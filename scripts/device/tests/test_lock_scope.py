@@ -162,7 +162,7 @@ LEFTOVER = textwrap.dedent("""
         child = subprocess.Popen([sys.executable, {holder!r}, sys.argv[1]], stdout=subprocess.PIPE,
                                  stderr=subprocess.DEVNULL, text=True)
         child.stdout.readline()
-        print("state", os.environ[lock_group.TOKEN_VARIABLE], lock_group._stack[-1][2].pid,
+        print("state", os.environ[lock_group.SCOPE_TAG_VARIABLE], lock_group._stack[-1][2].pid,
               flush=True)
 """)
 
@@ -282,6 +282,20 @@ class Fixture(unittest.TestCase):
 
 @unittest.skipUnless(SUPPORTED, "needs a job object (Windows) or /proc (Linux)")
 class HolderTests(Fixture):
+    def test_borrowed_scope_reaps_its_own_child(self):
+        import device_lock
+        store = device_lock.LockStore(self.dir / "locks")
+        held = store.acquire(BOARD, "bench", "take")
+        store.hold(BOARD, held["token"], "bench", seconds=device_lock.HOLD_MAX_SECONDS)
+        process, _, listed = self.start(self.holder_script, 0.3,
+                                       _AUTANA_DEVICE_LOCK_TOKEN=held["token"])
+        self.assertTrue(listed)
+        _, errors = process.communicate(timeout=30)
+        self.assertEqual(process.returncode, 0, errors)
+        self.assertTrue(port_is_free(self.port))
+        self.assertTrue(store.check_token(BOARD, held["token"]))
+        store.release(BOARD, held["token"])
+
     def test_killing_only_the_holder_frees_the_port(self):
         _, holder, _ = self.start(self.holder_script, 60)
         self.assertFalse(port_is_free(self.port))

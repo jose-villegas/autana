@@ -19,12 +19,13 @@ TOOLS = ROOT / "launcher/tools"
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from build import compile_db
 from generated_blocks import apply_tables, tracked_files
 from doc_tables import markdown
 from layout_measure import MEAN_RE, parse_report
 from r3d.process_budget import WSL_MEMORY_REQUIRED_BYTES, WINDOWS_MEMORY_REQUIRED_BYTES
 from r3d.import_settings import content_checksum, load_import_settings, source_files
-from r3d.scene_asset import scene_id
+from r3d.scene_name import scene_id
 
 HOST_SCRIPT = ROOT / "launcher/tools/render/scene_viewer.sh"
 RESULTS = ROOT / "launcher/tools/results/doc_images"
@@ -102,7 +103,7 @@ def host_inputs(scene_path):
     """Compile flags and the compiler's -MM list (sources and project headers), repo-relative.
     System headers and compiler identity/version are not counted."""
     def relative(token):
-        if not token.startswith("/"):
+        if not Path(token).is_absolute():
             return token
         path = Path(token).resolve()
         if not path.is_relative_to(ROOT):
@@ -114,7 +115,7 @@ def host_inputs(scene_path):
     flags, _, deps = listing.partition("\n")
     if not flags.startswith("flags "):
         raise ValueError(f"{HOST_SCRIPT.name} --deps printed no flags line")
-    files = {relative(token) for token in deps.replace("\\\n", " ").split() if not token.endswith(":")}
+    files = {relative(token) for token in compile_db.parse_dependencies(deps, directory=ROOT)}
     return {"host flags": " ".join(relative(token) for token in flags.split()[1:]),
             **{f"host {name}": content_checksum(ROOT / name).decode() for name in sorted(files)}}
 

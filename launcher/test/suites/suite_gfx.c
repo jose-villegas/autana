@@ -302,7 +302,7 @@ test_dither_stays_in_phase_across_separate_calls(void) {
 /* One synthetic source pixel per index: every value distinct from its
  * neighbours and never equal to the black background (the | 1), so a blit
  * writing the WRONG source pixel reads as a value mismatch, not a
- * coincidental pass. Heap, not the 3584-byte main-task stack, and not
+ * coincidental pass. Heap, not the under-4 KB main-task stack, and not
  * static: permanent .bss is the scarcest budget on this board. */
 #define BLIT_SRC_STRIDE 70
 #define BLIT_SRC_ROWS   40
@@ -393,7 +393,7 @@ test_blit_dither_matches_per_pixel_covers_reference(void) {
 
 /* Compared one ROW at a time, re-rendering both glyphs per row, rather than
  * snapshotting the whole 40x40 box into a stack array: these tests run on
- * the ESP-IDF main task's 3584-byte stack (CONFIG_ESP_MAIN_TASK_STACK_SIZE)
+ * the ESP-IDF main task's stack, under 4 KB (CONFIG_ESP_MAIN_TASK_STACK_SIZE),
  * and already several frames deep. The box would be 3.2 KB of that in one
  * local; a 40-wide row is 80 bytes. */
 void
@@ -1264,7 +1264,7 @@ test_memory_throughput_psram_against_internal(void) {
 #endif
     /* CONFIG_ESP32S3_DATA_CACHE_32KB can hold a sample; rotate PSRAM windows between repetitions. */
     const size_t sample = (size_t)GFX_WIDTH * 16 * sizeof(gfx_color_t);
-    const size_t frame = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
+    const size_t frame = GFX_FRAMEBUFFER_BYTES;
     const size_t psram_step = (frame - sample) / (MEMTP_REPS - 1);
 
     uint8_t* int_a = memory_alloc(sample, MEMORY_INTERNAL);

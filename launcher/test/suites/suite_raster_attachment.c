@@ -16,9 +16,12 @@
 
 #include "core/memory.h"
 #include "render/context/render_context.h"
+#include "render/r3d_lit_mesh.h"
+#include "render/raster.h"
 #include "render/raster_meshlets.h"
 #include "render/raster_motion.h"
 #include "render/raster_show.h"
+#include "render/viewport.h"
 #ifdef HOST_HEAP_ARENA
 #include "heap_arena.h"
 #endif
@@ -169,14 +172,14 @@ static void
 split_quad(raster_rig_t* rig, r3d_lit_cluster_t clusters[2]) {
     static const uint16_t white[] = {UINT16_MAX, UINT16_MAX};
     r3d_quad_t* quad = &rig->quad[0];
-    int16_t(*positions)[3] = (void*)rig->own;
+    int16_t (*positions)[3] = (void*)rig->own;
     memcpy(positions, quad->mesh.positions, sizeof(int16_t) * 4 * 3);
     memcpy(positions + 4, quad->mesh.positions, sizeof(int16_t) * 4 * 3);
     clusters[0] = clusters[1] = quad->cluster;
     clusters[0].triangle_count = clusters[1].triangle_count = 1;
     clusters[1].triangle_first = 1;
     clusters[1].vertex_first = 4;
-    quad->mesh.positions = (const int16_t(*)[3])positions;
+    quad->mesh.positions = (const int16_t (*)[3])positions;
     quad->mesh.vertex_count = 8;
     quad->mesh.colors = NULL;
     quad->mesh.face_colors = white;

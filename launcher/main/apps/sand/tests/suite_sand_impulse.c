@@ -88,7 +88,7 @@ test_the_disc_count_table_matches_a_direct_lattice_count(void) {
         int expect = 0;
         for (int dy = -r; dy <= r; dy++) {
             for (int dx = -r; dx <= r; dx++) {
-                if (dx * dx + dy * dy <= r * r) {
+                if ((dx * dx) + (dy * dy) <= r * r) {
                     expect++;
                 }
             }
@@ -1936,7 +1936,10 @@ test_a_blast_queues_impulses_on_every_side_of_the_centre(void) {
                                   "a fully packed grid's neighbours qualifies, so all 8 slots must "
                                   "have been used");
 
-    bool saw_up = false, saw_down = false, saw_left = false, saw_right = false;
+    bool saw_up = false;
+    bool saw_down = false;
+    bool saw_left = false;
+    bool saw_right = false;
     for (int i = 0; i < s.impulse_count; i++) {
         switch (s.impulse_buf[i].dir) {
             case 4: saw_up = true; break;
@@ -1984,7 +1987,7 @@ test_detonating_empty_space_still_flashes_the_core(void) {
         for (int x = 0; x < W; x++) {
             const int dx = x - 4;
             const int dy = y - 4;
-            if (dx * dx + dy * dy <= core_r2) {
+            if ((dx * dx) + (dy * dy) <= core_r2) {
                 TEST_ASSERT_EQUAL_UINT8_MESSAGE(MAT_FIRE, CELL_MATERIAL(sand_at(&s, x, y)),
                                                 "the core must flash into fire even where there was "
                                                 "nothing at all to convert");

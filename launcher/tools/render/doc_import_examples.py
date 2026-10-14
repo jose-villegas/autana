@@ -10,7 +10,7 @@ from r3d.bake_fidelity import write_assets
 from r3d.import_settings import load_scene
 from r3d.lit_mesh import write_lit_mesh
 from r3d.mesh_import import bake_geometry
-from r3d.scene_asset import scene_id
+from r3d.scene_name import scene_id
 
 
 def main(scene_path, object_name, host, work, out, frames, dt):

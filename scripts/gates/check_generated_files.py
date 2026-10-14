@@ -31,6 +31,7 @@ what --write-table would write, without running any banner; each table's
 marker names it, so the generated-document gate runs it.
 """
 import argparse
+from html import unescape
 import concurrent.futures
 import difflib
 import os
@@ -79,7 +80,7 @@ def banner_command(text):
     for line in lines[start + 1:]:
         command = line.strip().lstrip("/*#").strip()
         if command:
-            return command
+            return unescape(command) if lines[start].lstrip().startswith("<!--") else command
     return None
 
 

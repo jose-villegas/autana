@@ -2,10 +2,7 @@
 
 #include <string.h>
 
-static uint16_t
-half(const uint8_t* at) {
-    return (uint16_t)(at[0] | ((uint16_t)at[1] << 8));
-}
+#include "asset/asset_bytes.h"
 
 asset_status_t
 asset_table_open(asset_view_t entry, asset_table_t* out) {
@@ -14,11 +11,11 @@ asset_table_open(asset_view_t entry, asset_table_t* out) {
         return ASSET_ERR_BOUNDS;
     }
     const uint8_t* base = entry.data;
-    if (half(base) != ASSET_TABLE_VERSION) {
+    if (asset_read_u16(base) != ASSET_TABLE_VERSION) {
         return ASSET_ERR_VERSION;
     }
-    const uint16_t rows = half(base + ASSET_TABLE_AT_ROWS);
-    const uint16_t columns = half(base + ASSET_TABLE_AT_COLUMNS);
+    const uint16_t rows = asset_read_u16(base + ASSET_TABLE_AT_ROWS);
+    const uint16_t columns = asset_read_u16(base + ASSET_TABLE_AT_COLUMNS);
     const size_t stride = ASSET_TABLE_NAME_SIZE + (sizeof(int16_t) * columns);
     const uint64_t size = ASSET_TABLE_HEADER_SIZE + ((uint64_t)rows * stride);
     if (rows == 0 || columns == 0 || base[ASSET_TABLE_AT_RESERVED] != 0 || size != entry.size) {

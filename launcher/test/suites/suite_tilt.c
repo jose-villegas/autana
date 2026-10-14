@@ -33,9 +33,9 @@ fixture(void) {
  * honest gravity: anything else would be rejected by the trust gate, which is
  * tested separately below. */
 static void
-hold(int gx, int gy, int shake, uint32_t dt_ms, uint32_t ms) {
+hold(int gx, int gy, int turn_speed, uint32_t dt_ms, uint32_t ms) {
     for (uint32_t elapsed = 0; elapsed < ms; elapsed += dt_ms) {
-        tilt_update(&t, gx, gy, 0, shake, dt_ms);
+        tilt_update(&t, (vec3i_t){gx, gy, 0}, turn_speed, dt_ms);
     }
 }
 
@@ -43,7 +43,7 @@ static void
 test_the_first_sample_is_adopted_exactly(void) {
     fixture();
 
-    tilt_update(&t, 1000, ONE_G, 0, 0, 14);
+    tilt_update(&t, (vec3i_t){1000, ONE_G, 0}, 0, 14);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(1000, tilt_x(&t),
                                   "the filter must start at the first reading, not ramp up from zero - "
@@ -54,11 +54,11 @@ test_the_first_sample_is_adopted_exactly(void) {
 static void
 test_a_change_is_approached_gradually(void) {
     fixture();
-    tilt_update(&t, 0, ONE_G, 0, 0, 14);
+    tilt_update(&t, (vec3i_t){0, ONE_G, 0}, 0, 14);
 
     /* Gravity swings a quarter turn in one frame, as if the board were
      * snapped sideways. */
-    tilt_update(&t, ONE_G, 0, 0, 0, 14);
+    tilt_update(&t, (vec3i_t){ONE_G, 0, 0}, 0, 14);
 
     TEST_ASSERT_GREATER_THAN_MESSAGE(0, tilt_x(&t), "the filter must move toward the new reading");
     TEST_ASSERT_LESS_THAN_MESSAGE(ONE_G / 4, tilt_x(&t),
@@ -69,7 +69,7 @@ test_a_change_is_approached_gradually(void) {
 static void
 test_it_converges_when_the_reading_is_held(void) {
     fixture();
-    tilt_update(&t, 0, ONE_G, 0, 0, 14);
+    tilt_update(&t, (vec3i_t){0, ONE_G, 0}, 0, 14);
 
     hold(ONE_G, 0, 0, 14, 2000);
 
@@ -87,15 +87,15 @@ test_smoothing_is_independent_of_framerate(void) {
     tilt_t fast, slow;
 
     tilt_reset(&fast, ONE_G);
-    tilt_update(&fast, 0, ONE_G, 0, 0, 14);
+    tilt_update(&fast, (vec3i_t){0, ONE_G, 0}, 0, 14);
     for (int i = 0; i < 21; i++) { /* 21 * 14 ms = 294 ms */
-        tilt_update(&fast, ONE_G, 0, 0, 0, 14);
+        tilt_update(&fast, (vec3i_t){ONE_G, 0, 0}, 0, 14);
     }
 
     tilt_reset(&slow, ONE_G);
-    tilt_update(&slow, 0, ONE_G, 0, 0, 40);
+    tilt_update(&slow, (vec3i_t){0, ONE_G, 0}, 0, 40);
     for (int i = 0; i < 7; i++) { /* 7 * 42 ms = 294 ms */
-        tilt_update(&slow, ONE_G, 0, 0, 0, 42);
+        tilt_update(&slow, (vec3i_t){ONE_G, 0, 0}, 0, 42);
     }
 
     TEST_ASSERT_INT_WITHIN_MESSAGE(ONE_G / 12, tilt_x(&fast), tilt_x(&slow),
@@ -107,13 +107,13 @@ test_shaking_makes_it_track_faster(void) {
     tilt_t still, moving;
 
     tilt_reset(&still, ONE_G);
-    tilt_update(&still, 0, ONE_G, 0, 0, 14);
+    tilt_update(&still, (vec3i_t){0, ONE_G, 0}, 0, 14);
     hold(ONE_G, 0, 0, 14, 140);
 
     tilt_reset(&moving, ONE_G);
-    tilt_update(&moving, 0, ONE_G, 0, 255, 14);
+    tilt_update(&moving, (vec3i_t){0, ONE_G, 0}, TILT_TURN_FULL_DPS, 14);
     for (int i = 0; i < 10; i++) {
-        tilt_update(&moving, ONE_G, 0, 0, 255, 14);
+        tilt_update(&moving, (vec3i_t){ONE_G, 0, 0}, TILT_TURN_FULL_DPS, 14);
     }
 
     TEST_ASSERT_GREATER_THAN_MESSAGE(tilt_x(&still), tilt_x(&moving),
@@ -124,14 +124,14 @@ test_shaking_makes_it_track_faster(void) {
 static void
 test_noise_is_attenuated_when_the_board_is_still(void) {
     fixture();
-    tilt_update(&t, 0, ONE_G, 0, 0, 14);
+    tilt_update(&t, (vec3i_t){0, ONE_G, 0}, 0, 14);
 
     /* A still board still reports a few hundred counts of noise. Alternating
      * it is the worst case for a smoother. */
     int worst = 0;
     for (int i = 0; i < 60; i++) {
         const int noise = (i & 1) ? 300 : -300;
-        tilt_update(&t, noise, ONE_G, 0, 0, 14);
+        tilt_update(&t, (vec3i_t){noise, ONE_G, 0}, 0, 14);
         const int magnitude = tilt_x(&t) < 0 ? -tilt_x(&t) : tilt_x(&t);
         if (magnitude > worst) {
             worst = magnitude;
@@ -146,11 +146,11 @@ test_noise_is_attenuated_when_the_board_is_still(void) {
 static void
 test_a_stalled_frame_does_not_teleport_the_filter(void) {
     fixture();
-    tilt_update(&t, 0, ONE_G, 0, 0, 14);
+    tilt_update(&t, (vec3i_t){0, ONE_G, 0}, 0, 14);
 
     /* A two-second stall: a long flash, or a breakpoint. Without a clamp the
      * filter would jump straight to the new reading. */
-    tilt_update(&t, ONE_G, 0, 0, 0, 2000);
+    tilt_update(&t, (vec3i_t){ONE_G, 0, 0}, 0, 2000);
 
     TEST_ASSERT_LESS_THAN_MESSAGE(ONE_G * 2 / 3, tilt_x(&t),
                                   "a long stall must not be allowed to snap the filter to the newest "
@@ -160,10 +160,10 @@ test_a_stalled_frame_does_not_teleport_the_filter(void) {
 static void
 test_zero_elapsed_time_changes_nothing(void) {
     fixture();
-    tilt_update(&t, 0, ONE_G, 0, 0, 14);
+    tilt_update(&t, (vec3i_t){0, ONE_G, 0}, 0, 14);
     const int before = tilt_y(&t);
 
-    tilt_update(&t, ONE_G, 0, 0, 0, 0);
+    tilt_update(&t, (vec3i_t){ONE_G, 0, 0}, 0, 0);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(before, tilt_y(&t),
                                   "no time passed, so nothing may be integrated - and nothing may be "
@@ -175,7 +175,7 @@ test_zero_elapsed_time_changes_nothing(void) {
 static void
 test_a_shove_is_not_mistaken_for_gravity(void) {
     fixture();
-    tilt_update(&t, 0, ONE_G, 0, 0, 14);
+    tilt_update(&t, (vec3i_t){0, ONE_G, 0}, 0, 14);
     const int settled = tilt_y(&t);
 
     /* Two g sideways: the device is being yanked, not turned. An accelerometer
@@ -183,7 +183,7 @@ test_a_shove_is_not_mistaken_for_gravity(void) {
      * magnitude is nowhere near one g, which is enough to know the reading is
      * not describing orientation. */
     for (int i = 0; i < 40; i++) {
-        tilt_update(&t, 2 * ONE_G, 0, 0, 0, 14);
+        tilt_update(&t, (vec3i_t){2 * ONE_G, 0, 0}, 0, 14);
     }
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(settled, tilt_y(&t),
@@ -197,7 +197,7 @@ test_an_honest_reading_is_still_followed(void) {
     /* The gate must not be so strict that real tilting stops working. A turn
      * at rest keeps the magnitude at one g. */
     fixture();
-    tilt_update(&t, 0, ONE_G, 0, 0, 14);
+    tilt_update(&t, (vec3i_t){0, ONE_G, 0}, 0, 14);
 
     hold(ONE_G, 0, 0, 14, 2000);
 
@@ -209,11 +209,11 @@ test_an_honest_reading_is_still_followed(void) {
 static void
 test_free_fall_is_reported_rather_than_estimated(void) {
     fixture();
-    tilt_update(&t, 0, ONE_G, 0, 0, 14);
+    tilt_update(&t, (vec3i_t){0, ONE_G, 0}, 0, 14);
     TEST_ASSERT_FALSE(tilt_in_free_fall(&t));
 
     /* Everything near zero: nothing is holding the device up. */
-    tilt_update(&t, 10, 10, 10, 0, 14);
+    tilt_update(&t, (vec3i_t){10, 10, 10}, 0, 14);
 
     TEST_ASSERT_TRUE_MESSAGE(tilt_in_free_fall(&t),
                              "free fall is not an untrustworthy reading to be ignored - it is a "
@@ -225,7 +225,7 @@ test_free_fall_is_reported_rather_than_estimated(void) {
 static void
 test_flow_is_full_when_the_screen_is_upright(void) {
     fixture();
-    tilt_update(&t, 0, ONE_G, 0, 0, 14);
+    tilt_update(&t, (vec3i_t){0, ONE_G, 0}, 0, 14);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(256, tilt_strength(&t),
                                   "held upright, all of gravity is in the plane and what it drives should "
@@ -247,7 +247,7 @@ test_flow_falls_away_as_the_device_is_laid_flat(void) {
         const int through = ONE_G - in_plane;
 
         tilt_reset(&t, ONE_G);
-        tilt_update(&t, 0, in_plane, through, 0, 14);
+        tilt_update(&t, (vec3i_t){0, in_plane, through}, 0, 14);
 
         const int flow = tilt_strength(&t);
         TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(previous, flow,
@@ -264,7 +264,7 @@ test_a_flat_device_is_not_free_fall(void) {
 
     /* All of gravity through the screen: the in-plane reading looks exactly
      * like free fall, and is not. */
-    tilt_update(&t, 12, -8, ONE_G, 0, 14);
+    tilt_update(&t, (vec3i_t){12, -8, ONE_G}, 0, 14);
 
     TEST_ASSERT_FALSE_MESSAGE(tilt_in_free_fall(&t),
                               "lying on a table is not free fall, however similar the in-plane "
@@ -275,9 +275,9 @@ test_a_flat_device_is_not_free_fall(void) {
 static void
 test_free_fall_stops_the_flow_even_on_a_stale_estimate(void) {
     fixture();
-    tilt_update(&t, 0, ONE_G, 0, 0, 14); /* upright, flow at full */
+    tilt_update(&t, (vec3i_t){0, ONE_G, 0}, 0, 14); /* upright, flow at full */
 
-    tilt_update(&t, 5, 5, 5, 0, 14); /* dropped */
+    tilt_update(&t, (vec3i_t){5, 5, 5}, 0, 14); /* dropped */
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, tilt_strength(&t),
                                   "free fall deliberately holds the last estimate rather than following "
@@ -305,7 +305,7 @@ test_turning_the_board_does_not_read_as_shaking(void) {
     fixture();
     for (int i = 0; i < 48; i++) {
         const int* u = unit[i % turns];
-        tilt_update(&t, (ONE_G * u[0]) / 1000, (ONE_G * u[1]) / 1000, 0, 255,
+        tilt_update(&t, (vec3i_t){(ONE_G * u[0]) / 1000, (ONE_G * u[1]) / 1000, 0}, TILT_TURN_FULL_DPS,
                     14); /* gyro pinned at maximum throughout */
     }
 
@@ -322,7 +322,7 @@ test_shaking_registers_as_shaking(void) {
      * the definition of being accelerated rather than turned. */
     for (int i = 0; i < 40; i++) {
         const int extra = (i & 1) ? ONE_G : -ONE_G / 2;
-        tilt_update(&t, extra, ONE_G, 0, 0, 14);
+        tilt_update(&t, (vec3i_t){extra, ONE_G, 0}, 0, 14);
     }
 
     TEST_ASSERT_GREATER_THAN_MESSAGE(120, tilt_shake(&t),
@@ -344,14 +344,14 @@ static void
 test_shaking_fades_rather_than_switching_off(void) {
     fixture();
     for (int i = 0; i < 30; i++) {
-        tilt_update(&t, (i & 1) ? ONE_G : -ONE_G, ONE_G, 0, 0, 14);
+        tilt_update(&t, (vec3i_t){(i & 1) ? ONE_G : -ONE_G, ONE_G, 0}, 0, 14);
     }
     const int during = tilt_shake(&t);
     TEST_ASSERT_GREATER_THAN(100, during);
 
     /* Put it down. It must not snap to zero on the first still sample: a
      * shake should carry for a moment rather than flicker between strokes. */
-    tilt_update(&t, 0, ONE_G, 0, 0, 14);
+    tilt_update(&t, (vec3i_t){0, ONE_G, 0}, 0, 14);
     const int just_after = tilt_shake(&t);
 
     TEST_ASSERT_LESS_THAN_MESSAGE(during, just_after, "it must decay");
@@ -384,9 +384,23 @@ test_each_sensor_axis_lands_on_its_screen_axis(void) {
     }
 }
 
+/* imu_turn_speed: absolute rates summed over all three axes, in deg/s; the
+ * accelerometer plays no part. */
+static void
+test_turn_speed_sums_absolute_rates_in_dps(void) {
+    const int dps = 100;
+    const imu_sample_t turning = {
+        .gx = -dps * IMU_COUNTS_PER_DPS, .gy = dps * IMU_COUNTS_PER_DPS, .gz = dps * IMU_COUNTS_PER_DPS};
+    TEST_ASSERT_EQUAL_INT(3 * dps, imu_turn_speed(&turning));
+
+    const imu_sample_t still = {.ax = ONE_G, .ay = -ONE_G, .az = ONE_G};
+    TEST_ASSERT_EQUAL_INT(0, imu_turn_speed(&still));
+}
+
 void
 run_tilt_suite(void) {
     RUN_TEST(test_each_sensor_axis_lands_on_its_screen_axis);
+    RUN_TEST(test_turn_speed_sums_absolute_rates_in_dps);
     RUN_TEST(test_turning_the_board_does_not_read_as_shaking);
     RUN_TEST(test_shaking_registers_as_shaking);
     RUN_TEST(test_a_still_board_is_not_shaking);

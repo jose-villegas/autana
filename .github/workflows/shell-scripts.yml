@@ -21,9 +21,9 @@ concurrency:
 jobs:
   lint:
     name: Lint and POSIX check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # A shell script is what its first line says, not its name: tools/autana
       # and the pre-commit hook have no .sh, and a glob by name never saw them.

@@ -29,10 +29,12 @@
 #include "core/timing.h"
 #include "gfx/gfx.h"
 #include "profile/frame_cost.h"
-#include "render/r3d.h"
+#include "render/r3d_lit_mesh.h"
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
+#include "render/raster.h"
 #include "render/raster_motion.h"
+#include "render/viewport.h"
 #include "scene/scene.h"
 #include "services/build_id.h"
 #include "services/tune.h"
@@ -43,7 +45,7 @@ static const char* TAG = "sponza_perf";
 /* The scene, loaded for the suite, its pack, and one mesh for each bake. */
 static scene_t* sponza;
 static const asset_pack_t* pack;
-static const r3d_scene_camera_t* flythrough;
+static const camera_t* flythrough;
 static scene_entity_t camera_entity;
 static r3d_lit_mesh_t meshes[SPONZA_BAKE_COUNT];
 
@@ -97,7 +99,8 @@ bench_close(bench_t* b) {
 static r3d_lens_t
 view_at(const r3d_lit_mesh_t* mesh, uint32_t t_ms) {
     (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-    const render_view_t view = r3d_scene_view_at(flythrough, (viewport_t){render_width(), render_height(), 0});
+    const render_view_t view = camera_view(flythrough, scene_entity_transform(sponza, camera_entity),
+                                           (viewport_t){render_width(), render_height(), 0});
     r3d_lens_t lens;
     r3d_lens_init(&lens, &view, mesh->position_scale);
     return lens;
@@ -250,7 +253,8 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     int samples = 0;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_POSE_EVERY_MS) {
         (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-        const render_view_t view = r3d_scene_view_at(flythrough, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
+        const render_view_t view = camera_view(flythrough, scene_entity_transform(sponza, camera_entity),
+                                               (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
         if (moving != NULL) {
             moving->position.x = (t_ms / SPONZA_POSE_EVERY_MS) % 2 == 0 ? 0.0F : 0.01F;
         }
@@ -337,7 +341,7 @@ run_sponza_perf_suite(void) {
     sponza_suite_t loaded = sponza_suite_load();
     sponza = loaded.scene;
     pack = loaded.pack;
-    flythrough = loaded.path;
+    flythrough = loaded.lens;
     camera_entity = sponza == NULL ? SCENE_ENTITY_NONE : scene_find(sponza, sponza_cameras[0]);
     RUN_TEST(test_sponza_draw_stage_breakdown);
     RUN_TEST(test_sponza_frame_cost_along_the_flythrough);

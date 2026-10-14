@@ -1134,7 +1134,6 @@
 5	launcher/main/render/r3d_pipeline.c:290	draw_split_histogram
 5	launcher/main/render/r3d_pipeline.c:305	draw_split_row
 5	launcher/main/render/r3d_pipeline.c:146	push_children
-5	launcher/main/render/r3d_scene.c:11	r3d_scene_camera_sample
 5	launcher/main/render/r3d_span.c:116	fill_span
 5	launcher/main/render/r3d_span.c:410	r3d_span_plane_in_range
 5	launcher/main/render/raster_show.c:73	fill_tile
@@ -1462,7 +1461,6 @@
 4	launcher/test/timing.c:78	run_body
 4	launcher/tools/r3d/triangle_sizes.c:33	owns
 3	launcher/components/microui/src/microui.c:1188	mu_seed_hover_root
-3	launcher/main/anim/anim_track.c:94	anim_clip_seconds
 3	launcher/main/apps/diagnostics/ui/toggles_screen.c:29	draw_orientation_readout
 3	launcher/main/apps/diagnostics/ui/toggles_screen.c:75	toggles_screen_draw
 3	launcher/main/apps/input_lab/app_input_lab.c:272	draw_hud

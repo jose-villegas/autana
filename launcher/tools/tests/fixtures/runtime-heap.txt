@@ -1,0 +1,10 @@
+BUILD_ID=abc-release
+unmeasured: this build has no console
+
+BUILD_ID=abc-dev
+phase=boot {"free": 600, "largest": 400, "total": 1200}
+phase=app:A {"free": 320, "largest": 256, "total": 1200}
+phase=app:B {"free": 400, "largest": 200, "total": 1200}
+
+BUILD_ID=abc-diag
+phase=boot {"free": 512, "largest": 256, "total": 1200}

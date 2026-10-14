@@ -7,6 +7,7 @@ import getpass
 import json
 import math
 import os
+import re
 import socket
 import statistics
 import sys
@@ -33,18 +34,28 @@ EXIT_BUSY = autana_config.EXIT_BUSY
 GUARD_STALE_SECONDS = 30
 # The mutex is guard() below (an O_CREAT|O_EXCL file), not an OS byte-range
 # lock; the JSON files are the state it protects, not locks themselves. This
-# numbers THAT state's shape, purely as a bump reminder pinned by the golden
-# key-snapshot test in test_device_lock.py: bump it whenever a record's
-# fields change, or a reclaim rule does, in a way an older reader would
-# misinterpret, add that protocol's entry there and keep the old ones. Nothing
-# here ever refuses a record over its value; two installs of different ages
-# still have to work the same board, so a mismatch is shown as information
-# (status, a wait notice), never a reason to stop. Protocol 2: a person's
-# reservation expires (expires_at) and the last holder is kept (.last.json).
-LOCK_PROTOCOL = 2
-# A person's reservation has no heartbeat, so this is the only thing that
-# frees a forgotten one. Running `hand` again renews it.
-HUMAN_RESERVATION_SECONDS = 3600
+# numbers the state shape. Differences are shown, never refused for running
+# commands. Readers older than protocol 3 take timed and human holds at once,
+# and until-released holds after the stale window. Protocol 3 ignores protocol-2
+# .human.json reservations. Update every copy sharing a board.
+LOCK_PROTOCOL = 3
+HOLD_MAX_SECONDS = 3600
+WAIT_POLL_SECONDS = 0.2
+FILETIME_EPOCH_OFFSET = 116444736000000000
+FILETIME_TICKS_PER_SECOND = 10000000
+# A person's reservation has no heartbeat; `hand` renews its expiry.
+HUMAN_RESERVATION_SECONDS = HOLD_MAX_SECONDS
+CALLER_PID_ENV = "_AUTANA_CALLER_PID"
+PROCESS_BASIC_INFORMATION = 0
+PROCESS_COMMAND_LINE_INFORMATION = 60
+WINDOWS_AUTANA_HOST = re.compile(
+    r'^\s*(?:'
+    r'(?:"[^"\n]*[\\/]cmd\.exe"|(?:\S*[\\/])?cmd\.exe)\s+'
+    r'(?:/[^c\s]+\s+)*/c\s+"*(?:[^"\r\n]*[\\/])?autana\.cmd(?:"|\s|$)'
+    r'|(?:"(?:[^"\n]*[\\/])?python[\d.]*(?:\.exe)?"|(?:\S*[\\/])?python[\d.]*(?:\.exe)?)\s+'
+    r'"?[^"\r\n]*[\\/]scripts[\\/]autana[\\/]autana\.py(?:"|\s|$)'
+    r'|(?:"[^"\n]*[\\/]bash(?:\.exe)?"|(?:\S*[\\/])?bash(?:\.exe)?)\s+'
+    r'"?[^"\r\n]*[\\/]tools[\\/]autana(?:"|\s|$))', re.IGNORECASE)
 # The fields that decide something: who a record is, whether a lock is live,
 # stale or dead, or a waiter's place in the FIFO, and so must be readable
 # off ANY record, of any age or protocol, without guessing: boards() reads
@@ -83,14 +94,64 @@ def default_owner():
     return f"{user}@{socket.gethostname()}:{os.getpid()}"
 
 
+def caller_pid(explicit=None):
+    """The invoking process outside the Windows launcher and interpreter shims."""
+    if explicit:
+        return int(explicit)
+    parent = os.getppid()
+    if os.name != "nt":
+        return parent
+    import ctypes
+    from ctypes import wintypes
+
+    class BasicInformation(ctypes.Structure):
+        _fields_ = [("reserved", ctypes.c_void_p), ("peb", ctypes.c_void_p),
+                    ("reserved_pair", ctypes.c_void_p * 2), ("pid", ctypes.c_size_t),
+                    ("parent", ctypes.c_size_t)]
+
+    class UnicodeString(ctypes.Structure):
+        _fields_ = [("length", wintypes.USHORT), ("maximum", wintypes.USHORT),
+                    ("buffer", ctypes.c_void_p)]
+
+    kernel = windows_kernel32()
+    query = ctypes.WinDLL("ntdll").NtQueryInformationProcess
+    query.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p,
+                      wintypes.ULONG, ctypes.POINTER(wintypes.ULONG)]
+    query.restype = wintypes.LONG
+    while parent:
+        handle = kernel.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, parent)
+        if not handle:
+            raise OSError("could not find the invoking shell; use --pid")
+        try:
+            basic = BasicInformation()
+            needed = wintypes.ULONG()
+            if query(handle, PROCESS_BASIC_INFORMATION, ctypes.byref(basic),
+                     ctypes.sizeof(basic), ctypes.byref(needed)) < 0:
+                raise OSError("could not read the invoking process parent; use --pid")
+            query(handle, PROCESS_COMMAND_LINE_INFORMATION, None, 0, ctypes.byref(needed))
+            if not needed.value:
+                raise OSError("could not read the invoking process command line; use --pid")
+            buffer = ctypes.create_string_buffer(needed.value)
+            if query(handle, PROCESS_COMMAND_LINE_INFORMATION, buffer, len(buffer), ctypes.byref(needed)) < 0:
+                raise OSError("could not read the invoking process command line; use --pid")
+            text = UnicodeString.from_buffer(buffer)
+            command = ctypes.wstring_at(text.buffer, text.length // ctypes.sizeof(wintypes.WCHAR))
+            if not WINDOWS_AUTANA_HOST.match(command):
+                return parent
+            parent = basic.parent
+        finally:
+            kernel.CloseHandle(handle)
+    raise OSError("invoking shell exited; use --pid")
+
+
 def normalise_board(serial):
     """A board's USB serial number as every lock file and record spells it."""
     return serial.strip().upper()
 
 
 def process_alive(pid):
-    """Only a pid that demonstrably does not exist counts as dead. Every other
-    outcome answers alive: this decides whether one owner may take the board
+    """Only a process demonstrably absent or exited counts as dead. Every
+    other outcome answers alive: this decides whether one owner may take the board
     from another, and a wrongly reclaimed lock corrupts somebody's capture
     while a wrongly held one only waits out its heartbeat."""
     if pid == os.getpid():
@@ -102,7 +163,21 @@ def process_alive(pid):
     return posix_process_alive(pid)
 
 
+LINUX_EXITED_PROCESS_STATES = frozenset(("Z", "X"))
+
+
+def linux_stat_fields(pid):
+    """Fields after /proc's parenthesised command name, or None if unreadable."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8", errors="replace")
+        return stat[stat.rindex(")") + 2:].split() or None
+    except (OSError, ValueError):
+        return None
+
+
 def posix_process_alive(pid, kill=None):
+    """Only proven absence makes a holder dead. Linux zombies and exited
+    processes cannot own the board; an unreadable stat leaves them alive."""
     kill = kill or os.kill
     try:
         kill(pid, 0)
@@ -110,6 +185,10 @@ def posix_process_alive(pid, kill=None):
         return False
     except OSError:
         return True
+    if sys.platform.startswith("linux"):
+        fields = linux_stat_fields(pid)
+        if fields:
+            return fields[0] not in LINUX_EXITED_PROCESS_STATES
     return True
 
 
@@ -159,6 +238,47 @@ def windows_process_alive(pid, kernel32=None):
         kernel32.CloseHandle(handle)
 
 
+def windows_process_start(pid):
+    """When `pid` began, in epoch seconds, or None if it cannot be read."""
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = windows_kernel32()
+    kernel32.GetProcessTimes.argtypes = [wintypes.HANDLE] + [ctypes.POINTER(wintypes.FILETIME)] * 4
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return None
+    try:
+        created, unused_exit, unused_kernel, unused_user = (wintypes.FILETIME() for _ in range(4))
+        if not kernel32.GetProcessTimes(handle, ctypes.byref(created), ctypes.byref(unused_exit),
+                                        ctypes.byref(unused_kernel), ctypes.byref(unused_user)):
+            return None
+        ticks = (created.dwHighDateTime << 32) | created.dwLowDateTime
+        return (ticks - FILETIME_EPOCH_OFFSET) / FILETIME_TICKS_PER_SECOND
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def posix_process_start(pid):
+    """When `pid` began, in epoch seconds, or None where /proc cannot say."""
+    fields = linux_stat_fields(pid)
+    if fields is None:
+        return None
+    try:
+        with open("/proc/stat", encoding="utf-8") as stream:
+            boot = next(int(line.split()[1]) for line in stream if line.startswith("btime"))
+        # Field 22, counted from after the parenthesised command name.
+        ticks = int(fields[19])
+        return boot + ticks / os.sysconf("SC_CLK_TCK")
+    except (OSError, ValueError, IndexError, StopIteration):
+        return None
+
+
+def process_start(pid):
+    """When the process began, in epoch seconds, or None if unavailable."""
+    return windows_process_start(pid) if os.name == "nt" else posix_process_start(pid)
+
+
 def human_expires_at(human):
     """When a reservation lapses; None for a record with nothing to compute it
     from, which never lapses. A record written before reservations expired has
@@ -203,9 +323,6 @@ class LockStore:
 
     def lock_path(self, board):
         return self.root / (self.stem(board) + ".json")
-
-    def human_path(self, board):
-        return self.root / (self.stem(board) + ".human.json")
 
     def queue_dir(self, board):
         return self.root / (self.stem(board) + ".queue")
@@ -305,10 +422,6 @@ class LockStore:
                 time.sleep(0.02)
         path.unlink(missing_ok=True)
 
-    def human_expired(self, human):
-        expires = human_expires_at(human)
-        return expires is not None and self.now() >= expires
-
     def note_last_holder(self, board, lock, how):
         """Keeps who held the board last, for the message a command prints when
         the port stays busy after it won the lock. Under guard()."""
@@ -366,6 +479,15 @@ class LockStore:
 
     def reclaim_reason(self, lock, stale_seconds):
         """Why `lock` may be taken from its holder, or "" while it holds."""
+        if lock.get("kind") in ("hold", "human"):
+            expires = lock.get("expires_at")
+            if expires is not None:
+                return "hold lapsed" if self.now() >= expires else ""
+            if not lock.get("until_released"):
+                return ""
+            if lock.get("host") != socket.gethostname():
+                return ""
+            return "" if self.owner_alive(lock) else "dead process"
         same_host = lock.get("host") == socket.gethostname()
         if same_host and not self.is_alive(lock["pid"]):
             return "dead process"
@@ -373,9 +495,17 @@ class LockStore:
             return "heartbeat expiry"
         return ""
 
+    def owner_alive(self, record):
+        if not self.is_alive(record["pid"]):
+            return False
+        started = process_start(record["pid"])
+        acquired = record.get("acquired_at")
+        return not (started is not None and isinstance(acquired, (int, float))
+                    and started > acquired + PID_REUSE_SLACK_SECONDS)
+
     def claim(self, board, ticket, stale_seconds=DEFAULT_STALE_SECONDS):
         held, evicted, reason = self._claim(board, ticket, stale_seconds)
-        if held:
+        if held and held["kind"] != "hand":
             note = (f"reclaimed from {evicted.get('owner', 'unknown')} ({reason})"
                     if evicted else "")
             device_hook.emit("acquired", board, held["owner"], held["purpose"], note=note)
@@ -387,11 +517,6 @@ class LockStore:
             pending = self.tickets(board)
             if not pending or pending[0]["ticket"] != ticket:
                 return None, None, ""
-            expired = self.read_json(self.human_path(board))
-            if expired:
-                if not self.human_expired(expired):
-                    return None, None, ""
-                self.human_path(board).unlink(missing_ok=True)
             current = self.read_json(self.lock_path(board))
             reclaimed = ""
             evicted = None
@@ -474,11 +599,14 @@ class LockStore:
             self.write_json(self.lock_path(board), lock)
             return True
 
-    def check_token(self, board, token, stale_seconds=DEFAULT_STALE_SECONDS):
+    def live_lock(self, board, token, stale_seconds=DEFAULT_STALE_SECONDS):
         with self.guard(board):
             lock = self.read_json(self.lock_path(board))
-            return bool(lock and lock.get("token") == token and
-                        not self.reclaim_reason(lock, stale_seconds))
+            return (lock if lock and lock.get("token") == token and
+                    not self.reclaim_reason(lock, stale_seconds) else None)
+
+    def check_token(self, board, token, stale_seconds=DEFAULT_STALE_SECONDS):
+        return self.live_lock(board, token, stale_seconds) is not None
 
     def release(self, board, token):
         lock = self._release(board, token)
@@ -495,53 +623,62 @@ class LockStore:
             self.note_last_holder(board, lock, "released")
             return lock
 
-    def set_human(self, board, owner, note):
-        """Reserves the board for a person for HUMAN_RESERVATION_SECONDS. Any
-        `hand` while one stands renews it, whichever process runs it (an owner
-        name carries the pid): the id, and so a `hand --until-back` on it, carries over.
-        Returns (id, renewed)."""
+    def hold(self, board, token, note, seconds=None, pid=None, human=False):
         with self.guard(board):
+            lock = self.read_json(self.lock_path(board))
+            if not lock or lock.get("token") != token or self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
+                return False
             now = self.now()
-            existing = self.read_json(self.human_path(board))
-            lapsed = existing if existing and self.human_expired(existing) else None
-            renewing = bool(existing) and not lapsed
-            reservation_id = existing["id"] if renewing else uuid.uuid4().hex
-            self.write_json(self.human_path(board), {
-                "board": board,
-                "id": reservation_id,
-                "note": note,
-                "owner": owner,
-                "since_at": existing["since_at"] if renewing else now,
-                "expires_at": now + HUMAN_RESERVATION_SECONDS,
-                "protocol": LOCK_PROTOCOL,
-                "autana_version": __version__,
-            })
-        if not renewing:
-            device_hook.emit("human-reserved", board, owner, note=note)
-        return reservation_id, renewing
+            lock.update(heartbeat_at=now,
+                        pid=0 if seconds is not None else (pid if pid is not None else os.getpid()))
+            lock.pop("until_released", None)
+            lock.pop("expires_at", None)
+            lock.update(kind="human" if human else "hold", purpose=note)
+            if seconds is not None:
+                lock["expires_at"] = now + seconds
+            else:
+                lock["until_released"] = True
+            self.write_json(self.lock_path(board), lock)
+            return True
 
-    def clear_human(self, board):
+    def reserve_human(self, board, owner, note, wait=0, on_wait=None):
         with self.guard(board):
-            human = self.read_json(self.human_path(board))
-            self.human_path(board).unlink(missing_ok=True)
-        if human:
-            device_hook.emit("human-cleared", board, human["owner"], note=human.get("note", ""))
+            lock = self.read_json(self.lock_path(board))
+            if lock and lock.get("kind") == "human" and not self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
+                lock.update(owner=owner, purpose=note, heartbeat_at=self.now(),
+                            expires_at=self.now() + HUMAN_RESERVATION_SECONDS)
+                self.write_json(self.lock_path(board), lock)
+                return lock["token"], True
+        held = self.acquire(board, owner, "hand", wait=wait, on_wait=on_wait, purpose=note)
+        if not held:
+            return None, False
+        if not self.hold(board, held["token"], note, seconds=HUMAN_RESERVATION_SECONDS, human=True):
+            return None, False
+        device_hook.emit("human-reserved", board, owner, note=note)
+        return held["token"], False
+
+    def end_human(self, board):
+        with self.guard(board):
+            lock = self.read_json(self.lock_path(board))
+            if not lock or lock.get("kind") != "human":
+                return
+            self.lock_path(board).unlink(missing_ok=True)
+            self.note_last_holder(board, lock, "released")
+        device_hook.emit("human-cleared", board, lock["owner"], note=lock.get("purpose", ""))
 
     def status(self, board, stale_seconds=DEFAULT_STALE_SECONDS):
-        """A lock the next claim() would reclaim is reported under
-        "reclaimable", not "lock": nothing holds the board, but the file stays
-        for claim() to replace, with its record of whom it took it from."""
+        """Live holders and queued work; reclaimable records count as free."""
         with self.guard(board):
             self.prune_crashed_waiters(board)
             lock = self.read_json(self.lock_path(board))
             reason = self.reclaim_reason(lock, stale_seconds) if lock else ""
-            human = self.read_json(self.human_path(board))
-            expired = human if human and self.human_expired(human) else None
+            human = (dict(lock, id=lock["token"], note=lock.get("purpose"), since_at=lock.get("acquired_at"))
+                     if lock and lock.get("kind") == "human" else None)
             return {
-                "human": None if expired else human,
-                "expired_human": expired,
-                "lock": None if reason else lock,
-                "reclaimable": dict(lock, reason=reason) if reason else None,
+                "human": human if not reason else None,
+                "expired_human": human if reason else None,
+                "lock": lock if not reason and not human else None,
+                "reclaimable": dict(lock, reason=reason) if reason and not human else None,
                 "queue": self.tickets(board),
             }
 
@@ -640,7 +777,7 @@ def queue_estimates(status, now, durations):
     if status.get("human"):
         start = None
     elif lock:
-        duration = durations.get(lock.get("kind"))
+        duration = durations.get(lock.get("kind")) if lock.get("kind") != "hold" else None
         acquired = lock.get("acquired_at")
         start = (max(now, acquired + duration)
                 if duration is not None and acquired is not None else None)
@@ -678,13 +815,14 @@ def status_entry(store, board, port=None, now=None, durations=None):
                      expires_at=human_expires_at(human))
     elif status["lock"]:
         lock = status["lock"]
-        duration = durations.get(lock.get("kind"))
+        duration = durations.get(lock.get("kind")) if lock.get("kind") != "hold" else None
         acquired = lock.get("acquired_at")
         entry.update(state="held",
                      holder={"owner": lock["owner"], "purpose": lock.get("purpose", "unknown"),
                              "protocol": lock.get("protocol", 0),
-                             "autana_version": lock.get("autana_version")},
-                     since=acquired,
+                             "autana_version": lock.get("autana_version"),
+                             **({"kind": "hold"} if lock.get("kind") == "hold" else {})},
+                     since=acquired, expires_at=lock.get("expires_at"),
                      estimated_free=(max(now, acquired + duration)
                                      if duration is not None and acquired is not None else None))
     elif status["reclaimable"]:
@@ -706,13 +844,8 @@ def previous_holder_alive(store, last, scope):
         return []
     alive = []
     pid = last.get("pid")
-    if isinstance(pid, int) and pid != os.getpid() and store.is_alive(pid):
-        started = scope.process_start(pid)
-        acquired = last.get("acquired_at")
-        reused = (started is not None and isinstance(acquired, (int, float))
-                  and started > acquired + PID_REUSE_SLACK_SECONDS)
-        if not reused:
-            alive.append((pid, scope.process_name(pid)))
+    if isinstance(pid, int) and pid != os.getpid() and store.owner_alive(last):
+        alive.append((pid, scope.process_name(pid)))
     for extra in scope.survivors_extra(last):
         if extra != pid and extra != os.getpid():
             alive.append((extra, scope.process_name(extra)))
@@ -795,10 +928,12 @@ def status_lines(entry, now):
         lines = [f"human reservation: {holder['owner']}: {holder['purpose']} "
                  f"(since {local_time(entry['since'])}; {elapsed_seconds(entry['since'], now)}s ago{left})"]
     elif entry["state"] == "held":
+        hold = (f"{duration_text(entry['expires_at'] - now)} left" if entry["expires_at"] is not None
+                else "until released") if holder.get("kind") == "hold" else ""
         lines = [f"held by {holder['owner']} for {holder['purpose']} since "
                  f"{local_time(entry['since'])} (elapsed {elapsed_seconds(entry['since'], now)}s; "
                  f"estimated free {format_estimate(entry['estimated_free'])}; "
-                 f"{holder_version_details(holder)})"]
+                 f"{holder_version_details(holder)}{'; ' + hold if hold else ''})"]
     elif entry["lapsed"] and entry["lapsed"]["reason"] == RESERVATION_EXPIRED:
         lapsed = entry["lapsed"]
         lines = [f"unlocked - human reservation from {lapsed['owner']}: {lapsed['purpose']} "

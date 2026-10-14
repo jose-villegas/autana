@@ -23,7 +23,7 @@ sys.path.insert(0, str(TOOLS / "tests"))
 from anim import tracks_asset  # noqa: E402
 from anim_probe import probe_entry, probe_glb  # noqa: E402
 from asset.asset_pack import DEFAULT_ALIGN, build_pack  # noqa: E402
-from r3d import scene_asset  # noqa: E402
+from r3d import scene_asset, scene_name  # noqa: E402
 from test_r3d_import import write_import
 from types import SimpleNamespace
 from unittest import mock
@@ -117,7 +117,7 @@ def probe_pack():
         scene = root / "probe_scene.scene.toml"
         scene.write_text(SCENE)
         entry = scene_asset.bake(scene)
-        scene_id = scene_asset.scene_id(scene)
+        scene_id = scene_name.scene_id(scene)
         authored = authored_entries(root)
     return build_pack([(scene_id, scene_asset.TYPE, entry), ("probe", tracks_asset.TYPE, camera_entry()), *authored])
 

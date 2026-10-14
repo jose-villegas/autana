@@ -39,20 +39,18 @@ env:
 jobs:
   comment-rules:
     name: Comment rules and tool tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+      - uses: ./.github/actions/host-tools
 
       # Every install comes before the first gate: Tool tests runs after a
       # failed gate too, and a skipped install would fail it for nothing.
+      # pyserial among them: the exclusive-open tests drive the real serial library on a pty.
       - name: Workflow gate dependencies
-        run: pip install -r scripts/gates/requirements.txt
-
-      # The exclusive-open tests drive the real serial library on a pty.
-      - name: pyserial
-        run: pip install pyserial==3.5 -r launcher/tools/render/requirements.txt
+        run: pip install -r scripts/gates/requirements.txt -r launcher/tools/render/requirements.txt
 
       # test_r3d_bake.py skips itself without numpy and scipy, and builds
       # meshoptimizer's library from its submodule with the runner's compiler;
@@ -148,6 +146,9 @@ jobs:
       - name: Simulation skip facts are read through the forced-work gate
         run: python3 scripts/gates/check_skip_facts.py
 
+      - name: Each vendored copy is taken from its submodule's pinned commit
+        run: python3 scripts/deps/vendored.py check
+
       # Python and, for check-mermaid.mjs's pure parts and check-math.mjs,
       # Node; scripts/run-tool-tests.sh owns which suites.
       - name: Tool tests
@@ -158,9 +159,10 @@ jobs:
   # or two, and every pull request runs it, since the banners are the list.
   generated-files:
     name: Every generated file is what its banner's command makes
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/host-tools
 
       - name: Generator dependencies
         run: pip install -r launcher/tools/render/requirements.txt
@@ -175,13 +177,10 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       image: ${{ steps.pin.outputs.image }}
-      commit: ${{ steps.pin.outputs.commit }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - id: pin
-        run: |
-          echo "image=$(jq -r .image launcher/idf-pin.json)" >> "$GITHUB_OUTPUT"
-          echo "commit=$(jq -r .commit launcher/idf-pin.json)" >> "$GITHUB_OUTPUT"
+        run: echo "image=$(sh scripts/ci/idf_image.sh)" >> "$GITHUB_OUTPUT"
 
   citations:
     name: Every citation resolves, in this tree or in ESP-IDF
@@ -189,17 +188,14 @@ jobs:
     needs: idf-image
     container: ${{ needs.idf-image.outputs.image }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # The container runs as another user than the checkout's owner.
       - name: Trust the checkout
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
 
-      - name: Verify the pinned IDF commit
-        env:
-          IDF_PIN_COMMIT: ${{ needs.idf-image.outputs.commit }}
-        run: |
-          test "$(git -C "$IDF_PATH" rev-parse HEAD)" = "$IDF_PIN_COMMIT" || { echo "image is not the pinned IDF commit"; exit 1; }
+      - name: The image is the ESP-IDF launcher/idf-pin.json records
+        run: python3 scripts/deps/idf_pin.py check
 
       - name: Every name, file and heading a comment cites exists
         env:

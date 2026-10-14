@@ -53,6 +53,18 @@ def header(command, value):
 
 
 class GateTests(unittest.TestCase):
+    def test_xml_comment_banner_decodes_command_entities(self):
+        from check_generated_files import banner_command
+        command = 'python tools/xml.py --chart main/a.svg'
+        encoded = command.replace('--', '&#45;&#45;')
+        banner = f'<!-- {MARKER}\n{encoded}\n-->\n'
+        self.assertEqual(banner_command(banner), command)
+        self.assertEqual(banner_command(header(encoded, 1)), encoded)
+        source = '\n' * 6 + 'import pathlib, sys\n' + f'pathlib.Path(sys.argv[-1]).write_text({banner!r}, encoding="utf-8")\n'
+        self.generator('tools', 'main/a.svg', source=source, file='xml.py')
+        self.add('main/a.svg', banner)
+        self.assertIsNone(check(self.root, 'main/a.svg'))
+
     def test_engine_table_exists_without_engine_outputs(self):
         from check_generated_files import table_documents
         self.assertEqual(table_documents([]), {TABLE_DOC: (TABLE_BLOCK, [])})

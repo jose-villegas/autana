@@ -122,7 +122,7 @@ scene_staggered_holes(sand_t* s) {
                 c = CELL_EMPTY;
             } else if (y == GASLINE_H / 4 && (x % 2) == 0) {
                 c = CELL_EMPTY;
-            } else if ((x % 5) == 3 && y == GASLINE_H / 2 + 5) {
+            } else if ((x % 5) == 3 && y == (GASLINE_H / 2) + 5) {
                 c = CELL_MAKE(MAT_STONE, 0);
             }
             sand_set(s, x, y, c);

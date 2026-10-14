@@ -75,7 +75,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "scripts", "device"))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "qemu"))
 import device_profile  # noqa: E402  (path must be set up first)
-from espressif import espressif_tools_root, idf_python  # noqa: E402  (path must be set up first)
+from espressif import espressif_tools_root, idf_python, idf_path  # noqa: E402  (path must be set up first)
 from device_report import SUITE_COMPLETE_RE  # noqa: E402  (the board tool's own reading)
 from device_capture import (BOOTS_FROM_RESET, BUILD_ID_RE, BUILD_ID_REQUEST,  # noqa: E402
                             crash_signs)  # (the board tool's own crash verdict)
@@ -417,10 +417,10 @@ def main(argv):
                         help="where flash, eFuse and log go "
                              "(default: the build directory)")
     parser.add_argument("--log", default=None)
-    parser.add_argument("--idf-path", default=os.environ.get("IDF_PATH"),
-                        required=not os.environ.get("IDF_PATH"),
-                        help="the ESP-IDF checkout (default: $IDF_PATH)")
+    parser.add_argument("--idf-path", default=None,
+                        help="the ESP-IDF checkout (default: resolved install)")
     args = parser.parse_args(argv)
+    args.idf_path = args.idf_path or str(idf_path())
 
     actions = ["suite %s" % name for name in args.suite]
     actions += ["touch " + spec.replace(",", " ") for spec in args.touch]
