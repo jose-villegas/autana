@@ -9,7 +9,7 @@ they are, and writes the run's tables, if any, into whichever documents hold the
 
     python scripts/ci/refresh_branch.py BRANCH MESSAGE [--tables DIR] [FILE ...]
 
-Each FILE is a path as the run left it; one the run deleted is deleted. REFRESH_REMOTE
+Each FILE is a repository-relative path as the run left it; one the run deleted is deleted. REFRESH_REMOTE
 names the remote (origin by default). Exits 0 having pushed BRANCH, or 3 when main already matches
 the run and there is nothing to commit.
 """

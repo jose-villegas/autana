@@ -132,7 +132,7 @@ note_unlike(unlike_t* unlike, size_t at, gfx_color_t repainted, gfx_color_t full
 
 static int
 unlike_a_full_paint_now(void) {
-    const size_t bytes = (size_t)GFX_WIDTH * GFX_HEIGHT * sizeof(gfx_color_t);
+    const size_t bytes = GFX_FRAMEBUFFER_BYTES;
     gfx_color_t* const repainted = memory_alloc(bytes, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(repainted);
     memcpy(repainted, gfx_framebuffer(), bytes);
