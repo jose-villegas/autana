@@ -215,16 +215,12 @@ fill_solid(uint16_t* depth, uint16_t* color, int count, int32_t z, int32_t dz, u
     }
 }
 
-typedef struct {
-    int32_t value[ATTRIBUTES];
-    int32_t step[ATTRIBUTES];
-} span_values_t;
-
 /* Packing after the depth test bounds live temporaries to the register window. */
 static RENDER_IRAM_ATTR __attribute__((noinline, optimize("no-schedule-insns"))) void
-fill_gouraud(uint16_t* depth, uint16_t* color, int count, const span_values_t* span) {
-    int32_t z = span->value[0], r = span->value[1], g = span->value[2], b = span->value[3];
-    const int32_t dz = span->step[0], dr = span->step[1], dg = span->step[2], db = span->step[3];
+fill_gouraud(uint16_t* depth, uint16_t* color, int count, const uint32_t value[ATTRIBUTES],
+             const int32_t step[ATTRIBUTES]) {
+    int32_t z = (int32_t)value[0], r = (int32_t)value[1], g = (int32_t)value[2], b = (int32_t)value[3];
+    const int32_t dz = step[0], dr = step[1], dg = step[2], db = step[3];
     for (int i = 0; i < count; i++) {
         const uint16_t zq = (uint16_t)(z >> R3D_DEPTH_SHIFT);
         if (zq > depth[i]) {
@@ -318,21 +314,27 @@ walk_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBU
         const int x_first = left.q < 0 ? 0 : left.q;
         const int x_last = right.q - 1 > last_column ? last_column : right.q - 1;
         if (x_first <= x_last && r3d_span_stop_after != 3) {
-            span_values_t span;
-            for (int k = 0; k < ATTRIBUTES; k++) {
-                uint32_t start = row[k];
-                span.step[k] = g->dx[k];
-                if (left.q < 0) {
-                    start += (uint32_t)span.step[k] * (uint32_t)-left.q;
-                }
-                span.value[k] = (int32_t)start;
-                if (!g->in_range) {
-                    clamp_span(k, x_last - x_first, &span.value[k], &span.step[k]);
-                }
-            }
             uint16_t* depth = gfx_render_target_depth(&target->rows, y);
             uint16_t* color = gfx_render_target_color(&target->rows, y);
-            fill_gouraud(depth + x_first, color + x_first, x_last - x_first + 1, &span);
+            if (g->in_range && left.q >= 0) {
+                fill_gouraud(depth + x_first, color + x_first, x_last - x_first + 1, row, g->dx);
+            } else {
+                uint32_t value[ATTRIBUTES];
+                int32_t step[ATTRIBUTES];
+                for (int k = 0; k < ATTRIBUTES; k++) {
+                    uint32_t start = row[k];
+                    step[k] = g->dx[k];
+                    if (left.q < 0) {
+                        start += (uint32_t)step[k] * (uint32_t)-left.q;
+                    }
+                    int32_t clamped = (int32_t)start;
+                    if (!g->in_range) {
+                        clamp_span(k, x_last - x_first, &clamped, &step[k]);
+                    }
+                    value[k] = (uint32_t)clamped;
+                }
+                fill_gouraud(depth + x_first, color + x_first, x_last - x_first + 1, value, step);
+            }
         }
         const uint32_t* advance = increment;
         left.q += left.qs;
