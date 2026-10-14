@@ -150,13 +150,11 @@ path's entry functions carry `RENDER_IRAM_ATTR` from
 `launcher/main/render/code_layout.h` and run from IRAM, where no cache line
 applies. A hot flash function can carry `RENDER_ENTRY_OFFSET` from the same header:
 never-executed `nop.n` padding ahead of the entry places its loops at the
-offsets measured fastest on the board. The diagnostics build gate in
-`launcher/tools/build/build_diag_check.sh` runs
+offsets measured fastest on the board. The release build workflow runs
 `launcher/tools/render/code_layout.py --check` against
-source-local `code_layout.txt` baselines for the selected build configuration:
-function entries and loops up to
-four cache lines, with in-function back-edges and relative source-line keys;
-offsets, sizes and cache-line spans are checked. When a row changes, compare revisions
+source-local `code_layout.txt` baselines for the selected build configuration.
+Rows cover function entries and the small loops inside them; the checker
+compares offsets, sizes and cache-line spans. When a row changes, compare revisions
 with the performance suite that owns the function through `launcher/tools/perf/perf_compare.sh`,
 then re-record the baseline with `--write --baseline`.
 See [Pinned code layout](../../launcher/tools/render/README.md#pinned-code-layout).
