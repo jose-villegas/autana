@@ -60,7 +60,6 @@ static const char* TAG = "input_lab";
 #define ARC_STEP             2
 #define MOTION_G_TEXT_SIZE   16
 #define MOTION_MILLI_DIGITS  3
-#define MOTION_MILLI_SCALE   1000
 #define OFFSET_DIGITS        1
 #define OFFSET_SCALE         10
 #define MOTION_HUD_TEXT_SIZE 96
@@ -353,7 +352,6 @@ read_motion(uint32_t dt_ms) {
     have_motion = input_read_motion(&motion);
     if (!have_motion) {
         motion_log_ms %= MOTION_LOG_PERIOD_MS;
-        imu_round.primed = false;
         return;
     }
     tilt_update(&tilt, motion.acceleration, motion.turn_speed, dt_ms);
@@ -373,8 +371,8 @@ log_imu_pose(void) {
     const int pose = imu_round.pose - 1;
     const imu_probe_average_t* average = &imu_round.poses[pose];
     const input_motion_t mean = imu_probe_average_read(average);
-    ESP_LOGI(TAG, "pose %s %d %d %d %d %d %d %d", imu_probe_pose_name(pose, true), mean.acceleration.x,
-             mean.acceleration.y, mean.acceleration.z, mean.rotation.x, mean.rotation.y, mean.rotation.z, average->n);
+    ESP_LOGI(TAG, "pose %s %d %d %d %d %d %d %d", imu_probe_pose_name(pose), mean.acceleration.x, mean.acceleration.y,
+             mean.acceleration.z, mean.rotation.x, mean.rotation.y, mean.rotation.z, average->n);
     if (imu_round.active) {
         return;
     }
@@ -386,12 +384,12 @@ log_imu_pose(void) {
 
 static void
 update_imu_round(uint32_t dt_ms, const input_t* input) {
-    if (input->pressed) {
+    if (input->pressed && !imu_round.active) {
         imu_probe_start(&imu_round, DISPLAY_DEFAULT_QUARTER);
         ESP_LOGI(TAG, "round imu quarter %d", DISPLAY_DEFAULT_QUARTER);
     }
     read_motion(dt_ms);
-    if (have_motion && imu_probe_update(&imu_round, motion, dt_ms)) {
+    if (imu_probe_update(&imu_round, have_motion ? &motion : NULL, dt_ms)) {
         log_imu_pose();
     }
 }
@@ -400,8 +398,9 @@ static void
 draw_imu_round(mu_Context* ctx) {
     char line[MOTION_HUD_TEXT_SIZE];
     if (imu_round.active) {
-        snprintf(line, sizeof line, "%s  POSE %d/%d", imu_probe_pose_name(imu_round.pose, false), imu_round.pose + 1,
-                 IMU_PROBE_POSE_COUNT);
+        char label[IMU_PROBE_LABEL_SIZE];
+        imu_probe_pose_label(imu_round.pose, label, sizeof label);
+        snprintf(line, sizeof line, "%s  POSE %d/%d", label, imu_round.pose + 1, IMU_PROBE_POSE_COUNT);
         hud_line(ctx, 0, line);
         if (imu_round.settle_ms < IMU_PROBE_SETTLE_MS) {
             hud_line(ctx, 1, "HOLD STILL");
@@ -410,7 +409,7 @@ draw_imu_round(mu_Context* ctx) {
                      (unsigned)(imu_round.window_ms * IMU_PROBE_PERCENT / IMU_PROBE_WINDOW_MS));
             hud_line(ctx, 1, line);
         }
-        hud_line(ctx, 3, "TAP TO RESTART");
+        hud_line(ctx, 3, "BOOT TO LEAVE ROUND");
         return;
     }
     const imu_probe_fit_t f = imu_round.fit;
@@ -455,7 +454,7 @@ draw_motion(mu_Context* ctx) {
     char values[VALUE_COUNT][MOTION_G_TEXT_SIZE];
     for (size_t i = 0; i < sizeof counts / sizeof counts[0]; i++) {
         motion_probe_format_fixed(values[i], sizeof values[i],
-                                  (int)lroundf(counts[i] * MOTION_MILLI_SCALE / INPUT_ACCEL_ONE_G), MOTION_MILLI_DIGITS,
+                                  (int)lroundf(counts[i] * IMU_PROBE_MILLI / INPUT_ACCEL_ONE_G), MOTION_MILLI_DIGITS,
                                   i != VALUE_MAGNITUDE && i != VALUE_PLANE);
     }
     if (snprintf(line, sizeof line, "X%s Y%s Z%s MAG%sG", values[VALUE_X], values[VALUE_Y], values[VALUE_Z],

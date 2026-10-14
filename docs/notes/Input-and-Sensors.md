@@ -62,17 +62,29 @@ one I2C read per call, into `input_motion_t`:
 
 ### Calibration round
 
-The development Motion page starts or restarts a calibration round
-on a tap. BOOT selects another page. Its prompts name the face and edges as
+A tap on the development Motion page starts a calibration round when idle
+or showing results. Taps during a round are ignored. BOOT abandons the round
+and selects another page. Its prompts name the face and edges as
 seen on the pinned `DISPLAY_DEFAULT_QUARTER` page; measurements stay in panel
 axes. No measured correction is applied to input readings.
 
-Each pose settles against recent per-axis accelerometer and gyro means,
-checks that the expected axis carries most of gravity, then averages a timed
-window. Motion or a reading gap restarts settling. Thresholds and durations
-are owned by `imu_probe.h`; constant gyro bias
-does not prevent settling. Align each pose carefully: the gravity gate
-rejects wrong poses but does not establish precision alignment.
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Prompt
+    Prompt --> Settling: fresh reading
+    Settling --> Measuring: still and gravity aligned
+    Settling --> Settling: motion or reading gap
+    Measuring --> Settling: motion or reading gap
+    Measuring --> Prompt: next pose
+    Measuring --> Done: final pose
+    Done --> [*]
+```
+
+Settling uses recent per-axis accelerometer and gyro means. Thresholds and
+durations are owned by `imu_probe.h`; constant gyro bias does not prevent
+settling. Align each pose carefully: the gravity gate rejects wrong poses
+but does not establish precision alignment.
 
 For each axis, the positive and negative gravity windows give
 `offset = (up + down) / 2` and

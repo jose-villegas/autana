@@ -2,9 +2,13 @@
 
 import argparse
 import re
+import sys
 from pathlib import Path
 
-COUNTS_PER_DPS = 64
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "tools"))
+from build.c_header import read_define
+
+COUNTS_PER_DPS = read_define(Path(__file__).resolve().parents[3] / "input" / "input.h", "INPUT_ROTATION_ONE_DPS")
 MILLI = 1000
 DEFAULT_WINDOW_SECONDS = 10
 AXES = ("x", "y", "z")

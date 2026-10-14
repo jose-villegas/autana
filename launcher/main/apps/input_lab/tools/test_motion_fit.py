@@ -1,3 +1,7 @@
+import re
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -38,6 +42,41 @@ class MotionFitTest(unittest.TestCase):
         self.assertEqual(2, len(rounds))
         self.assertIn("incomplete", motion_fit.report([("fixture", rounds, motion)], 10))
         self.assertEqual(([], []), motion_fit.parse(["unrelated", "motion raw 0,0,0"]))
+
+    def test_c_log_formats_parse(self):
+        source = (Path(__file__).parents[1] / "app_input_lab.c").read_text()
+        for prefix, regex, values, expected in (
+            ("motion", motion_fit.MOTION, tuple(range(1, 15)), ("1", "2", "3", "4", "11", "12", "13", "14")),
+            ("pose", motion_fit.POSE, ("face_up", 1, -2, 3, -4, 5, -6, 7), ("face_up", "1 -2 3 -4 5 -6 7")),
+            ("calib", motion_fit.CALIB, tuple(range(1, 10)), tuple(map(str, range(1, 10)))),
+        ):
+            with self.subTest(prefix=prefix):
+                formats = re.findall(r'"(' + prefix + r' [^"\n]*%[^"\n]+)"', source)
+                self.assertEqual(1, len(formats))
+                line = formats[0] % values
+                match = regex.fullmatch(line)
+                self.assertIsNotNone(match, line)
+                self.assertEqual(expected, match.groups())
+
+    def test_cli_rejects_uptime_reset(self):
+        with tempfile.TemporaryDirectory() as directory:
+            capture = Path(directory) / "reset.log"
+            capture.write_text("I (2000) motion raw 0,0,0 tilt 0 rot 1,2,3 quarter 1\n"
+                               "I (1000) motion raw 0,0,0 tilt 0 rot 1,2,3 quarter 1\n")
+            result = subprocess.run([sys.executable, motion_fit.__file__, str(capture)], capture_output=True, text=True)
+            self.assertEqual(2, result.returncode)
+            self.assertIn("uptime resets", result.stderr)
+            self.assertEqual("", result.stdout)
+
+    def test_cli_rejects_nonpositive_window(self):
+        capture = Path(__file__).parent / "fixtures" / "motion.log"
+        for seconds in ("0", "-1"):
+            with self.subTest(seconds=seconds):
+                result = subprocess.run([sys.executable, motion_fit.__file__, str(capture),
+                                         "--window-seconds", seconds], capture_output=True, text=True)
+                self.assertEqual(2, result.returncode)
+                self.assertIn("--window-seconds must be positive", result.stderr)
+                self.assertEqual("", result.stdout)
 
 
 if __name__ == "__main__":

@@ -1,16 +1,28 @@
 #include "apps/input_lab/imu_probe.h"
 
+#include <ctype.h>
 #include <math.h>
 
 #include "ui/ui_transform.h"
 
 const char*
-imu_probe_pose_name(int pose, bool log_name) {
-    static const char* const labels[IMU_PROBE_POSE_COUNT] = {"FACE UP",         "FACE DOWN",     "LEFT EDGE DOWN",
-                                                             "RIGHT EDGE DOWN", "TOP EDGE DOWN", "BOTTOM EDGE DOWN"};
+imu_probe_pose_name(int pose) {
     static const char* const names[IMU_PROBE_POSE_COUNT] = {"face_up",    "face_down", "left_down",
                                                             "right_down", "top_down",  "bottom_down"};
-    return log_name ? names[pose] : labels[pose];
+    return names[pose];
+}
+
+void
+imu_probe_pose_label(int pose, char* out, size_t size) {
+    const char* name = imu_probe_pose_name(pose);
+    if (size == 0) {
+        return;
+    }
+    size_t i = 0;
+    for (; name[i] && i + 1 < size; i++) {
+        out[i] = name[i] == '_' ? ' ' : (char)toupper((unsigned char)name[i]);
+    }
+    out[i] = '\0';
 }
 
 vec3i_t
@@ -56,10 +68,13 @@ imu_probe_fit(const imu_probe_average_t poses[IMU_PROBE_POSE_COUNT], int quarter
     double up[3] = {0}, down[3] = {0}, gyro[3] = {0};
     int n = 0;
     for (int pose = 0; pose < IMU_PROBE_POSE_COUNT; pose++) {
+        if (poses[pose].n == 0) {
+            continue;
+        }
         const vec3i_t direction = imu_probe_pose_direction(pose, quarter);
         const int d[] = {direction.x, direction.y, direction.z};
         for (int axis = 0; axis < 3; axis++) {
-            const double mean = poses[pose].n > 0 ? (double)poses[pose].acceleration[axis] / poses[pose].n : 0;
+            const double mean = (double)poses[pose].acceleration[axis] / poses[pose].n;
             if (d[axis] > 0) {
                 up[axis] = mean;
             }
@@ -107,14 +122,14 @@ still(imu_probe_round_t* round, input_motion_t sample, uint32_t dt_ms) {
 }
 
 bool
-imu_probe_update(imu_probe_round_t* round, input_motion_t sample, uint32_t dt_ms) {
+imu_probe_update(imu_probe_round_t* round, const input_motion_t* sample, uint32_t dt_ms) {
     if (!round->active || dt_ms == 0) {
         return false;
     }
-    if (dt_ms > IMU_PROBE_MAX_GAP_MS) {
+    if (sample == NULL || dt_ms > IMU_PROBE_MAX_GAP_MS) {
         round->primed = false;
     }
-    if (!still(round, sample, dt_ms)) {
+    if (sample == NULL || !still(round, *sample, dt_ms)) {
         round->settle_ms = 0;
         round->window_ms = 0;
         round->window = (imu_probe_average_t){0};
@@ -124,7 +139,7 @@ imu_probe_update(imu_probe_round_t* round, input_motion_t sample, uint32_t dt_ms
         round->settle_ms += dt_ms;
         return false;
     }
-    imu_probe_average_add(&round->window, sample);
+    imu_probe_average_add(&round->window, *sample);
     round->window_ms += dt_ms;
     if (round->window_ms < IMU_PROBE_WINDOW_MS) {
         return false;
