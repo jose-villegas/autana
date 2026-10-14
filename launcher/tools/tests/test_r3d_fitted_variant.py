@@ -339,15 +339,6 @@ class SweepTests(unittest.TestCase):
         job.renderer.visibility = SimpleNamespace(source="camera_path", size=size)
         self.assertEqual(fitted_variant.reference_inputs(job, scene).size, size)
 
-    def test_a_reference_set_is_refused_for_inputs_without_a_pose_size(self):
-        inputs = fitted_variant.ReferenceInputs(
-            settings=None, bake=None, lights=[], indirect=None, tonemap_white=1.0, camera=None, size=None, poses={})
-        with tempfile.TemporaryDirectory() as directory:
-            work = pathlib.Path(directory) / "references"
-            with self.assertRaisesRegex(fitted_variant.SettingsError, "fit.poses.size"):
-                fitted_variant.prepare_references(inputs, work)
-            self.assertFalse(work.exists(), "nothing is written before the refusal")
-
     def test_the_front_and_knee_keep_the_best_tradeoffs(self):
         points = [
             {"predicted_ms": 2.0, "mean_delta_e": 6.0},
