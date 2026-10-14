@@ -52,6 +52,13 @@ def brute_force(positions, tris, origin, direction):
     return list(zip(t[hit][order], np.flatnonzero(hit)[order]))
 
 
+def all_hits(query, origins, directions):
+    rounds = list(query.hit_rounds(origins, directions))
+    if not rounds:
+        return np.zeros(0, np.int64), np.zeros(0, np.int64), np.zeros((0, 3))
+    return tuple(np.concatenate(values) for values in zip(*rounds))
+
+
 def stack(count, gap, z0=0.0):
     """`count` parallel unit triangles `gap` apart along z, and the ray down their common axis."""
     corners = np.array([[-1.0, -1.0, 0.0], [2.0, -1.0, 0.0], [-1.0, 2.0, 0.0]])
@@ -92,14 +99,14 @@ class QueryChecks(SoupFixture):
                                       [bool(found) for found in self.crossings])
 
     def test_every_crossing_along_a_ray_is_reported_nearest_first(self):
-        tris, rays, locations = self.query.all_hits(self.origins, self.directions)
+        tris, rays, locations = all_hits(self.query, self.origins, self.directions)
         for ray, found in enumerate(self.crossings):
             self.assertEqual(tris[rays == ray].tolist(), [int(tri) for _, tri in found], f"ray {ray}")
             along = np.linalg.norm(locations[rays == ray] - self.origins[ray], axis=1)
             self.assertTrue((np.diff(along) > 0).all(), f"ray {ray} lists its hits out of order")
 
     def test_each_location_is_at_the_distance_of_its_triangle(self):
-        tris, rays, locations = self.query.all_hits(self.origins, self.directions)
+        tris, rays, locations = all_hits(self.query, self.origins, self.directions)
         for tri, ray, where in zip(tris, rays, locations):
             distance = dict((int(t), d) for d, t in self.crossings[ray])[int(tri)]
             self.assertAlmostEqual(np.linalg.norm(where - self.origins[ray]), distance, delta=2e-4)
@@ -125,14 +132,14 @@ class QueryChecks(SoupFixture):
         away, up = np.array([[0.0, 0.0, 10.0]]), np.array([[0.0, 0.0, 1.0]])
         locations, rays, tris = self.query.first_hit(away, up)
         self.assertEqual((len(locations), len(rays), len(tris)), (0, 0, 0))
-        self.assertEqual(len(self.query.all_hits(away, up)[0]), 0)
+        self.assertEqual(len(all_hits(self.query, away, up)[0]), 0)
         self.assertEqual(self.query.first_hits(away, up)[0].tolist(), [False])
 
     def test_no_rays_give_empty_answers(self):
         none = np.zeros((0, 3))
         self.assertEqual(len(self.query.first_hit(none, none)[1]), 0)
         self.assertEqual(len(self.query.blocked(none, none)), 0)
-        self.assertEqual(len(self.query.all_hits(none, none)[0]), 0)
+        self.assertEqual(len(all_hits(self.query, none, none)[0]), 0)
 
     def test_both_sides_of_a_triangle_are_hit(self):
         query = RayQuery(np.array([[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]), np.array([[0, 1, 2]]),
@@ -145,20 +152,68 @@ class QueryChecks(SoupFixture):
 
     def test_close_surfaces_are_both_reported_where_the_step_is_small(self):
         positions, tris, origin, direction = stack(3, 3e-3)
-        found = RayQuery(positions, tris, variant=self.VARIANT).all_hits(origin, direction)[0]
+        found = all_hits(RayQuery(positions, tris, variant=self.VARIANT), origin, direction)[0]
         self.assertEqual(found.tolist(), [0, 1, 2])
 
     def test_close_surfaces_far_from_the_origin_are_reported_once_each(self):
         positions, tris, origin, direction = stack(3, 3e-3, z0=1400.0)
-        found = RayQuery(positions, tris, variant=self.VARIANT).all_hits(origin, direction)[0]
+        found = all_hits(RayQuery(positions, tris, variant=self.VARIANT), origin, direction)[0]
         self.assertEqual(found.tolist(), [0, 1, 2])
 
     def test_a_ray_is_cut_off_after_the_most_hits_and_says_so(self):
         positions, tris, origin, direction = stack(ray_query.MAX_HITS + 5, 0.01)
         with mock.patch("sys.stderr", new_callable=io.StringIO) as report:
-            found = RayQuery(positions, tris, variant=self.VARIANT).all_hits(origin, direction)[0]
+            found = all_hits(RayQuery(positions, tris, variant=self.VARIANT), origin, direction)[0]
         self.assertEqual(found.tolist(), list(range(ray_query.MAX_HITS)))
         self.assertIn("cut off", report.getvalue())
+
+
+    def test_hit_rounds_retire_rays_and_drop_misses_in_nearest_order(self):
+        layers = 4
+        positions, tris, origin, direction = stack(layers, 0.01)
+        origins, directions = np.repeat(origin, 3, axis=0), np.repeat(direction, 3, axis=0)
+        origins[2, 0] = 10.0
+        active = np.ones(len(origins), bool)
+        query = RayQuery(positions, tris, variant=self.VARIANT)
+        with mock.patch.object(query, "first_hits", wraps=query.first_hits) as traced:
+            rounds = query.hit_rounds(origins, directions, active)
+            first = next(rounds)
+            self.assertEqual(first[0].tolist(), [0, 0])
+            self.assertEqual(first[1].tolist(), [0, 1])
+            active[0] = False
+            remaining = list(rounds)
+        self.assertEqual([len(call.args[0]) for call in traced.call_args_list], [3] + [1] * layers)
+        hits = [row for row in remaining if len(row[0])]
+        self.assertEqual([tri.tolist() for tri, _, _ in hits], [[index] for index in range(1, layers)])
+        self.assertEqual([ray.tolist() for _, ray, _ in hits], [[1]] * (layers - 1))
+        locations = np.concatenate([first[2][1:], *(where for _, _, where in hits)])
+        np.testing.assert_allclose(locations[:, 2], positions[tris[:, 0], 2], atol=1e-6)
+        self.assertTrue((np.diff(locations[:, 2]) > 0).all())
+
+    def test_hit_rounds_default_mask_equals_all_true(self):
+        default = list(self.query.hit_rounds(self.origins, self.directions))
+        explicit = list(self.query.hit_rounds(self.origins, self.directions, np.ones(len(self.origins), bool)))
+        self.assertEqual(len(default), len(explicit))
+        for actual, expected in zip(default, explicit):
+            for values, want in zip(actual, expected):
+                np.testing.assert_array_equal(values, want)
+
+    def test_hit_rounds_cutoff_counts_only_rays_active_after_retirement(self):
+        positions, tris, origin, direction = stack(ray_query.MAX_HITS + 5, 0.01)
+        origins, directions = np.repeat(origin, 3, axis=0), np.repeat(direction, 3, axis=0)
+        query = RayQuery(positions, tris, variant=self.VARIANT)
+        active = np.ones(len(origins), bool)
+        hit_counts = np.zeros(len(origins), np.int64)
+        with mock.patch("sys.stderr", new_callable=io.StringIO) as report:
+            for index, (hit, ray, _) in enumerate(query.hit_rounds(origins, directions, active)):
+                np.testing.assert_array_equal(hit, np.full(len(ray), index))
+                hit_counts[ray] += 1
+                active[0] = False
+                if index + 1 == ray_query.MAX_HITS:
+                    active[1] = False
+        np.testing.assert_array_equal(hit_counts, [1, ray_query.MAX_HITS, ray_query.MAX_HITS])
+        self.assertEqual(report.getvalue(),
+                         f"ray query: 1 rays still crossing triangles after {ray_query.MAX_HITS} hits were cut off\n")
 
 
 @needs_mitsuba
@@ -169,7 +224,7 @@ class ScalarQueryTests(QueryChecks, unittest.TestCase):
         shift = np.array([1400.0, 0.0, 1400.0])
         positions, origins = [(a + shift).astype(np.float32).astype(np.float64) for a in (self.positions, self.origins)]
         far = RayQuery(positions, self.tris, variant=self.VARIANT)
-        tris, rays, _ = far.all_hits(origins, self.directions)
+        tris, rays, _ = all_hits(far, origins, self.directions)
         want = sorted((index, int(tri)) for index, (o, d) in enumerate(zip(origins, self.directions))
                       for _, tri in brute_force(positions, self.tris, o, d))
         got = set(zip(rays.tolist(), tris.tolist()))
@@ -195,7 +250,7 @@ class RuntimeGuardTests(unittest.TestCase):
         query = RayQuery(positions, tris, variant="scalar_rgb")
         try:
             mi.set_variant("scalar_spectral")
-            for call in (query.blocked, query.first_hits, query.first_hit, query.all_hits):
+            for call in (query.blocked, query.first_hits, query.first_hit, lambda o, d: all_hits(query, o, d)):
                 with self.assertRaisesRegex(RuntimeError, "scalar_rgb"):
                     call(origin, direction)
         finally:
