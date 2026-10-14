@@ -1,7 +1,7 @@
 #include "gfx/present/gfx_debug.h"
 #include "core/memory.h"
 #include "core/timing.h"
-#include "gfx/draw/gfx_draw.h"
+#include "gfx/draw/gfx_color.h"
 #include "gfx/gfx_internal.h"
 #include "gfx/present/gfx_present_guard.h"
 

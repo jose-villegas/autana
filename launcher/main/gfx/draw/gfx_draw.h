@@ -20,13 +20,6 @@
 #define GFX_CHAR_W      (8 * GFX_GLYPH_SCALE)
 #define GFX_CHAR_H      (8 * GFX_GLYPH_SCALE)
 
-/* Convert 0xRRGGBB to the panel's pixel format.
- *
- * GFX_RGB in gfx_color.h does the same thing in a constant expression, which
- * is what lets a colour table live in flash rather than RAM. Both go through
- * one definition, so they cannot drift apart. */
-gfx_color_t gfx_rgb(uint32_t rgb);
-
 void gfx_clear(gfx_color_t color);
 
 void gfx_fill_rect(int x, int y, int w, int h, gfx_color_t color);
@@ -134,11 +127,8 @@ gfx_text_height(void) {
 void gfx_text_font(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns,
                    const gfx_font_t* font);
 
-/* gfx_text_font(), but every glyph pixel is drawn through
- * gfx_fill_rect_dither() at `alpha` instead of solid: text that fades
- * rather than cuts. A deliberately separate function, not a parameter
- * added to gfx_text_font() itself; see gfx_draw.c's own comment above the
- * definition for why. */
+/* gfx_text_font() with every glyph pixel dithered at `alpha`: text that
+ * fades rather than cuts. */
 void gfx_text_font_dither(int x, int y, const char* text, gfx_color_t color, int scale, int quarter_turns,
                           const gfx_font_t* font, uint8_t alpha);
 
