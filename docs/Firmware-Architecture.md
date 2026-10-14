@@ -41,27 +41,78 @@ its own row. Project apps under `apps/` and system apps under `shell/apps/`
 share the apps tier; other folders use their first path component.
 `main.c` starts the board and calls `shell_run()`; the shell reaches apps
 through `app/app.h` callbacks. The inventory is `launcher/main/`; the
-include gate's order is `LAYER_ROWS` in `scripts/gates/check_style_audit.py`.
+include gate's order is `LAYER_ROWS` in `scripts/gates/check_style_audit.py`. Folders that touch
+hardware are marked.
 
-| Band | Row, top first | Responsibility |
-|---|---|---|
-| system | `apps` | project and system applications |
-| system | `shell` | frame loop, app switching and system screens |
-| system | `boot selftest console` | startup, hardware checks and development console |
-| system | `app` | callbacks, registry and app arena |
-| engine | `ui scene` | UI toolkit and scene entities, camera and systems |
-| engine | `render` | transform, clip, projection and rasterization |
-| engine | `draw anim` | pixel drawing and animation sampling |
-| engine | `asset` | content packs and read-in-place entries |
-| platform | `input` | touch, buttons, motion and gestures |
-| platform | `display` | viewport, orientation and panel clock |
-| platform | `gfx` | target value types, framebuffer and presentation |
-| platform | `services` | settings, tunables and build identity |
-| platform | `profile` | frame cost and frame watch |
-| platform | `core` | jobs, memory placement and time |
-| platform | `board` | pins and device drivers |
-| platform | `build` | build-variant declarations |
-| packages | `math` | independent shared base, checked by PACKAGE-INCLUDE |
+```mermaid
+flowchart TB
+    classDef hw fill:#8a3d3d,color:#fff
+
+    subgraph System["system"]
+        subgraph R1["apps"]
+            Apps["apps/ and shell/apps/<br/><i>one folder per app; system apps stay in the core</i>"]
+        end
+        subgraph R2["the runtime"]
+            Shell["shell/<br/><i>frame loop, app switching, system screens in shell/ui/</i>"]
+        end
+        subgraph R3["boot, self test, console"]
+            Boot["boot/<br/><i>the startup animation</i>"]
+            Selftest["selftest/<br/><i>power-on self test, the on-board suite runner</i>"]:::hw
+            Console["console/<br/><i>serial verbs, dev builds</i>"]:::hw
+        end
+        subgraph R4["the app contract"]
+            App["app/<br/><i>callbacks, the app list, the app arena</i>"]
+        end
+    end
+    subgraph Engine["engine"]
+        subgraph R5["UI and scenes"]
+            Ui["ui/<br/><i>the microui toolkit</i>"]
+            Scene["scene/<br/><i>entities, components, the active camera</i>"]
+        end
+        subgraph R6["rendering"]
+            Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
+        end
+        subgraph R7["drawing and animation"]
+            Draw["draw/<br/><i>shapes, text, images, palettes into a target</i>"]
+            Anim["anim/<br/><i>keyed tracks sampled over time, tweens</i>"]
+        end
+        subgraph R8["content"]
+            Asset["asset/<br/><i>content packs, read in place</i>"]:::hw
+        end
+    end
+    subgraph Platform["platform"]
+        subgraph R9["input"]
+            Input["input/<br/><i>touch, buttons, motion, gesture</i>"]:::hw
+        end
+        subgraph R10["display"]
+            Display["display/<br/><i>viewport, orientation, panel clock</i>"]:::hw
+        end
+        subgraph R11["presentation"]
+            Gfx["gfx/<br/><i>target types, the framebuffer, present/</i>"]:::hw
+        end
+        subgraph R12["device services"]
+            Services["services/<br/><i>settings, tunables, build id</i>"]:::hw
+        end
+        subgraph R13["frame measurement"]
+            Profile["profile/<br/><i>frame cost, frame watch</i>"]:::hw
+        end
+        subgraph R14["the platform core"]
+            Core["core/<br/><i>two-core jobs, memory placement, time</i>"]:::hw
+        end
+        subgraph R15["board"]
+            Board["board/<br/><i>pins, peripherals, panel link</i>"]:::hw
+        end
+        subgraph R16["the build switch"]
+            Build["build/<br/><i>which build variant this is</i>"]
+        end
+    end
+    subgraph R17["packages: launcher/packages/"]
+        Math["math/<br/><i>scalars to transforms, checked by PACKAGE-INCLUDE</i>"]
+    end
+
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> R10 --> R11 --> R12 --> R13 --> R14 --> R15 --> R16 --> R17
+    Shell -.->|"calls through app/app.h"| Apps
+```
 
 - **Includes are layer-qualified**: `"gfx/gfx.h"`, not `"gfx.h"`, even
   between two files in the same folder, so an app reaching past `ui` into

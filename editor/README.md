@@ -11,13 +11,14 @@ host-only and never enter an ESP-IDF component graph.
 
 ## Layout data flow
 
-| Data or code | Owner | Use |
-|---|---|---|
-| `<screen>_layout.json` | project folder | load and save an authored document |
-| `LayoutDocument` | `src/layout_document` | validation, edits and header emission |
-| `<screen>_layout_generated.h` | project build | static geometry for a screen |
-| `runtime/runtime.c` | editor geometry runtime | dimensions and tap constraints |
-| orientation canvases | editor window | inspect and manipulate geometry |
+```mermaid
+flowchart LR
+    JSON["project folder<br/>&lt;screen&gt;_layout.json"] -->|load / save| DOC["LayoutDocument<br/><i>src/layout_document</i>"]
+    DOC -->|"Bake: bake_header()"| HEADER["&lt;screen&gt;_layout_generated.h"]
+    HEADER --> FW["the project's build"]
+    RT["runtime/runtime.c<br/><i>panel size, tap minimum</i>"] --> DOC
+    DOC --> CANVAS["the window:<br/>both orientations side by side"]
+```
 
 - **The JSON is the source.** It names its screen and declares its elements
   (`id`, `label`, `interactive`), then gives one rect per element for
