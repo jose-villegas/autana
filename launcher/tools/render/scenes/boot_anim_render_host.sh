@@ -21,6 +21,7 @@ scene_name=boot_anim
 scene_sources="$launcher_home_sources
 main/anim/anim_track.c
 main/anim/anim_tracks.c
+main/anim/playback/anim_playhead.c
 main/boot/boot_anim.c
 main/boot/boot_anim_motion.c
 main/boot/boot_anim_photo.c

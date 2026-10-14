@@ -2166,14 +2166,19 @@ test_property_animation_moves_a_drawn_entity(void) {
 }
 
 static void
-test_camera_seek_invalidates_the_entity_matrix(void) {
+test_paused_camera_seek_wraps_or_clamps_and_invalidates_the_entity_matrix(void) {
     fixture();
     scene_t* scene = show("test_flight", NULL);
     const scene_entity_t camera = scene_find(scene, "camera");
     TEST_ASSERT_TRUE(scene_entity_transform(scene, camera)->cached);
-    TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, 500));
+    const uint32_t duration_ms = scene_animator_clip_duration_ms(scene, camera, 0);
+    TEST_ASSERT_TRUE(scene_animator_set_paused(scene, camera, SCENE_ANIMATOR_CURRENT, true));
+    TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, duration_ms + duration_ms / 2));
     scene_transform_t sampled = *scene_entity_transform(scene, camera);
     TEST_ASSERT_EQUAL_FLOAT(2.5F, transformf_matrix(&sampled).m[0][3]);
+    scene->animators[camera].layer.current.playhead.wrap = ANIM_CLAMP;
+    TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, duration_ms + duration_ms / 2));
+    TEST_ASSERT_EQUAL_FLOAT(5.0F, scene_entity_transform(scene, camera)->position.x);
     TEST_ASSERT_TRUE((scene->flags[camera] & SCENE_FLAG_DIRTY) != 0);
 }
 
@@ -3172,7 +3177,7 @@ run_scene_suite(void) {
     RUN_TEST(test_attachment_count_mismatches_preserve_previous_components);
     RUN_TEST(test_scene_open_refuses_shear_and_reflection_naming_the_entity);
     RUN_TEST(test_property_animation_moves_a_drawn_entity);
-    RUN_TEST(test_camera_seek_invalidates_the_entity_matrix);
+    RUN_TEST(test_paused_camera_seek_wraps_or_clamps_and_invalidates_the_entity_matrix);
     RUN_TEST(test_inactive_property_target_invalidates_its_entity_matrix);
     RUN_TEST(test_unchanged_poses_skip_skinning_and_refit);
     RUN_TEST(test_previous_slot_pause_and_empty_or_frozen_controls);
