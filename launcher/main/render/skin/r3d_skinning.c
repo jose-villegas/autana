@@ -4,6 +4,7 @@
 #include <string.h>
 #include "math/scalar/mathf_round.h"
 #include "math/scalar/mathi.h"
+#include "render/code_layout.h"
 #include "render/skin/r3d_skin_light_internal.h"
 
 static inline __attribute__((always_inline)) void
@@ -238,9 +239,10 @@ r3d_skin_clusters(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4
     }
 }
 
-#define SKIN_LIGHT_KERNEL(name, mode)                                                                                  \
-    void name(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first, int count,        \
-              r3d_skin_output_t* out, const mat3f_t* normals, const r3d_skin_lights_t* lights, uint8_t (*light)[3]) {  \
+#define SKIN_LIGHT_KERNEL(attr, name, mode)                                                                            \
+    attr void name(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* palette, int first, int count,   \
+                   r3d_skin_output_t* out, const mat3f_t* normals, const r3d_skin_lights_t* lights,                    \
+                   uint8_t (*light)[3]) {                                                                              \
         assert(lights != NULL && normals != NULL);                                                                     \
         assert(lights->count >= 0 && lights->count <= R3D_SKIN_LIGHT_MAX);                                             \
         const r3d_skin_lights_t prepared = *lights;                                                                    \
@@ -253,9 +255,9 @@ r3d_skin_clusters(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4
                            mode);                                                                                      \
         }                                                                                                              \
     }
-SKIN_LIGHT_KERNEL(r3d_skin_clusters_lit, LIGHT_DIRECT)
-SKIN_LIGHT_KERNEL(r3d_skin_clusters_renormalised, LIGHT_RENORMALISED)
-SKIN_LIGHT_KERNEL(r3d_skin_clusters_table, LIGHT_TABLE)
+SKIN_LIGHT_KERNEL(RENDER_IRAM_ATTR, r3d_skin_clusters_lit, LIGHT_DIRECT)
+SKIN_LIGHT_KERNEL(, r3d_skin_clusters_renormalised, LIGHT_RENORMALISED)
+SKIN_LIGHT_KERNEL(, r3d_skin_clusters_table, LIGHT_TABLE)
 
 void
 r3d_skin_refit_nodes(r3d_skin_output_t* out) {
