@@ -37,10 +37,11 @@ boot_anim_floor_advance(boot_anim_floor_t* floor, uint32_t now_ms) {
         while (floor->next_zero < BOOT_ANIM_ZEROS && boot_anim_zero_t[floor->next_zero] <= reached) {
             if (plucks) {
                 spring_grid_poke(&floor->grid, BOOT_ANIM_MESH_CELLS / 2, BOOT_ANIM_MESH_CELLS / 2,
-                                 BOOT_ANIM_FLOOR_PLUCK_CELLS, BOOT_ANIM_FLOOR_PLUCK_Q16);
+                                 BOOT_ANIM_FLOOR_PLUCK_CELLS, boot_anim_floor_pluck(tick_ms));
             }
             floor->next_zero++;
         }
+        floor->grid.damping = boot_anim_floor_damping(tick_ms);
         spring_grid_tick(&floor->grid);
         floor->ticks++;
     }

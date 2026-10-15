@@ -10,6 +10,8 @@
         "grid_fade_ms": 128,
         "floor_pluck_from_ms": 0,
         "floor_pluck_until_ms": 5500,
+        "floor_calm_start_ms": 2000,
+        "floor_calm_ms": 1100,
         "pen_start_ms": 520,
         "pen_ms": 1980,
         "title_start_ms": 2450,
@@ -49,6 +51,7 @@
     "floor_tension": 12,
     "floor_stiffness": 1,
     "floor_damping": 1,
+    "floor_calm_damping": 24,
     "floor_pluck_m": 0.9,
     "floor_pluck_cells": 5
 }

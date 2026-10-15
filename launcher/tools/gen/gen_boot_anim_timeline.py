@@ -109,7 +109,8 @@ FLOOR_ONE = 1 << 16
 FLOOR_COEFFICIENT_ONE = 256
 FLOOR_LAPLACIAN_BOUND = 8
 FLOOR_EULER_BOUND = 4
-FLOOR_INTEGER_KEYS = ("floor_tick_ms", "floor_tension", "floor_stiffness", "floor_damping", "floor_pluck_cells")
+FLOOR_INTEGER_KEYS = ("floor_tick_ms", "floor_tension", "floor_stiffness", "floor_damping", "floor_calm_damping",
+                      "floor_pluck_cells")
 
 
 def validate_floor(cfg):
@@ -119,7 +120,7 @@ def validate_floor(cfg):
     tick = cfg["floor_tick_ms"]
     if type(tick) is not int or not 0 < tick <= cfg["timing"]["total_ms"]:
         fail("floor_tick_ms must be a positive integer no greater than total_ms")
-    for key in ("floor_tension", "floor_stiffness", "floor_damping"):
+    for key in ("floor_tension", "floor_stiffness", "floor_damping", "floor_calm_damping"):
         value = cfg[key]
         if type(value) is not int or not 0 <= value <= FLOOR_COEFFICIENT_ONE:
             fail(key + " must be an integer in 0..256")
@@ -335,6 +336,10 @@ TIMING_ORDER = [
      "a zero the pen passes at or after this plucks the floor"),
     ("floor_pluck_until_ms", "BOOT_ANIM_FLOOR_PLUCK_UNTIL_MS",
      "and one it passes at or after this does not"),
+    ("floor_calm_start_ms", "BOOT_ANIM_FLOOR_CALM_START_MS",
+     "the floor starts calming: damping climbs and plucks weaken"),
+    ("floor_calm_ms", "BOOT_ANIM_FLOOR_CALM_MS",
+     "how long that takes, from floor_damping to floor_calm_damping and full plucks to none"),
     ("pen_start_ms", "BOOT_ANIM_PEN_START_MS", None),
     ("pen_ms", "BOOT_ANIM_PEN_MS", "how long the curve takes to draw"),
     ("pen_finish_ms", "BOOT_ANIM_PEN_FINISH_MS",
