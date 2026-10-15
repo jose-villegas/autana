@@ -25,8 +25,8 @@
 #include "unity.h"
 
 #include "microui.h"
-#include "ui/ui_bridge.h"
-#include "ui/ui_pointer.h"
+#include "ui/input/ui_bridge.h"
+#include "ui/input/ui_pointer.h"
 
 #define CANVAS_W 368
 #define CANVAS_H 448

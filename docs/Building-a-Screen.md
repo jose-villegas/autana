@@ -125,7 +125,7 @@ Hand the click to the state module; let it decide what it means.
 
 Most of what a screen needs is already built that way: check
 [`UI-Toolkit.md`](UI-Toolkit.md) first, and add a new control to
-`ui/ui_widgets.h` rather than a private copy in one app's screen.
+`ui/controls/ui_widgets.h` rather than a private copy in one app's screen.
 
 ### More than one text size
 
