@@ -115,6 +115,25 @@ class TimelineGeneratorTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("#define BOOT_ANIM_TITLE_SCALE 5", result.stdout)
 
+    def test_invalid_mesh_settings_fail_with_named_messages(self):
+        cases = (
+            (lambda timing: timing.update(mesh_cells=0), None, "mesh_cells must be positive and even"),
+            (lambda timing: timing.update(mesh_cells=-2), None, "mesh_cells must be positive and even"),
+            (lambda timing: timing.update(mesh_cells=47), None, "mesh_cells must be positive and even"),
+            (lambda timing: timing.update(mesh_dash=2), None, "mesh_dash must be 0 or 1"),
+            (None, lambda config: config.update(mesh_step_m=0), "mesh_step_m must be positive"),
+        )
+        for change, config_change, message in cases:
+            with self.subTest(message=message):
+                result = self.generate(change, config_change=config_change)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
+
+    def test_the_mesh_step_is_emitted_in_q12(self):
+        result = self.generate(config_change=lambda config: config.update(mesh_step_m=0.5))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("#define BOOT_ANIM_MESH_STEP_Q12 %d" % (gen_boot_anim_timeline.BOOT_ANIM_ONE // 2), result.stdout)
+
     def test_keyframes_left_in_the_json_are_refused(self):
         result = self.generate(config_change=lambda config: config.update(keyframes=[]))
         self.assertNotEqual(result.returncode, 0)

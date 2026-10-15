@@ -101,13 +101,13 @@ boot_anim_timeline_sample(const boot_anim_motion_t* motion, uint32_t now_ms) {
 /* Must match PHASE1_T_MAX in tools/gen/gen_zeta_curve.py. */
 #define BOOT_ANIM_T_MAX_PHASE1 35
 
-/* RINGS is how far the fade reaches, not the floor size: quarter-unit
- * spacing (not whole) so it reads as a dense ripple rather than
- * individually countable bands. Both generated: RINGS in
- * boot_anim_timeline.h, BOOT_ANIM_GRID_STEP_Q12 with it. FADE is its own name for what
- * boot_anim_grid_alpha() means, but must equal RINGS exactly: short of
+/* BANDS is how far the floor's colour and fade reach, in steps of
+ * BOOT_ANIM_GRID_STEP_Q12 out from the origin: each band has one hue and
+ * one alpha, whatever mesh segments fall in it. Both generated in
+ * boot_anim_timeline.h. FADE is its own name for what
+ * boot_anim_grid_alpha() means, but must equal BANDS exactly: short of
  * it is a hard edge, past it divides by a count nothing reaches. */
-#define BOOT_ANIM_GRID_FADE    BOOT_ANIM_GRID_RINGS
+#define BOOT_ANIM_GRID_FADE    BOOT_ANIM_GRID_BANDS
 
 /* The spiral: one unit of t climbs 132/512 of a meter. */
 #define BOOT_ANIM_SPIRAL_Q9    132
@@ -210,8 +210,8 @@ boot_anim_zeta_to_t_q8(int32_t zeta_q12) {
     return (int32_t)(((int64_t)zeta_q12 * 32) / BOOT_ANIM_SPIRAL_Q9);
 }
 
-/* A radial sine is periodic in r, so every ring's crest falls out of one
- * formula with no record of which rings are lit.
+/* A radial sine is periodic in r, so every node's height falls out of one
+ * formula with no record of what was lit.
  *
  * Zero amplitude or wavelength removes lift. A zero period freezes the ripple
  * instead of dividing by zero. */
@@ -394,7 +394,7 @@ boot_anim_axis_reach(uint32_t now_ms) {
     return tween_ease_out(tween_ramp(now_ms, 0, BOOT_ANIM_AXES_MS));
 }
 
-/* A ring's alpha is its arrival ramp times a falloff by ring index, a depth
+/* A band's alpha is its arrival ramp times a falloff by band index, a depth
  * cue. The floor is backdrop: at full strength it outshines the curve, so its
  * ceiling starts at BOOT_ANIM_GRID_MAX (generated) and climbs linearly to
  * BOOT_ANIM_GRID_CEILING_MAX by BOOT_ANIM_MS, steadily adding up. One clock
@@ -406,15 +406,15 @@ boot_anim_grid_climb(uint32_t now_ms) {
 }
 
 static inline uint8_t
-boot_anim_grid_alpha(uint32_t now_ms, int ring) {
-    if (ring >= BOOT_ANIM_GRID_FADE) {
+boot_anim_grid_alpha(uint32_t now_ms, int band) {
+    if (band >= BOOT_ANIM_GRID_FADE) {
         return 0;
     }
-    const uint32_t start = BOOT_ANIM_GRID_START_MS + (uint32_t)ring * BOOT_ANIM_GRID_RING_MS;
+    const uint32_t start = BOOT_ANIM_GRID_START_MS + (uint32_t)band * BOOT_ANIM_GRID_BAND_MS;
     const uint32_t arrived = tween_ramp(now_ms, start, BOOT_ANIM_GRID_FADE_MS);
 
-    /* left/FADE, bounded rings. Squared dims too much. Linear keeps depth. */
-    const uint32_t left = (uint32_t)(BOOT_ANIM_GRID_FADE - ring);
+    /* left/FADE, bounded bands. Squared dims too much. Linear keeps depth. */
+    const uint32_t left = (uint32_t)(BOOT_ANIM_GRID_FADE - band);
     const uint32_t ceiling =
         (uint32_t)mathi_lerp_u8(BOOT_ANIM_GRID_MAX, BOOT_ANIM_GRID_CEILING_MAX, boot_anim_grid_climb(now_ms));
     const uint32_t near = left * ceiling / (uint32_t)BOOT_ANIM_GRID_FADE;
@@ -532,9 +532,9 @@ boot_anim_title_shadow_offset(int dx, int dy, int* panel_dx, int* panel_dy) {
  * AMOLED's true black. Brightness and desaturation remain separate mixing
  * amounts. */
 static inline int
-boot_anim_grid_hue(uint32_t now_ms, int ring) {
+boot_anim_grid_hue(uint32_t now_ms, int band) {
     const uint32_t turn = (now_ms % BOOT_ANIM_GRID_HUE_MS) * GFX_HUE_TURN / BOOT_ANIM_GRID_HUE_MS;
-    return (int)turn + ring * BOOT_ANIM_GRID_HUE_SPREAD;
+    return (int)turn + band * BOOT_ANIM_GRID_HUE_SPREAD;
 }
 
 /* This is a fraction of arc length, so a constant walk rate gives a constant

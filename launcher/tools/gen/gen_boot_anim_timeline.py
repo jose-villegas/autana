@@ -14,19 +14,20 @@ any glTF tool and baked into the boot clip's own asset pack by
 tools/r3d/build_pack.py from main/boot/boot_anim_motion.anim.toml; this
 script only reads it to check it.
 
-`camera_half_fov_short_tan`, `grid_step_m` and `wave_height_m`/`wave_wavelength_m`/
+`camera_half_fov_short_tan`, `grid_step_m`, `mesh_step_m` and `wave_height_m`/`wave_wavelength_m`/
 `wave_period_ms` are single settings: `camera_half_fov_short_tan` is the
 positive tangent of the shorter-axis half field of view passed to
-render_view_make(); `grid_step_m` is the spacing between floor rings,
-authored in meters and converted at bake time; `wave_height_m`/
+render_view_make(); `grid_step_m` is the width of one floor colour band and
+`mesh_step_m` the side of one floor mesh cell, both authored in meters and
+converted at bake time; `wave_height_m`/
 `wave_wavelength_m`/`wave_period_ms` are the ripple's own peak amplitude,
 its crest-to-crest distance, and how long one full cycle takes to pass a
 fixed point; see boot_anim_wave_height().
-`grid_rings` (how many rings the floor draws before fading out) lives in
-`timing` instead, a plain count with nothing to convert.
+`grid_bands` (how many bands out the floor fades to nothing) and
+`mesh_cells` live in `timing` instead, plain counts with nothing to convert.
 
 The `timing` block is everything else that paces the animation but is not
-a transform of the space: how fast the grid rings fade in, how the title
+a transform of the space: how fast the floor's bands fade in, how the title
 letters fly in and wobble, how the grid's own hue travels. Plain values,
 straight through to #define.
 
@@ -113,10 +114,17 @@ def validate(cfg):
         fail("unknown timing key(s): %s - not a setting of this timeline" %
              ", ".join(unknown))
 
-    if timing["grid_rings"] <= 0:
-        fail("grid_rings must be positive (%r given)" % (timing["grid_rings"],))
+    if timing["grid_bands"] <= 0:
+        fail("grid_bands must be positive (%r given)" % (timing["grid_bands"],))
     if cfg["grid_step_m"] <= 0:
         fail("grid_step_m must be positive (%r given)" % (cfg["grid_step_m"],))
+    if timing["mesh_cells"] <= 0 or timing["mesh_cells"] % 2:
+        fail("mesh_cells must be positive and even (%r given) - the middle "
+             "line runs through the origin" % (timing["mesh_cells"],))
+    if timing["mesh_dash"] not in (0, 1):
+        fail("mesh_dash must be 0 or 1 (%r given)" % (timing["mesh_dash"],))
+    if cfg["mesh_step_m"] <= 0:
+        fail("mesh_step_m must be positive (%r given)" % (cfg["mesh_step_m"],))
     if timing["grid_hue_ms"] <= 0:
         fail("grid_hue_ms must be positive (%r given) - boot_anim_grid_hue() "
              "divides by it every frame" % (timing["grid_hue_ms"],))
@@ -286,10 +294,16 @@ TIMING_ORDER = [
     ("axes_ms", "BOOT_ANIM_AXES_MS",
      "the axes grow out of the origin"),
     ("grid_start_ms", "BOOT_ANIM_GRID_START_MS", None),
-    ("grid_ring_ms", "BOOT_ANIM_GRID_RING_MS",
+    ("grid_band_ms", "BOOT_ANIM_GRID_BAND_MS",
      "each ring waits for the one inside"),
-    ("grid_rings", "BOOT_ANIM_GRID_RINGS",
-     "how many rings the floor draws before fading out"),
+    ("grid_bands", "BOOT_ANIM_GRID_BANDS",
+     "how many grid_step_m bands out the floor's colour and fade reach"),
+    ("mesh_cells", "BOOT_ANIM_MESH_CELLS",
+     "cells along each side of the floor's square mesh - even, so one line "
+     "runs through the origin"),
+    ("mesh_dash", "BOOT_ANIM_MESH_DASH",
+     "draws the mesh lines as alternating dashes instead of solid - "
+     "0 solid, 1 dashed"),
     ("grid_spokes", "BOOT_ANIM_GRID_SPOKES",
      "radial guide lines from the origin to the floor's own edge - 0 hides them"),
     ("grid_spoke_dash", "BOOT_ANIM_GRID_SPOKE_DASH",
@@ -405,7 +419,7 @@ def main():
     timing.setdefault("wave_in_ms", 1000)
     timing.setdefault("wave_out_ms",
                       max(1000, timing.get("total_ms", 5800) - 1000))
-    # grid_spokes is newer than the polar grid itself: the radial guide
+    # grid_spokes is newer than the floor grid itself: the radial guide
     # lines used to be a fixed 8, unauthored; 8 is the exact same default
     # for a file baked before this existed, so it keeps looking the way it
     # always did.
@@ -501,7 +515,11 @@ def main():
     w("/* Positive tangent of the camera's shorter-axis half field of view. */\n")
     w("#define BOOT_ANIM_CAMERA_HALF_FOV_SHORT_TAN %sF\n\n" % repr(float(cfg["camera_half_fov_short_tan"])))
 
-    w("/* The floor's ring spacing - see BOOT_ANIM_GRID_RINGS's own comment\n")
+    w("/* The side of one floor mesh cell, in meters (mesh_step_m in the\n")
+    w(" * JSON). */\n")
+    w("#define BOOT_ANIM_MESH_STEP_Q12 %d\n\n" % meters_to_q12(cfg["mesh_step_m"]))
+
+    w("/* The floor's colour band spacing - see BOOT_ANIM_GRID_BANDS's own comment\n")
     w(" * in boot_anim.h. Authored in meters (grid_step_m in the JSON), like\n")
     w(" * a transform's own pos, and converted here the same way units() in\n")
     w(" * boot_anim.c does. */\n")

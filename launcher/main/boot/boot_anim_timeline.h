@@ -20,10 +20,16 @@
 
 #define BOOT_ANIM_GRID_START_MS 320
 /* each ring waits for the one inside */
-#define BOOT_ANIM_GRID_RING_MS 16
+#define BOOT_ANIM_GRID_BAND_MS 16
 
-/* how many rings the floor draws before fading out */
-#define BOOT_ANIM_GRID_RINGS 128
+/* how many grid_step_m bands out the floor's colour and fade reach */
+#define BOOT_ANIM_GRID_BANDS 128
+
+/* cells along each side of the floor's square mesh - even, so one line runs through the origin */
+#define BOOT_ANIM_MESH_CELLS 48
+
+/* draws the mesh lines as alternating dashes instead of solid - 0 solid, 1 dashed */
+#define BOOT_ANIM_MESH_DASH 0
 
 /* radial guide lines from the origin to the floor's own edge - 0 hides them */
 #define BOOT_ANIM_GRID_SPOKES 4
@@ -119,7 +125,11 @@
 /* Positive tangent of the camera's shorter-axis half field of view. */
 #define BOOT_ANIM_CAMERA_HALF_FOV_SHORT_TAN 1.0F
 
-/* The floor's ring spacing - see BOOT_ANIM_GRID_RINGS's own comment
+/* The side of one floor mesh cell, in meters (mesh_step_m in the
+ * JSON). */
+#define BOOT_ANIM_MESH_STEP_Q12 2187
+
+/* The floor's colour band spacing - see BOOT_ANIM_GRID_BANDS's own comment
  * in boot_anim.h. Authored in meters (grid_step_m in the JSON), like
  * a transform's own pos, and converted here the same way units() in
  * boot_anim.c does. */

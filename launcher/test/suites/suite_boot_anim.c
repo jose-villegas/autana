@@ -1120,16 +1120,16 @@ test_the_seed_finishes_the_crossfade_before_the_dissolve_starts(void) {
 
 static void
 test_the_floor_fades_in_from_the_origin_outward(void) {
-    const uint32_t t = BOOT_ANIM_GRID_START_MS + 2 * BOOT_ANIM_GRID_RING_MS + 1;
+    const uint32_t t = BOOT_ANIM_GRID_START_MS + 2 * BOOT_ANIM_GRID_BAND_MS + 1;
 
     TEST_ASSERT_TRUE(boot_anim_grid_alpha(t, 1) > boot_anim_grid_alpha(t, 2));
     TEST_ASSERT_EQUAL_UINT8(0, boot_anim_grid_alpha(t, 3));
 }
 
 /* The floor has no edge: it fades out with distance instead of stopping.
- * Checked as NON-increasing per ring plus a real drop across any span,
- * not strictly dimmer at every ring: falloff is left * ceiling / FADE,
- * so with 128 rings against a ceiling of 64, each ring is worth half a
+ * Checked as NON-increasing per band plus a real drop across any span,
+ * not strictly dimmer at every band: falloff is left * ceiling / FADE,
+ * so with 128 bands against a ceiling of 64, each band is worth half a
  * level and adjacent pairs land on the same integer (63, 63, 62, 62,
  * ...): arithmetic, not a regression, invisible on the panel since the
  * eye reads the overall gradient. */
@@ -1138,13 +1138,13 @@ test_the_floor_fades_out_with_distance_rather_than_stopping(void) {
     const uint32_t settled = BOOT_ANIM_MS;
     const int span = BOOT_ANIM_GRID_FADE / 8;
 
-    for (int ring = 2; ring < BOOT_ANIM_GRID_FADE; ring++) {
-        TEST_ASSERT_TRUE_MESSAGE(boot_anim_grid_alpha(settled, ring) <= boot_anim_grid_alpha(settled, ring - 1),
-                                 "a floor ring was BRIGHTER than the one inside it - the grid "
+    for (int band = 2; band < BOOT_ANIM_GRID_FADE; band++) {
+        TEST_ASSERT_TRUE_MESSAGE(boot_anim_grid_alpha(settled, band) <= boot_anim_grid_alpha(settled, band - 1),
+                                 "a floor band was BRIGHTER than the one inside it - the grid "
                                  "would read as lit from the far edge inward");
     }
-    for (int ring = span; ring < BOOT_ANIM_GRID_FADE; ring += span) {
-        TEST_ASSERT_TRUE_MESSAGE(boot_anim_grid_alpha(settled, ring) < boot_anim_grid_alpha(settled, ring - span),
+    for (int band = span; band < BOOT_ANIM_GRID_FADE; band += span) {
+        TEST_ASSERT_TRUE_MESSAGE(boot_anim_grid_alpha(settled, band) < boot_anim_grid_alpha(settled, band - span),
                                  "the floor stopped dimming across a whole eighth of its own "
                                  "reach - it would read as a tile with an edge rather than as "
                                  "a plane");
@@ -1162,8 +1162,8 @@ test_the_floor_fades_out_with_distance_rather_than_stopping(void) {
 static void
 test_the_floor_stays_dim_enough_to_be_a_backdrop(void) {
     for (uint32_t t = 0; t <= BOOT_ANIM_MS; t += 25) {
-        for (int ring = 1; ring <= BOOT_ANIM_GRID_RINGS; ring++) {
-            TEST_ASSERT_TRUE_MESSAGE(boot_anim_grid_alpha(t, ring) <= BOOT_ANIM_GRID_CEILING_MAX,
+        for (int band = 1; band <= BOOT_ANIM_GRID_BANDS; band++) {
+            TEST_ASSERT_TRUE_MESSAGE(boot_anim_grid_alpha(t, band) <= BOOT_ANIM_GRID_CEILING_MAX,
                                      "the floor got brighter than its cap");
         }
     }
@@ -1196,11 +1196,11 @@ test_the_grid_climb_runs_the_whole_animation(void) {
  * asks for one. */
 static void
 test_the_floor_opacity_never_falls_back(void) {
-    /* Ring 1's own fade-in (BOOT_ANIM_GRID_RING_MS + BOOT_ANIM_GRID_FADE_MS
+    /* Band 1's own fade-in (BOOT_ANIM_GRID_BAND_MS + BOOT_ANIM_GRID_FADE_MS
      * after BOOT_ANIM_GRID_START_MS) is long done by either of these, plus
      * a little slack, so the only thing left changing its alpha between
      * them is the ceiling itself climbing, not "arrived" still ramping. */
-    const uint32_t early_ms = BOOT_ANIM_GRID_START_MS + BOOT_ANIM_GRID_RING_MS + BOOT_ANIM_GRID_FADE_MS + 50;
+    const uint32_t early_ms = BOOT_ANIM_GRID_START_MS + BOOT_ANIM_GRID_BAND_MS + BOOT_ANIM_GRID_FADE_MS + 50;
     const uint8_t early = boot_anim_grid_alpha(early_ms, 1);
     const uint8_t late = boot_anim_grid_alpha(BOOT_ANIM_MS, 1);
 
