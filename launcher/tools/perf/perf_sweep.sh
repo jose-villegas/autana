@@ -26,6 +26,7 @@ REPO_DIR=$(CDPATH='' cd -- "$TOOLS_DIR/../../.." && pwd)
 work=$(mktemp -d)
 revision_worktree_setup "$REPO_DIR" "$work"
 restore=1
+estimate_restore=""
 perf_job_token=""
 restore_tree=""
 . "$TOOLS_DIR/perf_job.sh"
@@ -55,7 +56,7 @@ while [ "$remaining" -gt 0 ]; do
     shift
     remaining=$((remaining - 1))
     case "$arg" in
-        --no-restore) restore=0; set -- "$@" --no-restore ;;
+        --no-restore) restore=0 ;;
         --dry-run) dry_run=1; set -- "$@" "$arg" ;;
         -o|--out) out=${1:?output directory required}; shift; remaining=$((remaining - 1)) ;;
         --build)
@@ -99,7 +100,8 @@ out=$(CDPATH='' cd -- "$out" && pwd)
 "$PYTHON" "$TOOLS_DIR/perf_sweep.py" run --out "$out" --dry-run "$@" > "$work/plan.json"
 if [ "$dry_run" -eq 0 ]; then
     if [ "$restore" -eq 1 ]; then restore_project=$(revision_worktree_checkout origin/main restore); fi
-    estimate=$("$PYTHON" "$TOOLS_DIR/perf_sweep.py" run --out "$out" --estimate-plan "$@")
+    [ "$restore" -eq 1 ] || estimate_restore=--no-restore
+    estimate=$("$PYTHON" "$TOOLS_DIR/perf_sweep.py" run --out "$out" --estimate-plan $estimate_restore "$@")
     perf_job_take "$estimate" "perf_sweep"
     if [ "$restore" -eq 1 ]; then restore_tree=$restore_project; fi
 fi

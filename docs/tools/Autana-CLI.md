@@ -167,7 +167,8 @@ which rows it compares. It needs a diagnostics build whose `RUNSUITE` takes
 patterns (`autana flash diag`), and says so when the board runs an older one.
 
 For a scoped A/B with several steps, put both flashes and captures inside
-one `autana lock run` so nobody flashes between them. Build both projects first.
+one `autana lock run` so nobody flashes between them.
+A and B are project directories, each built beforehand (`autana build`).
 
 | Linux | Windows PowerShell |
 |---|---|
@@ -242,7 +243,7 @@ The two raw levels below gesture, `touch` and `imu`, live under
 | Command | What it does |
 |---|---|
 | `autana status [--json]` | Every board, plugged in or locked: free or held, the holder with local start, elapsed and estimated free time, and the FIFO waiters with estimated starts. A board off USB is listed without a port. |
-| `autana lock run [--note <words...>] [--estimate <seconds>] [--keep-on-failure <seconds>] -- <command...>` | Hold the board while the child command runs. The child inherits its lock token. `--note` names the job in status; `--estimate` supplies its expected duration. A failed command can leave a timed hold for inspection. |
+| `autana lock run [--keep-on-failure <seconds>] -- <command...>` | Hold the board while the child command runs. The child inherits its lock token. A failed command can leave a timed hold for inspection. |
 | `autana lock take [--for <seconds> \| --until-released [--pid <pid>]] [--estimate <seconds>] <note...>` | Wait for the board and print a token for commands in this session. A timed hold lasts at most an hour; an until-released hold ends when its owner process dies. |
 | `autana lock release [<token>]` | Release the lock a command of this session holds, before it would have. Given a lock's token, or, run from inside the command that holds the lock, without one. |
 | `autana lock wait` | Wait until the board is free without taking it or queueing; no cap without `--wait`. |
@@ -254,7 +255,7 @@ COM number changes. A command that loses the lock stops with `device lock was
 lost`; one that finds the board busy exits 75
 ([exit codes](Device-Lock.md#exit-codes-and-json-status)). A separate `flash` and `suite` leave a gap where another session can
 flash; `suite --flash` and `selftest` hold one lock across flash and capture.
-`--estimate` on `take` or `run` supplies `status --json`'s `estimated_free`
+`--estimate` on `take` supplies `status --json`'s `estimated_free`
 and queued `estimated_start` times. It never ends a hold.
 Lock loss is defined in [Device-Lock.md](Device-Lock.md); flash success,
 captures and wait estimates in [Flash-and-Captures.md](Flash-and-Captures.md).

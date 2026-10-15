@@ -30,7 +30,8 @@ file). This is the loop while working on a material or a perf change:
 `autana suite` the suite for the area touched, and reserve a full capture for a merge decision.
 
 For a scoped A/B with several steps, put both flashes and captures inside
-one `autana lock run` so nobody flashes between them. Build both projects first.
+one `autana lock run` so nobody flashes between them.
+A and B are project directories, each built beforehand (`autana build`).
 
 | Linux | Windows PowerShell |
 |---|---|

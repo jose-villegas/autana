@@ -182,13 +182,24 @@ class AcquisitionTest(ShellJobTests, unittest.TestCase):
                         aa = tool.measure(args, FakeAutana(root))
                     self.assertEqual([item['seed'] for item in aa['plan']], seeds)
 
+    def test_compare_estimate_covers_first_pass(self):
+        with tempfile.TemporaryDirectory() as root:
+            args = arguments(root)
+            first = tool.schedule(args.max_seeds, args.alpha)[0]
+            with patch("perf_job.job_estimate", return_value=1) as estimate, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                tool.main(["--estimate-plan", "--max-seeds", str(args.max_seeds),
+                           "--project-a", str(args.project_a), "--project-b", str(args.project_b),
+                           "--suite", "suite", "-", "-"])
+            estimate.assert_called_once_with(2 * first, 2 * (first + tool.CALIBRATION_SEEDS * (tool.CALIBRATION_RUNS - 1)), 1800, True)
+
     def test_job_estimate_uses_history_and_fallbacks(self):
-        from layout_measure import DEFAULT_FLASH_SECONDS, job_estimate
+        from perf_job import DEFAULT_FLASH_SECONDS, job_estimate
         sys.path.insert(0, str(PERF.parents[2] / "scripts/device"))
         import device_lock
-        with patch.object(device_lock, "duration_history", return_value={"flash": 10, "run-suite": 20}):
+        with patch("perf_job.duration_history", return_value={"flash": 10, "run-suite": 20}):
             self.assertEqual(job_estimate(2, 3, 900), 90)
-        with patch.object(device_lock, "duration_history", return_value={}):
+        with patch("perf_job.duration_history", return_value={}):
             self.assertEqual(job_estimate(2, 3, 900, restore=False),
                              2 * DEFAULT_FLASH_SECONDS + 3 * 900)
 

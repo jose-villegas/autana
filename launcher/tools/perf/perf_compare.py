@@ -16,6 +16,8 @@ from seed_statistics import compare, minimum_seeds, permutation_samples
 DEFAULT_THRESHOLD = 1.0
 DEFAULT_ALPHA = 0.05
 MAX_RUNS = 16
+CALIBRATION_SEEDS = 2
+CALIBRATION_RUNS = 2
 
 
 def schedule(cap, alpha):
@@ -169,7 +171,7 @@ def measure(args, runner=None):
                 used.add(seed)
                 repeated = sum(any(len(entry["runs"]) >= 2 for entry in record["suites"].values())
                                for record in records[side])
-                actual_runs = 2 if look == 0 and repeated < 2 else runs
+                actual_runs = CALIBRATION_RUNS if look == 0 and repeated < CALIBRATION_SEEDS else runs
                 item = dict(side=side, seed=seed, runs=actual_runs, suites=suites, look=look + 1)
                 plan.append(item)
                 save_plan()
@@ -344,11 +346,12 @@ def main(argv=None):
         except ValueError as error:
             parser.error(str(error))
         if args.estimate_plan:
-            from layout_measure import job_estimate
-            flashes = 2 * args.max_seeds
-            requests = max((split_filters(args.suite, filter_limits(project))
-                            for project in (args.project_a, args.project_b)), key=len)
-            print(job_estimate(flashes, flashes * MAX_RUNS * len(requests), args.timeout, not args.no_restore))
+            from perf_job import job_estimate
+            seeds = schedule(args.max_seeds, args.alpha)[0]
+            runs = seeds + min(seeds, CALIBRATION_SEEDS) * (CALIBRATION_RUNS - 1)
+            requests = sum(len(split_filters(args.suite, filter_limits(project)))
+                           for project in (args.project_a, args.project_b))
+            print(job_estimate(2 * seeds, runs * requests, args.timeout, not args.no_restore))
         return 0
     if not all((args.out, args.project_a, args.project_b, args.suite)):
         parser.error("--out, --project-a, --project-b and --suite are required")

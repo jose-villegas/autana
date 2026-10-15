@@ -577,7 +577,7 @@ class HeldLock:
 
     HEARTBEAT_SECONDS = 5
 
-    def __init__(self, store, board, owner, kind, wait, announce_waiters=False, note=None, estimate=None):
+    def __init__(self, store, board, owner, kind, wait, announce_waiters=False):
         self.store = store
         self.announce_waiters = announce_waiters
         self.board = board
@@ -592,15 +592,12 @@ class HeldLock:
             self.held = device_lock.Held(record, "")
         else:
             self.held = store.acquire(board, owner, kind, wait=wait, on_wait=self.wait_notice,
-                                      purpose=note or command_label(kind))
+                                      purpose=command_label(kind))
         if not self.held:
             raise LockBusy("device lock was not acquired: "
                            + device_lock.busy_text(store.status(board), store.now()))
         if self.held.log:
             print(self.held.log, file=sys.stderr)
-        if kind == "run" and not self.borrowed and (note or estimate is not None):
-            if not store.hold(board, self.held["token"], note or command_label(kind), estimate=estimate):
-                raise LockBusy("device lock was lost before the hold was recorded")
         self.stop = threading.Event()
         self.lost = threading.Event()
         self.notified = set()
@@ -1939,8 +1936,6 @@ def main(argv=None):
     take.add_argument("note", nargs="+")
     run = subparsers.add_parser("run")
     run.add_argument("--keep-on-failure", type=hold_seconds)
-    run.add_argument("--estimate", type=human_wait_seconds)
-    run.add_argument("--note", nargs="+")
     run.add_argument("child", nargs=argparse.REMAINDER)
     wait_parser = subparsers.add_parser("wait-free")
     wait_parser.add_argument("--cap", type=human_wait_seconds)
@@ -2150,8 +2145,7 @@ def main(argv=None):
             child = args.child[1:] if args.child[:1] == ["--"] else args.child
             if not child:
                 parser.error("run needs -- <command...>")
-            with HeldLock(store, board, args.owner, "run", args.wait,
-                          note=" ".join(args.note) if args.note else None, estimate=args.estimate) as held:
+            with HeldLock(store, board, args.owner, "run", args.wait) as held:
                 try:
                     run_to_end(child, held.lost)
                     return 0

@@ -28,6 +28,7 @@ rev_a=""
 rev_b=""
 out=""
 restore=1
+estimate_restore=""
 validate_only=0
 perf_job_token=""
 restore_tree=""
@@ -41,7 +42,7 @@ while [ "$remaining" -gt 0 ]; do
     remaining=$((remaining - 1))
     case "$arg" in
         -o|--out) out=${1:?output directory required}; shift; remaining=$((remaining - 1)) ;;
-        --no-restore) restore=0; set -- "$@" --no-restore ;;
+        --no-restore) restore=0 ;;
         --validate-plan) validate_only=1 ;;
         --suite)
             [ "$remaining" -ge 3 ] || { echo "--suite requires NAME TESTS TABLE" >&2; exit 2; }
@@ -102,7 +103,8 @@ short_name() {
 if [ "$restore" -eq 1 ]; then
     restore_project=$(revision_worktree_checkout origin/main restore)
 fi
-estimate=$("$PYTHON" "$TOOLS_DIR/perf_compare.py" --estimate-plan --project-a "$tree_a" --project-b "$tree_b" "$@")
+[ "$restore" -eq 1 ] || estimate_restore=--no-restore
+estimate=$("$PYTHON" "$TOOLS_DIR/perf_compare.py" --estimate-plan $estimate_restore --project-a "$tree_a" --project-b "$tree_b" "$@")
 perf_job_take "$estimate" "perf_compare $(short_name "$rev_a") vs $(short_name "$rev_b")"
 if [ "$restore" -eq 1 ]; then restore_tree=$restore_project; fi
 status=0

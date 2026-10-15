@@ -6,14 +6,42 @@ seed sets. Arguments accept revisions or existing project directories.
 The wrapper restores `origin/main`'s release image afterwards;
 `--no-restore` omits that flash.
 
-A comparison or sweep holds the board from its first board call through the
-restore, including failure cleanup. Other sessions queue behind the whole job.
-`autana status` shows `perf_compare A vs B` or `perf_sweep`, the
-estimated finish and queued starts. Estimates use the board's duration history;
-missing history uses the configured capture deadline and `DEFAULT_FLASH_SECONDS`
-in `layout_measure.py`. The comparison reserves its seed/run caps; the sweep
-uses its planned flashes, rounds and knob points. Ctrl+C restores and releases
-the hold. A job inside an existing hold borrows its token.
+`autana status` shows the job name, estimated finish and queued starts.
+Estimates use recorded flash and capture durations, with the configured capture
+deadline and `DEFAULT_FLASH_SECONDS` in `perf_job.py` as fallbacks.
+The comparison estimate covers its first scheduled pass: seeds per side,
+calibration repeats, requests per capture and the restore flash when enabled.
+Adaptive extra seeds can run longer. The sweep estimate uses its planned
+flashes, rounds, knob points and inventory captures, plus the optional restore.
+
+```mermaid
+sequenceDiagram
+    participant S as Shell wrapper
+    participant L as autana lock
+    participant P as perf Python
+    alt No inherited token
+        S->>L: take with owner pid and estimate
+        L-->>S: token after queue wait
+    else Borrowed token
+        Note over S,L: Outer hold remains owned by caller
+    end
+    S->>P: Seed flashes and captures with token
+    alt Success
+        P-->>S: Results
+    else Failure or Ctrl+C during capture
+        P-->>S: Stop acquisition
+    end
+    opt Restore enabled after acquisition
+        S->>P: Restore release image with token
+        P-->>S: Restore finished
+    end
+    alt Token taken by wrapper
+        S->>L: release token
+    else Borrowed token
+        Note over S,L: Caller releases outer hold
+    end
+    Note over S,L: Interrupted queued take skips restore and release
+```
 
 Each `--suite NAME TESTS TABLE` takes a registered suite name, comma-separated
 test patterns (`-` for all), and a table command (`-` reads the capture's

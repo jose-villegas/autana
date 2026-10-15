@@ -169,8 +169,9 @@ def run(args, runner=None):
     runner = runner or run_stamped
     saved = plan(args)
     if args.estimate_plan:
-        from layout_measure import job_estimate
+        from perf_job import job_estimate
         captures = sum(len(flash["suites"]) for flash in saved["flashes"]) * args.runs * len(saved["points"])
+        # Each seeded image also captures its registered tunable inventory.
         captures += len(saved["flashes"])
         print(job_estimate(len(saved["flashes"]), captures, args.timeout, not args.no_restore))
         return 0

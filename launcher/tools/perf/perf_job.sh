@@ -1,5 +1,7 @@
 #!/bin/sh
+# Sourced by perf_compare.sh and perf_sweep.sh, expects PYTHON, TOOLS_DIR, autana and wait.
 # A process-bound hold keeps restoration inside the job even after an interrupt.
+. "$TOOLS_DIR/../../../scripts/lib/process_pid.sh"
 
 perf_job_autana() {
     "$PYTHON" -c 'import sys, subprocess
@@ -12,8 +14,7 @@ sys.exit(subprocess.call(autana_command(*sys.argv[3:], override=sys.argv[2])))' 
 perf_job_take() {
     perf_job_token=""
     if [ -z "${_AUTANA_DEVICE_LOCK_TOKEN:-}" ]; then
-        perf_job_pid=$$
-        if [ -r "/proc/$$/winpid" ]; then perf_job_pid=$(cat "/proc/$$/winpid"); fi
+        perf_job_pid=$(host_pid "$$")
         perf_job_token=$(perf_job_autana --wait "$wait" lock take --until-released --pid "$perf_job_pid" \
             --estimate "$1" "$2")
         _AUTANA_DEVICE_LOCK_TOKEN=$perf_job_token

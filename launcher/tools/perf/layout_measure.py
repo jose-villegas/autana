@@ -21,18 +21,6 @@ from device_capture import RESULT_RE, BUILD_ID_RE as BUILD_LINE  # noqa: E402
 
 MEAN_RE = re.compile(r"\b(?P<name>\S+) (?:(?:both cores|one core): )?mean\s+(?P<value>\d+)us\b")
 NUMBER_RE = re.compile(r"^[+-]?\d+$")
-DEFAULT_FLASH_SECONDS = 60
-
-
-def job_estimate(flashes, captures, timeout, restore=True):
-    """History supplies board costs; absent captures use their configured deadline."""
-    sys.path.insert(0, str(REPO / "scripts/device"))
-    from device_lock import duration_history
-    durations = duration_history()
-    seconds = (flashes + int(restore)) * durations.get("flash", DEFAULT_FLASH_SECONDS)
-    return math.ceil(seconds + captures * durations.get("run-suite", timeout))
-
-
 def cell(text):
     return text.strip().strip("`").replace("**", "")
 

@@ -4,7 +4,6 @@ import json
 import os
 from pathlib import Path
 import signal
-import subprocess
 import sys
 import time
 
@@ -15,22 +14,31 @@ from test_perf_sweep import FakeAutana as Sweep
 root = Path(os.environ["PERF_JOB_TEST_ROOT"])
 words = sys.argv[1:]
 token_key = "_AUTANA_DEVICE_LOCK_TOKEN"
+SIGNAL_POLL_SECONDS = 0.02
+
+
+def wait_for_signal():
+    signal.signal(signal.SIGINT, lambda *_: sys.exit(130))
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(130))
+    (root / "ready").touch()
+    while not (root / "signal").exists():
+        time.sleep(SIGNAL_POLL_SECONDS)
+    sys.exit(130)
+
 with (root / "calls.jsonl").open("a") as stream:
     stream.write(json.dumps(dict(words=words, token=os.environ.get(token_key))) + "\n")
 if "lock" in words:
     verb = words[words.index("lock") + 1]
     if verb == "take":
+        if os.environ.get("PERF_JOB_MODE") == "queued":
+            wait_for_signal()
         sys.path.insert(0, str(Path(__file__).resolve().parents[5] / "scripts/device"))
         from device_lock import process_alive
         assert process_alive(int(words[words.index("--pid") + 1])), "hold owner is not alive"
         print("job-token")
-    elif verb == "run":
-        os.environ[token_key] = os.environ.get(token_key) or "job-token"
-        try:
-            sys.exit(subprocess.call(words[words.index("--") + 1:]))
-        finally:
-            with (root / "calls.jsonl").open("a") as stream:
-                stream.write(json.dumps(dict(words=["lock", "release"], token=os.environ[token_key])) + "\n")
+    elif verb == "release":
+        if words[words.index("release") + 1:] != ["job-token"]:
+            sys.exit("release requires the issued token")
     sys.exit(0)
 if "flash" in words:
     sys.exit(0)
@@ -39,8 +47,7 @@ if "suite" in words:
     if os.environ.get("PERF_JOB_MODE") == "fail":
         sys.exit(7)
     if os.environ.get("PERF_JOB_MODE") == "interrupt":
-        time.sleep(0.5)
-        sys.exit(130)
+        wait_for_signal()
 if os.environ["PERF_JOB_KIND"] == "compare":
     if "buildid" in words:
         print("BUILD_ID=" + (root / "build_id").read_text())
