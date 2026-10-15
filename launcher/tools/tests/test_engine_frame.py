@@ -83,7 +83,7 @@ class EngineFrameTests(unittest.TestCase):
         self.assertIn("int16", error.getvalue())
         self.assertNotIn("Traceback", error.getvalue())
 
-    def test_scene_model_is_mirror_matrix_mirror(self):
+    def test_scene_placement_is_mirror_matrix_mirror(self):
         source = self.root / "probe.scene.toml"
         write_import(self.root)
         source.write_text('[[objects]]\nname = "camera"\nposition = [2, 3, -7]\n'
