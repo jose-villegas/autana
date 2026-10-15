@@ -386,6 +386,11 @@ gfx_mark_dirty(int x, int y, int w, int h) {
     dirty_mark(x, y, w, h);
 }
 
+void
+gfx_mark_drawn(int x, int y, int w, int h) {
+    dirty_mark(x, y, w, h);
+}
+
 bool
 gfx_region_dirty(int x, int y, int w, int h) {
     GFX_PRESENT_GUARD();

@@ -67,5 +67,8 @@ void gfx_set_clip_box(gfx_box_t clip);
 /* Tracked as a real box per grid cell, so a caller that touched part of a
  * cell may send less than all of it; rows claim whole cells. */
 void gfx_mark_dirty(int x, int y, int w, int h);
+/* gfx_mark_dirty() for a draw call already inside gfx_draw_begin(), which ran
+ * the present guard: one guard per primitive, not two. */
+void gfx_mark_drawn(int x, int y, int w, int h);
 void gfx_mark_rows_dirty(int y0, int y1);
 void gfx_mark_all_dirty(void);

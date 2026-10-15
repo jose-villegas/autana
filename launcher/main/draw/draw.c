@@ -20,7 +20,7 @@ mark_fill(const gfx_surface_t* state, int x0, int y0, int x1, int y1) {
         return;
     }
     if (tight_fill_marks) {
-        gfx_mark_dirty(x0, y0, x1 - x0, y1 - y0);
+        gfx_mark_drawn(x0, y0, x1 - x0, y1 - y0);
     } else {
         gfx_mark_rows_dirty(y0, y1);
     }
@@ -140,7 +140,7 @@ line_walk(const gfx_surface_t* state, int x0, int y0, int x1, int y1, gfx_color_
     walk(state, x0, y0, x1, y1, color, flags);
 
     if (state->marks && box.x0 < box.x1 && box.y0 < box.y1) {
-        gfx_mark_dirty(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
+        gfx_mark_drawn(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
     }
 }
 
