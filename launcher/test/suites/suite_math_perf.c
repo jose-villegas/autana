@@ -86,29 +86,18 @@ typedef struct {
     int ops;
 } row_t;
 
+#define MATH_VECTOR_ROWS(X, type, vmember, smember, dot_ratchet, ...)                                                  \
+    X(add, "add (vec3)", type, false, vmember, vec3##type##_add(p->a##type, p->b##type))                               \
+    X(scale, "scale (vec3)", type, false, vmember, vec3##type##_scale(p->a##type, p->b##type.x))                       \
+    X(dot, "dot (vec3)", type, dot_ratchet, smember, vec3##type##_dot(p->a##type, p->b##type))                         \
+    X(mul, "mul (scalar)", type, false, smember, math##type##_mul(p->a##type.x, p->b##type.x))                         \
+    X(lerp, "lerp (vec3)", type, false, vmember, vec3##type##_lerp(p->a##type, p->b##type, __VA_ARGS__))
+
 #define MATH_ROWS(X, DOT)                                                                                              \
-    X(add, "add (vec3)", f, false, vf, vec3f_add(p->af, p->bf))                                                        \
-    X(scale, "scale (vec3)", f, false, vf, vec3f_scale(p->af, p->bf.x))                                                \
-    X(dot, "dot (vec3)", f, true, f, vec3f_dot(p->af, p->bf))                                                          \
-    X(mul, "mul (scalar)", f, false, f, mathf_mul(p->af.x, p->bf.x))                                                   \
-    X(lerp, "lerp (vec3)", f, false, vf, vec3f_lerp(p->af, p->bf, MATH_BENCH_LERP_F))                                  \
-    X(add, "add (vec3)", i, false, vi, vec3i_add(p->ai, p->bi))                                                        \
-    X(scale, "scale (vec3)", i, false, vi, vec3i_scale(p->ai, p->bi.x))                                                \
-    X(dot, "dot (vec3)", i, false, i, vec3i_dot(p->ai, p->bi))                                                         \
-    X(mul, "mul (scalar)", i, false, i, mathi_mul(p->ai.x, p->bi.x))                                                   \
-    X(lerp, "lerp (vec3)", i, false, vi,                                                                               \
-      vec3i_lerp(p->ai, p->bi, MATH_BENCH_LERP_NUMERATOR, MATH_BENCH_LERP_DENOMINATOR))                                \
-    X(add, "add (vec3)", s, false, vs, vec3s_add(p->as, p->bs))                                                        \
-    X(scale, "scale (vec3)", s, false, vs, vec3s_scale(p->as, p->bs.x))                                                \
-    X(dot, "dot (vec3)", s, false, i, vec3s_dot(p->as, p->bs))                                                         \
-    X(mul, "mul (scalar)", s, false, i, maths_mul(p->as.x, p->bs.x))                                                   \
-    X(lerp, "lerp (vec3)", s, false, vs,                                                                               \
-      vec3s_lerp(p->as, p->bs, MATH_BENCH_LERP_NUMERATOR, MATH_BENCH_LERP_DENOMINATOR))                                \
-    X(add, "add (vec3)", x, false, vx, vec3x_add(p->ax, p->bx))                                                        \
-    X(scale, "scale (vec3)", x, false, vx, vec3x_scale(p->ax, p->bx.x))                                                \
-    X(dot, "dot (vec3)", x, false, i, vec3x_dot(p->ax, p->bx))                                                         \
-    X(mul, "mul (scalar)", x, false, i, mathx_mul(p->ax.x, p->bx.x))                                                   \
-    X(lerp, "lerp (vec3)", x, false, vx, vec3x_lerp(p->ax, p->bx, MATH_BENCH_LERP_X))                                  \
+    MATH_VECTOR_ROWS(X, f, vf, f, true, MATH_BENCH_LERP_F)                                                             \
+    MATH_VECTOR_ROWS(X, i, vi, i, false, MATH_BENCH_LERP_NUMERATOR, MATH_BENCH_LERP_DENOMINATOR)                       \
+    MATH_VECTOR_ROWS(X, s, vs, i, false, MATH_BENCH_LERP_NUMERATOR, MATH_BENCH_LERP_DENOMINATOR)                       \
+    MATH_VECTOR_ROWS(X, x, vx, i, false, MATH_BENCH_LERP_X)                                                            \
     X(normalize, "normalize (vec3)", f, true, vf, vec3f_normalize(p->af))                                              \
     X(normalize, "normalize (vec3)", x, false, vx, vec3x_normalize(p->ax))                                             \
     X(wrap, "wrap", f, false, f, mathf_wrap(p->angle, -MATH_BENCH_WRAP_LIMIT, MATH_BENCH_WRAP_LIMIT))                  \
