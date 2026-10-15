@@ -501,7 +501,7 @@ test_quatf_slerp_matches_double_reference_over_the_whole_arc(void) {
     static const quatf_t tangents[] = {{1, 0, 0, 0}, {0.5F, -0.5F, 0.5F, -0.5F}};
     for (size_t basis = 0; basis < sizeof starts / sizeof starts[0]; basis++) {
         const quatf_t a = starts[basis], tangent = tangents[basis];
-        const double begin[] = {a.x, a.y, a.z, a.w};
+        const double begin[] = {(double)a.x, (double)a.y, (double)a.z, (double)a.w};
         for (int sample = 0; sample <= angle_steps + (int)(sizeof edge_cosines / sizeof edge_cosines[0]); sample++) {
             const double cosine =
                 sample <= angle_steps ? cos(sample * acos(-1.0) / angle_steps) : edge_cosines[sample - angle_steps - 1];
@@ -510,7 +510,7 @@ test_quatf_slerp_matches_double_reference_over_the_whole_arc(void) {
                                                         (float)((double)a.y * cosine + (double)tangent.y * sine),
                                                         (float)((double)a.z * cosine + (double)tangent.z * sine),
                                                         (float)((double)a.w * cosine + (double)tangent.w * sine)});
-            double end[] = {b.x, b.y, b.z, b.w};
+            double end[] = {(double)b.x, (double)b.y, (double)b.z, (double)b.w};
             const double length = sqrt(end[0] * end[0] + end[1] * end[1] + end[2] * end[2] + end[3] * end[3]);
             double dot = 0.0;
             for (size_t c = 0; c < sizeof end / sizeof end[0]; c++) {
@@ -528,7 +528,7 @@ test_quatf_slerp_matches_double_reference_over_the_whole_arc(void) {
                 const float t = (float)step / time_steps;
                 const double time = (double)t;
                 const quatf_t result = quatf_slerp(a, b, t);
-                const double got[] = {result.x, result.y, result.z, result.w};
+                const double got[] = {(double)result.x, (double)result.y, (double)result.z, (double)result.w};
                 const double wa = angle == 0.0 ? 1.0 - time : sin((1.0 - time) * angle) / sin(angle);
                 const double wb = angle == 0.0 ? time : sin(time * angle) / sin(angle);
                 double lerp[4], lerp_squared = 0.0;
