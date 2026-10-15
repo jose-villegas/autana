@@ -26,13 +26,14 @@ quatf_slerp(quatf_t a, quatf_t b, float t) {
     static const float u[] = {1.0F / 3,   1.0F / 10,  1.0F / 21,  1.0F / 36,  1.0F / 55,  1.0F / 78,
                               1.0F / 105, 1.0F / 136, 1.0F / 171, 1.0F / 210, 1.0F / 253, 1.0F / 300};
     float cosine = (a.x * b.x) + (a.y * b.y) + (a.z * b.z) + (a.w * b.w);
+    /* Tested before the sign flip and marked likely, the dense-key case keeps the series' live values off its path. */
+    const float nlerp_from_cosine = 0.9995F; /* nlerp within 4.3 float epsilons of slerp */
+    if (__builtin_expect(fabsf(cosine) >= nlerp_from_cosine, 1)) {
+        return quatf_nlerp(a, b, t);
+    }
     if (cosine < 0.0F) {
         b = (quatf_t){-b.x, -b.y, -b.z, -b.w};
         cosine = -cosine;
-    }
-    const float nlerp_from_cosine = 0.9995F; /* nlerp within 4.3 float epsilons of slerp */
-    if (cosine >= nlerp_from_cosine) {
-        return quatf_nlerp(a, b, t);
     }
     const float halve_below_cosine = 0.5F; /* a 120-degree rotation */
     if (cosine < halve_below_cosine) {
