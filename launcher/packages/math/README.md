@@ -47,7 +47,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/linear/mat4x.h](include/math/linear/mat4x.h) | mat4x: a 4x4 matrix of a Q16.16. |
 | [include/math/linear/math_const.h](include/math/linear/math_const.h) | math_const: the circle constants float maths uses, in radians, and the natural log of 2, which turns a half-life into a rate. |
 | [include/math/linear/quat_template.h](include/math/linear/quat_template.h) | quat_template: a rotation as x, y, z, w, unit length, Hamilton product, acting on a vector as q * v * q^-1, for one number type; see docs/math/README.md for the macro arguments. |
-| [include/math/linear/quatf.h](include/math/linear/quatf.h) | quatf: a float rotation, plus the one operation only floats have, slerp. |
+| [include/math/linear/quatf.h](include/math/linear/quatf.h) | quatf: a float rotation with host-exact, halved-arc polynomial slerp. |
 | [include/math/linear/quatx.h](include/math/linear/quatx.h) | quatx: a Q16.16 rotation; angles are turns (mathx.h). |
 | [include/math/linear/transform_template.h](include/math/linear/transform_template.h) | transform_template: where a thing is, as a position, a rotation and a scale, for one number type; see docs/math/README.md for the macro arguments. |
 | [include/math/linear/transformf.h](include/math/linear/transformf.h) | transformf: a transform of a float: position, rotation, scale and the cached model matrix. |
