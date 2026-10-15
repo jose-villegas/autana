@@ -730,9 +730,6 @@ extend_repaint_range(int was, int now, int* lo, int* hi) {
     }
 }
 
-/* Columns 16 wide: one PSRAM cache line of RGB565. */
-#define COLUMN_GROUP 16
-
 static inline __attribute__((always_inline)) gfx_color_t
 column_pixel(int x, int y) {
     const int phase = y & 3;
@@ -791,7 +788,7 @@ repaint_group_row(gfx_color_t* row, const int16_t* lo, const int16_t* hi, int x0
 
 static void
 repaint_column_group(const int16_t* lo, const int16_t* hi, int x0) {
-    const int x1 = x0 + COLUMN_GROUP < GFX_WIDTH ? x0 + COLUMN_GROUP : GFX_WIDTH;
+    const int x1 = x0 + RIDGE_COLUMN_GROUP < GFX_WIDTH ? x0 + RIDGE_COLUMN_GROUP : GFX_WIDTH;
     int y0;
     int y1;
     group_rows(lo, hi, 0, x1 - x0, &y0, &y1);
@@ -828,11 +825,11 @@ column_repaint_rows(int layer, int x, int16_t* lo, int16_t* hi) {
  * a group of columns row by row rather than each column top to bottom. */
 static void
 repaint_changed_columns(void) {
-    int16_t lo[COLUMN_GROUP];
-    int16_t hi[COLUMN_GROUP];
+    int16_t lo[RIDGE_COLUMN_GROUP];
+    int16_t hi[RIDGE_COLUMN_GROUP];
     for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
-        for (int x0 = 0; x0 < GFX_WIDTH; x0 += COLUMN_GROUP) {
-            const int x1 = x0 + COLUMN_GROUP < GFX_WIDTH ? x0 + COLUMN_GROUP : GFX_WIDTH;
+        for (int x0 = 0; x0 < GFX_WIDTH; x0 += RIDGE_COLUMN_GROUP) {
+            const int x1 = x0 + RIDGE_COLUMN_GROUP < GFX_WIDTH ? x0 + RIDGE_COLUMN_GROUP : GFX_WIDTH;
             for (int x = x0; x < x1; x++) {
                 column_repaint_rows(layer, x, &lo[x - x0], &hi[x - x0]);
             }

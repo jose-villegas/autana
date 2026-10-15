@@ -290,10 +290,6 @@ test_the_gradient_catches_up_once_the_tilt_stops(void) {
     assert_audit("settling", &audit);
 }
 
-/* ui_ridge.c keeps its group width private (COLUMN_GROUP there); a different
- * value here only makes the group bounds below wrong, never silently pass. */
-static const int RIDGE_COLUMN_GROUP = 16;
-
 /* The tracker only narrows a cell's box back after a send, so each frame
  * starts from an empty tracker: its boxes then hold this step's marks alone. */
 static void
