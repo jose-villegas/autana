@@ -20,6 +20,8 @@ sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS / "tests"))
 
 from anim import track_host  # noqa: E402
+from bake.bake import digest  # noqa: E402
+from r3d.poses import sample_camera_rows  # noqa: E402
 from anim_probe import has_compiler, write_camera_clip  # noqa: E402
 
 
@@ -40,6 +42,16 @@ class TrackHostTests(unittest.TestCase):
     def tearDown(self):
         self.patch.stop()
         shutil.rmtree(self.dir, ignore_errors=True)
+
+    def test_flythrough_camera_rows_agree_on_every_host(self):
+        """Every host must print the same camera bytes, checked as bake.py digests them.
+
+        After a deliberate clip or sampler change, compute digest(list(sample_camera_rows(...)))
+        with these arguments on Windows, verify it on Linux, then replace expected.
+        """
+        animation = TOOLS.parent / "demo" / "sponza" / "flythrough.anim.toml"
+        expected = "18a55faff48c2ddd614637b68f52d3dcbd2ea2057c9e3c6f20880f071be69b15"
+        self.assertEqual(digest(list(sample_camera_rows(animation, "camera", 5, 184, 224, 0.62, 6.0))), expected)
 
     def test_poses_are_the_clip_sampled_every_step_at_the_lens_given(self):
         head, poses = read_poses(track_host.poses(self.clip, "camera", 250, 184, 224, 0.62, 6.0))

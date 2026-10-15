@@ -4,8 +4,10 @@
  * view matrix and look_at, each judged against a value worked out by hand.
  */
 
+#include <float.h>
 #include <math.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "suites.h"
@@ -483,25 +485,63 @@ test_quatf_slerp_preserves_rotation_behaviour(void) {
     TEST_ASSERT_FLOAT_WITHIN(SLACK, 1, got.x * got.x + got.y * got.y + got.z * got.z + got.w * got.w);
 }
 
+/* Three float epsilons cover coefficient evaluation and normalization rounding;
+ * the half-arc series truncation error is below one float epsilon. */
+#define SLERP_ERROR_BOUND (3.0 * (double)FLT_EPSILON)
+
 static void
-test_quatf_slerp_threshold_branches(void) {
-    static const float cosines[] = {0.99951F, 0.99949F};
-    const float weight = 0.25F, branch_slack = 1e-7F;
-    const quatf_t a = quatf_identity();
-    for (size_t i = 0; i < sizeof cosines / sizeof cosines[0]; i++) {
-        const float cosine = cosines[i];
-        const quatf_t b = {sqrtf(1 - cosine * cosine), 0, 0, cosine};
-        const float angle = acosf(cosine);
-        const quatf_t spherical =
-            quatf_normalize((quatf_t){b.x * sinf(weight * angle) / sinf(angle), 0, 0,
-                                      (sinf((1 - weight) * angle) + b.w * sinf(weight * angle)) / sinf(angle)});
-        const quatf_t linear = quatf_nlerp(a, b, weight);
-        const quatf_t expected = i == 0 ? linear : spherical;
-        const quatf_t got = quatf_slerp(a, b, weight);
-        TEST_ASSERT_TRUE(fabsf(linear.x - spherical.x) > branch_slack);
-        CHECK_QUAT_NEAR(TEST_ASSERT_FLOAT_WITHIN, branch_slack, expected, got);
-        TEST_ASSERT_FLOAT_WITHIN(SLACK, 1, got.x * got.x + got.w * got.w);
+test_quatf_slerp_matches_double_reference_over_the_whole_arc(void) {
+    const int angle_steps = 180, time_steps = 100;
+    static const double edge_cosines[] = {1.0, 1.0 - 1e-7, 0.99951, 0.99949, 1e-7, 0.0, -1e-7, -1.0 + 1e-7, -1.0};
+    static const quatf_t starts[] = {{0, 0, 0, 1}, {0.5F, 0.5F, 0.5F, 0.5F}};
+    static const quatf_t tangents[] = {{1, 0, 0, 0}, {0.5F, -0.5F, 0.5F, -0.5F}};
+    double max_error = 0.0, max_unit_error = 0.0;
+    for (size_t basis = 0; basis < sizeof starts / sizeof starts[0]; basis++) {
+        const quatf_t a = starts[basis], tangent = tangents[basis];
+        const double begin[] = {a.x, a.y, a.z, a.w};
+        for (int sample = 0; sample <= angle_steps + (int)(sizeof edge_cosines / sizeof edge_cosines[0]); sample++) {
+            const double cosine =
+                sample <= angle_steps ? cos(sample * acos(-1.0) / angle_steps) : edge_cosines[sample - angle_steps - 1];
+            const double sine = sqrt(fmax(0.0, 1.0 - cosine * cosine));
+            const quatf_t b = quatf_normalize((quatf_t){(float)((double)a.x * cosine + (double)tangent.x * sine),
+                                                        (float)((double)a.y * cosine + (double)tangent.y * sine),
+                                                        (float)((double)a.z * cosine + (double)tangent.z * sine),
+                                                        (float)((double)a.w * cosine + (double)tangent.w * sine)});
+            double end[] = {b.x, b.y, b.z, b.w};
+            const double length = sqrt(end[0] * end[0] + end[1] * end[1] + end[2] * end[2] + end[3] * end[3]);
+            double dot = 0.0;
+            for (size_t c = 0; c < sizeof end / sizeof end[0]; c++) {
+                end[c] /= length;
+                dot += begin[c] * end[c];
+            }
+            if (dot < 0.0) {
+                dot = -dot;
+                for (size_t c = 0; c < sizeof end / sizeof end[0]; c++) {
+                    end[c] = -end[c];
+                }
+            }
+            const double angle = acos(fmin(1.0, dot));
+            for (int step = 0; step <= time_steps; step++) {
+                const float t = (float)step / time_steps;
+                const double time = (double)t;
+                const quatf_t result = quatf_slerp(a, b, t);
+                const double got[] = {result.x, result.y, result.z, result.w};
+                const double wa = angle == 0.0 ? 1.0 - time : sin((1.0 - time) * angle) / sin(angle);
+                const double wb = angle == 0.0 ? time : sin(time * angle) / sin(angle);
+                double norm_squared = 0.0;
+                for (size_t c = 0; c < sizeof got / sizeof got[0]; c++) {
+                    const double error = fabs(got[c] - (begin[c] * wa + end[c] * wb));
+                    max_error = fmax(max_error, error);
+                    TEST_ASSERT_TRUE(error <= SLERP_ERROR_BOUND);
+                    norm_squared += got[c] * got[c];
+                }
+                const double unit_error = fabs(sqrt(norm_squared) - 1.0);
+                max_unit_error = fmax(max_unit_error, unit_error);
+                TEST_ASSERT_TRUE(unit_error <= SLERP_ERROR_BOUND);
+            }
+        }
     }
+    printf("slerp max component error %.9g, max unit length error %.9g\n", max_error, max_unit_error);
 }
 
 static void
@@ -615,7 +655,7 @@ suite_math(void) {
     RUN_TEST(test_vector_float_repeat_preserves_decimal_remainders);
     RUN_TEST(test_vector_ratio_lerp_uses_its_denominator);
     RUN_TEST(test_quatf_slerp_preserves_rotation_behaviour);
-    RUN_TEST(test_quatf_slerp_threshold_branches);
+    RUN_TEST(test_quatf_slerp_matches_double_reference_over_the_whole_arc);
     RUN_TEST(test_vec2f_min);
     RUN_TEST(test_vec2f_max);
     RUN_TEST(test_vec2f_clamp);
