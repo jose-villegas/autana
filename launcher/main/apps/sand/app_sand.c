@@ -53,8 +53,8 @@
 #include "core/memory.h"
 #include "core/timing.h"
 #include "display/display.h"
-#include "draw/gfx_draw.h"
-#include "draw/gfx_font_roles.h"
+#include "draw/draw.h"
+#include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
@@ -628,7 +628,7 @@ start_sim(void) {
 
     apply_gfx_action(sand_colour_on_start_sim(&colour_state, (sand_colour_mode_t)color_mode));
     if (!sand_colour_indexed_active(&colour_state)) {
-        gfx_clear(material_palette()[SAND_EMPTY]);
+        draw_clear(material_palette()[SAND_EMPTY]);
     }
     /* Explicit full-width spans for the first real draw: the menu that
      * called this can still paint its START button after the clear, and a
@@ -950,7 +950,7 @@ draw_emitter_markers(void) {
         const int mid_y = ey * cell + cell / 2;
         const int px = mid_x - EMITTER_MARKER_PX / 2;
         const int py = mid_y - EMITTER_MARKER_PX / 2;
-        gfx_fill_rect(px, py, EMITTER_MARKER_PX, EMITTER_MARKER_PX, marker);
+        draw_rect(px, py, EMITTER_MARKER_PX, EMITTER_MARKER_PX, marker);
         gfx_mark_dirty(px, py, EMITTER_MARKER_PX, EMITTER_MARKER_PX);
     }
 }
@@ -968,7 +968,7 @@ gravity_quarter_turn(int gx, int gy) {
 
 /* Computes its own turn (gravity_quarter_turn()) rather than inheriting the
  * shell's, unlike draw_palette(): that one goes through microui, which the
- * shell's transform reaches; this one calls gfx_text_turned() straight onto
+ * shell's transform reaches; this one calls draw_text_turned() straight onto
  * the canvas, bypassing microui entirely, the same way the sand grid itself
  * is painted. Canvas draws don't get the shell's transform for free - only
  * chrome does. */
@@ -999,7 +999,7 @@ draw_mode_label(int gx, int gy) {
     const mu_Rect box = ui_transform_rect(ui_transform_quarter_turn(turn, GFX_WIDTH, GFX_HEIGHT), upright);
     int x = 0;
     int y = 0;
-    ui_text_glyph0_origin(gfx_font_ui(), box, turn, LABEL_SCALE, &x, &y);
+    ui_text_glyph0_origin(draw_font_ui(), box, turn, LABEL_SCALE, &x, &y);
 
     gfx_color_t ink;
     if (ui.mode == SAND_MODE_DETONATE) {
@@ -1010,11 +1010,11 @@ draw_mode_label(int gx, int gy) {
         ink = material_brush_color(sand_brushes[ui.brush].cell);
     }
 
-    gfx_text_turned(x, y, text, ink, LABEL_SCALE, turn);
+    draw_text_turned(x, y, text, ink, LABEL_SCALE, turn);
 }
 
 /* APPLY EXACTLY ONCE PER REPAINT OF WHAT IS UNDERNEATH, never per frame.
- * gfx_fill_rect_blend() mixes with the destination it reads, and the sand
+ * draw_rect_blend() mixes with the destination it reads, and the sand
  * behind a panel is frozen, so a second application lands on the first's own
  * output and the picture walks toward black a frame at a time. The backdrop
  * is only fresh the frame a panel opens and on a turn taken while it is
@@ -1024,7 +1024,7 @@ draw_mode_label(int gx, int gy) {
 
 static void
 dim_backdrop(void) {
-    gfx_fill_rect_blend(0, 0, GFX_WIDTH, GFX_HEIGHT, gfx_rgb(0x000000), PANEL_SCRIM_ALPHA);
+    draw_rect_blend(0, 0, GFX_WIDTH, GFX_HEIGHT, gfx_rgb(0x000000), PANEL_SCRIM_ALPHA);
 }
 
 static void
@@ -1478,7 +1478,7 @@ open_overlay_screen(void) {
      * path's own backdrop before that screen dims and draws over it. */
     if (sand_colour_on_open_overlay(&colour_state) == SAND_GFX_EXIT_TO_FULL) {
         gfx_mode_exit();
-        gfx_clear(material_palette()[SAND_EMPTY]);
+        draw_clear(material_palette()[SAND_EMPTY]);
         mark_sand_fully_dirty();
         draw_dirty_rows(false, false, false, false, false);
     }
@@ -1585,8 +1585,8 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
     }
 
     if (failed) {
-        gfx_clear(gfx_rgb(0x1A0C0C));
-        gfx_text(20, GFX_HEIGHT / 2, "no memory for the grid", gfx_rgb(0xFF5C5C));
+        draw_clear(gfx_rgb(0x1A0C0C));
+        draw_text(20, GFX_HEIGHT / 2, "no memory for the grid", gfx_rgb(0xFF5C5C));
         return;
     }
 

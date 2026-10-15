@@ -9,7 +9,7 @@
 
 #include <stdbool.h>
 
-#include "draw/gfx_image.h"
+#include "draw/draw_image.h"
 #include "microui.h"
 
 /* One icon: its entry's name in the pack, and what an icon-only control
@@ -25,11 +25,11 @@ typedef struct {
     const char* pack;
     const ui_icon_name_t* names;
     int count;
-    gfx_image_t* icons; /* `count` of them */
+    draw_image_t* icons; /* `count` of them */
     bool loaded;
 } ui_icon_set_t;
 
-/* Mounts the set's pack and finds every icon, each a GFX_IMAGE_MONO1 image
+/* Mounts the set's pack and finds every icon, each a DRAW_IMAGE_MONO1 image
  * entry. False when the pack or any icon is missing or not one bit, with one
  * log line; nothing is held then. Loading a loaded set does nothing. */
 bool ui_icon_set_load(ui_icon_set_t* set);
@@ -38,7 +38,7 @@ bool ui_icon_set_load(ui_icon_set_t* set);
 void ui_icon_set_release(ui_icon_set_t* set);
 
 /* Icon `i`, or NULL unless the set is loaded. */
-const gfx_image_t* ui_icon_set_get(const ui_icon_set_t* set, int i);
+const draw_image_t* ui_icon_set_get(const ui_icon_set_t* set, int i);
 
 /* Icon `i` filling `r`, or its text when the set is not loaded. */
 void ui_icon_set_draw(mu_Context* ctx, mu_Rect r, const ui_icon_set_t* set, int i, mu_Color color);
@@ -64,7 +64,7 @@ typedef enum {
 void ui_icons_init(void);
 
 /* System icon `id`, or NULL when the engine pack does not hold it. */
-const gfx_image_t* ui_icon(ui_icon_id_t id);
+const draw_image_t* ui_icon(ui_icon_id_t id);
 
 /* System icon `id` filling `r`, or its short text when there is no pack. */
 void ui_draw_system_icon(mu_Context* ctx, mu_Rect r, ui_icon_id_t id, mu_Color color);

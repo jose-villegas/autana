@@ -15,8 +15,8 @@
  *
  * The type is more general than the backend, and that gap is the trap.
  * ui_transform_t can express any affine map, shear included, while
- * gfx_fill_rect() and gfx_set_clip() are axis-aligned only, the dirty tracker
- * works in axis-aligned grid cells, and gfx_text_turned() knows only quarter
+ * draw_rect() and draw_set_clip() are axis-aligned only, the dirty tracker
+ * works in axis-aligned grid cells, and draw_text_turned() knows only quarter
  * turns. ui_transform_is_axis_preserving() is the boundary between the two,
  * and the extension point if gfx ever grows a rotated blitter; without it a
  * caller could push a 30 degree rotation and get silent misrendering back.
@@ -29,7 +29,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "draw/gfx_font.h"
+#include "draw/draw_font.h"
 #include "draw/icon.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathx.h"
@@ -213,12 +213,12 @@ ui_transform_icon_emit(void* ctx, int x, int y, int w, int h) {
 /* Every icon run must turn with its logical box; turning only the box
  * places the icon correctly but leaves the glyph upright. */
 static inline void
-ui_transform_icon_blocks(ui_transform_t t, const gfx_image_t* icon, mu_Rect box, icon_emit_fn emit, void* ctx) {
+ui_transform_icon_blocks(ui_transform_t t, const draw_image_t* icon, mu_Rect box, icon_emit_fn emit, void* ctx) {
     ui_transform_icon_ctx_t ic = {.t = t, .box_x = box.x, .box_y = box.y, .emit = emit, .ctx = ctx};
     icon_walk_blocks(icon, box.w, box.h, ui_transform_icon_emit, &ic);
 }
 
-/* Which of gfx_text_turned()'s four quarters `t` represents, for a
+/* Which of draw_text_turned()'s four quarters `t` represents, for a
  * caller that needs to draw text through it; see ui.c's
  * draw_command(). Only the SIGN pattern of the linear part is read, not
  * its magnitude, so this still answers correctly under a scaled
@@ -246,14 +246,14 @@ ui_transform_quarter(ui_transform_t t) {
                  rejected this transform anyway. */
 }
 
-/* Where gfx_text_font()'s (x, y) origin (the FIRST glyph's cell,
+/* Where draw_text_font()'s (x, y) origin (the FIRST glyph's cell,
  * whichever way the string is about to be drawn) must be placed so a
  * string measuring `box` draws flush inside it at `quarter` turns.
  * Turns 0 and 1 walk FORWARD from the origin, so box's own (x, y)
  * corner already IS where glyph 0 belongs: no correction, none
  * applied. */
 static inline void
-ui_text_glyph0_origin(const gfx_font_t* font, mu_Rect box, int quarter, int scale, int* out_x, int* out_y) {
+ui_text_glyph0_origin(const draw_font_t* font, mu_Rect box, int quarter, int scale, int* out_x, int* out_y) {
     *out_x = box.x;
     *out_y = box.y;
     /* Turns 2 and 3 walk BACKWARD, so glyph 0 starts ONE GLYPH CELL in
@@ -272,8 +272,8 @@ ui_text_glyph0_origin(const gfx_font_t* font, mu_Rect box, int quarter, int scal
 }
 
 /* Whether `t` maps axis-aligned rects to axis-aligned rects: the
- * condition under which gfx_fill_rect(), gfx_set_clip() and the dirty
- * tracker can be trusted, and gfx_text_turned() gets a turn to give.
+ * condition under which draw_rect(), draw_set_clip() and the dirty
+ * tracker can be trusted, and draw_text_turned() gets a turn to give.
  * Each logical axis maps onto ONE physical axis, not a mix: either the
  * x/y columns keep to their axis (b == c == 0, unrotated, scaled) or
  * swap cleanly (a == d == 0, a 90/270 turn). A shear or arbitrary

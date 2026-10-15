@@ -1,6 +1,6 @@
 #include <stdbool.h>
 
-#include "draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "palette.h"
 
 /* Defined in terms of PALETTE_COLS_FOR() (palette.h) rather than
@@ -104,13 +104,13 @@ palette_label_origin(int x, int y, int w, int h, int len, int turn, int* out_x, 
      * turns 1/3 because the glyphs stack vertically instead of side by side
      * - see this function's declaration in palette.h. */
     const bool turned = (turn == 1) || (turn == 3);
-    const int box_w = turned ? GFX_CHAR_H : len * GFX_CHAR_W;
-    const int box_h = turned ? len * GFX_CHAR_W : GFX_CHAR_H;
+    const int box_w = turned ? DRAW_CHAR_H : len * DRAW_CHAR_W;
+    const int box_h = turned ? len * DRAW_CHAR_W : DRAW_CHAR_H;
 
     const int box_x = x + (w - box_w) / 2;
     const int box_y = y + (h - box_h) / 2;
 
-    /* gfx_text_turned()'s origin is the FIRST GLYPH's cell, not a corner of
+    /* draw_text_turned()'s origin is the FIRST GLYPH's cell, not a corner of
      * the box - for turn 0 and turn 1 that is the box's own top-left corner
      * (the string walks forward, +x or +y, away from it), but turn 2 and
      * turn 3 walk backward from the FAR end of the box, so their origin is
@@ -118,8 +118,8 @@ palette_label_origin(int x, int y, int w, int h, int len, int turn, int* out_x, 
     *out_x = box_x;
     *out_y = box_y;
     if (turn == 2) {
-        *out_x = box_x + box_w - GFX_CHAR_W;
+        *out_x = box_x + box_w - DRAW_CHAR_W;
     } else if (turn == 3) {
-        *out_y = box_y + box_h - GFX_CHAR_W;
+        *out_y = box_y + box_h - DRAW_CHAR_W;
     }
 }

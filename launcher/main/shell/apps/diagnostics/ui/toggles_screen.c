@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include "build/build_variant.h"
-#include "draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "ui/ui.h"
 
 /* mu_checkbox() takes its id from the state pointer, and `v` sits at the
@@ -28,7 +28,7 @@ draw_toggle_row(mu_Context* ctx, const char* label, bool* value) {
 static void
 draw_orientation_readout(mu_Context* ctx, const toggles_screen_state_t* state) {
     char line[64];
-    mu_layout_row(ctx, 1, (int[]){-1}, gfx_text_height() + 4);
+    mu_layout_row(ctx, 1, (int[]){-1}, draw_text_height() + 4);
 
     if (!state->imu_ready) {
         mu_text(ctx, "no IMU");
@@ -37,12 +37,12 @@ draw_orientation_readout(mu_Context* ctx, const toggles_screen_state_t* state) {
     } else {
         snprintf(line, sizeof line, "accel ax=%d ay=%d az=%d", state->accel_ax, state->accel_ay, state->accel_az);
         mu_text(ctx, line);
-        mu_layout_row(ctx, 1, (int[]){-1}, gfx_text_height() + 4);
+        mu_layout_row(ctx, 1, (int[]){-1}, draw_text_height() + 4);
         snprintf(line, sizeof line, "gravity gx=%d gy=%d", state->gravity_gx, state->gravity_gy);
         mu_text(ctx, line);
     }
 
-    mu_layout_row(ctx, 1, (int[]){-1}, gfx_text_height() + 4);
+    mu_layout_row(ctx, 1, (int[]){-1}, draw_text_height() + 4);
     snprintf(line, sizeof line, "shell quarter=%d", state->shell_quarter);
     mu_text(ctx, line);
 }
@@ -58,7 +58,7 @@ draw_selftest_controls(mu_Context* ctx, const toggles_screen_state_t* state, tog
         result->selftest_clicked = true;
     }
 
-    mu_layout_row(ctx, 1, (int[]){-1}, gfx_text_height() + 4);
+    mu_layout_row(ctx, 1, (int[]){-1}, draw_text_height() + 4);
     char selftest_line[48];
     if (state->selftest_failures < 0) {
         snprintf(selftest_line, sizeof selftest_line, "self test: not run yet");
@@ -84,7 +84,7 @@ toggles_screen_draw(mu_Context* ctx, const toggles_screen_state_t* state) {
 
     if (ui_begin_screen(ctx, "Developer Toggles", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
 
-        mu_layout_row(ctx, 1, (int[]){-1}, gfx_text_height() + 8);
+        mu_layout_row(ctx, 1, (int[]){-1}, draw_text_height() + 8);
         mu_text(ctx, "DEVELOPER TOGGLES");
 
         draw_toggle_row(ctx, "gfx panel-grid overlay", &result.overlay_on);
@@ -92,7 +92,7 @@ toggles_screen_draw(mu_Context* ctx, const toggles_screen_state_t* state) {
         draw_toggle_row(ctx, "gfx interlace mode", &result.interlace_on);
 
         draw_toggle_row(ctx, "panel clock 80 MHz (system)", &result.fast_clock);
-        mu_layout_row(ctx, 1, (int[]){-1}, gfx_text_height() + 4);
+        mu_layout_row(ctx, 1, (int[]){-1}, draw_text_height() + 4);
         mu_text(ctx, "80 MHz is faster; apps that redraw only what changed may show stray pixels or thin lines.");
 
         draw_toggle_row(ctx, "gfx send audit (logs)", &result.send_audit_on);
@@ -106,7 +106,7 @@ toggles_screen_draw(mu_Context* ctx, const toggles_screen_state_t* state) {
         draw_selftest_controls(ctx, state, &result);
 #endif
 
-        mu_layout_row(ctx, 1, (int[]){-1}, gfx_text_height() + 8);
+        mu_layout_row(ctx, 1, (int[]){-1}, draw_text_height() + 8);
         mu_text(ctx, "BOOT for the POST report");
 
         mu_end_window(ctx);

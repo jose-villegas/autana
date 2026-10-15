@@ -1,19 +1,19 @@
 /* GENERATED FILE - do not edit.
  *
- *     python tools/gen/gen_gfx_dither_patterns.py main/draw/gfx_dither_patterns_generated.h
+ *     python tools/gen/gen_draw_dither_patterns.py main/draw/draw_dither_patterns_generated.h
  */
 #pragma once
 
 #include <stdint.h>
 
-static const uint16_t gfx_dither_cluster4[16] = {
+static const uint16_t draw_dither_cluster4[16] = {
      12,   4,   5,  13,
       6,   0,   1,   7,
       8,   2,   3,   9,
      14,  10,  11,  15,
 };
 
-static const uint16_t gfx_dither_cluster8[64] = {
+static const uint16_t draw_dither_cluster8[64] = {
      60,  52,  44,  32,  33,  45,  53,  61,
      54,  34,  24,  16,  17,  25,  35,  55,
      46,  26,  12,   4,   5,  13,  27,  47,
@@ -24,7 +24,7 @@ static const uint16_t gfx_dither_cluster8[64] = {
      62,  58,  50,  42,  43,  51,  59,  63,
 };
 
-static const uint16_t gfx_dither_blue32[1024] = {
+static const uint16_t draw_dither_blue32[1024] = {
      46,  35, 568, 107, 597, 171, 381, 860, 748, 861,  19, 193, 668,  89, 747, 312,
     1006, 643, 842, 781,  40, 990, 460, 838, 752, 937,  53, 647, 395,  69, 291, 626,
     589, 953, 345,  37, 191, 954, 101, 333, 930, 205,  63, 868, 787,  47, 177, 1010,

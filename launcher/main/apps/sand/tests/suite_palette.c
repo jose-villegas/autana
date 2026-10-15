@@ -16,7 +16,7 @@
 
 #include "apps/sand/palette.h"
 #include "apps/sand/sand_brushes.h"
-#include "draw/gfx_draw.h"
+#include "draw/draw.h"
 
 /* palette_cols(): the derivation itself */
 
@@ -329,11 +329,11 @@ test_panel_never_overflows_the_canvas_across_a_width_sweep(void) {
  * palette_label_origin(): the label lands centred at every quarter turn
  *
  *
- * gfx_text_turned()'s origin is the FIRST GLYPH's cell, not a corner of the
+ * draw_text_turned()'s origin is the FIRST GLYPH's cell, not a corner of the
  * drawn string, so the origin VALUE differs by turn even when the text lands
  * in the same place. What has to be true is the box the string occupies, so
  * label_bbox() below reconstructs it by walking the origin the way
- * gfx_text_turned() does.
+ * draw_text_turned() does.
  */
 
 static void
@@ -342,26 +342,26 @@ label_bbox(int ox, int oy, int len, int turn, int* bx, int* by, int* bw, int* bh
         case 0: /* upright: walks +x from ox,oy */
             *bx = ox;
             *by = oy;
-            *bw = len * GFX_CHAR_W;
-            *bh = GFX_CHAR_H;
+            *bw = len * DRAW_CHAR_W;
+            *bh = DRAW_CHAR_H;
             break;
         case 2: /* upside down: walks -x from ox,oy */
-            *bx = ox - ((len - 1) * GFX_CHAR_W);
+            *bx = ox - ((len - 1) * DRAW_CHAR_W);
             *by = oy;
-            *bw = len * GFX_CHAR_W;
-            *bh = GFX_CHAR_H;
+            *bw = len * DRAW_CHAR_W;
+            *bh = DRAW_CHAR_H;
             break;
         case 1: /* top-to-bottom: walks +y from ox,oy */
             *bx = ox;
             *by = oy;
-            *bw = GFX_CHAR_H;
-            *bh = len * GFX_CHAR_W;
+            *bw = DRAW_CHAR_H;
+            *bh = len * DRAW_CHAR_W;
             break;
         default: /* turn 3, bottom-to-top: walks -y */
             *bx = ox;
-            *by = oy - ((len - 1) * GFX_CHAR_W);
-            *bw = GFX_CHAR_H;
-            *bh = len * GFX_CHAR_W;
+            *by = oy - ((len - 1) * DRAW_CHAR_W);
+            *bw = DRAW_CHAR_H;
+            *bh = len * DRAW_CHAR_W;
             break;
     }
 }
@@ -405,13 +405,13 @@ test_label_box_swaps_dimensions_at_turns_one_and_three(void) {
 
     palette_label_origin(0, 40, 92, 92, len, 1, &ox, &oy);
     label_bbox(ox, oy, len, 1, &bx, &by, &bw, &bh);
-    TEST_ASSERT_EQUAL_INT(GFX_CHAR_H, bw);
-    TEST_ASSERT_EQUAL_INT(len * GFX_CHAR_W, bh);
+    TEST_ASSERT_EQUAL_INT(DRAW_CHAR_H, bw);
+    TEST_ASSERT_EQUAL_INT(len * DRAW_CHAR_W, bh);
 
     palette_label_origin(0, 40, 92, 92, len, 3, &ox, &oy);
     label_bbox(ox, oy, len, 3, &bx, &by, &bw, &bh);
-    TEST_ASSERT_EQUAL_INT(GFX_CHAR_H, bw);
-    TEST_ASSERT_EQUAL_INT(len * GFX_CHAR_W, bh);
+    TEST_ASSERT_EQUAL_INT(DRAW_CHAR_H, bw);
+    TEST_ASSERT_EQUAL_INT(len * DRAW_CHAR_W, bh);
 }
 
 static void

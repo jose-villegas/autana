@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Generate the ordered threshold ranks used by gfx_dither.h.
+"""Generate the ordered threshold ranks used by draw_dither.h.
 
 Run from launcher/:
-    python tools/gen/gen_gfx_dither_patterns.py main/draw/gfx_dither_patterns_generated.h
+    python tools/gen/gen_draw_dither_patterns.py main/draw/draw_dither_patterns_generated.h
 """
 
 import argparse
@@ -41,9 +41,9 @@ def main():
     args = parser.parse_args()
 
     tables = [
-        ("gfx_dither_cluster4", clustered(4), 4),
-        ("gfx_dither_cluster8", clustered(8), 8),
-        ("gfx_dither_blue32", blue_noise(32), 16),
+        ("draw_dither_cluster4", clustered(4), 4),
+        ("draw_dither_cluster8", clustered(8), 8),
+        ("draw_dither_blue32", blue_noise(32), 16),
     ]
     for _, values, _ in tables:
         if len(values) != len(set(values)):
@@ -53,7 +53,7 @@ def main():
     args.output.write_text(
         "/* GENERATED FILE - do not edit.\n"
         " *\n"
-        " *     python tools/gen/gen_gfx_dither_patterns.py main/draw/gfx_dither_patterns_generated.h\n"
+        " *     python tools/gen/gen_draw_dither_patterns.py main/draw/draw_dither_patterns_generated.h\n"
         " */\n"
         "#pragma once\n\n"
         "#include <stdint.h>\n\n" + "\n".join(arrays),

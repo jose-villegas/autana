@@ -1,12 +1,12 @@
-#include "draw/gfx_palette_standard.h"
+#include "draw/draw_palette_standard.h"
 
 #include <string.h>
 
-#include "draw/gfx_palette_standard_generated.h"
+#include "draw/draw_palette_standard_generated.h"
 
 /* IBM CGA/EGA 16-colour palette. Index 6 (brown, not the sequential dark
  * yellow) is deliberate CGA hardware behaviour, not a typo; see the
- * sources cited in gfx_palette_standard.h. */
+ * sources cited in draw_palette_standard.h. */
 static const gfx_color_t cga_ega_16[16] = {
     GFX_RGB(0x000000), GFX_RGB(0x0000AA), GFX_RGB(0x00AA00), GFX_RGB(0x00AAAA), GFX_RGB(0xAA0000), GFX_RGB(0xAA00AA),
     GFX_RGB(0xAA5500), GFX_RGB(0xAAAAAA), GFX_RGB(0x555555), GFX_RGB(0x5555FF), GFX_RGB(0x55FF55), GFX_RGB(0x55FFFF),
@@ -41,24 +41,24 @@ static const gfx_color_t grayscale_16[16] = {
     GFX_RGB(0xCCCCCC), GFX_RGB(0xDDDDDD), GFX_RGB(0xEEEEEE), GFX_RGB(0xFFFFFF),
 };
 
-const gfx_palette_t gfx_palette_cga16 = {"cga16", cga_ega_16, 16};
-const gfx_palette_t gfx_palette_ega16 = {"ega16", cga_ega_16, 16};
-const gfx_palette_t gfx_palette_pico8_16 = {"pico8_16", pico8_16, 16};
-const gfx_palette_t gfx_palette_db16 = {"db16", db16, 16};
-const gfx_palette_t gfx_palette_db32 = {"db32", db32, 32};
-const gfx_palette_t gfx_palette_vga256 = {"vga256", gfx_palette_vga256_entries, 256};
-const gfx_palette_t gfx_palette_grayscale16 = {"grayscale16", grayscale_16, 16};
-const gfx_palette_t gfx_palette_grayscale256 = {"grayscale256", gfx_palette_grayscale256_entries, 256};
+const draw_palette_t draw_palette_cga16 = {"cga16", cga_ega_16, 16};
+const draw_palette_t draw_palette_ega16 = {"ega16", cga_ega_16, 16};
+const draw_palette_t draw_palette_pico8_16 = {"pico8_16", pico8_16, 16};
+const draw_palette_t draw_palette_db16 = {"db16", db16, 16};
+const draw_palette_t draw_palette_db32 = {"db32", db32, 32};
+const draw_palette_t draw_palette_vga256 = {"vga256", draw_palette_vga256_entries, 256};
+const draw_palette_t draw_palette_grayscale16 = {"grayscale16", grayscale_16, 16};
+const draw_palette_t draw_palette_grayscale256 = {"grayscale256", draw_palette_grayscale256_entries, 256};
 
-static const gfx_palette_t* const registry[] = {
-    &gfx_palette_cga16, &gfx_palette_ega16,  &gfx_palette_pico8_16,    &gfx_palette_db16,
-    &gfx_palette_db32,  &gfx_palette_vga256, &gfx_palette_grayscale16, &gfx_palette_grayscale256,
+static const draw_palette_t* const registry[] = {
+    &draw_palette_cga16, &draw_palette_ega16,  &draw_palette_pico8_16,    &draw_palette_db16,
+    &draw_palette_db32,  &draw_palette_vga256, &draw_palette_grayscale16, &draw_palette_grayscale256,
 };
 
 #define REGISTRY_COUNT ((int)(sizeof registry / sizeof registry[0]))
 
-const gfx_palette_t*
-gfx_palette_standard_find(const char* name) {
+const draw_palette_t*
+draw_palette_standard_find(const char* name) {
     for (int i = 0; i < REGISTRY_COUNT; i++) {
         if (strcmp(registry[i]->name, name) == 0) {
             return registry[i];
@@ -68,11 +68,11 @@ gfx_palette_standard_find(const char* name) {
 }
 
 int
-gfx_palette_standard_count(void) {
+draw_palette_standard_count(void) {
     return REGISTRY_COUNT;
 }
 
-const gfx_palette_t*
-gfx_palette_standard_at(int index) {
+const draw_palette_t*
+draw_palette_standard_at(int index) {
     return registry[index];
 }

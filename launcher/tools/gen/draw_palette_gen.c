@@ -1,4 +1,4 @@
-#include "gfx_palette_gen.h"
+#include "draw_palette_gen.h"
 
 #include <math.h>
 #include <stdbool.h>
@@ -43,8 +43,8 @@ gfx_lab_dist2(gfx_lab_t p, gfx_lab_t q) {
 }
 
 void
-gfx_palette_gen_build_index_map(const gfx_palette_t* palette, int first_index, uint8_t out_map[65536]) {
-    gfx_lab_t entry_lab[GFX_PALETTE_MAX_ENTRIES];
+draw_palette_gen_build_index_map(const draw_palette_t* palette, int first_index, uint8_t out_map[65536]) {
+    gfx_lab_t entry_lab[DRAW_PALETTE_MAX_ENTRIES];
     for (int i = first_index; i < palette->count; i++) {
         entry_lab[i] = rgb565_native_to_lab(gfx_color_swap(palette->entries[i]));
     }
@@ -132,7 +132,7 @@ choose_dither(const gfx_lin_t* lin, const gfx_lab_t* lab, int count16, gfx_lab_t
 }
 
 static void
-lin_lab_of_palette16(const gfx_palette_t* palette16, gfx_lin_t out_lin[16], gfx_lab_t out_lab[16]) {
+lin_lab_of_palette16(const draw_palette_t* palette16, gfx_lin_t out_lin[16], gfx_lab_t out_lab[16]) {
     for (int i = 0; i < palette16->count; i++) {
         const uint32_t rgb888 = gfx_color_rgb888(palette16->entries[i]);
         out_lin[i] = gfx_rgb_to_lin(rgb888);
@@ -144,7 +144,7 @@ lin_lab_of_palette16(const gfx_palette_t* palette16, gfx_lin_t out_lin[16], gfx_
  * step every build function below shares; only how each lays lo/hi/level
  * onto pixels or cells differs. */
 static dither_choice_t
-dither_choice_of_entry(const gfx_palette_t* palette256, int i, const gfx_lin_t* lin16, const gfx_lab_t* lab16,
+dither_choice_of_entry(const draw_palette_t* palette256, int i, const gfx_lin_t* lin16, const gfx_lab_t* lab16,
                        int count16) {
     const uint32_t rgb888 = gfx_color_rgb888(palette256->entries[i]);
     const gfx_lin_t target_lin = gfx_rgb_to_lin(rgb888);
@@ -155,7 +155,7 @@ dither_choice_of_entry(const gfx_palette_t* palette256, int i, const gfx_lin_t* 
 /* palette256 entry `i`'s own NEAREST palette16 entry, never a blend:
  * GFX_DITHER_NONE's own choice. */
 static uint8_t
-nearest_index_of_entry(const gfx_palette_t* palette256, int i, const gfx_lab_t* lab16, int count16) {
+nearest_index_of_entry(const draw_palette_t* palette256, int i, const gfx_lab_t* lab16, int count16) {
     const uint32_t rgb888 = gfx_color_rgb888(palette256->entries[i]);
     const gfx_lab_t target_lab = gfx_lin_to_lab(gfx_rgb_to_lin(rgb888));
     double cost;
@@ -163,8 +163,8 @@ nearest_index_of_entry(const gfx_palette_t* palette256, int i, const gfx_lab_t* 
 }
 
 void
-gfx_palette_gen_build_dither16(const gfx_palette_t* palette256, const gfx_palette_t* palette16,
-                               gfx_color_t out_table[GFX_PALETTE_MAX_ENTRIES * 16]) {
+draw_palette_gen_build_dither16(const draw_palette_t* palette256, const draw_palette_t* palette16,
+                                gfx_color_t out_table[DRAW_PALETTE_MAX_ENTRIES * 16]) {
     gfx_lin_t lin16[16];
     gfx_lab_t lab16[16];
     lin_lab_of_palette16(palette16, lin16, lab16);
@@ -184,8 +184,8 @@ gfx_palette_gen_build_dither16(const gfx_palette_t* palette256, const gfx_palett
 }
 
 void
-gfx_palette_gen_build_lut_nearest(const gfx_palette_t* palette256, const gfx_palette_t* palette16,
-                                  gfx_color_t out_lut[GFX_PALETTE_MAX_ENTRIES]) {
+draw_palette_gen_build_lut_nearest(const draw_palette_t* palette256, const draw_palette_t* palette16,
+                                   gfx_color_t out_lut[DRAW_PALETTE_MAX_ENTRIES]) {
     gfx_lab_t lab16[16];
     for (int i = 0; i < palette16->count; i++) {
         lab16[i] = gfx_lin_to_lab(gfx_rgb_to_lin(gfx_color_rgb888(palette16->entries[i])));
@@ -197,8 +197,8 @@ gfx_palette_gen_build_lut_nearest(const gfx_palette_t* palette256, const gfx_pal
 }
 
 void
-gfx_palette_gen_build_dither_cell(const gfx_palette_t* palette256, const gfx_palette_t* palette16, bool bayer2,
-                                  gfx_color_t* out_table) {
+draw_palette_gen_build_dither_cell(const draw_palette_t* palette256, const draw_palette_t* palette16, bool bayer2,
+                                   gfx_color_t* out_table) {
     gfx_lin_t lin16[16];
     gfx_lab_t lab16[16];
     lin_lab_of_palette16(palette16, lin16, lab16);
@@ -225,8 +225,8 @@ gfx_palette_gen_build_dither_cell(const gfx_palette_t* palette256, const gfx_pal
 }
 
 void
-gfx_palette_gen_build_dither_checker2(const gfx_palette_t* palette256, const gfx_palette_t* palette16,
-                                      gfx_color_t out_table[GFX_PALETTE_MAX_ENTRIES * 2 * 2]) {
+draw_palette_gen_build_dither_checker2(const draw_palette_t* palette256, const draw_palette_t* palette16,
+                                       gfx_color_t out_table[DRAW_PALETTE_MAX_ENTRIES * 2 * 2]) {
     gfx_lin_t lin16[16];
     gfx_lab_t lab16[16];
     lin_lab_of_palette16(palette16, lin16, lab16);

@@ -40,11 +40,11 @@ class SameLineRuleTest(unittest.TestCase):
         # punctuation, then a long trailing pad; every prose word must
         # survive, only the dash runs go.
         source = ("void f(void) {\n"
-                  "/* --- gfx_blit_dither: image-over-live-content compositing ---- */\n"
+                  "/* --- draw_blit_dither: image-over-live-content compositing ---- */\n"
                   "}\n")
         new = strip_comment_rules.rewrite("t.c", source)
         self.assertIsNotNone(new)
-        self.assertIn("gfx_blit_dither: image-over-live-content compositing", new)
+        self.assertIn("draw_blit_dither: image-over-live-content compositing", new)
         self.assertNotIn("---", new)
 
     def test_a_multiline_rule_with_a_space_after_the_star_is_detected(self):

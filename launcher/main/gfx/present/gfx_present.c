@@ -386,6 +386,11 @@ gfx_mark_dirty(int x, int y, int w, int h) {
     dirty_mark(x, y, w, h);
 }
 
+void
+gfx_mark_drawn(int x, int y, int w, int h) {
+    dirty_mark(x, y, w, h);
+}
+
 bool
 gfx_region_dirty(int x, int y, int w, int h) {
     GFX_PRESENT_GUARD();
@@ -938,3 +943,10 @@ gfx_present_raw_full_frame_for_test(void) {
 }
 #endif /* ESP_PLATFORM */
 #endif
+
+void
+gfx_mark_rows_dirty(int y0, int y1) {
+    GFX_PRESENT_GUARD();
+    /* mark_band() trusts clipped rows; a public caller's need not be. */
+    mark_band(mathi_max(y0, 0), mathi_min(y1, GFX_HEIGHT));
+}

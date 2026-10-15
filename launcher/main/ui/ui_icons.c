@@ -24,7 +24,7 @@ static const ui_icon_name_t SYSTEM_NAMES[UI_ICON_COUNT] = {
     [UI_ICON_MONITOR] = {"monitor", "M"},
 };
 
-static gfx_image_t system_icons[UI_ICON_COUNT];
+static draw_image_t system_icons[UI_ICON_COUNT];
 static ui_icon_set_t system_set = {ASSET_ENGINE_PACK, SYSTEM_NAMES, UI_ICON_COUNT, system_icons, false};
 
 bool
@@ -40,11 +40,11 @@ ui_icon_set_load(ui_icon_set_t* set) {
     for (int i = 0; i < set->count; i++) {
         const char* name = set->names[i].name;
         asset_view_t entry;
-        asset_status_t status = asset_pack_find(pack, name, GFX_IMAGE_ASSET, &entry);
+        asset_status_t status = asset_pack_find(pack, name, DRAW_IMAGE_ASSET, &entry);
         if (status == ASSET_OK) {
-            status = gfx_image_open(entry, &set->icons[i]);
+            status = draw_image_open(entry, &set->icons[i]);
         }
-        if (status == ASSET_OK && set->icons[i].format != GFX_IMAGE_MONO1) {
+        if (status == ASSET_OK && set->icons[i].format != DRAW_IMAGE_MONO1) {
             status = ASSET_ERR_FORMAT;
         }
         if (status != ASSET_OK) {
@@ -65,7 +65,7 @@ ui_icon_set_release(ui_icon_set_t* set) {
     }
 }
 
-const gfx_image_t*
+const draw_image_t*
 ui_icon_set_get(const ui_icon_set_t* set, int i) {
     return set->loaded ? &set->icons[i] : NULL;
 }
@@ -80,7 +80,7 @@ ui_icons_init(void) {
     (void)ui_icon_set_load(&system_set);
 }
 
-const gfx_image_t*
+const draw_image_t*
 ui_icon(ui_icon_id_t id) {
     return ui_icon_set_get(&system_set, (int)id);
 }

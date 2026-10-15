@@ -35,9 +35,9 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "draw/gfx_palette.h"
+#include "draw/draw_palette.h"
+#include "draw_palette_gen.h"
 #include "gfx/present/gfx_mode.h"
-#include "gfx_palette_gen.h"
 #include "material.h"
 #include "material_palette.h"
 #include "math/scalar/mathi.h"
@@ -2183,7 +2183,7 @@ write_header_banner(FILE* f) {
             "#pragma once\n\n"
             "#include \"gfx/target/gfx_color.h\"\n"
             "#include \"gfx/present/gfx_mode.h\"\n"
-            "#include \"draw/gfx_palette.h\"\n\n"
+            "#include \"draw/draw_palette.h\"\n\n"
             "#define SAND_PALETTE_UI_ENTRIES %d\n\n",
             UI_ENTRIES - 1, UI_ENTRIES, UI_ENTRIES);
 }
@@ -2212,39 +2212,39 @@ write_reverse_index(FILE* f) {
     fprintf(f, "\n};\n#endif\n\n");
 }
 
-/* gfx_palette_gen.h (launcher/tools/gen/) bakes every derived dither table from
+/* draw_palette_gen.h (launcher/tools/gen/) bakes every derived dither table from
  * a finished pair of palettes; this file only owns the FINAL sand256/sand16
  * palettes those bakes read, not any one table's own logic. */
 static void
-write_dither_tables(FILE* f, const gfx_palette_t* p256, const gfx_palette_t* p16) {
+write_dither_tables(FILE* f, const draw_palette_t* p256, const draw_palette_t* p16) {
     static gfx_color_t dither_table[PALETTE_SIZE * 16];
-    gfx_palette_gen_build_dither16(p256, p16, dither_table);
+    draw_palette_gen_build_dither16(p256, p16, dither_table);
     write_gfx_color_array(f,
                           "static const gfx_color_t sand_palette16_dither_rgb[GFX_INDEXED_PALETTE_SIZE * "
                           "GFX_INDEXED_DITHER16_PHASES] = {\n",
                           dither_table, PALETTE_SIZE * 16);
 
     static gfx_color_t none_lut[PALETTE_SIZE];
-    gfx_palette_gen_build_lut_nearest(p256, p16, none_lut);
+    draw_palette_gen_build_lut_nearest(p256, p16, none_lut);
     write_gfx_color_array(f, "static const gfx_color_t sand_dither_none_lut[GFX_INDEXED_PALETTE_SIZE] = {\n", none_lut,
                           PALETTE_SIZE);
 
     static gfx_color_t cell_checker[PALETTE_SIZE * GFX_INDEXED_CELL_CHECKER_PHASES];
-    gfx_palette_gen_build_dither_cell(p256, p16, false, cell_checker);
+    draw_palette_gen_build_dither_cell(p256, p16, false, cell_checker);
     write_gfx_color_array(f,
                           "static const gfx_color_t sand_dither_cell_checker[GFX_INDEXED_PALETTE_SIZE * "
                           "GFX_INDEXED_CELL_CHECKER_PHASES] = {\n",
                           cell_checker, PALETTE_SIZE * GFX_INDEXED_CELL_CHECKER_PHASES);
 
     static gfx_color_t cell_bayer2[PALETTE_SIZE * GFX_INDEXED_CELL_BAYER2_PHASES];
-    gfx_palette_gen_build_dither_cell(p256, p16, true, cell_bayer2);
+    draw_palette_gen_build_dither_cell(p256, p16, true, cell_bayer2);
     write_gfx_color_array(f,
                           "static const gfx_color_t sand_dither_cell_bayer2[GFX_INDEXED_PALETTE_SIZE * "
                           "GFX_INDEXED_CELL_BAYER2_PHASES] = {\n",
                           cell_bayer2, PALETTE_SIZE * GFX_INDEXED_CELL_BAYER2_PHASES);
 
     static gfx_color_t pixel_checker2[PALETTE_SIZE * GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX];
-    gfx_palette_gen_build_dither_checker2(p256, p16, pixel_checker2);
+    draw_palette_gen_build_dither_checker2(p256, p16, pixel_checker2);
     write_gfx_color_array(f,
                           "static const gfx_color_t sand_dither_pixel_checker2[GFX_INDEXED_PALETTE_SIZE * "
                           "GFX_INDEXED_CHECKER2_ROW_PHASES * GFX_INDEXED_CHECKER2_CHUNK_PX] = {\n",
@@ -2253,11 +2253,11 @@ write_dither_tables(FILE* f, const gfx_palette_t* p256, const gfx_palette_t* p16
 }
 
 /* The 256-entry LUT is the palette sand actually registers through
- * gfx_palette.h; the 16-colour dither is a derived presentation of it, not
+ * draw_palette.h; the 16-colour dither is a derived presentation of it, not
  * a second independent palette. */
 static void
 write_final_struct(FILE* f) {
-    fprintf(f, "static const gfx_palette_t sand_palette256 = {\"sand256\", sand_palette256_lut, "
+    fprintf(f, "static const draw_palette_t sand_palette256 = {\"sand256\", sand_palette256_lut, "
                "GFX_INDEXED_PALETTE_SIZE};\n");
 }
 
@@ -2281,8 +2281,8 @@ write_sand_palette_header(const char* path) {
                           sand256_rgb, PALETTE_SIZE);
     write_reverse_index(f);
 
-    const gfx_palette_t sand256_palette = {"sand256", sand256_rgb, PALETTE_SIZE};
-    const gfx_palette_t sand16_palette = {"sand16", sand16_rgb, EGA_ENTRIES};
+    const draw_palette_t sand256_palette = {"sand256", sand256_rgb, PALETTE_SIZE};
+    const draw_palette_t sand16_palette = {"sand16", sand16_rgb, EGA_ENTRIES};
     write_dither_tables(f, &sand256_palette, &sand16_palette);
     write_final_struct(f);
 

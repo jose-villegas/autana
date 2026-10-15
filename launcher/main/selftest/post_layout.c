@@ -36,17 +36,17 @@ post_layout_max_columns(int screen_w, int screen_h) {
 }
 
 post_layout_t
-post_layout_with(const gfx_font_t* font, int screen_w, int screen_h, int columns, int gap, bool has_footer) {
+post_layout_with(const draw_font_t* font, int screen_w, int screen_h, int columns, int gap, bool has_footer) {
     post_layout_t l = {0};
 
     const int inset = DISPLAY_PANEL_SAFE_INSET;
     const mu_Rect screen = {0, 0, screen_w, screen_h};
     l.safe = ui_rect_inset(screen, inset, inset, inset, inset);
-    l.glyph_w = gfx_font_text_width(font, " ", 1, POST_LAYOUT_REPORT_SCALE);
-    l.line_h = gfx_font_height(font, POST_LAYOUT_REPORT_SCALE) + LINE_GAP;
+    l.glyph_w = draw_font_text_width(font, " ", 1, POST_LAYOUT_REPORT_SCALE);
+    l.line_h = draw_font_height(font, POST_LAYOUT_REPORT_SCALE) + LINE_GAP;
     l.column_gap = COLUMN_GAP;
 
-    const int title_h = gfx_font_height(font, POST_LAYOUT_TITLE_SCALE);
+    const int title_h = draw_font_height(font, POST_LAYOUT_TITLE_SCALE);
     l.title = band(l.safe, 0, title_h);
     l.summary = band(l.safe, title_h + TITLE_GAP, l.line_h);
     /* A band with nothing in it takes no height: the normal report carries
@@ -65,7 +65,7 @@ post_layout_with(const gfx_font_t* font, int screen_w, int screen_h, int columns
      * too narrow for the widest line costs a column rather than truncating
      * every line in it. */
     l.columns = columns < 1 ? 1 : columns;
-    const int widest = gfx_font_text_width(font, POST_LAYOUT_WIDEST_LINE, -1, POST_LAYOUT_REPORT_SCALE);
+    const int widest = draw_font_text_width(font, POST_LAYOUT_WIDEST_LINE, -1, POST_LAYOUT_REPORT_SCALE);
     while (l.columns > 1 && column_width(l.body.w, l.columns) < widest) {
         l.columns--;
     }
@@ -255,7 +255,7 @@ report_fits(const post_layout_t* l, const post_entries_t* entries) {
 }
 
 static bool
-fits_at(const gfx_font_t* font, int screen_w, int screen_h, int columns, int gap, const post_entries_t* entries,
+fits_at(const draw_font_t* font, int screen_w, int screen_h, int columns, int gap, const post_entries_t* entries,
         post_layout_t* out) {
     const post_layout_t l = post_layout_with(font, screen_w, screen_h, columns, gap, entries->has_footer);
     if (!report_fits(&l, entries)) {
@@ -266,7 +266,7 @@ fits_at(const gfx_font_t* font, int screen_w, int screen_h, int columns, int gap
 }
 
 static bool
-fewest_columns_that_fit(const gfx_font_t* font, int screen_w, int screen_h, int ceiling, int gap,
+fewest_columns_that_fit(const draw_font_t* font, int screen_w, int screen_h, int ceiling, int gap,
                         const post_entries_t* entries, post_layout_t* out) {
     for (int columns = 1; columns <= ceiling; columns++) {
         if (fits_at(font, screen_w, screen_h, columns, gap, entries, out)) {
@@ -281,7 +281,7 @@ fewest_columns_that_fit(const gfx_font_t* font, int screen_w, int screen_h, int 
  * checks land in which column, which is the placement's answer, not
  * arithmetic on the totals. */
 static bool
-widest_gap_that_fits(const gfx_font_t* font, int screen_w, int screen_h, int ceiling, int full_gap,
+widest_gap_that_fits(const draw_font_t* font, int screen_w, int screen_h, int ceiling, int full_gap,
                      const post_entries_t* entries, post_layout_t* out) {
     for (int gap = full_gap - 1; gap > 0; gap--) {
         if (fits_at(font, screen_w, screen_h, ceiling, gap, entries, out)) {
@@ -292,7 +292,7 @@ widest_gap_that_fits(const gfx_font_t* font, int screen_w, int screen_h, int cei
 }
 
 post_layout_t
-post_layout_for_report(const gfx_font_t* font, int screen_w, int screen_h, const post_entries_t* entries) {
+post_layout_for_report(const draw_font_t* font, int screen_w, int screen_h, const post_entries_t* entries) {
     const int ceiling = post_layout_max_columns(screen_w, screen_h);
     const post_layout_t plain = post_layout_with(font, screen_w, screen_h, ceiling, 0, entries->has_footer);
 

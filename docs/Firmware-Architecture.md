@@ -473,7 +473,7 @@ other's bands stay clean.
 ### The scrim: the one thing drawn outside the command list
 
 A panel over a paused screen dims what is behind it with one full-screen
-`gfx_fill_rect_blend()`. That is a pixel write, not a command, and it has to
+`draw_rect_blend()`. That is a pixel write, not a command, and it has to
 be: everything in the command list is re-emitted on every repaint, and a
 blend fill reads the pixel it writes, so a scrim repeated per repaint walks
 the frozen backdrop toward black. It is applied **once per repaint of what is

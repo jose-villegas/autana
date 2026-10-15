@@ -133,7 +133,7 @@ readability-isolate-declaration	main/boot/boot_anim.c	17
 readability-isolate-declaration	main/selftest/post_ui.c	1
 readability-isolate-declaration	main/console/verbs/console_inject.c	2
 readability-isolate-declaration	main/display/display.c	1
-readability-isolate-declaration	main/draw/gfx_draw.c	5
+readability-isolate-declaration	main/draw/draw.c	5
 readability-isolate-declaration	main/gfx/present/gfx_mode.c	1
 readability-isolate-declaration	main/gfx/present/gfx_present.c	3
 readability-isolate-declaration	main/input/buttons.c	1
@@ -198,7 +198,7 @@ readability-math-missing-parentheses	main/boot/boot_anim.c	8
 readability-math-missing-parentheses	main/selftest/post_layout.c	1
 readability-math-missing-parentheses	main/selftest/post_ui.c	2
 readability-math-missing-parentheses	main/console/verbs/console_screenshot.c	4
-readability-math-missing-parentheses	main/draw/gfx_draw.c	4
+readability-math-missing-parentheses	main/draw/draw.c	4
 readability-math-missing-parentheses	main/gfx/present/gfx_debug.c	23
 readability-math-missing-parentheses	main/gfx/present/gfx_mode.c	3
 readability-math-missing-parentheses	main/gfx/present/panel/gfx_null_panel_device.c	1

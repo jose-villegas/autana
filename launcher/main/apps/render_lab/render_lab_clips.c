@@ -7,7 +7,7 @@
 #include <string.h>
 
 #include "core/memory.h"
-#include "draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "esp_log.h"
 #include "ui/ui.h"
 #include "ui/ui_widgets.h"
@@ -152,7 +152,7 @@ render_lab_clips_draw(mu_Context* ctx, ui_flow_t* flow, int width, render_lab_cl
         return;
     }
     const ui_theme_t theme = ui_theme_from_style(ctx->style);
-    ui_flow_row(ctx, flow, width, gfx_text_height());
+    ui_flow_row(ctx, flow, width, draw_text_height());
     mu_label(ctx, "CLIP");
     ui_flow_row(ctx, flow, width, UI_ROW_HEIGHT);
     const mu_Rect anchor = mu_layout_next(ctx);
@@ -164,7 +164,7 @@ render_lab_clips_draw(mu_Context* ctx, ui_flow_t* flow, int width, render_lab_cl
     if (snprintf(label, sizeof label, "BLEND: %d ms", choice->blend_ms) < 0) {
         label[0] = '\0';
     }
-    ui_flow_row(ctx, flow, width, gfx_text_height());
+    ui_flow_row(ctx, flow, width, draw_text_height());
     mu_label(ctx, label);
     ui_flow_row(ctx, flow, width, UI_ROW_HEIGHT);
     (void)ui_slider_int(ctx, &choice->blend_ms, 0, RENDER_LAB_BLEND_MAX_MS, RENDER_LAB_BLEND_STEP_MS);

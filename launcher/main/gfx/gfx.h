@@ -1,6 +1,6 @@
 /* Framebuffer ownership. The shell and applications share one RGB565
  * framebuffer; a second full-size buffer would require a per-frame PSRAM
- * copy. Drawing belongs to draw/gfx_draw.h, presentation to gfx/present/. */
+ * copy. Drawing belongs to draw/draw.h, presentation to gfx/present/. */
 #pragma once
 
 #include <stdbool.h>
@@ -9,6 +9,7 @@
 #include "build/build_variant.h"
 #include "gfx/target/gfx_box.h"
 #include "gfx/target/gfx_color.h"
+#include "gfx/target/gfx_target.h"
 
 /* The panel's size as literals, so no caller needs the board's headers; the
  * present side asserts them against the board's own values. */
@@ -40,6 +41,34 @@ _Static_assert(GFX_BAND_HEIGHT % 2 == 0, "a band's row range must round to even 
 bool gfx_init(void);
 
 /* Direct access, for renderers that write pixels in bulk (the 3D rasterizer
- * writes here directly rather than going through gfx_pixel per fragment).
- * Whatever is written must be marked with gfx_mark_dirty() (gfx_present.h). */
+ * writes here directly rather than going through draw_pixel per fragment).
+ * Whatever is written must be marked with gfx_mark_dirty(). */
 gfx_color_t* gfx_framebuffer(void);
+
+/* A draw writes into the framebuffer, band or replay strip, with its
+ * current clip and dirty-marking policy. */
+typedef struct {
+    gfx_target_t target;
+    gfx_box_t clip;
+    bool marks;
+} gfx_surface_t;
+
+/* Checks present-in-flight, then framebuffer availability. False skips
+ * the draw before reading drawing state. */
+bool gfx_draw_begin(gfx_surface_t* out);
+
+/* The caller intersects the box with the screen before setting it. */
+void gfx_set_clip_box(gfx_box_t clip);
+
+/* gfx_present() sends only what changed: the panel holds the rest in its own
+ * GRAM, and sending is almost the whole cost of a frame. Every draw_* call
+ * marks what it touched; code writing through gfx_framebuffer() MUST mark
+ * what it wrote, or the screen shows stale, not a crash. */
+/* Tracked as a real box per grid cell, so a caller that touched part of a
+ * cell may send less than all of it; rows claim whole cells. */
+void gfx_mark_dirty(int x, int y, int w, int h);
+/* gfx_mark_dirty() for a draw call already inside gfx_draw_begin(), which ran
+ * the present guard: one guard per primitive, not two. */
+void gfx_mark_drawn(int x, int y, int w, int h);
+void gfx_mark_rows_dirty(int y0, int y1);
+void gfx_mark_all_dirty(void);

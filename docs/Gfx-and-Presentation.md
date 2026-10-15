@@ -5,20 +5,21 @@ tracker, and the present path. A caller includes the header for what it does:
 
 | Header | What it declares |
 | --- | --- |
-| [`gfx/gfx.h`](../launcher/main/gfx/gfx.h) | the framebuffer: its size, `gfx_init()`, `gfx_framebuffer()` |
-| [`draw/gfx_draw.h`](../launcher/main/draw/gfx_draw.h) | primitives, text and clipping |
-| [`gfx/present/gfx_present.h`](../launcher/main/gfx/present/gfx_present.h) | draw's target and clip, dirty marking, present, the panel clock, heal |
+| [`gfx/gfx.h`](../launcher/main/gfx/gfx.h) | the framebuffer: its size, `gfx_init()`, `gfx_framebuffer()`; draw's surface (`gfx_draw_begin()`, `gfx_set_clip_box()`) and dirty marking |
+| [`draw/draw.h`](../launcher/main/draw/draw.h) | primitives, text and clipping |
+| [`gfx/present/gfx_present.h`](../launcher/main/gfx/present/gfx_present.h) | present, the panel clock, heal |
 | [`gfx/present/gfx_mode.h`](../launcher/main/gfx/present/gfx_mode.h) | modes, readback, the indexed image and its LUTs |
 | [`gfx/present/gfx_debug.h`](../launcher/main/gfx/present/gfx_debug.h) | development-build overlays and send counts |
-| [`draw/gfx_image.h`](../launcher/main/draw/gfx_image.h) | a picture read in place from its pack entry |
+| [`draw/draw_image.h`](../launcher/main/draw/draw_image.h) | a picture read in place from its pack entry |
 
 `draw/` owns primitives, images, icons, fonts, palettes and dithering.
 `gfx/target/` holds pixel colour, boxes, draw targets and render-target
 attachments. `gfx/present/` owns the framebuffer and presentation, with
 layout values under `modes/`, send policy under `send/` and emulated panel
 backends under `panel/`. `gfx_internal.h` holds state shared only by
-presentation. Draw reads its target and clip
-through `gfx_present.h`. The panel link itself, QSPI and each revision's init
+presentation. Draw reaches presentation only
+through `gfx.h`: `gfx_draw_begin()` hands it the target, clip and whether to
+mark, and the `gfx_mark_*` calls record what it wrote. The panel link itself, QSPI and each revision's init
 sequence, is `board/board_panel.c`. For what an app owes the shell see
 [`Building-an-App.md`](Building-an-App.md); for the panel constraints these choices obey see
 [`notes/Display-and-Rendering.md`](notes/Display-and-Rendering.md).
@@ -32,7 +33,7 @@ changed.
 
 ```mermaid
 flowchart TB
-    DRAW["gfx_* draw calls<br/>or direct writes"] --> TGT["gfx_target.h<br/>clip + translate"]
+    DRAW["draw_* calls<br/>or direct writes"] --> TGT["gfx_target.h<br/>clip + translate"]
     TGT --> SEL{"gfx_mode_current()"}
     SEL -->|"GFX_LAYOUT_FULL_FB"| FB["framebuffer<br/>368 x 448 RGB565, PSRAM"]
     SEL -->|"GFX_LAYOUT_BANDS"| BR["2-slot band ring<br/>internal DMA RAM"]
@@ -121,13 +122,13 @@ full-framebuffer app runs.
 
 ## Dirty tracking
 
-`gfx_dirty.h`: inline functions over one tracker defined in `gfx_present.c`,
-so marking inlines into the fill and pixel hot paths. One tracker serves all three modes.
+`gfx_dirty.h`: inline functions over one tracker defined in `gfx_present.c`;
+draw reaches them through `gfx_mark_dirty()` and `gfx_mark_rows_dirty()`. One tracker serves all three modes.
 
 Two ways in. `dirty_mark()` takes a real box and may narrow a cell; the
 rect and blit primitives use it, so a glyph dirties the glyph. `mark_band()`
 takes rows only and has to claim every column at full width: what
-`gfx_pixel()` is left with it; `gfx_clear()` marks the whole grid.
+`draw_pixel()` is left with it; `draw_clear()` marks the whole grid.
 
 ```
          92 px (COL_WIDTH)
@@ -151,7 +152,7 @@ takes rows only and has to claim every column at full width: what
 | Caller | What it must do |
 |---|---|
 | any `gfx_*` draw call | nothing: it marks what it touched |
-| `gfx_clear()` | nothing: marks the whole screen |
+| `draw_clear()` | nothing: marks the whole screen |
 | writes through `gfx_framebuffer()` or `gfx_indexed_image()` | **`gfx_mark_dirty()` the rectangle**: a miss looks like a frozen region, not a crash |
 | static overlay content | ask `gfx_region_dirty()`; if false, skip the draw and the send |
 
@@ -303,11 +304,11 @@ the same `gfx_present_begin()` / `gfx_present_wait()` as the default mode.
 | `gfx_indexed_set_dither()` | the spatial dither pattern for 16-colour mode |
 
 All four are safe only between frames. Palettes are a gfx type
-(`draw/gfx_palette.h`, entries 0-15 reserved by `GFX_PALETTE_UI_ENTRIES`);
-curated ones ship in `draw/gfx_palette_standard.h`, chosen at runtime by name.
+(`draw/draw_palette.h`, entries 0-15 reserved by `DRAW_PALETTE_UI_ENTRIES`);
+curated ones ship in `draw/draw_palette_standard.h`, chosen at runtime by name.
 Building one is the app's work. The two steps every palette then needs,
 the colour -> index map and the dither table, are
-`tools/gen/gfx_palette_gen.h`: host-only, in OKLab<sup>[[35]](Citations.md#35)</sup>, never in the firmware
+`tools/gen/draw_palette_gen.h`: host-only, in OKLab<sup>[[35]](Citations.md#35)</sup>, never in the firmware
 image.
 
 ## Panel clock and heal

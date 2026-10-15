@@ -21,7 +21,7 @@
 # is not much larger on the target. Measured 2026-09-19 with
 # xtensa-esp32s3-elf-gcc over the 1,534 functions present in both builds:
 # median 0.50x, but 67 are LARGER on Xtensa, worst 1.67x (576 -> 960 bytes,
-# suite_gfx_font.c's glyph_run_boxes tests). Nothing crossed the ceiling here
+# suite_draw_font.c's glyph_run_boxes tests). Nothing crossed the ceiling here
 # that the host had not also flagged, except code only a DEVICE_BUILD
 # compiles. So the host is an estimate, not a bound; re-run this after a
 # toolchain or -O-level change, and whenever a host frame nears the ceiling.

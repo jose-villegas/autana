@@ -59,7 +59,7 @@ OUT_BIN="$BIN_DIR/shading_palette"
     "$SAND_DIR/sand_liquid.c" \
     "$SAND_DIR/material.c" \
     "$SAND_DIR/material_palette.c" \
-    "$LAUNCHER_DIR/tools/gen/gfx_palette_gen.c" \
+    "$LAUNCHER_DIR/tools/gen/draw_palette_gen.c" \
     -o "$OUT_BIN" -lm
 
 [ -x "$OUT_BIN" ] || OUT_BIN="$OUT_BIN.exe"

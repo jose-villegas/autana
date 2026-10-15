@@ -1,8 +1,8 @@
 /*
  * Portable suite: gfx_target.h, the clip-and-translate arithmetic every
- * pixel-writing gfx_* primitive goes through, driven directly since the
+ * pixel-writing draw_* primitive goes through, driven directly since the
  * header carries no ESP-IDF dependency. gfx_target_fill_rect() is
- * gfx_fill_rect()'s own body; text ultimately reduces to the same
+ * draw_rect()'s own body; text ultimately reduces to the same
  * primitive, so a rect straddling a band edge is the
  * faithful stand-in for a glyph straddling one.
  */

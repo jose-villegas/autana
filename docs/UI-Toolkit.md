@@ -229,7 +229,7 @@ ui_set_button_style(UI_BUTTON_BEZEL);   /* every frame */
   late.
 - **Pure geometry.** `ui_bezel_spans()` and `ui_panel_spans()` return where
   the rectangles go and nothing else, so `test/suites/suite_ui_style.c`
-  checks the shape without linking `gfx_draw.c` or microui.
+  checks the shape without linking `draw.c` or microui.
 
 ## Drawing helpers
 
@@ -239,7 +239,7 @@ ui_set_button_style(UI_BUTTON_BEZEL);   /* every frame */
 | `ui_header_bar()` | a full-width bar with an edge along its bottom and a centred title |
 | `ui_text_in()` | a string clipped to a rect, centred vertically, aligned `UI_ALIGN_LEFT`, `UI_ALIGN_CENTRE` or `UI_ALIGN_RIGHT` |
 | `ui_swatch_grid()` | colours as a `cols` x `rows` grid of equal cells filling a rect |
-| `ui_draw_icon()` | an icon (a one-bit `gfx_image_t` from a pack) filling a rect, in one colour, or a short text when there is no icon |
+| `ui_draw_icon()` | an icon (a one-bit `draw_image_t` from a pack) filling a rect, in one colour, or a short text when there is no icon |
 
 `ui_draw_icon()` turns an icon's rows into one `mu_draw_rect()` per run,
 through `icon_walk_blocks()` (`draw/icon.h`), so an icon costs no new
@@ -305,7 +305,7 @@ centres a short stack and pins a long one to `margin`.
 
 | Call | |
 |---|---|
-| `ui_set_font_scaled(gfx_font_ui(), scale)` | the UI font at `scale` glyph cells, for the rest of the frame |
+| `ui_set_font_scaled(draw_font_ui(), scale)` | the UI font at `scale` glyph cells, for the rest of the frame |
 | `ui_measure_text()` | a string's width at the current font and scale |
 | `ui_set_text_style()` | `UI_TEXT_PLAIN`, `UI_TEXT_OUTLINED` or `UI_TEXT_SHADOWED` |
 

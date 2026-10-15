@@ -32,10 +32,10 @@
 #include "ui/ui_icons.h"
 
 /* System icon `id`, which the engine pack the suites run with must hold. */
-static const gfx_image_t*
+static const draw_image_t*
 system_icon(ui_icon_id_t id) {
     ui_icons_init();
-    const gfx_image_t* icon = ui_icon(id);
+    const draw_image_t* icon = ui_icon(id);
     TEST_ASSERT_NOT_NULL_MESSAGE(icon, "no system icon: the suites run with the packs build_pack.py writes");
     return icon;
 }
@@ -46,7 +46,7 @@ system_icon(ui_icon_id_t id) {
 
 static int
 blocks_at(int w, int h, icon_rect_t* out) {
-    const gfx_image_t* icon = system_icon(UI_ICON_CHECK);
+    const draw_image_t* icon = system_icon(UI_ICON_CHECK);
     icon_test_collect_t cc = {.blocks = out, .count = 0, .cap = CHECK_TEST_MAX_BLOCKS};
     icon_walk_blocks(icon, w, h, icon_test_collect, &cc);
     return cc.count;
@@ -145,7 +145,7 @@ static const char* const check_expected_rows[16] = {
 
 static void
 test_check_matches_the_artwork_it_replaced(void) {
-    const gfx_image_t* icon = system_icon(UI_ICON_CHECK);
+    const draw_image_t* icon = system_icon(UI_ICON_CHECK);
     TEST_ASSERT_EQUAL_INT(16, icon->width);
     TEST_ASSERT_EQUAL_INT(16, icon->height);
     for (int y = 0; y < 16; y++) {

@@ -18,7 +18,7 @@
 
 #include "app/app.h"
 #include "core/memory.h"
-#include "draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
@@ -70,7 +70,7 @@ test_full_redraw_repaints_a_stale_rect_and_sends_every_strip(void) {
     /* Settles on the panel and in gfx's own dirty tracker, exactly like a
      * real overlay's own draw+present would - sand's row-run/dirty-column
      * state never learns this rectangle exists. */
-    gfx_fill_rect(STALE_X, STALE_Y, STALE_W, STALE_H, gfx_rgb(0xFF00FF));
+    draw_rect(STALE_X, STALE_Y, STALE_W, STALE_H, gfx_rgb(0xFF00FF));
     gfx_present();
 
     gfx_request_full_redraw();

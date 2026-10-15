@@ -10,7 +10,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "draw/gfx_font_roles.h"
+#include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
 #include "input/input.h"
 #include "ui/ui.h"
@@ -127,7 +127,7 @@ test_the_dither_list_overlays_the_canvas_landscape(void) {
 
 static void
 assert_fits(const char* str, int room) {
-    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(room, gfx_font_text_width(gfx_font_ui(), str, -1, sand_ui_theme.text_scale),
+    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(room, draw_font_text_width(draw_font_ui(), str, -1, sand_ui_theme.text_scale),
                                           str);
 }
 

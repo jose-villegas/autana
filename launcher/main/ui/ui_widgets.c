@@ -4,8 +4,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "draw/gfx_draw.h"
-#include "draw/gfx_font_roles.h"
+#include "draw/draw.h"
+#include "draw/draw_font_roles.h"
 #include "ui/ui.h"
 #include "ui/ui_icons.h"
 #include "ui/ui_style.h"
@@ -23,7 +23,7 @@ ui_theme_from_style(const mu_Style* style) {
                         .accent_face = style->colors[MU_COLOR_BUTTONFOCUS],
                         .text = style->colors[MU_COLOR_TEXT],
                         .on_accent = style->colors[MU_COLOR_TEXT],
-                        .text_scale = GFX_GLYPH_SCALE};
+                        .text_scale = DRAW_GLYPH_SCALE};
 }
 
 static void
@@ -48,9 +48,9 @@ ui_header_bar(mu_Context* ctx, mu_Rect r, const char* title, int scale, const ui
 
 void
 ui_text_in(mu_Context* ctx, mu_Rect r, const char* str, mu_Color color, int scale, ui_align_t align) {
-    ui_set_font_scaled(gfx_font_ui(), scale);
+    ui_set_font_scaled(draw_font_ui(), scale);
     const int tw = ui_measure_text(str);
-    const int th = gfx_font_height(gfx_font_ui(), scale);
+    const int th = draw_font_height(draw_font_ui(), scale);
     int x = r.x;
     if (align == UI_ALIGN_CENTRE) {
         x = r.x + (r.w - tw) / 2;
@@ -102,7 +102,7 @@ ui_icon_button_label_width(int button_w, bool has_icon, const ui_theme_t* theme)
 
 /* The icon at the left and the label centred in `label_w` after it. */
 static void
-draw_icon_and_label(mu_Context* ctx, mu_Rect r, const gfx_image_t* icon, const char* label, int label_w, mu_Color ink,
+draw_icon_and_label(mu_Context* ctx, mu_Rect r, const draw_image_t* icon, const char* label, int label_w, mu_Color ink,
                     const ui_theme_t* theme) {
     if (icon != NULL) {
         const int side = theme->icon_side;
@@ -319,7 +319,7 @@ ui_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const ui_dropdown_item_t
 
 mu_Rect
 ui_tile_icon_rect(mu_Rect r, const ui_theme_t* theme) {
-    const int label_h = gfx_font_height(gfx_font_ui(), theme->text_scale);
+    const int label_h = draw_font_height(draw_font_ui(), theme->text_scale);
     int side = r.h - 2 * TILE_PAD - label_h - TILE_LABEL_GAP;
     if (side > r.w - (2 * TILE_PAD)) {
         side = r.w - (2 * TILE_PAD);
@@ -348,7 +348,7 @@ ui_tile_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_butto
     if (button->icon != NULL) {
         ui_draw_icon(ctx, icon, button->icon, NULL, c.ink);
     }
-    const int label_h = gfx_font_height(gfx_font_ui(), theme->text_scale);
+    const int label_h = draw_font_height(draw_font_ui(), theme->text_scale);
     const mu_Rect label = {r.x + TILE_PAD, icon.y + icon.h + TILE_LABEL_GAP, r.w - 2 * TILE_PAD, label_h};
     ui_text_in(ctx, label, button->label, c.ink, theme->text_scale, UI_ALIGN_CENTRE);
     return c.clicked;

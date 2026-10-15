@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "draw/gfx_font_roles.h"
+#include "draw/draw_font_roles.h"
 #include "gfx/target/gfx_color.h"
 #include "ui/ui.h"
 #include "ui/ui_style.h"
@@ -228,7 +228,7 @@ draw_brush_swatch(mu_Context* ctx, mu_Rect r, cell_t spec) {
 
 static void
 draw_brush_header(mu_Context* ctx, sand_ui_t* ui, const brush_screen_layout_t* lay) {
-    ui_set_font_scaled(gfx_font_ui(), BRUSH_SCREEN_CAPTION_SCALE);
+    ui_set_font_scaled(draw_font_ui(), BRUSH_SCREEN_CAPTION_SCALE);
 
     ui_panel(ctx, lay->header_panel, &sand_ui_theme);
     draw_brush_swatch(ctx, lay->swatch, ui->brushes[ui->brush].cell);
@@ -242,13 +242,13 @@ draw_brush_header(mu_Context* ctx, sand_ui_t* ui, const brush_screen_layout_t* l
     const char* name = material_name(ui->brushes[ui->brush].cell);
     int name_scale = 4;
     for (; name_scale > 1; name_scale--) {
-        ui_set_font_scaled(gfx_font_ui(), name_scale);
+        ui_set_font_scaled(draw_font_ui(), name_scale);
         if (ui_measure_text(name) <= lay->material_name.w) {
             break;
         }
     }
     ui_text_in(ctx, lay->material_name, name, sand_ui_theme.text, name_scale, UI_ALIGN_LEFT);
-    ui_set_font_scaled(gfx_font_ui(), BRUSH_SCREEN_CAPTION_SCALE);
+    ui_set_font_scaled(draw_font_ui(), BRUSH_SCREEN_CAPTION_SCALE);
 
     draw_brush_bezel(ctx, lay->info_button, SAND_THEME_BUTTON_FACE_COLOR, false);
     /* No handler: the panel this button opens is separate, later work.

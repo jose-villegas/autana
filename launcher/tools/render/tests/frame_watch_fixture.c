@@ -16,7 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "profile/frame_watch.h"
 
@@ -157,7 +157,7 @@ draw(const render_frame_t* frame) {
     if (frame->index == frame->count - 1) {
         printf("fixture last frame\n");
     }
-    gfx_fill_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, gfx_rgb(0x203040));
+    draw_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, gfx_rgb(0x203040));
 }
 
 const render_scene_t render_scene = {

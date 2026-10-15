@@ -193,8 +193,8 @@ static const uint8_t icon_l_rows[4] = {
     0x80, /* 1000: col 0 */
     0xE0, /* 1110: cols 0,1,2 */
 };
-static const gfx_image_t icon_l = {
-    .bits = icon_l_rows, .format = GFX_IMAGE_MONO1, .width = 4, .height = 4, .stride = 8};
+static const draw_image_t icon_l = {
+    .bits = icon_l_rows, .format = DRAW_IMAGE_MONO1, .width = 4, .height = 4, .stride = 8};
 
 /* box = (10, 20, 4, 4), fixed across every quarter below. Expected physical
  * rects were mapped BY HAND, corner to corner, from
@@ -307,7 +307,7 @@ test_icon_blocks_match_ui_transform_rect_run_by_run(void) {
 
 static const uint8_t glyph0_atlas[4 * 10] = {0}; /* 4 glyphs * cell_h rows, unread */
 static const uint8_t glyph0_advance[4] = {3, 5, 4, 6};
-static const gfx_font_t glyph0_font = {
+static const draw_font_t glyph0_font = {
     .atlas = glyph0_atlas,
     .cell_w = 6,
     .cell_h = 10,
@@ -326,8 +326,8 @@ static const gfx_font_t glyph0_font = {
 static void
 assert_glyph0_matches_ground_truth(int logical_x, int logical_y, const char* text, int quarter, const char* msg) {
     const ui_transform_t t = ui_transform_quarter_turn(quarter, VIEW_W, VIEW_H);
-    const int tw = gfx_font_text_width(&glyph0_font, text, -1, 1);
-    const int th = gfx_font_height(&glyph0_font, 1);
+    const int tw = draw_font_text_width(&glyph0_font, text, -1, 1);
+    const int th = draw_font_height(&glyph0_font, 1);
     const mu_Rect box = ui_transform_rect(t, (mu_Rect){logical_x, logical_y, tw, th});
 
     int mx, my;
@@ -386,8 +386,8 @@ static void
 test_glyph0_origin_at_turn_3_is_not_the_cell_h_mistake(void) {
     const int quarter = 3;
     const ui_transform_t t = ui_transform_quarter_turn(quarter, VIEW_W, VIEW_H);
-    const int tw = gfx_font_text_width(&glyph0_font, "ABCD", -1, 1);
-    const int th = gfx_font_height(&glyph0_font, 1);
+    const int tw = draw_font_text_width(&glyph0_font, "ABCD", -1, 1);
+    const int th = draw_font_height(&glyph0_font, 1);
     const mu_Rect box = ui_transform_rect(t, (mu_Rect){20, 30, tw, th});
 
     int mx, my;
@@ -467,7 +467,7 @@ test_axis_preserving_rejects_a_shear(void) {
     const ui_transform_t shear = {MATHX_ONE, MATHX_ONE / 2, 0, MATHX_ONE, 0, 0};
     TEST_ASSERT_FALSE_MESSAGE(ui_transform_is_axis_preserving(shear),
                               "a shear must be rejected - it turns an axis-aligned rect into a "
-                              "parallelogram, which gfx_fill_rect() cannot draw");
+                              "parallelogram, which draw_rect() cannot draw");
 }
 
 static void
@@ -480,7 +480,7 @@ test_axis_preserving_rejects_a_non_90_degree_rotation(void) {
     const ui_transform_t skew_rotation = {MATHX_ONE, MATHX_ONE / 2, MATHX_ONE / 2, MATHX_ONE, 0, 0};
     TEST_ASSERT_FALSE_MESSAGE(ui_transform_is_axis_preserving(skew_rotation),
                               "a rotation that is not a multiple of 90 degrees must be rejected - "
-                              "gfx_text_turned() only has four quarters to offer it");
+                              "draw_text_turned() only has four quarters to offer it");
 }
 
 /* Inversion of a singular matrix */

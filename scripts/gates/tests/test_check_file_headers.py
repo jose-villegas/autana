@@ -66,7 +66,7 @@ class ProblemsTest(unittest.TestCase):
             "launcher/test/suites/suite_gfx.c": "int x;\n",
             "launcher/main/apps/sand/tests/suite_sand.c": "int x;\n",
             "launcher/components/microui/src/microui.c": "int x;\n",
-            "launcher/main/draw/gfx_palette_standard_generated.h": "int x;\n",
+            "launcher/main/draw/draw_palette_standard_generated.h": "int x;\n",
             "editor/src/main.cpp": "int x;\n",
             "launcher/test/stubs/esp_log.h": "int x;\n",
         }), [])

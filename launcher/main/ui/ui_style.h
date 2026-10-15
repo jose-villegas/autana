@@ -178,7 +178,7 @@ ui_text_passes(ui_text_style_t style, ui_text_pass_t* out, int max) {
          * that code is the precedent this style generalises, and it is
          * worth staying a recognisably identical list rather than an
          * equivalent but different-looking one. All eight, not just the
-         * four cardinals: at GFX_GLYPH_SCALE 2 each
+         * four cardinals: at DRAW_GLYPH_SCALE 2 each
          * font pixel is a 2x2 block, so skipping the diagonals leaves a
          * notch at every block corner rather than a clean edge. */
             static const int offsets[8][2] = {

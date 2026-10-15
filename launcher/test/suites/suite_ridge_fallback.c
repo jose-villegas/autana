@@ -7,7 +7,7 @@
 
 #include "asset/asset_store.h"
 #include "core/memory.h"
-#include "draw/gfx_dither.h"
+#include "draw/draw_dither.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_test.h"
 #include "shell/ui/ui_ridge.h"
@@ -25,7 +25,7 @@ test_a_missing_curve_paints_a_level_nonblank_frame(void) {
     ui_ridge_paint_reference_for_test(frame);
     bool level = true;
     bool nonblank = false;
-    const int phase_rows = gfx_dither_pattern(GFX_DITHER_SCANLINES4)->height;
+    const int phase_rows = draw_dither_pattern(DRAW_DITHER_SCANLINES4)->height;
     for (int y = 0; y < GFX_HEIGHT; y++) {
         for (int x = 0; x < GFX_WIDTH; x++) {
             const gfx_color_t pixel = frame[(size_t)y * GFX_WIDTH + x];

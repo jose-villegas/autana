@@ -261,7 +261,7 @@ ESP-IDF counts such names rather than failing on them.
 
 Use lowercase `snake_case` for functions, variables, and fields. Public
 functions start with their module name and then say what they do:
-`display_init()`, `gfx_fill_rect()`, `imu_read()`, `touch_read()`. Keep the
+`display_init()`, `draw_rect()`, `imu_read()`, `touch_read()`. Keep the
 prefix stable because it is the C namespace for that module.
 
 Static functions do not need a synthetic prefix. Give them the shortest clear
