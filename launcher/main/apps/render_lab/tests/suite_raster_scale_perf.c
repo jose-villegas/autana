@@ -104,7 +104,7 @@ one_core_draw_us(const raster_t* raster, const r3d_pipeline_buffers_t* b, const 
 }
 
 typedef struct {
-    int64_t setup, rows, span_setup, fill, clear;
+    int64_t setup, edges, carry, fill, clear;
 } span_split_t;
 
 /* One core, one pose: each stage as the difference of two stopped draws;
@@ -125,13 +125,13 @@ add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
     memset(gfx_render_target_depth(&b.picture, 0), 0, pixels * sizeof(uint16_t));
     sum->clear += timing_now_us() - clear_from;
     const int64_t setup = one_core_draw_us(raster, &b, &lens, visible, 1);
-    const int64_t rows = one_core_draw_us(raster, &b, &lens, visible, 2);
-    const int64_t span_setup = one_core_draw_us(raster, &b, &lens, visible, 3);
+    const int64_t edges = one_core_draw_us(raster, &b, &lens, visible, 2);
+    const int64_t carry = one_core_draw_us(raster, &b, &lens, visible, 3);
     const int64_t whole = one_core_draw_us(raster, &b, &lens, visible, 0);
     sum->setup += setup;
-    sum->rows += rows - setup;
-    sum->span_setup += span_setup - rows;
-    sum->fill += whole - span_setup;
+    sum->edges += edges - setup;
+    sum->carry += carry - edges;
+    sum->fill += whole - carry;
 }
 
 static int64_t
@@ -167,9 +167,9 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
     ESP_LOGI(TAG, "scale_split: %dx%d poses=%d tris=%lld frame mean/p50/max us %lld/%ld/%ld | %s", size.width,
              size.height, poses, (long long)(triangles / poses), (long long)(sum / poses), (long)frame_us[poses / 2],
              (long)frame_us[poses - 1], report);
-    ESP_LOGI(TAG, "scale_spans: %dx%d one core us/pose setup %lld rows %lld span_setup %lld fill %lld clear %lld",
-             size.width, size.height, (long long)(spans.setup / poses), (long long)(spans.rows / poses),
-             (long long)(spans.span_setup / poses), (long long)(spans.fill / poses), (long long)(spans.clear / poses));
+    ESP_LOGI(TAG, "scale_spans: %dx%d one core us/pose setup %lld edges %lld carry %lld fill %lld clear %lld",
+             size.width, size.height, (long long)(spans.setup / poses), (long long)(spans.edges / poses),
+             (long long)(spans.carry / poses), (long long)(spans.fill / poses), (long long)(spans.clear / poses));
     return sum / poses;
 }
 

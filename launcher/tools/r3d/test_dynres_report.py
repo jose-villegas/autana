@@ -6,6 +6,23 @@ import dynres_report as report
 
 
 class DynresReportTests(unittest.TestCase):
+    def test_span_stages_use_edges_and_carry(self):
+        with tempfile.TemporaryDirectory() as directory:
+            capture = pathlib.Path(directory) / "capture.log"
+            capture.write_text("scale_spans: 368x448 one core us/pose setup 100 edges 200 carry 300 fill 400 clear 50\n")
+            _, spans, _, _ = report.read_captures([str(capture)])
+        self.assertEqual(spans[(368, 448)], dict(setup=100, edges=200, carry=300, fill=400, clear=50))
+        table = report.stages_table({(368, 448): dict(mean=1000, p50=1000, max=1000)}, spans)
+        self.assertIn("| edges | carry | fill |", table)
+        self.assertIn("| 0.1 | 0.2 | 0.3 | 0.4 |", table)
+
+    def test_old_span_stages_are_not_read_as_spans(self):
+        with tempfile.TemporaryDirectory() as directory:
+            capture = pathlib.Path(directory) / "capture.log"
+            capture.write_text("scale_spans: 368x448 one core us/pose setup 100 rows 200 span_setup 300 fill 400 clear 50\n")
+            _, spans, _, _ = report.read_captures([str(capture)])
+        self.assertEqual(spans, {})
+
     def test_findings_compare_fast_path_steps_and_cost_references(self):
         sizes = [(368, 448), (368, 224), (184, 448), (184, 298),
                  (184, 224), (184, 179), (184, 149), (147, 179), (122, 149)]
@@ -35,6 +52,8 @@ class DynresReportTests(unittest.TestCase):
     def test_committed_capture_remains_readable(self):
         capture = pathlib.Path(__file__).resolve().parents[3] / "docs/render/data/dynamic-resolution-board.log"
         splits, spans, ladders, runs = report.read_captures([str(capture)])
+        self.assertTrue(splits)
+        self.assertEqual(set(spans), set(splits))
         self.assertTrue(report.stages_table(splits, spans))
         self.assertTrue(report.findings_table(splits, spans))
         self.assertTrue(report.policies_table(report.policy_rows(runs, ladders, {}, splits)))
