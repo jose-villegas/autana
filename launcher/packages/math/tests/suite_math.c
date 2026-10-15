@@ -7,7 +7,6 @@
 #include <float.h>
 #include <math.h>
 #include <stdbool.h>
-#include <stdio.h>
 #include <string.h>
 
 #include "suites.h"
