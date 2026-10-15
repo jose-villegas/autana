@@ -45,7 +45,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/linear/mat4_template.h](include/math/linear/mat4_template.h) | mat4_template: a 4x4 matrix indexed m[row][col], acting on column vectors, for one number type; see docs/math/README.md for the macro arguments. |
 | [include/math/linear/mat4f.h](include/math/linear/mat4f.h) | mat4f: a 4x4 matrix of a float. |
 | [include/math/linear/mat4x.h](include/math/linear/mat4x.h) | mat4x: a 4x4 matrix of a Q16.16. |
-| [include/math/linear/math_const.h](include/math/linear/math_const.h) | math_const: the circle constants float maths uses, in radians, and the natural log of 2, which turns a half-life into a rate. |
+| [include/math/linear/math_const.h](include/math/linear/math_const.h) | math_const: float circle constants, degree/radian conversion factors, and the natural log of 2, which turns a half-life into a rate. |
 | [include/math/linear/quat_template.h](include/math/linear/quat_template.h) | quat_template: a rotation as x, y, z, w, unit length, Hamilton product, acting on a vector as q * v * q^-1, for one number type; see docs/math/README.md for the macro arguments. |
 | [include/math/linear/quatf.h](include/math/linear/quatf.h) | quatf: a float rotation, plus the one operation only floats have, slerp. |
 | [include/math/linear/quatx.h](include/math/linear/quatx.h) | quatx: a Q16.16 rotation; angles are turns (mathx.h). |
