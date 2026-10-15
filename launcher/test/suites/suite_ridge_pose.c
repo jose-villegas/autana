@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stdint.h>
 
+#include "math/linear/math_const.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -63,7 +64,7 @@ test_column_under_tracks_the_pose_axis(void) {
 /* A pose `degrees` off straight down, toward the side. */
 static ridge_vector_t
 off_down_by(float degrees) {
-    const float radians = degrees * 3.14159265F / 180.0F;
+    const float radians = degrees * MATH_RADIANS_PER_DEGREE;
     return (ridge_vector_t){(int32_t)lroundf(sinf(radians) * (float)RIDGE_POSE_ONE),
                             (int32_t)lroundf(cosf(radians) * (float)RIDGE_POSE_ONE)};
 }
