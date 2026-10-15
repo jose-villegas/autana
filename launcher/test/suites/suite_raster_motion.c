@@ -12,6 +12,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "math/linear/transformf.h"
 #include "render/raster.h"
 #include "render/raster_motion.h"
 
@@ -35,7 +36,10 @@ turned(float degrees, vec3f_t at) {
     enum { DEGREES_HALF_TURN = 180 };
 
     const quatf_t rotation = quatf_from_axis_angle((vec3f_t){0, 1, 0}, degrees * MATH_PI / DEGREES_HALF_TURN);
-    return mat4f_from_trs(at, rotation, (vec3f_t){1, 1, 1});
+    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_set_position(&pose, at);
+    transformf_set_rotation(&pose, rotation);
+    return transformf_compute_matrix(&pose);
 }
 
 static vec3f_t

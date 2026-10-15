@@ -29,6 +29,7 @@
 #include "core/timing.h"
 #include "display/viewport.h"
 #include "gfx/gfx.h"
+#include "math/linear/transformf.h"
 #include "profile/frame_cost.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_pipeline.h"
@@ -223,11 +224,11 @@ test_sponza_draw_stage_breakdown(void) {
     TEST_PASS();
 }
 
-/* `moving`, when not NULL, is the instance's model, nudged every frame
- * so an attached motion tags every triangle. */
+/* `moving`, when not NULL, is the pose behind the instance's `model`,
+ * nudged every frame so an attached motion tags every triangle. */
 static void
 report_frame_cost(const char* label, const char* object_name, const r3d_instance_t* instance,
-                  const raster_attachment_t* const* attachments, mat4f_t* moving) {
+                  const raster_attachment_t* const* attachments, transformf_t* moving, mat4f_t* model) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
     bench_t* b = memory_alloc(sizeof(*b), MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL(b);
@@ -257,7 +258,9 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
         const render_view_t view = camera_view(flythrough, scene_entity_transform(sponza, camera_entity),
                                                (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
         if (moving != NULL) {
-            moving->m[0][3] = (t_ms / SPONZA_POSE_EVERY_MS) % 2 == 0 ? 0.0F : 0.01F;
+            transformf_set_position(moving,
+                                    (vec3f_t){(t_ms / SPONZA_POSE_EVERY_MS) % 2 == 0 ? 0.0F : 0.01F, 0.0F, 0.0F});
+            *model = transformf_compute_matrix(moving);
         }
         const int64_t start = timing_now_us();
         const raster_stats_t stats = raster_draw(&b->raster, &view);
@@ -308,11 +311,11 @@ test_sponza_frame_cost_along_the_flythrough(void) {
     (void)tune_handle_line("RESET render.cull", cull_reply);
     for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
         const r3d_instance_t instance = {&meshes[i], NULL};
-        report_frame_cost(sponza_bakes[i], sponza_bakes[i], &instance, NULL, NULL);
+        report_frame_cost(sponza_bakes[i], sponza_bakes[i], &instance, NULL, NULL, NULL);
     }
     (void)tune_handle_line("SET render.cull 0", cull_reply);
     const r3d_instance_t full = {&meshes[SPONZA_BAKE_FULL], NULL};
-    report_frame_cost("cull_off", sponza_bakes[SPONZA_BAKE_FULL], &full, NULL, NULL);
+    report_frame_cost("cull_off", sponza_bakes[SPONZA_BAKE_FULL], &full, NULL, NULL, NULL);
     TEST_PASS();
 }
 
@@ -327,12 +330,13 @@ test_sponza_frame_cost_with_motion(void) {
     const raster_attachment_t attachment = raster_motion_view(motion);
     const raster_attachment_t* const attached[] = {&attachment};
     const r3d_instance_t still = {&meshes[0], NULL};
-    report_frame_cost("motion", sponza_bakes[0], &still, attached, NULL);
+    report_frame_cost("motion", sponza_bakes[0], &still, attached, NULL, NULL);
     raster_motion_forget(motion);
-    mat4f_t model = mat4f_identity();
+    transformf_t pose = TRANSFORMF_IDENTITY;
+    mat4f_t model = transformf_compute_matrix(&pose);
     const r3d_instance_t moving = {&meshes[0], &model};
-    report_frame_cost("motion_moving", sponza_bakes[0], &moving, attached, &model);
-    report_frame_cost("placed", sponza_bakes[0], &moving, NULL, &model);
+    report_frame_cost("motion_moving", sponza_bakes[0], &moving, attached, &pose, &model);
+    report_frame_cost("placed", sponza_bakes[0], &moving, NULL, &pose, &model);
     memory_free(motion);
     TEST_PASS();
 }
