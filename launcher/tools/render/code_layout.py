@@ -99,19 +99,21 @@ def symbols(nm, elf, functions=None):
     return found
 
 
-def decode(objdump, elf, *arguments):
+def decode(objdump=None, elf=None, *arguments, text=None):
     found = []
-    for line in run(objdump, "-d", *arguments, str(elf)).splitlines():
+    if text is None:
+        text = run(objdump, "-d", *arguments, str(elf))
+    for line in text.splitlines():
         match = re.match(r"^\s*([0-9a-f]+):\s+([0-9a-f]+)\s+([a-z][a-z0-9.]*)\s*(.*)$", line)
         if match:
             found.append((int(match[1], 16), len(match[2]) // 2, match[3], match[4]))
     return found
 
 
-def instructions(objdump, elf, function, end):
+def instructions(objdump, elf, function, end, *, text=None):
     """The function's instructions, and how to decode its code again from
     one address on, where the linear sweep fell out of step."""
-    return decode(objdump, elf, "--disassemble=%s" % function), lambda start: decode(
+    return decode(objdump, elf, "--disassemble=%s" % function, text=text), lambda start: decode(
         objdump, elf, "--start-address=0x%x" % start, "--stop-address=0x%x" % end
     )
 

@@ -1,0 +1,52 @@
+# Device ELF wrapper mnemonics; callees excluded.
+# ELF sha256=dfd60306013cf8f13958dbd028d13be761e73cc18048644db7398ef92b4c7abb
+add_f	-
+add_i	-
+add_s	-
+add_x	-
+atan2f_f	-
+convert_f_to_i	-
+convert_f_to_s	-
+convert_f_to_x	-
+convert_i_to_f	-
+convert_s_to_f	-
+convert_x_to_f	-
+cosf_f	-
+div_recip_f	-
+div_rsqrt_f	-
+dot_f	madd.s
+dot_f32_n256_f	madd.s
+dot_i	-
+dot_s	-
+dot_x	-
+lerp_f	madd.s
+lerp_i	-
+lerp_s	-
+lerp_x	-
+mat4_mul_f	madd.s
+mat4_mul_x	-
+mathf_recip_f	madd.s msub.s recip0.s
+mathf_rsqrt_f	msub.s rsqrt0.s
+mul_f	-
+mul_i	-
+mul_s	-
+mul_x	-
+nlerp_f	madd.s
+nlerp_x	-
+normalize_f	madd.s
+normalize_x	-
+quat_mul_f	madd.s msub.s
+quat_mul_x	-
+scale_f	-
+scale_i	-
+scale_s	-
+scale_x	-
+sinf_f	-
+slerp_f	madd.s
+sqrtf_f	-
+transform_compute_matrix_f	madd.s msub.s
+transform_compute_matrix_x	-
+trig_sin_i	-
+wrap_f	-
+wrap_i	-
+wrap_x	-
