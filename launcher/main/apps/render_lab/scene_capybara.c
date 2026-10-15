@@ -41,11 +41,11 @@ static const char* TAG = "capybara";
 #define CAPYBARA_DEFAULT_CLIP   "idle"
 
 /* Where the view starts: three-quarters from the front, a little above. */
-#define CAPYBARA_HOME_YAW       (MATH_PI * 135.0F / 180.0F)
-#define CAPYBARA_HOME_PITCH     (MATH_PI * 15.0F / 180.0F)
+#define CAPYBARA_HOME_YAW       (135.0F * MATH_RADIANS_PER_DEGREE)
+#define CAPYBARA_HOME_PITCH     (15.0F * MATH_RADIANS_PER_DEGREE)
 
 /* The lowest the eye goes: a little above level, so the meadow stays below it. */
-#define CAPYBARA_PITCH_MIN      (MATH_PI * 5.0F / 180.0F)
+#define CAPYBARA_PITCH_MIN      (5.0F * MATH_RADIANS_PER_DEGREE)
 
 /* How far a zoom reaches, as multiples of the distance that fits the
  * sphere: in to half of it (the model about twice as large), out to three
@@ -54,8 +54,6 @@ static const char* TAG = "capybara";
 #define CAPYBARA_ZOOM_IN        0.5F
 #define CAPYBARA_ZOOM_OUT       3.0F
 #define CAPYBARA_NEAR_CLEARANCE 2.0F
-
-#define DEGREES_PER_RADIAN      (180.0F / MATH_PI)
 
 static scene_t* capybara;
 static scene_entity_t camera_entity;
@@ -169,7 +167,8 @@ capybara_status(void) {
     }
     /* Yaw/pitch too, so a screenshot says where it was taken from. */
     if (snprintf(buf, sizeof buf, "%d tris %d/%d deg", render_context_frame(render_context_main()).stats.triangles,
-                 (int)lroundf(orbit.at.yaw * DEGREES_PER_RADIAN), (int)lroundf(orbit.at.pitch * DEGREES_PER_RADIAN))
+                 (int)lroundf(orbit.at.yaw * MATH_DEGREES_PER_RADIAN),
+                 (int)lroundf(orbit.at.pitch * MATH_DEGREES_PER_RADIAN))
         < 0) {
         buf[0] = '\0';
     }
