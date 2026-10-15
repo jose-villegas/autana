@@ -7,7 +7,12 @@
 #
 # The milliseconds below are points the animation is recognisably different
 # at, not measurements; each one's pixels are pinned in
-# boot_anim_render_baseline.txt. --video renders the whole animation.
+# boot_anim_render_baseline.txt. `whole` plays the animation from 0 ms to
+# its end in one run, upright as the board is held, and is not pinned: its
+# last frame is the launcher. It renders first, so a pinned render that a
+# timeline change makes fail still leaves it written. With --video it is whole.avi, the way to watch
+# a change to main/boot/boot_anim_timeline.json (regenerate the header
+# first; tools/boot_anim/README.md).
 #
 # Everything this does beyond the declarations below is
 # tools/render/render_scene.sh.
@@ -29,7 +34,13 @@ main/boot/boot_anim_photo.c
 tools/render/scenes/boot_anim_render_host.c
 "
 scene_defines="$launcher_home_defines"
+# One frame every WHOLE_DT_MS, from 0 ms through the timeline's end.
+WHOLE_DT_MS=30
+whole_ms=$(grep '^#define BOOT_ANIM_MS ' "$SCRIPT_DIR/../../../main/boot/boot_anim_timeline.h" | cut -d' ' -f3)
+whole_frames=$((whole_ms / WHOLE_DT_MS + 1))
+
 scene_renders="
+whole|0 --quarter 1 --frames $whole_frames --dt $WHOLE_DT_MS|448x368|nopin
 early|300|368x448
 middle|1500|368x448
 late|3000|368x448
