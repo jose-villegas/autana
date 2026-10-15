@@ -30,8 +30,8 @@ DESTINATION = (368, 448)
 
 SPLIT = re.compile(r"scale_split: (\d+)x(\d+) poses=(\d+) tris=(\d+) frame mean/p50/max us (\d+)/(\d+)/(\d+) \| (.*?) \| total")
 STAGE = re.compile(r"(\S+) ([\d.]+)/([\d.]+)")
-SPANS = re.compile(r"scale_spans: (\d+)x(\d+) one core us/pose setup (-?\d+) rows (-?\d+) span_setup (-?\d+) fill (-?\d+) clear (-?\d+)")
-SPAN_FIELDS = ("setup", "rows", "span_setup", "fill", "clear")
+SPANS = re.compile(r"scale_spans: (\d+)x(\d+) one core us/pose setup (-?\d+) edges (-?\d+) carry (-?\d+) fill (-?\d+) clear (-?\d+)")
+SPAN_FIELDS = ("setup", "edges", "carry", "fill", "clear")
 STEP = re.compile(r"dynres_step: (\w+) (\d+) (\d+)x(\d+) upscale")
 FRAMES = re.compile(r"dynres_frames: (\w+) (\w+) (\w+) (\d+) (\d+)((?: -?\d+:\d+:\d+:\d+:\d+)+)(?![\d:])")
 
@@ -97,7 +97,7 @@ def stages_table(splits, spans):
         stages.append(("resolve", "r3d.resolve"))
     stages.append(("upscale", "r3d.upscale"))
     headers = ["Render size", "Divisor", "Pixels", "Frame mean", "p50", "max",
-               *(label for label, _ in stages), "1 core: setup", "rows", "span setup", "fill"]
+               *(label for label, _ in stages), "1 core: setup", "edges", "carry", "fill"]
     lines = ["| " + " | ".join(headers) + " |", "|" + "---|" * len(headers)]
     full = DESTINATION[0] * DESTINATION[1]
     for size, s in splits.items():
@@ -105,13 +105,13 @@ def stages_table(splits, spans):
         cells = [f"{size[0]}x{size[1]}", divisor(size), f"{100 * size[0] * size[1] / full:.0f}%",
                  ms(s['mean']), ms(s['p50']), ms(s['max']),
                  *(f"{s[name]:.1f}" if name in s else "not in capture" for _, name in stages),
-                 *(ms(o[key]) for key in ("setup", "rows", "span_setup", "fill"))]
+                 *(ms(o[key]) for key in ("setup", "edges", "carry", "fill"))]
         lines.append("| " + " | ".join(cells) + " |")
     return "\n".join(lines) + "\n\nMilliseconds; both cores unless marked one core."
 
 
 def findings_table(splits, spans):
-    rows = ["| Question | Compared | Frame | draw | upscale | 1 core: rows | span setup | fill |",
+    rows = ["| Question | Compared | Frame | draw | upscale | 1 core: edges | carry | fill |",
             "|---|---|---|---|---|---|---|---|"]
 
     def row(question, a, b):
@@ -121,7 +121,7 @@ def findings_table(splits, spans):
         delta = lambda key, table_a, table_b: table_a.get(key, 0) - table_b.get(key, 0)  # noqa: E731
         rows.append(f"| {question} | {a[0]}x{a[1]} minus {b[0]}x{b[1]} | {ms(sa['mean'] - sb['mean'])} "
                     f"| {delta('r3d.draw', sa, sb):.1f} | {delta('r3d.upscale', sa, sb):.1f} "
-                    + " ".join(f"| {ms(delta(k, oa, ob))}" for k in ("rows", "span_setup", "fill")) + " |")
+                    + " ".join(f"| {ms(delta(k, oa, ob))}" for k in ("edges", "carry", "fill")) + " |")
 
     for question, a, b in (
         ("half width, more height over half", (184, 298), (184, 224)),

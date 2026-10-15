@@ -197,7 +197,8 @@ test_sponza_draw_stage_breakdown(void) {
     r3d_pipeline_transform(atrium.mesh, &lens, parts.culled + 1, visible, parts.cs, parts.rows);
     ESP_LOGI(TAG, "stage, one core: %-22s %7lldus", "transform", (long long)(timing_now_us() - start));
 
-    static const char* const names[4] = {"whole draw", "stop after setup", "stop after rows", "stop after span setup"};
+    static const char* const names[4] = {"whole draw", "stop after setup", "stop after edges",
+                                         "stop after attribute carry"};
     for (int stop = 0; stop <= 3; stop++) {
         r3d_span_stop_after = stop;
         start = timing_now_us();

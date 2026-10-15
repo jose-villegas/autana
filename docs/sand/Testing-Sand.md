@@ -29,6 +29,14 @@ the sand suites are the ones registered in files under
 file). This is the loop while working on a material or a perf change:
 `autana suite` the suite for the area touched, and reserve a full capture for a merge decision.
 
+For a scoped A/B with several steps, put both flashes and captures inside
+one `autana lock run` so nobody flashes between them.
+A and B are project directories, each built beforehand (`autana build`).
+
+| Linux | Windows PowerShell |
+|---|---|
+| `autana lock run -- sh -c 'autana --project A suite run_sand_perf_suite --flash --runs 3 --test fire,gas && autana --project B suite run_sand_perf_suite --flash --runs 3 --test fire,gas'` | `autana lock run -- powershell -NoProfile -Command 'autana --project A suite run_sand_perf_suite --flash --runs 3 --test fire,gas; if ($LASTEXITCODE) { exit $LASTEXITCODE }; autana --project B suite run_sand_perf_suite --flash --runs 3 --test fire,gas; exit $LASTEXITCODE'` |
+
 ## Capturing a frame-budget report
 
 `report_performance.sh` (`launcher/main/apps/sand/tools/`) builds and

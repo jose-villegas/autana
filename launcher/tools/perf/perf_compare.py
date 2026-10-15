@@ -10,12 +10,14 @@ from pathlib import Path
 from statistics import mean
 from types import SimpleNamespace
 
-from layout_measure import analyse, autana_command, required_seeds, run_flash, filter_limits, validate_filters, FilterOverlap
+from layout_measure import analyse, autana_command, required_seeds, run_flash, filter_limits, validate_filters, split_filters, FilterOverlap
 from seed_statistics import compare, minimum_seeds, permutation_samples
 
 DEFAULT_THRESHOLD = 1.0
 DEFAULT_ALPHA = 0.05
 MAX_RUNS = 16
+CALIBRATION_SEEDS = 2
+CALIBRATION_RUNS = 2
 
 
 def schedule(cap, alpha):
@@ -169,7 +171,7 @@ def measure(args, runner=None):
                 used.add(seed)
                 repeated = sum(any(len(entry["runs"]) >= 2 for entry in record["suites"].values())
                                for record in records[side])
-                actual_runs = 2 if look == 0 and repeated < 2 else runs
+                actual_runs = CALIBRATION_RUNS if look == 0 and repeated < CALIBRATION_SEEDS else runs
                 item = dict(side=side, seed=seed, runs=actual_runs, suites=suites, look=look + 1)
                 plan.append(item)
                 save_plan()
@@ -311,6 +313,8 @@ def main(argv=None):
     """Parse a comparison, preflight validation, or restore request."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--validate-plan", action="store_true")
+    parser.add_argument("--estimate-plan", action="store_true")
+    parser.add_argument("--no-restore", action="store_true")
     parser.add_argument("--restore-project", type=Path)
     parser.add_argument("--out", "-o", type=Path)
     parser.add_argument("--project-a", type=Path)
@@ -331,7 +335,7 @@ def main(argv=None):
                                              "--project", str(args.restore_project), override=args.autana))
     if not 0 < args.threshold < 100 or not 0 < args.alpha < 1 or min(args.timeout, args.wait) <= 0:
         parser.error("threshold, alpha and time limits must be positive and in range")
-    if args.validate_plan:
+    if args.validate_plan or args.estimate_plan:
         if not args.suite:
             parser.error("--suite is required")
         try:
@@ -341,6 +345,13 @@ def main(argv=None):
                     validate_filters(args.suite, filter_limits(project))
         except ValueError as error:
             parser.error(str(error))
+        if args.estimate_plan:
+            from perf_job import job_estimate
+            seeds = schedule(args.max_seeds, args.alpha)[0]
+            runs = seeds + min(seeds, CALIBRATION_SEEDS) * (CALIBRATION_RUNS - 1)
+            requests = sum(len(split_filters(args.suite, filter_limits(project)))
+                           for project in (args.project_a, args.project_b))
+            print(job_estimate(2 * seeds, runs * requests, args.timeout, not args.no_restore))
         return 0
     if not all((args.out, args.project_a, args.project_b, args.suite)):
         parser.error("--out, --project-a, --project-b and --suite are required")

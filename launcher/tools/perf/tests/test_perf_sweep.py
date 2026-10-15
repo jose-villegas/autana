@@ -1,9 +1,13 @@
 """Console sweeps exercised with an injected foreground runner."""
 import json
+import contextlib
+import io
+from unittest.mock import patch
 from pathlib import Path
 import sys
 import tempfile
 import unittest
+from shell_job import ShellJobTests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import perf_sweep as tool
@@ -61,7 +65,40 @@ def arguments(root, seeds=(1,)):
                            "--suite", "suite", "counters", "-"])
 
 
-class SweepTests(unittest.TestCase):
+class SweepTests(ShellJobTests, unittest.TestCase):
+    job_kind = "sweep"
+
+    def test_estimate_plan_tracks_rounds_points_and_restore(self):
+        from perf_job import DEFAULT_FLASH_SECONDS
+        with tempfile.TemporaryDirectory() as root:
+            args = arguments(root)
+            args.estimate_plan = True
+            args.timeout = 10
+            args.no_restore = False
+            def estimate():
+                with patch("perf_job.duration_history", return_value={}), \
+                        contextlib.redirect_stdout(io.StringIO()) as output:
+                    self.assertEqual(tool.run(args), 0)
+                return int(output.getvalue())
+            baseline = estimate()
+            points = len(tool.plan(args)["points"])
+            args.runs += 1
+            self.assertEqual(estimate() - baseline, points * args.timeout)
+            args.runs -= 1
+            args.knob[0][1].append(5)
+            self.assertEqual(estimate() - baseline, 2 * args.runs * args.timeout)
+            args.knob[0][1].pop()
+            args.no_restore = True
+            self.assertEqual(baseline - estimate(), DEFAULT_FLASH_SECONDS)
+
+
+    def test_shell_dry_run_takes_no_hold(self):
+        from shell_job import replay
+        result, calls = replay(self, "sweep", extra=("--dry-run",))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(calls, [])
+
+
     def test_unknown_after_identity_discards_captures(self):
         with tempfile.TemporaryDirectory() as root:
             args = arguments(root)
