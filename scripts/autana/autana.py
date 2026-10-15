@@ -1506,7 +1506,7 @@ def debug(args):
 
 LOCK_USAGES = (
     ("lock run [--keep-on-failure <seconds>] -- <command...>", "hold the board while a command runs"),
-    ("lock take [--for <seconds> | --until-released [--pid <pid>]] <note...>", "hold the board across commands; print its token"),
+    ("lock take [--for <seconds> | --until-released [--pid <pid>]] [--estimate <seconds>] <note...>", "hold the board across commands; print its token"),
     ("lock wait", "wait until free without taking the board; --wait caps it"),
     ("lock release [<token>]", "release a lock this session holds, given its token"),
     ("lock hand [--until-back <seconds>] <note...>",

@@ -1153,6 +1153,13 @@ class LockRecordShapeTests(unittest.TestCase):
                                                          "hold" if seconds else "pid_hold"))
                 self.lock.release("COM5", held["token"])
 
+    def test_estimated_end_is_optional_hold_metadata(self):
+        held = self.lock.acquire("COM5", "me", "take")
+        self.lock.hold("COM5", held["token"], "bench", pid=os.getpid(), estimate=30)
+        record = self.lock.read_json(self.lock.lock_path("COM5"))
+        self.assertEqual(set(record), self.golden("pid_hold") | {"estimated_end"})
+        self.assertEqual(record["estimated_end"], record["heartbeat_at"] + 30)
+
     def test_the_last_holder_records_keys_match_the_golden_set(self):
         held = self.lock.acquire("COM5", "me", "flash")
         self.lock.release("COM5", held["token"])

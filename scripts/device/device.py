@@ -1932,6 +1932,7 @@ def main(argv=None):
     duration.add_argument("--for", dest="seconds", type=hold_seconds)
     duration.add_argument("--until-released", action="store_true")
     take.add_argument("--pid", type=int)
+    take.add_argument("--estimate", type=human_wait_seconds)
     take.add_argument("note", nargs="+")
     run = subparsers.add_parser("run")
     run.add_argument("--keep-on-failure", type=hold_seconds)
@@ -2136,7 +2137,7 @@ def main(argv=None):
             pid = args.pid if args.until_released else None
             seconds = None if args.until_released else (args.seconds if args.seconds is not None
                                                        else device_lock.HOLD_MAX_SECONDS)
-            if not store.hold(board, held["token"], " ".join(args.note), seconds=seconds, pid=pid):
+            if not store.hold(board, held["token"], " ".join(args.note), seconds=seconds, pid=pid, estimate=args.estimate):
                 raise LockBusy("device lock was lost before the hold was recorded")
             print(held["token"])
             return 0
