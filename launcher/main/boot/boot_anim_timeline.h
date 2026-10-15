@@ -50,6 +50,12 @@
 /* and one it passes at or after this does not */
 #define BOOT_ANIM_FLOOR_PLUCK_UNTIL_MS 5500
 
+/* the floor starts calming: damping climbs and plucks weaken */
+#define BOOT_ANIM_FLOOR_CALM_START_MS 2000
+
+/* how long that takes, from floor_damping to floor_calm_damping and full plucks to none */
+#define BOOT_ANIM_FLOOR_CALM_MS 1100
+
 #define BOOT_ANIM_PEN_START_MS 520
 /* how long the curve takes to draw */
 #define BOOT_ANIM_PEN_MS 1980
@@ -140,5 +146,6 @@
 #define BOOT_ANIM_FLOOR_TENSION 12
 #define BOOT_ANIM_FLOOR_STIFFNESS 1
 #define BOOT_ANIM_FLOOR_DAMPING 1
+#define BOOT_ANIM_FLOOR_CALM_DAMPING 24
 #define BOOT_ANIM_FLOOR_PLUCK_CELLS 5
 #define BOOT_ANIM_FLOOR_PLUCK_Q16 58982

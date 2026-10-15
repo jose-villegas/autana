@@ -541,6 +541,25 @@ boot_anim_floor_plucks_at(uint32_t ms) {
            < (uint32_t)(BOOT_ANIM_FLOOR_PLUCK_UNTIL_MS - BOOT_ANIM_FLOOR_PLUCK_FROM_MS);
 }
 
+/* How far the floor has calmed at `ms`, 0..255. */
+static inline uint8_t
+boot_anim_floor_calm(uint32_t ms) {
+    return tween_ramp(ms, BOOT_ANIM_FLOOR_CALM_START_MS, BOOT_ANIM_FLOOR_CALM_MS);
+}
+
+/* The share of velocity the floor loses per tick at `ms`, out of 256. */
+static inline int
+boot_anim_floor_damping(uint32_t ms) {
+    return mathi_lerp_u8(BOOT_ANIM_FLOOR_DAMPING, BOOT_ANIM_FLOOR_CALM_DAMPING, boot_anim_floor_calm(ms));
+}
+
+/* A pluck's strength at `ms`, Q16 metres per tick: full until the floor
+ * starts calming, nothing once it has. */
+static inline int32_t
+boot_anim_floor_pluck(uint32_t ms) {
+    return mathi_lerp_u8(BOOT_ANIM_FLOOR_PLUCK_Q16, 0, boot_anim_floor_calm(ms));
+}
+
 #define BOOT_ANIM_FLOOR_SIDE  (BOOT_ANIM_MESH_CELLS + 1)
 #define BOOT_ANIM_FLOOR_NODES (BOOT_ANIM_FLOOR_SIDE * BOOT_ANIM_FLOOR_SIDE)
 

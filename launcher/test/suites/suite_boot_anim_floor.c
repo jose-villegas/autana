@@ -43,11 +43,12 @@ test_each_zero_in_the_window_plucks_once_at_its_first_tick(void) {
         while (next < BOOT_ANIM_ZEROS && boot_anim_zero_t[next] <= reached) {
             if (in_window) {
                 spring_grid_poke(&reference.grid, BOOT_ANIM_MESH_CELLS / 2, BOOT_ANIM_MESH_CELLS / 2,
-                                 BOOT_ANIM_FLOOR_PLUCK_CELLS, BOOT_ANIM_FLOOR_PLUCK_Q16);
+                                 BOOT_ANIM_FLOOR_PLUCK_CELLS, boot_anim_floor_pluck(ms));
                 plucked++;
             }
             next++;
         }
+        reference.grid.damping = boot_anim_floor_damping(ms);
         spring_grid_tick(&reference.grid);
         boot_anim_floor_advance(&floor, ms);
         TEST_ASSERT_EQUAL_INT(next, floor.next_zero);
@@ -77,6 +78,24 @@ test_the_pluck_window_is_half_open(void) {
     TEST_ASSERT_FALSE(boot_anim_floor_plucks_at((uint32_t)BOOT_ANIM_FLOOR_PLUCK_FROM_MS - 1u));
 }
 
+/* Before the calm the floor rings at floor_damping under full plucks; after it,
+ * floor_calm_damping holds and plucks are spent; between, neither goes back. */
+static void
+test_the_calm_raises_damping_and_spends_plucks(void) {
+    const uint32_t start = BOOT_ANIM_FLOOR_CALM_START_MS;
+    const uint32_t end = start + BOOT_ANIM_FLOOR_CALM_MS;
+    TEST_ASSERT_EQUAL_INT(BOOT_ANIM_FLOOR_DAMPING, boot_anim_floor_damping(start));
+    TEST_ASSERT_EQUAL_INT32(BOOT_ANIM_FLOOR_PLUCK_Q16, boot_anim_floor_pluck(start));
+    TEST_ASSERT_EQUAL_INT(BOOT_ANIM_FLOOR_CALM_DAMPING, boot_anim_floor_damping(end));
+    TEST_ASSERT_EQUAL_INT32(0, boot_anim_floor_pluck(end));
+    for (uint32_t ms = start; ms < end; ms++) {
+        TEST_ASSERT_TRUE(boot_anim_floor_pluck(ms + 1) <= boot_anim_floor_pluck(ms));
+        if (BOOT_ANIM_FLOOR_CALM_DAMPING >= BOOT_ANIM_FLOOR_DAMPING) {
+            TEST_ASSERT_TRUE(boot_anim_floor_damping(ms + 1) >= boot_anim_floor_damping(ms));
+        }
+    }
+}
+
 static void
 test_allocation_failure_leaves_flat_floor(void) {
     void* held = memory_alloc(memory_largest_block(MEMORY_PSRAM), MEMORY_PSRAM);
@@ -100,6 +119,7 @@ suite_boot_anim_floor(void) {
     RUN_TEST(test_replay_is_identical_at_every_frame_partition);
     RUN_TEST(test_each_zero_in_the_window_plucks_once_at_its_first_tick);
     RUN_TEST(test_the_pluck_window_is_half_open);
+    RUN_TEST(test_the_calm_raises_damping_and_spends_plucks);
     RUN_TEST(test_allocation_failure_leaves_flat_floor);
 }
 

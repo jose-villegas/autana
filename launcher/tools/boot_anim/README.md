@@ -43,7 +43,9 @@ The generator enforces that bound.
 
 Each zero the pen passes between `floor_pluck_from_ms` and
 `floor_pluck_until_ms` plucks the floor; one passed outside that window does
-not.
+not. From `floor_calm_start_ms`, over `floor_calm_ms`, damping climbs from
+`floor_damping` to `floor_calm_damping` and plucks weaken to nothing, so the
+floor settles.
 
 ## Watching a change
 
