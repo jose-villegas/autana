@@ -1,15 +1,13 @@
 """Seed inference and foreground acquisition exercised without hardware."""
 import contextlib
 import io
-import inspect
 import math
 import pathlib
 import random
 import sys
 import tempfile
-import subprocess
-import os
 import unittest
+from shell_job import ShellJobTests
 from unittest.mock import patch
 from types import SimpleNamespace
 
@@ -154,7 +152,9 @@ class SeedInferenceTest(unittest.TestCase):
         self.assertEqual(stats.compare(rows, rows)['row']['verdict'], 'inconclusive')
 
 
-class AcquisitionTest(unittest.TestCase):
+class AcquisitionTest(ShellJobTests, unittest.TestCase):
+    job_kind = "compare"
+
     def measure(self, root, fake, cap=16):
         with contextlib.redirect_stdout(io.StringIO()) as output:
             payload = tool.measure(arguments(root, cap), fake)
@@ -182,28 +182,31 @@ class AcquisitionTest(unittest.TestCase):
                         aa = tool.measure(args, FakeAutana(root))
                     self.assertEqual([item['seed'] for item in aa['plan']], seeds)
 
-    def test_shell_wrapper_runs_ab_and_aa_with_fake_autana(self):
+    def test_compare_estimate_covers_first_pass(self):
         with tempfile.TemporaryDirectory() as root:
-            root = pathlib.Path(root)
-            fake = root/'fake.py'
-            fake.write_text("import pathlib,sys\n" + inspect.getsource(FakeAutana) + "\n" +
-                            f"fake = FakeAutana({str(root)!r}, shifted=True)\n"
-                            "code, lines, wall = fake(sys.argv[1:], None, 1800)\n"
-                            "for at, line in lines: print(line, flush=True)\n"
-                            "sys.exit(code)\n")
-            for name in ('a', 'b'):
-                (root/name/'launcher/test').mkdir(parents=True)
-                (root/name/'launcher/test/suites.h').write_bytes((PERF.parents[2]/'launcher/test/suites.h').read_bytes())
-            def shell_path(path):
-                return pathlib.Path(path).as_posix()
-            for side in ('a', 'b'):
-                destination = root/f'out_{side}'
-                command = ['sh', shell_path(PERF/'perf_compare.sh'), shell_path(root/'a'), shell_path(root/side),
-                           '--no-restore', '-o', shell_path(destination), '--max-seeds', '8', '--suite', 'suite', '-', '-',
-                           '--autana', f'"{shell_path(sys.executable)}" "{shell_path(fake)}"']
-                done = subprocess.run(command, capture_output=True, text=True, timeout=60)
-                self.assertEqual(done.returncode, 0, done.stderr)
-                self.assertIn('no change' if side == 'a' else 'regressed', done.stdout)
+            args = arguments(root, cap=8)
+            with patch("perf_job.job_estimate", return_value=1) as estimate, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                tool.main(["--estimate-plan", "--max-seeds", str(args.max_seeds),
+                           "--project-a", str(args.project_a), "--project-b", str(args.project_b),
+                           "--suite", "suite", "-", "-"])
+            # Two sides: 2 * 4 = 8 flashes; 2 * (4 + 2 repeats) = 12 captures.
+            estimate.assert_called_once_with(8, 12, 1800, True)
+
+    def test_job_estimate_uses_history_and_fallbacks(self):
+        from perf_job import DEFAULT_FLASH_SECONDS, job_estimate
+        with patch("perf_job.duration_history", return_value={"flash": 10, "run-suite": 20}):
+            self.assertEqual(job_estimate(2, 3, 900), 90)
+        with patch("perf_job.duration_history", return_value={}):
+            self.assertEqual(job_estimate(2, 3, 900, restore=False),
+                             2 * DEFAULT_FLASH_SECONDS + 3 * 900)
+
+    def test_shell_validation_takes_no_hold(self):
+        from shell_job import replay
+        for options in (("--validate-plan",), ("--bad-option",), ("--help",)):
+            result, calls = replay(self, "compare", extra=options)
+            self.assertEqual(calls, [])
+            self.assertEqual(result.returncode == 0, options != ("--bad-option",), result.stderr)
 
     def test_extra_seeds_only_remeasure_inconclusive_rows_and_stop_at_cap(self):
         with tempfile.TemporaryDirectory() as root:

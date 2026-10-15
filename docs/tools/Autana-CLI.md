@@ -166,6 +166,14 @@ missing, failed or unmet) and name the filter, so an A/B read later knows
 which rows it compares. It needs a diagnostics build whose `RUNSUITE` takes
 patterns (`autana flash diag`), and says so when the board runs an older one.
 
+For a scoped A/B with several steps, put both flashes and captures inside
+one `autana lock run` so nobody flashes between them.
+A and B are project directories, each built beforehand (`autana build`).
+
+| Linux | Windows PowerShell |
+|---|---|
+| `autana lock run -- sh -c 'autana --project A suite run_example_perf_suite --flash --runs 3 --test row && autana --project B suite run_example_perf_suite --flash --runs 3 --test row'` | `autana lock run -- powershell -NoProfile -Command 'autana --project A suite run_example_perf_suite --flash --runs 3 --test row; if ($LASTEXITCODE) { exit $LASTEXITCODE }; autana --project B suite run_example_perf_suite --flash --runs 3 --test row; exit $LASTEXITCODE'` |
+
 `autana batch <suite>... [--runs N] [--perf-scope] [--verbose]` still works:
 the old spelling of `autana suite <suite>... --runs N --perf-scope --verbose
 --flash` (`--runs` defaults to 3 here, `suite`'s own default is 1). It prints
@@ -236,7 +244,7 @@ The two raw levels below gesture, `touch` and `imu`, live under
 |---|---|
 | `autana status [--json]` | Every board, plugged in or locked: free or held, the holder with local start, elapsed and estimated free time, and the FIFO waiters with estimated starts. A board off USB is listed without a port. |
 | `autana lock run [--keep-on-failure <seconds>] -- <command...>` | Hold the board while the child command runs. The child inherits its lock token. A failed command can leave a timed hold for inspection. |
-| `autana lock take [--for <seconds> \| --until-released [--pid <pid>]] <note...>` | Wait for the board and print a token for commands in this session. A timed hold lasts at most an hour; an until-released hold ends when its owner process dies. |
+| `autana lock take [--for <seconds> \| --until-released [--pid <pid>]] [--estimate <seconds>] <note...>` | Wait for the board and print a token for commands in this session. A timed hold lasts at most an hour; an until-released hold ends when its owner process dies. |
 | `autana lock release [<token>]` | Release the lock a command of this session holds, before it would have. Given a lock's token, or, run from inside the command that holds the lock, without one. |
 | `autana lock wait` | Wait until the board is free without taking it or queueing; no cap without `--wait`. |
 | `autana lock hand [--until-back <seconds>] <note...>` | Wait for the board and reserve it for a person for an hour; running it again renews the hour. With `--until-back`, wait until it is taken back or lapses. |
@@ -247,6 +255,8 @@ COM number changes. A command that loses the lock stops with `device lock was
 lost`; one that finds the board busy exits 75
 ([exit codes](Device-Lock.md#exit-codes-and-json-status)). A separate `flash` and `suite` leave a gap where another session can
 flash; `suite --flash` and `selftest` hold one lock across flash and capture.
+`--estimate` on `take` supplies `status --json`'s `estimated_free`
+and queued `estimated_start` times. It never ends a hold.
 Lock loss is defined in [Device-Lock.md](Device-Lock.md); flash success,
 captures and wait estimates in [Flash-and-Captures.md](Flash-and-Captures.md).
 

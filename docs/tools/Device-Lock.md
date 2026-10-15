@@ -72,6 +72,13 @@ autana repeatedly. Ctrl+C ends the child and releases the lock. A failed child
 also releases it unless `--keep-on-failure <seconds>` leaves a timed hold; the
 token and an early release command then print on stderr.
 
+`lock take` names the job with trailing note words and accepts
+`--estimate SECONDS` for its expected duration.
+
+An estimate sets the record's optional `estimated_end` (epoch seconds).
+`status` shows it as `estimated_free` and uses it for queued starts. It never
+expires or reclaims a hold; a passed estimate shows the current time.
+
 Build outside the board lock, then hold it across the board commands:
 
 | Linux | Windows PowerShell |
@@ -277,7 +284,7 @@ cannot help: an older install never looks in the new folder). Per board, with
 
 | File | What it is |
 |---|---|
-| `<serial>.json` | The lock: `owner`, `board`, `kind`, `purpose`, `acquired_at`, `heartbeat_at`, `pid`, `host`, `token`, `protocol`, `autana_version`; a timed hold or person's reservation has `expires_at` and `pid: 0`, and an until-released hold has `until_released: true` and the owner process id. `heartbeat_at` is when a hold was written. `purpose` is what `status` shows. The `token` names this lock; `lock take` prints it, and a holder's child processes inherit it for `lock release` without an argument. `status` never prints it. |
+| `<serial>.json` | The lock: `owner`, `board`, `kind`, `purpose`, `acquired_at`, `heartbeat_at`, `pid`, `host`, `token`, `protocol`, `autana_version`; a timed hold or person's reservation has `expires_at` and `pid: 0`, and an until-released hold has `until_released: true` and the owner process id. `heartbeat_at` is when a hold was written. `purpose` is what `status` shows. Optional `estimated_end` supplies the informational end time without changing liveness. The `token` names this lock; `lock take` prints it, and a holder's child processes inherit it for `lock release` without an argument. `status` never prints it. |
 | `<serial>.queue/` | One ticket per waiting command, in FIFO order; a dead waiter's is discarded. |
 | `<serial>.last.json` | The previous holder, one only: overwritten each time a lock ends, for the message in step 5. |
 | `<serial>.seen.json` | Names a board once found on USB, so `lock hand` and `lock take-back` can still reach it when it has since dropped off. Delete it to make this machine forget the board. |
@@ -314,7 +321,7 @@ Times are epoch seconds; an age or a time left is the difference from now. An es
 | `state` | `unlocked`, `held`, or `human` (a person's reservation) |
 | `holder` | `{"owner", "purpose"}`, the command or hold note; `null` when unlocked. A held lock also carries `protocol` and `autana_version`; a timed or until-released hold carries `kind: "hold"`. |
 | `since` | when the holder took the board |
-| `estimated_free` | when the holder should be done |
+| `estimated_free` | when the holder should be done; a hold can supply this with `--estimate` |
 | `expires_at` | when a timed hold or person's reservation lapses; else `null` |
 | `lapsed` | `{"owner", "purpose", "reason", "at"}` of a lock or reservation that lapsed but is still on disk, else `null`. `reason` is `dead process`, `heartbeat expiry`, or `hold lapsed` for a lock the next waiter reclaims (`at` is `null`), or `reservation expired` for a person's reservation (`at` is when it lapsed). |
 | `waiting` | `[{"owner", "purpose", "estimated_start"}]` in queue order |

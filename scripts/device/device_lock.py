@@ -623,7 +623,7 @@ class LockStore:
             self.note_last_holder(board, lock, "released")
             return lock
 
-    def hold(self, board, token, note, seconds=None, pid=None, human=False):
+    def hold(self, board, token, note, seconds=None, pid=None, human=False, estimate=None):
         with self.guard(board):
             lock = self.read_json(self.lock_path(board))
             if not lock or lock.get("token") != token or self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
@@ -634,6 +634,8 @@ class LockStore:
             lock.pop("until_released", None)
             lock.pop("expires_at", None)
             lock.update(kind="human" if human else "hold", purpose=note)
+            if estimate is not None:
+                lock["estimated_end"] = now + estimate
             if seconds is not None:
                 lock["expires_at"] = now + seconds
             else:
@@ -770,6 +772,18 @@ def format_estimate(timestamp):
     return local_time(timestamp) if timestamp is not None else "unknown (no duration history)"
 
 
+def holder_end(lock, durations):
+    """Project completion from an explicit estimate or the holder's duration history."""
+    end = lock.get("estimated_end")
+    if end is not None:
+        return end
+    duration = durations.get(lock.get("kind")) if lock.get("kind") != "hold" else None
+    acquired = lock.get("acquired_at")
+    if duration is not None and acquired is not None:
+        return acquired + duration
+    return None
+
+
 def queue_estimates(status, now, durations):
     """Each waiter's estimated start, by ticket: the holder's own kind sets
     when the board frees, and each waiter's kind how long it keeps it."""
@@ -777,10 +791,8 @@ def queue_estimates(status, now, durations):
     if status.get("human"):
         start = None
     elif lock:
-        duration = durations.get(lock.get("kind")) if lock.get("kind") != "hold" else None
-        acquired = lock.get("acquired_at")
-        start = (max(now, acquired + duration)
-                if duration is not None and acquired is not None else None)
+        end = holder_end(lock, durations)
+        start = max(now, end) if end is not None else None
     else:
         start = now
     estimates = {}
@@ -815,16 +827,14 @@ def status_entry(store, board, port=None, now=None, durations=None):
                      expires_at=human_expires_at(human))
     elif status["lock"]:
         lock = status["lock"]
-        duration = durations.get(lock.get("kind")) if lock.get("kind") != "hold" else None
-        acquired = lock.get("acquired_at")
+        end = holder_end(lock, durations)
         entry.update(state="held",
                      holder={"owner": lock["owner"], "purpose": lock.get("purpose", "unknown"),
                              "protocol": lock.get("protocol", 0),
                              "autana_version": lock.get("autana_version"),
                              **({"kind": "hold"} if lock.get("kind") == "hold" else {})},
-                     since=acquired, expires_at=lock.get("expires_at"),
-                     estimated_free=(max(now, acquired + duration)
-                                     if duration is not None and acquired is not None else None))
+                     since=lock.get("acquired_at"), expires_at=lock.get("expires_at"),
+                     estimated_free=max(now, end) if end is not None else None)
     elif status["reclaimable"]:
         stale = status["reclaimable"]
         entry["lapsed"] = {"owner": stale["owner"], "purpose": stale.get("purpose", "unknown"),
