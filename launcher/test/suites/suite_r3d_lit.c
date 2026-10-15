@@ -1913,7 +1913,7 @@ static void
 test_a_census_list_draws_what_raster_draw_draws_at_any_size(void) {
     parts_t* const p = parts_buffer(&shared_parts);
     build_wall_and_stack(p);
-    const r3d_placement_t moved = {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {-120.0f, 40.0f, 0.0f}};
+    const mat4f_t moved = mat4f_from_trs((vec3f_t){-120.0f, 40.0f, 0.0f}, quatf_identity(), (vec3f_t){1, 1, 1});
     const r3d_instance_t instances[] = {{&p->mesh, NULL}, {&p->mesh, &moved}};
     raster_t raster = census_raster(instances, 2);
     expect_census_draws_match_at_any_size(&raster);
@@ -1929,7 +1929,7 @@ test_a_census_list_steps_by_each_instances_own_mesh(void) {
     parts_t* const floor = parts_buffer(&other_parts);
     build_floor_and_rects(floor);
     TEST_ASSERT_TRUE(wall->mesh.cluster_count != floor->mesh.cluster_count);
-    const r3d_placement_t moved = {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {-120.0f, 40.0f, 0.0f}};
+    const mat4f_t moved = mat4f_from_trs((vec3f_t){-120.0f, 40.0f, 0.0f}, quatf_identity(), (vec3f_t){1, 1, 1});
     const r3d_instance_t instances[] = {{&floor->mesh, NULL}, {&wall->mesh, NULL}, {&wall->mesh, &moved}};
     raster_t raster = census_raster(instances, 3);
     TEST_ASSERT_EQUAL_UINT32(3 + floor->mesh.cluster_count + (2 * wall->mesh.cluster_count),

@@ -30,34 +30,28 @@ static const int16_t box_positions[][3] = {{-40, -40, 0}, {40, -40, 0}, {40, 40,
 static const int16_t (*const wall_and_box[])[3] = {raster_rig_wall, box_positions};
 
 /* The box turned `degrees` about y and standing at `at`. */
-static r3d_placement_t
+static mat4f_t
 turned(float degrees, vec3f_t at) {
-    const float a = degrees * 3.14159265F / 180.0F;
-    const float c = cosf(a);
-    const float s = sinf(a);
-    return (r3d_placement_t){{{c, 0.0F, s}, {0.0F, 1.0F, 0.0F}, {-s, 0.0F, c}}, at};
+    enum { DEGREES_HALF_TURN = 180 };
+
+    const quatf_t rotation = quatf_from_axis_angle((vec3f_t){0, 1, 0}, degrees * MATH_PI / DEGREES_HALF_TURN);
+    return mat4f_from_trs(at, rotation, (vec3f_t){1, 1, 1});
 }
 
 static vec3f_t
-row_of(const r3d_placement_t* p, int r) {
-    return (vec3f_t){p->m[r][0], p->m[r][1], p->m[r][2]};
-}
-
-static vec3f_t
-column_of(const r3d_placement_t* p, int c) {
+column_of(const mat4f_t* p, int c) {
     return (vec3f_t){p->m[0][c], p->m[1][c], p->m[2][c]};
 }
 
 static vec3f_t
-place(const r3d_placement_t* p, vec3f_t v) {
-    const vec3f_t turned_v = {vec3f_dot(row_of(p, 0), v), vec3f_dot(row_of(p, 1), v), vec3f_dot(row_of(p, 2), v)};
-    return vec3f_add(turned_v, p->position);
+place(const mat4f_t* p, vec3f_t v) {
+    return mat4f_apply(p, v);
 }
 
 /* The same with the transpose of m, which undoes a rotation. */
 static vec3f_t
-unplace(const r3d_placement_t* p, vec3f_t w) {
-    const vec3f_t d = vec3f_sub(w, p->position);
+unplace(const mat4f_t* p, vec3f_t w) {
+    const vec3f_t d = vec3f_sub(w, ((vec3f_t){p->m[0][3], p->m[1][3], p->m[2][3]}));
     return (vec3f_t){vec3f_dot(column_of(p, 0), d), vec3f_dot(column_of(p, 1), d), vec3f_dot(column_of(p, 2), d)};
 }
 
@@ -92,13 +86,10 @@ project(const fixture_camera_t* c, int w, int h, vec3f_t world, float* x, float*
 /* A ray against the quad `half` units each side of the origin on z = 0,
  * carried by `p`: the distance along it, or a negative one for a miss. */
 static float
-hit_quad(const r3d_placement_t* p, float half, vec3f_t origin, vec3f_t dir) {
+hit_quad(const mat4f_t* p, float half, vec3f_t origin, vec3f_t dir) {
     const vec3f_t o = unplace(p, origin);
-    const vec3f_t d = unplace(&(r3d_placement_t){{{p->m[0][0], p->m[0][1], p->m[0][2]},
-                                                  {p->m[1][0], p->m[1][1], p->m[1][2]},
-                                                  {p->m[2][0], p->m[2][1], p->m[2][2]}},
-                                                 {0.0F, 0.0F, 0.0F}},
-                              dir);
+    const vec3f_t d = {vec3f_dot(column_of(p, 0), dir), vec3f_dot(column_of(p, 1), dir),
+                       vec3f_dot(column_of(p, 2), dir)};
     if (fabsf(d.z) < 1e-6F) {
         return -1.0F;
     }
@@ -110,7 +101,7 @@ hit_quad(const r3d_placement_t* p, float half, vec3f_t origin, vec3f_t dir) {
 
 typedef struct {
     fixture_camera_t camera;
-    const r3d_placement_t* box; /* NULL: no box */
+    const mat4f_t* box; /* NULL: no box */
 } pose_t;
 
 /* What pixel (px, py) of a w x h picture of `now` shows, and where that
@@ -123,7 +114,7 @@ truth(const pose_t* now, const pose_t* before, int w, int h, int px, int py, flo
     const float ray_y = ((float)py + 0.5F - ((float)h * 0.5F)) / k;
     const vec3f_t dir =
         vec3f_normalize(vec3f_add(b.forward, vec3f_add(vec3f_scale(b.right, ray_x), vec3f_scale(b.down, ray_y))));
-    const r3d_placement_t still = turned(0.0F, (vec3f_t){0.0F, 0.0F, 0.0F});
+    const mat4f_t still = turned(0.0F, (vec3f_t){0.0F, 0.0F, 0.0F});
     const float t_wall = hit_quad(&still, 400.0F, now->camera.eye, dir);
     const float t_box = now->box == NULL ? -1.0F : hit_quad(now->box, 40.0F, now->camera.eye, dir);
     const int what = t_box > 0.0F && (t_wall < 0.0F || t_box < t_wall) ? BOX : t_wall > 0.0F ? WALL : NONE;
@@ -155,7 +146,7 @@ own_of(raster_rig_t* r) {
 }
 
 /* Allocated per test: the wall and, when `with_box`, the box placed by
- * placement[1], motion attached unless `detached`, pictures up to W x H. */
+ * model[1], motion attached unless `detached`, pictures up to W x H. */
 static raster_rig_t*
 rig_open(bool with_box, bool detached) {
     raster_rig_t* r = raster_rig_open(wall_and_box, with_box ? 2 : 1, 1U << 1, W, H, sizeof(motion_own_t));
@@ -171,7 +162,7 @@ rig_open(bool with_box, bool detached) {
 static void
 draw_at(raster_rig_t* r, const pose_t* pose, int w, int h, int quarter) {
     if (pose->box != NULL) {
-        r->placement[1] = *pose->box;
+        r->model[1] = *pose->box;
     }
     r->raster.width = w;
     r->raster.height = h;
@@ -255,7 +246,7 @@ test_the_first_picture_knows_no_motion(void) {
 static void
 test_a_still_camera_and_scene_have_no_motion(void) {
     raster_rig_t* r = rig_open(true, false);
-    const r3d_placement_t at = turned(-20.0F, (vec3f_t){0.0F, 0.0F, -100.0F});
+    const mat4f_t at = turned(-20.0F, (vec3f_t){0.0F, 0.0F, -100.0F});
     const pose_t pose = {camera_at((vec3f_t){0.0F, 0.0F, -300.0F}, 0.0F), &at};
     draw(r, &pose, W, H);
     draw(r, &pose, W, H);
@@ -274,7 +265,7 @@ typedef struct {
 } change_t;
 
 typedef struct {
-    r3d_placement_t box[2];
+    mat4f_t box[2];
     pose_t before, now;
 } posed_t;
 
@@ -313,7 +304,7 @@ test_camera_motion_is_the_reprojection_through_the_previous_pose(void) {
 }
 
 static void
-test_a_moving_instance_moves_by_its_previous_placement(void) {
+test_a_moving_instance_moves_by_its_previous_model(void) {
     static const change_t c = {-15.0F, {14.0F, 4.0F, -10.0F}, {0.0F, 0.0F, 0.0F}, 0.0F};
     posed_t p;
     check_change(&c, true, W, H, &p);
@@ -443,7 +434,7 @@ run_raster_motion_suite(void) {
     RUN_TEST(test_the_first_picture_knows_no_motion);
     RUN_TEST(test_a_still_camera_and_scene_have_no_motion);
     RUN_TEST(test_camera_motion_is_the_reprojection_through_the_previous_pose);
-    RUN_TEST(test_a_moving_instance_moves_by_its_previous_placement);
+    RUN_TEST(test_a_moving_instance_moves_by_its_previous_model);
     RUN_TEST(test_camera_and_instance_motion_add_up);
     RUN_TEST(test_a_size_change_between_pictures_keeps_motion_in_this_pictures_pixels);
     RUN_TEST(test_shape_and_quarter_changes_reproject_in_the_current_picture);

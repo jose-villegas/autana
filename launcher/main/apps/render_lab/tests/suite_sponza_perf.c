@@ -223,11 +223,11 @@ test_sponza_draw_stage_breakdown(void) {
     TEST_PASS();
 }
 
-/* `moving`, when not NULL, is the instance's placement, nudged every frame
+/* `moving`, when not NULL, is the instance's model, nudged every frame
  * so an attached motion tags every triangle. */
 static void
 report_frame_cost(const char* label, const char* object_name, const r3d_instance_t* instance,
-                  const raster_attachment_t* const* attachments, r3d_placement_t* moving) {
+                  const raster_attachment_t* const* attachments, mat4f_t* moving) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
     bench_t* b = memory_alloc(sizeof(*b), MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL(b);
@@ -257,7 +257,7 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
         const render_view_t view = camera_view(flythrough, scene_entity_transform(sponza, camera_entity),
                                                (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
         if (moving != NULL) {
-            moving->position.x = (t_ms / SPONZA_POSE_EVERY_MS) % 2 == 0 ? 0.0F : 0.01F;
+            moving->m[0][3] = (t_ms / SPONZA_POSE_EVERY_MS) % 2 == 0 ? 0.0F : 0.01F;
         }
         const int64_t start = timing_now_us();
         const raster_stats_t stats = raster_draw(&b->raster, &view);
@@ -329,10 +329,10 @@ test_sponza_frame_cost_with_motion(void) {
     const r3d_instance_t still = {&meshes[0], NULL};
     report_frame_cost("motion", sponza_bakes[0], &still, attached, NULL);
     raster_motion_forget(motion);
-    r3d_placement_t placement = {{{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}}, {0.0F, 0.0F, 0.0F}};
-    const r3d_instance_t moving = {&meshes[0], &placement};
-    report_frame_cost("motion_moving", sponza_bakes[0], &moving, attached, &placement);
-    report_frame_cost("placed", sponza_bakes[0], &moving, NULL, &placement);
+    mat4f_t model = mat4f_identity();
+    const r3d_instance_t moving = {&meshes[0], &model};
+    report_frame_cost("motion_moving", sponza_bakes[0], &moving, attached, &model);
+    report_frame_cost("placed", sponza_bakes[0], &moving, NULL, &model);
     memory_free(motion);
     TEST_PASS();
 }
