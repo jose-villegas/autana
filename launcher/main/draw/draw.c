@@ -71,7 +71,7 @@ draw_pixel(int x, int y, gfx_color_t color) {
         return;
     }
     const recti_t rect = gfx_target_clip_rect(state.target, state.clip, (recti_t){x, y, 1, 1});
-    if (rect.y >= recti_bottom(rect)) {
+    if (recti_is_empty(rect)) {
         return;
     }
     gfx_target_row(state.target, y)[x] = color;
@@ -87,7 +87,7 @@ plot(const gfx_surface_t* state, int x, int y, gfx_color_t color, unsigned flags
         return;
     }
     const recti_t rect = gfx_target_clip_rect(state->target, state->clip, (recti_t){x, y, 1, 1});
-    if (rect.y >= recti_bottom(rect)) {
+    if (recti_is_empty(rect)) {
         return;
     }
     gfx_color_t* const dst = &gfx_target_row(state->target, y)[x];

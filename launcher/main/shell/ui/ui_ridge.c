@@ -765,7 +765,14 @@ group_rows(const int16_t* lo, const int16_t* hi, int x0, int x1, int* y0, int* y
 /* The columns of changed pixels seen so far, and their rows. */
 static inline __attribute__((always_inline)) void
 note_changed(recti_t* box, int x, int y) {
-    *box = recti_union(*box, (recti_t){x, y, 1, 1});
+    if (recti_is_empty(*box)) {
+        *box = (recti_t){x, y, 1, 1};
+        return;
+    }
+    const int right = mathi_max(recti_right(*box), x + 1);
+    box->x = mathi_min(box->x, x);
+    box->w = right - box->x;
+    box->h = y + 1 - box->y; /* rows arrive in order */
 }
 
 static inline __attribute__((always_inline)) void
