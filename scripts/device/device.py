@@ -577,7 +577,7 @@ class HeldLock:
 
     HEARTBEAT_SECONDS = 5
 
-    def __init__(self, store, board, owner, kind, wait, announce_waiters=False):
+    def __init__(self, store, board, owner, kind, wait, announce_waiters=False, note=None, estimate=None):
         self.store = store
         self.announce_waiters = announce_waiters
         self.board = board
@@ -592,12 +592,15 @@ class HeldLock:
             self.held = device_lock.Held(record, "")
         else:
             self.held = store.acquire(board, owner, kind, wait=wait, on_wait=self.wait_notice,
-                                      purpose=command_label(kind))
+                                      purpose=note or command_label(kind))
         if not self.held:
             raise LockBusy("device lock was not acquired: "
                            + device_lock.busy_text(store.status(board), store.now()))
         if self.held.log:
             print(self.held.log, file=sys.stderr)
+        if kind == "run" and not self.borrowed and (note or estimate is not None):
+            if not store.hold(board, self.held["token"], note or command_label(kind), estimate=estimate):
+                raise LockBusy("device lock was lost before the hold was recorded")
         self.stop = threading.Event()
         self.lost = threading.Event()
         self.notified = set()
@@ -1932,9 +1935,12 @@ def main(argv=None):
     duration.add_argument("--for", dest="seconds", type=hold_seconds)
     duration.add_argument("--until-released", action="store_true")
     take.add_argument("--pid", type=int)
+    take.add_argument("--estimate", type=human_wait_seconds)
     take.add_argument("note", nargs="+")
     run = subparsers.add_parser("run")
     run.add_argument("--keep-on-failure", type=hold_seconds)
+    run.add_argument("--estimate", type=human_wait_seconds)
+    run.add_argument("--note", nargs="+")
     run.add_argument("child", nargs=argparse.REMAINDER)
     wait_parser = subparsers.add_parser("wait-free")
     wait_parser.add_argument("--cap", type=human_wait_seconds)
@@ -2136,7 +2142,7 @@ def main(argv=None):
             pid = args.pid if args.until_released else None
             seconds = None if args.until_released else (args.seconds if args.seconds is not None
                                                        else device_lock.HOLD_MAX_SECONDS)
-            if not store.hold(board, held["token"], " ".join(args.note), seconds=seconds, pid=pid):
+            if not store.hold(board, held["token"], " ".join(args.note), seconds=seconds, pid=pid, estimate=args.estimate):
                 raise LockBusy("device lock was lost before the hold was recorded")
             print(held["token"])
             return 0
@@ -2144,7 +2150,8 @@ def main(argv=None):
             child = args.child[1:] if args.child[:1] == ["--"] else args.child
             if not child:
                 parser.error("run needs -- <command...>")
-            with HeldLock(store, board, args.owner, "run", args.wait) as held:
+            with HeldLock(store, board, args.owner, "run", args.wait,
+                          note=" ".join(args.note) if args.note else None, estimate=args.estimate) as held:
                 try:
                     run_to_end(child, held.lost)
                     return 0

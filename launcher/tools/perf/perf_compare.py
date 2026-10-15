@@ -10,7 +10,7 @@ from pathlib import Path
 from statistics import mean
 from types import SimpleNamespace
 
-from layout_measure import analyse, autana_command, required_seeds, run_flash, filter_limits, validate_filters, FilterOverlap
+from layout_measure import analyse, autana_command, required_seeds, run_flash, filter_limits, validate_filters, split_filters, FilterOverlap
 from seed_statistics import compare, minimum_seeds, permutation_samples
 
 DEFAULT_THRESHOLD = 1.0
@@ -311,6 +311,8 @@ def main(argv=None):
     """Parse a comparison, preflight validation, or restore request."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--validate-plan", action="store_true")
+    parser.add_argument("--estimate-plan", action="store_true")
+    parser.add_argument("--no-restore", action="store_true")
     parser.add_argument("--restore-project", type=Path)
     parser.add_argument("--out", "-o", type=Path)
     parser.add_argument("--project-a", type=Path)
@@ -331,7 +333,7 @@ def main(argv=None):
                                              "--project", str(args.restore_project), override=args.autana))
     if not 0 < args.threshold < 100 or not 0 < args.alpha < 1 or min(args.timeout, args.wait) <= 0:
         parser.error("threshold, alpha and time limits must be positive and in range")
-    if args.validate_plan:
+    if args.validate_plan or args.estimate_plan:
         if not args.suite:
             parser.error("--suite is required")
         try:
@@ -341,6 +343,12 @@ def main(argv=None):
                     validate_filters(args.suite, filter_limits(project))
         except ValueError as error:
             parser.error(str(error))
+        if args.estimate_plan:
+            from layout_measure import job_estimate
+            flashes = 2 * args.max_seeds
+            requests = max((split_filters(args.suite, filter_limits(project))
+                            for project in (args.project_a, args.project_b)), key=len)
+            print(job_estimate(flashes, flashes * MAX_RUNS * len(requests), args.timeout, not args.no_restore))
         return 0
     if not all((args.out, args.project_a, args.project_b, args.suite)):
         parser.error("--out, --project-a, --project-b and --suite are required")

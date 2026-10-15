@@ -6,6 +6,15 @@ seed sets. Arguments accept revisions or existing project directories.
 The wrapper restores `origin/main`'s release image afterwards;
 `--no-restore` omits that flash.
 
+A comparison or sweep holds the board from its first board call through the
+restore, including failure cleanup. Other sessions queue behind the whole job.
+`autana status` shows `perf_compare A vs B` or `perf_sweep`, the
+estimated finish and queued starts. Estimates use the board's duration history;
+missing history uses the configured capture deadline and `DEFAULT_FLASH_SECONDS`
+in `layout_measure.py`. The comparison reserves its seed/run caps; the sweep
+uses its planned flashes, rounds and knob points. Ctrl+C restores and releases
+the hold. A job inside an existing hold borrows its token.
+
 Each `--suite NAME TESTS TABLE` takes a registered suite name, comma-separated
 test patterns (`-` for all), and a table command (`-` reads the capture's
 `<row> both cores: mean <N>us`, `<row> one core: mean <N>us`, or

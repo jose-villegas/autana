@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from shell_job import ShellJobTests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import perf_sweep as tool
@@ -61,7 +62,16 @@ def arguments(root, seeds=(1,)):
                            "--suite", "suite", "counters", "-"])
 
 
-class SweepTests(unittest.TestCase):
+class SweepTests(ShellJobTests, unittest.TestCase):
+    job_kind = "sweep"
+
+    def test_shell_dry_run_takes_no_hold(self):
+        from shell_job import replay
+        result, calls = replay(self, "sweep", extra=("--dry-run",))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(calls, [])
+
+
     def test_unknown_after_identity_discards_captures(self):
         with tempfile.TemporaryDirectory() as root:
             args = arguments(root)

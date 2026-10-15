@@ -120,6 +120,37 @@ class HoldGuardTests(Store):
                 self.store.release(BOARD_A, token)
                 os.environ[device.TOKEN_ENV] = ""
 
+    def test_estimate_and_note_for_take_and_run(self):
+        for verb in ("take", "run"):
+            with self.subTest(verb=verb), self.scope():
+                words = (["take", "--until-released", "--pid", str(os.getpid()),
+                          "--estimate", "30", "perf", "job"] if verb == "take" else
+                         ["run", "--estimate", "30", "--note", "perf", "job", "--", "child"])
+                def check(*unused):
+                    self.assert_estimated_hold()
+                with mock.patch.object(device, "run_to_end", side_effect=check), \
+                        contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(self.main(*words), 0)
+                if verb == "take":
+                    self.assert_estimated_hold()
+                    self.store.release(BOARD_A, self.store.status(BOARD_A)["lock"]["token"])
+
+    def assert_estimated_hold(self):
+        ticket = self.store.enqueue(BOARD_A, "waiter", "flash")
+        second = self.store.enqueue(BOARD_A, "second", "flash")
+        entry = device_lock.status_entry(self.store, BOARD_A, durations={"flash": 5})
+        self.assertEqual(entry["holder"]["purpose"], "perf job")
+        self.assertEqual(entry["estimated_free"], self.clock.now() + 30)
+        self.assertEqual([waiter["estimated_start"] for waiter in entry["waiting"]],
+                         [entry["estimated_free"], entry["estimated_free"] + 5])
+        self.assertIn("perf job", "\n".join(device_lock.status_lines(entry, self.clock.now())))
+        self.clock.advance(31)
+        self.assertIsNotNone(self.store.status(BOARD_A)["lock"])
+        self.assertIsNone(self.store.status(BOARD_A)["reclaimable"])
+        self.assertEqual(device_lock.status_entry(self.store, BOARD_A)["estimated_free"], self.clock.now())
+        self.store.cancel(BOARD_A, ticket)
+        self.store.cancel(BOARD_A, second)
+
     def test_until_released_reclaims_reused_pid_only_on_this_host(self):
         token = self.take(pid=123)
         with mock.patch.object(device_lock, "process_start",

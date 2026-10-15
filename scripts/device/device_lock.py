@@ -623,7 +623,7 @@ class LockStore:
             self.note_last_holder(board, lock, "released")
             return lock
 
-    def hold(self, board, token, note, seconds=None, pid=None, human=False):
+    def hold(self, board, token, note, seconds=None, pid=None, human=False, estimate=None):
         with self.guard(board):
             lock = self.read_json(self.lock_path(board))
             if not lock or lock.get("token") != token or self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
@@ -634,6 +634,8 @@ class LockStore:
             lock.pop("until_released", None)
             lock.pop("expires_at", None)
             lock.update(kind="human" if human else "hold", purpose=note)
+            if estimate is not None:
+                lock["estimated_end"] = now + estimate
             if seconds is not None:
                 lock["expires_at"] = now + seconds
             else:
@@ -779,8 +781,10 @@ def queue_estimates(status, now, durations):
     elif lock:
         duration = durations.get(lock.get("kind")) if lock.get("kind") != "hold" else None
         acquired = lock.get("acquired_at")
-        start = (max(now, acquired + duration)
-                if duration is not None and acquired is not None else None)
+        end = lock.get("estimated_end")
+        if end is None and duration is not None and acquired is not None:
+            end = acquired + duration
+        start = max(now, end) if end is not None else None
     else:
         start = now
     estimates = {}
@@ -823,7 +827,8 @@ def status_entry(store, board, port=None, now=None, durations=None):
                              "autana_version": lock.get("autana_version"),
                              **({"kind": "hold"} if lock.get("kind") == "hold" else {})},
                      since=acquired, expires_at=lock.get("expires_at"),
-                     estimated_free=(max(now, acquired + duration)
+                     estimated_free=(max(now, lock["estimated_end"]) if "estimated_end" in lock else
+                                     max(now, acquired + duration)
                                      if duration is not None and acquired is not None else None))
     elif status["reclaimable"]:
         stale = status["reclaimable"]

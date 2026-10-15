@@ -63,6 +63,8 @@ def parse_args(argv=None):
     run_parser.add_argument("--alpha", type=float, default=DEFAULT_ALPHA)
     run_parser.add_argument("--autana")
     run_parser.add_argument("--dry-run", action="store_true")
+    run_parser.add_argument("--estimate-plan", action="store_true")
+    run_parser.add_argument("--no-restore", action="store_true")
     args = parser.parse_args(argv)
     if args.command == "run":
         if not 0 < args.threshold < 100 or not 0 < args.alpha < 1 or min(args.runs, args.timeout, args.wait) <= 0:
@@ -166,6 +168,12 @@ def run(args, runner=None):
     """Acquire in the foreground; stopped sweeps retain the plan and report."""
     runner = runner or run_stamped
     saved = plan(args)
+    if args.estimate_plan:
+        from layout_measure import job_estimate
+        captures = sum(len(flash["suites"]) for flash in saved["flashes"]) * args.runs * len(saved["points"])
+        captures += len(saved["flashes"])
+        print(job_estimate(len(saved["flashes"]), captures, args.timeout, not args.no_restore))
+        return 0
     if args.dry_run:
         print(json.dumps(saved, indent=2))
         print(f"{len(saved['flashes'])} flashes; "
