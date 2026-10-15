@@ -19,7 +19,7 @@
  *   Q16.16 metres, where a point enters the view matrix; camera space is 1/512
  *          m (R3D_X_UNIT_ONE).
  *   Q15    sines and cosines from math/scalar/trig.h, used by the title's
- *          wobble/wave and the floor ripple, not by the camera.
+ *          wobble/wave, not by the camera.
  */
 #pragma once
 
@@ -37,6 +37,7 @@
 #include "math/linear/transformf.h"
 #include "math/linear/vec2i.h"
 #include "math/linear/vec3f.h"
+#include "math/motion/spring_grid.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/trig.h"
 #include "render/r3d_project_x.h"
@@ -195,43 +196,9 @@ boot_anim_project_segment(int32_t re0, int32_t im0, int32_t t0, int32_t re1, int
                                     boot_anim_to_camera_space(re1, im1, t1, view), view, ax, ay, bx, by);
 }
 
-#define BOOT_ANIM_WAVE_ENVELOPE_RAMP_MS 500
-
-static inline uint8_t
-boot_anim_wave_envelope(uint32_t now_ms) {
-    const uint8_t in = tween_ramp(now_ms, BOOT_ANIM_WAVE_IN_MS, BOOT_ANIM_WAVE_ENVELOPE_RAMP_MS);
-    const uint8_t out = (uint8_t)(255u - tween_ramp(now_ms, BOOT_ANIM_WAVE_OUT_MS, BOOT_ANIM_WAVE_ENVELOPE_RAMP_MS));
-
-    return (in < out) ? in : out;
-}
-
 static inline int32_t
 boot_anim_zeta_to_t_q8(int32_t zeta_q12) {
     return (int32_t)(((int64_t)zeta_q12 * 32) / BOOT_ANIM_SPIRAL_Q9);
-}
-
-/* A radial sine is periodic in r, so every node's height falls out of one
- * formula with no record of what was lit.
- *
- * Zero amplitude or wavelength removes lift. A zero period freezes the ripple
- * instead of dividing by zero. */
-static inline int32_t
-boot_anim_wave_height(int32_t r_q12, uint32_t now_ms, int32_t amp_q12, int32_t wavelength_q12, uint32_t period_ms) {
-    if (amp_q12 == 0 || wavelength_q12 <= 0) {
-        return 0;
-    }
-
-    const uint32_t space_phase = (uint32_t)(((int64_t)r_q12 * TRIG_TURN) / wavelength_q12);
-    const uint32_t time_phase =
-        (period_ms == 0) ? 0u : (uint32_t)(((uint64_t)(now_ms % period_ms) * TRIG_TURN) / period_ms);
-
-    /* Wraps mod TRIG_TURN by uint16_t truncation */
-    const uint16_t phase = (uint16_t)(space_phase - time_phase);
-    const int32_t sin_q15 = trig_sin(phase);
-
-    const int32_t amp_zeta_q12 = (int32_t)(((int64_t)amp_q12 * sin_q15) >> TRIG_SIN_SHIFT);
-
-    return boot_anim_zeta_to_t_q8(amp_zeta_q12);
 }
 
 /* Spline interpolation keeps the curve's tight turns smooth without a larger
@@ -556,6 +523,30 @@ boot_anim_pen(uint32_t now_ms) {
     return mathi_lerp_u8(BOOT_ANIM_CURVE_PHASE1_FRACTION, BOOT_ANIM_ONE, linear2);
 }
 
+/* The curve head's Q8 height, independent of rendering stride and camera. */
+static inline int32_t
+boot_anim_pen_t(uint32_t now_ms) {
+    const int32_t at = boot_anim_pen(now_ms) * (BOOT_ANIM_CURVE_POINTS - 1);
+    const int last = at >> BOOT_ANIM_Q;
+    const int32_t part = at & (BOOT_ANIM_ONE - 1);
+    return boot_anim_spline(boot_anim_sample(last - 1), boot_anim_sample(last), boot_anim_sample(last + 1), part).t;
+}
+
+#define BOOT_ANIM_FLOOR_SIDE  (BOOT_ANIM_MESH_CELLS + 1)
+#define BOOT_ANIM_FLOOR_NODES (BOOT_ANIM_FLOOR_SIDE * BOOT_ANIM_FLOOR_SIDE)
+
+typedef struct {
+    spring_grid_t grid;
+    uint32_t ticks;
+    int next_zero;
+} boot_anim_floor_t;
+
+void boot_anim_floor_open(boot_anim_floor_t* floor);
+void boot_anim_floor_close(boot_anim_floor_t* floor);
+void boot_anim_floor_advance(boot_anim_floor_t* floor, uint32_t now_ms);
+/* Node indices start at the mesh's corner; height is Q8 t. */
+int32_t boot_anim_floor_height(const boot_anim_floor_t* floor, int x, int y);
+
 static inline int32_t
 boot_anim_colour_progress(uint32_t now_ms) {
     const int32_t span = (int32_t)(BOOT_ANIM_CURVE_POINTS - 1);
@@ -681,7 +672,8 @@ boot_anim_finale_reach(uint32_t now_ms) {
 
 /* Host render tests call this directly and read the firmware framebuffer.
  * `photo` with no pixels draws the scene through to the end in its place. */
-void boot_anim_draw_frame(const boot_anim_motion_t* motion, const draw_image_t* photo, uint32_t now_ms);
+void boot_anim_draw_frame(const boot_anim_motion_t* motion, const draw_image_t* photo, const boot_anim_floor_t* floor,
+                          uint32_t now_ms);
 
 /* What the picture dissolves INTO. Unset, the last frames fade to black and
  * whatever follows cuts in. Set, each of them starts from `paint`'s picture

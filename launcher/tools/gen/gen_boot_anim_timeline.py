@@ -14,17 +14,9 @@ any glTF tool and baked into the boot clip's own asset pack by
 tools/r3d/build_pack.py from main/boot/boot_anim_motion.anim.toml; this
 script only reads it to check it.
 
-`camera_half_fov_short_tan`, `grid_step_m` and `wave_height_m`/`wave_wavelength_m`/
-`wave_period_ms` are single settings: `camera_half_fov_short_tan` is the
-positive tangent of the shorter-axis half field of view passed to
-render_view_make(); `grid_step_m` is the width of one floor colour band, authored in meters
-and converted at bake time (the mesh cell is derived from it, so the mesh
-ends where the fade does); `wave_height_m`/
-`wave_wavelength_m`/`wave_period_ms` are the ripple's own peak amplitude,
-its crest-to-crest distance, and how long one full cycle takes to pass a
-fixed point; see boot_anim_wave_height().
-`grid_bands` (how many bands out the floor fades to nothing) and
-`mesh_cells` live in `timing` instead, plain counts with nothing to convert.
+`camera_half_fov_short_tan` sets the lens; `grid_step_m` sets colour-band
+spacing. The floor_* settings control the fixed-tick spring sheet and its
+radial velocity plucks. Metres are converted to Q16 for the spring state.
 
 The `timing` block is everything else that paces the animation but is not
 a transform of the space: how fast the floor's bands fade in, how the title
@@ -113,7 +105,38 @@ def validate_motion(motion, timing):
              % (last_ms, timing["total_ms"]))
 
 
+FLOOR_ONE = 1 << 16
+FLOOR_COEFFICIENT_ONE = 256
+FLOOR_LAPLACIAN_BOUND = 8
+FLOOR_EULER_BOUND = 4
+FLOOR_INTEGER_KEYS = ("floor_tick_ms", "floor_tension", "floor_stiffness", "floor_damping", "floor_pluck_cells")
+
+
+def validate_floor(cfg):
+    for key in FLOOR_INTEGER_KEYS:
+        if key not in cfg:
+            fail("missing " + key)
+    tick = cfg["floor_tick_ms"]
+    if type(tick) is not int or not 0 < tick <= cfg["timing"]["total_ms"]:
+        fail("floor_tick_ms must be a positive integer no greater than total_ms")
+    for key in ("floor_tension", "floor_stiffness", "floor_damping"):
+        value = cfg[key]
+        if type(value) is not int or not 0 <= value <= FLOOR_COEFFICIENT_ONE:
+            fail(key + " must be an integer in 0..256")
+    if FLOOR_LAPLACIAN_BOUND * cfg["floor_tension"] + cfg["floor_stiffness"] >= FLOOR_EULER_BOUND * FLOOR_COEFFICIENT_ONE:
+        fail("floor_tension and floor_stiffness must satisfy 8 * floor_tension + floor_stiffness < 1024")
+    pluck = cfg.get("floor_pluck_m")
+    if type(pluck) not in (int, float) or not math.isfinite(pluck) or not 0 <= pluck <= 1:
+        fail("floor_pluck_m must be finite and in 0..1 metres per tick")
+    radius = cfg["floor_pluck_cells"]
+    if type(radius) is not int or not 1 <= radius <= cfg["timing"]["mesh_cells"]:
+        fail("floor_pluck_cells must be an integer in 1..mesh_cells")
+
+
 def validate(cfg):
+    unknown = sorted(set(cfg) - {"timing", "camera_half_fov_short_tan", "grid_step_m", "floor_pluck_m", *FLOOR_INTEGER_KEYS})
+    if unknown:
+        fail("unknown key(s): " + ", ".join(unknown))
     timing = cfg["timing"]
     unknown = sorted(set(timing) - {key for key, _, _ in TIMING_ORDER})
     if unknown:
@@ -127,6 +150,7 @@ def validate(cfg):
     if timing["mesh_cells"] <= 0 or timing["mesh_cells"] % 2:
         fail("mesh_cells must be positive and even (%r given) - the middle "
              "line runs through the origin" % (timing["mesh_cells"],))
+    validate_floor(cfg)
     if timing["mesh_dash"] not in (0, 1):
         fail("mesh_dash must be 0 or 1 (%r given)" % (timing["mesh_dash"],))
     if timing["grid_hue_ms"] <= 0:
@@ -246,22 +270,7 @@ def validate(cfg):
              "be no time left to dissolve" %
              (timing["fade_start_ms"], timing["total_ms"]))
 
-    if cfg["wave_height_m"] != 0 and cfg["wave_wavelength_m"] <= 0:
-        warn("wave_wavelength_m (%r) is not positive, so the ripple is "
-             "silently invisible despite wave_height_m (%r) being nonzero"
-             % (cfg["wave_wavelength_m"], cfg["wave_height_m"]))
-    if (cfg["wave_height_m"] != 0 and
-            timing["wave_out_ms"] > timing["total_ms"]):
-        warn("wave_out_ms (%d) is after total_ms (%d) - the ripple will "
-             "still be at full strength when the picture ends, never "
-             "having started to fade out"
-             % (timing["wave_out_ms"], timing["total_ms"]))
-    if (cfg["wave_height_m"] != 0 and
-            timing["wave_in_ms"] > timing["wave_out_ms"]):
-        warn("wave_in_ms (%d) is after wave_out_ms (%d) - the ripple will "
-             "still be arriving while it is already meant to be leaving, "
-             "with no plateau at full strength in between"
-             % (timing["wave_in_ms"], timing["wave_out_ms"]))
+
 
     last_letter_lands = (timing["title_start_ms"] +
                          (TITLE_LEN - 1) * timing["title_stagger_ms"] +
@@ -319,10 +328,6 @@ TIMING_ORDER = [
      "how long a spoke takes to reach the floor's own edge - 0 draws the "
      "full length instantly"),
     ("grid_fade_ms", "BOOT_ANIM_GRID_FADE_MS", None),
-    ("wave_in_ms", "BOOT_ANIM_WAVE_IN_MS",
-     "the ripple is muted before this, then lerps up to full strength"),
-    ("wave_out_ms", "BOOT_ANIM_WAVE_OUT_MS",
-     "the ripple is at full strength until this, then lerps back to muted"),
     ("pen_start_ms", "BOOT_ANIM_PEN_START_MS", None),
     ("pen_ms", "BOOT_ANIM_PEN_MS", "how long the curve takes to draw"),
     ("pen_finish_ms", "BOOT_ANIM_PEN_FINISH_MS",
@@ -405,24 +410,6 @@ def main():
     timing = cfg.get("timing", {})
     timing.setdefault("pen_finish_ms", timing.get("fade_start_ms"))
 
-    # The wave is newer still; a file baked before it existed has no
-    # wave_* fields at all. Defaulting the height to 0 turns it off
-    # outright regardless of wavelength/period, the same "behaves exactly
-    # like before this existed" reasoning pen_finish_ms's own default above
-    # uses; an old timeline should not suddenly grow a ripple its author
-    # never asked for.
-    cfg.setdefault("wave_height_m", 0)
-    # The wave is a radial sine (see boot_anim_wave_height()); three
-    # ring-spacings and three seconds are starting points.
-    cfg.setdefault("wave_wavelength_m", 3 * cfg.get("grid_step_m", 1))
-    cfg.setdefault("wave_period_ms", 3000)
-    # wave_in_ms/wave_out_ms are newer again: starting to lerp in a
-    # second in, and starting to lerp back out a second before the end,
-    # are simply reasonable starting points, like wave_wavelength_m/
-    # wave_period_ms's own defaults above.
-    timing.setdefault("wave_in_ms", 1000)
-    timing.setdefault("wave_out_ms",
-                      max(1000, timing.get("total_ms", 5800) - 1000))
     # grid_spokes is newer than the floor grid itself: the radial guide
     # lines used to be a fixed 8, unauthored; 8 is the exact same default
     # for a file baked before this existed, so it keeps looking the way it
@@ -530,22 +517,10 @@ def main():
     w(" * boot_anim.c does. */\n")
     w("#define BOOT_ANIM_GRID_STEP_Q12 %d\n\n" % meters_to_q12(cfg["grid_step_m"]))
 
-    w("/* The wave's own peak amplitude; see boot_anim_wave_height(). Authored\n")
-    w(" * in meters (wave_height_m in the JSON), the same as grid_step_m just\n")
-    w(" * above; 0 turns the ripple off outright, not just down. */\n")
-    w("#define BOOT_ANIM_WAVE_HEIGHT_Q12 %d\n\n" % meters_to_q12(cfg["wave_height_m"]))
+    for key in FLOOR_INTEGER_KEYS:
+        w("#define BOOT_ANIM_%s %d\n" % (key.upper(), cfg[key]))
+    w("#define BOOT_ANIM_FLOOR_PLUCK_Q16 %d\n" % round(cfg["floor_pluck_m"] * FLOOR_ONE))
 
-    w("/* The wave's own crest-to-crest distance; see boot_anim_wave_height().\n")
-    w(" * Also meters, also authored (wave_wavelength_m in\n")
-    w(" * the JSON). */\n")
-    w("#define BOOT_ANIM_WAVE_WAVELENGTH_Q12 %d\n\n" %
-      meters_to_q12(cfg["wave_wavelength_m"]))
-
-    w("/* How long one full cycle takes to pass a fixed point - milliseconds,\n")
-    w(" * authored (wave_period_ms in the JSON), the same \"how long one\n")
-    w(" * cycle takes\" unit title_wave_period_ms already is for the title's\n")
-    w(" * own wobble. */\n")
-    w("#define BOOT_ANIM_WAVE_PERIOD_MS %d\n" % cfg["wave_period_ms"])
 
 
 if __name__ == "__main__":

@@ -26,3 +26,24 @@ frame's values to a `transformf_t` in `anim/anim_transform.h`. The space's
 rotation is a quaternion slerp between its keys. Frames render on a host with
 `tools/render/scenes/boot_anim_render_host.sh` (`--video` for the whole
 animation).
+
+## Spring floor
+
+`boot_anim_floor.c` owns the spring sheet in PSRAM during boot. Each zeta
+zero plucks its centre before the first fixed tick whose pen height reaches
+that zero. Tick times start at zero and replay without dropping elapsed
+ticks, so host captures and device frames share the same state. Allocation
+failure leaves a flat floor.
+
+The `floor_*` settings in `main/boot/boot_anim_timeline.json` control the
+clock, spring coefficients and radial pluck. Offsets are Q16 metres;
+velocities are metres per tick. Free edges mirror the boundary node.
+The velocity-first update is stable for
+`8 * floor_tension + floor_stiffness < 4 * 256`, with damping in `0..256`.
+The generator enforces that bound.
+
+The sheet shows the reference sine and spring sheet at the render script's
+middle, late and crossfade checkpoints, with amplified pixel differences.
+The [detail crops](floor-springs.crops.png) enlarge the strongest differences.
+
+![Floor reference, spring sheet and pixel differences](floor-springs.png)

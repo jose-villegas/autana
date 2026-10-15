@@ -56,6 +56,29 @@ class TimelineGeneratorTests(unittest.TestCase):
                 [sys.executable, str(GENERATOR), str(source), str(glb)],
                 cwd=LAUNCHER, capture_output=True, text=True, check=False)
 
+    def test_floor_settings_have_named_validation(self):
+        cases = (("floor_tick_ms", 0, "floor_tick_ms must be a positive integer"),
+                 ("floor_tension", -1, "floor_tension must be an integer in 0..256"),
+                 ("floor_stiffness", 257, "floor_stiffness must be an integer in 0..256"),
+                 ("floor_damping", 257, "floor_damping must be an integer in 0..256"),
+                 ("floor_pluck_m", -1, "floor_pluck_m must be finite and in 0..1"),
+                 ("floor_pluck_cells", 0, "floor_pluck_cells must be an integer in 1..mesh_cells"))
+        for key, value, message in cases:
+            with self.subTest(key=key):
+                result = self.generate(config_change=lambda cfg: cfg.update({key: value}))
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn(message, result.stderr)
+
+    def test_removed_floor_wave_keys_are_unknown(self):
+        for key in ("wave_height_m", "wave_wavelength_m", "wave_period_ms"):
+            result = self.generate(config_change=lambda cfg: cfg.update({key: 1}))
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("unknown key(s): " + key, result.stderr)
+        for key in ("wave_in_ms", "wave_out_ms"):
+            result = self.generate(lambda timing: timing.update({key: 1}))
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("unknown timing key(s): " + key, result.stderr)
+
     def test_unknown_timing_key_fails_and_names_key(self):
         result = self.generate(lambda timing: timing.update(title_font=1))
         self.assertNotEqual(result.returncode, 0)
