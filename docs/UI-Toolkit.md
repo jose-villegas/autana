@@ -21,20 +21,20 @@ code, drawn on a host by the gallery scene,
 | A screen needs | Call | Header |
 |---|---|---|
 | a frame to draw in | `ui_begin()`, `ui_begin_screen()`, `ui_end()` | `ui/ui.h` |
-| a button with an icon beside its label | `ui_icon_button()` | `ui/ui_widgets.h` |
-| one of a row of choices, icon above label | `ui_tile_button()` | `ui/ui_widgets.h` |
-| a whole-number setting | `ui_theme_slider_int()`, `ui_slider_int()` | `ui/ui_widgets.h`, `ui/ui.h` |
-| a pick from a list, without a scroll view | `ui_dropdown()` | `ui/ui_widgets.h` |
+| a button with an icon beside its label | `ui_icon_button()` | `ui/controls/ui_widgets.h` |
+| one of a row of choices, icon above label | `ui_tile_button()` | `ui/controls/ui_widgets.h` |
+| a whole-number setting | `ui_theme_slider_int()`, `ui_slider_int()` | `ui/controls/ui_widgets.h`, `ui/ui.h` |
+| a pick from a list, without a scroll view | `ui_dropdown()` | `ui/controls/ui_widgets.h` |
 | a plain button, checkbox or label | `mu_button()`, `mu_checkbox()`, `mu_label()` | `microui.h` |
-| a captioned section, a title bar | `ui_panel()`, `ui_header_bar()` | `ui/ui_widgets.h` |
-| text aligned in a rect | `ui_text_in()` | `ui/ui_widgets.h` |
-| a grid of colours | `ui_swatch_grid()` | `ui/ui_widgets.h` |
+| a captioned section, a title bar | `ui_panel()`, `ui_header_bar()` | `ui/controls/ui_widgets.h` |
+| text aligned in a rect | `ui_text_in()` | `ui/controls/ui_widgets.h` |
+| a grid of colours | `ui_swatch_grid()` | `ui/controls/ui_widgets.h` |
 | an icon | `ui_draw_icon()` | `ui/ui.h` |
-| rows that may overflow and scroll | `ui_scroll_view_begin()`, `ui_flow_row()` | `ui/ui_scroll.h` |
-| a rect placed against an edge or centre | `ui_anchor_rect()`, `ui_rect_inset()`, `ui_centered_rect()` | `ui/ui_anchor.h`, `ui/ui.h` |
+| rows that may overflow and scroll | `ui_scroll_view_begin()`, `ui_flow_row()` | `ui/layout/ui_scroll.h` |
+| a rect placed against an edge or centre | `ui_anchor_rect()`, `ui_rect_inset()`, `ui_centered_rect()` | `ui/layout/ui_anchor.h`, `ui/ui.h` |
 | another text size | `ui_set_font_scaled()`, `ui_measure_text()` | `ui/ui.h` |
-| raised buttons | `ui_set_button_style(UI_BUTTON_BEZEL)` | `ui/ui.h`, `ui/ui_style.h` |
-| the UI turned with the board | `ui_set_transform()`, `ui_width()`, `ui_height()` | `ui/ui.h`, `ui/ui_transform.h` |
+| raised buttons | `ui_set_button_style(UI_BUTTON_BEZEL)` | `ui/ui.h`, `ui/controls/ui_style.h` |
+| the UI turned with the board | `ui_set_transform()`, `ui_width()`, `ui_height()` | `ui/ui.h`, `ui/layout/ui_transform.h` |
 
 ## One frame
 
@@ -127,7 +127,7 @@ settings_frame(const input_t* input) {
 
 ![The themed widgets in portrait: a panel holding a slider, two icon buttons, three tiles, a swatch grid and a closed dropdown](images/ui/widgets.png) ![The same widgets in landscape, re-flowed into rows and two columns](images/ui/widgets-landscape.png)
 
-`ui/ui_widgets.h`. Each control takes a `ui_theme_t`, so a screen states its
+`ui/controls/ui_widgets.h`. Each control takes a `ui_theme_t`, so a screen states its
 colours once:
 
 | Field | Used for |
@@ -194,7 +194,7 @@ An item is a `ui_dropdown_item_t`: `label`, plus an optional `icon` and its
 `mu_button()`, `mu_checkbox()`, `mu_label()` and the rest of `microui.h`
 work unchanged, in the colours `ui_init()` sets. `ui_slider_int()` replaces
 `mu_slider()`: it holds a whole number, where microui's slider holds a float
-with a `"%.2f"` thumb. Its geometry is the pure `ui/ui_slider.h`, the
+with a `"%.2f"` thumb. Its geometry is the pure `ui/controls/ui_slider.h`, the
 track, fill and knob for a value and the value under a finger, quantized and
 clamped.
 
@@ -244,7 +244,7 @@ ui_set_button_style(UI_BUTTON_BEZEL);   /* every frame */
 `ui_draw_icon()` turns an icon's rows into one `mu_draw_rect()` per run,
 through `icon_walk_blocks()` (`draw/icon.h`), so an icon costs no new
 `MU_ICON_*` id and no patch to microui. The system icons come from the
-engine pack through `ui_icon()` (`ui/ui_icons.h`), loaded by `ui_init()`;
+engine pack through `ui_icon()` (`ui/controls/ui_icons.h`), loaded by `ui_init()`;
 an app's icons are a `ui_icon_set_t` in the app's own pack, which the app
 loads with `ui_icon_set_load()` and releases with `ui_icon_set_release()`, so
 deleting the app deletes them. Without a pack a control shows its label alone, and an
@@ -348,7 +348,7 @@ the device limit. A development build logs the high-water mark from
 
 ## Adding to the toolkit
 
-A control belongs in `ui/ui_widgets.h`, not in a private copy in one app's
+A control belongs in `ui/controls/ui_widgets.h`, not in a private copy in one app's
 screen, once a second screen could use it. It must:
 
 - take a `ui_theme_t` rather than colours of its own

@@ -1,8 +1,8 @@
 #include "palette_screen.h"
 
 #include "gfx/target/gfx_color.h"
+#include "ui/controls/ui_style.h"
 #include "ui/ui.h"
-#include "ui/ui_style.h"
 
 #include "apps/sand/material.h"
 #include "apps/sand/material_palette.h"

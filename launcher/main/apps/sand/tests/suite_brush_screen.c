@@ -19,8 +19,8 @@
 #include "apps/sand/ui/brush_screen.h"
 #include "draw/draw_font_roles.h"
 #include "input/input.h"
+#include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
-#include "ui/ui_transform.h"
 
 #define PORTRAIT_W  368
 #define PORTRAIT_H  448

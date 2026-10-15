@@ -17,7 +17,7 @@
 
 #include "draw/icon.h"
 #include "microui.h"
-#include "ui/ui_style.h"
+#include "ui/controls/ui_style.h"
 
 typedef struct {
     mu_Color panel_face;
