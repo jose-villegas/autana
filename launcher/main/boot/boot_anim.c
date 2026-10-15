@@ -150,11 +150,12 @@ static mesh_node_t
 mesh_node(int i, int j, uint32_t now_ms, int32_t amp_q12, const boot_anim_view_t* view) {
     const int32_t re = i * BOOT_ANIM_MESH_STEP_Q12;
     const int32_t im = j * BOOT_ANIM_MESH_STEP_Q12;
-    const int32_t d = (int32_t)mathi_isqrt64((uint64_t)((int64_t)re * re + (int64_t)im * im));
+    const int32_t d = (int32_t)mathi_isqrt64((uint64_t)(((int64_t)re * re) + ((int64_t)im * im)));
     mesh_node_t node;
     node.cs = boot_anim_to_camera_space(re, im, floor_lift(d, now_ms, amp_q12), view);
     node.band_q4 = (int16_t)((d << MESH_BAND_SHIFT) / BOOT_ANIM_GRID_STEP_Q12);
-    int sx = 0, sy = 0;
+    int sx = 0;
+    int sy = 0;
     node.front = r3d_project_point_cs_x(node.cs, view, &sx, &sy);
     node.sx = (int16_t)sx;
     node.sy = (int16_t)sy;
@@ -190,9 +191,9 @@ draw_mesh_edge(const mesh_node_t* a, const mesh_node_t* b, uint32_t now_ms, uint
 static int
 mesh_row_half(int j, int stride) {
     const int64_t reach =
-        (int64_t)BOOT_ANIM_GRID_FADE * BOOT_ANIM_GRID_STEP_Q12 + (int64_t)stride * BOOT_ANIM_MESH_STEP_Q12;
+        ((int64_t)BOOT_ANIM_GRID_FADE * BOOT_ANIM_GRID_STEP_Q12) + ((int64_t)stride * BOOT_ANIM_MESH_STEP_Q12);
     const int64_t im = (int64_t)j * BOOT_ANIM_MESH_STEP_Q12;
-    const int64_t room = reach * reach - im * im;
+    const int64_t room = (reach * reach) - (im * im);
     if (room < 0) {
         return -1;
     }
