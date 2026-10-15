@@ -317,8 +317,9 @@ nothing tracked changes.
 #### fit.prune
 
 `budget` is the triangle count the fit keeps, at most the variant's `triangles`;
-`coverage_every_ms` samples the camera path for the dense pose set pruning
-counts pixels over.
+`coverage_every_ms` samples the camera path for the dense pose set that pruning
+counts pixels over, at the coverage file's own size, and that the fit's coverage
+term is held to.
 
 Source visibility is the renderer's [`visibility`](#visibility-camera_region)
 (region by default). A region source keeps the backing surfaces that
@@ -454,13 +455,41 @@ moves; segment fits see fewer training poses.
 
 ```mermaid
 flowchart LR
-    S[simplified bake, smooth or flat] --> F[fit positions and colours]
-    P[camera path poses] --> R[reference renders]
+    S["simplified bake<br/>smooth or flat"] --> F["fit positions<br/>and colours"]
+    P["camera path poses"] --> R["reference renders"]
     R --> F
-    F --> W[write_lit_mesh]
-    W --> H[host render, held-out poses]
-    H --> C[render_compare.py score, sheets, heatmaps]
+    S --> T["start-derived<br/>coverage targets"]
+    P --> E["dense coverage poses<br/>exclude held-out matches"]
+    E --> M["mine current holes"]
+    T --> M
+    F --> M
+    M -->|hard poses| F
+    F --> W["write_lit_mesh"]
+    W --> H["host render<br/>held-out poses"]
+    H --> C["render_compare.py<br/>scores and sheets"]
 ```
+
+Coverage uses the start mesh's drawn pixels at the
+`fit.prune.coverage_every_ms` camera-path poses as its target. The
+antialiased alpha of every drawn triangle, backing included, provides
+position gradients at silhouettes. Mining at step zero and every
+`--mine-every` steps keeps poses where the fit shows background on a
+start-covered pixel. Each step samples up to `batch` of those poses with
+a coverage term only: `--coverage-weight` times the mean start-masked
+missing alpha over all view pixels, in ΔE76 per fully open pixel. No
+reference image is needed for these views. Matching held-out eye and
+forward samples never enter the hard pool. Every held-out pose must match a
+coverage pose, so `coverage_every_ms` must include the `held_out_every_ms`
+samples. Hard-pose sampling has its own seeded RNG, preserving the training
+view sequence with coverage enabled or disabled. The defaults live at
+`COVERAGE_WEIGHT` and `MINE_EVERY` in `appearance_simplify.py`;
+`--coverage-weight 0` disables mining and extra renders.
+
+Colour history, `loss.txt` and the printed mean ΔE76 exclude coverage,
+normal, Laplacian and cost penalties. Coverage loss and hard-pool size are
+reported separately, together with holed-pose counts for the start, fitted
+and pruned mesh. Pruning counts shown pixels at the recipe's coverage
+spacing; this sampling is part of the reference cache key.
 
 Colour alone permits geometry that matches one view but differs from another.
 `normal_weight` weighs $`\mathcal{E}_n`$: mean
