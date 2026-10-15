@@ -20,10 +20,10 @@ MATH_DEFINE_VEC_SWIZZLE(vec3f, vec2f, float)
  * that the direction `n` lands on when projected onto the octahedron
  * |x| + |y| + |z| = 1, its z < 0 half folded out over the diagonals. Any length
  * but zero gives the same point, so the input need not be normalized; one
- * divide. */
+ * mathf_recip. */
 static inline vec2f_t
 vec3f_octahedral(vec3f_t n) {
-    const float inv = 1.0F / (fabsf(n.x) + fabsf(n.y) + fabsf(n.z));
+    const float inv = mathf_recip(fabsf(n.x) + fabsf(n.y) + fabsf(n.z));
     const float u = n.x * inv;
     const float v = n.y * inv;
     if (n.z >= 0.0F) {
