@@ -1,8 +1,8 @@
 /*
  * mathf: single-precision float's scalar operations for the math templates
  * (docs/math/README.md). The FPU has no double, so one stray promotion costs an
- * order of magnitude; the build refuses the promotion across the whole main
- * component (main/CMakeLists.txt). Angles are radians. Needs libm for sqrtf,
+ * order of magnitude; main and every package refuse the promotion in their
+ * CMakeLists.txt. Angles are radians. Needs libm for sqrtf,
  * sinf, cosf and acosf. A `w` operation is the one a dot product sums with.
  */
 #pragma once
@@ -67,11 +67,11 @@ mathf_div(float a, float b) {
 /* 1 / a for a nonzero a away from float's range limits. The S3's `/` is a
  * libgcc routine of about 56 cycles; its FPU's reciprocal seed and two Newton
  * steps take about 18 and land within one ulp of the quotient, on it 99.9% of
- * the time. Espressif's QEMU has no recip0.s, so its image divides exactly,
- * as other targets do. */
+ * the time. CONFIG_MATH_FPU_RECIP enables the seed; without it, division
+ * is exact, as on other targets. */
 static inline float
 mathf_recip(float a) {
-#if defined(__XTENSA__) && !CONFIG_LAUNCHER_QEMU
+#if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
     float y;
     __asm__("recip0.s %0, %1" : "=f"(y) : "f"(a));
     y += y * (1.0F - (a * y));
