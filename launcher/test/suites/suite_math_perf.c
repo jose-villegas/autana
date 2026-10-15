@@ -107,19 +107,23 @@ MATH_VECTOR_KERNELS(s, vs, i)
 MATH_VECTOR_KERNELS(x, vx, i)
 MATH_KERNEL(normalize, f, vf, vec3f_normalize(p->af))
 MATH_KERNEL(normalize, x, vx, vec3x_normalize(p->ax))
-MATH_KERNEL(lerp, f, vf, vec3f_lerp(p->af, p->bf, MATH_BENCH_LERP_F))
-MATH_KERNEL(lerp, x, vx, vec3x_lerp(p->ax, p->bx, MATH_BENCH_LERP_X))
-MATH_KERNEL(lerp, i, vi, vec3i_lerp(p->ai, p->bi, MATH_BENCH_LERP_NUMERATOR, MATH_BENCH_LERP_DENOMINATOR))
-MATH_KERNEL(lerp, s, vs, vec3s_lerp(p->as, p->bs, MATH_BENCH_LERP_NUMERATOR, MATH_BENCH_LERP_DENOMINATOR))
+#define MATH_LERP_KERNEL(type, ...)                                                                                    \
+    MATH_KERNEL(lerp, type, v##type, vec3##type##_lerp(p->a##type, p->b##type, __VA_ARGS__))
+MATH_LERP_KERNEL(f, MATH_BENCH_LERP_F)
+MATH_LERP_KERNEL(x, MATH_BENCH_LERP_X)
+MATH_LERP_KERNEL(i, MATH_BENCH_LERP_NUMERATOR, MATH_BENCH_LERP_DENOMINATOR)
+MATH_LERP_KERNEL(s, MATH_BENCH_LERP_NUMERATOR, MATH_BENCH_LERP_DENOMINATOR)
 MATH_KERNEL(wrap, f, f, mathf_wrap(p->angle, -MATH_BENCH_WRAP_LIMIT, MATH_BENCH_WRAP_LIMIT))
 MATH_KERNEL(wrap, i, i, mathi_wrap(p->ai.x, -MATH_BENCH_WRAP_LIMIT, MATH_BENCH_WRAP_LIMIT))
 MATH_KERNEL(wrap, x, i, mathx_wrap(p->ax.x, -MATH_BENCH_WRAP_LIMIT* MATHX_ONE, MATH_BENCH_WRAP_LIMIT* MATHX_ONE))
-MATH_KERNEL(convert, f_to_x, vx, vec3x_from_vec3f(p->af))
-MATH_KERNEL(convert, x_to_f, vf, vec3f_from_vec3x(p->ax))
-MATH_KERNEL(convert, f_to_s, vs, vec3s_from_vec3f(p->af, MATH_BENCH_INPUT_SCALE))
-MATH_KERNEL(convert, s_to_f, vf, vec3f_from_vec3s(p->as, MATH_BENCH_INPUT_SCALE))
-MATH_KERNEL(convert, i_to_f, vf, vec3f_from_vec3i(p->ai))
-MATH_KERNEL(convert, f_to_i, vi, vec3i_from_vec3f(p->af))
+#define MATH_CONVERT_KERNEL(from, to, ...)                                                                             \
+    MATH_KERNEL(convert, from##_to_##to, v##to, vec3##to##_from_vec3##from(p->a##from, ##__VA_ARGS__))
+MATH_CONVERT_KERNEL(f, x)
+MATH_CONVERT_KERNEL(x, f)
+MATH_CONVERT_KERNEL(f, s, MATH_BENCH_INPUT_SCALE)
+MATH_CONVERT_KERNEL(s, f, MATH_BENCH_INPUT_SCALE)
+MATH_CONVERT_KERNEL(i, f)
+MATH_CONVERT_KERNEL(f, i)
 MATH_KERNEL(slerp, f, qf, quatf_slerp(p->qf, p->rf, MATH_BENCH_LERP_F))
 MATH_KERNEL(nlerp, f, qf, quatf_nlerp(p->qf, p->rf, MATH_BENCH_LERP_F))
 MATH_KERNEL(nlerp, x, qx, quatx_nlerp(p->qx, p->rx, MATH_BENCH_LERP_X))
@@ -148,58 +152,57 @@ math_bench_dot_f32_n256_f(fixture_t* f) {
     f->output[0].f = acc;
 }
 
-#define MATH_ROW(name, type, ratchet) {#name, #type, math_bench_##name##_##type, ratchet}
 static const row_t rows[] = {
-    MATH_ROW(add, f, false),
-    MATH_ROW(scale, f, false),
-    MATH_ROW(dot, f, true),
-    MATH_ROW(mul, f, false),
-    MATH_ROW(lerp, f, false),
-    MATH_ROW(add, i, false),
-    MATH_ROW(scale, i, false),
-    MATH_ROW(dot, i, false),
-    MATH_ROW(mul, i, false),
-    MATH_ROW(lerp, i, false),
-    MATH_ROW(add, s, false),
-    MATH_ROW(scale, s, false),
-    MATH_ROW(dot, s, false),
-    MATH_ROW(mul, s, false),
-    MATH_ROW(lerp, s, false),
-    MATH_ROW(add, x, false),
-    MATH_ROW(scale, x, false),
-    MATH_ROW(dot, x, false),
-    MATH_ROW(mul, x, false),
-    MATH_ROW(lerp, x, false),
-    MATH_ROW(normalize, f, true),
-    MATH_ROW(normalize, x, false),
-    MATH_ROW(wrap, f, false),
-    MATH_ROW(wrap, i, false),
-    MATH_ROW(wrap, x, false),
-    MATH_ROW(convert, f_to_x, false),
-    MATH_ROW(convert, x_to_f, false),
-    MATH_ROW(convert, f_to_s, false),
-    MATH_ROW(convert, s_to_f, false),
-    MATH_ROW(convert, i_to_f, false),
-    MATH_ROW(convert, f_to_i, false),
-    MATH_ROW(slerp, f, true),
-    MATH_ROW(nlerp, f, false),
-    MATH_ROW(nlerp, x, false),
-    MATH_ROW(quat_mul, f, false),
-    MATH_ROW(quat_mul, x, false),
-    MATH_ROW(mat4_mul, f, true),
-    MATH_ROW(mat4_mul, x, false),
-    MATH_ROW(transform_compute_matrix, f, false),
-    MATH_ROW(transform_compute_matrix, x, false),
-    MATH_ROW(mathf_recip, f, true),
-    MATH_ROW(mathf_rsqrt, f, true),
-    MATH_ROW(div_recip, f, false),
-    MATH_ROW(div_rsqrt, f, false),
-    MATH_ROW(sinf, f, false),
-    MATH_ROW(cosf, f, false),
-    MATH_ROW(atan2f, f, false),
-    MATH_ROW(sqrtf, f, false),
-    MATH_ROW(trig_sin, i, false),
-    MATH_ROW(dot_f32_n256, f, false),
+    {"add", "f", math_bench_add_f, false},
+    {"scale", "f", math_bench_scale_f, false},
+    {"dot", "f", math_bench_dot_f, true},
+    {"mul", "f", math_bench_mul_f, false},
+    {"lerp", "f", math_bench_lerp_f, false},
+    {"add", "i", math_bench_add_i, false},
+    {"scale", "i", math_bench_scale_i, false},
+    {"dot", "i", math_bench_dot_i, false},
+    {"mul", "i", math_bench_mul_i, false},
+    {"lerp", "i", math_bench_lerp_i, false},
+    {"add", "s", math_bench_add_s, false},
+    {"scale", "s", math_bench_scale_s, false},
+    {"dot", "s", math_bench_dot_s, false},
+    {"mul", "s", math_bench_mul_s, false},
+    {"lerp", "s", math_bench_lerp_s, false},
+    {"add", "x", math_bench_add_x, false},
+    {"scale", "x", math_bench_scale_x, false},
+    {"dot", "x", math_bench_dot_x, false},
+    {"mul", "x", math_bench_mul_x, false},
+    {"lerp", "x", math_bench_lerp_x, false},
+    {"normalize", "f", math_bench_normalize_f, true},
+    {"normalize", "x", math_bench_normalize_x, false},
+    {"wrap", "f", math_bench_wrap_f, false},
+    {"wrap", "i", math_bench_wrap_i, false},
+    {"wrap", "x", math_bench_wrap_x, false},
+    {"convert", "f_to_x", math_bench_convert_f_to_x, false},
+    {"convert", "x_to_f", math_bench_convert_x_to_f, false},
+    {"convert", "f_to_s", math_bench_convert_f_to_s, false},
+    {"convert", "s_to_f", math_bench_convert_s_to_f, false},
+    {"convert", "i_to_f", math_bench_convert_i_to_f, false},
+    {"convert", "f_to_i", math_bench_convert_f_to_i, false},
+    {"slerp", "f", math_bench_slerp_f, true},
+    {"nlerp", "f", math_bench_nlerp_f, false},
+    {"nlerp", "x", math_bench_nlerp_x, false},
+    {"quat_mul", "f", math_bench_quat_mul_f, false},
+    {"quat_mul", "x", math_bench_quat_mul_x, false},
+    {"mat4_mul", "f", math_bench_mat4_mul_f, true},
+    {"mat4_mul", "x", math_bench_mat4_mul_x, false},
+    {"transform_compute_matrix", "f", math_bench_transform_compute_matrix_f, false},
+    {"transform_compute_matrix", "x", math_bench_transform_compute_matrix_x, false},
+    {"mathf_recip", "f", math_bench_mathf_recip_f, true},
+    {"mathf_rsqrt", "f", math_bench_mathf_rsqrt_f, true},
+    {"div_recip", "f", math_bench_div_recip_f, false},
+    {"div_rsqrt", "f", math_bench_div_rsqrt_f, false},
+    {"sinf", "f", math_bench_sinf_f, false},
+    {"cosf", "f", math_bench_cosf_f, false},
+    {"atan2f", "f", math_bench_atan2f_f, false},
+    {"sqrtf", "f", math_bench_sqrtf_f, false},
+    {"trig_sin", "i", math_bench_trig_sin_i, false},
+    {"dot_f32_n256", "f", math_bench_dot_f32_n256_f, false},
 };
 
 static fixture_t*
@@ -322,8 +325,7 @@ test_math_instruction_rows(void) {
         }
         char name[MATH_BENCH_NAME_SIZE];
         snprintf(name, sizeof name, "math_%s_%s", row->name, row->type);
-        perf_icount_report(name, us, MATH_BENCH_ICOUNT_BATCHES * MATH_BENCH_ICOUNT_CALLS * ops_per_call(row),
-                           MATH_BENCH_ICOUNT_BATCHES);
+        perf_icount_report(name, us, MATH_BENCH_ICOUNT_BATCHES * MATH_BENCH_ICOUNT_CALLS, MATH_BENCH_ICOUNT_BATCHES);
     }
     release();
     suite_clear_test_cleanup();
