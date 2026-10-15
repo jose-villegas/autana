@@ -3,7 +3,7 @@
  * (docs/math/README.md). The FPU has no double, so one stray promotion costs an
  * order of magnitude; main and every package refuse the promotion in their
  * CMakeLists.txt. Angles are radians. Needs libm for sqrtf,
- * sinf, cosf and acosf. A `w` operation is the one a dot product sums with.
+ * sinf and cosf. A `w` operation is the one a dot product sums with.
  */
 #pragma once
 
