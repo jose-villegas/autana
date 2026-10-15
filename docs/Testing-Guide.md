@@ -502,10 +502,11 @@ panel, the real touch controller, the IMU or timing.
 one nanosecond per executed instruction, so a `us per step` line times 1000
 is instructions per step: for a measurement that sends nothing, since time
 spent waiting on the null panel's modelled bus passes with no instructions
-behind it. A step that runs on one core repeats run to run, and keeps
-repeating while the host is busy: across five concurrent instances on a
-32-thread desktop, one-core measurements moved at most 1.05%, and three in
-four were identical to the digit.
+behind it. A step that runs on one core repeats run to run: five concurrent
+instances on a 32-thread desktop with host-paced timers show up to 1.05%
+spread (three in four measurements identical), whereas `--icount` uses
+`sleep=off` to pace guest timers by instructions and repeated ratchet
+captures differ by far less than the tolerance.
 
 **A step shared between two cores cannot be ranked this way at all.** The
 count sums both cores, so the second one is charged for whatever it does
@@ -518,29 +519,38 @@ answers whether a change removed work; on this chip that does not predict
 whether it removed time (see
 [`notes/Debugging.md`](notes/Debugging.md#performance-seems-off)).
 
-**Hot kernel instruction ratchet.** Only selected serial simulation steps
-and the solid and Gouraud span fillers are pinned in
-`launcher/tools/quality/icount_baseline.txt`. Frame totals and whole suites
-are excluded so unrelated code growth carries no instruction budget.
-These suites run only when requested. The `icount-ratchet` job in
-`.github/workflows/qemu-tests.yml` names the suites and their capture
-command; run that command locally from `launcher/`, then check the log:
+### Hot kernel instruction ratchet
+
+Only selected serial simulation steps and raster span kernels are pinned
+in `launcher/tools/quality/icount_baseline.txt`. Frame totals and whole
+suites are excluded so unrelated code growth carries no instruction budget.
+A ratchet suite registers as `SUITE_REGISTER_ON_REQUEST(run_<name>_icount_suite)`;
+adding a row requires that registration and a baseline entry. The runner
+discovers these suites from the sources and enables instruction counting.
+`.github/workflows/icount-ratchet.yml`
+runs them in CI; locally, from the repository root:
 
 ```sh
+./launcher/test/run_qemu_tests.sh --icount-ratchet
 python launcher/tools/quality/icount_gate.py launcher/build.qemu.shell/qemu_serial.log
 ```
 
-The gate fails above or below the baseline by more than 0.5%, on a missing
-or unexpected row, or when a row is too short to bound clock rounding.
-Repeated local captures differ by up to 16 parts per million (0.0016%),
-well inside that tolerance. Baseline entries round to whole instructions.
-An improvement requires lowering the baseline in the same PR. An increase
-requires a stated reason and a baseline update in the same PR. Generate
-both with `python launcher/tools/quality/icount_gate.py --update-baseline
-launcher/build.qemu.shell/qemu_serial.log` after confirming two captures
-agree within tolerance. A compiler or IDF bump re-baselines the kernels in one deliberate
-commit. The named tolerance and minimum capture length live in
-`launcher/test/perf_stats.h`; the gate reads them there.
+The capture lands in `launcher/build.qemu.shell/qemu_serial.log`. The gate
+fails above or below the baseline by more than 0.5%, or on a missing or
+unexpected row. The C reporting helper rejects rows too short to bound
+clock rounding. Repeated captures differ by far less than the tolerance.
+Baseline entries round to whole instructions. An improvement requires
+lowering the baseline in the same PR. An increase requires a stated reason
+and a baseline update in the same PR. After confirming two captures agree
+within tolerance, generate the baseline:
+
+```sh
+python launcher/tools/quality/icount_gate.py --update-baseline launcher/build.qemu.shell/qemu_serial.log
+```
+
+A compiler or IDF bump re-baselines the kernels in one deliberate commit.
+The tolerance and capture-length rule live in `launcher/test/perf_stats.h`;
+the gate reads the prefix and tolerance there.
 
 **Instances are independent.** Each `qemu_run.py --workdir` holds its own
 flash image, eFuse file and console log, and the build directory is only

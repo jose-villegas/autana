@@ -24,6 +24,36 @@ static const r3d_span_vertex_t triangle[] = {
 };
 
 static void
+build_poses(r3d_span_vertex_t poses[SPAN_BATCH][SPAN_VERTEX_COUNT]) {
+    /* Increasing z makes every draw pass depth and write, timing setup plus the write path. */
+    for (int i = 0; i < SPAN_BATCH; i++) {
+        memcpy(poses[i], triangle, sizeof triangle);
+        for (int v = 0; v < SPAN_VERTEX_COUNT; v++) {
+            poses[i][v].z = triangle[v].z * (float)(i + 1) / SPAN_BATCH;
+        }
+    }
+}
+
+static void
+report_shading_mode(const r3d_span_target_t* target, uint16_t* depth,
+                    r3d_span_vertex_t poses[SPAN_BATCH][SPAN_VERTEX_COUNT], int solid) {
+    int64_t elapsed = 0;
+    for (int round = 0; round < SPAN_ROUNDS; round++) {
+        memset(depth, R3D_DEPTH_EMPTY, SPAN_WIDTH * SPAN_HEIGHT * sizeof *depth);
+        const int64_t start = timing_now_us();
+        for (int i = 0; i < SPAN_BATCH; i++) {
+            if (solid) {
+                r3d_span_triangle_solid(target, &poses[i][0], &poses[i][1], &poses[i][2], SPAN_SOLID_COLOR);
+            } else {
+                r3d_span_triangle(target, &poses[i][0], &poses[i][1], &poses[i][2]);
+            }
+        }
+        elapsed += timing_now_us() - start;
+    }
+    perf_icount_report(solid ? "span_solid" : "span_gouraud", elapsed, SPAN_REPS, SPAN_ROUNDS);
+}
+
+static void
 test_span_instruction_rows(void) {
     gfx_color_t* color = calloc(SPAN_WIDTH * SPAN_HEIGHT, sizeof *color);
     uint16_t* depth = calloc(SPAN_WIDTH * SPAN_HEIGHT, sizeof *depth);
@@ -31,29 +61,10 @@ test_span_instruction_rows(void) {
     TEST_ASSERT_NOT_NULL(depth);
     r3d_span_vertex_t(*poses)[SPAN_VERTEX_COUNT] = malloc(SPAN_BATCH * sizeof *poses);
     TEST_ASSERT_NOT_NULL(poses);
-    for (int i = 0; i < SPAN_BATCH; i++) {
-        memcpy(poses[i], triangle, sizeof triangle);
-        for (int v = 0; v < SPAN_VERTEX_COUNT; v++) {
-            poses[i][v].z = triangle[v].z * (float)(i + 1) / SPAN_BATCH;
-        }
-    }
+    build_poses(poses);
     const r3d_span_target_t target = r3d_span_target(color, depth, SPAN_WIDTH, 0, SPAN_HEIGHT);
     for (int solid = 0; solid < SPAN_SHADING_MODES; solid++) {
-        int64_t elapsed = 0;
-        for (int round = 0; round < SPAN_ROUNDS; round++) {
-            memset(depth, R3D_DEPTH_EMPTY, SPAN_WIDTH * SPAN_HEIGHT * sizeof *depth);
-            const int64_t start = timing_now_us();
-            for (int i = 0; i < SPAN_BATCH; i++) {
-                if (solid) {
-                    r3d_span_triangle_solid(&target, &poses[i][0], &poses[i][1], &poses[i][2], SPAN_SOLID_COLOR);
-                } else {
-                    r3d_span_triangle(&target, &poses[i][0], &poses[i][1], &poses[i][2]);
-                }
-            }
-            elapsed += timing_now_us() - start;
-        }
-        perf_icount_print(solid ? "span_solid" : "span_gouraud", elapsed, SPAN_REPS);
-        TEST_ASSERT_TRUE(elapsed >= PERF_ICOUNT_MIN_TOTAL_US);
+        report_shading_mode(&target, depth, poses, solid);
     }
     free(poses);
     free(depth);

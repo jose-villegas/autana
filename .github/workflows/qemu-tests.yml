@@ -3,8 +3,8 @@ name: QEMU Tests
 # Every suite in the real Xtensa image, under Espressif's QEMU: the proof the
 # host runner cannot give, that the chip's build behaves as the laptop's does.
 # docs/Testing-Guide.md's QEMU section says what a run is evidence of. Too
-# slow for every pull request. The full job covers harness changes; the
-# instruction ratchet covers launcher changes.
+# slow for every pull request, so it runs on main, by hand, and on a pull
+# request that changes the harness itself.
 
 on:
   push:
@@ -12,8 +12,6 @@ on:
   pull_request:
     paths:
       - '.github/workflows/qemu-tests.yml'
-      - 'launcher/**'
-      - 'scripts/gates/tests/test_icount_gate.py'
       - 'launcher/test/qemu_run.py'
       - 'launcher/test/qemu/**'
       - 'launcher/test/run_qemu_tests.sh'
@@ -34,68 +32,21 @@ env:
   GH_TOKEN: ${{ github.token }}
 
 jobs:
-  scope:
-    runs-on: ubuntu-24.04
-    outputs:
-      full: ${{ steps.paths.outputs.full }}
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          fetch-depth: 0
-      - id: paths
-        env:
-          EVENT: ${{ github.event_name }}
-          BASE: ${{ github.event.pull_request.base.sha }}
-          HEAD: ${{ github.event.pull_request.head.sha }}
-        run: |
-          if [ "$EVENT" != pull_request ]; then
-            echo "full=true" >> "$GITHUB_OUTPUT"
-          elif git diff --name-only "$BASE" "$HEAD" | grep -Eq '^(\.github/workflows/qemu-tests\.yml|launcher/test/qemu_run\.py|launcher/test/qemu/.*|launcher/test/run_qemu_tests\.sh|launcher/sdkconfig\.defaults\.qemu|\.python-version|launcher/idf-pin\.json|\.github/actions/.*)$'; then
-            echo "full=true" >> "$GITHUB_OUTPUT"
-          fi
   qemu-tests:
-    needs: scope
-    if: needs.scope.outputs.full == 'true'
     name: Every suite under QEMU
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      # Espressif's QEMU rebuilt with launcher/test/qemu/patches, which
-      # qemu_run.py runs in place of the prebuilt one. Built only when no
-      # cache holds this QEMU version and patch set; patched_qemu.py names
-      # the directory and removes any other, so one entry is saved per pair.
-      - id: qemu-cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      # No --icount: it puts both emulated cores on one host thread, doubling
+      # the run, and a QEMU image reports every measured time rather than
+      # enforcing it, so instruction counting buys a pass/fail run nothing.
+      # The full scope takes about fourteen minutes on an idle desktop.
+      - uses: ./.github/actions/patched-qemu
         with:
-          path: launcher/build.qemu-xtensa
-          key: qemu-xtensa-
-          restore-keys: qemu-xtensa-
-
-      # The full correctness run omits --icount to keep both cores on host
-      # threads. The separate ratchet counts only named one-core kernels.
-      - uses: ./.github/actions/idf-build
-        with:
-          cache-name: qemu
           command: >-
-            (python3 test/qemu/patched_qemu.py path
-            || (apt-get update -qq
-            && python3 test/qemu/patched_qemu.py deps | xargs apt-get install -y -qq
-            && python3 test/qemu/patched_qemu.py build))
-            && sh test/run_qemu_tests.sh --timeout 4500
-
-      - id: qemu-built
-        if: ${{ !cancelled() }}
-        run: echo "name=$(cd launcher/build.qemu-xtensa 2>/dev/null && ls -d */bin | cut -d/ -f1)" >> "$GITHUB_OUTPUT"
-
-      - if: >-
-          ${{ !cancelled() && steps.qemu-built.outputs.name != ''
-          && steps.qemu-cache.outputs.cache-matched-key != format('qemu-xtensa-{0}', steps.qemu-built.outputs.name) }}
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: launcher/build.qemu-xtensa
-          key: qemu-xtensa-${{ steps.qemu-built.outputs.name }}
+            sh test/run_qemu_tests.sh --timeout 4500
 
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -118,53 +69,4 @@ jobs:
             launcher/build.qemu/*/*.bin
             !launcher/build.qemu/qemu_*.bin
           retention-days: 14
-          if-no-files-found: ignore
-
-  icount-ratchet:
-    name: Hot kernel instruction ratchet
-    runs-on: ubuntu-24.04
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      # Espressif's QEMU rebuilt with launcher/test/qemu/patches, which
-      # qemu_run.py runs in place of the prebuilt one. Built only when no
-      # cache holds this QEMU version and patch set; patched_qemu.py names
-      # the directory and removes any other, so one entry is saved per pair.
-      - id: qemu-cache
-        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: launcher/build.qemu-xtensa
-          key: qemu-xtensa-
-          restore-keys: qemu-xtensa-
-
-      - uses: ./.github/actions/idf-build
-        with:
-          cache-name: qemu
-          command: >-
-            (python3 test/qemu/patched_qemu.py path
-            || (apt-get update -qq
-            && python3 test/qemu/patched_qemu.py deps | xargs apt-get install -y -qq
-            && python3 test/qemu/patched_qemu.py build))
-            && sh test/run_qemu_tests.sh --icount --timeout 4500
-            --suite run_sand_icount_suite --suite run_span_icount_suite
-            && python3 tools/quality/icount_gate.py build.qemu.shell/qemu_serial.log
-
-      - id: qemu-built
-        if: ${{ !cancelled() }}
-        run: echo "name=$(cd launcher/build.qemu-xtensa 2>/dev/null && ls -d */bin | cut -d/ -f1)" >> "$GITHUB_OUTPUT"
-
-      - if: >-
-          ${{ !cancelled() && steps.qemu-built.outputs.name != ''
-          && steps.qemu-cache.outputs.cache-matched-key != format('qemu-xtensa-{0}', steps.qemu-built.outputs.name) }}
-        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
-        with:
-          path: launcher/build.qemu-xtensa
-          key: qemu-xtensa-${{ steps.qemu-built.outputs.name }}
-
-      - if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
-        with:
-          name: icount-serial-log
-          path: launcher/build.qemu.shell/qemu_serial.log
           if-no-files-found: ignore

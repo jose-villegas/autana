@@ -46,9 +46,9 @@ in a CONFIG_LAUNCHER_QEMU image, and tests of hardware QEMU lacks (the
 performance monitor, a touch controller that physically answers) skip
 themselves. With
 --icount virtual time advances one nanosecond per executed instruction, so a
-"us per step" line times 1000 is instructions per step: exactly repeatable
-for a step that runs on one core, and within about 1% when two cores share
-it, because both cores' instructions are summed. It is never a time.
+"us per step" line times 1000 is instructions per step. See the QEMU section
+of docs/Testing-Guide.md for repeatability and the limits of shared-core
+counts. It is never a time.
 
 Several instances run at once; give each its own build directory copy or
 --workdir, since the flash image is written beside the log.
@@ -61,6 +61,7 @@ import binascii
 import glob
 import json
 import os
+from pathlib import Path
 import re
 import socket
 import subprocess
@@ -74,6 +75,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "scripts", "device"))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "qemu"))
+from packages import FIRST_PARTY  # noqa: E402  (shared first-party source roots)
 import device_profile  # noqa: E402  (path must be set up first)
 from espressif import espressif_tools_root, idf_python, idf_path  # noqa: E402  (path must be set up first)
 from device_report import SUITE_COMPLETE_RE  # noqa: E402  (the board tool's own reading)
@@ -83,6 +85,7 @@ import screenshot as wire  # noqa: E402  (the board tool's own protocol)
 import patched_qemu  # noqa: E402  (path must be set up first)
 
 ICOUNT_SHIFT = 0
+ICOUNT_SUITE_RE = re.compile(r"^\s*SUITE_REGISTER_ON_REQUEST\(\s*(run_\w+_icount_suite)\s*\);", re.M)
 
 QEMU_PASS_RE = re.compile(r":PASS$", re.M)
 QEMU_IGNORE_RE = re.compile(r":IGNORE")
@@ -91,6 +94,16 @@ QEMU_FAIL_RE = re.compile(r"^\S*:\d+:(\w+):FAIL:? ?(.*)$", re.M)
 SENTINEL = "SELFTEST_COMPLETE"
 LISTENING = "listening for 'screenshot'"
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def icount_suites(root):
+    suites = set()
+    for folder in (*FIRST_PARTY, "launcher/test/suites/"):
+        for source in (Path(root) / folder).rglob("*.c"):
+            suites.update(ICOUNT_SUITE_RE.findall(source.read_text(encoding="utf-8")))
+    if not suites:
+        raise ValueError("no instruction ratchet suites registered")
+    return sorted(suites)
 
 
 def find_one(pattern, what):
@@ -393,6 +406,8 @@ def main(argv):
     parser.add_argument("build_dir")
     parser.add_argument("--icount", action="store_true",
                         help=f"count instructions: -icount shift={ICOUNT_SHIFT}")
+    parser.add_argument("--icount-ratchet", action="store_true",
+                        help="count instructions in every on-request run_*_icount_suite")
     parser.add_argument("--timeout", type=int, default=1800)
     parser.add_argument("--suite", action="append", default=[],
                         help="run this registered suite by name (repeatable); "
@@ -422,6 +437,12 @@ def main(argv):
     parser.add_argument("--idf-path", default=None,
                         help="the ESP-IDF checkout (default: resolved install)")
     args = parser.parse_args(argv)
+    if args.icount_ratchet:
+        args.icount = True
+        try:
+            args.suite += icount_suites(Path(__file__).resolve().parents[2])
+        except ValueError as error:
+            parser.error(str(error))
     args.idf_path = args.idf_path or str(idf_path())
 
     actions = ["suite %s" % name for name in args.suite]
@@ -468,7 +489,7 @@ def main(argv):
            "-nographic", "-monitor", "none",
            "-serial", "tcp:127.0.0.1:%d,server=on,wait=on" % port]
     if args.icount:
-        cmd += ["-icount", f"shift={ICOUNT_SHIFT}"]
+        cmd += ["-icount", f"shift={ICOUNT_SHIFT},sleep=off"]
 
     proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL,
                             stdout=subprocess.DEVNULL,

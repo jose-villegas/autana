@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools/quality"))
@@ -14,57 +15,70 @@ SPEC.loader.exec_module(gate)
 
 
 class IcountGateTests(unittest.TestCase):
-    def row(self, name="kernel", us=None, reps=1):
-        return f"{gate.LINE_PREFIX} {name} us={us or gate.MIN_TOTAL_US} reps={reps}\n"
+    def row(self, name="kernel", us=200000, reps=1):
+        return f"{gate.LINE_PREFIX} {name} us={us} reps={reps}\n"
 
-    def check(self, factor=1):
-        measured = gate.parse_log(self.row())
-        return gate.compare(measured, {"kernel": measured["kernel"] / factor})
+    def run_gate(self, text, baseline="200000000\tkernel\n", update=False):
+        with tempfile.TemporaryDirectory() as directory:
+            log = Path(directory) / "serial.log"
+            peg = Path(directory) / "baseline.txt"
+            log.write_bytes(text.encode() if isinstance(text, str) else text)
+            if baseline is not None:
+                peg.write_text(baseline, encoding="utf-8")
+            args = [str(log), "--baseline", str(peg)]
+            if update:
+                args.append("--update-baseline")
+            result = gate.main(args)
+            return result, peg.read_text() if peg.exists() else None
 
-    def test_inside_tolerance(self):
-        self.assertEqual([], self.check(1 + gate.TOLERANCE / 2))
-        self.assertEqual([], self.check(1 - gate.TOLERANCE / 2))
+    def test_main_rejects_bad_measurements(self):
+        for text in (self.row(us=201001), self.row(us=198999),
+                     self.row(name="unknown"), self.row() + self.row(name="extra"), "boot\n"):
+            with self.subTest(text=text):
+                self.assertNotEqual(0, self.run_gate(text)[0])
+        self.assertNotEqual(0, self.run_gate(self.row(), "200000000\tkernel\n1\tabsent\n")[0])
+        self.assertNotEqual(0, self.run_gate(self.row(), None)[0])
 
-    def test_increase_requires_reason(self):
-        self.assertIn("raise only with a stated reason", " ".join(self.check(1 + gate.TOLERANCE * 2)))
+    def test_literal_half_percent_band(self):
+        for us, expected in ((199001, 0), (200999, 0), (198999, 1), (201001, 1)):
+            with self.subTest(us=us):
+                self.assertEqual(expected, self.run_gate(self.row(us=us))[0])
 
-    def test_decrease_requires_lower_baseline(self):
-        self.assertIn("lower the baseline", " ".join(self.check(1 - gate.TOLERANCE * 2)))
+    def test_conversion_at_larger_shift(self):
+        with patch.object(gate, "ICOUNT_SHIFT", 4):
+            self.assertEqual(12500000, gate.parse_log(self.row())["kernel"])
 
-    def test_missing_and_extra(self):
-        errors = gate.compare(gate.parse_log(self.row()), {"absent": 1})
-        self.assertIn("kernel: no baseline", " ".join(errors))
-        self.assertIn("absent: no measurement", " ".join(errors))
-
-    def test_short_row(self):
-        with self.assertRaisesRegex(ValueError, "minimum"):
-            gate.parse_log(self.row(us=gate.MIN_TOTAL_US - 1))
-
-    def test_empty_log(self):
-        with self.assertRaisesRegex(ValueError, "no ICOUNT"):
-            gate.parse_log("boot complete\n")
-
-    def test_conversion(self):
-        rows = gate.parse_log(self.row(reps=4))
-        self.assertEqual(gate.MIN_TOTAL_US * (gate.INSTRUCTIONS_PER_US >> gate.ICOUNT_SHIFT) / 4,
-                         rows["kernel"])
-
-    def test_invalid_and_duplicate(self):
-        for text in (self.row(reps=0), self.row() * 2, f"{gate.LINE_PREFIX} broken\n"):
+    def test_invalid_and_duplicate_rows(self):
+        for text in (self.row(reps=0), self.row() * 2, f"{gate.LINE_PREFIX} broken\n",
+                     self.row().rstrip() + " trailing\n"):
             with self.subTest(text=text), self.assertRaises(ValueError):
                 gate.parse_log(text)
 
-    def test_update_round_trip(self):
-        with tempfile.TemporaryDirectory() as directory:
-            log = Path(directory) / "serial.log"
-            baseline = Path(directory) / "baseline.txt"
-            log.write_text(self.row("z") + self.row("a", reps=3), encoding="utf-8")
-            self.assertEqual(0, gate.main(["--baseline", str(baseline), "--update-baseline", str(log)]))
-            self.assertEqual(0, gate.main(["--baseline", str(baseline), str(log)]))
-            entries = [line.split("\t") for line in baseline.read_text().splitlines()
-                       if not line.startswith("#")]
-            self.assertEqual(["a", "z"], [name for _, name in entries])
-            self.assertTrue(all(value.isdecimal() for value, _ in entries))
+    def test_indented_row_is_ignored(self):
+        self.assertEqual({"kernel": 200000000},
+                         gate.parse_log(self.row() + " " + self.row(name="ignored")))
+        with self.assertRaisesRegex(ValueError, "no ICOUNT"):
+            gate.parse_log(" " + self.row())
+
+    def test_update_round_trip_rounds_fractional_count(self):
+        text = self.row("z") + self.row("a", us=200000, reps=3)
+        result, baseline = self.run_gate(text, None, update=True)
+        self.assertEqual(0, result)
+        self.assertEqual(["66666667\ta", "200000000\tz"],
+                         [line for line in baseline.splitlines() if not line.startswith("#")])
+        self.assertEqual(0, self.run_gate(text, baseline)[0])
+
+    def test_main_rejects_invalid_baselines(self):
+        for baseline in ("0\tkernel", "-1\tkernel", "NaN\tkernel", "inf\tkernel",
+                         "200000000\tkernel\n200000000\tkernel", "200000000 kernel"):
+            with self.subTest(baseline=baseline):
+                self.assertNotEqual(0, self.run_gate(self.row(), baseline)[0])
+
+    def test_baseline_comments_and_blank_lines(self):
+        self.assertEqual(0, self.run_gate(self.row(), "# comment\n\n200000000\tkernel\n\n")[0])
+
+    def test_non_utf8_boot_output(self):
+        self.assertEqual(0, self.run_gate(b"boot\xff\n" + self.row().encode())[0])
 
 
 if __name__ == "__main__":

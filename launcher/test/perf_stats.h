@@ -5,18 +5,18 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include "unity.h"
 
-/* A row can sum several timed batches; reserve rounding for their clock reads. */
+/* Each batch's clock reads round by under 1 us; this length keeps rounding
+ * below one MARGIN-th of the tolerance. */
 #define PERF_ICOUNT_PREFIX                "ICOUNT"
 #define PERF_ICOUNT_TOLERANCE_DENOMINATOR 200
-#define PERF_ICOUNT_ROUNDING_US           100
 #define PERF_ICOUNT_ROUNDING_MARGIN       10
-#define PERF_ICOUNT_MIN_TOTAL_US                                                                                       \
-    (PERF_ICOUNT_ROUNDING_US * PERF_ICOUNT_ROUNDING_MARGIN * PERF_ICOUNT_TOLERANCE_DENOMINATOR)
 
 static inline void
-perf_icount_print(const char* name, int64_t took_us, int reps) {
-    printf(PERF_ICOUNT_PREFIX " %s us=%" PRId64 " reps=%d\n", name, took_us, reps);
+perf_icount_report(const char* name, int64_t us, int reps, int batches) {
+    printf(PERF_ICOUNT_PREFIX " %s us=%" PRId64 " reps=%d\n", name, us, reps);
+    TEST_ASSERT_TRUE(us >= batches * PERF_ICOUNT_ROUNDING_MARGIN * PERF_ICOUNT_TOLERANCE_DENOMINATOR);
 }
 
 typedef struct {

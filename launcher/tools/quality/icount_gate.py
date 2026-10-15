@@ -32,12 +32,9 @@ def support_define(name):
 
 LINE_PREFIX = support_define("PERF_ICOUNT_PREFIX")
 TOLERANCE = 1 / support_define("PERF_ICOUNT_TOLERANCE_DENOMINATOR")
-ROUNDING_MARGIN = support_define("PERF_ICOUNT_ROUNDING_MARGIN")
-ROUNDING_US = support_define("PERF_ICOUNT_ROUNDING_US")
-INSTRUCTIONS_PER_US = 1000
-MIN_TOTAL_US = ROUNDING_US * ROUNDING_MARGIN * support_define("PERF_ICOUNT_TOLERANCE_DENOMINATOR")
+NS_PER_US = 1000
 ICOUNT_SHIFT = source_constant(QEMU_PATH, "ICOUNT_SHIFT")
-ROW = re.compile(rf"^{LINE_PREFIX} (\S+) us=(\d+) reps=(\d+)$")
+ROW = re.compile(rf"{LINE_PREFIX} (\S+) us=(\d+) reps=(\d+)")
 
 
 def parse_log(text):
@@ -52,9 +49,7 @@ def parse_log(text):
         us, reps = int(us), int(reps)
         if name in rows or reps <= 0:
             raise ValueError(f"{name}: duplicate row or invalid reps")
-        if us < MIN_TOTAL_US:
-            raise ValueError(f"{name}: total {us} us below minimum {MIN_TOTAL_US:g} us")
-        rows[name] = us * (INSTRUCTIONS_PER_US >> ICOUNT_SHIFT) / reps
+        rows[name] = us * NS_PER_US / (1 << ICOUNT_SHIFT) / reps
     if not rows:
         raise ValueError(f"no {LINE_PREFIX} lines: no instruction measurements")
     return rows

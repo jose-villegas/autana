@@ -1,0 +1,41 @@
+name: Instruction Count Ratchet
+
+# Pins named serial simulation steps and raster span kernels to instruction
+# budgets. Scope, tolerance and local captures: docs/Testing-Guide.md.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'launcher/**'
+      - '.github/workflows/icount-ratchet.yml'
+      - '.github/actions/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  icount-ratchet:
+    name: Hot kernel instruction ratchet
+    runs-on: ubuntu-24.04
+    # Headroom for a cold emulator build; warm runs take about six minutes.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/patched-qemu
+        with:
+          # Capture ceiling allows over twice the warm job's total runtime.
+          command: >-
+            sh test/run_qemu_tests.sh --icount-ratchet --timeout 900
+            && python3 tools/quality/icount_gate.py build.qemu.shell/qemu_serial.log
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: icount-serial-log
+          path: launcher/build.qemu.shell/qemu_serial.log
+          if-no-files-found: ignore
