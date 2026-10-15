@@ -487,6 +487,9 @@ test_quatf_slerp_preserves_rotation_behaviour(void) {
 /* Three float epsilons cover coefficient evaluation and normalization rounding;
  * the half-arc series truncation error is below one float epsilon. */
 #define SLERP_ERROR_BOUND (3.0 * (double)FLT_EPSILON)
+/* Nearly parallel inputs may take a normalized lerp instead: it strays at most
+ * 4.3 float epsilons from slerp where slerp hands over to it, plus rounding. */
+#define NLERP_ERROR_BOUND (6.0 * (double)FLT_EPSILON)
 
 static void
 test_quatf_slerp_matches_double_reference_over_the_whole_arc(void) {
@@ -528,12 +531,21 @@ test_quatf_slerp_matches_double_reference_over_the_whole_arc(void) {
                 const double got[] = {result.x, result.y, result.z, result.w};
                 const double wa = angle == 0.0 ? 1.0 - time : sin((1.0 - time) * angle) / sin(angle);
                 const double wb = angle == 0.0 ? time : sin(time * angle) / sin(angle);
-                double norm_squared = 0.0;
+                double lerp[4], lerp_squared = 0.0;
                 for (size_t c = 0; c < sizeof got / sizeof got[0]; c++) {
-                    const double error = fabs(got[c] - (begin[c] * wa + end[c] * wb));
-                    TEST_ASSERT_TRUE(error <= SLERP_ERROR_BOUND);
+                    lerp[c] = begin[c] * (1.0 - time) + end[c] * time;
+                    lerp_squared += lerp[c] * lerp[c];
+                }
+                double norm_squared = 0.0, slerp_error = 0.0, nlerp_error = 0.0;
+                for (size_t c = 0; c < sizeof got / sizeof got[0]; c++) {
+                    slerp_error = fmax(slerp_error, fabs(got[c] - (begin[c] * wa + end[c] * wb)));
+                    nlerp_error = fmax(nlerp_error, fabs(got[c] - lerp[c] / sqrt(lerp_squared)));
                     norm_squared += got[c] * got[c];
                 }
+                /* Either an accurate slerp or the nlerp, which is close to slerp only where it is taken. */
+                TEST_ASSERT_TRUE_MESSAGE(slerp_error <= NLERP_ERROR_BOUND, "far from slerp");
+                TEST_ASSERT_TRUE_MESSAGE(slerp_error <= SLERP_ERROR_BOUND || nlerp_error <= SLERP_ERROR_BOUND,
+                                         "neither an accurate slerp nor the nlerp");
                 const double unit_error = fabs(sqrt(norm_squared) - 1.0);
                 TEST_ASSERT_TRUE(unit_error <= SLERP_ERROR_BOUND);
             }

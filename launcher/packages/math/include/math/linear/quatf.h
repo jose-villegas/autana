@@ -15,10 +15,10 @@
 MATH_DEFINE_QUAT(quatf, vec3f, float, mathf)
 MATH_DEFINE_QUAT_NORMALIZE(quatf, vec3f, float, mathf)
 
-/* Shortest-arc unit quaternion interpolation for t in 0..1. b is negated when
- * a . b < 0, the shorter way round, so q and -q give the same path.
- * Eberly's series in cos - 1 halves the arc past a 120-degree rotation and
- * sums until a term is below float precision (docs/Citations.md#68). */
+/* Shortest-arc interpolation, t in 0..1; b is negated when a . b < 0, so q and
+ * -q give one path. Nearly parallel inputs take nlerp; the rest Eberly's series
+ * in cos - 1 (docs/Citations.md#68), on half the arc past a 120-degree
+ * rotation, summed to float precision. */
 static inline quatf_t
 quatf_slerp(quatf_t a, quatf_t b, float t) {
     /* u[k - 1] = 1 / (k (2k + 1)): term k scales the one before by (s^2 - k^2) u[k - 1] (cos - 1).
@@ -29,6 +29,10 @@ quatf_slerp(quatf_t a, quatf_t b, float t) {
     if (cosine < 0.0F) {
         b = (quatf_t){-b.x, -b.y, -b.z, -b.w};
         cosine = -cosine;
+    }
+    const float nlerp_from_cosine = 0.9995F; /* nlerp within 4.3 float epsilons of slerp */
+    if (cosine >= nlerp_from_cosine) {
+        return quatf_nlerp(a, b, t);
     }
     const float halve_below_cosine = 0.5F; /* a 120-degree rotation */
     if (cosine < halve_below_cosine) {
