@@ -11,5 +11,6 @@ typedef struct {
 
 static inline recti_t
 ui_layout_rect_to_recti(ui_layout_rect_t r) {
-    return (recti_t){r.x, r.y, r.width, r.height};
+    const recti_t out = {r.x, r.y, r.width, r.height};
+    return out;
 }

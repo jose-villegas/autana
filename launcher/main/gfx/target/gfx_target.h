@@ -9,8 +9,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "gfx/target/gfx_box.h"
 #include "gfx/target/gfx_color.h"
+#include "math/geometry/recti.h"
 
 typedef struct {
     gfx_color_t* buf; /* row 0 of this buffer is absolute row y0 */

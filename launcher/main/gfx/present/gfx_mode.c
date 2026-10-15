@@ -95,7 +95,7 @@ gfx_draw_begin(gfx_surface_t* out) {
 }
 
 void
-gfx_set_clip_box(recti_t box) {
+gfx_set_clip(recti_t box) {
     GFX_PRESENT_GUARD();
     clip = box;
 }

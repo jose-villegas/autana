@@ -1,5 +1,6 @@
 #include "draw/draw.h"
 #include "gfx/gfx.h"
+#include "gfx/target/gfx_segment_clip.h"
 #include "math/scalar/mathi.h"
 #include "services/tune.h"
 
@@ -30,12 +31,12 @@ mark_fill(const gfx_surface_t* state, recti_t rect) {
 
 void
 draw_set_clip(int x, int y, int w, int h) {
-    gfx_set_clip_box(recti_intersect((recti_t){x, y, w, h}, GFX_SCREEN_RECT));
+    gfx_set_clip(recti_intersect((recti_t){x, y, w, h}, GFX_SCREEN_RECT));
 }
 
 void
 draw_clear_clip(void) {
-    gfx_set_clip_box(GFX_SCREEN_RECT);
+    gfx_set_clip(GFX_SCREEN_RECT);
 }
 
 /* Primitives */
@@ -67,11 +68,7 @@ draw_pixel(int x, int y, gfx_color_t color) {
     if (!gfx_draw_begin(&state)) {
         return;
     }
-    if (x < state.clip.x || x >= recti_right(state.clip)) {
-        return;
-    }
-    const recti_t rect = gfx_target_clip_rect(state.target, state.clip, (recti_t){x, y, 1, 1});
-    if (recti_is_empty(rect)) {
+    if (!recti_contains(state.clip, x, y) || !gfx_target_row_range_overlaps(state.target, y, y + 1)) {
         return;
     }
     gfx_target_row(state.target, y)[x] = color;
@@ -83,11 +80,7 @@ draw_pixel(int x, int y, gfx_color_t color) {
 /* One pixel of a line. */
 static void
 plot(const gfx_surface_t* state, int x, int y, gfx_color_t color, unsigned flags) {
-    if (x < state->clip.x || x >= recti_right(state->clip)) {
-        return;
-    }
-    const recti_t rect = gfx_target_clip_rect(state->target, state->clip, (recti_t){x, y, 1, 1});
-    if (recti_is_empty(rect)) {
+    if (!recti_contains(state->clip, x, y) || !gfx_target_row_range_overlaps(state->target, y, y + 1)) {
         return;
     }
     gfx_color_t* const dst = &gfx_target_row(state->target, y)[x];
@@ -130,7 +123,7 @@ walk(const gfx_surface_t* state, int x0, int y0, int x1, int y1, gfx_color_t col
  * underestimating leaves stale. */
 static void
 line_walk(const gfx_surface_t* state, int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
-    if (!gfx_box_clip_segment(&state->clip, &x0, &y0, &x1, &y1)) {
+    if (!gfx_clip_segment(&state->clip, &x0, &y0, &x1, &y1)) {
         return;
     }
 

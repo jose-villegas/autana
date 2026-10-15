@@ -610,17 +610,11 @@ set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3]
     return true;
 }
 
-static inline recti_t
-window_box(const r3d_span_target_t* target, recti_t box) {
-    return recti_intersect(box,
-                           (recti_t){0, target->rows.row0, target->rows.width, target->rows.row1 - target->rows.row0});
-}
-
 static RENDER_IRAM_ATTR void
 r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                        const r3d_span_vertex_t* c, const uint16_t* face) {
     const r3d_span_extent_t e = r3d_span_extent_limits(a, b, c, flat_max_rows, flat_max_width);
-    const recti_t box = window_box(target, e.centres);
+    const recti_t box = recti_intersect(e.centres, r3d_span_window(target));
     if (recti_is_empty(box)) {
         return; /* no pixel centre inside this window */
     }
@@ -671,7 +665,7 @@ r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t
     const r3d_span_vertex_t* v2 = c;
     const bool odd = sort_by_y(&v0, &v1, &v2);
     const r3d_span_extent_t e = r3d_span_extent_limits(a, b, c, flat_max_rows, flat_max_width);
-    const recti_t box = window_box(target, e.centres);
+    const recti_t box = recti_intersect(e.centres, r3d_span_window(target));
     const int32_t area2 = r3d_span_area2(a, b, c);
     if (recti_is_empty(box) || area2 == 0) {
         return;

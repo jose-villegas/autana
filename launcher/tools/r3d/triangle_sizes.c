@@ -132,10 +132,7 @@ r3d_boxes_count(r3d_boxes_t* out, const r3d_span_target_t* target, const r3d_spa
                 const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, bool solid) {
     const r3d_span_extent_t e = r3d_span_extent(a, b, c);
     const recti_t box = e.centres;
-    const bool in_target = box.x < target->rows.width && recti_right(box) > 0 && box.x < recti_right(box)
-                           && box.y < target->rows.row1 && recti_bottom(box) > target->rows.row0
-                           && box.y < recti_bottom(box);
-    if (!in_target || r3d_span_area2(a, b, c) == 0) {
+    if (recti_is_empty(recti_intersect(box, r3d_span_window(target))) || r3d_span_area2(a, b, c) == 0) {
         return;
     }
     const int mode = e.flat ? R3D_BOXES_FLAT : (solid ? R3D_BOXES_FACE : R3D_BOXES_SMOOTH);

@@ -7,9 +7,9 @@
 #include <stdint.h>
 
 #include "build/build_variant.h"
-#include "gfx/target/gfx_box.h"
 #include "gfx/target/gfx_color.h"
 #include "gfx/target/gfx_target.h"
+#include "math/geometry/recti.h"
 
 /* The panel's size as literals, so no caller needs the board's headers; the
  * present side asserts them against the board's own values. */
@@ -58,7 +58,7 @@ typedef struct {
 bool gfx_draw_begin(gfx_surface_t* out);
 
 /* The caller intersects the box with the screen before setting it. */
-void gfx_set_clip_box(recti_t clip);
+void gfx_set_clip(recti_t clip);
 
 /* gfx_present() sends only what changed: the panel holds the rest in its own
  * GRAM, and sending is almost the whole cost of a frame. Every draw_* call

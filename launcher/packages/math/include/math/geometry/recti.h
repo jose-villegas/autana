@@ -3,7 +3,8 @@
  * its size, so it holds the points x <= px < x + w, y <= py < y + h. Edges are
  * computed (recti_right, recti_bottom), never stored. A rect with w or h at or
  * below zero is empty and holds no point; the queries return w and h at zero
- * for an empty result, never negative.
+ * for an empty result, never negative. Plain C that C++ also compiles, for
+ * the editor.
  */
 #pragma once
 
@@ -30,7 +31,8 @@ recti_bottom(recti_t r) {
 /* The rect from its edges, half-open; edges that cross give an empty rect. */
 static inline recti_t
 recti_from_edges(int left, int top, int right, int bottom) {
-    return (recti_t){left, top, mathi_max(right - left, 0), mathi_max(bottom - top, 0)};
+    const recti_t r = {left, top, mathi_max(right - left, 0), mathi_max(bottom - top, 0)};
+    return r;
 }
 
 static inline bool
@@ -45,14 +47,15 @@ recti_intersect(recti_t a, recti_t b) {
                             mathi_min(recti_bottom(a), recti_bottom(b)));
 }
 
-/* The smallest rect holding both; an empty one adds nothing. */
+/* The smallest rect holding both; an empty one adds nothing, and two empty
+ * ones give an empty rect at a's corner. */
 static inline recti_t
 recti_union(recti_t a, recti_t b) {
+    if (recti_is_empty(b)) {
+        return recti_is_empty(a) ? recti_from_edges(a.x, a.y, a.x, a.y) : a;
+    }
     if (recti_is_empty(a)) {
         return b;
-    }
-    if (recti_is_empty(b)) {
-        return a;
     }
     return recti_from_edges(mathi_min(a.x, b.x), mathi_min(a.y, b.y), mathi_max(recti_right(a), recti_right(b)),
                             mathi_max(recti_bottom(a), recti_bottom(b)));

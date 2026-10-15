@@ -10,7 +10,6 @@
 #include "gfx/present/modes/band/gfx_band.h"
 #include "gfx/present/send/gfx_dirty.h"
 #include "gfx/present/send/gfx_heal.h"
-#include "gfx/target/gfx_box.h"
 #include "gfx/target/gfx_target.h"
 
 #ifdef ESP_PLATFORM

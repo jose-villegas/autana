@@ -5,7 +5,9 @@
  * union.
  */
 
+#include <limits.h>
 #include <stdbool.h>
+#include <stddef.h>
 
 #include "suites.h"
 #include "unity.h"
@@ -85,6 +87,38 @@ test_union_covers_both_and_skips_an_empty_one(void) {
     assert_rect(R, recti_union(empty_far, R));
 }
 
+/* Rects a caller built with a negative size: empty, like a zero one. */
+static const recti_t NEGATIVE_W = {-3, 5, -10, 4};
+static const recti_t NEGATIVE_H = {7, -2, 4, -6};
+/* Holds every point the tests use, so only the other rect can empty an
+ * intersection with it. */
+static const recti_t EVERYWHERE = {INT_MIN / 2, INT_MIN / 2, INT_MAX, INT_MAX};
+
+static void
+test_negative_sizes_are_empty_and_hold_nothing(void) {
+    const recti_t negatives[] = {NEGATIVE_W, NEGATIVE_H};
+    for (size_t i = 0; i < sizeof negatives / sizeof negatives[0]; i++) {
+        const recti_t n = negatives[i];
+        TEST_ASSERT_TRUE(recti_is_empty(n));
+        TEST_ASSERT_FALSE(recti_contains(n, n.x, n.y));
+        TEST_ASSERT_FALSE(recti_contains(n, n.x + n.w, n.y + n.h));
+        const recti_t got = recti_intersect(n, EVERYWHERE);
+        TEST_ASSERT_TRUE(recti_is_empty(got));
+        TEST_ASSERT_TRUE(got.w >= 0 && got.h >= 0);
+    }
+}
+
+static void
+test_union_of_two_empty_rects_is_empty_with_no_negative_size(void) {
+    const recti_t pairs[][2] = {{NEGATIVE_W, NEGATIVE_H}, {NEGATIVE_H, NEGATIVE_W}};
+    for (size_t i = 0; i < sizeof pairs / sizeof pairs[0]; i++) {
+        const recti_t got = recti_union(pairs[i][0], pairs[i][1]);
+        TEST_ASSERT_TRUE(recti_is_empty(got));
+        TEST_ASSERT_EQUAL_INT(0, got.w);
+        TEST_ASSERT_EQUAL_INT(0, got.h);
+    }
+}
+
 void
 suite_recti(void) {
     RUN_TEST(test_right_and_bottom_are_one_past_the_last_pixel);
@@ -93,6 +127,8 @@ suite_recti(void) {
     RUN_TEST(test_intersect_keeps_the_overlap);
     RUN_TEST(test_intersect_of_disjoint_or_touching_rects_is_empty);
     RUN_TEST(test_union_covers_both_and_skips_an_empty_one);
+    RUN_TEST(test_negative_sizes_are_empty_and_hold_nothing);
+    RUN_TEST(test_union_of_two_empty_rects_is_empty_with_no_negative_size);
 }
 
 SUITE_REGISTER(suite_recti);
