@@ -8,6 +8,8 @@
         "mesh_cells": 48,
         "mesh_dash": 0,
         "grid_fade_ms": 128,
+        "floor_pluck_from_ms": 0,
+        "floor_pluck_until_ms": 5500,
         "pen_start_ms": 520,
         "pen_ms": 1980,
         "title_start_ms": 2450,
@@ -43,10 +45,10 @@
     },
     "camera_half_fov_short_tan": 1.0,
     "grid_step_m": 0.1,
-    "floor_tick_ms": 40,
-    "floor_tension": 64,
-    "floor_stiffness": 2,
-    "floor_damping": 4,
-    "floor_pluck_m": 0.35,
-    "floor_pluck_cells": 4
+    "floor_tick_ms": 10,
+    "floor_tension": 12,
+    "floor_stiffness": 1,
+    "floor_damping": 1,
+    "floor_pluck_m": 0.9,
+    "floor_pluck_cells": 5
 }

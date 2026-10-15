@@ -69,6 +69,13 @@ class TimelineGeneratorTests(unittest.TestCase):
                 self.assertNotEqual(0, result.returncode)
                 self.assertIn(message, result.stderr)
 
+    def test_the_pluck_window_must_open_before_it_closes(self):
+        for change in (lambda timing: timing.update(floor_pluck_from_ms=-1),
+                       lambda timing: timing.update(floor_pluck_from_ms=2000, floor_pluck_until_ms=1000)):
+            result = self.generate(change)
+            self.assertNotEqual(0, result.returncode)
+            self.assertIn("floor_pluck_from_ms must be in 0..floor_pluck_until_ms", result.stderr)
+
     def test_removed_floor_wave_keys_are_unknown(self):
         for key in ("wave_height_m", "wave_wavelength_m", "wave_period_ms"):
             result = self.generate(config_change=lambda cfg: cfg.update({key: 1}))

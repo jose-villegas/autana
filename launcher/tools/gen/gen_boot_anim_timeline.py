@@ -128,6 +128,9 @@ def validate_floor(cfg):
     pluck = cfg.get("floor_pluck_m")
     if type(pluck) not in (int, float) or not math.isfinite(pluck) or not 0 <= pluck <= 1:
         fail("floor_pluck_m must be finite and in 0..1 metres per tick")
+    timing = cfg["timing"]
+    if not 0 <= timing["floor_pluck_from_ms"] <= timing["floor_pluck_until_ms"]:
+        fail("floor_pluck_from_ms must be in 0..floor_pluck_until_ms")
     radius = cfg["floor_pluck_cells"]
     if type(radius) is not int or not 1 <= radius <= cfg["timing"]["mesh_cells"]:
         fail("floor_pluck_cells must be an integer in 1..mesh_cells")
@@ -328,6 +331,10 @@ TIMING_ORDER = [
      "how long a spoke takes to reach the floor's own edge - 0 draws the "
      "full length instantly"),
     ("grid_fade_ms", "BOOT_ANIM_GRID_FADE_MS", None),
+    ("floor_pluck_from_ms", "BOOT_ANIM_FLOOR_PLUCK_FROM_MS",
+     "a zero the pen passes at or after this plucks the floor"),
+    ("floor_pluck_until_ms", "BOOT_ANIM_FLOOR_PLUCK_UNTIL_MS",
+     "and one it passes at or after this does not"),
     ("pen_start_ms", "BOOT_ANIM_PEN_START_MS", None),
     ("pen_ms", "BOOT_ANIM_PEN_MS", "how long the curve takes to draw"),
     ("pen_finish_ms", "BOOT_ANIM_PEN_FINISH_MS",

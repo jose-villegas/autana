@@ -24,8 +24,7 @@ crossfade; without it the scene
 stays where the photograph would have covered it. `boot_anim.h` samples the tracks with the engine's [animation tracks](../../../docs/Animation-Tracks.md) and converts each
 frame's values to a `transformf_t` in `anim/anim_transform.h`. The space's
 rotation is a quaternion slerp between its keys. Frames render on a host with
-`tools/render/scenes/boot_anim_render_host.sh` (`--video` for the whole
-animation).
+`tools/render/scenes/boot_anim_render_host.sh`; see [Watching a change](#watching-a-change).
 
 ## Spring floor
 
@@ -42,8 +41,20 @@ The velocity-first update is stable for
 `8 * floor_tension + floor_stiffness < 4 * 256`, with damping in `0..256`.
 The generator enforces that bound.
 
-The sheet shows the reference sine and spring sheet at the render script's
-middle, late and crossfade checkpoints, with amplified pixel differences.
-The [detail crops](floor-springs.crops.png) enlarge the strongest differences.
+Each zero the pen passes between `floor_pluck_from_ms` and
+`floor_pluck_until_ms` plucks the floor; one passed outside that window does
+not.
 
-![Floor reference, spring sheet and pixel differences](floor-springs.png)
+## Watching a change
+
+Edit `main/boot/boot_anim_timeline.json`, then from `launcher/`:
+
+```sh
+python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json main/boot/boot_anim_motion.glb > main/boot/boot_anim_timeline.h
+./tools/render/scenes/boot_anim_render_host.sh --video
+```
+
+`whole.avi` in the render folder is the whole animation, upright as the
+board is held. The other renders are pinned, so a change to what boot draws
+fails the run until it is re-pinned with `--update-baseline`; `whole.avi`
+renders first and is written either way.

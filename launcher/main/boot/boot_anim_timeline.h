@@ -44,6 +44,12 @@
 #define BOOT_ANIM_GRID_SPOKE_DRAW_MS 800
 
 #define BOOT_ANIM_GRID_FADE_MS 128
+/* a zero the pen passes at or after this plucks the floor */
+#define BOOT_ANIM_FLOOR_PLUCK_FROM_MS 0
+
+/* and one it passes at or after this does not */
+#define BOOT_ANIM_FLOOR_PLUCK_UNTIL_MS 5500
+
 #define BOOT_ANIM_PEN_START_MS 520
 /* how long the curve takes to draw */
 #define BOOT_ANIM_PEN_MS 1980
@@ -130,9 +136,9 @@
  * boot_anim.c does. */
 #define BOOT_ANIM_GRID_STEP_Q12 410
 
-#define BOOT_ANIM_FLOOR_TICK_MS 40
-#define BOOT_ANIM_FLOOR_TENSION 64
-#define BOOT_ANIM_FLOOR_STIFFNESS 2
-#define BOOT_ANIM_FLOOR_DAMPING 4
-#define BOOT_ANIM_FLOOR_PLUCK_CELLS 4
-#define BOOT_ANIM_FLOOR_PLUCK_Q16 22938
+#define BOOT_ANIM_FLOOR_TICK_MS 10
+#define BOOT_ANIM_FLOOR_TENSION 12
+#define BOOT_ANIM_FLOOR_STIFFNESS 1
+#define BOOT_ANIM_FLOOR_DAMPING 1
+#define BOOT_ANIM_FLOOR_PLUCK_CELLS 5
+#define BOOT_ANIM_FLOOR_PLUCK_Q16 58982
