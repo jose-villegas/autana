@@ -21,3 +21,18 @@ The C scan includes macro parentheses and switch default checks even when
 their pinned count is zero. The unused return value check names C functions
 in `launcher/.clang-tidy`. Cppcheck's MISRA addon checks conditions that use
 integer expressions as booleans and the internal linkage rules.
+
+## Instruction counts
+
+`icount_gate.py` compares a QEMU `--icount` serial log with the generated
+`icount_baseline.txt`. Only named serial simulation and raster span kernels
+are pinned; frame totals and whole suites would constrain unrelated code.
+See [the testing guide](../../../docs/Testing-Guide.md#qemu-the-device-image-with-no-board)
+for the suite command.
+
+Both a rise and a fall beyond 0.5% fail. Lower an improved entry in the same
+PR; raise one only with a stated reason in that PR. After two identical
+captures, run `python launcher/tools/quality/icount_gate.py --update-baseline
+LOG` to generate the sorted baseline. Missing, unexpected, empty and short
+measurements fail, including during updates. A compiler or IDF bump
+re-baselines in one deliberate commit.

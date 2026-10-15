@@ -1,8 +1,23 @@
 /* In-place timing statistics shared by device performance suites. */
 #pragma once
 
+#include <inttypes.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
+
+/* A row can sum several timed batches; reserve rounding for their clock reads. */
+#define PERF_ICOUNT_PREFIX                "ICOUNT"
+#define PERF_ICOUNT_TOLERANCE_DENOMINATOR 200
+#define PERF_ICOUNT_ROUNDING_US           100
+#define PERF_ICOUNT_ROUNDING_MARGIN       10
+#define PERF_ICOUNT_MIN_TOTAL_US                                                                                       \
+    (PERF_ICOUNT_ROUNDING_US * PERF_ICOUNT_ROUNDING_MARGIN * PERF_ICOUNT_TOLERANCE_DENOMINATOR)
+
+static inline void
+perf_icount_print(const char* name, int64_t took_us, int reps) {
+    printf(PERF_ICOUNT_PREFIX " %s us=%" PRId64 " reps=%d\n", name, took_us, reps);
+}
 
 typedef struct {
     int64_t min, max, avg, med, p95;

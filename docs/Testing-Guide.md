@@ -518,6 +518,28 @@ answers whether a change removed work; on this chip that does not predict
 whether it removed time (see
 [`notes/Debugging.md`](notes/Debugging.md#performance-seems-off)).
 
+**Hot kernel instruction ratchet.** Only selected serial simulation steps
+and the solid and Gouraud span fillers are pinned in
+`launcher/tools/quality/icount_baseline.txt`. Frame totals and whole suites
+are excluded so unrelated code growth carries no instruction budget.
+These suites run only when requested. The `icount-ratchet` job in
+`.github/workflows/qemu-tests.yml` names the suites and their capture
+command; run that command locally from `launcher/`, then check the log:
+
+```sh
+python launcher/tools/quality/icount_gate.py launcher/build.qemu.shell/qemu_serial.log
+```
+
+The gate fails above or below the baseline by more than 0.5%, on a missing
+or unexpected row, or when a row is too short to bound clock rounding.
+An improvement requires lowering the baseline in the same PR. An increase
+requires a stated reason and a baseline update in the same PR. Generate
+both with `python launcher/tools/quality/icount_gate.py --update-baseline
+launcher/build.qemu.shell/qemu_serial.log` after confirming two captures
+agree. A compiler or IDF bump re-baselines the kernels in one deliberate
+commit. The named tolerance and minimum capture length live in
+`launcher/test/perf_stats.h`; the gate reads them there.
+
 **Instances are independent.** Each `qemu_run.py --workdir` holds its own
 flash image, eFuse file and console log, and the build directory is only
 read, so `run_qemu_tests.sh --build-only` builds the image once for a

@@ -265,6 +265,7 @@ build_full_size_step_scene(sand_t* real, uint8_t* big) {
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_present.h"
 #include "panel_clock_pin.h"
+#include "perf_stats.h"
 #include "profile/frame_cost.h"
 
 /* Each pass's time for one step, summed over a window, and the split of the
@@ -629,6 +630,47 @@ static void
 build_water_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
     build_quality_water_pour_scene(real, big, blocks, REAL_W, REAL_H);
 }
+
+#define ICOUNT_SCENE_COUNT 2
+#define ICOUNT_STEP_BATCH  64
+#define ICOUNT_STEP_ROUNDS 4
+#define ICOUNT_STEP_REPS   (ICOUNT_STEP_BATCH * ICOUNT_STEP_ROUNDS)
+#define ICOUNT_GRAVITY     1000
+
+static void
+build_falling_icount_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
+    build_full_size_step_scene(real, big);
+    sand_enable_sleeping(real, blocks);
+}
+
+static void
+test_serial_step_instruction_rows(void) {
+    const two_core_scope_t core = two_core_scope_begin(false);
+    for (int water = 0; water < ICOUNT_SCENE_COUNT; water++) {
+        int64_t elapsed = 0;
+        for (int round = 0; round < ICOUNT_STEP_ROUNDS; round++) {
+            real_board_t b;
+            sand_t* const real = real_board_open_built(&b, water ? build_water_scene : build_falling_icount_scene);
+            const int64_t start = timing_now_us();
+            for (int i = 0; i < ICOUNT_STEP_BATCH; i++) {
+                sand_step(real, 0, ICOUNT_GRAVITY, 0);
+            }
+            elapsed += timing_now_us() - start;
+            real_board_close(&b);
+            free(real);
+        }
+        perf_icount_print(water ? "sand_water_step" : "sand_falling_step", elapsed, ICOUNT_STEP_REPS);
+        TEST_ASSERT_TRUE(elapsed >= PERF_ICOUNT_MIN_TOTAL_US);
+    }
+    two_core_scope_end(core);
+}
+
+void
+run_sand_icount_suite(void) {
+    RUN_TEST(test_serial_step_instruction_rows);
+}
+
+SUITE_REGISTER_ON_REQUEST(run_sand_icount_suite);
 
 static int64_t
 water_scene_us_per_step(void) {

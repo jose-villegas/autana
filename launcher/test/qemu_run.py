@@ -82,6 +82,8 @@ from device_capture import (BOOTS_FROM_RESET, BUILD_ID_RE, BUILD_ID_REQUEST,  # 
 import screenshot as wire  # noqa: E402  (the board tool's own protocol)
 import patched_qemu  # noqa: E402  (path must be set up first)
 
+ICOUNT_SHIFT = 0
+
 QEMU_PASS_RE = re.compile(r":PASS$", re.M)
 QEMU_IGNORE_RE = re.compile(r":IGNORE")
 QEMU_FAIL_RE = re.compile(r"^\S*:\d+:(\w+):FAIL:? ?(.*)$", re.M)
@@ -390,7 +392,7 @@ def main(argv):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("build_dir")
     parser.add_argument("--icount", action="store_true",
-                        help="count instructions: -icount shift=0")
+                        help=f"count instructions: -icount shift={ICOUNT_SHIFT}")
     parser.add_argument("--timeout", type=int, default=1800)
     parser.add_argument("--suite", action="append", default=[],
                         help="run this registered suite by name (repeatable); "
@@ -466,7 +468,7 @@ def main(argv):
            "-nographic", "-monitor", "none",
            "-serial", "tcp:127.0.0.1:%d,server=on,wait=on" % port]
     if args.icount:
-        cmd += ["-icount", "shift=0"]
+        cmd += ["-icount", f"shift={ICOUNT_SHIFT}"]
 
     proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL,
                             stdout=subprocess.DEVNULL,
