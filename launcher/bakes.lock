@@ -1,5 +1,8 @@
 # Written by launcher/tools/bake/bake.py: the bytes made for each bake's key. Do not edit.
 
+# mesh_cpu_vendor: the CPU vendor the meshes were made on; a mesh bake's bytes differ between vendors.
+mesh_cpu_vendor = "AuthenticAMD"
+
 [[bake]]
 output = "capybara.capybara.mesh"
 source = "launcher/demo/capybara/capybara.scene.toml"
@@ -39,10 +42,10 @@ host = "Linux x86_64"
 [[bake]]
 output = "sponza.atrium_fitted.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "1348aaccd091e0c41420ee4e55e70962d236943a6df9e34529f5a96a66f96b39"
-sha256 = "07df05b329ab648ff266a8cc9e2dbc71fa54f2c8dce325c3b58d3ac21f3f7f03"
-size = 135092
-run = 38633955242
+key = "8ca6147fb6ecdf5dcf193acfd55551fdb8474d3b6c18db2aa669972bfc2cddb0"
+sha256 = "e188591744432e9fcc19b1fb4cf50ff863059b0059c939148ef4e18af174b975"
+size = 138560
+run = 38687985953
 host = "Linux x86_64"
 
 [[bake]]
@@ -57,10 +60,10 @@ host = "Linux x86_64"
 [[bake]]
 output = "sponza.atrium_fitted_full.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "03ae32a887c62e00df3192eb05c5663cd65e06830e2a562d484f5df37063b693"
-sha256 = "8596300cd81e0179b708251ef919faba5d7556320750f09a70025b489affe7a8"
-size = 279800
-run = 38633955242
+key = "cb719672f148a7edb473a701d4bcba02664a5fac1c848ea819a039e40404b6bf"
+sha256 = "958f0be2b6b8f2aad19bbe9bffd428a9517b820598015e5a6db98213c5cb4680"
+size = 282244
+run = 38687985953
 host = "Linux x86_64"
 
 [[bake]]
@@ -84,10 +87,10 @@ host = "Linux x86_64"
 [[bake]]
 output = "sponza.atrium_flat_fitted.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "d35f49af5d007a4f7354fce04c20cd408bc4a38f7502b07b788c3eeed46f6b5d"
-sha256 = "a39d464ee3f0ad76b61ed5af5a4964caac1754a3afd8bcc0e590da012968af59"
-size = 238832
-run = 38633955242
+key = "2ec703d87c0cfd40e44778baab02ec92d1756ec60aea68f57f006190f1e33d24"
+sha256 = "b8cc7f6c36a56e423a792f556bd27683d79ac1e1acf17490655f05729155a473"
+size = 247036
+run = 38687985953
 host = "Linux x86_64"
 
 [[bake]]
@@ -112,15 +115,15 @@ host = "Linux x86_64"
 # and sampler code. bake.py lock writes them; bake.py check samples them again.
 
 [[poses]]
-key = "23f588142efb921ac5935874e6945956d9919fa78d81012d7205df4c37ceba68"
-poses = "b6acfc414c2402cacdcd7dcf258cec6d9919473936dddab517719c46d029d430"
-count = 37
+key = "23a90cf2254752ee0b3edec7a17bdc40905b12595668eee5741737ef9703e9c4"
+poses = "4088073fbcfc607e39b2f60547eb9d4216d1d12ffff625ac4ea28fffcf444cf7"
+count = 1816
 clip = "launcher/demo/sponza/flythrough.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "c8ee10bf033bf40e4aa38762d6886136dd5fdc70acf8a8f16350571550e1b683"
-poses = "85b37cc70bf0ef7b0266dc4544245f8e3cda49285612042ec2d4bd539b3fe768"
-count = 364
+key = "23f588142efb921ac5935874e6945956d9919fa78d81012d7205df4c37ceba68"
+poses = "b6acfc414c2402cacdcd7dcf258cec6d9919473936dddab517719c46d029d430"
+count = 37
 clip = "launcher/demo/sponza/flythrough.anim.toml"
 host = "Windows AMD64"
