@@ -20,7 +20,7 @@ class PipelineFrameTableTests(unittest.TestCase):
 
     def test_stage_headers_and_cells_share_resolve_column(self):
         base = {'mean': 1000, 'p50': 1000, 'max': 1000, 'r3d.draw': 2.0, 'r3d.upscale': 3.0}
-        spans = dict(setup=100, rows=100, span_setup=100, fill=100)
+        spans = dict(setup=100, edges=100, carry=100, fill=100)
         table = dynres_report.stages_table({(184, 224): dict(base, **{'r3d.resolve': 4.0}),
                                           (92, 112): base}, {(184, 224): spans, (92, 112): spans})
         lines = table.splitlines()

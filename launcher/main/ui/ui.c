@@ -652,7 +652,8 @@ hash_bytes(uint64_t h, const void* data, size_t len) {
 
 /* Hashes whichever bound entries overlap [row0, row1): a COMMAND entry by
  * its own bytes (cmd->base.size is trustworthy: paint_canvas() already
- * relies on it the same way), a FILL_RECT by its rect and colour. Two
+ * relies on it the same way), a UI_BAND_ENTRY_FILL_RECT by its rect and
+ * colour. Two
  * frames whose relevant entries hash the same drew the identical picture
  * in this band, mu_Command byte layout and all. */
 static uint64_t
