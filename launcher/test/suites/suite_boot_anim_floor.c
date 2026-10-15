@@ -39,7 +39,7 @@ test_each_zero_in_the_window_plucks_once_at_its_first_tick(void) {
     int plucked = 0;
     for (uint32_t ms = BOOT_ANIM_FLOOR_TICK_MS; ms <= BOOT_ANIM_MS; ms += BOOT_ANIM_FLOOR_TICK_MS) {
         const int32_t reached = boot_anim_pen_t(ms);
-        const bool in_window = ms >= BOOT_ANIM_FLOOR_PLUCK_FROM_MS && ms < BOOT_ANIM_FLOOR_PLUCK_UNTIL_MS;
+        const bool in_window = boot_anim_floor_plucks_at(ms);
         while (next < BOOT_ANIM_ZEROS && boot_anim_zero_t[next] <= reached) {
             if (in_window) {
                 spring_grid_poke(&reference.grid, BOOT_ANIM_MESH_CELLS / 2, BOOT_ANIM_MESH_CELLS / 2,
@@ -65,6 +65,18 @@ test_each_zero_in_the_window_plucks_once_at_its_first_tick(void) {
     boot_anim_floor_close(&reference);
 }
 
+/* The window is half open: its first millisecond plucks, its end does not,
+ * and neither does the millisecond before it opens. */
+static void
+test_the_pluck_window_is_half_open(void) {
+    if (BOOT_ANIM_FLOOR_PLUCK_FROM_MS < BOOT_ANIM_FLOOR_PLUCK_UNTIL_MS) {
+        TEST_ASSERT_TRUE(boot_anim_floor_plucks_at(BOOT_ANIM_FLOOR_PLUCK_FROM_MS));
+        TEST_ASSERT_TRUE(boot_anim_floor_plucks_at(BOOT_ANIM_FLOOR_PLUCK_UNTIL_MS - 1));
+    }
+    TEST_ASSERT_FALSE(boot_anim_floor_plucks_at(BOOT_ANIM_FLOOR_PLUCK_UNTIL_MS));
+    TEST_ASSERT_FALSE(boot_anim_floor_plucks_at((uint32_t)BOOT_ANIM_FLOOR_PLUCK_FROM_MS - 1u));
+}
+
 static void
 test_allocation_failure_leaves_flat_floor(void) {
     void* held = memory_alloc(memory_largest_block(MEMORY_PSRAM), MEMORY_PSRAM);
@@ -87,6 +99,7 @@ void
 suite_boot_anim_floor(void) {
     RUN_TEST(test_replay_is_identical_at_every_frame_partition);
     RUN_TEST(test_each_zero_in_the_window_plucks_once_at_its_first_tick);
+    RUN_TEST(test_the_pluck_window_is_half_open);
     RUN_TEST(test_allocation_failure_leaves_flat_floor);
 }
 

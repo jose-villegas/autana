@@ -33,7 +33,7 @@ boot_anim_floor_advance(boot_anim_floor_t* floor, uint32_t now_ms) {
     while (floor->ticks < target) {
         const uint32_t tick_ms = (floor->ticks + 1) * BOOT_ANIM_FLOOR_TICK_MS;
         const int32_t reached = boot_anim_pen_t(tick_ms);
-        const bool plucks = tick_ms >= BOOT_ANIM_FLOOR_PLUCK_FROM_MS && tick_ms < BOOT_ANIM_FLOOR_PLUCK_UNTIL_MS;
+        const bool plucks = boot_anim_floor_plucks_at(tick_ms);
         while (floor->next_zero < BOOT_ANIM_ZEROS && boot_anim_zero_t[floor->next_zero] <= reached) {
             if (plucks) {
                 spring_grid_poke(&floor->grid, BOOT_ANIM_MESH_CELLS / 2, BOOT_ANIM_MESH_CELLS / 2,

@@ -532,6 +532,15 @@ boot_anim_pen_t(uint32_t now_ms) {
     return boot_anim_spline(boot_anim_sample(last - 1), boot_anim_sample(last), boot_anim_sample(last + 1), part).t;
 }
 
+/* Whether a zero the pen passes at `ms` plucks the floor: inside
+ * [BOOT_ANIM_FLOOR_PLUCK_FROM_MS, BOOT_ANIM_FLOOR_PLUCK_UNTIL_MS). One
+ * unsigned offset, so a window opening at 0 needs no always-true test. */
+static inline bool
+boot_anim_floor_plucks_at(uint32_t ms) {
+    return (uint32_t)(ms - BOOT_ANIM_FLOOR_PLUCK_FROM_MS)
+           < (uint32_t)(BOOT_ANIM_FLOOR_PLUCK_UNTIL_MS - BOOT_ANIM_FLOOR_PLUCK_FROM_MS);
+}
+
 #define BOOT_ANIM_FLOOR_SIDE  (BOOT_ANIM_MESH_CELLS + 1)
 #define BOOT_ANIM_FLOOR_NODES (BOOT_ANIM_FLOOR_SIDE * BOOT_ANIM_FLOOR_SIDE)
 
