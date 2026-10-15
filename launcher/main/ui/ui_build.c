@@ -31,13 +31,13 @@ static const char* TAG = "ui";
 #include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
 #include "services/tune.h"
-#include "ui/ui_bridge.h"
-#include "ui/ui_icons.h"
+#include "ui/controls/ui_icons.h"
+#include "ui/controls/ui_slider.h"
+#include "ui/controls/ui_widgets.h"
+#include "ui/input/ui_bridge.h"
+#include "ui/input/ui_pointer.h"
+#include "ui/input/ui_snap.h"
 #include "ui/ui_internal.h"
-#include "ui/ui_pointer.h"
-#include "ui/ui_slider.h"
-#include "ui/ui_snap.h"
-#include "ui/ui_widgets.h"
 
 /* Definitions for the externs ui_internal.h declares; see that header for
  * what each one is shared for. */

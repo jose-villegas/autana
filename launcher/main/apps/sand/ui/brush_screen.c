@@ -5,8 +5,8 @@
 
 #include "draw/draw_font_roles.h"
 #include "gfx/target/gfx_color.h"
+#include "ui/controls/ui_style.h"
 #include "ui/ui.h"
-#include "ui/ui_style.h"
 
 #include "apps/sand/material_palette.h"
 #include "apps/sand/sand_swatch.h"

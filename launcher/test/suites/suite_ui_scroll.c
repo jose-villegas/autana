@@ -21,11 +21,11 @@
 
 #include "gfx/gfx.h"
 #include "microui.h"
+#include "ui/input/ui_bridge.h"
+#include "ui/input/ui_pointer.h"
+#include "ui/layout/ui_scroll.h"
+#include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
-#include "ui/ui_bridge.h"
-#include "ui/ui_pointer.h"
-#include "ui/ui_scroll.h"
-#include "ui/ui_transform.h"
 
 #define ROWS    20
 #define ROW_W   300

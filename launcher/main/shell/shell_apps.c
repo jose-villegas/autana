@@ -27,8 +27,8 @@
 #include "shell/shell_system.h"
 #include "shell/ui/ui_launcher.h"
 #include "shell/ui/ui_ridge.h"
+#include "ui/layout/ui_anchor.h"
 #include "ui/ui.h"
-#include "ui/ui_anchor.h"
 
 #include "esp_log.h"
 

@@ -7,7 +7,7 @@
 #pragma once
 
 #include "gfx/present/gfx_mode.h"
-#include "ui/ui_icons.h"
+#include "ui/controls/ui_icons.h"
 
 #define SAND_PACK "sand"
 

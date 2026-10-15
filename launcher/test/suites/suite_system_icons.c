@@ -24,7 +24,7 @@
 
 #include "bbox_extend.h"
 #include "draw/icon.h"
-#include "ui/ui_icons.h"
+#include "ui/controls/ui_icons.h"
 
 /* System icon `id`, which the engine pack the suites run with must hold. */
 static const draw_image_t*

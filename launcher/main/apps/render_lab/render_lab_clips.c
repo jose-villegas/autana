@@ -9,8 +9,8 @@
 #include "core/memory.h"
 #include "draw/draw.h"
 #include "esp_log.h"
+#include "ui/controls/ui_widgets.h"
 #include "ui/ui.h"
-#include "ui/ui_widgets.h"
 
 static int render_lab_clips_find(const scene_t* scene, scene_entity_t subject, const char* name);
 static bool render_lab_clips_play(render_lab_clips_t* choice, int clip, int blend_ms);

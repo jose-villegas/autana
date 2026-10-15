@@ -12,7 +12,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "ui/ui_pointer.h"
+#include "ui/input/ui_pointer.h"
 
 static ui_pointer_t p;
 static ui_pointer_event_t ev[UI_POINTER_MAX_EVENTS];

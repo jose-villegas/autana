@@ -29,7 +29,7 @@ What already exists:
   needs Q16 progress.
 - `math/motion/spring_line.h`: integer springs on a fixed 4 ms tick that come to
   rest by themselves.
-- `ui/ui_transform.h`: axis-aligned translate and scale. Text turns only in
+- `ui/layout/ui_transform.h`: axis-aligned translate and scale. Text turns only in
   quarter turns and scales only by whole numbers.
 
 ## The pieces, in build order

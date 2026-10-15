@@ -364,7 +364,7 @@ bake_header(const LayoutDocument& document, const std::filesystem::path& header_
     out << "/*\n * GENERATED FILE - do not edit.\n *\n"
         << " *     python tools/gen/bake_ui_layout.py " << std::quoted(document.path().generic_string()) << " "
         << std::quoted(header_path.generic_string())
-        << "\n */\n#pragma once\n\n#include \"ui/ui_layout.h\"\n\ntypedef enum {\n";
+        << "\n */\n#pragma once\n\n#include \"ui/layout/ui_layout.h\"\n\ntypedef enum {\n";
     for (std::size_t index = 0; index < document.elements().size(); index++) {
         out << "    " << prefix << upper(document.elements()[index].id) << " = " << index << ",\n";
     }

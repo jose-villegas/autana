@@ -3,8 +3,8 @@
 #include <stdio.h>
 
 #include "draw/draw.h"
+#include "ui/layout/ui_scroll.h"
 #include "ui/ui.h"
-#include "ui/ui_scroll.h"
 
 #define MENU_BTN_W   300
 #define MENU_BTN_H   UI_ROW_HEIGHT

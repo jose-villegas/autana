@@ -35,10 +35,10 @@
 #include "sand_brushes.h"
 #include "sand_swatch.h"
 #include "sand_ui.h"
+#include "ui/controls/ui_slider.h"
+#include "ui/controls/ui_style.h"
+#include "ui/layout/ui_transform.h"
 #include "ui/ui.h" /* UI_MARGIN, UI_SLIDER_KNOB_W only */
-#include "ui/ui_slider.h"
-#include "ui/ui_style.h"
-#include "ui/ui_transform.h"
 
 /* A real brush cell, mode and radius to draw: the longest name, the worst
  * case brush_screen.c's name-shrink loop handles. */

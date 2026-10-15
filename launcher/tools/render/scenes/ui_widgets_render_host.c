@@ -11,10 +11,10 @@
 
 #include "gfx/gfx.h"
 #include "render_host.h"
+#include "ui/controls/ui_icons.h"
+#include "ui/controls/ui_widgets.h"
+#include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
-#include "ui/ui_icons.h"
-#include "ui/ui_transform.h"
-#include "ui/ui_widgets.h"
 
 #define BACKGROUND 0x0A0C14
 #define HEADER_H   40

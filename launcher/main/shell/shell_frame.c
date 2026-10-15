@@ -9,8 +9,8 @@
 #include "gfx/present/gfx_present.h"
 #include "services/build_id.h"
 #include "shell/shell_frame.h"
+#include "ui/layout/ui_anchor.h"
 #include "ui/ui.h"
-#include "ui/ui_anchor.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #define BUILD_MARK_GLYPH        8

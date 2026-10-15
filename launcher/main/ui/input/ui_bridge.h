@@ -3,7 +3,7 @@
 
 #include "input/input.h"
 #include "microui.h"
-#include "ui/ui_pointer.h"
+#include "ui/input/ui_pointer.h"
 
 /* Before mu_begin(): step `p` with the logical `input`, replay its events
  * into `ctx`, and on a press frame seed the hover root. */
