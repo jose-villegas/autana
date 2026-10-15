@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import types
 import unittest
 import urllib.error
@@ -67,6 +68,108 @@ def fitted_job():
 def bake_of(key, tree, kind="mesh"):
     return bake.Bake(output="one.mesh", source=tree, holder="one", kind=kind, key=key, suffix=bake.MESH_SUFFIX,
                      tree=tree)
+
+
+def mesh_process_stub(item, cache, lock=None, blender=None):
+    if item.holder == "fail":
+        raise bake.BakeMissing("mesh worker failed")
+    if item.holder == "settings":
+        raise bake.SettingsError("mesh settings failed")
+    cache = pathlib.Path(cache)
+    if item.holder == "wait":
+        deadline = time.monotonic() + 15
+        while not (cache / "later.done").exists():
+            if time.monotonic() >= deadline:
+                raise bake.BakeMissing("later mesh did not finish first")
+            time.sleep(0.01)
+    payload = cache / f"{item.key}.payload"
+    with payload.open("x" if item.holder == "once" else "w") as stream:
+        stream.write(str(os.getpid()))
+    row = produce.record(item, payload, cache)
+    (cache / f"{item.holder}.done").touch()
+    return row
+
+
+class MeshCommandTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = pathlib.Path(self.directory.name)
+        self.found = [dataclasses.replace(bake_of(str(index), self.root),
+                                         output=f"{index}.mesh", holder=str(index)) for index in range(4)]
+
+    def command(self, capacity=2, again=True, memory_error=False):
+        from r3d import process_budget as budget
+        out, err = io.StringIO(), io.StringIO()
+        rows = []
+        free = tuple(floor + capacity * cost for floor, cost in zip(budget.FLOORS, budget.BAKE_BYTES))
+        with mock.patch.object(bake, "bakes", return_value=self.found), \
+                mock.patch.object(bake, "read_lock_tables", return_value={"bake": {}, "poses": {}}), \
+                mock.patch.object(budget, "available_bytes", side_effect=OSError("no procfs") if memory_error else None,
+                                  return_value=free), \
+                mock.patch.object(budget, "cores_available", return_value=4), \
+                mock.patch.object(bake, "cpu_vendor", return_value=None), \
+                mock.patch.object(produce, "produce", mesh_process_stub), \
+                mock.patch.object(produce, "export", side_effect=lambda made, *_: rows.extend(made)), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = bake.main(["bake", "--kind", "mesh", "--cache", str(self.root), "--out", str(self.root / "out"),
+                              *(["--again"] if again else [])])
+        return types.SimpleNamespace(code=code, out=out.getvalue(), err=err.getvalue(), rows=rows)
+
+    def test_parallel_processes_preserve_found_and_printed_order(self):
+        self.found[0] = dataclasses.replace(self.found[0], holder="wait")
+        self.found[1] = dataclasses.replace(self.found[1], holder="later")
+        done = self.command()
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual([row["output"] for row in done.rows], [item.output for item in self.found])
+        self.assertEqual([line.split()[1] for line in done.out.splitlines() if line.startswith("made ")],
+                         [item.output for item in self.found])
+        pids = {bake.cached(row, row["suffix"], self.root).read_text() for row in done.rows}
+        self.assertGreater(len(pids), 1)
+        self.assertNotIn(str(os.getpid()), pids)
+        self.assertIn("mesh workers: 2 (memory", done.out)
+
+    def test_capacity_one_runs_serially(self):
+        done = self.command(capacity=1)
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual({bake.cached(row, row["suffix"], self.root).read_text() for row in done.rows},
+                         {str(os.getpid())})
+        self.assertIn("mesh workers: 1 (memory", done.out)
+
+    def test_missing_memory_uses_one_worker(self):
+        done = self.command(memory_error=True)
+        self.assertEqual(done.code, 0, done.err)
+        self.assertIn("mesh workers: 1 (memory unavailable", done.out)
+
+    def test_core_limit_is_reported(self):
+        done = self.command(capacity=10)
+        self.assertEqual(done.code, 0, done.err)
+        self.assertIn("mesh workers: 4 (cores", done.out)
+
+    def test_worker_errors_preserve_command_messages(self):
+        for holder, message in (("fail", "mesh worker failed"), ("settings", "mesh settings failed")):
+            with self.subTest(holder=holder):
+                self.found[0] = dataclasses.replace(self.found[0], holder=holder)
+                done = self.command()
+                self.assertEqual(done.code, 1)
+                self.assertIn(f"bake.py: {message}", done.err)
+                self.assertEqual(done.rows, [])
+
+    def test_duplicate_keys_are_produced_once_even_with_again(self):
+        self.found[0] = dataclasses.replace(self.found[0], holder="once")
+        self.found = [self.found[0], self.found[1], self.found[0]]
+        done = self.command()
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual(done.rows[0], done.rows[2])
+        self.assertEqual(len(list(self.root.glob("*.payload"))), 2)
+
+    def test_cached_rows_need_no_workers(self):
+        self.assertEqual(self.command(capacity=1).code, 0)
+        payloads = {path: path.stat().st_mtime_ns for path in self.root.glob("*.payload")}
+        done = self.command(again=False)
+        self.assertEqual({path: path.stat().st_mtime_ns for path in payloads}, payloads)
+        self.assertEqual(done.code, 0, done.err)
+        self.assertNotIn("mesh workers:", done.out)
 
 
 class TokenTests(unittest.TestCase):
