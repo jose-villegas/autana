@@ -3,10 +3,12 @@
 The board is the timing reference. QEMU counts executed instructions; it does
 not model cache stalls, FPU latency or cycles. Only hot-path rows selected in
 `suite_math_perf.c` participate in the CI instruction ratchet.
+A row whose code differs between the device and QEMU builds stays out of the ratchet.
 
 Warm is the median cycle-counter cost after an untimed kernel call, following
 Embench-IoT's cache-warming method with fixed workloads.<sup>[[69]](../Citations.md#69)</sup>
 Cold is the median of single calls after cache writeback and invalidation.
+Inputs live in internal RAM, matching ESP-DSP's reference data placement.
 The cache reset stalls the other core and suspends caches through IDF's flash
 guard before invoking the S3 ROM whole-cache operations; cache restoration and
 the call boundary precede timing. Board insn/op is one warmed batch counted
@@ -27,12 +29,13 @@ fresh matrix, and quat mul composes rotations. Integer vectors have no
 normalize, and fixed-point quaternions have no slerp.
 
 Cycles/insn divides warm cycles by board instructions. FPU ops checks
-`madd.s`, `msub.s`, `recip0.s`, `rsqrt0.s`, `div0.s`, `divn.s`, `sqrt0.s` directly in each device ELF wrapper, excluding callees; `-`
-means none of those mnemonics. QEMU baseline rows count instructions per wrapper
-call; the table divides by the suite-owned input batch size to report insn/op
-(the calibration call is already one op). QEMU is `-` for table-only rows.
-QEMU's reciprocal and reciprocal
-square root implementations use their portable paths; the device uses FPU seeds.
+`madd.s`, `msub.s`, `recip0.s`, `rsqrt0.s`, `div0.s`, `divn.s`, `sqrt0.s` directly in each device ELF wrapper and lists its call targets
+as `calls` followed by callee symbols from the same disassembly; callee bodies
+are not surveyed. An unresolved indirect target is shown as a starred register.
+A `-` means neither the listed mnemonics nor calls occur in the wrapper.
+QEMU baseline rows count instructions per wrapper call; the table divides by
+the suite row's operation count to report insn/op. QEMU is `-` for table-only
+rows and any row whose code differs between device and QEMU builds.
 
 Record a board capture with `autana suite math_perf --flash`, retaining its
 `BUILD_ID=` and `MATHBENCH` lines in `data/math_bench_capture.txt`. Record the
@@ -42,14 +45,14 @@ Regenerate with `python launcher/tools/perf/math_bench_table.py > docs/math/Benc
 Inputs are the suite's
 row table, the checked-in capture and FPU data, and the instruction baseline.
 
-<!-- generated: math-benchmark sha256=58711c2f572bcf52171d984dd5a750d97201ad31692848ac2e2baa29008312ee -->
+<!-- generated: math-benchmark sha256=03b2555b6ee7f9ffd1e1ddf554306c76d8119821c98fbde69b64d6e71707ffd6 -->
 Board capture pending; board columns remain unmeasured.
 
 | function | type | cycles/op warm | cycles/op cold | board insn/op | QEMU insn/op | cycles/insn | FPU ops |
 |---|---|---:|---:|---:|---:|---:|---|
 | add (vec3) | f | - | - | - | - | - | - |
 | scale (vec3) | f | - | - | - | - | - | - |
-| dot (vec3) | f | - | - | - | 16.2031 | - | madd.s |
+| dot (vec3) | f | - | - | - | 16.2 | - | madd.s |
 | mul (scalar) | f | - | - | - | - | - | - |
 | lerp (vec3) | f | - | - | - | - | - | madd.s |
 | add (vec3) | i | - | - | - | - | - | - |
@@ -67,9 +70,9 @@ Board capture pending; board columns remain unmeasured.
 | dot (vec3) | x | - | - | - | - | - | - |
 | mul (scalar) | x | - | - | - | - | - | - |
 | lerp (vec3) | x | - | - | - | - | - | - |
-| normalize (vec3) | f | - | - | - | 112.375 | - | madd.s |
-| normalize (vec3) | x | - | - | - | - | - | - |
-| wrap | f | - | - | - | - | - | - |
+| normalize (vec3) | f | - | - | - | 112.4 | - | madd.s; calls __divsf3, sqrtf |
+| normalize (vec3) | x | - | - | - | - | - | calls __divdi3 |
+| wrap | f | - | - | - | - | - | calls fmodf |
 | wrap | i | - | - | - | - | - | - |
 | wrap | x | - | - | - | - | - | - |
 | convert | f_to_x | - | - | - | - | - | - |
@@ -78,23 +81,23 @@ Board capture pending; board columns remain unmeasured.
 | convert | s_to_f | - | - | - | - | - | - |
 | convert | i_to_f | - | - | - | - | - | - |
 | convert | f_to_i | - | - | - | - | - | - |
-| slerp | f | - | - | - | 620.391 | - | madd.s |
-| nlerp | f | - | - | - | - | - | madd.s |
-| nlerp | x | - | - | - | - | - | - |
+| slerp | f | - | - | - | 620.4 | - | madd.s; calls __divsf3, _sinf, sqrtf |
+| nlerp | f | - | - | - | - | - | madd.s; calls __divsf3, sqrtf |
+| nlerp | x | - | - | - | - | - | calls __divdi3 |
 | quat mul | f | - | - | - | - | - | madd.s msub.s |
 | quat mul | x | - | - | - | - | - | - |
-| mat4 mul | f | - | - | - | 508.328 | - | madd.s |
-| mat4 mul | x | - | - | - | - | - | - |
-| transform compute_matrix | f | - | - | - | - | - | madd.s msub.s |
-| transform compute_matrix | x | - | - | - | - | - | - |
-| mathf_recip | f | - | - | - | 44.2656 | - | madd.s msub.s recip0.s |
-| mathf_rsqrt | f | - | - | - | 86.3438 | - | msub.s rsqrt0.s |
-| div_recip | f | - | - | - | - | - | - |
-| div_rsqrt | f | - | - | - | - | - | - |
-| sinf | f | - | - | - | - | - | - |
-| cosf | f | - | - | - | - | - | - |
-| atan2f | f | - | - | - | - | - | - |
-| sqrtf | f | - | - | - | - | - | - |
+| mat4 mul | f | - | - | - | 508.3 | - | madd.s; calls memcpy |
+| mat4 mul | x | - | - | - | - | - | calls memcpy |
+| transform compute_matrix | f | - | - | - | - | - | madd.s msub.s; calls memcpy |
+| transform compute_matrix | x | - | - | - | - | - | calls mat4x_from_trs, memcpy |
+| mathf_recip | f | - | - | - | - | - | madd.s msub.s recip0.s |
+| mathf_rsqrt | f | - | - | - | - | - | msub.s rsqrt0.s |
+| div_recip | f | - | - | - | - | - | calls __divsf3 |
+| div_rsqrt | f | - | - | - | - | - | calls __divsf3, sqrtf |
+| sinf | f | - | - | - | - | - | calls _sinf |
+| cosf | f | - | - | - | - | - | calls _cosf |
+| atan2f | f | - | - | - | - | - | calls atan2f |
+| sqrtf | f | - | - | - | - | - | calls sqrtf |
 | trig_sin | i | - | - | - | - | - | - |
 | dot_f32_n256 | f | - | - | - | - | - | madd.s |
 <!-- /generated: math-benchmark -->

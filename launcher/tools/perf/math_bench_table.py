@@ -36,13 +36,16 @@ LABELS = {"mul": "mul (scalar)", "scale": "scale (vec3)", "add": "add (vec3)",
 
 def suite_rows(path=SUITE):
     text = path.read_text(encoding="utf-8").split("static const row_t rows[] = {", 1)[1].split("};", 1)[0]
-    entries = re.findall(r'\{\s*"(\w+)",\s*"(\w+)",\s*(\w+),\s*(true|false)\s*\}', text)
-    rows = [(name, kind, hot == "true") for name, kind, symbol, hot in entries
+    entries = re.findall(r'\{\s*"(\w+)",\s*"(\w+)",\s*(\w+),\s*(true|false),\s*(\w+)\s*\}', text)
+    rows = [(name, kind, hot == "true", int(ops) if ops.isdecimal() else read_define(path, ops))
+            for name, kind, symbol, hot, ops in entries
             if symbol == ROW_SYMBOL_PREFIX + name + "_" + kind]
     if len(rows) != len(entries):
         raise ValueError("row symbol does not match its name and type")
-    if not rows or len({(name, kind) for name, kind, _ in rows}) != len(rows):
+    if not rows or len({(name, kind) for name, kind, _, _ in rows}) != len(rows):
         raise ValueError("invalid suite row table")
+    if any(not isinstance(ops, int) or ops <= 0 for _, _, _, ops in rows):
+        raise ValueError("row operation count must be a positive integer")
     return rows
 
 
@@ -65,7 +68,7 @@ def parse_capture(text, rows):
             if key in measured or any(float(value) <= 0 for value in values):
                 raise ValueError(f"invalid or duplicate measurement: {line}")
             measured[key] = tuple(map(float, values))
-    expected = {(name, kind) for name, kind, _ in rows}
+    expected = {(name, kind) for name, kind, _, _ in rows}
     if expected - measured.keys():
         raise ValueError(f"missing capture rows: {sorted(expected - measured.keys())}")
     if measured.keys() - expected:
@@ -76,7 +79,7 @@ def parse_capture(text, rows):
 
 
 def parse_disassembly(text, rows, resolve=None):
-    expected = {f"{name}_{kind}" for name, kind, _ in rows}
+    expected = {f"{name}_{kind}" for name, kind, _, _ in rows}
     found = {}
     current = None
     for line in text.splitlines():
@@ -93,8 +96,26 @@ def parse_disassembly(text, rows, resolve=None):
     for key in sorted(found):
         body = "\n".join(found[key])
         decoded, again = resolve(ROW_SYMBOL_PREFIX + key, body) if resolve else (decode(text=body), None)
-        mnemonics = {item[2] for item in skip_pools(decoded, again)}
-        result[key] = " ".join(op for op in FPU_OPS if op in mnemonics) or "-"
+        code = skip_pools(decoded, again)
+        mnemonics = {item[2] for item in code}
+        registers = {}
+        callees = set()
+        for _, _, mnemonic, operands in code:
+            targets = re.findall(r"<([^>]+)>", operands)
+            register = operands.split(",", 1)[0].strip()
+            if mnemonic == "call8" and targets:
+                callees.add(targets[-1])
+                registers.clear()
+            elif mnemonic == "callx8":
+                callees.add(targets[-1] if targets else registers.get(register, "*" + register))
+                registers.clear()
+            elif mnemonic == "l32r" and targets and "(" in operands:
+                registers[register] = targets[-1]
+            else:
+                registers.pop(register, None)
+        ops = " ".join(op for op in FPU_OPS if op in mnemonics)
+        calls = "calls " + ", ".join(sorted(callees)) if callees else ""
+        result[key] = "; ".join(part for part in (ops, calls) if part) or "-"
     return result
 
 
@@ -104,31 +125,30 @@ def read_fpu(path, rows):
         if not line or line.startswith("#"):
             continue
         key, ops = line.split("\t")
-        if key in result or (ops != "-" and any(op not in FPU_OPS for op in ops.split())):
+        direct, separator, calls = ops.partition("calls ")
+        valid_ops = all(op in FPU_OPS for op in direct.removesuffix("; ").split())
+        valid_calls = not separator or re.fullmatch(r"[\w.$@+*-]+(?:, [\w.$@+*-]+)*", calls)
+        if key in result or (ops != "-" and (not valid_ops or not valid_calls or not ops)):
             raise ValueError(f"invalid FPU row: {line}")
         result[key] = ops
-    if set(result) != {f"{name}_{kind}" for name, kind, _ in rows}:
+    if set(result) != {f"{name}_{kind}" for name, kind, _, _ in rows}:
         raise ValueError("FPU rows do not match suite")
     return result
 
 
 def render_table(rows, measured, baseline, fpu):
-    batch = read_define(SUITE, "MATH_BENCH_BATCH")
-    if not isinstance(batch, int) or batch <= 0:
-        raise ValueError("MATH_BENCH_BATCH must be a positive integer")
     lines = ["| function | type | cycles/op warm | cycles/op cold | board insn/op | QEMU insn/op | cycles/insn | FPU ops |",
              "|---|---|---:|---:|---:|---:|---:|---|"]
-    for name, kind, hot in rows:
+    for name, kind, hot, ops in rows:
         key = f"{name}_{kind}"
         qemu = "-"
         if hot:
             if "math_" + key not in baseline:
                 raise ValueError(f"missing baseline row: math_{key}")
-            ops = 1 if name == "dot_f32_n256" else batch
-            qemu = f"{baseline['math_' + key] / ops:g}"
+            qemu = f"{baseline['math_' + key] / ops:.1f}"
         values = measured.get((name, kind))
         costs = [f"{value:.1f}" for value in values] if values else ["-"] * 3
-        ratio = f"{values[0] / values[2]:.2f}" if values else "-"
+        ratio = f"{values[0] / values[2]:.1f}" if values else "-"
         lines.append("| " + " | ".join([LABELS.get(name, name), kind, *costs, qemu, ratio, fpu[key]]) + " |")
     return "\n".join(lines)
 
@@ -142,10 +162,12 @@ def render_document(rows, build, measured, baseline, fpu):
 The board is the timing reference. QEMU counts executed instructions; it does
 not model cache stalls, FPU latency or cycles. Only hot-path rows selected in
 `suite_math_perf.c` participate in the CI instruction ratchet.
+A row whose code differs between the device and QEMU builds stays out of the ratchet.
 
 Warm is the median cycle-counter cost after an untimed kernel call, following
 Embench-IoT's cache-warming method with fixed workloads.<sup>[[69]](../Citations.md#69)</sup>
 Cold is the median of single calls after cache writeback and invalidation.
+Inputs live in internal RAM, matching ESP-DSP's reference data placement.
 The cache reset stalls the other core and suspends caches through IDF's flash
 guard before invoking the S3 ROM whole-cache operations; cache restoration and
 the call boundary precede timing. Board insn/op is one warmed batch counted
@@ -166,12 +188,13 @@ fresh matrix, and quat mul composes rotations. Integer vectors have no
 normalize, and fixed-point quaternions have no slerp.
 
 Cycles/insn divides warm cycles by board instructions. FPU ops checks
-{op_names} directly in each device ELF wrapper, excluding callees; `-`
-means none of those mnemonics. QEMU baseline rows count instructions per wrapper
-call; the table divides by the suite-owned input batch size to report insn/op
-(the calibration call is already one op). QEMU is `-` for table-only rows.
-QEMU's reciprocal and reciprocal
-square root implementations use their portable paths; the device uses FPU seeds.
+{op_names} directly in each device ELF wrapper and lists its call targets
+as `calls` followed by callee symbols from the same disassembly; callee bodies
+are not surveyed. An unresolved indirect target is shown as a starred register.
+A `-` means neither the listed mnemonics nor calls occur in the wrapper.
+QEMU baseline rows count instructions per wrapper call; the table divides by
+the suite row's operation count to report insn/op. QEMU is `-` for table-only
+rows and any row whose code differs between device and QEMU builds.
 
 Record a board capture with `autana suite math_perf --flash`, retaining its
 `BUILD_ID=` and `MATHBENCH` lines in `data/math_bench_capture.txt`. Record the
@@ -212,7 +235,7 @@ def main(argv=None):
                 return instructions(objdump, args.from_elf, symbol, bounds[symbol], text=body)
 
             fpu = parse_disassembly(disassembly, rows, resolve=resolve)
-            lines = ["# Device ELF wrapper mnemonics; callees excluded.",
+            lines = ["# Device ELF wrapper mnemonics and call targets; callee bodies excluded.",
                      "# ELF sha256=" + hashlib.sha256(args.from_elf.read_bytes()).hexdigest()]
             lines.extend(f"{key}\t{fpu[key]}" for key in sorted(fpu))
             args.fpu.write_bytes(("\n".join(lines) + "\n").encode("utf-8"))

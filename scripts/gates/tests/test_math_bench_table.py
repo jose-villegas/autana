@@ -2,6 +2,7 @@
 import importlib.util
 from pathlib import Path
 import sys
+import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -14,7 +15,7 @@ SPEC.loader.exec_module(bench)
 
 class MathBenchTableTests(unittest.TestCase):
     batch = bench.read_define(bench.SUITE, "MATH_BENCH_BATCH")
-    rows = [("dot", "f", True), ("sinf", "f", False)]
+    rows = [("dot", "f", True, batch), ("sinf", "f", False, batch)]
     capture = ("BUILD_ID=abcdef-diag\n"
                "MATHBENCH name=dot type=f warm=12.0 cold=24.0 insn=6.0\n"
                "MATHBENCH name=sinf type=f warm=90.0 cold=110.0 insn=30.0\n")
@@ -36,8 +37,8 @@ class MathBenchTableTests(unittest.TestCase):
         build, measured = bench.parse_capture(self.capture, self.rows)
         table = bench.render_table(self.rows, measured, {"math_dot_f": 7 * self.batch, "math_sinf_f": 999},
                                    {"dot_f": "madd.s", "sinf_f": "-"})
-        self.assertIn("| dot (vec3) | f | 12.0 | 24.0 | 6.0 | 7 | 2.00 | madd.s |", table)
-        self.assertIn("| sinf | f | 90.0 | 110.0 | 30.0 | - | 3.00 | - |", table)
+        self.assertIn("| dot (vec3) | f | 12.0 | 24.0 | 6.0 | 7.0 | 2.0 | madd.s |", table)
+        self.assertIn("| sinf | f | 90.0 | 110.0 | 30.0 | - | 3.0 | - |", table)
         self.assertEqual("abcdef-diag", build)
         with self.assertRaisesRegex(ValueError, "baseline"):
             bench.render_table(self.rows, measured, {}, {"dot_f": "-", "sinf_f": "-"})
@@ -57,10 +58,36 @@ class MathBenchTableTests(unittest.TestCase):
         text = ("42000000 <math_bench_dot_f>:\n  42000000: 123456 madd.s f0, f1, f2\n"
                 "42000003 <unrelated>:\n  42000003: 123456 div0.s f0, f1\n"
                 "42000006 <math_bench_sinf_f>:\n  42000006: 123456 call8 42001000 <sinf>\n")
-        self.assertEqual({"dot_f": "madd.s", "sinf_f": "-"},
+        self.assertEqual({"dot_f": "madd.s", "sinf_f": "calls sinf"},
                          bench.parse_disassembly(text, self.rows))
         with self.assertRaisesRegex(ValueError, "symbol"):
             bench.parse_disassembly("", self.rows)
+
+    def test_operation_counts_come_from_each_row(self):
+        rows = [("dot", "f", True, 2), ("dot_f32_n256", "f", True, 4)]
+        table = bench.render_table(rows, {}, {"math_dot_f": 7, "math_dot_f32_n256_f": 13},
+                                   {"dot_f": "-", "dot_f32_n256_f": "-"})
+        self.assertIn("| dot (vec3) | f | - | - | - | 3.5 |", table)
+        self.assertIn("| dot_f32_n256 | f | - | - | - | 3.2 |", table)
+        parsed = bench.suite_rows()
+        self.assertIn(("dot", "f", True, self.batch), parsed)
+        self.assertIn(("dot_f32_n256", "f", False, 1), parsed)
+        for name in ("mathf_recip", "mathf_rsqrt"):
+            self.assertIn((name, "f", False, self.batch), parsed)
+
+    def test_indirect_calls_resolve_loaded_symbol_names(self):
+        text = ("42000000 <math_bench_dot_f>:\n"
+                "42000000: 123456 l32r a8, 42001000 <literal> (40002274 <__divsf3>)\n"
+                "42000003: 123456 callx8 a8\n"
+                "42000006: 123456 l32r a8, 42001004 <literal> (42100000 <sqrtf>)\n"
+                "42000009: 123456 callx8 a8\n"
+                "4200000c: 123456 madd.s f0, f1, f2\n")
+        result = bench.parse_disassembly(text, [self.rows[0]])
+        self.assertEqual({"dot_f": "madd.s; calls __divsf3, sqrtf"}, result)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "fpu.txt"
+            path.write_text("dot_f\t" + result["dot_f"] + "\n", encoding="utf-8")
+            self.assertEqual(result, bench.read_fpu(path, [self.rows[0]]))
 
     def test_redecodes_code_entering_a_literal_pool(self):
         text = ("42000000 <math_bench_dot_f>:\n"

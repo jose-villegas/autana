@@ -2,8 +2,6 @@
 # instructions	name
 1037	math_dot_f
 32533	math_mat4_mul_f
-2833	math_mathf_recip_f
-5526	math_mathf_rsqrt_f
 7192	math_normalize_f
 39705	math_slerp_f
 1611098	sand_falling_step

@@ -1,8 +1,8 @@
 /* Fixed workloads share kernels between hardware counters and the instruction ratchet. */
 #ifdef DEVICE_BUILD
 #include <math.h>
-#include <stdlib.h>
 #include <string.h>
+#include "core/memory.h"
 #include "core/timing.h"
 #include "esp32s3/rom/cache.h"
 #include "esp_attr.h"
@@ -73,7 +73,7 @@ static fixture_t* active_fixture;
 
 static void
 release(void) {
-    free(active_fixture);
+    memory_free(active_fixture);
     active_fixture = NULL;
 }
 
@@ -84,6 +84,7 @@ typedef struct {
     const char* type;
     kernel_t fn;
     bool ratchet;
+    int ops;
 } row_t;
 
 /* Volatile result stores preserve every component, including matrix columns. */
@@ -153,61 +154,61 @@ math_bench_dot_f32_n256_f(fixture_t* f) {
 }
 
 static const row_t rows[] = {
-    {"add", "f", math_bench_add_f, false},
-    {"scale", "f", math_bench_scale_f, false},
-    {"dot", "f", math_bench_dot_f, true},
-    {"mul", "f", math_bench_mul_f, false},
-    {"lerp", "f", math_bench_lerp_f, false},
-    {"add", "i", math_bench_add_i, false},
-    {"scale", "i", math_bench_scale_i, false},
-    {"dot", "i", math_bench_dot_i, false},
-    {"mul", "i", math_bench_mul_i, false},
-    {"lerp", "i", math_bench_lerp_i, false},
-    {"add", "s", math_bench_add_s, false},
-    {"scale", "s", math_bench_scale_s, false},
-    {"dot", "s", math_bench_dot_s, false},
-    {"mul", "s", math_bench_mul_s, false},
-    {"lerp", "s", math_bench_lerp_s, false},
-    {"add", "x", math_bench_add_x, false},
-    {"scale", "x", math_bench_scale_x, false},
-    {"dot", "x", math_bench_dot_x, false},
-    {"mul", "x", math_bench_mul_x, false},
-    {"lerp", "x", math_bench_lerp_x, false},
-    {"normalize", "f", math_bench_normalize_f, true},
-    {"normalize", "x", math_bench_normalize_x, false},
-    {"wrap", "f", math_bench_wrap_f, false},
-    {"wrap", "i", math_bench_wrap_i, false},
-    {"wrap", "x", math_bench_wrap_x, false},
-    {"convert", "f_to_x", math_bench_convert_f_to_x, false},
-    {"convert", "x_to_f", math_bench_convert_x_to_f, false},
-    {"convert", "f_to_s", math_bench_convert_f_to_s, false},
-    {"convert", "s_to_f", math_bench_convert_s_to_f, false},
-    {"convert", "i_to_f", math_bench_convert_i_to_f, false},
-    {"convert", "f_to_i", math_bench_convert_f_to_i, false},
-    {"slerp", "f", math_bench_slerp_f, true},
-    {"nlerp", "f", math_bench_nlerp_f, false},
-    {"nlerp", "x", math_bench_nlerp_x, false},
-    {"quat_mul", "f", math_bench_quat_mul_f, false},
-    {"quat_mul", "x", math_bench_quat_mul_x, false},
-    {"mat4_mul", "f", math_bench_mat4_mul_f, true},
-    {"mat4_mul", "x", math_bench_mat4_mul_x, false},
-    {"transform_compute_matrix", "f", math_bench_transform_compute_matrix_f, false},
-    {"transform_compute_matrix", "x", math_bench_transform_compute_matrix_x, false},
-    {"mathf_recip", "f", math_bench_mathf_recip_f, true},
-    {"mathf_rsqrt", "f", math_bench_mathf_rsqrt_f, true},
-    {"div_recip", "f", math_bench_div_recip_f, false},
-    {"div_rsqrt", "f", math_bench_div_rsqrt_f, false},
-    {"sinf", "f", math_bench_sinf_f, false},
-    {"cosf", "f", math_bench_cosf_f, false},
-    {"atan2f", "f", math_bench_atan2f_f, false},
-    {"sqrtf", "f", math_bench_sqrtf_f, false},
-    {"trig_sin", "i", math_bench_trig_sin_i, false},
-    {"dot_f32_n256", "f", math_bench_dot_f32_n256_f, false},
+    {"add", "f", math_bench_add_f, false, MATH_BENCH_BATCH},
+    {"scale", "f", math_bench_scale_f, false, MATH_BENCH_BATCH},
+    {"dot", "f", math_bench_dot_f, true, MATH_BENCH_BATCH},
+    {"mul", "f", math_bench_mul_f, false, MATH_BENCH_BATCH},
+    {"lerp", "f", math_bench_lerp_f, false, MATH_BENCH_BATCH},
+    {"add", "i", math_bench_add_i, false, MATH_BENCH_BATCH},
+    {"scale", "i", math_bench_scale_i, false, MATH_BENCH_BATCH},
+    {"dot", "i", math_bench_dot_i, false, MATH_BENCH_BATCH},
+    {"mul", "i", math_bench_mul_i, false, MATH_BENCH_BATCH},
+    {"lerp", "i", math_bench_lerp_i, false, MATH_BENCH_BATCH},
+    {"add", "s", math_bench_add_s, false, MATH_BENCH_BATCH},
+    {"scale", "s", math_bench_scale_s, false, MATH_BENCH_BATCH},
+    {"dot", "s", math_bench_dot_s, false, MATH_BENCH_BATCH},
+    {"mul", "s", math_bench_mul_s, false, MATH_BENCH_BATCH},
+    {"lerp", "s", math_bench_lerp_s, false, MATH_BENCH_BATCH},
+    {"add", "x", math_bench_add_x, false, MATH_BENCH_BATCH},
+    {"scale", "x", math_bench_scale_x, false, MATH_BENCH_BATCH},
+    {"dot", "x", math_bench_dot_x, false, MATH_BENCH_BATCH},
+    {"mul", "x", math_bench_mul_x, false, MATH_BENCH_BATCH},
+    {"lerp", "x", math_bench_lerp_x, false, MATH_BENCH_BATCH},
+    {"normalize", "f", math_bench_normalize_f, true, MATH_BENCH_BATCH},
+    {"normalize", "x", math_bench_normalize_x, false, MATH_BENCH_BATCH},
+    {"wrap", "f", math_bench_wrap_f, false, MATH_BENCH_BATCH},
+    {"wrap", "i", math_bench_wrap_i, false, MATH_BENCH_BATCH},
+    {"wrap", "x", math_bench_wrap_x, false, MATH_BENCH_BATCH},
+    {"convert", "f_to_x", math_bench_convert_f_to_x, false, MATH_BENCH_BATCH},
+    {"convert", "x_to_f", math_bench_convert_x_to_f, false, MATH_BENCH_BATCH},
+    {"convert", "f_to_s", math_bench_convert_f_to_s, false, MATH_BENCH_BATCH},
+    {"convert", "s_to_f", math_bench_convert_s_to_f, false, MATH_BENCH_BATCH},
+    {"convert", "i_to_f", math_bench_convert_i_to_f, false, MATH_BENCH_BATCH},
+    {"convert", "f_to_i", math_bench_convert_f_to_i, false, MATH_BENCH_BATCH},
+    {"slerp", "f", math_bench_slerp_f, true, MATH_BENCH_BATCH},
+    {"nlerp", "f", math_bench_nlerp_f, false, MATH_BENCH_BATCH},
+    {"nlerp", "x", math_bench_nlerp_x, false, MATH_BENCH_BATCH},
+    {"quat_mul", "f", math_bench_quat_mul_f, false, MATH_BENCH_BATCH},
+    {"quat_mul", "x", math_bench_quat_mul_x, false, MATH_BENCH_BATCH},
+    {"mat4_mul", "f", math_bench_mat4_mul_f, true, MATH_BENCH_BATCH},
+    {"mat4_mul", "x", math_bench_mat4_mul_x, false, MATH_BENCH_BATCH},
+    {"transform_compute_matrix", "f", math_bench_transform_compute_matrix_f, false, MATH_BENCH_BATCH},
+    {"transform_compute_matrix", "x", math_bench_transform_compute_matrix_x, false, MATH_BENCH_BATCH},
+    {"mathf_recip", "f", math_bench_mathf_recip_f, false, MATH_BENCH_BATCH},
+    {"mathf_rsqrt", "f", math_bench_mathf_rsqrt_f, false, MATH_BENCH_BATCH},
+    {"div_recip", "f", math_bench_div_recip_f, false, MATH_BENCH_BATCH},
+    {"div_rsqrt", "f", math_bench_div_rsqrt_f, false, MATH_BENCH_BATCH},
+    {"sinf", "f", math_bench_sinf_f, false, MATH_BENCH_BATCH},
+    {"cosf", "f", math_bench_cosf_f, false, MATH_BENCH_BATCH},
+    {"atan2f", "f", math_bench_atan2f_f, false, MATH_BENCH_BATCH},
+    {"sqrtf", "f", math_bench_sqrtf_f, false, MATH_BENCH_BATCH},
+    {"trig_sin", "i", math_bench_trig_sin_i, false, MATH_BENCH_BATCH},
+    {"dot_f32_n256", "f", math_bench_dot_f32_n256_f, false, 1},
 };
 
 static fixture_t*
 fixture(void) {
-    fixture_t* f = malloc(sizeof *f);
+    fixture_t* f = memory_alloc(sizeof *f, MEMORY_INTERNAL);
     active_fixture = f;
     suite_set_test_cleanup(release);
     TEST_ASSERT_NOT_NULL(f);
@@ -255,11 +256,6 @@ cold_cache(void) {
     spi_flash_op_unlock();
 }
 
-static int
-ops_per_call(const row_t* row) {
-    return row->fn == math_bench_dot_f32_n256_f ? 1 : MATH_BENCH_BATCH;
-}
-
 static float
 median_cycles(const row_t* row, fixture_t* f, bool cold) {
     _Static_assert(MATH_BENCH_COLD_REPS <= MATH_BENCH_WARM_REPS, "cold samples must fit warm sample storage");
@@ -274,7 +270,7 @@ median_cycles(const row_t* row, fixture_t* f, bool cold) {
         row->fn(f);
         samples[j] = (int32_t)(esp_cpu_get_cycle_count() - start);
     }
-    return (float)perf_stats_compute(samples, reps).med / (float)ops_per_call(row);
+    return (float)perf_stats_compute(samples, reps).med / (float)row->ops;
 }
 
 static void
@@ -298,7 +294,7 @@ test_math_board_rows(void) {
         uint32_t cycles = 0, value = 0;
         TEST_ASSERT_TRUE(frame_cost_count_end(&cycles, &value));
         printf("MATHBENCH name=%s type=%s warm=%.1f cold=%.1f insn=%.1f\n", row->name, row->type, (double)warm,
-               (double)cold, (double)((float)value / (float)ops_per_call(row)));
+               (double)cold, (double)((float)value / (float)row->ops));
         timing_yield();
     }
     release();
