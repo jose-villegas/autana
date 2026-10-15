@@ -227,14 +227,16 @@ fill_solid(uint16_t* depth, uint16_t* color, int count, int32_t z, int32_t dz, u
     }
 }
 
+#if defined(__XTENSA__) && __has_attribute(optimize)
+#define FILL_GOURAUD_ATTR __attribute__((optimize("no-schedule-insns")))
+#else
+#define FILL_GOURAUD_ATTR
+#endif
+
 /* Packing after the depth test bounds live temporaries to the register window.
  * On Xtensa, disabling scheduling saves 2.267 million instructions per pose
  * at 368x448 under QEMU --icount and keeps the filler spill-free. */
-static RENDER_IRAM_ATTR __attribute__((noinline))
-#if defined(__XTENSA__) && __has_attribute(optimize)
-__attribute__((optimize("no-schedule-insns")))
-#endif
-void
+static RENDER_IRAM_ATTR __attribute__((noinline)) FILL_GOURAUD_ATTR void
 fill_gouraud(uint16_t* depth, uint16_t* color, int count, const uint32_t value[ATTRIBUTES],
              const int32_t step[ATTRIBUTES]) {
     int32_t z = (int32_t)value[0], r = (int32_t)value[1], g = (int32_t)value[2], b = (int32_t)value[3];
