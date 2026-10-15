@@ -126,11 +126,21 @@ polar_point(int32_t radius, uint16_t turn, int32_t* re, int32_t* im) {
     *im = (int32_t)(((int64_t)radius * sin_v) >> TRIG_SIN_SHIFT);
 }
 
-/* A node of the floor mesh, lifted and projected. band_q4 is its distance
- * from the origin in BOOT_ANIM_GRID_STEP_Q12 bands, 4 fractional bits. Kept
- * small: draw_floor() holds two rows of them on the stack. */
+/* What every node and edge of one frame's mesh shares. */
 typedef struct {
-    vec3x_t cs;
+    uint32_t now_ms;
+    int32_t amp_q12;
+    uint8_t ink;
+    int stride;
+    const boot_anim_view_t* view;
+} mesh_pass_t;
+
+/* A node of the floor mesh, projected. band_q4 is its distance from the
+ * origin in BOOT_ANIM_GRID_STEP_Q12 bands, 4 fractional bits. Screen only:
+ * draw_floor() keeps a row of these on boot's small stack, and the camera
+ * space point an edge needs to clip at the near plane is rebuilt for the few
+ * edges that cross it. */
+typedef struct {
     int16_t sx, sy;
     int16_t band_q4;
     bool front;
@@ -146,42 +156,54 @@ floor_lift(int32_t d, uint32_t now_ms, int32_t amp_q12) {
     return boot_anim_wave_height(d, now_ms, amp_q12, BOOT_ANIM_WAVE_WAVELENGTH_Q12, BOOT_ANIM_WAVE_PERIOD_MS);
 }
 
+static int32_t
+mesh_distance(int i, int j) {
+    const int64_t re = (int64_t)i * BOOT_ANIM_MESH_STEP_Q12;
+    const int64_t im = (int64_t)j * BOOT_ANIM_MESH_STEP_Q12;
+    return (int32_t)mathi_isqrt64((uint64_t)((re * re) + (im * im)));
+}
+
+/* Node (i, j) lifted into camera space. */
+static vec3x_t
+mesh_point(const mesh_pass_t* pass, int i, int j, int32_t d) {
+    return boot_anim_to_camera_space(i * BOOT_ANIM_MESH_STEP_Q12, j * BOOT_ANIM_MESH_STEP_Q12,
+                                     floor_lift(d, pass->now_ms, pass->amp_q12), pass->view);
+}
+
 static mesh_node_t
-mesh_node(int i, int j, uint32_t now_ms, int32_t amp_q12, const boot_anim_view_t* view) {
-    const int32_t re = i * BOOT_ANIM_MESH_STEP_Q12;
-    const int32_t im = j * BOOT_ANIM_MESH_STEP_Q12;
-    const int32_t d = (int32_t)mathi_isqrt64((uint64_t)(((int64_t)re * re) + ((int64_t)im * im)));
-    mesh_node_t node;
-    node.cs = boot_anim_to_camera_space(re, im, floor_lift(d, now_ms, amp_q12), view);
-    node.band_q4 = (int16_t)((d << MESH_BAND_SHIFT) / BOOT_ANIM_GRID_STEP_Q12);
+mesh_node(const mesh_pass_t* pass, int i, int j) {
+    const int32_t d = mesh_distance(i, j);
     int sx = 0;
     int sy = 0;
-    node.front = r3d_project_point_cs_x(node.cs, view, &sx, &sy);
+    mesh_node_t node;
+    node.front = r3d_project_point_cs_x(mesh_point(pass, i, j, d), pass->view, &sx, &sy);
     node.sx = (int16_t)sx;
     node.sy = (int16_t)sy;
+    node.band_q4 = (int16_t)((d << MESH_BAND_SHIFT) / BOOT_ANIM_GRID_STEP_Q12);
     return node;
 }
 
-/* Coloured by the band its middle falls in; clipped at the near plane when
- * one end is behind it, dropped when both are. */
+/* The edge from node (ai, aj) to node (bi, bj), coloured by the band its
+ * middle falls in; clipped at the near plane when one end is behind it,
+ * dropped when both are. */
 static void
-draw_mesh_edge(const mesh_node_t* a, const mesh_node_t* b, uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
+draw_mesh_edge(const mesh_pass_t* pass, const mesh_node_t* a, int ai, int aj, const mesh_node_t* b, int bi, int bj) {
     const int band = (a->band_q4 + b->band_q4) >> (MESH_BAND_SHIFT + 1);
-    const uint8_t alpha = scale8(boot_anim_grid_alpha(now_ms, band), ink);
-    if (alpha == 0) {
+    const uint8_t alpha = scale8(boot_anim_grid_alpha(pass->now_ms, band), pass->ink);
+    if (alpha == 0 || (!a->front && !b->front)) {
         return;
     }
     const gfx_color_t c =
-        lit_whitened(gfx_hue_rgb(boot_anim_grid_hue(now_ms, band)), boot_anim_grid_whiten(now_ms), alpha);
+        lit_whitened(gfx_hue_rgb(boot_anim_grid_hue(pass->now_ms, band)), boot_anim_grid_whiten(pass->now_ms), alpha);
     if (a->front && b->front) {
         draw_line_ex(a->sx, a->sy, b->sx, b->sy, c, 0u);
         return;
     }
-    if (a->front != b->front) {
-        int ax, ay, bx, by;
-        if (r3d_project_segment_cs_x(a->cs, b->cs, view, &ax, &ay, &bx, &by)) {
-            draw_line_ex(ax, ay, bx, by, c, 0u);
-        }
+    int x0, y0, x1, y1;
+    const vec3x_t a_cs = mesh_point(pass, ai, aj, mesh_distance(ai, aj));
+    const vec3x_t b_cs = mesh_point(pass, bi, bj, mesh_distance(bi, bj));
+    if (r3d_project_segment_cs_x(a_cs, b_cs, pass->view, &x0, &y0, &x1, &y1)) {
+        draw_line_ex(x0, y0, x1, y1, c, 0u);
     }
 }
 
@@ -205,6 +227,28 @@ mesh_row_half(int j, int stride) {
 static bool
 mesh_dash_on(int k, int stride) {
     return !BOOT_ANIM_MESH_DASH || (((k + MESH_HALF) / stride) & 1) == 1;
+}
+
+/* Builds row j's nodes, drawing each one's edge to the node before it in the
+ * row and to the one above it, then leaves it in `above` for the next row. */
+static void
+draw_mesh_row(const mesh_pass_t* pass, int j, int row_half, int above_half, mesh_node_t* above) {
+    const int stride = pass->stride;
+    mesh_node_t left = {0};
+    for (int i = -MESH_HALF; i <= MESH_HALF; i += stride) {
+        if (mathi_abs(i) > row_half) {
+            continue;
+        }
+        const mesh_node_t node = mesh_node(pass, i, j);
+        if (i - stride >= -row_half && mesh_dash_on(i, stride)) {
+            draw_mesh_edge(pass, &left, i - stride, j, &node, i, j);
+        }
+        if (mathi_abs(i) <= above_half && mesh_dash_on(j, stride)) {
+            draw_mesh_edge(pass, &above[i + MESH_HALF], i, j - stride, &node, i, j);
+        }
+        above[i + MESH_HALF] = node;
+        left = node;
+    }
 }
 
 #define BOOT_ANIM_GRID_SPOKE_DASH_STEPS 3
@@ -260,36 +304,6 @@ draw_grid_spoke(uint16_t turn, int32_t near, int32_t far, gfx_color_t c, bool da
     }
 }
 
-/* What every node and edge of one frame's mesh shares. */
-typedef struct {
-    uint32_t now_ms;
-    int32_t amp_q12;
-    uint8_t ink;
-    int stride;
-    const boot_anim_view_t* view;
-} mesh_pass_t;
-
-/* Builds row j's nodes into `row`, drawing each one's edge to the node
- * before it in the row and to the one above it in `above`. */
-static void
-draw_mesh_row(const mesh_pass_t* pass, int j, int row_half, int above_half, mesh_node_t* row,
-              const mesh_node_t* above) {
-    const int stride = pass->stride;
-    for (int i = -MESH_HALF; i <= MESH_HALF; i += stride) {
-        if (mathi_abs(i) > row_half) {
-            continue;
-        }
-        mesh_node_t* node = &row[i + MESH_HALF];
-        *node = mesh_node(i, j, pass->now_ms, pass->amp_q12, pass->view);
-        if (i - stride >= -row_half && mesh_dash_on(i, stride)) {
-            draw_mesh_edge(&row[i - stride + MESH_HALF], node, pass->now_ms, pass->ink, pass->view);
-        }
-        if (mathi_abs(i) <= above_half && mesh_dash_on(j, stride)) {
-            draw_mesh_edge(&above[i + MESH_HALF], node, pass->now_ms, pass->ink, pass->view);
-        }
-    }
-}
-
 static void
 draw_spokes(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
     const uint8_t spoke_reach = boot_anim_grid_spoke_reach(now_ms);
@@ -315,15 +329,13 @@ draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t*
         .view = view,
     };
 
-    /* Row by row, each node built once; two rows are all an edge needs. */
-    mesh_node_t rows[2][BOOT_ANIM_MESH_CELLS + 1];
+    /* Row by row, each node built once; one row behind is all an edge needs. */
+    mesh_node_t above[BOOT_ANIM_MESH_CELLS + 1];
     int above_half = -1;
-    int cur = 0;
     for (int j = -MESH_HALF; j <= MESH_HALF; j += pass.stride) {
         const int row_half = mesh_row_half(j, pass.stride);
-        draw_mesh_row(&pass, j, row_half, above_half, rows[cur], rows[cur ^ 1]);
+        draw_mesh_row(&pass, j, row_half, above_half, above);
         above_half = row_half;
-        cur ^= 1;
     }
 
     draw_spokes(now_ms, ink, view);
