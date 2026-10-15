@@ -16,6 +16,7 @@
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
+#include "math/motion/spring.h"
 #include "math/motion/spring_line.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
@@ -321,7 +322,7 @@ build_layers(void) {
         for (int layer = 0; layer < 2; layer++) {
             const uint32_t phase = ((uint32_t)x * TRIG_TURN / (uint32_t)wavelength[layer]) - travelled[layer];
             const int echo =
-                spring_line_scale(ridge->line.offset[x], layer == 0 ? 64 : 128) / (MATHX_ONE / RIDGE_SUBPIXEL_ONE);
+                spring_scale(ridge->line.offset[x], layer == 0 ? 64 : 128) / (MATHX_ONE / RIDGE_SUBPIXEL_ONE);
             const int wave = amplitude[layer] * trig_sin((uint16_t)phase)
                              / (1 << (TRIG_SIN_SHIFT - RIDGE_SUBPIXEL_SHIFT)) * gain / 256;
             ridge->layers[layer][x] = (int16_t)(ridge->rigid[x] + (offset[layer] * RIDGE_SUBPIXEL_ONE) + wave + echo);

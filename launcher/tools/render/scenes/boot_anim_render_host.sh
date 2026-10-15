@@ -24,6 +24,7 @@ main/anim/anim_tracks.c
 main/anim/playback/anim_playhead.c
 main/boot/boot_anim.c
 main/boot/boot_anim_motion.c
+main/boot/boot_anim_floor.c
 main/boot/boot_anim_photo.c
 tools/render/scenes/boot_anim_render_host.c
 "

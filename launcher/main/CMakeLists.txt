@@ -5,6 +5,7 @@ set(app_srcs
     "app/app_registry.c"
     "boot/boot_anim.c"
     "boot/boot_anim_motion.c"
+    "boot/boot_anim_floor.c"
     "boot/boot_anim_photo.c"
     "boot/boot_report.c"
     "selftest/post.c"

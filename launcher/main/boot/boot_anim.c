@@ -101,7 +101,7 @@ units(int n) {
  * The floor
  *
  * A square mesh over the complex plane, plus radial spokes. Each node is
- * lifted by boot_anim_wave_height() at its distance from the origin, and
+ * lifted by its spring sheet, and
  * each segment takes its colour and fade from that distance in
  * BOOT_ANIM_GRID_STEP_Q12 bands, so boot_anim_grid_hue()'s rings of colour
  * still travel outward across the mesh.
@@ -129,7 +129,7 @@ polar_point(int32_t radius, uint16_t turn, int32_t* re, int32_t* im) {
 /* What every node and edge of one frame's mesh shares. */
 typedef struct {
     uint32_t now_ms;
-    int32_t amp_q12;
+    const boot_anim_floor_t* floor;
     uint8_t ink;
     int stride;
     const boot_anim_view_t* view;
@@ -152,8 +152,8 @@ typedef struct {
 /* The floor's height at a node, in t units. The one place that knows what
  * lifts it. */
 static int32_t
-floor_lift(int32_t d, uint32_t now_ms, int32_t amp_q12) {
-    return boot_anim_wave_height(d, now_ms, amp_q12, BOOT_ANIM_WAVE_WAVELENGTH_Q12, BOOT_ANIM_WAVE_PERIOD_MS);
+floor_lift(const boot_anim_floor_t* floor, int i, int j) {
+    return boot_anim_floor_height(floor, i + MESH_HALF, j + MESH_HALF);
 }
 
 static int32_t
@@ -165,9 +165,9 @@ mesh_distance(int i, int j) {
 
 /* Node (i, j) lifted into camera space. */
 static vec3x_t
-mesh_point(const mesh_pass_t* pass, int i, int j, int32_t d) {
+mesh_point(const mesh_pass_t* pass, int i, int j) {
     return boot_anim_to_camera_space(i * BOOT_ANIM_MESH_STEP_Q12, j * BOOT_ANIM_MESH_STEP_Q12,
-                                     floor_lift(d, pass->now_ms, pass->amp_q12), pass->view);
+                                     floor_lift(pass->floor, i, j), pass->view);
 }
 
 static mesh_node_t
@@ -176,7 +176,7 @@ mesh_node(const mesh_pass_t* pass, int i, int j) {
     int sx = 0;
     int sy = 0;
     mesh_node_t node;
-    node.front = r3d_project_point_cs_x(mesh_point(pass, i, j, d), pass->view, &sx, &sy);
+    node.front = r3d_project_point_cs_x(mesh_point(pass, i, j), pass->view, &sx, &sy);
     node.sx = (int16_t)sx;
     node.sy = (int16_t)sy;
     node.band_q4 = (int16_t)((d << MESH_BAND_SHIFT) / BOOT_ANIM_GRID_STEP_Q12);
@@ -200,8 +200,8 @@ draw_mesh_edge(const mesh_pass_t* pass, const mesh_node_t* a, int ai, int aj, co
         return;
     }
     int x0, y0, x1, y1;
-    const vec3x_t a_cs = mesh_point(pass, ai, aj, mesh_distance(ai, aj));
-    const vec3x_t b_cs = mesh_point(pass, bi, bj, mesh_distance(bi, bj));
+    const vec3x_t a_cs = mesh_point(pass, ai, aj);
+    const vec3x_t b_cs = mesh_point(pass, bi, bj);
     if (r3d_project_segment_cs_x(a_cs, b_cs, pass->view, &x0, &y0, &x1, &y1)) {
         draw_line_ex(x0, y0, x1, y1, c, 0u);
     }
@@ -319,10 +319,10 @@ draw_spokes(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
 }
 
 void
-draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view) {
+draw_floor(const boot_anim_floor_t* floor, uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view) {
     const mesh_pass_t pass = {
         .now_ms = now_ms,
-        .amp_q12 = (int32_t)(((int64_t)BOOT_ANIM_WAVE_HEIGHT_Q12 * boot_anim_wave_envelope(now_ms)) / 255),
+        .floor = floor,
         .ink = ink,
         /* Deep in the crossfade, every other line and node is enough. */
         .stride = gfx_dither_level(reveal) >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL ? 2 : 1,
@@ -591,10 +591,7 @@ draw_curve(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t*
 
     draw_heads(colour, ink, view);
 
-    const boot_anim_pt_t final_c0 = boot_anim_sample(last - 1);
-    const boot_anim_pt_t final_c1 = boot_anim_sample(last);
-    const boot_anim_pt_t final_c2 = boot_anim_sample(last + 1);
-    return boot_anim_spline(final_c0, final_c1, final_c2, part).t;
+    return boot_anim_pen_t(now_ms);
 }
 
 /* The title */
@@ -688,13 +685,14 @@ boot_anim_set_ending_backdrop(boot_anim_backdrop_fn paint) {
 
 /* Keep scene scratch off the stack while the ending backdrop repaints. */
 static __attribute__((noinline)) void
-draw_scene(const boot_anim_motion_t* motion, const draw_image_t* photo, uint32_t now_ms, uint8_t ink) {
+draw_scene(const boot_anim_motion_t* motion, const draw_image_t* photo, const boot_anim_floor_t* floor, uint32_t now_ms,
+           uint8_t ink) {
     const uint8_t reveal = photo->pixels != NULL ? boot_anim_photo_reveal(now_ms) : 0;
     const boot_anim_view_t view = boot_anim_view(motion, GFX_WIDTH, GFX_HEIGHT, now_ms);
 
     /* A photograph fully revealed covers the whole scene. */
     if (reveal < 255) {
-        draw_floor(now_ms, ink, reveal, &view);
+        draw_floor(floor, now_ms, ink, reveal, &view);
         draw_axes(now_ms, ink, &view);
 
         const int32_t reached = draw_curve(now_ms, ink, reveal, &view);
@@ -710,14 +708,15 @@ draw_scene(const boot_anim_motion_t* motion, const draw_image_t* photo, uint32_t
 }
 
 void
-boot_anim_draw_frame(const boot_anim_motion_t* motion, const draw_image_t* photo, uint32_t now_ms) {
+boot_anim_draw_frame(const boot_anim_motion_t* motion, const draw_image_t* photo, const boot_anim_floor_t* floor,
+                     uint32_t now_ms) {
     const uint8_t ink = boot_anim_ink(now_ms);
     if (ending_backdrop != NULL && ink < 255) {
         ending_backdrop();
     } else {
         boot_anim_clear_frame();
     }
-    draw_scene(motion, photo, now_ms, ink);
+    draw_scene(motion, photo, floor, now_ms, ink);
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -742,6 +741,8 @@ boot_anim_run(void) {
     int64_t photo_mount_us = 0;
     int64_t photo_frame_us = 0;
 #endif
+    boot_anim_floor_t floor;
+    boot_anim_floor_open(&floor);
     boot_anim_motion_t motion;
     boot_anim_motion_load(&motion);
     draw_image_t photo = {0};
@@ -769,7 +770,8 @@ boot_anim_run(void) {
             photo_mount_us = timing_now_us() - now_us;
 #endif
         }
-        boot_anim_draw_frame(&motion, &photo, now_ms);
+        boot_anim_floor_advance(&floor, now_ms);
+        boot_anim_draw_frame(&motion, &photo, &floor, now_ms);
         gfx_present();
 #if CONFIG_LAUNCHER_DEVELOPMENT
         if (frames == 0) {
@@ -788,6 +790,7 @@ boot_anim_run(void) {
     }
     /* Boot plays once and nothing else reads its clip: releasing gives back the
      * pack and its mount slot. */
+    boot_anim_floor_close(&floor);
     boot_anim_motion_release(&motion);
     boot_anim_photo_release(&photo);
 

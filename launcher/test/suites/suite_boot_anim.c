@@ -513,170 +513,6 @@ test_the_seeds_three_axes_project_to_distinct_directions(void) {
     expect_three_distinct_axes(seed);
 }
 
-/* The wave */
-
-/* `amp_q12`/`wavelength_q12`/`period_ms` are fabricated here, not read
- * from BOOT_ANIM_WAVE_HEIGHT_Q12/WAVELENGTH_Q12/PERIOD_MS; see
- * boot_anim_wave_height()'s own comment on why it takes all three as
- * parameters: the shipped seed's own height is 0 (off by default;
- * test_the_seeds_wave_is_coherently_authored() below is what actually
- * checks that), which at 0 would make every one of these assertions trivially
- * true for the wrong reason. */
-static void
-test_wave_height_is_zero_when_the_amplitude_is_zero(void) {
-    TEST_ASSERT_EQUAL_INT32(0, boot_anim_wave_height(BOOT_ANIM_ONE, 0, 0, BOOT_ANIM_ONE, 1000));
-}
-
-static void
-test_wave_height_is_zero_when_the_wavelength_is_not_positive(void) {
-    TEST_ASSERT_EQUAL_INT32(0, boot_anim_wave_height(BOOT_ANIM_ONE, 0, BOOT_ANIM_ONE, 0, 1000));
-    TEST_ASSERT_EQUAL_INT32(0, boot_anim_wave_height(BOOT_ANIM_ONE, 0, BOOT_ANIM_ONE, -1, 1000));
-}
-
-/* sin() is exactly periodic in r for a fixed t: a vertex a full
- * wavelength further out should read back the identical height. This is
- * the structural fact that actually lets several rings show the ripple's
- * own crests/troughs at once, all from the one formula, rather than
- * needing a moving front to explain which rings are "lit" yet; see
- * boot_anim_wave_height(). */
-static void
-test_wave_height_is_periodic_in_radius(void) {
-    const int32_t wavelength = 3 * BOOT_ANIM_ONE;
-    const int32_t amp_q12 = BOOT_ANIM_ONE;
-    const int32_t r = 2 * BOOT_ANIM_ONE;
-
-    const int32_t a = boot_anim_wave_height(r, 0, amp_q12, wavelength, 0);
-    const int32_t b = boot_anim_wave_height(r + wavelength, 0, amp_q12, wavelength, 0);
-
-    TEST_ASSERT_EQUAL_INT32_MESSAGE(a, b,
-                                    "a vertex a full wavelength further out should be at the exact "
-                                    "same point in the same crest/trough cycle");
-}
-
-/* Also exactly periodic in TIME, for a fixed r: one full period_ms
- * brings the pattern back to where it started. */
-static void
-test_wave_height_is_periodic_in_time(void) {
-    const int32_t wavelength = 3 * BOOT_ANIM_ONE;
-    const int32_t amp_q12 = BOOT_ANIM_ONE;
-    const int32_t r = 2 * BOOT_ANIM_ONE;
-    const uint32_t period_ms = 1000;
-
-    const int32_t a = boot_anim_wave_height(r, 250, amp_q12, wavelength, period_ms);
-    const int32_t b = boot_anim_wave_height(r, 250 + period_ms, amp_q12, wavelength, period_ms);
-
-    TEST_ASSERT_EQUAL_INT32_MESSAGE(a, b,
-                                    "a full period later, the same vertex should be back at the same "
-                                    "height");
-}
-
-/* The travelling look itself: the same point in the crest/trough cycle
- * that is a quarter wavelength closer to the origin right now is exactly
- * where THIS vertex will be a quarter period from now; see
- * boot_anim_wave_height()'s own comment on why subtracting the time term
- * is what makes a crest's own radius grow with time, the pattern moving
- * outward rather than inward. */
-static void
-test_wave_height_travels_outward_with_time(void) {
-    const int32_t wavelength = 4 * BOOT_ANIM_ONE;
-    const int32_t amp_q12 = BOOT_ANIM_ONE;
-    const uint32_t period_ms = 4000;
-    const int32_t r = 10 * BOOT_ANIM_ONE;
-
-    const int32_t at_r_a_quarter_period_later = boot_anim_wave_height(r, period_ms / 4, amp_q12, wavelength, period_ms);
-    const int32_t a_quarter_wavelength_closer_right_now =
-        boot_anim_wave_height(r - wavelength / 4, 0, amp_q12, wavelength, period_ms);
-
-    TEST_ASSERT_EQUAL_INT32_MESSAGE(at_r_a_quarter_period_later, a_quarter_wavelength_closer_right_now,
-                                    "a quarter period from now, this vertex should read the way a "
-                                    "vertex a quarter wavelength closer to the origin reads right now "
-                                    "- the pattern travels OUTWARD as time advances");
-}
-
-/* period_ms of 0 is a legitimate, if unusual, choice (a static ripple
- * that never travels), not a division by zero. */
-static void
-test_wave_height_is_frozen_when_the_period_is_zero(void) {
-    const int32_t wavelength = 3 * BOOT_ANIM_ONE;
-    const int32_t amp_q12 = BOOT_ANIM_ONE;
-    const int32_t r = 2 * BOOT_ANIM_ONE;
-
-    const int32_t at_t0 = boot_anim_wave_height(r, 0, amp_q12, wavelength, 0);
-    const int32_t at_t_later = boot_anim_wave_height(r, 999999, amp_q12, wavelength, 0);
-
-    TEST_ASSERT_EQUAL_INT32_MESSAGE(at_t0, at_t_later,
-                                    "a period of 0 should freeze the pattern's own time term rather "
-                                    "than crash or drift");
-}
-
-/* A seed value an author is expected to change is not a fact worth
- * pinning to a specific number; what's worth pinning is that whatever
- * they tune stays COHERENT: boot_anim_wave_height() reads height,
- * wavelength and period together, and a nonzero height against a zero
- * wavelength or period is the combination that silently draws nothing
- * (see that function's own early-out). Holds whether the ripple is
- * authored on or off. */
-static void
-test_the_seeds_wave_is_coherently_authored(void) {
-    TEST_ASSERT_TRUE_MESSAGE(BOOT_ANIM_WAVE_HEIGHT_Q12 >= 0,
-                             "a negative wave height would flip every crest into a trough");
-    if (BOOT_ANIM_WAVE_HEIGHT_Q12 != 0) {
-        TEST_ASSERT_TRUE_MESSAGE(BOOT_ANIM_WAVE_WAVELENGTH_Q12 > 0,
-                                 "the seed authors a wave height but no wavelength - "
-                                 "boot_anim_wave_height() would return flat and the ripple "
-                                 "would silently never appear");
-        TEST_ASSERT_TRUE_MESSAGE(BOOT_ANIM_WAVE_PERIOD_MS > 0,
-                                 "the seed authors a wave height but no period - the ripple "
-                                 "would be frozen rather than travelling");
-    }
-}
-
-/* boot_anim_wave_envelope() takes no parameters of its own to fabricate:
- * unlike boot_anim_wave_height() above, IT is the timeline, the same
- * reason boot_anim_grid_alpha() reads BOOT_ANIM_GRID_START_MS/RING_MS/
- * FADE_MS directly rather than taking them as arguments, so these test
- * against the seed's own real generated values (BOOT_ANIM_WAVE_IN_MS,
- * BOOT_ANIM_WAVE_OUT_MS, BOOT_ANIM_MS). */
-static void
-test_wave_envelope_is_zero_at_the_very_start(void) {
-    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_wave_envelope(0));
-}
-
-/* The whole point of wave_in_ms being a MOMENT rather than a duration:
- * the ripple stays muted right up to and including that moment itself;
- * an author controls exactly when it is allowed to start, not merely how
- * long a ramp beginning at frame 0 takes. */
-static void
-test_wave_envelope_is_still_muted_at_wave_in_ms_itself(void) {
-    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_wave_envelope(BOOT_ANIM_WAVE_IN_MS));
-}
-
-static void
-test_wave_envelope_reaches_full_strength_after_the_ramp(void) {
-    TEST_ASSERT_EQUAL_UINT8(255, boot_anim_wave_envelope(BOOT_ANIM_WAVE_IN_MS + BOOT_ANIM_WAVE_ENVELOPE_RAMP_MS));
-}
-
-static void
-test_wave_envelope_plateaus_between_in_and_out(void) {
-    const uint32_t midpoint = (BOOT_ANIM_WAVE_IN_MS + BOOT_ANIM_WAVE_OUT_MS) / 2;
-
-    TEST_ASSERT_EQUAL_UINT8(255, boot_anim_wave_envelope(midpoint));
-}
-
-/* Symmetric with test_wave_envelope_is_still_muted_at_wave_in_ms_itself
- * above: still at FULL strength right at wave_out_ms itself; that moment
- * is when the fade-out ramp starts, not when it has already finished. */
-static void
-test_wave_envelope_is_still_full_at_wave_out_ms_itself(void) {
-    TEST_ASSERT_EQUAL_UINT8(255, boot_anim_wave_envelope(BOOT_ANIM_WAVE_OUT_MS));
-}
-
-/* The title's idle wave calming down: a different wave entirely from the
- * floor ripple above (see boot_anim_title_wave()), but the same "255 minus
- * a ramp" envelope, so the same three moments are worth pinning: full
- * swing before it starts, still full AT the start (that instant is when
- * the ramp begins, not when it has finished), and nothing left once the
- * fade window has passed. */
 static void
 test_the_title_wave_is_at_full_swing_before_it_calms(void) {
     TEST_ASSERT_EQUAL_UINT8(255, boot_anim_title_wave_reach(0));
@@ -705,19 +541,6 @@ test_the_title_wave_never_swings_wider_as_it_calms(void) {
                                               "supposed to be calming");
         prev = now;
     }
-}
-
-/* Measured from BOOT_ANIM_WAVE_OUT_MS, not BOOT_ANIM_MS: the envelope's
- * contract is that it reaches zero one ramp after the fade-out STARTS,
- * and whether that lands before the animation's own end is a timeline
- * choice, not a property of this function. The seed currently parks
- * wave_out_ms exactly at total_ms, so the ripple is still at full
- * strength on the last frame: fine, since boot_anim_ink() has been
- * taking the whole picture to black since fade_start_ms long before
- * then. */
-static void
-test_wave_envelope_fades_back_to_zero_after_its_ramp(void) {
-    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_wave_envelope(BOOT_ANIM_WAVE_OUT_MS + BOOT_ANIM_WAVE_ENVELOPE_RAMP_MS));
 }
 
 /* The reach's own endpoints, read off whatever the seed authors: a start
@@ -1671,7 +1494,8 @@ expect_the_rest_pose(const char* dir) {
     const bool is_rest = !from_pack && motion.clip.duration_ms == rest.clip.duration_ms
                          && same_node(&motion.camera, &rest.camera) && same_node(&motion.space, &rest.space);
     const draw_image_t no_photo = {0};
-    boot_anim_draw_frame(&motion, &no_photo, now_ms);
+    const boot_anim_floor_t floor = {0};
+    boot_anim_draw_frame(&motion, &no_photo, &floor, now_ms);
     boot_anim_motion_release(&motion);
     TEST_ASSERT_FALSE_MESSAGE(from_pack, "the motion came from the pack");
     TEST_ASSERT_TRUE_MESSAGE(is_rest, "a failed load left something other than the rest pose");
@@ -1809,7 +1633,8 @@ static int
 lit_over(const draw_image_t* photo, uint32_t now_ms) {
     boot_anim_motion_t motion;
     boot_anim_motion_load(&motion);
-    boot_anim_draw_frame(&motion, photo, now_ms);
+    const boot_anim_floor_t floor = {0};
+    boot_anim_draw_frame(&motion, photo, &floor, now_ms);
     boot_anim_motion_release(&motion);
     return lit_pixels();
 }
@@ -1954,19 +1779,6 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_the_seeds_curve_stays_near_the_panel_throughout);
     RUN_TEST(test_the_seeds_three_axes_project_to_distinct_directions);
 
-    RUN_TEST(test_wave_height_is_zero_when_the_amplitude_is_zero);
-    RUN_TEST(test_wave_height_is_zero_when_the_wavelength_is_not_positive);
-    RUN_TEST(test_wave_height_is_periodic_in_radius);
-    RUN_TEST(test_wave_height_is_periodic_in_time);
-    RUN_TEST(test_wave_height_travels_outward_with_time);
-    RUN_TEST(test_wave_height_is_frozen_when_the_period_is_zero);
-    RUN_TEST(test_the_seeds_wave_is_coherently_authored);
-    RUN_TEST(test_wave_envelope_is_zero_at_the_very_start);
-    RUN_TEST(test_wave_envelope_is_still_muted_at_wave_in_ms_itself);
-    RUN_TEST(test_wave_envelope_reaches_full_strength_after_the_ramp);
-    RUN_TEST(test_wave_envelope_plateaus_between_in_and_out);
-    RUN_TEST(test_wave_envelope_is_still_full_at_wave_out_ms_itself);
-    RUN_TEST(test_wave_envelope_fades_back_to_zero_after_its_ramp);
     RUN_TEST(test_the_title_wave_is_at_full_swing_before_it_calms);
     RUN_TEST(test_the_title_wave_reaches_stillness_after_its_fade);
     RUN_TEST(test_the_title_wave_never_swings_wider_as_it_calms);

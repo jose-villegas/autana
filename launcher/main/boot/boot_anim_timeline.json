@@ -30,8 +30,6 @@
         "grid_spoke_dash": 1,
         "grid_spoke_start_ms": 2300,
         "grid_spoke_draw_ms": 800,
-        "wave_in_ms": 750,
-        "wave_out_ms": 5500,
         "title_height_px": 40,
         "title_x_px": 95,
         "image_start_ms": 3500,
@@ -45,7 +43,10 @@
     },
     "camera_half_fov_short_tan": 1.0,
     "grid_step_m": 0.1,
-    "wave_height_m": 1.25,
-    "wave_wavelength_m": 5,
-    "wave_period_ms": 800
+    "floor_tick_ms": 40,
+    "floor_tension": 64,
+    "floor_stiffness": 2,
+    "floor_damping": 4,
+    "floor_pluck_m": 0.35,
+    "floor_pluck_cells": 4
 }

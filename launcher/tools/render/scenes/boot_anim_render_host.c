@@ -38,6 +38,12 @@
 static uint32_t now_ms;
 static boot_anim_motion_t motion;
 static draw_image_t photo;
+static boot_anim_floor_t floor_state;
+
+static void
+release_floor(void) {
+    boot_anim_floor_close(&floor_state);
+}
 
 static bool
 options(int argc, char** argv) {
@@ -74,6 +80,8 @@ static bool
 setup(int quarter) {
     (void)quarter;
     launcher_home_render_setup(DISPLAY_LANDSCAPE);
+    boot_anim_floor_open(&floor_state);
+    atexit(release_floor);
     /* microui clips to the previous frame's window rectangle. */
     paint_home();
     boot_anim_set_ending_backdrop(paint_home);
@@ -83,7 +91,8 @@ setup(int quarter) {
 static void
 draw(const render_frame_t* frame) {
     const uint32_t t_ms = now_ms + frame->elapsed_ms;
-    boot_anim_draw_frame(&motion, &photo, t_ms);
+    boot_anim_floor_advance(&floor_state, t_ms);
+    boot_anim_draw_frame(&motion, &photo, &floor_state, t_ms);
 }
 
 const render_scene_t render_scene = {

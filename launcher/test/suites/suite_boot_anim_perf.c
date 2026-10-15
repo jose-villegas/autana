@@ -1,23 +1,7 @@
-/*
- * Device-only suite: boot animation performance profiling.
- *
- * Unlike a steady-state render loop, boot_anim_draw_frame() is a pure
- * function of now_ms, and the whole point of this suite
- * is that its cost is NOT steady across the animation's own timeline: grid
- * bands arrive progressively, the space transform's scale grows across
- * keyframes, and the photograph's crossfade adds a full-framebuffer blend
- * on top of whatever else is drawing. A single flat-out capture, the way a
- * steady-state suite takes one, would average all of that away.
- *
- * So this FREEZES time instead of letting it run: boot_anim_draw_frame()
- * being a pure function of now_ms means calling it repeatedly at one fixed
- * timestamp is a legitimate, repeatable measurement of exactly what that
- * moment in the animation costs, not a hand-picked scene standing in for
- * it. A handful of checkpoints (see build_checkpoints() below), each timed
- * per-phase (clear/floor/axes/curve/zeros/image/title/present), with the
- * same min/max/avg/median/p95 report every performance suite here reports.
- *
- * Runs under DEVICE_BUILD only: needs real panel, DMA, and framebuffer.
+/* Device benchmark: replay the spring floor to each checkpoint, then time
+ * repeated draws of that fixed state by phase. One frame's worth of ticks
+ * is timed separately from drawing. The checkpoints follow the authored
+ * timeline so the report covers the curve, title and photograph.
  */
 #include "suites.h" /* portable: needed by SUITE_REGISTER() even on host */
 
@@ -45,7 +29,8 @@
  * not a hand-copy of boot_anim_draw_frame()'s own sequencing, means this
  * suite exercises the exact code a real frame runs. */
 extern void boot_anim_clear_frame(void);
-extern void draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view);
+extern void draw_floor(const boot_anim_floor_t* floor, uint32_t now_ms, uint8_t ink, uint8_t reveal,
+                       const boot_anim_view_t* view);
 extern void draw_axes(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view);
 extern int32_t draw_curve(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view);
 extern void draw_zeros(int32_t pen_t_q8, uint8_t ink, const boot_anim_view_t* view);
@@ -59,6 +44,7 @@ static const char* TAG = "boot_anim_perf";
  * data as a time-bounded ring would, and seven checkpoints still finish in
  * well under a minute. */
 #define SAMPLES_PER_CHECKPOINT 60
+#define FRAME_TICK_BUDGET_MS   40
 
 typedef struct {
     int32_t frame_total_us;
@@ -163,6 +149,7 @@ typedef struct {
     uint8_t ink;
     uint8_t reveal;
     const draw_image_t* photo;
+    const boot_anim_floor_t* floor;
     bool draw_scene;
     bool draw_title;
     boot_anim_view_t view;
@@ -193,7 +180,7 @@ time_frames(const checkpoint_frame_t* f) {
 
         if (f->draw_scene) {
             t0 = timing_now_us();
-            draw_floor(f->now_ms, f->ink, f->reveal, &f->view);
+            draw_floor(f->floor, f->now_ms, f->ink, f->reveal, &f->view);
             t1 = timing_now_us();
             s->floor_us = (int32_t)(t1 - t0);
 
@@ -296,10 +283,23 @@ run_checkpoint(const boot_anim_motion_t* motion, const draw_image_t* photo, cons
                           "two failed to allocate");
     }
 
+    boot_anim_floor_t floor;
+    boot_anim_floor_open(&floor);
+    TEST_ASSERT_NOT_NULL(floor.grid.offset);
+    const uint32_t before = cp->now_ms > FRAME_TICK_BUDGET_MS ? cp->now_ms - FRAME_TICK_BUDGET_MS : 0;
+    boot_anim_floor_advance(&floor, before);
+    const uint32_t ticks_before = floor.ticks;
+    const int64_t started = timing_now_us();
+    boot_anim_floor_advance(&floor, cp->now_ms);
+    const int32_t tick_us = (int32_t)(timing_now_us() - started);
+    printf("boot floor %s: %u ticks, %d nodes/tick, %ld us\n", cp->label, (unsigned)(floor.ticks - ticks_before),
+           BOOT_ANIM_FLOOR_NODES, (long)tick_us);
     checkpoint_frame_t frame;
     sample_checkpoint(motion, photo, cp->now_ms, &frame);
+    frame.floor = &floor;
     time_frames(&frame);
     report_checkpoint(cp);
+    boot_anim_floor_close(&floor);
 
     free(samples);
     free(stat_scratch);

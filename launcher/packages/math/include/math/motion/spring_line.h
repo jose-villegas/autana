@@ -23,6 +23,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "math/motion/spring.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/mathx.h"
@@ -91,11 +92,6 @@ spring_line_at_rest(const spring_line_t* line) {
     return line->active_hi <= line->active_lo;
 }
 
-static inline int32_t
-spring_line_scale(int32_t value, int out_of_256) {
-    return (int32_t)(((int64_t)value * out_of_256) / 256);
-}
-
 static inline void
 spring_line_wake(spring_line_t* line, int lo, int hi) {
     lo = lo < 0 ? 0 : lo;
@@ -125,9 +121,8 @@ spring_line_add_bump(spring_line_t* line, int32_t* into, int x, int half_width, 
         if (column < 0 || column >= line->count) {
             continue;
         }
-        const int t2 = k * k * 256 / (half_width * half_width);
-        const int window = (256 - t2) * (256 - t2) / 256;
-        into[column] += spring_line_scale(amount, window);
+        const int window = spring_bump_window((int64_t)k * k, half_width);
+        into[column] += spring_scale(amount, window);
     }
     spring_line_wake(line, x - half_width, x + half_width + 1);
 }
@@ -187,9 +182,9 @@ spring_line_tick(spring_line_t* line) {
         const int32_t left = line->offset[x > 0 ? x - 1 : x];
         const int32_t right = line->offset[x < last ? x + 1 : x];
         int32_t v = line->velocity[x];
-        v += spring_line_scale(left - 2 * here + right, line->tension);
-        v -= spring_line_scale(here, line->stiffness);
-        v -= spring_line_scale(v, line->damping);
+        v += spring_scale(left - 2 * here + right, line->tension);
+        v -= spring_scale(here, line->stiffness);
+        v -= spring_scale(v, line->damping);
         line->velocity[x] = v;
     }
 

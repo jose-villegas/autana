@@ -44,12 +44,6 @@
 #define BOOT_ANIM_GRID_SPOKE_DRAW_MS 800
 
 #define BOOT_ANIM_GRID_FADE_MS 128
-/* the ripple is muted before this, then lerps up to full strength */
-#define BOOT_ANIM_WAVE_IN_MS 750
-
-/* the ripple is at full strength until this, then lerps back to muted */
-#define BOOT_ANIM_WAVE_OUT_MS 5500
-
 #define BOOT_ANIM_PEN_START_MS 520
 /* how long the curve takes to draw */
 #define BOOT_ANIM_PEN_MS 1980
@@ -136,18 +130,9 @@
  * boot_anim.c does. */
 #define BOOT_ANIM_GRID_STEP_Q12 410
 
-/* The wave's own peak amplitude; see boot_anim_wave_height(). Authored
- * in meters (wave_height_m in the JSON), the same as grid_step_m just
- * above; 0 turns the ripple off outright, not just down. */
-#define BOOT_ANIM_WAVE_HEIGHT_Q12 5120
-
-/* The wave's own crest-to-crest distance; see boot_anim_wave_height().
- * Also meters, also authored (wave_wavelength_m in
- * the JSON). */
-#define BOOT_ANIM_WAVE_WAVELENGTH_Q12 20480
-
-/* How long one full cycle takes to pass a fixed point - milliseconds,
- * authored (wave_period_ms in the JSON), the same "how long one
- * cycle takes" unit title_wave_period_ms already is for the title's
- * own wobble. */
-#define BOOT_ANIM_WAVE_PERIOD_MS 800
+#define BOOT_ANIM_FLOOR_TICK_MS 40
+#define BOOT_ANIM_FLOOR_TENSION 64
+#define BOOT_ANIM_FLOOR_STIFFNESS 2
+#define BOOT_ANIM_FLOOR_DAMPING 4
+#define BOOT_ANIM_FLOOR_PLUCK_CELLS 4
+#define BOOT_ANIM_FLOOR_PLUCK_Q16 22938
