@@ -15,9 +15,10 @@ name: Pages
 # The explorer's generator lives in the private development repository,
 # checked out as .dev the way a local checkout holds it, and runs in the
 # pinned ESP-IDF image (launcher/idf-pin.json) beside the firmware variants
-# it reads. Needs the repository setting Pages > Source set to "GitHub
-# Actions", and a secret AUTANA_DEV_TOKEN that can read
-# jose-villegas/autana-dev.
+# it reads. It writes a LikeC4 model; the LikeC4 version its package.json
+# pins validates the model and builds the explorer from it. Needs the
+# repository setting Pages > Source set to "GitHub Actions", and a secret
+# AUTANA_DEV_TOKEN that can read jose-villegas/autana-dev.
 
 on:
   push:
@@ -59,13 +60,16 @@ jobs:
           mkdir -p _site
           cp -r _front/. _site/
           sh launcher/main/apps/sand/tools/web/build_web.sh _site/sand
+      - uses: ./.github/actions/host-tools
+      - name: Install the explorer's LikeC4
+        run: npm ci --prefix .dev/launcher/tools/architecture
       - name: Test the explorer's generator
         run: python3 .dev/launcher/tools/architecture/test_build.py
       # The explorer marks what only the dev and diag images compile, read
       # from each variant's compile database. Configuring a variant writes
       # it without compiling; the explorer asks the variant's own compiler
       # which headers each source reaches, so it runs in the same image.
-      - name: Architecture explorer
+      - name: Architecture model
         uses: ./.github/actions/idf-build
         env:
           GH_TOKEN: ${{ github.token }}
@@ -80,7 +84,11 @@ jobs:
             --compile-db release=launcher/build/compile_commands.json
             --compile-db dev=launcher/build.dev/compile_commands.json
             --compile-db diag=launcher/build.diag/compile_commands.json
-            -o _site/architecture
+            -o build/architecture-model
+      - name: Architecture explorer
+        run: >-
+          python3 .dev/launcher/tools/architecture/site.py build/architecture-model
+          -o _site/architecture --base "/${{ github.event.repository.name }}/architecture/"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
