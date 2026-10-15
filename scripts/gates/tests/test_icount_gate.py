@@ -61,9 +61,10 @@ class IcountGateTests(unittest.TestCase):
             log.write_text(self.row("z") + self.row("a", reps=3), encoding="utf-8")
             self.assertEqual(0, gate.main(["--baseline", str(baseline), "--update-baseline", str(log)]))
             self.assertEqual(0, gate.main(["--baseline", str(baseline), str(log)]))
-            entries = [line.split("\t")[1] for line in baseline.read_text().splitlines()
+            entries = [line.split("\t") for line in baseline.read_text().splitlines()
                        if not line.startswith("#")]
-            self.assertEqual(["a", "z"], entries)
+            self.assertEqual(["a", "z"], [name for _, name in entries])
+            self.assertTrue(all(value.isdecimal() for value, _ in entries))
 
 
 if __name__ == "__main__":

@@ -532,11 +532,13 @@ python launcher/tools/quality/icount_gate.py launcher/build.qemu.shell/qemu_seri
 
 The gate fails above or below the baseline by more than 0.5%, on a missing
 or unexpected row, or when a row is too short to bound clock rounding.
+Repeated local captures differ by up to 16 parts per million (0.0016%),
+well inside that tolerance. Baseline entries round to whole instructions.
 An improvement requires lowering the baseline in the same PR. An increase
 requires a stated reason and a baseline update in the same PR. Generate
 both with `python launcher/tools/quality/icount_gate.py --update-baseline
 launcher/build.qemu.shell/qemu_serial.log` after confirming two captures
-agree. A compiler or IDF bump re-baselines the kernels in one deliberate
+agree within tolerance. A compiler or IDF bump re-baselines the kernels in one deliberate
 commit. The named tolerance and minimum capture length live in
 `launcher/test/perf_stats.h`; the gate reads them there.
 

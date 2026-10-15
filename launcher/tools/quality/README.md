@@ -31,8 +31,7 @@ See [the testing guide](../../../docs/Testing-Guide.md#qemu-the-device-image-wit
 for the suite command.
 
 Both a rise and a fall beyond 0.5% fail. Lower an improved entry in the same
-PR; raise one only with a stated reason in that PR. After two identical
-captures, run `python launcher/tools/quality/icount_gate.py --update-baseline
+PR; raise one only with a stated reason in that PR. After two captures agree within tolerance, run `python launcher/tools/quality/icount_gate.py --update-baseline
 LOG` to generate the sorted baseline. Missing, unexpected, empty and short
 measurements fail, including during updates. A compiler or IDF bump
 re-baselines in one deliberate commit.
