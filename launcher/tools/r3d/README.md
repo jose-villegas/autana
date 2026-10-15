@@ -234,7 +234,7 @@ the training poses:
 
 ```sh
 "$GPU_ENV/bin/python3" launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.mesh \
-    --poses train.txt --reference reference_train --out fitted
+    --poses train.txt --reference reference_train --coverage-poses coverage.txt --held-out held_out.txt --out fitted
 ```
 
 To score a fitted mesh, pack it in place of the tracked one, as
@@ -268,10 +268,15 @@ samples the camera's path every
 with their normals in portrait and landscape so the fit holds the panel either
 way up at `fit.poses.size`. `fit` fits with
 `fit.optimise.steps`, `fit.optimise.batch`, `fit.optimise.laplacian` and
-`fit.optimise.normal_weight`, prunes the fitted geometry to `fit.prune.budget`
+`fit.optimise.normal_weight`. `fit` prunes the
+fitted geometry to `fit.prune.budget`
 and writes the renderer's mesh into the work folder. A refit is not
 bit-identical, the GPU's sums being unordered, so the lock pins the bytes a fit
 made.
+
+Coverage keeps the start mesh's covered pixels through fitting. Use
+`--coverage-weight`, `--mine-every` and `--held-out` to control it;
+[Scene-Files describes the coverage term](../../../docs/render/Scene-Files.md#fitoptimise).
 
 ### Reference on the GPU
 

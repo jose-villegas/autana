@@ -281,6 +281,12 @@ held: its bytes were carried over, not made by the code its key names, and
 names its `host`, the system and machine that made the bytes, since a bake
 repeats byte for byte only on one kind of host (a Linux and a Windows Blender
 export of the same `.blend` differ in the last bit of some animation keys).
+A mesh bake differs by CPU vendor too (an AMD and an Intel host trace a few
+rays an ulp apart), so the lock's `mesh_cpu_vendor` line names the vendor its
+meshes were made on. A run records its host's vendor; `lock --from-run` refuses
+a run that made a mesh on another vendor, naming both, and the CPU job fails
+before baking when the hosted runner it got is another vendor's. Either way,
+re-run the failed job until it lands on the lock's vendor.
 
 The lock's `[[poses]]` rows hold the digest and count of each camera-path sampling.
 

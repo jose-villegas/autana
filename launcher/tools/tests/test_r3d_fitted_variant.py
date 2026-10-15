@@ -317,6 +317,7 @@ class SweepTests(unittest.TestCase):
         def fitter(command):
             out = pathlib.Path(command[command.index("--out") + 1])
             out.mkdir(parents=True)
+            self.assertEqual(command[command.index("--held-out") + 1], str(out.parent / "held_out.txt"))
             (out / pathlib.Path(command[command.index("--start") + 1]).name).write_bytes(fitted_bytes)
 
         recipe = SimpleNamespace(steps=3, budget=2, batch=1, laplacian=0.5, normal_weight=0.25)
