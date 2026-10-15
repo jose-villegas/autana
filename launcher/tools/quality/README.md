@@ -27,5 +27,5 @@ integer expressions as booleans and the internal linkage rules.
 `icount_gate.py LOG` checks named instruction rows against
 `icount_baseline.txt`. `--baseline PATH` selects another baseline;
 `--update-baseline` writes sorted, rounded entries from the capture.
-See [the testing guide](../../../docs/Testing-Guide.md#hot-kernel-instruction-ratchet)
+See [the testing guide](../../../docs/Testing-Guide.md#qemu-the-device-image-with-no-board)
 for capture commands and the ratchet policy.

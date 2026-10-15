@@ -46,9 +46,9 @@ in a CONFIG_LAUNCHER_QEMU image, and tests of hardware QEMU lacks (the
 performance monitor, a touch controller that physically answers) skip
 themselves. With
 --icount virtual time advances one nanosecond per executed instruction, so a
-"us per step" line times 1000 is instructions per step. See the QEMU section
-of docs/Testing-Guide.md for repeatability and the limits of shared-core
-counts. It is never a time.
+"us per step" line times 1000 is instructions per step, never a time;
+docs/Testing-Guide.md's QEMU section covers repeatability and the limits of
+shared-core counts.
 
 Several instances run at once; give each its own build directory copy or
 --workdir, since the flash image is written beside the log.
@@ -75,7 +75,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                 "..", "..", "scripts", "device"))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "qemu"))
-from packages import FIRST_PARTY  # noqa: E402  (shared first-party source roots)
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "lib"))
+from suite_registry import registered_suites  # noqa: E402
 import device_profile  # noqa: E402  (path must be set up first)
 from espressif import espressif_tools_root, idf_python, idf_path  # noqa: E402  (path must be set up first)
 from device_report import SUITE_COMPLETE_RE  # noqa: E402  (the board tool's own reading)
@@ -85,7 +86,6 @@ import screenshot as wire  # noqa: E402  (the board tool's own protocol)
 import patched_qemu  # noqa: E402  (path must be set up first)
 
 ICOUNT_SHIFT = 0
-ICOUNT_SUITE_RE = re.compile(r"^\s*SUITE_REGISTER_ON_REQUEST\(\s*(run_\w+_icount_suite)\s*\);", re.M)
 
 QEMU_PASS_RE = re.compile(r":PASS$", re.M)
 QEMU_IGNORE_RE = re.compile(r":IGNORE")
@@ -97,10 +97,8 @@ ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def icount_suites(root):
-    suites = set()
-    for folder in (*FIRST_PARTY, "launcher/test/suites/"):
-        for source in (Path(root) / folder).rglob("*.c"):
-            suites.update(ICOUNT_SUITE_RE.findall(source.read_text(encoding="utf-8")))
+    suites = [name for name, (_, on_request, _) in registered_suites(root).items()
+              if on_request and name.endswith("_icount_suite")]
     if not suites:
         raise ValueError("no instruction ratchet suites registered")
     return sorted(suites)
@@ -401,7 +399,23 @@ def verdict(log_path, finished, actions):
     return 0 if finished and not failures else 1
 
 
-def main(argv):
+def qemu_command(args, qemu, psram_mib, flash, efuse, port):
+    cmd = [qemu, "-M", "esp32s3", "-m", "%dM" % psram_mib,
+           "-drive", "file=%s,if=mtd,format=raw" % flash,
+           "-drive", "file=%s,if=none,format=raw,id=efuse" % efuse,
+           "-global", "driver=nvram.esp32s3.efuse,property=drive,value=efuse",
+           "-global", "driver=timer.esp32s3.timg,property=wdt_disable,"
+                      "value=true",
+           "-global", "driver=ssi_psram,property=is_octal,value=true",
+           "-nographic", "-monitor", "none",
+           "-serial", "tcp:127.0.0.1:%d,server=on,wait=on" % port]
+    if args.icount:
+        cmd += ["-icount", f"shift={ICOUNT_SHIFT},sleep=off"]
+
+    return cmd
+
+
+def parse_args(argv):
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("build_dir")
     parser.add_argument("--icount", action="store_true",
@@ -443,6 +457,11 @@ def main(argv):
             args.suite += icount_suites(Path(__file__).resolve().parents[2])
         except ValueError as error:
             parser.error(str(error))
+    return args
+
+
+def main(argv):
+    args = parse_args(argv)
     args.idf_path = args.idf_path or str(idf_path())
 
     actions = ["suite %s" % name for name in args.suite]
@@ -473,23 +492,11 @@ def main(argv):
     if os.path.exists(log_path):
         os.remove(log_path)
 
-    # The board's own PSRAM size: QEMU would happily offer more, and a test
-    # that only fits in the surplus would pass here and fail on the board.
+    # The board's own PSRAM size: QEMU would happily offer more.
     profile = device_profile.load(None, None)
     psram_mib = device_profile.require(profile, "DP_PSRAM_BYTES", int) >> 20
-
     port = free_port()
-    cmd = [qemu, "-M", "esp32s3", "-m", "%dM" % psram_mib,
-           "-drive", "file=%s,if=mtd,format=raw" % flash,
-           "-drive", "file=%s,if=none,format=raw,id=efuse" % efuse,
-           "-global", "driver=nvram.esp32s3.efuse,property=drive,value=efuse",
-           "-global", "driver=timer.esp32s3.timg,property=wdt_disable,"
-                      "value=true",
-           "-global", "driver=ssi_psram,property=is_octal,value=true",
-           "-nographic", "-monitor", "none",
-           "-serial", "tcp:127.0.0.1:%d,server=on,wait=on" % port]
-    if args.icount:
-        cmd += ["-icount", f"shift={ICOUNT_SHIFT},sleep=off"]
+    cmd = qemu_command(args, qemu, psram_mib, flash, efuse, port)
 
     proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL,
                             stdout=subprocess.DEVNULL,

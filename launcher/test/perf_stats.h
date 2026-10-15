@@ -2,21 +2,28 @@
 #pragma once
 
 #include <inttypes.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include "unity.h"
 
-/* Each batch's clock reads round by under 1 us; this length keeps rounding
- * below one MARGIN-th of the tolerance. */
 #define PERF_ICOUNT_PREFIX                "ICOUNT"
 #define PERF_ICOUNT_TOLERANCE_DENOMINATOR 200
+
+/* A row needs at least MARGIN times the tolerance denominator us per timed
+ * batch, keeping sub-us clock rounding below one MARGIN-th of the tolerance. */
 #define PERF_ICOUNT_ROUNDING_MARGIN       10
+
+static inline bool
+perf_icount_long_enough(int64_t us, int batches) {
+    return us >= batches * PERF_ICOUNT_ROUNDING_MARGIN * PERF_ICOUNT_TOLERANCE_DENOMINATOR;
+}
 
 static inline void
 perf_icount_report(const char* name, int64_t us, int reps, int batches) {
     printf(PERF_ICOUNT_PREFIX " %s us=%" PRId64 " reps=%d\n", name, us, reps);
-    TEST_ASSERT_TRUE(us >= batches * PERF_ICOUNT_ROUNDING_MARGIN * PERF_ICOUNT_TOLERANCE_DENOMINATOR);
+    TEST_ASSERT_TRUE(perf_icount_long_enough(us, batches));
 }
 
 typedef struct {

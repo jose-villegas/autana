@@ -285,4 +285,5 @@ Search the [generated catalogue](#catalogue) for an existing owner before writin
 | [scripts/lib/native_path.py](../scripts/lib/native_path.py) | Native drive paths for tools launched from Git Bash; Linux paths pass through. | `to_native` |
 | [scripts/lib/pinned_tool.py](../scripts/lib/pinned_tool.py) | Resolve the LLVM release shared by repository formatting and analysis gates. | `PINNED_MAJOR, PINNED_VERSION, candidates, resolve, tool_roots, tool_version` |
 | [scripts/lib/process_tree.py](../scripts/lib/process_tree.py) | Start and stop commands as one process tree, so children holding pipes or locks die with them. | `CREATE_SUSPENDED, JOB_OBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_BREAKAWAY_OK, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, PR_SET_PDEATHSIG, bind_parent_lifetime, close_process_tree, create_kill_on_close_job, launch_process_tree, stop_process_tree, terminate_tree, windows_job_binding` |
+| [scripts/lib/suite_registry.py](../scripts/lib/suite_registry.py) | Suite registrations shared by project listings and QEMU selection. | `SUITE_REGISTRATION, registered_suites` |
 <!-- /generated: shared-helpers -->

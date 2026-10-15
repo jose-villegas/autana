@@ -23,13 +23,13 @@ jobs:
   icount-ratchet:
     name: Hot kernel instruction ratchet
     runs-on: ubuntu-24.04
-    # Headroom for a cold emulator build; warm runs take about six minutes.
+    # Headroom for a cold emulator build.
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/patched-qemu
         with:
-          # Capture ceiling allows over twice the warm job's total runtime.
+          # Capture ceiling.
           command: >-
             sh test/run_qemu_tests.sh --icount-ratchet --timeout 900
             && python3 tools/quality/icount_gate.py build.qemu.shell/qemu_serial.log

@@ -502,11 +502,9 @@ panel, the real touch controller, the IMU or timing.
 one nanosecond per executed instruction, so a `us per step` line times 1000
 is instructions per step: for a measurement that sends nothing, since time
 spent waiting on the null panel's modelled bus passes with no instructions
-behind it. A step that runs on one core repeats run to run: five concurrent
-instances on a 32-thread desktop with host-paced timers show up to 1.05%
-spread (three in four measurements identical), whereas `--icount` uses
-`sleep=off` to pace guest timers by instructions and repeated ratchet
-captures differ by far less than the tolerance.
+behind it. One-core steps repeat run to run; `--icount` passes `sleep=off`,
+so guest timers advance by instructions rather than host time; captures of
+a one-core kernel differ by far less than the ratchet's tolerance.
 
 **A step shared between two cores cannot be ranked this way at all.** The
 count sums both cores, so the second one is charged for whatever it does
@@ -519,16 +517,14 @@ answers whether a change removed work; on this chip that does not predict
 whether it removed time (see
 [`notes/Debugging.md`](notes/Debugging.md#performance-seems-off)).
 
-### Hot kernel instruction ratchet
-
-Only selected serial simulation steps and raster span kernels are pinned
-in `launcher/tools/quality/icount_baseline.txt`. Frame totals and whole
+**Hot kernel instruction ratchet.** Only selected serial simulation steps
+and raster span kernels are pinned in `launcher/tools/quality/icount_baseline.txt`. Frame totals and whole
 suites are excluded so unrelated code growth carries no instruction budget.
 A ratchet suite registers as `SUITE_REGISTER_ON_REQUEST(run_<name>_icount_suite)`;
 adding a row requires that registration and a baseline entry. The runner
 discovers these suites from the sources and enables instruction counting.
-`.github/workflows/icount-ratchet.yml`
-runs them in CI; locally, from the repository root:
+`.github/workflows/icount-ratchet.yml` runs them in CI; locally, from the
+repository root:
 
 ```sh
 ./launcher/test/run_qemu_tests.sh --icount-ratchet
@@ -538,9 +534,8 @@ python launcher/tools/quality/icount_gate.py launcher/build.qemu.shell/qemu_seri
 The capture lands in `launcher/build.qemu.shell/qemu_serial.log`. The gate
 fails above or below the baseline by more than 0.5%, or on a missing or
 unexpected row. The C reporting helper rejects rows too short to bound
-clock rounding. Repeated captures differ by far less than the tolerance.
-Baseline entries round to whole instructions. An improvement requires
-lowering the baseline in the same PR. An increase requires a stated reason
+clock rounding. Baseline entries round to whole instructions. An
+improvement requires lowering the baseline in the same PR. An increase requires a stated reason
 and a baseline update in the same PR. After confirming two captures agree
 within tolerance, generate the baseline:
 

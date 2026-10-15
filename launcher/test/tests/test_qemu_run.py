@@ -36,17 +36,31 @@ class IcountDiscoveryTest(unittest.TestCase):
     def test_ignores_other_registrations_and_build_output(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            for folder in ("launcher/main", "launcher/test/suites", "launcher/build"):
+            for folder in ("launcher/main", "launcher/test", "launcher/build"):
                 (root / folder).mkdir(parents=True)
             (root / "launcher/main/suite_probe.c").write_text(
-                "SUITE_REGISTER_ON_REQUEST(run_probe_icount_suite);\n"
+                "  SUITE_REGISTER_ON_REQUEST(run_z_icount_suite);\n"
                 "SUITE_REGISTER(run_autorun_icount_suite);\n"
-                "SUITE_REGISTER_ON_REQUEST(run_other_suite);\n")
-            (root / "launcher/test/suites/suite_duplicate.c").write_text(
-                "SUITE_REGISTER_ON_REQUEST(run_probe_icount_suite);\n")
+                "SUITE_REGISTER_ON_REQUEST(run_other_suite);\n"
+                "/*\nSUITE_REGISTER_ON_REQUEST(run_comment_icount_suite);\n*/\n"
+                '"SUITE_REGISTER_ON_REQUEST(run_string_icount_suite);";\n'
+                "void probe(void) { SUITE_REGISTER_ON_REQUEST(run_inline_icount_suite); }\n")
+            (root / "launcher/test/suite_duplicate.c").write_text(
+                "SUITE_REGISTER_ON_REQUEST(run_a_icount_suite);\n"
+                "SUITE_REGISTER_ON_REQUEST(run_a_icount_suite);\n")
             (root / "launcher/build/suite_stale.c").write_text(
                 "SUITE_REGISTER_ON_REQUEST(run_stale_icount_suite);\n")
-            self.assertEqual(["run_probe_icount_suite"], qemu_run.icount_suites(root))
+            self.assertEqual(["run_a_icount_suite", "run_z_icount_suite"], qemu_run.icount_suites(root))
+
+    def test_ratchet_options_append_suites_and_enable_instruction_counting(self):
+        with unittest.mock.patch.object(qemu_run, "icount_suites", return_value=["run_a_icount_suite", "run_z_icount_suite"]):
+            with unittest.mock.patch.object(qemu_run.subprocess, "Popen") as start:
+                args = qemu_run.parse_args(["unused", "--suite", "first", "--suite", "second", "--icount-ratchet"])
+                self.assertTrue(args.icount)
+                self.assertEqual(["first", "second", "run_a_icount_suite", "run_z_icount_suite"], args.suite)
+                command = qemu_run.qemu_command(args, "emulator", 8, "flash", "efuse", 1234)
+                self.assertEqual(f"shift={qemu_run.ICOUNT_SHIFT},sleep=off", command[command.index("-icount") + 1])
+                start.assert_not_called()
 
     def test_empty_discovery_fails_before_starting_emulator(self):
         with tempfile.TemporaryDirectory() as directory:
