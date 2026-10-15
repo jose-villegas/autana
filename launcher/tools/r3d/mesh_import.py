@@ -49,6 +49,7 @@ from r3d.obj import load_mtl, load_obj, load_textures  # noqa: E402
 from r3d.poses import either_way, sample_camera_path  # noqa: E402
 from r3d import ray_query  # noqa: E402
 from r3d.ray_query import RayQuery  # noqa: E402
+from r3d.scene_name import SUFFIX  # noqa: E402
 from r3d.simplify import densify, simplify  # noqa: E402
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
@@ -303,13 +304,13 @@ def main(argv=None):
     out_dir.mkdir(parents=True, exist_ok=True)
     scene = None
     try:
-        if path.name.endswith(".scene.toml"):
+        if path.name.endswith(SUFFIX):
             scene = load_scene(path)
             jobs = scene.renderers
         elif path.name.endswith(".import.toml"):
             jobs = albedo_jobs(load_import_settings(path))
         else:
-            raise SettingsError("PATH must end in .import.toml or .scene.toml")
+            raise SettingsError(f"PATH must end in .import.toml or {SUFFIX}")
         jobs = [job for job in jobs if args.mesh in (None, job.renderer.variant.name, job.asset_name)]
         if not jobs:
             raise SettingsError(f"no mesh named {args.mesh!r}")
