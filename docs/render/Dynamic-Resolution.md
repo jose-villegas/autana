@@ -70,7 +70,7 @@ The questions the split answers, as differences between two sizes. A size
 that keeps the panel's width or halves it upscales whole rows or pixel pairs;
 any other width pays the mapped upscale on top, so both ladders keep to those
 two widths. Halving the height saves far more than halving the width, since
-rows and span setup follow the height, so a ladder cuts the height first. The
+edges and attribute carry follow the height, so a ladder cuts the height first. The
 floor and the recovery step are named for what they cost, not their scale:
 184x179 costs about what isotropic 2.5x (147x179) does, and 184x149 what 3x
 (122x149) does, the upscale they save paying for the pixels they keep. The one-core setup stage barely moves with size: it is the
