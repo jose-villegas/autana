@@ -34,8 +34,8 @@
 #include "build/build_variant.h"
 #include "core/timing.h"
 #include "display/display.h"
-#include "draw/gfx_draw.h"
-#include "draw/gfx_font_roles.h"
+#include "draw/draw.h"
+#include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "math/scalar/fixed.h"
@@ -146,13 +146,13 @@ static void
 draw_grid_circle_segment(bool prev_front, bool front, int prev_sx, int prev_sy, int sx, int sy, vec3x_t prev_cs,
                          vec3x_t cs, gfx_color_t c, const boot_anim_view_t* view) {
     if (prev_front && front) {
-        gfx_line_ex(prev_sx, prev_sy, sx, sy, c, 0u);
+        draw_line_ex(prev_sx, prev_sy, sx, sy, c, 0u);
         return;
     }
     if (prev_front != front) {
         int ax, ay, bx, by;
         if (r3d_project_segment_cs_x(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
-            gfx_line_ex(ax, ay, bx, by, c, 0u);
+            draw_line_ex(ax, ay, bx, by, c, 0u);
         }
     }
 }
@@ -190,7 +190,7 @@ draw_grid_circle(int32_t radius, const boot_anim_plane_t* plane, gfx_color_t c, 
  * walks to min(target, near); the tail (one segment, undashed) appears
  * once that is done. Stepping the tail at the near resolution wastes
  * budget nothing is close enough to see. `dash` skips whole segment
- * GROUPS (a full gfx_line_ex() call each), not pixel-thinning, genuinely
+ * GROUPS (a full draw_line_ex() call each), not pixel-thinning, genuinely
  * cheaper. */
 static void
 draw_grid_spoke(uint16_t turn, int32_t near, int32_t far, gfx_color_t c, bool dash, uint8_t reach,
@@ -216,7 +216,7 @@ draw_grid_spoke(uint16_t turn, int32_t near, int32_t far, gfx_color_t c, bool da
         if (have_prev && draw_segment) {
             int ax, ay, bx, by;
             if (r3d_project_segment_cs_x(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
-                gfx_line_ex(ax, ay, bx, by, c, 0u);
+                draw_line_ex(ax, ay, bx, by, c, 0u);
             }
         }
         prev_cs = cs;
@@ -230,7 +230,7 @@ draw_grid_spoke(uint16_t turn, int32_t near, int32_t far, gfx_color_t c, bool da
         const vec3x_t cs = boot_anim_plane_point(&floor_plane, re, im);
         int ax, ay, bx, by;
         if (r3d_project_segment_cs_x(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
-            gfx_line_ex(ax, ay, bx, by, c, 0u);
+            draw_line_ex(ax, ay, bx, by, c, 0u);
         }
     }
 }
@@ -314,16 +314,16 @@ draw_arm(int32_t re, int32_t im, int32_t t, uint8_t reach, uint8_t ink, const bo
 
     int ax, ay, bx, by;
     if (boot_anim_project_segment(0, 0, 0, fre, fim, ft, view, &ax, &ay, &bx, &by)) {
-        gfx_line_ex(ax, ay, bx, by, lit(COL_AXIS, ink), 0u);
+        draw_line_ex(ax, ay, bx, by, lit(COL_AXIS, ink), 0u);
     }
 }
 
 static void
 draw_label(int x, int y, const char* text, uint8_t ink) {
-    const int w = gfx_font_width(gfx_font_ui(), text, -1, LABEL_SCALE);
-    const int h = gfx_font_height(gfx_font_ui(), LABEL_SCALE);
+    const int w = draw_font_text_width(draw_font_ui(), text, -1, LABEL_SCALE);
+    const int h = draw_font_height(draw_font_ui(), LABEL_SCALE);
 
-    gfx_text_scaled(x - w / 2, y - h / 2, text, lit(COL_TICK, ink), LABEL_SCALE);
+    draw_text_scaled(x - w / 2, y - h / 2, text, lit(COL_TICK, ink), LABEL_SCALE);
 }
 
 void
@@ -379,7 +379,7 @@ draw_zeros(int32_t pen_t_q8, uint8_t ink, const boot_anim_view_t* view) {
         if (!boot_anim_project_point(0, 0, t, view, &x, &y)) {
             continue;
         }
-        gfx_fill_rect(x - ZERO_DOT / 2, y - ZERO_DOT / 2, ZERO_DOT, ZERO_DOT, lit(COL_ZERO, ink));
+        draw_rect(x - ZERO_DOT / 2, y - ZERO_DOT / 2, ZERO_DOT, ZERO_DOT, lit(COL_ZERO, ink));
     }
 }
 
@@ -398,7 +398,7 @@ draw_stroke(int x0, int y0, int x1, int y1, gfx_color_t c, int width, bool joine
         const int bx = shallow ? x1 : x1 + off;
         const int by = shallow ? y1 + off : y1;
 
-        gfx_line_ex(ax, ay, bx, by, c, GFX_LINE_ADD | (joined ? GFX_LINE_OPEN : 0u));
+        draw_line_ex(ax, ay, bx, by, c, DRAW_LINE_ADD | (joined ? DRAW_LINE_OPEN : 0u));
     }
 }
 
@@ -411,7 +411,7 @@ draw_disc(int x, int y, int diameter, gfx_color_t c) {
         while (dx > 0 && (dx * dx) + (dy * dy) > r * r) {
             dx--;
         }
-        gfx_fill_rect(x - dx, y + dy, 2 * dx + 1, 1, c);
+        draw_rect(x - dx, y + dy, 2 * dx + 1, 1, c);
     }
 }
 
@@ -583,9 +583,9 @@ draw_title(uint32_t now_ms, uint8_t ink) {
      * colour, the same way the photograph under it does. */
     const bool dissolve = ending_backdrop != NULL && ink < 255;
     const gfx_color_t c = dissolve ? COL_WHITE : gfx_color_mix(COL_BG, COL_WHITE, ink);
-    const gfx_font_t* font = gfx_font_ui();
-    const int glyph_w = gfx_font_width(font, "A", -1, BOOT_ANIM_TITLE_SCALE);
-    const int glyph_h = gfx_font_height(font, BOOT_ANIM_TITLE_SCALE);
+    const draw_font_t* font = draw_font_ui();
+    const int glyph_w = draw_font_text_width(font, "A", -1, BOOT_ANIM_TITLE_SCALE);
+    const int glyph_h = draw_font_height(font, BOOT_ANIM_TITLE_SCALE);
     char one[2] = {0, 0};
 
     const bool has_shadow =
@@ -602,13 +602,13 @@ draw_title(uint32_t now_ms, uint8_t ink) {
             boot_anim_title_shadow_offset(BOOT_ANIM_TITLE_SHADOW_DX, BOOT_ANIM_TITLE_SHADOW_DY, &shadow_dx, &shadow_dy);
             const uint8_t shadow_alpha =
                 dissolve ? (uint8_t)(BOOT_ANIM_TITLE_SHADOW_ALPHA * ink / 255) : BOOT_ANIM_TITLE_SHADOW_ALPHA;
-            gfx_text_font_dither(px + shadow_dx, py + shadow_dy, one, COL_BG, BOOT_ANIM_TITLE_SCALE, DISPLAY_LANDSCAPE,
-                                 font, shadow_alpha);
+            draw_text_font_dither(px + shadow_dx, py + shadow_dy, one, COL_BG, BOOT_ANIM_TITLE_SCALE, DISPLAY_LANDSCAPE,
+                                  font, shadow_alpha);
         }
         if (dissolve) {
-            gfx_text_font_dither(px, py, one, c, BOOT_ANIM_TITLE_SCALE, DISPLAY_LANDSCAPE, font, ink);
+            draw_text_font_dither(px, py, one, c, BOOT_ANIM_TITLE_SCALE, DISPLAY_LANDSCAPE, font, ink);
         } else {
-            gfx_text_font(px, py, one, c, BOOT_ANIM_TITLE_SCALE, DISPLAY_LANDSCAPE, font);
+            draw_text_font(px, py, one, c, BOOT_ANIM_TITLE_SCALE, DISPLAY_LANDSCAPE, font);
         }
     }
 }
@@ -622,7 +622,7 @@ draw_title(uint32_t now_ms, uint8_t ink) {
  * scene stays as drawn wherever the reveal does not yet cover it.
  */
 void
-draw_image(const gfx_image_t* photo, uint8_t ink, uint8_t reveal) {
+draw_image(const draw_image_t* photo, uint8_t ink, uint8_t reveal) {
     if (reveal == 0) {
         return;
     }
@@ -631,16 +631,16 @@ draw_image(const gfx_image_t* photo, uint8_t ink, uint8_t reveal) {
      * trade this file makes for the title's shadow (draw_title()). A
      * per-pixel gfx_color_mix() over every pixel was measurably the most
      * expensive part of a crossfade frame; see suite_boot_anim_perf.c. */
-    gfx_blit_dither(0, 0, GFX_WIDTH, GFX_HEIGHT, photo->pixels, (int)photo->stride, reveal < ink ? reveal : ink);
+    draw_blit_dither(0, 0, GFX_WIDTH, GFX_HEIGHT, photo->pixels, (int)photo->stride, reveal < ink ? reveal : ink);
 }
 
 /* The loop */
 
 /* EVERY FRAME IS A FULL REPAINT suite_boot_anim_perf.c times this phase
- * gfx_clear() cost in gfx_draw.c */
+ * draw_clear() cost in draw.c */
 void
 boot_anim_clear_frame(void) {
-    gfx_clear(COL_BG);
+    draw_clear(COL_BG);
 }
 
 void
@@ -650,7 +650,7 @@ boot_anim_set_ending_backdrop(boot_anim_backdrop_fn paint) {
 
 /* Keep scene scratch off the stack while the ending backdrop repaints. */
 static __attribute__((noinline)) void
-draw_scene(const boot_anim_motion_t* motion, const gfx_image_t* photo, uint32_t now_ms, uint8_t ink) {
+draw_scene(const boot_anim_motion_t* motion, const draw_image_t* photo, uint32_t now_ms, uint8_t ink) {
     const uint8_t reveal = photo->pixels != NULL ? boot_anim_photo_reveal(now_ms) : 0;
     const boot_anim_view_t view = boot_anim_view(motion, GFX_WIDTH, GFX_HEIGHT, now_ms);
 
@@ -672,7 +672,7 @@ draw_scene(const boot_anim_motion_t* motion, const gfx_image_t* photo, uint32_t 
 }
 
 void
-boot_anim_draw_frame(const boot_anim_motion_t* motion, const gfx_image_t* photo, uint32_t now_ms) {
+boot_anim_draw_frame(const boot_anim_motion_t* motion, const draw_image_t* photo, uint32_t now_ms) {
     const uint8_t ink = boot_anim_ink(now_ms);
     if (ending_backdrop != NULL && ink < 255) {
         ending_backdrop();
@@ -706,7 +706,7 @@ boot_anim_run(void) {
 #endif
     boot_anim_motion_t motion;
     boot_anim_motion_load(&motion);
-    gfx_image_t photo = {0};
+    draw_image_t photo = {0};
     bool photo_tried = false;
     const int64_t started_us = timing_now_us();
     uint32_t frames = 0;

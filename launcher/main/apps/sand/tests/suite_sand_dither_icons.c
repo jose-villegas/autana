@@ -15,10 +15,10 @@
 #include "apps/sand/ui/sand_icons.h"
 
 /* Swatch `mode`, which the app pack the suites run with must hold. */
-static const gfx_image_t*
+static const draw_image_t*
 swatch(gfx_dither_mode_t mode) {
     (void)ui_icon_set_load(&sand_icon_set);
-    const gfx_image_t* icon = sand_dither_icon(mode);
+    const draw_image_t* icon = sand_dither_icon(mode);
     TEST_ASSERT_NOT_NULL_MESSAGE(icon, "no swatch: the suites run with the packs build_pack.py writes");
     return icon;
 }
@@ -41,7 +41,7 @@ expected(gfx_dither_mode_t id, int x, int y) {
 static void
 test_every_swatch_is_its_modes_own_pattern(void) {
     for (int id = 0; id < GFX_DITHER_MODE_COUNT; id++) {
-        const gfx_image_t* icon = swatch((gfx_dither_mode_t)id);
+        const draw_image_t* icon = swatch((gfx_dither_mode_t)id);
         TEST_ASSERT_EQUAL_INT(4, icon->width);
         TEST_ASSERT_EQUAL_INT(4, icon->height);
         for (int y = 0; y < icon->height; y++) {

@@ -103,7 +103,7 @@ byte.
 | 12 | 4 | where the rows start, after the header; 4-aligned for RGB565 |
 | rows | stride x (height - 1) + width pixels | the pixels, top row first |
 
-`gfx_image_open()` returns `ASSET_ERR_VERSION` for another version,
+`draw_image_open()` returns `ASSET_ERR_VERSION` for another version,
 `ASSET_ERR_FORMAT` for a format it does not read, an empty picture, a stride
 shorter than a row or, one bit a pixel, not whole bytes, or rows over the
 header, and `ASSET_ERR_BOUNDS` for rows that leave the entry or RGB565 rows
@@ -241,7 +241,7 @@ renderer.
 `launcher/tools/r3d/mesh_asset.py` and `lit_mesh.py` the mesh
 entry, `launcher/tools/anim/tracks_asset.py` of the clip entry,
 `launcher/tools/gfx/image_asset.py` of the image entry; `asset_pack.c`,
-`asset_directory.c`, `r3d_lit_mesh.c`, `anim_tracks.c` and `gfx_image.c` are
+`asset_directory.c`, `r3d_lit_mesh.c`, `anim_tracks.c` and `draw_image.c` are
 the one reader of each.
 
 No mesh is committed: each is a bake product, fetched by its lock row; a clip

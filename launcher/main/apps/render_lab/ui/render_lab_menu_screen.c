@@ -2,7 +2,7 @@
 
 #include <stdio.h>
 
-#include "draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "ui/ui.h"
 #include "ui/ui_scroll.h"
 
@@ -23,7 +23,7 @@ render_lab_menu_screen_draw(mu_Context* ctx, const render_lab_menu_screen_state_
 
     const int opt = MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME;
     if (ui_scroll_view_begin(ctx, "Render Lab Menu", opt, ui_scroll_view_default(), dt_ms)) {
-        const int hint_h = gfx_text_height() + 4;
+        const int hint_h = draw_text_height() + 4;
         const int total_h = MENU_ROWS * MENU_BTN_H + MENU_ROWS * MENU_BTN_GAP + hint_h;
         const int top = state->controls != NULL ? UI_MARGIN : ui_flow_top(ui_height(), 1, total_h, 0, 0);
         ui_flow_t flow = ui_flow_start(ui_width(), top, MENU_BTN_GAP);

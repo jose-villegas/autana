@@ -40,7 +40,7 @@
 
 typedef struct {
     /* Which quarter turn currently reads as "upright", numbered the
-     * same way gfx_text_turned() and ui_transform_quarter_turn() do: 0
+     * same way draw_text_turned() and ui_transform_quarter_turn() do: 0
      * upright, 1 top-to-bottom, 2 upside down, 3 bottom-to-top. The only
      * state this module keeps. The hysteresis test above is a pure
      * function of (quarter, gx, gy); nothing here accumulates over

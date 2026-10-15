@@ -80,6 +80,26 @@ gfx_clip_restore(gfx_box_t saved) {
     clip = saved;
 }
 
+/* Here beside the state it reads, so a draw call costs one call to begin:
+ * draw issues thousands of tiny primitives a frame. */
+bool
+gfx_draw_begin(gfx_surface_t* out) {
+    GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return false;
+    }
+    out->target = band_render_active ? strip_target : (gfx_target_t){fb, 0, GFX_HEIGHT, GFX_WIDTH};
+    out->clip = clip;
+    out->marks = !band_render_active;
+    return true;
+}
+
+void
+gfx_set_clip_box(gfx_box_t box) {
+    GFX_PRESENT_GUARD();
+    clip = box;
+}
+
 static int band_render_row0;
 static int band_render_height;
 

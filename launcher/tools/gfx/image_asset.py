@@ -1,6 +1,6 @@
 """The image pack entry (IMAG): a picture baked from the NAME.image.toml beside
 its PNG, and read back. The one writer of the entry, and its reader on the
-host; main/draw/gfx_image.c is the firmware's.
+host; main/draw/draw_image.c is the firmware's.
 
 A NAME.image.toml names its source, a PNG in its own folder, and how many
 quarter turns clockwise take the source to the stored pixels; the pack id is
@@ -26,7 +26,7 @@ from render_diff import read_png  # noqa: E402
 TYPE = b"IMAG"
 VERSION = 1
 SUFFIX = ".image.toml"
-# gfx_image_format_t: gfx_color_t pixels, byte-swapped RGB565; and one bit a
+# draw_image_format_t: gfx_color_t pixels, byte-swapped RGB565; and one bit a
 # pixel, the most significant leftmost, 1 ink, a row a whole number of bytes.
 FORMAT_RGB565 = 1
 FORMAT_MONO1 = 2
@@ -69,7 +69,7 @@ def encode_mono(rows):
 
 def decode(entry):
     """(width, height, pixels) of an entry's bytes, after the checks
-    gfx_image_open() makes; pixels as encode() or encode_mono() takes them."""
+    draw_image_open() makes; pixels as encode() or encode_mono() takes them."""
     if len(entry) < HEADER.size:
         raise ImageError("shorter than a header")
     version, fmt, width, height, stride, offset = HEADER.unpack_from(entry)

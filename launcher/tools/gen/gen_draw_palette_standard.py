@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Generate main/draw/gfx_palette_standard_generated.h: the two formulaic
+"""Generate main/draw/draw_palette_standard_generated.h: the two formulaic
 256-entry standard palettes (arithmetic, not curated, so a table beats 512
 hand-typed literals): a VGA-style default (16 EGA + a 216-colour 6x6x6
 "web-safe" cube + 24 grays) and a plain 256-level grayscale ramp.
 
-    python tools/gen/gen_gfx_palette_standard.py > main/draw/gfx_palette_standard_generated.h
+    python tools/gen/gen_draw_palette_standard.py > main/draw/draw_palette_standard_generated.h
 
 The EGA 16, PICO-8, DawnBringer DB16/DB32 and 16-level grayscale palettes
-are curated, small, and hand-typed directly in gfx_palette_standard.c
+are curated, small, and hand-typed directly in draw_palette_standard.c
 instead; a generator would not make those any more trustworthy than
 citing the source next to the literals.
 """
@@ -105,10 +105,10 @@ def main():
         "=============\n"
         " * GENERATED FILE - do not edit.\n"
         " *\n"
-        " *     python tools/gen/gen_gfx_palette_standard.py > "
-        "main/draw/gfx_palette_standard_generated.h\n"
+        " *     python tools/gen/gen_draw_palette_standard.py > "
+        "main/draw/draw_palette_standard_generated.h\n"
         " *\n"
-        " * Two formulaic 256-entry palettes for gfx_palette_standard.c: a\n"
+        " * Two formulaic 256-entry palettes for draw_palette_standard.c: a\n"
         " * VGA-style default (16 EGA + a 216-colour web-safe RGB lattice +\n"
         " * enough grays to reach 256) and a plain 256-level grayscale ramp.\n"
         " *========================================================================"
@@ -116,8 +116,8 @@ def main():
         "#pragma once\n\n"
         "#include \"gfx/target/gfx_color.h\"\n\n"
     )
-    emit_array(f, "gfx_palette_vga256_entries", vga256())
-    emit_array(f, "gfx_palette_grayscale256_entries", grayscale256())
+    emit_array(f, "draw_palette_vga256_entries", vga256())
+    emit_array(f, "draw_palette_grayscale256_entries", grayscale256())
 
 
 if __name__ == "__main__":

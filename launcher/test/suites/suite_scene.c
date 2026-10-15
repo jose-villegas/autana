@@ -18,8 +18,9 @@
 #include "asset/asset_pack.h"
 #include "gfx/target/gfx_color.h"
 #ifndef DEVICE_BUILD
-#include "draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_test.h"
@@ -1705,7 +1706,7 @@ test_expanded_frame_lifecycle_and_raw_draw_guard(void) {
     const unsigned trips = gfx_fb_guard_trips_for_test();
     TEST_ASSERT_NULL(gfx_framebuffer());
     TEST_ASSERT_EQUAL_UINT(trips + 1, gfx_fb_guard_trips_for_test());
-    gfx_pixel(0, 0, 0x5678);
+    draw_pixel(0, 0, 0x5678);
     TEST_ASSERT_EQUAL_UINT(trips + 2, gfx_fb_guard_trips_for_test());
     TEST_ASSERT_EQUAL_HEX16(0x1234, half[0]);
     gfx_present_begin();
@@ -1778,8 +1779,8 @@ clip_overlay(int row0, int row1) {
     const gfx_box_t actual = gfx_clip_save();
     const gfx_box_t expected = GFX_SCREEN_BOX;
     TEST_ASSERT_EQUAL_MEMORY(&expected, &actual, sizeof actual);
-    gfx_set_clip(0, row0, GFX_WIDTH, row1 - row0);
-    gfx_fill_rect(0, row0, GFX_WIDTH, row1 - row0, UINT16_MAX);
+    draw_set_clip(0, row0, GFX_WIDTH, row1 - row0);
+    draw_rect(0, row0, GFX_WIDTH, row1 - row0, UINT16_MAX);
 }
 
 static void
@@ -1788,7 +1789,7 @@ test_expanded_overlay_resets_and_restores_clip(void) {
     TEST_ASSERT_NOT_NULL(gfx_half_picture());
     gfx_expand_frame();
     const gfx_box_t narrow = {GFX_WIDTH / 4, GFX_HEIGHT / 4, GFX_WIDTH / 2, GFX_HEIGHT / 2};
-    gfx_set_clip(narrow.x0, narrow.y0, narrow.x1 - narrow.x0, narrow.y1 - narrow.y0);
+    draw_set_clip(narrow.x0, narrow.y0, narrow.x1 - narrow.x0, narrow.y1 - narrow.y0);
     gfx_set_frame_overlay(clip_overlay);
     for (int y = 0; y < GFX_HEIGHT; y++) {
         gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);

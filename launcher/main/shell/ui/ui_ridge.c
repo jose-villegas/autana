@@ -11,8 +11,8 @@
 #include "asset/asset_store.h"
 #include "asset/asset_table.h"
 #include "core/memory.h"
-#include "draw/gfx_dither.h"
-#include "draw/gfx_draw.h"
+#include "draw/draw.h"
+#include "draw/draw_dither.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
@@ -44,7 +44,7 @@ TUNE(ridge, background_rgb, 0, 0, 0xffffff);
 TUNE(ridge, back0_rgb, 0, 0, 0xffffff);
 TUNE(ridge, back1_rgb, 0, 0, 0xffffff);
 #endif
-TUNE(ridge, fill_pattern, GFX_DITHER_SCANLINES4, 0, GFX_DITHER_PATTERN_COUNT - 1);
+TUNE(ridge, fill_pattern, DRAW_DITHER_SCANLINES4, 0, DRAW_DITHER_PATTERN_COUNT - 1);
 TUNE(ridge, lip_px, 12, 1, 48);
 TUNE(ridge, back0_offset, -70, -160, 80);
 TUNE(ridge, back0_amplitude, 5, 0, 32);
@@ -268,7 +268,7 @@ backdrop_dither_pick(int x, int y, uint8_t alpha) {
         static const uint8_t cutoff[4] = {64, 192, 128, 255};
         return alpha == 255 || alpha >= cutoff[y & 3];
     }
-    return gfx_dither_alpha_pick((gfx_dither_pattern_id_t)fill_pattern, x, y, alpha);
+    return draw_dither_alpha_pick((draw_dither_pattern_id_t)fill_pattern, x, y, alpha);
 }
 
 static inline __attribute__((always_inline)) gfx_color_t
@@ -1163,7 +1163,7 @@ bake_what_is_tuned(void) {
                 (uint8_t)(lip_start[layer] + ((lip_end[layer] - lip_start[layer]) * distance / lip_px));
         }
     }
-    ridge->scanline_dither = (int)fill_pattern == (int)GFX_DITHER_SCANLINES4;
+    ridge->scanline_dither = (int)fill_pattern == (int)DRAW_DITHER_SCANLINES4;
     ridge->tuned_at = TUNE_GENERATION(ridge);
 }
 
@@ -1322,7 +1322,7 @@ void
 ui_ridge_paint(void) {
     allocate_once();
     if (ridge == NULL) {
-        gfx_fill_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, GFX_RGB(0));
+        draw_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, GFX_RGB(0));
         return;
     }
     FRAME_COST_BEGIN(painted_from);

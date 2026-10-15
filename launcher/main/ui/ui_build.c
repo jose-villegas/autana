@@ -27,8 +27,8 @@
 static const char* TAG = "ui";
 #endif
 
-#include "draw/gfx_draw.h"
-#include "draw/gfx_font_roles.h"
+#include "draw/draw.h"
+#include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
 #include "services/tune.h"
 #include "ui/ui_bridge.h"
@@ -112,7 +112,7 @@ static int font_scaled_count;
  * same way it already does for a font change; see ui_set_font()'s
  * comment. */
 static const ui_font_scaled_t*
-intern_font_scaled(const gfx_font_t* font, int scale) {
+intern_font_scaled(const draw_font_t* font, int scale) {
     for (int i = 0; i < font_scaled_count; i++) {
         if (font_scaled_table[i].font == font && font_scaled_table[i].scale == scale) {
             return &font_scaled_table[i];
@@ -142,7 +142,7 @@ ui_resolve_font_scaled(mu_Font font) {
     if (font) {
         return *(const ui_font_scaled_t*)font;
     }
-    return (ui_font_scaled_t){gfx_font_ui(), GFX_GLYPH_SCALE};
+    return (ui_font_scaled_t){draw_font_ui(), DRAW_GLYPH_SCALE};
 }
 
 /* microui asks us for text metrics rather than measuring anything itself.
@@ -153,13 +153,13 @@ ui_resolve_font_scaled(mu_Font font) {
 static int
 measure_text_width(mu_Font font, const char* str, int len) {
     const ui_font_scaled_t fs = ui_resolve_font_scaled(font);
-    return gfx_font_text_width(fs.font, str, len, fs.scale);
+    return draw_font_text_width(fs.font, str, len, fs.scale);
 }
 
 static int
 measure_text_height(mu_Font font) {
     const ui_font_scaled_t fs = ui_resolve_font_scaled(font);
-    return gfx_font_height(fs.font, fs.scale);
+    return draw_font_height(fs.font, fs.scale);
 }
 
 /*
@@ -218,16 +218,16 @@ ui_set_text_style(ui_text_style_t style) {
  * a global would need invalidating on every size change, which a two-size
  * screen hits every frame, permanently defeating the repaint skip. */
 void
-ui_set_font_scaled(const gfx_font_t* font, int scale) {
+ui_set_font_scaled(const draw_font_t* font, int scale) {
     if (scale < 1) {
         scale = 1;
     }
-    ui_ctx.style->font = (mu_Font)intern_font_scaled(font ? font : gfx_font_ui(), scale);
+    ui_ctx.style->font = (mu_Font)intern_font_scaled(font ? font : draw_font_ui(), scale);
 }
 
 void
-ui_set_font(const gfx_font_t* font) {
-    ui_set_font_scaled(font, GFX_GLYPH_SCALE);
+ui_set_font(const draw_font_t* font) {
+    ui_set_font_scaled(font, DRAW_GLYPH_SCALE);
 }
 
 static bool
@@ -293,7 +293,7 @@ ui_init(void) {
     ui_ctx.text_height = measure_text_height;
     ui_ctx.on_control = record_snap_rect;
     font_scaled_count = 0;
-    ui_set_font(gfx_font_ui());
+    ui_set_font(draw_font_ui());
 
     base_draw_frame = ui_ctx.draw_frame;
     ui_ctx.draw_frame = styled_draw_frame;
@@ -421,7 +421,7 @@ ui_height(void) {
 int
 ui_measure_text(const char* str) {
     const ui_font_scaled_t fs = ui_resolve_font_scaled(ui_ctx.style->font);
-    return gfx_font_text_width(fs.font, str, -1, fs.scale);
+    return draw_font_text_width(fs.font, str, -1, fs.scale);
 }
 
 /* icon_walk_blocks()'s callback context: everything one emitted run needs to
@@ -440,7 +440,7 @@ ui_draw_icon_emit(void* ctx_, int x, int y, int w, int h) {
 }
 
 void
-ui_draw_icon(mu_Context* c, mu_Rect r, const gfx_image_t* icon, const char* text, mu_Color color) {
+ui_draw_icon(mu_Context* c, mu_Rect r, const draw_image_t* icon, const char* text, mu_Color color) {
     if (icon != NULL) {
         ui_draw_icon_ctx_t dc = {.c = c, .r = r, .color = color};
         icon_walk_blocks(icon, r.w, r.h, ui_draw_icon_emit, &dc);
