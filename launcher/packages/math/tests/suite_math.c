@@ -492,10 +492,11 @@ test_quatf_slerp_preserves_rotation_behaviour(void) {
 static void
 test_quatf_slerp_matches_double_reference_over_the_whole_arc(void) {
     const int angle_steps = 180, time_steps = 100;
-    static const double edge_cosines[] = {1.0, 1.0 - 1e-7, 0.99951, 0.99949, 1e-7, 0.0, -1e-7, -1.0 + 1e-7, -1.0};
+    static const double edge_cosines[] = {1.0,  1.0 - 1e-7, 0.99951,     0.99949,     0.5 + 1e-7,
+                                          0.5,  0.5 - 1e-7, -0.5 + 1e-7, -0.5,        -0.5 - 1e-7,
+                                          1e-7, 0.0,        -1e-7,       -1.0 + 1e-7, -1.0};
     static const quatf_t starts[] = {{0, 0, 0, 1}, {0.5F, 0.5F, 0.5F, 0.5F}};
     static const quatf_t tangents[] = {{1, 0, 0, 0}, {0.5F, -0.5F, 0.5F, -0.5F}};
-    double max_error = 0.0, max_unit_error = 0.0;
     for (size_t basis = 0; basis < sizeof starts / sizeof starts[0]; basis++) {
         const quatf_t a = starts[basis], tangent = tangents[basis];
         const double begin[] = {a.x, a.y, a.z, a.w};
@@ -531,17 +532,14 @@ test_quatf_slerp_matches_double_reference_over_the_whole_arc(void) {
                 double norm_squared = 0.0;
                 for (size_t c = 0; c < sizeof got / sizeof got[0]; c++) {
                     const double error = fabs(got[c] - (begin[c] * wa + end[c] * wb));
-                    max_error = fmax(max_error, error);
                     TEST_ASSERT_TRUE(error <= SLERP_ERROR_BOUND);
                     norm_squared += got[c] * got[c];
                 }
                 const double unit_error = fabs(sqrt(norm_squared) - 1.0);
-                max_unit_error = fmax(max_unit_error, unit_error);
                 TEST_ASSERT_TRUE(unit_error <= SLERP_ERROR_BOUND);
             }
         }
     }
-    printf("slerp max component error %.9g, max unit length error %.9g\n", max_error, max_unit_error);
 }
 
 static void

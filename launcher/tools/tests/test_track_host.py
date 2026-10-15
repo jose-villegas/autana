@@ -50,7 +50,7 @@ class TrackHostTests(unittest.TestCase):
         with these arguments on Windows, verify it on Linux, then replace expected.
         """
         animation = TOOLS.parent / "demo" / "sponza" / "flythrough.anim.toml"
-        expected = "18a55faff48c2ddd614637b68f52d3dcbd2ea2057c9e3c6f20880f071be69b15"
+        expected = "927575754f96397da93017c9f62e60e833af8493900c2d80844241338d5ad58d"
         self.assertEqual(digest(list(sample_camera_rows(animation, "camera", 5, 184, 224, 0.62, 6.0))), expected)
 
     def test_poses_are_the_clip_sampled_every_step_at_the_lens_given(self):
