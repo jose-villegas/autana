@@ -249,7 +249,7 @@ union_cell_y(int idx, int y0, int y1, int row) {
  * can only shrink that toward a real box, and whenever it does, it
  * narrows the matching leaves too. So a cell strictly smaller than its
  * full extent always has trustworthy leaf bits. */
-static inline void
+static inline __attribute__((always_inline)) void
 dirty_mark(int x, int y, int w, int h) {
     if (all_dirty) {
         return;

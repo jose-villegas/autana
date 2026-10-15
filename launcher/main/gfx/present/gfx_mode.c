@@ -82,7 +82,7 @@ gfx_clip_restore(gfx_box_t saved) {
 
 /* Here beside the state it reads, so a draw call costs one call to begin:
  * draw issues thousands of tiny primitives a frame. */
-bool
+bool GFX_DRAW_IRAM_ATTR
 gfx_draw_begin(gfx_surface_t* out) {
     GFX_PRESENT_GUARD();
     if (!GFX_REQUIRE_FRAMEBUFFER()) {
