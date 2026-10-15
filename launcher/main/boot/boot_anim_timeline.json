@@ -45,7 +45,6 @@
     },
     "camera_half_fov_short_tan": 1.0,
     "grid_step_m": 0.1,
-    "mesh_step_m": 0.534,
     "wave_height_m": 1.25,
     "wave_wavelength_m": 5,
     "wave_period_ms": 800

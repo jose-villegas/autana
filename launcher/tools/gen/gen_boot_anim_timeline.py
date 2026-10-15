@@ -14,12 +14,12 @@ any glTF tool and baked into the boot clip's own asset pack by
 tools/r3d/build_pack.py from main/boot/boot_anim_motion.anim.toml; this
 script only reads it to check it.
 
-`camera_half_fov_short_tan`, `grid_step_m`, `mesh_step_m` and `wave_height_m`/`wave_wavelength_m`/
+`camera_half_fov_short_tan`, `grid_step_m` and `wave_height_m`/`wave_wavelength_m`/
 `wave_period_ms` are single settings: `camera_half_fov_short_tan` is the
 positive tangent of the shorter-axis half field of view passed to
-render_view_make(); `grid_step_m` is the width of one floor colour band and
-`mesh_step_m` the side of one floor mesh cell, both authored in meters and
-converted at bake time; `wave_height_m`/
+render_view_make(); `grid_step_m` is the width of one floor colour band, authored in meters
+and converted at bake time (the mesh cell is derived from it, so the mesh
+ends where the fade does); `wave_height_m`/
 `wave_wavelength_m`/`wave_period_ms` are the ripple's own peak amplitude,
 its crest-to-crest distance, and how long one full cycle takes to pass a
 fixed point; see boot_anim_wave_height().
@@ -79,6 +79,12 @@ def meters_to_q12(v):
     return round(v * BOOT_ANIM_ONE)
 
 
+def mesh_step_q12(cfg):
+    """One mesh cell, so mesh_cells / 2 of them reach grid_bands bands."""
+    reach_q12 = meters_to_q12(cfg["grid_step_m"]) * cfg["timing"]["grid_bands"]
+    return round(reach_q12 / (cfg["timing"]["mesh_cells"] // 2))
+
+
 def load_motion(path):
     """{"duration": seconds} of the glTF animation the firmware bakes for the
     camera and the space."""
@@ -123,8 +129,6 @@ def validate(cfg):
              "line runs through the origin" % (timing["mesh_cells"],))
     if timing["mesh_dash"] not in (0, 1):
         fail("mesh_dash must be 0 or 1 (%r given)" % (timing["mesh_dash"],))
-    if cfg["mesh_step_m"] <= 0:
-        fail("mesh_step_m must be positive (%r given)" % (cfg["mesh_step_m"],))
     if timing["grid_hue_ms"] <= 0:
         fail("grid_hue_ms must be positive (%r given) - boot_anim_grid_hue() "
              "divides by it every frame" % (timing["grid_hue_ms"],))
@@ -295,7 +299,7 @@ TIMING_ORDER = [
      "the axes grow out of the origin"),
     ("grid_start_ms", "BOOT_ANIM_GRID_START_MS", None),
     ("grid_band_ms", "BOOT_ANIM_GRID_BAND_MS",
-     "each ring waits for the one inside"),
+     "each band waits for the one inside"),
     ("grid_bands", "BOOT_ANIM_GRID_BANDS",
      "how many grid_step_m bands out the floor's colour and fade reach"),
     ("mesh_cells", "BOOT_ANIM_MESH_CELLS",
@@ -515,9 +519,10 @@ def main():
     w("/* Positive tangent of the camera's shorter-axis half field of view. */\n")
     w("#define BOOT_ANIM_CAMERA_HALF_FOV_SHORT_TAN %sF\n\n" % repr(float(cfg["camera_half_fov_short_tan"])))
 
-    w("/* The side of one floor mesh cell, in meters (mesh_step_m in the\n")
-    w(" * JSON). */\n")
-    w("#define BOOT_ANIM_MESH_STEP_Q12 %d\n\n" % meters_to_q12(cfg["mesh_step_m"]))
+    w("/* The side of one floor mesh cell: the mesh reaches exactly as far as\n")
+    w(" * the floor's fade, grid_bands bands of grid_step_m, in mesh_cells / 2\n")
+    w(" * cells either side of the origin. */\n")
+    w("#define BOOT_ANIM_MESH_STEP_Q12 %d\n\n" % mesh_step_q12(cfg))
 
     w("/* The floor's colour band spacing - see BOOT_ANIM_GRID_BANDS's own comment\n")
     w(" * in boot_anim.h. Authored in meters (grid_step_m in the JSON), like\n")
