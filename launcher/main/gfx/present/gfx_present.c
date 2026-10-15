@@ -33,7 +33,7 @@ _Static_assert(GFX_HEAL_STRIP_ROWS <= STRIP_HEIGHT, "a heal strip must fit one s
  * places it: the compiler's clones of a function inherit the attribute, and
  * a mapping entry names only the original. Development overlays, send
  * auditing and raw-full dispatch make dev and diag larger.
- * IRAM budget: release 2896 B, dev 3900 B, diag 3900 B */
+ * IRAM budget: release 2900 B, dev 3932 B, diag 3932 B */
 #define GFX_PRESENT_IRAM_ATTR IRAM_ATTR
 static const char* TAG = "gfx";
 #else
@@ -386,7 +386,7 @@ gfx_mark_dirty(int x, int y, int w, int h) {
     dirty_mark(x, y, w, h);
 }
 
-void GFX_DRAW_IRAM_ATTR
+void
 gfx_mark_drawn(int x, int y, int w, int h) {
     dirty_mark(x, y, w, h);
 }

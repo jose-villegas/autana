@@ -14,16 +14,9 @@
 #include "gfx/target/gfx_target.h"
 
 #ifdef ESP_PLATFORM
-#include "esp_attr.h"
 #include "esp_lcd_panel_ops.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
-/* Draw enters and marks through these on every primitive, thousands a
- * frame, so they run from IRAM rather than wait on flash fetches.
- * IRAM budget: release 537 B, dev 615 B, diag 615 B */
-#define GFX_DRAW_IRAM_ATTR IRAM_ATTR
-#else
-#define GFX_DRAW_IRAM_ATTR
 #endif
 
 /* gfx_draw_begin()'s sources. What draw writes into: the framebuffer, or the band or replay strip being drawn. */
