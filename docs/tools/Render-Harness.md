@@ -364,8 +364,7 @@ view's momentum, the one part of the UI that reaches the maths library, is
 switched off at a zero time constant, so it is linked but never called.
 The boot animation is pinned as well: its slerp uses host-exact arithmetic
 with floating-point contraction disabled. A render that is not integer-exact
-ends its line
-with `|nopin` and is checked for its declared size alone (`scene_pin=0` does
+ends its line with `|nopin` and is checked for its declared size alone (`scene_pin=0` does
 the same for a whole scene). Anything that formats a `double` for display
 or rasterises in float belongs there. A scene whose pin can fail for a
 reason nobody changed teaches the reader to ignore the pin.
