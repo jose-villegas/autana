@@ -69,7 +69,7 @@ set_target_properties(editor_layout_bake PROPERTIES
 if(MSVC)
     target_compile_options(editor_document PRIVATE /W4 /permissive-)
 else()
-    target_compile_options(editor_document PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(editor_document PRIVATE -Wall -Wextra -Wpedantic -Werror=pedantic)
 endif()
 
 if(EDITOR_BUILD_GUI)
