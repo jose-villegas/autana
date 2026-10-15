@@ -1,5 +1,5 @@
 /* mathf_rsqrt: reciprocal square root for positive normal-range inputs; one Newton correction of the FPU seed.
- * Xtensa uses the hardware seed; host/QEMU use exact sqrt. */
+ * CONFIG_MATH_FPU_RECIP enables the Xtensa seed; other builds use exact sqrt. */
 #pragma once
 #include <math.h>
 
@@ -11,7 +11,7 @@
 
 static inline __attribute__((always_inline)) float
 mathf_rsqrt(float value) {
-#if defined(__XTENSA__) && !CONFIG_LAUNCHER_QEMU
+#if defined(__XTENSA__) && CONFIG_MATH_FPU_RECIP
     float seed;
     __asm__("rsqrt0.s %0, %1" : "=f"(seed) : "f"(value));
     return seed * (1.5F - 0.5F * value * seed * seed);

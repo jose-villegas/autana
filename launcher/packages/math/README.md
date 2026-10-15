@@ -21,6 +21,10 @@ C library and the build config: the style audit's PACKAGE-INCLUDE rule
 (`scripts/gates/check_style_audit.py`) fails an include that reaches the
 firmware or another package, and `launcher/test/check_packages_alone.sh`
 compiles every header and source here with only `include/` on the path.
+The PACKAGE-CONFIG rule requires `CONFIG_MATH_` settings in C/H sources,
+`CMakeLists.txt` and `Kconfig`, and `MATH_` names for Kconfig entries; it
+ignores comments. `CONFIG_MATH_FPU_RECIP` enables the ESP32-S3 reciprocal and
+reciprocal-square-root seeds by default; the QEMU defaults disable it.
 
 ## Using it
 
