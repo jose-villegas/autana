@@ -121,7 +121,7 @@ span_start(const gradients_t* g, uint32_t carried, int k, int skip, int count, i
     *step = g->dx[k];
     *value = (int32_t)carried;
     if (skip > 0) {
-        *value = (int32_t)(carried + (uint32_t)*step * (uint32_t)skip);
+        *value = (int32_t)(carried + ((uint32_t)*step * (uint32_t)skip));
     }
     if (!g->in_range) {
         clamp_span(k, count, value, step);
@@ -239,8 +239,14 @@ fill_solid(uint16_t* depth, uint16_t* color, int count, int32_t z, int32_t dz, u
 static RENDER_IRAM_ATTR __attribute__((noinline)) FILL_GOURAUD_ATTR void
 fill_gouraud(uint16_t* depth, uint16_t* color, int count, const uint32_t value[ATTRIBUTES],
              const int32_t step[ATTRIBUTES]) {
-    int32_t z = (int32_t)value[0], r = (int32_t)value[1], g = (int32_t)value[2], b = (int32_t)value[3];
-    const int32_t dz = step[0], dr = step[1], dg = step[2], db = step[3];
+    int32_t z = (int32_t)value[0];
+    int32_t r = (int32_t)value[1];
+    int32_t g = (int32_t)value[2];
+    int32_t b = (int32_t)value[3];
+    const int32_t dz = step[0];
+    const int32_t dr = step[1];
+    const int32_t dg = step[2];
+    const int32_t db = step[3];
     for (int i = 0; i < count; i++) {
         const uint16_t zq = (uint16_t)(z >> R3D_DEPTH_SHIFT);
         if (zq > depth[i]) {
@@ -285,7 +291,8 @@ fill_carried_span(const r3d_span_target_t* target, const fill_t* f, const uint32
                   const row_span_t* span, int n, bool writing) {
     const gradients_t* g = f->g;
     if (n == 1) {
-        int32_t z, dz;
+        int32_t z;
+        int32_t dz;
         span_start(g, row[0], 0, column < 0 ? -column : 0, span->last - span->first, &z, &dz);
         if (writing) {
             write_span(target, y, span->first, span->last, z, dz);
@@ -306,7 +313,7 @@ carried_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTR
     uint32_t increment[ATTRIBUTES];
     uint32_t extra_increment[ATTRIBUTES];
     for (int k = 0; k < n; k++) {
-        increment[k] = (uint32_t)g->dy[k] + (uint32_t)g->dx[k] * (uint32_t)left->qs;
+        increment[k] = (uint32_t)g->dy[k] + ((uint32_t)g->dx[k] * (uint32_t)left->qs);
         extra_increment[k] = increment[k] + (uint32_t)g->dx[k];
     }
     for (int y = y0; y < y1; y++) {
@@ -529,7 +536,8 @@ plane_limits(int32_t top, int32_t dx, int32_t dy, r3d_span_box_t box, int64_t* l
  * The corners lie past where the walk steps, so the sums need 64 bits. */
 int32_t
 r3d_span_plane_bound(int32_t top, int32_t dx, int32_t dy, r3d_span_box_t box) {
-    int64_t low, high;
+    int64_t low;
+    int64_t high;
     plane_limits(top, dx, dy, box, &low, &high);
     const int64_t lifted = high - (low < 0 ? low : 0);
     return (int32_t)((lifted < value_max[0] ? lifted : value_max[0]) >> R3D_DEPTH_SHIFT);
@@ -537,7 +545,8 @@ r3d_span_plane_bound(int32_t top, int32_t dx, int32_t dy, r3d_span_box_t box) {
 
 bool
 r3d_span_plane_in_range(int32_t top, int32_t dx, int32_t dy, int32_t max, r3d_span_box_t box) {
-    int64_t low, high;
+    int64_t low;
+    int64_t high;
     plane_limits(top, dx, dy, box, &low, &high);
     return low >= 0 && high <= max;
 }

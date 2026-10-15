@@ -52,9 +52,9 @@ class DynresReportTests(unittest.TestCase):
     def test_committed_capture_remains_readable(self):
         capture = pathlib.Path(__file__).resolve().parents[3] / "docs/render/data/dynamic-resolution-board.log"
         splits, spans, ladders, runs = report.read_captures([str(capture)])
-        self.assertEqual(spans, {})
-        with self.assertRaises(KeyError):
-            report.stages_table(splits, spans)
+        self.assertTrue(splits)
+        self.assertEqual(set(spans), set(splits))
+        self.assertTrue(report.stages_table(splits, spans))
         self.assertTrue(report.findings_table(splits, spans))
         self.assertTrue(report.policies_table(report.policy_rows(runs, ladders, {}, splits)))
 
