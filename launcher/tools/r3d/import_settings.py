@@ -15,6 +15,7 @@ from types import SimpleNamespace
 from anim import clip_name
 from build.c_header import read_define
 from asset.asset_pack import NAME_BYTES
+from r3d.scene_name import scene_id
 from gltf.gltf_read import ASSET_SUFFIXES
 
 MESHLET_TRIANGLES = 32
@@ -673,7 +674,7 @@ def load_scene(path):
     if any(item.component.bake for item in renderers) and bake is None:
         raise SettingsError("scene [bake] is required: a renderer has bake = true")
     jobs = []
-    scene_name = path.name.removesuffix(".scene.toml").removesuffix(".toml")
+    scene_name = scene_id(path)
     for item in renderers:
         component = item.component
         effective = None
