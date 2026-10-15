@@ -459,11 +459,12 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
         }
     }
     if (leaf_overlay_on) {
-        const int n = dirty_leaf_rects(row, x0, y0, x1, y1, leaf_rect_scratch, LEAF_RECTS_PER_ROW_MAX);
+        const int n =
+            dirty_leaf_rects(row, recti_from_edges(x0, y0, x1, y1), leaf_rect_scratch, LEAF_RECTS_PER_ROW_MAX);
         for (int i = 0; i < n; i++) {
-            const dirty_leaf_rect_t* r = &leaf_rect_scratch[i];
-            gfx_color_t* at = slot + (size_t)(r->y0 - y0) * w + (r->x0 - x0);
-            mark_rect_border(at, w, r->x1 - r->x0, r->y1 - r->y0, gfx_rgb(0x00FF00));
+            const recti_t* r = &leaf_rect_scratch[i];
+            gfx_color_t* at = slot + (size_t)(r->y - y0) * w + (r->x - x0);
+            mark_rect_border(at, w, r->w, r->h, gfx_rgb(0x00FF00));
         }
     }
 #else

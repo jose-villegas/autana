@@ -193,10 +193,10 @@ test_clip_edges_match_independent_clamps(void) {
                     draw_set_clip(xs[i], ys[j], widths[k], heights[l]);
                     gfx_surface_t surface;
                     TEST_ASSERT_TRUE(gfx_draw_begin(&surface));
-                    const gfx_box_t actual = surface.clip;
-                    const gfx_box_t expected = {mathi_max(xs[i], 0), mathi_max(ys[j], 0),
-                                                mathi_min(xs[i] + widths[k], GFX_WIDTH),
-                                                mathi_min(ys[j] + heights[l], GFX_HEIGHT)};
+                    const recti_t actual = surface.clip;
+                    const recti_t expected = recti_from_edges(mathi_max(xs[i], 0), mathi_max(ys[j], 0),
+                                                              mathi_min(xs[i] + widths[k], GFX_WIDTH),
+                                                              mathi_min(ys[j] + heights[l], GFX_HEIGHT));
                     TEST_ASSERT_EQUAL_MEMORY(&expected, &actual, sizeof actual);
                     draw_clear(0);
                     draw_rect(-SIZE, -SIZE, GFX_WIDTH + SIZE * 2, GFX_HEIGHT + SIZE * 2, INK);
@@ -204,8 +204,8 @@ test_clip_edges_match_independent_clamps(void) {
                     for (int y = 0; y < GFX_HEIGHT; y++) {
                         bool row_matches = true;
                         for (int x = 0; x < GFX_WIDTH; x++) {
-                            const bool inside =
-                                x >= expected.x0 && x < expected.x1 && y >= expected.y0 && y < expected.y1;
+                            const bool inside = x >= expected.x && x < recti_right(expected) && y >= expected.y
+                                                && y < recti_bottom(expected);
                             row_matches &= pixels[y * GFX_WIDTH + x] == (inside ? INK : 0);
                         }
                         TEST_ASSERT_TRUE(row_matches);

@@ -914,7 +914,7 @@ test_a_plane_behind_a_wall_is_hidden_and_one_reaching_past_it_is_not(void) {
     draw_wall(c, 0.9f);
     const int32_t wall = c->depth[0];
     const r3d_span_target_t t = r3d_span_target(c->color, c->depth, c->w, 0, c->h);
-    const r3d_span_box_t box = {5, 15, 3, 9};
+    const recti_t box = {5, 3, 10, 6};
     const int32_t step = 1 << R3D_DEPTH_SHIFT;
     TEST_ASSERT_EQUAL_INT32(wall - 1, r3d_span_plane_bound((wall - 10) * step, step, 0, box));
     TEST_ASSERT_TRUE(r3d_span_hidden(&t, r3d_span_plane_bound((wall - 10) * step, step, 0, box), box));
@@ -924,14 +924,14 @@ test_a_plane_behind_a_wall_is_hidden_and_one_reaching_past_it_is_not(void) {
     TEST_ASSERT_FALSE(r3d_span_hidden(&t, r3d_span_plane_bound((wall - 5) * step, step, 0, box), box));
     TEST_ASSERT_FALSE(r3d_span_hidden(&t, wall + 1, box));
     /* One pixel of the box farther than the bound is enough. */
-    c->depth[(box.y1 - 1) * c->w + (box.x1 - 1)] = (uint16_t)(wall - 2);
+    c->depth[(recti_bottom(box) - 1) * c->w + (recti_right(box) - 1)] = (uint16_t)(wall - 2);
     TEST_ASSERT_FALSE(r3d_span_hidden(&t, wall - 1, box));
 }
 
 /* A start clamped up from below zero lifts its span by the shortfall. */
 static void
 test_a_plane_below_zero_at_a_corner_is_bounded_by_its_lift(void) {
-    const r3d_span_box_t box = {0, 11, 0, 1};
+    const recti_t box = {0, 0, 11, 1};
     const int32_t step = 1 << R3D_DEPTH_SHIFT;
     TEST_ASSERT_EQUAL_INT32(10, r3d_span_plane_bound(-3 * step, step, 0, box));
     TEST_ASSERT_EQUAL_INT32(R3D_DEPTH_NEAREST, r3d_span_plane_bound(INT32_MAX, INT32_MAX, INT32_MAX, box));
@@ -947,15 +947,14 @@ test_a_plane_is_in_range_exactly_when_every_centre_of_its_box_is(void) {
     int outside = 0;
     for (int i = 0; i < 20000; i++) {
         const int x0 = (int)(next_random(&state) % 20u), y0 = (int)(next_random(&state) % 20u);
-        const r3d_span_box_t box = {x0, x0 + 1 + (int)(next_random(&state) % 12u), y0,
-                                    y0 + 1 + (int)(next_random(&state) % 12u)};
+        const recti_t box = {x0, y0, 1 + (int)(next_random(&state) % 12u), 1 + (int)(next_random(&state) % 12u)};
         const int32_t top = (int32_t)(next_random(&state) % 320u) - 32;
         const int32_t dx = (int32_t)(next_random(&state) % 41u) - 20;
         const int32_t dy = (int32_t)(next_random(&state) % 41u) - 20;
         bool every = true;
-        for (int y = box.y0; y < box.y1; y++) {
-            for (int x = box.x0; x < box.x1; x++) {
-                const int32_t v = top + (dx * (x - box.x0)) + (dy * (y - box.y0));
+        for (int y = box.y; y < recti_bottom(box); y++) {
+            for (int x = box.x; x < recti_right(box); x++) {
+                const int32_t v = top + (dx * (x - box.x)) + (dy * (y - box.y));
                 every = every && v >= 0 && v <= 255;
             }
         }
@@ -967,7 +966,7 @@ test_a_plane_is_in_range_exactly_when_every_centre_of_its_box_is(void) {
     TEST_ASSERT_GREATER_THAN_INT(1000, inside);
     TEST_ASSERT_GREATER_THAN_INT(1000, outside);
     /* Past any 32-bit sum at the far corner. */
-    const r3d_span_box_t wide = {0, 1000, 0, 1000};
+    const recti_t wide = {0, 0, 1000, 1000};
     TEST_ASSERT_FALSE(r3d_span_plane_in_range(0, INT32_MAX / 2, INT32_MAX / 2, INT32_MAX, wide));
 }
 

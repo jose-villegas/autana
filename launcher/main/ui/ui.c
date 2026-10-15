@@ -102,9 +102,9 @@ typedef struct {
 } icon_fill_ctx_t;
 
 static void
-icon_fill_emit(void* ctx_, int x, int y, int w, int h) {
+icon_fill_emit(void* ctx_, recti_t rect) {
     const icon_fill_ctx_t* fc = ctx_;
-    draw_rect(x, y, w, h, fc->color);
+    draw_rect(rect.x, rect.y, rect.w, rect.h, fc->color);
 }
 
 /* microui colour to the panel's own, alpha dropped; a style works in
@@ -547,7 +547,7 @@ static uint32_t ui_band_background;
 static bool ui_band_active;
 
 typedef struct {
-    int x, y, w, h;
+    recti_t rect;
     uint32_t rgb;
 } ui_extra_rect_t;
 
@@ -558,7 +558,7 @@ static int replay_rect_count;
 void
 ui_queue_band_overlay_rect(int x, int y, int w, int h, uint32_t rgb) {
     if (extra_rect_count < UI_EXTRA_RECT_MAX) {
-        extra_rects[extra_rect_count++] = (ui_extra_rect_t){x, y, w, h, rgb};
+        extra_rects[extra_rect_count++] = (ui_extra_rect_t){{x, y, w, h}, rgb};
     }
 }
 
@@ -749,7 +749,7 @@ ui_end_for_bands(uint32_t background_rgb) {
 
     for (int i = 0; i < extra_rect_count; i++) {
         const ui_extra_rect_t* r = &extra_rects[i];
-        bin_fill_rect(mu_rect(r->x, r->y, r->w, r->h), ui_rgb(r->rgb));
+        bin_fill_rect(ui_mu_from_recti(r->rect), ui_rgb(r->rgb));
     }
     replay_rect_count = extra_rect_count;
     extra_rect_count = 0;
@@ -783,7 +783,7 @@ replay_full_band(void) {
     }
     for (int i = 0; i < replay_rect_count; i++) {
         const ui_extra_rect_t* r = &extra_rects[i];
-        draw_rect(r->x, r->y, r->w, r->h, gfx_rgb(r->rgb));
+        draw_rect(r->rect.x, r->rect.y, r->rect.w, r->rect.h, gfx_rgb(r->rgb));
     }
 }
 

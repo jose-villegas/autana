@@ -92,8 +92,8 @@ static void
 test_dirty_leaf_rects_finds_nothing_in_a_clean_row(void) {
     fixture();
 
-    dirty_leaf_rect_t out[8];
-    const int n = dirty_leaf_rects(0, 0, 0, GFX_WIDTH, STRIP_HEIGHT, out, 8);
+    recti_t out[8];
+    const int n = dirty_leaf_rects(0, recti_from_edges(0, 0, GFX_WIDTH, STRIP_HEIGHT), out, 8);
 
     TEST_ASSERT_EQUAL_INT(0, n);
 }
@@ -103,14 +103,14 @@ test_dirty_leaf_rects_one_pixel_yields_the_whole_leaf(void) {
     fixture();
     dirty_mark(5, 5, 1, 1); /* leaf column 0, leaf row 0 */
 
-    dirty_leaf_rect_t out[8];
-    const int n = dirty_leaf_rects(0, 0, 0, GFX_WIDTH, STRIP_HEIGHT, out, 8);
+    recti_t out[8];
+    const int n = dirty_leaf_rects(0, recti_from_edges(0, 0, GFX_WIDTH, STRIP_HEIGHT), out, 8);
 
     TEST_ASSERT_EQUAL_INT(1, n);
-    TEST_ASSERT_EQUAL_INT(0, out[0].x0);
-    TEST_ASSERT_EQUAL_INT(LEAF_W, out[0].x1);
-    TEST_ASSERT_EQUAL_INT(0, out[0].y0);
-    TEST_ASSERT_EQUAL_INT(LEAF_H, out[0].y1);
+    TEST_ASSERT_EQUAL_INT(0, out[0].x);
+    TEST_ASSERT_EQUAL_INT(LEAF_W, recti_right(out[0]));
+    TEST_ASSERT_EQUAL_INT(0, out[0].y);
+    TEST_ASSERT_EQUAL_INT(LEAF_H, recti_bottom(out[0]));
 }
 
 static void
@@ -118,16 +118,16 @@ test_dirty_leaf_rects_two_columns_are_two_adjacent_rects(void) {
     fixture();
     dirty_mark(LEAF_W - 1, 0, 2, 1); /* straddles leaf columns 0 and 1 */
 
-    dirty_leaf_rect_t out[8];
-    const int n = dirty_leaf_rects(0, 0, 0, GFX_WIDTH, STRIP_HEIGHT, out, 8);
+    recti_t out[8];
+    const int n = dirty_leaf_rects(0, recti_from_edges(0, 0, GFX_WIDTH, STRIP_HEIGHT), out, 8);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(2, n,
                                   "one rect per dirty leaf, never merged into a run - merging would "
                                   "hide the leaf boundary this layer exists to show");
-    TEST_ASSERT_EQUAL_INT(0, out[0].x0);
-    TEST_ASSERT_EQUAL_INT(LEAF_W, out[0].x1);
-    TEST_ASSERT_EQUAL_INT(LEAF_W, out[1].x0);
-    TEST_ASSERT_EQUAL_INT(2 * LEAF_W, out[1].x1);
+    TEST_ASSERT_EQUAL_INT(0, out[0].x);
+    TEST_ASSERT_EQUAL_INT(LEAF_W, recti_right(out[0]));
+    TEST_ASSERT_EQUAL_INT(LEAF_W, out[1].x);
+    TEST_ASSERT_EQUAL_INT(2 * LEAF_W, recti_right(out[1]));
 }
 
 static void
@@ -135,14 +135,14 @@ test_dirty_leaf_rects_two_leaf_rows_both_appear(void) {
     fixture();
     dirty_mark(5, LEAF_H - 1, 1, 2); /* straddles leaf rows 0 and 1 */
 
-    dirty_leaf_rect_t out[8];
-    const int n = dirty_leaf_rects(0, 0, 0, GFX_WIDTH, STRIP_HEIGHT, out, 8);
+    recti_t out[8];
+    const int n = dirty_leaf_rects(0, recti_from_edges(0, 0, GFX_WIDTH, STRIP_HEIGHT), out, 8);
 
     TEST_ASSERT_EQUAL_INT(2, n);
-    TEST_ASSERT_EQUAL_INT(0, out[0].y0);
-    TEST_ASSERT_EQUAL_INT(LEAF_H, out[0].y1);
-    TEST_ASSERT_EQUAL_INT(LEAF_H, out[1].y0);
-    TEST_ASSERT_EQUAL_INT(2 * LEAF_H, out[1].y1);
+    TEST_ASSERT_EQUAL_INT(0, out[0].y);
+    TEST_ASSERT_EQUAL_INT(LEAF_H, recti_bottom(out[0]));
+    TEST_ASSERT_EQUAL_INT(LEAF_H, out[1].y);
+    TEST_ASSERT_EQUAL_INT(2 * LEAF_H, recti_bottom(out[1]));
 }
 
 static void
@@ -151,16 +151,16 @@ test_dirty_leaf_rects_clips_to_the_callers_box(void) {
     dirty_mark(5, 5, 1, 1); /* leaf column 0, leaf row 0: full extent
                                  [0,LEAF_W) x [0,LEAF_H) */
 
-    dirty_leaf_rect_t out[8];
-    const int n = dirty_leaf_rects(0, 5, 3, 15, 10, out, 8);
+    recti_t out[8];
+    const int n = dirty_leaf_rects(0, recti_from_edges(5, 3, 15, 10), out, 8);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, n,
                                   "the leaf is still one dirty leaf, just narrower than its own "
                                   "full extent once clipped");
-    TEST_ASSERT_EQUAL_INT(5, out[0].x0);
-    TEST_ASSERT_EQUAL_INT(15, out[0].x1);
-    TEST_ASSERT_EQUAL_INT(3, out[0].y0);
-    TEST_ASSERT_EQUAL_INT(10, out[0].y1);
+    TEST_ASSERT_EQUAL_INT(5, out[0].x);
+    TEST_ASSERT_EQUAL_INT(15, recti_right(out[0]));
+    TEST_ASSERT_EQUAL_INT(3, out[0].y);
+    TEST_ASSERT_EQUAL_INT(10, recti_bottom(out[0]));
 }
 
 static void
@@ -168,8 +168,8 @@ test_dirty_leaf_rects_a_leaf_entirely_outside_the_box_is_dropped(void) {
     fixture();
     dirty_mark(5, 5, 1, 1); /* leaf column 0: [0,LEAF_W) */
 
-    dirty_leaf_rect_t out[8];
-    const int n = dirty_leaf_rects(0, 30, 0, 50, STRIP_HEIGHT, out, 8);
+    recti_t out[8];
+    const int n = dirty_leaf_rects(0, recti_from_edges(30, 0, 50, STRIP_HEIGHT), out, 8);
 
     TEST_ASSERT_EQUAL_INT(0, n);
 }
@@ -179,8 +179,8 @@ test_dirty_leaf_rects_respects_the_max_out_cap(void) {
     fixture();
     leaf_dirty[0] = 0xFFFF; /* every leaf column dirty in leaf row 0 */
 
-    dirty_leaf_rect_t out[16];
-    const int n = dirty_leaf_rects(0, 0, 0, GFX_WIDTH, STRIP_HEIGHT, out, 5);
+    recti_t out[16];
+    const int n = dirty_leaf_rects(0, recti_from_edges(0, 0, GFX_WIDTH, STRIP_HEIGHT), out, 5);
 
     TEST_ASSERT_EQUAL_INT(5, n);
 }
@@ -193,12 +193,12 @@ test_dirty_leaf_rects_leaf_rows_are_independent(void) {
 
     /* Box only spans leaf row 0's own height; leaf row 2's rect must not
      * leak into this result just because it shares the same strip row. */
-    dirty_leaf_rect_t out[8];
-    const int n = dirty_leaf_rects(0, 0, 0, GFX_WIDTH, LEAF_H, out, 8);
+    recti_t out[8];
+    const int n = dirty_leaf_rects(0, recti_from_edges(0, 0, GFX_WIDTH, LEAF_H), out, 8);
 
     TEST_ASSERT_EQUAL_INT(1, n);
-    TEST_ASSERT_EQUAL_INT(0, out[0].y0);
-    TEST_ASSERT_EQUAL_INT(LEAF_H, out[0].y1);
+    TEST_ASSERT_EQUAL_INT(0, out[0].y);
+    TEST_ASSERT_EQUAL_INT(LEAF_H, recti_bottom(out[0]));
 }
 
 /* eligibility */
@@ -590,7 +590,7 @@ test_region_query_uses_leaf_gaps_within_one_cell(void) {
 static void
 test_box_clip_edges(void) {
     fixture();
-    const gfx_box_t clip = {10, 20, 31, 41};
+    const recti_t clip = {10, 20, 21, 21};
     int x0 = -10, y0 = 30, x1 = 50, y1 = 30;
     TEST_ASSERT_TRUE(gfx_box_clip_segment(&clip, &x0, &y0, &x1, &y1));
     TEST_ASSERT_EQUAL_INT(10, x0);
@@ -606,7 +606,7 @@ test_box_clip_edges(void) {
 static void
 test_box_clip_corners(void) {
     fixture();
-    const gfx_box_t clip = {10, 20, 31, 41};
+    const recti_t clip = {10, 20, 21, 21};
     int x0 = 0, y0 = 10, x1 = 50, y1 = 60;
     TEST_ASSERT_TRUE(gfx_box_clip_segment(&clip, &x0, &y0, &x1, &y1));
     TEST_ASSERT_EQUAL_INT(10, x0);
@@ -627,7 +627,7 @@ test_box_clip_corners(void) {
 static void
 test_box_clip_fully_outside(void) {
     fixture();
-    const gfx_box_t clip = {10, 20, 31, 41};
+    const recti_t clip = {10, 20, 21, 21};
     const int points[][4] = {{0, 20, 9, 40}, {31, 20, 50, 40}, {10, 0, 30, 19}, {10, 41, 30, 50}, {0, 25, 15, 10}};
     for (unsigned i = 0; i < sizeof(points) / sizeof(points[0]); i++) {
         int x0 = points[i][0], y0 = points[i][1], x1 = points[i][2], y1 = points[i][3];
@@ -638,7 +638,7 @@ test_box_clip_fully_outside(void) {
 static void
 test_box_clip_both_inside(void) {
     fixture();
-    const gfx_box_t clip = {10, 20, 31, 41};
+    const recti_t clip = {10, 20, 21, 21};
     int x0 = 10, y0 = 20, x1 = 30, y1 = 40;
     TEST_ASSERT_TRUE(gfx_box_clip_segment(&clip, &x0, &y0, &x1, &y1));
     TEST_ASSERT_EQUAL_INT(10, x0);

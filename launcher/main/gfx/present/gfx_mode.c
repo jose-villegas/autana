@@ -45,7 +45,7 @@ static int band_current_slot;
  * has no valid target, matching gfx_fb_guard.h. */
 static bool band_render_active;
 static gfx_target_t strip_target;
-static gfx_box_t clip;
+static recti_t clip;
 
 #ifndef ESP_PLATFORM
 void
@@ -70,13 +70,13 @@ gfx_present_in_band(void) {
     return band_render_active;
 }
 
-gfx_box_t
+recti_t
 gfx_clip_save(void) {
     return clip;
 }
 
 void
-gfx_clip_restore(gfx_box_t saved) {
+gfx_clip_restore(recti_t saved) {
     clip = saved;
 }
 
@@ -95,7 +95,7 @@ gfx_draw_begin(gfx_surface_t* out) {
 }
 
 void
-gfx_set_clip_box(gfx_box_t box) {
+gfx_set_clip_box(recti_t box) {
     GFX_PRESENT_GUARD();
     clip = box;
 }
@@ -311,7 +311,7 @@ gfx_init(void) {
 #endif
     reset_mode_to_full_fb();
     gfx_fb_guard_set_available(true);
-    gfx_clip_restore(GFX_SCREEN_BOX);
+    gfx_clip_restore(GFX_SCREEN_RECT);
     gfx_mark_all_dirty();
 #ifdef ESP_PLATFORM
     ESP_LOGI(TAG,
@@ -381,14 +381,14 @@ expand_rows(int y0, int y1, gfx_color_t* destination) {
     const gfx_target_t target = {destination, y0, y1 - y0, GFX_WIDTH};
     gfx_target_paired_rows(target, half_image, NULL, 0, GFX_WIDTH / 2, NULL, y0, y1 - y0, true);
     if (frame_overlay != NULL) {
-        const gfx_box_t saved_clip = gfx_clip_save();
+        const recti_t saved_clip = gfx_clip_save();
         strip_target = target;
         band_render_active = true;
         gfx_fb_guard_set_available(true);
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
         gfx_present_guard_replaying = true;
 #endif
-        gfx_clip_restore(GFX_SCREEN_BOX);
+        gfx_clip_restore(GFX_SCREEN_RECT);
         frame_overlay(y0, y1);
         gfx_clip_restore(saved_clip);
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
@@ -420,7 +420,7 @@ gfx_reset_for_test(void) {
     free_full_framebuffer();
     current_mode = (gfx_mode_t){0};
     gfx_fb_guard_set_available(false);
-    gfx_clip_restore(GFX_SCREEN_BOX);
+    gfx_clip_restore(GFX_SCREEN_RECT);
 }
 #endif
 
@@ -493,7 +493,7 @@ gfx_mode_exit(void) {
             }
         }
 #endif
-        gfx_clip_restore(GFX_SCREEN_BOX);
+        gfx_clip_restore(GFX_SCREEN_RECT);
         gfx_mark_all_dirty();
     }
     reset_mode_to_full_fb();

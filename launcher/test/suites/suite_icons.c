@@ -45,7 +45,7 @@ system_icon(ui_icon_id_t id) {
 #define CHECK_TEST_MAX_BLOCKS 16
 
 static int
-blocks_at(int w, int h, icon_rect_t* out) {
+blocks_at(int w, int h, recti_t* out) {
     const draw_image_t* icon = system_icon(UI_ICON_CHECK);
     icon_test_collect_t cc = {.blocks = out, .count = 0, .cap = CHECK_TEST_MAX_BLOCKS};
     icon_walk_blocks(icon, w, h, icon_test_collect, &cc);
@@ -54,7 +54,7 @@ blocks_at(int w, int h, icon_rect_t* out) {
 
 static void
 assert_all_inside_box(int w, int h) {
-    icon_rect_t blocks[CHECK_TEST_MAX_BLOCKS];
+    recti_t blocks[CHECK_TEST_MAX_BLOCKS];
     const int n = blocks_at(w, h, blocks);
 
     TEST_ASSERT_TRUE_MESSAGE(n > 0, "produced no blocks at all");
@@ -82,7 +82,7 @@ test_fits_inside_its_box_across_the_supported_range(void) {
  * than centring the full (mostly empty) 16x16 bitmap. */
 static void
 assert_centred_within_a_pixel(int w, int h) {
-    icon_rect_t blocks[CHECK_TEST_MAX_BLOCKS];
+    recti_t blocks[CHECK_TEST_MAX_BLOCKS];
     const int n = blocks_at(w, h, blocks);
     TEST_ASSERT_TRUE(n > 0);
 

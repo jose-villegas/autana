@@ -763,21 +763,13 @@ group_rows(const int16_t* lo, const int16_t* hi, int x0, int x1, int* y0, int* y
 }
 
 /* The columns of changed pixels seen so far, and their rows. */
-typedef struct {
-    int x0, x1, y0, y1;
-} changed_box_t;
-
 static inline __attribute__((always_inline)) void
-note_changed(changed_box_t* box, int x, int y) {
-    box->x0 = x < box->x0 ? x : box->x0;
-    box->x1 = x + 1 > box->x1 ? x + 1 : box->x1;
-    box->y0 = y < box->y0 ? y : box->y0;
-    box->y1 = y + 1;
+note_changed(recti_t* box, int x, int y) {
+    *box = recti_union(*box, (recti_t){x, y, 1, 1});
 }
 
 static inline __attribute__((always_inline)) void
-repaint_group_row(gfx_color_t* row, const int16_t* lo, const int16_t* hi, int x0, int x1, int y,
-                  changed_box_t* changed) {
+repaint_group_row(gfx_color_t* row, const int16_t* lo, const int16_t* hi, int x0, int x1, int y, recti_t* changed) {
     const bool masked = dissolving();
     for (int x = x0; x < x1; x++) {
         if (y >= lo[x - x0] && y < hi[x - x0] && (!masked || dissolved(x, y))) {
@@ -800,12 +792,12 @@ repaint_column_group(const int16_t* lo, const int16_t* hi, int x0) {
         return;
     }
     gfx_color_t* const framebuffer = gfx_framebuffer();
-    changed_box_t changed = {x1, x0, y1, y0};
+    recti_t changed = {0};
     for (int y = y0; y < y1; y++) {
         repaint_group_row(framebuffer + (y * GFX_WIDTH), lo, hi, x0, x1, y, &changed);
     }
-    if (changed.x0 < changed.x1) {
-        gfx_mark_dirty(changed.x0, changed.y0, changed.x1 - changed.x0, changed.y1 - changed.y0);
+    if (!recti_is_empty(changed)) {
+        gfx_mark_dirty(changed.x, changed.y, changed.w, changed.h);
     }
 }
 
