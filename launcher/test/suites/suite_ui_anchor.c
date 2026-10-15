@@ -5,7 +5,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "ui/ui_anchor.h"
+#include "ui/layout/ui_anchor.h"
 
 static void
 assert_rect(mu_Rect actual, int x, int y, int w, int h) {

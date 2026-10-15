@@ -16,7 +16,7 @@
 #include "asset/asset_store.h"
 #include "draw/draw_image.h"
 #include "test_pack.h"
-#include "ui/ui_icons.h"
+#include "ui/controls/ui_icons.h"
 
 #ifndef DEVICE_BUILD
 #include "test_asset_dir.h"

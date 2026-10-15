@@ -80,8 +80,8 @@
 #include "sand_palette256.h"
 #include "sand_swatch.h"
 #include "sand_ui.h"
+#include "ui/layout/ui_anchor.h"
 #include "ui/ui.h"
-#include "ui/ui_anchor.h"
 
 static const char* TAG = "sand";
 

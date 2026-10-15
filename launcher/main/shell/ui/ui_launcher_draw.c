@@ -7,8 +7,8 @@
 #include "shell/ui/ui_launcher.h"
 
 #include "app/app.h"
+#include "ui/layout/ui_scroll.h"
 #include "ui/ui.h"
-#include "ui/ui_scroll.h"
 
 /* A label too wide is clipped at both ends with no warning, so this is
  * sized to the longest registered name (192 px) plus slack. Check a new

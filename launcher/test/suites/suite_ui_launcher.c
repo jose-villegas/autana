@@ -28,10 +28,10 @@
 #include "gfx/gfx.h"
 #include "microui.h"
 #include "shell/ui/ui_launcher.h"
+#include "ui/input/ui_bridge.h"
+#include "ui/input/ui_pointer.h"
+#include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
-#include "ui/ui_bridge.h"
-#include "ui/ui_pointer.h"
-#include "ui/ui_transform.h"
 
 /* LAUNCHER_BTN_W (ui_launcher_draw.c), private to that file, mirrored here so
  * this suite can tap the same physical spot a real finger would. */

@@ -2,8 +2,8 @@
 #pragma once
 #include "console/console_verbs.h"
 #include "scene/scene.h"
-#include "ui/ui_scroll.h"
-#include "ui/ui_widgets.h"
+#include "ui/controls/ui_widgets.h"
+#include "ui/layout/ui_scroll.h"
 
 #define RENDER_LAB_BLEND_DEFAULT_MS             250
 #define RENDER_LAB_BLEND_MAX_MS                 1000
