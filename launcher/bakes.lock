@@ -37,30 +37,12 @@ run = 38612779093
 host = "Linux x86_64"
 
 [[bake]]
-output = "sponza.atrium_fitted.mesh"
-source = "launcher/demo/sponza/sponza.scene.toml"
-key = "1348aaccd091e0c41420ee4e55e70962d236943a6df9e34529f5a96a66f96b39"
-sha256 = "07df05b329ab648ff266a8cc9e2dbc71fa54f2c8dce325c3b58d3ac21f3f7f03"
-size = 135092
-run = 38633955242
-host = "Linux x86_64"
-
-[[bake]]
 output = "sponza.atrium_fitted.start.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
 key = "4e56e0ca31fb82c5343d7182e460578be78627e04e2db90ae611f389be738492"
 sha256 = "e1aac41fd65ea12c10c3461c0c7ac9be42a6c5dcbdca7592a43de81e2a7c4b07"
 size = 205548
 run = 38632969352
-host = "Linux x86_64"
-
-[[bake]]
-output = "sponza.atrium_fitted_full.mesh"
-source = "launcher/demo/sponza/sponza.scene.toml"
-key = "03ae32a887c62e00df3192eb05c5663cd65e06830e2a562d484f5df37063b693"
-sha256 = "8596300cd81e0179b708251ef919faba5d7556320750f09a70025b489affe7a8"
-size = 279800
-run = 38633955242
 host = "Linux x86_64"
 
 [[bake]]
@@ -79,15 +61,6 @@ key = "11d41d6c8bcc5b517c42c603dfe0d28e63e4d879b39f37438ce8d5efb76bc955"
 sha256 = "029bd72c6a4c9c41ae562540fa098303e81dc1e6d28230b197cfd035cd1b10f8"
 size = 243452
 run = 38612779093
-host = "Linux x86_64"
-
-[[bake]]
-output = "sponza.atrium_flat_fitted.mesh"
-source = "launcher/demo/sponza/sponza.scene.toml"
-key = "d35f49af5d007a4f7354fce04c20cd408bc4a38f7502b07b788c3eeed46f6b5d"
-sha256 = "a39d464ee3f0ad76b61ed5af5a4964caac1754a3afd8bcc0e590da012968af59"
-size = 238832
-run = 38633955242
 host = "Linux x86_64"
 
 [[bake]]
@@ -119,8 +92,8 @@ clip = "launcher/demo/sponza/flythrough.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "c8ee10bf033bf40e4aa38762d6886136dd5fdc70acf8a8f16350571550e1b683"
-poses = "85b37cc70bf0ef7b0266dc4544245f8e3cda49285612042ec2d4bd539b3fe768"
-count = 364
+key = "669d15a7243c50da38672ce36a47a97e421ebdd8333cefe25ac2bbbf2a3854cb"
+poses = "7d2ada85059d7939ae2e31dd8211db0d2a03df353105379f7fb2bd44f1040013"
+count = 1453
 clip = "launcher/demo/sponza/flythrough.anim.toml"
 host = "Windows AMD64"
