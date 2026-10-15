@@ -30,7 +30,7 @@ DESTINATION = (368, 448)
 
 SPLIT = re.compile(r"scale_split: (\d+)x(\d+) poses=(\d+) tris=(\d+) frame mean/p50/max us (\d+)/(\d+)/(\d+) \| (.*?) \| total")
 STAGE = re.compile(r"(\S+) ([\d.]+)/([\d.]+)")
-SPANS = re.compile(r"scale_spans: (\d+)x(\d+) one core us/pose setup (-?\d+) (?:edges|rows) (-?\d+) (?:carry|span_setup) (-?\d+) fill (-?\d+) clear (-?\d+)")
+SPANS = re.compile(r"scale_spans: (\d+)x(\d+) one core us/pose setup (-?\d+) edges (-?\d+) carry (-?\d+) fill (-?\d+) clear (-?\d+)")
 SPAN_FIELDS = ("setup", "edges", "carry", "fill", "clear")
 STEP = re.compile(r"dynres_step: (\w+) (\d+) (\d+)x(\d+) upscale")
 FRAMES = re.compile(r"dynres_frames: (\w+) (\w+) (\w+) (\d+) (\d+)((?: -?\d+:\d+:\d+:\d+:\d+)+)(?![\d:])")

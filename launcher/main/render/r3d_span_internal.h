@@ -105,6 +105,7 @@ r3d_span_area2(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d
 }
 
 /* Temporary measurement switch: 0 draws normally; 1 stops after triangle
- * setup, 2 after walking only the edges, 3 after the attribute carry. A triangle
- * tested centre by centre stops after its setup under any of them. */
+ * setup, 2 after walking only the edges, 3 after the attribute carry, also
+ * stopping attachment writers. A triangle tested centre by centre stops after
+ * its setup under any of them. */
 extern int r3d_span_stop_after;

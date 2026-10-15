@@ -265,8 +265,7 @@ fill_clipped_gouraud(const gradients_t* g, const uint32_t row[ATTRIBUTES], int c
 }
 
 static inline __attribute__((always_inline)) void
-flat_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBUTES], int y0, int y1, edge_t* left,
-          edge_t* right) {
+flat_rows(const r3d_span_target_t* target, const fill_t* f, int y0, int y1, edge_t* left, edge_t* right) {
     for (int y = y0; y < y1; y++) {
         row_span_t span;
         if (clip_row(target, y, left, right, &span)) {
@@ -336,7 +335,7 @@ walk_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBU
             step_edge(&right);
         }
     } else if (f->shading == FILL_FLAT) {
-        flat_rows(target, f, row, y0, y1, &left, &right);
+        flat_rows(target, f, y0, y1, &left, &right);
     } else if (f->shading == FILL_FACE) {
         carried_rows(target, f, row, y0, y1, &left, &right, 1, false);
     } else {
@@ -420,14 +419,15 @@ walk(const r3d_span_target_t* target, const fill_t* f, const walk_t* w, bool wri
     shift_carry(f, carry, attributes, carry_column - f->g->x_origin);
     if (w->y_first < w->split) {
         rows_between(target, f, carry, w->y_first, w->split, &long_edge, &short_edge, writing, w->long_on_left);
+        if (w->split == w->y_end) {
+            return;
+        }
         carry_column = w->long_on_left ? long_edge.q : short_edge.q;
-    }
-    if (w->split < w->y_end) {
         short_edge = edge_at(w->v1, w->v2, w->split);
         const int lower_column = w->long_on_left ? long_edge.q : short_edge.q;
         shift_carry(f, carry, attributes, lower_column - carry_column);
-        rows_between(target, f, carry, w->split, w->y_end, &long_edge, &short_edge, writing, w->long_on_left);
     }
+    rows_between(target, f, carry, w->split, w->y_end, &long_edge, &short_edge, writing, w->long_on_left);
 }
 
 /* Returns true when the sort swapped an odd number of times, which turns
@@ -663,6 +663,7 @@ r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t
     if (box.y0 >= box.y1 || box.x0 >= box.x1 || area2 == 0) {
         return;
     }
+    /* FILL_FACE selects a depth carry here; writers do not read face colour. */
     fill_t f = {e.flat ? FILL_FLAT : FILL_FACE, NULL, 0, 0, NULL};
     if (e.centres.x1 - e.centres.x0 <= small_max_side && e.centres.y1 - e.centres.y0 <= small_max_side) {
         set_flat(&f, a, b, c);
