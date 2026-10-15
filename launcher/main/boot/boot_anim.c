@@ -260,47 +260,73 @@ draw_grid_spoke(uint16_t turn, int32_t near, int32_t far, gfx_color_t c, bool da
     }
 }
 
+/* What every node and edge of one frame's mesh shares. */
+typedef struct {
+    uint32_t now_ms;
+    int32_t amp_q12;
+    uint8_t ink;
+    int stride;
+    const boot_anim_view_t* view;
+} mesh_pass_t;
+
+/* Builds row j's nodes into `row`, drawing each one's edge to the node
+ * before it in the row and to the one above it in `above`. */
+static void
+draw_mesh_row(const mesh_pass_t* pass, int j, int row_half, int above_half, mesh_node_t* row,
+              const mesh_node_t* above) {
+    const int stride = pass->stride;
+    for (int i = -MESH_HALF; i <= MESH_HALF; i += stride) {
+        if (mathi_abs(i) > row_half) {
+            continue;
+        }
+        mesh_node_t* node = &row[i + MESH_HALF];
+        *node = mesh_node(i, j, pass->now_ms, pass->amp_q12, pass->view);
+        if (i - stride >= -row_half && mesh_dash_on(i, stride)) {
+            draw_mesh_edge(&row[i - stride + MESH_HALF], node, pass->now_ms, pass->ink, pass->view);
+        }
+        if (mathi_abs(i) <= above_half && mesh_dash_on(j, stride)) {
+            draw_mesh_edge(&above[i + MESH_HALF], node, pass->now_ms, pass->ink, pass->view);
+        }
+    }
+}
+
+static void
+draw_spokes(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
+    const uint8_t spoke_reach = boot_anim_grid_spoke_reach(now_ms);
+    if (spoke_reach == 0) {
+        return;
+    }
+    const gfx_color_t spoke_c = lit(COL_AXIS, ink);
+    for (int i = 0; i < BOOT_ANIM_GRID_SPOKES; i++) {
+        const uint16_t turn = (uint16_t)((i * (int)TRIG_TURN) / BOOT_ANIM_GRID_SPOKES);
+        draw_grid_spoke(turn, units(BOOT_ANIM_GRID_SPOKE_NEAR_UNITS), units(BOOT_ANIM_GRID_SPOKE_FAR_UNITS), spoke_c,
+                        BOOT_ANIM_GRID_SPOKE_DASH != 0, spoke_reach, view);
+    }
+}
+
 void
 draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view) {
-    const int32_t amp_q12 = (int32_t)(((int64_t)BOOT_ANIM_WAVE_HEIGHT_Q12 * boot_anim_wave_envelope(now_ms)) / 255);
-    /* Deep in the crossfade, every other line and node is enough. */
-    const int stride = gfx_dither_level(reveal) >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL ? 2 : 1;
+    const mesh_pass_t pass = {
+        .now_ms = now_ms,
+        .amp_q12 = (int32_t)(((int64_t)BOOT_ANIM_WAVE_HEIGHT_Q12 * boot_anim_wave_envelope(now_ms)) / 255),
+        .ink = ink,
+        /* Deep in the crossfade, every other line and node is enough. */
+        .stride = gfx_dither_level(reveal) >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL ? 2 : 1,
+        .view = view,
+    };
 
-    /* Row by row, each node built once: its edge to the node before it in
-     * the row, and to the one above it in the last row. */
+    /* Row by row, each node built once; two rows are all an edge needs. */
     mesh_node_t rows[2][BOOT_ANIM_MESH_CELLS + 1];
     int above_half = -1;
     int cur = 0;
-    for (int j = -MESH_HALF; j <= MESH_HALF; j += stride) {
-        const int row_half = mesh_row_half(j, stride);
-        mesh_node_t* row = rows[cur];
-        const mesh_node_t* above = rows[cur ^ 1];
-        for (int i = -MESH_HALF; i <= MESH_HALF; i += stride) {
-            if (mathi_abs(i) > row_half) {
-                continue;
-            }
-            mesh_node_t* node = &row[i + MESH_HALF];
-            *node = mesh_node(i, j, now_ms, amp_q12, view);
-            if (i - stride >= -row_half && mesh_dash_on(i, stride)) {
-                draw_mesh_edge(&row[i - stride + MESH_HALF], node, now_ms, ink, view);
-            }
-            if (mathi_abs(i) <= above_half && mesh_dash_on(j, stride)) {
-                draw_mesh_edge(&above[i + MESH_HALF], node, now_ms, ink, view);
-            }
-        }
+    for (int j = -MESH_HALF; j <= MESH_HALF; j += pass.stride) {
+        const int row_half = mesh_row_half(j, pass.stride);
+        draw_mesh_row(&pass, j, row_half, above_half, rows[cur], rows[cur ^ 1]);
         above_half = row_half;
         cur ^= 1;
     }
 
-    const gfx_color_t spoke_c = lit(COL_AXIS, ink);
-    const uint8_t spoke_reach = boot_anim_grid_spoke_reach(now_ms);
-    if (spoke_reach > 0) {
-        for (int i = 0; i < BOOT_ANIM_GRID_SPOKES; i++) {
-            const uint16_t turn = (uint16_t)((i * (int)TRIG_TURN) / BOOT_ANIM_GRID_SPOKES);
-            draw_grid_spoke(turn, units(BOOT_ANIM_GRID_SPOKE_NEAR_UNITS), units(BOOT_ANIM_GRID_SPOKE_FAR_UNITS),
-                            spoke_c, BOOT_ANIM_GRID_SPOKE_DASH != 0, spoke_reach, view);
-        }
-    }
+    draw_spokes(now_ms, ink, view);
 }
 
 /* The axes */
