@@ -1,5 +1,5 @@
 #!/bin/sh
-# Sourced by perf_compare.sh and perf_sweep.sh, expects PYTHON, TOOLS_DIR, autana and wait.
+# Sourced by perf_compare.sh and perf_sweep.sh, expects the variables PYTHON, TOOLS_DIR, autana (the command) and wait (seconds).
 # A process-bound hold keeps restoration inside the job even after an interrupt.
 . "$TOOLS_DIR/../../../scripts/lib/process_pid.sh"
 

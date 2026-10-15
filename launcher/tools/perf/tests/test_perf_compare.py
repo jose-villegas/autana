@@ -184,19 +184,17 @@ class AcquisitionTest(ShellJobTests, unittest.TestCase):
 
     def test_compare_estimate_covers_first_pass(self):
         with tempfile.TemporaryDirectory() as root:
-            args = arguments(root)
-            first = tool.schedule(args.max_seeds, args.alpha)[0]
+            args = arguments(root, cap=8)
             with patch("perf_job.job_estimate", return_value=1) as estimate, \
                     contextlib.redirect_stdout(io.StringIO()):
                 tool.main(["--estimate-plan", "--max-seeds", str(args.max_seeds),
                            "--project-a", str(args.project_a), "--project-b", str(args.project_b),
                            "--suite", "suite", "-", "-"])
-            estimate.assert_called_once_with(2 * first, 2 * (first + tool.CALIBRATION_SEEDS * (tool.CALIBRATION_RUNS - 1)), 1800, True)
+            # Two sides: 2 * 4 = 8 flashes; 2 * (4 + 2 repeats) = 12 captures.
+            estimate.assert_called_once_with(8, 12, 1800, True)
 
     def test_job_estimate_uses_history_and_fallbacks(self):
         from perf_job import DEFAULT_FLASH_SECONDS, job_estimate
-        sys.path.insert(0, str(PERF.parents[2] / "scripts/device"))
-        import device_lock
         with patch("perf_job.duration_history", return_value={"flash": 10, "run-suite": 20}):
             self.assertEqual(job_estimate(2, 3, 900), 90)
         with patch("perf_job.duration_history", return_value={}):
