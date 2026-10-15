@@ -19,7 +19,7 @@
 #define BOOT_ANIM_AXES_MS 450
 
 #define BOOT_ANIM_GRID_START_MS 320
-/* each ring waits for the one inside */
+/* each band waits for the one inside */
 #define BOOT_ANIM_GRID_BAND_MS 16
 
 /* how many grid_step_m bands out the floor's colour and fade reach */
@@ -125,8 +125,9 @@
 /* Positive tangent of the camera's shorter-axis half field of view. */
 #define BOOT_ANIM_CAMERA_HALF_FOV_SHORT_TAN 1.0F
 
-/* The side of one floor mesh cell, in meters (mesh_step_m in the
- * JSON). */
+/* The side of one floor mesh cell: the mesh reaches exactly as far as
+ * the floor's fade, grid_bands bands of grid_step_m, in mesh_cells / 2
+ * cells either side of the origin. */
 #define BOOT_ANIM_MESH_STEP_Q12 2187
 
 /* The floor's colour band spacing - see BOOT_ANIM_GRID_BANDS's own comment

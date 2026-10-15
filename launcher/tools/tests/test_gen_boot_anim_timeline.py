@@ -2,6 +2,7 @@
 the clip the firmware plays is the motion the generator checks."""
 
 import json
+import re
 import pathlib
 import subprocess
 import sys
@@ -121,7 +122,6 @@ class TimelineGeneratorTests(unittest.TestCase):
             (lambda timing: timing.update(mesh_cells=-2), None, "mesh_cells must be positive and even"),
             (lambda timing: timing.update(mesh_cells=47), None, "mesh_cells must be positive and even"),
             (lambda timing: timing.update(mesh_dash=2), None, "mesh_dash must be 0 or 1"),
-            (None, lambda config: config.update(mesh_step_m=0), "mesh_step_m must be positive"),
         )
         for change, config_change, message in cases:
             with self.subTest(message=message):
@@ -129,10 +129,17 @@ class TimelineGeneratorTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(message, result.stderr)
 
-    def test_the_mesh_step_is_emitted_in_q12(self):
-        result = self.generate(config_change=lambda config: config.update(mesh_step_m=0.5))
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("#define BOOT_ANIM_MESH_STEP_Q12 %d" % (gen_boot_anim_timeline.BOOT_ANIM_ONE // 2), result.stdout)
+    def test_the_mesh_ends_where_the_fade_does(self):
+        def define(result, name):
+            return int(re.search(r"#define %s (\d+)" % name, result.stdout).group(1))
+
+        for cells in (24, 48):
+            with self.subTest(cells=cells):
+                result = self.generate(lambda timing: timing.update(mesh_cells=cells))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                reach = define(result, "BOOT_ANIM_GRID_STEP_Q12") * define(result, "BOOT_ANIM_GRID_BANDS")
+                self.assertAlmostEqual(define(result, "BOOT_ANIM_MESH_STEP_Q12") * (cells // 2), reach,
+                                       delta=cells // 2)
 
     def test_keyframes_left_in_the_json_are_refused(self):
         result = self.generate(config_change=lambda config: config.update(keyframes=[]))

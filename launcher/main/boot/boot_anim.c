@@ -126,31 +126,52 @@ polar_point(int32_t radius, uint16_t turn, int32_t* re, int32_t* im) {
     *im = (int32_t)(((int64_t)radius * sin_v) >> TRIG_SIN_SHIFT);
 }
 
-/* A node of the floor mesh, lifted and projected; d is its distance from the
- * origin. */
+/* A node of the floor mesh, lifted and projected. band_q4 is its distance
+ * from the origin in BOOT_ANIM_GRID_STEP_Q12 bands, 4 fractional bits. Kept
+ * small: draw_floor() holds two rows of them on the stack. */
 typedef struct {
     vec3x_t cs;
-    int32_t d;
+    int16_t sx, sy;
+    int16_t band_q4;
     bool front;
-    int sx, sy;
 } mesh_node_t;
 
+#define MESH_BAND_SHIFT 4
+#define MESH_HALF       (BOOT_ANIM_MESH_CELLS / 2)
+
+/* The floor's height at a node, in t units. The one place that knows what
+ * lifts it. */
+static int32_t
+floor_lift(int32_t d, uint32_t now_ms, int32_t amp_q12) {
+    return boot_anim_wave_height(d, now_ms, amp_q12, BOOT_ANIM_WAVE_WAVELENGTH_Q12, BOOT_ANIM_WAVE_PERIOD_MS);
+}
+
 static mesh_node_t
-mesh_node(int32_t re, int32_t im, uint32_t now_ms, int32_t amp_q12, const boot_anim_view_t* view) {
+mesh_node(int i, int j, uint32_t now_ms, int32_t amp_q12, const boot_anim_view_t* view) {
+    const int32_t re = i * BOOT_ANIM_MESH_STEP_Q12;
+    const int32_t im = j * BOOT_ANIM_MESH_STEP_Q12;
+    const int32_t d = (int32_t)mathi_isqrt64((uint64_t)((int64_t)re * re + (int64_t)im * im));
     mesh_node_t node;
-    node.d = (int32_t)mathi_isqrt64((uint64_t)((int64_t)re * re + (int64_t)im * im));
-    const int32_t t =
-        boot_anim_wave_height(node.d, now_ms, amp_q12, BOOT_ANIM_WAVE_WAVELENGTH_Q12, BOOT_ANIM_WAVE_PERIOD_MS);
-    node.cs = boot_anim_to_camera_space(re, im, t, view);
-    node.sx = 0;
-    node.sy = 0;
-    node.front = r3d_project_point_cs_x(node.cs, view, &node.sx, &node.sy);
+    node.cs = boot_anim_to_camera_space(re, im, floor_lift(d, now_ms, amp_q12), view);
+    node.band_q4 = (int16_t)((d << MESH_BAND_SHIFT) / BOOT_ANIM_GRID_STEP_Q12);
+    int sx = 0, sy = 0;
+    node.front = r3d_project_point_cs_x(node.cs, view, &sx, &sy);
+    node.sx = (int16_t)sx;
+    node.sy = (int16_t)sy;
     return node;
 }
 
-/* Clipped at the near plane when one end is behind it, dropped when both are. */
+/* Coloured by the band its middle falls in; clipped at the near plane when
+ * one end is behind it, dropped when both are. */
 static void
-draw_mesh_segment(const mesh_node_t* a, const mesh_node_t* b, gfx_color_t c, const boot_anim_view_t* view) {
+draw_mesh_edge(const mesh_node_t* a, const mesh_node_t* b, uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
+    const int band = (a->band_q4 + b->band_q4) >> (MESH_BAND_SHIFT + 1);
+    const uint8_t alpha = scale8(boot_anim_grid_alpha(now_ms, band), ink);
+    if (alpha == 0) {
+        return;
+    }
+    const gfx_color_t c =
+        lit_whitened(gfx_hue_rgb(boot_anim_grid_hue(now_ms, band)), boot_anim_grid_whiten(now_ms), alpha);
     if (a->front && b->front) {
         draw_line_ex(a->sx, a->sy, b->sx, b->sy, c, 0u);
         return;
@@ -163,36 +184,32 @@ draw_mesh_segment(const mesh_node_t* a, const mesh_node_t* b, gfx_color_t c, con
     }
 }
 
-/* One line of the mesh at `fixed` across it, running along re or im. Every
- * `stride` nodes; dashed, it draws every other cell. */
-static void
-draw_mesh_line(int32_t fixed, bool along_re, int stride, uint32_t now_ms, int32_t amp_q12, uint8_t ink,
-               const boot_anim_view_t* view) {
-    const int half = BOOT_ANIM_MESH_CELLS / 2;
-    mesh_node_t prev = {0};
-
-    for (int k = -half; k <= half; k += stride) {
-        const int32_t run = k * BOOT_ANIM_MESH_STEP_Q12;
-        const mesh_node_t node =
-            along_re ? mesh_node(run, fixed, now_ms, amp_q12, view) : mesh_node(fixed, run, now_ms, amp_q12, view);
-        const bool dash_on = !BOOT_ANIM_MESH_DASH || (((k + half) / stride) & 1) == 1;
-        if (k > -half && dash_on) {
-            const int band = (prev.d + node.d) / (2 * BOOT_ANIM_GRID_STEP_Q12);
-            const uint8_t alpha = scale8(boot_anim_grid_alpha(now_ms, band), ink);
-            if (alpha > 0) {
-                const gfx_color_t c =
-                    lit_whitened(gfx_hue_rgb(boot_anim_grid_hue(now_ms, band)), boot_anim_grid_whiten(now_ms), alpha);
-                draw_mesh_segment(&prev, &node, c, view);
-            }
-        }
-        prev = node;
+/* How many cells out from the middle row j keeps nodes: those within one
+ * `stride` past the fade's reach. Further out, every edge's middle is past
+ * the fade too. -1 when the whole row is. */
+static int
+mesh_row_half(int j, int stride) {
+    const int64_t reach =
+        (int64_t)BOOT_ANIM_GRID_FADE * BOOT_ANIM_GRID_STEP_Q12 + (int64_t)stride * BOOT_ANIM_MESH_STEP_Q12;
+    const int64_t im = (int64_t)j * BOOT_ANIM_MESH_STEP_Q12;
+    const int64_t room = reach * reach - im * im;
+    if (room < 0) {
+        return -1;
     }
+    const int cells = (int)(mathi_isqrt64((uint64_t)room) / BOOT_ANIM_MESH_STEP_Q12);
+    return cells < MESH_HALF ? cells : MESH_HALF;
+}
+
+/* Dashed, a line draws every other cell along it. */
+static bool
+mesh_dash_on(int k, int stride) {
+    return !BOOT_ANIM_MESH_DASH || (((k + MESH_HALF) / stride) & 1) == 1;
 }
 
 #define BOOT_ANIM_GRID_SPOKE_DASH_STEPS 3
 
-/* Drawn FLAT: a spoke is a plane guide line, not the ring data the wave
- * is about. TWO PARTS, ONE reveal: `reach` scales one target radius
+/* Drawn FLAT: a spoke is a plane guide line, not the surface the wave
+ * moves. TWO PARTS, ONE reveal: `reach` scales one target radius
  * across the full near..far span: the near portion (stepped, dashable)
  * walks to min(target, near); the tail (one segment, undashed) appears
  * once that is done. Stepping the tail at the near resolution wastes
@@ -245,14 +262,33 @@ draw_grid_spoke(uint16_t turn, int32_t near, int32_t far, gfx_color_t c, bool da
 void
 draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view) {
     const int32_t amp_q12 = (int32_t)(((int64_t)BOOT_ANIM_WAVE_HEIGHT_Q12 * boot_anim_wave_envelope(now_ms)) / 255);
-    /* Deep in the crossfade, half the lines and nodes are enough. */
+    /* Deep in the crossfade, every other line and node is enough. */
     const int stride = gfx_dither_level(reveal) >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL ? 2 : 1;
-    const int half = BOOT_ANIM_MESH_CELLS / 2;
 
-    for (int k = -half; k <= half; k += stride) {
-        const int32_t fixed = k * BOOT_ANIM_MESH_STEP_Q12;
-        draw_mesh_line(fixed, true, stride, now_ms, amp_q12, ink, view);
-        draw_mesh_line(fixed, false, stride, now_ms, amp_q12, ink, view);
+    /* Row by row, each node built once: its edge to the node before it in
+     * the row, and to the one above it in the last row. */
+    mesh_node_t rows[2][BOOT_ANIM_MESH_CELLS + 1];
+    int above_half = -1;
+    int cur = 0;
+    for (int j = -MESH_HALF; j <= MESH_HALF; j += stride) {
+        const int row_half = mesh_row_half(j, stride);
+        mesh_node_t* row = rows[cur];
+        const mesh_node_t* above = rows[cur ^ 1];
+        for (int i = -MESH_HALF; i <= MESH_HALF; i += stride) {
+            if (mathi_abs(i) > row_half) {
+                continue;
+            }
+            mesh_node_t* node = &row[i + MESH_HALF];
+            *node = mesh_node(i, j, now_ms, amp_q12, view);
+            if (i - stride >= -row_half && mesh_dash_on(i, stride)) {
+                draw_mesh_edge(&row[i - stride + MESH_HALF], node, now_ms, ink, view);
+            }
+            if (mathi_abs(i) <= above_half && mesh_dash_on(j, stride)) {
+                draw_mesh_edge(&above[i + MESH_HALF], node, now_ms, ink, view);
+            }
+        }
+        above_half = row_half;
+        cur ^= 1;
     }
 
     const gfx_color_t spoke_c = lit(COL_AXIS, ink);
