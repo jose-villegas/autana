@@ -1,5 +1,5 @@
 /* ui_bridge: see ui_bridge.h. */
-#include "ui/ui_bridge.h"
+#include "ui/input/ui_bridge.h"
 
 #include <stddef.h>
 

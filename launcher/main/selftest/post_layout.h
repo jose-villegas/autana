@@ -13,7 +13,7 @@
  */
 #pragma once
 
-#include "ui/ui_anchor.h"
+#include "ui/layout/ui_anchor.h"
 
 /* The screen's fixed strings, beside the rects that have to hold them. */
 #define POST_LAYOUT_TITLE             "POWER-ON SELF TEST"

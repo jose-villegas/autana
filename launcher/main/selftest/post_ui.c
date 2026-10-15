@@ -14,7 +14,7 @@
 #include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "selftest/post_layout.h"
-#include "ui/ui_transform.h"
+#include "ui/layout/ui_transform.h"
 
 #define BG_RGB      0x0A0C14
 #define HEADING_RGB 0xE6EAF2

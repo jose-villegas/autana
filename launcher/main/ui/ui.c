@@ -44,8 +44,8 @@
 #include "gfx/target/gfx_target.h"
 #include "math/scalar/mathi.h"
 #include "services/tune.h"
-#include "ui/ui_bridge.h"
-#include "ui/ui_icons.h"
+#include "ui/controls/ui_icons.h"
+#include "ui/input/ui_bridge.h"
 #include "ui/ui_internal.h"
 
 static uint32_t ui_band_fallbacks;

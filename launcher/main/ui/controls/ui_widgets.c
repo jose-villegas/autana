@@ -1,4 +1,4 @@
-#include "ui/ui_widgets.h"
+#include "ui/controls/ui_widgets.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -6,9 +6,9 @@
 
 #include "draw/draw.h"
 #include "draw/draw_font_roles.h"
+#include "ui/controls/ui_icons.h"
+#include "ui/controls/ui_style.h"
 #include "ui/ui.h"
-#include "ui/ui_icons.h"
-#include "ui/ui_style.h"
 
 #define BUTTON_PAD      8
 #define BUTTON_ICON_GAP 8

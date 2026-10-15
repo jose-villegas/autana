@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 #include "microui.h"
-#include "ui/ui_scroll.h"
+#include "ui/layout/ui_scroll.h"
 
 typedef void (*render_lab_controls_fn)(mu_Context* ctx, ui_flow_t* flow, int width);
 
