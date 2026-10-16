@@ -21,6 +21,7 @@
 #include "input/input.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
+#include "ui/ui_mu.h"
 
 #define PORTRAIT_W  368
 #define PORTRAIT_H  448

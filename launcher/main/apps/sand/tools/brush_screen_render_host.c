@@ -39,6 +39,7 @@
 #include "ui/controls/ui_style.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h" /* UI_MARGIN, UI_SLIDER_KNOB_W only */
+#include "ui/ui_mu.h"
 
 /* A real brush cell, mode and radius to draw: the longest name, the worst
  * case brush_screen.c's name-shrink loop handles. */

@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "ui/ui_mu.h"
 
 #define UI_FACE_IDS_MAX      32
 #define UI_FACE_SCOPE_DEPTH  4
@@ -74,17 +75,12 @@ ui_theme(const ui_theme_t* t) {
         theme = ui_theme_from_style(ui_context()->style);
         return;
     }
-    theme = (ui_mu_theme_t){.panel_face = ui_rgb(t->panel_face),
-                            .panel_edge = ui_rgb(t->panel_edge),
-                            .button_face = ui_rgb(t->button_face),
-                            .accent = ui_rgb(t->accent),
-                            .accent_face = ui_rgb(t->accent_face),
-                            .on_accent = ui_rgb(t->on_accent),
-                            .text = ui_rgb(t->text),
-                            .caption = ui_rgb(t->caption),
-                            .muted = ui_rgb(t->muted),
-                            .text_scale = t->text_scale,
-                            .icon_side = t->icon_side};
+#define UI_FACE_THEME_COLOR(member) .member = ui_rgb(t->member)
+    theme = (ui_mu_theme_t){
+        UI_FACE_THEME_COLOR(panel_face), UI_FACE_THEME_COLOR(panel_edge),  UI_FACE_THEME_COLOR(button_face),
+        UI_FACE_THEME_COLOR(accent),     UI_FACE_THEME_COLOR(accent_face), UI_FACE_THEME_COLOR(on_accent),
+        UI_FACE_THEME_COLOR(text),       UI_FACE_THEME_COLOR(caption),     UI_FACE_THEME_COLOR(muted),
+        .text_scale = t->text_scale,     .icon_side = t->icon_side};
 }
 
 static bool
@@ -257,25 +253,14 @@ ui_dropdown_icons(recti_t r, const char* label, int* index, const char* const* n
     return dropdown(r, label, index, names, icons, count);
 }
 
-void
-ui_text(recti_t r, const char* s) {
-    ui_text_in(ui_context(), ui_mu_from_recti(r), s, theme.text, theme.text_scale, UI_ALIGN_LEFT);
-}
-
-void
-ui_text_right(recti_t r, const char* s) {
-    ui_text_in(ui_context(), ui_mu_from_recti(r), s, theme.text, theme.text_scale, UI_ALIGN_RIGHT);
-}
-
-void
-ui_text_centre(recti_t r, const char* s) {
-    ui_text_in(ui_context(), ui_mu_from_recti(r), s, theme.text, theme.text_scale, UI_ALIGN_CENTRE);
-}
-
-void
-ui_caption(recti_t r, const char* s) {
-    ui_text_in(ui_context(), ui_mu_from_recti(r), s, theme.caption, theme.text_scale, UI_ALIGN_LEFT);
-}
+#define UI_FACE_TEXT(name, alignment, ink)                                                                             \
+    void name(recti_t r, const char* s) {                                                                              \
+        ui_text_in(ui_context(), ui_mu_from_recti(r), s, theme.ink, theme.text_scale, alignment);                      \
+    }
+UI_FACE_TEXT(ui_text, UI_ALIGN_LEFT, text)
+UI_FACE_TEXT(ui_text_right, UI_ALIGN_RIGHT, text)
+UI_FACE_TEXT(ui_text_centre, UI_ALIGN_CENTRE, text)
+UI_FACE_TEXT(ui_caption, UI_ALIGN_LEFT, caption)
 
 void
 ui_header(recti_t r, const char* title) {

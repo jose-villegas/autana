@@ -21,6 +21,7 @@
 #include "apps/sand/ui/options_screen.h"
 #include "apps/sand/ui/sand_icons.h"
 #include "apps/sand/ui/title_screen.h"
+#include "ui/ui_mu.h"
 
 #define BACKGROUND 0x0A0C14
 

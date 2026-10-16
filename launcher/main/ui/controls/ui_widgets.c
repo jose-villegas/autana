@@ -10,6 +10,7 @@
 #include "ui/controls/ui_style.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
+#include "ui/ui_mu.h"
 
 #define BUTTON_PAD      8
 #define BUTTON_ICON_GAP 8
@@ -113,17 +114,17 @@ draw_icon_and_label(mu_Context* ctx, mu_Rect r, const draw_image_t* icon, const 
 }
 
 bool
-ui_icon_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_button_t* button,
-               const ui_mu_theme_t* theme) {
-    return ui_icon_button_id(ctx, mu_get_id(ctx, id, (int)strlen(id)), r, button, theme);
-}
-
-bool
 ui_icon_button_id(mu_Context* ctx, mu_Id id, mu_Rect r, const ui_widget_button_t* button, const ui_mu_theme_t* theme) {
     const control_t c = begin_control(ctx, id, r, button->enabled, button->selected, theme);
     const int label_w = ui_icon_button_label_width(r.w, button->icon != NULL, theme);
     draw_icon_and_label(ctx, r, button->icon, button->label, label_w, c.ink, theme);
     return c.clicked;
+}
+
+bool
+ui_icon_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_button_t* button,
+               const ui_mu_theme_t* theme) {
+    return ui_icon_button_id(ctx, mu_get_id(ctx, id, (int)strlen(id)), r, button, theme);
 }
 
 bool

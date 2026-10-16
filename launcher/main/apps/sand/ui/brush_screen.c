@@ -11,6 +11,7 @@
 #include "apps/sand/material_palette.h"
 #include "apps/sand/sand_swatch.h"
 #include "apps/sand/ui/sand_icons.h"
+#include "ui/ui_mu.h"
 
 /* Space between the three stacked panels - and between a panel's own
  * caption row and the control below it, which reuses the same value so the

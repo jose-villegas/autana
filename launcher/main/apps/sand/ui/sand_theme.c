@@ -1,4 +1,5 @@
 #include "sand_theme.h"
+#include "ui/ui_mu.h"
 
 const ui_mu_theme_t sand_ui_theme = {
     .panel_face = UI_RGB(SAND_THEME_PANEL_FACE_COLOR),

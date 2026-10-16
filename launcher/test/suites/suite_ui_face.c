@@ -9,9 +9,9 @@
 #include "suites.h"
 #include "test_cleanup.h"
 #include "timing.h"
-#include "ui/controls/ui_widgets.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
+#include "ui/ui_mu.h"
 #include "unity.h"
 
 #define WINDOW_FLAGS      (MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)

@@ -28,12 +28,12 @@
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_test.h"
 #include "input/input.h"
-#include "ui/controls/ui_widgets.h"
 #include "ui/input/ui_bridge.h"
 #include "ui/layout/ui_scroll.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
+#include "ui/ui_mu.h"
 
 static const ui_mu_theme_t THEME = {
     .panel_face = UI_RGB(0x202020),
