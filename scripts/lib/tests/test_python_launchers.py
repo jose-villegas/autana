@@ -24,7 +24,7 @@ class CmdLauncherTests(unittest.TestCase):
         shutil.copy(ROOT / "scripts/lib/python-min-version",
                     self.root / "scripts/lib/python-min-version")
         (self.root / "scripts/autana/autana.py").write_text(
-            'import sys\nprint("STARTED", sys.version_info[:2], sys.argv[1:])\n')
+            'import sys\nprint("STARTED", sys.version_info[:2], sys.argv[1:]); print("PREFIX", sys.prefix)\n')
         self.bin = self.root / "bin"
         self.bin.mkdir()
         self.stub = self.bin / "interpreter.py"
@@ -68,13 +68,14 @@ class CmdLauncherTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(repr(arguments), result.stdout)
 
-    def test_skips_old_python_and_py_for_idf_venv(self):
+    def test_prefers_idf_venv_to_supported_py(self):
         venv = self.root / "idf/python_env/idf_matching_env"
         subprocess.run([sys.executable, "-m", "venv", "--without-pip", str(venv)],
                        check=True, capture_output=True, timeout=300)
-        result = self.launch()
+        result = self.launch(py_version="current")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("STARTED " + str(sys.version_info[:2]), result.stdout)
+        self.assertIn("PREFIX " + str(venv), result.stdout)
 
     def test_none_matches_names_required_and_found_versions(self):
         result = self.launch()
