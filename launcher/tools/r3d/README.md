@@ -192,7 +192,7 @@ what the fit changes from the paper.
 |---|---|
 | Start | a smooth or flat `NAME.mesh`, welded so the vertices of a colour seam share one position |
 | Fitted | every welded position, and every vertex's sRGB colour, or every triangle's when the start is flat |
-| Forward model | nvdiffrast<sup>[[2]](../../../docs/Citations.md#2)</sup> draws what the device draws: Gouraud or per-triangle colours, single-sided faces culled, the `--scene` camera's background where nothing is drawn, at `--scale` times the reference size |
+| Forward model | nvdiffrast rasterizes visibility<sup>[[2]](../../../docs/Citations.md#2)</sup>; torch carries gradients through homogeneous barycentrics<sup>[[70]](../../../docs/Citations.md#70)</sup>, Gouraud or per-triangle shading, and analytic antialiasing (Laine et al. 2020)<sup>[[2]](../../../docs/Citations.md#2)</sup>. Single-sided faces are culled, the `--scene` camera supplies the background, and rendering uses `--scale` times the reference size |
 | Loss | the mean CIE76 ΔE<sup>[[4]](../../../docs/Citations.md#4)</sup> of `render_compare.py` against the nearest-upscaled reference PNG, over a batch of random poses, plus `--laplacian` times the drift of the positions' uniform-Laplacian coordinates<sup>[[5]](../../../docs/Citations.md#5)</sup> from the start's |
 | Schedule | Adam<sup>[[3]](../../../docs/Citations.md#3)</sup>; both learning rates decay tenfold over `--steps` |
 | Output | `write_lit_mesh()`, the writer `mesh_import.py` and `rebake.py` end in, plus a vertex-coloured OBJ |
@@ -201,6 +201,34 @@ The fitted colours are the bake, so the mesh enters the import at its last
 stage instead of being lit again. Every `--poses`/`--reference` pair trains
 one mesh together (the path-averaged mesh); `--per-shot` trains one per
 pair, for a mesh swapped as the camera moves through each segment.
+
+The fit produces identical bytes for identical inputs on the same GPU model
+in the pinned environment. A different GPU may produce different bytes.
+Deterministic torch algorithms remain enabled throughout a fit; its scoped
+cuBLAS workspace and algorithm settings are restored on return.
+
+Compare every pose with the library reference (RGB values in 0..1):
+
+```sh
+sh launcher/tools/r3d/gpu_python.sh launcher/tools/r3d/appearance_parity.py \
+    --start NAME.mesh --poses POSES.txt --scale 2 --clear 0 0 0
+```
+
+The manifold-quad test checks forward agreement within 2e-4 in RGB 0..1.
+Position gradients are checked against central finite differences; the
+library's atomic backward is not a deterministic gradient reference.
+The comparison below shows smooth shading and separate flat face colours,
+with an amplified difference heatmap. Flat colour discontinuities can differ
+at corner pixels; inspect the enlarged crops and run the parity tool on the
+fit's own poses.
+
+![Library and torch appearance forward models](../../../docs/images/render/appearance-parity.png)
+![Enlarged forward-model differences](../../../docs/images/render/appearance-parity.crops.png)
+
+Repeat `--poses` for additional paths. The tool prints maximum and mean
+absolute channel differences and the number of pixels with any channel
+more than 1/255 apart, per pose and across all poses. `--clear` is the
+scene camera's background RGB divided by 255.
 
 The fit runs on a CUDA GPU in its own environment with
 [requirements.txt](requirements.txt).

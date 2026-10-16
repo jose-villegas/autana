@@ -497,6 +497,81 @@ class PathVisibilityTests(unittest.TestCase):
 
 @unittest.skipIf(np is None or not GPU, "needs CUDA, PyTorch and nvdiffrast")
 class AppearanceFitTests(unittest.TestCase):
+    def test_barycentrics_and_antialias_match_reference(self):
+        from r3d.appearance_simplify import Renderer, deterministic_fit
+
+        size = (64, 48)
+        points = cuda([[-0.83, -0.72, 0.1], [0.71, -0.61, -0.2], [0.64, 0.81, 0.2], [-0.69, 0.68, 0]])
+        tris = np.array([[0, 1, 2], [0, 2, 3]])
+        render = Renderer(tris, [True, True], np.arange(4), size, "cuda")
+        colours = cuda([[0.8, 0.2, 0.1]] * 4)
+        matrix = cuda(projection([0, 0, 2], [0, 0, -1], *size, 0.62, 0.5))
+        with deterministic_fit():
+            points.requires_grad_()
+            clip, rast, keep = render.raster(points, matrix)
+            bary = render.barycentrics(clip, rast, keep)
+            covered = rast[0, ..., 3] > 0
+            torch.testing.assert_close(bary[covered][:, :2], rast[0, ..., :2][covered], atol=2e-5, rtol=2e-5)
+            image = render(points, colours, matrix)
+            gradient = torch.autograd.grad(image.double().sum(), points)[0]
+        from r3d.appearance_parity import reference_image
+
+        with torch.no_grad():
+            reference = reference_image(render, points, colours, matrix)
+        torch.testing.assert_close(image, reference, atol=2e-4, rtol=2e-4)
+        epsilon = 1e-4
+        finite = torch.zeros_like(points)
+        with deterministic_fit(), torch.no_grad():
+            for vertex in range(len(points)):
+                for axis in range(points.shape[1]):
+                    plus, minus = points.detach().clone(), points.detach().clone()
+                    plus[vertex, axis] += epsilon
+                    minus[vertex, axis] -= epsilon
+                    finite[vertex, axis] = (render(plus, colours, matrix).double().sum() -
+                                            render(minus, colours, matrix).double().sum()) / (2 * epsilon)
+        # Float32 crossing arithmetic limits central differences at a subpixel displacement.
+        torch.testing.assert_close(gradient, finite, atol=0.1, rtol=0.01)
+        cosine = torch.nn.functional.cosine_similarity(gradient.flatten(), finite.flatten(), dim=0)
+        self.assertGreater(float(cosine), 0.999)
+
+    def test_renderer_backward_is_bitwise_repeatable(self):
+        from r3d.appearance_simplify import Renderer, deterministic_fit
+
+        points, rgb, tris = grid(3)
+        render = Renderer(tris, np.ones(len(tris)), np.arange(len(points)), (48, 40), "cuda")
+        matrix = cuda(projection([0.2, -0.1, 3], [0, 0, -1], 48, 40, 0.62, 0.5))
+        results = []
+        with deterministic_fit():
+            for _ in range(5):
+                positions = cuda(points).requires_grad_()
+                colours = cuda(rgb / 255).requires_grad_()
+                image = render(positions, colours, matrix)
+                alpha = render.alpha(positions, matrix)
+                normal, _ = render.normals(positions, matrix, [0.2, -0.1, 3])
+                gradients = torch.autograd.grad(image.square().sum() + alpha.sum() + normal.sum(), (positions, colours))
+                results.append((image.detach(), *gradients))
+        for result in results[1:]:
+            for actual, expected in zip(result, results[0]):
+                self.assertTrue(torch.equal(actual, expected))
+
+    def test_optimise_with_coverage_is_bitwise_repeatable(self):
+        from r3d.appearance_simplify import Renderer, coverage_targets, optimise
+
+        points, rgb, tris = grid(2)
+        mesh = FitMesh(points, rgb / 255, tris, np.ones(len(tris)), 64, np.arange(len(points)))
+        size = (32, 24)
+        render = Renderer(tris, mesh.double, mesh.vertex_point, size, "cuda")
+        matrices = [projection([x, 0, 3], [0, 0, -1], *size, 0.62, 0.5) for x in (-0.2, 0.2)]
+        views = [(matrix, draw(render, points * [1.1, 1, 1], mesh.rgb, matrix)) for matrix in matrices]
+        masks = coverage_targets(mesh, views, size)
+        moved = mesh._replace(points=points * [0.8, 1, 1])
+        options = dict(steps=20, batch=2, lr_position=0.001, lr_colour=0.01, laplacian=0.1, report=0,
+                       coverage_weight=50, mine_every=5, coverage_views=views, coverage_masks=masks)
+        first = optimise(moved, views, size, **options)
+        second = optimise(moved, views, size, **options)
+        for actual, expected in zip(first, second):
+            self.assertEqual(np.asarray(actual).tobytes(), np.asarray(expected).tobytes())
+
     def test_coverage_closes_an_unwelded_wall_gap_at_a_pool_only_pose(self):
         from r3d.appearance_simplify import COVERAGE_WEIGHT, coverage_targets, mine_coverage, optimise
 

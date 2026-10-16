@@ -22,6 +22,8 @@ The optimiser needs PyTorch with CUDA and nvdiffrast; see the README.
 """
 
 import argparse
+from contextlib import contextmanager
+import os
 import pathlib
 import sys
 import time
@@ -46,6 +48,42 @@ COVERAGE_WEIGHT = 50.0
 MINE_EVERY = 250
 # Pose text round-trips can round the same sampled eye and forward differently.
 POSE_TOLERANCE = 1e-6
+CUBLAS_WORKSPACE_ENV = "CUBLAS_WORKSPACE_CONFIG"
+CUBLAS_WORKSPACE = ":4096:8"
+RASTER_EPSILON = 1.0 / 16.0
+
+
+@contextmanager
+def deterministic_fit():
+    """Keep CUDA reductions deterministic without changing subsequent in-process bakes."""
+    import torch
+
+    previous = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    workspace = os.environ.get(CUBLAS_WORKSPACE_ENV)
+    os.environ[CUBLAS_WORKSPACE_ENV] = CUBLAS_WORKSPACE
+    try:
+        torch.use_deterministic_algorithms(True)
+        yield
+    finally:
+        torch.use_deterministic_algorithms(previous, warn_only=warn_only)
+        if workspace is None:
+            os.environ.pop(CUBLAS_WORKSPACE_ENV, None)
+        else:
+            os.environ[CUBLAS_WORKSPACE_ENV] = workspace
+
+
+def edge_neighbours(tris):
+    """Neighbours by vertex index; edges shared by 3+ triangles have no neighbour."""
+    edges = np.stack([tris, np.roll(tris, -1, axis=1)], axis=-1).reshape(-1, 2)
+    edges.sort(axis=1)
+    order = np.lexsort((edges[:, 1], edges[:, 0]))
+    boundaries = np.r_[0, np.flatnonzero(np.any(np.diff(edges[order], axis=0), axis=1)) + 1, len(edges)]
+    pairs = boundaries[:-1][np.diff(boundaries) == 2]
+    neighbours = np.full(len(edges), -1, dtype=np.int64)
+    a, b = order[pairs], order[pairs + 1]
+    neighbours[a], neighbours[b] = b // 3, a // 3
+    return neighbours.reshape(-1, 3)
 
 
 class FitMesh(NamedTuple):
@@ -158,6 +196,7 @@ class Renderer:
         if flat:
             vertex_point = np.asarray(vertex_point)[tris].reshape(-1)
             tris = np.arange(len(vertex_point)).reshape(-1, 3)
+        self.neighbours = torch.as_tensor(edge_neighbours(np.asarray(tris)), device=device)
         self.flat = flat
         self.dr = dr
         self.context = dr.RasterizeCudaContext(device=device)
@@ -190,53 +229,135 @@ class Renderer:
         """The triangle each pixel shows, -1 where none."""
         import torch
 
-        clip = self.clip(points, clip_matrix)
-        keep = torch.nonzero(self.facing(clip))[:, 0]
-        width, height = self.size
-        rast, _ = self.dr.rasterize(self.context, clip[None].contiguous(), self.tris[keep].contiguous(), resolution=[height, width])
+        _clip, rast, keep = self.raster(points, clip_matrix)
         local = rast[0, ..., 3].long() - 1
-        return torch.where(local >= 0, keep[local.clamp_min(0)], local)
+        mapping = torch.cat([keep, keep.new_full((1,), -1)])
+        return mapping[torch.where(local >= 0, local, len(keep))]
 
-    def alpha(self, points, clip_matrix):
-        """Antialiased coverage, including backing; silhouette gradients move positions."""
-        clip = self.clip(points, clip_matrix)[None].contiguous()
-        tris = self.tris[self.facing(clip[0])].contiguous()
-        width, height = self.size
-        rast, _ = self.dr.rasterize(self.context, clip, tris, resolution=[height, width])
-        alpha = (rast[..., 3:] > 0).to(clip.dtype)
-        return self.dr.antialias(alpha.contiguous(), rast, clip, tris)[0, ..., 0]
 
-    def normals(self, points, clip_matrix, eye, clip=None):
-        """(per-pixel world normal turned toward `eye`, covered mask): the
-        mesh's area-weighted vertex normals, interpolated."""
+    def raster(self, points, clip_matrix, clip=None):
+        """Detached visibility from the library; positions retain only torch gradients."""
         import torch
 
         clip = self.clip(points, clip_matrix) if clip is None else clip
-        tris = self.tris[self.facing(clip)].contiguous()
+        keep = torch.nonzero(self.facing(clip))[:, 0]
         width, height = self.size
-        rast, _ = self.dr.rasterize(self.context, clip[None].contiguous(), tris, resolution=[height, width])
+        with torch.no_grad():
+            rast, _ = self.dr.rasterize(self.context, clip[None].detach().contiguous(),
+                                       self.tris[keep].contiguous(), resolution=[height, width])
+        return clip, rast, keep
+
+    def barycentrics(self, clip, rast, keep):
+        """Perspective weights via 2D homogeneous coordinates (Olano and Greer 1997, docs/Citations.md#70)."""
+        import torch
+
+        height, width = rast.shape[1:3]
+        y, x = torch.meshgrid(torch.arange(height, device=clip.device), torch.arange(width, device=clip.device), indexing="ij")
+        pixel = torch.stack([(2 * x + 1) / width - 1, (2 * y + 1) / height - 1], dim=-1)
+        local = rast[0, ..., 3].long() - 1
+        # The sentinel keeps an entirely culled mesh differentiable and background finite.
+        triangles = torch.cat([self.tris[keep].long(), self.tris.new_zeros((1, 3)).long()])
+        corners = clip[triangles[torch.where(local >= 0, local, len(keep))]]
+        relative = corners[..., :2] - pixel[..., None, :] * corners[..., 3:]
+        following = relative.roll(-1, dims=-2)
+        weights = relative[..., 0] * following[..., 1] - relative[..., 1] * following[..., 0]
+        weights = weights.roll(-1, dims=-1)
+        denominator = weights.sum(-1, keepdim=True)
+        valid = (local >= 0)[..., None] & (denominator != 0)
+        weights = torch.where(valid, weights / torch.where(valid, denominator, 1), 0)
+        # Subpixel coverage can include centres just outside the exact triangle.
+        uv = weights[..., :2].clamp(0, 1)
+        return torch.cat([uv, torch.where(valid, 1 - uv.sum(-1, keepdim=True), 0)], dim=-1)
+
+    def interpolate(self, attributes, clip, rast, keep):
+        """Gathers use torch's deterministic index backward instead of float atomics."""
+        import torch
+
+        local = rast[0, ..., 3].long() - 1
+        triangles = torch.cat([self.tris[keep].long(), self.tris.new_zeros((1, 3)).long()])
+        indices = triangles[torch.where(local >= 0, local, len(keep))]
+        return (self.barycentrics(clip, rast, keep)[..., None] * attributes[indices]).sum(-2)
+
+    def antialias(self, image, clip, rast, keep):
+        """Analytic visibility coverage, Laine et al. 2020 section 3.6 (docs/Citations.md#2)."""
+        import torch
+
+        height, width = image.shape[:2]
+        local = rast[0, ..., 3].long() - 1
+        ids = torch.cat([keep, keep.new_full((1,), -1)])[torch.where(local >= 0, local, len(keep))]
+        depth = rast[0, ..., 2]
+        xy = (clip[:, :2] / torch.where(clip[:, 3:] != 0, clip[:, 3:], 1) + 1) * clip.new_tensor([width, height]) / 2
+        with torch.no_grad():
+            corners = xy[self.tris.long()]
+            ab, ac = corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0]
+            area = ab[:, 0] * ac[:, 1] - ab[:, 1] * ac[:, 0]
+            facing = torch.zeros(len(self.tris), dtype=torch.bool, device=clip.device)
+            facing[keep] = True
+            adjacent = self.neighbours.clamp_min(0)
+            silhouette = (self.neighbours < 0) | ~facing[adjacent] | (area[:, None] * area[adjacent] <= 0)
+        result = image + clip.sum() * 0
+        for axis in (1, 0):
+            first = (slice(None), slice(None, -1)) if axis == 1 else (slice(None, -1), slice(None))
+            second = (slice(None), slice(1, None)) if axis == 1 else (slice(1, None), slice(None))
+            with torch.no_grad():
+                locations = torch.nonzero(ids[first] != ids[second])
+                y, x = locations.unbind(-1)
+                other_y, other_x = y + (axis == 0), x + (axis == 1)
+                left, right = ids[y, x], ids[other_y, other_x]
+                near = torch.where((left >= 0) & ((right < 0) | (depth[y, x] <= depth[other_y, other_x])), left, right)
+                edges = self.tris[near].long()
+            start = xy[edges]
+            finish = start.roll(-1, dims=1)
+            direction = finish - start
+            along, across = (0, 1) if axis == 1 else (1, 0)
+            centre = torch.stack([x, y], dim=-1).to(clip.dtype) + 0.5
+            denominator = direction[..., across]
+            safe = torch.where(denominator != 0, denominator, 1)
+            fraction = (centre[:, None, across] - start[..., across]) / safe
+            crossing = start[..., along] + fraction * direction[..., along] - centre[:, None, along]
+            with torch.no_grad():
+                valid = silhouette[near] & (denominator.abs() > direction[..., along].abs())
+                valid &= (fraction >= 0) & (fraction <= 1)
+                valid &= (crossing >= -RASTER_EPSILON) & (crossing <= 1 + RASTER_EPSILON)
+                selected = valid.to(torch.int64).argmax(-1)
+                active = valid.any(-1)
+            crossing = crossing.gather(1, selected[:, None])[:, 0].clamp(0, 1)
+            weight = torch.where(active, 0.5 - crossing, 0)
+            difference = image[other_y, other_x] - image[y, x]
+            # Fixed axis order and deterministic index_add handle pixels touched by multiple pairs.
+            delta = torch.zeros_like(image).reshape(-1, image.shape[-1])
+            delta = delta.index_add(0, y * width + x, difference * weight.clamp_min(0)[:, None])
+            delta = delta.index_add(0, other_y * width + other_x, difference * weight.clamp_max(0)[:, None])
+            result = result + delta.reshape_as(image)
+        return result
+
+    def alpha(self, points, clip_matrix):
+        """Antialiased coverage, including backing; silhouette gradients move positions."""
+        clip, rast, keep = self.raster(points, clip_matrix)
+        alpha = (rast[0, ..., 3:] > 0).to(clip.dtype)
+        return self.antialias(alpha, clip, rast, keep)[..., 0]
+
+    def normals(self, points, clip_matrix, eye, clip=None):
+        """World normals facing the eye and the covered mask, in image row order."""
+        import torch
+
+        clip, rast, keep = self.raster(points, clip_matrix, clip)
         vertex = vertex_normals(points, self.tris.long(), self.vertex_point)
-        attributes = torch.cat([vertex, points[self.vertex_point]], dim=1)[None].contiguous()
-        values, _ = self.dr.interpolate(attributes, rast, tris)
-        normal = torch.nn.functional.normalize(values[0, ..., :3], dim=-1)
-        towards = torch.as_tensor(eye, dtype=normal.dtype, device=normal.device) - values[0, ..., 3:]
+        values = self.interpolate(torch.cat([vertex, points[self.vertex_point]], dim=1), clip, rast, keep)
+        normal = torch.nn.functional.normalize(values[..., :3], dim=-1)
+        towards = torch.as_tensor(eye, dtype=normal.dtype, device=normal.device) - values[..., 3:]
         normal = torch.where((normal * towards).sum(-1, keepdim=True) < 0, -normal, normal)
         return normal.flip(0), (rast[0, ..., 3] > 0).flip(0)
 
     def __call__(self, points, colours, clip_matrix, clip=None):
         import torch
 
-        clip = self.clip(points, clip_matrix) if clip is None else clip
-        tris = self.tris[self.facing(clip)].contiguous()
-        clip = clip[None].contiguous()
-        width, height = self.size
-        rast, _ = self.dr.rasterize(self.context, clip, tris, resolution=[height, width])
+        clip, rast, keep = self.raster(points, clip_matrix, clip)
         if self.flat:
             colours = colours.repeat_interleave(3, dim=0)
-        colour, _ = self.dr.interpolate(colours[None].contiguous(), rast, tris)
-        colour = torch.where(rast[..., 3:] > 0, colour, self.clear.expand_as(colour))
-        colour = self.dr.antialias(colour.contiguous(), rast, clip, tris)
-        return colour[0].flip(0)
+        colour = self.interpolate(colours, clip, rast, keep)
+        colour = torch.where(rast[0, ..., 3:] > 0, colour, self.clear.expand_as(colour))
+        return self.antialias(colour, clip, rast, keep).flip(0)
 
 
 def held_out_indices(coverage_path, held_out_path):
@@ -423,6 +544,7 @@ def refine(mesh, error, budget):
     return mesh._replace(points=points, rgb=rgb, tris=tris, double=double, vertex_point=vertex_point)
 
 
+@deterministic_fit()
 def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian, seed=1, device="cuda", report=100,
              clear=(0.0, 0.0, 0.0), cost=None, cost_weight=0.0, scale=1, normal_weight=0.0, coverage_weight=0.0, mine_every=MINE_EVERY,
              coverage_views=(), coverage_masks=(), coverage_excluded=(), coverage_size=None):
@@ -537,6 +659,7 @@ def write_mesh(out_dir, name, mesh):
     return len(baked.tris)
 
 
+@deterministic_fit()
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--scene", required=True, help="the scene file the references were rendered from")
