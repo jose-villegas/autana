@@ -538,12 +538,9 @@ def print_suite_output(data, record_path, command, reason, verbose, boots_allowe
     crashed = print_crash_signs(data, boots_allowed)
     print(f"{command} capture: {record_path}")
     print(f"{command} capture ended: {reason}")
-    complete_re, marker = ((device_report.SELFTEST_COMPLETE_RE, "SELFTEST_COMPLETE")
-                           if command == "selftest" else
-                           (device_report.SUITE_COMPLETE_RE, "RUNSUITE_COMPLETE"))
-    incomplete = complete_re.search(text) is None
+    incomplete = reason != "complete"
     if incomplete:
-        print(f"no {marker} line arrived: the capture ended {reason}")
+        print(f"no completion line arrived: the capture ended {reason}")
     return failed + crashed + incomplete
 
 
@@ -738,8 +735,7 @@ class NestedCommand:
 
 
 def tests_done(data):
-    return (b"TESTS_DONE" in data or b"SELFTEST_COMPLETE" in data or
-            (b"Tests " in data and b"Failures" in data))
+    return device_report.SELFTEST_COMPLETE_RE.search(data.decode("utf-8", errors="replace")) is not None
 
 
 def capture(connection, output, max_seconds, idle_seconds, expected_build_id=None,
@@ -797,7 +793,7 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
                                               "console line: " + text.decode("ascii", "replace"))
                     if (b"no suite named '" + suite_name.encode("ascii") + b"'") in text:
                         raise RuntimeError("no suite named " + suite_name + " on this build")
-                    if b"SUITE_DONE" in text or text.startswith(suite_complete):
+                    if text.startswith(suite_complete):
                         return bytes(data), "complete"
             if complete is not None and complete(data):
                 return bytes(data), "complete"
@@ -1380,13 +1376,12 @@ class NoTestMatched(TestFilterError):
     """A --test pattern selected nothing."""
 
 
-def check_test_filter(data, suite, patterns, reason="complete"):
+def check_test_filter(data, suite, patterns):
     """A filtered run that did not filter, or had a pattern that matched
     nothing, is an error and not a result: the first would report every row
     of the suite as if it had been asked for, the second lists the names to
-    choose from. With `patterns` given, a capture that never printed the
-    completion line is one too: a filter error when the board went on to
-    finish, a capture error, which a batch survives, when it was cut short."""
+    choose from. A completed capture without filter counts cannot verify
+    the requested selection."""
     text = data.decode("utf-8", errors="replace")
     complete = None
     for complete in device_report.SUITE_COMPLETE_RE.finditer(text):
@@ -1397,8 +1392,6 @@ def check_test_filter(data, suite, patterns, reason="complete"):
                               "SUITE_FILTER_LEN - 1 characters, and there are at most "
                               "SUITE_FILTER_MAX (launcher/test/suites.h)")
     if complete is None:
-        if patterns and reason != "complete":
-            raise RuntimeError(f"no RUNSUITE_COMPLETE line arrived: the capture ended {reason}")
         if patterns:
             raise TestFilterError("no RUNSUITE_COMPLETE line arrived: an image that predates --test "
                                   "drops a request this long")
@@ -1451,9 +1444,11 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
         except Exception as report_error:  # a report is a convenience, never fails the capture
             print("report generation failed (capture is unaffected): " + str(report_error),
                   file=sys.stderr)
-    if patterns:
-        check_test_filter(data, args.suite, patterns, reason)
     failed = print_suite_output(data, final_path, "suite", reason, getattr(args, "verbose", False), BOOTS_ON_RUNNING)
+    if reason != "complete":
+        raise RuntimeError(f"no completion line arrived: the capture ended {reason}")
+    if patterns:
+        check_test_filter(data, args.suite, patterns)
     return 1 if failed else 0
 
 
@@ -1505,6 +1500,8 @@ def selftest(args, store, board):
                 print("report generation failed (capture is unaffected): " + str(report_error),
                       file=sys.stderr)
         failed = print_suite_output(data, final_path, "selftest", reason, getattr(args, "verbose", False), BOOTS_FROM_RESET)
+        if reason != "complete":
+            raise RuntimeError(f"no completion line arrived: the capture ended {reason}")
         return 1 if failed else 0
 
 
