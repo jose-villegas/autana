@@ -7,8 +7,11 @@ portable path in QEMU, so their QEMU counts would guard code the board never run
 
 Warm is the median after an untimed call, following Embench-IoT's cache-warming
 method.<sup>[[69]](../Citations.md#69)</sup> Cold is the median per call after cache
-writeback and invalidation, with both cores guarded through IDF's flash guard.
-Inputs are in internal RAM, so data never misses and cold measures the code refill.
+writeback and invalidation through IDF's `esp_cache_msync()`, with caches enabled.
+The whole D-cache address window covers flash rodata and PSRAM; dirty data is
+written back before invalidation. The linker-defined flash text range is rounded
+to instruction-cache lines and invalidated, including libm and other callees.
+Inputs and outputs are in internal RAM; cold calls refill code and flash rodata.
 Board instructions count a warmed call on core zero with frame counters disarmed;
 interrupts can contribute. A compiler barrier preserves all output components.
 Mat4 rows include the struct copies of the by-value API.
@@ -70,7 +73,7 @@ Board capture pending; board columns remain unmeasured.
 | mul (scalar) | x | - | - | - | - | - | - |
 | nlerp | f | - | - | - | - | - | madd.s; calls __divsf3, sqrtf |
 | nlerp | x | - | - | - | - | - | calls __divdi3 |
-| normalize (vec3) | f | - | - | - | 100.4 | - | madd.s; calls __divsf3, sqrtf |
+| normalize (vec3) | f | - | - | - | 99.4 | - | madd.s; calls __divsf3, sqrtf |
 | normalize (vec3) | x | - | - | - | - | - | calls __divdi3 |
 | quat mul | f | - | - | - | - | - | madd.s msub.s |
 | quat mul | x | - | - | - | - | - | - |
@@ -79,7 +82,7 @@ Board capture pending; board columns remain unmeasured.
 | scale (vec3) | s | - | - | - | - | - | - |
 | scale (vec3) | x | - | - | - | - | - | - |
 | sinf | f | - | - | - | - | - | calls _sinf |
-| slerp | f | - | - | - | 605.4 | - | madd.s; calls __divsf3, _sinf, sqrtf |
+| slerp | f | - | - | - | 600.4 | - | madd.s; calls __divsf3, _sinf, sqrtf |
 | sqrtf | f | - | - | - | - | - | calls sqrtf |
 | transform compute_matrix | f | - | - | - | - | - | madd.s msub.s |
 | transform compute_matrix | x | - | - | - | - | - | calls mat4x_from_trs, memcpy |
