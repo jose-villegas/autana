@@ -30,6 +30,7 @@ set(app_srcs
     "input/imu.c"
     "input/input_device.c"
     "input/tilt.c"
+    "input/gravity.c"
     "ui/ui.c"
     "ui/input/ui_bridge.c"
     "ui/ui_build.c"
