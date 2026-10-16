@@ -222,8 +222,8 @@ Present owns the framebuffer, band target and clip. Draw reads them through
 ```c
 gfx_target_t gfx_present_target(void);
 bool gfx_present_in_band(void);
-gfx_box_t gfx_clip_save(void);
-void gfx_clip_restore(gfx_box_t clip);
+recti_t gfx_clip_save(void);
+void gfx_clip_restore(recti_t clip);
 ```
 
 `gfx_rgb()` is inline in `gfx_color.h`. Only `gfx/present/` sources include
