@@ -54,5 +54,6 @@
       "delta_vs_main": 1821765.625,
       "delta_vs_main_percent": 186.815
     }
-  ]
+  ],
+  "measured_production_commit": "c39e72b432b4f81b5d80f23fb486938127884696"
 }
