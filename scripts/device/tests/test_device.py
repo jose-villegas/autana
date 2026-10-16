@@ -384,10 +384,11 @@ class DeviceTests(unittest.TestCase):
                                              (b":1:good:PASS\n", "timeout", True),
                                              (b":1:good:PASS\n" + marker, "complete", False)):
                 with self.subTest(command=command, reason=reason), mock.patch("builtins.print") as printed:
-                    failed = device.print_suite_output(data, "record.log", command, reason, False, 0)
-                    self.assertEqual(bool(failed), incomplete)
                     if incomplete:
-                        printed.assert_any_call(f"no completion line arrived: the capture ended {reason}")
+                        with self.assertRaisesRegex(RuntimeError, f"no completion line arrived: the capture ended {reason}"):
+                            device.print_suite_output(data, "record.log", command, reason, False, 0)
+                    else:
+                        self.assertEqual(device.print_suite_output(data, "record.log", command, reason, False, 0), 0)
 
     def test_suite_output_shows_failure_messages_and_caps_the_list(self):
         data = (b"boot detail\n" + b":1:good:PASS\n" +
@@ -570,7 +571,7 @@ class DeviceTests(unittest.TestCase):
             self.assertEqual(output.read_bytes(), b"before\n")
 
     def test_monitor_capture_ignores_test_completion(self):
-        chunks = [b"TESTS_DONE\n", b"ordinary after tests\n"]
+        chunks = [b"SELFTEST_COMPLETE failures=0 elapsed_ms=42\n", b"ordinary after tests\n"]
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "capture.log"
             with self.assertRaises(KeyboardInterrupt):
@@ -2540,11 +2541,11 @@ class ListenLifecycleTests(unittest.TestCase):
         self.assertNotIn("error: broken", text)
 
     def test_timed_listen_continues_past_test_completion(self):
-        connection = InterruptedConnection([b"TESTS_DONE\n", b"after tests\n"])
+        connection = InterruptedConnection([b"SELFTEST_COMPLETE failures=0 elapsed_ms=42\n", b"after tests\n"])
         code, _, entry, payload, _ = self.run_listen(connection, ["--seconds", "1"])
         self.assertEqual(code, 0)
         self.assertEqual(entry["reason"], "stopped")
-        self.assertEqual(payload, b"TESTS_DONE\nafter tests\n")
+        self.assertEqual(payload, b"SELFTEST_COMPLETE failures=0 elapsed_ms=42\nafter tests\n")
 
     def test_partial_echo_gets_newline_before_path(self):
         class Output(io.StringIO):
@@ -2855,8 +2856,7 @@ class SelftestTests(unittest.TestCase):
                 code, calls, entry = self.run_selftest(capture=(b"", reason))
                 self.assertIsInstance(code, RuntimeError)
                 self.assertEqual(str(code), f"no completion line arrived: the capture ended {reason}")
-                self.assertIn(f"no completion line arrived: the capture ended {reason}",
-                              output.getvalue())
+                self.assertIn("selftest results: 0 PASS, 0 FAIL", output.getvalue())
                 self.assertEqual(entry["reason"], reason)
                 self.assertIn("# Device Capture Report", calls["reports"])
                 self.assertIn(reason, calls["reports"])

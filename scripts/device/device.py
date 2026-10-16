@@ -538,10 +538,9 @@ def print_suite_output(data, record_path, command, reason, verbose, boots_allowe
     crashed = print_crash_signs(data, boots_allowed)
     print(f"{command} capture: {record_path}")
     print(f"{command} capture ended: {reason}")
-    incomplete = reason != "complete"
-    if incomplete:
-        print(f"no completion line arrived: the capture ended {reason}")
-    return failed + crashed + incomplete
+    if reason != "complete":
+        raise RuntimeError(f"no completion line arrived: the capture ended {reason}")
+    return failed + crashed
 
 
 def print_reset_output(data, verbose):
@@ -1445,8 +1444,6 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
             print("report generation failed (capture is unaffected): " + str(report_error),
                   file=sys.stderr)
     failed = print_suite_output(data, final_path, "suite", reason, getattr(args, "verbose", False), BOOTS_ON_RUNNING)
-    if reason != "complete":
-        raise RuntimeError(f"no completion line arrived: the capture ended {reason}")
     if patterns:
         check_test_filter(data, args.suite, patterns)
     return 1 if failed else 0
@@ -1500,8 +1497,6 @@ def selftest(args, store, board):
                 print("report generation failed (capture is unaffected): " + str(report_error),
                       file=sys.stderr)
         failed = print_suite_output(data, final_path, "selftest", reason, getattr(args, "verbose", False), BOOTS_FROM_RESET)
-        if reason != "complete":
-            raise RuntimeError(f"no completion line arrived: the capture ended {reason}")
         return 1 if failed else 0
 
 
