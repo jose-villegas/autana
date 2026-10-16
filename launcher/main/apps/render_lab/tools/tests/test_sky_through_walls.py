@@ -40,9 +40,9 @@ MOST_HOLED_FRAMES = {
     "sponza": 13,
     "sponza-lite": 12,
     "sponza-flat": 13,
-    "sponza-fitted": 78,
-    "sponza-fitted-full": 44,
-    "sponza-flat-fitted": 43,
+    "sponza-fitted": 85,
+    "sponza-fitted-full": 57,
+    "sponza-flat-fitted": 59,
 }
 
 
