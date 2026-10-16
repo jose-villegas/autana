@@ -204,8 +204,10 @@ pair, for a mesh swapped as the camera moves through each segment.
 
 The fit produces identical bytes for identical inputs on the same GPU model
 in the pinned environment. A different GPU may produce different bytes.
-Deterministic torch algorithms remain enabled throughout a fit; its scoped
-cuBLAS workspace and algorithm settings are restored on return.
+Per-pixel gathers accumulate gradients with fixed-point integer sums;
+integer addition is order-independent. Their integer scatter locally relaxes
+torch's deterministic algorithm flag and restores it on return. The fit's
+scoped cuBLAS workspace and algorithm settings are also restored on return.
 
 Compare every pose with the library reference (RGB values in 0..1):
 

@@ -255,40 +255,51 @@ class Renderer:
                                        self.tris[keep].contiguous(), resolution=[height, width])
         return clip, rast, keep
 
-    def barycentrics(self, clip, rast, keep):
+    def barycentrics(self, clip, rast, keep, locations=None):
         """Perspective weights via 2D homogeneous coordinates (Olano and Greer 1997, docs/Citations.md#70)."""
         import torch
 
+        from r3d.appearance_gather import gather
+
         height, width = rast.shape[1:3]
-        y, x = torch.meshgrid(torch.arange(height, device=clip.device), torch.arange(width, device=clip.device), indexing="ij")
-        pixel = torch.stack([(2 * x + 1) / width - 1, (2 * y + 1) / height - 1], dim=-1)
         local = rast[0, ..., 3].long() - 1
-        # The sentinel keeps an entirely culled mesh differentiable and background finite.
-        triangles = torch.cat([self.tris[keep].long(), self.tris.new_zeros((1, 3)).long()])
-        corners = clip[triangles[torch.where(local >= 0, local, len(keep))]]
+        compact = locations is not None
+        locations = torch.nonzero(local >= 0) if locations is None else locations
+        y, x = locations.unbind(-1)
+        pixel = torch.stack([(2 * x + 1) / width - 1, (2 * y + 1) / height - 1], dim=-1)
+        corners = gather(clip, self.tris[keep[local[y, x]]].long())
         relative = corners[..., :2] - pixel[..., None, :] * corners[..., 3:]
         following = relative.roll(-1, dims=-2)
         weights = relative[..., 0] * following[..., 1] - relative[..., 1] * following[..., 0]
         weights = weights.roll(-1, dims=-1)
         denominator = weights.sum(-1, keepdim=True)
-        valid = (local >= 0)[..., None] & (denominator != 0)
+        valid = denominator != 0
         weights = torch.where(valid, weights / torch.where(valid, denominator, 1), 0)
         # Subpixel coverage can include centres just outside the exact triangle.
         uv = weights[..., :2].clamp(0, 1)
-        return torch.cat([uv, torch.where(valid, 1 - uv.sum(-1, keepdim=True), 0)], dim=-1)
+        weights = torch.cat([uv, torch.where(valid, 1 - uv.sum(-1, keepdim=True), 0)], dim=-1)
+        if compact:
+            return weights
+        return clip.new_zeros((height, width, 3)).index_put((y, x), weights)
 
     def interpolate(self, attributes, clip, rast, keep):
-        """Gathers use torch's deterministic index backward instead of float atomics."""
+        """Interpolate covered pixels, leaving background zero."""
         import torch
 
+        from r3d.appearance_gather import gather
+
         local = rast[0, ..., 3].long() - 1
-        triangles = torch.cat([self.tris[keep].long(), self.tris.new_zeros((1, 3)).long()])
-        indices = triangles[torch.where(local >= 0, local, len(keep))]
-        return (self.barycentrics(clip, rast, keep)[..., None] * attributes[indices]).sum(-2)
+        locations = torch.nonzero(local >= 0)
+        y, x = locations.unbind(-1)
+        indices = self.tris[keep[local[y, x]]].long()
+        values = (self.barycentrics(clip, rast, keep, locations)[..., None] * gather(attributes, indices)).sum(-2)
+        return attributes.new_zeros((*local.shape, attributes.shape[-1])).index_put((y, x), values)
 
     def antialias(self, image, clip, rast, keep):
         """Analytic visibility coverage, Laine et al. 2020 section 3.6 (docs/Citations.md#2)."""
         import torch
+
+        from r3d.appearance_gather import gather
 
         height, width = image.shape[:2]
         local = rast[0, ..., 3].long() - 1
@@ -314,7 +325,7 @@ class Renderer:
                 left, right = ids[y, x], ids[other_y, other_x]
                 near = torch.where((left >= 0) & ((right < 0) | (depth[y, x] <= depth[other_y, other_x])), left, right)
                 edges = self.tris[near].long()
-            start = xy[edges]
+            start = gather(xy, edges)
             finish = start.roll(-1, dims=1)
             direction = finish - start
             along, across = (0, 1) if axis == 1 else (1, 0)
@@ -329,9 +340,12 @@ class Renderer:
                 valid &= (crossing >= -RASTER_EPSILON) & (crossing <= 1 + RASTER_EPSILON)
                 selected = valid.to(torch.int64).argmax(-1)
                 active = valid.any(-1)
-            crossing = crossing.gather(1, selected[:, None])[:, 0].clamp(0, 1)
+            selected = torch.arange(len(selected), device=selected.device) * crossing.shape[1] + selected
+            crossing = gather(crossing.reshape(-1), selected).clamp(0, 1)
             weight = torch.where(active, 0.5 - crossing, 0)
-            difference = image[other_y, other_x] - image[y, x]
+            pixels = image.reshape(-1, image.shape[-1])
+            pair = gather(pixels, torch.stack([y * width + x, other_y * width + other_x], dim=-1))
+            difference = pair[:, 1] - pair[:, 0]
             # Fixed axis order and deterministic index_add handle pixels touched by multiple pairs.
             delta = torch.zeros_like(image).reshape(-1, image.shape[-1])
             delta = delta.index_add(0, y * width + x, difference * weight.clamp_min(0)[:, None])

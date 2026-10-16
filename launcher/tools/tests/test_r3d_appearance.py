@@ -96,6 +96,41 @@ def write_flat_start(directory, count=4):
     return pathlib.Path(directory) / "flat.mesh"
 
 
+@unittest.skipIf(torch is None, "needs PyTorch")
+class GatherTests(unittest.TestCase):
+    def test_fixed_point_backward_matches_float_and_repeats(self):
+        from r3d.appearance_gather import gather
+        from r3d.appearance_simplify import deterministic_fit
+
+        for device in (["cpu", "cuda"] if GPU else ["cpu"]):
+            for seed in (1, 7, 19):
+                with self.subTest(device=device, seed=seed), deterministic_fit():
+                    generator = torch.Generator(device=device).manual_seed(seed)
+                    index = torch.randint(8, (4096, 3), device=device, generator=generator)
+                    incoming = torch.randn((*index.shape, 4), device=device, generator=generator)
+                    source = torch.randn((8, 4), device=device, generator=generator, requires_grad=True)
+                    expected = torch.autograd.grad(source[index], source, incoming)[0]
+                    gradients = [torch.autograd.grad(gather(source, index), source, incoming)[0] for _ in range(5)]
+                    torch.testing.assert_close(gradients[0], expected, atol=1e-4, rtol=1e-4)
+                    for actual in gradients[1:]:
+                        self.assertTrue(torch.equal(actual, gradients[0]))
+                    zero = torch.autograd.grad(gather(source, index), source, torch.zeros_like(incoming))[0]
+                    self.assertEqual(torch.count_nonzero(zero).item(), 0)
+                    empty = torch.autograd.grad(gather(source, index[:0]), source, incoming[:0])[0]
+                    self.assertEqual(torch.count_nonzero(empty).item(), 0)
+
+    def test_nonfinite_gradient_raises_and_restores_deterministic_mode(self):
+        from r3d.appearance_gather import gather
+        from r3d.appearance_simplify import deterministic_fit
+
+        for value in (float("inf"), float("nan")):
+            with self.subTest(value=value), deterministic_fit():
+                source = torch.ones((1, 1), requires_grad=True)
+                with self.assertRaisesRegex(ValueError, "finite"):
+                    gather(source, torch.tensor([0])).backward(torch.tensor([[value]]))
+                self.assertTrue(torch.are_deterministic_algorithms_enabled())
+
+
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class AppearanceMeshTests(unittest.TestCase):
     def test_coverage_pool_keeps_holes_but_excludes_held_out_samples(self):
