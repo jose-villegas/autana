@@ -1,0 +1,52 @@
+# Device ELF wrapper metadata, mnemonics and call targets; callee bodies excluded.
+# ELF sha256=808816b5c99956e883dc63f078a68c8cad0f24d478414184c1b6840942f35956
+add_f	add (vec3)	f	64	-
+add_i	add (vec3)	i	64	-
+add_s	add (vec3)	s	64	-
+add_x	add (vec3)	x	64	-
+atan2f_f	atan2f	f	64	calls atan2f
+convert_f_to_i	convert	f_to_i	64	-
+convert_f_to_s	convert	f_to_s	64	-
+convert_f_to_x	convert	f_to_x	64	-
+convert_i_to_f	convert	i_to_f	64	-
+convert_s_to_f	convert	s_to_f	64	-
+convert_x_to_f	convert	x_to_f	64	-
+cosf_f	cosf	f	64	calls _cosf
+div_recip_f	div_recip	f	64	calls __divsf3
+div_rsqrt_f	div_rsqrt	f	64	calls __divsf3, sqrtf
+dot_f	dot (vec3)	f	64	madd.s
+dot_f32_n256_f	dot_f32_n256	f	1	madd.s
+dot_i	dot (vec3)	i	64	-
+dot_s	dot (vec3)	s	64	-
+dot_x	dot (vec3)	x	64	-
+lerp_f	lerp (vec3)	f	64	madd.s
+lerp_i	lerp (vec3)	i	64	-
+lerp_s	lerp (vec3)	s	64	-
+lerp_x	lerp (vec3)	x	64	-
+mat4_mul_f	mat4 mul	f	64	madd.s; calls memcpy
+mat4_mul_x	mat4 mul	x	64	calls memcpy
+mathf_recip_f	mathf_recip	f	64	madd.s msub.s recip0.s
+mathf_rsqrt_f	mathf_rsqrt	f	64	msub.s rsqrt0.s
+mul_f	mul (scalar)	f	64	-
+mul_i	mul (scalar)	i	64	-
+mul_s	mul (scalar)	s	64	-
+mul_x	mul (scalar)	x	64	-
+nlerp_f	nlerp	f	64	madd.s; calls __divsf3, sqrtf
+nlerp_x	nlerp	x	64	calls __divdi3
+normalize_f	normalize (vec3)	f	64	madd.s; calls __divsf3, sqrtf
+normalize_x	normalize (vec3)	x	64	calls __divdi3
+quat_mul_f	quat mul	f	64	madd.s msub.s
+quat_mul_x	quat mul	x	64	msub.s
+scale_f	scale (vec3)	f	64	-
+scale_i	scale (vec3)	i	64	-
+scale_s	scale (vec3)	s	64	-
+scale_x	scale (vec3)	x	64	-
+sinf_f	sinf	f	64	calls _sinf
+slerp_f	slerp	f	64	madd.s; calls __divsf3, _sinf, sqrtf
+sqrtf_f	sqrtf	f	64	calls sqrtf
+transform_compute_matrix_f	transform compute_matrix	f	64	madd.s msub.s
+transform_compute_matrix_x	transform compute_matrix	x	64	calls mat4x_from_trs, memcpy
+trig_sin_i	trig_sin	i	64	-
+wrap_f	wrap	f	64	calls fmodf
+wrap_i	wrap	i	64	-
+wrap_x	wrap	x	64	-
