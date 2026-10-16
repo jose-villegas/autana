@@ -49,31 +49,24 @@ test_view_from_axes_maps_the_eye_and_frame_axes(void) {
 }
 
 static void
-test_scale_rows_matches_left_diagonal_product_exactly(void) {
-    const vec3f_t origin = {0.0F, 0.0F, 0.0F}, scale = {2.0F, -3.0F, 0.5F};
-    const mat4f_t m =
-        mat4f_from_trs((vec3f_t){4.0F, -2.0F, 3.0F}, quatf_from_euler((vec3f_t){0.2F, -0.4F, 0.6F}), scale);
-    const mat4f_t diagonal = mat4f_from_trs(origin, quatf_identity(), scale);
-    const mat4f_t expected = mat4f_mul_affine(diagonal, m), got = mat4f_scale_rows(m, scale);
+assert_mat4_exact(const mat4f_t* want, const mat4f_t* got) {
     for (int r = 0; r < 4; r++) {
         for (int c = 0; c < 4; c++) {
-            TEST_ASSERT_TRUE(expected.m[r][c] == got.m[r][c]);
+            TEST_ASSERT_TRUE(want->m[r][c] == got->m[r][c]);
         }
     }
 }
 
 static void
-test_scale_columns_matches_right_diagonal_product_exactly(void) {
+test_scale_rows_and_columns_match_diagonal_products_exactly(void) {
     const vec3f_t origin = {0.0F, 0.0F, 0.0F}, scale = {2.0F, -3.0F, 0.5F};
     const mat4f_t m =
         mat4f_from_trs((vec3f_t){4.0F, -2.0F, 3.0F}, quatf_from_euler((vec3f_t){0.2F, -0.4F, 0.6F}), scale);
     const mat4f_t diagonal = mat4f_from_trs(origin, quatf_identity(), scale);
-    const mat4f_t expected = mat4f_mul_affine(m, diagonal), got = mat4f_scale_columns(m, scale);
-    for (int r = 0; r < 4; r++) {
-        for (int c = 0; c < 4; c++) {
-            TEST_ASSERT_TRUE(expected.m[r][c] == got.m[r][c]);
-        }
-    }
+    const mat4f_t left = mat4f_mul_affine(diagonal, m), rows = mat4f_scale_rows(m, scale);
+    const mat4f_t right = mat4f_mul_affine(m, diagonal), columns = mat4f_scale_columns(m, scale);
+    assert_mat4_exact(&left, &rows);
+    assert_mat4_exact(&right, &columns);
 }
 
 static void
@@ -710,8 +703,7 @@ suite_math(void) {
     RUN_TEST(test_quatx_nlerp);
 
     RUN_TEST(test_view_from_axes_maps_the_eye_and_frame_axes);
-    RUN_TEST(test_scale_rows_matches_left_diagonal_product_exactly);
-    RUN_TEST(test_scale_columns_matches_right_diagonal_product_exactly);
+    RUN_TEST(test_scale_rows_and_columns_match_diagonal_products_exactly);
     RUN_TEST(test_mat3_product_applies_right_operand_first);
     RUN_TEST(test_mat3_from_nonsymmetric_mat4_preserves_rows);
     RUN_TEST(test_cofactor_random_matrices_and_reflection);
