@@ -3,19 +3,9 @@
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 scene_name=input_lab
+scene_ui=1
 scene_sources="
 main/services/tune.c
-main/ui/ui.c
-main/ui/input/ui_bridge.c
-main/ui/ui_build.c
-main/ui/face/ui_face.c
-main/ui/ui_canvas_marks.c
-main/ui/controls/ui_icons.c
-main/ui/input/ui_pointer.c
-main/ui/input/ui_snap.c
-main/ui/layout/ui_scroll.c
-main/ui/controls/ui_widgets.c
-components/microui/src/microui.c
 main/app/app_registry.c
 main/display/display.c
 main/input/tilt.c

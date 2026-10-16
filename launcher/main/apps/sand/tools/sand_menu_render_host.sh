@@ -6,25 +6,15 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 scene_name=sand_menu
+scene_ui=1
 scene_sources="
 main/services/tune.c
-main/ui/ui.c
-main/ui/input/ui_bridge.c
-main/ui/ui_build.c
-main/ui/face/ui_face.c
-main/ui/ui_canvas_marks.c
-main/ui/controls/ui_icons.c
-main/ui/input/ui_pointer.c
-main/ui/input/ui_snap.c
-main/ui/layout/ui_scroll.c
 main/apps/sand/sand_menu.c
 main/apps/sand/sand_mode_swatches.c
-main/ui/controls/ui_widgets.c
 main/apps/sand/ui/sand_icons.c
 main/apps/sand/ui/sand_theme.c
 main/apps/sand/ui/title_screen.c
 main/apps/sand/ui/options_screen.c
-components/microui/src/microui.c
 main/apps/sand/tools/sand_menu_render_host.c
 "
 scene_assets="main/engine main/apps/sand"

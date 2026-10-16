@@ -7,24 +7,15 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 scene_name=brush_screen
 scene_includes="main/apps/sand"
+scene_ui=1
 scene_sources="
 main/services/tune.c
 main/apps/sand/ui/brush_screen.c
 main/apps/sand/material.c
 main/apps/sand/material_palette.c
 main/apps/sand/sand_ui.c
-main/ui/input/ui_bridge.c
-main/ui/ui.c
-main/ui/ui_build.c
-main/ui/face/ui_face.c
-main/ui/ui_canvas_marks.c
-main/ui/controls/ui_icons.c
-main/ui/controls/ui_widgets.c
 main/apps/sand/ui/sand_icons.c
 main/apps/sand/ui/sand_theme.c
-main/ui/input/ui_pointer.c
-main/ui/input/ui_snap.c
-components/microui/src/microui.c
 main/apps/sand/tools/brush_screen_render_host.c
 "
 scene_assets="main/engine main/apps/sand"
