@@ -1,5 +1,5 @@
 /* Private UI state and backend entry points shared by the frame builder,
- * face and painter. Screens use ui.h or the transitional ui_mu.h. */
+ * face and painter. Screens use ui.h or ui_mu.h. */
 #pragma once
 
 #include <stdbool.h>
@@ -79,7 +79,7 @@ ui_font_scaled_t ui_resolve_font_scaled(mu_Font font);
 #ifndef ESP_PLATFORM
 /* Observes completed canvas paints without retaining device-side trace storage. */
 extern void (*ui_canvas_painted_for_test)(const mu_Container*);
-/* Reports open scopes at frame end and unmatched scope ends. */
+/* Observes face scope and identity misuse in host tests. */
 extern void (*ui_face_misuse_for_test)(void);
 #endif
 
