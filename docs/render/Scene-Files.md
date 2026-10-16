@@ -532,13 +532,13 @@ and a learning rate decaying geometrically. It changes the rest:
 | Forward model | deferred physically based shading | the device's Gouraud or flat colours, no shading |
 | Image term | L1 on log-tonemapped sRGB | mean CIE 1976 $`\Delta E^*_{ab}`$<sup>[[4]](../Citations.md#4)</sup> |
 | Laplacian weight | decays during the fit | constant $`\lambda`$; the drift is measured in start mean edge lengths |
-| Further terms | none | one-sided point-to-plane envelope to the source surface with a margin and a small tangential pull, in start mean edge lengths; $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../Citations.md#6)</sup> |
+| Further terms | none | a point-to-plane band, of half-width `surface_margin`, from the fit to the source surface and a small tangential pull, in start mean edge lengths; $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../Citations.md#6)</sup> |
 | Triangle budget | set by the start | the fitted mesh's, pruned to `budget` by coverage after fitting; a refined fitted mesh can be the start |
 
 Section 5.3 of the paper has no distance-to-reference term<sup>[[1]](../Citations.md#1)</sup>.
 Here the start is already a decimation of the reference surface, so the fit can
 be held to that surface. The relative Laplacian alone is blind to smooth drift;
-the one-sided envelope limits movement away from the source while its margin
+the band limits movement away from the source while its margin
 allows local fitting and the small tangential pull holds samples near their
 matches.
 
