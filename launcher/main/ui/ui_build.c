@@ -375,6 +375,7 @@ void
 ui_begin(const input_t* input) {
     /* Reset before the caller can state its own; see ui.h on why style does
      * not persist across frames. */
+    ui_face_begin();
     button_style = UI_BUTTON_FLAT;
     paint_only = input == NULL;
     if (!paint_only) {
@@ -458,12 +459,16 @@ ui_draw_icon(mu_Context* c, mu_Rect r, const draw_image_t* icon, const char* tex
  * needed. MU_OPT_HOLDFOCUS keeps a drag updating once it leaves the knob. */
 bool
 ui_slider_int(mu_Context* c, int* value, int lo, int hi, int step) {
-    const mu_Id id = mu_get_id(c, &value, sizeof(value));
+    return ui_slider_int_id(c, mu_get_id(c, &value, sizeof value), value, lo, hi, step, true);
+}
+
+bool
+ui_slider_int_id(mu_Context* c, mu_Id id, int* value, int lo, int hi, int step, bool enabled) {
     const mu_Rect track = mu_layout_next(c);
-    mu_update_control(c, id, track, MU_OPT_HOLDFOCUS);
+    mu_update_control(c, id, track, MU_OPT_HOLDFOCUS | (enabled ? 0 : MU_OPT_NOINTERACT));
 
     int v = *value;
-    if (c->focus == id && (c->mouse_down | c->mouse_pressed) == MU_MOUSE_LEFT) {
+    if (enabled && c->focus == id && (c->mouse_down | c->mouse_pressed) == MU_MOUSE_LEFT) {
         v = ui_slider_value_at_x(track, lo, hi, UI_SLIDER_KNOB_W, step, c->mouse_pos.x);
     }
     v = mu_clamp(v, lo, hi);

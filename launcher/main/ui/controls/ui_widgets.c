@@ -9,6 +9,7 @@
 #include "ui/controls/ui_icons.h"
 #include "ui/controls/ui_style.h"
 #include "ui/ui.h"
+#include "ui/ui_internal.h"
 
 #define BUTTON_PAD      8
 #define BUTTON_ICON_GAP 8
@@ -71,9 +72,8 @@ typedef struct {
 
 /* The hit, the face and the ink every button-shaped widget shares. */
 static control_t
-begin_control(mu_Context* ctx, const char* id, mu_Rect r, bool enabled, bool selected, const ui_mu_theme_t* theme) {
+begin_control(mu_Context* ctx, mu_Id mid, mu_Rect r, bool enabled, bool selected, const ui_mu_theme_t* theme) {
     control_t c = {0};
-    const mu_Id mid = mu_get_id(ctx, id, (int)strlen(id));
     mu_update_control(ctx, mid, r, enabled ? 0 : MU_OPT_NOINTERACT);
     if (enabled) {
         /* Focus, not hover: on touch the pointer sits on whatever a drag
@@ -115,6 +115,11 @@ draw_icon_and_label(mu_Context* ctx, mu_Rect r, const draw_image_t* icon, const 
 bool
 ui_icon_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_button_t* button,
                const ui_mu_theme_t* theme) {
+    return ui_icon_button_id(ctx, mu_get_id(ctx, id, (int)strlen(id)), r, button, theme);
+}
+
+bool
+ui_icon_button_id(mu_Context* ctx, mu_Id id, mu_Rect r, const ui_widget_button_t* button, const ui_mu_theme_t* theme) {
     const control_t c = begin_control(ctx, id, r, button->enabled, button->selected, theme);
     const int label_w = ui_icon_button_label_width(r.w, button->icon != NULL, theme);
     draw_icon_and_label(ctx, r, button->icon, button->label, label_w, c.ink, theme);
@@ -123,6 +128,12 @@ ui_icon_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_butto
 
 bool
 ui_theme_slider_int(mu_Context* ctx, mu_Rect r, int* value, int lo, int hi, int step, const ui_mu_theme_t* theme) {
+    return ui_theme_slider_int_id(ctx, mu_get_id(ctx, &value, sizeof value), r, value, lo, hi, step, true, theme);
+}
+
+bool
+ui_theme_slider_int_id(mu_Context* ctx, mu_Id id, mu_Rect r, int* value, int lo, int hi, int step, bool enabled,
+                       const ui_mu_theme_t* theme) {
     mu_Color* colors = ctx->style->colors;
     const mu_Color base = colors[MU_COLOR_BASE];
     const mu_Color border = colors[MU_COLOR_BORDER];
@@ -134,7 +145,7 @@ ui_theme_slider_int(mu_Context* ctx, mu_Rect r, int* value, int lo, int hi, int 
     colors[MU_COLOR_BUTTONFOCUS] = theme->accent_face;
 
     mu_layout_set_next(ctx, r, 0);
-    const bool changed = ui_slider_int(ctx, value, lo, hi, step);
+    const bool changed = ui_slider_int_id(ctx, id, value, lo, hi, step, enabled);
 
     colors[MU_COLOR_BASE] = base;
     colors[MU_COLOR_BORDER] = border;
@@ -285,6 +296,12 @@ close_if_abandoned(mu_Context* ctx, mu_Container* list) {
 int
 ui_mu_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const ui_dropdown_item_t* items, int count, int selected,
                const ui_mu_theme_t* theme) {
+    return ui_dropdown_id(ctx, mu_get_id(ctx, id, (int)strlen(id)), id, r, items, count, selected, true, theme);
+}
+
+int
+ui_dropdown_id(mu_Context* ctx, mu_Id mid, const char* id, mu_Rect r, const ui_dropdown_item_t* items, int count,
+               int selected, bool enabled, const ui_mu_theme_t* theme) {
     assert(count > 0);
     if (selected < 0 || selected >= count) {
         selected = 0;
@@ -294,7 +311,7 @@ ui_mu_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const ui_dropdown_ite
     close_if_abandoned(ctx, find_list(ctx, list_id));
 
     const bool was_open = ui_dropdown_is_open(ctx, id);
-    const control_t c = begin_control(ctx, id, r, true, false, theme);
+    const control_t c = begin_control(ctx, mid, r, enabled, false, theme);
     const ui_dropdown_item_t* chosen = &items[selected];
     draw_icon_and_label(ctx, r, chosen->icon, chosen->label, ui_dropdown_label_width(r.w, theme), c.ink, theme);
 
@@ -312,7 +329,7 @@ ui_mu_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const ui_dropdown_ite
         live.opening_touch = true;
         live.drawn_frame = ctx->frame;
     }
-    if (!ui_dropdown_is_open(ctx, id)) {
+    if (!enabled || !ui_dropdown_is_open(ctx, id)) {
         return -1;
     }
     return draw_dropdown_list(ctx, list_id, r, items, count, selected, theme);
@@ -344,6 +361,11 @@ ui_swatch_grid(mu_Context* ctx, mu_Rect r, const mu_Color* colors, int cols, int
 bool
 ui_tile_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_button_t* button,
                const ui_mu_theme_t* theme) {
+    return ui_tile_button_id(ctx, mu_get_id(ctx, id, (int)strlen(id)), r, button, theme);
+}
+
+bool
+ui_tile_button_id(mu_Context* ctx, mu_Id id, mu_Rect r, const ui_widget_button_t* button, const ui_mu_theme_t* theme) {
     const control_t c = begin_control(ctx, id, r, button->enabled, button->selected, theme);
 
     const mu_Rect icon = ui_tile_icon_rect(r, theme);

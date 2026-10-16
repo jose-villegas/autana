@@ -87,3 +87,17 @@ extern void (*ui_canvas_painted_for_test)(const mu_Container*);
 /* Reports open scopes at frame end and unmatched scope ends. */
 extern void (*ui_scope_imbalance_for_test)(void);
 #endif
+
+#include "ui/controls/ui_widgets.h"
+
+void ui_face_begin(void);
+void ui_face_end(void);
+bool ui_icon_button_id(mu_Context* ctx, mu_Id id, mu_Rect r, const ui_widget_button_t* button,
+                       const ui_mu_theme_t* theme);
+bool ui_tile_button_id(mu_Context* ctx, mu_Id id, mu_Rect r, const ui_widget_button_t* button,
+                       const ui_mu_theme_t* theme);
+bool ui_slider_int_id(mu_Context* ctx, mu_Id id, int* value, int lo, int hi, int step, bool enabled);
+bool ui_theme_slider_int_id(mu_Context* ctx, mu_Id id, mu_Rect r, int* value, int lo, int hi, int step, bool enabled,
+                            const ui_mu_theme_t* theme);
+int ui_dropdown_id(mu_Context* ctx, mu_Id mid, const char* id, mu_Rect r, const ui_dropdown_item_t* items, int count,
+                   int selected, bool enabled, const ui_mu_theme_t* theme);
