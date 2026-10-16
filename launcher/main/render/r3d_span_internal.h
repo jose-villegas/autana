@@ -27,10 +27,16 @@ bool r3d_span_plane_in_range(int32_t top, int32_t dx, int32_t dy, int32_t max, r
  * of line, as its layout is pinned. */
 __attribute__((noinline)) bool r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, recti_t box);
 
-/* The pixels `target` holds: its full width, its own rows. */
+/* The part of `centres` inside `target`'s window: its full width, its own
+ * rows. Runs once per triangle, so a miss is left as a size at or below zero
+ * (recti_is_empty reads it as empty) rather than clamped to zero. */
 static inline recti_t
-r3d_span_window(const r3d_span_target_t* target) {
-    return recti_from_edges(0, target->rows.row0, target->rows.width, target->rows.row1);
+r3d_span_window_box(const r3d_span_target_t* target, recti_t centres) {
+    const int left = mathi_max(centres.x, 0);
+    const int top = mathi_max(centres.y, target->rows.row0);
+    const recti_t box = {left, top, mathi_min(recti_right(centres), target->rows.width) - left,
+                         mathi_min(recti_bottom(centres), target->rows.row1) - top};
+    return box;
 }
 
 /* Added before truncating, so the sum is positive and truncating floors. */
@@ -91,9 +97,11 @@ r3d_span_extent_limits(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, c
                        int max_width) {
     const int32_t lo_x = r3d_span_min3(a->x, b->x, c->x);
     const int32_t hi_x = r3d_span_max3(a->x, b->x, c->x);
-    const recti_t centres =
-        recti_from_edges(r3d_span_first_centre(lo_x), r3d_span_first_centre(r3d_span_min3(a->y, b->y, c->y)),
-                         r3d_span_first_centre(hi_x), r3d_span_first_centre(r3d_span_max3(a->y, b->y, c->y)));
+    /* first_centre keeps order, so the edges never cross and need no clamp. */
+    const int left = r3d_span_first_centre(lo_x);
+    const int top = r3d_span_first_centre(r3d_span_min3(a->y, b->y, c->y));
+    const recti_t centres = {left, top, r3d_span_first_centre(hi_x) - left,
+                             r3d_span_first_centre(r3d_span_max3(a->y, b->y, c->y)) - top};
     return (r3d_span_extent_t){centres, centres.h <= max_rows && hi_x - lo_x <= max_width};
 }
 
