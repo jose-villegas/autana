@@ -535,7 +535,8 @@ def refine(mesh, error, budget):
 
 
 def surface_loss(samples, centres, normals, edge_length, margin):
-    """One-sided source envelope and a small pull, in start mean edge lengths."""
+    """From the fit to the source: a point-to-plane band of half-width `margin`
+    and a small pull, in start mean edge lengths."""
     offset = (samples - centres) / edge_length
     envelope = ((offset * normals).sum(-1).abs() - margin).clamp_min(0).square()
     return (envelope + SURFACE_TANGENTIAL_WEIGHT * offset.square().sum(-1)).mean()
@@ -578,7 +579,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         raise ValueError("a normal term needs the reference's normal buffers: reference_render.py --normals")
     if surface_weight:
         from scipy.spatial import cKDTree
-        from r3d.surface_samples import area_samples
+        from r3d.surface_samples import area_samples, uniform_barycentric
 
         if source is None:
             raise ValueError("a surface term needs the alpha-masked source")
@@ -589,9 +590,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         reference = torch.as_tensor(reference, dtype=start.dtype, device=device)
         face_normals = torch.as_tensor(face_normals, dtype=start.dtype, device=device)
         corners = torch.as_tensor(vertex_point[tris], device=device)
-        s, t = surface_rng.random((2, len(tris), SURFACE_SAMPLES_PER_TRIANGLE))
-        s = np.sqrt(s)
-        barycentric = torch.as_tensor(np.stack([1 - s, s * (1 - t), s * t], axis=-1),
+        barycentric = torch.as_tensor(uniform_barycentric(surface_rng, (len(tris), SURFACE_SAMPLES_PER_TRIANGLE)),
                                       dtype=start.dtype, device=device)
     adam = torch.optim.Adam([{"params": [points], "lr": lr_position * diagonal}, {"params": [colours], "lr": lr_colour}])
     schedule = torch.optim.lr_scheduler.LambdaLR(adam, lambda step: 0.1 ** (step / max(steps, 1)))
@@ -708,6 +707,8 @@ def main(argv=None):
         parser.error("give one --reference per --poses")
     if any(not np.isfinite(value) or value < 0 for value in (args.surface_weight, args.surface_margin)):
         parser.error("surface weight and margin must be finite and nonnegative")
+    if args.surface_weight and not args.score and not args.object:
+        parser.error("a surface term needs --object, the scene object whose source anchors the fit")
     coverage_views, coverage_size = pose_views(args.coverage_poses, args.scale) if args.coverage_poses else (None, None)
     scene = load_scene(args.scene)
     if scene.camera is None:
