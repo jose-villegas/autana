@@ -19,6 +19,9 @@
 static ui_mu_theme_t theme;
 static unsigned window_ordinal;
 static bool window_open;
+static mu_Id tap_id;
+static bool tap_released;
+static bool toggle_preview;
 
 /* A fixed table bounds frame work and storage without allocating while drawing. */
 static struct {
@@ -60,7 +63,11 @@ face_misuse(void) {
 }
 
 void
-ui_face_begin(void) {
+ui_face_begin(const input_t* input) {
+    tap_released = input && input->released;
+    if (!input || input->pressed || (!input->down && !input->released)) {
+        tap_id = 0;
+    }
     theme = ui_theme_from_style(ui_context()->style);
     window_ordinal = 0;
     window_open = false;
@@ -172,7 +179,9 @@ ui_row(int h) {
     FRAME_COST_BEGIN(face_from);
     FRAME_COST_BEGIN(backend_from);
     const int widths[] = {-1};
-    mu_layout_row(ui_context(), 1, widths, h);
+    if (window_open) {
+        mu_layout_row(ui_context(), 1, widths, h);
+    }
     FRAME_COST_END(backend_from, "ui.backend");
     FRAME_COST_END(face_from, "ui.face");
 }
@@ -181,11 +190,23 @@ recti_t
 ui_next(void) {
     FRAME_COST_BEGIN(face_from);
     FRAME_COST_BEGIN(backend_from);
-    const recti_t result = ui_recti_from_mu(mu_layout_next(ui_context()));
+    const recti_t result = window_open ? ui_recti_from_mu(mu_layout_next(ui_context())) : (recti_t){0};
     FRAME_COST_END(backend_from, "ui.backend");
     const recti_t face_result = result;
     FRAME_COST_END(face_from, "ui.face");
     return face_result;
+}
+
+static bool
+tap_hit(mu_Id id, recti_t r, bool pressed, bool enabled) {
+    if (pressed) {
+        tap_id = id;
+    }
+    if (!tap_released || tap_id != id) {
+        return false;
+    }
+    tap_id = 0;
+    return enabled && mu_mouse_over(ui_context(), ui_mu_from_recti(r)) != 0;
 }
 
 static bool
@@ -197,7 +218,7 @@ button(recti_t r, const char* label, bool selected, bool tile) {
         tile ? ui_tile_button_id(ui_context(), id, ui_mu_from_recti(r), &b, visible_label_length(label), &theme)
              : ui_icon_button_id(ui_context(), id, ui_mu_from_recti(r), &b, visible_label_length(label), &theme);
     FRAME_COST_END(backend_from, "ui.backend");
-    return hit;
+    return tap_hit(id, r, hit, b.enabled);
 }
 
 bool
@@ -220,11 +241,21 @@ bool
 ui_toggle(recti_t r, const char* label, bool* on) {
     FRAME_COST_BEGIN(face_from);
     const mu_Id id = widget_id(label);
+    bool preview = tap_id == id ? toggle_preview : *on;
+    if (tap_released && !mu_mouse_over(ui_context(), ui_mu_from_recti(r))) {
+        preview = *on;
+    }
     FRAME_COST_BEGIN(backend_from);
-    const bool hit = ui_toggle_id(ui_context(), id, ui_mu_from_recti(r), label, visible_label_length(label), on,
+    const bool hit = ui_toggle_id(ui_context(), id, ui_mu_from_recti(r), label, visible_label_length(label), &preview,
                                   !is_disabled(), &theme);
     FRAME_COST_END(backend_from, "ui.backend");
-    const bool face_result = hit;
+    if (hit) {
+        toggle_preview = preview;
+    }
+    const bool face_result = tap_hit(id, r, hit, !is_disabled());
+    if (face_result) {
+        *on = preview;
+    }
     FRAME_COST_END(face_from, "ui.face");
     return face_result;
 }
@@ -258,7 +289,7 @@ dropdown(recti_t r, const char* label, int* index, const char* const* names, con
     const int picked =
         ui_dropdown_id(ui_context(), id, name, ui_mu_from_recti(r), names, icons, count, *index, enabled, &theme);
     FRAME_COST_END(backend_from, "ui.backend");
-    if (picked < 0) {
+    if (picked < 0 || picked == *index) {
         return false;
     }
     *index = picked;

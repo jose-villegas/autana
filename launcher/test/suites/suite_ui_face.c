@@ -470,19 +470,19 @@ widget_frame(verb_t verb, const input_t* in, int* value, bool* on, bool disabled
     return hit;
 }
 
-static bool
-tap_widget(verb_t verb, int* value, bool* on, bool disabled, bool nested) {
+static unsigned
+tap_widget(verb_t verb, recti_t target, int* value, bool* on, bool disabled, bool nested) {
     const input_t idle = {0};
-    const input_t press = touch_sample(BOX, true, true);
-    const input_t hold = touch_sample(BOX, true, false);
-    const input_t release = touch_sample(BOX, false, true);
+    const input_t press = touch_sample(target, true, true);
+    const input_t hold = touch_sample(target, true, false);
+    const input_t release = touch_sample(target, false, true);
     (void)widget_frame(verb, &idle, value, on, disabled, nested);
     (void)widget_frame(verb, &idle, value, on, disabled, nested);
-    bool hit = widget_frame(verb, &press, value, on, disabled, nested);
+    unsigned hit = widget_frame(verb, &press, value, on, disabled, nested);
     for (int i = 0; i < TOUCH_HOLD_FRAMES; i++) {
-        hit |= widget_frame(verb, &hold, value, on, disabled, nested);
+        hit += widget_frame(verb, &hold, value, on, disabled, nested);
     }
-    hit |= widget_frame(verb, &release, value, on, disabled, nested);
+    hit += widget_frame(verb, &release, value, on, disabled, nested);
     return hit;
 }
 
@@ -491,7 +491,7 @@ widget_hit(verb_t verb) {
     fixture();
     int value = INITIAL_VALUE;
     bool on = false;
-    TEST_ASSERT_TRUE(tap_widget(verb, &value, &on, false, false));
+    TEST_ASSERT_TRUE(tap_widget(verb, BOX, &value, &on, false, false));
 }
 
 static void
@@ -509,7 +509,7 @@ test_ui_toggle_hit(void) {
     fixture();
     int value = INITIAL_VALUE;
     bool on = false;
-    TEST_ASSERT_TRUE(tap_widget(VERB_TOGGLE, &value, &on, false, false));
+    TEST_ASSERT_TRUE(tap_widget(VERB_TOGGLE, BOX, &value, &on, false, false));
     TEST_ASSERT_TRUE(on);
 }
 
@@ -538,7 +538,7 @@ dropdown_pick(verb_t verb) {
     fixture();
     int value = 0;
     bool on = false;
-    (void)tap_widget(verb, &value, &on, false, false);
+    (void)tap_widget(verb, BOX, &value, &on, false, false);
     const int row_h = BOX.h;
     const mu_Rect list = ui_dropdown_list_rect(ui_mu_from_recti(BOX), CHOICE_COUNT, row_h, ui_height(), UI_MARGIN);
     const int x = list.x + list.w / 2, y = list.y + row_h + row_h / 2;
@@ -566,7 +566,7 @@ test_disabled_true_is_muted(void) {
     fixture();
     int value = 0;
     bool on = false;
-    TEST_ASSERT_FALSE(tap_widget(VERB_BUTTON, &value, &on, true, false));
+    TEST_ASSERT_FALSE(tap_widget(VERB_BUTTON, BOX, &value, &on, true, false));
     assert_ink("Go", THEME.muted);
 }
 
@@ -575,7 +575,7 @@ test_disabled_false_is_unchanged(void) {
     fixture();
     int value = 0;
     bool on = false;
-    TEST_ASSERT_TRUE(tap_widget(VERB_BUTTON, &value, &on, false, false));
+    TEST_ASSERT_TRUE(tap_widget(VERB_BUTTON, BOX, &value, &on, false, false));
     assert_ink("Go", THEME.text);
 }
 
@@ -584,7 +584,7 @@ test_disabled_nested_false_stays_disabled(void) {
     fixture();
     int value = 0;
     bool on = false;
-    TEST_ASSERT_FALSE(tap_widget(VERB_BUTTON, &value, &on, true, true));
+    TEST_ASSERT_FALSE(tap_widget(VERB_BUTTON, BOX, &value, &on, true, true));
     assert_ink("Go", THEME.muted);
 }
 
@@ -658,6 +658,362 @@ scope_fixture(void) {
     TEST_ASSERT_TRUE(gfx_init());
     scope_gfx = true;
     ui_face_misuse_for_test = report_imbalance;
+}
+
+static void
+assert_scale(const char* label, int scale) {
+    const mu_TextCommand* text = text_command(label);
+    TEST_ASSERT_NOT_NULL(text);
+    TEST_ASSERT_EQUAL_INT(draw_font_height(draw_font_ui(), scale), ui_context()->text_height(text->font));
+}
+
+static void
+test_scope_depth_boundary(void) {
+    scope_fixture();
+    for (int depth = UI_FACE_SCOPE_DEPTH; depth <= UI_FACE_SCOPE_DEPTH + 1; depth++) {
+        reports = 0;
+        begin_face();
+        ui_theme(&THEME);
+        for (int i = 0; i < depth; i++) {
+            ui_color_begin(UI_COLOR_TEXT, FACE_RGB);
+            ui_scale_begin(SCOPE_SCALE);
+            ui_disabled_begin(true);
+        }
+        for (int i = 0; i < depth; i++) {
+            ui_disabled_end();
+            ui_scale_end();
+            ui_color_end();
+        }
+        ui_text(BOX, "Restored");
+        end_face();
+        TEST_ASSERT_EQUAL_INT(depth > UI_FACE_SCOPE_DEPTH ? 1 : 0, reports);
+        assert_ink("Restored", THEME.text);
+        assert_scale("Restored", THEME.text_scale);
+    }
+}
+
+static void
+test_nested_scope_values(void) {
+    fixture();
+    begin_face();
+    ui_theme(&THEME);
+    ui_color_begin(UI_COLOR_TEXT, FACE_RGB);
+    ui_scale_begin(SCOPE_SCALE);
+    ui_color_begin(UI_COLOR_TEXT, THEME.caption);
+    ui_scale_begin(SCOPE_SCALE + 1);
+    ui_text(BOX, "Inner");
+    ui_scale_end();
+    ui_color_end();
+    ui_text(BOX, "Outer");
+    ui_scale_end();
+    ui_color_end();
+    ui_text(BOX, "After");
+    end_face();
+    assert_ink("Inner", THEME.caption);
+    assert_scale("Inner", SCOPE_SCALE + 1);
+    assert_ink("Outer", FACE_RGB);
+    assert_scale("Outer", SCOPE_SCALE);
+    assert_ink("After", THEME.text);
+    assert_scale("After", THEME.text_scale);
+}
+
+static void
+test_disabled_every_widget(void) {
+    static const verb_t verbs[] = {VERB_TILE, VERB_TOGGLE, VERB_SLIDER, VERB_DROPDOWN, VERB_DROPDOWN_ICONS};
+    for (size_t i = 0; i < sizeof verbs / sizeof verbs[0]; i++) {
+        const verb_t verb = verbs[i];
+        const bool dropdown = verb == VERB_DROPDOWN || verb == VERB_DROPDOWN_ICONS;
+        for (int disabled = 0; disabled <= 1; disabled++) {
+            fixture();
+            int value = dropdown ? 0 : INITIAL_VALUE;
+            bool on = false;
+            unsigned hits = tap_widget(verb, BOX, &value, &on, disabled != 0, false);
+            if (dropdown) {
+                const mu_Rect list =
+                    ui_dropdown_list_rect(ui_mu_from_recti(BOX), CHOICE_COUNT, BOX.h, ui_height(), UI_MARGIN);
+                const recti_t row = {list.x, list.y + BOX.h, list.w, BOX.h};
+                hits += tap_widget(verb, row, &value, &on, disabled != 0, false);
+            }
+            if (disabled) {
+                TEST_ASSERT_EQUAL_UINT(0, hits);
+                TEST_ASSERT_EQUAL_INT(dropdown ? 0 : INITIAL_VALUE, value);
+                TEST_ASSERT_FALSE(on);
+            } else {
+                TEST_ASSERT_EQUAL_UINT(1, hits);
+            }
+        }
+    }
+}
+
+static void
+tap_release_contract(verb_t verb) {
+    fixture();
+    int value = INITIAL_VALUE;
+    bool on = false;
+    const input_t idle = {0};
+    const input_t press = touch_sample(BOX, true, true);
+    const input_t hold = touch_sample(BOX, true, false);
+    const input_t release = touch_sample(BOX, false, true);
+    (void)widget_frame(verb, &idle, &value, &on, false, false);
+    (void)widget_frame(verb, &idle, &value, &on, false, false);
+    TEST_ASSERT_FALSE(widget_frame(verb, &press, &value, &on, false, false));
+    for (int i = 0; i < TOUCH_HOLD_FRAMES; i++) {
+        TEST_ASSERT_FALSE(widget_frame(verb, &hold, &value, &on, false, false));
+        TEST_ASSERT_FALSE(on);
+    }
+    TEST_ASSERT_TRUE(widget_frame(verb, &release, &value, &on, false, false));
+    TEST_ASSERT_EQUAL_INT(verb == VERB_TOGGLE, on);
+    TEST_ASSERT_FALSE(widget_frame(verb, &idle, &value, &on, false, false));
+    TEST_ASSERT_EQUAL_UINT(1, tap_widget(verb, BOX, &value, &on, false, false));
+    TEST_ASSERT_FALSE(on);
+    const recti_t outside = {0, 0, 1, 1};
+    TEST_ASSERT_EQUAL_UINT(0, tap_widget(verb, outside, &value, &on, false, false));
+    (void)widget_frame(verb, &press, &value, &on, false, false);
+    (void)widget_frame(verb, &hold, &value, &on, false, false);
+    const input_t out_release = touch_sample(outside, false, true);
+    TEST_ASSERT_FALSE(widget_frame(verb, &out_release, &value, &on, false, false));
+    TEST_ASSERT_FALSE(on);
+}
+
+static void
+test_tap_release_contract(void) {
+    tap_release_contract(VERB_BUTTON);
+    tap_release_contract(VERB_TILE);
+    tap_release_contract(VERB_TOGGLE);
+}
+
+static void
+test_unchanged_picks_return_false(void) {
+    fixture();
+    int value = 0;
+    bool on = false;
+    TEST_ASSERT_EQUAL_UINT(0, tap_widget(VERB_DROPDOWN, BOX, &value, &on, false, false));
+    const mu_Rect list = ui_dropdown_list_rect(ui_mu_from_recti(BOX), CHOICE_COUNT, BOX.h, ui_height(), UI_MARGIN);
+    const recti_t current = {list.x, list.y, list.w, BOX.h};
+    TEST_ASSERT_EQUAL_UINT(0, tap_widget(VERB_DROPDOWN, current, &value, &on, false, false));
+    TEST_ASSERT_EQUAL_INT(0, value);
+    ui_init();
+    value = (RANGE_LO + RANGE_HI) / 2;
+    TEST_ASSERT_EQUAL_UINT(0, tap_widget(VERB_SLIDER, BOX, &value, &on, false, false));
+    TEST_ASSERT_EQUAL_INT((RANGE_LO + RANGE_HI) / 2, value);
+}
+
+static void
+pair_frame(verb_t verb, const input_t* in, bool* first, bool* second) {
+    ui_begin(in);
+    ui_screen();
+    if (verb == VERB_TOGGLE) {
+        (void)ui_toggle(BOX, "Same", first);
+        (void)ui_toggle(SECOND, "Same", second);
+    } else {
+        int index = 0;
+        (void)ui_dropdown(BOX, "Same", &index, NAMES, CHOICE_COUNT);
+        (void)ui_dropdown(SECOND, "Same", &index, NAMES, CHOICE_COUNT);
+    }
+    end_face();
+}
+
+static void
+tap_pair(verb_t verb, recti_t target, bool* first, bool* second) {
+    const input_t idle = {0};
+    const input_t press = touch_sample(target, true, true);
+    const input_t release = touch_sample(target, false, true);
+    pair_frame(verb, &idle, first, second);
+    pair_frame(verb, &idle, first, second);
+    pair_frame(verb, &press, first, second);
+    pair_frame(verb, &release, first, second);
+}
+
+static void
+test_duplicate_toggle_identity(void) {
+    fixture();
+    bool first = false, second = false;
+    tap_pair(VERB_TOGGLE, SECOND, &first, &second);
+    TEST_ASSERT_FALSE(first);
+    TEST_ASSERT_TRUE(second);
+    tap_pair(VERB_TOGGLE, BOX, &first, &second);
+    TEST_ASSERT_TRUE(first);
+    TEST_ASSERT_TRUE(second);
+}
+
+static mu_Id
+opened_pair_id(recti_t target) {
+    ui_init();
+    bool first = false, second = false;
+    tap_pair(VERB_DROPDOWN, target, &first, &second);
+    mu_Context* ctx = ui_context();
+    TEST_ASSERT_EQUAL_INT(2, ctx->root_list.idx);
+    const mu_Container* popup = ctx->root_list.items[ctx->root_list.idx - 1];
+    return ctx->container_pool[popup - ctx->containers].id;
+}
+
+static void
+test_duplicate_dropdown_identity(void) {
+    fixture();
+    const mu_Id first = opened_pair_id(BOX);
+    const mu_Id second = opened_pair_id(SECOND);
+    TEST_ASSERT_NOT_EQUAL(first, second);
+}
+
+static void
+test_empty_visible_labels(void) {
+    fixture();
+    begin_face();
+    bool on = true;
+    (void)ui_button(BOX, "##x");
+    (void)ui_toggle(SECOND, "###x", &on);
+    end_face();
+    mu_Command* cmd = NULL;
+    while (mu_next_command(ui_context(), &cmd)) {
+        TEST_ASSERT_NOT_EQUAL(MU_COMMAND_TEXT, cmd->type);
+    }
+}
+
+static void
+test_frame_state_reset(void) {
+    scope_fixture();
+    const ui_mu_theme_t base = ui_theme_from_style(ui_context()->style);
+    for (int state = 0; state < CHOICE_COUNT; state++) {
+        begin_face();
+        if (state == 0) {
+            ui_theme(&THEME);
+        } else if (state == 1) {
+            ui_color_begin(UI_COLOR_TEXT, FACE_RGB);
+            ui_scale_begin(SCOPE_SCALE);
+        } else {
+            ui_disabled_begin(true);
+        }
+        end_face();
+        bool on = false;
+        const input_t idle = {0};
+        const input_t press = touch_sample(BOX, true, true);
+        const input_t release = touch_sample(BOX, false, true);
+        const input_t frames[] = {idle, idle, press, release};
+        unsigned hits = 0;
+        for (size_t i = 0; i < sizeof frames / sizeof frames[0]; i++) {
+            ui_begin(&frames[i]);
+            ui_screen();
+            hits += ui_toggle(BOX, "Reset", &on);
+            end_face();
+        }
+        TEST_ASSERT_EQUAL_UINT(1, hits);
+        const mu_TextCommand* text = text_command("Reset");
+        TEST_ASSERT_NOT_NULL(text);
+        TEST_ASSERT_EQUAL_MEMORY(&base.text, &text->color, sizeof base.text);
+        assert_scale("Reset", base.text_scale);
+    }
+}
+
+static void
+backdrop(void) {}
+
+static void
+test_all_end_paths(void) {
+    scope_fixture();
+    for (int over = 0; over <= 1; over++) {
+        for (int open = 0; open <= 1; open++) {
+            reports = 0;
+            begin_face();
+            ui_color_begin(UI_COLOR_TEXT, FACE_RGB);
+            if (!open) {
+                ui_color_end();
+            }
+            if (over) {
+                (void)ui_end_over(backdrop);
+            } else {
+                ui_end_for_bands(UI_NO_BACKGROUND);
+            }
+            TEST_ASSERT_EQUAL_INT(open, reports);
+            TEST_ASSERT_EQUAL_INT(0, ui_context()->container_stack.idx);
+            begin_face();
+            end_face();
+            TEST_ASSERT_EQUAL_INT(open, reports);
+        }
+    }
+}
+
+static void
+test_window_order_contract(void) {
+    scope_fixture();
+    ui_begin(NULL);
+    ui_window(BOX);
+    ui_screen();
+    end_face();
+    TEST_ASSERT_EQUAL_INT(0, ui_context()->container_stack.idx);
+    ui_begin(NULL);
+    (void)ui_end(UI_NO_BACKGROUND);
+    TEST_ASSERT_EQUAL_INT(0, ui_context()->container_stack.idx);
+    ui_begin(NULL);
+    ui_row(BOX.h);
+    const recti_t next = ui_next();
+    const recti_t empty = {0};
+    TEST_ASSERT_EQUAL_MEMORY(&empty, &next, sizeof empty);
+    end_face();
+    TEST_ASSERT_EQUAL_INT(0, ui_context()->container_stack.idx);
+}
+
+typedef enum { STATE_TILE, STATE_TOGGLE, STATE_DROPDOWN, STATE_HIDDEN, STATE_DISABLED } command_state_t;
+
+static void
+state_commands(command_state_t state, bool face) {
+    const ui_mu_theme_t t = legacy_theme(THEME);
+    const ui_widget_button_t button = {
+        .label = "Go", .enabled = state != STATE_DISABLED, .selected = state == STATE_TILE};
+    const mu_Rect r = ui_mu_from_recti(BOX);
+    int index = CHOICE_COUNT - 1;
+    bool on = true;
+    int legacy_on = on;
+    if (face) {
+        if (state != STATE_TOGGLE) {
+            ui_theme(&THEME);
+        }
+        ui_disabled_begin(state == STATE_DISABLED);
+        switch (state) {
+            case STATE_TILE: (void)ui_tile(BOX, "Go", true); break;
+            case STATE_TOGGLE: (void)ui_toggle(BOX, "Go", &on); break;
+            case STATE_DROPDOWN: (void)ui_dropdown(BOX, "Go", &index, NAMES, CHOICE_COUNT); break;
+            case STATE_HIDDEN: (void)ui_button(BOX, "Go##id"); break;
+            case STATE_DISABLED: (void)ui_button(BOX, "Go"); break;
+        }
+        ui_disabled_end();
+    } else {
+        switch (state) {
+            case STATE_TILE: (void)ui_tile_button(ui_context(), "Go", r, &button, &t); break;
+            case STATE_TOGGLE:
+                mu_layout_set_next(ui_context(), r, 0);
+                (void)mu_checkbox(ui_context(), "Go", &legacy_on);
+                break;
+            case STATE_DROPDOWN:
+                (void)ui_mu_dropdown(ui_context(), "Go", r, NAMES, NULL, CHOICE_COUNT, index, &t);
+                break;
+            case STATE_HIDDEN:
+            case STATE_DISABLED: (void)ui_icon_button(ui_context(), "Go", r, &button, &t); break;
+        }
+    }
+}
+
+static void
+test_additional_command_states(void) {
+    for (command_state_t state = STATE_TILE; state <= STATE_DISABLED; state++) {
+        fixture();
+        begin_legacy();
+        state_commands(state, false);
+        end_legacy();
+        save_commands();
+        ui_init();
+        begin_face();
+        state_commands(state, true);
+        end_face();
+        compare_commands();
+        cleanup();
+    }
+    fixture();
+    begin_face();
+    ui_swatches(BOX, SWATCHES, 0, SWATCH_ROWS);
+    ui_swatches(BOX, SWATCHES, -1, SWATCH_ROWS);
+    end_face();
+    mu_Command* cmd = NULL;
+    TEST_ASSERT_FALSE(mu_next_command(ui_context(), &cmd));
 }
 
 static void
@@ -762,6 +1118,7 @@ test_toggle_theme_scopes(void) {
     (void)ui_toggle(BOX, "Custom", &on);
     TEST_ASSERT_EQUAL_MEMORY(&before, ui_context()->style, sizeof before);
     ui_color_begin(UI_COLOR_TEXT, FACE_RGB);
+    (void)ui_toggle(BOX, "Ink", &on);
     ui_scale_begin(SCOPE_SCALE);
     ui_disabled_begin(true);
     (void)ui_toggle(SECOND, "Scoped##key", &on);
@@ -770,6 +1127,7 @@ test_toggle_theme_scopes(void) {
     ui_color_end();
     end_face();
     assert_ink("Custom", THEME.text);
+    assert_ink("Ink", FACE_RGB);
     assert_ink("Scoped", THEME.muted);
     const mu_TextCommand* text = text_command("Scoped");
     TEST_ASSERT_NOT_NULL(text);
@@ -864,6 +1222,18 @@ run_ui_face_suite(void) {
     RUN_TEST(test_color_text_scope);
     RUN_TEST(test_scale_scope);
 #ifndef ESP_PLATFORM
+    RUN_TEST(test_scope_depth_boundary);
+    RUN_TEST(test_nested_scope_values);
+    RUN_TEST(test_disabled_every_widget);
+    RUN_TEST(test_tap_release_contract);
+    RUN_TEST(test_unchanged_picks_return_false);
+    RUN_TEST(test_duplicate_toggle_identity);
+    RUN_TEST(test_duplicate_dropdown_identity);
+    RUN_TEST(test_empty_visible_labels);
+    RUN_TEST(test_frame_state_reset);
+    RUN_TEST(test_all_end_paths);
+    RUN_TEST(test_window_order_contract);
+    RUN_TEST(test_additional_command_states);
     RUN_TEST(test_identity_capacity_reports);
     RUN_TEST(test_open_disabled_reports);
     RUN_TEST(test_open_color_reports);
