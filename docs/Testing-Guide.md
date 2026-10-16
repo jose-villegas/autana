@@ -517,8 +517,8 @@ answers whether a change removed work; on this chip that does not predict
 whether it removed time (see
 [`notes/Debugging.md`](notes/Debugging.md#performance-seems-off)).
 
-**Hot kernel instruction ratchet.** Only selected serial simulation steps
-and raster span kernels, plus selected float math rows, are guarded in
+**Hot kernel instruction ratchet.** Selected serial simulation steps,
+raster span kernels, float math rows and UI face/backend rows are guarded in
 `launcher/tools/quality/icount_baseline.txt`. Math measures every row;
 `ICOUNT_INFO` rows carry a third `info` baseline field and never fail comparison
 for changed counts, missing rows or new rows. Frame totals and whole
@@ -545,6 +545,10 @@ within tolerance, generate the baseline:
 ```sh
 python launcher/tools/quality/icount_gate.py --update-baseline launcher/build.qemu.shell/qemu_serial.log
 ```
+
+UI face/backend pairs include identical frame setup, so their difference
+measures the face's instruction share. Theme and scope rows measure face
+state without a backend partner; scope rows measure begin and end together.
 
 A compiler or IDF bump re-baselines the kernels in one deliberate commit.
 The tolerance and capture-length rule live in `launcher/test/perf_stats.h`;

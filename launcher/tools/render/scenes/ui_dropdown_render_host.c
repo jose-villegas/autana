@@ -1,13 +1,5 @@
-/*
- * ui_dropdown_render_host, ui_mu_dropdown() on its own, driven by a scripted
- * finger: open it, drag its list down and back up, pick another item, then
- * all of it again from the new pick. Twelve items fit neither above nor
- * below the dropdown, so the list overlays the canvas and has to scroll.
- *
- * Touch comes from the script below by frame, not the harness's declared
- * steps: a drag needs a new position every frame, which a step table would
- * spell out one line per frame.
- */
+/* Scripted touch opens, scrolls and picks ui_mu_dropdown() items. Positions
+ * advance each frame so the list exercises dragging across the canvas. */
 
 #include <stdbool.h>
 #include <stdio.h>

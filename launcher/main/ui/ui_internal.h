@@ -1,10 +1,5 @@
-/*
- * ui_internal: the seam between ui_build.c (builds a frame's command list;
- * host-portable) and ui.c (paints one; needs the real framebuffer). Neither
- * half links against gfx without the other, so nothing outside these two
- * files includes this; it is not a third public module, just the state and
- * helpers they share to stay one logical unit split across two link targets.
- */
+/* Private UI state and backend entry points shared by the frame builder,
+ * face and painter. Screens use ui.h or the transitional ui_mu.h. */
 #pragma once
 
 #include <stdbool.h>

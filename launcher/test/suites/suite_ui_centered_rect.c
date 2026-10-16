@@ -1,17 +1,5 @@
-/*
- * Portable suite: ui_centered_rect, fixed-width, centred content.
- *
- * ui_centered_rect() (ui_mu.h) is pure geometry, `static inline` for the same
- * reason ui_bezel_spans() (ui_style.h, see suite_ui_style.c) and
- * ui_transform_rect() (ui_transform.h, see suite_ui_transform.c) are: a
- * caller passes `canvas_w` explicitly rather than this reaching for
- * ui_width() itself, which is what keeps it linkable on a host with neither
- * gfx nor microui.c.
- *
- * A separate file rather than folded into suite_ui_transform.c: that suite
- * covers ui_transform.h's own affine map, a different header with a
- * different job, and ui_centered_rect() lives in ui_mu.h instead.
- */
+/* Portable geometry tests pass canvas width explicitly, so ui_centered_rect()
+ * in ui_mu.h needs neither a framebuffer nor a live microui context. */
 
 #include "suites.h"
 #include "unity.h"

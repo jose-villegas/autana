@@ -28,6 +28,7 @@
  */
 
 #include "ui/ui.h"
+#include "profile/frame_cost.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -405,6 +406,19 @@ repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
     return drew;
 }
 
+static void
+finish_commands(void) {
+    FRAME_COST_BEGIN(backend_from);
+    ui_face_end();
+    mu_end(&ui_ctx);
+    ui_end_pointer_frame();
+    FRAME_COST_END(backend_from, "ui.backend");
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    report_command_list_high_water(ui_ctx.command_list.idx);
+#endif
+}
+
 bool
 ui_end(uint32_t background_rgb) {
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
@@ -418,13 +432,8 @@ ui_end(uint32_t background_rgb) {
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
     const int64_t began_us = band_stats_frames > 0 ? timing_now_us() : 0;
 #endif
-    ui_face_end();
-    mu_end(&ui_ctx);
-    ui_end_pointer_frame();
-
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    report_command_list_high_water(ui_ctx.command_list.idx);
-#endif
+    finish_commands();
+    FRAME_COST_BEGIN(paint_from);
 
     const int n = ui_ctx.root_list.idx;
     bool repaint[MU_ROOTLIST_SIZE] = {false};
@@ -440,6 +449,7 @@ ui_end(uint32_t background_rgb) {
         report_band_stats(0, timing_now_us() - began_us);
     }
 #endif
+    FRAME_COST_END(paint_from, "ui.paint");
     return drew;
 }
 
@@ -457,13 +467,8 @@ ui_end_over(ui_backdrop_fn paint_backdrop) {
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
     const int64_t began_us = band_stats_frames > 0 ? timing_now_us() : 0;
 #endif
-    ui_face_end();
-    mu_end(&ui_ctx);
-    ui_end_pointer_frame();
-
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    report_command_list_high_water(ui_ctx.command_list.idx);
-#endif
+    finish_commands();
+    FRAME_COST_BEGIN(paint_from);
 
     const int n = ui_ctx.root_list.idx;
     bool repaint[MU_ROOTLIST_SIZE] = {false};
@@ -490,6 +495,7 @@ ui_end_over(ui_backdrop_fn paint_backdrop) {
         report_band_stats(0, timing_now_us() - began_us);
     }
 #endif
+    FRAME_COST_END(paint_from, "ui.paint");
     return drew;
 }
 
@@ -722,13 +728,8 @@ ui_end_for_bands(uint32_t background_rgb) {
     ui_band_overflow = 0;
     ui_band_fallbacks = 0;
     ui_band_background = background_rgb;
-    ui_face_end();
-    mu_end(&ui_ctx);
-    ui_end_pointer_frame();
-
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    report_command_list_high_water(ui_ctx.command_list.idx);
-#endif
+    finish_commands();
+    FRAME_COST_BEGIN(paint_from);
 
     ui_band_bin_count = 0;
     const int n = ui_ctx.root_list.idx;
@@ -762,6 +763,7 @@ ui_end_for_bands(uint32_t background_rgb) {
     ui_band_cost_us = began_us != 0 ? timing_now_us() - began_us : 0;
     ui_band_stats_pending = began_us != 0;
 #endif
+    FRAME_COST_END(paint_from, "ui.paint");
 }
 
 static bool
