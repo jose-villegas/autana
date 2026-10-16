@@ -101,8 +101,8 @@ typedef struct {
 
 static line_dash_t
 line_dash(unsigned flags, unsigned offset) {
-    const unsigned on = (flags >> DRAW_LINE_DASH_ON_SHIFT) & DRAW_LINE_DASH_MASK;
-    const unsigned off = (flags >> DRAW_LINE_DASH_OFF_SHIFT) & DRAW_LINE_DASH_MASK;
+    const unsigned on = (flags >> DRAW_LINE_DASH_ON_BIT) & DRAW_LINE_DASH_MASK;
+    const unsigned off = (flags >> DRAW_LINE_DASH_OFF_BIT) & DRAW_LINE_DASH_MASK;
     const unsigned period = (flags & DRAW_LINE_DASHED) ? on + off : 0;
     return (line_dash_t){on, period, period ? offset % period : 0};
 }

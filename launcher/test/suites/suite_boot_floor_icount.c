@@ -61,8 +61,8 @@ __wrap_draw_line_ex(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned 
     const gfx_box_t clip = GFX_SCREEN_BOX;
     if (gfx_box_clip_segment(&clip, &x0, &y0, &x1, &y1)) {
         const unsigned count = (unsigned)mathi_max(mathi_abs(x1 - x0), mathi_abs(y1 - y0)) + 1u;
-        const unsigned on = (flags >> DRAW_LINE_DASH_ON_SHIFT) & DRAW_LINE_DASH_MASK;
-        const unsigned off = (flags >> DRAW_LINE_DASH_OFF_SHIFT) & DRAW_LINE_DASH_MASK;
+        const unsigned on = (flags >> DRAW_LINE_DASH_ON_BIT) & DRAW_LINE_DASH_MASK;
+        const unsigned off = (flags >> DRAW_LINE_DASH_OFF_BIT) & DRAW_LINE_DASH_MASK;
         const unsigned period = (flags & DRAW_LINE_DASHED) ? on + off : 0;
         const unsigned offset = (unsigned)mathi_max(mathi_abs(x0 - start_x), mathi_abs(y0 - start_y));
         for (unsigned sample = 0; sample < count; sample++) {
