@@ -7,6 +7,11 @@
 
 #include <stdbool.h>
 
+/* The rect from the per-axis picks of a and b: LO for left and top, HI for right and bottom. */
+#define MATH_RECT_FOLD(P, OPS, LO, HI, a, b)                                                                           \
+    P##_from_edges(OPS##_##LO((a).x, (b).x), OPS##_##LO((a).y, (b).y), OPS##_##HI(P##_right(a), P##_right(b)),         \
+                   OPS##_##HI(P##_bottom(a), P##_bottom(b)))
+
 #define MATH_DEFINE_RECT(P, T, OPS)                                                                                    \
     typedef struct {                                                                                                   \
         T x, y, w, h;                                                                                                  \
@@ -28,10 +33,7 @@
     static inline bool P##_is_empty(P##_t r) { return r.w <= 0 || r.h <= 0; }                                          \
                                                                                                                        \
     /* intersection = (max(left), max(top), min(right), min(bottom)), clamped to empty. */                             \
-    static inline P##_t P##_intersect(P##_t a, P##_t b) {                                                              \
-        return P##_from_edges(OPS##_max(a.x, b.x), OPS##_max(a.y, b.y), OPS##_min(P##_right(a), P##_right(b)),         \
-                              OPS##_min(P##_bottom(a), P##_bottom(b)));                                                \
-    }                                                                                                                  \
+    static inline P##_t P##_intersect(P##_t a, P##_t b) { return MATH_RECT_FOLD(P, OPS, max, min, a, b); }             \
                                                                                                                        \
     /* union edges = (min x, min y, max right, max bottom); skip empty; both empty = (a.x,a.y,0,0). */                 \
     static inline P##_t P##_union(P##_t a, P##_t b) {                                                                  \
@@ -41,8 +43,7 @@
         if (P##_is_empty(a)) {                                                                                         \
             return b;                                                                                                  \
         }                                                                                                              \
-        return P##_from_edges(OPS##_min(a.x, b.x), OPS##_min(a.y, b.y), OPS##_max(P##_right(a), P##_right(b)),         \
-                              OPS##_max(P##_bottom(a), P##_bottom(b)));                                                \
+        return MATH_RECT_FOLD(P, OPS, min, max, a, b);                                                                 \
     }                                                                                                                  \
                                                                                                                        \
     /* contains = (x <= px < x+w && y <= py < y+h). */                                                                 \
