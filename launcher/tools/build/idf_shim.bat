@@ -30,6 +30,7 @@ setlocal
 set MSYSTEM=
 cd /d "%IDF_SHIM_DIR%" || exit /b 1
 REM Activation needs the paired Python before export.bat can set up PATH.
+if not defined IDF_SHIM_PYTHON_DIR goto environment_failed
 set "PATH=%IDF_SHIM_PYTHON_DIR%;%PATH%"
 call "%IDF_SHIM_EXPORT%" >nul 2>&1 || goto environment_failed
 where idf.py >nul 2>&1 || goto environment_failed

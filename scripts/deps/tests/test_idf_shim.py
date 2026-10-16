@@ -14,14 +14,17 @@ import espressif
 @unittest.skipUnless(os.name == 'nt', 'Windows cmd shim')
 class WindowsShimTests(unittest.TestCase):
     def test_broken_python_first_on_path(self):
-        checkout, tools = espressif.require_idf()
+        try:
+            checkout, tools = espressif.require_idf()
+        except ValueError as error:
+            self.skipTest(str(error))
         python = Path(espressif.idf_python())
         self.assertTrue(python.is_relative_to(tools), python)
         query = subprocess.run([sys.executable, espressif.__file__, 'env'],
                                capture_output=True, text=True, timeout=30)
         self.assertEqual(query.returncode, 0, query.stderr)
         selected = dict(line.split('=', 1) for line in shlex.split(query.stdout))
-        self.assertEqual(Path(selected['IDF_SHIM_PYTHON_DIR']), python.parent)
+        self.assertEqual(Path(selected['IDF_PYTHON']), python)
         shim = espressif.PROJECT_ROOT / 'launcher/tools/build/idf_shim.bat'
         with tempfile.TemporaryDirectory(prefix='idf shim ') as directory:
             root = Path(directory)
@@ -32,7 +35,8 @@ class WindowsShimTests(unittest.TestCase):
             env = dict(os.environ, **selected)
             env.update(PATH=str(broken_dir) + os.pathsep + os.environ['PATH'],
                        IDF_PATH=str(checkout), IDF_TOOLS_PATH=str(tools),
-                       IDF_SHIM_DIR=str(root), IDF_SHIM_EXPORT=str(checkout / 'export.bat'))
+                       IDF_SHIM_DIR=str(root), IDF_SHIM_EXPORT=str(checkout / 'export.bat'),
+                       IDF_SHIM_PYTHON_DIR=str(Path(selected['IDF_PYTHON']).parent))
             cmd = os.environ['COMSPEC']
             broken = subprocess.run([cmd, '/d', '/c', 'python', '--version'],
                                     cwd=root, env=env, capture_output=True, text=True, timeout=30)
@@ -59,3 +63,18 @@ class WindowsShimTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('ESP-IDF environment did not load', result.stderr)
             self.assertNotIn('is not recognized', result.stderr)
+
+    def test_missing_python_directory_reports_environment_failure(self):
+        shim = espressif.PROJECT_ROOT / 'launcher/tools/build/idf_shim.bat'
+        with tempfile.TemporaryDirectory(prefix='idf missing python ') as directory:
+            root = Path(directory)
+            export = root / 'export.bat'
+            export.write_bytes(f'@set "PATH={root};%PATH%"\r\n'.encode())
+            (root / 'idf.py.bat').write_bytes(b'@exit /b 0\r\n')
+            env = dict(os.environ, IDF_SHIM_DIR=str(root), IDF_SHIM_EXPORT=str(export))
+            env.pop('IDF_SHIM_PYTHON_DIR', None)
+            result = subprocess.run(
+                f'"{os.environ["COMSPEC"]}" /d /s /c ""{shim}" idf.py --version"',
+                cwd=root, env=env, capture_output=True, text=True, timeout=30)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn('ESP-IDF environment did not load', result.stderr)

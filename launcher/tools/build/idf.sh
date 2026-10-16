@@ -96,7 +96,7 @@ idf_in() {
         # inline quotes reach the batch shim literally and corrupt arguments.
         IDF_SHIM_DIR="$(cygpath -w "$_IDF_IN_DIR")" \
         IDF_SHIM_EXPORT="$_IDF_EXPORT" \
-        IDF_SHIM_PYTHON_DIR="$IDF_SHIM_PYTHON_DIR" \
+        IDF_SHIM_PYTHON_DIR="$(cygpath -w "$(dirname "$(cygpath -u "$IDF_PYTHON")")")" \
         cmd //c "$(cygpath -w "$_IDF_SHIM")" "$@"
     else
         ( cd "$_IDF_IN_DIR" && . "$_IDF_EXPORT" >/dev/null 2>&1 && "$@" )

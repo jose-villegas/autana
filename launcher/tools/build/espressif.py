@@ -101,14 +101,14 @@ def _version_key(path):
     return tuple(int(g) for g in m.groups()) if m else (0, 0, 0, 0)
 
 
-def idf_python(*, required=False, project=None):
+def idf_python(*, project=None, installation=None):
     """`IDF_PYTHON_ENV_PATH` (set once ESP-IDF's export script is sourced)
     when paired with the selected install, then a matching checkout version
-    under espressif_tools_root(), then this interpreter unless required."""
+    under the selected tools, then this interpreter."""
     # POSIX exports put ESP-IDF's Python on PATH before launching this process.
     if os.name != "nt":
         return sys.executable
-    checkout, tools = find_idf(project)
+    checkout, tools = installation if installation is not None else find_idf(project)
     project = Path(project or idf_project())
     pinned_project = (project / IDF_PIN).is_file()
     if pinned_project and (checkout / "tools/cmake/version.cmake").is_file():
@@ -127,10 +127,6 @@ def idf_python(*, required=False, project=None):
     found = sorted(glob.glob(pattern), key=_version_key)
     if found:
         return found[-1]
-    if required:
-        pin = idf_pin(project) if pinned_project else idf_pin()
-        raise ValueError(f"No tools installed for ESP-IDF at {checkout}. Run:\n" +
-                         install_commands(pin, checkout=checkout))
     return sys.executable
 
 
@@ -252,7 +248,9 @@ def require_idf(project=None, **search):
         raise ValueError("No installed ESP-IDF matches the pin. Run:\n" + commands)
     if pin:
         major, minor = checkout_version(checkout)
-        if not any(path.is_dir() for path in (tools / "python_env").glob(f"idf{major}.{minor}_*_env")):
+        environments = (tools / "python_env").glob(f"idf{major}.{minor}_*_env")
+        if not any((path / "Scripts/python.exe").is_file() if os.name == "nt" else path.is_dir()
+                   for path in environments):
             raise ValueError(f"No tools installed for ESP-IDF at {checkout}. Run:\n" +
                              install_commands(pin, search.get("home"), checkout))
     return checkout, tools
@@ -261,7 +259,7 @@ def require_idf(project=None, **search):
 def idf_project():
     """The command's selected project, or this repository for standalone tooling."""
     project = autana_config.project_dir()
-    return project if os.environ.get(autana_config.PROJECT_ENV) or (project / "launcher/CMakeLists.txt").is_file() else PROJECT_ROOT
+    return project if (project / "launcher/CMakeLists.txt").is_file() else PROJECT_ROOT
 
 
 def idf_note_lines(project=None):
@@ -285,11 +283,10 @@ def main():
         verb = sys.argv[1]
         if verb == "env":
             checkout, tools = require_idf(project)
-            python_dir = Path(idf_python(required=True, project=project)).parent if os.name == "nt" else None
+            python = idf_python(project=project, installation=(checkout, tools))
             print("IDF_PATH=" + shlex.quote(str(checkout)))
             print("IDF_TOOLS_PATH=" + shlex.quote(str(tools)))
-            if python_dir is not None:
-                print("IDF_SHIM_PYTHON_DIR=" + shlex.quote(str(python_dir)))
+            print("IDF_PYTHON=" + shlex.quote(python))
         elif verb == "tools":
             print(espressif_tools_root())
         elif verb == "note":
