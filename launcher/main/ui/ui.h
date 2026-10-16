@@ -203,8 +203,8 @@ void ui_queue_band_overlay_rect(int x, int y, int w, int h, uint32_t rgb);
 
 #define UI_FACE_SCOPE_DEPTH 4
 
-/* Colours are 0xRRGGBB. NULL restores the shell look.
- * ui_mu_theme_t in ui_mu.h holds the same roles as mu_Color values. */
+/* Colours are 0xRRGGBB. ui_mu_theme_t in ui_mu.h holds the same roles as
+ * mu_Color values. */
 typedef struct {
     uint32_t panel_face, panel_edge, button_face;
     uint32_t accent, accent_face, on_accent;
@@ -213,12 +213,16 @@ typedef struct {
     int icon_side;
 } ui_theme_t;
 
-/* A label is visible text and identity: ## hides the suffix; ### makes only
- * its suffix the identity. Widgets report whether this frame's tap changed
- * them. Scopes must pair, at most UI_FACE_SCOPE_DEPTH deep; development builds
- * assert on misuse. */
+/* The palette for the rest of the frame; NULL restores the shell look. */
 void ui_theme(const ui_theme_t* theme);
-/* Windows close at the next window verb or ui_end(). */
+
+/* A label is both the visible text and the identity: "Text##key" shows Text
+ * and the whole string is the id; "Text###key" shows Text and only key is the
+ * id. ui_button and ui_tile return true on the frame a tap is released on
+ * them; ui_toggle, ui_slider and ui_dropdown return true when this frame
+ * changed their value. Every _begin pairs with its _end, at most
+ * UI_FACE_SCOPE_DEPTH deep; development builds assert on misuse. Windows
+ * close at the next window verb or ui_end(). */
 void ui_screen(void);
 void ui_window(recti_t r);
 void ui_row(int h);
