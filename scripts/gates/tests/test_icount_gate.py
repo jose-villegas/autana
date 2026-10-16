@@ -15,8 +15,8 @@ SPEC.loader.exec_module(gate)
 
 
 class IcountGateTests(unittest.TestCase):
-    def row(self, name="kernel", us=200000, reps=1):
-        return f"{gate.LINE_PREFIX} {name} us={us} reps={reps}\n"
+    def row(self, name="kernel", us=200000, reps=1, prefix=gate.LINE_PREFIX):
+        return f"{prefix} {name} us={us} reps={reps}\n"
 
     def run_gate(self, text, baseline="200000000\tkernel\n", update=False):
         with tempfile.TemporaryDirectory() as directory:
@@ -30,6 +30,19 @@ class IcountGateTests(unittest.TestCase):
                 args.append("--update-baseline")
             result = gate.main(args)
             return result, peg.read_text() if peg.exists() else None
+
+    def test_info_rows_never_ratchet(self):
+        info_us = gate.NS_PER_US
+        info = self.row(name="info", us=info_us, prefix=gate.INFO_PREFIX)
+        _, baseline = self.run_gate(self.row() + info, None, update=True)
+        self.assertIn(f"\tinfo\t{gate.INFO_MARKER}", baseline)
+        for text in (self.row(), self.row() + info,
+                     self.row() + self.row(name="info", us=info_us // 2, prefix=gate.INFO_PREFIX),
+                     self.row() + self.row(name="info", us=info_us * 2, prefix=gate.INFO_PREFIX),
+                     self.row() + info.replace("info", "new_info")):
+            with self.subTest(text=text):
+                self.assertEqual(0, self.run_gate(text, baseline)[0])
+        self.assertNotEqual(0, self.run_gate(self.row(us=201001) + info, baseline)[0])
 
     def test_main_rejects_bad_measurements(self):
         for text in (self.row(us=201001), self.row(us=198999),
@@ -70,7 +83,8 @@ class IcountGateTests(unittest.TestCase):
 
     def test_main_rejects_invalid_baselines(self):
         for baseline in ("0\tkernel", "-1\tkernel", "NaN\tkernel", "inf\tkernel",
-                         "200000000\tkernel\n200000000\tkernel", "200000000 kernel"):
+                         "200000000\tkernel\n200000000\tkernel", "200000000 kernel",
+                         "200000000\tkernel\tunknown"):
             with self.subTest(baseline=baseline):
                 self.assertNotEqual(0, self.run_gate(self.row(), baseline)[0])
 
