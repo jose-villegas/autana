@@ -429,6 +429,10 @@ seconds. `release --token <t>`, `take`, `run`, `hand-to-human --note <n>`,
 `check-token --token <t>` exits 0 when the token is the board's live lock,
 which `flash_image.sh` asks before it opens the port.
 
+## Duration estimates
+
+See [Wait estimates](Flash-and-Captures.md#wait-estimates) for duration history and per-board estimates.
+
 ## How it works
 
 `scripts/device/` is the only code that opens the board's serial port

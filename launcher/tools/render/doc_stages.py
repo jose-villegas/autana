@@ -13,13 +13,13 @@ import sys
 from typing import NamedTuple
 from types import SimpleNamespace
 
-INPUTS_PYTHON_MINIMUM = (3, 12)
-
 ROOT = Path(__file__).resolve().parents[3]
+INPUTS_PYTHON_MINIMUM = tuple(map(int, (ROOT / "scripts/lib/python-min-version").read_text().strip().split(".")))
 TOOLS = ROOT / "launcher/tools"
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from capture import capture_board, require_same_board
 from build import compile_db
 from generated_blocks import apply_tables, tracked_files
 from doc_tables import markdown
@@ -265,6 +265,7 @@ def capture_rows(path, commit, id, object_name):
 }
 
 def board_means(captures, commit, id, object_name):
+    require_same_board({str(path): capture_board(path) for path in captures})
     runs = [capture_rows(path, commit, id, object_name) for path in captures]
     for path, rows in zip(captures, runs):
         missing = set((id, *VARIANTS)) - rows.keys()
@@ -275,6 +276,7 @@ name: statistics.median(rows[name] for rows in runs) for name in (id, *VARIANTS)
 }
 
 def board_frames(captures, expected, id, object_name):
+    require_same_board({str(path): capture_board(path) for path in captures})
     import re
     pattern = rf"({re.escape(id)}|lite|{re.escape(object_name)}|{re.escape(object_name + '_lite')}) t=\s*(\d+)s .*?both cores: frame\s+(\d+)us"
     values = {}

@@ -6,6 +6,15 @@ seed sets. Arguments accept revisions or existing project directories.
 The wrapper restores `origin/main`'s release image afterwards;
 `--no-restore` omits that flash.
 
+Capture comparisons require one USB serial throughout the input set.
+A mixed set exits non-zero before comparison and lists each board's short
+id, full serial and captures. A capture without board provenance is unknown:
+unknown captures can be compared together, but cannot be mixed with a known
+board. The shared identity check in `capture.py` reads board fields in saved
+measurement records and the device capture index. Raw captures need matching
+device index entries; seeded measurement and sweep records retain the serial.
+A held comparison job routes every capture through the same board.
+
 `autana status` shows the job name, estimated finish and queued starts.
 Estimates use recorded flash and capture durations, with the configured capture
 deadline and `DEFAULT_FLASH_SECONDS` in `perf_job.py` as fallbacks.
