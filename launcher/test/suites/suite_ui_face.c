@@ -242,7 +242,9 @@ compare_verb(verb_t verb) {
     bool on = false;
     for (int i = 0; i < 2; i++) {
         begin_face();
-        ui_theme(&THEME);
+        if (verb != VERB_TOGGLE) {
+            ui_theme(&THEME);
+        }
         (void)emit_face(verb, &value, &on);
         end_face();
     }
@@ -738,6 +740,31 @@ test_unmatched_scale_end_reports(void) {
 }
 #endif
 static void
+test_toggle_theme_scopes(void) {
+    fixture();
+    begin_face();
+    ui_theme(&THEME);
+    const mu_Style before = *ui_context()->style;
+    bool on = true;
+    (void)ui_toggle(BOX, "Custom", &on);
+    TEST_ASSERT_EQUAL_MEMORY(&before, ui_context()->style, sizeof before);
+    ui_color_begin(UI_COLOR_TEXT, FACE_RGB);
+    ui_scale_begin(SCOPE_SCALE);
+    ui_disabled_begin(true);
+    (void)ui_toggle(SECOND, "Scoped##key", &on);
+    ui_disabled_end();
+    ui_scale_end();
+    ui_color_end();
+    end_face();
+    assert_ink("Custom", THEME.text);
+    assert_ink("Scoped", THEME.muted);
+    const mu_TextCommand* text = text_command("Scoped");
+    TEST_ASSERT_NOT_NULL(text);
+    TEST_ASSERT_EQUAL_INT(draw_font_height(draw_font_ui(), SCOPE_SCALE), ui_context()->text_height(text->font));
+    TEST_ASSERT_TRUE(has_face(THEME.button_face));
+}
+
+static void
 test_ui_theme_custom_and_reset(void) {
     fixture();
     begin_legacy();
@@ -832,6 +859,7 @@ run_ui_face_suite(void) {
     RUN_TEST(test_unmatched_color_end_reports);
     RUN_TEST(test_unmatched_scale_end_reports);
 #endif
+    RUN_TEST(test_toggle_theme_scopes);
     RUN_TEST(test_ui_theme_custom_and_reset);
     RUN_TEST(test_ui_screen_twice_closes_first);
 }

@@ -12,9 +12,20 @@
 
 #include <stdint.h>
 
-/* Fixed context arrays share the board's internal memory budget with the
- * framebuffer. Pointer width selects a larger host command list without
- * changing the device budget. Trailing comments retain upstream sizes. */
+/* ---------------------------------------------------------------------------
+ * LOCAL MODIFICATION vs upstream rxi/microui 2.02.
+ *
+ * These sizes are baked into mu_Context as fixed arrays, and upstream's
+ * defaults are sized for desktop: the command list alone is 256 KiB. This
+ * board has ~424 KiB of RAM in total and we spend 322 KiB of it on the
+ * framebuffer, so the stock context does not fit.
+ *
+ * The command-list size has one definition here because it determines
+ * mu_Context's layout. Pointer width selects a larger host budget while
+ * keeping the device context within its RAM limit.
+ *
+ * Upstream values are kept in the trailing comments.
+ * ------------------------------------------------------------------------ */
 #if UINTPTR_MAX > 0xFFFFFFFFu
 #define MU_COMMANDLIST_SIZE     (9 * 1024)  /* 64-bit host: 8-byte pointers and alignment */
 #else
@@ -289,7 +300,6 @@ void mu_text(mu_Context *ctx, const char *text);
 void mu_label(mu_Context *ctx, const char *text);
 int mu_button_ex(mu_Context *ctx, const char *label, int icon, int opt);
 int mu_checkbox(mu_Context *ctx, const char *label, int *state);
-int mu_checkbox_id(mu_Context *ctx, const char *label, int *state, mu_Id id, int opt);
 int mu_textbox_raw(mu_Context *ctx, char *buf, int bufsz, mu_Id id, mu_Rect r, int opt);
 int mu_textbox_ex(mu_Context *ctx, char *buf, int bufsz, int opt);
 int mu_slider_ex(mu_Context *ctx, mu_Real *value, mu_Real low, mu_Real high, mu_Real step, const char *fmt, int opt);

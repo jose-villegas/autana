@@ -32,6 +32,7 @@ static bool disabled[UI_FACE_SCOPE_DEPTH];
 
 static struct {
     mu_Color text, caption, face, selected;
+    bool native_toggle;
 } colors[UI_FACE_SCOPE_DEPTH];
 
 static int scales[UI_FACE_SCOPE_DEPTH];
@@ -215,13 +216,10 @@ bool
 ui_toggle(recti_t r, const char* label, bool* on) {
     FRAME_COST_BEGIN(face_from);
     const mu_Id id = widget_id(label);
-    int state = *on;
-    const int opt = is_disabled() ? MU_OPT_NOINTERACT : 0;
     FRAME_COST_BEGIN(backend_from);
-    mu_layout_set_next(ui_context(), ui_mu_from_recti(r), 0);
-    const bool hit = mu_checkbox_id(ui_context(), label, &state, id, opt) != 0;
+    const bool hit = ui_toggle_id(ui_context(), id, ui_mu_from_recti(r), label, visible_label_length(label), on,
+                                  !is_disabled(), &theme);
     FRAME_COST_END(backend_from, "ui.backend");
-    *on = state != 0;
     const bool face_result = hit;
     FRAME_COST_END(face_from, "ui.face");
     return face_result;
@@ -382,8 +380,10 @@ ui_color_begin(ui_color_slot_t slot, uint32_t rgb) {
         colors[color_depth].caption = theme.caption;
         colors[color_depth].face = theme.button_face;
         colors[color_depth].selected = theme.on_accent;
+        colors[color_depth].native_toggle = theme.native_toggle;
         if (slot == UI_COLOR_FACE) {
             theme.button_face = ui_rgb(rgb);
+            theme.native_toggle = false;
         } else {
             theme.text = theme.caption = theme.on_accent = ui_rgb(rgb);
         }
@@ -407,6 +407,7 @@ ui_color_end(void) {
         theme.caption = colors[color_depth].caption;
         theme.button_face = colors[color_depth].face;
         theme.on_accent = colors[color_depth].selected;
+        theme.native_toggle = colors[color_depth].native_toggle;
     }
     FRAME_COST_END(face_from, "ui.face");
 }

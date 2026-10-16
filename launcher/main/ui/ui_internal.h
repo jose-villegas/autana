@@ -96,3 +96,6 @@ bool ui_theme_slider_int_id(mu_Context* ctx, mu_Id id, mu_Rect r, int* value, in
                             const ui_mu_theme_t* theme);
 int ui_dropdown_id(mu_Context* ctx, mu_Id mid, const char* id, mu_Rect r, const char* const* names,
                    const draw_image_t* const* icons, int count, int selected, bool enabled, const ui_mu_theme_t* theme);
+
+bool ui_toggle_id(mu_Context* ctx, mu_Id mid, mu_Rect r, const char* label, int label_len, bool* on, bool enabled,
+                  const ui_mu_theme_t* theme);
