@@ -1,3 +1,4 @@
+#include <float.h>
 #include <math.h>
 #include <stddef.h>
 
@@ -30,6 +31,12 @@ static gravity_t g;
 static void
 fixture(void) {
     gravity_reset(&g);
+}
+
+static void
+test_rejection_cosine_matches_angle(void) {
+    const float radians_per_degree = MATH_PI / (2.0F * QUARTER_TURN_DEG);
+    TEST_ASSERT_FLOAT_WITHIN(FLT_EPSILON, cosf(GRAVITY_REJECT_DEG * radians_per_degree), GRAVITY_REJECT_COS);
 }
 
 static input_motion_t
@@ -190,6 +197,7 @@ test_stalled_dt_is_clamped(void) {
 
 void
 run_gravity_suite(void) {
+    RUN_TEST(test_rejection_cosine_matches_angle);
     RUN_TEST(test_stationary_poses_settle);
     RUN_TEST(test_first_reading_is_adopted_exactly);
     RUN_TEST(test_gyro_turns_follow_measured_screen_sense);

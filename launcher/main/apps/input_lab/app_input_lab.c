@@ -538,6 +538,31 @@ motion_dot_rect(int x, int y, motion_ring_t ring, int side) {
 }
 
 static void
+draw_gravity_line(mu_Context* ctx, int row) {
+    char line[MOTION_HUD_TEXT_SIZE];
+
+    enum { GRAV_X, GRAV_Y, GRAV_Z, GRAV_STRENGTH, GRAV_BIAS_X, GRAV_BIAS_Y, GRAV_BIAS_Z, GRAV_COUNT };
+
+    const float gravity_values[GRAV_COUNT] = {
+        gravity.down.x,      gravity.down.y,      gravity.down.z,     gravity_strength(&gravity),
+        gravity.gyro_bias.x, gravity.gyro_bias.y, gravity.gyro_bias.z};
+    char gravity_text[GRAV_COUNT][MOTION_G_TEXT_SIZE];
+    for (size_t i = 0; i < GRAV_COUNT; i++) {
+        const bool bias = i >= GRAV_BIAS_X;
+        motion_probe_format_fixed(gravity_text[i], sizeof gravity_text[i],
+                                  (int)lroundf(gravity_values[i] * (bias ? OFFSET_SCALE : IMU_PROBE_MILLI)),
+                                  bias ? OFFSET_DIGITS : MOTION_MILLI_DIGITS, i != GRAV_STRENGTH);
+    }
+    if (snprintf(line, sizeof line, "GRAV %s,%s,%s S%s B%s,%s,%s", gravity_text[GRAV_X], gravity_text[GRAV_Y],
+                 gravity_text[GRAV_Z], gravity_text[GRAV_STRENGTH], gravity_text[GRAV_BIAS_X],
+                 gravity_text[GRAV_BIAS_Y], gravity_text[GRAV_BIAS_Z])
+        < 0) {
+        line[0] = '\0';
+    }
+    hud_line(ctx, row, line);
+}
+
+static void
 draw_motion(mu_Context* ctx) {
     if (!have_motion) {
         hud_line(ctx, 0, "NO MOTION SENSOR");
@@ -586,25 +611,7 @@ draw_motion(mu_Context* ctx) {
     }
     hud_line(ctx, 3, line);
 
-    enum { GRAV_X, GRAV_Y, GRAV_Z, GRAV_STRENGTH, GRAV_BIAS_X, GRAV_BIAS_Y, GRAV_BIAS_Z, GRAV_COUNT };
-
-    const float gravity_values[GRAV_COUNT] = {
-        gravity.down.x,      gravity.down.y,      gravity.down.z,     gravity_strength(&gravity),
-        gravity.gyro_bias.x, gravity.gyro_bias.y, gravity.gyro_bias.z};
-    char gravity_text[GRAV_COUNT][MOTION_G_TEXT_SIZE];
-    for (size_t i = 0; i < GRAV_COUNT; i++) {
-        const bool bias = i >= GRAV_BIAS_X;
-        motion_probe_format_fixed(gravity_text[i], sizeof gravity_text[i],
-                                  (int)lroundf(gravity_values[i] * (bias ? OFFSET_SCALE : IMU_PROBE_MILLI)),
-                                  bias ? OFFSET_DIGITS : MOTION_MILLI_DIGITS, i != GRAV_STRENGTH);
-    }
-    if (snprintf(line, sizeof line, "GRAV %s,%s,%s S%s B%s,%s,%s", gravity_text[GRAV_X], gravity_text[GRAV_Y],
-                 gravity_text[GRAV_Z], gravity_text[GRAV_STRENGTH], gravity_text[GRAV_BIAS_X],
-                 gravity_text[GRAV_BIAS_Y], gravity_text[GRAV_BIAS_Z])
-        < 0) {
-        line[0] = '\0';
-    }
-    hud_line(ctx, MOTION_HUD_ROWS - 1, line);
+    draw_gravity_line(ctx, MOTION_HUD_ROWS - 1);
 
     const vec3i_t offset = input_accel_offset();
     snprintf(line, sizeof line, "OFFSET %d %d %d Q12", (int)offset.x, (int)offset.y, (int)offset.z);

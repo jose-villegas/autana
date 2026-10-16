@@ -9,8 +9,6 @@
 
 #define HALF_TURN_DEG      180.0F
 #define RADIANS_PER_DEGREE (MATH_PI / HALF_TURN_DEG)
-/* cos(GRAVITY_REJECT_DEG * RADIANS_PER_DEGREE), precomputed to avoid a per-frame transcendental. */
-#define REJECT_COSINE      0.984807753F
 
 void
 gravity_reset(gravity_t* g) {
@@ -35,7 +33,8 @@ gravity_update(gravity_t* g, const input_motion_t* m, uint32_t dt_ms) {
         const float error = fabsf(magnitude - 1.0F);
         const float weight =
             mathf_clamp((GRAVITY_TRUST_NONE_G - error) / (GRAVITY_TRUST_NONE_G - GRAVITY_TRUST_FULL_G), 0.0F, 1.0F);
-        if (g->distrust_ms <= GRAVITY_RECOVER_MS && weight > 0.0F && vec3f_dot(direction, g->down) >= REJECT_COSINE) {
+        if (g->distrust_ms <= GRAVITY_RECOVER_MS && weight > 0.0F
+            && vec3f_dot(direction, g->down) >= GRAVITY_REJECT_COS) {
             /* dt/(tau+dt) approximates exponential smoothing without a per-frame expf. */
             const float alpha = weight * dt / (GRAVITY_TAU_S + dt);
             g->down = vec3f_normalize(vec3f_add(g->down, vec3f_scale(vec3f_sub(direction, g->down), alpha)));

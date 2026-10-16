@@ -1,6 +1,13 @@
 /*
- * gravity: gyro-predicted down and linear acceleration in screen axes.
- * Pure logic, no sensor and no clock: motion and elapsed time are passed in.
+ * gravity: estimates down and linear acceleration in screen axes. Gyro rotation
+ * predicts down; acceleration only corrects it because an accelerometer cannot
+ * distinguish gravity from other acceleration. Pure logic: no sensor or clock.
+ *
+ * Each update clamps time, predicts down from the bias-corrected gyro, corrects
+ * with trusted acceleration (or recovers after rejection), subtracts down to
+ * find linear acceleration, and learns gyro bias while still.
+ *
+ * tilt stays beside it for now.
  */
 #pragma once
 
@@ -18,6 +25,8 @@
 #define GRAVITY_TRUST_NONE_G 0.4F
 /* Madgwick, x-io Fusion's default acceleration rejection. */
 #define GRAVITY_REJECT_DEG   10.0F
+/* cos(GRAVITY_REJECT_DEG), precomputed with the angle in degrees. */
+#define GRAVITY_REJECT_COS   0.984807753F
 /* Madgwick, x-io Fusion's default recovery trigger period, in milliseconds. */
 #define GRAVITY_RECOVER_MS   5000U
 /* M0 board capture: gyro noise peaks at +/-4 deg/s. */
@@ -32,17 +41,27 @@
 #define GRAVITY_MAX_DT_MS    100U
 
 typedef struct {
+    /* Unit vector, screen axes: x right, y down, z out. */
     vec3f_t down;
+    /* Last acceleration minus down, in g. */
     vec3f_t linear;
+    /* Gyro bias in deg/s, learned only while still. */
     vec3f_t gyro_bias;
+    /* Accel rejection time; past GRAVITY_RECOVER_MS the next nonzero reading is adopted. */
     uint32_t distrust_ms;
 } gravity_t;
 
-/* The first nonzero acceleration after reset is adopted exactly. */
+/* Reset to down=(0,0,-1), zero linear g and bias deg/s; adopt the first nonzero acceleration exactly. */
 void gravity_reset(gravity_t* g);
+/* Motion uses INPUT_ACCEL_ONE_G and INPUT_ROTATION_ONE_DPS counts in screen axes.
+ * dt_ms is clamped to GRAVITY_MAX_DT_MS; zero dt skips prediction and blending.
+ * Zero acceleration cannot correct down; recovery can adopt a reading even at zero dt. */
 void gravity_update(gravity_t* g, const input_motion_t* m, uint32_t dt_ms);
+/* Unit down vector in screen axes, including during free fall. */
 vec3f_t gravity_down(const gravity_t* g);
+/* Last acceleration minus down in screen axes, in g; zero after reset. */
 vec3f_t gravity_linear(const gravity_t* g);
-/* In-plane share of g, 0..1; zero during free fall. */
+/* sin of tilt from flat, 0..1; zero during free fall. */
 float gravity_strength(const gravity_t* g);
+/* True when |linear + down| is below GRAVITY_FREE_FALL_G; false at the boundary. */
 bool gravity_in_free_fall(const gravity_t* g);
