@@ -97,6 +97,7 @@ extern void (*ui_face_misuse_for_test)(void);
 
 #define UI_FACE_IDS_MAX 32
 
+void ui_face_init(void);
 void ui_face_begin(const input_t* input);
 void ui_face_end(void);
 bool ui_icon_button_id(mu_Context* ctx, mu_Id id, mu_Rect r, const ui_widget_button_t* button, int label_len,
