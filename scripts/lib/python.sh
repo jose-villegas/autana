@@ -10,21 +10,20 @@
 # POSIX sh has no source-file variable; its entry script belongs to the same
 # tree. Bash also supports sourcing this library from an unrelated directory.
 _python_source=${BASH_SOURCE:-$0}
-PYTHON_MIN_VERSION=""
-for _python_start in "$_python_source" "$PWD/."; do
-    case "$_python_start" in
-        */*) _python_root=$(CDPATH= cd -- "${_python_start%/*}" && pwd -P) || continue ;;
-        *) _python_root=$PWD ;;
-    esac
-    while [ ! -r "$_python_root/scripts/lib/python-min-version" ] && [ "$_python_root" != / ]; do
-        _python_root=${_python_root%/*}
-        _python_root=${_python_root:-/}
-    done
-    if [ -r "$_python_root/scripts/lib/python-min-version" ]; then
-        IFS= read -r PYTHON_MIN_VERSION < "$_python_root/scripts/lib/python-min-version"
-        break
-    fi
+case "$_python_source" in
+    /*|[A-Za-z]:/*) _python_root=${_python_source%/*} ;;
+    */*) _python_root=$PWD/${_python_source%/*} ;;
+    *) _python_root="" ;;
+esac
+while [ -n "$_python_root" ] && [ ! -r "$_python_root/scripts/lib/python-min-version" ]; do
+    case "$_python_root" in /|[A-Za-z]:) break ;; esac
+    _python_root=${_python_root%/*}
+    _python_root=${_python_root:-/}
 done
+PYTHON_MIN_VERSION=""
+if [ -n "$_python_root" ] && [ -r "$_python_root/scripts/lib/python-min-version" ]; then
+    IFS= read -r PYTHON_MIN_VERSION < "$_python_root/scripts/lib/python-min-version"
+fi
 if [ -z "$PYTHON_MIN_VERSION" ]; then
     echo "cannot locate scripts/lib/python-min-version" >&2
     return 1
@@ -49,12 +48,12 @@ find_python() {
         [ -n "$_fp_dir" ] || continue
         _fp_names="python3 python py"
         _fp_versioned=""
-        for _fp_path in "$_fp_dir"/python3.[0-9]*; do
+        for _fp_path in "$_fp_dir"/python3.[0-9] "$_fp_dir"/python3.[0-9][0-9]; do
             [ -x "$_fp_path" ] && [ ! -d "$_fp_path" ] || continue
-            _fp_versioned="$_fp_versioned ${_fp_path##*/}"
+            _fp_versioned="${_fp_path##*/} $_fp_versioned"
         done
         if [ -n "$_fp_versioned" ]; then
-            _fp_names="$_fp_names $(printf '%s\n' $_fp_versioned | sort -t . -k2,2nr)"
+            _fp_names="$_fp_names $_fp_versioned"
         fi
         for _fp_name in $_fp_names; do
             _fp_candidate="$_fp_dir/$_fp_name"

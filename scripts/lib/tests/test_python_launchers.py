@@ -21,29 +21,52 @@ class CmdLauncherTests(unittest.TestCase):
         (self.root / "scripts/autana").mkdir(parents=True)
         shutil.copy(ROOT / "tools/autana.cmd", self.root / "tools/autana.cmd")
         (self.root / "scripts/lib").mkdir()
-        (self.root / "scripts/lib/python-min-version").write_text(MINIMUM + "\n")
+        shutil.copy(ROOT / "scripts/lib/python-min-version",
+                    self.root / "scripts/lib/python-min-version")
         (self.root / "scripts/autana/autana.py").write_text(
             'import sys\nprint("STARTED", sys.version_info[:2], sys.argv[1:])\n')
         self.bin = self.root / "bin"
         self.bin.mkdir()
-        (self.bin / "python.bat").write_text('@echo off\necho 3.9\nexit /b 0\n')
-        self.py = self.bin / "py.bat"
-        self.py.write_text('@echo off\necho 3.9\nexit /b 0\n')
+        self.stub = self.bin / "interpreter.py"
+        self.stub.write_text(
+            'import runpy, sys\n'
+            'version = sys.argv.pop(1)\n'
+            'sys.argv.pop(0)\n'
+            'if sys.argv[0] == "-3": sys.argv.pop(0)\n'
+            'if version == "old": sys.version_info = (3, 9, 0)\n'
+            'if sys.argv[0] == "-c":\n'
+            '    code = sys.argv.pop(1); exec(code)\n'
+            'else: runpy.run_path(sys.argv[0], run_name="__main__")\n')
+        self.launcher = self.root / "tools/autana.cmd"
+        self.original = self.launcher.read_bytes()
 
-    def launch(self):
-        env = dict(os.environ, PATH=str(self.bin), IDF_TOOLS_PATH=str(self.root / "idf"))
+    def launch(self, py_version="old", arguments=None):
+        launcher = self.original.decode()
+        for label in ("probe", "report"):
+            launcher = launcher.replace(f'call :{label} python',
+                        f'call :{label} "{sys.executable}" "{self.stub}" old')
+            launcher = launcher.replace(f'call :{label} py -3',
+                        f'call :{label} "{sys.executable}" "{self.stub}" {py_version} -3')
+        self.launcher.write_bytes(launcher.encode())
+        arguments = arguments or ["argument with spaces"]
+        env = dict(os.environ, PATH=str(self.bin), IDF_TOOLS_PATH=str(self.root / "idf"),
+                   launch_arguments=" ".join(f'"{arg}"' for arg in arguments), NAME="expanded")
         command = (f'"{os.environ["COMSPEC"]}" /d /s /c '
-                   f'""{self.root / "tools/autana.cmd"}" "argument with spaces""')
+                   f'""{self.launcher}" %launch_arguments%"')
         return subprocess.run(command, cwd=self.root, env=env, capture_output=True,
                               text=True, timeout=60)
 
     def test_skips_old_python_for_versioned_py(self):
-        self.py.write_text('@echo off\nif not "%1" == "-3" exit /b 2\n'
-                           f'"{sys.executable}" %2 %3 %4 %5 %6 %7 %8 %9\nexit /b %errorlevel%\n')
-        result = self.launch()
+        result = self.launch(py_version="current")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("STARTED " + str(sys.version_info[:2]), result.stdout)
         self.assertIn("['argument with spaces']", result.stdout)
+
+    def test_argument_fidelity(self):
+        arguments = ["argument with spaces", "50%", "q^r", "%NAME%"]
+        result = self.launch(py_version="current", arguments=arguments)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(repr(arguments), result.stdout)
 
     def test_skips_old_python_and_py_for_idf_venv(self):
         venv = self.root / "idf/python_env/idf_matching_env"
