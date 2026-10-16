@@ -400,6 +400,8 @@ test_synthetic_fit(void) {
 
 static void
 test_fit_fractional_pose_means(void) {
+    const int positive_pose_sum_bias = 8;
+    const int other_pose_sum_bias = 1;
     imu_probe_average_t* poses = calloc(IMU_PROBE_POSE_COUNT, sizeof *poses);
     TEST_ASSERT_NOT_NULL(poses);
     for (int sign = -1; sign <= 1; sign += 2) {
@@ -409,7 +411,8 @@ test_fit_fractional_pose_means(void) {
             poses[pose].n = 3;
             for (int axis = 0; axis < 3; axis++) {
                 poses[pose].acceleration[axis] =
-                    (int64_t)axes[axis] * INPUT_ACCEL_ONE_G * poses[pose].n + (axes[axis] > 0 ? 8 : 1) * sign;
+                    ((int64_t)axes[axis] * INPUT_ACCEL_ONE_G * poses[pose].n)
+                    + ((axes[axis] > 0 ? positive_pose_sum_bias : other_pose_sum_bias) * sign);
             }
         }
         const imu_probe_fit_t fit = imu_probe_fit(poses, 0);
