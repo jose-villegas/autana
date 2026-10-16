@@ -77,7 +77,7 @@ fill_rect_logical(ui_transform_t t, mu_Rect r, gfx_color_t color) {
     draw_rect(p.x, p.y, p.w, p.h, color);
 }
 
-/* Mirrors ui_panel(): one flat section frame. */
+/* Mirrors ui_mu_panel(): one flat section frame. */
 static void
 draw_panel(ui_transform_t t, mu_Rect r, uint32_t face_rgb, uint32_t border_rgb) {
     ui_span_t spans[UI_PANEL_MAX_SPANS];

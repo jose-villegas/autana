@@ -84,4 +84,6 @@ ui_font_scaled_t ui_resolve_font_scaled(mu_Font font);
 #ifndef ESP_PLATFORM
 /* Observes completed canvas paints without retaining device-side trace storage. */
 extern void (*ui_canvas_painted_for_test)(const mu_Container*);
+/* Reports open scopes at frame end and unmatched scope ends. */
+extern void (*ui_scope_imbalance_for_test)(void);
 #endif

@@ -183,6 +183,7 @@ $MAIN_DIR/display/panel_clock.c
 $MAIN_DIR/ui/ui.c
 $MAIN_DIR/ui/input/ui_bridge.c
 $MAIN_DIR/ui/ui_build.c
+$MAIN_DIR/ui/face/ui_face.c
 $MAIN_DIR/ui/ui_canvas_marks.c
 $MAIN_DIR/ui/controls/ui_icons.c
 $MAIN_DIR/shell/ui/ui_launcher.c

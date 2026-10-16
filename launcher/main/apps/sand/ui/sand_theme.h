@@ -3,7 +3,7 @@
  * face for the selected choice. The brush screen, the title screen and the
  * options screen all draw in it, so a choice looks the same on each.
  *
- * The values are defines, not only a ui_theme_t, because a host preview of
+ * The values are defines, not only a ui_mu_theme_t, because a host preview of
  * a screen must agree on these exact values rather than keep its own copy.
  * None derive from a material's colour, unlike the material palette.
  */
@@ -20,4 +20,4 @@
 #define SAND_THEME_ON_SELECTED_COLOR 0x2A1A06
 #define SAND_THEME_MUTED_COLOR       0x4A5672
 
-extern const ui_theme_t sand_ui_theme;
+extern const ui_mu_theme_t sand_ui_theme;

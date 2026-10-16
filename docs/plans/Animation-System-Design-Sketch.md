@@ -121,7 +121,7 @@ int scene_animator_clip_count(const scene_t* scene, scene_entity_t entity);
 const char* scene_animator_clip_name(const scene_t* scene, scene_entity_t entity, int clip);
 ```
 
-An animated scene's picker: a dropdown of clip names (`ui_dropdown`) and a
+An animated scene's picker: a dropdown of clip names (`ui_mu_dropdown`) and a
 blend-time slider (`ui_slider_int`, 0 to 1000 ms), both existing widgets,
 and a console command making the same `scene_animator_play()` call.
 

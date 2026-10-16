@@ -151,12 +151,12 @@ render_lab_clips_draw(mu_Context* ctx, ui_flow_t* flow, int width, render_lab_cl
     if (choice->count == 0) {
         return;
     }
-    const ui_theme_t theme = ui_theme_from_style(ctx->style);
+    const ui_mu_theme_t theme = ui_theme_from_style(ctx->style);
     ui_flow_row(ctx, flow, width, draw_text_height());
     mu_label(ctx, "CLIP");
     ui_flow_row(ctx, flow, width, UI_ROW_HEIGHT);
     const mu_Rect anchor = mu_layout_next(ctx);
-    const int picked = ui_dropdown(ctx, "clip", anchor, choice->items, choice->count, choice->selected, &theme);
+    const int picked = ui_mu_dropdown(ctx, "clip", anchor, choice->items, choice->count, choice->selected, &theme);
     if (picked >= 0) {
         (void)render_lab_clips_play(choice, picked, choice->blend_ms);
     }

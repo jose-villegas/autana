@@ -24,9 +24,9 @@ code, drawn on a host by the gallery scene,
 | a button with an icon beside its label | `ui_icon_button()` | `ui/controls/ui_widgets.h` |
 | one of a row of choices, icon above label | `ui_tile_button()` | `ui/controls/ui_widgets.h` |
 | a whole-number setting | `ui_theme_slider_int()`, `ui_slider_int()` | `ui/controls/ui_widgets.h`, `ui/ui.h` |
-| a pick from a list, without a scroll view | `ui_dropdown()` | `ui/controls/ui_widgets.h` |
+| a pick from a list, without a scroll view | `ui_mu_dropdown()` | `ui/controls/ui_widgets.h` |
 | a plain button, checkbox or label | `mu_button()`, `mu_checkbox()`, `mu_label()` | `microui.h` |
-| a captioned section, a title bar | `ui_panel()`, `ui_header_bar()` | `ui/controls/ui_widgets.h` |
+| a captioned section, a title bar | `ui_mu_panel()`, `ui_header_bar()` | `ui/controls/ui_widgets.h` |
 | text aligned in a rect | `ui_text_in()` | `ui/controls/ui_widgets.h` |
 | a grid of colours | `ui_swatch_grid()` | `ui/controls/ui_widgets.h` |
 | an icon | `ui_draw_icon()` | `ui/ui.h` |
@@ -91,7 +91,7 @@ settings_frame(const input_t* input) {
         mu_layout_set_next(ctx, mu_rect(UI_MARGIN, 144, row_w, UI_TAP_MIN), 0);
         mu_checkbox(ctx, "MUTE", &muted);
         const int picked =
-            ui_dropdown(ctx, "output", mu_rect(UI_MARGIN, 216, row_w, UI_TAP_MIN), OUTPUTS, 4, output, &THEME);
+            ui_mu_dropdown(ctx, "output", mu_rect(UI_MARGIN, 216, row_w, UI_TAP_MIN), OUTPUTS, 4, output, &THEME);
         if (picked >= 0) {
             output = picked;
         }
@@ -120,19 +120,19 @@ settings_frame(const input_t* input) {
 | a whole number in a range | `ui_theme_slider_int()` on a themed screen; `ui_slider_int()` beside microui's own controls, in their colours |
 | on or off | `mu_checkbox()`, or two tiles when the choice deserves pictures |
 | one of two to four choices, all worth seeing at once | a row of `ui_tile_button()`s, with `selected` on the current one |
-| one of a longer list, or where there is no room for a row | `ui_dropdown()` |
+| one of a longer list, or where there is no room for a row | `ui_mu_dropdown()` |
 | an action | `ui_icon_button()`, or `mu_button()` for a label alone |
 
 ## Themed widgets
 
 ![The themed widgets in portrait: a panel holding a slider, two icon buttons, three tiles, a swatch grid and a closed dropdown](images/ui/widgets.png) ![The same widgets in landscape, re-flowed into rows and two columns](images/ui/widgets-landscape.png)
 
-`ui/controls/ui_widgets.h`. Each control takes a `ui_theme_t`, so a screen states its
+`ui/controls/ui_widgets.h`. Each control takes a `ui_mu_theme_t`, so a screen states its
 colours once:
 
 | Field | Used for |
 |---|---|
-| `panel_face`, `panel_edge` | `ui_panel()` and `ui_header_bar()` |
+| `panel_face`, `panel_edge` | `ui_mu_panel()` and `ui_header_bar()` |
 | `button_face` | a control at rest |
 | `accent` | headings |
 | `accent_face`, `on_accent` | the selected choice, and the ink on it |
@@ -144,7 +144,7 @@ colours once:
 Those are all of its fields.
 
 ```c
-static const ui_theme_t THEME = {
+static const ui_mu_theme_t THEME = {
     .panel_face = UI_RGB(0x131C2E),
     .accent_face = UI_RGB(0xE0A63C),
     /* ... */
@@ -161,7 +161,7 @@ data; `ui_rgb()` does the same in an expression.
 | `ui_icon_button()` | whether this frame's tap landed on it | icon at the left, label centred in the rest |
 | `ui_tile_button()` | the same | icon above the label; `ui_tile_icon_rect()` gives the icon's square, where a caller may draw its own picture instead |
 | `ui_theme_slider_int()` | whether the value changed | fill on `accent_face`, knob in `text` |
-| `ui_dropdown()` | the index picked this frame, or -1 | see below |
+| `ui_mu_dropdown()` | the index picked this frame, or -1 | see below |
 
 A button is `ui_widget_button_t`: `icon` (or `NULL`), `label`, `enabled` (a
 disabled one is drawn in `muted` and takes no tap) and `selected` (drawn on
@@ -235,7 +235,7 @@ ui_set_button_style(UI_BUTTON_BEZEL);   /* every frame */
 
 | Helper | Draws |
 |---|---|
-| `ui_panel()` | a face with a plain border, grouping controls without inviting a press |
+| `ui_mu_panel()` | a face with a plain border, grouping controls without inviting a press |
 | `ui_header_bar()` | a full-width bar with an edge along its bottom and a centred title |
 | `ui_text_in()` | a string clipped to a rect, centred vertically, aligned `UI_ALIGN_LEFT`, `UI_ALIGN_CENTRE` or `UI_ALIGN_RIGHT` |
 | `ui_swatch_grid()` | colours as a `cols` x `rows` grid of equal cells filling a rect |
@@ -244,7 +244,7 @@ ui_set_button_style(UI_BUTTON_BEZEL);   /* every frame */
 `ui_draw_icon()` turns an icon's rows into one `mu_draw_rect()` per run,
 through `icon_walk_blocks()` (`draw/icon.h`), so an icon costs no new
 `MU_ICON_*` id and no patch to microui. The system icons come from the
-engine pack through `ui_icon()` (`ui/controls/ui_icons.h`), loaded by `ui_init()`;
+engine pack through `ui_icon_image()` (`ui/controls/ui_icons.h`), loaded by `ui_init()`;
 an app's icons are a `ui_icon_set_t` in the app's own pack, which the app
 loads with `ui_icon_set_load()` and releases with `ui_icon_set_release()`, so
 deleting the app deletes them. Without a pack a control shows its label alone, and an
@@ -351,7 +351,7 @@ the device limit. A development build logs the high-water mark from
 A control belongs in `ui/controls/ui_widgets.h`, not in a private copy in one app's
 screen, once a second screen could use it. It must:
 
-- take a `ui_theme_t` rather than colours of its own
+- take a `ui_mu_theme_t` rather than colours of its own
 - use no app's vocabulary: say what shape of caller needs it
 - emit commands, never pixels
 - respect `UI_TAP_MIN`
@@ -362,9 +362,9 @@ screen, once a second screen could use it. It must:
 
 A control that shows everything at once sits inline, like
 `ui_swatch_grid()` or a row of tiles. One that must show more than its own
-rect has room for opens over the screen the way `ui_dropdown()` does: its own
+rect has room for opens over the screen the way `ui_mu_dropdown()` does: its own
 window, one open at a time, closed when a tap lands outside it. When a
-control needs a colour no theme field means, add a field to `ui_theme_t` and
+control needs a colour no theme field means, add a field to `ui_mu_theme_t` and
 give it a value in every theme that exists, rather than reusing a field for
 something else.
 

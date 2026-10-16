@@ -17,13 +17,13 @@
 #define CHEVRON_SIDE    24
 #define LIST_GAP        4
 
-ui_theme_t
+ui_mu_theme_t
 ui_theme_from_style(const mu_Style* style) {
-    return (ui_theme_t){.button_face = style->colors[MU_COLOR_BUTTON],
-                        .accent_face = style->colors[MU_COLOR_BUTTONFOCUS],
-                        .text = style->colors[MU_COLOR_TEXT],
-                        .on_accent = style->colors[MU_COLOR_TEXT],
-                        .text_scale = DRAW_GLYPH_SCALE};
+    return (ui_mu_theme_t){.button_face = style->colors[MU_COLOR_BUTTON],
+                           .accent_face = style->colors[MU_COLOR_BUTTONFOCUS],
+                           .text = style->colors[MU_COLOR_TEXT],
+                           .on_accent = style->colors[MU_COLOR_TEXT],
+                           .text_scale = DRAW_GLYPH_SCALE};
 }
 
 static void
@@ -34,13 +34,13 @@ draw_spans(mu_Context* ctx, const ui_span_t* spans, int n) {
 }
 
 void
-ui_panel(mu_Context* ctx, mu_Rect r, const ui_theme_t* theme) {
+ui_mu_panel(mu_Context* ctx, mu_Rect r, const ui_mu_theme_t* theme) {
     ui_span_t spans[UI_PANEL_MAX_SPANS];
     draw_spans(ctx, spans, ui_panel_spans(r, theme->panel_face, theme->panel_edge, spans, UI_PANEL_MAX_SPANS));
 }
 
 void
-ui_header_bar(mu_Context* ctx, mu_Rect r, const char* title, int scale, const ui_theme_t* theme) {
+ui_header_bar(mu_Context* ctx, mu_Rect r, const char* title, int scale, const ui_mu_theme_t* theme) {
     mu_draw_rect(ctx, r, theme->panel_face);
     mu_draw_rect(ctx, mu_rect(r.x, r.y + r.h - 2, r.w, 2), theme->panel_edge);
     ui_text_in(ctx, r, title, theme->accent, scale, UI_ALIGN_CENTRE);
@@ -71,7 +71,7 @@ typedef struct {
 
 /* The hit, the face and the ink every button-shaped widget shares. */
 static control_t
-begin_control(mu_Context* ctx, const char* id, mu_Rect r, bool enabled, bool selected, const ui_theme_t* theme) {
+begin_control(mu_Context* ctx, const char* id, mu_Rect r, bool enabled, bool selected, const ui_mu_theme_t* theme) {
     control_t c = {0};
     const mu_Id mid = mu_get_id(ctx, id, (int)strlen(id));
     mu_update_control(ctx, mid, r, enabled ? 0 : MU_OPT_NOINTERACT);
@@ -96,14 +96,14 @@ begin_control(mu_Context* ctx, const char* id, mu_Rect r, bool enabled, bool sel
 }
 
 int
-ui_icon_button_label_width(int button_w, bool has_icon, const ui_theme_t* theme) {
+ui_icon_button_label_width(int button_w, bool has_icon, const ui_mu_theme_t* theme) {
     return button_w - (2 * BUTTON_PAD) - (has_icon ? theme->icon_side + BUTTON_ICON_GAP : 0);
 }
 
 /* The icon at the left and the label centred in `label_w` after it. */
 static void
 draw_icon_and_label(mu_Context* ctx, mu_Rect r, const draw_image_t* icon, const char* label, int label_w, mu_Color ink,
-                    const ui_theme_t* theme) {
+                    const ui_mu_theme_t* theme) {
     if (icon != NULL) {
         const int side = theme->icon_side;
         ui_draw_icon(ctx, mu_rect(r.x + BUTTON_PAD, r.y + (r.h - side) / 2, side, side), icon, NULL, ink);
@@ -113,7 +113,8 @@ draw_icon_and_label(mu_Context* ctx, mu_Rect r, const draw_image_t* icon, const 
 }
 
 bool
-ui_icon_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_button_t* button, const ui_theme_t* theme) {
+ui_icon_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_button_t* button,
+               const ui_mu_theme_t* theme) {
     const control_t c = begin_control(ctx, id, r, button->enabled, button->selected, theme);
     const int label_w = ui_icon_button_label_width(r.w, button->icon != NULL, theme);
     draw_icon_and_label(ctx, r, button->icon, button->label, label_w, c.ink, theme);
@@ -121,7 +122,7 @@ ui_icon_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_butto
 }
 
 bool
-ui_theme_slider_int(mu_Context* ctx, mu_Rect r, int* value, int lo, int hi, int step, const ui_theme_t* theme) {
+ui_theme_slider_int(mu_Context* ctx, mu_Rect r, int* value, int lo, int hi, int step, const ui_mu_theme_t* theme) {
     mu_Color* colors = ctx->style->colors;
     const mu_Color base = colors[MU_COLOR_BASE];
     const mu_Color border = colors[MU_COLOR_BORDER];
@@ -170,7 +171,7 @@ ui_dropdown_list_scroll(int selected, int count, int row_h, int list_h) {
 }
 
 int
-ui_dropdown_label_width(int w, const ui_theme_t* theme) {
+ui_dropdown_label_width(int w, const ui_mu_theme_t* theme) {
     return ui_icon_button_label_width(w, true, theme) - CHEVRON_SIDE - BUTTON_ICON_GAP;
 }
 
@@ -208,7 +209,7 @@ ui_widgets_reset(void) {
 
 static int
 draw_dropdown_list(mu_Context* ctx, const char* id, mu_Rect anchor, const ui_dropdown_item_t* items, int count,
-                   int selected, const ui_theme_t* theme) {
+                   int selected, const ui_mu_theme_t* theme) {
     const mu_Rect list = ui_dropdown_list_rect(anchor, count, anchor.h, ui_height(), UI_MARGIN);
     mu_Container* cnt = find_list(ctx, id);
     cnt->rect = list;
@@ -282,8 +283,8 @@ close_if_abandoned(mu_Context* ctx, mu_Container* list) {
 }
 
 int
-ui_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const ui_dropdown_item_t* items, int count, int selected,
-            const ui_theme_t* theme) {
+ui_mu_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const ui_dropdown_item_t* items, int count, int selected,
+               const ui_mu_theme_t* theme) {
     assert(count > 0);
     if (selected < 0 || selected >= count) {
         selected = 0;
@@ -318,7 +319,7 @@ ui_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const ui_dropdown_item_t
 }
 
 mu_Rect
-ui_tile_icon_rect(mu_Rect r, const ui_theme_t* theme) {
+ui_tile_icon_rect(mu_Rect r, const ui_mu_theme_t* theme) {
     const int label_h = draw_font_height(draw_font_ui(), theme->text_scale);
     int side = r.h - 2 * TILE_PAD - label_h - TILE_LABEL_GAP;
     if (side > r.w - (2 * TILE_PAD)) {
@@ -341,7 +342,8 @@ ui_swatch_grid(mu_Context* ctx, mu_Rect r, const mu_Color* colors, int cols, int
 }
 
 bool
-ui_tile_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_button_t* button, const ui_theme_t* theme) {
+ui_tile_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_button_t* button,
+               const ui_mu_theme_t* theme) {
     const control_t c = begin_control(ctx, id, r, button->enabled, button->selected, theme);
 
     const mu_Rect icon = ui_tile_icon_rect(r, theme);

@@ -230,7 +230,7 @@ static void
 draw_brush_header(mu_Context* ctx, sand_ui_t* ui, const brush_screen_layout_t* lay) {
     ui_set_font_scaled(draw_font_ui(), BRUSH_SCREEN_CAPTION_SCALE);
 
-    ui_panel(ctx, lay->header_panel, &sand_ui_theme);
+    ui_mu_panel(ctx, lay->header_panel, &sand_ui_theme);
     draw_brush_swatch(ctx, lay->swatch, ui->brushes[ui->brush].cell);
     ui_text_in(ctx, lay->material_caption, BRUSH_SCREEN_MATERIAL_CAPTION, sand_ui_theme.caption,
                BRUSH_SCREEN_CAPTION_SCALE, UI_ALIGN_LEFT);
@@ -279,7 +279,7 @@ draw_brush_mode_segment(mu_Context* ctx, sand_ui_t* ui, mu_Rect r, int i) {
 
 static void
 draw_brush_mode_block(mu_Context* ctx, sand_ui_t* ui, const brush_screen_layout_t* lay) {
-    ui_panel(ctx, lay->mode_panel, &sand_ui_theme);
+    ui_mu_panel(ctx, lay->mode_panel, &sand_ui_theme);
     ui_text_in(ctx, lay->mode_caption, BRUSH_SCREEN_MODE_CAPTION, sand_ui_theme.caption, BRUSH_SCREEN_CAPTION_SCALE,
                UI_ALIGN_LEFT);
 
@@ -290,7 +290,7 @@ draw_brush_mode_block(mu_Context* ctx, sand_ui_t* ui, const brush_screen_layout_
 
 static void
 draw_brush_size_block(mu_Context* ctx, sand_ui_t* ui, const brush_screen_layout_t* lay) {
-    ui_panel(ctx, lay->size_panel, &sand_ui_theme);
+    ui_mu_panel(ctx, lay->size_panel, &sand_ui_theme);
 
     const char* size_caption = brush_screen_size_caption((brush_screen_segment_t)ui->mode);
     ui_text_in(ctx, lay->size_caption, size_caption, sand_ui_theme.caption, BRUSH_SCREEN_CAPTION_SCALE, UI_ALIGN_LEFT);
