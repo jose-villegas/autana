@@ -618,7 +618,7 @@ def wait_notice(store, board, state, ticket):
                   if item["ticket"] == ticket), None)
     if place:
         estimate = device_lock.queue_estimates(
-            status, now, device_lock.duration_history(store.root)).get(ticket)
+            status, now, device_lock.duration_history(store.root, board=board)).get(ticket)
         print(f"waiting for board: queue place {place}; estimated start "
               f"{device_lock.format_estimate(estimate)}", file=sys.stderr)
 
@@ -727,7 +727,7 @@ class HeldLock:
             error = (str(error_value) if error_type else
                      str(LockLost()) if lost else self.error)
             device_lock.record_duration(self.kind, time.monotonic() - self.started, error,
-                                        self.store.root)
+                                        self.store.root, board=self.board)
         if lost and error_type is None:
             raise LockLost()
 
@@ -1057,7 +1057,7 @@ def holding(store, board, args, held_lock, kind):
         raise
     finally:
         device_lock.record_duration(kind, time.monotonic() - nested.started,
-                                    error or nested.error, store.root)
+                                    error or nested.error, store.root, board=board)
 
 
 FLASH_POLL_SECONDS = 0.5
@@ -1943,8 +1943,7 @@ def board_statuses(store, board=None):
     for serial in plugged:
         store.note_seen(serial)
     boards = [board] if board else sorted(set(store.boards()) | set(plugged))
-    durations = device_lock.duration_history(store.root)
-    return [device_lock.status_entry(store, name, plugged.get(name), durations=durations)
+    return [device_lock.status_entry(store, name, plugged.get(name))
             for name in boards]
 
 

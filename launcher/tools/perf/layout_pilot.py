@@ -27,6 +27,7 @@ from statistics import mean
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from capture import require_same_board
 from layout_measure import (analyse, autana_command, captured_runs, make_table,
                             parse_report, required_seeds, run_flash)
 
@@ -40,8 +41,10 @@ def load(directory):
     """{suite: {flash file: {"seed": n, "flash": s, "run": s, "rows": {name: [values]}}}}
     from `run`'s files."""
     suites = {}
-    for path in sorted(Path(directory).glob("*.json")):
-        record = json.loads(path.read_text(encoding="utf-8"))
+    records = [json.loads(path.read_text(encoding="utf-8"))
+               for path in sorted(Path(directory).glob("*.json"))]
+    require_same_board(records)
+    for path, record in zip(sorted(Path(directory).glob("*.json")), records):
         for name, entry in record["suites"].items():
             rows = {}
             for report in entry["runs"]:

@@ -11,7 +11,7 @@ sys.path.insert(0, str(ROOT / "launcher/tools"))
 from r3d.cost_model import FEATURES, mesh_rows
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 import frame_cost
-from capture import build_ids
+from capture import build_ids, require_same_board
 from r3d.import_settings import load_scene
 from r3d.lit_mesh import read_lit_mesh
 from r3d.poses import sample_camera_path
@@ -24,6 +24,7 @@ BLOCK = re.compile(r"=== (\w+) FRAME COST .*?===.*?(?:\1 both cores: mean [^\n]+
 
 
 def capture_means(directory, object_name, expected_packs=None, expected_poses=None, expected_geometry=None):
+    require_same_board([pathlib.Path(directory) / f"meshlets-{row}-board.log" for row in ROWS])
     result, packs, poses = {}, {}, None
     for row in ROWS:
         path = pathlib.Path(directory) / f"meshlets-{row}-board.log"

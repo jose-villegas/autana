@@ -11,6 +11,7 @@ from statistics import mean
 from types import SimpleNamespace
 
 from layout_measure import analyse, autana_command, required_seeds, run_flash, filter_limits, validate_filters, split_filters, FilterOverlap
+from capture import require_same_board
 from seed_statistics import compare, minimum_seeds, permutation_samples
 
 DEFAULT_THRESHOLD = 1.0
@@ -34,6 +35,7 @@ def schedule(cap, alpha):
 
 def observations(records):
     """Complete per-seed rows, counters, and capture test ownership."""
+    require_same_board(records)
     rows, instructions, owners = {}, {}, {}
     for record in records:
         for suite, entry in record["suites"].items():
@@ -192,6 +194,7 @@ def measure(args, runner=None):
                         break
                     continue
                 failures = 0
+                require_same_board([record, *records["a"], *records["b"]])
                 records[side].append(record)
                 silent = [suite for suite, _, _ in args.suite
                           if len(records["a"]) == len(records["b"]) == 1 and

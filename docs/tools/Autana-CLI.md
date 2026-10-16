@@ -274,6 +274,13 @@ and queued `estimated_start` times. It never ends a hold.
 Lock loss is defined in [Device-Lock.md](Device-Lock.md); flash success,
 captures and wait estimates in [Flash-and-Captures.md](Flash-and-Captures.md).
 
+Estimates use the median of recent successful runs of the command kind.
+A board uses its own USB serial's history once that kind reaches
+`ESTIMATE_MINIMUM_RUNS` in `scripts/device/device_lock.py`; otherwise it
+uses all boards' history, including older rows without a board. Duration
+history is trimmed per command kind and board with the same recent-run and
+file limits. Failed commands do not shape estimates.
+
 The lock owner is set as described in [Flags](#flags) above.
 
 `autana lock hand --until-back 30 put the board in download mode` pauses a flash

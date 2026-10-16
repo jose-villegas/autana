@@ -265,6 +265,8 @@ def capture_rows(path, commit, id, object_name):
 }
 
 def board_means(captures, commit, id, object_name):
+    from capture import require_same_board
+    require_same_board(captures)
     runs = [capture_rows(path, commit, id, object_name) for path in captures]
     for path, rows in zip(captures, runs):
         missing = set((id, *VARIANTS)) - rows.keys()
@@ -275,6 +277,8 @@ name: statistics.median(rows[name] for rows in runs) for name in (id, *VARIANTS)
 }
 
 def board_frames(captures, expected, id, object_name):
+    from capture import require_same_board
+    require_same_board(captures)
     import re
     pattern = rf"({re.escape(id)}|lite|{re.escape(object_name)}|{re.escape(object_name + '_lite')}) t=\s*(\d+)s .*?both cores: frame\s+(\d+)us"
     values = {}

@@ -13,6 +13,7 @@ from layout_measure import (REPO, MEAN_RE, autana_command, booted_build_id,
                             capture_metadata, captured_runs, make_table, parse_report,
                             run_stamped, split_filters, filter_limits, status_snapshot)
 from perf_compare import DEFAULT_ALPHA, DEFAULT_THRESHOLD
+from capture import require_same_board
 from seed_statistics import compare
 from device_capture import PERF_SEGMENT
 
@@ -239,6 +240,7 @@ def run(args, runner=None):
                                 captures, _, seconds = captured_runs(lines, suite, 1)
                                 capture = captures[0]
                                 item.update(capture=str(capture), seconds=seconds[0], wall_seconds=wall)
+                                item["board"] = require_same_board([item])
                                 if code or "- Ended: complete" not in capture.with_suffix(".md").read_text(encoding="utf-8", errors="replace"):
                                     raise RuntimeError(f"{suite}: failed or incomplete capture; exit {code}")
                                 table = make_table(template, capture, args.out / (capture_stem + ".md"),
@@ -295,6 +297,7 @@ def report(directory):
     """Use complete seed means, or runs on one seed, in one Holm family."""
     directory = Path(directory)
     saved = json.loads((directory / "plan.json").read_text(encoding="utf-8"))
+    require_same_board([item for item in saved["captures"] if not item.get("error")])
     multi_seed = len(saved["seeds"]) >= 2
     gathered, units, shared = {}, {}, None
     for capture in saved["captures"]:
