@@ -35,7 +35,7 @@ class BoardSelectionTests(unittest.TestCase):
                         [sys.executable, "-c", runner, str(Path(autana.__file__).parent),
                          "-b", selector, "status"], env=environment,
                         capture_output=True, text=True, timeout=30)
-                    self.assertIn("device board=" + selector, result.stdout, result.stderr)
+                    self.assertIn("device board=" + device.board_selector(selector), result.stdout, result.stderr)
 
     def test_b_placement_and_unchanged_selector_children(self):
         with mock.patch.object(device, "known_boards", side_effect=AssertionError("USB lookup")):
@@ -43,7 +43,7 @@ class BoardSelectionTests(unittest.TestCase):
                           ["status", "-b=a308"], ["--board", BOARD.lower(), "status"]):
                 with self.subTest(words=words):
                     flags, rest = autana.pop_globals(words)
-                    self.assertEqual(flags, {"--board": words[-2] if words[0] == "--board" else "a308"})
+                    self.assertEqual(flags, {"--board": words[-2].upper() if words[0] == "--board" else "A308"})
                     self.assertEqual(rest, ["status"])
                     with autana.applied(flags):
                         self.assertEqual(autana.os.environ[autana.BOARD_ENV], flags["--board"])
@@ -58,7 +58,7 @@ class BoardSelectionTests(unittest.TestCase):
             self.assertEqual([call.args[0] for call in read.call_args_list],
                              ["autana> ", "autana> ", "autana@A308> ", "autana@A308> ", "autana> "])
             self.assertIn("no board pinned", output.getvalue())
-            self.assertIn("a308", output.getvalue())
+            self.assertIn("A308", output.getvalue())
             self.assertNotIn("--board", autana.session_flags)
 
     def test_console_starts_pinned_without_usb_completion(self):

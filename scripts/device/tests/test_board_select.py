@@ -1,6 +1,10 @@
 import contextlib
 import io
 import json
+import os
+from pathlib import Path
+import subprocess
+import sys
 import unittest
 from unittest import mock
 
@@ -11,6 +15,78 @@ import device_lock
 
 
 class SelectionTests(Store):
+    def test_run_children_and_take_token_keep_selected_board(self):
+        child = self.root / "child.py"
+        child.write_text("""
+import contextlib
+import sys
+from unittest import mock
+sys.path.insert(0, sys.argv[1])
+import device
+sys.path.insert(0, sys.argv[2])
+import autana
+board_a, board_b, verb = sys.argv[3:6]
+def screenshot(args, store, board):
+    with device.HeldLock(store, board, "child", "screenshot", 0):
+        print("child board=" + device.find_board().serial)
+    return 0
+def write_image(built, store, board, held):
+    print("child board=" + device.find_board().serial)
+    return "build", mock.Mock()
+flags, words = autana.pop_globals(sys.argv[6:])
+with autana.applied(flags), \
+     mock.patch.object(device, "plugged_boards", return_value=[device.Board(board_a, "COM5"), device.Board(board_b, "COM7")]), \
+     mock.patch.object(device, "screenshot", screenshot), \
+     mock.patch.object(device, "build_image", return_value=contextlib.nullcontext(None)), \
+     mock.patch.object(device, "write_image", write_image), \
+     mock.patch.object(device, "await_console"):
+    raise SystemExit(device.main([verb, *words]))
+""", encoding="utf-8")
+        command = [sys.executable, str(child), str(Path(device.__file__).parent),
+                   str(Path(device.__file__).parents[1] / "autana"), BOARD_A, BOARD_B]
+        with plugged(usb(BOARD_A, "COM5"), usb(BOARD_B, "COM7")), \
+             mock.patch.object(device_lock, "default_root", return_value=self.store.root), \
+             mock.patch.dict(os.environ, {device.BOARD_ENV: "", device.TOKEN_ENV: "",
+                                         "_AUTANA_DEVICE_LOCK_ROOT": str(self.store.root)}):
+            for verb, words in (("screenshot", []),
+                                ("flash", ["--variant", "dev", "--worktree", "."])):
+                with self.subTest(verb=verb), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(device.main(["run", "--", *command, verb, *words]), 0)
+            with contextlib.redirect_stdout(io.StringIO()) as output, \
+                 contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(device.main(["take", "--for", "10", "job"]), 0)
+            token = output.getvalue().strip()
+            try:
+                result = subprocess.run([*command, "flash", "--lock-token", token,
+                                         "--variant", "dev", "--worktree", "."],
+                                        capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("child board=" + BOARD_A, result.stdout)
+            finally:
+                self.store.release(BOARD_A, token)
+
+    def test_pick_empty_and_all_human_reserved(self):
+        with self.assertRaises(device.NoBoard):
+            device.pick_board([])
+        for board in (BOARD_A, BOARD_B):
+            self.store.reserve_human(board, "maintainer", "bench")
+        self.store.enqueue(BOARD_A, "waiter", "flash")
+        with plugged(usb(BOARD_A, "COM5"), usb(BOARD_B, "COM7")):
+            self.assertEqual(device.pick_board(device.board_statuses(self.store)),
+                             (BOARD_B, "shortest queue"))
+
+    def test_queued_board_is_not_displayed_as_free(self):
+        self.store.enqueue(BOARD_A, "waiter", "flash")
+        with plugged(usb(BOARD_A, "COM5")):
+            entries = device.board_statuses(self.store)
+        for printer, args in ((device.print_devices, (entries,)),
+                              (device.print_statuses, (entries, self.store.now()))):
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                printer(*args)
+            self.assertIn("A308 " + BOARD_A + " COM5", output.getvalue())
+            self.assertIn("queued", output.getvalue())
+            self.assertNotIn(": free", output.getvalue())
+
     def test_short_ids_resolve_usb_seen_and_case(self):
         self.store.note_seen(BOARD_B)
         with plugged(usb(BOARD_A, "COM5")):
@@ -66,7 +142,7 @@ class SelectionTests(Store):
             with self.assertRaisesRegex(RuntimeError, "--board.*-b.*use"):
                 device.board_for_lock(self.store)
             with contextlib.redirect_stderr(io.StringIO()) as output:
-                self.assertEqual(device.board_for_lock(self.store, auto_pick=True), BOARD_B)
+                self.assertEqual(device.board_for_lock(self.store, auto_pick=True), (BOARD_B, "free, nobody queued"))
             self.assertIn(BOARD_B, output.getvalue())
             self.assertIn("free", output.getvalue())
 

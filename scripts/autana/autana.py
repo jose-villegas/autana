@@ -1741,12 +1741,9 @@ def completion_candidates(line, prefix):
         parts = line.split()
         if line and line[-1].isspace():
             parts.append("")
-        if len(parts) != 2 or parts[0] not in ("build", "flash", "help", "use"):
+        if len(parts) != 2 or parts[0] not in ("build", "flash", "help"):
             return []
-        if parts[0] == "use":
-            words = set()
-        else:
-            words = VARIANTS if parts[0] in ("build", "flash") else HELP_TOPICS
+        words = VARIANTS if parts[0] in ("build", "flash") else HELP_TOPICS
     return sorted(word for word in words if word.startswith(prefix))
 
 
@@ -1813,10 +1810,7 @@ def checked_global(flag, value):
     """`value` as `flag`'s environment value, or exit naming the flag, the
     value and an example."""
     needs, example, check = GLOBAL_CHECKS[flag]
-    try:
-        checked = check(value)
-    except RuntimeError as error:
-        sys.exit(f"autana: {error}")
+    checked = check(value)
     if checked is None:
         where = f" (no {PROJECT_MARKER.as_posix()} in {Path(value).resolve()})" if flag == "--project" else ""
         sys.exit(f"autana {flag} {value!r}: {flag} needs {needs}, e.g. {example}{where}")

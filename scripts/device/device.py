@@ -162,14 +162,14 @@ def board_selector(value):
     named = device_lock.normalise_board(value)
     if (re.fullmatch(BOARD_SERIAL_PATTERN, named)
             or re.fullmatch(r"[0-9A-F]{%d}" % SHORT_ID_DIGITS, named)):
-        return value
+        return named
     return None
 
 
 def resolve_board(value, store=None):
-    if board_selector(value) is None:
-        return None
-    named = device_lock.normalise_board(value)
+    named = board_selector(value)
+    if named is None:
+        raise RuntimeError("board needs a full USB serial or four-digit short id")
     if re.fullmatch(BOARD_SERIAL_PATTERN, named):
         return named
     known = known_boards(store)
@@ -185,12 +185,16 @@ def resolve_board(value, store=None):
 
 def chosen_board(board=None, store=None):
     named = board or os.environ.get(BOARD_ENV)
-    if not named:
-        return None
-    resolved = resolve_board(named, store)
-    if resolved is None:
-        raise RuntimeError("board needs a full USB serial or four-digit short id")
-    return resolved
+    if named:
+        return resolve_board(named, store)
+    token = os.environ.get(TOKEN_ENV)
+    if token:
+        store = store if store is not None else device_lock.LockStore()
+        board = store.board_of_token(token)
+        if board is None:
+            raise TokenRefused("lock token is not live on any board (released, lapsed or wrong)")
+        return board
+    return None
 
 
 def find_board(board=None):
@@ -210,7 +214,7 @@ def find_board(board=None):
     return present[0]
 
 
-def board_for_lock(store, named=None, remembered=False, auto_pick=False, selected=None):
+def board_for_lock(store, named=None, remembered=False, auto_pick=False):
     """The board a command queues for. A lock outlives the board's USB
     presence, so while a holder's reset has the only board off USB a waiter
     still finds it through the lock records; only opening its port needs USB.
@@ -220,24 +224,22 @@ def board_for_lock(store, named=None, remembered=False, auto_pick=False, selecte
     USB (and idle) needs."""
     wanted = chosen_board(named, store)
     if wanted:
-        return wanted
+        return wanted, None
     present = sorted(found.serial for found in plugged_boards())
     for serial in present:
         store.note_seen(serial)
     if auto_pick and len(present) > 1:
         entries = [entry for entry in board_statuses(store) if entry["port"]]
         board, reason = pick_board(entries)
-        if selected is not None:
-            selected.append(board)
         print(f"picked {short_id(board)} ({board}): {reason}", file=sys.stderr)
-        return board
+        return board, reason
     candidates, source = present, "plugged in"
     if not candidates:
         candidates, source = store.boards(), "known to the lock"
     if not candidates and remembered:
         candidates, source = store.seen_boards(), "known to this machine"
     if len(candidates) == 1:
-        return candidates[0]
+        return candidates[0], None
     if not candidates:
         raise NoBoard("no USB Serial/JTAG board found (VID 0x303A)")
     raise RuntimeError("several boards are " + source
@@ -1947,11 +1949,12 @@ def board_statuses(store, board=None):
 
 
 def pick_board(entries):
-    free = [entry for entry in entries
-            if entry["state"] == "unlocked" and not entry["waiting"]]
+    if not entries:
+        raise NoBoard("no board available")
+    free = [entry for entry in entries if device_lock.availability(entry) == "free"]
     if free:
         return min(free, key=lambda entry: entry["board"])["board"], "free, nobody queued"
-    available = [entry for entry in entries if entry["state"] != "human"] or entries
+    available = [entry for entry in entries if device_lock.availability(entry) != "human"] or entries
     estimated = [entry for entry in available if entry["estimated_free"] is not None]
     if estimated:
         chosen = min(estimated, key=lambda entry: (entry["estimated_free"], entry["board"]))
@@ -1960,32 +1963,35 @@ def pick_board(entries):
     return chosen["board"], "shortest queue"
 
 
+def board_heading(entry):
+    return f"{short_id(entry['board'])} {entry['board']} {entry['port'] or 'not on USB'}"
+
+
 def print_devices(entries):
     if not entries:
         print("no board found")
     for entry in entries:
-        where = entry["port"] or "not on USB"
         holder = entry["holder"]
-        if entry["state"] == "human":
+        available = device_lock.availability(entry)
+        if available == "human":
             state = f"reserved by a human ({holder['owner']}) until {device_lock.format_estimate(entry['expires_at'])}"
-        elif entry["state"] == "held":
+        elif available == "held":
             state = f"held by {holder['owner']} until {device_lock.format_estimate(entry['estimated_free'])}"
         else:
-            state = "free"
-        print(f"{short_id(entry['board'])} {entry['board']} {where}: {state}")
+            state = available
+        print(f"{board_heading(entry)}: {state}")
 
 
 def print_statuses(entries, now):
     if not entries:
         print("no board found")
     for entry in entries:
-        where = "on " + entry["port"] if entry["port"] else "not on USB"
-        print(f"board {entry['board']} ({where})")
+        print(board_heading(entry))
         for line in device_lock.status_lines(entry, now):
             print("  " + line)
 
 
-def run_device(argv=None, selected=None):
+def main(argv=None):
     try:
         autana_config.load()
     except autana_config.ConfigError as error:
@@ -2108,7 +2114,7 @@ def run_device(argv=None, selected=None):
     screenshot_view.add_argument("--framebuffer", action="store_true")
     batch_parser = subparsers.add_parser(
         "batch", help="capture suites N times under one lock, write one summary")
-    batch_parser.set_defaults(auto_pick=True)
+    batch_parser.set_defaults(auto_pick=lambda args: args.flash)
     batch_parser.add_argument("--worktree", required=True)
     batch_parser.add_argument("--variant", choices=("dev", "diag", "release"), default="diag")
     batch_parser.add_argument("--suite", action="append", required=True,
@@ -2155,6 +2161,8 @@ def run_device(argv=None, selected=None):
         print("report: " + str(report_path))
         return 0
 
+    picked_reason = None
+    result = 1
     try:
         store = device_lock.LockStore()
         if args.command in ("status", "devices"):
@@ -2165,13 +2173,15 @@ def run_device(argv=None, selected=None):
                 print_devices(entries)
             else:
                 print_statuses(entries, store.now())
-            return 0
+            result = 0
+            return result
         if args.command == "resolve-port":
             print(find_board(args.board).port)
-            return 0
-        board = board_for_lock(store, args.board,
-                               remembered=args.command in ("hand-to-human", "take-back"),
-                               auto_pick=args.auto_pick and getattr(args, "flash", True), selected=selected)
+            result = 0
+            return result
+        board, picked_reason = board_for_lock(
+            store, args.board, remembered=args.command in ("hand-to-human", "take-back"),
+            auto_pick=args.auto_pick(args) if callable(args.auto_pick) else args.auto_pick)
         token = os.environ.get(TOKEN_ENV)
         if token and args.command in ("take", "hand-to-human", "wait-free"):
             record = store.live_lock(board, token)
@@ -2190,15 +2200,19 @@ def run_device(argv=None, selected=None):
             while True:
                 state = store.status(board)
                 if not state["lock"] and not state["human"]:
-                    return 0
+                    result = 0
+                    return result
                 if deadline is not None and time.monotonic() >= deadline:
-                    return device_lock.EXIT_BUSY
+                    result = device_lock.EXIT_BUSY
+                    return result
                 time.sleep(device_lock.WAIT_POLL_SECONDS if deadline is None else
                            min(device_lock.WAIT_POLL_SECONDS, max(0, deadline - time.monotonic())))
         if args.command == "release":
-            return 0 if store.release(board, args.token) else 1
+            result = 0 if store.release(board, args.token) else 1
+            return result
         if args.command == "check-token":
-            return 0 if store.check_token(board, args.token) else 1
+            result = 0 if store.check_token(board, args.token) else 1
+            return result
         if args.command == "hand-to-human":
             notice_state = {}
             reservation_id, renewed = store.reserve_human(board, args.owner, args.note,
@@ -2209,12 +2223,15 @@ def run_device(argv=None, selected=None):
                 lasts = device_lock.duration_text(device_lock.HUMAN_RESERVATION_SECONDS)
                 print(f"human reservation {'renewed' if renewed else 'recorded'}; it expires "
                       f"in {lasts} unless renewed with `autana lock hand`")
-                return 0
-            return wait_for_human_release(store, board, reservation_id, args.until_back)
+                result = 0
+                return result
+            result = wait_for_human_release(store, board, reservation_id, args.until_back)
+            return result
         if args.command == "take-back":
             store.end_human(board)
             print_statuses(board_statuses(store, board), store.now())
-            return 0
+            result = 0
+            return result
         if args.command == "take":
             if args.pid is not None and (not args.until_released or args.pid <= 0):
                 parser.error("--pid needs --until-released and a positive pid")
@@ -2231,7 +2248,8 @@ def run_device(argv=None, selected=None):
             if not store.hold(board, held["token"], " ".join(args.note), seconds=seconds, pid=pid, estimate=args.estimate):
                 raise LockBusy("device lock was lost before the hold was recorded")
             print(held["token"])
-            return 0
+            result = 0
+            return result
         if args.command == "run":
             child = args.child[1:] if args.child[:1] == ["--"] else args.child
             if not child:
@@ -2239,13 +2257,16 @@ def run_device(argv=None, selected=None):
             with HeldLock(store, board, args.owner, "run", args.wait) as held:
                 try:
                     run_to_end(child, held.lost)
-                    return 0
+                    result = 0
+                    return result
                 except subprocess.CalledProcessError as error:
                     held.error = str(error)
                     held.keep_seconds = args.keep_on_failure
-                    return error.returncode
+                    result = error.returncode
+                    return result
                 except KeyboardInterrupt:
-                    return EXIT_INTERRUPTED
+                    result = EXIT_INTERRUPTED
+                    return result
         if args.command == "flash":
             extra_flags = (["--perf-scope"] if args.perf_scope else []) + layout_flags(args)
             with build_image(args, board, extra_flags) as built, \
@@ -2258,30 +2279,26 @@ def run_device(argv=None, selected=None):
         elif args.command == "send":
             if not args.until:
                 args.until = [args.reply + "_OK", args.reply + "_ERR", args.reply + "_END"]
-            return send(args, store, board)
+            result = send(args, store, board)
+            return result
         else:
             # Looked up per call, so a test's patch of one of them is the one run.
             board_commands = {"run-suite": run_suite, "selftest": selftest, "coredump": coredump,
                               "reset": reset_device, "batch": batch, "screenshot": screenshot}
-            return board_commands.get(args.command, listen)(args, store, board)
-        return 0
+            result = board_commands.get(args.command, listen)(args, store, board)
+            return result
+        result = 0
+        return result
     except LockBusy as error:
         print("device: " + str(error), file=sys.stderr)
-        return device_lock.EXIT_BUSY
+        result = device_lock.EXIT_BUSY
+        return result
     except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
         print("device: " + str(error), file=sys.stderr)
-        return 1
-
-
-def main(argv=None):
-    selected = []
-    result = 1
-    try:
-        result = run_device(argv, selected)
+        result = 1
         return result
     finally:
-        if selected:
-            board = selected[0]
+        if picked_reason:
             verdict = "PASS" if result == 0 else f"FAIL ({result})"
             print(f"{verdict}: board {short_id(board)} ({board})", file=sys.stderr)
 
