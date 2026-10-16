@@ -36,6 +36,7 @@
 #include "core/timing.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
+#include "input/gravity.h"
 #include "input/input_shell.h"
 #include "input/tilt.h"
 #include "math/scalar/mathi.h"
@@ -81,7 +82,7 @@ static const char* TAG = "input_lab";
 #define MOTION_DOT_SIDE      7
 #define MOTION_FILTER_SIDE   11
 #define MOTION_MARGIN        16
-#define MOTION_HUD_ROWS      4
+#define MOTION_HUD_ROWS      5
 #define MOTION_HUD_SCALE     1
 #define COL_HIT              0x40E060
 #define COL_MISS             0xFFB020
@@ -101,6 +102,7 @@ static const char* const MODE_NAMES[MODE_COUNT] = {"random", "grid", "bezel", "m
 
 static lab_mode_t mode;
 static tilt_t tilt;
+static gravity_t gravity;
 static input_motion_t motion;
 static vec3i_t raw_acceleration;
 static imu_probe_round_t imu_round;
@@ -163,6 +165,7 @@ start_round(void) {
     panel_max_x = panel_max_y = -1;
     if (mode == MODE_MOTION) {
         tilt_reset(&tilt, INPUT_ACCEL_ONE_G);
+        gravity_reset(&gravity);
         have_motion = false;
         motion_log_ms = 0;
         motion_read_us = timing_now_us();
@@ -412,14 +415,19 @@ read_motion(uint32_t dt_ms) {
     }
     raw_acceleration = vec3i_add(motion.acceleration, input_accel_offset());
     tilt_update(&tilt, motion.acceleration, motion.turn_speed, dt_ms);
+    gravity_update(&gravity, &motion, dt_ms);
     motion_probe = motion_probe_measure(motion.acceleration);
     if (motion_log_ms >= MOTION_LOG_PERIOD_MS) {
         motion_log_ms %= MOTION_LOG_PERIOD_MS;
         ESP_LOGI(TAG,
-                 "motion raw %d,%d,%d tilt %d bearing %d filt %d,%d str %d shake %d turn %d rot %d,%d,%d quarter %d",
+                 "motion raw %d,%d,%d tilt %d bearing %d filt %d,%d str %d shake %d turn %d rot %d,%d,%d quarter %d "
+                 "grav_mg %d,%d,%d bias_dps10 %d,%d,%d",
                  raw_acceleration.x, raw_acceleration.y, raw_acceleration.z, (int)lroundf(motion_probe.tilt_deg),
                  motion_probe.bearing_deg, tilt_x(&tilt), tilt_y(&tilt), tilt_strength(&tilt), tilt_shake(&tilt),
-                 motion.turn_speed, motion.rotation.x, motion.rotation.y, motion.rotation.z, display_quarter_now());
+                 motion.turn_speed, motion.rotation.x, motion.rotation.y, motion.rotation.z, display_quarter_now(),
+                 (int)lroundf(gravity.down.x * IMU_PROBE_MILLI), (int)lroundf(gravity.down.y * IMU_PROBE_MILLI),
+                 (int)lroundf(gravity.down.z * IMU_PROBE_MILLI), (int)lroundf(gravity.gyro_bias.x * OFFSET_SCALE),
+                 (int)lroundf(gravity.gyro_bias.y * OFFSET_SCALE), (int)lroundf(gravity.gyro_bias.z * OFFSET_SCALE));
     }
 }
 
@@ -577,6 +585,26 @@ draw_motion(mu_Context* ctx) {
         line[0] = '\0';
     }
     hud_line(ctx, 3, line);
+
+    enum { GRAV_X, GRAV_Y, GRAV_Z, GRAV_STRENGTH, GRAV_BIAS_X, GRAV_BIAS_Y, GRAV_BIAS_Z, GRAV_COUNT };
+
+    const float gravity_values[GRAV_COUNT] = {
+        gravity.down.x,      gravity.down.y,      gravity.down.z,     gravity_strength(&gravity),
+        gravity.gyro_bias.x, gravity.gyro_bias.y, gravity.gyro_bias.z};
+    char gravity_text[GRAV_COUNT][MOTION_G_TEXT_SIZE];
+    for (size_t i = 0; i < GRAV_COUNT; i++) {
+        const bool bias = i >= GRAV_BIAS_X;
+        motion_probe_format_fixed(gravity_text[i], sizeof gravity_text[i],
+                                  (int)lroundf(gravity_values[i] * (bias ? OFFSET_SCALE : IMU_PROBE_MILLI)),
+                                  bias ? OFFSET_DIGITS : MOTION_MILLI_DIGITS, i != GRAV_STRENGTH);
+    }
+    if (snprintf(line, sizeof line, "GRAV %s,%s,%s S%s B%s,%s,%s", gravity_text[GRAV_X], gravity_text[GRAV_Y],
+                 gravity_text[GRAV_Z], gravity_text[GRAV_STRENGTH], gravity_text[GRAV_BIAS_X],
+                 gravity_text[GRAV_BIAS_Y], gravity_text[GRAV_BIAS_Z])
+        < 0) {
+        line[0] = '\0';
+    }
+    hud_line(ctx, MOTION_HUD_ROWS - 1, line);
 
     const vec3i_t offset = input_accel_offset();
     snprintf(line, sizeof line, "OFFSET %d %d %d Q12", (int)offset.x, (int)offset.y, (int)offset.z);

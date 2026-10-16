@@ -210,6 +210,65 @@ A consumer that quantizes direction into coarse steps needs its own treatment
 of that quantization. Smoothing the input alone cannot restore discarded
 angular resolution.
 
+## Gravity estimation
+
+`launcher/main/input/gravity.h` exposes a unit down vector in screen axes,
+linear acceleration in g, and a gyro bias in degrees per second. Motion uses
+the input layer's Q12 g and Q6 degrees-per-second scales; elapsed time comes
+from the caller. Gyro prediction uses the measured screen-axis sense:
+the change in down is minus angular velocity crossed with down.
+
+```mermaid
+flowchart TD
+    Clamp[Clamp elapsed time] --> Rotate[Subtract gyro bias, rotate down, normalize]
+    Rotate --> Nonzero{Acceleration nonzero?}
+    Nonzero -->|Yes| Trust[Magnitude trust weight and angular rejection]
+    Trust --> Accepted{Accepted?}
+    Accepted -->|Yes| Pull[Weighted pull toward acceleration, clear distrust]
+    Accepted -->|No| Recover[Count distrust, adopt acceleration past recovery limit]
+    Pull --> Linear[Linear acceleration = acceleration minus down]
+    Recover --> Linear
+    Nonzero -->|No| Linear
+    Linear --> Still{Low angular rate and low linear acceleration?}
+    Still -->|Yes| Bias[Low-pass gyro bias toward raw rotation]
+    Still -->|No| Output[Down, linear acceleration, strength, free fall]
+    Bias --> Output
+```
+
+Magnitude trust falls linearly between the full-trust and no-trust thresholds.
+Accepted acceleration corrects down with alpha = weight * dt / (tau + dt),
+followed by normalization. Angular rejection and timed recovery use the
+thresholds recommended by Madgwick's x-io Fusion library.<sup>[[72]](../Citations.md#72)</sup>
+Recovery adopts nonzero acceleration exactly after continuous rejection exceeds
+the limit. Reset primes that recovery path so the first nonzero reading is
+adopted exactly, including when no time has elapsed. Zero acceleration skips
+correction and recovery counting, keeping the prediction finite in free fall.
+
+Stillness gates gyro bias learning. Mahony, Hamel and Pflimlin's complementary
+filter bias estimate is a related technique; this estimator low-passes raw
+rotation only while both angular rate and linear acceleration are small.<sup>[[71]](../Citations.md#71)</sup>
+Strength is the in-plane share of the unit down vector, clamped to 0..1 and
+reported as zero in free fall. Free fall means the magnitude of linear
+acceleration plus down is below the free-fall threshold.
+
+The constants are owned by `launcher/main/input/gravity.h`:
+
+| Constant | Value | Source |
+|---|---|---|
+| `GRAVITY_TAU_S` | 0.5 s | Ours, tuned on the board |
+| `GRAVITY_TRUST_FULL_G` | 0.1 g | Ours |
+| `GRAVITY_TRUST_NONE_G` | 0.4 g | Android WindowOrientationListener acceleration tolerance, 4 m/s^2<sup>[[73]](../Citations.md#73)</sup> |
+| `GRAVITY_REJECT_DEG` | 10 deg | x-io Fusion acceleration rejection<sup>[[72]](../Citations.md#72)</sup> |
+| `GRAVITY_RECOVER_MS` | 5000 ms | x-io Fusion recovery trigger period<sup>[[72]](../Citations.md#72)</sup> |
+| `GRAVITY_STILL_DPS` | 6 deg/s | M0 board capture, gyro noise peaks +/-4 deg/s |
+| `GRAVITY_STILL_G` | 0.05 g | Ours |
+| `GRAVITY_BIAS_TAU_S` | 5 s | Ours |
+| `GRAVITY_FREE_FALL_G` | 0.3 g | Tilt's `TILT_FREE_FALL_PCT` |
+| `GRAVITY_MAX_DT_MS` | 100 ms | Tilt's `TILT_MAX_DT_MS` |
+
+Screen orientation and app consumers are planned to move onto this estimator.
+Tilt remains available until those consumers migrate.
+
 ## Related
 
 - [Board-and-Memory.md](Board-and-Memory.md): hardware inventory and buses.
