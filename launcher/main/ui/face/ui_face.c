@@ -1,4 +1,5 @@
 /* Plain-value UI verbs share the microui control and command builders. */
+#include "core/memory.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
 
@@ -26,7 +27,9 @@ static bool toggle_preview;
 static struct {
     mu_Id hash;
     unsigned count;
-} ids[UI_FACE_IDS_MAX];
+}* ids;
+
+static bool ids_initialized;
 
 static int id_count;
 static bool disabled[UI_FACE_SCOPE_DEPTH];
@@ -59,6 +62,14 @@ face_misuse(void) {
     assert(false);
 #endif
 #endif
+}
+
+void
+ui_face_init(void) {
+    if (!ids_initialized) {
+        ids_initialized = true;
+        ids = memory_alloc(UI_FACE_IDS_MAX * sizeof *ids, MEMORY_PSRAM);
+    }
 }
 
 void
@@ -118,13 +129,13 @@ widget_id(const char* label) {
     const mu_Id hash = mu_get_id(ui_context(), key, (int)strlen(key));
     unsigned occurrence = 0;
     int i;
-    for (i = 0; i < id_count; i++) {
+    for (i = 0; ids && i < id_count; i++) {
         if (ids[i].hash == hash) {
             occurrence = ids[i].count++;
             break;
         }
     }
-    if (i == id_count) {
+    if (ids && i == id_count) {
         if (id_count < UI_FACE_IDS_MAX) {
             ids[id_count].hash = hash;
             ids[id_count++].count = 1;
