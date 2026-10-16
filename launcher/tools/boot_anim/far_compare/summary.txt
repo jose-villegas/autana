@@ -1,0 +1,17 @@
+a: base-source
+b: .
+early: changed 6936/164864 (4.21%), mean abs diff 0.514/255, holes A 0, holes B 0
+3100: changed 24846/164864 (15.07%), mean abs diff 4.377/255, holes A 0, holes B 0
+3500: changed 27772/164864 (16.85%), mean abs diff 5.124/255, holes A 0, holes B 0
+4000: changed 31049/164864 (18.83%), mean abs diff 5.948/255, holes A 0, holes B 0
+animation: changed 0/164864 (0.00%), mean abs diff 0.000/255, holes A 0, holes B 0
+== early video
+video: 1 frames, changed share mean 4.21% max 4.21% (frame 0, 0.0 s), mean abs diff 0.514/255, holes A peak 0, holes B peak 0
+== 3100 video
+video: 1 frames, changed share mean 15.07% max 15.07% (frame 0, 0.0 s), mean abs diff 4.377/255, holes A peak 0, holes B peak 0
+== 3500 video
+video: 1 frames, changed share mean 16.85% max 16.85% (frame 0, 0.0 s), mean abs diff 5.124/255, holes A peak 0, holes B peak 0
+== 4000 video
+video: 1 frames, changed share mean 18.83% max 18.83% (frame 0, 0.0 s), mean abs diff 5.948/255, holes A peak 0, holes B peak 0
+== animation video
+video: 184 frames, changed share mean 7.21% max 18.82% (frame 134, 4.0 s), mean abs diff 1.981/255, holes A peak 0, holes B peak 0

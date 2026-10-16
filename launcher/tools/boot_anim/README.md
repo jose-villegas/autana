@@ -51,21 +51,50 @@ transform. Mesh rows and columns share endpoints through `DRAW_LINE_OPEN`;
 clipped starts retain their first pixel. Screen outcodes reject invisible
 edges before colour setup.
 
-The comparison below shows the float prototype, the baked floor and their
-pixel differences. Endpoint ownership and fixed-point sampling account for
-the visible differences. The crops enlarge the strongest differences.
+The total height has a radial envelope authored by
+`swell_flat_start_m`: both swell and the ripple tail reach exactly zero at
+the mesh boundary. The ripple's leading crest stays inside that boundary
+through the animation; its Gaussian tail is included in the envelope.
 
-![Float prototype and baked floor](impact_compare/compare.png)
+Outside the mesh, straight lines at height zero extend the lattice.
+`far_line_stride` selects every kth mesh line. Outer offsets become sparser
+by `far_spacing_growth` at successive multiples of the mesh reach.
+`far_reach_m` bounds both axes. The generator bakes offsets, radial colour
+bands and geometrically spaced segment endpoints; `far_segments` controls
+the samples per tail. Geometric spacing concentrates colour changes near
+the mesh, where intervals occupy more pixels. Whole-line near-plane and
+screen clipping precede segment setup. The mesh and extensions share one
+radial fade, with the existing opacity ceiling.
 
-![Enlarged prototype comparison](impact_compare/compare.crops.png)
+![Reference, configured floor and amplified difference](far_compare/compare.png)
 
-Regenerate a comparison against the float reference with:
+![Enlarged floor differences](far_compare/compare.crops.png)
+
+[Whole-animation comparison](far_compare/animation.mp4) and
+[measurements](far_compare/measurements.json) contain the instruction rows,
+line calls, near alpha samples, table sizes and validation results. The
+reference identities and settings are recorded with those measurements.
+
+The current camera leaves the horizon inside the screen. A farther plane
+cannot cover rays that meet it behind the camera. Coverage measures the
+plane's area, including spaces between grid lines, by intersecting native
+pixel-centre rays with the flat plane. The measurement uses the asset
+pack's engine-frame conversion and the renderer's Q9 camera matrix.
+The masks show the finite floor in green and the remaining infinite-plane
+area in blue; yellow marks the horizon.
+
+![Plane area at 3100 ms](far_compare/coverage-3100.png)
+![Plane area at 3500 ms](far_compare/coverage-3500.png)
+![Plane area at 4000 ms](far_compare/coverage-4000.png)
+
+Regenerate the comparison from the repository root with absolute output
+paths:
 
 ```sh
 bash launcher/tools/render/render_compare.sh --script launcher/tools/render/scenes/boot_anim_render_host.sh \
-  --render middle "1500 --quarter 1" --render late "3000 --quarter 1" \
-  --render crossfade "3900 --quarter 1" --crops 3 \
-  origin/feature/boot-anim-impact-ripple-proto . -o /absolute/path/to/comparison
+  --render 3100 "3100 --quarter 1" --render 3500 "3500 --quarter 1" \
+  --render 4000 "4000 --quarter 1" --render animation "0 --quarter 1 --frames 184 --dt 30" \
+  --video --fps 33 --crops 3 4a3455810 . -o /absolute/path/to/comparison
 ```
 
 Instruction measurements use the on-request `run_boot_floor_cost_suite`:
@@ -76,7 +105,8 @@ AUTANA_ASSET_DIR=launcher/test/build/assets launcher/test/build/host_tests --run
 python .dev/scripts/quiet.py -- bash launcher/test/run_qemu_tests.sh --suite run_boot_floor_cost_suite --icount --timeout 600
 ```
 
-The ink-zero row bounds projection plus traversal and rejection; it includes
-the flat spokes. The ordinary row measures the complete floor. Point and
-horizontal-line rows calibrate an estimate of setup and pixel costs; varied
-slopes, clipping and endpoint flags make that split approximate.
+The ink-zero row measures near-mesh traversal, projection and rejection,
+including the flat spokes; it skips the far lattice. The ordinary row
+measures the complete floor. Point and horizontal-line rows calibrate an
+estimate of setup and pixel costs; varied slopes, clipping and endpoint
+flags make that split approximate.

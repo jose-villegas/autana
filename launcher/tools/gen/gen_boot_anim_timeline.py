@@ -105,6 +105,11 @@ FLOOR_TIME_STEP_MS = 10
 FLOOR_GAIN_ONE = 32768
 FLOOR_BAND_SHIFT = 4
 FLOOR_PHASE_TURN = 65536
+FAR_SEGMENT_LIMIT = 16
+FAR_BAND_LIMIT = 1 << 16
+FAR_REACH_LIMIT_M = 500
+FAR_SPACING_GROWTH_MIN = 2
+FAR_SPACING_GROWTH_MAX = 8
 
 
 def floor_number(value, name, minimum=0, positive=False, integer=False):
@@ -118,7 +123,8 @@ def floor_number(value, name, minimum=0, positive=False, integer=False):
 def validate_floor(cfg):
     allowed = {"timing", "camera_half_fov_short_tan", "grid_step_m",
                "ripple_wavelength_m", "ripple_speed_m_s", "ripple_rings",
-               "ripple_height_m", "swell_height_m", "swell"}
+               "ripple_height_m", "swell_height_m", "swell", "far_line_stride", "far_reach_m",
+               "far_segments", "far_spacing_growth", "swell_flat_start_m"}
     for key in sorted(set(cfg) - allowed):
         fail("unknown key: " + key)
     for key in ("ripple_wavelength_m", "ripple_speed_m_s", "ripple_rings"):
@@ -155,6 +161,68 @@ def validate_floor(cfg):
     reach = math.sqrt(2) * mesh_step_q12(cfg) * (cfg["timing"]["mesh_cells"] // 2)
     if reach * FLOOR_SHAPE_SCALE / BOOT_ANIM_ONE >= (1 << 16):
         fail("grid_step_m * grid_bands must fit the unsigned radius index")
+    validate_far_floor(cfg)
+
+
+def validate_far_floor(cfg):
+    reach = mesh_step_q12(cfg) * (cfg["timing"]["mesh_cells"] // 2) / BOOT_ANIM_ONE
+    for key in ("far_line_stride", "far_segments", "far_spacing_growth"):
+        floor_number(cfg.get(key), key, positive=True, integer=True)
+    if cfg["far_line_stride"] > cfg["timing"]["mesh_cells"] // 2:
+        fail("far_line_stride must not exceed half mesh_cells")
+    if cfg["far_segments"] > FAR_SEGMENT_LIMIT:
+        fail("far_segments must not exceed %d" % FAR_SEGMENT_LIMIT)
+    if not FAR_SPACING_GROWTH_MIN <= cfg["far_spacing_growth"] <= FAR_SPACING_GROWTH_MAX:
+        fail("far_spacing_growth must be between %d and %d" % (FAR_SPACING_GROWTH_MIN, FAR_SPACING_GROWTH_MAX))
+    floor_number(cfg.get("far_reach_m"), "far_reach_m", positive=True)
+    if cfg["far_reach_m"] <= reach or cfg["far_reach_m"] > FAR_REACH_LIMIT_M:
+        fail("far_reach_m must exceed the mesh reach and not exceed %d metres" % FAR_REACH_LIMIT_M)
+    band = meters_to_q12(cfg["grid_step_m"])
+    if band <= 0:
+        fail("grid_step_m must encode a positive Q12 band")
+    if math.sqrt(2) * meters_to_q12(cfg["far_reach_m"]) / band >= FAR_BAND_LIMIT:
+        fail("far_reach_m must fit unsigned distance bands at grid_step_m")
+    floor_number(cfg.get("swell_flat_start_m"), "swell_flat_start_m")
+    if cfg["swell_flat_start_m"] >= reach:
+        fail("swell_flat_start_m must be inside the mesh reach")
+
+
+def emit_far_floor(cfg, w):
+    half = cfg["timing"]["mesh_cells"] // 2
+    step = mesh_step_q12(cfg)
+    near = half * step
+    far = meters_to_q12(cfg["far_reach_m"])
+    count = cfg["far_segments"]
+    distances = [round(near * (far / near)**(i / count)) for i in range(count + 1)]
+    offsets = list(range(0, half + 1, cfg["far_line_stride"]))
+    stride = cfg["far_line_stride"]
+    offset = offsets[-1] + stride
+    boundary = half * cfg["far_spacing_growth"]
+    while offset * step <= far:
+        offsets.append(offset)
+        if offset >= boundary:
+            stride *= cfg["far_spacing_growth"]
+            boundary *= cfg["far_spacing_growth"]
+        offset += stride
+    last = (far // (cfg["far_line_stride"] * step)) * cfg["far_line_stride"]
+    if offsets[-1] != last:
+        offsets.append(last)
+    w("#define BOOT_ANIM_FAR_SEGMENTS %d\n" % count)
+    w("#define BOOT_ANIM_FAR_REACH_Q12 %d\n" % far)
+    w("#define BOOT_ANIM_FAR_LINE_STRIDE %d\n" % cfg["far_line_stride"])
+    w("#define BOOT_ANIM_FAR_SPACING_GROWTH %d\n" % cfg["far_spacing_growth"])
+    w("#define BOOT_ANIM_SWELL_FLAT_START_M %s\n" % repr(float(cfg["swell_flat_start_m"])))
+    w("#define BOOT_ANIM_GRID_FADE %d\n" % (far // meters_to_q12(cfg["grid_step_m"])))
+    w("static const int32_t boot_anim_far_distances[] = {" + ", ".join(map(str, distances)) + "};\n")
+    w("typedef struct { int32_t offset; uint16_t band[BOOT_ANIM_FAR_SEGMENTS + 1]; } boot_anim_far_line_t;\n")
+    w("static const boot_anim_far_line_t boot_anim_far_lines[] = {\n")
+    band = meters_to_q12(cfg["grid_step_m"])
+    for offset in offsets:
+        x = offset * step
+        midpoints = [0] + [(a + b) // 2 for a, b in zip(distances, distances[1:])]
+        bands = [math.isqrt((x * x) + (y * y)) // band for y in midpoints]
+        w("    {%d, {%s}},\n" % (x, ", ".join(map(str, bands))))
+    w("};\n")
 
 
 def floor_array(w, ctype, name, rows):
@@ -185,14 +253,16 @@ def emit_floor(cfg, w):
     w("#define BOOT_ANIM_FLOOR_TIME_STEP_MS %d\n" % FLOOR_TIME_STEP_MS)
     w("#define BOOT_ANIM_FLOOR_GAIN_SHIFT 15\n")
     w("#define BOOT_ANIM_SWELL_COUNT %d\n\n" % len(cfg["swell"]))
-    w("typedef struct { uint16_t radius, band_q4, falloff; } boot_anim_floor_node_t;\n")
+    w("typedef struct { uint16_t radius, band_q4, falloff, envelope; } boot_anim_floor_node_t;\n")
     rows = []
     for j in range(half + 1):
         for i in range(half + 1):
             r_q12 = math.isqrt((i * step)**2 + (j * step)**2)
             r = r_q12 / BOOT_ANIM_ONE
             rows.append((round(r * FLOOR_SHAPE_SCALE), (r_q12 << FLOOR_BAND_SHIFT) // band,
-                         round(FLOOR_GAIN_ONE / math.sqrt(1 + r / cfg["ripple_wavelength_m"]))))
+                         round(FLOOR_GAIN_ONE / math.sqrt(1 + r / cfg["ripple_wavelength_m"])),
+                         round(FLOOR_GAIN_ONE * min(1, max(0, (half * step / BOOT_ANIM_ONE - r) /
+                               (half * step / BOOT_ANIM_ONE - cfg["swell_flat_start_m"]))))))
     floor_array(w, "boot_anim_floor_node_t", "boot_anim_floor_nodes", rows)
     w("static const int16_t boot_anim_ripple_shape[] = {\n")
     values = []
@@ -222,14 +292,6 @@ def emit_floor(cfg, w):
         for row in rows:
             w("    {" + ", ".join(map(str, row)) + "},\n")
         w("};\n\n")
-    rows = []
-    for stride in (1, 2):
-        reach = timing["grid_bands"] * band + stride * step
-        rows.append([min(half, math.isqrt(max(0, reach**2 - (j * step)**2)) // step) for j in range(half + 1)])
-    w("static const uint8_t boot_anim_mesh_row_half[2][%d] = {\n" % (half + 1))
-    for row in rows:
-        w("    {" + ", ".join(map(str, row)) + "},\n")
-    w("};\n")
 
 
 def validate(cfg):
@@ -602,6 +664,7 @@ def main():
     w("#define BOOT_ANIM_GRID_STEP_Q12 %d\n\n" % meters_to_q12(cfg["grid_step_m"]))
 
     emit_floor(cfg, w)
+    emit_far_floor(cfg, w)
 
 
 if __name__ == "__main__":

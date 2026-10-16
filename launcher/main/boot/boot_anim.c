@@ -240,11 +240,6 @@ draw_mesh_edge(const mesh_pass_t* pass, const mesh_node_t* a, int ai, int aj, co
     return false;
 }
 
-static int
-mesh_row_half(int j, int stride) {
-    return boot_anim_mesh_row_half[stride - 1][mathi_abs(j)];
-}
-
 static bool
 mesh_dash_on(int k, int stride) {
     return !BOOT_ANIM_MESH_DASH || (((k + MESH_HALF) / stride) & 1) == 1;
@@ -362,6 +357,82 @@ mesh_plane(const mesh_pass_t* pass, vec3x_t* row) {
     };
 }
 
+static vec3x_t
+far_point(const boot_anim_plane_t* plane, int axis, int32_t offset, int32_t along) {
+    return boot_anim_plane_point(plane, axis == 0 ? offset : along, axis == 0 ? along : offset);
+}
+
+static bool
+far_segment_visible(const mesh_pass_t* pass, vec3x_t a, vec3x_t b) {
+    int x0, y0, x1, y1;
+    return r3d_project_segment_cs_x(a, b, pass->view, &x0, &y0, &x1, &y1)
+           && gfx_box_clip_segment(&pass->clip, &x0, &y0, &x1, &y1);
+}
+
+static void
+draw_far_segment(const mesh_pass_t* pass, vec3x_t a, vec3x_t b, int band, bool joined) {
+    int x0, y0, x1, y1;
+    if (!r3d_project_segment_cs_x(a, b, pass->view, &x0, &y0, &x1, &y1)
+        || (gfx_box_outcode(&pass->clip, x0, y0) & gfx_box_outcode(&pass->clip, x1, y1))) {
+        return;
+    }
+    const uint8_t alpha = scale8(boot_anim_grid_alpha(pass->now_ms, band), pass->ink);
+    if (alpha == 0) {
+        return;
+    }
+    const gfx_color_t color = lit_whitened(gfx_hue_rgb(boot_anim_grid_hue(pass->now_ms, band)), pass->whiten, alpha);
+    draw_line_ex(x0, y0, x1, y1, color, mesh_line_flags(pass, joined && a.z > pass->view->near_z, x0, y0));
+}
+
+/* Whole-line rejection precedes segment transforms, bands and colours. */
+static void
+draw_far_tail(const mesh_pass_t* pass, const boot_anim_plane_t* plane, const boot_anim_far_line_t* line, int axis,
+              int32_t offset, int sign) {
+    vec3x_t a = far_point(plane, axis, offset, sign * boot_anim_far_distances[0]);
+    const vec3x_t end = far_point(plane, axis, offset, sign * BOOT_ANIM_FAR_REACH_Q12);
+    if (!far_segment_visible(pass, a, end)) {
+        return;
+    }
+    for (int i = 0; i < BOOT_ANIM_FAR_SEGMENTS; i++) {
+        const vec3x_t b = far_point(plane, axis, offset, sign * boot_anim_far_distances[i + 1]);
+        draw_far_segment(pass, a, b, line->band[i + 1], true);
+        a = b;
+    }
+}
+
+static void
+draw_far_line(const mesh_pass_t* pass, const boot_anim_plane_t* plane, const boot_anim_far_line_t* line, int axis,
+              int32_t offset) {
+    const vec3x_t a = far_point(plane, axis, offset, -BOOT_ANIM_FAR_REACH_Q12);
+    const vec3x_t b = far_point(plane, axis, offset, BOOT_ANIM_FAR_REACH_Q12);
+    if (!far_segment_visible(pass, a, b)) {
+        return;
+    }
+    if (line->offset > MESH_HALF * BOOT_ANIM_MESH_STEP_Q12) {
+        draw_far_segment(pass, far_point(plane, axis, offset, -boot_anim_far_distances[0]),
+                         far_point(plane, axis, offset, boot_anim_far_distances[0]), line->band[0], false);
+    }
+    draw_far_tail(pass, plane, line, axis, offset, -1);
+    draw_far_tail(pass, plane, line, axis, offset, 1);
+}
+
+static void
+draw_far_floor(const mesh_pass_t* pass) {
+    if (pass->ink == 0) {
+        return;
+    }
+    const boot_anim_plane_t plane = boot_anim_plane(0, pass->view);
+    for (size_t i = 0; i < sizeof boot_anim_far_lines / sizeof boot_anim_far_lines[0]; i++) {
+        const boot_anim_far_line_t* line = &boot_anim_far_lines[i];
+        for (int axis = 0; axis < 2; axis++) {
+            draw_far_line(pass, &plane, line, axis, line->offset);
+            if (line->offset != 0) {
+                draw_far_line(pass, &plane, line, axis, -line->offset);
+            }
+        }
+    }
+}
+
 void
 draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view) {
     gfx_surface_t surface;
@@ -387,12 +458,13 @@ draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t*
     mesh_node_t above[BOOT_ANIM_MESH_CELLS + 1];
     int above_half = -1;
     for (int j = -MESH_HALF; j <= MESH_HALF; j += pass.stride) {
-        const int row_half = mesh_row_half(j, pass.stride);
+        const int row_half = MESH_HALF;
         draw_mesh_row(&pass, j, row_half, above_half, above, plane);
         above_half = row_half;
         plane = (vec3x_t){plane.x + row.x, plane.y + row.y, plane.z + row.z};
     }
 
+    draw_far_floor(&pass);
     draw_spokes(now_ms, ink, view);
 }
 
