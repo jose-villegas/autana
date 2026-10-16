@@ -28,10 +28,8 @@ static const uint8_t icon_bits[] = {0x80};
 static const draw_image_t icon = {
     .bits = icon_bits, .format = DRAW_IMAGE_MONO1, .width = 1, .height = 1, .stride = DRAW_IMAGE_MONO1_STRIDE_STEP};
 static const draw_image_t* const icons[] = {&icon, NULL, &icon};
-static const ui_dropdown_item_t items[] = {{NULL, "One"}, {NULL, "Two"}, {NULL, "Three"}};
-static const ui_dropdown_item_t icon_items[] = {{&icon, "One"}, {NULL, "Two"}, {&icon, "Three"}};
+static const char* const items[] = {"One", "Two", "Three"};
 static const uint32_t swatches[] = {UI_ICOUNT_RGB, UI_ICOUNT_RGB};
-static const mu_Color mu_swatches[] = {UI_RGB(UI_ICOUNT_RGB), UI_RGB(UI_ICOUNT_RGB)};
 static const ui_theme_t theme = {.panel_face = UI_ICOUNT_RGB,
                                  .panel_edge = UI_ICOUNT_RGB,
                                  .button_face = UI_ICOUNT_RGB,
@@ -78,9 +76,9 @@ UI_ICOUNT_PAIR(toggle, ui_toggle(box, UI_ICOUNT_LABEL, &state->on),
 UI_ICOUNT_PAIR(slider, ui_slider(box, UI_ICOUNT_LABEL, &state->value, UI_ICOUNT_LO, UI_ICOUNT_HI),
                ui_theme_slider_int(ctx, r, &state->value, UI_ICOUNT_LO, UI_ICOUNT_HI, UI_ICOUNT_STEP, &state->theme))
 UI_ICOUNT_PAIR(dropdown, ui_dropdown(box, UI_ICOUNT_LABEL, &state->value, names, UI_ICOUNT_CHOICES),
-               ui_mu_dropdown(ctx, UI_ICOUNT_LABEL, r, items, UI_ICOUNT_CHOICES, state->value, &state->theme))
+               ui_mu_dropdown(ctx, UI_ICOUNT_LABEL, r, items, NULL, UI_ICOUNT_CHOICES, state->value, &state->theme))
 UI_ICOUNT_PAIR(dropdown_icons, ui_dropdown_icons(box, UI_ICOUNT_LABEL, &state->value, names, icons, UI_ICOUNT_CHOICES),
-               ui_mu_dropdown(ctx, UI_ICOUNT_LABEL, r, icon_items, UI_ICOUNT_CHOICES, state->value, &state->theme))
+               ui_mu_dropdown(ctx, UI_ICOUNT_LABEL, r, names, icons, UI_ICOUNT_CHOICES, state->value, &state->theme))
 #define UI_ICOUNT_TEXT_PAIR(name, align, ink)                                                                          \
     UI_ICOUNT_PAIR(name, ui_##name(box, UI_ICOUNT_LABEL),                                                              \
                    ui_text_in(ctx, r, UI_ICOUNT_LABEL, state->theme.ink, UI_ICOUNT_SCALE, align))
@@ -95,7 +93,7 @@ UI_ICOUNT_PAIR(fill, ui_fill(box, UI_ICOUNT_RGB), mu_draw_rect(ctx, r, ui_rgb(UI
 UI_ICOUNT_PAIR(outline, ui_outline(box, UI_ICOUNT_RGB), mu_draw_box(ctx, r, ui_rgb(UI_ICOUNT_RGB)))
 UI_ICOUNT_PAIR(icon, ui_icon(box, &icon), ui_draw_icon(ctx, r, &icon, NULL, state->theme.text))
 UI_ICOUNT_PAIR(swatches, ui_swatches(box, swatches, UI_ICOUNT_COLUMNS, UI_ICOUNT_ROWS),
-               ui_swatch_grid(ctx, r, mu_swatches, UI_ICOUNT_COLUMNS, UI_ICOUNT_ROWS))
+               ui_swatch_grid(ctx, r, swatches, UI_ICOUNT_COLUMNS, UI_ICOUNT_ROWS))
 UI_ICOUNT_EMIT(face, theme, ui_theme(&theme))
 UI_ICOUNT_EMIT(face, disabled, (ui_disabled_begin(true), ui_disabled_end()))
 UI_ICOUNT_EMIT(face, color, (ui_color_begin(UI_COLOR_TEXT, UI_ICOUNT_RGB), ui_color_end()))

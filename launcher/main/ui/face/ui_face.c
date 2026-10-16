@@ -5,7 +5,6 @@
 
 #include <assert.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include "ui/ui_mu.h"
 
@@ -127,22 +126,10 @@ widget_id(const char* label) {
     return mu_get_id(ui_context(), identity, sizeof identity);
 }
 
-static const char*
-visible_label(const char* label, char** allocated) {
+static int
+visible_label_length(const char* label) {
     const char* end = strstr(label, UI_FACE_LABEL_ID_MARKER);
-    *allocated = NULL;
-    if (!end) {
-        return label;
-    }
-    const size_t n = (size_t)(end - label);
-    *allocated = malloc(n + 1);
-    assert(*allocated);
-    if (!*allocated) {
-        return "";
-    }
-    memcpy(*allocated, label, n);
-    (*allocated)[n] = '\0';
-    return *allocated;
+    return end ? (int)(end - label) : -1;
 }
 
 static void
@@ -199,14 +186,12 @@ ui_next(void) {
 static bool
 button(recti_t r, const char* label, bool selected, bool tile) {
     const mu_Id id = widget_id(label);
-    char* allocated;
-    const ui_widget_button_t b = {
-        .label = visible_label(label, &allocated), .enabled = !is_disabled(), .selected = selected};
+    const ui_widget_button_t b = {.label = label, .enabled = !is_disabled(), .selected = selected};
     FRAME_COST_BEGIN(backend_from);
-    const bool hit = tile ? ui_tile_button_id(ui_context(), id, ui_mu_from_recti(r), &b, &theme)
-                          : ui_icon_button_id(ui_context(), id, ui_mu_from_recti(r), &b, &theme);
+    const bool hit =
+        tile ? ui_tile_button_id(ui_context(), id, ui_mu_from_recti(r), &b, visible_label_length(label), &theme)
+             : ui_icon_button_id(ui_context(), id, ui_mu_from_recti(r), &b, visible_label_length(label), &theme);
     FRAME_COST_END(backend_from, "ui.backend");
-    free(allocated);
     return hit;
 }
 
@@ -230,16 +215,13 @@ bool
 ui_toggle(recti_t r, const char* label, bool* on) {
     FRAME_COST_BEGIN(face_from);
     const mu_Id id = widget_id(label);
-    char* allocated;
-    const char* text = visible_label(label, &allocated);
     int state = *on;
     const int opt = is_disabled() ? MU_OPT_NOINTERACT : 0;
     FRAME_COST_BEGIN(backend_from);
     mu_layout_set_next(ui_context(), ui_mu_from_recti(r), 0);
-    const bool hit = mu_checkbox_id(ui_context(), text, &state, id, opt) != 0;
+    const bool hit = mu_checkbox_id(ui_context(), label, &state, id, opt) != 0;
     FRAME_COST_END(backend_from, "ui.backend");
     *on = state != 0;
-    free(allocated);
     const bool face_result = hit;
     FRAME_COST_END(face_from, "ui.face");
     return face_result;
@@ -269,20 +251,11 @@ dropdown(recti_t r, const char* label, int* index, const char* const* names, con
     const mu_Id id = widget_id(label);
     char name[UI_FACE_NAME_MAX];
     snprintf(name, sizeof name, UI_FACE_DROPDOWN_NAME_FORMAT, id);
-    ui_dropdown_item_t* items = malloc((size_t)count * sizeof *items);
-    assert(items);
-    if (!items) {
-        return false;
-    }
-    for (int i = 0; i < count; i++) {
-        items[i] = (ui_dropdown_item_t){icons ? icons[i] : NULL, names[i]};
-    }
     const bool enabled = !is_disabled();
     FRAME_COST_BEGIN(backend_from);
     const int picked =
-        ui_dropdown_id(ui_context(), id, name, ui_mu_from_recti(r), items, count, *index, enabled, &theme);
+        ui_dropdown_id(ui_context(), id, name, ui_mu_from_recti(r), names, icons, count, *index, enabled, &theme);
     FRAME_COST_END(backend_from, "ui.backend");
-    free(items);
     if (picked < 0) {
         return false;
     }
@@ -372,20 +345,9 @@ ui_swatches(recti_t r, const uint32_t* rgb, int cols, int rows) {
         FRAME_COST_END(face_from, "ui.face");
         return;
     }
-    const size_t count = (size_t)cols * (size_t)rows;
-    mu_Color* swatches = malloc(count * sizeof *swatches);
-    assert(swatches);
-    if (!swatches) {
-        FRAME_COST_END(face_from, "ui.face");
-        return;
-    }
-    for (size_t i = 0; i < count; i++) {
-        swatches[i] = ui_rgb(rgb[i]);
-    }
     FRAME_COST_BEGIN(backend_from);
-    ui_swatch_grid(ui_context(), ui_mu_from_recti(r), swatches, cols, rows);
+    ui_swatch_grid(ui_context(), ui_mu_from_recti(r), rgb, cols, rows);
     FRAME_COST_END(backend_from, "ui.backend");
-    free(swatches);
     FRAME_COST_END(face_from, "ui.face");
 }
 

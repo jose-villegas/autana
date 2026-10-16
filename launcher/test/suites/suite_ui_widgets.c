@@ -387,7 +387,7 @@ test_a_list_opens_scrolled_so_the_row_sits_centred(void) {
                                   "the selected row must be centred in the list, not merely visible");
 }
 
-static const ui_dropdown_item_t ITEMS[] = {{.label = "ZERO"}, {.label = "ONE"}, {.label = "TWO"}};
+static const char* const ITEMS[] = {"ZERO", "ONE", "TWO"};
 static const mu_Rect DROPDOWN = {40, 60, 240, 44};
 
 static bool dropdown_open;
@@ -403,7 +403,7 @@ dropdown_frame(const input_t* in, int selected) {
     const bool began = paint_frames ? mu_begin_window_ex(ui_context(), "Widgets", mu_rect(20, 40, 300, 80), opts)
                                     : ui_begin_screen(ui_context(), "Widgets", opts);
     if (began) {
-        picked = ui_mu_dropdown(ui_context(), "pick", DROPDOWN, ITEMS, 3, selected, &THEME);
+        picked = ui_mu_dropdown(ui_context(), "pick", DROPDOWN, ITEMS, NULL, 3, selected, &THEME);
         dropdown_open = ui_dropdown_is_open(ui_context(), "pick");
         mu_end_window(ui_context());
     }
@@ -642,8 +642,7 @@ enum {
 };
 
 static const mu_Rect MENU_ANCHOR = {40, 140, 300, MENU_ROW_HEIGHT};
-static const ui_dropdown_item_t MENU_ITEMS[] = {
-    {.label = "IDLE"}, {.label = "WALK"}, {.label = "FAST"}, {.label = "GALLOP"}, {.label = "BOUND"}};
+static const char* const MENU_ITEMS[] = {"IDLE", "WALK", "FAST", "GALLOP", "BOUND"};
 
 static int menu_pick;
 
@@ -653,7 +652,7 @@ build_menu_frame(const input_t* in, int revision, int commands, bool scrollable)
     mu_Context* ctx = ui_context();
     if (ui_scroll_view_begin(ctx, "Menu", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME,
                              ui_scroll_view_default(), 16)) {
-        menu_pick = ui_mu_dropdown(ctx, "pick", MENU_ANCHOR, MENU_ITEMS, MENU_ITEM_COUNT, 0, &THEME);
+        menu_pick = ui_mu_dropdown(ctx, "pick", MENU_ANCHOR, MENU_ITEMS, NULL, MENU_ITEM_COUNT, 0, &THEME);
         dropdown_open = ui_dropdown_is_open(ctx, "pick");
         const mu_Color saved_text = ctx->style->colors[MU_COLOR_TEXT];
         ctx->style->colors[MU_COLOR_TEXT] = ui_rgb(MENU_INK);
@@ -925,9 +924,7 @@ test_closing_the_list_restores_the_pixels_under_it(void) {
 }
 #endif
 
-static const ui_dropdown_item_t MANY[] = {{.label = "0"}, {.label = "1"}, {.label = "2"}, {.label = "3"},
-                                          {.label = "4"}, {.label = "5"}, {.label = "6"}, {.label = "7"},
-                                          {.label = "8"}, {.label = "9"}};
+static const char* const MANY[] = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"};
 #define MANY_COUNT ((int)(sizeof MANY / sizeof MANY[0]))
 
 static bool many_open;
@@ -937,7 +934,7 @@ many_frame(const input_t* in, int selected) {
     ui_begin(in);
     int picked = -1;
     if (ui_begin_screen(ui_context(), "Widgets", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
-        picked = ui_mu_dropdown(ui_context(), "many", DROPDOWN, MANY, MANY_COUNT, selected, &THEME);
+        picked = ui_mu_dropdown(ui_context(), "many", DROPDOWN, MANY, NULL, MANY_COUNT, selected, &THEME);
         many_open = ui_dropdown_is_open(ui_context(), "many");
         mu_end_window(ui_context());
     }
@@ -1009,7 +1006,7 @@ many_frame_scroll(int x, int y, int selected, int scroll_dy) {
     }
     int picked = -1;
     if (ui_begin_screen(ui_context(), "Widgets", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
-        picked = ui_mu_dropdown(ui_context(), "many", DROPDOWN, MANY, MANY_COUNT, selected, &THEME);
+        picked = ui_mu_dropdown(ui_context(), "many", DROPDOWN, MANY, NULL, MANY_COUNT, selected, &THEME);
         many_open = ui_dropdown_is_open(ui_context(), "many");
         mu_end_window(ui_context());
     }
@@ -1109,7 +1106,7 @@ over_button_frame(const input_t* in, bool* button) {
     if (ui_begin_screen(ui_context(), "Widgets", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
         mu_layout_set_next(ui_context(), BUTTON, 0);
         *button = mu_button(ui_context(), "GO") != 0 || *button;
-        picked = ui_mu_dropdown(ui_context(), "pick", DROPDOWN, ITEMS, 3, 0, &THEME);
+        picked = ui_mu_dropdown(ui_context(), "pick", DROPDOWN, ITEMS, NULL, 3, 0, &THEME);
         dropdown_open = ui_dropdown_is_open(ui_context(), "pick");
         mu_end_window(ui_context());
     }
@@ -1318,7 +1315,7 @@ test_a_list_its_dropdown_stopped_drawing_is_closed_when_it_returns(void) {
 /* One frame drawing a swatch grid alone, so its command list holds nothing
  * but the grid's own cells. */
 static void
-swatch_frame(mu_Rect r, const mu_Color* colors, int cols, int rows) {
+swatch_frame(mu_Rect r, const uint32_t* colors, int cols, int rows) {
     const input_t idle = {0};
     ui_begin(&idle);
     if (ui_begin_screen(ui_context(), "Widgets", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
@@ -1338,9 +1335,9 @@ test_ui_swatch_grid_tiles_the_rect_exactly(void) {
     const mu_Rect r = {10, 20, 100, 33};
     const int cols = 3;
     const int rows = 2;
-    mu_Color colors[6];
+    uint32_t colors[6];
     for (int i = 0; i < 6; i++) {
-        colors[i] = ui_rgb((uint32_t)(0x010203 * (i + 1)));
+        colors[i] = (uint32_t)(0x010203 * (i + 1));
     }
     swatch_frame(r, colors, cols, rows);
 

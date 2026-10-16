@@ -109,15 +109,10 @@ mu_Rect ui_tile_icon_rect(mu_Rect r, const ui_mu_theme_t* theme);
 
 /* `colors` as a `cols` x `rows` grid of equal cells filling `r`, row by
  * row. */
-void ui_swatch_grid(mu_Context* ctx, mu_Rect r, const mu_Color* colors, int cols, int rows);
+void ui_swatch_grid(mu_Context* ctx, mu_Rect r, const uint32_t* colors, int cols, int rows);
 
 bool ui_tile_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_button_t* button,
                     const ui_mu_theme_t* theme);
-
-typedef struct {
-    const draw_image_t* icon; /* NULL for a label alone */
-    const char* label;
-} ui_dropdown_item_t;
 
 /* List rows fit below the anchor first, then above. Otherwise the opaque
  * list overlays the canvas, including its anchor, between the margins.
@@ -135,10 +130,10 @@ int ui_dropdown_label_width(int w, const ui_mu_theme_t* theme);
 /* The chosen item with a chevron; a tap opens the rest as a list over the
  * screen, placed by ui_dropdown_list_rect(). Returns the index picked this
  * frame, or -1; the list closes UI_DROPDOWN_CLOSE_FRAMES frames later.
- * `items` holds at least one entry, and `id` must be unique per dropdown;
+ * `names` holds at least one entry, and `id` must be unique per dropdown;
  * its list's window is named after it. */
-int ui_mu_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const ui_dropdown_item_t* items, int count, int selected,
-                   const ui_mu_theme_t* theme);
+int ui_mu_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const char* const* names,
+                   const draw_image_t* const* icons, int count, int selected, const ui_mu_theme_t* theme);
 
 /* How many frames a list stays up after its pick, once the finger lifts. */
 #define UI_DROPDOWN_CLOSE_FRAMES 4

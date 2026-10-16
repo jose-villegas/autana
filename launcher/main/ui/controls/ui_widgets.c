@@ -48,10 +48,10 @@ ui_header_bar(mu_Context* ctx, mu_Rect r, const char* title, int scale, const ui
     ui_text_in(ctx, r, title, theme->accent, scale, UI_ALIGN_CENTRE);
 }
 
-void
-ui_text_in(mu_Context* ctx, mu_Rect r, const char* str, mu_Color color, int scale, ui_align_t align) {
+static void
+text_in(mu_Context* ctx, mu_Rect r, const char* str, int len, mu_Color color, int scale, ui_align_t align) {
     ui_set_font_scaled(draw_font_ui(), scale);
-    const int tw = ui_measure_text(str);
+    const int tw = ctx->text_width(ctx->style->font, str, len);
     const int th = draw_font_height(draw_font_ui(), scale);
     int x = r.x;
     if (align == UI_ALIGN_CENTRE) {
@@ -61,8 +61,13 @@ ui_text_in(mu_Context* ctx, mu_Rect r, const char* str, mu_Color color, int scal
     }
 
     mu_push_clip_rect(ctx, r);
-    mu_draw_text(ctx, ctx->style->font, str, -1, mu_vec2(x, r.y + (r.h - th) / 2), color);
+    mu_draw_text(ctx, ctx->style->font, str, len, mu_vec2(x, r.y + (r.h - th) / 2), color);
     mu_pop_clip_rect(ctx);
+}
+
+void
+ui_text_in(mu_Context* ctx, mu_Rect r, const char* str, mu_Color color, int scale, ui_align_t align) {
+    text_in(ctx, r, str, -1, color, scale, align);
 }
 
 typedef struct {
@@ -103,28 +108,29 @@ ui_icon_button_label_width(int button_w, bool has_icon, const ui_mu_theme_t* the
 
 /* The icon at the left and the label centred in `label_w` after it. */
 static void
-draw_icon_and_label(mu_Context* ctx, mu_Rect r, const draw_image_t* icon, const char* label, int label_w, mu_Color ink,
-                    const ui_mu_theme_t* theme) {
+draw_icon_and_label(mu_Context* ctx, mu_Rect r, const draw_image_t* icon, const char* label, int label_len, int label_w,
+                    mu_Color ink, const ui_mu_theme_t* theme) {
     if (icon != NULL) {
         const int side = theme->icon_side;
         ui_draw_icon(ctx, mu_rect(r.x + BUTTON_PAD, r.y + (r.h - side) / 2, side, side), icon, NULL, ink);
     }
     const int label_x = r.x + BUTTON_PAD + (icon != NULL ? theme->icon_side + BUTTON_ICON_GAP : 0);
-    ui_text_in(ctx, mu_rect(label_x, r.y, label_w, r.h), label, ink, theme->text_scale, UI_ALIGN_CENTRE);
+    text_in(ctx, mu_rect(label_x, r.y, label_w, r.h), label, label_len, ink, theme->text_scale, UI_ALIGN_CENTRE);
 }
 
 bool
-ui_icon_button_id(mu_Context* ctx, mu_Id id, mu_Rect r, const ui_widget_button_t* button, const ui_mu_theme_t* theme) {
+ui_icon_button_id(mu_Context* ctx, mu_Id id, mu_Rect r, const ui_widget_button_t* button, int label_len,
+                  const ui_mu_theme_t* theme) {
     const control_t c = begin_control(ctx, id, r, button->enabled, button->selected, theme);
     const int label_w = ui_icon_button_label_width(r.w, button->icon != NULL, theme);
-    draw_icon_and_label(ctx, r, button->icon, button->label, label_w, c.ink, theme);
+    draw_icon_and_label(ctx, r, button->icon, button->label, label_len, label_w, c.ink, theme);
     return c.clicked;
 }
 
 bool
 ui_icon_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_button_t* button,
                const ui_mu_theme_t* theme) {
-    return ui_icon_button_id(ctx, mu_get_id(ctx, id, (int)strlen(id)), r, button, theme);
+    return ui_icon_button_id(ctx, mu_get_id(ctx, id, (int)strlen(id)), r, button, -1, theme);
 }
 
 bool
@@ -220,8 +226,8 @@ ui_widgets_reset(void) {
 }
 
 static int
-draw_dropdown_list(mu_Context* ctx, const char* id, mu_Rect anchor, const ui_dropdown_item_t* items, int count,
-                   int selected, const ui_mu_theme_t* theme) {
+draw_dropdown_list(mu_Context* ctx, const char* id, mu_Rect anchor, const char* const* names,
+                   const draw_image_t* const* icons, int count, int selected, const ui_mu_theme_t* theme) {
     const mu_Rect list = ui_dropdown_list_rect(anchor, count, anchor.h, ui_height(), UI_MARGIN);
     mu_Container* cnt = find_list(ctx, id);
     cnt->rect = list;
@@ -251,8 +257,8 @@ draw_dropdown_list(mu_Context* ctx, const char* id, mu_Rect anchor, const ui_dro
         char row_id[24];
         snprintf(row_id, sizeof row_id, "item %d", i);
         const ui_widget_button_t row = {
-            .icon = items[i].icon,
-            .label = items[i].label,
+            .icon = icons ? icons[i] : NULL,
+            .label = names[i],
             .enabled = true,
             .selected = i == selected,
         };
@@ -295,14 +301,14 @@ close_if_abandoned(mu_Context* ctx, mu_Container* list) {
 }
 
 int
-ui_mu_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const ui_dropdown_item_t* items, int count, int selected,
-               const ui_mu_theme_t* theme) {
-    return ui_dropdown_id(ctx, mu_get_id(ctx, id, (int)strlen(id)), id, r, items, count, selected, true, theme);
+ui_mu_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const char* const* names, const draw_image_t* const* icons,
+               int count, int selected, const ui_mu_theme_t* theme) {
+    return ui_dropdown_id(ctx, mu_get_id(ctx, id, (int)strlen(id)), id, r, names, icons, count, selected, true, theme);
 }
 
 int
-ui_dropdown_id(mu_Context* ctx, mu_Id mid, const char* id, mu_Rect r, const ui_dropdown_item_t* items, int count,
-               int selected, bool enabled, const ui_mu_theme_t* theme) {
+ui_dropdown_id(mu_Context* ctx, mu_Id mid, const char* id, mu_Rect r, const char* const* names,
+               const draw_image_t* const* icons, int count, int selected, bool enabled, const ui_mu_theme_t* theme) {
     assert(count > 0);
     if (selected < 0 || selected >= count) {
         selected = 0;
@@ -313,8 +319,8 @@ ui_dropdown_id(mu_Context* ctx, mu_Id mid, const char* id, mu_Rect r, const ui_d
 
     const bool was_open = ui_dropdown_is_open(ctx, id);
     const control_t c = begin_control(ctx, mid, r, enabled, false, theme);
-    const ui_dropdown_item_t* chosen = &items[selected];
-    draw_icon_and_label(ctx, r, chosen->icon, chosen->label, ui_dropdown_label_width(r.w, theme), c.ink, theme);
+    draw_icon_and_label(ctx, r, icons ? icons[selected] : NULL, names[selected], -1,
+                        ui_dropdown_label_width(r.w, theme), c.ink, theme);
 
     const mu_Rect chevron_r = {r.x + r.w - BUTTON_PAD - CHEVRON_SIDE, r.y + (r.h - CHEVRON_SIDE) / 2, CHEVRON_SIDE,
                                CHEVRON_SIDE};
@@ -333,7 +339,7 @@ ui_dropdown_id(mu_Context* ctx, mu_Id mid, const char* id, mu_Rect r, const ui_d
     if (!enabled || !ui_dropdown_is_open(ctx, id)) {
         return -1;
     }
-    return draw_dropdown_list(ctx, list_id, r, items, count, selected, theme);
+    return draw_dropdown_list(ctx, list_id, r, names, icons, count, selected, theme);
 }
 
 mu_Rect
@@ -347,14 +353,14 @@ ui_tile_icon_rect(mu_Rect r, const ui_mu_theme_t* theme) {
 }
 
 void
-ui_swatch_grid(mu_Context* ctx, mu_Rect r, const mu_Color* colors, int cols, int rows) {
+ui_swatch_grid(mu_Context* ctx, mu_Rect r, const uint32_t* colors, int cols, int rows) {
     for (int row = 0; row < rows; row++) {
         const int y0 = r.y + row * r.h / rows;
         const int y1 = r.y + (row + 1) * r.h / rows;
         for (int col = 0; col < cols; col++) {
             const int x0 = r.x + col * r.w / cols;
             const int x1 = r.x + (col + 1) * r.w / cols;
-            mu_draw_rect(ctx, mu_rect(x0, y0, x1 - x0, y1 - y0), colors[row * cols + col]);
+            mu_draw_rect(ctx, mu_rect(x0, y0, x1 - x0, y1 - y0), ui_rgb(colors[row * cols + col]));
         }
     }
 }
@@ -362,11 +368,12 @@ ui_swatch_grid(mu_Context* ctx, mu_Rect r, const mu_Color* colors, int cols, int
 bool
 ui_tile_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_button_t* button,
                const ui_mu_theme_t* theme) {
-    return ui_tile_button_id(ctx, mu_get_id(ctx, id, (int)strlen(id)), r, button, theme);
+    return ui_tile_button_id(ctx, mu_get_id(ctx, id, (int)strlen(id)), r, button, -1, theme);
 }
 
 bool
-ui_tile_button_id(mu_Context* ctx, mu_Id id, mu_Rect r, const ui_widget_button_t* button, const ui_mu_theme_t* theme) {
+ui_tile_button_id(mu_Context* ctx, mu_Id id, mu_Rect r, const ui_widget_button_t* button, int label_len,
+                  const ui_mu_theme_t* theme) {
     const control_t c = begin_control(ctx, id, r, button->enabled, button->selected, theme);
 
     const mu_Rect icon = ui_tile_icon_rect(r, theme);
@@ -375,6 +382,6 @@ ui_tile_button_id(mu_Context* ctx, mu_Id id, mu_Rect r, const ui_widget_button_t
     }
     const int label_h = draw_font_height(draw_font_ui(), theme->text_scale);
     const mu_Rect label = {r.x + TILE_PAD, icon.y + icon.h + TILE_LABEL_GAP, r.w - 2 * TILE_PAD, label_h};
-    ui_text_in(ctx, label, button->label, c.ink, theme->text_scale, UI_ALIGN_CENTRE);
+    text_in(ctx, label, button->label, label_len, c.ink, theme->text_scale, UI_ALIGN_CENTRE);
     return c.clicked;
 }
