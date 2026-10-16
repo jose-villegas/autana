@@ -1,10 +1,11 @@
-/* Six-position measurements in panel axes; pose names follow the page quarter. */
+/* imu_probe: six-position measurements and turn timing in panel axes; poses follow the page quarter. */
 #pragma once
 
 #include <stddef.h>
 
 #include "input/imu_calib.h"
 #include "input/input.h"
+#include "math/linear/vec3f.h"
 
 #define IMU_PROBE_LABEL_SIZE      16
 #define IMU_PROBE_MILLI           1000
@@ -39,6 +40,14 @@ typedef struct {
     imu_calib_t calib;
 } imu_probe_fit_t;
 
+/* A fast hand turn exceeds rest noise; one second at 20 Hz exposes settling lag. */
+#define IMU_PROBE_TURN_THRESHOLD (45 * INPUT_ROTATION_ONE_DPS)
+#define IMU_PROBE_TURN_WINDOW_MS 1000U
+#define IMU_PROBE_TURN_SAMPLES   21
+#define IMU_PROBE_TURN_PERIOD_MS (IMU_PROBE_TURN_WINDOW_MS / (IMU_PROBE_TURN_SAMPLES - 1))
+
+typedef enum { IMU_PROBE_POSES, IMU_PROBE_UPRIGHT, IMU_PROBE_TURN, IMU_PROBE_TRACE, IMU_PROBE_DONE } imu_probe_step_t;
+
 typedef struct {
     bool active, primed;
     int pose, quarter;
@@ -46,6 +55,10 @@ typedef struct {
     float recent_accel[3], recent_gyro[3];
     imu_probe_average_t window, poses[IMU_PROBE_POSE_COUNT];
     imu_probe_fit_t fit;
+    imu_probe_step_t step;
+    uint32_t turn_ms, trace_ms;
+    int trace_count;
+    vec3f_t trace_down;
 } imu_probe_round_t;
 
 const char* imu_probe_pose_name(int pose);
@@ -60,3 +73,5 @@ vec3i_t imu_probe_mg(vec3i_t q12);
 void imu_probe_start(imu_probe_round_t* round, int quarter);
 /* Returns true once per completed pose. NULL means no reading this frame. */
 bool imu_probe_update(imu_probe_round_t* round, const input_motion_t* sample, uint32_t dt_ms);
+
+bool imu_probe_turn_update(imu_probe_round_t* round, const input_motion_t* sample, vec3f_t down, uint32_t dt_ms);

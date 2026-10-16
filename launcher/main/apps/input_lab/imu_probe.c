@@ -2,6 +2,7 @@
 
 #include <ctype.h>
 #include <math.h>
+#include "math/linear/vec_convert.h"
 #include "math/scalar/mathf_round.h"
 
 #include "ui/layout/ui_transform.h"
@@ -121,6 +122,13 @@ imu_probe_start(imu_probe_round_t* round, int quarter) {
 }
 
 static bool
+gravity_aligned(const imu_probe_round_t* round, input_motion_t sample) {
+    const int pose = round->pose == IMU_PROBE_POSE_COUNT ? IMU_PROBE_BOTTOM_DOWN : round->pose;
+    const vec3i_t direction = imu_probe_pose_direction(pose, round->quarter);
+    return vec3i_dot(direction, sample.acceleration) >= IMU_PROBE_GRAVITY_MIN;
+}
+
+static bool
 still(imu_probe_round_t* round, input_motion_t sample, uint32_t dt_ms) {
     const int a[] = {sample.acceleration.x, sample.acceleration.y, sample.acceleration.z};
     const int r[] = {sample.rotation.x, sample.rotation.y, sample.rotation.z};
@@ -137,8 +145,7 @@ still(imu_probe_round_t* round, input_motion_t sample, uint32_t dt_ms) {
         round->recent_gyro[axis] += weight * ((float)r[axis] - round->recent_gyro[axis]);
     }
     round->primed = true;
-    const vec3i_t direction = imu_probe_pose_direction(round->pose, round->quarter);
-    return stable && vec3i_dot(direction, sample.acceleration) >= IMU_PROBE_GRAVITY_MIN;
+    return stable && gravity_aligned(round, sample);
 }
 
 bool
@@ -171,6 +178,69 @@ imu_probe_update(imu_probe_round_t* round, const input_motion_t* sample, uint32_
     if (round->pose == IMU_PROBE_POSE_COUNT) {
         round->active = false;
         round->fit = imu_probe_fit(round->poses, round->quarter);
+        round->step = IMU_PROBE_UPRIGHT;
     }
+    return true;
+}
+
+static bool
+turning(input_motion_t sample) {
+    const vec3f_t rotation = vec3f_from_vec3i(sample.rotation);
+    return vec3f_dot(rotation, rotation) > (float)IMU_PROBE_TURN_THRESHOLD * IMU_PROBE_TURN_THRESHOLD;
+}
+
+static void
+turn_upright(imu_probe_round_t* round, const input_motion_t* sample, uint32_t dt_ms) {
+    if (sample == NULL || dt_ms > IMU_PROBE_MAX_GAP_MS || !gravity_aligned(round, *sample)) {
+        round->primed = false;
+        round->settle_ms = 0;
+        return;
+    }
+    if (!still(round, *sample, dt_ms) || turning(*sample)) {
+        round->settle_ms = 0;
+        return;
+    }
+    round->settle_ms += dt_ms;
+    if (round->settle_ms >= IMU_PROBE_SETTLE_MS) {
+        round->step = IMU_PROBE_TURN;
+    }
+}
+
+static bool
+turn_trace(imu_probe_round_t* round, const input_motion_t* sample, vec3f_t down, uint32_t dt_ms) {
+    const uint32_t remaining_ms = IMU_PROBE_TURN_WINDOW_MS - round->turn_ms;
+    const bool within_window = dt_ms <= remaining_ms;
+    round->turn_ms += dt_ms < remaining_ms ? dt_ms : remaining_ms;
+    if (round->turn_ms == IMU_PROBE_TURN_WINDOW_MS) {
+        round->step = IMU_PROBE_DONE;
+    }
+    if (!within_window || sample == NULL
+        || round->turn_ms / IMU_PROBE_TURN_PERIOD_MS == round->trace_ms / IMU_PROBE_TURN_PERIOD_MS) {
+        return false;
+    }
+    round->trace_ms = round->turn_ms;
+    round->trace_down = down;
+    round->trace_count++;
+    return true;
+}
+
+bool
+imu_probe_turn_update(imu_probe_round_t* round, const input_motion_t* sample, vec3f_t down, uint32_t dt_ms) {
+    if (dt_ms == 0 || round->step == IMU_PROBE_POSES || round->step == IMU_PROBE_DONE) {
+        return false;
+    }
+    if (round->step == IMU_PROBE_UPRIGHT) {
+        turn_upright(round, sample, dt_ms);
+        return false;
+    }
+    if (round->step == IMU_PROBE_TRACE) {
+        return turn_trace(round, sample, down, dt_ms);
+    }
+    if (sample == NULL || !turning(*sample)) {
+        return false;
+    }
+    round->step = IMU_PROBE_TRACE;
+    round->trace_down = down;
+    round->trace_count = 1;
     return true;
 }
