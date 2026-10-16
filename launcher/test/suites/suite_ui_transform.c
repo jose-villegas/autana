@@ -28,7 +28,7 @@
 
 static void
 check_point(affine2x_t t, int x, int y, int ex, int ey, const char* msg) {
-    const vec2i_t mapped = affine2x_map_pixel(t, (vec2i_t){x, y});
+    const vec2i_t mapped = affine2x_map_pixel(&t, (vec2i_t){x, y});
     TEST_ASSERT_EQUAL_INT_MESSAGE(ex, mapped.x, msg);
     TEST_ASSERT_EQUAL_INT_MESSAGE(ey, mapped.y, msg);
 }
@@ -77,7 +77,7 @@ test_unmap_pixel_inverts_every_quarter_turn(void) {
     for (int turn = 0; turn < 4; turn++) {
         const affine2x_t t = ui_transform_quarter_turn(turn, VIEW_W, VIEW_H);
         const vec2i_t logical = {VIEW_W / 3, VIEW_H / 5};
-        const vec2i_t back = ui_transform_unmap_pixel(t, affine2x_map_pixel(t, logical));
+        const vec2i_t back = ui_transform_unmap_pixel(t, affine2x_map_pixel(&t, logical));
         TEST_ASSERT_EQUAL_INT_MESSAGE(logical.x, back.x, "unmap(map(p)).x == p.x");
         TEST_ASSERT_EQUAL_INT_MESSAGE(logical.y, back.y, "unmap(map(p)).y == p.y");
     }

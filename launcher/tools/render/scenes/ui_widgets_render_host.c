@@ -247,7 +247,7 @@ open_dropdown_tap(int frame) {
         return in;
     }
     const mu_Rect r = open_view_dropdown();
-    const vec2i_t mapped_pixel = affine2x_map_pixel(transform, (vec2i_t){r.x + r.w / 2, r.y + r.h / 2});
+    const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){r.x + r.w / 2, r.y + r.h / 2});
     in.x = mapped_pixel.x;
     in.y = mapped_pixel.y;
     in.down = t < held;

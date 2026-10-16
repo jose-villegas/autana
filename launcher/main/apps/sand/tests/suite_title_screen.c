@@ -131,8 +131,8 @@ static sand_title_button_t
 tap(mu_Rect r) {
     const int x = r.x + r.w / 2;
     const int y = r.y + r.h / 2;
-    const vec2i_t mapped_pixel = affine2x_map_pixel(
-        ui_transform_quarter_turn(ui_width() == GFX_HEIGHT ? 1 : 0, GFX_WIDTH, GFX_HEIGHT), (vec2i_t){x, y});
+    const affine2x_t transform = ui_transform_quarter_turn(ui_width() == GFX_HEIGHT ? 1 : 0, GFX_WIDTH, GFX_HEIGHT);
+    const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){x, y});
     sand_title_button_t hit = SAND_TITLE_NONE;
     sand_title_button_t f = title_frame(true, true, false, mapped_pixel.x, mapped_pixel.y);
     hit = f != SAND_TITLE_NONE ? f : hit;
