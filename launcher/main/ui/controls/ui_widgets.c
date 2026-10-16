@@ -59,7 +59,7 @@ text_in(mu_Context* ctx, mu_Rect r, const char* str, int len, mu_Color color, in
     const int th = draw_font_height(draw_font_ui(), scale);
     int x = r.x;
     if (align == UI_ALIGN_CENTRE) {
-        x = r.x + (r.w - tw) / 2;
+        x = r.x + ((r.w - tw) / 2);
     } else if (align == UI_ALIGN_RIGHT) {
         x = r.x + r.w - tw;
     }

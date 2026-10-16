@@ -22,7 +22,7 @@ static int clock_frame;
 int
 timespec_get(struct timespec* now, int base) {
     const int64_t elapsed_ms = (int64_t)clock_frame * FRAME_MS;
-    now->tv_sec = 1 + elapsed_ms / 1000;
+    now->tv_sec = 1 + (elapsed_ms / 1000);
     now->tv_nsec = (long)(elapsed_ms % 1000) * 1000000L;
     return base;
 }
