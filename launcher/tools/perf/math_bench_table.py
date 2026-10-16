@@ -20,6 +20,8 @@ DOCUMENT = ROOT / "docs/math/Benchmark.md"
 BLOCK = "math-benchmark"
 PLACEHOLDER = "# Board capture pending: run autana suite math_perf --flash."
 FPU_OPS = ("madd.s", "msub.s", "recip0.s", "rsqrt0.s", "div0.s", "divn.s", "sqrt0.s")
+DEVICE_ONLY_FPU_OPS = ("recip0.s", "rsqrt0.s")
+DEVICE_ONLY_INSTRUCTION = "device-only instruction"
 # ESP-DSP docs/esp_bm_results.csv at 3c8ac0fdfec8: S3, ANSI, O2, N=256 (docs/Citations.md#68).
 ESP_DSP_DOTPROD_F32_N256_ANSI_O2_CYCLES = 1311
 NUMBER = r"[0-9]+(?:\.[0-9]+)?"
@@ -138,6 +140,8 @@ def render_table(rows, measured, baseline, fpu, build=None):
              "|---|---|---:|---:|---:|---:|---:|---|"]
     for key, label, kind, ops in rows:
         qemu = f"{baseline['math_' + key] / ops:.1f}" if "math_" + key in baseline else "-"
+        if set(fpu[key].partition(";")[0].split()) & set(DEVICE_ONLY_FPU_OPS):
+            qemu = DEVICE_ONLY_INSTRUCTION
         values = measured.get(key)
         costs = [f"{value:.1f}" for value in values] if values else ["-"] * 3
         ratio = f"{values[0] / values[2]:.1f}" if values else "-"
