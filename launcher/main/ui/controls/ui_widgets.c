@@ -25,7 +25,8 @@ ui_theme_from_style(const mu_Style* style) {
                            .accent_face = style->colors[MU_COLOR_BUTTONFOCUS],
                            .text = style->colors[MU_COLOR_TEXT],
                            .on_accent = style->colors[MU_COLOR_TEXT],
-                           .text_scale = DRAW_GLYPH_SCALE};
+                           .text_scale = DRAW_GLYPH_SCALE,
+                           .native_toggle = true};
 }
 
 static void
@@ -158,6 +159,39 @@ ui_theme_slider_int_id(mu_Context* ctx, mu_Id id, mu_Rect r, int* value, int lo,
     colors[MU_COLOR_BORDER] = border;
     colors[MU_COLOR_BUTTON] = knob;
     colors[MU_COLOR_BUTTONFOCUS] = fill;
+    return changed;
+}
+
+bool
+ui_toggle_id(mu_Context* ctx, mu_Id mid, mu_Rect r, const char* label, int label_len, bool* on, bool enabled,
+             const ui_mu_theme_t* theme) {
+    mu_Style saved = *ctx->style;
+    if (!theme->native_toggle) {
+        ctx->style->colors[MU_COLOR_BASE] = theme->button_face;
+        ctx->style->colors[MU_COLOR_BASEHOVER] = theme->button_face;
+        ctx->style->colors[MU_COLOR_BASEFOCUS] = theme->accent_face;
+        ctx->style->colors[MU_COLOR_BORDER] = theme->panel_edge;
+    }
+    const mu_Color ink = enabled ? theme->text : theme->muted;
+    ctx->style->colors[MU_COLOR_TEXT] = ink;
+    ui_set_font_scaled(ui_resolve_font_scaled(saved.font).font, theme->text_scale);
+    mu_update_control(ctx, mid, r, enabled ? 0 : MU_OPT_NOINTERACT);
+    const bool changed = enabled && ctx->mouse_pressed == MU_MOUSE_LEFT && ctx->focus == mid;
+    if (changed) {
+        *on = !*on;
+    }
+    const mu_Rect box = mu_rect(r.x, r.y, r.h, r.h);
+    mu_draw_control_frame(ctx, mid, box, MU_COLOR_BASE, 0);
+    if (*on) {
+        mu_draw_icon(ctx, MU_ICON_CHECK, box, ink);
+    }
+    const mu_Rect text = mu_rect(r.x + box.w, r.y, r.w - box.w, r.h);
+    const mu_Vec2 pos =
+        mu_vec2(text.x + ctx->style->padding, text.y + (text.h - ctx->text_height(ctx->style->font)) / 2);
+    mu_push_clip_rect(ctx, text);
+    mu_draw_text(ctx, ctx->style->font, label, label_len, pos, ink);
+    mu_pop_clip_rect(ctx);
+    *ctx->style = saved;
     return changed;
 }
 
