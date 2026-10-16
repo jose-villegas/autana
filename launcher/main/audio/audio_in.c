@@ -2,8 +2,11 @@
 #include "audio/audio_in.h"
 
 #include <limits.h>
+
 #include "audio/audio_codec.h"
+
 #define AUDIO_IN_GAIN_DB 24.0f
+
 static esp_codec_dev_handle_t input;
 
 bool

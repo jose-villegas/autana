@@ -2,8 +2,10 @@
 #pragma once
 #include <stddef.h>
 #include <stdint.h>
+
 #include "audio/audio_out.h"
 #include "math/scalar/trig.h"
+
 #define AUDIO_TONE_PHASE_SHIFT (32 - TRIG_TURN_SHIFT)
 #define AUDIO_TONE_TURN        ((uint64_t)TRIG_TURN << AUDIO_TONE_PHASE_SHIFT)
 

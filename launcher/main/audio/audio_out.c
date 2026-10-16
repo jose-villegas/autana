@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <limits.h>
 #include <string.h>
+
 #include "audio/audio_codec.h"
 #include "audio/audio_out_device.h"
 #include "audio/audio_tone.h"
@@ -11,10 +12,11 @@
 #include "core/timing.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+
 #define AUDIO_OUT_CODEC_VOLUME    70
 #define AUDIO_OUT_FRAME_TASK_NAME "main"
 #define AUDIO_OUT_DRAIN_MS                                                                                             \
-    ((AUDIO_OUT_DMA_BLOCKS * AUDIO_OUT_BLOCK_SAMPLES * AUDIO_OUT_MS_PER_SECOND + AUDIO_OUT_SAMPLE_RATE_HZ - 1)         \
+    ((AUDIO_CODEC_DMA_BLOCKS * AUDIO_CODEC_BLOCK_SAMPLES * AUDIO_OUT_MS_PER_SECOND + AUDIO_OUT_SAMPLE_RATE_HZ - 1)     \
      / AUDIO_OUT_SAMPLE_RATE_HZ)
 static esp_codec_dev_handle_t output;
 
@@ -56,11 +58,11 @@ audio_out_tone(uint16_t hz, uint16_t ms, uint8_t volume_pct) {
     }
     audio_tone_t tone;
     audio_tone_init(&tone, hz);
-    int16_t samples[AUDIO_OUT_BLOCK_SAMPLES];
+    int16_t samples[AUDIO_CODEC_BLOCK_SAMPLES];
     size_t remaining = (uint32_t)ms * AUDIO_OUT_SAMPLE_RATE_HZ / AUDIO_OUT_MS_PER_SECOND;
     bool ok = audio_out_amp(true);
     while (ok && remaining) {
-        const size_t n = remaining < AUDIO_OUT_BLOCK_SAMPLES ? remaining : AUDIO_OUT_BLOCK_SAMPLES;
+        const size_t n = remaining < AUDIO_CODEC_BLOCK_SAMPLES ? remaining : AUDIO_CODEC_BLOCK_SAMPLES;
         audio_tone_fill(&tone, samples, n, volume_pct);
         ok = audio_out_write(samples, n);
         remaining -= n;

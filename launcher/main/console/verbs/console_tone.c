@@ -1,5 +1,6 @@
 /* Development-only acoustic tone check on the console task. */
 #include <stdio.h>
+
 #include "audio/audio_in.h"
 #include "audio/audio_loopback.h"
 #include "audio/audio_out.h"

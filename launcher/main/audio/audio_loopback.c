@@ -9,8 +9,8 @@
 
 static bool
 audio_loopback_record(uint16_t hz, uint16_t ms, uint8_t volume_pct, bool playing, float* db) {
-    int16_t out[AUDIO_OUT_BLOCK_SAMPLES];
-    int16_t in[AUDIO_OUT_BLOCK_SAMPLES];
+    int16_t out[AUDIO_CODEC_BLOCK_SAMPLES];
+    int16_t in[AUDIO_CODEC_BLOCK_SAMPLES];
     audio_goertzel_t detector;
     audio_goertzel_init(&detector, hz, AUDIO_OUT_SAMPLE_RATE_HZ);
     audio_tone_t tone;
@@ -21,13 +21,13 @@ audio_loopback_record(uint16_t hz, uint16_t ms, uint8_t volume_pct, bool playing
         return false;
     }
     if (playing) {
-        audio_tone_fill(&tone, out, AUDIO_OUT_BLOCK_SAMPLES, volume_pct);
-        if (!audio_out_write(out, AUDIO_OUT_BLOCK_SAMPLES)) {
+        audio_tone_fill(&tone, out, AUDIO_CODEC_BLOCK_SAMPLES, volume_pct);
+        if (!audio_out_write(out, AUDIO_CODEC_BLOCK_SAMPLES)) {
             return false;
         }
     }
     while (remaining) {
-        const size_t n = remaining < AUDIO_OUT_BLOCK_SAMPLES ? remaining : AUDIO_OUT_BLOCK_SAMPLES;
+        const size_t n = remaining < AUDIO_CODEC_BLOCK_SAMPLES ? remaining : AUDIO_CODEC_BLOCK_SAMPLES;
         if (playing) {
             audio_tone_fill(&tone, out, n, volume_pct);
             if (!audio_out_write(out, n)) {
