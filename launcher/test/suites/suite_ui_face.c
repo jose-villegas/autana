@@ -340,6 +340,26 @@ test_ui_row_and_next(void) {
 
 typedef enum { ID_DUPLICATE, ID_WINDOWS, ID_HIDDEN, ID_DYNAMIC, ID_STABLE } identity_t;
 
+static const char*
+first_label(identity_t kind, bool changed) {
+    if (kind == ID_HIDDEN) {
+        return "Go##a";
+    }
+    if (kind == ID_DYNAMIC) {
+        return changed ? "B###k" : "A###k";
+    }
+    return "Go";
+}
+
+/* The second button's label, or NULL for a kind with one button. */
+static const char*
+second_label(identity_t kind) {
+    if (kind == ID_HIDDEN) {
+        return "Go##b";
+    }
+    return kind == ID_DUPLICATE || kind == ID_WINDOWS ? "Go" : NULL;
+}
+
 static unsigned
 identity_frame(identity_t kind, const input_t* in, bool changed) {
     ui_begin(in);
@@ -349,15 +369,13 @@ identity_frame(identity_t kind, const input_t* in, bool changed) {
     } else {
         ui_screen();
     }
-    const char* first = kind == ID_HIDDEN ? "Go##a" : kind == ID_DYNAMIC ? (changed ? "B###k" : "A###k") : "Go";
-    unsigned hits = ui_button(BOX, first) ? 1U : 0U;
+    unsigned hits = ui_button(BOX, first_label(kind, changed)) ? 1U : 0U;
     if (kind == ID_WINDOWS) {
         ui_window((recti_t){0, SECOND.y, ui_width(), ui_height() - SECOND.y});
     }
-    if (kind == ID_DUPLICATE || kind == ID_WINDOWS || kind == ID_HIDDEN) {
-        if (ui_button(SECOND, kind == ID_HIDDEN ? "Go##b" : "Go")) {
-            hits |= 2U;
-        }
+    const char* second = second_label(kind);
+    if (second != NULL && ui_button(SECOND, second)) {
+        hits |= 2U;
     }
     end_face();
     return hits;
