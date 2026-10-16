@@ -82,9 +82,9 @@ key again writes the row without the mark.
 
 The lock is not a list kept by hand: rows come from `bakes()`, and CI fails
 when it lacks a needed key or holds an unneeded one. It pins what a fit
-made, since a fit is not reproducible (torch is seeded but not
-deterministic, nvdiffrast's backward uses atomics), so re-running a fit can
-never change a pack under an unchanged key. It also verifies every download
+made: identical inputs on the same GPU model in the pinned environment
+produce identical fit bytes, while a different GPU may differ. Re-running
+a fit cannot change a pack under an unchanged key. It also verifies every download
 and shows a reviewer, in the diff, which bakes a PR changed.
 
 A baked source chains: `capybara.import.toml` names `path = "capybara.blend"`;
@@ -160,15 +160,11 @@ whose sha256 differs from the lock.
 
 ## 5. Migration
 
-0. **Measured first** (before `bake.py`): the scene bakes on the
-   maintainer's machine and on the CI ubuntu image, each `cmp`ed with the
-   committed meshes, and one fit run twice on the runner. Main's meshes are
-   fresh. A plain bake reproduced on one machine but not across machines
-   (since `r3d/isa.py`, across CPU vendors only), and a fit does not reproduce
-   even on one. So the lock pins bytes for
-   every kind of bake, and the seed uses main's committed files, never a CI
-   rebake. Windows cannot bake today (Mitsuba finds no libLLVM there), so a
-   Windows clone only fetches.
+0. **Reproducibility scope:** mesh bakes reproduce across hosts of the same
+   CPU vendor; fits reproduce on the same GPU model in the pinned environment.
+   Different GPUs may differ. The lock pins bytes for every kind of bake,
+   and the seed uses main's committed files. Windows clones fetch bakes;
+   local baking needs the documented Linux environment.
 1. Add `bake.py`, the `.blend` converter, `bakes.yml` and the `uses` in the
    consumer workflows; `build_pack.py`, `fitted_variant.py`,
    `render_compare.sh` and `doc_stages.py` take keys and files from it.

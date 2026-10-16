@@ -94,7 +94,9 @@ class SkinningBoard(unittest.TestCase):
         cases = [
             (text.replace("lighting=0", "lighting=999"), "invalid lighting"),
             (text + "RUN=1\n", "duplicate run"),
-            (text + "BUILD_ID=other\n", "mismatched build"),
+            (text + "BUILD_ID=other\n", "repeated"),
+            (text + "BUILD_ID=sample-diag\n", "repeated"),
+            (text.replace("sample-diag", "bad id"), "invalid"),
             (text.replace("RUN=1\n", ""), "no run"),
             (text.replace("vertices=800", "vertices=801", 1), "inconsistent vertices or samples"),
             (text.replace("samples=100", "samples=101", 1), "inconsistent vertices or samples"),
@@ -209,8 +211,9 @@ class SkinningBoard(unittest.TestCase):
         self.assertEqual(result["render_counts"], (2, 3, 3))
 
     def test_missing_phase_and_build_fail(self):
-        with self.assertRaisesRegex(ValueError, "build"):
-            parse_capture(run_capture(1, 100))
+        for report in (parse_capture, report_performance.performance_report):
+            with self.subTest(report=report.__name__), self.assertRaisesRegex(ValueError, "build"):
+                report(run_capture(1, 100))
         text = "BUILD_ID=sample-diag\n" + run_capture(1, 100)
         with self.assertRaisesRegex(ValueError, PHASE_PLAYING):
             parse_capture(text.replace(f"{PREFIX} phase={PHASE_PLAYING} internal_free=100 internal_largest=100\n", ""))

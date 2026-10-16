@@ -1,4 +1,7 @@
-"""Summarize calibration rounds and stationary stretches and flat orientation; no correction is applied."""
+"""Summarize calibration rounds, stationary stretches and flat orientation.
+
+Each round reports the absolute sensor offset whatever offset is stored.
+"""
 
 import argparse
 import re

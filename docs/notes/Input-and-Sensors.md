@@ -56,7 +56,7 @@ one I2C read per call, into `input_motion_t`:
 
 | Field | Meaning |
 |---|---|
-| `acceleration` | raw accelerometer, unfiltered: screen axes (x right, y down, z out of the screen), pointing the way down at rest, in Q12 g (`INPUT_ACCEL_ONE_G`). Upright reads +1 g on y, flat and screen up -1 g on z |
+| `acceleration` | offset-calibrated accelerometer, unfiltered: screen axes (x right, y down, z out of the screen), pointing the way down at rest, in Q12 g (`INPUT_ACCEL_ONE_G`). Upright reads +1 g on y, flat and screen up -1 g on z |
 | `rotation` | signed raw gyro counts, Q6 deg/s (`INPUT_ROTATION_ONE_DPS`), in the same panel axes: x = -gy, y = gx, z = gz |
 | `turn_speed` | deg/s, the sum of the gyroscope's absolute rates over all three axes: a speed, no sign or axis |
 
@@ -65,11 +65,25 @@ the front, +x tips the bottom edge toward the viewer, +y turns the right edge aw
 
 ### Calibration round
 
-A tap on the development Motion page starts a calibration round when idle
-or showing results. Taps during a round are ignored. BOOT abandons the round
-and selects another page. Its prompts name the face and edges as
-seen on the pinned `DISPLAY_DEFAULT_QUARTER` page; measurements stay in panel
-axes. No measured correction is applied to input readings.
+A tap on the development Motion page starts a calibration round when idle.
+Taps during a round are ignored. Prompts name the face and edges as seen on the pinned
+`DISPLAY_DEFAULT_QUARTER` page; measurements stay in panel axes.
+
+`input_read_motion()` subtracts the stored accelerometer offset before any
+consumer filters or reads acceleration. The settings service stores Q12 g
+screen-axis counts in space `imu`, keys `accel_x`, `accel_y`, `accel_z`.
+A save writes `accel_valid` as 0, then the axes, then `accel_valid` as 1.
+A missing marker, a marker other than 1, missing axes or any offset beyond
+`IMU_CALIB_OFFSET_MAX` select zero offset. A failed write leaves the live offset unchanged.
+Scale is reported but never applied; gyro readings remain raw.
+
+The Motion page shows the stored offset. Its raw acceleration display, bubble
+and `motion raw` log reconstruct sensor counts by adding that offset back.
+The round measures calibrated samples, so the fitted offset is a residual.
+SAVE stores the current offset plus this residual; CLEAR stores zero. The results
+HUD labels the residual, while `calib` logs the absolute sensor offset in mg.
+`imu_calib saved` logs Q12 counts;
+`imu_calib cleared` confirms zero offset.
 
 ```mermaid
 stateDiagram-v2
@@ -80,8 +94,14 @@ stateDiagram-v2
     Settling --> Settling: motion or reading gap
     Measuring --> Settling: motion or reading gap
     Measuring --> Prompt: next pose
-    Measuring --> Done: final pose
-    Done --> [*]
+    Measuring --> Results: final pose
+    Results --> [*]: SAVE stored
+    Results --> [*]: CLEAR stored
+    Results --> Results: save failed
+    Prompt --> [*]: BOOT
+    Settling --> [*]: BOOT
+    Measuring --> [*]: BOOT
+    Results --> [*]: BOOT
 ```
 
 Settling uses recent per-axis accelerometer and gyro means. Thresholds and
@@ -94,10 +114,10 @@ For each axis, the positive and negative gravity windows give
 `scale = (up - down) / (2 * INPUT_ACCEL_ONE_G)`, the diagonal six-position
 calibration model described by STMicroelectronics AN4508
 [[67]](../Citations.md#67). This measures offset and sensitivity, not cross-axis
-misalignment. The gyro zero-rate estimate averages samples across all pose
-windows. `pose` lines contain rounded Q12 g and Q6 deg/s means and sample
-counts; `calib` reports offsets in mg, sensitivity in ppm (unity is 1000000),
-and gyro offsets in mdps.
+misalignment. `input/imu_calib.c` owns the offset and sensitivity fit. The gyro
+zero-rate estimate averages samples across all pose windows. `pose` lines contain
+rounded Q12 g and Q6 deg/s means and sample counts; `calib` reports offsets in
+mg, sensitivity in ppm (unity is 1000000), and gyro offsets in mdps.
 
 The Motion log records the shell quarter even though the page remains pinned.
 The tool reports calibration fits and consecutive-round differences, the longest

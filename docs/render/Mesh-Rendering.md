@@ -44,12 +44,12 @@ Poses follow [math/linear's conventions](../math/README.md#conventions).
 
 Several meshes share one picture: the raster draws each instance in turn
 without clearing between, and the depth buffer decides what covers what, so
-the order does not matter. An instance's placement goes into the lens matrix:
+the order does not matter. An instance's model matrix goes into the lens matrix:
 `r3d_lens_place()` composes it with the lens `r3d_lens_init()` built, so
 culling, the vertex transform and near clipping all see the mesh where it
 sits. The importer bakes the placement from a position, a rotation and a scale
 ([Scene-Files.md](Scene-Files.md)), so the device does no trigonometry, and an
-instance with no placement skips the composition and is the unplaced lens
+instance with no model skips the composition and is the unplaced lens
 exactly.
 
 ## The files
