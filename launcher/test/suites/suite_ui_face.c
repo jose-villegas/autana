@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -9,6 +10,7 @@
 #include "suites.h"
 #include "test_cleanup.h"
 #include "timing.h"
+#include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
 #include "ui/ui_mu.h"
@@ -41,7 +43,7 @@ cleanup(void) {
     free(snapshot);
     snapshot = NULL;
 #ifndef ESP_PLATFORM
-    ui_scope_imbalance_for_test = NULL;
+    ui_face_misuse_for_test = NULL;
     if (scope_gfx) {
         gfx_reset_for_test();
         scope_gfx = false;
@@ -56,11 +58,6 @@ fixture(void) {
     ui_set_transform(ui_transform_identity());
     snapshot_size = 0;
     reports = 0;
-}
-
-static mu_Rect
-legacy_rect(recti_t r) {
-    return mu_rect(r.x, r.y, r.w, r.h);
 }
 
 static void
@@ -170,7 +167,7 @@ typedef enum {
 static void
 emit_legacy(verb_t verb) {
     mu_Context* ctx = ui_context();
-    const mu_Rect r = legacy_rect(BOX);
+    const mu_Rect r = ui_mu_from_recti(BOX);
     const ui_mu_theme_t t = legacy_theme(THEME);
     const ui_widget_button_t b = {.label = "Go", .enabled = true};
     int value = INITIAL_VALUE;
@@ -293,7 +290,7 @@ static void
 test_ui_screen_commands(void) {
     fixture();
     begin_legacy();
-    mu_draw_rect(ui_context(), legacy_rect(BOX), ui_rgb(FACE_RGB));
+    mu_draw_rect(ui_context(), ui_mu_from_recti(BOX), ui_rgb(FACE_RGB));
     end_legacy();
     save_commands();
     ui_init();
@@ -307,8 +304,8 @@ static void
 test_ui_window_commands(void) {
     fixture();
     ui_begin(NULL);
-    TEST_ASSERT_TRUE(mu_begin_window_ex(ui_context(), "Reference", legacy_rect(BOX), WINDOW_FLAGS));
-    mu_draw_rect(ui_context(), legacy_rect(BOX), ui_rgb(FACE_RGB));
+    TEST_ASSERT_TRUE(mu_begin_window_ex(ui_context(), "Reference", ui_mu_from_recti(BOX), WINDOW_FLAGS));
+    mu_draw_rect(ui_context(), ui_mu_from_recti(BOX), ui_rgb(FACE_RGB));
     end_legacy();
     save_commands();
     ui_init();
@@ -543,7 +540,7 @@ dropdown_pick(verb_t verb) {
     bool on = false;
     (void)tap_widget(verb, &value, &on, false, false);
     const int row_h = BOX.h;
-    const mu_Rect list = ui_dropdown_list_rect(legacy_rect(BOX), CHOICE_COUNT, row_h, ui_height(), UI_MARGIN);
+    const mu_Rect list = ui_dropdown_list_rect(ui_mu_from_recti(BOX), CHOICE_COUNT, row_h, ui_height(), UI_MARGIN);
     const int x = list.x + list.w / 2, y = list.y + row_h + row_h / 2;
     const input_t idle = {0}, press = {.down = true, .pressed = true, .x = x, .y = y},
                   release = {.released = true, .x = x, .y = y};
@@ -660,7 +657,23 @@ scope_fixture(void) {
     fixture();
     TEST_ASSERT_TRUE(gfx_init());
     scope_gfx = true;
-    ui_scope_imbalance_for_test = report_imbalance;
+    ui_face_misuse_for_test = report_imbalance;
+}
+
+static void
+test_identity_capacity_reports(void) {
+    scope_fixture();
+    begin_face();
+    ui_context()->on_control = NULL;
+    char label[sizeof "id " + sizeof(int) * 3];
+    for (int i = 0; i < UI_FACE_IDS_MAX; i++) {
+        snprintf(label, sizeof label, "id %d", i);
+        (void)ui_button(BOX, label);
+    }
+    TEST_ASSERT_EQUAL_INT(0, reports);
+    (void)ui_button(BOX, "overflow");
+    end_face();
+    TEST_ASSERT_EQUAL_INT(1, reports);
 }
 
 static void
@@ -772,8 +785,8 @@ test_ui_theme_custom_and_reset(void) {
     const ui_mu_theme_t custom = legacy_theme(THEME);
     const ui_widget_button_t b = {.label = "Custom", .enabled = true};
     const ui_widget_button_t rest = {.label = "Shell", .enabled = true};
-    (void)ui_icon_button(ui_context(), "Custom", legacy_rect(BOX), &b, &custom);
-    (void)ui_icon_button(ui_context(), "Shell", legacy_rect(SECOND), &rest, &shell);
+    (void)ui_icon_button(ui_context(), "Custom", ui_mu_from_recti(BOX), &b, &custom);
+    (void)ui_icon_button(ui_context(), "Shell", ui_mu_from_recti(SECOND), &rest, &shell);
     end_legacy();
     save_commands();
     ui_init();
@@ -851,6 +864,7 @@ run_ui_face_suite(void) {
     RUN_TEST(test_color_text_scope);
     RUN_TEST(test_scale_scope);
 #ifndef ESP_PLATFORM
+    RUN_TEST(test_identity_capacity_reports);
     RUN_TEST(test_open_disabled_reports);
     RUN_TEST(test_open_color_reports);
     RUN_TEST(test_open_scale_reports);
