@@ -33,7 +33,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
 from suite_registry import registered_suites  # noqa: E402
 from process_tree import launch_process_tree, close_process_tree  # noqa: E402
-import device  # noqa: E402
 import device_lock  # noqa: E402  (path must be set up first)
 import autana_config  # noqa: E402  (path must be set up first)
 from espressif import idf_python, idf_note_lines, require_idf  # noqa: E402
@@ -1433,7 +1432,7 @@ def console(_args=None):
     while True:
         try:
             pinned = session_flags.get("--board")
-            prompt = f"autana@{device.short_id(pinned)}> " if pinned else "autana> "
+            prompt = f"autana@{device_module().short_id(pinned)}> " if pinned else "autana> "
             line = input(prompt).strip()
         except (EOFError, KeyboardInterrupt):
             print()
@@ -1745,10 +1744,7 @@ def completion_candidates(line, prefix):
         if len(parts) != 2 or parts[0] not in ("build", "flash", "help", "use"):
             return []
         if parts[0] == "use":
-            try:
-                words = {device.short_id(serial) for serial in device.known_boards()}
-            except RuntimeError:
-                words = set()
+            words = set()
         else:
             words = VARIANTS if parts[0] in ("build", "flash") else HELP_TOPICS
     return sorted(word for word in words if word.startswith(prefix))
@@ -1796,8 +1792,8 @@ def project_of(value):
 
 
 # One validator per flag: what it needs, an example, and a check returning
-# the value to store or None. Boards resolve to full serials for child
-# processes; an owner is a label the lock appends `:pid` to and prints,
+# the value to store or None. Device subprocesses resolve board selectors;
+# an owner is a label the lock appends `:pid` to and prints,
 # so it holds no whitespace.
 GLOBAL_CHECKS = {
     "--lock-token": ("a non-empty token without whitespace", "autana --lock-token TOKEN screenshot",
@@ -1808,7 +1804,7 @@ GLOBAL_CHECKS = {
                 lambda v: v if v and not re.search(r"\s", v) else None),
     "--board": ("a board's USB serial number or four-digit short id",
                 "autana --board 90:70:69:FE:A3:08 monitor 5",
-                device.resolve_board),
+                lambda v: device_module().board_selector(v)),
     "--project": ("a path to an autana project", "autana flash --project PATH", project_of),
 }
 

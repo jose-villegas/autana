@@ -328,8 +328,8 @@ A filter that matches nothing gives an empty array.
 ## In a session
 
 `use A308` pins the session to that board; the prompt becomes `autana@A308>`.
-`use` prints the pin, `use -` clears it, and Tab after `use` offers known
-short ids. Starting with `autana -b A308` or `autana --board A308` starts
+`use` prints the pin and `use -` clears it.
+Starting with `autana -b A308` or `autana --board A308` starts
 pinned. The pin is the session's `--board`; a line can override it with its
 own board flag.
 

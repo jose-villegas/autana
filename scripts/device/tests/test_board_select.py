@@ -5,6 +5,7 @@ import unittest
 from unittest import mock
 
 from test_lock_guard import Store, plugged, usb, BOARD_A, BOARD_B
+import isolation  # noqa: F401
 import device
 import device_lock
 

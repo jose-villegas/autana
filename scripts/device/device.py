@@ -158,12 +158,20 @@ def known_boards(store=None):
                   | set(store.boards()) | set(store.seen_boards()))
 
 
+def board_selector(value):
+    named = device_lock.normalise_board(value)
+    if (re.fullmatch(BOARD_SERIAL_PATTERN, named)
+            or re.fullmatch(r"[0-9A-F]{%d}" % SHORT_ID_DIGITS, named)):
+        return value
+    return None
+
+
 def resolve_board(value, store=None):
+    if board_selector(value) is None:
+        return None
     named = device_lock.normalise_board(value)
     if re.fullmatch(BOARD_SERIAL_PATTERN, named):
         return named
-    if not re.fullmatch(r"[0-9A-F]{%d}" % SHORT_ID_DIGITS, named):
-        return None
     known = known_boards(store)
     matches = [serial for serial in known if short_id(serial) == named]
     if len(matches) == 1:
