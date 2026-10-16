@@ -17,12 +17,9 @@
 void
 r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_scale) {
     const float ticks_to_units = 1.0F / (float)position_scale;
-    const vec3f_t origin = {0.0F, 0.0F, 0.0F};
-    const mat4f_t units =
-        mat4f_from_trs(origin, quatf_identity(), (vec3f_t){ticks_to_units, ticks_to_units, ticks_to_units});
     const mat4f_t camera = mat4f_view_from_axes(view->screen_x, view->screen_y, view->forward, view->position);
-    lens->m = mat4f_mul_affine(mat4f_scale_rows(camera, (vec3f_t){view->pixels_per_unit, view->pixels_per_unit, 1.0F}),
-                               units);
+    const mat4f_t pixels = mat4f_scale_rows(camera, (vec3f_t){view->pixels_per_unit, view->pixels_per_unit, 1.0F});
+    lens->m = mat4f_scale_columns(pixels, (vec3f_t){ticks_to_units, ticks_to_units, ticks_to_units});
     lens->center_x = view->center_x;
     lens->center_y = view->center_y;
     lens->near_z = view->near_z;

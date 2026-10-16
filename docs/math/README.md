@@ -291,6 +291,7 @@ determinant gives the inverse-transpose.
 | `P_identity()` | the identity matrix | $`I`$ |
 | `P_view_from_axes(x, y, z, eye)` | world to the frame whose axes form the rows | $`p' = (x \cdot (p-eye), y \cdot (p-eye), z \cdot (p-eye))`$ |
 | `P_scale_rows(m, s)` | scales rows 0 through 2, including translation; bottom row unchanged | $`\mathrm{diag}(s_x, s_y, s_z, 1)\,m`$ |
+| `P_scale_columns(m, s)` | scales columns 0 through 2; translation and bottom row unchanged | $`m\,\mathrm{diag}(s_x, s_y, s_z, 1)`$ |
 | `P_row_dot_column3(row, &b, c)` | dot of three row entries with column `c` of `b`; used by the matrix products | $`\sum_{k=0}^{2} \mathit{row}_k\,b_{kc}`$ |
 | `P_mul(a, b)` | matrix product `a * b` | $`(a\,b)_{rc} = \sum_{k=0}^{3} a_{rk}\,b_{kc}`$ |
 | `P_mul_affine(a, b)` | `a * b`, with `b` applied first; both bottom rows must be (0, 0, 0, 1) | $`\begin{pmatrix} A & a \\ 0 & 1 \end{pmatrix}\begin{pmatrix} B & b \\ 0 & 1 \end{pmatrix}`$<br> $`= \begin{pmatrix} A B & A b + a \\ 0 & 1 \end{pmatrix}`$ |

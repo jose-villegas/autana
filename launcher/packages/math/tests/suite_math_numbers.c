@@ -151,6 +151,23 @@ test_fixed_scale_rows_preserves_the_bottom_row(void) {
 }
 
 static void
+test_fixed_scale_columns_keeps_the_translation(void) {
+    const vec3x_t scale = {2 * MATHX_ONE, -3 * MATHX_ONE, MATHX_ONE / 2};
+    const mat4x_t m = {{{MATHX_ONE, -MATHX_ONE, MATHX_ONE / 2, 2 * MATHX_ONE},
+                        {0, MATHX_ONE, -MATHX_ONE, 3 * MATHX_ONE},
+                        {-MATHX_ONE, 0, MATHX_ONE, -2 * MATHX_ONE},
+                        {0, 0, 0, MATHX_ONE}}};
+    const mat4x_t got = mat4x_scale_columns(m, scale);
+    const int32_t factors[] = {scale.x, scale.y, scale.z, MATHX_ONE};
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            const int32_t want = r < 3 ? mathx_mul(m.m[r][c], factors[c]) : m.m[r][c];
+            TEST_ASSERT_EQUAL_INT32(want, got.m[r][c]);
+        }
+    }
+}
+
+static void
 test_fixed_transform_matrix_view_and_look_at_match_float(void) {
     transformf_t f = TRANSFORMF_IDENTITY;
     transformx_t x = TRANSFORMX_IDENTITY;
@@ -982,6 +999,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_fixed_quaternion_rotation_matches_float);
     RUN_TEST(test_fixed_view_from_axes_maps_the_eye_and_frame_axes);
     RUN_TEST(test_fixed_scale_rows_preserves_the_bottom_row);
+    RUN_TEST(test_fixed_scale_columns_keeps_the_translation);
     RUN_TEST(test_fixed_transform_matrix_view_and_look_at_match_float);
     RUN_TEST(test_fixed_transform_builds_once_and_rebuilds_after_each_setter);
     RUN_TEST(test_round_trip_conversions_return_the_original_where_representable);

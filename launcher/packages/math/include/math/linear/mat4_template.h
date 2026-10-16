@@ -40,6 +40,16 @@
         return m;                                                                                                      \
     }                                                                                                                  \
                                                                                                                        \
+    /* m * diag(s.x, s.y, s.z, 1): scales columns 0 through 2; translation unchanged. */                               \
+    static inline P##_t P##_scale_columns(P##_t m, V##_t s) {                                                          \
+        for (int r = 0; r < 3; r++) {                                                                                  \
+            m.m[r][0] = OPS##_mul(m.m[r][0], s.x);                                                                     \
+            m.m[r][1] = OPS##_mul(m.m[r][1], s.y);                                                                     \
+            m.m[r][2] = OPS##_mul(m.m[r][2], s.z);                                                                     \
+        }                                                                                                              \
+        return m;                                                                                                      \
+    }                                                                                                                  \
+                                                                                                                       \
     static inline T P##_row_dot_column3(const T* row, const P##_t* b, int c) {                                         \
         return V##_dot((V##_t){row[0], row[1], row[2]}, (V##_t){b->m[0][c], b->m[1][c], b->m[2][c]});                  \
     }                                                                                                                  \
