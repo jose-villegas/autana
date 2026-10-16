@@ -380,6 +380,17 @@ class PruneAndCostTests(unittest.TestCase):
                     self.assertIs(shown, calls.coverage.return_value)
                     self.assertEqual(budget, len(pruned.tris))
 
+    def test_invalid_surface_flags_fail_before_loading_a_scene(self):
+        from r3d import appearance_simplify as appearance
+
+        for flags in (["--object", "card", "--surface-weight", "-1"], ["--object", "card", "--surface-weight", "nan"],
+                      ["--object", "card", "--surface-margin", "-1"], ["--surface-weight", "1"]):
+            with self.subTest(flags=flags), mock.patch.object(appearance, "load_scene") as scene:
+                with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                    appearance.main(["--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
+                                     "--reference", "reference", "--out", "out", *flags])
+                scene.assert_not_called()
+
     def test_main_without_a_budget_optimises_and_writes_without_pruning(self):
         from r3d import appearance_simplify as appearance
 
