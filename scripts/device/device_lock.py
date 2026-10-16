@@ -149,6 +149,17 @@ def normalise_board(serial):
     return serial.strip().upper()
 
 
+SHORT_ID_DIGITS = 4
+
+
+def short_id(serial):
+    return normalise_board(serial).replace(":", "")[-SHORT_ID_DIGITS:]
+
+
+def board_label(serial):
+    return f"{short_id(serial)} ({normalise_board(serial)})"
+
+
 def process_alive(pid):
     """Only a process demonstrably absent or exited counts as dead. Every
     other outcome answers alive: this decides whether one owner may take the board
@@ -731,27 +742,27 @@ def successful_duration(row):
     return duration if math.isfinite(duration) and duration >= 0 else None
 
 
-def record_duration(kind, seconds, error=None, root=None):
+def record_duration(kind, seconds, error=None, root=None, *, board):
     """A failed run is recorded with its error and never shapes an estimate."""
     path = Path(root or default_root()) / DURATIONS_FILE
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", encoding="utf-8") as stream:
         stream.write(json.dumps({"command": kind, "duration_seconds": seconds,
-                                 "error": error}) + "\n")
+                                 "error": error, "board": normalise_board(board)}) + "\n")
     rows = duration_rows(path.parent)
     if len(rows) > DURATIONS_TRIM_LINES:
         trim_durations(path, rows)
 
 
 def trim_durations(path, rows):
-    """Keeps each kind's last ESTIMATE_RECENT_RUNS successful rows, then the
+    """Keeps each kind and board's last ESTIMATE_RECENT_RUNS successful rows, then the
     newest DURATIONS_TRIM_LINES of those, however many kinds there are. A row
     another process appends during the rewrite can be lost; a median over
     that many runs does not notice."""
     by_kind = {}
     for index, row in enumerate(rows):
         if successful_duration(row) is not None:
-            by_kind.setdefault(row["command"], []).append(index)
+            by_kind.setdefault((row["command"], row.get("board")), []).append(index)
     recent = sorted(index for runs in by_kind.values() for index in runs[-ESTIMATE_RECENT_RUNS:])
     kept = recent[-DURATIONS_TRIM_LINES:]
     temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
@@ -760,14 +771,21 @@ def trim_durations(path, rows):
     os.replace(temporary, path)
 
 
-def duration_history(root=None, minimum=ESTIMATE_MINIMUM_RUNS):
-    history = {}
+def duration_history(root=None, minimum=ESTIMATE_MINIMUM_RUNS, board=None):
+    """Prefer a board's own successful runs once its kind has enough history."""
+    history, own = {}, {}
+    board = normalise_board(board) if board else None
     for row in duration_rows(root):
         duration = successful_duration(row)
         if duration is not None:
-            history.setdefault(row["command"], []).append(duration)
+            kind = row["command"]
+            history.setdefault(kind, []).append(duration)
+            if board and row.get("board") == board:
+                own.setdefault(kind, []).append(duration)
+    selected = {kind: own[kind] if len(own.get(kind, [])) >= minimum else values
+                for kind, values in history.items()}
     return {kind: statistics.median(values[-ESTIMATE_RECENT_RUNS:])
-            for kind, values in history.items() if len(values) >= minimum}
+            for kind, values in selected.items() if len(values) >= minimum}
 
 
 def local_time(timestamp):
@@ -818,7 +836,7 @@ def status_entry(store, board, port=None, now=None, durations=None):
     """One board's state as `status --json` prints it. Times are epoch
     seconds; an estimate with too little history is None."""
     now = store.now() if now is None else now
-    durations = duration_history(store.root) if durations is None else durations
+    durations = duration_history(store.root, board=board) if durations is None else durations
     status = store.status(board)
     entry = {"board": board, "port": port, "state": "unlocked", "holder": None,
              "since": None, "estimated_free": None,
