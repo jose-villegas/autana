@@ -175,9 +175,7 @@ emit_legacy(verb_t verb) {
     const ui_widget_button_t b = {.label = "Go", .enabled = true};
     int value = INITIAL_VALUE;
     int on = 0;
-    const ui_dropdown_item_t items[] = {{NULL, "One"}, {NULL, "Two"}, {NULL, "Three"}};
-    const ui_dropdown_item_t icons[] = {{&ICON, "One"}, {NULL, "Two"}, {&ICON, "Three"}};
-    const mu_Color colors[] = {UI_RGB(FACE_RGB), UI_RGB(INK_RGB)};
+    const char* const items[] = {"One", "Two", "Three"};
     switch (verb) {
         case VERB_BUTTON: (void)ui_icon_button(ctx, "Go", r, &b, &t); break;
         case VERB_TILE: (void)ui_tile_button(ctx, "Go", r, &b, &t); break;
@@ -186,8 +184,8 @@ emit_legacy(verb_t verb) {
             (void)mu_checkbox(ctx, "Go", &on);
             break;
         case VERB_SLIDER: (void)ui_theme_slider_int(ctx, r, &value, RANGE_LO, RANGE_HI, 1, &t); break;
-        case VERB_DROPDOWN: (void)ui_mu_dropdown(ctx, "Go", r, items, CHOICE_COUNT, 0, &t); break;
-        case VERB_DROPDOWN_ICONS: (void)ui_mu_dropdown(ctx, "Go", r, icons, CHOICE_COUNT, 0, &t); break;
+        case VERB_DROPDOWN: (void)ui_mu_dropdown(ctx, "Go", r, items, NULL, CHOICE_COUNT, 0, &t); break;
+        case VERB_DROPDOWN_ICONS: (void)ui_mu_dropdown(ctx, "Go", r, NAMES, ICONS, CHOICE_COUNT, 0, &t); break;
         case VERB_TEXT:
         case VERB_TEXT_RIGHT:
         case VERB_TEXT_CENTRE:
@@ -203,7 +201,7 @@ emit_legacy(verb_t verb) {
         case VERB_FILL: mu_draw_rect(ctx, r, ui_rgb(FACE_RGB)); break;
         case VERB_OUTLINE: mu_draw_box(ctx, r, ui_rgb(FACE_RGB)); break;
         case VERB_ICON: ui_draw_icon(ctx, r, &ICON, NULL, t.text); break;
-        case VERB_SWATCHES: ui_swatch_grid(ctx, r, colors, SWATCH_COLS, SWATCH_ROWS); break;
+        case VERB_SWATCHES: ui_swatch_grid(ctx, r, SWATCHES, SWATCH_COLS, SWATCH_ROWS); break;
     }
 }
 

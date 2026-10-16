@@ -203,7 +203,7 @@ test_picker_init_destroy_releases_items(void) {
     TEST_ASSERT_EQUAL_INT(TEST_CLIP_COUNT, f->choice.count);
     TEST_ASSERT_NOT_NULL(f->choice.items);
     for (int i = 0; i < TEST_CLIP_COUNT; i++) {
-        TEST_ASSERT_EQUAL_STRING(f->clips[i].id, f->choice.items[i].label);
+        TEST_ASSERT_EQUAL_STRING(f->clips[i].id, f->choice.items[i]);
     }
     TEST_ASSERT_LESS_THAN(free_before, memory_free_bytes(MEMORY_PSRAM));
     render_lab_clips_destroy(&f->choice);
@@ -321,7 +321,7 @@ static void
 test_menu_dropdown_plays_with_selected_blend(void) {
     clip_fixture_t* f = fixture();
     TEST_ASSERT_TRUE(render_lab_clips_init(&f->choice, &f->scene, 0, "idle"));
-    const ui_dropdown_item_t* items = f->choice.items;
+    const char* const* items = f->choice.items;
     const size_t free_before = memory_free_bytes(MEMORY_PSRAM);
     ui_init();
     menu_frame(NULL);

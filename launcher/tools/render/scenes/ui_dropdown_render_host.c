@@ -30,7 +30,7 @@ static const ui_mu_theme_t THEME = {
 static const mu_Rect DROPDOWN = {40, 360, 288, UI_TAP_MIN};
 
 static char labels[ITEM_COUNT][16];
-static ui_dropdown_item_t items[ITEM_COUNT];
+static const char* items[ITEM_COUNT];
 static int selected = 2;
 
 int
@@ -42,7 +42,7 @@ static bool
 setup(int quarter) {
     for (int i = 0; i < ITEM_COUNT; i++) {
         snprintf(labels[i], sizeof labels[i], "OPTION %02d", i + 1);
-        items[i] = (ui_dropdown_item_t){.label = labels[i]};
+        items[i] = labels[i];
     }
     ui_init();
     ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
@@ -95,7 +95,7 @@ draw(const render_frame_t* frame) {
     ui_set_text_style(UI_TEXT_PLAIN);
     if (ui_begin_screen(ui_context(), "Dropdown", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
         ui_header_bar(ui_context(), mu_rect(0, 0, ui_width(), 36), "DROPDOWN", 2, &THEME);
-        const int picked = ui_mu_dropdown(ui_context(), "demo", DROPDOWN, items, ITEM_COUNT, selected, &THEME);
+        const int picked = ui_mu_dropdown(ui_context(), "demo", DROPDOWN, items, NULL, ITEM_COUNT, selected, &THEME);
         if (picked >= 0) {
             selected = picked;
         }

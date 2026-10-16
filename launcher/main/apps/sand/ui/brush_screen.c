@@ -210,11 +210,11 @@ draw_brush_bezel(mu_Context* ctx, mu_Rect r, uint32_t face_rgb, bool sunken) {
 static void
 draw_brush_swatch(mu_Context* ctx, mu_Rect r, cell_t spec) {
     const gfx_color_t* palette = material_palette();
-    mu_Color colors[BRUSH_SWATCH_CELLS * BRUSH_SWATCH_CELLS];
+    uint32_t colors[BRUSH_SWATCH_CELLS * BRUSH_SWATCH_CELLS];
     for (int row = 0; row < BRUSH_SWATCH_CELLS; row++) {
         for (int col = 0; col < BRUSH_SWATCH_CELLS; col++) {
             const cell_t cell = sand_swatch_cell(spec, col, row, BRUSH_SWATCH_CELLS);
-            colors[row * BRUSH_SWATCH_CELLS + col] = ui_rgb(gfx_color_rgb888(palette[cell]));
+            colors[row * BRUSH_SWATCH_CELLS + col] = gfx_color_rgb888(palette[cell]);
         }
     }
     ui_swatch_grid(ctx, r, colors, BRUSH_SWATCH_CELLS, BRUSH_SWATCH_CELLS);

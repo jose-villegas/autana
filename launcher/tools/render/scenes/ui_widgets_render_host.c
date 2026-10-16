@@ -103,14 +103,11 @@ button(ui_icon_id_t icon, const char* label, bool enabled, bool selected) {
 
 static void
 draw_dropdown(mu_Context* ctx, mu_Rect r) {
-    const ui_dropdown_item_t items[] = {
-        {ui_icon_image(UI_ICON_HOME), "HOME"},
-        {ui_icon_image(UI_ICON_WIFI), "WIFI"},
-        {ui_icon_image(UI_ICON_MONITOR), "DISPLAY"},
-        {ui_icon_image(UI_ICON_GAMEPAD), "GAMES"},
-    };
+    const char* const items[] = {"HOME", "WIFI", "DISPLAY", "GAMES"};
+    const draw_image_t* const icons[] = {ui_icon_image(UI_ICON_HOME), ui_icon_image(UI_ICON_WIFI),
+                                         ui_icon_image(UI_ICON_MONITOR), ui_icon_image(UI_ICON_GAMEPAD)};
     const int count = (int)(sizeof items / sizeof items[0]);
-    const int picked = ui_mu_dropdown(ctx, "gallery", r, items, count, picked_item, &THEME);
+    const int picked = ui_mu_dropdown(ctx, "gallery", r, items, icons, count, picked_item, &THEME);
     if (picked >= 0) {
         picked_item = picked;
     }
@@ -141,10 +138,9 @@ draw_tiles(mu_Context* ctx, mu_Rect r) {
 
 static void
 draw_swatches(mu_Context* ctx, mu_Rect r) {
-    static const mu_Color SWATCHES[] = {
-        UI_RGB(0x1D2B53), UI_RGB(0x7E2553), UI_RGB(0x008751), UI_RGB(0xAB5236), UI_RGB(0x5F574F), UI_RGB(0xC2C3C7),
-        UI_RGB(0xFFF1E8), UI_RGB(0xFF004D), UI_RGB(0xFFA300), UI_RGB(0xFFEC27), UI_RGB(0x00E436), UI_RGB(0x29ADFF),
-        UI_RGB(0x83769C), UI_RGB(0xFF77A8), UI_RGB(0xFFCCAA), UI_RGB(0x000000),
+    static const uint32_t SWATCHES[] = {
+        0x1D2B53, 0x7E2553, 0x008751, 0xAB5236, 0x5F574F, 0xC2C3C7, 0xFFF1E8, 0xFF004D,
+        0xFFA300, 0xFFEC27, 0x00E436, 0x29ADFF, 0x83769C, 0xFF77A8, 0xFFCCAA, 0x000000,
     };
     ui_swatch_grid(ctx, r, SWATCHES, 8, 2);
 }
@@ -214,11 +210,11 @@ static int volume = 5;
 static int muted;
 static int output;
 
-static const ui_dropdown_item_t OUTPUTS[] = {
-    {.label = "SPEAKER"},
-    {.label = "HEADPHONES"},
-    {.label = "BLUETOOTH"},
-    {.label = "OFF"},
+static const char* const OUTPUTS[] = {
+    "SPEAKER",
+    "HEADPHONES",
+    "BLUETOOTH",
+    "OFF",
 };
 
 static void
@@ -230,7 +226,7 @@ draw_settings(mu_Context* ctx) {
     mu_layout_set_next(ctx, mu_rect(UI_MARGIN, 144, row_w, UI_TAP_MIN), 0);
     mu_checkbox(ctx, "MUTE", &muted);
     const int picked =
-        ui_mu_dropdown(ctx, "output", mu_rect(UI_MARGIN, 216, row_w, UI_TAP_MIN), OUTPUTS, 4, output, &THEME);
+        ui_mu_dropdown(ctx, "output", mu_rect(UI_MARGIN, 216, row_w, UI_TAP_MIN), OUTPUTS, NULL, 4, output, &THEME);
     if (picked >= 0) {
         output = picked;
     }

@@ -15,7 +15,7 @@
 typedef struct {
     scene_t* scene;
     scene_entity_t subject;
-    ui_dropdown_item_t* items;
+    const char** items;
     int count;
     int selected;
     int blend_ms;
