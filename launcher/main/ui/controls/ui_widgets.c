@@ -51,6 +51,9 @@ ui_header_bar(mu_Context* ctx, mu_Rect r, const char* title, int scale, const ui
 
 static void
 text_in(mu_Context* ctx, mu_Rect r, const char* str, int len, mu_Color color, int scale, ui_align_t align) {
+    if (len == 0) {
+        return;
+    }
     ui_set_font_scaled(draw_font_ui(), scale);
     const int tw = ctx->text_width(ctx->style->font, str, len);
     const int th = draw_font_height(draw_font_ui(), scale);
@@ -189,7 +192,9 @@ ui_toggle_id(mu_Context* ctx, mu_Id mid, mu_Rect r, const char* label, int label
     const mu_Vec2 pos =
         mu_vec2(text.x + ctx->style->padding, text.y + (text.h - ctx->text_height(ctx->style->font)) / 2);
     mu_push_clip_rect(ctx, text);
-    mu_draw_text(ctx, ctx->style->font, label, label_len, pos, ink);
+    if (label_len != 0) {
+        mu_draw_text(ctx, ctx->style->font, label, label_len, pos, ink);
+    }
     mu_pop_clip_rect(ctx);
     *ctx->style = saved;
     return changed;

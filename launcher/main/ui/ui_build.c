@@ -377,7 +377,7 @@ void
 ui_begin(const input_t* input) {
     /* Reset before the caller can state its own; see ui.h on why style does
      * not persist across frames. */
-    ui_face_begin();
+    ui_face_begin(input);
     button_style = UI_BUTTON_FLAT;
     FRAME_COST_BEGIN(backend_from);
     paint_only = input == NULL;
