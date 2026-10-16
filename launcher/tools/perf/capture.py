@@ -27,7 +27,6 @@ def require_same_board(captures):
     """Refuse pooled captures from distinct USB serials, including unknown provenance."""
     groups = {}
     missing = object()
-    index = records_root() / "index.jsonl"
 
     def collect(item, inherited=missing):
         if isinstance(item, (str, Path)):
@@ -39,19 +38,21 @@ def require_same_board(captures):
                 for run in suite["runs"]:
                     collect(run, board)
             return
-        paths = item.get("captures") or [item.get("capture") or item.get("capture_path") or item.get("label", "unnamed")]
+        paths = item.get("captures") or [item.get("capture") or item.get("capture_path")]
         for raw in paths:
             if isinstance(raw, dict):
                 collect(raw, board)
                 continue
-            path = Path(raw)
+            path = Path(raw) if raw is not None else None
             serial = board
             if serial is missing:
-                entry = (find_manifest_entry(path, path.parent / "index.jsonl")
-                         or find_manifest_entry(path, index) or {})
+                entry = {}
+                if path is not None:
+                    entry = (find_manifest_entry(path, path.parent / "index.jsonl")
+                             or find_manifest_entry(path, records_root() / "index.jsonl") or {})
                 serial = entry.get("board")
             serial = normalise_board(serial) if serial else None
-            groups.setdefault(serial, []).append(str(raw))
+            groups.setdefault(serial, []).append(str(raw) if raw is not None else item.get("label", "unnamed"))
 
     for capture in captures:
         collect(capture)

@@ -66,3 +66,8 @@ class CaptureBoards(unittest.TestCase):
                 perf_job, "duration_history", return_value={"flash": 10}) as history:
             self.assertEqual(perf_job.job_estimate(1, 0, 60, restore=False), 10)
             history.assert_called_once_with(board=board)
+
+    def test_records_without_capture_paths_need_no_index_lookup(self):
+        record = {"suites": {"suite": {"runs": [{"rows": {}}]}}}
+        with patch.object(capture, "find_manifest_entry", side_effect=AssertionError("no capture path")):
+            self.assertIsNone(capture.require_same_board([record]))
