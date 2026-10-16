@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
 from suite_registry import registered_suites  # noqa: E402
-from process_tree import launch_process_tree, close_process_tree  # noqa: E402
+from process_tree import launch_process_tree, close_process_tree, install_console_interrupt_handler  # noqa: E402
 import device_lock  # noqa: E402  (path must be set up first)
 import autana_config  # noqa: E402  (path must be set up first)
 from espressif import idf_python, idf_note_lines, require_idf  # noqa: E402
@@ -1860,6 +1860,7 @@ def applied(flags):
 
 
 def main():
+    install_console_interrupt_handler()
     flags, argv = pop_globals(sys.argv[1:])
     if not argv or argv[0] == "console":
         session_flags.update(flags)

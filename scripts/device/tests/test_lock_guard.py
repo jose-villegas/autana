@@ -10,6 +10,7 @@ import io
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -606,6 +607,35 @@ class HoldProcessTests(Store):
         self.assertFalse(self.store.lock_path(BOARD_A).exists(), stdout + stderr)
         last = self.store.read_json(self.store.last_path(BOARD_A))
         self.assertEqual(last["how"], "released")
+
+    @unittest.skipUnless(os.name == "nt", "Windows console Ctrl-Break")
+    def test_ctrl_break_releases_lock_through_interrupt_unwind(self):
+        sys.path.insert(0, str(ENGINE / "scripts" / "autana"))
+        import autana
+
+        ready = self.root / "ready"
+        child = self.root / "child.py"
+        child_lifetime_seconds = 60
+        child.write_text("from pathlib import Path\nimport time\n"
+                         f"Path({str(ready)!r}).touch()\n"
+                         f"time.sleep({child_lifetime_seconds})\n")
+        process = self.start_process(
+            self.command("run", "--", sys.executable, str(child)), ready=ready,
+            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+        self.addCleanup(process.communicate, timeout=autana.INTERRUPT_GRACE_SECONDS)
+        self.assertIsNotNone(self.store.status(BOARD_A)["lock"])
+        started = time.monotonic()
+        process.send_signal(signal.CTRL_BREAK_EVENT)
+        stdout, stderr = process.communicate(timeout=autana.INTERRUPT_GRACE_SECONDS)
+        self.assertLess(time.monotonic() - started, autana.INTERRUPT_GRACE_SECONDS)
+        status = device_lock.status_entry(self.store, BOARD_A, durations={})
+        with self.subTest("normal release"):
+            self.assertIsNone(status["lapsed"], stdout + stderr)
+            self.assertFalse(self.store.lock_path(BOARD_A).exists())
+            last = self.store.read_json(self.store.last_path(BOARD_A))
+            self.assertEqual(last["how"], "released")
+        with self.subTest("interrupted exit"):
+            self.assertEqual(process.returncode, device.EXIT_INTERRUPTED, stdout + stderr)
 
     def test_stale_take_token_names_how_to_clear_it(self):
         result = self.run_command("take", "bench", env=dict(
