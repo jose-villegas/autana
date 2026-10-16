@@ -857,14 +857,14 @@ class BoardTests(Store):
         self.assertEqual((by_board["90:70:69:FE:C0:01"]["port"],
                           by_board["90:70:69:FE:C0:01"]["state"]), (None, "human"))
         self.assertEqual(set(by_board[BOARD_B]), {
-            "board", "port", "state", "holder", "since", "estimated_free", "lapsed",
+            "board", "port", "state", "holder", "since", "estimated_free", "estimated_start", "lapsed",
             "expires_at", "waiting"})
 
     def test_status_names_one_board_when_one_is_chosen(self):
         with plugged(usb(BOARD_A, "COM5"), usb(BOARD_B, "COM7")):
             with mock.patch.dict(os.environ, {BOARD_ENV: BOARD_B}):
                 text = self.status()
-        self.assertEqual(text, f"board {BOARD_B} (on COM7)\n  unlocked\n")
+        self.assertEqual(text, f"{device.short_id(BOARD_B)} {BOARD_B} COM7\n  unlocked\n")
 
     def test_status_keeps_a_reclaimable_lock_visible(self):
         self.store.write_json(self.store.lock_path(BOARD_A), {
@@ -1049,7 +1049,7 @@ class FlashTests(Store):
                     self.assertTrue(self.store.check_token(board, device.ACTIVE_LOCK.held.held["token"]))
                     connection.close()
                 with self.scripts(), mock.patch.object(device.device_lock, "LockStore", return_value=self.store), \
-                        mock.patch.object(device, "board_for_lock", return_value=BOARD_A), \
+                        mock.patch.object(device, "board_for_lock", return_value=(BOARD_A, None)), \
                         mock.patch.object(device, "await_console", side_effect=console) as awaited:
                     self.assertEqual(device.main(["--board", BOARD_A, "flash", "--variant", variant,
                                                   "--worktree", args.worktree]), 0)
@@ -2135,7 +2135,7 @@ class BoardChoiceTests(Store):
     def test_a_waiter_queues_while_the_board_is_off_usb(self):
         self.store.acquire(BOARD_A, "alice", "flash")
         with plugged():
-            self.assertEqual(device.board_for_lock(self.store), BOARD_A)
+            self.assertEqual(device.board_for_lock(self.store), (BOARD_A, None))
             waiting = mock.Mock(wraps=self.store.enqueue)
             with mock.patch.object(device_lock.LockStore, "enqueue", waiting):
                 code, errors = self.main("--wait", "0.2", "--owner", "bob", "send", "TUNE")
@@ -2177,7 +2177,7 @@ class BoardChoiceTests(Store):
         # resolving would send a plain `send`/`flash` into a 600 s port wait
         # instead of failing at once.
         with plugged(usb(BOARD_A, "COM5")):
-            board = device.board_for_lock(self.store)
+            board, _ = device.board_for_lock(self.store)
             held = self.store.acquire(board, "alice", "flash")
             self.store.release(board, held["token"])
         with plugged(), self.assertRaises(device.NoBoard):
@@ -2185,7 +2185,7 @@ class BoardChoiceTests(Store):
 
     def test_status_does_not_list_a_seen_only_board_forever(self):
         with plugged(usb(BOARD_A, "COM5")):
-            board = device.board_for_lock(self.store)
+            board, _ = device.board_for_lock(self.store)
             held = self.store.acquire(board, "alice", "flash")
             self.store.release(board, held["token"])
         with plugged():
@@ -2197,11 +2197,11 @@ class BoardChoiceTests(Store):
         # left behind by an ordinary flash should erase the board from
         # hand-to-human's own memory of it.
         with plugged(usb(BOARD_A, "COM5")):
-            board = device.board_for_lock(self.store)
+            board, _ = device.board_for_lock(self.store)
             held = self.store.acquire(board, "alice", "flash")
             self.store.release(board, held["token"])
         with plugged():
-            self.assertEqual(device.board_for_lock(self.store, remembered=True), BOARD_A)
+            self.assertEqual(device.board_for_lock(self.store, remembered=True), (BOARD_A, None))
             code, errors = self.main("--owner", "agent", "hand-to-human",
                                      "--note", "power cycle it")
         self.assertEqual((code, errors), (0, ""))
@@ -2215,9 +2215,10 @@ class BoardChoiceTests(Store):
         self.store.enqueue(BOARD_B, "bob", "look")
         with plugged(), self.assertRaises(RuntimeError) as caught:
             device.board_for_lock(self.store)
-        self.assertIn(BOARD_A + ", " + BOARD_B, str(caught.exception))
+        self.assertIn(BOARD_A, str(caught.exception))
+        self.assertIn(BOARD_B, str(caught.exception))
         with plugged(usb(BOARD_B, "COM7")):
-            self.assertEqual(device.board_for_lock(self.store), BOARD_B)
+            self.assertEqual(device.board_for_lock(self.store), (BOARD_B, None))
 
 
 if __name__ == "__main__":
