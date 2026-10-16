@@ -8,6 +8,20 @@
 #include "audio/audio_tone.h"
 
 static bool
+audio_loopback_start(audio_tone_t* tone, int16_t* out, bool playing, uint8_t volume_pct) {
+    if (!audio_out_amp(playing)) {
+        return false;
+    }
+    if (playing) {
+        audio_tone_fill(tone, out, AUDIO_CODEC_BLOCK_SAMPLES, volume_pct);
+        if (!audio_out_write(out, AUDIO_CODEC_BLOCK_SAMPLES)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool
 audio_loopback_record(uint16_t hz, uint16_t ms, uint8_t volume_pct, bool playing, float* db) {
     int16_t out[AUDIO_CODEC_BLOCK_SAMPLES];
     int16_t in[AUDIO_CODEC_BLOCK_SAMPLES];
@@ -17,14 +31,8 @@ audio_loopback_record(uint16_t hz, uint16_t ms, uint8_t volume_pct, bool playing
     audio_tone_init(&tone, hz);
     size_t remaining = (uint32_t)ms * AUDIO_OUT_SAMPLE_RATE_HZ / AUDIO_OUT_MS_PER_SECOND;
     size_t settle = AUDIO_LOOPBACK_SETTLE_MS * AUDIO_OUT_SAMPLE_RATE_HZ / AUDIO_OUT_MS_PER_SECOND;
-    if (!audio_out_amp(playing)) {
+    if (!audio_loopback_start(&tone, out, playing, volume_pct)) {
         return false;
-    }
-    if (playing) {
-        audio_tone_fill(&tone, out, AUDIO_CODEC_BLOCK_SAMPLES, volume_pct);
-        if (!audio_out_write(out, AUDIO_CODEC_BLOCK_SAMPLES)) {
-            return false;
-        }
     }
     while (remaining) {
         const size_t n = remaining < AUDIO_CODEC_BLOCK_SAMPLES ? remaining : AUDIO_CODEC_BLOCK_SAMPLES;
