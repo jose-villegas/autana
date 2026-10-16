@@ -631,7 +631,7 @@ this order:
 |---|---|
 | header, 56 bytes | `u16 version=2`, nine `u16` part counts, nine `u32` part offsets |
 | names | `char name[32]` per entity, NUL padded |
-| transforms | `f32 m[3][3]`, `f32 position[3]` per entity; count equals names |
+| transforms | `scene_asset_transform_t`: `f32 linear[3][3]`, `f32 position[3]` per entity; count equals names |
 | renderers | `u16 entity`, `u16 zero`, `char mesh_id[32]` |
 | cameras | `u16 entity`, `u16 zero`, `f32 half_fov_short_tan`, `f32 near_z`, `u32 clear_rgb` |
 | lights | `u16 entity`, `u8 kind`, `u8 zero`, `f32 colour[3]` (linear), `f32 intensity` (unscaled) |

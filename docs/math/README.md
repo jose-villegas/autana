@@ -13,6 +13,7 @@ and read the macros in `*_template.h` only to change an algorithm.
 
 ## Contents
 
+- [Benchmark](Benchmark.md): board cycles and retired instructions beside QEMU instruction counts
 - [Number types](#number-types)
 - [Conventions](#conventions)
 - [Templates](#templates)
