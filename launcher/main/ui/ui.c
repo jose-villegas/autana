@@ -417,6 +417,7 @@ ui_end(uint32_t background_rgb) {
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
     const int64_t began_us = band_stats_frames > 0 ? timing_now_us() : 0;
 #endif
+    ui_face_end();
     mu_end(&ui_ctx);
     ui_end_pointer_frame();
 
@@ -455,6 +456,7 @@ ui_end_over(ui_backdrop_fn paint_backdrop) {
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
     const int64_t began_us = band_stats_frames > 0 ? timing_now_us() : 0;
 #endif
+    ui_face_end();
     mu_end(&ui_ctx);
     ui_end_pointer_frame();
 
@@ -719,6 +721,7 @@ ui_end_for_bands(uint32_t background_rgb) {
     ui_band_overflow = 0;
     ui_band_fallbacks = 0;
     ui_band_background = background_rgb;
+    ui_face_end();
     mu_end(&ui_ctx);
     ui_end_pointer_frame();
 

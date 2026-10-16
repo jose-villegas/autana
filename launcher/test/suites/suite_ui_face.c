@@ -3,6 +3,9 @@
 
 #include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
+#ifndef ESP_PLATFORM
+#include "gfx/present/gfx_test.h"
+#endif
 #include "suites.h"
 #include "test_cleanup.h"
 #include "timing.h"
@@ -29,6 +32,9 @@ static const uint32_t SWATCHES[] = {FACE_RGB, INK_RGB};
 static unsigned char* snapshot;
 static size_t snapshot_size;
 static int reports;
+#ifndef ESP_PLATFORM
+static bool scope_gfx;
+#endif
 
 static void
 cleanup(void) {
@@ -36,6 +42,10 @@ cleanup(void) {
     snapshot = NULL;
 #ifndef ESP_PLATFORM
     ui_scope_imbalance_for_test = NULL;
+    if (scope_gfx) {
+        gfx_reset_for_test();
+        scope_gfx = false;
+    }
 #endif
 }
 
@@ -631,6 +641,7 @@ static void
 scope_fixture(void) {
     fixture();
     TEST_ASSERT_TRUE(gfx_init());
+    scope_gfx = true;
     ui_scope_imbalance_for_test = report_imbalance;
 }
 
