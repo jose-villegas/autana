@@ -1,6 +1,6 @@
 /*
  * raster_motion: previous-position offsets from view depth and previous
- * instance placements, in current-picture pixels so resolution changes
+ * instance models, in current-picture pixels so resolution changes
  * need no conversion.
  * This experiment is removable as its files plus its view table row.
  */
@@ -32,8 +32,8 @@ typedef struct {
     bool has_previous;
     render_view_t previous;
     int seen_count;
-    const r3d_placement_t* seen_key[RASTER_MOTION_INSTANCES_MAX];
-    r3d_placement_t seen[RASTER_MOTION_INSTANCES_MAX];
+    const mat4f_t* seen_key[RASTER_MOTION_INSTANCES_MAX];
+    mat4f_t seen[RASTER_MOTION_INSTANCES_MAX];
     /* This picture's: map[0] carries a point of this picture's lens space
      * into the previous one's for anything that did not move, map[i + 1]
      * for instance i that did, when moved[i]. */

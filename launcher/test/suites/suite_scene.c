@@ -167,10 +167,10 @@ make_clip_entry(uint8_t* entry, anim_value_t position_type, int track_count) {
     test_pack_put_floats(entry + FLIGHT_TURNS, turns, 8);
 }
 
-#define IDENTITY {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {0, 0, 0}}
+#define IDENTITY {{{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}}, {0, 0, 0}}
 #define AT(x, y, z)                                                                                                    \
     {                                                                                                                  \
-        {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, { x, y, z }                                                                 \
+        {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}}, { x, y, z }                                                               \
     }
 #define CAMERA_AT(x) AT(x, 0, -CAMERA_DISTANCE) /* a camera's pose, x across */
 
@@ -182,7 +182,7 @@ typedef struct {
 
     struct {
         const char* name;
-        scene_placement_t at;
+        scene_asset_transform_t at;
     } entities[3];
 
     struct {
@@ -272,7 +272,7 @@ camera_clip_count(const scene_spec_t* s) {
 
 static uint32_t
 scene_entry_size(const scene_spec_t* s) {
-    return SCENE_ASSET_HEADER_SIZE + ((uint32_t)s->entity_count * (ASSET_NAME_MAX + sizeof(scene_placement_t)))
+    return SCENE_ASSET_HEADER_SIZE + ((uint32_t)s->entity_count * (ASSET_NAME_MAX + sizeof(scene_asset_transform_t)))
            + ((uint32_t)s->renderer_count * sizeof(scene_asset_renderer_t))
            + ((uint32_t)s->camera_count * sizeof(scene_asset_camera_t)) + sizeof(scene_asset_settings_t)
            + camera_clip_count(s) * (sizeof(scene_asset_animator_t) + ASSET_NAME_MAX)
@@ -297,7 +297,7 @@ make_scene_entry_with_skin(uint8_t* entry, const scene_spec_t* s, const skin_fix
                                                      clips,
                                                      1};
     const size_t sizes[SCENE_ASSET_PART_COUNT] = {ASSET_NAME_MAX,
-                                                  sizeof(scene_placement_t),
+                                                  sizeof(scene_asset_transform_t),
                                                   sizeof(scene_asset_renderer_t),
                                                   sizeof(scene_asset_camera_t),
                                                   sizeof(scene_asset_light_t),
@@ -316,8 +316,8 @@ make_scene_entry_with_skin(uint8_t* entry, const scene_spec_t* s, const skin_fix
     for (int i = 0; i < s->entity_count; i++) {
         memcpy(entry + offsets[SCENE_ASSET_NAMES] + ASSET_NAME_MAX * i, s->entities[i].name,
                strlen(s->entities[i].name));
-        memcpy(entry + offsets[SCENE_ASSET_TRANSFORMS] + sizeof(scene_placement_t) * i, &s->entities[i].at,
-               sizeof(scene_placement_t));
+        memcpy(entry + offsets[SCENE_ASSET_TRANSFORMS] + sizeof(scene_asset_transform_t) * i, &s->entities[i].at,
+               sizeof(scene_asset_transform_t));
     }
     for (int i = 0; i < s->renderer_count - skins; i++) {
         const scene_asset_renderer_t row = {.entity = s->renderers[i].entity};
@@ -466,8 +466,9 @@ make_pack(uint8_t* bytes, const skin_fixture_options_t* options) {
     }
     uint8_t* bad = test_pack_add(&pack, BAD_SCENE, SCENE_ASSET, scene_entry_size(&SCENES[0]));
     make_scene_entry(bad, &SCENES[0]);
-    test_pack_put16(
-        bad + SCENE_ASSET_HEADER_SIZE + (3 * (32 + sizeof(scene_placement_t))) + sizeof(scene_asset_renderer_t), 9);
+    test_pack_put16(bad + SCENE_ASSET_HEADER_SIZE + (3 * (32 + sizeof(scene_asset_transform_t)))
+                        + sizeof(scene_asset_renderer_t),
+                    9);
     for (int i = 0; i < CLIP_COUNT; i++) {
         make_clip_entry(test_pack_add(&pack, CLIPS[i].id, ANIM_TRACKS_ASSET, FLIGHT_BYTES), CLIPS[i].position_type,
                         CLIPS[i].track_count);
@@ -744,7 +745,7 @@ test_a_scene_gives_each_entity_s_mesh_id_and_each_camera_s_lens(void) {
 /* Where the pair's entry puts its parts, as the pack holds it. */
 enum {
     PAIR_NAMES = SCENE_ASSET_HEADER_SIZE,
-    PAIR_RENDERERS = PAIR_NAMES + 3 * (ASSET_NAME_MAX + sizeof(scene_placement_t)),
+    PAIR_RENDERERS = PAIR_NAMES + 3 * (ASSET_NAME_MAX + sizeof(scene_asset_transform_t)),
     PAIR_CAMERA = PAIR_RENDERERS + 2 * sizeof(scene_asset_renderer_t),
     PAIR_BYTES = PAIR_CAMERA + sizeof(scene_asset_camera_t) + sizeof(scene_asset_settings_t)
 };
@@ -804,7 +805,7 @@ test_scene_header_counts_are_independent_of_components(void) {
 
     const uint32_t names = SCENE_ASSET_HEADER_SIZE;
     const uint32_t transforms = names + ROWS * ASSET_NAME_MAX;
-    const uint32_t settings = transforms + ROWS * sizeof(scene_placement_t);
+    const uint32_t settings = transforms + ROWS * sizeof(scene_asset_transform_t);
     const uint32_t size = settings + 2 * sizeof(scene_asset_settings_t);
     uint8_t* entry = fx.bytes;
     memset(entry, 0, size);
@@ -1130,17 +1131,15 @@ test_a_scene_the_tools_bake_loads_as_its_file_says(void) {
     TEST_ASSERT_EQUAL_STRING("green", scene_entity_mesh_id(scene, 2));
     TEST_ASSERT_NULL(scene_entity_mesh_id(scene, 1));
     /* a quarter turn about y, scaled (2, 4, 0.5), at (1, 2, 3) */
-    const scene_placement_t want = {{{0, 0, 0.5F}, {0, 4, 0}, {-2, 0, 0}}, {1, 2, 3}};
-    const scene_placement_t readback = r3d_placement_from(scene_entity_transform(scene, 0));
-    const scene_placement_t* got = &readback;
-    for (int row = 0; row < 3; row++) {
-        for (int column = 0; column < 3; column++) {
-            TEST_ASSERT_FLOAT_WITHIN(1e-6F, want.m[row][column], got->m[row][column]);
+    const mat4f_t want = mat4f_from_trs((vec3f_t){1, 2, 3}, quatf_from_axis_angle((vec3f_t){0, 1, 0}, MATH_PI * 0.5F),
+                                        (vec3f_t){2, 4, 0.5F});
+    const mat4f_t got = transformf_compute_matrix(scene_entity_transform(scene, 0));
+    for (int row = 0; row < MAT3F_AXES; row++) {
+        for (int column = 0; column < MAT3F_AXES; column++) {
+            TEST_ASSERT_FLOAT_WITHIN(1e-6F, want.m[row][column], got.m[row][column]);
         }
+        TEST_ASSERT_EQUAL_FLOAT(want.m[row][MAT3F_AXES], got.m[row][MAT3F_AXES]);
     }
-    TEST_ASSERT_EQUAL_FLOAT(want.position.x, got->position.x);
-    TEST_ASSERT_EQUAL_FLOAT(want.position.y, got->position.y);
-    TEST_ASSERT_EQUAL_FLOAT(want.position.z, got->position.z);
     const camera_t* lens = scene_camera_lens(scene, "camera");
     TEST_ASSERT_EQUAL_FLOAT(0.75F, lens->half_fov_short_tan);
     TEST_ASSERT_EQUAL_FLOAT(1.5F, lens->near_z);
@@ -2128,14 +2127,14 @@ test_scene_open_refuses_shear_and_reflection_naming_the_entity(void) {
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&fx.pack, "test_pair", SCENE_ASSET, &entry));
     scene_asset_t asset;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, scene_asset_open(entry, &asset));
-    scene_placement_t* placement = (scene_placement_t*)(uintptr_t)&asset.transforms[1];
-    const scene_placement_t saved = *placement;
+    scene_asset_transform_t* placement = (scene_asset_transform_t*)(uintptr_t)&asset.transforms[1];
+    const scene_asset_transform_t saved = *placement;
     for (int reflected = 0; reflected <= 1; reflected++) {
         *placement = saved;
         if (reflected) {
-            placement->m[0][0] = -1;
+            placement->linear.m[0][0] = -1;
         } else {
-            placement->m[0][1] = 0.5F;
+            placement->linear.m[0][1] = 0.5F;
         }
         scene_failure_t why;
         TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_pair", &why));
@@ -2163,7 +2162,7 @@ test_property_animation_moves_a_drawn_entity(void) {
     TEST_ASSERT_EQUAL_FLOAT(RIG_TRAVEL / 2, scene_entity_transform(scene, entity)->position.x);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(CLEAR_RGB), fx.pixels[CENTER * SIZE + CENTER]);
     TEST_ASSERT_EQUAL_HEX16(red, fx.pixels[CENTER * SIZE + CENTER + GREEN_PIXEL_OFFSET]);
-    TEST_ASSERT_EQUAL_FLOAT(RIG_TRAVEL / 2, scene->instances[0].placement->position.x);
+    TEST_ASSERT_EQUAL_FLOAT(RIG_TRAVEL / 2, scene->instances[0].model->m[0][3]);
 }
 
 static void
@@ -2276,10 +2275,10 @@ test_set_transform_reads_back_exactly_and_drives_placement(void) {
     transformf_set_rotation(&pose, quatf_from_axis_angle((vec3f_t){1, 2, 3}, 0.5F));
     scene_set_transform(scene, entity, &pose);
     TEST_ASSERT_EQUAL_MEMORY(&pose, scene_entity_transform(scene, entity), sizeof pose);
-    const scene_placement_t want = r3d_placement_from(&pose);
+    const mat4f_t want = transformf_compute_matrix(&pose);
     frame(0);
-    const scene_placement_t* placement = scene->instances[0].placement;
-    TEST_ASSERT_EQUAL_MEMORY(&want, placement, sizeof want);
+    const mat4f_t* model = scene->instances[0].model;
+    TEST_ASSERT_EQUAL_MEMORY(&want, model, sizeof want);
 }
 
 static void
@@ -2539,21 +2538,21 @@ test_set_transform_defers_placement_until_the_scene_draws(void) {
     scene_t* scene = load("test_pair");
     const scene_entity_t entity = scene_find(scene, "red");
     const int renderer = scene_renderer_index(scene, entity);
-    const r3d_placement_t before = scene->renderers[renderer].placement;
+    const mat4f_t before = scene->renderers[renderer].model;
     transformf_t pose = TRANSFORMF_IDENTITY;
     transformf_set_position(&pose, (vec3f_t){2, 3, 4});
     scene_set_transform(scene, entity, &pose);
     TEST_ASSERT_TRUE(scene->flags[entity] & SCENE_FLAG_DIRTY);
-    TEST_ASSERT_EQUAL_MEMORY(&before, &scene->renderers[renderer].placement, sizeof before);
+    TEST_ASSERT_EQUAL_MEMORY(&before, &scene->renderers[renderer].model, sizeof before);
     scene->locals[entity].cached = true;
     scene_render(RIG_DURATION_MS / 2, 0, SIZE, SIZE);
     TEST_ASSERT_TRUE(scene->locals[entity].cached);
     TEST_ASSERT_TRUE(scene->flags[entity] & SCENE_FLAG_DIRTY);
-    TEST_ASSERT_EQUAL_MEMORY(&before, &scene->renderers[renderer].placement, sizeof before);
+    TEST_ASSERT_EQUAL_MEMORY(&before, &scene->renderers[renderer].model, sizeof before);
     TEST_ASSERT_TRUE(scene_activate(scene, NULL));
     frame(0);
-    const r3d_placement_t wanted = r3d_placement_from(&pose);
-    TEST_ASSERT_EQUAL_MEMORY(&wanted, &scene->renderers[renderer].placement, sizeof wanted);
+    const mat4f_t wanted = transformf_compute_matrix(&pose);
+    TEST_ASSERT_EQUAL_MEMORY(&wanted, &scene->renderers[renderer].model, sizeof wanted);
     TEST_ASSERT_FALSE(scene->flags[entity] & SCENE_FLAG_DIRTY);
 }
 

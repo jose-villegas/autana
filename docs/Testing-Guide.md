@@ -518,7 +518,10 @@ whether it removed time (see
 [`notes/Debugging.md`](notes/Debugging.md#performance-seems-off)).
 
 **Hot kernel instruction ratchet.** Only selected serial simulation steps
-and raster span kernels are pinned in `launcher/tools/quality/icount_baseline.txt`. Frame totals and whole
+and raster span kernels, plus selected float math rows, are guarded in
+`launcher/tools/quality/icount_baseline.txt`. Math measures every row;
+`ICOUNT_INFO` rows carry a third `info` baseline field and never fail comparison
+for changed counts, missing rows or new rows. Frame totals and whole
 suites are excluded so unrelated code growth carries no instruction budget.
 A ratchet suite registers as `SUITE_REGISTER_ON_REQUEST(run_<name>_icount_suite)`;
 adding a row requires that registration and a baseline entry. The runner
@@ -532,9 +535,9 @@ python launcher/tools/quality/icount_gate.py launcher/build.qemu.shell/qemu_seri
 ```
 
 The capture lands in `launcher/build.qemu.shell/qemu_serial.log`. The gate
-fails above or below the baseline by more than 0.5%, or on a missing or
-unexpected row. The C reporting helper rejects rows too short to bound
-clock rounding. Baseline entries round to whole instructions. An
+fails for guarded rows above or below the baseline by more than 0.5%, or on a
+missing or unexpected guarded row. The C reporting helper rejects rows too short
+to bound clock rounding. Baseline entries round to whole instructions. An
 improvement requires lowering the baseline in the same PR. An increase requires a stated reason
 and a baseline update in the same PR. After confirming two captures agree
 within tolerance, generate the baseline:

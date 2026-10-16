@@ -6,6 +6,8 @@ import statistics
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "render"))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "perf"))
+from capture import build_ids
 from generated_blocks import replace_block
 
 
@@ -14,11 +16,11 @@ def samples(text):
     vertices = 0
     pending = None
     for line in text.splitlines():
-        if line.startswith("BUILD_ID "):
+        if build_ids(line):
             if pending:
                 yield pending
                 pending = None
-            build = line.split()[1]
+            build = build_ids(line)[0]
         match = re.search(r"vertices=(\d+)", line)
         if match:
             vertices = int(match[1])
@@ -68,8 +70,8 @@ def lighting_modes(text):
     memory = {}
     current_build = ""
     for line in text.splitlines():
-        if line.startswith("BUILD_ID "):
-            current_build = line.split()[1]
+        if build_ids(line):
+            current_build = build_ids(line)[0]
         match = re.search(r"RAM mode=(\w+) renderer_bytes=(\d+) scene_bytes=(\d+).*scene_metadata_psram=(\d+)", line)
         if match and current_build == build:
             memory[match[1]] = (match[2], match[3], match[4])
