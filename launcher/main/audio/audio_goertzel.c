@@ -3,7 +3,9 @@
 #include "audio/audio_goertzel.h"
 
 #include <math.h>
+
 #include "math/scalar/trig.h"
+
 #define GOERTZEL_TAU             6.2831853071795864769f
 #define GOERTZEL_POWER_DB_SCALE  10.0f
 #define GOERTZEL_SINE_COMPONENTS 2.0f

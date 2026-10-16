@@ -4,6 +4,7 @@
 #pragma once
 #include <stddef.h>
 #include <stdint.h>
+
 #define AUDIO_GOERTZEL_FLOOR_DB (-120.0f)
 
 typedef struct {

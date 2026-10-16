@@ -1,11 +1,13 @@
 /* Decimal tone arguments, with limits owned by the audio output. */
 #pragma once
 #include <ctype.h>
-#include <stddef.h>
-#define CONSOLE_TONE_DECIMAL_BASE 10u
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
+
 #include "audio/audio_out.h"
+
+#define CONSOLE_TONE_DECIMAL_BASE       10u
 #define CONSOLE_TONE_DEFAULT_VOLUME_PCT 30u
 
 typedef struct {

@@ -2,18 +2,19 @@
 #include "audio/audio_codec.h"
 
 #include "audio/audio_out.h"
-#include "audio/audio_out_device.h"
 #include "board/board.h"
 #include "bsp/esp32_s3_touch_amoled_1_8.h"
 #include "driver/i2s_std.h"
 #include "esp_codec_dev_defaults.h"
 #include "esp_log.h"
+
 #define AUDIO_CODEC_I2C_ADDR         0x18
 #define AUDIO_CODEC_I2C_ADDR_SHIFT   1
 #define AUDIO_CODEC_PROBE_TIMEOUT_MS 100
 #define AUDIO_CODEC_PA_UNUSED        (-1)
-#define AUDIO_CODEC_PA_VOLTS         3.3f
-#define AUDIO_CODEC_DAC_VOLTS        3.3f
+#define AUDIO_CODEC_PA_SUPPLY_VOLTS  5.0f
+#define AUDIO_CODEC_DAC_SUPPLY_VOLTS 3.3f
+
 static const char* TAG = "audio_codec";
 static i2s_chan_handle_t tx;
 static i2s_chan_handle_t rx;
@@ -88,8 +89,8 @@ audio_codec_acquire(void) {
     }
     i2s_chan_config_t channels = I2S_CHANNEL_DEFAULT_CONFIG(CONFIG_BSP_I2S_NUM, I2S_ROLE_MASTER);
     channels.auto_clear = true;
-    channels.dma_desc_num = AUDIO_OUT_DMA_BLOCKS;
-    channels.dma_frame_num = AUDIO_OUT_BLOCK_SAMPLES;
+    channels.dma_desc_num = AUDIO_CODEC_DMA_BLOCKS;
+    channels.dma_frame_num = AUDIO_CODEC_BLOCK_SAMPLES;
     if (!audio_codec_check("new I2S", i2s_new_channel(&channels, &tx, &rx))) {
         goto fail;
     }
@@ -129,7 +130,7 @@ audio_codec_acquire(void) {
         .codec_mode = ESP_CODEC_DEV_WORK_MODE_BOTH,
         .pa_pin = AUDIO_CODEC_PA_UNUSED,
         .use_mclk = true,
-        .hw_gain = {.pa_voltage = AUDIO_CODEC_PA_VOLTS, .codec_dac_voltage = AUDIO_CODEC_DAC_VOLTS}};
+        .hw_gain = {.pa_voltage = AUDIO_CODEC_PA_SUPPLY_VOLTS, .codec_dac_voltage = AUDIO_CODEC_DAC_SUPPLY_VOLTS}};
     codec = es8311_codec_new(&codec_config);
     if (!codec) {
         ESP_LOGE(TAG, "new codec interface failed");

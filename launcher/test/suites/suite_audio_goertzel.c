@@ -8,8 +8,6 @@
 #include "test_cleanup.h"
 #include "unity.h"
 #define TEST_SAMPLES               AUDIO_OUT_SAMPLE_RATE_HZ
-#define TEST_PI                    3.14159265358979323846
-#define TEST_DB_TOLERANCE          0.5f
 #define TEST_OFF_TONE_REJECTION_DB 30.0f
 #define TEST_ODD_BLOCK             7u
 #define TEST_TARGET_HZ             1000u
@@ -30,6 +28,9 @@ fixture(void) {
     return buffer;
 }
 #ifndef DEVICE_BUILD
+#define TEST_PI           3.14159265358979323846
+#define TEST_DB_TOLERANCE 0.5f
+
 static void
 test_goertzel_reference(void) {
     static const uint16_t frequencies[] = {300, TEST_TARGET_HZ, TEST_REJECT_HZ};
