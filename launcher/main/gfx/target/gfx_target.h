@@ -9,8 +9,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#include "gfx/target/gfx_box.h"
 #include "gfx/target/gfx_color.h"
+#include "math/geometry/recti.h"
 
 typedef struct {
     gfx_color_t* buf; /* row 0 of this buffer is absolute row y0 */
@@ -19,11 +19,11 @@ typedef struct {
     int stride; /* pixels per row */
 } gfx_target_t;
 
-static inline gfx_box_t
-gfx_target_clip_rect(gfx_target_t target, gfx_box_t clip, gfx_box_t rect) {
-    clip.y0 = mathi_max(clip.y0, target.y0);
-    clip.y1 = mathi_min(clip.y1, target.y0 + target.height);
-    return gfx_box_intersect(rect, clip);
+static inline recti_t
+gfx_target_clip_rect(gfx_target_t target, recti_t clip, recti_t rect) {
+    return recti_from_edges(mathi_max(rect.x, clip.x), mathi_max(mathi_max(rect.y, clip.y), target.y0),
+                            mathi_min(recti_right(rect), recti_right(clip)),
+                            mathi_min(mathi_min(recti_bottom(rect), recti_bottom(clip)), target.y0 + target.height));
 }
 
 /* The row pointer for absolute row `y`, once it is known to lie inside
@@ -44,30 +44,18 @@ gfx_target_row_range_overlaps(gfx_target_t target, int y0, int y1) {
     return y0 < target.y0 + target.height && y1 > target.y0;
 }
 
-/* draw_rect()'s own body, extracted here so the exact arithmetic every
- * fill goes through is the one a host suite can drive directly. Absolute
- * (x, y, w, h) and `clip` are in full-screen space, the same as every
- * draw_rect() caller already uses; only the write lands in the
- * target's own local rows. Reports the actually-painted rect back through
- * the out params: draw.c's own caller needs it (already clipped) to mark
- * the right dirty region. */
-static inline void
-gfx_target_fill_rect(gfx_target_t target, int clip_x0, int clip_y0, int clip_x1, int clip_y1, int x, int y, int w,
-                     int h, gfx_color_t color, int* out_x0, int* out_y0, int* out_x1, int* out_y1) {
-    const gfx_box_t rect =
-        gfx_target_clip_rect(target, (gfx_box_t){clip_x0, clip_y0, clip_x1, clip_y1}, (gfx_box_t){x, y, x + w, y + h});
-
-    for (int row = rect.y0; row < rect.y1; row++) {
-        gfx_color_t* dst = gfx_target_row(target, row) + rect.x0;
-        for (int col = rect.x0; col < rect.x1; col++) {
+/* Fills a screen-space shape and returns its clipped dirty rectangle.
+ * Writes land in the target's local rows. */
+static inline recti_t
+gfx_target_fill_rect(gfx_target_t target, recti_t clip, recti_t shape, gfx_color_t color) {
+    const recti_t rect = gfx_target_clip_rect(target, clip, shape);
+    for (int row = rect.y; row < recti_bottom(rect); row++) {
+        gfx_color_t* dst = gfx_target_row(target, row) + rect.x;
+        for (int i = 0; i < rect.w; i++) {
             *dst++ = color;
         }
     }
-
-    *out_x0 = rect.x0;
-    *out_y0 = rect.y0;
-    *out_x1 = rect.x1;
-    *out_y1 = rect.y1;
+    return rect;
 }
 
 /* A source pixel as shown: `clear` where nothing was drawn. */

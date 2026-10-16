@@ -1775,8 +1775,8 @@ build_expanded_ui(ui_text_style_t style) {
 
 static void
 clip_overlay(int row0, int row1) {
-    const gfx_box_t actual = gfx_clip_save();
-    const gfx_box_t expected = GFX_SCREEN_BOX;
+    const recti_t actual = gfx_clip_save();
+    const recti_t expected = GFX_SCREEN_RECT;
     TEST_ASSERT_EQUAL_MEMORY(&expected, &actual, sizeof actual);
     draw_set_clip(0, row0, GFX_WIDTH, row1 - row0);
     draw_rect(0, row0, GFX_WIDTH, row1 - row0, UINT16_MAX);
@@ -1787,12 +1787,12 @@ test_expanded_overlay_resets_and_restores_clip(void) {
     expanded_fixture();
     TEST_ASSERT_NOT_NULL(gfx_half_picture());
     gfx_expand_frame();
-    const gfx_box_t narrow = {GFX_WIDTH / 4, GFX_HEIGHT / 4, GFX_WIDTH / 2, GFX_HEIGHT / 2};
-    draw_set_clip(narrow.x0, narrow.y0, narrow.x1 - narrow.x0, narrow.y1 - narrow.y0);
+    const recti_t narrow = {GFX_WIDTH / 4, GFX_HEIGHT / 4, GFX_WIDTH / 4, GFX_HEIGHT / 4};
+    draw_set_clip(narrow.x, narrow.y, narrow.w, narrow.h);
     gfx_set_frame_overlay(clip_overlay);
     for (int y = 0; y < GFX_HEIGHT; y++) {
         gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
-        const gfx_box_t actual = gfx_clip_save();
+        const recti_t actual = gfx_clip_save();
         TEST_ASSERT_EQUAL_MEMORY(&narrow, &actual, sizeof actual);
         for (int x = 0; x < GFX_WIDTH; x++) {
             TEST_ASSERT_EQUAL_HEX16(UINT16_MAX, fx.pixels[y * GFX_WIDTH + x]);

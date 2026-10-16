@@ -730,9 +730,6 @@ extend_repaint_range(int was, int now, int* lo, int* hi) {
     }
 }
 
-/* Columns 16 wide: one PSRAM cache line of RGB565. */
-#define COLUMN_GROUP 16
-
 static inline __attribute__((always_inline)) gfx_color_t
 column_pixel(int x, int y) {
     const int phase = y & 3;
@@ -762,29 +759,27 @@ group_rows(const int16_t* lo, const int16_t* hi, int x0, int x1, int* y0, int* y
     }
 }
 
-/* The columns of changed pixels seen so far, and their rows. */
-typedef struct {
-    int x0, x1, y0, y1;
-} changed_box_t;
-
+/* Widens the edges of what changed, [*left, *right) by [*top, *bottom), to
+ * hold pixel (x, y). */
 static inline __attribute__((always_inline)) void
-note_changed(changed_box_t* box, int x, int y) {
-    box->x0 = x < box->x0 ? x : box->x0;
-    box->x1 = x + 1 > box->x1 ? x + 1 : box->x1;
-    box->y0 = y < box->y0 ? y : box->y0;
-    box->y1 = y + 1;
+note_changed(int* left, int* right, int* top, int* bottom, int x, int y) {
+    *left = x < *left ? x : *left;
+    *right = x + 1 > *right ? x + 1 : *right;
+    *top = y < *top ? y : *top;
+    *bottom = y + 1;
 }
 
+/* Repaints one row of a column group, noting each pixel that changes. */
 static inline __attribute__((always_inline)) void
-repaint_group_row(gfx_color_t* row, const int16_t* lo, const int16_t* hi, int x0, int x1, int y,
-                  changed_box_t* changed) {
+repaint_group_row(gfx_color_t* row, const int16_t* lo, const int16_t* hi, int x0, int x1, int y, int* left, int* right,
+                  int* top, int* bottom) {
     const bool masked = dissolving();
     for (int x = x0; x < x1; x++) {
         if (y >= lo[x - x0] && y < hi[x - x0] && (!masked || dissolved(x, y))) {
             const gfx_color_t color = column_pixel(x, y);
             if (row[x] != color) {
                 row[x] = color;
-                note_changed(changed, x, y);
+                note_changed(left, right, top, bottom, x, y);
             }
         }
     }
@@ -792,7 +787,7 @@ repaint_group_row(gfx_color_t* row, const int16_t* lo, const int16_t* hi, int x0
 
 static void
 repaint_column_group(const int16_t* lo, const int16_t* hi, int x0) {
-    const int x1 = x0 + COLUMN_GROUP < GFX_WIDTH ? x0 + COLUMN_GROUP : GFX_WIDTH;
+    const int x1 = x0 + RIDGE_COLUMN_GROUP < GFX_WIDTH ? x0 + RIDGE_COLUMN_GROUP : GFX_WIDTH;
     int y0;
     int y1;
     group_rows(lo, hi, 0, x1 - x0, &y0, &y1);
@@ -800,12 +795,16 @@ repaint_column_group(const int16_t* lo, const int16_t* hi, int x0) {
         return;
     }
     gfx_color_t* const framebuffer = gfx_framebuffer();
-    changed_box_t changed = {x1, x0, y1, y0};
+    int left = x1;
+    int right = x0;
+    int top = y1;
+    int bottom = y0;
     for (int y = y0; y < y1; y++) {
-        repaint_group_row(framebuffer + (y * GFX_WIDTH), lo, hi, x0, x1, y, &changed);
+        repaint_group_row(framebuffer + (y * GFX_WIDTH), lo, hi, x0, x1, y, &left, &right, &top, &bottom);
     }
-    if (changed.x0 < changed.x1) {
-        gfx_mark_dirty(changed.x0, changed.y0, changed.x1 - changed.x0, changed.y1 - changed.y0);
+    const recti_t changed = recti_from_edges(left, top, right, bottom);
+    if (!recti_is_empty(changed)) {
+        gfx_mark_dirty(changed.x, changed.y, changed.w, changed.h);
     }
 }
 
@@ -829,11 +828,11 @@ column_repaint_rows(int layer, int x, int16_t* lo, int16_t* hi) {
  * a group of columns row by row rather than each column top to bottom. */
 static void
 repaint_changed_columns(void) {
-    int16_t lo[COLUMN_GROUP];
-    int16_t hi[COLUMN_GROUP];
+    int16_t lo[RIDGE_COLUMN_GROUP];
+    int16_t hi[RIDGE_COLUMN_GROUP];
     for (int layer = 0; layer < RIDGE_LAYER_COUNT; layer++) {
-        for (int x0 = 0; x0 < GFX_WIDTH; x0 += COLUMN_GROUP) {
-            const int x1 = x0 + COLUMN_GROUP < GFX_WIDTH ? x0 + COLUMN_GROUP : GFX_WIDTH;
+        for (int x0 = 0; x0 < GFX_WIDTH; x0 += RIDGE_COLUMN_GROUP) {
+            const int x1 = x0 + RIDGE_COLUMN_GROUP < GFX_WIDTH ? x0 + RIDGE_COLUMN_GROUP : GFX_WIDTH;
             for (int x = x0; x < x1; x++) {
                 column_repaint_rows(layer, x, &lo[x - x0], &hi[x - x0]);
             }
