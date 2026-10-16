@@ -27,6 +27,8 @@ VARIANTS = ("release", "dev", "diag")
 MAIN_VARIANT = VARIANTS[0]
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
+from capture import build_id
 from code_layout import LayoutError, find_tool, run, symbols
 from doc_tables import markdown, parse_table, collapsed
 import svg_bars
@@ -598,37 +600,30 @@ def dram_bytes(sections):
 def parse_runtime_heap(text):
     """Capture blocks contain the JSON object printed by autana heap --json."""
     captures = {}
-    current = None
-    separated = True
-    for line_number, line in enumerate(text.splitlines(), 1):
-        if not line.strip():
-            separated = True
-            current = None
-            continue
-        build = re.fullmatch(r"BUILD_ID=(\S+)", line)
-        if build:
-            build_id = build[1]
-            variant = build_id.rsplit("-", 1)[-1]
-            if not separated or variant not in VARIANTS or variant in captures:
-                raise ValueError(f"runtime heap line {line_number}: invalid or duplicate build {build_id}")
-            current = dict(build_id=build_id, phases={})
-            captures[variant] = current
-            separated = False
-            continue
-        unmeasured = re.fullmatch(r"unmeasured: (\S.*)", line)
-        if unmeasured and current is not None and not current["phases"] and "unmeasured" not in current:
-            current["unmeasured"] = unmeasured[1]
-            continue
-        phase = re.fullmatch(r"phase=(boot|app:.+?) (\{.*\})", line)
-        if current is None or "unmeasured" in current or not phase or phase[1] in current["phases"]:
-            raise ValueError(f"runtime heap line {line_number}: missing build or invalid phase: {line}")
-        reading = json.loads(phase[2])
-        if (set(reading) != {"free", "largest", "total"}
-                or any(type(value) is not int or value < 0 for value in reading.values())):
-            raise ValueError(f"runtime heap line {line_number}: invalid reading: {phase[2]}")
-        if not reading["largest"] <= reading["free"] <= reading["total"]:
-            raise ValueError(f"runtime heap line {line_number}: require largest <= free <= total")
-        current["phases"][phase[1]] = reading
+    for block in re.split(r"\n\s*\n", text.strip()):
+        build = build_id(block)
+        variant = build.rsplit("-", 1)[-1]
+        if variant not in VARIANTS or variant in captures:
+            raise ValueError(f"runtime heap: invalid or duplicate build {build}")
+        current = captures[variant] = dict(build_id=build, phases={})
+        lines = block.splitlines()
+        if lines[0] != f"BUILD_ID={build}":
+            raise ValueError("runtime heap: build id must start the block")
+        for line in lines[1:]:
+            unmeasured = re.fullmatch(r"unmeasured: (\S.*)", line)
+            if unmeasured and not current["phases"] and "unmeasured" not in current:
+                current["unmeasured"] = unmeasured[1]
+                continue
+            phase = re.fullmatch(r"phase=(boot|app:.+?) (\{.*\})", line)
+            if "unmeasured" in current or not phase or phase[1] in current["phases"]:
+                raise ValueError(f"runtime heap build {build}: invalid phase: {line}")
+            reading = json.loads(phase[2])
+            if (set(reading) != {"free", "largest", "total"}
+                    or any(type(value) is not int or value < 0 for value in reading.values())):
+                raise ValueError(f"runtime heap build {build}: invalid reading: {phase[2]}")
+            if not reading["largest"] <= reading["free"] <= reading["total"]:
+                raise ValueError(f"runtime heap build {build}: require largest <= free <= total")
+            current["phases"][phase[1]] = reading
     missing = set(VARIANTS) - captures.keys()
     if missing:
         raise ValueError("runtime heap: missing variants: " + ", ".join(sorted(missing)))

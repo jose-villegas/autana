@@ -83,7 +83,7 @@ sand_two_core_step_enabled(void) {
 
 /* tan(22.5 deg) is the boundary between "straight down" and "diagonal"; its
  * reciprocal, 2.4142, is approximated as 29/12 to keep this in integers.
- * The largest operand is a raw accelerometer reading, so 32767 * 29 stays well
+ * The largest operand is an accelerometer reading, so 32767 * 29 stays well
  * inside 32 bits. */
 #define AXIS_NUM         29
 #define AXIS_DEN         12

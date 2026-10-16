@@ -119,9 +119,9 @@ static void suite_set_test_cleanup(void (*fn)(void)) { cleanup = fn; }
 enum { SPONZA_BAKE_COUNT = 1, SPONZA_BAKE_FULL = 0 };
 static const int meshes[1];
 static const char* const sponza_bakes[] = {"renderer"};
-typedef struct { const int* mesh; void* placement; } r3d_instance_t;
+typedef struct { const int* mesh; void* model; } r3d_instance_t;
 static void open_the_meshes(void) {}
-static void report_frame_cost(const char* label, const char* object_name, const r3d_instance_t* instance, void* a, void* b) {
+static void report_frame_cost(const char* label, const char* object_name, const r3d_instance_t* instance, ...) {
     /* An allocation assertion aborts the measured pass after culling is switched off. */
     TEST_ASSERT_NOT_NULL(strcmp(label, "cull_off") ? instance : 0);
 }
