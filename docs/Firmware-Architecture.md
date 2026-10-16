@@ -81,8 +81,9 @@ flowchart TB
         end
     end
     subgraph Platform["platform"]
-        subgraph R9["input"]
+        subgraph R9["input and audio"]
             Input["input/<br/><i>touch, buttons, motion, gesture</i>"]:::hw
+            Audio["audio/<br/><i>codec, PCM output, microphone capture</i>"]:::hw
         end
         subgraph R10["display"]
             Display["display/<br/><i>viewport, orientation, panel clock</i>"]:::hw
