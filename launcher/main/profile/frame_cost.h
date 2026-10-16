@@ -17,7 +17,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define FRAME_COST_SLOTS          13
+#define FRAME_COST_SLOTS          12
 
 /* Distinct names remembered for the console to list and check an arm
  * against, across windows. */
@@ -31,7 +31,7 @@
 /* A buffer for the time line at its worst: every slot with a name of the
  * longest length and its two figures at their widest, the total, and a drop
  * count. A smaller one loses the tail without a word. */
-#define FRAME_COST_REPORT_MAX     736
+#define FRAME_COST_REPORT_MAX     672
 _Static_assert(FRAME_COST_REPORT_MAX >= FRAME_COST_SLOTS * (FRAME_COST_NAME_MAX + 28) + 48,
                "FRAME_COST_REPORT_MAX no longer holds every slot at its longest");
 

@@ -1,5 +1,4 @@
 /* Plain-value UI verbs share the microui control and command builders. */
-#include "profile/frame_cost.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
 
@@ -91,10 +90,10 @@ ui_face_end(void) {
 
 void
 ui_theme(const ui_theme_t* t) {
-    FRAME_COST_BEGIN(face_from);
+    UI_FACE_COST_BEGIN(face_from);
     if (!t) {
         theme = ui_theme_from_style(ui_context()->style);
-        FRAME_COST_END(face_from, "ui.face");
+        UI_FACE_COST_END(face_from, "ui.face");
         return;
     }
 #define UI_FACE_THEME_COLOR(member) .member = ui_rgb(t->member)
@@ -103,7 +102,7 @@ ui_theme(const ui_theme_t* t) {
         UI_FACE_THEME_COLOR(accent),     UI_FACE_THEME_COLOR(accent_face), UI_FACE_THEME_COLOR(on_accent),
         UI_FACE_THEME_COLOR(text),       UI_FACE_THEME_COLOR(caption),     UI_FACE_THEME_COLOR(muted),
         .text_scale = t->text_scale,     .icon_side = t->icon_side};
-    FRAME_COST_END(face_from, "ui.face");
+    UI_FACE_COST_END(face_from, "ui.face");
 }
 
 static bool
@@ -150,51 +149,50 @@ open_window(recti_t r) {
     snprintf(name, sizeof name, UI_FACE_WINDOW_NAME_FORMAT, window_ordinal++);
     id_count = 0;
     mu_Context* ctx = ui_context();
-    FRAME_COST_BEGIN(backend_from);
+    UI_FACE_COST_BEGIN(backend_from);
     if (window_open) {
         mu_end_window(ctx);
     }
     mu_Container* cnt = mu_get_container(ctx, name);
     cnt->rect = ui_mu_from_recti(r);
     window_open = mu_begin_window_ex(ctx, name, cnt->rect, UI_FACE_WINDOW_FLAGS) != 0;
-    FRAME_COST_END(backend_from, "ui.backend");
+    UI_FACE_COST_END(backend_from, "ui.backend");
 }
 
 void
 ui_screen(void) {
-    FRAME_COST_BEGIN(face_from);
+    UI_FACE_COST_BEGIN(face_from);
     open_window((recti_t){0, 0, ui_width(), ui_height()});
-    FRAME_COST_END(face_from, "ui.face");
+    UI_FACE_COST_END(face_from, "ui.face");
 }
 
 void
 ui_window(recti_t r) {
-    FRAME_COST_BEGIN(face_from);
+    UI_FACE_COST_BEGIN(face_from);
     open_window(r);
-    FRAME_COST_END(face_from, "ui.face");
+    UI_FACE_COST_END(face_from, "ui.face");
 }
 
 void
 ui_row(int h) {
-    FRAME_COST_BEGIN(face_from);
-    FRAME_COST_BEGIN(backend_from);
+    UI_FACE_COST_BEGIN(face_from);
+    UI_FACE_COST_BEGIN(backend_from);
     const int widths[] = {-1};
     if (window_open) {
         mu_layout_row(ui_context(), 1, widths, h);
     }
-    FRAME_COST_END(backend_from, "ui.backend");
-    FRAME_COST_END(face_from, "ui.face");
+    UI_FACE_COST_END(backend_from, "ui.backend");
+    UI_FACE_COST_END(face_from, "ui.face");
 }
 
 recti_t
 ui_next(void) {
-    FRAME_COST_BEGIN(face_from);
-    FRAME_COST_BEGIN(backend_from);
+    UI_FACE_COST_BEGIN(face_from);
+    UI_FACE_COST_BEGIN(backend_from);
     const recti_t result = window_open ? ui_recti_from_mu(mu_layout_next(ui_context())) : (recti_t){0};
-    FRAME_COST_END(backend_from, "ui.backend");
-    const recti_t face_result = result;
-    FRAME_COST_END(face_from, "ui.face");
-    return face_result;
+    UI_FACE_COST_END(backend_from, "ui.backend");
+    UI_FACE_COST_END(face_from, "ui.face");
+    return result;
 }
 
 static bool
@@ -213,65 +211,64 @@ static bool
 button(recti_t r, const char* label, bool selected, bool tile) {
     const mu_Id id = widget_id(label);
     const ui_widget_button_t b = {.label = label, .enabled = !is_disabled(), .selected = selected};
-    FRAME_COST_BEGIN(backend_from);
+    UI_FACE_COST_BEGIN(backend_from);
     const bool hit =
         tile ? ui_tile_button_id(ui_context(), id, ui_mu_from_recti(r), &b, visible_label_length(label), &theme)
              : ui_icon_button_id(ui_context(), id, ui_mu_from_recti(r), &b, visible_label_length(label), &theme);
-    FRAME_COST_END(backend_from, "ui.backend");
+    UI_FACE_COST_END(backend_from, "ui.backend");
     return tap_hit(id, r, hit, b.enabled);
 }
 
 bool
 ui_button(recti_t r, const char* label) {
-    FRAME_COST_BEGIN(face_from);
-    const bool face_result = button(r, label, false, false);
-    FRAME_COST_END(face_from, "ui.face");
-    return face_result;
+    UI_FACE_COST_BEGIN(face_from);
+    const bool result = button(r, label, false, false);
+    UI_FACE_COST_END(face_from, "ui.face");
+    return result;
 }
 
 bool
 ui_tile(recti_t r, const char* label, bool selected) {
-    FRAME_COST_BEGIN(face_from);
-    const bool face_result = button(r, label, selected, true);
-    FRAME_COST_END(face_from, "ui.face");
-    return face_result;
+    UI_FACE_COST_BEGIN(face_from);
+    const bool result = button(r, label, selected, true);
+    UI_FACE_COST_END(face_from, "ui.face");
+    return result;
 }
 
 bool
 ui_toggle(recti_t r, const char* label, bool* on) {
-    FRAME_COST_BEGIN(face_from);
+    UI_FACE_COST_BEGIN(face_from);
     const mu_Id id = widget_id(label);
     bool preview = tap_id == id ? toggle_preview : *on;
     if (tap_released && !mu_mouse_over(ui_context(), ui_mu_from_recti(r))) {
         preview = *on;
     }
-    FRAME_COST_BEGIN(backend_from);
+    UI_FACE_COST_BEGIN(backend_from);
     const bool hit = ui_toggle_id(ui_context(), id, ui_mu_from_recti(r), label, visible_label_length(label), &preview,
                                   !is_disabled(), &theme);
-    FRAME_COST_END(backend_from, "ui.backend");
+    UI_FACE_COST_END(backend_from, "ui.backend");
     if (hit) {
         toggle_preview = preview;
     }
-    const bool face_result = tap_hit(id, r, hit, !is_disabled());
-    if (face_result) {
+    const bool result = tap_hit(id, r, hit, !is_disabled());
+    if (result) {
         *on = preview;
     }
-    FRAME_COST_END(face_from, "ui.face");
-    return face_result;
+    UI_FACE_COST_END(face_from, "ui.face");
+    return result;
 }
 
 bool
 ui_slider(recti_t r, const char* label, int* value, int lo, int hi) {
-    FRAME_COST_BEGIN(face_from);
+    UI_FACE_COST_BEGIN(face_from);
     const mu_Id id = widget_id(label);
     const bool enabled = !is_disabled();
-    FRAME_COST_BEGIN(backend_from);
+    UI_FACE_COST_BEGIN(backend_from);
     const bool result = ui_theme_slider_int_id(ui_context(), id, ui_mu_from_recti(r), value, lo, hi,
                                                UI_FACE_SLIDER_STEP, enabled, &theme);
-    FRAME_COST_END(backend_from, "ui.backend");
-    const bool face_result = result;
-    FRAME_COST_END(face_from, "ui.face");
-    return face_result;
+    UI_FACE_COST_END(backend_from, "ui.backend");
+    UI_FACE_COST_END(face_from, "ui.face");
+    return result;
 }
 
 static bool
@@ -285,10 +282,10 @@ dropdown(recti_t r, const char* label, int* index, const char* const* names, con
     char name[UI_FACE_NAME_MAX];
     snprintf(name, sizeof name, UI_FACE_DROPDOWN_NAME_FORMAT, id);
     const bool enabled = !is_disabled();
-    FRAME_COST_BEGIN(backend_from);
+    UI_FACE_COST_BEGIN(backend_from);
     const int picked =
         ui_dropdown_id(ui_context(), id, name, ui_mu_from_recti(r), names, icons, count, *index, enabled, &theme);
-    FRAME_COST_END(backend_from, "ui.backend");
+    UI_FACE_COST_END(backend_from, "ui.backend");
     if (picked < 0 || picked == *index) {
         return false;
     }
@@ -298,28 +295,28 @@ dropdown(recti_t r, const char* label, int* index, const char* const* names, con
 
 bool
 ui_dropdown(recti_t r, const char* label, int* index, const char* const* names, int count) {
-    FRAME_COST_BEGIN(face_from);
-    const bool face_result = dropdown(r, label, index, names, NULL, count);
-    FRAME_COST_END(face_from, "ui.face");
-    return face_result;
+    UI_FACE_COST_BEGIN(face_from);
+    const bool result = dropdown(r, label, index, names, NULL, count);
+    UI_FACE_COST_END(face_from, "ui.face");
+    return result;
 }
 
 bool
 ui_dropdown_icons(recti_t r, const char* label, int* index, const char* const* names, const draw_image_t* const* icons,
                   int count) {
-    FRAME_COST_BEGIN(face_from);
-    const bool face_result = dropdown(r, label, index, names, icons, count);
-    FRAME_COST_END(face_from, "ui.face");
-    return face_result;
+    UI_FACE_COST_BEGIN(face_from);
+    const bool result = dropdown(r, label, index, names, icons, count);
+    UI_FACE_COST_END(face_from, "ui.face");
+    return result;
 }
 
 #define UI_FACE_TEXT(name, alignment, ink)                                                                             \
     void name(recti_t r, const char* s) {                                                                              \
-        FRAME_COST_BEGIN(face_from);                                                                                   \
-        FRAME_COST_BEGIN(backend_from);                                                                                \
+        UI_FACE_COST_BEGIN(face_from);                                                                                 \
+        UI_FACE_COST_BEGIN(backend_from);                                                                              \
         ui_text_in(ui_context(), ui_mu_from_recti(r), s, theme.ink, theme.text_scale, alignment);                      \
-        FRAME_COST_END(backend_from, "ui.backend");                                                                    \
-        FRAME_COST_END(face_from, "ui.face");                                                                          \
+        UI_FACE_COST_END(backend_from, "ui.backend");                                                                  \
+        UI_FACE_COST_END(face_from, "ui.face");                                                                        \
     }
 UI_FACE_TEXT(ui_text, UI_ALIGN_LEFT, text)
 UI_FACE_TEXT(ui_text_right, UI_ALIGN_RIGHT, text)
@@ -328,88 +325,88 @@ UI_FACE_TEXT(ui_caption, UI_ALIGN_LEFT, caption)
 
 void
 ui_header(recti_t r, const char* title) {
-    FRAME_COST_BEGIN(face_from);
-    FRAME_COST_BEGIN(backend_from);
+    UI_FACE_COST_BEGIN(face_from);
+    UI_FACE_COST_BEGIN(backend_from);
     ui_header_bar(ui_context(), ui_mu_from_recti(r), title, theme.text_scale, &theme);
-    FRAME_COST_END(backend_from, "ui.backend");
-    FRAME_COST_END(face_from, "ui.face");
+    UI_FACE_COST_END(backend_from, "ui.backend");
+    UI_FACE_COST_END(face_from, "ui.face");
 }
 
 void
 ui_panel(recti_t r) {
-    FRAME_COST_BEGIN(face_from);
-    FRAME_COST_BEGIN(backend_from);
+    UI_FACE_COST_BEGIN(face_from);
+    UI_FACE_COST_BEGIN(backend_from);
     ui_mu_panel(ui_context(), ui_mu_from_recti(r), &theme);
-    FRAME_COST_END(backend_from, "ui.backend");
-    FRAME_COST_END(face_from, "ui.face");
+    UI_FACE_COST_END(backend_from, "ui.backend");
+    UI_FACE_COST_END(face_from, "ui.face");
 }
 
 void
 ui_fill(recti_t r, uint32_t rgb) {
-    FRAME_COST_BEGIN(face_from);
-    FRAME_COST_BEGIN(backend_from);
+    UI_FACE_COST_BEGIN(face_from);
+    UI_FACE_COST_BEGIN(backend_from);
     mu_draw_rect(ui_context(), ui_mu_from_recti(r), ui_rgb(rgb));
-    FRAME_COST_END(backend_from, "ui.backend");
-    FRAME_COST_END(face_from, "ui.face");
+    UI_FACE_COST_END(backend_from, "ui.backend");
+    UI_FACE_COST_END(face_from, "ui.face");
 }
 
 void
 ui_outline(recti_t r, uint32_t rgb) {
-    FRAME_COST_BEGIN(face_from);
-    FRAME_COST_BEGIN(backend_from);
+    UI_FACE_COST_BEGIN(face_from);
+    UI_FACE_COST_BEGIN(backend_from);
     mu_draw_box(ui_context(), ui_mu_from_recti(r), ui_rgb(rgb));
-    FRAME_COST_END(backend_from, "ui.backend");
-    FRAME_COST_END(face_from, "ui.face");
+    UI_FACE_COST_END(backend_from, "ui.backend");
+    UI_FACE_COST_END(face_from, "ui.face");
 }
 
 void
 ui_icon(recti_t r, const draw_image_t* icon) {
-    FRAME_COST_BEGIN(face_from);
-    FRAME_COST_BEGIN(backend_from);
+    UI_FACE_COST_BEGIN(face_from);
+    UI_FACE_COST_BEGIN(backend_from);
     ui_draw_icon(ui_context(), ui_mu_from_recti(r), icon, NULL, theme.text);
-    FRAME_COST_END(backend_from, "ui.backend");
-    FRAME_COST_END(face_from, "ui.face");
+    UI_FACE_COST_END(backend_from, "ui.backend");
+    UI_FACE_COST_END(face_from, "ui.face");
 }
 
 void
 ui_swatches(recti_t r, const uint32_t* rgb, int cols, int rows) {
-    FRAME_COST_BEGIN(face_from);
+    UI_FACE_COST_BEGIN(face_from);
     if (cols <= 0 || rows <= 0) {
-        FRAME_COST_END(face_from, "ui.face");
+        UI_FACE_COST_END(face_from, "ui.face");
         return;
     }
-    FRAME_COST_BEGIN(backend_from);
+    UI_FACE_COST_BEGIN(backend_from);
     ui_swatch_grid(ui_context(), ui_mu_from_recti(r), rgb, cols, rows);
-    FRAME_COST_END(backend_from, "ui.backend");
-    FRAME_COST_END(face_from, "ui.face");
+    UI_FACE_COST_END(backend_from, "ui.backend");
+    UI_FACE_COST_END(face_from, "ui.face");
 }
 
 void
 ui_disabled_begin(bool value) {
-    FRAME_COST_BEGIN(face_from);
+    UI_FACE_COST_BEGIN(face_from);
     if (disabled_depth < UI_FACE_SCOPE_DEPTH) {
         disabled[disabled_depth] = value || is_disabled();
     } else {
         face_misuse();
     }
     disabled_depth++;
-    FRAME_COST_END(face_from, "ui.face");
+    UI_FACE_COST_END(face_from, "ui.face");
 }
 
 void
 ui_disabled_end(void) {
-    FRAME_COST_BEGIN(face_from);
+    UI_FACE_COST_BEGIN(face_from);
     if (disabled_depth > 0) {
         disabled_depth--;
     } else {
         face_misuse();
     }
-    FRAME_COST_END(face_from, "ui.face");
+    UI_FACE_COST_END(face_from, "ui.face");
 }
 
 void
 ui_color_begin(ui_color_slot_t slot, uint32_t rgb) {
-    FRAME_COST_BEGIN(face_from);
+    UI_FACE_COST_BEGIN(face_from);
     if (color_depth < UI_FACE_SCOPE_DEPTH) {
         colors[color_depth].text = theme.text;
         colors[color_depth].caption = theme.caption;
@@ -426,15 +423,15 @@ ui_color_begin(ui_color_slot_t slot, uint32_t rgb) {
         face_misuse();
     }
     color_depth++;
-    FRAME_COST_END(face_from, "ui.face");
+    UI_FACE_COST_END(face_from, "ui.face");
 }
 
 void
 ui_color_end(void) {
-    FRAME_COST_BEGIN(face_from);
+    UI_FACE_COST_BEGIN(face_from);
     if (color_depth <= 0) {
         face_misuse();
-        FRAME_COST_END(face_from, "ui.face");
+        UI_FACE_COST_END(face_from, "ui.face");
         return;
     }
     if (--color_depth < UI_FACE_SCOPE_DEPTH) {
@@ -444,12 +441,12 @@ ui_color_end(void) {
         theme.on_accent = colors[color_depth].selected;
         theme.native_toggle = colors[color_depth].native_toggle;
     }
-    FRAME_COST_END(face_from, "ui.face");
+    UI_FACE_COST_END(face_from, "ui.face");
 }
 
 void
 ui_scale_begin(int scale) {
-    FRAME_COST_BEGIN(face_from);
+    UI_FACE_COST_BEGIN(face_from);
     if (scale_depth < UI_FACE_SCOPE_DEPTH) {
         scales[scale_depth] = theme.text_scale;
         theme.text_scale = scale;
@@ -457,19 +454,19 @@ ui_scale_begin(int scale) {
         face_misuse();
     }
     scale_depth++;
-    FRAME_COST_END(face_from, "ui.face");
+    UI_FACE_COST_END(face_from, "ui.face");
 }
 
 void
 ui_scale_end(void) {
-    FRAME_COST_BEGIN(face_from);
+    UI_FACE_COST_BEGIN(face_from);
     if (scale_depth <= 0) {
         face_misuse();
-        FRAME_COST_END(face_from, "ui.face");
+        UI_FACE_COST_END(face_from, "ui.face");
         return;
     }
     if (--scale_depth < UI_FACE_SCOPE_DEPTH) {
         theme.text_scale = scales[scale_depth];
     }
-    FRAME_COST_END(face_from, "ui.face");
+    UI_FACE_COST_END(face_from, "ui.face");
 }

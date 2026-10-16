@@ -379,14 +379,14 @@ ui_begin(const input_t* input) {
      * not persist across frames. */
     ui_face_begin(input);
     button_style = UI_BUTTON_FLAT;
-    FRAME_COST_BEGIN(backend_from);
+    UI_FACE_COST_BEGIN(backend_from);
     paint_only = input == NULL;
     if (!paint_only) {
         feed_input(input);
     }
     snap_rect_count = 0;
     mu_begin(&ui_ctx);
-    FRAME_COST_END(backend_from, "ui.backend");
+    UI_FACE_COST_END(backend_from, "ui.backend");
 }
 
 void

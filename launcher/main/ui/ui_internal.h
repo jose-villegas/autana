@@ -4,6 +4,16 @@
 
 #include <stdbool.h>
 
+#include "profile/frame_cost.h"
+
+#if CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF
+#define UI_FACE_COST_BEGIN(mark)     FRAME_COST_BEGIN(mark)
+#define UI_FACE_COST_END(mark, name) FRAME_COST_END(mark, name)
+#else
+#define UI_FACE_COST_BEGIN(mark)     ((void)0)
+#define UI_FACE_COST_END(mark, name) ((void)0)
+#endif
+
 #include "draw/draw_font.h"
 #include "microui.h"
 #include "ui/controls/ui_style.h"
