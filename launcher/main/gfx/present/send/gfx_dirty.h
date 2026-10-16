@@ -13,6 +13,8 @@
  */
 #pragma once
 
+#include "math/geometry/recti.h"
+
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -105,31 +107,23 @@ mark_leaves(int x0, int y0, int x1, int y1) {
     }
 }
 
-/* One dirty leaf's rectangle, absolute panel pixels, what dirty_leaf_rects()
- * below hands back, one per dirty leaf intersecting the caller's box. */
-typedef struct {
-    int x0, y0, x1, y1;
-} dirty_leaf_rect_t;
-
 /* Worst case for one strip row: every leaf column dirty in every leaf row of
  * the row, LEAF_COLS * LEAF_SUB. Callers size their output array from this,
  * not a hand-counted number. */
 #define LEAF_RECTS_PER_ROW_MAX (LEAF_COLS * LEAF_SUB)
 
-/* Enumerates strip `row`'s dirty leaves intersecting [x0,x1)x[y0,y1), as
- * rects into `out`. Backs gfx_debug.c's leaf overlay. One rect per leaf,
- * never merged into runs; merging would hide the subdivision this layer
- * exists to show. A row marked solely by mark_band() has no leaf info, so
- * this returns nothing for it, by design, not a bug. */
+/* Enumerates strip `row`'s dirty leaves intersecting clip, one rect per leaf.
+ * Runs would hide the subdivision the overlay shows. A row marked only by
+ * mark_band() has no leaf info and yields no rectangles. */
 static inline int
-dirty_leaf_rects(int row, int x0, int y0, int x1, int y1, dirty_leaf_rect_t* out, int max_out) {
+dirty_leaf_rects(int row, recti_t clip, recti_t* out, int max_out) {
     int n = 0;
 
     for (int sub = 0; sub < LEAF_SUB; sub++) {
         const int leaf_row = row * LEAF_SUB + sub;
         const int ly0 = leaf_row * LEAF_H;
         const int ly1 = ly0 + LEAF_H;
-        if (ly1 <= y0 || ly0 >= y1) {
+        if (ly1 <= clip.y || ly0 >= recti_bottom(clip)) {
             continue;
         }
 
@@ -140,17 +134,13 @@ dirty_leaf_rects(int row, int x0, int y0, int x1, int y1, dirty_leaf_rect_t* out
             }
             const int lx0 = col * LEAF_W;
             const int lx1 = lx0 + LEAF_W;
-            if (lx1 <= x0 || lx0 >= x1) {
+            if (lx1 <= clip.x || lx0 >= recti_right(clip)) {
                 continue;
             }
             if (n == max_out) {
                 return n;
             }
-            out[n].x0 = (lx0 > x0) ? lx0 : x0;
-            out[n].x1 = (lx1 < x1) ? lx1 : x1;
-            out[n].y0 = (ly0 > y0) ? ly0 : y0;
-            out[n].y1 = (ly1 < y1) ? ly1 : y1;
-            n++;
+            out[n++] = recti_intersect((recti_t){lx0, ly0, LEAF_W, LEAF_H}, clip);
         }
     }
     return n;

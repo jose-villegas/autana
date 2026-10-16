@@ -18,6 +18,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "ui/layout/ui_layout.h"
 #include "ui/layout/ui_transform.h"
 
 #define VIEW_W 368
@@ -203,10 +204,10 @@ static const draw_image_t icon_l = {
  * and the function under test cannot hide behind agreement between the
  * two. The cross-check test below covers that angle separately. */
 static void
-assert_icon_blocks_at_quarter(int quarter, const icon_rect_t* expected, const char* msg) {
+assert_icon_blocks_at_quarter(int quarter, const recti_t* expected, const char* msg) {
     const ui_transform_t t = ui_transform_quarter_turn(quarter, VIEW_W, VIEW_H);
     const mu_Rect box = {10, 20, 4, 4};
-    icon_rect_t runs[4];
+    recti_t runs[4];
     icon_test_collect_t ic = {.blocks = runs, .count = 0, .cap = 4};
 
     ui_transform_icon_blocks(t, &icon_l, box, icon_test_collect, &ic);
@@ -222,7 +223,7 @@ assert_icon_blocks_at_quarter(int quarter, const icon_rect_t* expected, const ch
 
 static void
 test_icon_blocks_at_turn_0_are_unrotated(void) {
-    const icon_rect_t expected[4] = {
+    const recti_t expected[4] = {
         {10, 20, 1, 1},
         {10, 21, 1, 1},
         {10, 22, 1, 1},
@@ -233,7 +234,7 @@ test_icon_blocks_at_turn_0_are_unrotated(void) {
 
 static void
 test_icon_blocks_at_turn_1_rotate_one_step_clockwise(void) {
-    const icon_rect_t expected[4] = {
+    const recti_t expected[4] = {
         {347, 10, 1, 1},
         {346, 10, 1, 1},
         {345, 10, 1, 1},
@@ -245,7 +246,7 @@ test_icon_blocks_at_turn_1_rotate_one_step_clockwise(void) {
 
 static void
 test_icon_blocks_at_turn_2_rotate_two_steps(void) {
-    const icon_rect_t expected[4] = {
+    const recti_t expected[4] = {
         {357, 427, 1, 1},
         {357, 426, 1, 1},
         {357, 425, 1, 1},
@@ -256,7 +257,7 @@ test_icon_blocks_at_turn_2_rotate_two_steps(void) {
 
 static void
 test_icon_blocks_at_turn_3_rotate_three_steps_clockwise(void) {
-    const icon_rect_t expected[4] = {
+    const recti_t expected[4] = {
         {20, 437, 1, 1},
         {21, 437, 1, 1},
         {22, 437, 1, 1},
@@ -273,7 +274,7 @@ test_icon_blocks_at_turn_3_rotate_three_steps_clockwise(void) {
 static void
 test_icon_blocks_match_ui_transform_rect_run_by_run(void) {
     const mu_Rect box = {10, 20, 4, 4};
-    const icon_rect_t local[4] = {
+    const recti_t local[4] = {
         {0, 0, 1, 1},
         {0, 1, 1, 1},
         {0, 2, 1, 1},
@@ -282,7 +283,7 @@ test_icon_blocks_match_ui_transform_rect_run_by_run(void) {
 
     for (int quarter = 0; quarter < 4; quarter++) {
         const ui_transform_t t = ui_transform_quarter_turn(quarter, VIEW_W, VIEW_H);
-        icon_rect_t runs[4];
+        recti_t runs[4];
         icon_test_collect_t ic = {.blocks = runs, .count = 0, .cap = 4};
         ui_transform_icon_blocks(t, &icon_l, box, icon_test_collect, &ic);
 
@@ -505,8 +506,26 @@ test_quarter_turns_reads_back_the_turn_a_transform_was_built_from(void) {
     TEST_ASSERT_EQUAL_INT(0, ui_transform_quarter_turns(ui_transform_identity()));
 }
 
+static void
+test_rect_conversions_preserve_signed_coordinates_and_sizes(void) {
+    const ui_layout_rect_t authored = {INT16_MIN, INT16_MAX, INT16_MAX, 0};
+    const recti_t rect = ui_layout_rect_to_recti(authored);
+    TEST_ASSERT_EQUAL_INT(INT16_MIN, rect.x);
+    TEST_ASSERT_EQUAL_INT(INT16_MAX, rect.y);
+    TEST_ASSERT_EQUAL_INT(INT16_MAX, rect.w);
+    TEST_ASSERT_EQUAL_INT(0, rect.h);
+    const mu_Rect mu = ui_mu_from_recti(rect);
+    TEST_ASSERT_EQUAL_INT(rect.x, mu.x);
+    TEST_ASSERT_EQUAL_INT(rect.y, mu.y);
+    TEST_ASSERT_EQUAL_INT(rect.w, mu.w);
+    TEST_ASSERT_EQUAL_INT(rect.h, mu.h);
+    const recti_t back = ui_recti_from_mu(mu);
+    TEST_ASSERT_EQUAL_MEMORY(&rect, &back, sizeof rect);
+}
+
 void
 suite_ui_transform(void) {
+    RUN_TEST(test_rect_conversions_preserve_signed_coordinates_and_sizes);
     RUN_TEST(test_identity_maps_every_point_to_itself);
     RUN_TEST(test_identity_maps_every_rect_to_itself);
     RUN_TEST(test_a_point_round_trips_through_every_quarter_turn);
