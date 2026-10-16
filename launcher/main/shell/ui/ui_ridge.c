@@ -759,25 +759,23 @@ group_rows(const int16_t* lo, const int16_t* hi, int x0, int x1, int* y0, int* y
     }
 }
 
-/* Repaints one row of a column group and grows `changed` by the row's
- * changed columns, once per row rather than per pixel. */
+/* Repaints one row of a column group; each changed pixel widens the edges
+ * of what changed, [*left, *right) by [*top, *bottom). */
 static inline __attribute__((always_inline)) void
-repaint_group_row(gfx_color_t* row, const int16_t* lo, const int16_t* hi, int x0, int x1, int y, recti_t* changed) {
+repaint_group_row(gfx_color_t* row, const int16_t* lo, const int16_t* hi, int x0, int x1, int y, int* left, int* right,
+                  int* top, int* bottom) {
     const bool masked = dissolving();
-    int first = x1;
-    int last = x0 - 1;
     for (int x = x0; x < x1; x++) {
         if (y >= lo[x - x0] && y < hi[x - x0] && (!masked || dissolved(x, y))) {
             const gfx_color_t color = column_pixel(x, y);
             if (row[x] != color) {
                 row[x] = color;
-                first = mathi_min(first, x);
-                last = x;
+                *left = x < *left ? x : *left;
+                *right = x + 1 > *right ? x + 1 : *right;
+                *top = y < *top ? y : *top;
+                *bottom = y + 1;
             }
         }
-    }
-    if (first <= last) {
-        *changed = recti_union(*changed, recti_from_edges(first, y, last + 1, y + 1));
     }
 }
 
@@ -791,10 +789,14 @@ repaint_column_group(const int16_t* lo, const int16_t* hi, int x0) {
         return;
     }
     gfx_color_t* const framebuffer = gfx_framebuffer();
-    recti_t changed = {0};
+    int left = x1;
+    int right = x0;
+    int top = y1;
+    int bottom = y0;
     for (int y = y0; y < y1; y++) {
-        repaint_group_row(framebuffer + (y * GFX_WIDTH), lo, hi, x0, x1, y, &changed);
+        repaint_group_row(framebuffer + (y * GFX_WIDTH), lo, hi, x0, x1, y, &left, &right, &top, &bottom);
     }
+    const recti_t changed = recti_from_edges(left, top, right, bottom);
     if (!recti_is_empty(changed)) {
         gfx_mark_dirty(changed.x, changed.y, changed.w, changed.h);
     }
