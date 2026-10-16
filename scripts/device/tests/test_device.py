@@ -699,7 +699,7 @@ class DeviceTests(unittest.TestCase):
                     contextlib.redirect_stdout(io.StringIO()) as output:
                 self.assertEqual(device.main(["--board", BOARD, "take-back"]), 0)
             self.assertIsNone(store.status(BOARD)["human"])
-        self.assertEqual(output.getvalue(), f"board {BOARD} (not on USB)\n  unlocked\n")
+        self.assertEqual(output.getvalue(), f"{device.short_id(BOARD)} {BOARD} not on USB\n  unlocked\n")
 
     def test_hand_records_reservation(self):
         store = mock.Mock()
@@ -1213,7 +1213,7 @@ class FlashCommandLineTests(unittest.TestCase):
             calls.append(list(extra_flags))
             return contextlib.nullcontext("built")
 
-        with mock.patch.object(device, "board_for_lock", return_value=BOARD), \
+        with mock.patch.object(device, "board_for_lock", return_value=(BOARD, None)), \
              mock.patch.object(device, "build_image", fake_build_image), \
              mock.patch.object(device, "write_image", side_effect=fake_write_image), \
              mock.patch.object(device, "await_console", side_effect=lambda args, board, build_id, acquired, connection: connection.close()), \
@@ -1232,7 +1232,7 @@ class FlashCommandLineTests(unittest.TestCase):
             store.root = Path(directory) / "lock"
             connection = FakeConnection([b"BUILD_ID=abc\n" + device.CONSOLE_UP])
             with recorded_serial(connection, Path(directory) / "records"), \
-                 mock.patch.object(device, "board_for_lock", return_value=BOARD), \
+                 mock.patch.object(device, "board_for_lock", return_value=(BOARD, None)), \
                  mock.patch.object(device.device_lock, "LockStore", return_value=store), \
                  mock.patch.object(device, "run_to_end", side_effect=fake_flash.scripts()), \
                  mock.patch.object(device, "find_board", return_value=device.Board(BOARD, BOARD)), \
@@ -1571,7 +1571,7 @@ class BatchTests(unittest.TestCase):
 
     def test_the_command_line_flag_reaches_batch_as_the_filter(self):
         seen = []
-        with mock.patch.object(device, "board_for_lock", return_value=BOARD), \
+        with mock.patch.object(device, "board_for_lock", return_value=(BOARD, None)), \
              mock.patch.object(device, "device_lock") as fake_lock_module, \
              mock.patch.object(device, "batch", side_effect=lambda args, *unused: seen.append(args) or 0):
             fake_lock_module.LockStore.return_value = mock.Mock()

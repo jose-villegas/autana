@@ -619,6 +619,12 @@ def status(args):
     return call_device(device_command("status"))
 
 
+def devices(args):
+    reject_unknown("devices", args, ("--json",))
+    read_json_flag(args, "usage: autana devices [--json]")
+    return call_device(device_command("devices", *args))
+
+
 def release(args):
     """Release a lock this session holds, before its own command would have.
     The token is in TOKEN_ENV in every process that command started, which
@@ -1425,7 +1431,9 @@ def console(_args=None):
     print("autana console - 'help' for the commands, 'quit' to leave")
     while True:
         try:
-            line = input("autana> ").strip()
+            pinned = session_flags.get("--board")
+            prompt = f"autana@{device_module().short_id(pinned)}> " if pinned else "autana> "
+            line = input(prompt).strip()
         except (EOFError, KeyboardInterrupt):
             print()
             return 0
@@ -1442,7 +1450,16 @@ def console(_args=None):
         if verb in ("quit", "exit", "q"):
             return 0
         try:
-            if verb == "help":
+            if verb == "use":
+                if not rest:
+                    print(session_flags.get("--board", "no board pinned"))
+                elif rest == ["-"]:
+                    session_flags.pop("--board", None)
+                elif len(rest) == 1:
+                    session_flags["--board"] = checked_global("--board", rest[0])
+                else:
+                    print("usage: use [<board>|-]")
+            elif verb == "help":
                 print(help_text(rest, prefix=""))
             elif verb in COMMANDS and verb != "console":
                 run_command(COMMANDS[verb], rest, command_words([verb, *rest]), flags)
@@ -1573,6 +1590,7 @@ COMMAND_GROUPS = (
             ("tune save", "write the board's values into this project's TUNE() lines"))),
     )),
     ("lock", "Sharing the board", (
+        Command("devices", devices, (("devices [--json]", "compact board list: ids, ports and availability"),)),
         Command("status", status, (("status [--json]", "who holds the board, and who waits"),)),
         Command("lock", lock, LOCK_USAGES),
     )),
@@ -1625,7 +1643,7 @@ BOARD_FLAGS = (
      "every board command"),
     ("--owner NAME", "the lock owner's label",
      "every board command"),
-    ("--board SERIAL", "the board's USB serial number",
+    ("--board SERIAL", "USB serial or short id; -b is an alias",
      "every board command"),
     ("--out PATH", "write the one capture here instead of the default path",
      "selftest, suite, monitor"),
@@ -1640,7 +1658,7 @@ BOARD_FLAGS = (
 
 def board_flags_text(prefix=""):
     width = max(len(flag) for flag, _, _ in BOARD_FLAGS)
-    lines = ["--wait, --owner, --board and --project are global: they go anywhere on the "
+    lines = ["--wait, --owner, --board (-b) and --project are global: they go anywhere on the "
              "line, and docs/tools/Autana-CLI.md#settings has their defaults.",
              "",
              "Flags (on top of each command's own usage above)"]
@@ -1703,6 +1721,8 @@ def help_text(args, prefix="autana "):
         return f"no command or group '{topic}'; groups: " + ", ".join(
             key for key, _, _ in COMMAND_GROUPS)
     if topic is None:
+        if not prefix:
+            lines.append("use [<board>|-]  show, pin or clear the session board")
         lines.append(f"{prefix}--wait SECONDS <command>  how long to wait for the board; 0 fails "
                      "at once")
         lines.append(f"{prefix}--owner NAME <command>    label this run in the lock")
@@ -1718,7 +1738,7 @@ def help_text(args, prefix="autana "):
 def completion_candidates(line, prefix):
     """Return command or static argument matches for the current word."""
     if not any(character.isspace() for character in line):
-        words = (set(COMMANDS) - {"console"}) | {"help", "quit"}
+        words = (set(COMMANDS) - {"console"}) | {"help", "quit", "use"}
     else:
         parts = line.split()
         if line and line[-1].isspace():
@@ -1756,7 +1776,7 @@ def install_completion():
     readline.parse_and_bind("tab: complete")
 
 
-GLOBALS = ("--wait", "--owner", "--board", "--project", "--lock-token")
+GLOBALS = ("--wait", "--owner", "--board", "-b", "--project", "--lock-token")
 _GLOBAL_ENV = {"--wait": WAIT_ENV, "--owner": OWNER_ENV, "--board": BOARD_ENV,
                "--project": PROJECT_ENV, "--lock-token": TOKEN_ENV}
 
@@ -1771,9 +1791,9 @@ def project_of(value):
 
 
 # One validator per flag: what it needs, an example, and a check returning
-# the value to store or None. A board's serial is the six-pair form the lock
-# files key on (device_lock.normalise_board); an owner is a label the lock
-# appends `:pid` to and prints, so it holds no whitespace.
+# the value to store or None. Device subprocesses resolve board selectors;
+# an owner is a label the lock appends `:pid` to and prints,
+# so it holds no whitespace.
 GLOBAL_CHECKS = {
     "--lock-token": ("a non-empty token without whitespace", "autana --lock-token TOKEN screenshot",
                      lambda v: v if v and not re.search(r"\s", v) else None),
@@ -1781,9 +1801,9 @@ GLOBAL_CHECKS = {
                lambda v: v if v.isascii() and v.isdigit() else None),
     "--owner": ("a name without whitespace", "autana --owner ci-7 flash",
                 lambda v: v if v and not re.search(r"\s", v) else None),
-    "--board": ("a board's USB serial number, six hex pairs",
+    "--board": ("a board's USB serial number or four-digit short id",
                 "autana --board 90:70:69:FE:A3:08 monitor 5",
-                lambda v: v if re.fullmatch(r"(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}", v) else None),
+                lambda v: device_module().board_selector(v)),
     "--project": ("a path to an autana project", "autana flash --project PATH", project_of),
 }
 
@@ -1811,6 +1831,8 @@ def pop_globals(words):
             rest.extend([word, *queue])
             break
         flag, equals, value = word.partition("=")
+        if flag == "-b":
+            flag = "--board"
         if flag not in GLOBALS:
             rest.append(word)
             continue
@@ -1839,7 +1861,7 @@ def applied(flags):
 
 def main():
     flags, argv = pop_globals(sys.argv[1:])
-    if not argv:
+    if not argv or argv[0] == "console":
         session_flags.update(flags)
         sys.exit(console())
     if argv[0] in ("--version", "-V"):
