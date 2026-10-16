@@ -6,6 +6,8 @@ lock and is not tied to git or worktrees: a board-only command (`monitor`,
 `tap`, `tune`, ...) works from any directory, and a command that builds or
 flashes acts on the current directory, like `make -C`, or on `--project PATH`.
 
+The launchers require at least the Python version in `scripts/lib/python-min-version`; CI installs the exact `.python-version` pin.
+
 For a first board run, install ESP-IDF and set up `autana` as described in
 [the README](../../README.md#run-it-on-the-board), then use `autana flash dev`
 and `autana monitor 30`. On Windows, run these in Git Bash. The CLI handles
