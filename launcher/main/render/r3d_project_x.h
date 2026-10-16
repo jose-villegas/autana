@@ -18,15 +18,9 @@
 /* Camera space is +y up; the camera pose's scale has no effect. */
 static inline mat4f_t
 r3d_line_matrix(const render_view_t* view, const transformf_t* model) {
-    mat4f_t camera = mat4f_identity();
-    const vec3f_t axes[] = {view->screen_x, vec3f_scale(view->screen_y, -1.0F), view->forward};
-    for (int r = 0; r < 3; r++) {
-        camera.m[r][0] = axes[r].x;
-        camera.m[r][1] = axes[r].y;
-        camera.m[r][2] = axes[r].z;
-        camera.m[r][3] = -vec3f_dot(axes[r], view->position);
-    }
-    return mat4f_mul(camera, transformf_compute_matrix(model));
+    return mat4f_mul(
+        mat4f_view_from_axes(view->screen_x, vec3f_scale(view->screen_y, -1.0F), view->forward, view->position),
+        transformf_compute_matrix(model));
 }
 
 /* One meter in camera space. */
