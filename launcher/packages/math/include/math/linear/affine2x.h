@@ -14,10 +14,10 @@ MATH_DEFINE_AFFINE2(affine2x, vec2x, rectx, int32_t, mathx)
 
 /* pixel = round(L * p + origin), nearest with ties away from zero. */
 static inline vec2i_t
-affine2x_map_pixel(affine2x_t t, vec2i_t p) {
+affine2x_map_pixel(const affine2x_t* t, vec2i_t p) {
     return (vec2i_t){
-        (int32_t)fx_round_shift((int64_t)t.x_axis.x * p.x + (int64_t)t.y_axis.x * p.y + t.origin.x, MATHX_SHIFT),
-        (int32_t)fx_round_shift((int64_t)t.x_axis.y * p.x + (int64_t)t.y_axis.y * p.y + t.origin.y, MATHX_SHIFT),
+        (int32_t)fx_round_shift((int64_t)t->x_axis.x * p.x + (int64_t)t->y_axis.x * p.y + t->origin.x, MATHX_SHIFT),
+        (int32_t)fx_round_shift((int64_t)t->x_axis.y * p.x + (int64_t)t->y_axis.y * p.y + t->origin.y, MATHX_SHIFT),
     };
 }
 

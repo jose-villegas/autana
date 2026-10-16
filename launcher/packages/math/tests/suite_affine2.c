@@ -51,7 +51,7 @@ enum {
         ASSERT(C(AFFINE_TRANSLATE_Y - 2 * AFFINE_TRANSLATE_X), inv.origin.x);                                          \
         ASSERT(C(AFFINE_TRANSLATE_X - AFFINE_TRANSLATE_Y), inv.origin.y);                                              \
         const V##_t p = {C(AFFINE_LEFT), C(AFFINE_TOP)};                                                               \
-        const V##_t back = P##_map_point(inv, P##_map_point(t, p));                                                    \
+        const V##_t back = P##_map_point(&inv, P##_map_point(&t, p));                                                  \
         ASSERT(p.x, back.x);                                                                                           \
         ASSERT(p.y, back.y);                                                                                           \
     }                                                                                                                  \
@@ -65,7 +65,7 @@ enum {
     static void test_##P##_point_and_vector(void) {                                                                    \
         const P##_t t = {{C(1), C(1)}, {C(0), C(2)}, {C(AFFINE_TRANSLATE_X), C(AFFINE_TRANSLATE_Y)}};                  \
         const V##_t p = {C(AFFINE_LEFT), C(AFFINE_TOP)};                                                               \
-        const V##_t point = P##_map_point(t, p), vector = P##_map_vector(t, p);                                        \
+        const V##_t point = P##_map_point(&t, p), vector = P##_map_vector(&t, p);                                      \
         ASSERT(C(AFFINE_LEFT + AFFINE_TRANSLATE_X), point.x);                                                          \
         ASSERT(C(AFFINE_LEFT + 2 * AFFINE_TOP + AFFINE_TRANSLATE_Y), point.y);                                         \
         ASSERT(C(AFFINE_LEFT), vector.x);                                                                              \
@@ -74,19 +74,19 @@ enum {
     static void test_##P##_rect_quarter_and_shear(void) {                                                              \
         const R##_t r = {C(AFFINE_LEFT), C(AFFINE_TOP), C(AFFINE_WIDTH), C(AFFINE_HEIGHT)};                            \
         const P##_t quarter = {{C(0), C(1)}, {C(-1), C(0)}, {C(0), C(0)}};                                             \
-        const R##_t turned = P##_map_rect(quarter, r);                                                                 \
+        const R##_t turned = P##_map_rect(&quarter, r);                                                                \
         ASSERT(C(-AFFINE_TOP - AFFINE_HEIGHT), turned.x);                                                              \
         ASSERT(r.x, turned.y);                                                                                         \
         ASSERT(r.h, turned.w);                                                                                         \
         ASSERT(r.w, turned.h);                                                                                         \
         const P##_t shear = {{C(1), C(0)}, {C(-1), C(1)}, {C(AFFINE_TRANSLATE_X), C(AFFINE_TRANSLATE_Y)}};             \
-        const R##_t box = P##_map_rect(shear, r);                                                                      \
+        const R##_t box = P##_map_rect(&shear, r);                                                                     \
         ASSERT(C(AFFINE_LEFT - AFFINE_TOP - AFFINE_HEIGHT + AFFINE_TRANSLATE_X), box.x);                               \
         ASSERT(C(AFFINE_TOP + AFFINE_TRANSLATE_Y), box.y);                                                             \
         ASSERT(C(AFFINE_WIDTH + AFFINE_HEIGHT), box.w);                                                                \
         ASSERT(r.h, box.h);                                                                                            \
         const recti_t pixels = {AFFINE_LEFT, AFFINE_TOP, AFFINE_WIDTH, AFFINE_HEIGHT};                                 \
-        const recti_t mapped = P##_map_recti(shear, pixels);                                                           \
+        const recti_t mapped = P##_map_recti(&shear, pixels);                                                          \
         TEST_ASSERT_EQUAL_INT(AFFINE_LEFT - AFFINE_TOP - AFFINE_HEIGHT + AFFINE_TRANSLATE_X, mapped.x);                \
         TEST_ASSERT_EQUAL_INT(AFFINE_TOP + AFFINE_TRANSLATE_Y, mapped.y);                                              \
         TEST_ASSERT_EQUAL_INT(AFFINE_WIDTH + AFFINE_HEIGHT, mapped.w);                                                 \
@@ -120,22 +120,22 @@ test_pixel_rounding_ties_and_single_round(void) {
     f.x_axis.x = f.y_axis.x = f.x_axis.y = f.y_axis.y = 1.0F / AFFINE_SCALE;
     for (int sign = -1; sign <= 1; sign += AFFINE_SCALE) {
         const vec2i_t p = {sign, 0};
-        const vec2i_t xp = affine2x_map_pixel(x, p), fp = affine2f_map_pixel(f, p);
+        const vec2i_t xp = affine2x_map_pixel(&x, p), fp = affine2f_map_pixel(&f, p);
         TEST_ASSERT_EQUAL_INT(sign, xp.x);
         TEST_ASSERT_EQUAL_INT(sign, xp.y);
         TEST_ASSERT_EQUAL_INT(sign, fp.x);
         TEST_ASSERT_EQUAL_INT(sign, fp.y);
-        const vec2i_t sum = affine2x_map_pixel(x, (vec2i_t){sign, sign});
+        const vec2i_t sum = affine2x_map_pixel(&x, (vec2i_t){sign, sign});
         TEST_ASSERT_EQUAL_INT(sign, sum.x);
         TEST_ASSERT_EQUAL_INT(sign, sum.y);
-        const vec2i_t float_sum = affine2f_map_pixel(f, (vec2i_t){sign, sign});
+        const vec2i_t float_sum = affine2f_map_pixel(&f, (vec2i_t){sign, sign});
         TEST_ASSERT_EQUAL_INT(sign, float_sum.x);
         TEST_ASSERT_EQUAL_INT(sign, float_sum.y);
     }
     x.origin = (vec2x_t){MATHX_ONE / AFFINE_SCALE, -MATHX_ONE / AFFINE_SCALE};
     f.origin = (vec2f_t){1.0F / AFFINE_SCALE, -1.0F / AFFINE_SCALE};
-    const vec2i_t xp = affine2x_map_pixel(x, (vec2i_t){0, 0});
-    const vec2i_t fp = affine2f_map_pixel(f, (vec2i_t){0, 0});
+    const vec2i_t xp = affine2x_map_pixel(&x, (vec2i_t){0, 0});
+    const vec2i_t fp = affine2f_map_pixel(&f, (vec2i_t){0, 0});
     TEST_ASSERT_EQUAL_INT(1, xp.x);
     TEST_ASSERT_EQUAL_INT(-1, xp.y);
     TEST_ASSERT_EQUAL_INT(1, fp.x);
@@ -156,12 +156,12 @@ test_quarter_pixels_and_recti_agree(void) {
                              {-AFFINE_LEFT - AFFINE_WIDTH, -AFFINE_TOP - AFFINE_HEIGHT, AFFINE_WIDTH, AFFINE_HEIGHT},
                              {AFFINE_TOP, -AFFINE_LEFT - AFFINE_WIDTH, AFFINE_HEIGHT, AFFINE_WIDTH}};
     for (int i = 0; i < AFFINE_QUARTERS; i++) {
-        const vec2i_t xp = affine2x_map_pixel(x, points[0]), fp = affine2f_map_pixel(f, points[0]);
+        const vec2i_t xp = affine2x_map_pixel(&x, points[0]), fp = affine2f_map_pixel(&f, points[0]);
         TEST_ASSERT_EQUAL_INT(points[i].x, xp.x);
         TEST_ASSERT_EQUAL_INT(points[i].y, xp.y);
         TEST_ASSERT_EQUAL_INT(points[i].x, fp.x);
         TEST_ASSERT_EQUAL_INT(points[i].y, fp.y);
-        const recti_t xr = affine2x_map_recti(x, r), fr = affine2f_map_recti(f, r);
+        const recti_t xr = affine2x_map_recti(&x, r), fr = affine2f_map_recti(&f, r);
         TEST_ASSERT_EQUAL_MEMORY(&boxes[i], &xr, sizeof xr);
         TEST_ASSERT_EQUAL_MEMORY(&boxes[i], &fr, sizeof fr);
         x = affine2x_mul(qx, x);

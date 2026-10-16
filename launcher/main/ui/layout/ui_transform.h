@@ -62,12 +62,12 @@ ui_transform_quarter_turns(affine2x_t t) {
 static inline vec2i_t
 ui_transform_unmap_pixel(affine2x_t t, vec2i_t p) {
     affine2x_t inverse;
-    return affine2x_invert(t, &inverse) ? affine2x_map_pixel(inverse, p) : p;
+    return affine2x_invert(t, &inverse) ? affine2x_map_pixel(&inverse, p) : p;
 }
 
 static inline mu_Rect
 ui_transform_rect(affine2x_t t, mu_Rect r) {
-    return ui_mu_from_recti(affine2x_map_recti(t, ui_recti_from_mu(r)));
+    return ui_mu_from_recti(affine2x_map_recti(&t, ui_recti_from_mu(r)));
 }
 
 /* icon_walk_blocks()'s callback context, adapted to transform each run

@@ -33,7 +33,8 @@ imu_probe_pose_direction(int pose, int quarter) {
     }
     const int x = pose == IMU_PROBE_LEFT_DOWN ? -1 : pose == IMU_PROBE_RIGHT_DOWN ? 1 : 0;
     const int y = pose == IMU_PROBE_TOP_DOWN ? -1 : pose == IMU_PROBE_BOTTOM_DOWN ? 1 : 0;
-    const vec2i_t mapped_pixel = affine2x_map_pixel(ui_transform_quarter_turn(quarter, 0, 0), (vec2i_t){x, y});
+    const affine2x_t transform = ui_transform_quarter_turn(quarter, 0, 0);
+    const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){x, y});
     return (vec3i_t){mapped_pixel.x, mapped_pixel.y, 0};
 }
 

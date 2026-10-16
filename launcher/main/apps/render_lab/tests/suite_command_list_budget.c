@@ -119,9 +119,10 @@ test_menu_with_full_clip_list_and_long_names_fits_budget(void) {
     budget_menu_frame(&idle);
     budget_menu_frame(&idle);
     input_t tap = {.down = true, .pressed = true};
-    const vec2i_t mapped_pixel = affine2x_map_pixel(ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT),
-                                                    (vec2i_t){menu_budget->anchor.x + (menu_budget->anchor.w / 2),
-                                                              menu_budget->anchor.y + (menu_budget->anchor.h / 2)});
+    const affine2x_t transform = ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT);
+    const vec2i_t mapped_pixel =
+        affine2x_map_pixel(&transform, (vec2i_t){menu_budget->anchor.x + (menu_budget->anchor.w / 2),
+                                                 menu_budget->anchor.y + (menu_budget->anchor.h / 2)});
     tap.x = mapped_pixel.x;
     tap.y = mapped_pixel.y;
     budget_menu_frame(&tap);

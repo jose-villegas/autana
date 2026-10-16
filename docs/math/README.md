@@ -298,7 +298,8 @@ Points map as `x_axis * p.x + y_axis * p.y + origin`.
 `mul(a, b)` applies `b` first. Fixed-point scalar operations saturate and
 round each product to Q16.16 before summing; integer-pixel maps instead
 sum exact int64 products and round once, without saturation checks.
-Rectangle maps return the bounding box of all four corners, the exact
+The maps read `t` through a pointer, like `mat4_apply`, so inlining
+them into a caller copies no struct. Rectangle maps return the bounding box of all four corners, the exact
 mapped shape for an axis-preserving map.
 
 | Function | Purpose | Formula |
@@ -307,11 +308,11 @@ mapped shape for an axis-preserving map.
 | `P_mul(a, b)` | compose, b first | $`L = L_a L_b, o = L_a o_b + o_a`$ |
 | `P_determinant(t)` | signed area scale | $`a d - b c`$ |
 | `P_invert(t, &out)` | false on zero determinant, out untouched | $`L^{-1} = [d,-c;-b,a]/\det L, o' = -L^{-1}o`$ |
-| `P_map_point(t, p)` | map a point | $`L p + o`$ |
-| `P_map_vector(t, v)` | map a direction, ignore origin | $`L v`$ |
-| `P_map_rect(t, r)` | bounding box in the scalar type | $`\mathrm{bbox}(t(\mathrm{corners}(r)))`$ |
-| `affine2f_map_pixel(t, p)`, `affine2x_map_pixel(t, p)` | vec2i result, nearest, ties away from zero | $`\mathrm{round}(L p + o)`$ |
-| `P_map_recti(t, r)` | recti bounding box of mapped pixels | $`\mathrm{bbox}(\mathrm{round}(t(\mathrm{corners}(r))))`$ |
+| `P_map_point(&t, p)` | map a point | $`L p + o`$ |
+| `P_map_vector(&t, v)` | map a direction, ignore origin | $`L v`$ |
+| `P_map_rect(&t, r)` | bounding box in the scalar type | $`\mathrm{bbox}(t(\mathrm{corners}(r)))`$ |
+| `affine2f_map_pixel(&t, p)`, `affine2x_map_pixel(&t, p)` | vec2i result, nearest, ties away from zero | $`\mathrm{round}(L p + o)`$ |
+| `P_map_recti(&t, r)` | recti bounding box of mapped pixels | $`\mathrm{bbox}(\mathrm{round}(t(\mathrm{corners}(r))))`$ |
 | `P_equal(a, b)` | exact comparison of axes and origin | $`L_a = L_b \land o_a = o_b`$ |
 
 ### mat3 (`f`)

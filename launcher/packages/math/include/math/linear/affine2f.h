@@ -15,7 +15,7 @@ MATH_DEFINE_AFFINE2(affine2f, vec2f, rectf, float, mathf)
 
 /* pixel = round(L * p + origin), nearest with ties away from zero. */
 static inline vec2i_t
-affine2f_map_pixel(affine2f_t t, vec2i_t p) {
+affine2f_map_pixel(const affine2f_t* t, vec2i_t p) {
     const vec2f_t mapped = affine2f_map_point(t, (vec2f_t){(float)p.x, (float)p.y});
     return (vec2i_t){mathf_round_i32(mapped.x), mathf_round_i32(mapped.y)};
 }

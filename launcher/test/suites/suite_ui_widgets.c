@@ -172,7 +172,8 @@ typedef struct {
 
 static contact_t
 transformed_contact(int x, int y) {
-    const vec2i_t mapped_pixel = affine2x_map_pixel(ui_effective_transform(), (vec2i_t){x, y});
+    const affine2x_t transform = ui_effective_transform();
+    const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){x, y});
     return (contact_t){.press = {.down = true, .pressed = true, .x = mapped_pixel.x, .y = mapped_pixel.y},
                        .hold = {.down = true, .x = mapped_pixel.x, .y = mapped_pixel.y},
                        .release = {.released = true, .x = mapped_pixel.x, .y = mapped_pixel.y}};
@@ -835,7 +836,8 @@ menu_repaint_frames(bool bands) {
     const input_t idle = {0};
     menu_frame(&idle, bands, 0);
     menu_frame(&idle, bands, 0);
-    const vec2i_t mapped_pixel = affine2x_map_pixel(ui_effective_transform(), (vec2i_t){80, 230});
+    const affine2x_t transform = ui_effective_transform();
+    const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){80, 230});
     TEST_ASSERT_EQUAL_MESSAGE(gfx_rgb(MENU_INK), gfx_framebuffer()[mapped_pixel.y * GFX_WIDTH + mapped_pixel.x],
                               "dense menu commands must all be painted before opening the list");
     menu_frame(&contact.press, bands, 0);

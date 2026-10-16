@@ -219,7 +219,8 @@ finish_tap(int release_x, int release_y) {
     to_screen(release_x, release_y, &rx, &ry);
     const int aim_x = target.x + (target.side / 2);
     const int aim_y = target.y + (target.side / 2);
-    const vec2i_t mapped_pixel = affine2x_map_pixel(shell_transform(), (vec2i_t){aim_x, aim_y});
+    const affine2x_t transform = shell_transform();
+    const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){aim_x, aim_y});
     aim_panel_x = mapped_pixel.x;
     aim_panel_y = mapped_pixel.y;
 
