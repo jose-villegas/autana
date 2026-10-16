@@ -377,6 +377,19 @@ class InterruptedConnection(FakeConnection):
 
 
 class DeviceTests(unittest.TestCase):
+    def test_suite_verdict_requires_its_completion_line(self):
+        for command, marker in (("suite", b"RUNSUITE_COMPLETE name=sand found=1\n"),
+                                ("selftest", b"SELFTEST_COMPLETE failures=0 elapsed_ms=42\n")):
+            for data, reason, incomplete in ((b"", "idle", True),
+                                             (b":1:good:PASS\n", "timeout", True),
+                                             (b":1:good:PASS\n" + marker, "complete", False)):
+                with self.subTest(command=command, reason=reason), mock.patch("builtins.print") as printed:
+                    failed = device.print_suite_output(data, "record.log", command, reason, False, 0)
+                    self.assertEqual(bool(failed), incomplete)
+                    if incomplete:
+                        name = marker.decode().split()[0]
+                        printed.assert_any_call(f"no {name} line arrived: the capture ended {reason}")
+
     def test_suite_output_shows_failure_messages_and_caps_the_list(self):
         data = (b"boot detail\n" + b":1:good:PASS\n" +
                 b"".join(f"file.c:{line}:bad_{line}:FAIL: wrong {line}\n".encode()
@@ -408,7 +421,7 @@ class DeviceTests(unittest.TestCase):
         self.assertFalse(any("by suite" in call.args[0] for call in printed.call_args_list))
 
     def test_a_run_that_crashed_fails_with_every_test_passed(self):
-        data = b":1:good:PASS\nabort() was called at PC 0x40376f2b on core 0\n"
+        data = b":1:good:PASS\nabort() was called at PC 0x40376f2b on core 0\nRUNSUITE_COMPLETE name=sand found=1\n"
         with mock.patch("builtins.print") as printed:
             failed = device.print_suite_output(data, "record.log", "suite", "complete", False, 0)
         self.assertTrue(failed)
@@ -418,9 +431,10 @@ class DeviceTests(unittest.TestCase):
         boot = b"ESP-ROM:esp32s3-20210327\nrst:0x1 (POWERON),boot:0x8 (SPI_FAST_FLASH_BOOT)\n"
         with mock.patch("builtins.print"):
             self.assertFalse(device.print_suite_output(
-                boot + b":1:good:PASS\n", "record.log", "selftest", "complete", False, 1))
+                boot + b":1:good:PASS\nSELFTEST_COMPLETE failures=0\n",
+                "record.log", "selftest", "complete", False, 1))
             self.assertTrue(device.print_suite_output(
-                boot + b":1:good:PASS\n" + boot, "record.log", "selftest", "complete", False, 1))
+                boot + b":1:good:PASS\nSELFTEST_COMPLETE failures=0\n" + boot, "record.log", "selftest", "complete", False, 1))
 
     def test_a_passing_run_still_names_its_capture(self):
         data = b"boot detail\n:1:good:PASS\n"
@@ -475,7 +489,7 @@ class DeviceTests(unittest.TestCase):
 
     def test_capture_stops_at_single_suite_completion_and_counts_results(self):
         connection = FakeConnection([
-            b":1:test_one:PASS\nSUITE_DONE sand\n",
+            b":1:test_one:PASS\nRUNSUITE_COMPLETE name=sand found=1\n",
             b"late output\n",
         ])
         with tempfile.TemporaryDirectory() as directory:
@@ -566,7 +580,7 @@ class DeviceTests(unittest.TestCase):
                                suite_name="sand")
 
     def test_run_suite_prints_result_counts(self):
-        connection = FakeConnection([b":1:test_one:PASS\nSUITE_DONE sand\n"])
+        connection = FakeConnection([b":1:test_one:PASS\nRUNSUITE_COMPLETE name=sand found=1\n"])
         args = suite_args()
         store = mock_store()
         with tempfile.TemporaryDirectory() as directory, \
@@ -1005,7 +1019,7 @@ class RecordCaptureTests(unittest.TestCase):
 
 class RunSuiteDefaultPathTests(unittest.TestCase):
     def test_without_out_uses_the_default_path_and_writes_an_index_line(self):
-        connection = FakeConnection([b":1:test_one:PASS\nSUITE_DONE sand\n"])
+        connection = FakeConnection([b":1:test_one:PASS\nRUNSUITE_COMPLETE name=sand found=1\n"])
         args = suite_args(owner="agent a")
         store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
@@ -1308,7 +1322,7 @@ class RunSuiteReportGenerationTests(unittest.TestCase):
             self.assertIn("test_two", text)
 
     def test_a_broken_reporter_step_does_not_fail_the_suite_command(self):
-        connection = FakeConnection([b":1:test_one:PASS\nSUITE_DONE sand\n"])
+        connection = FakeConnection([b":1:test_one:PASS\nRUNSUITE_COMPLETE name=sand found=1\n"])
         args = suite_args()
         store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
@@ -1324,7 +1338,7 @@ class RunSuiteRecordsWorktreeTests(unittest.TestCase):
     invocation (Device-Lock.md); run-suite used to leave worktree null."""
 
     def test_run_suite_records_the_ambient_cwd_as_worktree(self):
-        connection = FakeConnection([b":1:test_one:PASS\nSUITE_DONE sand\n"])
+        connection = FakeConnection([b":1:test_one:PASS\nRUNSUITE_COMPLETE name=sand found=1\n"])
         args = suite_args()
         store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
@@ -1455,9 +1469,9 @@ class TestFilterRunTests(unittest.TestCase):
         self.assertIsInstance(error, device.TestFilterError)
         self.assertRegex(str(error), "no RUNSUITE_COMPLETE")
 
-    def test_an_unfiltered_run_with_no_completion_line_is_still_fine(self):
+    def test_an_unfiltered_run_with_no_completion_line_fails(self):
         code, error, _, _ = self.run_filtered([b"SUITE_DONE sand\n"], [])
-        self.assertEqual((code, error), (0, None))
+        self.assertEqual((code, error), (1, None))
 
     def test_a_request_too_long_for_the_console_line_is_a_filter_error(self):
         connection = FakeConnection([b"W (5) console: console line too long (max 48) - dropped\n"])
@@ -2753,7 +2767,7 @@ class SelftestTests(unittest.TestCase):
     """selftest() flashes diag+autorun under one held lock, then resets,
     waits for USB serial, and captures until SELFTEST_COMPLETE."""
 
-    def run_selftest(self, perf_scope=False):
+    def run_selftest(self, perf_scope=False, capture=None):
         calls = {"flash_extra_flags": None, "held_lock": None, "events": []}
 
         def fake_build_image(args, port, extra_flags=()):
@@ -2793,10 +2807,26 @@ class SelftestTests(unittest.TestCase):
                  mock.patch.object(device, "reset", fake_reset), \
                  mock.patch.object(device, "open_when_free", side_effect=fake_wait), \
                  mock.patch.object(device, "records_root", return_value=root), \
-                 mock.patch.object(device, "git_commit", return_value="deadbeef"):
+                 mock.patch.object(device, "git_commit", return_value="deadbeef"), \
+                 mock.patch.object(device, "reset_and_capture", wraps=device.reset_and_capture) as captured:
+                if capture is not None:
+                    captured.side_effect = lambda path, *unused: (Path(path).write_bytes(capture[0]), capture)[1]
                 code = device.selftest(args, store, BOARD)
+                calls["reports"] = "\n".join(path.read_text(encoding="utf-8")
+                                             for path in root.rglob("*.md"))
                 entry = json.loads((root / "index.jsonl").read_text(encoding="utf-8").strip())
         return code, calls, entry
+
+    def test_incomplete_selftest_fails_and_keeps_the_report(self):
+        for reason in ("idle", "timeout"):
+            with self.subTest(reason=reason), contextlib.redirect_stdout(io.StringIO()) as output:
+                code, calls, entry = self.run_selftest(capture=(b"", reason))
+                self.assertNotEqual(code, 0)
+                self.assertIn(f"no SELFTEST_COMPLETE line arrived: the capture ended {reason}",
+                              output.getvalue())
+                self.assertEqual(entry["reason"], reason)
+                self.assertIn("# Device Capture Report", calls["reports"])
+                self.assertIn(reason, calls["reports"])
 
     def test_successful_selftest_closes_flash_handle(self):
         code, calls, _ = self.run_selftest()

@@ -522,7 +522,7 @@ def print_crash_signs(data, boots_allowed):
 
 
 def print_suite_output(data, record_path, command, reason, verbose, boots_allowed):
-    """How many failures and crash signs the capture holds, after printing them."""
+    """Failures, crash signs and missing completion, after printing the verdict."""
     text = data.decode("utf-8", errors="replace")
     if verbose and text:
         print(text, end="" if text.endswith("\n") else "\n")
@@ -538,7 +538,13 @@ def print_suite_output(data, record_path, command, reason, verbose, boots_allowe
     crashed = print_crash_signs(data, boots_allowed)
     print(f"{command} capture: {record_path}")
     print(f"{command} capture ended: {reason}")
-    return failed + crashed
+    complete_re, marker = ((device_report.SELFTEST_COMPLETE_RE, "SELFTEST_COMPLETE")
+                           if command == "selftest" else
+                           (device_report.SUITE_COMPLETE_RE, "RUNSUITE_COMPLETE"))
+    incomplete = complete_re.search(text) is None
+    if incomplete:
+        print(f"no {marker} line arrived: the capture ended {reason}")
+    return failed + crashed + incomplete
 
 
 def print_reset_output(data, verbose):
