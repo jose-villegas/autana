@@ -3,11 +3,12 @@
 
 #include <stddef.h>
 
+#include "input/imu_calib.h"
 #include "input/input.h"
 
 #define IMU_PROBE_LABEL_SIZE      16
 #define IMU_PROBE_MILLI           1000
-#define IMU_PROBE_SCALE_ONE       1000000
+#define IMU_PROBE_SCALE_ONE       IMU_CALIB_SCALE_ONE
 #define IMU_PROBE_PERCENT         100
 #define IMU_PROBE_ACCEL_DEPARTURE (INPUT_ACCEL_ONE_G * 80 / IMU_PROBE_MILLI)
 /* Measured rest gyro noise: about 1 dps sigma per axis, peaks of +/-4 dps. */
@@ -34,7 +35,8 @@ typedef struct {
 } imu_probe_average_t;
 
 typedef struct {
-    vec3i_t offset_mg, scale_ppm, gyro_mdps;
+    vec3i_t scale_ppm, gyro_mdps;
+    imu_calib_t calib;
 } imu_probe_fit_t;
 
 typedef struct {
@@ -52,6 +54,9 @@ vec3i_t imu_probe_pose_direction(int pose, int quarter);
 void imu_probe_average_add(imu_probe_average_t* average, input_motion_t sample);
 input_motion_t imu_probe_average_read(const imu_probe_average_t* average);
 imu_probe_fit_t imu_probe_fit(const imu_probe_average_t poses[IMU_PROBE_POSE_COUNT], int quarter);
+vec3i_t imu_probe_saved_offset(vec3i_t stored, const imu_probe_fit_t* fit);
+/* Q12 g counts to mg, rounded. */
+vec3i_t imu_probe_mg(vec3i_t q12);
 void imu_probe_start(imu_probe_round_t* round, int quarter);
 /* Returns true once per completed pose. NULL means no reading this frame. */
 bool imu_probe_update(imu_probe_round_t* round, const input_motion_t* sample, uint32_t dt_ms);
