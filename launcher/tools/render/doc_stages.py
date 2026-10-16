@@ -13,9 +13,8 @@ import sys
 from typing import NamedTuple
 from types import SimpleNamespace
 
-INPUTS_PYTHON_MINIMUM = (3, 12)
-
 ROOT = Path(__file__).resolve().parents[3]
+INPUTS_PYTHON_MINIMUM = tuple(map(int, (ROOT / "scripts/lib/python-min-version").read_text().strip().split(".")))
 TOOLS = ROOT / "launcher/tools"
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
