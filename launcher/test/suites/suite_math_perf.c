@@ -13,7 +13,6 @@
 #include "perf_stats.h"
 #include "profile/frame_cost.h"
 #include "services/build_id.h"
-#include "soc/soc.h"
 #include "suites.h"
 #include "test_cleanup.h"
 #include "unity.h"
@@ -200,17 +199,19 @@ fixture(void) {
     return f;
 }
 
+extern char _rodata_reserved_start[];
+extern char _rodata_reserved_end[];
 extern char _instruction_reserved_start[];
 extern char _instruction_reserved_end[];
 
-/* The D-cache window covers flash rodata and PSRAM; dirty PSRAM must reach memory before invalidation. */
+/* Cold calls refill instructions and flash rodata; PSRAM stays cached and inputs stay in internal RAM. */
 static void
 cold_cache(void) {
-    _Static_assert(SOC_DROM_LOW % CONFIG_ESP32S3_DATA_CACHE_LINE_SIZE == 0, "data window start must be aligned");
-    _Static_assert(SOC_DROM_HIGH % CONFIG_ESP32S3_DATA_CACHE_LINE_SIZE == 0, "data window end must be aligned");
-    TEST_ASSERT_EQUAL(ESP_OK, esp_cache_msync((void*)SOC_DROM_LOW, SOC_DROM_HIGH - SOC_DROM_LOW,
-                                              ESP_CACHE_MSYNC_FLAG_TYPE_DATA | ESP_CACHE_MSYNC_FLAG_DIR_C2M
-                                                  | ESP_CACHE_MSYNC_FLAG_INVALIDATE));
+    const uintptr_t data_line = CONFIG_ESP32S3_DATA_CACHE_LINE_SIZE;
+    const uintptr_t data_start = (uintptr_t)_rodata_reserved_start & ~(data_line - 1);
+    const uintptr_t data_end = ((uintptr_t)_rodata_reserved_end + data_line - 1) & ~(data_line - 1);
+    TEST_ASSERT_EQUAL(ESP_OK, esp_cache_msync((void*)data_start, data_end - data_start,
+                                              ESP_CACHE_MSYNC_FLAG_TYPE_DATA | ESP_CACHE_MSYNC_FLAG_DIR_M2C));
     const uintptr_t line = CONFIG_ESP32S3_INSTRUCTION_CACHE_LINE_SIZE;
     const uintptr_t start = (uintptr_t)_instruction_reserved_start & ~(line - 1);
     const uintptr_t end = ((uintptr_t)_instruction_reserved_end + line - 1) & ~(line - 1);

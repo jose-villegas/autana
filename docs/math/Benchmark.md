@@ -6,12 +6,12 @@ instruction ratchet. Recip/rsqrt use `recip0.s`/`rsqrt0.s` on the device and a
 portable path in QEMU, so their QEMU counts would guard code the board never runs.
 
 Warm is the median after an untimed call, following Embench-IoT's cache-warming
-method.<sup>[[69]](../Citations.md#69)</sup> Cold is the median per call after cache
-writeback and invalidation through IDF's `esp_cache_msync()`, with caches enabled.
-The whole D-cache address window covers flash rodata and PSRAM; dirty data is
-written back before invalidation. The linker-defined flash text range is rounded
-to instruction-cache lines and invalidated, including libm and other callees.
-Inputs and outputs are in internal RAM; cold calls refill code and flash rodata.
+method.<sup>[[69]](../Citations.md#69)</sup> Cold is the median per call after
+I-cache and flash-rodata D-cache invalidation through IDF's `esp_cache_msync()`,
+with caches enabled and PSRAM untouched. The linker-defined flash text and rodata
+ranges are rounded to their cache-line boundaries and invalidated without
+writeback, including libm and other callees. Inputs and outputs are in internal
+RAM; cold calls refill code and flash rodata.
 Board instructions count a warmed call on core zero with frame counters disarmed;
 interrupts can contribute. A compiler barrier preserves all output components.
 Mat4 rows include the struct copies of the by-value API.
