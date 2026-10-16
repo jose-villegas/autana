@@ -207,8 +207,8 @@ instance_lens(const raster_t* raster, const r3d_instance_t* instance, const rend
     } else {
         r3d_lens_init(lens, view, mesh->position_scale);
     }
-    if (instance->placement != NULL) {
-        r3d_lens_place(lens, instance->placement, mesh->position_scale);
+    if (instance->model != NULL) {
+        r3d_lens_place(lens, instance->model, mesh->position_scale);
     }
 }
 

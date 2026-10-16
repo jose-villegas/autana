@@ -9,6 +9,7 @@
 #include "anim/anim_tracks.h"
 #include "anim/playback/anim_layer.h"
 #include "core/memory.h"
+#include "math/linear/mat3f.h"
 #include "render/skin/r3d_skin_light.h"
 #include "scene/scene.h"
 #include "scene/scene_shell.h"
@@ -35,7 +36,10 @@ typedef struct {
 #define SCENE_LIGHT_FAILURE_ALBEDO "skin vertex colors required"
 #define SCENE_LIGHT_FAILURE_NORMAL "skin normal transform invalid"
 
-typedef r3d_placement_t scene_placement_t;
+typedef struct {
+    mat3f_t linear;
+    vec3f_t position;
+} scene_asset_transform_t;
 
 /* The scene pack entry, written by tools/r3d/scene_asset.py; the layout is
  * in docs/render/Scene-Files.md. Its rows are read in place, so they are the
@@ -101,7 +105,7 @@ typedef struct {
     uint16_t entity_count, renderer_count, camera_count;
     uint16_t light_count, skinned_renderer_count, animator_count, clip_count;
     const char (*names)[ASSET_NAME_MAX];
-    const scene_placement_t* transforms;
+    const scene_asset_transform_t* transforms;
     const scene_asset_renderer_t* renderers;
     const scene_asset_camera_t* cameras;
     const scene_asset_light_t* lights;
@@ -115,10 +119,10 @@ typedef struct {
  * ASSET_ERR_BOUNDS or ASSET_ERR_FORMAT. Else fills `out`. */
 asset_status_t scene_asset_open(asset_view_t entry, scene_asset_t* out);
 
-/* A mesh view and the placement built from its entity's transform. */
+/* A mesh view and the model matrix built from its entity's transform. */
 typedef struct {
     r3d_lit_mesh_t mesh;
-    r3d_placement_t placement;
+    mat4f_t model;
     scene_entity_t entity;
     bool placed; /* false while the transform is the identity: drawn as it is */
 } scene_renderer_t;
@@ -212,7 +216,7 @@ void scene_draw_forget(const scene_t* scene);
 void scene_draw_release(void);
 
 /* True when drawing the mesh as it is gives the same picture. */
-bool scene_transform_is_identity(const scene_placement_t* transform);
+bool scene_transform_is_identity(const mat4f_t* transform);
 
 size_t scene_storage_carve(size_t* end, size_t bytes, size_t align);
 #define SCENE_STORAGE_RESERVE(layout, end, member, type, count)                                                        \
