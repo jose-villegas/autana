@@ -30,6 +30,7 @@ static const char* TAG = "ui";
 #include "draw/draw.h"
 #include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
+#include "profile/frame_cost.h"
 #include "services/tune.h"
 #include "ui/controls/ui_icons.h"
 #include "ui/controls/ui_slider.h"
@@ -378,12 +379,14 @@ ui_begin(const input_t* input) {
      * not persist across frames. */
     ui_face_begin();
     button_style = UI_BUTTON_FLAT;
+    FRAME_COST_BEGIN(backend_from);
     paint_only = input == NULL;
     if (!paint_only) {
         feed_input(input);
     }
     snap_rect_count = 0;
     mu_begin(&ui_ctx);
+    FRAME_COST_END(backend_from, "ui.backend");
 }
 
 void

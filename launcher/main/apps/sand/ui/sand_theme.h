@@ -1,12 +1,5 @@
-/*
- * sand_theme - the sand app's one UI palette: dark navy panels, a gold
- * face for the selected choice. The brush screen, the title screen and the
- * options screen all draw in it, so a choice looks the same on each.
- *
- * The values are defines, not only a ui_mu_theme_t, because a host preview of
- * a screen must agree on these exact values rather than keep its own copy.
- * None derive from a material's colour, unlike the material palette.
- */
+/* Shared screen colours keep controls consistent across pages. Defines also
+ * let host previews use the same values without maintaining another palette. */
 #pragma once
 
 #include "ui/ui_mu.h"

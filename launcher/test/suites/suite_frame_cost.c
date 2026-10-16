@@ -12,6 +12,9 @@
 
 #include "profile/frame_cost.h"
 
+static const char* const SLOT_NAMES[] = {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l", "m", "n", "o"};
+_Static_assert(sizeof SLOT_NAMES / sizeof SLOT_NAMES[0] >= FRAME_COST_SLOTS + 2, "slot tests need overflow names");
+
 /* A frame_cost_t is too big for the device's test stack: each test owns a
  * zeroed one on the heap and frees it before it returns. */
 static frame_cost_t*
@@ -94,8 +97,7 @@ test_a_zero_size_buffer_is_left_alone(void) {
 
 static void
 test_more_names_than_slots_are_dropped_and_charged_to_nobody(void) {
-    static const char* const names[FRAME_COST_SLOTS + 2] = {"a", "b", "c", "d", "e", "f", "g",
-                                                            "h", "i", "j", "k", "l", "m", "n"};
+    const char* const* names = SLOT_NAMES;
     frame_cost_t* const cost = fixture();
     for (int i = 0; i < FRAME_COST_SLOTS + 2; i++) {
         frame_cost_add(cost, names[i], 1000);
@@ -110,17 +112,17 @@ test_more_names_than_slots_are_dropped_and_charged_to_nobody(void) {
 
 static void
 test_a_dropped_name_is_flagged_in_the_report_and_gone_next_window(void) {
-    static const char* const names[FRAME_COST_SLOTS] = {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"};
+    const char* const* names = SLOT_NAMES;
     frame_cost_t* const cost = fixture();
     char line[300];
     for (int i = 0; i < FRAME_COST_SLOTS; i++) {
         frame_cost_add(cost, names[i], 1000);
     }
-    frame_cost_add(cost, "m", 1000);
+    frame_cost_add(cost, "overflow", 1000);
 
     assert_report(cost, 1, line, sizeof line,
                   "a 1.00/1.0  b 1.00/1.0  c 1.00/1.0  d 1.00/1.0  e 1.00/1.0  f 1.00/1.0  g 1.00/1.0  "
-                  "h 1.00/1.0  i 1.00/1.0  j 1.00/1.0  k 1.00/1.0  l 1.00/1.0 | total 12.00 +1 dropped");
+                  "h 1.00/1.0  i 1.00/1.0  j 1.00/1.0  k 1.00/1.0  l 1.00/1.0  m 1.00/1.0 | total 13.00 +1 dropped");
 
     frame_cost_add(cost, "a", 1000);
     assert_report(cost, 1, line, sizeof line, "a 1.00/1.0 | total 1.00");
@@ -526,14 +528,14 @@ test_a_disarm_drops_the_samples_too(void) {
 
 static void
 test_an_armed_name_with_no_free_slot_is_dropped_once_not_twice(void) {
-    static const char* const names[FRAME_COST_SLOTS] = {"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k", "l"};
+    const char* const* names = SLOT_NAMES;
     frame_cost_t* const cost = fixture();
     for (int i = 0; i < FRAME_COST_SLOTS; i++) {
         frame_cost_add(cost, names[i], 1);
     }
-    arm(cost, "m", 0);
+    arm(cost, "overflow", 0);
 
-    leave_counted(cost, "m", 0, 100, 0, 10);
+    leave_counted(cost, "overflow", 0, 100, 0, 10);
 
     TEST_ASSERT_EQUAL_INT(1, cost->dropped);
     free(cost);
@@ -560,18 +562,20 @@ static void
 test_the_counts_line_carries_the_armed_slot_and_the_time_line_does_not(void) {
     frame_cost_t* const cost = fixture();
     char counts[FRAME_COST_COUNTS_MAX];
-    char line[FRAME_COST_REPORT_MAX];
+    char* const line = malloc(FRAME_COST_REPORT_MAX);
+    TEST_ASSERT_NOT_NULL(line);
     arm(cost, "stage.a", 0);
     leave_counted(cost, "stage.a", 0, 300, 0, 100);
     leave_counted(cost, "stage.a", 0, 100, 0, 60);
 
     TEST_ASSERT_GREATER_THAN_INT(0, frame_cost_counts_line(cost, "insn", counts, sizeof counts));
     TEST_ASSERT_EQUAL_STRING("perf: stage.a cyc avg/min/max 200/100/300 insn avg 80 n=2", counts);
-    frame_cost_report(cost, 1, line, sizeof line);
+    frame_cost_report(cost, 1, line, FRAME_COST_REPORT_MAX);
     TEST_ASSERT_NULL(strstr(line, "cyc"));
 
     leave_counted(cost, "stage.b", 0, 100, 0, 10);
     TEST_ASSERT_EQUAL_INT(0, frame_cost_counts_line(cost, "insn", counts, sizeof counts));
+    free(line);
     free(cost);
 }
 
