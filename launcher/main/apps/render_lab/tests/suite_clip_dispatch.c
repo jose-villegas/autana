@@ -143,8 +143,10 @@ test_boot_clip_opening_touch_does_not_select_overlay_row(void) {
         mu_Command* command = NULL;
         while (mu_next_command(ui_context(), &command)) {
             if (command->type == MU_COMMAND_TEXT && strcmp(command->text.str, "idle") == 0) {
-                ui_transform_point(ui_effective_transform(), command->text.pos.x, command->text.pos.y, &touch.x,
-                                   &touch.y);
+                const vec2i_t mapped_pixel =
+                    affine2x_map_pixel(ui_effective_transform(), (vec2i_t){command->text.pos.x, command->text.pos.y});
+                touch.x = mapped_pixel.x;
+                touch.y = mapped_pixel.y;
                 found = true;
                 break;
             }
@@ -181,9 +183,12 @@ test_boot_clip_opening_touch_does_not_select_overlay_row(void) {
         const int item = 1;
         const char* expected = scene_animator_clip_name(scene, subject, item);
         touch = (input_t){.down = true, .pressed = true};
-        ui_transform_point(ui_effective_transform(), list->body.x + (list->body.w / 2),
-                           list->body.y + (item * UI_ROW_HEIGHT) + (UI_ROW_HEIGHT / 2) - list->scroll.y, &touch.x,
-                           &touch.y);
+        const vec2i_t mapped_pixel_2 =
+            affine2x_map_pixel(ui_effective_transform(),
+                               (vec2i_t){list->body.x + (list->body.w / 2),
+                                         list->body.y + (item * UI_ROW_HEIGHT) + (UI_ROW_HEIGHT / 2) - list->scroll.y});
+        touch.x = mapped_pixel_2.x;
+        touch.y = mapped_pixel_2.y;
         render_lab_test_frame(false, &touch);
         touch.pressed = false;
         for (int frame = 0; frame < HOLD_FRAMES; frame++) {

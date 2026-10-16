@@ -299,7 +299,7 @@ tap_segment(sand_ui_t* ui, mu_Rect r) {
 static void
 test_a_tap_on_a_mode_segment_changes_sand_ui_mode(void) {
     ui_init();
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(affine2x_identity());
     sand_ui_t ui = ui_fixture();
     const input_t idle = {0};
     brush_frame(&ui, &idle);

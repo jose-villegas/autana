@@ -131,20 +131,19 @@ static sand_title_button_t
 tap(mu_Rect r) {
     const int x = r.x + r.w / 2;
     const int y = r.y + r.h / 2;
-    int px, py;
-    ui_transform_point(ui_transform_quarter_turn(ui_width() == GFX_HEIGHT ? 1 : 0, GFX_WIDTH, GFX_HEIGHT), x, y, &px,
-                       &py);
+    const vec2i_t mapped_pixel = affine2x_map_pixel(
+        ui_transform_quarter_turn(ui_width() == GFX_HEIGHT ? 1 : 0, GFX_WIDTH, GFX_HEIGHT), (vec2i_t){x, y});
     sand_title_button_t hit = SAND_TITLE_NONE;
-    sand_title_button_t f = title_frame(true, true, false, px, py);
+    sand_title_button_t f = title_frame(true, true, false, mapped_pixel.x, mapped_pixel.y);
     hit = f != SAND_TITLE_NONE ? f : hit;
     for (int i = 0; i < 4; i++) {
-        f = title_frame(true, false, false, px, py);
+        f = title_frame(true, false, false, mapped_pixel.x, mapped_pixel.y);
         hit = f != SAND_TITLE_NONE ? f : hit;
     }
-    f = title_frame(false, false, true, px, py);
+    f = title_frame(false, false, true, mapped_pixel.x, mapped_pixel.y);
     hit = f != SAND_TITLE_NONE ? f : hit;
     for (int i = 0; i < 2; i++) {
-        f = title_frame(false, false, false, px, py);
+        f = title_frame(false, false, false, mapped_pixel.x, mapped_pixel.y);
         hit = f != SAND_TITLE_NONE ? f : hit;
     }
     return hit;

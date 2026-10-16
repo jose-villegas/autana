@@ -149,7 +149,7 @@ tap(const widget_t* w) {
 static void
 fixture(void) {
     ui_init();
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(affine2x_identity());
 }
 
 static void
@@ -172,11 +172,10 @@ typedef struct {
 
 static contact_t
 transformed_contact(int x, int y) {
-    int px, py;
-    ui_transform_point(ui_effective_transform(), x, y, &px, &py);
-    return (contact_t){.press = {.down = true, .pressed = true, .x = px, .y = py},
-                       .hold = {.down = true, .x = px, .y = py},
-                       .release = {.released = true, .x = px, .y = py}};
+    const vec2i_t mapped_pixel = affine2x_map_pixel(ui_effective_transform(), (vec2i_t){x, y});
+    return (contact_t){.press = {.down = true, .pressed = true, .x = mapped_pixel.x, .y = mapped_pixel.y},
+                       .hold = {.down = true, .x = mapped_pixel.x, .y = mapped_pixel.y},
+                       .release = {.released = true, .x = mapped_pixel.x, .y = mapped_pixel.y}};
 }
 
 static void
@@ -184,7 +183,7 @@ test_a_reachable_touch_outside_a_button_submits_it(void) {
     const widget_t w = {.enabled = true};
     for (int turn = 0; turn <= 1; turn++) {
         fixture();
-        const ui_transform_t transform = ui_transform_quarter_turn(turn, GFX_WIDTH, GFX_HEIGHT);
+        const affine2x_t transform = ui_transform_quarter_turn(turn, GFX_WIDTH, GFX_HEIGHT);
         ui_set_transform(transform);
         const contact_t contact = transformed_contact(BUTTON.x - 20, BUTTON.y + BUTTON.h / 2);
         const input_t idle = {0};
@@ -836,9 +835,8 @@ menu_repaint_frames(bool bands) {
     const input_t idle = {0};
     menu_frame(&idle, bands, 0);
     menu_frame(&idle, bands, 0);
-    int ink_x, ink_y;
-    ui_transform_point(ui_effective_transform(), 80, 230, &ink_x, &ink_y);
-    TEST_ASSERT_EQUAL_MESSAGE(gfx_rgb(MENU_INK), gfx_framebuffer()[ink_y * GFX_WIDTH + ink_x],
+    const vec2i_t mapped_pixel = affine2x_map_pixel(ui_effective_transform(), (vec2i_t){80, 230});
+    TEST_ASSERT_EQUAL_MESSAGE(gfx_rgb(MENU_INK), gfx_framebuffer()[mapped_pixel.y * GFX_WIDTH + mapped_pixel.x],
                               "dense menu commands must all be painted before opening the list");
     menu_frame(&contact.press, bands, 0);
     for (int frame = 0; frame < MENU_FRAMES; frame++) {

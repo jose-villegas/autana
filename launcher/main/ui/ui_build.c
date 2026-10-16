@@ -89,7 +89,7 @@ static void (*base_draw_frame)(mu_Context*, mu_Rect, int);
 /* The transform every command is mapped through before it is drawn, and
  * whether it is one draw_command() may actually use; see ui_set_transform()
  * below for why an invalid one is remembered rather than rejected outright. */
-static ui_transform_t transform;
+static affine2x_t transform;
 static bool transform_valid;
 
 /* See ui.h's own comment above ui_layout_generation() for what this counts
@@ -230,23 +230,18 @@ ui_set_font(const draw_font_t* font) {
     ui_set_font_scaled(font, DRAW_GLYPH_SCALE);
 }
 
-static bool
-transforms_equal(ui_transform_t a, ui_transform_t b) {
-    return a.a == b.a && a.b == b.b && a.c == b.c && a.d == b.d && a.tx == b.tx && a.ty == b.ty;
-}
-
 /* See ui.h for why a transform change must call ui_invalidate(). WHY AN
- * INVALID TRANSFORM IS REMEMBERED RATHER THAN REJECTED. ui_transform_t can
+ * INVALID TRANSFORM IS REMEMBERED RATHER THAN REJECTED. affine2x_t can
  * express more than this renderer can draw; see ui_transform.h. Logging at
  * set time, not render time, keeps this to one log line, not one per frame. */
 void
-ui_set_transform(ui_transform_t t) {
-    if (transforms_equal(t, transform)) {
+ui_set_transform(affine2x_t t) {
+    if (affine2x_equal(t, transform)) {
         return;
     }
     transform = t;
     transform_valid = ui_transform_is_axis_preserving(t);
-    /* Past transforms_equal()'s early return, so this IS a genuine change;
+    /* Past affine2x_equal()'s early return, so this IS a genuine change;
      * see ui_layout_generation()'s comment in ui.h for what counts as one
      * and why this is the only place that gets to bump it. */
     layout_generation++;
@@ -264,9 +259,9 @@ ui_set_transform(ui_transform_t t) {
 /* What draw_command() (ui.c), feed_input() and ui_width()/ui_height() below
  * actually use: the transform in force, or identity for as long as it fails
  * ui_transform_is_axis_preserving(); see ui_set_transform() above. */
-ui_transform_t
+affine2x_t
 ui_effective_transform(void) {
-    return transform_valid ? transform : ui_transform_identity();
+    return transform_valid ? transform : affine2x_identity();
 }
 
 mu_Context*
@@ -299,7 +294,7 @@ ui_init(void) {
     ui_ctx.draw_frame = styled_draw_frame;
     button_style = UI_BUTTON_FLAT;
     ui_text_style = UI_TEXT_PLAIN;
-    transform = ui_transform_identity();
+    transform = affine2x_identity();
     transform_valid = true;
     /* Before an app can hold store slots: the engine pack keeps one. */
     ui_icons_init();
@@ -343,8 +338,8 @@ ui_init(void) {
 
 void
 ui_to_logical(int x, int y, int* lx, int* ly) {
-    ui_transform_t inv;
-    if (!ui_transform_invert(ui_effective_transform(), &inv)) {
+    affine2x_t inv;
+    if (!affine2x_invert(ui_effective_transform(), &inv)) {
         /* Unreachable in practice: ui_effective_transform() is always
          * identity or something ui_transform_is_axis_preserving() accepted,
          * and every transform that passes that check has a nonzero
@@ -354,7 +349,9 @@ ui_to_logical(int x, int y, int* lx, int* ly) {
         *ly = y;
         return;
     }
-    ui_transform_point(inv, x, y, lx, ly);
+    const vec2i_t mapped_pixel = affine2x_map_pixel(inv, (vec2i_t){x, y});
+    *lx = mapped_pixel.x;
+    *ly = mapped_pixel.y;
 }
 
 /* Mapped before ui_pointer_step() rather than after, so that its "vertical
@@ -397,8 +394,8 @@ ui_end_pointer_frame(void) {
  * separately would mean inverting the transform twice for one answer. */
 static mu_Rect
 logical_viewport(void) {
-    ui_transform_t inv;
-    if (!ui_transform_invert(ui_effective_transform(), &inv)) {
+    affine2x_t inv;
+    if (!affine2x_invert(ui_effective_transform(), &inv)) {
         /* See ui_to_logical()'s identical fallback above: unreachable while
          * ui_effective_transform() only ever returns identity or a
          * transform that already passed ui_transform_is_axis_preserving(),

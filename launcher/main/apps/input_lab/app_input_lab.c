@@ -175,20 +175,22 @@ input_lab_enter(void) {
     ui_invalidate();
 }
 
-static ui_transform_t
+static affine2x_t
 shell_transform(void) {
     return ui_transform_quarter_turn(display_quarter_now(), GFX_WIDTH, GFX_HEIGHT);
 }
 
 static void
 to_screen(int px, int py, int* x, int* y) {
-    ui_transform_t inverse;
-    if (!ui_transform_invert(shell_transform(), &inverse)) {
+    affine2x_t inverse;
+    if (!affine2x_invert(shell_transform(), &inverse)) {
         *x = px;
         *y = py;
         return;
     }
-    ui_transform_point(inverse, px, py, x, y);
+    const vec2i_t mapped_pixel = affine2x_map_pixel(inverse, (vec2i_t){px, py});
+    *x = mapped_pixel.x;
+    *y = mapped_pixel.y;
 }
 
 static void
@@ -223,7 +225,9 @@ finish_tap(int release_x, int release_y) {
     to_screen(release_x, release_y, &rx, &ry);
     const int aim_x = target.x + (target.side / 2);
     const int aim_y = target.y + (target.side / 2);
-    ui_transform_point(shell_transform(), aim_x, aim_y, &aim_panel_x, &aim_panel_y);
+    const vec2i_t mapped_pixel = affine2x_map_pixel(shell_transform(), (vec2i_t){aim_x, aim_y});
+    aim_panel_x = mapped_pixel.x;
+    aim_panel_y = mapped_pixel.y;
 
     last_hit = touch_probe_record(&stats, target, fx, fy);
     last_x = fx;

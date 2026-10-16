@@ -9,7 +9,7 @@
  * gfx nor microui.c.
  *
  * A separate file rather than folded into suite_ui_transform.c: that suite
- * covers ui_transform.h's own affine map, a different header with a
+ * covers the UI transform adapters, a different header with a
  * different job, and ui_centered_rect() lives in ui.h instead.
  */
 
