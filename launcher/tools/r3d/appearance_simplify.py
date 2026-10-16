@@ -56,17 +56,25 @@ RASTER_EPSILON = 1.0 / 16.0
 @contextmanager
 def deterministic_fit():
     """Keep CUDA reductions deterministic without changing subsequent in-process bakes."""
-    import torch
+    try:
+        import torch
+    except ModuleNotFoundError as missing:
+        if missing.name != "torch":
+            raise
+        # Argument validation also runs without the optional GPU dependencies.
+        torch = None
 
-    previous = torch.are_deterministic_algorithms_enabled()
-    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    previous = None if torch is None else torch.are_deterministic_algorithms_enabled()
+    warn_only = None if torch is None else torch.is_deterministic_algorithms_warn_only_enabled()
     workspace = os.environ.get(CUBLAS_WORKSPACE_ENV)
     os.environ[CUBLAS_WORKSPACE_ENV] = CUBLAS_WORKSPACE
     try:
-        torch.use_deterministic_algorithms(True)
+        if torch is not None:
+            torch.use_deterministic_algorithms(True)
         yield
     finally:
-        torch.use_deterministic_algorithms(previous, warn_only=warn_only)
+        if torch is not None:
+            torch.use_deterministic_algorithms(previous, warn_only=warn_only)
         if workspace is None:
             os.environ.pop(CUBLAS_WORKSPACE_ENV, None)
         else:
