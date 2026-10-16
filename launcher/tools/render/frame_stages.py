@@ -20,7 +20,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 import frame_cost
-from capture import require_same_board
+from capture import capture_board, require_same_board
 
 VIEW_TABLE = ROOT / "launcher/main/render/context/render_context.c"
 FRAME_RATES = (30, 60)  # the budgets marked on the chart, frames per second
@@ -61,8 +61,9 @@ def stage_order(shipped, views):
 
 
 def stage_costs(present, pattern, names):
-    require_same_board([path for path in [present, *(pattern.format(view=name) for name in names)]
-                        if pathlib.Path(path).exists()])
+    require_same_board({str(path): capture_board(path)
+                        for path in [present, *(pattern.format(view=name) for name in names)]
+                        if pathlib.Path(path).exists()})
     shipped = frame_cost.frame_cost_means(present)
     if shipped is None:
         raise ValueError(f"{present}: no capture of the scene as shipped")

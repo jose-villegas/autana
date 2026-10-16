@@ -27,7 +27,7 @@ import statistics
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "perf"))
-from capture import require_same_board
+from capture import capture_board, require_same_board
 
 
 DESTINATION = (368, 448)
@@ -44,7 +44,7 @@ _REFIT = re.compile(r"dynres_refit: (\w+) (\w+) (\d+) scale ([\d.eE+-]+) offset_
 
 
 def read_captures(paths, refit=None):
-    require_same_board(paths)
+    require_same_board({str(path): capture_board(path) for path in paths})
     splits, spans, ladders, frames = {}, {}, {}, {}
     for path in paths:
         raw = pathlib.Path(path).read_bytes()

@@ -149,6 +149,17 @@ def normalise_board(serial):
     return serial.strip().upper()
 
 
+SHORT_ID_DIGITS = 4
+
+
+def short_id(serial):
+    return normalise_board(serial).replace(":", "")[-SHORT_ID_DIGITS:]
+
+
+def board_label(serial):
+    return f"{short_id(serial)} ({normalise_board(serial)})"
+
+
 def process_alive(pid):
     """Only a process demonstrably absent or exited counts as dead. Every
     other outcome answers alive: this decides whether one owner may take the board

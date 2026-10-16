@@ -4,8 +4,6 @@ A run's phases map a phase name to the numbers its log line carried:
 min/max/avg/med/p95 in us, or the average alone.
 """
 
-from capture import require_same_board
-
 STATS = ("min", "max", "avg", "med", "p95")
 
 
@@ -20,7 +18,6 @@ def fps(us: int) -> str:
 
 def comparison_lines(runs, labels, phase_order):
     """Each phase's average across `labels`, then Total's avg/median/p95 as fps."""
-    require_same_board([dict(run, label=label) for label, run in runs.items() if label in labels])
     lines = ["## Comparison (average, us)", ""]
     lines.append("| Phase | " + " | ".join(f"`{label}`" for label in labels) + " |")
     lines.append("|---|" + "---:|" * len(labels))

@@ -431,12 +431,7 @@ which `flash_image.sh` asks before it opens the port.
 
 ## Duration estimates
 
-Estimates use the median of recent successful runs of the command kind.
-A board uses its own USB serial's history once that kind reaches
-`ESTIMATE_MINIMUM_RUNS` in `scripts/device/device_lock.py`; otherwise it
-uses all boards' history, including older rows without a board. Duration
-history is trimmed per command kind and board with the same recent-run and
-file limits. Failed commands do not shape estimates.
+See [Wait estimates](Flash-and-Captures.md#wait-estimates) for duration history and per-board estimates.
 
 ## How it works
 

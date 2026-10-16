@@ -43,7 +43,8 @@ def load(directory):
     suites = {}
     records = [json.loads(path.read_text(encoding="utf-8"))
                for path in sorted(Path(directory).glob("*.json"))]
-    require_same_board(records)
+    require_same_board({str(path): record.get("board")
+                        for path, record in zip(sorted(Path(directory).glob("*.json")), records)})
     for path, record in zip(sorted(Path(directory).glob("*.json")), records):
         for name, entry in record["suites"].items():
             rows = {}

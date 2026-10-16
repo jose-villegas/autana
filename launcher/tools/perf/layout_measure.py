@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from statistics import mean, stdev
 
-from capture import require_same_board
+from capture import capture_board, require_same_board
 from seed_statistics import t_quantile
 
 REPO = Path(__file__).resolve().parents[3]
@@ -317,7 +317,10 @@ def run_flash(args, seed, runner=None):
                 captures, first_run, seconds = captured_runs(lines, name, args.runs)
                 if index == 0:
                     record.update(flash_seconds=first_run, build_id=booted_build_id(project, lines))
-                record["board"] = require_same_board([*captures, record])
+                boards = {str(path): capture_board(path) for path in captures}
+                if "board" in record:
+                    boards["previous captures"] = record["board"]
+                record["board"] = require_same_board(boards)
                 runs = []
                 for number, capture in enumerate(captures):
                     completion = capture.with_suffix(".md").read_text(encoding="utf-8", errors="replace")

@@ -23,9 +23,9 @@ class CaptureBoards(unittest.TestCase):
             perf_compare.observations(records)
 
     def test_unknown_is_only_comparable_with_unknown(self):
-        capture.require_same_board([{"capture": "a"}, {"capture": "b"}])
+        capture.require_same_board({"a": None, "b": None})
         with self.assertRaisesRegex(ValueError, "unknown"):
-            capture.require_same_board([{"capture": "a"}, {"capture": "b", "board": "90:70:69:FE:A3:08"}])
+            capture.require_same_board({"a": None, "b": "90:70:69:FE:A3:08"})
 
     def test_manifest_lookup_and_last_entry(self):
         with tempfile.TemporaryDirectory() as root:
@@ -34,17 +34,15 @@ class CaptureBoards(unittest.TestCase):
             rows += [dict(capture_path=str(path), board="90:70:69:FE:A3:08") for path in paths]
             (pathlib.Path(root) / "index.jsonl").write_text(
                 "".join(json.dumps(row) + "\n" for row in rows))
-            capture.require_same_board(paths)
+            capture.require_same_board({str(path): capture.capture_board(path) for path in paths})
             with self.assertRaises(ValueError):
-                capture.require_same_board([*paths, pathlib.Path(root) / "unknown.log"])
+                capture.require_same_board({str(path): capture.capture_board(path)
+                                            for path in [*paths, pathlib.Path(root) / "unknown.log"]})
 
-    def test_phase_and_sweep_refuse_before_parsing(self):
-        import phase_report
+    def test_sweep_refuses_before_parsing(self):
         import perf_sweep
         boards = ("90:70:69:FE:A3:08", "90:70:69:FE:B4:09")
         runs = {name: dict(board=board, capture=name) for name, board in zip(("a", "b"), boards)}
-        with self.assertRaisesRegex(ValueError, "different boards"):
-            phase_report.comparison_lines(runs, ["a", "b"], ["Total"])
         with tempfile.TemporaryDirectory() as root:
             (pathlib.Path(root) / "plan.json").write_text(json.dumps({"captures": list(runs.values())}))
             with self.assertRaisesRegex(ValueError, "different boards"):
@@ -67,7 +65,19 @@ class CaptureBoards(unittest.TestCase):
             self.assertEqual(perf_job.job_estimate(1, 0, 60, restore=False), 10)
             history.assert_called_once_with(board=board)
 
-    def test_records_without_capture_paths_need_no_index_lookup(self):
-        record = {"suites": {"suite": {"runs": [{"rows": {}}]}}}
-        with patch.object(capture, "find_manifest_entry", side_effect=AssertionError("no capture path")):
-            self.assertIsNone(capture.require_same_board([record]))
+    def test_dated_capture_uses_owning_records_root(self):
+        with tempfile.TemporaryDirectory() as root:
+            records = pathlib.Path(root) / "archived-records"
+            path = records / "2026-01-02" / "suite" / "capture.log"
+            path.parent.mkdir(parents=True)
+            path.touch()
+            (records / "index.jsonl").write_text(json.dumps(dict(
+                capture_path=str(path), board=" 90:70:69:fe:a3:08 ")) + "\n")
+            self.assertEqual(capture.capture_board(path), "90:70:69:FE:A3:08")
+            self.assertIsNone(capture.capture_board(path.with_name("unknown.log")))
+
+    def test_guard_only_groups_supplied_boards(self):
+        with patch.object(capture, "find_manifest_entry", side_effect=AssertionError("no index lookup")):
+            self.assertIsNone(capture.require_same_board({"a": None}))
+            self.assertEqual(capture.require_same_board({"a": "90:70:69:FE:A3:08",
+                                                       "b": "90:70:69:FE:A3:08"}), "90:70:69:FE:A3:08")

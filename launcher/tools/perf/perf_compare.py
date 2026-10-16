@@ -35,7 +35,9 @@ def schedule(cap, alpha):
 
 def observations(records):
     """Complete per-seed rows, counters, and capture test ownership."""
-    require_same_board(records)
+    require_same_board({f"{index}: " + ", ".join(run.get("capture", "unnamed")
+                        for entry in record["suites"].values() for run in entry["runs"]): record.get("board")
+                        for index, record in enumerate(records)})
     rows, instructions, owners = {}, {}, {}
     for record in records:
         for suite, entry in record["suites"].items():
@@ -194,7 +196,8 @@ def measure(args, runner=None):
                         break
                     continue
                 failures = 0
-                require_same_board([record, *records["a"], *records["b"]])
+                require_same_board({str(index): item.get("board")
+                                    for index, item in enumerate([record, *records["a"], *records["b"]])})
                 records[side].append(record)
                 silent = [suite for suite, _, _ in args.suite
                           if len(records["a"]) == len(records["b"]) == 1 and

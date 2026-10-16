@@ -1,11 +1,11 @@
 """Shared identity checks for device measurement captures."""
 import re
+from collections.abc import Mapping
 from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/device"))
-from device import records_root, short_id
-from device_lock import normalise_board
+from device_lock import board_label, normalise_board
 from device_report import find_manifest_entry
 
 
@@ -23,41 +23,25 @@ def build_id(text) -> str:
     return lines[0].removeprefix("BUILD_ID=")
 
 
-def require_same_board(captures):
+def capture_board(path) -> str | None:
+    """Read provenance from the records index owning this capture's folder."""
+    path = Path(path).resolve()
+    for folder in path.parents:
+        index = folder / "index.jsonl"
+        if index.is_file():
+            entry = find_manifest_entry(path, index) or {}
+            serial = entry.get("board")
+            return normalise_board(serial) if serial else None
+    return None
+
+
+def require_same_board(boards: Mapping[str, str | None]) -> str | None:
     """Refuse pooled captures from distinct USB serials, including unknown provenance."""
     groups = {}
-    missing = object()
-
-    def collect(item, inherited=missing):
-        if isinstance(item, (str, Path)):
-            item = {"capture": str(item)}
-        board = item.get("board", inherited)
-        nested = item.get("suites")
-        if nested is not None:
-            for suite in nested.values():
-                for run in suite["runs"]:
-                    collect(run, board)
-            return
-        paths = item.get("captures") or [item.get("capture") or item.get("capture_path")]
-        for raw in paths:
-            if isinstance(raw, dict):
-                collect(raw, board)
-                continue
-            path = Path(raw) if raw is not None else None
-            serial = board
-            if serial is missing:
-                entry = {}
-                if path is not None:
-                    entry = (find_manifest_entry(path, path.parent / "index.jsonl")
-                             or find_manifest_entry(path, records_root() / "index.jsonl") or {})
-                serial = entry.get("board")
-            serial = normalise_board(serial) if serial else None
-            groups.setdefault(serial, []).append(str(raw) if raw is not None else item.get("label", "unnamed"))
-
-    for capture in captures:
-        collect(capture)
+    for label, board in boards.items():
+        groups.setdefault(board, []).append(str(label))
     if len(groups) > 1:
-        details = [f"{short_id(board)} ({board}): {', '.join(paths)}" if board
+        details = [f"{board_label(board)}: {', '.join(paths)}" if board
                    else f"unknown: {', '.join(paths)}"
                    for board, paths in sorted(groups.items(), key=lambda pair: pair[0] or "")]
         raise ValueError("cannot compare captures from different boards: " + "; ".join(details))

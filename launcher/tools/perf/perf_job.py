@@ -11,14 +11,13 @@ from device_lock import duration_history  # noqa: E402
 DEFAULT_FLASH_SECONDS = 60
 
 
-def job_estimate(flashes, captures, timeout, restore=True, board=None):
+def job_estimate(flashes, captures, timeout, restore=True):
     """Seconds a job expects to hold the board: recorded flash and capture durations,
     else DEFAULT_FLASH_SECONDS and the capture deadline."""
-    if board is None:
-        try:
-            board = chosen_board()
-        except (NoBoard, TokenRefused):
-            board = None
+    try:
+        board = chosen_board()
+    except (NoBoard, TokenRefused):
+        board = None
     durations = duration_history(board=board)
     seconds = (flashes + int(restore)) * durations.get("flash", DEFAULT_FLASH_SECONDS)
     return math.ceil(seconds + captures * durations.get("run-suite", timeout))

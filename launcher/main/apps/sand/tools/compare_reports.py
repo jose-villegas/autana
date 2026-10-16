@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[4] / "tools/perf"))
-from capture import require_same_board
+from capture import capture_board, require_same_board
 
 # report_performance.py's budget table: | `name` | budget | measured | headroom | status |
 BUDGET_ROW_RE = re.compile(
@@ -237,7 +237,8 @@ def main() -> int:
                              "which a regression fails the run (default 0.4)")
     args = parser.parse_args()
 
-    require_same_board([find_raw(path) or path for path in (args.old_report, args.new_report)])
+    captures = [find_raw(path) or path for path in (args.old_report, args.new_report)]
+    require_same_board({str(path): capture_board(path) for path in captures})
     old_report = parse_report(args.old_report)
     new_report = parse_report(args.new_report)
 

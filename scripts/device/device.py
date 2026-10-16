@@ -21,6 +21,8 @@ from datetime import datetime
 from pathlib import Path
 
 import device_lock
+from device_lock import board_label, short_id
+from device_report import records_root
 import device_report
 import lock_scope
 
@@ -144,12 +146,7 @@ def plugged_boards():
             if port.vid == ESPRESSIF_VID and port.serial_number]
 
 
-SHORT_ID_DIGITS = 4
 BOARD_SERIAL_PATTERN = r"(?:[0-9A-F]{2}:){5}[0-9A-F]{2}"
-
-
-def short_id(serial):
-    return device_lock.normalise_board(serial).replace(":", "")[-SHORT_ID_DIGITS:]
 
 
 def known_boards(store=None):
@@ -161,7 +158,7 @@ def known_boards(store=None):
 def board_selector(value):
     named = device_lock.normalise_board(value)
     if (re.fullmatch(BOARD_SERIAL_PATTERN, named)
-            or re.fullmatch(r"[0-9A-F]{%d}" % SHORT_ID_DIGITS, named)):
+            or re.fullmatch(r"[0-9A-F]{%d}" % device_lock.SHORT_ID_DIGITS, named)):
         return named
     return None
 
@@ -210,7 +207,7 @@ def find_board(board=None):
         raise NoBoard("no USB Serial/JTAG board found (VID 0x303A)")
     if len(present) > 1:
         raise RuntimeError("several boards are plugged in - name one with --board / -b / use: "
-                           + ", ".join(sorted(f"{short_id(b.serial)} ({b.serial})" for b in present)))
+                           + ", ".join(sorted(board_label(b.serial) for b in present)))
     return present[0]
 
 
@@ -231,7 +228,7 @@ def board_for_lock(store, named=None, remembered=False, auto_pick=False, token=N
     if auto_pick and len(present) > 1:
         entries = [entry for entry in board_statuses(store) if entry["port"]]
         board, reason = pick_board(entries)
-        print(f"picked {short_id(board)} ({board}): {reason}", file=sys.stderr)
+        print(f"picked {board_label(board)}: {reason}", file=sys.stderr)
         return board, reason
     candidates, source = present, "plugged in"
     if not candidates:
@@ -243,7 +240,7 @@ def board_for_lock(store, named=None, remembered=False, auto_pick=False, token=N
     if not candidates:
         raise NoBoard("no USB Serial/JTAG board found (VID 0x303A)")
     raise RuntimeError("several boards are " + source
-                       + " - name one with --board / -b / use: " + ", ".join(f"{short_id(serial)} ({serial})" for serial in candidates))
+                       + " - name one with --board / -b / use: " + ", ".join(board_label(serial) for serial in candidates))
 
 
 # A power-cycling reset takes the USB Serial/JTAG port off the bus about
@@ -352,19 +349,6 @@ def open_serial():
 
 def now():
     return datetime.now()
-
-
-def records_root():
-    """Where a session's log and manifest are written.
-
-    The project's `records` setting names it, for anyone who keeps their
-    device history elsewhere. Without one, records land in this checkout's
-    own gitignored .records/device, self-contained, and nothing a commit
-    can pick up by accident."""
-    named = autana_config.load().get("records")
-    if named:
-        return autana_config.path_value(named)
-    return Path(__file__).resolve().parents[2] / ".records" / "device"
 
 
 def slug(text):
@@ -2300,7 +2284,7 @@ def main(argv=None):
     finally:
         if picked_reason:
             verdict = "PASS" if result == 0 else f"FAIL ({result})"
-            print(f"{verdict}: board {short_id(board)} ({board})", file=sys.stderr)
+            print(f"{verdict}: board {board_label(board)}", file=sys.stderr)
 
 
 if __name__ == "__main__":
