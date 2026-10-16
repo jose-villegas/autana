@@ -2215,7 +2215,8 @@ class BoardChoiceTests(Store):
         self.store.enqueue(BOARD_B, "bob", "look")
         with plugged(), self.assertRaises(RuntimeError) as caught:
             device.board_for_lock(self.store)
-        self.assertIn(BOARD_A + ", " + BOARD_B, str(caught.exception))
+        self.assertIn(BOARD_A, str(caught.exception))
+        self.assertIn(BOARD_B, str(caught.exception))
         with plugged(usb(BOARD_B, "COM7")):
             self.assertEqual(device.board_for_lock(self.store), BOARD_B)
 

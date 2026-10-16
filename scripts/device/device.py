@@ -144,9 +144,45 @@ def plugged_boards():
             if port.vid == ESPRESSIF_VID and port.serial_number]
 
 
-def chosen_board(board=None):
+SHORT_ID_DIGITS = 4
+BOARD_SERIAL_PATTERN = r"(?:[0-9A-F]{2}:){5}[0-9A-F]{2}"
+
+
+def short_id(serial):
+    return device_lock.normalise_board(serial).replace(":", "")[-SHORT_ID_DIGITS:]
+
+
+def known_boards(store=None):
+    store = store if store is not None else device_lock.LockStore()
+    return sorted(set(found.serial for found in plugged_boards())
+                  | set(store.boards()) | set(store.seen_boards()))
+
+
+def resolve_board(value, store=None):
+    named = device_lock.normalise_board(value)
+    if re.fullmatch(BOARD_SERIAL_PATTERN, named):
+        return named
+    if not re.fullmatch(r"[0-9A-F]{%d}" % SHORT_ID_DIGITS, named):
+        return None
+    known = known_boards(store)
+    matches = [serial for serial in known if short_id(serial) == named]
+    if len(matches) == 1:
+        return matches[0]
+    if matches:
+        raise RuntimeError("ambiguous board " + named + ": " + ", ".join(matches)
+                           + "; use the full serial")
+    raise NoBoard("no board matches " + named + "; known boards: "
+                  + (", ".join(known) or "none"))
+
+
+def chosen_board(board=None, store=None):
     named = board or os.environ.get(BOARD_ENV)
-    return device_lock.normalise_board(named) if named else None
+    if not named:
+        return None
+    resolved = resolve_board(named, store)
+    if resolved is None:
+        raise RuntimeError("board needs a full USB serial or four-digit short id")
+    return resolved
 
 
 def find_board(board=None):
@@ -161,12 +197,12 @@ def find_board(board=None):
     if not present:
         raise NoBoard("no USB Serial/JTAG board found (VID 0x303A)")
     if len(present) > 1:
-        raise RuntimeError("several boards are plugged in - name one with --board: "
-                           + ", ".join(sorted(b.serial for b in present)))
+        raise RuntimeError("several boards are plugged in - name one with --board / -b / use: "
+                           + ", ".join(sorted(f"{short_id(b.serial)} ({b.serial})" for b in present)))
     return present[0]
 
 
-def board_for_lock(store, named=None, remembered=False):
+def board_for_lock(store, named=None, remembered=False, auto_pick=False, selected=None):
     """The board a command queues for. A lock outlives the board's USB
     presence, so while a holder's reset has the only board off USB a waiter
     still finds it through the lock records; only opening its port needs USB.
@@ -174,12 +210,19 @@ def board_for_lock(store, named=None, remembered=False):
     still, to a board merely seen on USB before, with nothing active
     against it now, since those are the two commands a board dropped off
     USB (and idle) needs."""
-    wanted = chosen_board(named)
+    wanted = chosen_board(named, store)
     if wanted:
         return wanted
     present = sorted(found.serial for found in plugged_boards())
     for serial in present:
         store.note_seen(serial)
+    if auto_pick and len(present) > 1:
+        entries = [entry for entry in board_statuses(store) if entry["port"]]
+        board, reason = pick_board(entries)
+        if selected is not None:
+            selected.append(board)
+        print(f"picked {short_id(board)} ({board}): {reason}", file=sys.stderr)
+        return board
     candidates, source = present, "plugged in"
     if not candidates:
         candidates, source = store.boards(), "known to the lock"
@@ -190,7 +233,7 @@ def board_for_lock(store, named=None, remembered=False):
     if not candidates:
         raise NoBoard("no USB Serial/JTAG board found (VID 0x303A)")
     raise RuntimeError("several boards are " + source
-                       + " - name one with --board: " + ", ".join(candidates))
+                       + " - name one with --board / -b / use: " + ", ".join(f"{short_id(serial)} ({serial})" for serial in candidates))
 
 
 # A power-cycling reset takes the USB Serial/JTAG port off the bus about
@@ -1895,6 +1938,35 @@ def board_statuses(store, board=None):
             for name in boards]
 
 
+def pick_board(entries):
+    free = [entry for entry in entries
+            if entry["state"] == "unlocked" and not entry["waiting"]]
+    if free:
+        return min(free, key=lambda entry: entry["board"])["board"], "free, nobody queued"
+    available = [entry for entry in entries if entry["state"] != "human"] or entries
+    estimated = [entry for entry in available if entry["estimated_free"] is not None]
+    if estimated:
+        chosen = min(estimated, key=lambda entry: (entry["estimated_free"], entry["board"]))
+        return chosen["board"], "earliest estimated free time"
+    chosen = min(available, key=lambda entry: (len(entry["waiting"]), entry["board"]))
+    return chosen["board"], "shortest queue"
+
+
+def print_devices(entries):
+    if not entries:
+        print("no board found")
+    for entry in entries:
+        where = entry["port"] or "not on USB"
+        holder = entry["holder"]
+        if entry["state"] == "human":
+            state = f"reserved by a human ({holder['owner']}) until {device_lock.format_estimate(entry['expires_at'])}"
+        elif entry["state"] == "held":
+            state = f"held by {holder['owner']} until {device_lock.format_estimate(entry['estimated_free'])}"
+        else:
+            state = "free"
+        print(f"{short_id(entry['board'])} {entry['board']} {where}: {state}")
+
+
 def print_statuses(entries, now):
     if not entries:
         print("no board found")
@@ -1905,22 +1977,25 @@ def print_statuses(entries, now):
             print("  " + line)
 
 
-def main(argv=None):
+def run_device(argv=None, selected=None):
     try:
         autana_config.load()
     except autana_config.ConfigError as error:
         print("device: " + str(error), file=sys.stderr)
         return 1
     parser = argparse.ArgumentParser()
-    parser.add_argument("--board", help="the board's USB serial number (default: the only "
+    parser.add_argument("--board", "-b", help="full USB serial or short id (default: the only "
                                         "board plugged in, else the only one "
                                         "a lock record names; hand-to-human/take-back also try "
                                         "the only board this machine has ever seen)")
     parser.add_argument("--owner", default=device_lock.default_owner())
     parser.add_argument("--wait", type=float, default=600)
+    parser.set_defaults(auto_pick=False)
     subparsers = parser.add_subparsers(dest="command", required=True)
     status_parser = subparsers.add_parser("status")
     status_parser.add_argument("--json", action="store_true")
+    devices_parser = subparsers.add_parser("devices")
+    devices_parser.add_argument("--json", action="store_true")
     subparsers.add_parser("resolve-port")
     release = subparsers.add_parser("release")
     release.add_argument("--token", required=True)
@@ -1928,6 +2003,7 @@ def main(argv=None):
     hand.add_argument("--note", required=True)
     hand.add_argument("--until-back", type=human_wait_seconds)
     take = subparsers.add_parser("take")
+    take.set_defaults(auto_pick=True)
     duration = take.add_mutually_exclusive_group()
     duration.add_argument("--for", dest="seconds", type=hold_seconds)
     duration.add_argument("--until-released", action="store_true")
@@ -1935,6 +2011,7 @@ def main(argv=None):
     take.add_argument("--estimate", type=human_wait_seconds)
     take.add_argument("note", nargs="+")
     run = subparsers.add_parser("run")
+    run.set_defaults(auto_pick=True)
     run.add_argument("--keep-on-failure", type=hold_seconds)
     run.add_argument("child", nargs=argparse.REMAINDER)
     wait_parser = subparsers.add_parser("wait-free")
@@ -1944,6 +2021,7 @@ def main(argv=None):
         "check-token", help="exit 0 when --token is the live lock on the board, else 1")
     check_token.add_argument("--token", required=True)
     flash_parser = subparsers.add_parser("flash")
+    flash_parser.set_defaults(auto_pick=True)
     flash_parser.add_argument("--variant", choices=("dev", "diag", "release"), required=True)
     flash_parser.add_argument("--worktree", required=True)
     flash_parser.add_argument("--out")
@@ -1987,6 +2065,7 @@ def main(argv=None):
     selftest_parser = subparsers.add_parser(
         "selftest", help="flash the diagnostics+autorun image and capture the on-device run "
                          "of every registered suite")
+    selftest_parser.set_defaults(auto_pick=True)
     selftest_parser.add_argument("--worktree", required=True)
     selftest_parser.add_argument("--out")
     selftest_parser.add_argument("--verbose", action="store_true")
@@ -2021,6 +2100,7 @@ def main(argv=None):
     screenshot_view.add_argument("--framebuffer", action="store_true")
     batch_parser = subparsers.add_parser(
         "batch", help="capture suites N times under one lock, write one summary")
+    batch_parser.set_defaults(auto_pick=True)
     batch_parser.add_argument("--worktree", required=True)
     batch_parser.add_argument("--variant", choices=("dev", "diag", "release"), default="diag")
     batch_parser.add_argument("--suite", action="append", required=True,
@@ -2069,10 +2149,12 @@ def main(argv=None):
 
     try:
         store = device_lock.LockStore()
-        if args.command == "status":
-            entries = board_statuses(store, chosen_board(args.board))
+        if args.command in ("status", "devices"):
+            entries = board_statuses(store, chosen_board(args.board, store))
             if args.json:
                 print(json.dumps({"boards": entries}))
+            elif args.command == "devices":
+                print_devices(entries)
             else:
                 print_statuses(entries, store.now())
             return 0
@@ -2080,7 +2162,8 @@ def main(argv=None):
             print(find_board(args.board).port)
             return 0
         board = board_for_lock(store, args.board,
-                               remembered=args.command in ("hand-to-human", "take-back"))
+                               remembered=args.command in ("hand-to-human", "take-back"),
+                               auto_pick=args.auto_pick and getattr(args, "flash", True), selected=selected)
         token = os.environ.get(TOKEN_ENV)
         if token and args.command in ("take", "hand-to-human", "wait-free"):
             record = store.live_lock(board, token)
@@ -2180,6 +2263,19 @@ def main(argv=None):
     except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
         print("device: " + str(error), file=sys.stderr)
         return 1
+
+
+def main(argv=None):
+    selected = []
+    result = 1
+    try:
+        result = run_device(argv, selected)
+        return result
+    finally:
+        if selected:
+            board = selected[0]
+            verdict = "PASS" if result == 0 else f"FAIL ({result})"
+            print(f"{verdict}: board {short_id(board)} ({board})", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -297,8 +297,19 @@ A board is named by its USB serial number (the ESP32-S3's MAC address,
 brings it back on another COM number. A command acts on the board `--board`
 names (or the one Espressif board plugged in, else the one board a lock,
 reservation or waiter names, so it can queue while a holder's reset has the
-board off USB). With several candidates and none named it fails and lists
-them; each board has its own lock and queue. `lock hand` and `lock take-back`
+board off USB). Full serials and the last four hex digits (short ids) are accepted
+case-insensitively by `--board`, its alias `-b`, and console `use`. Short ids
+resolve against USB, known and seen boards; collisions require a full serial.
+`autana devices` lists compact availability; `devices --json` and
+`status --json` share the same data.
+
+With several boards plugged in and none selected, commands that flash
+(`flash`, `suite --flash`, `selftest`, `batch`) and whole-job holds
+(`lock run`, `lock take`) choose a free board with nobody queued, else the
+earliest estimated free time, else the shortest queue. Human reservations
+are avoided when another board is available. The job and its children keep
+the selected serial. Other board commands fail and list the choices, pointing
+at `--board`, `-b` and console `use`. Each board has its own lock and queue. `lock hand` and `lock take-back`
 alone fall back once more to the only board this machine has ever seen.
 
 ### Exit codes and JSON status
