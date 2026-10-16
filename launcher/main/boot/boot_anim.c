@@ -151,9 +151,31 @@ typedef struct {
 
 /* The floor's height at a node, in t units. The one place that knows what
  * lifts it. */
+/* Prototype (host, float): one impact at BOOT_ANIM_WAVE_IN_MS. A packet of
+ * crests leaves the origin at the ripple's phase speed, PROTO_SIGMA_WAVES
+ * wavelengths wide, falling as 1/sqrt(distance) and e^(-t/PROTO_DECAY_S). */
+#include <math.h>
+#define PROTO_SIGMA_WAVES 1.0F
+#define PROTO_DECAY_S     1.5F
+#define PROTO_GAIN        1.5F
+
 static int32_t
 floor_lift(int32_t d, uint32_t now_ms, int32_t amp_q12) {
-    return boot_anim_wave_height(d, now_ms, amp_q12, BOOT_ANIM_WAVE_WAVELENGTH_Q12, BOOT_ANIM_WAVE_PERIOD_MS);
+    (void)amp_q12;
+    if (now_ms <= BOOT_ANIM_WAVE_IN_MS) {
+        return 0;
+    }
+    const float tau = (float)(now_ms - BOOT_ANIM_WAVE_IN_MS) / 1000.0F;
+    const float lambda = (float)BOOT_ANIM_WAVE_WAVELENGTH_Q12 / (float)BOOT_ANIM_ONE;
+    const float speed = lambda * 1000.0F / (float)BOOT_ANIM_WAVE_PERIOD_MS;
+    const float r = (float)d / (float)BOOT_ANIM_ONE;
+    const float x = r - (speed * tau);
+    const float sigma = PROTO_SIGMA_WAVES * lambda;
+    const float env = expf(-(x / sigma) * (x / sigma));
+    const float decay = expf(-tau / PROTO_DECAY_S) / sqrtf(1.0F + (r / lambda));
+    const float h = PROTO_GAIN * ((float)BOOT_ANIM_WAVE_HEIGHT_Q12 / (float)BOOT_ANIM_ONE) * env * decay
+                    * cosf(6.2831853F * x / lambda);
+    return boot_anim_zeta_to_t_q8((int32_t)(h * (float)BOOT_ANIM_ONE));
 }
 
 static int32_t
