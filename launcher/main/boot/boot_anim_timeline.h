@@ -103,7 +103,7 @@
 #define BOOT_ANIM_TITLE_SHADOW_ALPHA 128
 
 /* the photograph starts crossing in as the function crosses out */
-#define BOOT_ANIM_IMAGE_START_MS 3500
+#define BOOT_ANIM_IMAGE_START_MS 4000
 
 /* how long that one shared crossfade takes - 0 cuts straight to the photo */
 #define BOOT_ANIM_IMAGE_FADE_MS 800

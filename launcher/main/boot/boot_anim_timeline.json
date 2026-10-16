@@ -32,7 +32,7 @@
         "grid_spoke_draw_ms": 800,
         "title_height_px": 40,
         "title_x_px": 95,
-        "image_start_ms": 3500,
+        "image_start_ms": 4000,
         "image_fade_ms": 800,
         "title_shadow_dx": 5,
         "title_shadow_dy": 5,
