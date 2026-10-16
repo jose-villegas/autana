@@ -119,7 +119,7 @@ everything else; go there once you are capturing that app's numbers.
 self-hosted Windows board runner: it builds and flashes the `diag` variant with
 autorun, captures every registered boot-time suite, and checks the running
 build ID against the built image. The job summary identifies the board and
-build and counts passing and failing suite source files; the artifact contains
+build and counts passing and failing tests; the artifact contains
 this checkout's `.records/device` captures, including failed runs.
 
 It runs on pushes to `main`, nightly, and by manual dispatch. A maintainer can

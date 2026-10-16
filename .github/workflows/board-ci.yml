@@ -115,16 +115,13 @@ jobs:
               else:
                   entry = entries[-1]
                   text = read_capture_text(entry['capture_path'])
-                  suites = {}
-                  for result in results(text):
-                      suite = result['file'].replace('\\', '/').rsplit('/', 1)[-1].removesuffix('.c')
-                      suites[suite] = suites.get(suite, True) and result['status'] == 'PASS'
-                  passed = sum(suites.values())
-                  failed = len(suites) - passed
+                  parsed = results(text)
+                  passed = sum(result['status'] == 'PASS' for result in parsed)
+                  failed = sum(result['status'] == 'FAIL' for result in parsed)
                   summary.write(f"Board: {board_label(entry['board'])}\n\n")
                   summary.write(f"Build ID: `{entry['build_id']}`\n\n")
-                  summary.write(f'Suites by Unity source file: {passed} passed, {failed} failed.\n\n')
-                  for result in results(text):
+                  summary.write(f'Tests: {passed} passed, {failed} failed.\n\n')
+                  for result in parsed:
                       if result['status'] == 'FAIL':
                           summary.write(f"- FAIL `{result['name']}` ({result['file']}:{result['line']}): {result['message'] or ''}\n")
                   if not SELFTEST_COMPLETE_RE.search(text):
