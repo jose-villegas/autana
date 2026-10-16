@@ -4,13 +4,14 @@
 |---|---|
 | [report_boot_anim_perf.py](report_boot_anim_perf.py) | Formats a boot animation performance capture. |
 | [report_boot_anim_perf.sh](report_boot_anim_perf.sh) | Captures and reports boot animation performance. |
+| [plane_tilt.py](plane_tilt.py) | Tilts the space toward the camera over a stretch of the boot clip while the t line keeps its place on screen. |
 
 ## Where the animation lives
 
 | File | Holds | Regenerate |
 |---|---|---|
 | `main/boot/boot_anim_timeline.json` | Timing, scalar settings and baked floor tables; everything but camera and space motion | `python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json main/boot/boot_anim_motion.glb > main/boot/boot_anim_timeline.h` |
-| `main/boot/boot_anim_motion.glb` | The camera and the space: a glTF animation named `boot_motion` with nodes `camera` and `space`, authored in any glTF tool | authored |
+| `main/boot/boot_anim_motion.glb` | The camera and the space: a glTF animation named `boot_motion` with nodes `camera` and `space`, authored in any glTF tool. Its last turn (3.1 to 4.3 s) carries a 25 degree tilt toward the camera | authored, then `python tools/boot_anim/plane_tilt.py main/boot/boot_anim_motion.glb -25 3.1 4.3`; the tilt adds to what the clip holds |
 | `main/boot/boot_anim_motion.anim.toml` | Names that animation as the boot clip, baked into its own asset pack | `python tools/r3d/build_pack.py -o <dir>` (the firmware build runs it) |
 | `main/boot/boot.png` | The photograph the animation crossfades to, drawn in the 448 x 368 reading frame | authored |
 | `main/boot/boot.image.toml` | Names that photograph as the boot picture, turned into the panel's frame and baked into its own asset pack | `python tools/r3d/build_pack.py -o <dir>` (the firmware build runs it) |
