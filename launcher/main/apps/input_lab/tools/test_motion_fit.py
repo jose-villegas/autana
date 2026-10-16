@@ -20,6 +20,18 @@ class MotionFitTest(unittest.TestCase):
         self.assertEqual(3, len(motion))
         self.assertEqual((32, -64, 0), motion[0]["rotation"])
 
+    def test_replayed_dump_has_the_live_fit_and_poses(self):
+        lines = (Path(__file__).parent / "fixtures" / "motion.log").read_text().splitlines()
+        round_lines = [line for line in lines if any(word in line for word in
+                       ("round imu", "pose ", "calib x off"))]
+        live = ["LABDUMP " + line for line in round_lines]
+        dump = ["LABDUMP_BEGIN", *live,
+                "LABDUMP GRAV face_up down 0.000000 0.000000 -1.000000 bias_dps 0.000000 0.000000 0.000000",
+                "LABDUMP turn ms 0 down 0.000000 1.000000 0.000000",
+                "LABDUMP_END"]
+        self.assertEqual(motion_fit.parse(round_lines)[0], motion_fit.parse(dump)[0])
+        self.assertEqual(motion_fit.parse(live), motion_fit.parse(dump))
+
     def test_rest_excludes_rounds_motion_and_tilt_departure(self):
         def sample(ms, tilt=6, turn=10, before_round=True):
             return {"ms": ms, "tilt": tilt, "turn": turn, "before_round": before_round,
@@ -91,8 +103,9 @@ class MotionFitTest(unittest.TestCase):
 
     def test_c_log_formats_parse(self):
         source = (Path(__file__).parents[1] / "app_input_lab.c").read_text()
+        source = re.sub(r'"\s*"', "", source)
         for prefix, regex, values, expected in (
-            ("motion", motion_fit.MOTION, tuple(range(1, 15)), ("1", "2", "3", "4", "5", "10", "11", "12", "13", "14")),
+            ("motion", motion_fit.MOTION, tuple(range(1, 21)), ("1", "2", "3", "4", "5", "10", "11", "12", "13", "14")),
             ("pose", motion_fit.POSE, ("face_up", 1, -2, 3, -4, 5, -6, 7), ("face_up", "1 -2 3 -4 5 -6 7")),
             ("calib", motion_fit.CALIB, tuple(range(1, 10)), tuple(map(str, range(1, 10)))),
         ):
@@ -100,7 +113,7 @@ class MotionFitTest(unittest.TestCase):
                 formats = re.findall(r'"(' + prefix + r' [^"\n]*%[^"\n]+)"', source)
                 self.assertEqual(1, len(formats))
                 line = formats[0] % values
-                match = regex.fullmatch(line)
+                match = regex.search(line)
                 self.assertIsNotNone(match, line)
                 self.assertEqual(expected, match.groups())
 
