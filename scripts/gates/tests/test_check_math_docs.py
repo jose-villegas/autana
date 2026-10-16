@@ -23,7 +23,8 @@ def make_tree(root, page_extra="", template_extra="", header_extra="", skip_sect
         body = "#define MATH_DEFINE_X(P) \\\n" + FUNCTION + (template_extra if family == "vec2" else "")
         if family == empty_template:
             body = "#define MATH_DEFINE_X(P)\n"
-        (math / (family + "_template.h")).write_text(body.replace("MATH_DEFINE_X", "MATH_DEFINE_" + family.upper()))
+        (root / check_math_docs.FAMILY_DIRS[family]).mkdir(parents=True, exist_ok=True)
+        (root / check_math_docs.FAMILY_DIRS[family] / (family + "_template.h")).write_text(body.replace("MATH_DEFINE_X", "MATH_DEFINE_" + family.upper()))
     for directory, body in (("scalar", scalar_extra), ("motion", outside_extra)):
         headers = math.parent / directory
         headers.mkdir()
@@ -43,6 +44,25 @@ def problems_for(**kwargs):
 class CheckMathDocs(unittest.TestCase):
     def test_the_real_page_matches_the_real_headers(self):
         self.assertEqual([], check_math_docs.check(REPO))
+
+    def test_geometry_template_functions_and_types_are_checked(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            make_tree(root)
+            geometry = root / "launcher/packages/math/include/math/geometry"
+            geometry.mkdir(exist_ok=True)
+            (geometry / "rect_template.h").write_text(
+                "#define MATH_DEFINE_RECT(P, T, OPS) \\\n"
+                "    static inline T P##_right(P##_t r) { return r.x + r.w; }\n"
+            )
+            (geometry / "rectf.h").write_text("MATH_DEFINE_RECT(rectf, float, mathf)\n")
+            page = root / check_math_docs.PAGE
+            page.write_text(page.read_text().replace("### rect\n\n| `P_add(` |", "### rect\n\n| `P_right(r)` |") + "`rectf`\n")
+            self.assertEqual([], check_math_docs.check(root))
+            page.write_text(page.read_text().replace("`P_right(r)`", ""))
+            self.assertTrue(any("rect section lacks `P_right(" in p for p in check_math_docs.check(root)))
+            page.write_text(page.read_text().replace("`rectf`", "`P_right(r)`"))
+            self.assertTrue(any("does not name the type `rectf`" in p for p in check_math_docs.check(root)))
 
     def test_a_synthetic_tree_that_agrees_passes(self):
         self.assertEqual([], problems_for())
