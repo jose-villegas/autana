@@ -1,0 +1,5 @@
+a: prototype
+b: impact
+middle: changed 610/164864 (0.37%), mean abs diff 0.063/255, holes A 0, holes B 0
+late: changed 1643/164864 (1.00%), mean abs diff 0.143/255, holes A 0, holes B 0
+crossfade: changed 351/164864 (0.21%), mean abs diff 0.035/255, holes A 0, holes B 0
