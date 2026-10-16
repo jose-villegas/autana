@@ -30,8 +30,6 @@
         "grid_spoke_dash": 1,
         "grid_spoke_start_ms": 2300,
         "grid_spoke_draw_ms": 800,
-        "wave_in_ms": 750,
-        "wave_out_ms": 5500,
         "title_height_px": 40,
         "title_x_px": 95,
         "image_start_ms": 3500,
@@ -41,11 +39,37 @@
         "title_shadow_alpha": 128,
         "title_wave_out_ms": 3200,
         "title_wave_fade_ms": 1500,
-        "title_scale": 5
+        "title_scale": 5,
+        "ripple_impact_ms": 450,
+        "ripple_decay_ms": 2500,
+        "swell_start_ms": 2200,
+        "swell_in_ms": 1200
     },
     "camera_half_fov_short_tan": 1.0,
     "grid_step_m": 0.1,
-    "wave_height_m": 1.25,
-    "wave_wavelength_m": 5,
-    "wave_period_ms": 800
+    "ripple_wavelength_m": 2.5,
+    "ripple_speed_m_s": 2.2,
+    "ripple_rings": 1.6,
+    "ripple_height_m": 1.2,
+    "swell_height_m": 0.25,
+    "swell": [
+        {
+            "wavelength_m": 4,
+            "period_ms": 1300,
+            "direction_deg": 0,
+            "weight": 1
+        },
+        {
+            "wavelength_m": 2.7,
+            "period_ms": 1000,
+            "direction_deg": 70,
+            "weight": 0.6
+        },
+        {
+            "wavelength_m": 1.9,
+            "period_ms": 800,
+            "direction_deg": 140,
+            "weight": 0.4
+        }
+    ]
 }

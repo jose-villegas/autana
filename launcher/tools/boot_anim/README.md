@@ -9,7 +9,7 @@
 
 | File | Holds | Regenerate |
 |---|---|---|
-| `main/boot/boot_anim_timeline.json` | Timing and single settings: everything but the camera and space, edited by hand | `python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json main/boot/boot_anim_motion.glb > main/boot/boot_anim_timeline.h` |
+| `main/boot/boot_anim_timeline.json` | Timing, scalar settings and baked floor tables; everything but camera and space motion | `python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json main/boot/boot_anim_motion.glb > main/boot/boot_anim_timeline.h` |
 | `main/boot/boot_anim_motion.glb` | The camera and the space: a glTF animation named `boot_motion` with nodes `camera` and `space`, authored in any glTF tool | authored |
 | `main/boot/boot_anim_motion.anim.toml` | Names that animation as the boot clip, baked into its own asset pack | `python tools/r3d/build_pack.py -o <dir>` (the firmware build runs it) |
 | `main/boot/boot.png` | The photograph the animation crossfades to, drawn in the 448 x 368 reading frame | authored |
@@ -26,3 +26,56 @@ frame's values to a `transformf_t` in `anim/anim_transform.h`. The space's
 rotation is a quaternion slerp between its keys. Frames render on a host with
 `tools/render/scenes/boot_anim_render_host.sh` (`--video` for the whole
 animation).
+
+## Baked floor
+
+`gen_boot_anim_timeline.py` emits the floor tables into
+`main/boot/boot_anim_timeline.h`, together with the timeline constants.
+`ripple_impact_ms` starts an outward Gaussian ring packet, with decay set by
+`ripple_decay_ms`. Wavelength, speed, packet width in wavelengths and height
+are authored by the top-level `ripple_*` settings. The directional `swell`
+entries contain wavelength, period, direction in degrees and weight;
+`swell_height_m`, `swell_start_ms` and `swell_in_ms` set their shared envelope.
+
+Distance bands and radial attenuation use quadrant symmetry. A spatial
+ripple-shape lookup combines with interpolated time samples. Separable
+swell phase offsets use the mesh's row and column coordinates. The host
+suite checks the resulting heights against direct floating-point evaluation;
+its tolerance and observed maximum error are printed by
+`test_baked_floor_matches_direct_float`.
+
+The camera-plane walk retains fractional bits until projection, preserving
+the narrow transform's rounding. Views outside its input bounds use the full
+transform. Mesh rows and columns share endpoints through `DRAW_LINE_OPEN`;
+clipped starts retain their first pixel. Screen outcodes reject invisible
+edges before colour setup.
+
+The comparison below shows the float prototype, the baked floor and their
+pixel differences. Endpoint ownership and fixed-point sampling account for
+the visible differences. The crops enlarge the strongest differences.
+
+![Float prototype and baked floor](impact_compare/compare.png)
+
+![Enlarged prototype comparison](impact_compare/compare.crops.png)
+
+Regenerate a comparison against the float reference with:
+
+```sh
+bash launcher/tools/render/render_compare.sh --script launcher/tools/render/scenes/boot_anim_render_host.sh \
+  --render middle "1500 --quarter 1" --render late "3000 --quarter 1" \
+  --render crossfade "3900 --quarter 1" --crops 3 \
+  origin/feature/boot-anim-impact-ripple-proto . -o /absolute/path/to/comparison
+```
+
+Instruction measurements use the on-request `run_boot_floor_cost_suite`:
+
+```sh
+python .dev/scripts/quiet.py -- bash launcher/test/run_tests.sh --sanitize
+AUTANA_ASSET_DIR=launcher/test/build/assets launcher/test/build/host_tests --run run_boot_floor_cost_suite
+python .dev/scripts/quiet.py -- bash launcher/test/run_qemu_tests.sh --suite run_boot_floor_cost_suite --icount --timeout 600
+```
+
+The ink-zero row bounds projection plus traversal and rejection; it includes
+the flat spokes. The ordinary row measures the complete floor. Point and
+horizontal-line rows calibrate an estimate of setup and pixel costs; varied
+slopes, clipping and endpoint flags make that split approximate.
