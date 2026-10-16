@@ -28,6 +28,12 @@
 /* cells along each side of the floor's square mesh - even, so one line runs through the origin */
 #define BOOT_ANIM_MESH_CELLS 48
 
+/* skip edges at or below this alpha; -1 disables culling */
+#define BOOT_ANIM_MESH_CULL_ALPHA -1
+
+/* row spacing outside the central half of the mesh; 1 or 2 */
+#define BOOT_ANIM_MESH_FAR_STRIDE 1
+
 /* draws the mesh lines as alternating dashes instead of solid - 0 solid, 1 dashed */
 #define BOOT_ANIM_MESH_DASH 0
 

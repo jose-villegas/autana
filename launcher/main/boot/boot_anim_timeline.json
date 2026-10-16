@@ -7,6 +7,8 @@
         "grid_bands": 128,
         "mesh_cells": 48,
         "mesh_dash": 0,
+        "mesh_cull_alpha": -1,
+        "mesh_far_stride": 1,
         "grid_fade_ms": 128,
         "pen_start_ms": 520,
         "pen_ms": 1980,
