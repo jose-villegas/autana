@@ -12,7 +12,7 @@
 
 #define STEP_MS              (GRAVITY_MAX_DT_MS / 10U)
 #define SETTLE_MS            ((uint32_t)(GRAVITY_TAU_S * MATH_MS_PER_S) * 10U)
-#define BIAS_SETTLE_MS       ((uint32_t)(GRAVITY_BIAS_TAU_S * MATH_MS_PER_S) * 10U)
+#define BIAS_SETTLE_MS       ((uint32_t)(GRAVITY_BIAS_SETTLE_S * MATH_MS_PER_S))
 #define QUARTER_TURN_DEG     90.0F
 #define TURN_MS              (GRAVITY_MAX_DT_MS * 2U)
 #define TURN_DPS             (QUARTER_TURN_DEG * MATH_MS_PER_S / TURN_MS)
@@ -20,10 +20,11 @@
 #define ANGLE_TOLERANCE_DEG  (GRAVITY_REJECT_DEG / 10.0F)
 #define TURN_TOLERANCE       (ANGLE_TOLERANCE_DEG * MATH_PI / (2.0F * QUARTER_TURN_DEG))
 #define SHAKE_G              (GRAVITY_TRUST_NONE_G + GRAVITY_TRUST_FULL_G)
-#define BIAS_DPS             (GRAVITY_STILL_DPS / 4.0F)
-#define BIAS_TOLERANCE       (BIAS_DPS / 20.0F)
+#define BIAS_DPS             GRAVITY_GYRO_OFFSET_TOL_DPS
+#define BIAS_TOLERANCE       (BIAS_DPS / 50.0F)
 #define CORRECTION_ANGLE_RAD (GRAVITY_REJECT_DEG * MATH_PI / (4.0F * QUARTER_TURN_DEG))
 #define PARTIAL_TRUST_G      ((GRAVITY_TRUST_FULL_G + GRAVITY_TRUST_NONE_G) / 2.0F)
+#define CLAMP_OFFSET_DPS     (GRAVITY_BIAS_MAX_DPS + GRAVITY_GYRO_OFFSET_TOL_DPS / 4.0F)
 #define STALLED_MS           (GRAVITY_MAX_DT_MS * 20U)
 
 static gravity_t g;
@@ -117,15 +118,72 @@ test_shake_preserves_down_and_reports_linear(void) {
 }
 
 static void
-test_still_bias_converges_without_turning_down(void) {
-    const vec3f_t offsets[] = {{BIAS_DPS, 0, 0}, {0, -BIAS_DPS, 0}, {0, 0, BIAS_DPS}};
+test_perpendicular_bias_converges(void) {
+    const vec3f_t offsets[] = {{BIAS_DPS, 0, 0}, {0, -BIAS_DPS, 0}, {BIAS_DPS, -BIAS_DPS, 0}};
+    const vec3f_t down = {0, 0, -1};
     for (size_t i = 0; i < sizeof offsets / sizeof offsets[0]; i++) {
         fixture();
-        const vec3f_t down = {0, 0, -1};
         hold(sample(down, (vec3f_t){0}), STEP_MS);
-        hold(sample(down, offsets[i]), BIAS_SETTLE_MS);
+        const input_motion_t m = sample(down, offsets[i]);
+        for (uint32_t elapsed = 0; elapsed < BIAS_SETTLE_MS; elapsed += STEP_MS) {
+            gravity_update(&g, &m, STEP_MS);
+            TEST_ASSERT_TRUE(vec3f_dot(down, g.down) >= GRAVITY_REJECT_COS);
+        }
         assert_vector(offsets[i], g.gyro_bias, BIAS_TOLERANCE);
-        assert_vector(down, gravity_down(&g), TURN_TOLERANCE);
+        const float min_dot = cosf(ANGLE_TOLERANCE_DEG * MATH_PI / (2.0F * QUARTER_TURN_DEG));
+        TEST_ASSERT_TRUE(vec3f_dot(down, gravity_down(&g)) >= min_dot);
+    }
+}
+
+static void
+test_along_down_bias_is_unobservable(void) {
+    fixture();
+    const vec3f_t down = {0, 0, -1};
+    hold(sample(down, (vec3f_t){0, 0, BIAS_DPS}), BIAS_SETTLE_MS);
+    assert_vector((vec3f_t){0}, g.gyro_bias, 0);
+    assert_vector(down, gravity_down(&g), FLOAT_TOLERANCE);
+}
+
+static void
+test_rejection_and_recovery_do_not_learn_bias(void) {
+    const vec3f_t near_down = {sinf(CORRECTION_ANGLE_RAD), 0, -cosf(CORRECTION_ANGLE_RAD)};
+    const vec3f_t rejected[] = {vec3f_scale(near_down, 1.0F + SHAKE_G), {1, 0, 0}};
+    for (size_t i = 0; i < sizeof rejected / sizeof rejected[0]; i++) {
+        fixture();
+        hold(sample((vec3f_t){0, 0, -1}, (vec3f_t){0}), STEP_MS);
+        const input_motion_t m = sample(rejected[i], (vec3f_t){0});
+        hold(m, GRAVITY_RECOVER_MS);
+        assert_vector((vec3f_t){0}, g.gyro_bias, 0);
+        gravity_update(&g, &m, STEP_MS);
+        assert_vector((vec3f_t){0}, g.gyro_bias, 0);
+        assert_vector(vec3f_normalize(rejected[i]), g.down, FLOAT_TOLERANCE);
+    }
+}
+
+static void
+test_bias_clamps_each_axis(void) {
+    const struct {
+        vec3f_t down, offset, expected;
+    } cases[] = {
+        {{0, 0, -1}, {CLAMP_OFFSET_DPS, 0, 0}, {GRAVITY_BIAS_MAX_DPS, 0, 0}},
+        {{0, 0, -1}, {-CLAMP_OFFSET_DPS, 0, 0}, {-GRAVITY_BIAS_MAX_DPS, 0, 0}},
+        {{0, 0, -1}, {0, CLAMP_OFFSET_DPS, 0}, {0, GRAVITY_BIAS_MAX_DPS, 0}},
+        {{0, 0, -1}, {0, -CLAMP_OFFSET_DPS, 0}, {0, -GRAVITY_BIAS_MAX_DPS, 0}},
+        {{0, 1, 0}, {0, 0, CLAMP_OFFSET_DPS}, {0, 0, GRAVITY_BIAS_MAX_DPS}},
+        {{0, 1, 0}, {0, 0, -CLAMP_OFFSET_DPS}, {0, 0, -GRAVITY_BIAS_MAX_DPS}},
+    };
+
+    for (size_t i = 0; i < sizeof cases / sizeof cases[0]; i++) {
+        fixture();
+        hold(sample(cases[i].down, (vec3f_t){0}), STEP_MS);
+        const input_motion_t m = sample(cases[i].down, cases[i].offset);
+        for (uint32_t elapsed = 0; elapsed < BIAS_SETTLE_MS; elapsed += STEP_MS) {
+            gravity_update(&g, &m, STEP_MS);
+            TEST_ASSERT_TRUE(fabsf(g.gyro_bias.x) <= GRAVITY_BIAS_MAX_DPS);
+            TEST_ASSERT_TRUE(fabsf(g.gyro_bias.y) <= GRAVITY_BIAS_MAX_DPS);
+            TEST_ASSERT_TRUE(fabsf(g.gyro_bias.z) <= GRAVITY_BIAS_MAX_DPS);
+        }
+        assert_vector(cases[i].expected, g.gyro_bias, 0);
     }
 }
 
@@ -168,6 +226,7 @@ test_trusted_acceleration_pulls_gradually_with_magnitude_weight(void) {
     const input_motion_t full = sample(target, (vec3f_t){0});
     gravity_update(&g, &full, STEP_MS);
     const float full_pull = gravity_down(&g).x;
+    const float full_bias = fabsf(g.gyro_bias.y);
     TEST_ASSERT_TRUE(full_pull > 0 && full_pull < target.x);
     TEST_ASSERT_EQUAL_UINT32(0, g.distrust_ms);
     fixture();
@@ -175,8 +234,12 @@ test_trusted_acceleration_pulls_gradually_with_magnitude_weight(void) {
     const input_motion_t partial = sample(vec3f_scale(target, 1.0F + PARTIAL_TRUST_G), (vec3f_t){0});
     gravity_update(&g, &partial, STEP_MS);
     TEST_ASSERT_TRUE(gravity_down(&g).x > 0 && gravity_down(&g).x < full_pull);
-    hold(full, SETTLE_MS);
-    assert_vector(target, gravity_down(&g), FLOAT_TOLERANCE);
+    TEST_ASSERT_TRUE(fabsf(g.gyro_bias.y) > 0 && fabsf(g.gyro_bias.y) < full_bias);
+    const vec3f_t bias = g.gyro_bias;
+    const vec3f_t predicted = g.down;
+    gravity_update(&g, &full, 0);
+    assert_vector(bias, g.gyro_bias, 0);
+    assert_vector(predicted, g.down, FLOAT_TOLERANCE);
 }
 
 static void
@@ -202,7 +265,10 @@ run_gravity_suite(void) {
     RUN_TEST(test_first_reading_is_adopted_exactly);
     RUN_TEST(test_gyro_turns_follow_measured_screen_sense);
     RUN_TEST(test_shake_preserves_down_and_reports_linear);
-    RUN_TEST(test_still_bias_converges_without_turning_down);
+    RUN_TEST(test_perpendicular_bias_converges);
+    RUN_TEST(test_along_down_bias_is_unobservable);
+    RUN_TEST(test_rejection_and_recovery_do_not_learn_bias);
+    RUN_TEST(test_bias_clamps_each_axis);
     RUN_TEST(test_rejected_direction_recovers_only_past_limit);
     RUN_TEST(test_free_fall_stays_finite);
     RUN_TEST(test_trusted_acceleration_pulls_gradually_with_magnitude_weight);

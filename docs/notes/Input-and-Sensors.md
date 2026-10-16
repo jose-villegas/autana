@@ -224,15 +224,13 @@ flowchart TD
     Rotate --> Nonzero{Acceleration nonzero?}
     Nonzero -->|Yes| Trust[Magnitude trust weight and angular rejection]
     Trust --> Accepted{Accepted?}
-    Accepted -->|Yes| Pull[Weighted pull toward acceleration, clear distrust]
+    Accepted -->|Yes| Bias[While accepted: integrate correction error into gyro bias, clamped]
     Accepted -->|No| Recover[Count distrust, adopt acceleration past recovery limit]
+    Bias --> Pull[Weighted pull toward acceleration, clear distrust]
     Pull --> Linear[Linear acceleration = acceleration minus down]
     Recover --> Linear
     Nonzero -->|No| Linear
-    Linear --> Still{Low angular rate and low linear acceleration?}
-    Still -->|Yes| Bias[Low-pass gyro bias toward raw rotation]
-    Still -->|No| Output[Down, linear acceleration, strength, free fall]
-    Bias --> Output
+    Linear --> Output[Down, linear acceleration, strength, free fall]
 ```
 
 Magnitude trust falls linearly between the full-trust and no-trust thresholds.
@@ -244,9 +242,21 @@ the limit. Reset primes that recovery path so the first nonzero reading is
 adopted exactly, including when no time has elapsed. Zero acceleration skips
 correction and recovery counting, keeping the prediction finite in free fall.
 
-Stillness gates gyro bias learning. Mahony, Hamel and Pflimlin's complementary
-filter bias estimate is a related technique; this estimator low-passes raw
-rotation only while both angular rate and linear acceleration are small.<sup>[[71]](../Citations.md#71)</sup>
+While acceleration is accepted, the Mahony, Hamel and Pflimlin integral bias
+term accumulates `cross(down, direction)` before the down correction, weighted
+by magnitude trust and elapsed seconds.<sup>[[71]](../Citations.md#71)</sup>
+The radian correction is converted to degrees so bias stays in deg/s. Each
+axis is clamped to `GRAVITY_BIAS_MAX_DPS`. Rejection, zero acceleration and
+recovery adoption add no bias. Error is perpendicular to down, so bias along
+gravity is unobservable; rotation about down does not change down.
+
+Per axis, the linearised loop is theta' = b_err - theta/TAU and
+b_err' = -KI*theta, giving s^2 + s/TAU + KI = 0. When KI is small relative to
+1/(4*TAU^2), the slow pole is approximately -KI*TAU. A 2% settle takes about
+four slow time constants, so `GRAVITY_BIAS_KI` derives from
+4/(TAU*SETTLE_S), in 1/s^2. The chosen gain gives an overdamped loop; the
+settling target applies to accepted acceleration at full magnitude trust.
+
 Strength is the in-plane share of the unit down vector, clamped to 0..1 and
 reported as zero in free fall. Free fall means the magnitude of linear
 acceleration plus down is below the free-fall threshold.
@@ -260,9 +270,12 @@ The constants are owned by `launcher/main/input/gravity.h`:
 | `GRAVITY_TRUST_NONE_G` | 0.4 g | Android WindowOrientationListener acceleration tolerance, 4 m/s^2<sup>[[73]](../Citations.md#73)</sup> |
 | `GRAVITY_REJECT_DEG` | 10 deg | x-io Fusion acceleration rejection<sup>[[72]](../Citations.md#72)</sup> |
 | `GRAVITY_RECOVER_MS` | 5000 ms | x-io Fusion recovery trigger period<sup>[[72]](../Citations.md#72)</sup> |
-| `GRAVITY_STILL_DPS` | 6 deg/s | M0 board capture, gyro noise peaks +/-4 deg/s |
-| `GRAVITY_STILL_G` | 0.05 g | Ours |
-| `GRAVITY_BIAS_TAU_S` | 5 s | Ours |
+| `GRAVITY_GYRO_OFFSET_TOL_DPS` | 10 deg/s | QMI8658C datasheet, Table 8, board-level initial offset<sup>[[74]](../Citations.md#74)</sup> |
+| `GRAVITY_GYRO_OFFSET_TCO_DPS_PER_C` | 0.05 deg/s/C | QMI8658C datasheet, Table 8<sup>[[74]](../Citations.md#74)</sup> |
+| `GRAVITY_GYRO_TEMP_SPAN_C` | 60 C | 25 C reference to 85 C operating limit<sup>[[74]](../Citations.md#74)</sup> |
+| `GRAVITY_BIAS_MAX_DPS` | 13 deg/s | QMI8658C datasheet, Table 8: initial offset plus temperature drift, 10 + 0.05 * 60<sup>[[74]](../Citations.md#74)</sup> |
+| `GRAVITY_BIAS_SETTLE_S` | 20 s | Ours, target 2% settling for a datasheet-sized offset |
+| `GRAVITY_BIAS_KI` | 4 / (TAU * SETTLE_S) = 0.4 /s^2 | Linearised integral loop, derived above |
 | `GRAVITY_FREE_FALL_G` | 0.3 g | Tilt's `TILT_FREE_FALL_PCT` |
 | `GRAVITY_MAX_DT_MS` | 100 ms | Tilt's `TILT_MAX_DT_MS` |
 
