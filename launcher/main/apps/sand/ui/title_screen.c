@@ -93,10 +93,10 @@ title_screen_draw(mu_Context* ctx) {
         return SAND_TITLE_NONE;
     }
 
-    const ui_theme_t* theme = &sand_ui_theme;
+    const ui_mu_theme_t* theme = &sand_ui_theme;
     ui_header_bar(ctx, lay.header, TITLE_SCREEN_TITLE, lay.title_scale, theme);
     ui_text_in(ctx, lay.subtitle, TITLE_SCREEN_SUBTITLE, theme->accent, theme->text_scale, UI_ALIGN_CENTRE);
-    ui_panel(ctx, lay.footer, theme);
+    ui_mu_panel(ctx, lay.footer, theme);
 
     sand_title_button_t hit = SAND_TITLE_NONE;
     for (int i = 0; i < SAND_TITLE_BUTTON_COUNT; i++) {

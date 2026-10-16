@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# ui_dropdown() on a host, opened, scrolled and picked from by a scripted
+# ui_mu_dropdown() on a host, opened, scrolled and picked from by a scripted
 # finger, see ui_dropdown_render_host.c and docs/tools/Render-Harness.md.
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -11,6 +11,7 @@ main/services/tune.c
 main/ui/ui.c
 main/ui/input/ui_bridge.c
 main/ui/ui_build.c
+main/ui/face/ui_face.c
 main/ui/ui_canvas_marks.c
 main/ui/controls/ui_icons.c
 main/ui/input/ui_pointer.c

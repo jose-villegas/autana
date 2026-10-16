@@ -19,7 +19,7 @@
 #define BACKGROUND 0x0A0C14
 #define HEADER_H   40
 
-static const ui_theme_t THEME = {
+static const ui_mu_theme_t THEME = {
     .panel_face = UI_RGB(0x131C2E),
     .panel_edge = UI_RGB(0xE8ECF4),
     .button_face = UI_RGB(0x1B2740),
@@ -94,7 +94,7 @@ landscape(void) {
 static ui_widget_button_t
 button(ui_icon_id_t icon, const char* label, bool enabled, bool selected) {
     return (ui_widget_button_t){
-        .icon = ui_icon(icon),
+        .icon = ui_icon_image(icon),
         .label = label,
         .enabled = enabled,
         .selected = selected,
@@ -104,13 +104,13 @@ button(ui_icon_id_t icon, const char* label, bool enabled, bool selected) {
 static void
 draw_dropdown(mu_Context* ctx, mu_Rect r) {
     const ui_dropdown_item_t items[] = {
-        {ui_icon(UI_ICON_HOME), "HOME"},
-        {ui_icon(UI_ICON_WIFI), "WIFI"},
-        {ui_icon(UI_ICON_MONITOR), "DISPLAY"},
-        {ui_icon(UI_ICON_GAMEPAD), "GAMES"},
+        {ui_icon_image(UI_ICON_HOME), "HOME"},
+        {ui_icon_image(UI_ICON_WIFI), "WIFI"},
+        {ui_icon_image(UI_ICON_MONITOR), "DISPLAY"},
+        {ui_icon_image(UI_ICON_GAMEPAD), "GAMES"},
     };
     const int count = (int)(sizeof items / sizeof items[0]);
-    const int picked = ui_dropdown(ctx, "gallery", r, items, count, picked_item, &THEME);
+    const int picked = ui_mu_dropdown(ctx, "gallery", r, items, count, picked_item, &THEME);
     if (picked >= 0) {
         picked_item = picked;
     }
@@ -118,7 +118,7 @@ draw_dropdown(mu_Context* ctx, mu_Rect r) {
 
 static void
 draw_slider_panel(mu_Context* ctx, mu_Rect r) {
-    ui_panel(ctx, r, &THEME);
+    ui_mu_panel(ctx, r, &THEME);
     const mu_Rect caption = mu_rect(r.x + 12, r.y + 6, r.w - 24, 24);
     ui_text_in(ctx, caption, "QUALITY", THEME.caption, 2, UI_ALIGN_LEFT);
     ui_text_in(ctx, caption, "NORMAL", THEME.text, 2, UI_ALIGN_RIGHT);
@@ -230,7 +230,7 @@ draw_settings(mu_Context* ctx) {
     mu_layout_set_next(ctx, mu_rect(UI_MARGIN, 144, row_w, UI_TAP_MIN), 0);
     mu_checkbox(ctx, "MUTE", &muted);
     const int picked =
-        ui_dropdown(ctx, "output", mu_rect(UI_MARGIN, 216, row_w, UI_TAP_MIN), OUTPUTS, 4, output, &THEME);
+        ui_mu_dropdown(ctx, "output", mu_rect(UI_MARGIN, 216, row_w, UI_TAP_MIN), OUTPUTS, 4, output, &THEME);
     if (picked >= 0) {
         output = picked;
     }

@@ -35,7 +35,7 @@
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
 
-static const ui_theme_t THEME = {
+static const ui_mu_theme_t THEME = {
     .panel_face = UI_RGB(0x202020),
     .panel_edge = UI_RGB(0x505050),
     .button_face = UI_RGB(0x303030),
@@ -56,7 +56,7 @@ test_theme_from_style_maps_widget_colors(void) {
     for (int i = 0; i < MU_COLOR_MAX; i++) {
         style.colors[i] = (mu_Color){(uint8_t)i, (uint8_t)(i + 1), (uint8_t)(i + 2), (uint8_t)(i + 3)};
     }
-    const ui_theme_t theme = ui_theme_from_style(&style);
+    const ui_mu_theme_t theme = ui_theme_from_style(&style);
     TEST_ASSERT_EQUAL_MEMORY(&style.colors[MU_COLOR_BUTTON], &theme.button_face, sizeof(mu_Color));
     TEST_ASSERT_EQUAL_MEMORY(&style.colors[MU_COLOR_BUTTONFOCUS], &theme.accent_face, sizeof(mu_Color));
     TEST_ASSERT_EQUAL_MEMORY(&style.colors[MU_COLOR_TEXT], &theme.text, sizeof(mu_Color));
@@ -403,7 +403,7 @@ dropdown_frame(const input_t* in, int selected) {
     const bool began = paint_frames ? mu_begin_window_ex(ui_context(), "Widgets", mu_rect(20, 40, 300, 80), opts)
                                     : ui_begin_screen(ui_context(), "Widgets", opts);
     if (began) {
-        picked = ui_dropdown(ui_context(), "pick", DROPDOWN, ITEMS, 3, selected, &THEME);
+        picked = ui_mu_dropdown(ui_context(), "pick", DROPDOWN, ITEMS, 3, selected, &THEME);
         dropdown_open = ui_dropdown_is_open(ui_context(), "pick");
         mu_end_window(ui_context());
     }
@@ -567,7 +567,7 @@ chevron_hash(void) {
     return h;
 }
 
-/* was_open is read at the top of ui_dropdown(), before this same frame's own
+/* was_open is read at the top of ui_mu_dropdown(), before this same frame's own
  * click can open the list, so the very frame the list's own open flag
  * flips true must still draw the closed chevron, changing only on the frame
  * after. Finds that transition frame rather than assuming which one it is. */
@@ -653,7 +653,7 @@ build_menu_frame(const input_t* in, int revision, int commands, bool scrollable)
     mu_Context* ctx = ui_context();
     if (ui_scroll_view_begin(ctx, "Menu", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME,
                              ui_scroll_view_default(), 16)) {
-        menu_pick = ui_dropdown(ctx, "pick", MENU_ANCHOR, MENU_ITEMS, MENU_ITEM_COUNT, 0, &THEME);
+        menu_pick = ui_mu_dropdown(ctx, "pick", MENU_ANCHOR, MENU_ITEMS, MENU_ITEM_COUNT, 0, &THEME);
         dropdown_open = ui_dropdown_is_open(ctx, "pick");
         const mu_Color saved_text = ctx->style->colors[MU_COLOR_TEXT];
         ctx->style->colors[MU_COLOR_TEXT] = ui_rgb(MENU_INK);
@@ -937,7 +937,7 @@ many_frame(const input_t* in, int selected) {
     ui_begin(in);
     int picked = -1;
     if (ui_begin_screen(ui_context(), "Widgets", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
-        picked = ui_dropdown(ui_context(), "many", DROPDOWN, MANY, MANY_COUNT, selected, &THEME);
+        picked = ui_mu_dropdown(ui_context(), "many", DROPDOWN, MANY, MANY_COUNT, selected, &THEME);
         many_open = ui_dropdown_is_open(ui_context(), "many");
         mu_end_window(ui_context());
     }
@@ -1009,7 +1009,7 @@ many_frame_scroll(int x, int y, int selected, int scroll_dy) {
     }
     int picked = -1;
     if (ui_begin_screen(ui_context(), "Widgets", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
-        picked = ui_dropdown(ui_context(), "many", DROPDOWN, MANY, MANY_COUNT, selected, &THEME);
+        picked = ui_mu_dropdown(ui_context(), "many", DROPDOWN, MANY, MANY_COUNT, selected, &THEME);
         many_open = ui_dropdown_is_open(ui_context(), "many");
         mu_end_window(ui_context());
     }
@@ -1109,7 +1109,7 @@ over_button_frame(const input_t* in, bool* button) {
     if (ui_begin_screen(ui_context(), "Widgets", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
         mu_layout_set_next(ui_context(), BUTTON, 0);
         *button = mu_button(ui_context(), "GO") != 0 || *button;
-        picked = ui_dropdown(ui_context(), "pick", DROPDOWN, ITEMS, 3, 0, &THEME);
+        picked = ui_mu_dropdown(ui_context(), "pick", DROPDOWN, ITEMS, 3, 0, &THEME);
         dropdown_open = ui_dropdown_is_open(ui_context(), "pick");
         mu_end_window(ui_context());
     }

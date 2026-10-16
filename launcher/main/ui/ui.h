@@ -245,3 +245,51 @@ uint32_t ui_band_fallback_count(void);
  * frame it is wanted. `rgb` is plain 0xRRGGBB, not a gfx_color_t; ui.h
  * does not otherwise depend on gfx.h. */
 void ui_queue_band_overlay_rect(int x, int y, int w, int h, uint32_t rgb);
+
+#include "math/geometry/recti.h"
+
+/* Colours are 0xRRGGBB. NULL restores the shell look. */
+typedef struct {
+    uint32_t panel_face, panel_edge, button_face;
+    uint32_t accent, accent_face, on_accent;
+    uint32_t text, caption, muted;
+    int text_scale;
+    int icon_side;
+} ui_theme_t;
+
+void ui_theme(const ui_theme_t* theme);
+/* Windows close at the next window verb or ui_end(). */
+void ui_screen(void);
+void ui_window(recti_t r);
+void ui_row(int h);
+recti_t ui_next(void);
+
+bool ui_button(recti_t r, const char* label);
+bool ui_tile(recti_t r, const char* label, bool selected);
+bool ui_toggle(recti_t r, const char* label, bool* on);
+bool ui_slider(recti_t r, const char* label, int* value, int lo, int hi);
+bool ui_dropdown(recti_t r, const char* label, int* index, const char* const* names, int count);
+bool ui_dropdown_icons(recti_t r, const char* label, int* index, const char* const* names,
+                       const draw_image_t* const* icons, int count);
+
+/* Text is clipped to its rectangle and centred vertically. */
+void ui_text(recti_t r, const char* s);
+void ui_text_right(recti_t r, const char* s);
+void ui_text_centre(recti_t r, const char* s);
+void ui_caption(recti_t r, const char* s);
+void ui_header(recti_t r, const char* title);
+void ui_panel(recti_t r);
+void ui_fill(recti_t r, uint32_t rgb);
+void ui_outline(recti_t r, uint32_t rgb);
+void ui_icon(recti_t r, const draw_image_t* icon);
+void ui_swatches(recti_t r, const uint32_t* rgb, int cols, int rows);
+
+void ui_disabled_begin(bool disabled);
+void ui_disabled_end(void);
+
+typedef enum { UI_COLOR_FACE, UI_COLOR_TEXT } ui_color_slot_t;
+
+void ui_color_begin(ui_color_slot_t slot, uint32_t rgb);
+void ui_color_end(void);
+void ui_scale_begin(int scale);
+void ui_scale_end(void);

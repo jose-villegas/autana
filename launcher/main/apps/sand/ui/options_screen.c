@@ -117,8 +117,8 @@ options_screen_layout(int screen_w, int screen_h, options_screen_layout_t* out) 
 static void
 draw_quality(mu_Context* ctx, const options_screen_layout_t* lay, const sand_menu_t* menu,
              const options_screen_labels_t* labels, sand_options_hits_t* hits) {
-    const ui_theme_t* theme = &sand_ui_theme;
-    ui_panel(ctx, lay->quality_panel, theme);
+    const ui_mu_theme_t* theme = &sand_ui_theme;
+    ui_mu_panel(ctx, lay->quality_panel, theme);
     ui_text_in(ctx, lay->quality_caption, OPTIONS_SCREEN_QUALITY, theme->caption, theme->text_scale, UI_ALIGN_LEFT);
     ui_text_in(ctx, lay->quality_value, labels->quality_names[menu->draft.quality], theme->text, theme->text_scale,
                UI_ALIGN_RIGHT);
@@ -145,7 +145,7 @@ draw_mode_swatch(mu_Context* ctx, mu_Rect tile, const sand_mode_swatch_t* swatch
 static void
 draw_colour(mu_Context* ctx, const options_screen_layout_t* lay, const sand_menu_t* menu,
             const options_screen_labels_t* labels, sand_options_hits_t* hits) {
-    const ui_theme_t* theme = &sand_ui_theme;
+    const ui_mu_theme_t* theme = &sand_ui_theme;
     ui_text_in(ctx, lay->color_caption, OPTIONS_SCREEN_COLOR_MODE, theme->caption, theme->text_scale, UI_ALIGN_CENTRE);
     for (int i = 0; i < OPTIONS_SCREEN_TILE_COUNT; i++) {
         const ui_widget_button_t tile = {
@@ -163,7 +163,7 @@ draw_colour(mu_Context* ctx, const options_screen_layout_t* lay, const sand_menu
 static void
 draw_dither(mu_Context* ctx, const options_screen_layout_t* lay, const sand_menu_t* menu,
             const options_screen_labels_t* labels, sand_options_hits_t* hits) {
-    const ui_theme_t* theme = &sand_ui_theme;
+    const ui_mu_theme_t* theme = &sand_ui_theme;
     ui_text_in(ctx, lay->dither_caption, OPTIONS_SCREEN_DITHER, theme->caption, theme->text_scale, UI_ALIGN_CENTRE);
 
     assert(labels->dither_count <= GFX_DITHER_MODE_COUNT);
@@ -175,7 +175,7 @@ draw_dither(mu_Context* ctx, const options_screen_layout_t* lay, const sand_menu
             .label = labels->dither_names[i],
         };
     }
-    const int picked = ui_dropdown(ctx, "dither", lay->dither, items, count, menu->draft.dither, theme);
+    const int picked = ui_mu_dropdown(ctx, "dither", lay->dither, items, count, menu->draft.dither, theme);
     if (picked >= 0) {
         hits->dither = picked;
     }
@@ -184,7 +184,7 @@ draw_dither(mu_Context* ctx, const options_screen_layout_t* lay, const sand_menu
 static void
 draw_footer(mu_Context* ctx, const options_screen_layout_t* lay, const sand_menu_t* menu, sand_options_t committed,
             sand_options_hits_t* hits) {
-    const ui_theme_t* theme = &sand_ui_theme;
+    const ui_mu_theme_t* theme = &sand_ui_theme;
     const int pending = sand_menu_pending_changes(menu, committed);
     char apply_label[24];
     options_screen_apply_label(pending, apply_label, (int)sizeof apply_label);

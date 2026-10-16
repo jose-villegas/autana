@@ -438,7 +438,7 @@ draw_imu_round(mu_Context* ctx) {
                  gyro[axis]);
         hud_line(ctx, axis, line);
     }
-    const ui_theme_t theme = ui_theme_from_style(ctx->style);
+    const ui_mu_theme_t theme = ui_theme_from_style(ctx->style);
     const int top = HUD_TOP + (MOTION_HUD_ROWS * HUD_LINE_H) + MOTION_MARGIN;
     const int width = (screen_w - 3 * MOTION_MARGIN) / 2;
     const ui_widget_button_t save = {.label = "SAVE", .enabled = true};
