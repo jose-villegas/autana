@@ -1,0 +1,58 @@
+{
+  "unit": "QEMU --icount instructions per isolated draw_floor call; not board time",
+  "quantization_instructions": 15.625,
+  "references": {
+    "before": "4a3455810ef2ff17904a77c7826fdeeb7aca95a5",
+    "main_rings": "ed79928fa4bce3da48a809b945e6dd6c0609b949",
+    "main_rows_source": "feature/boot-floor-lod:launcher/tools/boot_anim/lod_compare/measurements.json"
+  },
+  "production_source_sha256": {
+    "launcher/main/boot/boot_anim.c": "ad72de85b90e38402eab2594e46a4b3dc4446bc95aff47706d6df69b2ea1fbc7",
+    "launcher/main/boot/boot_anim.h": "d3ecfac390a9f4ba56ce9b3525257b04ce9d64a401e03e0e011cf0bed9183b7a",
+    "launcher/main/boot/boot_anim_timeline.h": "49cabff0b9bab8d27018f6903aff779cbf3f35d17c9823e7cc9ba32c89bf9597",
+    "launcher/main/draw/draw.c": "6177dcf77603b157247b5d69aedd9df17cc2db643bdcfc1a9ee50dd4b6e93ffa",
+    "launcher/main/draw/draw.h": "663114e4f563710289d8345b6cb26cc81552d50495d0c1718904d1154af785b2"
+  },
+  "rows": [
+    {
+      "ms": 2464,
+      "before": 2918218.75,
+      "after": 2936000.0,
+      "main_rings": 2767296.875,
+      "delta_vs_before": 17781.25,
+      "delta_vs_before_percent": 0.609,
+      "delta_vs_main": 168703.125,
+      "delta_vs_main_percent": 6.096
+    },
+    {
+      "ms": 3550,
+      "before": 2611281.25,
+      "after": 2671718.75,
+      "main_rings": 2305765.625,
+      "delta_vs_before": 60437.5,
+      "delta_vs_before_percent": 2.314,
+      "delta_vs_main": 365953.125,
+      "delta_vs_main_percent": 15.871
+    },
+    {
+      "ms": 3724,
+      "before": 2623140.625,
+      "after": 2690718.75,
+      "main_rings": 2151609.375,
+      "delta_vs_before": 67578.125,
+      "delta_vs_before_percent": 2.576,
+      "delta_vs_main": 539109.375,
+      "delta_vs_main_percent": 25.056
+    },
+    {
+      "ms": 4372,
+      "before": 2734468.75,
+      "after": 2796937.5,
+      "main_rings": 975171.875,
+      "delta_vs_before": 62468.75,
+      "delta_vs_before_percent": 2.284,
+      "delta_vs_main": 1821765.625,
+      "delta_vs_main_percent": 186.815
+    }
+  ]
+}

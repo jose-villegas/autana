@@ -95,18 +95,41 @@ plot(const gfx_surface_t* state, int x, int y, gfx_color_t color, unsigned flags
     *dst = (flags & DRAW_LINE_ADD) ? gfx_color_add(*dst, color) : color;
 }
 
+typedef struct {
+    unsigned on, period, phase;
+} line_dash_t;
+
+static line_dash_t
+line_dash(unsigned flags, unsigned offset) {
+    const unsigned on = (flags >> DRAW_LINE_DASH_ON_SHIFT) & DRAW_LINE_DASH_MASK;
+    const unsigned off = (flags >> DRAW_LINE_DASH_OFF_SHIFT) & DRAW_LINE_DASH_MASK;
+    const unsigned period = (flags & DRAW_LINE_DASHED) ? on + off : 0;
+    return (line_dash_t){on, period, period ? offset % period : 0};
+}
+
+static bool
+line_dash_step(line_dash_t* dash) {
+    const bool visible = !dash->period || dash->phase < dash->on;
+    if (++dash->phase == dash->period) {
+        dash->phase = 0;
+    }
+    return visible;
+}
+
 /* Bresenham (docs/Citations.md#30), treats both axes alike, no case analysis. */
 static void
-walk(const gfx_surface_t* state, int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
+walk(const gfx_surface_t* state, int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags, unsigned offset) {
     const int dx = mathi_abs(x1 - x0);
     const int dy = -mathi_abs(y1 - y0);
     const int sx = x0 < x1 ? 1 : -1;
     const int sy = y0 < y1 ? 1 : -1;
     int err = dx + dy;
     bool first = true;
+    line_dash_t dash = line_dash(flags, offset);
 
     for (;;) {
-        if (!(first && (flags & DRAW_LINE_OPEN))) {
+        const bool visible = line_dash_step(&dash);
+        if (visible && !(first && (flags & DRAW_LINE_OPEN))) {
             plot(state, x0, y0, color, flags);
         }
         first = false;
@@ -130,6 +153,8 @@ walk(const gfx_surface_t* state, int x0, int y0, int x1, int y1, gfx_color_t col
  * underestimating leaves stale. */
 static void
 line_walk(const gfx_surface_t* state, int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
+    const int start_x = x0;
+    const int start_y = y0;
     if (!gfx_box_clip_segment(&state->clip, &x0, &y0, &x1, &y1)) {
         return;
     }
@@ -137,7 +162,8 @@ line_walk(const gfx_surface_t* state, int x0, int y0, int x1, int y1, gfx_color_
     const gfx_box_t box = gfx_box_intersect(
         (gfx_box_t){mathi_min(x0, x1), mathi_min(y0, y1), mathi_max(x0, x1) + 1, mathi_max(y0, y1) + 1}, state->clip);
 
-    walk(state, x0, y0, x1, y1, color, flags);
+    const unsigned offset = (unsigned)mathi_max(mathi_abs(x0 - start_x), mathi_abs(y0 - start_y));
+    walk(state, x0, y0, x1, y1, color, flags, offset);
 
     if (state->marks && box.x0 < box.x1 && box.y0 < box.y1) {
         gfx_mark_drawn(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);

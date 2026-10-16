@@ -14,8 +14,8 @@ any glTF tool and baked into the boot clip's own asset pack by
 tools/r3d/build_pack.py from main/boot/boot_anim_motion.anim.toml; this
 script only reads it to check it.
 
-The output header includes the floor's distance bands, attenuation, ripple
-shape, decay and swell phases. The mesh geometry and its radial bounds are
+The output header includes the floor's distance bands, Gaussian and calm
+lookups, packet frame scalars and swell phases. The mesh geometry and its radial bounds are
 baked with the timeline. Only camera transforms and drawing depend on the view.
 
 VALIDATION
@@ -105,6 +105,8 @@ FLOOR_TIME_STEP_MS = 10
 FLOOR_GAIN_ONE = 32768
 FLOOR_BAND_SHIFT = 4
 FLOOR_PHASE_TURN = 65536
+FLOOR_GAUSSIAN_LIMIT = 6
+FLOOR_LOOKUP_SCALE = 256
 
 
 def floor_number(value, name, minimum=0, positive=False, integer=False):
@@ -117,17 +119,20 @@ def floor_number(value, name, minimum=0, positive=False, integer=False):
 
 def validate_floor(cfg):
     allowed = {"timing", "camera_half_fov_short_tan", "grid_step_m",
-               "ripple_wavelength_m", "ripple_speed_m_s", "ripple_rings",
+               "ripple_wavelength_m", "ripple_clock_s", "ripple_group_speed_m_s",
+               "ripple_width_m", "ripple_dispersion_m_s", "ripple_source_radius_m",
+               "ripple_calm_fraction", "white_height_m", "floor_grey", "grid_edge_fade_fraction",
                "ripple_height_m", "swell_height_m", "swell"}
     for key in sorted(set(cfg) - allowed):
         fail("unknown key: " + key)
-    for key in ("ripple_wavelength_m", "ripple_speed_m_s", "ripple_rings"):
+    for key in ("ripple_wavelength_m", "ripple_clock_s", "ripple_group_speed_m_s",
+                "ripple_width_m", "ripple_dispersion_m_s", "ripple_source_radius_m", "white_height_m"):
         floor_number(cfg.get(key), key, positive=True)
     for key in ("ripple_height_m", "swell_height_m"):
         floor_number(cfg.get(key), key)
-    for key in ("ripple_impact_ms", "ripple_decay_ms", "swell_start_ms", "swell_in_ms"):
+    for key in ("ripple_impact_ms", "ripple_calm_after_ms", "swell_in_ms"):
         floor_number(cfg["timing"].get(key), key,
-                     positive=key in ("ripple_decay_ms", "swell_in_ms"), integer=True)
+                     positive=key == "swell_in_ms", integer=True)
     if not isinstance(cfg.get("swell"), list) or not cfg["swell"]:
         fail("swell must be a nonempty list")
     for index, sine in enumerate(cfg["swell"]):
@@ -145,16 +150,30 @@ def validate_floor(cfg):
     amplitude = cfg["ripple_height_m"] + cfg["swell_height_m"] * sum(s["weight"] for s in cfg["swell"])
     if meters_to_q12(amplitude) >= (1 << 15):
         fail("ripple_height_m + weighted swell_height_m must fit signed Q12")
-    sigma = cfg["ripple_rings"] * cfg["ripple_wavelength_m"]
-    extent = sigma * math.sqrt(math.log(max(1, cfg["ripple_height_m"] * BOOT_ANIM_ONE * 2))) * FLOOR_SHAPE_SCALE
-    if not math.isfinite(extent) or extent > (1 << 15) - 1:
-        fail("ripple_rings * ripple_wavelength_m must fit the signed shape index")
-    travel = cfg["ripple_speed_m_s"] * (cfg["timing"]["total_ms"] + (2 * FLOOR_TIME_STEP_MS)) * FLOOR_SHAPE_SCALE / 1000
-    if not math.isfinite(travel) or travel > (1 << 15) - 1:
-        fail("ripple_speed_m_s must fit the signed travel index")
+    for key in ("ripple_calm_fraction", "grid_edge_fade_fraction"):
+        floor_number(cfg.get(key), key)
+        if cfg[key] >= 1:
+            fail(key + " must be less than 1")
+    if round(cfg["grid_edge_fade_fraction"] * cfg["timing"]["grid_bands"]) >= cfg["timing"]["grid_bands"]:
+        fail("grid_edge_fade_fraction must leave a fade band")
+    if not 0 < meters_to_q12(cfg["white_height_m"]) < (1 << 15):
+        fail("white_height_m must fit positive signed Q12")
+    floor_number(cfg.get("floor_grey"), "floor_grey", integer=True)
+    if cfg["floor_grey"] > 0xFFFFFF:
+        fail("floor_grey must fit RGB24")
+    for key in ("ripple_width_m", "ripple_wavelength_m"):
+        if FLOOR_GAIN_ONE / cfg[key] >= (1 << 16):
+            fail(key + " must fit the unsigned reciprocal index")
     reach = math.sqrt(2) * mesh_step_q12(cfg) * (cfg["timing"]["mesh_cells"] // 2)
+    travel = cfg["ripple_group_speed_m_s"] * cfg["ripple_clock_s"] * FLOOR_SHAPE_SCALE
+    if not math.isfinite(travel) or travel >= (1 << 15):
+        fail("ripple_group_speed_m_s * ripple_clock_s must fit the signed travel index")
     if reach * FLOOR_SHAPE_SCALE / BOOT_ANIM_ONE >= (1 << 16):
         fail("grid_step_m * grid_bands must fit the unsigned radius index")
+    for key in ("mesh_dash_on_px", "mesh_dash_off_px"):
+        floor_number(cfg["timing"].get(key), key, positive=True, integer=True)
+        if cfg["timing"][key] > 255:
+            fail(key + " must fit an unsigned byte")
 
 
 def floor_array(w, ctype, name, rows):
@@ -169,10 +188,15 @@ def emit_floor(cfg, w):
     half = timing["mesh_cells"] // 2
     step = mesh_step_q12(cfg)
     band = meters_to_q12(cfg["grid_step_m"])
-    sigma = cfg["ripple_rings"] * cfg["ripple_wavelength_m"]
-    extent = math.ceil(sigma * math.sqrt(math.log(max(1, cfg["ripple_height_m"] * BOOT_ANIM_ONE * 2))) * FLOOR_SHAPE_SCALE)
-    for key in ("ripple_wavelength_m", "ripple_speed_m_s", "ripple_rings", "ripple_height_m", "swell_height_m"):
+    for key in ("ripple_wavelength_m", "ripple_clock_s", "ripple_group_speed_m_s", "ripple_width_m",
+                "ripple_dispersion_m_s", "ripple_source_radius_m", "ripple_calm_fraction",
+                "ripple_height_m", "swell_height_m"):
         w("#define BOOT_ANIM_%s %s\n" % (key.upper(), repr(float(cfg[key]))))
+    w("#define BOOT_ANIM_FLOOR_GREY 0x%06X\n" % cfg["floor_grey"])
+    w("#define BOOT_ANIM_WHITE_HEIGHT_Q12 %d\n" % meters_to_q12(cfg["white_height_m"]))
+    w("#define BOOT_ANIM_GRID_EDGE_FADE_BAND %d\n" % round(cfg["grid_edge_fade_fraction"] * timing["grid_bands"]))
+    w("#define BOOT_ANIM_RIPPLE_WAVELENGTH_SHAPE %d\n" % round(cfg["ripple_wavelength_m"] * FLOOR_SHAPE_SCALE))
+    w("#define BOOT_ANIM_RIPPLE_INV_WAVELENGTH %d\n" % round(FLOOR_GAIN_ONE / cfg["ripple_wavelength_m"]))
     w("#ifndef DEVICE_BUILD\n")
     w("typedef struct { double wavelength_m, period_ms, direction_deg, weight; } boot_anim_swell_setting_t;\n")
     w("static const boot_anim_swell_setting_t boot_anim_swell_settings[] = {\n")
@@ -181,36 +205,47 @@ def emit_floor(cfg, w):
     w("};\n#endif\n")
     w("#define BOOT_ANIM_FLOOR_BAND_SHIFT %d\n" % FLOOR_BAND_SHIFT)
     w("#define BOOT_ANIM_RIPPLE_SHAPE_SCALE %d\n" % FLOOR_SHAPE_SCALE)
-    w("#define BOOT_ANIM_RIPPLE_SHAPE_EXTENT %d\n" % extent)
+    w("#define BOOT_ANIM_RIPPLE_GAUSSIAN_EXTENT %d\n" % (FLOOR_GAUSSIAN_LIMIT * FLOOR_LOOKUP_SCALE))
+    w("#define BOOT_ANIM_RIPPLE_LOOKUP_SCALE %d\n" % FLOOR_LOOKUP_SCALE)
     w("#define BOOT_ANIM_FLOOR_TIME_STEP_MS %d\n" % FLOOR_TIME_STEP_MS)
     w("#define BOOT_ANIM_FLOOR_GAIN_SHIFT 15\n")
     w("#define BOOT_ANIM_SWELL_COUNT %d\n\n" % len(cfg["swell"]))
-    w("typedef struct { uint16_t radius, band_q4, falloff; } boot_anim_floor_node_t;\n")
+    w("typedef struct { uint16_t radius, band_q4, phase; } boot_anim_floor_node_t;\n")
     rows = []
     for j in range(half + 1):
         for i in range(half + 1):
             r_q12 = math.isqrt((i * step)**2 + (j * step)**2)
             r = r_q12 / BOOT_ANIM_ONE
             rows.append((round(r * FLOOR_SHAPE_SCALE), (r_q12 << FLOOR_BAND_SHIFT) // band,
-                         round(FLOOR_GAIN_ONE / math.sqrt(1 + r / cfg["ripple_wavelength_m"]))))
+                         round(r * FLOOR_PHASE_TURN / cfg["ripple_wavelength_m"]) % FLOOR_PHASE_TURN))
     floor_array(w, "boot_anim_floor_node_t", "boot_anim_floor_nodes", rows)
-    w("static const int16_t boot_anim_ripple_shape[] = {\n")
-    values = []
-    for n in range(-extent, extent + 1):
-        x = n / FLOOR_SHAPE_SCALE
-        values.append(meters_to_q12(cfg["ripple_height_m"] * math.exp(-(x / sigma)**2) * math.cos(math.tau * x / cfg["ripple_wavelength_m"])))
-    for start in range(0, len(values), 16):
-        w("    " + ", ".join(map(str, values[start:start + 16])) + ",\n")
-    w("};\n\n")
-    w("typedef struct { int16_t travel; uint16_t decay, swell; uint16_t phase[BOOT_ANIM_SWELL_COUNT]; } boot_anim_floor_time_t;\n")
+    for name, values in (
+            ("gaussian", [round(FLOOR_GAIN_ONE * math.exp(-0.5 * (n / FLOOR_LOOKUP_SCALE)**2))
+                          for n in range(FLOOR_GAUSSIAN_LIMIT * FLOOR_LOOKUP_SCALE + 1)]),
+            ("smoothstep", [round(FLOOR_GAIN_ONE * (n / FLOOR_LOOKUP_SCALE)**2 * (3 - 2 * n / FLOOR_LOOKUP_SCALE))
+                            for n in range(FLOOR_LOOKUP_SCALE + 1)])):
+        w("static const uint16_t boot_anim_ripple_%s[] = {\n" % name)
+        for start in range(0, len(values), 16):
+            w("    " + ", ".join(map(str, values[start:start + 16])) + ",\n")
+        w("};\n\n")
+    w("typedef struct { int16_t radius, amplitude, calm_start; uint16_t inv_width, ripple_phase, swell; uint16_t phase[BOOT_ANIM_SWELL_COUNT]; } boot_anim_floor_time_t;\n")
     w("static const boot_anim_floor_time_t boot_anim_floor_times[] = {\n")
     for ms in range(0, timing["total_ms"] + FLOOR_TIME_STEP_MS * 2, FLOOR_TIME_STEP_MS):
-        tau = max(0, ms - timing["ripple_impact_ms"])
-        travel = round(cfg["ripple_speed_m_s"] * tau * FLOOR_SHAPE_SCALE / 1000)
-        decay = round(FLOOR_GAIN_ONE * math.exp(-tau / timing["ripple_decay_ms"]))
-        gain = round(FLOOR_GAIN_ONE * min(1, max(0, (ms - timing["swell_start_ms"]) / timing["swell_in_ms"])))
+        tau = max(0, ms - timing["ripple_impact_ms"]) / 1000
+        clock = cfg["ripple_clock_s"]
+        radius = cfg["ripple_group_speed_m_s"] * clock * (1 - math.exp(-tau / clock))
+        sigma = math.hypot(cfg["ripple_width_m"], cfg["ripple_dispersion_m_s"] * tau)
+        amplitude = cfg["ripple_height_m"] * math.sqrt(cfg["ripple_source_radius_m"] * cfg["ripple_width_m"] /
+                    ((radius + cfg["ripple_source_radius_m"]) * sigma))
+        calm_start = radius * cfg["ripple_calm_fraction"] - cfg["ripple_wavelength_m"] / 2
+        ripple_phase = round(-2 * radius * FLOOR_PHASE_TURN / cfg["ripple_wavelength_m"]) % FLOOR_PHASE_TURN
+        gain = round(FLOOR_GAIN_ONE * min(1, max(0, (ms - timing["title_start_ms"]) / timing["swell_in_ms"])))
         phases = [round(-ms * FLOOR_PHASE_TURN / s["period_ms"]) % FLOOR_PHASE_TURN for s in cfg["swell"]]
-        w("    {%d, %d, %d, {%s}},\n" % (travel, decay, gain, ", ".join(map(str, phases))))
+        scalars = (round(radius * FLOOR_SHAPE_SCALE), meters_to_q12(amplitude), round(calm_start * FLOOR_SHAPE_SCALE),
+                   round(FLOOR_GAIN_ONE / sigma), ripple_phase, gain)
+        if any(not -(1 << 15) <= v < (1 << 15) for v in scalars[:3]):
+            fail("ripple frame scalars must fit signed 16-bit fields")
+        w("    {%s, {%s}},\n" % (", ".join(map(str, scalars)), ", ".join(map(str, phases))))
     w("};\n\n")
     weights = [meters_to_q12(cfg["swell_height_m"] * s["weight"]) for s in cfg["swell"]]
     w("static const int16_t boot_anim_swell_weights[] = {" + ", ".join(map(str, weights)) + "};\n")
@@ -246,12 +281,7 @@ def validate(cfg):
     if timing["mesh_cells"] <= 0 or timing["mesh_cells"] % 2:
         fail("mesh_cells must be positive and even (%r given) - the middle "
              "line runs through the origin" % (timing["mesh_cells"],))
-    if timing["mesh_dash"] not in (0, 1):
-        fail("mesh_dash must be 0 or 1 (%r given)" % (timing["mesh_dash"],))
     validate_floor(cfg)
-    if timing["grid_hue_ms"] <= 0:
-        fail("grid_hue_ms must be positive (%r given) - boot_anim_grid_hue() "
-             "divides by it every frame" % (timing["grid_hue_ms"],))
     if timing["title_wave_period_ms"] <= 0:
         fail("title_wave_period_ms must be positive (%r given) - "
              "boot_anim_title_wave() divides by it every frame" %
@@ -394,9 +424,6 @@ TIMING_ORDER = [
     ("mesh_cells", "BOOT_ANIM_MESH_CELLS",
      "cells along each side of the floor's square mesh - even, so one line "
      "runs through the origin"),
-    ("mesh_dash", "BOOT_ANIM_MESH_DASH",
-     "draws the mesh lines as alternating dashes instead of solid - "
-     "0 solid, 1 dashed"),
     ("grid_spokes", "BOOT_ANIM_GRID_SPOKES",
      "radial guide lines from the origin to the floor's own edge - 0 hides them"),
     ("grid_spoke_dash", "BOOT_ANIM_GRID_SPOKE_DASH",
@@ -409,8 +436,9 @@ TIMING_ORDER = [
      "full length instantly"),
     ("grid_fade_ms", "BOOT_ANIM_GRID_FADE_MS", None),
     ("ripple_impact_ms", "BOOT_ANIM_RIPPLE_IMPACT_MS", None),
-    ("ripple_decay_ms", "BOOT_ANIM_RIPPLE_DECAY_MS", None),
-    ("swell_start_ms", "BOOT_ANIM_SWELL_START_MS", None),
+    ("ripple_calm_after_ms", "BOOT_ANIM_RIPPLE_CALM_AFTER_MS", None),
+    ("mesh_dash_on_px", "BOOT_ANIM_MESH_DASH_ON_PX", None),
+    ("mesh_dash_off_px", "BOOT_ANIM_MESH_DASH_OFF_PX", None),
     ("swell_in_ms", "BOOT_ANIM_SWELL_IN_MS", None),
     ("pen_start_ms", "BOOT_ANIM_PEN_START_MS", None),
     ("pen_ms", "BOOT_ANIM_PEN_MS", "how long the curve takes to draw"),
@@ -458,13 +486,6 @@ TIMING_ORDER = [
      "how long that one shared crossfade takes - 0 cuts straight to the photo"),
     ("fade_start_ms", "BOOT_ANIM_FADE_START_MS",
      "dissolve into the launcher"),
-    ("grid_hue_ms", "BOOT_ANIM_GRID_HUE_MS",
-     "one whole hue-wheel turn takes this long"),
-    ("grid_hue_spread", "BOOT_ANIM_GRID_HUE_SPREAD",
-     "wheel positions per ring outward"),
-    ("grid_whiten_max", "BOOT_ANIM_GRID_WHITEN_MAX", None),
-    ("grid_ceiling_max", "BOOT_ANIM_GRID_CEILING_MAX", None),
-    ("grid_max", "BOOT_ANIM_GRID_MAX", None),
 ]
 
 def main():

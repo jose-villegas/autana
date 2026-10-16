@@ -32,41 +32,39 @@ animation).
 
 `gen_boot_anim_timeline.py` emits the floor tables into
 `main/boot/boot_anim_timeline.h`, together with the timeline constants.
-`ripple_impact_ms` starts an outward Gaussian ring packet, with decay set by
-`ripple_decay_ms`. Wavelength, speed, packet width in wavelengths and height
-are authored by the top-level `ripple_*` settings. The directional `swell`
+`ripple_impact_ms` starts a dispersive Gaussian packet. The group clock
+`ripple_clock_s`, group speed, initial width, dispersion, source radius,
+wavelength and height are top-level `ripple_*` settings. The calm centre's
+radius fraction and delay are authored separately. The directional `swell`
 entries contain wavelength, period, direction in degrees and weight;
-`swell_height_m`, `swell_start_ms` and `swell_in_ms` set their shared envelope.
+`swell_height_m` and `swell_in_ms` set their shared envelope. The swell starts
+at `title_start_ms`, together with the title's first letter.
 
-Distance bands and radial attenuation use quadrant symmetry. A spatial
-ripple-shape lookup combines with interpolated time samples. Separable
-swell phase offsets use the mesh's row and column coordinates. The host
-suite checks the resulting heights against direct floating-point evaluation;
-its tolerance and observed maximum error are printed by
-`test_baked_floor_matches_direct_float`.
+Quadrant-symmetric tables hold node radii, distance bands and ripple phases.
+Gaussian and smoothstep lookups combine with interpolated frame scalars;
+separable swell phase offsets use the row and column coordinates. The host
+suite checks the heights against direct floating-point evaluation; its
+maximum error and tolerance are printed by `test_baked_floor_matches_direct_float`.
 
-The camera-plane walk retains fractional bits until projection, preserving
-the narrow transform's rounding. Views outside its input bounds use the full
-transform. Mesh rows and columns share endpoints through `DRAW_LINE_OPEN`;
-clipped starts retain their first pixel. Screen outcodes reject invisible
-edges before colour setup.
+Edges use `floor_grey`, approaching pure white with the squared positive
+ripple height divided by `white_height_m`. The swell contributes no colour.
+Arrival uses `grid_band_ms`; alpha stays full to `grid_edge_fade_fraction`
+of the reach, then ramps to zero. `mesh_dash_on_px` and `mesh_dash_off_px`
+set each line's pixel pattern through `DRAW_LINE_DASH`. Spokes and axes have
+their own colours. Screen outcodes reject invisible edges before colour setup.
 
-The comparison below shows the float prototype, the baked floor and their
-pixel differences. Endpoint ownership and fixed-point sampling account for
-the visible differences. The crops enlarge the strongest differences.
+The camera-plane walk retains fractional bits until projection. Views
+outside its input bounds use the full transform. The comparison below aligns
+the float reference's camera, photograph timing, swell start and constant grey
+with these settings. Each row is reference, baked result and amplified pixel
+difference; the crops enlarge the strongest differences.
 
-![Float prototype and baked floor](impact_compare/compare.png)
+![Aligned float reference and baked floor](look_compare/compare.png)
 
-![Enlarged prototype comparison](impact_compare/compare.crops.png)
+![Enlarged reference comparison](look_compare/compare.crops.png)
 
-Regenerate a comparison against the float reference with:
-
-```sh
-bash launcher/tools/render/render_compare.sh --script launcher/tools/render/scenes/boot_anim_render_host.sh \
-  --render middle "1500 --quarter 1" --render late "3000 --quarter 1" \
-  --render crossfade "3900 --quarter 1" --crops 3 \
-  origin/feature/boot-anim-impact-ripple-proto . -o /absolute/path/to/comparison
-```
+The [capture notes](look_compare/README.md) identify reference controls,
+whole-animation artifacts and the instruction-count measurements.
 
 Instruction measurements use the on-request `run_boot_floor_cost_suite`:
 
@@ -79,4 +77,4 @@ python .dev/scripts/quiet.py -- bash launcher/test/run_qemu_tests.sh --suite run
 The ink-zero row bounds projection plus traversal and rejection; it includes
 the flat spokes. The ordinary row measures the complete floor. Point and
 horizontal-line rows calibrate an estimate of setup and pixel costs; varied
-slopes, clipping and endpoint flags make that split approximate.
+slopes, clipping, dash lengths and endpoint flags make that split approximate.

@@ -21,19 +21,19 @@
 #include "suites.h"
 #include "unity.h"
 
-#define FLOOR_CROSSFADE_OFFSET_MS 50
-#define FLOOR_EDGE_PEAK_MS        3724
-#define FLOOR_TIMING_REPS         64
-#define FLOOR_LINE_REPS           32768
-#define FLOOR_LINE_COLOR          GFX_RGB(0xFFFFFF)
-#define FLOOR_LINE_LENGTH         64
-#define FLOOR_LINE_X              100
-#define FLOOR_ROW_PREFIX          "boot_floor_"
-#define FLOOR_TOTAL_ROW           "total"
-#define FLOOR_REJECT_ROW          "ink0"
-#define FLOOR_POINT_ROW           "line_point"
-#define FLOOR_LONG_ROW            "line_long"
-#define FLOOR_LINE_Y              100
+#define FLOOR_CROSSFADE_MS 3550
+#define FLOOR_EDGE_PEAK_MS 3724
+#define FLOOR_TIMING_REPS  64
+#define FLOOR_LINE_REPS    32768
+#define FLOOR_LINE_COLOR   GFX_RGB(0xFFFFFF)
+#define FLOOR_LINE_LENGTH  64
+#define FLOOR_LINE_X       100
+#define FLOOR_ROW_PREFIX   "boot_floor_"
+#define FLOOR_TOTAL_ROW    "total"
+#define FLOOR_REJECT_ROW   "ink0"
+#define FLOOR_POINT_ROW    "line_point"
+#define FLOOR_LONG_ROW     "line_long"
+#define FLOOR_LINE_Y       100
 
 extern void draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view);
 
@@ -56,10 +56,19 @@ __wrap_draw_line_ex(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned 
         return;
     }
     floor_edges++;
+    const int start_x = x0;
+    const int start_y = y0;
     const gfx_box_t clip = GFX_SCREEN_BOX;
     if (gfx_box_clip_segment(&clip, &x0, &y0, &x1, &y1)) {
         const unsigned count = (unsigned)mathi_max(mathi_abs(x1 - x0), mathi_abs(y1 - y0)) + 1u;
-        floor_pixels += count - ((flags & DRAW_LINE_OPEN) != 0);
+        const unsigned on = (flags >> DRAW_LINE_DASH_ON_SHIFT) & DRAW_LINE_DASH_MASK;
+        const unsigned off = (flags >> DRAW_LINE_DASH_OFF_SHIFT) & DRAW_LINE_DASH_MASK;
+        const unsigned period = (flags & DRAW_LINE_DASHED) ? on + off : 0;
+        const unsigned offset = (unsigned)mathi_max(mathi_abs(x0 - start_x), mathi_abs(y0 - start_y));
+        for (unsigned sample = 0; sample < count; sample++) {
+            const bool visible = !period || ((offset + sample) % period) < on;
+            floor_pixels += visible && !(sample == 0 && (flags & DRAW_LINE_OPEN));
+        }
     }
 }
 
@@ -138,7 +147,7 @@ test_floor_timeline_edge_counts(void) {
     }
     printf("FLOOR_MAX ms=%" PRIu32 " edges=%u\n", maximum_ms, maximum);
     (void)count_frame(&motion, FLOOR_EDGE_PEAK_MS, true);
-    (void)count_frame(&motion, BOOT_ANIM_IMAGE_START_MS + FLOOR_CROSSFADE_OFFSET_MS, true);
+    (void)count_frame(&motion, FLOOR_CROSSFADE_MS, true);
     floor_counting = false;
     boot_anim_motion_release(&motion);
 }
@@ -178,10 +187,11 @@ test_floor_instruction_rows(void) {
     boot_anim_motion_t motion;
     boot_anim_motion_load(&motion);
     TEST_ASSERT_TRUE(motion.from_pack);
-    report_total(&motion, BOOT_ANIM_IMAGE_START_MS + FLOOR_CROSSFADE_OFFSET_MS, false);
-    report_total(&motion, BOOT_ANIM_IMAGE_START_MS + FLOOR_CROSSFADE_OFFSET_MS, true);
-    report_total(&motion, FLOOR_EDGE_PEAK_MS, false);
-    report_total(&motion, FLOOR_EDGE_PEAK_MS, true);
+    static const uint32_t frames_ms[] = {2464, FLOOR_CROSSFADE_MS, FLOOR_EDGE_PEAK_MS, 4372};
+    for (unsigned frame = 0; frame < sizeof frames_ms / sizeof frames_ms[0]; frame++) {
+        report_total(&motion, frames_ms[frame], false);
+        report_total(&motion, frames_ms[frame], true);
+    }
     boot_anim_motion_release(&motion);
     report_line_cost(1);
     report_line_cost(FLOOR_LINE_LENGTH);

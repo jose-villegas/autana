@@ -1,0 +1,88 @@
+[
+  {
+    "symbols": [
+      "boot_anim_floor_ripple",
+      "boot_anim_floor_swell",
+      "boot_anim_floor_color"
+    ],
+    "owner": "launcher/main/boot/boot_anim.h",
+    "purpose": "Expose impact-only height for crest colour and reuse the directional swell separately from projection.",
+    "existing_owner_limit": "boot_anim_floor_height combines both contributions; the shared math scalar and colour helpers do not own floor physics."
+  },
+  {
+    "symbols": [
+      "line_dash_t",
+      "line_dash",
+      "line_dash_step"
+    ],
+    "owner": "launcher/main/draw/draw.c",
+    "purpose": "Decode and advance a line-local on/off pixel pattern outside the Bresenham control flow.",
+    "existing_owner_limit": "draw_dither owns screen-anchored two-dimensional coverage, while a dash counts samples from a line start."
+  },
+  {
+    "symbols": [
+      "DRAW_LINE_DASHED",
+      "DRAW_LINE_DASH_ON_SHIFT",
+      "DRAW_LINE_DASH_OFF_SHIFT",
+      "DRAW_LINE_DASH_MASK",
+      "DRAW_LINE_DASH"
+    ],
+    "owner": "launcher/main/draw/draw.h",
+    "purpose": "Carry independent dash lengths in draw_line_ex flags.",
+    "existing_owner_limit": "DRAW_LINE_ADD and DRAW_LINE_OPEN carry compositing and endpoint policy, with no pattern lengths."
+  },
+  {
+    "symbols": [
+      "BOOT_ANIM_FLOOR_GREY",
+      "BOOT_ANIM_GRID_EDGE_FADE_BAND",
+      "BOOT_ANIM_MESH_DASH_OFF_PX",
+      "BOOT_ANIM_MESH_DASH_ON_PX",
+      "BOOT_ANIM_RIPPLE_CALM_AFTER_MS",
+      "BOOT_ANIM_RIPPLE_CALM_FRACTION",
+      "BOOT_ANIM_RIPPLE_CLOCK_S",
+      "BOOT_ANIM_RIPPLE_DISPERSION_M_S",
+      "BOOT_ANIM_RIPPLE_GAUSSIAN_EXTENT",
+      "BOOT_ANIM_RIPPLE_GROUP_SPEED_M_S",
+      "BOOT_ANIM_RIPPLE_INV_WAVELENGTH",
+      "BOOT_ANIM_RIPPLE_LOOKUP_SCALE",
+      "BOOT_ANIM_RIPPLE_SOURCE_RADIUS_M",
+      "BOOT_ANIM_RIPPLE_WAVELENGTH_SHAPE",
+      "BOOT_ANIM_RIPPLE_WIDTH_M",
+      "BOOT_ANIM_WHITE_HEIGHT_Q12"
+    ],
+    "owner": "launcher/tools/gen/gen_boot_anim_timeline.py -> launcher/main/boot/boot_anim_timeline.h",
+    "purpose": "Generated settings and fixed-point lookup encodings.",
+    "existing_owner_limit": "The timeline generator owns authored floor settings and their flash representation."
+  },
+  {
+    "symbols": [
+      "fixture",
+      "assert_line",
+      "test_horizontal_dash_pixels",
+      "test_vertical_dash_pixels",
+      "test_diagonal_dash_pixels",
+      "test_open_dash_keeps_its_phase",
+      "suite_draw_line"
+    ],
+    "owner": "launcher/test/suites/suite_draw_line.c",
+    "purpose": "Exact framebuffer samples for line patterns, directions and endpoint flags.",
+    "existing_owner_limit": "suite_gfx line tests are device-only; the portable draw suites do not cover line rasterization."
+  },
+  {
+    "symbols": [
+      "test_only_positive_crests_whiten_the_floor"
+    ],
+    "owner": "launcher/test/suites/suite_boot_anim.c",
+    "purpose": "Check grey troughs, white crest saturation and squared crest strength.",
+    "existing_owner_limit": "Existing floor colour tests cover time and distance hue, rather than impact height."
+  },
+  {
+    "symbols": [
+      "test_superseded_floor_keys_are_unknown",
+      "test_packet_and_shading_settings_are_validated"
+    ],
+    "owner": "launcher/tools/tests/test_gen_boot_anim_timeline.py",
+    "purpose": "Reject superseded keys and invalid packet, shade and dash settings.",
+    "existing_owner_limit": "The generator test owner already provides the configuration mutation harness."
+  }
+]
