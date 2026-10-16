@@ -124,6 +124,50 @@ test_fixed_quaternion_rotation_matches_float(void) {
 }
 
 static void
+test_fixed_view_from_axes_maps_the_eye_and_frame_axes(void) {
+    const vec3x_t x = {0, MATHX_ONE, 0}, y = {0, 0, -MATHX_ONE}, z = {-MATHX_ONE, 0, 0};
+    const vec3x_t eye = {2 * MATHX_ONE, -3 * MATHX_ONE, 4 * MATHX_ONE}, origin = {0, 0, 0};
+    const mat4x_t view = mat4x_view_from_axes(x, y, z, eye);
+    TEST_ASSERT_TRUE(vec3x_equal(origin, mat4x_apply(&view, eye)));
+    TEST_ASSERT_TRUE(vec3x_equal((vec3x_t){MATHX_ONE, 0, 0}, mat4x_apply(&view, vec3x_add(eye, x))));
+    TEST_ASSERT_TRUE(vec3x_equal((vec3x_t){0, MATHX_ONE, 0}, mat4x_apply(&view, vec3x_add(eye, y))));
+    TEST_ASSERT_TRUE(vec3x_equal((vec3x_t){0, 0, MATHX_ONE}, mat4x_apply(&view, vec3x_add(eye, z))));
+}
+
+static void
+test_fixed_scale_rows_preserves_the_bottom_row(void) {
+    const vec3x_t scale = {2 * MATHX_ONE, -3 * MATHX_ONE, MATHX_ONE / 2};
+    const mat4x_t m = {{{MATHX_ONE, -MATHX_ONE, MATHX_ONE / 2, 2 * MATHX_ONE},
+                        {0, MATHX_ONE, -MATHX_ONE, 3 * MATHX_ONE},
+                        {-MATHX_ONE, 0, MATHX_ONE, -2 * MATHX_ONE},
+                        {MATHX_ONE, -MATHX_ONE, MATHX_ONE / 2, 0}}};
+    const mat4x_t got = mat4x_scale_rows(m, scale);
+    const int32_t factors[] = {scale.x, scale.y, scale.z, MATHX_ONE};
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            TEST_ASSERT_EQUAL_INT32(mathx_mul(m.m[r][c], factors[r]), got.m[r][c]);
+        }
+    }
+}
+
+static void
+test_fixed_scale_columns_keeps_the_translation(void) {
+    const vec3x_t scale = {2 * MATHX_ONE, -3 * MATHX_ONE, MATHX_ONE / 2};
+    const mat4x_t m = {{{MATHX_ONE, -MATHX_ONE, MATHX_ONE / 2, 2 * MATHX_ONE},
+                        {0, MATHX_ONE, -MATHX_ONE, 3 * MATHX_ONE},
+                        {-MATHX_ONE, 0, MATHX_ONE, -2 * MATHX_ONE},
+                        {0, 0, 0, MATHX_ONE}}};
+    const mat4x_t got = mat4x_scale_columns(m, scale);
+    const int32_t factors[] = {scale.x, scale.y, scale.z, MATHX_ONE};
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            const int32_t want = r < 3 ? mathx_mul(m.m[r][c], factors[c]) : m.m[r][c];
+            TEST_ASSERT_EQUAL_INT32(want, got.m[r][c]);
+        }
+    }
+}
+
+static void
 test_fixed_transform_matrix_view_and_look_at_match_float(void) {
     transformf_t f = TRANSFORMF_IDENTITY;
     transformx_t x = TRANSFORMX_IDENTITY;
@@ -953,6 +997,9 @@ suite_math_numbers(void) {
     RUN_TEST(test_vec2_ops_agree_across_every_number_type);
     RUN_TEST(test_fixed_normalize_matches_float_within_its_precision);
     RUN_TEST(test_fixed_quaternion_rotation_matches_float);
+    RUN_TEST(test_fixed_view_from_axes_maps_the_eye_and_frame_axes);
+    RUN_TEST(test_fixed_scale_rows_preserves_the_bottom_row);
+    RUN_TEST(test_fixed_scale_columns_keeps_the_translation);
     RUN_TEST(test_fixed_transform_matrix_view_and_look_at_match_float);
     RUN_TEST(test_fixed_transform_builds_once_and_rebuilds_after_each_setter);
     RUN_TEST(test_round_trip_conversions_return_the_original_where_representable);
