@@ -511,7 +511,7 @@ fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3
         uint16_t* depth = gfx_render_target_depth(&target->rows, y);
         uint16_t* color = gfx_render_target_color(&target->rows, y);
         const int32_t cy = (y << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
-        for (int x = box.x; x < recti_right(box); x++) {
+        for (int x = box.x, end = recti_right(box); x < end; x++) {
             const int32_t cx = (x << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
             if ((small_side(&e[0], cx, cy) | small_side(&e[1], cx, cy) | small_side(&e[2], cx, cy)) >= 0
                 && f.flat_z > depth[x]) {
@@ -524,8 +524,8 @@ fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3
 
 static inline __attribute__((always_inline)) void
 plane_limits(int32_t top, int32_t dx, int32_t dy, recti_t box, int64_t* low, int64_t* high) {
-    const int64_t across = (int64_t)dx * (recti_right(box) - 1 - box.x);
-    const int64_t bottom = top + ((int64_t)dy * (recti_bottom(box) - 1 - box.y));
+    const int64_t across = (int64_t)dx * (box.w - 1);
+    const int64_t bottom = top + ((int64_t)dy * (box.h - 1));
     *low = (top < bottom ? top : bottom) + (across < 0 ? across : 0);
     *high = (top > bottom ? top : bottom) + (across > 0 ? across : 0);
 }
@@ -555,7 +555,7 @@ RENDER_IRAM_ATTR bool
 r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, recti_t box) {
     for (int y = box.y; y < recti_bottom(box); y++) {
         const uint16_t* depth = gfx_render_target_depth(&target->rows, y);
-        for (int x = box.x; x < recti_right(box); x++) {
+        for (int x = box.x, end = recti_right(box); x < end; x++) {
             if (depth[x] < bound) {
                 return false;
             }
