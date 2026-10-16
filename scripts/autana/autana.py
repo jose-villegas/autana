@@ -290,17 +290,18 @@ def follow(log, finished):
 def run_streaming_its_log(command):
     finished = threading.Event()
     follower = None
-    with device_process(command, stdout=subprocess.PIPE, text=True, bufsize=1) as process:
-        for line in process.stdout:
-            print(line, end="", flush=True)
-            if follower is None and line.startswith("flash log: "):
-                follower = threading.Thread(target=follow, args=(line[len("flash log: "):].strip(), finished))
-                follower.start()
-        code = process.wait()
+    try:
+        with device_process(command, stdout=subprocess.PIPE, text=True, bufsize=1) as process:
+            for line in process.stdout:
+                print(line, end="", flush=True)
+                if follower is None and line.startswith("flash log: "):
+                    follower = threading.Thread(target=follow, args=(line[len("flash log: "):].strip(), finished))
+                    follower.start()
+            return process.wait()
+    finally:
         finished.set()
         if follower is not None:
             follower.join()
-        return code
 
 
 def variant_request(verb, args, flags, project):
@@ -1880,4 +1881,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(EXIT_INTERRUPTED)

@@ -563,16 +563,19 @@ class HoldProcessTests(Store):
         self.assertIn("dead process", next_command.stderr)
         owner.wait(timeout=5)
 
-    def test_streamed_console_interrupt_releases_its_lock(self):
+    def test_streamed_console_interrupt_stops_log_follower_and_releases_lock(self):
         import signal
         ready = self.root / "interrupt-ready"
         source = ("import pathlib,signal,time; signal.signal(signal.SIGINT,signal.SIG_IGN); "
                   f"pathlib.Path({str(ready)!r}).touch(); time.sleep(30)")
+        log = self.root / "flash.log"
+        log.touch()
         child = self.root / "interrupt-device.py"
         child.write_text(
             f"import sys; sys.path.insert(0, {str(DEVICE)!r})\n"
             "import device,device_lock,subprocess,time\n"
             f"with device.HeldLock(device_lock.LockStore(), {BOARD_A!r}, 'test', 'run', 5):\n"
+            f"    print({('flash log: ' + str(log))!r}, flush=True)\n"
             f"    subprocess.Popen({[sys.executable, '-c', source]!r})\n"
             "    deadline = time.monotonic()+30\n"
             "    try:\n"
@@ -594,6 +597,9 @@ class HoldProcessTests(Store):
         else:
             options["start_new_session"] = True
         process = self.start_process([sys.executable, "-c", driver], ready=ready, **options)
+        self.assertTrue(process.stdout.readline().startswith("flash log: "))
+        self.assertEqual(process.stdout.readline().strip(), "streaming")
+        started = time.monotonic()
         if os.name == "nt":
             sender = ("import ctypes,time; k=ctypes.WinDLL('kernel32'); k.FreeConsole(); "
                       f"assert k.AttachConsole({process.pid}); "
@@ -603,7 +609,8 @@ class HoldProcessTests(Store):
                            creationflags=subprocess.CREATE_NO_WINDOW)
         else:
             os.killpg(process.pid, signal.SIGINT)
-        stdout, stderr = process.communicate(timeout=15)
+        stdout, stderr = process.communicate(timeout=CANCELLATION_TIMEOUT_SECONDS)
+        self.assertLess(time.monotonic() - started, CANCELLATION_TIMEOUT_SECONDS)
         self.assertFalse(self.store.lock_path(BOARD_A).exists(), stdout + stderr)
         last = self.store.read_json(self.store.last_path(BOARD_A))
         self.assertEqual(last["how"], "released")
@@ -613,29 +620,36 @@ class HoldProcessTests(Store):
         sys.path.insert(0, str(ENGINE / "scripts" / "autana"))
         import autana
 
-        ready = self.root / "ready"
-        child = self.root / "child.py"
-        child_lifetime_seconds = 60
-        child.write_text("from pathlib import Path\nimport time\n"
-                         f"Path({str(ready)!r}).touch()\n"
-                         f"time.sleep({child_lifetime_seconds})\n")
-        process = self.start_process(
-            self.command("run", "--", sys.executable, str(child)), ready=ready,
-            creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
-        self.addCleanup(process.communicate, timeout=autana.INTERRUPT_GRACE_SECONDS)
-        self.assertIsNotNone(self.store.status(BOARD_A)["lock"])
-        started = time.monotonic()
-        process.send_signal(signal.CTRL_BREAK_EVENT)
-        stdout, stderr = process.communicate(timeout=autana.INTERRUPT_GRACE_SECONDS)
-        self.assertLess(time.monotonic() - started, autana.INTERRUPT_GRACE_SECONDS)
-        status = device_lock.status_entry(self.store, BOARD_A, durations={})
-        with self.subTest("normal release"):
-            self.assertIsNone(status["lapsed"], stdout + stderr)
-            self.assertFalse(self.store.lock_path(BOARD_A).exists())
-            last = self.store.read_json(self.store.last_path(BOARD_A))
-            self.assertEqual(last["how"], "released")
-        with self.subTest("interrupted exit"):
-            self.assertEqual(process.returncode, device.EXIT_INTERRUPTED, stdout + stderr)
+        for tool in ("device", "autana"):
+            with self.subTest(tool=tool):
+                ready = self.root / (tool + "-ready")
+                child = self.root / "child.py"
+                child_lifetime_seconds = 60
+                child.write_text("from pathlib import Path\nimport time\n"
+                                 f"Path({str(ready)!r}).touch()\n"
+                                 f"time.sleep({child_lifetime_seconds})\n")
+                command = (self.command("run", "--", sys.executable, str(child)) if tool == "device" else
+                           [sys.executable, str(ENGINE / "scripts/autana/autana.py"), "--board", BOARD_A,
+                            "lock", "run", "--", sys.executable, str(child)])
+                process = self.start_process(
+                    command, ready=ready,
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+                self.addCleanup(process.communicate, timeout=autana.INTERRUPT_GRACE_SECONDS)
+                lock = self.store.status(BOARD_A)["lock"]
+                self.assertIsNotNone(lock)
+                started = time.monotonic()
+                process.send_signal(signal.CTRL_BREAK_EVENT)
+                stdout, stderr = process.communicate(timeout=autana.INTERRUPT_GRACE_SECONDS)
+                self.assertLess(time.monotonic() - started, autana.INTERRUPT_GRACE_SECONDS)
+                self.assertFalse(device_lock.process_alive(lock["pid"]))
+                status = device_lock.status_entry(self.store, BOARD_A, durations={})
+                with self.subTest("normal release"):
+                    self.assertIsNone(status["lapsed"], stdout + stderr)
+                    self.assertFalse(self.store.lock_path(BOARD_A).exists())
+                    last = self.store.read_json(self.store.last_path(BOARD_A))
+                    self.assertEqual(last["how"], "released")
+                with self.subTest("interrupted exit"):
+                    self.assertEqual(process.returncode, device.EXIT_INTERRUPTED, stdout + stderr)
 
     def test_stale_take_token_names_how_to_clear_it(self):
         result = self.run_command("take", "bench", env=dict(
