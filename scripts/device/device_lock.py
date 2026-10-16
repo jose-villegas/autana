@@ -605,6 +605,12 @@ class LockStore:
             return (lock if lock and lock.get("token") == token and
                     not self.reclaim_reason(lock, stale_seconds) else None)
 
+    def board_of_token(self, token):
+        for board in self.boards():
+            if self.live_lock(board, token):
+                return board
+        return None
+
     def check_token(self, board, token, stale_seconds=DEFAULT_STALE_SECONDS):
         return self.live_lock(board, token, stale_seconds) is not None
 
@@ -786,7 +792,8 @@ def holder_end(lock, durations):
 
 def queue_estimates(status, now, durations):
     """Each waiter's estimated start, by ticket: the holder's own kind sets
-    when the board frees, and each waiter's kind how long it keeps it."""
+    when the board frees, and each waiter's kind how long it keeps it.
+    The None key estimates the start of a new request behind the queue."""
     lock = status.get("lock")
     if status.get("human"):
         start = None
@@ -800,6 +807,7 @@ def queue_estimates(status, now, durations):
         estimates[ticket["ticket"]] = start
         duration = durations.get(ticket.get("kind"))
         start = start + duration if start is not None and duration is not None else None
+    estimates[None] = start
     return estimates
 
 
@@ -840,6 +848,7 @@ def status_entry(store, board, port=None, now=None, durations=None):
         entry["lapsed"] = {"owner": stale["owner"], "purpose": stale.get("purpose", "unknown"),
                            "reason": stale["reason"], "at": None}
     estimates = queue_estimates(status, now, durations)
+    entry["estimated_start"] = estimates[None]
     entry["waiting"] = [{"owner": ticket["owner"], "purpose": ticket.get("purpose", "unknown"),
                          "estimated_start": estimates[ticket["ticket"]]}
                         for ticket in status["queue"]]
@@ -929,15 +938,22 @@ def elapsed_seconds(since, now):
     return round(max(0, now - since)) if since is not None else None
 
 
+def availability(entry):
+    if entry["state"] != "unlocked":
+        return entry["state"]
+    return "queued" if entry["waiting"] else "free"
+
+
 def status_lines(entry, now):
     """The human text of one entry; durations are `now` minus its timestamps."""
     holder = entry["holder"]
-    if entry["state"] == "human":
+    available = availability(entry)
+    if available == "human":
         left = (f"; {duration_text(entry['expires_at'] - now)} left, "
                 "`autana lock hand` again renews it") if entry["expires_at"] is not None else ""
         lines = [f"human reservation: {holder['owner']}: {holder['purpose']} "
                  f"(since {local_time(entry['since'])}; {elapsed_seconds(entry['since'], now)}s ago{left})"]
-    elif entry["state"] == "held":
+    elif available == "held":
         hold = (f"{duration_text(entry['expires_at'] - now)} left" if entry["expires_at"] is not None
                 else "until released") if holder.get("kind") == "hold" else ""
         lines = [f"held by {holder['owner']} for {holder['purpose']} since "
@@ -953,6 +969,8 @@ def status_lines(entry, now):
             **entry["lapsed"])]
     else:
         lines = ["unlocked"]
+    if available == "queued":
+        lines[0] += " - queued"
     if entry["waiting"]:
         lines.append("waiting:")
     for place, waiter in enumerate(entry["waiting"], 1):
