@@ -28,9 +28,9 @@
 
 static void
 check_point(affine2x_t t, int x, int y, int ex, int ey, const char* msg) {
-    const vec2i_t mapped_pixel_4 = affine2x_map_pixel(t, (vec2i_t){x, y});
-    TEST_ASSERT_EQUAL_INT_MESSAGE(ex, mapped_pixel_4.x, msg);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(ey, mapped_pixel_4.y, msg);
+    const vec2i_t mapped = affine2x_map_pixel(t, (vec2i_t){x, y});
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ex, mapped.x, msg);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(ey, mapped.y, msg);
 }
 
 static void
@@ -68,6 +68,29 @@ test_turn_3_rotates_corners_three_steps_clockwise(void) {
     check_point(t, VIEW_H, 0, 0, 0, "turn 3: logical top-right -> physical top-left");
     check_point(t, 0, VIEW_W, VIEW_W, VIEW_H, "turn 3: logical bottom-left -> physical bottom-right");
     check_point(t, VIEW_H, VIEW_W, VIEW_W, 0, "turn 3: logical bottom-right -> physical top-right");
+}
+
+/* Unmapping a physical pixel returns the logical one each turn maps onto it */
+
+static void
+test_unmap_pixel_inverts_every_quarter_turn(void) {
+    for (int turn = 0; turn < 4; turn++) {
+        const affine2x_t t = ui_transform_quarter_turn(turn, VIEW_W, VIEW_H);
+        const vec2i_t logical = {VIEW_W / 3, VIEW_H / 5};
+        const vec2i_t back = ui_transform_unmap_pixel(t, affine2x_map_pixel(t, logical));
+        TEST_ASSERT_EQUAL_INT_MESSAGE(logical.x, back.x, "unmap(map(p)).x == p.x");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(logical.y, back.y, "unmap(map(p)).y == p.y");
+    }
+}
+
+static void
+test_unmap_pixel_leaves_the_pixel_when_the_transform_is_singular(void) {
+    affine2x_t singular = ui_transform_quarter_turn(1, VIEW_W, VIEW_H);
+    singular.y_axis = singular.x_axis;
+    const vec2i_t physical = {VIEW_W / 3, VIEW_H / 5};
+    const vec2i_t back = ui_transform_unmap_pixel(singular, physical);
+    TEST_ASSERT_EQUAL_INT(physical.x, back.x);
+    TEST_ASSERT_EQUAL_INT(physical.y, back.y);
 }
 
 /* A rect stays axis-aligned and inside the viewport after any quarter turn */
@@ -432,6 +455,8 @@ suite_ui_transform(void) {
     RUN_TEST(test_turn_1_rotates_corners_one_step_clockwise);
     RUN_TEST(test_turn_2_rotates_corners_two_steps);
     RUN_TEST(test_turn_3_rotates_corners_three_steps_clockwise);
+    RUN_TEST(test_unmap_pixel_inverts_every_quarter_turn);
+    RUN_TEST(test_unmap_pixel_leaves_the_pixel_when_the_transform_is_singular);
     RUN_TEST(test_a_mapped_rect_stays_axis_aligned_and_inside_the_viewport);
     RUN_TEST(test_a_mapped_rect_swaps_width_and_height_on_an_odd_turn);
     RUN_TEST(test_icon_blocks_at_turn_0_are_unrotated);

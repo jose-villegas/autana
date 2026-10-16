@@ -183,12 +183,12 @@ test_boot_clip_opening_touch_does_not_select_overlay_row(void) {
         const int item = 1;
         const char* expected = scene_animator_clip_name(scene, subject, item);
         touch = (input_t){.down = true, .pressed = true};
-        const vec2i_t mapped_pixel_2 =
+        const vec2i_t mapped_pixel =
             affine2x_map_pixel(ui_effective_transform(),
                                (vec2i_t){list->body.x + (list->body.w / 2),
                                          list->body.y + (item * UI_ROW_HEIGHT) + (UI_ROW_HEIGHT / 2) - list->scroll.y});
-        touch.x = mapped_pixel_2.x;
-        touch.y = mapped_pixel_2.y;
+        touch.x = mapped_pixel.x;
+        touch.y = mapped_pixel.y;
         render_lab_test_frame(false, &touch);
         touch.pressed = false;
         for (int frame = 0; frame < HOLD_FRAMES; frame++) {
