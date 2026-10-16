@@ -122,11 +122,10 @@ build ID against the built image. The job summary identifies the board and
 build and counts passing and failing tests; the artifact contains
 this checkout's `.records/device` captures, including failed runs.
 
-It runs on pushes to `main`, nightly, and by manual dispatch. A maintainer can
-start it for a same-repository PR by adding the `board-ci` label (remove and
-re-add it to run again). Fork PR code never runs on this runner. Board CI is
-not a required check. If no board becomes free within the wait, the job
-succeeds with a neutral skipped notice and summary.
+It runs on pushes to `main`, nightly, and by manual dispatch. For an on-demand
+PR run, a maintainer dispatches `gh workflow run board-ci.yml --ref <branch>`
+against the PR branch. Board CI is not a required check. If no board becomes
+free within the wait, the job succeeds with a neutral skipped notice and summary.
 
 ## Two runners, one set of suites
 

@@ -31,22 +31,6 @@ class SelfHostedWorkflowTests(unittest.TestCase):
     def test_allows_trusted_events(self):
         self.assertEqual(self.check(self.workflow("\n  workflow_dispatch:\n  schedule:\n    - cron: '0 3 * * 0'\n  push:\n    branches: [main]")), [])
 
-    def test_allows_only_guarded_same_repository_label_event(self):
-        condition = ("github.event_name != 'pull_request_target' || "
-                     "(github.event.label.name == 'board-ci' && "
-                     "github.event.pull_request.head.repo.full_name == github.repository)")
-        text = ("on:\n  pull_request_target:\n    types: [labeled]\njobs:\n  board:\n"
-                "    runs-on: [self-hosted, windows, board]\n"
-                f"    if: {condition}\n")
-        self.assertEqual(self.check(text), [])
-        for unsafe in (text.replace("[labeled]", "[opened, labeled]"),
-                       text.replace(" == github.repository", " != github.repository"),
-                       text.replace(" && ", " || "),
-                       text.replace("board-ci", "other"),
-                       text.replace("    if:", "    unrelated:")):
-            with self.subTest(unsafe=unsafe):
-                self.assertTrue(self.check(unsafe))
-
     def test_hosted_jobs_can_run_on_pull_requests(self):
         self.assertEqual(self.check(self.workflow("pull_request", "ubuntu-latest")), [])
 
