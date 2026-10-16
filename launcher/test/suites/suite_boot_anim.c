@@ -551,7 +551,7 @@ test_ripple_peak_falls_over_time(void) {
 
 static void
 test_swell_is_zero_through_its_start(void) {
-    for (uint32_t ms = 0; ms <= BOOT_ANIM_SWELL_START_MS; ms++) {
+    for (uint32_t ms = 0; ms <= BOOT_ANIM_TITLE_START_MS; ms++) {
         const boot_anim_floor_state_t state = boot_anim_floor_state(ms);
         TEST_ASSERT_EQUAL_INT32(0, state.swell);
     }
@@ -572,15 +572,27 @@ floor_reference_height(int i, int j, uint32_t ms) {
     double height = 0;
     if (ms > BOOT_ANIM_RIPPLE_IMPACT_MS) {
         const double tau = (double)(ms - BOOT_ANIM_RIPPLE_IMPACT_MS) / FLOOR_REFERENCE_MS_PER_SECOND;
-        const double x = radius - (BOOT_ANIM_RIPPLE_SPEED_M_S * tau);
-        const double sigma = BOOT_ANIM_RIPPLE_RINGS * BOOT_ANIM_RIPPLE_WAVELENGTH_M;
-        height = BOOT_ANIM_RIPPLE_HEIGHT_M * exp(-((x / sigma) * (x / sigma)))
-                 * cos(FLOOR_REFERENCE_TAU * x / BOOT_ANIM_RIPPLE_WAVELENGTH_M)
-                 * exp(-(double)(ms - BOOT_ANIM_RIPPLE_IMPACT_MS) / BOOT_ANIM_RIPPLE_DECAY_MS)
-                 / sqrt(1 + (radius / BOOT_ANIM_RIPPLE_WAVELENGTH_M));
+        const double clock_s = BOOT_ANIM_RIPPLE_CLOCK_S;
+        const double group_speed = BOOT_ANIM_RIPPLE_GROUP_SPEED_M_S;
+        const double wavelength = BOOT_ANIM_RIPPLE_WAVELENGTH_M;
+        const double width = BOOT_ANIM_RIPPLE_WIDTH_M;
+        const double dispersion = BOOT_ANIM_RIPPLE_DISPERSION_M_S;
+        const double source_radius = BOOT_ANIM_RIPPLE_SOURCE_RADIUS_M;
+        const double calm_fraction = BOOT_ANIM_RIPPLE_CALM_FRACTION;
+        const double calm_after_s = ((double)BOOT_ANIM_RIPPLE_CALM_AFTER_MS / FLOOR_REFERENCE_MS_PER_SECOND);
+        const double w = clock_s * (1 - exp(-tau / clock_s));
+        const double group_radius = group_speed * w;
+        const double sigma = hypot(width, dispersion * tau);
+        const double amplitude =
+            BOOT_ANIM_RIPPLE_HEIGHT_M * sqrt(source_radius * width / ((group_radius + source_radius) * sigma));
+        const double u = fmin(1, fmax(0, (radius - (calm_fraction * group_radius) + (wavelength / 2)) / wavelength));
+        const double calm = tau > calm_after_s ? u * u * (3 - (2 * u)) : 1;
+        const double x = (radius - group_radius) / sigma;
+        height = -amplitude * calm * exp(-(x * x) / 2)
+                 * cos(FLOOR_REFERENCE_TAU * (radius - (2 * group_radius)) / wavelength);
     }
-    if (ms > BOOT_ANIM_SWELL_START_MS) {
-        const double fade = fmin(1, (double)(ms - BOOT_ANIM_SWELL_START_MS) / BOOT_ANIM_SWELL_IN_MS);
+    if (ms > BOOT_ANIM_TITLE_START_MS) {
+        const double fade = fmin(1, (double)(ms - BOOT_ANIM_TITLE_START_MS) / BOOT_ANIM_SWELL_IN_MS);
         for (int k = 0; k < BOOT_ANIM_SWELL_COUNT; k++) {
             const boot_anim_swell_setting_t* sine = &boot_anim_swell_settings[k];
             const double angle = sine->direction_deg * FLOOR_REFERENCE_TAU / FLOOR_REFERENCE_DEG_PER_TURN;
@@ -1051,120 +1063,28 @@ test_the_floor_fades_in_from_the_origin_outward(void) {
     TEST_ASSERT_EQUAL_UINT8(0, boot_anim_grid_alpha(t, 3));
 }
 
-/* The floor has no edge: it fades out with distance instead of stopping.
- * Checked as NON-increasing per band plus a real drop across any span,
- * not strictly dimmer at every band: falloff is left * ceiling / FADE,
- * so with 128 bands against a ceiling of 64, each band is worth half a
- * level and adjacent pairs land on the same integer (63, 63, 62, 62,
- * ...): arithmetic, not a regression, invisible on the panel since the
- * eye reads the overall gradient. */
 static void
 test_the_floor_fades_out_with_distance_rather_than_stopping(void) {
     const uint32_t settled = BOOT_ANIM_MS;
-    const int span = BOOT_ANIM_GRID_FADE / 8;
-
-    for (int band = 2; band < BOOT_ANIM_GRID_FADE; band++) {
-        TEST_ASSERT_TRUE_MESSAGE(boot_anim_grid_alpha(settled, band) <= boot_anim_grid_alpha(settled, band - 1),
-                                 "a floor band was BRIGHTER than the one inside it - the grid "
-                                 "would read as lit from the far edge inward");
+    const int start = BOOT_ANIM_GRID_EDGE_FADE_BAND;
+    for (int band = 0; band <= start; band++) {
+        TEST_ASSERT_EQUAL_UINT8(255, boot_anim_grid_alpha(settled, band));
     }
-    for (int band = span; band < BOOT_ANIM_GRID_FADE; band += span) {
-        TEST_ASSERT_TRUE_MESSAGE(boot_anim_grid_alpha(settled, band) < boot_anim_grid_alpha(settled, band - span),
-                                 "the floor stopped dimming across a whole eighth of its own "
-                                 "reach - it would read as a tile with an edge rather than as "
-                                 "a plane");
+    for (int band = start + 1; band <= BOOT_ANIM_GRID_FADE; band++) {
+        TEST_ASSERT_TRUE(boot_anim_grid_alpha(settled, band) < boot_anim_grid_alpha(settled, band - 1));
     }
-    TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, boot_anim_grid_alpha(settled, BOOT_ANIM_GRID_FADE),
-                                    "the floor should be completely gone by the end of its fade");
-}
-
-/* Backdrop, not subject: the floor covers far more of the screen than the
- * curve does, so it is never let all the way up to the axes' own full 255.
- * The ceiling itself climbs though (see boot_anim_grid_climb()'s own
- * comment for why alpha has to climb alongside the whitening, not stay
- * fixed while only the colour moves), so the bound checked here is the
- * per-moment BOOT_ANIM_GRID_CEILING_MAX, not the starting BOOT_ANIM_GRID_MAX. */
-static void
-test_the_floor_stays_dim_enough_to_be_a_backdrop(void) {
-    for (uint32_t t = 0; t <= BOOT_ANIM_MS; t += 25) {
-        for (int band = 1; band <= BOOT_ANIM_GRID_BANDS; band++) {
-            TEST_ASSERT_TRUE_MESSAGE(boot_anim_grid_alpha(t, band) <= BOOT_ANIM_GRID_CEILING_MAX,
-                                     "the floor got brighter than its cap");
-        }
-    }
-}
-
-/* The clock boot_anim_grid_alpha()'s own ceiling and boot_anim_grid_whiten()
- * both ride: starts flat at 0 before the floor appears, climbs steadily
- * and monotonically, and reaches its top exactly at BOOT_ANIM_MS. */
-static void
-test_the_grid_climb_runs_the_whole_animation(void) {
-    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_grid_climb(0));
-    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_grid_climb(BOOT_ANIM_GRID_START_MS));
-    TEST_ASSERT_EQUAL_UINT8(255, boot_anim_grid_climb(BOOT_ANIM_MS));
-
-    uint8_t last = 0;
-    for (uint32_t t = 0; t <= BOOT_ANIM_MS; t += 25) {
-        const uint8_t v = boot_anim_grid_climb(t);
-        TEST_ASSERT_TRUE_MESSAGE(v >= last, "the climb must never step backwards as time moves forward");
-        last = v;
-    }
-}
-
-/* The floor's opacity ceiling climbs from BOOT_ANIM_GRID_MAX to
- * BOOT_ANIM_GRID_CEILING_MAX alongside the whitening rather than sitting
- * fixed; checked through the innermost ring's alpha, since the ceiling
- * has no exposed function of its own. Travel is authored: a seed with
- * the two constants EQUAL (both 64, currently) asks for a floor at one
- * brightness while only hue climbs. What must hold either way: opacity
- * never goes BACKWARDS. Strict-climb is still asserted where the seed
- * asks for one. */
-static void
-test_the_floor_opacity_never_falls_back(void) {
-    /* Band 1's own fade-in (BOOT_ANIM_GRID_BAND_MS + BOOT_ANIM_GRID_FADE_MS
-     * after BOOT_ANIM_GRID_START_MS) is long done by either of these, plus
-     * a little slack, so the only thing left changing its alpha between
-     * them is the ceiling itself climbing, not "arrived" still ramping. */
-    const uint32_t early_ms = BOOT_ANIM_GRID_START_MS + BOOT_ANIM_GRID_BAND_MS + BOOT_ANIM_GRID_FADE_MS + 50;
-    const uint8_t early = boot_anim_grid_alpha(early_ms, 1);
-    const uint8_t late = boot_anim_grid_alpha(BOOT_ANIM_MS, 1);
-
-    TEST_ASSERT_TRUE_MESSAGE(late >= early, "the floor's own opacity fell back over the animation - a settled "
-                                            "ring should never gutter once it has arrived");
-
-    if (BOOT_ANIM_GRID_CEILING_MAX > BOOT_ANIM_GRID_MAX) {
-        TEST_ASSERT_TRUE_MESSAGE(late > early, "the seed authors a ceiling above the floor's starting max, "
-                                               "so its opacity should visibly climb over the animation and "
-                                               "not just its colour");
-    }
-}
-
-/* Starts at 0 the moment the floor itself appears, climbs steadily, never
- * doubles back, and reaches its cap by the time everything else has faded
- * away. */
-static void
-test_the_floor_whitens_steadily_from_its_own_start_to_a_cap(void) {
-    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_grid_whiten(BOOT_ANIM_GRID_START_MS));
-    TEST_ASSERT_EQUAL_UINT8(BOOT_ANIM_GRID_WHITEN_MAX, boot_anim_grid_whiten(BOOT_ANIM_MS));
-
-    uint8_t last = 0;
-    for (uint32_t t = BOOT_ANIM_GRID_START_MS; t <= BOOT_ANIM_MS; t += 25) {
-        const uint8_t w = boot_anim_grid_whiten(t);
-        TEST_ASSERT_TRUE_MESSAGE(w >= last, "whitening must never step backwards as time moves forward");
-        last = w;
-    }
+    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_grid_alpha(settled, BOOT_ANIM_GRID_FADE));
 }
 
 static void
-test_the_floor_colour_travels_with_time_and_distance(void) {
-    TEST_ASSERT_TRUE_MESSAGE(boot_anim_grid_hue(BOOT_ANIM_GRID_HUE_MS / 4, 1) > boot_anim_grid_hue(0, 1),
-                             "the floor colour should move on as time passes");
-    TEST_ASSERT_TRUE_MESSAGE(boot_anim_grid_hue(0, 2) > boot_anim_grid_hue(0, 1),
-                             "rings should not all change together - the drift travels outward");
-
-    /* A whole period brings it back round to where it started. */
-    TEST_ASSERT_EQUAL_UINT32(gfx_hue_rgb(boot_anim_grid_hue(0, 1)),
-                             gfx_hue_rgb(boot_anim_grid_hue(BOOT_ANIM_GRID_HUE_MS, 1)));
+test_only_positive_crests_whiten_the_floor(void) {
+    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(BOOT_ANIM_FLOOR_GREY), boot_anim_floor_color(-BOOT_ANIM_ONE));
+    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(BOOT_ANIM_FLOOR_GREY), boot_anim_floor_color(0));
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFFFFFF), boot_anim_floor_color(BOOT_ANIM_WHITE_HEIGHT_Q12));
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFFFFFF), boot_anim_floor_color(BOOT_ANIM_ONE));
+    const int half = BOOT_ANIM_WHITE_HEIGHT_Q12 / 2;
+    TEST_ASSERT_EQUAL_HEX16(gfx_color_mix(gfx_rgb(BOOT_ANIM_FLOOR_GREY), GFX_RGB(0xFFFFFF), UINT8_MAX / 4),
+                            boot_anim_floor_color(half));
 }
 
 static void
@@ -1917,11 +1837,7 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_the_seed_finishes_the_crossfade_before_the_dissolve_starts);
     RUN_TEST(test_the_floor_fades_in_from_the_origin_outward);
     RUN_TEST(test_the_floor_fades_out_with_distance_rather_than_stopping);
-    RUN_TEST(test_the_floor_stays_dim_enough_to_be_a_backdrop);
-    RUN_TEST(test_the_grid_climb_runs_the_whole_animation);
-    RUN_TEST(test_the_floor_opacity_never_falls_back);
-    RUN_TEST(test_the_floor_whitens_steadily_from_its_own_start_to_a_cap);
-    RUN_TEST(test_the_floor_colour_travels_with_time_and_distance);
+    RUN_TEST(test_only_positive_crests_whiten_the_floor);
     RUN_TEST(test_the_axes_are_there_before_the_curve_starts_climbing);
 
     RUN_TEST(test_height_changes_the_hue);

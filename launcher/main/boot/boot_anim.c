@@ -80,32 +80,11 @@ lit(uint32_t rgb, uint8_t alpha) {
     return gfx_color_mix(COL_BG, gfx_rgb(rgb), alpha);
 }
 
-/* The floor needs this extra mix and lit() alone does not: a saturated
- * hue only ever gets more OPAQUE through lit() on its own, never any
- * less colour-muddy, and it is the colour itself moving toward white
- * that is supposed to be doing most of the work of making the grid read
- * here. */
-static gfx_color_t
-lit_whitened(uint32_t rgb, uint8_t whiten, uint8_t alpha) {
-    const gfx_color_t whitened = gfx_color_mix(gfx_rgb(rgb), COL_WHITE, whiten);
-    return gfx_color_mix(COL_BG, whitened, alpha);
-}
-
 /* A whole number of grid units, as a Q12 value. */
 static int32_t
 units(int n) {
     return (int32_t)n * BOOT_ANIM_ONE;
 }
-
-/*
- * The floor
- *
- * A square mesh over the complex plane, plus radial spokes. Each node is
- * lifted by the baked impact and directional swell, and
- * each segment takes its colour and fade from that distance in
- * BOOT_ANIM_GRID_STEP_Q12 bands, so boot_anim_grid_hue()'s rings of colour
- * still travel outward across the mesh.
- */
 
 /* NEAR portion vertices span distance, smooth growth, dashed segments, not
  * wave. */
@@ -151,7 +130,6 @@ typedef struct {
     gfx_box_t clip;
     vec3x_t column;
     bool stepping;
-    uint8_t whiten;
     uint8_t ink;
     int stride;
     const boot_anim_view_t* view;
@@ -165,15 +143,15 @@ typedef struct {
 typedef struct {
     int16_t sx, sy;
     int16_t band_q4;
+    int16_t ripple;
     uint8_t flags;
 } mesh_node_t;
 
-#define MESH_HALF        (BOOT_ANIM_MESH_CELLS / 2)
-#define MESH_NODE_FRONT  (1u << 4)
-#define MESH_NODE_JOINED (1u << 5)
-#define MESH_NODE_CLIP   (GFX_BOX_OUT_LEFT | GFX_BOX_OUT_RIGHT | GFX_BOX_OUT_TOP | GFX_BOX_OUT_BOTTOM)
+#define MESH_HALF       (BOOT_ANIM_MESH_CELLS / 2)
+#define MESH_NODE_FRONT (1u << 4)
+#define MESH_NODE_CLIP  (GFX_BOX_OUT_LEFT | GFX_BOX_OUT_RIGHT | GFX_BOX_OUT_TOP | GFX_BOX_OUT_BOTTOM)
 
-_Static_assert(sizeof(mesh_node_t) == 8, "the mesh row must fit the boot stack");
+_Static_assert(sizeof(mesh_node_t) == 10, "the mesh row must fit the boot stack");
 
 /* The floor's transform keeps the narrow path's fractional bits until projection. */
 static vec3x_t
@@ -183,8 +161,7 @@ mesh_point(const mesh_pass_t* pass, int i, int j) {
 }
 
 static vec3x_t
-mesh_stepped_point(const mesh_pass_t* pass, int i, int j, vec3x_t plane) {
-    const int32_t lift = boot_anim_zeta_to_t_q8(boot_anim_floor_height(i, j, &pass->floor));
+mesh_stepped_point(const mesh_pass_t* pass, int i, int j, vec3x_t plane, int32_t lift) {
     if (!pass->stepping || (uint32_t)(lift + R3D_X_INPUT_Y_LIMIT) >= 2u * R3D_X_INPUT_Y_LIMIT) {
         return boot_anim_to_camera_space(i * BOOT_ANIM_MESH_STEP_Q12, j * BOOT_ANIM_MESH_STEP_Q12, lift, pass->view);
     }
@@ -200,7 +177,9 @@ mesh_node(const mesh_pass_t* pass, int i, int j, vec3x_t plane) {
     int sx = 0;
     int sy = 0;
     mesh_node_t node;
-    const bool front = r3d_project_point_cs_x(mesh_stepped_point(pass, i, j, plane), pass->view, &sx, &sy);
+    node.ripple = (int16_t)boot_anim_floor_ripple(i, j, &pass->floor);
+    const int32_t lift = boot_anim_zeta_to_t_q8(node.ripple + boot_anim_floor_swell(i, j, &pass->floor));
+    const bool front = r3d_project_point_cs_x(mesh_stepped_point(pass, i, j, plane, lift), pass->view, &sx, &sy);
     node.sx = (int16_t)sx;
     node.sy = (int16_t)sy;
     node.band_q4 = (int16_t)boot_anim_floor_node(i, j)->band_q4;
@@ -208,36 +187,29 @@ mesh_node(const mesh_pass_t* pass, int i, int j, vec3x_t plane) {
     return node;
 }
 
-/* A clipped first pixel is not the shared joint: it must still be drawn. */
-static unsigned
-mesh_line_flags(const mesh_pass_t* pass, bool joined, int x, int y) {
-    return joined && gfx_box_outcode(&pass->clip, x, y) == 0 ? DRAW_LINE_OPEN : 0u;
-}
-
-static bool
-draw_mesh_edge(const mesh_pass_t* pass, const mesh_node_t* a, int ai, int aj, const mesh_node_t* b, int bi, int bj,
-               bool joined) {
+static void
+draw_mesh_edge(const mesh_pass_t* pass, const mesh_node_t* a, int ai, int aj, const mesh_node_t* b, int bi, int bj) {
     const bool a_front = (a->flags & MESH_NODE_FRONT) != 0;
     const bool b_front = (b->flags & MESH_NODE_FRONT) != 0;
     if ((!a_front && !b_front) || (a_front && b_front && (a->flags & b->flags & MESH_NODE_CLIP))) {
-        return false;
+        return;
     }
     const int band = (a->band_q4 + b->band_q4) >> (BOOT_ANIM_FLOOR_BAND_SHIFT + 1);
     const uint8_t alpha = scale8(boot_anim_grid_alpha(pass->now_ms, band), pass->ink);
     if (alpha == 0) {
-        return false;
+        return;
     }
-    const gfx_color_t c = lit_whitened(gfx_hue_rgb(boot_anim_grid_hue(pass->now_ms, band)), pass->whiten, alpha);
+    const gfx_color_t c = gfx_color_mix(COL_BG, boot_anim_floor_color((a->ripple + b->ripple) / 2), alpha);
+    const unsigned flags = DRAW_LINE_DASH(BOOT_ANIM_MESH_DASH_ON_PX, BOOT_ANIM_MESH_DASH_OFF_PX);
     if (a_front && b_front) {
-        draw_line_ex(a->sx, a->sy, b->sx, b->sy, c, mesh_line_flags(pass, joined, a->sx, a->sy));
-        return true;
+        draw_line_ex(a->sx, a->sy, b->sx, b->sy, c, flags);
+        return;
     }
     int x0, y0, x1, y1;
     if (!r3d_project_segment_cs_x(mesh_point(pass, ai, aj), mesh_point(pass, bi, bj), pass->view, &x0, &y0, &x1, &y1)) {
-        return false;
+        return;
     }
-    draw_line_ex(x0, y0, x1, y1, c, 0u);
-    return false;
+    draw_line_ex(x0, y0, x1, y1, c, flags);
 }
 
 static int
@@ -245,16 +217,10 @@ mesh_row_half(int j, int stride) {
     return boot_anim_mesh_row_half[stride - 1][mathi_abs(j)];
 }
 
-static bool
-mesh_dash_on(int k, int stride) {
-    return !BOOT_ANIM_MESH_DASH || (((k + MESH_HALF) / stride) & 1) == 1;
-}
-
 static void
 draw_mesh_row(const mesh_pass_t* pass, int j, int row_half, int above_half, mesh_node_t* above, vec3x_t plane) {
     const int stride = pass->stride;
     mesh_node_t left = {0};
-    bool joined = false;
     for (int i = -MESH_HALF; i <= MESH_HALF; i += stride) {
         const vec3x_t point = plane;
         plane = (vec3x_t){plane.x + pass->column.x, plane.y + pass->column.y, plane.z + pass->column.z};
@@ -262,15 +228,11 @@ draw_mesh_row(const mesh_pass_t* pass, int j, int row_half, int above_half, mesh
             continue;
         }
         mesh_node_t node = mesh_node(pass, i, j, point);
-        if (i - stride >= -row_half && mesh_dash_on(i, stride)) {
-            joined = draw_mesh_edge(pass, &left, i - stride, j, &node, i, j, joined);
-        } else {
-            joined = false;
+        if (i - stride >= -row_half) {
+            draw_mesh_edge(pass, &left, i - stride, j, &node, i, j);
         }
-        if (mathi_abs(i) <= above_half && mesh_dash_on(j, stride)) {
-            const bool connected = draw_mesh_edge(pass, &above[i + MESH_HALF], i, j - stride, &node, i, j,
-                                                  (above[i + MESH_HALF].flags & MESH_NODE_JOINED) != 0);
-            node.flags |= connected ? MESH_NODE_JOINED : 0u;
+        if (mathi_abs(i) <= above_half) {
+            draw_mesh_edge(pass, &above[i + MESH_HALF], i, j - stride, &node, i, j);
         }
         above[i + MESH_HALF] = node;
         left = node;
@@ -373,7 +335,6 @@ draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t*
         .floor = boot_anim_floor_state(now_ms),
         .clip = surface.clip,
         .ink = ink,
-        .whiten = boot_anim_grid_whiten(now_ms),
         .stride = gfx_dither_level(reveal) >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL ? 2 : 1,
         .view = view,
         .stepping = view->units_ok && ((MESH_HALF + 2) * BOOT_ANIM_MESH_STEP_Q12 < R3D_X_INPUT_XZ_LIMIT),

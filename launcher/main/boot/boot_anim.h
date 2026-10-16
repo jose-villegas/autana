@@ -101,12 +101,6 @@ boot_anim_timeline_sample(const boot_anim_motion_t* motion, uint32_t now_ms) {
 /* Must match PHASE1_T_MAX in tools/gen/gen_zeta_curve.py. */
 #define BOOT_ANIM_T_MAX_PHASE1 35
 
-/* BANDS is how far the floor's colour and fade reach, in steps of
- * BOOT_ANIM_GRID_STEP_Q12 out from the origin: each band has one hue and
- * one alpha, whatever mesh segments fall in it. Both generated in
- * boot_anim_timeline.h. FADE is its own name for what
- * boot_anim_grid_alpha() means, but must equal BANDS exactly: short of
- * it is a hard edge, past it divides by a count nothing reaches. */
 #define BOOT_ANIM_GRID_FADE    BOOT_ANIM_GRID_BANDS
 
 /* The spiral: one unit of t climbs 132/512 of a meter. */
@@ -186,9 +180,13 @@ boot_anim_zeta_to_t_q8(int32_t zeta_q12) {
 }
 
 typedef struct {
-    int32_t travel;
-    uint16_t decay;
+    int32_t radius;
+    int32_t amplitude;
+    int32_t calm_start;
+    uint16_t inv_width;
+    uint16_t ripple_phase;
     uint16_t swell;
+    bool calm;
     uint16_t phase[BOOT_ANIM_SWELL_COUNT];
 } boot_anim_floor_state_t;
 
@@ -201,19 +199,25 @@ boot_anim_floor_state(uint32_t now_ms) {
     const boot_anim_floor_time_t* a = &boot_anim_floor_times[index];
     const boot_anim_floor_time_t* b = a + 1;
     boot_anim_floor_state_t state = {
-        .travel = a->travel + (((b->travel - a->travel) * fraction) / BOOT_ANIM_FLOOR_TIME_STEP_MS),
-        .decay = (int)a->decay + ((((int)b->decay - a->decay) * fraction) / BOOT_ANIM_FLOOR_TIME_STEP_MS),
-        .swell = (int)a->swell + ((((int)b->swell - a->swell) * fraction) / BOOT_ANIM_FLOOR_TIME_STEP_MS),
+        .radius = mathi_lerp(a->radius, b->radius, fraction, BOOT_ANIM_FLOOR_TIME_STEP_MS),
+        .amplitude = mathi_lerp(a->amplitude, b->amplitude, fraction, BOOT_ANIM_FLOOR_TIME_STEP_MS),
+        .calm_start = mathi_lerp(a->calm_start, b->calm_start, fraction, BOOT_ANIM_FLOOR_TIME_STEP_MS),
+        .inv_width = mathi_lerp(a->inv_width, b->inv_width, fraction, BOOT_ANIM_FLOOR_TIME_STEP_MS),
+        .ripple_phase = (uint16_t)(a->ripple_phase
+                                   + mathi_lerp(0, (int16_t)(b->ripple_phase - a->ripple_phase), fraction,
+                                                BOOT_ANIM_FLOOR_TIME_STEP_MS)),
+        .swell = mathi_lerp(a->swell, b->swell, fraction, BOOT_ANIM_FLOOR_TIME_STEP_MS),
+        .calm = ms > BOOT_ANIM_RIPPLE_IMPACT_MS + BOOT_ANIM_RIPPLE_CALM_AFTER_MS,
     };
     if (now_ms <= BOOT_ANIM_RIPPLE_IMPACT_MS) {
-        state.decay = 0;
+        state.amplitude = 0;
     }
-    if (now_ms <= BOOT_ANIM_SWELL_START_MS) {
+    if (now_ms <= BOOT_ANIM_TITLE_START_MS) {
         state.swell = 0;
     }
     for (int k = 0; k < BOOT_ANIM_SWELL_COUNT; k++) {
         const int delta = (int16_t)(b->phase[k] - a->phase[k]);
-        state.phase[k] = (uint16_t)(a->phase[k] + ((delta * fraction) / BOOT_ANIM_FLOOR_TIME_STEP_MS));
+        state.phase[k] = (uint16_t)(a->phase[k] + mathi_lerp(0, delta, fraction, BOOT_ANIM_FLOOR_TIME_STEP_MS));
     }
     return state;
 }
@@ -224,19 +228,29 @@ boot_anim_floor_node(int i, int j) {
     return &boot_anim_floor_nodes[(mathi_abs(j) * side) + mathi_abs(i)];
 }
 
-/* Heights are Q12 metres, before conversion to the curve's t axis. */
+/* Heights are Q12 metres; only the impact contributes to crest colour. */
 static inline int32_t
-boot_anim_floor_height(int i, int j, const boot_anim_floor_state_t* state) {
+boot_anim_floor_ripple(int i, int j, const boot_anim_floor_state_t* state) {
     const boot_anim_floor_node_t* node = boot_anim_floor_node(i, j);
-    const int x = node->radius - state->travel;
-    int32_t ripple = 0;
-    if (mathi_abs(x) <= BOOT_ANIM_RIPPLE_SHAPE_EXTENT) {
-        ripple = (boot_anim_ripple_shape[x + BOOT_ANIM_RIPPLE_SHAPE_EXTENT] * (int32_t)node->falloff)
-                 >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
-        ripple = (ripple * state->decay) >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
+    const int x = ((uint32_t)mathi_abs(node->radius - state->radius) * state->inv_width) >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
+    if (x > BOOT_ANIM_RIPPLE_GAUSSIAN_EXTENT) {
+        return 0;
     }
+    int32_t amplitude = (state->amplitude * boot_anim_ripple_gaussian[x]) >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
+    if (state->calm) {
+        const int u = mathi_clamp((mathi_clamp(node->radius - state->calm_start, 0, BOOT_ANIM_RIPPLE_WAVELENGTH_SHAPE)
+                                   * BOOT_ANIM_RIPPLE_INV_WAVELENGTH)
+                                      >> BOOT_ANIM_FLOOR_GAIN_SHIFT,
+                                  0, BOOT_ANIM_RIPPLE_LOOKUP_SCALE);
+        amplitude = (amplitude * boot_anim_ripple_smoothstep[u]) >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
+    }
+    return (-amplitude * trig_cos((uint16_t)(node->phase + state->ripple_phase))) >> TRIG_SIN_SHIFT;
+}
+
+static inline int32_t
+boot_anim_floor_swell(int i, int j, const boot_anim_floor_state_t* state) {
     if (state->swell == 0) {
-        return ripple;
+        return 0;
     }
     int32_t swell = 0;
     for (int k = 0; k < BOOT_ANIM_SWELL_COUNT; k++) {
@@ -244,7 +258,19 @@ boot_anim_floor_height(int i, int j, const boot_anim_floor_state_t* state) {
                                           + boot_anim_swell_im[j + (BOOT_ANIM_MESH_CELLS / 2)][k] + state->phase[k]);
         swell += (boot_anim_swell_weights[k] * trig_sin(phase)) >> TRIG_SIN_SHIFT;
     }
-    return ripple + ((swell * state->swell) >> BOOT_ANIM_FLOOR_GAIN_SHIFT);
+    return (swell * state->swell) >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
+}
+
+static inline int32_t
+boot_anim_floor_height(int i, int j, const boot_anim_floor_state_t* state) {
+    return boot_anim_floor_ripple(i, j, state) + boot_anim_floor_swell(i, j, state);
+}
+
+static inline gfx_color_t
+boot_anim_floor_color(int32_t ripple) {
+    const int32_t crest = (mathi_clamp(ripple, 0, BOOT_ANIM_WHITE_HEIGHT_Q12) * 255) / BOOT_ANIM_WHITE_HEIGHT_Q12;
+    const uint8_t whiten = (uint8_t)((crest * crest) / 255);
+    return gfx_color_mix(gfx_rgb(BOOT_ANIM_FLOOR_GREY), GFX_RGB(0xFFFFFF), whiten);
 }
 
 /* Spline interpolation keeps the curve's tight turns smooth without a larger
@@ -407,17 +433,6 @@ boot_anim_axis_reach(uint32_t now_ms) {
     return tween_ease_out(tween_ramp(now_ms, 0, BOOT_ANIM_AXES_MS));
 }
 
-/* A band's alpha is its arrival ramp times a falloff by band index, a depth
- * cue. The floor is backdrop: at full strength it outshines the curve, so its
- * ceiling starts at BOOT_ANIM_GRID_MAX (generated) and climbs linearly to
- * BOOT_ANIM_GRID_CEILING_MAX by BOOT_ANIM_MS, steadily adding up. One clock
- * drives opacity and whitening together: hue alone fixes muddiness, not peak
- * brightness. */
-static inline uint8_t
-boot_anim_grid_climb(uint32_t now_ms) {
-    return tween_ramp(now_ms, BOOT_ANIM_GRID_START_MS, BOOT_ANIM_MS - BOOT_ANIM_GRID_START_MS);
-}
-
 static inline uint8_t
 boot_anim_grid_alpha(uint32_t now_ms, int band) {
     if (band >= BOOT_ANIM_GRID_FADE) {
@@ -425,14 +440,9 @@ boot_anim_grid_alpha(uint32_t now_ms, int band) {
     }
     const uint32_t start = BOOT_ANIM_GRID_START_MS + ((uint32_t)band * BOOT_ANIM_GRID_BAND_MS);
     const uint32_t arrived = tween_ramp(now_ms, start, BOOT_ANIM_GRID_FADE_MS);
-
-    /* left/FADE, bounded bands. Squared dims too much. Linear keeps depth. */
     const uint32_t left = (uint32_t)(BOOT_ANIM_GRID_FADE - band);
-    const uint32_t ceiling =
-        (uint32_t)mathi_lerp_u8(BOOT_ANIM_GRID_MAX, BOOT_ANIM_GRID_CEILING_MAX, boot_anim_grid_climb(now_ms));
-    const uint32_t near = left * ceiling / (uint32_t)BOOT_ANIM_GRID_FADE;
-
-    return (uint8_t)((arrived * near) / 255u);
+    const uint32_t ramp = BOOT_ANIM_GRID_FADE - BOOT_ANIM_GRID_EDGE_FADE_BAND;
+    return (uint8_t)(arrived * mathi_min(left, ramp) / ramp);
 }
 
 static inline uint8_t
@@ -467,11 +477,6 @@ boot_anim_spoke_reveal_target(int32_t near, int32_t far, uint8_t reach) {
         return far; /* degenerate: clamp rather than divide by <=0 */
     }
     return (int32_t)((((int64_t)near * far) << 8) / denom_q8);
-}
-
-static inline uint8_t
-boot_anim_grid_whiten(uint32_t now_ms) {
-    return (uint8_t)mathi_lerp_u8(0, BOOT_ANIM_GRID_WHITEN_MAX, boot_anim_grid_climb(now_ms));
 }
 
 /* The title is laid out in the viewer's frame because the board is held one
@@ -539,15 +544,6 @@ static inline void
 boot_anim_title_shadow_offset(int dx, int dy, int* panel_dx, int* panel_dy) {
     *panel_dx = -dy;
     *panel_dy = dx;
-}
-
-/* A hue wheel (gfx_hue_rgb()) lets height read as colour against the
- * AMOLED's true black. Brightness and desaturation remain separate mixing
- * amounts. */
-static inline int
-boot_anim_grid_hue(uint32_t now_ms, int band) {
-    const uint32_t turn = (now_ms % BOOT_ANIM_GRID_HUE_MS) * GFX_HUE_TURN / BOOT_ANIM_GRID_HUE_MS;
-    return (int)turn + (band * BOOT_ANIM_GRID_HUE_SPREAD);
 }
 
 /* This is a fraction of arc length, so a constant walk rate gives a constant

@@ -57,7 +57,7 @@ class TimelineGeneratorTests(unittest.TestCase):
                 cwd=LAUNCHER, capture_output=True, text=True, check=False)
 
     def test_floor_settings_have_named_validation(self):
-        positive = ("ripple_wavelength_m", "ripple_speed_m_s", "ripple_rings")
+        positive = ("ripple_wavelength_m", "ripple_clock_s", "ripple_group_speed_m_s", "ripple_width_m", "ripple_dispersion_m_s", "ripple_source_radius_m", "white_height_m")
         nonnegative = ("ripple_height_m", "swell_height_m")
         for key in positive + nonnegative:
             for value in (-1, float("nan"), float("inf")):
@@ -65,7 +65,7 @@ class TimelineGeneratorTests(unittest.TestCase):
                     result = self.generate(config_change=lambda c: c.update({key: value}))
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn(key + " must be", result.stderr)
-        for key in ("ripple_impact_ms", "ripple_decay_ms", "swell_start_ms", "swell_in_ms"):
+        for key in ("ripple_impact_ms", "ripple_calm_after_ms", "swell_in_ms"):
             result = self.generate(lambda t: t.update({key: -1}))
             self.assertNotEqual(result.returncode, 0)
             self.assertIn(key + " must be", result.stderr)
@@ -75,21 +75,21 @@ class TimelineGeneratorTests(unittest.TestCase):
             self.assertIn("swell[0]." + key + " must be", result.stderr)
 
     def test_floor_timing_rejects_nonintegers_and_nonfinite_values(self):
-        for key in ("ripple_impact_ms", "ripple_decay_ms", "swell_start_ms", "swell_in_ms"):
+        for key in ("ripple_impact_ms", "ripple_calm_after_ms", "swell_in_ms"):
             for value in (0.5, float("nan"), float("inf")):
                 with self.subTest(key=key, value=value):
                     result = self.generate(lambda t: t.update({key: value}))
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn(key + " must be", result.stderr)
-        for key in ("ripple_decay_ms", "swell_in_ms"):
+        for key in ("swell_in_ms",):
             result = self.generate(lambda t: t.update({key: 0}))
             self.assertNotEqual(result.returncode, 0)
             self.assertIn(key + " must be positive", result.stderr)
 
     def test_floor_table_encoding_ranges_are_checked(self):
         cases = (
-            ({"ripple_rings": 1e30}, "ripple_rings * ripple_wavelength_m"),
-            ({"ripple_speed_m_s": 1e30}, "ripple_speed_m_s"),
+            ({"ripple_width_m": 0.01}, "ripple_width_m"),
+            ({"ripple_group_speed_m_s": 1e30}, "ripple_group_speed_m_s"),
             ({"ripple_height_m": 8}, "ripple_height_m + weighted swell_height_m"),
             ({"grid_step_m": 100}, "grid_step_m * grid_bands"),
             ({"swell": []}, "swell must be a nonempty list"),
@@ -101,6 +101,38 @@ class TimelineGeneratorTests(unittest.TestCase):
                 result = self.generate(config_change=lambda c: c.update(changes))
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(message, result.stderr)
+
+    def test_superseded_floor_keys_are_unknown(self):
+        for key in ("ripple_speed_m_s", "ripple_rings"):
+            result = self.generate(config_change=lambda c: c.update({key: 1}))
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("unknown key: " + key, result.stderr)
+        for key in ("ripple_decay_ms", "swell_start_ms", "grid_hue_ms", "grid_hue_spread", "grid_whiten_max", "mesh_dash", "grid_max", "grid_ceiling_max"):
+            result = self.generate(lambda t: t.update({key: 1}))
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("unknown timing key(s): " + key, result.stderr)
+
+    def test_packet_and_shading_settings_are_validated(self):
+        keys = ("ripple_clock_s", "ripple_group_speed_m_s", "ripple_width_m",
+                "ripple_dispersion_m_s", "ripple_source_radius_m", "white_height_m")
+        for key in keys:
+            for value in (0, -1, float("nan"), float("inf")):
+                with self.subTest(key=key, value=value):
+                    result = self.generate(config_change=lambda c: c.update({key: value}))
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(key + " must be positive", result.stderr)
+        for key, values in (("floor_grey", (-1, 0x1000000, 0.5)),
+                            ("grid_edge_fade_fraction", (-1, 1, float("nan"))),
+                            ("ripple_calm_fraction", (-1, 2, float("nan")))):
+            for value in values:
+                result = self.generate(config_change=lambda c: c.update({key: value}))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(key, result.stderr)
+        for key in ("mesh_dash_on_px", "mesh_dash_off_px"):
+            for value in (0, -1, 256, 0.5):
+                result = self.generate(lambda t: t.update({key: value}))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(key, result.stderr)
 
     def test_generated_header_is_current(self):
         result = self.generate()
@@ -182,7 +214,7 @@ class TimelineGeneratorTests(unittest.TestCase):
             (lambda timing: timing.update(mesh_cells=0), None, "mesh_cells must be positive and even"),
             (lambda timing: timing.update(mesh_cells=-2), None, "mesh_cells must be positive and even"),
             (lambda timing: timing.update(mesh_cells=47), None, "mesh_cells must be positive and even"),
-            (lambda timing: timing.update(mesh_dash=2), None, "mesh_dash must be 0 or 1"),
+            (lambda timing: timing.update(mesh_dash_on_px=256), None, "mesh_dash_on_px must fit an unsigned byte"),
         )
         for change, config_change, message in cases:
             with self.subTest(message=message):
