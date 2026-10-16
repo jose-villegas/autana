@@ -100,8 +100,12 @@ def symbols(nm, elf, functions=None):
 
 
 def decode(objdump, elf, *arguments):
+    return parse_objdump(run(objdump, "-d", *arguments, str(elf)))
+
+
+def parse_objdump(text):
     found = []
-    for line in run(objdump, "-d", *arguments, str(elf)).splitlines():
+    for line in text.splitlines():
         match = re.match(r"^\s*([0-9a-f]+):\s+([0-9a-f]+)\s+([a-z][a-z0-9.]*)\s*(.*)$", line)
         if match:
             found.append((int(match[1], 16), len(match[2]) // 2, match[3], match[4]))
