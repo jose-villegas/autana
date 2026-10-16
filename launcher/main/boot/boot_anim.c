@@ -151,30 +151,64 @@ typedef struct {
 
 /* The floor's height at a node, in t units. The one place that knows what
  * lifts it. */
-/* Prototype (host, float): one impact at BOOT_ANIM_WAVE_IN_MS. A packet of
- * crests leaves the origin at the ripple's phase speed, PROTO_SIGMA_WAVES
- * wavelengths wide, falling as 1/sqrt(distance) and e^(-t/PROTO_DECAY_S). */
+/* Prototype (host, float), not for merge.
+ *
+ * The impact: at PROTO_IMPACT_MS a packet of crests, PROTO_LAMBDA_M apart,
+ * leaves the origin at PROTO_SPEED_MPS, PROTO_RINGS wavelengths wide, falling
+ * as 1/sqrt(distance) and e^(-t/PROTO_DECAY_S).
+ *
+ * The swell: three directional sines fading in from PROTO_SWELL_MS over
+ * PROTO_SWELL_IN_MS, so the plane keeps moving once the rings have passed. */
 #include <math.h>
-#define PROTO_SIGMA_WAVES 1.0F
-#define PROTO_DECAY_S     1.5F
-#define PROTO_GAIN        1.5F
+#define PROTO_IMPACT_MS   450
+#define PROTO_LAMBDA_M    2.5F
+#define PROTO_SPEED_MPS   2.2F
+#define PROTO_RINGS       1.6F
+#define PROTO_DECAY_S     2.5F
+#define PROTO_HEIGHT_M    1.2F
+#define PROTO_SWELL_MS    2200
+#define PROTO_SWELL_IN_MS 1200
+#define PROTO_SWELL_M     0.25F
+
+typedef struct {
+    float amplitude, wavelength_m, period_s, dir_x, dir_y;
+} proto_sine_t;
+
+static const proto_sine_t proto_swell[] = {
+    {1.0F, 4.0F, 1.3F, 1.0F, 0.0F},
+    {0.6F, 2.7F, 1.0F, 0.34F, 0.94F},
+    {0.4F, 1.9F, 0.8F, -0.77F, 0.64F},
+};
+
+static float
+proto_swell_at(float x, float y, float t) {
+    float h = 0.0F;
+    for (unsigned i = 0; i < sizeof proto_swell / sizeof proto_swell[0]; i++) {
+        const proto_sine_t* w = &proto_swell[i];
+        const float along = (x * w->dir_x) + (y * w->dir_y);
+        h += w->amplitude * sinf(6.2831853F * ((along / w->wavelength_m) - (t / w->period_s)));
+    }
+    return h;
+}
 
 static int32_t
-floor_lift(int32_t d, uint32_t now_ms, int32_t amp_q12) {
-    (void)amp_q12;
-    if (now_ms <= BOOT_ANIM_WAVE_IN_MS) {
-        return 0;
-    }
-    const float tau = (float)(now_ms - BOOT_ANIM_WAVE_IN_MS) / 1000.0F;
-    const float lambda = (float)BOOT_ANIM_WAVE_WAVELENGTH_Q12 / (float)BOOT_ANIM_ONE;
-    const float speed = lambda * 1000.0F / (float)BOOT_ANIM_WAVE_PERIOD_MS;
+floor_lift_at(int32_t re, int32_t im, int32_t d, uint32_t now_ms) {
+    const float t = (float)now_ms / 1000.0F;
     const float r = (float)d / (float)BOOT_ANIM_ONE;
-    const float x = r - (speed * tau);
-    const float sigma = PROTO_SIGMA_WAVES * lambda;
-    const float env = expf(-(x / sigma) * (x / sigma));
-    const float decay = expf(-tau / PROTO_DECAY_S) / sqrtf(1.0F + (r / lambda));
-    const float h = PROTO_GAIN * ((float)BOOT_ANIM_WAVE_HEIGHT_Q12 / (float)BOOT_ANIM_ONE) * env * decay
-                    * cosf(6.2831853F * x / lambda);
+    float h = 0.0F;
+    if (now_ms > PROTO_IMPACT_MS) {
+        const float tau = (float)(now_ms - PROTO_IMPACT_MS) / 1000.0F;
+        const float x = r - (PROTO_SPEED_MPS * tau);
+        const float sigma = PROTO_RINGS * PROTO_LAMBDA_M;
+        const float env = expf(-(x / sigma) * (x / sigma));
+        const float decay = expf(-tau / PROTO_DECAY_S) / sqrtf(1.0F + (r / PROTO_LAMBDA_M));
+        h += PROTO_HEIGHT_M * env * decay * cosf(6.2831853F * x / PROTO_LAMBDA_M);
+    }
+    if (now_ms > PROTO_SWELL_MS) {
+        float in = (float)(now_ms - PROTO_SWELL_MS) / (float)PROTO_SWELL_IN_MS;
+        in = in > 1.0F ? 1.0F : in;
+        h += PROTO_SWELL_M * in * proto_swell_at((float)re / (float)BOOT_ANIM_ONE, (float)im / (float)BOOT_ANIM_ONE, t);
+    }
     return boot_anim_zeta_to_t_q8((int32_t)(h * (float)BOOT_ANIM_ONE));
 }
 
@@ -188,8 +222,9 @@ mesh_distance(int i, int j) {
 /* Node (i, j) lifted into camera space. */
 static vec3x_t
 mesh_point(const mesh_pass_t* pass, int i, int j, int32_t d) {
-    return boot_anim_to_camera_space(i * BOOT_ANIM_MESH_STEP_Q12, j * BOOT_ANIM_MESH_STEP_Q12,
-                                     floor_lift(d, pass->now_ms, pass->amp_q12), pass->view);
+    return boot_anim_to_camera_space(
+        i * BOOT_ANIM_MESH_STEP_Q12, j * BOOT_ANIM_MESH_STEP_Q12,
+        floor_lift_at(i * BOOT_ANIM_MESH_STEP_Q12, j * BOOT_ANIM_MESH_STEP_Q12, d, pass->now_ms), pass->view);
 }
 
 static mesh_node_t
