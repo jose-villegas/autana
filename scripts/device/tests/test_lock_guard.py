@@ -1635,19 +1635,19 @@ class DurationTests(Store):
     def test_history_needs_enough_successes_and_uses_only_the_recent_runs(self):
         root = self.store.root
         for seconds in range(device_lock.ESTIMATE_MINIMUM_RUNS - 1):
-            device_lock.record_duration("send", seconds, root=root)
-        device_lock.record_duration("send", 999, "failed", root=root)
+            device_lock.record_duration("send", seconds, root=root, board=BOARD_A)
+        device_lock.record_duration("send", 999, "failed", root=root, board=BOARD_A)
         self.assertEqual(device_lock.duration_history(root), {})
-        device_lock.record_duration("send", 50, root=root)
+        device_lock.record_duration("send", 50, root=root, board=BOARD_A)
         self.assertIn("send", device_lock.duration_history(root))
         recent = device_lock.ESTIMATE_RECENT_RUNS
         for seconds in [10_000] * recent + list(range(recent)):
-            device_lock.record_duration("flash", seconds, root=root)
+            device_lock.record_duration("flash", seconds, root=root, board=BOARD_A)
         self.assertEqual(device_lock.duration_history(root)["flash"], (recent - 1) / 2)
 
     def test_the_estimate_is_a_median(self):
         for seconds in (10, 10, 1000):
-            device_lock.record_duration("flash", seconds, root=self.store.root)
+            device_lock.record_duration("flash", seconds, root=self.store.root, board=BOARD_A)
         self.assertEqual(device_lock.duration_history(self.store.root), {"flash": 10})
 
     def test_durations_are_recorded_under_the_kind_not_the_purpose(self):
@@ -1665,7 +1665,7 @@ class DurationTests(Store):
                         "error": None}) + "\n"
             for index in range(device_lock.DURATIONS_TRIM_LINES)), encoding="utf-8")
         for index in range(10):
-            device_lock.record_duration(f"kind{index % kinds}", index, root=root)
+            device_lock.record_duration(f"kind{index % kinds}", index, root=root, board=BOARD_A)
             lines = path.read_text(encoding="utf-8").splitlines()
             self.assertLessEqual(len(lines), device_lock.DURATIONS_TRIM_LINES)
 

@@ -274,6 +274,8 @@ and queued `estimated_start` times. It never ends a hold.
 Lock loss is defined in [Device-Lock.md](Device-Lock.md); flash success,
 captures and wait estimates in [Flash-and-Captures.md](Flash-and-Captures.md).
 
+See [Wait estimates](Flash-and-Captures.md#wait-estimates) for duration history and per-board estimates.
+
 The lock owner is set as described in [Flags](#flags) above.
 
 `autana lock hand --until-back 30 put the board in download mode` pauses a flash

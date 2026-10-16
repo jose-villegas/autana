@@ -212,3 +212,9 @@ trips a regression ceiling reports one. A `flash` holds the board only while esp
 writes: the build and the snapshot come before the lock, so the estimate a
 waiter sees behind a flash is the write alone. A person's reservation, or a
 holder of unknown length, makes every estimate behind it unknown.
+
+A board uses its own USB serial's history once that kind reaches
+`ESTIMATE_MINIMUM_RUNS` in `scripts/device/device_lock.py`; otherwise it
+uses all boards' history, including older rows without a board. Duration
+history is trimmed per command kind and board with the same recent-run and
+file limits.
