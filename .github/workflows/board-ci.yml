@@ -60,7 +60,7 @@ jobs:
         id: device
         run: |
           rm -f "$RUNNER_TEMP/board-ci-selftest.log"
-          export PATH="$GITHUB_WORKSPACE/tools:$PATH"
+          export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
           cat > "$RUNNER_TEMP/board-ci-steps.sh" <<'SH'
           set -eo pipefail
           autana selftest | tee "$RUNNER_TEMP/board-ci-selftest.log" || exit 1
