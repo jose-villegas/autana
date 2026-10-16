@@ -56,6 +56,31 @@ class TimelineGeneratorTests(unittest.TestCase):
                 [sys.executable, str(GENERATOR), str(source), str(glb)],
                 cwd=LAUNCHER, capture_output=True, text=True, check=False)
 
+    def test_far_floor_settings_have_named_validation(self):
+        for key in ("far_line_stride", "far_reach_m", "far_segments", "far_spacing_growth", "swell_flat_start_m"):
+            for value in (-1, float("nan"), float("inf")):
+                with self.subTest(key=key, value=value):
+                    result = self.generate(config_change=lambda c: c.update({key: value}))
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(key + " must", result.stderr)
+        limits = {"far_line_stride": json.loads(TIMELINE.read_text())["timing"]["mesh_cells"] // 2,
+                  "far_segments": gen_boot_anim_timeline.FAR_SEGMENT_LIMIT,
+                  "far_spacing_growth": gen_boot_anim_timeline.FAR_SPACING_GROWTH_MAX}
+        for key, limit in limits.items():
+            for value in (0, 1.5, limit + 1):
+                result = self.generate(config_change=lambda c: c.update({key: value}))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(key + " must", result.stderr)
+        for key, value in (("far_reach_m", 10), ("far_reach_m", gen_boot_anim_timeline.FAR_REACH_LIMIT_M + 1),
+                           ("swell_flat_start_m", 13)):
+            result = self.generate(config_change=lambda c: c.update({key: value}))
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(key + " must", result.stderr)
+        result = self.generate(config_change=lambda c: c.update(
+            grid_step_m=0.001, swell_flat_start_m=0))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("far_reach_m must fit unsigned distance bands", result.stderr)
+
     def test_floor_settings_have_named_validation(self):
         positive = ("ripple_wavelength_m", "ripple_speed_m_s", "ripple_rings")
         nonnegative = ("ripple_height_m", "swell_height_m")

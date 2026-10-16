@@ -21,8 +21,10 @@
 #include "suites.h"
 #include "unity.h"
 
-#define FLOOR_CROSSFADE_OFFSET_MS 50
 #define FLOOR_EDGE_PEAK_MS        3724
+#define FLOOR_REFERENCE_EARLY_MS  2464
+#define FLOOR_REFERENCE_MIDDLE_MS 3550
+#define FLOOR_REFERENCE_LATE_MS   4372
 #define FLOOR_TIMING_REPS         64
 #define FLOOR_LINE_REPS           32768
 #define FLOOR_LINE_COLOR          GFX_RGB(0xFFFFFF)
@@ -137,8 +139,10 @@ test_floor_timeline_edge_counts(void) {
         }
     }
     printf("FLOOR_MAX ms=%" PRIu32 " edges=%u\n", maximum_ms, maximum);
+    (void)count_frame(&motion, FLOOR_REFERENCE_EARLY_MS, true);
+    (void)count_frame(&motion, FLOOR_REFERENCE_LATE_MS, true);
     (void)count_frame(&motion, FLOOR_EDGE_PEAK_MS, true);
-    (void)count_frame(&motion, BOOT_ANIM_IMAGE_START_MS + FLOOR_CROSSFADE_OFFSET_MS, true);
+    (void)count_frame(&motion, FLOOR_REFERENCE_MIDDLE_MS, true);
     floor_counting = false;
     boot_anim_motion_release(&motion);
 }
@@ -178,10 +182,12 @@ test_floor_instruction_rows(void) {
     boot_anim_motion_t motion;
     boot_anim_motion_load(&motion);
     TEST_ASSERT_TRUE(motion.from_pack);
-    report_total(&motion, BOOT_ANIM_IMAGE_START_MS + FLOOR_CROSSFADE_OFFSET_MS, false);
-    report_total(&motion, BOOT_ANIM_IMAGE_START_MS + FLOOR_CROSSFADE_OFFSET_MS, true);
-    report_total(&motion, FLOOR_EDGE_PEAK_MS, false);
-    report_total(&motion, FLOOR_EDGE_PEAK_MS, true);
+    static const uint32_t checkpoints[] = {FLOOR_REFERENCE_EARLY_MS, FLOOR_REFERENCE_MIDDLE_MS, FLOOR_EDGE_PEAK_MS,
+                                           FLOOR_REFERENCE_LATE_MS};
+    for (size_t i = 0; i < sizeof checkpoints / sizeof checkpoints[0]; i++) {
+        report_total(&motion, checkpoints[i], false);
+        report_total(&motion, checkpoints[i], true);
+    }
     boot_anim_motion_release(&motion);
     report_line_cost(1);
     report_line_cost(FLOOR_LINE_LENGTH);

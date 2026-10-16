@@ -101,13 +101,7 @@ boot_anim_timeline_sample(const boot_anim_motion_t* motion, uint32_t now_ms) {
 /* Must match PHASE1_T_MAX in tools/gen/gen_zeta_curve.py. */
 #define BOOT_ANIM_T_MAX_PHASE1 35
 
-/* BANDS is how far the floor's colour and fade reach, in steps of
- * BOOT_ANIM_GRID_STEP_Q12 out from the origin: each band has one hue and
- * one alpha, whatever mesh segments fall in it. Both generated in
- * boot_anim_timeline.h. FADE is its own name for what
- * boot_anim_grid_alpha() means, but must equal BANDS exactly: short of
- * it is a hard edge, past it divides by a count nothing reaches. */
-#define BOOT_ANIM_GRID_FADE    BOOT_ANIM_GRID_BANDS
+/* Colour bands share a radial fade through the mesh and far lattice. */
 
 /* The spiral: one unit of t climbs 132/512 of a meter. */
 #define BOOT_ANIM_SPIRAL_Q9    132
@@ -228,6 +222,9 @@ boot_anim_floor_node(int i, int j) {
 static inline int32_t
 boot_anim_floor_height(int i, int j, const boot_anim_floor_state_t* state) {
     const boot_anim_floor_node_t* node = boot_anim_floor_node(i, j);
+    if (node->envelope == 0) {
+        return 0;
+    }
     const int x = node->radius - state->travel;
     int32_t ripple = 0;
     if (mathi_abs(x) <= BOOT_ANIM_RIPPLE_SHAPE_EXTENT) {
@@ -236,7 +233,7 @@ boot_anim_floor_height(int i, int j, const boot_anim_floor_state_t* state) {
         ripple = (ripple * state->decay) >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
     }
     if (state->swell == 0) {
-        return ripple;
+        return (ripple * node->envelope) >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
     }
     int32_t swell = 0;
     for (int k = 0; k < BOOT_ANIM_SWELL_COUNT; k++) {
@@ -244,7 +241,8 @@ boot_anim_floor_height(int i, int j, const boot_anim_floor_state_t* state) {
                                           + boot_anim_swell_im[j + (BOOT_ANIM_MESH_CELLS / 2)][k] + state->phase[k]);
         swell += (boot_anim_swell_weights[k] * trig_sin(phase)) >> TRIG_SIN_SHIFT;
     }
-    return ripple + ((swell * state->swell) >> BOOT_ANIM_FLOOR_GAIN_SHIFT);
+    return ((ripple + ((swell * state->swell) >> BOOT_ANIM_FLOOR_GAIN_SHIFT)) * node->envelope)
+           >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
 }
 
 /* Spline interpolation keeps the curve's tight turns smooth without a larger
@@ -423,7 +421,8 @@ boot_anim_grid_alpha(uint32_t now_ms, int band) {
     if (band >= BOOT_ANIM_GRID_FADE) {
         return 0;
     }
-    const uint32_t start = BOOT_ANIM_GRID_START_MS + ((uint32_t)band * BOOT_ANIM_GRID_BAND_MS);
+    const uint32_t start =
+        BOOT_ANIM_GRID_START_MS + ((uint32_t)mathi_min(band, BOOT_ANIM_GRID_BANDS) * BOOT_ANIM_GRID_BAND_MS);
     const uint32_t arrived = tween_ramp(now_ms, start, BOOT_ANIM_GRID_FADE_MS);
 
     /* left/FADE, bounded bands. Squared dims too much. Linear keeps depth. */

@@ -1,0 +1,617 @@
+{
+  "unit": "QEMU --icount instructions per isolated draw_floor call; not board time",
+  "rows": [
+    {
+      "ms": 2464,
+      "main_rings": 2767296.875,
+      "todays_floor": 2918218.75,
+      "far_lines": 5148890.625,
+      "todays_delta_vs_rings": 150921.875,
+      "todays_delta_percent": 5.453765237963482,
+      "far_delta_vs_rings": 2381593.75,
+      "far_delta_percent": 86.06209805371894,
+      "far_delta_vs_today": 2230671.875,
+      "far_delta_vs_today_percent": 76.43950183652271,
+      "nodes": 2401,
+      "draw_calls": 4011,
+      "line_samples": 42861,
+      "logical_far_lines": 154,
+      "possible_far_segments": 2592,
+      "far_ink_zero": 1069343.75
+    },
+    {
+      "ms": 3550,
+      "main_rings": 2305765.625,
+      "todays_floor": 2611281.25,
+      "far_lines": 4749468.75,
+      "todays_delta_vs_rings": 305515.625,
+      "todays_delta_percent": 13.250072847278215,
+      "far_delta_vs_rings": 2443703.125,
+      "far_delta_percent": 105.98228625253272,
+      "far_delta_vs_today": 2138187.5,
+      "far_delta_vs_today_percent": 81.88269647323511,
+      "nodes": 2401,
+      "draw_calls": 3683,
+      "line_samples": 36995,
+      "logical_far_lines": 154,
+      "possible_far_segments": 2592,
+      "far_ink_zero": 1061359.375
+    },
+    {
+      "ms": 3724,
+      "main_rings": 2151609.375,
+      "todays_floor": 2623156.25,
+      "far_lines": 4808750.0,
+      "todays_delta_vs_rings": 471546.875,
+      "todays_delta_percent": 21.91600763963022,
+      "far_delta_vs_rings": 2657140.625,
+      "far_delta_percent": 123.49549392533206,
+      "far_delta_vs_today": 2185593.75,
+      "far_delta_vs_today_percent": 83.31923613013903,
+      "nodes": 2401,
+      "draw_calls": 3753,
+      "line_samples": 37291,
+      "logical_far_lines": 154,
+      "possible_far_segments": 2592,
+      "far_ink_zero": 1069093.75
+    },
+    {
+      "ms": 4372,
+      "main_rings": 975171.875,
+      "todays_floor": 2734515.625,
+      "far_lines": 4963718.75,
+      "todays_delta_vs_rings": 1759343.75,
+      "todays_delta_percent": 180.41370912178945,
+      "far_delta_vs_rings": 3988546.875,
+      "far_delta_percent": 409.0096297127109,
+      "far_delta_vs_today": 2229203.125,
+      "far_delta_vs_today_percent": 81.52095035112481,
+      "nodes": 2401,
+      "draw_calls": 3969,
+      "line_samples": 38459,
+      "logical_far_lines": 154,
+      "possible_far_segments": 2592,
+      "far_ink_zero": 1088250.0
+    }
+  ],
+  "coverage": [
+    {
+      "ms": 3100,
+      "finite_fraction": 0.4942194778726708,
+      "infinite_fraction": 0.5022321428571429,
+      "native_horizon_y_at_left_right": [
+        224.0,
+        224.0
+      ],
+      "native_horizon_x_at_top_bottom": null
+    },
+    {
+      "ms": 3500,
+      "finite_fraction": 0.5502656735248447,
+      "infinite_fraction": 0.559673427795031,
+      "native_horizon_y_at_left_right": [
+        255.38751979338016,
+        245.06252402109243
+      ],
+      "native_horizon_x_at_top_bottom": [
+        9077.700546448088,
+        -6810.828961748633
+      ]
+    },
+    {
+      "ms": 4000,
+      "finite_fraction": 0.6235745826863354,
+      "infinite_fraction": 0.6374648194875776,
+      "native_horizon_y_at_left_right": [
+        297.19171351204534,
+        272.97253475337243
+      ],
+      "native_horizon_x_at_top_bottom": [
+        4503.429284110751,
+        -2270.0869294088297
+      ]
+    }
+  ],
+  "tilt_sweep": {
+    "instantaneous_tilt": true,
+    "removed_sampled_tilt_deg": 18.75,
+    "axis": [
+      0.9805806756472756,
+      -2.836899368353704e-10,
+      -0.19611613535640704
+    ],
+    "rows": [
+      {
+        "angle_deg": -90,
+        "infinite_fraction": 0.9843325407608695,
+        "horizon_outside": false
+      },
+      {
+        "angle_deg": -85,
+        "infinite_fraction": 1.0,
+        "horizon_outside": true
+      },
+      {
+        "angle_deg": -80,
+        "infinite_fraction": 1.0,
+        "horizon_outside": true
+      },
+      {
+        "angle_deg": -75,
+        "infinite_fraction": 1.0,
+        "horizon_outside": true
+      },
+      {
+        "angle_deg": -70,
+        "infinite_fraction": 1.0,
+        "horizon_outside": true
+      },
+      {
+        "angle_deg": -65,
+        "infinite_fraction": 1.0,
+        "horizon_outside": true
+      },
+      {
+        "angle_deg": -60,
+        "infinite_fraction": 1.0,
+        "horizon_outside": true
+      },
+      {
+        "angle_deg": -55,
+        "infinite_fraction": 1.0,
+        "horizon_outside": true
+      },
+      {
+        "angle_deg": -50,
+        "infinite_fraction": 1.0,
+        "horizon_outside": true
+      },
+      {
+        "angle_deg": -45,
+        "infinite_fraction": 1.0,
+        "horizon_outside": true
+      },
+      {
+        "angle_deg": -40,
+        "infinite_fraction": 1.0,
+        "horizon_outside": true
+      },
+      {
+        "angle_deg": -35,
+        "infinite_fraction": 1.0,
+        "horizon_outside": true
+      },
+      {
+        "angle_deg": -30,
+        "infinite_fraction": 1.0,
+        "horizon_outside": true
+      },
+      {
+        "angle_deg": -25,
+        "infinite_fraction": 1.0,
+        "horizon_outside": true
+      },
+      {
+        "angle_deg": -20,
+        "infinite_fraction": 1.0,
+        "horizon_outside": true
+      },
+      {
+        "angle_deg": -15,
+        "infinite_fraction": 0.985060413431677,
+        "horizon_outside": false
+      },
+      {
+        "angle_deg": -10,
+        "infinite_fraction": 0.9387798427795031,
+        "horizon_outside": false
+      },
+      {
+        "angle_deg": -5,
+        "infinite_fraction": 0.8715304736024845,
+        "horizon_outside": false
+      },
+      {
+        "angle_deg": 0,
+        "infinite_fraction": 0.810164741847826,
+        "horizon_outside": false
+      },
+      {
+        "angle_deg": 5,
+        "infinite_fraction": 0.7578125,
+        "horizon_outside": false
+      },
+      {
+        "angle_deg": 10,
+        "infinite_fraction": 0.7108040566770186,
+        "horizon_outside": false
+      },
+      {
+        "angle_deg": 15,
+        "infinite_fraction": 0.6684236704192547,
+        "horizon_outside": false
+      },
+      {
+        "angle_deg": 20,
+        "infinite_fraction": 0.628809200310559,
+        "horizon_outside": false
+      },
+      {
+        "angle_deg": 25,
+        "infinite_fraction": 0.5908385093167702,
+        "horizon_outside": false
+      },
+      {
+        "angle_deg": 30,
+        "infinite_fraction": 0.5539111024844721,
+        "horizon_outside": false
+      },
+      {
+        "angle_deg": 35,
+        "infinite_fraction": 0.5182817352484472,
+        "horizon_outside": false
+      },
+      {
+        "angle_deg": 40,
+        "infinite_fraction": 0.4839504076086957,
+        "horizon_outside": false
+      },
+      {
+        "angle_deg": 45,
+        "infinite_fraction": 0.4483210403726708,
+        "horizon_outside": false
+      },
+      {
+        "angle_deg": 50,
+        "infinite_fraction": 0.41139363354037267,
+        "horizon_outside": false
+      },
+      {
+        "angle_deg": 55,
+        "infinite_fraction": 0.37342294254658387,
+        "horizon_outside": false
+      },
+      {
+        "angle_deg": 60,
+        "infinite_fraction": 0.3338084724378882,
+        "horizon_outside": false
+      },
+      {
+        "angle_deg": 65,
+        "infinite_fraction": 0.2914280861801242,
+        "horizon_outside": false
+      },
+      {
+        "angle_deg": 70,
+        "infinite_fraction": 0.24441964285714285,
+        "horizon_outside": false
+      },
+      {
+        "angle_deg": 75,
+        "infinite_fraction": 0.19206740100931677,
+        "horizon_outside": false
+      },
+      {
+        "angle_deg": 80,
+        "infinite_fraction": 0.8692983307453416,
+        "horizon_outside": false
+      },
+      {
+        "angle_deg": 85,
+        "infinite_fraction": 0.9368995050465838,
+        "horizon_outside": false
+      },
+      {
+        "angle_deg": 90,
+        "infinite_fraction": 0.9842051630434783,
+        "horizon_outside": false
+      }
+    ]
+  },
+  "references": {
+    "todays_floor": "4a3455810ef2ff17904a77c7826fdeeb7aca95a5",
+    "main_rings": "ed79928fa4bce3da48a809b945e6dd6c0609b949"
+  },
+  "settings": {
+    "timing": {
+      "total_ms": 5500,
+      "axes_ms": 450,
+      "grid_start_ms": 320,
+      "grid_band_ms": 16,
+      "grid_bands": 128,
+      "mesh_cells": 48,
+      "mesh_dash": 0,
+      "grid_fade_ms": 128,
+      "pen_start_ms": 520,
+      "pen_ms": 1980,
+      "title_start_ms": 2450,
+      "title_stagger_ms": 170,
+      "title_flight_ms": 500,
+      "title_entry_px": 420,
+      "title_turns_phase": 92000,
+      "title_amplitude_px": 15,
+      "title_wave_amplitude_px": 12,
+      "title_wave_period_ms": 900,
+      "title_wave_stagger_ms": 75,
+      "fade_start_ms": 4800,
+      "grid_hue_ms": 700,
+      "grid_hue_spread": 64,
+      "grid_whiten_max": 32,
+      "grid_ceiling_max": 96,
+      "grid_max": 64,
+      "pen_finish_ms": 4800,
+      "grid_spokes": 4,
+      "grid_spoke_dash": 1,
+      "grid_spoke_start_ms": 2300,
+      "grid_spoke_draw_ms": 800,
+      "title_height_px": 40,
+      "title_x_px": 95,
+      "image_start_ms": 4000,
+      "image_fade_ms": 800,
+      "title_shadow_dx": 5,
+      "title_shadow_dy": 5,
+      "title_shadow_alpha": 128,
+      "title_wave_out_ms": 3200,
+      "title_wave_fade_ms": 1500,
+      "title_scale": 5,
+      "ripple_impact_ms": 450,
+      "ripple_decay_ms": 2500,
+      "swell_start_ms": 2200,
+      "swell_in_ms": 1200
+    },
+    "camera_half_fov_short_tan": 1.0,
+    "grid_step_m": 0.1,
+    "ripple_wavelength_m": 2.5,
+    "ripple_speed_m_s": 2.2,
+    "ripple_rings": 1.6,
+    "ripple_height_m": 1.2,
+    "swell_height_m": 0.6,
+    "swell": [
+      {
+        "wavelength_m": 6,
+        "period_ms": 2500,
+        "direction_deg": 0,
+        "weight": 1
+      },
+      {
+        "wavelength_m": 4.5,
+        "period_ms": 2000,
+        "direction_deg": 70,
+        "weight": 0.6
+      },
+      {
+        "wavelength_m": 3,
+        "period_ms": 1600,
+        "direction_deg": 140,
+        "weight": 0.4
+      }
+    ],
+    "far_line_stride": 4,
+    "far_reach_m": 500,
+    "far_segments": 8,
+    "far_spacing_growth": 2,
+    "swell_flat_start_m": 10
+  },
+  "near_alpha": [
+    {
+      "ms": 1500,
+      "band": 0,
+      "before": 71,
+      "after": 71
+    },
+    {
+      "ms": 1500,
+      "band": 32,
+      "before": 53,
+      "after": 70
+    },
+    {
+      "ms": 1500,
+      "band": 64,
+      "before": 35,
+      "after": 70
+    },
+    {
+      "ms": 1500,
+      "band": 96,
+      "before": 0,
+      "after": 0
+    },
+    {
+      "ms": 1500,
+      "band": 128,
+      "before": 0,
+      "after": 0
+    },
+    {
+      "ms": 3100,
+      "band": 0,
+      "before": 81,
+      "after": 81
+    },
+    {
+      "ms": 3100,
+      "band": 32,
+      "before": 60,
+      "after": 80
+    },
+    {
+      "ms": 3100,
+      "band": 64,
+      "before": 40,
+      "after": 79
+    },
+    {
+      "ms": 3100,
+      "band": 96,
+      "before": 20,
+      "after": 79
+    },
+    {
+      "ms": 3100,
+      "band": 128,
+      "before": 0,
+      "after": 78
+    }
+  ],
+  "seam": {
+    "envelope_start_m": 10,
+    "edge_m": 12.814453125,
+    "ripple_front_max_m": 11.11,
+    "gaussian_tail_is_not_zero_at_edge": true,
+    "total_height_at_edge_q12": 0
+  },
+  "stack": {
+    "chain": 2224,
+    "harness": 144,
+    "context": 528,
+    "main_task_stack": 3648,
+    "free": 752,
+    "reserve": 512,
+    "functions": [
+      [
+        "boot_anim_run",
+        256
+      ],
+      [
+        "boot_anim_draw_frame",
+        48
+      ],
+      [
+        "draw_scene",
+        208
+      ],
+      [
+        "draw_floor",
+        800
+      ],
+      [
+        "draw_far_line",
+        272
+      ],
+      [
+        "draw_far_tail",
+        240
+      ],
+      [
+        "draw_far_segment",
+        96
+      ],
+      [
+        "draw_line_ex",
+        96
+      ],
+      [
+        "line_walk",
+        80
+      ],
+      [
+        "gfx_mark_drawn",
+        32
+      ],
+      [
+        "dirty_mark",
+        96
+      ]
+    ],
+    "used": 2896
+  },
+  "validation": {
+    "host_sanitized_tests": 2387,
+    "host_failures": 0,
+    "generator_tests": 20,
+    "qemu_tests": 78,
+    "qemu_failures": 0,
+    "complexity_gate_passed": true,
+    "largest_allowed_complexity": 15,
+    "new_tests_seen_red": [
+      "test_far_floor_settings_have_named_validation",
+      "test_floor_mesh_boundary_is_exactly_flat"
+    ],
+    "fingerprint_unchanged": true
+  },
+  "table_bytes": {
+    "envelope_added": 1250,
+    "far_lines": 936,
+    "far_distances": 36,
+    "removed_row_half": 50,
+    "net": 2172
+  },
+  "coverage_method": "Integer native pixel centres; ray/flat-plane intersections after the asset engine-frame Z reflection, with the camera-space matrix rounded to Q9. Finite area bounds abs(re),abs(im)<=far_reach_m; independent of grid-line ink. Cross-checked against the host renderer's actual boot_anim_view matrices.",
+  "segment_choice": "Eight geometrically spaced segments per tail concentrate colour samples near the mesh; distant intervals cover progressively fewer projected pixels. Outer lines add a central segment. Whole lines are clipped before per-segment transforms or colour setup.",
+  "artifacts": {
+    "avi": "results/boot-floor-far/final.avi",
+    "avi_frames": 184,
+    "avi_dt_ms": 30,
+    "comparison_video": "animation.mp4",
+    "comparison_sheet": "compare.png",
+    "crops": "compare.crops.png",
+    "avi_sha256": "36ff174fc4bd3d06db99f319cc9ca1d8161e87fffdaf6e549213dd467aa4ddae"
+  },
+  "new_symbols": [
+    {
+      "symbols": [
+        "far_point",
+        "far_segment_visible",
+        "draw_far_segment",
+        "draw_far_tail",
+        "draw_far_line",
+        "draw_far_floor"
+      ],
+      "owner_checked": "boot/boot_anim.c mesh_point/draw_mesh_edge/draw_grid_spoke; boot_anim_plane/boot_anim_plane_point; render/r3d_project_x.h projectors; gfx/target/gfx_box.h clipping",
+      "reason": "Extend the existing floor owner with flat lattice traversal; reuse the existing plane transform, near-plane projector and rectangle clipper. None walks the generated sparse lattice or owns its distance-band colours."
+    },
+    {
+      "symbols": [
+        "validate_far_floor",
+        "emit_far_floor",
+        "FAR_SEGMENT_LIMIT",
+        "FAR_REACH_LIMIT_M",
+        "FAR_SPACING_GROWTH_MIN",
+        "FAR_SPACING_GROWTH_MAX",
+        "FAR_BAND_LIMIT"
+      ],
+      "owner_checked": "tools/gen/gen_boot_anim_timeline.py validate_floor/emit_floor/floor_number",
+      "reason": "The timeline generator already owns authored floor validation and flash tables; these functions extend that owner with sparse offsets, flat tails and their encoding bounds."
+    },
+    {
+      "symbols": [
+        "boot_anim_far_line_t",
+        "boot_anim_far_lines",
+        "boot_anim_far_distances",
+        "BOOT_ANIM_FAR_SEGMENTS",
+        "BOOT_ANIM_FAR_REACH_Q12",
+        "BOOT_ANIM_FAR_LINE_STRIDE",
+        "BOOT_ANIM_FAR_SPACING_GROWTH",
+        "BOOT_ANIM_SWELL_FLAT_START_M"
+      ],
+      "owner_checked": "generated boot_anim_timeline.h boot_anim_floor_node_t and floor tables",
+      "reason": "Generated far geometry has no heights and requires an offset plus segment bands, unlike the near mesh node. The existing node gains its radial envelope; BOOT_ANIM_GRID_FADE remains the existing fade owner."
+    },
+    {
+      "symbols": [
+        "TimelineGeneratorTests.test_far_floor_settings_have_named_validation",
+        "test_floor_mesh_boundary_is_exactly_flat",
+        "FLOOR_REFERENCE_EARLY_MS",
+        "FLOOR_REFERENCE_MIDDLE_MS",
+        "FLOOR_REFERENCE_LATE_MS"
+      ],
+      "owner_checked": "tools/tests/test_gen_boot_anim_timeline.py existing validation cases; test/suites/suite_boot_anim.c floor height/reference tests; suite_boot_floor_icount.c report_total/count_frame",
+      "reason": "Extend existing generator, floor seam and cost suites. The new timestamps name the task's fixed measurement checkpoints; existing draw-call wrapping is reused."
+    }
+  ],
+  "notes": [
+    "Main rings retain their own committed timeline and motion; the 4372 ms comparison forces the floor kernel even when that reference's photograph already covers it.",
+    "Draw calls include the near mesh and flat spokes, and include calls the rasterizer may later clip; line_samples counts clipped line samples, not unique occupied pixels.",
+    "The near fade brightens under the unchanged BOOT_ANIM_GRID_CEILING_MAX cap. The radial envelope attenuates total height, including the nonzero Gaussian tail.",
+    "Tilt rows apply instantaneous source-frame angles about the same eye/t-line plane normal, after removing the sampled 18.75 degree contribution at 4000 ms; camera, translation and scale stay fixed. Values include the asset-pack Z reflection. The smallest tested magnitude giving full coverage is -20 degrees.",
+    "The standalone AVI retains the renderer's requested schedule: start 0 ms, quarter 1, 184 frames, 30 ms per frame."
+  ],
+  "line_counts": {
+    "generated_tables_net": 45,
+    "hand_written_code_net": 179,
+    "code_net": 224,
+    "timeline_settings_net": 5,
+    "all_text_net": 1078
+  }
+}

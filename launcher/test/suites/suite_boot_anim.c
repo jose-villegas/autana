@@ -517,6 +517,18 @@ test_the_seeds_three_axes_project_to_distinct_directions(void) {
 #define FLOOR_DECAY_STEP_MS 800
 
 static void
+test_floor_mesh_boundary_is_exactly_flat(void) {
+    const int half = BOOT_ANIM_MESH_CELLS / 2;
+    for (uint32_t ms = BOOT_ANIM_SWELL_START_MS; ms <= BOOT_ANIM_MS; ms += FLOOR_DECAY_STEP_MS) {
+        const boot_anim_floor_state_t state = boot_anim_floor_state(ms);
+        for (int i = -half; i <= half; i++) {
+            TEST_ASSERT_EQUAL_INT32(0, boot_anim_floor_height(i, half, &state));
+            TEST_ASSERT_EQUAL_INT32(0, boot_anim_floor_height(-half, i, &state));
+        }
+    }
+}
+
+static void
 test_floor_is_flat_through_impact(void) {
     for (uint32_t ms = 0; ms <= BOOT_ANIM_RIPPLE_IMPACT_MS; ms++) {
         const boot_anim_floor_state_t state = boot_anim_floor_state(ms);
@@ -589,7 +601,8 @@ floor_reference_height(int i, int j, uint32_t ms) {
                       * sin(FLOOR_REFERENCE_TAU * ((along / sine->wavelength_m) - ((double)ms / sine->period_ms)));
         }
     }
-    return height;
+    const double edge = (BOOT_ANIM_MESH_CELLS / 2) * (double)BOOT_ANIM_MESH_STEP_Q12 / BOOT_ANIM_ONE;
+    return height * fmin(1, fmax(0, (edge - radius) / (edge - BOOT_ANIM_SWELL_FLAT_START_M)));
 }
 
 static void
@@ -1879,6 +1892,7 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_the_seeds_curve_stays_near_the_panel_throughout);
     RUN_TEST(test_the_seeds_three_axes_project_to_distinct_directions);
 
+    RUN_TEST(test_floor_mesh_boundary_is_exactly_flat);
     RUN_TEST(test_floor_is_flat_through_impact);
     RUN_TEST(test_floor_is_flat_well_ahead_of_the_train);
     RUN_TEST(test_ripple_peak_falls_over_time);
