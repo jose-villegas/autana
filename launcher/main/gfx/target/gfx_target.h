@@ -51,7 +51,7 @@ gfx_target_fill_rect(gfx_target_t target, recti_t clip, recti_t shape, gfx_color
     const recti_t rect = gfx_target_clip_rect(target, clip, shape);
     for (int row = rect.y; row < recti_bottom(rect); row++) {
         gfx_color_t* dst = gfx_target_row(target, row) + rect.x;
-        for (int col = rect.x; col < recti_right(rect); col++) {
+        for (int i = 0; i < rect.w; i++) {
             *dst++ = color;
         }
     }

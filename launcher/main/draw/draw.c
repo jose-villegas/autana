@@ -187,7 +187,8 @@ fill_rect_alpha(const gfx_surface_t* state, int x, int y, int w, int h, gfx_colo
 
     for (int row = rect.y; row < recti_bottom(rect); row++) {
         gfx_color_t* dst = gfx_target_row(state->target, row);
-        for (int col = rect.x; col < recti_right(rect); col++) {
+        for (int i = 0; i < rect.w; i++) {
+            const int col = rect.x + i;
             if (blend) {
                 dst[col] = gfx_color_mix(dst[col], color, alpha);
             } else if (gfx_dither_covers(col, row, alpha)) {
