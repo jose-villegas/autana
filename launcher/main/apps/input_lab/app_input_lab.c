@@ -272,23 +272,31 @@ drag_bezel(const input_t* input) {
  * began so the steep end of the curve has no gaps. */
 static void
 draw_corner_arcs(void) {
-    const uint32_t ink = COL_TARGET;
     for (int row = 0; row < bezel_radius; row += ARC_STEP) {
         const int inset = display_panel_corner_inset(bezel_radius, screen_h, row);
         const int before =
             row >= ARC_STEP ? display_panel_corner_inset(bezel_radius, screen_h, row - ARC_STEP) : inset + 1;
         const int w = before - inset > 1 ? before - inset : 1;
         const int bottom = screen_h - row - ARC_STEP;
-        ui_fill((recti_t){inset, row, w, ARC_STEP}, ink);
-        ui_fill((recti_t){screen_w - inset - w, row, w, ARC_STEP}, ink);
-        ui_fill((recti_t){inset, bottom, w, ARC_STEP}, ink);
-        ui_fill((recti_t){screen_w - inset - w, bottom, w, ARC_STEP}, ink);
+        ui_fill((recti_t){inset, row, w, ARC_STEP}, COL_TARGET);
+        ui_fill((recti_t){screen_w - inset - w, row, w, ARC_STEP}, COL_TARGET);
+        ui_fill((recti_t){inset, bottom, w, ARC_STEP}, COL_TARGET);
+        ui_fill((recti_t){screen_w - inset - w, bottom, w, ARC_STEP}, COL_TARGET);
     }
 }
 
 static void
+hud_text(recti_t r, const char* text, uint32_t ink) {
+    ui_color_begin(UI_COLOR_TEXT, ink);
+    ui_scale_begin(mode == MODE_MOTION ? MOTION_HUD_SCALE : HUD_SCALE);
+    ui_text_centre(r, text);
+    ui_scale_end();
+    ui_color_end();
+}
+
+static void
 hud_line(int row, const char* text) {
-    ui_text_centre((recti_t){0, HUD_TOP + (row * HUD_LINE_H), screen_w, HUD_LINE_H}, text);
+    hud_text((recti_t){0, HUD_TOP + (row * HUD_LINE_H), screen_w, HUD_LINE_H}, text, COL_HUD);
 }
 
 static void
@@ -437,12 +445,8 @@ draw_imu_round(void) {
     }
     const int top = HUD_TOP + (MOTION_HUD_ROWS * HUD_LINE_H) + MOTION_MARGIN;
     const int width = (screen_w - 3 * MOTION_MARGIN) / 2;
-    ui_scale_end();
-    ui_color_end();
     const bool saving = ui_button((recti_t){MOTION_MARGIN, top, width, 2 * HUD_LINE_H}, "SAVE");
     const bool clearing = ui_button((recti_t){2 * MOTION_MARGIN + width, top, width, 2 * HUD_LINE_H}, "CLEAR");
-    ui_color_begin(UI_COLOR_TEXT, COL_HUD);
-    ui_scale_begin(MOTION_HUD_SCALE);
     hud_line(3, "BOOT TO LEAVE RESULTS");
     return clearing ? IMU_ACTION_CLEAR : saving ? IMU_ACTION_SAVE : IMU_ACTION_NONE;
 }
@@ -544,15 +548,9 @@ draw_motion(void) {
     }
     ui_fill(motion_dot_rect(raw_acceleration.x, raw_acceleration.y, ring, MOTION_DOT_SIDE), COL_MISS);
     ui_outline(motion_dot_rect(tilt_x(&tilt), tilt_y(&tilt), ring, MOTION_FILTER_SIDE), COL_MOTION_FILTER);
-    ui_color_begin(UI_COLOR_TEXT, COL_MISS);
-    ui_text_centre((recti_t){0, bottom, screen_w / 2, HUD_LINE_H}, "RAW");
-    ui_color_end();
-    ui_color_begin(UI_COLOR_TEXT, COL_MOTION_FILTER);
-    ui_text_centre((recti_t){screen_w / 2, bottom, screen_w / 2, HUD_LINE_H}, "FILTER");
-    ui_color_end();
-    ui_color_begin(UI_COLOR_TEXT, COL_MOTION_RING);
-    ui_text_centre((recti_t){0, bottom + HUD_LINE_H, screen_w, HUD_LINE_H}, "TAP TO CALIBRATE");
-    ui_color_end();
+    hud_text((recti_t){0, bottom, screen_w / 2, HUD_LINE_H}, "RAW", COL_MISS);
+    hud_text((recti_t){screen_w / 2, bottom, screen_w / 2, HUD_LINE_H}, "FILTER", COL_MOTION_FILTER);
+    hud_text((recti_t){0, bottom + HUD_LINE_H, screen_w, HUD_LINE_H}, "TAP TO CALIBRATE", COL_MOTION_RING);
 }
 
 static void
@@ -577,20 +575,16 @@ update_page(uint32_t dt_ms, const input_t* input) {
 
 static void
 draw_page(void) {
-    ui_color_begin(UI_COLOR_TEXT, COL_HUD);
-    ui_scale_begin(mode == MODE_MOTION ? MOTION_HUD_SCALE : HUD_SCALE);
     if (mode == MODE_MOTION) {
         draw_motion();
-    } else {
-        draw_hud();
-        if (mode == MODE_BEZEL) {
-            draw_corner_arcs();
-        } else {
-            draw_target();
-        }
+        return;
     }
-    ui_scale_end();
-    ui_color_end();
+    draw_hud();
+    if (mode == MODE_BEZEL) {
+        draw_corner_arcs();
+    } else {
+        draw_target();
+    }
 }
 
 static void
