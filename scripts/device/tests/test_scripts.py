@@ -124,7 +124,7 @@ if os.environ.get("FAKE_REPOINT"):
                 commit = subprocess.check_output(['git', '-C', str(export.parent), 'rev-parse', 'HEAD'], text=True).strip()
                 (root / 'launcher/idf-pin.json').write_text(json.dumps({
                     'commit': commit, 'image': 'espressif/idf:release-v6.1@sha256:test'}))
-                (root / 'tools/python_env/idf6.1_py3.14_env').mkdir(parents=True)
+                (root / 'tools/python_env/idf6.1_py3.14_env').mkdir(parents=True, exist_ok=True)
                 with (root / 'autana.local.toml').open('a') as config:
                     config.write(f"idf_installs = ['{export.parent.as_posix()}']\n")
                 if missing:

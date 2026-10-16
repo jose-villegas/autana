@@ -1832,7 +1832,8 @@ class GlobalFlagValueTests(unittest.TestCase):
         for flag, values in self.GOOD.items():
             for value in values:
                 with self.subTest(flag=flag, value=value):
-                    self.assertEqual(autana.pop_globals([flag, value, "x"]), ({flag: value}, ["x"]))
+                    expected = value.upper() if flag == "--board" else value
+                    self.assertEqual(autana.pop_globals([flag, value, "x"]), ({flag: expected}, ["x"]))
 
     def test_bad_values_are_refused_naming_flag_value_and_example(self):
         for flag, values in self.BAD.items():
