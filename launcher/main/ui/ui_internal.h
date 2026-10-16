@@ -9,19 +9,19 @@
 
 #include <stdbool.h>
 
-#include "draw/gfx_font.h"
+#include "draw/draw_font.h"
 #include "microui.h"
+#include "ui/controls/ui_style.h"
+#include "ui/input/ui_pointer.h"
+#include "ui/layout/ui_transform.h"
 #include "ui/ui_canvas_marks.h"
-#include "ui/ui_pointer.h"
-#include "ui/ui_style.h"
-#include "ui/ui_transform.h"
 
 /* What a mu_Font actually points at; see ui_build.c's ui_set_font() comment
  * for why the scale rides inside the font rather than a separate
  * render-time setting. Shared because ui.c's draw_command() and
  * command_row_range() both resolve a command's font the same way. */
 typedef struct {
-    const gfx_font_t* font;
+    const draw_font_t* font;
     int scale;
 } ui_font_scaled_t;
 

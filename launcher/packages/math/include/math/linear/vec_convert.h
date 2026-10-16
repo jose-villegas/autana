@@ -23,7 +23,7 @@
 
 static inline int16_t
 mathf_round_s(float v, float scale) {
-    return maths_saturate(mathf_round_i32(v / scale));
+    return mathf_round_i16(v / scale);
 }
 
 static inline int32_t

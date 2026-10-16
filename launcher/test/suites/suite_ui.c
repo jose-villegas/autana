@@ -20,7 +20,7 @@
 
 #include "unity.h"
 
-#include "draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "ui/ui.h"
@@ -67,7 +67,7 @@ static void
 fixture(void) {
     no_touch = (input_t){0};
     ui_init();
-    gfx_clear_clip();
+    draw_clear_clip();
 }
 
 static void
@@ -109,7 +109,7 @@ test_a_canvas_is_repainted_when_something_draws_over_it(void) {
 
     /* An app drawing underneath an overlay. The UI's description has not
      * changed, but its pixels are gone. */
-    gfx_fill_rect(0, TOP_Y, GFX_WIDTH, TOP_H, gfx_rgb(0x804020));
+    draw_rect(0, TOP_Y, GFX_WIDTH, TOP_H, gfx_rgb(0x804020));
 
     build("one");
     const bool drew = ui_end(UI_NO_BACKGROUND);
@@ -250,7 +250,7 @@ test_ui_begin_screen_corrects_a_stale_rect_from_a_prior_orientation(void) {
  * repaint_marked_canvases() under an odd quarter
  *
  * The background clear must transform its LOGICAL rect before
- * gfx_fill_rect(). Under an odd quarter (GFX_WIDTH != GFX_HEIGHT), an
+ * draw_rect(). Under an odd quarter (GFX_WIDTH != GFX_HEIGHT), an
  * untransformed rect covers only 368 of the physical framebuffer's 448
  * rows.
  */

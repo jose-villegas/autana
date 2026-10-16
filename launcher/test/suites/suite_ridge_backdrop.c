@@ -16,14 +16,14 @@
 
 #include "app/app.h"
 #include "core/memory.h"
-#include "draw/gfx_dither.h"
+#include "draw/draw_dither.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_test.h"
 #include "shell/ui/ui_launcher.h"
 #include "shell/ui/ui_ridge.h"
+#include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
-#include "ui/ui_transform.h"
 
 #define FRAME_MS       16
 #define FRAMES_TO_REST 600
@@ -117,7 +117,7 @@ test_launcher_backdrop_motion_and_rest(void) {
         TEST_FAIL_MESSAGE("no memory for the frame copy");
     }
     ui_ridge_paint_reference_for_test(reference);
-    const int phase_rows = gfx_dither_pattern(GFX_DITHER_SCANLINES4)->height;
+    const int phase_rows = draw_dither_pattern(DRAW_DITHER_SCANLINES4)->height;
     bool shaped = false;
     for (int y = phase_rows; y < GFX_HEIGHT; y++) {
         shaped = shaped

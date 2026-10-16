@@ -1,8 +1,8 @@
 #include "title_screen.h"
 
-#include "draw/gfx_font_roles.h"
+#include "draw/draw_font_roles.h"
+#include "ui/controls/ui_widgets.h"
 #include "ui/ui.h"
-#include "ui/ui_widgets.h"
 
 #include "apps/sand/ui/sand_icons.h"
 #include "math/scalar/mathi.h"
@@ -48,7 +48,7 @@ title_screen_button_enabled(sand_title_button_t button) {
 static int
 largest_title_scale(int room) {
     int scale = TITLE_SCALE_MAX;
-    while (scale > 1 && gfx_font_text_width(gfx_font_ui(), TITLE_SCREEN_TITLE, -1, scale) > room) {
+    while (scale > 1 && draw_font_text_width(draw_font_ui(), TITLE_SCREEN_TITLE, -1, scale) > room) {
         scale--;
     }
     return scale;

@@ -249,7 +249,8 @@ void build_gas_ignition_vessel_scene(sand_t* s);
  * is played sideways, down grid +X. The grid is 184x224,
  * so a landscape pour drops 184 cells onto a floor 224 wide and settles
  * into a different shape - built for that, not transposed. */
-#define LANDSCAPE_GX               1000
+#define SCENE_GRAVITY              1000
+#define LANDSCAPE_GX               SCENE_GRAVITY
 
 /* The app's own brush at the finest cell size, dragged along the landscape
  * ceiling, column 0. The stream's width is what leaves the settled-block

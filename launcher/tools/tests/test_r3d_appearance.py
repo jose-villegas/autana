@@ -10,6 +10,8 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from unittest import mock
+from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -32,10 +34,14 @@ except ImportError:
     soup = None
 
 try:
-    import nvdiffrast.torch  # noqa: F401
     import torch
+except ImportError:
+    torch = None
 
-    GPU = torch.cuda.is_available()
+try:
+    import nvdiffrast.torch  # noqa: F401
+
+    GPU = torch is not None and torch.cuda.is_available()
 except ImportError:
     GPU = False
 
@@ -92,6 +98,63 @@ def write_flat_start(directory, count=4):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class AppearanceMeshTests(unittest.TestCase):
+    def test_coverage_pool_keeps_holes_but_excludes_held_out_samples(self):
+        from r3d.appearance_simplify import coverage_pool
+
+        self.assertEqual(coverage_pool([0, 2, 1, 3, 0, 4], [2, 4]), [1, 3, 5])
+        self.assertEqual(coverage_pool([0, 1, 1], [1]), [2])
+
+    @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_mining_cadence_refreshes_pool_and_preserves_training_rng(self):
+        import torch
+        from r3d import appearance_simplify as appearance
+
+        with tempfile.TemporaryDirectory() as directory:
+            mesh = start_mesh(write_start(directory))
+        views = [(np.eye(4) * index, np.zeros((1, 1, 3), dtype=np.float32)) for index in range(4)]
+        pool = views
+        masks = [torch.ones((1, 1), dtype=torch.bool) for _ in pool]
+        training, selected, mined = [], [], []
+
+        class Renderer:
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def clip(self, points, matrix):
+                return points
+
+            def __call__(self, points, colours, matrix, clip=None):
+                training.append(int(matrix[0, 0]))
+                return colours.mean(0).reshape(1, 1, 3)
+
+            def alpha(self, points, matrix):
+                selected.append(int(matrix[0, 0]))
+                return points.mean() * torch.zeros((1, 1))
+
+        def visible(mesh, views, size, device):
+            mined.append(len(training))
+            missing = ({0, 1, 2}, {1}, {1, 3})[len(mined) - 1]
+            return iter(torch.tensor([[-1 if index in missing else 0]]) for index in range(len(views)))
+
+        options = dict(steps=5, batch=1, lr_position=0, lr_colour=0, laplacian=0, report=0, device="cpu")
+        for seed in (1, 7, 19):
+            with self.subTest(seed=seed), mock.patch.object(appearance, "Renderer", Renderer), \
+                    mock.patch.object(appearance, "visible", visible):
+                training.clear()
+                selected.clear()
+                mined.clear()
+                appearance.optimise(mesh, views, (1, 1), seed=seed, **options)
+                baseline = training.copy()
+                training.clear()
+                appearance.optimise(mesh, views, (1, 1), coverage_weight=1, mine_every=2, seed=seed,
+                                    coverage_views=pool, coverage_masks=masks, coverage_excluded=[1], **options)
+                self.assertEqual(mined, [0, 2, 4])
+                self.assertEqual(len(selected), 3)
+                self.assertTrue(set(selected[:2]) <= {0, 2})
+                self.assertEqual(selected[2:], [3])
+                self.assertNotIn(1, selected)
+                self.assertEqual(training, baseline)
+
     def test_projection_casts_the_reference_pinhole_rays(self):
         try:
             from r3d.reference_render import camera_rays
@@ -108,6 +171,33 @@ class AppearanceMeshTests(unittest.TestCase):
             self.assertAlmostEqual(ndc[1], 1 - 2 * (y + 0.5) / height, places=9)
             self.assertTrue(-1.0 < ndc[2] < 1.0)
 
+    def test_held_out_matching_uses_eye_and_forward_across_projection_sizes(self):
+        from r3d.appearance_simplify import held_out_indices
+        from r3d.fitted_variant import poses_text
+
+        poses = [[0, 0, 3, 0, 0, -1], [1, 0, 3, 0, 0, -1], [0, 0, 3, 1, 0, -1]]
+        with tempfile.TemporaryDirectory() as directory:
+            coverage_path = pathlib.Path(directory) / "coverage.txt"
+            held_out_path = pathlib.Path(directory) / "held_out.txt"
+            coverage_path.write_text(poses_text(40, 40, 0.8, 0.5, poses))
+            held_out_path.write_text(poses_text(24, 40, 0.6, 0.5, [poses[0], poses[2]]))
+            self.assertEqual(held_out_indices(coverage_path, held_out_path), [0, 2])
+            held_out_path.write_text(poses_text(24, 40, 0.6, 0.5, [poses[0], [9, 0, 3, 0, 0, -1]]))
+            with self.assertRaisesRegex(ValueError, "coverage_every_ms.*held_out_every_ms"):
+                held_out_indices(coverage_path, held_out_path)
+
+    def test_invalid_coverage_flags_fail_before_loading_a_scene(self):
+        from r3d import appearance_simplify as appearance
+
+        for flags in (["--coverage-weight", "-1"], ["--coverage-weight", "nan"], ["--mine-every", "0"],
+                      ["--coverage-weight", "1", "--coverage-poses", "coverage.txt"],
+                      ["--coverage-weight", "1", "--held-out", "held_out.txt"]):
+            with self.subTest(flags=flags), mock.patch.object(appearance, "load_scene") as scene:
+                with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                    appearance.main(["--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
+                                     "--reference", "reference", "--out", "out", *flags])
+                scene.assert_not_called()
+
     def test_seam_vertices_share_one_position(self):
         with tempfile.TemporaryDirectory() as directory:
             mesh = start_mesh(write_start(directory))
@@ -119,7 +209,7 @@ class AppearanceMeshTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             mesh = start_mesh(write_start(directory))
             points, rgb = mesh[0] + [0.25, -0.5, 0.125], 1.0 - mesh[1]
-            write_mesh(pathlib.Path(directory) / "out", "card", points, rgb, mesh)
+            write_mesh(pathlib.Path(directory) / "out", "card", mesh._replace(points=points, rgb=rgb))
             back = read_lit_mesh(pathlib.Path(directory) / "out" / "card.mesh")
         q, colours, _tris, _double, _face = finest_triangles(back)
         written = {(tuple(p), tuple(c)) for p, c in zip(q, colours)}
@@ -143,7 +233,7 @@ class AppearanceMeshTests(unittest.TestCase):
             self.assertEqual(len(mesh.rgb), len(mesh.tris))
             self.assertEqual(len(mesh.points), len(mesh.vertex_point), "a flat start welds by position alone")
             points, rgb = mesh.points + [0.25, 0.0, 0.0], 1.0 - mesh.rgb
-            write_mesh(pathlib.Path(directory) / "out", "flat", points, rgb, mesh)
+            write_mesh(pathlib.Path(directory) / "out", "flat", mesh._replace(points=points, rgb=rgb))
             back = read_lit_mesh(pathlib.Path(directory) / "out" / "flat.mesh")
         q, colours, tris, _double, face = finest_triangles(back)
         self.assertIsNone(colours)
@@ -158,7 +248,7 @@ class AppearanceMeshTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             mesh = start_mesh(write_start(directory))
             points, rgb = mesh[0] + np.random.default_rng(3).normal(0.0, 0.05, mesh[0].shape), mesh[1][::-1].copy()
-            count = write_mesh(pathlib.Path(directory) / "out", "card", points, rgb, mesh)
+            count = write_mesh(pathlib.Path(directory) / "out", "card", mesh._replace(points=points, rgb=rgb))
             self.assertLessEqual(count, len(mesh[2]))
             back = read_lit_mesh(pathlib.Path(directory) / "out" / "card.mesh")
             q, _rgb, tris, _double, _face = finest_triangles(back)
@@ -175,6 +265,82 @@ class AppearanceMeshTests(unittest.TestCase):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class PruneAndCostTests(unittest.TestCase):
+    def test_main_prunes_fitted_geometry_and_colours_before_writing(self):
+        from r3d import appearance_simplify as appearance
+
+        with tempfile.TemporaryDirectory() as directory:
+            for flat, weight in ((False, 0), (True, 0), (False, 1), (True, 1)):
+                with self.subTest(flat=flat, weight=weight):
+                    mesh = start_mesh(write_start(directory))._replace(flat=flat)
+                    if flat:
+                        mesh = mesh._replace(rgb=np.full((len(mesh.tris), 3), 0.5))
+                    points, rgb = mesh.points + 1, mesh.rgb / 2
+                    fitted = mesh._replace(points=points, rgb=rgb)
+                    pruned = prune(fitted, np.ones(len(mesh.tris)), len(mesh.tris) - 1)
+                    calls = mock.Mock()
+                    with mock.patch.multiple(appearance,
+                            load_scene=mock.Mock(return_value=SimpleNamespace(camera=SimpleNamespace(
+                                component=SimpleNamespace(background=0)))),
+                            start_mesh=mock.Mock(return_value=mesh),
+                            load_views=mock.Mock(return_value=(["training"], (24, 20))),
+                            pose_views=mock.Mock(return_value=(["coverage"], (80, 80))),
+                            coverage_targets=mock.Mock(return_value=["mask"]),
+                            held_out_indices=mock.Mock(return_value=[2]),
+                            mine_coverage=mock.Mock(return_value=([], [0])),
+                            optimise=calls.optimise, coverage=calls.coverage, prune=calls.prune,
+                            write_mesh=calls.write_mesh):
+                        calls.optimise.return_value = (points, rgb, [1.0])
+                        calls.coverage.return_value = np.ones(len(mesh.tris))
+                        calls.prune.return_value = pruned
+                        calls.write_mesh.return_value = len(pruned.tris)
+                        appearance.main(["--coverage-weight", str(weight), "--held-out", "held_out.txt", "--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
+                                         "--reference", "reference", "--coverage-poses", "coverage.txt",
+                                         "--budget", str(len(pruned.tris)), "--out", directory])
+                    self.assertEqual([call[0] for call in calls.mock_calls],
+                                     ["optimise", "coverage", "prune", "write_mesh"])
+                    covered, views, size = calls.coverage.call_args.args
+                    np.testing.assert_array_equal(covered.points, points)
+                    np.testing.assert_array_equal(covered.rgb, rgb)
+                    self.assertEqual((views, size), (["coverage"], (80, 80)))
+                    if weight:
+                        options = calls.optimise.call_args.kwargs
+                        self.assertEqual(options["coverage_views"], ["coverage"])
+                        self.assertEqual(options["coverage_masks"], ["mask"])
+                        self.assertEqual(options["coverage_excluded"], [2])
+                        self.assertEqual(options["coverage_size"], (80, 80))
+                    written = calls.write_mesh.call_args.args
+                    self.assertEqual(len(written), 3)
+                    self.assertIs(written[2], pruned)
+                    pruned_mesh, shown, budget = calls.prune.call_args.args
+                    self.assertIs(pruned_mesh, covered)
+                    self.assertIs(shown, calls.coverage.return_value)
+                    self.assertEqual(budget, len(pruned.tris))
+
+    def test_main_without_a_budget_optimises_and_writes_without_pruning(self):
+        from r3d import appearance_simplify as appearance
+
+        with tempfile.TemporaryDirectory() as directory:
+            mesh = start_mesh(write_start(directory))
+            points, rgb = mesh.points + 1, mesh.rgb / 2
+            with mock.patch.multiple(appearance,
+                    load_scene=mock.Mock(return_value=SimpleNamespace(camera=SimpleNamespace(
+                        component=SimpleNamespace(background=0)))),
+                    start_mesh=mock.Mock(return_value=mesh),
+                    load_views=mock.Mock(return_value=(["training"], (24, 20))),
+                    optimise=mock.DEFAULT, coverage=mock.DEFAULT, prune=mock.DEFAULT,
+                    write_mesh=mock.DEFAULT) as calls:
+                calls["optimise"].return_value = (points, rgb, [1.0])
+                calls["write_mesh"].return_value = len(mesh.tris)
+                appearance.main(["--coverage-weight", "0", "--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
+                                 "--reference", "reference", "--out", directory])
+            calls["optimise"].assert_called_once()
+            calls["coverage"].assert_not_called()
+            calls["prune"].assert_not_called()
+            written = calls["write_mesh"].call_args.args
+            self.assertEqual(len(written), 3)
+            np.testing.assert_array_equal(written[2].points, points)
+            np.testing.assert_array_equal(written[2].rgb, rgb)
+
     def test_pruning_keeps_the_budget_and_what_shows_most(self):
         mesh = FitMesh(np.zeros((9, 3)), np.zeros((9, 3)), np.arange(18).reshape(6, 3) % 9, np.zeros(6), 8, np.arange(9))
         shown = np.array([0, 50, 3, 0, 900, 7])
@@ -331,6 +497,72 @@ class PathVisibilityTests(unittest.TestCase):
 
 @unittest.skipIf(np is None or not GPU, "needs CUDA, PyTorch and nvdiffrast")
 class AppearanceFitTests(unittest.TestCase):
+    def test_coverage_closes_an_unwelded_wall_gap_at_a_pool_only_pose(self):
+        from r3d.appearance_simplify import COVERAGE_WEIGHT, coverage_targets, mine_coverage, optimise
+
+        size = (64, 64)
+        points = np.array([[-1, -1, 0], [0, -1, 0], [0, 1, 0], [-1, 1, 0],
+                           [0, -1, 0], [1, -1, 0], [1, 1, 0], [0, 1, 0]], dtype=float)
+        mesh = FitMesh(points, np.ones((8, 3)), np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]]),
+                       np.ones(4, dtype=bool), 64, np.arange(8))
+        matrix = projection([0, 0, 3], [0, 0, -1], *size, 0.62, 0.5)
+        pool = [(matrix, None, None, [0, 0, 3])]
+        masks = coverage_targets(mesh, pool, size)
+        opened = points.copy()
+        opened[:4, 0] -= 0.06
+        opened[4:, 0] += 0.06
+        opened_mesh = mesh._replace(points=opened)
+        training = projection([5, 0, 3], [0, 0, -1], *size, 0.62, 0.5)
+        views = [(training, np.ones((*size, 3), dtype=np.float32))]
+        options = dict(steps=250, batch=1, lr_position=0.003, lr_colour=0, laplacian=0,
+                       report=0, clear=(1, 1, 1))
+        self.assertGreater(mine_coverage(opened_mesh, pool, size, masks)[1][0], 0)
+        for seed in (1, 7):
+            with self.subTest(seed=seed):
+                baseline = optimise(opened_mesh, views, size, seed=seed, **options)
+                off = optimise(opened_mesh, views, size, seed=seed, coverage_weight=0, coverage_views=pool, **options)
+                self.assertGreater(mine_coverage(mesh._replace(points=off[0]), pool, size, masks)[1][0], 0)
+                np.testing.assert_array_equal(baseline[0], off[0])
+                np.testing.assert_array_equal(baseline[2], off[2])
+                fitted, _rgb, history = optimise(opened_mesh, views, size, seed=seed, coverage_weight=COVERAGE_WEIGHT,
+                                                mine_every=5, coverage_views=pool, coverage_masks=masks, **options)
+                self.assertEqual(mine_coverage(mesh._replace(points=fitted), pool, size, masks)[1], [0])
+                np.testing.assert_allclose(history, baseline[2], atol=1e-5)
+
+    def test_mining_keeps_only_holes_and_excludes_held_out_samples(self):
+        from r3d.appearance_simplify import coverage_targets, mine_coverage
+
+        with tempfile.TemporaryDirectory() as directory:
+            mesh = start_mesh(write_start(directory))
+        size = (48, 40)
+        matrix = projection([0, 0, 3], [0, 0, -1], *size, 0.62, 0.5)
+        away = projection([8, 0, 3], [0, 0, -1], *size, 0.62, 0.5)
+        views = [(matrix,), (away,), (matrix,)]
+        masks = coverage_targets(mesh, views, size)
+        hard, holes = mine_coverage(mesh._replace(points=mesh.points + [5, 0, 0]), views, size, masks, [2])
+        self.assertEqual(hard, [0])
+        self.assertGreater(holes[0], 0)
+        self.assertEqual(holes[1], 0)
+        self.assertGreater(holes[2], 0)
+
+    def test_colour_history_excludes_the_coverage_loss(self):
+        from r3d.appearance_simplify import COVERAGE_WEIGHT, coverage_targets, optimise
+
+        with tempfile.TemporaryDirectory() as directory:
+            mesh = start_mesh(write_start(directory))
+        size = (48, 40)
+        matrix = projection([0, 0, 3], [0, 0, -1], *size, 0.62, 0.5)
+        pool = [(matrix,)]
+        masks = coverage_targets(mesh, pool, size)
+        moved = mesh._replace(points=mesh.points + [0.2, 0, 0])
+        views = [(matrix, np.zeros((size[1], size[0], 3), dtype=np.float32),
+                  np.broadcast_to(np.array([1, 0, 0], dtype=np.float32), (size[1], size[0], 3)).copy(), [0, 0, 3])]
+        options = dict(steps=1, batch=1, lr_position=0, lr_colour=0, laplacian=0, report=0)
+        off = optimise(moved, views, size, **options)
+        on = optimise(moved, views, size, coverage_weight=COVERAGE_WEIGHT, coverage_views=pool, coverage_masks=masks,
+                      normal_weight=1, **options)
+        self.assertEqual(off[2], on[2])
+
     def test_image_error_falls(self):
         from r3d.appearance_simplify import Renderer, optimise
 

@@ -31,6 +31,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
+from suite_registry import registered_suites  # noqa: E402
 from process_tree import launch_process_tree, close_process_tree  # noqa: E402
 import device_lock  # noqa: E402  (path must be set up first)
 import autana_config  # noqa: E402  (path must be set up first)
@@ -683,9 +684,6 @@ def take_back(args):
     return call_device(device_command("take-back"))
 
 
-SUITE_REGISTRATION = re.compile(r"SUITE_REGISTER(_ON_REQUEST)?\(\s*([A-Za-z_]\w*)\s*\)")
-
-
 def suite_list(args):
     """What this project registers, read from its sources: a suite names
     itself where it is defined and the board serves no listing verb, so there
@@ -698,15 +696,7 @@ def suite_list(args):
     wanted = args[0].lower() if args else ""
     project = Path(resolve_project())
 
-    found = {}
-    for source in project.glob("launcher/**/*.c"):
-        # A build directory (launcher/build*) holds generated copies of the same sources.
-        if source.relative_to(project).parts[1].startswith("build"):
-            continue
-        text = source.read_text(encoding="utf-8", errors="replace")
-        for on_request, name in SUITE_REGISTRATION.findall(text):
-            found[name] = (source.relative_to(project).as_posix(), bool(on_request),
-                           "#ifdef DEVICE_BUILD" in text)
+    found = registered_suites(project)
 
     shown = [{"name": name, "source": found[name][0], "on_request": found[name][1],
               "device_only": found[name][2]} for name in sorted(found) if wanted in name.lower()]
@@ -1506,7 +1496,7 @@ def debug(args):
 
 LOCK_USAGES = (
     ("lock run [--keep-on-failure <seconds>] -- <command...>", "hold the board while a command runs"),
-    ("lock take [--for <seconds> | --until-released [--pid <pid>]] <note...>", "hold the board across commands; print its token"),
+    ("lock take [--for <seconds> | --until-released [--pid <pid>]] [--estimate <seconds>] <note...>", "hold the board across commands; print its token"),
     ("lock wait", "wait until free without taking the board; --wait caps it"),
     ("lock release [<token>]", "release a lock this session holds, given its token"),
     ("lock hand [--until-back <seconds>] <note...>",

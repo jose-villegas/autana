@@ -14,15 +14,15 @@
 
 #include "app/app.h"
 #include "gfx/gfx.h"
+#include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
-#include "ui/ui_transform.h"
 
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_clips.h"
 #include "apps/render_lab/ui/render_lab_hud_screen.h"
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "core/memory.h"
-#include "draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "test_cleanup.h"
 
 /* Landscape (448x368 logical) - this app's shipping orientation. */
@@ -88,7 +88,7 @@ release_menu_budget(void) {
 static void
 budget_controls(mu_Context* ctx, ui_flow_t* flow, int width) {
     menu_budget->anchor =
-        (mu_Rect){(flow->canvas_w - width) / 2, flow->y + gfx_text_height() + flow->gap, width, UI_ROW_HEIGHT};
+        (mu_Rect){(flow->canvas_w - width) / 2, flow->y + draw_text_height() + flow->gap, width, UI_ROW_HEIGHT};
     render_lab_clips_draw(ctx, flow, width, &menu_budget->choice);
     menu_budget->open = ui_dropdown_is_open(ctx, "clip");
 }

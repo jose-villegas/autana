@@ -44,12 +44,12 @@ gfx_target_row_range_overlaps(gfx_target_t target, int y0, int y1) {
     return y0 < target.y0 + target.height && y1 > target.y0;
 }
 
-/* gfx_fill_rect()'s own body, extracted here so the exact arithmetic every
+/* draw_rect()'s own body, extracted here so the exact arithmetic every
  * fill goes through is the one a host suite can drive directly. Absolute
  * (x, y, w, h) and `clip` are in full-screen space, the same as every
- * gfx_fill_rect() caller already uses; only the write lands in the
+ * draw_rect() caller already uses; only the write lands in the
  * target's own local rows. Reports the actually-painted rect back through
- * the out params: gfx_draw.c's own caller needs it (already clipped) to mark
+ * the out params: draw.c's own caller needs it (already clipped) to mark
  * the right dirty region. */
 static inline void
 gfx_target_fill_rect(gfx_target_t target, int clip_x0, int clip_y0, int clip_x1, int clip_y1, int x, int y, int w,

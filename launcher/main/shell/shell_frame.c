@@ -3,14 +3,14 @@
 
 #include "build/build_variant.h"
 #include "display/display.h"
-#include "draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "services/build_id.h"
 #include "shell/shell_frame.h"
+#include "ui/layout/ui_anchor.h"
 #include "ui/ui.h"
-#include "ui/ui_anchor.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #define BUILD_MARK_GLYPH        8
@@ -35,8 +35,8 @@ draw_build_mark(void) {
     if (gfx_region_dirty(box.x, box.y, box.w, box.h)) {
         int x = 0;
         int y = 0;
-        ui_text_glyph0_origin(gfx_font_ui(), box, quarter, 1, &x, &y);
-        gfx_text_turned(x, y, build_mark_text, gfx_rgb(BUILD_MARK_RGB), 1, quarter);
+        ui_text_glyph0_origin(draw_font_ui(), box, quarter, 1, &x, &y);
+        draw_text_turned(x, y, build_mark_text, gfx_rgb(BUILD_MARK_RGB), 1, quarter);
     }
 }
 #endif

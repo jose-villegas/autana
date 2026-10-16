@@ -11,10 +11,10 @@
 #include "gfx/present/gfx_present_guard.h"
 #include "scene/scene_internal.h"
 #include "test_cleanup.h"
+#include "ui/controls/ui_widgets.h"
+#include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
-#include "ui/ui_transform.h"
-#include "ui/ui_widgets.h"
 #include "unity.h"
 
 #define DISPATCH_BLEND_MS 300

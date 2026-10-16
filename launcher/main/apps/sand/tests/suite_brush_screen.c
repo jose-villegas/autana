@@ -17,10 +17,10 @@
 #include "apps/sand/material.h"
 #include "apps/sand/sand_ui.h"
 #include "apps/sand/ui/brush_screen.h"
-#include "draw/gfx_font_roles.h"
+#include "draw/draw_font_roles.h"
 #include "input/input.h"
+#include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
-#include "ui/ui_transform.h"
 
 #define PORTRAIT_W  368
 #define PORTRAIT_H  448
@@ -224,7 +224,7 @@ assert_captions_fit(int screen_w, int screen_h) {
     };
 
     for (unsigned i = 0; i < sizeof fixed / sizeof fixed[0]; i++) {
-        TEST_ASSERT_TRUE_MESSAGE(gfx_font_text_width(gfx_font_ui(), fixed[i].str, -1, scale) <= fixed[i].r.w,
+        TEST_ASSERT_TRUE_MESSAGE(draw_font_text_width(draw_font_ui(), fixed[i].str, -1, scale) <= fixed[i].r.w,
                                  fixed[i].str);
     }
 
@@ -233,14 +233,14 @@ assert_captions_fit(int screen_w, int screen_h) {
      * the one that happens to show first. */
     for (int seg = 0; seg < BRUSH_SCREEN_SEGMENT_COUNT; seg++) {
         const char* caption = brush_screen_size_caption((brush_screen_segment_t)seg);
-        TEST_ASSERT_TRUE_MESSAGE(gfx_font_text_width(gfx_font_ui(), caption, -1, scale) <= l.size_caption.w, caption);
+        TEST_ASSERT_TRUE_MESSAGE(draw_font_text_width(draw_font_ui(), caption, -1, scale) <= l.size_caption.w, caption);
 
         const char* label = brush_screen_segment_label((brush_screen_segment_t)seg);
-        TEST_ASSERT_TRUE_MESSAGE(gfx_font_text_width(gfx_font_ui(), label, -1, scale) <= l.segments[seg].w, label);
+        TEST_ASSERT_TRUE_MESSAGE(draw_font_text_width(draw_font_ui(), label, -1, scale) <= l.segments[seg].w, label);
     }
 
     /* The widest the value ever gets: two digits, a space and "PX". */
-    TEST_ASSERT_TRUE_MESSAGE(gfx_font_text_width(gfx_font_ui(), "00 PX", -1, scale) <= l.size_value.w,
+    TEST_ASSERT_TRUE_MESSAGE(draw_font_text_width(draw_font_ui(), "00 PX", -1, scale) <= l.size_value.w,
                              "the size value must fit its own box at every radius");
 }
 

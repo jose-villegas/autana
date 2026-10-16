@@ -11,14 +11,14 @@
 #include <string.h>
 
 #include "console/capture/screenshot.h"
-#include "draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/target/gfx_color.h"
 #include "render_video.h"
 #include "render_watch.h"
-#include "ui/ui_transform.h"
+#include "ui/layout/ui_transform.h"
 
 #include "scene/scene_shell.h"
 

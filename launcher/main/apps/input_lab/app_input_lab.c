@@ -37,10 +37,10 @@
 #include "input/tilt.h"
 #include "math/scalar/mathi.h"
 #include "services/tune.h"
+#include "ui/controls/ui_style.h"
+#include "ui/controls/ui_widgets.h"
+#include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
-#include "ui/ui_style.h"
-#include "ui/ui_transform.h"
-#include "ui/ui_widgets.h"
 
 static const char* TAG = "input_lab";
 

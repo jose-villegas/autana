@@ -17,10 +17,10 @@
  *
  * Fetched from: http://dimensionalrift.homelinux.net/combuster/mos3/?p=viewsource&file=/modules/gfx/font8_8.asm
  *
- * `#pragma once` and `static const` were added when gfx_font.h started
- * wrapping this table as a gfx_font_t's atlas: gfx_font.h has to be pure and
+ * `#pragma once` and `static const` were added when draw_font.h started
+ * wrapping this table as a draw_font_t's atlas: draw_font.h has to be pure and
  * host-compilable (see its own top comment), and a header included from more
- * than one translation unit - the firmware's gfx_draw.c and the host test suite,
+ * than one translation unit - the firmware's draw.c and the host test suite,
  * at least - needs a guard against double inclusion within one TU and
  * internal linkage to avoid a duplicate-symbol clash across TUs.
  * `const` also lands the table in flash rather than RAM, matching the model

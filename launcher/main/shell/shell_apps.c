@@ -12,7 +12,7 @@
 #include "app/app_arena.h"
 #include "core/memory.h"
 #include "display/display.h"
-#include "draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
@@ -27,8 +27,8 @@
 #include "shell/shell_system.h"
 #include "shell/ui/ui_launcher.h"
 #include "shell/ui/ui_ridge.h"
+#include "ui/layout/ui_anchor.h"
 #include "ui/ui.h"
-#include "ui/ui_anchor.h"
 
 #include "esp_log.h"
 
@@ -107,7 +107,7 @@ draw_home_hint(gesture_edge_t edge) {
         return;
     }
 
-    gfx_fill_rect(x, y, w, h, gfx_rgb(HOME_HINT_RGB));
+    draw_rect(x, y, w, h, gfx_rgb(HOME_HINT_RGB));
 }
 
 /* Transient and expanded pictures need the hint in their overlay command

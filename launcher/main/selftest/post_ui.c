@@ -11,10 +11,10 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "selftest/post_layout.h"
-#include "ui/ui_transform.h"
+#include "ui/layout/ui_transform.h"
 
 #define BG_RGB      0x0A0C14
 #define HEADING_RGB 0xE6EAF2
@@ -35,26 +35,26 @@ typedef struct {
 
 static int
 text_width(const char* text, int scale) {
-    return gfx_font_text_width(gfx_font_ui(), text, -1, scale);
+    return draw_font_text_width(draw_font_ui(), text, -1, scale);
 }
 
 /* The string's LOGICAL box is mapped, not its origin, then glyph 0 is placed
  * inside the mapped box; walking glyphs from a mapped point instead drifts
  * the string off at every quarter but the first. */
 static void
-draw_text(const report_pen_t* pen, int x, int y, const char* text, int scale, gfx_color_t colour) {
-    const gfx_font_t* font = gfx_font_ui();
+report_text(const report_pen_t* pen, int x, int y, const char* text, int scale, gfx_color_t colour) {
+    const draw_font_t* font = draw_font_ui();
     const mu_Rect box =
-        ui_transform_rect(pen->transform, (mu_Rect){x, y, text_width(text, scale), gfx_font_height(font, scale)});
+        ui_transform_rect(pen->transform, (mu_Rect){x, y, text_width(text, scale), draw_font_height(font, scale)});
 
     int gx, gy;
     ui_text_glyph0_origin(font, box, pen->quarter, scale, &gx, &gy);
-    gfx_text_font(gx, gy, text, colour, scale, pen->quarter, font);
+    draw_text_font(gx, gy, text, colour, scale, pen->quarter, font);
 }
 
 static void
 draw_centred(const report_pen_t* pen, mu_Rect where, const char* text, int scale, gfx_color_t colour) {
-    draw_text(pen, where.x, where.y, text, scale, colour);
+    report_text(pen, where.x, where.y, text, scale, colour);
 }
 
 static bool
@@ -89,7 +89,7 @@ draw_wrapped(report_pen_t* pen, int indent, const char* text, gfx_color_t colour
 
         memcpy(line, text + wrapped.start, (size_t)wrapped.len);
         line[wrapped.len] = '\0';
-        draw_text(pen, row.x + indent * pen->layout.glyph_w, row.y, line, POST_LAYOUT_REPORT_SCALE, colour);
+        report_text(pen, row.x + indent * pen->layout.glyph_w, row.y, line, POST_LAYOUT_REPORT_SCALE, colour);
     }
 }
 
@@ -113,9 +113,9 @@ draw_entry(report_pen_t* pen, const post_result_t* r, bool failed) {
         return false;
     }
 
-    draw_text(pen, row.x, row.y, mark, POST_LAYOUT_REPORT_SCALE, mark_colour);
-    draw_text(pen, row.x + POST_LAYOUT_MARK_CHARS * pen->layout.glyph_w, row.y, r->name, POST_LAYOUT_REPORT_SCALE,
-              gfx_rgb(HEADING_RGB));
+    report_text(pen, row.x, row.y, mark, POST_LAYOUT_REPORT_SCALE, mark_colour);
+    report_text(pen, row.x + POST_LAYOUT_MARK_CHARS * pen->layout.glyph_w, row.y, r->name, POST_LAYOUT_REPORT_SCALE,
+                gfx_rgb(HEADING_RGB));
 
     if (r->detail[0] == '\0') {
         return true;
@@ -194,14 +194,14 @@ post_ui_draw_report(const post_ui_report_t* report) {
         .has_footer = report->footer != NULL,
     };
     report_pen_t pen = {
-        .layout = post_layout_for_report(gfx_font_ui(), upright ? GFX_WIDTH : GFX_HEIGHT,
+        .layout = post_layout_for_report(draw_font_ui(), upright ? GFX_WIDTH : GFX_HEIGHT,
                                          upright ? GFX_HEIGHT : GFX_WIDTH, &entries),
         .lines = {0},
         .transform = ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT),
         .quarter = quarter,
     };
 
-    gfx_clear(gfx_rgb(BG_RGB));
+    draw_clear(gfx_rgb(BG_RGB));
 
     const int failures = post_failure_count();
     const gfx_color_t title_colour = failures ? gfx_rgb(FAIL_RGB) : gfx_rgb(HEADING_RGB);

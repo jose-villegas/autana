@@ -22,18 +22,18 @@
 #ifdef DEVICE_BUILD
 #include "esp_log.h"
 #endif
-#include "draw/gfx_draw.h"
-#include "draw/gfx_font_roles.h"
+#include "draw/draw.h"
+#include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_test.h"
 #include "input/input.h"
+#include "ui/controls/ui_widgets.h"
+#include "ui/input/ui_bridge.h"
+#include "ui/layout/ui_scroll.h"
+#include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
-#include "ui/ui_bridge.h"
 #include "ui/ui_internal.h"
-#include "ui/ui_scroll.h"
-#include "ui/ui_transform.h"
-#include "ui/ui_widgets.h"
 
 static const ui_theme_t THEME = {
     .panel_face = UI_RGB(0x202020),
@@ -61,7 +61,7 @@ test_theme_from_style_maps_widget_colors(void) {
     TEST_ASSERT_EQUAL_MEMORY(&style.colors[MU_COLOR_BUTTONFOCUS], &theme.accent_face, sizeof(mu_Color));
     TEST_ASSERT_EQUAL_MEMORY(&style.colors[MU_COLOR_TEXT], &theme.text, sizeof(mu_Color));
     TEST_ASSERT_EQUAL_MEMORY(&style.colors[MU_COLOR_TEXT], &theme.on_accent, sizeof(mu_Color));
-    TEST_ASSERT_EQUAL_INT(GFX_GLYPH_SCALE, theme.text_scale);
+    TEST_ASSERT_EQUAL_INT(DRAW_GLYPH_SCALE, theme.text_scale);
 }
 
 static const mu_Rect BUTTON = {40, 100, 240, 60};
@@ -287,7 +287,7 @@ static void
 test_text_aligns_to_either_edge_or_the_centre(void) {
     fixture();
     const mu_Rect r = {20, 40, 200, 30};
-    const int w = gfx_font_text_width(gfx_font_ui(), "ABC", -1, 2);
+    const int w = draw_font_text_width(draw_font_ui(), "ABC", -1, 2);
 
     TEST_ASSERT_EQUAL_INT(r.x, text_pos_in(r, "ABC", UI_ALIGN_LEFT).x);
     TEST_ASSERT_EQUAL_INT(r.x + r.w - w, text_pos_in(r, "ABC", UI_ALIGN_RIGHT).x);
@@ -831,7 +831,7 @@ menu_repaint_frames(bool bands) {
     fixture();
     ui_set_transform(ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT));
     ui_canvas_painted_for_test = record_menu_canvas;
-    gfx_clear(gfx_rgb(MENU_BACKGROUND));
+    draw_clear(gfx_rgb(MENU_BACKGROUND));
     const contact_t contact = transformed_contact(MENU_ANCHOR.x + 20, MENU_ANCHOR.y + 20);
     const input_t idle = {0};
     menu_frame(&idle, bands, 0);
@@ -881,7 +881,7 @@ test_dense_bands_match_a_full_repaint(void) {
     TEST_ASSERT_NOT_NULL(expected);
     overflow_frame(false, 1);
     memcpy(expected, gfx_framebuffer(), bytes);
-    gfx_clear(gfx_rgb(MENU_BACKGROUND));
+    draw_clear(gfx_rgb(MENU_BACKGROUND));
     overflow_frame(true, 1);
     TEST_ASSERT_GREATER_THAN_UINT32(0, ui_band_fallback_count());
     TEST_ASSERT_EQUAL_MEMORY(expected, gfx_framebuffer(), bytes);
@@ -903,7 +903,7 @@ test_closing_the_list_restores_the_pixels_under_it(void) {
     TEST_ASSERT_TRUE(gfx_init());
     fixture();
     paint_frames = true;
-    gfx_clear(gfx_rgb(MENU_BACKGROUND));
+    draw_clear(gfx_rgb(MENU_BACKGROUND));
 
     const input_t idle = {0};
     dropdown_frame(&idle, 0);
@@ -1436,7 +1436,7 @@ SUITE_READS(run_ui_widgets_suite, SAND_PACK);
 static void
 paint_menu_band(int row0, int row1, gfx_color_t* target) {
     (void)target;
-    gfx_fill_rect(0, row0, GFX_WIDTH, row1 - row0, gfx_rgb(MENU_BACKGROUND));
+    draw_rect(0, row0, GFX_WIDTH, row1 - row0, gfx_rgb(MENU_BACKGROUND));
     ui_replay_band(row0, row1);
 }
 
@@ -1589,7 +1589,7 @@ static const sand_options_t BAND_OPTIONS = {
 static void
 paint_options_band(int row0, int row1, gfx_color_t* target) {
     (void)target;
-    gfx_fill_rect(0, row0, GFX_WIDTH, row1 - row0, gfx_rgb(OPTIONS_BACKGROUND));
+    draw_rect(0, row0, GFX_WIDTH, row1 - row0, gfx_rgb(OPTIONS_BACKGROUND));
     ui_replay_band(row0, row1);
 }
 

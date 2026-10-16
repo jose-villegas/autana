@@ -502,10 +502,9 @@ panel, the real touch controller, the IMU or timing.
 one nanosecond per executed instruction, so a `us per step` line times 1000
 is instructions per step: for a measurement that sends nothing, since time
 spent waiting on the null panel's modelled bus passes with no instructions
-behind it. A step that runs on one core repeats run to run, and keeps
-repeating while the host is busy: across five concurrent instances on a
-32-thread desktop, one-core measurements moved at most 1.05%, and three in
-four were identical to the digit.
+behind it. One-core steps repeat run to run; `--icount` passes `sleep=off`,
+so guest timers advance by instructions rather than host time; captures of
+a one-core kernel differ by far less than the ratchet's tolerance.
 
 **A step shared between two cores cannot be ranked this way at all.** The
 count sums both cores, so the second one is charged for whatever it does
@@ -517,6 +516,36 @@ thread instead, and take the two-core verdict from the board. The count
 answers whether a change removed work; on this chip that does not predict
 whether it removed time (see
 [`notes/Debugging.md`](notes/Debugging.md#performance-seems-off)).
+
+**Hot kernel instruction ratchet.** Only selected serial simulation steps
+and raster span kernels are pinned in `launcher/tools/quality/icount_baseline.txt`. Frame totals and whole
+suites are excluded so unrelated code growth carries no instruction budget.
+A ratchet suite registers as `SUITE_REGISTER_ON_REQUEST(run_<name>_icount_suite)`;
+adding a row requires that registration and a baseline entry. The runner
+discovers these suites from the sources and enables instruction counting.
+`.github/workflows/icount-ratchet.yml` runs them in CI; locally, from the
+repository root:
+
+```sh
+./launcher/test/run_qemu_tests.sh --icount-ratchet
+python launcher/tools/quality/icount_gate.py launcher/build.qemu.shell/qemu_serial.log
+```
+
+The capture lands in `launcher/build.qemu.shell/qemu_serial.log`. The gate
+fails above or below the baseline by more than 0.5%, or on a missing or
+unexpected row. The C reporting helper rejects rows too short to bound
+clock rounding. Baseline entries round to whole instructions. An
+improvement requires lowering the baseline in the same PR. An increase requires a stated reason
+and a baseline update in the same PR. After confirming two captures agree
+within tolerance, generate the baseline:
+
+```sh
+python launcher/tools/quality/icount_gate.py --update-baseline launcher/build.qemu.shell/qemu_serial.log
+```
+
+A compiler or IDF bump re-baselines the kernels in one deliberate commit.
+The tolerance and capture-length rule live in `launcher/test/perf_stats.h`;
+the gate reads the prefix and tolerance there.
 
 **Instances are independent.** Each `qemu_run.py --workdir` holds its own
 flash image, eFuse file and console log, and the build directory is only
@@ -767,7 +796,7 @@ the cheapest moment to capture it, and the only thing that stops it returning.
 
 `suite_gfx.c` covers what a host structurally cannot:
 
-- **Framebuffer read-back**: after `gfx_fill_rect`, count the pixels that
+- **Framebuffer read-back**: after `draw_rect`, count the pixels that
   actually changed and assert it is exactly `w*h`, with neighbours untouched.
 - **Clipping at every edge**, including rectangles straddling the boundary. If
   clipping were wrong this would corrupt memory rather than fail politely.

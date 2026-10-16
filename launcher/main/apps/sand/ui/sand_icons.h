@@ -7,7 +7,7 @@
 #pragma once
 
 #include "gfx/present/gfx_mode.h"
-#include "ui/ui_icons.h"
+#include "ui/controls/ui_icons.h"
 
 #define SAND_PACK "sand"
 
@@ -30,7 +30,7 @@ typedef enum {
 extern ui_icon_set_t sand_icon_set;
 
 /* Icon `id`, or NULL without the pack. */
-const gfx_image_t* sand_icon(sand_icon_id_t id);
+const draw_image_t* sand_icon(sand_icon_id_t id);
 
 /* The swatch of dither mode `mode`, or NULL without the pack. */
-const gfx_image_t* sand_dither_icon(gfx_dither_mode_t mode);
+const draw_image_t* sand_dither_icon(gfx_dither_mode_t mode);

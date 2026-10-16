@@ -92,3 +92,9 @@ default render size as the suite. Each row averages its own capture's per-pose
 stage reports and draw plus upscale wall times, without panel transfer. Missing
 PASS or completion verdicts, mismatched poses, build IDs, pack hashes, renderer
 geometry or render sizes fail. Monitor logs cannot supply this table.
+
+## Pinhole rays
+
+`python launcher/tools/render/pinhole_rays.py rays SCENE.scene.toml --mesh DRAWN.mesh --video FRAMES.avi --dt MS` traces enclosed sky in a HUD-free host video made with `--quarter 1`. It reports raster misses, geometry holes and random-pixel projection agreement (which should approach one). `--frames 0,1,2` selects zero-based video frames; `--against OTHER.mesh ...` compares each hole with other geometry at neighbouring drawn depth. Mitsuba's scalar CPU variant needs no LLVM runtime.
+
+`python launcher/tools/render/pinhole_rays.py shown SCENE.scene.toml --object OBJECT START.mesh ...` estimates visible triangles for each fitted start using the selected object's fit coverage spacing and square coverage view at its pose size. First-hit front-face rays use Mitsuba's LLVM CPU variant and require libLLVM. The count estimates post-fit pruning coverage; it is not the GPU raster count.

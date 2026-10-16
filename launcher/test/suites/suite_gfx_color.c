@@ -421,7 +421,7 @@ test_covers_both_equals_covers_the_lower_alpha(void) {
     }
 }
 
-/* Why a scrim may only be applied once: gfx_fill_rect_blend() mixes into
+/* Why a scrim may only be applied once: draw_rect_blend() mixes into
  * the pixel it reads, so a second application over an un-repainted region
  * lands on the first one's own output. Same mix, same alpha, twice is
  * strictly darker than once, and repeating it walks the picture to black,

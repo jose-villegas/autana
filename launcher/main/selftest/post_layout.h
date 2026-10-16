@@ -13,7 +13,7 @@
  */
 #pragma once
 
-#include "ui/ui_anchor.h"
+#include "ui/layout/ui_anchor.h"
 
 /* The screen's fixed strings, beside the rects that have to hold them. */
 #define POST_LAYOUT_TITLE             "POWER-ON SELF TEST"
@@ -62,7 +62,7 @@ typedef struct {
  * above are measured in. A column count too wide for the canvas is reduced
  * until POST_LAYOUT_WIDEST_LINE fits. Without a footer, that band takes no
  * height at all and the columns get it. */
-post_layout_t post_layout_with(const gfx_font_t* font, int screen_w, int screen_h, int columns, int gap,
+post_layout_t post_layout_with(const draw_font_t* font, int screen_w, int screen_h, int columns, int gap,
                                bool has_footer);
 
 /* The orientation's column ceiling. */
@@ -151,4 +151,5 @@ typedef struct {
  * wrap the details less. Where no column count affords that, every column is
  * used and the air shrinks to the widest uniform pixel gap that still fits;
  * air thinner than a line beats dropping checks off the end. */
-post_layout_t post_layout_for_report(const gfx_font_t* font, int screen_w, int screen_h, const post_entries_t* entries);
+post_layout_t post_layout_for_report(const draw_font_t* font, int screen_w, int screen_h,
+                                     const post_entries_t* entries);

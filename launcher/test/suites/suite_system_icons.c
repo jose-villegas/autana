@@ -8,7 +8,7 @@
  *
  * Everything here works over EVERY baked icon by index, never assuming a
  * 16-wide/2-byte-stride shape: the atlas mixes the 16x16 PNG-sourced check
- * mark with 24x24 SVG-sourced imports, and gfx_image_t's own w/h/stride fields
+ * mark with 24x24 SVG-sourced imports, and draw_image_t's own w/h/stride fields
  * are what make that mixing safe.
  */
 
@@ -24,13 +24,13 @@
 
 #include "bbox_extend.h"
 #include "draw/icon.h"
-#include "ui/ui_icons.h"
+#include "ui/controls/ui_icons.h"
 
 /* System icon `id`, which the engine pack the suites run with must hold. */
-static const gfx_image_t*
+static const draw_image_t*
 system_icon(ui_icon_id_t id) {
     ui_icons_init();
-    const gfx_image_t* icon = ui_icon(id);
+    const draw_image_t* icon = ui_icon(id);
     TEST_ASSERT_NOT_NULL_MESSAGE(icon, "no system icon: the suites run with the packs build_pack.py writes");
     return icon;
 }
@@ -38,9 +38,9 @@ system_icon(ui_icon_id_t id) {
 static void
 test_every_icon_is_one_bit_rows_of_whole_bytes(void) {
     for (int id = 0; id < UI_ICON_COUNT; id++) {
-        const gfx_image_t* icon = system_icon((ui_icon_id_t)id);
-        TEST_ASSERT_EQUAL_INT_MESSAGE(GFX_IMAGE_MONO1, icon->format, "a system icon is not one bit a pixel");
-        TEST_ASSERT_EQUAL_INT_MESSAGE(0, icon->stride % GFX_IMAGE_MONO1_STRIDE_STEP, "a row is not whole bytes");
+        const draw_image_t* icon = system_icon((ui_icon_id_t)id);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(DRAW_IMAGE_MONO1, icon->format, "a system icon is not one bit a pixel");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, icon->stride % DRAW_IMAGE_MONO1_STRIDE_STEP, "a row is not whole bytes");
     }
 }
 
@@ -63,7 +63,7 @@ static const char* const chevron_left_expected_rows[24] = {
 
 static void
 test_chevron_left_matches_source_svg_rectangles(void) {
-    const gfx_image_t* icon = system_icon(UI_ICON_CHEVRON_LEFT);
+    const draw_image_t* icon = system_icon(UI_ICON_CHEVRON_LEFT);
     TEST_ASSERT_EQUAL_INT(24, icon->width);
     TEST_ASSERT_EQUAL_INT(24, icon->height);
 
@@ -98,7 +98,7 @@ reference_icon_scale(int iw, int ih, int box_w, int box_h) {
 /* Bounding box of the icon's own drawn ink: min/max x and y over every
  * set bit. */
 static void
-reference_icon_bbox(const gfx_image_t* icon, int iw, int ih, int* min_x, int* max_x, int* min_y, int* max_y) {
+reference_icon_bbox(const draw_image_t* icon, int iw, int ih, int* min_x, int* max_x, int* min_y, int* max_y) {
     *min_x = iw;
     *max_x = -1;
     *min_y = ih;
@@ -115,7 +115,7 @@ reference_icon_bbox(const gfx_image_t* icon, int iw, int ih, int* min_x, int* ma
 /* Independent geometry from icon_test_bit() lookups must agree
  * with icon_walk_blocks(), without depending on the streaming walker. */
 static int
-reference_blocks(const gfx_image_t* icon, int box_w, int box_h, icon_rect_t* out, int max) {
+reference_blocks(const draw_image_t* icon, int box_w, int box_h, icon_rect_t* out, int max) {
     const int iw = icon->width, ih = icon->height;
     const int scale = reference_icon_scale(iw, ih, box_w, box_h);
 
@@ -168,7 +168,7 @@ test_streaming_walker_matches_reference_extraction(void) {
     TEST_ASSERT_NOT_NULL(ref);
 
     for (int id = 0; id < UI_ICON_COUNT; id++) {
-        const gfx_image_t* icon = system_icon((ui_icon_id_t)id);
+        const draw_image_t* icon = system_icon((ui_icon_id_t)id);
         const int box_sizes[][2] = {
             {icon->width, icon->height},
             {icon->width * 2, icon->height * 2},
@@ -206,7 +206,7 @@ test_streaming_walker_matches_reference_extraction(void) {
  * hand-derived from the centring formula. */
 static void
 test_content_bbox_centring_uses_a_specific_expected_origin(void) {
-    const gfx_image_t* icon = system_icon(UI_ICON_CHECK);
+    const draw_image_t* icon = system_icon(UI_ICON_CHECK);
 
     icon_rect_t* cc_buf = malloc(sizeof(icon_rect_t) * TEST_MAX_BLOCKS);
     TEST_ASSERT_NOT_NULL(cc_buf);
@@ -225,7 +225,7 @@ test_content_bbox_centring_uses_a_specific_expected_origin(void) {
  * fixed buffer bounds an icon's detail. */
 static void
 test_home_bakes_and_walks_at_fifty_runs(void) {
-    const gfx_image_t* icon = system_icon(UI_ICON_HOME);
+    const draw_image_t* icon = system_icon(UI_ICON_HOME);
     TEST_ASSERT_EQUAL_INT_MESSAGE(50, icon_test_runs(icon), "home was expected to bake at 50 runs");
 
     icon_rect_t* cc_buf = malloc(sizeof(icon_rect_t) * TEST_MAX_BLOCKS);

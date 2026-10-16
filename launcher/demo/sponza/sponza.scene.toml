@@ -82,13 +82,14 @@ name = "atrium_fitted"
 mesh = "sponza.import.toml"
 variant = "sponza_fitted"
 bake = true
-visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
+visibility = { source = "camera_region", rounds = 160 }
 
 [objects.mesh_renderer.fit.prune]
 budget = 8672
-coverage_every_ms = 100
+coverage_every_ms = 20
 
 [objects.mesh_renderer.fit.poses]
+size = [184, 224]
 train_every_ms = 1000
 held_out_every_ms = 5000
 
@@ -106,13 +107,14 @@ name = "atrium_fitted_full"
 mesh = "sponza.import.toml"
 variant = "sponza_fitted_full"
 bake = true
-visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
+visibility = { source = "camera_region", rounds = 160 }
 
 [objects.mesh_renderer.fit.prune]
 budget = 17381
-coverage_every_ms = 100
+coverage_every_ms = 20
 
 [objects.mesh_renderer.fit.poses]
+size = [184, 224]
 train_every_ms = 1000
 held_out_every_ms = 5000
 
@@ -131,13 +133,14 @@ mesh = "sponza.import.toml"
 variant = "sponza_fitted_full"
 bake = true
 shading = { flat = { auto = { min = 1, max = 16, area = "median" } } }
-visibility = { source = "camera_path", every_ms = 100, size = [184, 224], samples = 3, margin = 8 }
+visibility = { source = "camera_region", rounds = 160 }
 
 [objects.mesh_renderer.fit.prune]
 budget = 17381
-coverage_every_ms = 100
+coverage_every_ms = 20
 
 [objects.mesh_renderer.fit.poses]
+size = [184, 224]
 train_every_ms = 1000
 held_out_every_ms = 5000
 

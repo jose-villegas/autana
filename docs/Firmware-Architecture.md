@@ -473,7 +473,7 @@ other's bands stay clean.
 ### The scrim: the one thing drawn outside the command list
 
 A panel over a paused screen dims what is behind it with one full-screen
-`gfx_fill_rect_blend()`. That is a pixel write, not a command, and it has to
+`draw_rect_blend()`. That is a pixel write, not a command, and it has to
 be: everything in the command list is re-emitted on every repaint, and a
 blend fill reads the pixel it writes, so a scrim repeated per repaint walks
 the frozen backdrop toward black. It is applied **once per repaint of what is
@@ -530,10 +530,10 @@ silently.
 control hovered only on a frame where the button is *not* held, and a control
 submits only once focused, so a press needs a frame with the finger present
 and no DOWN before the DOWN. Hover also needs `hover_root`, which `mu_begin()`
-copies from the *previous* frame, so on the press frame `ui/ui_bridge.c` seeds
+copies from the *previous* frame, so on the press frame `ui/input/ui_bridge.c` seeds
 it (`mu_seed_hover_root()`) from the roots the last frame left in `root_list`.
 After the frame it compares the seed with the root microui then found and
-records the result in `hover_unsettled`; `ui/ui_pointer.c` sends the DOWN
+records the result in `hover_unsettled`; `ui/input/ui_pointer.c` sends the DOWN
 only once that is clear.
 
 ```mermaid
@@ -559,9 +559,9 @@ every button draws its pressed look while returning 0. A press and release
 inside one frame resolves at once, so on an unsettled root it is lost.
 A repaint-only frame (`ui_begin(NULL)`, the boot backdrop) feeds no input
 and neither steps nor reports to the pointer. It runs before `input_start()`,
-with no touch in progress. `ui/ui_pointer.c` also owns the held `DOWN` a
+with no touch in progress. `ui/input/ui_pointer.c` also owns the held `DOWN` a
 slider needs to track a drag and the UP owed when a lift never reached the UI
-(`ui/ui_pointer.h`); `suite_ui_pointer_microui.c` and `suite_ui_widgets.c` pin
+(`ui/input/ui_pointer.h`); `suite_ui_pointer_microui.c` and `suite_ui_widgets.c` pin
 it against real microui, since hover is microui's own state and event-list
 tests cannot see it. It applies to every control that reacts to a press, so
 reworking input handling means preserving it. A press within `snap.reach` of a

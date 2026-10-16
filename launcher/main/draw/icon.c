@@ -19,7 +19,7 @@ ink(const uint8_t* row, int x) {
 
 /* Row `y`: a MONO1 stride is whole bytes. */
 static const uint8_t*
-row_at(const gfx_image_t* icon, int y) {
+row_at(const draw_image_t* icon, int y) {
     return icon->bits + ((size_t)y * (icon->stride / 8U));
 }
 
@@ -27,7 +27,7 @@ row_at(const gfx_image_t* icon, int y) {
  * so centring the grid would off-centre what is drawn. False when nothing is
  * inked. */
 static bool
-ink_box(const gfx_image_t* icon, ink_box_t* out) {
+ink_box(const draw_image_t* icon, ink_box_t* out) {
     *out = (ink_box_t){icon->width, -1, icon->height, -1};
     for (int y = 0; y < icon->height; y++) {
         const uint8_t* row = row_at(icon, y);
@@ -59,8 +59,8 @@ emit_runs(const uint8_t* row, int width, int x0, int y0, int scale, icon_emit_fn
 }
 
 void
-icon_walk_blocks(const gfx_image_t* icon, int box_w, int box_h, icon_emit_fn emit, void* ctx) {
-    assert(icon->format == GFX_IMAGE_MONO1);
+icon_walk_blocks(const draw_image_t* icon, int box_w, int box_h, icon_emit_fn emit, void* ctx) {
+    assert(icon->format == DRAW_IMAGE_MONO1);
     const int scale = mathi_max(1, mathi_min(box_w / icon->width, box_h / icon->height));
     ink_box_t box;
     if (!ink_box(icon, &box)) {

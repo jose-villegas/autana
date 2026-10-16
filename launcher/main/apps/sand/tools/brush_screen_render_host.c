@@ -24,8 +24,8 @@
 
 #include "apps/sand/ui/brush_screen.h"
 #include "apps/sand/ui/sand_icons.h"
-#include "draw/gfx_draw.h"
-#include "draw/gfx_font_roles.h"
+#include "draw/draw.h"
+#include "draw/draw_font_roles.h"
 #include "draw/icon.h"
 #include "gfx/gfx.h"
 #include "gfx/target/gfx_color.h"
@@ -35,10 +35,10 @@
 #include "sand_brushes.h"
 #include "sand_swatch.h"
 #include "sand_ui.h"
+#include "ui/controls/ui_slider.h"
+#include "ui/controls/ui_style.h"
+#include "ui/layout/ui_transform.h"
 #include "ui/ui.h" /* UI_MARGIN, UI_SLIDER_KNOB_W only */
-#include "ui/ui_slider.h"
-#include "ui/ui_style.h"
-#include "ui/ui_transform.h"
 
 /* A real brush cell, mode and radius to draw: the longest name, the worst
  * case brush_screen.c's name-shrink loop handles. */
@@ -74,7 +74,7 @@ mu_to_gfx(mu_Color c) {
 static void
 fill_rect_logical(ui_transform_t t, mu_Rect r, gfx_color_t color) {
     const mu_Rect p = ui_transform_rect(t, r);
-    gfx_fill_rect(p.x, p.y, p.w, p.h, color);
+    draw_rect(p.x, p.y, p.w, p.h, color);
 }
 
 /* Mirrors ui_panel(): one flat section frame. */
@@ -104,13 +104,13 @@ typedef struct {
 
 static void
 icon_emit(void* ctx, int x, int y, int w, int h) {
-    gfx_fill_rect(x, y, w, h, ((const icon_fill_ctx_t*)ctx)->color);
+    draw_rect(x, y, w, h, ((const icon_fill_ctx_t*)ctx)->color);
 }
 
 /* Mirrors ui.c's ui_draw_icon(), with `box` mapped through `t` the way
  * ui.c's own draw_command() maps MU_COMMAND_ICON; no icon draws nothing. */
 static void
-draw_icon(ui_transform_t t, mu_Rect box, const gfx_image_t* icon, uint32_t color_rgb) {
+brush_icon(ui_transform_t t, mu_Rect box, const draw_image_t* icon, uint32_t color_rgb) {
     if (icon != NULL) {
         icon_fill_ctx_t ctx = {gfx_rgb(color_rgb)};
         ui_transform_icon_blocks(t, icon, box, icon_emit, &ctx);
@@ -119,14 +119,14 @@ draw_icon(ui_transform_t t, mu_Rect box, const gfx_image_t* icon, uint32_t color
 
 /* Mirrors ui_text_in() for the logical (x, y), then ui.c's
  * draw_command() MU_COMMAND_TEXT case for turning it into a physical glyph
- * origin, see gfx_text_font() and ui_text_glyph0_origin(). The brush
+ * origin, see draw_text_font() and ui_text_glyph0_origin(). The brush
  * screen always draws UI_TEXT_PLAIN, so this is the ink pass alone, no
  * halo. */
 static void
-draw_text(ui_transform_t t, mu_Rect r, const char* str, uint32_t color_rgb, int scale, int align) {
-    const gfx_font_t* font = gfx_font_ui();
-    const int tw = gfx_font_text_width(font, str, -1, scale);
-    const int th = gfx_font_height(font, scale);
+brush_text(ui_transform_t t, mu_Rect r, const char* str, uint32_t color_rgb, int scale, int align) {
+    const draw_font_t* font = draw_font_ui();
+    const int tw = draw_font_text_width(font, str, -1, scale);
+    const int th = draw_font_height(font, scale);
     const int x = (align < 0) ? r.x : (align == 0) ? r.x + (r.w - tw) / 2 : r.x + r.w - tw;
     const int y = r.y + (r.h - th) / 2;
 
@@ -134,7 +134,7 @@ draw_text(ui_transform_t t, mu_Rect r, const char* str, uint32_t color_rgb, int 
     const mu_Rect box = ui_transform_rect(t, (mu_Rect){x, y, tw, th});
     int mx, my;
     ui_text_glyph0_origin(font, box, quarter, scale, &mx, &my);
-    gfx_text_font(mx, my, str, gfx_rgb(color_rgb), scale, quarter, font);
+    draw_text_font(mx, my, str, gfx_rgb(color_rgb), scale, quarter, font);
 }
 
 /* Mirrors ui/brush_screen.c's draw_brush_swatch(). */
@@ -194,22 +194,22 @@ draw_screen(ui_transform_t t, int screen_w, int screen_h) {
     brush_screen_layout_t lay;
     brush_screen_layout(screen_w, screen_h, &lay);
 
-    const gfx_font_t* font = gfx_font_ui();
+    const draw_font_t* font = draw_font_ui();
     const int scale = BRUSH_SCREEN_CAPTION_SCALE;
 
     /* Header: swatch, caption/name, info button. */
     draw_panel(t, lay.header_panel, SAND_THEME_PANEL_FACE_COLOR, SAND_THEME_PANEL_EDGE_COLOR);
     draw_swatch(t, lay.swatch, PREVIEW_MATERIAL);
-    draw_text(t, lay.material_caption, BRUSH_SCREEN_MATERIAL_CAPTION, SAND_THEME_CAPTION_COLOR, scale, -1);
+    brush_text(t, lay.material_caption, BRUSH_SCREEN_MATERIAL_CAPTION, SAND_THEME_CAPTION_COLOR, scale, -1);
 
     const char* name = material_name(PREVIEW_MATERIAL);
     int name_scale = 4;
     for (; name_scale > 1; name_scale--) {
-        if (gfx_font_text_width(font, name, -1, name_scale) <= lay.material_name.w) {
+        if (draw_font_text_width(font, name, -1, name_scale) <= lay.material_name.w) {
             break;
         }
     }
-    draw_text(t, lay.material_name, name, SAND_THEME_TEXT_COLOR, name_scale, -1);
+    brush_text(t, lay.material_name, name, SAND_THEME_TEXT_COLOR, name_scale, -1);
 
     draw_bezel(t, lay.info_button, SAND_THEME_BUTTON_FACE_COLOR);
     {
@@ -220,15 +220,15 @@ draw_screen(ui_transform_t t, int screen_w, int screen_h) {
             lay.info_button.h - 2 * INFO_ICON_PAD,
         };
         if (sand_icon(SAND_ICON_INFO) != NULL) {
-            draw_icon(t, icon_r, sand_icon(SAND_ICON_INFO), SAND_THEME_TEXT_COLOR);
+            brush_icon(t, icon_r, sand_icon(SAND_ICON_INFO), SAND_THEME_TEXT_COLOR);
         } else {
-            draw_text(t, icon_r, sand_icon_set.names[SAND_ICON_INFO].text, SAND_THEME_TEXT_COLOR, scale, 0);
+            brush_text(t, icon_r, sand_icon_set.names[SAND_ICON_INFO].text, SAND_THEME_TEXT_COLOR, scale, 0);
         }
     }
 
     /* Brush mode: caption, three segments. */
     draw_panel(t, lay.mode_panel, SAND_THEME_PANEL_FACE_COLOR, SAND_THEME_PANEL_EDGE_COLOR);
-    draw_text(t, lay.mode_caption, BRUSH_SCREEN_MODE_CAPTION, SAND_THEME_CAPTION_COLOR, scale, -1);
+    brush_text(t, lay.mode_caption, BRUSH_SCREEN_MODE_CAPTION, SAND_THEME_CAPTION_COLOR, scale, -1);
 
     for (int i = 0; i < BRUSH_SCREEN_SEGMENT_COUNT; i++) {
         const mu_Rect r = lay.segments[i];
@@ -239,7 +239,7 @@ draw_screen(ui_transform_t t, int screen_w, int screen_h) {
 
         draw_bezel(t, r, face);
 
-        const int label_h = gfx_font_height(font, scale);
+        const int label_h = draw_font_height(font, scale);
         int icon_side = r.h - 2 * SEG_PAD - label_h - SEG_LABEL_GAP;
         const int icon_side_max = r.w - 2 * SEG_PAD;
         if (icon_side > icon_side_max) {
@@ -251,7 +251,7 @@ draw_screen(ui_transform_t t, int screen_w, int screen_h) {
             icon_side,
             icon_side,
         };
-        draw_icon(t, icon_r, sand_icon((sand_icon_id_t)i), ink);
+        brush_icon(t, icon_r, sand_icon((sand_icon_id_t)i), ink);
 
         const mu_Rect label_r = {
             r.x + SEG_PAD,
@@ -259,17 +259,17 @@ draw_screen(ui_transform_t t, int screen_w, int screen_h) {
             r.w - 2 * SEG_PAD,
             label_h,
         };
-        draw_text(t, label_r, label, ink, scale, 0);
+        brush_text(t, label_r, label, ink, scale, 0);
     }
 
     /* Brush size: caption/value, slider. */
     draw_panel(t, lay.size_panel, SAND_THEME_PANEL_FACE_COLOR, SAND_THEME_PANEL_EDGE_COLOR);
-    draw_text(t, lay.size_caption, brush_screen_size_caption((brush_screen_segment_t)PREVIEW_MODE),
-              SAND_THEME_CAPTION_COLOR, scale, -1);
+    brush_text(t, lay.size_caption, brush_screen_size_caption((brush_screen_segment_t)PREVIEW_MODE),
+               SAND_THEME_CAPTION_COLOR, scale, -1);
 
     char size_value[8];
     snprintf(size_value, sizeof size_value, "%02u PX", (unsigned)PREVIEW_RADIUS_PX);
-    draw_text(t, lay.size_value, size_value, SAND_THEME_TEXT_COLOR, scale, 1);
+    brush_text(t, lay.size_value, size_value, SAND_THEME_TEXT_COLOR, scale, 1);
 
     draw_slider(t, lay.slider_track, SAND_UI_RADIUS_MIN, SAND_UI_RADIUS_MAX, PREVIEW_RADIUS_PX);
 }
@@ -295,7 +295,7 @@ setup(int quarter) {
 static void
 draw(const render_frame_t* frame) {
     (void)frame;
-    gfx_clear(gfx_rgb(0x000000));
+    draw_clear(gfx_rgb(0x000000));
     draw_screen(transform, screen_w, screen_h);
 }
 

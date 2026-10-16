@@ -29,7 +29,7 @@ file counted twice:
   same host-portable file list and flags that script proves compile,
   used for whatever the diagnostics build's database does not contain: the
   host-only test-runner files (`host_main.c`, `heap_arena.c`) and
-  `draw/gfx_palette_standard.c`. esp-clang's own default target has no
+  `draw/draw_palette_standard.c`. esp-clang's own default target has no
   usable libc either, so these get the same `--sysroot`/`--gcc-toolchain`
   treatment against the host compiler `tools/build/find_cc.sh` resolves,
   never a second, independently-guessed compiler.

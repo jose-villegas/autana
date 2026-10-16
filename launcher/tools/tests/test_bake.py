@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import types
 import unittest
 import urllib.error
@@ -67,6 +68,108 @@ def fitted_job():
 def bake_of(key, tree, kind="mesh"):
     return bake.Bake(output="one.mesh", source=tree, holder="one", kind=kind, key=key, suffix=bake.MESH_SUFFIX,
                      tree=tree)
+
+
+def mesh_process_stub(item, cache, lock=None, blender=None):
+    if item.holder == "fail":
+        raise bake.BakeMissing("mesh worker failed")
+    if item.holder == "settings":
+        raise bake.SettingsError("mesh settings failed")
+    cache = pathlib.Path(cache)
+    if item.holder == "wait":
+        deadline = time.monotonic() + 15
+        while not (cache / "later.done").exists():
+            if time.monotonic() >= deadline:
+                raise bake.BakeMissing("later mesh did not finish first")
+            time.sleep(0.01)
+    payload = cache / f"{item.key}.payload"
+    with payload.open("x" if item.holder == "once" else "w") as stream:
+        stream.write(str(os.getpid()))
+    row = produce.record(item, payload, cache)
+    (cache / f"{item.holder}.done").touch()
+    return row
+
+
+class MeshCommandTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+        self.root = pathlib.Path(self.directory.name)
+        self.found = [dataclasses.replace(bake_of(str(index), self.root),
+                                         output=f"{index}.mesh", holder=str(index)) for index in range(4)]
+
+    def command(self, capacity=2, again=True, memory_error=False):
+        from r3d import process_budget as budget
+        out, err = io.StringIO(), io.StringIO()
+        rows = []
+        free = tuple(floor + capacity * cost for floor, cost in zip(budget.FLOORS, budget.BAKE_BYTES))
+        with mock.patch.object(bake, "bakes", return_value=self.found), \
+                mock.patch.object(bake, "read_lock_tables", return_value={"bake": {}, "poses": {}}), \
+                mock.patch.object(budget, "available_bytes", side_effect=OSError("no procfs") if memory_error else None,
+                                  return_value=free), \
+                mock.patch.object(budget, "cores_available", return_value=4), \
+                mock.patch.object(bake, "cpu_vendor", return_value=None), \
+                mock.patch.object(produce, "produce", mesh_process_stub), \
+                mock.patch.object(produce, "export", side_effect=lambda made, *_: rows.extend(made)), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = bake.main(["bake", "--kind", "mesh", "--cache", str(self.root), "--out", str(self.root / "out"),
+                              *(["--again"] if again else [])])
+        return types.SimpleNamespace(code=code, out=out.getvalue(), err=err.getvalue(), rows=rows)
+
+    def test_parallel_processes_preserve_found_and_printed_order(self):
+        self.found[0] = dataclasses.replace(self.found[0], holder="wait")
+        self.found[1] = dataclasses.replace(self.found[1], holder="later")
+        done = self.command()
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual([row["output"] for row in done.rows], [item.output for item in self.found])
+        self.assertEqual([line.split()[1] for line in done.out.splitlines() if line.startswith("made ")],
+                         [item.output for item in self.found])
+        pids = {bake.cached(row, row["suffix"], self.root).read_text() for row in done.rows}
+        self.assertGreater(len(pids), 1)
+        self.assertNotIn(str(os.getpid()), pids)
+        self.assertIn("mesh workers: 2 (memory", done.out)
+
+    def test_capacity_one_runs_serially(self):
+        done = self.command(capacity=1)
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual({bake.cached(row, row["suffix"], self.root).read_text() for row in done.rows},
+                         {str(os.getpid())})
+        self.assertIn("mesh workers: 1 (memory", done.out)
+
+    def test_missing_memory_uses_one_worker(self):
+        done = self.command(memory_error=True)
+        self.assertEqual(done.code, 0, done.err)
+        self.assertIn("mesh workers: 1 (memory unavailable", done.out)
+
+    def test_core_limit_is_reported(self):
+        done = self.command(capacity=10)
+        self.assertEqual(done.code, 0, done.err)
+        self.assertIn("mesh workers: 4 (cores", done.out)
+
+    def test_worker_errors_preserve_command_messages(self):
+        for holder, message in (("fail", "mesh worker failed"), ("settings", "mesh settings failed")):
+            with self.subTest(holder=holder):
+                self.found[0] = dataclasses.replace(self.found[0], holder=holder)
+                done = self.command()
+                self.assertEqual(done.code, 1)
+                self.assertIn(f"bake.py: {message}", done.err)
+                self.assertEqual(done.rows, [])
+
+    def test_duplicate_keys_are_produced_once_even_with_again(self):
+        self.found[0] = dataclasses.replace(self.found[0], holder="once")
+        self.found = [self.found[0], self.found[1], self.found[0]]
+        done = self.command()
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual(done.rows[0], done.rows[2])
+        self.assertEqual(len(list(self.root.glob("*.payload"))), 2)
+
+    def test_cached_rows_need_no_workers(self):
+        self.assertEqual(self.command(capacity=1).code, 0)
+        payloads = {path: path.stat().st_mtime_ns for path in self.root.glob("*.payload")}
+        done = self.command(again=False)
+        self.assertEqual({path: path.stat().st_mtime_ns for path in payloads}, payloads)
+        self.assertEqual(done.code, 0, done.err)
+        self.assertNotIn("mesh workers:", done.out)
 
 
 class TokenTests(unittest.TestCase):
@@ -509,9 +612,10 @@ class FittedBakeCase(unittest.TestCase):
     def fit(self, sha256):
         return self.fits(sha256)[0]
 
-    def command(self, argv, lock, made=None):
-        """Runs bake.py main over the tree with the lock and the runs' makes given and produce.produce stubbed:
-        a start is made with MADE_SHA256, a fit with FIT_SHA256. Returns what it did."""
+    def command(self, argv, lock, made=None, mesh_cpu_vendor=None, cpu=None):
+        """Runs bake.py main over the tree with the lock (naming `mesh_cpu_vendor`), the runs' makes and this host's CPU
+        vendor given and produce.produce stubbed: a start is made with MADE_SHA256, a fit with FIT_SHA256.
+        Returns what it did."""
         written, produced = [], []
 
         def stub(item, cache, lock=None, blender=None):
@@ -519,14 +623,18 @@ class FittedBakeCase(unittest.TestCase):
             return row_of(item, MADE_SHA256 if not item.packed else FIT_SHA256)
 
         out, err = io.StringIO(), io.StringIO()
-        with mock.patch.object(bake, "read_lock_tables", return_value={"bake": lock, "poses": {}}), \
-                mock.patch.object(bake, "write_lock", side_effect=lambda rows, **kwargs: written.append(rows)), \
+        with mock.patch.object(bake, "read_lock_tables",
+                               return_value={"bake": lock, "poses": {}, "mesh_cpu_vendor": mesh_cpu_vendor}), \
+                mock.patch.object(bake, "write_lock", side_effect=lambda rows, **kwargs: written.append((rows, kwargs))), \
                 mock.patch.object(bake, "runs_made", return_value=made or {}), \
+                mock.patch.object(bake, "cpu_vendor", return_value=cpu), \
                 mock.patch.object(produce, "produce", side_effect=stub), \
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             code = bake.main([*argv, str(self.root), "--cache", str(self.cache)])
+        rows, kwargs = written[0] if written else ([], {})
         return types.SimpleNamespace(code=code, out=out.getvalue(), err=err.getvalue(), produced=produced,
-                                     rows={row["output"]: row for row in (written[0] if written else [])})
+                                     rows={row["output"]: row for row in rows}, written=bool(written),
+                                     mesh_cpu_vendor=kwargs.get("mesh_cpu_vendor"))
 
     def locked(self, sha256, **fields):
         return {self.start.key: row_of(self.start, sha256, **fields)}
@@ -623,10 +731,10 @@ class FittedBakeTests(FittedBakeCase):
 
                 self.assertNotEqual(self.reference_key(step), unchanged)
 
-    def test_the_visibility_size_changes_the_reference_key(self):
+    def test_the_fit_pose_size_changes_the_reference_key(self):
         def widen(job):
-            width, height = job.renderer.visibility.size
-            job.renderer.visibility.size = (width + 1, height)
+            width, height = job.renderer.fit.size
+            job.renderer.fit.size = (width + 1, height)
 
         self.assertNotEqual(self.reference_key(widen), self.reference_key(lambda job: None))
 
@@ -845,6 +953,96 @@ class PosesTests(FittedBakeCase):
         before = self.keys()
         write_camera_clip(self.root, reach=2.0)
         self.assertEqual(before, self.keys())
+
+
+class CpuVendorTests(FittedBakeCase):
+    """A mesh bake's bytes differ between CPU vendors: the lock takes meshes made only on its own vendor's hosts,
+    and a run to upload makes them only there. A fit, made on the GPU host whatever its CPU, is not checked."""
+
+    AMD, INTEL = "AuthenticAMD", "GenuineIntel"
+
+    def made(self, start_cpu, fit_cpu=None):
+        """A run's makes: the start mesh on `start_cpu` and its fit on `fit_cpu`; None leaves the CPU out."""
+        made = {self.start.key: row_of(self.start, MADE_SHA256, run=RUN, **({"cpu_vendor": start_cpu} if start_cpu else {}))}
+        fit = self.fit(MADE_SHA256)
+        made[fit.key] = row_of(fit, FIT_SHA256, run=RUN, **({"cpu_vendor": fit_cpu} if fit_cpu else {}))
+        return made
+
+    def lock(self, made, mesh_cpu_vendor, lock=None):
+        return self.command(["lock", "--from-run", str(RUN)], lock or {}, made, mesh_cpu_vendor=mesh_cpu_vendor)
+
+    def test_a_run_whose_mesh_was_made_on_another_vendor_is_refused_naming_both(self):
+        done = self.lock(self.made(self.INTEL), self.AMD)
+        self.assertEqual(done.code, 1)
+        self.assertFalse(done.written, "a refused run writes no lock")
+        for named in (f"run {RUN}", self.start.output, self.INTEL, self.AMD, "re-run the failed Bakes CPU job"):
+            self.assertIn(named, done.err)
+
+    def test_a_run_that_names_no_vendor_is_refused(self):
+        done = self.lock(self.made(None), self.AMD)
+        self.assertEqual(done.code, 1)
+        self.assertIn("a CPU it does not name", done.err)
+
+    def test_a_run_on_the_locks_vendor_locks_and_keeps_the_vendor_line(self):
+        done = self.lock(self.made(self.AMD, fit_cpu=self.INTEL), self.AMD)
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual(done.rows[self.start.output]["sha256"], MADE_SHA256)
+        self.assertEqual(done.rows[self.fit(MADE_SHA256).output]["sha256"], FIT_SHA256)
+        self.assertNotIn("cpu_vendor", done.rows[self.start.output], "the vendor is the lock's line, not a row field")
+        self.assertEqual(done.mesh_cpu_vendor, self.AMD)
+
+    def test_a_mesh_the_lock_already_holds_is_not_taken_so_not_checked(self):
+        made = self.made(self.INTEL)
+        made[self.fit(LOCKED_SHA256).key] = row_of(self.fit(LOCKED_SHA256), FIT_SHA256, run=RUN)
+        done = self.lock(made, self.AMD, self.locked(LOCKED_SHA256, run=RUN - 1))
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual(done.rows[self.start.output]["sha256"], LOCKED_SHA256)
+
+    def test_a_lock_that_names_no_vendor_takes_the_runs(self):
+        done = self.lock(self.made(self.INTEL), None)
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual(done.mesh_cpu_vendor, self.INTEL)
+
+    def test_baking_meshes_to_upload_on_another_vendor_fails_before_making_anything(self):
+        out = str(self.root / "upload")
+        done = self.command(["bake", "--kind", "mesh", "--out", out], {}, mesh_cpu_vendor=self.AMD, cpu=self.INTEL)
+        self.assertEqual(done.code, 1)
+        self.assertEqual(done.produced, [])
+        for named in (self.INTEL, self.AMD, "re-run the failed Bakes CPU job"):
+            self.assertIn(named, done.err)
+        for argv, cpu in ((["bake", "--kind", "mesh"], self.INTEL), (["bake", "--kind", "mesh", "--out", out], self.AMD)):
+            with self.subTest(argv=argv, cpu=cpu):
+                with mock.patch.object(produce, "export"):
+                    done = self.command(argv, {}, mesh_cpu_vendor=self.AMD, cpu=cpu)
+                self.assertEqual(done.code, 0, done.err)
+                self.assertEqual([item.output for item in done.produced], [self.start.output])
+
+    def test_a_run_with_no_mesh_to_make_passes_on_any_vendor(self):
+        with mock.patch.object(produce, "export"):
+            done = self.command(["bake", "--kind", "mesh", "--out", str(self.root / "upload")],
+                                self.locked(LOCKED_SHA256, run=RUN - 1), mesh_cpu_vendor=self.AMD, cpu=self.INTEL)
+        self.assertEqual(done.code, 0, done.err)
+        self.assertEqual(done.produced, [])
+
+    def test_the_vendor_is_read_from_cpuinfo_and_recorded_with_a_make(self):
+        cpuinfo = self.root / "cpuinfo"
+        cpuinfo.write_text("processor\t: 0\nvendor_id\t: AuthenticAMD\ncpu family\t: 25\n")
+        tree = self.root / "one.mesh"
+        tree.write_bytes(b"LMSH baked")
+        with mock.patch.object(bake, "CPUINFO", cpuinfo):
+            self.assertEqual(bake.cpu_vendor(), self.AMD)
+            self.assertEqual(produce.record(bake_of("k" * 64, tree), tree, self.cache)["cpu_vendor"], self.AMD)
+        with mock.patch.object(bake, "CPUINFO", self.root / "absent"):
+            self.assertIsNone(bake.cpu_vendor())
+            self.assertNotIn("cpu_vendor", produce.record(bake_of("j" * 64, tree), tree, self.cache))
+
+    def test_the_vendor_line_reads_back_and_a_lock_without_one_writes_none(self):
+        path = self.root / "bakes.lock"
+        bake.write_lock([row_of(self.start, MADE_SHA256, run=RUN)], path, mesh_cpu_vendor=self.AMD)
+        self.assertEqual(bake.read_lock_tables(path)["mesh_cpu_vendor"], self.AMD)
+        bake.write_lock([row_of(self.start, MADE_SHA256, run=RUN)], path)
+        self.assertIsNone(bake.read_lock_tables(path)["mesh_cpu_vendor"])
+        self.assertNotIn("mesh_cpu_vendor", path.read_text())
 
 
 class SharedStartTests(FittedBakeCase):

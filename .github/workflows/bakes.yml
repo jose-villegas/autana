@@ -3,7 +3,10 @@ name: Bakes
 # The expensive bakes (launcher/tools/bake/bake.py). On a pull request the CPU
 # job bakes every mesh launcher/bakes.lock has no row for and uploads the
 # files; the lock job then fails until the author runs
-# `bake.py lock --from-run N` with that run and commits the lock. A fit needs
+# `bake.py lock --from-run N` with that run and commits the lock. A mesh's
+# bytes differ by CPU vendor, so on a runner of another vendor than the lock's
+# `mesh_cpu_vendor` the bake fails before making a mesh: re-run the failed job.
+# A fit needs
 # the CUDA GPU, so the Bakes GPU workflow (bakes-gpu.yml) makes it, started by
 # hand on the branch; no pull request reaches that runner. On main, publish uploads each locked file the `bakes` release lacks,
 # taking it from the run that made it. No branch writes the release.
@@ -92,6 +95,27 @@ jobs:
 
       - name: Every needed key has a row and every row is needed
         run: python launcher/tools/bake/bake.py check
+
+  sky-through-walls:
+    name: Sky through walls
+    if: github.event_name == 'pull_request'
+    needs: lock
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: ./.github/actions/host-tools
+
+      - name: Fetch locked bakes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python launcher/tools/bake/bake.py fetch
+
+      - name: Install the r3d requirements
+        run: pip install -r launcher/tools/r3d/requirements.txt
+
+      - name: Check the full camera flythrough for enclosed sky
+        run: python -m unittest discover -s launcher/main/apps/render_lab/tools/tests -p test_sky_through_walls.py
 
   publish:
     name: Publish locked bakes

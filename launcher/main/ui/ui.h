@@ -33,12 +33,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "draw/gfx_font.h"
+#include "draw/draw_font.h"
 #include "draw/icon.h"
 #include "input/input.h"
 #include "microui.h"
-#include "ui/ui_style.h"
-#include "ui/ui_transform.h"
+#include "ui/controls/ui_style.h"
+#include "ui/layout/ui_transform.h"
 
 /* Shared metrics, so the shell and any app UI look like one product. */
 #define UI_TITLE_HEIGHT    56
@@ -96,19 +96,19 @@ void ui_set_button_style(ui_button_style_t style);
 void ui_set_text_style(ui_text_style_t style);
 
 /* Choose the font microui measures and draws MU_COMMAND_TEXT with, until
- * called again; ui_init() seeds it with gfx_font_ui(). NULL falls back
- * to gfx_font_ui() rather than being stored. Unlike ui_set_text_style()
+ * called again; ui_init() seeds it with draw_font_ui(). NULL falls back
+ * to draw_font_ui() rather than being stored. Unlike ui_set_text_style()
  * and ui_set_transform() below, this does NOT need ui_invalidate(); see
  * ui_set_font()'s ui.c comment for why. Equivalent to
- * ui_set_font_scaled(font, GFX_GLYPH_SCALE). */
-void ui_set_font(const gfx_font_t* font);
+ * ui_set_font_scaled(font, DRAW_GLYPH_SCALE). */
+void ui_set_font(const draw_font_t* font);
 
 /* Like ui_set_font(), but at `scale` glyph cells instead of the fixed
- * GFX_GLYPH_SCALE; see ui_set_font()'s ui.c comment for why carrying the
+ * DRAW_GLYPH_SCALE; see ui_set_font()'s ui.c comment for why carrying the
  * scale inside the font, rather than a separate render-time setting, is
  * what lets a screen mix two text sizes without paying ui_invalidate()
  * every frame. Clamped to at least 1. */
-void ui_set_font_scaled(const gfx_font_t* font, int scale);
+void ui_set_font_scaled(const draw_font_t* font, int scale);
 
 /* The width `str` would measure at the CURRENT font and scale: what
  * ui_set_font()/ui_set_font_scaled() last set. For right-aligning a
@@ -182,7 +182,7 @@ ui_centered_rect(int canvas_w, int w, int h, int y) {
  * NULL `icon` (no pack holds it) draws `text` centred in `r` instead, in the
  * current font; a control with a label beside its icon passes NULL `text`
  * and keeps the label alone. */
-void ui_draw_icon(mu_Context* ctx, mu_Rect r, const gfx_image_t* icon, const char* text, mu_Color color);
+void ui_draw_icon(mu_Context* ctx, mu_Rect r, const draw_image_t* icon, const char* text, mu_Color color);
 
 /* An integer-valued slider over the next layout row, shaped like
  * mu_slider_ex(), but integer: that one's float/"%.2f" thumb is the wrong

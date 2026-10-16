@@ -3,13 +3,13 @@
 #include "apps/render_lab/render_lab_clips.h"
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "core/memory.h"
-#include "draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "scene/scene_internal.h"
 #include "suites.h"
 #include "test_cleanup.h"
+#include "ui/controls/ui_widgets.h"
 #include "ui/ui.h"
-#include "ui/ui_widgets.h"
 #include "unity.h"
 
 #define TEST_BLEND_MS   300
@@ -270,7 +270,7 @@ static bool dropdown_open;
 
 static void
 clip_controls(mu_Context* ctx, ui_flow_t* flow, int width) {
-    clip_rect = (mu_Rect){(flow->canvas_w - width) / 2, flow->y + gfx_text_height() + flow->gap, width, UI_ROW_HEIGHT};
+    clip_rect = (mu_Rect){(flow->canvas_w - width) / 2, flow->y + draw_text_height() + flow->gap, width, UI_ROW_HEIGHT};
     render_lab_clips_draw(ctx, flow, width, &shown->choice);
     slider_rect = (mu_Rect){clip_rect.x, flow->y - flow->gap - UI_ROW_HEIGHT, width, UI_ROW_HEIGHT};
     dropdown_open = ui_dropdown_is_open(ctx, "clip");

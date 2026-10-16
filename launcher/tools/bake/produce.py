@@ -57,6 +57,8 @@ def record(bake, path, cache, run=None):
     row = {"output": bake.output, "source": keys.relative(bake.source), "key": bake.key,
            "sha256": keys.hashlib.sha256(data).hexdigest(), "size": len(data), "suffix": bake.suffix,
            "host": f"{platform.system()} {platform.machine()}"}
+    if keys.cpu_vendor() is not None:
+        row["cpu_vendor"] = keys.cpu_vendor()  # a mesh's bytes differ between CPU vendors (bake.runs_mesh_cpu_vendor)
     if run is not None:
         row["run"] = run
     keys.store(path, row, bake.suffix, cache)

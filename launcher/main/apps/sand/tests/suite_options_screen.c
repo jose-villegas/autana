@@ -10,14 +10,14 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "draw/gfx_font_roles.h"
+#include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
 #include "input/input.h"
+#include "ui/controls/ui_widgets.h"
+#include "ui/input/ui_bridge.h"
+#include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
-#include "ui/ui_bridge.h"
 #include "ui/ui_internal.h"
-#include "ui/ui_transform.h"
-#include "ui/ui_widgets.h"
 
 #include "apps/sand/ui/options_screen.h"
 #include "apps/sand/ui/sand_theme.h"
@@ -127,7 +127,7 @@ test_the_dither_list_overlays_the_canvas_landscape(void) {
 
 static void
 assert_fits(const char* str, int room) {
-    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(room, gfx_font_text_width(gfx_font_ui(), str, -1, sand_ui_theme.text_scale),
+    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(room, draw_font_text_width(draw_font_ui(), str, -1, sand_ui_theme.text_scale),
                                           str);
 }
 
