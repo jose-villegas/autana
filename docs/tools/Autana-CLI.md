@@ -148,7 +148,9 @@ suite this project registers, for a full pre-merge pass.
 | `autana selftest [seconds] [--verbose] [--perf-scope] [--out PATH]` | Build the autorun diagnostics image, flash, run every suite; 3000 s when omitted. |
 
 Each prints the report and capture paths, PASS/FAIL counts, up to ten failure
-messages (then a FAIL count per suite) and the end reason. `--verbose`
+messages (then a FAIL count per suite) and the end reason.
+A capture without its `SELFTEST_COMPLETE` or `RUNSUITE_COMPLETE` line fails
+with the end reason. `--verbose`
 prints the whole capture; to find something in it, grep the capture instead.
 One suite run once (`autana suite <name>` with no `--runs` or `--flash`)
 still produces exactly one capture and one report, the same as before this

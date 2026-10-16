@@ -1785,7 +1785,7 @@ class SuiteFailureTests(Store):
     """A suite that reports FAIL fails its command, in the exit status and in
     the recorded durations, which never count it towards an estimate."""
 
-    FAILED_SUITE = b":1:test_one:FAIL: boom\nSUITE_DONE sand\n"
+    FAILED_SUITE = b":1:test_one:FAIL: boom\nRUNSUITE_COMPLETE name=sand found=1\n"
 
     def suite_args(self, **extra):
         return Namespace(owner="a", purpose="p", wait=0, suite="sand",
