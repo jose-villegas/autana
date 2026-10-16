@@ -200,6 +200,8 @@ void ui_queue_band_overlay_rect(int x, int y, int w, int h, uint32_t rgb);
 
 #include "math/geometry/recti.h"
 
+#define UI_FACE_SCOPE_DEPTH 4
+
 /* Colours are 0xRRGGBB. NULL restores the shell look. */
 typedef struct {
     uint32_t panel_face, panel_edge, button_face;

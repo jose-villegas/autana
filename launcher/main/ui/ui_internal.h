@@ -80,10 +80,12 @@ ui_font_scaled_t ui_resolve_font_scaled(mu_Font font);
 /* Observes completed canvas paints without retaining device-side trace storage. */
 extern void (*ui_canvas_painted_for_test)(const mu_Container*);
 /* Reports open scopes at frame end and unmatched scope ends. */
-extern void (*ui_scope_imbalance_for_test)(void);
+extern void (*ui_face_misuse_for_test)(void);
 #endif
 
 #include "ui/controls/ui_widgets.h"
+
+#define UI_FACE_IDS_MAX 32
 
 void ui_face_begin(void);
 void ui_face_end(void);

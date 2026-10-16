@@ -8,8 +8,6 @@
 #include <string.h>
 #include "ui/ui_mu.h"
 
-#define UI_FACE_IDS_MAX              32
-#define UI_FACE_SCOPE_DEPTH          4
 #define UI_FACE_WINDOW_FLAGS         (MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)
 #define UI_FACE_NAME_MAX             32
 #define UI_FACE_SLIDER_STEP          1
@@ -40,8 +38,25 @@ static int disabled_depth, color_depth, scale_depth;
 static bool imbalance;
 
 #ifndef ESP_PLATFORM
-void (*ui_scope_imbalance_for_test)(void);
+void (*ui_face_misuse_for_test)(void);
 #endif
+
+static void
+face_misuse(void) {
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
+    if (imbalance) {
+        return;
+    }
+    imbalance = true;
+#ifndef ESP_PLATFORM
+    if (ui_face_misuse_for_test) {
+        ui_face_misuse_for_test();
+    }
+#else
+    assert(false);
+#endif
+#endif
+}
 
 void
 ui_face_begin(void) {
@@ -59,16 +74,9 @@ ui_face_end(void) {
         mu_end_window(ui_context());
         window_open = false;
     }
-#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
-    const bool balanced = !imbalance && disabled_depth == 0 && color_depth == 0 && scale_depth == 0;
-#ifndef ESP_PLATFORM
-    if (!balanced && ui_scope_imbalance_for_test) {
-        ui_scope_imbalance_for_test();
+    if (disabled_depth != 0 || color_depth != 0 || scale_depth != 0) {
+        face_misuse();
     }
-#else
-    assert(balanced);
-#endif
-#endif
     disabled_depth = color_depth = scale_depth = 0;
     imbalance = false;
 }
@@ -92,12 +100,8 @@ ui_theme(const ui_theme_t* t) {
 
 static bool
 is_disabled(void) {
-    for (int i = 0; i < disabled_depth && i < UI_FACE_SCOPE_DEPTH; i++) {
-        if (disabled[i]) {
-            return true;
-        }
-    }
-    return false;
+    const int depth = disabled_depth < UI_FACE_SCOPE_DEPTH ? disabled_depth : UI_FACE_SCOPE_DEPTH;
+    return depth > 0 && disabled[depth - 1];
 }
 
 static mu_Id
@@ -118,9 +122,7 @@ widget_id(const char* label) {
             ids[id_count].hash = hash;
             ids[id_count++].count = 1;
         } else {
-#if CONFIG_LAUNCHER_DEVELOPMENT
-            assert(id_count < UI_FACE_IDS_MAX);
-#endif
+            face_misuse();
         }
     }
     const unsigned identity[] = {window_ordinal, hash, occurrence};
@@ -353,9 +355,9 @@ void
 ui_disabled_begin(bool value) {
     FRAME_COST_BEGIN(face_from);
     if (disabled_depth < UI_FACE_SCOPE_DEPTH) {
-        disabled[disabled_depth] = value;
+        disabled[disabled_depth] = value || is_disabled();
     } else {
-        imbalance = true;
+        face_misuse();
     }
     disabled_depth++;
     FRAME_COST_END(face_from, "ui.face");
@@ -367,7 +369,7 @@ ui_disabled_end(void) {
     if (disabled_depth > 0) {
         disabled_depth--;
     } else {
-        imbalance = true;
+        face_misuse();
     }
     FRAME_COST_END(face_from, "ui.face");
 }
@@ -388,7 +390,7 @@ ui_color_begin(ui_color_slot_t slot, uint32_t rgb) {
             theme.text = theme.caption = theme.on_accent = ui_rgb(rgb);
         }
     } else {
-        imbalance = true;
+        face_misuse();
     }
     color_depth++;
     FRAME_COST_END(face_from, "ui.face");
@@ -398,7 +400,7 @@ void
 ui_color_end(void) {
     FRAME_COST_BEGIN(face_from);
     if (color_depth <= 0) {
-        imbalance = true;
+        face_misuse();
         FRAME_COST_END(face_from, "ui.face");
         return;
     }
@@ -419,7 +421,7 @@ ui_scale_begin(int scale) {
         scales[scale_depth] = theme.text_scale;
         theme.text_scale = scale;
     } else {
-        imbalance = true;
+        face_misuse();
     }
     scale_depth++;
     FRAME_COST_END(face_from, "ui.face");
@@ -429,7 +431,7 @@ void
 ui_scale_end(void) {
     FRAME_COST_BEGIN(face_from);
     if (scale_depth <= 0) {
-        imbalance = true;
+        face_misuse();
         FRAME_COST_END(face_from, "ui.face");
         return;
     }
