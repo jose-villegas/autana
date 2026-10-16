@@ -71,6 +71,36 @@ audio_codec_destroy(void) {
 }
 
 static bool
+audio_codec_init_data(void) {
+    i2s_chan_config_t channels = I2S_CHANNEL_DEFAULT_CONFIG(CONFIG_BSP_I2S_NUM, I2S_ROLE_MASTER);
+    channels.auto_clear = true;
+    channels.dma_desc_num = AUDIO_CODEC_DMA_BLOCKS;
+    channels.dma_frame_num = AUDIO_CODEC_BLOCK_SAMPLES;
+    if (!audio_codec_check("new I2S", i2s_new_channel(&channels, &tx, &rx))) {
+        return false;
+    }
+    const i2s_std_config_t format = {
+        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(AUDIO_OUT_SAMPLE_RATE_HZ),
+        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO),
+        .gpio_cfg =
+            {.mclk = BSP_I2S_MCLK, .bclk = BSP_I2S_SCLK, .ws = BSP_I2S_LCLK, .dout = BSP_I2S_DOUT, .din = BSP_I2S_DSIN},
+    };
+    if (!audio_codec_check("init TX", i2s_channel_init_std_mode(tx, &format))
+        || !audio_codec_check("init RX", i2s_channel_init_std_mode(rx, &format))
+        || !audio_codec_check("enable TX", i2s_channel_enable(tx))
+        || !audio_codec_check("enable RX", i2s_channel_enable(rx))) {
+        return false;
+    }
+    audio_codec_i2s_cfg_t data_config = {.port = CONFIG_BSP_I2S_NUM, .tx_handle = tx, .rx_handle = rx};
+    data = audio_codec_new_i2s_data(&data_config);
+    if (!data) {
+        ESP_LOGE(TAG, "new data interface failed");
+        return false;
+    }
+    return true;
+}
+
+static bool
 audio_codec_acquire(void) {
     if (references) {
         references++;
@@ -87,29 +117,7 @@ audio_codec_acquire(void) {
     if (!audio_codec_check("codec probe", i2c_master_probe(bus, AUDIO_CODEC_I2C_ADDR, AUDIO_CODEC_PROBE_TIMEOUT_MS))) {
         goto fail;
     }
-    i2s_chan_config_t channels = I2S_CHANNEL_DEFAULT_CONFIG(CONFIG_BSP_I2S_NUM, I2S_ROLE_MASTER);
-    channels.auto_clear = true;
-    channels.dma_desc_num = AUDIO_CODEC_DMA_BLOCKS;
-    channels.dma_frame_num = AUDIO_CODEC_BLOCK_SAMPLES;
-    if (!audio_codec_check("new I2S", i2s_new_channel(&channels, &tx, &rx))) {
-        goto fail;
-    }
-    const i2s_std_config_t format = {
-        .clk_cfg = I2S_STD_CLK_DEFAULT_CONFIG(AUDIO_OUT_SAMPLE_RATE_HZ),
-        .slot_cfg = I2S_STD_PHILIPS_SLOT_DEFAULT_CONFIG(I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO),
-        .gpio_cfg =
-            {.mclk = BSP_I2S_MCLK, .bclk = BSP_I2S_SCLK, .ws = BSP_I2S_LCLK, .dout = BSP_I2S_DOUT, .din = BSP_I2S_DSIN},
-    };
-    if (!audio_codec_check("init TX", i2s_channel_init_std_mode(tx, &format))
-        || !audio_codec_check("init RX", i2s_channel_init_std_mode(rx, &format))
-        || !audio_codec_check("enable TX", i2s_channel_enable(tx))
-        || !audio_codec_check("enable RX", i2s_channel_enable(rx))) {
-        goto fail;
-    }
-    audio_codec_i2s_cfg_t data_config = {.port = CONFIG_BSP_I2S_NUM, .tx_handle = tx, .rx_handle = rx};
-    data = audio_codec_new_i2s_data(&data_config);
-    if (!data) {
-        ESP_LOGE(TAG, "new data interface failed");
+    if (!audio_codec_init_data()) {
         goto fail;
     }
     audio_codec_i2c_cfg_t ctrl_config = {
