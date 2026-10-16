@@ -39,6 +39,38 @@ assert_mat4(const mat4f_t* want, const mat4f_t* got) {
 }
 
 static void
+test_view_from_axes_maps_the_eye_and_frame_axes(void) {
+    const vec3f_t x = {0.0F, 1.0F, 0.0F}, y = {0.0F, 0.0F, -1.0F}, z = {-1.0F, 0.0F, 0.0F};
+    const vec3f_t eye = {2.0F, -3.0F, 4.0F}, origin = {0.0F, 0.0F, 0.0F};
+    const mat4f_t view = mat4f_view_from_axes(x, y, z, eye);
+    assert_vec3(origin, mat4f_apply(&view, eye));
+    assert_vec3((vec3f_t){1.0F, 0.0F, 0.0F}, mat4f_apply(&view, vec3f_add(eye, x)));
+    assert_vec3((vec3f_t){0.0F, 1.0F, 0.0F}, mat4f_apply(&view, vec3f_add(eye, y)));
+    assert_vec3((vec3f_t){0.0F, 0.0F, 1.0F}, mat4f_apply(&view, vec3f_add(eye, z)));
+}
+
+static void
+assert_mat4_exact(const mat4f_t* want, const mat4f_t* got) {
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            TEST_ASSERT_TRUE(want->m[r][c] == got->m[r][c]);
+        }
+    }
+}
+
+static void
+test_scale_rows_and_columns_match_diagonal_products_exactly(void) {
+    const vec3f_t origin = {0.0F, 0.0F, 0.0F}, scale = {2.0F, -3.0F, 0.5F};
+    const mat4f_t m =
+        mat4f_from_trs((vec3f_t){4.0F, -2.0F, 3.0F}, quatf_from_euler((vec3f_t){0.2F, -0.4F, 0.6F}), scale);
+    const mat4f_t diagonal = mat4f_from_trs(origin, quatf_identity(), scale);
+    const mat4f_t left = mat4f_mul_affine(diagonal, m), rows = mat4f_scale_rows(m, scale);
+    const mat4f_t right = mat4f_mul_affine(m, diagonal), columns = mat4f_scale_columns(m, scale);
+    assert_mat4_exact(&left, &rows);
+    assert_mat4_exact(&right, &columns);
+}
+
+static void
 test_a_quarter_turn_about_y_takes_z_to_x(void) {
     const quatf_t q = quatf_from_euler((vec3f_t){0.0F, HALF_PI, 0.0F});
     assert_vec3((vec3f_t){1.0F, 0.0F, 0.0F}, quatf_rotate(q, (vec3f_t){0.0F, 0.0F, 1.0F}));
@@ -755,6 +787,8 @@ suite_math(void) {
     RUN_TEST(test_quatf_nlerp);
     RUN_TEST(test_quatx_nlerp);
 
+    RUN_TEST(test_view_from_axes_maps_the_eye_and_frame_axes);
+    RUN_TEST(test_scale_rows_and_columns_match_diagonal_products_exactly);
     RUN_TEST(test_mat3_product_applies_right_operand_first);
     RUN_TEST(test_mat3_from_nonsymmetric_mat4_preserves_rows);
     RUN_TEST(test_cofactor_random_matrices_and_reflection);
