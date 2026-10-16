@@ -21,7 +21,9 @@ typedef struct {
 
 static inline recti_t
 gfx_target_clip_rect(gfx_target_t target, recti_t clip, recti_t rect) {
-    return recti_intersect(rect, recti_intersect(clip, (recti_t){clip.x, target.y0, clip.w, target.height}));
+    return recti_from_edges(mathi_max(rect.x, clip.x), mathi_max(mathi_max(rect.y, clip.y), target.y0),
+                            mathi_min(recti_right(rect), recti_right(clip)),
+                            mathi_min(mathi_min(recti_bottom(rect), recti_bottom(clip)), target.y0 + target.height));
 }
 
 /* The row pointer for absolute row `y`, once it is known to lie inside

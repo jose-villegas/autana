@@ -759,30 +759,25 @@ group_rows(const int16_t* lo, const int16_t* hi, int x0, int x1, int* y0, int* y
     }
 }
 
-/* The columns of changed pixels seen so far, and their rows. */
-static inline __attribute__((always_inline)) void
-note_changed(recti_t* box, int x, int y) {
-    if (recti_is_empty(*box)) {
-        *box = (recti_t){x, y, 1, 1};
-        return;
-    }
-    const int right = mathi_max(recti_right(*box), x + 1);
-    box->x = mathi_min(box->x, x);
-    box->w = right - box->x;
-    box->h = y + 1 - box->y; /* rows arrive in order */
-}
-
+/* Repaints one row of a column group and grows `changed` by the row's
+ * changed columns, once per row rather than per pixel. */
 static inline __attribute__((always_inline)) void
 repaint_group_row(gfx_color_t* row, const int16_t* lo, const int16_t* hi, int x0, int x1, int y, recti_t* changed) {
     const bool masked = dissolving();
+    int first = x1;
+    int last = x0 - 1;
     for (int x = x0; x < x1; x++) {
         if (y >= lo[x - x0] && y < hi[x - x0] && (!masked || dissolved(x, y))) {
             const gfx_color_t color = column_pixel(x, y);
             if (row[x] != color) {
                 row[x] = color;
-                note_changed(changed, x, y);
+                first = mathi_min(first, x);
+                last = x;
             }
         }
+    }
+    if (first <= last) {
+        *changed = recti_union(*changed, recti_from_edges(first, y, last + 1, y + 1));
     }
 }
 
