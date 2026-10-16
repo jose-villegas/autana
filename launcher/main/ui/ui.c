@@ -47,6 +47,7 @@
 #include "ui/controls/ui_icons.h"
 #include "ui/input/ui_bridge.h"
 #include "ui/ui_internal.h"
+#include "ui/ui_mu.h"
 
 static uint32_t ui_band_fallbacks;
 

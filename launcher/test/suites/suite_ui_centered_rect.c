@@ -1,7 +1,7 @@
 /*
  * Portable suite: ui_centered_rect, fixed-width, centred content.
  *
- * ui_centered_rect() (ui.h) is pure geometry, `static inline` for the same
+ * ui_centered_rect() (ui_mu.h) is pure geometry, `static inline` for the same
  * reason ui_bezel_spans() (ui_style.h, see suite_ui_style.c) and
  * ui_transform_rect() (ui_transform.h, see suite_ui_transform.c) are: a
  * caller passes `canvas_w` explicitly rather than this reaching for
@@ -10,13 +10,13 @@
  *
  * A separate file rather than folded into suite_ui_transform.c: that suite
  * covers ui_transform.h's own affine map, a different header with a
- * different job, and ui_centered_rect() lives in ui.h instead.
+ * different job, and ui_centered_rect() lives in ui_mu.h instead.
  */
 
 #include "suites.h"
 #include "unity.h"
 
-#include "ui/ui.h"
+#include "ui/ui_mu.h"
 
 /* Equal left/right margins, within a pixel: integer division means an odd
  * leftover pixel can fall on either side, never both. */

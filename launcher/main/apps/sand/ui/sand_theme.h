@@ -9,7 +9,7 @@
  */
 #pragma once
 
-#include "ui/controls/ui_widgets.h"
+#include "ui/ui_mu.h"
 
 #define SAND_THEME_PANEL_FACE_COLOR  0x131C2E
 #define SAND_THEME_PANEL_EDGE_COLOR  0xE8ECF4

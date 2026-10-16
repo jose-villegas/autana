@@ -71,9 +71,6 @@
 
 void ui_init(void);
 
-/* The microui context, for building the UI between ui_begin and ui_end. */
-mu_Context* ui_context(void);
-
 /* Start a UI frame: touch becomes microui's mouse events, and the button
  * style resets to UI_BUTTON_FLAT (the shell shares one mu_Context). A NULL
  * `input` opens a repaint-only boot frame: no input is fed and no pointer
@@ -144,51 +141,6 @@ uint32_t ui_layout_generation(void);
  * canvas or leave a gap at it. */
 int ui_width(void);
 int ui_height(void);
-
-/* Opens a full-screen window sized to THIS FRAME's canvas, fixing a
- * microui mismatch: mu_begin_window_ex() only trusts its rect the first
- * time a window (by title) opens, right for a desktop manager
- * remembering a drag, wrong here, where every window must always BE
- * (0, 0, ui_width(), ui_height()), which changes at runtime as the
- * canvas rotates. Uncorrected, a rect pins to the first-open
- * orientation, and a bigger later orientation leaves part of the screen
- * uncleared, showing a previous app's frame. */
-int ui_begin_screen(mu_Context* ctx, const char* title, int opt);
-
-/*
- * FILL content (a banner, a status strip) has no natural width of its own
- * and spans whatever the canvas currently is, which mu_layout_row() with a
- * -1 column already does. FIXED content (a few large tap targets sized to
- * what they need to say) should keep that width and centre instead.
- *
- * ui_centered_rect() is the shared primitive for the fixed case. `canvas_w`
- * is a parameter rather than an internal ui_width() call, which is what
- * keeps it host-testable without reaching the framebuffer.
- */
-
-/* A rect `w` wide, `h` tall, horizontally centred within a canvas
- * `canvas_w` wide, at vertical position `y`. Does not clamp `w` to
- * `canvas_w`: a `w` that exceeds `canvas_w` yields a negative x, which
- * is a caller bug (a button wider than the screen it is centred on)
- * rather than something to paper over silently here. Clamp at the call
- * site if `w` might ever exceed `canvas_w`. */
-static inline mu_Rect
-ui_centered_rect(int canvas_w, int w, int h, int y) {
-    return (mu_Rect){(canvas_w - w) / 2, y, w, h};
-}
-
-/* `icon` filling `r` in `color`, its runs streamed by icon_walk_blocks()
- * rather than collected, so an icon's run count does not bound artwork. A
- * NULL `icon` (no pack holds it) draws `text` centred in `r` instead, in the
- * current font; a control with a label beside its icon passes NULL `text`
- * and keeps the label alone. */
-void ui_draw_icon(mu_Context* ctx, mu_Rect r, const draw_image_t* icon, const char* text, mu_Color color);
-
-/* An integer-valued slider over the next layout row, shaped like
- * mu_slider_ex(), but integer: that one's float/"%.2f" thumb is the wrong
- * shape for a "06 PX" control. Writes through `value`, returns whether it
- * changed this frame. */
-bool ui_slider_int(mu_Context* ctx, int* value, int lo, int hi, int step);
 
 /* Close the frame and paint it, but only if it would look any different
  * from what is already on screen. Returns whether it drew. It repaints

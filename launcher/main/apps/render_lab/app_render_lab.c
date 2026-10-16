@@ -17,6 +17,7 @@
 #include "scene/scene.h"
 #include "services/tune.h"
 #include "ui/ui.h"
+#include "ui/ui_mu.h"
 
 extern const render_lab_scene_t scene_sponza;
 extern const render_lab_scene_t scene_capybara;

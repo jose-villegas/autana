@@ -5,6 +5,7 @@
 #include "asset/asset_store.h"
 #include "esp_log.h"
 #include "ui/ui.h"
+#include "ui/ui_mu.h"
 
 static const char* TAG = "ui_icons";
 

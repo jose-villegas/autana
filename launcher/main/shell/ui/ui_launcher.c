@@ -16,6 +16,7 @@
 #include "profile/frame_cost.h"
 #include "shell/ui/ui_ridge.h"
 #include "ui/ui.h"
+#include "ui/ui_mu.h"
 
 const app_t*
 ui_launcher_frame(const input_t* input, uint32_t dt_ms) {

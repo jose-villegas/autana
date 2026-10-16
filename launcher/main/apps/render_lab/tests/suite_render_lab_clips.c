@@ -8,8 +8,8 @@
 #include "scene/scene_internal.h"
 #include "suites.h"
 #include "test_cleanup.h"
-#include "ui/controls/ui_widgets.h"
 #include "ui/ui.h"
+#include "ui/ui_mu.h"
 #include "unity.h"
 
 #define TEST_BLEND_MS   300

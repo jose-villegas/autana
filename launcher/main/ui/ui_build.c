@@ -38,6 +38,7 @@ static const char* TAG = "ui";
 #include "ui/input/ui_pointer.h"
 #include "ui/input/ui_snap.h"
 #include "ui/ui_internal.h"
+#include "ui/ui_mu.h"
 
 /* Definitions for the externs ui_internal.h declares; see that header for
  * what each one is shared for. */

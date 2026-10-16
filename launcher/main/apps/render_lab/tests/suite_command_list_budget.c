@@ -24,6 +24,7 @@
 #include "core/memory.h"
 #include "draw/draw.h"
 #include "test_cleanup.h"
+#include "ui/ui_mu.h"
 
 /* Landscape (448x368 logical) - this app's shipping orientation. */
 static void
