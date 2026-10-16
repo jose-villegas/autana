@@ -216,21 +216,13 @@ sh launcher/tools/r3d/gpu_python.sh launcher/tools/r3d/appearance_parity.py \
     --start NAME.mesh --poses POSES.txt --scale 2 --clear 0 0 0
 ```
 
-The manifold-quad test checks forward agreement within 2e-4 in RGB 0..1.
-Position gradients are checked against central finite differences; the
-library's atomic backward is not a deterministic gradient reference.
-The comparison below shows smooth shading and separate flat face colours,
-with an amplified difference heatmap. Flat colour discontinuities can differ
-at corner pixels; inspect the enlarged crops and run the parity tool on the
-fit's own poses.
+The parity tool compares the torch and library forward images for every pose,
+reporting channel differences and pixels differing by more than 1/255.
+The manifold-quad test allows 2e-4 in RGB 0..1; flat colour corners can differ.
+Repeat `--poses` for more paths; `--clear` is the scene background divided by 255.
 
 ![Library and torch appearance forward models](../../../docs/images/render/appearance-parity.png)
 ![Enlarged forward-model differences](../../../docs/images/render/appearance-parity.crops.png)
-
-Repeat `--poses` for additional paths. The tool prints maximum and mean
-absolute channel differences and the number of pixels with any channel
-more than 1/255 apart, per pose and across all poses. `--clear` is the
-scene camera's background RGB divided by 255.
 
 The fit runs on a CUDA GPU in its own environment with
 [requirements.txt](requirements.txt).

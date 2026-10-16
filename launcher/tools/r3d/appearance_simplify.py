@@ -66,15 +66,18 @@ def deterministic_fit():
 
     previous = None if torch is None else torch.are_deterministic_algorithms_enabled()
     warn_only = None if torch is None else torch.is_deterministic_algorithms_warn_only_enabled()
+    fill_memory = None if torch is None else torch.utils.deterministic.fill_uninitialized_memory
     workspace = os.environ.get(CUBLAS_WORKSPACE_ENV)
     os.environ[CUBLAS_WORKSPACE_ENV] = CUBLAS_WORKSPACE
     try:
         if torch is not None:
             torch.use_deterministic_algorithms(True)
+            torch.utils.deterministic.fill_uninitialized_memory = False
         yield
     finally:
         if torch is not None:
             torch.use_deterministic_algorithms(previous, warn_only=warn_only)
+            torch.utils.deterministic.fill_uninitialized_memory = fill_memory
         if workspace is None:
             os.environ.pop(CUBLAS_WORKSPACE_ENV, None)
         else:
@@ -292,8 +295,10 @@ class Renderer:
         locations = torch.nonzero(local >= 0)
         y, x = locations.unbind(-1)
         indices = self.tris[keep[local[y, x]]].long()
-        values = (self.barycentrics(clip, rast, keep, locations)[..., None] * gather(attributes, indices)).sum(-2)
-        return attributes.new_zeros((*local.shape, attributes.shape[-1])).index_put((y, x), values)
+        weights = self.barycentrics(clip, rast, keep, locations)
+        values = (weights[..., None] * gather(attributes, indices)).sum(-2)
+        pixels = attributes.new_zeros((local.numel(), attributes.shape[-1]))
+        return pixels.index_copy(0, y * local.shape[1] + x, values).reshape(*local.shape, attributes.shape[-1])
 
     def antialias(self, image, clip, rast, keep):
         """Analytic visibility coverage, Laine et al. 2020 section 3.6 (docs/Citations.md#2)."""
@@ -314,44 +319,43 @@ class Renderer:
             facing[keep] = True
             adjacent = self.neighbours.clamp_min(0)
             silhouette = (self.neighbours < 0) | ~facing[adjacent] | (area[:, None] * area[adjacent] <= 0)
-        result = image + clip.sum() * 0
-        for axis in (1, 0):
-            first = (slice(None), slice(None, -1)) if axis == 1 else (slice(None, -1), slice(None))
-            second = (slice(None), slice(1, None)) if axis == 1 else (slice(1, None), slice(None))
-            with torch.no_grad():
-                locations = torch.nonzero(ids[first] != ids[second])
-                y, x = locations.unbind(-1)
-                other_y, other_x = y + (axis == 0), x + (axis == 1)
-                left, right = ids[y, x], ids[other_y, other_x]
-                near = torch.where((left >= 0) & ((right < 0) | (depth[y, x] <= depth[other_y, other_x])), left, right)
-                edges = self.tris[near].long()
-            start = gather(xy, edges)
-            finish = start.roll(-1, dims=1)
-            direction = finish - start
-            along, across = (0, 1) if axis == 1 else (1, 0)
-            centre = torch.stack([x, y], dim=-1).to(clip.dtype) + 0.5
-            denominator = direction[..., across]
-            safe = torch.where(denominator != 0, denominator, 1)
-            fraction = (centre[:, None, across] - start[..., across]) / safe
-            crossing = start[..., along] + fraction * direction[..., along] - centre[:, None, along]
-            with torch.no_grad():
-                valid = silhouette[near] & (denominator.abs() > direction[..., along].abs())
-                valid &= (fraction >= 0) & (fraction <= 1)
-                valid &= (crossing >= -RASTER_EPSILON) & (crossing <= 1 + RASTER_EPSILON)
-                selected = valid.to(torch.int64).argmax(-1)
-                active = valid.any(-1)
-            selected = torch.arange(len(selected), device=selected.device) * crossing.shape[1] + selected
-            crossing = gather(crossing.reshape(-1), selected).clamp(0, 1)
-            weight = torch.where(active, 0.5 - crossing, 0)
-            pixels = image.reshape(-1, image.shape[-1])
-            pair = gather(pixels, torch.stack([y * width + x, other_y * width + other_x], dim=-1))
-            difference = pair[:, 1] - pair[:, 0]
-            # Fixed axis order and deterministic index_add handle pixels touched by multiple pairs.
-            delta = torch.zeros_like(image).reshape(-1, image.shape[-1])
-            delta = delta.index_add(0, y * width + x, difference * weight.clamp_min(0)[:, None])
-            delta = delta.index_add(0, other_y * width + other_x, difference * weight.clamp_max(0)[:, None])
-            result = result + delta.reshape_as(image)
-        return result
+        with torch.no_grad():
+            horizontal = torch.nn.functional.pad(ids[:, :-1] != ids[:, 1:], (0, 1))
+            vertical = torch.nn.functional.pad(ids[:-1] != ids[1:], (0, 0, 0, 1))
+            axis, y, x = torch.nonzero(torch.stack([horizontal, vertical])).unbind(-1)
+            other_y, other_x = y + axis, x + 1 - axis
+            left, right = ids[y, x], ids[other_y, other_x]
+            near = torch.where((left >= 0) & ((right < 0) | (depth[y, x] <= depth[other_y, other_x])), left, right)
+            edges = self.tris[near].long()
+        start = gather(xy, edges)
+        finish = start.roll(-1, dims=1)
+        direction = finish - start
+        horizontal = (axis == 0)[:, None]
+        along = torch.where(horizontal, direction[..., 0], direction[..., 1])
+        denominator = torch.where(horizontal, direction[..., 1], direction[..., 0])
+        centre_along = torch.where(axis == 0, x, y).to(clip.dtype) + 0.5
+        centre_across = torch.where(axis == 0, y, x).to(clip.dtype) + 0.5
+        start_along = torch.where(horizontal, start[..., 0], start[..., 1])
+        start_across = torch.where(horizontal, start[..., 1], start[..., 0])
+        safe = torch.where(denominator != 0, denominator, 1)
+        fraction = (centre_across[:, None] - start_across) / safe
+        crossing = start_along + fraction * along - centre_along[:, None]
+        with torch.no_grad():
+            valid = silhouette[near] & (denominator.abs() > along.abs())
+            valid &= (fraction >= 0) & (fraction <= 1)
+            valid &= (crossing >= -RASTER_EPSILON) & (crossing <= 1 + RASTER_EPSILON)
+            selected = valid.to(torch.int64).argmax(-1)
+            active = valid.any(-1)
+        selected = torch.arange(crossing.shape[1], device=selected.device) == selected[:, None]
+        crossing = torch.where(selected, crossing, 0).sum(-1).clamp(0, 1)
+        weight = torch.where(active, 0.5 - crossing, 0)
+        pixels = image.reshape(-1, image.shape[-1])
+        pair = gather(pixels, torch.stack([y * width + x, other_y * width + other_x], dim=-1))
+        difference = pair[:, 1] - pair[:, 0]
+        delta = torch.zeros_like(pixels)
+        delta = delta.index_add(0, y * width + x, difference * weight.clamp_min(0)[:, None])
+        delta = delta.index_add(0, other_y * width + other_x, difference * weight.clamp_max(0)[:, None])
+        return image + delta.reshape_as(image) + clip.sum() * 0
 
     def alpha(self, points, clip_matrix):
         """Antialiased coverage, including backing; silhouette gradients move positions."""
@@ -359,25 +363,27 @@ class Renderer:
         alpha = (rast[0, ..., 3:] > 0).to(clip.dtype)
         return self.antialias(alpha, clip, rast, keep)[..., 0]
 
-    def normals(self, points, clip_matrix, eye, clip=None):
+    def normals(self, points, clip_matrix, eye, clip=None, raster=None, values=None):
         """World normals facing the eye and the covered mask, in image row order."""
         import torch
 
-        clip, rast, keep = self.raster(points, clip_matrix, clip)
-        vertex = vertex_normals(points, self.tris.long(), self.vertex_point)
-        values = self.interpolate(torch.cat([vertex, points[self.vertex_point]], dim=1), clip, rast, keep)
+        clip, rast, keep = self.raster(points, clip_matrix, clip) if raster is None else raster
+        if values is None:
+            vertex = vertex_normals(points, self.tris.long(), self.vertex_point)
+            values = self.interpolate(torch.cat([vertex, points[self.vertex_point]], dim=1), clip, rast, keep)
         normal = torch.nn.functional.normalize(values[..., :3], dim=-1)
         towards = torch.as_tensor(eye, dtype=normal.dtype, device=normal.device) - values[..., 3:]
         normal = torch.where((normal * towards).sum(-1, keepdim=True) < 0, -normal, normal)
         return normal.flip(0), (rast[0, ..., 3] > 0).flip(0)
 
-    def __call__(self, points, colours, clip_matrix, clip=None):
+    def __call__(self, points, colours, clip_matrix, clip=None, raster=None, values=None):
         import torch
 
-        clip, rast, keep = self.raster(points, clip_matrix, clip)
-        if self.flat:
-            colours = colours.repeat_interleave(3, dim=0)
-        colour = self.interpolate(colours, clip, rast, keep)
+        clip, rast, keep = self.raster(points, clip_matrix, clip) if raster is None else raster
+        if values is None:
+            attributes = colours.repeat_interleave(3, dim=0) if self.flat else colours
+            values = self.interpolate(attributes, clip, rast, keep)
+        colour = values
         colour = torch.where(rast[0, ..., 3:] > 0, colour, self.clear.expand_as(colour))
         return self.antialias(colour, clip, rast, keep).flip(0)
 
@@ -467,22 +473,22 @@ def predicted_ms(xp, cost, clip, tris, double, size, scale):
     return variable_ms(cost, drawn, rows, pixels)
 
 
-def normal_pairs(render, points, view, clip):
+def normal_pairs(render, points, view, clip, **samples):
     """(the mesh's normals, the reference's, the pixels both cover) in `view`."""
     matrix, _target, reference, eye = view
-    normal, covered = render.normals(points, matrix, eye, clip)
+    normal, covered = render.normals(points, matrix, eye, clip, **samples)
     return normal, reference, covered & (reference.abs().sum(-1) > 0)
 
 
-def normal_l1(render, points, view, clip):
+def normal_l1(render, points, view, clip, angles=True, **samples):
     """Mean L1 distance between the mesh's and the reference's normals over
-    the pixels both cover, and the angles there in degrees."""
+    the pixels both cover. Optional angles in degrees need pixel compaction."""
     import torch
 
-    normal, reference, both = normal_pairs(render, points, view, clip)
-    if not bool(both.any()):
-        return normal.sum() * 0, normal.new_zeros(0)
-    distance = (normal - reference).abs().sum(-1)[both].mean()
+    normal, reference, both = normal_pairs(render, points, view, clip, **samples)
+    distance = torch.where(both, (normal - reference).abs().sum(-1), 0).sum() / both.sum().clamp_min(1)
+    if not angles:
+        return distance, None
     cosine = (normal * reference).sum(-1)[both].clamp(-1.0, 1.0)
     return distance, torch.rad2deg(torch.acos(cosine.detach()))
 
@@ -613,7 +619,8 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         hard = []
     adam = torch.optim.Adam([{"params": [points], "lr": lr_position * diagonal}, {"params": [colours], "lr": lr_colour}])
     schedule = torch.optim.lr_scheduler.LambdaLR(adam, lambda step: 0.1 ** (step / max(steps, 1)))
-    history = []
+    history = torch.empty(steps, device=device)
+    finite = torch.ones((), dtype=torch.bool, device=device)
     started = time.time()
     for step in range(steps):
         if coverage_weight and step % mine_every == 0:
@@ -622,17 +629,28 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         chosen = rng.choice(len(views), size=min(batch, len(views)), replace=False)
         adam.zero_grad()
         error, predicted, colour_error, coverage_loss = 0.0, 0.0, 0.0, 0.0
+        if normal_weight:
+            render = renderer_for(chosen[0])
+            vertex = vertex_normals(points, render.tris.long(), render.vertex_point)
+            attributes = colours.repeat_interleave(3, dim=0) if flat else colours
+            attributes = torch.cat([attributes, vertex, points[render.vertex_point]], dim=1)
         for i in chosen:
             render = renderer_for(i)
             clip = render.clip(points, matrices[i])
-            colour = delta_e76(render(points, colours, matrices[i], clip), targets[i]).mean() / len(chosen)
+            samples = {}
+            if normal_weight:
+                raster = render.raster(points, matrices[i], clip)
+                values = render.interpolate(attributes, *raster)
+                samples = dict(raster=raster, values=values[..., :3])
+            colour = delta_e76(render(points, colours, matrices[i], clip, **samples), targets[i]).mean() / len(chosen)
             colour_error = colour_error + colour
             error = error + colour
             if cost is not None:
                 predicted = predicted + predicted_ms(torch, cost, clip, render.tris.long(), render.double, render.size,
                                                      scale) / len(chosen)
             if normal_weight:
-                distance, _angles = normal_l1(render, points, (matrices[i], None, normals[i], views[i][3]), clip)
+                distance, _angles = normal_l1(render, points, (matrices[i], None, normals[i], views[i][3]), clip,
+                                              angles=False, raster=raster, values=values[..., 3:])
                 error = error + normal_weight * distance / len(chosen)
         drift = ((uniform_laplacian(points, edges) - rest) / edge_length).pow(2).sum(dim=1).mean()
         if coverage_weight and hard:
@@ -646,13 +664,17 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         schedule.step()
         with torch.no_grad():
             colours.clamp_(0.0, 1.0)
-        history.append(float(colour_error))
+        history[step] = colour_error.detach()
+        finite &= torch.isfinite(loss.detach())
+        if (report and step % report == 0) or step == steps - 1:
+            if not (finite & torch.isfinite(points).all() & torch.isfinite(colours).all()).item():
+                raise ValueError("fit requires finite loss and parameters")
         if report and (step % report == 0 or step == steps - 1):
-            log(f"step {step}: mean dE76 {history[-1]:.3f}, predicted {float(predicted):.2f} ms, drift {float(drift):.3e}, "
+            log(f"step {step}: mean dE76 {float(history[step]):.3f}, predicted {float(predicted):.2f} ms, drift {float(drift):.3e}, "
                 f"{time.time() - started:.1f} s")
             if coverage_weight:
                 log(f"coverage loss {float(coverage_loss):.6f}, hard pool {len(hard)}")
-    return points.detach().cpu().numpy().astype(np.float64), colours.detach().cpu().numpy().astype(np.float64), history
+    return points.detach().cpu().numpy().astype(np.float64), colours.detach().cpu().numpy().astype(np.float64), history.cpu().tolist()
 
 
 def write_mesh(out_dir, name, mesh):

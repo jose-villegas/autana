@@ -119,20 +119,67 @@ class GatherTests(unittest.TestCase):
                     empty = torch.autograd.grad(gather(source, index[:0]), source, incoming[:0])[0]
                     self.assertEqual(torch.count_nonzero(empty).item(), 0)
 
-    def test_nonfinite_gradient_raises_and_restores_deterministic_mode(self):
+    def test_nonfinite_gradient_propagates_and_restores_deterministic_mode(self):
         from r3d.appearance_gather import gather
         from r3d.appearance_simplify import deterministic_fit
 
         for value in (float("inf"), float("nan")):
             with self.subTest(value=value), deterministic_fit():
                 source = torch.ones((1, 1), requires_grad=True)
-                with self.assertRaisesRegex(ValueError, "finite"):
-                    gather(source, torch.tensor([0])).backward(torch.tensor([[value]]))
+                gather(source, torch.tensor([0])).backward(torch.tensor([[value]]))
+                self.assertTrue(torch.isnan(source.grad).all())
                 self.assertTrue(torch.are_deterministic_algorithms_enabled())
+
+
+    def test_deterministic_scope_restores_memory_fill_on_exception(self):
+        from r3d.appearance_simplify import deterministic_fit
+
+        previous = torch.utils.deterministic.fill_uninitialized_memory
+        try:
+            for enabled in (True, False):
+                torch.utils.deterministic.fill_uninitialized_memory = enabled
+                with self.assertRaisesRegex(ValueError, "scope"):
+                    with deterministic_fit():
+                        self.assertFalse(torch.utils.deterministic.fill_uninitialized_memory)
+                        raise ValueError("scope")
+                self.assertEqual(torch.utils.deterministic.fill_uninitialized_memory, enabled)
+        finally:
+            torch.utils.deterministic.fill_uninitialized_memory = previous
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class AppearanceMeshTests(unittest.TestCase):
+    @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_fit_rejects_nonfinite_loss_without_reporting(self):
+        from r3d import appearance_simplify as appearance
+
+        points, rgb, tris = grid(1)
+        mesh = FitMesh(points, rgb / 255, tris, np.ones(len(tris)), 64, np.arange(len(points)))
+        target = np.full((1, 1, 3), np.nan, dtype=np.float32)
+        render = mock.Mock(side_effect=lambda points, colours, *args: colours.mean(0).reshape(1, 1, 3))
+        with mock.patch.object(appearance, "Renderer", return_value=render):
+            with self.assertRaisesRegex(ValueError, "finite"):
+                appearance.optimise(mesh, [(np.eye(4), target)], (1, 1), steps=2, batch=1,
+                                    lr_position=0, lr_colour=0, laplacian=0, report=0, device="cpu")
+
+    @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_normal_loss_without_angles_handles_empty_masks(self):
+        from r3d import appearance_simplify as appearance
+
+        for covered in (False, True):
+            with self.subTest(covered=covered):
+                normal = torch.tensor([[[1.0, 0, 0], [0, 1.0, 0]]], requires_grad=True)
+                reference = torch.tensor([[[0.0, 1.0, 0], [0, 0, 1.0]]])
+                both = torch.tensor([[covered, False]])
+                with mock.patch.object(appearance, "normal_pairs", return_value=(normal, reference, both)):
+                    distance, angles = appearance.normal_l1(None, None, None, None, angles=False)
+                    self.assertIsNone(angles)
+                    self.assertEqual(distance.item(), 2.0 if covered else 0.0)
+                    distance.backward()
+                    self.assertTrue(torch.isfinite(normal.grad).all())
+                    if not covered:
+                        self.assertEqual(torch.count_nonzero(normal.grad).item(), 0)
+
     def test_coverage_pool_keeps_holes_but_excludes_held_out_samples(self):
         from r3d.appearance_simplify import coverage_pool
 
@@ -597,15 +644,19 @@ class AppearanceFitTests(unittest.TestCase):
         size = (32, 24)
         render = Renderer(tris, mesh.double, mesh.vertex_point, size, "cuda")
         matrices = [projection([x, 0, 3], [0, 0, -1], *size, 0.62, 0.5) for x in (-0.2, 0.2)]
-        views = [(matrix, draw(render, points * [1.1, 1, 1], mesh.rgb, matrix)) for matrix in matrices]
+        normal = np.broadcast_to(np.array([0, 0, 1], dtype=np.float32), (size[1], size[0], 3)).copy()
+        views = [(matrix, draw(render, points * [1.1, 1, 1], mesh.rgb, matrix), normal, [x, 0, 3])
+                 for matrix, x in zip(matrices, (-0.2, 0.2))]
         masks = coverage_targets(mesh, views, size)
         moved = mesh._replace(points=points * [0.8, 1, 1])
         options = dict(steps=20, batch=2, lr_position=0.001, lr_colour=0.01, laplacian=0.1, report=0,
                        coverage_weight=50, mine_every=5, coverage_views=views, coverage_masks=masks)
-        first = optimise(moved, views, size, **options)
-        second = optimise(moved, views, size, **options)
-        for actual, expected in zip(first, second):
-            self.assertEqual(np.asarray(actual).tobytes(), np.asarray(expected).tobytes())
+        for normal_weight in (0, 1):
+            with self.subTest(normal_weight=normal_weight):
+                first = optimise(moved, views, size, normal_weight=normal_weight, **options)
+                second = optimise(moved, views, size, normal_weight=normal_weight, **options)
+                for actual, expected in zip(first, second):
+                    self.assertEqual(np.asarray(actual).tobytes(), np.asarray(expected).tobytes())
 
     def test_coverage_closes_an_unwelded_wall_gap_at_a_pool_only_pose(self):
         from r3d.appearance_simplify import COVERAGE_WEIGHT, coverage_targets, mine_coverage, optimise
