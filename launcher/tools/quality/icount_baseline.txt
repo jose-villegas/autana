@@ -6,5 +6,5 @@
 16007	span_solid
 783	math_dot_f
 32408	math_mat4_mul_f
-6362	math_normalize_f
-38427	math_slerp_f
+6426	math_normalize_f
+38747	math_slerp_f

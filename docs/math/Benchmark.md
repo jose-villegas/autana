@@ -74,7 +74,7 @@ Board build: `808816b5c999-diag`.
 | mul (scalar) | x | 22.3 | 3087.0 | 17.5 | - | 1.3 | - |
 | nlerp | f | 180.9 | 15253.0 | 131.6 | - | 1.4 | madd.s; calls __divsf3, sqrtf |
 | nlerp | x | 1172.4 | 90697.0 | 908.3 | - | 1.3 | calls __divdi3 |
-| normalize (vec3) | f | 137.2 | 11447.0 | 99.5 | 99.4 | 1.4 | madd.s; calls __divsf3, sqrtf |
+| normalize (vec3) | f | 137.2 | 11447.0 | 99.5 | 100.4 | 1.4 | madd.s; calls __divsf3, sqrtf |
 | normalize (vec3) | x | 846.2 | 60184.0 | 680.0 | - | 1.2 | calls __divdi3 |
 | quat mul | f | 30.3 | 3333.0 | 30.5 | - | 1.0 | madd.s msub.s |
 | quat mul | x | 418.6 | 38985.0 | 313.5 | - | 1.3 | msub.s |
@@ -83,7 +83,7 @@ Board build: `808816b5c999-diag`.
 | scale (vec3) | s | 36.4 | 4177.0 | 30.6 | - | 1.2 | - |
 | scale (vec3) | x | 66.0 | 7464.0 | 49.2 | - | 1.3 | - |
 | sinf | f | 191.4 | 22419.0 | 109.1 | - | 1.8 | calls _sinf |
-| slerp | f | 968.6 | 78551.0 | 599.4 | 600.4 | 1.6 | madd.s; calls __divsf3, _sinf, sqrtf |
+| slerp | f | 968.6 | 78551.0 | 599.4 | 605.4 | 1.6 | madd.s; calls __divsf3, _sinf, sqrtf |
 | sqrtf | f | 61.2 | 6006.0 | 45.5 | - | 1.3 | calls sqrtf |
 | transform compute_matrix | f | 67.4 | 6824.0 | 67.6 | - | 1.0 | madd.s msub.s |
 | transform compute_matrix | x | 854.2 | 75389.0 | 660.2 | - | 1.3 | calls mat4x_from_trs, memcpy |
