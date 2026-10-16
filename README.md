@@ -7,7 +7,7 @@
 
 Autana is software for the [Waveshare ESP32-S3-Touch-AMOLED-1.8](https://www.waveshare.com/esp32-s3-touch-amoled-1.8.htm): a home screen that launches a falling-sand sandbox and software-rendered mesh flythroughs. Touch and board motion control the apps. The firmware draws each frame in software and sends its pixels directly to the board's AMOLED screen.
 
-Its rendering, simulation and measurement techniques build on published work: [Citations](docs/Citations.md) lists each paper, specification and talk, and where the code uses it.
+The papers and specifications behind its techniques are in [Citations](docs/Citations.md).
 
 <table>
 <tr><th width="33%">Boot animation</th><th width="33%">Launcher, board rocking</th><th width="33%">Falling Sand, board turning</th></tr>
