@@ -14,21 +14,12 @@
 #include "math/scalar/mathi.h"
 #include "render/code_layout.h"
 
-static void
-set_row(float row[4], vec3f_t axis, vec3f_t eye, float scale, float ticks_to_units) {
-    row[0] = axis.x * scale * ticks_to_units;
-    row[1] = axis.y * scale * ticks_to_units;
-    row[2] = axis.z * scale * ticks_to_units;
-    row[3] = -vec3f_dot(axis, eye) * scale;
-}
-
 void
 r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_scale) {
     const float ticks_to_units = 1.0F / (float)position_scale;
-    lens->m = mat4f_identity();
-    set_row(lens->m.m[0], view->screen_x, view->position, view->pixels_per_unit, ticks_to_units);
-    set_row(lens->m.m[1], view->screen_y, view->position, view->pixels_per_unit, ticks_to_units);
-    set_row(lens->m.m[2], view->forward, view->position, 1.0F, ticks_to_units);
+    const mat4f_t camera = mat4f_view_from_axes(view->screen_x, view->screen_y, view->forward, view->position);
+    const mat4f_t pixels = mat4f_scale_rows(camera, (vec3f_t){view->pixels_per_unit, view->pixels_per_unit, 1.0F});
+    lens->m = mat4f_scale_columns(pixels, (vec3f_t){ticks_to_units, ticks_to_units, ticks_to_units});
     lens->center_x = view->center_x;
     lens->center_y = view->center_y;
     lens->near_z = view->near_z;
@@ -43,10 +34,7 @@ void
 r3d_lens_fit(r3d_lens_t* lens, int width, int height) {
     const float scale_x = (float)width / (float)lens->width;
     const float scale_y = (float)height / (float)lens->height;
-    for (int j = 0; j < 4; j++) {
-        lens->m.m[0][j] *= scale_x;
-        lens->m.m[1][j] *= scale_y;
-    }
+    lens->m = mat4f_scale_rows(lens->m, (vec3f_t){scale_x, scale_y, 1.0F});
     lens->center_x = (float)width * 0.5F;
     lens->center_y = (float)height * 0.5F;
     lens->snap_cx = (lens->center_x * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;

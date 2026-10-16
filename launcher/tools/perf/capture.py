@@ -1,5 +1,12 @@
 """Shared identity checks for device measurement captures."""
 import re
+from collections.abc import Mapping
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/device"))
+from device_lock import board_label, normalise_board
+from device_report import find_manifest_entry
 
 
 def build_ids(text) -> list:
@@ -14,3 +21,28 @@ def build_id(text) -> str:
     if len(lines) != 1 or not re.fullmatch(r"BUILD_ID=[\w.-]+", lines[0]):
         raise ValueError("invalid or repeated build id")
     return lines[0].removeprefix("BUILD_ID=")
+
+
+def capture_board(path) -> str | None:
+    """Read provenance from the records index owning this capture's folder."""
+    path = Path(path).resolve()
+    for folder in path.parents:
+        index = folder / "index.jsonl"
+        if index.is_file():
+            entry = find_manifest_entry(path, index) or {}
+            serial = entry.get("board")
+            return normalise_board(serial) if serial else None
+    return None
+
+
+def require_same_board(boards: Mapping[str, str | None]) -> str | None:
+    """Refuse pooled captures from distinct USB serials, including unknown provenance."""
+    groups = {}
+    for label, board in boards.items():
+        groups.setdefault(board, []).append(str(label))
+    if len(groups) > 1:
+        details = [f"{board_label(board)}: {', '.join(paths)}" if board
+                   else f"unknown: {', '.join(paths)}"
+                   for board, paths in sorted(groups.items(), key=lambda pair: pair[0] or "")]
+        raise ValueError("cannot compare captures from different boards: " + "; ".join(details))
+    return next(iter(groups), None)
