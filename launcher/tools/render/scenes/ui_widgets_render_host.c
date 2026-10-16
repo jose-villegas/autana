@@ -36,7 +36,7 @@ static const ui_theme_t THEME = {
 typedef enum { VIEW_WIDGETS, VIEW_DROPDOWN_OPEN, VIEW_MICROUI, VIEW_SETTINGS } view_t;
 
 static view_t view = VIEW_WIDGETS;
-static ui_transform_t transform;
+static affine2x_t transform;
 static int quality = 2;
 static int microui_value = 6;
 static int checked = 1;
@@ -247,7 +247,9 @@ open_dropdown_tap(int frame) {
         return in;
     }
     const mu_Rect r = open_view_dropdown();
-    ui_transform_point(transform, r.x + r.w / 2, r.y + r.h / 2, &in.x, &in.y);
+    const vec2i_t mapped_pixel = affine2x_map_pixel(transform, (vec2i_t){r.x + r.w / 2, r.y + r.h / 2});
+    in.x = mapped_pixel.x;
+    in.y = mapped_pixel.y;
     in.down = t < held;
     in.pressed = t == 0;
     in.released = t == held;

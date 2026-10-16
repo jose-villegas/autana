@@ -29,7 +29,7 @@
 typedef struct {
     post_layout_t layout;
     post_lines_t lines;
-    ui_transform_t transform;
+    affine2x_t transform;
     int quarter;
 } report_pen_t;
 
