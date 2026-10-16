@@ -25,6 +25,8 @@ class RuntimeHeapTests(unittest.TestCase):
     def test_invalid_captures_fail(self):
         good = FIXTURE.read_text()
         for text in ('', good.split('\n\n')[1], good + '\nBUILD_ID=abc-dev\nunmeasured: x\n',
+                     good.replace("abc-dev", "bad/id-dev"),
+                     good.replace("BUILD_ID=abc-dev", "BUILD_ID=abc-dev\nBUILD_ID=abc-dev"),
                      good.replace('"total": 1200', '"total": 1'),
                      good.replace('"largest": 400', '"largest": 601'),
                      good.replace('"free": 600', '"free": -1'),
