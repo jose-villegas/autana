@@ -27,7 +27,7 @@ ui_launcher_frame(const input_t* input, uint32_t dt_ms) {
     FRAME_COST_BEGIN(built_from);
     ui_begin(input);
     const app_t* chosen = ui_launcher_draw(ctx, dt_ms);
-    FRAME_COST_END(built_from, "ui.backend");
+    FRAME_COST_END(built_from, "ui.build");
     const input_t idle = {0};
     ui_ridge_step(input != NULL ? input : &idle, dt_ms);
 

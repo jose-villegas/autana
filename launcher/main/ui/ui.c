@@ -408,11 +408,11 @@ repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
 
 static void
 finish_commands(void) {
-    FRAME_COST_BEGIN(backend_from);
+    UI_FACE_COST_BEGIN(backend_from);
     ui_face_end();
     mu_end(&ui_ctx);
     ui_end_pointer_frame();
-    FRAME_COST_END(backend_from, "ui.backend");
+    UI_FACE_COST_END(backend_from, "ui.backend");
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
     report_command_list_high_water(ui_ctx.command_list.idx);
