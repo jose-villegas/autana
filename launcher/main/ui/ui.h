@@ -1,5 +1,6 @@
 /*
  * ui: shared microui integration, for the shell and for apps.
+ * The module also hosts the plain-value face.
  *
  * Everything an app needs to draw a UI, and nothing about any particular UI.
  * The launcher is one caller; an app wanting a settings panel or a readout is
@@ -202,7 +203,8 @@ void ui_queue_band_overlay_rect(int x, int y, int w, int h, uint32_t rgb);
 
 #define UI_FACE_SCOPE_DEPTH 4
 
-/* Colours are 0xRRGGBB. NULL restores the shell look. */
+/* Colours are 0xRRGGBB. NULL restores the shell look.
+ * ui_mu_theme_t in ui_mu.h holds the same roles as mu_Color values. */
 typedef struct {
     uint32_t panel_face, panel_edge, button_face;
     uint32_t accent, accent_face, on_accent;
@@ -211,6 +213,10 @@ typedef struct {
     int icon_side;
 } ui_theme_t;
 
+/* A label is visible text and identity: ## hides the suffix; ### makes only
+ * its suffix the identity. Widgets report whether this frame's tap changed
+ * them. Scopes must pair, at most UI_FACE_SCOPE_DEPTH deep; development builds
+ * assert on misuse. */
 void ui_theme(const ui_theme_t* theme);
 /* Windows close at the next window verb or ui_end(). */
 void ui_screen(void);

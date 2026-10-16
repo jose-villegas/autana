@@ -1,4 +1,4 @@
-/* Shared screen colours keep controls consistent across pages. Defines also
+/* The app's one palette keeps controls consistent across pages. Defines also
  * let host previews use the same values without maintaining another palette. */
 #pragma once
 

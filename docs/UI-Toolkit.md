@@ -10,6 +10,11 @@ list of drawing commands. This is the catalog. How to put a screen together,
 and the house rules it must follow, are in
 [`Building-a-Screen.md`](Building-a-Screen.md).
 
+The plain-value face in `ui/ui.h` places controls by rectangle with
+`ui_screen`, `ui_button`, `ui_toggle`, `ui_slider`, and `ui_dropdown`.
+The `ui_mu_*` widgets and other helpers below are the microui-level API in
+`ui/ui_mu.h` that the face is built on.
+
 The board is held either way up, so a screen must work in both
 orientations, and every picture below shows both. Each comes from the real
 code, drawn on a host by the gallery scene,
@@ -20,18 +25,18 @@ code, drawn on a host by the gallery scene,
 
 | A screen needs | Call | Header |
 |---|---|---|
-| a frame to draw in | `ui_begin()`, `ui_begin_screen()`, `ui_end()` | `ui/ui.h` |
-| a button with an icon beside its label | `ui_icon_button()` | `ui/controls/ui_widgets.h` |
-| one of a row of choices, icon above label | `ui_tile_button()` | `ui/controls/ui_widgets.h` |
-| a whole-number setting | `ui_theme_slider_int()`, `ui_slider_int()` | `ui/controls/ui_widgets.h`, `ui/ui.h` |
-| a pick from a list, without a scroll view | `ui_mu_dropdown()` | `ui/controls/ui_widgets.h` |
+| a frame to draw in | `ui_begin()`, `ui_begin_screen()`, `ui_end()` | `ui/ui.h`, `ui/ui_mu.h` |
+| a button with an icon beside its label | `ui_icon_button()` | `ui/ui_mu.h` |
+| one of a row of choices, icon above label | `ui_tile_button()` | `ui/ui_mu.h` |
+| a whole-number setting | `ui_theme_slider_int()`, `ui_slider_int()` | `ui/ui_mu.h`, `ui/ui.h` |
+| a pick from a list, without a scroll view | `ui_mu_dropdown()` | `ui/ui_mu.h` |
 | a plain button, checkbox or label | `mu_button()`, `mu_checkbox()`, `mu_label()` | `microui.h` |
-| a captioned section, a title bar | `ui_mu_panel()`, `ui_header_bar()` | `ui/controls/ui_widgets.h` |
-| text aligned in a rect | `ui_text_in()` | `ui/controls/ui_widgets.h` |
-| a grid of colours | `ui_swatch_grid()` | `ui/controls/ui_widgets.h` |
-| an icon | `ui_draw_icon()` | `ui/ui.h` |
+| a captioned section, a title bar | `ui_mu_panel()`, `ui_header_bar()` | `ui/ui_mu.h` |
+| text aligned in a rect | `ui_text_in()` | `ui/ui_mu.h` |
+| a grid of colours | `ui_swatch_grid()` | `ui/ui_mu.h` |
+| an icon | `ui_draw_icon()` | `ui/ui_mu.h` |
 | rows that may overflow and scroll | `ui_scroll_view_begin()`, `ui_flow_row()` | `ui/layout/ui_scroll.h` |
-| a rect placed against an edge or centre | `ui_anchor_rect()`, `ui_rect_inset()`, `ui_centered_rect()` | `ui/layout/ui_anchor.h`, `ui/ui.h` |
+| a rect placed against an edge or centre | `ui_anchor_rect()`, `ui_rect_inset()`, `ui_centered_rect()` | `ui/layout/ui_anchor.h`, `ui/ui_mu.h` |
 | another text size | `ui_set_font_scaled()`, `ui_measure_text()` | `ui/ui.h` |
 | raised buttons | `ui_set_button_style(UI_BUTTON_BEZEL)` | `ui/ui.h`, `ui/controls/ui_style.h` |
 | the UI turned with the board | `ui_set_transform()`, `ui_width()`, `ui_height()` | `ui/ui.h`, `ui/layout/ui_transform.h` |
@@ -72,12 +77,7 @@ static int volume = 5;
 static int muted;
 static int output;
 
-static const ui_dropdown_item_t OUTPUTS[] = {
-    {.label = "SPEAKER"},
-    {.label = "HEADPHONES"},
-    {.label = "BLUETOOTH"},
-    {.label = "OFF"},
-};
+static const char* const OUTPUTS[] = {"SPEAKER", "HEADPHONES", "BLUETOOTH", "OFF"};
 
 static void
 settings_frame(const input_t* input) {
@@ -91,7 +91,7 @@ settings_frame(const input_t* input) {
         mu_layout_set_next(ctx, mu_rect(UI_MARGIN, 144, row_w, UI_TAP_MIN), 0);
         mu_checkbox(ctx, "MUTE", &muted);
         const int picked =
-            ui_mu_dropdown(ctx, "output", mu_rect(UI_MARGIN, 216, row_w, UI_TAP_MIN), OUTPUTS, 4, output, &THEME);
+            ui_mu_dropdown(ctx, "output", mu_rect(UI_MARGIN, 216, row_w, UI_TAP_MIN), OUTPUTS, NULL, 4, output, &THEME);
         if (picked >= 0) {
             output = picked;
         }
@@ -127,7 +127,7 @@ settings_frame(const input_t* input) {
 
 ![The themed widgets in portrait: a panel holding a slider, two icon buttons, three tiles, a swatch grid and a closed dropdown](images/ui/widgets.png) ![The same widgets in landscape, re-flowed into rows and two columns](images/ui/widgets-landscape.png)
 
-`ui/controls/ui_widgets.h`. Each control takes a `ui_mu_theme_t`, so a screen states its
+`ui/ui_mu.h`. Each control takes a `ui_mu_theme_t`, so a screen states its
 colours once:
 
 | Field | Used for |
@@ -184,8 +184,8 @@ list over the screen:
 | Closing | a pick stays on screen `UI_DROPDOWN_CLOSE_FRAMES` frames after the finger lifts, so the choice is seen landing. A tap outside the list closes it. |
 | Identity | `id` is unique per dropdown, and the list's window is named after it. `ui_dropdown_is_open()` asks from inside the same window. |
 
-An item is a `ui_dropdown_item_t`: `label`, plus an optional `icon` and its
-`icon_rows`. The list needs at least one item.
+The list takes a `names` array and an optional parallel `icons` array
+(`NULL` for no icons). It needs at least one item.
 
 ## microui's own controls
 
@@ -348,7 +348,7 @@ the device limit. A development build logs the high-water mark from
 
 ## Adding to the toolkit
 
-A control belongs in `ui/controls/ui_widgets.h`, not in a private copy in one app's
+A control belongs in `ui/ui_mu.h`, not in a private copy in one app's
 screen, once a second screen could use it. It must:
 
 - take a `ui_mu_theme_t` rather than colours of its own

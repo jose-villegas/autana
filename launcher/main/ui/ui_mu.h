@@ -1,5 +1,5 @@
-/* Transitional API for screens still written against microui.
- * Include ui.h alone for screens using the plain-value face. */
+/* microui-level API: windows, layout rows and themed controls drawn into a
+ * mu_Context. Screens that place controls by rectangle use ui.h. */
 #pragma once
 
 #include "ui/ui.h"

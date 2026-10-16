@@ -20,6 +20,7 @@ static ui_mu_theme_t theme;
 static unsigned window_ordinal;
 static bool window_open;
 
+/* A fixed table bounds frame work and storage without allocating while drawing. */
 static struct {
     mu_Id hash;
     unsigned count;
@@ -125,6 +126,7 @@ widget_id(const char* label) {
             face_misuse();
         }
     }
+    /* Window order separates controls in windows that otherwise share the same labels. */
     const unsigned identity[] = {window_ordinal, hash, occurrence};
     return mu_get_id(ui_context(), identity, sizeof identity);
 }
