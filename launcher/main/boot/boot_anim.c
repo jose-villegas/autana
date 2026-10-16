@@ -144,6 +144,7 @@ typedef struct {
     int16_t sx, sy;
     int16_t band_q4;
     bool front;
+    bool active;
 } mesh_node_t;
 
 #define MESH_BAND_SHIFT 4
@@ -175,11 +176,21 @@ mesh_node(const mesh_pass_t* pass, int i, int j) {
     const int32_t d = mesh_distance(i, j);
     int sx = 0;
     int sy = 0;
-    mesh_node_t node;
+    mesh_node_t node = {0};
+    node.band_q4 = (int16_t)((d << MESH_BAND_SHIFT) / BOOT_ANIM_GRID_STEP_Q12);
+#if BOOT_ANIM_MESH_CULL_ALPHA >= 0
+    {
+        const int reach = mathi_max(pass->stride, BOOT_ANIM_MESH_FAR_STRIDE) * BOOT_ANIM_MESH_STEP_Q12;
+        const int band = mathi_max(0, d - reach) / BOOT_ANIM_GRID_STEP_Q12;
+        if (boot_anim_grid_alpha(pass->now_ms, band) <= BOOT_ANIM_MESH_CULL_ALPHA) {
+            return node;
+        }
+    }
+#endif
+    node.active = true;
     node.front = r3d_project_point_cs_x(mesh_point(pass, i, j, d), pass->view, &sx, &sy);
     node.sx = (int16_t)sx;
     node.sy = (int16_t)sy;
-    node.band_q4 = (int16_t)((d << MESH_BAND_SHIFT) / BOOT_ANIM_GRID_STEP_Q12);
     return node;
 }
 
@@ -188,8 +199,22 @@ mesh_node(const mesh_pass_t* pass, int i, int j) {
  * dropped when both are. */
 static void
 draw_mesh_edge(const mesh_pass_t* pass, const mesh_node_t* a, int ai, int aj, const mesh_node_t* b, int bi, int bj) {
+#if BOOT_ANIM_MESH_CULL_ALPHA >= 0
+    if (!a->active || !b->active) {
+        return;
+    }
+    const gfx_box_t screen = GFX_SCREEN_BOX;
+    if (a->front && b->front && (gfx_box_outcode(&screen, a->sx, a->sy) & gfx_box_outcode(&screen, b->sx, b->sy))) {
+        return;
+    }
+#endif
     const int band = (a->band_q4 + b->band_q4) >> (MESH_BAND_SHIFT + 1);
     const uint8_t alpha = scale8(boot_anim_grid_alpha(pass->now_ms, band), pass->ink);
+#if BOOT_ANIM_MESH_CULL_ALPHA >= 0
+    if (alpha <= BOOT_ANIM_MESH_CULL_ALPHA) {
+        return;
+    }
+#endif
     if (alpha == 0 || (!a->front && !b->front)) {
         return;
     }
@@ -232,7 +257,7 @@ mesh_dash_on(int k, int stride) {
 /* Builds row j's nodes, drawing each one's edge to the node before it in the
  * row and to the one above it, then leaves it in `above` for the next row. */
 static void
-draw_mesh_row(const mesh_pass_t* pass, int j, int row_half, int above_half, mesh_node_t* above) {
+draw_mesh_row(const mesh_pass_t* pass, int j, int above_j, int row_half, int above_half, mesh_node_t* above) {
     const int stride = pass->stride;
     mesh_node_t left = {0};
     for (int i = -MESH_HALF; i <= MESH_HALF; i += stride) {
@@ -244,7 +269,7 @@ draw_mesh_row(const mesh_pass_t* pass, int j, int row_half, int above_half, mesh
             draw_mesh_edge(pass, &left, i - stride, j, &node, i, j);
         }
         if (mathi_abs(i) <= above_half && mesh_dash_on(j, stride)) {
-            draw_mesh_edge(pass, &above[i + MESH_HALF], i, j - stride, &node, i, j);
+            draw_mesh_edge(pass, &above[i + MESH_HALF], i, above_j, &node, i, j);
         }
         above[i + MESH_HALF] = node;
         left = node;
@@ -332,10 +357,14 @@ draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t*
     /* Row by row, each node built once; one row behind is all an edge needs. */
     mesh_node_t above[BOOT_ANIM_MESH_CELLS + 1];
     int above_half = -1;
-    for (int j = -MESH_HALF; j <= MESH_HALF; j += pass.stride) {
-        const int row_half = mesh_row_half(j, pass.stride);
-        draw_mesh_row(&pass, j, row_half, above_half, above);
+    int above_j = -MESH_HALF;
+    for (int j = -MESH_HALF; j <= MESH_HALF;) {
+        const int row_half = mesh_row_half(j, mathi_max(pass.stride, BOOT_ANIM_MESH_FAR_STRIDE));
+        draw_mesh_row(&pass, j, above_j, row_half, above_half, above);
         above_half = row_half;
+        above_j = j;
+        const bool far = j < -(MESH_HALF / 2) || j >= MESH_HALF / 2;
+        j += far ? mathi_max(pass.stride, BOOT_ANIM_MESH_FAR_STRIDE) : pass.stride;
     }
 
     draw_spokes(now_ms, ink, view);

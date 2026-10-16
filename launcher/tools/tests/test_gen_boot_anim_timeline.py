@@ -56,6 +56,20 @@ class TimelineGeneratorTests(unittest.TestCase):
                 [sys.executable, str(GENERATOR), str(source), str(glb)],
                 cwd=LAUNCHER, capture_output=True, text=True, check=False)
 
+    def test_mesh_cost_settings_validate_ranges(self):
+        for key, value in (("mesh_cull_alpha", -2), ("mesh_cull_alpha", 256),
+                           ("mesh_far_stride", 0), ("mesh_far_stride", 3)):
+            with self.subTest(key=key, value=value):
+                result = self.generate(lambda timing: timing.update({key: value}))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(key + " must be", result.stderr)
+
+    def test_mesh_cost_settings_are_generated(self):
+        result = self.generate(lambda timing: timing.update(mesh_cull_alpha=2, mesh_far_stride=2))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("#define BOOT_ANIM_MESH_CULL_ALPHA 2", result.stdout)
+        self.assertIn("#define BOOT_ANIM_MESH_FAR_STRIDE 2", result.stdout)
+
     def test_unknown_timing_key_fails_and_names_key(self):
         result = self.generate(lambda timing: timing.update(title_font=1))
         self.assertNotEqual(result.returncode, 0)

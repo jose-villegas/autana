@@ -129,6 +129,10 @@ def validate(cfg):
              "line runs through the origin" % (timing["mesh_cells"],))
     if timing["mesh_dash"] not in (0, 1):
         fail("mesh_dash must be 0 or 1 (%r given)" % (timing["mesh_dash"],))
+    if not -1 <= timing["mesh_cull_alpha"] <= 255:
+        fail("mesh_cull_alpha must be in -1..255")
+    if timing["mesh_far_stride"] not in (1, 2):
+        fail("mesh_far_stride must be 1 or 2")
     if timing["grid_hue_ms"] <= 0:
         fail("grid_hue_ms must be positive (%r given) - boot_anim_grid_hue() "
              "divides by it every frame" % (timing["grid_hue_ms"],))
@@ -305,6 +309,10 @@ TIMING_ORDER = [
     ("mesh_cells", "BOOT_ANIM_MESH_CELLS",
      "cells along each side of the floor's square mesh - even, so one line "
      "runs through the origin"),
+    ("mesh_cull_alpha", "BOOT_ANIM_MESH_CULL_ALPHA",
+     "skip edges at or below this alpha; -1 disables culling"),
+    ("mesh_far_stride", "BOOT_ANIM_MESH_FAR_STRIDE",
+     "row spacing outside the central half of the mesh; 1 or 2"),
     ("mesh_dash", "BOOT_ANIM_MESH_DASH",
      "draws the mesh lines as alternating dashes instead of solid - "
      "0 solid, 1 dashed"),
@@ -420,6 +428,8 @@ def main():
     # second in, and starting to lerp back out a second before the end,
     # are simply reasonable starting points, like wave_wavelength_m/
     # wave_period_ms's own defaults above.
+    timing.setdefault("mesh_cull_alpha", -1)
+    timing.setdefault("mesh_far_stride", 1)
     timing.setdefault("wave_in_ms", 1000)
     timing.setdefault("wave_out_ms",
                       max(1000, timing.get("total_ms", 5800) - 1000))
