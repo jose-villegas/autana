@@ -49,6 +49,7 @@ from r3d.import_settings import load_scene, rotate  # noqa: E402
 from r3d.poses import camera_rays  # noqa: E402
 from r3d.ray_query import RayQuery  # noqa: E402
 from r3d.reference_render import device_picture, source_for  # noqa: E402
+from r3d.surface_samples import area_samples  # noqa: E402
 
 # Area samples per --share pattern: about 0.5% noise on its share in sun.
 AREA_SAMPLES = 40000
@@ -200,17 +201,6 @@ def live(scene_path, light_name, rotation, scale, measure, trace_pass, show, spp
     window.after(1, refine)
     window.mainloop()
     return 0
-
-
-def area_samples(source, triangles, count, rng):
-    """`count` points spread by area over `triangles`, with their face normals."""
-    a, b, c = (source.p[source.tri_v[triangles, k]] for k in range(3))
-    cross = np.cross(b - a, c - a)
-    area = np.linalg.norm(cross, axis=1)
-    pick = rng.choice(len(triangles), count, p=area / area.sum())
-    s, t = np.sqrt(rng.random(count)), rng.random(count)
-    points = (1 - s)[:, None] * a[pick] + (s * (1 - t))[:, None] * b[pick] + (s * t)[:, None] * c[pick]
-    return points, cross[pick] / area[pick, None]
 
 
 def in_sun(query, points, normals, sun, offset):
