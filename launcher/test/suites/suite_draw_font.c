@@ -352,9 +352,9 @@ sim_walk_runs(gfx_target_t target, const draw_font_t* f, int x, int y, unsigned 
             while (end + 1 < f->cell_w && (bits & (1 << (end + 1)))) {
                 end++;
             }
-            int rx, ry, rw, rh, ox0, oy0, ox1, oy1;
+            int rx, ry, rw, rh;
             rect_fn(f, x, y, row, col, end, scale, turn, &rx, &ry, &rw, &rh);
-            gfx_target_fill_rect(target, 0, 0, SIM_DIM, SIM_DIM, rx, ry, rw, rh, color, &ox0, &oy0, &ox1, &oy1);
+            (void)gfx_target_fill_rect(target, (recti_t){0, 0, SIM_DIM, SIM_DIM}, (recti_t){rx, ry, rw, rh}, color);
             col = end + 1;
         }
     }
@@ -535,9 +535,9 @@ sim_walk_boxes(gfx_target_t target, const draw_font_t* f, int x, int y, unsigned
     draw_font_run_box_t* boxes = alloc_run_boxes();
     const int n = draw_font_glyph_run_boxes(f, ch, boxes, DRAW_FONT_RUN_BOXES_MAX);
     for (int i = 0; i < n; i++) {
-        int rx, ry, rw, rh, ox0, oy0, ox1, oy1;
+        int rx, ry, rw, rh;
         box_fn(f, x, y, boxes[i].row0, boxes[i].row1, boxes[i].col0, boxes[i].col1, scale, turn, &rx, &ry, &rw, &rh);
-        gfx_target_fill_rect(target, 0, 0, SIM_DIM, SIM_DIM, rx, ry, rw, rh, color, &ox0, &oy0, &ox1, &oy1);
+        (void)gfx_target_fill_rect(target, (recti_t){0, 0, SIM_DIM, SIM_DIM}, (recti_t){rx, ry, rw, rh}, color);
     }
 }
 

@@ -3,19 +3,14 @@
  * allocation or device dependency. */
 #pragma once
 
-#include "draw/draw_image.h"
+#include "math/geometry/recti.h"
 
-/* One run, in whatever coordinate space its producer documents: a carrier
- * for a caller that wants icon_walk_blocks()'s runs collected into an array
- * instead of streamed. */
-typedef struct {
-    int x, y, w, h;
-} icon_rect_t;
+#include "draw/draw_image.h"
 
 /* icon_walk_blocks()'s output: one horizontal run, already scaled and
  * placed relative to the destination box's own origin (0, 0); the caller
  * adds its box's x/y. */
-typedef void (*icon_emit_fn)(void* ctx, int x, int y, int w, int h);
+typedef void (*icon_emit_fn)(void* ctx, recti_t rect);
 
 /* Fits `icon`'s ink to a `box_w` x `box_h` box at the largest whole scale,
  * centred, and emits each run. `icon` is DRAW_IMAGE_MONO1. Icons draw once

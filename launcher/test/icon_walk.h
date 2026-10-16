@@ -30,16 +30,16 @@ icon_test_runs(const draw_image_t* icon) {
 }
 
 typedef struct {
-    icon_rect_t* blocks;
+    recti_t* blocks;
     int count;
     int cap;
 } icon_test_collect_t;
 
 static inline void
-icon_test_collect(void* ctx, int x, int y, int w, int h) {
+icon_test_collect(void* ctx, recti_t rect) {
     icon_test_collect_t* cc = ctx;
     TEST_ASSERT_TRUE_MESSAGE(cc->count < cc->cap,
                              "icon_walk_blocks emitted more runs than the test's own buffer expects");
-    cc->blocks[cc->count] = (icon_rect_t){x, y, w, h};
+    cc->blocks[cc->count] = rect;
     cc->count++;
 }

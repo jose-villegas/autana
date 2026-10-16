@@ -31,11 +31,22 @@
 
 #include "draw/draw_font.h"
 #include "draw/icon.h"
+#include "math/geometry/recti.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathx.h"
 #include "microui.h"
 
 typedef int32_t ui_fp_t;
+
+static inline recti_t
+ui_recti_from_mu(mu_Rect r) {
+    return (recti_t){r.x, r.y, r.w, r.h};
+}
+
+static inline mu_Rect
+ui_mu_from_recti(recti_t r) {
+    return mu_rect(r.x, r.y, r.w, r.h);
+}
 
 /* | a c tx |
    | b d ty |
@@ -203,11 +214,13 @@ typedef struct {
 } ui_transform_icon_ctx_t;
 
 static inline void
-ui_transform_icon_emit(void* ctx, int x, int y, int w, int h) {
+ui_transform_icon_emit(void* ctx, recti_t rect) {
     const ui_transform_icon_ctx_t* ic = ctx;
-    const mu_Rect local = {ic->box_x + x, ic->box_y + y, w, h};
+    rect.x += ic->box_x;
+    rect.y += ic->box_y;
+    const mu_Rect local = ui_mu_from_recti(rect);
     const mu_Rect dst = ui_transform_rect(ic->t, local);
-    ic->emit(ic->ctx, dst.x, dst.y, dst.w, dst.h);
+    ic->emit(ic->ctx, ui_recti_from_mu(dst));
 }
 
 /* Every icon run must turn with its logical box; turning only the box
