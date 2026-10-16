@@ -19,7 +19,7 @@ ui_recti_from_mu(mu_Rect r) {
 
 static inline mu_Rect
 ui_mu_from_recti(recti_t r) {
-    return mu_rect(r.x, r.y, r.w, r.h);
+    return (mu_Rect){r.x, r.y, r.w, r.h};
 }
 
 /* Rotation by `turn` quarter turns (mod 4, negative allowed), about a
@@ -53,6 +53,16 @@ ui_transform_quarter_turns(affine2x_t t) {
         return t.x_axis.y > 0 ? 1 : 3;
     }
     return t.x_axis.x < 0 ? 2 : 0;
+}
+
+/* The logical pixel `t` maps onto physical `p`: `p` through t's inverse, or
+ * `p` unmapped if `t` is singular. Every transform that passes
+ * ui_transform_is_axis_preserving() has an inverse, so the fallback only
+ * guards a broken invariant. */
+static inline vec2i_t
+ui_transform_unmap_pixel(affine2x_t t, vec2i_t p) {
+    affine2x_t inverse;
+    return affine2x_invert(t, &inverse) ? affine2x_map_pixel(inverse, p) : p;
 }
 
 static inline mu_Rect

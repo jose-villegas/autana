@@ -338,20 +338,9 @@ ui_init(void) {
 
 void
 ui_to_logical(int x, int y, int* lx, int* ly) {
-    affine2x_t inv;
-    if (!affine2x_invert(ui_effective_transform(), &inv)) {
-        /* Unreachable in practice: ui_effective_transform() is always
-         * identity or something ui_transform_is_axis_preserving() accepted,
-         * and every transform that passes that check has a nonzero
-         * determinant, hence an inverse. Fall back to an unmapped point
-         * rather than garbage if that invariant is ever broken. */
-        *lx = x;
-        *ly = y;
-        return;
-    }
-    const vec2i_t mapped_pixel = affine2x_map_pixel(inv, (vec2i_t){x, y});
-    *lx = mapped_pixel.x;
-    *ly = mapped_pixel.y;
+    const vec2i_t logical = ui_transform_unmap_pixel(ui_effective_transform(), (vec2i_t){x, y});
+    *lx = logical.x;
+    *ly = logical.y;
 }
 
 /* Mapped before ui_pointer_step() rather than after, so that its "vertical

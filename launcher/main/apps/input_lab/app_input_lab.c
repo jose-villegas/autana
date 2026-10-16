@@ -182,15 +182,9 @@ shell_transform(void) {
 
 static void
 to_screen(int px, int py, int* x, int* y) {
-    affine2x_t inverse;
-    if (!affine2x_invert(shell_transform(), &inverse)) {
-        *x = px;
-        *y = py;
-        return;
-    }
-    const vec2i_t mapped_pixel = affine2x_map_pixel(inverse, (vec2i_t){px, py});
-    *x = mapped_pixel.x;
-    *y = mapped_pixel.y;
+    const vec2i_t screen = ui_transform_unmap_pixel(shell_transform(), (vec2i_t){px, py});
+    *x = screen.x;
+    *y = screen.y;
 }
 
 static void
