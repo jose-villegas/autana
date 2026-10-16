@@ -306,8 +306,8 @@ resolve against USB, known and seen boards; collisions require a full serial.
 With several boards plugged in and none selected, commands that flash
 (`flash`, `suite --flash`, `selftest`, `batch`) and whole-job holds
 (`lock run`, `lock take`) choose a free board with nobody queued, else the
-earliest estimated free time, else the shortest queue. Human reservations
-are avoided when another board is available. The job and its children keep
+earliest estimated start after queued work, else the shortest queue.
+Human reservations are avoided when another board is available. The job and its children keep
 the selected serial. Other board commands fail and list the choices, pointing
 at `--board`, `-b` and console `use`. Each board has its own lock and queue. `lock hand` and `lock take-back`
 alone fall back once more to the only board this machine has ever seen.
@@ -333,6 +333,7 @@ Times are epoch seconds; an age or a time left is the difference from now. An es
 | `holder` | `{"owner", "purpose"}`, the command or hold note; `null` when unlocked. A held lock also carries `protocol` and `autana_version`; a timed or until-released hold carries `kind: "hold"`. |
 | `since` | when the holder took the board |
 | `estimated_free` | when the holder should be done; a hold can supply this with `--estimate` |
+| `estimated_start` | when a new request would start after the holder and all queued work |
 | `expires_at` | when a timed hold or person's reservation lapses; else `null` |
 | `lapsed` | `{"owner", "purpose", "reason", "at"}` of a lock or reservation that lapsed but is still on disk, else `null`. `reason` is `dead process`, `heartbeat expiry`, or `hold lapsed` for a lock the next waiter reclaims (`at` is `null`), or `reservation expired` for a person's reservation (`at` is when it lapsed). |
 | `waiting` | `[{"owner", "purpose", "estimated_start"}]` in queue order |

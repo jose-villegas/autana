@@ -857,7 +857,7 @@ class BoardTests(Store):
         self.assertEqual((by_board["90:70:69:FE:C0:01"]["port"],
                           by_board["90:70:69:FE:C0:01"]["state"]), (None, "human"))
         self.assertEqual(set(by_board[BOARD_B]), {
-            "board", "port", "state", "holder", "since", "estimated_free", "lapsed",
+            "board", "port", "state", "holder", "since", "estimated_free", "estimated_start", "lapsed",
             "expires_at", "waiting"})
 
     def test_status_names_one_board_when_one_is_chosen(self):

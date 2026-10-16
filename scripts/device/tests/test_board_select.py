@@ -65,6 +65,38 @@ with autana.applied(flags), \
             finally:
                 self.store.release(BOARD_A, token)
 
+    def test_explicit_tokens_resolve_auto_picked_hold_with_multiple_boards(self):
+        with plugged(usb(BOARD_A, "COM5"), usb(BOARD_B, "COM7")), \
+             mock.patch.object(device_lock, "default_root", return_value=self.store.root), \
+             mock.patch.dict(os.environ, {device.BOARD_ENV: "", device.TOKEN_ENV: ""}), \
+             contextlib.redirect_stderr(io.StringIO()):
+            for command in ("check-token", "release"):
+                with self.subTest(command=command), contextlib.redirect_stdout(io.StringIO()) as output:
+                    self.assertEqual(device.main(["take", "--for", "10", "job"]), 0)
+                    token = output.getvalue().strip()
+                    try:
+                        self.assertEqual(device.main([command, "--token", token]), 0)
+                        if command == "release":
+                            self.assertIsNone(self.store.status(BOARD_A)["lock"])
+                    finally:
+                        self.store.release(BOARD_A, token)
+
+    def test_auto_pick_accounts_for_every_queued_duration(self):
+        duration = 10
+        for board in (BOARD_A, BOARD_B):
+            held = self.store.acquire(board, "holder", "flash")
+            self.store.hold(board, held["token"], "job", seconds=60,
+                            estimate=duration if board == BOARD_A else 2 * duration)
+        for index in range(2):
+            self.store.enqueue(BOARD_A, f"waiter-{index}", "flash")
+        with plugged(usb(BOARD_A, "COM5"), usb(BOARD_B, "COM7")), \
+             mock.patch.object(device_lock, "duration_history", return_value={"flash": duration}):
+            entries = device.board_statuses(self.store)
+        self.assertLess(entries[0]["estimated_free"], entries[1]["estimated_free"])
+        self.assertGreater(entries[0]["waiting"][-1]["estimated_start"] + duration,
+                           entries[1]["estimated_free"])
+        self.assertEqual(device.pick_board(entries)[0], BOARD_B)
+
     def test_pick_empty_and_all_human_reserved(self):
         with self.assertRaises(device.NoBoard):
             device.pick_board([])
@@ -125,7 +157,7 @@ with autana.applied(flags), \
 
     def test_auto_pick_prefers_free_then_estimate_then_queue(self):
         def entry(board, state="held", end=None, wait=0):
-            return dict(board=board, port="COM5", state=state, estimated_free=end,
+            return dict(board=board, port="COM5", state=state, estimated_free=end, estimated_start=end,
                         waiting=[{}] * wait)
         cases = [([entry(BOARD_A, end=1), entry(BOARD_B, "unlocked")], BOARD_B),
                  ([entry(BOARD_A, end=20), entry(BOARD_B, end=10)], BOARD_B),

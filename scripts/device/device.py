@@ -183,11 +183,11 @@ def resolve_board(value, store=None):
                   + (", ".join(known) or "none"))
 
 
-def chosen_board(board=None, store=None):
+def chosen_board(board=None, store=None, token=None):
     named = board or os.environ.get(BOARD_ENV)
     if named:
         return resolve_board(named, store)
-    token = os.environ.get(TOKEN_ENV)
+    token = token or os.environ.get(TOKEN_ENV)
     if token:
         store = store if store is not None else device_lock.LockStore()
         board = store.board_of_token(token)
@@ -214,7 +214,7 @@ def find_board(board=None):
     return present[0]
 
 
-def board_for_lock(store, named=None, remembered=False, auto_pick=False):
+def board_for_lock(store, named=None, remembered=False, auto_pick=False, token=None):
     """The board a command queues for. A lock outlives the board's USB
     presence, so while a holder's reset has the only board off USB a waiter
     still finds it through the lock records; only opening its port needs USB.
@@ -222,7 +222,7 @@ def board_for_lock(store, named=None, remembered=False, auto_pick=False):
     still, to a board merely seen on USB before, with nothing active
     against it now, since those are the two commands a board dropped off
     USB (and idle) needs."""
-    wanted = chosen_board(named, store)
+    wanted = chosen_board(named, store, token)
     if wanted:
         return wanted, None
     present = sorted(found.serial for found in plugged_boards())
@@ -1955,10 +1955,10 @@ def pick_board(entries):
     if free:
         return min(free, key=lambda entry: entry["board"])["board"], "free, nobody queued"
     available = [entry for entry in entries if device_lock.availability(entry) != "human"] or entries
-    estimated = [entry for entry in available if entry["estimated_free"] is not None]
+    estimated = [entry for entry in available if entry["estimated_start"] is not None]
     if estimated:
-        chosen = min(estimated, key=lambda entry: (entry["estimated_free"], entry["board"]))
-        return chosen["board"], "earliest estimated free time"
+        chosen = min(estimated, key=lambda entry: (entry["estimated_start"], entry["board"]))
+        return chosen["board"], "earliest estimated start time"
     chosen = min(available, key=lambda entry: (len(entry["waiting"]), entry["board"]))
     return chosen["board"], "shortest queue"
 
@@ -2181,7 +2181,8 @@ def main(argv=None):
             return result
         board, picked_reason = board_for_lock(
             store, args.board, remembered=args.command in ("hand-to-human", "take-back"),
-            auto_pick=args.auto_pick(args) if callable(args.auto_pick) else args.auto_pick)
+            auto_pick=args.auto_pick(args) if callable(args.auto_pick) else args.auto_pick,
+            token=getattr(args, "token", None))
         token = os.environ.get(TOKEN_ENV)
         if token and args.command in ("take", "hand-to-human", "wait-free"):
             record = store.live_lock(board, token)

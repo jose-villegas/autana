@@ -258,8 +258,8 @@ and seen boards; a collision requires the full serial.
 
 With several boards plugged in and none selected, `flash`, `suite --flash`,
 `selftest`, `batch`, `lock run` and `lock take` pick a board: first a free one
-with nobody queued, then the earliest estimated free time, then the shortest
-queue. Human reservations are avoided when another board is available.
+with nobody queued, then the earliest estimated start after queued work,
+then the shortest queue. Human reservations are avoided when another board is available.
 The choice and reason print before the job; the final verdict names the board.
 The whole job and its children keep that serial. Other board commands require
 `--board`, `-b` or a console pin when several boards are plugged in.

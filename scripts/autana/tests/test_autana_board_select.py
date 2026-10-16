@@ -61,6 +61,26 @@ class BoardSelectionTests(unittest.TestCase):
             self.assertIn("A308", output.getvalue())
             self.assertNotIn("--board", autana.session_flags)
 
+    def test_startup_pin_clears_for_board_commands_and_forwarding(self):
+        for explicit in ([], ["console"]):
+            with self.subTest(explicit=explicit), \
+                 mock.patch.dict(autana.session_flags, {}, clear=True), \
+                 mock.patch.dict(os.environ, {autana.BOARD_ENV: ""}), \
+                 mock.patch.object(autana.sys, "argv", ["autana", "-b", "a308", *explicit]), \
+                 mock.patch.object(autana, "install_completion"), \
+                 mock.patch("builtins.input", side_effect=["use -", "status", "probe", "quit"]), \
+                 mock.patch.dict(autana.COMMANDS, {"status": lambda args: seen.append(os.environ.get(autana.BOARD_ENV))}), \
+                 mock.patch.object(autana, "forward", side_effect=lambda *args: seen.append(os.environ.get(autana.BOARD_ENV))), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                seen = []
+                with self.assertRaises(SystemExit) as stop:
+                    autana.main()
+                self.assertEqual(stop.exception.code, 0)
+                self.assertEqual(seen, ["", ""])
+
+    def test_console_help_lists_use(self):
+        self.assertIn("use [<board>|-]", autana.help_text([], prefix=""))
+
     def test_console_starts_pinned_without_usb_completion(self):
         with mock.patch.dict(autana.session_flags, {}, clear=True), \
              mock.patch.object(device, "known_boards", side_effect=AssertionError("USB lookup")), \

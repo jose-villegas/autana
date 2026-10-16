@@ -792,7 +792,8 @@ def holder_end(lock, durations):
 
 def queue_estimates(status, now, durations):
     """Each waiter's estimated start, by ticket: the holder's own kind sets
-    when the board frees, and each waiter's kind how long it keeps it."""
+    when the board frees, and each waiter's kind how long it keeps it.
+    The None key estimates the start of a new request behind the queue."""
     lock = status.get("lock")
     if status.get("human"):
         start = None
@@ -806,6 +807,7 @@ def queue_estimates(status, now, durations):
         estimates[ticket["ticket"]] = start
         duration = durations.get(ticket.get("kind"))
         start = start + duration if start is not None and duration is not None else None
+    estimates[None] = start
     return estimates
 
 
@@ -846,6 +848,7 @@ def status_entry(store, board, port=None, now=None, durations=None):
         entry["lapsed"] = {"owner": stale["owner"], "purpose": stale.get("purpose", "unknown"),
                            "reason": stale["reason"], "at": None}
     estimates = queue_estimates(status, now, durations)
+    entry["estimated_start"] = estimates[None]
     entry["waiting"] = [{"owner": ticket["owner"], "purpose": ticket.get("purpose", "unknown"),
                          "estimated_start": estimates[ticket["ticket"]]}
                         for ticket in status["queue"]]

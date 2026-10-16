@@ -1721,6 +1721,8 @@ def help_text(args, prefix="autana "):
         return f"no command or group '{topic}'; groups: " + ", ".join(
             key for key, _, _ in COMMAND_GROUPS)
     if topic is None:
+        if not prefix:
+            lines.append("use [<board>|-]  show, pin or clear the session board")
         lines.append(f"{prefix}--wait SECONDS <command>  how long to wait for the board; 0 fails "
                      "at once")
         lines.append(f"{prefix}--owner NAME <command>    label this run in the lock")
@@ -1859,7 +1861,7 @@ def applied(flags):
 
 def main():
     flags, argv = pop_globals(sys.argv[1:])
-    if not argv:
+    if not argv or argv[0] == "console":
         session_flags.update(flags)
         sys.exit(console())
     if argv[0] in ("--version", "-V"):
