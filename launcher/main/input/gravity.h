@@ -5,7 +5,7 @@
  *
  * Each update clamps time, predicts down from the bias-corrected gyro, corrects
  * with trusted acceleration (or recovers after rejection), subtracts down to
- * find linear acceleration, and learns gyro bias while still.
+ * find linear acceleration, and integrates accepted correction error into bias.
  *
  * tilt stays beside it for now.
  */
@@ -18,34 +18,44 @@
 #include "math/linear/vec3f.h"
 
 /* Ours, tuned on the board. */
-#define GRAVITY_TAU_S        0.5F
+#define GRAVITY_TAU_S                     0.5F
 /* Ours: full trust within this departure from one g. */
-#define GRAVITY_TRUST_FULL_G 0.1F
+#define GRAVITY_TRUST_FULL_G              0.1F
 /* Android WindowOrientationListener's acceleration tolerance, 4 m/s^2. */
-#define GRAVITY_TRUST_NONE_G 0.4F
+#define GRAVITY_TRUST_NONE_G              0.4F
 /* Madgwick, x-io Fusion's default acceleration rejection. */
-#define GRAVITY_REJECT_DEG   10.0F
+#define GRAVITY_REJECT_DEG                10.0F
 /* cos(GRAVITY_REJECT_DEG), precomputed with the angle in degrees. */
-#define GRAVITY_REJECT_COS   0.984807753F
+#define GRAVITY_REJECT_COS                0.984807753F
 /* Madgwick, x-io Fusion's default recovery trigger period, in milliseconds. */
-#define GRAVITY_RECOVER_MS   5000U
-/* M0 board capture: gyro noise peaks at +/-4 deg/s. */
-#define GRAVITY_STILL_DPS    6.0F
-/* Ours: maximum linear acceleration while learning gyro bias. */
-#define GRAVITY_STILL_G      0.05F
-/* Ours: gyro bias learning time constant. */
-#define GRAVITY_BIAS_TAU_S   5.0F
+#define GRAVITY_RECOVER_MS                5000U
+/* QMI8658C datasheet, Table 8: board-level initial gyro offset tolerance. */
+#define GRAVITY_GYRO_OFFSET_TOL_DPS       10.0F
+/* QMI8658C datasheet, Table 8: gyro offset temperature coefficient. */
+#define GRAVITY_GYRO_OFFSET_TCO_DPS_PER_C 0.05F
+/* QMI8658C datasheet, Table 8: from the 25 C reference to the 85 C operating limit. */
+#define GRAVITY_GYRO_TEMP_SPAN_C          60.0F
+/* QMI8658C datasheet, Table 8: initial offset plus temperature drift, in deg/s. */
+#define GRAVITY_BIAS_MAX_DPS                                                                                           \
+    (GRAVITY_GYRO_OFFSET_TOL_DPS + GRAVITY_GYRO_OFFSET_TCO_DPS_PER_C * GRAVITY_GYRO_TEMP_SPAN_C)
+/* Ours: target 2% settling time for a datasheet-sized gyro offset. */
+#define GRAVITY_BIAS_SETTLE_S 20.0F
+/* Mahony et al.: theta' = b_err - theta/TAU, b_err' = -KI*theta gives
+ * s^2 + s/TAU + KI = 0. For KI << 1/(4*TAU^2), the slow pole is about
+ * -KI*TAU. Four slow time constants give 2% settling: KI = 4/(TAU*SETTLE).
+ * KI is in 1/s^2; at our settings 0.4 < 1/(4*TAU^2), so the loop is overdamped. */
+#define GRAVITY_BIAS_KI       (4.0F / (GRAVITY_TAU_S * GRAVITY_BIAS_SETTLE_S))
 /* From tilt's TILT_FREE_FALL_PCT, in g. */
-#define GRAVITY_FREE_FALL_G  0.3F
+#define GRAVITY_FREE_FALL_G   0.3F
 /* From tilt's TILT_MAX_DT_MS, in milliseconds. */
-#define GRAVITY_MAX_DT_MS    100U
+#define GRAVITY_MAX_DT_MS     100U
 
 typedef struct {
     /* Unit vector, screen axes: x right, y down, z out. */
     vec3f_t down;
     /* Last acceleration minus down, in g. */
     vec3f_t linear;
-    /* Gyro bias in deg/s, learned only while still. */
+    /* Gyro bias in deg/s, learned only from accepted acceleration. */
     vec3f_t gyro_bias;
     /* Accel rejection time; past GRAVITY_RECOVER_MS the next nonzero reading is adopted. */
     uint32_t distrust_ms;
