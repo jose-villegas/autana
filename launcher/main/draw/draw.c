@@ -77,10 +77,11 @@ draw_pixel(int x, int y, gfx_color_t color) {
     }
 }
 
-/* One pixel of a line. */
+/* One pixel of a line already clipped to the surface's clip; only the
+ * target's own rows remain to check. */
 static void
 plot(const gfx_surface_t* state, int x, int y, gfx_color_t color, unsigned flags) {
-    if (!recti_contains(state->clip, x, y) || !gfx_target_row_range_overlaps(state->target, y, y + 1)) {
+    if (!gfx_target_row_range_overlaps(state->target, y, y + 1)) {
         return;
     }
     gfx_color_t* const dst = &gfx_target_row(state->target, y)[x];
@@ -119,22 +120,19 @@ walk(const gfx_surface_t* state, int x0, int y0, int x1, int y1, gfx_color_t col
     }
 }
 
-/* Box intersects clip, marked once. Overestimating costs bus time;
- * underestimating leaves stale. */
+/* Clipped endpoints lie inside the clip, so every pixel between them does,
+ * and their box is the dirty region, marked once. Overestimating costs bus
+ * time; underestimating leaves stale. */
 static void
 line_walk(const gfx_surface_t* state, int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
     if (!gfx_clip_segment(&state->clip, &x0, &y0, &x1, &y1)) {
         return;
     }
 
-    const recti_t box = recti_intersect(
-        recti_from_edges(mathi_min(x0, x1), mathi_min(y0, y1), mathi_max(x0, x1) + 1, mathi_max(y0, y1) + 1),
-        state->clip);
-
     walk(state, x0, y0, x1, y1, color, flags);
 
-    if (state->marks && !recti_is_empty(box)) {
-        gfx_mark_drawn(box.x, box.y, box.w, box.h);
+    if (state->marks) {
+        gfx_mark_drawn(mathi_min(x0, x1), mathi_min(y0, y1), mathi_abs(x1 - x0) + 1, mathi_abs(y1 - y0) + 1);
     }
 }
 
