@@ -21,6 +21,35 @@
                         {OPS##_zero(), OPS##_zero(), OPS##_zero(), OPS##_one()}}};                                     \
     }                                                                                                                  \
                                                                                                                        \
+    /* p' = (dot(x, p - eye), dot(y, p - eye), dot(z, p - eye)), w' = 1. */                                            \
+    static inline P##_t P##_view_from_axes(V##_t x, V##_t y, V##_t z, V##_t eye) {                                     \
+        return (P##_t){{{x.x, x.y, x.z, OPS##_neg(V##_dot(x, eye))},                                                   \
+                        {y.x, y.y, y.z, OPS##_neg(V##_dot(y, eye))},                                                   \
+                        {z.x, z.y, z.z, OPS##_neg(V##_dot(z, eye))},                                                   \
+                        {OPS##_zero(), OPS##_zero(), OPS##_zero(), OPS##_one()}}};                                     \
+    }                                                                                                                  \
+                                                                                                                       \
+    /* diag(s.x, s.y, s.z, 1) * m. */                                                                                  \
+    static inline P##_t P##_scale_rows(P##_t m, V##_t s) {                                                             \
+        const T scales[] = {s.x, s.y, s.z};                                                                            \
+        for (int r = 0; r < 3; r++) {                                                                                  \
+            for (int c = 0; c < 4; c++) {                                                                              \
+                m.m[r][c] = OPS##_mul(m.m[r][c], scales[r]);                                                           \
+            }                                                                                                          \
+        }                                                                                                              \
+        return m;                                                                                                      \
+    }                                                                                                                  \
+                                                                                                                       \
+    /* m * diag(s.x, s.y, s.z, 1): scales columns 0 through 2; translation unchanged. */                               \
+    static inline P##_t P##_scale_columns(P##_t m, V##_t s) {                                                          \
+        for (int r = 0; r < 3; r++) {                                                                                  \
+            m.m[r][0] = OPS##_mul(m.m[r][0], s.x);                                                                     \
+            m.m[r][1] = OPS##_mul(m.m[r][1], s.y);                                                                     \
+            m.m[r][2] = OPS##_mul(m.m[r][2], s.z);                                                                     \
+        }                                                                                                              \
+        return m;                                                                                                      \
+    }                                                                                                                  \
+                                                                                                                       \
     static inline T P##_row_dot_column3(const T* row, const P##_t* b, int c) {                                         \
         return V##_dot((V##_t){row[0], row[1], row[2]}, (V##_t){b->m[0][c], b->m[1][c], b->m[2][c]});                  \
     }                                                                                                                  \

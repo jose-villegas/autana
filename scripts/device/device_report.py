@@ -24,6 +24,7 @@ from pathlib import Path
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+import autana_config
 from device_capture import RESULT_RE, results, SELFTEST_COMPLETE_RE  # noqa: E402
 
 # The line a RUNSUITE ends with, read here for the board (device.py) and for
@@ -58,6 +59,19 @@ FRAME_TIME_PHASE_RE = re.compile(
 BUDGET_TABLE_HEADER = "| Test | Budget (us) | Measured (us) | Headroom | Status |"
 
 REPORTER_TIMEOUT_SECONDS = 120
+
+
+def records_root():
+    """Where a session's log and manifest are written.
+
+    The project's `records` setting names it, for anyone who keeps their
+    device history elsewhere. Without one, records land in this checkout's
+    own gitignored .records/device, self-contained, and nothing a commit
+    can pick up by accident."""
+    named = autana_config.load().get("records")
+    if named:
+        return autana_config.path_value(named)
+    return Path(__file__).resolve().parents[2] / ".records" / "device"
 
 
 def read_capture_text(path):
