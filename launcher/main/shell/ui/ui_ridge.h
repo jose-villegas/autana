@@ -11,6 +11,9 @@
 
 #define RIDGE_CURVE_POINTS GFX_HEIGHT
 #define RIDGE_CURVE_VIEW_H GFX_WIDTH
+/* Columns repainted and dirtied together, 16 wide: one PSRAM cache line of
+ * RGB565. */
+#define RIDGE_COLUMN_GROUP 16
 
 /* Read the curve from the engine pack and keep that pack mounted; only the first call reads. An unavailable or invalid curve releases the pack and draws a level ridge. */
 void ui_ridge_load(void);

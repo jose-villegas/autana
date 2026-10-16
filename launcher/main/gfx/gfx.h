@@ -7,16 +7,16 @@
 #include <stdint.h>
 
 #include "build/build_variant.h"
-#include "gfx/target/gfx_box.h"
 #include "gfx/target/gfx_color.h"
 #include "gfx/target/gfx_target.h"
+#include "math/geometry/recti.h"
 
 /* The panel's size as literals, so no caller needs the board's headers; the
  * present side asserts them against the board's own values. */
 #define GFX_WIDTH             368
 #define GFX_HEIGHT            448
 #define GFX_FRAMEBUFFER_BYTES (GFX_WIDTH * GFX_HEIGHT * 2u)
-#define GFX_SCREEN_BOX        ((gfx_box_t){0, 0, GFX_WIDTH, GFX_HEIGHT})
+#define GFX_SCREEN_RECT       ((recti_t){0, 0, GFX_WIDTH, GFX_HEIGHT})
 
 _Static_assert(sizeof(gfx_color_t) == 2, "framebuffer pixels must be two bytes");
 
@@ -49,7 +49,7 @@ gfx_color_t* gfx_framebuffer(void);
  * current clip and dirty-marking policy. */
 typedef struct {
     gfx_target_t target;
-    gfx_box_t clip;
+    recti_t clip;
     bool marks;
 } gfx_surface_t;
 
@@ -58,7 +58,7 @@ typedef struct {
 bool gfx_draw_begin(gfx_surface_t* out);
 
 /* The caller intersects the box with the screen before setting it. */
-void gfx_set_clip_box(gfx_box_t clip);
+void gfx_set_clip(recti_t clip);
 
 /* gfx_present() sends only what changed: the panel holds the rest in its own
  * GRAM, and sending is almost the whole cost of a frame. Every draw_* call

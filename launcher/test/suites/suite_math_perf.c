@@ -17,19 +17,20 @@
 #include "test_cleanup.h"
 #include "unity.h"
 
-#define MATH_BENCH_BATCH            64
-#define MATH_BENCH_WARM_REPS        31
-#define MATH_BENCH_COLD_REPS        9
-#define MATH_BENCH_ICOUNT_CALLS     4096
-#define MATH_BENCH_ICOUNT_BATCHES   3
-#define MATH_BENCH_DOT_SIZE         256
-#define MATH_BENCH_INPUT_PERIOD     17
-#define MATH_BENCH_INPUT_SCALE      0.125F
-#define MATH_BENCH_LERP_NUMERATOR   3
-#define MATH_BENCH_LERP_DENOMINATOR 8
-#define MATH_BENCH_LERP_F           ((float)MATH_BENCH_LERP_NUMERATOR / MATH_BENCH_LERP_DENOMINATOR)
-#define MATH_BENCH_LERP_X           (MATHX_ONE * MATH_BENCH_LERP_NUMERATOR / MATH_BENCH_LERP_DENOMINATOR)
-#define MATH_BENCH_WRAP_LIMIT       1
+#define MATH_BENCH_BATCH             64
+#define MATH_BENCH_WARM_REPS         31
+#define MATH_BENCH_COLD_REPS         9
+#define MATH_BENCH_ICOUNT_CALLS      4096
+#define MATH_BENCH_ICOUNT_INFO_CALLS 256
+#define MATH_BENCH_ICOUNT_BATCHES    3
+#define MATH_BENCH_DOT_SIZE          256
+#define MATH_BENCH_INPUT_PERIOD      17
+#define MATH_BENCH_INPUT_SCALE       0.125F
+#define MATH_BENCH_LERP_NUMERATOR    3
+#define MATH_BENCH_LERP_DENOMINATOR  8
+#define MATH_BENCH_LERP_F            ((float)MATH_BENCH_LERP_NUMERATOR / MATH_BENCH_LERP_DENOMINATOR)
+#define MATH_BENCH_LERP_X            (MATHX_ONE * MATH_BENCH_LERP_NUMERATOR / MATH_BENCH_LERP_DENOMINATOR)
+#define MATH_BENCH_WRAP_LIMIT        1
 
 typedef struct {
     vec3f_t af, bf;
@@ -269,21 +270,25 @@ test_math_instruction_rows(void) {
     fixture_t* f = fixture();
     for (size_t j = 0; j < sizeof rows / sizeof *rows; j++) {
         const row_t* row = &rows[j];
-        if (!row->ratchet) {
-            continue;
-        }
         row->fn(f);
+        const int calls = row->ratchet ? MATH_BENCH_ICOUNT_CALLS : MATH_BENCH_ICOUNT_INFO_CALLS;
+        int reps = 0;
         int64_t us = 0;
         for (int batch = 0; batch < MATH_BENCH_ICOUNT_BATCHES; batch++) {
             const int64_t start = timing_now_us();
-            for (int call = 0; call < MATH_BENCH_ICOUNT_CALLS; call++) {
-                row->fn(f);
-            }
-            us += timing_now_us() - start;
+            int64_t elapsed_us;
+            do {
+                for (int call = 0; call < calls; call++) {
+                    row->fn(f);
+                }
+                reps += calls;
+                elapsed_us = timing_now_us() - start;
+            } while (!row->ratchet && !perf_icount_long_enough(elapsed_us, 1));
+            us += elapsed_us;
             timing_yield();
         }
-        perf_icount_report(row->icount_name, us, MATH_BENCH_ICOUNT_BATCHES * MATH_BENCH_ICOUNT_CALLS,
-                           MATH_BENCH_ICOUNT_BATCHES);
+        perf_icount_report_row(row->ratchet ? PERF_ICOUNT_PREFIX : PERF_ICOUNT_INFO_PREFIX, row->icount_name, us, reps,
+                               MATH_BENCH_ICOUNT_BATCHES);
     }
     release();
     suite_clear_test_cleanup();

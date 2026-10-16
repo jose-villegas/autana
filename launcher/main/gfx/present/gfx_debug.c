@@ -145,7 +145,7 @@ static inline gfx_color_t (*overlay_leaf_save(void))
  * rather than static: too big for app_main()'s stack, and a permanent
  * .bss reservation fares no better given this repo's history of
  * static-growth OOMs. */
-dirty_leaf_rect_t* leaf_rect_scratch;
+recti_t* leaf_rect_scratch;
 
 void
 gfx_set_debug_overlay(bool on) {
@@ -323,12 +323,12 @@ mark_strip_overlay(gfx_color_t* slot, int row) {
         }
     }
     if (leaf_overlay_on) {
-        const int n =
-            dirty_leaf_rects(row, 0, y, GFX_WIDTH, y + STRIP_HEIGHT, leaf_rect_scratch, LEAF_RECTS_PER_ROW_MAX);
+        const int n = dirty_leaf_rects(row, recti_from_edges(0, y, GFX_WIDTH, y + STRIP_HEIGHT), leaf_rect_scratch,
+                                       LEAF_RECTS_PER_ROW_MAX);
         for (int i = 0; i < n; i++) {
-            const dirty_leaf_rect_t* r = &leaf_rect_scratch[i];
-            gfx_color_t* at = slot + (size_t)(r->y0 - y) * GFX_WIDTH + r->x0;
-            mark_rect_border(at, GFX_WIDTH, r->x1 - r->x0, r->y1 - r->y0, gfx_rgb(0x00FF00));
+            const recti_t* r = &leaf_rect_scratch[i];
+            gfx_color_t* at = slot + (size_t)(r->y - y) * GFX_WIDTH + r->x;
+            mark_rect_border(at, GFX_WIDTH, r->w, r->h, gfx_rgb(0x00FF00));
         }
     }
 }
@@ -342,9 +342,9 @@ save_overlay_borders(int y, int leaf_n) {
         }
     }
     for (int i = 0; i < leaf_n; i++) {
-        const dirty_leaf_rect_t* r = &leaf_rect_scratch[i];
-        gfx_color_t* at = fb + (size_t)r->y0 * GFX_WIDTH + r->x0;
-        save_border(at, GFX_WIDTH, r->x1 - r->x0, r->y1 - r->y0, overlay_leaf_save()[i]);
+        const recti_t* r = &leaf_rect_scratch[i];
+        gfx_color_t* at = fb + (size_t)r->y * GFX_WIDTH + r->x;
+        save_border(at, GFX_WIDTH, r->w, r->h, overlay_leaf_save()[i]);
     }
 }
 
@@ -357,9 +357,9 @@ draw_overlay_borders(int y, int leaf_n) {
         }
     }
     for (int i = 0; i < leaf_n; i++) {
-        const dirty_leaf_rect_t* r = &leaf_rect_scratch[i];
-        gfx_color_t* at = fb + (size_t)r->y0 * GFX_WIDTH + r->x0;
-        mark_rect_border(at, GFX_WIDTH, r->x1 - r->x0, r->y1 - r->y0, gfx_rgb(0x00FF00));
+        const recti_t* r = &leaf_rect_scratch[i];
+        gfx_color_t* at = fb + (size_t)r->y * GFX_WIDTH + r->x;
+        mark_rect_border(at, GFX_WIDTH, r->w, r->h, gfx_rgb(0x00FF00));
     }
 }
 
@@ -367,9 +367,9 @@ draw_overlay_borders(int y, int leaf_n) {
 static void
 restore_overlay_borders(int y, int leaf_n) {
     for (int i = leaf_n - 1; i >= 0; i--) {
-        const dirty_leaf_rect_t* r = &leaf_rect_scratch[i];
-        gfx_color_t* at = fb + (size_t)r->y0 * GFX_WIDTH + r->x0;
-        restore_border(at, GFX_WIDTH, r->x1 - r->x0, r->y1 - r->y0, overlay_leaf_save()[i]);
+        const recti_t* r = &leaf_rect_scratch[i];
+        gfx_color_t* at = fb + (size_t)r->y * GFX_WIDTH + r->x;
+        restore_border(at, GFX_WIDTH, r->w, r->h, overlay_leaf_save()[i]);
     }
     if (debug_overlay_on) {
         for (int col = GRID_COLS - 1; col >= 0; col--) {
@@ -387,7 +387,8 @@ send_row_with_overlays(int row, int y) {
     /* leaf_rect_scratch never NULL: gfx_set_leaf_overlay() allocates */
     int leaf_n = 0;
     if (leaf_overlay_on) {
-        leaf_n = dirty_leaf_rects(row, 0, y, GFX_WIDTH, y + STRIP_HEIGHT, leaf_rect_scratch, LEAF_RECTS_PER_ROW_MAX);
+        leaf_n = dirty_leaf_rects(row, recti_from_edges(0, y, GFX_WIDTH, y + STRIP_HEIGHT), leaf_rect_scratch,
+                                  LEAF_RECTS_PER_ROW_MAX);
     }
     if (!debug_overlay_on && leaf_n == 0) {
         return false;
@@ -433,12 +434,12 @@ mark_band_overlay(gfx_color_t* buf, int row0, int height) {
         const int row_first = row0 / STRIP_HEIGHT;
         const int row_last = (row0 + height - 1) / STRIP_HEIGHT;
         for (int row = row_first; row <= row_last; row++) {
-            const int n =
-                dirty_leaf_rects(row, 0, row0, GFX_WIDTH, row0 + height, leaf_rect_scratch, LEAF_RECTS_PER_ROW_MAX);
+            const int n = dirty_leaf_rects(row, recti_from_edges(0, row0, GFX_WIDTH, row0 + height), leaf_rect_scratch,
+                                           LEAF_RECTS_PER_ROW_MAX);
             for (int i = 0; i < n; i++) {
-                const dirty_leaf_rect_t* r = &leaf_rect_scratch[i];
-                gfx_color_t* at = buf + (size_t)(r->y0 - row0) * GFX_WIDTH + r->x0;
-                mark_rect_border(at, GFX_WIDTH, r->x1 - r->x0, r->y1 - r->y0, gfx_rgb(0x00FF00));
+                const recti_t* r = &leaf_rect_scratch[i];
+                gfx_color_t* at = buf + (size_t)(r->y - row0) * GFX_WIDTH + r->x;
+                mark_rect_border(at, GFX_WIDTH, r->w, r->h, gfx_rgb(0x00FF00));
             }
         }
     }

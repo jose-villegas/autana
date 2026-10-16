@@ -12,6 +12,7 @@ SPEC = importlib.util.spec_from_file_location(
 bench = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = bench
 SPEC.loader.exec_module(bench)
+from icount_gate import INFO_MARKER
 
 
 class MathBenchTableTests(unittest.TestCase):
@@ -44,6 +45,16 @@ class MathBenchTableTests(unittest.TestCase):
             bench.render_table(self.rows, {}, {"math_unknown_f": 1}, {})
         with self.assertRaisesRegex(ValueError, "unexpected"):
             bench.parse_capture(self.capture.replace("sinf", "unknown"), self.rows)
+
+    def test_info_counts_and_device_only_instructions(self):
+        rows, fpu = bench.read_fpu(bench.DATA / "math_bench_fpu_ops.txt")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "baseline.txt"
+            path.write_text(f"{self.batch}\tmath_sinf_f\t{INFO_MARKER}\n")
+            table = bench.render_table(rows, {}, bench.load_baseline(path), fpu)
+        self.assertIn("| sinf | f | - | - | - | 1.0 |", table)
+        for label in ("mathf_recip", "mathf_rsqrt"):
+            self.assertIn(f"| {label} | f | - | - | - | {bench.DEVICE_ONLY_INSTRUCTION} |", table)
 
     def test_capture_identity_noise_and_placeholder(self):
         self.assertEqual((None, {}), bench.parse_capture(bench.PLACEHOLDER + "\n", self.rows))

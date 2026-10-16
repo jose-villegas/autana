@@ -5,7 +5,7 @@ tracker, and the present path. A caller includes the header for what it does:
 
 | Header | What it declares |
 | --- | --- |
-| [`gfx/gfx.h`](../launcher/main/gfx/gfx.h) | the framebuffer: its size, `gfx_init()`, `gfx_framebuffer()`; draw's surface (`gfx_draw_begin()`, `gfx_set_clip_box()`) and dirty marking |
+| [`gfx/gfx.h`](../launcher/main/gfx/gfx.h) | the framebuffer: its size, `gfx_init()`, `gfx_framebuffer()`; draw's surface (`gfx_draw_begin()`, `gfx_set_clip()`) and dirty marking |
 | [`draw/draw.h`](../launcher/main/draw/draw.h) | primitives, text and clipping |
 | [`gfx/present/gfx_present.h`](../launcher/main/gfx/present/gfx_present.h) | present, the panel clock, heal |
 | [`gfx/present/gfx_mode.h`](../launcher/main/gfx/present/gfx_mode.h) | modes, readback, the indexed image and its LUTs |

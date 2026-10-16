@@ -103,8 +103,8 @@ typedef struct {
 } icon_fill_ctx_t;
 
 static void
-icon_emit(void* ctx, int x, int y, int w, int h) {
-    draw_rect(x, y, w, h, ((const icon_fill_ctx_t*)ctx)->color);
+icon_emit(void* ctx, recti_t rect) {
+    draw_rect(rect.x, rect.y, rect.w, rect.h, ((const icon_fill_ctx_t*)ctx)->color);
 }
 
 /* Mirrors ui.c's ui_draw_icon(), with `box` mapped through `t` the way

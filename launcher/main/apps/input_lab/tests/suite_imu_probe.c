@@ -314,7 +314,7 @@ test_empty_fit(void) {
     imu_probe_average_t* poses = calloc(IMU_PROBE_POSE_COUNT, sizeof *poses);
     TEST_ASSERT_NOT_NULL(poses);
     const imu_probe_fit_t fit = imu_probe_fit(poses, 0);
-    const vec3i_t values[] = {fit.offset_mg, fit.scale_ppm, fit.gyro_mdps};
+    const vec3i_t values[] = {imu_probe_mg(fit.calib.offset), fit.scale_ppm, fit.gyro_mdps};
     for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
         TEST_ASSERT_EQUAL_INT(0, values[i].x);
         TEST_ASSERT_EQUAL_INT(0, values[i].y);
@@ -360,7 +360,22 @@ test_synthetic_fit(void) {
             }
         }
         round->fit = imu_probe_fit(round->poses, q);
-        const int got_off[] = {round->fit.offset_mg.x, round->fit.offset_mg.y, round->fit.offset_mg.z};
+        const vec3i_t stored = {offset[0] / 2, offset[1] / 2, offset[2] / 2};
+        const vec3i_t saved = imu_probe_saved_offset(stored, &round->fit);
+        TEST_ASSERT_EQUAL_INT(stored.x + offset[0], saved.x);
+        TEST_ASSERT_EQUAL_INT(stored.y + offset[1], saved.y);
+        TEST_ASSERT_EQUAL_INT(stored.z + offset[2], saved.z);
+        const vec3i_t raw = vec3i_add(saved, (vec3i_t){0, INPUT_ACCEL_ONE_G, 0});
+        const imu_calib_t calib = {.offset = saved};
+        const vec3i_t corrected = imu_calib_apply(&calib, raw);
+        TEST_ASSERT_EQUAL_INT(0, corrected.x);
+        TEST_ASSERT_EQUAL_INT(INPUT_ACCEL_ONE_G, corrected.y);
+        TEST_ASSERT_EQUAL_INT(0, corrected.z);
+        TEST_ASSERT_EQUAL_INT(offset[0], round->fit.calib.offset.x);
+        TEST_ASSERT_EQUAL_INT(offset[1], round->fit.calib.offset.y);
+        TEST_ASSERT_EQUAL_INT(offset[2], round->fit.calib.offset.z);
+        const vec3i_t offset_mg = imu_probe_mg(round->fit.calib.offset);
+        const int got_off[] = {offset_mg.x, offset_mg.y, offset_mg.z};
         const int got_scale[] = {round->fit.scale_ppm.x, round->fit.scale_ppm.y, round->fit.scale_ppm.z};
         for (int axis = 0; axis < 3; axis++) {
             TEST_ASSERT_EQUAL_INT((int)mathf_round_i32((float)offset[axis] * IMU_PROBE_MILLI / INPUT_ACCEL_ONE_G),
@@ -371,7 +386,55 @@ test_synthetic_fit(void) {
         TEST_ASSERT_EQUAL_INT((int)mathf_round_i32(13.0F * IMU_PROBE_MILLI / 3), round->fit.gyro_mdps.x);
         TEST_ASSERT_EQUAL_INT((int)mathf_round_i32(-26.0F * IMU_PROBE_MILLI / 3), round->fit.gyro_mdps.y);
         TEST_ASSERT_EQUAL_INT(13 * IMU_PROBE_MILLI, round->fit.gyro_mdps.z);
+        for (int pose = 0; pose < IMU_PROBE_POSE_COUNT; pose++) {
+            for (int axis = 0; axis < 3; axis++) {
+                round->poses[pose].acceleration[axis] -= (int64_t)offset[axis] * round->poses[pose].n;
+            }
+        }
+        const imu_probe_fit_t repeated = imu_probe_fit(round->poses, q);
+        TEST_ASSERT_TRUE(vec3i_equal((vec3i_t){0}, repeated.calib.offset));
+        TEST_ASSERT_TRUE(vec3i_equal(saved, imu_probe_saved_offset(saved, &repeated)));
         free(round);
+    }
+}
+
+static void
+test_fit_fractional_pose_means(void) {
+    const int positive_pose_sum_bias = 8;
+    const int other_pose_sum_bias = 1;
+    imu_probe_average_t* poses = calloc(IMU_PROBE_POSE_COUNT, sizeof *poses);
+    TEST_ASSERT_NOT_NULL(poses);
+    for (int sign = -1; sign <= 1; sign += 2) {
+        for (int pose = 0; pose < IMU_PROBE_POSE_COUNT; pose++) {
+            const vec3i_t direction = imu_probe_pose_direction(pose, 0);
+            const int axes[] = {direction.x, direction.y, direction.z};
+            poses[pose].n = 3;
+            for (int axis = 0; axis < 3; axis++) {
+                poses[pose].acceleration[axis] =
+                    ((int64_t)axes[axis] * INPUT_ACCEL_ONE_G * poses[pose].n)
+                    + ((axes[axis] > 0 ? positive_pose_sum_bias : other_pose_sum_bias) * sign);
+            }
+        }
+        const imu_probe_fit_t fit = imu_probe_fit(poses, 0);
+        const vec3i_t expected = {2 * sign, 2 * sign, 2 * sign};
+        TEST_ASSERT_EQUAL_MEMORY(&expected, &fit.calib.offset, sizeof expected);
+    }
+    free(poses);
+}
+
+static void
+test_saved_offset_exceeds_limit(void) {
+    for (int axis = 0; axis < 3; axis++) {
+        for (int sign = -1; sign <= 1; sign += 2) {
+            int32_t axes[3] = {0};
+            axes[axis] = sign * (IMU_CALIB_OFFSET_MAX - 1);
+            const vec3i_t stored = {axes[0], axes[1], axes[2]};
+            axes[axis] = sign * 2;
+            const imu_probe_fit_t fit = {.calib = {.offset = {axes[0], axes[1], axes[2]}}};
+            TEST_ASSERT_TRUE(imu_calib_valid(stored));
+            TEST_ASSERT_TRUE(imu_calib_valid(fit.calib.offset));
+            TEST_ASSERT_FALSE(imu_calib_valid(imu_probe_saved_offset(stored, &fit)));
+        }
     }
 }
 
@@ -399,12 +462,12 @@ test_complete_round(void) {
         TEST_ASSERT_FALSE(round->active);
         TEST_ASSERT_EQUAL_INT(IMU_PROBE_POSE_COUNT, round->pose);
         TEST_ASSERT_EQUAL_INT(IMU_PROBE_SCALE_ONE, round->fit.scale_ppm.x);
-        TEST_ASSERT_EQUAL_INT(0, round->fit.offset_mg.x);
+        TEST_ASSERT_EQUAL_INT(0, imu_probe_mg(round->fit.calib.offset).x);
         const input_motion_t sample = fixture();
         TEST_ASSERT_EQUAL_INT(IMU_PROBE_SCALE_ONE, round->fit.scale_ppm.y);
         TEST_ASSERT_EQUAL_INT(IMU_PROBE_SCALE_ONE, round->fit.scale_ppm.z);
-        TEST_ASSERT_EQUAL_INT(0, round->fit.offset_mg.y);
-        TEST_ASSERT_EQUAL_INT(0, round->fit.offset_mg.z);
+        TEST_ASSERT_EQUAL_INT(0, imu_probe_mg(round->fit.calib.offset).y);
+        TEST_ASSERT_EQUAL_INT(0, imu_probe_mg(round->fit.calib.offset).z);
         TEST_ASSERT_EQUAL_INT(10 * IMU_PROBE_MILLI, round->fit.gyro_mdps.x);
         TEST_ASSERT_EQUAL_INT(-10 * IMU_PROBE_MILLI, round->fit.gyro_mdps.y);
         TEST_ASSERT_EQUAL_INT(0, round->fit.gyro_mdps.z);
@@ -432,6 +495,8 @@ run_imu_probe_suite(void) {
     RUN_TEST(test_empty_pose_ignored);
     RUN_TEST(test_synthetic_fit);
     RUN_TEST(test_complete_round);
+    RUN_TEST(test_fit_fractional_pose_means);
+    RUN_TEST(test_saved_offset_exceeds_limit);
 }
 
 SUITE_REGISTER(run_imu_probe_suite);

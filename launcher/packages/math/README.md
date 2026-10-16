@@ -1,7 +1,7 @@
 # math
 
 The engine's maths library: scalar operations per number type, vectors to
-transforms over them, and motion (springs, orbiting a target). It depends on
+transforms over them, shapes, and motion (springs, orbiting a target). It depends on
 nothing but the C library and libm, so every layer of the firmware, the host
 tests, the tools and the editor build it. It may carry functions nothing calls
 yet, so the API covers what the types imply rather than only what today's
@@ -11,6 +11,7 @@ callers use.
 |---|---|
 | `include/math/scalar/` | Scalar operations per number type (`f` float, `i` int, `s` int16, `x` Q16.16), shift-based fixed point, trig tables, a random generator |
 | `include/math/linear/` | Vectors, quaternions, 4x4 matrices and transforms, each one template instantiated per number type; [docs/math/README.md](../../../docs/math/README.md) is the reference |
+| `include/math/geometry/` | Shapes and their queries: `recti`, the half-open integer rectangle every layer clips, dirties and lays out with |
 | `include/math/motion/` | Integer springs on a fixed tick, orbiting a target |
 | `src/` | The few functions that are not inline |
 | `tests/` | Its suites, run by both runners like every other suite |
@@ -41,6 +42,7 @@ header's opening comment; `--check` verifies it.
 <!-- generated: package-headers check: python launcher/tools/gen/shared_helpers.py --check -->
 | Header | Purpose |
 |---|---|
+| [include/math/geometry/recti.h](include/math/geometry/recti.h) | recti: a half-open integer rectangle, x and y its top-left corner and w by h its size, so it holds the points x &lt;= px &lt; x + w, y &lt;= py &lt; y + h. |
 | [include/math/linear/mat3f.h](include/math/linear/mat3f.h) | Row-major linear matrices and their normal transforms. |
 | [include/math/linear/mat4_template.h](include/math/linear/mat4_template.h) | mat4_template: a 4x4 matrix indexed m[row][col], acting on column vectors, for one number type; see docs/math/README.md for the macro arguments. |
 | [include/math/linear/mat4f.h](include/math/linear/mat4f.h) | mat4f: a 4x4 matrix of a float. |

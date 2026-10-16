@@ -69,7 +69,7 @@ set_target_properties(editor_layout_bake PROPERTIES
 if(MSVC)
     target_compile_options(editor_document PRIVATE /W4 /permissive-)
 else()
-    target_compile_options(editor_document PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(editor_document PRIVATE -Wall -Wextra -Wpedantic -Werror=pedantic)
 endif()
 
 if(EDITOR_BUILD_GUI)
@@ -176,6 +176,7 @@ if(BUILD_TESTING)
     )
     add_executable(editor_layout_bake_c_test tests/layout_bake_c_test.c "${EDITOR_SAMPLE_HEADER}")
     target_include_directories(editor_layout_bake_c_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}" ${LAUNCHER_DIR}/main)
+    target_link_libraries(editor_layout_bake_c_test PRIVATE math)
     add_test(NAME editor_layout_bake_c COMMAND editor_layout_bake_c_test)
 
     add_executable(editor_layout_document_test tests/layout_document_test.cpp)

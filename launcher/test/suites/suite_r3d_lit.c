@@ -19,6 +19,7 @@
 #include "display/viewport.h"
 #include "gfx/gfx.h"
 #include "gfx/target/gfx_color.h"
+#include "math/linear/transformf.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
@@ -914,7 +915,7 @@ test_a_plane_behind_a_wall_is_hidden_and_one_reaching_past_it_is_not(void) {
     draw_wall(c, 0.9f);
     const int32_t wall = c->depth[0];
     const r3d_span_target_t t = r3d_span_target(c->color, c->depth, c->w, 0, c->h);
-    const r3d_span_box_t box = {5, 15, 3, 9};
+    const recti_t box = {5, 3, 10, 6};
     const int32_t step = 1 << R3D_DEPTH_SHIFT;
     TEST_ASSERT_EQUAL_INT32(wall - 1, r3d_span_plane_bound((wall - 10) * step, step, 0, box));
     TEST_ASSERT_TRUE(r3d_span_hidden(&t, r3d_span_plane_bound((wall - 10) * step, step, 0, box), box));
@@ -924,14 +925,14 @@ test_a_plane_behind_a_wall_is_hidden_and_one_reaching_past_it_is_not(void) {
     TEST_ASSERT_FALSE(r3d_span_hidden(&t, r3d_span_plane_bound((wall - 5) * step, step, 0, box), box));
     TEST_ASSERT_FALSE(r3d_span_hidden(&t, wall + 1, box));
     /* One pixel of the box farther than the bound is enough. */
-    c->depth[(box.y1 - 1) * c->w + (box.x1 - 1)] = (uint16_t)(wall - 2);
+    c->depth[(recti_bottom(box) - 1) * c->w + (recti_right(box) - 1)] = (uint16_t)(wall - 2);
     TEST_ASSERT_FALSE(r3d_span_hidden(&t, wall - 1, box));
 }
 
 /* A start clamped up from below zero lifts its span by the shortfall. */
 static void
 test_a_plane_below_zero_at_a_corner_is_bounded_by_its_lift(void) {
-    const r3d_span_box_t box = {0, 11, 0, 1};
+    const recti_t box = {0, 0, 11, 1};
     const int32_t step = 1 << R3D_DEPTH_SHIFT;
     TEST_ASSERT_EQUAL_INT32(10, r3d_span_plane_bound(-3 * step, step, 0, box));
     TEST_ASSERT_EQUAL_INT32(R3D_DEPTH_NEAREST, r3d_span_plane_bound(INT32_MAX, INT32_MAX, INT32_MAX, box));
@@ -947,15 +948,14 @@ test_a_plane_is_in_range_exactly_when_every_centre_of_its_box_is(void) {
     int outside = 0;
     for (int i = 0; i < 20000; i++) {
         const int x0 = (int)(next_random(&state) % 20u), y0 = (int)(next_random(&state) % 20u);
-        const r3d_span_box_t box = {x0, x0 + 1 + (int)(next_random(&state) % 12u), y0,
-                                    y0 + 1 + (int)(next_random(&state) % 12u)};
+        const recti_t box = {x0, y0, 1 + (int)(next_random(&state) % 12u), 1 + (int)(next_random(&state) % 12u)};
         const int32_t top = (int32_t)(next_random(&state) % 320u) - 32;
         const int32_t dx = (int32_t)(next_random(&state) % 41u) - 20;
         const int32_t dy = (int32_t)(next_random(&state) % 41u) - 20;
         bool every = true;
-        for (int y = box.y0; y < box.y1; y++) {
-            for (int x = box.x0; x < box.x1; x++) {
-                const int32_t v = top + (dx * (x - box.x0)) + (dy * (y - box.y0));
+        for (int y = box.y; y < recti_bottom(box); y++) {
+            for (int x = box.x; x < recti_right(box); x++) {
+                const int32_t v = top + (dx * (x - box.x)) + (dy * (y - box.y));
                 every = every && v >= 0 && v <= 255;
             }
         }
@@ -967,7 +967,7 @@ test_a_plane_is_in_range_exactly_when_every_centre_of_its_box_is(void) {
     TEST_ASSERT_GREATER_THAN_INT(1000, inside);
     TEST_ASSERT_GREATER_THAN_INT(1000, outside);
     /* Past any 32-bit sum at the far corner. */
-    const r3d_span_box_t wide = {0, 1000, 0, 1000};
+    const recti_t wide = {0, 0, 1000, 1000};
     TEST_ASSERT_FALSE(r3d_span_plane_in_range(0, INT32_MAX / 2, INT32_MAX / 2, INT32_MAX, wide));
 }
 
@@ -1906,6 +1906,19 @@ expect_census_draws_match_at_any_size(raster_t* raster) {
     }
 }
 
+/* The census tests' second instance of a mesh, moved so it keeps its own
+ * list; the caller frees it. On the heap so the deepest draw chain does not
+ * carry it on the stack. */
+static mat4f_t*
+census_moved(void) {
+    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_set_position(&pose, (vec3f_t){-120.0F, 40.0F, 0.0F});
+    mat4f_t* model = malloc(sizeof(*model));
+    TEST_ASSERT_NOT_NULL(model);
+    *model = transformf_compute_matrix(&pose);
+    return model;
+}
+
 /* Culled once at one size and drawn at another, two instances (the second
  * moved, so each keeps its own list): the same picture, depth and survivors
  * as raster_draw() at the drawn size, from eyes that cull different parts. */
@@ -1913,10 +1926,11 @@ static void
 test_a_census_list_draws_what_raster_draw_draws_at_any_size(void) {
     parts_t* const p = parts_buffer(&shared_parts);
     build_wall_and_stack(p);
-    const r3d_placement_t moved = {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {-120.0f, 40.0f, 0.0f}};
-    const r3d_instance_t instances[] = {{&p->mesh, NULL}, {&p->mesh, &moved}};
+    mat4f_t* const moved = census_moved();
+    const r3d_instance_t instances[] = {{&p->mesh, NULL}, {&p->mesh, moved}};
     raster_t raster = census_raster(instances, 2);
     expect_census_draws_match_at_any_size(&raster);
+    free(moved);
 }
 
 /* Each instance's list is as long as its own mesh's clusters: three
@@ -1929,12 +1943,13 @@ test_a_census_list_steps_by_each_instances_own_mesh(void) {
     parts_t* const floor = parts_buffer(&other_parts);
     build_floor_and_rects(floor);
     TEST_ASSERT_TRUE(wall->mesh.cluster_count != floor->mesh.cluster_count);
-    const r3d_placement_t moved = {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {-120.0f, 40.0f, 0.0f}};
-    const r3d_instance_t instances[] = {{&floor->mesh, NULL}, {&wall->mesh, NULL}, {&wall->mesh, &moved}};
+    mat4f_t* const moved = census_moved();
+    const r3d_instance_t instances[] = {{&floor->mesh, NULL}, {&wall->mesh, NULL}, {&wall->mesh, moved}};
     raster_t raster = census_raster(instances, 3);
     TEST_ASSERT_EQUAL_UINT32(3 + floor->mesh.cluster_count + (2 * wall->mesh.cluster_count),
                              (uint32_t)raster_culled_length(&raster));
     expect_census_draws_match_at_any_size(&raster);
+    free(moved);
 }
 
 /* A destination the raster's own size is a copy of it, taking

@@ -434,9 +434,11 @@ typedef struct {
 } ui_draw_icon_ctx_t;
 
 static void
-ui_draw_icon_emit(void* ctx_, int x, int y, int w, int h) {
+ui_draw_icon_emit(void* ctx_, recti_t rect) {
     const ui_draw_icon_ctx_t* dc = ctx_;
-    mu_draw_rect(dc->c, mu_rect(dc->r.x + x, dc->r.y + y, w, h), dc->color);
+    rect.x += dc->r.x;
+    rect.y += dc->r.y;
+    mu_draw_rect(dc->c, ui_mu_from_recti(rect), dc->color);
 }
 
 void
