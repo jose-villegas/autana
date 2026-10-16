@@ -14,6 +14,7 @@ evidence, the per-app table is a convenience. See device.py's `report`
 subcommand and its call from run_suite().
 """
 
+from datetime import datetime
 import gzip
 import json
 import re
@@ -25,6 +26,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config
+from device_lock import board_label
 from device_capture import RESULT_RE, results, SELFTEST_COMPLETE_RE  # noqa: E402
 
 # The line a RUNSUITE ends with, read here for the board (device.py) and for
@@ -371,6 +373,7 @@ def build_report_markdown(capture_path, index_path):
 
     lines = ["# Device Capture Report", "", f"- Capture: `{capture_path}`"]
     if entry:
+        lines.append(f"- Board: `{board_label(entry['board']) if entry.get('board') else 'unknown'}`")
         lines.append(f"- Suite: `{entry.get('suite') or 'n/a'}`")
         if entry.get("test_filter"):
             lines.append("- Test filter: `" + ", ".join(entry["test_filter"]) + "` - only the "
@@ -396,23 +399,28 @@ def build_report_markdown(capture_path, index_path):
                      "suite/build/worktree unknown")
     lines.append("")
 
-    lines.append("## Suite Results")
-    lines.append("")
-    passed, failed, failures = parse_suite_results(text)
-    if passed or failed:
-        lines.append(f"PASS: {passed}  FAIL: {failed}")
-        lines.append("")
-        if failures:
-            lines.append("### Failures")
-            lines.append("")
-            lines.append("| Test | Message |")
-            lines.append("|---|---|")
-            for name, message in failures:
-                lines.append(f"| `{name}` | {message} |")
-            lines.append("")
+    if entry and entry.get("command") == "selftest":
+        markdown, _, _ = selftest_markdown(results(text), text, capture_path,
+                                          datetime.fromisoformat(entry["started_at"]))
+        lines.append(markdown)
     else:
-        lines.append("No `PASS`/`FAIL` result lines found in this capture.")
+        lines.append("## Suite Results")
         lines.append("")
+        passed, failed, failures = parse_suite_results(text)
+        if passed or failed:
+            lines.append(f"PASS: {passed}  FAIL: {failed}")
+            lines.append("")
+            if failures:
+                lines.append("### Failures")
+                lines.append("")
+                lines.append("| Test | Message |")
+                lines.append("|---|---|")
+                for name, message in failures:
+                    lines.append(f"| `{name}` | {message} |")
+                lines.append("")
+        else:
+            lines.append("No `PASS`/`FAIL` result lines found in this capture.")
+            lines.append("")
 
     targets, summary_unmet = parse_perf_targets(text)
     if targets or summary_unmet is not None:
