@@ -28,7 +28,7 @@ jobs:
         # An absolute Git for Windows path cannot resolve to WSL's bash.exe through PATH.
         shell: '"C:\Program Files\Git\bin\bash.exe" --noprofile --norc -eo pipefail {0}'
     env:
-      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         # Process-scoped overrides disable the global LFS hook and filters without writing machine Git config.
@@ -50,8 +50,12 @@ jobs:
 
       - name: Warn about concurrent GPU work
         run: |
+          PY=$(. scripts/lib/python.sh && find_python)
           for workflow in bakes-gpu.yml doc-images-gpu.yml; do
-            if ! count=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?status=in_progress&per_page=1" --jq '.total_count'); then
+            if ! count=$(curl --fail --silent --show-error \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?status=in_progress&per_page=1" \
+              | "$PY" -c 'import json, sys; print(int(json.load(sys.stdin)["total_count"]))'); then
               echo "::warning::Could not check $workflow activity"
             elif [ "$count" -gt 0 ]; then
               echo "::warning::$workflow is in progress; Board CI continues"
@@ -68,7 +72,8 @@ jobs:
           autana selftest || status=$?
           if [ "$status" -ne 0 ]; then exit "$status"; fi
           autana buildid --json > .records/device/running-build.json
-          python - <<'PY'
+          PY=$(. scripts/lib/python.sh && find_python)
+          "$PY" - <<'PY'
           import json
           from pathlib import Path
           expected = Path('launcher/build.diag/build_id.txt').read_text(encoding='ascii').strip()
@@ -92,7 +97,8 @@ jobs:
       - name: Summarize the device capture
         if: always() && steps.device.outcome != 'skipped' && steps.device.outputs.skipped != 'true'
         run: |
-          python - <<'PY'
+          PY=$(. scripts/lib/python.sh && find_python)
+          "$PY" - <<'PY'
           import os
           import sys
           from pathlib import Path
@@ -118,6 +124,9 @@ jobs:
                   summary.write(f"Board: {board_label(entry['board'])}\n\n")
                   summary.write(f"Build ID: `{entry['build_id']}`\n\n")
                   summary.write(f'Suites by Unity source file: {passed} passed, {failed} failed.\n\n')
+                  for result in results(text):
+                      if result['status'] == 'FAIL':
+                          summary.write(f"- FAIL `{result['name']}` ({result['file']}:{result['line']}): {result['message'] or ''}\n")
                   if not SELFTEST_COMPLETE_RE.search(text):
                       summary.write('Partial capture: self-test did not complete.\n')
           PY
