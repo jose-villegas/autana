@@ -19,6 +19,7 @@
 #include "display/viewport.h"
 #include "gfx/gfx.h"
 #include "gfx/target/gfx_color.h"
+#include "math/linear/transformf.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
@@ -1906,6 +1907,19 @@ expect_census_draws_match_at_any_size(raster_t* raster) {
     }
 }
 
+/* The census tests' second instance of a mesh, moved so it keeps its own
+ * list; the caller frees it. On the heap so the deepest draw chain does not
+ * carry it on the stack. */
+static mat4f_t*
+census_moved(void) {
+    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_set_position(&pose, (vec3f_t){-120.0F, 40.0F, 0.0F});
+    mat4f_t* model = malloc(sizeof(*model));
+    TEST_ASSERT_NOT_NULL(model);
+    *model = transformf_compute_matrix(&pose);
+    return model;
+}
+
 /* Culled once at one size and drawn at another, two instances (the second
  * moved, so each keeps its own list): the same picture, depth and survivors
  * as raster_draw() at the drawn size, from eyes that cull different parts. */
@@ -1913,10 +1927,11 @@ static void
 test_a_census_list_draws_what_raster_draw_draws_at_any_size(void) {
     parts_t* const p = parts_buffer(&shared_parts);
     build_wall_and_stack(p);
-    const r3d_placement_t moved = {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {-120.0f, 40.0f, 0.0f}};
-    const r3d_instance_t instances[] = {{&p->mesh, NULL}, {&p->mesh, &moved}};
+    mat4f_t* const moved = census_moved();
+    const r3d_instance_t instances[] = {{&p->mesh, NULL}, {&p->mesh, moved}};
     raster_t raster = census_raster(instances, 2);
     expect_census_draws_match_at_any_size(&raster);
+    free(moved);
 }
 
 /* Each instance's list is as long as its own mesh's clusters: three
@@ -1929,12 +1944,13 @@ test_a_census_list_steps_by_each_instances_own_mesh(void) {
     parts_t* const floor = parts_buffer(&other_parts);
     build_floor_and_rects(floor);
     TEST_ASSERT_TRUE(wall->mesh.cluster_count != floor->mesh.cluster_count);
-    const r3d_placement_t moved = {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {-120.0f, 40.0f, 0.0f}};
-    const r3d_instance_t instances[] = {{&floor->mesh, NULL}, {&wall->mesh, NULL}, {&wall->mesh, &moved}};
+    mat4f_t* const moved = census_moved();
+    const r3d_instance_t instances[] = {{&floor->mesh, NULL}, {&wall->mesh, NULL}, {&wall->mesh, moved}};
     raster_t raster = census_raster(instances, 3);
     TEST_ASSERT_EQUAL_UINT32(3 + floor->mesh.cluster_count + (2 * wall->mesh.cluster_count),
                              (uint32_t)raster_culled_length(&raster));
     expect_census_draws_match_at_any_size(&raster);
+    free(moved);
 }
 
 /* A destination the raster's own size is a copy of it, taking

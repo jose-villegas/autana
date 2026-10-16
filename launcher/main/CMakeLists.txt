@@ -20,6 +20,7 @@ set(app_srcs
     "gfx/present/gfx_mode.c"
     "gfx/present/gfx_present.c"
     "input/touch.c"
+    "input/imu_calib.c"
     "input/touch_calib.c"
     "input/touch_point.c"
     "input/touch_fsm.c"

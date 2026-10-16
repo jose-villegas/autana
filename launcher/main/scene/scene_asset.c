@@ -11,7 +11,7 @@
 
 enum { AT_VERSION = 0, ENTRY_ALIGNMENT = 4 };
 
-_Static_assert(sizeof(scene_placement_t) == 48 && sizeof(scene_asset_renderer_t) == 36
+_Static_assert(sizeof(scene_asset_transform_t) == 48 && sizeof(scene_asset_renderer_t) == 36
                    && sizeof(scene_asset_camera_t) == 16 && sizeof(scene_asset_light_t) == 20
                    && sizeof(scene_asset_skinned_renderer_t) == 100 && sizeof(scene_asset_animator_t) == 12
                    && sizeof(scene_asset_settings_t) == 20,

@@ -9,6 +9,7 @@
 #include "unity.h"
 
 #define PERF_ICOUNT_PREFIX                "ICOUNT"
+#define PERF_ICOUNT_INFO_PREFIX           "ICOUNT_INFO"
 #define PERF_ICOUNT_TOLERANCE_DENOMINATOR 200
 
 /* A row needs at least MARGIN times the tolerance denominator us per timed
@@ -21,9 +22,14 @@ perf_icount_long_enough(int64_t us, int batches) {
 }
 
 static inline void
-perf_icount_report(const char* name, int64_t us, int reps, int batches) {
-    printf(PERF_ICOUNT_PREFIX " %s us=%" PRId64 " reps=%d\n", name, us, reps);
+perf_icount_report_row(const char* prefix, const char* name, int64_t us, int reps, int batches) {
+    printf("%s %s us=%" PRId64 " reps=%d\n", prefix, name, us, reps);
     TEST_ASSERT_TRUE(perf_icount_long_enough(us, batches));
+}
+
+static inline void
+perf_icount_report(const char* name, int64_t us, int reps, int batches) {
+    perf_icount_report_row(PERF_ICOUNT_PREFIX, name, us, reps, batches);
 }
 
 typedef struct {
