@@ -220,9 +220,7 @@ The parity tool compares the torch and library forward images for every pose,
 reporting channel differences and pixels differing by more than 1/255.
 The manifold-quad test allows 2e-4 in RGB 0..1; flat colour corners can differ.
 Repeat `--poses` for more paths; `--clear` is the scene background divided by 255.
-
-![Library and torch appearance forward models](../../../docs/images/render/appearance-parity.png)
-![Enlarged forward-model differences](../../../docs/images/render/appearance-parity.crops.png)
+Larger differences sit on silhouette edges where the two antialiasers pick a different edge.
 
 The fit runs on a CUDA GPU in its own environment with
 [requirements.txt](requirements.txt).
