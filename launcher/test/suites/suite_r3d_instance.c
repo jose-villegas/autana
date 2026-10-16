@@ -1,6 +1,6 @@
 /*
  * Portable suite: a raster drawing several mesh instances, each at its own
- * baked placement, into one picture. Each instance is one unit quad facing the
+ * baked model, into one picture. Each instance is one unit quad facing the
  * camera, so where a transform put it is read straight off the picture:
  * a pixel is the quad's colour, or the clear colour.
  */
@@ -14,6 +14,7 @@
 #include "suites.h"
 #include "unity.h"
 
+#include "math/linear/transformf.h"
 #include "r3d_quad_mesh.h"
 #include "render/r3d_pipeline.h"
 #include "render/raster.h"
@@ -70,10 +71,13 @@ draw(const r3d_instance_t* instances, int count, void** scratch) {
     return raster_color(&raster);
 }
 
-/* A placement that scales every axis by `scale` and moves by (x, 0, z). */
-static r3d_placement_t
+/* A model that scales every axis by `scale` and moves by (x, 0, z). */
+static mat4f_t
 placed(float x, float z, float scale) {
-    return (r3d_placement_t){{{scale, 0, 0}, {0, scale, 0}, {0, 0, scale}}, {x, 0, z}};
+    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_set_position(&pose, (vec3f_t){x, 0, z});
+    transformf_set_scale(&pose, (vec3f_t){scale, scale, scale});
+    return transformf_compute_matrix(&pose);
 }
 
 /* The quad is 3.2 pixels from its centre in each direction at depth 10 and
@@ -84,7 +88,7 @@ pixel(const uint16_t* color, float units_from_center) {
 }
 
 static void
-test_a_mesh_with_no_placement_draws_where_it_is(void) {
+test_a_mesh_with_no_model_draws_where_it_is(void) {
     quad_t red;
     make_quad(&red, 255, 0, 0, 0);
     void* scratch;
@@ -96,7 +100,7 @@ test_a_mesh_with_no_placement_draws_where_it_is(void) {
 }
 
 static void
-test_two_instances_appear_at_their_own_placements(void) {
+test_two_instances_appear_at_their_own_models(void) {
     quad_t red;
     quad_t green;
     make_quad(&red, 255, 0, 0, 0);
@@ -110,8 +114,8 @@ test_two_instances_appear_at_their_own_placements(void) {
     free(alone);
     TEST_ASSERT_NOT_EQUAL_HEX16(red_pixel, green_pixel);
 
-    const r3d_placement_t left = placed(-3.0F, 0.0F, 1.0F);
-    const r3d_placement_t right = placed(3.0F, 0.0F, 1.0F);
+    const mat4f_t left = placed(-3.0F, 0.0F, 1.0F);
+    const mat4f_t right = placed(3.0F, 0.0F, 1.0F);
     const r3d_instance_t both[] = {{&red.mesh, &left}, {&green.mesh, &right}};
     void* scratch;
     const uint16_t* color = draw(both, 2, &scratch);
@@ -140,8 +144,8 @@ test_position_ticks_keep_a_placed_instance_in_model_units(void) {
         ticks.node.hi[axis] *= POSITION_SCALE;
     }
     ticks.mesh.position_scale = POSITION_SCALE;
-    const r3d_placement_t placement = placed(3.0F, 0.0F, 1.0F);
-    const r3d_instance_t reference = {&unit.mesh, &placement}, scaled = {&ticks.mesh, &placement};
+    const mat4f_t model = placed(3.0F, 0.0F, 1.0F);
+    const r3d_instance_t reference = {&unit.mesh, &model}, scaled = {&ticks.mesh, &model};
     void* reference_scratch;
     void* scaled_scratch;
     const uint16_t* expected = draw(&reference, 1, &reference_scratch);
@@ -155,7 +159,7 @@ test_position_ticks_keep_a_placed_instance_in_model_units(void) {
 
 static void
 test_every_lens_operation_keeps_the_affine_bottom_row(void) {
-    const r3d_placement_t placement = placed(3.0F, -2.0F, 0.5F);
+    const mat4f_t model = placed(3.0F, -2.0F, 0.5F);
     for (int quarter = 0; quarter < 4; quarter++) {
         r3d_lens_t lens;
         memset(&lens, 0x5a, sizeof lens);
@@ -165,7 +169,7 @@ test_every_lens_operation_keeps_the_affine_bottom_row(void) {
             if (operation == 1) {
                 r3d_lens_fit(&lens, SIZE / 2, SIZE);
             } else if (operation == 2) {
-                r3d_lens_place(&lens, &placement, 8);
+                r3d_lens_place(&lens, &model, 8);
             }
             for (int c = 0; c < 4; c++) {
                 TEST_ASSERT_EQUAL_FLOAT(c == 3 ? 1.0F : 0.0F, lens.m.m[3][c]);
@@ -179,7 +183,7 @@ test_a_scale_widens_an_instance_about_its_position(void) {
     quad_t red;
     make_quad(&red, 255, 0, 0, 0);
     /* 1.5 units from the centre is outside the unit quad and inside a scale of 2. */
-    const r3d_placement_t doubled_at = placed(0.0F, 0.0F, 2.0F);
+    const mat4f_t doubled_at = placed(0.0F, 0.0F, 2.0F);
     const r3d_instance_t plain = {&red.mesh, NULL};
     const r3d_instance_t doubled = {&red.mesh, &doubled_at};
     void* scratch;
@@ -194,7 +198,9 @@ test_a_rotation_turns_an_instance_about_its_position(void) {
     quad_t offset; /* centred 3 units to the right in its own space */
     make_quad(&offset, 0, 0, 255, 3);
     /* A half turn about y, baked: x and z negated. */
-    const r3d_placement_t half_turn = {{{-1, 0, 0}, {0, 1, 0}, {0, 0, -1}}, {0, 0, 0}};
+    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_set_rotation(&pose, (quatf_t){0, 1, 0, 0});
+    const mat4f_t half_turn = transformf_compute_matrix(&pose);
     const r3d_instance_t as_built = {&offset.mesh, NULL};
     const r3d_instance_t turned = {&offset.mesh, &half_turn};
     void* scratch;
@@ -214,7 +220,7 @@ test_a_nearer_instance_covers_a_farther_one_whichever_is_drawn_first(void) {
     quad_t green;
     make_quad(&red, 255, 0, 0, 0);
     make_quad(&green, 0, 255, 0, 0);
-    const r3d_placement_t nearer = placed(0.0F, -2.0F, 1.0F);
+    const mat4f_t nearer = placed(0.0F, -2.0F, 1.0F);
     const r3d_instance_t near_first[] = {{&green.mesh, &nearer}, {&red.mesh, NULL}};
     const r3d_instance_t far_first[] = {{&red.mesh, NULL}, {&green.mesh, &nearer}};
     void* scratch;
@@ -242,8 +248,8 @@ test_a_mesh_s_bounding_sphere_is_centred_on_its_box_and_reaches_its_furthest_ver
 
 void
 suite_r3d_instance(void) {
-    RUN_TEST(test_a_mesh_with_no_placement_draws_where_it_is);
-    RUN_TEST(test_two_instances_appear_at_their_own_placements);
+    RUN_TEST(test_a_mesh_with_no_model_draws_where_it_is);
+    RUN_TEST(test_two_instances_appear_at_their_own_models);
     RUN_TEST(test_position_ticks_keep_a_placed_instance_in_model_units);
     RUN_TEST(test_every_lens_operation_keeps_the_affine_bottom_row);
     RUN_TEST(test_a_scale_widens_an_instance_about_its_position);

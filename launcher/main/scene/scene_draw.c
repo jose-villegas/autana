@@ -73,14 +73,14 @@ active_camera(void) {
     return &active.scene->cameras[active.camera];
 }
 
-/* Rebuilds the placement of each renderer whose entity moved. */
+/* Rebuilds the model of each renderer whose entity moved. */
 static void
 update_placements(scene_t* scene) {
     for (int i = 0; i < scene->renderer_count; i++) {
         scene_renderer_t* r = &scene->renderers[i];
         if ((scene->flags[r->entity] & SCENE_FLAG_DIRTY) != 0) {
-            r->placement = r3d_placement_from(&scene->locals[r->entity]);
-            r->placed = !scene_transform_is_identity(&r->placement);
+            r->model = transformf_compute_matrix(&scene->locals[r->entity]);
+            r->placed = !scene_transform_is_identity(&r->model);
         }
     }
     for (int i = 0; i < scene->asset.entity_count; i++) {
@@ -95,7 +95,7 @@ fill_instances(scene_t* scene) {
     for (int i = 0; i < scene->renderer_count; i++) {
         const scene_renderer_t* r = &scene->renderers[i];
         if ((scene->flags[r->entity] & SCENE_FLAG_ENABLED) != 0) {
-            scene->instances[count++] = (r3d_instance_t){&r->mesh, r->placed ? &r->placement : NULL};
+            scene->instances[count++] = (r3d_instance_t){&r->mesh, r->placed ? &r->model : NULL};
         }
     }
     return count;
