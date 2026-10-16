@@ -157,7 +157,10 @@ visible_label_length(const char* label) {
 static void
 open_window(recti_t r) {
     char name[UI_FACE_NAME_MAX];
-    snprintf(name, sizeof name, UI_FACE_WINDOW_NAME_FORMAT, window_ordinal++);
+    const int length = snprintf(name, sizeof name, UI_FACE_WINDOW_NAME_FORMAT, window_ordinal++);
+    if (length < 0 || (size_t)length >= sizeof name) {
+        return;
+    }
     id_count = 0;
     mu_Context* ctx = ui_context();
     UI_FACE_COST_BEGIN(backend_from);
@@ -291,7 +294,10 @@ dropdown(recti_t r, const char* label, int* index, const char* const* names, con
     }
     const mu_Id id = widget_id(label);
     char name[UI_FACE_NAME_MAX];
-    snprintf(name, sizeof name, UI_FACE_DROPDOWN_NAME_FORMAT, id);
+    const int length = snprintf(name, sizeof name, UI_FACE_DROPDOWN_NAME_FORMAT, id);
+    if (length < 0 || (size_t)length >= sizeof name) {
+        return false;
+    }
     const bool enabled = !is_disabled();
     UI_FACE_COST_BEGIN(backend_from);
     const int picked =
