@@ -759,8 +759,17 @@ group_rows(const int16_t* lo, const int16_t* hi, int x0, int x1, int* y0, int* y
     }
 }
 
-/* Repaints one row of a column group; each changed pixel widens the edges
- * of what changed, [*left, *right) by [*top, *bottom). */
+/* Widens the edges of what changed, [*left, *right) by [*top, *bottom), to
+ * hold pixel (x, y). */
+static inline __attribute__((always_inline)) void
+note_changed(int* left, int* right, int* top, int* bottom, int x, int y) {
+    *left = x < *left ? x : *left;
+    *right = x + 1 > *right ? x + 1 : *right;
+    *top = y < *top ? y : *top;
+    *bottom = y + 1;
+}
+
+/* Repaints one row of a column group, noting each pixel that changes. */
 static inline __attribute__((always_inline)) void
 repaint_group_row(gfx_color_t* row, const int16_t* lo, const int16_t* hi, int x0, int x1, int y, int* left, int* right,
                   int* top, int* bottom) {
@@ -770,10 +779,7 @@ repaint_group_row(gfx_color_t* row, const int16_t* lo, const int16_t* hi, int x0
             const gfx_color_t color = column_pixel(x, y);
             if (row[x] != color) {
                 row[x] = color;
-                *left = x < *left ? x : *left;
-                *right = x + 1 > *right ? x + 1 : *right;
-                *top = y < *top ? y : *top;
-                *bottom = y + 1;
+                note_changed(left, right, top, bottom, x, y);
             }
         }
     }
