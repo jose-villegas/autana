@@ -136,8 +136,8 @@ GPU images live under `docs/images/render/gpu/`; CPU checks leave that stage
 to its own `--check`. GPU `--check` verifies the saved full run and its input
 fingerprint without fitting again. `--smoke` writes only scratch data.
 `--stage gpu --inputs` prints that fingerprint and runs nothing; it needs
-a Python 3.12 or later (standard library only), a C compiler and the
-tree, with no GPU, LFS objects or bakes.
+Python meeting `scripts/lib/python-min-version` (standard library only), a C
+compiler and the tree, with no GPU, LFS objects or bakes.
 It is a SHA-256 over what the stage's output is made from, each found from the
 code rather than listed:
 

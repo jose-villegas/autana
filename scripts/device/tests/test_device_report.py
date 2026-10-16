@@ -527,6 +527,26 @@ class BuildReportMarkdownTests(unittest.TestCase):
         self.assertIn("PERF TARGET SUMMARY: 1 unmet", markdown)
         self.assertIn("no worktree recorded", markdown)
 
+    def test_selftest_report_identifies_board_and_reports_failures_and_partial_capture(self):
+        for complete in (False, True):
+            with self.subTest(complete=complete), tempfile.TemporaryDirectory() as directory:
+                capture = Path(directory) / "capture.log"
+                capture.write_text("main/selftest.c:42:test_budget:FAIL: over budget\n"
+                                   "main/selftest.c:43:test_pixels:PASS\n"
+                                   + ("SELFTEST_COMPLETE failures=1 elapsed_ms=100\n" if complete else ""))
+                index = write_index(directory, [{
+                    "capture_path": str(capture), "command": "selftest",
+                    "board": "AA:BB:CC:DD:EE:FF", "build_id": "test-diag",
+                    "started_at": "2026-01-02T03:04:05+00:00",
+                }])
+                markdown = device_report.build_report_markdown(capture, index)
+            self.assertIn("Board: `EEFF (AA:BB:CC:DD:EE:FF)`", markdown)
+            self.assertIn("Build: `test-diag`", markdown)
+            self.assertIn("2 tests, 1 passed, 1 failed", markdown)
+            self.assertIn("`main/selftest.c:42`", markdown)
+            self.assertIn("over budget", markdown)
+            self.assertEqual("report as partial" in markdown, not complete)
+
     def test_a_capture_with_no_manifest_entry_says_so(self):
         with tempfile.TemporaryDirectory() as directory:
             capture = Path(directory) / "capture.log"

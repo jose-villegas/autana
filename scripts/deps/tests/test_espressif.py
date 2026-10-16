@@ -130,6 +130,10 @@ class ResolutionTests(unittest.TestCase):
         (self.tools / 'python_env/idf6.1_py3.14_env').rmdir()
         fallback = self.root / '.espressif'
         (fallback / 'python_env/idf6.1_py3.9_env').mkdir(parents=True)
+        if os.name == 'nt':
+            python = fallback / 'python_env/idf6.1_py3.9_env/Scripts/python.exe'
+            python.parent.mkdir()
+            python.touch()
         self.assertEqual(self.resolve(True)[1], fallback)
 
     def test_missing_tools_message_is_install_only(self):
@@ -138,6 +142,57 @@ class ResolutionTests(unittest.TestCase):
             self.resolve(True)
         self.assertNotIn('git clone', str(failure.exception))
         self.assertIn(str(self.idf), str(failure.exception))
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows interpreter requirement')
+    def test_env_requires_venv_executable(self):
+        env = dict(os.environ, IDF_PATH=str(self.idf), IDF_TOOLS_PATH=str(self.tools))
+        env.pop('IDF_PYTHON_ENV_PATH', None)
+        result = subprocess.run([sys.executable, espressif.__file__, 'env', str(self.project)],
+                                env=env, capture_output=True, text=True, timeout=30)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('install.ps1 esp32s3', result.stderr)
+        self.assertIn(str(self.idf), result.stderr)
+        self.assertNotIn('git clone', result.stderr)
+        self.assertEqual(result.stdout, '')
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows interpreter selection')
+    def test_device_python_outside_project_uses_tooling_pin(self):
+        sys.path.insert(0, str(espressif.PROJECT_ROOT / 'scripts/device/tests'))
+        from fake_esp_idf import stub_esp_idf
+        stub_esp_idf(self.idf, '')
+        (self.project / 'launcher/CMakeLists.txt').touch()
+        outside = self.root / 'outside'
+        outside.mkdir()
+        env = {key: value for key, value in os.environ.items()
+               if key not in ('IDF_PATH', 'IDF_TOOLS_PATH', 'IDF_PYTHON_ENV_PATH')}
+        env[espressif.autana_config.PROJECT_ENV] = str(outside)
+        source = """
+import functools
+from pathlib import Path
+import sys
+from unittest import mock
+sys.path.insert(0, sys.argv[1])
+import device
+import espressif
+with mock.patch.object(espressif, 'PROJECT_ROOT', Path(sys.argv[2])), \\
+     mock.patch.object(Path, 'home', return_value=Path(sys.argv[3])), \\
+     mock.patch.object(espressif, 'persistent_environment', return_value=None), \\
+     mock.patch.object(espressif, 'find_idf',
+                       functools.partial(espressif.find_idf, persistent=lambda key: None)):
+    print(device.python_with_pyserial())
+"""
+        result = subprocess.run(
+            [sys.executable, '-c', source, str(espressif.PROJECT_ROOT / 'scripts/device'),
+             str(self.project), str(self.root)],
+            cwd=outside, env=env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        expected = self.tools / 'python_env/idf6.1_py3.14_env/Scripts/python.exe'
+        self.assertEqual(Path(result.stdout.strip()), expected)
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows interpreter requirement')
+    def test_require_idf_rejects_venv_without_executable(self):
+        with self.assertRaisesRegex(ValueError, 'No tools installed'):
+            self.resolve(True)
 
     def python_with_env(self, candidate):
         """idf_python() with the paired tools' 6.1 python present and
