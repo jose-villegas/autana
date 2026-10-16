@@ -101,15 +101,15 @@ def _version_key(path):
     return tuple(int(g) for g in m.groups()) if m else (0, 0, 0, 0)
 
 
-def idf_python():
+def idf_python(*, required=False, project=None):
     """`IDF_PYTHON_ENV_PATH` (set once ESP-IDF's export script is sourced)
     when paired with the selected install, then a matching checkout version
-    under espressif_tools_root(), then this interpreter."""
+    under espressif_tools_root(), then this interpreter unless required."""
     # POSIX exports put ESP-IDF's Python on PATH before launching this process.
     if os.name != "nt":
         return sys.executable
-    checkout, tools = find_idf()
-    project = idf_project()
+    checkout, tools = find_idf(project)
+    project = Path(project or idf_project())
     pinned_project = (project / IDF_PIN).is_file()
     if pinned_project and (checkout / "tools/cmake/version.cmake").is_file():
         major, minor = checkout_version(checkout)
@@ -125,7 +125,13 @@ def idf_python():
             return str(candidate)
     pattern = str(tools / "python_env" / env_pattern / "Scripts" / "python.exe")
     found = sorted(glob.glob(pattern), key=_version_key)
-    return found[-1] if found else sys.executable
+    if found:
+        return found[-1]
+    if required:
+        pin = idf_pin(project) if pinned_project else idf_pin()
+        raise ValueError(f"No tools installed for ESP-IDF at {checkout}. Run:\n" +
+                         install_commands(pin, checkout=checkout))
+    return sys.executable
 
 
 REGISTRY_ENV = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
@@ -279,8 +285,11 @@ def main():
         verb = sys.argv[1]
         if verb == "env":
             checkout, tools = require_idf(project)
+            python_dir = Path(idf_python(required=True, project=project)).parent if os.name == "nt" else None
             print("IDF_PATH=" + shlex.quote(str(checkout)))
             print("IDF_TOOLS_PATH=" + shlex.quote(str(tools)))
+            if python_dir is not None:
+                print("IDF_SHIM_PYTHON_DIR=" + shlex.quote(str(python_dir)))
         elif verb == "tools":
             print(espressif_tools_root())
         elif verb == "note":

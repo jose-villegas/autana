@@ -1,7 +1,7 @@
 @echo off
 REM Run an ESP-IDF command with the environment it needs, and nothing else.
 REM
-REM   IDF_SHIM_DIR=<dir> IDF_SHIM_EXPORT=<export.bat> \
+REM   IDF_SHIM_DIR=<dir> IDF_SHIM_EXPORT=<export.bat> IDF_SHIM_PYTHON_DIR=<Scripts> \
 REM       cmd //c idf_shim.bat <command> [args...]
 REM
 REM This file exists for exactly one reason: ESP-IDF's idf_tools.py refuses to
@@ -26,7 +26,16 @@ REM Everything else - which commands to run, in what order, what to do when one
 REM fails - stays in the calling script, in POSIX sh. This is the only
 REM Windows-shaped file in the tooling.
 
+setlocal
 set MSYSTEM=
 cd /d "%IDF_SHIM_DIR%" || exit /b 1
-call "%IDF_SHIM_EXPORT%" >nul 2>&1 || exit /b 1
+REM Activation needs the paired Python before export.bat can set up PATH.
+set "PATH=%IDF_SHIM_PYTHON_DIR%;%PATH%"
+call "%IDF_SHIM_EXPORT%" >nul 2>&1 || goto environment_failed
+where idf.py >nul 2>&1 || goto environment_failed
 %*
+exit /b %errorlevel%
+
+:environment_failed
+echo ESP-IDF environment did not load. Check the selected installation. >&2
+exit /b 1

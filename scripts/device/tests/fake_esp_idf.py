@@ -16,6 +16,9 @@ def stub_esp_idf(stubs, idf_py_source):
     # One stub per platform: cmd would run a POSIX idf.py found first on
     # PATH through the .py file association instead of idf.py.bat.
     if os.name == "nt":
+        python = stubs.parent / "tools/python_env/idf6.1_py3.14_env/Scripts/python.exe"
+        python.parent.mkdir(parents=True, exist_ok=True)
+        python.touch()
         (stubs / "idf.py.bat").write_bytes(
             f'@"{sys.executable}" "{stubs / "idf_stub.py"}" %*\r\n'.encode())
         export = stubs / "export.bat"

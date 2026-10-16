@@ -139,6 +139,18 @@ class ResolutionTests(unittest.TestCase):
         self.assertNotIn('git clone', str(failure.exception))
         self.assertIn(str(self.idf), str(failure.exception))
 
+    @unittest.skipUnless(os.name == 'nt', 'Windows interpreter requirement')
+    def test_env_requires_venv_executable(self):
+        env = dict(os.environ, IDF_PATH=str(self.idf), IDF_TOOLS_PATH=str(self.tools))
+        env.pop('IDF_PYTHON_ENV_PATH', None)
+        result = subprocess.run([sys.executable, espressif.__file__, 'env', str(self.project)],
+                                env=env, capture_output=True, text=True, timeout=30)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('install.ps1 esp32s3', result.stderr)
+        self.assertIn(str(self.idf), result.stderr)
+        self.assertNotIn('git clone', result.stderr)
+        self.assertEqual(result.stdout, '')
+
     def python_with_env(self, candidate):
         """idf_python() with the paired tools' 6.1 python present and
         IDF_PYTHON_ENV_PATH naming `candidate`'s environment; returns both."""
