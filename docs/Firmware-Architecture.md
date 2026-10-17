@@ -81,8 +81,9 @@ flowchart TB
         end
     end
     subgraph Platform["platform"]
-        subgraph R9["input"]
+        subgraph R9["input and audio"]
             Input["input/<br/><i>touch, buttons, motion, gesture</i>"]:::hw
+            Audio["audio/<br/><i>codec, PCM output, microphone capture</i>"]:::hw
         end
         subgraph R10["display"]
             Display["display/<br/><i>viewport, orientation, panel clock</i>"]:::hw
@@ -113,6 +114,8 @@ flowchart TB
     R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> R10 --> R11 --> R12 --> R13 --> R14 --> R15 --> R16 --> R17
     Shell -.->|"calls through app/app.h"| Apps
 ```
+
+Audio layer: [path and board notes](notes/Audio.md).
 
 - **Includes are layer-qualified**: `"gfx/gfx.h"`, not `"gfx.h"`, even
   between two files in the same folder, so an app reaching past `ui` into
@@ -379,7 +382,7 @@ frame. A development build watches for that at runtime
 | Watched | Every heap allocation and free, through ESP-IDF's heap hooks (`CONFIG_HEAP_USE_HOOKS`, dev and diag defaults), keyed by the caller's address. Every `ESP_LOG*` line, through `esp_log_set_vprintf()`, keyed by its format string. A plain `printf()` is not watched on the board. |
 | Repeating | The same site in `FRAME_WATCH_REPEATS` of the last `FRAME_WATCH_WINDOW` frames (`profile/frame_watch.h`), a fraction of a second at this board's frame rate. Work done once when something happens, or a report every second or two, never qualifies. The `FRAME_WATCH_WARMUP` frames after an app is entered or left are counted but not judged. |
 | Warning | One line per site, `FRAME_WATCH <alloc\|free\|console> in <n> of <window> frames at 0x<address>`, repeated at most once per `FRAME_WATCH_REPORT_INTERVAL_US` while it lasts. `console` is a log line, and its site also shows its format. `scripts/device/device.py` parses this line, so its shape is fixed by a test. |
-| Counts | `autana debug framewatch`, and the `frame_watch` key of `autana screenshot`'s `.json`: the last frame's allocs, frees and log lines, and the sites repeating now. |
+| Counts | `autana framewatch`, and the `frame_watch` key of `autana screenshot`'s `.json`: the last frame's allocs, frees and log lines, and the sites repeating now. |
 
 A finding shows up in `autana monitor`: live in a terminal, and in a piped or
 scripted run as one of the few lines it echoes, with every heap site decoded

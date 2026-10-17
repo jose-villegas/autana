@@ -98,6 +98,7 @@ launcher/tools/results/
 # scratch output belongs under the app, not shared tools/, so it is
 # gitignored by the same pattern rather than listed per app.
 launcher/main/apps/*/tools/results/
+launcher/main/shell/apps/*/tools/results/
 
 # Cppcheck writes its parse dumps NEXT TO THE SOURCE, not into its own output
 # directory, so a MISRA run leaves these in main/ - see tools/quality/misra_check.sh.

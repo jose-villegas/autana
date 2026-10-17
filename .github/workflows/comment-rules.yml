@@ -96,6 +96,12 @@ jobs:
           STAGED_TEXT_GATE: "snapshot"
         run: python3 scripts/gates/check_doc_generated.py
 
+      - name: Audio tables match the committed capture
+        run: python3 launcher/tools/audio/audio_doc_tables.py --check
+
+      - name: Audio table generator tests
+        run: python3 -m unittest discover -s launcher/test -p test_audio_doc_tables.py
+
       - name: IRAM placement sites declare reasons and budgets
         run: python3 launcher/tools/build/memory_map.py --source-only
 

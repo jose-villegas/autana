@@ -421,7 +421,7 @@ the normal's length unless the plane is normalized. Points supplied to
 | `P_from_rows(&m, a, b, c, e)` | the plane $`a x + b y + c z + e \ge 0`$ of affine m's target, in m's source space | $`n_j = a m_{0j} + b m_{1j} + c m_{2j},\ d = a m_{03} + b m_{13} + c m_{23} + e`$ |
 | `P_frustum(&m, near_z, center, screen, out)` | near and screen side planes in affine m's source space | `P_from_rows` of each lens-space plane below |
 
-Frustum extraction reads rows as in Gribb and Hartmann<sup>[[72]](../Citations.md#72)</sup>.
+Frustum extraction reads rows as in Gribb and Hartmann<sup>[[73]](../Citations.md#73)</sup>.
 Here the camera looks down +z, z supplies the homogeneous w row, and
 `screen = center + xy / z`; the screen rectangle sets the sides. Lens-space
 coefficients `(a,b,c,e)` are `(0,0,1,-near_z)`, `(1,0,cx-left,0)`,

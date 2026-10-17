@@ -2,6 +2,7 @@
 the clip the firmware plays is the motion the generator checks."""
 
 import json
+import re
 import pathlib
 import subprocess
 import sys
@@ -54,6 +55,99 @@ class TimelineGeneratorTests(unittest.TestCase):
             return subprocess.run(
                 [sys.executable, str(GENERATOR), str(source), str(glb)],
                 cwd=LAUNCHER, capture_output=True, text=True, check=False)
+
+    def test_floor_settings_have_named_validation(self):
+        positive = ("ripple_wavelength_m", "ripple_clock_s", "ripple_group_speed_m_s", "ripple_width_m", "ripple_dispersion_m_s", "ripple_source_radius_m", "white_height_m")
+        nonnegative = ("ripple_height_m", "swell_height_m")
+        for key in positive + nonnegative:
+            for value in (-1, float("nan"), float("inf")):
+                with self.subTest(key=key, value=value):
+                    result = self.generate(config_change=lambda c: c.update({key: value}))
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(key + " must be", result.stderr)
+        for key in ("ripple_impact_ms", "ripple_calm_after_ms", "swell_in_ms"):
+            result = self.generate(lambda t: t.update({key: -1}))
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(key + " must be", result.stderr)
+        for key in ("wavelength_m", "period_ms", "direction_deg", "weight"):
+            result = self.generate(config_change=lambda c: c["swell"][0].update({key: float("nan")}))
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("swell[0]." + key + " must be", result.stderr)
+
+    def test_floor_timing_rejects_nonintegers_and_nonfinite_values(self):
+        for key in ("ripple_impact_ms", "ripple_calm_after_ms", "swell_in_ms"):
+            for value in (0.5, float("nan"), float("inf")):
+                with self.subTest(key=key, value=value):
+                    result = self.generate(lambda t: t.update({key: value}))
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(key + " must be", result.stderr)
+        for key in ("swell_in_ms",):
+            result = self.generate(lambda t: t.update({key: 0}))
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(key + " must be positive", result.stderr)
+
+    def test_floor_table_encoding_ranges_are_checked(self):
+        cases = (
+            ({"ripple_width_m": 0.01}, "ripple_width_m"),
+            ({"ripple_group_speed_m_s": 1e30}, "ripple_group_speed_m_s"),
+            ({"ripple_height_m": 8}, "ripple_height_m + weighted swell_height_m"),
+            ({"grid_step_m": 100}, "grid_step_m * grid_bands"),
+            ({"swell": []}, "swell must be a nonempty list"),
+            ({"swell": [0]}, "swell[0] must be an object"),
+            ({"swell": [dict(wavelength_m=4, period_ms=10, direction_deg=0, weight=1)]}, "swell[0].period_ms"),
+        )
+        for changes, message in cases:
+            with self.subTest(changes=changes):
+                result = self.generate(config_change=lambda c: c.update(changes))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
+
+    def test_superseded_floor_keys_are_unknown(self):
+        for key in ("ripple_speed_m_s", "ripple_rings"):
+            result = self.generate(config_change=lambda c: c.update({key: 1}))
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("unknown key: " + key, result.stderr)
+        for key in ("ripple_decay_ms", "swell_start_ms", "grid_hue_ms", "grid_hue_spread", "grid_whiten_max", "mesh_dash", "grid_max", "grid_ceiling_max"):
+            result = self.generate(lambda t: t.update({key: 1}))
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("unknown timing key(s): " + key, result.stderr)
+
+    def test_packet_and_shading_settings_are_validated(self):
+        keys = ("ripple_clock_s", "ripple_group_speed_m_s", "ripple_width_m",
+                "ripple_dispersion_m_s", "ripple_source_radius_m", "white_height_m")
+        for key in keys:
+            for value in (0, -1, float("nan"), float("inf")):
+                with self.subTest(key=key, value=value):
+                    result = self.generate(config_change=lambda c: c.update({key: value}))
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn(key + " must be positive", result.stderr)
+        for key, values in (("floor_grey", (-1, 0x1000000, 0.5)),
+                            ("grid_edge_fade_fraction", (-1, 1, float("nan"))),
+                            ("ripple_calm_fraction", (-1, 2, float("nan")))):
+            for value in values:
+                result = self.generate(config_change=lambda c: c.update({key: value}))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(key, result.stderr)
+        for key in ("mesh_dash_on_px", "mesh_dash_off_px"):
+            for value in (0, -1, 256, 0.5):
+                result = self.generate(lambda t: t.update({key: value}))
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(key, result.stderr)
+
+    def test_generated_header_is_current(self):
+        result = self.generate()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, (TIMELINE.parent / "boot_anim_timeline.h").read_text(encoding="utf-8"))
+
+    def test_removed_floor_wave_settings_are_unknown(self):
+        for key in ("wave_height_m", "wave_wavelength_m", "wave_period_ms"):
+            result = self.generate(config_change=lambda c: c.update({key: 1}))
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("unknown key: " + key, result.stderr)
+        for key in ("wave_in_ms", "wave_out_ms"):
+            result = self.generate(lambda t: t.update({key: 1}))
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("unknown timing key(s): " + key, result.stderr)
 
     def test_unknown_timing_key_fails_and_names_key(self):
         result = self.generate(lambda timing: timing.update(title_font=1))
@@ -114,6 +208,31 @@ class TimelineGeneratorTests(unittest.TestCase):
         result = self.generate(lambda timing: timing.pop("title_scale"))
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("#define BOOT_ANIM_TITLE_SCALE 5", result.stdout)
+
+    def test_invalid_mesh_settings_fail_with_named_messages(self):
+        cases = (
+            (lambda timing: timing.update(mesh_cells=0), None, "mesh_cells must be positive and even"),
+            (lambda timing: timing.update(mesh_cells=-2), None, "mesh_cells must be positive and even"),
+            (lambda timing: timing.update(mesh_cells=47), None, "mesh_cells must be positive and even"),
+            (lambda timing: timing.update(mesh_dash_on_px=256), None, "mesh_dash_on_px must fit an unsigned byte"),
+        )
+        for change, config_change, message in cases:
+            with self.subTest(message=message):
+                result = self.generate(change, config_change=config_change)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(message, result.stderr)
+
+    def test_the_mesh_ends_where_the_fade_does(self):
+        def define(result, name):
+            return int(re.search(r"#define %s (\d+)" % name, result.stdout).group(1))
+
+        for cells in (24, 48):
+            with self.subTest(cells=cells):
+                result = self.generate(lambda timing: timing.update(mesh_cells=cells))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                reach = define(result, "BOOT_ANIM_GRID_STEP_Q12") * define(result, "BOOT_ANIM_GRID_BANDS")
+                self.assertAlmostEqual(define(result, "BOOT_ANIM_MESH_STEP_Q12") * (cells // 2), reach,
+                                       delta=cells // 2)
 
     def test_keyframes_left_in_the_json_are_refused(self):
         result = self.generate(config_change=lambda config: config.update(keyframes=[]))
