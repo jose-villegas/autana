@@ -32,8 +32,8 @@
  * longest length and its two figures at their widest, the total, and a drop
  * count. A smaller one loses the tail without a word. */
 #define FRAME_COST_REPORT_MAX     768
-_Static_assert(FRAME_COST_REPORT_MAX >= FRAME_COST_SLOTS * (FRAME_COST_NAME_MAX + 28) + 48,
-               "FRAME_COST_REPORT_MAX no longer holds every slot at its longest");
+_Static_assert(FRAME_COST_REPORT_MAX >= FRAME_COST_SLOTS * (FRAME_COST_NAME_MAX + 28) + 48 + FRAME_COST_NAME_MAX + 64,
+               "FRAME_COST_REPORT_MAX must hold every frame slot and the widest external stage");
 
 /* The counts line of the armed name: "perf: ", the name, the three cycle
  * figures, the event name, its average and n, each at its widest. */
@@ -366,6 +366,52 @@ frame_cost_report(frame_cost_t* cost, uint32_t frames, char* out, size_t out_siz
     cost->count = 0;
     cost->dropped = 0;
     return length;
+}
+
+typedef struct {
+    const char* name;
+    int64_t total_us;
+    int64_t worst_us;
+    uint32_t n;
+} frame_cost_external_t;
+
+/* One name owns a foreign-task accumulator across reporting windows. */
+static inline bool
+frame_cost_external_add(frame_cost_external_t* slot, const char* name, int64_t us) {
+    if (slot->name && strcmp(slot->name, name) != 0) {
+        return false;
+    }
+    slot->name = name;
+    slot->total_us += us;
+    slot->worst_us = us > slot->worst_us ? us : slot->worst_us;
+    slot->n++;
+    return true;
+}
+
+static inline int
+frame_cost_external_report(frame_cost_external_t* slot, char* out, size_t capacity, int length) {
+    if (!slot->n || !capacity || length < 0 || (size_t)length >= capacity) {
+        return length;
+    }
+    if (capacity - (size_t)length <= sizeof " || ") {
+        out[length] = '\0';
+        slot->total_us = 0;
+        slot->worst_us = 0;
+        slot->n = 0;
+        return length;
+    }
+    const int64_t average = slot->total_us / slot->n;
+    const int wrote = snprintf(out + length, capacity - (size_t)length, " || %s %d.%02d/%d.%01d ms/block n=%u",
+                               slot->name, (int)(average / 1000), (int)(average % 1000 / 10),
+                               (int)(slot->worst_us / 1000), (int)(slot->worst_us % 1000 / 100), (unsigned)slot->n);
+    slot->total_us = 0;
+    slot->worst_us = 0;
+    slot->n = 0;
+    if (wrote < 0 || (size_t)(length + wrote) >= capacity) {
+        out[length] = '\0';
+        return length;
+    }
+    return length + wrote;
 }
 
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT

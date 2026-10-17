@@ -639,6 +639,36 @@ test_more_names_than_the_memory_holds_are_counted_not_lost_silently(void) {
     free(cost);
 }
 
+static void
+test_external_duration_windows_and_truncation(void) {
+    frame_cost_external_t* slot = calloc(1, sizeof *slot);
+    TEST_ASSERT_NOT_NULL(slot);
+    char output[FRAME_COST_REPORT_MAX] = "frame";
+    TEST_ASSERT_EQUAL_INT(5, frame_cost_external_report(slot, output, sizeof output, 5));
+    TEST_ASSERT_TRUE(frame_cost_external_add(slot, "sound_mix", 1000));
+    TEST_ASSERT_TRUE(frame_cost_external_add(slot, "sound_mix", 3000));
+    TEST_ASSERT_FALSE(frame_cost_external_add(slot, "other", 9000));
+    TEST_ASSERT_EQUAL_UINT32(2, slot->n);
+    TEST_ASSERT_GREATER_THAN(5, frame_cost_external_report(slot, output, sizeof output, 5));
+    TEST_ASSERT_EQUAL_STRING("frame || sound_mix 2.00/3.0 ms/block n=2", output);
+    TEST_ASSERT_EQUAL_UINT32(0, slot->n);
+    TEST_ASSERT_EQUAL_INT64(0, slot->worst_us);
+    TEST_ASSERT_TRUE(frame_cost_external_add(slot, "sound_mix", 500));
+    TEST_ASSERT_GREATER_THAN(0, frame_cost_external_report(slot, output, sizeof output, 0));
+    TEST_ASSERT_EQUAL_STRING(" || sound_mix 0.50/0.5 ms/block n=1", output);
+    TEST_ASSERT_TRUE(frame_cost_external_add(slot, "sound_mix", 1000));
+    TEST_ASSERT_EQUAL_INT(0, frame_cost_external_report(slot, output, 1, 0));
+    TEST_ASSERT_EQUAL_STRING("", output);
+    TEST_ASSERT_EQUAL_UINT32(0, slot->n);
+    slot->name = "xxxxxxxxxxxxxxxxxxxxxxxx";
+    slot->total_us = INT64_MAX;
+    slot->worst_us = INT64_MAX;
+    slot->n = UINT32_MAX;
+    TEST_ASSERT_GREATER_THAN(0, frame_cost_external_report(slot, output, sizeof output, 0));
+    TEST_ASSERT_LESS_THAN(FRAME_COST_NAME_MAX + 64, strlen(output));
+    free(slot);
+}
+
 void
 suite_frame_cost(void) {
     RUN_TEST(test_charges_to_one_name_add_up_and_the_report_is_per_frame);
@@ -649,6 +679,7 @@ suite_frame_cost(void) {
     RUN_TEST(test_more_names_than_slots_are_dropped_and_charged_to_nobody);
     RUN_TEST(test_a_dropped_name_is_flagged_in_the_report_and_gone_next_window);
     RUN_TEST(test_a_line_too_short_ends_on_a_whole_slot);
+    RUN_TEST(test_external_duration_windows_and_truncation);
     RUN_TEST(test_the_total_is_the_sum_of_each_names_average);
     RUN_TEST(test_a_bracket_inside_another_is_charged_only_its_own_time);
     RUN_TEST(test_a_bracket_two_levels_deep_charges_each_level_its_own_time);
