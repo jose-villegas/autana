@@ -14,31 +14,31 @@ screen-axis sense: the change in down is minus angular velocity crossed with
 down.
 
 ```mermaid
-flowchart TD
-    Clamp[Clamp elapsed time] --> Rotate[Subtract gyro bias, rotate down, normalize]
-    Rotate --> Range{Raw gyro overrange?}
-    Range -->|Yes| Restart[Enter recovery at full distrust]
-    Range -->|No| Still
-    Restart --> Still[Check bias-corrected gyro and acceleration magnitude]
-    Still --> Reset[Clear still timer when not still]
-    Reset --> Nonzero{Acceleration nonzero?}
-    Nonzero -->|Yes| Trust[Magnitude trust weight and angular rejection]
-    Trust --> Accepted{Accepted?}
-    Accepted -->|Yes| Drain[Drain distrust by nine times elapsed time, leave recovery]
-    Accepted -->|No| Recover[Accumulate distrust and continuous still rejection]
-    Drain --> Prime
-    Recover --> Prime{Initial prime or still limit exceeded?}
-    Prime -->|Yes| Adopt[Adopt direction exactly, clear recovery and timers]
-    Prime -->|No| Recovery{Recovering or distrust limit exceeded?}
-    Recovery -->|Yes| Full[Normal TAU pull at full gain, no bias learning]
-    Recovery -->|No| Normal{Accepted?}
-    Normal -->|Yes| Bias[Learn clamped bias, magnitude-weighted TAU pull]
-    Normal -->|No| Linear
-    Full --> Linear[Linear acceleration = acceleration minus down]
-    Bias --> Linear
-    Adopt --> Linear
-    Nonzero -->|No| Linear
-    Linear --> Output[Down, linear acceleration, strength, free fall]
+flowchart LR
+    subgraph Predict
+        Clamp["Clamp dt"] --> Rotate["Rotate down by<br/>gyro minus bias"]
+        Rotate --> Range{"Gyro over 98%<br/>of full scale?"}
+    end
+    subgraph Judge
+        Trust["Trust weight from |a|,<br/>reject beyond 10 deg"] --> Count["Distrust: +dt rejected,<br/>-9 dt accepted"]
+    end
+    subgraph Correct["Correct: one of"]
+        Adopt["Adopt a exactly:<br/>first reading, or still 0.5 s"]
+        Full["Pull at full gain:<br/>recovering"]
+        Track["Learn bias, weighted pull:<br/>accepted"]
+        Hold["No correction:<br/>rejected"]
+    end
+    Range -->|no| Trust
+    Range -->|yes, enter recovery| Trust
+    Trust -->|a is zero: skip| Linear
+    Count --> Adopt
+    Count --> Full
+    Count --> Track
+    Count --> Hold
+    Adopt --> Linear["Linear = a minus down"]
+    Full --> Linear
+    Track --> Linear
+    Hold --> Linear
 ```
 
 Strength is the in-plane share of the unit down vector, clamped to 0..1 and
