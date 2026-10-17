@@ -1,0 +1,18 @@
+# autana --json replies on A308, 2026-10-17, one command per line: <command>	<reply>
+buildid	{"build_id": "2521fd82ef55-dev"}
+heap	{"free": 98223, "largest": 65536, "total": 284771}
+debug tone 300 500	{"hz": 300, "tone_db": -31.2, "silence_db": -110.3, "heard": true, "open_dma_bytes": 3096}
+debug tone 1000 500	{"hz": 1000, "tone_db": -14.9, "silence_db": -117.4, "heard": true, "open_dma_bytes": 3040}
+debug tone 3000 500	{"hz": 3000, "tone_db": -30.0, "silence_db": -120.0, "heard": true, "open_dma_bytes": 3040}
+heap	{"free": 98167, "largest": 63488, "total": 284771}
+debug tone 1000 500 1	{"hz": 1000, "tone_db": -42.5, "silence_db": -120.0, "heard": true, "open_dma_bytes": 3040}
+debug tone 1000 500 3	{"hz": 1000, "tone_db": -33.0, "silence_db": -120.0, "heard": true, "open_dma_bytes": 3040}
+debug tone 1000 500 10	{"hz": 1000, "tone_db": -22.5, "silence_db": -120.0, "heard": true, "open_dma_bytes": 3040}
+debug tone 1000 500 30	{"hz": 1000, "tone_db": -14.9, "silence_db": -120.0, "heard": true, "open_dma_bytes": 3040}
+debug tone 1000 500 100	{"hz": 1000, "tone_db": -14.1, "silence_db": -117.9, "heard": true, "open_dma_bytes": 3040}
+debug tone 1000 20	{"hz": 1000, "tone_db": -14.8, "silence_db": -89.0, "heard": true, "open_dma_bytes": 3040}
+debug tone 1000 50	{"hz": 1000, "tone_db": -14.8, "silence_db": -95.2, "heard": true, "open_dma_bytes": 3040}
+debug tone 1000 100	{"hz": 1000, "tone_db": -14.9, "silence_db": -100.9, "heard": true, "open_dma_bytes": 3040}
+debug tone 1000 200	{"hz": 1000, "tone_db": -14.9, "silence_db": -108.3, "heard": true, "open_dma_bytes": 3040}
+heap	{"free": 98167, "largest": 63488, "total": 284771}
+buildid	{"build_id": "2521fd82ef55-dev"}
