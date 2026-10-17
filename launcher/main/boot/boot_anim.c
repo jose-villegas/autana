@@ -190,7 +190,7 @@ mesh_node(const mesh_pass_t* pass, int i, int j, vec3x_t plane) {
 }
 
 #ifndef PROTO_COLOUR_STRIDE
-#define PROTO_COLOUR_STRIDE 1
+#define PROTO_COLOUR_STRIDE 2
 #endif
 
 /* PROTOTYPE (host only): crests lerp from grey toward the colour of the curve
@@ -291,6 +291,31 @@ draw_mesh_row(const mesh_pass_t* pass, int j, int row_half, int above_half, mesh
  * budget nothing is close enough to see. `dash` skips whole segment
  * GROUPS (a full draw_line_ex() call each), not pixel-thinning, genuinely
  * cheaper. */
+#ifndef PROTO_GUIDE_EXTEND
+#define PROTO_GUIDE_EXTEND 1
+#endif
+
+/* PROTOTYPE (host only): a line on the floor ends at its vanishing point on
+ * the horizon, mid-screen once the space tilts. Past it, carry the guide on
+ * as a screen line to the panel's edge. */
+static void
+proto_extend_guide(vec3x_t from_cs, int ax, int ay, int bx, int by, bool full, gfx_color_t c,
+                   const boot_anim_view_t* view) {
+    (void)from_cs;
+    (void)view;
+    if (!PROTO_GUIDE_EXTEND || !full) {
+        return;
+    }
+    const int dx = bx - ax;
+    const int dy = by - ay;
+    const int len = mathi_abs(dx) + mathi_abs(dy);
+    if (len == 0) {
+        return;
+    }
+    const int far_px = 4 * (GFX_WIDTH + GFX_HEIGHT);
+    draw_line_ex(bx, by, bx + (int)(((int64_t)dx * far_px) / len), by + (int)(((int64_t)dy * far_px) / len), c, 0u);
+}
+
 static void
 draw_grid_spoke(uint16_t turn, int32_t near, int32_t far, gfx_color_t c, bool dash, uint8_t reach,
                 const boot_anim_view_t* view) {
@@ -330,6 +355,7 @@ draw_grid_spoke(uint16_t turn, int32_t near, int32_t far, gfx_color_t c, bool da
         int ax, ay, bx, by;
         if (r3d_project_segment_cs_x(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
             draw_line_ex(ax, ay, bx, by, c, 0u);
+            proto_extend_guide(prev_cs, ax, ay, bx, by, target >= far, c, view);
         }
     }
 }
