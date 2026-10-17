@@ -881,8 +881,28 @@ test_sound_arguments(void) {
     }
 }
 
+static void
+test_sound_parse_boundaries_and_whitespace(void) {
+    console_sound_args_t args;
+    char line[CONSOLE_LINE_MAX];
+    char name[ASSET_NAME_MAX + 1];
+    memset(name, 'x', ASSET_NAME_MAX);
+    name[ASSET_NAME_MAX - 1] = '\0';
+    (void)snprintf(line, sizeof line, "play %s loop 0", name);
+    TEST_ASSERT_TRUE(console_sound_parse(line, &args));
+    name[ASSET_NAME_MAX - 1] = 'x';
+    name[ASSET_NAME_MAX] = '\0';
+    (void)snprintf(line, sizeof line, "play %s", name);
+    TEST_ASSERT_FALSE(console_sound_parse(line, &args));
+    TEST_ASSERT_TRUE(console_sound_parse(" \tplay\ttap \vloop\r100\n", &args));
+    TEST_ASSERT_FALSE(console_sound_parse("play tap loop 100 extra", &args));
+    TEST_ASSERT_TRUE(console_sound_parse("stop 4294967295", &args));
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, args.voice);
+}
+
 void
 suite_console(void) {
+    RUN_TEST(test_sound_parse_boundaries_and_whitespace);
     RUN_TEST(test_sound_arguments);
     RUN_TEST(test_exact_name_matches);
     RUN_TEST(test_name_plus_space_carries_args_without_the_verb_or_the_space);

@@ -1,4 +1,4 @@
-/* Shared codec bring-up, persistent TX and capture-only RX. Capture lifetime changes run on the mixer task. */
+/* Shared codec bring-up, persistent TX and capture-only RX. Callers serialize capture changes against TX writes. */
 #pragma once
 #include <stdbool.h>
 

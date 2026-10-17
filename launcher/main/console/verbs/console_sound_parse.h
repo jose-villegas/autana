@@ -3,6 +3,7 @@
 
 #include <ctype.h>
 #include <errno.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -38,31 +39,19 @@ console_sound_number(const char* text, uint32_t max, uint32_t* out) {
 
 static inline bool
 console_sound_parse(const char* args, console_sound_args_t* out) {
-    char words[CONSOLE_SOUND_WORD_COUNT_MAX][ASSET_NAME_MAX];
-    int count = 0;
-    while (*args) {
-        while (isspace((unsigned char)*args)) {
-            args++;
-        }
-        if (!*args) {
-            break;
-        }
-        if (count == CONSOLE_SOUND_WORD_COUNT_MAX) {
-            return false;
-        }
-        size_t length = 0;
-        while (args[length] && !isspace((unsigned char)args[length])) {
-            length++;
-        }
-        if (length >= ASSET_NAME_MAX) {
-            return false;
-        }
-        memcpy(words[count], args, length);
-        words[count++][length] = '\0';
-        args += length;
-    }
-    if (!count) {
+    char words[CONSOLE_SOUND_WORD_COUNT_MAX][CONSOLE_LINE_MAX];
+    char format[CONSOLE_LINE_MAX];
+    const size_t width = sizeof words[0] - 1;
+    (void)snprintf(format, sizeof format, "%%%zus %%%zus %%%zus %%%zus %%c", width, width, width, width);
+    char trailing;
+    const int count = sscanf(args, format, words[0], words[1], words[2], words[3], &trailing);
+    if (count <= 0 || count > CONSOLE_SOUND_WORD_COUNT_MAX) {
         return false;
+    }
+    for (int i = 0; i < count; i++) {
+        if (strlen(words[i]) >= ASSET_NAME_MAX) {
+            return false;
+        }
     }
     console_sound_args_t parsed = {.gain_pct = AUDIO_OUT_VOLUME_MAX_PCT};
     if (strcmp(words[0], "stats") == 0 && count == 1) {

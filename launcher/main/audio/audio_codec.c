@@ -50,8 +50,8 @@ audio_codec_check(const char* operation, int status) {
     }
     if (!failed_step) {
         failed_step = operation;
-        ESP_LOGE(TAG, "%s failed: %d", operation, status);
     }
+    ESP_LOGE(TAG, "%s failed: %d", operation, status);
     return false;
 }
 

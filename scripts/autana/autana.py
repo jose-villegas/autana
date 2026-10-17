@@ -473,25 +473,10 @@ def tone(args):
     return 0
 
 
-SOUND_GAIN_MAX_PCT = 100
-SOUND_VOICE_ID_MAX = (1 << 32) - 1
-
-
 def sound(args):
-    usage = "usage: autana sound play <name> [loop] [gain] | stop [voice|all] | stats"
-    valid = args == ["stats"] or args == ["stop"] or args == ["stop", "all"]
-    if len(args) == 2 and args[0] == "stop" and re.fullmatch(r"[0-9]+", args[1]):
-        valid = 0 < int(args[1]) <= SOUND_VOICE_ID_MAX
-    if len(args) >= 2 and args[0] == "play" and re.fullmatch(r"[A-Za-z0-9_./-]+", args[1]):
-        tail = args[2:]
-        if tail and tail[0] == "loop":
-            tail = tail[1:]
-        valid = not tail or (len(tail) == 1 and re.fullmatch(r"[0-9]+", tail[0])
-                             and int(tail[0]) <= SOUND_GAIN_MAX_PCT)
-    if not valid:
-        sys.exit(usage)
-    code, replies = send("SOUND " + " ".join(args), reply="SOUND",
-                         until=["SOUND_END", "SOUND error:", "SOUND usage:"])
+    prefix = "SOUND"
+    code, replies = send(prefix + " " + " ".join(args), reply=prefix,
+                         until=[prefix + "_END", prefix + " error:", prefix + " usage:"])
     if code or not replies:
         return code or 1
     if replies[-1].startswith(("SOUND error:", "SOUND usage:")):

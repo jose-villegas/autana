@@ -10,22 +10,20 @@
 #include "sound/sound_engine.h"
 
 static void
-stop_tone(void* context) {
-    sound_voice_t* voice = context;
+stop_tone(sound_voice_t* voice) {
     sound_stop(*voice);
     *voice = SOUND_VOICE_NULL;
 }
 
 static bool
-start_tone(void* context, uint16_t hz, uint8_t gain) {
-    sound_voice_t* voice = context;
+start_tone(sound_voice_t* voice, uint16_t hz, uint8_t gain) {
     *voice = sound_play_tone(hz, gain);
     const int64_t deadline = timing_now_us() + (int64_t)SOUND_CAPTURE_TIMEOUT_MS * MATH_US_PER_MS;
     while (sound_is_playing(*voice) && !sound_voice_audible(*voice) && timing_now_us() < deadline) {
         timing_sleep_ms(SOUND_CONTROL_POLL_MS);
     }
     if (!sound_voice_audible(*voice)) {
-        stop_tone(context);
+        stop_tone(voice);
         return false;
     }
     return true;
@@ -45,17 +43,21 @@ console_verb_tone(const char* args, console_reply_fn reply) {
         return;
     }
     const size_t dma_open = dma_before - memory_free_bytes(MEMORY_DMA);
-    audio_loopback_t result;
+    float silence_db = 0;
+    float tone_db = 0;
     sound_voice_t voice = SOUND_VOICE_NULL;
-    const audio_loopback_source_t source = {.context = &voice, .start = start_tone, .stop = stop_tone};
-    const bool ok = audio_loopback_check(parsed.hz, parsed.ms, parsed.volume_pct, &source, &result);
+    const bool ok = audio_loopback_measure(parsed.hz, parsed.ms, &silence_db)
+                    && start_tone(&voice, parsed.hz, parsed.volume_pct)
+                    && audio_loopback_measure(parsed.hz, parsed.ms, &tone_db);
+    stop_tone(&voice);
+    const bool heard = tone_db - silence_db >= AUDIO_LOOPBACK_HEARD_MARGIN_DB;
     const bool closed = sound_capture_close();
     if (!ok || !closed) {
         reply("TONE error: loopback failed");
         return;
     }
-    (void)printf("TONE %s %u Hz: %.1f dB (silence %.1f dB), open %zu B DMA\n", result.heard ? "heard" : "not heard",
-                 (unsigned)parsed.hz, (double)result.tone_db, (double)result.silence_db, dma_open);
+    (void)printf("TONE %s %u Hz: %.1f dB (silence %.1f dB), open %zu B DMA\n", heard ? "heard" : "not heard",
+                 (unsigned)parsed.hz, (double)tone_db, (double)silence_db, dma_open);
     (void)fflush(stdout);
 }
 CONSOLE_VERB(tone, 0, console_verb_tone)
