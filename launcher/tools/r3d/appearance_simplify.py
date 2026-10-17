@@ -40,7 +40,7 @@ from r3d.poses import camera_basis, read_poses  # noqa: E402
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
-from render_compare import lab  # noqa: E402
+from colour_maths import lab  # noqa: E402
 
 FAR = 1.0e5
 SURFACE_QUERY_EVERY = 25
