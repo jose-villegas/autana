@@ -1,0 +1,180 @@
+#!/usr/bin/env python3
+"""docs/math/README.md's figures: one shape through scale, rotate and translate,
+and one camera point on its way to a pixel. launcher/tools/render/render_doc_images.sh
+runs it; the numbers come from math_figures_probe.c, which calls the library.
+
+    python launcher/tools/math/math_figures.py --cc CC --trs PNG --pixel PNG
+
+--trs gets the scale, rotate, translate panels; --pixel the camera point's way
+to a pixel. The viewport is the panel's, read from the board's display header.
+"""
+
+import argparse
+import json
+import math
+import pathlib
+import subprocess
+import sys
+import tempfile
+
+ROOT = pathlib.Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "launcher/tools"))
+from build.c_header import read_define
+from build.packages import include_roots
+
+import matplotlib
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from matplotlib.patches import Polygon, Rectangle
+
+PROBE = ROOT / "launcher/tools/math/math_figures_probe.c"
+PROBE_SOURCES = (PROBE, ROOT / "launcher/main/render/render_view.c")
+DISPLAY = ROOT / "launcher/components/esp32_s3_touch_amoled_1_8/include/bsp/display.h"
+
+INK, MUTED, FAINT = "#0b0b0b", "#52514e", "#c9c7c2"
+SHAPE_FILL, POINT, PIXEL_FILL = "#2a78d6", "#eb6834", "#1baf7a"
+PANEL_SIZE = 3.0  # inches per panel, wide and high
+PANEL_TITLE_ROOM = 0.3  # inches above each row for the panel titles
+DPI = 110
+TITLE_SIZE = 10
+LABEL_SIZE = 8
+SHAPE_ALPHA = 0.35
+GHOST_ALPHA = 0.5  # the previous panel's dashed outline
+POINT_SIZE = 40
+PIXEL_PANELS = 4  # camera, offset, picture, whole pixel
+PIXEL_WINDOW = 3  # whole pixels shown on each side of the chosen one
+
+
+def probe(cc, width, height):
+    """Build and run the probe; its JSON is every number the figures show."""
+    with tempfile.TemporaryDirectory() as work:
+        binary = pathlib.Path(work) / "math_figures_probe"
+        includes = [flag for root in include_roots() for flag in ("-I", str(root))]
+        subprocess.run([cc, "-std=gnu2x", "-O1", *includes, *map(str, PROBE_SOURCES), "-lm", "-o", str(binary)],
+                       check=True)
+        out = subprocess.run([str(binary), str(width), str(height)], check=True, capture_output=True, text=True)
+    return json.loads(out.stdout)
+
+
+def square_axes(axis, title):
+    axis.set_title(title, fontsize=TITLE_SIZE, color=INK)
+    axis.set_aspect("equal")
+    axis.tick_params(labelsize=LABEL_SIZE, colors=MUTED)
+    for spine in axis.spines.values():
+        spine.set_color(FAINT)
+
+
+def trs_figure(trs, output):
+    stages = (("local", "local"), ("scaled", "1. scale {sx:g} x {sy:g}"),
+              ("rotated", "2. rotate {angle:g} deg about +z"), ("placed", "3. translate to ({tx:g}, {ty:g})"))
+    values = dict(sx=trs["scale"][0], sy=trs["scale"][1], angle=trs["angle_degrees"],
+                  tx=trs["position"][0], ty=trs["position"][1])
+    corners = [p for name, _ in stages for p in trs[name]]
+    low = math.floor(min(min(x for x, _ in corners), min(y for _, y in corners), 0))
+    high = math.ceil(max(max(x for x, _ in corners), max(y for _, y in corners)))
+    size = (PANEL_SIZE * len(stages), PANEL_SIZE + PANEL_TITLE_ROOM)
+    figure, axes = plt.subplots(1, len(stages), figsize=size, layout="constrained")
+    previous = None
+    for axis, (name, title) in zip(axes, stages):
+        square_axes(axis, title.format(**values))
+        axis.set_xlim(low, high)
+        axis.set_ylim(low, high)
+        axis.axhline(0, color=FAINT, linewidth=0.8)
+        axis.axvline(0, color=FAINT, linewidth=0.8)
+        if previous is not None:
+            axis.add_patch(Polygon(previous, closed=True, fill=False, edgecolor=MUTED, linestyle="--",
+                                   alpha=GHOST_ALPHA))
+        axis.add_patch(Polygon(trs[name], closed=True, facecolor=SHAPE_FILL, alpha=SHAPE_ALPHA, edgecolor=SHAPE_FILL))
+        axis.scatter(*trs[name][0], s=POINT_SIZE / 2, color=INK, zorder=3)
+        axis.set_xlabel("x", fontsize=LABEL_SIZE, color=MUTED)
+        axis.set_ylabel("y", fontsize=LABEL_SIZE, color=MUTED)
+        previous = trs[name]
+    figure.savefig(output, dpi=DPI, metadata={"Software": None})
+    plt.close(figure)
+
+
+def pixel_figure(px, output):
+    width, height = px["viewport"]
+    cx, cy = px["cx"], px["cy"]
+    x, y, z = px["camera"]
+    ox, oy = px["offset"]
+    sx, sy = px["screen"]
+    pixel_x, pixel_y = px["pixel"]
+    size = (PANEL_SIZE * PIXEL_PANELS, PANEL_SIZE + PANEL_TITLE_ROOM)
+    figure, axes = plt.subplots(1, PIXEL_PANELS, figsize=size, layout="constrained")
+
+    # Camera space, seen from above: the point and the ray back to the camera.
+    axis = axes[0]
+    square_axes(axis, f"camera ({x:g}, {y:g}, {z:g})")
+    half_width = z * (width - cx) / px["fx"]
+    axis.plot([0, -half_width], [0, z], color=FAINT)
+    axis.plot([0, half_width], [0, z], color=FAINT)
+    axis.axhline(px["near_z"], color=MUTED, linestyle=":", linewidth=0.8)
+    axis.text(half_width, px["near_z"], " near_z", fontsize=LABEL_SIZE, color=MUTED, va="bottom", ha="right")
+    axis.plot([0, x], [0, z], color=POINT, linewidth=0.8)
+    axis.scatter([x], [z], s=POINT_SIZE, color=POINT, zorder=3)
+    axis.set_xlabel("x, +x right", fontsize=LABEL_SIZE, color=MUTED)
+    axis.set_ylabel("z, forward", fontsize=LABEL_SIZE, color=MUTED)
+
+    # projectf_offset: pixels from the optical centre, +y up.
+    axis = axes[1]
+    square_axes(axis, f"projectf_offset ({ox:g}, {oy:g})")
+    axis.add_patch(Rectangle((-cx, -(height - cy)), width, height, fill=False, edgecolor=FAINT))
+    axis.axhline(0, color=FAINT, linewidth=0.8)
+    axis.axvline(0, color=FAINT, linewidth=0.8)
+    axis.annotate("", (ox, oy), (0, 0), arrowprops=dict(arrowstyle="->", color=POINT))
+    axis.scatter([ox], [oy], s=POINT_SIZE, color=POINT, zorder=3)
+    axis.set_xlim(-cx, width - cx)
+    axis.set_ylim(-(height - cy), cy)
+    axis.set_xlabel(f"fx x / z, fx = {px['fx']:g}", fontsize=LABEL_SIZE, color=MUTED)
+    axis.set_ylabel("fy y / z, +y up", fontsize=LABEL_SIZE, color=MUTED)
+
+    # projectf_screen: the picture, y down from the top-left corner.
+    axis = axes[2]
+    square_axes(axis, f"projectf_screen ({sx:g}, {sy:g})")
+    axis.add_patch(Rectangle((0, 0), width, height, fill=False, edgecolor=MUTED))
+    axis.scatter([cx], [cy], s=POINT_SIZE / 2, marker="+", color=MUTED)
+    axis.text(cx, cy, f" centre ({cx:g}, {cy:g})", fontsize=LABEL_SIZE, color=MUTED, va="top")
+    axis.annotate("", (sx, sy), (cx, cy), arrowprops=dict(arrowstyle="->", color=POINT))
+    axis.scatter([sx], [sy], s=POINT_SIZE, color=POINT, zorder=3)
+    axis.set_xlim(0, width)
+    axis.set_ylim(height, 0)
+    axis.set_xlabel("x, right", fontsize=LABEL_SIZE, color=MUTED)
+    axis.set_ylabel("y, down", fontsize=LABEL_SIZE, color=MUTED)
+
+    # The caller's snap: each offset truncated toward the centre, then the flip.
+    axis = axes[3]
+    square_axes(axis, f"whole pixel ({pixel_x}, {pixel_y})")
+    left, top = pixel_x - PIXEL_WINDOW, pixel_y - PIXEL_WINDOW
+    span = 2 * PIXEL_WINDOW + 1
+    for column in range(span):
+        for row in range(span):
+            axis.add_patch(Rectangle((left + column, top + row), 1, 1, fill=False, edgecolor=FAINT, linewidth=0.6))
+    axis.add_patch(Rectangle((pixel_x, pixel_y), 1, 1, facecolor=PIXEL_FILL, alpha=SHAPE_ALPHA, edgecolor=PIXEL_FILL))
+    axis.scatter([sx], [sy], s=POINT_SIZE, color=POINT, zorder=3)
+    axis.set_xlim(left, left + span)
+    axis.set_ylim(top + span, top)
+    axis.set_xlabel(f"cx + trunc({ox:g})", fontsize=LABEL_SIZE, color=MUTED)
+    axis.set_ylabel(f"cy - trunc({oy:g})", fontsize=LABEL_SIZE, color=MUTED)
+
+    figure.savefig(output, dpi=DPI, metadata={"Software": None})
+    plt.close(figure)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--cc", required=True, help="host C compiler")
+    parser.add_argument("--trs", required=True, type=pathlib.Path, help="PNG for the TRS panels")
+    parser.add_argument("--pixel", required=True, type=pathlib.Path, help="PNG for the camera-to-pixel panels")
+    args = parser.parse_args()
+    width = read_define(DISPLAY, "BSP_LCD_H_RES")
+    height = read_define(DISPLAY, "BSP_LCD_V_RES")
+    numbers = probe(args.cc, width, height)
+    trs_figure(numbers["trs"], args.trs)
+    pixel_figure(numbers["pixel"], args.pixel)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

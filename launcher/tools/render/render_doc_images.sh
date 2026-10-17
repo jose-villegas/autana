@@ -142,10 +142,10 @@ case "${1:-}" in
     *) echo "usage: $0 [--check|--orphans]" >&2; exit 2 ;;
 esac
 
-# Windows has a python3 launcher stub that is not Python; ask for Pillow and numpy.
+# Windows has a python3 launcher stub that is not Python; ask for Pillow, numpy and matplotlib.
 # shellcheck source=../../../scripts/lib/python.sh
 . "$(dirname "$0")/../../../scripts/lib/python.sh"
-PYTHON=$(find_python PIL numpy) || exit 2
+PYTHON=$(find_python PIL numpy matplotlib) || exit 2
 export PYTHON
 if ! command -v ffmpeg > /dev/null 2>&1; then
     echo "ffmpeg not found." >&2
@@ -206,6 +206,14 @@ for script in $app_image_scripts; do
 done
 
 run bash "$TOOLS_DIR/doc_images_demo.sh" "$OUT" "$WORK/demo" "$DEMO_SCENE" "$DEMO_OBJECT"
+
+# The math reference's figures, from the library's own functions.
+# shellcheck source=../build/find_cc.sh
+. launcher/tools/build/find_cc.sh
+cc=$(find_cc) || exit 2
+run mkdir -p "$OUT/math"
+run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math/trs-order.png" \
+    --pixel "$OUT/math/camera-to-pixel.png" > "$WORK/math_figures.log"
 
 # Dynamic resolution's tables and chart, from the board capture and the
 # reference scores kept beside its page.

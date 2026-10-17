@@ -44,3 +44,4 @@ docs/Firmware-Architecture.md	2026-10-14
 docs/Firmware-Architecture.md	2026-10-17
 docs/audio/Audio-Path.md	2026-10-17	checked against audio/, console_tone.c and the committed capture
 docs/audio/Audio-Path.md	2026-10-17	call and signal diagrams, memory constraint and board settings checked against their source owners
+docs/notes/Board-and-Memory.md	2026-10-17	memory section split under subheaders; facts and generated tiers unchanged, autana heap checked against Autana-CLI.md
