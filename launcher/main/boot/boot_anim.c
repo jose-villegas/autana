@@ -188,6 +188,60 @@ mesh_node(const mesh_pass_t* pass, int i, int j, vec3x_t plane) {
     return node;
 }
 
+#ifndef PROTO_HUE
+#define PROTO_HUE 0
+#endif
+
+/* PROTOTYPE (host only): crests lerp from grey toward the colour of the curve
+ * sample nearest the node in the floor plane, not toward white. PROTO_HUE 1
+ * searches the whole curve, 2 only the samples the pen has drawn. */
+static int
+proto_nearest_sample(int i, int j, int last) {
+    const int64_t re = (int64_t)i * BOOT_ANIM_MESH_STEP_Q12;
+    const int64_t im = (int64_t)j * BOOT_ANIM_MESH_STEP_Q12;
+    int best = 0;
+    int64_t best_d = INT64_MAX;
+    for (int k = 0; k <= last && k < BOOT_ANIM_CURVE_POINTS; k++) {
+        const int64_t dx = boot_anim_curve[k].re - re;
+        const int64_t dy = boot_anim_curve[k].im - im;
+        const int64_t d = (dx * dx) + (dy * dy);
+        if (d < best_d) {
+            best_d = d;
+            best = k;
+        }
+    }
+    return best;
+}
+
+static gfx_color_t
+proto_floor_color(const mesh_pass_t* pass, int i, int j, int32_t ripple) {
+    if (PROTO_HUE == 0) {
+        return boot_anim_floor_color(ripple);
+    }
+    static int16_t whole[BOOT_ANIM_MESH_CELLS + 1][BOOT_ANIM_MESH_CELLS + 1];
+    static bool ready = false;
+    if (!ready) {
+        for (int y = 0; y <= BOOT_ANIM_MESH_CELLS; y++) {
+            for (int x = 0; x <= BOOT_ANIM_MESH_CELLS; x++) {
+                whole[y][x] = (int16_t)proto_nearest_sample(x - MESH_HALF, y - MESH_HALF, BOOT_ANIM_CURVE_POINTS - 1);
+            }
+        }
+        ready = true;
+    }
+    int k = whole[j + MESH_HALF][i + MESH_HALF];
+    if (PROTO_HUE == 2) {
+        const int32_t pen = boot_anim_pen(pass->now_ms);
+        const int last = (int)((pen * (int32_t)(BOOT_ANIM_CURVE_POINTS - 1)) >> BOOT_ANIM_Q);
+        k = proto_nearest_sample(i, j, last);
+    }
+    const int32_t phase1_span = (int32_t)(BOOT_ANIM_CURVE_PHASE1_POINTS - 1);
+    const int32_t along = ((k * BOOT_ANIM_ONE) + (phase1_span / 2)) / phase1_span;
+    const boot_anim_stroke_t s = boot_anim_stroke(along, boot_anim_colour_progress(pass->now_ms));
+    const int32_t crest = (mathi_clamp(ripple, 0, BOOT_ANIM_WHITE_HEIGHT_Q12) * 255) / BOOT_ANIM_WHITE_HEIGHT_Q12;
+    const uint8_t amount = (uint8_t)((crest * crest) / 255);
+    return gfx_color_mix(gfx_rgb(BOOT_ANIM_FLOOR_GREY), gfx_rgb(gfx_hue_rgb(s.hue)), amount);
+}
+
 static void
 draw_mesh_edge(const mesh_pass_t* pass, const mesh_node_t* a, int ai, int aj, const mesh_node_t* b, int bi, int bj) {
     const bool a_front = (a->flags & MESH_NODE_FRONT) != 0;
@@ -200,7 +254,7 @@ draw_mesh_edge(const mesh_pass_t* pass, const mesh_node_t* a, int ai, int aj, co
     if (alpha == 0) {
         return;
     }
-    const gfx_color_t c = gfx_color_mix(COL_BG, boot_anim_floor_color((a->ripple + b->ripple) / 2), alpha);
+    const gfx_color_t c = gfx_color_mix(COL_BG, proto_floor_color(pass, ai, aj, (a->ripple + b->ripple) / 2), alpha);
     const unsigned flags = DRAW_LINE_DASH(BOOT_ANIM_MESH_DASH_ON_PX, BOOT_ANIM_MESH_DASH_OFF_PX);
     if (a_front && b_front) {
         draw_line_ex(a->sx, a->sy, b->sx, b->sy, c, flags);
