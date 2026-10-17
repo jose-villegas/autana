@@ -1,4 +1,4 @@
-/* Non-blocking playback of pack-owned sounds. Sound views are copied; their mapped data must outlive playback. */
+/* Non-blocking playback of pack-owned sounds. */
 #pragma once
 
 #include <stdbool.h>
@@ -33,7 +33,8 @@ typedef struct {
     bool loop;
 } sound_play_opts_t;
 
-/* NULL options select SFX, full gain, normal priority and one-shot playback. */
+/* Keep sound_t and its pack alive while it plays: use app state, never a stack local.
+ * NULL options select SFX, full gain, normal priority and one-shot playback. */
 sound_voice_t sound_play(const sound_t* sound, const sound_play_opts_t* opts);
 void sound_stop(sound_voice_t voice);
 void sound_set_gain(sound_voice_t voice, uint8_t pct);

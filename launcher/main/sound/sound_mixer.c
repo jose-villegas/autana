@@ -21,7 +21,7 @@ control_voice(sound_control_t* control, sound_voice_t voice) {
 
 void
 sound_control_init(sound_control_t* control, bool ready) {
-    *control = (sound_control_t){.ready = ready, .app_generation = 1};
+    *control = (sound_control_t){.ready = ready, .app_generation = SOUND_APP_GENERATION_FIRST};
     static const char* const names[] = {"SYSTEM", "SFX", "MUSIC"};
     _Static_assert(sizeof names / sizeof names[0] == SOUND_BUS_BUILTIN_COUNT, "built-in bus names");
     for (int i = 0; i < SOUND_BUS_BUILTIN_COUNT; i++) {
@@ -60,19 +60,13 @@ sound_control_play(sound_control_t* control, const sound_t* sound, const sound_p
     const uint32_t generation =
         (voice->handle.id ? (voice->handle.id - 1) / SOUND_VOICE_COUNT + 1 : 0) % SOUND_VOICE_GENERATIONS;
     const sound_voice_t handle = {.id = generation * SOUND_VOICE_COUNT + (uint32_t)slot + 1};
-    *voice = (sound_control_voice_t){.handle = handle,
-                                     .started = ++control->starts,
-                                     .app_generation = control->app_generation,
-                                     .opts = options,
-                                     .playing = true};
+    *voice = (sound_control_voice_t){.handle = handle, .started = ++control->starts, .opts = options, .playing = true};
     *command = (sound_command_t){.kind = SOUND_COMMAND_PLAY,
                                  .app_generation = control->app_generation,
                                  .voice = handle,
                                  .opts = options,
                                  .tone_hz = tone_hz};
-    if (sound) {
-        command->sound = *sound;
-    }
+    command->sound = sound;
     return handle;
 }
 
@@ -162,6 +156,9 @@ sound_control_exit(sound_control_t* control) {
         return;
     }
     control->app_generation++;
+    if (control->app_generation == SOUND_APP_GENERATION_NONE) {
+        control->app_generation = SOUND_APP_GENERATION_FIRST;
+    }
     for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
         if (control->voices[i].opts.bus.id != SOUND_BUS_SYSTEM.id) {
             control->voices[i].playing = false;
@@ -171,6 +168,25 @@ sound_control_exit(sound_control_t* control) {
     for (int i = SOUND_BUS_BUILTIN_COUNT; i < SOUND_BUS_COUNT_MAX; i++) {
         control->buses[i].used = false;
     }
+}
+
+uint32_t
+sound_control_begin_read(sound_control_t* control) {
+    if (!control->ready) {
+        return SOUND_APP_GENERATION_NONE;
+    }
+    control->read_generation = control->app_generation;
+    return control->read_generation;
+}
+
+void
+sound_control_end_read(sound_control_t* control) {
+    control->read_generation = SOUND_APP_GENERATION_NONE;
+}
+
+bool
+sound_control_read_pending(const sound_control_t* control, uint32_t generation) {
+    return control->ready && generation != SOUND_APP_GENERATION_NONE && control->read_generation == generation;
 }
 
 void
@@ -208,7 +224,7 @@ apply_bus_command(sound_mixer_t* mixer, const sound_command_t* command) {
     }
     if (command->kind == SOUND_COMMAND_BUS_DESTROY) {
         for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
-            if (mixer->voices[i].opts.bus.id == bus) {
+            if (mixer->voices[i].bus.id == bus) {
                 mixer->voices[i].playing = false;
             }
         }
@@ -233,31 +249,30 @@ sound_mixer_apply(sound_mixer_t* mixer, const sound_command_t* command, uint32_t
     sound_mix_voice_t* voice = &mixer->voices[slot];
     if (command->kind == SOUND_COMMAND_PLAY) {
         *voice = (sound_mix_voice_t){.handle = command->voice,
-                                     .opts = command->opts,
-                                     .app_generation = command->app_generation,
-                                     .sound = command->sound,
+                                     .bus = command->opts.bus,
+                                     .gain_pct = command->opts.gain_pct,
+                                     .loop = command->opts.loop,
                                      .tone_source = command->tone_hz != 0,
                                      .playing = true};
         if (voice->tone_source) {
-            audio_tone_init(&voice->tone, command->tone_hz);
-        } else if (sound_seek(&voice->cursor, &voice->sound, 0) != ASSET_OK) {
+            audio_tone_init(&voice->source.tone, command->tone_hz);
+        } else if (sound_seek(&voice->source.cursor, command->sound, 0) != ASSET_OK) {
             voice->playing = false;
         }
     } else if (voice->handle.id == command->voice.id) {
         if (command->kind == SOUND_COMMAND_STOP) {
             voice->playing = false;
         } else if (command->kind == SOUND_COMMAND_GAIN) {
-            voice->opts.gain_pct = command->opts.gain_pct;
+            voice->gain_pct = command->opts.gain_pct;
         }
     }
 }
 
 void
-sound_mixer_exit(sound_mixer_t* mixer, uint32_t app_generation) {
+sound_mixer_sync(sound_mixer_t* mixer, const sound_control_t* control) {
     for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
-        sound_mix_voice_t* voice = &mixer->voices[i];
-        if (voice->opts.bus.id != SOUND_BUS_SYSTEM.id && voice->app_generation != app_generation) {
-            voice->playing = false;
+        if (!control->voices[i].playing || control->voices[i].handle.id != mixer->voices[i].handle.id) {
+            mixer->voices[i].playing = false;
         }
     }
 }
@@ -265,22 +280,23 @@ sound_mixer_exit(sound_mixer_t* mixer, uint32_t app_generation) {
 static size_t
 read_voice(sound_mix_voice_t* voice, int16_t* out, size_t frames) {
     if (voice->tone_source) {
-        audio_tone_fill(&voice->tone, out, frames, AUDIO_OUT_VOLUME_MAX_PCT);
+        audio_tone_fill(&voice->source.tone, out, frames, AUDIO_OUT_VOLUME_MAX_PCT);
         return frames;
     }
     size_t total = 0;
-    const uint32_t end = voice->sound.loop_end ? voice->sound.loop_end : voice->sound.frames;
+    const uint32_t end = voice->source.cursor.sound->loop_end ? voice->source.cursor.sound->loop_end
+                                                              : voice->source.cursor.sound->frames;
     while (total < frames && voice->playing) {
         size_t count = frames - total;
-        if (!voice->opts.loop && count > end - voice->cursor.position) {
-            count = end - voice->cursor.position;
+        if (!voice->loop && count > end - voice->source.cursor.position) {
+            count = end - voice->source.cursor.position;
         }
-        const uint32_t read = sound_read(&voice->cursor, out + total, (uint32_t)count);
+        const uint32_t read = sound_read(&voice->source.cursor, out + total, (uint32_t)count);
         total += read;
-        if (!voice->opts.loop) {
-            voice->playing = read > 0 && voice->cursor.position < end;
-        } else if (read < count || (!voice->sound.loop_end && voice->cursor.position == end)) {
-            voice->playing = read > 0 && sound_seek(&voice->cursor, &voice->sound, 0) == ASSET_OK;
+        if (!voice->loop) {
+            voice->playing = read > 0 && voice->source.cursor.position < end;
+        } else if (read < count || (!voice->source.cursor.sound->loop_end && voice->source.cursor.position == end)) {
+            voice->playing = read > 0 && sound_seek(&voice->source.cursor, voice->source.cursor.sound, 0) == ASSET_OK;
         }
     }
     return total;
@@ -325,7 +341,7 @@ sound_mixer_render(sound_mixer_t* mixer, int16_t* out, int32_t* accumulator, int
             continue;
         }
         const size_t count = read_voice(voice, scratch, frames);
-        const uint32_t gain = (uint32_t)voice->opts.gain_pct * factors[voice->opts.bus.id];
+        const uint32_t gain = (uint32_t)voice->gain_pct * factors[voice->bus.id];
         for (size_t j = 0; j < count; j++) {
             accumulator[j] += (int32_t)((int64_t)scratch[j] * gain / (SOUND_GAIN_FACTOR_SCALE * SOUND_GAIN_MAX_PCT));
         }

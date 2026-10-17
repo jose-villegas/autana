@@ -7,11 +7,13 @@
 #include "audio/audio_tone.h"
 #include "sound/sound_play.h"
 
-#define SOUND_BUS_BUILTIN_COUNT 3
-#define SOUND_BUS_NAME_MAX      24
-#define SOUND_AMP_IDLE_MS       2000
-#define SOUND_VOICE_GENERATIONS (UINT32_MAX / SOUND_VOICE_COUNT)
-#define SOUND_GAIN_FACTOR_SCALE (SOUND_GAIN_MAX_PCT * SOUND_GAIN_MAX_PCT)
+#define SOUND_BUS_BUILTIN_COUNT    3
+#define SOUND_BUS_NAME_MAX         24
+#define SOUND_APP_GENERATION_NONE  0u
+#define SOUND_APP_GENERATION_FIRST (SOUND_APP_GENERATION_NONE + 1u)
+#define SOUND_AMP_IDLE_MS          2000
+#define SOUND_VOICE_GENERATIONS    (UINT32_MAX / SOUND_VOICE_COUNT)
+#define SOUND_GAIN_FACTOR_SCALE    (SOUND_GAIN_MAX_PCT * SOUND_GAIN_MAX_PCT)
 
 typedef enum {
     SOUND_COMMAND_CAPTURE_OPEN,
@@ -29,14 +31,13 @@ typedef struct {
     uint32_t app_generation;
     sound_voice_t voice;
     sound_play_opts_t opts;
-    sound_t sound;
+    const sound_t* sound;
     uint16_t tone_hz;
 } sound_command_t;
 
 typedef struct {
     sound_voice_t handle;
     uint64_t started;
-    uint32_t app_generation;
     sound_play_opts_t opts;
     bool playing;
     bool audible;
@@ -54,16 +55,21 @@ typedef struct {
     uint64_t starts;
     uint32_t app_generation;
     uint32_t dropped_commands;
+    uint32_t read_generation;
     bool ready;
 } sound_control_t;
 
 typedef struct {
     sound_voice_t handle;
-    sound_play_opts_t opts;
-    uint32_t app_generation;
-    sound_t sound;
-    sound_cursor_t cursor;
-    audio_tone_t tone;
+
+    union {
+        sound_cursor_t cursor;
+        audio_tone_t tone;
+    } source;
+
+    sound_bus_t bus;
+    uint8_t gain_pct;
+    bool loop;
     bool tone_source;
     bool playing;
 } sound_mix_voice_t;
@@ -90,10 +96,13 @@ sound_bus_t sound_control_bus_create(sound_control_t* control, const char* name,
 bool sound_control_bus_command(sound_control_t* control, sound_bus_t bus, sound_command_kind_t kind, uint8_t gain,
                                sound_command_t* command);
 void sound_control_exit(sound_control_t* control);
+uint32_t sound_control_begin_read(sound_control_t* control);
+void sound_control_end_read(sound_control_t* control);
+bool sound_control_read_pending(const sound_control_t* control, uint32_t generation);
 void sound_control_complete(sound_control_t* control, const sound_mixer_t* mixer);
 
 void sound_mixer_init(sound_mixer_t* mixer);
 void sound_mixer_apply(sound_mixer_t* mixer, const sound_command_t* command, uint32_t app_generation);
-void sound_mixer_exit(sound_mixer_t* mixer, uint32_t app_generation);
+void sound_mixer_sync(sound_mixer_t* mixer, const sound_control_t* control);
 void sound_mixer_render(sound_mixer_t* mixer, int16_t* out, int32_t* accumulator, int16_t* scratch, size_t frames,
                         uint64_t now_ms, uint32_t startup_ms);

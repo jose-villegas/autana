@@ -1,12 +1,44 @@
 /* Development playback and inspection use the same queue as applications. */
 #include <inttypes.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "console/console_verbs.h"
 #include "console/verbs/console_sound_parse.h"
+#include "core/memory.h"
 #include "sound/sound_engine.h"
 
 #define CONSOLE_SOUND_REPLY_MAX 128
+
+typedef struct console_sound_view {
+    sound_t sound;
+    char name[ASSET_NAME_MAX];
+    struct console_sound_view* next;
+} console_sound_view_t;
+
+static console_sound_view_t* views;
+
+static const sound_t*
+console_sound_view(const char* name) {
+    for (const console_sound_view_t* view = views; view; view = view->next) {
+        if (strcmp(view->name, name) == 0) {
+            return &view->sound;
+        }
+    }
+    sound_t sound;
+    if (sound_open_engine(name, &sound) != ASSET_OK) {
+        return NULL;
+    }
+    console_sound_view_t* view = memory_alloc(sizeof *view, MEMORY_PSRAM);
+    if (!view) {
+        return NULL;
+    }
+    /* Commands return before playback ends; these immutable views live with the mounted engine pack. */
+    *view = (console_sound_view_t){.sound = sound, .next = views};
+    console_copy_text(view->name, sizeof view->name, name);
+    views = view;
+    return &view->sound;
+}
 
 static void
 sound_stats(console_reply_fn reply) {
@@ -27,6 +59,9 @@ sound_stats(console_reply_fn reply) {
     (void)snprintf(line, sizeof line, "SOUND ram voices=%zu queue=%zu stack=%zu tx_samples=%zu mixer=%zu",
                    stats.voice_table_bytes, stats.queue_bytes, stats.stack_bytes, stats.dma_sample_bytes,
                    stats.mixer_bytes);
+    reply(line);
+    (void)snprintf(line, sizeof line, "SOUND stack_min_free=%zu margin=%zu", stats.stack_min_free_bytes,
+                   stats.stack_margin_bytes);
     reply(line);
     reply("SOUND_END");
 }
@@ -55,14 +90,14 @@ console_verb_sound(const char* args, console_reply_fn reply) {
         reply("SOUND_END stopped");
         return;
     }
-    sound_t sound;
-    if (sound_open_engine(parsed.name, &sound) != ASSET_OK) {
+    const sound_t* sound = console_sound_view(parsed.name);
+    if (!sound) {
         reply("SOUND error: sound unavailable");
         return;
     }
     const sound_play_opts_t opts = {
         .bus = SOUND_BUS_SFX, .gain_pct = parsed.gain_pct, .priority = SOUND_PRIORITY_NORMAL, .loop = parsed.loop};
-    const sound_voice_t voice = sound_play(&sound, &opts);
+    const sound_voice_t voice = sound_play(sound, &opts);
     if (!voice.id) {
         reply("SOUND error: playback unavailable");
         return;

@@ -59,6 +59,7 @@ play(fixture_t* f, const sound_play_opts_t* opts) {
 
 static void
 render(fixture_t* f, uint64_t now_ms, size_t frames) {
+    sound_mixer_sync(&f->mixer, &f->control);
     sound_mixer_render(&f->mixer, f->out, f->accumulator, f->scratch, frames, now_ms, TEST_STARTUP_MS);
     sound_control_complete(&f->control, &f->mixer);
 }
@@ -73,7 +74,7 @@ test_sound_warmup_holds_positions_and_writes_silence(void) {
         TEST_ASSERT_EQUAL_INT16(0, f->out[i]);
     }
     render(f, TEST_STARTUP_MS - 1, TEST_FRAMES);
-    TEST_ASSERT_EQUAL_UINT32(0, f->mixer.voices[0].cursor.position);
+    TEST_ASSERT_EQUAL_UINT32(0, f->mixer.voices[0].source.cursor.position);
     TEST_ASSERT_TRUE(sound_control_is_playing(&f->control, voice));
     render(f, TEST_STARTUP_MS, TEST_FRAMES);
     TEST_ASSERT_EQUAL_INT16(TEST_SAMPLE, f->out[0]);
@@ -146,7 +147,7 @@ test_sound_steals_lowest_priority_then_oldest(void) {
         sound_control_voice_command(&f->control, handles[SOUND_VOICE_COUNT - 1], SOUND_COMMAND_GAIN, 0, &command));
     TEST_ASSERT_TRUE(sound_control_is_playing(&f->control, stolen));
     sound_control_exit(&f->control);
-    sound_mixer_exit(&f->mixer, f->control.app_generation);
+    sound_mixer_sync(&f->mixer, &f->control);
     for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
         handles[i] = play(f, NULL);
     }
@@ -203,9 +204,13 @@ test_sound_exit_drops_queued_app_commands_preserves_system(void) {
     const sound_bus_t bus = sound_control_bus_create(&f->control, "app", &(sound_command_t){0});
     TEST_ASSERT_TRUE(bus.id < SOUND_BUS_COUNT_MAX);
     sound_control_exit(&f->control);
-    sound_mixer_exit(&f->mixer, f->control.app_generation);
+    sound_mixer_sync(&f->mixer, &f->control);
+    TEST_ASSERT_NOT_EQUAL(0, app.id);
+    TEST_ASSERT_NOT_EQUAL(0, system.id);
     sound_mixer_apply(&f->mixer, &app_command, f->control.app_generation);
+    TEST_ASSERT_FALSE(f->mixer.voices[(app.id - 1) % SOUND_VOICE_COUNT].playing);
     sound_mixer_apply(&f->mixer, &system_command, f->control.app_generation);
+    TEST_ASSERT_TRUE(f->mixer.voices[(system.id - 1) % SOUND_VOICE_COUNT].playing);
     TEST_ASSERT_FALSE(sound_control_is_playing(&f->control, app));
     TEST_ASSERT_TRUE(sound_control_is_playing(&f->control, system));
     TEST_ASSERT_FALSE(f->control.buses[bus.id].used);
@@ -227,7 +232,7 @@ test_sound_loops_seek_and_honors_authored_loop_end(void) {
         TEST_ASSERT_EQUAL_INT16(TEST_SAMPLE, f->out[i]);
     }
     sound_control_exit(&f->control);
-    sound_mixer_exit(&f->mixer, f->control.app_generation);
+    sound_mixer_sync(&f->mixer, &f->control);
     f->sound.frames = TEST_FRAMES;
     f->sound.loop_start = 1;
     f->sound.loop_end = TEST_FRAMES / 2;
@@ -265,7 +270,7 @@ test_sound_tone_source_holds_phase_until_warm(void) {
     sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
     render(f, 0, TEST_FRAMES);
     render(f, TEST_STARTUP_MS - 1, TEST_FRAMES);
-    TEST_ASSERT_EQUAL_UINT32(0, f->mixer.voices[0].tone.phase);
+    TEST_ASSERT_EQUAL_UINT32(0, f->mixer.voices[0].source.tone.phase);
     TEST_ASSERT_FALSE(sound_control_is_audible(&f->control, voice));
     audio_tone_t expected;
     audio_tone_init(&expected, TEST_TONE_HZ);
@@ -275,8 +280,56 @@ test_sound_tone_source_holds_phase_until_warm(void) {
     TEST_ASSERT_TRUE(sound_control_is_audible(&f->control, voice));
 }
 
+static void
+test_sound_borrows_view_and_retires_a_stopped_queued_steal(void) {
+    fixture_t* f = fixture();
+    const sound_voice_t old = play(f, NULL);
+    const int slot = (int)((old.id - 1) % SOUND_VOICE_COUNT);
+    TEST_ASSERT_EQUAL_PTR(&f->sound, f->mixer.voices[slot].source.cursor.sound);
+    for (int i = 1; i < SOUND_VOICE_COUNT; i++) {
+        (void)play(f, NULL);
+    }
+    sound_command_t pending;
+    const sound_voice_t next = sound_control_play(&f->control, &f->sound, NULL, 0, &pending);
+    TEST_ASSERT_NOT_EQUAL(0, next.id);
+    TEST_ASSERT_FALSE(sound_control_is_playing(&f->control, old));
+    TEST_ASSERT_TRUE(sound_control_voice_command(&f->control, next, SOUND_COMMAND_STOP, 0, &pending));
+    sound_mixer_apply(&f->mixer, &pending, f->control.app_generation);
+    sound_mixer_sync(&f->mixer, &f->control);
+    TEST_ASSERT_FALSE(f->mixer.voices[slot].playing);
+    TEST_ASSERT_FALSE(sound_control_is_playing(&f->control, next));
+}
+
+static void
+test_sound_exit_waits_only_for_the_retired_read_epoch(void) {
+    fixture_t* f = fixture();
+    const uint32_t old = sound_control_begin_read(&f->control);
+    TEST_ASSERT_EQUAL_UINT32(f->control.app_generation, old);
+    TEST_ASSERT_TRUE(sound_control_read_pending(&f->control, old));
+    sound_control_exit(&f->control);
+    TEST_ASSERT_TRUE(sound_control_read_pending(&f->control, old));
+    TEST_ASSERT_FALSE(sound_control_read_pending(&f->control, f->control.app_generation));
+    sound_control_end_read(&f->control);
+    TEST_ASSERT_FALSE(sound_control_read_pending(&f->control, old));
+    const uint32_t next = sound_control_begin_read(&f->control);
+    TEST_ASSERT_FALSE(sound_control_read_pending(&f->control, old));
+    TEST_ASSERT_TRUE(sound_control_read_pending(&f->control, next));
+    sound_control_end_read(&f->control);
+    f->control.app_generation = UINT32_MAX;
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, sound_control_begin_read(&f->control));
+    sound_control_exit(&f->control);
+    TEST_ASSERT_NOT_EQUAL(SOUND_APP_GENERATION_NONE, f->control.app_generation);
+    TEST_ASSERT_TRUE(sound_control_read_pending(&f->control, UINT32_MAX));
+    sound_control_end_read(&f->control);
+    sound_control_init(&f->control, false);
+    TEST_ASSERT_EQUAL_UINT32(SOUND_APP_GENERATION_NONE, sound_control_begin_read(&f->control));
+    TEST_ASSERT_FALSE(sound_control_read_pending(&f->control, SOUND_APP_GENERATION_NONE));
+}
+
 void
 run_sound_mixer_suite(void) {
+    RUN_TEST(test_sound_exit_waits_only_for_the_retired_read_epoch);
+    RUN_TEST(test_sound_borrows_view_and_retires_a_stopped_queued_steal);
     RUN_TEST(test_sound_tone_source_holds_phase_until_warm);
     RUN_TEST(test_sound_warmup_holds_positions_and_writes_silence);
     RUN_TEST(test_sound_saturates_both_rails);

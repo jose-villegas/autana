@@ -1,5 +1,6 @@
 #include "sound/sound_engine.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 #include "esp_log.h"
@@ -13,10 +14,28 @@
 #include "core/timing.h"
 #include "profile/frame_cost.h"
 
+#define SOUND_QUEUE_TONE_FLAG   (1u << 6)
+#define SOUND_QUEUE_LOOP_FLAG   (1u << 7)
+#define SOUND_QUEUE_OPCODE_MASK (SOUND_QUEUE_TONE_FLAG - 1)
+
 typedef struct {
-    sound_command_t command;
-    TaskHandle_t waiter;
+    sound_voice_t voice;
+    uint32_t app_generation;
+
+    union {
+        const sound_t* sound;
+        uint32_t value;
+        TaskHandle_t waiter;
+    } payload;
+
+    uint8_t opcode_flags;
+    uint8_t bus;
+    uint8_t gain_pct;
+    uint8_t priority;
 } sound_device_command_t;
+
+_Static_assert(sizeof(sound_device_command_t) == SOUND_MIXER_COMMAND_BYTES, "queue command exceeds its RAM budget");
+_Static_assert(SOUND_COMMAND_BUS_DESTROY <= SOUND_QUEUE_OPCODE_MASK, "opcode overlaps command flags");
 
 static const asset_pack_t* engine_pack;
 static const char* TAG = "sound";
@@ -30,6 +49,9 @@ static StaticQueue_t queue_control;
 static uint8_t queue_storage[SOUND_MIXER_QUEUE_DEPTH * sizeof(sound_device_command_t)];
 static const char* failure;
 static bool attempted;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+static TaskHandle_t mixer_task_handle;
+#endif
 
 static bool
 command_space(void) {
@@ -45,7 +67,21 @@ command_space(void) {
 
 static void
 submit(const sound_command_t* command, TaskHandle_t waiter) {
-    const sound_device_command_t queued = {.command = *command, .waiter = waiter};
+    sound_device_command_t queued = {
+        .voice = command->voice,
+        .app_generation = command->app_generation,
+        .opcode_flags = (uint8_t)((unsigned)command->kind | (command->opts.loop ? SOUND_QUEUE_LOOP_FLAG : 0)),
+        .bus = command->opts.bus.id,
+        .gain_pct = command->opts.gain_pct,
+        .priority = command->opts.priority};
+    if (waiter) {
+        queued.payload.waiter = waiter;
+    } else if (command->tone_hz) {
+        queued.opcode_flags |= SOUND_QUEUE_TONE_FLAG;
+        queued.payload.value = command->tone_hz;
+    } else {
+        queued.payload.sound = command->sound;
+    }
     /* Producers hold control_lock through reservation and send; the consumer only frees queue space. */
     const BaseType_t sent = xQueueSend(commands, &queued, 0);
     configASSERT(sent == pdTRUE);
@@ -151,8 +187,27 @@ sound_set_bus_gain(sound_bus_t bus, uint8_t pct) {
 void
 sound_stop_app_voices(void) {
     portENTER_CRITICAL(&control_lock);
+    if (!control.ready) {
+        portEXIT_CRITICAL(&control_lock);
+        return;
+    }
+    const uint32_t retired = control.app_generation;
     sound_control_exit(&control);
     portEXIT_CRITICAL(&control_lock);
+    const int64_t deadline = timing_now_us() + (int64_t)SOUND_EXIT_READ_TIMEOUT_MS * MATH_US_PER_MS;
+    for (;;) {
+        portENTER_CRITICAL(&control_lock);
+        const bool pending = sound_control_read_pending(&control, retired);
+        portEXIT_CRITICAL(&control_lock);
+        if (!pending) {
+            return;
+        }
+        if (timing_now_us() >= deadline) {
+            ESP_LOGE(TAG, "app exit: borrowed sound read exceeded %u ms", (unsigned)SOUND_EXIT_READ_TIMEOUT_MS);
+            abort();
+        }
+        timing_sleep_ms(SOUND_CONTROL_POLL_MS);
+    }
 }
 
 void
@@ -165,6 +220,11 @@ sound_get_stats(sound_stats_t* out) {
                            .stack_bytes = SOUND_MIXER_TASK_STACK,
                            .dma_sample_bytes = AUDIO_CODEC_DMA_BLOCKS * AUDIO_CODEC_BLOCK_SAMPLES * sizeof(int16_t),
                            .mixer_bytes = sizeof mixer + sizeof control + sizeof positions};
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    out->mixer_bytes += sizeof mixer_task_handle;
+    out->stack_min_free_bytes = mixer_task_handle ? uxTaskGetStackHighWaterMark(mixer_task_handle) : 0;
+    out->stack_margin_bytes = SOUND_MIXER_STACK_MARGIN_BYTES;
+#endif
     memcpy(out->positions, positions, sizeof positions);
     portEXIT_CRITICAL(&control_lock);
 }
@@ -177,33 +237,57 @@ fail(const char* step) {
         failure = step;
     }
     control.ready = false;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    mixer_task_handle = NULL;
+#endif
     portEXIT_CRITICAL(&control_lock);
     if (first_failure) {
         ESP_LOGE(TAG, "audio: init failed (%s)", step);
     }
 }
 
+static sound_command_t
+expand_command(const sound_device_command_t* queued) {
+    sound_command_t command = {.kind = (sound_command_kind_t)(queued->opcode_flags & SOUND_QUEUE_OPCODE_MASK),
+                               .voice = queued->voice,
+                               .app_generation = queued->app_generation,
+                               .opts = {.bus = {.id = queued->bus},
+                                        .gain_pct = queued->gain_pct,
+                                        .priority = queued->priority,
+                                        .loop = (queued->opcode_flags & SOUND_QUEUE_LOOP_FLAG) != 0}};
+    if (queued->opcode_flags & SOUND_QUEUE_TONE_FLAG) {
+        command.tone_hz = (uint16_t)queued->payload.value;
+    } else if (command.kind == SOUND_COMMAND_PLAY) {
+        command.sound = queued->payload.sound;
+    }
+    return command;
+}
+
 static void
 drain_commands(void) {
     sound_device_command_t queued;
-    uint32_t generation;
     for (int n = 0; n < SOUND_MIXER_QUEUE_DEPTH; n++) {
         if (xQueueReceive(commands, &queued, 0) != pdTRUE) {
             break;
         }
-        portENTER_CRITICAL(&control_lock);
-        generation = control.app_generation;
-        portEXIT_CRITICAL(&control_lock);
-        if (queued.command.kind == SOUND_COMMAND_CAPTURE_OPEN || queued.command.kind == SOUND_COMMAND_CAPTURE_CLOSE) {
+        const sound_command_t command = expand_command(&queued);
+        if (command.kind == SOUND_COMMAND_CAPTURE_OPEN || command.kind == SOUND_COMMAND_CAPTURE_CLOSE) {
             bool ok = true;
-            if (queued.command.kind == SOUND_COMMAND_CAPTURE_OPEN) {
+            if (command.kind == SOUND_COMMAND_CAPTURE_OPEN) {
                 ok = audio_in_open();
             } else {
                 audio_in_close();
             }
-            (void)xTaskNotify(queued.waiter, ok ? SOUND_CAPTURE_OK : SOUND_CAPTURE_FAILED, eSetValueWithOverwrite);
+            (void)xTaskNotify(queued.payload.waiter, ok ? SOUND_CAPTURE_OK : SOUND_CAPTURE_FAILED,
+                              eSetValueWithOverwrite);
         } else {
-            sound_mixer_apply(&mixer, &queued.command, generation);
+            portENTER_CRITICAL(&control_lock);
+            const uint32_t generation = sound_control_begin_read(&control);
+            portEXIT_CRITICAL(&control_lock);
+            sound_mixer_apply(&mixer, &command, generation);
+            portENTER_CRITICAL(&control_lock);
+            sound_control_end_read(&control);
+            portEXIT_CRITICAL(&control_lock);
         }
     }
 }
@@ -216,15 +300,20 @@ mixer_task(void* unused) {
     sound_amp_state_t previous_amp = SOUND_AMP_OFF;
     for (;;) {
         drain_commands();
-        uint32_t generation;
         portENTER_CRITICAL(&control_lock);
-        generation = control.app_generation;
+        sound_mixer_sync(&mixer, &control);
+        (void)sound_control_begin_read(&control);
         portEXIT_CRITICAL(&control_lock);
-        sound_mixer_exit(&mixer, generation);
         const int64_t start_us = timing_now_us();
         sound_mixer_render(&mixer, out, accumulator, scratch, SOUND_MIXER_BLOCK_FRAMES,
                            (uint64_t)start_us / MATH_US_PER_MS, AUDIO_OUT_AMP_STARTUP_MS);
-        FRAME_COST_EXTERNAL("sound_mix", timing_now_us() - start_us);
+#if FRAME_COST_ENABLED
+        const int64_t mix_us = timing_now_us() - start_us;
+#endif
+        portENTER_CRITICAL(&control_lock);
+        sound_control_end_read(&control);
+        portEXIT_CRITICAL(&control_lock);
+        FRAME_COST_EXTERNAL("sound_mix", mix_us);
         if (mixer.amp != previous_amp) {
             if ((mixer.amp == SOUND_AMP_OFF || previous_amp == SOUND_AMP_OFF)
                 && !audio_out_amp_enable(mixer.amp != SOUND_AMP_OFF)) {
@@ -237,7 +326,7 @@ mixer_task(void* unused) {
         sound_control_complete(&control, &mixer);
         amp_state = mixer.amp;
         for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
-            positions[i] = mixer.voices[i].cursor.position;
+            positions[i] = mixer.voices[i].tone_source ? 0 : mixer.voices[i].source.cursor.position;
         }
         portEXIT_CRITICAL(&control_lock);
         if (!audio_out_write(out, SOUND_MIXER_BLOCK_FRAMES)) {
@@ -310,8 +399,12 @@ sound_init(void) {
         return false;
     }
     control.ready = true;
+    TaskHandle_t* task_handle = NULL;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    task_handle = &mixer_task_handle;
+#endif
     if (xTaskCreatePinnedToCore(mixer_task, "sound_mixer", SOUND_MIXER_TASK_STACK, NULL, SOUND_MIXER_TASK_PRIORITY,
-                                NULL, SOUND_MIXER_TASK_CORE)
+                                task_handle, SOUND_MIXER_TASK_CORE)
         != pdPASS) {
         fail("mixer task");
         return false;
