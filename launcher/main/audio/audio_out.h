@@ -24,7 +24,7 @@ audio_out_args_valid(uint32_t hz, uint32_t ms, uint32_t volume_pct) {
 }
 
 bool audio_out_open(void);
-/* Blocking; never call from the frame loop (the main task). */
+/* Blocking; never call from the frame task (frame_watch_task()). */
 bool audio_out_tone(uint16_t hz, uint16_t ms, uint8_t volume_pct);
 /* The last input/output close releases the shared codec and I2S channels. */
 void audio_out_close(void);

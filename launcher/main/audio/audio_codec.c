@@ -13,7 +13,6 @@
 #include "freertos/task.h"
 #include "profile/frame_watch.h"
 
-#define AUDIO_CODEC_PROBE_ADDR       (ES8311_CODEC_DEFAULT_ADDR >> 1)
 #define AUDIO_CODEC_PROBE_TIMEOUT_MS 100
 #define AUDIO_CODEC_PA_UNUSED        (-1)
 #define AUDIO_CODEC_PA_SUPPLY_VOLTS  5.0f
@@ -63,8 +62,8 @@ audio_codec_destroy(void) {
     gpio = NULL;
     (void)audio_codec_check("delete data", data ? audio_codec_delete_data_if(data) : ESP_CODEC_DEV_OK);
     data = NULL;
-    /* esp_codec_dev expects enabled channels for format setup and disables the S3 pair on close.
-     * After a successful open, device close owns disabling for this lifetime. */
+    /* esp_codec_dev expects the channels enabled when it formats them, and its device close disables both.
+     * Disable here only if no device ever took them over. */
     if (!device_took_channels) {
         if (tx_enabled) {
             (void)audio_codec_check("disable TX", i2s_channel_disable(tx));
@@ -129,7 +128,7 @@ audio_codec_acquire(void) {
         goto fail;
     }
     if (!audio_codec_check("codec probe",
-                           i2c_master_probe(bus, AUDIO_CODEC_PROBE_ADDR, AUDIO_CODEC_PROBE_TIMEOUT_MS))) {
+                           i2c_master_probe(bus, BOARD_AUDIO_CODEC_I2C_ADDR, AUDIO_CODEC_PROBE_TIMEOUT_MS))) {
         goto fail;
     }
     if (!audio_codec_init_data()) {
