@@ -144,6 +144,12 @@ class TourTests(unittest.TestCase):
         self.assertEqual(tour.exchange(transport, tour.Step("HOME", "HOME", "IMU quarter 1")),
                          ["HOME_OK"])
 
+    def test_tilt_reply_with_a_log_line_run_on(self):
+        transport = FakeTransport()
+        transport.pending = ["IMU_OK quarter=1 quarters=4 sample_ms=1I (23) shell: frame"]
+        self.assertEqual(tour.exchange(transport, tour.Step("HOME", "HOME", "IMU quarter 1")),
+                         ["HOME_OK"])
+
     def test_heartbeat_callback_checks_lines_including_buildid(self):
         transport = FakeTransport()
         transport.pending = ["MODEL_ERR stale"]
