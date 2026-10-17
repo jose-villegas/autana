@@ -1,8 +1,9 @@
 /*
  * gfx_debug: development-build instruments on the present path, overlays
- * drawn over what is sent and counts of how it was sent. Declared only
- * under CONFIG_LAUNCHER_DEVELOPMENT so calling one from a non-development
- * file fails to compile rather than silently no-opping.
+ * drawn over what is sent and counts of how it was sent. Declared only in a
+ * development build, and on a host where a render scene stands them in, so
+ * calling one from a non-development file fails to compile rather than
+ * silently no-opping.
  */
 #pragma once
 
@@ -16,7 +17,7 @@
  * for a gathered run. Off by default even in a development build: it
  * draws over real content, so it should be opted into, not always on.
  * Independent of the leaf layer below. */
-#if CONFIG_LAUNCHER_DEVELOPMENT
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 void gfx_set_debug_overlay(bool on);
 bool gfx_debug_overlay(void);
 

@@ -1,0 +1,6 @@
+# What the diagnostics scene's renders hash to, one per line.
+# Re-pinned deliberately, after looking at the images:
+#     ./launcher/main/shell/apps/diagnostics/tools/diagnostics_render_host.sh --update-baseline
+toggles f538b119fcdc0ce44e4d6977b3a5f30768efccb701ca1f5091bd03481995ecf3
+toggles-landscape 63df97d4e4da560bb617425b2487ab56406a4e8b53d49db226586a9230c9e7ae
+toggles-tap 73fc6dd8aed7209b82058c494c0fcc8d80d46e86065c62eed1bfe4a886d02ad1

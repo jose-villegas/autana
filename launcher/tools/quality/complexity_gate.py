@@ -506,8 +506,8 @@ def build_idf_entries(toolchain_root, vendored=False):
     return entries
 
 
-# apps/*/tools/**/*.c, at any depth, are excluded from the firmware and the
-# host build (main/CMakeLists.txt, run_tests.sh), but check_main_coverage()'s
+# apps/*/tools/**/*.c and shell/apps/*/tools/**/*.c, at any depth, are
+# excluded from the firmware and the host build (main/CMakeLists.txt, run_tests.sh), but check_main_coverage()'s
 # rglob("*.c") reaches them, so they get real flags: each compiles on a host
 # with the runner's flags plus -I main/apps/<app> for its sibling headers
 # (material.h, sand.h, ...).
@@ -516,7 +516,8 @@ TOOLS_FILES_EXTRA_INCLUDE = "apps/sand"
 
 def build_tools_entries(host_flags, already_covered):
     entries = {}
-    for path in sorted((LAUNCHER_DIR / "main").glob("apps/*/tools/**/*.c")):
+    main_dir = LAUNCHER_DIR / "main"
+    for path in sorted([*main_dir.glob("apps/*/tools/**/*.c"), *main_dir.glob("shell/apps/*/tools/**/*.c")]):
         resolved = str(path.resolve())
         if resolved in already_covered:
             continue
