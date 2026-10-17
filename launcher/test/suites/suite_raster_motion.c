@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "math/linear/math_const.h"
 #include "raster_rig.h"
 #include "render_view_fixture.h"
 #include "suites.h"
@@ -33,9 +34,7 @@ static const int16_t (*const wall_and_box[])[3] = {raster_rig_wall, box_position
 /* The box turned `degrees` about y and standing at `at`. */
 static mat4f_t
 turned(float degrees, vec3f_t at) {
-    enum { DEGREES_HALF_TURN = 180 };
-
-    const quatf_t rotation = quatf_from_axis_angle((vec3f_t){0, 1, 0}, degrees * MATH_PI / DEGREES_HALF_TURN);
+    const quatf_t rotation = quatf_from_axis_angle((vec3f_t){0, 1, 0}, degrees * MATH_RADIANS_PER_DEGREE);
     transformf_t pose = TRANSFORMF_IDENTITY;
     transformf_set_position(&pose, at);
     transformf_set_rotation(&pose, rotation);
@@ -186,7 +185,7 @@ motion_of(const raster_rig_t* r) {
 
 static fixture_camera_t
 camera_at(vec3f_t eye, float yaw_degrees) {
-    const float a = yaw_degrees * 3.14159265F / 180.0F;
+    const float a = yaw_degrees * MATH_RADIANS_PER_DEGREE;
     return (fixture_camera_t){eye, {sinf(a), 0.0F, cosf(a)}, 0.5F, 1.0F};
 }
 

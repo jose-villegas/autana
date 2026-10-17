@@ -21,6 +21,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#include "math/linear/math_const.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -2473,14 +2474,16 @@ shadow_test_bearing(const unsigned depth[], int sx, int sy, int gx, int gy, doub
     const double mx = m.mx / m.tot;
     const double my = m.my / m.tot;
 
-    const double shadow_bearing = atan2(my, mx) * 180.0 / M_PI;
-    const double gravity_bearing = atan2((double)gy, (double)gx) * 180.0 / M_PI;
+    const double degrees_per_radian = (double)MATH_DEGREES_PER_RADIAN;
+    const double half_turn = (double)MATH_HALF_TURN_DEGREES;
+    const double shadow_bearing = atan2(my, mx) * degrees_per_radian;
+    const double gravity_bearing = atan2((double)gy, (double)gx) * degrees_per_radian;
     double diff = shadow_bearing - gravity_bearing;
-    while (diff > 180.0) {
-        diff -= 360.0;
+    while (diff > half_turn) {
+        diff -= 2.0 * half_turn;
     }
-    while (diff < -180.0) {
-        diff += 360.0;
+    while (diff < -half_turn) {
+        diff += 2.0 * half_turn;
     }
     *bearing_off_by = diff < 0.0 ? -diff : diff;
     return true;

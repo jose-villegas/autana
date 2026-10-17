@@ -5,6 +5,7 @@
 #include "apps/render_lab/render_lab.h"
 #include "draw/draw.h"
 #include "ui/ui.h"
+#include "ui/ui_mu.h"
 
 /* The panel's bezel hides about 15 px along every edge. */
 #define HUD_INSET_PX    16

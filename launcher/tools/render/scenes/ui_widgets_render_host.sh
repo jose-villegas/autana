@@ -6,18 +6,9 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 scene_name=ui_widgets
+scene_ui=1
 scene_sources="
 main/services/tune.c
-main/ui/ui.c
-main/ui/input/ui_bridge.c
-main/ui/ui_build.c
-main/ui/ui_canvas_marks.c
-main/ui/controls/ui_icons.c
-main/ui/input/ui_pointer.c
-main/ui/input/ui_snap.c
-main/ui/layout/ui_scroll.c
-main/ui/controls/ui_widgets.c
-components/microui/src/microui.c
 tools/render/scenes/ui_widgets_render_host.c
 "
 scene_assets="main/engine"

@@ -1,9 +1,9 @@
 #!/bin/sh
 #
-# find_python [module ...] prints the first interpreter on PATH meeting
-# scripts/lib/python-min-version and importing every named module. It tries
-# python3, python, py, then versioned python3.N names newest first in each
-# directory, so activated environments take precedence.
+# find_python [module ...] prefers the minor pinned in .python-version,
+# then the first interpreter on PATH meeting scripts/lib/python-min-version
+# and importing every named module. Fallback tries python3, python, py, then
+# versioned python3.N names newest first in each directory.
 #
 #   PYTHON=$(find_python PIL) || exit 2
 
@@ -29,6 +29,12 @@ if [ -z "$PYTHON_MIN_VERSION" ]; then
     return 1
 fi
 
+PYTHON_PINNED_MINOR=""
+if [ -r "$_python_root/.python-version" ]; then
+    IFS= read -r PYTHON_PINNED_MINOR < "$_python_root/.python-version"
+    PYTHON_PINNED_MINOR=${PYTHON_PINNED_MINOR%.*}
+fi
+
 python_meets_minimum() {
     _pm_candidate=$1
     shift
@@ -41,6 +47,13 @@ for name in sys.argv[2:]:
 }
 
 find_python() {
+    if [ -n "$PYTHON_PINNED_MINOR" ]; then
+        _fp_pinned=$(command -v "python$PYTHON_PINNED_MINOR") || _fp_pinned=""
+        if [ -n "$_fp_pinned" ] && python_meets_minimum "$_fp_pinned" "$@"; then
+            printf '%s\n' "$_fp_pinned"
+            return 0
+        fi
+    fi
     _fp_rest="$PATH:"
     while [ -n "$_fp_rest" ]; do
         _fp_dir=${_fp_rest%%:*}
