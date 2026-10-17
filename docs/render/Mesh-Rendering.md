@@ -82,7 +82,10 @@ projection and float near clipping; `math/linear/projectx.h` owns fixed
 near clipping at any common camera-space scale. `render_view_lens()` copies
 the view's isotropic focal length and optical centre into `projectf_t`.
 Render retains pixel snapping, the fixed line path's camera units and its
-32-bit per-point divide followed by the pixel-scale multiply.
+32-bit per-point divide followed by the pixel-scale multiply. The fixed
+path truncates each quotient toward zero. The float reference in
+`render/r3d_project.h` biases each pixel offset slightly away from zero,
+then truncates toward zero.
 
 Line projection, the animation tracks and the raster all
 take their types from `math/linear/`, documented in
