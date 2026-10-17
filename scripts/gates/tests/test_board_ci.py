@@ -9,7 +9,7 @@ import unittest
 
 
 class BoardSequenceTests(unittest.TestCase):
-    def test_selftest_failure_reaches_the_sequence_verdict(self):
+    def test_both_results_decide_the_sequence_verdict(self):
         workflow = Path(__file__).resolve().parents[3] / ".github/workflows/board-ci.yml"
         sequence = workflow.read_text().split("<<'SH'\n", 1)[1].split("\n          SH", 1)[0]
         stub = '''
@@ -17,15 +17,27 @@ autana() {
     echo "$*" >> "$RUNNER_TEMP/calls"
     case "$1" in
         selftest) return "$CI_SELFTEST_EXIT" ;;
+        flash) return 0 ;;
+    esac
+}
+python() {
+    case "$*" in
+        *resolve-port*) echo COM7 ;;
+        *pytest*) echo "pytest $*" >> "$RUNNER_TEMP/calls"; return "$CI_PYTEST_EXIT" ;;
     esac
 }
 '''
-        for selftest in (0, 1):
+        for selftest, console in ((0, 0), (0, 1), (1, 0), (1, 1)):
             with self.subTest(selftest=selftest), tempfile.TemporaryDirectory() as directory:
                 env = dict(os.environ, RUNNER_TEMP=Path(directory).as_posix(),
-                           CI_SELFTEST_EXIT=str(selftest))
+                           CI_SELFTEST_EXIT=str(selftest), CI_PYTEST_EXIT=str(console),
+                           GITHUB_STEP_SUMMARY=str(Path(directory) / "summary"))
                 result = subprocess.run([shutil.which("bash"), "-c", stub + textwrap.dedent(sequence)],
-                                        env=env, capture_output=True, text=True)
-                self.assertEqual(result.returncode == 0, selftest == 0, result.stderr)
-                self.assertEqual((Path(directory) / "calls").read_text().splitlines(),
-                                 ["selftest"])
+                                        env=env, cwd=directory, capture_output=True, text=True)
+                self.assertEqual(result.returncode == 0, selftest == console == 0, result.stderr)
+                calls = (Path(directory) / "calls").read_text().splitlines()
+                self.assertEqual(calls[:2], ["selftest", "flash diag"])
+                self.assertIn("--embedded-services idf,serial", calls[2])
+                self.assertIn("--port COM7", calls[2])
+                self.assertIn("--skip-autoflash", calls[2])
+                self.assertIn("--root-logdir", calls[2])

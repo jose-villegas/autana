@@ -1,5 +1,5 @@
 """Registered Unity suites over the shell console."""
-from conftest import REPLY_TIMEOUT_S
+from console_pytest import REPLY_TIMEOUT_S
 
 
 def test_console_suite(console):

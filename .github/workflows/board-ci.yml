@@ -56,19 +56,37 @@ jobs:
             fi
           done
 
-      - name: Self-test under one board lock
+      - name: Prepare the shell image and console tests
+        run: |
+          export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
+          python -m pip install -r launcher/test/device/requirements.txt
+          autana build diag
+
+      - name: Self-test and console tests under one board lock
         id: device
         run: |
           rm -f "$RUNNER_TEMP/board-ci-selftest.log"
           export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
           cat > "$RUNNER_TEMP/board-ci-steps.sh" <<'SH'
           set -eo pipefail
+          mkdir -p .records/device/pytest-logs
           selftest_status=0
           autana selftest | tee "$RUNNER_TEMP/board-ci-selftest.log" || selftest_status=$?
-          if [ "$selftest_status" -ne 0 ]; then
-            exit "$selftest_status"
+          console_status=0
+          autana flash diag || console_status=$?
+          if [ "$console_status" -eq 0 ]; then
+            python -m pytest launcher/test/device --embedded-services idf,serial \
+              --build-dir build.diag --port "$(python scripts/device/device.py resolve-port)" \
+              --skip-autoflash --root-logdir .records/device/pytest-logs \
+              --junitxml=.records/device/pytest-logs/results.xml \
+              | tee .records/device/pytest-logs/pytest.log || console_status=$?
           fi
-          exit 0
+          echo "Console pytest exit status: $console_status" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f .records/device/pytest-logs/pytest.log ]; then
+            tail -n 1 .records/device/pytest-logs/pytest.log >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ "$selftest_status" -ne 0 ]; then exit "$selftest_status"; fi
+          exit "$console_status"
           SH
           if autana --wait 1800 lock run -- "$(cygpath -w "$BASH")" "$RUNNER_TEMP/board-ci-steps.sh"; then
             exit 0

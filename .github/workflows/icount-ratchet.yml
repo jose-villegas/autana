@@ -70,13 +70,12 @@ jobs:
           path: launcher/build.qemu.shell
       - uses: ./.github/actions/patched-qemu
         with:
+          compile: 'false'
           command: >-
-            python3 -m venv /tmp/console-pytest
-            && /tmp/console-pytest/bin/pip install -r test/device/requirements.txt
-            && /tmp/console-pytest/bin/pytest test/device --rootdir test/device --embedded-services idf,qemu
-            --build-dir build.qemu.shell --qemu-cli-args "-nographic -machine esp32s3"
-            --root-logdir build.qemu.shell/pytest-logs --durations=0
-            --junitxml=build.qemu.shell/pytest-logs/results.xml
+            cd .. && python3 -m venv /tmp/console-pytest
+            && /tmp/console-pytest/bin/pip install -r launcher/test/device/requirements.txt
+            && /tmp/console-pytest/bin/pytest launcher/test/device
+            --junitxml=launcher/build.qemu.shell/pytest-logs/results.xml
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
