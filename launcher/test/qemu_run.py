@@ -82,6 +82,7 @@ from espressif import espressif_tools_root, idf_python, idf_path  # noqa: E402  
 from device_report import SUITE_COMPLETE_RE  # noqa: E402  (the board tool's own reading)
 from device_capture import (BOOTS_FROM_RESET, BUILD_ID_RE, BUILD_ID_REQUEST,  # noqa: E402
                             crash_signs)  # (the board tool's own crash verdict)
+from lifecycle_tour import HEARTBEAT_S, heartbeat, run as run_tour  # noqa: E402
 import screenshot as wire  # noqa: E402  (the board tool's own protocol)
 import patched_qemu  # noqa: E402  (path must be set up first)
 
@@ -338,21 +339,6 @@ def run_action(console, action):
     return False
 
 
-# After each step the image is asked for its build id: the console task
-# answering proves the firmware is still up. A reboot answers too, once the
-# new boot's console is listening, and is caught by its second boot banner.
-# Generous, because without --icount a heavy frame can starve the console.
-HEARTBEAT_S = 15
-
-
-def heartbeat(console):
-    console.send(BUILD_ID_REQUEST)
-    for line in console.lines(HEARTBEAT_S):
-        if BUILD_ID_RE.search(line):
-            return True
-    return False
-
-
 def drive_shell(console, actions):
     if not console.wait_for(LISTENING):
         print("the console listener never came up - is this an image that "
@@ -433,6 +419,7 @@ def parse_args(argv):
                              "CONFIG_LAUNCHER_QEMU image, where no controller "
                              "answers and the injected sample is all the polling "
                              "task has to read")
+    parser.add_argument("--tour", action="store_true", help="discover and walk app and scene lifecycles")
     parser.add_argument("--do", action="append", default=[], metavar="ACTION",
                         help="one step, in order (repeatable): 'suite NAME', "
                              "'tap X Y', 'swipe X0 Y0 X1 Y1', 'touch down|up "
@@ -506,8 +493,10 @@ def main(argv):
         console = Console(proc, port, log_path,
                           time.monotonic() + args.timeout)
         try:
-            if actions:
+            if actions or args.tour:
                 finished = drive_shell(console, actions)
+                if finished and args.tour:
+                    finished = run_tour(console)
             else:
                 finished = console.wait_for(SENTINEL)
         finally:
@@ -517,7 +506,7 @@ def main(argv):
         proc.wait()
 
     print("console: %s" % log_path)
-    return verdict(log_path, finished, actions)
+    return verdict(log_path, finished, actions or args.tour)
 
 
 if __name__ == "__main__":

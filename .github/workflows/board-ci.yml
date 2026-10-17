@@ -60,12 +60,14 @@ jobs:
       - name: Self-test under one board lock
         id: device
         run: |
-          rm -f "$RUNNER_TEMP/board-ci-selftest.log"
+          rm -f "$RUNNER_TEMP/board-ci-selftest.log" "$RUNNER_TEMP/board-ci-tour.log"
           export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
           cat > "$RUNNER_TEMP/board-ci-steps.sh" <<'SH'
           set -eo pipefail
           autana selftest | tee "$RUNNER_TEMP/board-ci-selftest.log" || exit 1
-          # Lifecycle tour and portable suite steps go here, inside the same board hold.
+          autana flash dev --quiet
+          autana debug tour | tee "$RUNNER_TEMP/board-ci-tour.log"
+          # Portable suite steps go here, inside the same board hold.
           SH
           if autana --wait 1800 lock run -- "$(cygpath -w "$BASH")" "$RUNNER_TEMP/board-ci-steps.sh"; then
             exit 0
@@ -90,6 +92,13 @@ jobs:
               done
           else
             echo 'Board CI: no self-test capture available; see the failed step.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ -f "$RUNNER_TEMP/board-ci-tour.log" ]; then
+            sed -n 's/^report: //p' "$RUNNER_TEMP/board-ci-tour.log" | tr -d '\r' |
+              while IFS= read -r report; do
+                cat "$report" >> "$GITHUB_STEP_SUMMARY"
+              done
           fi
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

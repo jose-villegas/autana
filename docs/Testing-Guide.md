@@ -482,22 +482,34 @@ home, about a minute with no board: the boot animation, the frame loop,
 the launcher, entering and leaving an app and the rotation, none of which a
 suite reaches. Leave `--icount` off: a press is timed in the emulated clock,
 which then runs far slower than the host's. An app that does not set
-`home_gesture` ignores the swipe here as it does on the board, and the PWR
-button has no stand-in, so such an app cannot be left.
+`home_gesture` ignores the swipe here as it does on the board;
+`--do "send home"` returns directly to the launcher.
 
 **A crash fails the run.** After every step the image must answer `BUILDID`
-within `qemu_run.py`'s `HEARTBEAT_S`, or the rest of the steps are skipped.
+within `scripts/lib/lifecycle_tour.py`'s `HEARTBEAT_S`, or the rest of the
+steps are skipped.
 Any run, driven or autorun, fails on a crash line (a panic, `abort()`, a
 failed `assert`) or a second boot banner, whatever its tests reported. The
 board's captures (`autana suite`, `selftest`, `monitor`) give the same
 verdict, from `scripts/lib/device_capture.py`'s `crash_signs()`.
 
-A driven tour reaches the shell's lifecycle the way the board does, null
-panel and all. A change whose in-app scene switch broke the gfx mode's
-framebuffer contract, resetting the board on every switch, asserts and
-reboots on its first switch here too; its parent takes every ordered pair
-of its fourteen switch targets, 182 switches, on one boot. A lifecycle
-regression of that kind needs no board to catch.
+The lifecycle tour discovers the running image's apps through `APPS`, then
+asks each advertised console prefix for `scenes`. It opens and leaves every
+app, switches through every ordered app pair, and walks every ordered scene
+pair within each scene app. Each switch is immediately followed by a tilt
+to the next display quarter. Apps without scene commands count as a single
+scene and still take part in app transitions.
+
+Run `sh launcher/test/run_qemu_tests.sh --tour` locally, or flash a development
+image and run `autana debug tour [seconds]` on the board. The board command
+holds one lock and serial capture for the entire tour and prints its report
+path. The QEMU lifecycle workflow runs on relevant pull requests; Board CI
+runs the same tour against its development image.
+
+A crash, reboot, command error, malformed discovery reply, or missed reply or
+`BUILDID` heartbeat fails the tour and stops further transitions. Discovery
+also fails if it finds no apps or no app with multiple scenes. The final
+line reports the discovered graph, scene switches, and elapsed time.
 
 **What a run is evidence of.** Pass and fail, for any test that does not
 read a clock: a time a test measures, against a ceiling pegged on the

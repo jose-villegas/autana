@@ -38,6 +38,7 @@ import autana_config  # noqa: E402  (path must be set up first)
 from espressif import idf_python, idf_note_lines, require_idf  # noqa: E402
 from version import __version__  # noqa: E402
 from device_capture import BUILD_ID_REQUEST, PERF_SEGMENT  # noqa: E402
+from lifecycle_tour import DEFAULT_TOUR_S, parse_apps  # noqa: E402
 
 # The launcher hint belongs to this invocation; children resolve their own caller.
 CALLER_PID = os.environ.pop(device_lock.CALLER_PID_ENV, None)
@@ -555,6 +556,20 @@ def coredump(args):
         command.append("--erase")
     if elf:
         command += ["--elf", elf]
+    return call_device(command)
+
+
+def tour(args):
+    rest = list(args)
+    out, rest = pop_value(rest, "--out")
+    usage = "usage: autana debug tour [seconds] [--out PATH]"
+    reject_unknown("debug tour", rest)
+    seconds = seconds_argument(rest, DEFAULT_TOUR_S, usage)
+    if not 0 < seconds < float("inf"):
+        sys.exit(usage)
+    command = device_command("tour", "--max-seconds", str(seconds))
+    if out:
+        command += ["--out", out]
     return call_device(command)
 
 
@@ -1091,15 +1106,6 @@ def apps(args):
     return code
 
 
-def parse_apps(replies):
-    rows = []
-    for reply in replies:
-        match = re.fullmatch(r"APPS name=(.*) running=([01])", reply)
-        if match:
-            rows.append({"name": match[1], "running": match[2] == "1"})
-    return rows
-
-
 def open_app(args):
     reject_unknown("open", args)
     if len(args) != 1:
@@ -1489,7 +1495,7 @@ def alias(old, new, handler):
 
 LOCK_VERBS = {"wait": lock_wait, "take": take, "run": lock_run, "release": release, "hand": hand, "take-back": take_back}
 DEBUG_VERBS = {"freeze": freeze, "resume": resume, "step": step, "touch": touch, "imu": imu,
-              "framewatch": framewatch}
+              "framewatch": framewatch, "tour": tour}
 
 
 def lock(args):
@@ -1597,6 +1603,7 @@ COMMAND_GROUPS = (
     )),
     ("debug", "Debug", (
         Command("debug", debug, (
+            ("debug tour [seconds]", "walk the running development image app and scene lifecycles"),
             ("debug freeze", "stop the frame loop where it is"),
             ("debug resume", "run it again"),
             ("debug step [N]", "advance N frames while frozen; 1 when omitted"),

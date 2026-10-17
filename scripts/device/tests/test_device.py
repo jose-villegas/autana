@@ -3083,5 +3083,49 @@ class ScreenshotCommandTests(unittest.TestCase):
                 device.screenshot(args, store, BOARD)
 
 
+
+
+class LifecycleTourTests(unittest.TestCase):
+    def test_one_session_records_report_and_failure(self):
+        for succeeds in (True, False):
+            with self.subTest(succeeds=succeeds), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                connection = FakeConnection([b"BUILD_ID=fixture\n"])
+                connection.in_waiting = 0
+                args = Namespace(owner="agent", purpose="tour", wait=0, out=str(root / "tour.log"), max_seconds=1)
+                store = mock_store()
+
+                def run(console, emit):
+                    console.send("BUILDID")
+                    self.assertEqual(list(console.lines(1)), ["BUILD_ID=fixture"])
+                    emit("tour " + ("PASS" if succeeds else "FAIL") + ": fixture")
+                    return succeeds
+
+                with recorded_serial(connection, root), \
+                        mock.patch.object(device.lifecycle_tour, "run", side_effect=run), \
+                        mock.patch.object(device, "open_when_free", return_value=connection) as opened:
+                    code = device.tour(args, store, BOARD)
+                self.assertEqual(code, 0 if succeeds else 1)
+                opened.assert_called_once()
+                store.acquire.assert_called_once()
+                entry = json.loads((root / "index.jsonl").read_text().splitlines()[-1])
+                self.assertEqual(entry["command"], "tour")
+                self.assertEqual(entry["build_id"], "fixture")
+                report = (root / "tour.md").read_text()
+                self.assertIn("tour " + ("PASS" if succeeds else "FAIL"), report)
+
+    def test_serial_lines_preserve_buffered_reply_and_deadline(self):
+        connection = FakeConnection([b"OPEN_OK\nBUILD_ID=fixture\n"])
+        connection.in_waiting = 0
+        with tempfile.TemporaryFile() as output:
+            console = device.TourConsole(connection, output, time.monotonic() + 1)
+            lines = console.lines(1)
+            self.assertEqual(next(lines), "OPEN_OK")
+            lines.close()
+            self.assertEqual(next(console.lines(1)), "BUILD_ID=fixture")
+            console.deadline = time.monotonic() - 1
+            self.assertEqual(list(console.lines(1)), [])
+
+
 if __name__ == "__main__":
     unittest.main()

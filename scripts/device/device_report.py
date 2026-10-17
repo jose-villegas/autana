@@ -27,7 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config
 from device_lock import board_label
-from device_capture import RESULT_RE, results, SELFTEST_COMPLETE_RE  # noqa: E402
+from device_capture import RESULT_RE, results, SELFTEST_COMPLETE_RE, BOOTS_ON_RUNNING, crash_signs  # noqa: E402
 
 # The line a RUNSUITE ends with, read here for the board (device.py) and for
 # QEMU (launcher/test/qemu_run.py). An image that predates --test prints no
@@ -399,7 +399,12 @@ def build_report_markdown(capture_path, index_path):
                      "suite/build/worktree unknown")
     lines.append("")
 
-    if entry and entry.get("command") == "selftest":
+    if entry and entry.get("command") == "tour":
+        lines.extend(line for line in text.splitlines() if line.startswith(("tour PASS:", "tour FAIL:")))
+        lines.extend(crash_signs(text, BOOTS_ON_RUNNING))
+        if entry.get("reason") != "complete":
+            lines.append("Lifecycle tour did not complete successfully.")
+    elif entry and entry.get("command") == "selftest":
         markdown, _, _ = selftest_markdown(results(text), text, capture_path,
                                           datetime.fromisoformat(entry["started_at"]))
         lines.append(markdown)
