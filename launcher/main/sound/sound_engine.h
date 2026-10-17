@@ -17,7 +17,7 @@
 #define SOUND_QUEUE_WAIT_TICKS         0
 /* A reader exceeding this is stuck; abort rather than free memory it may still read. */
 #define SOUND_EXIT_READ_TIMEOUT_MS     5000
-/* Bounds the console wait for RX reconfiguration and mixer acknowledgement. */
+/* A stalled RX reconfiguration must not hold the console indefinitely. */
 #define SOUND_CAPTURE_TIMEOUT_MS       5000
 /* Yield between barrier checks so the mixer can retire its current read. */
 #define SOUND_CONTROL_POLL_MS          1

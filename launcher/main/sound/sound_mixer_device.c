@@ -51,10 +51,13 @@ begin_command(bool count_drop) {
 }
 
 static void
-submit(const sound_command_t* command) {
-    const BaseType_t sent = xQueueSend(commands, command, SOUND_QUEUE_WAIT_TICKS);
-    configASSERT(sent == pdTRUE);
-    (void)sent;
+finish_command(const sound_command_t* command) {
+    if (command) {
+        const BaseType_t sent = xQueueSend(commands, command, SOUND_QUEUE_WAIT_TICKS);
+        configASSERT(sent == pdTRUE);
+        (void)sent;
+    }
+    atomic_flag_clear_explicit(&producer, memory_order_release);
 }
 
 static sound_voice_t
@@ -66,10 +69,7 @@ play_source(const sound_t* sound, const sound_play_opts_t* opts, uint16_t hz) {
     portENTER_CRITICAL(&control_lock);
     const sound_voice_t voice = sound_control_play(&control, sound, opts, hz, &command);
     portEXIT_CRITICAL(&control_lock);
-    if (voice.id) {
-        submit(&command);
-    }
-    atomic_flag_clear_explicit(&producer, memory_order_release);
+    finish_command(voice.id ? &command : NULL);
     return voice;
 }
 
@@ -99,10 +99,7 @@ control_command(sound_voice_t voice, sound_bus_t bus, sound_command_kind_t kind,
     const bool accepted = voice_command ? sound_control_voice_command(&control, voice, kind, gain, &command)
                                         : sound_control_bus_command(&control, bus, kind, gain, &command);
     portEXIT_CRITICAL(&control_lock);
-    if (accepted) {
-        submit(&command);
-    }
-    atomic_flag_clear_explicit(&producer, memory_order_release);
+    finish_command(accepted ? &command : NULL);
 }
 
 void
@@ -140,10 +137,7 @@ sound_bus_create(const char* name) {
     portENTER_CRITICAL(&control_lock);
     const sound_bus_t bus = sound_control_bus_create(&control, name, &command);
     portEXIT_CRITICAL(&control_lock);
-    if (bus.id != SOUND_BUS_INVALID.id) {
-        submit(&command);
-    }
-    atomic_flag_clear_explicit(&producer, memory_order_release);
+    finish_command(bus.id != SOUND_BUS_INVALID.id ? &command : NULL);
     return bus;
 }
 
@@ -326,8 +320,7 @@ capture_request(sound_command_kind_t kind) {
         portEXIT_CRITICAL(&control_lock);
         if (begin_command(false)) {
             const sound_command_t command = {.bus = SOUND_BUS_SYSTEM, .waiter = waiter, .kind = kind};
-            submit(&command);
-            atomic_flag_clear_explicit(&producer, memory_order_release);
+            finish_command(&command);
             sent = true;
         }
         if (!ready) {
