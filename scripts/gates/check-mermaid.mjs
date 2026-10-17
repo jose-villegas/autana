@@ -10,12 +10,12 @@
 //   node scripts/gates/check-mermaid.mjs --stdin <label> # one file's content from stdin,
 //                                                         # reported under <label>
 //   node scripts/gates/check-mermaid.mjs --github-version
-//        # exit 0 when GitHub's renderer runs the pinned mermaid, 1 when not, 2 when unknown
+//        # exit 0 when GitHub's renderer runs the pinned mermaid, 1 when not, 2 when unreadable
 //
 // Renders the way GitHub does. GitHub draws each block in an iframe from VIEWSCREEN_URL,
-// whose mermaidMarkdown bundle runs mermaid 12.1.0 with the options in
-// mermaid/github-config.json (copied from that bundle's initialize call).
-// package.json overrides mermaid to that version; --github-version shows when GitHub moves.
+// whose mermaidMarkdown bundle carries its own mermaid and options. package.json overrides
+// mermaid to that version and mermaid/github-config.json copies the bundle's initialize
+// options; --github-version shows when GitHub moves.
 //
 // A diagram taller than TALL_RATIO times its width is reported TALL, a warning for now
 // (TALL_FAILS). The usual cause: GitHub's mermaid drops a subgraph's `direction` when a
@@ -54,6 +54,7 @@ const PINNED_PACKAGE = '@mermaid-js/mermaid-cli';
 const INSTALL = 'npm ci --prefix scripts/gates/mermaid';
 const GITHUB_CONFIG = join(PINNED_DIR, 'github-config.json');
 const VIEWSCREEN_URL = 'https://viewscreen.githubusercontent.com/markdown/mermaid';
+const RETRY_DELAY_MS = 5000;
 
 // height / width past which a diagram reads as a tall column on GitHub's page.
 export const TALL_RATIO = 1.3;
@@ -68,17 +69,17 @@ export function mmdcCommand(pinnedDir = PINNED_DIR) {
   return existsSync(local) ? local : 'mmdc';
 }
 
-export function pinnedVersion(pinnedDir = PINNED_DIR) {
-  return JSON.parse(readFileSync(join(pinnedDir, 'package.json'), 'utf8')).dependencies[PINNED_PACKAGE];
+function pinnedPackage(pinnedDir) {
+  return JSON.parse(readFileSync(join(pinnedDir, 'package.json'), 'utf8'));
 }
 
-// The installed mermaid (npm ci), else the version package.json overrides it to.
+export function pinnedVersion(pinnedDir = PINNED_DIR) {
+  return pinnedPackage(pinnedDir).dependencies[PINNED_PACKAGE];
+}
+
+// The mermaid package.json overrides mermaid-cli's own to: GitHub's version.
 export function pinnedMermaidVersion(pinnedDir = PINNED_DIR) {
-  const installed = join(pinnedDir, 'node_modules', 'mermaid', 'package.json');
-  if (existsSync(installed)) {
-    return JSON.parse(readFileSync(installed, 'utf8')).version;
-  }
-  return JSON.parse(readFileSync(join(pinnedDir, 'package.json'), 'utf8')).overrides.mermaid;
+  return pinnedPackage(pinnedDir).overrides.mermaid;
 }
 
 // The width and height of an SVG's viewBox, the shape GitHub scales to its page.
@@ -113,6 +114,9 @@ async function fetchText(url) {
   let lastError;
   // One retry: viewscreen has answered with a transient redirect to github.com before.
   for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt) {
+      await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+    }
     try {
       const response = await fetch(url, { redirect: 'manual' });
       if (response.ok) {

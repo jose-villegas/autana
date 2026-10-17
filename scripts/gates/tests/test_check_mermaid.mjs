@@ -190,14 +190,11 @@ test('the pinned version is the exact one package.json names', () => {
   }
 });
 
-test('mermaid is the installed version, else the one package.json overrides it to', () => {
+test('the pinned mermaid is the one package.json overrides it to', () => {
   const dir = mkdtempSync(join(tmpdir(), 'mermaid-pin-'));
   try {
     writeFileSync(join(dir, 'package.json'), JSON.stringify({ overrides: { mermaid: '12.1.0' } }));
     assert.equal(pinnedMermaidVersion(dir), '12.1.0');
-    mkdirSync(join(dir, 'node_modules', 'mermaid'), { recursive: true });
-    writeFileSync(join(dir, 'node_modules', 'mermaid', 'package.json'), JSON.stringify({ version: '12.2.0' }));
-    assert.equal(pinnedMermaidVersion(dir), '12.2.0');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

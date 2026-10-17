@@ -13,11 +13,12 @@ carries its own mermaid and options.
 
 The check renders with that mermaid version, pinned through `overrides` in
 `scripts/gates/mermaid/package.json`, and those options, copied into
-`scripts/gates/mermaid/github-config.json`. A diagram comes out the shape GitHub shows. `check-mermaid.mjs --github-version` reads the version GitHub runs today:
+`scripts/gates/mermaid/github-config.json`, so a diagram comes out the shape GitHub
+shows. `check-mermaid.mjs --github-version` reads the version GitHub runs today:
 
 - exit 0 when it matches the pin
 - exit 1 when GitHub moved: bump the override
-- exit 2 when the page or bundle changed shape and the version cannot be read
+- exit 2 when the version cannot be read: a network failure, or the page or bundle changed shape
 
 ## Tall diagrams
 
@@ -72,9 +73,8 @@ changes under any `.md` file or the validator itself, unlike this repo's
 other workflows, because installing Chrome is real per-run cost that
 nothing else here can affect.
 
-A second job runs `--github-version`. A mismatch only warns on a push or PR,
-since a GitHub-side change is not the change under review; the weekly
-scheduled run fails on it.
+A weekly scheduled run (or a manual one) runs only `--github-version`, so a
+GitHub upgrade turns it red without waiting for a `.md` change.
 
 ## Tests
 
