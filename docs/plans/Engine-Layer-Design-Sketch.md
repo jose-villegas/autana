@@ -25,7 +25,7 @@ flowchart TB
         Asset["asset/"]
     end
     subgraph PLAT["platform"]
-        InDisp["input/ then display/"]
+        InDisp["input/ audio/ then display/"]
         Gfx["gfx/<br/><i>present, pixel format</i>"]
         Base["services/ profile/ core/ board/ build/"]
     end
@@ -192,7 +192,7 @@ launcher/
 └── main/
     ├── main.c  app/  apps/  shell/ (+ ui/, apps/)  boot/  selftest/  console/     system
     ├── ui/  scene/ (+ camera/)  render/  draw/  anim/  asset/                      engine
-    └── input/  display/  gfx/  services/  profile/  core/  board/  build/         platform
+    └── input/  audio/  display/  gfx/  services/  profile/  core/  board/  build/ platform
 ```
 
 `launcher/main/engine/` is the engine standard pack (`engine.pack.toml`,

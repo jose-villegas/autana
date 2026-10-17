@@ -1,6 +1,6 @@
-/* Streaming generalized Goertzel evaluation, including non-integer DFT bins.
- * Method: docs/Citations.md#71. Power is squared unnormalized DFT magnitude;
- * dBFS normalizes a full-scale target sine to 0 dB. */
+/* Streaming Goertzel evaluation (docs/Citations.md#71), extended to non-integer DFT bins
+ * by taking the recurrence coefficient 2*cos(2*pi*hz/sample_rate) directly.
+ * Power is the squared unnormalized DFT magnitude; dBFS normalizes a full-scale target sine to 0 dB. */
 #pragma once
 #include <stddef.h>
 #include <stdint.h>

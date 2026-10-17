@@ -29,8 +29,8 @@ audio_loopback_record(uint16_t hz, uint16_t ms, uint8_t volume_pct, bool playing
     audio_goertzel_init(&detector, hz, AUDIO_OUT_SAMPLE_RATE_HZ);
     audio_tone_t tone;
     audio_tone_init(&tone, hz);
-    size_t remaining = (uint32_t)ms * AUDIO_OUT_SAMPLE_RATE_HZ / AUDIO_OUT_MS_PER_SECOND;
-    size_t settle = AUDIO_LOOPBACK_SETTLE_MS * AUDIO_OUT_SAMPLE_RATE_HZ / AUDIO_OUT_MS_PER_SECOND;
+    size_t remaining = audio_loopback_sample_budget(ms);
+    size_t settle = audio_out_samples(AUDIO_LOOPBACK_SETTLE_MS);
     if (!audio_loopback_start(&tone, out, playing, volume_pct)) {
         return false;
     }
@@ -56,8 +56,7 @@ audio_loopback_record(uint16_t hz, uint16_t ms, uint8_t volume_pct, bool playing
 
 bool
 audio_loopback_check(uint16_t hz, uint16_t ms, uint8_t volume_pct, audio_loopback_t* result) {
-    if (!result || hz == 0 || hz >= AUDIO_OUT_NYQUIST_HZ || ms == 0 || ms > AUDIO_OUT_MAX_MS
-        || volume_pct > AUDIO_OUT_VOLUME_MAX_PCT) {
+    if (!result || !audio_out_args_valid(hz, ms, volume_pct)) {
         return false;
     }
     audio_loopback_t measured = {0};

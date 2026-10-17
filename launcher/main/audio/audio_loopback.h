@@ -3,8 +3,15 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "audio/audio_out.h"
+
 #define AUDIO_LOOPBACK_SETTLE_MS       100u
 #define AUDIO_LOOPBACK_HEARD_MARGIN_DB 20.0f
+
+static inline size_t
+audio_loopback_sample_budget(uint32_t ms) {
+    return audio_out_samples(AUDIO_LOOPBACK_SETTLE_MS) + audio_out_samples(ms);
+}
 
 typedef struct {
     float tone_db;
