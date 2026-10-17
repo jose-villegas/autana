@@ -33,7 +33,7 @@
 #define GRAVITY_GYRO_TEMP_SPAN_C          60.0F
 /* QMI8658C datasheet, Table 8: initial offset plus temperature drift, in deg/s. */
 #define GRAVITY_BIAS_MAX_DPS                                                                                           \
-    (GRAVITY_GYRO_OFFSET_TOL_DPS + GRAVITY_GYRO_OFFSET_TCO_DPS_PER_C * GRAVITY_GYRO_TEMP_SPAN_C)
+    (GRAVITY_GYRO_OFFSET_TOL_DPS + (GRAVITY_GYRO_OFFSET_TCO_DPS_PER_C * GRAVITY_GYRO_TEMP_SPAN_C))
 /* Ours: target 2% settling time for a datasheet-sized gyro offset. */
 #define GRAVITY_BIAS_SETTLE_S 20.0F
 /* Integral gain in 1/s^2; derivation: docs/notes/Input-and-Sensors.md, Gravity estimation. */

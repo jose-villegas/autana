@@ -296,7 +296,7 @@ drag_bezel(const input_t* input) {
     int x, press_y, y;
     to_screen(input->press_x, input->press_y, &x, &press_y);
     to_screen(input->x, input->y, &x, &y);
-    const int radius = radius_at_press + (press_y - y) / BEZEL_DRAG_PX;
+    const int radius = radius_at_press + ((press_y - y) / BEZEL_DRAG_PX);
     bezel_radius = radius < 0 ? 0 : radius > BEZEL_MAX ? BEZEL_MAX : radius;
 }
 
@@ -430,7 +430,8 @@ draw_target(void) {
 
 static vec3i_t
 motion_log_vector(vec3f_t value, int scale) {
-    return (vec3i_t){(int)lroundf(value.x * scale), (int)lroundf(value.y * scale), (int)lroundf(value.z * scale)};
+    return (vec3i_t){(int)lroundf(value.x * (float)scale), (int)lroundf(value.y * (float)scale),
+                     (int)lroundf(value.z * (float)scale)};
 }
 
 static void
@@ -484,7 +485,9 @@ dump_imu_record(const char* args) {
         imu_record_take(&imu_record, emit_imu_record);
         printf(IMU_RECORD_PREFIX "_END\n");
     }
-    fflush(stdout);
+    if (fflush(stdout) != 0) {
+        return false;
+    }
     return true;
 }
 
@@ -650,7 +653,7 @@ draw_gravity_line(int row) {
     for (size_t i = 0; i < GRAV_COUNT; i++) {
         const bool bias = i >= GRAV_BIAS_X;
         motion_probe_format_fixed(gravity_text[i], sizeof gravity_text[i],
-                                  (int)lroundf(gravity_values[i] * (bias ? OFFSET_SCALE : IMU_PROBE_MILLI)),
+                                  (int)lroundf(gravity_values[i] * (float)(bias ? OFFSET_SCALE : IMU_PROBE_MILLI)),
                                   bias ? OFFSET_DIGITS : MOTION_MILLI_DIGITS, i != GRAV_STRENGTH);
     }
     if (snprintf(line, sizeof line, "GRAV %s,%s,%s S%s B%s,%s,%s", gravity_text[GRAV_X], gravity_text[GRAV_Y],

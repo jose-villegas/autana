@@ -10,7 +10,9 @@ project with no lock hook notifies nobody. An audit hook then refuses any
 write this process makes under the roots it replaced, and the run exits
 non-zero if one was attempted, even where the code under test swallowed the
 error, or if a snapshot folder outlived the run. It imports port_guard, so
-no test reaches a real board either.
+no test reaches a real board either. IDF_PATH names a missing temporary
+folder, so neither this process nor a child picks up the machine's ESP-IDF
+checkout; a test that wants one sets its own.
 """
 
 import atexit
@@ -26,6 +28,11 @@ import port_guard  # noqa: F401
 
 CHECKOUT = Path(__file__).resolve().parents[3]
 TEMP = Path(tempfile.mkdtemp(prefix="autana-device-tests-"))
+# An explicit IDF_PATH skips the search of install roots and the registry.
+# The tools root stays the default: the launchers find their Python there.
+os.environ["IDF_PATH"] = str(TEMP / "no-esp-idf")
+for name in ("IDF_TOOLS_PATH", "IDF_PYTHON_ENV_PATH"):
+    os.environ.pop(name, None)
 
 
 def replaced_roots():

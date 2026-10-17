@@ -11,12 +11,12 @@
 #define IMU_RECORD_TRUNCATED   IMU_RECORD_PREFIX "_TRUNCATED\n"
 /* Fit payload: 55 label/separator bytes + nine signed 32-bit integers (11 each).
  * Prefix + space + newline + NUL frame it; margin permits label growth. */
-#define IMU_RECORD_FIT_SIZE    (55 + 9 * 11)
+#define IMU_RECORD_FIT_SIZE    (55 + (9 * 11))
 #define IMU_RECORD_LINE_MARGIN 8
 #define IMU_RECORD_LINE_SIZE   (IMU_RECORD_FIT_SIZE + sizeof(IMU_RECORD_PREFIX " ") + 1 + IMU_RECORD_LINE_MARGIN)
 /* Start + fit, pose + gravity per position, and the decimated turn trace. */
 #define IMU_RECORD_CAPACITY                                                                                            \
-    ((2 + 2 * IMU_PROBE_POSE_COUNT + IMU_PROBE_TURN_SAMPLES) * IMU_RECORD_LINE_SIZE + sizeof IMU_RECORD_TRUNCATED)
+    (((2 + (2 * IMU_PROBE_POSE_COUNT) + IMU_PROBE_TURN_SAMPLES) * IMU_RECORD_LINE_SIZE) + sizeof IMU_RECORD_TRUNCATED)
 
 typedef struct {
     char* text;
