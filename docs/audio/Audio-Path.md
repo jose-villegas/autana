@@ -1,4 +1,7 @@
-# Audio
+# Audio path
+
+Part of the [audio docs](README.md). The board's audio wiring (amplifier pin, amplifier
+startup, microphone gain) is in the [board notes](../notes/Board-and-Memory.md#audio).
 
 ## Path and lifetime
 
@@ -34,23 +37,20 @@ flowchart TB
 Signal path during a loopback check:
 
 ```mermaid
-flowchart LR
-    Tx["I2S TX<br/>DMA"] --> Dac["ES8311<br/>DAC"]
-    Dac --> Amp["power<br/>amplifier"] --> Speaker["speaker"]
-    Speaker -->|over the air| Mic["microphone"]
-    Mic --> Adc["ES8311<br/>ADC"] --> Rx["I2S RX<br/>DMA"]
-    Enable["board_audio_amp_enable()<br/>on GPIO 46"] -. enable .-> Amp
-    Codec["audio_codec"] -. I2C config .-> Dac
-    Codec -. I2C config .-> Adc
+flowchart TB
+    subgraph Play["Out: I2S to the speaker"]
+        direction LR
+        Tx["I2S TX<br/>DMA"] --> Dac["ES8311<br/>DAC"] --> Amp["power<br/>amplifier"] --> Speaker["speaker"]
+        Enable["board_audio_amp_enable()<br/>on GPIO 46"] -. enables .-> Amp
+    end
+    subgraph Capture["In: microphone to I2S"]
+        direction LR
+        Mic["microphone"] --> Adc["ES8311<br/>ADC"] --> Rx["I2S RX<br/>DMA"]
+    end
+    Codec["audio_codec"] -. configures the DAC over I2C .-> Play
+    Play -->|over the air| Capture
+    Codec -. configures the ADC over I2C .-> Capture
 ```
-
-## Board settings
-
-| Constraint | Owner |
-|---|---|
-| The amplifier on GPIO 46 has one owner, `board_audio_amp_enable()`. The codec PA pin is unused. | `launcher/main/board/board_esp32s3.c`, `launcher/main/audio/audio_codec.c` |
-| `audio_out_amp()` waits `AUDIO_OUT_AMP_STARTUP_MS` (250 ms) for the amplifier to pass sound. | `launcher/main/audio/audio_out.c` |
-| The microphone gain rationale is in the comment at `AUDIO_IN_GAIN_DB`. | `launcher/main/audio/audio_in.c` |
 
 The [volume table](#level-vs-volume) shows compression at high volume.
 The [duration table](#level-vs-duration) shows that waiting for amplifier
@@ -167,7 +167,8 @@ Frequency 1000 Hz; console default volume.
 - The amplifier stays on while audio is in use and goes off after a few idle seconds.
 - The codec volume is fixed at or below 30 %; volume is applied in the mixer
   (int32, saturating).
-- Clips are PCM16 or IMA-ADPCM at `AUDIO_OUT_SAMPLE_RATE_HZ`, chosen per clip at bake time.
+- Sounds are PCM16 or IMA-ADPCM at `AUDIO_OUT_SAMPLE_RATE_HZ`, chosen per sound at bake time and
+  stored as [sound entries](Sound-Assets.md), read in place through a cursor.
 - API: audio_play / audio_stop / audio_set_gain now, and an ECS sound-source component later.
 - The shell stops an app's voices when the app exits.
 

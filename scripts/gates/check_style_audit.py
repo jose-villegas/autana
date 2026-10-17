@@ -324,7 +324,7 @@ LAYER_ROWS = (
     # System
     "apps", "shell", "boot selftest console", "app",
     # Engine
-    "ui scene", "render", "draw anim", "asset",
+    "ui scene", "render", "draw anim sound", "asset",
     # Platform
     "input audio", "display", "gfx", "services", "profile", "core", "board", "build",
 )
