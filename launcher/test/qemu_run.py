@@ -88,7 +88,6 @@ import patched_qemu  # noqa: E402  (path must be set up first)
 
 MEBIBYTE_BYTES = 1024 * 1024
 ICOUNT_SHIFT = 0
-HEARTBEAT_S = 15
 
 QEMU_PASS_RE = re.compile(r":PASS$", re.M)
 QEMU_IGNORE_RE = re.compile(r":IGNORE")
@@ -180,7 +179,7 @@ class Console:
         self.proc = proc
         self.deadline = deadline
         self.log = open(log_path, "wb")
-
+        self.pending = b""
         self.sock = None
         while self.sock is None:
             try:
@@ -190,7 +189,6 @@ class Console:
                     raise
                 time.sleep(0.2)
         self.sock.settimeout(1.0)
-        self.pending = b""
 
     def close(self):
         self.log.close()
@@ -199,27 +197,26 @@ class Console:
     def send(self, line):
         self.sock.sendall(line.encode() + b"\n")
 
-    def read_chunk(self):
-        try:
-            return self.sock.recv(65536)
-        except socket.timeout:
-            return None
-
     def lines(self, seconds=None):
-        deadline = min(self.deadline, time.monotonic() + seconds) if seconds is not None else self.deadline
+        """Complete lines as they arrive, until QEMU exits or time runs out:
+        the run's, or `seconds` from now when that comes first."""
+        deadline = self.deadline
+        if seconds is not None:
+            deadline = min(deadline, time.monotonic() + seconds)
         while time.monotonic() < deadline and self.proc.poll() is None:
-            if b"\n" in self.pending:
-                raw, self.pending = self.pending.split(b"\n", 1)
-                yield ANSI.sub("", raw.decode("utf-8", errors="replace").rstrip("\r"))
-                continue
-            chunk = self.read_chunk()
-            if chunk is None:
+            try:
+                chunk = self.sock.recv(65536)
+            except socket.timeout:
                 continue
             if not chunk:
                 return
             self.log.write(chunk)
             self.log.flush()
             self.pending += chunk
+            while b"\n" in self.pending:
+                raw, self.pending = self.pending.split(b"\n", 1)
+                text = raw.decode("utf-8", errors="replace").rstrip("\r")
+                yield ANSI.sub("", text)
 
     def wait_for(self, needle):
         for line in self.lines():
@@ -347,9 +344,19 @@ def run_action(console, action):
     return False
 
 
+# After each step the image is asked for its build id: the console task
+# answering proves the firmware is still up. A reboot answers too, once the
+# new boot's console is listening, and is caught by its second boot banner.
+# Generous, because without --icount a heavy frame can starve the console.
+HEARTBEAT_S = 15
+
+
 def heartbeat(console):
     console.send(BUILD_ID_REQUEST)
-    return any(BUILD_ID_RE.search(line) for line in console.lines(HEARTBEAT_S))
+    for line in console.lines(HEARTBEAT_S):
+        if BUILD_ID_RE.search(line):
+            return True
+    return False
 
 
 def drive_shell(console, actions):
@@ -398,19 +405,21 @@ def verdict(log_path, finished, actions):
     return 0 if finished and not failures else 1
 
 
+def qemu_machine_args(psram_mib, efuse_path):
+    return ["-m", "%dM" % psram_mib,
+            "-drive", "file=%s,if=none,format=raw,id=efuse" % efuse_path,
+            "-global", "driver=nvram.esp32s3.efuse,property=drive,value=efuse",
+            "-global", "driver=timer.esp32s3.timg,property=wdt_disable,value=true",
+            "-global", "driver=ssi_psram,property=is_octal,value=true",
+            "-monitor", "none"]
+
+
 def qemu_command(args, qemu, psram_mib, flash, efuse, port):
-    cmd = [qemu, "-M", "esp32s3", "-m", "%dM" % psram_mib,
+    cmd = [qemu, "-M", "esp32s3", *qemu_machine_args(psram_mib, efuse),
            "-drive", "file=%s,if=mtd,format=raw" % flash,
-           "-drive", "file=%s,if=none,format=raw,id=efuse" % efuse,
-           "-global", "driver=nvram.esp32s3.efuse,property=drive,value=efuse",
-           "-global", "driver=timer.esp32s3.timg,property=wdt_disable,"
-                      "value=true",
-           "-global", "driver=ssi_psram,property=is_octal,value=true",
-           "-nographic", "-monitor", "none",
-           "-serial", "tcp:127.0.0.1:%d,server=on,wait=on" % port]
+           "-nographic", "-serial", "tcp:127.0.0.1:%d,server=on,wait=on" % port]
     if args.icount:
         cmd += ["-icount", f"shift={ICOUNT_SHIFT},sleep=off"]
-
     return cmd
 
 

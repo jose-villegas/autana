@@ -1,7 +1,6 @@
 - command: OPEN sand
   expect: OPEN_OK[^\r\n]*
 - command: IMU quarter 1
-  expect: BUILD_ID=\S+
 - command: SCREENSHOT
   expect: SCREENSHOT_BEGIN[\s\S]*?SCREENSHOT_END
 - command: HOME

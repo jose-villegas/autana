@@ -3,7 +3,8 @@
 # Runs every tooling test suite in the repository: each directory that git
 # tracks a test_*.py in gets its own `python -m unittest discover -s <dir>`,
 # because -s is what puts that directory on sys.path, and each suite imports
-# the module beside it. Each tracked test_*.mjs runs directly under
+# the module beside it. Directories with conftest.py or pytest.ini belong
+# to pytest and are skipped. Each tracked test_*.mjs runs directly under
 # `node --test`, since Node's runner needs no discovery step.
 #
 # Usage:
@@ -45,8 +46,7 @@ QUIET_LOG="$REPO_ROOT/launcher/test/build/run-tool-tests.log"
 . "$REPO_ROOT/scripts/lib/python.sh"
 PYTHON=$(find_python 2>/dev/null) || PYTHON=""
 
-# Console integration tests use pytest fixtures and run in the QEMU job.
-py_dirs=$(git -C "$REPO_ROOT" ls-files -- ':(glob)**/test_*.py' | sed '\|^launcher/test/device/|d' | sed 's|/[^/]*$||' | sort -u)
+py_dirs=$(git -C "$REPO_ROOT" ls-files -- ':(glob)**/test_*.py' | sed 's|/[^/]*$||' | sort -u)
 mjs_files=$(git -C "$REPO_ROOT" ls-files -- ':(glob)**/test_*.mjs' | sort)
 
 if [ -z "$py_dirs" ] && [ -z "$mjs_files" ]; then
@@ -64,6 +64,7 @@ if [ -n "$py_dirs" ]; then
         QUIET_STATUS=1
     else
         for dir in $py_dirs; do
+            [ ! -f "$REPO_ROOT/$dir/conftest.py" ] && [ ! -f "$REPO_ROOT/$dir/pytest.ini" ] || continue
             suite_count=$((suite_count + 1))
             quiet_run "$dir" "$PYTHON" -u -m unittest discover -s "$REPO_ROOT/$dir" -p 'test_*.py' || true
         done

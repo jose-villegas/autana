@@ -591,51 +591,57 @@ python3 launcher/test/qemu/patched_qemu.py build                          # minu
 ### Console recipes and lifecycle coverage
 
 `launcher/test/device/` uses [pytest-embedded](https://docs.espressif.com/projects/pytest-embedded/en/latest/)
-for console transport, logs and Unity results. Python 3.12 or newer is required.
+for console transport, logs and Unity results.
 From the repository root, install its pinned dependencies in a virtual environment:
 
 ```sh
 python -m pip install -r launcher/test/device/requirements.txt
 sh launcher/test/run_qemu_tests.sh --suite suite_console --build-only
 python launcher/test/qemu/patched_qemu.py build
-pytest launcher/test/device --rootdir launcher/test/device --embedded-services idf,qemu --build-dir build.qemu.shell --qemu-cli-args "-nographic -machine esp32s3" --root-logdir pytest-logs --durations=0
+pytest launcher/test/device
 ```
 
-The fixtures reuse `qemu_run.py` for the image, device-profile PSRAM size,
-eFuse MAC and watchdog settings. Each test gets its own flash image and log.
+The QEMU plugin merges the flash image from `flasher_args.json`. The fixtures
+reuse `qemu_run.py` for device-profile PSRAM size, eFuse MAC and watchdog
+settings. Each test gets its own log.
 The console suite sends `RUNSUITE suite_console` and parses its Unity output
 with `expect_unity_test_output()`.
 
-For a board with a diagnostics image and its console ready, hold the lock
-for the whole pytest run. The existing `resolve-port` command reads the board selected by
-the enclosing hold; the shell substitution executes inside that hold:
+For a board, build the shell image with Unity suites before taking the lock, then flash
+and test within the hold. The existing `resolve-port` command reads the board
+selected by that hold. Pytest opens the port without flashing:
 
 ```sh
-autana lock run -- bash -c 'pytest launcher/test/device --rootdir launcher/test/device --embedded-services idf,serial --build-dir build.diag --port "$(python scripts/device/device.py resolve-port)" --root-logdir pytest-logs --durations=0'
+autana build diag
+autana lock run -- bash -c 'autana flash diag && pytest launcher/test/device --embedded-services idf,serial --build-dir build.diag --port "$(python scripts/device/device.py resolve-port)" --skip-autoflash'
 ```
 
-Add a `test_*.yaml` file beside the existing recipe. Pytest collects each file as
-one recipe, with normal fixture setup and teardown. Each step contains
-`command` (one console line) and `expect` (a regular expression). The verbs
-are `OPEN <name or prefix>`, `HOME`, `IMU quarter <q>`, `SCREENSHOT` and
-`BUILDID`. A tilt holds for the sample period reported by the startup
-`IMU quarter 0` probe and expects a BUILDID heartbeat; it does not wait on
-its own IMU reply, which concurrent firmware logging can split mid-line.
+Engine recipes live in `launcher/test/device/`; app recipes live in
+`launcher/main/apps/<app>/tests/test_*.yaml`. Collection includes app YAML
+recipes without collecting their other test files. Each recipe is one test
+with fixture setup and teardown. Each step contains `command` (one console
+line) and `expect` (a regular expression), except `IMU quarter <q>` steps,
+which contain only `command`. A tilt checks a BUILDID barrier and holds for
+the sample period reported by the startup `IMU quarter 0` probe.
 Screenshot replies remain in the test's serial log.
 
 The tour discovers `APPS` and each advertised console's `scenes` reply.
 An app that declines `scenes` has one app state. Empty app lists, malformed
 replies and a discovery with no scene pairs fail the test. The generated
 `tour-model.json` beside the serial log uses GraphWalker's JSON format.
-NetworkX's `eulerian_circuit` visits every edge, covering every ordered app
-pair and every ordered scene pair without a JVM.
+For apps with scenes, the scene current immediately after OPEN is the
+landing state. App transitions connect landing states and home; scene
+transitions connect every ordered pair within an app. Every edge changes
+state. NetworkX loads the written model and its `eulerian_circuit` visits
+every edge without a JVM.
 
 ```mermaid
 flowchart TD
     Discover["Discover apps and scenes"] --> Model["Write GraphWalker JSON"]
-    Model --> Walk["NetworkX Euler circuit"]
-    Walk --> Send["Send edge command, then tilt"]
-    Send --> Check["Reply, scene barrier, BUILDID"]
+    Model --> Load["Load written JSON"]
+    Load --> Walk["NetworkX Euler circuit"]
+    Walk --> Send["Command reply and scene check"]
+    Send --> Check["Tilt and BUILDID"]
     Check --> Hold["Hold through IMU sample period"]
     Hold -->|Next edge| Walk
     Check -->|Crash, reset or invalid reply| Fail["Fail pytest test"]
@@ -646,7 +652,8 @@ fresh `scenes` query. Every edge requires a BUILDID heartbeat. Crash and
 reset patterns come from `scripts/lib/device_capture.py` and apply to all
 expectations, including the Unity summary. CI runs the suite, recipe and
 tour against the instruction ratchet's existing shell build and uploads the
-pytest logs and model.
+pytest logs and model. Board CI runs pytest after selftest within the same
+hold, flashes the shell image with Unity suites first, and uploads both captures.
 
 ---
 
