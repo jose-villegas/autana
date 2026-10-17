@@ -45,6 +45,22 @@ class JsonReadTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 autana.parse_heap(reply)
 
+    def test_metrics_are_top_level_only(self):
+        for name in ("heap", "perf", "framewatch"):
+            self.assertIs(autana.COMMANDS[name], getattr(autana, name))
+        for name in ("heap", "perf"):
+            with self.assertRaises(SystemExit):
+                autana.debug([name])
+
+    def test_debug_framewatch_alias_announces_once(self):
+        reply = 'FRAMEWATCH {"frames":40,"allocs":0,"repeating":0,"sites":[]}'
+        stream = io.StringIO()
+        with mock.patch.object(autana, "send", return_value=(0, [reply])), \
+                contextlib.redirect_stderr(stream):
+            self.assertEqual(self.output(autana.debug, ["framewatch"]),
+                             {"frames": 40, "allocs": 0, "repeating": 0, "sites": []})
+        self.assertEqual(stream.getvalue().count("use `autana framewatch`"), 1)
+
     def test_tone_reply(self):
         for heard in (True, False):
             with self.subTest(heard=heard):

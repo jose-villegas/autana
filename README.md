@@ -52,7 +52,7 @@ Project applications live under `launcher/main/apps/`; system applications live 
 
 ## Run it on the board
 
-The firmware targets the Waveshare ESP32-S3-Touch-AMOLED-1.8 specifically. For a board build, install the commit in `launcher/idf-pin.json` and its tools. A build without it stops and prints the clone and install commands. autana finds it under `C:\Espressif` or `~/esp`; `IDF_PATH` set for one command selects another checkout ([Which ESP-IDF](docs/tools/Autana-CLI.md#which-esp-idf)). On Windows, use Git Bash for these commands; the build wrapper calls the ESP-IDF Windows environment through `cmd`.
+The firmware targets the Waveshare ESP32-S3-Touch-AMOLED-1.8 specifically. For a board build, install the commit in `launcher/idf-pin.json` and its tools. A build without it stops and prints the clone and install commands. autana finds it under `C:\Espressif` or `~/esp`; `IDF_PATH` set for one command selects another checkout ([Which ESP-IDF](docs/tools/Build-Environment.md#which-esp-idf)). On Windows, use Git Bash for these commands; the build wrapper calls the ESP-IDF Windows environment through `cmd`.
 
 ```sh
 ./tools/autana flash dev
