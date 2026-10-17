@@ -489,6 +489,9 @@ proto_height_at(int32_t re_q12, int32_t im_q12, const boot_anim_floor_state_t* s
 }
 
 #define PROTO_AXIS_GROW_MS 1500
+#ifndef PROTO_AXIS_EASE_POWER
+#define PROTO_AXIS_EASE_POWER 3
+#endif
 
 /* Screen distance from the mesh's edge to `r` along the flat axis line
  * `dir`, or -1 when either point is behind the camera. */
@@ -511,6 +514,11 @@ proto_axis_reach(uint32_t now_ms, const int dir[2], int32_t edge, int32_t far, c
     const double t = tween_ramp(now_ms, start, PROTO_AXIS_GROW_MS) / 255.0;
     if (t >= 1.0) {
         return far;
+    }
+    if (PROTO_AXIS_EASE_POWER > 0) {
+        /* Distance eased in: the near plane, most of the area on screen,
+         * fills slowly; the far crowd, little area, comes at the end. */
+        return (int32_t)lround(edge + ((far - edge) * pow(t, PROTO_AXIS_EASE_POWER)));
     }
     const double whole = proto_axis_screen_len(dir, edge, far, view);
     if (whole <= 0.0) {
