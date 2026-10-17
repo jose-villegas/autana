@@ -63,8 +63,8 @@ difference; the crops enlarge the strongest differences.
 
 ![Enlarged reference comparison](look_compare/compare.crops.png)
 
-The [capture notes](look_compare/README.md) identify reference controls,
-whole-animation artifacts and the instruction-count measurements.
+The [capture notes](look_compare/README.md) identify reference controls
+and the instruction-count measurements.
 
 Instruction measurements use the on-request `run_boot_floor_cost_suite`:
 
