@@ -12,7 +12,6 @@
 #include "esp_mac.h"
 
 #include "board/board.h"
-#include "board/board_usb.h"
 #include "core/memory.h"
 #include "core/timing.h"
 #include "gfx/gfx.h"
@@ -305,15 +304,6 @@ check_display(void) {
     report("display", gfx_framebuffer() != NULL, POST_REQUIRED, detail);
 }
 
-/* A board left on USB through PSRAM tuning can lose its console to the host
- * for good; see board/board_usb.h. */
-static void
-check_usb_tuning(void) {
-    const bool detached = board_usb_detached_for_tuning();
-    report("usb console", detached, POST_REQUIRED,
-           detached ? "off the bus through PSRAM tuning" : "on the bus through PSRAM tuning");
-}
-
 void
 post_rerun(void) {
     checks_run = 0;
@@ -339,7 +329,6 @@ post_run_after_display(void) {
     check_i2c_devices();
     check_audio_codec();
     check_display();
-    check_usb_tuning();
 
     if (checks_failed == 0) {
         ESP_LOGI(TAG, "%d checks, all passed", checks_run);

@@ -33,6 +33,13 @@ int pick(int a)
 """
 
 
+BRANCH_FREE = """void store(volatile int* reg, int value)
+{
+    *reg = value;
+}
+"""
+
+
 class EmptyScanGuardTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -82,6 +89,10 @@ class EmptyScanGuardTest(unittest.TestCase):
                  self.source("pick.c", WITH_FUNCTION)]
         with self.assertRaisesRegex(SystemExit, "ZERO functions"):
             self.run_gate(files, changed=True)
+
+    def test_changed_file_with_only_branch_free_functions_is_not_a_broken_scan(self):
+        files = [self.source("store.c", BRANCH_FREE)]
+        self.assertEqual(self.run_gate(files, changed=True), 0)
 
     def test_full_scan_of_data_only_files_is_still_a_broken_scan(self):
         files = [self.source("mesh_generated.c", DATA_ONLY)]
