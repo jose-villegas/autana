@@ -53,17 +53,17 @@ the cable first, then the PWR button: this board's power is managed by an
 At 120 MHz, ESP-IDF's PSRAM timing tuning sweeps the BBPLL, which also clocks
 the USB PHY. A host that is talking to the USB Serial/JTAG port during the
 sweep is left with a link that still takes RTS resets but carries no data:
-the console goes silent and esptool cannot sync until the port is unplugged
-or power-cycled. Whether the host is on the port then is a race. After a warm
-reset it always is; after a power cycle it depends on how fast the host
-enumerates the port again, so one PC never sees it and another always does.
+the console goes silent and esptool cannot sync until the port is replugged
+or power-cycled. After a warm reset the host is always on the port; after a
+power cycle it depends on how soon the host enumerates the port again.
 [board_usb.c](../../launcher/main/board/board_usb.c) wraps the tuning
 (`--wrap=mspi_timing_psram_tuning` in `launcher/main/CMakeLists.txt`) and turns
-the D+ pull-up off for it, so the host sees a short unplug instead. POST's
-`usb console` check fails if an ESP-IDF update leaves the wrap reaching nothing.
+the D+ pull-up off for it, so the host sees a short unplug instead. A debugger
+attached over USB-JTAG loses the port for that unplug on every boot.
+`launcher/tools/build/check_psram_tuning_wrap.py` fails a linked image whose
+tuning is not reached through the wrap.
 
-Before that cause was known, warm resets were turned into power cycles, and
-they still are: the bootloader component
+Independently of the wrap, the bootloader component
 `launcher/bootloader_components/pmic_cold_boot/` requests an AXP2101 power
 cycle whenever the reset was not a power-on.
 
@@ -78,7 +78,7 @@ sequenceDiagram
     PMIC->>Boot: VCC3V3 off and on, PWROK low on CHIP_PU
     Note over Host,Boot: USB drops, the port goes away
     Boot->>App: power-on reset this time, so the app loads
-    Note over Host,App: off the bus while the app tunes PSRAM
+    Note over Host,App: D+ pull-up off while the app tunes PSRAM
     App->>Host: first BUILD_ID, before the port is back
     Note over Host,App: USB enumerates again
     App->>Host: BUILD_ID again, after shell Ready
