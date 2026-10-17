@@ -5,17 +5,18 @@
                                             [--skip-unlocked FILE]
     python launcher/tools/r3d/build_pack.py --pack-of ID [PATH ...]
 
-Each PATH is an .import.toml, a .scene.toml, an .anim.toml, an .image.toml,
-an .icons.toml, a .curve.toml, a .sound.toml or a folder searched for these
+Each PATH is an .import.toml, a .scene.toml, an .anim.toml, an .image.toml, an
+.icons.toml, a .curve.toml, a .sound.toml or a folder searched for these
 roots; with none, launcher/main is searched. An app's demo_assets.toml adds
-launcher/demo/NAME for each NAME in its `demo` list; one inside launcher/demo is refused. A
-folder reached twice is searched once. A root is a file nothing else names:
-NAME.scene.toml is pack NAME, holding the scene entry NAME, every mesh, skin,
-skeleton and clip it names; an NAME.import.toml no scene places is pack NAME, holding its variants; an NAME.anim.toml no scene names
-is pack NAME, holding its one clip; an NAME.image.toml is pack NAME, holding
-its one picture; an NAME.icons.toml is pack NAME, holding an image entry per
-icon, each named by the icon; an NAME.curve.toml is pack NAME, holding its
-one table entry; an NAME.sound.toml is pack NAME, holding its one sound.
+launcher/demo/NAME for each NAME in its `demo` list; one inside launcher/demo
+is refused. A folder reached twice is searched once. A root is a file nothing
+else names: NAME.scene.toml is pack NAME, holding the scene entry NAME, every
+mesh, skin, skeleton and clip it names; an NAME.import.toml no scene places is
+pack NAME, holding its variants; an NAME.anim.toml no scene names is pack
+NAME, holding its one clip; an NAME.image.toml is pack NAME, holding its one
+picture; an NAME.icons.toml is pack NAME, holding an image entry per icon,
+each named by the icon; an NAME.curve.toml is pack NAME, holding its one table
+entry; an NAME.sound.toml is pack NAME, holding its one sound.
 A NAME.pack.toml makes its folder one pack NAME instead:
 every root under that folder puts its entries there, and folder packs do
 not nest. A mesh is the entry <id>.mesh that mesh_import.py wrote, and its

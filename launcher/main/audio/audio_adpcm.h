@@ -1,8 +1,8 @@
-/* IMA-ADPCM decoding into int16 samples; the block layout is in docs/assets/README.md, "The sound entry". */
+/* IMA-ADPCM decoding into int16 samples; the block layout is in docs/audio/Sound-Assets.md. */
 #pragma once
 
+#include <limits.h>
 #include <stdint.h>
-#include "asset/asset_bytes.h"
 
 #define AUDIO_ADPCM_BLOCK_HEADER_BYTES 4U
 #define AUDIO_ADPCM_STEP_INDEX_MAX     88U
@@ -15,14 +15,14 @@
 
 /* The signed little-endian samples shared by PCM16 and ADPCM. */
 static inline int16_t
-audio_adpcm_read_i16(const uint8_t* at) {
-    const uint16_t value = asset_read_u16(at);
+audio_adpcm_read_sample(const uint8_t* at) {
+    const uint16_t value = (uint16_t)(at[0] | ((uint16_t)at[1] << CHAR_BIT));
     return (int16_t)(value <= INT16_MAX ? (int)value : (int)value - (UINT16_MAX + 1));
 }
 
 static inline uint32_t
 audio_adpcm_block_bytes(uint32_t block_frames) {
-    return AUDIO_ADPCM_BLOCK_HEADER_BYTES + (block_frames - 1U) / AUDIO_ADPCM_CODES_PER_BYTE;
+    return AUDIO_ADPCM_BLOCK_HEADER_BYTES + ((block_frames - 1U) / AUDIO_ADPCM_CODES_PER_BYTE);
 }
 
 typedef struct {

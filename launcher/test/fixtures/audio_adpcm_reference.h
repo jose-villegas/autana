@@ -1,4 +1,4 @@
-/* References use FFmpeg e9b3c55fe0321915a70f44f30b276ef2afdc3a0c for IMA bit-shift rounding. */
+/* References use FFmpeg for IMA bit-shift rounding. */
 /* Input in.raw is LE int16: 0,1000,-1000,2000,-2000,3000,-3000,32767,-32768.
  * ffmpeg -f s16le -ar 22050 -ac 1 -i in.raw -c:a adpcm_ima_wav -block_size 32 out.wav
  * ffmpeg -i out.wav -f s16le decoded.raw

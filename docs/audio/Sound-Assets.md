@@ -36,13 +36,14 @@ PCM16 data is signed little-endian samples. Each ADPCM block holds an int16
 predictor, u8 step index in 0..88 and u8 reserved zero, then low-nibble-first
 IMA codes. Its byte size is `4 + (block_frames - 1) / 2`.
 
-The baker takes its block size from `AUDIO_SOUND_DEFAULT_BLOCK_FRAMES` in
-`audio_sound.h`. The first block starts at index zero; later blocks carry the
+The baker takes its block size from `SOUND_DEFAULT_BLOCK_FRAMES` in
+`sound/sound.h`. The stored sample rate is `AUDIO_OUT_SAMPLE_RATE_HZ` from
+`audio/audio_out.h`, so the mixer needs no resampling. The first block starts at index zero; later blocks carry the
 previous ending index. Each block opens with its first sample stored exactly
 as the predictor. The last block is padded by repeating its final sample, and
 `frames` tells the reader where to stop.
 
-`audio_sound_open()` maps the samples in place through `asset_entry_read()`.
+`sound_open()` maps the samples in place through `asset_entry_read()`.
 Failed opens zero the view.
 
 | Status | Cause |
@@ -58,13 +59,14 @@ Failed opens zero the view.
 
 The baker rejects misaligned starts and names their two neighbours.
 
-A mixer reads a sound through `audio_sound_cursor_t`.
-`audio_sound_seek()` selects a stored frame; ADPCM seeks must be block-aligned,
+A mixer reads a sound through `sound_cursor_t`.
+`sound_seek()` selects a stored frame; ADPCM seeks must be block-aligned,
 except that seeking to `frames` selects the end. A failed seek zeroes the cursor.
-`audio_sound_read()` copies up to the requested int16 samples across blocks and
-returns the count, stopping at `frames`. The cursor's `position` counts stored
-frames, so the caller can bound reads at `loop_end` and loop by seeking to
-`loop_start`. The view and its mapped pack must outlive the cursor.
+`sound_read()` copies up to the requested int16 samples across blocks and
+returns the count. A one-shot stops at `frames`; a loop wraps from `loop_end`
+to `loop_start` internally and keeps filling the requested buffer. The cursor's
+read-only `position` shows the next stored frame for progress displays. The view
+and its mapped pack must outlive the cursor.
 
 ```mermaid
 flowchart TD
@@ -80,7 +82,7 @@ flowchart TD
     A --> L
     L --> S[SOND entry: 32-byte header + data]
     S --> K[Pack]
-    K --> O[audio_sound_open maps it in place]
+    K --> O[sound_open maps it in place]
 ```
 
 `format` is the only switch.

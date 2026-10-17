@@ -149,7 +149,7 @@ $MAIN_DIR/anim/anim_skeleton.c
 $MAIN_DIR/anim/pose/anim_pose.c
 $MAIN_DIR/anim/playback/anim_playhead.c
 $MAIN_DIR/anim/playback/anim_layer.c
-$MAIN_DIR/audio/audio_sound.c
+$MAIN_DIR/sound/sound.c
 $MAIN_DIR/audio/audio_adpcm.c
 $MAIN_DIR/render/r3d_skin.c
 $MAIN_DIR/render/skin/r3d_skinning.c

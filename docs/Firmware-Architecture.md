@@ -72,8 +72,9 @@ flowchart TB
         subgraph R6["rendering"]
             Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
         end
-        subgraph R7["drawing and animation"]
+        subgraph R7["drawing, animation and sound"]
             Draw["draw/<br/><i>shapes, text, images, palettes into a target</i>"]
+            Sound["sound/<br/><i>stored sounds and sample cursors</i>"]
             Anim["anim/<br/><i>keyed tracks sampled over time, tweens</i>"]
         end
         subgraph R8["content"]

@@ -1,7 +1,8 @@
 # Audio
 
-Audio features owned by `launcher/main/audio/`: the codec path, the stored sound
-format and the measurements behind them. The board's audio wiring is in the
+Audio spans the platform codec and decoder in `launcher/main/audio/` and the
+engine sound assets and cursors in `launcher/main/sound/`. These docs cover
+both layers and their measurements. The board's audio wiring is in the
 [board notes](../notes/Board-and-Memory.md#audio).
 
 | Reference | Scope |

@@ -244,7 +244,7 @@ entry, `launcher/tools/anim/tracks_asset.py` of the clip entry,
 `launcher/tools/gfx/image_asset.py` of the image entry, and
 `launcher/tools/audio/sound_asset.py` of the [sound entry](../audio/Sound-Assets.md); `asset_pack.c`,
 `asset_directory.c`, `r3d_lit_mesh.c`, `anim_tracks.c`, `draw_image.c` and
-`audio_sound.c` are the respective readers.
+`sound.c` are the respective readers.
 
 No mesh is committed: each is a bake product, fetched by its lock row; a clip
 or image entry is baked from its source when the packs are built. Packs are never

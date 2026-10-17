@@ -1,0 +1,63 @@
+/*
+ * sound: a sound as an asset-pack entry (SOND), written by
+ * launcher/tools/audio/sound_asset.py. Opening it checks the header, the loop
+ * and every ADPCM block header; the samples then stay in the pack, so a mapped
+ * pack plays with no copy and no RAM. A cursor reads them out as int16. The
+ * layout is in docs/audio/Sound-Assets.md.
+ *
+ * No allocation and no ESP-IDF.
+ */
+#pragma once
+
+#include <stdint.h>
+#include "asset/asset_pack.h"
+#include "audio/audio_adpcm.h"
+#include "audio/audio_out.h"
+
+#define SOUND_ASSET                ASSET_TYPE('S', 'O', 'N', 'D')
+#define SOUND_VERSION              1U
+/* The stored rate every sound is baked at. */
+#define SOUND_SAMPLE_RATE_HZ       AUDIO_OUT_SAMPLE_RATE_HZ
+#define SOUND_HEADER_SIZE          32U
+#define SOUND_ALIGNMENT            4U
+#define SOUND_CHANNELS             1U
+#define SOUND_DEFAULT_BLOCK_FRAMES 505U
+#define SOUND_PCM_BYTES            2U
+#define SOUND_AT_VERSION           0U
+#define SOUND_AT_FORMAT            2U
+#define SOUND_AT_CHANNELS          3U
+#define SOUND_AT_SAMPLE_RATE       4U
+#define SOUND_AT_FRAMES            8U
+#define SOUND_AT_LOOP_START        12U
+#define SOUND_AT_LOOP_END          16U
+#define SOUND_AT_BLOCK_FRAMES      20U
+#define SOUND_AT_RESERVED16        22U
+#define SOUND_AT_RESERVED32        24U
+#define SOUND_AT_DATA              28U
+
+#define SOUND_FORMAT_PCM16         0U
+#define SOUND_FORMAT_IMA_ADPCM     1U
+
+typedef enum { SOUND_PCM16 = SOUND_FORMAT_PCM16, SOUND_IMA_ADPCM = SOUND_FORMAT_IMA_ADPCM } sound_format_t;
+
+typedef struct {
+    const uint8_t* data;   /* PCM16 LE samples or the first ADPCM block header; pack-owned. */
+    uint32_t frames;       /* Stored mono sample count. */
+    uint32_t loop_start;   /* First frame of the loop. */
+    uint32_t loop_end;     /* Exclusive loop end; zero means one-shot. */
+    uint16_t block_frames; /* Samples per ADPCM block; zero for PCM16. */
+    sound_format_t format; /* Sample encoding at data. */
+} sound_t;
+
+typedef struct {
+    const sound_t* sound; /* Validated view; the view and its pack must outlive this cursor. */
+    uint32_t position;    /* Read-only next stored frame, for progress displays. */
+    audio_adpcm_t adpcm;  /* Current block's codes and IMA state; unused for PCM16. */
+} sound_cursor_t;
+
+/* ADPCM seeks must be block-aligned, except the end position; failures zero the cursor. */
+asset_status_t sound_seek(sound_cursor_t* c, const sound_t* sound, uint32_t frame);
+/* Copies up to frames samples, wrapping at loop_end; one-shots stop at frames. */
+uint32_t sound_read(sound_cursor_t* c, int16_t* out, uint32_t frames);
+
+asset_status_t sound_open(const asset_pack_t* pack, const char* name, sound_t* out);

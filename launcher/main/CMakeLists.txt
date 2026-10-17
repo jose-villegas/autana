@@ -49,7 +49,7 @@ set(app_srcs
     "anim/pose/anim_pose.c"
     "anim/playback/anim_playhead.c"
     "anim/playback/anim_layer.c"
-    "audio/audio_sound.c"
+    "sound/sound.c"
     "audio/audio_adpcm.c"
     "render/r3d_skin.c"
     "render/skin/r3d_skinning.c"

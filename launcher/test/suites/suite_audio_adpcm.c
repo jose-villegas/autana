@@ -4,7 +4,7 @@
 #include "asset/asset_bytes.h"
 #include "asset/asset_store.h"
 #include "audio/audio_adpcm.h"
-#include "audio/audio_sound.h"
+#include "sound/sound.h"
 #include "suites.h"
 #include "unity.h"
 #ifndef DEVICE_BUILD
@@ -15,13 +15,13 @@
 
 static void
 check_reference(const uint8_t* block, const int16_t* expected, uint32_t frames) {
-    const audio_sound_t sound = {
-        .data = block, .frames = frames, .block_frames = (uint16_t)frames, .format = AUDIO_SOUND_IMA_ADPCM};
-    audio_sound_cursor_t cursor;
+    const sound_t sound = {
+        .data = block, .frames = frames, .block_frames = (uint16_t)frames, .format = SOUND_IMA_ADPCM};
+    sound_cursor_t cursor;
     int16_t* decoded = malloc(frames * sizeof *decoded);
     TEST_ASSERT_NOT_NULL(decoded);
-    TEST_ASSERT_EQUAL(ASSET_OK, audio_sound_seek(&cursor, &sound, 0));
-    TEST_ASSERT_EQUAL(frames, audio_sound_read(&cursor, decoded, frames));
+    TEST_ASSERT_EQUAL(ASSET_OK, sound_seek(&cursor, &sound, 0));
+    TEST_ASSERT_EQUAL(frames, sound_read(&cursor, decoded, frames));
     TEST_ASSERT_EQUAL_INT16_ARRAY(expected, decoded, frames);
     free(decoded);
 }
@@ -48,18 +48,18 @@ test_baker_multiblock_round_trip(void) {
     asset_pack_t pack;
     void* bytes = NULL;
     TEST_ASSERT_EQUAL(ASSET_OK, asset_file_open(path, &pack, &bytes));
-    audio_sound_t pcm, adpcm;
-    TEST_ASSERT_EQUAL(ASSET_OK, audio_sound_open(&pack, "pcm16", &pcm));
-    TEST_ASSERT_EQUAL(ASSET_OK, audio_sound_open(&pack, "adpcm", &adpcm));
+    sound_t pcm, adpcm;
+    TEST_ASSERT_EQUAL(ASSET_OK, sound_open(&pack, "pcm16", &pcm));
+    TEST_ASSERT_EQUAL(ASSET_OK, sound_open(&pack, "adpcm", &adpcm));
     int16_t* decoded = malloc(adpcm.frames * sizeof *decoded);
     TEST_ASSERT_NOT_NULL(decoded);
-    audio_sound_cursor_t cursor;
-    TEST_ASSERT_EQUAL(ASSET_OK, audio_sound_seek(&cursor, &adpcm, 0));
-    TEST_ASSERT_EQUAL(adpcm.frames, audio_sound_read(&cursor, decoded, adpcm.frames));
+    sound_cursor_t cursor;
+    TEST_ASSERT_EQUAL(ASSET_OK, sound_seek(&cursor, &adpcm, 0));
+    TEST_ASSERT_EQUAL(adpcm.frames, sound_read(&cursor, decoded, adpcm.frames));
     double squared = 0;
     int maximum = 0;
     for (uint32_t i = 0; i < pcm.frames; i++) {
-        const int sample = audio_adpcm_read_i16(pcm.data + i * AUDIO_SOUND_PCM_BYTES);
+        const int sample = audio_adpcm_read_sample(pcm.data + i * SOUND_PCM_BYTES);
         const int error = abs(sample - decoded[i]);
         maximum = error > maximum ? error : maximum;
         squared += (double)error * error;
@@ -80,12 +80,12 @@ static void
 test_engine_sound(void) {
     const asset_pack_t* pack = asset_store_pack("engine");
     TEST_ASSERT_NOT_NULL(pack);
-    audio_sound_t sound;
-    const asset_status_t status = audio_sound_open(pack, "tap", &sound);
+    sound_t sound;
+    const asset_status_t status = sound_open(pack, "tap", &sound);
     asset_store_release("engine");
     TEST_ASSERT_EQUAL(ASSET_OK, status);
-    TEST_ASSERT_EQUAL(AUDIO_SOUND_IMA_ADPCM, sound.format);
-    TEST_ASSERT_EQUAL(AUDIO_SOUND_DEFAULT_BLOCK_FRAMES, sound.block_frames);
+    TEST_ASSERT_EQUAL(SOUND_IMA_ADPCM, sound.format);
+    TEST_ASSERT_EQUAL(SOUND_DEFAULT_BLOCK_FRAMES, sound.block_frames);
     TEST_ASSERT_GREATER_THAN(0, sound.frames);
     TEST_ASSERT_EQUAL(0, sound.loop_end);
 }

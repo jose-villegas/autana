@@ -1,11 +1,11 @@
 """Bake NAME.sound.toml and its integer PCM WAV into a SOND entry.
 
-Layout: docs/audio/Sound-Assets.md.
 The TOML owns format and loop frames at the stored rate. The WAV's sample
-level is the sound's level; there is no gain setting. No cue/smpl interpretation. Mixdown takes
-the channel mean. Resampling uses a Hann-windowed sinc with 32 zero crossings
-on each side, widened by the downsampling ratio for an anti-alias lowpass.
-Matching-rate sources skip the filter. Standard library only.
+level is the sound's level; there is no gain setting, and cue/smpl chunks are
+not read. Mixdown takes the channel mean. Resampling uses a Hann-windowed sinc
+with 32 zero crossings on each side, widened by the downsampling ratio for an
+anti-alias lowpass. Matching-rate sources skip the filter. Layout:
+docs/audio/Sound-Assets.md. Standard library only.
 """
 
 import math
@@ -21,19 +21,19 @@ from build.c_header import read_define
 
 TYPE = b"SOND"
 SUFFIX = ".sound.toml"
-SOUND_HEADER = TOOLS.parent / "main/audio/audio_sound.h"
+SOUND_HEADER = TOOLS.parent / "main/sound/sound.h"
 ADPCM_HEADER = TOOLS.parent / "main/audio/audio_adpcm.h"
 
 
-VERSION = read_define(SOUND_HEADER, "AUDIO_SOUND_VERSION")
-HEADER_SIZE = read_define(SOUND_HEADER, "AUDIO_SOUND_HEADER_SIZE")
-ALIGNMENT = read_define(SOUND_HEADER, "AUDIO_SOUND_ALIGNMENT")
-SAMPLE_RATE_HZ = read_define(SOUND_HEADER, "AUDIO_SOUND_SAMPLE_RATE_HZ")
-CHANNELS = read_define(SOUND_HEADER, "AUDIO_SOUND_CHANNELS")
-DEFAULT_BLOCK_FRAMES = read_define(SOUND_HEADER, "AUDIO_SOUND_DEFAULT_BLOCK_FRAMES")
-PCM_BYTES = read_define(SOUND_HEADER, "AUDIO_SOUND_PCM_BYTES")
+VERSION = read_define(SOUND_HEADER, "SOUND_VERSION")
+HEADER_SIZE = read_define(SOUND_HEADER, "SOUND_HEADER_SIZE")
+ALIGNMENT = read_define(SOUND_HEADER, "SOUND_ALIGNMENT")
+SAMPLE_RATE_HZ = read_define(TOOLS.parent / "main/audio/audio_out.h", "AUDIO_OUT_SAMPLE_RATE_HZ")
+CHANNELS = read_define(SOUND_HEADER, "SOUND_CHANNELS")
+DEFAULT_BLOCK_FRAMES = read_define(SOUND_HEADER, "SOUND_DEFAULT_BLOCK_FRAMES")
+PCM_BYTES = read_define(SOUND_HEADER, "SOUND_PCM_BYTES")
 AT_VERSION, AT_FORMAT, AT_CHANNELS, AT_SAMPLE_RATE, AT_FRAMES, AT_LOOP_START, AT_LOOP_END, AT_BLOCK_FRAMES, \
-    AT_RESERVED16, AT_RESERVED32, AT_DATA = [read_define(SOUND_HEADER, "AUDIO_SOUND_AT_" + name) for name in
+    AT_RESERVED16, AT_RESERVED32, AT_DATA = [read_define(SOUND_HEADER, "SOUND_AT_" + name) for name in
         ("VERSION", "FORMAT", "CHANNELS", "SAMPLE_RATE", "FRAMES", "LOOP_START", "LOOP_END", "BLOCK_FRAMES",
          "RESERVED16", "RESERVED32", "DATA")]
 BLOCK_HEADER_BYTES = read_define(ADPCM_HEADER, "AUDIO_ADPCM_BLOCK_HEADER_BYTES")
@@ -46,7 +46,7 @@ CODE_MASK = read_define(ADPCM_HEADER, "AUDIO_ADPCM_CODE_MASK")
 SIGN_BIT = read_define(ADPCM_HEADER, "AUDIO_ADPCM_SIGN_BIT")
 STEPS = read_define(ADPCM_HEADER, "AUDIO_ADPCM_STEP_TABLE")
 INDEX = read_define(ADPCM_HEADER, "AUDIO_ADPCM_INDEX_TABLE")
-FORMATS = {"pcm16": read_define(SOUND_HEADER, "AUDIO_SOUND_FORMAT_PCM16"), "adpcm": read_define(SOUND_HEADER, "AUDIO_SOUND_FORMAT_IMA_ADPCM")}
+FORMATS = {"pcm16": read_define(SOUND_HEADER, "SOUND_FORMAT_PCM16"), "adpcm": read_define(SOUND_HEADER, "SOUND_FORMAT_IMA_ADPCM")}
 SAMPLE_BITS = PCM_BYTES * 8
 SAMPLE_MAX = (1 << (SAMPLE_BITS - 1)) - 1
 SAMPLE_MIN = -(1 << (SAMPLE_BITS - 1))
