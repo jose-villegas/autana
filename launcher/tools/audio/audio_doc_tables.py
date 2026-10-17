@@ -46,12 +46,10 @@ def render(path):
         ("Open (first tone)", idle["free"] - first, first, "n/a", "not captured"),
         ("Open (later tones)", "not captured", ", ".join(map(str, later)), "n/a", "not captured"),
         ("After close (last heap)", closed["free"], "n/a", kept, closed["largest"]),
-        ("Release (build fact)", "audio not compiled", "n/a", "n/a", "n/a"),
     ]
     tables = {"audio-ram": prefix + markdown(
         ["State", "Free DMA heap (B)", "open_dma_bytes (B)", "Kept vs idle (B)", "Largest DMA block (B)"], ram)
-        + "\nFirst-open free heap is idle minus `open_dma_bytes`; later opens report only the delta. "
-        "Release scope is owned by `launcher/main/CMakeLists.txt`, not measured by this capture.\n"}
+        + "\nFirst-open free heap is idle minus `open_dma_bytes`; later opens report only the delta.\n"}
     implicit = [(args, reply) for args, reply in tones if len(args) == 2]
     explicit = [(args, reply) for args, reply in tones if len(args) == 3]
     frequency_duration = max(args[1] for args, _ in implicit)
