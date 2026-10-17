@@ -291,6 +291,14 @@ draw_mesh_row(const mesh_pass_t* pass, int j, int row_half, int above_half, mesh
  * budget nothing is close enough to see. `dash` skips whole segment
  * GROUPS (a full draw_line_ex() call each), not pixel-thinning, genuinely
  * cheaper. */
+#ifndef PROTO_GUIDE_PIXEL_DASH
+#define PROTO_GUIDE_PIXEL_DASH 1
+#endif
+/* PROTOTYPE: the whole guide dashed by pixels like the mesh, not by groups of
+ * segments. */
+#define PROTO_GUIDE_FLAGS                                                                                              \
+    (PROTO_GUIDE_PIXEL_DASH ? DRAW_LINE_DASH(BOOT_ANIM_MESH_DASH_ON_PX, BOOT_ANIM_MESH_DASH_OFF_PX) : 0u)
+
 #ifndef PROTO_GUIDE_EXTEND
 #define PROTO_GUIDE_EXTEND 1
 #endif
@@ -337,11 +345,12 @@ draw_grid_spoke(uint16_t turn, int32_t near, int32_t far, gfx_color_t c, bool da
 
         /* Groups of BOOT_ANIM_GRID_SPOKE_DASH_STEPS alternate on and off to
          * form a visible dash. */
-        const bool draw_segment = !dash || ((step / BOOT_ANIM_GRID_SPOKE_DASH_STEPS) % 2) == 1;
+        const bool draw_segment =
+            PROTO_GUIDE_PIXEL_DASH || !dash || ((step / BOOT_ANIM_GRID_SPOKE_DASH_STEPS) % 2) == 1;
         if (have_prev && draw_segment) {
             int ax, ay, bx, by;
             if (r3d_project_segment_cs_x(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
-                draw_line_ex(ax, ay, bx, by, c, 0u);
+                draw_line_ex(ax, ay, bx, by, c, PROTO_GUIDE_FLAGS);
             }
         }
         prev_cs = cs;
@@ -355,7 +364,7 @@ draw_grid_spoke(uint16_t turn, int32_t near, int32_t far, gfx_color_t c, bool da
         const vec3x_t cs = boot_anim_plane_point(&floor_plane, re, im);
         int ax, ay, bx, by;
         if (r3d_project_segment_cs_x(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
-            draw_line_ex(ax, ay, bx, by, c, 0u);
+            draw_line_ex(ax, ay, bx, by, c, PROTO_GUIDE_FLAGS);
             proto_extend_guide(prev_cs, ax, ay, bx, by, target >= far, c, view);
         }
     }
