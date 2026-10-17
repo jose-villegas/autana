@@ -6,6 +6,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "input/imu.h"
 #include "input/input.h"
 #include "math/linear/vec3f.h"
 
@@ -19,8 +20,13 @@
 #define GRAVITY_REJECT_DEG                10.0F
 /* cos(GRAVITY_REJECT_DEG), precomputed with the angle in degrees. */
 #define GRAVITY_REJECT_COS                0.984807753F
-/* Madgwick, x-io Fusion's recommended recovery trigger period, in milliseconds. */
+/* x-io Fusion, FusionAhrs.c: recommended rejectionTimeout, in milliseconds. */
 #define GRAVITY_RECOVER_MS                5000U
+/* x-io Fusion, FusionAhrs.c: accepted samples drain nine rejected samples. */
+#define GRAVITY_RECOVER_ACCEPT_WEIGHT     9U
+/* x-io Fusion, FusionAhrs.c: restart trust near the configured gyro full scale. */
+#define GRAVITY_GYRO_OVERRANGE_RATIO      0.98F
+#define GRAVITY_GYRO_OVERRANGE_DPS        (GRAVITY_GYRO_OVERRANGE_RATIO * IMU_GYRO_RANGE_DPS)
 /* M0 board capture: rest gyro noise peaks at +/-4 deg/s. */
 #define GRAVITY_STILL_DPS                 6.0F
 /* Ours, maintainer choice: clear fast-flip error promptly, outlast a held swing reversal. */
@@ -50,17 +56,19 @@ typedef struct {
     vec3f_t linear;
     /* Gyro bias in deg/s, learned only from accepted acceleration. */
     vec3f_t gyro_bias;
-    /* Accel rejection time; past GRAVITY_RECOVER_MS the next nonzero reading is adopted. */
+    /* Time-weighted rejection debt, clamped to GRAVITY_RECOVER_MS. */
     uint32_t distrust_ms;
     /* Continuous still rejection time; motion or acceptance cancels early recovery. */
     uint32_t still_ms;
+    bool recovering;
+    bool primed;
 } gravity_t;
 
 /* Reset to down=(0,0,-1), zero linear g and bias deg/s; adopt the first nonzero acceleration exactly. */
 void gravity_reset(gravity_t* g);
 /* Motion uses INPUT_ACCEL_ONE_G and INPUT_ROTATION_ONE_DPS counts in screen axes.
  * dt_ms is clamped to GRAVITY_MAX_DT_MS; zero dt skips prediction and blending.
- * Zero acceleration cannot correct down; recovery can adopt a reading even at zero dt. */
+ * Zero acceleration cannot correct down; only the initial prime may snap at zero dt. */
 void gravity_update(gravity_t* g, const input_motion_t* m, uint32_t dt_ms);
 /* Unit down vector in screen axes, including during free fall. */
 vec3f_t gravity_down(const gravity_t* g);

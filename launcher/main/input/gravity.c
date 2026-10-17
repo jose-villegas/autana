@@ -12,7 +12,7 @@
 
 void
 gravity_reset(gravity_t* g) {
-    *g = (gravity_t){.down = {0.0F, 0.0F, -1.0F}, .distrust_ms = GRAVITY_RECOVER_MS + 1U};
+    *g = (gravity_t){.down = {0.0F, 0.0F, -1.0F}, .primed = false};
 }
 
 void
@@ -23,9 +23,17 @@ gravity_update(gravity_t* g, const input_motion_t* m, uint32_t dt_ms) {
     const float dt = (float)dt_ms / (float)MATH_MS_PER_S;
     const vec3f_t a = vec3f_scale(vec3f_from_vec3i(m->acceleration), 1.0F / INPUT_ACCEL_ONE_G);
     const vec3f_t raw = vec3f_scale(vec3f_from_vec3i(m->rotation), 1.0F / INPUT_ROTATION_ONE_DPS);
+    const bool overrange = fabsf(raw.x) >= GRAVITY_GYRO_OVERRANGE_DPS || fabsf(raw.y) >= GRAVITY_GYRO_OVERRANGE_DPS
+                           || fabsf(raw.z) >= GRAVITY_GYRO_OVERRANGE_DPS;
+    if (overrange) {
+        g->recovering = true;
+        g->distrust_ms = GRAVITY_RECOVER_MS;
+    }
     const vec3f_t rate = vec3f_sub(raw, g->gyro_bias);
     const vec3f_t w = vec3f_scale(rate, RADIANS_PER_DEGREE);
-    g->down = vec3f_normalize(vec3f_sub(g->down, vec3f_scale(vec3f_cross(w, g->down), dt)));
+    if (!overrange) {
+        g->down = vec3f_normalize(vec3f_sub(g->down, vec3f_scale(vec3f_cross(w, g->down), dt)));
+    }
 
     const float magnitude = sqrtf(vec3f_dot(a, a));
     const float error = fabsf(magnitude - 1.0F);
@@ -37,8 +45,33 @@ gravity_update(gravity_t* g, const input_motion_t* m, uint32_t dt_ms) {
         const vec3f_t direction = vec3f_scale(a, 1.0F / magnitude);
         const float weight =
             mathf_clamp((GRAVITY_TRUST_NONE_G - error) / (GRAVITY_TRUST_NONE_G - GRAVITY_TRUST_FULL_G), 0.0F, 1.0F);
-        if (g->distrust_ms <= GRAVITY_RECOVER_MS && weight > 0.0F
-            && vec3f_dot(direction, g->down) >= GRAVITY_REJECT_COS) {
+        const bool accepted = weight > 0.0F && vec3f_dot(direction, g->down) >= GRAVITY_REJECT_COS;
+        const bool was_recovering = g->recovering;
+        if (accepted) {
+            /* x-io Fusion, FusionAhrs.c: at fixed rate this equals its -9/+1 counter,
+             * with sample limit = rate * GRAVITY_RECOVER_MS / MATH_MS_PER_S.
+             * Time weighting preserves that ratio with variable frame intervals. */
+            const uint32_t drain = GRAVITY_RECOVER_ACCEPT_WEIGHT * dt_ms;
+            g->distrust_ms = g->distrust_ms > drain ? g->distrust_ms - drain : 0;
+            g->recovering = false;
+            g->still_ms = 0;
+        } else {
+            const uint32_t debt = g->distrust_ms + dt_ms;
+            if (debt > GRAVITY_RECOVER_MS) {
+                g->recovering = true;
+            }
+            g->distrust_ms = debt < GRAVITY_RECOVER_MS ? debt : GRAVITY_RECOVER_MS;
+            if (still) {
+                g->still_ms += dt_ms;
+            }
+        }
+        if (!g->primed || g->still_ms > GRAVITY_STILL_RECOVER_MS) {
+            g->down = direction;
+            g->primed = true;
+            g->recovering = false;
+            g->distrust_ms = 0;
+            g->still_ms = 0;
+        } else if (accepted && !was_recovering) {
             /* Mahony et al.: down cross direction learns the bias for our minus-cross prediction.
              * Error is perpendicular to down: along-down bias is unobservable and rotating down
              * about itself changes nothing. Convert the radian correction to bias in deg/s. */
@@ -50,18 +83,9 @@ gravity_update(gravity_t* g, const input_motion_t* m, uint32_t dt_ms) {
             /* dt/(tau+dt) approximates exponential smoothing without a per-frame expf. */
             const float alpha = weight * dt / (GRAVITY_TAU_S + dt);
             g->down = vec3f_normalize(vec3f_lerp(g->down, direction, alpha));
-            g->distrust_ms = 0;
-            g->still_ms = 0;
-        } else {
-            g->distrust_ms += dt_ms;
-            if (still) {
-                g->still_ms += dt_ms;
-            }
-            if (g->distrust_ms > GRAVITY_RECOVER_MS || g->still_ms > GRAVITY_STILL_RECOVER_MS) {
-                g->down = direction;
-                g->distrust_ms = 0;
-                g->still_ms = 0;
-            }
+        } else if (g->recovering || was_recovering) {
+            const float alpha = dt / (GRAVITY_TAU_S + dt);
+            g->down = vec3f_normalize(vec3f_lerp(g->down, direction, alpha));
         }
     }
     g->linear = vec3f_sub(a, g->down);
