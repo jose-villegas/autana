@@ -251,11 +251,11 @@ the change in down is minus angular velocity crossed with down.
 
 ```mermaid
 flowchart TD
-    Clamp[Clamp elapsed time] --> Range{Raw gyro overrange?}
-    Range -->|Yes| Restart[Keep down, enter recovery at full distrust]
-    Range -->|No| Rotate[Subtract gyro bias, rotate down, normalize]
-    Restart --> Still
-    Rotate --> Still[Check bias-corrected gyro and acceleration magnitude]
+    Clamp[Clamp elapsed time] --> Rotate[Subtract gyro bias, rotate down, normalize]
+    Rotate --> Range{Raw gyro overrange?}
+    Range -->|Yes| Restart[Enter recovery at full distrust]
+    Range -->|No| Still
+    Restart --> Still[Check bias-corrected gyro and acceleration magnitude]
     Still --> Reset[Clear still timer when not still]
     Reset --> Nonzero{Acceleration nonzero?}
     Nonzero -->|Yes| Trust[Magnitude trust weight and angular rejection]
@@ -283,7 +283,7 @@ zero-trust end (0.4 g), rather than Android's hard acceleration gate.
 Accepted acceleration corrects down with alpha = weight * dt / (tau + dt),
 followed by normalization. Angular rejection and timed recovery use the
 thresholds recommended by Madgwick's x-io Fusion library.<sup>[[73]](../Citations.md#73)</sup>
-Fusion's `FusionAhrs.c` derives its `rejectionTimeout` sample limit from the
+Fusion's AHRS implementation derives its `rejectionTimeout` sample limit from the
 sample rate and timeout in seconds. Its leaky recovery counter adds one on
 rejection and subtracts nine on acceptance, clamped to that limit. Our counter
 uses elapsed milliseconds: rejection adds dt, acceptance subtracts
@@ -295,13 +295,14 @@ acceleration corrects at the normal TAU rate with full gain, bypassing angle
 and magnitude rejection, until a sample is accepted inside the reject cone.
 Recovery does not snap or learn bias.
 
-Any raw gyro axis reaching `GRAVITY_GYRO_OVERRANGE_DPS` skips unreliable gyro
-integration, preserves down and enters recovery immediately with distrust at
-the limit. The threshold derives from Fusion's 0.98 times gyro range rule and
-the configured `IMU_GYRO_RANGE_DPS` in `input/imu.h` (512 deg/s). Our boundary
+Any raw gyro axis reaching `GRAVITY_GYRO_OVERRANGE_DPS` enters recovery
+immediately with distrust at the limit. The clipped gyro reading still rotates
+down for that sample, matching Fusion's update after its soft restart. The
+threshold derives from Fusion's 0.98 times gyro range rule and the configured `IMU_GYRO_RANGE_DPS` in `input/imu.h` (512 deg/s). Our boundary
 includes equality; Fusion uses a strict greater-than comparison. Fusion's
-soft restart preserves its estimate and restarts startup trust; here recovery
-uses the normal TAU gain.
+soft restart preserves its estimate and ramps startup gain from 10 down to
+the configured gain over 3 s; here recovery enters at full gain using the
+normal TAU rate, without a startup-gain ramp.
 
 Still-gated early recovery is ours. Still means the magnitude of raw gyro minus learned
 bias is below `GRAVITY_STILL_DPS` and acceleration magnitude departs from one g
