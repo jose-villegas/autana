@@ -13,12 +13,12 @@
 #include "unity.h"
 
 #include "asset/asset_directory.h"
+#include "asset/asset_directory_format.h"
 #include "asset/asset_pack.h"
 #include "asset/asset_store.h"
 #include "test_pack.h"
 
 #ifndef DEVICE_BUILD
-#include "asset/asset_directory_format.h"
 #include "test_asset_dir.h"
 #endif
 
