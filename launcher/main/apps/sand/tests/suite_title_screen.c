@@ -17,6 +17,7 @@
 
 #include "apps/sand/ui/sand_theme.h"
 #include "apps/sand/ui/title_screen.h"
+#include "ui/ui_mu.h"
 
 static void
 layout_for(bool landscape, title_screen_layout_t* lay) {

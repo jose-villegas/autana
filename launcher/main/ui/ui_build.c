@@ -30,6 +30,7 @@ static const char* TAG = "ui";
 #include "draw/draw.h"
 #include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
+#include "profile/frame_cost.h"
 #include "services/tune.h"
 #include "ui/controls/ui_icons.h"
 #include "ui/controls/ui_slider.h"
@@ -38,6 +39,7 @@ static const char* TAG = "ui";
 #include "ui/input/ui_pointer.h"
 #include "ui/input/ui_snap.h"
 #include "ui/ui_internal.h"
+#include "ui/ui_mu.h"
 
 /* Definitions for the externs ui_internal.h declares; see that header for
  * what each one is shared for. */
@@ -283,6 +285,7 @@ ui_invalidate(void) {
 void
 ui_init(void) {
     ui_band_init();
+    ui_face_init();
     mu_init(&ui_ctx);
     ui_ctx.text_width = measure_text_width;
     ui_ctx.text_height = measure_text_height;
@@ -361,13 +364,16 @@ void
 ui_begin(const input_t* input) {
     /* Reset before the caller can state its own; see ui.h on why style does
      * not persist across frames. */
+    ui_face_begin(input);
     button_style = UI_BUTTON_FLAT;
+    UI_FACE_COST_BEGIN(backend_from);
     paint_only = input == NULL;
     if (!paint_only) {
         feed_input(input);
     }
     snap_rect_count = 0;
     mu_begin(&ui_ctx);
+    UI_FACE_COST_END(backend_from, "ui.backend");
 }
 
 void
@@ -444,12 +450,16 @@ ui_draw_icon(mu_Context* c, mu_Rect r, const draw_image_t* icon, const char* tex
  * needed. MU_OPT_HOLDFOCUS keeps a drag updating once it leaves the knob. */
 bool
 ui_slider_int(mu_Context* c, int* value, int lo, int hi, int step) {
-    const mu_Id id = mu_get_id(c, &value, sizeof(value));
+    return ui_slider_int_id(c, mu_get_id(c, &value, sizeof value), value, lo, hi, step, true);
+}
+
+bool
+ui_slider_int_id(mu_Context* c, mu_Id id, int* value, int lo, int hi, int step, bool enabled) {
     const mu_Rect track = mu_layout_next(c);
-    mu_update_control(c, id, track, MU_OPT_HOLDFOCUS);
+    mu_update_control(c, id, track, MU_OPT_HOLDFOCUS | (enabled ? 0 : MU_OPT_NOINTERACT));
 
     int v = *value;
-    if (c->focus == id && (c->mouse_down | c->mouse_pressed) == MU_MOUSE_LEFT) {
+    if (enabled && c->focus == id && (c->mouse_down | c->mouse_pressed) == MU_MOUSE_LEFT) {
         v = ui_slider_value_at_x(track, lo, hi, UI_SLIDER_KNOB_W, step, c->mouse_pos.x);
     }
     v = mu_clamp(v, lo, hi);
