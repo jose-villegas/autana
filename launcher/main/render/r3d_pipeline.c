@@ -356,6 +356,11 @@ clip_to_plane(const planef_t* p, const clip_vertex_t* in, int n, clip_vertex_t* 
     return m;
 }
 
+/* The identity as a constant, so the guard planes built through it stay in lens
+ * space and fold to the values they had when they were written out by hand. */
+static const mat4f_t LENS_SPACE = {
+    {{1.0F, 0.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 0.0F, 1.0F}}};
+
 /* The near plane, then the screen's guard band: every corner left projects
  * inside what r3d_span takes. */
 static int
@@ -363,8 +368,7 @@ clip_to_guard(const r3d_lens_t* lens, r3d_pipeline_work_t* work, int n) {
     clip_vertex_t* poly = work->clip.poly;
     const float g = (float)GUARD_PIXELS;
     planef_t* planes = work->clip.planes;
-    const mat4f_t identity = mat4f_identity();
-    planef_frustum(&identity, lens->near_z, (vec2f_t){lens->center_x, lens->center_y}, rectf_from_edges(-g, -g, g, g),
+    planef_frustum(&LENS_SPACE, lens->near_z, (vec2f_t){lens->center_x, lens->center_y}, rectf_from_edges(-g, -g, g, g),
                    planes);
     clip_vertex_t* other = work->clip.other;
     for (int p = 0; p < PLANE_FRUSTUM_COUNT && n >= 3; p++) {

@@ -417,6 +417,7 @@ the normal's length unless the plane is normalized. Points supplied to
 | `P_from_points(a, b, c)` | winding determines the inside; unnormalized | $`n = (b-a) \times (c-a),\ d = -n \cdot a`$ |
 | `P_distance(p, q)` | signed plane value | $`p_n \cdot q + p_d`$ |
 | `P_normalize(p)` | unit normal; normal must be nonzero | $`(p_n, p_d)/\lVert p_n\rVert`$ |
+| `P_from_rows(&m, a, b, c, e)` | the plane $`a x + b y + c z + e \ge 0`$ of affine m's target, in m's source space | $`n_j = a m_{0j} + b m_{1j} + c m_{2j},\ d = a m_{03} + b m_{13} + c m_{23} + e`$ |
 | `P_frustum(&m, near_z, center, screen, out)` | near and screen side planes in affine m's source space | $`n_j = a m_{0j} + b m_{1j} + c m_{2j},\ d = a m_{03} + b m_{13} + c m_{23} + e`$ |
 
 Frustum extraction reads rows as in Gribb and Hartmann<sup>[[72]](../Citations.md#72)</sup>.
