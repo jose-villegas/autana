@@ -297,7 +297,7 @@ draw_mesh_row(const mesh_pass_t* pass, int j, int row_half, int above_half, mesh
 
 /* PROTOTYPE (host only): a line on the floor ends at its vanishing point on
  * the horizon, mid-screen once the space tilts. Past it, carry the guide on
- * as a screen line to the panel's edge. */
+ * as a screen line to the panel's edge, dashed like the mesh. */
 static void
 proto_extend_guide(vec3x_t from_cs, int ax, int ay, int bx, int by, bool full, gfx_color_t c,
                    const boot_anim_view_t* view) {
@@ -313,7 +313,8 @@ proto_extend_guide(vec3x_t from_cs, int ax, int ay, int bx, int by, bool full, g
         return;
     }
     const int far_px = 4 * (GFX_WIDTH + GFX_HEIGHT);
-    draw_line_ex(bx, by, bx + (int)(((int64_t)dx * far_px) / len), by + (int)(((int64_t)dy * far_px) / len), c, 0u);
+    draw_line_ex(bx, by, bx + (int)(((int64_t)dx * far_px) / len), by + (int)(((int64_t)dy * far_px) / len), c,
+                 DRAW_LINE_DASH(BOOT_ANIM_MESH_DASH_ON_PX, BOOT_ANIM_MESH_DASH_OFF_PX));
 }
 
 static void
