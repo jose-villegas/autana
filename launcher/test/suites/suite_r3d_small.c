@@ -89,7 +89,7 @@ test_small_spread_channel_boundaries_and_faces(void) {
     knob("r3d_span.small_flat_spread", 1);
     for (int channel = 0; channel < 3; channel++) {
         const float step =
-            255.0F / (channel == 1 ? (float)gfx_rgb565_g6(UINT16_MAX) : (float)gfx_rgb565_r5(UINT16_MAX));
+            (float)UINT8_MAX / (channel == 1 ? (float)gfx_rgb565_g6(UINT16_MAX) : (float)gfx_rgb565_r5(UINT16_MAX));
         for (int delta = -1; delta <= 1; delta++) {
             r3d_span_vertex_t v[3] = {{0, 0, 0.2F, 0, 0, 0},
                                       {SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0, 0.8F, 0, 0, 0},
