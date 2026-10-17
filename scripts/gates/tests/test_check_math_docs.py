@@ -46,23 +46,31 @@ class CheckMathDocs(unittest.TestCase):
         self.assertEqual([], check_math_docs.check(REPO))
 
     def test_geometry_template_functions_and_types_are_checked(self):
-        with tempfile.TemporaryDirectory() as d:
-            root = pathlib.Path(d)
-            make_tree(root)
-            geometry = root / "launcher/packages/math/include/math/geometry"
-            geometry.mkdir(exist_ok=True)
-            (geometry / "rect_template.h").write_text(
-                "#define MATH_DEFINE_RECT(P, T, OPS) \\\n"
-                "    static inline T P##_right(P##_t r) { return r.x + r.w; }\n"
-            )
-            (geometry / "rectf.h").write_text("MATH_DEFINE_RECT(rectf, float, mathf)\n")
-            page = root / check_math_docs.PAGE
-            page.write_text(page.read_text().replace("### rect\n\n| `P_add(` |", "### rect\n\n| `P_right(r)` |") + "`rectf`\n")
-            self.assertEqual([], check_math_docs.check(root))
-            page.write_text(page.read_text().replace("`P_right(r)`", ""))
-            self.assertTrue(any("rect section lacks `P_right(" in p for p in check_math_docs.check(root)))
-            page.write_text(page.read_text().replace("`rectf`", "`P_right(r)`"))
-            self.assertTrue(any("does not name the type `rectf`" in p for p in check_math_docs.check(root)))
+        for family, function in (("rect", "right"), ("plane", "distance")):
+            with self.subTest(family=family), tempfile.TemporaryDirectory() as d:
+                root = pathlib.Path(d)
+                make_tree(root)
+                geometry = root / "launcher/packages/math/include/math/geometry"
+                geometry.mkdir(exist_ok=True)
+                (geometry / (family + "_template.h")).write_text(
+                    "#define MATH_DEFINE_%s(P, T, OPS) \\\n" % family.upper()
+                    + "    static inline T P##_%s(P##_t r) { return r.x; }\n" % function
+                )
+                prefix = family + "f"
+                (geometry / (prefix + ".h")).write_text(
+                    "MATH_DEFINE_%s(%s, float, mathf)\n" % (family.upper(), prefix))
+                page = root / check_math_docs.PAGE
+                text = page.read_text()
+                section = "### %s\n\n| `P_add(` |\n\n" % family
+                entry = "`P_%s(r)`" % function
+                page.write_text(text.replace(section, "") + "### %s\n\n| %s |\n`%s`\n" % (family, entry, prefix))
+                self.assertEqual([], check_math_docs.check(root))
+                page.write_text(page.read_text().replace(entry, ""))
+                self.assertTrue(any("%s section lacks `P_%s(" % (family, function) in p
+                                    for p in check_math_docs.check(root)))
+                page.write_text(page.read_text().replace("`%s`" % prefix, entry))
+                self.assertTrue(any("does not name the type `%s`" % prefix in p
+                                    for p in check_math_docs.check(root)))
 
     def test_a_synthetic_tree_that_agrees_passes(self):
         self.assertEqual([], problems_for())

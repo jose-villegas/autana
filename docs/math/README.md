@@ -4,7 +4,7 @@
 matrices, transforms and shapes, built on the per-type scalar operations in
 `math/scalar/`, all part of the [math package](../../launcher/packages/math/README.md): header-only,
 static inline, ESP-IDF-free, so a host suite checks every line. The vector,
-quaternion, affine2, 4x4 matrix, transform and rectangle families are each
+quaternion, affine2, 4x4 matrix, transform, rectangle and plane families are each
 written once as a template ([Templates](#templates) says how) and instantiated per number
 type. A type's name is its family plus a one-letter number-type suffix; there
 is no bare name.
@@ -21,7 +21,7 @@ and read the macros in `*_template.h` only to change an algorithm.
 - [The transform cache](#the-transform-cache)
 - [Scalar](#scalar): [mathi.h](#mathih), [mathf.h](#mathfh), [maths.h](#mathsh), [mathx.h](#mathxh), [mathf_round.h](#mathf_roundh), [mathf_rsqrt.h](#mathf_rsqrth), [fixed.h](#fixedh), [rng.h](#rngh), [trig.h](#trigh), [units.h](#unitsh)
 - [Linear](#linear): [vec2](#vec2-f-i-s-x), [vec3](#vec3-f-i-s-x), [quat](#quat-f-x), [affine2](#affine2-f-x), [mat3](#mat3-f), [mat4](#mat4-f-x), [transform](#transform-f-x), [conversions](#conversions-vec_converth)
-- [Geometry](#geometry): [rect](#rect-f-i-s-x)
+- [Geometry](#geometry): [rect](#rect-f-i-s-x), [plane](#plane-f-x)
 - [Examples](#examples)
 - [The float-precision build rules](#the-float-precision-build-rules)
 
@@ -29,10 +29,10 @@ and read the macros in `*_template.h` only to change an algorithm.
 
 | Suffix | Number type | Range | Precision | Families | For |
 |---|---|---|---|---|---|
-| `f` | float, single precision | about ±3.4e38 | 24-bit mantissa, ~7 digits | `vec2f`, `vec3f`, `quatf`, `affine2f`, `mat3f`, `mat4f`, `transformf`, `rectf` | the default |
-| `i` | int32 | ±2.1e9 | exact; sums and products wrap | `vec2i`, `vec3i`, `recti` | grid, pixel and cell coordinates |
+| `f` | float, single precision | about Â±3.4e38 | 24-bit mantissa, ~7 digits | `vec2f`, `vec3f`, `quatf`, `affine2f`, `mat3f`, `mat4f`, `transformf`, `rectf`, `planef` | the default |
+| `i` | int32 | Â±2.1e9 | exact; sums and products wrap | `vec2i`, `vec3i`, `recti` | grid, pixel and cell coordinates |
 | `s` | int16 | -32768 to 32767 | exact; sums and products saturate | `vec2s`, `vec3s`, `rects` | coordinates kept compact where memory is short |
-| `x` | Q16.16 fixed point | ±32768 | 1/65536 (1.5e-5); sine good to ~1e-3; saturates | `vec2x`, `vec3x`, `quatx`, `affine2x`, `mat4x`, `transformx`, `rectx` | deterministic maths, or a chip with no FPU |
+| `x` | Q16.16 fixed point | Â±32768 | 1/65536 (1.5e-5); sine good to ~1e-3; saturates | `vec2x`, `vec3x`, `quatx`, `affine2x`, `mat4x`, `transformx`, `rectx`, `planex` | deterministic maths, or a chip with no FPU |
 
 A dot product of `i` and `s` vectors widens to int64; of `x`, it is a saturating
 Q16.16 sum. `mat4x_apply` is the exception to saturation: it floors each product
@@ -78,14 +78,14 @@ biases each offset slightly away from zero, then truncates toward it.
 A family is a header holding one macro per group of functions
 (`vec2_template.h`'s `MATH_DEFINE_VEC2`, `vec3_template.h`'s
 `MATH_DEFINE_VEC3`, `quat_template.h`'s `MATH_DEFINE_QUAT`, and the affine2, mat4,
-transform and geometry `rect_template.h` families likewise). An
-instantiation header (`vec3f.h`, `quatx.h`, ...) holds the macros' calls and
+transform, and geometry `rect_template.h` and `plane_template.h` families
+likewise). An instantiation header (`vec3f.h`, `quatx.h`, ...) holds the macros' calls and
 any type-specific operations. The macro arguments:
 
 | Argument | What it is |
 |---|---|
 | `P` | The type being made, e.g. `vec3f` (its functions are `vec3f_add`, ...) |
-| `V`, `R`, `Q`, `M` | The vector, rectangle, quaternion and matrix types a family builds on |
+| `V`, `V2`, `R`, `Q`, `M` | The vector, optional vec2, rectangle, quaternion and matrix types a family builds on |
 | `T` | The scalar (`float`, `int`, `int32_t`, `int16_t`); `recti` keeps plain `int` |
 | `W` | The type a dot product sums in (wider than `T` for an integer) |
 | `OPS` | The scalar operations' prefix (`mathf`, `mathi`, `maths`, `mathx`): the static inline functions `OPS_add`, `OPS_mul`, `OPS_one` and the rest in `mathf.h`, `mathi.h`, `maths.h` and `mathx.h`. A family names only the ones it uses, so a type without `OPS_div` or `OPS_sqrt` gets no normalize. |
@@ -103,6 +103,11 @@ prefixes for its scalar type. `MATH_DEFINE_AFFINE2_RECT(P, V, R, OPS, SUFFIX, MA
 shares the corner bounding-box operation: `SUFFIX` names the generated
 function and `MAP` selects the point mapper. The pixel instantiations use
 `vec2i`, `recti`, `mathi`, `map_recti` and `map_pixel`.
+
+`MATH_DEFINE_PLANE(P, V, V2, R, M, T, OPS)` takes vec3, vec2, rectangle
+and affine mat4 prefixes for the same scalar type. It uses the vector dot,
+cross, subtraction and scale operations, and scalar arithmetic, square root,
+zero and one. Fixed-point operations round and saturate as in `mathx`.
 
 A reader looks at the instantiation's plain names (`vec3f_add`, `quatx_mul`)
 and the tables below, and can ignore the macros.
@@ -263,7 +268,7 @@ inversion's `out`.
 | `P_scale(a, s)` | every component times the scalar `s` | $`s\,a = (s\,a_x,\ s\,a_y,\ s\,a_z)`$ |
 | `P_dot(a, b)` | dot product, in the wide type of the number type | $`a \cdot b = a_x b_x + a_y b_y + a_z b_z`$ |
 | `P_equal(a, b)` | exact component equality | $`a_x = b_x \land a_y = b_y \land a_z = b_z`$ |
-| `P_cross(a, b)` | cross product; x × y = z | $`(a \times b)_x = a_y b_z - a_z b_y`$<br> $`(a \times b)_y = a_z b_x - a_x b_z`$<br> $`(a \times b)_z = a_x b_y - a_y b_x`$ |
+| `P_cross(a, b)` | cross product; x Ã— y = z | $`(a \times b)_x = a_y b_z - a_z b_y`$<br> $`(a \times b)_y = a_z b_x - a_x b_z`$<br> $`(a \times b)_z = a_x b_y - a_y b_x`$ |
 | `P_normalize(a)` | unit vector; `f` and `x` only; `a` must not be zero | $`\hat a = \frac{a}{\sqrt{a \cdot a}}`$ |
 | `P_<c1><c2><c3>(v)` | swizzle, each `c` one of `x y z`: `vec3f_zyx(v)` reverses | $`(v_{c_1},\ v_{c_2},\ v_{c_3})`$ |
 | `P_<c1><c2>(v)` | swizzle to the vec2 of the same number type, each `c` one of `x y z` | $`(v_{c_1},\ v_{c_2})`$ |
@@ -398,6 +403,31 @@ width or height is empty. Queries clamp result sizes to zero.
 | `P_intersect(a, b)` | shared area, with nonnegative extents | $`l = \max(a_x,b_x),\ t = \max(a_y,b_y)`$<br>$`r = \min(a_x+a_w,b_x+b_w),\ b = \min(a_y+a_h,b_y+b_h)`$<br>$`\mathrm{from\_edges}(l,t,r,b)`$ |
 | `P_union(a, b)` | smallest rectangle holding both; empty inputs add nothing; two empty inputs give zero size at a's corner | $`l = \min(a_x,b_x),\ t = \min(a_y,b_y)`$<br>$`r = \max(a_x+a_w,b_x+b_w),\ b = \max(a_y+a_h,b_y+b_h)`$<br>$`\mathrm{from\_edges}(l,t,r,b)`$ for nonempty inputs |
 | `P_contains(r, px, py)` | includes left and top, excludes right and bottom | $`r_x \le px < r_x+r_w \land r_y \le py < r_y+r_h`$ |
+
+### plane (`f x`)
+
+`planef_t` and `planex_t` store a vec3 `normal` and scalar `d`. The inside
+half-space satisfies `dot(normal, point) + d >= 0`. Distance is scaled by
+the normal's length unless the plane is normalized. Points supplied to
+`from_points` must be noncollinear to produce a nonzero normal.
+
+| Function | Purpose | Formula |
+|---|---|---|
+| `P_from_normal_point(n, p)` | plane through a point with the given normal | $`(n, -n \cdot p)`$ |
+| `P_from_points(a, b, c)` | winding determines the inside; unnormalized | $`n = (b-a) \times (c-a),\ d = -n \cdot a`$ |
+| `P_distance(p, q)` | signed plane value | $`p_n \cdot q + p_d`$ |
+| `P_normalize(p)` | unit normal; normal must be nonzero | $`(p_n, p_d)/\lVert p_n\rVert`$ |
+| `P_frustum(&m, near_z, center, screen, out)` | near and screen side planes in affine m's source space | $`n_j = a m_{0j} + b m_{1j} + c m_{2j},\ d = a m_{03} + b m_{13} + c m_{23} + e`$ |
+
+Frustum extraction reads rows as in Gribb and Hartmann<sup>[[72]](../Citations.md#72)</sup>.
+Here the camera looks down +z, z supplies the homogeneous w row, and
+`screen = center + xy / z`; the screen rectangle sets the sides. Lens-space
+coefficients `(a,b,c,e)` are `(0,0,1,-near_z)`, `(1,0,cx-left,0)`,
+`(-1,0,right-cx,0)`, `(0,1,cy-top,0)` and `(0,-1,bottom-cy,0)`.
+Outputs follow `PLANE_FRUSTUM_NEAR`, `PLANE_FRUSTUM_LEFT`,
+`PLANE_FRUSTUM_RIGHT`, `PLANE_FRUSTUM_TOP`, `PLANE_FRUSTUM_BOTTOM`;
+`PLANE_FRUSTUM_COUNT` sizes the output. There is no far plane, and the
+frustum planes are unnormalized.
 
 ## Examples
 
