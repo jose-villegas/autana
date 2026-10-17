@@ -2,6 +2,11 @@
 set(app_srcs
     "main.c"
     "sound/sound_mixer.c"
+    "sound/sound_mixer_device.c"
+    "audio/audio_codec.c"
+    "audio/audio_out.c"
+    "audio/audio_in.c"
+    "audio/audio_tone.c"
     "app/app_arena.c"
     "app/app_registry.c"
     "boot/boot_anim.c"
@@ -135,12 +140,8 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/verbs/console_screenshot.c"
         "console/capture/device_state.c"
     )
-    # The development console is the only audio caller.
+    # Acoustic detection belongs to the development console.
     list(APPEND app_srcs
-        "audio/audio_codec.c"
-        "audio/audio_out.c"
-        "audio/audio_in.c"
-        "audio/audio_tone.c"
         "audio/audio_goertzel.c"
         "audio/audio_loopback.c"
     )

@@ -15,6 +15,7 @@
 #include "core/memory.h"
 #include "core/timing.h"
 #include "gfx/gfx.h"
+#include "sound/sound_engine.h"
 
 static const char* TAG = "post";
 
@@ -270,28 +271,14 @@ check_i2c_devices(void) {
 
 static void
 check_audio_codec(void) {
-    i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
-    if (bus == NULL) {
-        report("audio codec", false, POST_REQUIRED, "no i2c bus");
-        return;
-    }
-
-    /* The codec sits behind the amplifier enable board_audio_amp_enable()
-     * controls, so bring that up before probing or an alive codec reports
-     * as missing. This only powers the rail; it makes no sound and
-     * configures nothing. */
-    const bool powered = board_audio_amp_enable(true) == ESP_OK;
-    timing_sleep_ms(10); /* let the rail settle before probing */
-
-    const bool present = i2c_master_probe(bus, BOARD_AUDIO_CODEC_I2C_ADDR, 100) == ESP_OK;
-
-    /* Leave it off again: POST must not change the state the shell inherits. */
-    board_audio_amp_enable(false);
-
+    const char* step = sound_init_failure();
     char detail[96];
-    snprintf(detail, sizeof(detail), "0x%02x  ES8311%s", BOARD_AUDIO_CODEC_I2C_ADDR,
-             powered ? "" : " (amp enable failed)");
-    report("audio codec", present, POST_REQUIRED, detail);
+    if (step) {
+        (void)snprintf(detail, sizeof detail, "audio: init failed (%s)", step);
+    } else {
+        (void)snprintf(detail, sizeof detail, "0x%02x  ES8311", BOARD_AUDIO_CODEC_I2C_ADDR);
+    }
+    report("audio codec", step == NULL, POST_REQUIRED, detail);
 }
 
 static void

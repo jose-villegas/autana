@@ -9,6 +9,7 @@
 #include "xtensa_perfmon_access.h"
 
 #include "core/timing.h"
+#include "math/scalar/units.h"
 
 /* select/mask pairs from xtensa/xt_perf_consts.h. The S3's caches sit
  * outside the core, which sees an instruction-cache miss as a busy
@@ -60,6 +61,52 @@ frame_cost_event_at(int index) {
 static frame_cost_t shared;
 static TaskHandle_t owner_task;
 static int foreign_task_calls;
+static portMUX_TYPE external_lock = portMUX_INITIALIZER_UNLOCKED;
+
+static struct {
+    const char* name;
+    int64_t total_us;
+    int64_t worst_us;
+    uint32_t blocks;
+} external;
+
+void
+frame_cost_external(const char* name, int64_t us) {
+    portENTER_CRITICAL(&external_lock);
+    external.name = name;
+    external.total_us += us;
+    external.worst_us = us > external.worst_us ? us : external.worst_us;
+    external.blocks++;
+    portEXIT_CRITICAL(&external_lock);
+}
+
+static int
+external_report(uint32_t frames, char* out, size_t capacity, int length) {
+    if (!frames || !capacity) {
+        return length;
+    }
+    portENTER_CRITICAL(&external_lock);
+    const char* name = external.name;
+    const int64_t total = external.total_us;
+    const int64_t worst = external.worst_us;
+    const uint32_t blocks = external.blocks;
+    external.total_us = 0;
+    external.worst_us = 0;
+    external.blocks = 0;
+    portEXIT_CRITICAL(&external_lock);
+    if (!blocks) {
+        return length;
+    }
+    const int64_t average = total / blocks;
+    const int wrote = snprintf(out + length, capacity - (size_t)length, " || %s %d.%02d/%d.%01d ms/block n=%u", name,
+                               (int)(average / MATH_US_PER_MS), (int)(average % MATH_US_PER_MS / 10),
+                               (int)(worst / MATH_US_PER_MS), (int)(worst % MATH_US_PER_MS / 100), (unsigned)blocks);
+    if (wrote < 0 || (size_t)(length + wrote) >= capacity) {
+        out[length] = '\0';
+        return length;
+    }
+    return length + wrote;
+}
 
 int
 frame_cost_shared_name_index(const char* name) {
@@ -155,6 +202,7 @@ frame_cost_take_counts(char* out, size_t out_size) {
 int
 frame_cost_take_report(uint32_t frames, char* out, size_t out_size) {
     int length = frame_cost_report(&shared, frames, out, out_size);
+    length = external_report(frames, out, out_size, length);
     if (frames == 0 || out_size == 0 || foreign_task_calls == 0) {
         return length;
     }

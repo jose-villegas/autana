@@ -15,10 +15,17 @@ audio_loopback_sample_budget(uint32_t ms) {
 }
 
 typedef struct {
+    void* context;
+    bool (*start)(void* context, uint16_t hz, uint8_t volume_pct);
+    void (*stop)(void* context);
+} audio_loopback_source_t;
+
+typedef struct {
     float tone_db;
     float silence_db;
     bool heard;
 } audio_loopback_t;
 
 /* Blocking; call from a worker or console task, never the frame loop. */
-bool audio_loopback_check(uint16_t hz, uint16_t ms, uint8_t volume_pct, audio_loopback_t* result);
+bool audio_loopback_check(uint16_t hz, uint16_t ms, uint8_t volume_pct, const audio_loopback_source_t* source,
+                          audio_loopback_t* result);

@@ -1,6 +1,4 @@
-/* Private codec lifetime shared by input and output references, releasing I2S on
- * the last close. The BSP audio helpers have no deinit. The codec PA pin is unused:
- * board_audio_amp_enable owns the amplifier. Callers serialize access. */
+/* Shared codec bring-up, persistent TX and capture-only RX. Capture lifetime changes run on the mixer task. */
 #pragma once
 #include <stdbool.h>
 
@@ -11,6 +9,7 @@
 #define AUDIO_CODEC_BITS_PER_SAMPLE 16
 #define AUDIO_CODEC_CHANNELS        1
 
+const char* audio_codec_failure(void);
 void audio_codec_assert_not_frame_task(void);
 bool audio_codec_check(const char* operation, int status);
 esp_codec_dev_handle_t audio_codec_device_open(esp_codec_dev_type_t type);

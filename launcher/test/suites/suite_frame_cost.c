@@ -560,18 +560,20 @@ static void
 test_the_counts_line_carries_the_armed_slot_and_the_time_line_does_not(void) {
     frame_cost_t* const cost = fixture();
     char counts[FRAME_COST_COUNTS_MAX];
-    char line[FRAME_COST_REPORT_MAX];
+    char* const line = malloc(FRAME_COST_REPORT_MAX);
+    TEST_ASSERT_NOT_NULL(line);
     arm(cost, "stage.a", 0);
     leave_counted(cost, "stage.a", 0, 300, 0, 100);
     leave_counted(cost, "stage.a", 0, 100, 0, 60);
 
     TEST_ASSERT_GREATER_THAN_INT(0, frame_cost_counts_line(cost, "insn", counts, sizeof counts));
     TEST_ASSERT_EQUAL_STRING("perf: stage.a cyc avg/min/max 200/100/300 insn avg 80 n=2", counts);
-    frame_cost_report(cost, 1, line, sizeof line);
+    frame_cost_report(cost, 1, line, FRAME_COST_REPORT_MAX);
     TEST_ASSERT_NULL(strstr(line, "cyc"));
 
     leave_counted(cost, "stage.b", 0, 100, 0, 10);
     TEST_ASSERT_EQUAL_INT(0, frame_cost_counts_line(cost, "insn", counts, sizeof counts));
+    free(line);
     free(cost);
 }
 

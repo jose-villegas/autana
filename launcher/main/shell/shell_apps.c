@@ -27,6 +27,7 @@
 #include "shell/shell_system.h"
 #include "shell/ui/ui_launcher.h"
 #include "shell/ui/ui_ridge.h"
+#include "sound/sound_engine.h"
 #include "ui/layout/ui_anchor.h"
 #include "ui/ui.h"
 
@@ -170,6 +171,7 @@ shell_exit_app(const app_t** current) {
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
     (*current)->exit();
     shell_systems_app_exit();
+    sound_stop_app_voices();
 #if CONFIG_LAUNCHER_DEVELOPMENT
     const size_t internal_after_exit = memory_free_bytes(MEMORY_INTERNAL);
     const size_t eight_bit_after_exit = memory_free_bytes(MEMORY_8BIT);
