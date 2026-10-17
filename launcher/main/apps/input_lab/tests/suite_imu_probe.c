@@ -452,14 +452,14 @@ test_complete_round(void) {
             }
             TEST_ASSERT_TRUE(imu_probe_update(round, &sample, TEST_DT_MS));
             TEST_ASSERT_FALSE(round->primed);
-            if (round->active) {
+            if (round->step == IMU_PROBE_POSES) {
                 TEST_ASSERT_FALSE(imu_probe_update(round, &sample, TEST_DT_MS));
                 TEST_ASSERT_TRUE(round->primed);
                 TEST_ASSERT_EQUAL_UINT32(0, round->settle_ms);
                 imu_probe_update(round, NULL, TEST_DT_MS);
             }
         }
-        TEST_ASSERT_FALSE(round->active);
+        TEST_ASSERT_EQUAL_INT(IMU_PROBE_UPRIGHT, round->step);
         TEST_ASSERT_EQUAL_INT(IMU_PROBE_POSE_COUNT, round->pose);
         TEST_ASSERT_EQUAL_INT(IMU_PROBE_SCALE_ONE, round->fit.scale_ppm.x);
         TEST_ASSERT_EQUAL_INT(0, imu_probe_mg(round->fit.calib.offset).x);
@@ -476,8 +476,25 @@ test_complete_round(void) {
     free(round);
 }
 
+static void
+test_zero_acceleration_cannot_arm_upright(void) {
+    imu_probe_round_t* round = calloc(1, sizeof *round);
+    TEST_ASSERT_NOT_NULL(round);
+    imu_probe_start(round, 0);
+    round->step = IMU_PROBE_UPRIGHT;
+    round->pose = IMU_PROBE_POSE_COUNT;
+    const input_motion_t zero = {0};
+    for (int ms = 0; ms <= IMU_PROBE_SETTLE_MS; ms += TEST_DT_MS) {
+        TEST_ASSERT_FALSE(imu_probe_turn_update(round, &zero, (vec3f_t){0}, TEST_DT_MS));
+        TEST_ASSERT_EQUAL_INT(IMU_PROBE_UPRIGHT, round->step);
+        TEST_ASSERT_EQUAL_UINT32(0, round->settle_ms);
+    }
+    free(round);
+}
+
 void
 run_imu_probe_suite(void) {
+    RUN_TEST(test_zero_acceleration_cannot_arm_upright);
     RUN_TEST(test_settle_and_window);
     RUN_TEST(test_mapping_and_pose_names);
     RUN_TEST(test_departure_boundaries);

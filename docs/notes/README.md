@@ -11,6 +11,7 @@ owners of settings; device tools provide measurements for the running image.
 | [Display-and-Rendering.md](Display-and-Rendering.md) | panel initialization, DMA lifetime, clocks, dirty sends, screenshots and tearing |
 | [Audio.md](Audio.md) | codec and duplex I2S lifetime, amplifier startup, microphone gain and captured loopback measurements |
 | [Input-and-Sensors.md](Input-and-Sensors.md) | touch reports and calibration, sensor axes, PMU and GPIO buttons, tilt filtering |
+| [Gravity.md](../input/Gravity.md) | gyro prediction, acceleration trust and rejection, recovery and gyro bias learning |
 | [Flashing-and-Toolchain.md](Flashing-and-Toolchain.md) | recovery, warm-reset handling, build configuration and compiler decisions |
 | [Debugging.md](Debugging.md) | choosing tests, logs, captures, overlays and device measurements |
 
