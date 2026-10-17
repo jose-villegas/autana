@@ -36,6 +36,6 @@ python launcher/tools/build/memory_map.py &#45;&#45;chart components docs/memory
 <text x="188" y="509" text-anchor="end">Linker fill</text>
 <rect x="200.00" y="492" width="55.51" height="24" fill="#8c959f" data-label="Linker fill" data-bytes="1315"><title>Linker fill: 1315 B</title></rect>
 <text x="267.51" y="509" text-anchor="start">1315 B, 1.7%</text>
-<text x="16" y="560" text-anchor="start">ESP-IDF IRAM incl. linker fill: release 79,659 B = 77.8 KB; dev 83,184 B = 81.2 KB; diag 83,920 B = 82.0 KB</text>
+<text x="16" y="560" text-anchor="start">ESP-IDF IRAM incl. linker fill: release 79,659 B = 77.8 KB; dev 83,880 B = 81.9 KB; diag 84,616 B = 82.6 KB</text>
 <text x="16" y="584" text-anchor="start">Unattributed linker fill excludes split slack and prefetch pad.</text>
 </svg>
