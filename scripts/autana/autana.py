@@ -442,6 +442,64 @@ def heap(args):
     return 0
 
 
+# Mirrors audio_out.h: AUDIO_OUT_NYQUIST_HZ, AUDIO_OUT_MAX_MS,
+# AUDIO_OUT_VOLUME_MAX_PCT; console_tone_parse.h: CONSOLE_TONE_DEFAULT_VOLUME_PCT.
+TONE_NYQUIST_HZ = 11025
+TONE_MAX_MS = 60000
+TONE_VOLUME_MAX_PCT = 100
+TONE_DEFAULT_VOLUME_PCT = 30
+
+# audio_out.c: AUDIO_OUT_AMP_STARTUP_MS; audio_loopback.h: AUDIO_LOOPBACK_SETTLE_MS.
+# audio_loopback_check captures silence and tone; allow codec open and transport overhead.
+TONE_AMP_STARTUP_MS = 250
+TONE_SETTLE_MS = 100
+TONE_CAPTURE_COUNT = 2
+TONE_MS_PER_SECOND = 1000
+TONE_OPEN_SECONDS = 5
+TONE_MARGIN_SECONDS = 2
+
+
+def tone(args):
+    usage = "usage: autana debug tone <hz> <ms> [volume] [--json]"
+    reject_unknown("debug tone", args, ("--json",))
+    rest = list(args)
+    json_output = read_json_flag(rest[-1:] if rest and rest[-1] == "--json" else [], usage)
+    if json_output:
+        rest.pop()
+    if len(rest) not in (2, 3) or any(not re.fullmatch(r"[0-9]+", arg) for arg in rest):
+        sys.exit(usage)
+    try:
+        hz, ms = map(int, rest[:2])
+        volume = int(rest[2]) if len(rest) == 3 else TONE_DEFAULT_VOLUME_PCT
+    except ValueError:
+        sys.exit(usage)
+    if not (0 < hz < TONE_NYQUIST_HZ and 0 < ms <= TONE_MAX_MS and 0 <= volume <= TONE_VOLUME_MAX_PCT):
+        sys.exit(usage)
+    seconds = (TONE_OPEN_SECONDS + TONE_MARGIN_SECONDS
+               + (TONE_AMP_STARTUP_MS + TONE_CAPTURE_COUNT * (TONE_SETTLE_MS + ms)) / TONE_MS_PER_SECOND)
+    code, replies = send(f"TONE {hz} {ms} {volume}", reply="TONE", seconds=seconds)
+    if code != 0 or not replies:
+        return code or 1
+    try:
+        result = parse_tone(replies[-1])
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 1
+    print(json.dumps(result) if json_output else replies[-1])
+    return 0
+
+
+def parse_tone(reply):
+    match = re.fullmatch(
+        r"TONE (heard|not heard) ([0-9]+) Hz: (-?[0-9]+\.[0-9]+) dB "
+        r"\(silence (-?[0-9]+\.[0-9]+) dB\), open ([0-9]+) B DMA", reply)
+    if not match:
+        raise ValueError(f"invalid TONE reply: {reply}")
+    heard, hz, tone_db, silence_db, dma = match.groups()
+    return {"hz": int(hz), "tone_db": float(tone_db), "silence_db": float(silence_db),
+            "heard": heard == "heard", "open_dma_bytes": int(dma)}
+
+
 def parse_heap(reply):
     match = re.fullmatch(r"HEAP free=(\d+) largest=(\d+) total=(\d+)", reply)
     if not match:
@@ -1489,7 +1547,7 @@ def alias(old, new, handler):
 
 LOCK_VERBS = {"wait": lock_wait, "take": take, "run": lock_run, "release": release, "hand": hand, "take-back": take_back}
 DEBUG_VERBS = {"freeze": freeze, "resume": resume, "step": step, "touch": touch, "imu": imu,
-              "framewatch": framewatch}
+              "framewatch": framewatch, "tone": tone}
 
 
 def lock(args):
@@ -1503,7 +1561,7 @@ def lock(args):
 
 
 def debug(args):
-    """`autana debug <verb>`: freeze/resume/step/touch/imu/framewatch, kept
+    """`autana debug <verb>`: freeze/resume/step/touch/imu/framewatch/tone, kept
     out of the top-level help (`autana help debug` still lists them) since a
     session rarely needs them."""
     if not args or args[0] not in DEBUG_VERBS:
@@ -1602,7 +1660,9 @@ COMMAND_GROUPS = (
             ("debug step [N]", "advance N frames while frozen; 1 when omitted"),
             ("debug touch <down|up> <x> <y>", "one raw touch level; up hands back"),
             ("debug imu <ax> <ay> <az>", "raw accelerometer counts; imu release hands back"),
-            ("debug framewatch", "allocations and log lines repeating frame after frame, as JSON"))),
+            ("debug framewatch", "allocations and log lines repeating frame after frame, as JSON"),
+            ("debug tone <hz> <ms> [volume] [--json]",
+             "play a tone on the speaker and hear it on the mic; development builds"))),
     )),
     ("docs", "No board needed", (
         Command("docs", docs, (
