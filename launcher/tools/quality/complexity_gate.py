@@ -506,17 +506,18 @@ def build_idf_entries(toolchain_root, vendored=False):
     return entries
 
 
-# apps/*/tools/**/*.c, at any depth, are excluded from the firmware and the
-# host build (main/CMakeLists.txt, run_tests.sh), but check_main_coverage()'s
-# rglob("*.c") reaches them, so they get real flags: each compiles on a host
-# with the runner's flags plus -I main/apps/<app> for its sibling headers
-# (material.h, sand.h, ...).
+# apps/*/tools/**/*.c and shell/apps/*/tools/**/*.c, at any depth, are
+# excluded from the firmware and the host build (main/CMakeLists.txt,
+# run_tests.sh), but check_main_coverage()'s rglob("*.c") reaches them, so
+# they get real flags: each compiles on a host with the runner's flags plus
+# -I main/apps/sand for sibling headers (material.h, sand.h, ...).
 TOOLS_FILES_EXTRA_INCLUDE = "apps/sand"
 
 
 def build_tools_entries(host_flags, already_covered):
     entries = {}
-    for path in sorted((LAUNCHER_DIR / "main").glob("apps/*/tools/**/*.c")):
+    main_dir = LAUNCHER_DIR / "main"
+    for path in sorted([*main_dir.glob("apps/*/tools/**/*.c"), *main_dir.glob("shell/apps/*/tools/**/*.c")]):
         resolved = str(path.resolve())
         if resolved in already_covered:
             continue
@@ -722,11 +723,19 @@ def changed_files(ref, all_sources):
     return [s for s in all_sources if str(Path(s).resolve()) in changed_abs]
 
 
-def defines_functions(path):
-    """False for a data-only file, such as a generated table: it has nothing
-    to score, so an empty scan of it alone is a clean result."""
+# What clang-tidy's cognitive complexity counts, in a body function_bodies()
+# has stripped of whitespace, which joins `goto done` into `gotodone`: case
+# and goto match as prefixes, so an identifier starting with one only errs
+# toward scanning. A body without any scores nothing.
+CONTROL_FLOW_RE = re.compile(r"(?<![A-Za-z0-9_])(?:(?:if|for|while|switch)\(|case|goto)|&&|\|\||\?")
+
+
+def defines_scored_functions(path):
+    """False for a file clang-tidy has nothing to score in: data only, such
+    as a generated table, or functions without control flow. An empty scan
+    of such files alone is a clean result."""
     text = Path(path).read_text(encoding="utf-8", errors="replace")
-    return bool(function_bodies(text))
+    return any(CONTROL_FLOW_RE.search(body) for body in function_bodies(text).values())
 
 
 def main():
@@ -763,9 +772,9 @@ def main():
     files = all_sources
     if args.changed:
         touched = changed_files(args.changed, all_sources)
-        files = [f for f in touched if defines_functions(f)]
+        files = [f for f in touched if defines_scored_functions(f)]
         print(f"--changed {args.changed}: {len(touched)} of those files "
-              f"touched, {len(touched) - len(files)} define no function")
+              f"touched, {len(touched) - len(files)} define no function with control flow")
 
     current, proc = scan(clang_tidy, db_path, files)
 

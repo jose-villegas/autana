@@ -1637,7 +1637,7 @@ sand_app_test_tap_menu_rect(mu_Rect r) {
 bool
 sand_app_test_options_reach_start(sand_test_start_action_t action) {
     const sand_options_t saved = current_options();
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(affine2x_identity());
     sand_enter();
     const sand_options_t before = current_options();
     sand_menu_title_clicked(&menu, SAND_TITLE_OPTIONS, before);
@@ -1690,7 +1690,7 @@ bool
 sand_app_test_start_button_survives_the_ui_build(int mode) {
     const int previous_mode = color_mode;
     color_mode = (sand_color_mode_t)mode;
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(affine2x_identity());
     sand_enter();
 
     const input_t touch = sand_app_test_start_button_touch();

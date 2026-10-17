@@ -20,8 +20,9 @@ jobs:
     timeout-minutes: 120
     defaults:
       run:
-        # An absolute Git for Windows path cannot resolve to WSL's bash.exe through PATH.
-        shell: '"C:\Program Files\Git\bin\bash.exe" --noprofile --norc -eo pipefail {0}'
+        # An absolute Git for Windows path cannot resolve to WSL's bash.exe through PATH. The runner
+        # rejects a quoted executable in a custom shell, so the path is the space-free 8.3 form.
+        shell: 'C:\PROGRA~1\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         # Process-scoped overrides disable the global LFS hook and filters without writing machine Git config.

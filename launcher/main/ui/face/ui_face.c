@@ -1,5 +1,6 @@
 /* Plain-value UI verbs share the microui control and command builders. */
 #include "core/memory.h"
+#include "draw/draw.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
 
@@ -335,6 +336,15 @@ ui_dropdown_icons(recti_t r, const char* label, int* index, const char* const* n
         UI_FACE_COST_END(backend_from, "ui.backend");                                                                  \
         UI_FACE_COST_END(face_from, "ui.face");                                                                        \
     }
+
+int
+ui_text_height(void) {
+    UI_FACE_COST_BEGIN(face_from);
+    const int h = draw_font_height(draw_font_ui(), theme.text_scale);
+    UI_FACE_COST_END(face_from, "ui.face");
+    return h;
+}
+
 UI_FACE_TEXT(ui_text, UI_ALIGN_LEFT, text)
 UI_FACE_TEXT(ui_text_right, UI_ALIGN_RIGHT, text)
 UI_FACE_TEXT(ui_text_centre, UI_ALIGN_CENTRE, text)
