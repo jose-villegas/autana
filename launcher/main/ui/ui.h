@@ -45,6 +45,8 @@
 #define UI_TITLE_HEIGHT    56
 #define UI_ROW_HEIGHT      64
 #define UI_ROW_GAP         8
+/* Space above and below a line of text in its row: ui_row(ui_text_height() + UI_TEXT_PAD). */
+#define UI_TEXT_PAD        4
 #define UI_MARGIN          16
 
 /* Tap targets, in the smaller dimension. The panel is ~322 px per inch
@@ -126,7 +128,7 @@ int ui_measure_text(const char* str);
 /* ONE TRANSFORM PER RENDERED PASS, NOT A STACK. microui's command list has no
  * way to carry a transform change partway through it, and components/microui/
  * is deliberately unpatched, so there is no per-widget nesting. */
-void ui_set_transform(ui_transform_t t);
+void ui_set_transform(affine2x_t t);
 
 /* Increments whenever the canvas shape genuinely changes. THIS IS NOT A
  * CALLBACK, NOBODY SUBSCRIBES TO IT: a caller reads it, remembers it and
@@ -236,6 +238,8 @@ bool ui_dropdown(recti_t r, const char* label, int* index, const char* const* na
 bool ui_dropdown_icons(recti_t r, const char* label, int* index, const char* const* names,
                        const draw_image_t* const* icons, int count);
 
+/* One line's height at the current theme's text scale. */
+int ui_text_height(void);
 /* Text is clipped to its rectangle and centred vertically. */
 void ui_text(recti_t r, const char* s);
 void ui_text_right(recti_t r, const char* s);

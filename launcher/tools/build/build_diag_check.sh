@@ -91,6 +91,11 @@ soft_double_gate() {
     "$PYTHON" "$DIR/check_no_soft_double.py" "$DIR/../../build.diag"
 }
 
+psram_tuning_wrap_gate() {
+    echo "=== PSRAM tuning off the USB bus ==="
+    "$PYTHON" "$DIR/check_psram_tuning_wrap.py" "$DIR/../../build.diag"
+}
+
 iram_budget_gate() {
     echo "=== IRAM placement budgets ==="
     "$PYTHON" "$DIR/memory_map.py" --check "$DIR/../../build.diag"
@@ -102,6 +107,7 @@ if [ -f "$COMPILE_DB" ]; then
     suite_static_data_gate
     stack_chain_gate
     soft_double_gate
+    psram_tuning_wrap_gate
     iram_budget_gate
     exit 0
 fi
@@ -112,5 +118,6 @@ complexity_gate
 suite_static_data_gate
 stack_chain_gate
 soft_double_gate
+psram_tuning_wrap_gate
 render_layout_gate
 iram_budget_gate

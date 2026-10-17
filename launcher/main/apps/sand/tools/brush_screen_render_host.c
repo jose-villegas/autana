@@ -73,14 +73,14 @@ mu_to_gfx(mu_Color c) {
 }
 
 static void
-fill_rect_logical(ui_transform_t t, mu_Rect r, gfx_color_t color) {
+fill_rect_logical(affine2x_t t, mu_Rect r, gfx_color_t color) {
     const mu_Rect p = ui_transform_rect(t, r);
     draw_rect(p.x, p.y, p.w, p.h, color);
 }
 
 /* Mirrors ui_mu_panel(): one flat section frame. */
 static void
-draw_panel(ui_transform_t t, mu_Rect r, uint32_t face_rgb, uint32_t border_rgb) {
+draw_panel(affine2x_t t, mu_Rect r, uint32_t face_rgb, uint32_t border_rgb) {
     ui_span_t spans[UI_PANEL_MAX_SPANS];
     const int n = ui_panel_spans(r, hex_to_mu(face_rgb), hex_to_mu(border_rgb), spans, UI_PANEL_MAX_SPANS);
     for (int i = 0; i < n; i++) {
@@ -91,7 +91,7 @@ draw_panel(ui_transform_t t, mu_Rect r, uint32_t face_rgb, uint32_t border_rgb) 
 /* Mirrors brush_screen.c's draw_brush_bezel(); `sunken` is always false here -
  * see this file's header on hit state. */
 static void
-draw_bezel(ui_transform_t t, mu_Rect r, uint32_t face_rgb) {
+draw_bezel(affine2x_t t, mu_Rect r, uint32_t face_rgb) {
     ui_span_t spans[UI_BEZEL_MAX_SPANS];
     const int n = ui_bezel_spans(r, hex_to_mu(face_rgb), false, spans, UI_BEZEL_MAX_SPANS);
     for (int i = 0; i < n; i++) {
@@ -111,7 +111,7 @@ icon_emit(void* ctx, recti_t rect) {
 /* Mirrors ui.c's ui_draw_icon(), with `box` mapped through `t` the way
  * ui.c's own draw_command() maps MU_COMMAND_ICON; no icon draws nothing. */
 static void
-brush_icon(ui_transform_t t, mu_Rect box, const draw_image_t* icon, uint32_t color_rgb) {
+brush_icon(affine2x_t t, mu_Rect box, const draw_image_t* icon, uint32_t color_rgb) {
     if (icon != NULL) {
         icon_fill_ctx_t ctx = {gfx_rgb(color_rgb)};
         ui_transform_icon_blocks(t, icon, box, icon_emit, &ctx);
@@ -124,7 +124,7 @@ brush_icon(ui_transform_t t, mu_Rect box, const draw_image_t* icon, uint32_t col
  * screen always draws UI_TEXT_PLAIN, so this is the ink pass alone, no
  * halo. */
 static void
-brush_text(ui_transform_t t, mu_Rect r, const char* str, uint32_t color_rgb, int scale, int align) {
+brush_text(affine2x_t t, mu_Rect r, const char* str, uint32_t color_rgb, int scale, int align) {
     const draw_font_t* font = draw_font_ui();
     const int tw = draw_font_text_width(font, str, -1, scale);
     const int th = draw_font_height(font, scale);
@@ -140,7 +140,7 @@ brush_text(ui_transform_t t, mu_Rect r, const char* str, uint32_t color_rgb, int
 
 /* Mirrors ui/brush_screen.c's draw_brush_swatch(). */
 static void
-draw_swatch(ui_transform_t t, mu_Rect r, cell_t spec) {
+draw_swatch(affine2x_t t, mu_Rect r, cell_t spec) {
     const gfx_color_t* palette = material_palette();
     for (int row = 0; row < SWATCH_CELLS; row++) {
         const int y0 = r.y + row * r.h / SWATCH_CELLS;
@@ -165,7 +165,7 @@ draw_swatch(ui_transform_t t, mu_Rect r, cell_t spec) {
  * dragged in a static preview) - same span order (face, fill, border,
  * knob), see that function's own comment for why. */
 static void
-draw_slider(ui_transform_t t, mu_Rect track, int lo, int hi, int value) {
+draw_slider(affine2x_t t, mu_Rect track, int lo, int hi, int value) {
     ui_span_t panel[UI_PANEL_MAX_SPANS];
     const int pn =
         ui_panel_spans(track, hex_to_mu(SLIDER_BASE_COLOR), hex_to_mu(SLIDER_BORDER_COLOR), panel, UI_PANEL_MAX_SPANS);
@@ -191,7 +191,7 @@ draw_slider(ui_transform_t t, mu_Rect track, int lo, int hi, int value) {
  * what that leaves out. Every rect comes from `lay`, filled by
  * brush_screen_layout() itself - see this file's header, Task C. */
 static void
-draw_screen(ui_transform_t t, int screen_w, int screen_h) {
+draw_screen(affine2x_t t, int screen_w, int screen_h) {
     brush_screen_layout_t lay;
     brush_screen_layout(screen_w, screen_h, &lay);
 
@@ -275,7 +275,7 @@ draw_screen(ui_transform_t t, int screen_w, int screen_h) {
     draw_slider(t, lay.slider_track, SAND_UI_RADIUS_MIN, SAND_UI_RADIUS_MAX, PREVIEW_RADIUS_PX);
 }
 
-static ui_transform_t transform;
+static affine2x_t transform;
 static int screen_w;
 static int screen_h;
 

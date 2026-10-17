@@ -214,20 +214,19 @@ any_hit(sand_options_hits_t h) {
 
 static sand_options_hits_t
 tap_at(int x, int y) {
-    int px, py;
-    ui_transform_point(ui_transform_quarter_turn(ui_width() == GFX_HEIGHT ? 1 : 0, GFX_WIDTH, GFX_HEIGHT), x, y, &px,
-                       &py);
+    const affine2x_t transform = ui_transform_quarter_turn(ui_width() == GFX_HEIGHT ? 1 : 0, GFX_WIDTH, GFX_HEIGHT);
+    const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){x, y});
     sand_options_hits_t hit = SAND_OPTIONS_NO_HITS;
-    sand_options_hits_t f = options_frame(true, true, false, px, py);
+    sand_options_hits_t f = options_frame(true, true, false, mapped_pixel.x, mapped_pixel.y);
     hit = any_hit(f) ? f : hit;
     for (int i = 0; i < 4; i++) {
-        f = options_frame(true, false, false, px, py);
+        f = options_frame(true, false, false, mapped_pixel.x, mapped_pixel.y);
         hit = any_hit(f) ? f : hit;
     }
-    f = options_frame(false, false, true, px, py);
+    f = options_frame(false, false, true, mapped_pixel.x, mapped_pixel.y);
     hit = any_hit(f) ? f : hit;
     for (int i = 0; i < 2; i++) {
-        f = options_frame(false, false, false, px, py);
+        f = options_frame(false, false, false, mapped_pixel.x, mapped_pixel.y);
         hit = any_hit(f) ? f : hit;
     }
     return hit;
@@ -431,9 +430,9 @@ open_list(mu_Rect list) {
 
 static void
 finger_at(bool landscape, bool pressed, bool released, int x, int y) {
-    int px, py;
-    ui_transform_point(ui_transform_quarter_turn(landscape ? 1 : 0, GFX_WIDTH, GFX_HEIGHT), x, y, &px, &py);
-    options_frame(!released, pressed, released, px, py);
+    const affine2x_t transform = ui_transform_quarter_turn(landscape ? 1 : 0, GFX_WIDTH, GFX_HEIGHT);
+    const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){x, y});
+    options_frame(!released, pressed, released, mapped_pixel.x, mapped_pixel.y);
 }
 
 /* Every row fits in the canvas overlay, so a drag has no offscreen rows to reveal. */

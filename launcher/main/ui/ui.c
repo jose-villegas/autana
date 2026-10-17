@@ -118,7 +118,7 @@ mu_color_to_gfx(mu_Color c) {
 }
 
 static void
-draw_text_command(const mu_Command* cmd, ui_transform_t t) {
+draw_text_command(const mu_Command* cmd, affine2x_t t) {
     const mu_Color ink = cmd->text.color;
     const mu_Color halo = ui_text_halo(ink);
     const ui_font_scaled_t fs = ui_resolve_font_scaled(cmd->text.font);
@@ -188,7 +188,7 @@ draw_text_command(const mu_Command* cmd, ui_transform_t t) {
 
 static void
 draw_command(const mu_Command* cmd) {
-    const ui_transform_t t = ui_effective_transform();
+    const affine2x_t t = ui_effective_transform();
 
     switch (cmd->type) {
 
@@ -406,8 +406,8 @@ repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
     return drew;
 }
 
-static void
-finish_commands(void) {
+void
+ui_end_commands(void) {
     UI_FACE_COST_BEGIN(backend_from);
     ui_face_end();
     mu_end(&ui_ctx);
@@ -432,7 +432,7 @@ ui_end(uint32_t background_rgb) {
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
     const int64_t began_us = band_stats_frames > 0 ? timing_now_us() : 0;
 #endif
-    finish_commands();
+    ui_end_commands();
     FRAME_COST_BEGIN(paint_from);
 
     const int n = ui_ctx.root_list.idx;
@@ -467,7 +467,7 @@ ui_end_over(ui_backdrop_fn paint_backdrop) {
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
     const int64_t began_us = band_stats_frames > 0 ? timing_now_us() : 0;
 #endif
-    finish_commands();
+    ui_end_commands();
     FRAME_COST_BEGIN(paint_from);
 
     const int n = ui_ctx.root_list.idx;
@@ -578,7 +578,7 @@ ui_queue_band_overlay_rect(int x, int y, int w, int h, uint32_t rgb) {
  * takes to mean "always replay". */
 static bool
 command_row_range(const mu_Command* cmd, int* y0, int* y1) {
-    const ui_transform_t t = ui_effective_transform();
+    const affine2x_t t = ui_effective_transform();
 
     switch (cmd->type) {
         case MU_COMMAND_RECT: {
@@ -728,7 +728,7 @@ ui_end_for_bands(uint32_t background_rgb) {
     ui_band_overflow = 0;
     ui_band_fallbacks = 0;
     ui_band_background = background_rgb;
-    finish_commands();
+    ui_end_commands();
     FRAME_COST_BEGIN(paint_from);
 
     ui_band_bin_count = 0;

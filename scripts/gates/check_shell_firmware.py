@@ -52,7 +52,8 @@ VENDOR_NAME_RE = re.compile(
     r"|(v|x|ux|ul|pv|pc)[A-Z]|(port|config)[A-Z]|pd[A-Z]"
     r"|(Task|Queue|Semaphore|Event|Timer|Stream|Message)\w*Handle_t$|(U?Base|Tick|Stack)Type_t$)")
 
-IDENTIFIER_RE = re.compile(r"[A-Za-z_]\w*")
+# The boundary keeps the x of a hex literal such as 0xFU from reading as a name.
+IDENTIFIER_RE = re.compile(r"\b[A-Za-z_]\w*")
 COMMENT_RE = re.compile(r"/\*.*?\*/|//[^\n]*", re.DOTALL)
 COMMENT_OR_STRING_RE = re.compile(
     COMMENT_RE.pattern + r"""|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'""", re.DOTALL)

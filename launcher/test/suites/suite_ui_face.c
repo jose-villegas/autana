@@ -55,7 +55,7 @@ static void
 fixture(void) {
     suite_set_test_cleanup(cleanup);
     ui_init();
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(affine2x_identity());
     snapshot_size = 0;
     reports = 0;
 }
@@ -622,6 +622,24 @@ test_color_text_scope(void) {
     assert_ink("Caption", FACE_RGB);
     assert_ink("Label", FACE_RGB);
     assert_ink("Rest", THEME.text);
+}
+
+/* A flow row sized with ui_text_height() fits the text the same scale draws. */
+static void
+test_text_height_follows_scale(void) {
+    fixture();
+    begin_face();
+    ui_theme(&THEME);
+    const int theme_height = ui_text_height();
+    ui_scale_begin(SCOPE_SCALE);
+    const int scoped_height = ui_text_height();
+    ui_text(BOX, "Text");
+    ui_scale_end();
+    end_face();
+    const mu_TextCommand* text = text_command("Text");
+    TEST_ASSERT_NOT_NULL(text);
+    TEST_ASSERT_EQUAL_INT(ui_context()->text_height(text->font), scoped_height);
+    TEST_ASSERT_EQUAL_INT(draw_font_height(draw_font_ui(), THEME.text_scale), theme_height);
 }
 
 static void
@@ -1221,6 +1239,7 @@ run_ui_face_suite(void) {
     RUN_TEST(test_color_face_scope);
     RUN_TEST(test_color_text_scope);
     RUN_TEST(test_scale_scope);
+    RUN_TEST(test_text_height_follows_scale);
 #ifndef ESP_PLATFORM
     RUN_TEST(test_scope_depth_boundary);
     RUN_TEST(test_nested_scope_values);
