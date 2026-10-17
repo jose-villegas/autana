@@ -18,6 +18,7 @@ static esp_codec_dev_handle_t output;
 
 bool
 audio_out_amp(bool enabled) {
+    audio_codec_assert_not_frame_task();
     if (!audio_codec_check("amplifier", board_audio_amp_enable(enabled))) {
         return false;
     }
