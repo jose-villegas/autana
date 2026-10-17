@@ -42,7 +42,7 @@
     (GRAVITY_GYRO_OFFSET_TOL_DPS + (GRAVITY_GYRO_OFFSET_TCO_DPS_PER_C * GRAVITY_GYRO_TEMP_SPAN_C))
 /* Ours: target 2% settling time for a datasheet-sized gyro offset. */
 #define GRAVITY_BIAS_SETTLE_S 20.0F
-/* Integral gain in 1/s^2; derivation: docs/notes/Input-and-Sensors.md, Gravity estimation. */
+/* Integral gain in 1/s^2; derivation: docs/input/Gravity.md. */
 #define GRAVITY_BIAS_KI       (4.0F / (GRAVITY_TAU_S * GRAVITY_BIAS_SETTLE_S))
 /* Acceleration magnitude below which strength is zero, in g. */
 #define GRAVITY_FREE_FALL_G   0.3F
