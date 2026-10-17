@@ -1,0 +1,336 @@
+#include "sound/sound_mixer.h"
+
+#include <string.h>
+
+#include "math/scalar/mathi.h"
+#include "math/scalar/maths.h"
+
+static int
+voice_slot(sound_voice_t voice) {
+    return voice.id == 0 ? -1 : (int)((voice.id - 1) % SOUND_VOICE_COUNT);
+}
+
+static sound_control_voice_t*
+control_voice(sound_control_t* control, sound_voice_t voice) {
+    const int slot = voice_slot(voice);
+    if (!control->ready || slot < 0 || control->voices[slot].handle.id != voice.id || !control->voices[slot].playing) {
+        return NULL;
+    }
+    return &control->voices[slot];
+}
+
+void
+sound_control_init(sound_control_t* control, bool ready) {
+    *control = (sound_control_t){.ready = ready, .app_generation = 1};
+    static const char* const names[] = {"SYSTEM", "SFX", "MUSIC"};
+    _Static_assert(sizeof names / sizeof names[0] == SOUND_BUS_BUILTIN_COUNT, "built-in bus names");
+    for (int i = 0; i < SOUND_BUS_BUILTIN_COUNT; i++) {
+        control->buses[i].used = true;
+        control->buses[i].gain_pct = SOUND_GAIN_MAX_PCT;
+        (void)strcpy(control->buses[i].name, names[i]);
+    }
+}
+
+sound_voice_t
+sound_control_play(sound_control_t* control, const sound_t* sound, const sound_play_opts_t* opts, uint16_t tone_hz,
+                   sound_command_t* command) {
+    const sound_play_opts_t options = opts ? *opts
+                                           : (sound_play_opts_t){.bus = SOUND_BUS_SFX,
+                                                                 .gain_pct = SOUND_GAIN_MAX_PCT,
+                                                                 .priority = SOUND_PRIORITY_NORMAL};
+    if (!control->ready || (!tone_hz && (!sound || !sound->data || !sound->frames))
+        || options.bus.id >= SOUND_BUS_COUNT_MAX || !control->buses[options.bus.id].used
+        || options.gain_pct > SOUND_GAIN_MAX_PCT) {
+        return SOUND_VOICE_NULL;
+    }
+    int slot = 0;
+    for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
+        const sound_control_voice_t* candidate = &control->voices[i];
+        const sound_control_voice_t* chosen = &control->voices[slot];
+        if (!candidate->playing) {
+            slot = i;
+            break;
+        }
+        if (candidate->opts.priority < chosen->opts.priority
+            || (candidate->opts.priority == chosen->opts.priority && candidate->started < chosen->started)) {
+            slot = i;
+        }
+    }
+    sound_control_voice_t* voice = &control->voices[slot];
+    const uint32_t generation =
+        (voice->handle.id ? (voice->handle.id - 1) / SOUND_VOICE_COUNT + 1 : 0) % SOUND_VOICE_GENERATIONS;
+    const sound_voice_t handle = {.id = generation * SOUND_VOICE_COUNT + (uint32_t)slot + 1};
+    *voice = (sound_control_voice_t){.handle = handle,
+                                     .started = ++control->starts,
+                                     .app_generation = control->app_generation,
+                                     .opts = options,
+                                     .playing = true};
+    *command = (sound_command_t){.kind = SOUND_COMMAND_PLAY,
+                                 .app_generation = control->app_generation,
+                                 .voice = handle,
+                                 .opts = options,
+                                 .tone_hz = tone_hz};
+    if (sound) {
+        command->sound = *sound;
+    }
+    return handle;
+}
+
+bool
+sound_control_voice_command(sound_control_t* control, sound_voice_t handle, sound_command_kind_t kind, uint8_t gain,
+                            sound_command_t* command) {
+    sound_control_voice_t* voice = control_voice(control, handle);
+    if (!voice || gain > SOUND_GAIN_MAX_PCT) {
+        return false;
+    }
+    *command = (sound_command_t){
+        .kind = kind, .voice = handle, .opts = voice->opts, .app_generation = control->app_generation};
+    command->opts.gain_pct = gain;
+    if (kind == SOUND_COMMAND_STOP) {
+        voice->playing = false;
+        voice->audible = false;
+    } else if (kind == SOUND_COMMAND_GAIN) {
+        voice->opts.gain_pct = gain;
+    }
+    return true;
+}
+
+bool
+sound_control_is_playing(const sound_control_t* control, sound_voice_t voice) {
+    const int slot = voice_slot(voice);
+    return control->ready && slot >= 0 && control->voices[slot].playing && control->voices[slot].handle.id == voice.id;
+}
+
+bool
+sound_control_is_audible(const sound_control_t* control, sound_voice_t voice) {
+    return sound_control_is_playing(control, voice) && control->voices[voice_slot(voice)].audible;
+}
+
+sound_bus_t
+sound_control_bus_create(sound_control_t* control, const char* name, sound_command_t* command) {
+    if (!control->ready || !name) {
+        return SOUND_BUS_INVALID;
+    }
+    size_t length = 0;
+    while (length < SOUND_BUS_NAME_MAX && name[length]) {
+        length++;
+    }
+    if (!length || length == SOUND_BUS_NAME_MAX) {
+        return SOUND_BUS_INVALID;
+    }
+    for (int i = SOUND_BUS_BUILTIN_COUNT; i < SOUND_BUS_COUNT_MAX; i++) {
+        if (!control->buses[i].used) {
+            sound_bus_state_t* bus = &control->buses[i];
+            *bus = (sound_bus_state_t){.used = true, .gain_pct = SOUND_GAIN_MAX_PCT};
+            memcpy(bus->name, name, length + 1);
+            *command = (sound_command_t){.kind = SOUND_COMMAND_BUS_CREATE,
+                                         .app_generation = control->app_generation,
+                                         .opts = {.bus = {.id = (uint8_t)i}}};
+            return (sound_bus_t){.id = (uint8_t)i};
+        }
+    }
+    return SOUND_BUS_INVALID;
+}
+
+bool
+sound_control_bus_command(sound_control_t* control, sound_bus_t bus, sound_command_kind_t kind, uint8_t gain,
+                          sound_command_t* command) {
+    if (!control->ready || gain > SOUND_GAIN_MAX_PCT
+        || (bus.id != SOUND_BUS_MASTER.id && (bus.id >= SOUND_BUS_COUNT_MAX || !control->buses[bus.id].used))
+        || (kind == SOUND_COMMAND_BUS_DESTROY && (bus.id < SOUND_BUS_BUILTIN_COUNT || bus.id >= SOUND_BUS_COUNT_MAX))) {
+        return false;
+    }
+    *command = (sound_command_t){
+        .kind = kind, .app_generation = control->app_generation, .opts = {.bus = bus, .gain_pct = gain}};
+    if (kind == SOUND_COMMAND_BUS_DESTROY) {
+        control->buses[bus.id].used = false;
+        for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
+            if (control->voices[i].opts.bus.id == bus.id) {
+                control->voices[i].playing = false;
+                control->voices[i].audible = false;
+            }
+        }
+    } else if (bus.id < SOUND_BUS_COUNT_MAX) {
+        control->buses[bus.id].gain_pct = gain;
+    }
+    return true;
+}
+
+void
+sound_control_exit(sound_control_t* control) {
+    if (!control->ready) {
+        return;
+    }
+    control->app_generation++;
+    for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
+        if (control->voices[i].opts.bus.id != SOUND_BUS_SYSTEM.id) {
+            control->voices[i].playing = false;
+            control->voices[i].audible = false;
+        }
+    }
+    for (int i = SOUND_BUS_BUILTIN_COUNT; i < SOUND_BUS_COUNT_MAX; i++) {
+        control->buses[i].used = false;
+    }
+}
+
+void
+sound_control_complete(sound_control_t* control, const sound_mixer_t* mixer) {
+    for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
+        if (control->voices[i].handle.id == mixer->voices[i].handle.id) {
+            control->voices[i].playing &= mixer->voices[i].playing;
+            control->voices[i].audible = control->voices[i].playing && mixer->amp == SOUND_AMP_ON;
+        }
+    }
+}
+
+void
+sound_mixer_init(sound_mixer_t* mixer) {
+    *mixer = (sound_mixer_t){.master_gain = SOUND_GAIN_MAX_PCT};
+    for (int i = 0; i < SOUND_BUS_COUNT_MAX; i++) {
+        mixer->bus_gain[i] = SOUND_GAIN_MAX_PCT;
+    }
+}
+
+static bool
+apply_bus_command(sound_mixer_t* mixer, const sound_command_t* command) {
+    const int bus = command->opts.bus.id;
+    if (command->kind == SOUND_COMMAND_BUS_GAIN) {
+        if (bus == SOUND_BUS_MASTER.id) {
+            mixer->master_gain = command->opts.gain_pct;
+        } else if (bus < SOUND_BUS_COUNT_MAX) {
+            mixer->bus_gain[bus] = command->opts.gain_pct;
+        }
+        return true;
+    }
+    if (command->kind == SOUND_COMMAND_BUS_CREATE) {
+        mixer->bus_gain[bus] = SOUND_GAIN_MAX_PCT;
+        return true;
+    }
+    if (command->kind == SOUND_COMMAND_BUS_DESTROY) {
+        for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
+            if (mixer->voices[i].opts.bus.id == bus) {
+                mixer->voices[i].playing = false;
+            }
+        }
+        return true;
+    }
+    return false;
+}
+
+void
+sound_mixer_apply(sound_mixer_t* mixer, const sound_command_t* command, uint32_t app_generation) {
+    const int bus = command->opts.bus.id;
+    if (bus != SOUND_BUS_SYSTEM.id && command->app_generation != app_generation) {
+        return;
+    }
+    if (apply_bus_command(mixer, command)) {
+        return;
+    }
+    const int slot = voice_slot(command->voice);
+    if (slot < 0) {
+        return;
+    }
+    sound_mix_voice_t* voice = &mixer->voices[slot];
+    if (command->kind == SOUND_COMMAND_PLAY) {
+        *voice = (sound_mix_voice_t){.handle = command->voice,
+                                     .opts = command->opts,
+                                     .app_generation = command->app_generation,
+                                     .sound = command->sound,
+                                     .tone_source = command->tone_hz != 0,
+                                     .playing = true};
+        if (voice->tone_source) {
+            audio_tone_init(&voice->tone, command->tone_hz);
+        } else if (sound_seek(&voice->cursor, &voice->sound, 0) != ASSET_OK) {
+            voice->playing = false;
+        }
+    } else if (voice->handle.id == command->voice.id) {
+        if (command->kind == SOUND_COMMAND_STOP) {
+            voice->playing = false;
+        } else if (command->kind == SOUND_COMMAND_GAIN) {
+            voice->opts.gain_pct = command->opts.gain_pct;
+        }
+    }
+}
+
+void
+sound_mixer_exit(sound_mixer_t* mixer, uint32_t app_generation) {
+    for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
+        sound_mix_voice_t* voice = &mixer->voices[i];
+        if (voice->opts.bus.id != SOUND_BUS_SYSTEM.id && voice->app_generation != app_generation) {
+            voice->playing = false;
+        }
+    }
+}
+
+static size_t
+read_voice(sound_mix_voice_t* voice, int16_t* out, size_t frames) {
+    if (voice->tone_source) {
+        audio_tone_fill(&voice->tone, out, frames, AUDIO_OUT_VOLUME_MAX_PCT);
+        return frames;
+    }
+    size_t total = 0;
+    const uint32_t end = voice->sound.loop_end ? voice->sound.loop_end : voice->sound.frames;
+    while (total < frames && voice->playing) {
+        size_t count = frames - total;
+        if (!voice->opts.loop && count > end - voice->cursor.position) {
+            count = end - voice->cursor.position;
+        }
+        const uint32_t read = sound_read(&voice->cursor, out + total, (uint32_t)count);
+        total += read;
+        if (!voice->opts.loop) {
+            voice->playing = read > 0 && voice->cursor.position < end;
+        } else if (read < count || (!voice->sound.loop_end && voice->cursor.position == end)) {
+            voice->playing = read > 0 && sound_seek(&voice->cursor, &voice->sound, 0) == ASSET_OK;
+        }
+    }
+    return total;
+}
+
+static bool
+amp_ready(sound_mixer_t* mixer, uint64_t now_ms, uint32_t startup_ms) {
+    bool active = false;
+    for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
+        active |= mixer->voices[i].playing;
+    }
+    if (active) {
+        mixer->last_active_ms = now_ms;
+        if (mixer->amp == SOUND_AMP_OFF) {
+            mixer->amp = SOUND_AMP_WARMING;
+            mixer->amp_changed_ms = now_ms;
+        }
+    } else if (mixer->amp != SOUND_AMP_OFF && now_ms - mixer->last_active_ms >= SOUND_AMP_IDLE_MS) {
+        mixer->amp = SOUND_AMP_OFF;
+    }
+    if (mixer->amp == SOUND_AMP_WARMING && now_ms - mixer->amp_changed_ms >= startup_ms) {
+        mixer->amp = SOUND_AMP_ON;
+    }
+    return active && mixer->amp == SOUND_AMP_ON;
+}
+
+void
+sound_mixer_render(sound_mixer_t* mixer, int16_t* out, int32_t* accumulator, int16_t* scratch, size_t frames,
+                   uint64_t now_ms, uint32_t startup_ms) {
+    memset(out, 0, frames * sizeof *out);
+    if (!amp_ready(mixer, now_ms, startup_ms)) {
+        return;
+    }
+    uint32_t factors[SOUND_BUS_COUNT_MAX];
+    for (int i = 0; i < SOUND_BUS_COUNT_MAX; i++) {
+        factors[i] = (uint32_t)mixer->bus_gain[i] * mixer->master_gain;
+    }
+    memset(accumulator, 0, frames * sizeof *accumulator);
+    for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
+        sound_mix_voice_t* voice = &mixer->voices[i];
+        if (!voice->playing) {
+            continue;
+        }
+        const size_t count = read_voice(voice, scratch, frames);
+        const uint32_t gain = (uint32_t)voice->opts.gain_pct * factors[voice->opts.bus.id];
+        for (size_t j = 0; j < count; j++) {
+            accumulator[j] += (int32_t)((int64_t)scratch[j] * gain / (SOUND_GAIN_FACTOR_SCALE * SOUND_GAIN_MAX_PCT));
+        }
+    }
+    for (size_t i = 0; i < frames; i++) {
+        out[i] = maths_saturate(accumulator[i]);
+    }
+}

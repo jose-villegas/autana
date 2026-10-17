@@ -1,6 +1,7 @@
 # The shell and the board drivers. Apps are NOT listed here; see below.
 set(app_srcs
     "main.c"
+    "sound/sound_mixer.c"
     "app/app_arena.c"
     "app/app_registry.c"
     "boot/boot_anim.c"
