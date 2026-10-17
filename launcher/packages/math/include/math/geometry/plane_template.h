@@ -21,24 +21,29 @@ enum {
         T d;                                                                                                           \
     } P##_t;                                                                                                           \
                                                                                                                        \
+    /* plane through point = (normal, -dot(normal, point)). */                                                         \
     static inline P##_t P##_from_normal_point(V##_t normal, V##_t point) {                                             \
         return (P##_t){normal, OPS##_neg(V##_dot(normal, point))};                                                     \
     }                                                                                                                  \
                                                                                                                        \
+    /* normal = cross(b - a, c - a), d = -dot(normal, a); inside by winding, unnormalized. */                          \
     static inline P##_t P##_from_points(V##_t a, V##_t b, V##_t c) {                                                   \
         return P##_from_normal_point(V##_cross(V##_sub(b, a), V##_sub(c, a)), a);                                      \
     }                                                                                                                  \
                                                                                                                        \
+    /* distance = dot(normal, point) + d, scaled by |normal| unless normalized. */                                     \
     static inline T P##_distance(P##_t plane, V##_t point) {                                                           \
         return OPS##_add(V##_dot(plane.normal, point), plane.d);                                                       \
     }                                                                                                                  \
                                                                                                                        \
-    /* A nonzero normal is required, as for vector normalization. */                                                   \
+    /* normalize = (normal, d) / |normal|. Precondition: normal is not zero. */                                        \
     static inline P##_t P##_normalize(P##_t plane) {                                                                   \
         const T scale = OPS##_div(OPS##_one(), OPS##_sqrt(V##_dot(plane.normal, plane.normal)));                       \
         return (P##_t){V##_scale(plane.normal, scale), OPS##_mul(plane.d, scale)};                                     \
     }                                                                                                                  \
                                                                                                                        \
+    /* near and four sides through screen (screen = center + xy / z) in m's source space: */                           \
+    /* out_j = a m[0][j] + b m[1][j] + c m[2][j], d += e, for lens planes (a, b, c, e). */                             \
     static inline void P##_frustum(const M##_t* m, T near_z, V2##_t center, R##_t screen,                              \
                                    P##_t out[PLANE_FRUSTUM_COUNT]) {                                                   \
         const T zero = OPS##_zero(), one = OPS##_one();                                                                \
