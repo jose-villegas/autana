@@ -227,7 +227,7 @@ against the real 184x224 grid. Read each test's own comment in
 Every pass of a step (`sweep`, `liquid`, `float`, `gas`, `reactions`,
 `impulses`) is a `frame_cost` bracket named `sand.<pass>`, next to
 `sand.steps`, `sand.plants` and `sand.draw`. On a development image, open the
-app and run `autana perf sand.sweep`; a bare `autana perf` lists the names
+app and run `autana debug perf sand.sweep`; a bare `autana debug perf` lists the names
 the board has seen. Counts cover the frame core only, so a pass that waits
 for the other core counts the wait. Details and the arm handoff are in
 [`../tools/Frame-Cost.md`](../tools/Frame-Cost.md#hardware-counters).

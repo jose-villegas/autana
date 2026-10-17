@@ -195,9 +195,6 @@ one line naming the new form, then runs it.
 | `autana reset [--capture [seconds]] [--verbose]` | Reboot and wait for USB serial. `--capture` records the boot (20 s) and prints its path and any error lines. |
 | `autana screenshot [--as-shown\|--framebuffer] [-o PATH]` | `PATH.png` plus a `PATH.json` state snapshot. Landscape by default; `--as-shown` uses the board's orientation, `--framebuffer` the raw bytes. |
 | `autana screenshot --frames N -o PATH` | `N` consecutive frames as `PATH-00` to `PATH-<N-1>`: one capture while running, then the loop frozen and stepped one frame between captures, then resumed. A band-mode capture shows the panel as it is, a band no frame resent included. |
-| `autana perf` | The `frame_cost` names seen so far and the counter events. |
-| `autana perf <name> [event] [seconds]` | Arm the S3's cycle counter and one event (`insn` when omitted) on one `frame_cost` bracket, read its reports for `seconds` (10 when omitted), disarm, and print one summary: cycles avg/min/max, the event's average, `n` and cycles per event. Counts cover the frame core only. See [Frame-Cost.md](Frame-Cost.md#hardware-counters). Development builds. |
-| `autana perf off` | Disarm the counters. |
 
 ## Drive input
 
@@ -289,6 +286,8 @@ lapsed; the other outcomes are in [exit codes](Device-Lock.md#exit-codes-and-jso
 
 ## Debug
 
+Every command that only works on development builds belongs under `autana debug`.
+
 `autana help debug`: left out of the bare `autana help` listing; a session
 rarely needs the frame loop paused or a raw sensor level, so these stay one
 `autana help debug` away rather than crowding the everyday groups above.
@@ -302,10 +301,13 @@ rarely needs the frame loop paused or a raw sensor level, so these stay one
 | `autana debug imu <ax> <ay> <az>` | Raw accelerometer counts; `autana debug imu release` hands back to the sensor. |
 | `autana debug heap [--json]` | Free bytes and largest block in the internal DMA pool (`MEMORY_DMA`); development builds only. |
 | `autana debug framewatch` | A development build's frame watch as JSON: the last frame's allocations, frees and log lines, and every site repeating frame after frame ([the frame watch](../Firmware-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state)). |
+| `autana debug perf` | The `frame_cost` names seen so far and the counter events. |
+| `autana debug perf <name> [event] [seconds]` | Arm the S3's cycle counter and one event (`insn` when omitted) on one `frame_cost` bracket, read its reports for `seconds` (10 when omitted), disarm, and print one summary: cycles avg/min/max, the event's average, `n` and cycles per event. Counts cover the frame core only. See [Frame-Cost.md](Frame-Cost.md#hardware-counters). Development builds. |
+| `autana debug perf off` | Disarm the counters. |
 
 `autana freeze`, `autana resume`, `autana step`, `autana touch`, `autana imu`,
-`autana framewatch` and `autana heap` still work, each printing the new spelling once
-before running it.
+`autana framewatch`, `autana heap` and `autana perf` still work, each printing
+the new spelling once before running it.
 
 ## No board needed
 
