@@ -1,0 +1,3 @@
+# python launcher/tools/audio/synth_wav.py --frequency 900 --duration-ms 220 --decay 30 --peak 0.18 -o launcher/main/engine/sounds/tap.wav
+source = "tap.wav"
+format = "adpcm"

@@ -6,8 +6,8 @@
     python launcher/tools/r3d/build_pack.py --pack-of ID [PATH ...]
 
 Each PATH is an .import.toml, a .scene.toml, an .anim.toml, an .image.toml,
-an .icons.toml, a .curve.toml or a folder searched for these roots; with none,
-launcher/main is searched. An app's demo_assets.toml adds launcher/demo/NAME
+an .icons.toml, a .curve.toml, a .sound.toml or a folder searched for these
+roots; with none, launcher/main is searched. An app's demo_assets.toml adds launcher/demo/NAME
 for each NAME in its `demo` list; one inside launcher/demo is refused. A
 folder reached twice is searched once. A root is a file nothing else names:
 NAME.scene.toml is pack NAME, holding the scene entry NAME, every mesh, skin, skeleton
@@ -16,15 +16,16 @@ places is pack NAME, holding its variants; an NAME.anim.toml no scene names
 is pack NAME, holding its one clip; an NAME.image.toml is pack NAME, holding
 its one picture; an NAME.icons.toml is pack NAME, holding an image entry per
 icon, each named by the icon; an NAME.curve.toml is pack NAME, holding its
-one table entry. A NAME.pack.toml makes its folder one pack NAME instead:
+one table entry; an NAME.sound.toml holds one sound entry. A NAME.pack.toml
+makes its folder one pack NAME instead:
 every root under that folder puts its entries there, and folder packs do
 not nest. A mesh is the entry <id>.mesh that mesh_import.py wrote, and its
 pack id is that id; a scene (r3d/scene_asset.py), a clip
 (anim/tracks_asset.py), a picture (gfx/image_asset.py), a curve
-(gfx/curve_asset.py) and an icon (gfx/icons_asset.py) are baked here from
-their files, each with its stem for id but an icon. Every scene, clip and
+(gfx/curve_asset.py), a sound (audio/sound_asset.py) and an icon
+(gfx/icons_asset.py) are baked here from their files, each with its stem for id but an icon. Every scene, clip and
 mesh is mirrored into the engine frame on the way in
-(asset/engine_frame.py); a picture, an icon or a curve has no 3D frame. Ids
+(asset/engine_frame.py); a picture, an icon, a curve or a sound has no 3D frame. Ids
 are unique within a pack, whatever their type. A skinned mesh also brings
 its <mesh id>.skin, its rig's skeleton and each clip in its source.clips
 (docs/render/Skeleton-and-Skin.md). Each pack is written to DIR/<name>.apak;
@@ -50,6 +51,7 @@ import tomllib
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from bake import bake  # noqa: E402
+from audio import sound_asset  # noqa: E402
 from anim import tracks_asset  # noqa: E402
 from asset.engine_frame import to_engine  # noqa: E402
 from gfx import icons_asset, image_asset, curve_asset  # noqa: E402
@@ -64,15 +66,16 @@ DEFAULT_SEARCH = REPO / "launcher" / "main"
 DEMO = REPO / "launcher" / "demo"
 SCENE, IMPORT, CLIP = scene_name.SUFFIX, ".import.toml", tracks_asset.SUFFIX
 IMAGE, ICONS = image_asset.SUFFIX, icons_asset.SUFFIX
+SOUND = sound_asset.SUFFIX
 CURVE = curve_asset.SUFFIX
-ROOTS = (IMPORT, SCENE, CLIP, IMAGE, ICONS, CURVE)
-BAKED_HERE = (SCENE, CLIP, IMAGE, ICONS, CURVE)  # entries baked from their file here; the rest are meshes
+ROOTS = (IMPORT, SCENE, CLIP, IMAGE, ICONS, CURVE, SOUND)
+BAKED_HERE = (SCENE, CLIP, IMAGE, ICONS, CURVE, SOUND)  # entries baked from their file here; the rest are meshes
 FOLDER_PACK = ".pack.toml"
 PACK_SUFFIX = ".apak"
 
 
 def input_files(paths):
-    """The import, scene, clip, image and icon set files under `paths` and app-selected demos;
+    """The import, scene, clip, image, curve, sound and icon set files under `paths` and app-selected demos;
     manifests inside DEMO are refused, and each folder is searched once."""
     found, searched = set(), set()
     pending = list(map(pathlib.Path, paths))
@@ -95,7 +98,7 @@ def input_files(paths):
             found.add(path)
         else:
             raise SettingsError(f"{path}: not an .import.toml, a .scene.toml, an .anim.toml, an .image.toml, "
-                                "an .icons.toml, a .curve.toml or a folder")
+                                "an .icons.toml, a .curve.toml, a .sound.toml or a folder")
     return sorted(found)
 
 
@@ -172,6 +175,8 @@ def pack_jobs(paths):
     for path in files:
         if path.name.endswith(IMAGE):
             roots[path] = {image_asset.image_id(path): path}
+        elif path.name.endswith(SOUND):
+            roots[path] = {sound_asset.sound_id(path): path}
         elif path.name.endswith(CURVE):
             roots[path] = {curve_asset.curve_id(path): path}
         elif path.name.endswith(ICONS):
@@ -270,7 +275,7 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
         mirrored = []
         for key, kind, data in entry_rows:
             try:
-                mirrored.append((key, kind, to_engine(kind, data)))
+                mirrored.append((key, kind, data if kind == sound_asset.TYPE else to_engine(kind, data)))
             except ValueError as error:
                 raise SettingsError(f"entry {key!r}: {error}") from error
         result[name] = build_pack(sorted(mirrored))
@@ -279,9 +284,11 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
 
 def pack_entry(key, source, engine_frame=True, camera_node=None, cache=None, offline=False):
     """The pack entry `key`: a scene, clip, picture or icon baked from its
-    file, or a curve table, else a mesh's bytes; a scene, clip or mesh in the engine frame unless
+    file, a sound or a curve table, else a mesh's bytes; a scene, clip or mesh in the engine frame unless
     `engine_frame` is false (the skin step matches the source-frame mesh)."""
     try:
+        if source.name.endswith(SOUND):
+            return key, sound_asset.TYPE, sound_asset.bake(source)
         if source.name.endswith(CURVE):
             return key, curve_asset.TYPE, curve_asset.bake(source)
         if source.name.endswith(IMAGE):
@@ -359,7 +366,7 @@ def main(argv=None):
         for name in write_packs(pathlib.Path(args.out), packs, pathlib.Path(args.image) if args.image else None):
             print(f"wrote {name}{PACK_SUFFIX} ({len(packs[name])} bytes): " + ", ".join(sorted(parse_pack(packs[name]))))
     except (SettingsError, PackError, tracks_asset.TracksError, scene_asset.SceneError,
-            image_asset.ImageError, icons_asset.IconsError) as error:
+            image_asset.ImageError, icons_asset.IconsError, sound_asset.SoundError) as error:
         parser.error(str(error))
     except Exception as error:
         from bake import bake

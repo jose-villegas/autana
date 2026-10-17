@@ -33,13 +33,14 @@ searching, so no list is kept:
 | `NAME.scene.toml` | `NAME` | its [scene entry](../render/Scene-Files.md#the-scene-entry) `NAME`, every mesh, skin, skeleton and clip it names |
 | `NAME.import.toml` that no scene places | `NAME` | its variants' meshes |
 | `NAME.anim.toml` that no scene names | `NAME` | its one clip, baked from its source |
+| `NAME.sound.toml` | `NAME` | its one sound, baked from the WAV it names |
 | `NAME.image.toml` | `NAME` | its one picture, baked from the PNG it names |
 | `NAME.icons.toml` | `NAME` | an image entry per [icon](../tools/Icon-Baker.md), named by the icon, baked from the set's atlas and SVGs |
 
 A `NAME.pack.toml` makes its folder one pack, `NAME`: every root under that
 folder puts its entries there instead of making a pack of its own, each with
 its stem for id. Folder packs do not nest, and the file holds no settings yet.
-The engine's own artwork, which any app may draw, is the folder pack
+The engine's own content, which any app may use, is the folder pack
 `engine` (`launcher/main/engine/`); an app's artwork is a folder pack the app
 names, mounted while it runs.
 
@@ -133,6 +134,68 @@ the reader allocates nothing.
 `NAME.curve.toml` and the PNG it names into entry NAME: one bright line
 crossing every column of the panel's landscape frame, stored as row `y` of
 brightness-weighted heights.
+
+### The sound entry
+
+[`sound_asset.py`](../../launcher/tools/audio/sound_asset.py) bakes
+`NAME.sound.toml` and its WAV into entry NAME. The WAV supplies the level;
+there is no gain setting. The TOML is the only source of format and loops.
+
+| Key | Holds |
+|---|---|
+| `source` | Required WAV filename in the same folder, integer PCM 8/16/24/32-bit, any channel count |
+| `format` | Required `"pcm16"` or `"adpcm"` |
+| `loop` | Optional `[start, end]` in stored 22,050 Hz frames; omitted means one-shot |
+
+Channels are averaged before a Hann-windowed sinc filter resamples to mono
+22,050 Hz. The filter spans 32 zero crossings on either side and widens for
+downsampling. Matching-rate sources skip it; samples round and clamp to int16.
+
+The 32-byte header is little-endian; offsets count from the entry's first byte.
+
+| At | Type | Holds |
+|---|---|---|
+| 0 | u16 | version 1 |
+| 2 | u8 | format 0 PCM16 or 1 IMA-ADPCM |
+| 3 | u8 | channels 1 |
+| 4 | u32 | sample rate 22,050 Hz |
+| 8 | u32 | nonzero frame count |
+| 12 | u32 | loop start |
+| 16 | u32 | loop end, exclusive; 0 means one-shot |
+| 20 | u16 | block frames, 0 for PCM16; odd for ADPCM |
+| 22 | u16 | reserved 0 |
+| 24 | u32 | reserved 0 |
+| 28 | u32 | data offset, at least 32 and 4-aligned |
+
+PCM16 data is signed little-endian samples. Each ADPCM block holds an int16
+predictor, u8 step index in 0..88 and u8 reserved zero, then low-nibble-first
+IMA codes. Its byte size is `4 + (block_frames - 1) / 2`.
+
+The baker takes its block size from `AUDIO_SOUND_DEFAULT_BLOCK_FRAMES` in
+`audio_sound.h`. The first block starts at index zero; later blocks carry the
+previous ending index. Each predictor is exact; the last tail repeats its last sample.
+
+`audio_sound_open()` maps the samples in place through `asset_entry_read()`.
+It rejects wrong versions, formats, channels or rates, empty sounds, nonzero
+reserved fields and gaps, and invalid block headers or block frame counts.
+
+Offsets below the header, misaligned offsets and data outside the entry give
+`ASSET_ERR_BOUNDS`; invalid field values give `ASSET_ERR_FORMAT`. A loop needs
+`start < end <= frames`, or both zero for one-shot; ADPCM starts must align to blocks.
+The baker rejects misaligned starts and names their two neighbours. Failed opens zero the view.
+
+```mermaid
+flowchart TD
+    W[WAV] --> M[Mix mono]
+    T[TOML] --> M
+    M --> R[Resample 22050 Hz]
+    R --> P[PCM16]
+    R --> A[IMA-ADPCM encode]
+    P --> S[SOND entry]
+    A --> S
+    S --> K[Pack]
+    K --> O[audio_sound_open in place]
+```
 
 ## The pack directory
 
@@ -240,8 +303,10 @@ renderer.
 `launcher/tools/asset/asset_directory.py` the directory,
 `launcher/tools/r3d/mesh_asset.py` and `lit_mesh.py` the mesh
 entry, `launcher/tools/anim/tracks_asset.py` of the clip entry,
-`launcher/tools/gfx/image_asset.py` of the image entry; `asset_pack.c`,
-`asset_directory.c`, `r3d_lit_mesh.c`, `anim_tracks.c` and `draw_image.c` are
+`launcher/tools/gfx/image_asset.py` of the image entry, and
+`launcher/tools/audio/sound_asset.py` of the sound entry; `asset_pack.c`,
+`asset_directory.c`, `r3d_lit_mesh.c`, `anim_tracks.c`, `draw_image.c` and
+`audio_sound.c` are
 the one reader of each.
 
 No mesh is committed: each is a bake product, fetched by its lock row; a clip
