@@ -217,6 +217,9 @@ proto_nearest_drawn(int i, int j, int last) {
 /* PROTOTYPE: 0 drops the dashed floor guides; the mesh lines on them keep
  * their colour. */
 static uint8_t proto_axis_arrival(uint32_t now_ms, int band);
+#ifndef PROTO_FAR_GRID
+#define PROTO_FAR_GRID 1
+#endif
 #ifndef PROTO_AXIS_LINES_FAR
 #define PROTO_AXIS_LINES_FAR 1
 #endif
@@ -635,14 +638,19 @@ proto_far_piece(const mesh_pass_t* pass, bool along_im, int32_t c, int32_t from,
     }
 }
 
-/* One far line from `from` to `to` (from < to), cut where the distance from
- * the centre doubles; each piece fades by PROTO_FAR_FADE per doubling so the
- * crowd at the horizon thins out instead of merging into a band. */
-#define PROTO_FAR_FADE 190
+/* One far line from `from` to `to` (from < to). PROTO_FAR_FADE below 255 cuts
+ * it where the distance from the centre doubles and fades each piece; 255 (the
+ * chosen look) draws it whole and lets the horizon merge into a band. */
+#define PROTO_FAR_FADE 255
 
 static void
 proto_far_segment(const mesh_pass_t* pass, bool along_im, int32_t c, int32_t from, int32_t to, uint8_t level,
                   unsigned flags) {
+    if (PROTO_FAR_FADE == 255) {
+        proto_far_piece(pass, along_im, c, from, to, gfx_color_mix(COL_BG, gfx_rgb(BOOT_ANIM_FLOOR_GREY), level),
+                        flags);
+        return;
+    }
     const int32_t edge = MESH_HALF * BOOT_ANIM_MESH_STEP_Q12;
     int32_t at = from;
     while (at < to) {
