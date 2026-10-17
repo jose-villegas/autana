@@ -667,7 +667,7 @@ class DeviceTests(unittest.TestCase):
         connection = FakeConnection([b"I (9) screenshot: ignoring line: 'TUNE'\n"])
         store = mock_store()
         with mock.patch.object(device, "open_when_free", return_value=connection):
-            with self.assertRaisesRegex(RuntimeError, "needs a development build"):
+            with self.assertRaisesRegex(RuntimeError, "needs a development image"):
                 device.send(self.send_args("TUNE"), store, BOARD)
 
     def test_send_forwards_an_app_command_and_completes_on_its_own_end_line(self):
@@ -3129,3 +3129,35 @@ class LifecycleTourTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TourVerdictTests(unittest.TestCase):
+    def test_crash_port_loss_and_timeout_are_captured(self):
+        for fault, expected in (("crash", "firmware crash"), ("port", "port lost"),
+                                ("timeout", "tour's time ran out")):
+            with self.subTest(fault=fault), tempfile.TemporaryDirectory() as directory:
+                output = Path(directory) / "tour.log"
+                connection = mock.MagicMock()
+                connection.__enter__.return_value = connection
+                connection.in_waiting = 1
+                if fault == "port":
+                    connection.read.side_effect = OSError("USB disconnected")
+                else:
+                    connection.read.return_value = b"Guru Meditation Error\n"
+                args = Namespace(out=str(output), owner="test", purpose="test",
+                                 max_seconds=0 if fault == "timeout" else 1)
+                held = Namespace(held={"acquired_at": "test"})
+                with mock.patch.object(device, "holding", return_value=contextlib.nullcontext(held)), \
+                     mock.patch.object(device, "open_when_free", return_value=connection), \
+                     mock.patch.object(device, "require_unlost"), \
+                     mock.patch.object(device, "resolve_capture_path", return_value=(output, False)), \
+                     mock.patch.object(device, "record_capture", return_value=output), \
+                     mock.patch.object(device, "git_commit", return_value="fixture"), \
+                     mock.patch.object(device.device_report, "write_report_for_capture", return_value="report"), \
+                     contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(device.tour(args, None, "board"), 1)
+                capture = output.read_text()
+                self.assertIn(expected, capture)
+                self.assertIn("tour FAIL", capture)
+                if fault == "crash":
+                    self.assertEqual(len(device.crash_signs(capture, 0)), 1)

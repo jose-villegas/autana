@@ -493,23 +493,26 @@ failed `assert`) or a second boot banner, whatever its tests reported. The
 board's captures (`autana suite`, `selftest`, `monitor`) give the same
 verdict, from `scripts/lib/device_capture.py`'s `crash_signs()`.
 
-The lifecycle tour discovers the running image's apps through `APPS`, then
-asks each advertised console prefix for `scenes`. It opens and leaves every
-app, switches through every ordered app pair, and walks every ordered scene
-pair within each scene app. Each switch is immediately followed by a tilt
-to the next display quarter. Apps without scene commands count as a single
-scene and still take part in app transitions.
+The lifecycle tour discovers apps and scenes from the running development
+image, exercises every ordered app and scene pair, and tilts through its
+advertised quarters. Run `sh launcher/test/run_qemu_tests.sh --tour` or
+`autana debug tour [seconds] [--out PATH]`. Each tilt waits the firmware's
+advertised sample period before another switch. QEMU CI shares its shell
+image with the instruction ratchet; Board CI holds the board through its tour.
 
-Run `sh launcher/test/run_qemu_tests.sh --tour` locally, or flash a development
-image and run `autana debug tour [seconds]` on the board. The board command
-holds one lock and serial capture for the entire tour and prints its report
-path. The QEMU lifecycle workflow runs on relevant pull requests; Board CI
-runs the same tour against its development image.
-
-A crash, reboot, command error, malformed discovery reply, or missed reply or
-`BUILDID` heartbeat fails the tour and stops further transitions. Discovery
-also fails if it finds no apps or no app with multiple scenes. The final
-line reports the discovered graph, scene switches, and elapsed time.
+```mermaid
+flowchart TD
+    Discover["Discover APPS and scenes"] --> Plan["Plan app and scene pairs"]
+    Plan --> Step["Send step, then tilt"]
+    Step --> Verify["Require reply, scene barrier, and BUILDID"]
+    Verify --> Valid{"All checks pass within deadline?"}
+    Valid -->|No| Fail["Release IMU and FAIL"]
+    Valid -->|Yes| Wait["Wait until tilt sample period passes"]
+    Wait --> More{"More steps?"}
+    More -->|Yes| Step
+    More -->|No| Pass["Release IMU and PASS"]
+    Discover -->|Malformed reply or crash| Fail
+```
 
 **What a run is evidence of.** Pass and fail, for any test that does not
 read a clock: a time a test measures, against a ceiling pegged on the

@@ -13,6 +13,7 @@
 #include "console/console_verbs.h"
 #include "console/verbs/console_inject_parse.h"
 
+#include "display/display_shell.h"
 #include "input/buttons.h"
 #include "input/imu.h"
 #include "input/touch.h"
@@ -37,14 +38,23 @@ console_verb_touch(const char* args, console_reply_fn reply) {
 
 static void
 console_verb_imu(const char* args, console_reply_fn reply) {
-    (void)reply;
+    imu_sample_t sample;
     int ax = 0, ay = 0, az = 0;
     if (strcmp(args, "release") == 0) {
         imu_inject_release();
+    } else if (console_imu_quarter_parse(args, &sample)) {
+        int quarter;
+        (void)sscanf(args, "quarter %d", &quarter);
+        imu_inject(&sample);
+        char line[CONSOLE_LINE_MAX];
+        snprintf(line, sizeof line, "IMU_OK quarter=%d quarters=%d sample_ms=%d", quarter, DISPLAY_QUARTER_COUNT,
+                 DISPLAY_SAMPLE_MS);
+        reply(line);
     } else if (console_imu_parse(args, &ax, &ay, &az)) {
         imu_inject(&(imu_sample_t){.ax = (int16_t)ax, .ay = (int16_t)ay, .az = (int16_t)az});
     } else {
-        ESP_LOGW(TAG, "IMU wants <ax> <ay> <az> or release: '%s'", args);
+        ESP_LOGW(TAG, "IMU wants <ax> <ay> <az>, quarter <q> or release: '%s'", args);
+        reply("IMU_ERR invalid sample");
     }
 }
 

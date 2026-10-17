@@ -301,7 +301,7 @@ rarely needs the frame loop paused or a raw sensor level, so these stay one
 | `autana debug resume` | Run it again. |
 | `autana debug step [N]` | Advance `N` frames while frozen; 1 when omitted. |
 | `autana debug touch <down\|up> <x> <y>` | One raw touch-controller level, at a panel-frame point (a `--framebuffer` pixel, not a default-screenshot one); `up` hands back to the controller. |
-| `autana debug imu <ax> <ay> <az>` | Raw accelerometer counts; `autana debug imu release` hands back to the sensor. |
+| `autana debug imu <ax> <ay> <az>` | Raw accelerometer counts; `autana debug imu quarter <q>` selects a display quarter, and `autana debug imu release` hands back to the sensor. The quarter reply advertises the quarter count and orientation sample period. |
 | `autana debug framewatch` | A development build's frame watch as JSON: the last frame's allocations, frees and log lines, and every site repeating frame after frame ([the frame watch](../Firmware-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state)). |
 
 `autana freeze`, `autana resume`, `autana step`, `autana touch`, `autana imu`

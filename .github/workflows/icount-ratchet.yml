@@ -1,4 +1,4 @@
-name: Instruction Count Ratchet
+name: QEMU Ratchet and Lifecycle Tour
 
 # Pins named serial simulation steps and raster span kernels to instruction
 # budgets. Scope, tolerance and local captures: docs/Testing-Guide.md.
@@ -9,6 +9,9 @@ on:
   pull_request:
     paths:
       - 'launcher/**'
+      - 'scripts/lib/lifecycle_tour.py'
+      - 'scripts/lib/console_protocol.py'
+      - 'scripts/lib/device_capture.py'
       - '.github/workflows/icount-ratchet.yml'
       - '.github/actions/**'
 
@@ -21,7 +24,7 @@ env:
 
 jobs:
   icount-ratchet:
-    name: Hot kernel instruction ratchet
+    name: Instruction budgets and app lifecycles
     runs-on: ubuntu-24.04
     # Headroom for a cold emulator build.
     timeout-minutes: 30
@@ -33,9 +36,19 @@ jobs:
           command: >-
             sh test/run_qemu_tests.sh --icount-ratchet --timeout 900
             && python3 tools/quality/icount_gate.py build.qemu.shell/qemu_serial.log
+      - name: App and scene lifecycle tour
+        if: ${{ !cancelled() }}
+        uses: ./.github/actions/idf-build
+        with:
+          cache-name: qemu
+          command: >-
+            sh test/run_qemu_tests.sh --tour --no-build --timeout 300
+            --log build.qemu.shell/tour_serial.log
       - if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: icount-serial-log
-          path: launcher/build.qemu.shell/qemu_serial.log
+          name: qemu-serial-logs
+          path: |
+            launcher/build.qemu.shell/qemu_serial.log
+            launcher/build.qemu.shell/tour_serial.log
           if-no-files-found: ignore

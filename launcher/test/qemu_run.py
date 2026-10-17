@@ -82,6 +82,7 @@ from espressif import espressif_tools_root, idf_python, idf_path  # noqa: E402  
 from device_report import SUITE_COMPLETE_RE  # noqa: E402  (the board tool's own reading)
 from device_capture import (BOOTS_FROM_RESET, BUILD_ID_RE, BUILD_ID_REQUEST,  # noqa: E402
                             crash_signs)  # (the board tool's own crash verdict)
+from console_protocol import ANSI, LineReader  # noqa: E402
 from lifecycle_tour import HEARTBEAT_S, heartbeat, run as run_tour  # noqa: E402
 import screenshot as wire  # noqa: E402  (the board tool's own protocol)
 import patched_qemu  # noqa: E402  (path must be set up first)
@@ -94,7 +95,6 @@ QEMU_FAIL_RE = re.compile(r"^\S*:\d+:(\w+):FAIL:? ?(.*)$", re.M)
 
 SENTINEL = "SELFTEST_COMPLETE"
 LISTENING = "listening for 'screenshot'"
-ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def icount_suites(root):
@@ -174,7 +174,7 @@ class Console:
         self.proc = proc
         self.deadline = deadline
         self.log = open(log_path, "wb")
-        self.pending = b""
+
         self.sock = None
         while self.sock is None:
             try:
@@ -184,6 +184,7 @@ class Console:
                     raise
                 time.sleep(0.2)
         self.sock.settimeout(1.0)
+        self.reader = LineReader(self.read_chunk, self.log, deadline, lambda: self.proc.poll() is None)
 
     def close(self):
         self.log.close()
@@ -192,26 +193,14 @@ class Console:
     def send(self, line):
         self.sock.sendall(line.encode() + b"\n")
 
+    def read_chunk(self):
+        try:
+            return self.sock.recv(65536)
+        except socket.timeout:
+            return None
+
     def lines(self, seconds=None):
-        """Complete lines as they arrive, until QEMU exits or time runs out:
-        the run's, or `seconds` from now when that comes first."""
-        deadline = self.deadline
-        if seconds is not None:
-            deadline = min(deadline, time.monotonic() + seconds)
-        while time.monotonic() < deadline and self.proc.poll() is None:
-            try:
-                chunk = self.sock.recv(65536)
-            except socket.timeout:
-                continue
-            if not chunk:
-                return
-            self.log.write(chunk)
-            self.log.flush()
-            self.pending += chunk
-            while b"\n" in self.pending:
-                raw, self.pending = self.pending.split(b"\n", 1)
-                text = raw.decode("utf-8", errors="replace").rstrip("\r")
-                yield ANSI.sub("", text)
+        return self.reader.lines(seconds)
 
     def wait_for(self, needle):
         for line in self.lines():

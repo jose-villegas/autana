@@ -47,7 +47,7 @@ while [ $# -gt 0 ]; do
         # One image serves however many instances a driver then starts
         # against it by hand, each with its own qemu_run.py --workdir.
         --build-only) RUN=0 ;;
-        --timeout)
+        --timeout | --log | --workdir)
             [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }
             RUN_ARGS="$RUN_ARGS $1 $2"
             shift
