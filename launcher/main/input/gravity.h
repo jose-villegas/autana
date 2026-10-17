@@ -21,6 +21,10 @@
 #define GRAVITY_REJECT_COS                0.984807753F
 /* Madgwick, x-io Fusion's recommended recovery trigger period, in milliseconds. */
 #define GRAVITY_RECOVER_MS                5000U
+/* M0 board capture: rest gyro noise peaks at +/-4 deg/s. */
+#define GRAVITY_STILL_DPS                 6.0F
+/* Ours, maintainer choice: clear fast-flip error promptly, outlast a held swing reversal. */
+#define GRAVITY_STILL_RECOVER_MS          500U
 /* QMI8658C datasheet, Table 8: board-level initial gyro offset tolerance. */
 #define GRAVITY_GYRO_OFFSET_TOL_DPS       10.0F
 /* QMI8658C datasheet, Table 8: gyro offset temperature coefficient. */
@@ -48,6 +52,8 @@ typedef struct {
     vec3f_t gyro_bias;
     /* Accel rejection time; past GRAVITY_RECOVER_MS the next nonzero reading is adopted. */
     uint32_t distrust_ms;
+    /* Continuous still rejection time; motion or acceptance cancels early recovery. */
+    uint32_t still_ms;
 } gravity_t;
 
 /* Reset to down=(0,0,-1), zero linear g and bias deg/s; adopt the first nonzero acceleration exactly. */

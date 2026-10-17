@@ -124,6 +124,12 @@ static bool
 gravity_aligned(const imu_probe_round_t* round, input_motion_t sample) {
     const int pose = round->pose == IMU_PROBE_POSE_COUNT ? IMU_PROBE_BOTTOM_DOWN : round->pose;
     const vec3i_t direction = imu_probe_pose_direction(pose, round->quarter);
+    if (round->step == IMU_PROBE_UPRIGHT) {
+        const vec3f_t acceleration = vec3f_from_vec3i(sample.acceleration);
+        const float magnitude = sqrtf(vec3f_dot(acceleration, acceleration));
+        return magnitude > 0.0F
+               && (float)vec3i_dot(direction, sample.acceleration) >= IMU_PROBE_UPRIGHT_MIN * magnitude;
+    }
     return vec3i_dot(direction, sample.acceleration) >= IMU_PROBE_GRAVITY_MIN;
 }
 
@@ -194,7 +200,7 @@ turn_upright(imu_probe_round_t* round, const input_motion_t* sample, uint32_t dt
         round->settle_ms = 0;
         return;
     }
-    if (!still(round, *sample, dt_ms) || turning(*sample)) {
+    if (turning(*sample)) {
         round->settle_ms = 0;
         return;
     }
