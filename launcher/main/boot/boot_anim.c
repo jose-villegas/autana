@@ -216,6 +216,17 @@ proto_nearest_drawn(int i, int j, int last) {
 
 /* PROTOTYPE: 0 drops the dashed floor guides; the mesh lines on them keep
  * their colour. */
+static uint8_t proto_axis_arrival(uint32_t now_ms, int band);
+#ifndef PROTO_AXIS_LINES_FAR
+#define PROTO_AXIS_LINES_FAR 1
+#endif
+
+/* PROTOTYPE: the grid's lines (not the axis lines) at this share of their
+ * colour, 255 unchanged. */
+#ifndef PROTO_GRID_LEVEL
+#define PROTO_GRID_LEVEL 179
+#endif
+
 #ifndef PROTO_DRAW_GUIDES
 #define PROTO_DRAW_GUIDES 0
 #endif
@@ -256,7 +267,10 @@ draw_mesh_edge(const mesh_pass_t* pass, const mesh_node_t* a, int ai, int aj, co
         return;
     }
     const int band = (a->band_q4 + b->band_q4) >> (BOOT_ANIM_FLOOR_BAND_SHIFT + 1);
-    const uint8_t alpha = scale8(boot_anim_grid_alpha(pass->now_ms, band), pass->ink);
+    const bool on_axis = (aj == 0 && bj == 0) || (ai == 0 && bi == 0);
+    const uint8_t alpha = scale8(PROTO_AXIS_LINES_FAR && on_axis ? proto_axis_arrival(pass->now_ms, band)
+                                                                 : boot_anim_grid_alpha(pass->now_ms, band),
+                                 pass->ink);
     if (alpha == 0) {
         return;
     }
@@ -267,6 +281,8 @@ draw_mesh_edge(const mesh_pass_t* pass, const mesh_node_t* a, int ai, int aj, co
         floor_c = proto_crest_mix(ripple, gfx_rgb(COL_AXIS));
     } else if (PROTO_GUIDE_LINES == 2 && on_guide) {
         floor_c = gfx_rgb(COL_AXIS);
+    } else {
+        floor_c = gfx_color_mix(COL_BG, floor_c, PROTO_GRID_LEVEL);
     }
     const gfx_color_t c = gfx_color_mix(COL_BG, floor_c, alpha);
     const unsigned flags = DRAW_LINE_DASH(BOOT_ANIM_MESH_DASH_ON_PX, BOOT_ANIM_MESH_DASH_OFF_PX);
@@ -429,6 +445,105 @@ mesh_plane(const mesh_pass_t* pass, vec3x_t* row) {
     };
 }
 
+#ifndef PROTO_AXIS_LINES_FAR
+#define PROTO_AXIS_LINES_FAR 1
+#endif
+
+/* PROTOTYPE (host only): the mesh lines on the axes carry on past the mesh
+ * to the horizon, still lifted by the ripple and the swell, then as a screen
+ * line to the panel's edge. The rest of the grid stops at the mesh. */
+static uint8_t
+proto_axis_arrival(uint32_t now_ms, int band) {
+    const uint32_t start = BOOT_ANIM_GRID_START_MS + ((uint32_t)band * BOOT_ANIM_GRID_BAND_MS);
+    return (uint8_t)tween_ramp(now_ms, start, BOOT_ANIM_GRID_FADE_MS);
+}
+
+static int32_t
+proto_height_at(int32_t re_q12, int32_t im_q12, const boot_anim_floor_state_t* state) {
+    const double re_m = (double)re_q12 / BOOT_ANIM_ONE;
+    const double im_m = (double)im_q12 / BOOT_ANIM_ONE;
+    const double r_m = sqrt((re_m * re_m) + (im_m * im_m));
+    int32_t ripple = 0;
+    const int32_t radius = (int32_t)lround(r_m * BOOT_ANIM_RIPPLE_SHAPE_SCALE);
+    const int x = (int)(((uint32_t)mathi_abs(radius - state->radius) * state->inv_width) >> BOOT_ANIM_FLOOR_GAIN_SHIFT);
+    if (radius < 65535 && x <= BOOT_ANIM_RIPPLE_GAUSSIAN_EXTENT) {
+        int32_t amplitude = (state->amplitude * boot_anim_ripple_gaussian[x]) >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
+        const uint16_t phase = (uint16_t)((long)lround(r_m * 65536.0 / BOOT_ANIM_RIPPLE_WAVELENGTH_M) & 0xFFFF);
+        ripple = (-amplitude * trig_cos((uint16_t)(phase + state->ripple_phase))) >> TRIG_SIN_SHIFT;
+    }
+    int32_t swell = 0;
+    if (state->swell != 0) {
+        for (int k = 0; k < BOOT_ANIM_SWELL_COUNT; k++) {
+            const boot_anim_swell_setting_t* w = &boot_anim_swell_settings[k];
+            const double dir = w->direction_deg * 3.14159265358979 / 180.0;
+            const double turns = ((re_m * cos(dir)) + (im_m * sin(dir))) / w->wavelength_m;
+            const uint16_t phase = (uint16_t)(((long)lround(turns * 65536.0) & 0xFFFF) + state->phase[k]);
+            swell += (boot_anim_swell_weights[k] * trig_sin(phase)) >> TRIG_SIN_SHIFT;
+        }
+        swell = (swell * state->swell) >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
+    }
+    return ripple + swell;
+}
+
+static void
+proto_draw_axis_lines_far(const mesh_pass_t* pass) {
+    static const int dirs[4][2] = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
+    const int32_t edge = MESH_HALF * BOOT_ANIM_MESH_STEP_Q12;
+    const int32_t far = units(BOOT_ANIM_GRID_SPOKE_FAR_UNITS);
+    const uint8_t alpha = scale8(proto_axis_arrival(pass->now_ms, BOOT_ANIM_GRID_FADE), pass->ink);
+    if (alpha == 0) {
+        return;
+    }
+    const gfx_color_t c = gfx_color_mix(COL_BG, gfx_rgb(COL_AXIS), alpha);
+    const unsigned flags = DRAW_LINE_DASH(BOOT_ANIM_MESH_DASH_ON_PX, BOOT_ANIM_MESH_DASH_OFF_PX);
+    for (int d = 0; d < 4; d++) {
+        int32_t r = edge;
+        vec3x_t prev = {0};
+        bool have_prev = false;
+        int px = 0, py = 0, qx = 0, qy = 0;
+        bool have_screen = false;
+        for (;;) {
+            const int32_t re = dirs[d][0] * r;
+            const int32_t im = dirs[d][1] * r;
+            const int32_t lift = boot_anim_zeta_to_t_q8(proto_height_at(re, im, &pass->floor));
+            const vec3x_t cs = boot_anim_to_camera_space(re, im, lift, pass->view);
+            if (have_prev) {
+                int ax, ay, bx, by;
+                if (r3d_project_segment_cs_x(prev, cs, pass->view, &ax, &ay, &bx, &by)) {
+                    draw_line_ex(ax, ay, bx, by, c, flags);
+                    px = ax;
+                    py = ay;
+                    qx = bx;
+                    qy = by;
+                    have_screen = true;
+                }
+            }
+            prev = cs;
+            have_prev = true;
+            if (r >= far) {
+                break;
+            }
+            const int32_t grow = r / 16;
+            r += grow > BOOT_ANIM_MESH_STEP_Q12 ? grow : BOOT_ANIM_MESH_STEP_Q12;
+            if (r > far) {
+                r = far;
+            }
+        }
+        const uint8_t extend = boot_anim_grid_spoke_reach(pass->now_ms);
+        if (have_screen && extend > 0) {
+            const int dx = qx - px;
+            const int dy = qy - py;
+            const int len = mathi_abs(dx) + mathi_abs(dy);
+            if (len > 0) {
+                /* Past the horizon it grows over the guides' old reveal. */
+                const int far_px = (4 * (GFX_WIDTH + GFX_HEIGHT) * extend) / 255;
+                draw_line_ex(qx, qy, qx + (int)(((int64_t)dx * far_px) / len), qy + (int)(((int64_t)dy * far_px) / len),
+                             c, flags);
+            }
+        }
+    }
+}
+
 void
 draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view) {
     gfx_surface_t surface;
@@ -459,6 +574,9 @@ draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t*
         plane = (vec3x_t){plane.x + row.x, plane.y + row.y, plane.z + row.z};
     }
 
+    if (PROTO_AXIS_LINES_FAR) {
+        proto_draw_axis_lines_far(&pass);
+    }
     if (PROTO_DRAW_GUIDES) {
         draw_spokes(now_ms, ink, view);
     }
