@@ -135,30 +135,30 @@ record_cross_x(int32_t near_z, vec3x_t* behind, const vec3x_t* front) {
 MATH_DEFINE_CLIP_NEAR(record_f, vec3f_t, float, record_cross_f)
 MATH_DEFINE_CLIP_NEAR(record_x, vec3x_t, int32_t, record_cross_x)
 
+#define DEFINE_CHECK_AT_NEAR(NAME, V, T, CLIP, RECORD)                                                                 \
+    static void NAME(int32_t scale, bool reverse) {                                                                    \
+        const V at_near = {PROJECT_X * scale, PROJECT_Y * scale, PROJECT_NEAR * scale};                                \
+        const V front = {PROJECT_FRONT_X * scale, PROJECT_FRONT_Y * scale, PROJECT_FRONT_Z * scale};                   \
+        for (int record = 0; record < 2; record++) {                                                                   \
+            V a = at_near, b = front;                                                                                  \
+            bool (*clip)(T, V*, V*) = record ? RECORD : CLIP;                                                          \
+            TEST_ASSERT_TRUE(reverse ? clip(at_near.z, &b, &a) : clip(at_near.z, &a, &b));                             \
+            const V expected = record ? front : at_near;                                                               \
+            TEST_ASSERT_EQUAL_MEMORY(&expected, &a, sizeof a);                                                         \
+            TEST_ASSERT_EQUAL_MEMORY(&front, &b, sizeof b);                                                            \
+        }                                                                                                              \
+    }
+
+DEFINE_CHECK_AT_NEAR(check_at_near_f, vec3f_t, float, projectf_clip_near, record_f_clip_near)
+DEFINE_CHECK_AT_NEAR(check_at_near_x, vec3x_t, int32_t, projectx_clip_near, record_x_clip_near)
+
 static void
 test_at_near_endpoint_is_clipped_in_both_slots(void) {
     const int32_t scales[] = {1, MATHX_ONE};
     for (size_t i = 0; i < sizeof scales / sizeof scales[0]; i++) {
-        const int32_t scale = scales[i];
         for (int reverse = 0; reverse < 2; reverse++) {
-            const vec3x_t at_near_x = {PROJECT_X * scale, PROJECT_Y * scale, PROJECT_NEAR * scale};
-            const vec3x_t front_x = {PROJECT_FRONT_X * scale, PROJECT_FRONT_Y * scale, PROJECT_FRONT_Z * scale};
-            const vec3f_t at_near_f = {at_near_x.x, at_near_x.y, at_near_x.z};
-            const vec3f_t front_f = {front_x.x, front_x.y, front_x.z};
-            for (int record = 0; record < 2; record++) {
-                vec3x_t ax = at_near_x, bx = front_x;
-                vec3f_t af = at_near_f, bf = front_f;
-                bool (*clip_f)(float, vec3f_t*, vec3f_t*) = record ? record_f_clip_near : projectf_clip_near;
-                bool (*clip_x)(int32_t, vec3x_t*, vec3x_t*) = record ? record_x_clip_near : projectx_clip_near;
-                TEST_ASSERT_TRUE(reverse ? clip_f(at_near_f.z, &bf, &af) : clip_f(at_near_f.z, &af, &bf));
-                TEST_ASSERT_TRUE(reverse ? clip_x(at_near_x.z, &bx, &ax) : clip_x(at_near_x.z, &ax, &bx));
-                const vec3f_t expected_f = record ? front_f : at_near_f;
-                const vec3x_t expected_x = record ? front_x : at_near_x;
-                TEST_ASSERT_EQUAL_MEMORY(&expected_f, &af, sizeof af);
-                TEST_ASSERT_EQUAL_MEMORY(&expected_x, &ax, sizeof ax);
-                TEST_ASSERT_EQUAL_MEMORY(&front_f, &bf, sizeof bf);
-                TEST_ASSERT_EQUAL_MEMORY(&front_x, &bx, sizeof bx);
-            }
+            check_at_near_f(scales[i], reverse);
+            check_at_near_x(scales[i], reverse);
         }
     }
 }
