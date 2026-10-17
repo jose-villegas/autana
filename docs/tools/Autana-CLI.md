@@ -61,9 +61,6 @@ in `scripts/lib/python-min-version`; CI uses the `.python-version` pin.
 | `--expect-build-id ID` | Refuse to run unless the board, or the image `--flash` just wrote, carries this `BUILD_ID`. `flash` prints the one it wrote; pass it here so a board someone else reflashed is not measured. | suite |
 | `--project PATH` | Act on `PATH` instead of the current directory, like `make -C`. `PATH` must itself hold `launcher/CMakeLists.txt` (no parent search); so must the current directory without `--project`, except for `suite` without `--flash`. | build, flash, selftest, suite, suite list, tune save, docs |
 
-Commands sit in the first section below whose rule they match. Tests and
-Docs cover suite runs and documentation lookup.
-
 ## Sharing the board
 
 Host only; never talks to the firmware. The lock lives on this machine, so it
@@ -194,9 +191,9 @@ without its `SELFTEST_COMPLETE` or `RUNSUITE_COMPLETE` line fails with that
 reason. `--verbose` prints the whole capture; to search it, grep the file.
 One suite run once makes exactly one capture and one report.
 
-`autana batch <suite>... [--runs N] [--perf-scope] [--verbose]` still works:
-the old spelling of `suite <suite>... --runs N --perf-scope --verbose --flash`
-(`--runs` defaults to 3 here), printing the new form once.
+`autana batch <suite>... [--runs N] [--perf-scope] [--verbose]` is shorthand for
+`suite <suite>... --runs N --perf-scope --verbose --flash` (`--runs` is 3 by
+default) and prints that form.
 
 ### A/B testing
 
@@ -208,9 +205,9 @@ built beforehand with `autana build`. Start with a scoped run; use
 
 | Route | Use it for |
 |---|---|
-| `--runs N --test PATTERN` | A quick look: repeat only the tests you changed. A filtered capture takes minutes, not a full suite's quarter hour. |
+| `--runs N --test PATTERN` | A quick look: repeat only the tests you changed. A filtered capture is much shorter than a full suite. |
 | `--layout-seed N` | The same code laid out differently in memory. Speed can shift with where code lands, so a difference that holds across several seeds is real. |
-| `launcher/tools/perf/perf_compare.sh A B --suite NAME TESTS TABLE` | The verdict: flashes seeded images of both sides in random order and reports whether they differ ([perf README](../../launcher/tools/perf/README.md)). `NAME` is a suite, `TESTS` a `--test` filter and `TABLE` the timing table, `-` for all. `A A` measures the noise. Run it from Git Bash on Windows. |
+| `launcher/tools/perf/perf_compare.sh A B --suite NAME TESTS TABLE` | The verdict: flashes seeded images of both sides in a randomised plan and reports whether they differ ([perf README](../../launcher/tools/perf/README.md)). `NAME` is a suite, `TESTS` a `--test` filter and `TABLE` the timing table, `-` for all. `A A` measures the noise. Run it from Git Bash on Windows. |
 
 `--test PATTERN` is a case-sensitive substring of letters, digits and
 underscores; repeat the flag or comma-separate (`--test fire,gas`). The board
@@ -270,7 +267,7 @@ A point is a pixel of the default `autana screenshot`, whichever way the board
 is held: read a button's centre off that image and pass it as is. autana
 converts it to the panel's own frame (the one `--framebuffer` shows), so
 pixels from an `--as-shown` or `--framebuffer` capture may miss. The raw
-levels below gesture, `touch` and `imu`, are under [`autana debug`](#debug).
+touch and accelerometer levels, `debug touch` and `debug imu`, are under [Debug](#debug).
 
 ## Tune
 
@@ -299,8 +296,8 @@ below the input layer, with a matching resume or release. Hidden from bare
 | `autana debug touch <down\|up> <x> <y>` | One raw touch-controller level at a panel-frame point (a `--framebuffer` pixel, not a screenshot one); `up` hands back to the controller. |
 | `autana debug imu <ax> <ay> <az>` | Raw accelerometer counts; `autana debug imu release` hands back to the sensor. |
 
-The old `autana freeze`, `resume`, `step`, `touch` and `imu`, and `autana debug
-framewatch`, still work and print the new spelling once.
+`freeze`, `resume`, `step`, `touch`, `imu` and `debug framewatch` are accepted
+as aliases and print the canonical spelling once.
 
 ## No board needed
 
