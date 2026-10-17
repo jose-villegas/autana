@@ -11,7 +11,7 @@ callers use.
 |---|---|
 | `include/math/scalar/` | Scalar operations per number type (`f` float, `i` int, `s` int16, `x` Q16.16), shift-based fixed point, trig tables, a random generator |
 | `include/math/linear/` | Vectors, quaternions, 4x4 matrices and transforms, each one template instantiated per number type; [docs/math/README.md](../../../docs/math/README.md) is the reference |
-| `include/math/geometry/` | Shapes and their queries: half-open rectangles (`rectf`, `recti`, `rects`, `rectx`), instantiated from `rect_template.h` |
+| `include/math/geometry/` | Shapes and their queries: half-open rectangles (`rectf`, `recti`, `rects`, `rectx`) and oriented planes (`planef`, `planex`), instantiated from geometry templates |
 | `include/math/motion/` | Integer springs on a fixed tick, orbiting a target |
 | `src/` | The few functions that are not inline |
 | `tests/` | Its suites, run by both runners like every other suite |
@@ -46,6 +46,9 @@ header's opening comment; `--check` verifies it.
 <!-- generated: package-headers check: python launcher/tools/gen/shared_helpers.py --check -->
 | Header | Purpose |
 |---|---|
+| [include/math/geometry/plane_template.h](include/math/geometry/plane_template.h) | plane_template: oriented planes for one number type; see docs/math/README.md for macro arguments. |
+| [include/math/geometry/planef.h](include/math/geometry/planef.h) | planef: an oriented plane of a float. |
+| [include/math/geometry/planex.h](include/math/geometry/planex.h) | planex: an oriented plane of a Q16.16. |
 | [include/math/geometry/rect_template.h](include/math/geometry/rect_template.h) | rect_template: the half-open rectangle for one number type; see docs/math/README.md for the macro arguments. |
 | [include/math/geometry/rectf.h](include/math/geometry/rectf.h) | rectf: a half-open rectangle of a float. |
 | [include/math/geometry/recti.h](include/math/geometry/recti.h) | recti: a half-open rectangle of an int. |
