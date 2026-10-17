@@ -168,50 +168,93 @@ test_record_boundaries_and_dump_decision(void) {
     imu_record_free(&record);
 }
 
-static void
-test_upright_interruptions_and_quarters(void) {
+static imu_probe_round_t*
+upright_fixture(int quarter, input_motion_t* rest) {
     imu_probe_round_t* round = calloc(1, sizeof *round);
     TEST_ASSERT_NOT_NULL(round);
-    const vec3f_t down = {0, 0, -1};
-    for (int quarter = 0; quarter < 4; quarter++) {
-        for (int interruption = 0; interruption < 4; interruption++) {
-            imu_probe_start(round, quarter);
-            round->step = IMU_PROBE_UPRIGHT;
-            round->pose = IMU_PROBE_POSE_COUNT;
-            input_motion_t rest = {.acceleration = vec3i_scale(imu_probe_pose_direction(IMU_PROBE_BOTTOM_DOWN, quarter),
-                                                               INPUT_ACCEL_ONE_G)};
-            for (unsigned ms = 0; ms <= IMU_PROBE_SETTLE_MS / 2; ms += TEST_DT_MS) {
-                imu_probe_turn_update(round, &rest, down, TEST_DT_MS);
-            }
-            TEST_ASSERT_TRUE(round->settle_ms > 0);
-            input_motion_t disturbed = rest;
-            disturbed.rotation.x = interruption == 0 ? IMU_PROBE_TURN_THRESHOLD + 1 : 0;
-            if (interruption == 1) {
-                disturbed.acceleration = vec3i_scale(rest.acceleration, -1);
-            }
-            if (interruption == 1) {
-                round->recent_accel[0] = (float)disturbed.acceleration.x;
-                round->recent_accel[1] = (float)disturbed.acceleration.y;
-                round->recent_accel[2] = (float)disturbed.acceleration.z;
-            }
-            if (interruption == 0) {
-                round->recent_gyro[0] = (float)disturbed.rotation.x;
-            }
-            imu_probe_turn_update(round, interruption == 2 ? NULL : &disturbed, down,
-                                  interruption == 3 ? IMU_PROBE_MAX_GAP_MS + 1 : TEST_DT_MS);
-            TEST_ASSERT_EQUAL_UINT32(0, round->settle_ms);
-            TEST_ASSERT_EQUAL_INT(IMU_PROBE_UPRIGHT, round->step);
-            for (unsigned ms = 0; ms < IMU_PROBE_SETTLE_MS / 2; ms += TEST_DT_MS) {
-                imu_probe_turn_update(round, &rest, down, TEST_DT_MS);
-                TEST_ASSERT_EQUAL_INT(IMU_PROBE_UPRIGHT, round->step);
-            }
-            for (unsigned ms = 0; ms < IMU_PROBE_SETTLE_MS * 2; ms += TEST_DT_MS) {
-                imu_probe_turn_update(round, &rest, down, TEST_DT_MS);
-            }
-            TEST_ASSERT_EQUAL_INT(IMU_PROBE_TURN, round->step);
-        }
+    imu_probe_start(round, quarter);
+    round->step = IMU_PROBE_UPRIGHT;
+    round->pose = IMU_PROBE_POSE_COUNT;
+    *rest = (input_motion_t){
+        .acceleration = vec3i_scale(imu_probe_pose_direction(IMU_PROBE_BOTTOM_DOWN, quarter), INPUT_ACCEL_ONE_G)};
+    for (unsigned ms = 0; ms <= IMU_PROBE_SETTLE_MS / 2; ms += TEST_DT_MS) {
+        imu_probe_turn_update(round, rest, (vec3f_t){0, 0, -1}, TEST_DT_MS);
     }
+    TEST_ASSERT_TRUE(round->settle_ms > 0);
+    return round;
+}
+
+static void
+check_upright_restart(imu_probe_round_t* round, input_motion_t rest, const input_motion_t* disturbed, uint32_t dt_ms) {
+    imu_probe_turn_update(round, disturbed, (vec3f_t){0, 0, -1}, dt_ms);
+    TEST_ASSERT_EQUAL_UINT32(0, round->settle_ms);
+    TEST_ASSERT_EQUAL_INT(IMU_PROBE_UPRIGHT, round->step);
+    for (unsigned ms = 0; ms < IMU_PROBE_SETTLE_MS / 2; ms += TEST_DT_MS) {
+        imu_probe_turn_update(round, &rest, (vec3f_t){0, 0, -1}, TEST_DT_MS);
+        TEST_ASSERT_EQUAL_INT(IMU_PROBE_UPRIGHT, round->step);
+    }
+    for (unsigned ms = 0; ms < IMU_PROBE_SETTLE_MS * 2; ms += TEST_DT_MS) {
+        imu_probe_turn_update(round, &rest, (vec3f_t){0, 0, -1}, TEST_DT_MS);
+    }
+    TEST_ASSERT_EQUAL_INT(IMU_PROBE_TURN, round->step);
     free(round);
+}
+
+static void
+test_upright_turn_restarts_settle(void) {
+    for (int quarter = 0; quarter < 4; quarter++) {
+        input_motion_t rest;
+        imu_probe_round_t* round = upright_fixture(quarter, &rest);
+        input_motion_t disturbed = rest;
+        disturbed.rotation.x = IMU_PROBE_TURN_THRESHOLD + 1;
+        round->recent_gyro[0] = (float)disturbed.rotation.x;
+        check_upright_restart(round, rest, &disturbed, TEST_DT_MS);
+    }
+}
+
+static void
+test_upright_gravity_mismatch_restarts_settle(void) {
+    for (int quarter = 0; quarter < 4; quarter++) {
+        input_motion_t rest;
+        imu_probe_round_t* round = upright_fixture(quarter, &rest);
+        input_motion_t disturbed = rest;
+        disturbed.acceleration = vec3i_scale(rest.acceleration, -1);
+        round->recent_accel[0] = (float)disturbed.acceleration.x;
+        round->recent_accel[1] = (float)disturbed.acceleration.y;
+        round->recent_accel[2] = (float)disturbed.acceleration.z;
+        check_upright_restart(round, rest, &disturbed, TEST_DT_MS);
+    }
+}
+
+static void
+test_upright_null_sample_restarts_settle(void) {
+    for (int quarter = 0; quarter < 4; quarter++) {
+        input_motion_t rest;
+        imu_probe_round_t* round = upright_fixture(quarter, &rest);
+        check_upright_restart(round, rest, NULL, TEST_DT_MS);
+    }
+}
+
+static void
+test_upright_gap_restarts_settle(void) {
+    for (int quarter = 0; quarter < 4; quarter++) {
+        input_motion_t rest;
+        imu_probe_round_t* round = upright_fixture(quarter, &rest);
+        check_upright_restart(round, rest, &rest, IMU_PROBE_MAX_GAP_MS + 1);
+    }
+}
+
+static void
+test_upright_nonzero_quarter_arms(void) {
+    for (int quarter = 1; quarter < 4; quarter++) {
+        input_motion_t rest;
+        imu_probe_round_t* round = upright_fixture(quarter, &rest);
+        for (unsigned ms = 0; ms < IMU_PROBE_SETTLE_MS; ms += TEST_DT_MS) {
+            imu_probe_turn_update(round, &rest, (vec3f_t){0, 0, -1}, TEST_DT_MS);
+        }
+        TEST_ASSERT_EQUAL_INT(IMU_PROBE_TURN, round->step);
+        free(round);
+    }
 }
 
 static void
@@ -247,7 +290,11 @@ test_trace_missing_reading_deadline_and_period(void) {
 
 void
 run_imu_untethered_suite(void) {
-    RUN_TEST(test_upright_interruptions_and_quarters);
+    RUN_TEST(test_upright_turn_restarts_settle);
+    RUN_TEST(test_upright_gravity_mismatch_restarts_settle);
+    RUN_TEST(test_upright_null_sample_restarts_settle);
+    RUN_TEST(test_upright_gap_restarts_settle);
+    RUN_TEST(test_upright_nonzero_quarter_arms);
     RUN_TEST(test_trace_missing_reading_deadline_and_period);
     RUN_TEST(test_record_boundaries_and_dump_decision);
     RUN_TEST(test_record_replay_and_release);

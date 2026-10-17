@@ -423,6 +423,11 @@ draw_target(mu_Context* ctx) {
     mu_draw_rect(ctx, mu_rect(target.x, target.y, target.side, target.side), ui_rgb(COL_TARGET));
 }
 
+static vec3i_t
+motion_log_vector(vec3f_t value, int scale) {
+    return (vec3i_t){(int)lroundf(value.x * scale), (int)lroundf(value.y * scale), (int)lroundf(value.z * scale)};
+}
+
 static void
 read_motion(uint32_t dt_ms) {
     motion_log_ms += dt_ms;
@@ -437,18 +442,16 @@ read_motion(uint32_t dt_ms) {
     motion_probe = motion_probe_measure(motion.acceleration);
     if (motion_log_ms >= MOTION_LOG_PERIOD_MS) {
         motion_log_ms %= MOTION_LOG_PERIOD_MS;
+        const vec3i_t down_mg = motion_log_vector(gravity_down(&gravity), IMU_PROBE_MILLI);
+        const vec3i_t bias_dps10 = motion_log_vector(gravity_gyro_bias(&gravity), OFFSET_SCALE);
         ESP_LOGI(TAG,
                  "motion raw %d,%d,%d tilt %d bearing %d filt %d,%d str %d shake %d turn %d rot %d,%d,%d quarter %d "
                  "grav_mg %d,%d,%d bias_dps10 %d,%d,%d",
                  raw_acceleration.x, raw_acceleration.y, raw_acceleration.z, (int)lroundf(motion_probe.tilt_deg),
                  motion_probe.bearing_deg, tilt_x(&tilt), tilt_y(&tilt), tilt_strength(&tilt), tilt_shake(&tilt),
                  motion.turn_speed, motion.rotation.x, motion.rotation.y, motion.rotation.z, display_quarter_now(),
-                 (int)lroundf(gravity_down(&gravity).x * IMU_PROBE_MILLI),
-                 (int)lroundf(gravity_down(&gravity).y * IMU_PROBE_MILLI),
-                 (int)lroundf(gravity_down(&gravity).z * IMU_PROBE_MILLI),
-                 (int)lroundf(gravity_gyro_bias(&gravity).x * OFFSET_SCALE),
-                 (int)lroundf(gravity_gyro_bias(&gravity).y * OFFSET_SCALE),
-                 (int)lroundf(gravity_gyro_bias(&gravity).z * OFFSET_SCALE));
+                 (int)down_mg.x, (int)down_mg.y, (int)down_mg.z, (int)bias_dps10.x, (int)bias_dps10.y,
+                 (int)bias_dps10.z);
     }
 }
 
