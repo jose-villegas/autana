@@ -6,6 +6,7 @@
 #pragma once
 
 #include "display/viewport.h"
+#include "math/linear/projectf.h"
 #include "math/linear/transformf.h"
 
 typedef struct {
@@ -13,6 +14,12 @@ typedef struct {
     float pixels_per_unit, center_x, center_y, near_z;
     viewport_t viewport;
 } render_view_t;
+
+/* The view as a pinhole lens: one focal length on both axes. */
+static inline projectf_t
+render_view_lens(const render_view_t* view) {
+    return (projectf_t){view->pixels_per_unit, view->pixels_per_unit, view->center_x, view->center_y, view->near_z};
+}
 
 render_view_t render_view_make(const transformf_t* pose, float half_fov_short_tan, float near_z, viewport_t viewport);
 
