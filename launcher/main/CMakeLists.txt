@@ -122,6 +122,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/console.c"
         "console/verbs/console_buildid.c"
         "console/verbs/console_heap.c"
+        "console/verbs/console_tone.c"
         "console/verbs/console_freeze.c"
         "console/console_frame_request.c"
         "console/verbs/console_frame_watch.c"
@@ -130,6 +131,15 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/verbs/console_tune.c"
         "console/verbs/console_screenshot.c"
         "console/capture/device_state.c"
+    )
+    # The development console is the only audio caller.
+    list(APPEND app_srcs
+        "audio/audio_codec.c"
+        "audio/audio_out.c"
+        "audio/audio_in.c"
+        "audio/audio_tone.c"
+        "audio/audio_goertzel.c"
+        "audio/audio_loopback.c"
     )
 endif()
 if(CONFIG_LAUNCHER_SELFTEST)
@@ -218,7 +228,7 @@ list(APPEND app_srcs ${discovered_apps})
 # esp_lcd_co5300 brings up the V2 (CO5300 panel) revision; see board/board_panel.c. It is
 # a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
 # own declaration (main/idf_component.yml) to see its headers.
-set(app_reqs math microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
+set(app_reqs esp_codec_dev esp_driver_i2s math microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash esp_partition
              fatfs esp_driver_sdmmc sdmmc
              esp_driver_usb_serial_jtag esp_driver_uart vfs nvs_flash esp_app_format espcoredump
