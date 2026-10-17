@@ -723,9 +723,10 @@ def changed_files(ref, all_sources):
 
 
 # What clang-tidy's cognitive complexity counts, in a body function_bodies()
-# has stripped of whitespace. A body without any scores nothing.
-CONTROL_FLOW_RE = re.compile(r"(?<![A-Za-z0-9_])(?:if|for|while|switch)\(|"
-                             r"(?<![A-Za-z0-9_])(?:case|goto)(?![A-Za-z0-9_])|&&|\|\||\?")
+# has stripped of whitespace, which joins `goto done` into `gotodone`: case
+# and goto match as prefixes, so an identifier starting with one only errs
+# toward scanning. A body without any scores nothing.
+CONTROL_FLOW_RE = re.compile(r"(?<![A-Za-z0-9_])(?:(?:if|for|while|switch)\(|case|goto)|&&|\|\||\?")
 
 
 def defines_scored_functions(path):
