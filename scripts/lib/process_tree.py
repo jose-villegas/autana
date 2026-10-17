@@ -11,6 +11,12 @@ CREATE_SUSPENDED = 0x4
 PR_SET_PDEATHSIG = 1
 
 
+def install_console_interrupt_handler():
+    """Windows Ctrl-Break must unwind locks and ports through KeyboardInterrupt."""
+    if os.name == "nt":
+        signal.signal(signal.SIGBREAK, signal.default_int_handler)
+
+
 def windows_job_binding(kernel=None):
     import ctypes
     from ctypes import wintypes

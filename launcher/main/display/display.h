@@ -21,9 +21,10 @@
 
 #include "math/linear/vec2i.h"
 
-/* The cover glass hides roughly this many pixels along every edge of the
- * panel, and more where the corners round off. Anything meant to be read
- * insets by at least this much. Measured on the board. */
+/* How far anything meant to be read sits from every panel edge: a reading
+ * margin, not hidden pixels. The cover glass hides nothing along the straight
+ * edges (an edge ruler read on the board) and only the rounded
+ * corners below. */
 #define DISPLAY_PANEL_SAFE_INSET    15
 
 /* Measured on the panel's cover glass. */

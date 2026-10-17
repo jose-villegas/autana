@@ -42,7 +42,7 @@
 1944	math_scale_s	info
 3134	math_scale_x	info
 7043	math_sinf_f	info
-38747	math_slerp_f
+26958	math_slerp_f
 2962	math_sqrtf_f	info
 4316	math_transform_compute_matrix_f	info
 42327	math_transform_compute_matrix_x	info

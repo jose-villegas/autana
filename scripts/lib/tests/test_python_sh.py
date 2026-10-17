@@ -1,6 +1,5 @@
-"""find_python in python.sh, run by a real shell over a real venv: the first
-interpreter on PATH wins whatever it is named, so a Windows venv, which holds
-only `python`, is not passed over for a `python3` later on PATH."""
+"""Python discovery through real shell processes and interpreter imports."""
+import json
 import os
 from pathlib import Path
 import shutil
@@ -62,6 +61,47 @@ class FindPythonTests(unittest.TestCase):
                                 text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr)
         return Path(result.stdout.strip()).resolve()
+
+    def test_pinned_minor_preference_and_module_fallback(self):
+        pin = (LIB.parents[1] / ".python-version").read_text().strip()
+        minor = pin.rsplit(".", 1)[0]
+        minimum = (LIB / "python-min-version").read_text().strip()
+        with tempfile.TemporaryDirectory(prefix="python pin ") as temporary:
+            root = Path(temporary)
+            older_bin, pinned_bin = root / "older", root / "pinned"
+            older_bin.mkdir()
+            pinned_bin.mkdir()
+            older = older_bin / "python3"
+            pinned = pinned_bin / f"python{minor}"
+            probes = root / "probes"
+            for candidate, interpreter, version in (
+                    (older, self.venv_bin / "python", minimum),
+                    (pinned, Path(sys.executable), minor)):
+                candidate.write_text(
+                    f'#!/bin/sh\nexec "{interpreter.as_posix()}" -c \'\n'
+                    'import sys\n'
+                    f'sys.version_info = tuple(map(int, "{version}".split(".")))\n'
+                    f'with open({json.dumps(probes.as_posix())}, "a") as log: log.write({json.dumps(candidate.name)} + "\\n")\n'
+                    'code = sys.argv[2]; sys.argv = sys.argv[2:]; exec(code)\n'
+                    "' \"$@\"\n")
+                candidate.chmod(0o755)
+            script = f'. "{(LIB / "python.sh").as_posix()}"; find_python "$@"'
+            for case, modules, available, expected, count in (
+                    ("preferred", [], True, pinned, 1),
+                    ("module fallback", ["venv_only_marker"], True, older, 2),
+                    ("absent", [], False, older, 1)):
+                with self.subTest(case=case):
+                    if not available:
+                        pinned.unlink()
+                    probes.write_text("")
+                    result = subprocess.run(
+                        [self.shell, "-c", script, str(LIB / "python.sh"), *modules],
+                        env=dict(os.environ, PATH=os.pathsep.join(
+                            str(entry) for entry in (older_bin, pinned_bin))),
+                        capture_output=True, text=True, timeout=60)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(Path(result.stdout.strip()).parts[-2:], expected.parts[-2:])
+                    self.assertEqual(len(probes.read_text().splitlines()), count)
 
     def test_an_older_python3_is_passed_over(self):
         older = Path(self.temp.name) / "older"
