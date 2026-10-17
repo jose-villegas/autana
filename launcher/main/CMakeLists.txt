@@ -121,13 +121,6 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/verbs/console_buildid.c"
         "console/verbs/console_heap.c"
         "console/verbs/console_tone.c"
-        # The development console is the only audio caller.
-        "audio/audio_codec.c"
-        "audio/audio_out.c"
-        "audio/audio_in.c"
-        "audio/audio_tone.c"
-        "audio/audio_goertzel.c"
-        "audio/audio_loopback.c"
         "console/verbs/console_freeze.c"
         "console/console_frame_request.c"
         "console/verbs/console_frame_watch.c"
@@ -136,6 +129,15 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/verbs/console_tune.c"
         "console/verbs/console_screenshot.c"
         "console/capture/device_state.c"
+    )
+    # The development console is the only audio caller.
+    list(APPEND app_srcs
+        "audio/audio_codec.c"
+        "audio/audio_out.c"
+        "audio/audio_in.c"
+        "audio/audio_tone.c"
+        "audio/audio_goertzel.c"
+        "audio/audio_loopback.c"
     )
 endif()
 if(CONFIG_LAUNCHER_SELFTEST)

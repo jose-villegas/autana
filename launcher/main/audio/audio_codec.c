@@ -1,15 +1,19 @@
 /* Codec interfaces and duplex I2S channels share one reference-counted lifetime. */
 #include "audio/audio_codec.h"
 
+#include <assert.h>
+
 #include "audio/audio_out.h"
 #include "board/board.h"
 #include "bsp/esp32_s3_touch_amoled_1_8.h"
 #include "driver/i2s_std.h"
 #include "esp_codec_dev_defaults.h"
 #include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "profile/frame_watch.h"
 
-#define AUDIO_CODEC_I2C_ADDR         0x18
-#define AUDIO_CODEC_I2C_ADDR_SHIFT   1
+#define AUDIO_CODEC_PROBE_ADDR       (ES8311_CODEC_DEFAULT_ADDR >> 1)
 #define AUDIO_CODEC_PROBE_TIMEOUT_MS 100
 #define AUDIO_CODEC_PA_UNUSED        (-1)
 #define AUDIO_CODEC_PA_SUPPLY_VOLTS  5.0f
@@ -23,6 +27,14 @@ static const audio_codec_ctrl_if_t* ctrl;
 static const audio_codec_gpio_if_t* gpio;
 static const audio_codec_if_t* codec;
 static unsigned references;
+static bool device_took_channels;
+static bool tx_enabled;
+static bool rx_enabled;
+
+void
+audio_codec_assert_not_frame_task(void) {
+    assert(xTaskGetCurrentTaskHandle() != frame_watch_task());
+}
 
 bool
 audio_codec_check(const char* operation, int status) {
@@ -51,6 +63,19 @@ audio_codec_destroy(void) {
     gpio = NULL;
     (void)audio_codec_check("delete data", data ? audio_codec_delete_data_if(data) : ESP_CODEC_DEV_OK);
     data = NULL;
+    /* esp_codec_dev expects enabled channels for format setup and disables the S3 pair on close.
+     * After a successful open, device close owns disabling for this lifetime. */
+    if (!device_took_channels) {
+        if (tx_enabled) {
+            (void)audio_codec_check("disable TX", i2s_channel_disable(tx));
+        }
+        if (rx_enabled) {
+            (void)audio_codec_check("disable RX", i2s_channel_disable(rx));
+        }
+    }
+    device_took_channels = false;
+    tx_enabled = false;
+    rx_enabled = false;
     audio_codec_delete_channel(&tx, "delete TX");
     audio_codec_delete_channel(&rx, "delete RX");
     (void)audio_codec_check("amp off", board_audio_amp_enable(false));
@@ -75,7 +100,14 @@ audio_codec_init_data(void) {
         || !audio_codec_check("init RX", i2s_channel_init_std_mode(rx, &format))) {
         return false;
     }
-    /* esp_codec_dev's data interface enables and disables the channels with its devices. */
+    tx_enabled = audio_codec_check("enable TX", i2s_channel_enable(tx));
+    if (!tx_enabled) {
+        return false;
+    }
+    rx_enabled = audio_codec_check("enable RX", i2s_channel_enable(rx));
+    if (!rx_enabled) {
+        return false;
+    }
     audio_codec_i2s_cfg_t data_config = {.port = CONFIG_BSP_I2S_NUM, .tx_handle = tx, .rx_handle = rx};
     data = audio_codec_new_i2s_data(&data_config);
     if (!data) {
@@ -91,22 +123,19 @@ audio_codec_acquire(void) {
         references++;
         return true;
     }
-    if (!audio_codec_check("amp on", board_audio_amp_enable(true))) {
-        goto fail;
-    }
     const i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
     if (!bus) {
         ESP_LOGE(TAG, "I2C bus unavailable");
         goto fail;
     }
-    if (!audio_codec_check("codec probe", i2c_master_probe(bus, AUDIO_CODEC_I2C_ADDR, AUDIO_CODEC_PROBE_TIMEOUT_MS))) {
+    if (!audio_codec_check("codec probe",
+                           i2c_master_probe(bus, AUDIO_CODEC_PROBE_ADDR, AUDIO_CODEC_PROBE_TIMEOUT_MS))) {
         goto fail;
     }
     if (!audio_codec_init_data()) {
         goto fail;
     }
-    audio_codec_i2c_cfg_t ctrl_config = {
-        .port = BSP_I2C_NUM, .addr = AUDIO_CODEC_I2C_ADDR << AUDIO_CODEC_I2C_ADDR_SHIFT, .bus_handle = bus};
+    audio_codec_i2c_cfg_t ctrl_config = {.port = BSP_I2C_NUM, .addr = ES8311_CODEC_DEFAULT_ADDR, .bus_handle = bus};
     ctrl = audio_codec_new_i2c_ctrl(&ctrl_config);
     if (!ctrl) {
         ESP_LOGE(TAG, "new control interface failed");
@@ -165,9 +194,7 @@ audio_codec_device_open(esp_codec_dev_type_t type) {
     if (!audio_codec_check("open device", esp_codec_dev_open(device, &format))) {
         goto fail;
     }
-    if (!audio_codec_check("amp off", board_audio_amp_enable(false))) {
-        goto fail;
-    }
+    device_took_channels = true;
     return device;
 fail:
     audio_codec_device_close(device);

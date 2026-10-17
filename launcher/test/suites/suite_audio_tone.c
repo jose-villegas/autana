@@ -1,5 +1,7 @@
 /* Portable synthesis checks against time, amplitude and chunking contracts. */
+#include <math.h>
 #include <stdlib.h>
+#include "audio/audio_loopback.h"
 #include "audio/audio_tone.h"
 #include "suites.h"
 #include "test_cleanup.h"
@@ -32,11 +34,14 @@ test_tone_frequency(void) {
     for (size_t f = 0; f < sizeof frequencies / sizeof frequencies[0]; f++) {
         audio_tone_t tone;
         audio_tone_init(&tone, frequencies[f]);
-        TEST_ASSERT_UINT32_WITHIN(1,
-                                  (uint32_t)(((uint64_t)frequencies[f] * AUDIO_TONE_TURN + AUDIO_OUT_SAMPLE_RATE_HZ / 2)
-                                             / AUDIO_OUT_SAMPLE_RATE_HZ),
-                                  tone.step);
         audio_tone_fill(&tone, out, AUDIO_OUT_SAMPLE_RATE_HZ, AUDIO_OUT_VOLUME_MAX_PCT);
+#ifndef DEVICE_BUILD
+        const double turns = (double)frequencies[f];
+        const double phase_turn = (double)tone.phase / ((double)UINT32_MAX + 1);
+        const double error_hz = remainder(phase_turn - turns, 1.0);
+        const double half_step_hz = 0.51 * AUDIO_OUT_SAMPLE_RATE_HZ / ((double)UINT32_MAX + 1);
+        TEST_ASSERT_TRUE(fabs(error_hz) <= half_step_hz);
+#endif
         unsigned crossings = 0;
         for (size_t i = 1; i < AUDIO_OUT_SAMPLE_RATE_HZ; i++) {
             if (out[i - 1] <= 0 && out[i] > 0) {
@@ -83,8 +88,21 @@ test_tone_chunks_and_volume(void) {
     }
 }
 
+static void
+test_loopback_measured_budget(void) {
+    static const uint32_t durations[] = {1, AUDIO_LOOPBACK_SETTLE_MS - 1, AUDIO_LOOPBACK_SETTLE_MS,
+                                         AUDIO_LOOPBACK_SETTLE_MS + 1};
+    for (size_t i = 0; i < sizeof durations / sizeof durations[0]; i++) {
+        const size_t budget = audio_loopback_sample_budget(durations[i]);
+        const size_t settle = audio_out_samples(AUDIO_LOOPBACK_SETTLE_MS);
+        TEST_ASSERT_TRUE(budget > settle);
+        TEST_ASSERT_EQUAL_UINT(audio_out_samples(durations[i]), budget - settle);
+    }
+}
+
 void
 run_audio_tone_suite(void) {
+    RUN_TEST(test_loopback_measured_budget);
     RUN_TEST(test_tone_frequency);
     RUN_TEST(test_tone_chunks_and_volume);
 }

@@ -1,22 +1,17 @@
 /* Blocking PCM output, used from a worker or console task. */
 #include "audio/audio_out.h"
 
-#include <assert.h>
 #include <limits.h>
-#include <string.h>
 
 #include "audio/audio_codec.h"
 #include "audio/audio_out_device.h"
 #include "audio/audio_tone.h"
 #include "board/board.h"
 #include "core/timing.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 
-#define AUDIO_OUT_CODEC_VOLUME    70
-#define AUDIO_OUT_FRAME_TASK_NAME "main"
+#define AUDIO_OUT_CODEC_VOLUME 70
 #define AUDIO_OUT_DRAIN_MS                                                                                             \
-    ((AUDIO_CODEC_DMA_BLOCKS * AUDIO_CODEC_BLOCK_SAMPLES * AUDIO_OUT_MS_PER_SECOND + AUDIO_OUT_SAMPLE_RATE_HZ - 1)     \
+    ((AUDIO_CODEC_DMA_BLOCKS * AUDIO_CODEC_BLOCK_SAMPLES * MATH_MS_PER_S + AUDIO_OUT_SAMPLE_RATE_HZ - 1)               \
      / AUDIO_OUT_SAMPLE_RATE_HZ)
 static esp_codec_dev_handle_t output;
 
@@ -43,6 +38,7 @@ audio_out_open(void) {
 
 bool
 audio_out_write(const int16_t* samples, size_t count) {
+    audio_codec_assert_not_frame_task();
     if (!output || !samples || count > INT_MAX / sizeof *samples) {
         return false;
     }
@@ -51,15 +47,13 @@ audio_out_write(const int16_t* samples, size_t count) {
 
 bool
 audio_out_tone(uint16_t hz, uint16_t ms, uint8_t volume_pct) {
-    assert(strcmp(pcTaskGetName(NULL), AUDIO_OUT_FRAME_TASK_NAME) != 0);
-    if (!output || hz == 0 || hz >= AUDIO_OUT_NYQUIST_HZ || ms == 0 || ms > AUDIO_OUT_MAX_MS
-        || volume_pct > AUDIO_OUT_VOLUME_MAX_PCT) {
+    if (!output || !audio_out_args_valid(hz, ms, volume_pct)) {
         return false;
     }
     audio_tone_t tone;
     audio_tone_init(&tone, hz);
     int16_t samples[AUDIO_CODEC_BLOCK_SAMPLES];
-    size_t remaining = (uint32_t)ms * AUDIO_OUT_SAMPLE_RATE_HZ / AUDIO_OUT_MS_PER_SECOND;
+    size_t remaining = audio_out_samples(ms);
     bool ok = audio_out_amp(true);
     while (ok && remaining) {
         const size_t n = remaining < AUDIO_CODEC_BLOCK_SAMPLES ? remaining : AUDIO_CODEC_BLOCK_SAMPLES;
@@ -79,5 +73,4 @@ void
 audio_out_close(void) {
     audio_codec_device_close(output);
     output = NULL;
-    (void)audio_out_amp(false);
 }

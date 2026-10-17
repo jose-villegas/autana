@@ -34,6 +34,7 @@ audio_in_close(void) {
 
 bool
 audio_in_read(int16_t* samples, size_t count) {
+    audio_codec_assert_not_frame_task();
     if (!input || !samples || count > INT_MAX / sizeof *samples) {
         return false;
     }

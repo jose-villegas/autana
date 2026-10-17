@@ -2,6 +2,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include "audio/audio_goertzel.h"
+#include "audio/audio_loopback.h"
 #include "audio/audio_out.h"
 #include "math/scalar/trig.h"
 #include "suites.h"
@@ -56,6 +57,53 @@ test_goertzel_reference(void) {
         }
     }
 }
+
+static void
+test_goertzel_noninteger_bins(void) {
+    static const uint16_t frequencies[] = {300, 9000};
+    static const uint32_t durations[] = {237, 400 - AUDIO_LOOPBACK_SETTLE_MS};
+    static const uint16_t offsets[] = {0, 37};
+    int16_t* samples = fixture();
+    for (size_t f = 0; f < sizeof frequencies / sizeof frequencies[0]; f++) {
+        for (size_t d = 0; d < sizeof durations / sizeof durations[0]; d++) {
+            const size_t n = audio_out_samples(durations[d]);
+            for (size_t o = 0; o < sizeof offsets / sizeof offsets[0]; o++) {
+                double re = 0, im = 0;
+                for (size_t i = 0; i < n; i++) {
+                    const double phase = 2 * TEST_PI * i / AUDIO_OUT_SAMPLE_RATE_HZ;
+                    samples[i] = (int16_t)lround(TRIG_SIN_MAX * sin(phase * (frequencies[f] + offsets[o])));
+                    re += samples[i] * cos(phase * frequencies[f]);
+                    im -= samples[i] * sin(phase * frequencies[f]);
+                }
+                audio_goertzel_t state;
+                audio_goertzel_init(&state, frequencies[f], AUDIO_OUT_SAMPLE_RATE_HZ);
+                audio_goertzel_feed(&state, samples, n);
+                const double scale = (double)n * TRIG_SIN_MAX / 2;
+                const float reference = (float)(10 * log10((re * re + im * im) / (scale * scale)));
+                TEST_ASSERT_FLOAT_WITHIN(TEST_DB_TOLERANCE, reference, audio_goertzel_dbfs(&state));
+            }
+        }
+    }
+}
+
+static void
+test_goertzel_max_record(void) {
+    int16_t* samples = fixture();
+    audio_goertzel_t state;
+    audio_goertzel_init(&state, TEST_TARGET_HZ, AUDIO_OUT_SAMPLE_RATE_HZ);
+    const size_t total = audio_out_samples(AUDIO_OUT_MAX_MS);
+    for (size_t offset = 0; offset < total;) {
+        const size_t n = total - offset < TEST_SAMPLES ? total - offset : TEST_SAMPLES;
+        for (size_t i = 0; i < n; i++) {
+            const double phase = 2 * TEST_PI * TEST_TARGET_HZ * (offset + i) / AUDIO_OUT_SAMPLE_RATE_HZ;
+            samples[i] = (int16_t)lround(TRIG_SIN_MAX * sin(phase));
+        }
+        audio_goertzel_feed(&state, samples, n);
+        offset += n;
+    }
+    TEST_ASSERT_EQUAL_UINT(total, state.samples);
+    TEST_ASSERT_FLOAT_WITHIN(TEST_DB_TOLERANCE, 0, audio_goertzel_dbfs(&state));
+}
 #endif
 static void
 test_goertzel_streaming_silence_rejection(void) {
@@ -88,6 +136,8 @@ void
 run_audio_goertzel_suite(void) {
 #ifndef DEVICE_BUILD
     RUN_TEST(test_goertzel_reference);
+    RUN_TEST(test_goertzel_noninteger_bins);
+    RUN_TEST(test_goertzel_max_record);
 #endif
     RUN_TEST(test_goertzel_streaming_silence_rejection);
 }

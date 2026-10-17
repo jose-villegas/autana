@@ -16,4 +16,5 @@ typedef struct {
 
 /* Step is rounded to the nearest 1/2^32 turn per sample. */
 void audio_tone_init(audio_tone_t* state, uint16_t hz);
+/* volume_pct must be <= AUDIO_OUT_VOLUME_MAX_PCT. */
 void audio_tone_fill(audio_tone_t* state, int16_t* out, size_t n, uint8_t volume_pct);
