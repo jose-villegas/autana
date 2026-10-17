@@ -18,7 +18,24 @@ class MotionFitTest(unittest.TestCase):
         self.assertEqual(-4096, rounds[0]["poses"]["face_up"][2])
         self.assertEqual((1, 1000000, -2, 1001000, 3, 999000, 500, -1000, 0), rounds[0]["fit"])
         self.assertEqual(3, len(motion))
+        self.assertEqual([90.0, 0.0], rounds[1]["turn_angles"])
         self.assertEqual((32, -64, 0), motion[0]["rotation"])
+
+    def test_replayed_dump_has_the_live_fit_and_poses(self):
+        lines = (Path(__file__).parent / "fixtures" / "motion.log").read_text().splitlines()
+        round_lines = [line for line in lines if any(word in line for word in
+                       ("round imu", "pose ", "calib x off"))]
+        live = ["LABDUMP " + line for line in round_lines]
+        dump = ["LABDUMP_BEGIN", *live,
+                "LABDUMP GRAV face_up down 0.000000 0.000000 -1.000000 bias_dps 0.000000 0.000000 0.000000",
+                "LABDUMP turn ms 0 down 0.000000 1.000000 0.000000 accel 0.000000 1.000000 0.000000",
+                "LABDUMP_END"]
+        self.assertEqual([r["poses"] for r in motion_fit.parse(round_lines)[0]],
+                         [r["poses"] for r in motion_fit.parse(dump)[0]])
+        self.assertEqual([r["fit"] for r in motion_fit.parse(round_lines)[0]],
+                         [r["fit"] for r in motion_fit.parse(dump)[0]])
+        self.assertEqual([0.0], motion_fit.parse(dump)[0][-1]["turn_angles"])
+        self.assertEqual(motion_fit.parse(live)[1], motion_fit.parse(dump)[1])
 
     def test_rest_excludes_rounds_motion_and_tilt_departure(self):
         def sample(ms, tilt=6, turn=10, before_round=True):
@@ -91,18 +108,41 @@ class MotionFitTest(unittest.TestCase):
 
     def test_c_log_formats_parse(self):
         source = (Path(__file__).parents[1] / "app_input_lab.c").read_text()
+        source = re.sub(r'"\s*"', "", source)
         for prefix, regex, values, expected in (
-            ("motion", motion_fit.MOTION, tuple(range(1, 15)), ("1", "2", "3", "4", "5", "10", "11", "12", "13", "14")),
+            ("motion", motion_fit.MOTION, tuple(range(1, 21)), ("1", "2", "3", "4", "5", "10", "11", "12", "13", "14")),
             ("pose", motion_fit.POSE, ("face_up", 1, -2, 3, -4, 5, -6, 7), ("face_up", "1 -2 3 -4 5 -6 7")),
             ("calib", motion_fit.CALIB, tuple(range(1, 10)), tuple(map(str, range(1, 10)))),
+            ("GRAV", re.compile(r"GRAV (\w+) down (-?\d+\.\d{6}) (-?\d+\.\d{6}) (-?\d+\.\d{6}) bias_dps (-?\d+\.\d{6}) (-?\d+\.\d{6}) (-?\d+\.\d{6})"),
+             ("face_up", 6, 0., 6, 0., 6, -1., 6, 0., 6, 0., 6, 0.),
+             ("face_up", "0.000000", "0.000000", "-1.000000", "0.000000", "0.000000", "0.000000")),
+            ("turn", motion_fit.TURN,
+             (0, 6, 0., 6, 1., 6, 0., 6, 1., 6, 0., 6, 0.),
+             ("0", "0.000000", "1.000000", "0.000000", "1.000000", "0.000000", "0.000000")),
         ):
             with self.subTest(prefix=prefix):
                 formats = re.findall(r'"(' + prefix + r' [^"\n]*%[^"\n]+)"', source)
+                if prefix == "GRAV":
+                    formats = [fmt for fmt in formats if " bias_dps " in fmt]
                 self.assertEqual(1, len(formats))
                 line = formats[0] % values
                 match = regex.fullmatch(line)
                 self.assertIsNotNone(match, line)
                 self.assertEqual(expected, match.groups())
+
+    def test_turn_lag_summary_per_round(self):
+        rounds, motion = motion_fit.parse([
+            "round imu quarter 0",
+            "turn ms 0 down 0.000000 1.000000 0.000000 accel 1.000000 0.000000 0.000000",
+            "LABDUMP turn ms 50 down 1.000000 0.000000 0.000000 accel 1.000000 0.000000 0.000000",
+            "round imu quarter 1",
+            "turn ms 0 down 0.000000 1.000000 0.000000 accel 0.000000 -1.000000 0.000000",
+        ])
+        self.assertEqual([90.0, 0.0], rounds[0]["turn_angles"])
+        self.assertEqual([180.0], rounds[1]["turn_angles"])
+        text = motion_fit.report([("fixture", rounds, motion)], 10)
+        self.assertIn("Turn fixture / 1: max 90.0 deg, final 0.0 deg", text)
+        self.assertIn("Turn fixture / 2: max 180.0 deg, final 180.0 deg", text)
 
     def test_cli_rejects_uptime_reset(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -454,7 +454,7 @@ until the plane is normalized.
 | `P_from_rows(&m, a, b, c, e)` | the plane $`a x + b y + c z + e \ge 0`$ of affine m's target, in m's source space | $`n_j = a m_{0j} + b m_{1j} + c m_{2j},\ d = a m_{03} + b m_{13} + c m_{23} + e`$ |
 | `P_frustum(&m, near_z, center, screen, out)` | near and screen side planes in affine m's source space | `P_from_rows` of each lens-space plane below |
 
-`P_frustum` reads rows as in Gribb and Hartmann<sup>[[73]](../Citations.md#73)</sup>,
+`P_frustum` reads rows as in Gribb and Hartmann<sup>[[77]](../Citations.md#77)</sup>,
 with z as the homogeneous w row of a y-down camera with `screen = center + xy / z`.
 Each output is `P_from_rows` of one lens-space plane, in this order:
 
