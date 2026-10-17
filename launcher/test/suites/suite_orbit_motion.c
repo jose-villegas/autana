@@ -10,6 +10,7 @@
 #include <math.h>
 
 #include "gfx/gfx.h"
+#include "math/linear/math_const.h"
 #include "math/motion/orbit_motion.h"
 #include "render/r3d_pipeline.h"
 #include "render_view_fixture.h"
@@ -31,7 +32,6 @@
 #define FINE_STEPS    50
 #define STATE_EPSILON 1.0E-4F
 #define SETTLE_S      2.0F
-#define DEGREES       (MATH_PI / 180.0F)
 
 static const vec3f_t TARGET = {0.0F, 0.4F, 0.2F};
 
@@ -117,7 +117,7 @@ test_orbit_motion_fit_lets_the_shorter_axis_bind_when_the_picture_is_held_landsc
 
 void
 test_orbit_motion_pose_stands_at_the_distance_looking_at_the_target_and_level(void) {
-    const orbit_motion_t orbit = orbit_at(40.0F * DEGREES, 25.0F * DEGREES);
+    const orbit_motion_t orbit = orbit_at(40.0F * MATH_RADIANS_PER_DEGREE, 25.0F * MATH_RADIANS_PER_DEGREE);
     const transformf_t pose = orbit_motion_pose(&orbit);
     const vec3f_t to_target = vec3f_sub(TARGET, pose.position);
     const float d = sqrtf(vec3f_dot(to_target, to_target));
@@ -155,8 +155,10 @@ test_orbit_motion_a_light_orbiting_a_prop_keeps_shining_on_it(void) {
     const vec3f_t prop = {1.0F, 0.0F, -2.0F};
     const float reach = 3.0F;
     orbit_motion_t orbit;
-    orbit_motion_init(&orbit, prop, (orbit_motion_state_t){90.0F * DEGREES, 30.0F * DEGREES, logf(reach)},
-                      open_limits(logf(reach)));
+    orbit_motion_init(
+        &orbit, prop,
+        (orbit_motion_state_t){90.0F * MATH_RADIANS_PER_DEGREE, 30.0F * MATH_RADIANS_PER_DEGREE, logf(reach)},
+        open_limits(logf(reach)));
     transformf_t light = orbit_motion_pose(&orbit);
     assert_near(prop, ahead_of(&light, reach));
     drag(&orbit, DRAG_TURN, DRAG_TURN, DRAG_FRAMES);
@@ -216,7 +218,7 @@ test_orbit_motion_a_finger_held_still_before_lifting_flings_nothing(void) {
 void
 test_orbit_motion_pitch_stops_at_its_limit(void) {
     orbit_motion_t orbit = orbit_at(0.0F, 0.0F);
-    orbit.limits.pitch_max = 30.0F * DEGREES;
+    orbit.limits.pitch_max = 30.0F * MATH_RADIANS_PER_DEGREE;
     drag(&orbit, 0.0F, DRAG_TURN * 5.0F, DRAG_FRAMES);
     TEST_ASSERT_EQUAL_FLOAT(orbit.limits.pitch_max, orbit.at.pitch);
     TEST_ASSERT_EQUAL_FLOAT(0.0F, orbit.velocity.pitch);
@@ -339,11 +341,11 @@ test_orbit_motion_a_reset_settles_exactly_at_home_without_overshooting(void) {
 void
 test_orbit_motion_a_reset_turns_the_short_way_round(void) {
     orbit_motion_t orbit = orbit_at(0.0F, 0.0F);
-    orbit.at.yaw = 350.0F * DEGREES; /* 10 degrees short of home going on, 350 coming back */
+    orbit.at.yaw = 350.0F * MATH_RADIANS_PER_DEGREE; /* 10 degrees short of home going on, 350 coming back */
     start_reset(&orbit);
     for (int i = 0; i < FINE_STEPS; i++) {
         coast(&orbit, SETTLE_S / FINE_STEPS, 1);
-        TEST_ASSERT_TRUE_MESSAGE(fabsf(orbit.at.yaw) <= 10.0F * DEGREES + STATE_EPSILON,
+        TEST_ASSERT_TRUE_MESSAGE(fabsf(orbit.at.yaw) <= 10.0F * MATH_RADIANS_PER_DEGREE + STATE_EPSILON,
                                  "never further than 10 degrees");
     }
     TEST_ASSERT_EQUAL_FLOAT(orbit.home.yaw, orbit.at.yaw);

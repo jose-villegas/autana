@@ -31,7 +31,8 @@ import autana_config  # noqa: E402
 from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, BUILD_ID_REQUEST,
                             crash_signs)
 
-from process_tree import stop_process_tree, launch_process_tree, close_process_tree
+from process_tree import (stop_process_tree, launch_process_tree, close_process_tree,
+                          install_console_interrupt_handler)
 SUITE_RESULT = re.compile(rb":\d+:.*:(PASS|FAIL)(?:\r?$|:)", re.MULTILINE)
 BOARD_ENV = autana_config.BOARD_ENV
 TOKEN_ENV = autana_config.TOKEN_ENV
@@ -1973,6 +1974,7 @@ def print_statuses(entries, now):
 
 
 def main(argv=None):
+    install_console_interrupt_handler()
     try:
         autana_config.load()
     except autana_config.ConfigError as error:
@@ -2286,5 +2288,6 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
+    install_console_interrupt_handler()
     rerun = rerun_under_idf_python(sys.argv[1:])
     raise SystemExit(main() if rerun is None else rerun)

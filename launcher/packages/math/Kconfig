@@ -1,0 +1,10 @@
+menu "Math"
+
+    config MATH_FPU_RECIP
+        bool "Use FPU reciprocal seeds"
+        default y
+        help
+            Use the ESP32-S3 FPU recip0.s and rsqrt0.s seeds. Disable where
+            the emulator lacks these instructions (Espressif QEMU).
+
+endmenu

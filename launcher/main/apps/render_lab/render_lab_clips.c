@@ -9,8 +9,8 @@
 #include "core/memory.h"
 #include "draw/draw.h"
 #include "esp_log.h"
-#include "ui/controls/ui_widgets.h"
 #include "ui/ui.h"
+#include "ui/ui_mu.h"
 
 static int render_lab_clips_find(const scene_t* scene, scene_entity_t subject, const char* name);
 static bool render_lab_clips_play(render_lab_clips_t* choice, int clip, int blend_ms);
@@ -28,12 +28,12 @@ render_lab_clips_init(render_lab_clips_t* choice, scene_t* scene, scene_entity_t
         ESP_LOGW("render_clips", "default clip missing");
     }
     (void)scene_animator_play(scene, subject, choice->selected, 0);
-    ui_dropdown_item_t* items = memory_alloc((size_t)count * sizeof *items, MEMORY_PSRAM);
+    const char** items = memory_alloc((size_t)count * sizeof *items, MEMORY_PSRAM);
     if (items == NULL) {
         return false;
     }
     for (int i = 0; i < count; i++) {
-        items[i] = (ui_dropdown_item_t){.label = scene_animator_clip_name(scene, subject, i)};
+        items[i] = scene_animator_clip_name(scene, subject, i);
     }
     choice->items = items;
     choice->count = count;
@@ -151,12 +151,13 @@ render_lab_clips_draw(mu_Context* ctx, ui_flow_t* flow, int width, render_lab_cl
     if (choice->count == 0) {
         return;
     }
-    const ui_theme_t theme = ui_theme_from_style(ctx->style);
+    const ui_mu_theme_t theme = ui_theme_from_style(ctx->style);
     ui_flow_row(ctx, flow, width, draw_text_height());
     mu_label(ctx, "CLIP");
     ui_flow_row(ctx, flow, width, UI_ROW_HEIGHT);
     const mu_Rect anchor = mu_layout_next(ctx);
-    const int picked = ui_dropdown(ctx, "clip", anchor, choice->items, choice->count, choice->selected, &theme);
+    const int picked =
+        ui_mu_dropdown(ctx, "clip", anchor, choice->items, NULL, choice->count, choice->selected, &theme);
     if (picked >= 0) {
         (void)render_lab_clips_play(choice, picked, choice->blend_ms);
     }

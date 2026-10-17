@@ -24,6 +24,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "ui/ui.h"
+#include "ui/ui_mu.h"
 
 /* Two separate canvases, well apart, each inside its own band. */
 #define TOP_Y    0

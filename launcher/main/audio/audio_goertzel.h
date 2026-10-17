@@ -1,4 +1,4 @@
-/* Streaming Goertzel evaluation (docs/Citations.md#71), extended to non-integer DFT bins
+/* Streaming Goertzel evaluation (docs/Citations.md#72), extended to non-integer DFT bins
  * by taking the recurrence coefficient 2*cos(2*pi*hz/sample_rate) directly.
  * Power is the squared unnormalized DFT magnitude; dBFS normalizes a full-scale target sine to 0 dB. */
 #pragma once

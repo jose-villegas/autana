@@ -291,6 +291,53 @@ class StyleAuditTest(unittest.TestCase):
         })
         self.assertEqual(findings, [])
 
+    def test_package_config_rejects_product_and_other_package_symbols(self):
+        for name in ("probe.c", "include/math/probe.h", "CMakeLists.txt", "Kconfig"):
+            for symbol in ("CONFIG_LAUNCHER_QEMU", "CONFIG_OTHER_FPU_RECIP"):
+                with self.subTest(name=name, symbol=symbol):
+                    findings = self.audit("PACKAGE-CONFIG", {
+                        f"{self.PACKAGE}/{name}": f"\nif({symbol})\n",
+                    })
+                    self.assertEqual([f.line for f in findings], [2])
+                    self.assertIn(symbol, findings[0].message)
+
+    def test_package_config_accepts_its_own_prefix(self):
+        findings = self.audit("PACKAGE-CONFIG", {
+            f"{self.PACKAGE}/probe.c": "#if CONFIG_MATH_FPU_RECIP\n#endif\n",
+            f"{self.PACKAGE}/include/math/probe.h": "#ifdef CONFIG_MATH_FPU_RECIP\n#endif\n",
+            f"{self.PACKAGE}/CMakeLists.txt": "if(CONFIG_MATH_FPU_RECIP)\nendif()\n",
+            f"{self.PACKAGE}/Kconfig": "config MATH_FPU_RECIP\n    default y\n",
+            "launcher/packages/other/probe.c": "#if CONFIG_OTHER_FEATURE\n#endif\n",
+            "launcher/main/probe.c": "#if CONFIG_LAUNCHER_QEMU\n#endif\n",
+        })
+        self.assertEqual(findings, [])
+
+    def test_package_kconfig_declarations_require_its_prefix(self):
+        findings = self.audit("PACKAGE-CONFIG", {
+            f"{self.PACKAGE}/Kconfig": "config LAUNCHER_FEATURE\nconfig OTHER_FEATURE\n"
+                                      "menuconfig MATH_FEATURE\nmenuconfig FOREIGN_FEATURE\n",
+        })
+        self.assertEqual([f.line for f in findings], [1, 2, 4])
+
+    def test_package_config_ignores_comments_but_checks_code_on_the_same_line(self):
+        findings = self.audit("PACKAGE-CONFIG", {
+            f"{self.PACKAGE}/probe.c": "/* CONFIG_UNITY_ENABLE_64BIT */\n"
+                                      "// CONFIG_LAUNCHER_QEMU\n"
+                                      "/* CONFIG_OTHER_FEATURE */ #if CONFIG_LAUNCHER_QEMU\n",
+            f"{self.PACKAGE}/CMakeLists.txt": "# CONFIG_LAUNCHER_QEMU\n"
+                                             "#[=[\nCONFIG_OTHER_FEATURE\n]=]\n"
+                                             "if(CONFIG_MATH_FPU_RECIP) # CONFIG_OTHER_FEATURE\n",
+            f"{self.PACKAGE}/Kconfig": "# config OTHER_FEATURE CONFIG_OTHER_FEATURE\n"
+                                      "config MATH_FEATURE # CONFIG_LAUNCHER_QEMU\n",
+        })
+        self.assertEqual([(f.path, f.line) for f in findings], [(f"{self.PACKAGE}/probe.c", 3)])
+
+    def test_package_config_checks_symbols_in_build_strings(self):
+        findings = self.audit("PACKAGE-CONFIG", {
+            f"{self.PACKAGE}/CMakeLists.txt": 'message("# ${CONFIG_OTHER_FEATURE}")\n',
+        })
+        self.assertEqual([f.line for f in findings], [1])
+
     def test_a_package_header_is_spelled_from_its_include_root_inside_the_package_too(self):
         findings = self.audit("INCLUDE-LAYER", {
             f"{self.PACKAGE}/include/math/scalar/mathf.h": "#pragma once\n",
