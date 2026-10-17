@@ -126,7 +126,7 @@ int ui_measure_text(const char* str);
 /* ONE TRANSFORM PER RENDERED PASS, NOT A STACK. microui's command list has no
  * way to carry a transform change partway through it, and components/microui/
  * is deliberately unpatched, so there is no per-widget nesting. */
-void ui_set_transform(ui_transform_t t);
+void ui_set_transform(affine2x_t t);
 
 /* Increments whenever the canvas shape genuinely changes. THIS IS NOT A
  * CALLBACK, NOBODY SUBSCRIBES TO IT: a caller reads it, remembers it and

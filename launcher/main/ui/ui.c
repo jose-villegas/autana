@@ -118,7 +118,7 @@ mu_color_to_gfx(mu_Color c) {
 }
 
 static void
-draw_text_command(const mu_Command* cmd, ui_transform_t t) {
+draw_text_command(const mu_Command* cmd, affine2x_t t) {
     const mu_Color ink = cmd->text.color;
     const mu_Color halo = ui_text_halo(ink);
     const ui_font_scaled_t fs = ui_resolve_font_scaled(cmd->text.font);
@@ -188,7 +188,7 @@ draw_text_command(const mu_Command* cmd, ui_transform_t t) {
 
 static void
 draw_command(const mu_Command* cmd) {
-    const ui_transform_t t = ui_effective_transform();
+    const affine2x_t t = ui_effective_transform();
 
     switch (cmd->type) {
 
@@ -578,7 +578,7 @@ ui_queue_band_overlay_rect(int x, int y, int w, int h, uint32_t rgb) {
  * takes to mean "always replay". */
 static bool
 command_row_range(const mu_Command* cmd, int* y0, int* y1) {
-    const ui_transform_t t = ui_effective_transform();
+    const affine2x_t t = ui_effective_transform();
 
     switch (cmd->type) {
         case MU_COMMAND_RECT: {
