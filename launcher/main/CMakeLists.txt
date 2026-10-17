@@ -33,6 +33,7 @@ set(app_srcs
     "ui/ui.c"
     "ui/input/ui_bridge.c"
     "ui/ui_build.c"
+    "ui/face/ui_face.c"
     "ui/ui_canvas_marks.c"
     "ui/controls/ui_icons.c"
     "shell/ui/ui_launcher.c"

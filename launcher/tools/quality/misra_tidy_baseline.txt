@@ -1,7 +1,7 @@
 # check	file	count
 bugprone-narrowing-conversions	main/console/verbs/console_screenshot.c	1
 bugprone-unused-return-value	main/shell/apps/diagnostics/ui/toggles_screen.c	6
-bugprone-unused-return-value	main/apps/input_lab/app_input_lab.c	6
+bugprone-unused-return-value	main/apps/input_lab/app_input_lab.c	4
 bugprone-unused-return-value	main/apps/render_lab/ui/render_lab_hud_screen.c	1
 bugprone-unused-return-value	main/apps/render_lab/ui/render_lab_menu_screen.c	1
 bugprone-unused-return-value	main/apps/sand/app_sand.c	2
@@ -36,7 +36,7 @@ bugprone-unused-return-value	main/console/verbs/console_tune.c	2
 bugprone-unused-return-value	main/ui/controls/ui_widgets.c	2
 bugprone-unused-return-value	main/services/tune.c	5
 cert-err33-c	main/shell/apps/diagnostics/ui/toggles_screen.c	6
-cert-err33-c	main/apps/input_lab/app_input_lab.c	6
+cert-err33-c	main/apps/input_lab/app_input_lab.c	4
 cert-err33-c	main/apps/render_lab/tools/render_lab_render_host.c	1
 cert-err33-c	main/apps/render_lab/ui/render_lab_hud_screen.c	1
 cert-err33-c	main/apps/render_lab/ui/render_lab_menu_screen.c	1
@@ -71,7 +71,6 @@ cert-err33-c	main/apps/sand/ui/options_screen.c	2
 cert-err33-c	main/selftest/post.c	20
 cert-err33-c	main/selftest/post_ui.c	1
 cert-err33-c	main/selftest/selftest.c	1
-cert-err33-c	main/console/console.c	1
 cert-err33-c	main/console/verbs/console_buildid.c	1
 cert-err33-c	main/console/verbs/console_freeze.c	1
 cert-err33-c	main/console/verbs/console_screenshot.c	4
@@ -133,7 +132,7 @@ readability-isolate-declaration	main/boot/boot_anim.c	17
 readability-isolate-declaration	main/selftest/post_ui.c	1
 readability-isolate-declaration	main/console/verbs/console_inject.c	2
 readability-isolate-declaration	main/display/display.c	1
-readability-isolate-declaration	main/draw/draw.c	5
+readability-isolate-declaration	main/draw/draw.c	2
 readability-isolate-declaration	main/gfx/present/gfx_mode.c	1
 readability-isolate-declaration	main/gfx/present/gfx_present.c	3
 readability-isolate-declaration	main/input/buttons.c	1
@@ -141,7 +140,7 @@ readability-isolate-declaration	main/input/touch.c	1
 readability-isolate-declaration	main/shell/shell.c	2
 readability-isolate-declaration	main/shell/shell_apps.c	2
 readability-isolate-declaration	main/ui/ui.c	1
-readability-math-missing-parentheses	main/apps/input_lab/app_input_lab.c	7
+readability-math-missing-parentheses	main/apps/input_lab/app_input_lab.c	4
 readability-math-missing-parentheses	main/apps/input_lab/tests/suite_touch_probe.c	2
 readability-math-missing-parentheses	main/apps/input_lab/touch_probe.c	2
 readability-math-missing-parentheses	main/apps/render_lab/ui/render_lab_menu_screen.c	2
@@ -164,14 +163,14 @@ readability-math-missing-parentheses	main/apps/sand/tests/suite_row_runs.c	3
 readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_chunk_sched.c	10
 readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_colour_modes.c	6
 readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_combustion.c	2
-readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_crossflow.c	23
+readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_crossflow.c	19
 readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_dune_blast.c	1
 readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_glass_thermal.c	5
 readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_gunpowder.c	8
 readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_impulse.c	12
 readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_liquid_depth.c	26
 readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_locality.c	4
-readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_metal.c	9
+readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_metal.c	8
 readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_mode_swatches.c	6
 readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_motion.c	1
 readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_palette256.c	8
@@ -179,16 +178,16 @@ readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_roots.c	6
 readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_scenes.c	26
 readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_seeds.c	4
 readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_spawning.c	12
-readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_two_core.c	24
+readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_two_core.c	20
 readability-math-missing-parentheses	main/apps/sand/tests/suite_title_screen.c	3
 readability-math-missing-parentheses	main/apps/sand/tools/brush_screen_render_host.c	12
-readability-math-missing-parentheses	main/apps/sand/tools/chunk_layout.c	3
+readability-math-missing-parentheses	main/apps/sand/tools/chunk_layout.c	2
 readability-math-missing-parentheses	main/apps/sand/tools/colour_lever1_counters.c	9
 readability-math-missing-parentheses	main/apps/sand/tools/grid_fingerprint.c	1
 readability-math-missing-parentheses	main/apps/sand/tools/rng_low_bits.c	3
 readability-math-missing-parentheses	main/apps/sand/tools/sand_menu_render_host.c	2
 readability-math-missing-parentheses	main/apps/sand/tools/sand_sim_render_host.c	3
-readability-math-missing-parentheses	main/apps/sand/tools/serial_lag.c	4
+readability-math-missing-parentheses	main/apps/sand/tools/serial_lag.c	3
 readability-math-missing-parentheses	main/apps/sand/tools/shading_palette.c	70
 readability-math-missing-parentheses	main/apps/sand/ui/brush_screen.c	15
 readability-math-missing-parentheses	main/apps/sand/ui/options_screen.c	5
@@ -201,14 +200,12 @@ readability-math-missing-parentheses	main/console/verbs/console_screenshot.c	4
 readability-math-missing-parentheses	main/draw/draw.c	4
 readability-math-missing-parentheses	main/gfx/present/gfx_debug.c	23
 readability-math-missing-parentheses	main/gfx/present/gfx_mode.c	3
-readability-math-missing-parentheses	main/gfx/present/panel/gfx_null_panel_device.c	1
 readability-math-missing-parentheses	main/gfx/present/gfx_present.c	10
 readability-math-missing-parentheses	main/input/tilt.c	10
 readability-math-missing-parentheses	main/input/touch_calib.c	10
 readability-math-missing-parentheses	main/ui/ui.c	2
 readability-math-missing-parentheses	main/ui/layout/ui_scroll.c	3
 readability-math-missing-parentheses	main/ui/controls/ui_widgets.c	15
-readability-uppercase-literal-suffix	main/apps/input_lab/app_input_lab.c	3
 readability-uppercase-literal-suffix	main/apps/input_lab/tests/suite_touch_probe.c	10
 readability-uppercase-literal-suffix	main/apps/input_lab/touch_probe.c	4
 readability-uppercase-literal-suffix	main/apps/sand/material_palette.c	31
