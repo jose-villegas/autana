@@ -37,10 +37,9 @@ r3d_pixel_offset(float offset) {
 
 static inline void
 r3d_project_screen(vec3f_t p, const projectf_t* lens, int* screen_x, int* screen_y) {
-    const float gain_x = lens->fx * mathf_recip(p.z);
-    const float gain_y = lens->fy * mathf_recip(p.z);
-    *screen_x = (int)lens->cx + r3d_pixel_offset(p.x * gain_x);
-    *screen_y = (int)lens->cy - r3d_pixel_offset(p.y * gain_y);
+    const vec2f_t offset = projectf_offset(lens, p);
+    *screen_x = (int)lens->cx + r3d_pixel_offset(offset.x);
+    *screen_y = (int)lens->cy - r3d_pixel_offset(offset.y);
 }
 
 /* False when the point is at or behind the near plane. */
