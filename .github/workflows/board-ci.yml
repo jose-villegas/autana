@@ -1,8 +1,7 @@
 name: Board CI
 
 on:
-  push:
-    branches: [main]
+  # Nightly plus on demand: a run holds a board for the whole self-test, so it stays out of daytime board jobs.
   schedule:
     - cron: '0 2 * * *'
   workflow_dispatch:

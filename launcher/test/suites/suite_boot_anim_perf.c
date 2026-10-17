@@ -4,7 +4,7 @@
  * Unlike a steady-state render loop, boot_anim_draw_frame() is a pure
  * function of now_ms, and the whole point of this suite
  * is that its cost is NOT steady across the animation's own timeline: grid
- * rings arrive progressively, the space transform's scale grows across
+ * bands arrive progressively, the space transform's scale grows across
  * keyframes, and the photograph's crossfade adds a full-framebuffer blend
  * on top of whatever else is drawing. A single flat-out capture, the way a
  * steady-state suite takes one, would average all of that away.
@@ -139,7 +139,7 @@ clamp_below(uint32_t ms, uint32_t exclusive_max) {
 static void
 build_checkpoints(checkpoint_t out[7]) {
     const uint32_t grid_settled =
-        BOOT_ANIM_GRID_START_MS + (uint32_t)BOOT_ANIM_GRID_RINGS * BOOT_ANIM_GRID_RING_MS + BOOT_ANIM_GRID_FADE_MS;
+        BOOT_ANIM_GRID_START_MS + (uint32_t)BOOT_ANIM_GRID_BANDS * BOOT_ANIM_GRID_BAND_MS + BOOT_ANIM_GRID_FADE_MS;
     const uint32_t image_start = (uint32_t)BOOT_ANIM_IMAGE_START_MS;
     const uint32_t image_end = image_start + (uint32_t)BOOT_ANIM_IMAGE_FADE_MS;
 
