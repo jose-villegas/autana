@@ -45,11 +45,21 @@ class JsonReadTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 autana.parse_heap(reply)
 
-    def test_debug_heap_is_the_heap_handler(self):
-        reply = "HEAP free=1 largest=1 total=2"
-        with mock.patch.object(autana, "send", return_value=(0, [reply])):
-            self.assertEqual(self.output(autana.debug, ["heap", "--json"]),
-                             {"free": 1, "largest": 1, "total": 2})
+    def test_metrics_are_top_level_only(self):
+        for name in ("heap", "perf", "framewatch"):
+            self.assertIs(autana.COMMANDS[name], getattr(autana, name))
+        for name in ("heap", "perf"):
+            with self.assertRaises(SystemExit):
+                autana.debug([name])
+
+    def test_debug_framewatch_alias_announces_once(self):
+        reply = 'FRAMEWATCH {"frames":40,"allocs":0,"repeating":0,"sites":[]}'
+        stream = io.StringIO()
+        with mock.patch.object(autana, "send", return_value=(0, [reply])), \
+                contextlib.redirect_stderr(stream):
+            self.assertEqual(self.output(autana.debug, ["framewatch"]),
+                             {"frames": 40, "allocs": 0, "repeating": 0, "sites": []})
+        self.assertEqual(stream.getvalue().count("use `autana framewatch`"), 1)
 
     def test_buildid_reply(self):
         self.assertEqual(autana.parse_buildid("BUILD_ID=abc123"), {"build_id": "abc123"})

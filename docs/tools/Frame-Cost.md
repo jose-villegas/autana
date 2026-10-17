@@ -48,12 +48,12 @@ One name at a time can also be read against the S3's two performance
 counters, cycles and one event:
 
 ```
-autana debug perf                             # the names seen so far, and the events
-autana debug perf <name> [event] [seconds]    # arm, listen (10 s), disarm, summarise
-autana debug perf off
+autana perf                             # the names seen so far, and the events
+autana perf <name> [event] [seconds]    # arm, listen (10 s), disarm, summarise
+autana perf off
 ```
 
-`autana debug perf present insn 10` prints one line: cycles avg/min/max, the
+`autana perf present insn 10` prints one line: cycles avg/min/max, the
 event's average, the number of samples and cycles per event. The event
 defaults to `insn` (retired instructions). A name is known once its bracket
 has run. The command wraps the console's own `PERF <name|off|?> [event]`,
@@ -63,7 +63,7 @@ name or event or too many words. The newest request wins.
 The counters start with the arm and run free. While one name is armed every
 bracket reads them, and only that name's brackets keep a sample. The shell
 prints the window's samples on a line of their own, ahead of the time line,
-and `autana debug perf` sums them:
+and `autana perf` sums them:
 
 ```
 perf: stage cyc avg/min/max 112000/108000/179000 insn avg 64000 n=4
@@ -83,7 +83,7 @@ begins under one configuration and ends under another:
 
 ```mermaid
 sequenceDiagram
-    participant Tool as autana debug perf
+    participant Tool as autana perf
     participant Console as console task
     participant Pending as pending request
     participant Frame as frame task

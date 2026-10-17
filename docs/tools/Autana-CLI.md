@@ -54,7 +54,61 @@ it readable; a flag works the same wherever the table below says it applies.
 | `--expect-build-id ID` | Refuse to run a suite unless the board, or the image `--flash` just wrote, carries this `BUILD_ID`. `autana flash` prints the `BUILD_ID` it just wrote once esptool's hash verifies it; pass that value here to refuse measuring a board that has since been reflashed by someone else. | suite |
 | `--project PATH` | Act on `PATH` instead of the current directory, like `make -C`/`idf.py -C`, no searching parent directories. `PATH` must itself carry `launcher/CMakeLists.txt`; the current directory must too when `--project` is omitted, for every command below except `suite` without `--flash`, which only wants it for its capture's own record. Popped once ahead of any command's own parsing, so it works the same everywhere it applies. | build, flash, selftest, suite, suite list, tune save, docs |
 
+Commands use the first matching section rule below. Tests and Docs cover suite
+execution and documentation lookup.
+
+## Sharing the board
+
+Host only; never talks to the firmware.
+
+`autana help lock` · busy board, guarantees and recovery: [Device-Lock.md](Device-Lock.md)
+
+| Command | What it does |
+|---|---|
+| `autana devices [--json]` | Compact list of short ids, serials, ports and availability on this machine. JSON is identical to `status --json`. |
+| `autana status [--json]` | Every board, plugged in or locked: free or held, the holder with local start, elapsed and estimated free time, and the FIFO waiters with estimated starts. A board off USB is listed without a port. |
+| `autana lock run [--keep-on-failure <seconds>] -- <command...>` | Hold the board while the child command runs. The child inherits its lock token. A failed command can leave a timed hold for inspection. |
+| `autana lock take [--for <seconds> \| --until-released [--pid <pid>]] [--estimate <seconds>] <note...>` | Wait for the board and print a token for commands in this session. A timed hold lasts at most an hour; an until-released hold ends when its owner process dies. |
+| `autana lock release [<token>]` | Release the lock a command of this session holds, before it would have. Given a lock's token, or, run from inside the command that holds the lock, without one. |
+| `autana lock wait` | Wait until the board is free without taking it or queueing; no cap without `--wait`. |
+| `autana lock hand [--until-back <seconds>] <note...>` | Wait for the board and reserve it for a person for an hour; running it again renews the hour. With `--until-back`, wait until it is taken back or lapses. |
+| `autana lock take-back` | Clear that reservation. |
+
+A board can be selected with `--board A308` or `-b A308`, where `A308` is
+the last four hex digits of `90:70:69:FE:A3:08`. Full serials and short ids
+ignore case. Short ids resolve against USB boards and the lock store's known
+and seen boards; a collision requires the full serial.
+
+With several boards plugged in and none selected, `flash`, `suite --flash`,
+`selftest`, `batch`, `lock run` and `lock take` pick a board: first a free one
+with nobody queued, then the earliest estimated start after queued work,
+then the shortest queue. Human reservations are avoided when another board is available.
+The choice and reason print before the job; the final verdict names the board.
+The whole job and its children keep that serial. Other board commands require
+`--board`, `-b` or a console pin when several boards are plugged in.
+
+A board is named by its USB serial number, so the lock follows it across
+COM number changes. A command that loses the lock stops with `device lock was
+lost`; one that finds the board busy exits 75
+([exit codes](Device-Lock.md#exit-codes-and-json-status)). A separate `flash` and `suite` leave a gap where another session can
+flash; `suite --flash` and `selftest` hold one lock across flash and capture.
+`--estimate` on `take` supplies `status --json`'s `estimated_free`
+and queued `estimated_start` times. It never ends a hold.
+Lock loss is defined in [Device-Lock.md](Device-Lock.md); flash success,
+captures and wait estimates in [Flash-and-Captures.md](Flash-and-Captures.md).
+
+See [Wait estimates](Flash-and-Captures.md#wait-estimates) for duration history and per-board estimates.
+
+The lock owner is set as described in [Flags](#flags) above.
+
+`autana lock hand --until-back 30 put the board in download mode` pauses a flash
+script until someone puts the board in download mode and runs `autana lock
+take-back`. With `--until-back`, exit 0 means that reservation was released or
+lapsed; the other outcomes are in [exit codes](Device-Lock.md#exit-codes-and-json-status).
+
 ## Build and flash
+
+Makes or writes an image, or says which image runs.
 
 `autana help build`
 
@@ -153,8 +207,7 @@ A capture without its `SELFTEST_COMPLETE` or `RUNSUITE_COMPLETE` line fails
 with the end reason. `--verbose`
 prints the whole capture; to find something in it, grep the capture instead.
 One suite run once (`autana suite <name>` with no `--runs` or `--flash`)
-still produces exactly one capture and one report, the same as before this
-command absorbed `batch`.
+produces exactly one capture and one report.
 
 **`--test PATTERN`** runs only the tests of a suite whose name contains
 `PATTERN` (a case-sensitive substring; letters, digits and underscores). Repeat
@@ -185,6 +238,8 @@ one line naming the new form, then runs it.
 
 ## Watch the board
 
+Only reads the board, so running a command twice changes nothing.
+
 `autana help watch`
 
 | Command | What it does |
@@ -192,11 +247,17 @@ one line naming the new form, then runs it.
 | `autana monitor [seconds] [--follow] [--stream] [--elf PATH]` | In a terminal: the console live, until Ctrl+C or for `seconds`. Piped or scripted: needs `seconds` or `--follow`, and prints only error lines and `FRAME_WATCH` warnings; `--stream` prints everything. Without a terminal and neither `seconds` nor `--follow`, this is a plain usage error rather than a hang. Always ends with its capture path, and exits 1 when the capture shows a crash or a reboot (a reset by hand included). Crash addresses and `FRAME_WATCH` sites decode against `PATH`, or the build whose `build_id.txt` matches. |
 | `autana coredump [--elf PATH]` | The last panic's core dump from the `coredump` partition, decoded against the build whose `build_id.txt` matches the board's, or `PATH`. Resets the board. See [Debugging](../notes/Debugging.md#after-a-crash-the-reset-reason-and-the-core-dump). |
 | `autana coredump --erase` | Clear the dump, so the next crash's is told from this one. Resets the board. |
-| `autana reset [--capture [seconds]] [--verbose]` | Reboot and wait for USB serial. `--capture` records the boot (20 s) and prints its path and any error lines. |
 | `autana screenshot [--as-shown\|--framebuffer] [-o PATH]` | `PATH.png` plus a `PATH.json` state snapshot. Landscape by default; `--as-shown` uses the board's orientation, `--framebuffer` the raw bytes. |
 | `autana screenshot --frames N -o PATH` | `N` consecutive frames as `PATH-00` to `PATH-<N-1>`: one capture while running, then the loop frozen and stepped one frame between captures, then resumed. A band-mode capture shows the panel as it is, a band no frame resent included. |
+| `autana heap [--json]` | Free bytes and largest block in the internal DMA pool (`MEMORY_DMA`); development builds only. |
+| `autana framewatch` | A development build's frame watch as JSON: the last frame's allocations, frees and log lines, and every site repeating frame after frame ([the frame watch](../Firmware-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state)). |
+| `autana perf` | The `frame_cost` names seen so far and the counter events. |
+| `autana perf <name> [event] [seconds]` | Arm the S3's cycle counter and one event (`insn` when omitted) on one `frame_cost` bracket, read its reports for `seconds` (10 when omitted), disarm, and print one summary: cycles avg/min/max, the event's average, `n` and cycles per event. Counts cover the frame core only. See [Frame-Cost.md](Frame-Cost.md#hardware-counters). Development builds. |
+| `autana perf off` | Disarm the counters. |
 
-## Drive input
+## Drive
+
+Changes state the way a person holding the board could.
 
 `autana help input`
 
@@ -206,6 +267,10 @@ one line naming the new form, then runs it.
 | `autana press <x> <y> [ms]` | Hold; 1000 ms when omitted. |
 | `autana drag <x0> <y0> <x1> <y1> <ms>` | Drag between two points over `ms`. |
 | `autana button <boot\|power> [short\|long]` | A BOOT or PWR press; `short` when omitted. |
+| `autana apps [--json]` | The registered apps, and which is running. |
+| `autana open <name>` | Enter an app, even while frozen; case-insensitive, unambiguous prefix. |
+| `autana home` | Back to the launcher. |
+| `autana reset [--capture [seconds]] [--verbose]` | Reboot and wait for USB serial. `--capture` records the boot (20 s) and prints its path and any error lines. |
 
 A point is a pixel of the default `autana screenshot`, whichever way the
 board is held: read a button's centre off that image and pass it as it is.
@@ -216,17 +281,9 @@ a different frame and may not tap the same spot.
 The two raw levels below gesture, `touch` and `imu`, live under
 [`autana debug`](#debug).
 
-## Apps
+## Tune
 
-`autana help apps`
-
-| Command | What it does |
-|---|---|
-| `autana apps [--json]` | The registered apps, and which is running. |
-| `autana open <name>` | Enter an app, even while frozen; case-insensitive, unambiguous prefix. |
-| `autana home` | Back to the launcher. |
-
-## Tunables
+Changes a `TUNE()` value.
 
 `autana help tune` · what makes a constant tunable: [Live-Tuning.md](Live-Tuning.md)
 
@@ -237,60 +294,11 @@ The two raw levels below gesture, `touch` and `imu`, live under
 | `autana tune reset <name>` | Back to the value the source declares. |
 | `autana tune save` | Write the board's values into this project's `TUNE(...)` lines. |
 
-## Sharing the board
-
-`autana help lock` · busy board, guarantees and recovery: [Device-Lock.md](Device-Lock.md)
-
-| Command | What it does |
-|---|---|
-| `autana devices [--json]` | Compact list of short ids, serials, ports and availability on this machine. JSON is identical to `status --json`. |
-| `autana status [--json]` | Every board, plugged in or locked: free or held, the holder with local start, elapsed and estimated free time, and the FIFO waiters with estimated starts. A board off USB is listed without a port. |
-| `autana lock run [--keep-on-failure <seconds>] -- <command...>` | Hold the board while the child command runs. The child inherits its lock token. A failed command can leave a timed hold for inspection. |
-| `autana lock take [--for <seconds> \| --until-released [--pid <pid>]] [--estimate <seconds>] <note...>` | Wait for the board and print a token for commands in this session. A timed hold lasts at most an hour; an until-released hold ends when its owner process dies. |
-| `autana lock release [<token>]` | Release the lock a command of this session holds, before it would have. Given a lock's token, or, run from inside the command that holds the lock, without one. |
-| `autana lock wait` | Wait until the board is free without taking it or queueing; no cap without `--wait`. |
-| `autana lock hand [--until-back <seconds>] <note...>` | Wait for the board and reserve it for a person for an hour; running it again renews the hour. With `--until-back`, wait until it is taken back or lapses. |
-| `autana lock take-back` | Clear that reservation. |
-
-A board can be selected with `--board A308` or `-b A308`, where `A308` is
-the last four hex digits of `90:70:69:FE:A3:08`. Full serials and short ids
-ignore case. Short ids resolve against USB boards and the lock store's known
-and seen boards; a collision requires the full serial.
-
-With several boards plugged in and none selected, `flash`, `suite --flash`,
-`selftest`, `batch`, `lock run` and `lock take` pick a board: first a free one
-with nobody queued, then the earliest estimated start after queued work,
-then the shortest queue. Human reservations are avoided when another board is available.
-The choice and reason print before the job; the final verdict names the board.
-The whole job and its children keep that serial. Other board commands require
-`--board`, `-b` or a console pin when several boards are plugged in.
-
-A board is named by its USB serial number, so the lock follows it across
-COM number changes. A command that loses the lock stops with `device lock was
-lost`; one that finds the board busy exits 75
-([exit codes](Device-Lock.md#exit-codes-and-json-status)). A separate `flash` and `suite` leave a gap where another session can
-flash; `suite --flash` and `selftest` hold one lock across flash and capture.
-`--estimate` on `take` supplies `status --json`'s `estimated_free`
-and queued `estimated_start` times. It never ends a hold.
-Lock loss is defined in [Device-Lock.md](Device-Lock.md); flash success,
-captures and wait estimates in [Flash-and-Captures.md](Flash-and-Captures.md).
-
-See [Wait estimates](Flash-and-Captures.md#wait-estimates) for duration history and per-board estimates.
-
-The lock owner is set as described in [Flags](#flags) above.
-
-`autana lock hand --until-back 30 put the board in download mode` pauses a flash
-script until someone puts the board in download mode and runs `autana lock
-take-back`. With `--until-back`, exit 0 means that reservation was released or
-lapsed; the other outcomes are in [exit codes](Device-Lock.md#exit-codes-and-json-status).
-
 ## Debug
 
-Every command that only works on development builds belongs under `autana debug`.
-
-`autana help debug`: left out of the bare `autana help` listing; a session
-rarely needs the frame loop paused or a raw sensor level, so these stay one
-`autana help debug` away rather than crowding the everyday groups above.
+Debug is intervention only: it suspends or steps the frame loop, or overrides
+sensors below the input layer, with a matching resume or release. It is hidden
+from bare `autana help`; use `autana help debug` to list it.
 
 | Command | What it does |
 |---|---|
@@ -299,15 +307,10 @@ rarely needs the frame loop paused or a raw sensor level, so these stay one
 | `autana debug step [N]` | Advance `N` frames while frozen; 1 when omitted. |
 | `autana debug touch <down\|up> <x> <y>` | One raw touch-controller level, at a panel-frame point (a `--framebuffer` pixel, not a default-screenshot one); `up` hands back to the controller. |
 | `autana debug imu <ax> <ay> <az>` | Raw accelerometer counts; `autana debug imu release` hands back to the sensor. |
-| `autana debug heap [--json]` | Free bytes and largest block in the internal DMA pool (`MEMORY_DMA`); development builds only. |
-| `autana debug framewatch` | A development build's frame watch as JSON: the last frame's allocations, frees and log lines, and every site repeating frame after frame ([the frame watch](../Firmware-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state)). |
-| `autana debug perf` | The `frame_cost` names seen so far and the counter events. |
-| `autana debug perf <name> [event] [seconds]` | Arm the S3's cycle counter and one event (`insn` when omitted) on one `frame_cost` bracket, read its reports for `seconds` (10 when omitted), disarm, and print one summary: cycles avg/min/max, the event's average, `n` and cycles per event. Counts cover the frame core only. See [Frame-Cost.md](Frame-Cost.md#hardware-counters). Development builds. |
-| `autana debug perf off` | Disarm the counters. |
 
-`autana freeze`, `autana resume`, `autana step`, `autana touch`, `autana imu`,
-`autana framewatch`, `autana heap` and `autana perf` still work, each printing
-the new spelling once before running it.
+`autana freeze`, `autana resume`, `autana step`, `autana touch`, `autana imu`
+and `autana debug framewatch` still work, each printing the new spelling once
+before running it.
 
 ## No board needed
 
@@ -327,7 +330,8 @@ the new spelling once before running it.
 |---|---|
 | `status` | `boards`, one object per board; the fields are in [Device-Lock.md](Device-Lock.md#exit-codes-and-json-status). |
 | `buildid` | `build_id` |
-| `debug heap` | `free`, `largest` (bytes in `MEMORY_DMA`) |
+| `heap` | `free`, `largest`, `total` (bytes in `MEMORY_DMA`) |
+| `framewatch` | The board's JSON: `frames`, `allocs`, `frees`, `console`, `repeating`, `dropped`, `sites`. |
 | `apps` | `apps`: `name`, `running` |
 | `suite list` | `suites`: `name`, `source`, `on_request`, `device_only` |
 | `tune` | `tunables`: `name`, `value`, `min`, `max`, `default` |

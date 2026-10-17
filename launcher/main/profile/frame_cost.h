@@ -302,7 +302,7 @@ frame_cost_append_dropped(char* out, size_t out_size, int length, int dropped) {
 }
 
 /* "perf: name cyc avg/min/max A/B/C event avg D n=N" for the armed slot,
- * when it ran this window: the one line `autana debug perf` reads. Taken before
+ * when it ran this window: the one line `autana perf` reads. Taken before
  * the report, which forgets the window. Returns its length, 0 for none. */
 static inline int
 frame_cost_counts_line(const frame_cost_t* cost, const char* event, char* out, size_t out_size) {

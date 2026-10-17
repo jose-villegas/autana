@@ -433,8 +433,8 @@ def framewatch(args):
 
 def heap(args):
     """Runtime free bytes, largest block and total internal DMA heap."""
-    reject_unknown("debug heap", args, ("--json",))
-    json_output = read_json_flag(args, "usage: autana debug heap [--json]")
+    reject_unknown("heap", args, ("--json",))
+    json_output = read_json_flag(args, "usage: autana heap [--json]")
     code, replies = send("HEAP", reply="HEAP")
     if code != 0 or not replies:
         return code or 1
@@ -1227,7 +1227,7 @@ def tune(args):
     return 0
 
 
-PERF_USAGE = "usage: autana debug perf [?] | autana debug perf off | autana debug perf <name> [event] [seconds]"
+PERF_USAGE = "usage: autana perf [?] | autana perf off | autana perf <name> [event] [seconds]"
 PERF_DEFAULT_SECONDS = 10.0
 
 
@@ -1309,7 +1309,7 @@ def perf_disarm():
     code, replies = send("PERF off", reply="PERFMON")
     if code == 0 and replies and replies[-1].startswith("PERFMON_OK"):
         return True
-    print("autana debug perf: the counters may still be armed - " + (perf_text(replies[-1]) if replies else "no reply"),
+    print("autana perf: the counters may still be armed - " + (perf_text(replies[-1]) if replies else "no reply"),
           file=sys.stderr)
     return False
 
@@ -1346,7 +1346,7 @@ def perf(args):
         return code
     segments = perf_segments(text, name)
     if not segments:
-        print(f"autana debug perf: no samples of {name} in {seconds:g} s - is it running (open its app)?",
+        print(f"autana perf: no samples of {name} in {seconds:g} s - is it running (open its app)?",
               file=sys.stderr)
         return 1
     print(perf_summary(name, segments))
@@ -1474,7 +1474,7 @@ def console(_args=None):
                 print(stop.code)
 
 
-Command = namedtuple("Command", "name handler usages dev_only", defaults=(False,))
+Command = namedtuple("Command", "name handler usages")
 
 
 def alias(old, new, handler):
@@ -1488,8 +1488,7 @@ def alias(old, new, handler):
 
 
 LOCK_VERBS = {"wait": lock_wait, "take": take, "run": lock_run, "release": release, "hand": hand, "take-back": take_back}
-DEBUG_VERBS = {"freeze": freeze, "resume": resume, "step": step, "touch": touch, "imu": imu,
-              "framewatch": framewatch, "heap": heap, "perf": perf}
+DEBUG_VERBS = {"freeze": freeze, "resume": resume, "step": step, "touch": touch, "imu": imu}
 
 
 def lock(args):
@@ -1503,9 +1502,7 @@ def lock(args):
 
 
 def debug(args):
-    """`autana debug <verb>`: freeze/resume/step/touch/imu/framewatch/heap/perf, kept
-    out of the top-level help (`autana help debug` still lists them) since a
-    session rarely needs them."""
+    """Frame-loop intervention and raw sensor overrides, hidden from bare help."""
     if not args or args[0] not in DEBUG_VERBS:
         sys.exit("usage: autana debug <" + "|".join(DEBUG_VERBS) + "> ...")
     verb, rest = args[0], args[1:]
@@ -1523,10 +1520,18 @@ LOCK_USAGES = (
 )
 
 
-# (key, title, commands). `autana help <key>` shows one group; each usage is
-# (synopsis without "autana ", one line of what it does). "debug" is left
-# out of the bare `autana help` listing, see HIDDEN_GROUPS.
+# Section rules, first match wins: sharing is host-only, never firmware;
+# build makes/writes an image or identifies the running one; watch only reads
+# the board, so repeating it changes nothing; drive acts as a person holding
+# the board could; tune changes TUNE(); debug only suspends/steps the frame
+# loop or overrides sensors below input, with matching resume/release, hidden
+# from bare help. Tests run suites; docs searches documentation.
 COMMAND_GROUPS = (
+    ("lock", "Sharing the board", (
+        Command("devices", devices, (("devices [--json]", "compact board list: ids, ports and availability"),)),
+        Command("status", status, (("status [--json]", "who holds the board, and who waits"),)),
+        Command("lock", lock, LOCK_USAGES),
+    )),
     ("build", "Build and flash", (
         Command("build", build, (
             ("build [rel|dev|diag] [--perf-scope] [--layout-seed N] [--hot-tunables] [--configure]",
@@ -1556,37 +1561,39 @@ COMMAND_GROUPS = (
         Command("monitor", monitor, (
             ("monitor [seconds] [--follow] [--stream] [--elf PATH]",
              "the console live until Ctrl+C, or for N s"),)),
-        Command("reset", reset, (
-            ("reset [--capture [seconds]] [--verbose]", "reboot the board; --capture records the boot"),)),
         Command("coredump", coredump, (
             ("coredump [--elf PATH]", "the last panic's core dump from flash, decoded against the running build"),
             ("coredump --erase", "clear it, so the next crash's dump is told from this one"),)),
         Command("screenshot", screenshot, (
             ("screenshot [--as-shown|--framebuffer] [-o PATH]", "the panel as PATH.png plus PATH.json"),
             ("screenshot --frames N -o PATH", "N consecutive frames, PATH-00 on, stepped while frozen"),)),
+        Command("heap", heap, (
+            ("heap [--json]", "free internal heap and largest block (development builds)"),)),
+        Command("perf", perf, (
+            ("perf", "the frame_cost names seen and the counter events"),
+            ("perf <name> [event] [seconds]",
+             "cycles and one event over one bracket for `seconds` s (10 when omitted), then off"),
+            ("perf off", "disarm the counters"))),
+        Command("framewatch", framewatch, (
+            ("framewatch", "allocations and log lines repeating frame after frame, as JSON"),)),
     )),
-    ("input", "Drive input", (
+    ("input", "Drive", (
         Command("tap", tap, (("tap <x> <y>", "tap a point, in pixels of the default screenshot"),)),
         Command("press", press, (("press <x> <y> [ms]", "hold a point, as tap reads it; 1000 ms when omitted"),)),
         Command("drag", drag, (("drag <x0> <y0> <x1> <y1> <ms>", "drag between two points, as tap reads them"),)),
         Command("button", button, (("button <boot|power> [short|long]", "press a board button"),)),
-    )),
-    ("apps", "Apps", (
         Command("apps", apps, (("apps [--json]", "the registered apps, and which is running"),)),
         Command("open", open_app, (("open <name>", "enter an app; case-insensitive prefix"),)),
         Command("home", home, (("home", "back to the launcher"),)),
+        Command("reset", reset, (
+            ("reset [--capture [seconds]] [--verbose]", "reboot the board; --capture records the boot"),)),
     )),
-    ("tune", "Tunables", (
+    ("tune", "Tune", (
         Command("tune", tune, (
             ("tune [text] [--json]", "list the tunables, names containing text"),
             ("tune <name> [value]", "show one, or set it on the board"),
             ("tune reset <name>", "back to the value the source declares"),
             ("tune save", "write the board's values into this project's TUNE() lines"))),
-    )),
-    ("lock", "Sharing the board", (
-        Command("devices", devices, (("devices [--json]", "compact board list: ids, ports and availability"),)),
-        Command("status", status, (("status [--json]", "who holds the board, and who waits"),)),
-        Command("lock", lock, LOCK_USAGES),
     )),
     ("debug", "Debug", (
         Command("debug", debug, (
@@ -1594,13 +1601,7 @@ COMMAND_GROUPS = (
             ("debug resume", "run it again"),
             ("debug step [N]", "advance N frames while frozen; 1 when omitted"),
             ("debug touch <down|up> <x> <y>", "one raw touch level; up hands back"),
-            ("debug imu <ax> <ay> <az>", "raw accelerometer counts; imu release hands back"),
-            ("debug framewatch", "allocations and log lines repeating frame after frame, as JSON"),
-            ("debug heap [--json]", "free internal heap and largest block (development builds)"),
-            ("debug perf", "the frame_cost names seen and the counter events"),
-            ("debug perf <name> [event] [seconds]",
-             "cycles and one event over one bracket for `seconds` s (10 when omitted), then off"),
-            ("debug perf off", "disarm the counters")), dev_only=True),
+            ("debug imu <ax> <ay> <az>", "raw accelerometer counts; imu release hands back"))),
     )),
     ("docs", "No board needed", (
         Command("docs", docs, (
@@ -1617,12 +1618,11 @@ HIDDEN_GROUPS = {"debug"}
 
 # Old spellings kept working, see alias()'s own docstring. "batch" moved
 # to suite() itself (its translation is not a plain forward) so it is not
-# here; every other renamed verb is a bare forward into its new group.
+# here; the remaining aliases forward directly to their handler.
 RENAMED_VERBS = {
     "freeze": ("debug freeze", freeze), "resume": ("debug resume", resume),
     "step": ("debug step", step), "touch": ("debug touch", touch), "imu": ("debug imu", imu),
-    "framewatch": ("debug framewatch", framewatch), "heap": ("debug heap", heap),
-    "perf": ("debug perf", perf),
+    "debug framewatch": ("framewatch", framewatch),
 }
 
 COMMANDS = {command.name: command.handler
@@ -1630,6 +1630,8 @@ COMMANDS = {command.name: command.handler
 COMMANDS["console"] = console
 COMMANDS["batch"] = batch
 COMMANDS.update({old: alias(old, new, handler) for old, (new, handler) in RENAMED_VERBS.items()})
+DEBUG_VERBS.update({old.removeprefix("debug "): COMMANDS[old]
+                    for old in RENAMED_VERBS if old.startswith("debug ")})
 HELP_TOPICS = [key for key, _, _ in COMMAND_GROUPS] + [
     command.name for _, _, commands in COMMAND_GROUPS for command in commands] + ["flags", "config"]
 USAGE_WIDTH = 34
