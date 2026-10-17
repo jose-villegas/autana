@@ -94,6 +94,12 @@ static void (*base_draw_frame)(mu_Context*, mu_Rect, int);
 static affine2x_t transform;
 static bool transform_valid;
 
+/* The effective transform's inverse and the logical canvas it maps the panel
+ * to, refreshed by use_transform() whenever the transform changes: touch and
+ * ui_width()/ui_height() read them every frame. */
+static affine2x_t inverse;
+static mu_Rect logical_canvas;
+
 /* See ui.h's own comment above ui_layout_generation() for what this counts
  * and, more importantly, what it is not. Bumped in the same branch of
  * ui_set_transform() below that already calls ui_invalidate(); a genuine
@@ -232,6 +238,19 @@ ui_set_font(const draw_font_t* font) {
     ui_set_font_scaled(font, DRAW_GLYPH_SCALE);
 }
 
+/* ui_effective_transform() is identity or passed
+ * ui_transform_is_axis_preserving(), so it always has an inverse; identity
+ * stands in only if that invariant ever breaks. */
+static void
+use_transform(affine2x_t t) {
+    transform = t;
+    transform_valid = ui_transform_is_axis_preserving(t);
+    if (!affine2x_invert(ui_effective_transform(), &inverse)) {
+        inverse = affine2x_identity();
+    }
+    logical_canvas = ui_transform_rect(inverse, (mu_Rect){0, 0, GFX_WIDTH, GFX_HEIGHT});
+}
+
 /* See ui.h for why a transform change must call ui_invalidate(). WHY AN
  * INVALID TRANSFORM IS REMEMBERED RATHER THAN REJECTED. affine2x_t can
  * express more than this renderer can draw; see ui_transform.h. Logging at
@@ -241,8 +260,7 @@ ui_set_transform(affine2x_t t) {
     if (affine2x_equal(t, transform)) {
         return;
     }
-    transform = t;
-    transform_valid = ui_transform_is_axis_preserving(t);
+    use_transform(t);
     /* Past affine2x_equal()'s early return, so this IS a genuine change;
      * see ui_layout_generation()'s comment in ui.h for what counts as one
      * and why this is the only place that gets to bump it. */
@@ -297,8 +315,7 @@ ui_init(void) {
     ui_ctx.draw_frame = styled_draw_frame;
     button_style = UI_BUTTON_FLAT;
     ui_text_style = UI_TEXT_PLAIN;
-    transform = affine2x_identity();
-    transform_valid = true;
+    use_transform(affine2x_identity());
     /* Before an app can hold store slots: the engine pack keeps one. */
     ui_icons_init();
     ui_pointer_state = (ui_pointer_t){0};
@@ -341,7 +358,7 @@ ui_init(void) {
 
 void
 ui_to_logical(int x, int y, int* lx, int* ly) {
-    const vec2i_t logical = ui_transform_unmap_pixel(ui_effective_transform(), (vec2i_t){x, y});
+    const vec2i_t logical = affine2x_map_pixel(&inverse, (vec2i_t){x, y});
     *lx = logical.x;
     *ly = logical.y;
 }
@@ -383,31 +400,14 @@ ui_end_pointer_frame(void) {
     }
 }
 
-/* See ui.h: the physical viewport mapped through the inverse transform. Both
- * go through one shared computation since a rect's width and height are just
- * as entangled by a quarter turn as its x and y are; deriving them
- * separately would mean inverting the transform twice for one answer. */
-static mu_Rect
-logical_viewport(void) {
-    affine2x_t inv;
-    if (!affine2x_invert(ui_effective_transform(), &inv)) {
-        /* See ui_to_logical()'s identical fallback above: unreachable while
-         * ui_effective_transform() only ever returns identity or a
-         * transform that already passed ui_transform_is_axis_preserving(),
-         * both of which are invertible by construction. */
-        return (mu_Rect){0, 0, GFX_WIDTH, GFX_HEIGHT};
-    }
-    return ui_transform_rect(inv, (mu_Rect){0, 0, GFX_WIDTH, GFX_HEIGHT});
-}
-
 int
 ui_width(void) {
-    return logical_viewport().w;
+    return logical_canvas.w;
 }
 
 int
 ui_height(void) {
-    return logical_viewport().h;
+    return logical_canvas.h;
 }
 
 int
