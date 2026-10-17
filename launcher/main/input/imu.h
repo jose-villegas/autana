@@ -23,8 +23,21 @@
 
 #include "build/build_variant.h"
 #include "input/imu_sample.h"
+#include "math/scalar/units.h"
 
 #define IMU_GYRO_RANGE_DPS 512.0F
+
+/* QMI8658A Rev A, Table 22 CTRL2/CTRL3 (6DOF), docs/Citations.md#78;
+ * SensorLib GyroODR code 5. */
+#define IMU_ODR_BASE_HZ    7174.4
+#define IMU_ODR_CODE       5
+#define IMU_ODR_DIVIDER    (1U << IMU_ODR_CODE)
+#define IMU_ODR_HZ         (IMU_ODR_BASE_HZ / IMU_ODR_DIVIDER)
+#define IMU_SAMPLE_US      ((uint32_t)(MATH_US_PER_S / IMU_ODR_HZ + 0.5))
+#define IMU_FIFO_SAMPLES   128
+
+/* Oldest first; overflow means samples preceding out[0] were lost. Returns -1 on a bus error. */
+int imu_read_fifo(imu_sample_t* out, int capacity, bool* overflowed);
 
 /* Configures and starts the sensor. Safe to call more than once.
  * Returns false if the chip does not answer or identifies as something else. */

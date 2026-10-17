@@ -245,7 +245,8 @@ table; cosine offsets the phase by `TRIG_QUARTER_TURN`.
 
 ### units.h
 
-`MATH_MS_PER_S` owns the integer milliseconds per second for time conversions.
+`MATH_MS_PER_S`, `MATH_US_PER_MS` and `MATH_US_PER_S` own integer time conversion
+factors between seconds, milliseconds and microseconds.
 
 ## Linear
 

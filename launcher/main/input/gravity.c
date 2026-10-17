@@ -24,11 +24,17 @@ predict(gravity_t* g, vec3f_t raw, float dt) {
 }
 
 static void
+restart(gravity_t* g) {
+    g->recovering = true;
+    g->distrust_us = GRAVITY_RECOVER_US;
+    g->still_us = 0;
+}
+
+static void
 check_overrange(gravity_t* g, vec3f_t raw) {
     if (fabsf(raw.x) >= GRAVITY_GYRO_OVERRANGE_DPS || fabsf(raw.y) >= GRAVITY_GYRO_OVERRANGE_DPS
         || fabsf(raw.z) >= GRAVITY_GYRO_OVERRANGE_DPS) {
-        g->recovering = true;
-        g->distrust_ms = GRAVITY_RECOVER_MS;
+        restart(g);
     }
 }
 
@@ -38,38 +44,38 @@ trust_weight(float error) {
 }
 
 static void
-accept_sample(gravity_t* g, uint32_t dt_ms) {
+accept_sample(gravity_t* g, uint32_t dt_us) {
     /* x-io Fusion, FusionAhrs.c: at fixed rate this equals its -9/+1 counter,
-     * with sample limit = rate * GRAVITY_RECOVER_MS / MATH_MS_PER_S.
+     * with sample limit = rate * GRAVITY_RECOVER_US / MATH_US_PER_S.
      * Time weighting preserves that ratio with variable frame intervals. */
-    const uint32_t drain = GRAVITY_RECOVER_ACCEPT_WEIGHT * dt_ms;
-    g->distrust_ms = g->distrust_ms > drain ? g->distrust_ms - drain : 0;
+    const uint32_t drain = GRAVITY_RECOVER_ACCEPT_WEIGHT * dt_us;
+    g->distrust_us = g->distrust_us > drain ? g->distrust_us - drain : 0;
     g->recovering = false;
-    g->still_ms = 0;
+    g->still_us = 0;
 }
 
 static void
-reject_sample(gravity_t* g, bool still, uint32_t dt_ms) {
-    const uint32_t debt = g->distrust_ms + dt_ms;
-    if (debt > GRAVITY_RECOVER_MS) {
+reject_sample(gravity_t* g, bool still, uint32_t dt_us) {
+    const uint32_t debt = g->distrust_us + dt_us;
+    if (debt > GRAVITY_RECOVER_US) {
         g->recovering = true;
     }
-    g->distrust_ms = debt < GRAVITY_RECOVER_MS ? debt : GRAVITY_RECOVER_MS;
+    g->distrust_us = debt < GRAVITY_RECOVER_US ? debt : GRAVITY_RECOVER_US;
     if (still) {
-        g->still_ms += dt_ms;
+        g->still_us += dt_us;
     }
 }
 
 static bool
 adopt_if_ready(gravity_t* g, vec3f_t direction) {
-    if (g->primed && g->still_ms <= GRAVITY_STILL_RECOVER_MS) {
+    if (g->primed && g->still_us <= GRAVITY_STILL_RECOVER_US) {
         return false;
     }
     g->down = direction;
     g->primed = true;
     g->recovering = false;
-    g->distrust_ms = 0;
-    g->still_ms = 0;
+    g->distrust_us = 0;
+    g->still_us = 0;
     return true;
 }
 
@@ -89,12 +95,12 @@ correct_accepted(gravity_t* g, vec3f_t direction, float weight, float dt) {
 }
 
 static void
-correct_acceleration(gravity_t* g, vec3f_t a, vec3f_t rate, uint32_t dt_ms, float dt) {
+correct_acceleration(gravity_t* g, vec3f_t a, vec3f_t rate, uint32_t dt_us, float dt) {
     const float magnitude = sqrtf(vec3f_dot(a, a));
     const float error = fabsf(magnitude - 1.0F);
     const bool still = vec3f_dot(rate, rate) < GRAVITY_STILL_DPS * GRAVITY_STILL_DPS && error <= GRAVITY_TRUST_FULL_G;
     if (!still) {
-        g->still_ms = 0;
+        g->still_us = 0;
     }
     if (magnitude <= FLT_EPSILON) {
         return;
@@ -104,9 +110,9 @@ correct_acceleration(gravity_t* g, vec3f_t a, vec3f_t rate, uint32_t dt_ms, floa
     const bool accepted = weight > 0.0F && vec3f_dot(direction, g->down) >= GRAVITY_REJECT_COS;
     const bool was_recovering = g->recovering;
     if (accepted) {
-        accept_sample(g, dt_ms);
+        accept_sample(g, dt_us);
     } else {
-        reject_sample(g, still, dt_ms);
+        reject_sample(g, still, dt_us);
     }
     if (adopt_if_ready(g, direction)) {
         return;
@@ -120,17 +126,27 @@ correct_acceleration(gravity_t* g, vec3f_t a, vec3f_t rate, uint32_t dt_ms, floa
 }
 
 void
-gravity_update(gravity_t* g, const input_motion_t* m, uint32_t dt_ms) {
-    if (dt_ms > GRAVITY_MAX_DT_MS) {
-        dt_ms = GRAVITY_MAX_DT_MS;
+gravity_update(gravity_t* g, const input_motion_t* m, uint32_t dt_us) {
+    if (dt_us > GRAVITY_MAX_DT_US) {
+        dt_us = GRAVITY_MAX_DT_US;
     }
-    const float dt = (float)dt_ms / (float)MATH_MS_PER_S;
+    const float dt = (float)dt_us / (float)MATH_US_PER_S;
     const vec3f_t a = vec3f_scale(vec3f_from_vec3i(m->acceleration), 1.0F / INPUT_ACCEL_ONE_G);
     const vec3f_t raw = vec3f_scale(vec3f_from_vec3i(m->rotation), 1.0F / INPUT_ROTATION_ONE_DPS);
     const vec3f_t rate = predict(g, raw, dt);
     check_overrange(g, raw);
-    correct_acceleration(g, a, rate, dt_ms, dt);
+    correct_acceleration(g, a, rate, dt_us, dt);
     g->linear = vec3f_sub(a, g->down);
+}
+
+void
+gravity_update_batch(gravity_t* g, const input_motion_batch_t* batch) {
+    if (batch->gap) {
+        restart(g);
+    }
+    for (int i = 0; i < batch->count; i++) {
+        gravity_update(g, &batch->samples[i], INPUT_MOTION_SAMPLE_US);
+    }
 }
 
 vec3f_t

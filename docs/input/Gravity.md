@@ -9,9 +9,13 @@ input scales and calibration are described in [Input-and-Sensors.md](../notes/In
 
 ## Update
 
-Elapsed time comes from the caller. Gyro prediction uses the measured
-screen-axis sense: the change in down is minus angular velocity crossed with
-down.
+`input_read_motion_batch()` drains the polled QMI8658 stream FIFO oldest first.
+`gravity_update_batch()` predicts and corrects once per sample, using microseconds.
+Gyro prediction is minus angular velocity crossed with down in screen axes.
+
+The sensor uses matching CTRL2/CTRL3 ODR code 5: 7174.4 / 32 = 224.2 Hz in
+6DOF mode, with a rounded sample interval of 4460 us. The register table and FIFO
+protocol follow QMI8658A Rev A and SensorLib.<sup>[[77]](../Citations.md#77)</sup><sup>[[78]](../Citations.md#78)</sup>
 
 ```mermaid
 flowchart LR
@@ -61,8 +65,8 @@ thresholds recommended by Madgwick's x-io Fusion library.<sup>[[74]](../Citation
 Fusion's AHRS implementation derives its `rejectionTimeout` sample limit from the
 sample rate and timeout in seconds. Its leaky recovery counter adds one on
 rejection and subtracts nine on acceptance, clamped to that limit. Our counter
-uses elapsed milliseconds: rejection adds dt, acceptance subtracts
-`GRAVITY_RECOVER_ACCEPT_WEIGHT * dt`, clamped to `[0, GRAVITY_RECOVER_MS]`.
+uses elapsed microseconds: rejection adds dt, acceptance subtracts
+`GRAVITY_RECOVER_ACCEPT_WEIGHT * dt`, clamped to `[0, GRAVITY_RECOVER_US]`.
 At a fixed rate this equals Fusion's sample counter with limit equal to rate
 times `GRAVITY_RECOVER_MS` in seconds. Debt grows when more than about 90% of
 sample time is rejected. Exceeding the limit enters recovery: nonzero
@@ -136,9 +140,14 @@ The constants are owned by `launcher/main/input/gravity.h`:
 | `GRAVITY_BIAS_KI` | derived from TAU and SETTLE_S | Linearised integral loop, derived above |
 | `GRAVITY_FREE_FALL_G` | 0.3 g | Acceleration magnitude below which strength is zero |
 | `GRAVITY_MAX_DT_MS` | 100 ms | Maximum prediction and correction interval |
+| `INPUT_MOTION_SAMPLE_US` | derived from `IMU_ODR_HZ` | Per-sample integration interval<sup>[[78]](../Citations.md#78)</sup> |
 
 ## Limits
 
-The estimator receives one gyro sample per frame. A fast move can drift
-between samples, leaving down displaced until still recovery adopts the
-measured direction.
+FIFO capacity bounds the retained history. Overflow or a failed drain marks a gap;
+the next batch soft-restarts correction at full TAU gain, preserving down and bias.
+A smaller drain buffer retains the newest samples and also marks a gap.
+
+Sampling cannot resolve motion above the sensor bandwidth. During FIFO read mode,
+new sensor samples are discarded by the device; draining promptly limits that
+blind interval.<sup>[[78]](../Citations.md#78)</sup>
