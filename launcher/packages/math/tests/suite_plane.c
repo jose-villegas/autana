@@ -76,6 +76,17 @@ test_oblique_normalization_scales_normal_and_distance(void) {
     assert_fixed_plane(unit, fixed_unit, PLANE_OBLIQUE_QUERY);
 }
 
+static void
+test_from_rows_tests_the_mapped_point(void) {
+    const planef_t target = planef_from_normal_point(PLANE_OBLIQUE_NORMAL, PLANE_OBLIQUE_POINT);
+    const planef_t source = planef_from_rows(&PLANE_MAP, target.normal.x, target.normal.y, target.normal.z, target.d);
+    const vec3f_t points[] = {PLANE_OBLIQUE_POINT, PLANE_OBLIQUE_QUERY, PLANE_ORIGIN, PLANE_AXIS_Y};
+    for (size_t i = 0; i < sizeof(points) / sizeof(points[0]); i++) {
+        TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, planef_distance(target, mat4f_apply(&PLANE_MAP, points[i])),
+                                 planef_distance(source, points[i]));
+    }
+}
+
 /* The frustum built through the identity and through PLANE_MAP, in both number types. */
 typedef struct {
     planef_t planes[PLANE_FRUSTUM_COUNT], mapped[PLANE_FRUSTUM_COUNT];
@@ -200,6 +211,7 @@ void
 suite_plane(void) {
     RUN_TEST(test_construction_winding_distance_and_normalize);
     RUN_TEST(test_oblique_normalization_scales_normal_and_distance);
+    RUN_TEST(test_from_rows_tests_the_mapped_point);
     RUN_TEST(test_frustum_edge_points_are_outside_only_the_plane_they_cross);
     RUN_TEST(test_frustum_through_a_map_tests_the_mapped_point);
     RUN_TEST(test_frustum_behind_near_is_outside_near_only);
