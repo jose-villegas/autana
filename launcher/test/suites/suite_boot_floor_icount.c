@@ -17,6 +17,7 @@
 #include "core/timing.h"
 #include "draw/draw.h"
 #include "gfx/gfx.h"
+#include "gfx/target/gfx_segment_clip.h"
 #include "perf_stats.h"
 #include "suites.h"
 #include "unity.h"
@@ -58,8 +59,8 @@ __wrap_draw_line_ex(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned 
     floor_edges++;
     const int start_x = x0;
     const int start_y = y0;
-    const gfx_box_t clip = GFX_SCREEN_BOX;
-    if (gfx_box_clip_segment(&clip, &x0, &y0, &x1, &y1)) {
+    const recti_t clip = GFX_SCREEN_RECT;
+    if (gfx_clip_segment(&clip, &x0, &y0, &x1, &y1)) {
         const unsigned count = (unsigned)mathi_max(mathi_abs(x1 - x0), mathi_abs(y1 - y0)) + 1u;
         const unsigned on = (flags >> DRAW_LINE_DASH_ON_BIT) & DRAW_LINE_DASH_MASK;
         const unsigned off = (flags >> DRAW_LINE_DASH_OFF_BIT) & DRAW_LINE_DASH_MASK;

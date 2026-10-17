@@ -38,6 +38,7 @@
 #include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
+#include "gfx/target/gfx_segment_clip.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
 
@@ -127,7 +128,7 @@ boot_anim_view(const boot_anim_motion_t* motion, int w, int h, uint32_t now_ms) 
 typedef struct {
     uint32_t now_ms;
     boot_anim_floor_state_t floor;
-    gfx_box_t clip;
+    recti_t clip;
     vec3x_t column;
     bool stepping;
     uint8_t ink;
@@ -149,7 +150,7 @@ typedef struct {
 
 #define MESH_HALF       (BOOT_ANIM_MESH_CELLS / 2)
 #define MESH_NODE_FRONT (1u << 4)
-#define MESH_NODE_CLIP  (GFX_BOX_OUT_LEFT | GFX_BOX_OUT_RIGHT | GFX_BOX_OUT_TOP | GFX_BOX_OUT_BOTTOM)
+#define MESH_NODE_CLIP  (GFX_CLIP_OUT_LEFT | GFX_CLIP_OUT_RIGHT | GFX_CLIP_OUT_TOP | GFX_CLIP_OUT_BOTTOM)
 
 _Static_assert(sizeof(mesh_node_t) == 10, "the mesh row must fit the boot stack");
 
@@ -183,7 +184,7 @@ mesh_node(const mesh_pass_t* pass, int i, int j, vec3x_t plane) {
     node.sx = (int16_t)sx;
     node.sy = (int16_t)sy;
     node.band_q4 = (int16_t)boot_anim_floor_node(i, j)->band_q4;
-    node.flags = (uint8_t)(gfx_box_outcode(&pass->clip, sx, sy) | (front ? MESH_NODE_FRONT : 0u));
+    node.flags = (uint8_t)(gfx_clip_outcode(&pass->clip, sx, sy) | (front ? MESH_NODE_FRONT : 0u));
     return node;
 }
 
