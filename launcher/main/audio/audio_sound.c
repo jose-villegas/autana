@@ -5,7 +5,7 @@
 #include "audio/audio_adpcm.h"
 
 static asset_status_t
-parse(asset_view_t entry, void* out) {
+read_header(asset_view_t entry, audio_sound_t* out) {
     const uint8_t format = entry.data[AUDIO_SOUND_AT_FORMAT];
     const uint32_t frames = asset_read_u32(entry.data + AUDIO_SOUND_AT_FRAMES);
     const uint32_t start = asset_read_u32(entry.data + AUDIO_SOUND_AT_LOOP_START);
@@ -34,19 +34,36 @@ parse(asset_view_t entry, void* out) {
     if (!asset_entry_zero(entry, AUDIO_SOUND_HEADER_SIZE, offset)) {
         return ASSET_ERR_FORMAT;
     }
+    *out = (audio_sound_t){.data = entry.data + offset,
+                           .frames = frames,
+                           .loop_start = start,
+                           .loop_end = end,
+                           .block_frames = block_frames,
+                           .format = (audio_sound_format_t)format};
+    return ASSET_OK;
+}
+
+static asset_status_t
+check_blocks(const audio_sound_t* sound) {
+    if (sound->format != AUDIO_SOUND_IMA_ADPCM) {
+        return ASSET_OK;
+    }
+    const uint32_t blocks = sound->frames / sound->block_frames + (sound->frames % sound->block_frames != 0);
+    const uint32_t stride = audio_adpcm_block_bytes(sound->block_frames);
     for (uint32_t i = 0; i < blocks; i++) {
-        const uint8_t* block = entry.data + offset + i * stride;
+        const uint8_t* block = sound->data + i * stride;
         if (block[AUDIO_ADPCM_AT_STEP_INDEX] > AUDIO_ADPCM_STEP_INDEX_MAX || block[AUDIO_ADPCM_AT_RESERVED] != 0) {
             return ASSET_ERR_FORMAT;
         }
     }
-    *(audio_sound_t*)out = (audio_sound_t){.data = entry.data + offset,
-                                           .frames = frames,
-                                           .loop_start = start,
-                                           .loop_end = end,
-                                           .block_frames = block_frames,
-                                           .format = (audio_sound_format_t)format};
     return ASSET_OK;
+}
+
+static asset_status_t
+parse(asset_view_t entry, void* out) {
+    audio_sound_t* sound = out;
+    const asset_status_t status = read_header(entry, sound);
+    return status == ASSET_OK ? check_blocks(sound) : status;
 }
 
 static const asset_entry_format_t FORMAT = {AUDIO_SOUND_ASSET, AUDIO_SOUND_VERSION, AUDIO_SOUND_AT_VERSION,
