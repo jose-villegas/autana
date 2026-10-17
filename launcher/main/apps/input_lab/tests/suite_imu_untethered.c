@@ -207,7 +207,6 @@ test_upright_turn_restarts_settle(void) {
         imu_probe_round_t* round = upright_fixture(quarter, &rest);
         input_motion_t disturbed = rest;
         disturbed.rotation.x = IMU_PROBE_TURN_THRESHOLD + 1;
-        round->recent_gyro[0] = (float)disturbed.rotation.x;
         check_upright_restart(round, rest, &disturbed, TEST_DT_MS);
     }
 }
@@ -219,9 +218,6 @@ test_upright_gravity_mismatch_restarts_settle(void) {
         imu_probe_round_t* round = upright_fixture(quarter, &rest);
         input_motion_t disturbed = rest;
         disturbed.acceleration = vec3i_scale(rest.acceleration, -1);
-        round->recent_accel[0] = (float)disturbed.acceleration.x;
-        round->recent_accel[1] = (float)disturbed.acceleration.y;
-        round->recent_accel[2] = (float)disturbed.acceleration.z;
         check_upright_restart(round, rest, &disturbed, TEST_DT_MS);
     }
 }
@@ -251,6 +247,42 @@ test_upright_nonzero_quarter_arms(void) {
         imu_probe_round_t* round = upright_fixture(quarter, &rest);
         for (unsigned ms = 0; ms < IMU_PROBE_SETTLE_MS; ms += TEST_DT_MS) {
             imu_probe_turn_update(round, &rest, (vec3f_t){0, 0, -1}, TEST_DT_MS);
+        }
+        TEST_ASSERT_EQUAL_INT(IMU_PROBE_TURN, round->step);
+        free(round);
+    }
+}
+
+static void
+test_upright_cone_uses_direction(void) {
+    for (int quarter = 0; quarter < 4; quarter++) {
+        input_motion_t rest;
+        imu_probe_round_t* round = upright_fixture(quarter, &rest);
+        input_motion_t tilted = rest;
+        tilted.acceleration.z = INPUT_ACCEL_ONE_G;
+        check_upright_restart(round, rest, &tilted, TEST_DT_MS);
+        round = upright_fixture(quarter, &rest);
+        tilted.acceleration = vec3i_scale(rest.acceleration, 2);
+        tilted.acceleration.z = INPUT_ACCEL_ONE_G;
+        check_upright_restart(round, tilted, NULL, TEST_DT_MS);
+    }
+}
+
+static void
+test_upright_hand_tremor_arms(void) {
+    for (int quarter = 0; quarter < 4; quarter++) {
+        input_motion_t rest;
+        imu_probe_round_t* round = upright_fixture(quarter, &rest);
+        round->settle_ms = 0;
+        for (unsigned ms = 0; ms < IMU_PROBE_SETTLE_MS; ms += TEST_DT_MS) {
+            input_motion_t tremor = rest;
+            const int sign = (ms / TEST_DT_MS) % 2 ? 1 : -1;
+            tremor.acceleration.z = sign * (IMU_PROBE_ACCEL_DEPARTURE + 1);
+            tremor.rotation.x = sign * (IMU_PROBE_GYRO_DEPARTURE + 1);
+            imu_probe_turn_update(round, &tremor, (vec3f_t){0, 0, -1}, TEST_DT_MS);
+            if (ms + TEST_DT_MS < IMU_PROBE_SETTLE_MS) {
+                TEST_ASSERT_EQUAL_INT(IMU_PROBE_UPRIGHT, round->step);
+            }
         }
         TEST_ASSERT_EQUAL_INT(IMU_PROBE_TURN, round->step);
         free(round);
@@ -295,6 +327,8 @@ run_imu_untethered_suite(void) {
     RUN_TEST(test_upright_null_sample_restarts_settle);
     RUN_TEST(test_upright_gap_restarts_settle);
     RUN_TEST(test_upright_nonzero_quarter_arms);
+    RUN_TEST(test_upright_hand_tremor_arms);
+    RUN_TEST(test_upright_cone_uses_direction);
     RUN_TEST(test_trace_missing_reading_deadline_and_period);
     RUN_TEST(test_record_boundaries_and_dump_decision);
     RUN_TEST(test_record_replay_and_release);

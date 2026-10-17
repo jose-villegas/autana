@@ -193,7 +193,7 @@ test_rejected_direction_recovers_only_past_limit(void) {
     const vec3f_t start = {0, 0, -1};
     const vec3f_t target = {0, 1, 0};
     hold(sample(start, (vec3f_t){0}), STEP_MS);
-    const input_motion_t m = sample(target, (vec3f_t){0});
+    const input_motion_t m = sample(vec3f_scale(target, 1.0F + PARTIAL_TRUST_G), (vec3f_t){0});
     hold(m, GRAVITY_RECOVER_MS);
     assert_vector(start, gravity_down(&g), FLOAT_TOLERANCE);
     TEST_ASSERT_EQUAL_UINT32(GRAVITY_RECOVER_MS, g.distrust_ms);
@@ -296,7 +296,7 @@ static void
 test_acceptance_restarts_recovery(void) {
     fixture();
     const input_motion_t accepted = {.acceleration = {0, 0, -INPUT_ACCEL_ONE_G}};
-    const input_motion_t rejected = {.acceleration = {0, INPUT_ACCEL_ONE_G, 0}};
+    const input_motion_t rejected = sample((vec3f_t){0, 1.0F + PARTIAL_TRUST_G, 0}, (vec3f_t){0});
     gravity_update(&g, &accepted, STEP_MS);
     const uint32_t interval = GRAVITY_RECOVER_MS * 3U / 4U;
     hold(rejected, interval);
@@ -347,8 +347,88 @@ test_bias_slow_pole_and_no_overshoot(void) {
     TEST_ASSERT_FLOAT_WITHIN(BIAS_TOLERANCE, BIAS_DPS, gravity_gyro_bias(&g).x);
 }
 
+static void
+test_still_recovery_deadline_and_bias(void) {
+    fixture();
+    const vec3f_t start = {0, 0, -1};
+    const vec3f_t target = {0, 1, 0};
+    hold(sample(start, (vec3f_t){0}), STEP_MS);
+    g.gyro_bias = (vec3f_t){GRAVITY_STILL_DPS, 0, 0};
+    const input_motion_t m = sample(target, g.gyro_bias);
+    hold(m, GRAVITY_STILL_RECOVER_MS);
+    assert_vector(start, gravity_down(&g), FLOAT_TOLERANCE);
+    TEST_ASSERT_EQUAL_UINT32(GRAVITY_STILL_RECOVER_MS, g.still_ms);
+    gravity_update(&g, &m, STEP_MS);
+    assert_vector(target, gravity_down(&g), FLOAT_TOLERANCE);
+    TEST_ASSERT_EQUAL_UINT32(0, g.still_ms);
+}
+
+static void
+test_rotation_prevents_still_recovery(void) {
+    fixture();
+    const vec3f_t start = {0, 0, -1};
+    hold(sample(start, (vec3f_t){0}), STEP_MS);
+    const input_motion_t m = sample((vec3f_t){0, 1, 0}, (vec3f_t){0, 0, GRAVITY_STILL_DPS + 1.0F});
+    hold(m, GRAVITY_STILL_RECOVER_MS + STEP_MS);
+    assert_vector(start, gravity_down(&g), FLOAT_TOLERANCE);
+    TEST_ASSERT_EQUAL_UINT32(0, g.still_ms);
+}
+
+static void
+test_magnitude_prevents_still_recovery(void) {
+    const float departures[] = {PARTIAL_TRUST_G, SHAKE_G};
+    for (size_t i = 0; i < sizeof departures / sizeof departures[0]; i++) {
+        fixture();
+        const vec3f_t start = {0, 0, -1};
+        hold(sample(start, (vec3f_t){0}), STEP_MS);
+        const input_motion_t m = sample((vec3f_t){0, 1.0F + departures[i], 0}, (vec3f_t){0});
+        hold(m, GRAVITY_RECOVER_MS);
+        assert_vector(start, gravity_down(&g), FLOAT_TOLERANCE);
+        TEST_ASSERT_EQUAL_UINT32(0, g.still_ms);
+        gravity_update(&g, &m, STEP_MS);
+        assert_vector((vec3f_t){0, 1, 0}, gravity_down(&g), FLOAT_TOLERANCE);
+    }
+}
+
+static void
+test_acceptance_clears_still_recovery(void) {
+    fixture();
+    const input_motion_t accepted = sample((vec3f_t){0, 0, -1}, (vec3f_t){0});
+    const input_motion_t rejected = sample((vec3f_t){0, 1, 0}, (vec3f_t){0});
+    gravity_update(&g, &accepted, STEP_MS);
+    hold(rejected, GRAVITY_STILL_RECOVER_MS);
+    gravity_update(&g, &accepted, STEP_MS);
+    TEST_ASSERT_EQUAL_UINT32(0, g.still_ms);
+    hold(rejected, GRAVITY_STILL_RECOVER_MS);
+    assert_vector((vec3f_t){0, 0, -1}, gravity_down(&g), FLOAT_TOLERANCE);
+}
+
+static void
+test_nonstill_clears_still_recovery(void) {
+    const input_motion_t disturbances[] = {
+        sample((vec3f_t){0, 1, 0}, (vec3f_t){0, 0, GRAVITY_STILL_DPS}),
+        sample((vec3f_t){0, 1.0F + PARTIAL_TRUST_G, 0}, (vec3f_t){0}),
+        {.acceleration = {0}},
+    };
+    for (size_t i = 0; i < sizeof disturbances / sizeof disturbances[0]; i++) {
+        fixture();
+        hold(sample((vec3f_t){0, 0, -1}, (vec3f_t){0}), STEP_MS);
+        const input_motion_t rejected = sample((vec3f_t){0, 1, 0}, (vec3f_t){0});
+        hold(rejected, GRAVITY_STILL_RECOVER_MS);
+        gravity_update(&g, &disturbances[i], STEP_MS);
+        TEST_ASSERT_EQUAL_UINT32(0, g.still_ms);
+        hold(rejected, GRAVITY_STILL_RECOVER_MS);
+        TEST_ASSERT_TRUE(gravity_down(&g).y < GRAVITY_REJECT_COS);
+    }
+}
+
 void
 run_gravity_suite(void) {
+    RUN_TEST(test_still_recovery_deadline_and_bias);
+    RUN_TEST(test_rotation_prevents_still_recovery);
+    RUN_TEST(test_magnitude_prevents_still_recovery);
+    RUN_TEST(test_acceptance_clears_still_recovery);
+    RUN_TEST(test_nonstill_clears_still_recovery);
     RUN_TEST(test_trust_ramp_ratios_and_symmetry);
     RUN_TEST(test_acceptance_restarts_recovery);
     RUN_TEST(test_pull_time_constant);

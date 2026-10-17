@@ -28,9 +28,13 @@ gravity_update(gravity_t* g, const input_motion_t* m, uint32_t dt_ms) {
     g->down = vec3f_normalize(vec3f_sub(g->down, vec3f_scale(vec3f_cross(w, g->down), dt)));
 
     const float magnitude = sqrtf(vec3f_dot(a, a));
+    const float error = fabsf(magnitude - 1.0F);
+    const bool still = vec3f_dot(rate, rate) < GRAVITY_STILL_DPS * GRAVITY_STILL_DPS && error <= GRAVITY_TRUST_FULL_G;
+    if (!still) {
+        g->still_ms = 0;
+    }
     if (magnitude > FLT_EPSILON) {
         const vec3f_t direction = vec3f_scale(a, 1.0F / magnitude);
-        const float error = fabsf(magnitude - 1.0F);
         const float weight =
             mathf_clamp((GRAVITY_TRUST_NONE_G - error) / (GRAVITY_TRUST_NONE_G - GRAVITY_TRUST_FULL_G), 0.0F, 1.0F);
         if (g->distrust_ms <= GRAVITY_RECOVER_MS && weight > 0.0F
@@ -47,11 +51,16 @@ gravity_update(gravity_t* g, const input_motion_t* m, uint32_t dt_ms) {
             const float alpha = weight * dt / (GRAVITY_TAU_S + dt);
             g->down = vec3f_normalize(vec3f_lerp(g->down, direction, alpha));
             g->distrust_ms = 0;
+            g->still_ms = 0;
         } else {
             g->distrust_ms += dt_ms;
-            if (g->distrust_ms > GRAVITY_RECOVER_MS) {
+            if (still) {
+                g->still_ms += dt_ms;
+            }
+            if (g->distrust_ms > GRAVITY_RECOVER_MS || g->still_ms > GRAVITY_STILL_RECOVER_MS) {
                 g->down = direction;
                 g->distrust_ms = 0;
+                g->still_ms = 0;
             }
         }
     }

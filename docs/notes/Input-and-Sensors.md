@@ -72,7 +72,7 @@ Taps during a round are ignored. Prompts name the face and edges as seen on the 
 For an unplugged round, open the Motion page, disconnect USB while running on
 battery, and tap to start. Follow each pose prompt and hold still until the
 full-screen white flash confirms its reading. At the turn prompt, hold the
-display upright with its bottom edge down until `ARMED: TURN NOW`, then turn
+display upright, screen facing you and bottom edge down, until `ARMED: TURN NOW`, then turn
 90 degrees clockwise quickly. A longer cyan flash means the round is complete.
 Keep this app open, reconnect USB, and run `autana labdump > imu-round.log`
 on the PC. The command prints the kept lines between `LABDUMP_BEGIN` and
@@ -83,7 +83,9 @@ the app discards them; SAVE and CLEAR keep them available for replay.
 
 Each pose records `GRAV` down (unit vector) and gyro bias (deg/s) alongside
 the calibration reading. After the upright hold, rotation above
-`IMU_PROBE_TURN_THRESHOLD` starts the `turn` down trace at time zero.
+`IMU_PROBE_TURN_THRESHOLD` starts the `turn` trace at time zero. Each line
+contains estimated unit `down` and the same sample's unit `accel` direction
+(zero during zero acceleration), so their angular separation exposes lag.
 `imu_probe.h` owns its duration and sampling bound; timestamps are elapsed
 milliseconds from the trigger. Missing readings are not synthesized.
 Every kept line starts with `LABDUMP` so its payload can be told apart from
@@ -118,7 +120,7 @@ stateDiagram-v2
         Measuring --> Settling: motion or reading gap
         Measuring --> Prompt: next pose
         Measuring --> Upright: final pose and fit
-        Upright --> Armed: upright and still
+        Upright --> Armed: upright without turning for settle interval
         Armed --> Trace: rotation threshold
         Trace --> Results: window elapsed
         Results --> [*]: SAVE or CLEAR stored
@@ -130,7 +132,11 @@ stateDiagram-v2
 Settling uses recent per-axis accelerometer and gyro means. Thresholds and
 durations are owned by `imu_probe.h`; constant gyro bias does not prevent
 settling. Align each pose carefully: the gravity gate rejects wrong poses
-but does not establish precision alignment.
+but does not establish precision alignment. Upright arming instead accepts
+acceleration within the bottom-down cone `IMU_PROBE_UPRIGHT_MIN` and rotation
+at or below `IMU_PROBE_TURN_THRESHOLD` for `IMU_PROBE_SETTLE_MS`; it does not
+require pose-grade stillness. Missing readings, gaps and departures reset
+that interval. The cone follows the pinned page quarter.
 
 For each axis, the positive and negative gravity windows give
 `offset = (up + down) / 2` and
@@ -149,7 +155,9 @@ Stillness requires turn speed at most 15 deg/s and tilt within 2 degrees of the
 stretch's start; a gap above 250 ms ends the stretch. The first and last windows
 default to 60 seconds and may overlap. Flat samples require tilt below 10 degrees,
 negative z and the same turn limit; transitions require consecutive flat-still
-samples. Thresholds are named in `motion_fit.py`.
+samples. Turn traces report the maximum and final angle between estimated
+down and acceleration per round, excluding samples without a direction.
+Thresholds are named in `motion_fit.py`.
 
 #### Measured on the board
 
@@ -244,14 +252,19 @@ the change in down is minus angular velocity crossed with down.
 ```mermaid
 flowchart TD
     Clamp[Clamp elapsed time] --> Rotate[Subtract gyro bias, rotate down, normalize]
-    Rotate --> Nonzero{Acceleration nonzero?}
+    Rotate --> Still[Check bias-corrected gyro and acceleration magnitude]
+    Still --> Reset[Clear still timer when not still]
+    Reset --> Nonzero{Acceleration nonzero?}
     Nonzero -->|Yes| Trust[Magnitude trust weight and angular rejection]
     Trust --> Accepted{Accepted?}
     Accepted -->|Yes| Bias[While accepted: integrate correction error into gyro bias, clamped]
-    Accepted -->|No| Recover[Count distrust, adopt acceleration past recovery limit]
-    Bias --> Pull[Weighted pull toward acceleration, clear distrust]
+    Accepted -->|No| Recover[Count distrust and continuous still rejection]
+    Recover --> Deadline{Timed or still limit exceeded?}
+    Deadline -->|Yes| Adopt[Adopt acceleration direction, clear both timers]
+    Deadline -->|No| Linear
+    Bias --> Pull[Weighted pull toward acceleration, clear both timers]
     Pull --> Linear[Linear acceleration = acceleration minus down]
-    Recover --> Linear
+    Adopt --> Linear
     Nonzero -->|No| Linear
     Linear --> Output[Down, linear acceleration, strength, free fall]
 ```
@@ -263,10 +276,17 @@ Accepted acceleration corrects down with alpha = weight * dt / (tau + dt),
 followed by normalization. Angular rejection and timed recovery use the
 thresholds recommended by Madgwick's x-io Fusion library.<sup>[[73]](../Citations.md#73)</sup>
 Our recovery adopts the reading exactly, unlike Fusion's continued correction.
-Recovery adopts nonzero acceleration exactly after continuous rejection exceeds
-the limit. Reset primes that recovery path so the first nonzero reading is
-adopted exactly, including when no time has elapsed. Zero acceleration skips
-correction and recovery counting, keeping the prediction finite in free fall.
+Recovery adopts nonzero acceleration exactly after rejection exceeds
+`GRAVITY_RECOVER_MS`. This tree also has still-gated early recovery; Fusion has
+only the timed trigger. Still means the magnitude of raw gyro minus learned
+bias is below `GRAVITY_STILL_DPS` and acceleration magnitude departs from one g
+by at most `GRAVITY_TRUST_FULL_G`. Continuous still rejection exceeding
+`GRAVITY_STILL_RECOVER_MS` adopts the measured direction exactly. Non-still
+samples and accepted acceleration clear the still timer; either adoption
+clears both timers. The longer trigger remains available during shaking or
+swinging. Reset primes it so the first nonzero reading is adopted exactly,
+including when no time has elapsed. Zero acceleration skips correction and
+distrust counting and clears the still timer, keeping prediction finite in free fall.
 
 While acceleration is accepted, the Mahony, Hamel and Pflimlin integral bias
 term accumulates `cross(down, direction)` before the down correction, weighted
@@ -298,6 +318,8 @@ The constants are owned by `launcher/main/input/gravity.h`:
 | `GRAVITY_TRUST_NONE_G` | 0.4 g | Android WindowOrientationListener acceleration tolerance, 4 m/s^2<sup>[[74]](../Citations.md#74)</sup> |
 | `GRAVITY_REJECT_DEG` | 10 deg | x-io Fusion acceleration rejection<sup>[[73]](../Citations.md#73)</sup> |
 | `GRAVITY_RECOVER_MS` | 5000 ms | x-io Fusion recovery trigger period<sup>[[73]](../Citations.md#73)</sup> |
+| `GRAVITY_STILL_DPS` | 6 deg/s | M0 board capture: rest gyro noise peaks at +/-4 deg/s |
+| `GRAVITY_STILL_RECOVER_MS` | 500 ms | Ours, maintainer choice: clear fast-flip error promptly while outlasting a held swing reversal |
 | `GRAVITY_GYRO_OFFSET_TOL_DPS` | 10 deg/s | QMI8658C datasheet, Table 8, board-level initial offset<sup>[[75]](../Citations.md#75)</sup> |
 | `GRAVITY_GYRO_OFFSET_TCO_DPS_PER_C` | 0.05 deg/s/C | QMI8658C datasheet, Table 8<sup>[[75]](../Citations.md#75)</sup> |
 | `GRAVITY_GYRO_TEMP_SPAN_C` | 60 C | 25 C reference to 85 C operating limit<sup>[[75]](../Citations.md#75)</sup> |

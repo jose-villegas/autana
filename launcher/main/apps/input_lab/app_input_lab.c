@@ -42,6 +42,7 @@
 #include "input/gravity.h"
 #include "input/input_shell.h"
 #include "input/tilt.h"
+#include "math/linear/vec_convert.h"
 #include "math/scalar/mathi.h"
 #include "services/tune.h"
 #include "ui/layout/ui_transform.h"
@@ -540,8 +541,13 @@ update_imu_round(uint32_t dt_ms, const input_t* input) {
     const imu_probe_step_t previous = imu_round.step;
     if (imu_probe_turn_update(&imu_round, have_motion ? &motion : NULL, gravity_down(&gravity), read_dt_ms)) {
         const vec3f_t down = imu_round.trace_down;
-        LOG_IMU_LINE("turn ms %u down %.*f %.*f %.*f", (unsigned)imu_round.trace_ms, IMU_GRAVITY_DIGITS, (double)down.x,
-                     IMU_GRAVITY_DIGITS, (double)down.y, IMU_GRAVITY_DIGITS, (double)down.z);
+        const vec3f_t acceleration = vec3f_from_vec3i(motion.acceleration);
+        const vec3f_t direction =
+            vec3f_dot(acceleration, acceleration) > 0.0F ? vec3f_normalize(acceleration) : (vec3f_t){0};
+        LOG_IMU_LINE("turn ms %u down %.*f %.*f %.*f accel %.*f %.*f %.*f", (unsigned)imu_round.trace_ms,
+                     IMU_GRAVITY_DIGITS, (double)down.x, IMU_GRAVITY_DIGITS, (double)down.y, IMU_GRAVITY_DIGITS,
+                     (double)down.z, IMU_GRAVITY_DIGITS, (double)direction.x, IMU_GRAVITY_DIGITS, (double)direction.y,
+                     IMU_GRAVITY_DIGITS, (double)direction.z);
     }
     if (previous != IMU_PROBE_DONE && imu_round.step == IMU_PROBE_DONE) {
         imu_flash_ms = IMU_DONE_FLASH_MS;
@@ -555,8 +561,8 @@ draw_imu_turn(void) {
     if (imu_round.step == IMU_PROBE_IDLE || imu_round.step == IMU_PROBE_POSES || imu_round.step == IMU_PROBE_DONE) {
         return false;
     }
-    hud_line(0, "UPRIGHT, THEN TURN 90 CW QUICKLY");
-    hud_line(1, imu_round.step == IMU_PROBE_UPRIGHT ? "HOLD UPRIGHT STILL TO ARM"
+    hud_line(0, imu_round.step == IMU_PROBE_UPRIGHT ? "STAND IT UPRIGHT, SCREEN FACING YOU" : "TURN 90 CW QUICKLY");
+    hud_line(1, imu_round.step == IMU_PROBE_UPRIGHT ? "HOLD WITHOUT TURNING TO ARM"
                 : imu_round.step == IMU_PROBE_TURN  ? "ARMED: TURN NOW"
                                                     : "RECORDING TURN");
     hud_line(3, "BOOT TO LEAVE ROUND");
