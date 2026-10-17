@@ -25,7 +25,7 @@ flowchart TB
         Asset["asset/"]
     end
     subgraph PLAT["platform"]
-        InDisp["input/ then display/"]
+        InDisp["input/ audio/ then display/"]
         Gfx["gfx/<br/><i>present, pixel format</i>"]
         Base["services/ profile/ core/ board/ build/"]
     end
@@ -192,7 +192,7 @@ launcher/
 └── main/
     ├── main.c  app/  apps/  shell/ (+ ui/, apps/)  boot/  selftest/  console/     system
     ├── ui/  scene/ (+ camera/)  render/  draw/  anim/  asset/                      engine
-    └── input/  display/  gfx/  services/  profile/  core/  board/  build/         platform
+    └── input/  audio/  display/  gfx/  services/  profile/  core/  board/  build/ platform
 ```
 
 `launcher/main/engine/` is the engine standard pack (`engine.pack.toml`,
@@ -212,7 +212,7 @@ system icons), not code; it keeps its place under L1.
 | dirty, heal and full-redraw send policy | `gfx/present/send/` |
 | null panel backend | `gfx/present/panel/` |
 | viewport | `display/` |
-| projection | `render/r3d_project.h`, `r3d_project_x.h`: includes `render/render_view.h`, so the maths package cannot own it until the interface takes plain values |
+| projection | `math/linear/projectf.h`, `projectx.h` (lens, near clip); `render/r3d_project*.h` (snapping, line units) |
 
 ### Drawing and presentation
 

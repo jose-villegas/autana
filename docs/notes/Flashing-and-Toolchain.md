@@ -104,7 +104,7 @@ continues if the PMIC does not acknowledge or the restart does not occur.
 - **ESP-IDF v6.1+ is required.** `launcher/main/idf_component.yml` declares
   `idf: ">=6.1"`; CI builds on the exact commit `launcher/idf-pin.json` names
   ([Framework-Versions.md](../tools/Framework-Versions.md)). Several versions
-  can coexist; [Which ESP-IDF](../tools/Autana-CLI.md#which-esp-idf)
+  can coexist; [Which ESP-IDF](../tools/Build-Environment.md#which-esp-idf)
   describes pin selection and one-command `IDF_PATH` overrides.
 - On another ESP-IDF commit the IRAM budget check reports a mismatch as a
   drift note instead of failing, and `memory_map.py --update-budgets` refuses
@@ -182,7 +182,8 @@ Check widening inside fixed-point helpers, prove operand bounds before
 narrowing, and inspect disassembly rather than assigning a source-level
 divide a fixed cycle cost. `r3d_project_point_cs_x()` in
 `launcher/main/render/r3d_project_x.h` keeps the per-point divide 32-bit
-and widens only the pixels-per-unit multiply. Near-plane clipping uses a 64-bit divide.
+and widens only the pixels-per-unit multiply. Near-plane clipping in
+`math/linear/projectx.h` uses a 64-bit divide for its Q16.16 crossing ratio.
 
 `ceilf()` is a libm call, too costly per row; use `(int)x` plus one when it
 falls short. Float division (`__divsf3`) is the FPU's exact
