@@ -118,7 +118,7 @@ def exchange(console, step, *, decline=False):
             if not tilt_complete:
                 found, _ = replies_to(line.encode(), "IMU", ("IMU_OK", "IMU_ERR"))
                 if found:
-                    match = IMU_QUARTER_RE.fullmatch(found[-1])
+                    match = IMU_QUARTER_RE.match(found[-1])
                     if not match or int(match[1]) != int(step.tilt.split()[-1]):
                         raise TourError("invalid quarter reply: " + found[-1])
                     sample_s = int(match[3]) / MILLISECONDS_PER_SECOND
@@ -210,7 +210,7 @@ def run(console, emit=print):
     ok = False
     try:
         reply = exchange(console, Step("IMU quarter 0", "IMU"))
-        match = IMU_QUARTER_RE.fullmatch(reply[-1])
+        match = IMU_QUARTER_RE.match(reply[-1])
         if not match or int(match[1]) != 0 or int(match[2]) <= 0 or int(match[3]) <= 0:
             raise TourError("invalid IMU quarter capabilities")
         tilts = itertools.cycle(f"IMU quarter {q}" for q in range(int(match[2])))
