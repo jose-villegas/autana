@@ -12,7 +12,7 @@
 #include "math/scalar/mathx.h"
 
 static inline void
-projectx_cross_near(int32_t near_z, vec3x_t* behind, const vec3x_t* front) {
+_projectx_cross_near(int32_t near_z, vec3x_t* behind, const vec3x_t* front) {
     const int64_t frac_q16 = ((int64_t)(near_z - behind->z) * MATHX_ONE) / (front->z - behind->z);
 
     behind->x += (int32_t)(((int64_t)(front->x - behind->x) * frac_q16) >> MATHX_SHIFT);
@@ -20,4 +20,4 @@ projectx_cross_near(int32_t near_z, vec3x_t* behind, const vec3x_t* front) {
     behind->z = near_z;
 }
 
-MATH_DEFINE_CLIP_NEAR(projectx, vec3x_t, int32_t)
+MATH_DEFINE_CLIP_NEAR(projectx, vec3x_t, int32_t, _projectx_cross_near)

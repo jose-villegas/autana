@@ -86,8 +86,8 @@ returns the pixel offset from the optical centre with camera +y up.
 at or behind the plane. Otherwise they move the behind endpoint to the
 crossing and leave front endpoints untouched. The fixed helper accepts
 any common scale for endpoints and near plane, using a Q16.16 crossing ratio.
-`projectf_cross_near` and `projectx_cross_near` provide their scalar crossing
-arithmetic to `project_template.h`'s `MATH_DEFINE_CLIP_NEAR(P, V, T)`, which
+`_projectf_cross_near` and `_projectx_cross_near` provide their scalar crossing
+arithmetic to `project_template.h`'s `MATH_DEFINE_CLIP_NEAR(P, V, T, CROSS)`, which
 selects the behind endpoint and defines the public clip operation for the
 `projectf` and `projectx` prefixes.
 The caller keeps intermediate differences and products within their integer

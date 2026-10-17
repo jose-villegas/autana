@@ -33,7 +33,7 @@ projectf_screen(const projectf_t* lens, vec3f_t p) {
 }
 
 static inline void
-projectf_cross_near(float near_z, vec3f_t* behind, const vec3f_t* front) {
+_projectf_cross_near(float near_z, vec3f_t* behind, const vec3f_t* front) {
     const float frac = (near_z - behind->z) / (front->z - behind->z);
 
     behind->x += (front->x - behind->x) * frac;
@@ -41,4 +41,4 @@ projectf_cross_near(float near_z, vec3f_t* behind, const vec3f_t* front) {
     behind->z = near_z;
 }
 
-MATH_DEFINE_CLIP_NEAR(projectf, vec3f_t, float)
+MATH_DEFINE_CLIP_NEAR(projectf, vec3f_t, float, _projectf_cross_near)
