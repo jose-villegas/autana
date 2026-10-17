@@ -1489,8 +1489,11 @@ def tour(args, store, board):
                     print(line, flush=True)
                     console.reader.emit(line)
 
-                ok = lifecycle_tour.run(console, emit=emit)
-                reason = "complete" if ok else "failed"
+                try:
+                    ok = lifecycle_tour.run(console, emit=emit)
+                    reason = "complete" if ok else "failed"
+                finally:
+                    console.reader.finish()
     except (OSError, RuntimeError) as caught:
         error = str(caught)
         raise

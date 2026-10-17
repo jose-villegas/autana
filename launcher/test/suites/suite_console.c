@@ -617,7 +617,7 @@ static void
 test_an_imu_line_carries_its_sample(void) {
     int ax = 0, ay = 0, az = 0;
     TEST_ASSERT_TRUE(console_imu_parse("4096 -12 0", &ax, &ay, &az));
-    TEST_ASSERT_EQUAL_INT(4096, ax);
+    TEST_ASSERT_EQUAL_INT(IMU_COUNTS_PER_G, ax);
     TEST_ASSERT_EQUAL_INT(-12, ay);
     TEST_ASSERT_EQUAL_INT(0, az);
 }
@@ -849,7 +849,9 @@ test_quarter_injection_matches_forward_mapping(void) {
         char args[CONSOLE_LINE_MAX];
         snprintf(args, sizeof args, "quarter %d", quarter);
         imu_sample_t sample;
-        TEST_ASSERT_TRUE(console_imu_quarter_parse(args, &sample));
+        int parsed_quarter = -1;
+        TEST_ASSERT_TRUE(console_imu_quarter_parse(args, &sample, &parsed_quarter));
+        TEST_ASSERT_EQUAL_INT(quarter, parsed_quarter);
         display_t display;
         display_init(&display);
         const viewport_quarter_axes_t axes = viewport_quarter_axes(quarter);
@@ -865,7 +867,9 @@ test_quarter_injection_matches_forward_mapping(void) {
     snprintf(past_end, sizeof past_end, "quarter %d", DISPLAY_QUARTER_COUNT);
     const char* invalid[] = {"quarter -1", "quarter", "quarter 0 extra", past_end};
     for (size_t i = 0; i < sizeof invalid / sizeof invalid[0]; i++) {
-        TEST_ASSERT_FALSE(console_imu_quarter_parse(invalid[i], &sample));
+        int parsed_quarter = -1;
+        TEST_ASSERT_FALSE(console_imu_quarter_parse(invalid[i], &sample, &parsed_quarter));
+        TEST_ASSERT_EQUAL_INT(-1, parsed_quarter);
         TEST_ASSERT_EQUAL_INT(IMU_COUNTS_PER_G, sample.ax);
     }
 }

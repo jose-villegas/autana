@@ -3090,7 +3090,7 @@ class LifecycleTourTests(unittest.TestCase):
         for succeeds in (True, False):
             with self.subTest(succeeds=succeeds), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
-                connection = FakeConnection([b"BUILD_ID=fixture\n"])
+                connection = FakeConnection([b"BUILD_ID=fixture\npartial device log"])
                 connection.in_waiting = 0
                 args = Namespace(owner="agent", purpose="tour", wait=0, out=str(root / "tour.log"), max_seconds=1)
                 store = mock_store()
@@ -3111,6 +3111,8 @@ class LifecycleTourTests(unittest.TestCase):
                 entry = json.loads((root / "index.jsonl").read_text().splitlines()[-1])
                 self.assertEqual(entry["command"], "tour")
                 self.assertEqual(entry["build_id"], "fixture")
+                capture = (root / "tour.log").read_text()
+                self.assertIn("partial device log\ntour " + ("PASS" if succeeds else "FAIL"), capture)
                 report = (root / "tour.md").read_text()
                 self.assertIn("tour " + ("PASS" if succeeds else "FAIL"), report)
 
