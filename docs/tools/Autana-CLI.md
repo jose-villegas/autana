@@ -201,7 +201,6 @@ below the input layer, with a matching resume or release. Hidden from bare
 
 | Command | What it does |
 |---|---|
-| `autana debug tour [seconds] [--out PATH]` | Walk every discovered app and ordered app pair, and every ordered scene pair, while cycling tilt. Requires an already flashed development image; writes a capture and report under `.records/device`. |
 | `autana debug freeze` | Stop the frame loop where it is. |
 | `autana debug resume` | Run it again. |
 | `autana debug step [N]` | Advance `N` frames while frozen; 1 when omitted. |

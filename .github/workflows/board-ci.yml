@@ -56,26 +56,19 @@ jobs:
             fi
           done
 
-      - name: Self-test and lifecycle tour under one board lock
+      - name: Self-test under one board lock
         id: device
         run: |
-          rm -f "$RUNNER_TEMP/board-ci-selftest.log" "$RUNNER_TEMP/board-ci-tour.log"
+          rm -f "$RUNNER_TEMP/board-ci-selftest.log"
           export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
-          autana build dev
           cat > "$RUNNER_TEMP/board-ci-steps.sh" <<'SH'
           set -eo pipefail
           selftest_status=0
           autana selftest | tee "$RUNNER_TEMP/board-ci-selftest.log" || selftest_status=$?
-          tour_status=0
-          if autana flash dev --quiet; then
-            autana debug tour | tee "$RUNNER_TEMP/board-ci-tour.log" || tour_status=$?
-          else
-            tour_status=$?
-          fi
           if [ "$selftest_status" -ne 0 ]; then
             exit "$selftest_status"
           fi
-          exit "$tour_status"
+          exit 0
           SH
           if autana --wait 1800 lock run -- "$(cygpath -w "$BASH")" "$RUNNER_TEMP/board-ci-steps.sh"; then
             exit 0
@@ -93,7 +86,7 @@ jobs:
       - name: Summarize the device capture
         if: always() && steps.device.outcome != 'skipped' && steps.device.outputs.skipped != 'true'
         run: |
-          for log in selftest tour; do
+          for log in selftest; do
             capture="$RUNNER_TEMP/board-ci-$log.log"
             if [ -f "$capture" ] && grep -q '^report: ' "$capture"; then
               sed -n 's/^report: //p' "$capture" | tr -d '\r' |

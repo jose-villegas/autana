@@ -28,8 +28,7 @@ import lock_scope
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
-import lifecycle_tour  # noqa: E402
-from console_protocol import LineReader, replies_to, require_development
+from console_protocol import replies_to, require_development
 from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, BUILD_ID_REQUEST,
                             crash_signs)
 
@@ -1452,70 +1451,6 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
     return 1 if failed else 0
 
 
-class TourConsole:
-    """One serial stream, retaining unread lines and every byte of the capture."""
-    def __init__(self, connection, output, deadline):
-        self.connection = connection
-        self.output = output
-        self.deadline = deadline
-        self.reader = LineReader(self.read_chunk, output, deadline)
-
-    def send(self, line):
-        require_unlost()
-        self.connection.write((line + "\n").encode("utf-8"))
-
-    def read_chunk(self):
-        require_unlost()
-        return self.connection.read(self.connection.in_waiting or 1) or None
-
-    def lines(self, seconds=None):
-        return self.reader.lines(seconds)
-
-
-def tour(args, store, board):
-    started_at = now()
-    output, managed = resolve_capture_path(args.out, "tour", args.owner, started_at)
-    reason, error, held = "failed", None, None
-    ok = False
-    try:
-        with holding(store, board, args, None, "tour") as held:
-            with open_when_free() as connection, open(output, "wb") as capture_file:
-                console = TourConsole(connection, capture_file, time.monotonic() + args.max_seconds)
-
-                def emit(line):
-                    nonlocal error
-                    if line.startswith("tour FAIL:") and error is None:
-                        error = line.removeprefix("tour FAIL: ")
-                    print(line, flush=True)
-                    console.reader.emit(line)
-
-                try:
-                    ok = lifecycle_tour.run(console, emit=emit)
-                    reason = "complete" if ok else "failed"
-                finally:
-                    console.reader.finish()
-    except (OSError, RuntimeError) as caught:
-        error = str(caught)
-        raise
-    finally:
-        data = Path(output).read_bytes() if Path(output).exists() else b""
-        signs = crash_signs(data.decode("utf-8", errors="replace"), BOOTS_ON_RUNNING)
-        for sign in signs:
-            print(sign)
-        ok = ok and not signs
-        if signs:
-            reason = "failed"
-        final_path = record_capture(
-            output, managed, started_at=started_at, board=board, owner=args.owner,
-            purpose=args.purpose, command="tour", build_id=latest_build_id_from_bytes(data),
-            worktree=str(Path.cwd()), commit=git_commit(), reason=reason, error=error,
-            acquired_at=held.held["acquired_at"] if held else None)
-        report_path = device_report.write_report_for_capture(final_path, records_root() / "index.jsonl")
-        print("capture: " + str(final_path))
-        print("report: " + str(report_path))
-    return 0 if ok else 1
-
-
 def selftest(args, store, board):
     """Build the diagnostics+autorun image, then flash it and, under that
     same lock, reset and capture the boot-time run of every registered suite
@@ -2101,9 +2036,6 @@ def main(argv=None):
     reset_parser.add_argument("--seconds", type=float, default=20.0,
                               help="boot capture window (default: 20)")
     reset_parser.add_argument("--out")
-    tour_parser = subparsers.add_parser("tour", help="walk a running development image's lifecycles")
-    tour_parser.add_argument("--out")
-    tour_parser.add_argument("--max-seconds", type=float, default=lifecycle_tour.DEFAULT_TOUR_S)
     selftest_parser = subparsers.add_parser(
         "selftest", help="flash the diagnostics+autorun image and capture the on-device run "
                          "of every registered suite")
@@ -2313,7 +2245,7 @@ def main(argv=None):
         else:
             # Looked up per call, so a test's patch of one of them is the one run.
             board_commands = {"run-suite": run_suite, "selftest": selftest, "coredump": coredump,
-                              "reset": reset_device, "batch": batch, "screenshot": screenshot, "tour": tour}
+                              "reset": reset_device, "batch": batch, "screenshot": screenshot}
             result = board_commands.get(args.command, listen)(args, store, board)
             return result
         result = 0

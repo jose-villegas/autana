@@ -36,6 +36,29 @@ def write_index(directory, entries):
 
 
 class ParseSuiteResultsTests(unittest.TestCase):
+    def test_unity_summary_preserves_all_console_readers(self):
+        import device
+        from device_capture import results
+        sys.path.insert(0, str(DEVICE.parents[1] / "launcher/test"))
+        import qemu_run
+
+        capture = (":1:test_pass:PASS\n:2:test_fail:FAIL: reason\n"
+                   ":3:test_skip:IGNORE: unavailable\n"
+                   "-----------------------\n3 Tests 1 Failures 1 Ignored\nFAIL\n"
+                   "RUNSUITE_COMPLETE name=example found=1 selected=3 unmatched=0\n")
+        self.assertEqual(len(results(capture)), 2)
+        self.assertEqual(len(results(capture, ignored=True)), 3)
+        self.assertEqual(device.count_suite_results(capture.encode()), (1, 1))
+        self.assertEqual(device_report.parse_suite_results(capture), (1, 1, [("test_fail", "reason")]))
+        completed = device_report.SUITE_COMPLETE_RE.search(capture)
+        self.assertEqual(completed["name"], "example")
+        self.assertEqual(completed["found"], "1")
+        with tempfile.TemporaryDirectory() as directory, mock.patch("builtins.print") as emit:
+            log = Path(directory) / "serial.log"
+            log.write_text(capture)
+            self.assertEqual(qemu_run.summarise(log), (False, 1))
+        emit.assert_any_call("1 passed, 1 failed, 1 skipped")
+
     def test_ignored_results_are_not_failures(self):
         self.assertEqual(device_report.parse_suite_results(':1:test_skipped:IGNORE: unavailable\n'),
                          (0, 0, []))

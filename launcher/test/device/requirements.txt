@@ -1,0 +1,8 @@
+pytest-embedded==2.9.3
+pytest-embedded-serial==2.9.3
+pytest-embedded-serial-esp==2.9.3
+pytest-embedded-qemu==2.9.3
+pytest-embedded-idf==2.9.3
+pytest==9.1.1
+PyYAML==6.0.3
+networkx==3.7

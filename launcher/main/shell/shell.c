@@ -44,6 +44,7 @@
 
 #if CONFIG_LAUNCHER_SELFTEST
 #include "suites.h"
+#include "unity.h"
 #endif
 
 #include "esp_log.h"
@@ -164,11 +165,13 @@ run_pending_selftest_suite(const console_frame_request_t* requests) {
         return;
     }
     static suite_run_t run;
+    UNITY_BEGIN();
     suites_run_request(requests->suite, &run);
     if (!run.found) {
         ESP_LOGE(TAG, "no suite named '%s' is registered", run.name);
     }
     suite_report_frame_watch();
+    (void)UNITY_END();
     /* On its own line, so a harness knows the suite ended without having to
      * guess from how long the console has been quiet. */
     suites_print_run(&run);

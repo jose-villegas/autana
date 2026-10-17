@@ -82,12 +82,13 @@ from espressif import espressif_tools_root, idf_python, idf_path  # noqa: E402  
 from device_report import SUITE_COMPLETE_RE  # noqa: E402  (the board tool's own reading)
 from device_capture import (BOOTS_FROM_RESET, BUILD_ID_RE, BUILD_ID_REQUEST,  # noqa: E402
                             crash_signs)  # (the board tool's own crash verdict)
-from console_protocol import ANSI, LineReader  # noqa: E402
-from lifecycle_tour import HEARTBEAT_S, heartbeat, run as run_tour  # noqa: E402
+from console_protocol import ANSI  # noqa: E402
 import screenshot as wire  # noqa: E402  (the board tool's own protocol)
 import patched_qemu  # noqa: E402  (path must be set up first)
 
+MEBIBYTE_BYTES = 1024 * 1024
 ICOUNT_SHIFT = 0
+HEARTBEAT_S = 15
 
 QEMU_PASS_RE = re.compile(r":PASS$", re.M)
 QEMU_IGNORE_RE = re.compile(r":IGNORE")
@@ -146,6 +147,11 @@ def efuse_with_mac(image):
     return bytes(image)
 
 
+def psram_mib():
+    profile = device_profile.load(None, None)
+    return device_profile.require(profile, "DP_PSRAM_BYTES", int) // MEBIBYTE_BYTES
+
+
 def free_port():
     with socket.socket() as probe:
         probe.bind(("127.0.0.1", 0))
@@ -184,7 +190,7 @@ class Console:
                     raise
                 time.sleep(0.2)
         self.sock.settimeout(1.0)
-        self.reader = LineReader(self.read_chunk, self.log, deadline, lambda: self.proc.poll() is None)
+        self.pending = b""
 
     def close(self):
         self.log.close()
@@ -200,7 +206,20 @@ class Console:
             return None
 
     def lines(self, seconds=None):
-        return self.reader.lines(seconds)
+        deadline = min(self.deadline, time.monotonic() + seconds) if seconds is not None else self.deadline
+        while time.monotonic() < deadline and self.proc.poll() is None:
+            if b"\n" in self.pending:
+                raw, self.pending = self.pending.split(b"\n", 1)
+                yield ANSI.sub("", raw.decode("utf-8", errors="replace").rstrip("\r"))
+                continue
+            chunk = self.read_chunk()
+            if chunk is None:
+                continue
+            if not chunk:
+                return
+            self.log.write(chunk)
+            self.log.flush()
+            self.pending += chunk
 
     def wait_for(self, needle):
         for line in self.lines():
@@ -328,6 +347,11 @@ def run_action(console, action):
     return False
 
 
+def heartbeat(console):
+    console.send(BUILD_ID_REQUEST)
+    return any(BUILD_ID_RE.search(line) for line in console.lines(HEARTBEAT_S))
+
+
 def drive_shell(console, actions):
     if not console.wait_for(LISTENING):
         print("the console listener never came up - is this an image that "
@@ -408,7 +432,6 @@ def parse_args(argv):
                              "CONFIG_LAUNCHER_QEMU image, where no controller "
                              "answers and the injected sample is all the polling "
                              "task has to read")
-    parser.add_argument("--tour", action="store_true", help="discover and walk app and scene lifecycles")
     parser.add_argument("--do", action="append", default=[], metavar="ACTION",
                         help="one step, in order (repeatable): 'suite NAME', "
                              "'tap X Y', 'swipe X0 Y0 X1 Y1', 'touch down|up "
@@ -469,10 +492,8 @@ def main(argv):
         os.remove(log_path)
 
     # The board's own PSRAM size: QEMU would happily offer more.
-    profile = device_profile.load(None, None)
-    psram_mib = device_profile.require(profile, "DP_PSRAM_BYTES", int) >> 20
     port = free_port()
-    cmd = qemu_command(args, qemu, psram_mib, flash, efuse, port)
+    cmd = qemu_command(args, qemu, psram_mib(), flash, efuse, port)
 
     proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL,
                             stdout=subprocess.DEVNULL,
@@ -482,10 +503,8 @@ def main(argv):
         console = Console(proc, port, log_path,
                           time.monotonic() + args.timeout)
         try:
-            if actions or args.tour:
+            if actions:
                 finished = drive_shell(console, actions)
-                if finished and args.tour:
-                    finished = run_tour(console)
             else:
                 finished = console.wait_for(SENTINEL)
         finally:
@@ -495,7 +514,7 @@ def main(argv):
         proc.wait()
 
     print("console: %s" % log_path)
-    return verdict(log_path, finished, actions or args.tour)
+    return verdict(log_path, finished, actions)
 
 
 if __name__ == "__main__":
