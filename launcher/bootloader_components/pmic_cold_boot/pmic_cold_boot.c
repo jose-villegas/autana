@@ -2,7 +2,8 @@
  * At 120 MHz PSRAM and flash, a warm reset (esptool's RTS, a watchdog, a
  * panic, a restart) left the console dead after the app's PSRAM timing
  * tuning; main/board/board_usb.h has the cause, which the app now avoids.
- * Until then any reset that is not a power-on was turned into one: AXP2101
+ * Any reset that is not a power-on is still turned into one, the workaround
+ * from before that cause was known: AXP2101
  * register 0x10 bit 1 power-cycles the SoC, since on this board DCDC1 is
  * VCC3V3 and PWROK drives CHIP_PU. A missing ACK, or a chip still running
  * after the wait, logs and boots on rather than looping. Dropping to 80 MHz
