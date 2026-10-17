@@ -68,14 +68,21 @@ exactly.
 | `r3d_lit_mesh.h` | The baked mesh format: per-vertex or per-face colour, meshlet clusters, a node tree, and the view built from a pack entry |
 | `r3d_pipeline.h` | Internal: the raster's stages, lens, cull, transform, draw, and its scratch layout |
 | `r3d_span.h` | One depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions, and the span writer a further attachment fills through |
-| `r3d_project.h` | Float reference for near clipping and perspective projection |
-| `r3d_project_x.h` | Camera-space model matrix, fixed-point near clipping and perspective projection of points and segments |
+| `r3d_project.h` | Float pixel snapping through a `projectf_t` lens and math near clipping |
+| `r3d_project_x.h` | Camera-space model matrix and fixed-point pixel projection, with math near clipping |
 
 Only
 `r3d_pipeline.h` and `r3d_span_internal.h` are internal: render/ and any
 suite or host tool include them.
 
 ## The maths
+
+`math/linear/projectf.h` owns the pinhole lens value, continuous float
+projection and float near clipping; `math/linear/projectx.h` owns fixed
+near clipping at any common camera-space scale. `render_view_lens()` copies
+the view's isotropic focal length and optical centre into `projectf_t`.
+Render retains pixel snapping, the fixed line path's camera units and its
+32-bit per-point divide followed by the pixel-scale multiply.
 
 Line projection, the animation tracks and the raster all
 take their types from `math/linear/`, documented in
