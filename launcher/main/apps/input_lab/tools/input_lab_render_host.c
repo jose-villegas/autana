@@ -39,7 +39,7 @@ input_read_motion(input_motion_t* out) {
     if (results) {
         const int pose_frame = clock_frame - TAP_FRAME;
         const int pose = mathi_clamp(pose_frame / POSE_FRAMES, 0, IMU_PROBE_POSE_COUNT - 1);
-        const int turn_frame = IMU_PROBE_POSE_COUNT * POSE_FRAMES + (IMU_PROBE_SETTLE_MS + FRAME_MS - 1) / FRAME_MS;
+        const int turn_frame = (IMU_PROBE_POSE_COUNT * POSE_FRAMES) + ((IMU_PROBE_SETTLE_MS + FRAME_MS - 1) / FRAME_MS);
         if (pose_frame >= turn_frame && (pose_frame - turn_frame) * FRAME_MS <= IMU_PROBE_TURN_WINDOW_MS) {
             out->rotation.x = IMU_PROBE_TURN_THRESHOLD + 1;
         }
