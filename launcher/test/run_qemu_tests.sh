@@ -41,6 +41,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --perf-scope) PERF=1 ;;
         --icount-ratchet) AUTORUN=0; RUN_ARGS="$RUN_ARGS --icount-ratchet" ;;
+        --tour) AUTORUN=0; RUN_ARGS="$RUN_ARGS --tour" ;;
         --icount) RUN_ARGS="$RUN_ARGS --icount" ;;
         --no-build) BUILD=0 ;;
         # One image serves however many instances a driver then starts

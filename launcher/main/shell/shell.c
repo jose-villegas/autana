@@ -241,7 +241,9 @@ offer_console_line(const app_t* current) {
 static void
 console_list_apps(const app_t* current) {
     for (const app_t* app = app_list(); app != NULL; app = app->next) {
-        printf("APPS name=%s running=%d\n", app->name, app == current ? 1 : 0);
+        const char* prefix = app->console != NULL ? app->console->prefix : NULL;
+        printf("APPS name=%s running=%d%s%s\n", app->name, app == current ? 1 : 0, prefix != NULL ? " console=" : "",
+               prefix != NULL ? prefix : "");
     }
     printf("APPS_END\n");
     fflush(stdout);
