@@ -20,7 +20,7 @@ Look the plain name up in the reference below; read `*_template.h` only to chang
 - [The transform cache](#the-transform-cache)
 - [Scalar](#scalar): [mathi.h](#mathih), [mathf.h](#mathfh), [maths.h](#mathsh), [mathx.h](#mathxh), [mathf_round.h](#mathf_roundh), [mathf_rsqrt.h](#mathf_rsqrth), [fixed.h](#fixedh), [rng.h](#rngh), [trig.h](#trigh), [units.h](#unitsh)
 - [Linear](#linear): [vec2](#vec2-f-i-s-x), [vec3](#vec3-f-i-s-x), [quat](#quat-f-x), [affine2](#affine2-f-x), [mat3](#mat3-f), [mat4](#mat4-f-x), [transform](#transform-f-x), [projection](#projection-projectfh-projectxh), [conversions](#conversions-vec_converth)
-- [Geometry](#geometry): [rect](#rect-f-i-s-x)
+- [Geometry](#geometry): [rect](#rect-f-i-s-x), [plane](#plane-f-x)
 - [Examples](#examples)
 - [The float-precision build rules](#the-float-precision-build-rules)
 
@@ -28,10 +28,10 @@ Look the plain name up in the reference below; read `*_template.h` only to chang
 
 | Suffix | Number type | Range | Precision | Families | For |
 |---|---|---|---|---|---|
-| `f` | float, single precision | about ±3.4e38 | 24-bit mantissa, ~7 digits | `vec2f`, `vec3f`, `quatf`, `affine2f`, `mat3f`, `mat4f`, `transformf`, `rectf` | the default |
+| `f` | float, single precision | about ±3.4e38 | 24-bit mantissa, ~7 digits | `vec2f`, `vec3f`, `quatf`, `affine2f`, `mat3f`, `mat4f`, `transformf`, `rectf`, `planef` | the default |
 | `i` | int32 | ±2.1e9 | exact; sums and products wrap | `vec2i`, `vec3i`, `recti` | grid, pixel and cell coordinates |
 | `s` | int16 | -32768 to 32767 | exact; sums and products saturate | `vec2s`, `vec3s`, `rects` | coordinates kept compact where memory is short |
-| `x` | Q16.16 fixed point | ±32768 | 1/65536 (1.5e-5); sine good to ~1e-3; saturates | `vec2x`, `vec3x`, `quatx`, `affine2x`, `mat4x`, `transformx`, `rectx` | deterministic maths, or a chip with no FPU |
+| `x` | Q16.16 fixed point | ±32768 | 1/65536 (1.5e-5); sine good to ~1e-3; saturates | `vec2x`, `vec3x`, `quatx`, `affine2x`, `mat4x`, `transformx`, `rectx`, `planex` | deterministic maths, or a chip with no FPU |
 
 | Rule | Applies to |
 |---|---|
@@ -126,13 +126,14 @@ any type-specific operations.
 | `transform_template.h` | `MATH_DEFINE_TRANSFORM` | position, rotation, scale and the cached matrix | `transformf`, `transformx` |
 | `project_template.h` | `MATH_DEFINE_CLIP_NEAR` | near-plane segment clipping, no type | `projectf`, `projectx` |
 | `rect_template.h` | `MATH_DEFINE_RECT` | half-open rectangles | `rectf`, `recti`, `rects`, `rectx` |
+| `plane_template.h` | `MATH_DEFINE_PLANE` | planes, signed distance, frustum planes from a matrix's rows | `planef`, `planex` |
 
 The macro arguments:
 
 | Argument | What it is |
 |---|---|
 | `P` | The type being made, e.g. `vec3f` (its functions are `vec3f_add`, ...) |
-| `V`, `R`, `Q`, `M` | The vector, rectangle, quaternion and matrix types a family builds on |
+| `V`, `V2`, `R`, `Q`, `M` | The vector, optional vec2, rectangle, quaternion and matrix types a family builds on |
 | `T` | The scalar (`float`, `int`, `int32_t`, `int16_t`); `recti` keeps plain `int` |
 | `W` | The type a dot product sums in (wider than `T` for an integer) |
 | `OPS` | The scalar operations' prefix (`mathf`, `mathi`, `maths`, `mathx`): the static inline functions `OPS_add`, `OPS_mul`, `OPS_one` and the rest in `mathf.h`, `mathi.h`, `maths.h` and `mathx.h`. A family names only the ones it uses, so a type without `OPS_div` or `OPS_sqrt` gets no normalize. |
@@ -159,6 +160,8 @@ model matrix with a `cached` flag.
 `TRANSFORMF_IDENTITY` / `TRANSFORMX_IDENTITY` are initializers with the cache
 valid. A zero-initialized transform has `cached` false, so it builds on first use,
 and its zero scale sends every point to the origin. Code never edits `matrix`.
+
+`MAT4F_IDENTITY` / `MAT4X_IDENTITY` initialize a constant matrix, where `P_identity()` cannot.
 
 ## Scalar
 
@@ -435,6 +438,36 @@ width or height is empty. Queries clamp result sizes to zero.
 | `P_intersect(a, b)` | shared area, with nonnegative extents | $`l = \max(a_x,b_x),\ t = \max(a_y,b_y)`$<br>$`r = \min(a_x+a_w,b_x+b_w),\ b = \min(a_y+a_h,b_y+b_h)`$<br>$`\mathrm{from\_edges}(l,t,r,b)`$ |
 | `P_union(a, b)` | smallest rectangle holding both; empty inputs add nothing; two empty inputs give zero size at a's corner | $`l = \min(a_x,b_x),\ t = \min(a_y,b_y)`$<br>$`r = \max(a_x+a_w,b_x+b_w),\ b = \max(a_y+a_h,b_y+b_h)`$<br>$`\mathrm{from\_edges}(l,t,r,b)`$ for nonempty inputs |
 | `P_contains(r, px, py)` | includes left and top, excludes right and bottom | $`r_x \le px < r_x+r_w \land r_y \le py < r_y+r_h`$ |
+
+### plane (`f x`)
+
+`planef_t` and `planex_t` hold a vec3 `normal` and a scalar `d`; inside is
+`dot(normal, point) + d >= 0`. Distances are scaled by the normal's length
+until the plane is normalized.
+
+| Function | Purpose | Formula |
+|---|---|---|
+| `P_from_normal_point(n, p)` | plane through a point with the given normal | $`(n, -n \cdot p)`$ |
+| `P_from_points(a, b, c)` | winding determines the inside; unnormalized; the points must not be collinear | $`n = (b-a) \times (c-a),\ d = -n \cdot a`$ |
+| `P_distance(p, q)` | signed plane value | $`p_n \cdot q + p_d`$ |
+| `P_normalize(p)` | unit normal; normal must be nonzero; for `x`, `dot(normal, normal)` must be representable, as for `vec3x_normalize` | $`(p_n, p_d)/\lVert p_n\rVert`$ |
+| `P_from_rows(&m, a, b, c, e)` | the plane $`a x + b y + c z + e \ge 0`$ of affine m's target, in m's source space | $`n_j = a m_{0j} + b m_{1j} + c m_{2j},\ d = a m_{03} + b m_{13} + c m_{23} + e`$ |
+| `P_frustum(&m, near_z, center, screen, out)` | near and screen side planes in affine m's source space | `P_from_rows` of each lens-space plane below |
+
+`P_frustum` reads rows as in Gribb and Hartmann<sup>[[77]](../Citations.md#77)</sup>,
+with z as the homogeneous w row of a y-down camera with `screen = center + xy / z`.
+Each output is `P_from_rows` of one lens-space plane, in this order:
+
+| Index | Plane | $`(a, b, c, e)`$ |
+|---|---|---|
+| `PLANE_FRUSTUM_NEAR` | `z >= near_z` | $`(0, 0, 1, -\mathit{near\_z})`$ |
+| `PLANE_FRUSTUM_LEFT` | screen x at or right of `left` | $`(1, 0, c_x - \text{left}, 0)`$ |
+| `PLANE_FRUSTUM_RIGHT` | screen x at or left of `right` | $`(-1, 0, \text{right} - c_x, 0)`$ |
+| `PLANE_FRUSTUM_TOP` | screen y at or below `top` | $`(0, 1, c_y - \text{top}, 0)`$ |
+| `PLANE_FRUSTUM_BOTTOM` | screen y at or above `bottom` | $`(0, -1, \text{bottom} - c_y, 0)`$ |
+
+`PLANE_FRUSTUM_COUNT` sizes the output. There is no far plane, and the
+planes are not normalized.
 
 ## Examples
 
