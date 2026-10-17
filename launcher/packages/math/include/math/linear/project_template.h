@@ -7,7 +7,7 @@
 #include <stdbool.h>
 
 #define MATH_DEFINE_CLIP_NEAR(P, V, T, CROSS)                                                                          \
-    static inline bool P##_clip_near(T near_z, V* p0, V* p1) {                                                         \
+    static inline __attribute__((always_inline)) bool P##_clip_near(T near_z, V* p0, V* p1) {                          \
         const bool front0 = p0->z > near_z;                                                                            \
         const bool front1 = p1->z > near_z;                                                                            \
         if (!front0 && !front1) {                                                                                      \
