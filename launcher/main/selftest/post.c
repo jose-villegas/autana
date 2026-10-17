@@ -15,7 +15,7 @@
 #include "core/memory.h"
 #include "core/timing.h"
 #include "gfx/gfx.h"
-#include "sound/sound_engine.h"
+#include "sound/sound_status.h"
 
 static const char* TAG = "post";
 

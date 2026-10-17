@@ -21,11 +21,13 @@ control_voice(sound_control_t* control, sound_voice_t voice) {
 
 void
 sound_control_init(sound_control_t* control, bool ready) {
-    *control = (sound_control_t){.ready = ready, .app_generation = SOUND_APP_GENERATION_FIRST};
+    *control = (sound_control_t){
+        .ready = ready, .app_generation = SOUND_APP_GENERATION_ENGINE, .next_generation = SOUND_APP_GENERATION_FIRST};
     static const char* const names[] = {"SYSTEM", "SFX", "MUSIC"};
     _Static_assert(sizeof names / sizeof names[0] == SOUND_BUS_BUILTIN_COUNT, "built-in bus names");
     for (int i = 0; i < SOUND_BUS_BUILTIN_COUNT; i++) {
         control->buses[i].used = true;
+        control->buses[i].owner = SOUND_APP_GENERATION_ENGINE;
         control->buses[i].gain_pct = SOUND_GAIN_MAX_PCT;
         (void)strcpy(control->buses[i].name, names[i]);
     }
@@ -38,9 +40,9 @@ sound_control_play(sound_control_t* control, const sound_t* sound, const sound_p
                                            : (sound_play_opts_t){.bus = SOUND_BUS_SFX,
                                                                  .gain_pct = SOUND_GAIN_MAX_PCT,
                                                                  .priority = SOUND_PRIORITY_NORMAL};
-    if (!control->ready || (!tone_hz && (!sound || !sound->data || !sound->frames))
-        || options.bus.id >= SOUND_BUS_COUNT_MAX || !control->buses[options.bus.id].used
-        || options.gain_pct > SOUND_GAIN_MAX_PCT) {
+    if (!control->ready || control->app_generation == SOUND_APP_GENERATION_NONE
+        || (!tone_hz && (!sound || !sound->data || !sound->frames)) || options.bus.id >= SOUND_BUS_COUNT_MAX
+        || !control->buses[options.bus.id].used || options.gain_pct > SOUND_GAIN_MAX_PCT) {
         return SOUND_VOICE_NULL;
     }
     int slot = 0;
@@ -60,13 +62,24 @@ sound_control_play(sound_control_t* control, const sound_t* sound, const sound_p
     const uint32_t generation =
         (voice->handle.id ? (voice->handle.id - 1) / SOUND_VOICE_COUNT + 1 : 0) % SOUND_VOICE_GENERATIONS;
     const sound_voice_t handle = {.id = generation * SOUND_VOICE_COUNT + (uint32_t)slot + 1};
-    *voice = (sound_control_voice_t){.handle = handle, .started = ++control->starts, .opts = options, .playing = true};
+    *voice = (sound_control_voice_t){.handle = handle,
+                                     .started = ++control->starts,
+                                     .opts = options,
+                                     .owner = control->app_generation,
+                                     .playing = true};
     *command = (sound_command_t){.kind = SOUND_COMMAND_PLAY,
                                  .app_generation = control->app_generation,
                                  .voice = handle,
-                                 .opts = options,
-                                 .tone_hz = tone_hz};
-    command->sound = sound;
+                                 .bus = options.bus,
+                                 .gain_pct = options.gain_pct,
+                                 .priority = options.priority,
+                                 .loop = options.loop};
+    command->tone_source = tone_hz != 0;
+    if (tone_hz) {
+        command->tone_hz = tone_hz;
+    } else {
+        command->sound = sound;
+    }
     return handle;
 }
 
@@ -78,8 +91,8 @@ sound_control_voice_command(sound_control_t* control, sound_voice_t handle, soun
         return false;
     }
     *command = (sound_command_t){
-        .kind = kind, .voice = handle, .opts = voice->opts, .app_generation = control->app_generation};
-    command->opts.gain_pct = gain;
+        .kind = kind, .voice = handle, .bus = voice->opts.bus, .app_generation = control->app_generation};
+    command->gain_pct = gain;
     if (kind == SOUND_COMMAND_STOP) {
         voice->playing = false;
         voice->audible = false;
@@ -102,7 +115,7 @@ sound_control_is_audible(const sound_control_t* control, sound_voice_t voice) {
 
 sound_bus_t
 sound_control_bus_create(sound_control_t* control, const char* name, sound_command_t* command) {
-    if (!control->ready || !name) {
+    if (!control->ready || control->app_generation == SOUND_APP_GENERATION_NONE || !name) {
         return SOUND_BUS_INVALID;
     }
     size_t length = 0;
@@ -115,11 +128,10 @@ sound_control_bus_create(sound_control_t* control, const char* name, sound_comma
     for (int i = SOUND_BUS_BUILTIN_COUNT; i < SOUND_BUS_COUNT_MAX; i++) {
         if (!control->buses[i].used) {
             sound_bus_state_t* bus = &control->buses[i];
-            *bus = (sound_bus_state_t){.used = true, .gain_pct = SOUND_GAIN_MAX_PCT};
+            *bus = (sound_bus_state_t){.used = true, .gain_pct = SOUND_GAIN_MAX_PCT, .owner = control->app_generation};
             memcpy(bus->name, name, length + 1);
-            *command = (sound_command_t){.kind = SOUND_COMMAND_BUS_CREATE,
-                                         .app_generation = control->app_generation,
-                                         .opts = {.bus = {.id = (uint8_t)i}}};
+            *command = (sound_command_t){
+                .kind = SOUND_COMMAND_BUS_CREATE, .app_generation = control->app_generation, .bus = {.id = (uint8_t)i}};
             return (sound_bus_t){.id = (uint8_t)i};
         }
     }
@@ -134,8 +146,7 @@ sound_control_bus_command(sound_control_t* control, sound_bus_t bus, sound_comma
         || (kind == SOUND_COMMAND_BUS_DESTROY && (bus.id < SOUND_BUS_BUILTIN_COUNT || bus.id >= SOUND_BUS_COUNT_MAX))) {
         return false;
     }
-    *command = (sound_command_t){
-        .kind = kind, .app_generation = control->app_generation, .opts = {.bus = bus, .gain_pct = gain}};
+    *command = (sound_command_t){.kind = kind, .app_generation = control->app_generation, .bus = bus, .gain_pct = gain};
     if (kind == SOUND_COMMAND_BUS_DESTROY) {
         control->buses[bus.id].used = false;
         for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
@@ -155,19 +166,36 @@ sound_control_exit(sound_control_t* control) {
     if (!control->ready) {
         return;
     }
-    control->app_generation++;
-    if (control->app_generation == SOUND_APP_GENERATION_NONE) {
-        control->app_generation = SOUND_APP_GENERATION_FIRST;
-    }
+    const uint32_t retired = control->app_generation;
+    control->app_generation = SOUND_APP_GENERATION_NONE;
+    control->reset_gains = true;
     for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
-        if (control->voices[i].opts.bus.id != SOUND_BUS_SYSTEM.id) {
+        if (control->voices[i].owner == retired && retired != SOUND_APP_GENERATION_ENGINE) {
             control->voices[i].playing = false;
             control->voices[i].audible = false;
         }
     }
     for (int i = SOUND_BUS_BUILTIN_COUNT; i < SOUND_BUS_COUNT_MAX; i++) {
-        control->buses[i].used = false;
+        if (control->buses[i].owner == retired && retired != SOUND_APP_GENERATION_ENGINE) {
+            control->buses[i].used = false;
+        }
     }
+    for (int i = 1; i < SOUND_BUS_BUILTIN_COUNT; i++) {
+        control->buses[i].gain_pct = SOUND_GAIN_MAX_PCT;
+    }
+}
+
+void
+sound_control_begin_app(sound_control_t* control) {
+    control->app_generation = control->next_generation++;
+    if (control->next_generation < SOUND_APP_GENERATION_FIRST) {
+        control->next_generation = SOUND_APP_GENERATION_FIRST;
+    }
+}
+
+void
+sound_control_end_app(sound_control_t* control) {
+    control->app_generation = SOUND_APP_GENERATION_ENGINE;
 }
 
 uint32_t
@@ -209,12 +237,12 @@ sound_mixer_init(sound_mixer_t* mixer) {
 
 static bool
 apply_bus_command(sound_mixer_t* mixer, const sound_command_t* command) {
-    const int bus = command->opts.bus.id;
+    const int bus = command->bus.id;
     if (command->kind == SOUND_COMMAND_BUS_GAIN) {
         if (bus == SOUND_BUS_MASTER.id) {
-            mixer->master_gain = command->opts.gain_pct;
+            mixer->master_gain = command->gain_pct;
         } else if (bus < SOUND_BUS_COUNT_MAX) {
-            mixer->bus_gain[bus] = command->opts.gain_pct;
+            mixer->bus_gain[bus] = command->gain_pct;
         }
         return true;
     }
@@ -235,8 +263,14 @@ apply_bus_command(sound_mixer_t* mixer, const sound_command_t* command) {
 
 void
 sound_mixer_apply(sound_mixer_t* mixer, const sound_command_t* command, uint32_t app_generation) {
-    const int bus = command->opts.bus.id;
-    if (bus != SOUND_BUS_SYSTEM.id && command->app_generation != app_generation) {
+    if (command->kind == SOUND_COMMAND_APP_EXIT) {
+        mixer->master_gain = SOUND_GAIN_MAX_PCT;
+        for (int i = 1; i < SOUND_BUS_BUILTIN_COUNT; i++) {
+            mixer->bus_gain[i] = SOUND_GAIN_MAX_PCT;
+        }
+        return;
+    }
+    if (command->app_generation != SOUND_APP_GENERATION_ENGINE && command->app_generation != app_generation) {
         return;
     }
     if (apply_bus_command(mixer, command)) {
@@ -249,10 +283,10 @@ sound_mixer_apply(sound_mixer_t* mixer, const sound_command_t* command, uint32_t
     sound_mix_voice_t* voice = &mixer->voices[slot];
     if (command->kind == SOUND_COMMAND_PLAY) {
         *voice = (sound_mix_voice_t){.handle = command->voice,
-                                     .bus = command->opts.bus,
-                                     .gain_pct = command->opts.gain_pct,
-                                     .loop = command->opts.loop,
-                                     .tone_source = command->tone_hz != 0,
+                                     .bus = command->bus,
+                                     .gain_pct = command->gain_pct,
+                                     .loop = command->loop,
+                                     .tone_source = command->tone_source,
                                      .playing = true};
         if (voice->tone_source) {
             audio_tone_init(&voice->source.tone, command->tone_hz);
@@ -263,7 +297,7 @@ sound_mixer_apply(sound_mixer_t* mixer, const sound_command_t* command, uint32_t
         if (command->kind == SOUND_COMMAND_STOP) {
             voice->playing = false;
         } else if (command->kind == SOUND_COMMAND_GAIN) {
-            voice->gain_pct = command->opts.gain_pct;
+            voice->gain_pct = command->gain_pct;
         }
     }
 }
@@ -342,8 +376,10 @@ sound_mixer_render(sound_mixer_t* mixer, int16_t* out, int32_t* accumulator, int
         }
         const size_t count = read_voice(voice, scratch, frames);
         const uint32_t gain = (uint32_t)voice->gain_pct * factors[voice->bus.id];
+        const int32_t factor =
+            (int32_t)(((uint64_t)gain * SOUND_GAIN_ONE) / (SOUND_GAIN_FACTOR_SCALE * SOUND_GAIN_MAX_PCT));
         for (size_t j = 0; j < count; j++) {
-            accumulator[j] += (int32_t)((int64_t)scratch[j] * gain / (SOUND_GAIN_FACTOR_SCALE * SOUND_GAIN_MAX_PCT));
+            accumulator[j] += (scratch[j] * factor) >> SOUND_GAIN_SHIFT;
         }
     }
     for (size_t i = 0; i < frames; i++) {

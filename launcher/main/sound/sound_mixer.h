@@ -1,4 +1,4 @@
-/* Portable control and rendering state. Callers serialize control operations, never PCM decoding. */
+/* Portable control and rendering state. Callers serialize control state; the renderer alone owns cursors and PCM decoding. */
 #pragma once
 
 #include <stddef.h>
@@ -7,13 +7,16 @@
 #include "audio/audio_tone.h"
 #include "sound/sound_play.h"
 
-#define SOUND_BUS_BUILTIN_COUNT    3
-#define SOUND_BUS_NAME_MAX         24
-#define SOUND_APP_GENERATION_NONE  0u
-#define SOUND_APP_GENERATION_FIRST (SOUND_APP_GENERATION_NONE + 1u)
-#define SOUND_AMP_IDLE_MS          2000
-#define SOUND_VOICE_GENERATIONS    (UINT32_MAX / SOUND_VOICE_COUNT)
-#define SOUND_GAIN_FACTOR_SCALE    (SOUND_GAIN_MAX_PCT * SOUND_GAIN_MAX_PCT)
+#define SOUND_BUS_BUILTIN_COUNT     3
+#define SOUND_BUS_NAME_MAX          24
+#define SOUND_APP_GENERATION_NONE   0u
+#define SOUND_APP_GENERATION_ENGINE 1u
+#define SOUND_APP_GENERATION_FIRST  (SOUND_APP_GENERATION_ENGINE + 1u)
+#define SOUND_AMP_IDLE_MS           2000
+#define SOUND_VOICE_GENERATIONS     (UINT32_MAX / SOUND_VOICE_COUNT)
+#define SOUND_GAIN_SHIFT            15
+#define SOUND_GAIN_ONE              (1u << SOUND_GAIN_SHIFT)
+#define SOUND_GAIN_FACTOR_SCALE     (SOUND_GAIN_MAX_PCT * SOUND_GAIN_MAX_PCT)
 
 typedef enum {
     SOUND_COMMAND_CAPTURE_OPEN,
@@ -23,27 +26,49 @@ typedef enum {
     SOUND_COMMAND_GAIN,
     SOUND_COMMAND_BUS_GAIN,
     SOUND_COMMAND_BUS_CREATE,
-    SOUND_COMMAND_BUS_DESTROY
+    SOUND_COMMAND_BUS_DESTROY,
+    SOUND_COMMAND_APP_EXIT
 } sound_command_kind_t;
 
-typedef struct {
-    sound_command_kind_t kind;
-    uint32_t app_generation;
-    sound_voice_t voice;
-    sound_play_opts_t opts;
-    const sound_t* sound;
-    uint16_t tone_hz;
-} sound_command_t;
+#define SOUND_COMMAND_KIND_BITS 4
+_Static_assert(SOUND_COMMAND_APP_EXIT < (1u << SOUND_COMMAND_KIND_BITS), "command kind must fit the queue");
 
 typedef struct {
-    sound_voice_t handle;
+    sound_voice_t voice;
+    uint32_t app_generation;
+
+    union {
+        const sound_t* sound;
+        uint32_t tone_hz;
+        void* waiter;
+    };
+
+    sound_bus_t bus;
+    uint8_t gain_pct;
+    uint8_t priority;
+    uint8_t loop        : 1;
+    uint8_t kind        : 4;
+    uint8_t tone_source : 1;
+} sound_command_t;
+
+#define SOUND_COMMAND_BYTES 16
+#if UINTPTR_MAX == UINT32_MAX
+_Static_assert(sizeof(sound_command_t) == SOUND_COMMAND_BYTES, "queue command exceeds its RAM budget");
+#else
+_Static_assert(sizeof(sound_command_t) == SOUND_COMMAND_BYTES + sizeof(void*), "host queue layout");
+#endif
+
+typedef struct {
     uint64_t started;
+    sound_voice_t handle;
     sound_play_opts_t opts;
+    uint32_t owner;
     bool playing;
     bool audible;
 } sound_control_voice_t;
 
 typedef struct {
+    uint32_t owner;
     char name[SOUND_BUS_NAME_MAX];
     uint8_t gain_pct;
     bool used;
@@ -54,8 +79,10 @@ typedef struct {
     sound_bus_state_t buses[SOUND_BUS_COUNT_MAX];
     uint64_t starts;
     uint32_t app_generation;
+    uint32_t next_generation;
     uint32_t dropped_commands;
     uint32_t read_generation;
+    bool reset_gains;
     bool ready;
 } sound_control_t;
 
@@ -95,6 +122,8 @@ bool sound_control_is_audible(const sound_control_t* control, sound_voice_t voic
 sound_bus_t sound_control_bus_create(sound_control_t* control, const char* name, sound_command_t* command);
 bool sound_control_bus_command(sound_control_t* control, sound_bus_t bus, sound_command_kind_t kind, uint8_t gain,
                                sound_command_t* command);
+void sound_control_begin_app(sound_control_t* control);
+void sound_control_end_app(sound_control_t* control);
 void sound_control_exit(sound_control_t* control);
 uint32_t sound_control_begin_read(sound_control_t* control);
 void sound_control_end_read(sound_control_t* control);

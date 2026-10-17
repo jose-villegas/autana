@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "asset/asset_store.h"
 #include "console/console_verbs.h"
 #include "console/verbs/console_sound_parse.h"
 #include "core/memory.h"
@@ -26,7 +27,7 @@ console_sound_view(const char* name) {
         }
     }
     sound_t sound;
-    if (sound_open_engine(name, &sound) != ASSET_OK) {
+    if (sound_open(asset_store_pack(ASSET_ENGINE_PACK), name, &sound) != ASSET_OK) {
         return NULL;
     }
     console_sound_view_t* view = memory_alloc(sizeof *view, MEMORY_PSRAM);

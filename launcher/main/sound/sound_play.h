@@ -11,6 +11,7 @@
 #define SOUND_BUS_COUNT_MAX   8
 #define SOUND_GAIN_MAX_PCT    AUDIO_OUT_VOLUME_MAX_PCT
 #define SOUND_PRIORITY_NORMAL 128
+#define SOUND_PRIORITY_MAX    UINT8_MAX
 #define SOUND_BUS_SYSTEM      ((sound_bus_t){.id = 0})
 #define SOUND_BUS_SFX         ((sound_bus_t){.id = 1})
 #define SOUND_BUS_MUSIC       ((sound_bus_t){.id = 2})
@@ -34,6 +35,7 @@ typedef struct {
 } sound_play_opts_t;
 
 /* Keep sound_t and its pack alive while it plays: use app state, never a stack local.
+ * A full table always steals the lowest-priority oldest voice, even for a lower-priority new play.
  * NULL options select SFX, full gain, normal priority and one-shot playback. */
 sound_voice_t sound_play(const sound_t* sound, const sound_play_opts_t* opts);
 void sound_stop(sound_voice_t voice);
