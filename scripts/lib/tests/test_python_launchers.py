@@ -62,6 +62,13 @@ class CmdLauncherTests(unittest.TestCase):
         self.assertIn("STARTED " + str(sys.version_info[:2]), result.stdout)
         self.assertIn("['argument with spaces']", result.stdout)
 
+    def test_preserves_command_exit_status(self):
+        exit_status = 75
+        (self.root / "scripts/autana/autana.py").write_text(
+            'import sys\nsys.exit(int(sys.argv[1]))\n')
+        result = self.launch(py_version="current", arguments=[str(exit_status)])
+        self.assertEqual(result.returncode, exit_status, result.stderr)
+
     def test_argument_fidelity(self):
         arguments = ["argument with spaces", "50%", "q^r", "%NAME%"]
         result = self.launch(py_version="current", arguments=arguments)
