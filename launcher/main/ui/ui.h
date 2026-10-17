@@ -238,9 +238,9 @@ bool ui_dropdown(recti_t r, const char* label, int* index, const char* const* na
 bool ui_dropdown_icons(recti_t r, const char* label, int* index, const char* const* names,
                        const draw_image_t* const* icons, int count);
 
-/* Text is clipped to its rectangle and centred vertically. ui_text_height()
- * is one line's height at the current theme's text scale. */
+/* One line's height at the current theme's text scale. */
 int ui_text_height(void);
+/* Text is clipped to its rectangle and centred vertically. */
 void ui_text(recti_t r, const char* s);
 void ui_text_right(recti_t r, const char* s);
 void ui_text_centre(recti_t r, const char* s);

@@ -20,10 +20,9 @@
  * already a dense list with no obvious room, and a second page costs
  * nothing the report's own layout has to account for.
  *
- * The toggle screen is built with ui.h like any other app UI, a real
- * toggle, tappable, drawn and dirty-tracked the same way the launcher's own
- * menu is, rather than hand-rolling a one-off control that reads a button
- * directly. Any future developer toggle belongs on this same page as another
+ * The toggle screen is built with ui.h like any other app UI, so it is
+ * drawn and dirty-tracked the way the launcher's own menu is, rather than
+ * hand-rolling a one-off control that reads a button directly. Any future developer toggle belongs on this same page as another
  * ui_toggle() row, not as its own bespoke screen.
  */
 
