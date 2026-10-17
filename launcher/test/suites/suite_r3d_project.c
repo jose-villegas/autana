@@ -134,6 +134,14 @@ test_segment_with_both_ends_behind_returns_false(void) {
     TEST_ASSERT_FALSE(r3d_project_segment_cs(p0, p1, &lens, &ax, &ay, &bx, &by));
 }
 
+static void
+assert_screen_point(const projectf_t* lens, vec3f_t point, int x, int y) {
+    int expected_x, expected_y;
+    r3d_project_screen(point, lens, &expected_x, &expected_y);
+    TEST_ASSERT_EQUAL_INT(expected_x, x);
+    TEST_ASSERT_EQUAL_INT(expected_y, y);
+}
+
 /* near_z sits exactly halfway between the two z's, so the crossing point is
  * plain averaging rather than a hand copy of the function's formula. */
 static void
@@ -148,14 +156,8 @@ test_one_end_behind_clips_to_the_near_plane_crossing(void) {
     TEST_ASSERT_TRUE(r3d_project_segment_cs(p0, p1, &lens, &ax, &ay, &bx, &by));
 
     const vec3f_t at_near_z = {(p0.x + p1.x) / 2.0F, (p0.y + p1.y) / 2.0F, view.near_z};
-    int ex, ey, fx, fy;
-    r3d_project_screen(at_near_z, &lens, &ex, &ey);
-    r3d_project_screen(p1, &lens, &fx, &fy);
-
-    TEST_ASSERT_EQUAL_INT(ex, ax);
-    TEST_ASSERT_EQUAL_INT(ey, ay);
-    TEST_ASSERT_EQUAL_INT(fx, bx);
-    TEST_ASSERT_EQUAL_INT(fy, by);
+    assert_screen_point(&lens, at_near_z, ax, ay);
+    assert_screen_point(&lens, p1, bx, by);
 }
 
 static void
@@ -168,14 +170,8 @@ test_both_ends_in_front_matches_projecting_each_point(void) {
 
     TEST_ASSERT_TRUE(r3d_project_segment_cs(p0, p1, &lens, &ax, &ay, &bx, &by));
 
-    int ex0, ey0, ex1, ey1;
-    r3d_project_screen(p0, &lens, &ex0, &ey0);
-    r3d_project_screen(p1, &lens, &ex1, &ey1);
-
-    TEST_ASSERT_EQUAL_INT(ex0, ax);
-    TEST_ASSERT_EQUAL_INT(ey0, ay);
-    TEST_ASSERT_EQUAL_INT(ex1, bx);
-    TEST_ASSERT_EQUAL_INT(ey1, by);
+    assert_screen_point(&lens, p0, ax, ay);
+    assert_screen_point(&lens, p1, bx, by);
 }
 
 /* A point exactly at the camera plane divides by zero; the pixel is a
