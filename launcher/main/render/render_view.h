@@ -15,6 +15,7 @@ typedef struct {
     viewport_t viewport;
 } render_view_t;
 
+/* The view as a pinhole lens: one focal length on both axes. */
 static inline projectf_t
 render_view_lens(const render_view_t* view) {
     return (projectf_t){view->pixels_per_unit, view->pixels_per_unit, view->center_x, view->center_y, view->near_z};
