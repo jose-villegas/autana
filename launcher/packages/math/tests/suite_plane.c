@@ -76,67 +76,121 @@ test_oblique_normalization_scales_normal_and_distance(void) {
     assert_fixed_plane(unit, fixed_unit, PLANE_OBLIQUE_QUERY);
 }
 
-static void
-test_frustum_edges_and_affine_source_space(void) {
-    const mat4f_t identity = mat4f_identity();
+/* The frustum built through the identity and through PLANE_MAP, in both number types. */
+typedef struct {
     planef_t planes[PLANE_FRUSTUM_COUNT], mapped[PLANE_FRUSTUM_COUNT];
     planex_t fixed[PLANE_FRUSTUM_COUNT], fixed_mapped[PLANE_FRUSTUM_COUNT];
-    const mat4x_t fixed_identity = mat4x_identity();
-    mat4x_t fixed_map;
+} frustum_fixture_t;
+
+static mat4x_t
+fixed_matrix(const mat4f_t* m) {
+    mat4x_t out;
     for (int r = 0; r < 4; r++) {
         for (int c = 0; c < 4; c++) {
-            fixed_map.m[r][c] = mathf_to_x(PLANE_MAP.m[r][c]);
+            out.m[r][c] = mathf_to_x(m->m[r][c]);
         }
     }
+    return out;
+}
+
+static void
+frustum_fixture(frustum_fixture_t* f) {
+    const mat4f_t identity = mat4f_identity();
+    const mat4x_t fixed_identity = mat4x_identity();
+    const mat4x_t fixed_map = fixed_matrix(&PLANE_MAP);
     const rectx_t screen = {mathf_to_x(PLANE_SCREEN.x), mathf_to_x(PLANE_SCREEN.y), mathf_to_x(PLANE_SCREEN.w),
                             mathf_to_x(PLANE_SCREEN.h)};
-    planef_frustum(&identity, PLANE_NEAR, PLANE_CENTER, PLANE_SCREEN, planes);
-    planef_frustum(&PLANE_MAP, PLANE_NEAR, PLANE_CENTER, PLANE_SCREEN, mapped);
-    planex_frustum(&fixed_identity, mathf_to_x(PLANE_NEAR), vec2x_from_vec2f(PLANE_CENTER), screen, fixed);
-    planex_frustum(&fixed_map, mathf_to_x(PLANE_NEAR), vec2x_from_vec2f(PLANE_CENTER), screen, fixed_mapped);
+    const vec2x_t center = vec2x_from_vec2f(PLANE_CENTER);
+    planef_frustum(&identity, PLANE_NEAR, PLANE_CENTER, PLANE_SCREEN, f->planes);
+    planef_frustum(&PLANE_MAP, PLANE_NEAR, PLANE_CENTER, PLANE_SCREEN, f->mapped);
+    planex_frustum(&fixed_identity, mathf_to_x(PLANE_NEAR), center, screen, f->fixed);
+    planex_frustum(&fixed_map, mathf_to_x(PLANE_NEAR), center, screen, f->fixed_mapped);
+}
+
+/* The screen edge a side plane passes through: left, right, top, bottom. */
+static float
+frustum_edge(int edge) {
     const float edges[] = {PLANE_SCREEN.x, rectf_right(PLANE_SCREEN), PLANE_SCREEN.y, rectf_bottom(PLANE_SCREEN)};
+    return edges[edge - PLANE_FRUSTUM_LEFT];
+}
+
+/* A point at PLANE_DEPTH whose screen position is PLANE_EDGE_STEP inside (side 1),
+ * on (0) or outside (-1) one side plane's edge, centred on the other axis. */
+static vec3f_t
+edge_point(int edge, int side) {
+    const bool low_edge = edge == PLANE_FRUSTUM_LEFT || edge == PLANE_FRUSTUM_TOP;
+    const float inward = low_edge ? mathf_one() : -mathf_one();
+    const float screen = frustum_edge(edge) + ((float)side * PLANE_EDGE_STEP * inward);
+    vec3f_t q = {0.0F, 0.0F, PLANE_DEPTH};
+    if (edge <= PLANE_FRUSTUM_RIGHT) {
+        q.x = (screen - PLANE_CENTER.x) * q.z;
+    } else {
+        q.y = (screen - PLANE_CENTER.y) * q.z;
+    }
+    return q;
+}
+
+static void
+test_frustum_edge_points_are_outside_only_the_plane_they_cross(void) {
+    frustum_fixture_t f;
+    frustum_fixture(&f);
     for (int edge = PLANE_FRUSTUM_LEFT; edge < PLANE_FRUSTUM_COUNT; edge++) {
         for (int side = -1; side <= 1; side++) {
-            vec3f_t q = {0.0F, 0.0F, PLANE_DEPTH};
-            const float direction =
-                (edge == PLANE_FRUSTUM_LEFT || edge == PLANE_FRUSTUM_TOP) ? mathf_one() : -mathf_one();
-            const float coordinate = edges[edge - PLANE_FRUSTUM_LEFT] + (float)side * PLANE_EDGE_STEP * direction;
-            if (edge <= PLANE_FRUSTUM_RIGHT) {
-                q.x = (coordinate - PLANE_CENTER.x) * q.z;
-            } else {
-                q.y = (coordinate - PLANE_CENTER.y) * q.z;
-            }
+            const vec3f_t q = edge_point(edge, side);
             for (int p = 0; p < PLANE_FRUSTUM_COUNT; p++) {
-                const float d = planef_distance(planes[p], q);
+                const float d = planef_distance(f.planes[p], q);
                 if (p == edge && side == 0) {
                     TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, 0.0F, d);
                 } else {
                     TEST_ASSERT_EQUAL(p != edge || side > 0, d >= 0.0F);
                 }
-                assert_fixed_plane(planes[p], fixed[p], q);
-                const float mapped_distance = planef_distance(mapped[p], q);
-                const float camera_distance = planef_distance(planes[p], mat4f_apply(&PLANE_MAP, q));
-                TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, camera_distance, mapped_distance);
-                TEST_ASSERT_EQUAL(camera_distance >= 0.0F, mapped_distance >= 0.0F);
-                assert_fixed_plane(mapped[p], fixed_mapped[p], q);
+                assert_fixed_plane(f.planes[p], f.fixed[p], q);
             }
         }
     }
+}
+
+static void
+test_frustum_through_a_map_tests_the_mapped_point(void) {
+    frustum_fixture_t f;
+    frustum_fixture(&f);
+    for (int edge = PLANE_FRUSTUM_LEFT; edge < PLANE_FRUSTUM_COUNT; edge++) {
+        for (int side = -1; side <= 1; side++) {
+            const vec3f_t q = edge_point(edge, side);
+            for (int p = 0; p < PLANE_FRUSTUM_COUNT; p++) {
+                const float mapped_distance = planef_distance(f.mapped[p], q);
+                const float camera_distance = planef_distance(f.planes[p], mat4f_apply(&PLANE_MAP, q));
+                TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, camera_distance, mapped_distance);
+                TEST_ASSERT_EQUAL(camera_distance >= 0.0F, mapped_distance >= 0.0F);
+                assert_fixed_plane(f.mapped[p], f.fixed_mapped[p], q);
+            }
+        }
+    }
+}
+
+static void
+test_frustum_behind_near_is_outside_near_only(void) {
+    frustum_fixture_t f;
+    frustum_fixture(&f);
     const vec3f_t behind = {0.0F, 0.0F, PLANE_NEAR - PLANE_EDGE_STEP};
     for (int p = 0; p < PLANE_FRUSTUM_COUNT; p++) {
-        TEST_ASSERT_EQUAL(p != PLANE_FRUSTUM_NEAR, planef_distance(planes[p], behind) >= 0.0F);
-        assert_fixed_plane(planes[p], fixed[p], behind);
+        TEST_ASSERT_EQUAL(p != PLANE_FRUSTUM_NEAR, planef_distance(f.planes[p], behind) >= 0.0F);
+        assert_fixed_plane(f.planes[p], f.fixed[p], behind);
     }
-    for (int x = 0; x < 2; x++) {
-        for (int y = 0; y < 2; y++) {
-            const vec3f_t corner = {(edges[x] - PLANE_CENTER.x) * PLANE_DEPTH,
-                                    (edges[2 + y] - PLANE_CENTER.y) * PLANE_DEPTH, PLANE_DEPTH};
-            TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, 0.0F,
-                                     planef_distance(planes[PLANE_FRUSTUM_LEFT + x], corner));
-            TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, 0.0F,
-                                     planef_distance(planes[PLANE_FRUSTUM_TOP + y], corner));
+}
+
+static void
+test_frustum_corner_rays_lie_on_both_side_planes(void) {
+    frustum_fixture_t f;
+    frustum_fixture(&f);
+    for (int x = PLANE_FRUSTUM_LEFT; x <= PLANE_FRUSTUM_RIGHT; x++) {
+        for (int y = PLANE_FRUSTUM_TOP; y <= PLANE_FRUSTUM_BOTTOM; y++) {
+            const vec3f_t corner = {(frustum_edge(x) - PLANE_CENTER.x) * PLANE_DEPTH,
+                                    (frustum_edge(y) - PLANE_CENTER.y) * PLANE_DEPTH, PLANE_DEPTH};
+            TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, 0.0F, planef_distance(f.planes[x], corner));
+            TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, 0.0F, planef_distance(f.planes[y], corner));
             for (int p = 0; p < PLANE_FRUSTUM_COUNT; p++) {
-                assert_fixed_plane(planes[p], fixed[p], corner);
+                assert_fixed_plane(f.planes[p], f.fixed[p], corner);
             }
         }
     }
@@ -146,7 +200,10 @@ void
 suite_plane(void) {
     RUN_TEST(test_construction_winding_distance_and_normalize);
     RUN_TEST(test_oblique_normalization_scales_normal_and_distance);
-    RUN_TEST(test_frustum_edges_and_affine_source_space);
+    RUN_TEST(test_frustum_edge_points_are_outside_only_the_plane_they_cross);
+    RUN_TEST(test_frustum_through_a_map_tests_the_mapped_point);
+    RUN_TEST(test_frustum_behind_near_is_outside_near_only);
+    RUN_TEST(test_frustum_corner_rays_lie_on_both_side_planes);
 }
 
 SUITE_REGISTER(suite_plane);
