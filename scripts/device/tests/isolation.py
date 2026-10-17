@@ -1,4 +1,4 @@
-"""Keeps the device and autana test suites out of the real device records.
+"""Keeps the suites off real device records, boards and the machine's ESP-IDF install.
 
 Every test module under scripts/device/tests and scripts/autana/tests
 imports this before anything else. Once per test process it makes one
@@ -25,6 +25,14 @@ from pathlib import Path
 import port_guard  # noqa: F401
 
 CHECKOUT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(CHECKOUT / "launcher/tools/build"))
+import espressif
+
+for name in ("IDF_PATH", "IDF_TOOLS_PATH", "IDF_PYTHON_ENV_PATH"):
+    os.environ.pop(name, None)
+espressif.persistent_environment = lambda key: None
+espressif.install_roots = lambda home: []
+
 TEMP = Path(tempfile.mkdtemp(prefix="autana-device-tests-"))
 
 
