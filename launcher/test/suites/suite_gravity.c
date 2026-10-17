@@ -464,24 +464,31 @@ test_recovery_full_gain_and_exit(void) {
 }
 
 static void
+check_gyro_range_sample(int axis, int counts, bool under) {
+    g = (gravity_t){.primed = true, .down = {0, 0, -1}};
+    const input_motion_t m = {.rotation = {axis == 0 ? counts : 0, axis == 1 ? counts : 0, axis == 2 ? counts : 0}};
+    gravity_update(&g, &m, STEP_MS);
+    TEST_ASSERT_EQUAL_INT(!under, g.recovering);
+    TEST_ASSERT_EQUAL_UINT32(under ? 0 : GRAVITY_RECOVER_MS, g.distrust_ms);
+    const float dt = (float)STEP_MS / MATH_MS_PER_S;
+    const float angle = (float)counts / INPUT_ROTATION_ONE_DPS * MATH_PI / (2.0F * QUARTER_TURN_DEG) * dt;
+    const vec3f_t expected = vec3f_normalize((vec3f_t){axis == 1 ? angle : 0, axis == 0 ? -angle : 0, -1});
+    assert_vector(expected, g.down, FLOAT_TOLERANCE);
+    if (!under) {
+        const input_motion_t accel = sample((vec3f_t){0, 1.0F + PARTIAL_TRUST_G, 0}, (vec3f_t){0});
+        const vec3f_t recovered = vec3f_normalize(vec3f_lerp(g.down, (vec3f_t){0, 1, 0}, dt / (GRAVITY_TAU_S + dt)));
+        gravity_update(&g, &accel, STEP_MS);
+        assert_vector(recovered, g.down, FLOAT_TOLERANCE);
+    }
+}
+
+static void
 test_gyro_overrange_boundary(void) {
     const int threshold = (int)ceilf(GRAVITY_GYRO_OVERRANGE_DPS * INPUT_ROTATION_ONE_DPS);
     for (int axis = 0; axis < 3; axis++) {
         for (int sign = -1; sign <= 1; sign += 2) {
             for (int under = 0; under <= 1; under++) {
-                g = (gravity_t){.primed = true, .down = {0, 0, -1}};
-                const int counts = sign * (threshold - under);
-                const input_motion_t m = {
-                    .rotation = {axis == 0 ? counts : 0, axis == 1 ? counts : 0, axis == 2 ? counts : 0}};
-                gravity_update(&g, &m, STEP_MS);
-                TEST_ASSERT_EQUAL_INT(!under, g.recovering);
-                TEST_ASSERT_EQUAL_UINT32(under ? 0 : GRAVITY_RECOVER_MS, g.distrust_ms);
-                if (!under) {
-                    assert_vector((vec3f_t){0, 0, -1}, g.down, 0);
-                    const input_motion_t accel = sample((vec3f_t){0, 1.0F + PARTIAL_TRUST_G, 0}, (vec3f_t){0});
-                    gravity_update(&g, &accel, STEP_MS);
-                    TEST_ASSERT_TRUE(g.down.y > 0 && g.down.y < 1);
-                }
+                check_gyro_range_sample(axis, sign * (threshold - under), under);
             }
         }
     }
