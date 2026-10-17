@@ -202,8 +202,16 @@ def _override(key, env, persistent):
     return value
 
 
+def install_roots(home):
+    """Default ESP-IDF installation search roots for this platform."""
+    roots = [home / "esp"]
+    if os.name == "nt":
+        roots = [Path("C:/Espressif"), Path("C:/Espressif/frameworks"), *roots]
+    return roots
+
+
 def find_idf(project=None, *, environ=None, roots=None,
-             persistent=persistent_environment, home=None):
+             persistent=None, home=None):
     """Best-effort checkout and tools paths; with no install found it
     falls back to ~/esp/esp-idf and ~/.espressif.
 
@@ -213,6 +221,7 @@ def find_idf(project=None, *, environ=None, roots=None,
     project = Path(project or idf_project())
     env = os.environ if environ is None else environ
     home = Path.home() if home is None else Path(home)
+    persistent = persistent_environment if persistent is None else persistent
     selected = _override("IDF_PATH", env, persistent)
     default = persistent("IDF_PATH") if os.name == "nt" else None
     pin = idf_pin(project) if (project / IDF_PIN).is_file() else None
@@ -222,9 +231,7 @@ def find_idf(project=None, *, environ=None, roots=None,
         if default:
             candidates.append(Path(default))
         if roots is None:
-            roots = [home / "esp"]
-            if os.name == "nt":
-                roots = [Path("C:/Espressif"), Path("C:/Espressif/frameworks"), *roots]
+            roots = install_roots(home)
         for root in roots:
             candidates.extend(sorted(Path(root).glob("*")))
         for candidate in candidates:
