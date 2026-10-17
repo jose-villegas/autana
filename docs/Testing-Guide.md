@@ -482,22 +482,16 @@ home, about a minute with no board: the boot animation, the frame loop,
 the launcher, entering and leaving an app and the rotation, none of which a
 suite reaches. Leave `--icount` off: a press is timed in the emulated clock,
 which then runs far slower than the host's. An app that does not set
-`home_gesture` ignores the swipe here as it does on the board, and the PWR
-button has no stand-in, so such an app cannot be left.
+`home_gesture` ignores the swipe here as it does on the board;
+`--do "send home"` returns directly to the launcher.
 
 **A crash fails the run.** After every step the image must answer `BUILDID`
-within `qemu_run.py`'s `HEARTBEAT_S`, or the rest of the steps are skipped.
+within `launcher/test/qemu_run.py`'s `HEARTBEAT_S`, or the rest of the
+steps are skipped.
 Any run, driven or autorun, fails on a crash line (a panic, `abort()`, a
 failed `assert`) or a second boot banner, whatever its tests reported. The
 board's captures (`autana suite`, `selftest`, `monitor`) give the same
 verdict, from `scripts/lib/device_capture.py`'s `crash_signs()`.
-
-A driven tour reaches the shell's lifecycle the way the board does, null
-panel and all. A change whose in-app scene switch broke the gfx mode's
-framebuffer contract, resetting the board on every switch, asserts and
-reboots on its first switch here too; its parent takes every ordered pair
-of its fourteen switch targets, 182 switches, on one boot. A lifecycle
-regression of that kind needs no board to catch.
 
 **What a run is evidence of.** Pass and fail, for any test that does not
 read a clock: a time a test measures, against a ceiling pegged on the
@@ -593,6 +587,66 @@ version and patch set and caches it.
 sudo apt-get install $(python3 launcher/test/qemu/patched_qemu.py deps)   # once
 python3 launcher/test/qemu/patched_qemu.py build                          # minutes, once per QEMU version
 ```
+
+### Console recipes and lifecycle coverage
+
+`launcher/test/device/` uses [pytest-embedded](https://docs.espressif.com/projects/pytest-embedded/en/latest/)
+for console transport, logs and Unity results. Python 3.12 or newer is required.
+From the repository root, install its pinned dependencies in a virtual environment:
+
+```sh
+python -m pip install -r launcher/test/device/requirements.txt
+sh launcher/test/run_qemu_tests.sh --suite suite_console --build-only
+python launcher/test/qemu/patched_qemu.py build
+pytest launcher/test/device --rootdir launcher/test/device --embedded-services idf,qemu --build-dir build.qemu.shell --qemu-cli-args "-nographic -machine esp32s3" --root-logdir pytest-logs --durations=0
+```
+
+The fixtures reuse `qemu_run.py` for the image, device-profile PSRAM size,
+eFuse MAC and watchdog settings. Each test gets its own flash image and log.
+The console suite sends `RUNSUITE suite_console` and parses its Unity output
+with `expect_unity_test_output()`.
+
+For a board with a diagnostics image and its console ready, hold the lock
+for the whole pytest run. The existing `resolve-port` command reads the board selected by
+the enclosing hold; the shell substitution executes inside that hold:
+
+```sh
+autana lock run -- bash -c 'pytest launcher/test/device --rootdir launcher/test/device --embedded-services idf,serial --build-dir build.diag --port "$(python scripts/device/device.py resolve-port)" --root-logdir pytest-logs --durations=0'
+```
+
+Add a `test_*.yaml` file beside the existing recipe. Pytest collects each file as
+one recipe, with normal fixture setup and teardown. Each step contains
+`command` (one console line) and `expect` (a regular expression). The verbs
+are `OPEN <name or prefix>`, `HOME`, `IMU quarter <q>`, `SCREENSHOT` and
+`BUILDID`. A tilt holds for the sample period reported by the startup
+`IMU quarter 0` probe and expects a BUILDID heartbeat; it does not wait on
+its own IMU reply, which concurrent firmware logging can split mid-line.
+Screenshot replies remain in the test's serial log.
+
+The tour discovers `APPS` and each advertised console's `scenes` reply.
+An app that declines `scenes` has one app state. Empty app lists, malformed
+replies and a discovery with no scene pairs fail the test. The generated
+`tour-model.json` beside the serial log uses GraphWalker's JSON format.
+NetworkX's `eulerian_circuit` visits every edge, covering every ordered app
+pair and every ordered scene pair without a JVM.
+
+```mermaid
+flowchart TD
+    Discover["Discover apps and scenes"] --> Model["Write GraphWalker JSON"]
+    Model --> Walk["NetworkX Euler circuit"]
+    Walk --> Send["Send edge command, then tilt"]
+    Send --> Check["Reply, scene barrier, BUILDID"]
+    Check --> Hold["Hold through IMU sample period"]
+    Hold -->|Next edge| Walk
+    Check -->|Crash, reset or invalid reply| Fail["Fail pytest test"]
+```
+
+Every scene switch must report `current=1` on its requested key through a
+fresh `scenes` query. Every edge requires a BUILDID heartbeat. Crash and
+reset patterns come from `scripts/lib/device_capture.py` and apply to all
+expectations, including the Unity summary. CI runs the suite, recipe and
+tour against the instruction ratchet's existing shell build and uploads the
+pytest logs and model.
 
 ---
 

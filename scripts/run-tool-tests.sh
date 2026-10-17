@@ -45,7 +45,8 @@ QUIET_LOG="$REPO_ROOT/launcher/test/build/run-tool-tests.log"
 . "$REPO_ROOT/scripts/lib/python.sh"
 PYTHON=$(find_python 2>/dev/null) || PYTHON=""
 
-py_dirs=$(git -C "$REPO_ROOT" ls-files -- ':(glob)**/test_*.py' | sed 's|/[^/]*$||' | sort -u)
+# Console integration tests use pytest fixtures and run in the QEMU job.
+py_dirs=$(git -C "$REPO_ROOT" ls-files -- ':(glob)**/test_*.py' | sed '\|^launcher/test/device/|d' | sed 's|/[^/]*$||' | sort -u)
 mjs_files=$(git -C "$REPO_ROOT" ls-files -- ':(glob)**/test_*.mjs' | sort)
 
 if [ -z "$py_dirs" ] && [ -z "$mjs_files" ]; then

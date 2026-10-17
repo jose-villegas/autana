@@ -27,7 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config
 from device_lock import board_label
-from device_capture import RESULT_RE, results, SELFTEST_COMPLETE_RE  # noqa: E402
+from device_capture import RESULT_RE, results, SELFTEST_COMPLETE_RE, BOOTS_ON_RUNNING, crash_signs  # noqa: E402
 
 # The line a RUNSUITE ends with, read here for the board (device.py) and for
 # QEMU (launcher/test/qemu_run.py). An image that predates --test prints no

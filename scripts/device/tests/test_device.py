@@ -667,7 +667,7 @@ class DeviceTests(unittest.TestCase):
         connection = FakeConnection([b"I (9) screenshot: ignoring line: 'TUNE'\n"])
         store = mock_store()
         with mock.patch.object(device, "open_when_free", return_value=connection):
-            with self.assertRaisesRegex(RuntimeError, "needs a development build"):
+            with self.assertRaisesRegex(RuntimeError, "needs a development image"):
                 device.send(self.send_args("TUNE"), store, BOARD)
 
     def test_send_forwards_an_app_command_and_completes_on_its_own_end_line(self):
@@ -3081,6 +3081,8 @@ class ScreenshotCommandTests(unittest.TestCase):
         with mock.patch.object(device, "open_when_free", return_value=connection):
             with self.assertRaisesRegex(RuntimeError, "no room in PSRAM"):
                 device.screenshot(args, store, BOARD)
+
+
 
 
 if __name__ == "__main__":
