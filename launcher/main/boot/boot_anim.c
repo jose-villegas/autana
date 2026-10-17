@@ -685,17 +685,50 @@ proto_far_segment(const mesh_pass_t* pass, bool along_im, int32_t c, int32_t fro
     }
 }
 
+/* PROTOTYPE: the far grid reveals radially: every line is cut to the circle
+ * of the growing reach, and its outer PROTO_FAR_FRONT share fades in over
+ * PROTO_FAR_FRONT_STEPS rings, like the mesh's band-by-band arrival. */
+#define PROTO_FAR_FRONT       0.35
+#define PROTO_FAR_FRONT_STEPS 4
+
+/* Half the chord the circle of radius `r` cuts on the line at `c`. */
+static int32_t
+proto_chord(int32_t r, int32_t c) {
+    const double h = ((double)r * r) - ((double)c * c);
+    return h > 0.0 ? (int32_t)lround(sqrt(h)) : 0;
+}
+
+/* The line at `c` between the circles of radius r_in and r_out (both halves),
+ * skipping the mesh's disc. */
+static void
+proto_far_ring(const mesh_pass_t* pass, bool along_im, int32_t c, int32_t r_in, int32_t r_out, uint8_t level,
+               unsigned flags) {
+    const int32_t edge = MESH_HALF * BOOT_ANIM_MESH_STEP_Q12;
+    if (r_out <= mathi_abs(c) || r_out <= edge) {
+        return;
+    }
+    const int32_t inner = proto_chord(mathi_max(r_in, edge), c);
+    const int32_t outer = proto_chord(r_out, c);
+    if (outer <= inner) {
+        return;
+    }
+    proto_far_segment(pass, along_im, c, inner, outer, level, flags);
+    proto_far_segment(pass, along_im, c, -outer, -inner, level, flags);
+}
+
 static void
 proto_draw_far_grid(const mesh_pass_t* pass) {
     const int32_t edge = MESH_HALF * BOOT_ANIM_MESH_STEP_Q12;
     const int32_t far = units(BOOT_ANIM_GRID_SPOKE_FAR_UNITS);
-    const int32_t start_r = proto_axis_reach(pass->now_ms, (const int[2]){1, 0}, edge, far, pass->view);
-    if (start_r <= edge) {
+    const int32_t reach = proto_axis_reach(pass->now_ms, (const int[2]){1, 0}, edge, far, pass->view);
+    if (reach <= edge) {
         return;
     }
     const uint8_t level = scale8(PROTO_GRID_LEVEL, pass->ink);
     const unsigned flags = DRAW_LINE_DASH(BOOT_ANIM_MESH_DASH_ON_PX, BOOT_ANIM_MESH_DASH_OFF_PX);
-    const int32_t reach = start_r;
+    /* Settled once the reach is done: no front left to fade. */
+    const int32_t front = reach >= far ? 0 : (int32_t)(reach * PROTO_FAR_FRONT);
+    const int32_t solid = reach - front;
     for (int fam = 0; fam < 2; fam++) {
         const bool along_im = fam == 0;
         for (int side = -1; side <= 1; side += 2) {
@@ -704,12 +737,12 @@ proto_draw_far_grid(const mesh_pass_t* pass) {
                 if (c == 0) {
                     continue; /* the axis lines are drawn on their own */
                 }
-                if (mathi_abs(c) < edge) {
-                    const int32_t inner = (int32_t)lround(sqrt(((double)edge * edge) - ((double)c * c)));
-                    proto_far_segment(pass, along_im, c, inner, reach, level, flags);
-                    proto_far_segment(pass, along_im, c, -reach, -inner, level, flags);
-                } else {
-                    proto_far_segment(pass, along_im, c, -reach, reach, level, flags);
+                proto_far_ring(pass, along_im, c, 0, solid, level, flags);
+                for (int k = 0; front > 0 && k < PROTO_FAR_FRONT_STEPS; k++) {
+                    const int32_t r_in = solid + ((front * k) / PROTO_FAR_FRONT_STEPS);
+                    const int32_t r_out = solid + ((front * (k + 1)) / PROTO_FAR_FRONT_STEPS);
+                    const uint8_t fade = (uint8_t)((255 * (PROTO_FAR_FRONT_STEPS - k)) / (PROTO_FAR_FRONT_STEPS + 1));
+                    proto_far_ring(pass, along_im, c, r_in, r_out, scale8(level, fade), flags);
                 }
             }
         }
