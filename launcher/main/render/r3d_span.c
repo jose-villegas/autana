@@ -524,8 +524,8 @@ use_small(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span
     if (centres.w > small_flat_max_side || centres.h > small_flat_max_side) {
         return false;
     }
-    const float rb_limit = (float)small_flat_spread * (255.0F / (float)gfx_rgb565_r5(UINT16_MAX));
-    const float g_limit = (float)small_flat_spread * (255.0F / (float)gfx_rgb565_g6(UINT16_MAX));
+    const float rb_limit = (float)small_flat_spread * ((float)UINT8_MAX / (float)gfx_rgb565_r5(UINT16_MAX));
+    const float g_limit = (float)small_flat_spread * ((float)UINT8_MAX / (float)gfx_rgb565_g6(UINT16_MAX));
     return solid
            || (channel_within_spread(a->r, b->r, c->r, rb_limit) && channel_within_spread(a->g, b->g, c->g, g_limit)
                && channel_within_spread(a->b, b->b, c->b, rb_limit));
