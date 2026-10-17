@@ -20,8 +20,7 @@
 #include "input/gesture.h"
 #include "input/input.h"
 
-/* An app's own console command: docs/tools/Autana-CLI.md's "Adding a
- * command from an app". The shell matches `prefix` as a whole word
+/* An app's own console command: docs/tools/App-Commands.md. The shell matches `prefix` as a whole word
  * (console_word_match()) and passes `handle` only what follows it. */
 typedef struct {
     const char* prefix;
@@ -100,7 +99,7 @@ typedef struct app {
     void (*diagnostic_json)(char* out, size_t len);
 
     /* Opt-in, NULL unless an app declares one with APP_CONSOLE_PTR() above.
-     * See docs/tools/Autana-CLI.md's "Adding a command from an app". */
+     * See docs/tools/App-Commands.md. */
     const app_console_t* console;
 
     /* The registry's link, set by app_register(); an app never sets it. */
