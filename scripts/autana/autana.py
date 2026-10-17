@@ -37,8 +37,8 @@ import device_lock  # noqa: E402  (path must be set up first)
 import autana_config  # noqa: E402  (path must be set up first)
 from espressif import idf_python, idf_note_lines, require_idf  # noqa: E402
 from version import __version__  # noqa: E402
-from device_capture import BUILD_ID_REQUEST, PERF_SEGMENT  # noqa: E402
-from lifecycle_tour import DEFAULT_TOUR_S, parse_apps  # noqa: E402
+from device_capture import BUILD_ID_REQUEST, PERF_SEGMENT, parse_apps  # noqa: E402
+from lifecycle_tour import DEFAULT_TOUR_S  # noqa: E402
 
 # The launcher hint belongs to this invocation; children resolve their own caller.
 CALLER_PID = os.environ.pop(device_lock.CALLER_PID_ENV, None)
@@ -1034,8 +1034,12 @@ def imu(args):
         code, replies = send("IMU release", reply="IMU", optional=True, seconds=0.5)
         print("\n".join(replies) if replies else "sent")
         return code
+    if len(args) == 2 and args[0] == "quarter" and is_int(args[1]):
+        code, replies = send("IMU " + " ".join(args), reply="IMU", until=["IMU_OK", "IMU_ERR"])
+        print("\n".join(replies))
+        return code
     if len(args) != 3 or not all(is_int(value) for value in args):
-        sys.exit("usage: autana imu <ax> <ay> <az> | autana imu release")
+        sys.exit("usage: autana debug imu <ax> <ay> <az> | quarter <q> | release")
     code, replies = send("IMU " + " ".join(args), reply="IMU",
                          optional=True, seconds=0.5)
     print("\n".join(replies) if replies else "sent")
@@ -1102,7 +1106,11 @@ def apps(args):
     if not json_output:
         print("\n".join(reply for reply in replies if reply.startswith("APPS ")))
     elif code == 0:
-        print(json.dumps({"apps": parse_apps(replies)}))
+        try:
+            print(json.dumps({"apps": parse_apps(replies)}))
+        except ValueError as error:
+            print(str(error), file=sys.stderr)
+            return 1
     return code
 
 
@@ -1603,7 +1611,7 @@ COMMAND_GROUPS = (
     )),
     ("debug", "Debug", (
         Command("debug", debug, (
-            ("debug tour [seconds]", "walk the running development image app and scene lifecycles"),
+            ("debug tour [seconds] [--out PATH]", "walk the running development image app and scene lifecycles"),
             ("debug freeze", "stop the frame loop where it is"),
             ("debug resume", "run it again"),
             ("debug step [N]", "advance N frames while frozen; 1 when omitted"),

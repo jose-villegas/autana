@@ -1,43 +1,16 @@
 """Discover and exercise a running shell through send()/lines(seconds)."""
 from dataclasses import dataclass
-from functools import cache
 import itertools
-from pathlib import Path
 import re
-import sys
 import time
 
-from device_capture import BOOTS_ON_RUNNING, BUILD_ID_RE, BUILD_ID_REQUEST, crash_signs
+from device_capture import BOOTS_ON_RUNNING, BUILD_ID_RE, BUILD_ID_REQUEST, crash_signs, parse_apps, IMU_QUARTER_RE
+from console_protocol import replies_to, require_development
 
-ROOT = Path(__file__).resolve().parents[2]
+MILLISECONDS_PER_SECOND = 1000
 HEARTBEAT_S = 15
 DEFAULT_TOUR_S = 1800
-APPS_RE = re.compile(r"APPS name=(.+?) running=([01])(?: console=(\S+))?")
-ERROR_RE = re.compile(r"^\S+_ERR(?:\s|$)")
-
-
-@cache
-def quarter_tilts():
-    """Invert the firmware's screen axes for each viewport's down vector."""
-    sys.path.insert(0, str(ROOT / "launcher/tools/build"))
-    from c_header import read_define
-    source = (ROOT / "launcher/main/display/viewport.h").read_text(encoding="utf-8")
-    rows = re.findall(r"(?:case (\d+)|default): return \(viewport_quarter_axes_t\){([^}]+)};", source)
-    axes = {int(index or 0): tuple(int(v) for v in values.split(",")) for index, values in rows}
-    source = ROOT / "launcher/main/input/imu_sample.h"
-    one_g = read_define(source, "IMU_COUNTS_PER_G")
-    mapping = re.search(r"return \(vec3i_t\){([^}]+)};", source.read_text(encoding="utf-8"))
-    if not axes or mapping is None:
-        raise RuntimeError("cannot read firmware quarter/IMU axes")
-    screen_axes = [part.strip() for part in mapping[1].split(",")]
-    tilts = []
-    for quarter in range(len(axes)):
-        _, x_down, _, y_down = axes[quarter]
-        raw = {}
-        for expression, value in zip(screen_axes, (x_down, y_down, 0)):
-            raw[expression.lstrip("-")] = (-value if expression.startswith("-") else value) * one_g
-        tilts.append("IMU " + " ".join(str(raw[axis]) for axis in ("x", "y", "z")))
-    return tuple(tilts)
+ERROR_RE = re.compile(r"\b\w+_ERR(?:\s|$)")
 
 
 class TourError(RuntimeError):
@@ -56,22 +29,6 @@ class Step:
     command: str
     reply: str | None = None
     tilt: str | None = None
-
-
-def parse_apps(lines):
-    rows = []
-    for line in lines:
-        match = APPS_RE.fullmatch(line)
-        if match:
-            row = {"name": match[1], "running": match[2] == "1"}
-            if match[3]:
-                row["console"] = match[3]
-            rows.append(row)
-        elif line.startswith("APPS") and line != "APPS_END":
-            raise TourError("malformed APPS reply: " + line)
-    if len({row["name"] for row in rows}) != len(rows):
-        raise TourError("duplicate APPS name")
-    return rows
 
 
 def parse_scenes(lines, prefix):
@@ -103,7 +60,7 @@ def scene_walk(keys):
     return tuple(reversed(circuit))
 
 
-def plan(apps, tilts, first_quarter=0):
+def plan(apps, tilts):
     if not apps:
         raise TourError("APPS listed no apps")
     if not any(len(app.scenes) >= 2 for app in apps):
@@ -111,7 +68,7 @@ def plan(apps, tilts, first_quarter=0):
     steps = []
 
     def add(command, reply):
-        steps.append(Step(command, reply, tilts[(first_quarter + len(steps)) % len(tilts)]))
+        steps.append(Step(command, reply, next(tilts)))
 
     for app in apps:
         add("OPEN " + app.name, "OPEN")
@@ -133,8 +90,6 @@ def plan(apps, tilts, first_quarter=0):
 def heartbeat(console):
     console.send(BUILD_ID_REQUEST)
     for line in console.lines(HEARTBEAT_S):
-        if ERROR_RE.match(line):
-            return False
         if BUILD_ID_RE.search(line):
             return True
     return False
@@ -144,44 +99,77 @@ def exchange(console, step, *, decline=False):
     console.send(step.command)
     if step.tilt:
         console.send(step.tilt)
+    tilted_at = time.monotonic()
     replies = []
-    if step.reply:
+    complete = step.reply is None
+    tilt_complete = step.tilt is None
+    sample_s = 0
+    if not complete or not tilt_complete:
         for line in console.lines(HEARTBEAT_S):
-            if ERROR_RE.match(line):
-                if decline and line == step.reply + "_ERR not handled":
-                    replies.append(line)
-                    break
-                raise TourError(line)
-            if line.startswith((step.reply + " ", step.reply + "_")):
-                replies.append(line)
-                if line == step.reply + "_END" or re.match(re.escape(step.reply) + r"_OK(?:\s|$)", line):
-                    break
+            error = ERROR_RE.search(line)
+            if error and not (decline and line[error.start():] == step.reply + "_ERR not handled"):
+                raise TourError(line[error.start():])
+            try:
+                require_development(line.encode(), step.command)
+            except RuntimeError as error:
+                raise TourError(str(error)) from error
+            found, _ = replies_to(line.encode(), "IMU", ("IMU_OK", "IMU_ERR"))
+            if step.tilt and found:
+                match = IMU_QUARTER_RE.fullmatch(found[-1])
+                if not match or int(match[1]) != int(step.tilt.split()[-1]):
+                    raise TourError("invalid quarter reply: " + found[-1])
+                sample_s = int(match[3]) / MILLISECONDS_PER_SECOND
+                tilt_complete = True
+            if step.reply:
+                found, ended = replies_to(line.encode(), step.reply,
+                                         (step.reply + "_END", step.reply + "_OK", step.reply + "_ERR"))
+                for reply in found:
+                    if ERROR_RE.match(reply):
+                        if not (decline and reply == step.reply + "_ERR not handled"):
+                            raise TourError(reply)
+                    replies.append(reply)
+                complete = complete or ended
+            if complete and tilt_complete:
+                break
         else:
-            raise TourError(f"no completed reply to {step.command!r}; requires a development image")
-    if not heartbeat(console):
+            raise TourError(f"no completed reply to {step.command!r} within the reply deadline")
+    parts = step.command.split()
+    if len(parts) == 3 and parts[1] == "scene":
+        barrier = exchange(console, Step(parts[0] + " scenes", step.reply))
+        current = [line.split()[1].removeprefix("scene=") for line in barrier
+                   if "current=1" in line.split()]
+        if current != [parts[2]]:
+            raise TourError(f"{step.command}: scene switch did not land (current={current})")
+    console.send(BUILD_ID_REQUEST)
+    for line in console.lines(HEARTBEAT_S):
+        if error := ERROR_RE.search(line):
+            raise TourError(line[error.start():])
+        if BUILD_ID_RE.search(line):
+            break
+    else:
         raise TourError("missing BUILDID heartbeat after " + step.command)
+    remaining = sample_s - (time.monotonic() - tilted_at)
+    if remaining > 0:
+        time.sleep(remaining)
     return replies
 
 
-def discover(console, emit=print):
-    tilts = quarter_tilts()
+def discover(console, tilts, emit=print):
     emit("discover: APPS")
     rows = parse_apps(exchange(console, Step("APPS", "APPS")))
     if not rows:
         raise TourError("APPS listed no apps")
     apps = []
-    quarter = 0
     for row in rows:
         prefix = row.get("console")
         keys = ()
         if prefix:
             emit("discover: OPEN " + row["name"])
-            exchange(console, Step("OPEN " + row["name"], "OPEN", tilts[quarter % len(tilts)]))
+            exchange(console, Step("OPEN " + row["name"], "OPEN", next(tilts)))
             emit("discover: " + prefix + " scenes")
             keys = parse_scenes(exchange(console, Step(prefix + " scenes", prefix.upper()), decline=True), prefix)
             emit("discover: HOME")
-            exchange(console, Step("HOME", "HOME", tilts[(quarter + 1) % len(tilts)]))
-            quarter += 2
+            exchange(console, Step("HOME", "HOME", next(tilts)))
         apps.append(App(row["name"], prefix, keys))
     return apps
 
@@ -192,14 +180,24 @@ class CheckedTransport:
         self.console = console
 
     def send(self, line):
-        self.console.send(line)
+        if time.monotonic() >= getattr(self.console, "deadline", float("inf")):
+            raise TourError("the tour's time ran out")
+        try:
+            self.console.send(line)
+        except OSError as error:
+            raise TourError("port lost: the board reset or rebooted") from error
 
     def lines(self, seconds=None):
-        for line in self.console.lines(seconds):
-            signs = crash_signs(line, BOOTS_ON_RUNNING)
-            if signs:
-                raise TourError("; ".join(signs))
-            yield line
+        try:
+            for line in self.console.lines(seconds):
+                signs = crash_signs(line, BOOTS_ON_RUNNING)
+                if signs:
+                    raise TourError("firmware crash or reboot detected (see device lines)")
+                yield line
+        except OSError as error:
+            raise TourError("port lost: the board reset or rebooted") from error
+        if time.monotonic() >= getattr(self.console, "deadline", float("inf")):
+            raise TourError("the tour's time ran out")
 
 
 def run(console, emit=print):
@@ -209,19 +207,28 @@ def run(console, emit=print):
     switches = 0
     ok = False
     try:
-        apps = discover(console, emit)
-        steps = plan(apps, quarter_tilts(), first_quarter=2 * sum(bool(app.console) for app in apps))
+        reply = exchange(console, Step("IMU quarter 0", "IMU"))
+        match = IMU_QUARTER_RE.fullmatch(reply[-1])
+        if not match or int(match[1]) != 0 or int(match[2]) <= 0 or int(match[3]) <= 0:
+            raise TourError("invalid IMU quarter capabilities")
+        tilts = itertools.cycle(f"IMU quarter {q}" for q in range(int(match[2])))
+        next(tilts)  # The capability probe already injected the first quarter.
+        apps = discover(console, tilts, emit)
+        steps = plan(apps, tilts)
         for index, step in enumerate(steps, 1):
             emit(f"tour {index}/{len(steps)}: {step.command}" + (f"; {step.tilt}" if step.tilt else ""))
             exchange(console, step)
         switches = sum(len(app.scenes) * (len(app.scenes) - 1) for app in apps)
         ok = True
-    except TourError as error:
+    except (TourError, ValueError) as error:
         emit("tour FAIL: " + str(error))
         ok = False
     finally:
         if not ok:
-            console.send("IMU release")
+            try:
+                console.console.send("IMU release")
+            except OSError:
+                pass
     emit(f"tour {'PASS' if ok else 'FAIL'}: apps={len(apps)} scenes={sum(max(1, len(app.scenes)) for app in apps)} "
-         f"switches={switches} elapsed={time.monotonic() - started:.1f}s")
+         f"steps={len(steps) if ok else 0} switches={switches} elapsed={time.monotonic() - started:.1f}s")
     return ok

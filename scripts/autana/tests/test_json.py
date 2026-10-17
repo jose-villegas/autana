@@ -60,6 +60,12 @@ class JsonReadTests(unittest.TestCase):
         self.assertEqual(autana.parse_apps(["APPS name=Model running=0 console=model"]),
                          [{"name": "Model", "running": False, "console": "model"}])
 
+    def test_malformed_apps_json_reports_error(self):
+        with mock.patch.object(autana, "send", return_value=(0, ["APPS malformed", "APPS_END"])):
+            with contextlib.redirect_stderr(io.StringIO()) as errors:
+                self.assertEqual(autana.apps(["--json"]), 1)
+            self.assertIn("malformed APPS", errors.getvalue())
+
     def test_apps_reply(self):
         replies = ["APPS name=A running=1", "APPS name=B running=0", "APPS_END"]
         self.assertEqual(autana.parse_apps(replies), [{"name": "A", "running": True},

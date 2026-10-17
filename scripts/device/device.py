@@ -29,6 +29,7 @@ import lock_scope
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
 import lifecycle_tour  # noqa: E402
+from console_protocol import LineReader, replies_to, require_development
 from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, BUILD_ID_REQUEST,
                             crash_signs)
 
@@ -1457,24 +1458,18 @@ class TourConsole:
         self.connection = connection
         self.output = output
         self.deadline = deadline
-        self.pending = b""
+        self.reader = LineReader(self.read_chunk, output, deadline)
 
     def send(self, line):
         require_unlost()
         self.connection.write((line + "\n").encode("utf-8"))
 
-    def lines(self, seconds):
-        deadline = min(self.deadline, time.monotonic() + seconds)
-        while time.monotonic() < deadline:
-            require_unlost()
-            if b"\n" in self.pending:
-                raw, self.pending = self.pending.split(b"\n", 1)
-                yield re.sub(r"\x1b\[[0-9;]*m", "", raw.decode("utf-8", errors="replace").rstrip("\r"))
-                continue
-            chunk = self.connection.read(self.connection.in_waiting or 1)
-            self.output.write(chunk)
-            self.output.flush()
-            self.pending += chunk
+    def read_chunk(self):
+        require_unlost()
+        return self.connection.read(self.connection.in_waiting or 1) or None
+
+    def lines(self, seconds=None):
+        return self.reader.lines(seconds)
 
 
 def tour(args, store, board):
@@ -1488,9 +1483,11 @@ def tour(args, store, board):
                 console = TourConsole(connection, capture_file, time.monotonic() + args.max_seconds)
 
                 def emit(line):
+                    nonlocal error
+                    if line.startswith("tour FAIL:") and error is None:
+                        error = line.removeprefix("tour FAIL: ")
                     print(line, flush=True)
-                    capture_file.write(("\n" + line + "\n").encode("utf-8"))
-                    capture_file.flush()
+                    console.reader.emit(line)
 
                 ok = lifecycle_tour.run(console, emit=emit)
                 reason = "complete" if ok else "failed"
@@ -1682,28 +1679,6 @@ def coredump(args, store, board):
         return 0
 
 
-def replies_to(data, reply, until):
-    """The device's replies found in console bytes, and whether the last of
-    them has arrived.
-
-    A reply is everything from `reply` to the end of its line: the console
-    also carries the firmware's own log lines, and a reply can come out
-    behind a log prefix. `until` are the prefixes that end an answer;
-    autana console forwards a line under the app's own prefix in capitals,
-    the same convention every built-in verb's own reply already follows.
-    """
-    found = []
-    for raw in data.split(b"\n"):
-        at = raw.find(reply.encode("ascii"))
-        if at < 0:
-            continue
-        text = raw[at:].decode("ascii", errors="replace").strip()
-        found.append(text)
-        if text.startswith(tuple(until)):
-            return found, True
-    return found, False
-
-
 def exchange(connection, line, reply, until, seconds):
     """Write one console line on a port the caller holds; (replies, whether
     the answer completed) within `seconds`."""
@@ -1718,9 +1693,7 @@ def exchange(connection, line, reply, until, seconds):
         found, complete = replies_to(bytes(data), reply, until)
         if complete:
             return found, True
-        if ("ignoring line: '" + line).encode("ascii") in data:
-            raise RuntimeError("this build does not answer '" + line.split(" ")[0] +
-                               "' - it needs a development build that has it")
+        require_development(data, line)
     return found, False
 
 

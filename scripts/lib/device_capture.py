@@ -8,6 +8,8 @@ RESULT_RE = re.compile(r"^(?P<file>\S*?):(?P<line>\d+):(?P<name>\w+):(?P<status>
 # The console line that asks a running image for its BUILD_ID= line.
 BUILD_ID_REQUEST = "BUILDID"
 BUILD_ID_RE = re.compile(r"BUILD_ID=([^\s\r\n]+)")
+APPS_RE = re.compile(r"APPS name=(.+?) running=([01])(?: console=(\S+))?")
+IMU_QUARTER_RE = re.compile(r"IMU_OK quarter=(\d+) quarters=(\d+) sample_ms=(\d+)")
 BUILD_ID_BYTES_RE = re.compile(BUILD_ID_RE.pattern.encode())
 PERF_SEGMENT = re.compile(r"perf: (\S+) cyc avg/min/max (\d+)/(\d+)/(\d+) (\S+) avg (\d+) n=(\d+)")
 # The device prints this line only when the self-test loop actually reaches
@@ -57,3 +59,19 @@ def results(text, *, ignored=False):
     return [match.groupdict() for line in text.splitlines()
             if (match := RESULT_RE.match(line.strip())) and
             (ignored or match.group("status") != "IGNORE")]
+
+
+def parse_apps(lines):
+    rows = []
+    for line in lines:
+        match = APPS_RE.fullmatch(line)
+        if match:
+            row = {"name": match[1], "running": match[2] == "1"}
+            if match[3]:
+                row["console"] = match[3]
+            rows.append(row)
+        elif line.startswith("APPS") and line != "APPS_END":
+            raise ValueError("malformed APPS reply: " + line)
+    if len({row["name"] for row in rows}) != len(rows):
+        raise ValueError("duplicate APPS name")
+    return rows

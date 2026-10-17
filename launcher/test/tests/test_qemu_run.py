@@ -72,6 +72,28 @@ class IcountDiscoveryTest(unittest.TestCase):
             self.assertEqual(2, error.exception.code)
 
 
+class TourRoutingTest(unittest.TestCase):
+    def test_tour_routes_through_shell_and_uses_its_verdict(self):
+        from contextlib import ExitStack, redirect_stdout
+        import io
+        with tempfile.TemporaryDirectory() as directory, ExitStack() as stack, redirect_stdout(io.StringIO()):
+            for name in ("merge_flash", "efuse_with_mac", "default_efuse", "qemu_command"):
+                stack.enter_context(unittest.mock.patch.object(qemu_run, name))
+            qemu_run.efuse_with_mac.return_value = b""
+            stack.enter_context(unittest.mock.patch.object(qemu_run, "idf_path", return_value=directory))
+            stack.enter_context(unittest.mock.patch.object(qemu_run, "idf_python"))
+            stack.enter_context(unittest.mock.patch.object(qemu_run.patched_qemu, "installed", return_value="qemu"))
+            stack.enter_context(unittest.mock.patch.object(qemu_run.subprocess, "Popen"))
+            console = stack.enter_context(unittest.mock.patch.object(qemu_run, "Console"))
+            shell = stack.enter_context(unittest.mock.patch.object(qemu_run, "drive_shell", return_value=True))
+            tour = stack.enter_context(unittest.mock.patch.object(qemu_run, "run_tour", return_value=False))
+            verdict = stack.enter_context(unittest.mock.patch.object(qemu_run, "verdict", return_value=1))
+            self.assertEqual(qemu_run.main([directory, "--tour"]), 1)
+            shell.assert_called_once_with(console.return_value, [])
+            tour.assert_called_once_with(console.return_value)
+            self.assertEqual(verdict.call_args.args[1:], (False, True))
+
+
 class VerdictTest(unittest.TestCase):
     def verdict(self, log, finished=True, actions=()):
         fd, path = tempfile.mkstemp(suffix=".log")
