@@ -33,13 +33,14 @@ searching, so no list is kept:
 | `NAME.scene.toml` | `NAME` | its [scene entry](../render/Scene-Files.md#the-scene-entry) `NAME`, every mesh, skin, skeleton and clip it names |
 | `NAME.import.toml` that no scene places | `NAME` | its variants' meshes |
 | `NAME.anim.toml` that no scene names | `NAME` | its one clip, baked from its source |
+| `NAME.sound.toml` | `NAME` | its one [sound](../audio/Sound-Assets.md), baked from the WAV it names |
 | `NAME.image.toml` | `NAME` | its one picture, baked from the PNG it names |
 | `NAME.icons.toml` | `NAME` | an image entry per [icon](../tools/Icon-Baker.md), named by the icon, baked from the set's atlas and SVGs |
 
 A `NAME.pack.toml` makes its folder one pack, `NAME`: every root under that
 folder puts its entries there instead of making a pack of its own, each with
 its stem for id. Folder packs do not nest, and the file holds no settings yet.
-The engine's own artwork, which any app may draw, is the folder pack
+The engine's own content, which any app may use, is the folder pack
 `engine` (`launcher/main/engine/`); an app's artwork is a folder pack the app
 names, mounted while it runs.
 
@@ -240,9 +241,10 @@ renderer.
 `launcher/tools/asset/asset_directory.py` the directory,
 `launcher/tools/r3d/mesh_asset.py` and `lit_mesh.py` the mesh
 entry, `launcher/tools/anim/tracks_asset.py` of the clip entry,
-`launcher/tools/gfx/image_asset.py` of the image entry; `asset_pack.c`,
-`asset_directory.c`, `r3d_lit_mesh.c`, `anim_tracks.c` and `draw_image.c` are
-the one reader of each.
+`launcher/tools/gfx/image_asset.py` of the image entry, and
+`launcher/tools/audio/sound_asset.py` of the [sound entry](../audio/Sound-Assets.md); `asset_pack.c`,
+`asset_directory.c`, `r3d_lit_mesh.c`, `anim_tracks.c`, `draw_image.c` and
+`sound.c` are the respective readers.
 
 No mesh is committed: each is a bake product, fetched by its lock row; a clip
 or image entry is baked from its source when the packs are built. Packs are never
