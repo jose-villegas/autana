@@ -6,6 +6,9 @@ lock and is not tied to git or worktrees: a board-only command (`monitor`,
 `tap`, `tune`, ...) works from any directory, and a command that builds or
 flashes acts on the current directory, like `make -C`, or on `--project PATH`.
 
+The launchers require at least the Python version in `scripts/lib/python-min-version`; CI installs the exact `.python-version` pin.
+The shell launcher prefers `python<major.minor>` from `.python-version` on PATH when it imports the requested modules, then falls back to any interpreter meeting the minimum in PATH order.
+
 For a first board run, install ESP-IDF and set up `autana` as described in
 [the README](../../README.md#run-it-on-the-board), then use `autana flash dev`
 and `autana monitor 30`. On Windows, run these in Git Bash. The CLI handles
@@ -46,7 +49,7 @@ it readable; a flag works the same wherever the table below says it applies.
 | `--lock-token TOKEN` | Global; see [Settings](#settings). | every board command |
 | `--wait SECONDS` | Global; see [Settings](#settings). | every board command |
 | `--owner NAME` | Global; see [Settings](#settings). | every board command |
-| `--board SERIAL` | Global; see [Settings](#settings). | every board command |
+| `--board SERIAL` | Global; full serial or short id, also `-b`; see [Settings](#settings). | every board command |
 | `--out PATH` | Write the one capture here instead of the default path; with several suites or `--runs` above 1, only makes sense on `suite` when exactly one suite runs once. | selftest, suite, monitor |
 | `--expect-build-id ID` | Refuse to run a suite unless the board, or the image `--flash` just wrote, carries this `BUILD_ID`. `autana flash` prints the `BUILD_ID` it just wrote once esptool's hash verifies it; pass that value here to refuse measuring a board that has since been reflashed by someone else. | suite |
 | `--project PATH` | Act on `PATH` instead of the current directory, like `make -C`/`idf.py -C`, no searching parent directories. `PATH` must itself carry `launcher/CMakeLists.txt`; the current directory must too when `--project` is omitted, for every command below except `suite` without `--flash`, which only wants it for its capture's own record. Popped once ahead of any command's own parsing, so it works the same everywhere it applies. | build, flash, selftest, suite, suite list, tune save, docs |
@@ -146,7 +149,9 @@ suite this project registers, for a full pre-merge pass.
 | `autana selftest [seconds] [--verbose] [--perf-scope] [--out PATH]` | Build the autorun diagnostics image, flash, run every suite; 3000 s when omitted. |
 
 Each prints the report and capture paths, PASS/FAIL counts, up to ten failure
-messages (then a FAIL count per suite) and the end reason. `--verbose`
+messages (then a FAIL count per suite) and the end reason.
+A capture without its `SELFTEST_COMPLETE` or `RUNSUITE_COMPLETE` line fails
+with the end reason. `--verbose`
 prints the whole capture; to find something in it, grep the capture instead.
 One suite run once (`autana suite <name>` with no `--runs` or `--flash`)
 still produces exactly one capture and one report, the same as before this
@@ -242,6 +247,7 @@ The two raw levels below gesture, `touch` and `imu`, live under
 
 | Command | What it does |
 |---|---|
+| `autana devices [--json]` | Compact list of short ids, serials, ports and availability on this machine. JSON is identical to `status --json`. |
 | `autana status [--json]` | Every board, plugged in or locked: free or held, the holder with local start, elapsed and estimated free time, and the FIFO waiters with estimated starts. A board off USB is listed without a port. |
 | `autana lock run [--keep-on-failure <seconds>] -- <command...>` | Hold the board while the child command runs. The child inherits its lock token. A failed command can leave a timed hold for inspection. |
 | `autana lock take [--for <seconds> \| --until-released [--pid <pid>]] [--estimate <seconds>] <note...>` | Wait for the board and print a token for commands in this session. A timed hold lasts at most an hour; an until-released hold ends when its owner process dies. |
@@ -249,6 +255,19 @@ The two raw levels below gesture, `touch` and `imu`, live under
 | `autana lock wait` | Wait until the board is free without taking it or queueing; no cap without `--wait`. |
 | `autana lock hand [--until-back <seconds>] <note...>` | Wait for the board and reserve it for a person for an hour; running it again renews the hour. With `--until-back`, wait until it is taken back or lapses. |
 | `autana lock take-back` | Clear that reservation. |
+
+A board can be selected with `--board A308` or `-b A308`, where `A308` is
+the last four hex digits of `90:70:69:FE:A3:08`. Full serials and short ids
+ignore case. Short ids resolve against USB boards and the lock store's known
+and seen boards; a collision requires the full serial.
+
+With several boards plugged in and none selected, `flash`, `suite --flash`,
+`selftest`, `batch`, `lock run` and `lock take` pick a board: first a free one
+with nobody queued, then the earliest estimated start after queued work,
+then the shortest queue. Human reservations are avoided when another board is available.
+The choice and reason print before the job; the final verdict names the board.
+The whole job and its children keep that serial. Other board commands require
+`--board`, `-b` or a console pin when several boards are plugged in.
 
 A board is named by its USB serial number, so the lock follows it across
 COM number changes. A command that loses the lock stops with `device lock was
@@ -259,6 +278,8 @@ flash; `suite --flash` and `selftest` hold one lock across flash and capture.
 and queued `estimated_start` times. It never ends a hold.
 Lock loss is defined in [Device-Lock.md](Device-Lock.md); flash success,
 captures and wait estimates in [Flash-and-Captures.md](Flash-and-Captures.md).
+
+See [Wait estimates](Flash-and-Captures.md#wait-estimates) for duration history and per-board estimates.
 
 The lock owner is set as described in [Flags](#flags) above.
 
@@ -313,6 +334,12 @@ A filter that matches nothing gives an empty array.
 
 ## In a session
 
+`use A308` pins the session to that board; the prompt becomes `autana@A308>`.
+`use` prints the pin and `use -` clears it.
+Starting with `autana -b A308` or `autana --board A308` starts
+pinned. The pin is the session's `--board`; a line can override it with its
+own board flag.
+
 A bare word is a command above; any other line goes to the board as typed,
 so an app's own command works too. A tunable is only ever reached through
 `tune`:
@@ -351,9 +378,9 @@ optional and gitignored, and `autana help config` lists its keys.
 | `--lock-token TOKEN` | Run a board command inside the live hold named by `TOKEN`. A wrong, released or lapsed token fails at once with exit 1. A holder's child processes inherit it. |
 | `--wait SECONDS` | How long a board command waits for the lock, across every step it runs: 600 s without it, `0` fails at once with exit 75. `lock wait` has no cap without it. A console line (`tune`, `buildid`, `screenshot`, a line sent as typed) is refused at once without it rather than waited for. |
 | `--owner NAME` | The name this run holds the lock under, as `NAME:<pid>`; `<user>@<host>:<pid>` without it. Name each CI job. |
-| `--board SERIAL` | The board's USB serial number; without it, see [Which board](Device-Lock.md#which-board). |
+| `--board SERIAL` | Full USB serial or short id (case-insensitive), also `-b`; without it, see [Which board](Device-Lock.md#which-board). |
 
-The global flags (these three and `--project`) go anywhere on the line:
+The global flags, including `-b` and `--project`, go anywhere on the line:
 `autana flash diag --wait 0` and `autana --wait 0 flash diag` are the same.
 A CI job that should fail rather than queue writes `autana --wait 0 <command>`.
 

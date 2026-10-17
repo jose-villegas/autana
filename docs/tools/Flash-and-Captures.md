@@ -114,7 +114,8 @@ writes the one raw capture to `PATH`, only with exactly one suite and
 boot-time run until `SELFTEST_COMPLETE`.
 
 A suite capture stops at the shell's `RUNSUITE_COMPLETE name=<suite>` line
-(or `SUITE_DONE`), or after its non-`shell:` output is idle. A port that
+or after its non-`shell:` output is idle. A capture without its completion
+line is recorded as a run error. A port that
 disappears mid-capture ends it as `port lost` with what was read kept, so a
 multi-suite run carries on with its next suite. It fails if the build has no
 suites, does not contain the requested suite, or reports any failed test.
@@ -212,3 +213,9 @@ trips a regression ceiling reports one. A `flash` holds the board only while esp
 writes: the build and the snapshot come before the lock, so the estimate a
 waiter sees behind a flash is the write alone. A person's reservation, or a
 holder of unknown length, makes every estimate behind it unknown.
+
+A board uses its own USB serial's history once that kind reaches
+`ESTIMATE_MINIMUM_RUNS` in `scripts/device/device_lock.py`; otherwise it
+uses all boards' history, including older rows without a board. Duration
+history is trimmed per command kind and board with the same recent-run and
+file limits.

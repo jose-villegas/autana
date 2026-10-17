@@ -192,7 +192,7 @@ what the fit changes from the paper.
 |---|---|
 | Start | a smooth or flat `NAME.mesh`, welded so the vertices of a colour seam share one position |
 | Fitted | every welded position, and every vertex's sRGB colour, or every triangle's when the start is flat |
-| Forward model | nvdiffrast<sup>[[2]](../../../docs/Citations.md#2)</sup> draws what the device draws: Gouraud or per-triangle colours, single-sided faces culled, the `--scene` camera's background where nothing is drawn, at `--scale` times the reference size |
+| Forward model | nvdiffrast rasterizes visibility<sup>[[2]](../../../docs/Citations.md#2)</sup>; torch carries gradients through homogeneous barycentrics<sup>[[70]](../../../docs/Citations.md#70)</sup>, Gouraud or per-triangle shading, and analytic antialiasing (Laine et al. 2020)<sup>[[2]](../../../docs/Citations.md#2)</sup>. Single-sided faces are culled, the `--scene` camera supplies the background, and rendering uses `--scale` times the reference size |
 | Loss | the mean CIE76 ΔE<sup>[[4]](../../../docs/Citations.md#4)</sup> of `render_compare.py` against the nearest-upscaled reference PNG, over a batch of random poses, plus `--laplacian` times the drift of the positions' uniform-Laplacian coordinates<sup>[[5]](../../../docs/Citations.md#5)</sup> from the start's |
 | Schedule | Adam<sup>[[3]](../../../docs/Citations.md#3)</sup>; both learning rates decay tenfold over `--steps` |
 | Output | `write_lit_mesh()`, the writer `mesh_import.py` and `rebake.py` end in, plus a vertex-coloured OBJ |
@@ -201,6 +201,26 @@ The fitted colours are the bake, so the mesh enters the import at its last
 stage instead of being lit again. Every `--poses`/`--reference` pair trains
 one mesh together (the path-averaged mesh); `--per-shot` trains one per
 pair, for a mesh swapped as the camera moves through each segment.
+
+The fit produces identical bytes for identical inputs on the same GPU model
+in the pinned environment. A different GPU may produce different bytes.
+Per-pixel gathers accumulate gradients with fixed-point integer sums;
+integer addition is order-independent. Their integer scatter locally relaxes
+torch's deterministic algorithm flag and restores it on return. The fit's
+scoped cuBLAS workspace and algorithm settings are also restored on return.
+
+Compare every pose with the library reference (RGB values in 0..1):
+
+```sh
+sh launcher/tools/r3d/gpu_python.sh launcher/tools/r3d/appearance_parity.py \
+    --start NAME.mesh --poses POSES.txt --scale 2 --clear 0 0 0
+```
+
+The parity tool compares the torch and library forward images for every pose,
+reporting channel differences and pixels differing by more than 1/255.
+The manifold-quad test allows 2e-4 in RGB 0..1; flat colour corners can differ.
+Repeat `--poses` for more paths; `--clear` is the scene background divided by 255.
+Larger differences sit on silhouette edges where the two antialiasers pick a different edge.
 
 The fit runs on a CUDA GPU in its own environment with
 [requirements.txt](requirements.txt).
@@ -234,7 +254,7 @@ the training poses:
 
 ```sh
 "$GPU_ENV/bin/python3" launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.mesh \
-    --poses train.txt --reference reference_train --coverage-poses coverage.txt --held-out held_out.txt --out fitted
+    --poses train.txt --reference reference_train --coverage-poses coverage.txt --object NAME --surface-weight 10 --surface-margin 0.25 --out fitted
 ```
 
 To score a fitted mesh, pack it in place of the tracked one, as
@@ -267,16 +287,16 @@ samples the camera's path every
 `fit.prune.coverage_every_ms` for pruning, and renders the training references
 with their normals in portrait and landscape so the fit holds the panel either
 way up at `fit.poses.size`. `fit` fits with
-`fit.optimise.steps`, `fit.optimise.batch`, `fit.optimise.laplacian` and
-`fit.optimise.normal_weight`. `fit` prunes the
+`fit.optimise.steps`, `fit.optimise.batch`, `fit.optimise.laplacian`,
+`fit.optimise.normal_weight`, `fit.optimise.surface_weight` and
+`fit.optimise.surface_margin`. `fit` prunes the
 fitted geometry to `fit.prune.budget`
-and writes the renderer's mesh into the work folder. A refit is not
-bit-identical, the GPU's sums being unordered, so the lock pins the bytes a fit
-made.
+and writes the renderer's mesh into the work folder. The fit uses deterministic
+reductions and seeded sampling; the lock pins the bytes a fit made.
 
-Coverage keeps the start mesh's covered pixels through fitting. Use
-`--coverage-weight`, `--mine-every` and `--held-out` to control it;
-[Scene-Files describes the coverage term](../../../docs/render/Scene-Files.md#fitoptimise).
+The surface term anchors fitted triangles to the alpha-masked source, with a
+recipe weight and margin in start mean edge lengths;
+[Scene-Files describes the surface term](../../../docs/render/Scene-Files.md#fitoptimise).
 
 ### Reference on the GPU
 

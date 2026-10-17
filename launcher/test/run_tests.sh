@@ -125,6 +125,7 @@ $MAIN_DIR/shell/shell_system.c
 $MAIN_DIR/shell/shell_home_edge.c
 $MAIN_DIR/shell/shell_frame.c
 $MAIN_DIR/input/touch_fsm.c
+$MAIN_DIR/input/imu_calib.c
 $MAIN_DIR/input/touch_calib.c
 $MAIN_DIR/input/touch_point.c
 $MAIN_DIR/input/touch_inject_fsm.c
@@ -179,22 +180,19 @@ $MAIN_DIR/services/tune.c
 $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/console/console_frame_request.c
 $MAIN_DIR/display/panel_clock.c
-$MAIN_DIR/ui/ui.c
-$MAIN_DIR/ui/input/ui_bridge.c
-$MAIN_DIR/ui/ui_build.c
-$MAIN_DIR/ui/ui_canvas_marks.c
-$MAIN_DIR/ui/controls/ui_icons.c
 $MAIN_DIR/shell/ui/ui_launcher.c
 $MAIN_DIR/shell/ui/ui_launcher_draw.c
-$MAIN_DIR/ui/input/ui_pointer.c
 $MAIN_DIR/shell/ui/ui_ridge.c
-$MAIN_DIR/ui/input/ui_snap.c
-$MAIN_DIR/ui/layout/ui_scroll.c
-$MAIN_DIR/ui/controls/ui_widgets.c
 $MAIN_DIR/../tools/gen/draw_palette_gen.c
 $MAIN_DIR/../tools/r3d/triangle_sizes.c
-$TEST_DIR/../components/microui/src/microui.c
 "
+
+# shellcheck source=../tools/build/ui_sources.sh
+. "$LAUNCHER_DIR/tools/build/ui_sources.sh"
+for ui_source in $UI_SOURCES; do
+    SOURCES="$SOURCES
+$LAUNCHER_DIR/$ui_source"
+done
 
 # Every package's sources and suites, found the same way (tools/build/packages.sh).
 # shellcheck source=../tools/build/packages.sh

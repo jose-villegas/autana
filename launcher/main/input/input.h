@@ -34,7 +34,7 @@ typedef struct {
 #define INPUT_ACCEL_ONE_G      4096
 #define INPUT_ROTATION_ONE_DPS 64
 
-/* Raw acceleration: Q12 g in screen axes (x right, y down, z out).
+/* Offset-calibrated, unfiltered acceleration: Q12 g in screen axes (x right, y down, z out).
  * Rotation: Q6 deg/s, x=-gy, y=gx, z=gz. Measured right-hand sense:
  * +z clockwise from front, +x bottom edge toward viewer, +y right edge away.
  * turn_speed is unsigned |gx|+|gy|+|gz| in deg/s. */

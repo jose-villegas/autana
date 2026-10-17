@@ -9,6 +9,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4] / "tools"))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4] / "tools" / "render"))
 from build.c_header import read_define
 from generated_blocks import replace_block
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4] / "tools" / "perf"))
+from capture import build_id
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[5] / "scripts/device"))
 from device_report import BUDGET_TABLE_HEADER
 
@@ -39,16 +41,11 @@ PHASES = (PHASE_BEFORE_ENTER, PHASE_LOADED, PHASE_PLAYING)
 RENDER_KEYS = ((STAGE_RENDER, "0"), (STAGE_RENDER, "1"), (STAGE_RENDER_DELTA, ""))
 
 def parse_capture(text):
-    build = ""
+    build = build_id(text)
     runs = {}
     current = None
     for line in text.splitlines():
-        if line.startswith("BUILD_ID="):
-            found = line.partition("=")[2]
-            if build and found != build:
-                raise ValueError("capture has mismatched build ids")
-            build = found
-        elif line.startswith("RUN="):
+        if line.startswith("RUN="):
             number = line.partition("=")[2]
             if number in runs:
                 raise ValueError(f"duplicate run {number}")
@@ -61,8 +58,6 @@ def parse_capture(text):
                 current[("phase", fields["phase"])] = fields
             elif "stage" in fields:
                 current[(fields["stage"], fields.get("cores", fields.get("paused", "")))] = fields
-    if not build:
-        raise ValueError("capture has no build id")
     if not runs:
         raise ValueError("capture has no runs")
     required = (*STAGES, *RENDER_KEYS, *(("phase", phase) for phase in PHASES))
@@ -168,8 +163,6 @@ def budget(text, repeat="autana suite run_capybara_perf_suite --flash --perf-sco
 def performance_report(text):
     if not re.search(r"^RUN=", text, re.MULTILINE):
         text = "RUN=1\n" + text
-    if not re.search(r"^BUILD_ID=", text, re.MULTILINE):
-        text = "BUILD_ID=unknown\n" + text
     data = parse_capture(text)
     goal = data["vertices"] * BUDGET_NS_PER_VERTEX / NANOSECONDS_PER_MICROSECOND
     lines = [BUDGET_TABLE_HEADER, "|---|---:|---:|---:|---|"]

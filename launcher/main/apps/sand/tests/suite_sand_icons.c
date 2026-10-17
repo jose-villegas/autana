@@ -72,7 +72,7 @@ static void
 test_every_icon_content_bbox_is_inside_16x16(void) {
     for (size_t i = 0; i < ICON_COUNT; i++) {
         const draw_image_t* icon = app_icon(ICONS[i].id);
-        icon_rect_t blocks[SAND_ICON_TEST_MAX_BLOCKS];
+        recti_t blocks[SAND_ICON_TEST_MAX_BLOCKS];
         icon_test_collect_t cc = {.blocks = blocks, .count = 0, .cap = SAND_ICON_TEST_MAX_BLOCKS};
         icon_walk_blocks(icon, icon->width, icon->height, icon_test_collect, &cc);
 

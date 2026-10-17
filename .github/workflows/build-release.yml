@@ -39,3 +39,4 @@ jobs:
             && python3 launcher/tools/build/memory_map.py --check --require-pin launcher/build
             && grep -A1 .text.bootloader_after_init launcher/build/bootloader/bootloader.map
             | grep -q libpmic_cold_boot
+            && python3 launcher/tools/build/check_psram_tuning_wrap.py launcher/build

@@ -1,5 +1,6 @@
 /*
  * ui: shared microui integration, for the shell and for apps.
+ * The module also hosts the plain-value face.
  *
  * Everything an app needs to draw a UI, and nothing about any particular UI.
  * The launcher is one caller; an app wanting a settings panel or a readout is
@@ -71,9 +72,6 @@
 
 void ui_init(void);
 
-/* The microui context, for building the UI between ui_begin and ui_end. */
-mu_Context* ui_context(void);
-
 /* Start a UI frame: touch becomes microui's mouse events, and the button
  * style resets to UI_BUTTON_FLAT (the shell shares one mu_Context). A NULL
  * `input` opens a repaint-only boot frame: no input is fed and no pointer
@@ -128,7 +126,7 @@ int ui_measure_text(const char* str);
 /* ONE TRANSFORM PER RENDERED PASS, NOT A STACK. microui's command list has no
  * way to carry a transform change partway through it, and components/microui/
  * is deliberately unpatched, so there is no per-widget nesting. */
-void ui_set_transform(ui_transform_t t);
+void ui_set_transform(affine2x_t t);
 
 /* Increments whenever the canvas shape genuinely changes. THIS IS NOT A
  * CALLBACK, NOBODY SUBSCRIBES TO IT: a caller reads it, remembers it and
@@ -144,51 +142,6 @@ uint32_t ui_layout_generation(void);
  * canvas or leave a gap at it. */
 int ui_width(void);
 int ui_height(void);
-
-/* Opens a full-screen window sized to THIS FRAME's canvas, fixing a
- * microui mismatch: mu_begin_window_ex() only trusts its rect the first
- * time a window (by title) opens, right for a desktop manager
- * remembering a drag, wrong here, where every window must always BE
- * (0, 0, ui_width(), ui_height()), which changes at runtime as the
- * canvas rotates. Uncorrected, a rect pins to the first-open
- * orientation, and a bigger later orientation leaves part of the screen
- * uncleared, showing a previous app's frame. */
-int ui_begin_screen(mu_Context* ctx, const char* title, int opt);
-
-/*
- * FILL content (a banner, a status strip) has no natural width of its own
- * and spans whatever the canvas currently is, which mu_layout_row() with a
- * -1 column already does. FIXED content (a few large tap targets sized to
- * what they need to say) should keep that width and centre instead.
- *
- * ui_centered_rect() is the shared primitive for the fixed case. `canvas_w`
- * is a parameter rather than an internal ui_width() call, which is what
- * keeps it host-testable without reaching the framebuffer.
- */
-
-/* A rect `w` wide, `h` tall, horizontally centred within a canvas
- * `canvas_w` wide, at vertical position `y`. Does not clamp `w` to
- * `canvas_w`: a `w` that exceeds `canvas_w` yields a negative x, which
- * is a caller bug (a button wider than the screen it is centred on)
- * rather than something to paper over silently here. Clamp at the call
- * site if `w` might ever exceed `canvas_w`. */
-static inline mu_Rect
-ui_centered_rect(int canvas_w, int w, int h, int y) {
-    return (mu_Rect){(canvas_w - w) / 2, y, w, h};
-}
-
-/* `icon` filling `r` in `color`, its runs streamed by icon_walk_blocks()
- * rather than collected, so an icon's run count does not bound artwork. A
- * NULL `icon` (no pack holds it) draws `text` centred in `r` instead, in the
- * current font; a control with a label beside its icon passes NULL `text`
- * and keeps the label alone. */
-void ui_draw_icon(mu_Context* ctx, mu_Rect r, const draw_image_t* icon, const char* text, mu_Color color);
-
-/* An integer-valued slider over the next layout row, shaped like
- * mu_slider_ex(), but integer: that one's float/"%.2f" thumb is the wrong
- * shape for a "06 PX" control. Writes through `value`, returns whether it
- * changed this frame. */
-bool ui_slider_int(mu_Context* ctx, int* value, int lo, int hi, int step);
 
 /* Close the frame and paint it, but only if it would look any different
  * from what is already on screen. Returns whether it drew. It repaints
@@ -245,3 +198,62 @@ uint32_t ui_band_fallback_count(void);
  * frame it is wanted. `rgb` is plain 0xRRGGBB, not a gfx_color_t; ui.h
  * does not otherwise depend on gfx.h. */
 void ui_queue_band_overlay_rect(int x, int y, int w, int h, uint32_t rgb);
+
+#include "math/geometry/recti.h"
+
+#define UI_FACE_SCOPE_DEPTH 4
+
+/* Colours are 0xRRGGBB. ui_mu_theme_t in ui_mu.h holds the same roles as
+ * mu_Color values. */
+typedef struct {
+    uint32_t panel_face, panel_edge, button_face;
+    uint32_t accent, accent_face, on_accent;
+    uint32_t text, caption, muted;
+    int text_scale;
+    int icon_side;
+} ui_theme_t;
+
+/* The palette for the rest of the frame; NULL restores the shell look. */
+void ui_theme(const ui_theme_t* theme);
+
+/* A label is both the visible text and the identity: "Text##key" shows Text
+ * and the whole string is the id; "Text###key" shows Text and only key is the
+ * id. ui_button and ui_tile return true on the frame a tap is released on
+ * them; ui_toggle, ui_slider and ui_dropdown return true when this frame
+ * changed their value. Every _begin pairs with its _end, at most
+ * UI_FACE_SCOPE_DEPTH deep; development builds assert on misuse. Windows
+ * close at the next window verb or ui_end(). */
+void ui_screen(void);
+void ui_window(recti_t r);
+void ui_row(int h);
+recti_t ui_next(void);
+
+bool ui_button(recti_t r, const char* label);
+bool ui_tile(recti_t r, const char* label, bool selected);
+bool ui_toggle(recti_t r, const char* label, bool* on);
+bool ui_slider(recti_t r, const char* label, int* value, int lo, int hi);
+bool ui_dropdown(recti_t r, const char* label, int* index, const char* const* names, int count);
+bool ui_dropdown_icons(recti_t r, const char* label, int* index, const char* const* names,
+                       const draw_image_t* const* icons, int count);
+
+/* Text is clipped to its rectangle and centred vertically. */
+void ui_text(recti_t r, const char* s);
+void ui_text_right(recti_t r, const char* s);
+void ui_text_centre(recti_t r, const char* s);
+void ui_caption(recti_t r, const char* s);
+void ui_header(recti_t r, const char* title);
+void ui_panel(recti_t r);
+void ui_fill(recti_t r, uint32_t rgb);
+void ui_outline(recti_t r, uint32_t rgb);
+void ui_icon(recti_t r, const draw_image_t* icon);
+void ui_swatches(recti_t r, const uint32_t* rgb, int cols, int rows);
+
+void ui_disabled_begin(bool disabled);
+void ui_disabled_end(void);
+
+typedef enum { UI_COLOR_FACE, UI_COLOR_TEXT } ui_color_slot_t;
+
+void ui_color_begin(ui_color_slot_t slot, uint32_t rgb);
+void ui_color_end(void);
+void ui_scale_begin(int scale);
+void ui_scale_end(void);
