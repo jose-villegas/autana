@@ -36,9 +36,11 @@ PCM16 data is signed little-endian samples. Each ADPCM block holds an int16
 predictor, u8 step index in 0..88 and u8 reserved zero, then low-nibble-first
 IMA codes. Its byte size is `4 + (block_frames - 1) / 2`.
 
-The baker takes its block size from `SOUND_DEFAULT_BLOCK_FRAMES` in
-`sound/sound.h`. The stored sample rate is `AUDIO_OUT_SAMPLE_RATE_HZ` from
-`audio/audio_out.h`, so the mixer needs no resampling. The first block starts at index zero; later blocks carry the
+Every value in the header table comes from `sound/sound_format.h`, the SOND
+file layout, which the baker and the reader both read. The stored sample rate
+is `AUDIO_OUT_SAMPLE_RATE_HZ`, so the mixer needs no resampling.
+
+The first ADPCM block starts at step index zero; later blocks carry the
 previous ending index. Each block opens with its first sample stored exactly
 as the predictor. The last block is padded by repeating its final sample, and
 `frames` tells the reader where to stop.
