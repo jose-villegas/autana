@@ -9,7 +9,8 @@
 #include "board/board.h"
 #include "core/timing.h"
 
-#define AUDIO_OUT_CODEC_VOLUME 70
+#define AUDIO_OUT_AMP_STARTUP_MS 250
+#define AUDIO_OUT_CODEC_VOLUME   70
 #define AUDIO_OUT_DRAIN_MS                                                                                             \
     ((AUDIO_CODEC_DMA_BLOCKS * AUDIO_CODEC_BLOCK_SAMPLES * MATH_MS_PER_S + AUDIO_OUT_SAMPLE_RATE_HZ - 1)               \
      / AUDIO_OUT_SAMPLE_RATE_HZ)
@@ -17,7 +18,14 @@ static esp_codec_dev_handle_t output;
 
 bool
 audio_out_amp(bool enabled) {
-    return audio_codec_check("amplifier", board_audio_amp_enable(enabled));
+    if (!audio_codec_check("amplifier", board_audio_amp_enable(enabled))) {
+        return false;
+    }
+    if (enabled) {
+        /* The amplifier passes sound 150-190 ms after enable; allow startup margin. */
+        timing_sleep_ms(AUDIO_OUT_AMP_STARTUP_MS);
+    }
+    return true;
 }
 
 bool
