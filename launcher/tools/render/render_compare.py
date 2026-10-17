@@ -657,7 +657,7 @@ def captioned(picture, text, width=0):
 def compose_frame(a, b, clear, gain, label_a, label_b, note=""):
     """A | B | heatmap under a bar naming each; the heatmap's label carries note."""
     _same_size(a, b)
-    texts = ("A  " + label_a, "B  " + label_b, ("diff x%d  " % gain + note).strip())
+    texts = (label_a, label_b, ("difference x%d  " % gain + note).strip())
     panels = (a, b, heatmap(a, b, clear, gain))
     return Image.fromarray(np.concatenate([_pixels(captioned(p, t)) for p, t in zip(panels, texts)], axis=1).astype(np.uint8))
 
