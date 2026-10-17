@@ -20,7 +20,7 @@ and read the macros in `*_template.h` only to change an algorithm.
 - [Templates](#templates)
 - [The transform cache](#the-transform-cache)
 - [Scalar](#scalar): [mathi.h](#mathih), [mathf.h](#mathfh), [maths.h](#mathsh), [mathx.h](#mathxh), [mathf_round.h](#mathf_roundh), [mathf_rsqrt.h](#mathf_rsqrth), [fixed.h](#fixedh), [rng.h](#rngh), [trig.h](#trigh), [units.h](#unitsh)
-- [Linear](#linear): [vec2](#vec2-f-i-s-x), [vec3](#vec3-f-i-s-x), [quat](#quat-f-x), [affine2](#affine2-f-x), [mat3](#mat3-f), [mat4](#mat4-f-x), [transform](#transform-f-x), [conversions](#conversions-vec_converth)
+- [Linear](#linear): [vec2](#vec2-f-i-s-x), [vec3](#vec3-f-i-s-x), [quat](#quat-f-x), [affine2](#affine2-f-x), [mat3](#mat3-f), [mat4](#mat4-f-x), [transform](#transform-f-x), [projection](#projection-projectfh-projectxh), [conversions](#conversions-vec_converth)
 - [Geometry](#geometry): [rect](#rect-f-i-s-x)
 - [Examples](#examples)
 - [The float-precision build rules](#the-float-precision-build-rules)
@@ -72,6 +72,22 @@ Here `s` is the view's pixels per unit (`render_view_t`) and `c` the screen
 centre. The fixed-point path (`render/r3d_project_x.h`) truncates each
 quotient toward zero. Its float reference (`render/r3d_project.h`) first
 biases each offset slightly away from zero, then truncates toward it.
+
+### Projection: projectf.h, projectx.h
+
+`projectf_t` is a pinhole lens: `fx` and `fy` are pixels per camera unit
+at unit depth, `cx` and `cy` the optical centre in pixels, and `near_z`
+the near plane in camera units. `projectf_screen(lens, p)` returns floating
+picture coordinates without pixel snapping, with camera +y up and picture
+y down. Focal lengths may differ between axes.
+
+`projectf_clip_near(near_z, p0, p1)` and
+`projectx_clip_near(near_z, p0, p1)` reject segments whose endpoints are both
+at or behind the plane. Otherwise they move the behind endpoint to the
+crossing and leave front endpoints untouched. The fixed helper accepts
+any common scale for endpoints and near plane, using a Q16.16 crossing ratio.
+The caller keeps intermediate differences and products within their integer
+ranges. These helpers carry no framebuffer, viewport or render-view state.
 
 ## Templates
 
