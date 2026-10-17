@@ -10,6 +10,7 @@
 #include "esp_cpu.h"
 #include "esp_log.h"
 #include "perf_stats.h"
+#include "render/r3d_span_internal.h"
 #include "scene/scene_internal.h"
 #include "test_cleanup.h"
 #include "unity.h"
@@ -197,6 +198,33 @@ frame_cost(fixture_t* f, bool paused, perf_stats_t* render_stats) {
     return stats;
 }
 
+/* The paused frame's render with the span stopped after each stage
+ * (r3d_span_stop_after; 0 runs every stage), both cores: the differences
+ * are the rows, the attribute carry and the fill; the first stop also
+ * holds everything outside the draw. */
+static void
+report_stage_split(fixture_t* f) {
+    static const char* const names[4] = {"whole", "setup", "edges", "carry"};
+    (void)scene_animator_set_paused(f->scene, f->subject, SCENE_ANIMATOR_CURRENT, true);
+    (void)scene_animator_set_paused(f->scene, f->subject, SCENE_ANIMATOR_PREVIOUS, true);
+    int64_t mean[4];
+    for (int stop = 0; stop <= 3; stop++) {
+        r3d_span_stop_after = stop;
+        for (int i = -1; i < PERF_SAMPLES; i++) {
+            const int64_t us = render_lab_test_frame(false, NULL);
+            if (i >= 0) {
+                f->render_us[i] = (int32_t)us;
+            }
+        }
+        r3d_span_stop_after = 0;
+        mean[stop] = perf_stats_compute(f->render_us, PERF_SAMPLES).avg;
+        ESP_LOGI(TAG, "stage_split: capybara stop=%s render mean_us=%lld", names[stop], (long long)mean[stop]);
+    }
+    ESP_LOGI(TAG, "stage_split: capybara both cores us/frame to_setup %lld edges %lld carry %lld fill %lld",
+             (long long)mean[1], (long long)(mean[2] - mean[1]), (long long)(mean[3] - mean[2]),
+             (long long)(mean[0] - mean[3]));
+}
+
 static void
 test_animation_and_frame_cost(void) {
     fixture_t* f = fixture();
@@ -216,6 +244,7 @@ test_animation_and_frame_cost(void) {
     perf_stats_t paused_render;
     const perf_stats_t playing = frame_cost(f, false, &playing_render);
     const perf_stats_t paused = frame_cost(f, true, &paused_render);
+    report_stage_split(f);
     const int joints = f->scene->animators[f->subject].skeleton.joint_count;
     ESP_LOGI(TAG, SKIN_PERF_PREFIX " stage=" SKIN_PERF_STAGE_RENDER_DELTA " joints=%d mean_us=%lld p95_us=%lld", joints,
              (long long)(playing_render.avg - paused_render.avg), (long long)(playing_render.p95 - paused_render.p95));
