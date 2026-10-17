@@ -14,6 +14,7 @@ import json
 import glob
 import os
 import re
+import shutil
 import sys
 import subprocess
 from pathlib import Path
@@ -30,6 +31,20 @@ def espressif_tools_root():
     """The tools installation paired with the selected ESP-IDF."""
     explicit = _override("IDF_TOOLS_PATH", os.environ, persistent_environment)
     return Path(explicit).resolve() if explicit else find_idf()[1]
+
+
+def xtensa_tool(tool):
+    """The ESP32-S3 toolchain's `tool` (objdump, nm, ...): from PATH, else
+    from the tools installation. Exits when neither has it."""
+    name = "xtensa-esp32s3-elf-" + tool
+    found = shutil.which(name)
+    if found:
+        return found
+    pattern = "tools/xtensa-esp-elf/*/xtensa-esp-elf/bin/" + name + "*"
+    for candidate in sorted(espressif_tools_root().glob(pattern)):
+        if candidate.is_file():
+            return str(candidate)
+    sys.exit("no %s on PATH or under the ESP-IDF tools" % name)
 
 
 def idf_path(project=None):
