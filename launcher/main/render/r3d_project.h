@@ -1,7 +1,8 @@
 /*
  * r3d_project: pixel snapping over math's projectf lens, the float reference for
  * the fixed-point line path.
- * No subpixel snap or guard band. Header-only and ESP-IDF-free.
+ * Snaps to whole pixels only; no subpixel positions or guard band.
+ * Header-only and ESP-IDF-free.
  */
 #pragma once
 
