@@ -606,6 +606,100 @@ proto_draw_axis_lines_far(const mesh_pass_t* pass) {
     }
 }
 
+#ifndef PROTO_FAR_GRID
+#define PROTO_FAR_GRID 1
+#endif
+
+/* PROTOTYPE (host only): the plane past the mesh as flat straight grid lines,
+ * one segment per piece, clipped by the panel; the spacing doubles each time
+ * the distance from the centre doubles, since far lines crowd anyway. */
+static int32_t
+proto_far_spacing(int32_t c, int32_t edge) {
+    int32_t spacing = 2 * BOOT_ANIM_MESH_STEP_Q12;
+    for (int32_t band = 2 * edge; mathi_abs(c) >= band && band < (1 << 28); band *= 2) {
+        spacing *= 2;
+    }
+    return spacing;
+}
+
+static void
+proto_far_piece(const mesh_pass_t* pass, bool along_im, int32_t c, int32_t from, int32_t to, gfx_color_t col,
+                unsigned flags) {
+    const vec3x_t a = along_im ? boot_anim_to_camera_space(c, from, 0, pass->view)
+                               : boot_anim_to_camera_space(from, c, 0, pass->view);
+    const vec3x_t b =
+        along_im ? boot_anim_to_camera_space(c, to, 0, pass->view) : boot_anim_to_camera_space(to, c, 0, pass->view);
+    int x0, y0, x1, y1;
+    if (r3d_project_segment_cs_x(a, b, pass->view, &x0, &y0, &x1, &y1)) {
+        draw_line_ex(x0, y0, x1, y1, col, flags);
+    }
+}
+
+/* One far line from `from` to `to` (from < to), cut where the distance from
+ * the centre doubles; each piece fades by PROTO_FAR_FADE per doubling so the
+ * crowd at the horizon thins out instead of merging into a band. */
+#define PROTO_FAR_FADE 190
+
+static void
+proto_far_segment(const mesh_pass_t* pass, bool along_im, int32_t c, int32_t from, int32_t to, uint8_t level,
+                  unsigned flags) {
+    const int32_t edge = MESH_HALF * BOOT_ANIM_MESH_STEP_Q12;
+    int32_t at = from;
+    while (at < to) {
+        const int32_t near = mathi_max(mathi_abs(at), mathi_abs(c));
+        int32_t band = edge;
+        uint32_t fade = 255;
+        while (band <= near && band < (1 << 28)) {
+            band *= 2;
+            fade = (fade * PROTO_FAR_FADE) / 255;
+        }
+        /* the next place along the line where the distance band changes */
+        int32_t next = to;
+        if (at < 0 && -at > mathi_abs(c)) {
+            next = mathi_min(to, -(band / 2) > at ? -(band / 2) : to);
+        } else {
+            next = mathi_min(to, band);
+        }
+        if (next <= at) {
+            next = to;
+        }
+        const gfx_color_t col = gfx_color_mix(COL_BG, gfx_rgb(BOOT_ANIM_FLOOR_GREY), scale8(level, (uint8_t)fade));
+        proto_far_piece(pass, along_im, c, at, next, col, flags);
+        at = next;
+    }
+}
+
+static void
+proto_draw_far_grid(const mesh_pass_t* pass) {
+    const int32_t edge = MESH_HALF * BOOT_ANIM_MESH_STEP_Q12;
+    const int32_t far = units(BOOT_ANIM_GRID_SPOKE_FAR_UNITS);
+    const int32_t start_r = proto_axis_reach(pass->now_ms, (const int[2]){1, 0}, edge, far, pass->view);
+    if (start_r <= edge) {
+        return;
+    }
+    const uint8_t level = scale8(PROTO_GRID_LEVEL, pass->ink);
+    const unsigned flags = DRAW_LINE_DASH(BOOT_ANIM_MESH_DASH_ON_PX, BOOT_ANIM_MESH_DASH_OFF_PX);
+    const int32_t reach = start_r;
+    for (int fam = 0; fam < 2; fam++) {
+        const bool along_im = fam == 0;
+        for (int side = -1; side <= 1; side += 2) {
+            for (int32_t c = side < 0 ? -proto_far_spacing(0, edge) : 0; mathi_abs(c) <= reach;
+                 c += side * proto_far_spacing(c, edge)) {
+                if (c == 0) {
+                    continue; /* the axis lines are drawn on their own */
+                }
+                if (mathi_abs(c) < edge) {
+                    const int32_t inner = (int32_t)lround(sqrt(((double)edge * edge) - ((double)c * c)));
+                    proto_far_segment(pass, along_im, c, inner, reach, level, flags);
+                    proto_far_segment(pass, along_im, c, -reach, -inner, level, flags);
+                } else {
+                    proto_far_segment(pass, along_im, c, -reach, reach, level, flags);
+                }
+            }
+        }
+    }
+}
+
 void
 draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view) {
     gfx_surface_t surface;
@@ -636,6 +730,9 @@ draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t*
         plane = (vec3x_t){plane.x + row.x, plane.y + row.y, plane.z + row.z};
     }
 
+    if (PROTO_FAR_GRID) {
+        proto_draw_far_grid(&pass);
+    }
     if (PROTO_AXIS_LINES_FAR) {
         proto_draw_axis_lines_far(&pass);
     }
