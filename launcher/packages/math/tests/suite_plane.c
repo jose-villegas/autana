@@ -141,40 +141,35 @@ edge_point(int edge, int side) {
     return q;
 }
 
+/* Through the identity, q is outside only the plane whose edge it crossed (on it at side 0);
+ * through PLANE_MAP, each plane tests q as the identity-built one tests the mapped point. */
 static void
-test_frustum_edge_points_are_outside_only_the_plane_they_cross(void) {
-    frustum_fixture_t f;
-    frustum_fixture(&f);
-    for (int edge = PLANE_FRUSTUM_LEFT; edge < PLANE_FRUSTUM_COUNT; edge++) {
-        for (int side = -1; side <= 1; side++) {
-            const vec3f_t q = edge_point(edge, side);
-            for (int p = 0; p < PLANE_FRUSTUM_COUNT; p++) {
-                const float d = planef_distance(f.planes[p], q);
-                if (p == edge && side == 0) {
-                    TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, 0.0F, d);
-                } else {
-                    TEST_ASSERT_EQUAL(p != edge || side > 0, d >= 0.0F);
-                }
-                assert_fixed_plane(f.planes[p], f.fixed[p], q);
-            }
+assert_edge_point(const frustum_fixture_t* f, int edge, int side) {
+    const vec3f_t q = edge_point(edge, side);
+    const vec3f_t mapped_q = mat4f_apply(&PLANE_MAP, q);
+    for (int p = 0; p < PLANE_FRUSTUM_COUNT; p++) {
+        const float d = planef_distance(f->planes[p], q);
+        if (p == edge && side == 0) {
+            TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, 0.0F, d);
+        } else {
+            TEST_ASSERT_EQUAL(p != edge || side > 0, d >= 0.0F);
         }
+        const float mapped_distance = planef_distance(f->mapped[p], q);
+        const float camera_distance = planef_distance(f->planes[p], mapped_q);
+        TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, camera_distance, mapped_distance);
+        TEST_ASSERT_EQUAL(camera_distance >= 0.0F, mapped_distance >= 0.0F);
+        assert_fixed_plane(f->planes[p], f->fixed[p], q);
+        assert_fixed_plane(f->mapped[p], f->fixed_mapped[p], q);
     }
 }
 
 static void
-test_frustum_through_a_map_tests_the_mapped_point(void) {
+test_frustum_edge_points_directly_and_through_a_map(void) {
     frustum_fixture_t f;
     frustum_fixture(&f);
     for (int edge = PLANE_FRUSTUM_LEFT; edge < PLANE_FRUSTUM_COUNT; edge++) {
         for (int side = -1; side <= 1; side++) {
-            const vec3f_t q = edge_point(edge, side);
-            for (int p = 0; p < PLANE_FRUSTUM_COUNT; p++) {
-                const float mapped_distance = planef_distance(f.mapped[p], q);
-                const float camera_distance = planef_distance(f.planes[p], mat4f_apply(&PLANE_MAP, q));
-                TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, camera_distance, mapped_distance);
-                TEST_ASSERT_EQUAL(camera_distance >= 0.0F, mapped_distance >= 0.0F);
-                assert_fixed_plane(f.mapped[p], f.fixed_mapped[p], q);
-            }
+            assert_edge_point(&f, edge, side);
         }
     }
 }
@@ -218,8 +213,7 @@ suite_plane(void) {
     RUN_TEST(test_construction_winding_distance_and_normalize);
     RUN_TEST(test_oblique_normalization_scales_normal_and_distance);
     RUN_TEST(test_from_rows_tests_the_mapped_point);
-    RUN_TEST(test_frustum_edge_points_are_outside_only_the_plane_they_cross);
-    RUN_TEST(test_frustum_through_a_map_tests_the_mapped_point);
+    RUN_TEST(test_frustum_edge_points_directly_and_through_a_map);
     RUN_TEST(test_frustum_near_plane_sits_at_near_z);
     RUN_TEST(test_frustum_corner_rays_lie_on_both_side_planes);
 }
