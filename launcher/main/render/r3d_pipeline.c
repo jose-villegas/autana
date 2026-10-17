@@ -62,8 +62,8 @@ typedef enum { BOX_OUTSIDE, BOX_CROSSING } box_side_t;
  * children skip it. */
 static box_side_t
 classify_box(const int16_t lo[3], const int16_t hi[3], const planef_t planes[PLANE_FRUSTUM_COUNT], unsigned* mask) {
-    const float c[3] = {0.5F * ((float)lo[0] + (float)hi[0]), 0.5F * ((float)lo[1] + (float)hi[1]),
-                        0.5F * ((float)lo[2] + (float)hi[2])};
+    const vec3f_t c = {0.5F * ((float)lo[0] + (float)hi[0]), 0.5F * ((float)lo[1] + (float)hi[1]),
+                       0.5F * ((float)lo[2] + (float)hi[2])};
     const float e[3] = {0.5F * ((float)hi[0] - (float)lo[0]), 0.5F * ((float)hi[1] - (float)lo[1]),
                         0.5F * ((float)hi[2] - (float)lo[2])};
     for (int p = 0; p < PLANE_FRUSTUM_COUNT; p++) {
@@ -71,7 +71,7 @@ classify_box(const int16_t lo[3], const int16_t hi[3], const planef_t planes[PLA
             continue;
         }
         const planef_t* plane = &planes[p];
-        const float d = (plane->normal.x * c[0]) + (plane->normal.y * c[1]) + (plane->normal.z * c[2]) + plane->d;
+        const float d = planef_distance(*plane, c);
         const float r =
             (fabsf(plane->normal.x) * e[0]) + (fabsf(plane->normal.y) * e[1]) + (fabsf(plane->normal.z) * e[2]);
         if (d + r < 0.0F) {
@@ -358,8 +358,7 @@ clip_to_plane(const planef_t* p, const clip_vertex_t* in, int n, clip_vertex_t* 
 
 /* The identity as a constant, so the guard planes built through it stay in lens
  * space and fold to the values they had when they were written out by hand. */
-static const mat4f_t LENS_SPACE = {
-    {{1.0F, 0.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 0.0F, 1.0F}}};
+static const mat4f_t LENS_SPACE = MAT4F_IDENTITY;
 
 /* The near plane, then the screen's guard band: every corner left projects
  * inside what r3d_span takes. */
