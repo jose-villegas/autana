@@ -30,7 +30,10 @@ def densify(p, tris, labels, max_edge, rounds=16):
     keeps its triangle's label."""
     labels = np.asarray(labels)
     for _ in range(rounds):
-        edges = np.unique(np.sort(np.concatenate([tris[:, [0, 1]], tris[:, [1, 2]], tris[:, [2, 0]]]), axis=1), axis=0)
+        edges = np.sort(np.concatenate([tris[:, [0, 1]], tris[:, [1, 2]], tris[:, [2, 0]]]), axis=1)
+        # Numeric keys preserve the lexicographic order of non-negative vertex pairs.
+        keys = np.unique(edges[:, 0].astype(np.int64) * len(p) + edges[:, 1])
+        edges = np.column_stack([keys // len(p), keys % len(p)])
         long = edges[np.linalg.norm(p[edges[:, 0]] - p[edges[:, 1]], axis=1) > max_edge]
         if len(long) == 0:
             break

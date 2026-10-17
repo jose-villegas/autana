@@ -85,7 +85,7 @@ Board build: `808816b5c999-diag`.
 | scale (vec3) | s | 36.4 | 4177.0 | 30.6 | 30.4 | 1.2 | - |
 | scale (vec3) | x | 66.0 | 7464.0 | 49.2 | 49.0 | 1.3 | - |
 | sinf | f | 191.4 | 22419.0 | 109.1 | 110.0 | 1.8 | calls _sinf |
-| slerp | f | 968.6 | 78551.0 | 599.4 | 605.4 | 1.6 | madd.s; calls __divsf3, _sinf, sqrtf |
+| slerp | f | 968.6 | 78551.0 | 599.4 | 421.2 | 1.6 | madd.s; calls __divsf3, _sinf, sqrtf |
 | sqrtf | f | 61.2 | 6006.0 | 45.5 | 46.3 | 1.3 | calls sqrtf |
 | transform compute_matrix | f | 67.4 | 6824.0 | 67.6 | 67.4 | 1.0 | madd.s msub.s |
 | transform compute_matrix | x | 854.2 | 75389.0 | 660.2 | 661.4 | 1.3 | calls mat4x_from_trs, memcpy |

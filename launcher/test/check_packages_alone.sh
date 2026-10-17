@@ -6,9 +6,10 @@
 # A package sits under every layer of the firmware, so it may include only
 # itself, the C library and the build config. The style audit's PACKAGE-INCLUDE rule names a
 # reach into the firmware's own folders; this catches the reaches a resolver
-# cannot see: a stub, a vendored component, an ESP-IDF header. Each header is
-# compiled on its own, so one that leans on whatever its includer happened to
-# include first fails too. Syntax only: nothing is linked and nothing runs.
+# cannot see: a stub, a vendored component, an ESP-IDF header. PACKAGE-CONFIG
+# requires package-prefixed settings and Kconfig entries, ignoring comments.
+# Each header compiles on its own; relying on an includer's headers fails
+# too. Syntax only: nothing is linked and nothing runs.
 #
 # Usage: check_packages_alone.sh [<launcher dir>]
 
