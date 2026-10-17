@@ -142,22 +142,26 @@ assert_screen_point(const projectf_t* lens, vec3f_t point, int x, int y) {
     TEST_ASSERT_EQUAL_INT(expected_y, y);
 }
 
-/* near_z sits exactly halfway between the two z's, so the crossing point is
- * plain averaging rather than a hand copy of the function's formula. */
 static void
 test_one_end_behind_clips_to_the_near_plane_crossing(void) {
+    const float near_z = 2.0F;
+    const vec3f_t behind = {7.0F, -5.0F, -2.0F};
+    const vec3f_t front = {-4.0F, 13.0F, 14.0F};
+    const float crossing_parts = 4.0F;
+    const float remaining_parts = 3.0F;
     render_view_t view = fixture();
-    view.near_z = 100.0F;
+    view.near_z = near_z;
     const projectf_t lens = render_view_lens(&view);
-    const vec3f_t p0 = {0, 0, 0};
-    const vec3f_t p1 = {200.0F, 100.0F, 200.0F};
-    int ax, ay, bx, by;
-
-    TEST_ASSERT_TRUE(r3d_project_segment_cs(p0, p1, &lens, &ax, &ay, &bx, &by));
-
-    const vec3f_t at_near_z = {(p0.x + p1.x) / 2.0F, (p0.y + p1.y) / 2.0F, view.near_z};
-    assert_screen_point(&lens, at_near_z, ax, ay);
-    assert_screen_point(&lens, p1, bx, by);
+    /* The near plane is one quarter of the way from behind to front. */
+    const vec3f_t crossing = {(remaining_parts * behind.x + front.x) / crossing_parts,
+                              (remaining_parts * behind.y + front.y) / crossing_parts, near_z};
+    for (int reverse = 0; reverse < 2; reverse++) {
+        int ax, ay, bx, by;
+        TEST_ASSERT_TRUE(reverse ? r3d_project_segment_cs(front, behind, &lens, &ax, &ay, &bx, &by)
+                                 : r3d_project_segment_cs(behind, front, &lens, &ax, &ay, &bx, &by));
+        assert_screen_point(&lens, crossing, reverse ? bx : ax, reverse ? by : ay);
+        assert_screen_point(&lens, front, reverse ? ax : bx, reverse ? ay : by);
+    }
 }
 
 static void

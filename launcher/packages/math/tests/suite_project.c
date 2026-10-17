@@ -11,6 +11,16 @@ enum {
     PROJECT_CY = 43,
     PROJECT_NEAR = 2,
     PROJECT_DEPTH = 4,
+    PROJECT_X = -3,
+    PROJECT_Y = 5,
+    PROJECT_BEHIND_X = 7,
+    PROJECT_BEHIND_Y = -5,
+    PROJECT_BEHIND_Z = -2,
+    PROJECT_FRONT_X = -4,
+    PROJECT_FRONT_Y = 13,
+    PROJECT_FRONT_Z = 14,
+    PROJECT_CROSS_PARTS = 4,
+    PROJECT_REMAINING_PARTS = 3,
 };
 
 static projectf_t
@@ -21,9 +31,9 @@ fixture(void) {
 static void
 test_projectf_offset_preserves_camera_sign_and_independent_axes(void) {
     const projectf_t lens = fixture();
-    const vec2f_t offset = projectf_offset(&lens, (vec3f_t){-PROJECT_NEAR, PROJECT_NEAR, PROJECT_DEPTH});
-    TEST_ASSERT_EQUAL_FLOAT(-PROJECT_FX * PROJECT_NEAR / (float)PROJECT_DEPTH, offset.x);
-    TEST_ASSERT_EQUAL_FLOAT(PROJECT_FY * PROJECT_NEAR / (float)PROJECT_DEPTH, offset.y);
+    const vec2f_t offset = projectf_offset(&lens, (vec3f_t){PROJECT_X, PROJECT_Y, PROJECT_DEPTH});
+    TEST_ASSERT_EQUAL_FLOAT(PROJECT_FX * PROJECT_X / (float)PROJECT_DEPTH, offset.x);
+    TEST_ASSERT_EQUAL_FLOAT(PROJECT_FY * PROJECT_Y / (float)PROJECT_DEPTH, offset.y);
 }
 
 static void
@@ -32,9 +42,9 @@ test_projectf_screen_center_and_independent_axes(void) {
     const vec2f_t center = projectf_screen(&lens, (vec3f_t){0, 0, PROJECT_DEPTH});
     TEST_ASSERT_EQUAL_FLOAT(lens.cx, center.x);
     TEST_ASSERT_EQUAL_FLOAT(lens.cy, center.y);
-    const vec2f_t offset = projectf_screen(&lens, (vec3f_t){PROJECT_DEPTH, PROJECT_DEPTH, PROJECT_DEPTH});
-    TEST_ASSERT_EQUAL_FLOAT(lens.cx + lens.fx, offset.x);
-    TEST_ASSERT_EQUAL_FLOAT(lens.cy - lens.fy, offset.y);
+    const vec2f_t offset = projectf_screen(&lens, (vec3f_t){PROJECT_X, PROJECT_Y, PROJECT_DEPTH});
+    TEST_ASSERT_EQUAL_FLOAT(lens.cx + lens.fx * PROJECT_X / PROJECT_DEPTH, offset.x);
+    TEST_ASSERT_EQUAL_FLOAT(lens.cy - lens.fy * PROJECT_Y / PROJECT_DEPTH, offset.y);
 }
 
 static void
@@ -52,18 +62,25 @@ test_projectf_clip_near_rejects_and_preserves_endpoints(void) {
     TEST_ASSERT_EQUAL_MEMORY(&front_b, &b, sizeof b);
 }
 
+/* These depths put the crossing one quarter from behind, with distinct signed axes. */
 static void
 test_projectf_clip_near_crosses_in_both_orders(void) {
-    const projectf_t lens = fixture();
-    for (int reverse = 0; reverse < 2; reverse++) {
-        vec3f_t behind = {0, 0, 0}, front = {PROJECT_DEPTH, -PROJECT_DEPTH, PROJECT_DEPTH};
-        const vec3f_t before_front = front;
-        TEST_ASSERT_TRUE(reverse ? projectf_clip_near(lens.near_z, &front, &behind)
-                                 : projectf_clip_near(lens.near_z, &behind, &front));
-        TEST_ASSERT_EQUAL_FLOAT(lens.near_z, behind.x);
-        TEST_ASSERT_EQUAL_FLOAT(-lens.near_z, behind.y);
-        TEST_ASSERT_EQUAL_FLOAT(lens.near_z, behind.z);
-        TEST_ASSERT_EQUAL_MEMORY(&before_front, &front, sizeof front);
+    const float scales[] = {1, MATHX_ONE};
+    for (size_t i = 0; i < sizeof scales / sizeof scales[0]; i++) {
+        const float scale = scales[i];
+        for (int reverse = 0; reverse < 2; reverse++) {
+            vec3f_t behind = {PROJECT_BEHIND_X * scale, PROJECT_BEHIND_Y * scale, PROJECT_BEHIND_Z * scale};
+            vec3f_t front = {PROJECT_FRONT_X * scale, PROJECT_FRONT_Y * scale, PROJECT_FRONT_Z * scale};
+            const vec3f_t before_front = front;
+            TEST_ASSERT_TRUE(reverse ? projectf_clip_near(PROJECT_NEAR * scale, &front, &behind)
+                                     : projectf_clip_near(PROJECT_NEAR * scale, &behind, &front));
+            TEST_ASSERT_EQUAL_FLOAT(
+                (PROJECT_REMAINING_PARTS * PROJECT_BEHIND_X + PROJECT_FRONT_X) * scale / PROJECT_CROSS_PARTS, behind.x);
+            TEST_ASSERT_EQUAL_FLOAT(
+                (PROJECT_REMAINING_PARTS * PROJECT_BEHIND_Y + PROJECT_FRONT_Y) * scale / PROJECT_CROSS_PARTS, behind.y);
+            TEST_ASSERT_EQUAL_FLOAT(PROJECT_NEAR * scale, behind.z);
+            TEST_ASSERT_EQUAL_MEMORY(&before_front, &front, sizeof front);
+        }
     }
 }
 
@@ -83,15 +100,65 @@ test_projectx_clip_near_at_two_scales(void) {
         TEST_ASSERT_EQUAL_MEMORY(&front_a, &a, sizeof a);
         TEST_ASSERT_EQUAL_MEMORY(&front_b, &b, sizeof b);
         for (int reverse = 0; reverse < 2; reverse++) {
-            vec3x_t behind = {0, 0, 0};
-            vec3x_t front = {PROJECT_DEPTH * scales[i], -PROJECT_DEPTH * scales[i], PROJECT_DEPTH * scales[i]};
+            vec3x_t behind = {PROJECT_BEHIND_X * scales[i], PROJECT_BEHIND_Y * scales[i], PROJECT_BEHIND_Z * scales[i]};
+            vec3x_t front = {PROJECT_FRONT_X * scales[i], PROJECT_FRONT_Y * scales[i], PROJECT_FRONT_Z * scales[i]};
             const vec3x_t before_front = front;
             TEST_ASSERT_TRUE(reverse ? projectx_clip_near(near_z, &front, &behind)
                                      : projectx_clip_near(near_z, &behind, &front));
-            TEST_ASSERT_EQUAL_INT32(near_z, behind.x);
-            TEST_ASSERT_EQUAL_INT32(-near_z, behind.y);
+            TEST_ASSERT_EQUAL_INT32((PROJECT_REMAINING_PARTS * PROJECT_BEHIND_X + PROJECT_FRONT_X) * scales[i]
+                                        / PROJECT_CROSS_PARTS,
+                                    behind.x);
+            /* The negative y crossing floors: arithmetic right shift rounds toward minus infinity. */
+            TEST_ASSERT_EQUAL_INT32(-((-(PROJECT_REMAINING_PARTS * PROJECT_BEHIND_Y + PROJECT_FRONT_Y) * scales[i]
+                                       + PROJECT_CROSS_PARTS - 1)
+                                      / PROJECT_CROSS_PARTS),
+                                    behind.y);
             TEST_ASSERT_EQUAL_INT32(near_z, behind.z);
             TEST_ASSERT_EQUAL_MEMORY(&before_front, &front, sizeof front);
+        }
+    }
+}
+
+/* A zero-distance clip leaves public values unchanged; a callback makes endpoint selection observable. */
+static void
+record_cross_f(float near_z, vec3f_t* behind, const vec3f_t* front) {
+    TEST_ASSERT_EQUAL_FLOAT(near_z, behind->z);
+    *behind = *front;
+}
+
+static void
+record_cross_x(int32_t near_z, vec3x_t* behind, const vec3x_t* front) {
+    TEST_ASSERT_EQUAL_INT32(near_z, behind->z);
+    *behind = *front;
+}
+
+MATH_DEFINE_CLIP_NEAR(record_f, vec3f_t, float, record_cross_f)
+MATH_DEFINE_CLIP_NEAR(record_x, vec3x_t, int32_t, record_cross_x)
+
+static void
+test_at_near_endpoint_is_clipped_in_both_slots(void) {
+    const int32_t scales[] = {1, MATHX_ONE};
+    for (size_t i = 0; i < sizeof scales / sizeof scales[0]; i++) {
+        const int32_t scale = scales[i];
+        for (int reverse = 0; reverse < 2; reverse++) {
+            const vec3x_t at_near_x = {PROJECT_X * scale, PROJECT_Y * scale, PROJECT_NEAR * scale};
+            const vec3x_t front_x = {PROJECT_FRONT_X * scale, PROJECT_FRONT_Y * scale, PROJECT_FRONT_Z * scale};
+            const vec3f_t at_near_f = {at_near_x.x, at_near_x.y, at_near_x.z};
+            const vec3f_t front_f = {front_x.x, front_x.y, front_x.z};
+            for (int record = 0; record < 2; record++) {
+                vec3x_t ax = at_near_x, bx = front_x;
+                vec3f_t af = at_near_f, bf = front_f;
+                bool (*clip_f)(float, vec3f_t*, vec3f_t*) = record ? record_f_clip_near : projectf_clip_near;
+                bool (*clip_x)(int32_t, vec3x_t*, vec3x_t*) = record ? record_x_clip_near : projectx_clip_near;
+                TEST_ASSERT_TRUE(reverse ? clip_f(at_near_f.z, &bf, &af) : clip_f(at_near_f.z, &af, &bf));
+                TEST_ASSERT_TRUE(reverse ? clip_x(at_near_x.z, &bx, &ax) : clip_x(at_near_x.z, &ax, &bx));
+                const vec3f_t expected_f = record ? front_f : at_near_f;
+                const vec3x_t expected_x = record ? front_x : at_near_x;
+                TEST_ASSERT_EQUAL_MEMORY(&expected_f, &af, sizeof af);
+                TEST_ASSERT_EQUAL_MEMORY(&expected_x, &ax, sizeof ax);
+                TEST_ASSERT_EQUAL_MEMORY(&front_f, &bf, sizeof bf);
+                TEST_ASSERT_EQUAL_MEMORY(&front_x, &bx, sizeof bx);
+            }
         }
     }
 }
@@ -103,6 +170,7 @@ suite_project(void) {
     RUN_TEST(test_projectf_clip_near_rejects_and_preserves_endpoints);
     RUN_TEST(test_projectf_clip_near_crosses_in_both_orders);
     RUN_TEST(test_projectx_clip_near_at_two_scales);
+    RUN_TEST(test_at_near_endpoint_is_clipped_in_both_slots);
 }
 
 SUITE_REGISTER(suite_project);
