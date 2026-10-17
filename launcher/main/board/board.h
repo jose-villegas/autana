@@ -10,6 +10,7 @@
 #include <stdbool.h>
 
 #include "bsp/esp-bsp.h"
+#include "esp_codec_dev_defaults.h"
 #include "esp_err.h"
 
 typedef enum {
@@ -51,6 +52,8 @@ board_temp_sensor_status_t board_temp_sensor_read_celsius(float* out_celsius);
 #define BOARD_IMU_I2C_ADDR         0x6B
 #define BOARD_RTC_I2C_ADDR         0x51
 #define BOARD_IO_EXPANDER_I2C_ADDR BSP_IO_EXPANDER_I2C_ADDRESS
+/* The ES8311 datasheet address is 8-bit 0x30; I2C requires the 7-bit address. */
+#define BOARD_AUDIO_CODEC_I2C_ADDR (ES8311_CODEC_DEFAULT_ADDR >> 1)
 #define BOARD_TOUCH_FT_I2C_ADDR    0x38
 #define BOARD_TOUCH_CST_I2C_ADDR   0x15
 #define BOARD_TOUCH_FT_NAME        "FT3168"

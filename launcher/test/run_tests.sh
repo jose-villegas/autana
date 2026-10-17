@@ -119,6 +119,8 @@ $TEST_DIR/pack_reads.c
 $TEST_DIR/job_calls.c
 $TEST_DIR/test_asset_dir.c
 $TEST_DIR/test_fence.c
+$MAIN_DIR/audio/audio_tone.c
+$MAIN_DIR/audio/audio_goertzel.c
 $MAIN_DIR/app/app_arena.c
 $MAIN_DIR/app/app_registry.c
 $MAIN_DIR/shell/shell_system.c
@@ -268,6 +270,9 @@ case "${1:-}" in
 esac
 
 mkdir -p "$BUILD_DIR"
+# Absolute from here on: the host binary runs from a folder of this run's own
+# (RUN_DIR below), so no path handed to it may lean on the caller's.
+BUILD_DIR=$(CDPATH= cd -- "$BUILD_DIR" && pwd)
 QUIET_LOG="$BUILD_DIR/run_tests.log"
 if [ -z "${QUIET_INNER:-}" ]; then
     # shellcheck source=../../scripts/quiet.sh
@@ -386,7 +391,7 @@ for include_dir in $(package_include_dirs "$LAUNCHER_DIR"); do
 done
 COMMON_INC="-I $MAIN_N$PACKAGE_INC -I $TEST_N -I $TEST_N/framework -I $TEST_N/stubs"
 TEST_INC="$COMMON_INC -I $LAUNCHER_N/components/microui/include -I $LAUNCHER_N/tools/gen -I $LAUNCHER_N/tools/r3d"
-LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -Wl,--wrap=asset_store_pack -Wl,--wrap=job_try_core1 -pthread -lm"
+LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -Wl,--wrap=asset_store_pack -Wl,--wrap=job_try_core1 -Wl,--wrap=draw_line_ex -pthread -lm"
 
 # The source lists, one native path per line. Test code (test/'s own
 # drivers, test/suites/*.c and each app's suite_*.c) also gets the
@@ -518,13 +523,22 @@ AUTANA_SCENE_PROBE="$BUILD_DIR/scene_probe.bin"
 export AUTANA_SCENE_PROBE
 "$PYTHON" "$TEST_DIR/../tools/tests/scene_probe.py" -o "$AUTANA_SCENE_PROBE"
 
+# The binary runs from a folder of this run's own. Suites write their scratch
+# packs to "./", so two runs sharing the caller's working directory (each with
+# its own --build-dir) overwrote each other's mid-test.
+RUN_DIR="$BUILD_DIR/run"
+mkdir -p "$RUN_DIR"
+host_run() {
+    (cd "$RUN_DIR" && "$@")
+}
+
 if [ "$SANITIZE" = 1 ] && [ "$(uname -s)" = Linux ]; then
     # Control ids are value addresses and must stay stable across frames, as on the device.
     ASAN_OPTIONS="${ASAN_OPTIONS:+$ASAN_OPTIONS:}detect_stack_use_after_return=0"
     export ASAN_OPTIONS
-    "$OUT"
+    host_run "$OUT"
 else
-    "$OUT"
+    host_run "$OUT"
 fi
 
 "$PYTHON" "$TEST_DIR/../tools/tests/table_invalid_packs.py" -o "$BUILD_DIR"
@@ -532,7 +546,7 @@ fi
 EMPTY_ASSETS="$BUILD_DIR/no-packs"
 mkdir -p "$EMPTY_ASSETS"
 FALLBACK_LOG="$BUILD_DIR/ridge-fallback.log"
-if ! AUTANA_ASSET_DIR="$EMPTY_ASSETS" "$OUT" --run suite_ridge_fallback > "$FALLBACK_LOG" 2>&1; then
+if ! host_run env AUTANA_ASSET_DIR="$EMPTY_ASSETS" "$OUT" --run suite_ridge_fallback > "$FALLBACK_LOG" 2>&1; then
     tail -12 "$FALLBACK_LOG"
     exit 1
 fi
@@ -543,7 +557,7 @@ fi
 
 for INVALID_CASE in frac-bits columns row; do
     INVALID_LOG="$BUILD_DIR/ridge-invalid-$INVALID_CASE.log"
-    if ! AUTANA_ASSET_DIR="$BUILD_DIR/ridge-invalid-$INVALID_CASE" "$OUT" --run suite_ridge_fallback > "$INVALID_LOG" 2>&1; then
+    if ! host_run env AUTANA_ASSET_DIR="$BUILD_DIR/ridge-invalid-$INVALID_CASE" "$OUT" --run suite_ridge_fallback > "$INVALID_LOG" 2>&1; then
         tail -12 "$INVALID_LOG"
         exit 1
     fi

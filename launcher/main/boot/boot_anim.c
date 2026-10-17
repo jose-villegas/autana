@@ -38,6 +38,7 @@
 #include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
+#include "gfx/target/gfx_segment_clip.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
 
@@ -80,34 +81,11 @@ lit(uint32_t rgb, uint8_t alpha) {
     return gfx_color_mix(COL_BG, gfx_rgb(rgb), alpha);
 }
 
-/* The floor needs this extra mix and lit() alone does not: a saturated
- * hue only ever gets more OPAQUE through lit() on its own, never any
- * less colour-muddy, and it is the colour itself moving toward white
- * that is supposed to be doing most of the work of making the grid read
- * here. */
-static gfx_color_t
-lit_whitened(uint32_t rgb, uint8_t whiten, uint8_t alpha) {
-    const gfx_color_t whitened = gfx_color_mix(gfx_rgb(rgb), COL_WHITE, whiten);
-    return gfx_color_mix(COL_BG, whitened, alpha);
-}
-
 /* A whole number of grid units, as a Q12 value. */
 static int32_t
 units(int n) {
     return (int32_t)n * BOOT_ANIM_ONE;
 }
-
-/*
- * The floor
- *
- * Drawn at t = 0 as a POLAR grid (concentric circles + radial spokes),
- * not a square lattice: boot_anim_wave_height() lifts a point by its
- * true distance from the origin, so only a real circle rises as one
- * uniform ring, and only a real circle matches boot_anim_grid_hue()'s
- * one-tone-per-ring colouring.
- */
-
-#define BOOT_ANIM_GRID_CIRCLE_STEPS     12
 
 /* NEAR portion vertices span distance, smooth growth, dashed segments, not
  * wave. */
@@ -128,64 +106,144 @@ polar_point(int32_t radius, uint16_t turn, int32_t* re, int32_t* im) {
     *im = (int32_t)(((int64_t)radius * sin_v) >> TRIG_SIN_SHIFT);
 }
 
-/* step == steps closes loop back to step 0, no gap on last edge. */
-static void
-grid_circle_point(int32_t radius, const boot_anim_plane_t* plane, int steps, int step, const boot_anim_view_t* view,
-                  vec3x_t* cs, bool* front, int* sx, int* sy) {
-    const int i = (step == steps) ? 0 : step;
-    const uint16_t turn = (uint16_t)(((uint32_t)i * TRIG_TURN) / (uint32_t)steps);
-    int32_t re, im;
-    polar_point(radius, turn, &re, &im);
-    *cs = boot_anim_plane_point(plane, re, im);
-    *sx = 0;
-    *sy = 0;
-    *front = r3d_project_point_cs_x(*cs, view, sx, sy);
+/* Camera setup scratch must be released before drawing a mesh row. */
+__attribute__((noinline)) boot_anim_view_t
+boot_anim_view(const boot_anim_motion_t* motion, int w, int h, uint32_t now_ms) {
+    boot_anim_timeline_state_t st = boot_anim_timeline_sample(motion, now_ms);
+
+    /* w (the panel's native WIDTH) is narrower than h (its native HEIGHT),
+     * so render_view_make() fits the lens to w; boot's pixels must not move
+     * if that inequality ever changes. */
+    const viewport_t viewport = {.width = w, .height = h, .quarter = 0};
+    const render_view_t view =
+        render_view_make(&st.camera, BOOT_ANIM_CAMERA_HALF_FOV_SHORT_TAN, R3D_LINE_NEAR_Z, viewport);
+    /* Meters per raw unit of (re, t, im): Q12, Q8 climbing 132/512 m a unit, Q12. */
+    const float meters_per_unit[3] = {1.0F / (float)BOOT_ANIM_ONE,
+                                      (float)BOOT_ANIM_SPIRAL_Q9 / (256.0F * (float)R3D_X_UNIT_ONE),
+                                      1.0F / (float)BOOT_ANIM_ONE};
+    return r3d_line_view_x_make(&view, &st.space, meters_per_unit);
+}
+
+/* What every node and edge of one frame's mesh shares. */
+typedef struct {
+    uint32_t now_ms;
+    boot_anim_floor_state_t floor;
+    recti_t clip;
+    vec3x_t column;
+    bool stepping;
+    uint8_t ink;
+    int stride;
+    const boot_anim_view_t* view;
+} mesh_pass_t;
+
+/* A node of the floor mesh, projected. band_q4 is its distance from the
+ * origin in BOOT_ANIM_GRID_STEP_Q12 bands, 4 fractional bits. Screen only:
+ * draw_floor() keeps a row of these on boot's small stack, and the camera
+ * space point an edge needs to clip at the near plane is rebuilt for the few
+ * edges that cross it. */
+typedef struct {
+    int16_t sx, sy;
+    int16_t band_q4;
+    int16_t ripple;
+    uint8_t flags;
+} mesh_node_t;
+
+#define MESH_HALF       (BOOT_ANIM_MESH_CELLS / 2)
+#define MESH_NODE_FRONT (1u << 4)
+#define MESH_NODE_CLIP  (GFX_CLIP_OUT_LEFT | GFX_CLIP_OUT_RIGHT | GFX_CLIP_OUT_TOP | GFX_CLIP_OUT_BOTTOM)
+
+_Static_assert(sizeof(mesh_node_t) == 10, "the mesh row must fit the boot stack");
+
+/* The floor's transform keeps the narrow path's fractional bits until projection. */
+static vec3x_t
+mesh_point(const mesh_pass_t* pass, int i, int j) {
+    const int32_t lift = boot_anim_zeta_to_t_q8(boot_anim_floor_height(i, j, &pass->floor));
+    return boot_anim_to_camera_space(i * BOOT_ANIM_MESH_STEP_Q12, j * BOOT_ANIM_MESH_STEP_Q12, lift, pass->view);
+}
+
+static vec3x_t
+mesh_stepped_point(const mesh_pass_t* pass, int i, int j, vec3x_t plane, int32_t lift) {
+    if (!pass->stepping || (uint32_t)(lift + R3D_X_INPUT_Y_LIMIT) >= 2u * R3D_X_INPUT_Y_LIMIT) {
+        return boot_anim_to_camera_space(i * BOOT_ANIM_MESH_STEP_Q12, j * BOOT_ANIM_MESH_STEP_Q12, lift, pass->view);
+    }
+    return (vec3x_t){
+        (plane.x + (pass->view->units[0][1] * lift)) >> R3D_X_INPUT_SHIFT,
+        (plane.y + (pass->view->units[1][1] * lift)) >> R3D_X_INPUT_SHIFT,
+        (plane.z + (pass->view->units[2][1] * lift)) >> R3D_X_INPUT_SHIFT,
+    };
+}
+
+static mesh_node_t
+mesh_node(const mesh_pass_t* pass, int i, int j, vec3x_t plane) {
+    int sx = 0;
+    int sy = 0;
+    mesh_node_t node;
+    node.ripple = (int16_t)boot_anim_floor_ripple(i, j, &pass->floor);
+    const int32_t lift = boot_anim_zeta_to_t_q8(node.ripple + boot_anim_floor_swell(i, j, &pass->floor));
+    const bool front = r3d_project_point_cs_x(mesh_stepped_point(pass, i, j, plane, lift), pass->view, &sx, &sy);
+    node.sx = (int16_t)sx;
+    node.sy = (int16_t)sy;
+    node.band_q4 = (int16_t)boot_anim_floor_node(i, j)->band_q4;
+    node.flags = (uint8_t)(gfx_clip_outcode(&pass->clip, sx, sy) | (front ? MESH_NODE_FRONT : 0u));
+    return node;
 }
 
 static void
-draw_grid_circle_segment(bool prev_front, bool front, int prev_sx, int prev_sy, int sx, int sy, vec3x_t prev_cs,
-                         vec3x_t cs, gfx_color_t c, const boot_anim_view_t* view) {
-    if (prev_front && front) {
-        draw_line_ex(prev_sx, prev_sy, sx, sy, c, 0u);
+draw_mesh_edge(const mesh_pass_t* pass, const mesh_node_t* a, int ai, int aj, const mesh_node_t* b, int bi, int bj) {
+    const bool a_front = (a->flags & MESH_NODE_FRONT) != 0;
+    const bool b_front = (b->flags & MESH_NODE_FRONT) != 0;
+    if ((!a_front && !b_front) || (a_front && b_front && (a->flags & b->flags & MESH_NODE_CLIP))) {
         return;
     }
-    if (prev_front != front) {
-        int ax, ay, bx, by;
-        if (r3d_project_segment_cs_x(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
-            draw_line_ex(ax, ay, bx, by, c, 0u);
-        }
+    const int band = (a->band_q4 + b->band_q4) >> (BOOT_ANIM_FLOOR_BAND_SHIFT + 1);
+    const uint8_t alpha = scale8(boot_anim_grid_alpha(pass->now_ms, band), pass->ink);
+    if (alpha == 0) {
+        return;
     }
+    const gfx_color_t c = gfx_color_mix(COL_BG, boot_anim_floor_color((a->ripple + b->ripple) / 2), alpha);
+    const unsigned flags = DRAW_LINE_DASH(BOOT_ANIM_MESH_DASH_ON_PX, BOOT_ANIM_MESH_DASH_OFF_PX);
+    if (a_front && b_front) {
+        draw_line_ex(a->sx, a->sy, b->sx, b->sy, c, flags);
+        return;
+    }
+    int x0, y0, x1, y1;
+    if (!r3d_project_segment_cs_x(mesh_point(pass, ai, aj), mesh_point(pass, bi, bj), pass->view, &x0, &y0, &x1, &y1)) {
+        return;
+    }
+    draw_line_ex(x0, y0, x1, y1, c, flags);
+}
+
+static int
+mesh_row_half(int j, int stride) {
+    return boot_anim_mesh_row_half[stride - 1][mathi_abs(j)];
 }
 
 static void
-draw_grid_circle(int32_t radius, const boot_anim_plane_t* plane, gfx_color_t c, int steps,
-                 const boot_anim_view_t* view) {
-    vec3x_t prev_cs;
-    bool prev_front = false;
-    int prev_sx = 0, prev_sy = 0;
-    bool have_prev = false;
-
-    for (int step = 0; step <= steps; step++) {
-        vec3x_t cs;
-        bool front;
-        int sx, sy;
-        grid_circle_point(radius, plane, steps, step, view, &cs, &front, &sx, &sy);
-
-        if (have_prev) {
-            draw_grid_circle_segment(prev_front, front, prev_sx, prev_sy, sx, sy, prev_cs, cs, c, view);
+draw_mesh_row(const mesh_pass_t* pass, int j, int row_half, int above_half, mesh_node_t* above, vec3x_t plane) {
+    const int stride = pass->stride;
+    mesh_node_t left = {0};
+    for (int i = -MESH_HALF; i <= MESH_HALF; i += stride) {
+        const vec3x_t point = plane;
+        plane = (vec3x_t){plane.x + pass->column.x, plane.y + pass->column.y, plane.z + pass->column.z};
+        if (mathi_abs(i) > row_half) {
+            continue;
         }
-        prev_cs = cs;
-        prev_front = front;
-        prev_sx = sx;
-        prev_sy = sy;
-        have_prev = true;
+        mesh_node_t node = mesh_node(pass, i, j, point);
+        if (i - stride >= -row_half) {
+            draw_mesh_edge(pass, &left, i - stride, j, &node, i, j);
+        }
+        if (mathi_abs(i) <= above_half) {
+            draw_mesh_edge(pass, &above[i + MESH_HALF], i, j - stride, &node, i, j);
+        }
+        above[i + MESH_HALF] = node;
+        left = node;
     }
 }
 
 #define BOOT_ANIM_GRID_SPOKE_DASH_STEPS 3
 
-/* Drawn FLAT: a spoke is a plane guide line, not the ring data the wave
- * is about. TWO PARTS, ONE reveal: `reach` scales one target radius
+/* Drawn FLAT: a spoke is a plane guide line, not the surface the wave
+ * moves. TWO PARTS, ONE reveal: `reach` scales one target radius
  * across the full near..far span: the near portion (stepped, dashable)
  * walks to min(target, near); the tail (one segment, undashed) appears
  * once that is done. Stepping the tail at the near resolution wastes
@@ -235,72 +293,69 @@ draw_grid_spoke(uint16_t turn, int32_t near, int32_t far, gfx_color_t c, bool da
     }
 }
 
-static int
-floor_ring_steps(vec3x_t rim_a, vec3x_t rim_b, int dissolve_level, const boot_anim_view_t* view) {
-    int steps = BOOT_ANIM_GRID_CIRCLE_STEPS;
-    if (boot_anim_screen_chord_lt(rim_a, rim_b, view, 32)) {
-        steps = 4;
-    } else if (boot_anim_screen_chord_lt(rim_a, rim_b, view, 72)) {
-        steps = 6;
-    } else if (boot_anim_screen_chord_lt(rim_a, rim_b, view, 128)) {
-        steps = 8;
+static void
+draw_spokes(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
+    const uint8_t spoke_reach = boot_anim_grid_spoke_reach(now_ms);
+    if (spoke_reach == 0) {
+        return;
     }
-    if (dissolve_level >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL && steps > 6) {
-        steps = 6;
-    } else if (dissolve_level >= BOOT_ANIM_DISSOLVE_HALF_LEVEL && steps > 8) {
-        steps = 8;
+    const gfx_color_t spoke_c = lit(COL_AXIS, ink);
+    for (int i = 0; i < BOOT_ANIM_GRID_SPOKES; i++) {
+        const uint16_t turn = (uint16_t)((i * (int)TRIG_TURN) / BOOT_ANIM_GRID_SPOKES);
+        draw_grid_spoke(turn, units(BOOT_ANIM_GRID_SPOKE_NEAR_UNITS), units(BOOT_ANIM_GRID_SPOKE_FAR_UNITS), spoke_c,
+                        BOOT_ANIM_GRID_SPOKE_DASH != 0, spoke_reach, view);
     }
-    return steps;
 }
 
-static bool
-draw_floor_ring(int ring, uint32_t now_ms, int32_t amp_q12, int dissolve_level, uint8_t alpha,
-                const boot_anim_view_t* view) {
-    const int32_t d = (int32_t)ring * BOOT_ANIM_GRID_STEP_Q12;
-    const int32_t t =
-        boot_anim_wave_height(d, now_ms, amp_q12, BOOT_ANIM_WAVE_WAVELENGTH_Q12, BOOT_ANIM_WAVE_PERIOD_MS);
-
-    const boot_anim_plane_t plane = boot_anim_plane(t, view);
-    int32_t rim_re, rim_im;
-    polar_point(d, 0, &rim_re, &rim_im);
-    const vec3x_t rim_a = boot_anim_plane_point(&plane, rim_re, rim_im);
-    polar_point(d, TRIG_TURN / 2, &rim_re, &rim_im);
-    const vec3x_t rim_b = boot_anim_plane_point(&plane, rim_re, rim_im);
-
-    const int steps = floor_ring_steps(rim_a, rim_b, dissolve_level, view);
-    const bool tiny = boot_anim_screen_chord_lt(rim_a, rim_b, view, 16);
-    const gfx_color_t c =
-        lit_whitened(gfx_hue_rgb(boot_anim_grid_hue(now_ms, ring)), boot_anim_grid_whiten(now_ms), alpha);
-    draw_grid_circle(d, &plane, c, steps, view);
-    return tiny;
+/* Deltas retain the narrow transform's rounding and input bounds. */
+static vec3x_t
+mesh_plane(const mesh_pass_t* pass, vec3x_t* row) {
+    if (!pass->stepping) {
+        *row = (vec3x_t){0};
+        return (vec3x_t){0};
+    }
+    const int32_t start = -MESH_HALF * BOOT_ANIM_MESH_STEP_Q12;
+    const int32_t step = pass->stride * BOOT_ANIM_MESH_STEP_Q12;
+    const int32_t (*u)[4] = pass->view->units;
+    *row = (vec3x_t){u[0][2] * step, u[1][2] * step, u[2][2] * step};
+    return (vec3x_t){
+        ((u[0][0] + u[0][2]) * start) + u[0][3],
+        ((u[1][0] + u[1][2]) * start) + u[1][3],
+        ((u[2][0] + u[2][2]) * start) + u[2][3],
+    };
 }
 
 void
 draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view) {
-    const int32_t amp_q12 = (int32_t)(((int64_t)BOOT_ANIM_WAVE_HEIGHT_Q12 * boot_anim_wave_envelope(now_ms)) / 255);
-    bool last_ring_tiny = false;
-    const int dissolve_level = gfx_dither_level(reveal);
-
-    for (int ring = 1; ring <= BOOT_ANIM_GRID_RINGS; ring++) {
-        const uint8_t alpha = scale8(boot_anim_grid_alpha(now_ms, ring), ink);
-        if (alpha == 0) {
-            break;
-        }
-        if ((ring & 1) && (last_ring_tiny || dissolve_level >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL)) {
-            continue;
-        }
-        last_ring_tiny = draw_floor_ring(ring, now_ms, amp_q12, dissolve_level, alpha, view);
+    gfx_surface_t surface;
+    if (!gfx_draw_begin(&surface)) {
+        return;
+    }
+    mesh_pass_t pass = {
+        .now_ms = now_ms,
+        .floor = boot_anim_floor_state(now_ms),
+        .clip = surface.clip,
+        .ink = ink,
+        .stride = gfx_dither_level(reveal) >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL ? 2 : 1,
+        .view = view,
+        .stepping = view->units_ok && ((MESH_HALF + 2) * BOOT_ANIM_MESH_STEP_Q12 < R3D_X_INPUT_XZ_LIMIT),
+    };
+    if (pass.stepping) {
+        const int32_t step = pass.stride * BOOT_ANIM_MESH_STEP_Q12;
+        pass.column = (vec3x_t){view->units[0][0] * step, view->units[1][0] * step, view->units[2][0] * step};
+    }
+    vec3x_t row;
+    vec3x_t plane = mesh_plane(&pass, &row);
+    mesh_node_t above[BOOT_ANIM_MESH_CELLS + 1];
+    int above_half = -1;
+    for (int j = -MESH_HALF; j <= MESH_HALF; j += pass.stride) {
+        const int row_half = mesh_row_half(j, pass.stride);
+        draw_mesh_row(&pass, j, row_half, above_half, above, plane);
+        above_half = row_half;
+        plane = (vec3x_t){plane.x + row.x, plane.y + row.y, plane.z + row.z};
     }
 
-    const gfx_color_t spoke_c = lit(COL_AXIS, ink);
-    const uint8_t spoke_reach = boot_anim_grid_spoke_reach(now_ms);
-    if (spoke_reach > 0) {
-        for (int i = 0; i < BOOT_ANIM_GRID_SPOKES; i++) {
-            const uint16_t turn = (uint16_t)((i * (int)TRIG_TURN) / BOOT_ANIM_GRID_SPOKES);
-            draw_grid_spoke(turn, units(BOOT_ANIM_GRID_SPOKE_NEAR_UNITS), units(BOOT_ANIM_GRID_SPOKE_FAR_UNITS),
-                            spoke_c, BOOT_ANIM_GRID_SPOKE_DASH != 0, spoke_reach, view);
-        }
-    }
+    draw_spokes(now_ms, ink, view);
 }
 
 /* The axes */
@@ -323,7 +378,7 @@ draw_label(int x, int y, const char* text, uint8_t ink) {
     const int w = draw_font_text_width(draw_font_ui(), text, -1, LABEL_SCALE);
     const int h = draw_font_height(draw_font_ui(), LABEL_SCALE);
 
-    draw_text_scaled(x - w / 2, y - h / 2, text, lit(COL_TICK, ink), LABEL_SCALE);
+    draw_text_scaled(x - (w / 2), y - (h / 2), text, lit(COL_TICK, ink), LABEL_SCALE);
 }
 
 void
@@ -355,13 +410,13 @@ draw_axes(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
         const bool t_ok = boot_anim_project_point(0, 0, top, view, &t_x, &t_y);
 
         if (re_ok) {
-            draw_label(re_x + LABEL_GAP * 2, re_y + LABEL_GAP, "Re", ink);
+            draw_label(re_x + (LABEL_GAP * 2), re_y + LABEL_GAP, "Re", ink);
         }
         if (im_ok) {
-            draw_label(im_x - LABEL_GAP * 2, im_y + LABEL_GAP, "Im", ink);
+            draw_label(im_x - (LABEL_GAP * 2), im_y + LABEL_GAP, "Im", ink);
         }
         if (t_ok) {
-            draw_label(t_x + LABEL_GAP * 2, t_y - LABEL_GAP, "t", ink);
+            draw_label(t_x + (LABEL_GAP * 2), t_y - LABEL_GAP, "t", ink);
         }
     }
 }
@@ -379,7 +434,7 @@ draw_zeros(int32_t pen_t_q8, uint8_t ink, const boot_anim_view_t* view) {
         if (!boot_anim_project_point(0, 0, t, view, &x, &y)) {
             continue;
         }
-        draw_rect(x - ZERO_DOT / 2, y - ZERO_DOT / 2, ZERO_DOT, ZERO_DOT, lit(COL_ZERO, ink));
+        draw_rect(x - (ZERO_DOT / 2), y - (ZERO_DOT / 2), ZERO_DOT, ZERO_DOT, lit(COL_ZERO, ink));
     }
 }
 
@@ -411,7 +466,7 @@ draw_disc(int x, int y, int diameter, gfx_color_t c) {
         while (dx > 0 && (dx * dx) + (dy * dy) > r * r) {
             dx--;
         }
-        draw_rect(x - dx, y + dy, 2 * dx + 1, 1, c);
+        draw_rect(x - dx, y + dy, (2 * dx) + 1, 1, c);
     }
 }
 
