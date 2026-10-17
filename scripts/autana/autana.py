@@ -1227,7 +1227,7 @@ def tune(args):
     return 0
 
 
-PERF_USAGE = "usage: autana perf [?] | autana perf off | autana perf <name> [event] [seconds]"
+PERF_USAGE = "usage: autana debug perf [?] | autana debug perf off | autana debug perf <name> [event] [seconds]"
 PERF_DEFAULT_SECONDS = 10.0
 
 
@@ -1309,7 +1309,7 @@ def perf_disarm():
     code, replies = send("PERF off", reply="PERFMON")
     if code == 0 and replies and replies[-1].startswith("PERFMON_OK"):
         return True
-    print("autana perf: the counters may still be armed - " + (perf_text(replies[-1]) if replies else "no reply"),
+    print("autana debug perf: the counters may still be armed - " + (perf_text(replies[-1]) if replies else "no reply"),
           file=sys.stderr)
     return False
 
@@ -1346,7 +1346,7 @@ def perf(args):
         return code
     segments = perf_segments(text, name)
     if not segments:
-        print(f"autana perf: no samples of {name} in {seconds:g} s - is it running (open its app)?",
+        print(f"autana debug perf: no samples of {name} in {seconds:g} s - is it running (open its app)?",
               file=sys.stderr)
         return 1
     print(perf_summary(name, segments))
@@ -1474,7 +1474,7 @@ def console(_args=None):
                 print(stop.code)
 
 
-Command = namedtuple("Command", "name handler usages")
+Command = namedtuple("Command", "name handler usages dev_only", defaults=(False,))
 
 
 def alias(old, new, handler):
@@ -1489,7 +1489,7 @@ def alias(old, new, handler):
 
 LOCK_VERBS = {"wait": lock_wait, "take": take, "run": lock_run, "release": release, "hand": hand, "take-back": take_back}
 DEBUG_VERBS = {"freeze": freeze, "resume": resume, "step": step, "touch": touch, "imu": imu,
-              "framewatch": framewatch, "heap": heap}
+              "framewatch": framewatch, "heap": heap, "perf": perf}
 
 
 def lock(args):
@@ -1503,7 +1503,7 @@ def lock(args):
 
 
 def debug(args):
-    """`autana debug <verb>`: freeze/resume/step/touch/imu/framewatch/heap, kept
+    """`autana debug <verb>`: freeze/resume/step/touch/imu/framewatch/heap/perf, kept
     out of the top-level help (`autana help debug` still lists them) since a
     session rarely needs them."""
     if not args or args[0] not in DEBUG_VERBS:
@@ -1564,11 +1564,6 @@ COMMAND_GROUPS = (
         Command("screenshot", screenshot, (
             ("screenshot [--as-shown|--framebuffer] [-o PATH]", "the panel as PATH.png plus PATH.json"),
             ("screenshot --frames N -o PATH", "N consecutive frames, PATH-00 on, stepped while frozen"),)),
-        Command("perf", perf, (
-            ("perf", "the frame_cost names seen and the counter events"),
-            ("perf <name> [event] [seconds]",
-             "cycles and one event over one bracket for `seconds` s (10 when omitted), then off"),
-            ("perf off", "disarm the counters"))),
     )),
     ("input", "Drive input", (
         Command("tap", tap, (("tap <x> <y>", "tap a point, in pixels of the default screenshot"),)),
@@ -1601,7 +1596,11 @@ COMMAND_GROUPS = (
             ("debug touch <down|up> <x> <y>", "one raw touch level; up hands back"),
             ("debug imu <ax> <ay> <az>", "raw accelerometer counts; imu release hands back"),
             ("debug framewatch", "allocations and log lines repeating frame after frame, as JSON"),
-            ("debug heap [--json]", "free internal heap and largest block (development builds)"))),
+            ("debug heap [--json]", "free internal heap and largest block (development builds)"),
+            ("debug perf", "the frame_cost names seen and the counter events"),
+            ("debug perf <name> [event] [seconds]",
+             "cycles and one event over one bracket for `seconds` s (10 when omitted), then off"),
+            ("debug perf off", "disarm the counters")), dev_only=True),
     )),
     ("docs", "No board needed", (
         Command("docs", docs, (
@@ -1623,6 +1622,7 @@ RENAMED_VERBS = {
     "freeze": ("debug freeze", freeze), "resume": ("debug resume", resume),
     "step": ("debug step", step), "touch": ("debug touch", touch), "imu": ("debug imu", imu),
     "framewatch": ("debug framewatch", framewatch), "heap": ("debug heap", heap),
+    "perf": ("debug perf", perf),
 }
 
 COMMANDS = {command.name: command.handler

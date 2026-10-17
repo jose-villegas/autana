@@ -28,7 +28,40 @@ def doc_sections():
         [parts[i].strip() for i in range(1, len(parts), 2)]
 
 
+def dev_only_violations(groups):
+    violations = []
+    for key, _, commands in groups:
+        for command in commands:
+            if command.dev_only and key != "debug":
+                violations.append(f"{command.name}: dev_only command outside debug")
+            if key == "debug" and not command.dev_only:
+                violations.append(f"{command.name}: debug command missing dev_only")
+            if not command.dev_only and any(
+                    "development build" in text.lower()
+                    for usage in command.usages for text in usage):
+                violations.append(f"{command.name}: development build usage missing dev_only")
+    return violations
+
+
 class CommandGroupTests(unittest.TestCase):
+    def test_dev_only_commands_belong_in_debug(self):
+        self.assertEqual(dev_only_violations(autana.COMMAND_GROUPS), [])
+
+    def test_dev_only_checker_reports_planted_commands(self):
+        cases = (
+            ("watch", True, "probe", "probe: dev_only command outside debug"),
+            ("debug", False, "probe", "probe: debug command missing dev_only"),
+            ("watch", False, "probe (development builds)",
+             "probe: development build usage missing dev_only"),
+        )
+        for group, dev_only, description, expected in cases:
+            with self.subTest(group=group, dev_only=dev_only, description=description):
+                command = autana.Command("probe", None, (("probe", description),),
+                                         dev_only=dev_only)
+                groups = ((group, "Probe", (command,)),)
+                self.assertEqual(dev_only_violations(groups), [expected])
+
+
     def test_the_doc_has_every_group_in_order(self):
         _, headings = doc_sections()
         titles = [title for _, title, _ in autana.COMMAND_GROUPS]
