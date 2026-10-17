@@ -31,6 +31,19 @@ BOTH = WRAPPED + """
 """
 
 
+TUNING_ADDRESS = (0x40383A84).to_bytes(4, "little")
+WRAPPER_ADDRESS = (0x4037BC00).to_bytes(4, "little")
+
+INDIRECT_WRAPPER = """
+40386000 <esp_psram_impl_enable>:
+40386100:	000000      	callx8	a8
+4037bc00 <__wrap_mspi_timing_psram_tuning>:
+4037bc69:	07e1a5      	call8	40383a84 <mspi_timing_psram_tuning>
+40383a84 <mspi_timing_psram_tuning>:
+40383a90:	000000      	call8	40383b00 <s_do_tuning>
+"""
+
+
 class PsramTuningWrapGate(unittest.TestCase):
     def test_a_driver_calling_the_wrapper_passes(self):
         self.assertEqual([], gate.problems(WRAPPED, sweeps=True))
@@ -46,6 +59,18 @@ class PsramTuningWrapGate(unittest.TestCase):
         self.assertEqual(1, len(found))
         self.assertIn("psram_retune", found[0])
         self.assertNotIn("__wrap_", found[0].split("by ")[1])
+
+    def test_a_taken_tuning_address_fails_though_every_direct_call_is_wrapped(self):
+        found = gate.problems(WRAPPED, sweeps=True, image=bytes(64) + TUNING_ADDRESS)
+        self.assertEqual(1, len(found))
+        self.assertIn("indirect call", found[0])
+
+    def test_a_wrapper_reached_only_through_its_address_passes(self):
+        self.assertEqual([], gate.problems(INDIRECT_WRAPPER, sweeps=True, image=WRAPPER_ADDRESS))
+
+    def test_a_wrapper_with_no_call_and_no_taken_address_fails(self):
+        self.assertEqual(["nothing calls __wrap_mspi_timing_psram_tuning"],
+                         gate.problems(INDIRECT_WRAPPER, sweeps=True, image=b""))
 
     def test_without_the_sweep_an_unwrapped_driver_passes(self):
         self.assertEqual([], gate.problems(UNWRAPPED, sweeps=False))
