@@ -212,7 +212,7 @@ system icons), not code; it keeps its place under L1.
 | dirty, heal and full-redraw send policy | `gfx/present/send/` |
 | null panel backend | `gfx/present/panel/` |
 | viewport | `display/` |
-| projection | `math/linear/projectf.h` owns the pinhole lens, float screen coordinates and float near clipping; `projectx.h` owns scale-independent fixed near clipping. `render/r3d_project.h` and `r3d_project_x.h` own pixel snapping and line units; `render_view_lens()` supplies the plain lens value |
+| projection | `math/linear/projectf.h`, `projectx.h` (lens, near clip); `render/r3d_project*.h` (snapping, line units) |
 
 ### Drawing and presentation
 
