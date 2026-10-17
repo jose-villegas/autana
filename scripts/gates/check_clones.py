@@ -130,6 +130,7 @@ def scan(root, minimum, names=None, revision="HEAD", renames=None):
         names = [name for name in names if eligible_name(name)]
         contents = revision_contents(root, revision, names, renames)
         for name, content in contents:
+            content = content.replace(b"\r\n", b"\n")
             if is_generated(content.decode("utf-8")):
                 continue
             target = tree / name

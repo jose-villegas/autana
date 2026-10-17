@@ -302,6 +302,18 @@ class CloneTests(unittest.TestCase):
                 self.assertEqual(shifted[side]["start"], original[side]["start"] + prefix.count("\n"))
                 self.assertEqual(shifted[side]["end"], original[side]["end"] + prefix.count("\n"))
 
+    def test_crlf_defines_keep_clone_line_numbers(self):
+        prefix = '#define X 1\n#define ROW {1, \\\n 2, 3}\n'
+        files = dict.fromkeys(("launcher/main/a.c", "launcher/main/b.c"), prefix + BLOCK)
+        contents = [(name, text.replace("\n", "\r\n").encode("utf-8")) for name, text in files.items()]
+        with mock.patch.object(gate, "revision_contents", return_value=contents):
+            pairs = self.scan(files, 80)
+        self.assertTrue(pairs)
+        for pair in pairs:
+            for side in ("firstFile", "secondFile"):
+                self.assertEqual(pair[side]["start"], prefix.count("\n") + 1)
+                self.assertEqual(pair[side]["end"], (prefix + BLOCK).count("\n"))
+
     def test_literal_define_with_line_comment_is_stripped(self):
         listing = "".join(f"#define X_{i} 1 // note\n" for i in range(100))
         self.assertEqual(self.scan(dict.fromkeys(("launcher/main/a.c", "launcher/main/b.c"), listing), 80), [])
