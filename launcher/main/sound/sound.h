@@ -10,6 +10,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "asset/asset_bytes.h"
 #include "asset/asset_pack.h"
 #include "audio/audio_adpcm.h"
 #include "audio/audio_out.h"
@@ -59,5 +60,13 @@ typedef struct {
 asset_status_t sound_seek(sound_cursor_t* c, const sound_t* sound, uint32_t frame);
 /* Copies up to frames samples, wrapping at loop_end; one-shots stop at frames. */
 uint32_t sound_read(sound_cursor_t* c, int16_t* out, uint32_t frames);
+
+/* One stored sample: signed little-endian 16-bit, as PCM16 data and an ADPCM
+ * block's predictor hold it. */
+static inline int16_t
+sound_read_sample(const uint8_t* at) {
+    const uint16_t value = asset_read_u16(at);
+    return (int16_t)(value <= INT16_MAX ? (int)value : (int)value - (UINT16_MAX + 1));
+}
 
 asset_status_t sound_open(const asset_pack_t* pack, const char* name, sound_t* out);

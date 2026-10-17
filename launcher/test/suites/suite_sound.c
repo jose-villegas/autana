@@ -267,7 +267,7 @@ check_cursor(sound_format_t format) {
     TEST_ASSERT_EQUAL(CANARY, whole[FRAMES]);
     if (format == SOUND_PCM16) {
         for (unsigned i = 0; i < FRAMES; i++) {
-            TEST_ASSERT_EQUAL(audio_adpcm_read_sample(data + i * SOUND_PCM_BYTES), whole[i]);
+            TEST_ASSERT_EQUAL(sound_read_sample(data + i * SOUND_PCM_BYTES), whole[i]);
         }
     }
     if (format == SOUND_IMA_ADPCM) {

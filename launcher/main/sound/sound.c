@@ -58,7 +58,8 @@ check_blocks(const sound_t* sound, uint32_t blocks, uint32_t stride) {
 static asset_status_t
 parse(asset_view_t entry, void* out) {
     sound_t* sound = out;
-    uint32_t blocks, stride;
+    uint32_t blocks = 0;
+    uint32_t stride = 0;
     const asset_status_t status = read_header(entry, sound, &blocks, &stride);
     return status == ASSET_OK ? check_blocks(sound, blocks, stride) : status;
 }
@@ -77,7 +78,7 @@ open_block(sound_cursor_t* c) {
     const uint8_t* block =
         sound->data + ((c->position / sound->block_frames) * audio_adpcm_block_bytes(sound->block_frames));
     c->adpcm = (audio_adpcm_t){.codes = block + AUDIO_ADPCM_BLOCK_HEADER_BYTES,
-                               .predictor = audio_adpcm_read_sample(block),
+                               .predictor = sound_read_sample(block),
                                .step_index = (int8_t)block[AUDIO_ADPCM_AT_STEP_INDEX]};
 }
 
@@ -98,7 +99,7 @@ read_run(sound_cursor_t* c, int16_t* out, uint32_t frames) {
     const sound_t* sound = c->sound;
     if (sound->format == SOUND_PCM16) {
         for (uint32_t i = 0; i < frames; i++) {
-            out[i] = audio_adpcm_read_sample(sound->data + ((c->position + i) * SOUND_PCM_BYTES));
+            out[i] = sound_read_sample(sound->data + ((c->position + i) * SOUND_PCM_BYTES));
         }
         c->position += frames;
         return;
