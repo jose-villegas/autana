@@ -1,7 +1,8 @@
 """Bake NAME.sound.toml and its integer PCM WAV into a SOND entry.
 
-The TOML owns format and loop frames at the stored rate. WAV sample levels
-set gain; there is no gain setting or cue/smpl interpretation. Mixdown takes
+Layout: docs/assets/README.md, "The sound entry".
+The TOML owns format and loop frames at the stored rate. The WAV's sample
+level is the sound's level; there is no gain setting. No cue/smpl interpretation. Mixdown takes
 the channel mean. Resampling uses a Hann-windowed sinc with 32 zero crossings
 on each side, widened by the downsampling ratio for an anti-alias lowpass.
 Matching-rate sources skip the filter. Standard library only.

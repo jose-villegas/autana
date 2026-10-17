@@ -14,21 +14,30 @@
 #include "fixtures/audio_adpcm_reference.h"
 
 static void
-test_ffmpeg_reference(void) {
-    const size_t frames = sizeof EXPECTED / sizeof EXPECTED[0];
-    int16_t* decoded = malloc(sizeof EXPECTED);
+check_reference(const uint8_t* block, const int16_t* expected, uint32_t frames) {
+    const audio_sound_t sound = {
+        .data = block, .frames = frames, .block_frames = (uint16_t)frames, .format = AUDIO_SOUND_IMA_ADPCM};
+    audio_sound_cursor_t cursor;
+    int16_t* decoded = malloc(frames * sizeof *decoded);
     TEST_ASSERT_NOT_NULL(decoded);
-    audio_adpcm_decode_block(BLOCK, (uint32_t)frames, decoded);
-    bool equal = true;
-    for (size_t i = 0; i < frames; i++) {
-        equal = equal && decoded[i] == EXPECTED[i];
-    }
+    TEST_ASSERT_EQUAL(ASSET_OK, audio_sound_seek(&cursor, &sound, 0));
+    TEST_ASSERT_EQUAL(frames, audio_sound_read(&cursor, decoded, frames));
+    TEST_ASSERT_EQUAL_INT16_ARRAY(expected, decoded, frames);
     free(decoded);
-    TEST_ASSERT_TRUE(equal);
+}
+
+static void
+test_ffmpeg_reference(void) {
+    check_reference(BLOCK, EXPECTED, sizeof EXPECTED / sizeof EXPECTED[0]);
+}
+
+static void
+test_ffmpeg_saturation_reference(void) {
+    check_reference(SATURATION_BLOCK, SATURATION_EXPECTED, sizeof SATURATION_EXPECTED / sizeof SATURATION_EXPECTED[0]);
 }
 
 #ifndef DEVICE_BUILD
-/* The smooth 1200-peak fixture includes index-zero adaptation. Bounds of 300
+/* sound_probe.signal() includes index-zero adaptation. Bounds of 300
  * peak and 50 RMS allow that startup transient, yet reject nibble or state errors. */
 enum { MAX_ERROR = 300, RMS_ERROR = 50 };
 
@@ -44,19 +53,13 @@ test_baker_multiblock_round_trip(void) {
     TEST_ASSERT_EQUAL(ASSET_OK, audio_sound_open(&pack, "adpcm", &adpcm));
     int16_t* decoded = malloc(adpcm.frames * sizeof *decoded);
     TEST_ASSERT_NOT_NULL(decoded);
-    uint32_t at = 0;
-    const uint8_t* block = adpcm.data;
-    while (at < adpcm.frames) {
-        const uint32_t count = adpcm.frames - at < adpcm.block_frames ? adpcm.frames - at : adpcm.block_frames;
-        audio_adpcm_decode_block(block, count, decoded + at);
-        block += audio_adpcm_block_bytes(adpcm.block_frames);
-        at += count;
-    }
+    audio_sound_cursor_t cursor;
+    TEST_ASSERT_EQUAL(ASSET_OK, audio_sound_seek(&cursor, &adpcm, 0));
+    TEST_ASSERT_EQUAL(adpcm.frames, audio_sound_read(&cursor, decoded, adpcm.frames));
     double squared = 0;
     int maximum = 0;
     for (uint32_t i = 0; i < pcm.frames; i++) {
-        const uint16_t raw = asset_read_u16(pcm.data + i * AUDIO_SOUND_PCM_BYTES);
-        const int sample = raw <= INT16_MAX ? (int)raw : (int)raw - (UINT16_MAX + 1);
+        const int sample = audio_adpcm_read_i16(pcm.data + i * AUDIO_SOUND_PCM_BYTES);
         const int error = abs(sample - decoded[i]);
         maximum = error > maximum ? error : maximum;
         squared += (double)error * error;
@@ -90,6 +93,7 @@ test_engine_sound(void) {
 void
 suite_audio_adpcm(void) {
     RUN_TEST(test_ffmpeg_reference);
+    RUN_TEST(test_ffmpeg_saturation_reference);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_baker_multiblock_round_trip);
 #endif

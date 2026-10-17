@@ -274,7 +274,7 @@ class CloneTests(unittest.TestCase):
     def test_literal_defines_are_ignored_but_code_and_function_macros_are_not(self):
         listing = "".join(f"#define FIELD_{i} {i}U\n" for i in range(24))
         listing += '#define SCALE 0.5F\n#define MASK 0xFFUL\n#define LABEL "value"\n'
-        self.assert_ignored_declaration(listing)
+        self.assertEqual(self.scan(dict.fromkeys(("launcher/main/a.c", "launcher/main/b.c"), listing), 80), [])
         functions = "".join(f"#define APPLY_{i}(x) ((x) + {i})\n" for i in range(24))
         self.assertEqual(len(gate.filter_pairs([self.pair(fragment=functions)])), 1)
         expressions = "".join(f"#define VALUE_{i} (input + {i})\n" for i in range(24))
@@ -283,7 +283,7 @@ class CloneTests(unittest.TestCase):
     def test_literal_vector_defines_are_ignored_but_calls_and_identifiers_are_not(self):
         listing = "".join(f"#define ROW_{i} {{{i}, -1, 0xFFU, 1.5F}}\n" for i in range(24))
         listing += '#define CONTINUED {1, \\\n    -2, 3}\n'
-        self.assertEqual(gate.filter_pairs([self.pair(fragment=listing)]), [])
+        self.assertEqual(self.scan(dict.fromkeys(("launcher/main/a.c", "launcher/main/b.c"), listing), 80), [])
         values = ", ".join(str(i) for i in range(100))
         pairs = self.scan({"launcher/main/a.c": f"static const int values[] = {{{values}}};",
                            "launcher/main/b.h": f"#define VALUES {{{values}}}\n"}, 80)
@@ -291,6 +291,20 @@ class CloneTests(unittest.TestCase):
         for body in ("{value, 1}", "{call(1), 2}", "{1 + 2, 3}"):
             code = "".join(f"#define ROW_{i} {body}\n" for i in range(24))
             self.assertEqual(len(gate.filter_pairs([self.pair(fragment=code)])), 1)
+
+    def test_define_stripping_keeps_clone_line_numbers(self):
+        prefix = '#define X 1 // note\n#define ROW {1, \\\n 2, 3}\n'
+        plain = self.scan(dict.fromkeys(("launcher/main/a.c", "launcher/main/b.c"), BLOCK), 80)
+        stripped = self.scan(dict.fromkeys(("launcher/main/a.c", "launcher/main/b.c"), prefix + BLOCK), 80)
+        self.assertEqual(len(stripped), len(plain))
+        for original, shifted in zip(plain, stripped):
+            for side in ("firstFile", "secondFile"):
+                self.assertEqual(shifted[side]["start"], original[side]["start"] + prefix.count("\n"))
+                self.assertEqual(shifted[side]["end"], original[side]["end"] + prefix.count("\n"))
+
+    def test_literal_define_with_line_comment_is_stripped(self):
+        listing = "".join(f"#define X_{i} 1 // note\n" for i in range(100))
+        self.assertEqual(self.scan(dict.fromkeys(("launcher/main/a.c", "launcher/main/b.c"), listing), 80), [])
 
     def test_initializer_table_rows_are_ignored_but_statements_are_not(self):
         rows = "".join(f'    {{"row_{i}", build_{i}, {i}u, 0, 1000, 0}},\n' for i in range(16))

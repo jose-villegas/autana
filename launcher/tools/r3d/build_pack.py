@@ -7,26 +7,25 @@
 
 Each PATH is an .import.toml, a .scene.toml, an .anim.toml, an .image.toml,
 an .icons.toml, a .curve.toml, a .sound.toml or a folder searched for these
-roots; with none, launcher/main is searched. An app's demo_assets.toml adds launcher/demo/NAME
-for each NAME in its `demo` list; one inside launcher/demo is refused. A
+roots; with none, launcher/main is searched. An app's demo_assets.toml adds
+launcher/demo/NAME for each NAME in its `demo` list; one inside launcher/demo is refused. A
 folder reached twice is searched once. A root is a file nothing else names:
-NAME.scene.toml is pack NAME, holding the scene entry NAME, every mesh, skin, skeleton
-and clip it names; an NAME.import.toml no scene
-places is pack NAME, holding its variants; an NAME.anim.toml no scene names
+NAME.scene.toml is pack NAME, holding the scene entry NAME, every mesh, skin,
+skeleton and clip it names; an NAME.import.toml no scene places is pack NAME, holding its variants; an NAME.anim.toml no scene names
 is pack NAME, holding its one clip; an NAME.image.toml is pack NAME, holding
 its one picture; an NAME.icons.toml is pack NAME, holding an image entry per
 icon, each named by the icon; an NAME.curve.toml is pack NAME, holding its
-one table entry; an NAME.sound.toml holds one sound entry. A NAME.pack.toml
-makes its folder one pack NAME instead:
+one table entry; an NAME.sound.toml is pack NAME, holding its one sound.
+A NAME.pack.toml makes its folder one pack NAME instead:
 every root under that folder puts its entries there, and folder packs do
 not nest. A mesh is the entry <id>.mesh that mesh_import.py wrote, and its
 pack id is that id; a scene (r3d/scene_asset.py), a clip
 (anim/tracks_asset.py), a picture (gfx/image_asset.py), a curve
 (gfx/curve_asset.py), a sound (audio/sound_asset.py) and an icon
-(gfx/icons_asset.py) are baked here from their files, each with its stem for id but an icon. Every scene, clip and
-mesh is mirrored into the engine frame on the way in
-(asset/engine_frame.py); a picture, an icon, a curve or a sound has no 3D frame. Ids
-are unique within a pack, whatever their type. A skinned mesh also brings
+(gfx/icons_asset.py) are baked here from their files, each with its stem for
+id but an icon. Every scene, clip and mesh is mirrored into the engine frame
+on the way in (asset/engine_frame.py); a picture, an icon, a curve or a sound
+has no 3D frame. Ids are unique within a pack, whatever their type. A skinned mesh also brings
 its <mesh id>.skin, its rig's skeleton and each clip in its source.clips
 (docs/render/Skeleton-and-Skin.md). Each pack is written to DIR/<name>.apak;
 --image also writes the partition image, the pack directory and every pack.
@@ -275,7 +274,7 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
         mirrored = []
         for key, kind, data in entry_rows:
             try:
-                mirrored.append((key, kind, data if kind == sound_asset.TYPE else to_engine(kind, data)))
+                mirrored.append((key, kind, to_engine(kind, data)))
             except ValueError as error:
                 raise SettingsError(f"entry {key!r}: {error}") from error
         result[name] = build_pack(sorted(mirrored))
@@ -283,9 +282,10 @@ def pack_bytes(paths, replace=(), cache=None, offline=False, unlocked=None,
 
 
 def pack_entry(key, source, engine_frame=True, camera_node=None, cache=None, offline=False):
-    """The pack entry `key`: a scene, clip, picture or icon baked from its
-    file, a sound or a curve table, else a mesh's bytes; a scene, clip or mesh in the engine frame unless
-    `engine_frame` is false (the skin step matches the source-frame mesh)."""
+    """The pack entry `key`: a scene, clip, picture, icon, sound or curve
+    baked from its file, else a mesh's bytes. A scene, clip or mesh is in the
+    engine frame unless `engine_frame` is false (the skin step matches the
+    source-frame mesh)."""
     try:
         if source.name.endswith(SOUND):
             return key, sound_asset.TYPE, sound_asset.bake(source)

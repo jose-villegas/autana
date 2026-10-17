@@ -173,29 +173,52 @@ IMA codes. Its byte size is `4 + (block_frames - 1) / 2`.
 
 The baker takes its block size from `AUDIO_SOUND_DEFAULT_BLOCK_FRAMES` in
 `audio_sound.h`. The first block starts at index zero; later blocks carry the
-previous ending index. Each predictor is exact; the last tail repeats its last sample.
+previous ending index. Each block opens with its first sample stored exactly
+as the predictor. The last block is padded by repeating its final sample, and
+`frames` tells the reader where to stop.
 
 `audio_sound_open()` maps the samples in place through `asset_entry_read()`.
-It rejects wrong versions, formats, channels or rates, empty sounds, nonzero
-reserved fields and gaps, and invalid block headers or block frame counts.
+Failed opens zero the view.
 
-Offsets below the header, misaligned offsets and data outside the entry give
-`ASSET_ERR_BOUNDS`; invalid field values give `ASSET_ERR_FORMAT`. A loop needs
-`start < end <= frames`, or both zero for one-shot; ADPCM starts must align to blocks.
-The baker rejects misaligned starts and names their two neighbours. Failed opens zero the view.
+| Status | Cause |
+|---|---|
+| `ASSET_ERR_VERSION` | Another version, checked by `asset_entry_validate()` |
+| `ASSET_ERR_BOUNDS` | Data offset below 32 or misaligned, or data past the entry |
+| `ASSET_ERR_FORMAT` | Unknown format, channels other than 1, rate other than 22,050 Hz, or zero frames |
+| `ASSET_ERR_FORMAT` | Nonzero reserved fields or header gap |
+| `ASSET_ERR_FORMAT` | PCM16 block_frames nonzero, or ADPCM block_frames even (including zero) |
+| `ASSET_ERR_FORMAT` | Loop end 0 with start nonzero, or a loop without `start < end <= frames` |
+| `ASSET_ERR_FORMAT` | ADPCM loop start off a block boundary |
+| `ASSET_ERR_FORMAT` | ADPCM block header step index above 88 or reserved byte nonzero |
+
+The baker rejects misaligned starts and names their two neighbours.
+
+The M2 mixer reads sounds through `audio_sound_cursor_t`.
+`audio_sound_seek()` selects a stored frame; ADPCM seeks must be block-aligned,
+except that seeking to `frames` selects the end. A failed seek zeroes the cursor.
+`audio_sound_read()` copies up to the requested int16 samples across blocks and
+returns the count, stopping at `frames`. The cursor's `position` counts stored
+frames, so the caller can bound reads at `loop_end` and loop by seeking to
+`loop_start`. The view and its mapped pack must outlive the cursor.
 
 ```mermaid
 flowchart TD
-    W[WAV] --> M[Mix mono]
-    T[TOML] --> M
-    M --> R[Resample 22050 Hz]
-    R --> P[PCM16]
-    R --> A[IMA-ADPCM encode]
-    P --> S[SOND entry]
-    A --> S
+    T["NAME.sound.toml: source, format, loop"] -->|source| W[WAV]
+    W --> M[Average channels to mono]
+    M --> R[Resample to 22,050 Hz, skipped when the rate matches]
+    R --> F{format}
+    T -->|format| F
+    F -->|pcm16| P[int16 samples]
+    F -->|adpcm| A[IMA-ADPCM blocks]
+    T -->|loop| L[Check loop frames]
+    P --> L
+    A --> L
+    L --> S[SOND entry: 32-byte header + data]
     S --> K[Pack]
-    K --> O[audio_sound_open in place]
+    K --> O[audio_sound_open maps it in place]
 ```
+
+`format` is the only switch.
 
 ## The pack directory
 
@@ -306,8 +329,7 @@ entry, `launcher/tools/anim/tracks_asset.py` of the clip entry,
 `launcher/tools/gfx/image_asset.py` of the image entry, and
 `launcher/tools/audio/sound_asset.py` of the sound entry; `asset_pack.c`,
 `asset_directory.c`, `r3d_lit_mesh.c`, `anim_tracks.c`, `draw_image.c` and
-`audio_sound.c` are
-the one reader of each.
+`audio_sound.c` are the respective readers.
 
 No mesh is committed: each is a bake product, fetched by its lock row; a clip
 or image entry is baked from its source when the packs are built. Packs are never

@@ -2,15 +2,17 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "asset/asset_bytes.h"
 #include "audio/audio_adpcm.h"
 #include "audio/audio_sound.h"
 #include "suites.h"
 #include "test_pack.h"
 #include "unity.h"
 
-enum { PACK_CAPACITY = 512, FRAMES = 11, BLOCK_FRAMES = 9 };
+enum { PACK_CAPACITY = 512, FRAMES = 11, BLOCK_FRAMES = 9, CANARY = INT16_MIN, PARTIAL_FRAMES = 2 };
 
 static const char NAME[] = "sound";
+static const uint8_t CURSOR_CODES[] = {0x71, 0xa3, 0x5f, 0x82};
 
 typedef struct {
     uint8_t* bytes;
@@ -126,6 +128,8 @@ static void
 test_reserved(void) {
     reject_field(AUDIO_SOUND_PCM16, AUDIO_SOUND_AT_RESERVED16, 1, sizeof(uint16_t), ASSET_ERR_FORMAT);
     reject_field(AUDIO_SOUND_PCM16, AUDIO_SOUND_AT_RESERVED32, 1, sizeof(uint32_t), ASSET_ERR_FORMAT);
+    reject_field(AUDIO_SOUND_PCM16, AUDIO_SOUND_AT_RESERVED32 - 1, 1, 1, ASSET_ERR_FORMAT);
+    reject_field(AUDIO_SOUND_PCM16, AUDIO_SOUND_AT_DATA - 1, 1, 1, ASSET_ERR_FORMAT);
 }
 
 static void
@@ -134,6 +138,13 @@ test_offset(void) {
                  ASSET_ERR_BOUNDS);
     reject_field(AUDIO_SOUND_PCM16, AUDIO_SOUND_AT_DATA, AUDIO_SOUND_HEADER_SIZE - AUDIO_SOUND_ALIGNMENT,
                  sizeof(uint32_t), ASSET_ERR_BOUNDS);
+}
+
+static void
+test_adpcm_offset(void) {
+    reject_field(AUDIO_SOUND_IMA_ADPCM, AUDIO_SOUND_AT_DATA, AUDIO_SOUND_HEADER_SIZE + 1, sizeof(uint32_t),
+                 ASSET_ERR_BOUNDS);
+    reject_field(AUDIO_SOUND_IMA_ADPCM, AUDIO_SOUND_AT_DATA, AUDIO_SOUND_AT_DATA, sizeof(uint32_t), ASSET_ERR_BOUNDS);
 }
 
 static void
@@ -147,6 +158,10 @@ test_loop_range(void) {
     reject_field(AUDIO_SOUND_PCM16, AUDIO_SOUND_AT_LOOP_END, FRAMES + 1, sizeof(uint32_t), ASSET_ERR_FORMAT);
     fixture_t f = fixture(AUDIO_SOUND_PCM16);
     test_pack_put32(f.entry + AUDIO_SOUND_AT_LOOP_END, FRAMES);
+    test_pack_put32(f.entry + AUDIO_SOUND_AT_LOOP_START, FRAMES);
+    reject_fixture(&f, ASSET_ERR_FORMAT);
+    f = fixture(AUDIO_SOUND_PCM16);
+    test_pack_put32(f.entry + AUDIO_SOUND_AT_LOOP_END, FRAMES - 1);
     test_pack_put32(f.entry + AUDIO_SOUND_AT_LOOP_START, FRAMES);
     reject_fixture(&f, ASSET_ERR_FORMAT);
 }
@@ -217,10 +232,128 @@ test_missing_or_wrong_type(void) {
 static void
 test_data_gap(void) {
     reject_field(AUDIO_SOUND_PCM16, AUDIO_SOUND_HEADER_SIZE, 1, 1, ASSET_ERR_FORMAT);
+    reject_field(AUDIO_SOUND_PCM16, AUDIO_SOUND_HEADER_SIZE + AUDIO_SOUND_ALIGNMENT - 1, 1, 1, ASSET_ERR_FORMAT);
+}
+
+static void
+check_cursor(audio_sound_format_t format) {
+    fixture_t f = fixture(format);
+    const uint32_t start = format == AUDIO_SOUND_IMA_ADPCM ? BLOCK_FRAMES : PARTIAL_FRAMES;
+    test_pack_put32(f.entry + AUDIO_SOUND_AT_LOOP_START, start);
+    test_pack_put32(f.entry + AUDIO_SOUND_AT_LOOP_END, FRAMES);
+    uint8_t* data = f.entry + AUDIO_SOUND_HEADER_SIZE + AUDIO_SOUND_ALIGNMENT;
+    if (format == AUDIO_SOUND_PCM16) {
+        for (unsigned i = 0; i < FRAMES; i++) {
+            test_pack_put16(data + i * AUDIO_SOUND_PCM_BYTES, -(int)i);
+        }
+    } else {
+        test_pack_put16(data, -CANARY / 2);
+        memcpy(data + AUDIO_ADPCM_BLOCK_HEADER_BYTES, CURSOR_CODES, sizeof CURSOR_CODES);
+        test_pack_put16(data + audio_adpcm_block_bytes(BLOCK_FRAMES), CANARY / 2);
+    }
+    audio_sound_t sound;
+    TEST_ASSERT_EQUAL(ASSET_OK, open_fixture(&f, NAME, &sound));
+    audio_sound_cursor_t cursor;
+    int16_t whole[FRAMES + 1], split[FRAMES + 1];
+    TEST_ASSERT_EQUAL(ASSET_OK, audio_sound_seek(&cursor, &sound, 0));
+    whole[FRAMES] = CANARY;
+    TEST_ASSERT_EQUAL(FRAMES, audio_sound_read(&cursor, whole, FRAMES + 1));
+    TEST_ASSERT_EQUAL(CANARY, whole[FRAMES]);
+    TEST_ASSERT_EQUAL(FRAMES, cursor.position);
+    TEST_ASSERT_EQUAL(0, audio_sound_read(&cursor, whole + FRAMES, 1));
+    TEST_ASSERT_EQUAL(CANARY, whole[FRAMES]);
+    if (format == AUDIO_SOUND_PCM16) {
+        for (unsigned i = 0; i < FRAMES; i++) {
+            TEST_ASSERT_EQUAL(audio_adpcm_read_i16(data + i * AUDIO_SOUND_PCM_BYTES), whole[i]);
+        }
+    }
+    /* Both nibble parities must survive a read boundary. */
+    for (uint32_t first = 1; first < BLOCK_FRAMES; first++) {
+        TEST_ASSERT_EQUAL(ASSET_OK, audio_sound_seek(&cursor, &sound, 0));
+        split[0] = CANARY;
+        TEST_ASSERT_EQUAL(0, audio_sound_read(&cursor, split, 0));
+        TEST_ASSERT_EQUAL(CANARY, split[0]);
+        split[first] = CANARY;
+        TEST_ASSERT_EQUAL(first, audio_sound_read(&cursor, split, first));
+        TEST_ASSERT_EQUAL(CANARY, split[first]);
+        TEST_ASSERT_EQUAL(first, cursor.position);
+        split[FRAMES] = CANARY;
+        TEST_ASSERT_EQUAL(FRAMES - first, audio_sound_read(&cursor, split + first, FRAMES));
+        TEST_ASSERT_EQUAL(CANARY, split[FRAMES]);
+        TEST_ASSERT_EQUAL_INT16_ARRAY(whole, split, FRAMES);
+    }
+    TEST_ASSERT_EQUAL(ASSET_OK, audio_sound_seek(&cursor, &sound, BLOCK_FRAMES));
+    split[FRAMES - BLOCK_FRAMES] = CANARY;
+    TEST_ASSERT_EQUAL(FRAMES - BLOCK_FRAMES, audio_sound_read(&cursor, split, FRAMES));
+    TEST_ASSERT_EQUAL(CANARY, split[FRAMES - BLOCK_FRAMES]);
+    TEST_ASSERT_EQUAL_INT16_ARRAY(whole + BLOCK_FRAMES, split, FRAMES - BLOCK_FRAMES);
+    TEST_ASSERT_EQUAL(ASSET_OK, audio_sound_seek(&cursor, &sound, start));
+    TEST_ASSERT_EQUAL(start, cursor.position);
+    split[FRAMES - start] = CANARY;
+    TEST_ASSERT_EQUAL(FRAMES - start, audio_sound_read(&cursor, split, FRAMES));
+    TEST_ASSERT_EQUAL(CANARY, split[FRAMES - start]);
+    TEST_ASSERT_EQUAL_INT16_ARRAY(whole + start, split, FRAMES - start);
+    TEST_ASSERT_EQUAL(ASSET_OK, audio_sound_seek(&cursor, &sound, FRAMES));
+    split[0] = CANARY;
+    TEST_ASSERT_EQUAL(0, audio_sound_read(&cursor, split, FRAMES));
+    TEST_ASSERT_EQUAL(CANARY, split[0]);
+    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, audio_sound_seek(&cursor, &sound, FRAMES + 1));
+    TEST_ASSERT_NULL(cursor.sound);
+    TEST_ASSERT_EQUAL(0, cursor.position);
+    TEST_ASSERT_NULL(cursor.adpcm.codes);
+    if (format == AUDIO_SOUND_IMA_ADPCM) {
+        memset(&cursor, 0xff, sizeof cursor);
+        TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, audio_sound_seek(&cursor, &sound, 1));
+        TEST_ASSERT_NULL(cursor.sound);
+        TEST_ASSERT_EQUAL(0, cursor.position);
+        TEST_ASSERT_NULL(cursor.adpcm.codes);
+        TEST_ASSERT_EQUAL(0, cursor.adpcm.predictor);
+        TEST_ASSERT_EQUAL(0, cursor.adpcm.step_index);
+        TEST_ASSERT_EQUAL(0, cursor.adpcm.pending);
+        TEST_ASSERT_EQUAL(0, audio_sound_read(&cursor, split, FRAMES));
+    }
+    free(f.bytes);
+}
+
+static void
+test_pcm_cursor(void) {
+    check_cursor(AUDIO_SOUND_PCM16);
+}
+
+static void
+test_adpcm_cursor(void) {
+    check_cursor(AUDIO_SOUND_IMA_ADPCM);
+}
+
+static void
+test_exact_fit_minus_one(void) {
+    for (unsigned format = AUDIO_SOUND_PCM16; format <= AUDIO_SOUND_IMA_ADPCM; format++) {
+        fixture_t f = fixture((audio_sound_format_t)format);
+        /* The directory size, not the aligned pack size, bounds an entry. */
+        uint8_t* size = f.bytes + ASSET_PACK_HEADER_SIZE + ASSET_NAME_MAX + sizeof(uint32_t) * 2;
+        test_pack_put32(size, asset_read_u32(size) - 1);
+        reject_fixture(&f, ASSET_ERR_BOUNDS);
+    }
+}
+
+static void
+test_step_index_max_and_full_loop(void) {
+    fixture_t f = fixture(AUDIO_SOUND_IMA_ADPCM);
+    f.entry[AUDIO_SOUND_HEADER_SIZE + AUDIO_SOUND_ALIGNMENT + AUDIO_ADPCM_AT_STEP_INDEX] = AUDIO_ADPCM_STEP_INDEX_MAX;
+    test_pack_put32(f.entry + AUDIO_SOUND_AT_LOOP_END, FRAMES);
+    audio_sound_t sound;
+    TEST_ASSERT_EQUAL(ASSET_OK, open_fixture(&f, NAME, &sound));
+    TEST_ASSERT_EQUAL(0, sound.loop_start);
+    TEST_ASSERT_EQUAL(FRAMES, sound.loop_end);
+    free(f.bytes);
 }
 
 void
 suite_audio_sound(void) {
+    RUN_TEST(test_pcm_cursor);
+    RUN_TEST(test_adpcm_cursor);
+    RUN_TEST(test_exact_fit_minus_one);
+    RUN_TEST(test_step_index_max_and_full_loop);
     RUN_TEST(test_pcm16);
     RUN_TEST(test_adpcm);
     RUN_TEST(test_channels);
@@ -228,6 +361,7 @@ suite_audio_sound(void) {
     RUN_TEST(test_format);
     RUN_TEST(test_reserved);
     RUN_TEST(test_offset);
+    RUN_TEST(test_adpcm_offset);
     RUN_TEST(test_data_bounds);
     RUN_TEST(test_data_gap);
     RUN_TEST(test_loop_range);

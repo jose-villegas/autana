@@ -1,5 +1,7 @@
 """Sound roots, stored samples and pack integration."""
 
+import ast
+import re
 import math
 import pathlib
 import struct
@@ -15,17 +17,142 @@ from audio import sound_asset as sound
 from audio import synth_wav
 from asset.asset_pack import parse_pack
 from r3d import build_pack
+from sound_probe import signal
 
 # A low-amplitude smooth signal includes the initial index-zero adaptation.
 MAX_ERROR = 300
 RMS_ERROR = 50
 
 
-def signal():
-    return [round(1200 * math.sin(i * 0.04)) for i in range(sound.DEFAULT_BLOCK_FRAMES * 2 + 37)]
-
-
 class SoundTests(unittest.TestCase):
+    @staticmethod
+    def write_wav(path, samples, rate=sound.SAMPLE_RATE_HZ, width=sound.PCM_BYTES):
+        with wave.open(str(path), "wb") as wav:
+            wav.setparams((sound.CHANNELS, width, rate, 0, "NONE", ""))
+            wav.writeframes(b"".join(v.to_bytes(width, "little", signed=True) for v in samples))
+
+    def test_ffmpeg_vectors_and_frozen_encoder(self):
+        text = (TOOLS.parent / "test/fixtures/audio_adpcm_reference.h").read_text()
+        def vector(name):
+            values = re.search(r"\b" + name + r"\[\] = \{([^}]+)\}", text)[1]
+            return ast.literal_eval("[" + values + "]")
+        for prefix in ("", "SATURATION_"):
+            with self.subTest(prefix=prefix):
+                block, expected = bytes(vector(prefix + "BLOCK")), vector(prefix + "EXPECTED")
+                entry = bytearray(sound.encode([0] * len(expected), "adpcm"))
+                struct.pack_into("<H", entry, sound.AT_BLOCK_FRAMES, len(expected))
+                entry = entry[:sound.HEADER_SIZE] + block
+                self.assertEqual(sound.decode(entry)[1], expected)
+        self.assertEqual(sound.encode_adpcm([0, 1000, -1000, 2000, -2000], 5), bytes.fromhex("00000000f7f7"))
+
+    def test_frozen_adpcm_loop_header(self):
+        entry = sound.encode([123] * 600, "adpcm", [505, 600])
+        expected = bytes.fromhex("010001012256000058020000f901000058020000f901000000000000200000007b000000")
+        self.assertEqual(entry[:sound.HEADER_SIZE + sound.BLOCK_HEADER_BYTES], expected)
+
+    def test_decode_block_and_loop_rules(self):
+        cases = [
+            ("pcm16", sound.AT_BLOCK_FRAMES, "H", 1, "block_frames"),
+            ("adpcm", sound.AT_BLOCK_FRAMES, "H", sound.DEFAULT_BLOCK_FRAMES - 1, "block_frames"),
+            ("adpcm", sound.AT_LOOP_START, "I", 1, "one-shot"),
+            ("adpcm", sound.AT_LOOP_END, "I", 1, "loop requires"),
+            ("adpcm", sound.AT_LOOP_END, "I", len(signal()) + 1, "loop requires"),
+            ("adpcm", sound.AT_LOOP_START, "I", 1, "block-aligned"),
+        ]
+        for fmt, at, encoding, value, reason in cases:
+            loop = [sound.DEFAULT_BLOCK_FRAMES, len(signal())] if reason != "one-shot" else None
+            entry = bytearray(sound.encode(signal(), fmt, loop))
+            struct.pack_into("<" + encoding, entry, at, value)
+            with self.subTest(at=at, value=value, reason=reason), self.assertRaisesRegex(sound.SoundError, reason):
+                sound.decode(entry)
+        entry = bytearray(sound.encode(signal(), "pcm16", [1, 2]))
+        struct.pack_into("<I", entry, sound.AT_LOOP_END, 1)
+        with self.assertRaisesRegex(sound.SoundError, "loop requires"):
+            sound.decode(entry)
+
+    def test_decode_bounds_gap_version_and_step_limit(self):
+        for fmt in sound.FORMATS:
+            entry = sound.encode(signal(), fmt)
+            with self.subTest(fmt=fmt), self.assertRaisesRegex(sound.SoundError, "data leaves"):
+                sound.decode(entry[:-1])
+            bad = bytearray(entry)
+            struct.pack_into("<I", bad, sound.AT_DATA, sound.AT_DATA)
+            with self.assertRaisesRegex(sound.SoundError, "data leaves"):
+                sound.decode(bad)
+            bad = bytearray(entry[:sound.HEADER_SIZE] + bytes(sound.ALIGNMENT) + entry[sound.HEADER_SIZE:])
+            struct.pack_into("<I", bad, sound.AT_DATA, sound.HEADER_SIZE + sound.ALIGNMENT)
+            self.assertEqual(sound.decode(bad)[1], sound.decode(entry)[1])
+            bad[sound.HEADER_SIZE + sound.ALIGNMENT - 1] = 1
+            with self.assertRaisesRegex(sound.SoundError, "header gap"):
+                sound.decode(bad)
+        entry = bytearray(sound.encode(signal(), "adpcm"))
+        struct.pack_into("<H", entry, sound.AT_VERSION, sound.VERSION + 1)
+        with self.assertRaisesRegex(sound.SoundError, "header"):
+            sound.decode(entry)
+        struct.pack_into("<H", entry, sound.AT_VERSION, sound.VERSION)
+        entry[sound.HEADER_SIZE + sound.ADPCM_AT_STEP_INDEX] = sound.STEP_INDEX_MAX
+        self.assertEqual(len(sound.decode(entry)[1]), len(signal()))
+        entry[sound.HEADER_SIZE + sound.ADPCM_AT_STEP_INDEX] += 1
+        with self.assertRaisesRegex(sound.SoundError, "block header"):
+            sound.decode(entry)
+
+    def test_mono_and_full_scale_32_bit_wav(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = pathlib.Path(folder) / "mono.wav"
+            self.write_wav(path, [sound.SAMPLE_MIN, -1, 0, 1, sound.SAMPLE_MAX])
+            self.assertEqual(sound.read_wav(path), [sound.SAMPLE_MIN, -1, 0, 1, sound.SAMPLE_MAX])
+            self.write_wav(path, [-(1 << 31), (1 << 31) - 1], width=4)
+            self.assertEqual(sound.read_wav(path), [sound.SAMPLE_MIN, sound.SAMPLE_MAX])
+
+    def test_reject_float_compressed_empty_and_truncated_wav(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = pathlib.Path(folder) / "bad.wav"
+            self.write_wav(path, [1, -1])
+            valid = path.read_bytes()
+            for encoding in (3, 6):
+                bad = bytearray(valid)
+                fmt = bad.index(b"fmt ") + 8
+                struct.pack_into("<H", bad, fmt, encoding)
+                path.write_bytes(bad)
+                with self.subTest(encoding=encoding), self.assertRaisesRegex(sound.SoundError, "integer PCM"):
+                    sound.read_wav(path)
+            path.write_bytes(valid[:-1])
+            with self.assertRaisesRegex(sound.SoundError, "truncated"):
+                sound.read_wav(path)
+            self.write_wav(path, [])
+            with self.assertRaisesRegex(sound.SoundError, "empty"):
+                sound.read_wav(path)
+
+    def test_resample_up_and_noninteger_ratio(self):
+        frequency, duration = 1000, 0.2
+        for rate in (11025, 48000):
+            samples = [12000 * math.sin(2 * math.pi * frequency * i / rate)
+                       for i in range(round(rate * duration))]
+            actual = sound.resample(samples, rate)
+            with self.subTest(rate=rate):
+                self.assertEqual(len(actual), round(sound.SAMPLE_RATE_HZ * duration))
+                inner = actual[100:-100]
+                crossings = sum(a <= 0 < b for a, b in zip(inner, inner[1:]))
+                measured = crossings * sound.SAMPLE_RATE_HZ / (len(inner) - 1)
+                self.assertAlmostEqual(measured, frequency, delta=10)
+
+    def test_toml_loop_uses_resampled_frames(self):
+        with tempfile.TemporaryDirectory() as folder:
+            root = pathlib.Path(folder) / "note.sound.toml"
+            self.write_wav(root.with_suffix(".wav"), [0] * 100, rate=11025)
+            root.write_text('source="note.sound.wav"\nformat="pcm16"\nloop=[10,200]')
+            self.assertEqual(sound.decode(sound.bake(root))[2:4], (10, 200))
+            root.write_text('source="note.sound.wav"\nformat="pcm16"\nloop=[10,201]')
+            with self.assertRaisesRegex(sound.SoundError, "loop requires"):
+                sound.bake(root)
+
+    def test_engine_tap_duration(self):
+        folder = TOOLS.parent / "main/engine/sounds"
+        entries = parse_pack(build_pack.pack_bytes([folder])["engine"])
+        with wave.open(str(folder / "tap.wav"), "rb") as wav:
+            frames = round(wav.getnframes() * sound.SAMPLE_RATE_HZ / wav.getframerate())
+        self.assertEqual(len(sound.decode(entries["tap"][1])[1]), frames)
+
     def test_round_trips(self):
         samples = signal()
         for fmt in ("pcm16", "adpcm"):
@@ -48,6 +175,9 @@ class SoundTests(unittest.TestCase):
     def test_roots_reject_bad_settings(self):
         with tempfile.TemporaryDirectory() as folder:
             root = pathlib.Path(folder) / "note.sound.toml"
+            self.write_wav(root.with_name("x.wav"), [1, -2, 3])
+            root.write_text('source="x.wav"\nformat="pcm16"')
+            self.assertEqual(sound.decode(sound.bake(root))[1], [1, -2, 3])
             cases = ['source="x.wav"', 'source="x.wav"\nformat="bad"',
                      'source="x.wav"\nformat="pcm16"\ngain=1',
                      'source="x.wav"\nformat="pcm16"\nloop=[1]',
@@ -57,7 +187,7 @@ class SoundTests(unittest.TestCase):
                       ("../x.wav", "a/x.wav", "C:x.wav", "x.png", "a\\\\x.wav", "/x.wav")]
             for text in cases:
                 root.write_text(text)
-                with self.subTest(text=text), self.assertRaises(sound.SoundError):
+                with self.subTest(text=text), self.assertRaisesRegex(sound.SoundError, "allowed keys|loop|not a .wav"):
                     sound.bake(root)
 
     def test_loop_and_sample_rejections(self):
@@ -124,7 +254,7 @@ class SoundTests(unittest.TestCase):
             (path / "note.sound.toml").write_text('source="note.wav"\nformat="adpcm"')
             (path / "group.pack.toml").write_text("")
             entries = parse_pack(build_pack.pack_bytes([path])["group"])
-            self.assertEqual(entries["note"][0], sound.TYPE)
+            self.assertEqual(entries["note"], (sound.TYPE, sound.bake(path / "note.sound.toml")))
             self.assertEqual(len(sound.decode(entries["note"][1])[1]), round(sound.SAMPLE_RATE_HZ * 0.2))
 
 
