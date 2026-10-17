@@ -485,23 +485,54 @@ proto_height_at(int32_t re_q12, int32_t im_q12, const boot_anim_floor_state_t* s
     return ripple + swell;
 }
 
+#define PROTO_AXIS_GROW_MS 500
+
+/* How far out the axis lines reach `now_ms`: from the mesh's edge to `far`
+ * over PROTO_AXIS_GROW_MS once the mesh has arrived, paced in 1/r so the
+ * tip moves evenly on screen. */
+static int32_t
+proto_axis_reach(uint32_t now_ms, int32_t edge, int32_t far) {
+    const uint32_t start = BOOT_ANIM_GRID_START_MS + ((uint32_t)BOOT_ANIM_GRID_FADE * BOOT_ANIM_GRID_BAND_MS);
+    const double t = tween_ramp(now_ms, start, PROTO_AXIS_GROW_MS) / 255.0;
+    const double inv = (1.0 / edge) + (((1.0 / far) - (1.0 / edge)) * t);
+    return (int32_t)lround(1.0 / inv);
+}
+
+/* The axis line `dir` past the horizon: from its vanishing point, found
+ * from two flat points far out on it, toward the panel's edge. */
+static void
+proto_extend_axis_line(const int dir[2], int32_t far, gfx_color_t c, unsigned flags, const mesh_pass_t* pass) {
+    const uint8_t extend = boot_anim_grid_spoke_reach(pass->now_ms);
+    int ax, ay, bx, by;
+    if (extend == 0 || !boot_anim_project_point(dir[0] * (far / 2), dir[1] * (far / 2), 0, pass->view, &ax, &ay)
+        || !boot_anim_project_point(dir[0] * far, dir[1] * far, 0, pass->view, &bx, &by)) {
+        return;
+    }
+    const int dx = bx - ax;
+    const int dy = by - ay;
+    const int len = mathi_abs(dx) + mathi_abs(dy);
+    if (len == 0) {
+        return;
+    }
+    const int far_px = (4 * (GFX_WIDTH + GFX_HEIGHT) * extend) / 255;
+    draw_line_ex(bx, by, bx + (int)(((int64_t)dx * far_px) / len), by + (int)(((int64_t)dy * far_px) / len), c, flags);
+}
+
 static void
 proto_draw_axis_lines_far(const mesh_pass_t* pass) {
     static const int dirs[4][2] = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
     const int32_t edge = MESH_HALF * BOOT_ANIM_MESH_STEP_Q12;
     const int32_t far = units(BOOT_ANIM_GRID_SPOKE_FAR_UNITS);
-    const uint8_t alpha = scale8(proto_axis_arrival(pass->now_ms, BOOT_ANIM_GRID_FADE), pass->ink);
-    if (alpha == 0) {
+    const int32_t reach = proto_axis_reach(pass->now_ms, edge, far);
+    if (reach <= edge) {
         return;
     }
-    const gfx_color_t c = gfx_color_mix(COL_BG, gfx_rgb(COL_AXIS), alpha);
+    const gfx_color_t c = gfx_color_mix(COL_BG, gfx_rgb(COL_AXIS), pass->ink);
     const unsigned flags = DRAW_LINE_DASH(BOOT_ANIM_MESH_DASH_ON_PX, BOOT_ANIM_MESH_DASH_OFF_PX);
     for (int d = 0; d < 4; d++) {
         int32_t r = edge;
         vec3x_t prev = {0};
         bool have_prev = false;
-        int px = 0, py = 0, qx = 0, qy = 0;
-        bool have_screen = false;
         for (;;) {
             const int32_t re = dirs[d][0] * r;
             const int32_t im = dirs[d][1] * r;
@@ -511,35 +542,21 @@ proto_draw_axis_lines_far(const mesh_pass_t* pass) {
                 int ax, ay, bx, by;
                 if (r3d_project_segment_cs_x(prev, cs, pass->view, &ax, &ay, &bx, &by)) {
                     draw_line_ex(ax, ay, bx, by, c, flags);
-                    px = ax;
-                    py = ay;
-                    qx = bx;
-                    qy = by;
-                    have_screen = true;
                 }
             }
             prev = cs;
             have_prev = true;
-            if (r >= far) {
+            if (r >= reach) {
                 break;
             }
             const int32_t grow = r / 16;
             r += grow > BOOT_ANIM_MESH_STEP_Q12 ? grow : BOOT_ANIM_MESH_STEP_Q12;
-            if (r > far) {
-                r = far;
+            if (r > reach) {
+                r = reach;
             }
         }
-        const uint8_t extend = boot_anim_grid_spoke_reach(pass->now_ms);
-        if (have_screen && extend > 0) {
-            const int dx = qx - px;
-            const int dy = qy - py;
-            const int len = mathi_abs(dx) + mathi_abs(dy);
-            if (len > 0) {
-                /* Past the horizon it grows over the guides' old reveal. */
-                const int far_px = (4 * (GFX_WIDTH + GFX_HEIGHT) * extend) / 255;
-                draw_line_ex(qx, qy, qx + (int)(((int64_t)dx * far_px) / len), qy + (int)(((int64_t)dy * far_px) / len),
-                             c, flags);
-            }
+        if (reach >= far) {
+            proto_extend_axis_line(dirs[d], far, c, flags, pass);
         }
     }
 }
