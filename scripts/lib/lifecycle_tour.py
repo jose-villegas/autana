@@ -97,16 +97,17 @@ def heartbeat(console, *, on_line=None):
     return False
 
 
-def exchange(console, step, *, decline=False):
+def exchange(console, step, *, decline=False, sample_s=0):
     console.send(step.command)
     if step.tilt:
         console.send(step.tilt)
+    # The tilt's IMU_OK comes from the console task while the app being entered
+    # logs from the frame loop, and the two can interleave mid-line, so a tilt
+    # step does not wait on that reply; the probe in run() read the period.
     tilted_at = time.monotonic()
     replies = []
     complete = step.reply is None
-    tilt_complete = step.tilt is None
-    sample_s = 0
-    if not complete or not tilt_complete:
+    if not complete:
         for line in console.lines(HEARTBEAT_S):
             error = ERROR_RE.search(line)
             if error and not (decline and line[error.start():] == step.reply + "_ERR not handled"):
@@ -115,25 +116,14 @@ def exchange(console, step, *, decline=False):
                 require_development(line.encode(), step.command)
             except RuntimeError as error:
                 raise TourError(str(error)) from error
-            if not tilt_complete:
-                found, _ = replies_to(line.encode(), "IMU", ("IMU_OK", "IMU_ERR"))
-                if found:
-                    match = IMU_QUARTER_RE.match(found[-1])
-                    if not match or int(match[1]) != int(step.tilt.split()[-1]):
-                        raise TourError("invalid quarter reply: " + found[-1])
-                    sample_s = int(match[3]) / MILLISECONDS_PER_SECOND
-                    tilted_at = time.monotonic()
-                    tilt_complete = True
-            if step.reply:
-                found, ended = replies_to(line.encode(), step.reply,
+            found, complete = replies_to(line.encode(), step.reply,
                                          (step.reply + "_END", step.reply + "_OK", step.reply + "_ERR"))
-                for reply in found:
-                    if ERROR_RE.match(reply):
-                        if not (decline and reply == step.reply + "_ERR not handled"):
-                            raise TourError(reply)
-                    replies.append(reply)
-                complete = complete or ended
-            if complete and tilt_complete:
+            for reply in found:
+                if ERROR_RE.match(reply):
+                    if not (decline and reply == step.reply + "_ERR not handled"):
+                        raise TourError(reply)
+                replies.append(reply)
+            if complete:
                 break
         else:
             raise TourError(f"no completed reply to {step.command!r} within the reply deadline")
@@ -150,13 +140,13 @@ def exchange(console, step, *, decline=False):
 
     if not heartbeat(console, on_line=check_error):
         raise TourError("missing BUILDID heartbeat after " + step.command)
-    remaining = sample_s - (time.monotonic() - tilted_at)
+    remaining = (sample_s if step.tilt else 0) - (time.monotonic() - tilted_at)
     if remaining > 0:
         time.sleep(remaining)
     return replies
 
 
-def discover(console, tilts, emit=print):
+def discover(console, tilts, sample_s, emit=print):
     emit("discover: APPS")
     rows = parse_apps(exchange(console, Step("APPS", "APPS")))
     if not rows:
@@ -167,11 +157,11 @@ def discover(console, tilts, emit=print):
         keys = ()
         if prefix:
             emit("discover: OPEN " + row["name"])
-            exchange(console, Step("OPEN " + row["name"], "OPEN", next(tilts)))
+            exchange(console, Step("OPEN " + row["name"], "OPEN", next(tilts)), sample_s=sample_s)
             emit("discover: " + prefix + " scenes")
             keys = parse_scenes(exchange(console, Step(prefix + " scenes", prefix.upper()), decline=True), prefix)
             emit("discover: HOME")
-            exchange(console, Step("HOME", "HOME", next(tilts)))
+            exchange(console, Step("HOME", "HOME", next(tilts)), sample_s=sample_s)
         apps.append(App(row["name"], prefix, keys))
     return apps
 
@@ -215,11 +205,12 @@ def run(console, emit=print):
             raise TourError("invalid IMU quarter capabilities")
         tilts = itertools.cycle(f"IMU quarter {q}" for q in range(int(match[2])))
         next(tilts)  # The capability probe already injected the first quarter.
-        apps = discover(console, tilts, emit)
+        sample_s = int(match[3]) / MILLISECONDS_PER_SECOND
+        apps = discover(console, tilts, sample_s, emit)
         steps = plan(apps, tilts)
         for index, step in enumerate(steps, 1):
             emit(f"tour {index}/{len(steps)}: {step.command}" + (f"; {step.tilt}" if step.tilt else ""))
-            exchange(console, step)
+            exchange(console, step, sample_s=sample_s)
         switches = sum(len(app.scenes) * (len(app.scenes) - 1) for app in apps)
         ok = True
     except (TourError, ValueError) as error:
