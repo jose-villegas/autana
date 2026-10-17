@@ -302,6 +302,7 @@ rarely needs the frame loop paused or a raw sensor level, so these stay one
 | `autana debug touch <down\|up> <x> <y>` | One raw touch-controller level, at a panel-frame point (a `--framebuffer` pixel, not a default-screenshot one); `up` hands back to the controller. |
 | `autana debug imu <ax> <ay> <az>` | Raw accelerometer counts; `autana debug imu release` hands back to the sensor. |
 | `autana debug framewatch` | A development build's frame watch as JSON: the last frame's allocations, frees and log lines, and every site repeating frame after frame ([the frame watch](../Firmware-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state)). |
+| `autana debug tone <hz> <ms> [volume] [--json]` | Development builds only: plays `<hz>` for `<ms>` at `[volume]` % (default 30) and reports the tone level against a silence baseline in dBFS, whether it was heard, and the DMA bytes held while open. |
 
 `autana freeze`, `autana resume`, `autana step`, `autana touch`, `autana imu`
 and `autana framewatch` still work, each printing the new spelling once
@@ -325,6 +326,7 @@ before running it.
 |---|---|
 | `status` | `boards`, one object per board; the fields are in [Device-Lock.md](Device-Lock.md#exit-codes-and-json-status). |
 | `buildid` | `build_id` |
+| `debug tone` | `hz`, `tone_db`, `silence_db`, `heard`, `open_dma_bytes` |
 | `heap` | `free`, `largest` (bytes in `MEMORY_DMA`) |
 | `apps` | `apps`: `name`, `running` |
 | `suite list` | `suites`: `name`, `source`, `on_request`, `device_only` |
