@@ -1,8 +1,8 @@
 /*
- * toggles_screen: the developer-toggles page's microui drawing.
+ * toggles_screen: the developer-toggles page's drawing.
  *
  * app_diagnostics.c owns every gfx/shell/IMU getter, setter and persisted
- * value this page needs. This file turns a snapshot into microui rows and
+ * value this page needs. This file turns a snapshot into ui.h rows and
  * reports the changed value.
  *
  * Self-test fields stay unconditional so every build shares one state and
@@ -13,7 +13,6 @@
 #include <stdbool.h>
 
 #include "build/build_variant.h"
-#include "microui.h"
 
 typedef struct {
     bool overlay_on;
@@ -43,5 +42,8 @@ typedef struct {
     bool selftest_clicked; /* meaningful only in a SELFTEST build */
 } toggles_screen_result_t;
 
+/* The page clears to this before the rows are drawn. */
+#define TOGGLES_SCREEN_BACKGROUND 0x0A0C14
+
 /* Caller brackets drawing with ui_begin()/ui_end(). */
-toggles_screen_result_t toggles_screen_draw(mu_Context* ctx, const toggles_screen_state_t* state);
+toggles_screen_result_t toggles_screen_draw(const toggles_screen_state_t* state);
