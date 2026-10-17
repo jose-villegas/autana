@@ -85,7 +85,7 @@ fi
 # and strictness costs nothing in tests.
 # 64-bit pointers and 8-byte alignment make every command bigger on the host.
 BASE_CFLAGS="-std=c11 -Wall -Wextra -Werror -Werror=vla -ffp-contract=off -Wno-unused-parameter -g -O1"
-CFLAGS="$BASE_CFLAGS"
+CFLAGS="$BASE_CFLAGS -DTUNE_HOT_LIVE=1"
 # shellcheck source=../tools/build/host_make.sh
 . "$TEST_DIR/../tools/build/host_make.sh"
 if [ "$SANITIZE" = 1 ]; then

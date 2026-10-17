@@ -518,6 +518,73 @@ test_small_shaded_triangles_keep_their_planes_in_range_in_any_window(void) {
     TEST_ASSERT_GREATER_THAN_INT(100, shaded);
 }
 
+static void test_a_mesh_of_small_and_large_triangles_fills_every_pixel_exactly_once(void);
+
+#ifndef DEVICE_BUILD
+#define SMALL_IDENTITY_SIDE   8
+#define SMALL_IDENTITY_TRIALS 1000
+#define SMALL_IDENTITY_SEEDS  4
+
+static void
+test_small_triangles_match_walked_images_and_writers(void) {
+    uint16_t* images = calloc(6U * W * H, sizeof(*images));
+    TEST_ASSERT_NOT_NULL(images);
+    const r3d_span_writer_t writer = {.span = raster_attachment_tag, .attachment = GFX_ATTACHMENT_FURTHER, .value = 1};
+    for (uint32_t seed = 1; seed <= SMALL_IDENTITY_SEEDS; seed++) {
+        uint32_t state = seed;
+        for (int mode = 0; mode < 3; mode++) {
+            for (int trial = 0; trial < SMALL_IDENTITY_TRIALS; trial++) {
+                const float radius = mode == 2 ? 1.0f : SMALL_IDENTITY_SIDE * 0.5f;
+                const float cx = (float)(next_random(&state) % W);
+                const float cy = (float)(next_random(&state) % H);
+                shaded_t tri = random_shaded(&state, cx, cy, radius);
+                tri.solid = mode == 1;
+                const r3d_span_extent_t extent = r3d_span_extent(&tri.v[0], &tri.v[1], &tri.v[2]);
+                TEST_ASSERT_TRUE(extent.centres.w <= SMALL_IDENTITY_SIDE && extent.centres.h <= SMALL_IDENTITY_SIDE);
+                if (mode == 2) {
+                    TEST_ASSERT_TRUE(extent.flat);
+                }
+                memset(images, 0, 6U * W * H * sizeof(*images));
+                for (int path = 0; path < 2; path++) {
+                    (void)tune_handle_line(
+                        path == 0 ? "SET r3d_span.small_max_side 0" : "SET r3d_span.small_max_side 8", cull_reply);
+                    const tune_entry_t* knob = tune_find(tune_shared(), "r3d_span.small_max_side");
+                    TEST_ASSERT_NOT_NULL(knob);
+                    TEST_ASSERT_EQUAL_INT(path == 0 ? 0 : SMALL_IDENTITY_SIDE, *knob->value);
+                    uint16_t* pixels = images + path * 3 * W * H;
+                    r3d_span_target_t target = r3d_span_target(pixels, pixels + W * H, W, 0, H);
+                    target.rows.count = GFX_ATTACHMENT_FURTHER + 1;
+                    target.rows.attachment[GFX_ATTACHMENT_FURTHER] =
+                        (gfx_attachment_t){pixels + 2 * W * H, sizeof(uint16_t)};
+                    target.writers = &writer;
+                    target.writer_count = 1;
+                    for (int i = 0; i < W * H; i++) {
+                        pixels[W * H + i] = trial % 2 == 0 ? R3D_DEPTH_EMPTY : R3D_DEPTH_NEAREST / 2;
+                    }
+                    draw_shaded(&target, &tri);
+                    r3d_span_triangle_write(&target, &tri.v[0], &tri.v[1], &tri.v[2]);
+                }
+                const bool same_color = memcmp(images, images + 3 * W * H, W * H * sizeof(*images)) == 0;
+                const bool same_depth = memcmp(images + W * H, images + 4 * W * H, W * H * sizeof(*images)) == 0;
+                const bool same_tags = memcmp(images + 2 * W * H, images + 5 * W * H, W * H * sizeof(*images)) == 0;
+                if (!same_color || !same_depth || !same_tags) {
+                    printf("small identity seed=%lu mode=%d trial=%d color=%d depth=%d tags=%d\n", (unsigned long)seed,
+                           mode, trial, same_color, same_depth, same_tags);
+                    free(images);
+                    (void)tune_handle_line("RESET r3d_span.small_max_side", cull_reply);
+                    TEST_FAIL_MESSAGE("small and walked buffers differ");
+                }
+            }
+        }
+    }
+    free(images);
+    (void)tune_handle_line("RESET r3d_span.small_max_side", cull_reply);
+    (void)tune_handle_line("SET r3d_span.small_max_side 8", cull_reply);
+    test_a_mesh_of_small_and_large_triangles_fills_every_pixel_exactly_once();
+    (void)tune_handle_line("RESET r3d_span.small_max_side", cull_reply);
+}
+#endif
+
 #define GRID_LINES_MAX 160
 
 /* Grid lines on half pixels from -3 to hi + 3, half a pixel to six apart,
@@ -2440,6 +2507,9 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_every_triangle_covers_exactly_the_centres_the_top_left_rule_gives);
     RUN_TEST(test_small_shaded_triangles_keep_their_planes_in_range_in_any_window);
     RUN_TEST(test_a_mesh_of_small_and_large_triangles_fills_every_pixel_exactly_once);
+#ifndef DEVICE_BUILD
+    RUN_TEST(test_small_triangles_match_walked_images_and_writers);
+#endif
     RUN_TEST(test_a_triangle_drawn_over_nearer_depth_writes_exactly_what_it_would_alone);
     RUN_TEST(test_a_guard_band_sliver_draws_its_centres_in_one_window_or_two);
     RUN_TEST(test_the_bound_is_the_greatest_depth_whichever_way_the_plane_slopes);
