@@ -12,7 +12,7 @@ static void
 console_verb_tone(const char* args, console_reply_fn reply) {
     console_tone_args_t parsed;
     if (!console_tone_parse(args, &parsed)) {
-        reply("usage: tone <hz> <ms> [volume]");
+        reply("TONE usage: tone <hz> <ms> [volume]");
         return;
     }
     const size_t dma_before = memory_free_bytes(MEMORY_DMA);
