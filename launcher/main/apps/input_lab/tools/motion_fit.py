@@ -4,6 +4,7 @@ Each round reports the absolute sensor offset whatever offset is stored.
 """
 
 import argparse
+from math import acos, degrees, sqrt
 import re
 import sys
 from statistics import median, pstdev
@@ -25,7 +26,9 @@ AXES = ("x", "y", "z")
 STAMP = re.compile(r"\((\d+)\)")
 CALIB = re.compile(r"calib x off (-?\d+) scale (-?\d+) y off (-?\d+) scale (-?\d+) z off (-?\d+) scale (-?\d+) gyro (-?\d+),(-?\d+),(-?\d+)")
 POSE = re.compile(r"pose (\w+) ((?:-?\d+ ){6}\d+)")
-MOTION = re.compile(r"motion raw (-?\d+),(-?\d+),(-?\d+).*?tilt (-?\d+).*?bearing (-?\d+).*?turn (\d+).*?rot (-?\d+),(-?\d+),(-?\d+) quarter (\d+)")
+MOTION = re.compile(r"motion raw (-?\d+),(-?\d+),(-?\d+).*?tilt (-?\d+).*?bearing (-?\d+).*?turn (\d+).*?rot (-?\d+),(-?\d+),(-?\d+) quarter (\d+)(?: grav_mg -?\d+,-?\d+,-?\d+ bias_dps10 -?\d+,-?\d+,-?\d+)?")
+
+TURN = re.compile(r"turn ms (\d+) down (-?\d+\.\d{6}) (-?\d+\.\d{6}) (-?\d+\.\d{6}) accel (-?\d+\.\d{6}) (-?\d+\.\d{6}) (-?\d+\.\d{6})")
 
 
 def parse(lines):
@@ -33,20 +36,30 @@ def parse(lines):
     current = None
     before_round = True
     for line in lines:
+        line = line.removeprefix("LABDUMP ")
         if "round imu" in line:
             before_round = False
-            current = {"poses": {}, "fit": None}
+            current = {"poses": {}, "fit": None, "turn_angles": []}
             rounds.append(current)
-        pose = POSE.search(line)
-        calib = CALIB.search(line)
+        payload = re.sub(r"^I \(\d+\) input_lab: ", "", line)
+        pose = POSE.fullmatch(payload)
+        calib = CALIB.fullmatch(payload)
         if pose or calib:
             if current is None or current["fit"] is not None:
-                current = {"poses": {}, "fit": None}
+                current = {"poses": {}, "fit": None, "turn_angles": []}
                 rounds.append(current)
             if pose:
                 current["poses"][pose[1]] = tuple(map(int, pose[2].split()))
             if calib:
                 current["fit"] = tuple(map(int, calib.groups()))
+        turn = TURN.fullmatch(payload)
+        if turn and current is not None:
+            values = tuple(map(float, turn.groups()[1:]))
+            down, accel = values[:3], values[3:]
+            magnitude = sqrt(sum(v * v for v in down) * sum(v * v for v in accel))
+            if magnitude > 0:
+                cosine = sum(a * b for a, b in zip(down, accel)) / magnitude
+                current["turn_angles"].append(degrees(acos(max(-1.0, min(1.0, cosine)))))
         sample, stamp = MOTION.search(line), STAMP.search(line)
         if sample and stamp:
             values = tuple(map(int, sample.groups()))
@@ -159,6 +172,11 @@ def report(captures, seconds):
         preview = "; ".join(f"{s['ms'] / MILLI:.3f}: {old} -> {s['quarter']}"
                             for old, s in changes[:TRANSITION_PREVIEW_COUNT])
         out.append(f"| {name} | {len(flat)} | {shares} | {median(s['bearing'] for s in flat):g} | {len(changes)} / {preview or 'none'} |")
+    for name, rounds, _ in captures:
+        for index, round_ in enumerate(rounds, 1):
+            angles = round_.get("turn_angles", [])
+            if angles:
+                out.append(f"Turn {name} / {index}: max {max(angles):.1f} deg, final {angles[-1]:.1f} deg")
     return "\n".join(out)
 
 
