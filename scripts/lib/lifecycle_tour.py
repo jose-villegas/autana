@@ -119,6 +119,7 @@ def exchange(console, step, *, decline=False):
                 if not match or int(match[1]) != int(step.tilt.split()[-1]):
                     raise TourError("invalid quarter reply: " + found[-1])
                 sample_s = int(match[3]) / MILLISECONDS_PER_SECOND
+                tilted_at = time.monotonic()
                 tilt_complete = True
             if step.reply:
                 found, ended = replies_to(line.encode(), step.reply,
