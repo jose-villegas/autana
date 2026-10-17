@@ -42,9 +42,11 @@ static int microui_value = 6;
 static int checked = 1;
 static int picked_item = 1;
 
+#include "display/display_host.h"
+
 int
 display_quarter_now(void) {
-    return 0;
+    return display_host_quarter(DISPLAY_PORTRAIT);
 }
 
 static bool

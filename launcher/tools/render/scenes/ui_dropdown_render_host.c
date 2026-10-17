@@ -33,9 +33,11 @@ static char labels[ITEM_COUNT][16];
 static const char* items[ITEM_COUNT];
 static int selected = 2;
 
+#include "display/display_host.h"
+
 int
 display_quarter_now(void) {
-    return 0;
+    return display_host_quarter(DISPLAY_PORTRAIT);
 }
 
 static bool

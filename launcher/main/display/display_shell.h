@@ -1,9 +1,7 @@
 /*
- * display_shell: the shell's side of display: starting the panel, loading its
- * clock, and turning gravity, from a reader the shell hands in, into
- * orientation. An app never calls these. Defined in display_device.c,
- * device only, except the sampler, which display.c holds so its cadence is
- * tested on a host. Applying a quarter change to the UI is the caller's.
+ * display_shell: panel startup, saved clock and shell orientation. The sampler
+ * and its holds are host-testable in display.c; device entry points live in
+ * display_device.c. The shell supplies the UI handler for holds.
  */
 #pragma once
 
@@ -25,6 +23,7 @@ typedef bool (*display_gravity_reader_t)(vec2i_t* gravity);
 typedef struct {
     display_t display;
     int64_t next_sample_us;
+    bool held;
 } display_orientation_t;
 
 /* Starts at DISPLAY_DEFAULT_QUARTER, due to sample at once. */
@@ -34,6 +33,9 @@ void display_orientation_init(display_orientation_t* o);
  * last attempt, a failed read included, and feeds display_update(). True only
  * when the quarter changed. */
 bool display_orientation_sample(display_orientation_t* o, int64_t now_us, display_gravity_reader_t read);
+
+void display_orientation_hold(display_orientation_t* o, int quarter);
+void display_orientation_release(display_orientation_t* o);
 
 /* Where the system panel clock is kept across reboots, in the settings store. */
 #define DISPLAY_PANEL_CLOCK_SETTINGS_SPACE "shell"
@@ -48,6 +50,16 @@ void display_load_panel_clock(void);
 
 /* Puts the shell's orientation at DISPLAY_DEFAULT_QUARTER. */
 void display_reset_quarter(void);
+
+typedef void (*display_quarter_handler_t)(int quarter);
+
+/* The shell binds its UI transform before any forced orientation changes. */
+void display_set_quarter_handler(display_quarter_handler_t handler);
+
+/* Holds bypass gravity until release; the next sample after release is due. */
+void display_hold_quarter(int quarter);
+void display_release_quarter(void);
+bool display_quarter_held(void);
 
 /* Samples the shell's orientation, asking `read` for gravity at most every
  * DISPLAY_SAMPLE_MS. True when the quarter changed. */

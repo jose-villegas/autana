@@ -29,7 +29,8 @@ def capture_means(directory, object_name, expected_packs=None, expected_poses=No
     result, packs, poses = {}, {}, None
     for row in ROWS:
         path = pathlib.Path(directory) / f"meshlets-{row}-board.log"
-        text = path.read_text(encoding="utf-8")
+        from capture import select_quarter
+        text = select_quarter(path.read_text(encoding="utf-8"))
         if re.search(r"\bFAIL\b", text):
             raise ValueError(f"{path}: failed suite")
         if (not re.search(r":test_\w*frame_cost\w*:PASS\b", text)

@@ -13,6 +13,7 @@
 #include "display/display.h"
 #include "display/display_shell.h"
 
+#include <assert.h>
 #include <math.h>
 #include <stdint.h>
 
@@ -114,11 +115,12 @@ display_orientation_init(display_orientation_t* o) {
     display_init(&o->display);
     o->display.quarter = DISPLAY_DEFAULT_QUARTER;
     o->next_sample_us = 0;
+    o->held = false;
 }
 
 bool
 display_orientation_sample(display_orientation_t* o, int64_t now_us, display_gravity_reader_t read) {
-    if (now_us < o->next_sample_us) {
+    if (o->held || now_us < o->next_sample_us) {
         return false;
     }
     o->next_sample_us = now_us + ((int64_t)DISPLAY_SAMPLE_MS * 1000);
@@ -128,4 +130,17 @@ display_orientation_sample(display_orientation_t* o, int64_t now_us, display_gra
         return false;
     }
     return display_update(&o->display, gravity);
+}
+
+void
+display_orientation_hold(display_orientation_t* o, int quarter) {
+    assert(quarter >= DISPLAY_PORTRAIT && quarter <= DISPLAY_LANDSCAPE_UPSIDE_DOWN);
+    o->display.quarter = quarter;
+    o->held = true;
+}
+
+void
+display_orientation_release(display_orientation_t* o) {
+    o->held = false;
+    o->next_sample_us = 0;
 }

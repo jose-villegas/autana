@@ -187,3 +187,18 @@ influence-limit displacements are in
 [`measurements.json`](images/skin-frame/measurements.json). This tool bakes its
 own LMSH with the meshlet writer, so its vertex layout is independent
 of a scene pack's bake. The sheets use the poses named on the command line.
+
+## Perf capture quarters
+
+The render perf suites use the shared `tests/r3d_perf_quarters.h` table.
+Every timed render window runs with portrait and landscape forced through
+the display hold. Rows include `quarter=portrait` or `quarter=landscape`.
+The skin, animate and animation-step windows run once in portrait; their
+work has no viewport. The frame harness requires a held quarter and its
+fixture releases the hold at exit. Raster sizes stay in physical panel
+axes; the camera viewport applies the quarter turn.
+
+`report_performance.py` reports each render quarter separately. The skin
+budget is `SKIN_PERF_BUDGET_NS_PER_VERTEX` in `tests/skin_perf_log.h`.
+Meshlet and reference-quality report readers select portrait for their
+matching reference views.

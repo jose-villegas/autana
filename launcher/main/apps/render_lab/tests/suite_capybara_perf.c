@@ -2,6 +2,7 @@
 #ifdef DEVICE_BUILD
 #include <stdio.h>
 #include <string.h>
+#include "apps/render_lab/tests/r3d_perf_quarters.h"
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "apps/render_lab/tests/skin_perf_log.h"
 #include "core/job.h"
@@ -36,8 +37,9 @@ static fixture_t* active;
 
 static void
 heap_report(const char* phase) {
-    ESP_LOGI(TAG, SKIN_PERF_PREFIX " phase=%s internal_free=%u internal_largest=%u", phase,
-             (unsigned)memory_free_bytes(MEMORY_INTERNAL), (unsigned)memory_largest_block(MEMORY_INTERNAL));
+    ESP_LOGI(TAG, SKIN_PERF_PREFIX " phase=%s internal_free=%u internal_largest=%u" SKIN_PERF_QUARTER_FORMAT, phase,
+             (unsigned)memory_free_bytes(MEMORY_INTERNAL), (unsigned)memory_largest_block(MEMORY_INTERNAL),
+             r3d_perf_quarters[0].name);
 }
 
 static void
@@ -53,9 +55,11 @@ fixture(void) {
     active = memory_alloc(sizeof *active, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(active);
     *active = (fixture_t){0};
+    display_hold_quarter(r3d_perf_quarters[0].quarter);
     heap_report(SKIN_PERF_PHASE_BEFORE_ENTER);
     render_lab_test_enter(&active->saved, "capybara");
     suite_set_test_cleanup(release_fixture);
+    display_hold_quarter(r3d_perf_quarters[0].quarter);
     active->scene = render_lab_test_loaded_scene("capybara");
     TEST_ASSERT_NOT_NULL(active->scene);
     active->subject = scene_find(active->scene, "capybara");
@@ -157,21 +161,23 @@ report_stage(fixture_t* f, const char* stage, job_fn_t fn, int count, bool split
     if (strcmp(stage, SKIN_PERF_STAGE_SKIN) == 0) {
         const int64_t goal_us = (int64_t)vertices * SKIN_PERF_BUDGET_NS_PER_VERTEX / SKIN_PERF_NS_PER_US;
         const int64_t distance = (us.avg - goal_us) * SKIN_PERF_PERCENT_SCALE / goal_us;
-        ESP_LOGI(TAG, "PERF TARGET skin %s core(s): measured %lld us, goal %lld us, distance %+lld%%", cores,
-                 (long long)us.avg, (long long)goal_us, (long long)distance);
+        ESP_LOGI(TAG,
+                 "PERF TARGET skin %s core(s)" SKIN_PERF_QUARTER_FORMAT
+                 ": measured %lld us, goal %lld us, distance %+lld%%",
+                 cores, r3d_perf_quarters[0].name, (long long)us.avg, (long long)goal_us, (long long)distance);
     }
     ESP_LOGI(TAG,
              SKIN_PERF_PREFIX " stage=%s cores=%s worker_samples=%d samples=%d vertices=%d" SKIN_PERF_SETUP_FORMAT
                               " mean_us=%lld p95_us=%lld "
                               "us_per_vertex=%.3f "
-                              "cycles_per_vertex=%.3f",
+                              "cycles_per_vertex=%.3f" SKIN_PERF_QUARTER_FORMAT,
              stage, cores, worker_samples, PERF_SAMPLES, vertices, f->scene->animators[f->subject].skeleton.joint_count,
              skin->skin.influences, skin->light_mode, f->scene->light_count, (long long)us.avg, (long long)us.p95,
-             (double)us.avg / vertices, (double)cycles.avg / vertices);
+             (double)us.avg / vertices, (double)cycles.avg / vertices, r3d_perf_quarters[0].name);
 }
 
 static perf_stats_t
-frame_cost(fixture_t* f, bool paused, perf_stats_t* render_stats) {
+frame_cost(fixture_t* f, bool paused, perf_stats_t* render_stats, const char* quarter) {
     const int joints = f->scene->animators[f->subject].skeleton.joint_count;
     (void)scene_animator_set_paused(f->scene, f->subject, SCENE_ANIMATOR_CURRENT, paused);
     (void)scene_animator_set_paused(f->scene, f->subject, SCENE_ANIMATOR_PREVIOUS, paused);
@@ -186,14 +192,14 @@ frame_cost(fixture_t* f, bool paused, perf_stats_t* render_stats) {
     *render_stats = perf_stats_compute(f->render_us, PERF_SAMPLES);
     ESP_LOGI(TAG,
              SKIN_PERF_PREFIX " stage=" SKIN_PERF_STAGE_RENDER
-                              " paused=%d samples=%d joints=%d mean_us=%lld p95_us=%lld",
-             paused, PERF_SAMPLES, joints, (long long)render_stats->avg, (long long)render_stats->p95);
+                              " paused=%d samples=%d joints=%d mean_us=%lld p95_us=%lld" SKIN_PERF_QUARTER_FORMAT,
+             paused, PERF_SAMPLES, joints, (long long)render_stats->avg, (long long)render_stats->p95, quarter);
     const perf_stats_t stats = perf_stats_compute(f->elapsed_us, PERF_SAMPLES);
     TEST_ASSERT_GREATER_THAN_INT64(0, stats.avg);
     ESP_LOGI(TAG,
              SKIN_PERF_PREFIX " stage=" SKIN_PERF_STAGE_FRAME
-                              " paused=%d samples=%d joints=%d mean_us=%lld p95_us=%lld",
-             paused, PERF_SAMPLES, joints, (long long)stats.avg, (long long)stats.p95);
+                              " paused=%d samples=%d joints=%d mean_us=%lld p95_us=%lld" SKIN_PERF_QUARTER_FORMAT,
+             paused, PERF_SAMPLES, joints, (long long)stats.avg, (long long)stats.p95, quarter);
     return stats;
 }
 
@@ -212,15 +218,24 @@ test_animation_and_frame_cost(void) {
     report_stage(f, SKIN_PERF_STAGE_ANIMATE, animate_slice, f->scene->asset.entity_count, false, SKIN_PERF_CORES_ONE);
     report_stage(f, SKIN_PERF_STAGE_ANIMATE, animate_slice, f->scene->asset.entity_count, true, SKIN_PERF_CORES_TWO);
     report_stage(f, SKIN_PERF_STAGE_ANIMATION_STEP, step, 1, false, SKIN_PERF_CORES_UNKNOWN);
-    perf_stats_t playing_render;
-    perf_stats_t paused_render;
-    const perf_stats_t playing = frame_cost(f, false, &playing_render);
-    const perf_stats_t paused = frame_cost(f, true, &paused_render);
-    const int joints = f->scene->animators[f->subject].skeleton.joint_count;
-    ESP_LOGI(TAG, SKIN_PERF_PREFIX " stage=" SKIN_PERF_STAGE_RENDER_DELTA " joints=%d mean_us=%lld p95_us=%lld", joints,
-             (long long)(playing_render.avg - paused_render.avg), (long long)(playing_render.p95 - paused_render.p95));
-    ESP_LOGI(TAG, SKIN_PERF_PREFIX " stage=" SKIN_PERF_STAGE_FRAME_DELTA " joints=%d mean_us=%lld p95_us=%lld", joints,
-             (long long)(playing.avg - paused.avg), (long long)(playing.p95 - paused.p95));
+    for (size_t q = 0; q < R3D_PERF_QUARTER_COUNT; q++) {
+        const r3d_perf_quarter_t* quarter = &r3d_perf_quarters[q];
+        display_hold_quarter(quarter->quarter);
+        perf_stats_t playing_render;
+        perf_stats_t paused_render;
+        const perf_stats_t playing = frame_cost(f, false, &playing_render, quarter->name);
+        const perf_stats_t paused = frame_cost(f, true, &paused_render, quarter->name);
+        const int joints = f->scene->animators[f->subject].skeleton.joint_count;
+        ESP_LOGI(TAG,
+                 SKIN_PERF_PREFIX " stage=" SKIN_PERF_STAGE_RENDER_DELTA
+                                  " joints=%d mean_us=%lld p95_us=%lld" SKIN_PERF_QUARTER_FORMAT,
+                 joints, (long long)(playing_render.avg - paused_render.avg),
+                 (long long)(playing_render.p95 - paused_render.p95), quarter->name);
+        ESP_LOGI(TAG,
+                 SKIN_PERF_PREFIX " stage=" SKIN_PERF_STAGE_FRAME_DELTA
+                                  " joints=%d mean_us=%lld p95_us=%lld" SKIN_PERF_QUARTER_FORMAT,
+                 joints, (long long)(playing.avg - paused.avg), (long long)(playing.p95 - paused.p95), quarter->name);
+    }
 }
 #endif
 

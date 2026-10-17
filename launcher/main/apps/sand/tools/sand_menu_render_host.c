@@ -46,9 +46,11 @@ static bool pending;
 static bool open_dither;
 static affine2x_t transform;
 
+#include "display/display_host.h"
+
 int
 display_quarter_now(void) {
-    return 0;
+    return display_host_quarter(DISPLAY_PORTRAIT);
 }
 
 static bool

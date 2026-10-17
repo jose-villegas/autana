@@ -127,9 +127,11 @@ options(int argc, char** argv) {
     return (view == NULL || view_from_name(view)) && (scale == NULL || set_tunable("scale", atoi(scale)));
 }
 
+#include "display/display_host.h"
+
 int
 display_quarter_now(void) {
-    return shell_quarter;
+    return display_host_quarter(shell_quarter);
 }
 
 /* No finger touches a host render, so no touch ever lands near this edge. */

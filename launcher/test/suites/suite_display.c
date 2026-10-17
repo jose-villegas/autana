@@ -261,10 +261,36 @@ test_the_sampler_reports_a_change_in_both_directions_and_only_then(void) {
     TEST_ASSERT_FALSE(display_orientation_sample(&o, now += step, scripted_gravity));
 }
 
+static void
+test_held_quarter_wins_without_sampling_gravity(void) {
+    display_orientation_t o;
+    begin_scripted_sampler(&o);
+    display_orientation_hold(&o, DISPLAY_PORTRAIT);
+    TEST_ASSERT_TRUE(o.held);
+    TEST_ASSERT_FALSE(display_orientation_sample(&o, 0, scripted_gravity));
+    TEST_ASSERT_EQUAL_INT(DISPLAY_PORTRAIT, display_quarter(&o.display));
+    TEST_ASSERT_EQUAL_INT(0, scripted->reads);
+}
+
+static void
+test_release_resamples_before_the_previous_deadline(void) {
+    display_orientation_t o;
+    begin_scripted_sampler(&o);
+    TEST_ASSERT_FALSE(display_orientation_sample(&o, 0, scripted_gravity));
+    display_orientation_hold(&o, DISPLAY_PORTRAIT);
+    display_orientation_release(&o);
+    TEST_ASSERT_FALSE(o.held);
+    TEST_ASSERT_TRUE(display_orientation_sample(&o, 1, scripted_gravity));
+    TEST_ASSERT_EQUAL_INT(DISPLAY_LANDSCAPE, display_quarter(&o.display));
+    TEST_ASSERT_EQUAL_INT(2, scripted->reads);
+}
+
 /* suite */
 
 void
 run_display_suite(void) {
+    RUN_TEST(test_held_quarter_wins_without_sampling_gravity);
+    RUN_TEST(test_release_resamples_before_the_previous_deadline);
     RUN_TEST(test_gravity_straight_down_reads_upright);
     RUN_TEST(test_gravity_to_the_left_reads_quarter_one);
     RUN_TEST(test_gravity_straight_up_reads_upside_down);

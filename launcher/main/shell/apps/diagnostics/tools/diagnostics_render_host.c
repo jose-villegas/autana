@@ -9,6 +9,7 @@
 
 #include "app/app.h"
 #include "display/display.h"
+#include "display/display_host.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_present.h"
@@ -33,7 +34,7 @@ static bool overlay_on = true, leaf_on, send_audit_on;
 
 int
 display_quarter_now(void) {
-    return shell_quarter;
+    return display_host_quarter(shell_quarter);
 }
 
 int

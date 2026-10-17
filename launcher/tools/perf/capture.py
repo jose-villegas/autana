@@ -46,3 +46,31 @@ def require_same_board(boards: Mapping[str, str | None]) -> str | None:
                    for board, paths in sorted(groups.items(), key=lambda pair: pair[0] or "")]
         raise ValueError("cannot compare captures from different boards: " + "; ".join(details))
     return next(iter(groups), None)
+
+
+QUARTERS = ("portrait", "landscape")
+QUARTER_RE = re.compile(r"\bquarter=(\S+)")
+
+
+def quarter_name(line):
+    """Read an explicit quarter; untagged captures keep their existing identity."""
+    match = QUARTER_RE.search(line)
+    if match and match[1] not in QUARTERS:
+        raise ValueError(f"invalid render quarter {match[1]}")
+    return match[1] if match else None
+
+
+def quarter_row(name, line):
+    quarter = quarter_name(line)
+    return f"{name} quarter={quarter}" if quarter else name
+
+
+def select_quarter(text, quarter="portrait"):
+    """Select one orientation for tools whose tables describe a single viewport."""
+    if quarter not in QUARTERS:
+        raise ValueError(f"invalid render quarter {quarter}")
+    observed = {name for line in text.splitlines() if (name := quarter_name(line))}
+    if (observed or quarter != "portrait") and quarter not in observed:
+        raise ValueError(f"capture has no quarter={quarter} rows")
+    return "\n".join(QUARTER_RE.sub("", line).rstrip() for line in text.splitlines()
+                     if quarter_name(line) in (None, quarter))

@@ -167,6 +167,19 @@ class SweepTests(ShellJobTests, unittest.TestCase):
             self.assertNotEqual(schedules[0], schedules[1])
             self.assertNotEqual(schedules[1], schedules[2])
 
+    def test_render_stage_and_span_quarters_are_not_pooled(self):
+        with tempfile.TemporaryDirectory() as root:
+            capture = Path(root) / 'capture.log'
+            capture.write_text('scale_split: 184x224 poses=4 tris=8 frame mean/p50/max us 10/9/11 | r3d.draw 1.0/2.0 | total 1 quarter=portrait\n'
+                               'scale_split: 184x224 poses=4 tris=8 frame mean/p50/max us 20/9/21 | r3d.draw 3.0/4.0 | total 3 quarter=landscape\n'
+                               'scale_spans: 184x224 one core us/pose setup 1 edges 2 carry 3 fill 4 clear 5 quarter=portrait\n'
+                               'scale_spans: 184x224 one core us/pose setup 6 edges 7 carry 8 fill 9 clear 10 quarter=landscape\n')
+            metrics, _ = tool.metrics(capture, capture)
+            self.assertEqual(metrics['r3d.draw quarter=portrait'], 1000)
+            self.assertEqual(metrics['r3d.draw quarter=landscape'], 3000)
+            self.assertEqual(metrics['spans.184x224.fill quarter=portrait'], 4)
+            self.assertEqual(metrics['spans.184x224.fill quarter=landscape'], 9)
+
     def test_all_metric_kinds(self):
         metrics, units = tool.metrics(FIXTURE, FIXTURE)
         self.assertEqual(metrics["frame"], 10000)

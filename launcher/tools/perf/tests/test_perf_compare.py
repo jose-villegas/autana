@@ -102,8 +102,25 @@ class SeedInferenceTest(unittest.TestCase):
             owners, _ = capture_metadata(capture, rows)
             self.assertEqual(owners, {row: 'test_timing' for row in rows})
 
+    def test_quarters_keep_separate_values_and_test_ownership(self):
+        with tempfile.TemporaryDirectory() as root:
+            capture = pathlib.Path(root) / 'capture.log'
+            capture.write_text('mesh both cores: mean 10us quarter=portrait\n'
+                               ':1:test_portrait:PASS\n'
+                               'mesh both cores: mean 20us quarter=landscape\n'
+                               ':1:test_landscape:PASS\n')
+            expected = {'mesh quarter=portrait': 10, 'mesh quarter=landscape': 20}
+            self.assertEqual(parse_report(capture), expected)
+            owners, _ = capture_metadata(capture, expected)
+            self.assertEqual(owners, {'mesh quarter=portrait': 'test_portrait',
+                                      'mesh quarter=landscape': 'test_landscape'})
+            from capture import select_quarter
+            with self.assertRaisesRegex(ValueError, 'landscape'):
+                select_quarter('mesh mean 10us', 'landscape')
+            self.assertNotIn('20us', select_quarter(capture.read_text(), 'portrait'))
+
     def test_parsers_pool_tables_and_ignore_capture_worst(self):
-        self.assertEqual(parse_report(FIXTURES/'sponza_capture.txt')['sponza'], 51000)
+        self.assertEqual(parse_report(FIXTURES/'sponza_capture.txt')['sponza quarter=portrait'], 51000)
         self.assertIn('hot', parse_report(FIXTURES/'sand_a.md'))
 
     def test_student_distribution_and_holm(self):

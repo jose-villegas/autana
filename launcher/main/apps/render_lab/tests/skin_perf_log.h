@@ -20,3 +20,5 @@
 #define SKIN_PERF_CORES_TWO            "2"
 #define SKIN_PERF_CORES_UNKNOWN        "unknown"
 #define SKIN_PERF_SETUP_FORMAT         " joints=%d influences=%d lighting=%d lights=%d"
+
+#define SKIN_PERF_QUARTER_FORMAT       " quarter=%s"

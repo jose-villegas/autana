@@ -10,7 +10,7 @@ import time
 from pathlib import Path
 from statistics import mean, stdev
 
-from capture import capture_board, require_same_board
+from capture import capture_board, require_same_board, quarter_row
 from seed_statistics import t_quantile
 
 REPO = Path(__file__).resolve().parents[3]
@@ -46,14 +46,31 @@ def parse_markdown(text):
     return collected
 
 
+def parse_timings(text):
+    """Quarter is part of each rendered row's identity, including structured rows."""
+    rows = {}
+    for line in text.splitlines():
+        if match := MEAN_RE.search(line):
+            rows[quarter_row(match["name"], line)] = int(match["value"])
+        elif "stage=" in line and "mean_us=" in line:
+            fields = dict(re.findall(r"(\w+)=([^\s]+)", line))
+            name = fields["stage"]
+            for field in ("cores", "paused"):
+                if field in fields:
+                    name += f" {field}={fields[field]}"
+            rows[quarter_row(name, line)] = int(fields["mean_us"])
+        elif match := re.search(r"scale_split: (\d+x\d+).*frame mean/p50/max us (\d+)/", line):
+            rows[quarter_row("scale_split " + match[1], line)] = int(match[2])
+    return rows
+
+
 def parse_report(path):
     """Return named microsecond rows from a report table or suite capture."""
     text = Path(path).read_text(encoding="utf-8", errors="replace")
     rows = parse_markdown(text)
     if rows:
         return rows
-    return {match.group("name"): int(match.group("value"))
-            for match in MEAN_RE.finditer(text)}
+    return parse_timings(text)
 
 
 REPORT_LINE = re.compile(r"^report: (.+\.md)\s*$")
@@ -224,9 +241,7 @@ def capture_metadata(capture, rows):
     pending_rows, pending_insn = [], {}
     insn = re.compile(r"xtperf: scene=(\S+) event=insn .*value_per_step=(\d+)")
     for line in text.splitlines():
-        timing = MEAN_RE.search(line)
-        if timing:
-            pending_rows.append(timing.group("name"))
+        pending_rows.extend(parse_timings(line))
         counter = insn.search(line)
         if counter and "overflow=" not in line:
             pending_insn[counter.group(1)] = int(counter.group(2))

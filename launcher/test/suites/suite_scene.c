@@ -1647,9 +1647,11 @@ test_a_loaded_scene_that_is_not_active_keeps_its_time(void) {
 }
 
 #ifndef DEVICE_BUILD
+#include "display/display_host.h"
+
 int
 display_quarter_now(void) {
-    return 0;
+    return display_host_quarter(DISPLAY_PORTRAIT);
 }
 
 static void

@@ -30,6 +30,29 @@ def run_capture(number, mean):
 
 
 class SkinningBoard(unittest.TestCase):
+    def test_both_quarters_render_independently(self):
+        text = "BUILD_ID=sample-diag\n" + run_capture(1, 100)
+        lines = []
+        for line in text.splitlines():
+            if f"stage={STAGE_RENDER} " in line or f"stage={STAGE_RENDER_DELTA} " in line:
+                lines.append(line + " quarter=portrait")
+                lines.append(line.replace("mean_us=100", "mean_us=700") + " quarter=landscape")
+            else:
+                lines.append(line)
+        for quarter in report_performance.QUARTERS:
+            for paused in (0, 1):
+                lines.append(f"{PREFIX} stage=frame paused={paused} mean_us={500-paused} quarter={quarter}")
+            lines.append(f"{PREFIX} stage=frame_delta mean_us=1 quarter={quarter}")
+        rendered = budget("\n".join(lines))
+        self.assertIn("Full frame quarter=portrait", rendered)
+        self.assertIn("Full frame quarter=landscape", rendered)
+        with self.assertRaisesRegex(ValueError, "missing render quarter landscape"):
+            budget("\n".join(line for line in lines if "quarter=landscape" not in line))
+        self.assertIn("quarter=portrait", rendered)
+        self.assertIn("quarter=landscape", rendered)
+        self.assertIn("700", rendered)
+        self.assertIn("100", rendered)
+
     def test_check_exit_status_and_byte_preservation(self):
         with tempfile.TemporaryDirectory() as temp:
             capture = pathlib.Path(temp) / "capture.txt"

@@ -9,11 +9,11 @@ import re
 from statistics import mean
 import sys
 
-from layout_measure import (REPO, MEAN_RE, autana_command, booted_build_id,
-                            capture_metadata, captured_runs, make_table, parse_report,
+from layout_measure import (REPO, autana_command, booted_build_id,
+                            capture_metadata, captured_runs, make_table, parse_report, parse_timings,
                             run_stamped, split_filters, filter_limits, status_snapshot)
 from perf_compare import DEFAULT_ALPHA, DEFAULT_THRESHOLD
-from capture import capture_board, require_same_board
+from capture import capture_board, require_same_board, quarter_row
 from seed_statistics import compare
 from device_capture import PERF_SEGMENT
 
@@ -131,7 +131,7 @@ def metrics(capture, table):
         values.setdefault(name, []).append(value)
         units[name] = unit
 
-    rows = {match["name"]: int(match["value"]) for match in MEAN_RE.finditer(text)}
+    rows = parse_timings(text)
     rows.update(parse_report(table))
     for name, value in rows.items():
         add(name, value)
@@ -141,14 +141,15 @@ def metrics(capture, table):
         if "scale_split:" in line and " | " in line:
             segment = line.split(" | ", 1)[1]
             for name, average, _ in STAGE.findall(segment.split("| total", 1)[0]):
-                add(name, float(average) * US_PER_MS)
-    for match in SPANS.finditer(text):
-        for field, value in zip(SPAN_FIELDS, match.groups()[2:]):
-            add(f"spans.{match[1]}x{match[2]}.{field}", int(value))
-    for match in PERF_SEGMENT.finditer(text):
-        if int(match[7]) > 0:
-            add(match[1] + ".cycles", int(match[2]), "cycles/call")
-            add(match[1] + "." + match[5], int(match[6]), "events/call")
+                add(quarter_row(name, line), float(average) * US_PER_MS)
+    for line in text.splitlines():
+        if match := SPANS.search(line):
+            for field, value in zip(SPAN_FIELDS, match.groups()[2:]):
+                add(quarter_row(f"spans.{match[1]}x{match[2]}.{field}", line), int(value))
+    for line in text.splitlines():
+        if (match := PERF_SEGMENT.search(line)) and int(match[7]) > 0:
+            add(quarter_row(match[1] + ".cycles", line), int(match[2]), "cycles/call")
+            add(quarter_row(match[1] + "." + match[5], line), int(match[6]), "events/call")
     return {name: mean(samples) for name, samples in values.items()}, units
 
 

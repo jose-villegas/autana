@@ -279,9 +279,11 @@ static affine2x_t transform;
 static int screen_w;
 static int screen_h;
 
+#include "display/display_host.h"
+
 int
 display_quarter_now(void) {
-    return 0;
+    return display_host_quarter(DISPLAY_PORTRAIT);
 }
 
 static bool
