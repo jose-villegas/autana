@@ -344,6 +344,7 @@ test_sound_exit_closes_play_and_stops_app_system(void) {
     TEST_ASSERT_EQUAL_UINT32(SOUND_APP_GENERATION_NONE, f->control.app_generation);
     sound_command_t command;
     TEST_ASSERT_EQUAL_UINT32(0, sound_control_play(&f->control, &f->sound, &opts, 0, &command).id);
+    TEST_ASSERT_EQUAL_UINT32(0, sound_control_play(&f->control, &f->sound, NULL, 0, &command).id);
 }
 
 static void
@@ -367,7 +368,7 @@ test_sound_gain_sweep_uses_each_stage_and_bus(void) {
                 set_sample(f, (int16_t)(sign * TEST_SAMPLE));
                 const sound_play_opts_t opts = {.bus = buses[b], .gain_pct = (uint8_t)gain};
                 (void)play(f, &opts);
-                const uint8_t bus_gain = SOUND_GAIN_MAX_PCT / 3;
+                const uint8_t bus_gain = (uint8_t)(SOUND_GAIN_MAX_PCT / (b + 2));
                 const uint8_t master_gain = SOUND_GAIN_MAX_PCT * 3 / 4;
                 TEST_ASSERT_TRUE(
                     sound_control_bus_command(&f->control, buses[b], SOUND_COMMAND_BUS_GAIN, bus_gain, &command));
