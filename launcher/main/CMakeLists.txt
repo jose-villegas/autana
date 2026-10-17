@@ -7,7 +7,6 @@ set(app_srcs
     "boot/boot_anim_motion.c"
     "boot/boot_anim_photo.c"
     "boot/boot_report.c"
-    "boot/boot_usb.c"
     "selftest/post.c"
     "selftest/post_layout.c"
     "selftest/post_ui.c"
@@ -144,7 +143,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
 endif()
 
 # board/board.h binds this target's hardware facts to board_esp32s3.c.
-list(APPEND app_srcs "board/board_esp32s3.c" "board/board_panel.c")
+list(APPEND app_srcs "board/board_esp32s3.c" "board/board_panel.c" "board/board_usb.c")
 
 # Apps are discovered, not listed.
 #
@@ -392,6 +391,11 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     esptool_py_flash_target(assets-flash "${flash_main_args}" "${flash_sub_args}")
     esptool_py_flash_target_image(assets-flash assets "${asset_offset}" "${asset_image}")
     add_dependencies(assets-flash asset_pack_image)
+endif()
+
+if(CONFIG_SPIRAM_SPEED_120M)
+    # PSRAM tuning runs with the USB port off the bus (board/board_usb.h).
+    target_link_options(${COMPONENT_LIB} INTERFACE "-Wl,--wrap=mspi_timing_psram_tuning")
 endif()
 
 if(CONFIG_LAUNCHER_SELFTEST)
