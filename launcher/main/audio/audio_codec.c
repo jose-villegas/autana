@@ -34,31 +34,25 @@ audio_codec_check(const char* operation, int status) {
 }
 
 static void
+audio_codec_delete_channel(i2s_chan_handle_t* channel, const char* name) {
+    if (*channel) {
+        (void)audio_codec_check(name, i2s_del_channel(*channel));
+        *channel = NULL;
+    }
+}
+
+static void
 audio_codec_destroy(void) {
-    if (codec) {
-        (void)audio_codec_check("delete codec", audio_codec_delete_codec_if(codec));
-        codec = NULL;
-    }
-    if (ctrl) {
-        (void)audio_codec_check("delete control", audio_codec_delete_ctrl_if(ctrl));
-        ctrl = NULL;
-    }
-    if (gpio) {
-        (void)audio_codec_check("delete GPIO", audio_codec_delete_gpio_if(gpio));
-        gpio = NULL;
-    }
-    if (data) {
-        (void)audio_codec_check("delete data", audio_codec_delete_data_if(data));
-        data = NULL;
-    }
-    if (tx) {
-        (void)audio_codec_check("delete TX", i2s_del_channel(tx));
-        tx = NULL;
-    }
-    if (rx) {
-        (void)audio_codec_check("delete RX", i2s_del_channel(rx));
-        rx = NULL;
-    }
+    (void)audio_codec_check("delete codec", codec ? audio_codec_delete_codec_if(codec) : ESP_CODEC_DEV_OK);
+    codec = NULL;
+    (void)audio_codec_check("delete control", ctrl ? audio_codec_delete_ctrl_if(ctrl) : ESP_CODEC_DEV_OK);
+    ctrl = NULL;
+    (void)audio_codec_check("delete GPIO", gpio ? audio_codec_delete_gpio_if(gpio) : ESP_CODEC_DEV_OK);
+    gpio = NULL;
+    (void)audio_codec_check("delete data", data ? audio_codec_delete_data_if(data) : ESP_CODEC_DEV_OK);
+    data = NULL;
+    audio_codec_delete_channel(&tx, "delete TX");
+    audio_codec_delete_channel(&rx, "delete RX");
     (void)audio_codec_check("amp off", board_audio_amp_enable(false));
 }
 
