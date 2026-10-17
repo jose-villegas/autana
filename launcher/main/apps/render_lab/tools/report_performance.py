@@ -22,7 +22,7 @@ CORES_ONE = read_define(LOG_HEADER, "SKIN_PERF_CORES_ONE")
 CORES_TWO = read_define(LOG_HEADER, "SKIN_PERF_CORES_TWO")
 CORES_UNKNOWN = read_define(LOG_HEADER, "SKIN_PERF_CORES_UNKNOWN")
 PERCENT_SCALE = read_define(LOG_HEADER, "SKIN_PERF_PERCENT_SCALE")
-SKIN_HEADER = LOG_HEADER.parents[3] / "render/r3d_skin.h"
+SKIN_HEADER = LOG_HEADER.parents[3] / "render/r3d_skin_format.h"
 LIGHTING_MODES = {read_define(SKIN_HEADER, "R3D_SKIN_LIGHT_" + mode.upper()): mode
                   for mode in ("direct", "renormalised", "table")}
 SETUP_FIELDS = tuple(re.findall(r"(\w+)=%d", read_define(LOG_HEADER, "SKIN_PERF_SETUP_FORMAT")))

@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "asset/asset_bytes.h"
+#include "asset/asset_table_format.h"
 
 asset_status_t
 asset_table_open(asset_view_t entry, asset_table_t* out) {

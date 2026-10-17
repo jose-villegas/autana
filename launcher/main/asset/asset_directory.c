@@ -3,15 +3,7 @@
 #include <string.h>
 
 #include "asset/asset_bytes.h"
-
-/* The header's byte offsets, and a row's within itself. */
-enum {
-    HEADER_CRC = 4,
-    HEADER_VERSION = 8,
-    HEADER_COUNT = 12,
-    ROW_OFFSET = 32,
-    ROW_SIZE = 36,
-};
+#include "asset/asset_directory_format.h"
 
 static const uint8_t*
 row_at(const uint8_t* base, uint32_t index) {
@@ -30,7 +22,7 @@ asset_directory_size(const void* head, size_t available) {
     if (bytes == NULL || available < ASSET_DIRECTORY_HEADER_SIZE || memcmp(bytes, ASSET_DIRECTORY_MAGIC, 4) != 0) {
         return 0;
     }
-    const uint32_t count = asset_read_u32(bytes + HEADER_COUNT);
+    const uint32_t count = asset_read_u32(bytes + ASSET_DIRECTORY_HEADER_COUNT);
     if (count > (UINT32_MAX - ASSET_DIRECTORY_HEADER_SIZE) / ASSET_DIRECTORY_ROW_SIZE) {
         return 0;
     }
@@ -44,8 +36,8 @@ check_rows(const uint8_t* bytes, uint32_t count, uint32_t region) {
     uint32_t end = ASSET_DIRECTORY_HEADER_SIZE + (count * ASSET_DIRECTORY_ROW_SIZE);
     for (uint32_t i = 0; i < count; i++) {
         const uint8_t* row = row_at(bytes, i);
-        const uint32_t offset = asset_read_u32(row + ROW_OFFSET);
-        const uint32_t size = asset_read_u32(row + ROW_SIZE);
+        const uint32_t offset = asset_read_u32(row + ASSET_DIRECTORY_ROW_OFFSET);
+        const uint32_t size = asset_read_u32(row + ASSET_DIRECTORY_ROW_AT_SIZE);
         if (!name_is_valid(row) || offset % ASSET_MMU_PAGE_SIZE != 0 || offset < end) {
             return ASSET_ERR_BOUNDS;
         }
@@ -75,17 +67,18 @@ asset_directory_open(asset_directory_t* directory, const void* base, size_t size
     if (memcmp(bytes, ASSET_DIRECTORY_MAGIC, 4) != 0) {
         return ASSET_ERR_MAGIC;
     }
-    if (asset_read_u32(bytes + HEADER_VERSION) != ASSET_DIRECTORY_VERSION) {
+    if (asset_read_u32(bytes + ASSET_DIRECTORY_HEADER_VERSION) != ASSET_DIRECTORY_VERSION) {
         return ASSET_ERR_VERSION;
     }
     const uint32_t end = asset_directory_size(bytes, size);
     if (end == 0 || end > size || end > region) {
         return ASSET_ERR_TRUNCATED;
     }
-    if (asset_crc32(bytes + HEADER_VERSION, end - HEADER_VERSION) != asset_read_u32(bytes + HEADER_CRC)) {
+    if (asset_crc32(bytes + ASSET_DIRECTORY_HEADER_VERSION, end - ASSET_DIRECTORY_HEADER_VERSION)
+        != asset_read_u32(bytes + ASSET_DIRECTORY_HEADER_CRC)) {
         return ASSET_ERR_CRC;
     }
-    const uint32_t count = asset_read_u32(bytes + HEADER_COUNT);
+    const uint32_t count = asset_read_u32(bytes + ASSET_DIRECTORY_HEADER_COUNT);
     const asset_status_t rows = check_rows(bytes, count, region);
     if (rows == ASSET_OK) {
         *directory = (asset_directory_t){.base = bytes, .count = count};
@@ -102,7 +95,8 @@ asset_directory_entry(const asset_directory_t* directory, uint32_t index, const 
     }
     const uint8_t* row = row_at(directory->base, index);
     *name = (const char*)row;
-    *slot = (asset_slot_t){.offset = asset_read_u32(row + ROW_OFFSET), .size = asset_read_u32(row + ROW_SIZE)};
+    *slot = (asset_slot_t){.offset = asset_read_u32(row + ASSET_DIRECTORY_ROW_OFFSET),
+                           .size = asset_read_u32(row + ASSET_DIRECTORY_ROW_AT_SIZE)};
     return ASSET_OK;
 }
 
