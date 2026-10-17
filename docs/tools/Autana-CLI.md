@@ -7,6 +7,7 @@ lock and is not tied to git or worktrees: a board-only command (`monitor`,
 flashes acts on the current directory, like `make -C`, or on `--project PATH`.
 
 The launchers require at least the Python version in `scripts/lib/python-min-version`; CI installs the exact `.python-version` pin.
+The shell launcher prefers `python<major.minor>` from `.python-version` on PATH when it imports the requested modules, then falls back to any interpreter meeting the minimum in PATH order.
 
 For a first board run, install ESP-IDF and set up `autana` as described in
 [the README](../../README.md#run-it-on-the-board), then use `autana flash dev`
