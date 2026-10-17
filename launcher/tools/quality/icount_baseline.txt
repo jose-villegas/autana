@@ -73,6 +73,7 @@
 2406	ui_face_swatches
 2605	ui_face_text
 2606	ui_face_text_centre
+2077	ui_face_text_height
 2605	ui_face_text_right
 2152	ui_face_theme
 3787	ui_face_tile

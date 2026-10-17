@@ -94,6 +94,7 @@ UI_ICOUNT_PAIR(outline, ui_outline(box, UI_ICOUNT_RGB), mu_draw_box(ctx, r, ui_r
 UI_ICOUNT_PAIR(icon, ui_icon(box, &icon), ui_draw_icon(ctx, r, &icon, NULL, state->theme.text))
 UI_ICOUNT_PAIR(swatches, ui_swatches(box, swatches, UI_ICOUNT_COLUMNS, UI_ICOUNT_ROWS),
                ui_swatch_grid(ctx, r, swatches, UI_ICOUNT_COLUMNS, UI_ICOUNT_ROWS))
+UI_ICOUNT_EMIT(face, text_height, ui_text_height())
 UI_ICOUNT_EMIT(face, theme, ui_theme(&theme))
 UI_ICOUNT_EMIT(face, disabled, (ui_disabled_begin(true), ui_disabled_end()))
 UI_ICOUNT_EMIT(face, color, (ui_color_begin(UI_COLOR_TEXT, UI_ICOUNT_RGB), ui_color_end()))
@@ -164,6 +165,7 @@ test_ui_instruction_rows(void) {
         {"ui_mu_text_right", legacy_text_right, false},
         {"ui_face_text_centre", face_text_centre, false},
         {"ui_mu_text_centre", legacy_text_centre, false},
+        {"ui_face_text_height", face_text_height, false},
         {"ui_face_caption", face_caption, false},
         {"ui_mu_caption", legacy_caption, false},
         {"ui_face_header", face_header, false},
