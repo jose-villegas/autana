@@ -2084,13 +2084,6 @@ class LockAndDebugDispatchTests(unittest.TestCase):
         fake.assert_called_once_with([])
         self.assertEqual(code, 0)
 
-    def test_debug_perf_routes_to_perf(self):
-        self.assertIs(autana.DEBUG_VERBS["perf"], autana.perf)
-        fake = mock.Mock(return_value=0)
-        with mock.patch.dict(autana.DEBUG_VERBS, {"perf": fake}):
-            self.assertEqual(autana.debug(["perf", "present", "insn", "10"]), 0)
-        fake.assert_called_once_with(["present", "insn", "10"])
-
     def test_debug_with_no_or_unknown_verb_is_a_usage_error(self):
         with self.assertRaises(SystemExit):
             autana.debug([])
@@ -2144,7 +2137,7 @@ class RemovedLockSpellingTests(unittest.TestCase):
 
 
 class RenamedVerbAliasTests(unittest.TestCase):
-    """Every bare old spelling in RENAMED_VERBS still works, printing the new
+    """Every old spelling in RENAMED_VERBS still works, printing the new
     one to stderr before calling straight through to the same handler."""
 
     def test_every_alias_forwards_and_announces_the_new_spelling(self):
@@ -2160,7 +2153,7 @@ class RenamedVerbAliasTests(unittest.TestCase):
 
     def test_the_real_handlers_are_wired_up(self):
         expected = {"freeze": autana.freeze, "resume": autana.resume, "step": autana.step, "touch": autana.touch,
-                   "imu": autana.imu, "framewatch": autana.framewatch, "heap": autana.heap, "perf": autana.perf}
+                   "imu": autana.imu, "debug framewatch": autana.framewatch}
         self.assertEqual({old: handler for old, (_, handler) in autana.RENAMED_VERBS.items()},
                          expected)
 

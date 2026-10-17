@@ -51,7 +51,7 @@ for variant in dev diag; do
     wait_build "$expected"
     check_build "$expected"
     sleep "$SETTLE_SECONDS"
-    reading=$("$AUTANA" --wait 3600 debug heap --json)
+    reading=$("$AUTANA" --wait 3600 heap --json)
     printf '\nBUILD_ID=%s\nphase=boot %s\n' "$expected" "$reading" >> "$CAPTURE"
     apps=$("$AUTANA" --wait 3600 apps --json)
     # A Windows python prints CRLF; the names must not carry the CR into the capture.
@@ -60,7 +60,7 @@ for variant in dev diag; do
         [[ -n "$app" ]] || continue
         "$AUTANA" --wait 3600 open "$app" >&2
         sleep "$SETTLE_SECONDS"
-        reading=$("$AUTANA" --wait 3600 debug heap --json)
+        reading=$("$AUTANA" --wait 3600 heap --json)
         printf 'phase=app:%s %s\n' "$app" "$reading" >> "$CAPTURE"
         "$AUTANA" --wait 3600 home >&2
     done <<< "$names"
