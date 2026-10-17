@@ -144,6 +144,10 @@ class CheckMathDocs(unittest.TestCase):
         extra = "    static inline int P##_wobble(int a) { return a; } \\\n"
         self.assertTrue(any("P_wobble(" in p for p in problems_for(template_extra=extra)))
 
+    def test_a_forced_inline_template_function_missing_from_the_page_fails(self):
+        extra = "    static inline __attribute__((always_inline)) int P##_wobble(int a) { return a; } \\\n"
+        self.assertTrue(any("P_wobble(" in p for p in problems_for(template_extra=extra)))
+
     def test_nested_definers_bind_renamed_operation_parameters(self):
         with tempfile.TemporaryDirectory() as d:
             root = pathlib.Path(d)

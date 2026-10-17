@@ -42,26 +42,27 @@ enum {
         return (P##_t){V##_scale(plane.normal, scale), OPS##_mul(plane.d, scale)};                                     \
     }                                                                                                                  \
                                                                                                                        \
-    /* near and four sides through screen (screen = center + xy / z) in m's source space: */                           \
-    /* out_j = a m[0][j] + b m[1][j] + c m[2][j], d += e, for lens planes (a, b, c, e). */                             \
-    static inline void P##_frustum(const M##_t* m, T near_z, V2##_t center, R##_t screen,                              \
-                                   P##_t out[PLANE_FRUSTUM_COUNT]) {                                                   \
-        const T zero = OPS##_zero(), one = OPS##_one();                                                                \
-        const T in_lens[PLANE_FRUSTUM_COUNT][4] = {                                                                    \
-            {zero, zero, one, OPS##_neg(near_z)},                                                                      \
-            {one, zero, OPS##_sub(center.x, screen.x), zero},                                                          \
-            {OPS##_neg(one), zero, OPS##_sub(R##_right(screen), center.x), zero},                                      \
-            {zero, one, OPS##_sub(center.y, screen.y), zero},                                                          \
-            {zero, OPS##_neg(one), OPS##_sub(R##_bottom(screen), center.y), zero},                                     \
-        };                                                                                                             \
-        for (int p = 0; p < PLANE_FRUSTUM_COUNT; p++) {                                                                \
-            T coefficients[4];                                                                                         \
-            for (int j = 0; j < 4; j++) {                                                                              \
-                coefficients[j] =                                                                                      \
-                    OPS##_add(OPS##_add(OPS##_mul(in_lens[p][0], m->m[0][j]), OPS##_mul(in_lens[p][1], m->m[1][j])),   \
-                              OPS##_mul(in_lens[p][2], m->m[2][j]));                                                   \
-            }                                                                                                          \
-            out[p] = (P##_t){{coefficients[0], coefficients[1], coefficients[2]},                                      \
-                             OPS##_add(coefficients[3], in_lens[p][3])};                                               \
+    /* The plane a x + b y + c z + e >= 0 of m's target, read in m's source space: */                                  \
+    /* normal_j = a m[0][j] + b m[1][j] + c m[2][j], d = a m[0][3] + b m[1][3] + c m[2][3] + e. */                     \
+    static inline __attribute__((always_inline)) P##_t P##_from_rows(const M##_t* m, T a, T b, T c, T e) {             \
+        T w[4];                                                                                                        \
+        for (int j = 0; j < 4; j++) {                                                                                  \
+            w[j] = OPS##_add(OPS##_add(OPS##_mul(a, m->m[0][j]), OPS##_mul(b, m->m[1][j])), OPS##_mul(c, m->m[2][j])); \
         }                                                                                                              \
+        return (P##_t){{w[0], w[1], w[2]}, OPS##_add(w[3], e)};                                                        \
+    }                                                                                                                  \
+                                                                                                                       \
+    /* near and four sides through screen (screen = center + xy / z) in m's source space, each from_rows of */         \
+    /* near (0,0,1,-near_z), left (1,0,cx-left,0), right (-1,0,right-cx,0), top (0,1,cy-top,0), */                     \
+    /* bottom (0,-1,bottom-cy,0). */                                                                                   \
+    static inline __attribute__((always_inline)) void P##_frustum(const M##_t* m, T near_z, V2##_t center,             \
+                                                                  R##_t screen, P##_t out[PLANE_FRUSTUM_COUNT]) {      \
+        const T zero = OPS##_zero(), one = OPS##_one();                                                                \
+        out[PLANE_FRUSTUM_NEAR] = P##_from_rows(m, zero, zero, one, OPS##_neg(near_z));                                \
+        out[PLANE_FRUSTUM_LEFT] = P##_from_rows(m, one, zero, OPS##_sub(center.x, screen.x), zero);                    \
+        out[PLANE_FRUSTUM_RIGHT] =                                                                                     \
+            P##_from_rows(m, OPS##_neg(one), zero, OPS##_sub(R##_right(screen), center.x), zero);                      \
+        out[PLANE_FRUSTUM_TOP] = P##_from_rows(m, zero, one, OPS##_sub(center.y, screen.y), zero);                     \
+        out[PLANE_FRUSTUM_BOTTOM] =                                                                                    \
+            P##_from_rows(m, zero, OPS##_neg(one), OPS##_sub(R##_bottom(screen), center.y), zero);                     \
     }
