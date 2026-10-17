@@ -214,6 +214,19 @@ proto_nearest_drawn(int i, int j, int last) {
     return best;
 }
 
+#ifndef PROTO_GUIDE_LINES
+#define PROTO_GUIDE_LINES 2
+#endif
+
+/* PROTOTYPE: mesh lines lying on a guide (row 0 and column 0). 1: their
+ * crests lerp toward the guide's colour, not the curve's; 2: the guide's
+ * colour whatever their height. */
+static gfx_color_t
+proto_crest_mix(int32_t ripple, gfx_color_t target) {
+    const int32_t crest = (mathi_clamp(ripple, 0, BOOT_ANIM_WHITE_HEIGHT_Q12) * 255) / BOOT_ANIM_WHITE_HEIGHT_Q12;
+    return gfx_color_mix(gfx_rgb(BOOT_ANIM_FLOOR_GREY), target, (uint8_t)((crest * crest) / 255));
+}
+
 static gfx_color_t
 proto_floor_color(const mesh_pass_t* pass, int i, int j, int32_t ripple) {
     const int32_t pen = boot_anim_pen(pass->now_ms);
@@ -241,7 +254,15 @@ draw_mesh_edge(const mesh_pass_t* pass, const mesh_node_t* a, int ai, int aj, co
     if (alpha == 0) {
         return;
     }
-    const gfx_color_t c = gfx_color_mix(COL_BG, proto_floor_color(pass, ai, aj, (a->ripple + b->ripple) / 2), alpha);
+    const int32_t ripple = (a->ripple + b->ripple) / 2;
+    gfx_color_t floor_c = proto_floor_color(pass, ai, aj, ripple);
+    const bool on_guide = (aj == 0 && bj == 0) || (ai == 0 && bi == 0);
+    if (PROTO_GUIDE_LINES == 1 && on_guide) {
+        floor_c = proto_crest_mix(ripple, gfx_rgb(COL_AXIS));
+    } else if (PROTO_GUIDE_LINES == 2 && on_guide) {
+        floor_c = gfx_rgb(COL_AXIS);
+    }
+    const gfx_color_t c = gfx_color_mix(COL_BG, floor_c, alpha);
     const unsigned flags = DRAW_LINE_DASH(BOOT_ANIM_MESH_DASH_ON_PX, BOOT_ANIM_MESH_DASH_OFF_PX);
     if (a_front && b_front) {
         draw_line_ex(a->sx, a->sy, b->sx, b->sy, c, flags);
