@@ -33,6 +33,13 @@ class IcountDiscoveryTest(unittest.TestCase):
         suites = qemu_run.icount_suites(Path(__file__).resolve().parents[3])
         self.assertTrue({"run_sand_icount_suite", "run_span_icount_suite"} <= set(suites))
 
+    def test_floor_cost_suite_is_explicit_only(self):
+        root = Path(__file__).resolve().parents[3]
+        suites = qemu_run.registered_suites(root)
+        self.assertIn("run_boot_floor_cost_suite", suites)
+        self.assertTrue(suites["run_boot_floor_cost_suite"][1])
+        self.assertFalse(any(name.startswith("run_boot_floor_") for name in qemu_run.icount_suites(root)))
+
     def test_ignores_other_registrations_and_build_output(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
