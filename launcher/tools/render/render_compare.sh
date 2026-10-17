@@ -23,7 +23,7 @@
 #
 # --video also records every render's frames on both sides, so with --render
 # put --frames and --dt in the renderer arguments, and writes <dir>/<label>.mp4
-# (A | B | heatmap per frame, each panel labelled) and
+# (A | B | heatmap per frame, A and B labelled as above) and
 # <label>.frames.csv (changed share, mean difference and holes per frame).
 # --fps sets the playback rate; the default is the recorded one, 1000/dt.
 # Needs ffmpeg.
