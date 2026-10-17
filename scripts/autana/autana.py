@@ -442,44 +442,28 @@ def heap(args):
     return 0
 
 
-# Mirrors audio_out.h: AUDIO_OUT_NYQUIST_HZ, AUDIO_OUT_MAX_MS,
-# AUDIO_OUT_VOLUME_MAX_PCT; console_tone_parse.h: CONSOLE_TONE_DEFAULT_VOLUME_PCT.
-TONE_NYQUIST_HZ = 11025
-TONE_MAX_MS = 60000
-TONE_VOLUME_MAX_PCT = 100
-TONE_DEFAULT_VOLUME_PCT = 30
-
-# audio_out.c: AUDIO_OUT_AMP_STARTUP_MS; audio_loopback.h: AUDIO_LOOPBACK_SETTLE_MS.
-# audio_loopback_check captures silence and tone; allow codec open and transport overhead.
-TONE_AMP_STARTUP_MS = 250
-TONE_SETTLE_MS = 100
+# Covers codec open, amplifier startup, capture settling and transport overhead.
+TONE_MARGIN_SECONDS = 10
 TONE_CAPTURE_COUNT = 2
 TONE_MS_PER_SECOND = 1000
-TONE_OPEN_SECONDS = 5
-TONE_MARGIN_SECONDS = 2
 
 
 def tone(args):
     usage = "usage: autana debug tone <hz> <ms> [volume] [--json]"
-    reject_unknown("debug tone", args, ("--json",))
     rest = list(args)
     json_output = read_json_flag(rest[-1:] if rest and rest[-1] == "--json" else [], usage)
     if json_output:
         rest.pop()
     if len(rest) not in (2, 3) or any(not re.fullmatch(r"[0-9]+", arg) for arg in rest):
         sys.exit(usage)
-    try:
-        hz, ms = map(int, rest[:2])
-        volume = int(rest[2]) if len(rest) == 3 else TONE_DEFAULT_VOLUME_PCT
-    except ValueError:
-        sys.exit(usage)
-    if not (0 < hz < TONE_NYQUIST_HZ and 0 < ms <= TONE_MAX_MS and 0 <= volume <= TONE_VOLUME_MAX_PCT):
-        sys.exit(usage)
-    seconds = (TONE_OPEN_SECONDS + TONE_MARGIN_SECONDS
-               + (TONE_AMP_STARTUP_MS + TONE_CAPTURE_COUNT * (TONE_SETTLE_MS + ms)) / TONE_MS_PER_SECOND)
-    code, replies = send(f"TONE {hz} {ms} {volume}", reply="TONE", seconds=seconds)
+    ms = int(rest[1])
+    seconds = TONE_MARGIN_SECONDS + TONE_CAPTURE_COUNT * ms / TONE_MS_PER_SECOND
+    code, replies = send("TONE " + " ".join(rest), reply="TONE", seconds=seconds)
     if code != 0 or not replies:
         return code or 1
+    if replies[-1].startswith(("TONE usage:", "TONE error:")):
+        print(replies[-1], file=sys.stderr)
+        return 1
     try:
         result = parse_tone(replies[-1])
     except ValueError as error:
