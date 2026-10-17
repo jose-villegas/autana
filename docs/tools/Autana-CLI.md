@@ -32,6 +32,7 @@ No board? Try the [host render](../../README.md#try-it-without-a-board).
 | Check memory | `autana heap` |
 | Pause and step the app | `autana debug freeze`, `debug step 3`, `debug resume` |
 | Share one board | `autana status`; wrap work in `autana lock run -- <command>` |
+| Fail a CI job rather than queue | `autana --wait 0 --owner my-job lock run -- <command>` (busy board: exit 75) |
 
 ## Variants
 
@@ -120,7 +121,7 @@ project directories (two git worktrees, say), each built with `autana build`.
 |---|---|
 | `--runs N --test PATTERN` | A quick look: repeat only the tests you changed. |
 | `--layout-seed N` | The same code laid out differently in memory. A difference that holds across several seeds is not layout luck. |
-| `launcher/tools/perf/perf_compare.sh A B --suite NAME TESTS TABLE` | A verdict: flashes seeded images of both sides in a randomised plan and says whether they differ ([perf README](../../launcher/tools/perf/README.md)). `TESTS` is a `--test` filter and `-` means all. `A A` measures the noise. Run it from Git Bash on Windows. |
+| `launcher/tools/perf/perf_compare.sh A B --suite NAME TESTS TABLE` | A verdict: flashes seeded images of both sides in a randomised plan and says whether they differ ([perf README](../../launcher/tools/perf/README.md)). `TESTS` is a `--test` filter and `TABLE` the timing table; `-` means all or raw timings. `A A` measures the noise. Run it from Git Bash on Windows. |
 
 `--test` takes a case-sensitive substring; the board filters, so the capture is
 much shorter than a full suite. A pattern that matches nothing fails and lists
