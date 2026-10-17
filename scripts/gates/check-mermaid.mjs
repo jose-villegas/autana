@@ -9,6 +9,17 @@
 //   node scripts/gates/check-mermaid.mjs --probe         # exit 0 when an mmdc runs, else 1
 //   node scripts/gates/check-mermaid.mjs --stdin <label> # one file's content from stdin,
 //                                                         # reported under <label>
+//   node scripts/gates/check-mermaid.mjs --github-version
+//        # exit 0 when GitHub's renderer runs the pinned mermaid, 1 when not, 2 when unknown
+//
+// Renders the way GitHub does. GitHub draws each block in an iframe from VIEWSCREEN_URL,
+// whose mermaidMarkdown bundle runs mermaid 12.1.0 with the options in
+// mermaid/github-config.json (copied from that bundle's initialize call).
+// package.json overrides mermaid to that version; --github-version shows when GitHub moves.
+//
+// A diagram taller than TALL_RATIO times its width is reported TALL, a warning for now
+// (TALL_FAILS). The usual cause: GitHub's mermaid drops a subgraph's `direction` when a
+// link crosses the subgraph's boundary, so the subgraphs stack in the flowchart's direction.
 //
 // File discovery is `git ls-files`, so an untracked scratch file or a vendored submodule
 // (never checked out into the index) is never scanned; --stdin bypasses discovery for a
@@ -41,6 +52,15 @@ const IS_WINDOWS = process.platform === 'win32';
 const PINNED_DIR = join(dirname(fileURLToPath(import.meta.url)), 'mermaid');
 const PINNED_PACKAGE = '@mermaid-js/mermaid-cli';
 const INSTALL = 'npm ci --prefix scripts/gates/mermaid';
+const GITHUB_CONFIG = join(PINNED_DIR, 'github-config.json');
+const VIEWSCREEN_URL = 'https://viewscreen.githubusercontent.com/markdown/mermaid';
+
+// height / width past which a diagram reads as a tall column on GitHub's page.
+export const TALL_RATIO = 1.3;
+// Flip to true once no tracked diagram is tall (autana-t56l).
+const TALL_FAILS = false;
+const TALL_HINT = `Taller than ${TALL_RATIO}x its width, as GitHub shows it. A flowchart subgraph's direction is ` +
+  'ignored once a link crosses its boundary: link subgraph to subgraph, or change the flowchart direction.';
 
 // The mmdc npm ci installs beside this script, else whichever is on PATH.
 export function mmdcCommand(pinnedDir = PINNED_DIR) {
@@ -50,6 +70,91 @@ export function mmdcCommand(pinnedDir = PINNED_DIR) {
 
 export function pinnedVersion(pinnedDir = PINNED_DIR) {
   return JSON.parse(readFileSync(join(pinnedDir, 'package.json'), 'utf8')).dependencies[PINNED_PACKAGE];
+}
+
+// The installed mermaid (npm ci), else the version package.json overrides it to.
+export function pinnedMermaidVersion(pinnedDir = PINNED_DIR) {
+  const installed = join(pinnedDir, 'node_modules', 'mermaid', 'package.json');
+  if (existsSync(installed)) {
+    return JSON.parse(readFileSync(installed, 'utf8')).version;
+  }
+  return JSON.parse(readFileSync(join(pinnedDir, 'package.json'), 'utf8')).overrides.mermaid;
+}
+
+// The width and height of an SVG's viewBox, the shape GitHub scales to its page.
+export function svgSize(svg) {
+  const match = svg.match(/<svg\b[^>]*\bviewBox="([^"]+)"/);
+  if (!match) {
+    return null;
+  }
+  const [, , width, height] = match[1].trim().split(/[\s,]+/).map(Number);
+  return width > 0 && height > 0 ? { width, height } : null;
+}
+
+export function isTall({ width, height }) {
+  return height > TALL_RATIO * width;
+}
+
+export function formatSize({ width, height }) {
+  return `${Math.round(width)}x${Math.round(height)}`;
+}
+
+// The mermaid bundle's path in the viewscreen page, and the version that bundle passes to
+// every diagram renderer's draw() call.
+export function viewscreenBundlePath(html) {
+  return html.match(/src="([^"]*\/mermaidMarkdown[^"]*\.js)"/)?.[1] ?? null;
+}
+
+export function bundleMermaidVersion(js) {
+  return js.match(/renderer\.draw\([\w$]+,[\w$]+,"(\d+\.\d+\.\d+[^"]*)"/)?.[1] ?? null;
+}
+
+async function fetchText(url) {
+  let lastError;
+  // One retry: viewscreen has answered with a transient redirect to github.com before.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await fetch(url, { redirect: 'manual' });
+      if (response.ok) {
+        return await response.text();
+      }
+      lastError = new Error(`${url}: HTTP ${response.status}`);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
+// The mermaid version GitHub renders with now; throws when the page or bundle changed shape.
+export async function githubMermaidVersion() {
+  const bundle = viewscreenBundlePath(await fetchText(VIEWSCREEN_URL));
+  if (!bundle) {
+    throw new Error(`no mermaidMarkdown bundle in ${VIEWSCREEN_URL}`);
+  }
+  const version = bundleMermaidVersion(await fetchText(new URL(bundle, VIEWSCREEN_URL).href));
+  if (!version) {
+    throw new Error(`no mermaid version in ${bundle}`);
+  }
+  return version;
+}
+
+async function checkGithubVersion() {
+  const pinned = pinnedMermaidVersion();
+  let github;
+  try {
+    github = await githubMermaidVersion();
+  } catch (error) {
+    console.error(`Cannot read GitHub's mermaid version: ${error.message}`);
+    process.exitCode = 2;
+    return;
+  }
+  if (github === pinned) {
+    console.log(`GitHub runs mermaid ${github}, the pinned version.`);
+    return;
+  }
+  console.log(`GitHub runs mermaid ${github}, pinned ${pinned}: bump the override in scripts/gates/mermaid/package.json.`);
+  process.exitCode = 1;
 }
 
 export function extractBlocks(text) {
@@ -255,8 +360,8 @@ async function validate(block, label, workDir, index) {
   await writeFile(input, block.source, 'utf8');
 
   try {
-    await runMmdc(['-i', input, '-o', output, '-q']);
-    return { label, ok: true };
+    await runMmdc(['-i', input, '-o', output, '-c', GITHUB_CONFIG, '-q']);
+    return { label, line: block.line, ok: true, size: svgSize(await readFile(output, 'utf8')) };
   } catch (error) {
     const raw = `${error.stderr || ''}${error.stdout || ''}`.trim() || error.message;
     const parseError = raw.match(/Error:[\s\S]*?(?=\n\s*at\s|$)/);
@@ -269,6 +374,10 @@ async function main() {
   const argv = process.argv.slice(2);
   if (argv.includes('--probe')) {
     await runMmdc(['--version']).catch(() => { process.exitCode = 1; });
+    return;
+  }
+  if (argv.includes('--github-version')) {
+    await checkGithubVersion();
     return;
   }
   const verbose = argv.includes('--verbose');
@@ -352,13 +461,27 @@ async function main() {
   }
 
   const failures = results.filter((r) => !r.ok);
+  const tall = results.filter((r) => r.ok && r.size && isTall(r.size));
 
   if (verbose) {
     for (const result of results) {
       if (result.ok) {
-        console.log(`  PASS  ${result.label}`);
+        console.log(`  PASS  ${result.label}:${result.line}  ${result.size ? formatSize(result.size) : 'no viewBox'}`);
       }
     }
+  }
+
+  if (tall.length) {
+    console.log('');
+    for (const result of tall) {
+      const shape = `${formatSize(result.size)}, height ${(result.size.height / result.size.width).toFixed(2)}x width`;
+      console.log(`  TALL  ${result.label}:${result.line}  ${shape}`);
+      if (process.env.GITHUB_ACTIONS === 'true') {
+        const level = TALL_FAILS ? 'error' : 'warning';
+        console.log(`::${level} file=${result.label.replace(/\\/g, '/')},line=${result.line}::Tall diagram (${shape}). ${TALL_HINT}`);
+      }
+    }
+    console.log(`        ${TALL_HINT}`);
   }
 
   if (failures.length) {
@@ -372,8 +495,8 @@ async function main() {
     }
   }
 
-  console.log(`\n${results.length - failures.length} passed, ${failures.length} failed.`);
-  process.exitCode = failures.length ? 1 : 0;
+  console.log(`\n${results.length - failures.length} passed, ${failures.length} failed, ${tall.length} tall.`);
+  process.exitCode = failures.length || (TALL_FAILS && tall.length) ? 1 : 0;
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
