@@ -63,35 +63,44 @@ M = T\,R\,S, \qquad p_{\text{world}} = M\,p_{\text{local}}, \qquad
 V = R^{\mathsf T}\,T(-\text{position})
 ```
 
-The caller may snap each offset to whole pixels:
-
-```math
-\text{pixel}_x = c_x + \mathrm{trunc}\!\left(\frac{x}{z}\, s\right), \qquad
-\text{pixel}_y = c_y - \mathrm{trunc}\!\left(\frac{y}{z}\, s\right)
-```
-
-Here `s` is pixels per unit at unit depth (`fx`, `fy` below), and `c` is
-the optical centre. Snapping to whole pixels belongs to the caller.
-
 ### Projection: projectf.h, projectx.h
 
-`projectf_t` is a pinhole lens: `fx` and `fy` are pixels per camera unit
-at unit depth, `cx` and `cy` the optical centre in pixels, and `near_z`
-the near plane in camera units. `projectf_screen(lens, p)` returns floating
-picture coordinates without pixel snapping, with camera +y up and picture
-y down. Focal lengths may differ between axes. `projectf_offset(lens, p)`
-returns the pixel offset from the optical centre with camera +y up.
+A camera point reaches the picture through these functions; segments are
+cut at the near plane in camera space.
 
-`projectf_clip_near` and `projectx_clip_near` take `near_z, p0, p1` and
-reject segments whose endpoints are both at or behind the plane. Otherwise
-they move the behind endpoint to the crossing and leave front endpoints
-untouched. The fixed helper accepts any common scale for endpoints and near
-plane, using a Q16.16 crossing ratio. The private `_projectf_cross_near`
-and `_projectx_cross_near` helpers supply scalar crossing arithmetic to
-`project_template.h`'s `MATH_DEFINE_CLIP_NEAR(P, V, T, CROSS)`, which
-selects the behind endpoint and defines the public clip operation for the
-`projectf` and `projectx` prefixes. The caller keeps intermediate differences and products within
-their integer ranges. These helpers take plain values and keep no state.
+```mermaid
+flowchart LR
+    W["world point"] -->|"view matrix, mat4"| C["camera space<br/>+z forward, +y up"]
+    C -->|"projectf_clip_near"| N["segment in front<br/>of near_z"]
+    N -->|"projectf_offset"| O["offset from the centre<br/>pixels, +y up"]
+    N -->|"projectf_screen"| S["picture point<br/>pixels, y down"]
+    O -->|"caller truncates, adds the centre"| X["whole pixel"]
+```
+
+`projectf_t` is the lens: `fx`, `fy` (pixels per camera unit at unit depth,
+may differ), `cx`, `cy` (optical centre, pixels) and `near_z` (camera units).
+The functions below take it by pointer.
+
+| Name | Maps | Inputs | Types | Formula |
+|---|---|---|---|---|
+| `projectf_offset(lens, p)` | camera → offset from the centre, +y up | lens, camera point with $`z > 0`$ | `f` | $`(f_x\,x/z,\ f_y\,y/z)`$ |
+| `projectf_screen(lens, p)` | camera → picture, y down, not snapped | lens, camera point with $`z > 0`$ | `f` | $`(c_x + o_x,\ c_y - o_y)`$, $`o`$ the offset |
+| `projectf_clip_near`, `projectx_clip_near` | camera segment → its part in front of `near_z`; false when none is | `near_z`, then both endpoints by pointer, moved in place | `f x` | $`t = \frac{n - z_b}{z_f - z_b}`$<br>behind $`\leftarrow`$ behind $`+\,t\,(\text{front} - \text{behind})`$<br>behind.z $`\leftarrow`$ `near_z` |
+
+A point exactly at `near_z` counts as behind. For `x`, endpoints and
+`near_z` share any fixed scale, $`t`$ is a Q16.16 ratio applied with a
+floored multiply, and the caller keeps differences and products in range.
+
+The caller snaps a picture point to whole pixels:
+
+```math
+\text{pixel}_x = c_x + \mathrm{trunc}\!\left(f_x\,\frac{x}{z}\right), \qquad
+\text{pixel}_y = c_y - \mathrm{trunc}\!\left(f_y\,\frac{y}{z}\right)
+```
+
+`project_template.h`'s `MATH_DEFINE_CLIP_NEAR(P, V, T, CROSS)` picks the behind
+endpoint for the `projectf` and `projectx` prefixes; `_projectf_cross_near` and
+`_projectx_cross_near` are their private `CROSS` steps.
 
 ## Templates
 
@@ -432,29 +441,33 @@ width or height is empty. Queries clamp result sizes to zero.
 
 ### plane (`f x`)
 
-`planef_t` and `planex_t` store a vec3 `normal` and scalar `d`. The inside
-half-space satisfies `dot(normal, point) + d >= 0`. Distance is scaled by
-the normal's length unless the plane is normalized. Points supplied to
-`from_points` must be noncollinear to produce a nonzero normal.
+`planef_t` and `planex_t` hold a vec3 `normal` and a scalar `d`; inside is
+`dot(normal, point) + d >= 0`. Distances are scaled by the normal's length
+until the plane is normalized.
 
 | Function | Purpose | Formula |
 |---|---|---|
 | `P_from_normal_point(n, p)` | plane through a point with the given normal | $`(n, -n \cdot p)`$ |
-| `P_from_points(a, b, c)` | winding determines the inside; unnormalized | $`n = (b-a) \times (c-a),\ d = -n \cdot a`$ |
+| `P_from_points(a, b, c)` | winding determines the inside; unnormalized; the points must not be collinear | $`n = (b-a) \times (c-a),\ d = -n \cdot a`$ |
 | `P_distance(p, q)` | signed plane value | $`p_n \cdot q + p_d`$ |
 | `P_normalize(p)` | unit normal; normal must be nonzero; for `x`, `dot(normal, normal)` must be representable, as for `vec3x_normalize` | $`(p_n, p_d)/\lVert p_n\rVert`$ |
 | `P_from_rows(&m, a, b, c, e)` | the plane $`a x + b y + c z + e \ge 0`$ of affine m's target, in m's source space | $`n_j = a m_{0j} + b m_{1j} + c m_{2j},\ d = a m_{03} + b m_{13} + c m_{23} + e`$ |
 | `P_frustum(&m, near_z, center, screen, out)` | near and screen side planes in affine m's source space | `P_from_rows` of each lens-space plane below |
 
-Frustum extraction reads rows as in Gribb and Hartmann<sup>[[73]](../Citations.md#73)</sup>.
-Here the camera looks down +z, z supplies the homogeneous w row, and
-`screen = center + xy / z`; the screen rectangle sets the sides. Lens-space
-coefficients `(a,b,c,e)` are `(0,0,1,-near_z)`, `(1,0,cx-left,0)`,
-`(-1,0,right-cx,0)`, `(0,1,cy-top,0)` and `(0,-1,bottom-cy,0)`.
-Outputs follow `PLANE_FRUSTUM_NEAR`, `PLANE_FRUSTUM_LEFT`,
-`PLANE_FRUSTUM_RIGHT`, `PLANE_FRUSTUM_TOP`, `PLANE_FRUSTUM_BOTTOM`;
+`P_frustum` reads rows as in Gribb and Hartmann<sup>[[73]](../Citations.md#73)</sup>,
+with z as the homogeneous w row of a y-down camera with `screen = center + xy / z`.
+Each output is `P_from_rows` of one lens-space plane, in this order:
+
+| Index | Plane | $`(a, b, c, e)`$ |
+|---|---|---|
+| `PLANE_FRUSTUM_NEAR` | `z >= near_z` | $`(0, 0, 1, -\mathit{near\_z})`$ |
+| `PLANE_FRUSTUM_LEFT` | screen x at or right of `left` | $`(1, 0, c_x - \text{left}, 0)`$ |
+| `PLANE_FRUSTUM_RIGHT` | screen x at or left of `right` | $`(-1, 0, \text{right} - c_x, 0)`$ |
+| `PLANE_FRUSTUM_TOP` | screen y at or below `top` | $`(0, 1, c_y - \text{top}, 0)`$ |
+| `PLANE_FRUSTUM_BOTTOM` | screen y at or above `bottom` | $`(0, -1, \text{bottom} - c_y, 0)`$ |
+
 `PLANE_FRUSTUM_COUNT` sizes the output. There is no far plane, and the
-frustum planes are unnormalized.
+planes are not normalized.
 
 ## Examples
 
