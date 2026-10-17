@@ -22,5 +22,5 @@ MATH_DEFINE_TRANSFORM(transformx, vec3x, quatx, mat4x, mathx)
     {.position = {0, 0, 0},                                                                                            \
      .rotation = {0, 0, 0, MATHX_ONE},                                                                                 \
      .scale = {MATHX_ONE, MATHX_ONE, MATHX_ONE},                                                                       \
-     .matrix = {{{MATHX_ONE, 0, 0, 0}, {0, MATHX_ONE, 0, 0}, {0, 0, MATHX_ONE, 0}, {0, 0, 0, MATHX_ONE}}},             \
+     .matrix = MAT4X_IDENTITY,                                                                                         \
      .cached = true}
