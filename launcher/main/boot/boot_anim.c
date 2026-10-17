@@ -488,7 +488,7 @@ proto_height_at(int32_t re_q12, int32_t im_q12, const boot_anim_floor_state_t* s
     return ripple + swell;
 }
 
-#define PROTO_AXIS_GROW_MS 500
+#define PROTO_AXIS_GROW_MS 1500
 
 /* Screen distance from the mesh's edge to `r` along the flat axis line
  * `dir`, or -1 when either point is behind the camera. */
