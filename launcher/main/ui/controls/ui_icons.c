@@ -5,6 +5,7 @@
 #include "asset/asset_store.h"
 #include "esp_log.h"
 #include "ui/ui.h"
+#include "ui/ui_mu.h"
 
 static const char* TAG = "ui_icons";
 
@@ -81,7 +82,7 @@ ui_icons_init(void) {
 }
 
 const draw_image_t*
-ui_icon(ui_icon_id_t id) {
+ui_icon_image(ui_icon_id_t id) {
     return ui_icon_set_get(&system_set, (int)id);
 }
 

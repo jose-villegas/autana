@@ -40,8 +40,6 @@
 #include "input/tilt.h"
 #include "math/scalar/mathi.h"
 #include "services/tune.h"
-#include "ui/controls/ui_style.h"
-#include "ui/controls/ui_widgets.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 
@@ -94,7 +92,7 @@ typedef enum { MODE_RANDOM, MODE_GRID, MODE_BEZEL, MODE_MOTION, MODE_COUNT } lab
 
 typedef struct {
     int cx, cy, radius;
-    mu_Rect bounds;
+    recti_t bounds;
 } motion_ring_t;
 
 static const char* const MODE_NAMES[MODE_COUNT] = {"random", "grid", "bezel", "motion"};
@@ -283,18 +281,17 @@ drag_bezel(const input_t* input) {
 /* Every ARC_STEP-th row of each corner, run out to where the row above
  * began so the steep end of the curve has no gaps. */
 static void
-draw_corner_arcs(mu_Context* ctx) {
-    const mu_Color ink = ui_rgb(COL_TARGET);
+draw_corner_arcs(void) {
     for (int row = 0; row < bezel_radius; row += ARC_STEP) {
         const int inset = display_panel_corner_inset(bezel_radius, screen_h, row);
         const int before =
             row >= ARC_STEP ? display_panel_corner_inset(bezel_radius, screen_h, row - ARC_STEP) : inset + 1;
         const int w = before - inset > 1 ? before - inset : 1;
         const int bottom = screen_h - row - ARC_STEP;
-        mu_draw_rect(ctx, mu_rect(inset, row, w, ARC_STEP), ink);
-        mu_draw_rect(ctx, mu_rect(screen_w - inset - w, row, w, ARC_STEP), ink);
-        mu_draw_rect(ctx, mu_rect(inset, bottom, w, ARC_STEP), ink);
-        mu_draw_rect(ctx, mu_rect(screen_w - inset - w, bottom, w, ARC_STEP), ink);
+        ui_fill((recti_t){inset, row, w, ARC_STEP}, COL_TARGET);
+        ui_fill((recti_t){screen_w - inset - w, row, w, ARC_STEP}, COL_TARGET);
+        ui_fill((recti_t){inset, bottom, w, ARC_STEP}, COL_TARGET);
+        ui_fill((recti_t){screen_w - inset - w, bottom, w, ARC_STEP}, COL_TARGET);
     }
 }
 
@@ -302,19 +299,19 @@ draw_corner_arcs(mu_Context* ctx) {
  * step along x, the side rulers along y. Every RULER_LABEL_EVERY-th tick is
  * red and labelled further in. */
 static void
-draw_edge_rulers(mu_Context* ctx) {
+draw_edge_rulers(void) {
     const int span = (RULER_DEPTH + 1) * RULER_SLOT;
     const int left = (screen_w - span) / 2;
     const int top = (screen_h - span) / 2;
     for (int depth = 0; depth <= RULER_DEPTH; depth++) {
         const bool major = depth % RULER_LABEL_EVERY == 0;
-        const mu_Color ink = ui_rgb(major ? COL_RULER_MAJOR : COL_RULER);
+        const uint32_t ink = major ? COL_RULER_MAJOR : COL_RULER;
         const int x = left + (depth * RULER_SLOT);
         const int y = top + (depth * RULER_SLOT);
-        mu_draw_rect(ctx, mu_rect(x, depth, RULER_TICK, 1), ink);
-        mu_draw_rect(ctx, mu_rect(x, screen_h - 1 - depth, RULER_TICK, 1), ink);
-        mu_draw_rect(ctx, mu_rect(depth, y, 1, RULER_TICK), ink);
-        mu_draw_rect(ctx, mu_rect(screen_w - 1 - depth, y, 1, RULER_TICK), ink);
+        ui_fill((recti_t){x, depth, RULER_TICK, 1}, ink);
+        ui_fill((recti_t){x, screen_h - 1 - depth, RULER_TICK, 1}, ink);
+        ui_fill((recti_t){depth, y, 1, RULER_TICK}, ink);
+        ui_fill((recti_t){screen_w - 1 - depth, y, 1, RULER_TICK}, ink);
         if (!major) {
             continue;
         }
@@ -325,27 +322,35 @@ draw_edge_rulers(mu_Context* ctx) {
         const int lx = x + (RULER_TICK / 2) - (RULER_LABEL_SIDE / 2);
         const int ly = y + (RULER_TICK / 2) - (RULER_LABEL_SIDE / 2);
         const int far = RULER_LABEL_DEPTH + RULER_LABEL_SIDE;
-        ui_text_in(ctx, mu_rect(lx, RULER_LABEL_DEPTH, RULER_LABEL_SIDE, RULER_LABEL_SIDE), label, ink, 1,
-                   UI_ALIGN_CENTRE);
-        ui_text_in(ctx, mu_rect(lx, screen_h - far, RULER_LABEL_SIDE, RULER_LABEL_SIDE), label, ink, 1,
-                   UI_ALIGN_CENTRE);
-        ui_text_in(ctx, mu_rect(RULER_LABEL_DEPTH, ly, RULER_LABEL_SIDE, RULER_LABEL_SIDE), label, ink, 1,
-                   UI_ALIGN_CENTRE);
-        ui_text_in(ctx, mu_rect(screen_w - far, ly, RULER_LABEL_SIDE, RULER_LABEL_SIDE), label, ink, 1,
-                   UI_ALIGN_CENTRE);
+        ui_color_begin(UI_COLOR_TEXT, ink);
+        ui_scale_begin(1);
+        ui_text_centre((recti_t){lx, RULER_LABEL_DEPTH, RULER_LABEL_SIDE, RULER_LABEL_SIDE}, label);
+        ui_text_centre((recti_t){lx, screen_h - far, RULER_LABEL_SIDE, RULER_LABEL_SIDE}, label);
+        ui_text_centre((recti_t){RULER_LABEL_DEPTH, ly, RULER_LABEL_SIDE, RULER_LABEL_SIDE}, label);
+        ui_text_centre((recti_t){screen_w - far, ly, RULER_LABEL_SIDE, RULER_LABEL_SIDE}, label);
+        ui_scale_end();
+        ui_color_end();
     }
+}
+
+static void
+hud_text(recti_t r, const char* text, uint32_t ink) {
+    ui_color_begin(UI_COLOR_TEXT, ink);
+    ui_scale_begin(mode == MODE_MOTION ? MOTION_HUD_SCALE : HUD_SCALE);
+    ui_text_centre(r, text);
+    ui_scale_end();
+    ui_color_end();
 }
 
 /* The bezel page's rulers own the top edge, so its HUD sits mid-screen. */
 static void
-hud_line(mu_Context* ctx, int row, const char* text) {
+hud_line(int row, const char* text) {
     const int hud_top = mode == MODE_BEZEL ? (screen_h / 2) - (2 * HUD_LINE_H) : HUD_TOP;
-    ui_text_in(ctx, mu_rect(0, hud_top + (row * HUD_LINE_H), screen_w, HUD_LINE_H), text, ui_rgb(COL_HUD),
-               mode == MODE_MOTION ? MOTION_HUD_SCALE : HUD_SCALE, UI_ALIGN_CENTRE);
+    hud_text((recti_t){0, hud_top + (row * HUD_LINE_H), screen_w, HUD_LINE_H}, text, COL_HUD);
 }
 
 static void
-hud_offset_line(mu_Context* ctx, int row, const char* label, float mean, float spread) {
+hud_offset_line(int row, const char* label, float mean, float spread) {
     char line[64];
     char mean_text[24], spread_text[24];
     motion_probe_format_fixed(mean_text, sizeof mean_text, (int)lroundf(mean * OFFSET_SCALE), OFFSET_DIGITS, true);
@@ -354,11 +359,11 @@ hud_offset_line(mu_Context* ctx, int row, const char* label, float mean, float s
     if (snprintf(line, sizeof line, "%s %s SD %s", label, mean_text, spread_text) < 0) {
         line[0] = '\0';
     }
-    hud_line(ctx, row, line);
+    hud_line(row, line);
 }
 
 static void
-draw_offsets(mu_Context* ctx) {
+draw_offsets(void) {
     char line[64];
     const int hit_pct = stats.taps > 0 ? (100 * stats.hits + stats.taps / 2) / stats.taps : 0;
 
@@ -366,39 +371,39 @@ draw_offsets(mu_Context* ctx) {
         < 0) {
         line[0] = '\0';
     }
-    hud_line(ctx, 0, line);
-    hud_offset_line(ctx, 1, "DX", touch_probe_mean_dx(&stats), touch_probe_spread_dx(&stats));
-    hud_offset_line(ctx, 2, "DY", touch_probe_mean_dy(&stats), touch_probe_spread_dy(&stats));
+    hud_line(0, line);
+    hud_offset_line(1, "DX", touch_probe_mean_dx(&stats), touch_probe_spread_dx(&stats));
+    hud_offset_line(2, "DY", touch_probe_mean_dy(&stats), touch_probe_spread_dy(&stats));
 }
 
 static void
-draw_hud(mu_Context* ctx) {
+draw_hud(void) {
     char line[64];
     if (mode == MODE_BEZEL) {
         if (snprintf(line, sizeof line, "BEZEL R %d", bezel_radius) < 0) {
             line[0] = '\0';
         }
-        hud_line(ctx, 0, line);
-        hud_line(ctx, 1, "DRAG UP OR DOWN");
+        hud_line(0, line);
+        hud_line(1, "DRAG UP OR DOWN");
     } else {
-        draw_offsets(ctx);
+        draw_offsets();
     }
     if (panel_max_x >= 0) {
         if (snprintf(line, sizeof line, "PANEL X %d-%d Y %d-%d", panel_min_x, panel_max_x, panel_min_y, panel_max_y)
             < 0) {
             line[0] = '\0';
         }
-        hud_line(ctx, 3, line);
+        hud_line(3, line);
     }
 }
 
 static void
-draw_target(mu_Context* ctx) {
+draw_target(void) {
     if (have_last_tap) {
-        const mu_Color mark = last_hit ? ui_rgb(COL_HIT) : ui_rgb(COL_MISS);
-        mu_draw_rect(ctx, mu_rect(last_x - MARK_SIDE / 2, last_y - MARK_SIDE / 2, MARK_SIDE, MARK_SIDE), mark);
+        const uint32_t mark = last_hit ? COL_HIT : COL_MISS;
+        ui_fill((recti_t){last_x - MARK_SIDE / 2, last_y - MARK_SIDE / 2, MARK_SIDE, MARK_SIDE}, mark);
     }
-    mu_draw_rect(ctx, mu_rect(target.x, target.y, target.side, target.side), ui_rgb(COL_TARGET));
+    ui_fill((recti_t){target.x, target.y, target.side, target.side}, COL_TARGET);
 }
 
 static void
@@ -460,21 +465,21 @@ update_imu_round(uint32_t dt_ms, const input_t* input) {
 typedef enum { IMU_ACTION_NONE, IMU_ACTION_SAVE, IMU_ACTION_CLEAR } imu_action_t;
 
 static imu_action_t
-draw_imu_round(mu_Context* ctx) {
+draw_imu_round(void) {
     char line[MOTION_HUD_TEXT_SIZE];
     if (imu_round.active) {
         char label[IMU_PROBE_LABEL_SIZE];
         imu_probe_pose_label(imu_round.pose, label, sizeof label);
         snprintf(line, sizeof line, "%s  POSE %d/%d", label, imu_round.pose + 1, IMU_PROBE_POSE_COUNT);
-        hud_line(ctx, 0, line);
+        hud_line(0, line);
         if (imu_round.settle_ms < IMU_PROBE_SETTLE_MS) {
-            hud_line(ctx, 1, "HOLD STILL");
+            hud_line(1, "HOLD STILL");
         } else {
             snprintf(line, sizeof line, "MEASURING %u%%",
                      (unsigned)(imu_round.window_ms * IMU_PROBE_PERCENT / IMU_PROBE_WINDOW_MS));
-            hud_line(ctx, 1, line);
+            hud_line(1, line);
         }
-        hud_line(ctx, 3, "BOOT TO LEAVE ROUND");
+        hud_line(3, "BOOT TO LEAVE ROUND");
         return IMU_ACTION_NONE;
     }
     const imu_probe_fit_t f = imu_round.fit;
@@ -486,18 +491,13 @@ draw_imu_round(mu_Context* ctx) {
     for (int axis = 0; axis < 3; axis++) {
         snprintf(line, sizeof line, "%s RESID %dMG SCALE %dPPM GYRO %dMDPS", axes[axis], off[axis], scale[axis],
                  gyro[axis]);
-        hud_line(ctx, axis, line);
+        hud_line(axis, line);
     }
-    const ui_theme_t theme = ui_theme_from_style(ctx->style);
     const int top = HUD_TOP + (MOTION_HUD_ROWS * HUD_LINE_H) + MOTION_MARGIN;
     const int width = (screen_w - 3 * MOTION_MARGIN) / 2;
-    const ui_widget_button_t save = {.label = "SAVE", .enabled = true};
-    const ui_widget_button_t clear = {.label = "CLEAR", .enabled = true};
-    const bool saving =
-        ui_icon_button(ctx, "imu-save", mu_rect(MOTION_MARGIN, top, width, 2 * HUD_LINE_H), &save, &theme);
-    const bool clearing = ui_icon_button(
-        ctx, "imu-clear", mu_rect(2 * MOTION_MARGIN + width, top, width, 2 * HUD_LINE_H), &clear, &theme);
-    hud_line(ctx, 3, "BOOT TO LEAVE RESULTS");
+    const bool saving = ui_button((recti_t){MOTION_MARGIN, top, width, 2 * HUD_LINE_H}, "SAVE");
+    const bool clearing = ui_button((recti_t){2 * MOTION_MARGIN + width, top, width, 2 * HUD_LINE_H}, "CLEAR");
+    hud_line(3, "BOOT TO LEAVE RESULTS");
     return clearing ? IMU_ACTION_CLEAR : saving ? IMU_ACTION_SAVE : IMU_ACTION_NONE;
 }
 
@@ -520,22 +520,22 @@ store_imu_result(imu_action_t action) {
     imu_round = (imu_probe_round_t){0};
 }
 
-static mu_Rect
+static recti_t
 motion_dot_rect(int x, int y, motion_ring_t ring, int side) {
     const vec2i_t offset = motion_probe_bubble(x, y, ring.radius, DISPLAY_DEFAULT_QUARTER);
-    const mu_Rect bounds = ring.bounds;
-    return mu_rect(mathi_clamp(ring.cx + offset.x - (side / 2), bounds.x, bounds.x + bounds.w - side),
-                   mathi_clamp(ring.cy + offset.y - (side / 2), bounds.y, bounds.y + bounds.h - side), side, side);
+    const recti_t bounds = ring.bounds;
+    return (recti_t){mathi_clamp(ring.cx + offset.x - (side / 2), bounds.x, bounds.x + bounds.w - side),
+                     mathi_clamp(ring.cy + offset.y - (side / 2), bounds.y, bounds.y + bounds.h - side), side, side};
 }
 
 static void
-draw_motion(mu_Context* ctx) {
+draw_motion(void) {
     if (!have_motion) {
-        hud_line(ctx, 0, "NO MOTION SENSOR");
+        hud_line(0, "NO MOTION SENSOR");
         return;
     }
     if (imu_round.active || imu_round.pose == IMU_PROBE_POSE_COUNT) {
-        store_imu_result(draw_imu_round(ctx));
+        store_imu_result(draw_imu_round());
         return;
     }
     char line[MOTION_HUD_TEXT_SIZE];
@@ -561,25 +561,25 @@ draw_motion(mu_Context* ctx) {
         < 0) {
         line[0] = '\0';
     }
-    hud_line(ctx, 0, line);
+    hud_line(0, line);
     if (snprintf(line, sizeof line, "TILT %d DEG FROM FLAT", (int)lroundf(motion_probe.tilt_deg)) < 0) {
         line[0] = '\0';
     }
-    hud_line(ctx, 1, line);
+    hud_line(1, line);
     if (snprintf(line, sizeof line, "BEARING %d DEG PLANE %sG", motion_probe.bearing_deg, values[VALUE_PLANE]) < 0) {
         line[0] = '\0';
     }
-    hud_line(ctx, 2, line);
+    hud_line(2, line);
     if (snprintf(line, sizeof line, "F %s,%s S%d K%d T%d", values[VALUE_FILTER_X], values[VALUE_FILTER_Y],
                  tilt_strength(&tilt), tilt_shake(&tilt), motion.turn_speed)
         < 0) {
         line[0] = '\0';
     }
-    hud_line(ctx, 3, line);
+    hud_line(3, line);
 
     const vec3i_t offset = input_accel_offset();
     snprintf(line, sizeof line, "OFFSET %d %d %d Q12", (int)offset.x, (int)offset.y, (int)offset.z);
-    hud_line(ctx, MOTION_HUD_ROWS, line);
+    hud_line(MOTION_HUD_ROWS, line);
     const int top = HUD_TOP + ((MOTION_HUD_ROWS + 1) * HUD_LINE_H) + MOTION_MARGIN;
     const int bottom = screen_h - (2 * MOTION_MARGIN) - (2 * HUD_LINE_H);
     const int cx = screen_w / 2;
@@ -587,24 +587,20 @@ draw_motion(mu_Context* ctx) {
     const int vertical_radius = mathi_min(cy - top, bottom - cy);
     const int radius = mathi_min(MOTION_RING_RADIUS, mathi_min(vertical_radius, cx - MOTION_MARGIN));
     const motion_ring_t ring = {cx, cy, radius,
-                                mu_rect(MOTION_MARGIN, top, screen_w - (2 * MOTION_MARGIN), bottom - top)};
+                                (recti_t){MOTION_MARGIN, top, screen_w - (2 * MOTION_MARGIN), bottom - top}};
     for (int row = -radius; row <= radius; row += ARC_STEP) {
         const int extent = motion_probe_ring_extent(radius, row);
         const int previous = row > -radius ? motion_probe_ring_extent(radius, row - ARC_STEP) : 0;
         const int left = extent > previous ? extent : previous;
         const int width = abs(extent - previous) + 1;
-        mu_draw_rect(ctx, mu_rect(cx - left, cy + row, width, ARC_STEP), ui_rgb(COL_MOTION_RING));
-        mu_draw_rect(ctx, mu_rect(cx + left - width + 1, cy + row, width, ARC_STEP), ui_rgb(COL_MOTION_RING));
+        ui_fill((recti_t){cx - left, cy + row, width, ARC_STEP}, COL_MOTION_RING);
+        ui_fill((recti_t){cx + left - width + 1, cy + row, width, ARC_STEP}, COL_MOTION_RING);
     }
-    mu_draw_rect(ctx, motion_dot_rect(raw_acceleration.x, raw_acceleration.y, ring, MOTION_DOT_SIDE), ui_rgb(COL_MISS));
-    mu_draw_box(ctx, motion_dot_rect(tilt_x(&tilt), tilt_y(&tilt), ring, MOTION_FILTER_SIDE),
-                ui_rgb(COL_MOTION_FILTER));
-    ui_text_in(ctx, mu_rect(0, bottom, screen_w / 2, HUD_LINE_H), "RAW", ui_rgb(COL_MISS), MOTION_HUD_SCALE,
-               UI_ALIGN_CENTRE);
-    ui_text_in(ctx, mu_rect(screen_w / 2, bottom, screen_w / 2, HUD_LINE_H), "FILTER", ui_rgb(COL_MOTION_FILTER),
-               MOTION_HUD_SCALE, UI_ALIGN_CENTRE);
-    ui_text_in(ctx, mu_rect(0, bottom + HUD_LINE_H, screen_w, HUD_LINE_H), "TAP TO CALIBRATE", ui_rgb(COL_MOTION_RING),
-               MOTION_HUD_SCALE, UI_ALIGN_CENTRE);
+    ui_fill(motion_dot_rect(raw_acceleration.x, raw_acceleration.y, ring, MOTION_DOT_SIDE), COL_MISS);
+    ui_outline(motion_dot_rect(tilt_x(&tilt), tilt_y(&tilt), ring, MOTION_FILTER_SIDE), COL_MOTION_FILTER);
+    hud_text((recti_t){0, bottom, screen_w / 2, HUD_LINE_H}, "RAW", COL_MISS);
+    hud_text((recti_t){screen_w / 2, bottom, screen_w / 2, HUD_LINE_H}, "FILTER", COL_MOTION_FILTER);
+    hud_text((recti_t){0, bottom + HUD_LINE_H, screen_w, HUD_LINE_H}, "TAP TO CALIBRATE", COL_MOTION_RING);
 }
 
 static void
@@ -628,17 +624,17 @@ update_page(uint32_t dt_ms, const input_t* input) {
 }
 
 static void
-draw_page(mu_Context* ctx) {
+draw_page(void) {
     if (mode == MODE_MOTION) {
-        draw_motion(ctx);
+        draw_motion();
         return;
     }
-    draw_hud(ctx);
+    draw_hud();
     if (mode == MODE_BEZEL) {
-        draw_corner_arcs(ctx);
-        draw_edge_rulers(ctx);
+        draw_corner_arcs();
+        draw_edge_rulers();
     } else {
-        draw_target(ctx);
+        draw_target();
     }
 }
 
@@ -654,12 +650,9 @@ input_lab_frame(uint32_t dt_ms, const input_t* input) {
     if (mode == MODE_MOTION) {
         ui_set_transform(ui_transform_quarter_turn(DISPLAY_DEFAULT_QUARTER, GFX_WIDTH, GFX_HEIGHT));
     }
-    mu_Context* ctx = ui_context();
     ui_begin(input);
-    if (ui_begin_screen(ctx, "Input Lab", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
-        draw_page(ctx);
-        mu_end_window(ctx);
-    }
+    ui_screen();
+    draw_page();
     ui_end(COL_BACKGROUND);
     if (mode == MODE_MOTION) {
         ui_set_transform(shell_transform());

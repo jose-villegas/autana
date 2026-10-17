@@ -33,6 +33,7 @@
 #                   --deps compiles nothing: it prints `flags` and the compile
 #                   flags, then the compiler's -MM list (sources and project
 #                   headers; -MM omits system headers).
+#   scene_ui        OPTIONAL, 1 links the shared host UI sources.
 #   scene_includes  OPTIONAL extra -I directories, relative to launcher/
 #   scene_assets    OPTIONAL folders, relative to launcher/, whose asset roots
 #                   the scene reads as packs: build_pack.py writes them to
@@ -144,6 +145,10 @@ render_scene_build() {
         return 1
     fi
     _rs_tools="$_rs_launcher/tools"
+    if [ "${scene_ui:-0}" = 1 ]; then
+        . "$_rs_tools/build/ui_sources.sh"
+        scene_sources="$scene_sources $UI_SOURCES"
+    fi
 
     # Results belong to whichever tools/ folder owns the scene (the shared
     # one, or an app's) and both are already gitignored there.
