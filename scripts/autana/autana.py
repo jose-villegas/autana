@@ -433,7 +433,7 @@ def framewatch(args):
 
 def heap(args):
     """Runtime free bytes, largest block and total internal DMA heap."""
-    reject_unknown("heap", args, ("--json",))
+    reject_unknown("debug heap", args, ("--json",))
     json_output = read_json_flag(args, "usage: autana debug heap [--json]")
     code, replies = send("HEAP", reply="HEAP")
     if code != 0 or not replies:
