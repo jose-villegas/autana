@@ -76,10 +76,7 @@ test_floor_and_round_diverge_on_an_inexact_negative_product(void) {
     TEST_ASSERT_EQUAL_INT32_MESSAGE(-1, fx_mul_round(-300, 1, 8), "-300/256 = -1.171875, nearest is -1");
 }
 
-/*
- * fx_mul_round(): nearest for positives, and ui_fp_round()'s own tie rule
- * (ties away from zero) for negatives
- */
+/* fx_mul_round(): nearest, ties away from zero for either sign. */
 
 static void
 test_mul_round_rounds_to_nearest_for_positives(void) {
@@ -96,7 +93,7 @@ test_mul_round_rounds_to_nearest_for_positives(void) {
 static void
 test_mul_round_ties_away_from_zero_for_negatives(void) {
     /* -1 * 1, shift 1: exactly -0.5. Away-from-zero ties round to -1, not 0:
-     * the same rule ui_fp_round() has always used (splitting on sign rather
+     * the fx_round_shift() rule (splitting on sign rather
      * than a plain arithmetic shift, which would instead floor a negative
      * tie toward -infinity and bias every negative half-pixel the same way). */
     TEST_ASSERT_EQUAL_INT32(-1, fx_mul_round(-1, 1, 1));

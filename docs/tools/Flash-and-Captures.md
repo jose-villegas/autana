@@ -114,7 +114,8 @@ writes the one raw capture to `PATH`, only with exactly one suite and
 boot-time run until `SELFTEST_COMPLETE`.
 
 A suite capture stops at the shell's `RUNSUITE_COMPLETE name=<suite>` line
-(or `SUITE_DONE`), or after its non-`shell:` output is idle. A port that
+or after its non-`shell:` output is idle. A capture without its completion
+line is recorded as a run error. A port that
 disappears mid-capture ends it as `port lost` with what was read kept, so a
 multi-suite run carries on with its next suite. It fails if the build has no
 suites, does not contain the requested suite, or reports any failed test.

@@ -35,7 +35,7 @@
 static const draw_image_t*
 system_icon(ui_icon_id_t id) {
     ui_icons_init();
-    const draw_image_t* icon = ui_icon(id);
+    const draw_image_t* icon = ui_icon_image(id);
     TEST_ASSERT_NOT_NULL_MESSAGE(icon, "no system icon: the suites run with the packs build_pack.py writes");
     return icon;
 }

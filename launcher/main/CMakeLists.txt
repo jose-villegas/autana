@@ -34,6 +34,7 @@ set(app_srcs
     "ui/ui.c"
     "ui/input/ui_bridge.c"
     "ui/ui_build.c"
+    "ui/face/ui_face.c"
     "ui/ui_canvas_marks.c"
     "ui/controls/ui_icons.c"
     "shell/ui/ui_launcher.c"
@@ -144,6 +145,11 @@ endif()
 
 # board/board.h binds this target's hardware facts to board_esp32s3.c.
 list(APPEND app_srcs "board/board_esp32s3.c" "board/board_panel.c")
+# At 120 MHz, PSRAM tuning runs with the USB port off the bus; the wrap that
+# routes it through board_usb.c is added after idf_component_register below.
+if(CONFIG_SPIRAM_SPEED_120M)
+    list(APPEND app_srcs "board/board_usb.c")
+endif()
 
 # Apps are discovered, not listed.
 #
@@ -391,6 +397,13 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     esptool_py_flash_target(assets-flash "${flash_main_args}" "${flash_sub_args}")
     esptool_py_flash_target_image(assets-flash assets "${asset_offset}" "${asset_image}")
     add_dependencies(assets-flash asset_pack_image)
+endif()
+
+if(CONFIG_SPIRAM_SPEED_120M)
+    # Routes ESP-IDF's PSRAM tuning through board/board_usb.c, so the USB port
+    # is off the bus for it. tools/build/check_psram_tuning_wrap.py checks the
+    # linked image.
+    target_link_options(${COMPONENT_LIB} INTERFACE "-Wl,--wrap=mspi_timing_psram_tuning")
 endif()
 
 if(CONFIG_LAUNCHER_SELFTEST)

@@ -33,6 +33,22 @@ int pick(int a)
 """
 
 
+BRANCH_FREE = """void store(volatile int* reg, int value)
+{
+    *reg = value;
+}
+"""
+
+
+GOTO_ONLY = """int drain(volatile int* reg)
+{
+again:
+    *reg = 0;
+    goto again;
+}
+"""
+
+
 class EmptyScanGuardTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -80,6 +96,15 @@ class EmptyScanGuardTest(unittest.TestCase):
     def test_changed_file_with_a_function_still_needs_a_score(self):
         files = [self.source("mesh_generated.c", DATA_ONLY),
                  self.source("pick.c", WITH_FUNCTION)]
+        with self.assertRaisesRegex(SystemExit, "ZERO functions"):
+            self.run_gate(files, changed=True)
+
+    def test_changed_file_with_only_branch_free_functions_is_not_a_broken_scan(self):
+        files = [self.source("store.c", BRANCH_FREE)]
+        self.assertEqual(self.run_gate(files, changed=True), 0)
+
+    def test_changed_file_whose_only_control_flow_is_a_goto_still_needs_a_score(self):
+        files = [self.source("drain.c", GOTO_ONLY)]
         with self.assertRaisesRegex(SystemExit, "ZERO functions"):
             self.run_gate(files, changed=True)
 

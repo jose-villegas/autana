@@ -257,11 +257,11 @@ flowchart TD
 ```
 
 Magnitude trust falls linearly between the full-trust and no-trust thresholds.
-Android's `ACCELERATION_TOLERANCE` of 4 m/s^2 supplies our approximate
+Android's ACCELERATION_TOLERANCE of 4 m/s^2 supplies our approximate
 zero-trust end (0.4 g), rather than Android's hard acceleration gate.
 Accepted acceleration corrects down with alpha = weight * dt / (tau + dt),
 followed by normalization. Angular rejection and timed recovery use the
-thresholds recommended by Madgwick's x-io Fusion library.<sup>[[72]](../Citations.md#72)</sup>
+thresholds recommended by Madgwick's x-io Fusion library.<sup>[[73]](../Citations.md#73)</sup>
 Our recovery adopts the reading exactly, unlike Fusion's continued correction.
 Recovery adopts nonzero acceleration exactly after continuous rejection exceeds
 the limit. Reset primes that recovery path so the first nonzero reading is
@@ -270,7 +270,7 @@ correction and recovery counting, keeping the prediction finite in free fall.
 
 While acceleration is accepted, the Mahony, Hamel and Pflimlin integral bias
 term accumulates `cross(down, direction)` before the down correction, weighted
-by magnitude trust and elapsed seconds.<sup>[[71]](../Citations.md#71)</sup>
+by magnitude trust and elapsed seconds.<sup>[[72]](../Citations.md#72)</sup>
 Our minus-cross prediction determines the correction sign. The integral is
 gated by magnitude trust and acceptance. The radian correction is converted
 to degrees so bias stays in deg/s. Each axis is clamped to
@@ -295,13 +295,13 @@ The constants are owned by `launcher/main/input/gravity.h`:
 |---|---|---|
 | `GRAVITY_TAU_S` | 0.5 s | Ours, tuned on the board |
 | `GRAVITY_TRUST_FULL_G` | 0.1 g | Ours |
-| `GRAVITY_TRUST_NONE_G` | 0.4 g | Android WindowOrientationListener acceleration tolerance, 4 m/s^2<sup>[[73]](../Citations.md#73)</sup> |
-| `GRAVITY_REJECT_DEG` | 10 deg | x-io Fusion acceleration rejection<sup>[[72]](../Citations.md#72)</sup> |
-| `GRAVITY_RECOVER_MS` | 5000 ms | x-io Fusion recovery trigger period<sup>[[72]](../Citations.md#72)</sup> |
-| `GRAVITY_GYRO_OFFSET_TOL_DPS` | 10 deg/s | QMI8658C datasheet, Table 8, board-level initial offset<sup>[[74]](../Citations.md#74)</sup> |
-| `GRAVITY_GYRO_OFFSET_TCO_DPS_PER_C` | 0.05 deg/s/C | QMI8658C datasheet, Table 8<sup>[[74]](../Citations.md#74)</sup> |
-| `GRAVITY_GYRO_TEMP_SPAN_C` | 60 C | 25 C reference to 85 C operating limit<sup>[[74]](../Citations.md#74)</sup> |
-| `GRAVITY_BIAS_MAX_DPS` | 13 deg/s | QMI8658C datasheet, Table 8: initial offset plus temperature drift, 10 + 0.05 * 60<sup>[[74]](../Citations.md#74)</sup> |
+| `GRAVITY_TRUST_NONE_G` | 0.4 g | Android WindowOrientationListener acceleration tolerance, 4 m/s^2<sup>[[74]](../Citations.md#74)</sup> |
+| `GRAVITY_REJECT_DEG` | 10 deg | x-io Fusion acceleration rejection<sup>[[73]](../Citations.md#73)</sup> |
+| `GRAVITY_RECOVER_MS` | 5000 ms | x-io Fusion recovery trigger period<sup>[[73]](../Citations.md#73)</sup> |
+| `GRAVITY_GYRO_OFFSET_TOL_DPS` | 10 deg/s | QMI8658C datasheet, Table 8, board-level initial offset<sup>[[75]](../Citations.md#75)</sup> |
+| `GRAVITY_GYRO_OFFSET_TCO_DPS_PER_C` | 0.05 deg/s/C | QMI8658C datasheet, Table 8<sup>[[75]](../Citations.md#75)</sup> |
+| `GRAVITY_GYRO_TEMP_SPAN_C` | 60 C | 25 C reference to 85 C operating limit<sup>[[75]](../Citations.md#75)</sup> |
+| `GRAVITY_BIAS_MAX_DPS` | 13 deg/s | QMI8658C datasheet, Table 8: initial offset plus temperature drift, 10 + 0.05 * 60<sup>[[75]](../Citations.md#75)</sup> |
 | `GRAVITY_BIAS_SETTLE_S` | 20 s | Ours, target 2% settling for a datasheet-sized offset |
 | `GRAVITY_BIAS_KI` | derived from TAU and SETTLE_S | Linearised integral loop, derived above |
 | `GRAVITY_FREE_FALL_G` | 0.3 g | Acceleration magnitude below which strength is zero |
