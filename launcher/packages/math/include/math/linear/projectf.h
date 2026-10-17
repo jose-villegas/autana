@@ -36,8 +36,8 @@ static inline void
 _projectf_cross_near(float near_z, vec3f_t* behind, const vec3f_t* front) {
     const float frac = (near_z - behind->z) / (front->z - behind->z);
 
-    behind->x += (front->x - behind->x) * frac;
-    behind->y += (front->y - behind->y) * frac;
+    behind->x = mathf_lerp(behind->x, front->x, frac);
+    behind->y = mathf_lerp(behind->y, front->y, frac);
     behind->z = near_z;
 }
 
