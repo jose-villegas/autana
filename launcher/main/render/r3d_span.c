@@ -28,11 +28,27 @@ static const int32_t value_max[ATTRIBUTES] = {DEPTH_MAX, 65280, 65280, 65280};
  * side has each centre tested against its edge functions
  * (docs/Citations.md#32) instead of walked, in one colour and one depth: past
  * 4 its lost gradient shows on the walls. */
-#define SMALL_MAX_SIDE      4
-#define SMALL_MAX_SIDE_TUNE 16
+#define SMALL_MAX_SIDE                4
+#define SMALL_MAX_SIDE_TUNE           16
+#define SMALL_FLAT_MAX_SIDE           0
+#define SMALL_FLAT_SPREAD             0
+#define SMALL_FLAT_SPREAD_TUNE        UINT8_MAX
+#define SMALL_DITHER                  0
+#define SMALL_DITHER_TUNE             1
+#define SMALL_DITHER_MAX_SIDE         SMALL_MAX_SIDE
+#define SMALL_DITHER_COVERAGE_EIGHTHS 8
+#define SMALL_DITHER_COVERAGE         SMALL_DITHER_COVERAGE_EIGHTHS
+#define SMALL_DITHER_THRESHOLD_SHIFT  5
+#define SMALL_DITHER_PHASE_MASK       3
+#define TRIANGLE_VERTICES             3
 
 TUNE_OWNER(r3d_span);
 TUNE_HOT(r3d_span, small_max_side, SMALL_MAX_SIDE, 0, SMALL_MAX_SIDE_TUNE);
+TUNE_HOT(r3d_span, small_flat_max_side, SMALL_FLAT_MAX_SIDE, 0, SMALL_MAX_SIDE_TUNE);
+TUNE_HOT(r3d_span, small_flat_spread, SMALL_FLAT_SPREAD, 0, SMALL_FLAT_SPREAD_TUNE);
+TUNE_HOT(r3d_span, small_dither, SMALL_DITHER, 0, SMALL_DITHER_TUNE);
+TUNE_HOT(r3d_span, small_dither_max_side, SMALL_DITHER_MAX_SIDE, 0, SMALL_MAX_SIDE_TUNE);
+TUNE_HOT(r3d_span, small_dither_coverage, SMALL_DITHER_COVERAGE, 0, SMALL_DITHER_COVERAGE_EIGHTHS);
 TUNE_HOT(r3d_span, flat_max_rows, R3D_SPAN_FLAT_MAX_ROWS, 0, 8);
 TUNE_HOT(r3d_span, flat_max_width, R3D_SPAN_FLAT_MAX_WIDTH, 0, 8 * R3D_SUBPIXEL);
 
@@ -492,10 +508,33 @@ small_side(const small_edge_t* e, int32_t x, int32_t y) {
     return (e->dx * (y - e->ay)) - (e->dy * (x - e->ax)) - e->bias;
 }
 
+static inline bool
+channel_within_spread(float a, float b, float c, float limit) {
+    const float low = a < b ? (a < c ? a : c) : (b < c ? b : c);
+    const float high = a > b ? (a > c ? a : c) : (b > c ? b : c);
+    return high - low <= limit;
+}
+
+static inline bool
+use_small(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, recti_t centres,
+          bool solid) {
+    if (centres.w <= small_max_side && centres.h <= small_max_side) {
+        return true;
+    }
+    if (centres.w > small_flat_max_side || centres.h > small_flat_max_side) {
+        return false;
+    }
+    const float rb_limit = (float)small_flat_spread * (255.0F / (float)gfx_rgb565_r5(UINT16_MAX));
+    const float g_limit = (float)small_flat_spread * (255.0F / (float)gfx_rgb565_g6(UINT16_MAX));
+    return solid
+           || (channel_within_spread(a->r, b->r, c->r, rb_limit) && channel_within_spread(a->g, b->g, c->g, g_limit)
+               && channel_within_spread(a->b, b->b, c->b, rb_limit));
+}
+
 /* Keep small-triangle temporaries off the row-walk call chain. */
 static __attribute__((noinline)) void
 fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-           const r3d_span_vertex_t* c, bool positive, recti_t box, const uint16_t* face) {
+           const r3d_span_vertex_t* c, bool positive, recti_t box, const uint16_t* face, bool dither) {
     fill_t f;
     set_flat(&f, a, b, c);
     if (face != NULL) {
@@ -507,16 +546,40 @@ fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3
     const r3d_span_vertex_t* p = positive ? b : c;
     const r3d_span_vertex_t* q = positive ? c : b;
     const small_edge_t e[3] = {small_edge(a, p), small_edge(p, q), small_edge(q, a)};
+    uint16_t vertex_color[TRIANGLE_VERTICES];
+    if (dither) {
+        const r3d_span_vertex_t* vertices[TRIANGLE_VERTICES] = {q, a, p};
+        for (int k = 0; k < TRIANGLE_VERTICES; k++) {
+            vertex_color[k] =
+                r3d_span_pack((int32_t)(vertices[k]->r * COLOR_SCALE), (int32_t)(vertices[k]->g * COLOR_SCALE),
+                              (int32_t)(vertices[k]->b * COLOR_SCALE));
+        }
+    }
     for (int y = box.y; y < recti_bottom(box); y++) {
         uint16_t* depth = gfx_render_target_depth(&target->rows, y);
         uint16_t* color = gfx_render_target_color(&target->rows, y);
         const int32_t cy = (y << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
         for (int x = box.x, end = recti_right(box); x < end; x++) {
             const int32_t cx = (x << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
-            if ((small_side(&e[0], cx, cy) | small_side(&e[1], cx, cy) | small_side(&e[2], cx, cy)) >= 0
-                && f.flat_z > depth[x]) {
+            const int32_t s0 = small_side(&e[0], cx, cy);
+            const int32_t s1 = small_side(&e[1], cx, cy);
+            const int32_t s2 = small_side(&e[2], cx, cy);
+            if ((s0 | s1 | s2) >= 0 && f.flat_z > depth[x]) {
+                uint16_t selected = f.flat_color;
+                if (dither) {
+                    /* Each axis spans less than 17*R3D_SUBPIXEL: total <= 2*272^2.
+                     * Multiplying it by 31, or an edge by 24, fits int32. */
+                    const int32_t total = s0 + s1 + s2;
+                    if (TRIANGLE_VERTICES * SMALL_DITHER_COVERAGE_EIGHTHS * r3d_span_min3(s0, s1, s2)
+                        < small_dither_coverage * total) {
+                        const int32_t threshold =
+                            (total * (2 * gfx_dither4x4[y & SMALL_DITHER_PHASE_MASK][x & SMALL_DITHER_PHASE_MASK] + 1))
+                            >> SMALL_DITHER_THRESHOLD_SHIFT;
+                        selected = vertex_color[threshold < s0 ? 0 : threshold < s0 + s1 ? 1 : 2];
+                    }
+                }
                 depth[x] = f.flat_z;
-                color[x] = f.flat_color;
+                color[x] = selected;
             }
         }
     }
@@ -622,8 +685,10 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     if (area2 == 0) {
         return;
     }
-    if (e.centres.w <= small_max_side && e.centres.h <= small_max_side) {
-        fill_small(target, a, b, c, area2 > 0, box, face);
+    if (use_small(a, b, c, e.centres, face != NULL)) {
+        const bool dither = small_dither && face == NULL && e.centres.w <= small_dither_max_side
+                            && e.centres.h <= small_dither_max_side;
+        fill_small(target, a, b, c, area2 > 0, box, face, dither);
         return;
     }
 
@@ -659,7 +724,7 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
  * skipped when hidden: the fill has already written its depth. */
 void
 r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                        const r3d_span_vertex_t* c) {
+                        const r3d_span_vertex_t* c, bool solid) {
     const r3d_span_vertex_t* v0 = a;
     const r3d_span_vertex_t* v1 = b;
     const r3d_span_vertex_t* v2 = c;
@@ -672,7 +737,7 @@ r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t
     }
     /* FILL_FACE selects a depth carry here; writers do not read face colour. */
     fill_t f = {e.flat ? FILL_FLAT : FILL_FACE, NULL, 0, 0, NULL};
-    if (e.centres.w <= small_max_side && e.centres.h <= small_max_side) {
+    if (use_small(a, b, c, e.centres, solid)) {
         set_flat(&f, a, b, c);
         for (int y = box.y; y < recti_bottom(box); y++) {
             write_span(target, y, box.x, recti_right(box) - 1, (int32_t)f.flat_z << R3D_DEPTH_SHIFT, 0);
