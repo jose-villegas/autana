@@ -434,7 +434,7 @@ def framewatch(args):
 def heap(args):
     """Runtime free bytes, largest block and total internal DMA heap."""
     reject_unknown("heap", args, ("--json",))
-    json_output = read_json_flag(args, "usage: autana heap [--json]")
+    json_output = read_json_flag(args, "usage: autana debug heap [--json]")
     code, replies = send("HEAP", reply="HEAP")
     if code != 0 or not replies:
         return code or 1
@@ -1489,7 +1489,7 @@ def alias(old, new, handler):
 
 LOCK_VERBS = {"wait": lock_wait, "take": take, "run": lock_run, "release": release, "hand": hand, "take-back": take_back}
 DEBUG_VERBS = {"freeze": freeze, "resume": resume, "step": step, "touch": touch, "imu": imu,
-              "framewatch": framewatch}
+              "framewatch": framewatch, "heap": heap}
 
 
 def lock(args):
@@ -1503,7 +1503,7 @@ def lock(args):
 
 
 def debug(args):
-    """`autana debug <verb>`: freeze/resume/step/touch/imu/framewatch, kept
+    """`autana debug <verb>`: freeze/resume/step/touch/imu/framewatch/heap, kept
     out of the top-level help (`autana help debug` still lists them) since a
     session rarely needs them."""
     if not args or args[0] not in DEBUG_VERBS:
@@ -1537,8 +1537,6 @@ COMMAND_GROUPS = (
              "build and flash this project; dev when omitted"),)),
         Command("buildid", buildid, (
             ("buildid [--json]", "the BUILD_ID the board is running"),)),
-        Command("heap", heap, (
-            ("heap [--json]", "free internal heap and largest block (development builds)"),)),
     )),
     ("tests", "Tests", (
         Command("suite", suite, (
@@ -1602,7 +1600,8 @@ COMMAND_GROUPS = (
             ("debug step [N]", "advance N frames while frozen; 1 when omitted"),
             ("debug touch <down|up> <x> <y>", "one raw touch level; up hands back"),
             ("debug imu <ax> <ay> <az>", "raw accelerometer counts; imu release hands back"),
-            ("debug framewatch", "allocations and log lines repeating frame after frame, as JSON"))),
+            ("debug framewatch", "allocations and log lines repeating frame after frame, as JSON"),
+            ("debug heap [--json]", "free internal heap and largest block (development builds)"))),
     )),
     ("docs", "No board needed", (
         Command("docs", docs, (
@@ -1623,7 +1622,7 @@ HIDDEN_GROUPS = {"debug"}
 RENAMED_VERBS = {
     "freeze": ("debug freeze", freeze), "resume": ("debug resume", resume),
     "step": ("debug step", step), "touch": ("debug touch", touch), "imu": ("debug imu", imu),
-    "framewatch": ("debug framewatch", framewatch),
+    "framewatch": ("debug framewatch", framewatch), "heap": ("debug heap", heap),
 }
 
 COMMANDS = {command.name: command.handler

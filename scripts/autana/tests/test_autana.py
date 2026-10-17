@@ -2153,7 +2153,7 @@ class RenamedVerbAliasTests(unittest.TestCase):
 
     def test_the_real_handlers_are_wired_up(self):
         expected = {"freeze": autana.freeze, "resume": autana.resume, "step": autana.step, "touch": autana.touch,
-                   "imu": autana.imu, "framewatch": autana.framewatch}
+                   "imu": autana.imu, "framewatch": autana.framewatch, "heap": autana.heap}
         self.assertEqual({old: handler for old, (_, handler) in autana.RENAMED_VERBS.items()},
                          expected)
 

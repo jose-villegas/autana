@@ -45,6 +45,12 @@ class JsonReadTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 autana.parse_heap(reply)
 
+    def test_debug_heap_is_the_heap_handler(self):
+        reply = "HEAP free=1 largest=1 total=2"
+        with mock.patch.object(autana, "send", return_value=(0, [reply])):
+            self.assertEqual(self.output(autana.debug, ["heap", "--json"]),
+                             {"free": 1, "largest": 1, "total": 2})
+
     def test_buildid_reply(self):
         self.assertEqual(autana.parse_buildid("BUILD_ID=abc123"), {"build_id": "abc123"})
         with mock.patch.object(autana, "send", return_value=(0, ["BUILD_ID=abc123"])):

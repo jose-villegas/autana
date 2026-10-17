@@ -598,7 +598,7 @@ def dram_bytes(sections):
 
 
 def parse_runtime_heap(text):
-    """Capture blocks contain the JSON object printed by autana heap --json."""
+    """Capture blocks contain the JSON object printed by autana debug heap --json."""
     captures = {}
     for block in re.split(r"\n\s*\n", text.strip()):
         build = build_id(block)
