@@ -442,6 +442,48 @@ def heap(args):
     return 0
 
 
+# Covers codec open, amplifier startup, capture settling and transport overhead.
+TONE_MARGIN_SECONDS = 10
+TONE_CAPTURE_COUNT = 2
+TONE_MS_PER_SECOND = 1000
+
+
+def tone(args):
+    usage = "usage: autana tone <hz> <ms> [volume] [--json]"
+    rest = list(args)
+    json_output = read_json_flag(rest[-1:] if rest and rest[-1] == "--json" else [], usage)
+    if json_output:
+        rest.pop()
+    if len(rest) not in (2, 3) or any(not re.fullmatch(r"[0-9]+", arg) for arg in rest):
+        sys.exit(usage)
+    ms = int(rest[1])
+    seconds = TONE_MARGIN_SECONDS + TONE_CAPTURE_COUNT * ms / TONE_MS_PER_SECOND
+    code, replies = send("TONE " + " ".join(rest), reply="TONE", seconds=seconds)
+    if code != 0 or not replies:
+        return code or 1
+    if replies[-1].startswith(("TONE usage:", "TONE error:")):
+        print(replies[-1], file=sys.stderr)
+        return 1
+    try:
+        result = parse_tone(replies[-1])
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 1
+    print(json.dumps(result) if json_output else replies[-1])
+    return 0
+
+
+def parse_tone(reply):
+    match = re.fullmatch(
+        r"TONE (heard|not heard) ([0-9]+) Hz: (-?[0-9]+\.[0-9]+) dB "
+        r"\(silence (-?[0-9]+\.[0-9]+) dB\), open ([0-9]+) B DMA", reply)
+    if not match:
+        raise ValueError(f"invalid TONE reply: {reply}")
+    heard, hz, tone_db, silence_db, dma = match.groups()
+    return {"hz": int(hz), "tone_db": float(tone_db), "silence_db": float(silence_db),
+            "heard": heard == "heard", "open_dma_bytes": int(dma)}
+
+
 def parse_heap(reply):
     match = re.fullmatch(r"HEAP free=(\d+) largest=(\d+) total=(\d+)", reply)
     if not match:
@@ -1477,6 +1519,10 @@ def console(_args=None):
 Command = namedtuple("Command", "name handler usages")
 
 
+def one(name, handler, usage, what):
+    return Command(name, handler, ((usage, what),))
+
+
 def alias(old, new, handler):
     """`old` still works: one migration line to stderr, then straight into
     `handler`, so a script built on a spelling `new` replaced does not
@@ -1532,13 +1578,10 @@ COMMAND_GROUPS = (
             ("build [rel|dev|diag] [--perf-scope] [--layout-seed N] [--hot-tunables] [--configure]",
              "build this project, no board; dev when omitted; a seed N > 0 pads the layout, 0 is the plain build; --configure only writes sdkconfig and compile_commands.json"),
             ("build diag --check", "the diagnostics build plus the complexity ratchet, no board"))),
-        Command("flash", flash, (
-            ("flash [rel|dev|diag] [--quiet] [--perf-scope] [--layout-seed N] [--hot-tunables]",
-             "build and flash this project; dev when omitted"),)),
-        Command("buildid", buildid, (
-            ("buildid [--json]", "the BUILD_ID the board is running"),)),
-        Command("heap", heap, (
-            ("heap [--json]", "free internal heap and largest block (development builds)"),)),
+        one("flash", flash, "flash [rel|dev|diag] [--quiet] [--perf-scope] [--layout-seed N] [--hot-tunables]",
+            "build and flash this project; dev when omitted"),
+        one("buildid", buildid, "buildid [--json]", "the BUILD_ID the board is running"),
+        one("heap", heap, "heap [--json]", "free internal heap and largest block (development builds)"),
     )),
     ("tests", "Tests", (
         Command("suite", suite, (
@@ -1550,16 +1593,16 @@ COMMAND_GROUPS = (
             ("suite <name> --set NAME=VALUE",
              "set a tunable under each capture's lock first; --set repeats"),
             ("suite list [text] [--json]", "the suites this project registers"))),
-        Command("selftest", selftest, (
-            ("selftest [seconds] [--verbose]",
-             "build diagnostics+autorun, run every suite on the board"),)),
+        one("selftest", selftest, "selftest [seconds] [--verbose]",
+            "build diagnostics+autorun, run every suite on the board"),
+        one("tone", tone, "tone <hz> <ms> [volume] [--json]",
+            "play a tone on the speaker and hear it on the mic; development builds"),
     )),
     ("watch", "Watch the board", (
-        Command("monitor", monitor, (
-            ("monitor [seconds] [--follow] [--stream] [--elf PATH]",
-             "the console live until Ctrl+C, or for N s"),)),
-        Command("reset", reset, (
-            ("reset [--capture [seconds]] [--verbose]", "reboot the board; --capture records the boot"),)),
+        one("monitor", monitor, "monitor [seconds] [--follow] [--stream] [--elf PATH]",
+            "the console live until Ctrl+C, or for N s"),
+        one("reset", reset, "reset [--capture [seconds]] [--verbose]",
+            "reboot the board; --capture records the boot"),
         Command("coredump", coredump, (
             ("coredump [--elf PATH]", "the last panic's core dump from flash, decoded against the running build"),
             ("coredump --erase", "clear it, so the next crash's dump is told from this one"),)),
@@ -1573,15 +1616,15 @@ COMMAND_GROUPS = (
             ("perf off", "disarm the counters"))),
     )),
     ("input", "Drive input", (
-        Command("tap", tap, (("tap <x> <y>", "tap a point, in pixels of the default screenshot"),)),
-        Command("press", press, (("press <x> <y> [ms]", "hold a point, as tap reads it; 1000 ms when omitted"),)),
-        Command("drag", drag, (("drag <x0> <y0> <x1> <y1> <ms>", "drag between two points, as tap reads them"),)),
-        Command("button", button, (("button <boot|power> [short|long]", "press a board button"),)),
+        one("tap", tap, "tap <x> <y>", "tap a point, in pixels of the default screenshot"),
+        one("press", press, "press <x> <y> [ms]", "hold a point, as tap reads it; 1000 ms when omitted"),
+        one("drag", drag, "drag <x0> <y0> <x1> <y1> <ms>", "drag between two points, as tap reads them"),
+        one("button", button, "button <boot|power> [short|long]", "press a board button"),
     )),
     ("apps", "Apps", (
-        Command("apps", apps, (("apps [--json]", "the registered apps, and which is running"),)),
-        Command("open", open_app, (("open <name>", "enter an app; case-insensitive prefix"),)),
-        Command("home", home, (("home", "back to the launcher"),)),
+        one("apps", apps, "apps [--json]", "the registered apps, and which is running"),
+        one("open", open_app, "open <name>", "enter an app; case-insensitive prefix"),
+        one("home", home, "home", "back to the launcher"),
     )),
     ("tune", "Tunables", (
         Command("tune", tune, (
@@ -1591,8 +1634,8 @@ COMMAND_GROUPS = (
             ("tune save", "write the board's values into this project's TUNE() lines"))),
     )),
     ("lock", "Sharing the board", (
-        Command("devices", devices, (("devices [--json]", "compact board list: ids, ports and availability"),)),
-        Command("status", status, (("status [--json]", "who holds the board, and who waits"),)),
+        one("devices", devices, "devices [--json]", "compact board list: ids, ports and availability"),
+        one("status", status, "status [--json]", "who holds the board, and who waits"),
         Command("lock", lock, LOCK_USAGES),
     )),
     ("debug", "Debug", (
@@ -1602,7 +1645,7 @@ COMMAND_GROUPS = (
             ("debug step [N]", "advance N frames while frozen; 1 when omitted"),
             ("debug touch <down|up> <x> <y>", "one raw touch level; up hands back"),
             ("debug imu <ax> <ay> <az>", "raw accelerometer counts; imu release hands back"),
-            ("debug framewatch", "allocations and log lines repeating frame after frame, as JSON"))),
+            ("debug framewatch", "allocations and log lines repeating frame after frame, as JSON"),)),
     )),
     ("docs", "No board needed", (
         Command("docs", docs, (

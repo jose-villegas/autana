@@ -81,8 +81,9 @@ flowchart TB
         end
     end
     subgraph Platform["platform"]
-        subgraph R9["input"]
+        subgraph R9["input and audio"]
             Input["input/<br/><i>touch, buttons, motion, gesture</i>"]:::hw
+            Audio["audio/<br/><i>codec, PCM output, microphone capture</i>"]:::hw
         end
         subgraph R10["display"]
             Display["display/<br/><i>viewport, orientation, panel clock</i>"]:::hw
@@ -113,6 +114,8 @@ flowchart TB
     R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> R10 --> R11 --> R12 --> R13 --> R14 --> R15 --> R16 --> R17
     Shell -.->|"calls through app/app.h"| Apps
 ```
+
+Audio layer: [path and board notes](notes/Audio.md).
 
 - **Includes are layer-qualified**: `"gfx/gfx.h"`, not `"gfx.h"`, even
   between two files in the same folder, so an app reaching past `ui` into

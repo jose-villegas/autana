@@ -326,7 +326,7 @@ LAYER_ROWS = (
     # Engine
     "ui scene", "render", "draw anim", "asset",
     # Platform
-    "input", "display", "gfx", "services", "profile", "core", "board", "build",
+    "input audio", "display", "gfx", "services", "profile", "core", "board", "build",
 )
 LAYER_TIER = {layer: tier for tier, row in enumerate(LAYER_ROWS) for layer in row.split()}
 LAYER_DIRS = tuple(layer for layer in LAYER_TIER if layer != "apps")
