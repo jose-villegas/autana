@@ -5,6 +5,7 @@
 #include "unity.h"
 
 #include "asset/asset_table.h"
+#include "asset/asset_table_format.h"
 #include "test_pack.h"
 
 enum {

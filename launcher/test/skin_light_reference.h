@@ -1,6 +1,7 @@
 /* Independent float lighting reference for portable and device suites. */
 #pragma once
 #include <math.h>
+#include "render/r3d_skin_format.h"
 #include "render/skin/r3d_skin_light.h"
 
 /* suite_skin_light.c angular sweep: host worst 43 bytes, plus one byte of rounding margin. */
@@ -17,7 +18,7 @@ skin_light_reference_normal(const r3d_skin_t* skin, const mat3f_t* palette, int 
     for (int i = 0; i < influences; i++) {
         const mat3f_t* m = &palette[r[i]];
         const float weight = (float)r[influences + i] / R3D_SKIN_WEIGHT_SUM * R3D_SKIN_NORMAL_RECIP;
-        for (int axis = 0; axis < R3D_SKIN_NORMAL_WIDTH; axis++) {
+        for (int axis = 0; axis < (int)R3D_SKIN_NORMAL_WIDTH; axis++) {
             normal[axis] += weight * (m->m[axis][0] * bind[0] + m->m[axis][1] * bind[1] + m->m[axis][2] * bind[2]);
         }
     }

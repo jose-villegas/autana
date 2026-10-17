@@ -18,6 +18,7 @@
 #include "test_pack.h"
 
 #ifndef DEVICE_BUILD
+#include "asset/asset_directory_format.h"
 #include "test_asset_dir.h"
 #endif
 
