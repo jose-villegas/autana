@@ -7,7 +7,7 @@
 
 /* Trim the first captured samples after audio starts. */
 #define AUDIO_LOOPBACK_SETTLE_MS       100u
-#define AUDIO_LOOPBACK_HEARD_MARGIN_DB 20.0f
+#define AUDIO_LOOPBACK_HEARD_MARGIN_DB 20.0F
 
 static inline size_t
 audio_loopback_sample_budget(uint32_t ms) {

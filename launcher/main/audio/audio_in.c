@@ -6,7 +6,7 @@
 #include "audio/audio_codec.h"
 
 /* At 24 dB, a 1 kHz tone clipped the mic above 10% volume; 6 dB keeps full volume below full scale. */
-#define AUDIO_IN_GAIN_DB 6.0f
+#define AUDIO_IN_GAIN_DB 6.0F
 
 static esp_codec_dev_handle_t input;
 
