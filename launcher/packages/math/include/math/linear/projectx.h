@@ -13,10 +13,11 @@
 
 static inline void
 _projectx_cross_near(int32_t near_z, vec3x_t* behind, const vec3x_t* front) {
-    const int64_t frac_q16 = ((int64_t)(near_z - behind->z) * MATHX_ONE) / (front->z - behind->z);
+    /* In [0, MATHX_ONE): exactly one endpoint is behind the plane. */
+    const int32_t frac_q16 = (int32_t)(((int64_t)(near_z - behind->z) * MATHX_ONE) / (front->z - behind->z));
 
-    behind->x += (int32_t)(((int64_t)(front->x - behind->x) * frac_q16) >> MATHX_SHIFT);
-    behind->y += (int32_t)(((int64_t)(front->y - behind->y) * frac_q16) >> MATHX_SHIFT);
+    behind->x += fx_mul_floor(front->x - behind->x, frac_q16, MATHX_SHIFT);
+    behind->y += fx_mul_floor(front->y - behind->y, frac_q16, MATHX_SHIFT);
     behind->z = near_z;
 }
 
