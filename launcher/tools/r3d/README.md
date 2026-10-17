@@ -254,7 +254,7 @@ the training poses:
 
 ```sh
 "$GPU_ENV/bin/python3" launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.mesh \
-    --poses train.txt --reference reference_train --coverage-poses coverage.txt --held-out held_out.txt --out fitted
+    --poses train.txt --reference reference_train --coverage-poses coverage.txt --object NAME --surface-weight 10 --surface-margin 0.25 --out fitted
 ```
 
 To score a fitted mesh, pack it in place of the tracked one, as
@@ -287,16 +287,16 @@ samples the camera's path every
 `fit.prune.coverage_every_ms` for pruning, and renders the training references
 with their normals in portrait and landscape so the fit holds the panel either
 way up at `fit.poses.size`. `fit` fits with
-`fit.optimise.steps`, `fit.optimise.batch`, `fit.optimise.laplacian` and
-`fit.optimise.normal_weight`. `fit` prunes the
+`fit.optimise.steps`, `fit.optimise.batch`, `fit.optimise.laplacian`,
+`fit.optimise.normal_weight`, `fit.optimise.surface_weight` and
+`fit.optimise.surface_margin`. `fit` prunes the
 fitted geometry to `fit.prune.budget`
-and writes the renderer's mesh into the work folder. A refit is not
-bit-identical, the GPU's sums being unordered, so the lock pins the bytes a fit
-made.
+and writes the renderer's mesh into the work folder. The fit uses deterministic
+reductions and seeded sampling; the lock pins the bytes a fit made.
 
-Coverage keeps the start mesh's covered pixels through fitting. Use
-`--coverage-weight`, `--mine-every` and `--held-out` to control it;
-[Scene-Files describes the coverage term](../../../docs/render/Scene-Files.md#fitoptimise).
+The surface term anchors fitted triangles to the alpha-masked source, with a
+recipe weight and margin in start mean edge lengths;
+[Scene-Files describes the surface term](../../../docs/render/Scene-Files.md#fitoptimise).
 
 ### Reference on the GPU
 

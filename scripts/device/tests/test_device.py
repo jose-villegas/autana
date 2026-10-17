@@ -377,6 +377,19 @@ class InterruptedConnection(FakeConnection):
 
 
 class DeviceTests(unittest.TestCase):
+    def test_suite_verdict_requires_its_completion_line(self):
+        for command, marker in (("suite", b"RUNSUITE_COMPLETE name=sand found=1\n"),
+                                ("selftest", b"SELFTEST_COMPLETE failures=0 elapsed_ms=42\n")):
+            for data, reason, incomplete in ((b"", "idle", True),
+                                             (b":1:good:PASS\n", "timeout", True),
+                                             (b":1:good:PASS\n" + marker, "complete", False)):
+                with self.subTest(command=command, reason=reason), mock.patch("builtins.print") as printed:
+                    if incomplete:
+                        with self.assertRaisesRegex(RuntimeError, f"no completion line arrived: the capture ended {reason}"):
+                            device.print_suite_output(data, "record.log", command, reason, False, 0)
+                    else:
+                        self.assertEqual(device.print_suite_output(data, "record.log", command, reason, False, 0), 0)
+
     def test_suite_output_shows_failure_messages_and_caps_the_list(self):
         data = (b"boot detail\n" + b":1:good:PASS\n" +
                 b"".join(f"file.c:{line}:bad_{line}:FAIL: wrong {line}\n".encode()
@@ -408,7 +421,7 @@ class DeviceTests(unittest.TestCase):
         self.assertFalse(any("by suite" in call.args[0] for call in printed.call_args_list))
 
     def test_a_run_that_crashed_fails_with_every_test_passed(self):
-        data = b":1:good:PASS\nabort() was called at PC 0x40376f2b on core 0\n"
+        data = b":1:good:PASS\nabort() was called at PC 0x40376f2b on core 0\nRUNSUITE_COMPLETE name=sand found=1\n"
         with mock.patch("builtins.print") as printed:
             failed = device.print_suite_output(data, "record.log", "suite", "complete", False, 0)
         self.assertTrue(failed)
@@ -418,9 +431,10 @@ class DeviceTests(unittest.TestCase):
         boot = b"ESP-ROM:esp32s3-20210327\nrst:0x1 (POWERON),boot:0x8 (SPI_FAST_FLASH_BOOT)\n"
         with mock.patch("builtins.print"):
             self.assertFalse(device.print_suite_output(
-                boot + b":1:good:PASS\n", "record.log", "selftest", "complete", False, 1))
+                boot + b":1:good:PASS\nSELFTEST_COMPLETE failures=0\n",
+                "record.log", "selftest", "complete", False, 1))
             self.assertTrue(device.print_suite_output(
-                boot + b":1:good:PASS\n" + boot, "record.log", "selftest", "complete", False, 1))
+                boot + b":1:good:PASS\nSELFTEST_COMPLETE failures=0\n" + boot, "record.log", "selftest", "complete", False, 1))
 
     def test_a_passing_run_still_names_its_capture(self):
         data = b"boot detail\n:1:good:PASS\n"
@@ -463,6 +477,20 @@ class DeviceTests(unittest.TestCase):
 """
         self.assertEqual(device.count_suite_results(data), (7, 1))
 
+    def test_selftest_summary_does_not_complete_a_capture(self):
+        summary = b":1:good:PASS\n1 Tests 0 Failures 0 Ignored\n"
+        marker = b"SELFTEST_COMPLETE failures=0 elapsed_ms=42\n"
+        for ending in ("idle", "timeout", "complete"):
+            with self.subTest(ending=ending), tempfile.TemporaryDirectory() as directory:
+                chunks = [summary]
+                if ending == "complete":
+                    chunks += [b"E (1) selftest: final diagnostic\n", marker]
+                data, reason = device.capture(FakeConnection(chunks),
+                                              Path(directory) / "capture.log", 0.02,
+                                              0 if ending == "idle" else None)
+                self.assertEqual(reason, ending)
+                self.assertEqual(marker in data, ending == "complete")
+
     def test_capture_rejects_build_id_seen_after_expected_id(self):
         connection = FakeConnection([
             b"BUILD_ID=expected\n",
@@ -475,7 +503,7 @@ class DeviceTests(unittest.TestCase):
 
     def test_capture_stops_at_single_suite_completion_and_counts_results(self):
         connection = FakeConnection([
-            b":1:test_one:PASS\nSUITE_DONE sand\n",
+            b":1:test_one:PASS\nRUNSUITE_COMPLETE name=sand found=1\n",
             b"late output\n",
         ])
         with tempfile.TemporaryDirectory() as directory:
@@ -543,7 +571,7 @@ class DeviceTests(unittest.TestCase):
             self.assertEqual(output.read_bytes(), b"before\n")
 
     def test_monitor_capture_ignores_test_completion(self):
-        chunks = [b"TESTS_DONE\n", b"ordinary after tests\n"]
+        chunks = [b"SELFTEST_COMPLETE failures=0 elapsed_ms=42\n", b"ordinary after tests\n"]
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "capture.log"
             with self.assertRaises(KeyboardInterrupt):
@@ -566,7 +594,7 @@ class DeviceTests(unittest.TestCase):
                                suite_name="sand")
 
     def test_run_suite_prints_result_counts(self):
-        connection = FakeConnection([b":1:test_one:PASS\nSUITE_DONE sand\n"])
+        connection = FakeConnection([b":1:test_one:PASS\nRUNSUITE_COMPLETE name=sand found=1\n"])
         args = suite_args()
         store = mock_store()
         with tempfile.TemporaryDirectory() as directory, \
@@ -580,7 +608,7 @@ class DeviceTests(unittest.TestCase):
     def test_run_suite_returns_failure_status(self):
         connection = FakeConnection([
             b":623:test_a_timed_out_job_falls_back_inline:FAIL: Expected 1 Was 0\n"
-            b"SUITE_DONE sand\n"
+            b"RUNSUITE_COMPLETE name=sand found=1\n"
         ])
         args = suite_args()
         store = mock_store()
@@ -1005,7 +1033,7 @@ class RecordCaptureTests(unittest.TestCase):
 
 class RunSuiteDefaultPathTests(unittest.TestCase):
     def test_without_out_uses_the_default_path_and_writes_an_index_line(self):
-        connection = FakeConnection([b":1:test_one:PASS\nSUITE_DONE sand\n"])
+        connection = FakeConnection([b":1:test_one:PASS\nRUNSUITE_COMPLETE name=sand found=1\n"])
         args = suite_args(owner="agent a")
         store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
@@ -1291,7 +1319,7 @@ class RunSuiteReportGenerationTests(unittest.TestCase):
 
     def test_writes_a_report_beside_the_default_path_capture(self):
         connection = FakeConnection([
-            b":1:test_one:PASS\n:2:test_two:FAIL: Expected 1 Was 0\nSUITE_DONE sand\n"
+            b":1:test_one:PASS\n:2:test_two:FAIL: Expected 1 Was 0\nRUNSUITE_COMPLETE name=sand found=1\n"
         ])
         args = suite_args()
         store = mock_store()
@@ -1308,7 +1336,7 @@ class RunSuiteReportGenerationTests(unittest.TestCase):
             self.assertIn("test_two", text)
 
     def test_a_broken_reporter_step_does_not_fail_the_suite_command(self):
-        connection = FakeConnection([b":1:test_one:PASS\nSUITE_DONE sand\n"])
+        connection = FakeConnection([b":1:test_one:PASS\nRUNSUITE_COMPLETE name=sand found=1\n"])
         args = suite_args()
         store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
@@ -1324,7 +1352,7 @@ class RunSuiteRecordsWorktreeTests(unittest.TestCase):
     invocation (Device-Lock.md); run-suite used to leave worktree null."""
 
     def test_run_suite_records_the_ambient_cwd_as_worktree(self):
-        connection = FakeConnection([b":1:test_one:PASS\nSUITE_DONE sand\n"])
+        connection = FakeConnection([b":1:test_one:PASS\nRUNSUITE_COMPLETE name=sand found=1\n"])
         args = suite_args()
         store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
@@ -1376,7 +1404,7 @@ class TuneSetTests(unittest.TestCase):
                 self.apply("r3d.side=3", *chunks)
 
     def test_the_set_precedes_the_run_request(self):
-        connection = FakeConnection([b"TUNE_OK r3d.side=3\n", b"SUITE_DONE sand\n"])
+        connection = FakeConnection([b"TUNE_OK r3d.side=3\n", b"RUNSUITE_COMPLETE name=sand found=1\n"])
         args = Namespace(owner="agent", purpose="test", wait=0, suite="sand", out=None, max_seconds=1,
                          idle_seconds=None, expect_build_id=None, test_filter=[], tune_set=["r3d.side=3"])
         with tempfile.TemporaryDirectory() as directory:
@@ -1420,7 +1448,7 @@ class TestFilterRunTests(unittest.TestCase):
         self.assertEqual(b"".join(writes), b"\nRUNSUITE sand fire,gas\n")
 
     def test_no_filter_sends_only_the_suite_name(self):
-        _, _, writes, _ = self.run_filtered([b"SUITE_DONE sand\n"], [])
+        _, _, writes, _ = self.run_filtered([b"RUNSUITE_COMPLETE name=sand found=1\n"], [])
         self.assertEqual(b"".join(writes), b"\nRUNSUITE sand\n")
 
     def test_a_filtered_run_completes_and_records_its_filter(self):
@@ -1449,15 +1477,17 @@ class TestFilterRunTests(unittest.TestCase):
         self.assertIsInstance(error, device.TestFilterError)
         self.assertRegex(str(error), "^this image predates --test")
 
-    def test_a_filtered_run_with_no_completion_line_is_a_filter_error(self):
-        # An image that predates the filter drops a long request whole.
-        _, error, _, _ = self.run_filtered([b"SUITE_DONE sand\n"], ["fire"])
-        self.assertIsInstance(error, device.TestFilterError)
-        self.assertRegex(str(error), "no RUNSUITE_COMPLETE")
+    def test_a_filtered_truncated_run_is_a_capture_error(self):
+        _, error, _, _ = self.run_filtered([b":1:good:PASS\n"], ["fire"])
+        self.assertIsInstance(error, RuntimeError)
+        self.assertNotIsInstance(error, device.TestFilterError)
+        self.assertRegex(str(error), "no completion line arrived: the capture ended timeout")
 
-    def test_an_unfiltered_run_with_no_completion_line_is_still_fine(self):
-        code, error, _, _ = self.run_filtered([b"SUITE_DONE sand\n"], [])
-        self.assertEqual((code, error), (0, None))
+    def test_an_unfiltered_truncated_run_is_a_capture_error(self):
+        _, error, _, _ = self.run_filtered([b":1:good:PASS\n"], [])
+        self.assertIsInstance(error, RuntimeError)
+        self.assertNotIsInstance(error, device.TestFilterError)
+        self.assertRegex(str(error), "no completion line arrived: the capture ended timeout")
 
     def test_a_request_too_long_for_the_console_line_is_a_filter_error(self):
         connection = FakeConnection([b"W (5) console: console line too long (max 48) - dropped\n"])
@@ -1490,7 +1520,8 @@ class BatchTests(unittest.TestCase):
                   perf_scope=False, script_text="--diag --dev --perf-scope", out=False,
                   expect_build_id=None, flashed_build_id="abc123-diag", flash=True,
                   test_filter=None, filter_error_run=None, error_class=None,
-                  layout_seed=0):
+                  layout_seed=0, truncated_run=None):
+        real_run_suite = device.run_suite
         calls = {"locks": 0, "build": [], "flash": [], "run_suite": [], "events": [],
                  "suite_args": []}
 
@@ -1526,6 +1557,12 @@ class BatchTests(unittest.TestCase):
             calls["suite_args"].append(args)
             if filter_error_run is not None and len(calls["run_suite"]) == filter_error_run:
                 raise (error_class or device.TestFilterError)("the board cannot filter")
+            if truncated_run == len(calls["run_suite"]):
+                args.idle_seconds = 0
+                with mock.patch.object(device, "holding", return_value=contextlib.nullcontext(held_lock)), \
+                     mock.patch.object(device, "open_when_free",
+                                       return_value=FakeConnection([b":1:test_one:PASS\n"])):
+                    return real_run_suite(args, store, port, held_lock, worktree, commit)
             if args.out:
                 Path(args.out).write_text(":1:test_one:PASS\n", encoding="utf-8")
             if fail_run is not None and len(calls["run_suite"]) == fail_run:
@@ -1645,6 +1682,13 @@ class BatchTests(unittest.TestCase):
         for suite, out, purpose, unused_held_lock, unused_expected, worktree, commit in calls["run_suite"]:
             self.assertEqual(worktree, calls["worktree"])
             self.assertEqual(commit, "c0ffee")
+
+    def test_a_truncated_unfiltered_capture_is_a_run_error(self):
+        code, calls, summary, manifest = self.run_batch(runs=2, truncated_run=1)
+        self.assertEqual(code, 1)
+        self.assertEqual(len(calls["run_suite"]), 2)
+        self.assertIn("- run 1: no completion line arrived: the capture ended idle", summary)
+        self.assertIn("no completion line arrived", manifest[-1]["error"])
 
     def test_a_capture_error_is_recorded_and_the_batch_continues(self):
         code, calls, summary, _ = self.run_batch(runs=3, fail_run=2)
@@ -2497,11 +2541,11 @@ class ListenLifecycleTests(unittest.TestCase):
         self.assertNotIn("error: broken", text)
 
     def test_timed_listen_continues_past_test_completion(self):
-        connection = InterruptedConnection([b"TESTS_DONE\n", b"after tests\n"])
+        connection = InterruptedConnection([b"SELFTEST_COMPLETE failures=0 elapsed_ms=42\n", b"after tests\n"])
         code, _, entry, payload, _ = self.run_listen(connection, ["--seconds", "1"])
         self.assertEqual(code, 0)
         self.assertEqual(entry["reason"], "stopped")
-        self.assertEqual(payload, b"TESTS_DONE\nafter tests\n")
+        self.assertEqual(payload, b"SELFTEST_COMPLETE failures=0 elapsed_ms=42\nafter tests\n")
 
     def test_partial_echo_gets_newline_before_path(self):
         class Output(io.StringIO):
@@ -2753,7 +2797,7 @@ class SelftestTests(unittest.TestCase):
     """selftest() flashes diag+autorun under one held lock, then resets,
     waits for USB serial, and captures until SELFTEST_COMPLETE."""
 
-    def run_selftest(self, perf_scope=False):
+    def run_selftest(self, perf_scope=False, capture=None):
         calls = {"flash_extra_flags": None, "held_lock": None, "events": []}
 
         def fake_build_image(args, port, extra_flags=()):
@@ -2793,10 +2837,29 @@ class SelftestTests(unittest.TestCase):
                  mock.patch.object(device, "reset", fake_reset), \
                  mock.patch.object(device, "open_when_free", side_effect=fake_wait), \
                  mock.patch.object(device, "records_root", return_value=root), \
-                 mock.patch.object(device, "git_commit", return_value="deadbeef"):
-                code = device.selftest(args, store, BOARD)
+                 mock.patch.object(device, "git_commit", return_value="deadbeef"), \
+                 mock.patch.object(device, "reset_and_capture", wraps=device.reset_and_capture) as captured:
+                if capture is not None:
+                    captured.side_effect = lambda path, *unused: (Path(path).write_bytes(capture[0]), capture)[1]
+                try:
+                    code = device.selftest(args, store, BOARD)
+                except RuntimeError as caught:
+                    code = caught
+                calls["reports"] = "\n".join(path.read_text(encoding="utf-8")
+                                             for path in root.rglob("*.md"))
                 entry = json.loads((root / "index.jsonl").read_text(encoding="utf-8").strip())
         return code, calls, entry
+
+    def test_incomplete_selftest_fails_and_keeps_the_report(self):
+        for reason in ("idle", "timeout"):
+            with self.subTest(reason=reason), contextlib.redirect_stdout(io.StringIO()) as output:
+                code, calls, entry = self.run_selftest(capture=(b"", reason))
+                self.assertIsInstance(code, RuntimeError)
+                self.assertEqual(str(code), f"no completion line arrived: the capture ended {reason}")
+                self.assertIn("selftest results: 0 PASS, 0 FAIL", output.getvalue())
+                self.assertEqual(entry["reason"], reason)
+                self.assertIn("# Device Capture Report", calls["reports"])
+                self.assertIn(reason, calls["reports"])
 
     def test_successful_selftest_closes_flash_handle(self):
         code, calls, _ = self.run_selftest()

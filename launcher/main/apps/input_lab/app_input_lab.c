@@ -13,7 +13,10 @@
  * The bezel page draws an arc in every corner; dragging up or down changes
  * its radius until the arcs sit on the edge of the glass, and each release
  * logs it. Sliding off each edge there fills in the panel range, logged at
- * the end of every round.
+ * the end of every round. A ruler in the middle of each edge draws a short
+ * 1 px line at every depth 0..RULER_DEPTH from that edge, labelled every
+ * RULER_LABEL_EVERY: the first line that shows is how many pixels the glass
+ * hides there.
  *
  * The motion page shows acceleration, gravity angles, a bubble level and
  * the tilt filter, with a 10 Hz "motion ..." console line. Numbers stay in
@@ -59,6 +62,14 @@ static const char* TAG = "input_lab";
 #define BEZEL_MAX            80
 #define BEZEL_DRAG_PX        4
 #define ARC_STEP             2
+#define RULER_DEPTH          20
+#define RULER_SLOT           12
+#define RULER_TICK           8
+#define RULER_LABEL_EVERY    5
+#define RULER_LABEL_DEPTH    32
+#define RULER_LABEL_SIDE     20
+#define COL_RULER            0xFFFFFF
+#define COL_RULER_MAJOR      0xFF3030
 #define MOTION_G_TEXT_SIZE   16
 #define MOTION_MILLI_DIGITS  3
 #define OFFSET_DIGITS        1
@@ -287,9 +298,49 @@ draw_corner_arcs(mu_Context* ctx) {
     }
 }
 
+/* One tick per depth along each edge's middle; the top and bottom rulers
+ * step along x, the side rulers along y. Every RULER_LABEL_EVERY-th tick is
+ * red and labelled further in. */
+static void
+draw_edge_rulers(mu_Context* ctx) {
+    const int span = (RULER_DEPTH + 1) * RULER_SLOT;
+    const int left = (screen_w - span) / 2;
+    const int top = (screen_h - span) / 2;
+    for (int depth = 0; depth <= RULER_DEPTH; depth++) {
+        const bool major = depth % RULER_LABEL_EVERY == 0;
+        const mu_Color ink = ui_rgb(major ? COL_RULER_MAJOR : COL_RULER);
+        const int x = left + (depth * RULER_SLOT);
+        const int y = top + (depth * RULER_SLOT);
+        mu_draw_rect(ctx, mu_rect(x, depth, RULER_TICK, 1), ink);
+        mu_draw_rect(ctx, mu_rect(x, screen_h - 1 - depth, RULER_TICK, 1), ink);
+        mu_draw_rect(ctx, mu_rect(depth, y, 1, RULER_TICK), ink);
+        mu_draw_rect(ctx, mu_rect(screen_w - 1 - depth, y, 1, RULER_TICK), ink);
+        if (!major) {
+            continue;
+        }
+        char label[4];
+        if (snprintf(label, sizeof label, "%d", depth) < 0) {
+            continue;
+        }
+        const int lx = x + (RULER_TICK / 2) - (RULER_LABEL_SIDE / 2);
+        const int ly = y + (RULER_TICK / 2) - (RULER_LABEL_SIDE / 2);
+        const int far = RULER_LABEL_DEPTH + RULER_LABEL_SIDE;
+        ui_text_in(ctx, mu_rect(lx, RULER_LABEL_DEPTH, RULER_LABEL_SIDE, RULER_LABEL_SIDE), label, ink, 1,
+                   UI_ALIGN_CENTRE);
+        ui_text_in(ctx, mu_rect(lx, screen_h - far, RULER_LABEL_SIDE, RULER_LABEL_SIDE), label, ink, 1,
+                   UI_ALIGN_CENTRE);
+        ui_text_in(ctx, mu_rect(RULER_LABEL_DEPTH, ly, RULER_LABEL_SIDE, RULER_LABEL_SIDE), label, ink, 1,
+                   UI_ALIGN_CENTRE);
+        ui_text_in(ctx, mu_rect(screen_w - far, ly, RULER_LABEL_SIDE, RULER_LABEL_SIDE), label, ink, 1,
+                   UI_ALIGN_CENTRE);
+    }
+}
+
+/* The bezel page's rulers own the top edge, so its HUD sits mid-screen. */
 static void
 hud_line(mu_Context* ctx, int row, const char* text) {
-    ui_text_in(ctx, mu_rect(0, HUD_TOP + (row * HUD_LINE_H), screen_w, HUD_LINE_H), text, ui_rgb(COL_HUD),
+    const int hud_top = mode == MODE_BEZEL ? (screen_h / 2) - (2 * HUD_LINE_H) : HUD_TOP;
+    ui_text_in(ctx, mu_rect(0, hud_top + (row * HUD_LINE_H), screen_w, HUD_LINE_H), text, ui_rgb(COL_HUD),
                mode == MODE_MOTION ? MOTION_HUD_SCALE : HUD_SCALE, UI_ALIGN_CENTRE);
 }
 
@@ -585,6 +636,7 @@ draw_page(mu_Context* ctx) {
     draw_hud(ctx);
     if (mode == MODE_BEZEL) {
         draw_corner_arcs(ctx);
+        draw_edge_rulers(ctx);
     } else {
         draw_target(ctx);
     }
