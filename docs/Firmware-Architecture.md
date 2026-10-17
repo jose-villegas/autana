@@ -115,7 +115,7 @@ flowchart TB
     Shell -.->|"calls through app/app.h"| Apps
 ```
 
-Audio layer: [path and board notes](notes/Audio.md).
+Audio layer: [audio docs](audio/README.md).
 
 - **Includes are layer-qualified**: `"gfx/gfx.h"`, not `"gfx.h"`, even
   between two files in the same folder, so an app reaching past `ui` into

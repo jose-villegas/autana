@@ -1,6 +1,6 @@
 """Bake NAME.sound.toml and its integer PCM WAV into a SOND entry.
 
-Layout: docs/assets/README.md, "The sound entry".
+Layout: docs/audio/Sound-Assets.md.
 The TOML owns format and loop frames at the stored rate. The WAV's sample
 level is the sound's level; there is no gain setting. No cue/smpl interpretation. Mixdown takes
 the channel mean. Resampling uses a Hann-windowed sinc with 32 zero crossings
