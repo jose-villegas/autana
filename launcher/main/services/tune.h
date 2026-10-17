@@ -118,7 +118,8 @@ bool tune_handle_line(const char* line, tune_reply_fn reply);
 
 /* Pinned code needs constants unless the build explicitly permits live
  * loads; a host build is the default image's code too, and links without
- * the registry. */
+ * the registry. r3d_span.o uses live knobs in host tests to compare both
+ * raster paths in one binary. */
 #if TUNE_HOT_LIVE
 #define TUNE_HOT TUNE
 #else
