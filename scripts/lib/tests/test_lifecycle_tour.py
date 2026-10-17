@@ -60,7 +60,7 @@ class TourTests(unittest.TestCase):
 
     def test_discovery_and_decline(self):
         transport = FakeTransport()
-        self.assertEqual(tour.discover(transport, itertools.cycle(("IMU quarter 0",)), emit=lambda line: None)[0], tour.App("Model A", "model", ("key0", "key1")))
+        self.assertEqual(tour.discover(transport, itertools.cycle(("IMU quarter 0",)), 0, emit=lambda line: None)[0], tour.App("Model A", "model", ("key0", "key1")))
         self.assertEqual(tour.parse_scenes(["MODEL_ERR not handled"], "model"), ())
         for lines in (["MODEL_END"], ["MODEL scene=key0"],
                       ["MODEL scene=key0", "MODEL scene=key0", "MODEL_END"],
@@ -164,27 +164,16 @@ class TourTests(unittest.TestCase):
 
     def test_tilt_waits_for_firmware_sample_period(self):
         transport = FakeTransport()
-        with mock.patch.object(tour.time, "monotonic", return_value=0) as clock, \
-                mock.patch.object(tour.time, "sleep") as sleep:
-            send = transport.send
+        with mock.patch.object(tour.time, "monotonic", return_value=0),                 mock.patch.object(tour.time, "sleep") as sleep:
+            tour.exchange(transport, tour.Step("HOME", "HOME", "IMU quarter 1"), sample_s=0.25)
+        sleep.assert_called_once_with(0.25)
 
-            def delayed_send(line):
-                send(line)
-                if line.startswith("IMU quarter "):
-                    clock.return_value = 1
-
-            lines = transport.lines
-
-            def delayed_lines(seconds=None):
-                for line in lines(seconds):
-                    if line.startswith("IMU_OK"):
-                        clock.return_value = 2
-                    yield line
-
-            transport.send = delayed_send
-            transport.lines = delayed_lines
-            tour.exchange(transport, tour.Step("HOME", "HOME", "IMU quarter 1"))
-        sleep.assert_called_once_with(0.001)
+    def test_tilt_reply_split_by_another_task_log(self):
+        transport = FakeTransport()
+        transport.send = lambda line: transport.sent.append(line) or transport.pending.extend(
+            ["IMU_OK quarter=1 quarters=4 samplI (e19149) SD_HOST: src_freq_hz: 160000000_ms=100"]
+            if line.startswith("IMU quarter ") else {"HOME": ["HOME_OK"], "BUILDID": ["BUILD_ID=fixture"]}[line])
+        self.assertEqual(tour.exchange(transport, tour.Step("HOME", "HOME", "IMU quarter 1")), ["HOME_OK"])
 
     def test_discovery_and_plan_share_quarter_cycle(self):
         transport = FakeTransport()
