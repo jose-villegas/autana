@@ -53,6 +53,17 @@ sound_empty(const audio_sound_t* sound) {
 }
 
 static void
+reject_fixture(fixture_t* f, asset_status_t expected) {
+    audio_sound_t sound;
+    memset(&sound, 0xff, sizeof sound);
+    const asset_status_t status = open_fixture(f, NAME, &sound);
+    const bool cleared = sound_empty(&sound);
+    free(f->bytes);
+    TEST_ASSERT_EQUAL(expected, status);
+    TEST_ASSERT_TRUE(cleared);
+}
+
+static void
 reject_field(audio_sound_format_t format, uint32_t at, uint32_t value, unsigned width, asset_status_t expected) {
     fixture_t f = fixture(format);
     if (width == sizeof(uint32_t)) {
@@ -62,13 +73,7 @@ reject_field(audio_sound_format_t format, uint32_t at, uint32_t value, unsigned 
     } else {
         f.entry[at] = (uint8_t)value;
     }
-    audio_sound_t sound;
-    memset(&sound, 0xff, sizeof sound);
-    const asset_status_t status = open_fixture(&f, NAME, &sound);
-    const bool cleared = sound_empty(&sound);
-    free(f.bytes);
-    TEST_ASSERT_EQUAL(expected, status);
-    TEST_ASSERT_TRUE(cleared);
+    reject_fixture(&f, expected);
 }
 
 static void
@@ -143,12 +148,7 @@ test_loop_range(void) {
     fixture_t f = fixture(AUDIO_SOUND_PCM16);
     test_pack_put32(f.entry + AUDIO_SOUND_AT_LOOP_END, FRAMES);
     test_pack_put32(f.entry + AUDIO_SOUND_AT_LOOP_START, FRAMES);
-    audio_sound_t sound;
-    memset(&sound, 0xff, sizeof sound);
-    const asset_status_t status = open_fixture(&f, NAME, &sound);
-    free(f.bytes);
-    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, status);
-    TEST_ASSERT_TRUE(sound_empty(&sound));
+    reject_fixture(&f, ASSET_ERR_FORMAT);
 }
 
 static void
@@ -168,12 +168,7 @@ test_loop_alignment(void) {
     fixture_t f = fixture(AUDIO_SOUND_IMA_ADPCM);
     test_pack_put32(f.entry + AUDIO_SOUND_AT_LOOP_START, 1);
     test_pack_put32(f.entry + AUDIO_SOUND_AT_LOOP_END, FRAMES);
-    audio_sound_t sound;
-    memset(&sound, 0xff, sizeof sound);
-    const asset_status_t status = open_fixture(&f, NAME, &sound);
-    free(f.bytes);
-    TEST_ASSERT_EQUAL(ASSET_ERR_FORMAT, status);
-    TEST_ASSERT_TRUE(sound_empty(&sound));
+    reject_fixture(&f, ASSET_ERR_FORMAT);
 }
 
 static void

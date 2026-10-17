@@ -76,12 +76,22 @@ PYTHON_TOKENS = re.compile(
 # statement, so a block of code never passes for one.
 TEST_REGISTRATION = re.compile(r"\bRUN_TEST\s*\(\s*\w+\s*\)\s*;|\{[^{};]*\}\s*,")
 INCLUDE_DIRECTIVE = re.compile(r"(?m)^[ \t]*#[ \t]*include\b(?:[^\n]*\\\n)*[^\n]*")
+OBJECT_DEFINE = re.compile(r"(?m)^[ \t]*#[ \t]*define[ \t]+[A-Za-z_]\w*[ \t]+((?:[^\n]*\\\n)*[^\n]*)")
+C_LITERAL = (r'''(?:[+-]?(?:0[xX][0-9a-fA-F]+|\d+(?:\.\d*)?(?:[eE][+-]?\d+)?|'''
+             r'''\.\d+(?:[eE][+-]?\d+)?)[uUlLfF]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')''')
+LITERAL_BODY = re.compile(rf"\s*(?:{C_LITERAL}|\{{\s*(?:{C_LITERAL}(?:\s*,\s*{C_LITERAL})*\s*,?)?\s*\}})\s*")
+
+
+def literal_declaration(match):
+    body = match[1].replace("\\\n", " ")
+    body = re.sub(r"//[^\n]*|/\*.*?\*/", " ", body, flags=re.DOTALL)
+    return "\n" * match[0].count("\n") if LITERAL_BODY.fullmatch(body) else match[0]
 
 
 def registration_only(pair):
     if pair["format"] == "python":
         return False
-    rest = TEST_REGISTRATION.sub(" ", pair["fragment"])
+    rest = TEST_REGISTRATION.sub(" ", OBJECT_DEFINE.sub(literal_declaration, pair["fragment"]))
     return pair["fragment"] != rest and len(C_TOKENS.findall(rest)) < MIN_TOKENS // 2
 
 
@@ -122,6 +132,8 @@ def scan(root, minimum, names=None, revision="HEAD", renames=None):
             target = tree / name
             target.parent.mkdir(parents=True, exist_ok=True)
             if target.suffix != ".py":
+                # A fragment holds only one side, so either side's declaration macros must vanish before matching.
+                content = OBJECT_DEFINE.sub(literal_declaration, content.decode("utf-8")).encode("utf-8")
                 content = INCLUDE_DIRECTIVE.sub(lambda match: "\n" * match[0].count("\n"),
                                                 content.decode("utf-8")).encode("utf-8")
             target.write_bytes(content)
