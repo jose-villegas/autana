@@ -266,11 +266,13 @@ Changes state the way a person holding the board could.
 | `autana tap <x> <y>` | Tap, 50 ms. |
 | `autana press <x> <y> [ms]` | Hold; 1000 ms when omitted. |
 | `autana drag <x0> <y0> <x1> <y1> <ms>` | Drag between two points over `ms`. |
-| `autana button <boot\|power> [short\|long]` | A BOOT or PWR press; `short` when omitted. |
-| `autana apps [--json]` | The registered apps, and which is running. |
+| `autana button <boot\|power> [short]` | A BOOT or PWR press; short when omitted. |
+| `autana button <boot\|power> long` | A long press. |
+| `autana reset [--capture [seconds]] [--verbose]` | Reboot and wait for USB serial. `--capture` records the boot (20 s) and prints its path and any error lines. |
+| `autana apps` | The registered apps, and which is running. |
+| `autana apps --json` | The same, as JSON. |
 | `autana open <name>` | Enter an app, even while frozen; case-insensitive, unambiguous prefix. |
 | `autana home` | Back to the launcher. |
-| `autana reset [--capture [seconds]] [--verbose]` | Reboot and wait for USB serial. `--capture` records the boot (20 s) and prints its path and any error lines. |
 
 A point is a pixel of the default `autana screenshot`, whichever way the
 board is held: read a button's centre off that image and pass it as it is.

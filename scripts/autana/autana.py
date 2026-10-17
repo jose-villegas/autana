@@ -1577,12 +1577,16 @@ COMMAND_GROUPS = (
         Command("tap", tap, (("tap <x> <y>", "tap a point, in pixels of the default screenshot"),)),
         Command("press", press, (("press <x> <y> [ms]", "hold a point, as tap reads it; 1000 ms when omitted"),)),
         Command("drag", drag, (("drag <x0> <y0> <x1> <y1> <ms>", "drag between two points, as tap reads them"),)),
-        Command("button", button, (("button <boot|power> [short|long]", "press a board button"),)),
-        Command("apps", apps, (("apps [--json]", "the registered apps, and which is running"),)),
-        Command("open", open_app, (("open <name>", "enter an app; case-insensitive prefix"),)),
-        Command("home", home, (("home", "back to the launcher"),)),
+        Command("button", button, (
+            ("button <boot|power> [short]", "press a board button; short when omitted"),
+            ("button <boot|power> long", "hold it"))),
         Command("reset", reset, (
             ("reset [--capture [seconds]] [--verbose]", "reboot the board; --capture records the boot"),)),
+        Command("apps", apps, (
+            ("apps", "the registered apps, and which is running"),
+            ("apps --json", "the same, as JSON"))),
+        Command("open", open_app, (("open <name>", "enter an app; case-insensitive prefix"),)),
+        Command("home", home, (("home", "back to the launcher"),)),
     )),
     ("tune", "Tune", (
         Command("tune", tune, (
