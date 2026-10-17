@@ -20,7 +20,7 @@ and read the macros in `*_template.h` only to change an algorithm.
 - [Templates](#templates)
 - [The transform cache](#the-transform-cache)
 - [Scalar](#scalar): [mathi.h](#mathih), [mathf.h](#mathfh), [maths.h](#mathsh), [mathx.h](#mathxh), [mathf_round.h](#mathf_roundh), [mathf_rsqrt.h](#mathf_rsqrth), [fixed.h](#fixedh), [rng.h](#rngh), [trig.h](#trigh), [units.h](#unitsh)
-- [Linear](#linear): [vec2](#vec2-f-i-s-x), [vec3](#vec3-f-i-s-x), [quat](#quat-f-x), [affine2](#affine2-f-x), [mat3](#mat3-f), [mat4](#mat4-f-x), [transform](#transform-f-x), [conversions](#conversions-vec_converth)
+- [Linear](#linear): [vec2](#vec2-f-i-s-x), [vec3](#vec3-f-i-s-x), [quat](#quat-f-x), [affine2](#affine2-f-x), [mat3](#mat3-f), [mat4](#mat4-f-x), [transform](#transform-f-x), [projection](#projection-projectfh-projectxh), [conversions](#conversions-vec_converth)
 - [Geometry](#geometry): [rect](#rect-f-i-s-x), [plane](#plane-f-x)
 - [Examples](#examples)
 - [The float-precision build rules](#the-float-precision-build-rules)
@@ -63,24 +63,45 @@ M = T\,R\,S, \qquad p_{\text{world}} = M\,p_{\text{local}}, \qquad
 V = R^{\mathsf T}\,T(-\text{position})
 ```
 
+The caller may snap each offset to whole pixels:
+
 ```math
 \text{pixel}_x = c_x + \mathrm{trunc}\!\left(\frac{x}{z}\, s\right), \qquad
 \text{pixel}_y = c_y - \mathrm{trunc}\!\left(\frac{y}{z}\, s\right)
 ```
 
-Here `s` is the view's pixels per unit (`render_view_t`) and `c` the screen
-centre. The fixed-point path (`render/r3d_project_x.h`) truncates each
-quotient toward zero. Its float reference (`render/r3d_project.h`) first
-biases each offset slightly away from zero, then truncates toward it.
+Here `s` is pixels per unit at unit depth (`fx`, `fy` below), and `c` is
+the optical centre. Snapping to whole pixels belongs to the caller.
+
+### Projection: projectf.h, projectx.h
+
+`projectf_t` is a pinhole lens: `fx` and `fy` are pixels per camera unit
+at unit depth, `cx` and `cy` the optical centre in pixels, and `near_z`
+the near plane in camera units. `projectf_screen(lens, p)` returns floating
+picture coordinates without pixel snapping, with camera +y up and picture
+y down. Focal lengths may differ between axes. `projectf_offset(lens, p)`
+returns the pixel offset from the optical centre with camera +y up.
+
+`projectf_clip_near` and `projectx_clip_near` take `near_z, p0, p1` and
+reject segments whose endpoints are both at or behind the plane. Otherwise
+they move the behind endpoint to the crossing and leave front endpoints
+untouched. The fixed helper accepts any common scale for endpoints and near
+plane, using a Q16.16 crossing ratio. The private `_projectf_cross_near`
+and `_projectx_cross_near` helpers supply scalar crossing arithmetic to
+`project_template.h`'s `MATH_DEFINE_CLIP_NEAR(P, V, T, CROSS)`, which
+selects the behind endpoint and defines the public clip operation for the
+`projectf` and `projectx` prefixes. The caller keeps intermediate differences and products within
+their integer ranges. These helpers take plain values and keep no state.
 
 ## Templates
 
 A family is a header holding one macro per group of functions
 (`vec2_template.h`'s `MATH_DEFINE_VEC2`, `vec3_template.h`'s
 `MATH_DEFINE_VEC3`, `quat_template.h`'s `MATH_DEFINE_QUAT`, and the affine2, mat4,
-transform, and geometry `rect_template.h` and `plane_template.h` families
-likewise). An instantiation header (`vec3f.h`, `quatx.h`, ...) holds the macros' calls and
-any type-specific operations. The macro arguments:
+transform, projection `project_template.h`, and geometry `rect_template.h`
+and `plane_template.h` families likewise). An instantiation header (`vec3f.h`,
+`quatx.h`, ...) holds the macros' calls and any type-specific operations. The
+macro arguments:
 
 | Argument | What it is |
 |---|---|
@@ -91,6 +112,10 @@ any type-specific operations. The macro arguments:
 | `OPS` | The scalar operations' prefix (`mathf`, `mathi`, `maths`, `mathx`): the static inline functions `OPS_add`, `OPS_mul`, `OPS_one` and the rest in `mathf.h`, `mathi.h`, `maths.h` and `mathx.h`. A family names only the ones it uses, so a type without `OPS_div` or `OPS_sqrt` gets no normalize. |
 | `N` | A vector's component count: the vector's own for component-wise operations (`vec_ops_template.h`), a swizzle source's otherwise |
 | `D`, `S` | A swizzle's result and source vector types (`vec_swizzle_template.h`) |
+
+`MATH_DEFINE_CLIP_NEAR(P, V, T, CROSS)` takes a function prefix `P`, a
+vector type `V`, a scalar `T` and a crossing callback `CROSS`. It defines
+`P_clip_near` taking `near_z, p0, p1`, without defining a type.
 
 `MATH_DEFINE_RECT(P, T, OPS)` needs no vector type: its fields and query
 arguments are scalars. It calls only `OPS_min` and `OPS_max`; addition,
