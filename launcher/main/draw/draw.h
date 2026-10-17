@@ -74,7 +74,7 @@ void draw_line(int x0, int y0, int x1, int y1, gfx_color_t color);
 /* Add to what is already in the framebuffer instead of replacing it, so two
  * strokes crossing on a black field make a brighter, mixed colour rather than
  * whichever was drawn second. Costs a read as well as a write per pixel. */
-#define DRAW_LINE_ADD  (1u << 0)
+#define DRAW_LINE_ADD          (1u << 0)
 
 /* Leave the STARTING pixel undrawn. For chaining segments into a
  * polyline: two segments that meet share a pixel, and under DRAW_LINE_ADD
@@ -82,7 +82,17 @@ void draw_line(int x0, int y0, int x1, int y1, gfx_color_t color);
  * segments comes out beaded, with a brighter dot at every joint. Drawing
  * each segment half-open puts exactly one contribution on every pixel of
  * the chain. Only useful from the second segment onward. */
-#define DRAW_LINE_OPEN (1u << 1)
+#define DRAW_LINE_OPEN         (1u << 1)
+
+/* Dash lengths are 0..255 pixels, counted from the original line start,
+ * including an open first pixel. Both zero means solid. */
+#define DRAW_LINE_DASHED       (1u << 2)
+#define DRAW_LINE_DASH_ON_BIT  8
+#define DRAW_LINE_DASH_OFF_BIT 16
+#define DRAW_LINE_DASH_MASK    255u
+#define DRAW_LINE_DASH(on, off)                                                                                        \
+    (DRAW_LINE_DASHED | (((unsigned)(on) & DRAW_LINE_DASH_MASK) << DRAW_LINE_DASH_ON_BIT)                              \
+     | (((unsigned)(off) & DRAW_LINE_DASH_MASK) << DRAW_LINE_DASH_OFF_BIT))
 
 void draw_line_ex(int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags);
 

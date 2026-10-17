@@ -107,6 +107,7 @@ registered suite, for a full pre-merge pass.
 | `autana suite <name> --set NAME=VALUE` | Set a tunable ([Live-Tuning.md](Live-Tuning.md)) before each capture; `--set` repeats. |
 | `autana suite list [text] [--json]` | The registered suites; `[on request]` ones run only by name. |
 | `autana selftest [seconds] [--verbose] [--perf-scope] [--out PATH]` | Build the autorun diagnostics image, flash, run every suite; 3000 s when omitted. |
+| `autana tone <hz> <ms> [volume] [--json]` | Development builds only: plays `<hz>` for `<ms>` at `[volume]` % (firmware default 30) and reports the tone level against a silence baseline in dBFS, whether it was heard, and the DMA bytes held while open. |
 
 A run prints report and capture paths, PASS/FAIL counts and failures. A
 capture that never reaches its `*_COMPLETE` line fails. `--verbose` prints it
@@ -224,6 +225,7 @@ as aliases and print the canonical spelling once.
 |---|---|
 | `status` | `boards`, one object per board ([Device-Lock.md](Device-Lock.md#exit-codes-and-json-status)). |
 | `buildid` | `build_id` |
+| `tone` | `hz`, `tone_db`, `silence_db`, `heard`, `open_dma_bytes` |
 | `heap` | `free`, `largest`, `total` (bytes in `MEMORY_DMA`) |
 | `framewatch` | `frames`, `allocs`, `frees`, `console`, `repeating`, `dropped`, `sites` |
 | `apps` | `apps`: `name`, `running` |
