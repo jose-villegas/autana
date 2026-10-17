@@ -1,6 +1,8 @@
 #include <float.h>
 #include <math.h>
 #include <stddef.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #include "suites.h"
 #include "unity.h"
@@ -46,10 +48,90 @@ sample(vec3f_t a, vec3f_t w) {
                             .rotation = vec3i_from_vec3f(vec3f_scale(w, INPUT_ROTATION_ONE_DPS))};
 }
 
+#define FRAME_FPS          30U
+#define FRAME_US           (MATH_US_PER_S / FRAME_FPS)
+#define FAST_TURN_DPS      (4.0F * QUARTER_TURN_DEG)
+#define FAST_TURN_BOUND_US ((uint32_t)(2.0F * QUARTER_TURN_DEG * MATH_US_PER_S / FAST_TURN_DPS))
+
+static float
+angle_error(vec3f_t expected, vec3f_t actual) {
+    const vec3f_t cross = vec3f_cross(expected, actual);
+    return atan2f(sqrtf(vec3f_dot(cross, cross)), vec3f_dot(expected, actual)) * (2.0F * QUARTER_TURN_DEG) / MATH_PI;
+}
+
+static void
+test_fast_turn_batch_retains_between_frame_rotation(void) {
+    fixture();
+    input_motion_batch_t* batch = malloc(sizeof *batch);
+    TEST_ASSERT_NOT_NULL(batch);
+    *batch = (input_motion_batch_t){0};
+    gravity_t frame;
+    gravity_reset(&frame);
+    const input_motion_t initial = {.acceleration = {0, 0, -INPUT_ACCEL_ONE_G}};
+    gravity_update(&g, &initial, 0);
+    gravity_update(&frame, &initial, 0);
+    float angle = 0;
+    float batch_max = 0;
+    float frame_max = 0;
+    const float sample_s = (float)INPUT_MOTION_SAMPLE_US / MATH_US_PER_S;
+    const uint32_t frame_limit = (FAST_TURN_BOUND_US + FRAME_US - 1U) / FRAME_US;
+    uint32_t samples = 0;
+    for (uint32_t frame_index = 1; frame_index <= frame_limit && angle < QUARTER_TURN_DEG; frame_index++) {
+        const uint32_t end = frame_index * FRAME_US / INPUT_MOTION_SAMPLE_US;
+        batch->count = (int)(end - samples);
+        vec3f_t truth = {0};
+        for (int i = 0; i < batch->count; i++) {
+            /* Endpoint rest isolates rotation that a frame's final gyro reading cannot observe. */
+            const float rate = i + 1 == batch->count ? 0 : fminf(FAST_TURN_DPS, (QUARTER_TURN_DEG - angle) / sample_s);
+            angle += rate * sample_s;
+            const float radians = angle * MATH_PI / (2.0F * QUARTER_TURN_DEG);
+            truth = (vec3f_t){0, -sinf(radians), -cosf(radians)};
+            batch->samples[i] = sample(truth, (vec3f_t){rate, 0, 0});
+        }
+        samples = end;
+        gravity_update_batch(&g, batch);
+        gravity_update(&frame, &batch->samples[batch->count - 1], FRAME_US);
+        batch_max = fmaxf(batch_max, angle_error(truth, gravity_down(&g)));
+        frame_max = fmaxf(frame_max, angle_error(truth, gravity_down(&frame)));
+    }
+    free(batch);
+    printf("gravity fast turn: batch max %.6f deg, frame max %.6f deg, ODR %.1f Hz\n", (double)batch_max,
+           (double)frame_max, IMU_ODR_HZ);
+    TEST_ASSERT_FLOAT_WITHIN(FLOAT_TOLERANCE, QUARTER_TURN_DEG, angle);
+    TEST_ASSERT_TRUE(batch_max <= GRAVITY_REJECT_DEG);
+    TEST_ASSERT_TRUE(frame_max > GRAVITY_REJECT_DEG);
+}
+
+static void
+test_fifo_gap_soft_restarts_and_reconverges(void) {
+    fixture();
+    input_motion_batch_t* batch = malloc(sizeof *batch);
+    TEST_ASSERT_NOT_NULL(batch);
+    const input_motion_t initial = {.acceleration = {0, 0, -INPUT_ACCEL_ONE_G}};
+    gravity_update(&g, &initial, 0);
+    *batch = (input_motion_batch_t){.gap = true};
+    gravity_update_batch(&g, batch);
+    const bool restarted = g.recovering && g.distrust_us == GRAVITY_RECOVER_US;
+    batch->count = IMU_FIFO_SAMPLES;
+    const vec3f_t target = {0, 1, 0};
+    for (int i = 0; i < batch->count; i++) {
+        batch->samples[i] = sample(target, (vec3f_t){0});
+    }
+    gravity_update_batch(&g, batch);
+    const uint32_t bound_us = IMU_FIFO_SAMPLES * INPUT_MOTION_SAMPLE_US;
+    const float error = angle_error(target, gravity_down(&g));
+    const bool within_bound = GRAVITY_STILL_RECOVER_US + INPUT_MOTION_SAMPLE_US <= bound_us;
+    free(batch);
+    TEST_ASSERT_TRUE(restarted);
+    TEST_ASSERT_TRUE(within_bound);
+    TEST_ASSERT_TRUE(error <= GRAVITY_REJECT_DEG);
+    TEST_ASSERT_FALSE(g.recovering);
+}
+
 static void
 hold(input_motion_t m, uint32_t duration_ms) {
     for (uint32_t elapsed = 0; elapsed < duration_ms; elapsed += STEP_MS) {
-        gravity_update(&g, &m, STEP_MS);
+        gravity_update(&g, &m, STEP_MS * MATH_US_PER_MS);
     }
 }
 
@@ -79,7 +161,7 @@ test_first_reading_is_adopted_exactly(void) {
     gravity_update(&g, &m, 0);
     const vec3f_t expected = vec3f_normalize(vec3f_from_vec3i(m.acceleration));
     assert_vector(expected, gravity_down(&g), FLOAT_TOLERANCE);
-    TEST_ASSERT_EQUAL_UINT32(0, g.distrust_ms);
+    TEST_ASSERT_EQUAL_UINT32(0, g.distrust_us);
 }
 
 static void
@@ -98,7 +180,7 @@ test_gyro_turns_follow_measured_screen_sense(void) {
         hold(sample(turns[i].start, (vec3f_t){0}), STEP_MS);
         hold(sample(turns[i].start, turns[i].rate), TURN_MS);
         assert_vector(turns[i].end, gravity_down(&g), TURN_TOLERANCE);
-        TEST_ASSERT_TRUE(g.distrust_ms > 0);
+        TEST_ASSERT_TRUE(g.distrust_us > 0);
     }
 }
 
@@ -111,7 +193,7 @@ test_shake_preserves_down_and_reports_linear(void) {
     for (uint32_t elapsed = 0; elapsed < GRAVITY_RECOVER_MS; elapsed += STEP_MS) {
         const float shake = (elapsed / STEP_MS) % 2U ? SHAKE_G : -SHAKE_G;
         const input_motion_t m = sample((vec3f_t){shake, 0, -1}, (vec3f_t){0});
-        gravity_update(&g, &m, STEP_MS);
+        gravity_update(&g, &m, STEP_MS * MATH_US_PER_MS);
         TEST_ASSERT_TRUE(vec3f_dot(down, gravity_down(&g)) >= min_dot);
         assert_vector((vec3f_t){shake, 0, 0}, gravity_linear(&g), FLOAT_TOLERANCE);
     }
@@ -126,7 +208,7 @@ test_perpendicular_bias_converges(void) {
         hold(sample(down, (vec3f_t){0}), STEP_MS);
         const input_motion_t m = sample(down, offsets[i]);
         for (uint32_t elapsed = 0; elapsed < BIAS_SETTLE_MS; elapsed += STEP_MS) {
-            gravity_update(&g, &m, STEP_MS);
+            gravity_update(&g, &m, STEP_MS * MATH_US_PER_MS);
             TEST_ASSERT_TRUE(vec3f_dot(down, g.down) >= GRAVITY_REJECT_COS);
         }
         assert_vector(offsets[i], g.gyro_bias, BIAS_TOLERANCE);
@@ -157,7 +239,7 @@ test_rejection_and_recovery_do_not_learn_bias(void) {
         const float dt = (float)STEP_MS / MATH_MS_PER_S;
         const vec3f_t expected =
             vec3f_normalize(vec3f_lerp(g.down, vec3f_normalize(rejected[i]), dt / (GRAVITY_TAU_S + dt)));
-        gravity_update(&g, &m, STEP_MS);
+        gravity_update(&g, &m, STEP_MS * MATH_US_PER_MS);
         assert_vector((vec3f_t){0}, g.gyro_bias, 0);
         assert_vector(expected, g.down, FLOAT_TOLERANCE);
     }
@@ -181,7 +263,7 @@ test_bias_clamps_each_axis(void) {
         hold(sample(cases[i].down, (vec3f_t){0}), STEP_MS);
         const input_motion_t m = sample(cases[i].down, cases[i].offset);
         for (uint32_t elapsed = 0; elapsed < BIAS_SETTLE_MS; elapsed += STEP_MS) {
-            gravity_update(&g, &m, STEP_MS);
+            gravity_update(&g, &m, STEP_MS * MATH_US_PER_MS);
             TEST_ASSERT_TRUE(fabsf(g.gyro_bias.x) <= GRAVITY_BIAS_MAX_DPS);
             TEST_ASSERT_TRUE(fabsf(g.gyro_bias.y) <= GRAVITY_BIAS_MAX_DPS);
             TEST_ASSERT_TRUE(fabsf(g.gyro_bias.z) <= GRAVITY_BIAS_MAX_DPS);
@@ -199,11 +281,11 @@ test_rejected_direction_recovers_only_past_limit(void) {
     const input_motion_t m = sample(vec3f_scale(target, 1.0F + PARTIAL_TRUST_G), (vec3f_t){0});
     hold(m, GRAVITY_RECOVER_MS);
     assert_vector(start, gravity_down(&g), FLOAT_TOLERANCE);
-    TEST_ASSERT_EQUAL_UINT32(GRAVITY_RECOVER_MS, g.distrust_ms);
-    gravity_update(&g, &m, STEP_MS);
+    TEST_ASSERT_EQUAL_UINT32(GRAVITY_RECOVER_US, g.distrust_us);
+    gravity_update(&g, &m, STEP_MS * MATH_US_PER_MS);
     TEST_ASSERT_TRUE(g.recovering);
     TEST_ASSERT_TRUE(g.down.y > 0 && g.down.y < 1);
-    TEST_ASSERT_EQUAL_UINT32(GRAVITY_RECOVER_MS, g.distrust_ms);
+    TEST_ASSERT_EQUAL_UINT32(GRAVITY_RECOVER_US, g.distrust_us);
 }
 
 static void
@@ -228,15 +310,15 @@ test_trusted_acceleration_pulls_gradually_with_magnitude_weight(void) {
     const vec3f_t target = {sinf(CORRECTION_ANGLE_RAD), 0, -cosf(CORRECTION_ANGLE_RAD)};
     hold(sample(down, (vec3f_t){0}), STEP_MS);
     const input_motion_t full = sample(target, (vec3f_t){0});
-    gravity_update(&g, &full, STEP_MS);
+    gravity_update(&g, &full, STEP_MS * MATH_US_PER_MS);
     const float full_pull = gravity_down(&g).x;
     const float full_bias = fabsf(g.gyro_bias.y);
     TEST_ASSERT_TRUE(full_pull > 0 && full_pull < target.x);
-    TEST_ASSERT_EQUAL_UINT32(0, g.distrust_ms);
+    TEST_ASSERT_EQUAL_UINT32(0, g.distrust_us);
     fixture();
     hold(sample(down, (vec3f_t){0}), STEP_MS);
     const input_motion_t partial = sample(vec3f_scale(target, 1.0F + PARTIAL_TRUST_G), (vec3f_t){0});
-    gravity_update(&g, &partial, STEP_MS);
+    gravity_update(&g, &partial, STEP_MS * MATH_US_PER_MS);
     TEST_ASSERT_TRUE(gravity_down(&g).x > 0 && gravity_down(&g).x < full_pull);
     TEST_ASSERT_TRUE(fabsf(g.gyro_bias.y) > 0 && fabsf(g.gyro_bias.y) < full_bias);
     const vec3f_t bias = g.gyro_bias;
@@ -252,14 +334,14 @@ test_stalled_dt_is_clamped(void) {
     hold(sample((vec3f_t){0, 0, -1}, (vec3f_t){0}), STEP_MS);
     gravity_t clamped = g;
     const input_motion_t m = sample((vec3f_t){0, 1, 0}, (vec3f_t){BIAS_DPS, 0, 0});
-    gravity_update(&g, &m, STALLED_MS);
-    gravity_update(&clamped, &m, GRAVITY_MAX_DT_MS);
-    TEST_ASSERT_EQUAL_UINT32(GRAVITY_MAX_DT_MS, g.distrust_ms);
+    gravity_update(&g, &m, (STALLED_MS)*MATH_US_PER_MS);
+    gravity_update(&clamped, &m, GRAVITY_MAX_DT_US);
+    TEST_ASSERT_EQUAL_UINT32(GRAVITY_MAX_DT_US, g.distrust_us);
     TEST_ASSERT_TRUE(g.down.y < 0);
     assert_vector(clamped.down, g.down, 0);
     assert_vector(clamped.linear, g.linear, 0);
     assert_vector(clamped.gyro_bias, g.gyro_bias, 0);
-    TEST_ASSERT_EQUAL_UINT32(clamped.distrust_ms, g.distrust_ms);
+    TEST_ASSERT_EQUAL_UINT32(clamped.distrust_us, g.distrust_us);
 }
 
 #define TRUST_RATIO_TOLERANCE   (GRAVITY_TRUST_FULL_G / 100.0F)
@@ -271,7 +353,7 @@ static gravity_t
 correction_at_magnitude(int counts) {
     gravity_t state = {.primed = true, .down = {sinf(CORRECTION_ANGLE_RAD), 0, -cosf(CORRECTION_ANGLE_RAD)}};
     const input_motion_t m = {.acceleration = {0, 0, -counts}};
-    gravity_update(&state, &m, STEP_MS);
+    gravity_update(&state, &m, STEP_MS * MATH_US_PER_MS);
     return state;
 }
 
@@ -301,11 +383,11 @@ test_acceptance_drains_recovery(void) {
     fixture();
     const input_motion_t accepted = {.acceleration = {0, 0, -INPUT_ACCEL_ONE_G}};
     const input_motion_t rejected = sample((vec3f_t){0, 1.0F + PARTIAL_TRUST_G, 0}, (vec3f_t){0});
-    gravity_update(&g, &accepted, STEP_MS);
+    gravity_update(&g, &accepted, STEP_MS * MATH_US_PER_MS);
     const uint32_t interval = GRAVITY_RECOVER_MS * 3U / 4U;
     hold(rejected, interval);
-    gravity_update(&g, &accepted, STEP_MS);
-    TEST_ASSERT_EQUAL_UINT32(interval - GRAVITY_RECOVER_ACCEPT_WEIGHT * STEP_MS, g.distrust_ms);
+    gravity_update(&g, &accepted, STEP_MS * MATH_US_PER_MS);
+    TEST_ASSERT_EQUAL_UINT32((interval - GRAVITY_RECOVER_ACCEPT_WEIGHT * STEP_MS) * MATH_US_PER_MS, g.distrust_us);
 }
 
 static void
@@ -317,7 +399,7 @@ test_pull_time_constant(void) {
     const float expected = g.down.x * powf(1.0F - dt / (GRAVITY_TAU_S + dt), (float)steps);
     for (unsigned i = 0; i < steps; i++) {
         g.gyro_bias = (vec3f_t){0};
-        gravity_update(&g, &m, STEP_MS);
+        gravity_update(&g, &m, STEP_MS * MATH_US_PER_MS);
     }
     TEST_ASSERT_FLOAT_WITHIN(expected * GRAVITY_TRUST_FULL_G / 10.0F, expected, g.down.x);
 }
@@ -335,13 +417,13 @@ test_bias_slow_pole_and_no_overshoot(void) {
     fixture();
     const input_motion_t m = sample((vec3f_t){0, 0, -1}, (vec3f_t){BIAS_DPS, 0, 0});
     const input_motion_t rest = {.acceleration = {0, 0, -INPUT_ACCEL_ONE_G}};
-    gravity_update(&g, &rest, STEP_MS);
+    gravity_update(&g, &rest, STEP_MS * MATH_US_PER_MS);
     const float inverse_tau = 1.0F / GRAVITY_TAU_S;
     const float slow = (inverse_tau - sqrtf(inverse_tau * inverse_tau - 4.0F * BIAS_REFERENCE_KI)) / 2.0F;
     const uint32_t early_ms = (uint32_t)(2.0F * MATH_MS_PER_S / slow);
     const uint32_t final_ms = (uint32_t)(6.0F * MATH_MS_PER_S / slow);
     for (uint32_t ms = 0; ms < final_ms; ms += STEP_MS) {
-        gravity_update(&g, &m, STEP_MS);
+        gravity_update(&g, &m, STEP_MS * MATH_US_PER_MS);
         TEST_ASSERT_TRUE(gravity_gyro_bias(&g).x <= BIAS_DPS + BIAS_TOLERANCE);
         if (ms + STEP_MS <= early_ms) {
             TEST_ASSERT_TRUE(gravity_gyro_bias(&g).x < BIAS_DPS - BIAS_TOLERANCE);
@@ -360,10 +442,10 @@ test_still_recovery_deadline_and_bias(void) {
     const input_motion_t m = sample(target, g.gyro_bias);
     hold(m, GRAVITY_STILL_RECOVER_MS);
     assert_vector(start, gravity_down(&g), FLOAT_TOLERANCE);
-    TEST_ASSERT_EQUAL_UINT32(GRAVITY_STILL_RECOVER_MS, g.still_ms);
-    gravity_update(&g, &m, STEP_MS);
+    TEST_ASSERT_EQUAL_UINT32(GRAVITY_STILL_RECOVER_US, g.still_us);
+    gravity_update(&g, &m, STEP_MS * MATH_US_PER_MS);
     assert_vector(target, gravity_down(&g), FLOAT_TOLERANCE);
-    TEST_ASSERT_EQUAL_UINT32(0, g.still_ms);
+    TEST_ASSERT_EQUAL_UINT32(0, g.still_us);
 }
 
 static void
@@ -374,7 +456,7 @@ test_rotation_prevents_still_recovery(void) {
     const input_motion_t m = sample((vec3f_t){0, 1, 0}, (vec3f_t){0, 0, GRAVITY_STILL_DPS + 1.0F});
     hold(m, GRAVITY_STILL_RECOVER_MS + STEP_MS);
     assert_vector(start, gravity_down(&g), FLOAT_TOLERANCE);
-    TEST_ASSERT_EQUAL_UINT32(0, g.still_ms);
+    TEST_ASSERT_EQUAL_UINT32(0, g.still_us);
 }
 
 static void
@@ -387,8 +469,8 @@ test_magnitude_prevents_still_recovery(void) {
         const input_motion_t m = sample((vec3f_t){0, 1.0F + departures[i], 0}, (vec3f_t){0});
         hold(m, GRAVITY_RECOVER_MS);
         assert_vector(start, gravity_down(&g), FLOAT_TOLERANCE);
-        TEST_ASSERT_EQUAL_UINT32(0, g.still_ms);
-        gravity_update(&g, &m, STEP_MS);
+        TEST_ASSERT_EQUAL_UINT32(0, g.still_us);
+        gravity_update(&g, &m, STEP_MS * MATH_US_PER_MS);
         TEST_ASSERT_TRUE(g.recovering);
         TEST_ASSERT_TRUE(g.down.y > 0 && g.down.y < 1);
     }
@@ -399,10 +481,10 @@ test_acceptance_clears_still_recovery(void) {
     fixture();
     const input_motion_t accepted = sample((vec3f_t){0, 0, -1}, (vec3f_t){0});
     const input_motion_t rejected = sample((vec3f_t){0, 1, 0}, (vec3f_t){0});
-    gravity_update(&g, &accepted, STEP_MS);
+    gravity_update(&g, &accepted, STEP_MS * MATH_US_PER_MS);
     hold(rejected, GRAVITY_STILL_RECOVER_MS);
-    gravity_update(&g, &accepted, STEP_MS);
-    TEST_ASSERT_EQUAL_UINT32(0, g.still_ms);
+    gravity_update(&g, &accepted, STEP_MS * MATH_US_PER_MS);
+    TEST_ASSERT_EQUAL_UINT32(0, g.still_us);
     hold(rejected, GRAVITY_STILL_RECOVER_MS);
     assert_vector((vec3f_t){0, 0, -1}, gravity_down(&g), FLOAT_TOLERANCE);
 }
@@ -419,8 +501,8 @@ test_nonstill_clears_still_recovery(void) {
         hold(sample((vec3f_t){0, 0, -1}, (vec3f_t){0}), STEP_MS);
         const input_motion_t rejected = sample((vec3f_t){0, 1, 0}, (vec3f_t){0});
         hold(rejected, GRAVITY_STILL_RECOVER_MS);
-        gravity_update(&g, &disturbances[i], STEP_MS);
-        TEST_ASSERT_EQUAL_UINT32(0, g.still_ms);
+        gravity_update(&g, &disturbances[i], STEP_MS * MATH_US_PER_MS);
+        TEST_ASSERT_EQUAL_UINT32(0, g.still_us);
         hold(rejected, GRAVITY_STILL_RECOVER_MS);
         TEST_ASSERT_TRUE(gravity_down(&g).y < GRAVITY_REJECT_COS);
     }
@@ -434,11 +516,11 @@ test_leaky_recovery_streams(void) {
     const input_motion_t rejected = sample((vec3f_t){0, 1.0F + PARTIAL_TRUST_G, 0}, (vec3f_t){0});
     for (unsigned mostly_rejected = 0; mostly_rejected <= 1; mostly_rejected++) {
         fixture();
-        gravity_update(&g, &accepted, STEP_MS);
+        gravity_update(&g, &accepted, STEP_MS * MATH_US_PER_MS);
         bool recovered = false;
         for (uint32_t i = 0; i < 2U * GRAVITY_RECOVER_MS * STREAM_PERIOD / STEP_MS; i++) {
             const bool rare = i % STREAM_PERIOD == 0;
-            gravity_update(&g, rare == (mostly_rejected != 0) ? &accepted : &rejected, STEP_MS);
+            gravity_update(&g, rare == (mostly_rejected != 0) ? &accepted : &rejected, STEP_MS * MATH_US_PER_MS);
             recovered |= g.recovering;
         }
         TEST_ASSERT_EQUAL_INT(mostly_rejected, recovered);
@@ -448,15 +530,15 @@ test_leaky_recovery_streams(void) {
 static void
 test_recovery_full_gain_and_exit(void) {
     const input_motion_t m = sample((vec3f_t){0, 1.0F + PARTIAL_TRUST_G, 0}, (vec3f_t){0});
-    g = (gravity_t){.primed = true, .recovering = true, .distrust_ms = GRAVITY_RECOVER_MS, .down = {0, 0, -1}};
+    g = (gravity_t){.primed = true, .recovering = true, .distrust_us = GRAVITY_RECOVER_US, .down = {0, 0, -1}};
     const float dt = (float)STEP_MS / MATH_MS_PER_S;
     const float alpha = dt / (GRAVITY_TAU_S + dt);
     const vec3f_t expected = vec3f_normalize((vec3f_t){0, alpha, -(1.0F - alpha)});
-    gravity_update(&g, &m, STEP_MS);
+    gravity_update(&g, &m, STEP_MS * MATH_US_PER_MS);
     assert_vector(expected, g.down, FLOAT_TOLERANCE);
     TEST_ASSERT_TRUE(g.recovering);
     for (uint32_t elapsed = 0; elapsed < SETTLE_MS && g.recovering; elapsed += STEP_MS) {
-        gravity_update(&g, &m, STEP_MS);
+        gravity_update(&g, &m, STEP_MS * MATH_US_PER_MS);
     }
     TEST_ASSERT_FALSE(g.recovering);
     TEST_ASSERT_TRUE(g.down.y >= GRAVITY_REJECT_COS);
@@ -467,9 +549,9 @@ static void
 check_gyro_range_sample(int axis, int counts, bool under) {
     g = (gravity_t){.primed = true, .down = {0, 0, -1}};
     const input_motion_t m = {.rotation = {axis == 0 ? counts : 0, axis == 1 ? counts : 0, axis == 2 ? counts : 0}};
-    gravity_update(&g, &m, STEP_MS);
+    gravity_update(&g, &m, STEP_MS * MATH_US_PER_MS);
     TEST_ASSERT_EQUAL_INT(!under, g.recovering);
-    TEST_ASSERT_EQUAL_UINT32(under ? 0 : GRAVITY_RECOVER_MS, g.distrust_ms);
+    TEST_ASSERT_EQUAL_UINT32((under ? 0 : GRAVITY_RECOVER_MS) * MATH_US_PER_MS, g.distrust_us);
     const float dt = (float)STEP_MS / MATH_MS_PER_S;
     const float angle = (float)counts / INPUT_ROTATION_ONE_DPS * MATH_PI / (2.0F * QUARTER_TURN_DEG) * dt;
     const vec3f_t expected = vec3f_normalize((vec3f_t){axis == 1 ? angle : 0, axis == 0 ? -angle : 0, -1});
@@ -477,7 +559,7 @@ check_gyro_range_sample(int axis, int counts, bool under) {
     if (!under) {
         const input_motion_t accel = sample((vec3f_t){0, 1.0F + PARTIAL_TRUST_G, 0}, (vec3f_t){0});
         const vec3f_t recovered = vec3f_normalize(vec3f_lerp(g.down, (vec3f_t){0, 1, 0}, dt / (GRAVITY_TAU_S + dt)));
-        gravity_update(&g, &accel, STEP_MS);
+        gravity_update(&g, &accel, STEP_MS * MATH_US_PER_MS);
         assert_vector(recovered, g.down, FLOAT_TOLERANCE);
     }
 }
@@ -508,6 +590,8 @@ run_gravity_suite(void) {
     RUN_TEST(test_acceptance_drains_recovery);
     RUN_TEST(test_pull_time_constant);
     RUN_TEST(test_strength_uses_both_plane_axes);
+    RUN_TEST(test_fast_turn_batch_retains_between_frame_rotation);
+    RUN_TEST(test_fifo_gap_soft_restarts_and_reconverges);
     RUN_TEST(test_bias_slow_pole_and_no_overshoot);
     RUN_TEST(test_rejection_cosine_matches_angle);
     RUN_TEST(test_stationary_poses_settle);

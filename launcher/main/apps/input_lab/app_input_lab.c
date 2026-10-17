@@ -36,6 +36,7 @@
 #include "apps/input_lab/imu_record.h"
 #include "apps/input_lab/motion_probe.h"
 #include "apps/input_lab/touch_probe.h"
+#include "core/memory.h"
 #include "core/timing.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
@@ -115,6 +116,9 @@ static lab_mode_t mode;
 static tilt_t tilt;
 static gravity_t gravity;
 static input_motion_t motion;
+static input_motion_batch_t* motion_batch;
+static int motion_samples;
+static int64_t motion_drain_us;
 static vec3i_t raw_acceleration;
 static imu_probe_round_t imu_round;
 static imu_record_t imu_record;
@@ -185,6 +189,8 @@ start_round(void) {
         gravity_reset(&gravity);
         have_motion = false;
         motion_log_ms = 0;
+        motion_samples = 0;
+        motion_drain_us = 0;
         motion_read_us = timing_now_us();
         imu_round = (imu_probe_round_t){0};
         const bool sideways = (DISPLAY_DEFAULT_QUARTER % 2) != 0;
@@ -198,6 +204,7 @@ start_round(void) {
 
 static void
 input_lab_enter(void) {
+    motion_batch = memory_alloc(sizeof *motion_batch, MEMORY_PSRAM);
     rng_seed(&rng, (uint32_t)timing_now_us());
     panel_max_x = -1;
     mode = MODE_RANDOM;
@@ -437,14 +444,25 @@ motion_log_vector(vec3f_t value, int scale) {
 static void
 read_motion(uint32_t dt_ms) {
     motion_log_ms += dt_ms;
-    have_motion = input_read_motion(&motion);
+    const int64_t drain_start_us = timing_now_us();
+    const bool read = motion_batch != NULL && input_read_motion_batch(motion_batch);
+    motion_drain_us += timing_now_us() - drain_start_us;
+    if (!read) {
+        have_motion = false;
+    } else if (motion_batch->count > 0) {
+        motion = motion_batch->samples[motion_batch->count - 1];
+        have_motion = true;
+        motion_samples += motion_batch->count;
+    }
+    if (read) {
+        gravity_update_batch(&gravity, motion_batch);
+    }
     if (!have_motion) {
         motion_log_ms %= MOTION_LOG_PERIOD_MS;
         return;
     }
     raw_acceleration = vec3i_add(motion.acceleration, input_accel_offset());
     tilt_update(&tilt, motion.acceleration, motion.turn_speed, dt_ms);
-    gravity_update(&gravity, &motion, dt_ms);
     motion_probe = motion_probe_measure(motion.acceleration);
     if (motion_log_ms >= MOTION_LOG_PERIOD_MS) {
         motion_log_ms %= MOTION_LOG_PERIOD_MS;
@@ -452,12 +470,14 @@ read_motion(uint32_t dt_ms) {
         const vec3i_t bias_dps10 = motion_log_vector(gravity_gyro_bias(&gravity), OFFSET_SCALE);
         ESP_LOGI(TAG,
                  "motion raw %d,%d,%d tilt %d bearing %d filt %d,%d str %d shake %d turn %d rot %d,%d,%d quarter %d "
-                 "grav_mg %d,%d,%d bias_dps10 %d,%d,%d",
+                 "grav_mg %d,%d,%d bias_dps10 %d,%d,%d samples %d drain_us %lld",
                  raw_acceleration.x, raw_acceleration.y, raw_acceleration.z, (int)lroundf(motion_probe.tilt_deg),
                  motion_probe.bearing_deg, tilt_x(&tilt), tilt_y(&tilt), tilt_strength(&tilt), tilt_shake(&tilt),
                  motion.turn_speed, motion.rotation.x, motion.rotation.y, motion.rotation.z, display_quarter_now(),
                  (int)down_mg.x, (int)down_mg.y, (int)down_mg.z, (int)bias_dps10.x, (int)bias_dps10.y,
-                 (int)bias_dps10.z);
+                 (int)bias_dps10.z, motion_samples, (long long)motion_drain_us);
+        motion_samples = 0;
+        motion_drain_us = 0;
     }
 }
 
@@ -811,6 +831,8 @@ input_lab_frame(uint32_t dt_ms, const input_t* input) {
 
 static void
 input_lab_exit(void) {
+    memory_free(motion_batch);
+    motion_batch = NULL;
     imu_record_free(&imu_record);
     log_panel_range();
 }
