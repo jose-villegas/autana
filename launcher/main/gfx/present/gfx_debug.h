@@ -1,9 +1,9 @@
 /*
  * gfx_debug: development-build instruments on the present path, overlays
  * drawn over what is sent and counts of how it was sent. Declared only in a
- * development build, and on a host where a render scene stands them in, so
- * calling one from a non-development file fails to compile rather than
- * silently no-opping.
+ * development build, and in a host build, where a test or render scene
+ * supplies them, so calling one from a non-development file fails to compile
+ * rather than silently no-opping.
  */
 #pragma once
 

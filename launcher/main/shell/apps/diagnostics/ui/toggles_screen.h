@@ -42,7 +42,7 @@ typedef struct {
     bool selftest_clicked; /* meaningful only in a SELFTEST build */
 } toggles_screen_result_t;
 
-/* The page clears to this before the rows are drawn. */
+/* The colour the caller passes to ui_end() for this page. */
 #define TOGGLES_SCREEN_BACKGROUND 0x0A0C14
 
 /* Caller brackets drawing with ui_begin()/ui_end(). */

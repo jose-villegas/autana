@@ -507,10 +507,10 @@ def build_idf_entries(toolchain_root, vendored=False):
 
 
 # apps/*/tools/**/*.c and shell/apps/*/tools/**/*.c, at any depth, are
-# excluded from the firmware and the host build (main/CMakeLists.txt, run_tests.sh), but check_main_coverage()'s
-# rglob("*.c") reaches them, so they get real flags: each compiles on a host
-# with the runner's flags plus -I main/apps/<app> for its sibling headers
-# (material.h, sand.h, ...).
+# excluded from the firmware and the host build (main/CMakeLists.txt,
+# run_tests.sh), but check_main_coverage()'s rglob("*.c") reaches them, so
+# they get real flags: each compiles on a host with the runner's flags plus
+# -I main/apps/sand for sibling headers (material.h, sand.h, ...).
 TOOLS_FILES_EXTRA_INCLUDE = "apps/sand"
 
 
