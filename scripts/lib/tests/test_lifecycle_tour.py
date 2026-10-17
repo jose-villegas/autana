@@ -153,7 +153,16 @@ class TourTests(unittest.TestCase):
                 if line.startswith("IMU quarter "):
                     clock.return_value = 1
 
+            lines = transport.lines
+
+            def delayed_lines(seconds=None):
+                for line in lines(seconds):
+                    if line.startswith("IMU_OK"):
+                        clock.return_value = 2
+                    yield line
+
             transport.send = delayed_send
+            transport.lines = delayed_lines
             tour.exchange(transport, tour.Step("HOME", "HOME", "IMU quarter 1"))
         sleep.assert_called_once_with(0.001)
 

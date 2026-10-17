@@ -2172,7 +2172,7 @@ class LifecycleTourTests(unittest.TestCase):
         stream = io.StringIO()
         with contextlib.redirect_stdout(stream):
             print(autana.help_text(["debug"]))
-        self.assertIn("debug tour", stream.getvalue())
+        self.assertIn("debug tour [seconds] [--out PATH]", stream.getvalue())
         for args in (["--unknown"], ["0"], ["1", "2"]):
             with self.assertRaises(SystemExit):
                 autana.debug(["tour"] + args)
