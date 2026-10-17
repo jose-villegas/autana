@@ -57,14 +57,6 @@ jobs:
             fi
           done
 
-      - name: TEMP diagnose the runner environment
-        run: |
-          env | grep -iE '^(IDF|PATH|PYTHON|HOME|USERPROFILE|_AUTANA|TEMP)' | cut -c1-300
-          export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
-          . scripts/lib/python.sh; P=$(find_python); echo "find_python=$P"; "$P" --version
-          "$P" -c "import sys; sys.path.insert(0,'launcher/tools/build'); import espressif; print(espressif.find_idf()); print(espressif.idf_python())"
-          autana devices || true
-
       - name: Self-test under one board lock
         id: device
         run: |
