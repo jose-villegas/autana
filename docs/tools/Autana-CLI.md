@@ -97,6 +97,8 @@ ESP-IDF is used and where builds live: [Build-Environment.md](Build-Environment.
 
 ## Tests
 
+Runs suites, and other pass/fail signals from the board such as `tone`.
+
 `autana help tests` · `suite` is the everyday path; `selftest` runs every
 registered suite, for a full pre-merge pass.
 
