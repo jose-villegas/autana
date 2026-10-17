@@ -52,18 +52,10 @@ audio_codec_destroy(void) {
         data = NULL;
     }
     if (tx) {
-        const esp_err_t status = i2s_channel_disable(tx);
-        if (status != ESP_ERR_INVALID_STATE) {
-            (void)audio_codec_check("disable TX", status);
-        }
         (void)audio_codec_check("delete TX", i2s_del_channel(tx));
         tx = NULL;
     }
     if (rx) {
-        const esp_err_t status = i2s_channel_disable(rx);
-        if (status != ESP_ERR_INVALID_STATE) {
-            (void)audio_codec_check("disable RX", status);
-        }
         (void)audio_codec_check("delete RX", i2s_del_channel(rx));
         rx = NULL;
     }
@@ -86,11 +78,10 @@ audio_codec_init_data(void) {
             {.mclk = BSP_I2S_MCLK, .bclk = BSP_I2S_SCLK, .ws = BSP_I2S_LCLK, .dout = BSP_I2S_DOUT, .din = BSP_I2S_DSIN},
     };
     if (!audio_codec_check("init TX", i2s_channel_init_std_mode(tx, &format))
-        || !audio_codec_check("init RX", i2s_channel_init_std_mode(rx, &format))
-        || !audio_codec_check("enable TX", i2s_channel_enable(tx))
-        || !audio_codec_check("enable RX", i2s_channel_enable(rx))) {
+        || !audio_codec_check("init RX", i2s_channel_init_std_mode(rx, &format))) {
         return false;
     }
+    /* esp_codec_dev's data interface enables and disables the channels with its devices. */
     audio_codec_i2s_cfg_t data_config = {.port = CONFIG_BSP_I2S_NUM, .tx_handle = tx, .rx_handle = rx};
     data = audio_codec_new_i2s_data(&data_config);
     if (!data) {
