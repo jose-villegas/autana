@@ -32,20 +32,29 @@ draw_toggle_row(const char* label, bool* value) {
 /* Shows three things, not just the quarter: raw accelerometer counts,
  * derived gx/gy (what display_update() actually decides from), and the
  * shell's current quarter, so a hold reads as "this orientation gives
- * these numbers, shell calls it quarter N" in one line, without doing the
- * arithmetic by hand. */
+ * these numbers, shell calls it quarter N" on one screen, without doing the
+ * arithmetic by hand. One value per line, so a full-scale reading fits the
+ * portrait canvas's clipped text rows. */
 static void
 draw_orientation_readout(const toggles_screen_state_t* state) {
-    char line[64];
+    char line[32];
     if (!state->imu_ready) {
         draw_text_row(TEXT_ROW_HEIGHT, "no IMU");
     } else if (!state->have_sample) {
         draw_text_row(TEXT_ROW_HEIGHT, "IMU read failed");
     } else {
-        snprintf(line, sizeof line, "accel ax=%d ay=%d az=%d", state->accel_ax, state->accel_ay, state->accel_az);
-        draw_text_row(TEXT_ROW_HEIGHT, line);
-        snprintf(line, sizeof line, "gravity gx=%d gy=%d", state->gravity_gx, state->gravity_gy);
-        draw_text_row(TEXT_ROW_HEIGHT, line);
+        const struct {
+            const char* name;
+            int value;
+        } readings[] = {
+            {"accel ax", state->accel_ax},     {"accel ay", state->accel_ay},     {"accel az", state->accel_az},
+            {"gravity gx", state->gravity_gx}, {"gravity gy", state->gravity_gy},
+        };
+
+        for (size_t i = 0; i < sizeof readings / sizeof readings[0]; i++) {
+            snprintf(line, sizeof line, "%s=%d", readings[i].name, readings[i].value);
+            draw_text_row(TEXT_ROW_HEIGHT, line);
+        }
     }
     snprintf(line, sizeof line, "shell quarter=%d", state->shell_quarter);
     draw_text_row(TEXT_ROW_HEIGHT, line);

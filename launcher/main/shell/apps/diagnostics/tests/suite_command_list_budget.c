@@ -31,7 +31,7 @@
 
 /* tap()'s bits for the four rows above the fold at FIXTURE_QUARTER: overlay,
  * leaf, interlace and panel clock. */
-#define ABOVE_FOLD_TOGGLES 0xFu
+#define ABOVE_FOLD_TOGGLES 0xFU
 
 static void
 fixture(void) {
@@ -44,7 +44,7 @@ test_toggles_screen_command_list_fits_budget(void) {
     fixture();
 
     /* Worst case: every toggle on and the orientation readout showing a
-     * real sample, all three of its rows drawn. */
+     * real sample, all six of its rows drawn. */
     const toggles_screen_state_t state = {
         .overlay_on = true,
         .leaf_on = true,
@@ -102,7 +102,8 @@ test_a_tap_on_one_toggle_changes_only_that_toggle(void) {
 
     /* Taps arrive in panel space, as the touch controller reports them. */
     const affine2x_t t = ui_transform_quarter_turn(FIXTURE_QUARTER, GFX_WIDTH, GFX_HEIGHT);
-    unsigned reached = 0, row = 0;
+    unsigned reached = 0;
+    unsigned row = 0;
     for (int y = 0; y < ui_height(); y += TAP_STEP_PX) {
         const vec2i_t panel = affine2x_map_pixel(&t, (vec2i_t){ui_width() / 2, y});
         const unsigned flipped = tap(&state, panel.x, panel.y);
