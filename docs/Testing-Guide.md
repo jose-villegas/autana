@@ -613,7 +613,7 @@ selected by that hold. Pytest opens the port without flashing:
 
 ```sh
 autana build diag
-autana lock run -- bash -c 'autana flash diag && pytest launcher/test/device --embedded-services idf,serial --build-dir build.diag --port "$(python scripts/device/device.py resolve-port)" --skip-autoflash'
+autana lock run -- bash -c 'autana flash diag && pytest launcher/test/device --embedded-services idf,serial --build-dir build.diag --port "$(python scripts/device/device.py resolve-port | tr -d "\r")" --skip-autoflash'
 ```
 
 Engine recipes live in `launcher/test/device/`; app recipes live in

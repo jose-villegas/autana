@@ -22,7 +22,7 @@ autana() {
 }
 python() {
     case "$*" in
-        *resolve-port*) echo COM7 ;;
+        *resolve-port*) printf 'COM7\\r\\n' ;;
         *pytest*) echo "pytest $*" >> "$RUNNER_TEMP/calls"; return "$CI_PYTEST_EXIT" ;;
     esac
 }
