@@ -41,12 +41,11 @@ gravity_update(gravity_t* g, const input_motion_t* m, uint32_t dt_ms) {
             const vec3f_t correction = vec3f_cross(g->down, direction);
             const vec3f_t bias =
                 vec3f_add(g->gyro_bias, vec3f_scale(correction, GRAVITY_BIAS_KI * weight * dt / RADIANS_PER_DEGREE));
-            g->gyro_bias = (vec3f_t){mathf_clamp(bias.x, -GRAVITY_BIAS_MAX_DPS, GRAVITY_BIAS_MAX_DPS),
-                                     mathf_clamp(bias.y, -GRAVITY_BIAS_MAX_DPS, GRAVITY_BIAS_MAX_DPS),
-                                     mathf_clamp(bias.z, -GRAVITY_BIAS_MAX_DPS, GRAVITY_BIAS_MAX_DPS)};
+            const vec3f_t hi = {GRAVITY_BIAS_MAX_DPS, GRAVITY_BIAS_MAX_DPS, GRAVITY_BIAS_MAX_DPS};
+            g->gyro_bias = vec3f_clamp(bias, vec3f_scale(hi, -1.0F), hi);
             /* dt/(tau+dt) approximates exponential smoothing without a per-frame expf. */
             const float alpha = weight * dt / (GRAVITY_TAU_S + dt);
-            g->down = vec3f_normalize(vec3f_add(g->down, vec3f_scale(vec3f_sub(direction, g->down), alpha)));
+            g->down = vec3f_normalize(vec3f_lerp(g->down, direction, alpha));
             g->distrust_ms = 0;
         } else {
             g->distrust_ms += dt_ms;
@@ -69,12 +68,18 @@ gravity_linear(const gravity_t* g) {
     return g->linear;
 }
 
+vec3f_t
+gravity_gyro_bias(const gravity_t* g) {
+    return g->gyro_bias;
+}
+
 float
 gravity_strength(const gravity_t* g) {
     if (gravity_in_free_fall(g)) {
         return 0.0F;
     }
-    return mathf_clamp(sqrtf(g->down.x * g->down.x + g->down.y * g->down.y), 0.0F, 1.0F);
+    const vec2f_t plane = vec3f_xy(g->down);
+    return mathf_clamp(sqrtf(vec2f_dot(plane, plane)), 0.0F, 1.0F);
 }
 
 bool

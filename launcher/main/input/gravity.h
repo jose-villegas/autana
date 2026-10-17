@@ -1,14 +1,6 @@
-/*
- * gravity: estimates down and linear acceleration in screen axes. Gyro rotation
- * predicts down; acceleration only corrects it because an accelerometer cannot
- * distinguish gravity from other acceleration. Pure logic: no sensor or clock.
- *
- * Each update clamps time, predicts down from the bias-corrected gyro, corrects
- * with trusted acceleration (or recovers after rejection), subtracts down to
- * find linear acceleration, and integrates accepted correction error into bias.
- *
- * tilt stays beside it for now.
- */
+/* gravity: estimates down, linear acceleration and gyro bias in screen axes.
+ * Acceleration cannot distinguish gravity from other forces, so magnitude
+ * trust and angular acceptance gate correction. Pure logic: no sensor or clock. */
 #pragma once
 
 #include <stdbool.h>
@@ -23,11 +15,11 @@
 #define GRAVITY_TRUST_FULL_G              0.1F
 /* Android WindowOrientationListener's acceleration tolerance, 4 m/s^2. */
 #define GRAVITY_TRUST_NONE_G              0.4F
-/* Madgwick, x-io Fusion's default acceleration rejection. */
+/* Madgwick, x-io Fusion's recommended acceleration rejection. */
 #define GRAVITY_REJECT_DEG                10.0F
 /* cos(GRAVITY_REJECT_DEG), precomputed with the angle in degrees. */
 #define GRAVITY_REJECT_COS                0.984807753F
-/* Madgwick, x-io Fusion's default recovery trigger period, in milliseconds. */
+/* Madgwick, x-io Fusion's recommended recovery trigger period, in milliseconds. */
 #define GRAVITY_RECOVER_MS                5000U
 /* QMI8658C datasheet, Table 8: board-level initial gyro offset tolerance. */
 #define GRAVITY_GYRO_OFFSET_TOL_DPS       10.0F
@@ -40,14 +32,11 @@
     (GRAVITY_GYRO_OFFSET_TOL_DPS + GRAVITY_GYRO_OFFSET_TCO_DPS_PER_C * GRAVITY_GYRO_TEMP_SPAN_C)
 /* Ours: target 2% settling time for a datasheet-sized gyro offset. */
 #define GRAVITY_BIAS_SETTLE_S 20.0F
-/* Mahony et al.: theta' = b_err - theta/TAU, b_err' = -KI*theta gives
- * s^2 + s/TAU + KI = 0. For KI << 1/(4*TAU^2), the slow pole is about
- * -KI*TAU. Four slow time constants give 2% settling: KI = 4/(TAU*SETTLE).
- * KI is in 1/s^2; at our settings 0.4 < 1/(4*TAU^2), so the loop is overdamped. */
+/* Integral gain in 1/s^2; derivation: docs/notes/Input-and-Sensors.md, Gravity estimation. */
 #define GRAVITY_BIAS_KI       (4.0F / (GRAVITY_TAU_S * GRAVITY_BIAS_SETTLE_S))
-/* From tilt's TILT_FREE_FALL_PCT, in g. */
+/* Acceleration magnitude below which strength is zero, in g. */
 #define GRAVITY_FREE_FALL_G   0.3F
-/* From tilt's TILT_MAX_DT_MS, in milliseconds. */
+/* Maximum prediction and correction interval, in milliseconds. */
 #define GRAVITY_MAX_DT_MS     100U
 
 typedef struct {
@@ -71,7 +60,9 @@ void gravity_update(gravity_t* g, const input_motion_t* m, uint32_t dt_ms);
 vec3f_t gravity_down(const gravity_t* g);
 /* Last acceleration minus down in screen axes, in g; zero after reset. */
 vec3f_t gravity_linear(const gravity_t* g);
+/* Learned gyro bias in screen axes, in deg/s. */
+vec3f_t gravity_gyro_bias(const gravity_t* g);
 /* sin of tilt from flat, 0..1; zero during free fall. */
 float gravity_strength(const gravity_t* g);
-/* True when |linear + down| is below GRAVITY_FREE_FALL_G; false at the boundary. */
+/* True when |linear + down| is below GRAVITY_FREE_FALL_G. */
 bool gravity_in_free_fall(const gravity_t* g);

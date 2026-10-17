@@ -258,8 +258,102 @@ test_stalled_dt_is_clamped(void) {
     TEST_ASSERT_EQUAL_UINT32(clamped.distrust_ms, g.distrust_ms);
 }
 
+#define TRUST_RATIO_TOLERANCE   (GRAVITY_TRUST_FULL_G / 100.0F)
+/* Independent reference keeps a gain change from moving its own settling deadline. */
+#define BIAS_REFERENCE_SETTLE_S 20.0F
+#define BIAS_REFERENCE_KI       (4.0F / (GRAVITY_TAU_S * BIAS_REFERENCE_SETTLE_S))
+
+static gravity_t
+correction_at_magnitude(int counts) {
+    gravity_t state = {.down = {sinf(CORRECTION_ANGLE_RAD), 0, -cosf(CORRECTION_ANGLE_RAD)}};
+    const input_motion_t m = {.acceleration = {0, 0, -counts}};
+    gravity_update(&state, &m, STEP_MS);
+    return state;
+}
+
+static void
+test_trust_ramp_ratios_and_symmetry(void) {
+    const int full_counts = (int)(GRAVITY_TRUST_FULL_G * INPUT_ACCEL_ONE_G);
+    const int none_counts = (int)(GRAVITY_TRUST_NONE_G * INPUT_ACCEL_ONE_G);
+    const int departures[] = {full_counts + 1, (3 * full_counts + none_counts) / 4, (full_counts + none_counts) / 2,
+                              (full_counts + 3 * none_counts) / 4, none_counts - 1};
+    const gravity_t full = correction_at_magnitude(INPUT_ACCEL_ONE_G);
+    const float initial_x = sinf(CORRECTION_ANGLE_RAD);
+    const float full_pull = initial_x - full.down.x;
+    for (size_t i = 0; i < sizeof departures / sizeof departures[0]; i++) {
+        const float error = (float)departures[i] / INPUT_ACCEL_ONE_G;
+        const float weight = (GRAVITY_TRUST_NONE_G - error) / (GRAVITY_TRUST_NONE_G - GRAVITY_TRUST_FULL_G);
+        const gravity_t above = correction_at_magnitude(INPUT_ACCEL_ONE_G + departures[i]);
+        const gravity_t below = correction_at_magnitude(INPUT_ACCEL_ONE_G - departures[i]);
+        TEST_ASSERT_FLOAT_WITHIN(TRUST_RATIO_TOLERANCE, weight, above.gyro_bias.y / full.gyro_bias.y);
+        TEST_ASSERT_FLOAT_WITHIN(TRUST_RATIO_TOLERANCE, weight, (initial_x - above.down.x) / full_pull);
+        assert_vector(above.down, below.down, FLT_EPSILON);
+        assert_vector(above.gyro_bias, below.gyro_bias, FLT_EPSILON);
+    }
+}
+
+static void
+test_acceptance_restarts_recovery(void) {
+    fixture();
+    const input_motion_t accepted = {.acceleration = {0, 0, -INPUT_ACCEL_ONE_G}};
+    const input_motion_t rejected = {.acceleration = {0, INPUT_ACCEL_ONE_G, 0}};
+    gravity_update(&g, &accepted, STEP_MS);
+    const uint32_t interval = GRAVITY_RECOVER_MS * 3U / 4U;
+    hold(rejected, interval);
+    gravity_update(&g, &accepted, STEP_MS);
+    hold(rejected, interval);
+    assert_vector((vec3f_t){0, 0, -1}, gravity_down(&g), FLOAT_TOLERANCE);
+}
+
+static void
+test_pull_time_constant(void) {
+    const input_motion_t m = {.acceleration = {0, 0, -INPUT_ACCEL_ONE_G}};
+    g = (gravity_t){.down = {sinf(CORRECTION_ANGLE_RAD), 0, -cosf(CORRECTION_ANGLE_RAD)}};
+    const float dt = (float)STEP_MS / MATH_MS_PER_S;
+    const unsigned steps = (unsigned)(GRAVITY_TAU_S / dt);
+    const float expected = g.down.x * powf(1.0F - dt / (GRAVITY_TAU_S + dt), (float)steps);
+    for (unsigned i = 0; i < steps; i++) {
+        g.gyro_bias = (vec3f_t){0};
+        gravity_update(&g, &m, STEP_MS);
+    }
+    TEST_ASSERT_FLOAT_WITHIN(expected * GRAVITY_TRUST_FULL_G / 10.0F, expected, g.down.x);
+}
+
+static void
+test_strength_uses_both_plane_axes(void) {
+    const float angle = GRAVITY_REJECT_DEG * MATH_PI / QUARTER_TURN_DEG;
+    const float plane = sinf(angle) / sqrtf(2.0F);
+    g = (gravity_t){.down = {plane, plane, -cosf(angle)}};
+    TEST_ASSERT_FLOAT_WITHIN(FLT_EPSILON, sinf(angle), gravity_strength(&g));
+}
+
+static void
+test_bias_slow_pole_and_no_overshoot(void) {
+    fixture();
+    const input_motion_t m = sample((vec3f_t){0, 0, -1}, (vec3f_t){BIAS_DPS, 0, 0});
+    const input_motion_t rest = {.acceleration = {0, 0, -INPUT_ACCEL_ONE_G}};
+    gravity_update(&g, &rest, STEP_MS);
+    const float inverse_tau = 1.0F / GRAVITY_TAU_S;
+    const float slow = (inverse_tau - sqrtf(inverse_tau * inverse_tau - 4.0F * BIAS_REFERENCE_KI)) / 2.0F;
+    const uint32_t early_ms = (uint32_t)(2.0F * MATH_MS_PER_S / slow);
+    const uint32_t final_ms = (uint32_t)(6.0F * MATH_MS_PER_S / slow);
+    for (uint32_t ms = 0; ms < final_ms; ms += STEP_MS) {
+        gravity_update(&g, &m, STEP_MS);
+        TEST_ASSERT_TRUE(gravity_gyro_bias(&g).x <= BIAS_DPS + BIAS_TOLERANCE);
+        if (ms + STEP_MS <= early_ms) {
+            TEST_ASSERT_TRUE(gravity_gyro_bias(&g).x < BIAS_DPS - BIAS_TOLERANCE);
+        }
+    }
+    TEST_ASSERT_FLOAT_WITHIN(BIAS_TOLERANCE, BIAS_DPS, gravity_gyro_bias(&g).x);
+}
+
 void
 run_gravity_suite(void) {
+    RUN_TEST(test_trust_ramp_ratios_and_symmetry);
+    RUN_TEST(test_acceptance_restarts_recovery);
+    RUN_TEST(test_pull_time_constant);
+    RUN_TEST(test_strength_uses_both_plane_axes);
+    RUN_TEST(test_bias_slow_pole_and_no_overshoot);
     RUN_TEST(test_rejection_cosine_matches_angle);
     RUN_TEST(test_stationary_poses_settle);
     RUN_TEST(test_first_reading_is_adopted_exactly);

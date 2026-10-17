@@ -108,12 +108,19 @@ class MotionFitTest(unittest.TestCase):
             ("motion", motion_fit.MOTION, tuple(range(1, 21)), ("1", "2", "3", "4", "5", "10", "11", "12", "13", "14")),
             ("pose", motion_fit.POSE, ("face_up", 1, -2, 3, -4, 5, -6, 7), ("face_up", "1 -2 3 -4 5 -6 7")),
             ("calib", motion_fit.CALIB, tuple(range(1, 10)), tuple(map(str, range(1, 10)))),
+            ("GRAV", re.compile(r"GRAV (\w+) down (-?\d+\.\d{6}) (-?\d+\.\d{6}) (-?\d+\.\d{6}) bias_dps (-?\d+\.\d{6}) (-?\d+\.\d{6}) (-?\d+\.\d{6})"),
+             ("face_up", 6, 0., 6, 0., 6, -1., 6, 0., 6, 0., 6, 0.),
+             ("face_up", "0.000000", "0.000000", "-1.000000", "0.000000", "0.000000", "0.000000")),
+            ("turn", re.compile(r"turn ms (\d+) down (-?\d+\.\d{6}) (-?\d+\.\d{6}) (-?\d+\.\d{6})"),
+             (0, 6, 0., 6, 1., 6, 0.), ("0", "0.000000", "1.000000", "0.000000")),
         ):
             with self.subTest(prefix=prefix):
                 formats = re.findall(r'"(' + prefix + r' [^"\n]*%[^"\n]+)"', source)
+                if prefix == "GRAV":
+                    formats = [fmt for fmt in formats if " bias_dps " in fmt]
                 self.assertEqual(1, len(formats))
                 line = formats[0] % values
-                match = regex.search(line)
+                match = regex.fullmatch(line)
                 self.assertIsNotNone(match, line)
                 self.assertEqual(expected, match.groups())
 
