@@ -28,7 +28,7 @@ Each image has its own build directory so one never reconfigures another:
 | dev | DEVELOPMENT | `autana build dev`, `autana flash dev` | `build.dev/` |
 | diag | DEVELOPMENT + SELFTEST | `autana build diag`, `autana flash diag`, `autana selftest` | `build.diag/` |
 
-See [Where builds live](tools/Autana-CLI.md#where-builds-live) for variant
+See [Where builds live](tools/Build-Environment.md#where-builds-live) for variant
 paths and their ESP-IDF identity stamps.
 
 `autana build` needs no board and takes no board lock; what it runs is

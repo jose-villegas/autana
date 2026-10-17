@@ -29,10 +29,6 @@ static const char* TAG = "post";
 
 #define EXPECTED_FLASH_BYTES  (16 * 1024 * 1024)
 
-/* The ES8311's datasheet address is 0x30 in 8-bit form; I2C wants the 7-bit
- * value. Getting this wrong reports a working codec as missing. */
-#define ES8311_I2C_7BIT_ADDR  0x18
-
 /* Results are retained rather than only logged. A board in the field may have
  * nothing attached to its serial port, so they have to be showable on screen. */
 static post_result_t results[POST_MAX_CHECKS];
@@ -287,13 +283,14 @@ check_audio_codec(void) {
     const bool powered = board_audio_amp_enable(true) == ESP_OK;
     timing_sleep_ms(10); /* let the rail settle before probing */
 
-    const bool present = i2c_master_probe(bus, ES8311_I2C_7BIT_ADDR, 100) == ESP_OK;
+    const bool present = i2c_master_probe(bus, BOARD_AUDIO_CODEC_I2C_ADDR, 100) == ESP_OK;
 
     /* Leave it off again: POST must not change the state the shell inherits. */
     board_audio_amp_enable(false);
 
     char detail[96];
-    snprintf(detail, sizeof(detail), "0x%02x  ES8311%s", ES8311_I2C_7BIT_ADDR, powered ? "" : " (amp enable failed)");
+    snprintf(detail, sizeof(detail), "0x%02x  ES8311%s", BOARD_AUDIO_CODEC_I2C_ADDR,
+             powered ? "" : " (amp enable failed)");
     report("audio codec", present, POST_REQUIRED, detail);
 }
 

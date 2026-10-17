@@ -1,0 +1,7 @@
+a: prototype
+b: codex-boot-floor-look
+impact: changed 450/164864 (0.27%), mean abs diff 0.018/255, holes A 0, holes B 0
+packet: changed 295/164864 (0.18%), mean abs diff 0.008/255, holes A 0, holes B 0
+title: changed 530/164864 (0.32%), mean abs diff 0.060/255, holes A 0, holes B 0
+swell: changed 446/164864 (0.27%), mean abs diff 0.057/255, holes A 0, holes B 0
+crossfade: changed 337/164864 (0.20%), mean abs diff 0.042/255, holes A 0, holes B 0

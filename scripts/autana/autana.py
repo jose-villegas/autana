@@ -442,6 +442,48 @@ def heap(args):
     return 0
 
 
+# Covers codec open, amplifier startup, capture settling and transport overhead.
+TONE_MARGIN_SECONDS = 10
+TONE_CAPTURE_COUNT = 2
+TONE_MS_PER_SECOND = 1000
+
+
+def tone(args):
+    usage = "usage: autana tone <hz> <ms> [volume] [--json]"
+    rest = list(args)
+    json_output = read_json_flag(rest[-1:] if rest and rest[-1] == "--json" else [], usage)
+    if json_output:
+        rest.pop()
+    if len(rest) not in (2, 3) or any(not re.fullmatch(r"[0-9]+", arg) for arg in rest):
+        sys.exit(usage)
+    ms = int(rest[1])
+    seconds = TONE_MARGIN_SECONDS + TONE_CAPTURE_COUNT * ms / TONE_MS_PER_SECOND
+    code, replies = send("TONE " + " ".join(rest), reply="TONE", seconds=seconds)
+    if code != 0 or not replies:
+        return code or 1
+    if replies[-1].startswith(("TONE usage:", "TONE error:")):
+        print(replies[-1], file=sys.stderr)
+        return 1
+    try:
+        result = parse_tone(replies[-1])
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 1
+    print(json.dumps(result) if json_output else replies[-1])
+    return 0
+
+
+def parse_tone(reply):
+    match = re.fullmatch(
+        r"TONE (heard|not heard) ([0-9]+) Hz: (-?[0-9]+\.[0-9]+) dB "
+        r"\(silence (-?[0-9]+\.[0-9]+) dB\), open ([0-9]+) B DMA", reply)
+    if not match:
+        raise ValueError(f"invalid TONE reply: {reply}")
+    heard, hz, tone_db, silence_db, dma = match.groups()
+    return {"hz": int(hz), "tone_db": float(tone_db), "silence_db": float(silence_db),
+            "heard": heard == "heard", "open_dma_bytes": int(dma)}
+
+
 def parse_heap(reply):
     match = re.fullmatch(r"HEAP free=(\d+) largest=(\d+) total=(\d+)", reply)
     if not match:
@@ -1477,6 +1519,10 @@ def console(_args=None):
 Command = namedtuple("Command", "name handler usages")
 
 
+def one(name, handler, usage, what):
+    return Command(name, handler, ((usage, what),))
+
+
 def alias(old, new, handler):
     """`old` still works: one migration line to stderr, then straight into
     `handler`, so a script built on a spelling `new` replaced does not
@@ -1488,8 +1534,8 @@ def alias(old, new, handler):
 
 
 LOCK_VERBS = {"wait": lock_wait, "take": take, "run": lock_run, "release": release, "hand": hand, "take-back": take_back}
-DEBUG_VERBS = {"freeze": freeze, "resume": resume, "step": step, "touch": touch, "imu": imu,
-              "framewatch": framewatch}
+DEBUG_VERBS = {"freeze": freeze, "resume": resume, "step": step, "touch": touch, "imu": imu}
+DEBUG_ALIASES = {"framewatch": alias("debug framewatch", "framewatch", framewatch)}
 
 
 def lock(args):
@@ -1503,13 +1549,11 @@ def lock(args):
 
 
 def debug(args):
-    """`autana debug <verb>`: freeze/resume/step/touch/imu/framewatch, kept
-    out of the top-level help (`autana help debug` still lists them) since a
-    session rarely needs them."""
-    if not args or args[0] not in DEBUG_VERBS:
+    """Frame-loop intervention and raw sensor overrides, hidden from bare help."""
+    if not args or args[0] not in DEBUG_VERBS | DEBUG_ALIASES:
         sys.exit("usage: autana debug <" + "|".join(DEBUG_VERBS) + "> ...")
     verb, rest = args[0], args[1:]
-    return DEBUG_VERBS[verb](rest)
+    return (DEBUG_VERBS | DEBUG_ALIASES)[verb](rest)
 
 
 LOCK_USAGES = (
@@ -1523,22 +1567,21 @@ LOCK_USAGES = (
 )
 
 
-# (key, title, commands). `autana help <key>` shows one group; each usage is
-# (synopsis without "autana ", one line of what it does). "debug" is left
-# out of the bare `autana help` listing, see HIDDEN_GROUPS.
+# Section rules: docs/tools/Autana-CLI.md.
 COMMAND_GROUPS = (
+    ("lock", "Sharing the board", (
+        Command("devices", devices, (("devices [--json]", "compact board list: ids, ports and availability"),)),
+        Command("status", status, (("status [--json]", "who holds the board, and who waits"),)),
+        Command("lock", lock, LOCK_USAGES),
+    )),
     ("build", "Build and flash", (
         Command("build", build, (
             ("build [rel|dev|diag] [--perf-scope] [--layout-seed N] [--hot-tunables] [--configure]",
              "build this project, no board; dev when omitted; a seed N > 0 pads the layout, 0 is the plain build; --configure only writes sdkconfig and compile_commands.json"),
             ("build diag --check", "the diagnostics build plus the complexity ratchet, no board"))),
-        Command("flash", flash, (
-            ("flash [rel|dev|diag] [--quiet] [--perf-scope] [--layout-seed N] [--hot-tunables]",
-             "build and flash this project; dev when omitted"),)),
-        Command("buildid", buildid, (
-            ("buildid [--json]", "the BUILD_ID the board is running"),)),
-        Command("heap", heap, (
-            ("heap [--json]", "free internal heap and largest block (development builds)"),)),
+        one("flash", flash, "flash [rel|dev|diag] [--quiet] [--perf-scope] [--layout-seed N] [--hot-tunables]",
+            "build and flash this project; dev when omitted"),
+        one("buildid", buildid, "buildid [--json]", "the BUILD_ID the board is running"),
     )),
     ("tests", "Tests", (
         Command("suite", suite, (
@@ -1550,50 +1593,49 @@ COMMAND_GROUPS = (
             ("suite <name> --set NAME=VALUE",
              "set a tunable under each capture's lock first; --set repeats"),
             ("suite list [text] [--json]", "the suites this project registers"))),
-        Command("selftest", selftest, (
-            ("selftest [seconds] [--verbose]",
-             "build diagnostics+autorun, run every suite on the board"),)),
+        one("selftest", selftest, "selftest [seconds] [--verbose]",
+            "build diagnostics+autorun, run every suite on the board"),
+        one("tone", tone, "tone <hz> <ms> [volume] [--json]",
+            "play a tone on the speaker and hear it on the mic; development builds"),
     )),
     ("watch", "Watch the board", (
-        Command("monitor", monitor, (
-            ("monitor [seconds] [--follow] [--stream] [--elf PATH]",
-             "the console live until Ctrl+C, or for N s"),)),
-        Command("reset", reset, (
-            ("reset [--capture [seconds]] [--verbose]", "reboot the board; --capture records the boot"),)),
+        one("monitor", monitor, "monitor [seconds] [--follow] [--stream] [--elf PATH]",
+            "the console live until Ctrl+C, or for N s"),
         Command("coredump", coredump, (
             ("coredump [--elf PATH]", "the last panic's core dump from flash, decoded against the running build"),
             ("coredump --erase", "clear it, so the next crash's dump is told from this one"),)),
         Command("screenshot", screenshot, (
             ("screenshot [--as-shown|--framebuffer] [-o PATH]", "the panel as PATH.png plus PATH.json"),
             ("screenshot --frames N -o PATH", "N consecutive frames, PATH-00 on, stepped while frozen"),)),
+        one("heap", heap, "heap [--json]", "free internal heap and largest block (development builds)"),
         Command("perf", perf, (
             ("perf", "the frame_cost names seen and the counter events"),
             ("perf <name> [event] [seconds]",
              "cycles and one event over one bracket for `seconds` s (10 when omitted), then off"),
             ("perf off", "disarm the counters"))),
+        one("framewatch", framewatch, "framewatch", "allocations and log lines repeating frame after frame, as JSON"),
     )),
-    ("input", "Drive input", (
-        Command("tap", tap, (("tap <x> <y>", "tap a point, in pixels of the default screenshot"),)),
-        Command("press", press, (("press <x> <y> [ms]", "hold a point, as tap reads it; 1000 ms when omitted"),)),
-        Command("drag", drag, (("drag <x0> <y0> <x1> <y1> <ms>", "drag between two points, as tap reads them"),)),
-        Command("button", button, (("button <boot|power> [short|long]", "press a board button"),)),
+    ("drive", "Drive", (
+        one("tap", tap, "tap <x> <y>", "tap a point, in pixels of the default screenshot"),
+        one("press", press, "press <x> <y> [ms]", "hold a point, as tap reads it; 1000 ms when omitted"),
+        one("drag", drag, "drag <x0> <y0> <x1> <y1> <ms>", "drag between two points, as tap reads them"),
+        Command("button", button, (
+            ("button <boot|power> [short]", "press a board button; short when omitted"),
+            ("button <boot|power> long", "hold it"))),
+        one("reset", reset, "reset [--capture [seconds]] [--verbose]",
+            "reboot the board; --capture records the boot"),
+        Command("apps", apps, (
+            ("apps", "the registered apps, and which is running"),
+            ("apps --json", "the same, as JSON"))),
+        one("open", open_app, "open <name>", "enter an app; case-insensitive prefix"),
+        one("home", home, "home", "back to the launcher"),
     )),
-    ("apps", "Apps", (
-        Command("apps", apps, (("apps [--json]", "the registered apps, and which is running"),)),
-        Command("open", open_app, (("open <name>", "enter an app; case-insensitive prefix"),)),
-        Command("home", home, (("home", "back to the launcher"),)),
-    )),
-    ("tune", "Tunables", (
+    ("tune", "Tune", (
         Command("tune", tune, (
             ("tune [text] [--json]", "list the tunables, names containing text"),
             ("tune <name> [value]", "show one, or set it on the board"),
             ("tune reset <name>", "back to the value the source declares"),
             ("tune save", "write the board's values into this project's TUNE() lines"))),
-    )),
-    ("lock", "Sharing the board", (
-        Command("devices", devices, (("devices [--json]", "compact board list: ids, ports and availability"),)),
-        Command("status", status, (("status [--json]", "who holds the board, and who waits"),)),
-        Command("lock", lock, LOCK_USAGES),
     )),
     ("debug", "Debug", (
         Command("debug", debug, (
@@ -1601,10 +1643,9 @@ COMMAND_GROUPS = (
             ("debug resume", "run it again"),
             ("debug step [N]", "advance N frames while frozen; 1 when omitted"),
             ("debug touch <down|up> <x> <y>", "one raw touch level; up hands back"),
-            ("debug imu <ax> <ay> <az>", "raw accelerometer counts; imu release hands back"),
-            ("debug framewatch", "allocations and log lines repeating frame after frame, as JSON"))),
+            ("debug imu <ax> <ay> <az>", "raw accelerometer counts; imu release hands back"))),
     )),
-    ("docs", "No board needed", (
+    ("docs", "Docs", (
         Command("docs", docs, (
             ("docs <question...>", "the sections that answer it, and where to read on"),
             ("docs --section <path:line>", "one section whole; --deep adds its subsections"),
@@ -1619,11 +1660,10 @@ HIDDEN_GROUPS = {"debug"}
 
 # Old spellings kept working, see alias()'s own docstring. "batch" moved
 # to suite() itself (its translation is not a plain forward) so it is not
-# here; every other renamed verb is a bare forward into its new group.
+# here; the remaining aliases forward directly to their handler.
 RENAMED_VERBS = {
     "freeze": ("debug freeze", freeze), "resume": ("debug resume", resume),
     "step": ("debug step", step), "touch": ("debug touch", touch), "imu": ("debug imu", imu),
-    "framewatch": ("debug framewatch", framewatch),
 }
 
 COMMANDS = {command.name: command.handler
