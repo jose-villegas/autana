@@ -59,7 +59,7 @@ test_baker_multiblock_round_trip(void) {
     double squared = 0;
     int maximum = 0;
     for (uint32_t i = 0; i < pcm.frames; i++) {
-        const int sample = audio_adpcm_read_sample(pcm.data + i * SOUND_PCM_BYTES);
+        const int sample = sound_read_sample(pcm.data + i * SOUND_PCM_BYTES);
         const int error = abs(sample - decoded[i]);
         maximum = error > maximum ? error : maximum;
         squared += (double)error * error;
