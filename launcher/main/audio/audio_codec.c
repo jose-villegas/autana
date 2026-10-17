@@ -15,8 +15,8 @@
 
 #define AUDIO_CODEC_PROBE_TIMEOUT_MS 100
 #define AUDIO_CODEC_PA_UNUSED        (-1)
-#define AUDIO_CODEC_PA_SUPPLY_VOLTS  5.0f
-#define AUDIO_CODEC_DAC_SUPPLY_VOLTS 3.3f
+#define AUDIO_CODEC_PA_SUPPLY_VOLTS  5.0F
+#define AUDIO_CODEC_DAC_SUPPLY_VOLTS 3.3F
 
 static const char* TAG = "audio_codec";
 static i2s_chan_handle_t tx;

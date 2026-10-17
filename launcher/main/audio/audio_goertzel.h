@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define AUDIO_GOERTZEL_FLOOR_DB (-120.0f)
+#define AUDIO_GOERTZEL_FLOOR_DB (-120.0F)
 
 typedef struct {
     float coefficient;
