@@ -214,6 +214,12 @@ proto_nearest_drawn(int i, int j, int last) {
     return best;
 }
 
+/* PROTOTYPE: 0 drops the dashed floor guides; the mesh lines on them keep
+ * their colour. */
+#ifndef PROTO_DRAW_GUIDES
+#define PROTO_DRAW_GUIDES 0
+#endif
+
 #ifndef PROTO_GUIDE_LINES
 #define PROTO_GUIDE_LINES 2
 #endif
@@ -453,7 +459,9 @@ draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t*
         plane = (vec3x_t){plane.x + row.x, plane.y + row.y, plane.z + row.z};
     }
 
-    draw_spokes(now_ms, ink, view);
+    if (PROTO_DRAW_GUIDES) {
+        draw_spokes(now_ms, ink, view);
+    }
 }
 
 /* The axes */
