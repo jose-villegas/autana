@@ -1489,6 +1489,7 @@ def alias(old, new, handler):
 
 LOCK_VERBS = {"wait": lock_wait, "take": take, "run": lock_run, "release": release, "hand": hand, "take-back": take_back}
 DEBUG_VERBS = {"freeze": freeze, "resume": resume, "step": step, "touch": touch, "imu": imu}
+DEBUG_ALIASES = {"framewatch": alias("debug framewatch", "framewatch", framewatch)}
 
 
 def lock(args):
@@ -1503,10 +1504,10 @@ def lock(args):
 
 def debug(args):
     """Frame-loop intervention and raw sensor overrides, hidden from bare help."""
-    if not args or args[0] not in DEBUG_VERBS:
+    if not args or args[0] not in DEBUG_VERBS | DEBUG_ALIASES:
         sys.exit("usage: autana debug <" + "|".join(DEBUG_VERBS) + "> ...")
     verb, rest = args[0], args[1:]
-    return DEBUG_VERBS[verb](rest)
+    return (DEBUG_VERBS | DEBUG_ALIASES)[verb](rest)
 
 
 LOCK_USAGES = (
@@ -1520,12 +1521,7 @@ LOCK_USAGES = (
 )
 
 
-# Section rules, first match wins: sharing is host-only, never firmware;
-# build makes/writes an image or identifies the running one; watch only reads
-# the board, so repeating it changes nothing; drive acts as a person holding
-# the board could; tune changes TUNE(); debug only suspends/steps the frame
-# loop or overrides sensors below input, with matching resume/release, hidden
-# from bare help. Tests run suites; docs searches documentation.
+# Section rules: docs/tools/Autana-CLI.md.
 COMMAND_GROUPS = (
     ("lock", "Sharing the board", (
         Command("devices", devices, (("devices [--json]", "compact board list: ids, ports and availability"),)),
@@ -1577,7 +1573,7 @@ COMMAND_GROUPS = (
         Command("framewatch", framewatch, (
             ("framewatch", "allocations and log lines repeating frame after frame, as JSON"),)),
     )),
-    ("input", "Drive", (
+    ("drive", "Drive", (
         Command("tap", tap, (("tap <x> <y>", "tap a point, in pixels of the default screenshot"),)),
         Command("press", press, (("press <x> <y> [ms]", "hold a point, as tap reads it; 1000 ms when omitted"),)),
         Command("drag", drag, (("drag <x0> <y0> <x1> <y1> <ms>", "drag between two points, as tap reads them"),)),
@@ -1622,7 +1618,6 @@ HIDDEN_GROUPS = {"debug"}
 RENAMED_VERBS = {
     "freeze": ("debug freeze", freeze), "resume": ("debug resume", resume),
     "step": ("debug step", step), "touch": ("debug touch", touch), "imu": ("debug imu", imu),
-    "debug framewatch": ("framewatch", framewatch),
 }
 
 COMMANDS = {command.name: command.handler
@@ -1630,8 +1625,6 @@ COMMANDS = {command.name: command.handler
 COMMANDS["console"] = console
 COMMANDS["batch"] = batch
 COMMANDS.update({old: alias(old, new, handler) for old, (new, handler) in RENAMED_VERBS.items()})
-DEBUG_VERBS.update({old.removeprefix("debug "): COMMANDS[old]
-                    for old in RENAMED_VERBS if old.startswith("debug ")})
 HELP_TOPICS = [key for key, _, _ in COMMAND_GROUPS] + [
     command.name for _, _, commands in COMMAND_GROUPS for command in commands] + ["flags", "config"]
 USAGE_WIDTH = 34

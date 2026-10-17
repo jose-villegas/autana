@@ -2153,9 +2153,15 @@ class RenamedVerbAliasTests(unittest.TestCase):
 
     def test_the_real_handlers_are_wired_up(self):
         expected = {"freeze": autana.freeze, "resume": autana.resume, "step": autana.step, "touch": autana.touch,
-                   "imu": autana.imu, "debug framewatch": autana.framewatch}
+                   "imu": autana.imu}
         self.assertEqual({old: handler for old, (_, handler) in autana.RENAMED_VERBS.items()},
                          expected)
+
+    def test_debug_framewatch_announces_the_top_level_spelling(self):
+        stream = io.StringIO()
+        with mock.patch.object(autana, "send", return_value=(0, ['{"allocs": 0}'])),                 contextlib.redirect_stderr(stream), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(autana.debug(["framewatch"]), 0)
+        self.assertIn("autana debug framewatch: use `autana framewatch`", stream.getvalue())
 
 
 class BoardOnlyCommandsTests(unittest.TestCase):

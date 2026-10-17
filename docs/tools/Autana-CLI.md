@@ -259,7 +259,7 @@ Only reads the board, so running a command twice changes nothing.
 
 Changes state the way a person holding the board could.
 
-`autana help input`
+`autana help drive`
 
 | Command | What it does |
 |---|---|
