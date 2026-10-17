@@ -20,7 +20,7 @@ if not defined python_command (
     exit /b 1
 )
 %python_command% "%~dp0..\scripts\autana\autana.py" %*
-exit /b
+exit /b %errorlevel%
 
 :probe
 %* -c "import sys; m=tuple(map(int, sys.argv[1].split('.'))); v=sys.version_info[:2]; sys.exit(v < m)" %python_min_version% >nul 2>&1
