@@ -78,7 +78,7 @@ flowchart TB
         W --> M[Average channels<br/>to mono]
         M --> R["Resample to 22,050 Hz<br/>skipped when the rate matches"]
     end
-    subgraph Encode["2. Encode, by the toml's format"]
+    subgraph Encode["2. Encode by the toml's format, check its loop"]
         direction LR
         F{format} -->|pcm16| P[int16 samples]
         F -->|adpcm| A[IMA-ADPCM blocks]
@@ -90,10 +90,8 @@ flowchart TB
         S["SOND entry<br/>32-byte header + data"] --> K[Pack]
         K --> O[sound_open maps it in place]
     end
-    R --> F
-    T -.->|format| F
-    T -.->|loop| L
-    L --> S
+    Source -->|mono samples, format, loop| Encode
+    Encode -->|samples and header fields| Use
 ```
 
 `format` is the only switch.

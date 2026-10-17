@@ -41,15 +41,15 @@ flowchart TB
     subgraph Play["Out: I2S to the speaker"]
         direction LR
         Tx["I2S TX<br/>DMA"] --> Dac["ES8311<br/>DAC"] --> Amp["power<br/>amplifier"] --> Speaker["speaker"]
+        Enable["board_audio_amp_enable()<br/>on GPIO 46"] -. enables .-> Amp
     end
     subgraph Capture["In: microphone to I2S"]
         direction LR
         Mic["microphone"] --> Adc["ES8311<br/>ADC"] --> Rx["I2S RX<br/>DMA"]
     end
-    Speaker -->|over the air| Mic
-    Enable["board_audio_amp_enable()<br/>on GPIO 46"] -. enables the amplifier .-> Amp
-    Codec["audio_codec"] -. configures the DAC over I2C .-> Dac
-    Codec -. configures the ADC over I2C .-> Adc
+    Codec["audio_codec"] -. configures the DAC over I2C .-> Play
+    Play -->|over the air| Capture
+    Codec -. configures the ADC over I2C .-> Capture
 ```
 
 The [volume table](#level-vs-volume) shows compression at high volume.
