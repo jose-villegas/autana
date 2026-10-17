@@ -1519,6 +1519,10 @@ def console(_args=None):
 Command = namedtuple("Command", "name handler usages")
 
 
+def one(name, handler, usage, what):
+    return Command(name, handler, ((usage, what),))
+
+
 def alias(old, new, handler):
     """`old` still works: one migration line to stderr, then straight into
     `handler`, so a script built on a spelling `new` replaced does not
@@ -1574,13 +1578,10 @@ COMMAND_GROUPS = (
             ("build [rel|dev|diag] [--perf-scope] [--layout-seed N] [--hot-tunables] [--configure]",
              "build this project, no board; dev when omitted; a seed N > 0 pads the layout, 0 is the plain build; --configure only writes sdkconfig and compile_commands.json"),
             ("build diag --check", "the diagnostics build plus the complexity ratchet, no board"))),
-        Command("flash", flash, (
-            ("flash [rel|dev|diag] [--quiet] [--perf-scope] [--layout-seed N] [--hot-tunables]",
-             "build and flash this project; dev when omitted"),)),
-        Command("buildid", buildid, (
-            ("buildid [--json]", "the BUILD_ID the board is running"),)),
-        Command("heap", heap, (
-            ("heap [--json]", "free internal heap and largest block (development builds)"),)),
+        one("flash", flash, "flash [rel|dev|diag] [--quiet] [--perf-scope] [--layout-seed N] [--hot-tunables]",
+            "build and flash this project; dev when omitted"),
+        one("buildid", buildid, "buildid [--json]", "the BUILD_ID the board is running"),
+        one("heap", heap, "heap [--json]", "free internal heap and largest block (development builds)"),
     )),
     ("tests", "Tests", (
         Command("suite", suite, (
@@ -1592,19 +1593,16 @@ COMMAND_GROUPS = (
             ("suite <name> --set NAME=VALUE",
              "set a tunable under each capture's lock first; --set repeats"),
             ("suite list [text] [--json]", "the suites this project registers"))),
-        Command("selftest", selftest, (
-            ("selftest [seconds] [--verbose]",
-             "build diagnostics+autorun, run every suite on the board"),)),
-        Command("tone", tone, (
-            ("tone <hz> <ms> [volume] [--json]",
-             "play a tone on the speaker and hear it on the mic; development builds"),)),
+        one("selftest", selftest, "selftest [seconds] [--verbose]",
+            "build diagnostics+autorun, run every suite on the board"),
+        one("tone", tone, "tone <hz> <ms> [volume] [--json]",
+            "play a tone on the speaker and hear it on the mic; development builds"),
     )),
     ("watch", "Watch the board", (
-        Command("monitor", monitor, (
-            ("monitor [seconds] [--follow] [--stream] [--elf PATH]",
-             "the console live until Ctrl+C, or for N s"),)),
-        Command("reset", reset, (
-            ("reset [--capture [seconds]] [--verbose]", "reboot the board; --capture records the boot"),)),
+        one("monitor", monitor, "monitor [seconds] [--follow] [--stream] [--elf PATH]",
+            "the console live until Ctrl+C, or for N s"),
+        one("reset", reset, "reset [--capture [seconds]] [--verbose]",
+            "reboot the board; --capture records the boot"),
         Command("coredump", coredump, (
             ("coredump [--elf PATH]", "the last panic's core dump from flash, decoded against the running build"),
             ("coredump --erase", "clear it, so the next crash's dump is told from this one"),)),
@@ -1618,15 +1616,15 @@ COMMAND_GROUPS = (
             ("perf off", "disarm the counters"))),
     )),
     ("input", "Drive input", (
-        Command("tap", tap, (("tap <x> <y>", "tap a point, in pixels of the default screenshot"),)),
-        Command("press", press, (("press <x> <y> [ms]", "hold a point, as tap reads it; 1000 ms when omitted"),)),
-        Command("drag", drag, (("drag <x0> <y0> <x1> <y1> <ms>", "drag between two points, as tap reads them"),)),
-        Command("button", button, (("button <boot|power> [short|long]", "press a board button"),)),
+        one("tap", tap, "tap <x> <y>", "tap a point, in pixels of the default screenshot"),
+        one("press", press, "press <x> <y> [ms]", "hold a point, as tap reads it; 1000 ms when omitted"),
+        one("drag", drag, "drag <x0> <y0> <x1> <y1> <ms>", "drag between two points, as tap reads them"),
+        one("button", button, "button <boot|power> [short|long]", "press a board button"),
     )),
     ("apps", "Apps", (
-        Command("apps", apps, (("apps [--json]", "the registered apps, and which is running"),)),
-        Command("open", open_app, (("open <name>", "enter an app; case-insensitive prefix"),)),
-        Command("home", home, (("home", "back to the launcher"),)),
+        one("apps", apps, "apps [--json]", "the registered apps, and which is running"),
+        one("open", open_app, "open <name>", "enter an app; case-insensitive prefix"),
+        one("home", home, "home", "back to the launcher"),
     )),
     ("tune", "Tunables", (
         Command("tune", tune, (
@@ -1636,8 +1634,8 @@ COMMAND_GROUPS = (
             ("tune save", "write the board's values into this project's TUNE() lines"))),
     )),
     ("lock", "Sharing the board", (
-        Command("devices", devices, (("devices [--json]", "compact board list: ids, ports and availability"),)),
-        Command("status", status, (("status [--json]", "who holds the board, and who waits"),)),
+        one("devices", devices, "devices [--json]", "compact board list: ids, ports and availability"),
+        one("status", status, "status [--json]", "who holds the board, and who waits"),
         Command("lock", lock, LOCK_USAGES),
     )),
     ("debug", "Debug", (
