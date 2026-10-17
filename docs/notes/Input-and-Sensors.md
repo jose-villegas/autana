@@ -76,17 +76,19 @@ display upright with its bottom edge down until `ARMED: TURN NOW`, then turn
 90 degrees clockwise quickly. A longer cyan flash means the round is complete.
 Keep this app open, reconnect USB, and run `autana labdump > imu-round.log`
 on the PC. The command prints the kept lines between `LABDUMP_BEGIN` and
-`LABDUMP_END`, then frees them. `autana` opens the Windows serial port without
-asserting DTR/RTS. Results live in RAM: a reset, a new round, or leaving the app
-discards them; SAVE and CLEAR keep them available for replay.
+`LABDUMP_END`, then frees them. `autana` sets DTR/RTS low before opening on
+Windows. On POSIX hosts (including Linux), it opens with both raised, then
+lowers RTS before DTR. Results live in RAM: a reset, a new round, or leaving
+the app discards them; SAVE and CLEAR keep them available for replay.
 
 Each pose records `GRAV` down (unit vector) and gyro bias (deg/s) alongside
 the calibration reading. After the upright hold, rotation above
 `IMU_PROBE_TURN_THRESHOLD` starts the `turn` down trace at time zero.
 `imu_probe.h` owns its duration and sampling bound; timestamps are elapsed
 milliseconds from the trigger. Missing readings are not synthesized.
-The `LABDUMP` line prefix preserves the payload through the console transport;
-the calibration tools accept both live lines and replayed dumps.
+Every kept line starts with `LABDUMP` so its payload can be told apart from
+the console's log lines; the calibration tools accept both live lines and
+replayed dumps.
 
 `input_read_motion()` subtracts the stored accelerometer offset before any
 consumer filters or reads acceleration. The settings service stores Q12 g
@@ -255,9 +257,12 @@ flowchart TD
 ```
 
 Magnitude trust falls linearly between the full-trust and no-trust thresholds.
+Android's `ACCELERATION_TOLERANCE` of 4 m/s^2 supplies our approximate
+zero-trust end (0.4 g), rather than Android's hard acceleration gate.
 Accepted acceleration corrects down with alpha = weight * dt / (tau + dt),
 followed by normalization. Angular rejection and timed recovery use the
 thresholds recommended by Madgwick's x-io Fusion library.<sup>[[72]](../Citations.md#72)</sup>
+Our recovery adopts the reading exactly, unlike Fusion's continued correction.
 Recovery adopts nonzero acceleration exactly after continuous rejection exceeds
 the limit. Reset primes that recovery path so the first nonzero reading is
 adopted exactly, including when no time has elapsed. Zero acceleration skips
@@ -266,9 +271,11 @@ correction and recovery counting, keeping the prediction finite in free fall.
 While acceleration is accepted, the Mahony, Hamel and Pflimlin integral bias
 term accumulates `cross(down, direction)` before the down correction, weighted
 by magnitude trust and elapsed seconds.<sup>[[71]](../Citations.md#71)</sup>
-The radian correction is converted to degrees so bias stays in deg/s. Each
-axis is clamped to `GRAVITY_BIAS_MAX_DPS`. Rejection, zero acceleration and
-recovery adoption add no bias. Error is perpendicular to down, so bias along
+Our minus-cross prediction determines the correction sign. The integral is
+gated by magnitude trust and acceptance. The radian correction is converted
+to degrees so bias stays in deg/s. Each axis is clamped to
+`GRAVITY_BIAS_MAX_DPS`; the paper does not specify this clamp. Rejection,
+zero acceleration and recovery adoption add no bias. Error is perpendicular to down, so bias along
 gravity is unobservable; rotation about down does not change down.
 
 Per axis, the linearised loop is theta' = b_err - theta/TAU and
@@ -296,12 +303,11 @@ The constants are owned by `launcher/main/input/gravity.h`:
 | `GRAVITY_GYRO_TEMP_SPAN_C` | 60 C | 25 C reference to 85 C operating limit<sup>[[74]](../Citations.md#74)</sup> |
 | `GRAVITY_BIAS_MAX_DPS` | 13 deg/s | QMI8658C datasheet, Table 8: initial offset plus temperature drift, 10 + 0.05 * 60<sup>[[74]](../Citations.md#74)</sup> |
 | `GRAVITY_BIAS_SETTLE_S` | 20 s | Ours, target 2% settling for a datasheet-sized offset |
-| `GRAVITY_BIAS_KI` | 4 / (TAU * SETTLE_S) = 0.4 /s^2 | Linearised integral loop, derived above |
-| `GRAVITY_FREE_FALL_G` | 0.3 g | Tilt's `TILT_FREE_FALL_PCT` |
-| `GRAVITY_MAX_DT_MS` | 100 ms | Tilt's `TILT_MAX_DT_MS` |
+| `GRAVITY_BIAS_KI` | derived from TAU and SETTLE_S | Linearised integral loop, derived above |
+| `GRAVITY_FREE_FALL_G` | 0.3 g | Acceleration magnitude below which strength is zero |
+| `GRAVITY_MAX_DT_MS` | 100 ms | Maximum prediction and correction interval |
 
-Screen orientation and app consumers are planned to move onto this estimator.
-Tilt remains available until those consumers migrate.
+The shell reads tilt today; gravity is not in `input_t`.
 
 ## Related
 

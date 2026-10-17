@@ -94,7 +94,8 @@ static const char* TAG = "input_lab";
 #define COL_MOTION_FILTER    0x40E0FF
 #define COL_MOTION_RING      0x607080
 
-/* Arm-length cues: white acknowledges a reading; longer cyan ends the round. */
+/* White acknowledges a reading; longer cyan ends the round. Both are readable
+ * at arm's length while unplugged. */
 #define IMU_POSE_FLASH_MS    160U
 #define IMU_DONE_FLASH_MS    600U
 #define COL_IMU_POSE_FLASH   0xFFFFFF
@@ -442,29 +443,20 @@ read_motion(uint32_t dt_ms) {
                  raw_acceleration.x, raw_acceleration.y, raw_acceleration.z, (int)lroundf(motion_probe.tilt_deg),
                  motion_probe.bearing_deg, tilt_x(&tilt), tilt_y(&tilt), tilt_strength(&tilt), tilt_shake(&tilt),
                  motion.turn_speed, motion.rotation.x, motion.rotation.y, motion.rotation.z, display_quarter_now(),
-                 (int)lroundf(gravity.down.x * IMU_PROBE_MILLI), (int)lroundf(gravity.down.y * IMU_PROBE_MILLI),
-                 (int)lroundf(gravity.down.z * IMU_PROBE_MILLI), (int)lroundf(gravity.gyro_bias.x * OFFSET_SCALE),
-                 (int)lroundf(gravity.gyro_bias.y * OFFSET_SCALE), (int)lroundf(gravity.gyro_bias.z * OFFSET_SCALE));
+                 (int)lroundf(gravity_down(&gravity).x * IMU_PROBE_MILLI),
+                 (int)lroundf(gravity_down(&gravity).y * IMU_PROBE_MILLI),
+                 (int)lroundf(gravity_down(&gravity).z * IMU_PROBE_MILLI),
+                 (int)lroundf(gravity_gyro_bias(&gravity).x * OFFSET_SCALE),
+                 (int)lroundf(gravity_gyro_bias(&gravity).y * OFFSET_SCALE),
+                 (int)lroundf(gravity_gyro_bias(&gravity).z * OFFSET_SCALE));
     }
 }
 
-static void
-log_imu_line(const char* format, ...) {
-    char line[IMU_RECORD_LINE_SIZE] = IMU_RECORD_PREFIX " ";
-    const size_t prefix = sizeof(IMU_RECORD_PREFIX " ") - 1;
-    va_list args;
-    va_start(args, format);
-    const int length = vsnprintf(line + prefix, sizeof line - prefix - 1, format, args);
-    va_end(args);
-    if (length < 0 || (size_t)length >= sizeof line - prefix - 1) {
-        memcpy(line, IMU_RECORD_TRUNCATED, sizeof IMU_RECORD_TRUNCATED);
-    } else {
-        line[prefix + (size_t)length] = '\n';
-        line[prefix + (size_t)length + 1] = '\0';
-    }
-    (void)imu_record_append(&imu_record, line);
-    ESP_LOGI(TAG, "%.*s", (int)strlen(line) - 1, line);
-}
+#define LOG_IMU_LINE(...)                                                                                              \
+    do {                                                                                                               \
+        (void)imu_record_appendf(&imu_record, __VA_ARGS__);                                                            \
+        ESP_LOGI(TAG, __VA_ARGS__);                                                                                    \
+    } while (0)
 
 static void
 emit_imu_record(const char* text) {
@@ -476,13 +468,12 @@ dump_imu_record(const char* args) {
     if (*args != '\0') {
         return false;
     }
-    if (imu_round.active || (imu_round.pose == IMU_PROBE_POSE_COUNT && imu_round.step != IMU_PROBE_DONE)) {
-        printf(IMU_RECORD_PREFIX "_ERR round active\n");
-    } else if (imu_record.text == NULL) {
-        printf(IMU_RECORD_PREFIX "_ERR no kept round\n");
+    const char* error = imu_record_dump_error(&imu_record, imu_round.step);
+    if (error != NULL) {
+        printf("%s", error);
     } else {
         printf(IMU_RECORD_PREFIX "_BEGIN\n");
-        imu_record_replay(&imu_record, emit_imu_record);
+        imu_record_take(&imu_record, emit_imu_record);
         printf(IMU_RECORD_PREFIX "_END\n");
     }
     fflush(stdout);
@@ -493,10 +484,11 @@ APP_CONSOLE(IMU_RECORD_COMMAND, dump_imu_record);
 
 static void
 log_imu_gravity(int pose) {
-    log_imu_line("GRAV %s down %.*f %.*f %.*f bias_dps %.*f %.*f %.*f", imu_probe_pose_name(pose), IMU_GRAVITY_DIGITS,
-                 (double)gravity.down.x, IMU_GRAVITY_DIGITS, (double)gravity.down.y, IMU_GRAVITY_DIGITS,
-                 (double)gravity.down.z, IMU_GRAVITY_DIGITS, (double)gravity.gyro_bias.x, IMU_GRAVITY_DIGITS,
-                 (double)gravity.gyro_bias.y, IMU_GRAVITY_DIGITS, (double)gravity.gyro_bias.z);
+    LOG_IMU_LINE("GRAV %s down %.*f %.*f %.*f bias_dps %.*f %.*f %.*f", imu_probe_pose_name(pose), IMU_GRAVITY_DIGITS,
+                 (double)gravity_down(&gravity).x, IMU_GRAVITY_DIGITS, (double)gravity_down(&gravity).y,
+                 IMU_GRAVITY_DIGITS, (double)gravity_down(&gravity).z, IMU_GRAVITY_DIGITS,
+                 (double)gravity_gyro_bias(&gravity).x, IMU_GRAVITY_DIGITS, (double)gravity_gyro_bias(&gravity).y,
+                 IMU_GRAVITY_DIGITS, (double)gravity_gyro_bias(&gravity).z);
 }
 
 static void
@@ -504,16 +496,16 @@ log_imu_pose(void) {
     const int pose = imu_round.pose - 1;
     const imu_probe_average_t* average = &imu_round.poses[pose];
     const input_motion_t mean = imu_probe_average_read(average);
-    log_imu_line("pose %s %d %d %d %d %d %d %d", imu_probe_pose_name(pose), mean.acceleration.x, mean.acceleration.y,
+    LOG_IMU_LINE("pose %s %d %d %d %d %d %d %d", imu_probe_pose_name(pose), mean.acceleration.x, mean.acceleration.y,
                  mean.acceleration.z, mean.rotation.x, mean.rotation.y, mean.rotation.z, average->n);
     log_imu_gravity(pose);
     imu_flash_ms = IMU_POSE_FLASH_MS;
-    if (imu_round.active) {
+    if (imu_round.step == IMU_PROBE_POSES) {
         return;
     }
     const imu_probe_fit_t f = imu_round.fit;
     const vec3i_t offset_mg = imu_probe_mg(imu_probe_saved_offset(input_accel_offset(), &f));
-    log_imu_line("calib x off %d scale %d y off %d scale %d z off %d scale %d gyro %d,%d,%d", offset_mg.x,
+    LOG_IMU_LINE("calib x off %d scale %d y off %d scale %d z off %d scale %d gyro %d,%d,%d", offset_mg.x,
                  f.scale_ppm.x, offset_mg.y, f.scale_ppm.y, offset_mg.z, f.scale_ppm.z, f.gyro_mdps.x, f.gyro_mdps.y,
                  f.gyro_mdps.z);
 }
@@ -521,11 +513,11 @@ log_imu_pose(void) {
 static void
 update_imu_round(uint32_t dt_ms, const input_t* input) {
     imu_flash_ms = dt_ms < imu_flash_ms ? imu_flash_ms - dt_ms : 0;
-    if (input->pressed && !imu_round.active && imu_round.pose != IMU_PROBE_POSE_COUNT) {
+    if (input->pressed && imu_round.step == IMU_PROBE_IDLE) {
         imu_record_failed = !imu_record_start(&imu_record, IMU_RECORD_CAPACITY);
         if (!imu_record_failed) {
             imu_probe_start(&imu_round, DISPLAY_DEFAULT_QUARTER);
-            log_imu_line("round imu quarter %d", DISPLAY_DEFAULT_QUARTER);
+            LOG_IMU_LINE("round imu quarter %d", DISPLAY_DEFAULT_QUARTER);
         }
     }
     read_motion(dt_ms);
@@ -539,9 +531,9 @@ update_imu_round(uint32_t dt_ms, const input_t* input) {
         log_imu_pose();
     }
     const imu_probe_step_t previous = imu_round.step;
-    if (imu_probe_turn_update(&imu_round, have_motion ? &motion : NULL, gravity.down, read_dt_ms)) {
+    if (imu_probe_turn_update(&imu_round, have_motion ? &motion : NULL, gravity_down(&gravity), read_dt_ms)) {
         const vec3f_t down = imu_round.trace_down;
-        log_imu_line("turn ms %u down %.*f %.*f %.*f", (unsigned)imu_round.trace_ms, IMU_GRAVITY_DIGITS, (double)down.x,
+        LOG_IMU_LINE("turn ms %u down %.*f %.*f %.*f", (unsigned)imu_round.trace_ms, IMU_GRAVITY_DIGITS, (double)down.x,
                      IMU_GRAVITY_DIGITS, (double)down.y, IMU_GRAVITY_DIGITS, (double)down.z);
     }
     if (previous != IMU_PROBE_DONE && imu_round.step == IMU_PROBE_DONE) {
@@ -553,7 +545,7 @@ typedef enum { IMU_ACTION_NONE, IMU_ACTION_SAVE, IMU_ACTION_CLEAR } imu_action_t
 
 static bool
 draw_imu_turn(mu_Context* ctx) {
-    if (imu_round.step == IMU_PROBE_POSES || imu_round.step == IMU_PROBE_DONE) {
+    if (imu_round.step == IMU_PROBE_IDLE || imu_round.step == IMU_PROBE_POSES || imu_round.step == IMU_PROBE_DONE) {
         return false;
     }
     hud_line(ctx, 0, "UPRIGHT, THEN TURN 90 CW QUICKLY");
@@ -571,7 +563,7 @@ draw_imu_round(mu_Context* ctx) {
         return IMU_ACTION_NONE;
     }
     char line[MOTION_HUD_TEXT_SIZE];
-    if (imu_round.active) {
+    if (imu_round.step == IMU_PROBE_POSES) {
         char label[IMU_PROBE_LABEL_SIZE];
         imu_probe_pose_label(imu_round.pose, label, sizeof label);
         snprintf(line, sizeof line, "%s  POSE %d/%d", label, imu_round.pose + 1, IMU_PROBE_POSE_COUNT);
@@ -643,9 +635,10 @@ draw_gravity_line(mu_Context* ctx, int row) {
 
     enum { GRAV_X, GRAV_Y, GRAV_Z, GRAV_STRENGTH, GRAV_BIAS_X, GRAV_BIAS_Y, GRAV_BIAS_Z, GRAV_COUNT };
 
-    const float gravity_values[GRAV_COUNT] = {
-        gravity.down.x,      gravity.down.y,      gravity.down.z,     gravity_strength(&gravity),
-        gravity.gyro_bias.x, gravity.gyro_bias.y, gravity.gyro_bias.z};
+    const float gravity_values[GRAV_COUNT] = {gravity_down(&gravity).x,      gravity_down(&gravity).y,
+                                              gravity_down(&gravity).z,      gravity_strength(&gravity),
+                                              gravity_gyro_bias(&gravity).x, gravity_gyro_bias(&gravity).y,
+                                              gravity_gyro_bias(&gravity).z};
     char gravity_text[GRAV_COUNT][MOTION_G_TEXT_SIZE];
     for (size_t i = 0; i < GRAV_COUNT; i++) {
         const bool bias = i >= GRAV_BIAS_X;
@@ -668,7 +661,7 @@ draw_motion(mu_Context* ctx) {
         hud_line(ctx, 0, "NO MOTION SENSOR");
         return;
     }
-    if (imu_round.active || imu_round.pose == IMU_PROBE_POSE_COUNT) {
+    if (imu_round.step != IMU_PROBE_IDLE) {
         store_imu_result(draw_imu_round(ctx));
         return;
     }

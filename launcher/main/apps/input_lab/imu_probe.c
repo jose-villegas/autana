@@ -118,7 +118,7 @@ imu_probe_mg(vec3i_t q12) {
 
 void
 imu_probe_start(imu_probe_round_t* round, int quarter) {
-    *round = (imu_probe_round_t){.active = true, .quarter = quarter};
+    *round = (imu_probe_round_t){.step = IMU_PROBE_POSES, .quarter = quarter};
 }
 
 static bool
@@ -150,7 +150,7 @@ still(imu_probe_round_t* round, input_motion_t sample, uint32_t dt_ms) {
 
 bool
 imu_probe_update(imu_probe_round_t* round, const input_motion_t* sample, uint32_t dt_ms) {
-    if (!round->active || dt_ms == 0) {
+    if (round->step != IMU_PROBE_POSES || dt_ms == 0) {
         return false;
     }
     if (sample == NULL || dt_ms > IMU_PROBE_MAX_GAP_MS) {
@@ -176,7 +176,6 @@ imu_probe_update(imu_probe_round_t* round, const input_motion_t* sample, uint32_
     round->settle_ms = round->window_ms = 0;
     round->window = (imu_probe_average_t){0};
     if (round->pose == IMU_PROBE_POSE_COUNT) {
-        round->active = false;
         round->fit = imu_probe_fit(round->poses, round->quarter);
         round->step = IMU_PROBE_UPRIGHT;
     }
@@ -226,7 +225,8 @@ turn_trace(imu_probe_round_t* round, const input_motion_t* sample, vec3f_t down,
 
 bool
 imu_probe_turn_update(imu_probe_round_t* round, const input_motion_t* sample, vec3f_t down, uint32_t dt_ms) {
-    if (dt_ms == 0 || round->step == IMU_PROBE_POSES || round->step == IMU_PROBE_DONE) {
+    if (dt_ms == 0 || round->step == IMU_PROBE_IDLE || round->step == IMU_PROBE_POSES
+        || round->step == IMU_PROBE_DONE) {
         return false;
     }
     if (round->step == IMU_PROBE_UPRIGHT) {

@@ -46,10 +46,17 @@ typedef struct {
 #define IMU_PROBE_TURN_SAMPLES   21
 #define IMU_PROBE_TURN_PERIOD_MS (IMU_PROBE_TURN_WINDOW_MS / (IMU_PROBE_TURN_SAMPLES - 1))
 
-typedef enum { IMU_PROBE_POSES, IMU_PROBE_UPRIGHT, IMU_PROBE_TURN, IMU_PROBE_TRACE, IMU_PROBE_DONE } imu_probe_step_t;
+typedef enum {
+    IMU_PROBE_IDLE,
+    IMU_PROBE_POSES,
+    IMU_PROBE_UPRIGHT,
+    IMU_PROBE_TURN,
+    IMU_PROBE_TRACE,
+    IMU_PROBE_DONE
+} imu_probe_step_t;
 
 typedef struct {
-    bool active, primed;
+    bool primed;
     int pose, quarter;
     uint32_t settle_ms, window_ms;
     float recent_accel[3], recent_gyro[3];
@@ -70,8 +77,11 @@ imu_probe_fit_t imu_probe_fit(const imu_probe_average_t poses[IMU_PROBE_POSE_COU
 vec3i_t imu_probe_saved_offset(vec3i_t stored, const imu_probe_fit_t* fit);
 /* Q12 g counts to mg, rounded. */
 vec3i_t imu_probe_mg(vec3i_t q12);
+/* Starts pose collection in the supplied page quarter, discarding the previous round. */
 void imu_probe_start(imu_probe_round_t* round, int quarter);
 /* Returns true once per completed pose. NULL means no reading this frame. */
 bool imu_probe_update(imu_probe_round_t* round, const input_motion_t* sample, uint32_t dt_ms);
 
+/* Caller supplies estimated down in panel axes. Returns true only when trace_down and
+ * trace_ms hold a new decimated reading; NULL advances trace time without recording. */
 bool imu_probe_turn_update(imu_probe_round_t* round, const input_motion_t* sample, vec3f_t down, uint32_t dt_ms);

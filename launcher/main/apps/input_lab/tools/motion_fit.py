@@ -25,7 +25,7 @@ AXES = ("x", "y", "z")
 STAMP = re.compile(r"\((\d+)\)")
 CALIB = re.compile(r"calib x off (-?\d+) scale (-?\d+) y off (-?\d+) scale (-?\d+) z off (-?\d+) scale (-?\d+) gyro (-?\d+),(-?\d+),(-?\d+)")
 POSE = re.compile(r"pose (\w+) ((?:-?\d+ ){6}\d+)")
-MOTION = re.compile(r"motion raw (-?\d+),(-?\d+),(-?\d+).*?tilt (-?\d+).*?bearing (-?\d+).*?turn (\d+).*?rot (-?\d+),(-?\d+),(-?\d+) quarter (\d+)")
+MOTION = re.compile(r"motion raw (-?\d+),(-?\d+),(-?\d+).*?tilt (-?\d+).*?bearing (-?\d+).*?turn (\d+).*?rot (-?\d+),(-?\d+),(-?\d+) quarter (\d+)(?: grav_mg -?\d+,-?\d+,-?\d+ bias_dps10 -?\d+,-?\d+,-?\d+)?")
 
 
 def parse(lines):
@@ -33,12 +33,14 @@ def parse(lines):
     current = None
     before_round = True
     for line in lines:
+        line = line.removeprefix("LABDUMP ")
         if "round imu" in line:
             before_round = False
             current = {"poses": {}, "fit": None}
             rounds.append(current)
-        pose = POSE.search(line)
-        calib = CALIB.search(line)
+        payload = re.sub(r"^I \(\d+\) input_lab: ", "", line)
+        pose = POSE.fullmatch(payload)
+        calib = CALIB.fullmatch(payload)
         if pose or calib:
             if current is None or current["fit"] is not None:
                 current = {"poses": {}, "fit": None}

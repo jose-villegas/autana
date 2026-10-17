@@ -452,14 +452,14 @@ test_complete_round(void) {
             }
             TEST_ASSERT_TRUE(imu_probe_update(round, &sample, TEST_DT_MS));
             TEST_ASSERT_FALSE(round->primed);
-            if (round->active) {
+            if (round->step == IMU_PROBE_POSES) {
                 TEST_ASSERT_FALSE(imu_probe_update(round, &sample, TEST_DT_MS));
                 TEST_ASSERT_TRUE(round->primed);
                 TEST_ASSERT_EQUAL_UINT32(0, round->settle_ms);
                 imu_probe_update(round, NULL, TEST_DT_MS);
             }
         }
-        TEST_ASSERT_FALSE(round->active);
+        TEST_ASSERT_EQUAL_INT(IMU_PROBE_UPRIGHT, round->step);
         TEST_ASSERT_EQUAL_INT(IMU_PROBE_POSE_COUNT, round->pose);
         TEST_ASSERT_EQUAL_INT(IMU_PROBE_SCALE_ONE, round->fit.scale_ppm.x);
         TEST_ASSERT_EQUAL_INT(0, imu_probe_mg(round->fit.calib.offset).x);
