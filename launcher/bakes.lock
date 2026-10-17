@@ -6,10 +6,10 @@ mesh_cpu_vendor = "AuthenticAMD"
 [[bake]]
 output = "capybara.capybara.mesh"
 source = "launcher/demo/capybara/capybara.scene.toml"
-key = "965930a746e1be0a8696ef01386e2fd8ab37e8ba4178fef80cf7e422ee2817e9"
+key = "59218954de1ee5b095b42f29f7d9fd91c15907fcc664dc80b3aab3dc7f2ab865"
 sha256 = "ceb2adc0e2c41e927d4f0acd241b52f13b0a964aaf1b0d6068aa33e8f041ae89"
 size = 14056
-run = 38612779093
+run = 38975738003
 host = "Linux x86_64"
 
 [[bake]]
@@ -24,106 +24,106 @@ host = "Linux x86_64"
 [[bake]]
 output = "capybara.meadow.mesh"
 source = "launcher/demo/capybara/capybara.scene.toml"
-key = "12982291cda58ee4090bd8d0d18702a8d5e9a57b9f0675706b3694003ccf2509"
+key = "9b4e17089f8a51ee379df05d285357a8cb938c97faaf41b7d9da96eabd081357"
 sha256 = "0c85de53dc72593a9f3aceedc7c6bbf26a54618c2ac4bcfeaebafac119f701a7"
 size = 132
-run = 38612779093
+run = 38975738003
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "8d7d47b0aafd281231e6141647b71890c134ad80b359f33933f3deb6649c17bc"
+key = "83fc683bfbf855eb94b3022a024c883fffc94fab33cd4d4d76b26794f65b812d"
 sha256 = "649d221759b9424a8f52260088ec7ceb25e3b6a808ff2fd15a041e396311b0ef"
 size = 264924
-run = 38612779093
+run = 38975738003
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_fitted.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "211ca58f95b184cab9a47dee3318f389cfe6771011658ef7aa6c2b81228ce8ea"
-sha256 = "cc8333f5e044e41988c98a83deafb795f750858f3f85abcb8f6ec04bb5d1338b"
-size = 137828
-run = 38885765276
+key = "18e2c975b7a0f68bc090cf702be5ce4ce249c162af922cb5b23f2d6ebc75356a"
+sha256 = "7a669f900d110d2731af8fe805ac6735d399ad552c316c59bea1fcc19d718385"
+size = 139664
+run = 38976530924
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_fitted.start.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "4e56e0ca31fb82c5343d7182e460578be78627e04e2db90ae611f389be738492"
+key = "9cd9b74c8493c44eeef081f1224ccb68d9fc3bc59b2d07a67f7b0494ea000a43"
 sha256 = "e1aac41fd65ea12c10c3461c0c7ac9be42a6c5dcbdca7592a43de81e2a7c4b07"
 size = 205548
-run = 38632969352
+run = 38975738003
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_fitted_full.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "9c4b2deae8afa8a3e2cb49cdd42ec7fc4ecb974f7839b58339038065ff8fc8cb"
-sha256 = "aaca5cdb4abc28300c4f21cbdb24ba37889a0860481fe6203d237cd645e02d5d"
-size = 281736
-run = 38885765276
+key = "42a99b5803b915d9849333c2344cf58abae8670642112b968bde17ab06bc03c7"
+sha256 = "052e6713e028534b051fc5e007db6289846a44d886cdc99503e8253f43c6452e"
+size = 283308
+run = 38976530924
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_fitted_full.start.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "784cffe437b06409b830d26dd7b52fb65385d1e40e0f28450f67cca3b738003f"
+key = "581e9c2d7319b73028105d6543bd3db191b516c94f501569075b7cee3e353050"
 sha256 = "1cefaf248e60774aed32dcfeaec3a090e265b65f0006023af18dc4da40108fdf"
 size = 461556
-run = 38632969352
+run = 38975738003
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_flat.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "11d41d6c8bcc5b517c42c603dfe0d28e63e4d879b39f37438ce8d5efb76bc955"
+key = "b93013c821974908bf2bc679a16350b3da3c8dfda2ea08f359e83b05c773eb4b"
 sha256 = "029bd72c6a4c9c41ae562540fa098303e81dc1e6d28230b197cfd035cd1b10f8"
 size = 243452
-run = 38612779093
+run = 38975738003
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_flat_fitted.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "b0638219d21eaafe65da59adcf7360b66d1c5808f5bd2778e594bcd049b4b5ba"
-sha256 = "0bb0d6ff2a8ec5811a634df70543e5703d45f645cae5c46882d22e21f63bdffe"
-size = 246824
-run = 38885765276
+key = "5f395ddd8fb57d5b78cbc42c61ea7a2b4c9ac1cbca7f42827d50a06d05a2d513"
+sha256 = "2c4289a7f0220316de425760e780a8867f41045c2b0119b2ad0ec6dad173d8b7"
+size = 251020
+run = 38976530924
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_flat_fitted.start.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "320ae9db1307789bb1ad7d06a834c32218a40b8e058c733f1cb01a4debd7aad9"
+key = "9ce3f6cb10ecc9dd2b99d5a3f590249ad935680c30a489daa23c451956e13985"
 sha256 = "42ccb91f439bbe6160a5df5b50499236384041c90a91926706b8a3708d3af2f8"
 size = 422148
-run = 38632969352
+run = 38975738003
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_lite.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "04ed0bccd9544a7958d6255d52295ecd196596181b41be28859155074518fc58"
+key = "1df31ad56f47b401df0fa653e4a7f7091b7a266d74bbab94ee2ce75d26be7fd2"
 sha256 = "39b51af4e1a6e241d1b5d9518132497f63dde80f14530c7fbf8c7e825bf5b7e5"
 size = 130140
-run = 38612779093
+run = 38975738003
 host = "Linux x86_64"
 
 # [[poses]]: the digest of each camera-path sampling, keyed on its clip bytes, sampling arguments
 # and sampler code. bake.py lock writes them; bake.py check samples them again.
 
 [[poses]]
-key = "23a90cf2254752ee0b3edec7a17bdc40905b12595668eee5741737ef9703e9c4"
-poses = "4088073fbcfc607e39b2f60547eb9d4216d1d12ffff625ac4ea28fffcf444cf7"
-count = 1816
+key = "a7de16d485336ebe59ad9dd5893a280930efe2a85caa3f7b7027440110ad22d1"
+poses = "bc608ce3264275d892202b270ad05e255c7878431cbea66d907ba0e927ecf8da"
+count = 37
 clip = "launcher/demo/sponza/flythrough.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "23f588142efb921ac5935874e6945956d9919fa78d81012d7205df4c37ceba68"
-poses = "b6acfc414c2402cacdcd7dcf258cec6d9919473936dddab517719c46d029d430"
-count = 37
+key = "e7131edc88f910eeee3665578e28f9ad6e4ebe1ebd35390f869fd637e28a4f64"
+poses = "7f5a1e528b63cc2ebea4ea3c6795518dc30bb47befc15345be563a2d9a4ddd10"
+count = 1816
 clip = "launcher/demo/sponza/flythrough.anim.toml"
 host = "Windows AMD64"

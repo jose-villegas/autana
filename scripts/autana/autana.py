@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
 from suite_registry import registered_suites  # noqa: E402
-from process_tree import launch_process_tree, close_process_tree  # noqa: E402
+from process_tree import launch_process_tree, close_process_tree, install_console_interrupt_handler  # noqa: E402
 import device_lock  # noqa: E402  (path must be set up first)
 import autana_config  # noqa: E402  (path must be set up first)
 from espressif import idf_python, idf_note_lines, require_idf  # noqa: E402
@@ -290,17 +290,18 @@ def follow(log, finished):
 def run_streaming_its_log(command):
     finished = threading.Event()
     follower = None
-    with device_process(command, stdout=subprocess.PIPE, text=True, bufsize=1) as process:
-        for line in process.stdout:
-            print(line, end="", flush=True)
-            if follower is None and line.startswith("flash log: "):
-                follower = threading.Thread(target=follow, args=(line[len("flash log: "):].strip(), finished))
-                follower.start()
-        code = process.wait()
+    try:
+        with device_process(command, stdout=subprocess.PIPE, text=True, bufsize=1) as process:
+            for line in process.stdout:
+                print(line, end="", flush=True)
+                if follower is None and line.startswith("flash log: "):
+                    follower = threading.Thread(target=follow, args=(line[len("flash log: "):].strip(), finished))
+                    follower.start()
+            return process.wait()
+    finally:
         finished.set()
         if follower is not None:
             follower.join()
-        return code
 
 
 def variant_request(verb, args, flags, project):
@@ -1860,6 +1861,7 @@ def applied(flags):
 
 
 def main():
+    install_console_interrupt_handler()
     flags, argv = pop_globals(sys.argv[1:])
     if not argv or argv[0] == "console":
         session_flags.update(flags)
@@ -1879,4 +1881,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(EXIT_INTERRUPTED)

@@ -32,6 +32,7 @@
 #include "ui/input/ui_pointer.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
+#include "ui/ui_mu.h"
 
 /* LAUNCHER_BTN_W (ui_launcher_draw.c), private to that file, mirrored here so
  * this suite can tap the same physical spot a real finger would. */

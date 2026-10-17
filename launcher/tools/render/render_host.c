@@ -48,10 +48,10 @@ output_size(int quarter, bool panel, int* out_w, int* out_h) {
  * chunk both carry unchanged, so the BMP write and every --video frame
  * share this instead of each walking the framebuffer on its own. */
 static void
-convert_frame(ui_transform_t t, bool panel, int out_w, int out_h, int32_t stride, uint8_t* buf) {
-    ui_transform_t inverse = ui_transform_identity();
+convert_frame(affine2x_t t, bool panel, int out_w, int out_h, int32_t stride, uint8_t* buf) {
+    affine2x_t inverse = affine2x_identity();
     if (!panel) {
-        (void)ui_transform_invert(t, &inverse);
+        (void)affine2x_invert(t, &inverse);
     }
     gfx_color_t pixels[GFX_WIDTH];
     for (int py = 0; py < GFX_HEIGHT; py++) {
@@ -219,7 +219,7 @@ main(int argc, char** argv) {
         fprintf(stderr, "no framebuffer to read: the scene left gfx in band mode\n");
         return 1;
     }
-    const ui_transform_t t = ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT);
+    const affine2x_t t = ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT);
     const int32_t stride = screenshot_bmp_row_stride(out_w);
 
     uint8_t* frame_buf = malloc((size_t)stride * out_h);

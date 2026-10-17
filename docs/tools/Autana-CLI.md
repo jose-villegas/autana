@@ -7,6 +7,7 @@ lock and is not tied to git or worktrees: a board-only command (`monitor`,
 flashes acts on the current directory, like `make -C`, or on `--project PATH`.
 
 The launchers require at least the Python version in `scripts/lib/python-min-version`; CI installs the exact `.python-version` pin.
+The shell launcher prefers `python<major.minor>` from `.python-version` on PATH when it imports the requested modules, then falls back to any interpreter meeting the minimum in PATH order.
 
 For a first board run, install ESP-IDF and set up `autana` as described in
 [the README](../../README.md#run-it-on-the-board), then use `autana flash dev`
@@ -148,7 +149,9 @@ suite this project registers, for a full pre-merge pass.
 | `autana selftest [seconds] [--verbose] [--perf-scope] [--out PATH]` | Build the autorun diagnostics image, flash, run every suite; 3000 s when omitted. |
 
 Each prints the report and capture paths, PASS/FAIL counts, up to ten failure
-messages (then a FAIL count per suite) and the end reason. `--verbose`
+messages (then a FAIL count per suite) and the end reason.
+A capture without its `SELFTEST_COMPLETE` or `RUNSUITE_COMPLETE` line fails
+with the end reason. `--verbose`
 prints the whole capture; to find something in it, grep the capture instead.
 One suite run once (`autana suite <name>` with no `--runs` or `--flash`)
 still produces exactly one capture and one report, the same as before this

@@ -24,6 +24,7 @@
 #include "core/memory.h"
 #include "draw/draw.h"
 #include "test_cleanup.h"
+#include "ui/ui_mu.h"
 
 /* Landscape (448x368 logical) - this app's shipping orientation. */
 static void
@@ -71,7 +72,7 @@ test_menu_screen_command_list_fits_budget(void) {
 
 typedef struct {
     render_lab_clips_t choice;
-    ui_dropdown_item_t items[BUDGET_CLIP_COUNT];
+    const char* items[BUDGET_CLIP_COUNT];
     char names[BUDGET_CLIP_COUNT][ASSET_NAME_MAX];
     mu_Rect anchor;
     bool open;
@@ -111,7 +112,7 @@ test_menu_with_full_clip_list_and_long_names_fits_budget(void) {
     for (int i = 0; i < BUDGET_CLIP_COUNT; i++) {
         memset(menu_budget->names[i], 'a' + i, ASSET_NAME_MAX - 1);
         menu_budget->names[i][ASSET_NAME_MAX - 1] = '\0';
-        menu_budget->items[i].label = menu_budget->names[i];
+        menu_budget->items[i] = menu_budget->names[i];
     }
     menu_budget->choice = (render_lab_clips_t){
         .items = menu_budget->items, .count = BUDGET_CLIP_COUNT, .blend_ms = RENDER_LAB_BLEND_MAX_MS};
@@ -119,9 +120,12 @@ test_menu_with_full_clip_list_and_long_names_fits_budget(void) {
     budget_menu_frame(&idle);
     budget_menu_frame(&idle);
     input_t tap = {.down = true, .pressed = true};
-    ui_transform_point(ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT),
-                       menu_budget->anchor.x + (menu_budget->anchor.w / 2),
-                       menu_budget->anchor.y + (menu_budget->anchor.h / 2), &tap.x, &tap.y);
+    const affine2x_t transform = ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT);
+    const vec2i_t mapped_pixel =
+        affine2x_map_pixel(&transform, (vec2i_t){menu_budget->anchor.x + (menu_budget->anchor.w / 2),
+                                                 menu_budget->anchor.y + (menu_budget->anchor.h / 2)});
+    tap.x = mapped_pixel.x;
+    tap.y = mapped_pixel.y;
     budget_menu_frame(&tap);
     tap.pressed = false;
     budget_menu_frame(&tap);

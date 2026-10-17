@@ -130,7 +130,10 @@ flowchart TB
   the host tests, the tools and the editor all build it: the style audit's
   PACKAGE-INCLUDE rule names a reach into the firmware, and
   `launcher/test/check_packages_alone.sh` compiles each package file with
-  only its own include root.
+  only its own include root. PACKAGE-CONFIG requires `CONFIG_<PACKAGE>_`
+  settings in C/H sources, `CMakeLists.txt` and `Kconfig`, and `<PACKAGE>_`
+  names for Kconfig entries, with the folder name uppercased. It ignores
+  comments.
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. How a
   draw call becomes pixels on the panel is
   [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path). render/ sits

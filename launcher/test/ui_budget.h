@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 #include "ui/ui.h"
+#include "ui/ui_mu.h"
 #include "unity.h"
 
 /* Host checks command growth; the device enforces 8 KiB. Reserve room for a fifth screen. */

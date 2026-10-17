@@ -24,6 +24,7 @@
 #include "ui/ui.h"
 
 #include "shell/apps/diagnostics/ui/toggles_screen.h"
+#include "ui/ui_mu.h"
 
 /* Landscape (448x368 logical): this project's shipping orientation. */
 static void

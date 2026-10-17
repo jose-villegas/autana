@@ -21,6 +21,7 @@
 #include "input/input.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
+#include "ui/ui_mu.h"
 
 #define PORTRAIT_W  368
 #define PORTRAIT_H  448
@@ -299,7 +300,7 @@ tap_segment(sand_ui_t* ui, mu_Rect r) {
 static void
 test_a_tap_on_a_mode_segment_changes_sand_ui_mode(void) {
     ui_init();
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(affine2x_identity());
     sand_ui_t ui = ui_fixture();
     const input_t idle = {0};
     brush_frame(&ui, &idle);

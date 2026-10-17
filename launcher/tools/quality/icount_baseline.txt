@@ -42,7 +42,7 @@
 1944	math_scale_s	info
 3134	math_scale_x	info
 7043	math_sinf_f	info
-38747	math_slerp_f
+26958	math_slerp_f
 2962	math_sqrtf_f	info
 4316	math_transform_compute_matrix_f	info
 42327	math_transform_compute_matrix_x	info
@@ -54,3 +54,47 @@
 2494629	sand_water_step
 44147	span_gouraud
 16007	span_solid
+3791	ui_face_button
+2605	ui_face_caption
+2182	ui_face_color
+2094	ui_face_disabled
+28024	ui_face_dropdown
+28337	ui_face_dropdown_icons
+2188	ui_face_fill
+2807	ui_face_header
+2398	ui_face_icon
+2192	ui_face_next
+2484	ui_face_outline
+2641	ui_face_panel
+2155	ui_face_row
+2100	ui_face_scale
+2003	ui_face_screen
+4074	ui_face_slider
+2406	ui_face_swatches
+2605	ui_face_text
+2606	ui_face_text_centre
+2605	ui_face_text_right
+2152	ui_face_theme
+3787	ui_face_tile
+3794	ui_face_toggle
+1978	ui_face_window
+3536	ui_mu_button
+2565	ui_mu_caption
+24341	ui_mu_dropdown
+24652	ui_mu_dropdown_icons
+2161	ui_mu_fill
+2767	ui_mu_header
+2358	ui_mu_icon
+2175	ui_mu_next
+2457	ui_mu_outline
+2625	ui_mu_panel
+2142	ui_mu_row
+1292	ui_mu_screen
+3904	ui_mu_slider
+2376	ui_mu_swatches
+2565	ui_mu_text
+2566	ui_mu_text_centre
+2564	ui_mu_text_right
+3529	ui_mu_tile
+3327	ui_mu_toggle
+1227	ui_mu_window

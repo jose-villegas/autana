@@ -16,6 +16,7 @@
 #include "profile/frame_cost.h"
 #include "shell/ui/ui_ridge.h"
 #include "ui/ui.h"
+#include "ui/ui_mu.h"
 
 const app_t*
 ui_launcher_frame(const input_t* input, uint32_t dt_ms) {
@@ -33,9 +34,7 @@ ui_launcher_frame(const input_t* input, uint32_t dt_ms) {
     /* Repaints only what looks different from what is already on screen, so
      * a home screen nobody is touching, its ridge at rest, costs no bus time
      * at all. */
-    FRAME_COST_BEGIN(painted_from);
     ui_end_over(ui_ridge_paint);
-    FRAME_COST_END(painted_from, "ui.paint");
 
     return chosen;
 }
