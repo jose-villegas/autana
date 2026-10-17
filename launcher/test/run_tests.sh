@@ -85,7 +85,7 @@ fi
 # and strictness costs nothing in tests.
 # 64-bit pointers and 8-byte alignment make every command bigger on the host.
 BASE_CFLAGS="-std=c11 -Wall -Wextra -Werror -Werror=vla -ffp-contract=off -Wno-unused-parameter -g -O1"
-CFLAGS="$BASE_CFLAGS -DTUNE_HOT_LIVE=1"
+CFLAGS="$BASE_CFLAGS"
 # shellcheck source=../tools/build/host_make.sh
 . "$TEST_DIR/../tools/build/host_make.sh"
 if [ "$SANITIZE" = 1 ]; then
@@ -428,6 +428,8 @@ EXPECT_SU="$BUILD_DIR/expected_su.txt"
     printf '\nSUOBJS :='
     printf '%s\n' "$SU_PAIRS" | awk '{ printf " $(SU)/%s.o", $1 }'
     printf '\nall: %s $(SUOBJS)\n' "$OUT_N"
+    # The span identity test switches between the small rows and edge walk.
+    printf '$(OBJ)/main__render__r3d_span.o: CFLAGS += -DTUNE_HOT_LIVE=1\n'
     printf '%s\n' "$OBJ_PAIRS" | awk '{
         printf "$(OBJ)/%s.o: %s $(OBJ)/flags.stamp\n", $1, $2
         printf "\t@echo \"  CC $(notdir $@)\"\n"
