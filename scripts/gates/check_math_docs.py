@@ -43,7 +43,7 @@ PAGE = pathlib.Path("docs/math/README.md")
 # TeX source length stands in for rendered width: 110 fits one step, not a derivation.
 MAX_INLINE_MATH_CHARS = 110
 
-FAMILIES = ("vec2", "vec3", "quat", "mat4", "transform", "rect")
+FAMILIES = ("vec2", "vec3", "quat", "affine2", "mat4", "transform", "rect")
 FAMILY_DIRS = {family: MATH.parent / "geometry" if family == "rect" else MATH for family in FAMILIES}
 TEMPLATE_FUNCTION = re.compile(r"^\s*static inline [^\n(]*?P##_(\w+)\(", re.M)
 DEFINE_CALL = re.compile(r"^MATH_DEFINE_\w+\((\w+),", re.M)

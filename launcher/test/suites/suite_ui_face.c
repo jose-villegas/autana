@@ -55,7 +55,7 @@ static void
 fixture(void) {
     suite_set_test_cleanup(cleanup);
     ui_init();
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(affine2x_identity());
     snapshot_size = 0;
     reports = 0;
 }

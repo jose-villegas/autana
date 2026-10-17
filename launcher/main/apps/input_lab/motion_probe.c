@@ -24,12 +24,9 @@ motion_probe_measure(vec3i_t acceleration) {
 
 vec2i_t
 motion_probe_bubble(int x, int y, int radius, int quarter) {
-    const ui_transform_t inverse = ui_transform_quarter_turn(-quarter, 0, 0);
-    int ox;
-    int oy;
-    ui_transform_point(inverse, (int)lroundf((float)x * (float)radius / INPUT_ACCEL_ONE_G),
-                       (int)lroundf((float)y * (float)radius / INPUT_ACCEL_ONE_G), &ox, &oy);
-    return (vec2i_t){ox, oy};
+    const affine2x_t inverse = ui_transform_quarter_turn(-quarter, 0, 0);
+    return affine2x_map_pixel(&inverse, (vec2i_t){(int)lroundf((float)x * (float)radius / INPUT_ACCEL_ONE_G),
+                                                  (int)lroundf((float)y * (float)radius / INPUT_ACCEL_ONE_G)});
 }
 
 int
