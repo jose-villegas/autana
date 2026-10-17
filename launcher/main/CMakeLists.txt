@@ -7,6 +7,7 @@ set(app_srcs
     "boot/boot_anim_motion.c"
     "boot/boot_anim_photo.c"
     "boot/boot_report.c"
+    "boot/boot_usb.c"
     "selftest/post.c"
     "selftest/post_layout.c"
     "selftest/post_ui.c"
