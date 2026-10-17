@@ -25,6 +25,7 @@
 #include "apps/sand/ui/palette_screen.h"
 #include "apps/sand/ui/sand_icons.h"
 #include "apps/sand/ui/title_screen.h"
+#include "ui/ui_mu.h"
 
 /* Landscape (448x368 logical) - this app's shipping orientation, and what
  * suite_brush_screen.c/suite_palette.c already assert every rect below

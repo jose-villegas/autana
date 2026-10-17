@@ -44,6 +44,7 @@
 #endif
 #include "shell/apps/diagnostics/ui/toggles_screen.h"
 #include "ui/ui.h"
+#include "ui/ui_mu.h"
 
 #define PAGE_COUNT     2
 #define COL_BACKGROUND 0x0A0C14

@@ -14,6 +14,7 @@
 #include "unity.h"
 
 #include "ui/controls/ui_slider.h"
+#include "ui/ui_mu.h"
 
 typedef struct {
     mu_Rect track;

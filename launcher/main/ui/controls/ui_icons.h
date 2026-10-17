@@ -64,7 +64,7 @@ typedef enum {
 void ui_icons_init(void);
 
 /* System icon `id`, or NULL when the engine pack does not hold it. */
-const draw_image_t* ui_icon(ui_icon_id_t id);
+const draw_image_t* ui_icon_image(ui_icon_id_t id);
 
 /* System icon `id` filling `r`, or its short text when there is no pack. */
 void ui_draw_system_icon(mu_Context* ctx, mu_Rect r, ui_icon_id_t id, mu_Color color);

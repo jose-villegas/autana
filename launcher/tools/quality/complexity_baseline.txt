@@ -934,7 +934,7 @@
 6	launcher/main/shell/ui/ui_ridge.c:1018	paint_dissolve_level
 6	launcher/main/shell/ui/ui_ridge.c:527	paint_lip_segment
 6	launcher/main/ui/controls/ui_widgets.c:260	close_if_abandoned
-6	launcher/main/ui/controls/ui_widgets.c:273	ui_dropdown
+6	launcher/main/ui/controls/ui_widgets.c:273	ui_mu_dropdown
 6	launcher/main/profile/frame_cost.c:105	frame_cost_begin
 6	launcher/test/heap_arena.c:617	heap_caps_get_largest_free_block
 6	launcher/test/suites.c:107	suites_test_runs

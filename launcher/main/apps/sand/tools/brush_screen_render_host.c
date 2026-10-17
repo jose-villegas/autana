@@ -39,6 +39,7 @@
 #include "ui/controls/ui_style.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h" /* UI_MARGIN, UI_SLIDER_KNOB_W only */
+#include "ui/ui_mu.h"
 
 /* A real brush cell, mode and radius to draw: the longest name, the worst
  * case brush_screen.c's name-shrink loop handles. */
@@ -77,7 +78,7 @@ fill_rect_logical(ui_transform_t t, mu_Rect r, gfx_color_t color) {
     draw_rect(p.x, p.y, p.w, p.h, color);
 }
 
-/* Mirrors ui_panel(): one flat section frame. */
+/* Mirrors ui_mu_panel(): one flat section frame. */
 static void
 draw_panel(ui_transform_t t, mu_Rect r, uint32_t face_rgb, uint32_t border_rgb) {
     ui_span_t spans[UI_PANEL_MAX_SPANS];

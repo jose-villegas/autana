@@ -7,6 +7,7 @@
 #include "apps/sand/material.h"
 #include "apps/sand/material_palette.h"
 #include "apps/sand/palette.h"
+#include "ui/ui_mu.h"
 
 #define PALETTE_GROUT              4
 #define PALETTE_BEZEL              3

@@ -46,6 +46,7 @@
 
 #include "asset/asset_file.h"
 #include "test_asset_dir.h"
+#include "ui/ui_mu.h"
 #endif
 
 #define SIZE               64
