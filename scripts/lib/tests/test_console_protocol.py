@@ -34,6 +34,18 @@ class ReaderTests(unittest.TestCase):
         self.assertEqual(list(reader.lines()), ["PARTIAL"])
         self.assertEqual(log.getvalue(), b"PARTIAL\ntour step\n")
 
+    def test_finish_flushes_verdict_after_unterminated_device_line(self):
+        for verdict in ("tour PASS", "tour FAIL"):
+            with self.subTest(verdict=verdict):
+                chunks = iter((b"partial device log", b""))
+                log = io.BytesIO()
+                reader = LineReader(lambda: next(chunks), log, time.monotonic() + 1)
+                self.assertEqual(list(reader.lines()), [])
+                reader.emit(verdict)
+                reader.finish()
+                reader.finish()
+                self.assertEqual(log.getvalue(), b"partial device log\n" + verdict.encode() + b"\n")
+
     def test_prefixed_reply_and_release_refusal(self):
         self.assertEqual(replies_to(b"I (20) console: OPEN_OK\n", "OPEN", ("OPEN_OK",)),
                          (["OPEN_OK"], True))

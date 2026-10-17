@@ -62,12 +62,13 @@ console_imu_parse(const char* args, int* ax, int* ay, int* az) {
 /* Transpose the sensor's orthogonal axis mapping to construct a raw sample
  * whose gravity follows the viewport's down axis. */
 static inline bool
-console_imu_quarter_parse(const char* args, imu_sample_t* sample) {
+console_imu_quarter_parse(const char* args, imu_sample_t* sample, int* parsed_quarter) {
     int quarter;
     char trailing;
     if (sscanf(args, "quarter %d %c", &quarter, &trailing) != 1 || quarter < 0 || quarter >= DISPLAY_QUARTER_COUNT) {
         return false;
     }
+    *parsed_quarter = quarter;
     const viewport_quarter_axes_t axes = viewport_quarter_axes(quarter);
     const vec2i_t down = {axes.x_down, axes.y_down};
     const vec3i_t raw_x = imu_axes_screen(IMU_COUNTS_PER_G, 0, 0);

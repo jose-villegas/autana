@@ -87,9 +87,11 @@ def plan(apps, tilts):
     return steps
 
 
-def heartbeat(console):
+def heartbeat(console, *, on_line=None):
     console.send(BUILD_ID_REQUEST)
     for line in console.lines(HEARTBEAT_S):
+        if on_line is not None:
+            on_line(line)
         if BUILD_ID_RE.search(line):
             return True
     return False
@@ -113,14 +115,15 @@ def exchange(console, step, *, decline=False):
                 require_development(line.encode(), step.command)
             except RuntimeError as error:
                 raise TourError(str(error)) from error
-            found, _ = replies_to(line.encode(), "IMU", ("IMU_OK", "IMU_ERR"))
-            if step.tilt and found:
-                match = IMU_QUARTER_RE.fullmatch(found[-1])
-                if not match or int(match[1]) != int(step.tilt.split()[-1]):
-                    raise TourError("invalid quarter reply: " + found[-1])
-                sample_s = int(match[3]) / MILLISECONDS_PER_SECOND
-                tilted_at = time.monotonic()
-                tilt_complete = True
+            if not tilt_complete:
+                found, _ = replies_to(line.encode(), "IMU", ("IMU_OK", "IMU_ERR"))
+                if found:
+                    match = IMU_QUARTER_RE.fullmatch(found[-1])
+                    if not match or int(match[1]) != int(step.tilt.split()[-1]):
+                        raise TourError("invalid quarter reply: " + found[-1])
+                    sample_s = int(match[3]) / MILLISECONDS_PER_SECOND
+                    tilted_at = time.monotonic()
+                    tilt_complete = True
             if step.reply:
                 found, ended = replies_to(line.encode(), step.reply,
                                          (step.reply + "_END", step.reply + "_OK", step.reply + "_ERR"))
@@ -141,13 +144,11 @@ def exchange(console, step, *, decline=False):
                    if "current=1" in line.split()]
         if current != [parts[2]]:
             raise TourError(f"{step.command}: scene switch did not land (current={current})")
-    console.send(BUILD_ID_REQUEST)
-    for line in console.lines(HEARTBEAT_S):
+    def check_error(line):
         if error := ERROR_RE.search(line):
             raise TourError(line[error.start():])
-        if BUILD_ID_RE.search(line):
-            break
-    else:
+
+    if not heartbeat(console, on_line=check_error):
         raise TourError("missing BUILDID heartbeat after " + step.command)
     remaining = sample_s - (time.monotonic() - tilted_at)
     if remaining > 0:

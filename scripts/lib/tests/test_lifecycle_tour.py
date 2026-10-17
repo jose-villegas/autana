@@ -137,6 +137,20 @@ class TourTests(unittest.TestCase):
         transport.pending = ["MODEL_ERR stale"]
         self.assertTrue(tour.heartbeat(transport))
 
+    def test_confirmed_tilt_ignores_later_imu_log(self):
+        transport = FakeTransport()
+        transport.pending = ["IMU_OK quarter=1 quarters=4 sample_ms=1",
+                             "I (23) imu: IMU sample ready"]
+        self.assertEqual(tour.exchange(transport, tour.Step("HOME", "HOME", "IMU quarter 1")),
+                         ["HOME_OK"])
+
+    def test_heartbeat_callback_checks_lines_including_buildid(self):
+        transport = FakeTransport()
+        transport.pending = ["MODEL_ERR stale"]
+        seen = []
+        self.assertTrue(tour.heartbeat(transport, on_line=seen.append))
+        self.assertEqual(seen, ["MODEL_ERR stale", "BUILD_ID=fixture"])
+
     def test_log_prefixed_reply(self):
         transport = FakeTransport()
         transport.pending = ["I (23) console: HOME_OK"]

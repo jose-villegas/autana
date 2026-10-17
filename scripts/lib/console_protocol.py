@@ -25,6 +25,12 @@ class LineReader:
             self.log.flush()
             self.messages.clear()
 
+    def finish(self):
+        if not self.boundary:
+            self.log.write(b"\n")
+            self.boundary = True
+        self.emit()
+
     def lines(self, seconds=None):
         deadline = self.deadline
         if seconds is not None:
