@@ -4,6 +4,7 @@
 #include <stdio.h>
 
 #include "ui/ui.h"
+#include "ui/ui_internal.h"
 #include "ui/ui_mu.h"
 #include "unity.h"
 
@@ -13,7 +14,7 @@
 
 static inline void
 ui_budget_assert(const char* screen_name) {
-    mu_end(ui_context());
+    ui_end_commands();
     const int used = ui_context()->command_list.idx;
     char msg[96];
     snprintf(msg, sizeof msg, "%s screen used %d of %d budget bytes (%d headroom)", screen_name, used,
