@@ -29,10 +29,10 @@ and read the macros in `*_template.h` only to change an algorithm.
 
 | Suffix | Number type | Range | Precision | Families | For |
 |---|---|---|---|---|---|
-| `f` | float, single precision | about ±3.4e38 | 24-bit mantissa, ~7 digits | `vec2f`, `vec3f`, `quatf`, `affine2f`, `mat3f`, `mat4f`, `transformf`, `rectf` | the default |
-| `i` | int32 | ±2.1e9 | exact; sums and products wrap | `vec2i`, `vec3i`, `recti` | grid, pixel and cell coordinates |
+| `f` | float, single precision | about Ã‚Â±3.4e38 | 24-bit mantissa, ~7 digits | `vec2f`, `vec3f`, `quatf`, `affine2f`, `mat3f`, `mat4f`, `transformf`, `rectf` | the default |
+| `i` | int32 | Ã‚Â±2.1e9 | exact; sums and products wrap | `vec2i`, `vec3i`, `recti` | grid, pixel and cell coordinates |
 | `s` | int16 | -32768 to 32767 | exact; sums and products saturate | `vec2s`, `vec3s`, `rects` | coordinates kept compact where memory is short |
-| `x` | Q16.16 fixed point | ±32768 | 1/65536 (1.5e-5); sine good to ~1e-3; saturates | `vec2x`, `vec3x`, `quatx`, `affine2x`, `mat4x`, `transformx`, `rectx` | deterministic maths, or a chip with no FPU |
+| `x` | Q16.16 fixed point | Ã‚Â±32768 | 1/65536 (1.5e-5); sine good to ~1e-3; saturates | `vec2x`, `vec3x`, `quatx`, `affine2x`, `mat4x`, `transformx`, `rectx` | deterministic maths, or a chip with no FPU |
 
 A dot product of `i` and `s` vectors widens to int64; of `x`, it is a saturating
 Q16.16 sum. `mat4x_apply` is the exception to saturation: it floors each product
@@ -81,11 +81,14 @@ the near plane in camera units. `projectf_screen(lens, p)` returns floating
 picture coordinates without pixel snapping, with camera +y up and picture
 y down. Focal lengths may differ between axes.
 
-`projectf_clip_near(near_z, p0, p1)` and
-`projectx_clip_near(near_z, p0, p1)` reject segments whose endpoints are both
+`projectf_clip_near` and `projectx_clip_near` take `near_z, p0, p1` and reject segments whose endpoints are both
 at or behind the plane. Otherwise they move the behind endpoint to the
 crossing and leave front endpoints untouched. The fixed helper accepts
 any common scale for endpoints and near plane, using a Q16.16 crossing ratio.
+`projectf_cross_near` and `projectx_cross_near` provide their scalar crossing
+arithmetic to `project_template.h`'s `MATH_DEFINE_CLIP_NEAR(P, V, T)`, which
+selects the behind endpoint and defines the public clip operation for the
+`projectf` and `projectx` prefixes.
 The caller keeps intermediate differences and products within their integer
 ranges. These helpers carry no framebuffer, viewport or render-view state.
 
@@ -279,7 +282,7 @@ inversion's `out`.
 | `P_scale(a, s)` | every component times the scalar `s` | $`s\,a = (s\,a_x,\ s\,a_y,\ s\,a_z)`$ |
 | `P_dot(a, b)` | dot product, in the wide type of the number type | $`a \cdot b = a_x b_x + a_y b_y + a_z b_z`$ |
 | `P_equal(a, b)` | exact component equality | $`a_x = b_x \land a_y = b_y \land a_z = b_z`$ |
-| `P_cross(a, b)` | cross product; x × y = z | $`(a \times b)_x = a_y b_z - a_z b_y`$<br> $`(a \times b)_y = a_z b_x - a_x b_z`$<br> $`(a \times b)_z = a_x b_y - a_y b_x`$ |
+| `P_cross(a, b)` | cross product; x Ãƒâ€” y = z | $`(a \times b)_x = a_y b_z - a_z b_y`$<br> $`(a \times b)_y = a_z b_x - a_x b_z`$<br> $`(a \times b)_z = a_x b_y - a_y b_x`$ |
 | `P_normalize(a)` | unit vector; `f` and `x` only; `a` must not be zero | $`\hat a = \frac{a}{\sqrt{a \cdot a}}`$ |
 | `P_<c1><c2><c3>(v)` | swizzle, each `c` one of `x y z`: `vec3f_zyx(v)` reverses | $`(v_{c_1},\ v_{c_2},\ v_{c_3})`$ |
 | `P_<c1><c2>(v)` | swizzle to the vec2 of the same number type, each `c` one of `x y z` | $`(v_{c_1},\ v_{c_2})`$ |

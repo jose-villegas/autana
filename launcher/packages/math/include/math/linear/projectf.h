@@ -8,6 +8,7 @@
 
 #include <stdbool.h>
 
+#include "math/linear/project_template.h"
 #include "math/linear/vec2f.h"
 #include "math/linear/vec3f.h"
 #include "math/scalar/mathf.h"
@@ -23,24 +24,13 @@ projectf_screen(const projectf_t* lens, vec3f_t p) {
     return (vec2f_t){lens->cx + p.x * gain_x, lens->cy - p.y * gain_y};
 }
 
-static inline bool
-projectf_clip_near(float near_z, vec3f_t* p0, vec3f_t* p1) {
-    const bool front0 = p0->z > near_z;
-    const bool front1 = p1->z > near_z;
+static inline void
+projectf_cross_near(float near_z, vec3f_t* behind, const vec3f_t* front) {
+    const float frac = (near_z - behind->z) / (front->z - behind->z);
 
-    if (!front0 && !front1) {
-        return false;
-    }
-
-    if (front0 != front1) {
-        vec3f_t* behind = front0 ? p1 : p0;
-        const vec3f_t* front = front0 ? p0 : p1;
-        const float frac = (near_z - behind->z) / (front->z - behind->z);
-
-        behind->x += (front->x - behind->x) * frac;
-        behind->y += (front->y - behind->y) * frac;
-        behind->z = near_z;
-    }
-
-    return true;
+    behind->x += (front->x - behind->x) * frac;
+    behind->y += (front->y - behind->y) * frac;
+    behind->z = near_z;
 }
+
+MATH_DEFINE_CLIP_NEAR(projectf, vec3f_t, float)
