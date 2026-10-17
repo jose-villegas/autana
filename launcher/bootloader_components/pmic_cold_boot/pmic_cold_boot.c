@@ -20,7 +20,6 @@
 #include "esp_rom_gpio.h"
 #include "esp_rom_sys.h"
 #include "hal/gpio_ll.h"
-#include "hal/usb_serial_jtag_ll.h"
 #include "soc/gpio_sig_map.h"
 #include "soc/gpio_struct.h"
 #include "soc/reset_reasons.h"
@@ -149,8 +148,13 @@ pmic_restart(void) {
 void
 bootloader_hooks_include(void) {}
 
-static void
-cold_restart(soc_reset_reason_t reason) {
+void
+bootloader_after_init(void) {
+    soc_reset_reason_t reason = esp_rom_get_reset_reason(0);
+    if (!needs_cold_restart(reason)) {
+        return;
+    }
+
     ESP_LOGI("pmic_boot", "Reset reason %d: requesting PMIC cold restart", reason);
     esp_rom_gpio_pad_select_gpio(PMIC_SDA_GPIO);
     esp_rom_gpio_pad_select_gpio(PMIC_SCL_GPIO);
@@ -177,21 +181,6 @@ cold_restart(soc_reset_reason_t reason) {
 
     esp_rom_delay_us(20000);
     ESP_LOGW("pmic_boot", "PMIC restart did not occur; continuing boot");
-}
-
-static void
-usb_detach(void) {
-    const usb_serial_jtag_pull_override_vals_t detached = {0};
-    usb_serial_jtag_ll_phy_enable_pull_override(&detached);
-}
-
-void
-bootloader_after_init(void) {
-    soc_reset_reason_t reason = esp_rom_get_reset_reason(0);
-    if (needs_cold_restart(reason)) {
-        cold_restart(reason);
-    }
-    usb_detach();
 }
 
 #endif
