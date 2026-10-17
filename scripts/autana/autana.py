@@ -1603,7 +1603,7 @@ COMMAND_GROUPS = (
             ("debug touch <down|up> <x> <y>", "one raw touch level; up hands back"),
             ("debug imu <ax> <ay> <az>", "raw accelerometer counts; imu release hands back"))),
     )),
-    ("docs", "No board needed", (
+    ("docs", "Docs", (
         Command("docs", docs, (
             ("docs <question...>", "the sections that answer it, and where to read on"),
             ("docs --section <path:line>", "one section whole; --deep adds its subsections"),

@@ -15,7 +15,7 @@ No board? Try the [host render](../../README.md#try-it-without-a-board).
   [Build and flash](#build-and-flash) · [Tests](#tests)
   ([A/B testing](#ab-testing)) · [Watch the board](#watch-the-board) ·
   [Drive](#drive) · [Tune](#tune) · [Debug](#debug) ·
-  [No board needed](#no-board-needed)
+  [Docs](#docs)
 - Reference: [JSON fields](#json-fields) · [In a session](#in-a-session) ·
   [Settings](#settings)
 
@@ -53,6 +53,7 @@ section below whose rule it matches.
 | `--board SERIAL` | USB serial or short id; `-b` is an alias. | every board command |
 | `--out PATH` | Write the one capture here instead of the default path. | selftest, suite, monitor |
 | `--expect-build-id ID` | Refuse to run unless the board, or the image `--flash` just wrote, carries this `BUILD_ID`; `flash` prints it. | suite |
+| `--version` (or `-V`) | Print autana's own version and exit. | none |
 | `--project PATH` | Act on `PATH` instead of the current directory; it must hold `launcher/CMakeLists.txt`. | build, flash, selftest, suite, suite list, tune save, docs |
 
 ## Sharing the board
@@ -206,7 +207,7 @@ below the input layer, with a matching resume or release. Hidden from bare
 `freeze`, `resume`, `step`, `touch`, `imu` and `debug framewatch` are accepted
 as aliases and print the canonical spelling once.
 
-## No board needed
+## Docs
 
 `autana help docs` · how it ranks and what it needs: [Docs-Search.md](Docs-Search.md)
 
@@ -216,7 +217,6 @@ as aliases and print the canonical spelling once.
 | `autana docs --section <path:line>` | One section whole, or `path#heading words`; `--deep` adds subsections. |
 | `autana docs --outline <path>` | A document's headings with lines and sizes. |
 | `autana docs --ask <question...>` | A short answer from the local chat model, with sources. |
-| `autana --version` (or `-V`) | autana's own version. |
 
 ## JSON fields
 
