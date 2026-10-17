@@ -2164,26 +2164,6 @@ class RenamedVerbAliasTests(unittest.TestCase):
         self.assertIn("autana debug framewatch: use `autana framewatch`", stream.getvalue())
 
 
-class LifecycleTourTests(unittest.TestCase):
-    def test_debug_tour_forwards_budget_and_capture(self):
-        with mock.patch.object(autana, "call_device", return_value=7) as call:
-            self.assertEqual(autana.debug(["tour", "42", "--out", "tour.log"]), 7)
-        command = call.call_args[0][0]
-        self.assertIn("tour", command)
-        self.assertEqual(command[command.index("--max-seconds") + 1], "42.0")
-        self.assertEqual(command[command.index("--out") + 1], "tour.log")
-        self.assertNotIn("tour", autana.RENAMED_VERBS)
-
-    def test_debug_tour_help_and_arguments(self):
-        stream = io.StringIO()
-        with contextlib.redirect_stdout(stream):
-            print(autana.help_text(["debug"]))
-        self.assertIn("debug tour [seconds] [--out PATH]", stream.getvalue())
-        for args in (["--unknown"], ["0"], ["1", "2"]):
-            with self.assertRaises(SystemExit):
-                autana.debug(["tour"] + args)
-
-
 class BoardOnlyCommandsTests(unittest.TestCase):
     """Every command that only talks to the board, never a project, must
     never call resolve_project(); a fresh clone with no launcher/ folder

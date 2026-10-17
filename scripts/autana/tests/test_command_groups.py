@@ -105,8 +105,7 @@ class CommandGroupTests(unittest.TestCase):
         self.assertEqual(autana.completion_candidates("help te", "te"), ["tests"])
 
     def test_no_usage_synopsis_repeats_a_shared_board_flag(self):
-        """Shared board flags stay in help flags; the tour also advertises
-        its capture path beside its time budget."""
+        """Shared board flags stay in help flags."""
         flag_names = [flag.split()[0] for flag, _, _ in autana.BOARD_FLAGS]
         for _, _, commands in autana.COMMAND_GROUPS:
             for command in commands:
@@ -115,8 +114,6 @@ class CommandGroupTests(unittest.TestCase):
                         continue  # its own --wait means something else, see hand()'s docstring
                     words = re.split(r"[\s\[\]]+", synopsis)
                     for flag_name in flag_names:
-                        if synopsis.startswith("debug tour ") and flag_name == "--out":
-                            continue
                         self.assertNotIn(flag_name, words, f"{command.name}: {synopsis}")
 
     def test_help_flags_lists_every_shared_flag_and_its_commands(self):
