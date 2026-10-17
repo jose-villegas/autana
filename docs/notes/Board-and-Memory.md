@@ -42,8 +42,8 @@ independent throughput.
 | Temperature sensor | on-die | ✓ | |
 
 POST (`launcher/main/selftest/post.c`) also checks the MAC/eFuse and the I2C bus
-itself. It raises the amp GPIO before probing the codec, which does not answer
-without it (`board_audio_amp_enable()`).
+itself. It raises the amp GPIO with `board_audio_amp_enable()` before probing
+the codec.
 
 ### Revisions
 
