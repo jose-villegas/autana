@@ -7,7 +7,7 @@
 #include "ui/layout/ui_transform.h"
 
 typedef struct {
-    ui_fp_t x, y;
+    int32_t x, y;
 } ui_anchor_t;
 
 #define UI_ANCHOR_TOP_LEFT     ((ui_anchor_t){0, 0})

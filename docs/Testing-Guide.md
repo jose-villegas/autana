@@ -113,6 +113,20 @@ everything else; go there once you are capturing that app's numbers.
 
 ---
 
+## Board CI
+
+[Board CI](../.github/workflows/board-ci.yml) runs `autana selftest` on a
+self-hosted Windows board runner: it builds and flashes the `diag` variant with
+autorun, captures every registered boot-time suite, and checks the running
+build ID against the built image. The job summary identifies the board and
+build and counts passing and failing tests; the artifact contains
+this checkout's `.records/device` captures, including failed runs.
+
+It runs on pushes to `main`, nightly, and by manual dispatch. For an on-demand
+PR run, a maintainer dispatches `gh workflow run board-ci.yml --ref <branch>`
+against the PR branch. Board CI is not a required check. If no board becomes
+free within the wait, the job succeeds with a neutral skipped notice and summary.
+
 ## Two runners, one set of suites
 
 Portable suites (`test/suites/`, each package's `packages/*/tests/`, and each
@@ -517,8 +531,11 @@ answers whether a change removed work; on this chip that does not predict
 whether it removed time (see
 [`notes/Debugging.md`](notes/Debugging.md#performance-seems-off)).
 
-**Hot kernel instruction ratchet.** Only selected serial simulation steps
-and raster span kernels are pinned in `launcher/tools/quality/icount_baseline.txt`. Frame totals and whole
+**Hot kernel instruction ratchet.** Selected serial simulation steps,
+raster span kernels, float math rows and UI face/backend rows are guarded in
+`launcher/tools/quality/icount_baseline.txt`. Math measures every row;
+`ICOUNT_INFO` rows carry a third `info` baseline field and never fail comparison
+for changed counts, missing rows or new rows. Frame totals and whole
 suites are excluded so unrelated code growth carries no instruction budget.
 A ratchet suite registers as `SUITE_REGISTER_ON_REQUEST(run_<name>_icount_suite)`;
 adding a row requires that registration and a baseline entry. The runner
@@ -532,9 +549,9 @@ python launcher/tools/quality/icount_gate.py launcher/build.qemu.shell/qemu_seri
 ```
 
 The capture lands in `launcher/build.qemu.shell/qemu_serial.log`. The gate
-fails above or below the baseline by more than 0.5%, or on a missing or
-unexpected row. The C reporting helper rejects rows too short to bound
-clock rounding. Baseline entries round to whole instructions. An
+fails for guarded rows above or below the baseline by more than 0.5%, or on a
+missing or unexpected guarded row. The C reporting helper rejects rows too short
+to bound clock rounding. Baseline entries round to whole instructions. An
 improvement requires lowering the baseline in the same PR. An increase requires a stated reason
 and a baseline update in the same PR. After confirming two captures agree
 within tolerance, generate the baseline:
@@ -542,6 +559,10 @@ within tolerance, generate the baseline:
 ```sh
 python launcher/tools/quality/icount_gate.py --update-baseline launcher/build.qemu.shell/qemu_serial.log
 ```
+
+UI face/backend pairs include identical frame setup, so their difference
+measures the face's instruction share. Theme and scope rows measure face
+state without a backend partner; scope rows measure begin and end together.
 
 A compiler or IDF bump re-baselines the kernels in one deliberate commit.
 The tolerance and capture-length rule live in `launcher/test/perf_stats.h`;

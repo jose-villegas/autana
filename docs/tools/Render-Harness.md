@@ -136,8 +136,8 @@ GPU images live under `docs/images/render/gpu/`; CPU checks leave that stage
 to its own `--check`. GPU `--check` verifies the saved full run and its input
 fingerprint without fitting again. `--smoke` writes only scratch data.
 `--stage gpu --inputs` prints that fingerprint and runs nothing; it needs
-a Python 3.12 or later (standard library only), a C compiler and the
-tree, with no GPU, LFS objects or bakes.
+Python meeting `scripts/lib/python-min-version` (standard library only), a C
+compiler and the tree, with no GPU, LFS objects or bakes.
 It is a SHA-256 over what the stage's output is made from, each found from the
 code rather than listed:
 
@@ -362,11 +362,9 @@ a different compiler and C library than anyone's desk. The self-test report
 and the home screen are pinned: `draw.c` does no float maths, and the scroll
 view's momentum, the one part of the UI that reaches the maths library, is
 switched off at a zero time constant, so it is linked but never called.
-The boot animation is pinned as well: its slerp calls `acosf` and
-`sinf`, whose last bit can differ between libms, but MinGW-w64's and glibc's
-render its pinned frames identically, and a last-bit difference moves a pixel
-only where a sum lands on a rounding boundary. A render that is not integer-exact ends its line
-with `|nopin` and is checked for its declared size alone (`scene_pin=0` does
+The boot animation is pinned as well: its slerp uses host-exact arithmetic
+with floating-point contraction disabled. A render that is not integer-exact
+ends its line with `|nopin` and is checked for its declared size alone (`scene_pin=0` does
 the same for a whole scene). Anything that formats a `double` for display
 or rasterises in float belongs there. A scene whose pin can fail for a
 reason nobody changed teaches the reader to ignore the pin.

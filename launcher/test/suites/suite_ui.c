@@ -24,6 +24,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "ui/ui.h"
+#include "ui/ui_mu.h"
 
 /* Two separate canvases, well apart, each inside its own band. */
 #define TOP_Y    0
@@ -141,22 +142,22 @@ test_invalidate_forces_a_repaint(void) {
 static void
 test_layout_generation_unchanged_by_a_repeated_equal_transform(void) {
     fixture();
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(affine2x_identity());
     const uint32_t gen = ui_layout_generation();
 
-    ui_set_transform(ui_transform_identity());
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(affine2x_identity());
+    ui_set_transform(affine2x_identity());
 
     TEST_ASSERT_EQUAL_UINT32_MESSAGE(gen, ui_layout_generation(),
                                      "setting the transform already in force must not bump the generation "
-                                     "- this is the same transforms_equal() check ui_set_transform() uses "
+                                     "- this is the same affine2x_equal() check ui_set_transform() uses "
                                      "to decide whether to call ui_invalidate()");
 }
 
 static void
 test_layout_generation_increments_by_one_per_genuine_change(void) {
     fixture();
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(affine2x_identity());
     const uint32_t before = ui_layout_generation();
 
     ui_set_transform(ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT));
@@ -169,7 +170,7 @@ test_layout_generation_increments_by_one_per_genuine_change(void) {
 static void
 test_layout_generation_counts_a_sequence_of_genuine_changes(void) {
     fixture();
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(affine2x_identity());
     const uint32_t start = ui_layout_generation();
 
     /* Four calls, three of which are genuine changes: the repeat of turn 1

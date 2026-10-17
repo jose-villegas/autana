@@ -43,7 +43,8 @@ PAGE = pathlib.Path("docs/math/README.md")
 # TeX source length stands in for rendered width: 110 fits one step, not a derivation.
 MAX_INLINE_MATH_CHARS = 110
 
-FAMILIES = ("vec2", "vec3", "quat", "mat4", "transform")
+FAMILIES = ("vec2", "vec3", "quat", "affine2", "mat4", "transform", "rect")
+FAMILY_DIRS = {family: MATH.parent / "geometry" if family == "rect" else MATH for family in FAMILIES}
 TEMPLATE_FUNCTION = re.compile(r"^\s*static inline [^\n(]*?P##_(\w+)\(", re.M)
 DEFINE_CALL = re.compile(r"^MATH_DEFINE_\w+\((\w+),", re.M)
 HEADER_CALL = re.compile(r"^(MATH_DEFINE_\w+)\(([^)]*)\)", re.M)
@@ -81,7 +82,8 @@ def instantiations(root):
     family_templates = {f + "_template.h" for f in FAMILIES}
     macros = {}
     fields = {}
-    for template in sorted((root / MATH).glob("*_template.h")):
+    for template in sorted(path for directory in set(FAMILY_DIRS.values())
+                           for path in (root / directory).glob("*_template.h")):
         text = read(template)
         for name, params, body in TEMPLATE_MACRO.findall(text):
             macros[name] = (split_args(params), body)
@@ -90,7 +92,8 @@ def instantiations(root):
             fields[template.name[: -len("_template.h")]] = split_args(m.group(1))
 
     calls = []
-    for header in sorted((root / MATH).glob("*.h")):
+    for header in sorted(path for directory in set(FAMILY_DIRS.values())
+                         for path in (root / directory).glob("*.h")):
         if not header.name.endswith("_template.h"):
             calls += [(name, split_args(args)) for name, args in HEADER_CALL.findall(read(header))]
     family_of = {}
@@ -149,7 +152,7 @@ def check(root):
                 )
 
     for family in FAMILIES:
-        template = root / MATH / (family + "_template.h")
+        template = root / FAMILY_DIRS[family] / (family + "_template.h")
         own = set(TEMPLATE_FUNCTION.findall(read(template)))
         if not own:
             problems.append("%s defines no functions: the gate would pass on nothing" % template.name)
@@ -165,7 +168,8 @@ def check(root):
     family_functions = set().union(*functions.values())
 
     defined = set()
-    for header in sorted((root / MATH).glob("*.h")):
+    for header in sorted(path for directory in set(FAMILY_DIRS.values())
+                         for path in (root / directory).glob("*.h")):
         text = read(header)
         if header.name.endswith("_template.h"):
             continue

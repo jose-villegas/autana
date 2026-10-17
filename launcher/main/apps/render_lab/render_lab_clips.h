@@ -2,8 +2,8 @@
 #pragma once
 #include "console/console_verbs.h"
 #include "scene/scene.h"
-#include "ui/controls/ui_widgets.h"
 #include "ui/layout/ui_scroll.h"
+#include "ui/ui_mu.h"
 
 #define RENDER_LAB_BLEND_DEFAULT_MS             250
 #define RENDER_LAB_BLEND_MAX_MS                 1000
@@ -15,7 +15,7 @@
 typedef struct {
     scene_t* scene;
     scene_entity_t subject;
-    ui_dropdown_item_t* items;
+    const char** items;
     int count;
     int selected;
     int blend_ms;

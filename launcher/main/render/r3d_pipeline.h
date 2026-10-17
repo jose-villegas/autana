@@ -57,9 +57,9 @@ void r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_sca
 void r3d_lens_fit(r3d_lens_t* lens, int width, int height);
 
 /* Carries the mesh into the world first: the lens matrix is composed with the
- * placement, so culling, transform and clipping see the mesh where it sits.
+ * model, so culling, transform and clipping see the mesh where it sits.
  * Call it after r3d_lens_init(), with the position scale of the mesh drawn. */
-void r3d_lens_place(r3d_lens_t* lens, const r3d_placement_t* placement, int position_scale);
+void r3d_lens_place(r3d_lens_t* lens, const mat4f_t* model, int position_scale);
 
 /* Caller-owned workspace, reusable between culling and drawing. Concurrent
  * draws each need their own block, aligned as malloc provides. */

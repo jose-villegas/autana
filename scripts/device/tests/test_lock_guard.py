@@ -10,6 +10,7 @@ import io
 import json
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -562,16 +563,19 @@ class HoldProcessTests(Store):
         self.assertIn("dead process", next_command.stderr)
         owner.wait(timeout=5)
 
-    def test_streamed_console_interrupt_releases_its_lock(self):
+    def test_streamed_console_interrupt_stops_log_follower_and_releases_lock(self):
         import signal
         ready = self.root / "interrupt-ready"
         source = ("import pathlib,signal,time; signal.signal(signal.SIGINT,signal.SIG_IGN); "
                   f"pathlib.Path({str(ready)!r}).touch(); time.sleep(30)")
+        log = self.root / "flash.log"
+        log.touch()
         child = self.root / "interrupt-device.py"
         child.write_text(
             f"import sys; sys.path.insert(0, {str(DEVICE)!r})\n"
             "import device,device_lock,subprocess,time\n"
             f"with device.HeldLock(device_lock.LockStore(), {BOARD_A!r}, 'test', 'run', 5):\n"
+            f"    print({('flash log: ' + str(log))!r}, flush=True)\n"
             f"    subprocess.Popen({[sys.executable, '-c', source]!r})\n"
             "    deadline = time.monotonic()+30\n"
             "    try:\n"
@@ -593,6 +597,9 @@ class HoldProcessTests(Store):
         else:
             options["start_new_session"] = True
         process = self.start_process([sys.executable, "-c", driver], ready=ready, **options)
+        self.assertTrue(process.stdout.readline().startswith("flash log: "))
+        self.assertEqual(process.stdout.readline().strip(), "streaming")
+        started = time.monotonic()
         if os.name == "nt":
             sender = ("import ctypes,time; k=ctypes.WinDLL('kernel32'); k.FreeConsole(); "
                       f"assert k.AttachConsole({process.pid}); "
@@ -602,10 +609,47 @@ class HoldProcessTests(Store):
                            creationflags=subprocess.CREATE_NO_WINDOW)
         else:
             os.killpg(process.pid, signal.SIGINT)
-        stdout, stderr = process.communicate(timeout=15)
+        stdout, stderr = process.communicate(timeout=CANCELLATION_TIMEOUT_SECONDS)
+        self.assertLess(time.monotonic() - started, CANCELLATION_TIMEOUT_SECONDS)
         self.assertFalse(self.store.lock_path(BOARD_A).exists(), stdout + stderr)
         last = self.store.read_json(self.store.last_path(BOARD_A))
         self.assertEqual(last["how"], "released")
+
+    @unittest.skipUnless(os.name == "nt", "Windows console Ctrl-Break")
+    def test_ctrl_break_releases_lock_through_interrupt_unwind(self):
+        sys.path.insert(0, str(ENGINE / "scripts" / "autana"))
+        import autana
+
+        for tool in ("device", "autana"):
+            with self.subTest(tool=tool):
+                ready = self.root / (tool + "-ready")
+                child = self.root / "child.py"
+                child_lifetime_seconds = 60
+                child.write_text("from pathlib import Path\nimport time\n"
+                                 f"Path({str(ready)!r}).touch()\n"
+                                 f"time.sleep({child_lifetime_seconds})\n")
+                command = (self.command("run", "--", sys.executable, str(child)) if tool == "device" else
+                           [sys.executable, str(ENGINE / "scripts/autana/autana.py"), "--board", BOARD_A,
+                            "lock", "run", "--", sys.executable, str(child)])
+                process = self.start_process(
+                    command, ready=ready,
+                    creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+                self.addCleanup(process.communicate, timeout=autana.INTERRUPT_GRACE_SECONDS)
+                lock = self.store.status(BOARD_A)["lock"]
+                self.assertIsNotNone(lock)
+                started = time.monotonic()
+                process.send_signal(signal.CTRL_BREAK_EVENT)
+                stdout, stderr = process.communicate(timeout=autana.INTERRUPT_GRACE_SECONDS)
+                self.assertLess(time.monotonic() - started, autana.INTERRUPT_GRACE_SECONDS)
+                self.assertFalse(device_lock.process_alive(lock["pid"]))
+                status = device_lock.status_entry(self.store, BOARD_A, durations={})
+                with self.subTest("normal release"):
+                    self.assertIsNone(status["lapsed"], stdout + stderr)
+                    self.assertFalse(self.store.lock_path(BOARD_A).exists())
+                    last = self.store.read_json(self.store.last_path(BOARD_A))
+                    self.assertEqual(last["how"], "released")
+                with self.subTest("interrupted exit"):
+                    self.assertEqual(process.returncode, device.EXIT_INTERRUPTED, stdout + stderr)
 
     def test_stale_take_token_names_how_to_clear_it(self):
         result = self.run_command("take", "bench", env=dict(
@@ -857,14 +901,14 @@ class BoardTests(Store):
         self.assertEqual((by_board["90:70:69:FE:C0:01"]["port"],
                           by_board["90:70:69:FE:C0:01"]["state"]), (None, "human"))
         self.assertEqual(set(by_board[BOARD_B]), {
-            "board", "port", "state", "holder", "since", "estimated_free", "lapsed",
+            "board", "port", "state", "holder", "since", "estimated_free", "estimated_start", "lapsed",
             "expires_at", "waiting"})
 
     def test_status_names_one_board_when_one_is_chosen(self):
         with plugged(usb(BOARD_A, "COM5"), usb(BOARD_B, "COM7")):
             with mock.patch.dict(os.environ, {BOARD_ENV: BOARD_B}):
                 text = self.status()
-        self.assertEqual(text, f"board {BOARD_B} (on COM7)\n  unlocked\n")
+        self.assertEqual(text, f"{device.short_id(BOARD_B)} {BOARD_B} COM7\n  unlocked\n")
 
     def test_status_keeps_a_reclaimable_lock_visible(self):
         self.store.write_json(self.store.lock_path(BOARD_A), {
@@ -1049,7 +1093,7 @@ class FlashTests(Store):
                     self.assertTrue(self.store.check_token(board, device.ACTIVE_LOCK.held.held["token"]))
                     connection.close()
                 with self.scripts(), mock.patch.object(device.device_lock, "LockStore", return_value=self.store), \
-                        mock.patch.object(device, "board_for_lock", return_value=BOARD_A), \
+                        mock.patch.object(device, "board_for_lock", return_value=(BOARD_A, None)), \
                         mock.patch.object(device, "await_console", side_effect=console) as awaited:
                     self.assertEqual(device.main(["--board", BOARD_A, "flash", "--variant", variant,
                                                   "--worktree", args.worktree]), 0)
@@ -1514,7 +1558,7 @@ class FlashImageScriptTests(unittest.TestCase):
         for relative in ("scripts/device/flash_image.sh", "launcher/tools/build/idf.sh",
                          "launcher/tools/build/idf_shim.bat", "launcher/tools/build/espressif.py",
                          "launcher/tools/build/build_paths.py",
-                         "scripts/lib/python.sh",
+                         "scripts/lib/python.sh", "scripts/lib/python-min-version",
                          "scripts/device/device.py", "scripts/device/device_lock.py",
                          "scripts/device/device_hook.py", "scripts/device/device_report.py",
                          "scripts/device/lock_job.py", "scripts/device/lock_scope.py",
@@ -1635,19 +1679,19 @@ class DurationTests(Store):
     def test_history_needs_enough_successes_and_uses_only_the_recent_runs(self):
         root = self.store.root
         for seconds in range(device_lock.ESTIMATE_MINIMUM_RUNS - 1):
-            device_lock.record_duration("send", seconds, root=root)
-        device_lock.record_duration("send", 999, "failed", root=root)
+            device_lock.record_duration("send", seconds, root=root, board=BOARD_A)
+        device_lock.record_duration("send", 999, "failed", root=root, board=BOARD_A)
         self.assertEqual(device_lock.duration_history(root), {})
-        device_lock.record_duration("send", 50, root=root)
+        device_lock.record_duration("send", 50, root=root, board=BOARD_A)
         self.assertIn("send", device_lock.duration_history(root))
         recent = device_lock.ESTIMATE_RECENT_RUNS
         for seconds in [10_000] * recent + list(range(recent)):
-            device_lock.record_duration("flash", seconds, root=root)
+            device_lock.record_duration("flash", seconds, root=root, board=BOARD_A)
         self.assertEqual(device_lock.duration_history(root)["flash"], (recent - 1) / 2)
 
     def test_the_estimate_is_a_median(self):
         for seconds in (10, 10, 1000):
-            device_lock.record_duration("flash", seconds, root=self.store.root)
+            device_lock.record_duration("flash", seconds, root=self.store.root, board=BOARD_A)
         self.assertEqual(device_lock.duration_history(self.store.root), {"flash": 10})
 
     def test_durations_are_recorded_under_the_kind_not_the_purpose(self):
@@ -1665,7 +1709,7 @@ class DurationTests(Store):
                         "error": None}) + "\n"
             for index in range(device_lock.DURATIONS_TRIM_LINES)), encoding="utf-8")
         for index in range(10):
-            device_lock.record_duration(f"kind{index % kinds}", index, root=root)
+            device_lock.record_duration(f"kind{index % kinds}", index, root=root, board=BOARD_A)
             lines = path.read_text(encoding="utf-8").splitlines()
             self.assertLessEqual(len(lines), device_lock.DURATIONS_TRIM_LINES)
 
@@ -1785,7 +1829,7 @@ class SuiteFailureTests(Store):
     """A suite that reports FAIL fails its command, in the exit status and in
     the recorded durations, which never count it towards an estimate."""
 
-    FAILED_SUITE = b":1:test_one:FAIL: boom\nSUITE_DONE sand\n"
+    FAILED_SUITE = b":1:test_one:FAIL: boom\nRUNSUITE_COMPLETE name=sand found=1\n"
 
     def suite_args(self, **extra):
         return Namespace(owner="a", purpose="p", wait=0, suite="sand",
@@ -2135,7 +2179,7 @@ class BoardChoiceTests(Store):
     def test_a_waiter_queues_while_the_board_is_off_usb(self):
         self.store.acquire(BOARD_A, "alice", "flash")
         with plugged():
-            self.assertEqual(device.board_for_lock(self.store), BOARD_A)
+            self.assertEqual(device.board_for_lock(self.store), (BOARD_A, None))
             waiting = mock.Mock(wraps=self.store.enqueue)
             with mock.patch.object(device_lock.LockStore, "enqueue", waiting):
                 code, errors = self.main("--wait", "0.2", "--owner", "bob", "send", "TUNE")
@@ -2177,7 +2221,7 @@ class BoardChoiceTests(Store):
         # resolving would send a plain `send`/`flash` into a 600 s port wait
         # instead of failing at once.
         with plugged(usb(BOARD_A, "COM5")):
-            board = device.board_for_lock(self.store)
+            board, _ = device.board_for_lock(self.store)
             held = self.store.acquire(board, "alice", "flash")
             self.store.release(board, held["token"])
         with plugged(), self.assertRaises(device.NoBoard):
@@ -2185,7 +2229,7 @@ class BoardChoiceTests(Store):
 
     def test_status_does_not_list_a_seen_only_board_forever(self):
         with plugged(usb(BOARD_A, "COM5")):
-            board = device.board_for_lock(self.store)
+            board, _ = device.board_for_lock(self.store)
             held = self.store.acquire(board, "alice", "flash")
             self.store.release(board, held["token"])
         with plugged():
@@ -2197,11 +2241,11 @@ class BoardChoiceTests(Store):
         # left behind by an ordinary flash should erase the board from
         # hand-to-human's own memory of it.
         with plugged(usb(BOARD_A, "COM5")):
-            board = device.board_for_lock(self.store)
+            board, _ = device.board_for_lock(self.store)
             held = self.store.acquire(board, "alice", "flash")
             self.store.release(board, held["token"])
         with plugged():
-            self.assertEqual(device.board_for_lock(self.store, remembered=True), BOARD_A)
+            self.assertEqual(device.board_for_lock(self.store, remembered=True), (BOARD_A, None))
             code, errors = self.main("--owner", "agent", "hand-to-human",
                                      "--note", "power cycle it")
         self.assertEqual((code, errors), (0, ""))
@@ -2215,9 +2259,10 @@ class BoardChoiceTests(Store):
         self.store.enqueue(BOARD_B, "bob", "look")
         with plugged(), self.assertRaises(RuntimeError) as caught:
             device.board_for_lock(self.store)
-        self.assertIn(BOARD_A + ", " + BOARD_B, str(caught.exception))
+        self.assertIn(BOARD_A, str(caught.exception))
+        self.assertIn(BOARD_B, str(caught.exception))
         with plugged(usb(BOARD_B, "COM7")):
-            self.assertEqual(device.board_for_lock(self.store), BOARD_B)
+            self.assertEqual(device.board_for_lock(self.store), (BOARD_B, None))
 
 
 if __name__ == "__main__":

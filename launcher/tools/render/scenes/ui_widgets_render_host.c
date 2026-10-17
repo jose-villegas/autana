@@ -12,14 +12,14 @@
 #include "gfx/gfx.h"
 #include "render_host.h"
 #include "ui/controls/ui_icons.h"
-#include "ui/controls/ui_widgets.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
+#include "ui/ui_mu.h"
 
 #define BACKGROUND 0x0A0C14
 #define HEADER_H   40
 
-static const ui_theme_t THEME = {
+static const ui_mu_theme_t THEME = {
     .panel_face = UI_RGB(0x131C2E),
     .panel_edge = UI_RGB(0xE8ECF4),
     .button_face = UI_RGB(0x1B2740),
@@ -36,7 +36,7 @@ static const ui_theme_t THEME = {
 typedef enum { VIEW_WIDGETS, VIEW_DROPDOWN_OPEN, VIEW_MICROUI, VIEW_SETTINGS } view_t;
 
 static view_t view = VIEW_WIDGETS;
-static ui_transform_t transform;
+static affine2x_t transform;
 static int quality = 2;
 static int microui_value = 6;
 static int checked = 1;
@@ -94,7 +94,7 @@ landscape(void) {
 static ui_widget_button_t
 button(ui_icon_id_t icon, const char* label, bool enabled, bool selected) {
     return (ui_widget_button_t){
-        .icon = ui_icon(icon),
+        .icon = ui_icon_image(icon),
         .label = label,
         .enabled = enabled,
         .selected = selected,
@@ -103,14 +103,11 @@ button(ui_icon_id_t icon, const char* label, bool enabled, bool selected) {
 
 static void
 draw_dropdown(mu_Context* ctx, mu_Rect r) {
-    const ui_dropdown_item_t items[] = {
-        {ui_icon(UI_ICON_HOME), "HOME"},
-        {ui_icon(UI_ICON_WIFI), "WIFI"},
-        {ui_icon(UI_ICON_MONITOR), "DISPLAY"},
-        {ui_icon(UI_ICON_GAMEPAD), "GAMES"},
-    };
+    const char* const items[] = {"HOME", "WIFI", "DISPLAY", "GAMES"};
+    const draw_image_t* const icons[] = {ui_icon_image(UI_ICON_HOME), ui_icon_image(UI_ICON_WIFI),
+                                         ui_icon_image(UI_ICON_MONITOR), ui_icon_image(UI_ICON_GAMEPAD)};
     const int count = (int)(sizeof items / sizeof items[0]);
-    const int picked = ui_dropdown(ctx, "gallery", r, items, count, picked_item, &THEME);
+    const int picked = ui_mu_dropdown(ctx, "gallery", r, items, icons, count, picked_item, &THEME);
     if (picked >= 0) {
         picked_item = picked;
     }
@@ -118,7 +115,7 @@ draw_dropdown(mu_Context* ctx, mu_Rect r) {
 
 static void
 draw_slider_panel(mu_Context* ctx, mu_Rect r) {
-    ui_panel(ctx, r, &THEME);
+    ui_mu_panel(ctx, r, &THEME);
     const mu_Rect caption = mu_rect(r.x + 12, r.y + 6, r.w - 24, 24);
     ui_text_in(ctx, caption, "QUALITY", THEME.caption, 2, UI_ALIGN_LEFT);
     ui_text_in(ctx, caption, "NORMAL", THEME.text, 2, UI_ALIGN_RIGHT);
@@ -141,10 +138,9 @@ draw_tiles(mu_Context* ctx, mu_Rect r) {
 
 static void
 draw_swatches(mu_Context* ctx, mu_Rect r) {
-    static const mu_Color SWATCHES[] = {
-        UI_RGB(0x1D2B53), UI_RGB(0x7E2553), UI_RGB(0x008751), UI_RGB(0xAB5236), UI_RGB(0x5F574F), UI_RGB(0xC2C3C7),
-        UI_RGB(0xFFF1E8), UI_RGB(0xFF004D), UI_RGB(0xFFA300), UI_RGB(0xFFEC27), UI_RGB(0x00E436), UI_RGB(0x29ADFF),
-        UI_RGB(0x83769C), UI_RGB(0xFF77A8), UI_RGB(0xFFCCAA), UI_RGB(0x000000),
+    static const uint32_t SWATCHES[] = {
+        0x1D2B53, 0x7E2553, 0x008751, 0xAB5236, 0x5F574F, 0xC2C3C7, 0xFFF1E8, 0xFF004D,
+        0xFFA300, 0xFFEC27, 0x00E436, 0x29ADFF, 0x83769C, 0xFF77A8, 0xFFCCAA, 0x000000,
     };
     ui_swatch_grid(ctx, r, SWATCHES, 8, 2);
 }
@@ -214,11 +210,11 @@ static int volume = 5;
 static int muted;
 static int output;
 
-static const ui_dropdown_item_t OUTPUTS[] = {
-    {.label = "SPEAKER"},
-    {.label = "HEADPHONES"},
-    {.label = "BLUETOOTH"},
-    {.label = "OFF"},
+static const char* const OUTPUTS[] = {
+    "SPEAKER",
+    "HEADPHONES",
+    "BLUETOOTH",
+    "OFF",
 };
 
 static void
@@ -230,7 +226,7 @@ draw_settings(mu_Context* ctx) {
     mu_layout_set_next(ctx, mu_rect(UI_MARGIN, 144, row_w, UI_TAP_MIN), 0);
     mu_checkbox(ctx, "MUTE", &muted);
     const int picked =
-        ui_dropdown(ctx, "output", mu_rect(UI_MARGIN, 216, row_w, UI_TAP_MIN), OUTPUTS, 4, output, &THEME);
+        ui_mu_dropdown(ctx, "output", mu_rect(UI_MARGIN, 216, row_w, UI_TAP_MIN), OUTPUTS, NULL, 4, output, &THEME);
     if (picked >= 0) {
         output = picked;
     }
@@ -247,7 +243,9 @@ open_dropdown_tap(int frame) {
         return in;
     }
     const mu_Rect r = open_view_dropdown();
-    ui_transform_point(transform, r.x + r.w / 2, r.y + r.h / 2, &in.x, &in.y);
+    const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){r.x + r.w / 2, r.y + r.h / 2});
+    in.x = mapped_pixel.x;
+    in.y = mapped_pixel.y;
     in.down = t < held;
     in.pressed = t == 0;
     in.released = t == held;

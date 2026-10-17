@@ -35,7 +35,7 @@
 static const draw_image_t*
 system_icon(ui_icon_id_t id) {
     ui_icons_init();
-    const draw_image_t* icon = ui_icon(id);
+    const draw_image_t* icon = ui_icon_image(id);
     TEST_ASSERT_NOT_NULL_MESSAGE(icon, "no system icon: the suites run with the packs build_pack.py writes");
     return icon;
 }
@@ -45,7 +45,7 @@ system_icon(ui_icon_id_t id) {
 #define CHECK_TEST_MAX_BLOCKS 16
 
 static int
-blocks_at(int w, int h, icon_rect_t* out) {
+blocks_at(int w, int h, recti_t* out) {
     const draw_image_t* icon = system_icon(UI_ICON_CHECK);
     icon_test_collect_t cc = {.blocks = out, .count = 0, .cap = CHECK_TEST_MAX_BLOCKS};
     icon_walk_blocks(icon, w, h, icon_test_collect, &cc);
@@ -54,7 +54,7 @@ blocks_at(int w, int h, icon_rect_t* out) {
 
 static void
 assert_all_inside_box(int w, int h) {
-    icon_rect_t blocks[CHECK_TEST_MAX_BLOCKS];
+    recti_t blocks[CHECK_TEST_MAX_BLOCKS];
     const int n = blocks_at(w, h, blocks);
 
     TEST_ASSERT_TRUE_MESSAGE(n > 0, "produced no blocks at all");
@@ -82,7 +82,7 @@ test_fits_inside_its_box_across_the_supported_range(void) {
  * than centring the full (mostly empty) 16x16 bitmap. */
 static void
 assert_centred_within_a_pixel(int w, int h) {
-    icon_rect_t blocks[CHECK_TEST_MAX_BLOCKS];
+    recti_t blocks[CHECK_TEST_MAX_BLOCKS];
     const int n = blocks_at(w, h, blocks);
     TEST_ASSERT_TRUE(n > 0);
 
@@ -215,12 +215,85 @@ test_stroke_is_at_least_2px_native_except_the_one_tapered_tip(void) {
                                              "should taper at exactly one free end, not read as dots throughout");
 }
 
+/* A synthetic MONO1 icon whose ink starts away from (0, 0) and is neither
+ * symmetric nor an even width, so a wrong ink edge or centring shifts a run:
+ *     row 2: cols 5-6
+ *     row 3: empty (a row inside the ink box)
+ *     row 4: col 3 and cols 8-9
+ * The ink box is half-open [3, 10) x [2, 5). */
+#define PLACED_ICON_W      16
+#define PLACED_ICON_H      8
+#define PLACED_ICON_STRIDE PLACED_ICON_W
+#define PLACED_INK_X0      3
+#define PLACED_INK_X1      10
+#define PLACED_INK_Y0      2
+#define PLACED_INK_Y1      5
+#define PLACED_RUN_COUNT   3
+
+static const uint8_t placed_icon_bits[PLACED_ICON_H * PLACED_ICON_STRIDE / 8] = {
+    0x00, 0x00, /* row 0 */
+    0x00, 0x00, /* row 1 */
+    0x06, 0x00, /* row 2: cols 5-6 */
+    0x00, 0x00, /* row 3 */
+    0x10, 0xC0, /* row 4: col 3, cols 8-9 */
+    0x00, 0x00, /* row 5 */
+    0x00, 0x00, /* row 6 */
+    0x00, 0x00, /* row 7 */
+};
+
+/* Placed by the half-open ink box: the box's own size, not its last pixel. */
+static void
+assert_placed_exactly(int scale) {
+    const draw_image_t icon = {.bits = placed_icon_bits,
+                               .format = DRAW_IMAGE_MONO1,
+                               .width = PLACED_ICON_W,
+                               .height = PLACED_ICON_H,
+                               .stride = PLACED_ICON_STRIDE};
+    const int box_w = PLACED_ICON_W * scale + 4;
+    const int box_h = PLACED_ICON_H * scale + 4;
+    const int origin_x = ((box_w - ((PLACED_INK_X1 - PLACED_INK_X0) * scale)) / 2) - (PLACED_INK_X0 * scale);
+    const int origin_y = ((box_h - ((PLACED_INK_Y1 - PLACED_INK_Y0) * scale)) / 2) - (PLACED_INK_Y0 * scale);
+    const recti_t expected[PLACED_RUN_COUNT] = {
+        {origin_x + (5 * scale), origin_y + (2 * scale), 2 * scale, scale},
+        {origin_x + (3 * scale), origin_y + (4 * scale), 1 * scale, scale},
+        {origin_x + (8 * scale), origin_y + (4 * scale), 2 * scale, scale},
+    };
+    recti_t blocks[PLACED_RUN_COUNT];
+    icon_test_collect_t cc = {.blocks = blocks, .count = 0, .cap = PLACED_RUN_COUNT};
+    icon_walk_blocks(&icon, box_w, box_h, icon_test_collect, &cc);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(PLACED_RUN_COUNT, cc.count, "wrong number of runs");
+    for (int i = 0; i < PLACED_RUN_COUNT; i++) {
+        TEST_ASSERT_EQUAL_INT_MESSAGE(expected[i].x, blocks[i].x, "run x");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(expected[i].y, blocks[i].y, "run y");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(expected[i].w, blocks[i].w, "run width");
+        TEST_ASSERT_EQUAL_INT_MESSAGE(expected[i].h, blocks[i].h, "run height");
+    }
+}
+
+static void
+test_an_offset_asymmetric_icon_lands_on_exact_pixels_at_scale_1(void) {
+    assert_placed_exactly(1);
+}
+
+static void
+test_an_offset_asymmetric_icon_lands_on_exact_pixels_at_scale_2(void) {
+    assert_placed_exactly(2);
+}
+
+static void
+test_an_offset_asymmetric_icon_lands_on_exact_pixels_at_scale_3(void) {
+    assert_placed_exactly(3);
+}
+
 void
 run_icons_suite(void) {
     RUN_TEST(test_fits_inside_its_box_across_the_supported_range);
     RUN_TEST(test_centred_at_18px);
     RUN_TEST(test_centred_at_64px);
     RUN_TEST(test_centred_at_32px);
+    RUN_TEST(test_an_offset_asymmetric_icon_lands_on_exact_pixels_at_scale_1);
+    RUN_TEST(test_an_offset_asymmetric_icon_lands_on_exact_pixels_at_scale_2);
+    RUN_TEST(test_an_offset_asymmetric_icon_lands_on_exact_pixels_at_scale_3);
     RUN_TEST(test_check_matches_the_artwork_it_replaced);
     RUN_TEST(test_bitmap_is_neither_empty_nor_full);
     RUN_TEST(test_stroke_is_at_least_2px_native_except_the_one_tapered_tip);

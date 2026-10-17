@@ -21,6 +21,7 @@ class ShellGateTests(ShellGateTestCase):
         gate = gates / 'check-format.sh'
         shutil.copyfile(ROOT / 'scripts/gates/check-format.sh', gate)
         shutil.copyfile(ROOT / 'scripts/lib/python.sh', lib / 'python.sh')
+        shutil.copyfile(ROOT / 'scripts/lib/python-min-version', lib / 'python-min-version')
         (lib / 'pinned_tool.py').write_text(resolver)
         return gate
 
