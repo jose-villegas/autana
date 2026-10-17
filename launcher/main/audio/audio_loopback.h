@@ -5,6 +5,7 @@
 
 #include "audio/audio_out.h"
 
+/* Trim the first captured samples after audio starts. */
 #define AUDIO_LOOPBACK_SETTLE_MS       100u
 #define AUDIO_LOOPBACK_HEARD_MARGIN_DB 20.0f
 
