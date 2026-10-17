@@ -11,7 +11,7 @@
  */
 #include <stdbool.h>
 
-/* Whether this boot's PSRAM tuning ran with the port off the bus (always
- * true when there was no sweep). False means the wrap in main/CMakeLists.txt
- * no longer reaches ESP-IDF's tuning function. */
+/* Whether this boot's PSRAM tuning ran with the port off the bus; true
+ * when there was no sweep. ESP-IDF calls the tuning only through the wrap in
+ * main/CMakeLists.txt, and false means that call did not go through it. */
 bool board_usb_detached_for_tuning(void);
