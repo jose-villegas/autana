@@ -281,7 +281,7 @@ returns the other vector type of the same number type, so `vec3f_xz(v)` is a
 | `P_normalize(q)` | unit length; `q` must not be zero | $`\frac{q}{\sqrt{q_x^2 + q_y^2 + q_z^2 + q_w^2}}`$ |
 | `P_from_basis(r, u, f)` | the rotation whose right, up and forward axes are `r`, `u`, `f`; when the trace is not positive, `s` comes from the largest diagonal entry instead<sup>[[53]](../Citations.md#53)</sup> | $`s = 2\sqrt{1 + r_x + u_y + f_z}`$<br> $`\left(\frac{u_z - f_y}{s},\ \frac{f_x - r_z}{s},\ \frac{r_y - u_x}{s},\ \frac{s}{4}\right)`$ |
 | `P_nlerp(a, b, t)` | unit-length shortest arc; negate `b` when the 4D dot is negative | $`\mathrm{normalize}(a(1-t)+bt)`$ |
-| `quatf_slerp(a, b, t)` | shortest-arc interpolation<sup>[[19]](../Citations.md#19)</sup>, `t` in 0..1; `f` only; `b` is negated first when $`a \cdot b < 0`$ | $`\frac{\sin((1 - t)\,\Omega)}{\sin\Omega}\,a + \frac{\sin(t\,\Omega)}{\sin\Omega}\,b`$<br> with $`\cos\Omega = a \cdot b`$ |
+| `quatf_slerp(a, b, t)` | shortest-arc interpolation<sup>[[19]](../Citations.md#19)</sup>, `t` in 0..1; `f` only; `b` is negated first when $`a \cdot b < 0`$ | $`\frac{\sin((1 - t)\,\Omega)}{\sin\Omega}\,a + \frac{\sin(t\,\Omega)}{\sin\Omega}\,b`$<br> with $`\cos\Omega = a \cdot b`$: nearly parallel inputs take `P_nlerp`, the rest evaluated by Eberly's series in cos - 1, halving the arc past a 120-degree rotation ($`a \cdot b < \frac{1}{2}`$) and summing until its terms fall below float precision, with no last-term correction<sup>[[71]](../Citations.md#71)</sup> |
 
 ### mat3 (`f`)
 
@@ -395,6 +395,6 @@ and the rules are in [Build-Variants.md](../Build-Variants.md):
 | Rule | Where |
 |---|---|
 | `-Werror=double-promotion`, `-Werror=float-conversion` | the whole `main` component |
-| `-ffp-contract=off` | the host test and render builds only: the host never fuses a multiply-add and the device does, so a host and a device pixel can differ by one at a truncation boundary |
+| `-ffp-contract=off` | the host builds [Build-Variants.md](../Build-Variants.md#float-maths-is-single-precision-and-the-build-holds-it-there) names; the device fuses |
 | soft-double link gate | `launcher/tools/build/check_no_soft_double.py`: a function calling a soft-double routine fails unless it also logs |
-| libm | float needs `sqrtf`, `sinf`, `cosf`, `acosf`, `lroundf`; link it |
+| libm | float needs `sqrtf`, `sinf`, `cosf`, `lroundf`; link it |
