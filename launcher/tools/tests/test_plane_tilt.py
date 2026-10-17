@@ -10,10 +10,9 @@ import unittest
 
 LAUNCHER = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(LAUNCHER / "tools"))
-sys.path.insert(0, str(LAUNCHER / "tools" / "boot_anim"))
 
 from gltf import gltf_write  # noqa: E402
-import plane_tilt  # noqa: E402
+from boot_anim import plane_tilt  # noqa: E402
 
 EYE = (0.0, 0.0, 10.0)
 ORIGIN = (-2.0, 8.0, 0.0)
