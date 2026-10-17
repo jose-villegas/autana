@@ -36,7 +36,7 @@ enum {
         return OPS##_add(V##_dot(plane.normal, point), plane.d);                                                       \
     }                                                                                                                  \
                                                                                                                        \
-    /* normalize = (normal, d) / |normal|. Precondition: normal is not zero. */                                        \
+    /* normalize = (normal, d) / |normal|. Precondition: dot(normal, normal) is nonzero and representable. */          \
     static inline P##_t P##_normalize(P##_t plane) {                                                                   \
         const T scale = OPS##_div(OPS##_one(), OPS##_sqrt(V##_dot(plane.normal, plane.normal)));                       \
         return (P##_t){V##_scale(plane.normal, scale), OPS##_mul(plane.d, scale)};                                     \

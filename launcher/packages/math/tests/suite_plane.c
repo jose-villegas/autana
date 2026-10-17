@@ -180,13 +180,19 @@ test_frustum_through_a_map_tests_the_mapped_point(void) {
 }
 
 static void
-test_frustum_behind_near_is_outside_near_only(void) {
+test_frustum_near_plane_sits_at_near_z(void) {
     frustum_fixture_t f;
     frustum_fixture(&f);
-    const vec3f_t behind = {0.0F, 0.0F, PLANE_NEAR - PLANE_EDGE_STEP};
-    for (int p = 0; p < PLANE_FRUSTUM_COUNT; p++) {
-        TEST_ASSERT_EQUAL(p != PLANE_FRUSTUM_NEAR, planef_distance(f.planes[p], behind) >= 0.0F);
-        assert_fixed_plane(f.planes[p], f.fixed[p], behind);
+    for (int side = -1; side <= 1; side++) {
+        const float offset = (float)side * PLANE_EDGE_STEP;
+        const vec3f_t q = {0.0F, 0.0F, PLANE_NEAR + offset};
+        TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, offset, planef_distance(f.planes[PLANE_FRUSTUM_NEAR], q));
+        for (int p = 0; p < PLANE_FRUSTUM_COUNT; p++) {
+            if (p != PLANE_FRUSTUM_NEAR) {
+                TEST_ASSERT_TRUE(planef_distance(f.planes[p], q) >= 0.0F);
+            }
+            assert_fixed_plane(f.planes[p], f.fixed[p], q);
+        }
     }
 }
 
@@ -214,7 +220,7 @@ suite_plane(void) {
     RUN_TEST(test_from_rows_tests_the_mapped_point);
     RUN_TEST(test_frustum_edge_points_are_outside_only_the_plane_they_cross);
     RUN_TEST(test_frustum_through_a_map_tests_the_mapped_point);
-    RUN_TEST(test_frustum_behind_near_is_outside_near_only);
+    RUN_TEST(test_frustum_near_plane_sits_at_near_z);
     RUN_TEST(test_frustum_corner_rays_lie_on_both_side_planes);
 }
 
