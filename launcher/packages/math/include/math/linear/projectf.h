@@ -17,11 +17,19 @@ typedef struct {
     float fx, fy, cx, cy, near_z;
 } projectf_t;
 
+/* The projected offset from the optical centre in pixels, camera +y up (not yet flipped to picture y). */
+static inline vec2f_t
+projectf_offset(const projectf_t* lens, vec3f_t p) {
+    const float reciprocal_z = mathf_recip(p.z);
+    const float gain_x = lens->fx * reciprocal_z;
+    const float gain_y = lens->fy * reciprocal_z;
+    return (vec2f_t){p.x * gain_x, p.y * gain_y};
+}
+
 static inline vec2f_t
 projectf_screen(const projectf_t* lens, vec3f_t p) {
-    const float gain_x = lens->fx * mathf_recip(p.z);
-    const float gain_y = lens->fy * mathf_recip(p.z);
-    return (vec2f_t){lens->cx + p.x * gain_x, lens->cy - p.y * gain_y};
+    const vec2f_t offset = projectf_offset(lens, p);
+    return (vec2f_t){lens->cx + offset.x, lens->cy - offset.y};
 }
 
 static inline void

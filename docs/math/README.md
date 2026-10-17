@@ -79,7 +79,8 @@ biases each offset slightly away from zero, then truncates toward it.
 at unit depth, `cx` and `cy` the optical centre in pixels, and `near_z`
 the near plane in camera units. `projectf_screen(lens, p)` returns floating
 picture coordinates without pixel snapping, with camera +y up and picture
-y down. Focal lengths may differ between axes.
+y down. Focal lengths may differ between axes. `projectf_offset(lens, p)`
+returns the pixel offset from the optical centre with camera +y up.
 
 `projectf_clip_near` and `projectx_clip_near` take `near_z, p0, p1` and reject segments whose endpoints are both
 at or behind the plane. Otherwise they move the behind endpoint to the

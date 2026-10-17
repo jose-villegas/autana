@@ -19,6 +19,14 @@ fixture(void) {
 }
 
 static void
+test_projectf_offset_preserves_camera_sign_and_independent_axes(void) {
+    const projectf_t lens = fixture();
+    const vec2f_t offset = projectf_offset(&lens, (vec3f_t){-PROJECT_NEAR, PROJECT_NEAR, PROJECT_DEPTH});
+    TEST_ASSERT_EQUAL_FLOAT(-PROJECT_FX * PROJECT_NEAR / (float)PROJECT_DEPTH, offset.x);
+    TEST_ASSERT_EQUAL_FLOAT(PROJECT_FY * PROJECT_NEAR / (float)PROJECT_DEPTH, offset.y);
+}
+
+static void
 test_projectf_screen_center_and_independent_axes(void) {
     const projectf_t lens = fixture();
     const vec2f_t center = projectf_screen(&lens, (vec3f_t){0, 0, PROJECT_DEPTH});
@@ -90,6 +98,7 @@ test_projectx_clip_near_at_two_scales(void) {
 
 void
 suite_project(void) {
+    RUN_TEST(test_projectf_offset_preserves_camera_sign_and_independent_axes);
     RUN_TEST(test_projectf_screen_center_and_independent_axes);
     RUN_TEST(test_projectf_clip_near_rejects_and_preserves_endpoints);
     RUN_TEST(test_projectf_clip_near_crosses_in_both_orders);
