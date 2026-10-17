@@ -42,5 +42,5 @@ docs/Shared-Helpers.md	2026-10-12
 docs/plans/UI-Editor-Plan.md	2026-10-14
 docs/Firmware-Architecture.md	2026-10-14
 docs/Firmware-Architecture.md	2026-10-17
-docs/notes/Audio.md	2026-10-17	checked against audio/, console_tone.c and the committed capture
-docs/notes/Audio.md	2026-10-17	call and signal diagrams, memory constraint and board settings checked against their source owners
+docs/audio/Audio-Path.md	2026-10-17	checked against audio/, console_tone.c and the committed capture
+docs/audio/Audio-Path.md	2026-10-17	call and signal diagrams, memory constraint and board settings checked against their source owners

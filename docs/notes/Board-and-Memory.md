@@ -45,6 +45,17 @@ POST (`launcher/main/selftest/post.c`) also checks the MAC/eFuse and the I2C bus
 itself. It raises the amp GPIO with `board_audio_amp_enable()` before probing
 the codec.
 
+### Audio
+
+The ES8311 codec and the speaker amplifier. The audio path, sound assets and captured
+levels are in the [audio docs](../audio/README.md).
+
+| Constraint | Owner |
+|---|---|
+| The amplifier on GPIO 46 has one owner, `board_audio_amp_enable()`. The codec PA pin is unused. | `launcher/main/board/board_esp32s3.c`, `launcher/main/audio/audio_codec.c` |
+| `audio_out_amp()` waits `AUDIO_OUT_AMP_STARTUP_MS` (250 ms) for the amplifier to pass sound. | `launcher/main/audio/audio_out.c` |
+| The microphone gain rationale is in the comment at `AUDIO_IN_GAIN_DB`. | `launcher/main/audio/audio_in.c` |
+
 ### Revisions
 
 | Revision | Touch answers at | Panel | X gap |
