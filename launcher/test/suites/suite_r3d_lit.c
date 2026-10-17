@@ -479,7 +479,7 @@ within_corners(gfx_color_t c, const shaded_t* t) {
 }
 
 /* Triangles one to five pixels across with a colour and a depth at each
- * corner, the sizes where the one-colour, centre-by-centre and walked paths
+ * corner, the sizes where the flat, centre-by-centre and walked paths
  * meet: drawn as two windows they match the whole draw, and no channel
  * leaves its corners' range. */
 static void
@@ -518,70 +518,86 @@ test_small_shaded_triangles_keep_their_planes_in_range_in_any_window(void) {
     TEST_ASSERT_GREATER_THAN_INT(100, shaded);
 }
 
-static void test_a_mesh_of_small_and_large_triangles_fills_every_pixel_exactly_once(void);
-
 #ifndef DEVICE_BUILD
-#define SMALL_IDENTITY_SIDE   8
-#define SMALL_IDENTITY_TRIALS 1000
-#define SMALL_IDENTITY_SEEDS  4
+#define SMALL_IDENTITY_TRIALS       1000
+#define SMALL_IDENTITY_BATCH_TRIALS 10
+#define SMALL_IDENTITY_SEEDS        4
+#define SMALL_IDENTITY_PLANES       3
+#define SMALL_IDENTITY_PIXELS       (SMALL_IDENTITY_PLANES * W * H)
+
+static uint16_t* identity_images;
+static bool identity_reply_ok;
+
+static void
+identity_reply(const char* line) {
+    identity_reply_ok = strncmp(line, "TUNE_OK ", sizeof("TUNE_OK ") - 1) == 0;
+}
+
+static void
+draw_identity_images(uint16_t* images, uint32_t seed, int mode, int side, int first_trial, bool split_windows) {
+    const r3d_span_writer_t writer = {.span = raster_attachment_tag, .attachment = GFX_ATTACHMENT_FURTHER, .value = 1};
+    uint32_t state = seed;
+    for (int trial = 0; trial < first_trial + SMALL_IDENTITY_BATCH_TRIALS; trial++) {
+        const float radius = mode == 2 ? 1.0f : (float)side * 0.5f;
+        const float cx = (float)(next_random(&state) % W);
+        const float cy = (float)(next_random(&state) % H);
+        shaded_t tri = random_shaded(&state, cx, cy, radius);
+        tri.solid = mode == 1;
+        if (trial < first_trial) {
+            continue;
+        }
+        const int split = split_windows ? (int)cy : H;
+        uint16_t* pixels = images + (trial - first_trial) * SMALL_IDENTITY_PIXELS;
+        (void)fixture();
+        for (int i = 0; i < W * H; i++) {
+            depth[i] = trial % 2 == 0 ? R3D_DEPTH_EMPTY : R3D_DEPTH_NEAREST / 2;
+        }
+        const int boundaries[] = {0, split, H};
+        for (int window = 0; window < 2; window++) {
+            r3d_span_target_t target = fixture_rows(boundaries[window], boundaries[window + 1]);
+            target.rows.count = GFX_ATTACHMENT_FURTHER + 1;
+            target.rows.attachment[GFX_ATTACHMENT_FURTHER] =
+                (gfx_attachment_t){pixels + 2 * W * H + boundaries[window] * W, sizeof(uint16_t)};
+            target.writers = &writer;
+            target.writer_count = 1;
+            draw_shaded(&target, &tri);
+            r3d_span_triangle_write(&target, &tri.v[0], &tri.v[1], &tri.v[2]);
+        }
+        memcpy(pixels, color, W * H * sizeof(*pixels));
+        memcpy(pixels + W * H, depth, W * H * sizeof(*pixels));
+    }
+}
 
 static void
 test_small_triangles_match_walked_images_and_writers(void) {
-    uint16_t* images = calloc(6U * W * H, sizeof(*images));
-    TEST_ASSERT_NOT_NULL(images);
-    const r3d_span_writer_t writer = {.span = raster_attachment_tag, .attachment = GFX_ATTACHMENT_FURTHER, .value = 1};
+    (void)fixture();
+    const tune_entry_t* knob = tune_find(tune_shared(), "r3d_span.small_max_side");
+    TEST_ASSERT_NOT_NULL(knob);
+    const int side = knob->high;
+    const size_t batch_pixels = SMALL_IDENTITY_BATCH_TRIALS * SMALL_IDENTITY_PIXELS;
+    identity_images = memory_alloc(2 * batch_pixels * sizeof(*identity_images), MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(identity_images);
     for (uint32_t seed = 1; seed <= SMALL_IDENTITY_SEEDS; seed++) {
-        uint32_t state = seed;
         for (int mode = 0; mode < 3; mode++) {
-            for (int trial = 0; trial < SMALL_IDENTITY_TRIALS; trial++) {
-                const float radius = mode == 2 ? 1.0f : SMALL_IDENTITY_SIDE * 0.5f;
-                const float cx = (float)(next_random(&state) % W);
-                const float cy = (float)(next_random(&state) % H);
-                shaded_t tri = random_shaded(&state, cx, cy, radius);
-                tri.solid = mode == 1;
-                const r3d_span_extent_t extent = r3d_span_extent(&tri.v[0], &tri.v[1], &tri.v[2]);
-                TEST_ASSERT_TRUE(extent.centres.w <= SMALL_IDENTITY_SIDE && extent.centres.h <= SMALL_IDENTITY_SIDE);
-                if (mode == 2) {
-                    TEST_ASSERT_TRUE(extent.flat);
-                }
-                memset(images, 0, 6U * W * H * sizeof(*images));
+            for (int first = 0; first < SMALL_IDENTITY_TRIALS; first += SMALL_IDENTITY_BATCH_TRIALS) {
+                (void)tune_handle_line("RESET r3d_span.small_max_side", cull_reply);
+                memset(identity_images, 0, 2 * batch_pixels * sizeof(*identity_images));
                 for (int path = 0; path < 2; path++) {
-                    (void)tune_handle_line(
-                        path == 0 ? "SET r3d_span.small_max_side 0" : "SET r3d_span.small_max_side 8", cull_reply);
-                    const tune_entry_t* knob = tune_find(tune_shared(), "r3d_span.small_max_side");
-                    TEST_ASSERT_NOT_NULL(knob);
-                    TEST_ASSERT_EQUAL_INT(path == 0 ? 0 : SMALL_IDENTITY_SIDE, *knob->value);
-                    uint16_t* pixels = images + path * 3 * W * H;
-                    r3d_span_target_t target = r3d_span_target(pixels, pixels + W * H, W, 0, H);
-                    target.rows.count = GFX_ATTACHMENT_FURTHER + 1;
-                    target.rows.attachment[GFX_ATTACHMENT_FURTHER] =
-                        (gfx_attachment_t){pixels + 2 * W * H, sizeof(uint16_t)};
-                    target.writers = &writer;
-                    target.writer_count = 1;
-                    for (int i = 0; i < W * H; i++) {
-                        pixels[W * H + i] = trial % 2 == 0 ? R3D_DEPTH_EMPTY : R3D_DEPTH_NEAREST / 2;
-                    }
-                    draw_shaded(&target, &tri);
-                    r3d_span_triangle_write(&target, &tri.v[0], &tri.v[1], &tri.v[2]);
+                    char command[sizeof("SET r3d_span.small_max_side -2147483648")];
+                    snprintf(command, sizeof command, "SET r3d_span.small_max_side %d", path == 0 ? 0 : side);
+                    identity_reply_ok = false;
+                    const bool handled = tune_handle_line(command, identity_reply);
+                    TEST_ASSERT_TRUE(handled && identity_reply_ok);
+                    TEST_ASSERT_EQUAL_INT(path == 0 ? 0 : side, *knob->value);
+                    draw_identity_images(identity_images + path * batch_pixels, seed, mode, side, first, path != 0);
                 }
-                const bool same_color = memcmp(images, images + 3 * W * H, W * H * sizeof(*images)) == 0;
-                const bool same_depth = memcmp(images + W * H, images + 4 * W * H, W * H * sizeof(*images)) == 0;
-                const bool same_tags = memcmp(images + 2 * W * H, images + 5 * W * H, W * H * sizeof(*images)) == 0;
-                if (!same_color || !same_depth || !same_tags) {
-                    printf("small identity seed=%lu mode=%d trial=%d color=%d depth=%d tags=%d\n", (unsigned long)seed,
-                           mode, trial, same_color, same_depth, same_tags);
-                    free(images);
-                    (void)tune_handle_line("RESET r3d_span.small_max_side", cull_reply);
-                    TEST_FAIL_MESSAGE("small and walked buffers differ");
-                }
+                (void)tune_handle_line("RESET r3d_span.small_max_side", cull_reply);
+                TEST_ASSERT_EQUAL_MEMORY_MESSAGE(identity_images, identity_images + batch_pixels,
+                                                 batch_pixels * sizeof(*identity_images),
+                                                 "small split windows and walked colour, depth or writer tags differ");
             }
         }
     }
-    free(images);
-    (void)tune_handle_line("RESET r3d_span.small_max_side", cull_reply);
-    (void)tune_handle_line("SET r3d_span.small_max_side 8", cull_reply);
-    test_a_mesh_of_small_and_large_triangles_fills_every_pixel_exactly_once();
-    (void)tune_handle_line("RESET r3d_span.small_max_side", cull_reply);
 }
 #endif
 
@@ -2421,6 +2437,11 @@ test_show_reads_the_depth_of_the_frame_just_rendered_and_leaves_it_alone(void) {
 
 static void
 release_fixture(void) {
+#ifndef DEVICE_BUILD
+    (void)tune_handle_line("RESET r3d_span.small_max_side", cull_reply);
+    memory_free(identity_images);
+    identity_images = NULL;
+#endif
     if (cull_changed) {
         char command[sizeof("SET render.cull -2147483648")];
         const int length = snprintf(command, sizeof command, "SET render.cull %ld", (long)saved_cull);
