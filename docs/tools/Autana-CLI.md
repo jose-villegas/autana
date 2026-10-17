@@ -147,8 +147,9 @@ suite this project registers, for a full pre-merge pass.
 | `autana suite <name> --set NAME=VALUE` | Set a tunable ([Live-Tuning.md](Live-Tuning.md)) under each capture's own lock, just before it runs; `--set` repeats. A value the board refuses or does not echo stops the batch. |
 | `autana suite list [text] [--json]` | The suites this project registers; `[on request]` ones run only by name. |
 | `autana selftest [seconds] [--verbose] [--perf-scope] [--out PATH]` | Build the autorun diagnostics image, flash, run every suite; 3000 s when omitted. |
+| `autana tone <hz> <ms> [volume] [--json]` | Development builds only: plays `<hz>` for `<ms>` at `[volume]` % (firmware default 30) and reports the tone level against a silence baseline in dBFS, whether it was heard, and the DMA bytes held while open. |
 
-Each prints the report and capture paths, PASS/FAIL counts, up to ten failure
+Suite and self-test runs print the report and capture paths, PASS/FAIL counts, up to ten failure
 messages (then a FAIL count per suite) and the end reason.
 A capture without its `SELFTEST_COMPLETE` or `RUNSUITE_COMPLETE` line fails
 with the end reason. `--verbose`
@@ -302,7 +303,6 @@ rarely needs the frame loop paused or a raw sensor level, so these stay one
 | `autana debug touch <down\|up> <x> <y>` | One raw touch-controller level, at a panel-frame point (a `--framebuffer` pixel, not a default-screenshot one); `up` hands back to the controller. |
 | `autana debug imu <ax> <ay> <az>` | Raw accelerometer counts; `autana debug imu release` hands back to the sensor. |
 | `autana debug framewatch` | A development build's frame watch as JSON: the last frame's allocations, frees and log lines, and every site repeating frame after frame ([the frame watch](../Firmware-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state)). |
-| `autana debug tone <hz> <ms> [volume] [--json]` | Development builds only: plays `<hz>` for `<ms>` at `[volume]` % (firmware default 30) and reports the tone level against a silence baseline in dBFS, whether it was heard, and the DMA bytes held while open. |
 
 `autana freeze`, `autana resume`, `autana step`, `autana touch`, `autana imu`
 and `autana framewatch` still work, each printing the new spelling once
@@ -326,7 +326,7 @@ before running it.
 |---|---|
 | `status` | `boards`, one object per board; the fields are in [Device-Lock.md](Device-Lock.md#exit-codes-and-json-status). |
 | `buildid` | `build_id` |
-| `debug tone` | `hz`, `tone_db`, `silence_db`, `heard`, `open_dma_bytes` |
+| `tone` | `hz`, `tone_db`, `silence_db`, `heard`, `open_dma_bytes` |
 | `heap` | `free`, `largest` (bytes in `MEMORY_DMA`) |
 | `apps` | `apps`: `name`, `running` |
 | `suite list` | `suites`: `name`, `source`, `on_request`, `device_only` |

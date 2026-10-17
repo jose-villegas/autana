@@ -24,6 +24,14 @@ class AudioTablesTest(unittest.TestCase):
             self.assertIn("A308", body)
             self.assertIn("2521fd82ef55-dev", body)
 
+    def test_capture_header_comments_are_optional(self):
+        capture = ROOT / audio.CAPTURE
+        lines = capture.read_text().splitlines()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "capture.txt"
+            path.write_text("\n".join([lines[0], *(line for line in lines[1:] if not line.startswith("#"))]))
+            self.assertEqual(audio.render(path), audio.render(capture))
+
     def test_changed_capture_changes_tables(self):
         capture = (ROOT / audio.CAPTURE).read_text()
         with tempfile.TemporaryDirectory() as directory:

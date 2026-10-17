@@ -48,6 +48,14 @@ class CommandGroupTests(unittest.TestCase):
                 self.assertIs(autana.COMMANDS[command.name], command.handler)
                 self.assertIn(f"autana {command.usages[0][0]}", autana.help_text([command.name]))
 
+    def test_tone_is_a_test_command_without_a_debug_alias(self):
+        self.assertIs(autana.COMMANDS["tone"], autana.tone)
+        self.assertIn("autana tone <hz> <ms> [volume] [--json]", autana.help_text(["tests"]))
+        self.assertNotIn("tone", autana.DEBUG_VERBS)
+        self.assertNotIn("debug tone", autana.help_text(["debug"]))
+        with self.assertRaises(SystemExit):
+            autana.debug(["tone", "440", "200"])
+
     def test_help_narrows_to_a_group_or_a_command(self):
         tests = autana.help_text(["tests"])
         self.assertIn("autana selftest", tests)

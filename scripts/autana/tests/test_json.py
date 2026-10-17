@@ -53,7 +53,7 @@ class JsonReadTests(unittest.TestCase):
                             "heard": heard, "open_dma_bytes": 8192}
                 self.assertEqual(autana.parse_tone(reply), expected)
                 with mock.patch.object(autana, "send", return_value=(0, [reply])) as send:
-                    self.assertEqual(self.output(autana.debug, ["tone", "440", "200", "--json"]), expected)
+                    self.assertEqual(self.output(autana.COMMANDS["tone"], ["440", "200", "--json"]), expected)
                 send.assert_called_once_with(
                     "TONE 440 200", reply="TONE",
                     seconds=autana.TONE_MARGIN_SECONDS + autana.TONE_CAPTURE_COUNT * 200 / autana.TONE_MS_PER_SECOND)
@@ -68,13 +68,13 @@ class JsonReadTests(unittest.TestCase):
             with mock.patch.object(autana, "send", return_value=(0, [reply])), \
                     contextlib.redirect_stderr(io.StringIO()) as stderr, \
                     contextlib.redirect_stdout(io.StringIO()) as stdout:
-                self.assertEqual(autana.debug(["tone", "440", "200", "--json"]), 1)
+                self.assertEqual(autana.COMMANDS["tone"](["440", "200", "--json"]), 1)
             self.assertEqual(stdout.getvalue(), "")
             if reply.startswith(("TONE usage:", "TONE error:")):
                 self.assertEqual(stderr.getvalue(), reply + "\n")
         for result, expected in (((0, []), 1), ((7, []), 7)):
             with mock.patch.object(autana, "send", return_value=result):
-                self.assertEqual(autana.debug(["tone", "440", "200"]), expected)
+                self.assertEqual(autana.COMMANDS["tone"](["440", "200"]), expected)
 
     def test_tone_forwards_decimal_args_and_plain_output(self):
         reply = "TONE not heard 1 Hz: -63.0 dB (silence -63.0 dB), open 8192 B DMA"
@@ -83,7 +83,7 @@ class JsonReadTests(unittest.TestCase):
             stream = io.StringIO()
             with mock.patch.object(autana, "send", return_value=(0, [reply])) as send, \
                     contextlib.redirect_stdout(stream):
-                self.assertEqual(autana.debug(["tone", *args]), 0)
+                self.assertEqual(autana.COMMANDS["tone"]([*args]), 0)
             self.assertEqual(stream.getvalue(), reply + "\n")
             self.assertEqual(send.call_args.args, ("TONE " + " ".join(args),))
             self.assertEqual(send.call_args.kwargs["seconds"],
@@ -97,7 +97,7 @@ class JsonReadTests(unittest.TestCase):
                      ["440", "200", "--unknown"], ["440", "200", "--json", "--json"]):
             with self.subTest(args=args), mock.patch.object(autana, "send") as send:
                 with self.assertRaises(SystemExit):
-                    autana.debug(["tone", *args])
+                    autana.COMMANDS["tone"]([*args])
                 send.assert_not_called()
 
     def test_buildid_reply(self):

@@ -25,13 +25,13 @@ def render(path):
     if not header:
         raise ValueError("missing board and date in capture header")
     records = [(command.split(), json.loads(reply))
-               for command, reply in (line.split("\t", 1) for line in lines[1:] if line)]
+               for command, reply in (line.split("\t", 1) for line in lines[1:] if line and not line.startswith("#"))]
     builds = {reply["build_id"] for command, reply in records if command == ["buildid"]}
     if len(builds) != 1:
         raise ValueError("capture must have one consistent build id")
     heaps = [reply for command, reply in records if command == ["heap"]]
-    tones = [(tuple(map(int, command[2:])), reply) for command, reply in records
-             if command[:2] == ["debug", "tone"]]
+    tones = [(tuple(map(int, command[1:])), reply) for command, reply in records
+             if command[:1] == ["tone"]]
     if len(heaps) < 2 or len(tones) < 2:
         raise ValueError("capture needs idle/closed heaps and repeated tone opens")
     idle, closed = heaps[0], heaps[-1]

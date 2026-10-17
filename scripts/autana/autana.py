@@ -449,7 +449,7 @@ TONE_MS_PER_SECOND = 1000
 
 
 def tone(args):
-    usage = "usage: autana debug tone <hz> <ms> [volume] [--json]"
+    usage = "usage: autana tone <hz> <ms> [volume] [--json]"
     rest = list(args)
     json_output = read_json_flag(rest[-1:] if rest and rest[-1] == "--json" else [], usage)
     if json_output:
@@ -1531,7 +1531,7 @@ def alias(old, new, handler):
 
 LOCK_VERBS = {"wait": lock_wait, "take": take, "run": lock_run, "release": release, "hand": hand, "take-back": take_back}
 DEBUG_VERBS = {"freeze": freeze, "resume": resume, "step": step, "touch": touch, "imu": imu,
-              "framewatch": framewatch, "tone": tone}
+              "framewatch": framewatch}
 
 
 def lock(args):
@@ -1545,7 +1545,7 @@ def lock(args):
 
 
 def debug(args):
-    """`autana debug <verb>`: freeze/resume/step/touch/imu/framewatch/tone, kept
+    """`autana debug <verb>`: freeze/resume/step/touch/imu/framewatch, kept
     out of the top-level help (`autana help debug` still lists them) since a
     session rarely needs them."""
     if not args or args[0] not in DEBUG_VERBS:
@@ -1595,6 +1595,9 @@ COMMAND_GROUPS = (
         Command("selftest", selftest, (
             ("selftest [seconds] [--verbose]",
              "build diagnostics+autorun, run every suite on the board"),)),
+        Command("tone", tone, (
+            ("tone <hz> <ms> [volume] [--json]",
+             "play a tone on the speaker and hear it on the mic; development builds"),)),
     )),
     ("watch", "Watch the board", (
         Command("monitor", monitor, (
@@ -1644,9 +1647,7 @@ COMMAND_GROUPS = (
             ("debug step [N]", "advance N frames while frozen; 1 when omitted"),
             ("debug touch <down|up> <x> <y>", "one raw touch level; up hands back"),
             ("debug imu <ax> <ay> <az>", "raw accelerometer counts; imu release hands back"),
-            ("debug framewatch", "allocations and log lines repeating frame after frame, as JSON"),
-            ("debug tone <hz> <ms> [volume] [--json]",
-             "play a tone on the speaker and hear it on the mic; development builds"))),
+            ("debug framewatch", "allocations and log lines repeating frame after frame, as JSON"),)),
     )),
     ("docs", "No board needed", (
         Command("docs", docs, (
