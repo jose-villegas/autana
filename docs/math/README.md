@@ -89,9 +89,8 @@ untouched. The fixed helper accepts any common scale for endpoints and near
 plane, using a Q16.16 crossing ratio. The private `_projectf_cross_near`
 and `_projectx_cross_near` helpers supply scalar crossing arithmetic to
 `project_template.h`'s `MATH_DEFINE_CLIP_NEAR(P, V, T, CROSS)`, which
-selects the behind endpoint
-and defines the public clip operation for the `projectf` and `projectx`
-prefixes. The caller keeps intermediate differences and products within
+selects the behind endpoint and defines the public clip operation for the
+`projectf` and `projectx` prefixes. The caller keeps intermediate differences and products within
 their integer ranges. These helpers take plain values and keep no state.
 
 ## Templates
