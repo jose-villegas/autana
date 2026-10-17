@@ -498,13 +498,15 @@ proto_axis_reach(uint32_t now_ms, int32_t edge, int32_t far) {
     return (int32_t)lround(1.0 / inv);
 }
 
-/* The axis line `dir` past the horizon: from its vanishing point, found
- * from two flat points far out on it, toward the panel's edge. */
+/* The axis line `dir` past the horizon: from its vanishing point toward the
+ * panel's edge, aimed from two flat points on it that land far apart on
+ * screen (the mesh's edge and `far`), so a pixel of rounding barely turns it. */
 static void
 proto_extend_axis_line(const int dir[2], int32_t far, gfx_color_t c, unsigned flags, const mesh_pass_t* pass) {
     const uint8_t extend = boot_anim_grid_spoke_reach(pass->now_ms);
     int ax, ay, bx, by;
-    if (extend == 0 || !boot_anim_project_point(dir[0] * (far / 2), dir[1] * (far / 2), 0, pass->view, &ax, &ay)
+    const int32_t edge = MESH_HALF * BOOT_ANIM_MESH_STEP_Q12;
+    if (extend == 0 || !boot_anim_project_point(dir[0] * edge, dir[1] * edge, 0, pass->view, &ax, &ay)
         || !boot_anim_project_point(dir[0] * far, dir[1] * far, 0, pass->view, &bx, &by)) {
         return;
     }
