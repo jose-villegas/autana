@@ -251,19 +251,27 @@ the change in down is minus angular velocity crossed with down.
 
 ```mermaid
 flowchart TD
-    Clamp[Clamp elapsed time] --> Rotate[Subtract gyro bias, rotate down, normalize]
+    Clamp[Clamp elapsed time] --> Range{Raw gyro overrange?}
+    Range -->|Yes| Restart[Keep down, enter recovery at full distrust]
+    Range -->|No| Rotate[Subtract gyro bias, rotate down, normalize]
+    Restart --> Still
     Rotate --> Still[Check bias-corrected gyro and acceleration magnitude]
     Still --> Reset[Clear still timer when not still]
     Reset --> Nonzero{Acceleration nonzero?}
     Nonzero -->|Yes| Trust[Magnitude trust weight and angular rejection]
     Trust --> Accepted{Accepted?}
-    Accepted -->|Yes| Bias[While accepted: integrate correction error into gyro bias, clamped]
-    Accepted -->|No| Recover[Count distrust and continuous still rejection]
-    Recover --> Deadline{Timed or still limit exceeded?}
-    Deadline -->|Yes| Adopt[Adopt acceleration direction, clear both timers]
-    Deadline -->|No| Linear
-    Bias --> Pull[Weighted pull toward acceleration, clear both timers]
-    Pull --> Linear[Linear acceleration = acceleration minus down]
+    Accepted -->|Yes| Drain[Drain distrust by nine times elapsed time, leave recovery]
+    Accepted -->|No| Recover[Accumulate distrust and continuous still rejection]
+    Drain --> Prime
+    Recover --> Prime{Initial prime or still limit exceeded?}
+    Prime -->|Yes| Adopt[Adopt direction exactly, clear recovery and timers]
+    Prime -->|No| Recovery{Recovering or distrust limit exceeded?}
+    Recovery -->|Yes| Full[Normal TAU pull at full gain, no bias learning]
+    Recovery -->|No| Normal{Accepted?}
+    Normal -->|Yes| Bias[Learn clamped bias, magnitude-weighted TAU pull]
+    Normal -->|No| Linear
+    Full --> Linear[Linear acceleration = acceleration minus down]
+    Bias --> Linear
     Adopt --> Linear
     Nonzero -->|No| Linear
     Linear --> Output[Down, linear acceleration, strength, free fall]
@@ -275,16 +283,33 @@ zero-trust end (0.4 g), rather than Android's hard acceleration gate.
 Accepted acceleration corrects down with alpha = weight * dt / (tau + dt),
 followed by normalization. Angular rejection and timed recovery use the
 thresholds recommended by Madgwick's x-io Fusion library.<sup>[[73]](../Citations.md#73)</sup>
-Our recovery adopts the reading exactly, unlike Fusion's continued correction.
-Recovery adopts nonzero acceleration exactly after rejection exceeds
-`GRAVITY_RECOVER_MS`. This tree also has still-gated early recovery; Fusion has
-only the timed trigger. Still means the magnitude of raw gyro minus learned
+Fusion's `FusionAhrs.c` derives its `rejectionTimeout` sample limit from the
+sample rate and timeout in seconds. Its leaky recovery counter adds one on
+rejection and subtracts nine on acceptance, clamped to that limit. Our counter
+uses elapsed milliseconds: rejection adds dt, acceptance subtracts
+`GRAVITY_RECOVER_ACCEPT_WEIGHT * dt`, clamped to `[0, GRAVITY_RECOVER_MS]`.
+At a fixed rate this equals Fusion's sample counter with limit equal to rate
+times `GRAVITY_RECOVER_MS` in seconds. Debt grows when more than about 90% of
+sample time is rejected. Exceeding the limit enters recovery: nonzero
+acceleration corrects at the normal TAU rate with full gain, bypassing angle
+and magnitude rejection, until a sample is accepted inside the reject cone.
+Recovery does not snap or learn bias.
+
+Any raw gyro axis reaching `GRAVITY_GYRO_OVERRANGE_DPS` skips unreliable gyro
+integration, preserves down and enters recovery immediately with distrust at
+the limit. The threshold derives from Fusion's 0.98 times gyro range rule and
+the configured `IMU_GYRO_RANGE_DPS` in `input/imu.h` (512 deg/s). Our boundary
+includes equality; Fusion uses a strict greater-than comparison. Fusion's
+soft restart preserves its estimate and restarts startup trust; here recovery
+uses the normal TAU gain.
+
+Still-gated early recovery is ours. Still means the magnitude of raw gyro minus learned
 bias is below `GRAVITY_STILL_DPS` and acceleration magnitude departs from one g
 by at most `GRAVITY_TRUST_FULL_G`. Continuous still rejection exceeding
 `GRAVITY_STILL_RECOVER_MS` adopts the measured direction exactly. Non-still
 samples and accepted acceleration clear the still timer; either adoption
-clears both timers. The longer trigger remains available during shaking or
-swinging. Reset primes it so the first nonzero reading is adopted exactly,
+clears both timers and recovery. The leaky trigger remains available during shaking or
+swinging. Reset primes the first nonzero reading for exact adoption,
 including when no time has elapsed. Zero acceleration skips correction and
 distrust counting and clears the still timer, keeping prediction finite in free fall.
 
@@ -295,7 +320,7 @@ Our minus-cross prediction determines the correction sign. The integral is
 gated by magnitude trust and acceptance. The radian correction is converted
 to degrees so bias stays in deg/s. Each axis is clamped to
 `GRAVITY_BIAS_MAX_DPS`; the paper does not specify this clamp. Rejection,
-zero acceleration and recovery adoption add no bias. Error is perpendicular to down, so bias along
+zero acceleration and recovery add no bias. Error is perpendicular to down, so bias along
 gravity is unobservable; rotation about down does not change down.
 
 Per axis, the linearised loop is theta' = b_err - theta/TAU and
@@ -317,7 +342,10 @@ The constants are owned by `launcher/main/input/gravity.h`:
 | `GRAVITY_TRUST_FULL_G` | 0.1 g | Ours |
 | `GRAVITY_TRUST_NONE_G` | 0.4 g | Android WindowOrientationListener acceleration tolerance, 4 m/s^2<sup>[[74]](../Citations.md#74)</sup> |
 | `GRAVITY_REJECT_DEG` | 10 deg | x-io Fusion acceleration rejection<sup>[[73]](../Citations.md#73)</sup> |
-| `GRAVITY_RECOVER_MS` | 5000 ms | x-io Fusion recovery trigger period<sup>[[73]](../Citations.md#73)</sup> |
+| `GRAVITY_RECOVER_MS` | 5000 ms | x-io Fusion rejection timeout<sup>[[73]](../Citations.md#73)</sup> |
+| `GRAVITY_RECOVER_ACCEPT_WEIGHT` | 9 | x-io Fusion accepted-sample counter drain<sup>[[73]](../Citations.md#73)</sup> |
+| `GRAVITY_GYRO_OVERRANGE_RATIO` | 0.98 | x-io Fusion gyro overrange ratio<sup>[[73]](../Citations.md#73)</sup> |
+| `GRAVITY_GYRO_OVERRANGE_DPS` | 0.98 × `IMU_GYRO_RANGE_DPS` | Derived from configured IMU full scale<sup>[[73]](../Citations.md#73)</sup> |
 | `GRAVITY_STILL_DPS` | 6 deg/s | M0 board capture: rest gyro noise peaks at +/-4 deg/s |
 | `GRAVITY_STILL_RECOVER_MS` | 500 ms | Ours, maintainer choice: clear fast-flip error promptly while outlasting a held swing reversal |
 | `GRAVITY_GYRO_OFFSET_TOL_DPS` | 10 deg/s | QMI8658C datasheet, Table 8, board-level initial offset<sup>[[75]](../Citations.md#75)</sup> |

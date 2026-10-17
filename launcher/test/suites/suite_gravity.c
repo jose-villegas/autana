@@ -154,9 +154,12 @@ test_rejection_and_recovery_do_not_learn_bias(void) {
         const input_motion_t m = sample(rejected[i], (vec3f_t){0});
         hold(m, GRAVITY_RECOVER_MS);
         assert_vector((vec3f_t){0}, g.gyro_bias, 0);
+        const float dt = (float)STEP_MS / MATH_MS_PER_S;
+        const vec3f_t expected =
+            vec3f_normalize(vec3f_lerp(g.down, vec3f_normalize(rejected[i]), dt / (GRAVITY_TAU_S + dt)));
         gravity_update(&g, &m, STEP_MS);
         assert_vector((vec3f_t){0}, g.gyro_bias, 0);
-        assert_vector(vec3f_normalize(rejected[i]), g.down, FLOAT_TOLERANCE);
+        assert_vector(expected, g.down, FLOAT_TOLERANCE);
     }
 }
 
@@ -198,8 +201,9 @@ test_rejected_direction_recovers_only_past_limit(void) {
     assert_vector(start, gravity_down(&g), FLOAT_TOLERANCE);
     TEST_ASSERT_EQUAL_UINT32(GRAVITY_RECOVER_MS, g.distrust_ms);
     gravity_update(&g, &m, STEP_MS);
-    assert_vector(target, gravity_down(&g), FLOAT_TOLERANCE);
-    TEST_ASSERT_EQUAL_UINT32(0, g.distrust_ms);
+    TEST_ASSERT_TRUE(g.recovering);
+    TEST_ASSERT_TRUE(g.down.y > 0 && g.down.y < 1);
+    TEST_ASSERT_EQUAL_UINT32(GRAVITY_RECOVER_MS, g.distrust_ms);
 }
 
 static void
@@ -265,7 +269,7 @@ test_stalled_dt_is_clamped(void) {
 
 static gravity_t
 correction_at_magnitude(int counts) {
-    gravity_t state = {.down = {sinf(CORRECTION_ANGLE_RAD), 0, -cosf(CORRECTION_ANGLE_RAD)}};
+    gravity_t state = {.primed = true, .down = {sinf(CORRECTION_ANGLE_RAD), 0, -cosf(CORRECTION_ANGLE_RAD)}};
     const input_motion_t m = {.acceleration = {0, 0, -counts}};
     gravity_update(&state, &m, STEP_MS);
     return state;
@@ -293,7 +297,7 @@ test_trust_ramp_ratios_and_symmetry(void) {
 }
 
 static void
-test_acceptance_restarts_recovery(void) {
+test_acceptance_drains_recovery(void) {
     fixture();
     const input_motion_t accepted = {.acceleration = {0, 0, -INPUT_ACCEL_ONE_G}};
     const input_motion_t rejected = sample((vec3f_t){0, 1.0F + PARTIAL_TRUST_G, 0}, (vec3f_t){0});
@@ -301,14 +305,13 @@ test_acceptance_restarts_recovery(void) {
     const uint32_t interval = GRAVITY_RECOVER_MS * 3U / 4U;
     hold(rejected, interval);
     gravity_update(&g, &accepted, STEP_MS);
-    hold(rejected, interval);
-    assert_vector((vec3f_t){0, 0, -1}, gravity_down(&g), FLOAT_TOLERANCE);
+    TEST_ASSERT_EQUAL_UINT32(interval - GRAVITY_RECOVER_ACCEPT_WEIGHT * STEP_MS, g.distrust_ms);
 }
 
 static void
 test_pull_time_constant(void) {
     const input_motion_t m = {.acceleration = {0, 0, -INPUT_ACCEL_ONE_G}};
-    g = (gravity_t){.down = {sinf(CORRECTION_ANGLE_RAD), 0, -cosf(CORRECTION_ANGLE_RAD)}};
+    g = (gravity_t){.primed = true, .down = {sinf(CORRECTION_ANGLE_RAD), 0, -cosf(CORRECTION_ANGLE_RAD)}};
     const float dt = (float)STEP_MS / MATH_MS_PER_S;
     const unsigned steps = (unsigned)(GRAVITY_TAU_S / dt);
     const float expected = g.down.x * powf(1.0F - dt / (GRAVITY_TAU_S + dt), (float)steps);
@@ -323,7 +326,7 @@ static void
 test_strength_uses_both_plane_axes(void) {
     const float angle = GRAVITY_REJECT_DEG * MATH_PI / QUARTER_TURN_DEG;
     const float plane = sinf(angle) / sqrtf(2.0F);
-    g = (gravity_t){.down = {plane, plane, -cosf(angle)}};
+    g = (gravity_t){.primed = true, .down = {plane, plane, -cosf(angle)}};
     TEST_ASSERT_FLOAT_WITHIN(FLT_EPSILON, sinf(angle), gravity_strength(&g));
 }
 
@@ -386,7 +389,8 @@ test_magnitude_prevents_still_recovery(void) {
         assert_vector(start, gravity_down(&g), FLOAT_TOLERANCE);
         TEST_ASSERT_EQUAL_UINT32(0, g.still_ms);
         gravity_update(&g, &m, STEP_MS);
-        assert_vector((vec3f_t){0, 1, 0}, gravity_down(&g), FLOAT_TOLERANCE);
+        TEST_ASSERT_TRUE(g.recovering);
+        TEST_ASSERT_TRUE(g.down.y > 0 && g.down.y < 1);
     }
 }
 
@@ -422,15 +426,79 @@ test_nonstill_clears_still_recovery(void) {
     }
 }
 
+#define STREAM_PERIOD (2U * (GRAVITY_RECOVER_ACCEPT_WEIGHT + 1U))
+
+static void
+test_leaky_recovery_streams(void) {
+    const input_motion_t accepted = sample((vec3f_t){0, 0, -1}, (vec3f_t){0});
+    const input_motion_t rejected = sample((vec3f_t){0, 1.0F + PARTIAL_TRUST_G, 0}, (vec3f_t){0});
+    for (unsigned mostly_rejected = 0; mostly_rejected <= 1; mostly_rejected++) {
+        fixture();
+        gravity_update(&g, &accepted, STEP_MS);
+        bool recovered = false;
+        for (uint32_t i = 0; i < 2U * GRAVITY_RECOVER_MS * STREAM_PERIOD / STEP_MS; i++) {
+            const bool rare = i % STREAM_PERIOD == 0;
+            gravity_update(&g, rare == (mostly_rejected != 0) ? &accepted : &rejected, STEP_MS);
+            recovered |= g.recovering;
+        }
+        TEST_ASSERT_EQUAL_INT(mostly_rejected, recovered);
+    }
+}
+
+static void
+test_recovery_full_gain_and_exit(void) {
+    const input_motion_t m = sample((vec3f_t){0, 1.0F + PARTIAL_TRUST_G, 0}, (vec3f_t){0});
+    g = (gravity_t){.primed = true, .recovering = true, .distrust_ms = GRAVITY_RECOVER_MS, .down = {0, 0, -1}};
+    const float dt = (float)STEP_MS / MATH_MS_PER_S;
+    const float alpha = dt / (GRAVITY_TAU_S + dt);
+    const vec3f_t expected = vec3f_normalize((vec3f_t){0, alpha, -(1.0F - alpha)});
+    gravity_update(&g, &m, STEP_MS);
+    assert_vector(expected, g.down, FLOAT_TOLERANCE);
+    TEST_ASSERT_TRUE(g.recovering);
+    for (uint32_t elapsed = 0; elapsed < SETTLE_MS && g.recovering; elapsed += STEP_MS) {
+        gravity_update(&g, &m, STEP_MS);
+    }
+    TEST_ASSERT_FALSE(g.recovering);
+    TEST_ASSERT_TRUE(g.down.y >= GRAVITY_REJECT_COS);
+    assert_vector((vec3f_t){0}, g.gyro_bias, 0);
+}
+
+static void
+test_gyro_overrange_boundary(void) {
+    const int threshold = (int)ceilf(GRAVITY_GYRO_OVERRANGE_DPS * INPUT_ROTATION_ONE_DPS);
+    for (int axis = 0; axis < 3; axis++) {
+        for (int sign = -1; sign <= 1; sign += 2) {
+            for (int under = 0; under <= 1; under++) {
+                g = (gravity_t){.primed = true, .down = {0, 0, -1}};
+                const int counts = sign * (threshold - under);
+                const input_motion_t m = {
+                    .rotation = {axis == 0 ? counts : 0, axis == 1 ? counts : 0, axis == 2 ? counts : 0}};
+                gravity_update(&g, &m, STEP_MS);
+                TEST_ASSERT_EQUAL_INT(!under, g.recovering);
+                TEST_ASSERT_EQUAL_UINT32(under ? 0 : GRAVITY_RECOVER_MS, g.distrust_ms);
+                if (!under) {
+                    assert_vector((vec3f_t){0, 0, -1}, g.down, 0);
+                    const input_motion_t accel = sample((vec3f_t){0, 1.0F + PARTIAL_TRUST_G, 0}, (vec3f_t){0});
+                    gravity_update(&g, &accel, STEP_MS);
+                    TEST_ASSERT_TRUE(g.down.y > 0 && g.down.y < 1);
+                }
+            }
+        }
+    }
+}
+
 void
 run_gravity_suite(void) {
+    RUN_TEST(test_leaky_recovery_streams);
+    RUN_TEST(test_recovery_full_gain_and_exit);
+    RUN_TEST(test_gyro_overrange_boundary);
     RUN_TEST(test_still_recovery_deadline_and_bias);
     RUN_TEST(test_rotation_prevents_still_recovery);
     RUN_TEST(test_magnitude_prevents_still_recovery);
     RUN_TEST(test_acceptance_clears_still_recovery);
     RUN_TEST(test_nonstill_clears_still_recovery);
     RUN_TEST(test_trust_ramp_ratios_and_symmetry);
-    RUN_TEST(test_acceptance_restarts_recovery);
+    RUN_TEST(test_acceptance_drains_recovery);
     RUN_TEST(test_pull_time_constant);
     RUN_TEST(test_strength_uses_both_plane_axes);
     RUN_TEST(test_bias_slow_pole_and_no_overshoot);

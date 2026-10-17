@@ -24,6 +24,8 @@
 #include "build/build_variant.h"
 #include "input/imu_sample.h"
 
+#define IMU_GYRO_RANGE_DPS 512.0F
+
 /* Configures and starts the sensor. Safe to call more than once.
  * Returns false if the chip does not answer or identifies as something else. */
 bool imu_init(void);
