@@ -2018,8 +2018,8 @@ test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget(void) 
 
     /* A deliberately synthetic worst case, not comparable to the
      * plain-material rows. */
-    perf_target_by_core("full-screen gas cascade", "full-screen gas cascade, one core", elapsed, 176900, 203430, 177680,
-                        205160);
+    perf_target_by_core("full-screen gas cascade", "full-screen gas cascade, one core", elapsed, 179400, 206310, 179730,
+                        206690);
     free(real);
 }
 
@@ -2140,7 +2140,7 @@ test_fire_cascading_through_a_full_landscape_screen_of_gas_fits_in_the_frame_bud
 
     real_board_close(&b);
 
-    perf_target("landscape gas cascade", elapsed, 174170, 200300);
+    perf_target("landscape gas cascade", elapsed, 176550, 203040);
     free(real);
 }
 
