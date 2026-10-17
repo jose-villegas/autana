@@ -426,6 +426,22 @@ def uniform_laplacian(points, edges):
     return points - total / count.clamp_min(1.0)
 
 
+def vertex_scale(start, edges):
+    """Own mean start edge, capped at the start's mean edge so large parts keep
+    today's hold; isolated points use the global mean (docs/Citations.md#78)."""
+    import torch
+
+    length = (start[edges[:, 0]] - start[edges[:, 1]]).norm(dim=1)
+    edge_length = float(length.mean())
+    total = start.new_zeros(len(start))
+    count = torch.zeros_like(total)
+    for endpoint in (0, 1):
+        total.index_add_(0, edges[:, endpoint], length)
+        count.index_add_(0, edges[:, endpoint], torch.ones_like(length))
+    local = total / count.clamp_min(1)
+    return torch.where(count > 0, local.clamp_max(edge_length), edge_length)[:, None]
+
+
 def predicted_ms(xp, cost, clip, tris, double, size, scale):
     """cost_model's milliseconds for one view, less the constant and the
     cluster terms, which moving vertices cannot change."""
@@ -536,7 +552,7 @@ def refine(mesh, error, budget):
 
 def surface_loss(samples, centres, normals, edge_length, margin):
     """From the fit to the source: a point-to-plane band of half-width `margin`
-    and a small pull, in start mean edge lengths."""
+    and a small pull, normalised by scalar or per-sample start geometry scales."""
     offset = (samples - centres) / edge_length
     envelope = ((offset * normals).sum(-1).abs() - margin).clamp_min(0).square()
     return (envelope + SURFACE_TANGENTIAL_WEIGHT * offset.square().sum(-1)).mean()
@@ -548,8 +564,9 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
              surface_margin=0.0, source=None):
     """Fit fixed triangles; return positions, colours and colour-only error history.
     Position learning rates use bounding diagonals. Laplacian drift and the source
-    envelope use start mean edge lengths; normals and predicted cost add their
-    weighted penalties. Both learning rates decay tenfold over the run."""
+    envelope use capped local start edge scales, averaged per triangle for the
+    envelope; normals and predicted cost add their weighted penalties.
+    Both learning rates decay tenfold over the run."""
     import torch
 
     points0, rgb0, tris, double, _scale, vertex_point, flat = mesh
@@ -571,7 +588,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     points = start.clone().requires_grad_(True)
     colours = torch.as_tensor(rgb0, dtype=torch.float32, device=device).requires_grad_(True)
     rest = uniform_laplacian(start, edges)
-    edge_length = float((start[edges[:, 0]] - start[edges[:, 1]]).norm(dim=1).mean())
+    point_scale = vertex_scale(start, edges)
     matrices = [torch.as_tensor(view[0], dtype=torch.float32, device=device) for view in views]
     targets = [torch.as_tensor(view[1], device=device) for view in views]
     normals = [None if len(view) < 3 or view[2] is None else torch.as_tensor(view[2], device=device) for view in views]
@@ -590,6 +607,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         reference = torch.as_tensor(reference, dtype=start.dtype, device=device)
         face_normals = torch.as_tensor(face_normals, dtype=start.dtype, device=device)
         corners = torch.as_tensor(vertex_point[tris], device=device)
+        sample_scale = point_scale[:, 0][corners].mean(1).repeat_interleave(SURFACE_SAMPLES_PER_TRIANGLE)[:, None]
         barycentric = torch.as_tensor(uniform_barycentric(surface_rng, (len(tris), SURFACE_SAMPLES_PER_TRIANGLE)),
                                       dtype=start.dtype, device=device)
     adam = torch.optim.Adam([{"params": [points], "lr": lr_position * diagonal}, {"params": [colours], "lr": lr_colour}])
@@ -624,7 +642,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
                 distance, _angles = normal_l1(render, points, (matrices[i], None, normals[i], views[i][3]), clip,
                                               angles=False, raster=raster, values=values[..., 3:])
                 error = error + normal_weight * distance / len(chosen)
-        drift = ((uniform_laplacian(points, edges) - rest) / edge_length).pow(2).sum(dim=1).mean()
+        drift = ((uniform_laplacian(points, edges) - rest) / point_scale).pow(2).sum(dim=1).mean()
         if surface_weight:
             from r3d.appearance_gather import gather
 
@@ -632,7 +650,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
             if step % SURFACE_QUERY_EVERY == 0:
                 nearest = torch.as_tensor(tree.query(samples.detach().cpu().numpy())[1], device=device)
             surface = surface_weight * surface_loss(samples, reference[nearest], face_normals[nearest],
-                                                     edge_length, surface_margin)
+                                                     sample_scale, surface_margin)
         loss = error + laplacian * drift + cost_weight * predicted + surface
         loss.backward()
         adam.step()
