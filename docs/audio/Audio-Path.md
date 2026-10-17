@@ -47,10 +47,9 @@ Run `autana tone <hz> <ms> [volume]`, or the console verb
 measures its DMA-capable heap cost, runs the check, and requests capture close
 (`launcher/main/console/verbs/console_tone.c`).
 
-`audio_loopback_check()` first records a baseline, then uses caller-supplied
-start/stop callbacks to play a SYSTEM-bus tone through the mixer while reading
-the microphone block by block. The console waits for amplifier warm-up before
-starting the tone measurement. A Goertzel filter measures level at the requested frequency.<sup>[[72]](../Citations.md#72)</sup>
+The console uses `audio_loopback_measure()` for a baseline, starts a SYSTEM-bus
+tone through the mixer, measures again, then stops the voice. It waits for
+amplifier warm-up before measuring. A Goertzel filter measures the requested frequency.<sup>[[72]](../Citations.md#72)</sup>
 
 The detector discards `AUDIO_LOOPBACK_SETTLE_MS` of capture before measuring.
 Heard means tone minus silence is at least `AUDIO_LOOPBACK_HEARD_MARGIN_DB`
@@ -72,7 +71,7 @@ microphone, not calibrated sound pressure levels.
 
 ### RAM
 
-The capture identifies its board and image with the table. Use the
+The table below is a capture of the stated board and image. Use the
 [permanent mixer budget](Sound-Mixer.md#internal-ram) for boot-owned allocations;
 a live tone reply's `open_dma_bytes` accounts for capture only.
 
@@ -143,10 +142,6 @@ Frequency 1000 Hz; console default volume.
 | 500 | -14.9 | -117.4 | 102.5 | yes |
 <!-- /generated: audio-duration -->
 
-## Playback
-
-[Sound-Mixer.md](Sound-Mixer.md) documents the engine API and scheduling.
-
 ## Constraint for held-open audio
 
 While audio is held open, the largest single contiguous internal DMA
@@ -154,6 +149,5 @@ allocation any caller needs must still be satisfiable. The power-on
 self-test checks a floor for the largest DMA block, owned by
 `MIN_LARGEST_DMA_BLOCK` in `launcher/main/selftest/post.c`. Audio buffers
 must not fragment the largest block below that requirement. The [RAM table](#ram)
-identifies its capture image. Live `autana heap` reports the headroom with the
-mixer running; the maintainer records those board measurements alongside the
-computed mixer budget.
+identifies its capture image. `autana heap` reports the headroom with the
+mixer running.
