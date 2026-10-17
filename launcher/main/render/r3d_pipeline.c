@@ -388,7 +388,7 @@ fill_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const
         r3d_span_triangle_solid(target, a, b, c, *face_color);
     }
     if (writes) {
-        r3d_span_triangle_write(target, a, b, c);
+        r3d_span_triangle_write(target, a, b, c, face_color != NULL);
     }
 }
 

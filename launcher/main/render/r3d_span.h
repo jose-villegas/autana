@@ -72,7 +72,8 @@ void r3d_span_triangle_solid(const r3d_span_target_t* target, const r3d_span_ver
                              const r3d_span_vertex_t* c, uint16_t color);
 
 /* Right after either fill of the same triangle into the same target: its
- * writers over the pixels it covers. A caller with no writers never calls
- * it, so the fill itself carries none of their cost. */
+ * writers over the pixels it covers; solid matches a face-colour fill.
+ * A caller with no writers never calls it, so the fill itself carries none
+ * of their cost. */
 void r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                             const r3d_span_vertex_t* c);
+                             const r3d_span_vertex_t* c, bool solid);
