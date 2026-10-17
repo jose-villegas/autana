@@ -64,7 +64,6 @@ it readable; a flag works the same wherever the table below says it applies.
 | `autana build diag --check` | The diagnostics build plus the complexity ratchet: `launcher/tools/build/build_diag_check.sh`, unchanged; no board. |
 | `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope] [--layout-seed N] [--hot-tunables]` | Build and flash this project; `dev` when omitted. `--quiet`: output to the log only. `--perf-scope` (diag): the perf-scoped image, no suite run. `--layout-seed N`: the seeded layout. |
 | `autana buildid [--json]` | The `BUILD_ID` the board is running, to check against what was flashed. |
-| `autana heap [--json]` | Free bytes and largest block in the internal DMA pool (`MEMORY_DMA`); development builds only. |
 
 `autana build` is the way to build: it runs `launcher/tools/build/build.sh`,
 holding only the build directory so two builds of one variant take turns, and
@@ -301,10 +300,11 @@ rarely needs the frame loop paused or a raw sensor level, so these stay one
 | `autana debug step [N]` | Advance `N` frames while frozen; 1 when omitted. |
 | `autana debug touch <down\|up> <x> <y>` | One raw touch-controller level, at a panel-frame point (a `--framebuffer` pixel, not a default-screenshot one); `up` hands back to the controller. |
 | `autana debug imu <ax> <ay> <az>` | Raw accelerometer counts; `autana debug imu release` hands back to the sensor. |
+| `autana debug heap [--json]` | Free bytes and largest block in the internal DMA pool (`MEMORY_DMA`); development builds only. |
 | `autana debug framewatch` | A development build's frame watch as JSON: the last frame's allocations, frees and log lines, and every site repeating frame after frame ([the frame watch](../Firmware-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state)). |
 
-`autana freeze`, `autana resume`, `autana step`, `autana touch`, `autana imu`
-and `autana framewatch` still work, each printing the new spelling once
+`autana freeze`, `autana resume`, `autana step`, `autana touch`, `autana imu`,
+`autana framewatch` and `autana heap` still work, each printing the new spelling once
 before running it.
 
 ## No board needed
@@ -325,7 +325,7 @@ before running it.
 |---|---|
 | `status` | `boards`, one object per board; the fields are in [Device-Lock.md](Device-Lock.md#exit-codes-and-json-status). |
 | `buildid` | `build_id` |
-| `heap` | `free`, `largest` (bytes in `MEMORY_DMA`) |
+| `debug heap` | `free`, `largest` (bytes in `MEMORY_DMA`) |
 | `apps` | `apps`: `name`, `running` |
 | `suite list` | `suites`: `name`, `source`, `on_request`, `device_only` |
 | `tune` | `tunables`: `name`, `value`, `min`, `max`, `default` |
