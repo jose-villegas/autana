@@ -135,13 +135,13 @@ ui_probe_bevel_index(recti_t r, uint32_t face_rgb, bool sunken) {
  * `theme`. */
 static inline int
 ui_probe_button_label_width(int w, bool has_icon, const ui_theme_t* theme) {
-    const ui_mu_theme_t t = ui_theme_from_face(theme);
+    const ui_mu_theme_t t = UI_THEME_FROM_FACE(theme);
     return ui_icon_button_label_width(w, has_icon, &t);
 }
 
 static inline int
 ui_probe_dropdown_label_width(int w, const ui_theme_t* theme) {
-    const ui_mu_theme_t t = ui_theme_from_face(theme);
+    const ui_mu_theme_t t = UI_THEME_FROM_FACE(theme);
     return ui_dropdown_label_width(w, &t);
 }
 
