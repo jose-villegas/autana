@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "math/linear/math_const.h"
+#include "math/scalar/math_const.h"
 #include "raster_rig.h"
 #include "render_view_fixture.h"
 #include "suites.h"
