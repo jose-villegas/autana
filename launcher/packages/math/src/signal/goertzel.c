@@ -3,7 +3,7 @@
 
 #include <math.h>
 
-#include "math/linear/math_const.h"
+#include "math/scalar/math_const.h"
 
 #define GOERTZEL_POWER_DB_SCALE  10.0F
 #define GOERTZEL_SINE_COMPONENTS 2.0F
