@@ -102,8 +102,8 @@ wait_command(bool done) {
     return false;
 }
 
-/* SensorLib (MIT), docs/Citations.md#79, writeCommand/configFIFO/readFromFifo:
- * QMI8658A Rev A, docs/Citations.md#78, sections 5.10 and 8 require acknowledgement before REG_FIFO_DATA. */
+/* Lewis He, SensorLib (MIT), SensorQMI8658.hpp writeCommand/configFIFO/readFromFifo:
+ * QST QMI8658A datasheet Rev A (2022), sections 5.10 and 8 require acknowledgement before REG_FIFO_DATA. */
 static bool
 write_command(uint8_t command) {
     return write_reg(REG_CTRL9, command) && wait_command(true) && write_reg(REG_CTRL9, CTRL9_ACK)
