@@ -438,6 +438,7 @@ class NativeTests(unittest.TestCase):
     def test_the_pose_samplers_c_and_headers_are_in_the_poses_stage(self):
         names = bake.native_inputs(bake.stage_files("poses"))
         self.assertTrue({"launcher/tools/anim/track_host.c", "launcher/main/anim/anim_track.h",
+                         "launcher/main/anim/anim_tracks_format.h",
                          "launcher/packages/math/include/math/scalar/mathf.h"} <= set(names))
 
     def test_a_compiled_submodule_counts_as_its_pinned_commit(self):
@@ -505,7 +506,11 @@ class StageTests(unittest.TestCase):
         for stage in ("mesh", "reference", "fit"):
             self.assertIn("device/gfx_color.py", self.names(stage), stage)
         for stage in ("reference", "fit"):
-            self.assertIn("render/render_compare.py", self.names(stage), stage)
+            self.assertIn("render/colour_maths.py", self.names(stage), stage)
+
+    def test_the_render_comparison_tool_is_in_no_stage(self):
+        for stage in bake.STAGES:
+            self.assertNotIn("render/render_compare.py", self.names(stage), stage)
 
     def test_a_stage_stops_at_another_stages_entry_and_at_what_consumes_bakes(self):
         self.assertFalse({"r3d/fitted_variant.py", "r3d/appearance_simplify.py", "r3d/reference_render.py"}

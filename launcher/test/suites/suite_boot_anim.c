@@ -23,6 +23,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "anim/anim_tracks_format.h"
 #include "suites.h"
 #include "unity.h"
 

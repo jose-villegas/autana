@@ -3,6 +3,7 @@
 #include <stdalign.h>
 #include <stdlib.h>
 #include <string.h>
+#include "anim/anim_tracks_format.h"
 #include "core/job.h"
 #include "core/memory.h"
 #include "math/scalar/mathi.h"
