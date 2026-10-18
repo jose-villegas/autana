@@ -31,7 +31,7 @@ from r3d import mitsuba_reference
 from r3d.import_settings import load_scene
 from r3d.poses import read_poses
 from r3d.reference_render import device_picture, source_for
-from render_compare import lab
+from colour_maths import lab
 
 
 def available_memory_gib():

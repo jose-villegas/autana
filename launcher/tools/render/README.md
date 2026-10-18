@@ -24,6 +24,7 @@
 | [render_masks.json](render_masks.json) | Named masks for image comparisons. |
 | [code_layout.py](code_layout.py) | Reports, writes, and checks each measured function and its machine loops within an instruction-cache line. |
 | [check_avi.py](check_avi.py) | Validates AVI structure and frame metadata. |
+| [colour_maths.py](colour_maths.py) | CIELAB and RGB565 expansion, shared by the comparison tool and the r3d fit. |
 | [scenes/](scenes/) | Engine render scenes and their pinned baselines. |
 | [tests/](tests/) | The harness checking its own frame watch against a fixture scene, and code_layout.py's own tests. |
 
