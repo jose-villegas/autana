@@ -148,7 +148,7 @@ frame-task brackets and hardware counters retain their task ownership.
 
 `autana sound stats` reports `sizeof` values from the firmware and, in a
 development build, `stack_min_free` from `uxTaskGetStackHighWaterMark()` in
-bytes. `SOUND_MIXER_STACK_BASE_BYTES` plus the named
+bytes, sampled on the mixer task. `SOUND_MIXER_STACK_BASE_BYTES` plus the named
 `SOUND_MIXER_STACK_MARGIN_BYTES` owns the stack budget; the margin stays in
 place while board measurements establish the required headroom.
 
@@ -162,7 +162,7 @@ comparison uses boot headroom between builds, not just the initialization delta.
 | Allocation | Computed owner |
 |---|---|
 | Renderer voice table | `sizeof mixer.voices` (`voices` field in stats) |
-| Mixer/control state | `sizeof mixer + sizeof control`, plus the dev task handle (`mixer`, includes voice table) |
+| Mixer/control state | `sizeof mixer + sizeof control`, plus the dev stack watermark (`mixer`, includes voice table) |
 | Queue payload and control | `sizeof queue_storage + sizeof queue_control` (`queue`) |
 | Task stack, including PCM scratch buffers | `SOUND_MIXER_TASK_STACK` (`stack`) |
 | TX DMA sample payload | `AUDIO_CODEC_DMA_BLOCKS * AUDIO_CODEC_BLOCK_SAMPLES * sizeof(int16_t)` (`tx_samples`) |
