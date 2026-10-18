@@ -205,7 +205,9 @@ extern char _rodata_reserved_end[];
 extern char _instruction_reserved_start[];
 extern char _instruction_reserved_end[];
 
-/* Cold calls refill instructions and flash rodata; PSRAM stays cached and inputs stay in internal RAM. */
+/* Cold calls refill instructions and flash rodata; PSRAM stays cached and inputs stay in internal RAM.
+ * Both ranges are read-only, so dropping them loses nothing. Writing back and invalidating PSRAM here
+ * would drop whatever the other core writes between the two, spinlock owners included. */
 static void
 cold_cache(void) {
     const uintptr_t data_line = CONFIG_ESP32S3_DATA_CACHE_LINE_SIZE;

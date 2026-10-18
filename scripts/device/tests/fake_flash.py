@@ -16,7 +16,7 @@ FLASH_ARGS = ("--flash_mode dio --flash_freq 80m --flash_size 16MB\n"
 def image_files(build_id, app="app"):
     return [("flash_args", FLASH_ARGS), ("build_id.txt", build_id + "\n"),
             ("bootloader/bootloader.bin", "boot"), ("launcher.bin", app),
-            ("partition_table/partition-table.bin", "parts")]
+            ("partition_table/partition-table.bin", "parts"), ("launcher.elf", "elf")]
 
 
 def write_image(build_dir, build_id, app=b"app"):

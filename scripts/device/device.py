@@ -28,7 +28,7 @@ import lock_scope
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
-from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, BUILD_ID_REQUEST,
+from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID,
                             crash_signs)
 
 from process_tree import (stop_process_tree, launch_process_tree, close_process_tree,
@@ -1003,13 +1003,41 @@ def decode_addresses(addresses, elf):
     return [line for line in result.stdout.splitlines() if line.strip()]
 
 
+ELF_ARCHIVE_KEEP = 24
+
+
+def elf_archive():
+    """Where flashing keeps each flashed build's ELF as <BUILD_ID>.elf, beside
+    the records, so a crash stays decodable after its build directory has
+    been built over."""
+    return records_root() / "elf"
+
+
+def archive_elf(build_dir, build_id):
+    """Copies `build_dir`'s launcher.elf into elf_archive() as `build_id`'s
+    and drops all but the newest ELF_ARCHIVE_KEEP there."""
+    archive = elf_archive()
+    archive.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(Path(build_dir) / "launcher.elf", archive / (build_id + ".elf"))
+    newest_first = sorted(archive.glob("*.elf"), key=lambda path: path.stat().st_mtime, reverse=True)
+    for stale in newest_first[ELF_ARCHIVE_KEEP:]:
+        stale.unlink(missing_ok=True)
+
+
+def same_build(build_id, other):
+    """Whether two build names are one build: a BUILD_ID's hash before its
+    first '-', or a core dump's ELF SHA-256 hex, which may run longer."""
+    own, theirs = build_id.split("-", 1)[0], other.split("-", 1)[0]
+    return bool(own and theirs) and (own.startswith(theirs) or theirs.startswith(own))
+
+
 def find_elf_for_build_id(worktree, build_id):
-    """The launcher.elf whose own build_id.txt matches `build_id`, searched
-    across every launcher/build*/ directory, the build actually on the
-    board, not merely the newest one on disk (a `--dev` build built after
-    the board was last flashed `--diag`, say, would otherwise decode
-    against the wrong symbols). None when `build_id` is empty or nothing
-    under this worktree matches."""
+    """The launcher.elf of build `build_id` (a BUILD_ID, or a core dump's ELF
+    hash): a launcher/build*/ directory of this worktree whose build_id.txt
+    names it, else the archive's copy. The build actually on the board, not
+    merely the newest one on disk (a `--dev` build built after the board
+    was last flashed `--diag`, say, would otherwise decode against the wrong
+    symbols). None when `build_id` is empty or nothing matches."""
     if not build_id:
         return None
     for build_dir in sorted(Path(worktree).glob("launcher/build*")):
@@ -1018,10 +1046,13 @@ def find_elf_for_build_id(worktree, build_id):
             seen = id_file.read_text(encoding="ascii").strip()
         except OSError:
             continue
-        if seen != build_id:
+        if not same_build(seen, build_id):
             continue
         elf = build_dir / "launcher.elf"
         if elf.is_file():
+            return elf
+    for elf in sorted(elf_archive().glob("*.elf")):
+        if same_build(elf.stem, build_id):
             return elf
     return None
 
@@ -1205,7 +1236,9 @@ def build_snapshot(build, build_dir, image_dir, **popen):
     throughout and no board lock at all. Returns the build id."""
     with build_directory_lock(build_dir) as prepared:
         run_to_end(build + (["--prepared-build", prepared.as_posix()] if prepared else []), None, **dict(popen, env=script_environment(popen.get("env"))))
-        return snapshot_image(prepared or build_dir, image_dir)
+        build_id = snapshot_image(prepared or build_dir, image_dir)
+        archive_elf(prepared or build_dir, build_id)
+        return build_id
 
 
 def build_worktree(worktree, variant, build_flags=()):
@@ -1577,43 +1610,75 @@ def listen(args, store, board):
 
 
 COREDUMP_PARTITION = "coredump"
-COREDUMP_BUILD_ID_SECONDS = 5
+# The dump's ESP_CORE_DUMP_INFO note (espcoredump's core_dump_elf.c): a
+# 4-byte version, then the crashed app's ELF SHA-256 as NUL-padded hex in a
+# 64-byte field. ELF pads a note's name to 4 bytes.
+COREDUMP_INFO_NOTE = b"ESP_CORE_DUMP_INFO\0"
+COREDUMP_INFO_VERSION_BYTES = 4
+COREDUMP_INFO_SHA_BYTES = 64
+ELF_NOTE_ALIGN = 4
+
+
+def coredump_build(raw):
+    """The build a raw core dump came from: the hex ELF SHA-256 its app
+    wrote into the dump, as many digits as the app kept. None when `raw`
+    holds no dump."""
+    at = raw.find(COREDUMP_INFO_NOTE)
+    if at < 0:
+        return None
+    name_end = at + -(-len(COREDUMP_INFO_NOTE) // ELF_NOTE_ALIGN) * ELF_NOTE_ALIGN
+    sha_at = name_end + COREDUMP_INFO_VERSION_BYTES
+    sha = raw[sha_at:sha_at + COREDUMP_INFO_SHA_BYTES].split(b"\0", 1)[0]
+    return sha.decode("ascii") if re.fullmatch(rb"[0-9a-f]+", sha) else None
 
 
 def coredump(args, store, board):
-    """The last panic's core dump, read from the board's coredump partition
-    under the lock and decoded against the ELF of the build the board runs
-    (or --elf); --erase clears the partition, so the next crash's dump is
-    told from this one. Either way esptool resets the board."""
+    """The last panic's core dump, read raw from the board's coredump
+    partition under the lock into the records, then decoded with the board
+    free; --erase clears the partition, so the next crash's dump is told
+    from this one. Either way esptool resets the board."""
     with HeldLock(store, board, args.owner, "coredump", args.wait):
-        elf = Path(args.elf) if args.elf else None
-        if elf is None and not args.erase:
-            with open_when_free() as connection:
-                replies, _ = exchange(connection, BUILD_ID_REQUEST, "BUILD_ID=", ("BUILD_ID=",),
-                                      COREDUMP_BUILD_ID_SECONDS)
-            build_id = latest_build_id_from_bytes(" ".join(replies).encode())
-            elf = find_elf_for_build_id(Path.cwd(), build_id)
-            if elf is None:
-                print(f"no launcher.elf under this worktree matches BUILD_ID={build_id}; pass --elf",
-                      file=sys.stderr)
-                return 1
-        port = locked_port()
+        parttool = Path(idf_path()) / "components" / "partition_table" / "parttool.py"
+        command = [idf_python(), str(parttool), "--port", locked_port()]
         if args.erase:
-            parttool = Path(idf_path()) / "components" / "partition_table" / "parttool.py"
-            command = [idf_python(), str(parttool), "--port", port,
-                       "erase_partition", "--partition-name=" + COREDUMP_PARTITION]
+            command += ["erase_partition", "--partition-name=" + COREDUMP_PARTITION]
             run_resetting(lambda: subprocess.run(command, check=True)).close()
             print("coredump partition erased")
             return 0
-        command = [idf_python(), "-m", "esp_coredump", "--chip", "esp32s3", "--port", port, "info_corefile"]
-        gdb = toolchain_tool("xtensa-esp-elf-gdb", "xtensa-esp32s3-elf-gdb")
-        if gdb:
-            command += ["--gdb", str(gdb)]
+        core, _ = resolve_capture_path(None, "coredump", args.owner, now())
+        core = core.with_suffix(".bin")
+        command += ["read_partition", "--partition-name=" + COREDUMP_PARTITION, "--output", str(core)]
         try:
-            run_resetting(lambda: subprocess.run(command + [str(elf)], check=True)).close()
+            run_resetting(lambda: subprocess.run(command, check=True)).close()
         except subprocess.CalledProcessError as failure:
             return failure.returncode
+    if coredump_build(core.read_bytes()) is None:
+        core.unlink()
+        print("no core dump in flash")
         return 0
+    return decode_coredump(core, args.elf)
+
+
+def decode_coredump(core, elf=None):
+    """Decodes the raw dump saved at `core`, no board needed, against the
+    ELF of the build that crashed, which the dump itself names, or `elf`.
+    A dump outlives later flashes, so the board's running build is no guide."""
+    build = coredump_build(Path(core).read_bytes())
+    if build is None:
+        print(f"no core dump in {core}", file=sys.stderr)
+        return 1
+    print(f"core dump of build {build}, saved as {core}")
+    elf = Path(elf) if elf else find_elf_for_build_id(Path.cwd(), build)
+    if elf is None:
+        print(f"no launcher.elf in this worktree or {elf_archive()} is build {build}: build that "
+              f"commit, then `autana coredump --core {core} --elf PATH`", file=sys.stderr)
+        return 1
+    command = [idf_python(), "-m", "esp_coredump", "--chip", "esp32s3", "info_corefile",
+               "--core", str(core), "--core-format", "raw"]
+    gdb = toolchain_tool("xtensa-esp-elf-gdb", "xtensa-esp32s3-elf-gdb")
+    if gdb:
+        command += ["--gdb", str(gdb)]
+    return subprocess.run(command + [str(elf)]).returncode
 
 
 def replies_to(data, reply, until):
@@ -2051,7 +2116,8 @@ def main(argv=None):
     coredump_parser = subparsers.add_parser(
         "coredump", help="decode the last panic's core dump from flash, or erase it")
     coredump_parser.add_argument("--erase", action="store_true")
-    coredump_parser.add_argument("--elf", help="decode against this .elf instead of the running build's")
+    coredump_parser.add_argument("--elf", help="decode against this .elf instead of the crashed build's")
+    coredump_parser.add_argument("--core", help="decode this saved raw dump; no board")
     reset_parser = subparsers.add_parser("reset", help="reboot the board and wait for USB serial")
     reset_parser.add_argument("--capture", action="store_true",
                               help="capture the boot console after the reset")
@@ -2157,6 +2223,9 @@ def main(argv=None):
             else:
                 print_statuses(entries, store.now())
             result = 0
+            return result
+        if args.command == "coredump" and args.core:
+            result = decode_coredump(args.core, args.elf)
             return result
         if args.command == "resolve-port":
             print(find_board(args.board).port)

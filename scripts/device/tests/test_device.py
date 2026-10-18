@@ -1157,6 +1157,8 @@ class PreparedSnapshotTests(unittest.TestCase):
             with mock.patch.object(device, 'run_to_end', side_effect=build):
                 result = device.build_snapshot(['unused'], launcher / device.BUILD_DIRS['dev'], image)
             self.assertEqual(result, 'locked-dev')
+            # Its ELF outlives the build directory, for a later crash's dump.
+            self.assertTrue((device.elf_archive() / 'locked-dev.elf').is_file())
 
     def snapshot_command(self, with_build_paths):
         with tempfile.TemporaryDirectory() as directory:
@@ -1166,7 +1168,7 @@ class PreparedSnapshotTests(unittest.TestCase):
                 (launcher / 'tools/build/build_paths.py').touch()
             else:
                 self.assertFalse((launcher / 'tools/build/build_paths.py').exists())
-            with mock.patch.object(device, 'run_to_end') as run,                  mock.patch.object(device, 'snapshot_image', return_value='id'):
+            with mock.patch.object(device, 'run_to_end') as run,                  mock.patch.object(device, 'snapshot_image', return_value='id'),                  mock.patch.object(device, 'archive_elf'):
                 device.build_snapshot(['build.sh'], launcher / device.BUILD_DIRS['dev'], Path(directory) / 'image')
             return run.call_args.args[0]
 
@@ -1911,6 +1913,44 @@ class FindElfForBuildIdTests(unittest.TestCase):
     """find_elf_for_build_id() picks the build actually on the board: the
     one whose own build_id.txt matches; never merely the newest on disk."""
 
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.archive = Path(directory.name) / "elf"
+        patcher = mock.patch.object(device, "elf_archive", return_value=self.archive)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_a_core_dumps_longer_hash_names_the_same_build(self):
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = Path(directory)
+            build = worktree / "launcher" / "build.diag"
+            build.mkdir(parents=True)
+            (build / "build_id.txt").write_text("834b7bb03fd6-diag\n", encoding="ascii")
+            (build / "launcher.elf").write_bytes(b"")
+            self.assertEqual(device.find_elf_for_build_id(worktree, "834b7bb03fd6e"), build / "launcher.elf")
+            self.assertIsNone(device.find_elf_for_build_id(worktree, "834b7bb03fd7e"))
+
+    def test_a_build_built_over_is_found_in_the_archive(self):
+        self.archive.mkdir()
+        (self.archive / "834b7bb03fd6-diag.elf").write_bytes(b"")
+        with tempfile.TemporaryDirectory() as directory:
+            found = device.find_elf_for_build_id(Path(directory), "834b7bb03fd6e")
+        self.assertEqual(found, self.archive / "834b7bb03fd6-diag.elf")
+
+    def test_the_archive_keeps_the_newest_elfs(self):
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory)
+            (build / "launcher.elf").write_bytes(b"elf")
+            for index in range(device.ELF_ARCHIVE_KEEP + 1):
+                device.archive_elf(build, f"{index:012x}-dev")
+                os.utime(self.archive / f"{index:012x}-dev.elf", (index, index))
+            device.archive_elf(build, f"{0:012x}-dev")
+        kept = sorted(path.name for path in self.archive.glob("*.elf"))
+        self.assertEqual(len(kept), device.ELF_ARCHIVE_KEEP)
+        self.assertIn(f"{0:012x}-dev.elf", kept)
+        self.assertNotIn(f"{1:012x}-dev.elf", kept)
+
     def test_no_build_id_finds_nothing(self):
         self.assertIsNone(device.find_elf_for_build_id(Path("C:/wt"), ""))
 
@@ -2590,89 +2630,109 @@ class ListenLifecycleTests(unittest.TestCase):
         store.release.assert_called_once()
 
 
+def raw_core_dump(build_hash):
+    """Coredump-partition bytes as the panic handler leaves them: a header,
+    then ELF notes, one of them the app's build. The other bytes are filler."""
+    note = device.COREDUMP_INFO_NOTE + b"\0" * (-len(device.COREDUMP_INFO_NOTE) % device.ELF_NOTE_ALIGN)
+    sha = build_hash.encode().ljust(device.COREDUMP_INFO_SHA_BYTES, b"\0")
+    return b"\x24\x42" * 10 + note + struct.pack("<I", 3) + sha + b"\xa5" * 32
+
+
+class CoredumpBuildTests(unittest.TestCase):
+    """coredump_build() names the build the dump itself came from."""
+
+    def test_reads_the_hash_the_dump_carries(self):
+        self.assertEqual(device.coredump_build(raw_core_dump("834b7bb03fd6e")), "834b7bb03fd6e")
+
+    def test_an_erased_partition_holds_no_dump(self):
+        self.assertIsNone(device.coredump_build(b"\xff" * 4096))
+
+    def test_a_note_without_hex_is_no_build(self):
+        self.assertIsNone(device.coredump_build(raw_core_dump("not-hex")))
+
+
 class CoredumpTests(unittest.TestCase):
-    """Decode the dump against the running build, under the board lock."""
+    """Read the dump raw under the board lock, then decode it against the
+    build it came from, which is not the running one after a later flash."""
 
-    def test_failed_coredump_commands_keep_failure_and_reconnect(self):
-        for erase in (True, False):
-            with self.subTest(erase=erase):
-                command = ["--board", BOARD, "coredump"] + (["--erase"] if erase else ["--elf", "firmware.elf"])
-                connection = FakeConnection()
-                def run(command, check=False):
-                    result = subprocess.CompletedProcess(command, 7)
-                    if check:
-                        result.check_returncode()
-                    return result
-                with mock.patch.object(device.subprocess, "run", run), \
-                     mock.patch.object(device.device_lock, "LockStore", return_value=mock_store()), \
-                     mock.patch.object(device, "locked_port", return_value="COM9"), \
-                     mock.patch.object(device, "toolchain_tool", return_value=None), \
-                     mock.patch.object(device, "idf_path", return_value="idf"), \
-                     mock.patch.object(device, "reconnect_after_reset", return_value=connection) as reconnect, \
-                     mock.patch.object(connection, "close") as closed, \
-                     contextlib.redirect_stdout(io.StringIO()) as output:
-                    self.assertEqual(device.main(command), 1 if erase else 7)
-                self.assertNotIn("erased", output.getvalue())
-                reconnect.assert_called_once_with()
-                closed.assert_called_once_with()
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
 
-    def test_info_failure_without_returning_port_keeps_exit_status(self):
-        failure = subprocess.CalledProcessError(7, ["esp_coredump"])
-        args = Namespace(owner="agent", purpose="dump", wait=0, erase=False, elf="firmware.elf")
-        with mock.patch.object(device.subprocess, "run", side_effect=failure), \
-             mock.patch.object(device, "locked_port", return_value="COM9"), \
-             mock.patch.object(device, "toolchain_tool", return_value=None), \
-             mock.patch.object(device, "reconnect_after_reset",
-                               side_effect=device.PortUnavailable("missing")) as reconnect:
-            self.assertEqual(device.coredump(args, mock_store(), BOARD), failure.returncode)
-        reconnect.assert_called_once_with()
-
-    def run_coredump(self, erase=False, elf=None, found_elf=Path("wt/launcher/build.dev/launcher.elf")):
+    def run_coredump(self, raw=b"", erase=False, elf=None, found_elf=Path("archive/834b7bb03fd6-diag.elf"),
+                     read_fails=False):
         args = Namespace(owner="agent", purpose="autana coredump", wait=0, erase=erase, elf=elf)
         store = mock_store()
-        with mock.patch.object(device, "open_when_free", return_value=FakeConnection([])), \
-             mock.patch.object(device, "exchange", return_value=(["BUILD_ID=abc123-dev"], True)) as asked, \
-             mock.patch.object(device, "find_elf_for_build_id", return_value=found_elf) as finder, \
-             mock.patch.object(device, "locked_port", return_value="COM9"), \
-             mock.patch.object(device, "toolchain_tool", return_value=None), \
-             mock.patch.object(device, "idf_path", return_value="idf"), \
-             mock.patch.object(device.subprocess, "run",
-                               return_value=subprocess.CompletedProcess([], 0)) as run, \
-             mock.patch.object(device, "reconnect_after_reset") as reconnect, \
-             mock.patch("builtins.print"):
+        core = self.root / "120000_coredump_agent.log"
+        commands = []
+
+        def run(command, check=False):
+            commands.append(command)
+            if read_fails and "read_partition" in command:
+                raise subprocess.CalledProcessError(7, command)
+            if "read_partition" in command:
+                Path(command[command.index("--output") + 1]).write_bytes(raw)
+            return subprocess.CompletedProcess(command, 0)
+
+        with mock.patch.object(device, "resolve_capture_path", return_value=(core, True)),              mock.patch.object(device, "find_elf_for_build_id", return_value=found_elf) as finder,              mock.patch.object(device, "locked_port", return_value="COM9"),              mock.patch.object(device, "toolchain_tool", return_value=None),              mock.patch.object(device, "idf_path", return_value="idf"),              mock.patch.object(device.subprocess, "run", side_effect=run),              mock.patch.object(device, "reconnect_after_reset") as reconnect,              mock.patch("builtins.print"):
             code = device.coredump(args, store, BOARD)
         store.release.assert_called_once()
         # esptool resets the board on its way out, read or erase.
-        self.assertEqual(reconnect.call_count, int(found_elf is not None or erase))
-        return code, asked, finder, run
+        self.assertEqual(reconnect.call_count, 1)
+        return code, finder, commands, core.with_suffix(".bin")
 
-    def test_decodes_against_the_running_builds_elf(self):
-        code, asked, finder, run = self.run_coredump()
+    def test_decodes_against_the_build_the_dump_names_not_the_running_one(self):
+        code, finder, commands, saved = self.run_coredump(raw_core_dump("834b7bb03fd6e"))
         self.assertEqual(code, 0)
-        self.assertEqual(asked.call_args[0][1], device.BUILD_ID_REQUEST)
-        self.assertEqual(finder.call_args[0][1], "abc123-dev")
-        command = run.call_args[0][0]
-        self.assertEqual(command[command.index("--port") + 1], "COM9")
-        self.assertEqual(command[-2:], ["info_corefile", str(Path("wt/launcher/build.dev/launcher.elf"))])
+        self.assertEqual(finder.call_args[0][1], "834b7bb03fd6e")
+        read, decode = commands
+        self.assertEqual(read[read.index("--port") + 1], "COM9")
+        self.assertNotIn("--port", decode)
+        self.assertEqual(decode[decode.index("--core") + 1], str(saved))
+        self.assertEqual(decode[-1], str(Path("archive/834b7bb03fd6-diag.elf")))
+        self.assertTrue(saved.is_file())
 
-    def test_no_matching_elf_reads_nothing(self):
-        code, _, _, run = self.run_coredump(found_elf=None)
+    def test_no_elf_for_the_dumps_build_keeps_the_dump_and_fails(self):
+        code, _, commands, saved = self.run_coredump(raw_core_dump("834b7bb03fd6e"), found_elf=None)
         self.assertEqual(code, 1)
-        run.assert_not_called()
+        self.assertEqual(len(commands), 1)
+        self.assertTrue(saved.is_file())
 
-    def test_an_elf_given_skips_the_question(self):
-        code, asked, _, run = self.run_coredump(elf="other.elf")
+    def test_an_empty_partition_reads_as_no_dump(self):
+        code, finder, commands, saved = self.run_coredump(b"\xff" * 64)
         self.assertEqual(code, 0)
-        asked.assert_not_called()
-        self.assertEqual(run.call_args[0][0][-1], "other.elf")
+        finder.assert_not_called()
+        self.assertEqual(len(commands), 1)
+        self.assertFalse(saved.exists())
+
+    def test_an_elf_given_is_the_one_decoded(self):
+        code, finder, commands, _ = self.run_coredump(raw_core_dump("834b7bb03fd6e"), elf="other.elf")
+        self.assertEqual(code, 0)
+        finder.assert_not_called()
+        self.assertEqual(commands[-1][-1], "other.elf")
+
+    def test_a_failed_read_keeps_its_exit_status(self):
+        code, _, commands, _ = self.run_coredump(read_fails=True)
+        self.assertEqual(code, 7)
+        self.assertEqual(len(commands), 1)
 
     def test_erase_clears_only_the_coredump_partition(self):
-        code, asked, _, run = self.run_coredump(erase=True)
+        code, finder, commands, _ = self.run_coredump(erase=True)
         self.assertEqual(code, 0)
-        asked.assert_not_called()
-        command = run.call_args[0][0]
-        self.assertIn("erase_partition", command)
-        self.assertIn("--partition-name=" + device.COREDUMP_PARTITION, command)
+        finder.assert_not_called()
+        self.assertIn("erase_partition", commands[0])
+        self.assertIn("--partition-name=" + device.COREDUMP_PARTITION, commands[0])
+
+    def test_a_saved_dump_decodes_with_no_board(self):
+        saved = self.root / "dump.bin"
+        saved.write_bytes(raw_core_dump("834b7bb03fd6e"))
+        with mock.patch.object(device.subprocess, "run",
+                               return_value=subprocess.CompletedProcess([], 0)) as run,              mock.patch.object(device, "toolchain_tool", return_value=None),              mock.patch.object(device, "board_for_lock") as board,              contextlib.redirect_stdout(io.StringIO()):
+            code = device.main(["coredump", "--core", str(saved), "--elf", "x.elf"])
+        self.assertEqual(code, 0)
+        board.assert_not_called()
+        self.assertEqual(run.call_args[0][0][-1], "x.elf")
 
 
 class WaiterNoticeTests(unittest.TestCase):

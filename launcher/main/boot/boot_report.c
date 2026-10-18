@@ -11,6 +11,7 @@
 
 #if CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH
 #include "esp_core_dump.h"
+#include "services/build_id.h"
 
 /* The panic reason a core dump carries, e.g. "assert failed: ..." or an
  * exception name; longer text is cut, the dump itself keeps all of it. */
@@ -59,7 +60,11 @@ report_core_dump(void) {
     if (esp_core_dump_get_panic_reason(reason, sizeof reason) != ESP_OK) {
         reason[0] = '\0';
     }
-    (void)printf("COREDUMP=present panic=\"%s\"\n", reason);
+    /* A dump outlives every flash until it is erased, so it names the build
+     * it came from, as BUILD_ID does: an old crash is told from a new one. */
+    esp_core_dump_summary_t summary;
+    const char* build = esp_core_dump_get_summary(&summary) == ESP_OK ? (const char*)summary.app_elf_sha256 : "";
+    (void)printf("COREDUMP=present build=%.*s panic=\"%s\"\n", BUILD_ID_HASH_CHARS, build, reason);
 }
 #endif
 

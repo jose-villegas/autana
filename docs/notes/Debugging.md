@@ -132,7 +132,7 @@ which the host misses while USB re-enumerates):
 |---|---|
 | `RESET_REASON=<name>` | `esp_reset_reason()`, its `esp_reset_reason_t` value's name without the prefix (`ESP_RST_PANIC` prints `PANIC`) |
 | `COREDUMP=none` | no core dump in the `coredump` partition |
-| `COREDUMP=present panic="<reason>"` | the last panic's dump is in flash, and the reason it records |
+| `COREDUMP=present build=<hash> panic="<reason>"` | the last panic's dump is in flash: the build that crashed (its `BUILD_ID` hash) and the reason it records |
 
 The `COREDUMP=` lines and the dump itself are in development and diagnostics
 builds only; a release build keeps the partition but writes no dump.
@@ -143,11 +143,21 @@ On the board every warm reset becomes a PMIC power cycle
 handler writes the dump to flash before that reset, so it survives. Under
 QEMU the reason is the real one (`PANIC`).
 
-`autana coredump` reads the dump under the device lock and decodes it
-against the ELF of the build the board runs (`--elf` for another): the
-crashed task's backtrace, registers and every task's stack. A new crash
-overwrites the dump; `autana coredump --erase` clears it, so the next one is
-told from this one. Both reset the board, as esptool does.
+A dump stays in flash across every later flash until it is erased, so the
+board's running build says nothing about it; `build=` says which build
+crashed.
+
+`autana coredump` reads the dump raw under the device lock into the records
+(`<HHMMSS>_coredump_<owner>.bin`), then decodes it with the board free:
+the crashed task's backtrace, registers and every task's stack. It decodes
+against the ELF of the build the dump names, from this worktree's build
+directories or the ELF every flash keeps in `<records>/elf/`; `--elf`
+picks another. When neither has it, build that commit and decode the saved
+dump with `autana coredump --core FILE --elf PATH`, no board needed.
+
+A new crash overwrites the dump; `autana coredump --erase` clears it, so the
+next one is told from this one. Reading and erasing both reset the board, as
+esptool does.
 
 ## The console is USB-Serial-JTAG, not UART0
 
