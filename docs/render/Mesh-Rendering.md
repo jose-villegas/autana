@@ -390,6 +390,9 @@ and [look sweep](data/small-fill/s2-sweep.json), with their adjacent plans.
 
 Both use hot-tunable diagnostics builds: the look sweep at `77e546125` and
 the size sweep on the main build; the plans record their build ids.
+The look-sweep board rows use that commit's tunable names:
+`small_flat_spread` and `small_flat_spread_near`.
+Measurement with the current names is follow-up work.
 
 <!-- generated: small-fill-board sha256=35796e7f5d24f9c3a271155a33d9bc14ef676375960bd53de16171c1c36b1dbf -->
 | Look (size 8 unless defaults) | Local measured frame ms | Capture | Frame vs defaults |

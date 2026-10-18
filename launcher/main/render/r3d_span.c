@@ -535,17 +535,13 @@ colours_within_spread(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, co
 static inline small_limits_t
 small_limits_for_side(int side) {
     const int extra_sides = small_max_side - SMALL_MAX_SIDE;
-    int spread = SMALL_FLAT_SPREAD_OFF;
+    int spread = extra_sides == 1 ? small_flat_spread_far : small_flat_spread_near;
     int coverage = small_dither;
-    if (side > SMALL_MAX_SIDE) {
-        spread = extra_sides == 1 ? small_flat_spread_far : small_flat_spread_near;
-        if (extra_sides > 1) {
-            spread +=
-                (small_flat_spread_far - small_flat_spread_near) * (side - SMALL_MAX_SIDE - 1) / (extra_sides - 1);
-        }
+    if (extra_sides > 1) {
+        spread += (small_flat_spread_far - small_flat_spread_near) * (side - SMALL_MAX_SIDE - 1) / (extra_sides - 1);
     }
     if (small_dither_ramp) {
-        coverage = side <= SMALL_MAX_SIDE ? 0 : small_dither * (side - SMALL_MAX_SIDE) / mathi_max(extra_sides, 1);
+        coverage = coverage * (side - SMALL_MAX_SIDE) / mathi_max(extra_sides, 1);
     }
     return (small_limits_t){(uint8_t)spread, (uint8_t)coverage,
                             ((float)spread * UINT8_MAX) / (float)gfx_rgb565_r5(UINT16_MAX),
@@ -617,7 +613,7 @@ typedef struct {
     uint16_t color[TRIANGLE_VERTICES];
     int32_t total;
     int32_t coverage_limit;
-    int phase_mask;
+    int phase_mask, rank_shift, level_shift;
 } small_dither_t;
 
 /* This tree's barycentric ordered-dither pick has no source paper; it reuses
@@ -640,8 +636,11 @@ prepare_small_dither(small_dither_t* d, const r3d_span_vertex_t* a, const r3d_sp
         small_side(&d->edge[0], a->x, a->y) + small_side(&d->edge[1], a->x, a->y) + small_side(&d->edge[2], a->x, a->y);
     const int divisor = TRIANGLE_VERTICES * SMALL_DITHER_COVERAGE_EIGHTHS;
     d->coverage_limit = (coverage * total + divisor - 1) / divisor;
-    const int side = 1 << small_dither_cell_bits;
-    d->phase_mask = side - 1;
+    /* Row workers may see different settings during a knob change; each triangle is self-consistent. */
+    const int cell_bits = small_dither_cell_bits;
+    d->phase_mask = (1 << cell_bits) - 1;
+    d->rank_shift = 2 * (SMALL_DITHER_PATTERN_BITS_MAX - cell_bits);
+    d->level_shift = 1 + 2 * cell_bits;
     d->total = total;
     return true;
 }
@@ -651,11 +650,8 @@ small_dither_pick(const small_dither_t* d, int x, int y, int32_t s0, int32_t s1,
     if (r3d_span_min3(s0, s1, s2) >= d->coverage_limit) {
         return flat;
     }
-    const int rank = gfx_dither4x4[y & d->phase_mask][x & d->phase_mask]
-                     >> (2 * (SMALL_DITHER_PATTERN_BITS_MAX - small_dither_cell_bits));
-    const int side = d->phase_mask + 1;
-    const int levels = 2 * side * side;
-    const int32_t threshold = (d->total * (2 * rank + 1)) / levels;
+    const int rank = gfx_dither4x4[y & d->phase_mask][x & d->phase_mask] >> d->rank_shift;
+    const int32_t threshold = (d->total * (2 * rank + 1)) >> d->level_shift;
     return d->color[threshold < s0 ? 0 : threshold < s0 + s1 ? 1 : 2];
 }
 
