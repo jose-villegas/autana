@@ -5,37 +5,37 @@ python launcher/tools/build/memory_map.py &#45;&#45;chart components docs/memory
 <title>ESP-IDF IRAM by component — release</title>
 <style>text{fill:#737c86;font-family:-apple-system,Segoe UI,Helvetica,Arial,sans-serif;font-size:15px}.title{font-size:18px;font-weight:600}.note{font-size:12px}.inside{fill:#1f2328}.overlay-inside{fill:#ffffff}</style>
 <text x="16" y="40" text-anchor="start" class="title">ESP-IDF IRAM by component — release</text>
-<text x="16" y="64" text-anchor="start">Shares of 79,659 B = 77.8 KB ESP-IDF IRAM incl. linker fill; top 8 archives, the rest summed as other</text>
+<text x="16" y="64" text-anchor="start">Shares of 80,355 B = 78.5 KB ESP-IDF IRAM incl. linker fill; top 8 archives, the rest summed as other</text>
 <text x="188" y="113" text-anchor="end">esp_hw_support</text>
-<rect x="200.00" y="96" width="586.05" height="24" fill="#8c959f" data-label="esp_hw_support" data-bytes="13882"><title>esp_hw_support: 13882 B</title></rect>
-<text x="798.05" y="113" text-anchor="start">13882 B, 17.4%</text>
+<rect x="200.00" y="96" width="567.70" height="24" fill="#8c959f" data-label="esp_hw_support" data-bytes="13882"><title>esp_hw_support: 13882 B</title></rect>
+<text x="779.70" y="113" text-anchor="start">13882 B, 17.3%</text>
 <text x="188" y="157" text-anchor="end">freertos</text>
-<rect x="200.00" y="140" width="579.50" height="24" fill="#8c959f" data-label="freertos" data-bytes="13727"><title>freertos: 13727 B</title></rect>
-<text x="791.50" y="157" text-anchor="start">13727 B, 17.2%</text>
+<rect x="200.00" y="140" width="565.65" height="24" fill="#8c959f" data-label="freertos" data-bytes="13832"><title>freertos: 13832 B</title></rect>
+<text x="777.65" y="157" text-anchor="start">13832 B, 17.2%</text>
 <text x="188" y="201" text-anchor="end">spi_flash</text>
-<rect x="200.00" y="184" width="528.63" height="24" fill="#8c959f" data-label="spi_flash" data-bytes="12522"><title>spi_flash: 12522 B</title></rect>
-<text x="740.63" y="201" text-anchor="start">12522 B, 15.7%</text>
+<rect x="200.00" y="184" width="512.08" height="24" fill="#8c959f" data-label="spi_flash" data-bytes="12522"><title>spi_flash: 12522 B</title></rect>
+<text x="724.08" y="201" text-anchor="start">12522 B, 15.6%</text>
 <text x="188" y="245" text-anchor="end">heap</text>
-<rect x="200.00" y="228" width="259.67" height="24" fill="#8c959f" data-label="heap" data-bytes="6151"><title>heap: 6151 B</title></rect>
-<text x="471.67" y="245" text-anchor="start">6151 B, 7.7%</text>
+<rect x="200.00" y="228" width="251.54" height="24" fill="#8c959f" data-label="heap" data-bytes="6151"><title>heap: 6151 B</title></rect>
+<text x="463.54" y="245" text-anchor="start">6151 B, 7.7%</text>
 <text x="188" y="289" text-anchor="end">esp_driver_spi</text>
-<rect x="200.00" y="272" width="216.95" height="24" fill="#8c959f" data-label="esp_driver_spi" data-bytes="5139"><title>esp_driver_spi: 5139 B</title></rect>
-<text x="428.95" y="289" text-anchor="start">5139 B, 6.5%</text>
+<rect x="200.00" y="272" width="210.16" height="24" fill="#8c959f" data-label="esp_driver_spi" data-bytes="5139"><title>esp_driver_spi: 5139 B</title></rect>
+<text x="422.16" y="289" text-anchor="start">5139 B, 6.4%</text>
 <text x="188" y="333" text-anchor="end">esp_hal_mspi</text>
-<rect x="200.00" y="316" width="214.84" height="24" fill="#8c959f" data-label="esp_hal_mspi" data-bytes="5089"><title>esp_hal_mspi: 5089 B</title></rect>
-<text x="426.84" y="333" text-anchor="start">5089 B, 6.4%</text>
+<rect x="200.00" y="316" width="208.11" height="24" fill="#8c959f" data-label="esp_hal_mspi" data-bytes="5089"><title>esp_hal_mspi: 5089 B</title></rect>
+<text x="420.11" y="333" text-anchor="start">5089 B, 6.3%</text>
 <text x="188" y="377" text-anchor="end">esp_system</text>
-<rect x="200.00" y="360" width="151.64" height="24" fill="#8c959f" data-label="esp_system" data-bytes="3592"><title>esp_system: 3592 B</title></rect>
-<text x="363.64" y="377" text-anchor="start">3592 B, 4.5%</text>
+<rect x="200.00" y="360" width="146.89" height="24" fill="#8c959f" data-label="esp_system" data-bytes="3592"><title>esp_system: 3592 B</title></rect>
+<text x="358.89" y="377" text-anchor="start">3592 B, 4.5%</text>
 <text x="188" y="421" text-anchor="end">esp_hal_gpspi</text>
-<rect x="200.00" y="404" width="130.11" height="24" fill="#8c959f" data-label="esp_hal_gpspi" data-bytes="3082"><title>esp_hal_gpspi: 3082 B</title></rect>
-<text x="342.11" y="421" text-anchor="start">3082 B, 3.9%</text>
+<rect x="200.00" y="404" width="126.04" height="24" fill="#8c959f" data-label="esp_hal_gpspi" data-bytes="3082"><title>esp_hal_gpspi: 3082 B</title></rect>
+<text x="338.04" y="421" text-anchor="start">3082 B, 3.8%</text>
 <text x="188" y="465" text-anchor="end">other</text>
-<rect x="200.00" y="448" width="640.00" height="24" fill="#8c959f" data-label="other" data-bytes="15160"><title>other: 15160 B</title></rect>
-<text x="852.00" y="465" text-anchor="start">15160 B, 19.0%</text>
+<rect x="200.00" y="448" width="640.00" height="24" fill="#8c959f" data-label="other" data-bytes="15650"><title>other: 15650 B</title></rect>
+<text x="852.00" y="465" text-anchor="start">15650 B, 19.5%</text>
 <text x="188" y="509" text-anchor="end">Linker fill</text>
-<rect x="200.00" y="492" width="55.51" height="24" fill="#8c959f" data-label="Linker fill" data-bytes="1315"><title>Linker fill: 1315 B</title></rect>
-<text x="267.51" y="509" text-anchor="start">1315 B, 1.7%</text>
-<text x="16" y="560" text-anchor="start">ESP-IDF IRAM incl. linker fill: release 79,659 B = 77.8 KB; dev 83,184 B = 81.2 KB; diag 83,920 B = 82.0 KB</text>
+<rect x="200.00" y="492" width="57.91" height="24" fill="#8c959f" data-label="Linker fill" data-bytes="1416"><title>Linker fill: 1416 B</title></rect>
+<text x="269.91" y="509" text-anchor="start">1416 B, 1.8%</text>
+<text x="16" y="560" text-anchor="start">ESP-IDF IRAM incl. linker fill: release 80,355 B = 78.5 KB; dev 84,368 B = 82.4 KB; diag 84,768 B = 82.8 KB</text>
 <text x="16" y="584" text-anchor="start">Unattributed linker fill excludes split slack and prefetch pad.</text>
 </svg>

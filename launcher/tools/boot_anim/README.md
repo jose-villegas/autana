@@ -46,12 +46,28 @@ separable swell phase offsets use the row and column coordinates. The host
 suite checks the heights against direct floating-point evaluation; its
 maximum error and tolerance are printed by `test_baked_floor_matches_direct_float`.
 
-Edges use `floor_grey`, approaching pure white with the squared positive
-ripple height divided by `white_height_m`. The swell contributes no colour.
+Edges use `floor_grey` at `grid_level`, turning toward a colour of the curve
+with the squared positive ripple height divided by `crest_height_m`. The
+colour is the stroke hue of the curve sample nearest the edge among those the
+pen has drawn, from baked runs over every `crest_colour_stride`-th node. The
+swell contributes no colour.
+
 Arrival uses `grid_band_ms`; alpha stays full to `grid_edge_fade_fraction`
 of the reach, then ramps to zero. `mesh_dash_on_px` and `mesh_dash_off_px`
-set each line's pixel pattern through `DRAW_LINE_DASH`. Spokes and axes have
-their own colours. Screen outcodes reject invisible edges before colour setup.
+set each line's pixel pattern through `DRAW_LINE_DASH`. Screen outcodes
+reject invisible edges before colour setup.
+
+The mesh lines on the axes keep the axes' colour and skip the edge fade. Past
+the mesh they go on alone to `far_m`, still lifted by the ripple and the
+swell, growing over `far_grow_ms` once the mesh has arrived, eased in by
+`far_grow_power`. They end at the horizon, where the far grid converges.
+
+The plane itself goes on past the mesh as flat, straight grid lines: every
+`far_line_cells`-th mesh line inside the mesh's edge, then the gap doubling
+each time the distance grows by `far_line_growth`. They are cut to the circle of the floor's reach, so the plane
+arrives radially; its outer `far_front` share fades in over
+`far_front_steps` rings until the reach is complete. Near the horizon the
+lines merge into a band.
 
 The camera-plane walk retains fractional bits until projection. Views
 outside its input bounds use the full transform. The comparison below aligns
@@ -74,7 +90,6 @@ AUTANA_ASSET_DIR=launcher/test/build/assets launcher/test/build/host_tests --run
 python .dev/scripts/quiet.py -- bash launcher/test/run_qemu_tests.sh --suite run_boot_floor_cost_suite --icount --timeout 600
 ```
 
-The ink-zero row bounds projection plus traversal and rejection; it includes
-the flat spokes. The ordinary row measures the complete floor. Point and
+The ink-zero row bounds projection plus traversal and rejection. The ordinary row measures the complete floor. Point and
 horizontal-line rows calibrate an estimate of setup and pixel costs; varied
 slopes, clipping, dash lengths and endpoint flags make that split approximate.
