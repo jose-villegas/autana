@@ -1,6 +1,6 @@
 /*
  * vec2_template: the two-component vector for one number type; see
- * docs/math/README.md for the macro arguments. Its swizzles are
+ * docs/math/Conventions.md#templates for the macro arguments. Its swizzles are
  * vec_swizzle_template.h's.
  */
 #pragma once
