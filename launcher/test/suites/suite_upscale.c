@@ -30,7 +30,7 @@ test_two_times_matches_the_frame_doubling_reference(void) {
     upscale_t scale;
     const gfx_render_target_t picture = gfx_render_target_of_color(source, WIDTH, HEIGHT);
     TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, 2 * WIDTH, 2 * HEIGHT, columns, rows));
-    upscale_rows(&scale, &picture, 0, actual, 0, 2 * HEIGHT, 0);
+    upscale_rows(&scale, &picture, 0, actual, 0, 2 * HEIGHT);
     for (int y = 0; y < 2 * HEIGHT; y++) {
         for (int x = 0; x < 2 * WIDTH; x++) {
             TEST_ASSERT_EQUAL_HEX16(source[(y / 2) * WIDTH + (x / 2)], actual[y * 2 * WIDTH + x]);
@@ -62,7 +62,7 @@ test_integer_factors_copy_each_source_pixel_to_its_block(void) {
         TEST_ASSERT_NOT_NULL(rows);
         upscale_t scale;
         TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, out_width, out_height, columns, rows));
-        upscale_rows(&scale, &picture, 0, actual, 0, out_height, 0);
+        upscale_rows(&scale, &picture, 0, actual, 0, out_height);
         for (int y = 0; y < out_height; y++) {
             for (int x = 0; x < out_width; x++) {
                 TEST_ASSERT_EQUAL_UINT16(source[(y / factor) * WIDTH + x / factor], actual[y * out_width + x]);
@@ -111,9 +111,9 @@ test_two_row_ranges_equal_one_whole_upscale(void) {
     upscale_t scale;
     const gfx_render_target_t picture = gfx_render_target_of_color(source, WIDTH, HEIGHT);
     TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, OUT_WIDTH, OUT_HEIGHT, columns, rows));
-    upscale_rows(&scale, &picture, 0, whole, 0, OUT_HEIGHT, 0);
-    upscale_rows(&scale, &picture, 0, split, 0, OUT_HEIGHT / 2, 0);
-    upscale_rows(&scale, &picture, 0, split, OUT_HEIGHT / 2, OUT_HEIGHT - OUT_HEIGHT / 2, 0);
+    upscale_rows(&scale, &picture, 0, whole, 0, OUT_HEIGHT);
+    upscale_rows(&scale, &picture, 0, split, 0, OUT_HEIGHT / 2);
+    upscale_rows(&scale, &picture, 0, split, OUT_HEIGHT / 2, OUT_HEIGHT - OUT_HEIGHT / 2);
     TEST_ASSERT_EQUAL_HEX16_ARRAY(whole, split, OUT_WIDTH * OUT_HEIGHT);
 }
 
@@ -177,9 +177,9 @@ assert_a_range_writes_only_its_rows(const upscale_t* scale, uint16_t* depth, int
     for (size_t i = 0; i < (height + 1) * width; i++) {
         held.actual[i] = UNWRITTEN;
     }
-    upscale_rows(scale, &picture, 0xF00D, held.actual, 0, split, 0);
+    upscale_rows(scale, &picture, 0xF00D, held.actual, 0, split);
     assert_unwritten_from(held.actual, (size_t)split * width, ((height + 1) - (size_t)split) * width);
-    upscale_rows(scale, &picture, 0xF00D, held.actual, split, scale->destination_height - split, 0);
+    upscale_rows(scale, &picture, 0xF00D, held.actual, split, scale->destination_height - split);
     assert_unwritten_from(held.actual, height * width, width);
     assert_each_pixel_follows_the_maps(scale, held.source, depth, held.actual);
 }
@@ -293,7 +293,7 @@ test_scanline_runs_preserve_bright_rows_and_darken_clear_pixels(void) {
         upscale_t scale;
         TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, width, height, columns, rows));
         TEST_ASSERT_EQUAL_INT(run, scale.scanline_run);
-        upscale_rows(&scale, &picture, clear, plain, 0, height, 0);
+        upscale_rows(&scale, &picture, clear, plain, 0, height);
         for (size_t i = 0; i < sizeof strengths / sizeof *strengths; i++) {
             const unsigned keep = UPSCALE_SCANLINE_UNIT - strengths[i];
             const uint16_t dark_color =
@@ -303,8 +303,8 @@ test_scanline_runs_preserve_bright_rows_and_darken_clear_pixels(void) {
                 gfx_color_rgb565(CLEAR_RED * keep / UPSCALE_SCANLINE_UNIT, CLEAR_GREEN * keep / UPSCALE_SCANLINE_UNIT,
                                  CLEAR_BLUE * keep / UPSCALE_SCANLINE_UNIT);
             const int split = height / 2;
-            upscale_rows(&scale, &picture, clear, actual, 0, split, strengths[i]);
-            upscale_rows(&scale, &picture, clear, actual, split, height - split, strengths[i]);
+            upscale_rows_scanlined(&scale, &picture, clear, actual, 0, split, strengths[i]);
+            upscale_rows_scanlined(&scale, &picture, clear, actual, split, height - split, strengths[i]);
             assert_scanline_rows_match_reference(&scale, plain, run, clear, dark_clear, dark_color);
         }
     }
@@ -325,7 +325,7 @@ test_scanline_all_colors_match_channel_reference(void) {
             for (unsigned color = 0; color <= UINT16_MAX; color++) {
                 source[0] = (uint16_t)color;
                 source[1] = (uint16_t)~color;
-                upscale_rows(&scale, &picture, 0, (uint16_t*)output, 0, OUTPUT_HEIGHT, strength);
+                upscale_rows_scanlined(&scale, &picture, 0, (uint16_t*)output, 0, OUTPUT_HEIGHT, strength);
                 for (int x = 0; x < width; x++) {
                     const uint16_t pixel = source[x * WIDTH / width];
                     const uint16_t native = gfx_color_swap(pixel);
@@ -374,7 +374,7 @@ test_odd_half_picture_repeat_keeps_pixels(void) {
     upscale_t scale;
     TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, WIDTH, OUTPUT_HEIGHT, columns, rows));
     const gfx_render_target_t picture = gfx_render_target_of_color((uint16_t*)source, WIDTH, HEIGHT);
-    upscale_rows(&scale, &picture, 0, (uint16_t*)output, 0, OUTPUT_HEIGHT, UPSCALE_SCANLINE_MAX);
+    upscale_rows_scanlined(&scale, &picture, 0, (uint16_t*)output, 0, OUTPUT_HEIGHT, UPSCALE_SCANLINE_MAX);
     for (int y = 0; y < OUTPUT_HEIGHT; y++) {
         TEST_ASSERT_EQUAL_MEMORY(source, (uint16_t*)output + y * WIDTH, sizeof source);
     }

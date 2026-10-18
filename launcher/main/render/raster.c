@@ -155,8 +155,12 @@ static void
 upscale_slice(void* ctx) {
     const slice_t* s = ctx;
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(s->raster);
-    upscale_rows(&s->raster->upscale, &b.picture, s->raster->clear, s->destination, s->first, s->count,
-                 s->raster->scanline);
+    if (s->raster->scanline == 0) {
+        upscale_rows(&s->raster->upscale, &b.picture, s->raster->clear, s->destination, s->first, s->count);
+    } else {
+        upscale_rows_scanlined(&s->raster->upscale, &b.picture, s->raster->clear, s->destination, s->first, s->count,
+                               s->raster->scanline);
+    }
 }
 
 int

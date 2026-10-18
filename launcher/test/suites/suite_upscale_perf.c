@@ -15,8 +15,7 @@
 #include "gfx/gfx.h"
 #include "render/upscale.h"
 
-#define SAMPLES           100
-#define SCANLINE_STRENGTH 0
+#define SAMPLES 100
 
 typedef struct {
     const char* label;
@@ -37,7 +36,7 @@ static const scale_case_t cases[] = {
 static void
 upscale_job(void* context) {
     const upscale_job_t* job = context;
-    upscale_rows(job->scale, job->source, 0, job->destination, job->first_row, job->row_count, SCANLINE_STRENGTH);
+    upscale_rows(job->scale, job->source, 0, job->destination, job->first_row, job->row_count);
 }
 
 static int
@@ -65,12 +64,12 @@ report_case(const scale_case_t* test_case) {
     upscale_t scale;
     const gfx_render_target_t picture = gfx_render_target_of_color(source, source_width, source_height);
     TEST_ASSERT_TRUE(upscale_init(&scale, source_width, source_height, GFX_WIDTH, GFX_HEIGHT, columns, rows));
-    upscale_rows(&scale, &picture, 0, destination, 0, GFX_HEIGHT, SCANLINE_STRENGTH);
+    upscale_rows(&scale, &picture, 0, destination, 0, GFX_HEIGHT);
 
     int64_t start_us = timing_now_us();
     uint32_t start_cycles = esp_cpu_get_cycle_count();
     for (int i = 0; i < SAMPLES; i++) {
-        upscale_rows(&scale, &picture, 0, destination, 0, GFX_HEIGHT, SCANLINE_STRENGTH);
+        upscale_rows(&scale, &picture, 0, destination, 0, GFX_HEIGHT);
     }
     const uint32_t one_cycles = esp_cpu_get_cycle_count() - start_cycles;
     const int64_t one_us = timing_now_us() - start_us;

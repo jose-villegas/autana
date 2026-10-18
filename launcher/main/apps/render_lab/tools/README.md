@@ -70,11 +70,11 @@ Existing `DRAW_DITHER_SCANLINES4` patterns are independent.
 
 | File | Experiment symbols or statements to remove |
 |---|---|
-| `launcher/main/render/upscale.h` | `UPSCALE_SCANLINE_UNIT`, `UPSCALE_SCANLINE_MAX`, `upscale_t.scanline_run`, `upscale_rows()` strength parameter |
-| `launcher/main/render/upscale.c` | run eligibility in `upscale_init()`, shaded paired-row calls |
+| `launcher/main/render/upscale.h` | `UPSCALE_SCANLINE_UNIT`, `UPSCALE_SCANLINE_MAX`, `upscale_t.scanline_run`, `upscale_rows_scanlined()` declaration |
+| `launcher/main/render/upscale.c` | run eligibility in `upscale_init()`, `upscale_rows_scanlined()` |
 | `launcher/main/gfx/target/gfx_color.h`, `gfx_target.h` | `GFX_COLOR_SCALE_UNIT`, `gfx_color_scale()`, `gfx_color_pair_scale()`, `gfx_target_paired_rows_shaded()` and its plain-copy wrapper call |
 | `launcher/main/render/raster.h` | `raster_t.scanline` |
-| `launcher/main/render/raster.c` | strength argument in `upscale_slice()` |
+| `launcher/main/render/raster.c` | scanline dispatch in `upscale_slice()` |
 | `launcher/main/render/context/render_context.h`, `render_context.c` | `render_context_set_scanlines()` |
 | `launcher/main/apps/render_lab/render_lab_view.c` | `TUNE(render_lab, scanline, ...)`, `render_lab_scanline()`, the setter call in `render_lab_apply_raster_settings()` |
 | `launcher/main/apps/render_lab/render_lab_view.h` | `render_lab_scanline()` declaration |
@@ -84,7 +84,6 @@ Existing `DRAW_DITHER_SCANLINES4` patterns are independent.
 | `launcher/main/apps/render_lab/tools/tests/test_render_views.py` | `COLOR_HEADER`, `SCANLINE_UNIT`, scanline tunings and dark-row assertions |
 | `launcher/test/suites/suite_scene.c` | `assert_composed_scanlines()`, `test_context_scanlines_compose_both_quarters_and_disabled_pairs()`, `test_context_scanline_strength_survives_fixed_and_dynamic_size_changes()`; strength in `test_height_only_scale_composes_whole_runs_in_the_half_picture()` |
 | `launcher/test/suites/suite_upscale.c` | scanline tests, `assert_scanline_rows_match_reference()`, `test_odd_half_picture_repeat_keeps_pixels()`, shaded calls in `test_shaded_paired_copy_strip_starts_on_bottom_of_pair()` and registrations |
-| `launcher/test/suites/suite_upscale_perf.c` | `SCANLINE_STRENGTH` and the strength argument of each `upscale_rows()` call |
 | `docs/Shared-Helpers.md` | regenerate the catalogue after removing the public symbols |
 | `docs/render/Dynamic-Resolution.md`, this README | experiment prose and inventory |
 
@@ -93,7 +92,7 @@ Check the inventory with:
 ```sh
 git grep -n -i scanline -- launcher/main/render launcher/main/gfx/target launcher/main/apps/render_lab \
     launcher/test/suites/suite_scene.c launcher/test/suites/suite_upscale.c \
-    launcher/test/suites/suite_upscale_perf.c docs/render/Dynamic-Resolution.md
+    docs/render/Dynamic-Resolution.md
 git grep -n 'gfx_color_scale\|gfx_color_pair_scale\|GFX_COLOR_SCALE_UNIT\|paired_rows_shaded' -- launcher
 ```
 

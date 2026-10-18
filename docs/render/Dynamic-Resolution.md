@@ -177,7 +177,9 @@ darkens the second half of each repeated-row run when every source row has
 the same even run length. Odd and uneven runs retain their pixels.
 
 The rule uses the actual row map for paired copies only; other paths ignore
-the strength.
+the strength. `upscale_rows()` copies unchanged from IRAM. The raster selects
+`upscale_rows_scanlined()` in flash for nonzero strength; it falls back to
+`upscale_rows()` when the run is ineligible.
 See `UPSCALE_SCANLINE_UNIT` for strength units: zero preserves colour,
 half the unit halves each RGB565 channel, and `UPSCALE_SCANLINE_MAX` gives black.
 

@@ -38,7 +38,11 @@ bool upscale_init(upscale_t* scale, int source_width, int source_height, int des
 
 /* Scales destination rows [first_row, first_row + row_count) from `source`.
  * A zero attached depth writes `clear`. `destination` is 4-byte aligned.
- * Strength uses UPSCALE_SCANLINE_UNIT; zero copies unchanged.
- * Paired copies only; other paths ignore the strength. */
+ */
 void upscale_rows(const upscale_t* scale, const gfx_render_target_t* source, uint16_t clear, uint16_t* destination,
-                  int first_row, int row_count, int strength);
+                  int first_row, int row_count);
+
+/* Strength uses UPSCALE_SCANLINE_UNIT; zero copies unchanged.
+ * Paired copies with uniform even runs only; other runs copy unchanged. */
+void upscale_rows_scanlined(const upscale_t* scale, const gfx_render_target_t* source, uint16_t clear,
+                            uint16_t* destination, int first_row, int row_count, int strength);
