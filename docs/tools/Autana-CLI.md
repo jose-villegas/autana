@@ -210,7 +210,7 @@ below the input layer, with a matching resume or release. Hidden from bare
 | `autana debug resume` | Run it again. |
 | `autana debug step [N]` | Advance `N` frames while frozen; 1 when omitted. |
 | `autana debug touch <down\|up> <x> <y>` | One raw touch level at a panel-frame point (a `--framebuffer` pixel); `up` hands back to the controller. |
-| `autana debug imu <ax> <ay> <az>` | Raw accelerometer counts; `autana debug imu release` hands back to the sensor. |
+| `autana debug imu <ax> <ay> <az>` | Raw accelerometer counts; `autana debug imu quarter <q>` turns the screen to display quarter q, and `autana debug imu release` hands back to the sensor. |
 
 `freeze`, `resume`, `step`, `touch`, `imu` and `debug framewatch` are accepted
 as aliases and print the canonical spelling once.

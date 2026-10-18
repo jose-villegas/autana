@@ -1,4 +1,5 @@
 #include "math/motion/orbit_motion.h"
+#include "math/scalar/math_const.h"
 
 #include <math.h>
 

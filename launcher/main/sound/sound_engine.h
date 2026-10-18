@@ -16,7 +16,8 @@
 #define SOUND_MIXER_STACK_MARGIN_BYTES   512
 #define SOUND_MIXER_TASK_STACK           (SOUND_MIXER_STACK_PLAYBACK_BYTES + SOUND_MIXER_STACK_MARGIN_BYTES)
 /* One play and control call per voice fit between drains. */
-#define SOUND_MIXER_QUEUE_DEPTH          16
+#define SOUND_MIXER_COMMANDS_PER_VOICE   2
+#define SOUND_MIXER_QUEUE_DEPTH          (SOUND_MIXER_COMMANDS_PER_VOICE * SOUND_VOICE_COUNT)
 #define SOUND_QUEUE_WAIT_TICKS           0
 /* A reader exceeding this is stuck; abort rather than free memory it may still read. */
 #define SOUND_EXIT_READ_TIMEOUT_MS       5000

@@ -6,8 +6,8 @@
 #include "unity.h"
 
 #include "input/gravity.h"
-#include "math/linear/math_const.h"
 #include "math/linear/vec_convert.h"
+#include "math/scalar/math_const.h"
 #include "math/scalar/units.h"
 
 #define STEP_MS              (GRAVITY_MAX_DT_MS / 10U)

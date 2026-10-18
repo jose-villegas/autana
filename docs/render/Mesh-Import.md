@@ -267,7 +267,7 @@ the vertex count. An invalid scale or coverage is `ASSET_ERR_FORMAT`.
 Source assets, scene TOMLs, cached bakes and bake-time tools use the
 right-handed source frame: +x right, +y up, a camera looking down -z.
 `build_pack.py` mirrors entries once into the
-[engine frame](../math/README.md#conventions), through
+[engine frame](../math/Conventions.md#conventions), through
 [`asset/engine_frame.py`](../../launcher/tools/asset/engine_frame.py).
 The mirror negates position z; a placement's matrix `M` becomes `S M S`,
 where `S = diag(1, 1, -1)`, and quaternions `(x, y, z, w)` become

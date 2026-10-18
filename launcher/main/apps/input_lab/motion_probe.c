@@ -3,8 +3,8 @@
 #include <math.h>
 #include <stdio.h>
 
-#include "math/linear/math_const.h"
 #include "math/linear/vec_convert.h"
+#include "math/scalar/math_const.h"
 #include "ui/layout/ui_transform.h"
 
 #define FIXED_RADIX 10

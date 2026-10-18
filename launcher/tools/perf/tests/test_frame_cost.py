@@ -10,6 +10,14 @@ import frame_cost
 
 
 class FrameCostTests(unittest.TestCase):
+    def test_real_external_report(self):
+        path = PERF / "tests/fixtures/sound_mix.txt"
+        window = frame_cost.frame_cost_window(path.read_text())
+        self.assertEqual(window["brackets"]["present"], (9.54, 10.2))
+        self.assertEqual(window["total"], 17.63)
+        self.assertEqual(window["external"], {"sound_mix": (0.004, 0.015, 260)})  # magic: the real report fixture stage.
+        self.assertNotIn(next(iter(window["external"])), dict(frame_cost.frame_cost_windows(path)[0]))
+
     def test_order_new_bracket_and_missing_captures(self):
         with tempfile.TemporaryDirectory() as directory:
             capture = pathlib.Path(directory) / "frame.log"

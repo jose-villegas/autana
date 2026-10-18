@@ -1,6 +1,6 @@
 /*
  * affine2x: a 2D affine map of a Q16.16, with integer-pixel maps.
- * The operations are affine2_template.h's; docs/math/README.md says how they are made.
+ * The operations are affine2_template.h's; docs/math/Linear.md says how they are made.
  */
 #pragma once
 
