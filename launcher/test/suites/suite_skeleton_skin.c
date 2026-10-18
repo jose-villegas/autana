@@ -11,7 +11,9 @@
 #include "test_pack.h"
 #include "unity.h"
 #ifndef DEVICE_BUILD
+#include "anim/anim_skeleton_format.h"
 #include "asset/asset_file.h"
+#include "render/r3d_skin_format.h"
 
 typedef struct {
     asset_pack_t pack;
