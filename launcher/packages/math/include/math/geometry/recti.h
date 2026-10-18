@@ -1,6 +1,6 @@
 /*
  * recti: a half-open rectangle of an int. The operations are
- * rect_template.h's; docs/math/README.md says how they are made.
+ * rect_template.h's; docs/math/Geometry.md says how they are made.
  */
 #pragma once
 
