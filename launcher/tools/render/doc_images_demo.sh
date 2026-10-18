@@ -40,30 +40,37 @@ small_fill_images() {
     run "$HOST" --scene "$ID" --object "${FULL}_fitted_full" --frames 1 --tunables \
         -o "$W/small-fill-tunables.bmp" 2> "$W/small-fill-tunables.log"
     cat > "$W/small-fill-looks.tsv" <<EOF
-defaults|Defaults|${FULL}_fitted_full|
-flat8|Flat <=8|${FULL}_fitted_full|--set r3d_span.small_max_side=8
-gate|Gate ramp|${FULL}_fitted_full|--set r3d_span.small_max_side=8 --set r3d_span.small_flat_spread_far=4 --set r3d_span.small_flat_spread_near=64
-dither|Dither 4, ramp 1|${FULL}_fitted_full|--set r3d_span.small_max_side=8 --set r3d_span.small_dither=4 --set r3d_span.small_dither_ramp=1
-bake|Flat bake|${FULL}_flat|
+defaults|Defaults|${FULL}_fitted_full||${ID}-small-fill-defaults
+flat8|Flat <=8|${FULL}_fitted_full|--set r3d_span.small_max_side=8|${ID}-small-fill-flat8
+gate|Gate ramp|${FULL}_fitted_full|--set r3d_span.small_max_side=8 --set r3d_span.small_flat_spread_far=4 --set r3d_span.small_flat_spread_near=64|${ID}-small-fill-gate
+dither|Dither 4, ramp 1|${FULL}_fitted_full|--set r3d_span.small_max_side=8 --set r3d_span.small_dither=4 --set r3d_span.small_dither_ramp=1|${ID}-small-fill-dither
+bake|Flat bake|${FULL}_flat||${ID}-small-fill-bake
 EOF
-    while IFS='|' read -r look label object settings; do
+    # The highest changed share over a two-second window and 160-pixel square,
+    # measured from defaults versus flat8; keep every look on the same pixels.
+    small_fill_side=160
+    small_fill_x=164
+    small_fill_y=38
+    small_fill_first=1
+    small_fill_end=21
+    small_fill_fps=8
+    small_fill_window="trim=start_frame=$small_fill_first:end_frame=$small_fill_end,setpts=PTS-STARTPTS,fps=$small_fill_fps"
+    small_fill_crop="crop=$small_fill_side:$small_fill_side:$small_fill_x:$small_fill_y"
+    small_fill_zoom="scale=iw*2:ih*2:flags=neighbor"
+    small_fill_palette="max_colors=256:reserve_transparent=0:stats_mode=full"
+    while IFS='|' read -r look label object settings gif; do
         # Settings are whitespace-separated command arguments from the table above.
         set -- $settings
         run "$HOST" --scene "$ID" --quarter 1 --frames 30 --dt 100 --object "$object" "$@" \
             -o "$W/small-fill-$look.bmp" --video "$W/small-fill-$look.avi" 2> "$W/small-fill-$look.log"
+        gif_from_avi "$W/small-fill-$look.avi" "$RENDER/$gif.gif" \
+            "$small_fill_window,$small_fill_crop,$small_fill_zoom" "$small_fill_palette"
     done < "$W/small-fill-looks.tsv"
     if cmp -s "$W/small-fill-defaults.bmp" "$W/small-fill-flat8.bmp"; then
         echo "small-fill: --set did not change the render" >&2
         exit 1
     fi
-    set --
-    while IFS='|' read -r look label object settings; do
-        set -- "$@" --video-column "$label" "$W/small-fill-$look.avi"
-    done < "$W/small-fill-looks.tsv"
-    run "$PYTHON" launcher/tools/render/render_temporal.py --out "$W/small-fill-range.mp4" --panel-width 200 "$@"
-    gif_from_avi "$W/small-fill-range.mp4" "$RENDER/${ID}-small-fill-range.gif" "fps=2.5,scale=1000:-1:flags=lanczos" \
-        "max_colors=32:stats_mode=diff"
-    while IFS='|' read -r look label object settings; do
+    while IFS='|' read -r look label object settings gif; do
         run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/small-fill-$look.mp4" \
             --video "$W/small-fill-defaults.avi" "$W/small-fill-$look.avi" \
             --label-a defaults --label-b "$look" --csv "$W/small-fill-$look.frames.csv" \
@@ -72,8 +79,27 @@ EOF
             --video "$W/small-fill-defaults.avi" "$W/small-fill-$look.avi" \
             --csv "$W/small-fill-$look.frames.csv" >> "$W/small-fill-$look-compare.log"
     done < "$W/small-fill-looks.tsv"
-    gif_from_avi "$W/small-fill-flat8.mp4" "$RENDER/${ID}-small-fill-diff.gif" "fps=2.5,scale=840:-1:flags=lanczos" \
-        "max_colors=32:stats_mode=diff"
+    run "$PYTHON" - "$W" "$small_fill_side" "$small_fill_x" "$small_fill_y" <<'PY'
+import pathlib
+import subprocess
+import sys
+from PIL import Image
+sys.path.insert(0, "launcher/tools/render")
+from render_compare import GAIN, compose_frame, read_video
+work = pathlib.Path(sys.argv[1])
+side, x, y = map(int, sys.argv[2:])
+fps, defaults = read_video(work / "small-fill-defaults.avi")
+_, flat = read_video(work / "small-fill-flat8.avi")
+box = (x, y, x + side, y + side)
+frames = [compose_frame(Image.fromarray(a).crop(box), Image.fromarray(b).crop(box),
+                        None, GAIN, "defaults", "flat <=8") for a, b in zip(defaults, flat)]
+subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo",
+                "-pix_fmt", "rgb24", "-s", "%dx%d" % frames[0].size, "-r", str(fps), "-i", "-",
+                "-c:v", "rawvideo", "-pix_fmt", "bgr24", str(work / "small-fill-diff.avi")],
+               input=b"".join(frame.tobytes() for frame in frames), check=True)
+PY
+    gif_from_avi "$W/small-fill-diff.avi" "$RENDER/${ID}-small-fill-diff.gif" \
+        "$small_fill_window,$small_fill_zoom" "$small_fill_palette"
     run "$PYTHON" launcher/tools/render/doc_tables.py "$W" "$TABLES" "$ID" "$FULL" \
         --small-fill-data docs/render/data/small-fill
 }
