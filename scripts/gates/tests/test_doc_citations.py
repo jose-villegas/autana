@@ -685,6 +685,19 @@ class PaperCitationTest(unittest.TestCase):
                                     docs__Guide_md=self.GUIDE, launcher__main__a_c=self.A_C,
                                     scripts__gates__tests__test_x_py="# Gouraud 1971\n"), [])
 
+    def test_a_malformed_name_field_is_flagged(self):
+        rows = '| <a id="1"></a>[1] | A<br>Named in code: `Gouraud 1971<br>Cited by: [Guide.md](Guide.md) |'+chr(10)
+        found = self.problems(rows, [("docs/Guide.md", self.GUIDE)])
+        self.assertEqual(found, ['docs/Citations.md:1: [1] has a malformed "Named in code" field'])
+
+    def test_fix_keeps_the_line_endings(self):
+        rows = '| <a id="1"></a>[1] | A<br>Named in code: `Gouraud 1971`<br>Cited by: none |'+chr(13)+chr(10)
+        with gate_tree.temporary_tree([("docs/Citations.md", rows), ("launcher/main/a.c", self.A_C)]) as root:
+            path = pathlib.Path(root) / "docs/Citations.md"
+            path.write_bytes(rows.encode("utf-8"))
+            self.assertTrue(check_doc_citations.fix_cited_by(root))
+            self.assertTrue(path.read_bytes().endswith(bytes([13, 10])))
+
     def test_fix_rewrites_the_lists_to_what_the_tree_says(self):
         rows = ('| <a id="1"></a>[1] | A<br>Named in code: `Gouraud 1971`<br>Cited by: '
                 '[stale.c](../launcher/stale.c) |\n')

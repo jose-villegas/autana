@@ -258,6 +258,8 @@ def citation_rows(root):
     for m in CITATION_ROW.finditer(text):
         number = text.count("\n", 0, m.start()) + 1
         anchor, shown, name, cited_line = m.group(1), int(m.group(2)), m.group(3), m.group(4)
+        if name is None and "Named in code" in m.group(0):
+            problems.append(f"{CITATIONS}:{number}: [{shown}] has a malformed \"Named in code\" field")
         if anchor != str(shown):
             problems.append(f"{CITATIONS}:{number}: anchor \"{anchor}\" is not its number [{shown}]")
         if rows and shown <= max(rows):
@@ -378,7 +380,10 @@ def fix_cited_by(root):
     if not path.is_file():
         return False
     cited = citers(root)[-1]
-    text = path.read_text(encoding="utf-8")
+    with open(path, encoding="utf-8", newline="") as handle:
+        raw = handle.read()
+    eol = "\r\n" if "\r\n" in raw else "\n"
+    text = raw.replace("\r\n", "\n")
 
     def cell(m):
         paths = cited.get(int(m.group(2)), [])
@@ -386,7 +391,7 @@ def fix_cited_by(root):
 
     fixed = CITATION_ROW.sub(cell, text)
     if fixed != text:
-        path.write_text(fixed, encoding="utf-8", newline="")
+        path.write_bytes(fixed.replace("\n", eol).encode("utf-8"))
     return fixed != text
 
 
