@@ -640,7 +640,7 @@ prepare_small_dither(small_dither_t* d, const r3d_span_vertex_t* a, const r3d_sp
     const int cell_bits = small_dither_cell_bits;
     d->phase_mask = (1 << cell_bits) - 1;
     d->rank_shift = 2 * (SMALL_DITHER_PATTERN_BITS_MAX - cell_bits);
-    d->level_shift = 1 + 2 * cell_bits;
+    d->level_shift = 1 + (2 * cell_bits);
     d->total = total;
     return true;
 }
