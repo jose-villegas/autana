@@ -180,6 +180,28 @@ class SweepTests(ShellJobTests, unittest.TestCase):
             self.assertEqual(metrics['spans.184x224.fill quarter=portrait'], 4)
             self.assertEqual(metrics['spans.184x224.fill quarter=landscape'], 9)
 
+    def test_skin_frame_stages_keep_pause_joint_and_quarter_keys(self):
+        with tempfile.TemporaryDirectory() as root:
+            capture = Path(root) / "capture.log"
+            capture.write_text(
+                "I (1200) capybara_perf: stage=render paused=0 samples=120 joints=21 mean_us=15000 p95_us=17000 quarter=portrait\n"
+                "I (1250) capybara_perf: stage=render paused=0 samples=120 joints=21 mean_us=18000 p95_us=20000 quarter=portrait\n"
+                "I (1300) capybara_perf: stage=frame paused=0 samples=120 joints=21 mean_us=19000 p95_us=22000 quarter=portrait\n"
+                "I (1400) capybara_perf: stage=render paused=1 samples=120 joints=21 mean_us=12000 p95_us=14000 quarter=portrait\n"
+                "I (1500) capybara_perf: stage=render paused=0 samples=120 joints=21 mean_us=16000 p95_us=18000 quarter=landscape\n"
+                "I (1600) capybara_perf: stage=render paused=0 samples=120 joints=48 mean_us=20000 p95_us=23000 quarter=portrait\n"
+                "I (1700) capybara_perf: stage=render_delta joints=21 mean_us=3000 p95_us=3000 quarter=portrait\n")
+            metrics, units = tool.metrics(capture, capture)
+            self.assertEqual(metrics["render paused=0 joints=21 quarter=portrait"], 16500)
+            self.assertEqual(metrics["frame paused=0 joints=21 quarter=portrait"], 19000)
+            self.assertEqual(metrics["render.p95 paused=0 joints=21 quarter=portrait"], 18500)
+            self.assertEqual(metrics["render paused=1 joints=21 quarter=portrait"], 12000)
+            self.assertEqual(metrics["render paused=0 joints=21 quarter=landscape"], 16000)
+            self.assertEqual(metrics["render paused=0 joints=48 quarter=portrait"], 20000)
+            self.assertEqual(metrics["render_delta joints=21 quarter=portrait"], 3000)
+            self.assertEqual(len(metrics), 12)
+            self.assertEqual(set(units.values()), {"us"})
+
     def test_all_metric_kinds(self):
         metrics, units = tool.metrics(FIXTURE, FIXTURE)
         self.assertEqual(metrics["frame"], 10000)

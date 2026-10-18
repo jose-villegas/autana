@@ -10,7 +10,7 @@ from statistics import mean
 import sys
 
 from layout_measure import (REPO, autana_command, booted_build_id,
-                            capture_metadata, captured_runs, make_table, parse_report, parse_timings,
+                            capture_metadata, captured_runs, make_table, parse_markdown, timing_samples,
                             run_stamped, split_filters, filter_limits, status_snapshot)
 from perf_compare import DEFAULT_ALPHA, DEFAULT_THRESHOLD
 from capture import capture_board, require_same_board, quarter_row
@@ -131,10 +131,11 @@ def metrics(capture, table):
         values.setdefault(name, []).append(value)
         units[name] = unit
 
-    rows = parse_timings(text)
-    rows.update(parse_report(table))
-    for name, value in rows.items():
+    for name, value in timing_samples(text, identity_fields=("cores", "paused", "joints"), percentiles=True):
         add(name, value)
+    for name, value in parse_markdown(Path(table).read_text(encoding="utf-8", errors="replace")).items():
+        if name not in values:
+            add(name, value)
     # Stages from the suite's own line only: the shell's periodic frame_cost
     # line also lands in a capture, from whatever ran before the suite.
     for line in text.splitlines():
