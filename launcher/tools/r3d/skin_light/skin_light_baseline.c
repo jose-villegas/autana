@@ -18,7 +18,7 @@ skin_light_baseline_evaluate(vec3f_t normal, const r3d_skin_lights_t* lights, ui
     baseline_light_evaluate(normal, lights, out);
 }
 
-/* Octahedral directions: docs/Citations.md#21. Normal-indexed lighting: docs/Citations.md#58. */
+/* Octahedral directions: Cigolle et al. 2014. Normal-indexed lighting: Miller and Hoffman 1984. */
 void
 skin_light_baseline_directions(int size, vec3f_t* directions) {
     assert(size >= 2);

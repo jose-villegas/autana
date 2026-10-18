@@ -597,19 +597,23 @@ class PaperCitationTest(unittest.TestCase):
 
     def test_cited_rows_listing_their_citers_pass(self):
         self.assertEqual(self.problems(
-            '| <a id="1"></a>[1] | [Paper](https://example.org/paper)<br>Cited by: [Guide.md](Guide.md), [tool.py](../scripts/tool.py) |\n',
+            '| <a id="1"></a>[1] | [Paper](https://example.org/paper)<br>Cited by: [Guide.md](Guide.md), [Other.md](Other.md) |\n',
             [("docs/Guide.md", "Text<sup>[[1]](Citations.md#1)</sup>.\n"),
-             ("scripts/tool.py", "# After the paper in docs/Citations.md#1.\n")]), [])
+             ("docs/Other.md", "Again<sup>[[1]](Citations.md#1)</sup>.\n")]), [])
 
     def test_a_number_with_no_row_is_flagged_where_it_is_cited(self):
         found = self.problems('| <a id="1"></a>[1] | Paper<br>Cited by: [Guide.md](Guide.md) |\n',
                               [("docs/Guide.md", "[[1]](Citations.md#1) [[2]](Citations.md#2)\n")])
         self.assertEqual(found, ["docs/Guide.md:1: cites [2], which docs/Citations.md has no row for"])
 
-    def test_a_row_nothing_cites_is_flagged(self):
+    def test_a_row_only_code_names_reads_none(self):
+        self.assertEqual(self.problems('| <a id="1"></a>[1] | Paper<br>Cited by: none |\n',
+                                       [("docs/Guide.md", "No citation.\n")]), [])
+
+    def test_a_row_listing_a_document_that_does_not_cite_it_is_flagged(self):
         found = self.problems('| <a id="1"></a>[1] | Paper<br>Cited by: [Guide.md](Guide.md) |\n',
                               [("docs/Guide.md", "No citation.\n")])
-        self.assertEqual(found, ["docs/Citations.md:1: [1] is cited nowhere"])
+        self.assertEqual(found, ["docs/Citations.md:1: [1] listed, does not cite it: docs/Guide.md"])
 
     def test_a_cited_by_cell_must_match_the_citing_files(self):
         found = self.problems('| <a id="1"></a>[1] | Paper<br>Cited by: [Other.md](Other.md) |\n',
@@ -624,6 +628,24 @@ class PaperCitationTest(unittest.TestCase):
                               [("docs/Guide.md", "[[1]](Citations.md#1) [[3]](Citations.md#3) [[2]](Citations.md#2)\n")])
         self.assertEqual(found, ['docs/Citations.md:3: anchor "4" is not its number [2]',
                                  "docs/Citations.md:3: [2] follows [3]; rows ascend"])
+
+    def test_a_source_file_citing_by_number_is_flagged(self):
+        rows = '| <a id="1"></a>[1] | A<br>Cited by: [Guide.md](Guide.md) |\n'
+        guide = ("docs/Guide.md", "[[1]](Citations.md#1)\n")
+        for path, line in [("launcher/main/a.c", "/* Gouraud (docs/Citations.md#1). */\n"),
+                           ("editor/src/a.cpp", "// docs/Citations.md#1\n"),
+                           ("scripts/tool.py", "# After docs/Citations.md#1\n"),
+                           ("launcher/CMakeLists.txt", "# docs/Citations.md#1\n"),
+                           ("launcher/tools/x.sh", 'X="docs/Citations.md#1"\n')]:
+            with self.subTest(path=path):
+                self.assertEqual(self.problems(rows, [guide, (path, line)]), [
+                    f"{path}:1: cites docs/Citations.md by number; "
+                    "name the source (author, year, section) in place"])
+
+    def test_a_source_file_naming_its_source_passes(self):
+        rows = '| <a id="1"></a>[1] | A<br>Cited by: [Guide.md](Guide.md) |\n'
+        self.assertEqual(self.problems(rows, [("docs/Guide.md", "[[1]](Citations.md#1)\n"),
+                                              ("launcher/main/a.c", "/* Gouraud 1971. */\n")]), [])
 
     def test_the_gates_own_test_fixtures_cite_nothing(self):
         found = self.problems('| <a id="1"></a>[1] | A<br>Cited by: [Guide.md](Guide.md) |\n',
