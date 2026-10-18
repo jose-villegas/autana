@@ -731,6 +731,9 @@ run_present_strips(bool (*send_rows)(int y0, int y1)) {
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
     present_completed_send_us = (int32_t)(timing_now_us() - present_dispatched_us);
+    if (!present_async_on) {
+        dev_present_send_us = present_completed_send_us;
+    }
 #endif
     if (present_send_failed) {
         mark_all_dirty_now();
@@ -802,6 +805,9 @@ run_present_normal(void) {
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
     present_completed_send_us = (int32_t)(timing_now_us() - present_dispatched_us);
+    if (!present_async_on) {
+        dev_present_send_us = present_completed_send_us;
+    }
 #endif
 #if CONFIG_LAUNCHER_DEVELOPMENT
     send_audit_check();
@@ -828,6 +834,9 @@ run_present_raw_full(void) {
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
     present_completed_send_us = (int32_t)(timing_now_us() - present_dispatched_us);
+    if (!present_async_on) {
+        dev_present_send_us = present_completed_send_us;
+    }
     send_audit_check();
 #endif
 }
@@ -849,18 +858,18 @@ dispatch_present(void) {
      * left to wait for. */
     if (present_task_mode == PRESENT_TASK_RAW_FULL) {
         run_present_raw_full();
-    } else {
-        run_present_normal();
+        return;
     }
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    dev_present_send_us = present_completed_send_us;
-#endif
+    run_present_normal();
 }
 
 #endif /* ESP_PLATFORM: the presentation pipeline */
 
-void
+int32_t
 gfx_present_drain(void) {
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    const int64_t wait_start = timing_now_us();
+#endif
 #ifdef ESP_PLATFORM
     if (present_pending) {
         xSemaphoreTake(present_done_sem, portMAX_DELAY);
@@ -870,18 +879,21 @@ gfx_present_drain(void) {
 #endif
     }
 #endif
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    return (int32_t)(timing_now_us() - wait_start);
+#else
+    return 0;
+#endif
 }
 
 void GFX_PRESENT_IRAM_ATTR
 gfx_present_begin(void) {
     const bool double_fb = current_mode.layout == GFX_LAYOUT_DOUBLE_FB;
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    const int64_t wait_start = timing_now_us();
-#endif
     if (double_fb) {
-        gfx_present_drain();
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-        dev_present_wait_us = (int32_t)(timing_now_us() - wait_start);
+        dev_present_wait_us = gfx_present_drain();
+#else
+        gfx_present_drain();
 #endif
         gfx_color_t* drawn = fb;
         fb = present_fb;
@@ -907,11 +919,9 @@ void GFX_PRESENT_IRAM_ATTR
 gfx_present_wait(void) {
     if (current_mode.layout != GFX_LAYOUT_DOUBLE_FB) {
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-        const int64_t wait_start = timing_now_us();
-#endif
+        dev_present_wait_us = gfx_present_drain();
+#else
         gfx_present_drain();
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-        dev_present_wait_us = (int32_t)(timing_now_us() - wait_start);
 #endif
 #ifndef ESP_PLATFORM
         if (!band_is_transient()) {
