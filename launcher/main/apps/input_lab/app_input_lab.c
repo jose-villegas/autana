@@ -123,7 +123,6 @@ static input_motion_t motion;
 static input_motion_batch_t* motion_batch;
 static int motion_samples;
 static int motion_lost;
-static int motion_produced;
 static uint32_t motion_since_drain_ms;
 static int64_t motion_drain_us;
 /* Bias-corrected gyro rotation since the turn step armed, in degrees: proves the gyro scale on its own. */
@@ -200,7 +199,6 @@ start_round(void) {
         motion_log_ms = 0;
         motion_samples = 0;
         motion_lost = 0;
-        motion_produced = 0;
         motion_since_drain_ms = 0;
         motion_drain_us = 0;
         motion_read_us = timing_now_us();
@@ -462,7 +460,7 @@ integrate_turn_gyro(const input_motion_batch_t* batch) {
         turn_gyro_deg = (vec3f_t){0};
         return;
     }
-    const float dt = (float)batch->sample_us / (float)MATH_US_PER_S;
+    const float dt = (float)INPUT_MOTION_SAMPLE_US / (float)MATH_US_PER_S;
     for (int i = 0; i < batch->count; i++) {
         const vec3f_t rate =
             vec3f_sub(vec3f_scale(vec3f_from_vec3i(batch->samples[i].rotation), 1.0F / INPUT_ROTATION_ONE_DPS),
@@ -491,7 +489,6 @@ read_motion(uint32_t dt_ms) {
     }
     if (read) {
         motion_lost += motion_batch->lost;
-        motion_produced += motion_batch->produced;
         gravity_update_batch(&gravity, motion_batch);
         integrate_turn_gyro(motion_batch);
     }
@@ -508,16 +505,14 @@ read_motion(uint32_t dt_ms) {
         const vec3i_t bias_dps10 = motion_log_vector(gravity_gyro_bias(&gravity), OFFSET_SCALE);
         ESP_LOGI(TAG,
                  "motion raw %d,%d,%d tilt %d bearing %d filt %d,%d str %d shake %d turn %d rot %d,%d,%d quarter %d "
-                 "grav_mg %d,%d,%d bias_dps10 %d,%d,%d samples %d produced %d lost %d drain_us %lld sample_us %u",
+                 "grav_mg %d,%d,%d bias_dps10 %d,%d,%d samples %d lost %d drain_us %lld",
                  raw_acceleration.x, raw_acceleration.y, raw_acceleration.z, (int)lroundf(motion_probe.tilt_deg),
                  motion_probe.bearing_deg, tilt_x(&tilt), tilt_y(&tilt), tilt_strength(&tilt), tilt_shake(&tilt),
                  motion.turn_speed, motion.rotation.x, motion.rotation.y, motion.rotation.z, display_quarter_now(),
                  (int)down_mg.x, (int)down_mg.y, (int)down_mg.z, (int)bias_dps10.x, (int)bias_dps10.y,
-                 (int)bias_dps10.z, motion_samples, motion_produced, motion_lost, (long long)motion_drain_us,
-                 (unsigned)motion_batch->sample_us);
+                 (int)bias_dps10.z, motion_samples, motion_lost, (long long)motion_drain_us);
         motion_samples = 0;
         motion_lost = 0;
-        motion_produced = 0;
         motion_drain_us = 0;
     }
 }

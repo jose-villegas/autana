@@ -13,10 +13,10 @@
 
 #include "board/board.h"
 #include "bsp/esp-bsp.h"
+#include "core/timing.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
 #include "esp_rom_sys.h"
-#include "esp_timer.h"
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "freertos/FreeRTOS.h"
 #endif
@@ -38,9 +38,6 @@ static const char* TAG = "imu";
 #define REG_FIFO_SMPL_CNT       0x15
 #define REG_FIFO_DATA           0x17
 #define REG_STATUSINT           0x2D
-#define REG_TIMESTAMP_L         0x30
-#define TIMESTAMP_BYTES         (IMU_TIMESTAMP_BITS / TIMESTAMP_BYTE_SHIFT)
-#define TIMESTAMP_BYTE_SHIFT    8U
 #define REG_AX_L                0x35 /* 12 contiguous bytes: accel then gyro */
 
 #define WHO_AM_I_VALUE          0x05
@@ -75,9 +72,8 @@ static const char* TAG = "imu";
 static i2c_master_dev_handle_t dev;
 static bool ready;
 static bool fifo_gap;
-static bool timestamp_valid;
-static uint32_t previous_timestamp;
-static int loss_remainder;
+static uint32_t loss_remainder_us;
+static int pending_lost;
 
 static bool
 write_reg(uint8_t reg, uint8_t value) {
@@ -92,7 +88,7 @@ read_regs(uint8_t reg, uint8_t* out, size_t len) {
 
 static bool
 wait_command(bool done) {
-    const int64_t deadline = esp_timer_get_time() + CTRL9_TIMEOUT_US;
+    const int64_t deadline = timing_now_us() + CTRL9_TIMEOUT_US;
     do {
         uint8_t status;
         if (!read_regs(REG_STATUSINT, &status, sizeof status)) {
@@ -102,7 +98,7 @@ wait_command(bool done) {
             return true;
         }
         esp_rom_delay_us(CTRL9_POLL_US);
-    } while (esp_timer_get_time() < deadline);
+    } while (timing_now_us() < deadline);
     return false;
 }
 
@@ -124,7 +120,7 @@ void
 imu_inject(const imu_sample_t* sample) {
     portENTER_CRITICAL(&injected_lock);
     if (!injected) {
-        injected_drain_us = esp_timer_get_time();
+        injected_drain_us = timing_now_us();
     }
     injected_sample = *sample;
     injected = true;
@@ -139,18 +135,17 @@ imu_inject_release(void) {
 }
 
 static int
-read_injected_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* produced, bool* overflowed) {
+read_injected_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], bool* overflowed) {
     portENTER_CRITICAL(&injected_lock);
     if (!injected) {
         portEXIT_CRITICAL(&injected_lock);
         return -1;
     }
     const imu_sample_t sample = injected_sample;
-    const int64_t elapsed = (esp_timer_get_time() - injected_drain_us) / IMU_SAMPLE_US;
+    const int64_t elapsed = (timing_now_us() - injected_drain_us) / IMU_SAMPLE_US;
     injected_drain_us += elapsed * IMU_SAMPLE_US;
     portEXIT_CRITICAL(&injected_lock);
     const int count = elapsed > IMU_FIFO_SAMPLES ? IMU_FIFO_SAMPLES : (int)elapsed;
-    *produced = (int)elapsed;
     *overflowed = elapsed > IMU_FIFO_SAMPLES;
     for (int i = 0; i < count; i++) {
         memcpy((unsigned char*)out + ((size_t)i * sizeof sample), &sample, sizeof sample);
@@ -190,7 +185,7 @@ imu_init(void) {
 #if CONFIG_LAUNCHER_QEMU
         ESP_LOGW(TAG, "No sensor at 0x%02x; samples come from imu_inject()", BOARD_IMU_I2C_ADDR);
         injected = true;
-        injected_drain_us = esp_timer_get_time();
+        injected_drain_us = timing_now_us();
         ready = true;
         return true;
 #endif
@@ -246,47 +241,19 @@ imu_read(imu_sample_t* out) {
     return read_regs(REG_AX_L, (uint8_t*)out, sizeof *out);
 }
 
-static bool
-read_fifo_clock(int count, bool gap, int* produced, int* lost, int64_t* snapshot_us) {
-    uint8_t timestamp_bytes[TIMESTAMP_BYTES];
-    if (!read_regs(REG_TIMESTAMP_L, timestamp_bytes, sizeof timestamp_bytes)) {
-        return false;
-    }
-    uint32_t timestamp = 0;
-    for (size_t i = 0; i < sizeof timestamp_bytes; i++) {
-        timestamp |= (uint32_t)timestamp_bytes[i] << (i * TIMESTAMP_BYTE_SHIFT);
-    }
-    *snapshot_us = esp_timer_get_time();
-    const bool continuous = timestamp_valid && !gap;
-    *produced = continuous ? (int)imu_timestamp_delta(timestamp, previous_timestamp) : count;
-    previous_timestamp = timestamp;
-    timestamp_valid = true;
-    if (!continuous) {
-        loss_remainder = 0;
-    }
-    /* Between pre-request snapshots, produced = retained + discarded + new arrivals.
-     * The next FIFO count is retained + new arrivals, so delta - count is the preceding
-     * read-mode loss. Count-to-timestamp skew is at most one sample; carrying negative
-     * remainders preserves cumulative accounting. Section 5.5, Table 24 and section 8.7,
-     * docs/Citations.md#78. */
-    const int missing = continuous ? *produced - count + loss_remainder : 0;
-    *lost = missing > 0 ? missing : 0;
-    loss_remainder = missing < 0 ? missing : 0;
-    return true;
-}
-
 int
-imu_read_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* produced, int* lost, int64_t* snapshot_us, bool* overflowed) {
+imu_read_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
     *overflowed = false;
-    *produced = 0;
     *lost = 0;
-    *snapshot_us = esp_timer_get_time();
     if (!ready || out == NULL) {
         return -1;
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    const int injected_count = read_injected_fifo(out, produced, overflowed);
+    const int injected_count = read_injected_fifo(out, overflowed);
     if (injected_count >= 0) {
+        pending_lost = 0;
+        loss_remainder_us = 0;
+        fifo_gap = true;
         return injected_count;
     }
 #endif
@@ -300,17 +267,18 @@ imu_read_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* produced, int* lost, int6
         ok = count <= IMU_FIFO_SAMPLES && bytes % sizeof *out == 0;
         *overflowed = fifo_gap || (status[1] & (FIFO_STATUS_FULL | FIFO_STATUS_OVERFLOW)) != 0;
     }
+    const int64_t lock_start_us = timing_now_us();
     if (ok) {
-        ok = read_fifo_clock(count, *overflowed, produced, lost, snapshot_us) && write_command(CTRL9_REQ_FIFO);
+        ok = write_command(CTRL9_REQ_FIFO);
     }
     if (ok && count > 0) {
         ok = read_regs(REG_FIFO_DATA, (uint8_t*)out, (size_t)count * sizeof *out);
     }
     const bool resumed = write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG);
+    const uint64_t locked_us = (uint64_t)(timing_now_us() - lock_start_us);
     fifo_gap = !ok || !resumed;
-    if (fifo_gap || *overflowed) {
-        timestamp_valid = false;
-        loss_remainder = 0;
-    }
+    *lost = fifo_gap || *overflowed ? 0 : pending_lost;
+    /* Read-mode losses follow this burst, so gravity advances them with the next batch. */
+    pending_lost = imu_fifo_lost(locked_us, &loss_remainder_us, fifo_gap || *overflowed);
     return fifo_gap ? -1 : count;
 }

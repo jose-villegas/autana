@@ -16,23 +16,19 @@ Gyro prediction is minus angular velocity crossed with down in screen axes.
 The nominal ODR and interval are `IMU_ODR_HZ` and `IMU_SAMPLE_US` in `input/imu.h`.
 Matching CTRL2/CTRL3 codes follow QMI8658A Rev A and SensorLib.<sup>[[79]](../Citations.md#79)</sup><sup>[[78]](../Citations.md#78)</sup>
 
-`batch.sample_us` estimates the interval over `IMU_RATE_WINDOW_US`, accepting
-values within `IMU_RATE_BOUND_PCT` of nominal. TIMESTAMP deltas count produced
-samples, including FIFO loss. Gaps discard the open window and retain the estimate.
-
-`INPUT_MOTION_SAMPLE_US` is the nominal interval before an estimate is accepted.
-`input_device.c` checks it against `IMU_SAMPLE_US`, and batch capacity against
-`IMU_FIFO_SAMPLES`.
+Every delivered and lost sample integrates at `INPUT_MOTION_SAMPLE_US`.
+`input_device.c` checks this datasheet interval against `IMU_SAMPLE_US`, and
+batch capacity against `IMU_FIFO_SAMPLES`.
 
 ```mermaid
 flowchart TB
     subgraph Input["Drain and timing"]
         direction LR
-        Drain["Count FIFO<br/>then request read mode"] --> Batch["Batch: oldest first<br/>delivered, lost, sample_us, gap"]
+        Drain["Count FIFO<br/>then request read mode"] --> Batch["Batch: oldest first<br/>delivered, lost, gap"]
     end
     subgraph Update["For each delivered sample"]
         direction LR
-        Predict["Clamp dt<br/>predict down from gyro"] --> Judge["Overrange and<br/>acceleration trust"]
+        Predict["Datasheet interval<br/>predict down from gyro"] --> Judge["Overrange and<br/>acceleration trust"]
         Judge --> Correct["Adopt, pull, learn bias<br/>or hold correction"]
     end
     Missing["Advance bounded lost time<br/>holding previous batch's rotation"]
@@ -134,21 +130,21 @@ FIFO capacity bounds the retained history. Overflow or a failed drain marks a ga
 the next batch soft-restarts correction at full TAU gain, preserving down and bias.
 
 Sampling cannot resolve motion above the sensor bandwidth. FIFO read mode
-discards new samples (section 8.7). TIMESTAMP counts highest-ODR samples modulo
-24 bits (section 5.5, Table 24), including samples not delivered.<sup>[[78]](../Citations.md#78)</sup>
+discards arrivals (section 8.7). Loss is the read-mode duration divided by
+`IMU_SAMPLE_US`, carrying fractional microseconds across drains.<sup>[[78]](../Citations.md#78)</sup>
 
-Each drain reads count, then TIMESTAMP, before `REQ_FIFO`. Between snapshots,
-produced samples comprise retained arrivals, read-mode losses and new arrivals.
-The next count includes both retained and new arrivals, so delta minus count is loss.
+`esp_timer` measures from just before `REQ_FIFO` through the `FIFO_CTRL` rewrite.
+The next batch reports this loss and first predicts with the preceding batch's
+last rotation, bounded by `GRAVITY_MAX_DT_US`. Gaps clear pending loss and remainder.
 
-Negative count-to-timestamp skew carries into the next drain. The first drain
-after initialization or a gap reports no loss. TIMESTAMP adds one three-byte
-I2C transaction: 54 bus clocks, excluding start/stop timing and driver overhead.
+Board A308, QMI8658A; measurement build identifier not supplied. Delivered rate
+agrees with the datasheet ODR multiplied by time outside FIFO read mode.
 
-The exact position of missing samples among retained samples is unknown.
-Before delivered samples, prediction holds the previous batch's last rotation
-for `lost * sample_us`, bounded by `GRAVITY_MAX_DT_US`.
+| Drain | Delivered | Time in read mode | 224.2 Hz × (1 − share) |
+|---|---|---|---|
+| Every frame | 197.8 Hz | 10.8% | 200.0 Hz |
+| Every 500 ms | 210.4 Hz | 6.1% | 210.5 Hz |
 
-The count precedes `REQ_FIFO` (section 8.8). CTRL9 status is polled with consecutive
-I2C reads: section 5.10.1 specifies a handshake without a minimum polling delay.
-Every drain attempts to leave read mode, including error paths.<sup>[[78]](../Citations.md#78)</sup>
+The count precedes `REQ_FIFO` (section 8.8). CTRL9 status uses consecutive I2C
+reads, with no minimum polling delay (section 5.10.1). Every drain attempts to
+leave read mode, including error paths.<sup>[[78]](../Citations.md#78)</sup>

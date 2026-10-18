@@ -145,21 +145,21 @@ gravity_update_batch(gravity_t* g, const input_motion_batch_t* batch) {
     if (batch->gap) {
         restart(g);
     }
-    /* Lost samples precede this snapshot but their position among retained samples is unknown.
-     * Advance first using the preceding batch's last rotation, without acceleration correction. */
-    if (batch->lost > 0 && batch->sample_us > 0) {
+    /* Read-mode losses follow the preceding burst. Hold its last rotation before this batch,
+     * without acceleration correction. */
+    if (batch->lost > 0) {
         const vec3f_t acceleration = vec3f_add(g->linear, g->down);
-        const uint64_t lost_us = (uint64_t)batch->lost * batch->sample_us;
+        const uint64_t lost_us = (uint64_t)batch->lost * INPUT_MOTION_SAMPLE_US;
         uint32_t remaining = lost_us > GRAVITY_MAX_DT_US ? GRAVITY_MAX_DT_US : (uint32_t)lost_us;
         while (remaining > 0) {
-            const uint32_t step = remaining < batch->sample_us ? remaining : batch->sample_us;
+            const uint32_t step = remaining < INPUT_MOTION_SAMPLE_US ? remaining : INPUT_MOTION_SAMPLE_US;
             predict(g, g->rotation, (float)step / MATH_US_PER_S);
             remaining -= step;
         }
         g->linear = vec3f_sub(acceleration, g->down);
     }
     for (int i = 0; i < batch->count; i++) {
-        gravity_update(g, &batch->samples[i], batch->sample_us);
+        gravity_update(g, &batch->samples[i], INPUT_MOTION_SAMPLE_US);
     }
 }
 
