@@ -618,7 +618,7 @@ static void
 test_an_imu_line_carries_its_sample(void) {
     int ax = 0, ay = 0, az = 0;
     TEST_ASSERT_TRUE(console_imu_parse("4096 -12 0", &ax, &ay, &az));
-    TEST_ASSERT_EQUAL_INT(4096, ax);
+    TEST_ASSERT_EQUAL_INT(IMU_COUNTS_PER_G, ax);
     TEST_ASSERT_EQUAL_INT(-12, ay);
     TEST_ASSERT_EQUAL_INT(0, az);
 }
@@ -844,6 +844,38 @@ test_perf_keeps_a_long_word_whole_rather_than_splitting_it_into_name_and_event(v
 }
 
 static void
+test_quarter_injection_matches_forward_mapping(void) {
+    fixture();
+    for (int quarter = 0; quarter < DISPLAY_QUARTER_COUNT; quarter++) {
+        char args[CONSOLE_LINE_MAX];
+        snprintf(args, sizeof args, "quarter %d", quarter);
+        imu_sample_t sample;
+        int parsed_quarter = -1;
+        TEST_ASSERT_TRUE(console_imu_quarter_parse(args, &sample, &parsed_quarter));
+        TEST_ASSERT_EQUAL_INT(quarter, parsed_quarter);
+        display_t display;
+        display_init(&display);
+        const viewport_quarter_axes_t axes = viewport_quarter_axes(quarter);
+        const vec2i_t gravity = imu_gravity_screen(&sample);
+        TEST_ASSERT_EQUAL_INT(axes.x_down * IMU_COUNTS_PER_G, gravity.x);
+        TEST_ASSERT_EQUAL_INT(axes.y_down * IMU_COUNTS_PER_G, gravity.y);
+        display.quarter = quarter;
+        TEST_ASSERT_FALSE(display_update(&display, gravity));
+        TEST_ASSERT_EQUAL_INT(quarter, display_quarter(&display));
+    }
+    imu_sample_t sample = {.ax = IMU_COUNTS_PER_G};
+    char past_end[CONSOLE_LINE_MAX];
+    snprintf(past_end, sizeof past_end, "quarter %d", DISPLAY_QUARTER_COUNT);
+    const char* invalid[] = {"quarter -1", "quarter", "quarter 0 extra", past_end};
+    for (size_t i = 0; i < sizeof invalid / sizeof invalid[0]; i++) {
+        int parsed_quarter = -1;
+        TEST_ASSERT_FALSE(console_imu_quarter_parse(invalid[i], &sample, &parsed_quarter));
+        TEST_ASSERT_EQUAL_INT(-1, parsed_quarter);
+        TEST_ASSERT_EQUAL_INT(IMU_COUNTS_PER_G, sample.ax);
+    }
+}
+
+static void
 test_sound_arguments(void) {
     console_sound_args_t args;
     TEST_ASSERT_TRUE(console_sound_parse("play tap loop 25", &args));
@@ -937,6 +969,7 @@ suite_console(void) {
     RUN_TEST(test_touch_line_carries_its_sample);
     RUN_TEST(test_a_malformed_touch_line_changes_nothing);
     RUN_TEST(test_a_touch_line_fits_the_console_line);
+    RUN_TEST(test_quarter_injection_matches_forward_mapping);
     RUN_TEST(test_an_imu_line_carries_its_sample);
     RUN_TEST(test_a_malformed_imu_line_changes_nothing);
     RUN_TEST(test_a_tap_line_uses_the_short_default_duration);
