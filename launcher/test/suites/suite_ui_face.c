@@ -156,7 +156,9 @@ static const draw_image_t* const ICONS[] = {&ICON, NULL, &ICON};
 
 typedef enum {
     VERB_BUTTON,
+    VERB_BUTTON_ICON,
     VERB_TILE,
+    VERB_TILE_ICON,
     VERB_TOGGLE,
     VERB_SLIDER,
     VERB_DROPDOWN,
@@ -165,11 +167,14 @@ typedef enum {
     VERB_TEXT_RIGHT,
     VERB_TEXT_CENTRE,
     VERB_CAPTION,
+    VERB_CAPTION_CENTRE,
     VERB_HEADER,
     VERB_PANEL,
     VERB_FILL,
     VERB_OUTLINE,
     VERB_ICON,
+    VERB_BEVEL,
+    VERB_CHECK,
     VERB_SWATCHES
 } verb_t;
 
@@ -179,12 +184,16 @@ emit_legacy(verb_t verb) {
     const mu_Rect r = ui_mu_from_recti(BOX);
     const ui_mu_theme_t t = legacy_theme(THEME);
     const ui_widget_button_t b = {.label = "Go", .enabled = true};
+    const ui_widget_button_t with_icon = {.icon = &ICON, .label = "Go", .enabled = true};
+    ui_span_t spans[UI_BEZEL_MAX_SPANS];
     int value = INITIAL_VALUE;
     int on = 0;
     const char* const items[] = {"One", "Two", "Three"};
     switch (verb) {
         case VERB_BUTTON: (void)ui_icon_button(ctx, "Go", r, &b, &t); break;
+        case VERB_BUTTON_ICON: (void)ui_icon_button(ctx, "Go", r, &with_icon, &t); break;
         case VERB_TILE: (void)ui_tile_button(ctx, "Go", r, &b, &t); break;
+        case VERB_TILE_ICON: (void)ui_tile_button(ctx, "Go", r, &with_icon, &t); break;
         case VERB_TOGGLE:
             mu_layout_set_next(ctx, r, 0);
             (void)mu_checkbox(ctx, "Go", &on);
@@ -195,11 +204,14 @@ emit_legacy(verb_t verb) {
         case VERB_TEXT:
         case VERB_TEXT_RIGHT:
         case VERB_TEXT_CENTRE:
-        case VERB_CAPTION: {
-            const ui_align_t align = verb == VERB_TEXT_RIGHT    ? UI_ALIGN_RIGHT
-                                     : verb == VERB_TEXT_CENTRE ? UI_ALIGN_CENTRE
-                                                                : UI_ALIGN_LEFT;
-            ui_text_in(ctx, r, "Go", verb == VERB_CAPTION ? t.caption : t.text, t.text_scale, align);
+        case VERB_CAPTION:
+        case VERB_CAPTION_CENTRE: {
+            const bool centre = verb == VERB_TEXT_CENTRE || verb == VERB_CAPTION_CENTRE;
+            const ui_align_t align = verb == VERB_TEXT_RIGHT ? UI_ALIGN_RIGHT
+                                     : centre                ? UI_ALIGN_CENTRE
+                                                             : UI_ALIGN_LEFT;
+            const bool caption = verb == VERB_CAPTION || verb == VERB_CAPTION_CENTRE;
+            ui_text_in(ctx, r, "Go", caption ? t.caption : t.text, t.text_scale, align);
             break;
         }
         case VERB_HEADER: ui_header_bar(ctx, r, "Go", t.text_scale, &t); break;
@@ -207,6 +219,14 @@ emit_legacy(verb_t verb) {
         case VERB_FILL: mu_draw_rect(ctx, r, ui_rgb(FACE_RGB)); break;
         case VERB_OUTLINE: mu_draw_box(ctx, r, ui_rgb(FACE_RGB)); break;
         case VERB_ICON: ui_draw_icon(ctx, r, &ICON, NULL, t.text); break;
+        case VERB_BEVEL: {
+            const int n = ui_bezel_spans(r, ui_rgb(FACE_RGB), true, spans, UI_BEZEL_MAX_SPANS);
+            for (int i = 1; i < n; i++) {
+                mu_draw_rect(ctx, spans[i].rect, spans[i].color);
+            }
+            break;
+        }
+        case VERB_CHECK: mu_draw_icon(ctx, MU_ICON_CHECK, r, t.text); break;
         case VERB_SWATCHES: ui_swatch_grid(ctx, r, SWATCHES, SWATCH_COLS, SWATCH_ROWS); break;
     }
 }
@@ -215,7 +235,9 @@ static bool
 emit_face(verb_t verb, int* value, bool* on) {
     switch (verb) {
         case VERB_BUTTON: return ui_button(BOX, "Go");
+        case VERB_BUTTON_ICON: return ui_button_icon(BOX, "Go", &ICON);
         case VERB_TILE: return ui_tile(BOX, "Go", false);
+        case VERB_TILE_ICON: return ui_tile_icon(BOX, "Go", &ICON, false);
         case VERB_TOGGLE: return ui_toggle(BOX, "Go", on);
         case VERB_SLIDER: return ui_slider(BOX, "Go", value, RANGE_LO, RANGE_HI);
         case VERB_DROPDOWN: return ui_dropdown(BOX, "Go", value, NAMES, CHOICE_COUNT);
@@ -224,11 +246,14 @@ emit_face(verb_t verb, int* value, bool* on) {
         case VERB_TEXT_RIGHT: ui_text_right(BOX, "Go"); break;
         case VERB_TEXT_CENTRE: ui_text_centre(BOX, "Go"); break;
         case VERB_CAPTION: ui_caption(BOX, "Go"); break;
+        case VERB_CAPTION_CENTRE: ui_caption_centre(BOX, "Go"); break;
         case VERB_HEADER: ui_header(BOX, "Go"); break;
         case VERB_PANEL: ui_panel(BOX); break;
         case VERB_FILL: ui_fill(BOX, FACE_RGB); break;
         case VERB_OUTLINE: ui_outline(BOX, FACE_RGB); break;
         case VERB_ICON: ui_icon(BOX, &ICON); break;
+        case VERB_BEVEL: ui_bevel(BOX, FACE_RGB, true); break;
+        case VERB_CHECK: ui_check(BOX); break;
         case VERB_SWATCHES: ui_swatches(BOX, SWATCHES, SWATCH_COLS, SWATCH_ROWS); break;
     }
     return false;
@@ -596,6 +621,72 @@ test_ui_button_hit(void) {
 static void
 test_ui_tile_hit(void) {
     widget_hit(VERB_TILE);
+}
+
+static void
+test_ui_icon_widgets_hit(void) {
+    widget_hit(VERB_BUTTON_ICON);
+    widget_hit(VERB_TILE_ICON);
+}
+
+static void
+test_ui_tile_icon_rect_is_the_tiles_own(void) {
+    fixture();
+    begin_face();
+    ui_theme(&THEME);
+    const recti_t face = ui_tile_icon_rect(BOX);
+    end_face();
+    const ui_mu_theme_t t = legacy_theme(THEME);
+    const mu_Rect legacy = ui_mu_tile_icon_rect(ui_mu_from_recti(BOX), &t);
+    TEST_ASSERT_EQUAL_INT(legacy.x, face.x);
+    TEST_ASSERT_EQUAL_INT(legacy.y, face.y);
+    TEST_ASSERT_EQUAL_INT(legacy.w, face.w);
+    TEST_ASSERT_EQUAL_INT(legacy.h, face.h);
+}
+
+/* A label wider than its slot shows up to the control's own edges, as
+ * mu_button() clipped: the whole button, or the part right of an icon. A
+ * dropdown's label still stops short of its chevron. */
+#define OVERFLOW_LABEL "A label far wider than any button"
+
+static recti_t
+label_clip(verb_t verb) {
+    fixture();
+    int value = 0;
+    begin_face();
+    ui_theme(&THEME);
+    switch (verb) {
+        case VERB_BUTTON: (void)ui_button(BOX, OVERFLOW_LABEL); break;
+        case VERB_BUTTON_ICON: (void)ui_button_icon(BOX, OVERFLOW_LABEL, &ICON); break;
+        case VERB_TILE: (void)ui_tile(BOX, OVERFLOW_LABEL, false); break;
+        default: {
+            const char* const names[] = {OVERFLOW_LABEL};
+            (void)ui_dropdown(BOX, "Go", &value, names, 1);
+            break;
+        }
+    }
+    end_face();
+    recti_t clip = {0};
+    TEST_ASSERT_TRUE(ui_probe_text_clip(OVERFLOW_LABEL, &clip));
+    return clip;
+}
+
+static void
+test_overflowing_labels_clip_at_the_control_edges(void) {
+    const recti_t button = label_clip(VERB_BUTTON);
+    TEST_ASSERT_EQUAL_INT(BOX.x, button.x);
+    TEST_ASSERT_EQUAL_INT(BOX.w, button.w);
+
+    const recti_t tile = label_clip(VERB_TILE);
+    TEST_ASSERT_EQUAL_INT(BOX.x, tile.x);
+    TEST_ASSERT_EQUAL_INT(BOX.w, tile.w);
+
+    const recti_t icon = label_clip(VERB_BUTTON_ICON);
+    TEST_ASSERT_GREATER_THAN_INT(BOX.x + THEME.icon_side, icon.x);
+    TEST_ASSERT_EQUAL_INT(recti_right(BOX), recti_right(icon));
+
+    const recti_t dropdown = label_clip(VERB_DROPDOWN);
+    TEST_ASSERT_LESS_THAN_INT(recti_right(BOX), recti_right(dropdown));
 }
 
 static void
@@ -1364,7 +1455,9 @@ run_ui_face_suite(void) {
         const char* name;
     } commands[] = {
         {VERB_BUTTON, "test_ui_button_commands"},
+        {VERB_BUTTON_ICON, "test_ui_button_icon_commands"},
         {VERB_TILE, "test_ui_tile_commands"},
+        {VERB_TILE_ICON, "test_ui_tile_icon_commands"},
         {VERB_TOGGLE, "test_ui_toggle_commands"},
         {VERB_SLIDER, "test_ui_slider_commands"},
         {VERB_DROPDOWN, "test_ui_dropdown_commands"},
@@ -1373,11 +1466,14 @@ run_ui_face_suite(void) {
         {VERB_TEXT_RIGHT, "test_ui_text_right_commands"},
         {VERB_TEXT_CENTRE, "test_ui_text_centre_commands"},
         {VERB_CAPTION, "test_ui_caption_commands"},
+        {VERB_CAPTION_CENTRE, "test_ui_caption_centre_commands"},
         {VERB_HEADER, "test_ui_header_commands"},
         {VERB_PANEL, "test_ui_panel_commands"},
         {VERB_FILL, "test_ui_fill_commands"},
         {VERB_OUTLINE, "test_ui_outline_commands"},
         {VERB_ICON, "test_ui_icon_commands"},
+        {VERB_BEVEL, "test_ui_bevel_commands"},
+        {VERB_CHECK, "test_ui_check_commands"},
         {VERB_SWATCHES, "test_ui_swatches_commands"},
     };
 
@@ -1400,6 +1496,9 @@ run_ui_face_suite(void) {
     RUN_TEST(test_identity_across_frames);
     RUN_TEST(test_ui_button_hit);
     RUN_TEST(test_ui_tile_hit);
+    RUN_TEST(test_ui_icon_widgets_hit);
+    RUN_TEST(test_ui_tile_icon_rect_is_the_tiles_own);
+    RUN_TEST(test_overflowing_labels_clip_at_the_control_edges);
     RUN_TEST(test_ui_toggle_hit);
     RUN_TEST(test_ui_slider_drag);
     RUN_TEST(test_ui_dropdown_pick);

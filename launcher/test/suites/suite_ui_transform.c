@@ -288,7 +288,7 @@ assert_glyph0_matches_ground_truth(int logical_x, int logical_y, const char* tex
     const mu_Rect box = ui_transform_rect(t, (mu_Rect){logical_x, logical_y, tw, th});
 
     int mx, my;
-    ui_text_glyph0_origin(&glyph0_font, box, quarter, 1, &mx, &my);
+    ui_text_glyph0_origin(&glyph0_font, ui_recti_from_mu(box), quarter, 1, &mx, &my);
 
     const mu_Rect truth = ui_transform_rect(t, (mu_Rect){logical_x, logical_y, glyph0_font.cell_w, glyph0_font.cell_h});
 
@@ -326,11 +326,11 @@ test_glyph0_origin_needs_no_correction_at_turn_0_or_1(void) {
     const mu_Rect box = {50, 60, 30, 12};
     int mx, my;
 
-    ui_text_glyph0_origin(&glyph0_font, box, 0, 1, &mx, &my);
+    ui_text_glyph0_origin(&glyph0_font, ui_recti_from_mu(box), 0, 1, &mx, &my);
     TEST_ASSERT_EQUAL_INT_MESSAGE(box.x, mx, "turn 0: origin is box.x");
     TEST_ASSERT_EQUAL_INT_MESSAGE(box.y, my, "turn 0: origin is box.y");
 
-    ui_text_glyph0_origin(&glyph0_font, box, 1, 1, &mx, &my);
+    ui_text_glyph0_origin(&glyph0_font, ui_recti_from_mu(box), 1, 1, &mx, &my);
     TEST_ASSERT_EQUAL_INT_MESSAGE(box.x, mx, "turn 1: origin is box.x");
     TEST_ASSERT_EQUAL_INT_MESSAGE(box.y, my, "turn 1: origin is box.y");
 }
@@ -348,7 +348,7 @@ test_glyph0_origin_at_turn_3_is_not_the_cell_h_mistake(void) {
     const mu_Rect box = ui_transform_rect(t, (mu_Rect){20, 30, tw, th});
 
     int mx, my;
-    ui_text_glyph0_origin(&glyph0_font, box, quarter, 1, &mx, &my);
+    ui_text_glyph0_origin(&glyph0_font, ui_recti_from_mu(box), quarter, 1, &mx, &my);
 
     const int wrong_my_using_cell_h = box.y + box.h - glyph0_font.cell_h;
     TEST_ASSERT_NOT_EQUAL_MESSAGE(wrong_my_using_cell_h, my,

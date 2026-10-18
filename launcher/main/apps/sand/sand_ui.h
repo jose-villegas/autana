@@ -29,10 +29,10 @@
  *
  * WHO HIT-TESTS AND WHO DECIDES
  *
- * Hit-testing belongs to microui, not this module: app_sand.c's
- * draw_palette() lays each tile out as a real mu_button(), and the caller
- * tells this module the RESULT - which tile, if any, microui says was
- * clicked - through sand_ui_tile_clicked() below. Not hit-tested by hand
+ * Hit-testing belongs to the UI, not this module: palette_screen.c lays
+ * each tile out as a real ui_button(), and tells this module the RESULT -
+ * which tile, if any, the UI says was tapped - through
+ * sand_ui_tile_clicked() below. Not hit-tested by hand
  * against raw screen coordinates: a transform moves the drawing without
  * moving what a hand-rolled hit test looks at, so that would silently break
  * under UI rotation. What a click on that tile MEANS - select it, or toggle
@@ -157,7 +157,7 @@ typedef struct {
 unsigned sand_ui_step(sand_ui_t* ui, const input_t* input);
 
 /* What a click on palette tile `index` means, once the caller's hit-test
- * (a real mu_button() per tile) decided a click landed on it. The
+ * (a real ui_button() per tile) decided a click landed on it. The
  * already-selected tile toggles BRUSH_POUR/BRUSH_SPAWN, only when
  * material_can_emit() says it's eligible - ineligible does nothing
  * rather than flip a bit nothing reads. Any OTHER tile is selected
@@ -167,7 +167,7 @@ unsigned sand_ui_step(sand_ui_t* ui, const input_t* input);
 unsigned sand_ui_tile_clicked(sand_ui_t* ui, int index);
 
 /* What a tap on brush-mode segment `index` means, once the caller's
- * hit-test (a real mu_button() per segment) decided a tap landed on it -
+ * hit-test (a real ui_tile_icon() per segment) decided a tap landed on it -
  * same "caller hit-tests, this module decides" split as
  * sand_ui_tile_clicked() above. `index` lines up with sand_mode_t
  * directly (see brush_screen_segment_t's own comment on the shared

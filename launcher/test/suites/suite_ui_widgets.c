@@ -1593,7 +1593,7 @@ paint_options_band(int row0, int row1, gfx_color_t* target) {
 static void
 options_band_frame(const input_t* input, const sand_menu_t* menu, const options_screen_labels_t* labels) {
     ui_begin(input);
-    options_screen_draw(ui_context(), menu, BAND_OPTIONS, labels);
+    options_screen_draw(menu, BAND_OPTIONS, labels);
     ui_end_for_bands(OPTIONS_BACKGROUND);
     gfx_invalidate();
     gfx_band_run(paint_options_band, NULL);

@@ -218,6 +218,14 @@ typedef struct {
 /* The palette for the rest of the frame; NULL restores the shell look. */
 void ui_theme(const ui_theme_t* theme);
 
+/* A rect `w` wide and `h` tall at `y`, centred in a canvas `canvas_w` wide:
+ * fixed-width content, where ui_row() spans the canvas. `w` is not clamped;
+ * one wider than the canvas gets a negative x. */
+static inline recti_t
+ui_centered_rect(int canvas_w, int w, int h, int y) {
+    return (recti_t){(canvas_w - w) / 2, y, w, h};
+}
+
 /* A label is both the visible text and the identity: "Text##key" shows Text
  * and the whole string is the id; "Text###key" shows Text and only key is the
  * id. ui_button and ui_tile return true on the frame a tap is released on
@@ -236,7 +244,16 @@ void ui_row_centre(int w, int h);
 recti_t ui_next(void);
 
 bool ui_button(recti_t r, const char* label);
+/* The icon at the left, the label centred in the rest; a NULL icon is
+ * ui_button(). */
+bool ui_button_icon(recti_t r, const char* label, const draw_image_t* icon);
 bool ui_tile(recti_t r, const char* label, bool selected);
+/* The icon above the label, in ui_tile_icon_rect(r); a NULL icon is
+ * ui_tile(). */
+bool ui_tile_icon(recti_t r, const char* label, const draw_image_t* icon, bool selected);
+/* The square a tile `r` gives its icon, for a caller drawing its own
+ * picture of the choice instead. */
+recti_t ui_tile_icon_rect(recti_t r);
 bool ui_toggle(recti_t r, const char* label, bool* on);
 bool ui_slider(recti_t r, const char* label, int* value, int lo, int hi);
 bool ui_dropdown(recti_t r, const char* label, int* index, const char* const* names, int count);
@@ -250,11 +267,18 @@ void ui_text(recti_t r, const char* s);
 void ui_text_right(recti_t r, const char* s);
 void ui_text_centre(recti_t r, const char* s);
 void ui_caption(recti_t r, const char* s);
+void ui_caption_centre(recti_t r, const char* s);
 void ui_header(recti_t r, const char* title);
 void ui_panel(recti_t r);
 void ui_fill(recti_t r, uint32_t rgb);
 void ui_outline(recti_t r, uint32_t rgb);
+/* The lit and shaded edges of a button's bezel round `r`, shaded off
+ * `face_rgb`; the inside is left as drawn. `sunken` swaps the pair. */
+void ui_bevel(recti_t r, uint32_t face_rgb, bool sunken);
 void ui_icon(recti_t r, const draw_image_t* icon);
+/* The system check mark filling `r` in the text colour: one recorded mark,
+ * painted from the engine pack, however detailed the icon. */
+void ui_check(recti_t r);
 void ui_swatches(recti_t r, const uint32_t* rgb, int cols, int rows);
 
 void ui_disabled_begin(bool disabled);

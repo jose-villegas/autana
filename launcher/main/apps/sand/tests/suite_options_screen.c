@@ -1,7 +1,7 @@
 /*
  * Portable suite: options_screen - its geometry at both orientations with
  * no scrolling, where the DITHER list opens, every fixed string against its
- * own rect, the slider's direction, and real taps through microui.
+ * own rect, the slider's direction, and real taps through the face.
  */
 
 #include <stdio.h>
@@ -13,11 +13,8 @@
 #include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
 #include "input/input.h"
-#include "ui/input/ui_bridge.h"
-#include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
-#include "ui/ui_internal.h"
-#include "ui/ui_mu.h"
+#include "ui_probe.h"
 
 #include "apps/sand/ui/options_screen.h"
 #include "apps/sand/ui/sand_theme.h"
@@ -62,19 +59,19 @@ layout_for(bool landscape) {
 }
 
 static bool
-inside(mu_Rect r, bool landscape) {
+inside(recti_t r, bool landscape) {
     return r.x >= 0 && r.y >= 0 && r.x + r.w <= canvas_w(landscape) && r.y + r.h <= canvas_h(landscape);
 }
 
 static bool
-above(mu_Rect a, mu_Rect b) {
+above(recti_t a, recti_t b) {
     return a.y + a.h <= b.y;
 }
 
 static void
 assert_layout(bool landscape) {
     const options_screen_layout_t lay = layout_for(landscape);
-    const mu_Rect stack[] = {lay.header,         lay.quality_panel, lay.color_caption, lay.tiles[0],
+    const recti_t stack[] = {lay.header,         lay.quality_panel, lay.color_caption, lay.tiles[0],
                              lay.dither_caption, lay.dither,        lay.apply};
     for (size_t i = 0; i < sizeof stack / sizeof stack[0]; i++) {
         TEST_ASSERT_TRUE_MESSAGE(inside(stack[i], landscape), "nothing may need scrolling to reach");
@@ -84,7 +81,7 @@ assert_layout(bool landscape) {
     }
     TEST_ASSERT_TRUE(inside(lay.cancel, landscape));
 
-    const mu_Rect taps[] = {lay.quality_slider, lay.tiles[0], lay.tiles[1], lay.tiles[2],
+    const recti_t taps[] = {lay.quality_slider, lay.tiles[0], lay.tiles[1], lay.tiles[2],
                             lay.dither,         lay.apply,    lay.cancel};
     for (size_t i = 0; i < sizeof taps / sizeof taps[0]; i++) {
         TEST_ASSERT_GREATER_OR_EQUAL_INT(UI_TAP_MIN, taps[i].w < taps[i].h ? taps[i].w : taps[i].h);
@@ -106,7 +103,7 @@ test_the_whole_screen_fits_landscape(void) {
 static void
 assert_dither_list_overlays_on_screen(bool landscape) {
     const options_screen_layout_t lay = layout_for(landscape);
-    const mu_Rect list = ui_dropdown_list_rect(lay.dither, DITHER_COUNT, lay.dither.h, canvas_h(landscape), UI_MARGIN);
+    const recti_t list = ui_probe_dropdown_list_rect(lay.dither, DITHER_COUNT, lay.dither.h, canvas_h(landscape));
     const int rows_h = DITHER_COUNT * lay.dither.h;
     TEST_ASSERT_LESS_THAN_INT_MESSAGE(rows_h, lay.dither.y - UI_MARGIN, "rows cannot fit above even without a gap");
     TEST_ASSERT_LESS_THAN_INT(rows_h, canvas_h(landscape) - UI_MARGIN - lay.dither.y - lay.dither.h);
@@ -146,14 +143,14 @@ assert_strings_fit(bool landscape) {
     }
     assert_fits(OPTIONS_SCREEN_DITHER, lay.dither_caption.w);
     for (int i = 0; i < DITHER_COUNT; i++) {
-        assert_fits(DITHER_NAMES[i], ui_dropdown_label_width(lay.dither.w, &sand_ui_theme));
-        assert_fits(DITHER_NAMES[i], ui_icon_button_label_width(lay.dither.w, true, &sand_ui_theme));
+        assert_fits(DITHER_NAMES[i], ui_probe_dropdown_label_width(lay.dither.w, &sand_ui_theme));
+        assert_fits(DITHER_NAMES[i], ui_probe_button_label_width(lay.dither.w, true, &sand_ui_theme));
     }
 
     char apply[24];
     options_screen_apply_label(9, apply, (int)sizeof apply);
-    assert_fits(apply, ui_icon_button_label_width(lay.apply.w, false, &sand_ui_theme));
-    assert_fits(OPTIONS_SCREEN_CANCEL, ui_icon_button_label_width(lay.cancel.w, false, &sand_ui_theme));
+    assert_fits(apply, ui_probe_button_label_width(lay.apply.w, false, &sand_ui_theme));
+    assert_fits(OPTIONS_SCREEN_CANCEL, ui_probe_button_label_width(lay.cancel.w, false, &sand_ui_theme));
 }
 
 static void
@@ -201,9 +198,8 @@ static sand_options_hits_t
 options_frame(bool down, bool pressed, bool released, int x, int y) {
     input_t in = {.down = down, .pressed = pressed, .released = released, .x = x, .y = y};
     ui_begin(&in);
-    const sand_options_hits_t hits = options_screen_draw(ui_context(), &menu, committed, &LABELS);
-    mu_end(ui_context());
-    ui_bridge_end(&ui_ctx, &ui_pointer_state);
+    const sand_options_hits_t hits = options_screen_draw(&menu, committed, &LABELS);
+    ui_end_commands();
     return hits;
 }
 
@@ -233,7 +229,7 @@ tap_at(int x, int y) {
 }
 
 static sand_options_hits_t
-tap(mu_Rect r) {
+tap(recti_t r) {
     return tap_at(r.x + r.w / 2, r.y + r.h / 2);
 }
 
@@ -284,7 +280,7 @@ assert_dither_dropdown_absent_for(sand_colour_mode_t colour) {
     TEST_ASSERT_FALSE_MESSAGE(any_hit(tap(lay.dither)),
                               "a tap where the dither dropdown would sit must hit nothing under this colour mode");
 
-    const mu_Rect list = ui_dropdown_list_rect(lay.dither, DITHER_COUNT, lay.dither.h, canvas_h(false), UI_MARGIN);
+    const recti_t list = ui_probe_dropdown_list_rect(lay.dither, DITHER_COUNT, lay.dither.h, canvas_h(false));
     const sand_options_hits_t hits = tap_at(list.x + list.w / 2, list.y + lay.dither.h / 2);
     TEST_ASSERT_FALSE_MESSAGE(any_hit(hits), "no list can have opened, so nothing sits where its first row would");
 }
@@ -298,14 +294,14 @@ test_the_dither_dropdown_is_absent_unless_the_draft_colour_is_sixteen(void) {
 static void
 test_a_tap_at_the_sliders_right_end_reports_the_finest_quality(void) {
     tap_fixture(SAND_COLOUR_256, false);
-    const mu_Rect s = layout_for(false).quality_slider;
+    const recti_t s = layout_for(false).quality_slider;
     TEST_ASSERT_EQUAL_INT(0, tap_at(s.x + s.w - 4, s.y + s.h / 2).quality);
 }
 
 static void
 test_a_tap_at_the_sliders_left_end_reports_the_coarsest_quality(void) {
     tap_fixture(SAND_COLOUR_256, false);
-    const mu_Rect s = layout_for(false).quality_slider;
+    const recti_t s = layout_for(false).quality_slider;
     TEST_ASSERT_EQUAL_INT(QUALITY_COUNT - 1, tap_at(s.x + 4, s.y + s.h / 2).quality);
 }
 
@@ -317,27 +313,13 @@ test_a_tap_on_cancel_reports_cancel_and_not_apply(void) {
     TEST_ASSERT_FALSE_MESSAGE(hits.apply, "a tap on CANCEL must never also report apply");
 }
 
-/* Every tile draws a face rect exactly its own size - ui_frame_spans()'s
- * first span - so its colour says whether that tile drew selected. */
-static mu_Color
-tile_face_color(mu_Rect tile) {
-    mu_Command* cmd = NULL;
-    while (mu_next_command(ui_context(), &cmd)) {
-        if (cmd->type != MU_COMMAND_RECT) {
-            continue;
-        }
-        const mu_Rect r = cmd->rect.rect;
-        if (r.x == tile.x && r.y == tile.y && r.w == tile.w && r.h == tile.h) {
-            return cmd->rect.color;
-        }
-    }
-    TEST_FAIL_MESSAGE("no face rect drawn at a tile's own rect");
-    return (mu_Color){0};
-}
-
-static bool
-same_color(mu_Color a, mu_Color b) {
-    return a.r == b.r && a.g == b.g && a.b == b.b;
+/* Every tile draws a face rect exactly its own size - its bezel's first
+ * span - so its colour says whether that tile drew selected. */
+static uint32_t
+tile_face_rgb(recti_t tile) {
+    uint32_t rgb = 0;
+    TEST_ASSERT_TRUE_MESSAGE(ui_probe_fill_rgb(tile, &rgb), "no face rect drawn at a tile's own rect");
+    return rgb;
 }
 
 static void
@@ -348,13 +330,13 @@ test_the_draft_colour_tile_is_selected_even_when_uncommitted(void) {
 
     const options_screen_layout_t lay = layout_for(false);
     for (int i = 0; i < OPTIONS_SCREEN_TILE_COUNT; i++) {
-        const mu_Color face = tile_face_color(lay.tiles[i]);
+        const uint32_t face = tile_face_rgb(lay.tiles[i]);
         const bool is_draft = options_screen_tile_colour(i) == menu.draft.color;
         if (is_draft) {
-            TEST_ASSERT_TRUE_MESSAGE(same_color(face, sand_ui_theme.accent_face),
+            TEST_ASSERT_TRUE_MESSAGE(face == sand_ui_theme.accent_face,
                                      "the draft colour's own tile must draw on accent_face");
         } else {
-            TEST_ASSERT_FALSE_MESSAGE(same_color(face, sand_ui_theme.accent_face),
+            TEST_ASSERT_FALSE_MESSAGE(face == sand_ui_theme.accent_face,
                                       "a tile that is not the draft colour must not draw on accent_face");
         }
     }
@@ -367,7 +349,7 @@ test_the_header_is_present_in_portrait_and_absent_in_landscape(void) {
 }
 
 /* Out of line, so the whole layout is off the stack under the taps. */
-static __attribute__((noinline)) mu_Rect
+static __attribute__((noinline)) recti_t
 dither_rect(bool landscape) {
     return layout_for(landscape).dither;
 }
@@ -376,7 +358,7 @@ static void
 test_held_dither_opening_touch_with_small_motion_does_not_pick(void) {
     const int motion_pixels = 2;
     tap_fixture(SAND_COLOUR_16, false);
-    const mu_Rect dither = dither_rect(false);
+    const recti_t dither = dither_rect(false);
     const int x = dither.x + (dither.w / 2);
     int y = dither.y + (dither.h / 2);
     TEST_ASSERT_FALSE(any_hit(options_frame(true, true, false, x, y)));
@@ -388,17 +370,17 @@ test_held_dither_opening_touch_with_small_motion_does_not_pick(void) {
     for (int frame = 0; frame < UI_DROPDOWN_CLOSE_FRAMES; frame++) {
         TEST_ASSERT_FALSE(any_hit(options_frame(false, false, false, x, y)));
     }
-    const mu_Rect list = ui_dropdown_list_rect(dither, DITHER_COUNT, dither.h, canvas_h(false), UI_MARGIN);
+    const recti_t list = ui_probe_dropdown_list_rect(dither, DITHER_COUNT, dither.h, canvas_h(false));
     TEST_ASSERT_EQUAL_INT(0, tap_at(list.x + (list.w / 2), list.y + (dither.h / 2)).dither);
 }
 
 static void
 test_the_dither_dropdown_picks_from_its_list(void) {
     tap_fixture(SAND_COLOUR_16, false);
-    const mu_Rect dither = dither_rect(false);
+    const recti_t dither = dither_rect(false);
     TEST_ASSERT_FALSE(any_hit(tap(dither)));
 
-    const mu_Rect list = ui_dropdown_list_rect(dither, DITHER_COUNT, dither.h, canvas_h(false), UI_MARGIN);
+    const recti_t list = ui_probe_dropdown_list_rect(dither, DITHER_COUNT, dither.h, canvas_h(false));
     const sand_options_hits_t hits = tap_at(list.x + list.w / 2, list.y + dither.h / 2);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, hits.dither, "the top row of the list is the first dither");
     TEST_ASSERT_FALSE_MESSAGE(hits.color >= 0, "the list, not a tile beneath it, takes the tap");
@@ -407,25 +389,14 @@ test_the_dither_dropdown_picks_from_its_list(void) {
 static void
 test_a_landscape_tap_picks_the_open_dither_list_row(void) {
     tap_fixture(SAND_COLOUR_16, true);
-    const mu_Rect dither = dither_rect(true);
+    const recti_t dither = dither_rect(true);
     TEST_ASSERT_FALSE(any_hit(tap(dither)));
-    const mu_Rect list = ui_dropdown_list_rect(dither, DITHER_COUNT, dither.h, canvas_h(true), UI_MARGIN);
-    const int row = 2;
+    const recti_t list = ui_probe_dropdown_list_rect(dither, DITHER_COUNT, dither.h, canvas_h(true));
+    const int row = menu.draft.dither + 1;
     const int scroll = ui_dropdown_list_scroll(menu.draft.dither, DITHER_COUNT, dither.h, list.h);
     const sand_options_hits_t hits = tap_at(list.x + list.w / 2, list.y + row * dither.h - scroll + dither.h / 2);
     TEST_ASSERT_EQUAL_INT(row, hits.dither);
     TEST_ASSERT_FALSE(hits.color >= 0);
-}
-
-static const mu_Container*
-open_list(mu_Rect list) {
-    for (int i = 0; i < ui_context()->root_list.idx; i++) {
-        const mu_Container* c = ui_context()->root_list.items[i];
-        if (c->rect.x == list.x && c->rect.y == list.y && c->rect.h == list.h) {
-            return c;
-        }
-    }
-    return NULL;
 }
 
 static void
@@ -440,13 +411,13 @@ static void
 assert_a_drag_leaves_the_fitting_dither_list_unscrolled(bool landscape) {
     tap_fixture(SAND_COLOUR_16, landscape);
     menu.draft.dither = 0;
-    const mu_Rect dither = dither_rect(landscape);
+    const recti_t dither = dither_rect(landscape);
     TEST_ASSERT_FALSE(any_hit(tap(dither)));
-    const mu_Rect list = ui_dropdown_list_rect(dither, DITHER_COUNT, dither.h, canvas_h(landscape), UI_MARGIN);
-    const mu_Container* cnt = open_list(list);
-    TEST_ASSERT_NOT_NULL_MESSAGE(cnt, "the tap must have opened the list");
+    const recti_t list = ui_probe_dropdown_list_rect(dither, DITHER_COUNT, dither.h, canvas_h(landscape));
+    recti_t rows;
+    int before = 0;
+    TEST_ASSERT_TRUE_MESSAGE(ui_probe_list(&rows, &before), "the tap must have opened the list");
     TEST_ASSERT_EQUAL_INT_MESSAGE(DITHER_COUNT * dither.h, list.h, "the overlay fits all rows");
-    const int before = cnt->scroll.y;
     const int x = list.x + list.w / 2;
     const int y0 = list.y + list.h - dither.h / 2;
     finger_at(landscape, true, false, x, y0);
@@ -456,8 +427,10 @@ assert_a_drag_leaves_the_fitting_dither_list_unscrolled(bool landscape) {
     for (int dy = 4; dy <= 40; dy += 4) {
         finger_at(landscape, false, false, x, y0 - dy);
     }
+    int after = 0;
+    TEST_ASSERT_TRUE(ui_probe_list(&rows, &after));
     TEST_ASSERT_EQUAL_INT(0, before);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(before, cnt->scroll.y, "a fitting overlay has nothing to scroll");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(before, after, "a fitting overlay has nothing to scroll");
     finger_at(landscape, false, true, x, y0 - 40);
 }
 
