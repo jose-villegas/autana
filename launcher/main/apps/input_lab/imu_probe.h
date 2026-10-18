@@ -12,8 +12,8 @@
 #define IMU_PROBE_SCALE_ONE       IMU_CALIB_SCALE_ONE
 #define IMU_PROBE_PERCENT         100
 #define IMU_PROBE_ACCEL_DEPARTURE (INPUT_ACCEL_ONE_G * 80 / IMU_PROBE_MILLI)
-/* Measured rest gyro noise: about 1 dps sigma per axis, peaks of +/-4 dps. */
-#define IMU_PROBE_GYRO_DEPARTURE  (6 * INPUT_ROTATION_ONE_DPS)
+/* Measured rest gyro noise: about 0.5 dps sigma per axis, peaks of +/-2 dps. */
+#define IMU_PROBE_GYRO_DEPARTURE  (3 * INPUT_ROTATION_ONE_DPS)
 #define IMU_PROBE_GRAVITY_MIN     (INPUT_ACCEL_ONE_G * 80 / IMU_PROBE_PERCENT)
 /* Ours: roughly 41 degrees from bottom-down tolerates a hand hold, but excludes a 45-degree reading tilt. */
 #define IMU_PROBE_UPRIGHT_MIN     0.75F

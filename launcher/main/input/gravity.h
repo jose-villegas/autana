@@ -28,8 +28,8 @@
 /* x-io Fusion, FusionAhrs.c: restart trust near the configured gyro full scale. */
 #define GRAVITY_GYRO_OVERRANGE_RATIO      0.98F
 #define GRAVITY_GYRO_OVERRANGE_DPS        (GRAVITY_GYRO_OVERRANGE_RATIO * IMU_GYRO_RANGE_DPS)
-/* M0 board capture: rest gyro noise peaks at +/-4 deg/s. */
-#define GRAVITY_STILL_DPS                 6.0F
+/* M0 board capture: rest gyro noise peaks at +/-2 deg/s. */
+#define GRAVITY_STILL_DPS                 3.0F
 /* Ours, maintainer choice: clear fast-flip error promptly, outlast a held swing reversal. */
 #define GRAVITY_STILL_RECOVER_MS          500U
 /* QMI8658C datasheet, Table 8: board-level initial gyro offset tolerance. */
