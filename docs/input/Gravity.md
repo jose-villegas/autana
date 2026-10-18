@@ -137,7 +137,7 @@ discards arrivals (section 8.7). Loss is the read-mode duration divided by
 The next batch reports this loss and first predicts with the preceding batch's
 last rotation, bounded by `GRAVITY_MAX_DT_US`. Gaps clear pending loss and remainder.
 
-Board A308, QMI8658A; measurement build identifier not supplied. Delivered rate
+Board A308, QMI8658A, build 7dae68f7c9d0-dev. Delivered rate
 agrees with the datasheet ODR multiplied by time outside FIFO read mode.
 
 | Drain | Delivered | Time in read mode | 224.2 Hz × (1 − share) |
