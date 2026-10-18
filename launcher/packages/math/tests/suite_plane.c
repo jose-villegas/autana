@@ -1,3 +1,5 @@
+#include <string.h>
+
 #include "suites.h"
 #include "unity.h"
 
@@ -185,6 +187,24 @@ test_frustum_edge_points_directly_and_through_a_map(void) {
 }
 
 static void
+test_frustum_matches_hand_written_planes_bitwise(void) {
+    planef_t actual[PLANE_FRUSTUM_COUNT];
+    const planef_t expected[PLANE_FRUSTUM_COUNT] = {
+        [PLANE_FRUSTUM_NEAR] = planef_from_rows(&PLANE_MAP, 0.0F, 0.0F, 1.0F, -PLANE_LENS.near_z),
+        [PLANE_FRUSTUM_LEFT] = planef_from_rows(&PLANE_MAP, 1.0F, 0.0F, PLANE_LENS.cx - PLANE_SCREEN.x, 0.0F),
+        [PLANE_FRUSTUM_RIGHT] =
+            planef_from_rows(&PLANE_MAP, -1.0F, 0.0F, rectf_right(PLANE_SCREEN) - PLANE_LENS.cx, 0.0F),
+        [PLANE_FRUSTUM_TOP] = planef_from_rows(&PLANE_MAP, 0.0F, 1.0F, PLANE_LENS.cy - PLANE_SCREEN.y, 0.0F),
+        [PLANE_FRUSTUM_BOTTOM] =
+            planef_from_rows(&PLANE_MAP, 0.0F, -1.0F, rectf_bottom(PLANE_SCREEN) - PLANE_LENS.cy, 0.0F),
+    };
+    planef_frustum(&PLANE_MAP, &PLANE_LENS, PLANE_SCREEN, actual);
+    for (int p = 0; p < PLANE_FRUSTUM_COUNT; p++) {
+        TEST_ASSERT_EQUAL_INT(0, memcmp(&expected[p], &actual[p], sizeof(expected[p])));
+    }
+}
+
+static void
 test_frustum_near_plane_sits_at_near_z(void) {
     frustum_fixture_t f;
     frustum_fixture(&f, &PLANE_LENS);
@@ -227,6 +247,7 @@ suite_plane(void) {
     RUN_TEST(test_oblique_normalization_scales_normal_and_distance);
     RUN_TEST(test_from_rows_tests_the_mapped_point);
     RUN_TEST(test_frustum_edge_points_directly_and_through_a_map);
+    RUN_TEST(test_frustum_matches_hand_written_planes_bitwise);
     RUN_TEST(test_frustum_near_plane_sits_at_near_z);
     RUN_TEST(test_frustum_corner_rays_lie_on_both_side_planes);
 }
