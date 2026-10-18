@@ -102,8 +102,25 @@ class SeedInferenceTest(unittest.TestCase):
             owners, _ = capture_metadata(capture, rows)
             self.assertEqual(owners, {row: 'test_timing' for row in rows})
 
+    def test_quarters_keep_separate_values_and_test_ownership(self):
+        with tempfile.TemporaryDirectory() as root:
+            capture = pathlib.Path(root) / 'capture.log'
+            capture.write_text('mesh both cores: mean 10us quarter=portrait\n'
+                               ':1:test_portrait:PASS\n'
+                               'mesh both cores: mean 20us quarter=landscape\n'
+                               ':1:test_landscape:PASS\n')
+            expected = {'mesh quarter=portrait': 10, 'mesh quarter=landscape': 20}
+            self.assertEqual(parse_report(capture), expected)
+            owners, _ = capture_metadata(capture, expected)
+            self.assertEqual(owners, {'mesh quarter=portrait': 'test_portrait',
+                                      'mesh quarter=landscape': 'test_landscape'})
+            from capture import select_quarter
+            with self.assertRaisesRegex(ValueError, 'landscape'):
+                select_quarter('mesh mean 10us', 'landscape')
+            self.assertNotIn('20us', select_quarter(capture.read_text(), 'portrait'))
+
     def test_parsers_pool_tables_and_ignore_capture_worst(self):
-        self.assertEqual(parse_report(FIXTURES/'sponza_capture.txt')['sponza'], 51000)
+        self.assertEqual(parse_report(FIXTURES/'sponza_capture.txt')['sponza quarter=portrait'], 51000)
         self.assertIn('hot', parse_report(FIXTURES/'sand_a.md'))
 
     def test_student_distribution_and_holm(self):
@@ -159,6 +176,37 @@ class AcquisitionTest(ShellJobTests, unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as output:
             payload = tool.measure(arguments(root, cap), fake)
         return payload, output.getvalue()
+
+    def test_quarter_identity_through_acquisition_and_comparison(self):
+        for baseline in ("legacy", "portrait", "both"):
+            with self.subTest(baseline=baseline), tempfile.TemporaryDirectory() as root:
+                fake = FakeAutana(root)
+                def runner(command, log, timeout):
+                    result = fake(command, log, timeout)
+                    if "suite" not in command:
+                        return result
+                    candidate = pathlib.Path(command[command.index('--project') + 1]).name == 'b'
+                    for _, line in result[1]:
+                        if not line.startswith('report: '):
+                            continue
+                        path = pathlib.Path(line.removeprefix('report: ')).with_suffix('.log')
+                        suffix = ' quarter=portrait' if candidate or baseline != 'legacy' else ''
+                        text = f'mesh both cores: mean 10000us{suffix}\n'
+                        if candidate or baseline == 'both':
+                            text += 'mesh both cores: mean 20000us quarter=landscape\n'
+                        path.write_text(text + ':1:test_quiet:PASS\n')
+                    return result
+                payload, _ = self.measure(root, runner, cap=4)
+                rows = payload['rows']
+                self.assertEqual(rows['suite/mesh quarter=landscape']['b'], 20000)
+                self.assertEqual(rows['suite/mesh quarter=landscape']['verdict'],
+                                 'no change' if baseline == 'both' else 'added')
+                if baseline != 'legacy':
+                    self.assertEqual(rows['suite/mesh quarter=portrait']['verdict'], 'no change')
+                    self.assertEqual(rows['suite/mesh quarter=portrait']['ratio'], 1)
+                else:
+                    self.assertEqual(rows['suite/mesh']['verdict'], 'removed')
+                    self.assertEqual(rows['suite/mesh quarter=portrait']['verdict'], 'added')
 
     def test_ab_and_aa_replay_interleaved_distinct_seed_sets(self):
         for shift in (False, True):

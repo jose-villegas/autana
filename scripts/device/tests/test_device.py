@@ -2896,6 +2896,15 @@ class SelftestTests(unittest.TestCase):
         _, _, entry = self.run_selftest()
         self.assertEqual(entry["reason"], "complete")
 
+    def test_sentinel_failures_without_fail_lines_fail_selftest(self):
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            code, _, entry = self.run_selftest(capture=(
+                b":1:test_one:PASS\nSELFTEST_COMPLETE failures=2 elapsed_ms=10\n", "complete"))
+        self.assertEqual(code, 1)
+        self.assertEqual(entry["reason"], "complete")
+        self.assertIsNone(entry["error"])
+        self.assertIn("SELFTEST_COMPLETE failures=2, but 0 FAIL lines", output.getvalue())
+
     def test_a_failing_run_is_reported_but_still_records_cleanly(self):
         with tempfile.TemporaryDirectory() as directory:
             worktree = Path(directory) / "wt"
