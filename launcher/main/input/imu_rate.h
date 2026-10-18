@@ -6,13 +6,14 @@
 
 #include "input/imu.h"
 
-/* Ours: two seconds gives one-sample quantisation of about 0.25% at 200 Hz. */
+/* Ours: two seconds gives one-sample quantisation of about 0.25% at the sensor rate. */
 #define IMU_RATE_WINDOW_US (2U * MATH_US_PER_S)
 /* Ours: wider than plausible oscillator tolerance, while rejecting broken counts. */
 #define IMU_RATE_BOUND_PCT 20U
 
 typedef struct {
     int64_t start_us;
+    int64_t last_us;
     uint32_t samples;
     uint32_t sample_us;
     bool active;

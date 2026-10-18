@@ -50,6 +50,7 @@
 /* Maximum prediction and correction interval, in milliseconds. */
 #define GRAVITY_MAX_DT_MS        100U
 
+/* Microsecond forms of the limits above. */
 #define GRAVITY_RECOVER_US       (GRAVITY_RECOVER_MS * MATH_US_PER_MS)
 #define GRAVITY_STILL_RECOVER_US (GRAVITY_STILL_RECOVER_MS * MATH_US_PER_MS)
 #define GRAVITY_MAX_DT_US        (GRAVITY_MAX_DT_MS * MATH_US_PER_MS)
@@ -61,6 +62,8 @@ typedef struct {
     vec3f_t linear;
     /* Gyro bias in deg/s, learned only from accepted acceleration. */
     vec3f_t gyro_bias;
+    /* Last delivered rotation in deg/s, held across missing samples. */
+    vec3f_t rotation;
     /* Time-weighted rejection debt, clamped to GRAVITY_RECOVER_US. */
     uint32_t distrust_us;
     /* Continuous still rejection time; motion or acceptance cancels early recovery. */
@@ -75,7 +78,7 @@ void gravity_reset(gravity_t* g);
  * dt_us is clamped to GRAVITY_MAX_DT_US; zero dt skips prediction and blending.
  * Zero acceleration cannot correct down; only the initial prime may snap at zero dt. */
 void gravity_update(gravity_t* g, const input_motion_t* m, uint32_t dt_us);
-/* A gap soft-restarts correction before integrating each sample at the sensor interval. */
+/* A gap soft-restarts correction; lost time holds the previous rotation before delivered samples. */
 void gravity_update_batch(gravity_t* g, const input_motion_batch_t* batch);
 /* Unit down vector in screen axes, including during free fall. */
 vec3f_t gravity_down(const gravity_t* g);

@@ -45,17 +45,22 @@ typedef struct {
     vec3i_t rotation;
 } input_motion_t;
 
+/* Must equal IMU_SAMPLE_US; checked in input_device.c. */
 #define INPUT_MOTION_SAMPLE_US 4460U
+/* Must equal IMU_FIFO_SAMPLES; checked in input_device.c. */
 #define INPUT_MOTION_SAMPLES   128
 
 typedef struct {
     input_motion_t samples[INPUT_MOTION_SAMPLES]; /* oldest first, sample_us apart */
     uint32_t sample_us;                           /* measured interval; INPUT_MOTION_SAMPLE_US until the first window */
+    int produced;                                 /* timestamp delta, including samples not delivered */
+    int lost;                                     /* missing samples since the previous snapshot */
     int count;                                    /* zero when there is no new sample */
-    bool gap;                                     /* samples were lost before samples[0] */
+    bool gap;                                     /* overflow or failed drain; correction must restart */
 } input_motion_batch_t;
 
-/* Every sample since the last call. False when there is no sensor or the read failed. */
+/* One consumer drains per frame: the FIFO and rate state are process-wide.
+ * The shell will own the drain in a later milestone. False on an absent sensor or failed read. */
 bool input_read_motion_batch(input_motion_batch_t* out);
 
 /* One sensor read (an I2C transaction: call it only in frames that need it).

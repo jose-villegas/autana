@@ -133,6 +133,7 @@ gravity_update(gravity_t* g, const input_motion_t* m, uint32_t dt_us) {
     const float dt = (float)dt_us / (float)MATH_US_PER_S;
     const vec3f_t a = vec3f_scale(vec3f_from_vec3i(m->acceleration), 1.0F / INPUT_ACCEL_ONE_G);
     const vec3f_t raw = vec3f_scale(vec3f_from_vec3i(m->rotation), 1.0F / INPUT_ROTATION_ONE_DPS);
+    g->rotation = raw;
     const vec3f_t rate = predict(g, raw, dt);
     check_overrange(g, raw);
     correct_acceleration(g, a, rate, dt_us, dt);
@@ -143,6 +144,19 @@ void
 gravity_update_batch(gravity_t* g, const input_motion_batch_t* batch) {
     if (batch->gap) {
         restart(g);
+    }
+    /* Lost samples precede this snapshot but their position among retained samples is unknown.
+     * Advance first using the preceding batch's last rotation, without acceleration correction. */
+    if (batch->lost > 0 && batch->sample_us > 0) {
+        const vec3f_t acceleration = vec3f_add(g->linear, g->down);
+        const uint64_t lost_us = (uint64_t)batch->lost * batch->sample_us;
+        uint32_t remaining = lost_us > GRAVITY_MAX_DT_US ? GRAVITY_MAX_DT_US : (uint32_t)lost_us;
+        while (remaining > 0) {
+            const uint32_t step = remaining < batch->sample_us ? remaining : batch->sample_us;
+            predict(g, g->rotation, (float)step / MATH_US_PER_S);
+            remaining -= step;
+        }
+        g->linear = vec3f_sub(acceleration, g->down);
     }
     for (int i = 0; i < batch->count; i++) {
         gravity_update(g, &batch->samples[i], batch->sample_us);

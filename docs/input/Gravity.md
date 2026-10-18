@@ -1,11 +1,11 @@
 # Gravity
 
-`gravity_t` (`launcher/main/input/gravity.h`) gives a caller a unit down vector,
-linear acceleration in g, gyro bias in degrees per second, and tilt strength
-and free-fall status. The gyro predicts changes in down during motion; the
-accelerometer corrects accumulated drift when its reading is trusted, because
-acceleration alone cannot distinguish gravity from other forces. Sensor axes,
-input scales and calibration are described in [Input-and-Sensors.md](../notes/Input-and-Sensors.md#the-imus-axes-do-not-match-the-screens).
+`gravity_t` (`input/gravity.h`) estimates unit down, linear acceleration in g,
+gyro bias in deg/s, tilt strength and free fall. Gyro predicts motion;
+trusted acceleration corrects drift.
+
+Acceleration cannot distinguish gravity from other forces. Axes, scales and
+calibration are described in [Input-and-Sensors.md](../notes/Input-and-Sensors.md#the-imus-axes-do-not-match-the-screens).
 
 ## Update
 
@@ -13,40 +13,33 @@ input scales and calibration are described in [Input-and-Sensors.md](../notes/In
 `gravity_update_batch()` predicts and corrects once per sample, using microseconds.
 Gyro prediction is minus angular velocity crossed with down in screen axes.
 
-The sensor uses matching CTRL2/CTRL3 ODR code 5: 7174.4 / 32 = 224.2 Hz in
-6DOF mode, with a rounded sample interval of 4460 us. The register table and FIFO
-protocol follow QMI8658A Rev A and SensorLib.<sup>[[79]](../Citations.md#79)</sup><sup>[[78]](../Citations.md#78)</sup>
+The nominal ODR and interval are `IMU_ODR_HZ` and `IMU_SAMPLE_US` in `input/imu.h`.
+Matching CTRL2/CTRL3 codes follow QMI8658A Rev A and SensorLib.<sup>[[79]](../Citations.md#79)</sup><sup>[[78]](../Citations.md#78)</sup>
 
-`batch.sample_us` measures the interval at runtime over two-second drain windows,
-accepting estimates within 20% of nominal. Unit oscillators vary: the board
-measures 205.4 Hz versus 224.2 Hz nominal; gaps discard the open window.
+`batch.sample_us` estimates the interval over `IMU_RATE_WINDOW_US`, accepting
+values within `IMU_RATE_BOUND_PCT` of nominal. TIMESTAMP deltas count produced
+samples, including FIFO loss. Gaps discard the open window and retain the estimate.
+
+`INPUT_MOTION_SAMPLE_US` is the nominal interval before an estimate is accepted.
+`input_device.c` checks it against `IMU_SAMPLE_US`, and batch capacity against
+`IMU_FIFO_SAMPLES`.
 
 ```mermaid
-flowchart LR
-    subgraph Predict
-        Clamp["Clamp dt"] --> Rotate["Rotate down by<br/>gyro minus bias"]
-        Rotate --> Range{"Gyro over 98%<br/>of full scale?"}
+flowchart TB
+    subgraph Input["Drain and timing"]
+        direction LR
+        Drain["Count FIFO<br/>then request read mode"] --> Batch["Batch: oldest first<br/>delivered, lost, sample_us, gap"]
     end
-    subgraph Judge
-        Trust["Trust weight from |a|,<br/>reject beyond 10 deg"] --> Count["Distrust: +dt rejected,<br/>-9 dt accepted"]
+    subgraph Update["For each delivered sample"]
+        direction LR
+        Predict["Clamp dt<br/>predict down from gyro"] --> Judge["Overrange and<br/>acceleration trust"]
+        Judge --> Correct["Adopt, pull, learn bias<br/>or hold correction"]
     end
-    subgraph Correct["Correct: one of"]
-        Adopt["Adopt a exactly:<br/>first reading, or still 0.5 s"]
-        Full["Pull at full gain:<br/>recovering"]
-        Track["Learn bias, weighted pull:<br/>accepted"]
-        Hold["No correction:<br/>rejected"]
-    end
-    Range -->|no| Trust
-    Range -->|yes, enter recovery| Trust
-    Trust -->|a is zero: skip| Linear
-    Count --> Adopt
-    Count --> Full
-    Count --> Track
-    Count --> Hold
-    Adopt --> Linear["Linear = a minus down"]
-    Full --> Linear
-    Track --> Linear
-    Hold --> Linear
+    Missing["Advance bounded lost time<br/>holding previous batch's rotation"]
+    Linear["Unit down and<br/>linear acceleration"]
+    Input --> Missing
+    Missing --> Update
+    Update --> Linear
 ```
 
 Strength is the in-plane share of the unit down vector, clamped to 0..1 and
@@ -55,70 +48,60 @@ acceleration plus down is below the free-fall threshold.
 
 ## Trust and rejection
 
-Magnitude trust falls linearly between the full-trust and no-trust thresholds.
-Android's ACCELERATION_TOLERANCE of 4 m/s^2 supplies our approximate
-zero-trust end (0.4 g), rather than Android's hard acceleration gate.
-Accepted acceleration corrects down with alpha = weight * dt / (tau + dt),
-followed by normalization. Angular rejection and timed recovery use the
-thresholds recommended by Madgwick's x-io Fusion library.<sup>[[74]](../Citations.md#74)</sup>
+Magnitude trust falls linearly from `GRAVITY_TRUST_FULL_G` to
+`GRAVITY_TRUST_NONE_G`. The latter approximates Android's acceleration tolerance,
+with a ramp instead of a hard gate.<sup>[[75]](../Citations.md#75)</sup>
+
+Accepted acceleration pulls down by `weight * dt / (tau + dt)`, then normalizes.
+Angular rejection and timed recovery follow x-io Fusion's recommendations.<sup>[[74]](../Citations.md#74)</sup>
 
 ## Recovery
 
 ### Leaky counter
 
-Fusion's AHRS implementation derives its `rejectionTimeout` sample limit from the
-sample rate and timeout in seconds. Its leaky recovery counter adds one on
-rejection and subtracts nine on acceptance, clamped to that limit. Our counter
-uses elapsed microseconds: rejection adds dt, acceptance subtracts
-`GRAVITY_RECOVER_ACCEPT_WEIGHT * dt`, clamped to `[0, GRAVITY_RECOVER_US]`.
-At a fixed rate this equals Fusion's sample counter with limit equal to rate
-times `GRAVITY_RECOVER_MS` in seconds. Debt grows when more than about 90% of
-sample time is rejected. Exceeding the limit enters recovery: nonzero
-acceleration corrects at the normal TAU rate with full gain, bypassing angle
-and magnitude rejection, until a sample is accepted inside the reject cone.
-Recovery does not snap or learn bias.
+Rejection adds dt to distrust; acceptance subtracts
+`GRAVITY_RECOVER_ACCEPT_WEIGHT * dt`. Debt is clamped to `GRAVITY_RECOVER_US`,
+equivalent to Fusion's sample counter at a fixed ODR.
+
+Exceeding the limit enters recovery. Nonzero acceleration corrects at full
+TAU gain, bypassing rejection until a reading enters the reject cone.
+Recovery neither snaps nor learns bias.
 
 ### Still recovery
 
-Still-gated early recovery is ours. Still means the magnitude of raw gyro minus learned
-bias is below `GRAVITY_STILL_DPS` and acceleration magnitude departs from one g
-by at most `GRAVITY_TRUST_FULL_G`. Continuous still rejection exceeding
-`GRAVITY_STILL_RECOVER_MS` adopts the measured direction exactly. Non-still
-samples and accepted acceleration clear the still timer; either adoption
-clears both timers and recovery. The leaky trigger remains available during shaking or
-swinging. Reset primes the first nonzero reading for exact adoption,
-including when no time has elapsed. Zero acceleration skips correction and
-distrust counting and clears the still timer, keeping prediction finite in free fall.
+Still means bias-corrected gyro magnitude below `GRAVITY_STILL_DPS`, with
+acceleration magnitude within `GRAVITY_TRUST_FULL_G` of one g.
+Rejection longer than `GRAVITY_STILL_RECOVER_US` adopts that direction exactly.
+
+Non-still or accepted readings clear the still timer. Adoption clears both
+timers and recovery. Reset adopts the first nonzero acceleration exactly,
+even at zero dt; zero acceleration skips correction and distrust counting.
 
 ### Gyro overrange
 
-Any raw gyro axis reaching `GRAVITY_GYRO_OVERRANGE_DPS` enters recovery
-immediately with distrust at the limit. The clipped gyro reading still rotates
-down for that sample, matching Fusion's update after its soft restart. The
-threshold derives from Fusion's 0.98 times gyro range rule and the configured `IMU_GYRO_RANGE_DPS` in `input/imu.h` (512 deg/s). Our boundary
-includes equality; Fusion uses a strict greater-than comparison. Fusion's
-soft restart preserves its estimate and ramps startup gain from 10 down to
-the configured gain over 3 s; here recovery enters at full gain using the
-normal TAU rate, without a startup-gain ramp.
+A raw axis reaching `GRAVITY_GYRO_OVERRANGE_DPS` enters recovery with maximum
+distrust. The clipped reading still predicts that sample's rotation.
+The threshold derives from `IMU_GYRO_RANGE_DPS` and Fusion's range ratio.
+
+Our boundary includes equality; Fusion uses strict greater-than. Recovery
+preserves down and bias and uses normal TAU gain without Fusion's startup ramp.
 
 ## Bias learning
 
-While acceleration is accepted, the Mahony, Hamel and Pflimlin integral bias
-term accumulates `cross(down, direction)` before the down correction, weighted
-by magnitude trust and elapsed seconds.<sup>[[73]](../Citations.md#73)</sup>
-Our minus-cross prediction determines the correction sign. The integral is
-gated by magnitude trust and acceptance. The radian correction is converted
-to degrees so bias stays in deg/s. Each axis is clamped to
-`GRAVITY_BIAS_MAX_DPS`; the paper does not specify this clamp. Rejection,
-zero acceleration and recovery add no bias. Error is perpendicular to down, so bias along
-gravity is unobservable; rotation about down does not change down.
+Accepted acceleration accumulates `cross(down, direction)` before correction,
+weighted by trust and elapsed seconds. The integral follows Mahony, Hamel and
+Pflimlin; minus-cross prediction determines its sign.<sup>[[73]](../Citations.md#73)</sup>
 
-Per axis, the linearised loop is theta' = b_err - theta/TAU and
-b_err' = -KI*theta, giving s^2 + s/TAU + KI = 0. When KI is small relative to
-1/(4*TAU^2), the slow pole is approximately -KI*TAU. A 2% settle takes about
-four slow time constants, so `GRAVITY_BIAS_KI` derives from
-4/(TAU*SETTLE_S), in 1/s^2. The chosen gain gives an overdamped loop; the
-settling target applies to accepted acceleration at full magnitude trust.
+Bias is in deg/s, clamped per axis to `GRAVITY_BIAS_MAX_DPS`. Rejection, zero
+acceleration and recovery add no bias. The component along gravity is
+unobservable because rotation about down does not change down.
+
+The linearised loop is theta' = b_err - theta/TAU and b_err' = -KI*theta,
+giving s^2 + s/TAU + KI = 0. For small KI the slow pole is approximately
+-KI*TAU, so a 2% settle takes about four slow time constants.
+
+`GRAVITY_BIAS_KI` is 4/(TAU*SETTLE_S), in 1/s^2. This gives an overdamped loop;
+the settling target applies to accepted acceleration at full trust.
 
 ## Constants
 
@@ -144,14 +127,28 @@ The constants are owned by `launcher/main/input/gravity.h`:
 | `GRAVITY_BIAS_KI` | derived from TAU and SETTLE_S | Linearised integral loop, derived above |
 | `GRAVITY_FREE_FALL_G` | 0.3 g | Acceleration magnitude below which strength is zero |
 | `GRAVITY_MAX_DT_MS` | 100 ms | Maximum prediction and correction interval |
-| `INPUT_MOTION_SAMPLE_US` | derived from `IMU_ODR_HZ` | Nominal interval until a runtime estimate is accepted<sup>[[78]](../Citations.md#78)</sup> |
 
 ## Limits
 
 FIFO capacity bounds the retained history. Overflow or a failed drain marks a gap;
 the next batch soft-restarts correction at full TAU gain, preserving down and bias.
-A smaller drain buffer retains the newest samples and also marks a gap.
 
-Sampling cannot resolve motion above the sensor bandwidth. During FIFO read mode,
-new sensor samples are discarded by the device; draining promptly limits that
-blind interval.<sup>[[78]](../Citations.md#78)</sup>
+Sampling cannot resolve motion above the sensor bandwidth. FIFO read mode
+discards new samples (section 8.7). TIMESTAMP counts highest-ODR samples modulo
+24 bits (section 5.5, Table 24), including samples not delivered.<sup>[[78]](../Citations.md#78)</sup>
+
+Each drain reads count, then TIMESTAMP, before `REQ_FIFO`. Between snapshots,
+produced samples comprise retained arrivals, read-mode losses and new arrivals.
+The next count includes both retained and new arrivals, so delta minus count is loss.
+
+Negative count-to-timestamp skew carries into the next drain. The first drain
+after initialization or a gap reports no loss. TIMESTAMP adds one three-byte
+I2C transaction: 54 bus clocks, excluding start/stop timing and driver overhead.
+
+The exact position of missing samples among retained samples is unknown.
+Before delivered samples, prediction holds the previous batch's last rotation
+for `lost * sample_us`, bounded by `GRAVITY_MAX_DT_US`.
+
+The count precedes `REQ_FIFO` (section 8.8). CTRL9 status is polled with consecutive
+I2C reads: section 5.10.1 specifies a handshake without a minimum polling delay.
+Every drain attempts to leave read mode, including error paths.<sup>[[78]](../Citations.md#78)</sup>

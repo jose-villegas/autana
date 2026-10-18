@@ -81,27 +81,31 @@ static const char* TAG = "input_lab";
 #define MOTION_HUD_TEXT_SIZE 96
 #define MOTION_US_PER_MS     1000
 #define MOTION_LOG_PERIOD_MS 100
-#define MOTION_RING_RADIUS   88
-#define MOTION_DOT_SIDE      7
-#define MOTION_FILTER_SIDE   11
-#define MOTION_MARGIN        16
-#define MOTION_HUD_ROWS      5
-#define MOTION_HUD_SCALE     1
-#define COL_HIT              0x40E060
-#define COL_MISS             0xFFB020
-#define COL_TARGET           0xFF00FF
-#define COL_HUD              0xE0E0E0
-#define COL_MOTION_FILTER    0x40E0FF
-#define COL_MOTION_RING      0x607080
+#define MOTION_DRAIN_MAX_MS  (MATH_MS_PER_S / 2U)
+
+TUNE_OWNER(input_lab);
+TUNE(input_lab, imu_drain_ms, 0, 0, MOTION_DRAIN_MAX_MS);
+#define MOTION_RING_RADIUS 88
+#define MOTION_DOT_SIDE    7
+#define MOTION_FILTER_SIDE 11
+#define MOTION_MARGIN      16
+#define MOTION_HUD_ROWS    5
+#define MOTION_HUD_SCALE   1
+#define COL_HIT            0x40E060
+#define COL_MISS           0xFFB020
+#define COL_TARGET         0xFF00FF
+#define COL_HUD            0xE0E0E0
+#define COL_MOTION_FILTER  0x40E0FF
+#define COL_MOTION_RING    0x607080
 
 /* White acknowledges a reading; longer cyan ends the round. Both are readable
  * at arm's length while unplugged. */
-#define IMU_POSE_FLASH_MS    160U
-#define IMU_DONE_FLASH_MS    600U
-#define COL_IMU_POSE_FLASH   0xFFFFFF
-#define COL_IMU_DONE_FLASH   0x00FFFF
+#define IMU_POSE_FLASH_MS  160U
+#define IMU_DONE_FLASH_MS  600U
+#define COL_IMU_POSE_FLASH 0xFFFFFF
+#define COL_IMU_DONE_FLASH 0x00FFFF
 /* Sub-mg resolution keeps small changes visible in the turn trace. */
-#define IMU_GRAVITY_DIGITS   6
+#define IMU_GRAVITY_DIGITS 6
 
 typedef enum { MODE_RANDOM, MODE_GRID, MODE_BEZEL, MODE_MOTION, MODE_COUNT } lab_mode_t;
 
@@ -118,6 +122,9 @@ static gravity_t gravity;
 static input_motion_t motion;
 static input_motion_batch_t* motion_batch;
 static int motion_samples;
+static int motion_lost;
+static int motion_produced;
+static uint32_t motion_since_drain_ms;
 static int64_t motion_drain_us;
 /* Bias-corrected gyro rotation since the turn step armed, in degrees: proves the gyro scale on its own. */
 static vec3f_t turn_gyro_deg;
@@ -192,6 +199,9 @@ start_round(void) {
         have_motion = false;
         motion_log_ms = 0;
         motion_samples = 0;
+        motion_lost = 0;
+        motion_produced = 0;
+        motion_since_drain_ms = 0;
         motion_drain_us = 0;
         motion_read_us = timing_now_us();
         imu_round = (imu_probe_round_t){0};
@@ -207,6 +217,9 @@ start_round(void) {
 static void
 input_lab_enter(void) {
     motion_batch = memory_alloc(sizeof *motion_batch, MEMORY_PSRAM);
+    if (motion_batch == NULL) {
+        ESP_LOGE(TAG, "Cannot allocate motion batch in PSRAM");
+    }
     rng_seed(&rng, (uint32_t)timing_now_us());
     panel_max_x = -1;
     mode = MODE_RANDOM;
@@ -462,16 +475,23 @@ static void
 read_motion(uint32_t dt_ms) {
     motion_log_ms += dt_ms;
     const int64_t drain_start_us = timing_now_us();
-    const bool read = motion_batch != NULL && input_read_motion_batch(motion_batch);
-    motion_drain_us += timing_now_us() - drain_start_us;
-    if (!read) {
+    motion_since_drain_ms += dt_ms;
+    const bool due = motion_since_drain_ms >= (uint32_t)imu_drain_ms;
+    const bool read = due && motion_batch != NULL && input_read_motion_batch(motion_batch);
+    if (due) {
+        motion_since_drain_ms = 0;
+        motion_drain_us += timing_now_us() - drain_start_us;
+    }
+    if (due && !read) {
         have_motion = false;
-    } else if (motion_batch->count > 0) {
+    } else if (read && motion_batch->count > 0) {
         motion = motion_batch->samples[motion_batch->count - 1];
         have_motion = true;
         motion_samples += motion_batch->count;
     }
     if (read) {
+        motion_lost += motion_batch->lost;
+        motion_produced += motion_batch->produced;
         gravity_update_batch(&gravity, motion_batch);
         integrate_turn_gyro(motion_batch);
     }
@@ -488,13 +508,16 @@ read_motion(uint32_t dt_ms) {
         const vec3i_t bias_dps10 = motion_log_vector(gravity_gyro_bias(&gravity), OFFSET_SCALE);
         ESP_LOGI(TAG,
                  "motion raw %d,%d,%d tilt %d bearing %d filt %d,%d str %d shake %d turn %d rot %d,%d,%d quarter %d "
-                 "grav_mg %d,%d,%d bias_dps10 %d,%d,%d samples %d drain_us %lld sample_us %u",
+                 "grav_mg %d,%d,%d bias_dps10 %d,%d,%d samples %d produced %d lost %d drain_us %lld sample_us %u",
                  raw_acceleration.x, raw_acceleration.y, raw_acceleration.z, (int)lroundf(motion_probe.tilt_deg),
                  motion_probe.bearing_deg, tilt_x(&tilt), tilt_y(&tilt), tilt_strength(&tilt), tilt_shake(&tilt),
                  motion.turn_speed, motion.rotation.x, motion.rotation.y, motion.rotation.z, display_quarter_now(),
                  (int)down_mg.x, (int)down_mg.y, (int)down_mg.z, (int)bias_dps10.x, (int)bias_dps10.y,
-                 (int)bias_dps10.z, motion_samples, (long long)motion_drain_us, (unsigned)motion_batch->sample_us);
+                 (int)bias_dps10.z, motion_samples, motion_produced, motion_lost, (long long)motion_drain_us,
+                 (unsigned)motion_batch->sample_us);
         motion_samples = 0;
+        motion_lost = 0;
+        motion_produced = 0;
         motion_drain_us = 0;
     }
 }

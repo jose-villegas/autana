@@ -8,7 +8,6 @@
 #include <string.h>
 
 #include "esp_log.h"
-#include "esp_timer.h"
 
 #include "input/buttons.h"
 #include "input/imu.h"
@@ -107,8 +106,11 @@ bool
 input_read_motion_batch(input_motion_batch_t* out) {
     out->count = 0;
     out->gap = false;
-    const int count = imu_read_fifo((imu_sample_t*)out->samples, INPUT_MOTION_SAMPLES, &out->gap);
-    out->sample_us = imu_rate_update(&motion_rate, count, esp_timer_get_time(), out->gap || count < 0);
+    out->lost = 0;
+    out->produced = 0;
+    int64_t snapshot_us = 0;
+    const int count = imu_read_fifo((imu_sample_t*)out->samples, &out->produced, &out->lost, &snapshot_us, &out->gap);
+    out->sample_us = imu_rate_update(&motion_rate, out->produced, snapshot_us, out->gap || count < 0);
     if (count < 0) {
         return false;
     }
