@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""docs/math/README.md's figures: one shape through scale, rotate and translate,
-and one camera point on its way to a pixel. launcher/tools/render/render_doc_images.sh
-runs it; the numbers come from math_figures_probe.c, which calls the library.
+"""The figures of docs/math/Conventions.md and Projection.md: one shape through
+scale, rotate and translate, and one camera point on its way to a pixel.
+launcher/tools/render/render_doc_images.sh runs it; the numbers come from
+math_figures_probe.c, which calls the library.
 
     python launcher/tools/math/math_figures.py --cc CC --trs PNG --pixel PNG
 

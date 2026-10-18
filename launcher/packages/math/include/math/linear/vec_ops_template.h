@@ -1,7 +1,7 @@
 /*
  * vec_ops_template: component-wise arithmetic and lerp for vectors of every
  * dimension and number type. Each operation is written once so dimensions
- * share the scalar policy; see docs/math/README.md for the macro arguments.
+ * share the scalar policy; see docs/math/Conventions.md#templates for the macro arguments.
  */
 #pragma once
 
