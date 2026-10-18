@@ -160,6 +160,29 @@ sample_checkpoint(const boot_anim_motion_t* motion, const draw_image_t* photo, u
     f->view = boot_anim_view(motion, GFX_WIDTH, GFX_HEIGHT, now_ms);
 }
 
+static void
+record_send_sample(int i, bool contend) {
+    /* Double begin drains the preceding frame; record its completed send. */
+    if (gfx_mode_current()->layout == GFX_LAYOUT_DOUBLE_FB && i > 0 && !contend) {
+        samples[i - 1].values[FIELD_SEND] = gfx_get_present_send_us();
+    } else {
+        samples[i].values[FIELD_SEND] = gfx_get_present_send_us();
+    }
+}
+
+static void
+assert_double_samples(void) {
+    if (gfx_mode_current()->layout == GFX_LAYOUT_DOUBLE_FB) {
+        for (int i = 0; i < SAMPLES_PER_CHECKPOINT; i++) {
+            const frame_sample_t* s = &samples[i];
+            TEST_ASSERT_GREATER_THAN_INT32(0, s->values[FIELD_SEND]);
+            if (s->values[FIELD_DRAW] > s->values[FIELD_SEND]) {
+                TEST_ASSERT_LESS_OR_EQUAL_INT32(HIDDEN_SEND_WAIT_MAX_US, s->values[FIELD_WAIT]);
+            }
+        }
+    }
+}
+
 static __attribute__((noinline)) void
 time_frames(const checkpoint_frame_t* f, bool contend) {
     for (int i = 0; i < SAMPLES_PER_CHECKPOINT; i++) {
@@ -224,12 +247,7 @@ time_frames(const checkpoint_frame_t* f, bool contend) {
         t1 = timing_now_us();
         s->values[FIELD_PRESENT] = (int32_t)(t1 - t0);
         s->values[FIELD_WAIT] = gfx_get_present_wait_us();
-        /* Double begin drains the preceding frame; record its completed send. */
-        if (gfx_mode_current()->layout == GFX_LAYOUT_DOUBLE_FB && i > 0 && !contend) {
-            samples[i - 1].values[FIELD_SEND] = gfx_get_present_send_us();
-        } else {
-            s->values[FIELD_SEND] = gfx_get_present_send_us();
-        }
+        record_send_sample(i, contend);
 
         s->values[FIELD_TOTAL] = (int32_t)(t1 - frame_start);
     }
@@ -238,15 +256,7 @@ time_frames(const checkpoint_frame_t* f, bool contend) {
         samples[SAMPLES_PER_CHECKPOINT - 1].values[FIELD_SEND] = gfx_get_present_send_us();
     }
     gfx_readback_end();
-    if (gfx_mode_current()->layout == GFX_LAYOUT_DOUBLE_FB) {
-        for (int i = 0; i < SAMPLES_PER_CHECKPOINT; i++) {
-            const frame_sample_t* s = &samples[i];
-            TEST_ASSERT_GREATER_THAN_INT32(0, s->values[FIELD_SEND]);
-            if (s->values[FIELD_DRAW] > s->values[FIELD_SEND]) {
-                TEST_ASSERT_LESS_OR_EQUAL_INT32(HIDDEN_SEND_WAIT_MAX_US, s->values[FIELD_WAIT]);
-            }
-        }
-    }
+    assert_double_samples();
 }
 
 typedef struct {
