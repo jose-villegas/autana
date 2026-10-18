@@ -99,29 +99,15 @@ upscale_block_rows(const upscale_t* scale, const uint16_t* source, const uint16_
 }
 
 static void
-upscale_kept_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
-                  uint16_t* destination, int first_row, int row_count) {
+upscale_paired_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
+                    uint16_t* destination, int first_row, int row_count, bool doubled) {
     const gfx_target_t target = {destination, 0, scale->destination_height, scale->destination_width};
     if (scanline_run(scale) == 0) {
         gfx_target_paired_rows(target, source, depth, clear, scale->source_width, scale->rows, first_row, row_count,
-                               false);
+                               doubled);
     } else {
         gfx_target_paired_rows_shaded(target, source, depth, clear, scale->source_width, scale->rows, first_row,
-                                      row_count, false, scale->scanline_run,
-                                      UPSCALE_SCANLINE_UNIT - scale->scanline_strength);
-    }
-}
-
-static void
-upscale_doubled_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
-                     uint16_t* destination, int first_row, int row_count) {
-    const gfx_target_t target = {destination, 0, scale->destination_height, scale->destination_width};
-    if (scanline_run(scale) == 0) {
-        gfx_target_paired_rows(target, source, depth, clear, scale->source_width, scale->rows, first_row, row_count,
-                               true);
-    } else {
-        gfx_target_paired_rows_shaded(target, source, depth, clear, scale->source_width, scale->rows, first_row,
-                                      row_count, true, scale->scanline_run,
+                                      row_count, doubled, scale->scanline_run,
                                       UPSCALE_SCANLINE_UNIT - scale->scanline_strength);
     }
 }
@@ -153,9 +139,11 @@ upscale_rows(const upscale_t* scale, const gfx_render_target_t* picture, uint16_
     assert(row_count >= 0);
     assert(first_row + row_count <= scale->destination_height);
     switch (scale->path) {
-        case UPSCALE_KEPT: upscale_kept_rows(scale, source, depth, clear, destination, first_row, row_count); break;
+        case UPSCALE_KEPT:
+            upscale_paired_rows(scale, source, depth, clear, destination, first_row, row_count, false);
+            break;
         case UPSCALE_DOUBLED:
-            upscale_doubled_rows(scale, source, depth, clear, destination, first_row, row_count);
+            upscale_paired_rows(scale, source, depth, clear, destination, first_row, row_count, true);
             break;
         case UPSCALE_BLOCKS: upscale_block_rows(scale, source, depth, clear, destination, first_row, row_count); break;
         case UPSCALE_MAPPED: upscale_mapped_rows(scale, source, depth, clear, destination, first_row, row_count); break;
