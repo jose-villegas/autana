@@ -150,14 +150,12 @@ recti_t* leaf_rect_scratch;
 void
 gfx_set_debug_overlay(bool on) {
     GFX_PRESENT_GUARD();
-    gfx_present_drain();
     debug_overlay_on = on;
 }
 
 void
 gfx_set_leaf_overlay(bool on) {
     GFX_PRESENT_GUARD();
-    gfx_present_drain();
     if (on) {
         if (leaf_rect_scratch == NULL) {
             leaf_rect_scratch = malloc(sizeof(*leaf_rect_scratch) * LEAF_RECTS_PER_ROW_MAX);
@@ -179,7 +177,7 @@ gfx_set_leaf_overlay(bool on) {
 
 #ifdef ESP_PLATFORM
 /* `send_shadow` holds every pixel handed to the panel, so after a present
- * it must equal `fb`. A difference is a pixel never sent, or one copied out
+ * it must equal `present_fb`. A difference is a pixel never sent, or one copied out
  * of PSRAM wrong (also counted on its own). A glitch this stays silent on
  * lies past the send buffers, on the QSPI link. */
 static gfx_color_t* send_shadow;
@@ -232,7 +230,7 @@ count_differing_px(const gfx_color_t* a, const gfx_color_t* b, int n) {
 }
 
 /* `buf` is what is about to go to the panel for [x0, x0+w) x [y0, y0+h),
- * already copied out of `fb`. */
+ * already copied out of `present_fb`. */
 void
 send_audit_capture(int x0, int y0, int w, int h, const gfx_color_t* buf) {
     if (send_shadow == NULL) {
@@ -248,7 +246,7 @@ send_audit_capture(int x0, int y0, int w, int h, const gfx_color_t* buf) {
     }
 }
 
-/* Runs after a full-framebuffer present has drained, while `fb` still
+/* Runs after a full-framebuffer present has drained, while `present_fb` still
  * holds exactly what that present was meant to send. An overlay or
  * interlace legitimately leaves the shadow out of step, so the audit
  * pauses under either and re-primes after: everything is marked dirty and
@@ -282,10 +280,11 @@ send_audit_log_if_due(void) {
         return;
     }
     send_audit_log_at_us = now + SEND_AUDIT_LOG_US;
-    ESP_LOGW(TAG,
-             "send audit: %lld px on the panel differ from fb (first at %d,%d), %lld px read back wrong from PSRAM",
-             (long long)send_audit_uncovered_px, send_audit_first_x, send_audit_first_y,
-             (long long)send_audit_copy_fault_px);
+    ESP_LOGW(
+        TAG,
+        "send audit: %lld px on the panel differ from present_fb (first at %d,%d), %lld px read back wrong from PSRAM",
+        (long long)send_audit_uncovered_px, send_audit_first_x, send_audit_first_y,
+        (long long)send_audit_copy_fault_px);
     send_audit_uncovered_px = 0;
     send_audit_copy_fault_px = 0;
     send_audit_first_x = -1;
@@ -408,7 +407,7 @@ send_row_with_overlays(int row, int y) {
 }
 
 /* Strip rows whose last send carried overlay borders. A border exists only
- * in the bytes sent, never in `fb`, so the panel keeps it until its row is
+ * in the bytes sent, never in `present_fb`, so the panel keeps it until its row is
  * sent again, and the dirty tracker never resends a row nothing changed
  * in. Outlives the overlay toggles so switching one off still cleans up. */
 uint32_t overlay_bordered_rows;

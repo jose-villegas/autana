@@ -42,6 +42,11 @@ typedef struct {
     int cell_size;
 } gfx_mode_t;
 
+static inline bool
+gfx_mode_has_framebuffer(const gfx_mode_t* mode) {
+    return mode->layout == GFX_LAYOUT_FULL_FB || mode->layout == GFX_LAYOUT_DOUBLE_FB;
+}
+
 /* Panel and band geometry are passed in so host suites can grant modes
  * without device macros. Layout and interlace requests pass through. */
 static inline gfx_mode_t

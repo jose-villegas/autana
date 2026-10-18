@@ -91,7 +91,7 @@ gfx_draw_begin(gfx_surface_t* out) {
     }
     out->target = band_render_active ? strip_target : (gfx_target_t){fb, 0, GFX_HEIGHT, GFX_WIDTH};
     out->clip = clip;
-    out->marks = !band_render_active && current_mode.layout != GFX_LAYOUT_DOUBLE_FB;
+    out->marks = !band_render_active;
     return true;
 }
 
@@ -372,8 +372,7 @@ gfx_set_frame_overlay(gfx_band_overlay_fn overlay) {
 void
 clear_expanded_frame(bool free_picture) {
     frame_expanded = false;
-    gfx_fb_guard_set_available(
-        (current_mode.layout == GFX_LAYOUT_FULL_FB || current_mode.layout == GFX_LAYOUT_DOUBLE_FB) && fb != NULL);
+    gfx_fb_guard_set_available(gfx_mode_has_framebuffer(&current_mode) && fb != NULL);
     if (free_picture) {
         memory_free(half_image);
         half_image = NULL;
@@ -444,8 +443,8 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
         if (back == NULL) {
             return &current_mode;
         }
-        present_fb = fb;
         fb = back;
+        dirty_mark_all();
     } else if (granted.layout == GFX_LAYOUT_INDEXED) {
         if (granted.index_grid_w <= 0 || granted.index_grid_h <= 0 || granted.cell_size <= 0
             || !alloc_indexed_image(granted.index_grid_w, granted.index_grid_h)) {
@@ -754,7 +753,7 @@ gfx_read_panel_row(int y, gfx_color_t out_row[GFX_WIDTH]) {
     GFX_PRESENT_GUARD();
     if (frame_expanded) {
         expand_rows(y, y + 1, out_row);
-    } else if (current_mode.layout == GFX_LAYOUT_FULL_FB || current_mode.layout == GFX_LAYOUT_DOUBLE_FB) {
+    } else if (gfx_mode_has_framebuffer(&current_mode)) {
         memcpy(out_row, present_fb + (size_t)y * GFX_WIDTH, GFX_WIDTH * sizeof(gfx_color_t));
     } else if (current_mode.layout == GFX_LAYOUT_INDEXED) {
         const gfx_indexed_frame_t frame = indexed_frame();

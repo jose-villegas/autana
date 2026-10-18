@@ -32,8 +32,8 @@ _Static_assert(GFX_HEAL_STRIP_ROWS <= STRIP_HEIGHT, "a heal strip must fit one s
 /* Present code runs from IRAM so a present after a cold instruction cache
  * does not wait on flash fetches. An attribute, not a linker.lf entry,
  * places it: the compiler's clones of a function inherit the attribute, and
- * a mapping entry names only the original. Development overlays, send
- * auditing and raw-full dispatch make dev and diag larger.
+ * a mapping entry names only the original. Development overlays and send
+ * auditing make dev and diag larger.
  * IRAM budget: release 2900 B, dev 3920 B, diag 3920 B */
 #define GFX_PRESENT_IRAM_ATTR IRAM_ATTR
 static const char* TAG = "gfx";
@@ -227,8 +227,7 @@ display_bring_up(int hz) {
 
 /* Defined far below, alongside every other send-path function; the task
  * loop only needs to call them. */
-static void run_present_normal(void);
-static void run_present_raw_full(void);
+static void run_present(void);
 
 /* Runs entirely on core 1. Bring-up happens here, once, so the strip-sent
  * interrupt esp_lcd installs lands on this core; see board_panel_bring_up().
@@ -262,11 +261,7 @@ present_task_fn(void* arg) {
 
     for (;;) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-        if (present_task_mode == PRESENT_TASK_RAW_FULL) {
-            run_present_raw_full();
-        } else {
-            run_present_normal();
-        }
+        run_present();
         xSemaphoreGive(present_done_sem);
     }
 }
@@ -361,9 +356,6 @@ mark_all_dirty_now(void) {
 void
 gfx_mark_all_dirty(void) {
     GFX_PRESENT_GUARD();
-    if (current_mode.layout == GFX_LAYOUT_DOUBLE_FB) {
-        return;
-    }
     mark_all_dirty_now();
 }
 
@@ -403,24 +395,18 @@ gfx_full_redraw_clear_pending(void) {
 void
 gfx_mark_dirty(int x, int y, int w, int h) {
     GFX_PRESENT_GUARD();
-    if (current_mode.layout == GFX_LAYOUT_DOUBLE_FB) {
-        return;
-    }
     dirty_mark(x, y, w, h);
 }
 
 void
 gfx_mark_drawn(int x, int y, int w, int h) {
-    if (current_mode.layout == GFX_LAYOUT_DOUBLE_FB) {
-        return;
-    }
     dirty_mark(x, y, w, h);
 }
 
 bool
 gfx_region_dirty(int x, int y, int w, int h) {
     GFX_PRESENT_GUARD();
-    return current_mode.layout == GFX_LAYOUT_DOUBLE_FB || dirty_region_dirty(x, y, w, h);
+    return dirty_region_dirty(x, y, w, h);
 }
 
 /* Device-only path for QSPI panel send. Host build is no-op. */
@@ -583,7 +569,7 @@ send_full_row(int row, int* queued) {
 }
 
 /* Third, cheapest send path: a full-width box is already contiguous in
- * `fb`, so it sends exactly the panel's bytes with no packing. Needs the
+ * `present_fb`, so it sends exactly the panel's bytes with no packing. Needs the
  * box's real sub-strip Y extent (cell_y0/cell_y1, gfx_dirty.h), not the
  * coarse strip grid. Measured ~10% fewer pixels per frame on scenes that
  * dirty many short spans, 0% where strips are genuinely full-height.
@@ -729,12 +715,6 @@ run_present_strips(bool (*send_rows)(int y0, int y1)) {
     for (int i = 0; i < queued; i++) {
         xSemaphoreTake(strip_sent, portMAX_DELAY);
     }
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    present_completed_send_us = (int32_t)(timing_now_us() - present_dispatched_us);
-    if (!present_async_on) {
-        dev_present_send_us = present_completed_send_us;
-    }
-#endif
     if (present_send_failed) {
         mark_all_dirty_now();
     }
@@ -804,12 +784,6 @@ run_present_normal(void) {
         xSemaphoreTake(strip_sent, portMAX_DELAY);
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    present_completed_send_us = (int32_t)(timing_now_us() - present_dispatched_us);
-    if (!present_async_on) {
-        dev_present_send_us = present_completed_send_us;
-    }
-#endif
-#if CONFIG_LAUNCHER_DEVELOPMENT
     send_audit_check();
 #endif
     if (present_send_failed) {
@@ -819,10 +793,9 @@ run_present_normal(void) {
 
 /* Bypasses gfx_present()'s dirty tracking: every strip through the same
  * bounce copy and queue a full-band send takes, one strip_sent per strip. */
-static void
+static void GFX_PRESENT_IRAM_ATTR
 run_present_raw_full(void) {
     panel_clock_apply();
-    present_send_failed = false;
     int queued = 0;
     for (int row = 0; row < STRIP_COUNT; row++) {
         if (send_fb_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT)) {
@@ -833,11 +806,22 @@ run_present_raw_full(void) {
         xSemaphoreTake(strip_sent, portMAX_DELAY);
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
+    send_audit_check();
+#endif
+}
+
+static void GFX_PRESENT_IRAM_ATTR
+run_present(void) {
+    if (present_task_mode == PRESENT_TASK_RAW_FULL) {
+        run_present_raw_full();
+    } else {
+        run_present_normal();
+    }
+#if CONFIG_LAUNCHER_DEVELOPMENT
     present_completed_send_us = (int32_t)(timing_now_us() - present_dispatched_us);
     if (!present_async_on) {
         dev_present_send_us = present_completed_send_us;
     }
-    send_audit_check();
 #endif
 }
 
@@ -856,11 +840,7 @@ dispatch_present(void) {
     /* Synchronous: the send happens now, on the caller's own core, before
      * gfx_present_begin() returns; gfx_present_wait() then has nothing
      * left to wait for. */
-    if (present_task_mode == PRESENT_TASK_RAW_FULL) {
-        run_present_raw_full();
-        return;
-    }
-    run_present_normal();
+    run_present();
 }
 
 #endif /* ESP_PLATFORM: the presentation pipeline */
@@ -886,15 +866,20 @@ gfx_present_drain(void) {
 #endif
 }
 
+static void
+drain_present(void) {
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    dev_present_wait_us = gfx_present_drain();
+#else
+    gfx_present_drain();
+#endif
+}
+
 void GFX_PRESENT_IRAM_ATTR
 gfx_present_begin(void) {
     const bool double_fb = current_mode.layout == GFX_LAYOUT_DOUBLE_FB;
     if (double_fb) {
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-        dev_present_wait_us = gfx_present_drain();
-#else
-        gfx_present_drain();
-#endif
+        drain_present();
         gfx_color_t* drawn = fb;
         fb = present_fb;
         present_fb = drawn;
@@ -918,11 +903,7 @@ gfx_present_begin(void) {
 void GFX_PRESENT_IRAM_ATTR
 gfx_present_wait(void) {
     if (current_mode.layout != GFX_LAYOUT_DOUBLE_FB) {
-#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-        dev_present_wait_us = gfx_present_drain();
-#else
-        gfx_present_drain();
-#endif
+        drain_present();
 #ifndef ESP_PLATFORM
         if (!band_is_transient()) {
             dirty_frame_sent();
@@ -1020,9 +1001,6 @@ gfx_present_raw_full_frame_for_test(void) {
 void
 gfx_mark_rows_dirty(int y0, int y1) {
     GFX_PRESENT_GUARD();
-    if (current_mode.layout == GFX_LAYOUT_DOUBLE_FB) {
-        return;
-    }
     /* mark_band() trusts clipped rows; a public caller's need not be. */
     mark_band(mathi_max(y0, 0), mathi_min(y1, GFX_HEIGHT));
 }

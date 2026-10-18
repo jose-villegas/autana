@@ -473,7 +473,7 @@ ui_end_over(ui_backdrop_fn paint_backdrop) {
     const int n = ui_ctx.root_list.idx;
     bool repaint[MU_ROOTLIST_SIZE] = {false};
     mu_Rect vanished[MU_CONTAINERPOOL_SIZE];
-    bool ui_changed = take_vanished_canvases(vanished) > 0 || gfx_mode_current()->layout == GFX_LAYOUT_DOUBLE_FB;
+    bool ui_changed = take_vanished_canvases(vanished) > 0;
     for (int i = 0; i < n && i < MU_ROOTLIST_SIZE; i++) {
         ui_changed = ui_changed || canvas_itself_changed(ui_ctx.root_list.items[i]);
     }
