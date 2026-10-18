@@ -101,10 +101,16 @@ playback of a sound with loop points stops at `loop_end`, with no release tail.
 
 `sound_init()` runs at boot beside the audio POST check. The driver opens TX
 once and keeps its DMA. RX DMA exists only during a development capture.
-Capture open and close are commands executed by the mixer: they briefly pause
-TX through the shared codec adapter while allocating or releasing RX, then
-resume it. Voice positions hold during those operations. The adapter's
-ESP32-S3 safeguard against stopping RX while TX runs remains in force.
+
+Capture callers queue a sequence-tagged park request. The mixer acknowledges
+between PCM blocks and parks, holding voice positions.
+
+The caller's task opens or closes RX through the shared codec adapter, then
+resumes the mixer.
+
+The adapter pauses TX while RX changes, preserving its ESP32-S3 safeguard.
+A timed-out park request is cancelled; late commands cannot park the mixer,
+and late acknowledgements cannot satisfy a later request.
 
 `shell_exit_app()` closes the app generation before the exit callback and
 system teardown. The barrier retires app voices and buses and waits for the
@@ -153,9 +159,9 @@ frame-task brackets and hardware counters retain their task ownership.
 
 `autana sound stats` reports `sizeof` values from the firmware and, in a
 development build, `stack_min_free` from `uxTaskGetStackHighWaterMark()` in
-bytes, sampled on the mixer task. `SOUND_MIXER_STACK_BASE_BYTES` plus the named
-`SOUND_MIXER_STACK_MARGIN_BYTES` owns the stack budget; the margin stays in
-place while board measurements establish the required headroom.
+bytes, sampled on the mixer task. `SOUND_MIXER_STACK_PLAYBACK_BYTES` rounds
+the A308 playback peak of 1,964 bytes up to 2,048 bytes.
+`SOUND_MIXER_STACK_MARGIN_BYTES` adds 512 bytes of headroom.
 
 The allocation formula below includes control and renderer state and the
 configured stack. Board heap deltas include the IDF's channel, codec and
@@ -167,9 +173,9 @@ comparison uses boot headroom between builds, not just the initialization delta.
 | Allocation | Computed owner |
 |---|---|
 | Renderer voice table | `sizeof mixer.voices` (`voices` field in stats) |
-| Mixer/control state | `sizeof mixer + sizeof control`, plus the dev snapshot, capture sequence and stack watermark (`mixer`, includes voice table) |
+| Mixer/control state | `sizeof mixer + sizeof control`, plus the dev snapshot, capture handshake and stack watermark (`mixer`, includes voice table) |
 | Queue payload and control | `sizeof queue_storage + sizeof queue_control` (`queue`) |
-| Task stack, including PCM scratch buffers | `SOUND_MIXER_TASK_STACK` (`stack`) |
+| Task stack, including PCM scratch buffers | `SOUND_MIXER_TASK_STACK`, 2,560 bytes (`stack`) |
 | TX DMA sample payload | `AUDIO_CODEC_DMA_BLOCKS * AUDIO_CODEC_BLOCK_SAMPLES * sizeof(int16_t)` (`tx_samples`) |
 | Accounted permanent total | `mixer + queue + stack + tx_samples` (voice table already included) |
 | Driver and scheduler overhead | IDF DMA descriptors, channel/data interfaces, codec state, task control block and allocation headers |

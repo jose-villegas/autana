@@ -19,8 +19,7 @@
 #define SOUND_GAIN_FACTOR_SCALE     (SOUND_GAIN_MAX_PCT * SOUND_GAIN_MAX_PCT)
 
 typedef enum {
-    SOUND_COMMAND_CAPTURE_OPEN,
-    SOUND_COMMAND_CAPTURE_CLOSE,
+    SOUND_COMMAND_CAPTURE_PARK,
     SOUND_COMMAND_PLAY,
     SOUND_COMMAND_STOP,
     SOUND_COMMAND_GAIN,
@@ -32,6 +31,25 @@ typedef enum {
 
 #define SOUND_COMMAND_KIND_BITS 4
 _Static_assert(SOUND_COMMAND_APP_EXIT < (1u << SOUND_COMMAND_KIND_BITS), "command kind must fit the queue");
+
+#define SOUND_CAPTURE_OK           1u
+#define SOUND_CAPTURE_FAILED       0u
+#define SOUND_CAPTURE_RESULT_BITS  1
+#define SOUND_CAPTURE_SEQUENCE_MAX (UINT32_MAX >> SOUND_CAPTURE_RESULT_BITS)
+
+typedef struct {
+    uint32_t sequence;
+    uint32_t requested;
+    uint32_t parked;
+} sound_capture_t;
+
+uint32_t sound_capture_begin(sound_capture_t* capture);
+bool sound_capture_park(sound_capture_t* capture, uint32_t sequence);
+bool sound_capture_is_parked(const sound_capture_t* capture, uint32_t sequence);
+void sound_capture_resume(sound_capture_t* capture, uint32_t sequence);
+uint32_t sound_capture_result(uint32_t sequence, bool ok);
+bool sound_capture_matches(uint32_t result, uint32_t sequence);
+bool sound_capture_succeeded(uint32_t result, uint32_t sequence);
 
 typedef struct {
     sound_voice_t voice;

@@ -5,27 +5,24 @@
 #include "sound/sound_mixer.h"
 #include "sound/sound_status.h"
 
-#define SOUND_MIXER_TASK_CORE          1
+#define SOUND_MIXER_TASK_CORE            1
 /* Preempts PRESENT_TASK_PRIORITY and JOB_CORE1_PRIORITY on core 1,
  * then blocks in I2S for most of each block. */
-#define SOUND_MIXER_TASK_PRIORITY      6
-#define SOUND_MIXER_STACK_BASE_BYTES   2048
-#define SOUND_MIXER_STACK_MARGIN_BYTES 1024
-#define SOUND_MIXER_TASK_STACK         (SOUND_MIXER_STACK_BASE_BYTES + SOUND_MIXER_STACK_MARGIN_BYTES)
+#define SOUND_MIXER_TASK_PRIORITY        6
+/* A308 playback peak: 1,964 bytes, rounded up. Capture setup runs on the caller task. */
+#define SOUND_MIXER_STACK_PLAYBACK_BYTES 2048
+#define SOUND_MIXER_STACK_MARGIN_BYTES   512
+#define SOUND_MIXER_TASK_STACK           (SOUND_MIXER_STACK_PLAYBACK_BYTES + SOUND_MIXER_STACK_MARGIN_BYTES)
 /* One play and control call per voice fit between drains. */
-#define SOUND_MIXER_QUEUE_DEPTH        16
-#define SOUND_QUEUE_WAIT_TICKS         0
+#define SOUND_MIXER_QUEUE_DEPTH          16
+#define SOUND_QUEUE_WAIT_TICKS           0
 /* A reader exceeding this is stuck; abort rather than free memory it may still read. */
-#define SOUND_EXIT_READ_TIMEOUT_MS     5000
-/* A stalled RX reconfiguration must not hold the console indefinitely. */
-#define SOUND_CAPTURE_TIMEOUT_MS       5000
+#define SOUND_EXIT_READ_TIMEOUT_MS       5000
+/* A stalled mixer must not hold a capture caller indefinitely. */
+#define SOUND_CAPTURE_TIMEOUT_MS         5000
 /* Yield between barrier checks so the mixer can retire its current read. */
-#define SOUND_CONTROL_POLL_MS          1
-#define SOUND_CAPTURE_OK               1
-#define SOUND_CAPTURE_FAILED           0
-#define SOUND_CAPTURE_RESULT_BITS      1
-#define SOUND_CAPTURE_SEQUENCE_MAX     (UINT32_MAX >> SOUND_CAPTURE_RESULT_BITS)
-#define SOUND_MIXER_BLOCK_FRAMES       AUDIO_CODEC_BLOCK_SAMPLES
+#define SOUND_CONTROL_POLL_MS            1
+#define SOUND_MIXER_BLOCK_FRAMES         AUDIO_CODEC_BLOCK_SAMPLES
 
 typedef struct {
     sound_control_t control;

@@ -5,6 +5,53 @@
 #include "math/scalar/mathi.h"
 #include "math/scalar/maths.h"
 
+uint32_t
+sound_capture_begin(sound_capture_t* capture) {
+    if (capture->requested) {
+        return 0;
+    }
+    capture->sequence = (capture->sequence % SOUND_CAPTURE_SEQUENCE_MAX) + 1;
+    capture->requested = capture->sequence;
+    return capture->sequence;
+}
+
+bool
+sound_capture_park(sound_capture_t* capture, uint32_t sequence) {
+    if (!sequence || capture->requested != sequence) {
+        return false;
+    }
+    capture->parked = sequence;
+    return true;
+}
+
+bool
+sound_capture_is_parked(const sound_capture_t* capture, uint32_t sequence) {
+    return sequence && capture->parked == sequence;
+}
+
+void
+sound_capture_resume(sound_capture_t* capture, uint32_t sequence) {
+    if (capture->requested == sequence) {
+        capture->requested = 0;
+        capture->parked = 0;
+    }
+}
+
+uint32_t
+sound_capture_result(uint32_t sequence, bool ok) {
+    return (sequence << SOUND_CAPTURE_RESULT_BITS) | (ok ? SOUND_CAPTURE_OK : SOUND_CAPTURE_FAILED);
+}
+
+bool
+sound_capture_matches(uint32_t result, uint32_t sequence) {
+    return sequence && (result >> SOUND_CAPTURE_RESULT_BITS) == sequence;
+}
+
+bool
+sound_capture_succeeded(uint32_t result, uint32_t sequence) {
+    return sound_capture_matches(result, sequence) && (result & SOUND_CAPTURE_OK) != 0;
+}
+
 static bool
 control_open(const sound_control_t* control) {
     return control->ready && control->app_generation != SOUND_APP_GENERATION_NONE;

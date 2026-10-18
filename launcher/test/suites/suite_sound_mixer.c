@@ -517,7 +517,7 @@ test_sound_free_slot_precedes_steal_and_handles_wrap(void) {
 static void
 test_sound_invalid_arguments_leave_control_and_command_unchanged(void) {
     fixture_t* f = fixture();
-    sound_command_t command = {.kind = SOUND_COMMAND_CAPTURE_CLOSE};
+    sound_command_t command = {.kind = SOUND_COMMAND_CAPTURE_PARK};
     const sound_command_t before = command;
     const sound_control_t saved = f->control;
     sound_play_opts_t opts = {.bus = SOUND_BUS_SFX, .gain_pct = SOUND_GAIN_MAX_PCT + 1};
@@ -825,8 +825,88 @@ test_sound_exact_public_boundaries_and_app_generation_wrap(void) {
     TEST_ASSERT_EQUAL_UINT32(SOUND_APP_GENERATION_FIRST + 1, f->control.app_generation);
 }
 
+static void
+test_sound_capture_sequence_wrap_and_results(void) {
+    sound_capture_t capture = {0};
+    TEST_ASSERT_FALSE(sound_capture_matches(sound_capture_result(0, true), 0));
+    const uint32_t edges[] = {0, 1, SOUND_CAPTURE_SEQUENCE_MAX - 1, SOUND_CAPTURE_SEQUENCE_MAX};
+    for (size_t i = 0; i < sizeof edges / sizeof edges[0]; i++) {
+        capture.sequence = edges[i];
+        const uint32_t sequence = sound_capture_begin(&capture);
+        TEST_ASSERT_EQUAL_UINT32(edges[i] == SOUND_CAPTURE_SEQUENCE_MAX ? 1 : edges[i] + 1, sequence);
+        const uint32_t ok = sound_capture_result(sequence, true);
+        const uint32_t failed = sound_capture_result(sequence, false);
+        TEST_ASSERT_EQUAL_UINT32(sequence * (SOUND_CAPTURE_OK + 1u) + SOUND_CAPTURE_OK, ok);
+        TEST_ASSERT_TRUE(sound_capture_matches(ok, sequence));
+        TEST_ASSERT_TRUE(sound_capture_matches(failed, sequence));
+        TEST_ASSERT_TRUE(sound_capture_succeeded(ok, sequence));
+        TEST_ASSERT_FALSE(sound_capture_succeeded(failed, sequence));
+        sound_capture_resume(&capture, sequence);
+    }
+}
+
+static void
+test_sound_capture_park_resume_holds_voice_position(void) {
+    fixture_t* f = fixture();
+    (void)play(f, NULL);
+    render(f, 0, 1);
+    render(f, TEST_STARTUP_MS, 1);
+    const sound_mix_voice_t before = f->mixer.voices[0];
+    sound_capture_t capture = {0};
+    const uint32_t sequence = sound_capture_begin(&capture);
+    TEST_ASSERT_FALSE(sound_capture_is_parked(&capture, sequence));
+    TEST_ASSERT_TRUE(sound_capture_park(&capture, sequence));
+    TEST_ASSERT_EQUAL_UINT32(0, sound_capture_begin(&capture));
+    TEST_ASSERT_TRUE(sound_capture_is_parked(&capture, sequence));
+    TEST_ASSERT_EQUAL_MEMORY(&before, &f->mixer.voices[0], sizeof before);
+    sound_capture_resume(&capture, sequence);
+    TEST_ASSERT_FALSE(sound_capture_is_parked(&capture, sequence));
+    render(f, TEST_STARTUP_MS + 1, 1);
+    TEST_ASSERT_EQUAL_UINT32(before.source.cursor.position + 1, f->mixer.voices[0].source.cursor.position);
+}
+
+static void
+test_sound_capture_timeout_before_park_rejects_late_command(void) {
+    sound_capture_t capture = {0};
+    const uint32_t timed_out = sound_capture_begin(&capture);
+    sound_capture_resume(&capture, timed_out);
+    TEST_ASSERT_FALSE(sound_capture_park(&capture, timed_out));
+    const uint32_t next = sound_capture_begin(&capture);
+    TEST_ASSERT_NOT_EQUAL(timed_out, next);
+    TEST_ASSERT_FALSE(sound_capture_park(&capture, timed_out));
+    TEST_ASSERT_FALSE(sound_capture_succeeded(sound_capture_result(timed_out, true), next));
+    TEST_ASSERT_TRUE(sound_capture_park(&capture, next));
+    sound_capture_resume(&capture, timed_out);
+    TEST_ASSERT_TRUE(sound_capture_is_parked(&capture, next));
+    sound_capture_resume(&capture, next);
+    TEST_ASSERT_FALSE(sound_capture_is_parked(&capture, next));
+}
+
+static void
+test_sound_capture_timeout_after_park_releases_mixer(void) {
+    sound_capture_t capture = {0};
+    const uint32_t timed_out = sound_capture_begin(&capture);
+    TEST_ASSERT_TRUE(sound_capture_park(&capture, timed_out));
+    const uint32_t late = sound_capture_result(timed_out, true);
+    sound_capture_resume(&capture, timed_out);
+    TEST_ASSERT_FALSE(sound_capture_is_parked(&capture, timed_out));
+    const uint32_t next = sound_capture_begin(&capture);
+    TEST_ASSERT_FALSE(sound_capture_matches(late, next));
+    TEST_ASSERT_FALSE(sound_capture_succeeded(late, next));
+    TEST_ASSERT_TRUE(sound_capture_park(&capture, next));
+    TEST_ASSERT_FALSE(sound_capture_is_parked(&capture, timed_out));
+    TEST_ASSERT_TRUE(sound_capture_succeeded(sound_capture_result(next, true), next));
+    sound_capture_resume(&capture, next);
+    TEST_ASSERT_FALSE(sound_capture_park(&capture, 0));
+    TEST_ASSERT_FALSE(sound_capture_is_parked(&capture, 0));
+}
+
 void
 run_sound_mixer_suite(void) {
+    RUN_TEST(test_sound_capture_sequence_wrap_and_results);
+    RUN_TEST(test_sound_capture_park_resume_holds_voice_position);
+    RUN_TEST(test_sound_capture_timeout_before_park_rejects_late_command);
+    RUN_TEST(test_sound_capture_timeout_after_park_releases_mixer);
     RUN_TEST(test_sound_exit_window_rejects_controls_and_none_commands);
     RUN_TEST(test_sound_producer_admission_cannot_cross_teardown);
     RUN_TEST(test_sound_stale_bus_commands_cannot_change_next_session);

@@ -28,12 +28,11 @@ static const char* failure;
 static bool attempted;
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static size_t stack_min_free_bytes;
-static uint32_t capture_sequence;
+static sound_capture_t capture;
 
 static struct {
     sound_amp_state_t amp;
     uint32_t positions[SOUND_VOICE_COUNT];
-    bool tone_sources[SOUND_VOICE_COUNT];
 } render_snapshot;
 #endif
 
@@ -214,11 +213,11 @@ sound_get_stats(sound_stats_t* out) {
                            .stack_bytes = SOUND_MIXER_TASK_STACK,
                            .dma_sample_bytes = AUDIO_CODEC_DMA_BLOCKS * AUDIO_CODEC_BLOCK_SAMPLES * sizeof(int16_t),
                            .mixer_bytes = sizeof mixer + sizeof control};
-    out->mixer_bytes += sizeof stack_min_free_bytes + sizeof render_snapshot + sizeof capture_sequence;
+    out->mixer_bytes += sizeof stack_min_free_bytes + sizeof render_snapshot + sizeof capture;
     out->stack_min_free_bytes = stack_min_free_bytes;
     out->stack_margin_bytes = SOUND_MIXER_STACK_MARGIN_BYTES;
     for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
-        out->positions[i] = render_snapshot.tone_sources[i] ? 0 : render_snapshot.positions[i];
+        out->positions[i] = render_snapshot.positions[i];
     }
     portEXIT_CRITICAL(&control_lock);
 }
@@ -250,16 +249,20 @@ drain_commands(void) {
             break;
         }
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        if (command.kind == SOUND_COMMAND_CAPTURE_OPEN || command.kind == SOUND_COMMAND_CAPTURE_CLOSE) {
-            bool ok = true;
-            if (command.kind == SOUND_COMMAND_CAPTURE_OPEN) {
-                ok = audio_in_open();
-            } else {
-                audio_in_close();
+        if (command.kind == SOUND_COMMAND_CAPTURE_PARK) {
+            portENTER_CRITICAL(&control_lock);
+            const bool ok = sound_capture_park(&capture, command.app_generation);
+            portEXIT_CRITICAL(&control_lock);
+            (void)xTaskNotify(command.waiter, sound_capture_result(command.app_generation, ok), eSetValueWithOverwrite);
+            for (;;) {
+                portENTER_CRITICAL(&control_lock);
+                const bool parked = sound_capture_is_parked(&capture, command.app_generation);
+                portEXIT_CRITICAL(&control_lock);
+                if (!parked) {
+                    break;
+                }
+                timing_sleep_ms(SOUND_CONTROL_POLL_MS);
             }
-            const uint32_t result =
-                (command.app_generation << SOUND_CAPTURE_RESULT_BITS) | (ok ? SOUND_CAPTURE_OK : SOUND_CAPTURE_FAILED);
-            (void)xTaskNotify(command.waiter, result, eSetValueWithOverwrite);
         } else
 #endif
         {
@@ -280,7 +283,6 @@ publish_render_snapshot(size_t stack_free) {
     stack_min_free_bytes = stack_free;
     render_snapshot.amp = mixer.amp;
     for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
-        render_snapshot.tone_sources[i] = mixer.voices[i].tone_source;
         render_snapshot.positions[i] = mixer.voices[i].tone_source ? 0 : mixer.voices[i].source.cursor.position;
     }
 }
@@ -343,12 +345,8 @@ mixer_task(void* unused) {
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static bool
-capture_request(sound_command_kind_t kind) {
+capture_request(uint32_t sequence) {
     const int64_t deadline = timing_now_us() + ((int64_t)SOUND_CAPTURE_TIMEOUT_MS * MATH_US_PER_MS);
-    portENTER_CRITICAL(&control_lock);
-    capture_sequence = (capture_sequence % SOUND_CAPTURE_SEQUENCE_MAX) + 1;
-    const uint32_t sequence = capture_sequence;
-    portEXIT_CRITICAL(&control_lock);
     uint32_t result;
     (void)xTaskNotifyWait(0, UINT32_MAX, &result, 0);
     bool sent = false;
@@ -359,8 +357,10 @@ capture_request(sound_command_kind_t kind) {
         portEXIT_CRITICAL(&control_lock);
         uint32_t generation;
         if (begin_command(false, &generation)) {
-            const sound_command_t command = {
-                .app_generation = sequence, .bus = SOUND_BUS_SYSTEM, .waiter = waiter, .kind = kind};
+            const sound_command_t command = {.app_generation = sequence,
+                                             .bus = SOUND_BUS_SYSTEM,
+                                             .waiter = waiter,
+                                             .kind = SOUND_COMMAND_CAPTURE_PARK};
             finish_command(&command);
             sent = true;
         }
@@ -376,21 +376,43 @@ capture_request(sound_command_kind_t kind) {
         if (remaining_ms <= 0 || xTaskNotifyWait(0, UINT32_MAX, &result, pdMS_TO_TICKS(remaining_ms)) != pdTRUE) {
             return false;
         }
-        if ((result >> SOUND_CAPTURE_RESULT_BITS) == sequence) {
-            return (result & SOUND_CAPTURE_OK) != 0;
+        if (sound_capture_matches(result, sequence)) {
+            return sound_capture_succeeded(result, sequence);
         }
     }
     return false;
 }
 
+static bool
+capture_change(bool open) {
+    portENTER_CRITICAL(&control_lock);
+    const uint32_t sequence = control.ready ? sound_capture_begin(&capture) : 0;
+    portEXIT_CRITICAL(&control_lock);
+    if (!sequence) {
+        return false;
+    }
+    bool ok = capture_request(sequence);
+    if (ok) {
+        if (open) {
+            ok = audio_in_open();
+        } else {
+            audio_in_close();
+        }
+    }
+    portENTER_CRITICAL(&control_lock);
+    sound_capture_resume(&capture, sequence);
+    portEXIT_CRITICAL(&control_lock);
+    return ok;
+}
+
 bool
 sound_capture_open(void) {
-    return capture_request(SOUND_COMMAND_CAPTURE_OPEN);
+    return capture_change(true);
 }
 
 bool
 sound_capture_close(void) {
-    return capture_request(SOUND_COMMAND_CAPTURE_CLOSE);
+    return capture_change(false);
 }
 
 #endif
