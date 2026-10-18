@@ -477,7 +477,7 @@ planes are not normalized.
 
 `goertzel_t` accumulates one frequency across sample blocks with a float
 recurrence, including non-integer DFT bins.<sup>[[72]](../Citations.md#72)</sup>
-The caller supplies frequency and sample rate in Hz, with $`0 \le hz < sample\_rate\_hz/2`$, and a positive full scale.
+The caller supplies frequency and sample rate in Hz, with $`0 < hz < sample\_rate\_hz/2`$ (at DC the float power cancels), and a positive full scale.
 
 | Function | Result |
 |---|---|
