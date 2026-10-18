@@ -1,29 +1,6 @@
-/*
- * render_host: render REAL firmware drawing code on a host, to a BMP.
- *
- * One procedure, many scenes. A SCENE is a translation unit declaring the
- * `render_scene` below: what to draw, at which quarter turn, over how many
- * frames, and what synthetic touch to feed each one. render_host.c owns
- * main(), gfx_init() on a malloc framebuffer, the frame loop, the rotation
- * to the read orientation and the BMP encode from console/capture/screenshot.h.
- *
- * Common options, parsed here, the rest handed to the scene's own
- * options():
- *
- *     --quarter N   as display.h numbers a quarter turn (default: declared)
- *     --panel       write the framebuffer the way the panel holds it, which
- *                   is the shape a device capture has; without it the image
- *                   comes out the way the board is READ at that quarter
- *     --frames N    how many frames to draw before the last one is written
- *     --dt N        milliseconds per frame
- *     -o PATH       output file (default: stdout)
- *     --video PATH  also append every drawn frame to an uncompressed AVI at
- *                   PATH, in the same orientation the BMP gets, see
- *                   render_video.h
- *
- * A scene stands in the data its screen normally gets: a fixture table, a
- * timestamp, so nothing rendered here is a reading from any board.
- */
+/* The shared host harness renders callbacks with synthetic time and input;
+ * no live board data enters the capture. CLI options are documented in
+ * docs/tools/Render-Harness.md. */
 #ifndef RENDER_HOST_H
 #define RENDER_HOST_H
 
@@ -73,6 +50,9 @@ typedef struct {
 
     void (*draw)(const render_frame_t* frame);
 } render_scene_t;
+
+/* Fully qualified tunable names use the same validation as the console. */
+bool render_host_set_tunable(const char* name, int32_t value);
 
 /* Every scene defines exactly one of these. */
 extern const render_scene_t render_scene;

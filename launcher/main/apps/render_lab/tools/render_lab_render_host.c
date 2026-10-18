@@ -1,15 +1,6 @@
-/*
- * render_lab_render_host - this app itself, entered and stepped on a host,
- * started on the scene --scene names.
- *
- * A render_host.h scene: the real enter()/frame(), the real gfx and ui
- * layers, no board, no IDF header, no clock or finger but the harness's own.
- * app_*.c is excluded from the host test runner as hardware-facing, but it
- * asks nothing of the board, so this links the real app_registry.c - its
- * own APP_REGISTER() constructor lands the one app that runs here - and
- * only display_quarter_now() and shell_home_edge() below stand in for the
- * shell itself.
- */
+/* The host harness enters the registered screen with synthetic time and
+ * input. Hardware-facing entry code links here because it needs no board
+ * access. */
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -27,7 +18,6 @@
 #include "render/resolution/resolution.h"
 #include "render_host.h"
 #include "scene/scene_shell.h"
-#include "services/tune.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 
@@ -55,33 +45,11 @@ option_value(int argc, char** argv, const char* name, const char** out) {
     return true;
 }
 
-static bool tune_set;
-
-static void
-note_reply(const char* line) {
-    tune_set = strncmp(line, "TUNE_OK", 7) == 0;
-    if (!tune_set) {
-        (void)fprintf(stderr, "render_lab_render_host: %s\n", line);
-    }
-}
-
-/* Sets one render_lab tunable, the way the console would. */
-static bool
-set_tunable(const char* name, int value) {
-    char line[TUNE_NAME_MAX + 16];
-    if (snprintf(line, sizeof line, "SET render_lab.%s %d", name, value) < 0) {
-        return false;
-    }
-    tune_set = false;
-    (void)tune_handle_line(line, note_reply);
-    return tune_set;
-}
-
 static bool
 view_from_name(const char* name) {
     const int view = render_context_debug_view_named(name);
     if (view != RENDER_DEBUG_VIEW_UNKNOWN) {
-        return set_tunable("view", view);
+        return render_host_set_tunable("render_lab.view", view);
     }
     (void)fprintf(stderr, "render_lab_render_host: --view is ");
     render_context_print_debug_views(stderr);
@@ -124,7 +92,8 @@ options(int argc, char** argv) {
     }
     apply_flags(argc, argv);
     render_lab_start_scene_key = scene;
-    return (view == NULL || view_from_name(view)) && (scale == NULL || set_tunable("scale", atoi(scale)));
+    return (view == NULL || view_from_name(view))
+           && (scale == NULL || render_host_set_tunable("render_lab.scale", atoi(scale)));
 }
 
 int
