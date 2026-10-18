@@ -1,0 +1,8 @@
+# What the render_lab scene's renders hash to, one per line.
+# Re-pinned deliberately, after looking at the images:
+#     ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh --update-baseline
+menu-sponza-landscape 0d5e932786f383027894c3cc36a4116d44a768677077d85c1a01cc7fbd2d128e
+menu-sponza-portrait 6c48a57c16e1d44c551f36dc222f9fd2600ea665a12cad9dcd5b02098efa2beb
+menu-capybara-landscape d8578a0fccc39eeb456bec05d1d137039262231c4c3ec0ebab649963560b637d
+menu-capybara-portrait 3d022c902dcebda4567d107ee15e3c156c22be0d5115bdbb033535af65ba9873
+menu-capybara-clips 0bc17d220fd7f27c2338ffe0ca2add2e3bae9d2a29ce8ceb4e5ea1efb00459b0

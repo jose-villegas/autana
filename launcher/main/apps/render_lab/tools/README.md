@@ -19,6 +19,14 @@ across compilers. HUD renders also format a `double` fps readout.
 The fps text comes from the host fixture - time the board with a device
 capture.
 
+### Menu renders
+
+`--menu` presses BOOT on the first frame, so the render shows the scene menu
+instead of the scene. `--tap X,Y` adds one press and release there, in panel
+pixels: `menu-capybara-clips` opens the clip list. The menu draws over a
+solid background with no float on its path, so these renders are pinned in
+`render_lab_render_baseline.txt`.
+
 ### Debug views
 
 `--view shaded|depth|tiles|motion|meshlets` selects the declared context view.
