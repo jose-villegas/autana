@@ -30,11 +30,9 @@ bool scene_has_active_camera(void);
 void scene_render(uint32_t dt_ms, int quarter, int width, int height);
 bool scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target);
 
-/* The frame operations above on the panel's pictures and orientation. Compose marks a
- * compatible half picture for expansion, otherwise the full framebuffer dirty;
+/* The two above on the panel's pictures and orientation. Compose marks an
+ * exact-half picture for expansion, otherwise the full framebuffer dirty;
  * it does nothing without an active camera. */
-void scene_shell_render_at_quarter(uint32_t dt_ms, int quarter);
-void scene_shell_compose_at_quarter(uint32_t dt_ms, int quarter);
 void scene_shell_render(uint32_t dt_ms);
 void scene_shell_compose(uint32_t dt_ms);
 

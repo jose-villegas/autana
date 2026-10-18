@@ -24,15 +24,14 @@ capture.
 `--tune NAME=VALUE` is repeatable and uses the console tune protocol.
 `--live-tune NAME=VALUE` sends the same command after scene entry; the
 scene frame hook applies it to the next rendered frame.
-Defaults are defined by the `TUNE` declarations in `render_lab_view.c` and
-`tests/render_lab_test.c`; the scale constants live in `render_lab_view.h`.
+Defaults are defined by the `TUNE` declarations in `render_lab_view.c`;
+the scale constants live in `render_lab_view.h`.
 
 | Tunable (`render_lab.` prefix) | Meaning | Default owner |
 |---|---|---|
 | `scale` | Width divisor in hundredths | `TUNE(render_lab, scale, ...)` |
 | `rows` | Height divisor; zero follows scale, positive values clamp to `RENDER_LAB_SCALE_UNIT` | `TUNE(render_lab, rows, ...)` |
 | `scanline` | Repeated-row darkening; see `UPSCALE_SCANLINE_UNIT` | `TUNE(render_lab, scanline, ...)` |
-| `perf_quarter` | Perf suite orientation override | `TUNE(render_lab, perf_quarter, ...)` |
 
 The scene applies these settings each frame. Perf suites read them at test
 entry and log the raster size, effective rows divisor, strength and quarter.
@@ -98,7 +97,7 @@ git grep -n 'gfx_color_scale\|gfx_color_pair_scale\|GFX_COLOR_SCALE_UNIT\|paired
 
 Keep height-only fixed scaling, `raster_fits_half_picture()`,
 `raster_compose_size()`, `rows`, the general `--tune` option and plain-row
-regression coverage. Keep `perf_quarter` as test infrastructure.
+regression coverage.
 
 The engine contract is in
 [Dynamic resolution](../../../../../docs/render/Dynamic-Resolution.md).
@@ -271,3 +270,19 @@ influence-limit displacements are in
 [`measurements.json`](images/skin-frame/measurements.json). This tool bakes its
 own LMSH with the meshlet writer, so its vertex layout is independent
 of a scene pack's bake. The sheets use the poses named on the command line.
+
+## Perf capture quarters
+
+The render perf suites use the shared `tests/r3d_perf_quarters.h` table.
+Every timed render window runs with an explicit portrait or landscape
+viewport; full-frame windows hold the display quarter. Rows include
+`quarter=portrait` or `quarter=landscape`.
+The skin, animate and animation-step windows have no quarter because they
+do not render. The frame harness requires a held quarter and its
+fixture releases the hold at exit. Raster sizes stay in physical panel
+axes; the camera viewport applies the quarter turn.
+
+`report_performance.py` reports each render quarter separately. The skin
+budget is `SKIN_PERF_BUDGET_NS_PER_VERTEX` in `tests/skin_perf_log.h`.
+Meshlet and reference-quality report readers select portrait for their
+matching reference views.

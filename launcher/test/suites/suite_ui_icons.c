@@ -19,6 +19,7 @@
 #include "ui/controls/ui_icons.h"
 
 #ifndef DEVICE_BUILD
+#include "draw/draw_image_format.h"
 #include "test_asset_dir.h"
 
 #define PACK        "suite_ui_icons"

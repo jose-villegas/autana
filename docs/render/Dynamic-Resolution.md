@@ -209,3 +209,10 @@ sh launcher/tools/render/render_doc_images.sh
 
 For the pipeline captures and GPU-stage tables, see
 [Render-Pipeline.md](Render-Pipeline.md#refreshing).
+
+The raster-scale perf suite forces portrait and landscape for every timed
+window. Its rows carry `quarter=portrait` or `quarter=landscape`, including
+calibration, policy flights, span splits and refit costs. Render sizes are
+physical panel sizes; the viewport quarter determines their upright axes.
+`dynres_report.py --quarter portrait` selects one quarter for its tables and
+chart; `--quarter landscape` selects the other. The default is portrait.
