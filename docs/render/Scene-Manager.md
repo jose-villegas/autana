@@ -89,9 +89,9 @@ sequenceDiagram
 `scene_render()` touches no framebuffer, so it runs while the last frame is
 still being sent.
 
-`scene_compose()` writes the half picture when the draw is exactly half the
-panel width and its height divides the half-panel height. Otherwise it writes
-the full framebuffer, once the send is done.
+`scene_compose()` expands the draw into the half picture when it is exactly
+half the panel width and its height divides the half-panel height. Otherwise
+it writes the full framebuffer, once the send is done.
 
 If `scene_render()` did not run (the first frame after activating), compose
 draws first. An app gets this overlap whenever a camera is active, with or

@@ -19,26 +19,26 @@ across compilers. HUD renders also format a `double` fps readout.
 The fps text comes from the host fixture - time the board with a device
 capture.
 
+`render_lab_render --tune NAME=VALUE` applies a console tuning before the scene
+enters; repeat it for more settings. `--live-tune NAME=VALUE` applies it after
+entry, so the frame hook changes the next frame without reloading the scene.
+
 ### Camera presentation
 
-`render_lab.present` selects NEAREST (0), SCANLINE (1), or DOUBLE (2),
-matching `camera_present_t`. Its default is NEAREST. Both scene frame hooks
-apply it to their camera; perf suites use the same sizing and compose helpers.
-
-`--tune NAME=VALUE` applies a console tuning before entry; repeat it for
-multiple settings. `--live-tune NAME=VALUE` applies after entry, so the frame
-hook changes the next rendered frame without reloading the scene.
+`render_lab.present` selects the scene camera's present mode: NEAREST (0, the
+default), SCANLINE (1) or DOUBLE (2), in `camera_present_t` order. Both scenes
+apply it every frame, and the perf suites size and compose the same way.
 
 ```sh
 autana tune render_lab.present 1
-autana suite sponza_perf --set render_lab.present=1
-sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh --scene sponza-fitted-full \
-    --tune render_lab.present=1 --no-hud --panel -o /tmp/present.bmp
+autana suite run_sponza_perf_suite --set render_lab.present=1
+sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh --build-only -o /tmp/present
+/tmp/present/render_lab_render --scene sponza-fitted-full --tune render_lab.present=1 --no-hud -o /tmp/present/scan.bmp
 ```
 
-A308, seeded `perf_compare` across eight seeds, in milliseconds:
+Seeded `perf_compare` on A308, 2026-10-18, eight seeds per side, ms per frame:
 
-| Scene | NEAREST ms | SCANLINE ms | Δ |
+| Scene | NEAREST | SCANLINE | Δ |
 |---|---:|---:|---:|
 | sponza fitted-full | 45.4 | 32.9 | −27.7% |
 | sponza full | 43.1 | 31.2 | −27.7% |
@@ -48,9 +48,16 @@ A308, seeded `perf_compare` across eight seeds, in milliseconds:
 | sponza flat-fitted | 32.9 | 25.4 | −22.7% |
 | capybara render (paused) | 6.75 | 3.87 | −42.7% |
 
-DOUBLE measures about 0.8 ms faster than SCANLINE on every Sponza bake in a
-scoped A/B across both quarters. Scanlines follow panel rows and darken the
-clear background too. See the engine's [presentation GIFs](../../../../../docs/render/Dynamic-Resolution.md#camera-presentation).
+A separate scoped A/B on the same day (one flash, two interleaved repeats) timed
+all three modes on sponza fitted-full, in ms:
+
+| Quarter | NEAREST | DOUBLE | SCANLINE |
+|---|---:|---:|---:|
+| portrait | 45.4 | 31.9 | 32.7 |
+| landscape | 42.4 | 30.3 | 31.1 |
+
+The lines follow the panel's rows and darken the clear background too. The
+engine page shows the [presentation GIFs](../../../../../docs/render/Dynamic-Resolution.md#camera-presentation).
 
 ### Debug views
 

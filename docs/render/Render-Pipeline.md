@@ -495,7 +495,9 @@ picture or the panel's framebuffer; raster fills it through precomputed row
 and column maps, the two cores taking halves.
 
 A frame whose width is exactly half and whose height divides the half height
-is upscaled into a half picture, which present doubles as it sends.
+expands into a half picture, which present doubles as it sends. A camera's
+present mode uses this to draw half the rows
+([camera presentation](Dynamic-Resolution.md#camera-presentation)).
 
 | Reads | Writes | Settings |
 |---|---|---|

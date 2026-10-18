@@ -31,7 +31,7 @@ sees, measures how well the refit tracks a view the fit did not cover.
 
 The cost a policy holds is the part that scales: the draw and the compose
 each step pays. Calibration uses the render context's compose decision,
-including expansion into the half picture for compatible steps.
+including expansion into the half picture for steps that fit it.
 The present and whatever an app draws over the scene are not in it. The
 predictor culls once with the picture's unfitted lens, before it chooses a
 size, and draws from the scratch block's census list with a fitted lens. The
@@ -164,32 +164,63 @@ What the table shows:
 
 ## Camera presentation
 
-A camera's `present` selects how its picture reaches the panel. Set it with
-`scene_camera_set_present()`; the default is `CAMERA_PRESENT_NEAREST`.
+A camera can draw half the rows and let the present fill the rest.
+`CAMERA_PRESENT_SCANLINE` darkens every second row, `CAMERA_PRESENT_DOUBLE`
+repeats it, and `CAMERA_PRESENT_NEAREST` (the default) draws the full height.
+
+One call turns it on; there are no other settings:
 
 ```c
-scene_camera_set_present(scene, cam, CAMERA_PRESENT_SCANLINE);  // half rows drawn, every second row dark
-scene_camera_set_present(scene, cam, CAMERA_PRESENT_DOUBLE);    // half rows drawn, rows doubled
-scene_camera_set_present(scene, cam, CAMERA_PRESENT_NEAREST);   // default
+scene_camera_set_present(scene, cam, CAMERA_PRESENT_SCANLINE);
+scene_camera_set_present(scene, cam, CAMERA_PRESENT_DOUBLE);
+scene_camera_set_present(scene, cam, CAMERA_PRESENT_NEAREST);
 ```
 
-NEAREST keeps the chosen resolution and ordinary nearest-neighbour copy.
-SCANLINE and DOUBLE halve the height chosen by fixed scale or dynamic resolution.
-SCANLINE darkens the repeated row to `UPSCALE_SCANLINE_KEEP`, half brightness.
+| Mode | Rows drawn | Look |
+|---|---|---|
+| `CAMERA_PRESENT_NEAREST` | The height the fixed scale or dynamic resolution chose | Today's picture |
+| `CAMERA_PRESENT_SCANLINE` | Half that height | Each row shown twice, the second at `UPSCALE_SCANLINE_KEEP` (half brightness) |
+| `CAMERA_PRESENT_DOUBLE` | Half that height | Each row shown twice, unchanged |
 
-DOUBLE repeats it unchanged. Uneven row maps, including a non-divisible
-resolution step, use the ordinary upscale without darkening for that frame.
-Compatible sizes compose through the half picture before panel expansion.
+The halved draw expands into the half picture when its height divides the half
+height, as in `render_context_compose()` above. When the row map is uneven, such
+as a dynamic-resolution step that does not divide, the frame is drawn as NEAREST.
 
-| Presentation | Cost relative to NEAREST |
-|---|---|
-| NEAREST | Ordinary draw and copy |
-| SCANLINE | Fewer rows to rasterize; adds a darkened row copy |
-| DOUBLE | The same reduced draw; plain repeated-row copy |
+The saving comes from the halved draw: fewer rows, spans and edge steps. SCANLINE
+adds a darkened copy of every second row; DOUBLE costs a little less. On a dense
+benchmark scene SCANLINE cut the frame by about a quarter; the measured tables
+are in the test app's tools README.
 
-The demo-image pipeline renders the same fitted-full flythrough in each mode.
-These GIFs retain native size in landscape; panel rows run vertically for the viewer.
+The GIFs show the same flythrough in each mode. The dark lines run along the
+panel's rows, which is vertical in this orientation.
 
 | NEAREST | SCANLINE | DOUBLE |
 |---|---|---|
 | ![Nearest presentation](../images/render/sponza-present-nearest.gif) | ![Scanline presentation](../images/render/sponza-present-scanline.gif) | ![Doubled presentation](../images/render/sponza-present-double.gif) |
+
+## Refreshing
+
+The tables and the chart are made by the docs generator,
+`launcher/tools/render/render_doc_images.sh`, like every other measured page,
+from the board capture and per-path quality CSVs in `data/`:
+`dynamic-resolution-quality-camera.csv` and
+`dynamic-resolution-quality-tour.csv`.
+The capture is the suite's `scale_split`, `scale_spans`, `dynres_step` and
+`dynres_frames` lines; each CSV is made by the test scene's quality script, which
+renders the path at each size on a host and scores it. A new board run
+replaces the capture, and the generator does the rest:
+
+```sh
+autana suite run_raster_scale_perf_suite --flash --out docs/render/data/dynamic-resolution-board.log
+sh launcher/tools/render/render_doc_images.sh
+```
+
+For the pipeline captures and GPU-stage tables, see
+[Render-Pipeline.md](Render-Pipeline.md#refreshing).
+
+The raster-scale perf suite forces portrait and landscape for every timed
+window. Its rows carry `quarter=portrait` or `quarter=landscape`, including
+calibration, policy flights, span splits and refit costs. Render sizes are
+physical panel sizes; the viewport quarter determines their upright axes.
+`dynres_report.py --quarter portrait` selects one quarter for its tables and
+chart; `--quarter landscape` selects the other. The default is portrait.

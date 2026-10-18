@@ -9,6 +9,8 @@
 # OBJECT_flat, OBJECT_fitted, OBJECT_fitted_full and OBJECT_flat_fitted.
 #
 # <out-tree> holds images in render/ and measured blocks in tables/.
+# --meshlets-only makes only the meshlet sheet; --present-only makes only the
+# three camera present GIFs (nearest, scanline, double) of OBJECT_fitted_full.
 #
 # Run from the repository root with $PYTHON set to a Python that has Pillow and numpy
 # (the fidelity sheet also needs launcher/tools/r3d/requirements.txt, found by find_r3d_python);
