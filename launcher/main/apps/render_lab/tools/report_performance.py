@@ -139,6 +139,8 @@ def _parse_capture(text, tagged, source=None, quarter=None):
 
 def budget(text, repeat="autana suite run_capybara_perf_suite --flash --perf-scope"):
     observed = capture_quarters(text)
+    if observed:
+        capture_quarters(text, expected=QUARTERS)
     quarters = [q for q in QUARTERS if q in observed] or [None]
     source = _capture_runs(text)
     parsed = {q: _parse_capture(select_quarter(text, q or "portrait", observed), bool(observed), source, q)

@@ -44,7 +44,7 @@ class CaptureQuarters(unittest.TestCase):
                                                   'mesh quarter=landscape': 20})
 
     def test_render_logs_use_the_shared_quarter_format(self):
-        owner = capture.QUARTER_HEADER.parent
+        owner = Path(__file__).resolve().parents[3] / "main/apps/render_lab/tests"
         non_render = ('phase=%s', 'PERF TARGET skin ', 'stage=%s', 'dynres_refit_cost:')
         stages = {'SKIN_PERF_STAGE_SKIN', 'SKIN_PERF_STAGE_ANIMATE', 'SKIN_PERF_STAGE_ANIMATION_STEP'}
         for suite in ('sponza', 'raster_scale', 'capybara'):

@@ -192,7 +192,8 @@ of a scene pack's bake. The sheets use the poses named on the command line.
 
 The render perf suites use the shared `tests/r3d_perf_quarters.h` table.
 Every timed render window runs with an explicit portrait or landscape
-viewport; full-frame windows hold the display quarter. Rows include `quarter=portrait` or `quarter=landscape`.
+viewport; full-frame windows hold the display quarter. Rows include
+`quarter=portrait` or `quarter=landscape`.
 The skin, animate and animation-step windows have no quarter because they
 do not render. The frame harness requires a held quarter and its
 fixture releases the hold at exit. Raster sizes stay in physical panel

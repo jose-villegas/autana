@@ -48,8 +48,8 @@ class SkinningBoard(unittest.TestCase):
         parsed.assert_called_once()
         self.assertIn("Full frame quarter=portrait", rendered)
         self.assertIn("Full frame quarter=landscape", rendered)
-        self.assertIn("Scene render quarter=portrait",
-                      budget("\n".join(line for line in lines if "quarter=landscape" not in line)))
+        with self.assertRaisesRegex(ValueError, "missing render quarter landscape"):
+            budget("\n".join(line for line in lines if "quarter=landscape" not in line))
         self.assertIn("quarter=portrait", rendered)
         self.assertIn("quarter=landscape", rendered)
         for quarter in report_performance.QUARTERS:
@@ -76,7 +76,8 @@ class SkinningBoard(unittest.TestCase):
             lines.append(f"{PREFIX} stage=frame paused={paused} mean_us={500-paused} quarter=landscape")
         lines.append(f"{PREFIX} stage=frame_delta mean_us=1 quarter=landscape")
         self.assertEqual(parse_capture("\n".join(lines), "landscape")["render"], (100, 99, 1))
-        self.assertIn("Scene render quarter=landscape", budget("\n".join(lines)))
+        with self.assertRaisesRegex(ValueError, "missing render quarter portrait"):
+            budget("\n".join(lines))
         lines.extend(line.replace("quarter=landscape", "quarter=portrait").replace("mean_us=100", "mean_us=700")
                      for line in list(lines) if "quarter=landscape" in line)
         lines.extend(line.replace("mean_us=100", "mean_us=900") for line in text.splitlines()

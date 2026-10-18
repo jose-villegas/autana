@@ -8,6 +8,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "scripts/device"))
 from device_lock import board_label, normalise_board
 from device_report import find_manifest_entry
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from build.c_header import read_define
+
 
 def build_ids(text) -> list:
     """Every id a capture names, in `BUILD_ID=<id>` or `BUILD_ID <id>` form, wherever it sits in a line."""
@@ -48,8 +51,9 @@ def require_same_board(boards: Mapping[str, str | None]) -> str | None:
     return next(iter(groups), None)
 
 
-QUARTER_HEADER = Path(__file__).resolve().parents[2] / "main/apps/render_lab/tests/r3d_perf_quarters.h"
-QUARTERS = tuple(re.findall(r'{"([^"\n]+)",\s*DISPLAY_\w+}', QUARTER_HEADER.read_text(encoding="utf-8")))
+QUARTER_HEADER = Path(__file__).resolve().parents[2] / "main/display/display.h"
+QUARTERS = tuple(read_define(QUARTER_HEADER, "DISPLAY_" + name + "_NAME")
+                 for name in ("PORTRAIT", "LANDSCAPE"))
 QUARTER_RE = re.compile(r"\bquarter=(\S+)")
 
 
