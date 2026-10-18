@@ -1,9 +1,6 @@
 name: Board CI
 
 on:
-  # Nightly plus on demand: a run holds a board for the whole self-test, so it stays out of daytime board jobs.
-  schedule:
-    - cron: '0 2 * * *'
   workflow_dispatch:
 
 concurrency:
@@ -59,11 +56,7 @@ jobs:
       - name: Prepare the shell image and console tests
         run: |
           export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
-          # The tests' packages go in a venv and pip cache of this run, not the runner's.
-          PY=$(. scripts/lib/python.sh && find_python)
-          "$PY" -m venv "$RUNNER_TEMP/device-tests"
-          PIP_CACHE_DIR="$RUNNER_TEMP/pip-cache" "$RUNNER_TEMP/device-tests/Scripts/python" -m pip install \
-            -r launcher/test/device/requirements.txt
+          bash scripts/ci/board-prepare.sh
           autana build diag
 
       - name: Self-test and console tests under one board lock
@@ -71,28 +64,7 @@ jobs:
         run: |
           rm -f "$RUNNER_TEMP/board-ci-selftest.log"
           export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
-          cat > "$RUNNER_TEMP/board-ci-steps.sh" <<'SH'
-          set -eo pipefail
-          mkdir -p .records/device/pytest-logs
-          selftest_status=0
-          autana selftest | tee "$RUNNER_TEMP/board-ci-selftest.log" || selftest_status=$?
-          console_status=0
-          autana flash diag || console_status=$?
-          if [ "$console_status" -eq 0 ]; then
-            "$RUNNER_TEMP/device-tests/Scripts/python" -m pytest launcher/test/device --embedded-services idf,serial \
-              --build-dir build.diag --port "$("$RUNNER_TEMP/device-tests/Scripts/python" scripts/device/device.py resolve-port | tr -d "\r")" \
-              --skip-autoflash y --root-logdir .records/device/pytest-logs \
-              --junitxml=.records/device/pytest-logs/results.xml \
-              | tee .records/device/pytest-logs/pytest.log || console_status=$?
-          fi
-          echo "Console pytest exit status: $console_status" >> "$GITHUB_STEP_SUMMARY"
-          if [ -f .records/device/pytest-logs/pytest.log ]; then
-            tail -n 1 .records/device/pytest-logs/pytest.log >> "$GITHUB_STEP_SUMMARY"
-          fi
-          if [ "$selftest_status" -ne 0 ]; then exit "$selftest_status"; fi
-          exit "$console_status"
-          SH
-          if autana --wait 1800 lock run -- "$(cygpath -w "$BASH")" "$RUNNER_TEMP/board-ci-steps.sh"; then
+          if autana --wait 1800 lock run -- "$(cygpath -w "$BASH")" scripts/ci/board-steps.sh; then
             exit 0
           else
             status=$?

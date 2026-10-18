@@ -111,6 +111,7 @@ class SweepTests(ShellJobTests, unittest.TestCase):
                 return fake(command, log, timeout)
 
             self.assertEqual(tool.run(args, runner), 1)
+            self.assertTrue((args.out / "plan.json").read_text().startswith("{\n  "))
             saved = json.loads((args.out / "plan.json").read_text())
             self.assertTrue(all("metrics" not in capture for capture in saved["captures"]))
 

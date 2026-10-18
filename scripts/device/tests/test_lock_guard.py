@@ -93,7 +93,7 @@ def replace_lock_once(store, started):
             time.sleep(0.05)
         with store.guard(BOARD_A):
             lock = store.read_json(store.lock_path(BOARD_A))
-            store.write_json(store.lock_path(BOARD_A), dict(lock, token="other"))
+            device_lock.write_json(store.lock_path(BOARD_A), dict(lock, token="other"))
 
     threading.Thread(target=replace, daemon=True).start()
 
@@ -485,6 +485,11 @@ class HoldProcessTests(Store):
         waiter.communicate(timeout=10)
         self.assertEqual(waiter.returncode, 0)
 
+    def test_run_accepts_duration_estimate(self):
+        result = self.run_command("run", "--estimate", "30m", "--", sys.executable, "-c", "pass",
+                                  env=self.environment)
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_run_releases_or_keeps_on_failure_and_child_sees_token(self):
         for code in (0, 7):
             result = self.run_command("run", "--", sys.executable, "-c",
@@ -741,7 +746,7 @@ class HoldProcessTests(Store):
             record = self.store.read_json(self.store.lock_path(BOARD_A))
             self.assertEqual(record["token"], token)
             record["expires_at"] = self.store.now()
-            self.store.write_json(self.store.lock_path(BOARD_A), record)
+            device_lock.write_json(self.store.lock_path(BOARD_A), record)
         started = time.monotonic()
         stdout, stderr = nested.communicate(timeout=2 * device.HeldLock.HEARTBEAT_SECONDS)
         self.assertNotEqual(nested.returncode, 0)
@@ -783,10 +788,10 @@ class PrimitiveGuardTests(Store):
         with plugged(usb(BOARD_A, "COM5")), device.HeldLock(store, BOARD_A, "a", "send", 0) as held:
             self.assertEqual(device.locked_port(), "COM5")
             path = store.lock_path(BOARD_A)
-            store.write_json(path, dict(held.held, token="replacement"))
+            device_lock.write_json(path, dict(held.held, token="replacement"))
             with self.assertRaises(device.LockLost):
                 device.locked_port()
-            store.write_json(path, held.held)
+            device_lock.write_json(path, held.held)
             clock[0] += device_lock.DEFAULT_STALE_SECONDS + 1
             with self.assertRaises(device.LockLost):
                 device.locked_port()
@@ -816,7 +821,7 @@ class PrimitiveGuardTests(Store):
             self.assertEqual(second(device_lock.DEFAULT_STALE_SECONDS + 1), "True")
             with self.assertRaises(device.LockLost):
                 device.require_live_lock()
-            self.store.write_json(self.store.lock_path(BOARD_A), held.held)
+            device_lock.write_json(self.store.lock_path(BOARD_A), held.held)
 
     def test_check_token_refuses_a_foreign_missing_stale_or_dead_lock(self):
         held = self.store.acquire(BOARD_A, "agent", "flash")
@@ -829,9 +834,9 @@ class PrimitiveGuardTests(Store):
         self.assertNotEqual(check("foreign"), 0)
         self.store.lock_path(BOARD_A).unlink()
         self.assertNotEqual(check(held["token"]), 0)
-        self.store.write_json(self.store.lock_path(BOARD_A), dict(held, heartbeat_at=1))
+        device_lock.write_json(self.store.lock_path(BOARD_A), dict(held, heartbeat_at=1))
         self.assertNotEqual(check(held["token"]), 0)
-        self.store.write_json(self.store.lock_path(BOARD_A),
+        device_lock.write_json(self.store.lock_path(BOARD_A),
                               dict(held, heartbeat_at=time.time(), pid=99999999))
         self.assertNotEqual(check(held["token"]), 0)
 
@@ -911,7 +916,7 @@ class BoardTests(Store):
         self.assertEqual(text, f"{device.short_id(BOARD_B)} {BOARD_B} COM7\n  unlocked\n")
 
     def test_status_keeps_a_reclaimable_lock_visible(self):
-        self.store.write_json(self.store.lock_path(BOARD_A), {
+        device_lock.write_json(self.store.lock_path(BOARD_A), {
             "acquired_at": 1, "board": BOARD_A, "heartbeat_at": 1, "host": "elsewhere",
             "kind": "listen", "owner": "gone", "pid": 1, "purpose": "listen", "token": "t"})
         with plugged():
@@ -995,7 +1000,7 @@ class LostLockTests(Store):
     def test_a_replaced_lock_raises_at_exit_and_records_the_loss(self):
         with self.assertRaises(device.LockLost):
             with device.HeldLock(self.store, BOARD_A, "a", "send", 0) as held:
-                self.store.write_json(self.store.lock_path(BOARD_A),
+                device_lock.write_json(self.store.lock_path(BOARD_A),
                                       dict(held.held, token="replacement"))
         self.assertEqual(durations_rows(self.store)[-1]["error"], "device lock was lost")
 
@@ -1317,7 +1322,7 @@ class FlashTests(Store):
         def write_then_lose(command, stdout, **unused_keywords):
             stdout.write(b"BUILD_ID=abc\n")
             lock = self.store.read_json(self.store.lock_path(BOARD_A))
-            self.store.write_json(self.store.lock_path(BOARD_A), dict(lock, token="other"))
+            device_lock.write_json(self.store.lock_path(BOARD_A), dict(lock, token="other"))
 
         with self.assertRaises(device.LockLost):
             self.flash(write=write_then_lose)
