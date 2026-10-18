@@ -32,6 +32,8 @@
 #include "ui/ui.h"
 
 static int shell_quarter;
+static int option_count;
+static char** option_args;
 
 /* --size WxH: the scene drawn at that render size, either axis on its own,
  * as one dynamic-resolution step; 0 keeps the scene's own scale. */
@@ -59,17 +61,18 @@ static bool tune_set;
 
 static void
 note_reply(const char* line) {
-    tune_set = strncmp(line, "TUNE_OK", 7) == 0;
+    tune_set = strncmp(line, "TUNE_OK ", sizeof "TUNE_OK " - 1) == 0;
     if (!tune_set) {
         (void)fprintf(stderr, "render_lab_render_host: %s\n", line);
     }
 }
 
-/* Sets one render_lab tunable, the way the console would. */
+/* The console protocol owns tunable names and range validation. */
 static bool
 set_tunable(const char* name, int value) {
     char line[TUNE_NAME_MAX + 16];
-    if (snprintf(line, sizeof line, "SET render_lab.%s %d", name, value) < 0) {
+    const int length = snprintf(line, sizeof line, "SET %s %d", name, value);
+    if (length < 0 || (size_t)length >= sizeof line) {
         return false;
     }
     tune_set = false;
@@ -81,12 +84,43 @@ static bool
 view_from_name(const char* name) {
     const int view = render_context_debug_view_named(name);
     if (view != RENDER_DEBUG_VIEW_UNKNOWN) {
-        return set_tunable("view", view);
+        return set_tunable("render_lab.view", view);
     }
     (void)fprintf(stderr, "render_lab_render_host: --view is ");
     render_context_print_debug_views(stderr);
     (void)fprintf(stderr, ", not %s\n", name);
     return false;
+}
+
+static bool
+tune_options(int argc, char** argv, const char* option) {
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], option) != 0) {
+            continue;
+        }
+        if (++i == argc) {
+            return false;
+        }
+        if (strchr(argv[i], '=') == NULL) {
+            return false;
+        }
+        const size_t length = strlen(argv[i]);
+        char* line = malloc(sizeof "SET " + length);
+        if (line == NULL) {
+            return false;
+        }
+        memcpy(line, "SET ", sizeof "SET " - 1);
+        strcpy(line + sizeof "SET " - 1, argv[i]);
+        char* equal = strchr(line, '=');
+        *equal = ' ';
+        tune_set = false;
+        (void)tune_handle_line(line, note_reply);
+        free(line);
+        if (!tune_set) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static void
@@ -122,9 +156,12 @@ options(int argc, char** argv) {
         (void)fprintf(stderr, "render_lab_render_host needs --scene <key>\n");
         return false;
     }
+    option_count = argc;
+    option_args = argv;
     apply_flags(argc, argv);
     render_lab_start_scene_key = scene;
-    return (view == NULL || view_from_name(view)) && (scale == NULL || set_tunable("scale", atoi(scale)));
+    return (view == NULL || view_from_name(view)) && (scale == NULL || set_tunable("render_lab.scale", atoi(scale)))
+           && tune_options(argc, argv, "--tune");
 }
 
 int
@@ -159,7 +196,7 @@ setup(int quarter) {
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
         render_context_set_dynamic_resolution(render_context_main(), &one, NULL, 0);
     }
-    return true;
+    return tune_options(option_count, option_args, "--live-tune");
 }
 
 static void
