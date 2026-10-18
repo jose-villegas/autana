@@ -106,24 +106,52 @@ class StretchTests(unittest.TestCase):
                            [10., 0., 0.], [20., 0., 0.], [10., 10., 0.]])
         tris = np.array([[0, 1, 2], [3, 4, 5]])
         mesh = FitMesh(points, np.ones_like(points), tris, np.zeros(len(tris)), 1, np.arange(len(points)))
-        fitted = points.copy()
-        ratio = STRETCH_RATIO + 1
-        fitted[1, 0] = np.sqrt(2 * ratio ** 2 - 1)
-        report = stretch_report(mesh, mesh._replace(points=fitted), np.arange(len(tris)))
-        self.assertEqual(len(report["parts"]), 2)
-        expected = float(100 * (ratio > STRETCH_RATIO))
-        self.assertEqual(report["parts"][0]["share"], expected)
-        self.assertEqual(report["parts"][1]["share"], 0)
-        self.assertEqual(report["small"], dict(triangles=1, share=expected))
-        self.assertEqual(report["rest"]["share"], 0)
-        self.assertEqual(report["worst"][0]["part"], report["parts"][0]["part"])
-        self.assertAlmostEqual(report["parts"][0]["mean_start_edge"], (2 + np.sqrt(2)) / 3)
+        for ratio, expected in ((STRETCH_RATIO - 0.5, 0.0), (STRETCH_RATIO, 0.0), (STRETCH_RATIO + 1, 100.0)):
+            with self.subTest(ratio=ratio):
+                fitted = points * ratio
+                fitted[3:] = points[3:]
+                report = stretch_report(mesh, mesh._replace(points=fitted), np.arange(len(tris)))
+                self.assertEqual(len(report["parts"]), 2)
+                self.assertEqual(report["parts"][0]["share"], expected)
+                self.assertEqual(report["parts"][1]["share"], 0)
+                self.assertEqual(report["small"], dict(triangles=1, share=expected))
+                self.assertEqual(report["rest"]["share"], 0)
+                self.assertEqual(report["worst"][0]["part"], report["parts"][0]["part"])
+                self.assertAlmostEqual(report["parts"][0]["mean_start_edge"], (2 + np.sqrt(2)) / 3)
         report = stretch_report(mesh, mesh._replace(points=fitted, tris=tris[1:]), np.array([1]))
         self.assertEqual(len(report["parts"]), 1)
         self.assertEqual(report["parts"][0]["triangles"], 1)
         self.assertEqual(report["parts"][0]["part"], 1)
         self.assertEqual(report["small"]["triangles"], 0)
         self.assertEqual(report["rest"], dict(triangles=1, share=0.0))
+
+    def test_part_size_uses_unique_edges_before_pruning(self):
+        from r3d.appearance_simplify import stretch_report
+
+        points = np.array([[0., 0., 0.], [1., 0., 0.], [0., 1., 0.], [4., 0., 0.],
+                           [10., 0., 0.], [13., 0., 0.], [10., 3., 0.]])
+        tris = np.array([[0, 1, 2], [1, 3, 2], [4, 5, 6]])
+        mesh = FitMesh(points, np.ones_like(points), tris, np.zeros(len(tris)), 1, np.arange(len(points)))
+        expected = (1 + 1 + np.sqrt(2) + 3 + np.sqrt(17)) / 5
+        for kept in (np.arange(len(tris)), np.array([1, 2])):
+            with self.subTest(kept=kept):
+                report = stretch_report(mesh, mesh._replace(tris=tris[kept]), kept)
+                self.assertAlmostEqual(report["parts"][0]["mean_start_edge"], expected)
+                self.assertEqual(report["small"], dict(triangles=len(kept) - 1, share=0.0))
+
+    def test_collapsed_start_triangle_counts_as_stretched(self):
+        from r3d.appearance_simplify import stretch_report, triangle_stretch
+
+        points = np.zeros((2, 3))
+        tris = np.array([[0, 0, 1]])
+        mesh = FitMesh(points, np.ones_like(points), tris, np.zeros(len(tris)), 1, np.arange(len(points)))
+        fitted = points.copy()
+        fitted[1, 0] = 1
+        fitted_mesh = mesh._replace(points=fitted)
+        self.assertTrue(np.isinf(triangle_stretch(points, fitted, mesh)[0]))
+        report = stretch_report(mesh, fitted_mesh, np.array([0]))
+        self.assertEqual(report["parts"][0]["share"], 100.0)
+        self.assertEqual(report["rest"], dict(triangles=1, share=100.0))
 
 
 @unittest.skipIf(torch is None, "needs PyTorch")
