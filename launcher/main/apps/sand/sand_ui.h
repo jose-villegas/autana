@@ -135,9 +135,10 @@ typedef struct {
     uint8_t radius_px[SAND_MODE_COUNT];
 
     /* Set by open_panel() when a finger is already down as
-     * the panel opens. Cleared on the first frame input->down goes false -
-     * a genuine lift, not any particular click, since a click is no longer
-     * seen directly here (see "WHO HIT-TESTS AND WHO DECIDES" above). While
+     * the panel opens. Cleared on the first frame after the lift (neither
+     * down nor released) - the UI reports that touch's tap on the release
+     * frame itself, after sand_ui_step() (see "WHO HIT-TESTS AND WHO
+     * DECIDES" above). While
      * armed, sand_ui_tile_clicked() and sand_ui_mode_clicked() ignore
      * whatever they are told was clicked. */
     bool swallow_release;
