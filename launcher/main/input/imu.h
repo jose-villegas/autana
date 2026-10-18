@@ -33,7 +33,7 @@
 #define IMU_ODR_CODE       5
 #define IMU_ODR_DIVIDER    (1U << IMU_ODR_CODE)
 #define IMU_ODR_HZ         (IMU_ODR_BASE_HZ / IMU_ODR_DIVIDER)
-#define IMU_SAMPLE_US      ((uint32_t)(MATH_US_PER_S / IMU_ODR_HZ + 0.5))
+#define IMU_SAMPLE_US      ((uint32_t)((MATH_US_PER_S / IMU_ODR_HZ) + 0.5))
 #define IMU_FIFO_SAMPLES   128
 
 /* Oldest first; overflow means samples preceding out[0] were lost. Returns -1 on a bus error. */

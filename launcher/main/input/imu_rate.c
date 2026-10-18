@@ -22,7 +22,7 @@ imu_rate_update(imu_rate_t* rate, int samples, int64_t drain_us, bool gap) {
     const int64_t elapsed = drain_us - rate->start_us;
     if (elapsed >= IMU_RATE_WINDOW_US) {
         if (rate->samples > 0) {
-            const int64_t estimate = (elapsed + rate->samples / 2U) / rate->samples;
+            const int64_t estimate = (elapsed + (rate->samples / 2U)) / rate->samples;
             if (estimate * PERCENT_SCALE >= IMU_SAMPLE_US * (PERCENT_SCALE - IMU_RATE_BOUND_PCT)
                 && estimate * PERCENT_SCALE <= IMU_SAMPLE_US * (PERCENT_SCALE + IMU_RATE_BOUND_PCT)) {
                 rate->sample_us = (uint32_t)estimate;
