@@ -1,6 +1,7 @@
 """check_math_docs.py: the page tracks the headers, in both directions."""
 
 import pathlib
+import shutil
 import sys
 import tempfile
 import unittest
@@ -24,7 +25,7 @@ def make_tree(root, page_extra="", template_extra="", header_extra="", skip_sect
         if family == empty_template:
             body = "#define MATH_DEFINE_X(P)\n"
         (root / check_math_docs.FAMILY_DIRS[family]).mkdir(parents=True, exist_ok=True)
-        (root / check_math_docs.FAMILY_DIRS[family] / (family + "_template.h")).write_text(body.replace("MATH_DEFINE_X", "MATH_DEFINE_" + family.upper()))
+        (root / check_math_docs.FAMILY_DIRS[family] / (family + "_template.h")).write_text(("typedef struct { int x; } P##_t;\n" + body).replace("MATH_DEFINE_X", "MATH_DEFINE_" + family.upper()))
     for directory, body in (("scalar", scalar_extra), ("motion", outside_extra)):
         headers = math.parent / directory
         headers.mkdir()
@@ -32,7 +33,19 @@ def make_tree(root, page_extra="", template_extra="", header_extra="", skip_sect
     (math / "vec2f.h").write_text("MATH_DEFINE_VEC2(vec2f, float)\n" + header_extra)
     page = "".join("### %s\n\n| `P_add(` |\n\n" % f for f in check_math_docs.FAMILIES if f != skip_section)
     page += "`vec2f`\n" + page_extra
-    (root / "docs/math/README.md").write_text(page)
+    write_pages(root, page)
+
+
+def write_pages(root, page):
+    body, marker, extra = page.partition("\n`vec2f`")
+    sections = {}
+    for family, directory in check_math_docs.FAMILY_DIRS.items():
+        path = check_math_docs.family_page(directory)
+        sections.setdefault(path, []).append(check_math_docs.section(body, family))
+    for path, bodies in sections.items():
+        (root / path).write_text("\n".join(bodies))
+    (root / check_math_docs.PAGE).write_text(
+        "\n".join("[page](%s)" % p.name for p in sections) + "\n" + marker + extra)
 
 
 def problems_for(**kwargs):
@@ -42,6 +55,122 @@ def problems_for(**kwargs):
 
 
 class CheckMathDocs(unittest.TestCase):
+    def test_family_sections_accept_both_heading_levels(self):
+        for heading in ("##", "###"):
+            with self.subTest(heading=heading):
+                text = heading + " vec2 (`f i s x`)\n\n`P_add(a)`\n\n## vec3\n`P_other(a)`\n"
+                body = check_math_docs.section(text, "vec2")
+                self.assertIn("`P_add(a)`", body)
+                self.assertNotIn("P_other", body)
+
+    def test_family_must_be_on_its_folder_page(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            make_tree(root)
+            source = root / check_math_docs.MATH
+            target = source.parent / "curves"
+            target.mkdir()
+            for name in ("vec2_template.h", "vec2f.h"):
+                (source / name).rename(target / name)
+            problems = check_math_docs.check(root)
+            self.assertTrue(any("Curves.md has no family section for `vec2`" in p for p in problems))
+            page = root / "docs/math/Curves.md"
+            page.write_text(check_math_docs.section((root / "docs/math/Linear.md").read_text(), "vec2"))
+            index = root / check_math_docs.PAGE
+            index.write_text(index.read_text() + "\n[curves](Curves.md)\n")
+            self.assertEqual([], check_math_docs.check(root))
+
+    def test_motion_public_declaration_and_type_are_required(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            make_tree(root)
+            header = root / "launcher/packages/math/include/math/motion/helpers.h"
+            header.write_text("typedef struct { int x; } orbit_t;\nvoid orbit_step(orbit_t* o);\n")
+            problems = check_math_docs.check(root)
+            self.assertTrue(any("orbit_t" in p for p in problems))
+            self.assertTrue(any("orbit_step" in p for p in problems))
+            (root / "docs/math/Motion.md").write_text("`orbit_t` `orbit_step(o)`\n")
+            index = root / check_math_docs.PAGE
+            index.write_text(index.read_text() + "\n[motion](Motion.md)\n")
+            self.assertEqual([], check_math_docs.check(root))
+
+
+    def test_motion_declarations_with_general_return_types_are_required(self):
+        for result in ("bool", "int", "uint32_t", "const unsigned long", "const char*", "void* const"):
+            with self.subTest(result=result), tempfile.TemporaryDirectory() as d:
+                root = pathlib.Path(d)
+                make_tree(root)
+                header = root / "launcher/packages/math/include/math/motion/helpers.h"
+                header.write_text(result + " orbit_ready(void);\n")
+                self.assertTrue(any("orbit_ready" in p for p in check_math_docs.check(root)))
+                (root / "docs/math/Motion.md").write_text("`orbit_ready()`\n")
+                index = root / check_math_docs.PAGE
+                index.write_text(index.read_text() + "\n[motion](Motion.md)\n")
+                self.assertEqual([], check_math_docs.check(root))
+
+    def test_real_headers_and_pages_require_declarations_and_generated_functions(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            for directory in (check_math_docs.MATH.parent, check_math_docs.PAGE.parent):
+                shutil.copytree(REPO / directory, root / directory)
+            header = root / "launcher/packages/math/include/math/motion/orbit_motion.h"
+            original = header.read_text()
+            for result in ("bool", "int"):
+                with self.subTest(result=result):
+                    header.write_text(original + "\n" + result + " orbit_undocumented(void);\n")
+                    self.assertTrue(any("orbit_undocumented" in p for p in check_math_docs.check(root)))
+            header.write_text(original)
+            page = root / "docs/math/Projection.md"
+            original = page.read_text()
+            for name in ("projectf_clip_near", "projectx_clip_near"):
+                with self.subTest(name=name):
+                    page.write_text(original.replace(name, "omitted"))
+                    self.assertTrue(any(name in p for p in check_math_docs.check(root)))
+            page.write_text(original)
+            self.assertEqual([], check_math_docs.check(root))
+
+    def test_non_family_instantiation_functions_are_required_on_any_page(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            make_tree(root)
+            directory = root / "launcher/packages/math/include/math/projection"
+            directory.mkdir()
+            (directory / "clip_template.h").write_text(
+                "#define MATH_DEFINE_CLIP_NEAR(P) MATH_CLIP(P, clip_near)\n"
+                "#define MATH_CLIP(P, OP) static inline int P##_##OP(int n) { return n; }\n")
+            (directory / "projectf.h").write_text("MATH_DEFINE_CLIP_NEAR(projectf)\n")
+            self.assertTrue(any("projectf_clip_near" in p for p in check_math_docs.check(root)))
+            page = root / "docs/math/Projection.md"
+            page.write_text("`projectf_clip_near(n)`\n")
+            index = root / check_math_docs.PAGE
+            index.write_text(index.read_text() + "\n[projection](Projection.md)\n")
+            self.assertEqual([], check_math_docs.check(root))
+            index.write_text(index.read_text() + page.read_text())
+            page.write_text("")
+            self.assertEqual([], check_math_docs.check(root))
+
+    def test_inline_math_limit_reports_each_page(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            make_tree(root)
+            for page in (root / "docs/math").glob("*.md"):
+                original = page.read_text()
+                page.write_text(original + "\n$" + "x" * (check_math_docs.MAX_INLINE_MATH_CHARS + 1) + "$\n")
+                self.assertTrue(any(p.startswith(page.relative_to(root).as_posix() + ":")
+                                    and "inline math" in p for p in check_math_docs.check(root)))
+                page.write_text(original)
+
+    def test_index_must_link_every_page(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            make_tree(root)
+            (root / "docs/math/Extra.md").write_text("# Extra\n")
+            self.assertTrue(any("index" in p and "Extra.md" in p for p in check_math_docs.check(root)))
+            index = root / check_math_docs.PAGE
+            index.write_text(index.read_text() + "\n[extra](Extra.md)\n")
+            self.assertEqual([], check_math_docs.check(root))
+
+
     def test_the_real_page_matches_the_real_headers(self):
         self.assertEqual([], check_math_docs.check(REPO))
 
@@ -53,13 +182,13 @@ class CheckMathDocs(unittest.TestCase):
                 geometry = root / "launcher/packages/math/include/math/geometry"
                 geometry.mkdir(exist_ok=True)
                 (geometry / (family + "_template.h")).write_text(
-                    "#define MATH_DEFINE_%s(P, T, OPS) \\\n" % family.upper()
+                    "typedef struct { int x; } P##_t;\n#define MATH_DEFINE_%s(P, T, OPS) \\\n" % family.upper()
                     + "    static inline T P##_%s(P##_t r) { return r.x; }\n" % function
                 )
                 prefix = family + "f"
                 (geometry / (prefix + ".h")).write_text(
                     "MATH_DEFINE_%s(%s, float, mathf)\n" % (family.upper(), prefix))
-                page = root / check_math_docs.PAGE
+                page = root / "docs/math/Geometry.md"
                 text = page.read_text()
                 section = "### %s\n\n| `P_add(` |\n\n" % family
                 entry = "`P_%s(r)`" % function
@@ -158,10 +287,10 @@ class CheckMathDocs(unittest.TestCase):
                 "#define MATH_OP(P, OP) static inline int P##_##OP(int a) { return a; }\n"
             )
             self.assertEqual(
-                ["docs/math/README.md: the vec2 section lacks `P_wobble(`"],
+                ["docs/math/Linear.md: the vec2 section lacks `P_wobble(`"],
                 check_math_docs.check(root),
             )
-            page = root / check_math_docs.PAGE
+            page = root / "docs/math/Linear.md"
             page.write_text(page.read_text().replace("### vec2\n", "### vec2\n`P_wobble(a)`\n"))
             self.assertEqual([], check_math_docs.check(root))
 
@@ -191,10 +320,10 @@ class CheckMathDocs(unittest.TestCase):
         problems = problems_for(page_extra="`mathi_wrap(a)`\n")
         self.assertTrue(any("mathi_wrap(" in p for p in problems), problems)
 
-    def test_a_page_entry_defined_only_outside_linear_and_scalar_fails(self):
+    def test_a_motion_function_missing_from_motion_page_fails(self):
         definition = "static inline int\nmathi_wrap(int a) {\n    return a;\n}\n"
         problems = problems_for(outside_extra=definition, page_extra="`mathi_wrap(a)`\n")
-        self.assertTrue(any("mathi_wrap(" in p for p in problems), problems)
+        self.assertTrue(any("mathi_wrap" in p for p in problems), problems)
 
     def test_an_identity_initializer_the_page_lacks_fails(self):
         extra = "#define TRANSFORMQ_IDENTITY {0}\n"
@@ -208,7 +337,7 @@ class CheckMathDocs(unittest.TestCase):
             self.assertTrue(any("vec2q" in p for p in check_math_docs.check(d)))
 
     def test_a_missing_family_section_fails(self):
-        self.assertTrue(any("no `### quat` section" in p for p in problems_for(skip_section="quat")))
+        self.assertTrue(any("no family section for `quat`" in p for p in problems_for(skip_section="quat")))
 
     def test_a_template_that_defines_nothing_fails_instead_of_passing_on_nothing(self):
         self.assertTrue(any("defines no functions" in p for p in problems_for(empty_template="mat4")))
@@ -254,7 +383,7 @@ def swizzle_problems(sections=None, page_extra="", vec2_n=2):
         page = "".join(
             "### %s\n\n| `P_add(` |\n%s\n" % (f, sections.get(f, "")) for f in check_math_docs.FAMILIES
         )
-        (root / "docs/math/README.md").write_text(page + "`vec2f` `vec3f`\n" + page_extra)
+        write_pages(root, page + "`vec2f` `vec3f`\n" + page_extra)
         return check_math_docs.check(d)
 
 
@@ -267,11 +396,11 @@ class Swizzles(unittest.TestCase):
 
     def test_a_swizzle_pattern_missing_from_its_source_section_fails(self):
         problems = swizzle_problems(sections={"vec3": COMPLETE["vec3"]})
-        self.assertEqual(["docs/math/README.md: the vec2 section lacks `P_<c1><c2>(`"], problems)
+        self.assertEqual(["docs/math/Linear.md: the vec2 section lacks `P_<c1><c2>(`"], problems)
 
     def test_a_cross_template_function_belongs_to_its_first_argument_family(self):
         problems = swizzle_problems(sections={"vec2": COMPLETE["vec2"], "vec3": "| `P_<c1><c2>(v)` |\n"})
-        self.assertEqual(["docs/math/README.md: the vec3 section lacks `P_from_xy(`"], problems)
+        self.assertEqual(["docs/math/Linear.md: the vec3 section lacks `P_from_xy(`"], problems)
 
     def test_only_the_swizzles_the_templates_make_may_be_named(self):
         self.assertEqual([], swizzle_problems(page_extra="`vec3f_zx(v)` `vec2f_yy(v)` `vec3f_from_xy(xy, z)`\n"))
