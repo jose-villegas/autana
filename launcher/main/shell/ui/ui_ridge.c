@@ -10,6 +10,7 @@
 
 #include "asset/asset_store.h"
 #include "asset/asset_table.h"
+#include "asset/asset_table_format.h"
 #include "core/memory.h"
 #include "draw/draw.h"
 #include "draw/draw_dither.h"

@@ -1157,8 +1157,6 @@ class PreparedSnapshotTests(unittest.TestCase):
             with mock.patch.object(device, 'run_to_end', side_effect=build):
                 result = device.build_snapshot(['unused'], launcher / device.BUILD_DIRS['dev'], image)
             self.assertEqual(result, 'locked-dev')
-            # Its ELF outlives the build directory, for a later crash's dump.
-            self.assertTrue((device.elf_archive() / 'locked-dev.elf').is_file())
 
     def snapshot_command(self, with_build_paths):
         with tempfile.TemporaryDirectory() as directory:
@@ -1168,7 +1166,7 @@ class PreparedSnapshotTests(unittest.TestCase):
                 (launcher / 'tools/build/build_paths.py').touch()
             else:
                 self.assertFalse((launcher / 'tools/build/build_paths.py').exists())
-            with mock.patch.object(device, 'run_to_end') as run,                  mock.patch.object(device, 'snapshot_image', return_value='id'),                  mock.patch.object(device, 'archive_elf'):
+            with mock.patch.object(device, 'run_to_end') as run,                  mock.patch.object(device, 'snapshot_image', return_value='id'):
                 device.build_snapshot(['build.sh'], launcher / device.BUILD_DIRS['dev'], Path(directory) / 'image')
             return run.call_args.args[0]
 
@@ -1938,18 +1936,34 @@ class FindElfForBuildIdTests(unittest.TestCase):
             found = device.find_elf_for_build_id(Path(directory), "834b7bb03fd6e")
         self.assertEqual(found, self.archive / "834b7bb03fd6-diag.elf")
 
-    def test_the_archive_keeps_the_newest_elfs(self):
+    def keep_crash_of(self, build_id, capture):
+        """keep_crashed_elf() over `capture` in a worktree whose one build is `build_id`."""
         with tempfile.TemporaryDirectory() as directory:
-            build = Path(directory)
+            build = Path(directory) / "launcher" / "build.diag"
+            build.mkdir(parents=True)
+            (build / "build_id.txt").write_text(build_id + "\n", encoding="ascii")
             (build / "launcher.elf").write_bytes(b"elf")
-            for index in range(device.ELF_ARCHIVE_KEEP + 1):
-                device.archive_elf(build, f"{index:012x}-dev")
-                os.utime(self.archive / f"{index:012x}-dev.elf", (index, index))
-            device.archive_elf(build, f"{0:012x}-dev")
+            with mock.patch.object(device.Path, "cwd", return_value=Path(directory)):
+                device.keep_crashed_elf(capture)
+
+    def test_a_crash_keeps_the_build_its_panic_names(self):
+        # The capture's BUILD_ID line may be another build's; the panic's own line wins.
+        self.keep_crash_of("834b7bb03fd6-diag",
+                           b"BUILD_ID=aaaaaaaaaaaa-diag\nassert failed\nELF file SHA256: 834b7bb03fd6e\n")
+        self.assertEqual([path.name for path in self.archive.glob("*.elf")], ["834b7bb03fd6-diag.elf"])
+
+    def test_a_crash_with_no_elf_here_keeps_nothing(self):
+        self.keep_crash_of("aaaaaaaaaaaa-diag", b"ELF file SHA256: 834b7bb03fd6e\n")
+        self.assertFalse(self.archive.exists())
+
+    def test_the_archive_keeps_the_newest_crashed_builds(self):
+        for index in range(device.ELF_ARCHIVE_KEEP + 1):
+            build_id = f"{index:012x}-dev"
+            self.keep_crash_of(build_id, f"BUILD_ID={build_id}\n".encode())
+            os.utime(self.archive / f"{build_id}.elf", (index, index))
         kept = sorted(path.name for path in self.archive.glob("*.elf"))
         self.assertEqual(len(kept), device.ELF_ARCHIVE_KEEP)
-        self.assertIn(f"{0:012x}-dev.elf", kept)
-        self.assertNotIn(f"{1:012x}-dev.elf", kept)
+        self.assertNotIn(f"{0:012x}-dev.elf", kept)
 
     def test_no_build_id_finds_nothing(self):
         self.assertIsNone(device.find_elf_for_build_id(Path("C:/wt"), ""))
@@ -2706,6 +2720,12 @@ class CoredumpTests(unittest.TestCase):
         self.assertEqual(len(commands), 1)
         self.assertFalse(saved.exists())
 
+    def test_a_dump_that_names_no_build_is_kept(self):
+        code, finder, commands, saved = self.run_coredump(b"\x10\x20\x00\x00" + b"\xa5" * 60, found_elf=None)
+        self.assertEqual(code, 1)
+        self.assertEqual(len(commands), 1)
+        self.assertTrue(saved.is_file())
+
     def test_an_elf_given_is_the_one_decoded(self):
         code, finder, commands, _ = self.run_coredump(raw_core_dump("834b7bb03fd6e"), elf="other.elf")
         self.assertEqual(code, 0)
@@ -2955,6 +2975,15 @@ class SelftestTests(unittest.TestCase):
     def test_the_capture_ends_on_selftest_complete_not_its_deadline(self):
         _, _, entry = self.run_selftest()
         self.assertEqual(entry["reason"], "complete")
+
+    def test_sentinel_failures_without_fail_lines_fail_selftest(self):
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            code, _, entry = self.run_selftest(capture=(
+                b":1:test_one:PASS\nSELFTEST_COMPLETE failures=2 elapsed_ms=10\n", "complete"))
+        self.assertEqual(code, 1)
+        self.assertEqual(entry["reason"], "complete")
+        self.assertIsNone(entry["error"])
+        self.assertIn("SELFTEST_COMPLETE failures=2, but 0 FAIL lines", output.getvalue())
 
     def test_a_failing_run_is_reported_but_still_records_cleanly(self):
         with tempfile.TemporaryDirectory() as directory:

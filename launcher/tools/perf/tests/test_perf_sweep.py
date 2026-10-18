@@ -167,6 +167,19 @@ class SweepTests(ShellJobTests, unittest.TestCase):
             self.assertNotEqual(schedules[0], schedules[1])
             self.assertNotEqual(schedules[1], schedules[2])
 
+    def test_render_stage_and_span_quarters_are_not_pooled(self):
+        with tempfile.TemporaryDirectory() as root:
+            capture = Path(root) / 'capture.log'
+            capture.write_text('scale_split: 184x224 poses=4 tris=8 frame mean/p50/max us 10/9/11 | r3d.draw 1.0/2.0 | total 1 quarter=portrait\n'
+                               'scale_split: 184x224 poses=4 tris=8 frame mean/p50/max us 20/9/21 | r3d.draw 3.0/4.0 | total 3 quarter=landscape\n'
+                               'scale_spans: 184x224 one core us/pose setup 1 edges 2 carry 3 fill 4 clear 5 quarter=portrait\n'
+                               'scale_spans: 184x224 one core us/pose setup 6 edges 7 carry 8 fill 9 clear 10 quarter=landscape\n')
+            metrics, _ = tool.metrics(capture, capture)
+            self.assertEqual(metrics['r3d.draw quarter=portrait'], 1000)
+            self.assertEqual(metrics['r3d.draw quarter=landscape'], 3000)
+            self.assertEqual(metrics['spans.184x224.fill quarter=portrait'], 4)
+            self.assertEqual(metrics['spans.184x224.fill quarter=landscape'], 9)
+
     def test_all_metric_kinds(self):
         metrics, units = tool.metrics(FIXTURE, FIXTURE)
         self.assertEqual(metrics["frame"], 10000)
@@ -199,6 +212,41 @@ class SweepTests(ShellJobTests, unittest.TestCase):
                 self.assertEqual(sum("--flash" in call for call in fake.calls), 1)
                 self.assertTrue(all("--hot-tunables" in call for call in fake.calls if "--flash" in call))
                 self.assertTrue(all("--set" in call for call in captures))
+
+    def test_quarter_identity_through_acquisition_and_report(self):
+        for baseline in ("legacy", "portrait", "both"):
+            with self.subTest(baseline=baseline), tempfile.TemporaryDirectory() as root:
+                args = arguments(root)
+                fake = FakeAutana(root)
+                def runner(command, log, timeout):
+                    result = fake(command, log, timeout)
+                    candidate = 'r3d_span.small_max_side=2' not in command
+                    for _, line in result[1]:
+                        if not line.startswith('report: '):
+                            continue
+                        path = Path(line.removeprefix('report: ')).with_suffix('.log')
+                        suffix = ' quarter=portrait' if candidate or baseline != 'legacy' else ''
+                        text = f'mesh both cores: mean 10000us{suffix}\n'
+                        if candidate or baseline == 'both':
+                            text += 'mesh both cores: mean 20000us quarter=landscape\n'
+                        path.write_text(text + ':1:test_counters:PASS\n')
+                    return result
+                self.assertEqual(tool.run(args, runner), 0)
+                result = tool.report(args.out)
+                base, candidate = result['rows'][0]['metrics'], result['rows'][2]['metrics']
+                self.assertEqual(candidate['suite/mesh quarter=landscape']['mean'], 20000)
+                if baseline == 'both':
+                    self.assertEqual(base['suite/mesh quarter=landscape']['mean'], 20000)
+                    self.assertEqual(candidate['suite/mesh quarter=landscape']['ratio'], 1)
+                else:
+                    self.assertIsNone(base['suite/mesh quarter=landscape']['mean'])
+                    self.assertEqual(candidate['suite/mesh quarter=landscape']['verdict'], 'inconclusive')
+                if baseline != 'legacy':
+                    self.assertEqual(base['suite/mesh quarter=portrait']['mean'], 10000)
+                    self.assertEqual(candidate['suite/mesh quarter=portrait']['ratio'], 1)
+                else:
+                    self.assertIsNone(base['suite/mesh quarter=portrait']['mean'])
+                    self.assertEqual(base['suite/mesh']['mean'], 10000)
 
     def test_report_units_verdicts_and_table(self):
         for seeds in ((1,), tuple(range(1, 17))):

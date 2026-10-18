@@ -15,6 +15,7 @@
 #include "asset/asset_store.h"
 #include "boot/boot_anim.h"
 #include "draw/draw_image.h"
+#include "draw/draw_image_format.h"
 #include "gfx/gfx.h"
 #include "test_alloc.h"
 #include "test_pack.h"

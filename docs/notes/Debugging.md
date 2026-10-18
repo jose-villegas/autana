@@ -151,8 +151,8 @@ crashed.
 (`<HHMMSS>_coredump_<owner>.bin`), then decodes it with the board free:
 the crashed task's backtrace, registers and every task's stack. It decodes
 against the ELF of the build the dump names, from this worktree's build
-directories or the ELF every flash keeps in `<records>/elf/`; `--elf`
-picks another. When neither has it, build that commit and decode the saved
+directories or `<records>/elf/`, where a capture that sees a crash keeps
+the crashed build's ELF; `--elf` picks another. When neither has it, build that commit and decode the saved
 dump with `autana coredump --core FILE --elf PATH`, no board needed.
 
 A new crash overwrites the dump; `autana coredump --erase` clears it, so the

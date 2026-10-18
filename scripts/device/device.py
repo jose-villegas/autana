@@ -28,8 +28,8 @@ import lock_scope
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
-from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID,
-                            crash_signs)
+from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, BUILD_ID_REQUEST,
+                            crash_signs, suite_failure_signs)
 
 from process_tree import (stop_process_tree, launch_process_tree, close_process_tree,
                           install_console_interrupt_handler)
@@ -519,6 +519,8 @@ def print_crash_signs(data, boots_allowed):
     signs = crash_signs(data.decode("utf-8", errors="replace"), boots_allowed)
     for sign in signs:
         print(sign)
+    if signs:
+        keep_crashed_elf(data)
     return len(signs)
 
 
@@ -537,11 +539,14 @@ def print_suite_output(data, record_path, command, reason, verbose, boots_allowe
         for suite_name, count in failures_by_suite(text):
             print(f"  {suite_name}: {count} FAIL")
     crashed = print_crash_signs(data, boots_allowed)
+    signs = suite_failure_signs(text, failed)
+    for sign in signs:
+        print(sign)
     print(f"{command} capture: {record_path}")
     print(f"{command} capture ended: {reason}")
     if reason != "complete":
         raise RuntimeError(f"no completion line arrived: the capture ended {reason}")
-    return failed + crashed
+    return failed + crashed + len(signs)
 
 
 def print_reset_output(data, verbose):
@@ -1004,21 +1009,31 @@ def decode_addresses(addresses, elf):
 
 
 ELF_ARCHIVE_KEEP = 24
+# The panic handler's own line naming the crashed build (esp_system's panic.c).
+PANIC_ELF_SHA = re.compile(rb"ELF file SHA256: ([0-9a-f]+)")
 
 
 def elf_archive():
-    """Where flashing keeps each flashed build's ELF as <BUILD_ID>.elf, beside
-    the records, so a crash stays decodable after its build directory has
-    been built over."""
+    """Where a capture that saw a crash keeps the crashed build's ELF as
+    <BUILD_ID>.elf, beside the records, so its core dump stays decodable
+    after the build directory has been built over."""
     return records_root() / "elf"
 
 
-def archive_elf(build_dir, build_id):
-    """Copies `build_dir`'s launcher.elf into elf_archive() as `build_id`'s
-    and drops all but the newest ELF_ARCHIVE_KEEP there."""
+def keep_crashed_elf(data):
+    """Copies the ELF of the build that crashed in capture `data` into
+    elf_archive(), dropping all but the newest ELF_ARCHIVE_KEEP there: the
+    build the panic names, else the capture's BUILD_ID. Nothing when this
+    worktree has no ELF of that build."""
+    named = PANIC_ELF_SHA.findall(data)
+    build = named[-1].decode("ascii") if named else latest_build_id_from_bytes(data)
     archive = elf_archive()
+    elf = find_elf_for_build_id(Path.cwd(), build)
+    if elf is None or elf.parent == archive:
+        return
     archive.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(Path(build_dir) / "launcher.elf", archive / (build_id + ".elf"))
+    build_id = (elf.parent / "build_id.txt").read_text(encoding="ascii").strip()
+    shutil.copyfile(elf, archive / (build_id + ".elf"))
     newest_first = sorted(archive.glob("*.elf"), key=lambda path: path.stat().st_mtime, reverse=True)
     for stale in newest_first[ELF_ARCHIVE_KEEP:]:
         stale.unlink(missing_ok=True)
@@ -1026,7 +1041,8 @@ def archive_elf(build_dir, build_id):
 
 def same_build(build_id, other):
     """Whether two build names are one build: a BUILD_ID's hash before its
-    first '-', or a core dump's ELF SHA-256 hex, which may run longer."""
+    first '-', or a core dump's ELF SHA-256 hex, which may run longer. The
+    variant can be ignored because BUILD_ID's hash is the ELF's own SHA-256."""
     own, theirs = build_id.split("-", 1)[0], other.split("-", 1)[0]
     return bool(own and theirs) and (own.startswith(theirs) or theirs.startswith(own))
 
@@ -1235,9 +1251,7 @@ def build_snapshot(build, build_dir, image_dir, **popen):
     throughout and no board lock at all. Returns the build id."""
     with build_directory_lock(build_dir) as prepared:
         run_to_end(build + (["--prepared-build", prepared.as_posix()] if prepared else []), None, **dict(popen, env=script_environment(popen.get("env"))))
-        build_id = snapshot_image(prepared or build_dir, image_dir)
-        archive_elf(prepared or build_dir, build_id)
-        return build_id
+        return snapshot_image(prepared or build_dir, image_dir)
 
 
 def build_worktree(worktree, variant, build_flags=()):
@@ -1616,6 +1630,10 @@ COREDUMP_INFO_NOTE = b"ESP_CORE_DUMP_INFO\0"
 COREDUMP_INFO_VERSION_BYTES = 4
 COREDUMP_INFO_SHA_BYTES = 64
 ELF_NOTE_ALIGN = 4
+# An erased partition: its first word, the dump's total length, still reads
+# as flash's erased state.
+ERASED_FLASH = b"\xff"
+COREDUMP_ERASED_HEADER_BYTES = 4
 
 
 def coredump_build(raw):
@@ -1651,7 +1669,7 @@ def coredump(args, store, board):
             run_resetting(lambda: subprocess.run(command, check=True)).close()
         except subprocess.CalledProcessError as failure:
             return failure.returncode
-    if coredump_build(core.read_bytes()) is None:
+    if core.read_bytes()[:COREDUMP_ERASED_HEADER_BYTES] == ERASED_FLASH * COREDUMP_ERASED_HEADER_BYTES:
         core.unlink()
         print("no core dump in flash")
         return 0
@@ -1663,14 +1681,11 @@ def decode_coredump(core, elf=None):
     ELF of the build that crashed, which the dump itself names, or `elf`.
     A dump outlives later flashes, so the board's running build is no guide."""
     build = coredump_build(Path(core).read_bytes())
-    if build is None:
-        print(f"no core dump in {core}", file=sys.stderr)
-        return 1
-    print(f"core dump of build {build}, saved as {core}")
+    print(f"core dump of build {build or 'unknown'}, saved as {core}")
     elf = Path(elf) if elf else find_elf_for_build_id(Path.cwd(), build)
     if elf is None:
-        print(f"no launcher.elf in this worktree or {elf_archive()} is build {build}: build that "
-              f"commit, then `autana coredump --core {core} --elf PATH`", file=sys.stderr)
+        print(f"no launcher.elf in this worktree or {elf_archive()} is build {build or 'unknown'}: "
+              f"build that commit, then `autana coredump --core {core} --elf PATH`", file=sys.stderr)
         return 1
     command = [idf_python(), "-m", "esp_coredump", "--chip", "esp32s3", "info_corefile",
                "--core", str(core), "--core-format", "raw"]
@@ -2114,9 +2129,10 @@ def main(argv=None):
                                help="decode any crash addresses seen against this .elf's symbols")
     coredump_parser = subparsers.add_parser(
         "coredump", help="decode the last panic's core dump from flash, or erase it")
-    coredump_parser.add_argument("--erase", action="store_true")
+    coredump_source = coredump_parser.add_mutually_exclusive_group()
+    coredump_source.add_argument("--erase", action="store_true")
+    coredump_source.add_argument("--core", help="decode this saved raw dump; no board")
     coredump_parser.add_argument("--elf", help="decode against this .elf instead of the crashed build's")
-    coredump_parser.add_argument("--core", help="decode this saved raw dump; no board")
     reset_parser = subparsers.add_parser("reset", help="reboot the board and wait for USB serial")
     reset_parser.add_argument("--capture", action="store_true",
                               help="capture the boot console after the reset")
@@ -2196,9 +2212,11 @@ def main(argv=None):
     args = parser.parse_args(argv)
     args.purpose = command_label(args.command)
 
-    # Touches no lock and no board; it only reads a capture already on disk,
-    # so it is handled before board discovery even runs, unlike every command
-    # below this.
+    # report and coredump --core touch no lock and no board; each only reads
+    # a file already on disk, so they are handled before board discovery even
+    # runs, unlike every command below this.
+    if args.command == "coredump" and args.core:
+        return decode_coredump(args.core, args.elf)
     if args.command == "report":
         index_path = Path(args.index) if args.index else records_root() / "index.jsonl"
         try:
@@ -2222,9 +2240,6 @@ def main(argv=None):
             else:
                 print_statuses(entries, store.now())
             result = 0
-            return result
-        if args.command == "coredump" and args.core:
-            result = decode_coredump(args.core, args.elf)
             return result
         if args.command == "resolve-port":
             print(find_board(args.board).port)

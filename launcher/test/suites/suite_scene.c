@@ -18,6 +18,7 @@
 #include "asset/asset_pack.h"
 #include "gfx/target/gfx_color.h"
 #ifndef DEVICE_BUILD
+#include "display/display.h"
 #include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_internal.h"
@@ -44,7 +45,9 @@
 #ifndef DEVICE_BUILD
 #include <stdio.h>
 
+#include "anim/anim_skeleton_format.h"
 #include "asset/asset_file.h"
+#include "render/r3d_skin_format.h"
 #include "test_asset_dir.h"
 #include "ui/ui_mu.h"
 #endif
@@ -1647,9 +1650,10 @@ test_a_loaded_scene_that_is_not_active_keeps_its_time(void) {
 }
 
 #ifndef DEVICE_BUILD
+
 int
 display_quarter_now(void) {
-    return 0;
+    return DISPLAY_PORTRAIT;
 }
 
 static void

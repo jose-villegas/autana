@@ -47,6 +47,7 @@ open_model(const asset_pack_t* pack, anim_skeleton_t* skeleton, r3d_skin_t* skin
 #include <inttypes.h>
 #include <math.h>
 #include <stdlib.h>
+#include "anim/anim_skeleton_format.h"
 #include "anim/pose/anim_pose.h"
 #include "core/memory.h"
 #include "core/timing.h"
@@ -54,6 +55,7 @@ open_model(const asset_pack_t* pack, anim_skeleton_t* skeleton, r3d_skin_t* skin
 #include "esp_log.h"
 #include "perf_stats.h"
 #include "profile/frame_cost.h"
+#include "render/r3d_skin_format.h"
 #include "render/skin/r3d_skin_light_internal.h"
 
 #define CLIP_ID           "gallop"
