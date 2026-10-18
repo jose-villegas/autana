@@ -312,6 +312,36 @@ test_a_tap_on_a_mode_segment_changes_sand_ui_mode(void) {
                                   "a tap on the ERASE segment must reach sand_ui_mode_clicked() and switch the mode");
 }
 
+#define TOUCH_HOLD_FRAMES 4
+
+/* A tap on a segment fires on the frame the touch is released, never on the
+ * press or while it is held. */
+static void
+test_a_mode_segment_fires_on_release_only(void) {
+    ui_init();
+    ui_set_transform(affine2x_identity());
+    sand_ui_t ui = ui_fixture();
+    const input_t idle = {0};
+    brush_frame(&ui, &idle);
+    brush_frame(&ui, &idle);
+
+    const recti_t r = fixture(PORTRAIT_W, PORTRAIT_H).segments[BRUSH_SCREEN_SEG_ERASE];
+    const int x = r.x + r.w / 2;
+    const int y = r.y + r.h / 2;
+    const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
+    const input_t hold = {.down = true, .x = x, .y = y};
+    const input_t release = {.released = true, .x = x, .y = y};
+
+    brush_frame(&ui, &press);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(SAND_MODE_PAINT, ui.mode, "fired on the press");
+    for (int i = 0; i < TOUCH_HOLD_FRAMES; i++) {
+        brush_frame(&ui, &hold);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(SAND_MODE_PAINT, ui.mode, "fired while held");
+    }
+    brush_frame(&ui, &release);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(SAND_MODE_ERASE, ui.mode, "did not fire on the release");
+}
+
 void
 run_brush_screen_suite(void) {
     RUN_TEST(test_captions_fit_their_rects_portrait);
@@ -329,6 +359,7 @@ run_brush_screen_suite(void) {
     RUN_TEST(test_tap_targets_portrait);
     RUN_TEST(test_tap_targets_landscape);
     RUN_TEST(test_a_tap_on_a_mode_segment_changes_sand_ui_mode);
+    RUN_TEST(test_a_mode_segment_fires_on_release_only);
 }
 
 SUITE_REGISTER(run_brush_screen_suite);

@@ -683,12 +683,59 @@ test_overflowing_labels_clip_at_the_control_edges(void) {
     TEST_ASSERT_EQUAL_INT(BOX.x, tile.x);
     TEST_ASSERT_EQUAL_INT(BOX.w, tile.w);
 
+    /* The label slot's left edge is the button's right edge less its pad
+     * and the slot's own width; the padding is read back from the label
+     * widths rather than restated here. */
     const recti_t icon = label_clip(VERB_BUTTON_ICON);
-    TEST_ASSERT_GREATER_THAN_INT(BOX.x + THEME.icon_side, icon.x);
+    const int pad = (BOX.w - ui_probe_button_label_width(BOX.w, false, &THEME)) / 2;
+    const int slot_x = recti_right(BOX) - pad - ui_probe_button_label_width(BOX.w, true, &THEME);
+    TEST_ASSERT_GREATER_THAN_INT(BOX.x + THEME.icon_side, slot_x);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(slot_x, icon.x, "an icon button's label clips at its slot, not into the icon");
     TEST_ASSERT_EQUAL_INT(recti_right(BOX), recti_right(icon));
 
     const recti_t dropdown = label_clip(VERB_DROPDOWN);
     TEST_ASSERT_LESS_THAN_INT(recti_right(BOX), recti_right(dropdown));
+}
+
+/* A raised bevel is the legacy emitter's raised spans, and span 0 - the
+ * face - is left to the caller: a face drawn first stays the only rect at
+ * the full rectangle. */
+static int
+full_rects_at_box(void) {
+    int count = 0;
+    mu_Command* cmd = NULL;
+    const mu_Rect box = ui_mu_from_recti(BOX);
+    while (mu_next_command(ui_context(), &cmd)) {
+        const mu_Rect c = cmd->rect.rect;
+        count += cmd->type == MU_COMMAND_RECT && c.x == box.x && c.y == box.y && c.w == box.w && c.h == box.h;
+    }
+    return count;
+}
+
+static void
+test_ui_bevel_raised_matches_legacy_and_leaves_the_face(void) {
+    fixture();
+    for (int i = 0; i < 2; i++) {
+        begin_legacy();
+        mu_draw_rect(ui_context(), ui_mu_from_recti(BOX), ui_rgb(FACE_RGB));
+        ui_span_t spans[UI_BEZEL_MAX_SPANS];
+        const int n = ui_bezel_spans(ui_mu_from_recti(BOX), ui_rgb(FACE_RGB), false, spans, UI_BEZEL_MAX_SPANS);
+        TEST_ASSERT_GREATER_THAN_INT(1, n);
+        for (int span = 1; span < n; span++) {
+            mu_draw_rect(ui_context(), spans[span].rect, spans[span].color);
+        }
+        end_legacy();
+    }
+    save_commands();
+    ui_init();
+    for (int i = 0; i < 2; i++) {
+        begin_face();
+        ui_fill(BOX, FACE_RGB);
+        ui_bevel(BOX, FACE_RGB, false);
+        end_face();
+    }
+    compare_commands();
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, full_rects_at_box(), "the bevel must not redraw the face");
 }
 
 static void
@@ -1038,7 +1085,9 @@ tap_release_contract(verb_t verb) {
 static void
 test_tap_release_contract(void) {
     tap_release_contract(VERB_BUTTON);
+    tap_release_contract(VERB_BUTTON_ICON);
     tap_release_contract(VERB_TILE);
+    tap_release_contract(VERB_TILE_ICON);
     tap_release_contract(VERB_TOGGLE);
 }
 
@@ -1501,6 +1550,7 @@ run_ui_face_suite(void) {
     RUN_TEST(test_ui_icon_widgets_hit);
     RUN_TEST(test_ui_tile_icon_rect_is_the_tiles_own);
     RUN_TEST(test_overflowing_labels_clip_at_the_control_edges);
+    RUN_TEST(test_ui_bevel_raised_matches_legacy_and_leaves_the_face);
     RUN_TEST(test_ui_toggle_hit);
     RUN_TEST(test_ui_slider_drag);
     RUN_TEST(test_ui_dropdown_pick);
