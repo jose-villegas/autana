@@ -10,7 +10,7 @@
 
 #include "gfx/gfx.h"
 #include "input/tilt.h"
-#include "math/linear/math_const.h"
+#include "math/scalar/math_const.h"
 #include "render_host.h"
 
 #include "apps/sand/material_palette.h"

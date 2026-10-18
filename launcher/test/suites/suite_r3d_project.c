@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "math/scalar/math_const.h"
 #include "suites.h"
 #include "unity.h"
 

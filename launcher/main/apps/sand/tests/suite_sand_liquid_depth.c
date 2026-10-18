@@ -21,7 +21,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-#include "math/linear/math_const.h"
+#include "math/scalar/math_const.h"
 #include "suites.h"
 #include "unity.h"
 

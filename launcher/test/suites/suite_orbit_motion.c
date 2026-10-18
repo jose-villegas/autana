@@ -10,8 +10,8 @@
 #include <math.h>
 
 #include "gfx/gfx.h"
-#include "math/linear/math_const.h"
 #include "math/motion/orbit_motion.h"
+#include "math/scalar/math_const.h"
 #include "render/r3d_pipeline.h"
 #include "render_view_fixture.h"
 #include "suites.h"

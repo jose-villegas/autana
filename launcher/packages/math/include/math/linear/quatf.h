@@ -7,9 +7,9 @@
 #include <float.h>
 #include <stddef.h>
 
-#include "math/linear/math_const.h"
 #include "math/linear/quat_template.h"
 #include "math/linear/vec3f.h"
+#include "math/scalar/math_const.h"
 #include "math/scalar/mathf.h"
 
 MATH_DEFINE_QUAT(quatf, vec3f, float, mathf)
