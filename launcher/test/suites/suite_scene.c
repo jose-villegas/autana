@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "anim/anim_tracks_format.h"
 #include "suites.h"
 #include "unity.h"
 

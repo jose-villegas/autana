@@ -2,6 +2,7 @@
 #include <assert.h>
 #include <string.h>
 #include "anim/anim_skeleton_format.h"
+#include "anim/anim_tracks_format.h"
 
 static const anim_field_t FIELDS[] = {
     ANIM_FIELD(transformf_t, position, ANIM_VALUE_VEC3),
