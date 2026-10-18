@@ -107,7 +107,8 @@ uint8_t* gfx_indexed_image(void);
 
 /*
  * Readback: the frame on the panel, row by row, for a capture. A
- * framebuffer or index image is readable at once. In GFX_LAYOUT_BANDS the
+ * double framebuffer drains its send first. Other framebuffers and index
+ * images are readable at once. In GFX_LAYOUT_BANDS the
  * first gfx_readback_begin() is PENDING until a frame has redrawn every
  * band into a PSRAM copy; every band sent after that updates the copy
  * until the mode exits, so later calls are READY at once, frozen loop

@@ -62,27 +62,6 @@ static const char* TAG = "boot_anim_perf";
  * well under a minute. */
 #define SAMPLES_PER_CHECKPOINT 60
 
-typedef struct {
-    int32_t frame_total_us;
-    int32_t clear_us;
-    int32_t floor_us;
-    int32_t axes_us;
-    int32_t curve_us;
-    int32_t zeros_us;
-    int32_t image_us;
-    int32_t title_us;
-    int32_t present_us;
-    int32_t draw_us;
-    int32_t wait_us;
-    int32_t send_us;
-} frame_sample_t;
-
-/* Heap, freed after each checkpoint's report: a selftest run walks every
- * suite in one boot, so a static array would be .bss paid for the whole run,
- * not just while this suite executes. */
-static frame_sample_t* samples = NULL;
-static int32_t* stat_scratch = NULL;
-
 typedef enum {
     FIELD_TOTAL,
     FIELD_CLEAR,
@@ -96,31 +75,21 @@ typedef enum {
     FIELD_DRAW,
     FIELD_WAIT,
     FIELD_SEND,
+    FIELD_COUNT,
 } sample_field_t;
 
-static int32_t
-field_of(const frame_sample_t* s, sample_field_t field) {
-    switch (field) {
-        case FIELD_TOTAL: return s->frame_total_us;
-        case FIELD_CLEAR: return s->clear_us;
-        case FIELD_FLOOR: return s->floor_us;
-        case FIELD_AXES: return s->axes_us;
-        case FIELD_CURVE: return s->curve_us;
-        case FIELD_ZEROS: return s->zeros_us;
-        case FIELD_IMAGE: return s->image_us;
-        case FIELD_TITLE: return s->title_us;
-        case FIELD_PRESENT: return s->present_us;
-        case FIELD_DRAW: return s->draw_us;
-        case FIELD_WAIT: return s->wait_us;
-        case FIELD_SEND: return s->send_us;
-    }
-    return 0;
-}
+typedef struct {
+    int32_t values[FIELD_COUNT];
+} frame_sample_t;
+
+/* Heap storage is released after each checkpoint report. */
+static frame_sample_t* samples;
+static int32_t* stat_scratch;
 
 static int32_t*
 sample_values(sample_field_t field, int n) {
     for (int i = 0; i < n; i++) {
-        stat_scratch[i] = field_of(&samples[i], field);
+        stat_scratch[i] = samples[i].values[field];
     }
     return stat_scratch;
 }
@@ -203,66 +172,70 @@ time_frames(const checkpoint_frame_t* f, bool contend) {
         t0 = timing_now_us();
         boot_anim_clear_frame();
         t1 = timing_now_us();
-        s->clear_us = (int32_t)(t1 - t0);
+        s->values[FIELD_CLEAR] = (int32_t)(t1 - t0);
 
         if (f->draw_scene) {
             t0 = timing_now_us();
             draw_floor(f->now_ms, f->ink, f->reveal, &f->view);
             t1 = timing_now_us();
-            s->floor_us = (int32_t)(t1 - t0);
+            s->values[FIELD_FLOOR] = (int32_t)(t1 - t0);
 
             t0 = timing_now_us();
             draw_axes(f->now_ms, f->ink, &f->view);
             t1 = timing_now_us();
-            s->axes_us = (int32_t)(t1 - t0);
+            s->values[FIELD_AXES] = (int32_t)(t1 - t0);
 
             t0 = timing_now_us();
             const int32_t reached = draw_curve(f->now_ms, f->ink, f->reveal, &f->view);
             t1 = timing_now_us();
-            s->curve_us = (int32_t)(t1 - t0);
+            s->values[FIELD_CURVE] = (int32_t)(t1 - t0);
 
             t0 = timing_now_us();
             draw_zeros(reached, f->ink, &f->view);
             t1 = timing_now_us();
-            s->zeros_us = (int32_t)(t1 - t0);
+            s->values[FIELD_ZEROS] = (int32_t)(t1 - t0);
         } else {
-            s->floor_us = 0;
-            s->axes_us = 0;
-            s->curve_us = 0;
-            s->zeros_us = 0;
+            s->values[FIELD_FLOOR] = 0;
+            s->values[FIELD_AXES] = 0;
+            s->values[FIELD_CURVE] = 0;
+            s->values[FIELD_ZEROS] = 0;
         }
 
         t0 = timing_now_us();
         draw_image(f->photo, f->ink, f->reveal);
         t1 = timing_now_us();
-        s->image_us = (int32_t)(t1 - t0);
+        s->values[FIELD_IMAGE] = (int32_t)(t1 - t0);
 
         if (f->draw_title) {
             t0 = timing_now_us();
             draw_title(f->now_ms, f->ink);
             t1 = timing_now_us();
-            s->title_us = (int32_t)(t1 - t0);
+            s->values[FIELD_TITLE] = (int32_t)(t1 - t0);
         } else {
-            s->title_us = 0;
+            s->values[FIELD_TITLE] = 0;
         }
 
-        s->draw_us = s->clear_us + s->floor_us + s->axes_us + s->curve_us + s->zeros_us + s->image_us + s->title_us;
+        s->values[FIELD_DRAW] = s->values[FIELD_CLEAR] + s->values[FIELD_FLOOR] + s->values[FIELD_AXES]
+                                + s->values[FIELD_CURVE] + s->values[FIELD_ZEROS] + s->values[FIELD_IMAGE]
+                                + s->values[FIELD_TITLE];
         t0 = timing_now_us();
         gfx_present();
         t1 = timing_now_us();
-        s->present_us = (int32_t)(t1 - t0);
-        s->wait_us = gfx_get_present_wait_us();
+        s->values[FIELD_PRESENT] = (int32_t)(t1 - t0);
+        s->values[FIELD_WAIT] = gfx_get_present_wait_us();
         /* Double begin drains the preceding frame; record its completed send. */
         if (gfx_mode_current()->layout == GFX_LAYOUT_DOUBLE_FB && i > 0 && !contend) {
-            samples[i - 1].send_us = gfx_get_present_send_us();
+            samples[i - 1].values[FIELD_SEND] = gfx_get_present_send_us();
         } else {
-            s->send_us = gfx_get_present_send_us();
+            s->values[FIELD_SEND] = gfx_get_present_send_us();
         }
 
-        s->frame_total_us = (int32_t)(t1 - frame_start);
+        s->values[FIELD_TOTAL] = (int32_t)(t1 - frame_start);
     }
     TEST_ASSERT_EQUAL_INT(GFX_READBACK_READY, gfx_readback_begin());
-    samples[SAMPLES_PER_CHECKPOINT - 1].send_us = gfx_get_present_send_us();
+    if (!contend) {
+        samples[SAMPLES_PER_CHECKPOINT - 1].values[FIELD_SEND] = gfx_get_present_send_us();
+    }
     gfx_readback_end();
 }
 

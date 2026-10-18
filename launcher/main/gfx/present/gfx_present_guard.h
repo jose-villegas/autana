@@ -8,10 +8,9 @@
  *
  * Compiled out of a release device build entirely (GFX_PRESENT_GUARD() folds
  * to nothing there, so the check costs nothing), active on a development
- * device build and unconditionally on a host build: a release image never
- * runs update()/frame() overlapped with anything, so it has nothing to
- * assert against, while a host build has no device-build config at all and
- * is exactly where this contract needs proving.
+ * device build and unconditionally on a host build. Double-framebuffer
+ * presentation leaves the guard idle: drawing writes the back buffer while
+ * the send reads the front.
  */
 #pragma once
 
@@ -31,14 +30,13 @@ extern bool gfx_present_guard_replaying;
 extern unsigned gfx_present_guard_trips;
 #endif
 
-/* gfx_present_begin() calls this once it has committed to sending, device
- * or host alike. */
+/* Single-buffer present begins guard the shared draw/send state. */
 static inline void
 gfx_present_guard_begin(void) {
     gfx_present_guard_in_flight = true;
 }
 
-/* gfx_present_wait() calls this once sending is known complete. */
+/* Ends the window in which drawing would touch the send source. */
 static inline void
 gfx_present_guard_end(void) {
     gfx_present_guard_in_flight = false;

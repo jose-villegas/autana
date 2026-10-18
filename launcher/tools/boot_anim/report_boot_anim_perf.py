@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Turn a device capture into a Markdown report of checkpoint frame costs.
 
-Only Total/Image/Present carry a full min/max/avg/med/p95 breakdown;
+Total/Image/Present/Draw/Wait/Send carry a full min/max/avg/med/p95 breakdown;
 Clear/Floor/Axes/Curve/Zeros/Title are logged as averages.
 A DEVICE_BUILD suite has no mounted filesystem, so the host generates
 this report from a captured serial log.
