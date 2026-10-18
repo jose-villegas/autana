@@ -178,9 +178,9 @@ scene_camera_set_present(scene, cam, CAMERA_PRESENT_NEAREST);
 
 | Mode | Rows drawn | Look |
 |---|---|---|
-| `CAMERA_PRESENT_NEAREST` | The height the fixed scale or dynamic resolution chose | Today's picture |
-| `CAMERA_PRESENT_SCANLINE` | Half that height | Each row shown twice, the second at `UPSCALE_SCANLINE_KEEP` (half brightness) |
-| `CAMERA_PRESENT_DOUBLE` | Half that height | Each row shown twice, unchanged |
+| `CAMERA_PRESENT_NEAREST` | The chosen render height | The default picture |
+| `CAMERA_PRESENT_SCANLINE` | Half that height | Each row twice, the second dimmed to `UPSCALE_SCANLINE_KEEP` |
+| `CAMERA_PRESENT_DOUBLE` | Half that height | Each row twice, unchanged |
 
 The halved draw expands into the half picture when its height divides the half
 height, as in `render_context_compose()` above. When the row map is uneven, such
