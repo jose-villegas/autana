@@ -26,6 +26,7 @@
 
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/sponza_content.h"
+#include "apps/render_lab/tests/r3d_perf_quarters.h"
 #include "asset/asset_store.h"
 #include "core/memory.h"
 #include "core/timing.h"
@@ -42,12 +43,13 @@
 #include "scene/scene_shell.h"
 #include "sponza_suite.h"
 
+static const r3d_perf_quarter_t* perf_quarter;
+
 static const char* TAG = "scale_perf";
 
 /* Denser than the scene's own pose spacing, so a size's mean is not two poses. */
-#define POSE_EVERY_MS    2500
-#define POSES_MAX        64
-#define SCALE_HUNDREDTHS 100
+#define POSE_EVERY_MS 2500
+#define POSES_MAX     64
 
 /* Width-first and height-first ladders keep every upscale on a fast path,
  * with the last step reserved for recovery. */
@@ -112,8 +114,8 @@ typedef struct {
 static __attribute__((noinline)) void
 add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
     (void)scene_animator_seek(scene, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-    const render_view_t view =
-        camera_view(lens, scene_entity_transform(scene, camera_entity), (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
+    const render_view_t view = camera_view(lens, scene_entity_transform(scene, camera_entity),
+                                           (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
     r3d_lens_t lens;
     r3d_lens_init(&lens, &view, mesh.position_scale);
     r3d_lens_fit(&lens, raster->width, raster->height);
@@ -136,6 +138,7 @@ add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
 
 static int64_t
 measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size, int32_t* frame_us, char* report) {
+    size = raster_present_size(size, render_lab_present());
     raster->width = size.width;
     raster->height = size.height;
     (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX); /* forget whatever ran before */
@@ -144,11 +147,13 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
     int64_t triangles = 0;
     for (uint32_t t_ms = 0; t_ms < period && poses < POSES_MAX; t_ms += POSE_EVERY_MS) {
         (void)scene_animator_seek(scene, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-        const render_view_t view =
-            camera_view(lens, scene_entity_transform(scene, camera_entity), (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
+        const render_view_t view = camera_view(lens, scene_entity_transform(scene, camera_entity),
+                                               (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
         const int64_t start = timing_now_us();
         const raster_stats_t stats = raster_draw(raster, &view);
-        raster_upscale(raster, destination, GFX_WIDTH, GFX_HEIGHT);
+        raster->present = render_lab_present();
+        const resolution_step_t composed = raster_compose_size(raster);
+        raster_upscale(raster, destination, composed.width, composed.height);
         frame_us[poses++] = (int32_t)(timing_now_us() - start);
         triangles += stats.triangles;
     }
@@ -164,12 +169,16 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
         sum += frame_us[i];
     }
     qsort(frame_us, (size_t)poses, sizeof *frame_us, compare_us);
-    ESP_LOGI(TAG, "scale_split: %dx%d poses=%d tris=%lld frame mean/p50/max us %lld/%ld/%ld | %s", size.width,
-             size.height, poses, (long long)(triangles / poses), (long long)(sum / poses), (long)frame_us[poses / 2],
-             (long)frame_us[poses - 1], report);
-    ESP_LOGI(TAG, "scale_spans: %dx%d one core us/pose setup %lld edges %lld carry %lld fill %lld clear %lld",
+    ESP_LOGI(TAG,
+             "scale_split: %dx%d poses=%d tris=%lld frame mean/p50/max us %lld/%ld/%ld | %s" R3D_PERF_QUARTER_FORMAT,
+             size.width, size.height, poses, (long long)(triangles / poses), (long long)(sum / poses),
+             (long)frame_us[poses / 2], (long)frame_us[poses - 1], report, perf_quarter->name);
+    ESP_LOGI(TAG,
+             "scale_spans: %dx%d one core us/pose setup %lld edges %lld carry %lld fill %lld clear "
+             "%lld" R3D_PERF_QUARTER_FORMAT,
              size.width, size.height, (long long)(spans.setup / poses), (long long)(spans.edges / poses),
-             (long long)(spans.carry / poses), (long long)(spans.fill / poses), (long long)(spans.clear / poses));
+             (long long)(spans.carry / poses), (long long)(spans.fill / poses), (long long)(spans.clear / poses),
+             perf_quarter->name);
     return sum / poses;
 }
 
@@ -241,10 +250,12 @@ count_along_path(raster_t* raster, gfx_color_t* destination, int bracket, const 
     const uint32_t period = scene_animator_clip_duration_ms(scene, camera_entity, 0);
     for (uint32_t t_ms = 0; t_ms < period && t_ms / POSE_EVERY_MS < POSES_MAX; t_ms += POSE_EVERY_MS) {
         (void)scene_animator_seek(scene, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-        const render_view_t view =
-            camera_view(lens, scene_entity_transform(scene, camera_entity), raster_viewport(raster, 0));
+        const render_view_t view = camera_view(lens, scene_entity_transform(scene, camera_entity),
+                                               raster_viewport(raster, perf_quarter->quarter));
         (void)raster_draw(raster, &view);
-        raster_upscale(raster, destination, GFX_WIDTH, GFX_HEIGHT);
+        raster->present = render_lab_present();
+        const resolution_step_t composed = raster_compose_size(raster);
+        raster_upscale(raster, destination, composed.width, composed.height);
     }
     const int length = frame_cost_take_counts(report, FRAME_COST_REPORT_MAX);
     frame_cost_shared_post_arm(-1, 0);
@@ -260,8 +271,7 @@ test_raster_counters(void) {
 #else
     TEST_ASSERT_NOT_NULL_MESSAGE(scene, "the scene did not load: see the log above");
     const r3d_instance_t instance = {&mesh, NULL};
-    const resolution_step_t size = {GFX_WIDTH * SCALE_HUNDREDTHS / render_lab_scale(),
-                                    GFX_HEIGHT * SCALE_HUNDREDTHS / render_lab_scale()};
+    const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
     raster_t raster = {.instances = &instance,
                        .instance_count = 1,
                        .upscaled = true,
@@ -269,6 +279,8 @@ test_raster_counters(void) {
                        .height = size.height,
                        .destination_width = GFX_WIDTH,
                        .destination_height = GFX_HEIGHT};
+    ESP_LOGI(TAG, "raster=%dx%d present=%d" R3D_PERF_QUARTER_FORMAT, raster.width, raster.height, render_lab_present(),
+             perf_quarter->name);
     raster.scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_PSRAM);
     gfx_color_t* destination = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
     int32_t* frame_us = malloc(sizeof(*frame_us) * POSES_MAX);
@@ -278,13 +290,13 @@ test_raster_counters(void) {
     TEST_ASSERT_NOT_NULL(frame_us);
     TEST_ASSERT_NOT_NULL(report);
     const int64_t mean_us = measure_size(&raster, destination, size, frame_us, report);
-    ESP_LOGI(TAG, "raster both cores: mean %lldus", (long long)mean_us);
+    ESP_LOGI(TAG, "raster both cores: mean %lldus" R3D_PERF_QUARTER_FORMAT, (long long)mean_us, perf_quarter->name);
     const int bracket = frame_cost_shared_name_index("r3d.draw");
     TEST_ASSERT_TRUE(bracket >= 0);
     /* Counters cover core 0's half of the draw. */
     for (size_t event = 0; event < sizeof counter_events / sizeof counter_events[0]; event++) {
         count_along_path(&raster, destination, bracket, counter_events[event], report);
-        ESP_LOGI(TAG, "%s", report);
+        ESP_LOGI(TAG, "%s" R3D_PERF_QUARTER_FORMAT, report, perf_quarter->name);
     }
     free(report);
     free(frame_us);
@@ -318,6 +330,7 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
     raster->instances = &instance;
     raster->instance_count = 1;
     raster->upscaled = true;
+    raster->present = render_lab_present();
     raster->width = config->steps[0].width;
     raster->height = config->steps[0].height;
     raster->destination_width = GFX_WIDTH;
@@ -334,11 +347,11 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
         int count = 0;
         for (int step = 0; step < config->step_count; step++) {
             raster->width = config->steps[step].width;
-            raster->height = config->steps[step].height;
+            raster->height = raster_present_size(config->steps[step], render_lab_present()).height;
             for (uint32_t t_ms = 0; t_ms < period; t_ms += POSE_EVERY_MS) {
                 (void)scene_animator_seek(scene, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
                 *view = camera_view(lens, scene_entity_transform(scene, camera_entity),
-                                    (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
+                                    (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
                 const int64_t start = timing_now_us();
                 const raster_stats_t stats = raster_draw(raster, view);
                 const int64_t drawn = timing_now_us();
@@ -372,7 +385,7 @@ log_frames(const char* camera, const char* policy, const char* ladder, int32_t b
             length += snprintf(line + length, line_size - (size_t)length, " %d:%ld:%ld:%ld:%ld", r->step,
                                (long)r->draw_us, (long)r->upscale_us, (long)r->triangles, (long)r->predicted_us);
         }
-        ESP_LOGI(TAG, "%s", line);
+        ESP_LOGI(TAG, "%s" R3D_PERF_QUARTER_FORMAT, line, perf_quarter->name);
     }
     free(line);
 }
@@ -390,8 +403,8 @@ record_frame(frame_record_t* record, int64_t began_us, int64_t drawn_us, int64_t
 static __attribute__((noinline)) void
 log_refit(const char* camera, const ladder_t* ladder, const resolution_config_t* config) {
     const resolution_predict_t* refit = &render_context_main()->predict;
-    ESP_LOGI(TAG, "dynres_refit: %s %s %ld scale %.3f offset_us %.0f", camera, ladder->name, (long)config->budget_us,
-             (double)refit->scale, (double)refit->offset_us);
+    ESP_LOGI(TAG, "dynres_refit: %s %s %ld scale %.3f offset_us %.0f" R3D_PERF_QUARTER_FORMAT, camera, ladder->name,
+             (long)config->budget_us, (double)refit->scale, (double)refit->offset_us, perf_quarter->name);
 }
 
 /* The path flown through the scene manager at FRAME_DT_MS a frame: at the
@@ -405,11 +418,12 @@ fly(const char* camera, const char* policy, const ladder_t* ladder, const resolu
         scene_entity_set_enabled(flown, scene_find(flown, sponza_bakes[i]), i == (int)SPONZA_BAKE_FULL);
     }
     TEST_ASSERT_TRUE(scene_activate(flown, camera));
+    TEST_ASSERT_TRUE(scene_camera_set_present(flown, scene_find(flown, camera), render_lab_present()));
     TEST_ASSERT_NOT_NULL(scene_camera_lens(flown, camera));
     const uint32_t period = scene_animator_clip_duration_ms(flown, scene_find(flown, camera), 0);
     const int frames = (int)((period + FRAME_DT_MS - 1) / FRAME_DT_MS);
     TEST_ASSERT_TRUE(frames > 0 && frames <= FRAMES_MAX);
-    render_context_set_scale(render_context_main(), 50);
+    render_lab_apply_raster_settings();
     render_context_set_dynamic_resolution(render_context_main(), config, model, ladder == NULL ? 0 : ladder->half);
     scene_target_t target = {picture, GFX_WIDTH, GFX_HEIGHT, NULL};
     gfx_color_t* half = memory_alloc(sizeof(*half) * (GFX_WIDTH / 2) * (GFX_HEIGHT / 2), MEMORY_PSRAM);
@@ -419,9 +433,9 @@ fly(const char* camera, const char* policy, const ladder_t* ladder, const resolu
      * fixed scale (which the context does not time) are timed alike. */
     for (int i = 0; i < frames; i++) {
         const int64_t began_us = timing_now_us();
-        scene_render(FRAME_DT_MS, 0, GFX_WIDTH, GFX_HEIGHT);
+        scene_render(FRAME_DT_MS, perf_quarter->quarter, GFX_WIDTH, GFX_HEIGHT);
         const int64_t drawn_us = timing_now_us();
-        scene_compose(FRAME_DT_MS, 0, &target);
+        scene_compose(FRAME_DT_MS, perf_quarter->quarter, &target);
         const int64_t composed_us = timing_now_us();
         record_frame(&records[i], began_us, drawn_us, composed_us);
     }
@@ -446,12 +460,15 @@ configure(const ladder_t* ladder, int32_t budget_us, resolution_config_t* config
  * calibration frames draw. */
 static __attribute__((noinline)) void
 log_fit(const ladder_t* ladder, const resolution_config_t* config, const resolution_model_t* model) {
-    ESP_LOGI(TAG, "dynres_model: %s base %.0f per_triangle %.4f per_triangle_row %.4f per_pixel_share %.0f",
+    ESP_LOGI(TAG,
+             "dynres_model: %s base %.0f per_triangle %.4f per_triangle_row %.4f per_pixel_share "
+             "%.0f" R3D_PERF_QUARTER_FORMAT,
              ladder->name, (double)model->base_us, (double)model->per_triangle_us, (double)model->per_triangle_row_us,
-             (double)model->per_pixel_share_us);
+             (double)model->per_pixel_share_us, perf_quarter->name);
     for (int step = 0; step < ladder->count; step++) {
-        ESP_LOGI(TAG, "dynres_step: %s %d %dx%d upscale %.0f", ladder->name, step, config->steps[step].width,
-                 config->steps[step].height, (double)model->upscale_us[step]);
+        ESP_LOGI(TAG, "dynres_step: %s %d %dx%d upscale %.0f" R3D_PERF_QUARTER_FORMAT, ladder->name, step,
+                 config->steps[step].width, config->steps[step].height, (double)model->upscale_us[step],
+                 perf_quarter->name);
     }
 }
 
@@ -538,6 +555,7 @@ run_raster_scale_perf_suite(void) {
     pack = loaded.pack;
     lens = loaded.lens;
     camera_entity = scene == NULL ? SCENE_ENTITY_NONE : scene_find(scene, sponza_cameras[0]);
+    (void)scene_camera_set_present(scene, camera_entity, render_lab_present());
     if (scene != NULL) {
         const scene_entity_t full = scene_find(scene, sponza_bakes[SPONZA_BAKE_FULL]);
         const char* id = full == SCENE_ENTITY_NONE ? NULL : scene_entity_mesh_id(scene, full);
@@ -548,9 +566,12 @@ run_raster_scale_perf_suite(void) {
         }
     }
     RUN_TEST(test_dynamic_resolution_refit_cost);
-    RUN_TEST(test_raster_stage_split_by_size);
-    RUN_TEST(test_raster_counters);
-    RUN_TEST(test_dynamic_resolution_policies_along_the_path);
+    for (size_t q = 0; q < R3D_PERF_QUARTER_COUNT; q++) {
+        perf_quarter = &r3d_perf_quarters[q];
+        RUN_TEST(test_raster_stage_split_by_size);
+        RUN_TEST(test_raster_counters);
+        RUN_TEST(test_dynamic_resolution_policies_along_the_path);
+    }
     loaded = (sponza_suite_t){scene, pack, lens};
     sponza_suite_release(&loaded);
     scene = NULL;

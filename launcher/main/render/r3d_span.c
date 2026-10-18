@@ -27,7 +27,7 @@ static const int32_t value_max[ATTRIBUTES] = {DEPTH_MAX, 65280, 65280, 65280};
 
 /* A triangle whose bounding box holds at most this many pixel centres a
  * side has each centre tested against its edge functions
- * (docs/Citations.md#32) instead of walked, in one colour and one depth: past
+ * (Pineda 1988) instead of walked, in one colour and one depth: past
  * the default 4 its lost gradient shows on the walls. */
 #define SMALL_MAX_SIDE                4
 #define SMALL_MAX_SIDE_TUNE           16

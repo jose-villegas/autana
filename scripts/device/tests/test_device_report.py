@@ -547,6 +547,19 @@ class BuildReportMarkdownTests(unittest.TestCase):
             self.assertIn("over budget", markdown)
             self.assertEqual("report as partial" in markdown, not complete)
 
+    def test_a_dropped_suite_fails_a_report_with_no_fail_lines(self):
+        with tempfile.TemporaryDirectory() as directory:
+            capture = Path(directory) / "capture.log"
+            capture.write_text("SUITE OVERFLOW: 'run_extra_suite' was not registered (max 1)\n"
+                               "main/selftest.c:43:test_pixels:PASS\n"
+                               "SELFTEST_COMPLETE failures=1 elapsed_ms=100\n")
+            index = write_index(directory, [{"capture_path": str(capture), "command": "selftest",
+                                             "started_at": "2026-01-02T03:04:05+00:00"}])
+            markdown = device_report.build_report_markdown(capture, index)
+        self.assertIn("**Run failed:** `SUITE OVERFLOW: 'run_extra_suite'", markdown)
+        self.assertIn("**Run failed:** `SELFTEST_COMPLETE failures=1, but 0 FAIL lines`", markdown)
+        self.assertNotIn("parsing mismatch", markdown)
+
     def test_a_capture_with_no_manifest_entry_says_so(self):
         with tempfile.TemporaryDirectory() as directory:
             capture = Path(directory) / "capture.log"

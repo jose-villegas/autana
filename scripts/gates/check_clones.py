@@ -10,7 +10,9 @@ already held (code moved out of it). A surviving shrink gives no headroom.
 checking new pairs. MIN_TOKENS is 80: longer copied helpers and test setup
 are detected, including renamed identifiers and changed literal values;
 short helpers are missed. Literal-only fragments and exact self-matches
-are excluded. The pinned engine ignores comments and whitespace.
+are excluded. Literal-only object-like #defines are blanked on both sides
+before matching, preserving line numbers. The pinned engine ignores comments
+and whitespace.
 """
 import argparse
 import json
@@ -76,6 +78,17 @@ PYTHON_TOKENS = re.compile(
 # statement, so a block of code never passes for one.
 TEST_REGISTRATION = re.compile(r"\bRUN_TEST\s*\(\s*\w+\s*\)\s*;|\{[^{};]*\}\s*,")
 INCLUDE_DIRECTIVE = re.compile(r"(?m)^[ \t]*#[ \t]*include\b(?:[^\n]*\\\n)*[^\n]*")
+OBJECT_DEFINE = re.compile(r"(?m)^[ \t]*#[ \t]*define[ \t]+[A-Za-z_]\w*[ \t]+((?:[^\n]*\\\n)*[^\n]*)")
+C_LITERAL = (r'''(?:[+-]?(?:0[xX][0-9a-fA-F]+|\d+(?:\.\d*)?(?:[eE][+-]?\d+)?|'''
+             r'''\.\d+(?:[eE][+-]?\d+)?)[uUlLfF]*|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')''')
+LITERAL_BODY = re.compile(rf"\s*(?:{C_LITERAL}|\{{\s*(?:{C_LITERAL}(?:\s*,\s*{C_LITERAL})*\s*,?)?\s*\}})\s*")
+
+
+def literal_declaration(match):
+    """Blank a literal-only object define, keeping its newline count."""
+    body = match[1].replace("\\\n", " ")
+    body = re.sub(r"//[^\n]*|/\*.*?\*/", " ", body, flags=re.DOTALL)
+    return "\n" * match[0].count("\n") if LITERAL_BODY.fullmatch(body) else match[0]
 
 
 def registration_only(pair):
@@ -117,11 +130,14 @@ def scan(root, minimum, names=None, revision="HEAD", renames=None):
         names = [name for name in names if eligible_name(name)]
         contents = revision_contents(root, revision, names, renames)
         for name, content in contents:
+            content = content.replace(b"\r\n", b"\n")
             if is_generated(content.decode("utf-8")):
                 continue
             target = tree / name
             target.parent.mkdir(parents=True, exist_ok=True)
             if target.suffix != ".py":
+                # A fragment holds only one side, so either side's declaration macros must vanish before matching.
+                content = OBJECT_DEFINE.sub(literal_declaration, content.decode("utf-8")).encode("utf-8")
                 content = INCLUDE_DIRECTIVE.sub(lambda match: "\n" * match[0].count("\n"),
                                                 content.decode("utf-8")).encode("utf-8")
             target.write_bytes(content)

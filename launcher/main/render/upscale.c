@@ -52,6 +52,18 @@ upscale_init(upscale_t* scale, int source_width, int source_height, int destinat
     for (int y = 0; y < destination_height; y++) {
         rows[y] = nearest_source(y, destination_height, source_height);
     }
+    const int run = destination_height / source_height;
+    scale->scanline_run = 0;
+    if ((scale->path == UPSCALE_KEPT || scale->path == UPSCALE_DOUBLED) && destination_height % source_height == 0
+        && run % 2 == 0) {
+        scale->scanline_run = run;
+        for (int y = 0; y < destination_height; y++) {
+            if (rows[y] != y / run) {
+                scale->scanline_run = 0;
+                break;
+            }
+        }
+    }
     return true;
 }
 
@@ -118,4 +130,26 @@ upscale_rows(const upscale_t* scale, const gfx_render_target_t* picture, uint16_
         case UPSCALE_BLOCKS: upscale_block_rows(scale, source, depth, clear, destination, first_row, row_count); break;
         case UPSCALE_MAPPED: upscale_mapped_rows(scale, source, depth, clear, destination, first_row, row_count); break;
     }
+}
+
+/* Scanline dispatch stays in flash to preserve the default copy's IRAM budget. */
+void
+upscale_rows_scanlined(const upscale_t* scale, const gfx_render_target_t* picture, uint16_t clear,
+                       uint16_t* destination, int first_row, int row_count) {
+    assert(scale != NULL);
+    if (scale->scanline_run == 0 || (scale->path != UPSCALE_KEPT && scale->path != UPSCALE_DOUBLED)) {
+        upscale_rows(scale, picture, clear, destination, first_row, row_count);
+        return;
+    }
+    assert(picture != NULL);
+    assert(destination != NULL);
+    assert(first_row >= 0);
+    assert(row_count >= 0);
+    assert(first_row + row_count <= scale->destination_height);
+    const uint16_t* source = gfx_render_target_color(picture, picture->row0);
+    const uint16_t* depth =
+        picture->count > GFX_ATTACHMENT_DEPTH ? gfx_render_target_depth(picture, picture->row0) : NULL;
+    const gfx_target_t target = {destination, 0, scale->destination_height, scale->destination_width};
+    gfx_target_paired_rows_shaded(target, source, depth, clear, scale->source_width, scale->rows, first_row, row_count,
+                                  scale->path == UPSCALE_DOUBLED, scale->scanline_run, UPSCALE_SCANLINE_KEEP);
 }

@@ -4,6 +4,8 @@ import pathlib
 import re
 import statistics
 
+from capture import quarter_row
+
 REPORT_PREFIX = "ms/frame avg/worst:"
 BRACKET = re.compile(r"(\S+) ([\d.]+)/[\d.]+")
 
@@ -13,7 +15,7 @@ def frame_cost_windows(path, text=None):
         if path is None or not pathlib.Path(path).exists():
             return None
         text = pathlib.Path(path).read_text(encoding="utf-8", errors="replace")
-    windows = [BRACKET.findall(line.split(REPORT_PREFIX, 1)[1])
+    windows = [[(quarter_row(name, line), value) for name, value in BRACKET.findall(line.split(REPORT_PREFIX, 1)[1])]
                for line in text.splitlines()
                if REPORT_PREFIX in line]
     if not windows or not all(windows):
