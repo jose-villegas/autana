@@ -40,7 +40,7 @@ carries a colour per face and the raster draws what the mesh carries.
 `render_view_make()` builds the frame view from a pose and a lens: it folds
 in the panel's quarter turn, fits the lens to the shorter picture side,
 ignores the pose's scale and keeps its roll.
-Poses follow [math/linear's conventions](../math/README.md#conventions).
+Poses follow [math/linear's conventions](../math/Conventions.md#conventions).
 
 Several meshes share one picture: the raster draws each instance in turn
 without clearing between, and the depth buffer decides what covers what, so
@@ -90,7 +90,7 @@ away from zero before truncating toward zero.
 
 Line projection, the animation tracks and the raster all
 take their types from `math/linear/`, documented in
-[../math/README.md](../math/README.md): the raster's lens and motion maps are
+[linear maths](../math/Linear.md) and [projection](../math/Projection.md): the raster's lens and motion maps are
 `mat4f_t`, composed with `mat4f_mul_affine()`, inverted with
 `mat4f_invert_affine()` and applied to each vertex with `mat4f_apply()`.
 

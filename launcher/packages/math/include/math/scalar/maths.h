@@ -1,5 +1,5 @@
 /*
- * maths: int16 scalar operations for the math templates (docs/math/README.md),
+ * maths: int16 scalar operations for the math templates (docs/math/Scalar.md),
  * coordinates kept compact where memory is short. Sums and products
  * SATURATE at the int16 range, so a vector never wraps; a dot product widens
  * to int64. There is no division, square root or angle: convert to a float

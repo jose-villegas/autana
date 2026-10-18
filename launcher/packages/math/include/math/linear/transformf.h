@@ -1,7 +1,7 @@
 /*
  * transformf: a transform of a float: position, rotation, scale and the
  * cached model matrix. The operations, which matrix call to use when, and
- * the axes are transform_template.h's; docs/math/README.md says how they are
+ * the axes are transform_template.h's; docs/math/Linear.md says how they are
  * made.
  */
 #pragma once

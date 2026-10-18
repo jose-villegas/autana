@@ -20,6 +20,7 @@
 #include "math/linear/transformf.h"
 #include "math/linear/transformx.h"
 #include "math/linear/vec_convert.h"
+#include "math/scalar/math_const.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/units.h"
