@@ -218,11 +218,21 @@ def main():
     parser.add_argument("capture", type=pathlib.Path)
     parser.add_argument("document", type=pathlib.Path)
     parser.add_argument("--check", action="store_true")
+    parser.add_argument("--table", action="store_true")
     parser.add_argument("--source", type=pathlib.Path)
     parser.add_argument("--repeat", default="autana suite run_capybara_perf_suite --flash --perf-scope")
     args = parser.parse_args()
     try:
         text = args.capture.read_text(encoding="utf-8")
+        if args.table:
+            from layout_measure import parse_timings
+            rows = parse_timings("\n".join(line for line in text.splitlines() if PREFIX in line))
+            if not rows:
+                raise ValueError("capture has no stage timings")
+            lines = ["| Name | Mean us |", "|---|---:|"]
+            lines.extend(f"| {name} | {value} |" for name, value in rows.items())
+            args.document.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            return 0
         if args.source is not None:
             args.document.write_text(performance_report(text), encoding="utf-8")
             return 0

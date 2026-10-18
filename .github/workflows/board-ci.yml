@@ -1,9 +1,6 @@
 name: Board CI
 
 on:
-  # Nightly plus on demand: a run holds a board for the whole self-test, so it stays out of daytime board jobs.
-  schedule:
-    - cron: '0 2 * * *'
   workflow_dispatch:
 
 concurrency:
@@ -61,12 +58,7 @@ jobs:
         run: |
           rm -f "$RUNNER_TEMP/board-ci-selftest.log"
           export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
-          cat > "$RUNNER_TEMP/board-ci-steps.sh" <<'SH'
-          set -eo pipefail
-          autana selftest | tee "$RUNNER_TEMP/board-ci-selftest.log" || exit 1
-          # Lifecycle tour and portable suite steps go here, inside the same board hold.
-          SH
-          if autana --wait 1800 lock run -- "$(cygpath -w "$BASH")" "$RUNNER_TEMP/board-ci-steps.sh"; then
+          if autana --wait 1800 lock run -- "$(cygpath -w "$BASH")" scripts/ci/board-steps.sh; then
             exit 0
           else
             status=$?

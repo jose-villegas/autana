@@ -74,6 +74,7 @@ token and an early release command then print on stderr.
 
 `lock take` names the job with trailing note words and accepts
 `--estimate SECONDS` for its expected duration.
+`lock run --estimate SECONDS -- COMMAND...` records the expected duration of its child.
 
 An estimate sets the record's optional `estimated_end` (epoch seconds).
 `status` shows it as `estimated_free` and uses it for queued starts. It never

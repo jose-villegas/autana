@@ -22,6 +22,14 @@ from device_capture import RESULT_RE, BUILD_ID_RE as BUILD_LINE  # noqa: E402
 
 MEAN_RE = re.compile(r"\b(?P<name>\S+) (?:(?:both cores|one core): )?mean\s+(?P<value>\d+)us\b")
 NUMBER_RE = re.compile(r"^[+-]?\d+$")
+def write_json(path, payload):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+
+
 def cell(text):
     return text.strip().strip("`").replace("**", "")
 

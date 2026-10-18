@@ -237,3 +237,42 @@ and span metrics retain that identity too. Untagged captures retain their
 unqualified row names, so comparisons do not silently pair them with tagged
 rows. Single-viewport render documentation readers select portrait by default;
 `dynres_report.py --quarter landscape` selects landscape explicitly.
+
+## Nightly scoped chain
+
+The nightly workflow measures first-parent commits on main, assigning each
+commit by its stable first-parent position modulo the board count. Each board
+has its own series and repeats its previous measured commit as an anchor.
+A fresh board starts with its newest assigned commit. Equal executable and
+asset hashes skip a flash; anchors always measure. Build failures remain gaps;
+the time window and consecutive capture failure limit leave an unattempted
+tail for the same board's next night.
+
+The orphan `perf-data` branch stores
+`scoped/<board>/<YYYY-MM-DD>/night.json` and `<NN>-<sha12>.json` reports.
+The manifest records each commit's position, role, outcome, image hash, build
+and measurement durations, and the self-test outcome. Reports use LNT v2:
+`format_version`, `machine`, `run`, and `tests`. The machine name is the full
+USB serial; `run.llvm_project_revision` is the commit SHA. Test names are
+`<suite>/<row>` with quarter tags preserved, and `execution_time` samples
+are seconds. Boards are never pooled or compared.
+
+For a short manual chain, create a data checkout and a shared plan, then run
+each lane under its board's hold. `--from` includes that commit if assigned
+to the lane; `--max-steps` limits new candidates and retains the anchor.
+
+```sh
+python launcher/tools/perf/nightly/scoped_chain.py plan \
+  --boards BOARD_A BOARD_B --data DATA --out plan.json \
+  --from SHA --max-steps 2 --suite run_sponza_perf_suite - -
+autana --board BOARD_A --wait 3600 lock run -- \
+  python launcher/tools/perf/nightly/scoped_chain.py run \
+  --plan plan.json --data DATA --board BOARD_A --lane 0/2 \
+  --until 07:00 --out captures --suite run_sponza_perf_suite - -
+```
+
+The workflow queues at local 22:30 and stops starting steps that cannot fit
+before local 07:00. It runs each board lane concurrently in one job. The
+designated self-test lane waits until its configured self-test boundary when
+its chain finishes early. Partial manifests are written after every step;
+raw captures and result directories are uploaded even when a lane fails.

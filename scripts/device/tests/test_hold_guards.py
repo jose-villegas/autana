@@ -126,6 +126,17 @@ class HoldGuardTests(Store):
                                        "--estimate", "30", "perf", "job"), 0)
         self.assert_estimated_hold()
 
+    def test_estimate_for_run_is_visible_during_child_and_released(self):
+        def child(*args, **kwargs):
+            entry = device_lock.status_entry(self.store, BOARD_A, durations={})
+            self.assertEqual(entry["estimated_free"], self.clock.now() + 30)
+            self.assertEqual(entry["holder"]["purpose"], "run")
+            self.assertTrue(self.store.check_token(BOARD_A, os.environ[device.TOKEN_ENV]))
+
+        with self.scope(), mock.patch.object(device, "run_to_end", side_effect=child):
+            self.assertEqual(self.main("run", "--estimate", "30", "--", "child"), 0)
+        self.assertIsNone(self.store.status(BOARD_A)["lock"])
+
     def assert_estimated_hold(self):
         ticket = self.store.enqueue(BOARD_A, "waiter", "flash")
         second = self.store.enqueue(BOARD_A, "second", "flash")

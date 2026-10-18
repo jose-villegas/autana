@@ -2013,6 +2013,7 @@ def main(argv=None):
     run = subparsers.add_parser("run")
     run.set_defaults(auto_pick=True)
     run.add_argument("--keep-on-failure", type=hold_seconds)
+    run.add_argument("--estimate", type=human_wait_seconds)
     run.add_argument("child", nargs=argparse.REMAINDER)
     wait_parser = subparsers.add_parser("wait-free")
     wait_parser.add_argument("--cap", type=human_wait_seconds)
@@ -2242,6 +2243,9 @@ def main(argv=None):
             if not child:
                 parser.error("run needs -- <command...>")
             with HeldLock(store, board, args.owner, "run", args.wait) as held:
+                if args.estimate is not None and not held.borrowed:
+                    if not store.hold(board, held.held["token"], "run", pid=os.getpid(), estimate=args.estimate):
+                        raise LockBusy("device lock was lost before the estimate was recorded")
                 try:
                     run_to_end(child, held.lost)
                     result = 0
