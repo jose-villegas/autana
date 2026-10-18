@@ -15,9 +15,10 @@
 #include "gfx/present/modes/indexed/gfx_indexed.h"
 
 typedef enum {
-    GFX_LAYOUT_FULL_FB, /* one PSRAM framebuffer; core-1 present reads it */
-    GFX_LAYOUT_BANDS,   /* a 2-band ring in internal SRAM; no PSRAM framebuffer */
-    GFX_LAYOUT_INDEXED, /* a persistent index image in internal RAM; core-1 expands it */
+    GFX_LAYOUT_FULL_FB,   /* one PSRAM framebuffer; core-1 present reads it */
+    GFX_LAYOUT_BANDS,     /* a 2-band ring in internal SRAM; no PSRAM framebuffer */
+    GFX_LAYOUT_INDEXED,   /* a persistent index image in internal RAM; core-1 expands it */
+    GFX_LAYOUT_DOUBLE_FB, /* two PSRAM framebuffers; redraw every pixel every frame */
 } gfx_layout_t;
 
 typedef struct {
@@ -61,7 +62,7 @@ gfx_mode_resolve(const gfx_mode_request_t* request, int full_width, int full_hei
     return granted;
 }
 
-/* Band and indexed layouts need their own storage. Interlace grants describe
+/* Double, band and indexed layouts need their own storage. Interlace grants describe
  * the request; gfx_set_interlace() controls the strip sends. */
 
 /* Grants `request`, allocates whatever the granted layout needs, and
@@ -69,7 +70,8 @@ gfx_mode_resolve(const gfx_mode_request_t* request, int full_width, int full_hei
  * nesting one app's mode inside another's is not supported. */
 const gfx_mode_t* gfx_mode_enter(const gfx_mode_request_t* request);
 
-/* Frees whatever the current mode allocated and restores GFX_LAYOUT_FULL_FB
+/* Double mode drains its send and keeps the front (last presented frame).
+ * Frees whatever the current mode allocated and restores GFX_LAYOUT_FULL_FB
  * at full resolution, no interlace, the mode every app but the one just
  * exiting assumes is already in force. */
 void gfx_mode_exit(void);
