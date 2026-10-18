@@ -27,14 +27,19 @@ render_lab_test_loaded_scene(const char* key) {
 }
 
 void
+render_lab_test_hold_quarter(int quarter) {
+    display_hold_quarter(quarter);
+    ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
+}
+
+void
 render_lab_test_enter(render_lab_test_t* saved, const char* scene) {
     *saved = (render_lab_test_t){render_lab_start_scene_key, render_lab_start_camera, render_lab_show_hud};
     ui_init();
     render_lab_start_scene_key = scene;
     render_lab_start_camera = NULL;
     render_lab_show_hud = false;
-    display_hold_quarter(DISPLAY_DEFAULT_QUARTER);
-    ui_set_transform(ui_transform_quarter_turn(display_quarter_now(), GFX_WIDTH, GFX_HEIGHT));
+    render_lab_test_hold_quarter(DISPLAY_DEFAULT_QUARTER);
     app_render_lab.enter();
 }
 

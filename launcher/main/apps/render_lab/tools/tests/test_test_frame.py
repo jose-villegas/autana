@@ -60,42 +60,35 @@ int main(void) {
 
 
     @unittest.skipUnless(shutil.which("gcc"), "needs gcc")
-    def test_device_hold_notifies_the_shell_when_the_quarter_changes(self):
-        main = pathlib.Path(__file__).resolve().parents[4]
+    def test_harness_hold_sets_transform_for_each_quarter(self):
+        source = pathlib.Path(__file__).resolve().parents[2] / "tests/render_lab_test.c"
+        text = source.read_text()
+        start = text.index("void\nrender_lab_test_hold_quarter")
+        helper = text[start:text.index("\nvoid\n", start + 1)]
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
-            device = work / "display_device.c"
-            source = (main / "display/display_device.c").read_text()
-            state = "\n".join(line for line in source.splitlines() if line.startswith("static display_"))
-            functions = source[source.index("void\ndisplay_reset_quarter"):source.index("int\ndisplay_system_panel_clock_hz")]
-            device.write_text('#include "display/display_shell.h"\n#include <stddef.h>\n' + state + "\n" + functions)
-            driver = work / "hold.c"
-            driver.write_text(r"""
-#include "display/display_shell.h"
-static int calls;
-static int applied;
-static void changed(int quarter) { calls++; applied = quarter; }
+            probe = work / "hold.c"
+            probe.write_text(r"""
+static int held, applied, calls;
+#define GFX_WIDTH 368
+#define GFX_HEIGHT 448
+static void display_hold_quarter(int quarter) { held = quarter; }
+static int ui_transform_quarter_turn(int quarter, int width, int height) {
+    return quarter + width + height;
+}
+static void ui_set_transform(int transform) { applied = transform; calls++; }
+""" + helper + r"""
 int main(void) {
-    display_reset_quarter();
-    display_set_quarter_handler(changed);
-    display_hold_quarter(DISPLAY_PORTRAIT);
-    if (calls != 1 || applied != DISPLAY_PORTRAIT || !display_quarter_held()) return 1;
-    display_hold_quarter(DISPLAY_PORTRAIT);
-    if (calls != 1) return 2;
-    if (display_quarter_now() != DISPLAY_PORTRAIT) return 3;
-    display_hold_quarter(DISPLAY_LANDSCAPE);
-    if (calls != 2 || applied != DISPLAY_LANDSCAPE) return 4;
-    display_release_quarter();
-    if (display_quarter_held()) return 5;
+    for (int quarter = 0; quarter < 4; quarter++) {
+        render_lab_test_hold_quarter(quarter);
+        if (held != quarter || applied != quarter + GFX_WIDTH + GFX_HEIGHT) return 1;
+        if (calls != quarter + 1) return 2;
+    }
     return 0;
 }
 """)
-            command = ["gcc", "-std=c11"]
-            for include in (main, main.parent / "test/stubs", main.parent / "packages/math/include"):
-                command += ["-I", str(include)]
             output = work / "hold.exe"
-            command += [str(driver), str(device), str(main / "display/display.c"), "-lm", "-o", str(output)]
-            subprocess.check_call(command)
+            subprocess.check_call(["gcc", "-std=c11", str(probe), "-o", str(output)])
             subprocess.check_call([str(output)])
 
 

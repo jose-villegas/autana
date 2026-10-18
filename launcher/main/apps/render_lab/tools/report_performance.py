@@ -49,9 +49,6 @@ def parse_capture(text, quarter="portrait"):
     if not observed and quarter != "portrait":
         raise ValueError(f"capture has no quarter={quarter} rows")
     render_stages = {STAGE_RENDER, STAGE_FRAME, STAGE_RENDER_DELTA, STAGE_FRAME_DELTA}
-    text = "\n".join(line for line in text.splitlines()
-                     if not any(f"stage={stage} " in line for stage in render_stages)
-                     or quarter_name(line) in (None, quarter))
     build = build_id(text)
     runs = {}
     current = None
@@ -68,6 +65,8 @@ def parse_capture(text, quarter="portrait"):
             if "phase" in fields:
                 current[("phase", fields["phase"])] = fields
             elif "stage" in fields:
+                if fields["stage"] in render_stages and quarter_name(line) not in (None, quarter):
+                    continue
                 current[(fields["stage"], fields.get("cores", fields.get("paused", "")))] = fields
     if not runs:
         raise ValueError("capture has no runs")

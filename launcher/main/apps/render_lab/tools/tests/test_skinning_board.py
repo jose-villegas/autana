@@ -50,6 +50,13 @@ class SkinningBoard(unittest.TestCase):
             budget("\n".join(line for line in lines if "quarter=landscape" not in line))
         self.assertIn("quarter=portrait", rendered)
         self.assertIn("quarter=landscape", rendered)
+        for quarter in report_performance.QUARTERS:
+            data = parse_capture("\n".join(lines), quarter)
+            self.assertEqual(data["stages"][(STAGE_SKIN, CORES_ONE)], 100)
+        from layout_measure import parse_timings
+        rows = parse_timings("\n".join(lines))
+        self.assertEqual(rows[f"{STAGE_SKIN} cores={CORES_ONE}"], 100)
+        self.assertNotIn(f"{STAGE_SKIN} cores={CORES_ONE} quarter=portrait", rows)
         self.assertIn("700", rendered)
         self.assertIn("100", rendered)
 

@@ -51,11 +51,6 @@ void display_load_panel_clock(void);
 /* Puts the shell's orientation at DISPLAY_DEFAULT_QUARTER. */
 void display_reset_quarter(void);
 
-typedef void (*display_quarter_handler_t)(int quarter);
-
-/* The shell binds its UI transform before any forced orientation changes. */
-void display_set_quarter_handler(display_quarter_handler_t handler);
-
 /* Holds bypass gravity until release; the next sample after release is due. */
 void display_hold_quarter(int quarter);
 void display_release_quarter(void);

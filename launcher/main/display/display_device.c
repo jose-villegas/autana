@@ -22,7 +22,6 @@ _Static_assert(PANEL_CLOCK_SLOW_HZ == GFX_PANEL_CLOCK_SLOW_HZ && PANEL_CLOCK_FAS
 
 static display_orientation_t shell_orientation;
 static panel_clock_t shell_panel_clock;
-static display_quarter_handler_t quarter_handler;
 
 bool
 display_start(void) {
@@ -49,17 +48,8 @@ display_reset_quarter(void) {
 }
 
 void
-display_set_quarter_handler(display_quarter_handler_t handler) {
-    quarter_handler = handler;
-}
-
-void
 display_hold_quarter(int quarter) {
-    const int before = display_quarter_now();
     display_orientation_hold(&shell_orientation, quarter);
-    if (before != quarter && quarter_handler != NULL) {
-        quarter_handler(quarter);
-    }
 }
 
 void

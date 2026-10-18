@@ -141,15 +141,8 @@ check_console_prefix_clashes(void) {
 }
 #endif
 
-static void
-apply_display_quarter(int quarter) {
-    ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
-    gfx_request_full_redraw();
-}
-
 void
 shell_init(void) {
-    display_set_quarter_handler(apply_display_quarter);
 #if CONFIG_LAUNCHER_DEVELOPMENT
     shell_frame_init(build_id_short());
 #endif
@@ -191,7 +184,8 @@ run_pending_selftest_suite(const console_frame_request_t* requests) {
 static void
 apply_display_orientation(int64_t now_us) {
     if (display_sample_orientation(now_us, input_read_gravity)) {
-        apply_display_quarter(display_quarter_now());
+        ui_set_transform(ui_transform_quarter_turn(display_quarter_now(), GFX_WIDTH, GFX_HEIGHT));
+        gfx_request_full_redraw();
     }
 }
 
