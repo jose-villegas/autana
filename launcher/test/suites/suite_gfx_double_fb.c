@@ -87,6 +87,7 @@ test_double_fb_exit_keeps_front_and_releases_back(void) {
 #endif
         gfx_color_t* front = gfx_framebuffer();
         front[0] = FRAME_COLOUR;
+        gfx_present();
         const size_t internal_before = memory_free_bytes(MEMORY_INTERNAL);
         enter_double();
         TEST_ASSERT_EQUAL_size_t(internal_before, memory_free_bytes(MEMORY_INTERNAL));
