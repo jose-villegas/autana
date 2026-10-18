@@ -1,8 +1,4 @@
-"""Temporal instruments for synchronized host renders, alongside render_compare.
-
-The 4x4 box blur measures triangle-scale pops; ordered dither reads as noise,
-so judge dither by eye. --video-column composes a labelled look-range clip.
-"""
+"""Temporal host-render instruments; method: docs/tools/Render-Harness.md."""
 import argparse
 import csv
 import pathlib
@@ -11,41 +7,43 @@ import subprocess
 import numpy as np
 from PIL import Image
 
-from render_compare import _box_mean, _ffmpeg_command, captioned, read_video
+from render_compare import captioned, read_video
 
 TEMPORAL_BLOCK_SIDE = 4
 TEMPORAL_POP_THRESHOLD = 8
 CHANNEL_MAX = 255
-TEMPORAL_COLUMNS = ("extra_change", "blocks_popping_pct")
+TEMPORAL_COLUMNS = ("extra_change_levels", "blocks_popping_pct")
 
 
 def temporal_change(previous_a, a, previous_b, b):
-    """Extra frame-to-frame change after a sliding box mean of mean RGB luma.
-
-    Returns mean absolute change /255 and percent of windows above the pop threshold.
-    """
+    """Extra frame-to-frame change of B over A on 4x4 box-averaged luma: mean absolute change (levels of 255) and the
+    percent of windows above the pop threshold."""
     frames = [np.asarray(frame, dtype=float) for frame in (previous_a, a, previous_b, b)]
     if any(frame.shape != frames[0].shape for frame in frames):
         raise ValueError("temporal frames must have the same shape")
     size = min(TEMPORAL_BLOCK_SIDE, *frames[0].shape[:2])
-    pa, ca, pb, cb = [_box_mean(frame.mean(axis=2), size) for frame in frames]
+    pa, ca, pb, cb = [box_mean(frame.mean(axis=2), size) for frame in frames]
     difference = np.abs((cb - pb) - (ca - pa))
-    return float(difference.mean() / CHANNEL_MAX), float(100 * np.mean(difference > TEMPORAL_POP_THRESHOLD))
+    return float(difference.mean()), float(100 * np.mean(difference > TEMPORAL_POP_THRESHOLD))
 
 
-def video_columns(columns, out):
-    """Compose synchronized host videos under their labels."""
-    videos = [read_video(path) for _, path in columns]
-    if len({rate for rate, _ in videos}) != 1:
-        raise ValueError("video columns need equal frame rates")
+def box_mean(values, size):
+    total = np.pad(values.cumsum(axis=0).cumsum(axis=1), ((1, 0), (1, 0)))
+    window = total[size:, size:] - total[:-size, size:] - total[size:, :-size] + total[:-size, :-size]
+    return window / (size * size)
+
+
+def write_video(frames, fps, out):
+    """Encode RGB pictures with one bounded ffmpeg pipe."""
     process = None
     try:
-        for frames in zip(*(frames for _, frames in videos), strict=True):
-            panels = [captioned(Image.fromarray(frame), label) for (label, _), frame in zip(columns, frames)]
-            picture = Image.fromarray(np.concatenate([np.asarray(panel) for panel in panels], axis=1))
+        for picture in frames:
             if process is None:
-                process = subprocess.Popen(_ffmpeg_command("ffmpeg", picture.size, videos[0][0], out),
-                                           stdin=subprocess.PIPE)
+                command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24",
+                           "-s", "%dx%d" % picture.size, "-r", "%g" % fps, "-i", "-",
+                           "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", "-c:v", "libx264", "-crf", "16",
+                           "-preset", "medium", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(out)]
+                process = subprocess.Popen(command, stdin=subprocess.PIPE)
             process.stdin.write(picture.tobytes())
     finally:
         if process is not None:
@@ -54,6 +52,26 @@ def video_columns(columns, out):
                 raise RuntimeError("ffmpeg failed writing %s" % out)
     if process is None:
         raise ValueError("no video frames")
+
+
+def video_columns(columns, out, panel_width=0):
+    """Compose synchronized host videos under their labels."""
+    videos = [read_video(path) for _, path in columns]
+    if len({rate for rate, _ in videos}) != 1:
+        raise ValueError("video columns need equal frame rates")
+
+    def pictures():
+        for frames in zip(*(frames for _, frames in videos), strict=True):
+            panels = []
+            for (label, _), frame in zip(columns, frames):
+                picture = Image.fromarray(frame)
+                if panel_width:
+                    picture = picture.resize((panel_width, round(picture.height * panel_width / picture.width)),
+                                             Image.Resampling.LANCZOS)
+                panels.append(captioned(picture, label))
+            yield Image.fromarray(np.concatenate([np.asarray(panel) for panel in panels], axis=1))
+
+    write_video(pictures(), videos[0][0], out)
 
 
 def compare_temporal(path_a, path_b, csv_path):
@@ -76,7 +94,7 @@ def compare_temporal(path_a, path_b, csv_path):
         if previous is not None:
             changes.append(change)
         previous = (a, b)
-        rows[index].update(zip(TEMPORAL_COLUMNS, (f"{change[0]:.8f}", f"{change[1]:.4f}")))
+        rows[index].update(zip(TEMPORAL_COLUMNS, (f"{change[0]:.3f}", f"{change[1]:.4f}")))
         count += 1
     if count != len(rows) or not count:
         raise ValueError("CSV and videos need equal nonzero frame counts")
@@ -85,7 +103,7 @@ def compare_temporal(path_a, path_b, csv_path):
         writer.writeheader()
         writer.writerows(rows)
     extra, popping = np.mean(changes, axis=0) if changes else (0.0, 0.0)
-    return ("extra frame-to-frame change %.8f (mean /255), blocks popping %.4f%%"
+    return ("extra frame-to-frame change (levels of 255) %.3f, blocks popping %.4f%%"
             % (extra, popping))
 
 
@@ -95,12 +113,13 @@ def main():
     parser.add_argument("--csv", help="existing render_compare per-frame CSV to extend")
     parser.add_argument("--summary", help="append the temporal summary here too")
     parser.add_argument("--video-column", nargs=2, action="append", metavar=("LABEL", "AVI"))
+    parser.add_argument("--panel-width", type=int, default=0, help="resize columns before labelling; 0 keeps native size")
     parser.add_argument("--out", help="labelled look-range video")
     args = parser.parse_args()
     if args.video_column:
         if not args.out:
             parser.error("--video-column needs --out")
-        video_columns(args.video_column, args.out)
+        video_columns(args.video_column, args.out, args.panel_width)
     elif args.video and args.csv:
         summary = compare_temporal(*args.video, args.csv)
         print(summary)

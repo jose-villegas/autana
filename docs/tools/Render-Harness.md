@@ -41,8 +41,8 @@ context's view, with shaded as the default. The names match the declared
 
 `--set owner.name=value` sets any registered tunable before drawing; repeat it
 for several values. Invalid names, values and ranges fail the render.
-The viewer compiles hot tunables live. `--tunables` lists their source defaults
-and ranges on stderr, including the small-fill levers used by the doc tables.
+The viewer compiles hot tunables live. `--tunables` prints every registered
+tunable with its default and range on stderr. It exits without rendering.
 
 `--size WxH` fixes the internal render resolution through a one-step ladder;
 the output still has the panel's dimensions. Each render axis must fit the
@@ -535,7 +535,7 @@ and is excluded from the means.
 
 | Column | Meaning |
 |---|---|
-| `extra_change` | Mean absolute extra frame-to-frame change divided by 255 |
+| `extra_change_levels` | Mean absolute extra frame-to-frame change (levels of 255), to 3 decimals |
 | `blocks_popping_pct` | Percentage of sliding 4x4 windows with extra change above 8/255 |
 
 Each frame's RGB channels are averaged to luma, then box-blurred over 4x4
@@ -544,7 +544,8 @@ This measures triangle-scale pops; ordered dither reads as noise, so judge it by
 
 `render_temporal.py --video-column LABEL AVI`, repeated left to right, makes a labelled video
 of synchronized looks without a heatmap. All inputs need the same frame rate
-and frame count. The doc-images pipeline uses it for the small-fill look range.
+and frame count. `--panel-width PX` scales each picture before adding its label
+(0 keeps the native size).
 
 ## Related
 

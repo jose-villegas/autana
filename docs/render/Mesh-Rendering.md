@@ -316,15 +316,15 @@ holds:
 | Bounding box holds | What the draw does |
 |---|---|
 | no centre | nothing: dropped before its colours are read |
-| at most 4 × 4 centres | tests each centre against its three edges, one depth and colour for all |
+| at most the small-fill side (default 4 × 4 centres) | tests each centre against its three edges, one depth and colour for all |
 | more | walks its rows, each edge's column found exactly by an integer step |
 
 Both paths apply the same rule to the same integers, so a small triangle
 and a walked one sharing an edge still meet without a gap or an overlap.
 The per-centre path skips the walk's setup but loses the triangle's
 gradient: at this size that does not show, and larger it shows as facets
-on the walls, so the bound is where cost and look meet
-(`SMALL_MAX_SIDE`, `r3d_span.c`).
+on the walls, so the default bound is where cost and look meet (`SMALL_MAX_SIDE`, `r3d_span.c`);
+[Small-fill levers](#small-fill-levers) moves it.
 `suite_r3d_lit.c` holds every triangle to a reference implementation of the
 rule, and a mesh of mixed sizes to one fill per pixel.
 
@@ -341,48 +341,46 @@ fills its spans without those clamps, which would change nothing there.
 
 ### Small-fill levers
 
-Defaults keep the standard look; the flat bake is the fully flat end of this range.
-The live scene viewer accepts repeatable `--set owner.name=value` options.
+Defaults keep the standard look. The last panel of the clip below is the flat bake
+(one face colour per triangle), the fully flat end of this range.
+Set them with `--set` ([Render-Harness](../tools/Render-Harness.md)).
 
-<!-- generated: small-fill-levers sha256=6c7e5250c4e072ea74ef2c06cdffefe16510db054ff9651f08a180a8ae9f182b -->
+<!-- generated: small-fill-levers sha256=a0b778d320a8b267f45708e5a20402005fb7de6b32591c51265996b19741b946 -->
 | Axis | Tunable | Range | Default | Effect |
 |---|---|---|---|---|
-| size | `r3d_span.small_max_side` | 0..16 | 4 | Bounding-box centres per side eligible for flat fill; 0 disables it |
-| gate | `r3d_span.small_flat_spread` | 0..255 | 255 | Maximum RGB565 channel spread at the largest eligible side |
-| gate | `r3d_span.small_flat_spread_near` | 0..255 | 255 | Spread limit just above the default side; interpolated to the far gate |
-| dither | `r3d_span.small_dither` | 0..8 | 0 | Ordered edge coverage in eighths; 0 disables it |
-| dither | `r3d_span.small_dither_ramp` | 0..1 | 0 | Ramp coverage from 0 at the default side to the chosen coverage |
+| dither | `r3d_span.small_dither` | 0..8 | 0 | Ordered edge coverage in eighths above side 4; 0 disables it |
 | dither | `r3d_span.small_dither_cell_bits` | 1..2 | 2 | Log2 of the ordered pattern side in pixels |
+| dither | `r3d_span.small_dither_ramp` | 0..1 | 0 | Ramp coverage from 0 at side 4 to the chosen coverage |
+| gate | `r3d_span.small_flat_spread_far` | 0..64 | 64 | Far gate: maximum RGB565 channel spread at the size limit; 64 is off |
+| gate | `r3d_span.small_flat_spread_near` | 0..64 | 64 | Near gate: spread limit from side 5; interpolated to the far gate; 64 is off |
+| size | `r3d_span.small_max_side` | 0..16 | 4 | Bounding-box centres per side eligible for flat fill; 0 disables it |
 <!-- /generated: small-fill-levers -->
 
 The gate measures the largest RGB565 channel spread across the vertices.
-For sides above the default bound, its limit interpolates from the near gate
-at the first extra side to the far gate at the chosen maximum side.
+For sides above side 4, its limit interpolates from the near gate at side 5
+to the far gate at the size limit.
 
 ![Fitted full mesh: defaults, flat up to 8, gate ramp, ramped edge dither, and flat bake](../images/render/sponza-small-fill-range.gif)
 
-Panels share the camera path and timestamps. Labels state each override;
-unspecified tunables keep their defaults. The last panel uses the flat bake.
+Panels share the camera path and timestamps. Unspecified tunables keep their
+defaults; the gate ramp uses the near gate off, far 4, and the size limit is 8.
+The dither panel uses coverage 4, ramp 1, and the same size limit.
 
 ![Defaults versus flat up to 8, with amplified difference](../images/render/sponza-small-fill-diff.gif)
 
 The comparison shows defaults | flat <=8 | absolute RGB difference x8.
-The temporal instrument compares changes between consecutive frames after a
-4x4 box blur of mean RGB luma: `|(B_t - B_previous) - (A_t - A_previous)|`.
+The [temporal method](../tools/Render-Harness.md#temporal-video-columns) measures
+triangle-scale pops; judge dither by eye because it reads as noise here.
 
-<!-- generated: small-fill-temporal sha256=a5f41db88999624a6d46e4a1191941a66b14426dffd3724d9d010e4ae511a8d9 -->
-| Look vs defaults | Extra frame-to-frame change (mean /255) | Blocks popping (>8/255) |
+<!-- generated: small-fill-temporal sha256=cbd26004fe0795317c459ee2353eebc7f2513d808b92c2c1020b96f57cff44cf -->
+| Look vs defaults | Extra frame-to-frame change (levels of 255) | Blocks popping (>8/255) |
 |---|---|---|
-| Defaults | 0.000000 | 0.0000% |
-| Flat <=8 | 0.002123 | 1.1677% |
-| Gate ramp | 0.001703 | 0.8830% |
-| Dither 2, ramp 1 | 0.002281 | 1.3831% |
-| Flat bake | 0.030634 | 25.4338% |
+| Defaults | 0.000 | 0.0000% |
+| Flat <=8 | 0.541 | 1.1677% |
+| Gate ramp | 0.404 | 0.7357% |
+| Dither 4, ramp 1 | 0.643 | 1.6966% |
+| Flat bake | 7.812 | 25.4338% |
 <!-- /generated: small-fill-temporal -->
-
-Means cover frame transitions, excluding the first frame. Blocks popping
-is the share of sliding windows above 8/255. This measures triangle-scale
-pops; ordered dither reads as noise here, so judge dither by eye.
 
 #### Board frame cost
 
@@ -390,22 +388,22 @@ The table covers the fitted-full raster frame in the Sponza bake suite.
 It is generated from the committed [size sweep](data/small-fill/sweep48-sweep.json)
 and [look sweep](data/small-fill/s2-sweep.json), with their adjacent plans.
 
-<!-- generated: small-fill-board sha256=b7ebca44cc97c3d368b2e59978b6eebd37e855774d1ce0b2c73e542da371394b -->
+Both use hot-tunable diagnostics builds: the look sweep at `77e546125` and
+the size sweep on the main build; the plans record their build ids.
+
+<!-- generated: small-fill-board sha256=35796e7f5d24f9c3a271155a33d9bc14ef676375960bd53de16171c1c36b1dbf -->
 | Look (size 8 unless defaults) | Local measured frame ms | Capture | Frame vs defaults |
 |---|---|---|---|
-| Defaults | 48.320 | sweep48, point 0 | 0.00% |
+| Defaults | 48.320 | sweep48, point 0 | +0.00% |
 | Flat <=8 | 45.311 | sweep48, point 1 | -6.23% |
-| Gate 4, near 255 | 46.445 | s2, point 2 | -5.01% |
 | Dither 4, ramp 1 | 48.247 | s2, point 1 | -1.32% |
+| Gate 4, near 255 | 46.445 | s2, point 2 | -5.01% |
 | Gate + dither 4, ramp 1 | 48.438 | s2, point 3 | -0.93% |
 <!-- /generated: small-fill-board -->
 
-The sweeps use separate builds. Look-sweep ratios against its flat <=8 point
-multiply the size sweep's flat <=8/default ratio. Local times are measured;
-chained percentages estimate the change against defaults across builds.
-
-The measured dither uses coverage 4 and ramp 1; the video uses coverage 2.
-The timings therefore describe the captured settings, not that video panel.
+- Local frame times are measured on the builds recorded in each plan.
+- Chained percentages estimate across builds: look-sweep ratios against flat <=8
+  multiply the size sweep's flat <=8/default ratio.
 
 ## Memory
 

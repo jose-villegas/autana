@@ -1,6 +1,7 @@
-/* The shared host harness renders callbacks with synthetic time and input;
- * no live board data enters the capture. CLI options are documented in
- * docs/tools/Render-Harness.md. */
+/* Render real firmware drawing code on a host, to a BMP, with synthetic time
+ * and input (no live board data); options are in docs/tools/Render-Harness.md.
+ * Scene adapters supply shell stubs such as display_quarter_now and
+ * shell_home_edge when linking hardware-facing screen entry code. */
 #ifndef RENDER_HOST_H
 #define RENDER_HOST_H
 
