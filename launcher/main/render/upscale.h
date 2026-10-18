@@ -18,7 +18,7 @@ typedef enum {
     UPSCALE_BLOCKS,  /* both axes by one integer factor, where neither above applies */
 } upscale_path_t;
 
-/* Repeated rows retain half brightness. */
+/* The share of its brightness a repeated scanline row keeps. */
 #define UPSCALE_SCANLINE_KEEP (GFX_COLOR_SCALE_UNIT / 2)
 
 typedef struct {
