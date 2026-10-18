@@ -145,7 +145,7 @@ gravity_update_batch(gravity_t* g, const input_motion_batch_t* batch) {
         restart(g);
     }
     for (int i = 0; i < batch->count; i++) {
-        gravity_update(g, &batch->samples[i], INPUT_MOTION_SAMPLE_US);
+        gravity_update(g, &batch->samples[i], batch->sample_us);
     }
 }
 

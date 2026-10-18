@@ -8,6 +8,7 @@
 #include "unity.h"
 
 #include "input/gravity.h"
+#include "input/imu_rate.h"
 #include "math/linear/math_const.h"
 #include "math/linear/vec_convert.h"
 #include "math/scalar/units.h"
@@ -59,12 +60,93 @@ angle_error(vec3f_t expected, vec3f_t actual) {
     return atan2f(sqrtf(vec3f_dot(cross, cross)), vec3f_dot(expected, actual)) * (2.0F * QUARTER_TURN_DEG) / MATH_PI;
 }
 
+#define RATE_PERCENT_SCALE   100U
+#define RATE_SLOW_PCT        8U
+#define RATE_OUTSIDE_PCT     (IMU_RATE_BOUND_PCT + IMU_RATE_BOUND_PCT / 2U)
+#define RATE_TRUE_US         (IMU_SAMPLE_US * RATE_PERCENT_SCALE / (RATE_PERCENT_SCALE - RATE_SLOW_PCT))
+#define RATE_QUANTISATION_US (RATE_TRUE_US * RATE_TRUE_US / IMU_RATE_WINDOW_US + 1U)
+
+static uint32_t
+estimate_interval(imu_rate_t* rate, uint32_t interval_us, int64_t start_us) {
+    uint32_t previous = 0;
+    uint32_t measured = imu_rate_update(rate, 0, start_us, false);
+    for (uint32_t elapsed = FRAME_US; elapsed <= IMU_RATE_WINDOW_US + FRAME_US; elapsed += FRAME_US) {
+        const uint32_t total = elapsed / interval_us;
+        measured = imu_rate_update(rate, (int)(total - previous), start_us + elapsed, false);
+        previous = total;
+    }
+    return measured;
+}
+
+static void
+test_rate_measures_slow_and_nominal_streams(void) {
+    imu_rate_t rate = {0};
+    const uint32_t measured = estimate_interval(&rate, RATE_TRUE_US, 0);
+    TEST_ASSERT_UINT32_WITHIN(RATE_QUANTISATION_US, RATE_TRUE_US, measured);
+    rate = (imu_rate_t){0};
+    TEST_ASSERT_UINT32_WITHIN(RATE_QUANTISATION_US, IMU_SAMPLE_US, estimate_interval(&rate, IMU_SAMPLE_US, 0));
+    printf("rate: true_us=%u measured_us=%u quantisation_us=%u\n", RATE_TRUE_US, measured, RATE_QUANTISATION_US);
+}
+
+static void
+test_rate_rejects_outlier_and_discards_gap(void) {
+    imu_rate_t rate = {0};
+    const uint32_t outside_us = IMU_SAMPLE_US * (RATE_PERCENT_SCALE + RATE_OUTSIDE_PCT) / RATE_PERCENT_SCALE;
+    TEST_ASSERT_EQUAL_UINT32(IMU_SAMPLE_US, estimate_interval(&rate, outside_us, 0));
+    rate = (imu_rate_t){0};
+    imu_rate_update(&rate, 0, 0, false);
+    imu_rate_update(&rate, (int)(IMU_RATE_WINDOW_US / RATE_TRUE_US), IMU_RATE_WINDOW_US - FRAME_US, false);
+    TEST_ASSERT_EQUAL_UINT32(IMU_SAMPLE_US, imu_rate_update(&rate, 0, IMU_RATE_WINDOW_US, true));
+    TEST_ASSERT_EQUAL_UINT32(IMU_SAMPLE_US, imu_rate_update(&rate, 1, IMU_RATE_WINDOW_US + FRAME_US, false));
+    TEST_ASSERT_UINT32_WITHIN(RATE_QUANTISATION_US, RATE_TRUE_US,
+                              estimate_interval(&rate, RATE_TRUE_US, IMU_RATE_WINDOW_US + FRAME_US));
+    const uint32_t measured = rate.sample_us;
+    TEST_ASSERT_EQUAL_UINT32(measured, imu_rate_update(&rate, -1, IMU_RATE_WINDOW_US * 3U, false));
+    TEST_ASSERT_FALSE(rate.active);
+}
+
+static void
+test_measured_interval_corrects_slow_quarter_turn(void) {
+    fixture();
+    imu_rate_t rate = {0};
+    input_motion_batch_t* batch = malloc(sizeof *batch);
+    TEST_ASSERT_NOT_NULL(batch);
+    *batch = (input_motion_batch_t){.sample_us = estimate_interval(&rate, RATE_TRUE_US, 0)};
+    const input_motion_t initial = {.acceleration = {0, 0, -INPUT_ACCEL_ONE_G}};
+    gravity_update(&g, &initial, 0);
+    gravity_t nominal = g;
+    const uint32_t samples = TURN_MS * MATH_US_PER_MS / RATE_TRUE_US;
+    const float turn_dps = QUARTER_TURN_DEG * MATH_US_PER_S / (float)(samples * RATE_TRUE_US);
+    uint32_t remaining = samples;
+    while (remaining > 0) {
+        batch->count = (int)(remaining < INPUT_MOTION_SAMPLES ? remaining : INPUT_MOTION_SAMPLES);
+        for (int i = 0; i < batch->count; i++) {
+            batch->samples[i] = sample((vec3f_t){0}, (vec3f_t){turn_dps, 0, 0});
+        }
+        const uint32_t measured_us = batch->sample_us;
+        gravity_update_batch(&g, batch);
+        batch->sample_us = INPUT_MOTION_SAMPLE_US;
+        gravity_update_batch(&nominal, batch);
+        batch->sample_us = measured_us;
+        remaining -= (uint32_t)batch->count;
+    }
+    free(batch);
+    const vec3f_t target = {0, -1, 0};
+    const float measured_error = angle_error(target, gravity_down(&g));
+    const float nominal_error = angle_error(target, gravity_down(&nominal));
+    printf("rate turn: measured_error_deg=%.3f nominal_error_deg=%.3f\n", (double)measured_error,
+           (double)nominal_error);
+    TEST_ASSERT_TRUE(nominal_error > ANGLE_TOLERANCE_DEG);
+    TEST_ASSERT_FLOAT_WITHIN(ANGLE_TOLERANCE_DEG, QUARTER_TURN_DEG * RATE_SLOW_PCT / RATE_PERCENT_SCALE, nominal_error);
+    TEST_ASSERT_TRUE(measured_error < ANGLE_TOLERANCE_DEG);
+}
+
 static void
 test_fast_turn_batch_retains_between_frame_rotation(void) {
     fixture();
     input_motion_batch_t* batch = malloc(sizeof *batch);
     TEST_ASSERT_NOT_NULL(batch);
-    *batch = (input_motion_batch_t){0};
+    *batch = (input_motion_batch_t){.sample_us = INPUT_MOTION_SAMPLE_US};
     gravity_t frame;
     gravity_reset(&frame);
     const input_motion_t initial = {.acceleration = {0, 0, -INPUT_ACCEL_ONE_G}};
@@ -109,7 +191,7 @@ test_fifo_gap_soft_restarts_and_reconverges(void) {
     TEST_ASSERT_NOT_NULL(batch);
     const input_motion_t initial = {.acceleration = {0, 0, -INPUT_ACCEL_ONE_G}};
     gravity_update(&g, &initial, 0);
-    *batch = (input_motion_batch_t){.gap = true};
+    *batch = (input_motion_batch_t){.gap = true, .sample_us = INPUT_MOTION_SAMPLE_US};
     gravity_update_batch(&g, batch);
     const bool restarted = g.recovering && g.distrust_us == GRAVITY_RECOVER_US;
     batch->count = IMU_FIFO_SAMPLES;
@@ -578,6 +660,9 @@ test_gyro_overrange_boundary(void) {
 
 void
 run_gravity_suite(void) {
+    RUN_TEST(test_rate_measures_slow_and_nominal_streams);
+    RUN_TEST(test_rate_rejects_outlier_and_discards_gap);
+    RUN_TEST(test_measured_interval_corrects_slow_quarter_turn);
     RUN_TEST(test_leaky_recovery_streams);
     RUN_TEST(test_recovery_full_gain_and_exit);
     RUN_TEST(test_gyro_overrange_boundary);
