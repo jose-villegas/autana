@@ -62,6 +62,9 @@ typedef void (*tune_reply_fn)(const char* line);
  * reports the clash. An entry registered twice is registered once. */
 bool tune_register(tune_registry_t* registry, tune_entry_t* entry);
 
+bool tune_set(tune_registry_t* registry, const char* name, int32_t value);
+bool tune_parse_value(const char* text, int32_t* out_value);
+
 int tune_count(const tune_registry_t* registry);
 const tune_entry_t* tune_find(const tune_registry_t* registry, const char* name);
 

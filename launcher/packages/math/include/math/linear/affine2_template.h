@@ -1,4 +1,4 @@
-/* affine2_template: a 2D affine map for one number type; see docs/math/README.md for the macro arguments. */
+/* affine2_template: a 2D affine map for one number type; see docs/math/Conventions.md#templates for the macro arguments. */
 #pragma once
 
 #include <stdbool.h>

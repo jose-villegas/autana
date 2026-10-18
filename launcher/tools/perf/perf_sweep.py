@@ -15,13 +15,13 @@ from layout_measure import (REPO, autana_command, booted_build_id,
 from perf_compare import DEFAULT_ALPHA, DEFAULT_THRESHOLD
 from capture import capture_board, require_same_board, quarter_row
 from seed_statistics import compare
+from frame_cost import US_PER_MS
 from device_capture import PERF_SEGMENT
 
 sys.path.insert(0, str(REPO / "launcher/tools/r3d"))
 from dynres_report import SPANS, SPAN_FIELDS, STAGE
 
 DEFAULT_RUNS = 5
-US_PER_MS = 1000
 MAX_CONSECUTIVE_FAILURES = 2
 
 # What device.py prints for a --set the board refused (its TuneRefused).

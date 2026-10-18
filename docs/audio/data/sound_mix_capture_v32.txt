@@ -1,0 +1,190 @@
+# autana sound-mix capture on A308, 2026-10-18, one record per line: <record>	<payload>
+buildid	{"build_id": "785d08c46fe8-dev"}
+stage mix	sound_mix
+stage present	present
+period_us	5804.988662131519
+window_seconds	1.5
+capacity	32
+voices	0,1,4,8,16,32
+sound tap	adpcm
+sound tap_pcm16	pcm16
+dropped tap 0	0
+playing tap 0	0
+point tap 0	I (21592) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.88/6.4  ui.paint 3.05/3.2  present 9.08/9.7  frame.rest 1.26/1.6 | total 17.70 || sound_mix 0.004/0.015 ms/block n=260
+point tap 0	I (23099) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.84/2.3  ui.paint 3.05/3.2  present 8.98/9.8  frame.rest 1.24/1.7 | total 17.54 || sound_mix 0.004/0.012 ms/block n=260
+point tap 0	I (24616) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.87/2.1  ui.paint 3.05/3.2  present 9.12/9.8  frame.rest 1.24/1.6 | total 17.71 || sound_mix 0.004/0.015 ms/block n=261
+point tap 0	I (26121) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.83/2.1  ui.paint 3.05/3.1  present 8.97/9.7  frame.rest 1.25/1.7 | total 17.54 || sound_mix 0.004/0.013 ms/block n=260
+point tap 0	I (27639) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.85/2.2  ui.paint 3.05/3.2  present 9.10/9.8  frame.rest 1.25/1.7 | total 17.69 || sound_mix 0.004/0.013 ms/block n=261
+point tap 0	I (29144) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.85/2.1  ui.paint 3.05/3.1  present 8.95/9.7  frame.rest 1.25/1.6 | total 17.54 || sound_mix 0.004/0.012 ms/block n=259
+point tap 0	I (30655) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.85/2.1  ui.paint 3.05/3.1  present 9.06/9.8  frame.rest 1.25/1.7 | total 17.66 || sound_mix 0.004/0.023 ms/block n=261
+point tap 0	I (32162) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.85/2.2  ui.paint 3.05/3.2  present 8.99/9.7  frame.rest 1.25/1.7 | total 17.58 || sound_mix 0.004/0.012 ms/block n=259
+point tap 0	I (33665) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.90/2.3  ui.paint 3.05/3.2  present 9.12/9.9  frame.rest 1.25/1.7 | total 17.76 || sound_mix 0.004/0.013 ms/block n=259
+point tap 0	I (35177) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.87/2.4  ui.paint 3.05/3.2  present 9.00/10.2  frame.rest 1.25/1.6 | total 17.61 || sound_mix 0.004/0.015 ms/block n=261
+dropped tap 0	0
+dropped tap 1	0
+playing tap 1	1
+point tap 1	I (47243) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.97/6.3  ui.paint 3.07/3.2  present 8.96/9.9  frame.rest 1.26/1.6 | total 17.70 || sound_mix 0.054/0.092 ms/block n=260
+point tap 1	I (48747) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.91/2.3  ui.paint 3.06/3.2  present 9.12/10.0  frame.rest 1.26/1.6 | total 17.80 || sound_mix 0.056/0.087 ms/block n=259
+point tap 1	I (50248) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.92/2.4  ui.paint 3.07/3.2  present 9.04/10.0  frame.rest 1.26/1.6 | total 17.73 || sound_mix 0.055/0.095 ms/block n=259
+point tap 1	I (51761) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.95/2.3  ui.paint 3.07/3.2  present 9.17/9.8  frame.rest 1.26/1.6 | total 17.89 || sound_mix 0.055/0.095 ms/block n=261
+point tap 1	I (53273) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.91/2.1  ui.paint 3.07/3.2  present 8.98/9.7  frame.rest 1.26/1.7 | total 17.66 || sound_mix 0.055/0.099 ms/block n=260
+point tap 1	I (54775) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.92/2.4  ui.paint 3.07/3.2  present 9.10/9.9  frame.rest 1.26/1.7 | total 17.79 || sound_mix 0.055/0.093 ms/block n=259
+point tap 1	I (56290) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.91/2.3  ui.paint 3.07/3.2  present 8.99/9.7  frame.rest 1.26/1.6 | total 17.69 || sound_mix 0.056/0.093 ms/block n=261
+point tap 1	I (57795) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.90/2.4  ui.paint 3.07/3.2  present 9.13/9.8  frame.rest 1.25/1.7 | total 17.80 || sound_mix 0.054/0.091 ms/block n=259
+point tap 1	I (59302) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.90/2.2  ui.paint 3.06/3.2  present 8.96/9.9  frame.rest 1.25/1.6 | total 17.62 || sound_mix 0.054/0.095 ms/block n=259
+point tap 1	I (60804) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.90/2.5  ui.paint 3.07/3.2  present 9.07/9.7  frame.rest 1.26/1.6 | total 17.74 || sound_mix 0.055/0.090 ms/block n=259
+dropped tap 1	0
+dropped tap 4	0
+playing tap 4	4
+point tap 4	I (75897) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.24/2.3  ridge.paint 1.87/2.7  ui.paint 3.07/3.2  present 9.31/22.6  frame.rest 1.26/1.7 | total 17.97 || sound_mix 0.142/0.187 ms/block n=261
+point tap 4	I (77412) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.24/2.3  ridge.paint 1.89/2.2  ui.paint 3.07/3.2  present 8.96/9.7  frame.rest 1.27/1.6 | total 17.65 || sound_mix 0.143/0.185 ms/block n=261
+point tap 4	I (78918) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.86/2.3  ui.paint 3.08/3.2  present 9.16/10.0  frame.rest 1.26/1.6 | total 17.80 || sound_mix 0.144/0.183 ms/block n=260
+point tap 4	I (80434) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.23/2.3  ridge.paint 1.86/2.1  ui.paint 3.07/3.2  present 9.01/9.8  frame.rest 1.26/1.6 | total 17.66 || sound_mix 0.144/0.186 ms/block n=261
+point tap 4	I (81936) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.24/2.3  ridge.paint 1.88/2.1  ui.paint 3.07/3.2  present 9.12/9.8  frame.rest 1.27/1.6 | total 17.80 || sound_mix 0.144/0.185 ms/block n=259
+point tap 4	I (83452) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.24/2.3  ridge.paint 1.83/2.2  ui.paint 3.07/3.2  present 9.06/9.7  frame.rest 1.26/1.7 | total 17.68 || sound_mix 0.143/0.189 ms/block n=261
+point tap 4	I (84953) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.24/2.3  ridge.paint 1.80/2.2  ui.paint 3.07/3.2  present 9.17/10.0  frame.rest 1.26/1.7 | total 17.75 || sound_mix 0.143/0.185 ms/block n=258
+point tap 4	I (86468) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.24/2.3  ridge.paint 1.83/2.1  ui.paint 3.07/3.2  present 9.07/9.9  frame.rest 1.26/1.7 | total 17.67 || sound_mix 0.143/0.185 ms/block n=261
+point tap 4	I (87972) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.24/2.3  ridge.paint 1.82/2.1  ui.paint 3.07/3.2  present 9.14/9.8  frame.rest 1.26/1.7 | total 17.75 || sound_mix 0.143/0.187 ms/block n=259
+point tap 4	I (89487) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.24/2.3  ridge.paint 1.81/2.2  ui.paint 3.07/3.2  present 9.03/9.8  frame.rest 1.27/1.7 | total 17.64 || sound_mix 0.144/0.192 ms/block n=261
+dropped tap 4	0
+dropped tap 8	0
+playing tap 8	8
+point tap 8	I (110602) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.24/2.3  ridge.paint 1.86/3.0  ui.paint 3.08/3.2  present 9.25/23.1  frame.rest 1.26/1.7 | total 17.92 || sound_mix 0.258/0.311 ms/block n=261
+point tap 8	I (112118) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.24/2.3  ridge.paint 1.87/2.2  ui.paint 3.08/3.2  present 9.28/10.0  frame.rest 1.27/1.7 | total 17.96 || sound_mix 0.259/0.312 ms/block n=261
+point tap 8	I (113623) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.24/2.3  ridge.paint 1.81/2.2  ui.paint 3.08/3.2  present 9.14/10.2  frame.rest 1.26/1.7 | total 17.73 || sound_mix 0.258/0.314 ms/block n=259
+point tap 8	I (115128) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.24/2.3  ridge.paint 1.78/2.2  ui.paint 3.08/3.2  present 9.19/9.9  frame.rest 1.26/1.7 | total 17.78 || sound_mix 0.258/0.317 ms/block n=259
+point tap 8	I (116644) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.24/2.3  ridge.paint 1.80/2.1  ui.paint 3.08/3.2  present 9.12/9.9  frame.rest 1.27/1.6 | total 17.73 || sound_mix 0.259/0.319 ms/block n=261
+point tap 8	I (118152) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.24/2.3  ridge.paint 1.80/2.1  ui.paint 3.09/3.2  present 9.22/10.2  frame.rest 1.26/1.7 | total 17.82 || sound_mix 0.259/0.309 ms/block n=260
+point tap 8	I (119664) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.24/2.3  ridge.paint 1.77/2.2  ui.paint 3.08/3.2  present 9.10/9.8  frame.rest 1.26/1.7 | total 17.66 || sound_mix 0.259/0.316 ms/block n=261
+point tap 8	I (121169) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.24/2.3  ridge.paint 1.81/2.1  ui.paint 3.07/3.2  present 9.22/10.2  frame.rest 1.26/1.7 | total 17.82 || sound_mix 0.258/0.308 ms/block n=259
+point tap 8	I (122671) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.24/2.3  ridge.paint 1.79/2.1  ui.paint 3.08/3.2  present 9.17/10.4  frame.rest 1.27/1.7 | total 17.77 || sound_mix 0.257/0.309 ms/block n=259
+point tap 8	I (124183) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.24/2.3  ridge.paint 1.82/2.3  ui.paint 3.08/3.2  present 9.21/10.0  frame.rest 1.26/1.7 | total 17.83 || sound_mix 0.258/0.311 ms/block n=260
+dropped tap 8	0
+dropped tap 16	0
+playing tap 16	16
+point tap 16	I (155835) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.53/25.1  ridge.paint 1.88/3.9  ui.paint 3.09/3.3  present 9.37/10.6  frame.rest 1.26/1.7 | total 18.34 || sound_mix 0.483/0.549 ms/block n=261
+point tap 16	I (157344) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.25/2.3  ridge.paint 1.79/2.0  ui.paint 3.09/3.2  present 9.42/10.7  frame.rest 1.27/1.7 | total 18.03 || sound_mix 0.483/0.543 ms/block n=260
+point tap 16	I (158856) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.25/2.3  ridge.paint 1.86/2.2  ui.paint 3.08/3.2  present 9.42/10.5  frame.rest 1.27/1.7 | total 18.11 || sound_mix 0.484/0.553 ms/block n=260
+point tap 16	I (160373) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.25/2.3  ridge.paint 1.88/2.2  ui.paint 3.09/3.2  present 9.43/10.6  frame.rest 1.28/1.7 | total 18.14 || sound_mix 0.482/0.549 ms/block n=261
+point tap 16	I (161882) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.25/2.3  ridge.paint 1.84/2.3  ui.paint 3.10/3.3  present 9.41/10.6  frame.rest 1.26/1.7 | total 18.08 || sound_mix 0.484/0.545 ms/block n=260
+point tap 16	I (163385) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.26/2.3  ridge.paint 1.79/2.2  ui.paint 3.10/3.3  present 9.31/10.1  frame.rest 1.28/1.6 | total 17.96 || sound_mix 0.485/0.554 ms/block n=259
+point tap 16	I (164888) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.25/2.3  ridge.paint 1.89/2.3  ui.paint 3.10/3.2  present 9.46/10.6  frame.rest 1.26/1.7 | total 18.17 || sound_mix 0.484/0.543 ms/block n=259
+point tap 16	I (166391) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.25/2.3  ridge.paint 1.83/2.5  ui.paint 3.09/3.2  present 9.39/10.9  frame.rest 1.27/1.6 | total 18.06 || sound_mix 0.484/0.552 ms/block n=259
+point tap 16	I (167896) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.25/2.3  ridge.paint 1.85/2.5  ui.paint 3.09/3.3  present 9.33/10.2  frame.rest 1.26/1.7 | total 17.99 || sound_mix 0.483/0.550 ms/block n=259
+point tap 16	I (169406) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.25/2.4  ridge.paint 1.84/2.2  ui.paint 3.10/3.2  present 9.36/10.2  frame.rest 1.27/1.7 | total 18.04 || sound_mix 0.485/0.548 ms/block n=261
+dropped tap 16	0
+dropped tap 32	0
+playing tap 32	32
+point tap 32	I (222196) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.26/2.4  ridge.paint 1.99/6.3  ui.paint 3.09/3.3  present 10.19/11.5  frame.rest 1.26/1.7 | total 19.02 || sound_mix 0.925/1.026 ms/block n=258
+point tap 32	I (223703) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.27/2.4  ridge.paint 1.91/2.2  ui.paint 3.10/3.3  present 9.96/10.8  frame.rest 1.28/1.7 | total 18.73 || sound_mix 0.929/1.025 ms/block n=260
+point tap 32	I (225217) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.27/2.4  ridge.paint 1.96/2.3  ui.paint 3.10/3.2  present 10.07/11.4  frame.rest 1.27/1.7 | total 18.88 || sound_mix 0.930/1.021 ms/block n=261
+point tap 32	I (226734) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.27/2.4  ridge.paint 1.95/2.2  ui.paint 3.11/3.3  present 9.99/11.4  frame.rest 1.28/1.7 | total 18.82 || sound_mix 0.928/1.020 ms/block n=261
+point tap 32	I (228253) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.27/2.4  ridge.paint 1.92/2.3  ui.paint 3.12/3.3  present 10.06/11.5  frame.rest 1.27/1.7 | total 18.87 || sound_mix 0.929/1.015 ms/block n=262
+point tap 32	I (229767) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.27/2.4  ridge.paint 1.93/2.5  ui.paint 3.10/3.3  present 9.99/11.5  frame.rest 1.26/1.7 | total 18.77 || sound_mix 0.928/1.013 ms/block n=261
+point tap 32	I (231280) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.26/2.4  ridge.paint 1.92/2.3  ui.paint 3.11/3.3  present 10.02/11.1  frame.rest 1.26/1.7 | total 18.79 || sound_mix 0.929/1.021 ms/block n=260
+point tap 32	I (232781) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.27/2.4  ridge.paint 1.94/2.3  ui.paint 3.11/3.3  present 9.90/10.8  frame.rest 1.27/1.7 | total 18.71 || sound_mix 0.929/1.019 ms/block n=259
+point tap 32	I (234296) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.27/2.4  ridge.paint 1.98/2.4  ui.paint 3.10/3.3  present 10.03/11.2  frame.rest 1.27/1.7 | total 18.87 || sound_mix 0.930/1.017 ms/block n=261
+point tap 32	I (235814) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.27/2.4  ridge.paint 1.94/2.4  ui.paint 3.11/3.3  present 10.06/11.0  frame.rest 1.27/1.7 | total 18.88 || sound_mix 0.930/1.019 ms/block n=261
+dropped tap 32	0
+dropped tap_pcm16 1	0
+playing tap_pcm16 1	1
+point tap_pcm16 1	I (252392) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.84/2.1  ui.paint 3.06/3.2  present 9.08/9.7  frame.rest 1.25/1.6 | total 17.68 || sound_mix 0.031/0.060 ms/block n=261
+point tap_pcm16 1	I (253898) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.78/2.1  ui.paint 3.05/3.2  present 8.96/9.7  frame.rest 1.26/1.6 | total 17.48 || sound_mix 0.031/0.057 ms/block n=260
+point tap_pcm16 1	I (255415) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.78/2.0  ui.paint 3.05/3.2  present 9.14/10.0  frame.rest 1.25/1.7 | total 17.67 || sound_mix 0.031/0.057 ms/block n=261
+point tap_pcm16 1	I (256922) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.80/2.2  ui.paint 3.06/3.2  present 8.99/10.2  frame.rest 1.25/1.6 | total 17.55 || sound_mix 0.031/0.058 ms/block n=260
+point tap_pcm16 1	I (258423) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.82/2.2  ui.paint 3.05/3.2  present 9.09/10.0  frame.rest 1.25/1.6 | total 17.66 || sound_mix 0.031/0.058 ms/block n=258
+point tap_pcm16 1	I (259928) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.80/2.0  ui.paint 3.06/3.2  present 8.97/9.8  frame.rest 1.26/1.7 | total 17.54 || sound_mix 0.031/0.060 ms/block n=260
+point tap_pcm16 1	I (261441) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.80/2.1  ui.paint 3.05/3.2  present 9.06/9.7  frame.rest 1.26/1.7 | total 17.62 || sound_mix 0.031/0.063 ms/block n=260
+point tap_pcm16 1	I (262952) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.84/2.2  ui.paint 3.06/3.2  present 9.02/9.8  frame.rest 1.26/1.7 | total 17.61 || sound_mix 0.031/0.060 ms/block n=260
+point tap_pcm16 1	I (264464) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.83/2.3  ui.paint 3.06/3.2  present 9.09/9.8  frame.rest 1.25/1.6 | total 17.67 || sound_mix 0.031/0.055 ms/block n=261
+point tap_pcm16 1	I (265978) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.80/2.3  ui.paint 3.06/3.2  present 9.06/10.0  frame.rest 1.25/1.7 | total 17.61 || sound_mix 0.031/0.061 ms/block n=261
+dropped tap_pcm16 1	0
+dropped tap_pcm16 4	0
+playing tap_pcm16 4	4
+point tap_pcm16 4	I (281099) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.81/3.2  ui.paint 3.07/3.2  present 9.19/27.6  frame.rest 1.25/1.7 | total 17.77 || sound_mix 0.070/0.105 ms/block n=260
+point tap_pcm16 4	I (282599) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.83/2.1  ui.paint 3.07/3.2  present 9.13/9.8  frame.rest 1.26/1.7 | total 17.72 || sound_mix 0.069/0.105 ms/block n=259
+point tap_pcm16 4	I (284107) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.78/2.0  ui.paint 3.06/3.2  present 9.01/9.7  frame.rest 1.26/1.7 | total 17.55 || sound_mix 0.069/0.102 ms/block n=260
+point tap_pcm16 4	I (285626) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.76/2.1  ui.paint 3.07/3.2  present 9.14/9.9  frame.rest 1.26/1.7 | total 17.68 || sound_mix 0.070/0.111 ms/block n=261
+point tap_pcm16 4	I (287133) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.78/2.1  ui.paint 3.06/3.2  present 9.03/9.8  frame.rest 1.25/1.7 | total 17.57 || sound_mix 0.069/0.114 ms/block n=260
+point tap_pcm16 4	I (288651) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.77/2.0  ui.paint 3.07/3.2  present 9.14/9.8  frame.rest 1.25/1.7 | total 17.67 || sound_mix 0.070/0.114 ms/block n=261
+point tap_pcm16 4	I (290158) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.79/2.2  ui.paint 3.06/3.1  present 8.97/9.8  frame.rest 1.25/1.6 | total 17.51 || sound_mix 0.069/0.107 ms/block n=260
+point tap_pcm16 4	I (291676) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.77/2.0  ui.paint 3.07/3.2  present 9.13/9.9  frame.rest 1.26/1.7 | total 17.68 || sound_mix 0.069/0.110 ms/block n=262
+point tap_pcm16 4	I (293185) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.77/2.1  ui.paint 3.07/3.2  present 8.98/10.1  frame.rest 1.26/1.6 | total 17.53 || sound_mix 0.070/0.108 ms/block n=260
+point tap_pcm16 4	I (294700) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.77/2.1  ui.paint 3.07/3.2  present 9.09/9.8  frame.rest 1.27/1.6 | total 17.64 || sound_mix 0.070/0.114 ms/block n=261
+dropped tap_pcm16 4	0
+dropped tap_pcm16 8	0
+playing tap_pcm16 8	8
+point tap_pcm16 8	I (315807) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.94/3.8  ui.paint 3.38/27.3  present 9.10/9.8  frame.rest 1.26/1.6 | total 18.13 || sound_mix 0.117/0.164 ms/block n=261
+point tap_pcm16 8	I (317325) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.95/2.3  ui.paint 3.07/3.2  present 9.06/9.8  frame.rest 1.26/1.7 | total 17.79 || sound_mix 0.117/0.160 ms/block n=261
+point tap_pcm16 8	I (318830) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.89/2.2  ui.paint 3.08/3.2  present 9.14/10.0  frame.rest 1.26/1.7 | total 17.82 || sound_mix 0.118/0.166 ms/block n=259
+point tap_pcm16 8	I (320345) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.91/2.2  ui.paint 3.08/3.2  present 9.03/9.9  frame.rest 1.26/1.7 | total 17.73 || sound_mix 0.117/0.159 ms/block n=261
+point tap_pcm16 8	I (321854) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.97/2.4  ui.paint 3.09/3.2  present 9.09/9.8  frame.rest 1.26/1.6 | total 17.86 || sound_mix 0.117/0.164 ms/block n=260
+point tap_pcm16 8	I (323364) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.95/2.4  ui.paint 3.08/3.2  present 9.11/10.1  frame.rest 1.26/1.7 | total 17.85 || sound_mix 0.117/0.167 ms/block n=260
+point tap_pcm16 8	I (324871) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.24/2.3  ridge.paint 1.91/2.6  ui.paint 3.09/3.2  present 9.11/9.9  frame.rest 1.27/1.6 | total 17.82 || sound_mix 0.118/0.165 ms/block n=260
+point tap_pcm16 8	I (326384) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.92/2.3  ui.paint 3.08/3.3  present 9.02/9.8  frame.rest 1.26/1.6 | total 17.73 || sound_mix 0.118/0.168 ms/block n=261
+point tap_pcm16 8	I (327893) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.89/2.2  ui.paint 3.09/3.2  present 9.16/10.0  frame.rest 1.27/1.7 | total 17.85 || sound_mix 0.117/0.168 ms/block n=260
+point tap_pcm16 8	I (329394) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.87/2.2  ui.paint 3.08/3.3  present 9.08/10.0  frame.rest 1.26/1.6 | total 17.74 || sound_mix 0.117/0.166 ms/block n=258
+dropped tap_pcm16 8	0
+dropped tap_pcm16 16	0
+playing tap_pcm16 16	16
+point tap_pcm16 16	I (361107) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.23/2.3  ridge.paint 1.92/6.3  ui.paint 3.11/3.3  present 9.13/9.9  frame.rest 1.26/1.6 | total 17.88 || sound_mix 0.208/0.276 ms/block n=260
+point tap_pcm16 16	I (362614) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.23/2.3  ridge.paint 1.89/2.2  ui.paint 3.09/3.3  present 9.14/9.9  frame.rest 1.25/1.7 | total 17.82 || sound_mix 0.208/0.279 ms/block n=260
+point tap_pcm16 16	I (364131) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.86/2.1  ui.paint 3.10/3.3  present 9.07/10.1  frame.rest 1.27/1.7 | total 17.74 || sound_mix 0.207/0.272 ms/block n=261
+point tap_pcm16 16	I (365640) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.87/2.1  ui.paint 3.10/3.3  present 9.16/10.2  frame.rest 1.27/1.6 | total 17.85 || sound_mix 0.207/0.271 ms/block n=260
+point tap_pcm16 16	I (367145) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.23/2.3  ridge.paint 1.84/2.2  ui.paint 3.09/3.3  present 9.13/9.9  frame.rest 1.26/1.7 | total 17.78 || sound_mix 0.207/0.284 ms/block n=259
+point tap_pcm16 16	I (368650) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.23/2.3  ridge.paint 1.87/2.1  ui.paint 3.10/3.3  present 9.14/9.9  frame.rest 1.27/1.7 | total 17.83 || sound_mix 0.207/0.272 ms/block n=260
+point tap_pcm16 16	I (370169) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.23/2.3  ridge.paint 1.87/2.2  ui.paint 3.10/3.3  present 9.08/10.0  frame.rest 1.26/1.7 | total 17.76 || sound_mix 0.208/0.276 ms/block n=261
+point tap_pcm16 16	I (371677) shell: ms/frame avg/worst: ui.build 0.19/0.3  ridge.layers 2.23/2.3  ridge.paint 1.86/2.1  ui.paint 3.10/3.3  present 9.18/10.1  frame.rest 1.26/1.7 | total 17.84 || sound_mix 0.208/0.276 ms/block n=260
+point tap_pcm16 16	I (373177) shell: ms/frame avg/worst: ui.build 0.20/0.3  ridge.layers 2.23/2.3  ridge.paint 1.85/2.1  ui.paint 3.10/3.2  present 9.05/9.9  frame.rest 1.26/1.7 | total 17.72 || sound_mix 0.207/0.278 ms/block n=258
+point tap_pcm16 16	I (374691) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.23/2.3  ridge.paint 1.89/2.1  ui.paint 3.10/3.3  present 9.20/10.1  frame.rest 1.26/1.7 | total 17.91 || sound_mix 0.206/0.274 ms/block n=261
+dropped tap_pcm16 16	0
+dropped tap_pcm16 32	0
+playing tap_pcm16 32	32
+point tap_pcm16 32	I (424481) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.24/2.3  ridge.paint 1.95/6.4  ui.paint 3.14/3.4  present 9.25/10.2  frame.rest 1.27/1.7 | total 18.07 || sound_mix 0.386/0.506 ms/block n=260
+point tap_pcm16 32	I (425994) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.23/2.3  ridge.paint 1.90/2.2  ui.paint 3.14/3.4  present 9.31/10.5  frame.rest 1.27/1.7 | total 18.07 || sound_mix 0.388/0.505 ms/block n=261
+point tap_pcm16 32	I (427507) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.24/2.3  ridge.paint 1.87/2.2  ui.paint 3.13/3.3  present 9.20/10.3  frame.rest 1.26/1.7 | total 17.91 || sound_mix 0.388/0.508 ms/block n=260
+point tap_pcm16 32	I (429019) shell: ms/frame avg/worst: ui.build 0.20/0.3  ridge.layers 2.24/2.3  ridge.paint 1.88/2.2  ui.paint 3.12/3.3  present 9.41/10.6  frame.rest 1.27/1.6 | total 18.14 || sound_mix 0.386/0.506 ms/block n=261
+point tap_pcm16 32	I (430522) shell: ms/frame avg/worst: ui.build 0.20/0.3  ridge.layers 2.23/2.3  ridge.paint 1.90/2.1  ui.paint 3.15/3.4  present 9.19/10.3  frame.rest 1.26/1.7 | total 17.95 || sound_mix 0.388/0.504 ms/block n=259
+point tap_pcm16 32	I (432030) shell: ms/frame avg/worst: ui.build 0.20/0.3  ridge.layers 2.23/2.3  ridge.paint 1.88/2.2  ui.paint 3.14/3.4  present 9.27/10.1  frame.rest 1.27/1.6 | total 18.01 || sound_mix 0.388/0.508 ms/block n=260
+point tap_pcm16 32	I (433537) shell: ms/frame avg/worst: ui.build 0.20/0.2  ridge.layers 2.23/2.3  ridge.paint 1.87/2.2  ui.paint 3.14/3.4  present 9.26/10.5  frame.rest 1.26/1.6 | total 17.99 || sound_mix 0.388/0.500 ms/block n=259
+point tap_pcm16 32	I (435041) shell: ms/frame avg/worst: ui.build 0.19/0.2  ridge.layers 2.23/2.3  ridge.paint 1.92/2.3  ui.paint 3.13/3.4  present 9.43/10.5  frame.rest 1.27/1.6 | total 18.20 || sound_mix 0.386/0.500 ms/block n=259
+point tap_pcm16 32	I (436555) shell: ms/frame avg/worst: ui.build 0.20/0.3  ridge.layers 2.23/2.3  ridge.paint 1.90/2.2  ui.paint 3.13/3.4  present 9.30/10.3  frame.rest 1.27/1.7 | total 18.06 || sound_mix 0.387/0.502 ms/block n=261
+point tap_pcm16 32	I (438068) shell: ms/frame avg/worst: ui.build 0.20/0.3  ridge.layers 2.24/2.3  ridge.paint 1.88/2.3  ui.paint 3.14/3.4  present 9.39/10.3  frame.rest 1.27/1.7 | total 18.14 || sound_mix 0.389/0.504 ms/block n=261
+dropped tap_pcm16 32	0
+stats tap_pcm16 32	SOUND ready=1 dropped=0 amp=2
+stats tap_pcm16 32	SOUND slot=0 voice=289 playing=1 bus=1 gain=100 priority=128 frame=4432
+stats tap_pcm16 32	SOUND slot=1 voice=226 playing=1 bus=1 gain=100 priority=128 frame=3100
+stats tap_pcm16 32	SOUND slot=2 voice=227 playing=1 bus=1 gain=100 priority=128 frame=1243
+stats tap_pcm16 32	SOUND slot=3 voice=228 playing=1 bus=1 gain=100 priority=128 frame=2317
+stats tap_pcm16 32	SOUND slot=4 voice=165 playing=1 bus=1 gain=100 priority=128 frame=3775
+stats tap_pcm16 32	SOUND slot=5 voice=166 playing=1 bus=1 gain=100 priority=128 frame=3313
+stats tap_pcm16 32	SOUND slot=6 voice=167 playing=1 bus=1 gain=100 priority=128 frame=2979
+stats tap_pcm16 32	SOUND slot=7 voice=168 playing=1 bus=1 gain=100 priority=128 frame=853
+stats tap_pcm16 32	SOUND slot=8 voice=105 playing=1 bus=1 gain=100 priority=128 frame=4602
+stats tap_pcm16 32	SOUND slot=9 voice=106 playing=1 bus=1 gain=100 priority=128 frame=3513
+stats tap_pcm16 32	SOUND slot=10 voice=107 playing=1 bus=1 gain=100 priority=128 frame=376
+stats tap_pcm16 32	SOUND slot=11 voice=108 playing=1 bus=1 gain=100 priority=128 frame=4010
+stats tap_pcm16 32	SOUND slot=12 voice=109 playing=1 bus=1 gain=100 priority=128 frame=1513
+stats tap_pcm16 32	SOUND slot=13 voice=110 playing=1 bus=1 gain=100 priority=128 frame=1192
+stats tap_pcm16 32	SOUND slot=14 voice=111 playing=1 bus=1 gain=100 priority=128 frame=4058
+stats tap_pcm16 32	SOUND slot=15 voice=112 playing=1 bus=1 gain=100 priority=128 frame=3609
+stats tap_pcm16 32	SOUND slot=16 voice=49 playing=1 bus=1 gain=100 priority=128 frame=1752
+stats tap_pcm16 32	SOUND slot=17 voice=50 playing=1 bus=1 gain=100 priority=128 frame=1303
+stats tap_pcm16 32	SOUND slot=18 voice=51 playing=1 bus=1 gain=100 priority=128 frame=4041
+stats tap_pcm16 32	SOUND slot=19 voice=52 playing=1 bus=1 gain=100 priority=128 frame=2696
+stats tap_pcm16 32	SOUND slot=20 voice=53 playing=1 bus=1 gain=100 priority=128 frame=711
+stats tap_pcm16 32	SOUND slot=21 voice=54 playing=1 bus=1 gain=100 priority=128 frame=2937
+stats tap_pcm16 32	SOUND slot=22 voice=55 playing=1 bus=1 gain=100 priority=128 frame=1080
+stats tap_pcm16 32	SOUND slot=23 voice=56 playing=1 bus=1 gain=100 priority=128 frame=631
+stats tap_pcm16 32	SOUND slot=24 voice=57 playing=1 bus=1 gain=100 priority=128 frame=2601
+stats tap_pcm16 32	SOUND slot=25 voice=58 playing=1 bus=1 gain=100 priority=128 frame=4315
+stats tap_pcm16 32	SOUND slot=26 voice=59 playing=1 bus=1 gain=100 priority=128 frame=2458
+stats tap_pcm16 32	SOUND slot=27 voice=60 playing=1 bus=1 gain=100 priority=128 frame=473
+stats tap_pcm16 32	SOUND slot=28 voice=61 playing=1 bus=1 gain=100 priority=128 frame=3467
+stats tap_pcm16 32	SOUND slot=29 voice=62 playing=1 bus=1 gain=100 priority=128 frame=1354
+stats tap_pcm16 32	SOUND slot=30 voice=63 playing=1 bus=1 gain=100 priority=128 frame=2172
+stats tap_pcm16 32	SOUND slot=31 voice=64 playing=1 bus=1 gain=100 priority=128 frame=3502
+stats tap_pcm16 32	SOUND ram voices=896 queue=1108 stack=2560 tx_samples=1024 mixer=2132
+stats tap_pcm16 32	SOUND stack_min_free=596 margin=512
+stats tap_pcm16 32	SOUND_END
+buildid	{"build_id": "785d08c46fe8-dev"}

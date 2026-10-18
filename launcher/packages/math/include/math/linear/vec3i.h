@@ -1,6 +1,6 @@
 /*
  * vec3i: a 3-component vector of an int32. The operations are
- * vec3_template.h's and vec_swizzle_template.h's; docs/math/README.md says how
+ * vec3_template.h's and vec_swizzle_template.h's; docs/math/Linear.md says how
  * they are made.
  */
 #pragma once
