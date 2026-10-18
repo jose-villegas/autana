@@ -368,25 +368,24 @@ to the far gate at the size limit.
 | Flat ≤8 + dither 4 ramp 1 | ![Ramped dither](../images/render/sponza-small-fill-dither.gif)<br>![Dither 4 ramp 1 vs defaults, difference x8](../images/render/sponza-small-fill-dither-diff.gif) |
 | Flat bake (fitted) | ![Flat bake](../images/render/sponza-small-fill-bake.gif)<br>![Flat bake vs defaults, difference x8](../images/render/sponza-small-fill-bake-diff.gif) |
 
-Clips share a 2.5-second window and a 160×160 crop, enlarged 2× without smoothing
-at 6 fps with a full GIF palette. The crop and window maximize changed-pixel share
-for flat ≤8 versus defaults in the source comparison.
+Clips show full renderer frames for 5.5 seconds from source frame 1 at 6 fps,
+with a per-GIF full palette and no dithering or scaling.
 
 Unspecified tunables keep their defaults. The gate ramp uses the near gate off,
 far 4, and size limit 8. Dither uses coverage 4, ramp 1, and the same size limit.
 
-Each heatmap shows absolute RGB difference x8 from defaults with the same crop
+Each heatmap shows absolute RGB difference x8 from defaults over the same full frames
 and window. The [temporal method](../tools/Render-Harness.md#temporal-video-columns) measures
 triangle-scale pops; judge dither by eye because it reads as noise here.
 
-<!-- generated: small-fill-temporal sha256=9118343727391865f2ba297704e028de2a5b036b4ba5d86fc1da43fa61a426b3 -->
+<!-- generated: small-fill-temporal sha256=5903d6c98c81ff8bd3e21502700e09a9b8c10474e4eed07458965a25350bd9a4 -->
 | Look vs defaults | Extra frame-to-frame change (levels of 255) | Blocks popping (>8/255) |
 |---|---|---|
 | Defaults | 0.000 | 0.0000% |
-| Flat <=8 | 0.541 | 1.1677% |
-| Gate ramp | 0.404 | 0.7357% |
-| Dither 4, ramp 1 | 0.643 | 1.6966% |
-| Flat bake | 3.563 | 11.3966% |
+| Flat <=8 | 0.510 | 1.0178% |
+| Gate ramp | 0.382 | 0.6262% |
+| Dither 4, ramp 1 | 0.597 | 1.4627% |
+| Flat bake | 3.447 | 10.5584% |
 <!-- /generated: small-fill-temporal -->
 
 #### Board frame cost
