@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "anim/anim_binding.h"
+#include "anim/anim_tracks_format.h"
 #include "scene/camera/camera.h"
 #include "suites.h"
 #include "test_anim_tracks.h"
