@@ -111,6 +111,30 @@ class ReporterExitCodeTest(CaptureFixture):
         done = self.run_reporter("quality/report_test_results.py", BOOT + RESULT + COMPLETE)
         self.assertEqual(done.returncode, 0, done.stderr)
 
+    def test_boot_anim_reports_layouts_and_contention_separately(self):
+        sys.path.insert(0, str(TOOLS / "boot_anim"))
+        self.addCleanup(sys.path.remove, str(TOOLS / "boot_anim"))
+        import report_boot_anim_perf as report
+        capture = ""
+        for mode, draw_us in (("FULL_FB", 100), ("DOUBLE_FB", 110), ("DOUBLE_FB_CONTENDED", 125)):
+            capture += (f"boot_anim_perf: === BOOT_ANIM PERF curve (now_ms=1, 2 samples, mode={mode}) ===\n"
+                        f"boot_anim_perf: Draw: min={draw_us}us max={draw_us}us avg={draw_us}us med={draw_us}us p95={draw_us}us\n"
+                        "boot_anim_perf: Wait: min=1us max=2us avg=1us med=1us p95=2us\n"
+                        "boot_anim_perf: Send: min=10us max=20us avg=15us med=15us p95=20us\n")
+        runs, order, duplicates = report.parse_capture(self.capture(capture))
+        self.assertEqual(len(runs), 3)
+        self.assertEqual(duplicates, [])
+        self.assertEqual([runs[key]["mode"] for key in order],
+                         ["FULL_FB", "DOUBLE_FB", "DOUBLE_FB_CONTENDED"])
+        self.assertEqual(runs[order[-1]]["phases"]["Draw"]["avg"], 125)
+        out = self.out_path()
+        done = subprocess.run([sys.executable, str(TOOLS / "boot_anim/report_boot_anim_perf.py"),
+                               self.capture(capture), out], capture_output=True, text=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("| `curve` | 25 |", pathlib.Path(out).read_text())
+        self.assertIn("Total", done.stderr)
+        self.assertNotIn("missing Draw", done.stderr)
+
     def test_boot_anim_refuses_a_capture_with_no_checkpoint(self):
         done = self.run_reporter("boot_anim/report_boot_anim_perf.py", BOOT + RESULT)
         self.assertEqual(done.returncode, 2, done.stderr)
