@@ -15,7 +15,7 @@ enum {
     PLANE_FRUSTUM_COUNT,
 };
 
-#define MATH_DEFINE_PLANE(P, V, V2, R, M, T, OPS)                                                                      \
+#define MATH_DEFINE_PLANE(P, V, R, M, L, T, OPS)                                                                       \
     typedef struct {                                                                                                   \
         V##_t normal;                                                                                                  \
         T d;                                                                                                           \
@@ -52,17 +52,14 @@ enum {
         return (P##_t){{w[0], w[1], w[2]}, OPS##_add(w[3], e)};                                                        \
     }                                                                                                                  \
                                                                                                                        \
-    /* near and four sides through screen (screen = center + xy / z) in m's source space, each from_rows of */         \
-    /* near (0,0,1,-near_z), left (1,0,cx-left,0), right (-1,0,right-cx,0), top (0,1,cy-top,0), */                     \
-    /* bottom (0,-1,bottom-cy,0). */                                                                                   \
-    static inline __attribute__((always_inline)) void P##_frustum(const M##_t* m, T near_z, V2##_t center,             \
-                                                                  R##_t screen, P##_t out[PLANE_FRUSTUM_COUNT]) {      \
+    /* Pinhole sides use picture y = cy - fy*y/z, in the affine map's source space. */                                 \
+    static inline __attribute__((always_inline)) void P##_frustum(const M##_t* m, const L##_t* lens, R##_t screen,     \
+                                                                  P##_t out[PLANE_FRUSTUM_COUNT]) {                    \
         const T zero = OPS##_zero(), one = OPS##_one();                                                                \
-        out[PLANE_FRUSTUM_NEAR] = P##_from_rows(m, zero, zero, one, OPS##_neg(near_z));                                \
-        out[PLANE_FRUSTUM_LEFT] = P##_from_rows(m, one, zero, OPS##_sub(center.x, screen.x), zero);                    \
+        out[PLANE_FRUSTUM_NEAR] = P##_from_rows(m, zero, zero, one, OPS##_neg(lens->near_z));                          \
+        out[PLANE_FRUSTUM_LEFT] = P##_from_rows(m, lens->fx, zero, OPS##_sub(lens->cx, screen.x), zero);               \
         out[PLANE_FRUSTUM_RIGHT] =                                                                                     \
-            P##_from_rows(m, OPS##_neg(one), zero, OPS##_sub(R##_right(screen), center.x), zero);                      \
-        out[PLANE_FRUSTUM_TOP] = P##_from_rows(m, zero, one, OPS##_sub(center.y, screen.y), zero);                     \
-        out[PLANE_FRUSTUM_BOTTOM] =                                                                                    \
-            P##_from_rows(m, zero, OPS##_neg(one), OPS##_sub(R##_bottom(screen), center.y), zero);                     \
+            P##_from_rows(m, OPS##_neg(lens->fx), zero, OPS##_sub(R##_right(screen), lens->cx), zero);                 \
+        out[PLANE_FRUSTUM_TOP] = P##_from_rows(m, zero, OPS##_neg(lens->fy), OPS##_sub(lens->cy, screen.y), zero);     \
+        out[PLANE_FRUSTUM_BOTTOM] = P##_from_rows(m, zero, lens->fy, OPS##_sub(R##_bottom(screen), lens->cy), zero);   \
     }

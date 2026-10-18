@@ -15,7 +15,8 @@ static const vec3f_t PLANE_OBLIQUE_NORMAL = {3.0F, 4.0F, 0.0F};
 static const vec3f_t PLANE_OBLIQUE_POINT = {0.5F, -0.25F, 1.0F};
 static const vec3f_t PLANE_OBLIQUE_QUERY = {-0.25F, 0.75F, 2.0F};
 static const float PLANE_OBLIQUE_LENGTH = 5.0F;
-static const vec2f_t PLANE_CENTER = {0.25F, -0.5F};
+static const projectf_t PLANE_LENS = {1.0F, -1.0F, 0.25F, -0.5F, 1.0F};
+static const projectf_t PLANE_SCALED_LENS = {2.0F, 3.0F, 0.25F, -0.5F, 1.0F};
 static const rectf_t PLANE_SCREEN = {-2.0F, -1.5F, 4.0F, 3.0F};
 static const vec3f_t PLANE_ORIGIN = {0.0F, 0.0F, 1.0F};
 static const vec3f_t PLANE_AXIS_X = {1.0F, 0.0F, 1.0F};
@@ -105,17 +106,18 @@ fixed_matrix(const mat4f_t* m) {
 }
 
 static void
-frustum_fixture(frustum_fixture_t* f) {
+frustum_fixture(frustum_fixture_t* f, const projectf_t* lens) {
     const mat4f_t identity = mat4f_identity();
     const mat4x_t fixed_identity = mat4x_identity();
     const mat4x_t fixed_map = fixed_matrix(&PLANE_MAP);
     const rectx_t screen = {mathf_to_x(PLANE_SCREEN.x), mathf_to_x(PLANE_SCREEN.y), mathf_to_x(PLANE_SCREEN.w),
                             mathf_to_x(PLANE_SCREEN.h)};
-    const vec2x_t center = vec2x_from_vec2f(PLANE_CENTER);
-    planef_frustum(&identity, PLANE_NEAR, PLANE_CENTER, PLANE_SCREEN, f->planes);
-    planef_frustum(&PLANE_MAP, PLANE_NEAR, PLANE_CENTER, PLANE_SCREEN, f->mapped);
-    planex_frustum(&fixed_identity, mathf_to_x(PLANE_NEAR), center, screen, f->fixed);
-    planex_frustum(&fixed_map, mathf_to_x(PLANE_NEAR), center, screen, f->fixed_mapped);
+    const projectx_t fixed_lens = {mathf_to_x(lens->fx), mathf_to_x(lens->fy), mathf_to_x(lens->cx),
+                                   mathf_to_x(lens->cy), mathf_to_x(lens->near_z)};
+    planef_frustum(&identity, lens, PLANE_SCREEN, f->planes);
+    planef_frustum(&PLANE_MAP, lens, PLANE_SCREEN, f->mapped);
+    planex_frustum(&fixed_identity, &fixed_lens, screen, f->fixed);
+    planex_frustum(&fixed_map, &fixed_lens, screen, f->fixed_mapped);
 }
 
 /* The screen edge a side plane passes through: left, right, top, bottom. */
@@ -128,15 +130,15 @@ frustum_edge(int edge) {
 /* A point at PLANE_DEPTH whose screen position is PLANE_EDGE_STEP inside (side 1),
  * on (0) or outside (-1) one side plane's edge, centred on the other axis. */
 static vec3f_t
-edge_point(int edge, int side) {
+edge_point(const projectf_t* lens, int edge, int side) {
     const bool low_edge = edge == PLANE_FRUSTUM_LEFT || edge == PLANE_FRUSTUM_TOP;
     const float inward = low_edge ? mathf_one() : -mathf_one();
     const float screen = frustum_edge(edge) + ((float)side * PLANE_EDGE_STEP * inward);
     vec3f_t q = {0.0F, 0.0F, PLANE_DEPTH};
     if (edge <= PLANE_FRUSTUM_RIGHT) {
-        q.x = (screen - PLANE_CENTER.x) * q.z;
+        q.x = (screen - lens->cx) * q.z / lens->fx;
     } else {
-        q.y = (screen - PLANE_CENTER.y) * q.z;
+        q.y = (lens->cy - screen) * q.z / lens->fy;
     }
     return q;
 }
@@ -144,8 +146,13 @@ edge_point(int edge, int side) {
 /* Through the identity, q is outside only the plane whose edge it crossed (on it at side 0);
  * through PLANE_MAP, each plane tests q as the identity-built one tests the mapped point. */
 static void
-assert_edge_point(const frustum_fixture_t* f, int edge, int side) {
-    const vec3f_t q = edge_point(edge, side);
+assert_edge_point(const frustum_fixture_t* f, const projectf_t* lens, int edge, int side) {
+    const vec3f_t q = edge_point(lens, edge, side);
+    const vec2f_t screen = projectf_screen(lens, q);
+    const float coordinate = edge <= PLANE_FRUSTUM_RIGHT ? screen.x : screen.y;
+    const float inward = edge == PLANE_FRUSTUM_LEFT || edge == PLANE_FRUSTUM_TOP ? 1.0F : -1.0F;
+    TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, (float)side * PLANE_EDGE_STEP,
+                             (coordinate - frustum_edge(edge)) * inward);
     const vec3f_t mapped_q = mat4f_apply(&PLANE_MAP, q);
     for (int p = 0; p < PLANE_FRUSTUM_COUNT; p++) {
         const float d = planef_distance(f->planes[p], q);
@@ -166,10 +173,13 @@ assert_edge_point(const frustum_fixture_t* f, int edge, int side) {
 static void
 test_frustum_edge_points_directly_and_through_a_map(void) {
     frustum_fixture_t f;
-    frustum_fixture(&f);
-    for (int edge = PLANE_FRUSTUM_LEFT; edge < PLANE_FRUSTUM_COUNT; edge++) {
-        for (int side = -1; side <= 1; side++) {
-            assert_edge_point(&f, edge, side);
+    const projectf_t lenses[] = {PLANE_LENS, PLANE_SCALED_LENS};
+    for (size_t i = 0; i < sizeof(lenses) / sizeof(lenses[0]); i++) {
+        frustum_fixture(&f, &lenses[i]);
+        for (int edge = PLANE_FRUSTUM_LEFT; edge < PLANE_FRUSTUM_COUNT; edge++) {
+            for (int side = -1; side <= 1; side++) {
+                assert_edge_point(&f, &lenses[i], edge, side);
+            }
         }
     }
 }
@@ -177,7 +187,7 @@ test_frustum_edge_points_directly_and_through_a_map(void) {
 static void
 test_frustum_near_plane_sits_at_near_z(void) {
     frustum_fixture_t f;
-    frustum_fixture(&f);
+    frustum_fixture(&f, &PLANE_LENS);
     for (int side = -1; side <= 1; side++) {
         const float offset = (float)side * PLANE_EDGE_STEP;
         const vec3f_t q = {0.0F, 0.0F, PLANE_NEAR + offset};
@@ -194,11 +204,11 @@ test_frustum_near_plane_sits_at_near_z(void) {
 static void
 test_frustum_corner_rays_lie_on_both_side_planes(void) {
     frustum_fixture_t f;
-    frustum_fixture(&f);
+    frustum_fixture(&f, &PLANE_LENS);
     for (int x = PLANE_FRUSTUM_LEFT; x <= PLANE_FRUSTUM_RIGHT; x++) {
         for (int y = PLANE_FRUSTUM_TOP; y <= PLANE_FRUSTUM_BOTTOM; y++) {
-            const vec3f_t corner = {(frustum_edge(x) - PLANE_CENTER.x) * PLANE_DEPTH,
-                                    (frustum_edge(y) - PLANE_CENTER.y) * PLANE_DEPTH, PLANE_DEPTH};
+            const vec3f_t corner = {(frustum_edge(x) - PLANE_LENS.cx) * PLANE_DEPTH,
+                                    (frustum_edge(y) - PLANE_LENS.cy) * PLANE_DEPTH, PLANE_DEPTH};
             TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, 0.0F, planef_distance(f.planes[x], corner));
             TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, 0.0F, planef_distance(f.planes[y], corner));
             for (int p = 0; p < PLANE_FRUSTUM_COUNT; p++) {

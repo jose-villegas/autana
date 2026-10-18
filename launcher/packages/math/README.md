@@ -64,7 +64,7 @@ header's opening comment; `--check` verifies it.
 | [include/math/linear/math_const.h](include/math/linear/math_const.h) | math_const: float circle constants, degree/radian conversion factors, and the natural log of 2, which turns a half-life into a rate. |
 | [include/math/linear/project_template.h](include/math/linear/project_template.h) | project_template: shared near-plane endpoint selection for pinhole clipping. |
 | [include/math/linear/projectf.h](include/math/linear/projectf.h) | projectf: pinhole projection in pixels with camera +y up and picture y down. |
-| [include/math/linear/projectx.h](include/math/linear/projectx.h) | projectx: near-plane segment clipping in any fixed camera-space scale. |
+| [include/math/linear/projectx.h](include/math/linear/projectx.h) | projectx: Q16.16 pinhole lens and near clipping in any fixed camera-space scale. |
 | [include/math/linear/quat_template.h](include/math/linear/quat_template.h) | quat_template: a rotation as x, y, z, w, unit length, Hamilton product, acting on a vector as q * v * q^-1, for one number type; see docs/math/README.md for the macro arguments. |
 | [include/math/linear/quatf.h](include/math/linear/quatf.h) | quatf: a float rotation with host-exact, halved-arc polynomial slerp. |
 | [include/math/linear/quatx.h](include/math/linear/quatx.h) | quatx: a Q16.16 rotation; angles are turns (mathx.h). |

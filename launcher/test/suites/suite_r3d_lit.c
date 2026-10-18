@@ -1030,9 +1030,7 @@ static r3d_lens_t
 subpixel_view(void) {
     const float s = 1.0f / (float)R3D_SUBPIXEL;
     return (r3d_lens_t){{{{s, 0, 0, 0}, {0, s, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}},
-                        0.0f,
-                        0.0f,
-                        0.5f,
+                        {1.0F, -1.0F, 0.0F, 0.0F, 0.5F},
                         W,
                         H,
                         R3D_SNAP_BIAS,
@@ -1387,8 +1385,8 @@ test_a_point_up_and_right_lands_up_and_right_in_every_quarter(void) {
         r3d_lens_init(&lens, &frame_view, 1);
         const vec3f_t p = mat4f_apply(&lens.m, (vec3f_t){30.0F, 20.0F, 100.0F});
         int ux, uy;
-        viewport_physical_to_upright(viewport, (int)floorf(lens.center_x + p.x / p.z),
-                                     (int)floorf(lens.center_y + p.y / p.z), &ux, &uy);
+        viewport_physical_to_upright(viewport, (int)floorf(lens.project.cx + p.x / p.z),
+                                     (int)floorf(lens.project.cy + p.y / p.z), &ux, &uy);
 
         /* The lens fits the shorter upright axis: tan = 0.5 spans half of it. */
         const int upright_width = (quarter & 1) ? H : W, upright_height = (quarter & 1) ? W : H;

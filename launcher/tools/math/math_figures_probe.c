@@ -65,12 +65,11 @@ main(int argc, char** argv) {
 
     const transformf_t pose = TRANSFORMF_IDENTITY;
     const render_view_t view = render_view_make(&pose, VIEW_HALF_FOV_SHORT_TAN, VIEW_NEAR_Z, viewport);
-    const projectf_t lens = render_view_lens(&view);
-    const vec2f_t offset = projectf_offset(&lens, VIEW_POINT);
-    const vec2f_t screen = projectf_screen(&lens, VIEW_POINT);
+    const vec2f_t offset = projectf_offset(&view.lens, VIEW_POINT);
+    const vec2f_t screen = projectf_screen(&view.lens, VIEW_POINT);
     int pixel_x = 0;
     int pixel_y = 0;
-    r3d_project_screen(VIEW_POINT, &lens, &pixel_x, &pixel_y);
+    r3d_project_screen(VIEW_POINT, &view.lens, &pixel_x, &pixel_y);
 
     printf("{\n \"trs\": {\n");
     printf("  \"scale\": [%.6g, %.6g], \"angle_degrees\": %.6g, \"position\": [%.6g, %.6g],\n", (double)TRS_SCALE.x,
@@ -81,8 +80,8 @@ main(int argc, char** argv) {
     print_shape("placed", &placed, "");
     printf(" },\n \"pixel\": {\n");
     printf("  \"viewport\": [%d, %d], \"fx\": %.6g, \"fy\": %.6g, \"cx\": %.6g, \"cy\": %.6g, \"near_z\": %.6g,\n",
-           viewport.width, viewport.height, (double)lens.fx, (double)lens.fy, (double)lens.cx, (double)lens.cy,
-           (double)lens.near_z);
+           viewport.width, viewport.height, (double)view.lens.fx, (double)view.lens.fy, (double)view.lens.cx,
+           (double)view.lens.cy, (double)view.lens.near_z);
     printf("  \"camera\": [%.6g, %.6g, %.6g],\n", (double)VIEW_POINT.x, (double)VIEW_POINT.y, (double)VIEW_POINT.z);
     printf("  \"offset\": [%.6g, %.6g],\n", (double)offset.x, (double)offset.y);
     printf("  \"screen\": [%.6g, %.6g],\n", (double)screen.x, (double)screen.y);

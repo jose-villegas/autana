@@ -73,10 +73,10 @@ r3d_line_view_x_make(const render_view_t* view, const transformf_t* model, const
             out.matrix.m[r][c] = mathf_round_i32(matrix.m[r][c] * (float)R3D_X_UNIT_ONE);
         }
     }
-    out.near_z = mathf_round_i32(view->near_z * (float)R3D_X_UNIT_ONE);
-    out.center_x = (int)view->center_x;
-    out.center_y = (int)view->center_y;
-    out.pixels_per_unit = mathf_round_i32(view->pixels_per_unit);
+    out.near_z = mathf_round_i32(view->lens.near_z * (float)R3D_X_UNIT_ONE);
+    out.center_x = (int)view->lens.cx;
+    out.center_y = (int)view->lens.cy;
+    out.pixels_per_unit = mathf_round_i32(view->lens.fx);
     const float scale = (float)R3D_X_UNIT_ONE * (float)(1 << R3D_X_INPUT_SHIFT);
     out.units_ok = true;
     for (int r = 0; r < 3; r++) {

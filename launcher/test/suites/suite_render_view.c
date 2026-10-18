@@ -76,10 +76,10 @@ test_lens_fits_the_shorter_side(void) {
         for (int swapped = 0; swapped < 2; swapped++) {
             const viewport_t viewport = {swapped ? HEIGHT : WIDTH, swapped ? WIDTH : HEIGHT, quarter};
             const render_view_t view = render_view_make(&pose, HALF_FOV_TAN, NEAR_Z, viewport);
-            TEST_ASSERT_EQUAL_FLOAT((float)HEIGHT / (2.0F * HALF_FOV_TAN), view.pixels_per_unit);
-            TEST_ASSERT_EQUAL_FLOAT((float)viewport.width * 0.5F, view.center_x);
-            TEST_ASSERT_EQUAL_FLOAT((float)viewport.height * 0.5F, view.center_y);
-            TEST_ASSERT_EQUAL_FLOAT(NEAR_Z, view.near_z);
+            TEST_ASSERT_EQUAL_FLOAT((float)HEIGHT / (2.0F * HALF_FOV_TAN), view.lens.fx);
+            TEST_ASSERT_EQUAL_FLOAT((float)viewport.width * 0.5F, view.lens.cx);
+            TEST_ASSERT_EQUAL_FLOAT((float)viewport.height * 0.5F, view.lens.cy);
+            TEST_ASSERT_EQUAL_FLOAT(NEAR_Z, view.lens.near_z);
             TEST_ASSERT_EQUAL_INT(viewport.width, view.viewport.width);
             TEST_ASSERT_EQUAL_INT(viewport.height, view.viewport.height);
         }
@@ -94,8 +94,8 @@ test_point_straight_ahead_projects_to_center(void) {
         r3d_lens_t lens;
         r3d_lens_init(&lens, &view, 1);
         const vec3f_t point = mat4f_apply(&lens.m, vec3f_add(view.position, vec3f_scale(view.forward, AHEAD_Z)));
-        TEST_ASSERT_FLOAT_WITHIN(EPSILON, view.center_x, lens.center_x + point.x / point.z);
-        TEST_ASSERT_FLOAT_WITHIN(EPSILON, view.center_y, lens.center_y + point.y / point.z);
+        TEST_ASSERT_FLOAT_WITHIN(EPSILON, view.lens.cx, lens.project.cx + point.x / point.z);
+        TEST_ASSERT_FLOAT_WITHIN(EPSILON, view.lens.cy, lens.project.cy + point.y / point.z);
     }
 }
 
@@ -118,14 +118,14 @@ test_off_axis_lens_projection_and_anisotropic_fit(void) {
             const float x = (float)width * 0.5F + focal * offsets[quarter][0] / AHEAD_Z;
             const float y = (float)height * 0.5F + focal * offsets[quarter][1] / AHEAD_Z;
             vec3f_t p = mat4f_apply(&lens.m, ticks);
-            TEST_ASSERT_FLOAT_WITHIN(EPSILON, x, lens.center_x + p.x / p.z);
-            TEST_ASSERT_FLOAT_WITHIN(EPSILON, y, lens.center_y + p.y / p.z);
-            TEST_ASSERT_EQUAL_FLOAT(NEAR_Z, lens.near_z);
+            TEST_ASSERT_FLOAT_WITHIN(EPSILON, x, lens.project.cx + p.x / p.z);
+            TEST_ASSERT_FLOAT_WITHIN(EPSILON, y, lens.project.cy + p.y / p.z);
+            TEST_ASSERT_EQUAL_FLOAT(NEAR_Z, lens.project.near_z);
             TEST_ASSERT_EQUAL_FLOAT(NEAR_Z / (float)R3D_SUBPIXEL, lens.near_subpixels);
             r3d_lens_fit(&lens, width / 2, height / 4);
             p = mat4f_apply(&lens.m, ticks);
-            TEST_ASSERT_FLOAT_WITHIN(EPSILON, x * 0.5F, lens.center_x + p.x / p.z);
-            TEST_ASSERT_FLOAT_WITHIN(EPSILON, y * 0.25F, lens.center_y + p.y / p.z);
+            TEST_ASSERT_FLOAT_WITHIN(EPSILON, x * 0.5F, lens.project.cx + p.x / p.z);
+            TEST_ASSERT_FLOAT_WITHIN(EPSILON, y * 0.25F, lens.project.cy + p.y / p.z);
         }
     }
 }
