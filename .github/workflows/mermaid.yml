@@ -6,7 +6,9 @@ name: Mermaid Diagrams
 # runs the command it documents. Path-filtered, unlike this repo's other workflows, because
 # installing mermaid-cli's bundled Chrome is real per-run cost and nothing outside a .md
 # file or the validator itself can change the result, which is also why it is its own
-# workflow: a path filter applies to a whole workflow, never to one job.
+# workflow: a path filter applies to a whole workflow, never to one job. A weekly run
+# only asks GitHub which mermaid it renders with, so a GitHub upgrade shows up as a red run
+# without waiting for a .md change.
 
 on:
   push:
@@ -26,6 +28,8 @@ on:
       - '.github/workflows/mermaid.yml'
       - '.node-version'
       - '.github/actions/host-tools/**'
+  schedule:
+    - cron: '17 6 * * 1'
   workflow_dispatch:
 
 concurrency:
@@ -35,6 +39,7 @@ concurrency:
 jobs:
   check-mermaid:
     name: Mermaid diagrams
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -53,3 +58,15 @@ jobs:
         env:
           CHECK_MERMAID_MMDC_ARGS: -p ${{ runner.temp }}/puppeteer-config.json
         run: node scripts/gates/check-mermaid.mjs
+
+  github-mermaid-version:
+    name: GitHub's mermaid matches the pin
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/host-tools
+
+      # Exit 1: GitHub moved to another mermaid. Exit 2: its version could not be read.
+      - name: Compare GitHub's mermaid with the pinned one
+        run: node scripts/gates/check-mermaid.mjs --github-version

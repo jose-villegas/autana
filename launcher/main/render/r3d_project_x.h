@@ -11,6 +11,7 @@
 #include <stdint.h>
 
 #include "math/linear/mat4x.h"
+#include "math/linear/projectx.h"
 #include "math/linear/vec_convert.h"
 #include "math/scalar/mathx.h"
 #include "render/render_view.h"
@@ -129,21 +130,8 @@ r3d_project_point_cs_x(vec3x_t p, const r3d_line_view_x_t* view, int* screen_x, 
 /* Clips to the near plane; false if the segment is at or behind it. */
 static inline bool
 r3d_project_segment_cs_x(vec3x_t p0, vec3x_t p1, const r3d_line_view_x_t* view, int* ax, int* ay, int* bx, int* by) {
-    const bool front0 = p0.z > view->near_z;
-    const bool front1 = p1.z > view->near_z;
-
-    if (!front0 && !front1) {
+    if (!projectx_clip_near(view->near_z, &p0, &p1)) {
         return false;
-    }
-
-    if (front0 != front1) {
-        vec3x_t* behind = front0 ? &p1 : &p0;
-        const vec3x_t* front = front0 ? &p0 : &p1;
-        const int64_t frac_q16 = ((int64_t)(view->near_z - behind->z) * MATHX_ONE) / (front->z - behind->z);
-
-        behind->x += (int32_t)(((int64_t)(front->x - behind->x) * frac_q16) >> MATHX_SHIFT);
-        behind->y += (int32_t)(((int64_t)(front->y - behind->y) * frac_q16) >> MATHX_SHIFT);
-        behind->z = view->near_z;
     }
 
     r3d_camera_to_screen_x(p0, view, ax, ay);

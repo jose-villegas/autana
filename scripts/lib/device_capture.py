@@ -17,6 +17,7 @@ PERF_SEGMENT = re.compile(r"perf: (\S+) cyc avg/min/max (\d+)/(\d+)/(\d+) (\S+) 
 # device wedged, serial dropped). A capture of ONE suite triggered by
 # RUNSUITE never prints it at all, which is what --no-complete is for.
 SELFTEST_COMPLETE_RE = re.compile(r"SELFTEST_COMPLETE(?:\s+failures=(\d+)\s+elapsed_ms=(\d+))?")
+SUITE_OVERFLOW_RE = re.compile(r"SUITE OVERFLOW:")
 
 # Each is a line the firmware prints as it dies: ESP-IDF's panic banner (the
 # exception in brackets after "panic'ed"), abort()'s own line, and a failed
@@ -52,6 +53,15 @@ def crash_signs(text, boots_allowed):
     signs = ["crash: " + line.strip() for line in text.splitlines() if CRASH_LINE_RE.search(line)]
     reboot = reboot_sign(text, boots_allowed)
     return signs + [reboot] if reboot else signs
+
+
+def suite_failure_signs(text, failed):
+    """Dropped suites and sentinel failures beyond the FAIL result count."""
+    signs = [line.strip() for line in text.splitlines() if SUITE_OVERFLOW_RE.search(line)]
+    complete = SELFTEST_COMPLETE_RE.search(text)
+    if complete and complete.group(1) is not None and int(complete.group(1)) > failed:
+        signs.append(f"SELFTEST_COMPLETE failures={complete.group(1)}, but {failed} FAIL lines")
+    return signs
 
 
 def results(text, *, ignored=False):

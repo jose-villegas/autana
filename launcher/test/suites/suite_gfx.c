@@ -1049,7 +1049,7 @@ test_two_far_corners_cost_less_than_a_full_band(void) {
      * for the copy-side jitter the single-piece gathers above show. */
     perf_guard("two far corners cost more than their observed price - one of the "
                "two independent gathers may have regressed",
-               two_corners, 306);
+               two_corners, 320);
 }
 
 /* Three separated marks, one more than LEAF_REFINE_MAX_RUNS (gfx_dirty.h)

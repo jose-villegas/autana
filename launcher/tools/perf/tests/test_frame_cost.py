@@ -22,6 +22,12 @@ class FrameCostTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 frame_cost.frame_cost_means(capture)
 
+    def test_quarters_do_not_share_a_bracket_mean(self):
+        text = ("ms/frame avg/worst: draw 2/3 | total 2 quarter=portrait\n"
+                "ms/frame avg/worst: draw 4/5 | total 4 quarter=landscape\n")
+        self.assertEqual(frame_cost.frame_cost_means(None, text),
+                         [("draw quarter=portrait", 2), ("draw quarter=landscape", 4)])
+
     def test_frame_cost_line_without_brackets_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             capture = pathlib.Path(directory) / "frame.log"

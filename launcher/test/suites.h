@@ -25,8 +25,8 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-/* Headroom over the ~130 suites registered; a suite past it fails the run. */
-#define SUITE_MAX 192
+/* Headroom over the ~200 suites registered; a suite past it fails the run. */
+#define SUITE_MAX 256
 
 typedef void (*suite_fn)(void);
 

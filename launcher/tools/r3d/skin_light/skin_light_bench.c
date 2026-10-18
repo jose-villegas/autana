@@ -10,6 +10,7 @@
 
 #include "gfx/target/gfx_color.h"
 #include "math/linear/vec3f.h"
+#include "render/r3d_skin_format.h"
 #include "skin_light_baseline.h"
 
 #define MAX_JOINTS   64
