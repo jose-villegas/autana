@@ -529,6 +529,25 @@ colours_within_spread(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, co
 
 static small_limits_t small_limits_by_side[SMALL_MAX_SIDE_TUNE];
 
+static small_limits_t
+small_limits_for_side(int side) {
+    const int extra_sides = small_max_side - SMALL_MAX_SIDE;
+    int spread = SMALL_FLAT_SPREAD_ANY;
+    int coverage = small_dither;
+    if (side > SMALL_MAX_SIDE) {
+        spread = extra_sides == 1 ? small_flat_spread : small_flat_spread_near;
+        if (extra_sides > 1) {
+            spread += (small_flat_spread - small_flat_spread_near) * (side - SMALL_MAX_SIDE - 1) / (extra_sides - 1);
+        }
+    }
+    if (small_dither_ramp) {
+        coverage = side <= SMALL_MAX_SIDE ? 0 : small_dither * (side - SMALL_MAX_SIDE) / mathi_max(extra_sides, 1);
+    }
+    return (small_limits_t){(uint8_t)spread, (uint8_t)coverage,
+                            ((float)spread * UINT8_MAX) / (float)gfx_rgb565_r5(UINT16_MAX),
+                            ((float)spread * UINT8_MAX) / (float)gfx_rgb565_g6(UINT16_MAX)};
+}
+
 /* Both row workers can reach a changed generation before its limits are ready. */
 static void
 prepare_small_limits(void) {
@@ -545,23 +564,8 @@ prepare_small_limits(void) {
         atomic_flag_clear_explicit(&lock, memory_order_release);
         return;
     }
-    const int extra_sides = small_max_side - SMALL_MAX_SIDE;
     for (int side = 1; side <= small_max_side; side++) {
-        int spread = SMALL_FLAT_SPREAD_ANY;
-        int coverage = small_dither;
-        if (side > SMALL_MAX_SIDE) {
-            spread = extra_sides == 1 ? small_flat_spread : small_flat_spread_near;
-            if (extra_sides > 1) {
-                spread +=
-                    (small_flat_spread - small_flat_spread_near) * (side - SMALL_MAX_SIDE - 1) / (extra_sides - 1);
-            }
-        }
-        if (small_dither_ramp) {
-            coverage = side <= SMALL_MAX_SIDE ? 0 : small_dither * (side - SMALL_MAX_SIDE) / mathi_max(extra_sides, 1);
-        }
-        small_limits_by_side[side - 1] = (small_limits_t){
-            (uint8_t)spread, (uint8_t)coverage, ((float)spread * UINT8_MAX) / (float)gfx_rgb565_r5(UINT16_MAX),
-            ((float)spread * UINT8_MAX) / (float)gfx_rgb565_g6(UINT16_MAX)};
+        small_limits_by_side[side - 1] = small_limits_for_side(side);
     }
     atomic_store_explicit(&generation, TUNE_GENERATION(r3d_span), memory_order_release);
     atomic_store_explicit(&ready, true, memory_order_release);
