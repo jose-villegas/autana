@@ -644,7 +644,7 @@ class PaperCitationTest(unittest.TestCase):
     def named(self, listed, **files):
         """problems() for an entry named `Gouraud 1971` whose Cited by lists `listed`,
         over files given as dir__name_ext=text."""
-        rows = ('| <a id="1"></a>[1] | A<br>Gouraud 1971 cited by: '
+        rows = ('| <a id="1"></a>[1] | A<br>`Gouraud 1971` cited by: '
                 + listed + ' |\n')
         return self.problems(rows, [(".".join(key.replace("__", "/").rsplit("_", 1)), text)
                                     for key, text in files.items()])
@@ -686,13 +686,13 @@ class PaperCitationTest(unittest.TestCase):
                                     scripts__gates__tests__test_x_py="# Gouraud 1971\n"), [])
 
     def test_an_entry_without_a_cited_by_tail_is_flagged(self):
-        rows = '| <a id="1"></a>[1] | A<br>Gouraud 1971 cited [Guide.md](Guide.md) |'+chr(10)
+        rows = '| <a id="1"></a>[1] | A<br>`Gouraud 1971` cited [Guide.md](Guide.md) |'+chr(10)
         found = self.problems(rows, [("docs/Guide.md", self.GUIDE)])
-        self.assertEqual(found, ['docs/Citations.md:1: entry does not end in "cited by: ..." or "name cited by: ..."',
+        self.assertEqual(found, ['docs/Citations.md:1: entry does not end in "cited by: ..." or "`name` cited by: ..."',
                           "docs/Guide.md:1: cites [1], which docs/Citations.md has no row for"])
 
     def test_fix_keeps_the_line_endings(self):
-        rows = '| <a id="1"></a>[1] | A<br>Gouraud 1971 cited by: none |'+chr(13)+chr(10)
+        rows = '| <a id="1"></a>[1] | A<br>`Gouraud 1971` cited by: none |'+chr(13)+chr(10)
         with gate_tree.temporary_tree([("docs/Citations.md", rows), ("launcher/main/a.c", self.A_C)]) as root:
             path = pathlib.Path(root) / "docs/Citations.md"
             path.write_bytes(rows.encode("utf-8"))
@@ -700,7 +700,7 @@ class PaperCitationTest(unittest.TestCase):
             self.assertTrue(path.read_bytes().endswith(bytes([13, 10])))
 
     def test_fix_rewrites_the_lists_to_what_the_tree_says(self):
-        rows = ('| <a id="1"></a>[1] | A<br>Gouraud 1971 cited by: '
+        rows = ('| <a id="1"></a>[1] | A<br>`Gouraud 1971` cited by: '
                 '[stale.c](../launcher/stale.c) |\n')
         with gate_tree.temporary_tree([("docs/Citations.md", rows), ("docs/Guide.md", self.GUIDE),
                                        ("launcher/main/a.c", self.A_C)]) as root:
