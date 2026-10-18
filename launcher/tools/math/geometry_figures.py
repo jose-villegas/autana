@@ -164,10 +164,16 @@ def rows_figure(data, output):
         radius = np.linalg.norm(point) + NORMAL_ARROW_LENGTH
         axis.set_xlim(-radius, radius)
         axis.set_ylim(-radius, radius)
+        if key == "lens":
+            depth_max = radius
+            side_span = abs(plane[2] / plane[0]) * depth_max
+            axis.set_xlim(-side_span, side_span)
+            axis.set_aspect("auto")
+            axis.set_box_aspect(1)
         zero_line(axis, plane, point[1], SHAPE_FILL)
         axis.scatter(point[0], point[2], color=POINT, s=POINT_SIZE)
-        axis.set_xlabel("x", fontsize=LABEL_SIZE)
-        axis.set_ylabel("z", fontsize=LABEL_SIZE)
+        axis.set_xlabel("x, lens units (pixels times depth)" if key == "lens" else "x", fontsize=LABEL_SIZE)
+        axis.set_ylabel("z, depth" if key == "lens" else "z", fontsize=LABEL_SIZE)
         axis.text(0.03, 0.97, f"left plane\ny = {point[1]:.3g}\ndistance = {distance:g}",
                   transform=axis.transAxes, va="top", fontsize=LABEL_SIZE, bbox=dict(facecolor="white", alpha=0.8, edgecolor="none"))
     save(figure, output)
@@ -180,12 +186,16 @@ def frustum_figure(data, output):
     slice_axis = figure.add_subplot(1, PANELS, 2)
     space_axes(axis, f"Frustum; shown to depth {data['shown_depth']:g}")
     corners = np.array(data["corners"])[:, [0, 2, 1]]
-    for ring in (corners[:4], corners[4:]):
-        closed = np.vstack([ring, ring[0]])
-        axis.plot(*closed.T, color=SHAPE_FILL)
-    for start, end in zip(corners[:4], corners[4:]):
-        axis.plot(*np.array([start, end]).T, color=SHAPE_FILL)
+    near, distant = corners[:4], corners[4:]
+    faces = [near]
+    for i in range(len(near)):
+        following = (i + 1) % len(near)
+        faces.append([near[i], near[following], distant[following], distant[i]])
+    axis.add_collection3d(Poly3DCollection(faces, facecolor=SHAPE_FILL, edgecolor=SHAPE_FILL,
+                                         alpha=SHAPE_ALPHA))
     camera = np.array(data["camera"])[[0, 2, 1]]
+    for corner in near:
+        axis.plot(*np.array([camera, corner]).T, color=MUTED, alpha=SHAPE_ALPHA)
     axis.scatter(*camera, color=POINT, s=POINT_SIZE)
     axis.text(*camera, " camera", fontsize=LABEL_SIZE)
     grid = data["grid"]
@@ -195,7 +205,7 @@ def frustum_figure(data, output):
     bounds = np.vstack([corners, camera, np.column_stack([x, z, np.zeros_like(x)])])
     for setter, dim in ((axis.set_xlim, 0), (axis.set_ylim, 1), (axis.set_zlim, 2)):
         setter(bounds[:, dim].min(), bounds[:, dim].max())
-    square_axes(slice_axis, "y = 0; green passes every plane")
+    square_axes(slice_axis, "slice y = 0 (ground)")
     slice_axis.scatter(x, z, c=colors, s=8)
     slice_axis.set_xlim(x.min(), x.max())
     slice_axis.set_ylim(z.min(), z.max())

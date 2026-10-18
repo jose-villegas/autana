@@ -1,15 +1,15 @@
 # Math: vectors, rotations, matrices, transforms
 
-`math/linear/` and `math/geometry/` hold the firmware's vectors, rotations,
-matrices, transforms and shapes, on the per-type scalar operations in `math/scalar/`.
-All are part of the [math package](../../launcher/packages/math/README.md):
+The [math package](../../launcher/packages/math/README.md) holds scalar operations
+in `scalar/`, vectors and transforms in `linear/`, shapes and queries in
+`geometry/`, and orbit steering and spring lines in `motion/`:
 
 - header-only and static inline, with no ESP-IDF, so a host suite checks every line;
 - each family written once as a template ([Templates](Conventions.md#templates)) and instantiated per number type;
 - a type named for its family plus a number-type suffix (`vec3f`, `quatx`), with no bare name.
 
 Macros generate the functions, so a search for `vec3f_add` finds no definition.
-Look the plain name up in the reference below; read `*_template.h` only to change an algorithm.
+Look the plain name up on a page in the [pages table](#pages); read `*_template.h` only to change an algorithm.
 
 ## Number types
 
@@ -29,6 +29,8 @@ Look the plain name up in the reference below; read `*_template.h` only to chang
 | Divide by zero saturates by the numerator's sign; 0 / 0 is 0 | `x` |
 | Angles are turns, `MATHX_ONE` to a turn (an eighth is `MATHX_ONE / 8`) | `x` |
 | Angles are radians (`MATH_PI`, `MATH_TAU`) | `f` |
+
+## Pages
 
 | Page | Holds |
 |---|---|

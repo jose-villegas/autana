@@ -2,8 +2,6 @@
 
 Axes, composition, templates and float build rules. [Math index](README.md).
 
-## Conventions
-
 | | |
 |---|---|
 | Axes | left-handed, local +x right, +y up, +z forward; a camera looks down +z; source assets are right-handed and mirrored at the pack ([Mesh-Import.md](../render/Mesh-Import.md#the-offline-tools)) |

@@ -83,8 +83,8 @@ PAGE_CALL = re.compile(r"`[^`\n]*?\b([A-Za-z][A-Za-z0-9]*_[a-z0-9_]+)\(")
 
 
 def section(text, family):
-    """The page's `### <family>` section, up to the next heading."""
-    m = re.search(r"^### %s\b.*?(?=^#{1,3} |\Z)" % re.escape(family), text, re.M | re.S)
+    """The page's `## <family>` or `### <family>` section, up to the next heading."""
+    m = re.search(r"^#{2,3} %s\b.*?(?=^#{1,3} |\Z)" % re.escape(family), text, re.M | re.S)
     return m.group(0) if m else ""
 
 
@@ -190,7 +190,7 @@ def check(root):
         path = family_page(FAMILY_DIRS[family])
         body = section(pages.get(path, ""), family)
         if not body:
-            problems.append("%s has no `### %s` section" % (path.as_posix(), family))
+            problems.append("%s has no family section for `%s` (heading level 2 or 3)" % (path.as_posix(), family))
             continue
         wanted = ["P_%s(" % name for name in sorted(functions[family])] + sorted(patterns[family])
         for entry in wanted:

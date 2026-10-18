@@ -2,13 +2,11 @@
 
 Vectors, rotations, affine maps and cached transforms. [Math index](README.md).
 
-## Linear
-
 `P` stands for the type's prefix (`vec3f`, `vec3x`, ...). The families pass small
 structs by value, and inputs may alias outputs. Only the transform's own `t` and
 affine2 inversion's `out` are written through a pointer.
 
-### vec2 (`f i s x`)
+## vec2 (`f i s x`)
 
 <details><summary>Functions and formulas</summary>
 
@@ -30,7 +28,7 @@ affine2 inversion's `out` are written through a pointer.
 
 </details>
 
-### vec3 (`f i s x`)
+## vec3 (`f i s x`)
 
 <details><summary>Functions and formulas</summary>
 
@@ -62,7 +60,7 @@ returns the other vector type of the same number type: `vec3f_xz(v)` is a `vec2f
 
 Each vec3 header instantiates `vec_swizzle_template.h` after including its vec2.
 
-### Conversions (`vec_convert.h`)
+## Conversions (`vec_convert.h`)
 
 Always an explicit call named for destination and source, both `vec2` and `vec3`.
 
@@ -85,7 +83,7 @@ The scalar steps behind them, in `vec_convert.h`:
 | `mathf_to_x(v)` | Q16.16, rounded and saturated | $`\mathrm{round}(v\,2^{16})`$ |
 | `mathx_to_f(v)` | float | $`v/2^{16}`$ |
 
-### quat (`f x`)
+## quat (`f x`)
 
 | Function | Purpose | Formula |
 |---|---|---|
@@ -99,7 +97,7 @@ The scalar steps behind them, in `vec_convert.h`:
 | `P_nlerp(a, b, t)` | unit-length shortest arc; negate `b` when the 4D dot is negative | $`\mathrm{normalize}(a(1-t)+bt)`$ |
 | `quatf_slerp(a, b, t)` | shortest-arc interpolation<sup>[[19]](../Citations.md#19)</sup>, `t` in 0..1; `f` only; `b` is negated first when $`a \cdot b < 0`$ | $`\frac{\sin((1 - t)\,\Omega)}{\sin\Omega}\,a + \frac{\sin(t\,\Omega)}{\sin\Omega}\,b`$<br> with $`\cos\Omega = a \cdot b`$: nearly parallel inputs take `P_nlerp`, the rest evaluated by Eberly's series in cos - 1, halving the arc past a 120-degree rotation ($`a \cdot b < \frac{1}{2}`$) and summing until its terms fall below float precision, with no last-term correction<sup>[[71]](../Citations.md#71)</sup> |
 
-### affine2 (`f x`)
+## affine2 (`f x`)
 
 `affine2f_t` and `affine2x_t` hold `x_axis`, `y_axis` and `origin` as vec2 values,
 the columns of `L = [a c; b d]` and its translation.
@@ -123,7 +121,7 @@ the columns of `L = [a c; b d]` and its translation.
 | `P_map_recti(&t, r)` | recti bounding box of mapped pixels | $`\mathrm{bbox}(\mathrm{round}(t(\mathrm{corners}(r))))`$ |
 | `P_equal(a, b)` | exact comparison of axes and origin | $`L_a = L_b \land o_a = o_b`$ |
 
-### mat3 (`f`)
+## mat3 (`f`)
 
 `mat3f_t` is a row-major linear matrix.
 
@@ -132,7 +130,7 @@ the columns of `L = [a c; b d]` and its translation.
 - It satisfies `cofactor(M) * transpose(M) = det(M) * I`, a reflection's determinant negative.
 - Dividing it by the determinant gives the inverse-transpose.
 
-### mat4 (`f x`)
+## mat4 (`f x`)
 
 | Function | Purpose | Formula |
 |---|---|---|
@@ -147,7 +145,7 @@ the columns of `L = [a c; b d]` and its translation.
 | `P_apply(&m, p)` | transforms the point `p`, translation included | $`p'_r = m_{r0}\,p_x + m_{r1}\,p_y + m_{r2}\,p_z + m_{r3}`$, for $`r = 0, 1, 2`$ |
 | `P_from_trs(position, rotation, scale)` | scale, rotate, translate; `rotation` must be unit | $`T\,R\,S = \begin{pmatrix} R\,\mathrm{diag}(\mathit{scale}) & \mathit{position} \\ 0 & 1 \end{pmatrix}`$ |
 
-### transform (`f x`)
+## transform (`f x`)
 
 <details><summary>Functions and formulas</summary>
 

@@ -2,7 +2,7 @@
 
 Orbit steering and spring-line motion with caller-owned state. [Math index](README.md).
 
-### orbit_motion.h
+## orbit_motion.h
 
 A transform orbits a target, with direct steering, a decaying fling and a critically damped reset.
 
@@ -26,7 +26,7 @@ A transform orbits a target, with direct steering, a decaying fling and a critic
 | `ORBIT_MOTION_RESET_SETTLED` | Home distance and speed threshold for settling |
 | `ORBIT_MOTION_FRAME_PADDING` | Fraction of each picture half-axis left clear |
 
-### spring_line.h
+## spring_line.h
 
 A row of points on springs carries a wave along caller-owned Q16 pixel offsets and velocities.
 
