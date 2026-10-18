@@ -2,8 +2,8 @@
 #include "audio/audio_loopback.h"
 
 #include "audio/audio_codec.h"
-#include "audio/audio_goertzel.h"
 #include "audio/audio_in.h"
+#include "math/signal/goertzel.h"
 
 bool
 audio_loopback_measure(uint16_t hz, uint16_t ms, float* db) {
@@ -11,8 +11,8 @@ audio_loopback_measure(uint16_t hz, uint16_t ms, float* db) {
         return false;
     }
     int16_t in[AUDIO_CODEC_BLOCK_SAMPLES];
-    audio_goertzel_t detector;
-    audio_goertzel_init(&detector, hz, AUDIO_OUT_SAMPLE_RATE_HZ);
+    goertzel_t detector;
+    goertzel_init(&detector, (float)hz, (float)AUDIO_OUT_SAMPLE_RATE_HZ);
     size_t remaining = audio_loopback_sample_budget(ms);
     size_t settle = audio_out_samples(AUDIO_LOOPBACK_SETTLE_MS);
     bool ok = true;
@@ -22,10 +22,10 @@ audio_loopback_measure(uint16_t hz, uint16_t ms, float* db) {
         if (ok) {
             const size_t skipped = settle < n ? settle : n;
             settle -= skipped;
-            audio_goertzel_feed(&detector, in + skipped, n - skipped);
+            goertzel_feed_s(&detector, in + skipped, n - skipped);
             remaining -= n;
         }
     }
-    *db = audio_goertzel_dbfs(&detector);
+    *db = goertzel_level_db(&detector, INT16_MAX);
     return ok;
 }

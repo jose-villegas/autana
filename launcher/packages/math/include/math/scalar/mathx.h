@@ -15,11 +15,22 @@
 #include <stdint.h>
 
 #include "math/scalar/fixed.h"
+#include "math/scalar/mathf_round.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/trig.h"
 
 #define MATHX_SHIFT 16
 #define MATHX_ONE   (1 << MATHX_SHIFT)
+
+static inline int32_t
+mathf_to_x(float v) {
+    return mathf_round_i32(v * (float)MATHX_ONE);
+}
+
+static inline float
+mathx_to_f(int32_t v) {
+    return (float)v * (1.0F / (float)MATHX_ONE);
+}
 
 static inline int32_t
 mathx_saturate(int64_t v) {

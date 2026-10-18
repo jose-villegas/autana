@@ -36,3 +36,9 @@ static inline int16_t
 mathf_round_i16(float v) {
     return (int16_t)mathf_round_i32_in_range(mathf_clamp_finite(v, (float)INT16_MIN, (float)INT16_MAX));
 }
+
+/* One int16 step is scale units. */
+static inline int16_t
+mathf_round_s(float v, float scale) {
+    return mathf_round_i16(v / scale);
+}
