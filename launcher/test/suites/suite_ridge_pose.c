@@ -3,7 +3,7 @@
 #include <math.h>
 #include <stdint.h>
 
-#include "math/linear/math_const.h"
+#include "math/scalar/math_const.h"
 #include "suites.h"
 #include "unity.h"
 

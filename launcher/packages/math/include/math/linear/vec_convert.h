@@ -1,12 +1,9 @@
 /*
- * vec_convert: explicit vector conversions between float, int32, int16 and
- * Q16.16. Narrowing saturates; float-to-integer conversions round to nearest,
- * ties away from zero. Int16 conversions use a scale: one integer step is
- * scale units. Header-only and static inline.
+ * vec_convert: explicit vector conversions; narrowing saturates, rounding ties away from zero. Int16
+ * conversions take a scale: one integer step is scale units. Header-only and static inline.
  */
 #pragma once
 
-#include <math.h>
 #include <stdint.h>
 
 #include "math/linear/vec2f.h"
@@ -20,21 +17,6 @@
 #include "math/scalar/mathf_round.h"
 #include "math/scalar/maths.h"
 #include "math/scalar/mathx.h"
-
-static inline int16_t
-mathf_round_s(float v, float scale) {
-    return mathf_round_i16(v / scale);
-}
-
-static inline int32_t
-mathf_to_x(float v) {
-    return mathf_round_i32(v * (float)MATHX_ONE);
-}
-
-static inline float
-mathx_to_f(int32_t v) {
-    return (float)v * (1.0F / (float)MATHX_ONE);
-}
 
 static inline vec2f_t
 vec2f_from_vec2i(vec2i_t v) {

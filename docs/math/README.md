@@ -1,8 +1,9 @@
-# Math: vectors, rotations, matrices, transforms
+# Math: vectors, rotations, matrices, transforms, signals
 
 `math/linear/` and `math/geometry/` hold the firmware's vectors, rotations,
-matrices, transforms and shapes, on the per-type scalar operations in `math/scalar/`.
-All are part of the [math package](../../launcher/packages/math/README.md):
+matrices, transforms and shapes, on the per-type scalar operations in `math/scalar/`;
+`math/signal/` holds single-bin detection on sample blocks.
+All are part of the [math package](../../launcher/packages/math/README.md). Except `math/signal/`, they are:
 
 - header-only and static inline, with no ESP-IDF, so a host suite checks every line;
 - each family written once as a template ([Templates](#templates)) and instantiated per number type;
@@ -21,6 +22,7 @@ Look the plain name up in the reference below; read `*_template.h` only to chang
 - [Scalar](#scalar): [mathi.h](#mathih), [mathf.h](#mathfh), [maths.h](#mathsh), [mathx.h](#mathxh), [mathf_round.h](#mathf_roundh), [mathf_rsqrt.h](#mathf_rsqrth), [fixed.h](#fixedh), [rng.h](#rngh), [trig.h](#trigh), [units.h](#unitsh)
 - [Linear](#linear): [vec2](#vec2-f-i-s-x), [vec3](#vec3-f-i-s-x), [quat](#quat-f-x), [affine2](#affine2-f-x), [mat3](#mat3-f), [mat4](#mat4-f-x), [transform](#transform-f-x), [projection](#projection-projectfh-projectxh), [conversions](#conversions-vec_converth)
 - [Geometry](#geometry): [rect](#rect-f-i-s-x), [plane](#plane-f-x)
+- [Signal](#signal): [goertzel.h](#goertzelh)
 - [Examples](#examples)
 - [The float-precision build rules](#the-float-precision-build-rules)
 
@@ -212,6 +214,8 @@ Lerp and range helpers widen to `mathi.h`; lerp weights are int32 and the step t
 |---|---|---|
 | `mathx_lerp(a, b, t)` | interpolation by a Q16.16 weight `t` | $`\mathrm{add}(a,\mathrm{mul}(\mathrm{sub}(b,a),t))`$ |
 | `mathx_min(a, b)`, `mathx_max(a, b)`, `mathx_clamp(v, lo, hi)`, `mathx_repeat(v, len)`, `mathx_wrap(v, lo, hi)` | range helpers on the value | as in `mathi.h` |
+| `mathf_to_x(v)` | Q16.16, rounded and saturated | $`\mathrm{round}(v\,2^{16})`$ |
+| `mathx_to_f(v)` | float | $`v/2^{16}`$ |
 
 ### mathf_round.h
 
@@ -221,6 +225,7 @@ Lerp and range helpers widen to `mathi.h`; lerp weights are int32 and the step t
 | `mathf_round_i32(v)` | nearest int32, ties away from zero; saturates | $`\mathrm{round}(v)`$ |
 | `mathf_round_i32_in_range(v)` | as `mathf_round_i32` for a finite input whose nearest integer fits int32; no limit tests | $`\mathrm{round}(v)`$ |
 | `mathf_round_i16(v)` | nearest int16, ties away from zero; saturates, NaN maps to `INT16_MIN` | $`\mathrm{round}(\mathrm{clamp}(v))`$ |
+| `mathf_round_s(v, scale)` | int16, rounded and saturated | $`\mathrm{round}(v/scale)`$ |
 
 `MATH_FLOAT_INT_LIMIT` is the largest float below 2^31 that converts to int32.
 
@@ -413,14 +418,6 @@ Always an explicit call named for destination and source, both `vec2` and `vec3`
 | `vec3i_from_vec3s(v)`, `vec2i_from_vec2s(v)` | exact widening |
 | `vec3s_from_vec3i(v)`, `vec2s_from_vec2i(v)` | saturating narrowing |
 
-The scalar steps behind them, in `vec_convert.h`:
-
-| Function | Purpose | Formula |
-|---|---|---|
-| `mathf_round_s(v, scale)` | int16, rounded and saturated | $`\mathrm{round}(v/scale)`$ |
-| `mathf_to_x(v)` | Q16.16, rounded and saturated | $`\mathrm{round}(v\,2^{16})`$ |
-| `mathx_to_f(v)` | float | $`v/2^{16}`$ |
-
 ## Geometry
 
 ### rect (`f i s x`)
@@ -468,6 +465,44 @@ Each output is `P_from_rows` of one lens-space plane, in this order:
 
 `PLANE_FRUSTUM_COUNT` sizes the output. There is no far plane, and the
 planes are not normalized.
+
+## Signal
+
+### goertzel.h
+
+`goertzel_t` accumulates one frequency across sample blocks with a float
+recurrence, including non-integer DFT bins.<sup>[[72]](../Citations.md#72)</sup>
+The caller supplies frequency and sample rate in Hz, with $`0 < hz < sample\_rate\_hz/2`$ (at DC the float power cancels), and a positive full scale.
+
+| Function | Result |
+|---|---|
+| `goertzel_init` | Clear the stream and set coefficient $`c = 2\cos(2\pi\,hz/sample\_rate\_hz)`$ |
+| `goertzel_reset` | Clear the stream, retaining the coefficient |
+| `goertzel_feed_s` | Feed signed 16-bit samples |
+| `goertzel_feed_f` | Feed float samples with the same recurrence |
+| `goertzel_power` | Squared unnormalized DFT magnitude, clamped to zero |
+| `goertzel_amplitude` | Sine amplitude $`2\sqrt{P}/N`$; zero before any sample |
+| `goertzel_level_db` | Sine level relative to full scale; floored at `GOERTZEL_LEVEL_FLOOR_DB` |
+
+For each sample $`x`$, the recurrence updates the two stored values:
+
+```math
+s = x + c s_1 - s_2, \qquad s_2 \gets s_1, \qquad s_1 \gets s
+```
+
+With $`N`$ samples and full scale $`F`$, power and level are:
+
+```math
+P = \max(0, s_1^2 + s_2^2 - c s_1 s_2), \qquad S = NF/2
+```
+
+```math
+L = \max(\mathrm{GOERTZEL\_LEVEL\_FLOOR\_DB}, 10\log_{10}(P/S^2))
+```
+
+An empty stream or zero power returns the level floor. A sine of amplitude
+$`F`$ reads 0 dB; doubling the reference full scale lowers its level by
+$`20\log_{10}(2)`$ dB.
 
 ## Examples
 
