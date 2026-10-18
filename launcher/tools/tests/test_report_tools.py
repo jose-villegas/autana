@@ -112,8 +112,10 @@ class ReporterExitCodeTest(CaptureFixture):
         self.assertEqual(done.returncode, 0, done.stderr)
 
     def test_boot_anim_reports_layouts_and_contention_separately(self):
-        sys.path.insert(0, str(TOOLS / "boot_anim"))
-        self.addCleanup(sys.path.remove, str(TOOLS / "boot_anim"))
+        script = TOOLS / "boot_anim/report_boot_anim_perf.py"
+        directory = str(script.parent)
+        sys.path.insert(0, directory)
+        self.addCleanup(sys.path.remove, directory)
         import report_boot_anim_perf as report
         capture = ""
         for mode, draw_us in (("FULL_FB", 100), ("DOUBLE_FB", 110), ("DOUBLE_FB_CONTENDED", 125)):
@@ -128,7 +130,7 @@ class ReporterExitCodeTest(CaptureFixture):
                          ["FULL_FB", "DOUBLE_FB", "DOUBLE_FB_CONTENDED"])
         self.assertEqual(runs[order[-1]]["phases"]["Draw"]["avg"], 125)
         out = self.out_path()
-        done = subprocess.run([sys.executable, str(TOOLS / "boot_anim/report_boot_anim_perf.py"),
+        done = subprocess.run([sys.executable, str(script),
                                self.capture(capture), out], capture_output=True, text=True)
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertIn("| `curve` | 25 |", pathlib.Path(out).read_text())

@@ -150,12 +150,14 @@ recti_t* leaf_rect_scratch;
 void
 gfx_set_debug_overlay(bool on) {
     GFX_PRESENT_GUARD();
+    gfx_present_drain();
     debug_overlay_on = on;
 }
 
 void
 gfx_set_leaf_overlay(bool on) {
     GFX_PRESENT_GUARD();
+    gfx_present_drain();
     if (on) {
         if (leaf_rect_scratch == NULL) {
             leaf_rect_scratch = malloc(sizeof(*leaf_rect_scratch) * LEAF_RECTS_PER_ROW_MAX);
@@ -202,6 +204,7 @@ gfx_send_audit_uncovered_px(void) {
 void
 gfx_set_send_audit(bool on) {
     GFX_PRESENT_GUARD();
+    gfx_present_drain();
     if (on == (send_shadow != NULL)) {
         return;
     }
