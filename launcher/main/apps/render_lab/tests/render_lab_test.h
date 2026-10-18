@@ -8,7 +8,6 @@
 #include "scene/scene.h"
 
 #define RENDER_LAB_TEST_FRAME_MS 16
-#define RENDER_LAB_TEST_SCALE    50
 
 typedef struct {
     const char* scene;

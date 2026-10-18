@@ -54,12 +54,12 @@ static r3d_lit_mesh_t meshes[SPONZA_BAKE_COUNT];
 
 static int
 render_width(void) {
-    return GFX_WIDTH * 100 / render_lab_scale();
+    return GFX_WIDTH * (RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_scale()) / RENDER_LAB_SCALE_UNIT;
 }
 
 static int
 render_height(void) {
-    return GFX_HEIGHT * 100 / render_lab_scale();
+    return GFX_HEIGHT * (RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_rows()) / RENDER_LAB_SCALE_UNIT;
 }
 
 typedef struct {
@@ -82,10 +82,13 @@ bench_open(bench_t* b, const r3d_instance_t* instance, const raster_attachment_t
         .attachments = attachments,
         .attachment_count = attachments == NULL ? 0 : 1,
     };
+    b->raster.upscale.scanline_strength = render_lab_scanline();
     b->scratch = memory_alloc(raster_scratch_bytes(&b->raster), MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(b->scratch);
     TEST_ASSERT_NOT_NULL(b->panel);
     b->raster.scratch = b->scratch;
+    ESP_LOGI(TAG, "raster=%dx%d rows=%d scanline=%d", b->raster.width, b->raster.height, render_lab_rows(),
+             render_lab_scanline());
     ESP_LOGI(TAG, "heap after setup: internal free %u largest %u, psram free %u largest %u",
              (unsigned)memory_free_bytes(MEMORY_INTERNAL), (unsigned)memory_largest_block(MEMORY_INTERNAL),
              (unsigned)memory_free_bytes(MEMORY_PSRAM), (unsigned)memory_largest_block(MEMORY_PSRAM));
@@ -215,7 +218,8 @@ test_sponza_draw_stage_breakdown(void) {
     start = timing_now_us();
     const render_view_t frame_view = render_view_make(&sky_pose, 1.0F, 1.0F, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
     const raster_stats_t none = raster_draw(&b->raster, &frame_view);
-    raster_upscale(&b->raster, b->panel, GFX_WIDTH, GFX_HEIGHT);
+    raster_upscale(&b->raster, b->panel, raster_fits_half_picture(&b->raster) ? GFX_WIDTH / 2 : GFX_WIDTH,
+                   raster_fits_half_picture(&b->raster) ? GFX_HEIGHT / 2 : GFX_HEIGHT);
     ESP_LOGI(TAG, "stage, both cores: %-20s %7lldus (%d clusters)", "empty frame", (long long)(timing_now_us() - start),
              none.clusters);
 
@@ -244,9 +248,12 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
         }
     }
     const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
-    ESP_LOGI(TAG, "CAPTURE build_id=%s pack_crc32=%08x object=%s size=%d cull=%ld period_ms=%u pose_every_ms=%u",
+    ESP_LOGI(TAG,
+             "CAPTURE build_id=%s pack_crc32=%08x object=%s size=%d cull=%ld period_ms=%u pose_every_ms=%u "
+             "raster=%dx%d rows=%d scanline=%d",
              build_id(), (unsigned)asset_crc32(pack->base, pack->size), object_name, size, (long)*culling->value,
-             (unsigned)period, (unsigned)SPONZA_POSE_EVERY_MS);
+             (unsigned)period, (unsigned)SPONZA_POSE_EVERY_MS, b->raster.width, b->raster.height, render_lab_rows(),
+             render_lab_scanline());
     char* report = memory_alloc(FRAME_COST_REPORT_MAX, MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL(report);
     (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX);
@@ -264,7 +271,8 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
         }
         const int64_t start = timing_now_us();
         const raster_stats_t stats = raster_draw(&b->raster, &view);
-        raster_upscale(&b->raster, b->panel, GFX_WIDTH, GFX_HEIGHT);
+        raster_upscale(&b->raster, b->panel, raster_fits_half_picture(&b->raster) ? GFX_WIDTH / 2 : GFX_WIDTH,
+                       raster_fits_half_picture(&b->raster) ? GFX_HEIGHT / 2 : GFX_HEIGHT);
         const int64_t us = timing_now_us() - start;
         ESP_LOGI(TAG, "%s t=%5us clusters=%4d tris=%5d | both cores: frame %7lldus", label, (unsigned)(t_ms / 1000),
                  stats.clusters, stats.triangles, (long long)us);

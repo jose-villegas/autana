@@ -58,6 +58,7 @@ render_context_print_debug_views(FILE* out) {
 
 static render_context_t main_context = {
     .scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
+    .height_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
     .frame = {.step = -1},
 };
 
@@ -72,14 +73,23 @@ render_context_release(render_context_t* c) {
     memory_free(c->debug_view_state);
     *c = (render_context_t){
         .scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
+        .height_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
         .frame = {.step = -1},
     };
 }
 
 void
-render_context_set_scale(render_context_t* c, int percent) {
-    assert(percent > 0 && percent <= 100);
-    c->scale_percent = percent;
+render_context_set_scale(render_context_t* c, int width_percent, int height_percent) {
+    assert(width_percent > 0 && width_percent <= 100);
+    assert(height_percent > 0 && height_percent <= 100);
+    c->scale_percent = width_percent;
+    c->height_percent = height_percent;
+}
+
+void
+render_context_set_scanlines(render_context_t* c, int strength) {
+    assert(strength >= 0 && strength <= UPSCALE_SCANLINE_MAX);
+    c->raster.upscale.scanline_strength = strength;
 }
 
 void
@@ -172,7 +182,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     r->instances = instances;
     r->instance_count = count;
     r->width = step < 0 ? view->viewport.width * c->scale_percent / 100 : c->ladder.steps[step].width;
-    r->height = step < 0 ? view->viewport.height * c->scale_percent / 100 : c->ladder.steps[step].height;
+    r->height = step < 0 ? view->viewport.height * c->height_percent / 100 : c->ladder.steps[step].height;
     r->clear = clear;
     r->upscaled = true; /* render_context_compose() names the picture */
     r->destination_width = view->viewport.width;
@@ -215,11 +225,10 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
 bool
 render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* half) {
     const raster_t* r = &c->raster;
-    const bool expanded =
-        half != NULL && 2 * r->width == r->destination_width && 2 * r->height == r->destination_height;
+    const bool expanded = half != NULL && raster_fits_half_picture(r);
     destination = expanded ? half : destination;
-    const int width = expanded ? r->width : r->destination_width;
-    const int height = expanded ? r->height : r->destination_height;
+    const int width = expanded ? r->destination_width / 2 : r->destination_width;
+    const int height = expanded ? r->destination_height / 2 : r->destination_height;
     if (c->policy == RENDER_FIXED) {
         raster_upscale(&c->raster, destination, width, height);
         return expanded;

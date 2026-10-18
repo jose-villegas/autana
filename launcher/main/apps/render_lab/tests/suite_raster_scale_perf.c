@@ -45,9 +45,8 @@
 static const char* TAG = "scale_perf";
 
 /* Denser than the scene's own pose spacing, so a size's mean is not two poses. */
-#define POSE_EVERY_MS    2500
-#define POSES_MAX        64
-#define SCALE_HUNDREDTHS 100
+#define POSE_EVERY_MS 2500
+#define POSES_MAX     64
 
 /* Width-first and height-first ladders keep every upscale on a fast path,
  * with the last step reserved for recovery. */
@@ -148,7 +147,9 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
             camera_view(lens, scene_entity_transform(scene, camera_entity), (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
         const int64_t start = timing_now_us();
         const raster_stats_t stats = raster_draw(raster, &view);
-        raster_upscale(raster, destination, GFX_WIDTH, GFX_HEIGHT);
+        raster->upscale.scanline_strength = render_lab_scanline();
+        raster_upscale(raster, destination, raster_fits_half_picture(raster) ? GFX_WIDTH / 2 : GFX_WIDTH,
+                       raster_fits_half_picture(raster) ? GFX_HEIGHT / 2 : GFX_HEIGHT);
         frame_us[poses++] = (int32_t)(timing_now_us() - start);
         triangles += stats.triangles;
     }
@@ -244,7 +245,9 @@ count_along_path(raster_t* raster, gfx_color_t* destination, int bracket, const 
         const render_view_t view =
             camera_view(lens, scene_entity_transform(scene, camera_entity), raster_viewport(raster, 0));
         (void)raster_draw(raster, &view);
-        raster_upscale(raster, destination, GFX_WIDTH, GFX_HEIGHT);
+        raster->upscale.scanline_strength = render_lab_scanline();
+        raster_upscale(raster, destination, raster_fits_half_picture(raster) ? GFX_WIDTH / 2 : GFX_WIDTH,
+                       raster_fits_half_picture(raster) ? GFX_HEIGHT / 2 : GFX_HEIGHT);
     }
     const int length = frame_cost_take_counts(report, FRAME_COST_REPORT_MAX);
     frame_cost_shared_post_arm(-1, 0);
@@ -260,8 +263,9 @@ test_raster_counters(void) {
 #else
     TEST_ASSERT_NOT_NULL_MESSAGE(scene, "the scene did not load: see the log above");
     const r3d_instance_t instance = {&mesh, NULL};
-    const resolution_step_t size = {GFX_WIDTH * SCALE_HUNDREDTHS / render_lab_scale(),
-                                    GFX_HEIGHT * SCALE_HUNDREDTHS / render_lab_scale()};
+    const resolution_step_t size = {
+        GFX_WIDTH * (RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_scale()) / RENDER_LAB_SCALE_UNIT,
+        GFX_HEIGHT * (RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_rows()) / RENDER_LAB_SCALE_UNIT};
     raster_t raster = {.instances = &instance,
                        .instance_count = 1,
                        .upscaled = true,
@@ -269,6 +273,8 @@ test_raster_counters(void) {
                        .height = size.height,
                        .destination_width = GFX_WIDTH,
                        .destination_height = GFX_HEIGHT};
+    ESP_LOGI(TAG, "raster=%dx%d rows=%d scanline=%d", raster.width, raster.height, render_lab_rows(),
+             render_lab_scanline());
     raster.scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_PSRAM);
     gfx_color_t* destination = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
     int32_t* frame_us = malloc(sizeof(*frame_us) * POSES_MAX);
@@ -409,7 +415,9 @@ fly(const char* camera, const char* policy, const ladder_t* ladder, const resolu
     const uint32_t period = scene_animator_clip_duration_ms(flown, scene_find(flown, camera), 0);
     const int frames = (int)((period + FRAME_DT_MS - 1) / FRAME_DT_MS);
     TEST_ASSERT_TRUE(frames > 0 && frames <= FRAMES_MAX);
-    render_context_set_scale(render_context_main(), 50);
+    render_context_set_scale(render_context_main(), RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_scale(),
+                             RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_rows());
+    render_context_set_scanlines(render_context_main(), render_lab_scanline());
     render_context_set_dynamic_resolution(render_context_main(), config, model, ladder == NULL ? 0 : ladder->half);
     scene_target_t target = {picture, GFX_WIDTH, GFX_HEIGHT, NULL};
     gfx_color_t* half = memory_alloc(sizeof(*half) * (GFX_WIDTH / 2) * (GFX_HEIGHT / 2), MEMORY_PSRAM);

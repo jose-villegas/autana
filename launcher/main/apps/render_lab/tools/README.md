@@ -19,6 +19,84 @@ across compilers. HUD renders also format a `double` fps readout.
 The fps text comes from the host fixture - time the board with a device
 capture.
 
+### Height-only raster experiment
+
+`--tune NAME=VALUE` is repeatable and uses the console tune protocol.
+`render_lab.rows` is a separate height divisor in the same hundredths as
+`render_lab.scale`; zero follows `scale`, and positive values below
+`RENDER_LAB_SCALE_UNIT` use that unit. Defaults remain `scale=200`, `rows=0`,
+`scanline=0`. The scene applies these settings each frame. Perf suites read
+them when the test runs and log the raster size, effective rows divisor and
+strength. Their compose work uses the same half-picture predicate as the scene.
+
+These commands render both scenes in quarter 0 and rotated quarter 1, at the
+same pose used in the sheets. The host reads the real gfx panel rows, including
+half-picture doubling, before rotating the output for the viewer.
+
+```sh
+sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh --build-only -o /tmp/raster-look
+for scene in sponza-fitted-full capybara; do
+    for quarter in 0 1; do
+        /tmp/raster-look/render_lab_render --scene "$scene" --quarter "$quarter" --no-hud --frames 2 --dt 5000 \
+            -o "/tmp/raster-look/$scene-q$quarter-today.bmp"
+        /tmp/raster-look/render_lab_render --scene "$scene" --quarter "$quarter" --no-hud --frames 2 --dt 5000 \
+            --tune render_lab.rows=400 -o "/tmp/raster-look/$scene-q$quarter-plain.bmp"
+        /tmp/raster-look/render_lab_render --scene "$scene" --quarter "$quarter" --no-hud --frames 2 --dt 5000 \
+            --tune render_lab.rows=400 --tune render_lab.scanline=16 \
+            -o "/tmp/raster-look/$scene-q$quarter-scanline.bmp"
+    done
+done
+```
+
+`render_compare.sh --render LABEL "ARGS"` accepts these same renderer arguments.
+The sheets below use `launcher/tools/render/render_compare.py --row` with
+`--crops 3`: default versus 1×2 plain, then plain versus strength 16. Rows show
+Sponza quarter 0, Sponza quarter 1, Capybara quarter 0 and Capybara quarter 1.
+The third column amplifies the pixel difference. The scanline runs follow
+panel rows, so they appear vertical in quarter 1. Clear sky darkens too.
+These are host pictures; no device timing is attached to this experiment.
+
+![Default and height-only plain raster](images/scanline-1x2/plain.png)
+
+[Enlarged differing regions](images/scanline-1x2/plain.crops.png)
+
+![Height-only plain and scanline present](images/scanline-1x2/scanline.png)
+
+[Enlarged differing regions](images/scanline-1x2/scanline.crops.png)
+
+The complete source removal inventory below matches the experiment's names
+under `launcher/main/render/`, this app and `launcher/test/suites/`.
+Existing `DRAW_DITHER_SCANLINES4` patterns are independent.
+
+| File | Experiment symbols or statements to remove |
+|---|---|
+| `launcher/main/render/upscale.h` | `UPSCALE_SCANLINE_UNIT`, `UPSCALE_SCANLINE_MAX`, `upscale_t.scanline_strength`, `upscale_t.scanline_run` |
+| `launcher/main/render/upscale.c` | strength initialization and run eligibility in `upscale_init()`, `scanline_rows()`, its call in `upscale_rows()` |
+| `launcher/main/render/raster.c` | cached strength preservation in `raster_upscale()` |
+| `launcher/main/render/context/render_context.h`, `render_context.c` | `render_context_set_scanlines()` |
+| `launcher/main/apps/render_lab/app_render_lab.c` | `TUNE(render_lab, scanline, ...)`, `render_lab_scanline()`, the setter call in `render_lab_apply_raster_settings()` |
+| `launcher/main/apps/render_lab/render_lab_view.h` | `render_lab_scanline()` declaration |
+| `launcher/main/apps/render_lab/tests/suite_sponza_perf.c` | strength assignment and header field |
+| `launcher/main/apps/render_lab/tests/suite_capybara_perf.c` | header strength field |
+| `launcher/main/apps/render_lab/tests/suite_raster_scale_perf.c` | strength assignments, setter and header field |
+| `launcher/main/apps/render_lab/tools/tests/test_render_views.py` | `UPSCALE_HEADER`, `SCANLINE_UNIT`, scanline tunings and dark-row assertions |
+| `launcher/test/suites/suite_scene.c` | strength setting in `test_height_only_scale_composes_whole_runs_in_the_half_picture()` |
+| `launcher/test/suites/suite_upscale.c` | `test_scanline_runs_preserve_bright_rows_and_darken_clear_pixels()` and registration |
+| `docs/Shared-Helpers.md` | regenerate the catalogue after removing the public symbols |
+| `docs/render/Dynamic-Resolution.md`, this README and `images/scanline-1x2/` | experiment prose, inventory and images |
+
+Check the inventory with:
+
+```sh
+git grep -n -i scanline -- launcher/main/render launcher/main/apps/render_lab \
+    launcher/test/suites/suite_scene.c launcher/test/suites/suite_upscale.c docs/render/Dynamic-Resolution.md
+```
+
+Keep height-only fixed scaling, `raster_fits_half_picture()`, `rows`, the
+general `--tune` option and plain-row regression coverage when removing the
+experiment. The engine contract is in
+[Dynamic resolution](../../../../../docs/render/Dynamic-Resolution.md).
+
 ### Debug views
 
 `--view shaded|depth|tiles|motion|meshlets` selects the declared context view.

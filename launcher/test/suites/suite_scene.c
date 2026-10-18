@@ -542,7 +542,7 @@ static scene_t*
 show(const char* name, const char* camera) {
     scene_t* scene = load(name);
     TEST_ASSERT_TRUE(scene_activate(scene, camera));
-    render_context_set_scale(render_context_main(), 100);
+    render_context_set_scale(render_context_main(), 100, 100);
     return scene;
 }
 
@@ -582,7 +582,7 @@ test_a_scaled_context_preserves_the_non_square_views_destination(void) {
                     (viewport_t){SIZE, SIZE / 2, 0});
     render_context_t* c = render_context_main();
     for (int scale = 100; scale >= 50; scale -= 50) {
-        render_context_set_scale(c, scale);
+        render_context_set_scale(c, scale, scale);
         TEST_ASSERT_TRUE(render_context_draw(c, scene->instances, 2, &view, GFX_RGB(CLEAR_RGB)));
         TEST_ASSERT_EQUAL_INT(SIZE, c->raster.destination_width);
         TEST_ASSERT_EQUAL_INT(SIZE / 2, c->raster.destination_height);
@@ -624,7 +624,7 @@ test_a_camera_clears_to_the_colour_its_scene_gives(void) {
     fixture();
     scene_t* scene = load("test_sky");
     TEST_ASSERT_TRUE(scene_activate(scene, NULL));
-    render_context_set_scale(render_context_main(), 100);
+    render_context_set_scale(render_context_main(), 100, 100);
     frame(0);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x996633), pixel(-8.0F));
 }
@@ -635,7 +635,7 @@ static void
 test_a_camera_keeps_its_fixed_scale_unless_dynamic_resolution_is_asked_for(void) {
     fixture();
     scene_t* scene = show("test_sky", NULL);
-    render_context_set_scale(render_context_main(), 50);
+    render_context_set_scale(render_context_main(), 50, 50);
     frame(0);
     TEST_ASSERT_EQUAL_INT(-1, render_context_frame(render_context_main()).step);
     TEST_ASSERT_EQUAL_INT(SIZE / 2, render_context_frame(render_context_main()).width);
@@ -1339,13 +1339,13 @@ test_two_scenes_are_held_at_once_and_the_active_camera_decides_which_is_seen(voi
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
     TEST_ASSERT_TRUE(scene_activate(solo, "eye"));
-    render_context_set_scale(render_context_main(), 100);
+    render_context_set_scale(render_context_main(), 100, 100);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x0000FF), pixel(0.0F));
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(4.0F)); /* the other scene's quads are not drawn */
     scene_entity_set_enabled(pair, scene_find(pair, "red"), false);
     TEST_ASSERT_TRUE(scene_activate(pair, NULL));
-    render_context_set_scale(render_context_main(), 100);
+    render_context_set_scale(render_context_main(), 100, 100);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(0.0F)); /* each scene kept its own state */
 }
@@ -1359,7 +1359,7 @@ test_unloading_the_active_scene_stops_drawing_and_leaves_the_other_alone(void) {
     scene_unload(pair);
     TEST_ASSERT_FALSE(scene_has_active_camera());
     TEST_ASSERT_TRUE(scene_activate(solo, NULL));
-    render_context_set_scale(render_context_main(), 100);
+    render_context_set_scale(render_context_main(), 100, 100);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x0000FF), pixel(0.0F));
 }
@@ -1419,7 +1419,7 @@ static void
 test_a_scale_renders_smaller_and_the_picture_is_upscaled_to_the_target(void) {
     fixture();
     show("test_pair", NULL);
-    render_context_set_scale(render_context_main(), 50);
+    render_context_set_scale(render_context_main(), 50, 50);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x00FF00), pixel(4.0F));
@@ -1504,12 +1504,12 @@ test_a_scene_with_two_cameras_is_seen_from_the_one_activated_by_name(void) {
     fixture();
     scene_t* twin = load("test_twin");
     TEST_ASSERT_TRUE(scene_activate(twin, "right"));
-    render_context_set_scale(render_context_main(), 100);
+    render_context_set_scale(render_context_main(), 100, 100);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(CLEAR, pixel(0.0F)); /* the quad is 4 units left of this camera */
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-4.0F));
     TEST_ASSERT_TRUE(scene_activate(twin, "left"));
-    render_context_set_scale(render_context_main(), 100);
+    render_context_set_scale(render_context_main(), 100, 100);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
     TEST_ASSERT_TRUE(scene_activate(twin, NULL)); /* the first */
@@ -1532,13 +1532,13 @@ static void
 test_the_render_scale_changes_the_picture_and_a_larger_one_grows_the_scratch(void) {
     fixture();
     show("test_pair", NULL);
-    render_context_set_scale(render_context_main(), 50);
+    render_context_set_scale(render_context_main(), 50, 50);
     frame(16);
     const size_t small_free = memory_free_bytes(MEMORY_PSRAM);
     uint16_t* half = malloc(sizeof(*half) * SIZE * SIZE);
     TEST_ASSERT_NOT_NULL(half);
     memcpy(half, fx.pixels, sizeof(*half) * SIZE * SIZE);
-    render_context_set_scale(render_context_main(), 100);
+    render_context_set_scale(render_context_main(), 100, 100);
     frame(16);
     TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_PSRAM) < small_free);
     TEST_ASSERT_TRUE(memcmp(half, fx.pixels, sizeof(*half) * SIZE * SIZE) != 0);
@@ -1581,7 +1581,8 @@ test_a_predicted_draw_is_the_fixed_draw_at_the_step_it_chose(void) {
         memcpy(fx.held, fx.pixels, sizeof(*fx.held) * SIZE * SIZE);
 
         render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
-        render_context_set_scale(render_context_main(), 100 * LADDER[cases[i].chosen].width / SIZE);
+        render_context_set_scale(render_context_main(), 100 * LADDER[cases[i].chosen].width / SIZE,
+                                 100 * LADDER[cases[i].chosen].width / SIZE);
         frame(0);
         const render_context_frame_t fixed = render_context_frame(render_context_main());
         TEST_ASSERT_EQUAL_INT(drawn.width, fixed.width);
@@ -1641,7 +1642,7 @@ test_a_loaded_scene_that_is_not_active_keeps_its_time(void) {
     show("test_pair", NULL);
     frame(500);
     TEST_ASSERT_TRUE(scene_activate(flight, NULL));
-    render_context_set_scale(render_context_main(), 100);
+    render_context_set_scale(render_context_main(), 100, 100);
     frame(0);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(-2.5F)); /* it flew while another was seen */
 }
@@ -1669,7 +1670,7 @@ expanded_fixture(void) {
 static void
 expanded_picture(void) {
     expanded_fixture();
-    render_context_set_scale(render_context_main(), 50);
+    render_context_set_scale(render_context_main(), 50, 50);
     scene_render(16, 0, GFX_WIDTH, GFX_HEIGHT);
     raster_t* raster = &render_context_main()->raster;
     raster_upscale(raster, fx.held, GFX_WIDTH, GFX_HEIGHT);
@@ -1729,7 +1730,7 @@ test_expanded_frame_lifecycle_and_raw_draw_guard(void) {
 static void
 test_failed_half_allocation_keeps_full_upscale_unexpanded(void) {
     expanded_fixture();
-    render_context_set_scale(render_context_main(), 50);
+    render_context_set_scale(render_context_main(), 50, 50);
     scene_shell_render(16);
     raster_upscale(&render_context_main()->raster, fx.held, GFX_WIDTH, GFX_HEIGHT);
     gfx_color_t* full = gfx_framebuffer();
@@ -1746,9 +1747,44 @@ test_failed_half_allocation_keeps_full_upscale_unexpanded(void) {
 }
 
 static void
+test_height_only_scale_composes_whole_runs_in_the_half_picture(void) {
+    expanded_fixture();
+    render_context_t* c = render_context_main();
+    render_context_set_scale(c, RENDER_CONTEXT_DEFAULT_SCALE_PERCENT, RENDER_CONTEXT_DEFAULT_SCALE_PERCENT / 2);
+    render_context_set_scanlines(c, UPSCALE_SCANLINE_UNIT / 2);
+    const scene_target_t target = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
+    TEST_ASSERT_NOT_NULL(target.half_pixels);
+    for (int quarter = 0; quarter <= 1; quarter++) {
+        scene_render(0, quarter, GFX_WIDTH, GFX_HEIGHT);
+        TEST_ASSERT_EQUAL_INT(GFX_WIDTH / 2, c->raster.width);
+        TEST_ASSERT_EQUAL_INT(GFX_HEIGHT / 4, c->raster.height);
+        TEST_ASSERT_TRUE(raster_fits_half_picture(&c->raster));
+        raster_upscale(&c->raster, fx.held, GFX_WIDTH / 2, GFX_HEIGHT / 2);
+        TEST_ASSERT_TRUE(scene_compose(0, quarter, &target));
+        gfx_expand_frame();
+        for (int y = 0; y < GFX_HEIGHT; y++) {
+            gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
+            for (int x = 0; x < GFX_WIDTH; x++) {
+                TEST_ASSERT_EQUAL_HEX16(fx.held[(y / 2) * (GFX_WIDTH / 2) + x / 2], fx.pixels[y * GFX_WIDTH + x]);
+            }
+        }
+    }
+    const resolution_step_t uneven = {GFX_WIDTH / 2, 179};
+    const resolution_config_t one = resolution_config(&uneven, 1, 1, INT32_MAX);
+    render_context_set_dynamic_resolution(c, &one, NULL, 0);
+    scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
+    TEST_ASSERT_FALSE(raster_fits_half_picture(&c->raster));
+    raster_upscale(&c->raster, fx.held, GFX_WIDTH, GFX_HEIGHT);
+    target.half_pixels[0] = SENTINEL;
+    TEST_ASSERT_FALSE(scene_compose(0, 0, &target));
+    TEST_ASSERT_EQUAL_HEX16(SENTINEL, target.half_pixels[0]);
+    TEST_ASSERT_EQUAL_MEMORY(fx.held, target.pixels, GFX_FRAMEBUFFER_BYTES);
+}
+
+static void
 test_non_half_compose_upscales_to_the_full_destination(void) {
     expanded_fixture();
-    render_context_set_scale(render_context_main(), 75);
+    render_context_set_scale(render_context_main(), 75, 75);
     scene_render(16, 0, GFX_WIDTH, GFX_HEIGHT);
     render_context_t* context = render_context_main();
     raster_upscale(&context->raster, fx.held, GFX_WIDTH, GFX_HEIGHT);
@@ -1837,7 +1873,7 @@ test_shell_expanded_pass_replays_build_mark_without_raw_writes(void) {
     ui_init();
     shell_frame_init("1234567");
     gfx_set_frame_overlay(shell_frame_overlay);
-    render_context_set_scale(render_context_main(), 50);
+    render_context_set_scale(render_context_main(), 50, 50);
     scene_shell_render(16);
     scene_shell_compose(16);
     TEST_ASSERT_TRUE(gfx_frame_expanded());
@@ -3191,6 +3227,7 @@ run_scene_suite(void) {
     RUN_TEST(test_expanded_frame_lifecycle_and_raw_draw_guard);
     RUN_TEST(test_expanded_overlay_resets_and_restores_clip);
     RUN_TEST(test_ui_replay_over_expanded_scene_matches_full_frame);
+    RUN_TEST(test_height_only_scale_composes_whole_runs_in_the_half_picture);
     RUN_TEST(test_non_half_compose_upscales_to_the_full_destination);
     RUN_TEST(test_failed_half_allocation_keeps_full_upscale_unexpanded);
     RUN_TEST(test_expanded_frame_without_ui_does_not_replay_the_previous_hud);

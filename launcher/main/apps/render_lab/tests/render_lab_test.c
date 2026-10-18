@@ -2,6 +2,7 @@
 #ifdef DEVICE_BUILD
 #include <string.h>
 #include "apps/render_lab/render_lab.h"
+#include "apps/render_lab/render_lab_view.h"
 #include "core/timing.h"
 #include "gfx/present/gfx_fb_guard.h"
 #include "gfx/present/gfx_mode.h"
@@ -55,7 +56,7 @@ render_lab_test_frame(bool switching, const input_t* input) {
     gfx_present_begin();
     app_render_lab.update(RENDER_LAB_TEST_FRAME_MS, input);
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
-    render_context_set_scale(render_context_main(), RENDER_LAB_TEST_SCALE);
+    render_lab_apply_raster_settings();
     const int64_t render_start = timing_now_us();
     scene_shell_render(RENDER_LAB_TEST_FRAME_MS);
     const int64_t render_us = timing_now_us() - render_start;

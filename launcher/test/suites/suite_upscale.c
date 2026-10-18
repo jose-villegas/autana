@@ -7,6 +7,7 @@
 
 #include "test_cleanup.h"
 
+#include "gfx/target/gfx_color.h"
 #include "render/upscale.h"
 
 static void
@@ -233,8 +234,74 @@ test_each_width_takes_its_path_and_matches_the_maps(void) {
     }
 }
 
+static void
+test_scanline_runs_preserve_bright_rows_and_darken_clear_pixels(void) {
+    enum {
+        WIDTH = 4,
+        HEIGHT = 3,
+        MAX_WIDTH = 16,
+        MAX_HEIGHT = 12,
+        RED = 24,
+        GREEN = 48,
+        BLUE = 16,
+        CLEAR_RED = 16,
+        CLEAR_GREEN = 32,
+        CLEAR_BLUE = 24
+    };
+
+    uint16_t source[WIDTH * HEIGHT], depth[WIDTH * HEIGHT];
+    uint16_t plain[MAX_WIDTH * MAX_HEIGHT];
+    held.actual = malloc(sizeof *held.actual * MAX_WIDTH * MAX_HEIGHT);
+    suite_set_test_cleanup(release_buffers);
+    TEST_ASSERT_NOT_NULL(held.actual);
+    uint16_t* actual = held.actual;
+    uint16_t columns[MAX_WIDTH], rows[MAX_HEIGHT];
+    const uint16_t color = gfx_color_rgb565(RED, GREEN, BLUE);
+    const uint16_t clear = gfx_color_rgb565(CLEAR_RED, CLEAR_GREEN, CLEAR_BLUE);
+    for (int i = 0; i < WIDTH * HEIGHT; i++) {
+        source[i] = color;
+        depth[i] = i % 2;
+    }
+    gfx_render_target_t picture = gfx_render_target_of_color(source, WIDTH, HEIGHT);
+    picture.attachment[GFX_ATTACHMENT_DEPTH] = (gfx_attachment_t){depth, sizeof *depth};
+    picture.count = GFX_ATTACHMENT_DEPTH + 1;
+    static const int sizes[][3] = {
+        /* width, height, uniform even run (zero means ineligible) */
+        {8, 6, 2}, {4, 6, 2}, {16, 12, 4}, {5, 6, 2}, {8, 9, 0}, {8, 7, 0}, {8, 12, 0}, {8, 3, 0},
+    };
+    static const int strengths[] = {0, UPSCALE_SCANLINE_UNIT / 2, UPSCALE_SCANLINE_MAX};
+    for (size_t c = 0; c < sizeof sizes / sizeof *sizes; c++) {
+        const int width = sizes[c][0], height = sizes[c][1], run = sizes[c][2];
+        upscale_t scale;
+        TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, width, height, columns, rows));
+        upscale_rows(&scale, &picture, clear, plain, 0, height);
+        for (size_t i = 0; i < sizeof strengths / sizeof *strengths; i++) {
+            scale.scanline_strength = strengths[i];
+            const unsigned keep = UPSCALE_SCANLINE_UNIT - strengths[i];
+            const uint16_t dark_color =
+                gfx_color_rgb565(RED * keep / UPSCALE_SCANLINE_UNIT, GREEN * keep / UPSCALE_SCANLINE_UNIT,
+                                 BLUE * keep / UPSCALE_SCANLINE_UNIT);
+            const uint16_t dark_clear =
+                gfx_color_rgb565(CLEAR_RED * keep / UPSCALE_SCANLINE_UNIT, CLEAR_GREEN * keep / UPSCALE_SCANLINE_UNIT,
+                                 CLEAR_BLUE * keep / UPSCALE_SCANLINE_UNIT);
+            const int split = height / 2;
+            upscale_rows(&scale, &picture, clear, actual, 0, split);
+            upscale_rows(&scale, &picture, clear, actual, split, height - split);
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    const uint16_t pixel = plain[y * width + x];
+                    const bool dark = run != 0 && y % run >= run / 2;
+                    const uint16_t expected = dark ? (pixel == clear ? dark_clear : dark_color) : pixel;
+                    TEST_ASSERT_EQUAL_HEX16(expected, actual[y * width + x]);
+                }
+            }
+        }
+    }
+}
+
 void
 run_upscale_suite(void) {
+    RUN_TEST(test_scanline_runs_preserve_bright_rows_and_darken_clear_pixels);
     RUN_TEST(test_two_times_matches_the_frame_doubling_reference);
     RUN_TEST(test_integer_factors_copy_each_source_pixel_to_its_block);
     RUN_TEST(test_fractional_maps_cover_destination_in_order_and_at_source_corners);

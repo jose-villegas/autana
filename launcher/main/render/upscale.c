@@ -38,6 +38,7 @@ upscale_init(upscale_t* scale, int source_width, int source_height, int destinat
         || destination_width < source_width || destination_height < source_height) {
         return false;
     }
+    scale->scanline_strength = 0;
     scale->source_width = source_width;
     scale->source_height = source_height;
     scale->destination_width = destination_width;
@@ -51,6 +52,17 @@ upscale_init(upscale_t* scale, int source_width, int source_height, int destinat
     }
     for (int y = 0; y < destination_height; y++) {
         rows[y] = nearest_source(y, destination_height, source_height);
+    }
+    const int run = destination_height / source_height;
+    scale->scanline_run = 0;
+    if (destination_height % source_height == 0 && run % 2 == 0) {
+        scale->scanline_run = run;
+        for (int y = 0; scale->path != UPSCALE_BLOCKS && y < destination_height; y++) {
+            if (rows[y] != y / run) {
+                scale->scanline_run = 0;
+                break;
+            }
+        }
     }
     return true;
 }
@@ -98,6 +110,24 @@ upscale_mapped_rows(const upscale_t* scale, const uint16_t* source, const uint16
     }
 }
 
+static void
+scanline_rows(const upscale_t* scale, uint16_t* destination, int first_row, int row_count) {
+    const unsigned keep = (unsigned)(UPSCALE_SCANLINE_UNIT - scale->scanline_strength);
+    const int run = scale->scanline_run;
+    for (int y = first_row; y < first_row + row_count; y++) {
+        if (y % run < run / 2) {
+            continue;
+        }
+        uint16_t* row = destination + (size_t)y * scale->destination_width;
+        for (int x = 0; x < scale->destination_width; x++) {
+            const uint16_t native = gfx_color_swap(row[x]);
+            row[x] = gfx_color_rgb565((uint8_t)(gfx_rgb565_r5(native) * keep / UPSCALE_SCANLINE_UNIT),
+                                      (uint8_t)(gfx_rgb565_g6(native) * keep / UPSCALE_SCANLINE_UNIT),
+                                      (uint8_t)(gfx_rgb565_b5(native) * keep / UPSCALE_SCANLINE_UNIT));
+        }
+    }
+}
+
 RENDER_IRAM_ATTR void
 upscale_rows(const upscale_t* scale, const gfx_render_target_t* picture, uint16_t clear, uint16_t* destination,
              int first_row, int row_count) {
@@ -117,5 +147,8 @@ upscale_rows(const upscale_t* scale, const gfx_render_target_t* picture, uint16_
             break;
         case UPSCALE_BLOCKS: upscale_block_rows(scale, source, depth, clear, destination, first_row, row_count); break;
         case UPSCALE_MAPPED: upscale_mapped_rows(scale, source, depth, clear, destination, first_row, row_count); break;
+    }
+    if (scale->scanline_strength != 0 && scale->scanline_run != 0) {
+        scanline_rows(scale, destination, first_row, row_count);
     }
 }

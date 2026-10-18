@@ -376,6 +376,12 @@ raster_draw_culled(const raster_t* raster, const render_view_t* view) {
     draw_instances(raster, view, NULL);
 }
 
+bool
+raster_fits_half_picture(const raster_t* raster) {
+    return raster->width > 0 && raster->height > 0 && 2 * raster->width == raster->destination_width
+           && raster->destination_height % 2 == 0 && (raster->destination_height / 2) % raster->height == 0;
+}
+
 void
 raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
     assert(raster->upscaled && destination != NULL);
@@ -394,9 +400,11 @@ raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
     if (raster->upscale.source_width != raster->width || raster->upscale.source_height != raster->height
         || raster->upscale.destination_width != width || raster->upscale.destination_height != height
         || raster->upscale.columns != columns || raster->upscale.rows != rows) {
+        const int strength = raster->upscale.scanline_strength;
         const bool initialized =
             upscale_init(&raster->upscale, raster->width, raster->height, width, height, columns, rows);
         assert(initialized);
+        raster->upscale.scanline_strength = strength;
     }
     const int mid = height / 2;
     slice_t mine = {raster, NULL, NULL, NULL, 0, mid, height - mid, false, NULL, 0, destination, 0, NULL, NULL};

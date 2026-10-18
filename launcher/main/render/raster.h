@@ -79,6 +79,9 @@ size_t raster_culled_length(const raster_t* raster);
 raster_stats_t raster_census(const raster_t* raster, const render_view_t* view);
 void raster_draw_culled(const raster_t* raster, const render_view_t* view);
 
+/* The half picture can hold the width and whole repeats of every drawn row. */
+bool raster_fits_half_picture(const raster_t* raster);
+
 /* Fills `destination` from what was last drawn, both cores taking
  * half the destination rows. The destination is at least the drawn size. */
 void raster_upscale(raster_t* raster, uint16_t* destination, int width, int height);

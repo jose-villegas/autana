@@ -2,6 +2,7 @@
 #ifdef DEVICE_BUILD
 #include <stdio.h>
 #include <string.h>
+#include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "apps/render_lab/tests/skin_perf_log.h"
 #include "core/job.h"
@@ -9,6 +10,7 @@
 #include "core/timing.h"
 #include "esp_cpu.h"
 #include "esp_log.h"
+#include "gfx/gfx.h"
 #include "perf_stats.h"
 #include "scene/scene_internal.h"
 #include "test_cleanup.h"
@@ -53,6 +55,10 @@ fixture(void) {
     active = memory_alloc(sizeof *active, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(active);
     *active = (fixture_t){0};
+    ESP_LOGI(TAG, "raster=%dx%d rows=%d scanline=%d",
+             GFX_WIDTH * (RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_scale()) / RENDER_LAB_SCALE_UNIT,
+             GFX_HEIGHT * (RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_rows()) / RENDER_LAB_SCALE_UNIT,
+             render_lab_rows(), render_lab_scanline());
     heap_report(SKIN_PERF_PHASE_BEFORE_ENTER);
     render_lab_test_enter(&active->saved, "capybara");
     suite_set_test_cleanup(release_fixture);

@@ -52,6 +52,7 @@ typedef struct {
     void* scratch;
     size_t scratch_bytes;
     int scale_percent;
+    int height_percent;
 
     enum { RENDER_FIXED, RENDER_STEPPED, RENDER_PREDICTED } policy;
 
@@ -73,7 +74,10 @@ void render_context_release(render_context_t* context);
 
 /* The share of the destination's size each axis draws at, upscaled on the
  * way out; it holds while dynamic resolution is off. */
-void render_context_set_scale(render_context_t* context, int percent);
+void render_context_set_scale(render_context_t* context, int width_percent, int height_percent);
+
+/* Repeated-row darkening, in UPSCALE_SCANLINE_UNIT units; zero disables it. */
+void render_context_set_scanlines(render_context_t* context, int strength);
 
 /* Opts in: each frame draws at a step of `config` to hold its budget, chosen
  * by the stepped controller, or by the predictor when `model` is not NULL.
@@ -96,7 +100,7 @@ void render_context_print_debug_views(FILE* out);
 bool render_context_draw(render_context_t* context, const r3d_instance_t* instances, int count,
                          const render_view_t* view, uint16_t clear);
 
-/* With `half`, copies an exact-half draw there at its drawn size and
+/* With `half`, expands a compatible draw into the half picture and
  * returns true; otherwise upscales into `destination` at the view's
  * destination size. Either path feeds its cost to dynamic resolution. */
 bool render_context_compose(render_context_t* context, uint16_t* destination, uint16_t* half);

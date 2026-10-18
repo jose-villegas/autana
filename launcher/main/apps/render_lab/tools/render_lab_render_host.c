@@ -11,6 +11,8 @@
  * shell itself.
  */
 
+#include <errno.h>
+#include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -65,11 +67,12 @@ note_reply(const char* line) {
     }
 }
 
-/* Sets one render_lab tunable, the way the console would. */
+/* The console protocol owns tunable names and range validation. */
 static bool
 set_tunable(const char* name, int value) {
     char line[TUNE_NAME_MAX + 16];
-    if (snprintf(line, sizeof line, "SET render_lab.%s %d", name, value) < 0) {
+    const int length = snprintf(line, sizeof line, "SET %s %d", name, value);
+    if (length < 0 || (size_t)length >= sizeof line) {
         return false;
     }
     tune_set = false;
@@ -81,12 +84,40 @@ static bool
 view_from_name(const char* name) {
     const int view = render_context_debug_view_named(name);
     if (view != RENDER_DEBUG_VIEW_UNKNOWN) {
-        return set_tunable("view", view);
+        return set_tunable("render_lab.view", view);
     }
     (void)fprintf(stderr, "render_lab_render_host: --view is ");
     render_context_print_debug_views(stderr);
     (void)fprintf(stderr, ", not %s\n", name);
     return false;
+}
+
+static bool
+tune_options(int argc, char** argv) {
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], "--tune") != 0) {
+            continue;
+        }
+        if (++i == argc) {
+            return false;
+        }
+        const char* equal = strchr(argv[i], '=');
+        if (equal == NULL || equal == argv[i] || equal - argv[i] > TUNE_NAME_MAX) {
+            return false;
+        }
+        char name[TUNE_NAME_MAX + 1];
+        const size_t length = (size_t)(equal - argv[i]);
+        memcpy(name, argv[i], length);
+        name[length] = '\0';
+        char* end;
+        errno = 0;
+        const long value = strtol(equal + 1, &end, 0);
+        if (errno != 0 || end == equal + 1 || *end != '\0' || value < INT_MIN || value > INT_MAX
+            || !set_tunable(name, (int)value)) {
+            return false;
+        }
+    }
+    return true;
 }
 
 static void
@@ -124,7 +155,8 @@ options(int argc, char** argv) {
     }
     apply_flags(argc, argv);
     render_lab_start_scene_key = scene;
-    return (view == NULL || view_from_name(view)) && (scale == NULL || set_tunable("scale", atoi(scale)));
+    return (view == NULL || view_from_name(view)) && (scale == NULL || set_tunable("render_lab.scale", atoi(scale)))
+           && tune_options(argc, argv);
 }
 
 int

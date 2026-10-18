@@ -18,7 +18,13 @@ typedef enum {
     UPSCALE_BLOCKS,  /* both axes by one integer factor, where neither above applies */
 } upscale_path_t;
 
+/* Repeated-row darkening in 32nds: zero preserves colour, the maximum is black. */
+#define UPSCALE_SCANLINE_UNIT 32
+#define UPSCALE_SCANLINE_MAX  UPSCALE_SCANLINE_UNIT
+
 typedef struct {
+    int scanline_strength;
+    int scanline_run;
     int source_width, source_height;
     int destination_width, destination_height;
     int factor; /* UPSCALE_BLOCKS's */

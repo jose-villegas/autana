@@ -10,6 +10,7 @@ cannot be written fails the run rather than
 reporting an image.
 """
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -25,6 +26,8 @@ TURNS = {
     "landscape": ("sponza-landscape", "sponza-depth-landscape", "sponza-tiles-landscape"),
     "flipped": ("sponza-flipped", "sponza-depth-flipped", "sponza-tiles-flipped"),
 }
+UPSCALE_HEADER = pathlib.Path(__file__).resolve().parents[6] / "launcher/main/render/upscale.h"
+SCANLINE_UNIT = int(re.search(r"^#define UPSCALE_SCANLINE_UNIT\s+(\d+)", UPSCALE_HEADER.read_text(), re.M)[1])
 GREY_SLACK = 12  # the 565 expansion makes a grey's channels differ by a few levels
 
 
@@ -111,6 +114,41 @@ class RenderViews(unittest.TestCase):
             timeout=120,
         )
         return run, target
+
+    def test_default_size_and_explicit_disabled_tunables_match(self):
+        for scene in ("sponza-fitted-full", "capybara"):
+            for quarter in (0, 1):
+                images = []
+                for extra in ((), ("--size", "184x224"),
+                              ("--tune", "render_lab.rows=0", "--tune", "render_lab.scanline=0")):
+                    run, target = self.render("--scene", scene, "--quarter", str(quarter), "--frames", "2", *extra)
+                    self.assertEqual(0, run.returncode, run.stderr[-2000:])
+                    images.append(target.read_bytes())
+                self.assertEqual(images[0], images[1])
+                self.assertEqual(images[0], images[2])
+
+    def test_height_only_present_repeats_panel_rows_in_both_quarters(self):
+        for scene in ("sponza-fitted-full", "capybara"):
+            for quarter in (0, 1):
+                for strength in (0, SCANLINE_UNIT // 2):
+                    run, target = self.render("--scene", scene, "--quarter", str(quarter), "--frames", "2", "--panel",
+                                              "--tune", "render_lab.rows=400",
+                                              "--tune", "render_lab.scanline=" + str(strength))
+                    self.assertEqual(0, run.returncode, run.stderr[-2000:])
+                    width, height, rows = read_bmp(target)
+                    self.assertEqual((368, 448), (width, height))
+                    changed = 0
+                    for y in range(0, height, 4):
+                        self.assertEqual(rows[y], rows[y + 1])
+                        self.assertEqual(rows[y + 2], rows[y + 3])
+                        if strength == 0:
+                            self.assertEqual(rows[y], rows[y + 2])
+                        else:
+                            for bright, dark in zip(rows[y], rows[y + 2]):
+                                self.assertTrue(all(d <= b for b, d in zip(bright, dark)))
+                                changed += bright != dark
+                    if strength:
+                        self.assertGreater(changed, 0)
 
     def test_a_view_option_with_no_value_is_refused_and_writes_nothing(self):
         for option in ("--view", "--scene"):

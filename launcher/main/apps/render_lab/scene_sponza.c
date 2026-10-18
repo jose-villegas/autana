@@ -93,7 +93,7 @@ enter_with(sponza_bake_t shown) {
         scene_entity_set_enabled(sponza, bake, i == (int)shown);
     }
     (void)scene_activate(sponza, render_lab_start_camera);
-    render_context_set_scale(render_context_main(), 10000 / render_lab_scale());
+    render_lab_apply_raster_settings();
     applied_budget_ms = -1;
     apply_budget();
 #if TUNE_ENABLED
@@ -142,6 +142,7 @@ scene_sponza_exit(void) {
 static void
 scene_sponza_frame(uint32_t dt_ms) {
     (void)dt_ms;
+    render_lab_apply_raster_settings();
     apply_budget();
 #if TUNE_ENABLED
     render_context_set_debug_view(render_context_main(), render_lab_debug_view());

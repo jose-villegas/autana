@@ -316,8 +316,8 @@ test_same_view_survives_frames_and_contexts_own_their_states(void) {
     TEST_ASSERT_NOT_NULL(contexts);
     render_context_t* a = &contexts[0];
     render_context_t* b = &contexts[1];
-    render_context_set_scale(a, 100);
-    render_context_set_scale(b, 100);
+    render_context_set_scale(a, 100, 100);
+    render_context_set_scale(b, 100, 100);
     const int view = render_context_debug_view_named("motion");
     render_context_set_debug_view(a, view);
     render_context_set_debug_view(b, view);
@@ -354,7 +354,7 @@ test_zero_context_draws_shaded_and_meshlet_context_paints_colour(void) {
     TEST_ASSERT_EQUAL_INT(RENDER_DEBUG_VIEW_SHADED, c.debug_view);
     render_context_set_debug_view(&c, RENDER_DEBUG_VIEW_SHADED);
     TEST_ASSERT_EQUAL_INT(0, c.debug_view);
-    render_context_set_scale(&c, 100);
+    render_context_set_scale(&c, 100, 100);
     const render_view_t frame_view = render_view_fixture_at(&camera, (viewport_t){W, H, 0});
     TEST_ASSERT_TRUE(render_context_draw(&c, r->instance, 2, &frame_view, 0));
     TEST_ASSERT_EQUAL_INT(0, c.raster.attachment_count);
