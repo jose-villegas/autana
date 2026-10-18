@@ -188,7 +188,7 @@ Compatible sizes compose through the half picture before panel expansion.
 | DOUBLE | The same reduced draw; plain repeated-row copy |
 
 The demo-image pipeline renders the same fitted-full flythrough in each mode.
-These GIFs retain the native panel size, with no resampling of the row pattern.
+These GIFs retain native size in landscape; panel rows run vertically for the viewer.
 
 | NEAREST | SCANLINE | DOUBLE |
 |---|---|---|

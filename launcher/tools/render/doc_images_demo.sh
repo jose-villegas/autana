@@ -56,9 +56,9 @@ demo_gif() {
     gif_from_avi "$W/$name.avi" "$RENDER/$name.gif" "${DEMO_GIF_FILTERS:-fps=8,scale=240:-1:flags=lanczos}" \
         "max_colors=64:stats_mode=diff"
 }
-DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-nearest --scene "$ID" --object "${FULL}_fitted_full" --present nearest --panel
-DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-scanline --scene "$ID" --object "${FULL}_fitted_full" --present scanline --panel
-DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-double --scene "$ID" --object "${FULL}_fitted_full" --present double --panel
+DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-nearest --scene "$ID" --object "${FULL}_fitted_full" --present nearest
+DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-scanline --scene "$ID" --object "${FULL}_fitted_full" --present scanline
+DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-double --scene "$ID" --object "${FULL}_fitted_full" --present double
 [ "${5:-}" != --present-only ] || exit 0
 
 demo_gif ${ID}-full --scene "$ID" --object "$FULL"
