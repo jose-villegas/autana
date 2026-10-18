@@ -66,7 +66,7 @@ class SoundGateTablesTest(unittest.TestCase):
             "--suite", "suite", "a,z", "-", "--suite", "other", "-",
             "python report.py @CAPTURE@ @TABLE@", "--send-a", "sound stop all",
             "--send-b", "sound stop all", "--send-b", "sound play tap loop"])
-        mix = data["sides"]["a"]["sound_mix"]
+        mix = data["sides"]["a"][gate.SOUND_MIX_NAME]
         self.assertAlmostEqual(mix["average_ms"], 5 / 3)
         self.assertEqual(mix["worst_ms"], 3)
         self.assertEqual(mix["blocks"], 3)

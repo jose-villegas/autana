@@ -97,9 +97,9 @@ def extract(directory, allow_incomplete=False):
         sides[side] = dict(seeds=[record["seed"] for record in records],
                            build_ids=[record["build_id"] for record in records],
                            console_send=list(next(iter(setups))),
-                           sound_mix=dict(average_ms=weighted / blocks if blocks else None,
+                           **{SOUND_MIX_NAME: dict(average_ms=weighted / blocks if blocks else None,
                                           worst_ms=worst if blocks else None,
-                                          blocks=blocks, suites=sorted(suites)))
+                                          blocks=blocks, suites=sorted(suites))})
     first_plans = [next(item for item in comparison["plan"] if item["side"] == side) for side in SIDES]
     if first_plans[0]["suites"] != first_plans[1]["suites"]:
         raise ValueError("sides must start with the same suite selection")
@@ -153,7 +153,7 @@ def render(path):
          "Worst Delta time %", "Worst row interval (Delta %)"], summary)}
     mix_rows = []
     for side, label in SIDES.items():
-        mix = data["sides"][side]["sound_mix"]
+        mix = data["sides"][side][SOUND_MIX_NAME]
         mix_rows.append((label, number(mix["average_ms"]), number(mix["worst_ms"]), mix["blocks"]))
     tables["sound-gate-mix"] = prefix + markdown(
         ["Arm", "Average ms/block", "Worst ms/block", "Blocks"], mix_rows)
