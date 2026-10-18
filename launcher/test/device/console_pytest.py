@@ -19,8 +19,16 @@ from device_capture import (BUILD_ID_RE, BUILD_ID_REQUEST, CRASH_LINE_RE, IMU_QU
 BOOT_TIMEOUT_S = 120
 REPLY_TIMEOUT_S = 15
 MILLISECONDS_PER_SECOND = 1000
-FORBIDDEN = [re.compile(pattern.pattern.encode(), pattern.flags & ~re.UNICODE)
-             for pattern in (CRASH_LINE_RE, RESET_LINE_RE)]
+
+
+def as_bytes(pattern):
+    """The same expression over the console's bytes, its flags (re.M) kept."""
+    return re.compile(pattern.pattern.encode(), pattern.flags & ~re.UNICODE)
+
+
+FORBIDDEN = [as_bytes(pattern) for pattern in (CRASH_LINE_RE, RESET_LINE_RE)]
+RESET_CAUSE = as_bytes(RESET_CAUSE_RE)
+RESET_REASON = as_bytes(RESET_REASON_RE)
 ERROR = rb"(?:\b\w+_ERR[^\r\n]*|ignoring line:[^\r\n]*)\r?\n"
 
 
@@ -66,11 +74,10 @@ def console(dut):
     if not boot:
         dut.write(BUILD_ID_REQUEST)
     if boot:
-        match = original_expect([RESET_CAUSE_RE.pattern.encode(), FORBIDDEN[0]], timeout=BOOT_TIMEOUT_S)
+        match = original_expect([RESET_CAUSE, FORBIDDEN[0]], timeout=BOOT_TIMEOUT_S)
         assert not FORBIDDEN[0].search(match[0]), f"firmware crash: {match[0]!r}"
-        reason = RESET_REASON_RE.pattern.encode()
-        match = original_expect([reason, *FORBIDDEN], timeout=BOOT_TIMEOUT_S)
-        assert re.search(reason, match[0]), f"firmware crash or reset: {match[0]!r}"
+        match = original_expect([RESET_REASON, *FORBIDDEN], timeout=BOOT_TIMEOUT_S)
+        assert RESET_REASON.search(match[0]), f"firmware crash or reset: {match[0]!r}"
         dut.expect(qemu_run.LISTENING.encode(), timeout=BOOT_TIMEOUT_S)
         shell.exchange(BUILD_ID_REQUEST, BUILD_ID_RE.pattern)
     else:
