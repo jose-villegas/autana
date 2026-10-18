@@ -674,7 +674,7 @@ prepare_small_dither(small_dither_t* d, const r3d_span_vertex_t* a, const r3d_sp
     d->phase_mask = side - 1;
     for (int y = 0; y < side; y++) {
         for (int x = 0; x < side; x++) {
-            d->threshold[y][x] = (total * (2 * gfx_dither4x4[y][x] + 1)) / SMALL_DITHER_THRESHOLD_LEVELS;
+            d->threshold[y][x] = (total * (2 * gfx_dither4x4[y][x] + 1)) / (int32_t)SMALL_DITHER_THRESHOLD_LEVELS;
         }
     }
     return true;
