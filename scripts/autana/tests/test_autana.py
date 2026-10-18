@@ -204,7 +204,7 @@ class BoardHolderTests(unittest.TestCase):
     def status_output(self, holder_pid, owner="killed@0pac", port="COM3"):
         with tempfile.TemporaryDirectory() as root:
             store = device_lock.LockStore(root, is_alive=lambda pid: pid == 1)
-            store.write_json(store.lock_path(self.BOARD), {
+            device_lock.write_json(store.lock_path(self.BOARD), {
                 "acquired_at": store.now(), "board": self.BOARD, "heartbeat_at": store.now(),
                 "expected_build_id": "", "host": socket.gethostname(), "kind": "screenshot",
                 "owner": owner, "pid": holder_pid, "purpose": "autana screenshot",

@@ -67,7 +67,7 @@ guards sessions and CI jobs on one PC, not two PCs plugged into one board.
 |---|---|
 | `autana devices [--json]` | Short ids, serials, ports and availability. Same JSON as `status --json`. |
 | `autana status [--json]` | Every board: free or held, the holder, estimated free time, and the queue. |
-| `autana lock run [--keep-on-failure <seconds>] -- <command...>` | Hold the board while the command runs; it inherits the token. |
+| `autana lock run [--keep-on-failure <seconds>] [--estimate <seconds>] -- <command...>` | Hold the board while the command runs; it inherits the token. |
 | `autana lock take [--for <seconds> \| --until-released [--pid <pid>]] [--estimate <seconds>] <note...>` | Wait for the board and print a token. A timed hold lasts at most an hour. |
 | `autana lock release [<token>]` | Release a hold early. |
 | `autana lock wait` | Wait until the board is free, without taking it. |
@@ -86,10 +86,14 @@ Makes or writes an image, or says which image runs.
 
 | Command | What it does |
 |---|---|
-| `autana build [rel\|dev\|diag] [--perf-scope] [--layout-seed N] [--hot-tunables] [--configure]` | Build with no board or lock; `dev` when omitted. `--layout-seed N` pads the layout ([Layout-Noise.md](Layout-Noise.md)); 0 is the plain build. `--hot-tunables` adds live hot-path knobs. `--configure` only writes `sdkconfig` and `compile_commands.json`. |
+| `autana build [rel\|dev\|diag] [--perf-scope] [--layout-seed N] [--hot-tunables] [--configure]` | Build without a board lock; `dev` when omitted. `--layout-seed N` pads the layout ([Layout-Noise.md](Layout-Noise.md)); 0 is the plain build. `--hot-tunables` adds live hot-path knobs. `--configure` only writes `sdkconfig` and `compile_commands.json`. |
 | `autana build diag --check` | The diagnostics build plus the complexity ratchet; no board. |
 | `autana flash [rel\|dev\|diag] [--quiet] [--perf-scope] [--layout-seed N] [--hot-tunables]` | Build, then flash under the lock; `dev` when omitted. `--quiet` logs only. `--perf-scope` (diag) builds the perf-scoped image. |
 | `autana buildid [--json]` | The `BUILD_ID` the board runs, to check against what was flashed. |
+
+Private process-tree channels `_AUTANA_BUILD_SERIAL` (mutex directory) and
+`_AUTANA_BUILD_PRIORITY=below_normal` throttle compilation across build and flash paths.
+`_AUTANA_BUILD_LATEST_START` bounds lock waits and build starts by Unix time; captures retain normal priority.
 
 `BUILD_ID` is the image's ELF hash and proves the write, not the boot
 ([what a flash proves](Flash-and-Captures.md#what-a-flash-proves)). Which
