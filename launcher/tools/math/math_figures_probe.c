@@ -1,7 +1,8 @@
 /*
  * Prints, as JSON, what the maths library does to the example inputs that
- * docs/math/README.md's figures draw: a shape through scale, rotate and
- * translate, and one camera point on its way to a pixel. math_figures.py
+ * the figures of docs/math/Conventions.md and Projection.md draw: a shape
+ * through scale, rotate and translate, and one camera point on its way to a
+ * pixel. math_figures.py
  * plots the output, so every number in the figures comes from these calls.
  *
  *     math_figures_probe WIDTH HEIGHT

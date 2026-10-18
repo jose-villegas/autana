@@ -1,6 +1,6 @@
 /*
  * mat4_template: a 4x4 matrix indexed m[row][col], acting on column vectors,
- * for one number type; see docs/math/README.md for the macro arguments. A point
+ * for one number type; see docs/math/Conventions.md#templates for the macro arguments. A point
  * is transformed as M * p and `mul(a, b)` applies b first; the translation is
  * column 3.
  */
