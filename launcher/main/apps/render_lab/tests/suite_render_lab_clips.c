@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include "anim/anim_tracks_format.h"
 #include "apps/render_lab/render_lab_clips.h"
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "core/memory.h"
