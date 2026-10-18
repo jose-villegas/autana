@@ -14,6 +14,7 @@ hand:
     contain `P_name(`;
   * an instantiation is a `MATH_DEFINE_<FAMILY>(prefix, ...)` call in a
     header; the page must name `prefix` in backticks;
+  * functions generated outside a struct family must be named on some page;
   * template macro calls bind arguments recursively, so shared definers add
     their `P##_name(` and `P##_##OP(` functions to the calling family;
   * a swizzle family is a `MATH_DEFINE_SWIZZLE<k>(D, S, N)` call in a
@@ -74,7 +75,9 @@ MACRO_CALL = re.compile(r"\b(MATH_\w+)\(([^()]*)\)")
 BOUND_FUNCTION = re.compile(r"^\s*static inline (?:__attribute__\(\(\w+\)\) )?[^\n(]*?P##_(?:##(\w+)|(\w+))\(", re.M)
 SWIZZLE_CALL = re.compile(r"\bMATH_DEFINE_SWIZZLE(\d+)\((\w+), (\w+), (\d+)\)")
 FIELDS = re.compile(r"typedef struct \{[\s\\]*T ([\w, ]+);")
-HAND_WRITTEN = re.compile(r"^(?:static inline [^\n]*\n|(?:void|float|[A-Za-z]\w*_t) )([A-Za-z]\w*)\(", re.M)
+HAND_WRITTEN = re.compile(
+    r"^(?:static inline [^\n]*\n|"
+    r"(?!typedef\b)[A-Za-z_]\w*(?:[ \t*]+[A-Za-z_]\w*)*[ \t\r\n*]+)([A-Za-z_]\w*)[ \t]*\(", re.M)
 PUBLIC_TYPE = re.compile(r"^typedef struct\s*\{.*?\}\s*(\w+);", re.M | re.S)
 IDENTITY = re.compile(r"^#define (TRANSFORM\w+_IDENTITY)\b", re.M)
 FENCE = re.compile(r"^```.*?^```", re.M | re.S)
@@ -100,14 +103,13 @@ def instantiations(root):
     """What the headers' calls of template macros add beyond each family's own
     template: each prefix's family; the `P##_name(` functions of a template
     outside the families, by family; the swizzle pattern each family section
-    must name; every swizzle name; and problems."""
+    must name; every swizzle name; non-family function names; and problems."""
     FAMILY_DIRS = family_dirs(root)
     FAMILIES = tuple(FAMILY_DIRS)
     family_templates = {f + "_template.h" for f in FAMILIES}
     macros = {}
     fields = {}
-    for template in sorted(path for directory in set(FAMILY_DIRS.values())
-                           for path in (root / directory).glob("*_template.h")):
+    for template in sorted((root / MATH.parent).rglob("*_template.h")):
         text = read(template)
         for name, params, body in TEMPLATE_MACRO.findall(text):
             macros[name] = (split_args(params), body)
@@ -116,8 +118,7 @@ def instantiations(root):
             fields[template.name[: -len("_template.h")]] = split_args(m.group(1))
 
     calls = []
-    for header in sorted(path for directory in set(FAMILY_DIRS.values())
-                         for path in (root / directory).glob("*.h")):
+    for header in sorted((root / MATH.parent).rglob("*.h")):
         if not header.name.endswith("_template.h"):
             calls += [(name, split_args(args)) for name, args in HEADER_CALL.findall(read(header))]
     family_of = {}
@@ -129,6 +130,7 @@ def instantiations(root):
     functions = {f: set() for f in FAMILIES}
     patterns = {f: set() for f in FAMILIES}
     names = set()
+    standalone = set()
     problems = []
 
     def visit(name, args, family, active):
@@ -137,7 +139,11 @@ def instantiations(root):
         params, body = macros[name]
         bind = dict(zip(params, args))
         for parameter, literal in BOUND_FUNCTION.findall(body):
-            functions[family].add(bind.get(parameter, parameter) if parameter else literal)
+            suffix = bind.get(parameter, parameter) if parameter else literal
+            if family is None:
+                standalone.add(bind.get("P", "P") + "_" + suffix)
+            else:
+                functions[family].add(suffix)
         for length, _, source, count in SWIZZLE_CALL.findall(body):
             prefix = bind.get(source, source)
             source_family = family_of.get(prefix)
@@ -155,9 +161,8 @@ def instantiations(root):
             visit(callee, bound, family, active | {name})
 
     for name, args in calls:
-        if args[0] in family_of:
-            visit(name, args, family_of[args[0]], set())
-    return family_of, functions, patterns, names, problems
+        visit(name, args, family_of.get(args[0]), set())
+    return family_of, functions, patterns, names, standalone, problems
 
 
 def check(root):
@@ -167,7 +172,7 @@ def check(root):
     pages = {p.relative_to(root): read(p) for p in sorted((root / PAGE.parent).glob("*.md"))}
     # Benchmarks also cite platform APIs; their formulas and index link are still checked.
     page = "\n".join(text for path, text in pages.items() if path.name != "Benchmark.md")
-    family_of, functions, patterns, swizzle_names, problems = instantiations(root)
+    family_of, functions, patterns, swizzle_names, standalone, problems = instantiations(root)
     for path, text in pages.items():
         if path != PAGE and not re.search(r"\]\(" + re.escape(path.name) + r"(?:#[^)]*)?\)", pages[PAGE]):
             problems.append("%s: index lacks a link to %s" % (PAGE.as_posix(), path.name))
@@ -223,7 +228,11 @@ def check(root):
                 if name not in pages.get(path, ""):
                     problems.append("%s: the page does not name %s (%s)" % (path.as_posix(), name, header.name))
 
-    valid = set(defined) | swizzle_names | {"P_%s" % f for f in family_functions}
+    for name in sorted(standalone):
+        if not any(name in text for text in pages.values()):
+            problems.append("%s: the pages do not name generated function %s" % (PAGE.parent.as_posix(), name))
+
+    valid = set(defined) | standalone | swizzle_names | {"P_%s" % f for f in family_functions}
     valid |= {"%s_%s" % (p, f) for p, family in family_of.items() for f in functions[family]}
     for name in sorted(set(PAGE_CALL.findall(FENCE.sub("", page)))):
         if name not in valid:
