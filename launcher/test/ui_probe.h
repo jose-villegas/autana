@@ -33,8 +33,11 @@ ui_probe_text(const char* s, recti_t* out) {
     if (text == NULL) {
         return false;
     }
-    const mu_Context* ctx = ui_context();
-    *out = (recti_t){text->pos.x, text->pos.y, ctx->text_width(text->font, s, -1), ctx->text_height(text->font)};
+    /* Measured from the font directly: the context's measure hooks are calls
+     * through pointers the device's stack-chain gate cannot follow. */
+    const ui_font_scaled_t fs = ui_resolve_font_scaled(text->font);
+    *out = (recti_t){text->pos.x, text->pos.y, draw_font_text_width(fs.font, s, -1, fs.scale),
+                     draw_font_height(fs.font, fs.scale)};
     return true;
 }
 
