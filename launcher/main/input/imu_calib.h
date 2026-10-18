@@ -1,4 +1,4 @@
-/* Accelerometer offset in Q12 g, screen axes. Six-position fit: docs/Citations.md#67.
+/* Accelerometer offset in Q12 g, screen axes. Six-position fit: ST AN4508.
  * Sensitivity is reported in ppm; correction subtracts only the offset. */
 #pragma once
 

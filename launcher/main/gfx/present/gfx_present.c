@@ -133,7 +133,7 @@ _Static_assert(GFX_BAND_SLOTS == STRIP_BOUNCE_SLOTS, "band_buf[] aliasing strip_
  */
 
 /* The panel bus uses interrupt flags 0, so this callback need not survive cache-off
- * (docs/Citations.md#59); IRAM only spares it cache misses. IRAM budget: 36 B */
+ * (ESP-IDF v5.5 SPI Master Driver guide); IRAM only spares it cache misses. IRAM budget: 36 B */
 static bool IRAM_ATTR
 on_strip_sent(esp_lcd_panel_io_handle_t io, esp_lcd_panel_io_event_data_t* event, void* user_context) {
     BaseType_t woken = pdFALSE;
