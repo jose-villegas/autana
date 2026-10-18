@@ -1,0 +1,820 @@
+{
+  "incomplete": false,
+  "rng_seed": 2201843632212987578,
+  "threshold": 1.0,
+  "alpha": 0.05,
+  "max_seeds": 4,
+  "rows": {
+    "run_capybara_perf_suite/animate cores=1": {
+      "a": 209.75,
+      "b": 213.375,
+      "ratio": 1.0172824791418356,
+      "interval": [
+        1.0086704440946195,
+        1.0259801851374324
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_capybara_perf_suite/animate cores=2": {
+      "a": 230,
+      "b": 235.625,
+      "ratio": 1.0244565217391304,
+      "interval": [
+        1.0076130221183854,
+        1.0415318556707196
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_capybara_perf_suite/animation_step cores=unknown": {
+      "a": 1107.125,
+      "b": 1118.5,
+      "ratio": 1.010274359263859,
+      "interval": [
+        1.0077731827813827,
+        1.0127810857891848
+      ],
+      "verdict": "regressed"
+    },
+    "run_capybara_perf_suite/frame paused=0 quarter=landscape": {
+      "a": 21384,
+      "b": 21558.5,
+      "ratio": 1.008160306771418,
+      "interval": [
+        1.0050026044145361,
+        1.0113294262578283
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_capybara_perf_suite/frame paused=0 quarter=portrait": {
+      "a": 21666.5,
+      "b": 21785.875,
+      "ratio": 1.0055096577665983,
+      "interval": [
+        1.0023661511518036,
+        1.0086637603109407
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_capybara_perf_suite/frame paused=1 quarter=landscape": {
+      "a": 19706.875,
+      "b": 19850.5,
+      "ratio": 1.0072880657131078,
+      "interval": [
+        1.0012741932004299,
+        1.0133445598234243
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_capybara_perf_suite/frame paused=1 quarter=portrait": {
+      "a": 19820.25,
+      "b": 19918.875,
+      "ratio": 1.0049759715442539,
+      "interval": [
+        0.9973817365819255,
+        1.0126352390498194
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_capybara_perf_suite/frame_delta quarter=landscape": {
+      "a": 1677.125,
+      "b": 1708.0,
+      "ratio": 1.018409480509801,
+      "interval": [
+        0.9659150285389179,
+        1.0739887625888993
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_capybara_perf_suite/frame_delta quarter=portrait": {
+      "a": 1846.25,
+      "b": 1867,
+      "ratio": 1.0112389979688559,
+      "interval": [
+        0.9453361100104065,
+        1.0820730894641282
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_capybara_perf_suite/render paused=0 quarter=landscape": {
+      "a": 8714,
+      "b": 8826.5,
+      "ratio": 1.0129102593527657,
+      "interval": [
+        1.0080713976422813,
+        1.0177712589545458
+      ],
+      "verdict": "regressed"
+    },
+    "run_capybara_perf_suite/render paused=0 quarter=portrait": {
+      "a": 9070.25,
+      "b": 9148.625,
+      "ratio": 1.0086408864143768,
+      "interval": [
+        1.0044387605382479,
+        1.0128617119138372
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_capybara_perf_suite/render paused=1 quarter=landscape": {
+      "a": 7099,
+      "b": 7169.5,
+      "ratio": 1.0099309761938302,
+      "interval": [
+        1.0013569375843663,
+        1.0185811372422968
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_capybara_perf_suite/render paused=1 quarter=portrait": {
+      "a": 7286.5,
+      "b": 7313.5,
+      "ratio": 1.0037054827420573,
+      "interval": [
+        0.9859425434963386,
+        1.0217679246271008
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_capybara_perf_suite/render_delta quarter=landscape": {
+      "a": 1615,
+      "b": 1657.0,
+      "ratio": 1.0260061919504644,
+      "interval": [
+        0.9798629189304635,
+        1.0745616968042864
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_capybara_perf_suite/render_delta quarter=portrait": {
+      "a": 1783.75,
+      "b": 1835.125,
+      "ratio": 1.028801681850035,
+      "interval": [
+        0.9574109679297887,
+        1.1057187436926763
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_capybara_perf_suite/skin cores=1": {
+      "a": 1343.125,
+      "b": 1344.25,
+      "ratio": 1.0008375988832015,
+      "interval": [
+        0.9994143907209242,
+        1.0022627562351256
+      ],
+      "verdict": "no change"
+    },
+    "run_capybara_perf_suite/skin cores=2": {
+      "a": 841.375,
+      "b": 846.25,
+      "ratio": 1.0057940870598723,
+      "interval": [
+        0.9976925473867737,
+        1.0139608047925497
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_sand_perf_suite/test_a_campfire_on_a_sand_bed_fits_in_the_frame_budget": {
+      "a": 22946.875,
+      "b": 23005.125,
+      "ratio": 1.0025384720141632,
+      "interval": [
+        1.0005823667503615,
+        1.00449788795497
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_a_finished_tree_fits_in_the_frame_budget": {
+      "a": 18360.375,
+      "b": 18407.625,
+      "ratio": 1.0025734768489205,
+      "interval": [
+        1.0014793233744153,
+        1.003668800030935
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_a_full_landscape_screen_of_fire_fits_in_the_frame_budget": {
+      "a": 65299.5,
+      "b": 65400.625,
+      "ratio": 1.0015486336036263,
+      "interval": [
+        1.0009329116236014,
+        1.0021647689967437
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_a_full_screen_of_fire_fits_in_the_frame_budget": {
+      "a": 65655.875,
+      "b": 65743.375,
+      "ratio": 1.0013327063267377,
+      "interval": [
+        1.000496356644947,
+        1.0021697648597223
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_a_full_size_step_fits_in_the_frame_budget": {
+      "a": 7284.25,
+      "b": 7275.25,
+      "ratio": 0.9987644575625494,
+      "interval": [
+        0.9928171331532972,
+        1.0047436360880913
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_sand_perf_suite/test_a_growing_plant_bed_fits_in_the_frame_budget": {
+      "a": 36976.625,
+      "b": 37080.125,
+      "ratio": 1.0027990656259191,
+      "interval": [
+        1.0010993497420109,
+        1.0045013017735944
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_a_packed_landscape_screen_of_gas_fits_in_the_frame_budget": {
+      "a": 37540.625,
+      "b": 37754.5,
+      "ratio": 1.0056971614084742,
+      "interval": [
+        0.9942215976273949,
+        1.0173168166655835
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_sand_perf_suite/test_a_real_frame_is_sim_plus_present_on_a_falling_sand_scene": {
+      "a": 14216.625,
+      "b": 14225.875,
+      "ratio": 1.0006506466900549,
+      "interval": [
+        1.0001180715902211,
+        1.0011835431934144
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_a_screen_of_settled_sand_costs_almost_nothing": {
+      "a": 139.375,
+      "b": 138.5,
+      "ratio": 0.9937219730941704,
+      "interval": [
+        0.979301670426836,
+        1.008330674330081
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_sand_perf_suite/test_a_screen_of_smoke_and_steam_fits_in_the_frame_budget": {
+      "a": 77431,
+      "b": 77786.5,
+      "ratio": 1.0045911844093451,
+      "interval": [
+        1.0012682906417008,
+        1.0079232572647914
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_sand_perf_suite/test_a_screen_of_water_fits_in_the_frame_budget": {
+      "a": 18226.5,
+      "b": 18289.0,
+      "ratio": 1.0034290730529722,
+      "interval": [
+        1.0009966882431292,
+        1.0058676202972652
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_a_settled_plant_garden_fits_in_the_frame_budget": {
+      "a": 138,
+      "b": 138.75,
+      "ratio": 1.0054347826086956,
+      "interval": [
+        0.9978785351596574,
+        1.0130383579998403
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_sand_perf_suite/test_fire_cascading_through_a_full_landscape_screen_of_gas_fits_in_the_frame_budget": {
+      "a": 31291.5,
+      "b": 31518.375,
+      "ratio": 1.0072503715066392,
+      "interval": [
+        0.9954342089430412,
+        1.0192056216810157
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_sand_perf_suite/test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget": {
+      "a": 177955.25,
+      "b": 178207.125,
+      "ratio": 1.0014153839237674,
+      "interval": [
+        0.9989419225045257,
+        1.0038948264527714
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_flipping_gravity_on_a_mixed_scene_fits_in_the_frame_budget": {
+      "a": 13702.75,
+      "b": 13776.125,
+      "ratio": 1.0053547645545602,
+      "interval": [
+        1.0017583773782206,
+        1.0089617528710557
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_sand_perf_suite/test_flipping_gravity_on_a_settled_pile_fits_in_the_frame_budget": {
+      "a": 11182.125,
+      "b": 11229.75,
+      "ratio": 1.0042590294778497,
+      "interval": [
+        0.9968521398103818,
+        1.0117212362938799
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_sand_perf_suite/test_four_liquids_reacting_at_once_fits_in_the_frame_budget": {
+      "a": 64374.125,
+      "b": 64643.25,
+      "ratio": 1.004180639348496,
+      "interval": [
+        1.0018316015779456,
+        1.0065359454681855
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_pouring_sand_onto_a_landscape_sand_bed_fits_in_the_frame_budget": {
+      "a": 6899.5,
+      "b": 6935.625,
+      "ratio": 1.0052358866584534,
+      "interval": [
+        0.9992848598536317,
+        1.0112215209988027
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_sand_perf_suite/test_pouring_the_plant_brush_fits_in_the_frame_budget": {
+      "a": 50443.375,
+      "b": 50562.125,
+      "ratio": 1.0023541247983507,
+      "interval": [
+        1.0001528191075777,
+        1.0045594108200064
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_pouring_water_into_a_deep_landscape_bed_fits_in_the_frame_budget": {
+      "a": 23964.5,
+      "b": 24060.375,
+      "ratio": 1.0040007093826284,
+      "interval": [
+        1.0011503998127267,
+        1.0068581517795958
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_pouring_water_into_a_landscape_sand_bed_fits_in_the_frame_budget": {
+      "a": 22115.75,
+      "b": 22208.25,
+      "ratio": 1.004182539592824,
+      "interval": [
+        1.001083284036493,
+        1.0072900555763302
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_sand_perf_suite/test_present_cost_against_a_falling_sand_scene": {
+      "a": 5031.125,
+      "b": 5039.875,
+      "ratio": 1.0017391736440657,
+      "interval": [
+        1.0010250081975258,
+        1.0024539278905593
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_present_cost_against_a_landscape_gas_over_sand_pile": {
+      "a": 500.125,
+      "b": 502.75,
+      "ratio": 1.0052486878280429,
+      "interval": [
+        0.9970284030089736,
+        1.0135342841418635
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_sand_perf_suite/test_present_cost_against_a_landscape_levelling_pool": {
+      "a": 6797.25,
+      "b": 6804.25,
+      "ratio": 1.0010298282393615,
+      "interval": [
+        0.9994829062281297,
+        1.0025792509875957
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_present_cost_against_the_lava_stress_scene": {
+      "a": 7143.125,
+      "b": 7158.25,
+      "ratio": 1.0021174205967276,
+      "interval": [
+        1.0001924568945348,
+        1.00404594958491
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_present_cost_against_the_thermal_shock_scene": {
+      "a": 9700.5,
+      "b": 9717.625,
+      "ratio": 1.0017653729189218,
+      "interval": [
+        0.9992227067098144,
+        1.004314932884725
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_the_boiler_scene_fits_in_the_frame_budget": {
+      "a": 19754.375,
+      "b": 19880.625,
+      "ratio": 1.006390989337805,
+      "interval": [
+        1.0028884050743643,
+        1.0099073068862836
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_sand_perf_suite/test_the_filling_basin_scene_fits_in_the_frame_budget": {
+      "a": 15408.625,
+      "b": 15441.75,
+      "ratio": 1.00214977001517,
+      "interval": [
+        1.0007048421941893,
+        1.0035970295743195
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_the_gunpowder_basin_scene_fits_in_the_frame_budget": {
+      "a": 26028.5,
+      "b": 26121.5,
+      "ratio": 1.0035730065120925,
+      "interval": [
+        1.0021051354902126,
+        1.0050427778290147
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_the_lava_stress_scene_fits_in_the_frame_budget": {
+      "a": 98343.5,
+      "b": 98622.875,
+      "ratio": 1.0028408079842592,
+      "interval": [
+        1.0017995103641548,
+        1.0038832888936844
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_the_plant_ruin_scene_fits_in_the_frame_budget": {
+      "a": 55122.5,
+      "b": 55285.75,
+      "ratio": 1.0029615855594358,
+      "interval": [
+        1.0012618959760091,
+        1.0046638074059302
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_the_snowfall_scene_fits_in_the_frame_budget": {
+      "a": 32462.25,
+      "b": 32524.0,
+      "ratio": 1.0019022094894838,
+      "interval": [
+        1.001058089845724,
+        1.0027469191349176
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_the_thermal_shock_scene_fits_in_the_frame_budget": {
+      "a": 82949.5,
+      "b": 83221.5,
+      "ratio": 1.0032791035509556,
+      "interval": [
+        0.9985943002369984,
+        1.0079820176242622
+      ],
+      "verdict": "inconclusive"
+    },
+    "run_sand_perf_suite/test_the_water_over_lava_scene_fits_in_the_frame_budget": {
+      "a": 133557.375,
+      "b": 133936.875,
+      "ratio": 1.002841475433311,
+      "interval": [
+        1.0009994131370683,
+        1.0046874216247332
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_the_wet_earth_scene_fits_in_the_frame_budget": {
+      "a": 29584.75,
+      "b": 29705.5,
+      "ratio": 1.0040814946889867,
+      "interval": [
+        1.0016837369462404,
+        1.0064842047344973
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_turning_a_half_screen_of_gas_fits_in_the_frame_budget": {
+      "a": 33748.75,
+      "b": 33853.625,
+      "ratio": 1.0031075225008335,
+      "interval": [
+        1.0003094322807948,
+        1.0059141171375408
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget": {
+      "a": 96952.875,
+      "b": 97270.625,
+      "ratio": 1.0032773654210874,
+      "interval": [
+        1.0004320458249658,
+        1.0061295551047227
+      ],
+      "verdict": "no change"
+    },
+    "run_sand_perf_suite/test_turning_a_settled_pool_to_landscape_fits_in_the_frame_budget": {
+      "a": 7639.875,
+      "b": 7662.375,
+      "ratio": 1.0029450743631276,
+      "interval": [
+        1.0004927685335494,
+        1.005403398310761
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/atrium quarter=landscape": {
+      "a": 40107.5,
+      "b": 40316.25,
+      "ratio": 1.0052047622015832,
+      "interval": [
+        1.0032606580291552,
+        1.0071523939088765
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/atrium quarter=portrait": {
+      "a": 42856.5,
+      "b": 42960.875,
+      "ratio": 1.0024354531984647,
+      "interval": [
+        1.0006181995848087,
+        1.004255765635728
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/atrium_fitted quarter=landscape": {
+      "a": 31805.625,
+      "b": 31950.0,
+      "ratio": 1.004539291398927,
+      "interval": [
+        1.0019364465284797,
+        1.0071484319400028
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/atrium_fitted quarter=portrait": {
+      "a": 34271.25,
+      "b": 34422.875,
+      "ratio": 1.0044242623189992,
+      "interval": [
+        1.0024805603264388,
+        1.0063713172407327
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/atrium_fitted_full quarter=landscape": {
+      "a": 41124.25,
+      "b": 41325.75,
+      "ratio": 1.0048997854064208,
+      "interval": [
+        1.0035004390135678,
+        1.006301084703297
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/atrium_fitted_full quarter=portrait": {
+      "a": 43304.625,
+      "b": 43473.875,
+      "ratio": 1.0039083585182875,
+      "interval": [
+        1.002379801088821,
+        1.0054390556126604
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/atrium_flat quarter=landscape": {
+      "a": 32064.0,
+      "b": 32209.5,
+      "ratio": 1.0045377994011977,
+      "interval": [
+        1.0023113786468474,
+        1.0067689265497568
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/atrium_flat quarter=portrait": {
+      "a": 32663.75,
+      "b": 32779.25,
+      "ratio": 1.0035360300026788,
+      "interval": [
+        1.0012878225050645,
+        1.0057897807765008
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/atrium_flat_fitted quarter=landscape": {
+      "a": 30968.625,
+      "b": 31199.75,
+      "ratio": 1.0074631986405596,
+      "interval": [
+        1.0054307340524369,
+        1.0094998109596178
+      ],
+      "verdict": "regressed"
+    },
+    "run_sponza_perf_suite/atrium_flat_fitted quarter=portrait": {
+      "a": 32577.875,
+      "b": 32710.625,
+      "ratio": 1.0040748514137279,
+      "interval": [
+        1.0013524555491475,
+        1.0068038064098719
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/atrium_lite quarter=landscape": {
+      "a": 32602.875,
+      "b": 32749,
+      "ratio": 1.0044819666977223,
+      "interval": [
+        1.003120830872138,
+        1.0058449624736603
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/atrium_lite quarter=portrait": {
+      "a": 34765.0,
+      "b": 34888.25,
+      "ratio": 1.0035452322738387,
+      "interval": [
+        1.0016374301470041,
+        1.0054572275731763
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/cull_off quarter=landscape": {
+      "a": 59726.5,
+      "b": 59895.5,
+      "ratio": 1.0028295647660586,
+      "interval": [
+        1.0018379689154246,
+        1.0038223152761032
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/cull_off quarter=portrait": {
+      "a": 62967.125,
+      "b": 63204.75,
+      "ratio": 1.0037737946587206,
+      "interval": [
+        1.0031461549117366,
+        1.0044018492806042
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/motion quarter=landscape": {
+      "a": 52295.625,
+      "b": 52543.25,
+      "ratio": 1.0047350997334863,
+      "interval": [
+        1.002431800300959,
+        1.0070446132801623
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/motion quarter=portrait": {
+      "a": 55315.5,
+      "b": 55456.875,
+      "ratio": 1.0025557935840768,
+      "interval": [
+        1.0009817281603655,
+        1.004132218020325
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/motion_moving quarter=landscape": {
+      "a": 69407.75,
+      "b": 69774.0,
+      "ratio": 1.0052767882549138,
+      "interval": [
+        1.0037428282286227,
+        1.006813105207629
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/motion_moving quarter=portrait": {
+      "a": 73781,
+      "b": 73960.875,
+      "ratio": 1.0024379582819425,
+      "interval": [
+        1.0009461291408905,
+        1.0039320669582599
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/placed quarter=landscape": {
+      "a": 40314.875,
+      "b": 40508.375,
+      "ratio": 1.004799717225962,
+      "interval": [
+        1.0024966151250405,
+        1.0071074725209128
+      ],
+      "verdict": "no change"
+    },
+    "run_sponza_perf_suite/placed quarter=portrait": {
+      "a": 43106.875,
+      "b": 43187.75,
+      "ratio": 1.0018761508460077,
+      "interval": [
+        1.0003300802987474,
+        1.0034247709752833
+      ],
+      "verdict": "no change"
+    }
+  },
+  "board": "90:70:69:FE:A3:08",
+  "capture_date": [
+    "2026-10-18"
+  ],
+  "sides": {
+    "a": {
+      "seeds": [
+        2017279733,
+        149428724,
+        398587748,
+        964476606
+      ],
+      "build_ids": [
+        "dc759660e645-diag",
+        "2a4a605439a1-diag",
+        "8db9d924539c-diag",
+        "82b84fbb974d-diag"
+      ],
+      "console_send": [
+        "sound stop all"
+      ],
+      "sound_mix": {
+        "average_ms": 0.0,
+        "worst_ms": 0.02,
+        "blocks": 180265,
+        "suites": [
+          "run_capybara_perf_suite",
+          "run_sand_perf_suite",
+          "run_sponza_perf_suite"
+        ]
+      }
+    },
+    "b": {
+      "seeds": [
+        398596970,
+        2020949779,
+        615074757,
+        1865010542
+      ],
+      "build_ids": [
+        "232ce767ce38-diag",
+        "119ff9645f14-diag",
+        "a198d7852e75-diag",
+        "010a5b1cd904-diag"
+      ],
+      "console_send": [
+        "sound stop all",
+        "sound play tap loop"
+      ],
+      "sound_mix": {
+        "average_ms": 0.0411277911491362,
+        "worst_ms": 0.12,
+        "blocks": 113842,
+        "suites": [
+          "run_capybara_perf_suite",
+          "run_sand_perf_suite",
+          "run_sponza_perf_suite"
+        ]
+      }
+    }
+  }
+}

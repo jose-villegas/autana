@@ -99,6 +99,12 @@ jobs:
       - name: Audio tables match the committed capture
         run: python3 launcher/tools/audio/audio_doc_tables.py --check
 
+      - name: Voice frame-time tables match the committed comparison
+        run: python3 launcher/tools/audio/sound_gate_tables.py --check
+
+      - name: Voice frame-time table generator tests
+        run: python3 -m unittest discover -s launcher/tools/audio/tests
+
       - name: Audio table generator tests
         run: python3 -m unittest discover -s launcher/test -p test_audio_doc_tables.py
 
