@@ -22,8 +22,7 @@ MATH_DEFINE_TRANSFORM(transformf, vec3f, quatf, mat4f, mathf)
     {.position = {0.0F, 0.0F, 0.0F},                                                                                   \
      .rotation = {0.0F, 0.0F, 0.0F, 1.0F},                                                                             \
      .scale = {1.0F, 1.0F, 1.0F},                                                                                      \
-     .matrix =                                                                                                         \
-         {{{1.0F, 0.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F, 0.0F}, {0.0F, 0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 0.0F, 1.0F}}},   \
+     .matrix = MAT4F_IDENTITY,                                                                                         \
      .cached = true}
 
 /* Turns `t` by `angle` radians about the line through `point` along `axis`

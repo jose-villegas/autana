@@ -43,14 +43,14 @@ PAGE = pathlib.Path("docs/math/README.md")
 # TeX source length stands in for rendered width: 110 fits one step, not a derivation.
 MAX_INLINE_MATH_CHARS = 110
 
-FAMILIES = ("vec2", "vec3", "quat", "affine2", "mat4", "transform", "rect")
-FAMILY_DIRS = {family: MATH.parent / "geometry" if family == "rect" else MATH for family in FAMILIES}
-TEMPLATE_FUNCTION = re.compile(r"^\s*static inline [^\n(]*?P##_(\w+)\(", re.M)
+FAMILIES = ("vec2", "vec3", "quat", "affine2", "mat4", "transform", "rect", "plane")
+FAMILY_DIRS = {family: MATH.parent / "geometry" if family in ("rect", "plane") else MATH for family in FAMILIES}
+TEMPLATE_FUNCTION = re.compile(r"^\s*static inline (?:__attribute__\(\(\w+\)\) )?[^\n(]*?P##_(\w+)\(", re.M)
 DEFINE_CALL = re.compile(r"^MATH_DEFINE_\w+\((\w+),", re.M)
 HEADER_CALL = re.compile(r"^(MATH_DEFINE_\w+)\(([^)]*)\)", re.M)
 TEMPLATE_MACRO = re.compile(r"^#define (MATH_\w+)\(([^)]*)\)(.*?)(?=^#define |\Z)", re.M | re.S)
 MACRO_CALL = re.compile(r"\b(MATH_\w+)\(([^()]*)\)")
-BOUND_FUNCTION = re.compile(r"^\s*static inline [^\n(]*?P##_(?:##(\w+)|(\w+))\(", re.M)
+BOUND_FUNCTION = re.compile(r"^\s*static inline (?:__attribute__\(\(\w+\)\) )?[^\n(]*?P##_(?:##(\w+)|(\w+))\(", re.M)
 SWIZZLE_CALL = re.compile(r"\bMATH_DEFINE_SWIZZLE(\d+)\((\w+), (\w+), (\d+)\)")
 FIELDS = re.compile(r"typedef struct \{[\s\\]*T ([\w, ]+);")
 HAND_WRITTEN = re.compile(r"^static inline [^\n]*\n(\w+)\(", re.M)

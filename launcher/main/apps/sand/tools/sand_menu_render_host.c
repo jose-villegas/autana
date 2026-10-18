@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "display/display.h"
 #include "gfx/gfx.h"
 #include "render_host.h"
 #include "ui/layout/ui_transform.h"
@@ -48,7 +49,7 @@ static affine2x_t transform;
 
 int
 display_quarter_now(void) {
-    return 0;
+    return DISPLAY_PORTRAIT;
 }
 
 static bool

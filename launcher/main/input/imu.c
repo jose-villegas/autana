@@ -99,7 +99,7 @@ wait_command(bool done) {
     return false;
 }
 
-/* SensorLib (MIT), docs/Citations.md#77, writeCommand/configFIFO/readFromFifo:
+/* SensorLib (MIT), docs/Citations.md#79, writeCommand/configFIFO/readFromFifo:
  * https://github.com/lewisxhe/SensorLib/blob/master/src/SensorQMI8658.hpp
  * QMI8658A Rev A, docs/Citations.md#78, sections 5.10 and 8 require acknowledgement before REG_FIFO_DATA. */
 static bool

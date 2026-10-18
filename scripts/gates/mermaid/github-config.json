@@ -1,0 +1,8 @@
+{
+  "securityLevel": "antiscript",
+  "theme": "default",
+  "flowchart": { "diagramPadding": 48 },
+  "gantt": { "useWidth": 1200 },
+  "pie": { "useWidth": 1200 },
+  "sequence": { "diagramMarginY": 40 }
+}

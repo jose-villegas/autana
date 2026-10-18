@@ -24,6 +24,7 @@
 
 #include "apps/sand/ui/brush_screen.h"
 #include "apps/sand/ui/sand_icons.h"
+#include "display/display.h"
 #include "draw/draw.h"
 #include "draw/draw_font_roles.h"
 #include "draw/icon.h"
@@ -281,7 +282,7 @@ static int screen_h;
 
 int
 display_quarter_now(void) {
-    return 0;
+    return DISPLAY_PORTRAIT;
 }
 
 static bool
