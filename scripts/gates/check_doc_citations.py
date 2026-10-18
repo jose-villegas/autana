@@ -30,8 +30,8 @@ told apart from a typo, so it is counted, not failed, and one line says so.
 --require-idf, which CI passes, makes a missing checkout, or a missing
 toolchain C library beside it, an error instead.
 """
-import os
 import pathlib
+import posixpath
 import re
 import sys
 
@@ -323,21 +323,24 @@ def named_in_code(root, rows):
 
 
 def citers(root):
-    """(rows, problems, {number: sorted citing paths}): the documents citing
-    an entry by number plus the source files naming it."""
+    """(rows, problems, papers, named, {number: sorted citing paths}): the
+    documents citing an entry by number, the source files naming it, and both
+    together."""
     rows, problems = citation_rows(root)
-    by_number = {n: set(docs) for n, docs in paper_citations(root).items()}
-    for n, files in named_in_code(root, rows).items():
-        by_number.setdefault(n, set()).update(files)
-    return rows, problems, {n: sorted(paths) for n, paths in by_number.items()}
+    papers = paper_citations(root)
+    named = named_in_code(root, rows)
+    together = {}
+    for found in (papers, named):
+        for n, files in found.items():
+            together.setdefault(n, set()).update(files)
+    return rows, problems, papers, named, {n: sorted(paths) for n, paths in together.items()}
 
 
 def cited_by_cell(paths):
     """The "Cited by" cell for `paths`: links relative to docs/."""
     if not paths:
         return "none"
-    return ", ".join(f"[{p}]({os.path.relpath(p, pathlib.PurePosixPath(CITATIONS).parent).replace(os.sep, '/')})"
-                     for p in paths)
+    return ", ".join(f"[{p}]({posixpath.relpath(p, posixpath.dirname(CITATIONS))})" for p in paths)
 
 
 def unresolved_papers(root):
@@ -345,15 +348,15 @@ def unresolved_papers(root):
     citing by number, a number with no entry, a cited-by line that differs from
     the citing documents plus the files naming the entry, a name no file
     carries, and an entry out of order."""
-    rows, problems, cited = citers(root)
+    rows, problems, papers, named, cited = citers(root)
     problems += code_citations(root)
-    for n, paths in sorted(cited.items()):
+    for n, files in sorted(papers.items()):
         if n not in rows:
-            for rel, line in sorted(paper_citations(root).get(n, {}).items()):
+            for rel, line in sorted(files.items()):
                 problems.append(f"{rel}:{line}: cites [{n}], which {CITATIONS} has no row for")
     for n, (line, name, cited_by) in sorted(rows.items()):
         actual = set(cited.get(n, ()))
-        if name and not any(p for p in actual if not p.endswith(".md")):
+        if name and n not in named:
             problems.append(f"{CITATIONS}:{line}: [{n}] names `{name}` in code, "
                             "and no source file does; drop the name or the entry")
         if not actual and not name:
@@ -372,7 +375,9 @@ def fix_cited_by(root):
     documents plus the source files naming the entry; True if it changed."""
     root = pathlib.Path(root)
     path = root / CITATIONS
-    rows, _, cited = citers(root)
+    if not path.is_file():
+        return False
+    cited = citers(root)[-1]
     text = path.read_text(encoding="utf-8")
 
     def cell(m):

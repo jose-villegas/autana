@@ -7,7 +7,8 @@ Code and its comments never cite by number: they name the source in place,
 and the entry carries that name once, as "Named in code" ("Durstenfeld",
 "Ericson, Real-Time Collision Detection", "RFC 4648"). "Cited by" lists the
 documents citing the entry by number and every source file that contains
-its name; [`check_doc_citations.py`](../scripts/gates/check_doc_citations.py)
+its name, spelled exactly as stated (a mention of the same source in
+another spelling is not found); [`check_doc_citations.py`](../scripts/gates/check_doc_citations.py)
 fails when a cited number has no entry, a source file writes a `Citations.md`
 anchor, an entry's name appears in no source file, or a list differs, and
 `--fix` rewrites the lists. A number is permanent: an entry nothing uses is
