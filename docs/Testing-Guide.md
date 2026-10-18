@@ -129,8 +129,8 @@ free within the wait, the job succeeds with a neutral skipped notice and summary
 
 The [nightly scoped performance](../launcher/tools/perf/README.md#nightly-scoped-chain)
 workflow measures first-parent commits on each board in turn. Its designated
-board also runs the Board CI self-test steps (`scripts/ci/board-steps.sh`)
-inside the same overnight hold.
+board also runs Board CI's steps (`scripts/ci/board-steps.sh`: the self-test,
+then the console tests) inside the same overnight hold.
 
 ## Two runners, one set of suites
 
@@ -487,22 +487,16 @@ home, about a minute with no board: the boot animation, the frame loop,
 the launcher, entering and leaving an app and the rotation, none of which a
 suite reaches. Leave `--icount` off: a press is timed in the emulated clock,
 which then runs far slower than the host's. An app that does not set
-`home_gesture` ignores the swipe here as it does on the board, and the PWR
-button has no stand-in, so such an app cannot be left.
+`home_gesture` ignores the swipe here as it does on the board;
+`--do "send home"` returns directly to the launcher.
 
 **A crash fails the run.** After every step the image must answer `BUILDID`
-within `qemu_run.py`'s `HEARTBEAT_S`, or the rest of the steps are skipped.
+within `launcher/test/qemu_run.py`'s `HEARTBEAT_S`, or the rest of the
+steps are skipped.
 Any run, driven or autorun, fails on a crash line (a panic, `abort()`, a
 failed `assert`) or a second boot banner, whatever its tests reported. The
 board's captures (`autana suite`, `selftest`, `monitor`) give the same
 verdict, from `scripts/lib/device_capture.py`'s `crash_signs()`.
-
-A driven tour reaches the shell's lifecycle the way the board does, null
-panel and all. A change whose in-app scene switch broke the gfx mode's
-framebuffer contract, resetting the board on every switch, asserts and
-reboots on its first switch here too; its parent takes every ordered pair
-of its fourteen switch targets, 182 switches, on one boot. A lifecycle
-regression of that kind needs no board to catch.
 
 **What a run is evidence of.** Pass and fail, for any test that does not
 read a clock: a time a test measures, against a ceiling pegged on the
@@ -598,6 +592,78 @@ version and patch set and caches it.
 sudo apt-get install $(python3 launcher/test/qemu/patched_qemu.py deps)   # once
 python3 launcher/test/qemu/patched_qemu.py build                          # minutes, once per QEMU version
 ```
+
+### Console recipes and lifecycle coverage
+
+`launcher/test/device/` uses [pytest-embedded](https://docs.espressif.com/projects/pytest-embedded/en/latest/)
+for console transport, logs and Unity results.
+From the repository root, install its pinned dependencies in a virtual environment:
+
+```sh
+python -m pip install -r launcher/test/device/requirements.txt
+sh launcher/test/run_qemu_tests.sh --suite suite_console --build-only
+python launcher/test/qemu/patched_qemu.py build
+pytest launcher/test/device
+```
+
+The QEMU plugin merges the flash image from `flasher_args.json`. The fixtures
+reuse `qemu_run.py` for device-profile PSRAM size, eFuse MAC and watchdog
+settings. Each test gets its own log.
+The console suite sends `RUNSUITE suite_console` and parses its Unity output
+with `expect_unity_test_output()`.
+
+For a board, build the shell image with Unity suites before taking the lock, then flash
+and test within the hold. The existing `resolve-port` command reads the board
+selected by that hold. Pytest opens the port without flashing.
+
+Board tests share one open port per session, with DTR and RTS held low.
+Each test has its own DUT and log. The first exchange probes BUILDID;
+any boot banner, reset line or crash fails the test. QEMU tests wait for boot.
+
+```sh
+autana build diag
+autana lock run -- bash -c 'autana flash diag && pytest launcher/test/device --embedded-services idf,serial --build-dir build.diag --port "$(python scripts/device/device.py resolve-port | tr -d "\r")" --skip-autoflash y'
+```
+
+Engine recipes live in `launcher/test/device/`; app recipes live in
+`launcher/main/apps/<app>/tests/test_*.yaml`. Collection includes app YAML
+recipes without collecting their other test files. Each recipe is one test
+with fixture setup and teardown. Each step contains `command` (one console
+line) and `expect` (a regular expression), and may give `timeout` in
+seconds where a reply takes longer than the default, such as a full
+screenshot. `IMU quarter <q>` steps contain only `command`. A tilt checks a BUILDID barrier and holds for
+the sample period reported by the startup `IMU quarter 0` probe.
+Screenshot replies remain in the test's serial log.
+
+The tour discovers `APPS` and each advertised console's `scenes` reply.
+An app that declines `scenes` has one app state. Empty app lists, malformed
+replies and a discovery with no scene pairs fail the test. The generated
+`tour-model.json` beside the serial log uses GraphWalker's JSON format.
+For apps with scenes, the scene current immediately after OPEN is the
+landing state. App transitions connect landing states and home; scene
+transitions connect every ordered pair within an app. Every edge changes
+state. NetworkX loads the written model and its `eulerian_circuit` visits
+every edge without a JVM.
+
+```mermaid
+flowchart TD
+    Discover["Discover apps and scenes"] --> Model["Write GraphWalker JSON"]
+    Model --> Load["Load written JSON"]
+    Load --> Walk["NetworkX Euler circuit"]
+    Walk --> Send["Command reply and scene check"]
+    Send --> Check["Tilt and BUILDID"]
+    Check --> Hold["Hold through IMU sample period"]
+    Hold -->|Next edge| Walk
+    Check -->|Crash, reset or invalid reply| Fail["Fail pytest test"]
+```
+
+Every scene switch must report `current=1` on its requested key through a
+fresh `scenes` query. Every edge requires a BUILDID heartbeat. Crash and
+reset patterns come from `scripts/lib/device_capture.py` and apply to all
+expectations, including the Unity summary. CI runs the suite, recipe and
+tour against the instruction ratchet's existing shell build and uploads the
+pytest logs and model. Board CI runs pytest after selftest within the same
+hold, flashes the shell image with Unity suites first, and uploads both captures.
 
 ---
 

@@ -53,7 +53,13 @@ jobs:
             fi
           done
 
-      - name: Self-test under one board lock
+      - name: Prepare the shell image and console tests
+        run: |
+          export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
+          bash scripts/ci/board-prepare.sh
+          autana build diag
+
+      - name: Self-test and console tests under one board lock
         id: device
         run: |
           rm -f "$RUNNER_TEMP/board-ci-selftest.log"
@@ -74,14 +80,17 @@ jobs:
       - name: Summarize the device capture
         if: always() && steps.device.outcome != 'skipped' && steps.device.outputs.skipped != 'true'
         run: |
-          if [ -f "$RUNNER_TEMP/board-ci-selftest.log" ] && grep -q '^report: ' "$RUNNER_TEMP/board-ci-selftest.log"; then
-            sed -n 's/^report: //p' "$RUNNER_TEMP/board-ci-selftest.log" | tr -d '\r' |
-              while IFS= read -r report; do
-                cat "$report" >> "$GITHUB_STEP_SUMMARY"
-              done
-          else
-            echo 'Board CI: no self-test capture available; see the failed step.' >> "$GITHUB_STEP_SUMMARY"
-          fi
+          for log in selftest; do
+            capture="$RUNNER_TEMP/board-ci-$log.log"
+            if [ -f "$capture" ] && grep -q '^report: ' "$capture"; then
+              sed -n 's/^report: //p' "$capture" | tr -d '\r' |
+                while IFS= read -r report; do
+                  cat "$report" >> "$GITHUB_STEP_SUMMARY"
+                done
+            else
+              echo "Board CI: no $log capture available; see the failed step." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()

@@ -66,6 +66,8 @@ typedef struct {
 #define DISPLAY_PORTRAIT_NAME         "portrait"
 #define DISPLAY_LANDSCAPE_NAME        "landscape"
 
+#define DISPLAY_QUARTER_COUNT         (DISPLAY_LANDSCAPE_UPSIDE_DOWN + 1)
+
 /* The shell starts landscape because that is this board's normal held
  * orientation. display_init() remains neutral; display_reset_quarter()
  * applies this physical-board choice. */

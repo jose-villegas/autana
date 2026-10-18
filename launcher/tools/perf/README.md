@@ -337,8 +337,8 @@ A step starts only if it fits before `WINDOW_END`, and a lane stops after
 `CAPTURE_FAILURE_LIMIT` consecutive capture failures (`scoped_chain.py`).
 Unattempted commits go to the same board's next night.
 
-One board, named by `SELFTEST_BOARD`, also runs `scripts/ci/board-steps.sh`
-at the first step boundary after `SELFTEST_AT`, or after its chain if that
+One board, named by `SELFTEST_BOARD`, also runs Board CI's steps
+(`scripts/ci/board-steps.sh`: the self-test, then the console tests) at the first step boundary after `SELFTEST_AT`, or after its chain if that
 ends first, inside the same hold.
 
 Partial manifests are written after every step. Raw captures and result

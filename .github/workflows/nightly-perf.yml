@@ -97,6 +97,10 @@ jobs:
             --boards $SCOPED_BOARDS --selftest-board "$SELFTEST_BOARD" --data "$data" --out "$out/plan.json" \
             "${args[@]}"
 
+      - name: Prepare the self-test's console tests
+        if: env.SELFTEST_BOARD != ''
+        run: bash scripts/ci/board-prepare.sh
+
       - name: Run each board lane and wait for both
         run: |
           export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
