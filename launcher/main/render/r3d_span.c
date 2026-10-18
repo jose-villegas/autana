@@ -646,12 +646,10 @@ prepare_small_dither(small_dither_t* d, const r3d_span_vertex_t* a, const r3d_sp
 }
 
 static inline uint16_t
-small_dither_pick(const small_dither_t* d, int x, int y, int32_t s0, int32_t s1, int32_t s2, uint16_t flat) {
+small_dither_pick(const small_dither_t* d, int32_t threshold, int32_t s0, int32_t s1, int32_t s2, uint16_t flat) {
     if (r3d_span_min3(s0, s1, s2) >= d->coverage_limit) {
         return flat;
     }
-    const int rank = gfx_dither4x4[y & d->phase_mask][x & d->phase_mask] >> d->rank_shift;
-    const int32_t threshold = (d->total * (2 * rank + 1)) >> d->level_shift;
     return d->color[threshold < s0 ? 0 : threshold < s0 + s1 ? 1 : 2];
 }
 
@@ -670,6 +668,13 @@ fill_small_dither(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
     }
     for (int y = box.y; y < recti_bottom(box); y++) {
         const small_row_t row = small_row(target, y);
+        const int rank = gfx_dither4x4[y & d.phase_mask][box.x & d.phase_mask] >> d.rank_shift;
+        int32_t numerator = d.total * (2 * rank + 1);
+        const int32_t low_step = (gfx_dither4x4[y & d.phase_mask][1] - gfx_dither4x4[y & d.phase_mask][0]) * d.total * 2
+                                 / (1 << d.rank_shift);
+        const int32_t high_step =
+            d.phase_mask > 1 ? (gfx_dither4x4[y & d.phase_mask][2] - gfx_dither4x4[y & d.phase_mask][0]) * d.total * 2
+                             : 0;
         for (int x = box.x, end = recti_right(box); x < end; x++) {
             const int32_t cx = (x << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
             const int32_t s0 = small_side(&d.edge[0], cx, row.centre);
@@ -677,7 +682,13 @@ fill_small_dither(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
             const int32_t s2 = small_side(&d.edge[2], cx, row.centre);
             if ((s0 | s1 | s2) >= 0 && f.flat_z > row.depth[x]) {
                 row.depth[x] = f.flat_z;
-                row.color[x] = small_dither_pick(&d, x, y, s0, s1, s2, f.flat_color);
+                row.color[x] = small_dither_pick(&d, numerator >> d.level_shift, s0, s1, s2, f.flat_color);
+            }
+            if (x & 1) {
+                numerator -= low_step;
+                numerator += (x & 2) ? -high_step : high_step;
+            } else {
+                numerator += low_step;
             }
         }
     }
