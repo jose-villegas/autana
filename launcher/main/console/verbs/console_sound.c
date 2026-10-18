@@ -41,29 +41,31 @@ console_sound_view(const char* name) {
     return &view->sound;
 }
 
+static const char format_error[] = "SOUND error: formatting failed";
+
 static void
 sound_stats(console_reply_fn reply) {
     sound_stats_t stats;
     sound_get_stats(&stats);
     char line[CONSOLE_SOUND_REPLY_MAX];
-    (void)snprintf(line, sizeof line, "SOUND ready=%u dropped=%" PRIu32 " amp=%u", stats.control.ready,
-                   stats.control.dropped_commands, (unsigned)stats.amp);
-    reply(line);
+    int length = snprintf(line, sizeof line, "SOUND ready=%u dropped=%" PRIu32 " amp=%u", stats.control.ready,
+                          stats.control.dropped_commands, (unsigned)stats.amp);
+    reply(length < 0 ? format_error : line);
     for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
         const sound_control_voice_t* voice = &stats.control.voices[i];
-        (void)snprintf(line, sizeof line,
-                       "SOUND slot=%d voice=%" PRIu32 " playing=%u bus=%u gain=%u priority=%u frame=%" PRIu32, i,
-                       voice->handle.id, voice->playing, voice->opts.bus.id, voice->opts.gain_pct, voice->opts.priority,
-                       stats.positions[i]);
-        reply(line);
+        length = snprintf(line, sizeof line,
+                          "SOUND slot=%d voice=%" PRIu32 " playing=%u bus=%u gain=%u priority=%u frame=%" PRIu32, i,
+                          voice->handle.id, voice->playing, voice->opts.bus.id, voice->opts.gain_pct,
+                          voice->opts.priority, stats.positions[i]);
+        reply(length < 0 ? format_error : line);
     }
-    (void)snprintf(line, sizeof line, "SOUND ram voices=%zu queue=%zu stack=%zu tx_samples=%zu mixer=%zu",
-                   stats.voice_table_bytes, stats.queue_bytes, stats.stack_bytes, stats.dma_sample_bytes,
-                   stats.mixer_bytes);
-    reply(line);
-    (void)snprintf(line, sizeof line, "SOUND stack_min_free=%zu margin=%zu", stats.stack_min_free_bytes,
-                   stats.stack_margin_bytes);
-    reply(line);
+    length = snprintf(line, sizeof line, "SOUND ram voices=%zu queue=%zu stack=%zu tx_samples=%zu mixer=%zu",
+                      stats.voice_table_bytes, stats.queue_bytes, stats.stack_bytes, stats.dma_sample_bytes,
+                      stats.mixer_bytes);
+    reply(length < 0 ? format_error : line);
+    length = snprintf(line, sizeof line, "SOUND stack_min_free=%zu margin=%zu", stats.stack_min_free_bytes,
+                      stats.stack_margin_bytes);
+    reply(length < 0 ? format_error : line);
     reply("SOUND_END");
 }
 
@@ -104,7 +106,7 @@ console_verb_sound(const char* args, console_reply_fn reply) {
         return;
     }
     char line[CONSOLE_SOUND_REPLY_MAX];
-    (void)snprintf(line, sizeof line, "SOUND_END voice=%" PRIu32, voice.id);
-    reply(line);
+    const int length = snprintf(line, sizeof line, "SOUND_END voice=%" PRIu32, voice.id);
+    reply(length < 0 ? format_error : line);
 }
 CONSOLE_VERB(sound, CONSOLE_LINE_MAX - sizeof("sound") - 1, console_verb_sound)

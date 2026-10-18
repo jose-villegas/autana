@@ -187,7 +187,7 @@ sound_stop_app_voices(void) {
     const uint32_t retired = control.app_generation;
     sound_control_exit(&control);
     portEXIT_CRITICAL(&control_lock);
-    const int64_t deadline = timing_now_us() + (int64_t)SOUND_EXIT_READ_TIMEOUT_MS * MATH_US_PER_MS;
+    const int64_t deadline = timing_now_us() + ((int64_t)SOUND_EXIT_READ_TIMEOUT_MS * MATH_US_PER_MS);
     for (;;) {
         portENTER_CRITICAL(&control_lock);
         const bool pending = sound_control_read_pending(&control, retired);
@@ -344,9 +344,9 @@ mixer_task(void* unused) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static bool
 capture_request(sound_command_kind_t kind) {
-    const int64_t deadline = timing_now_us() + (int64_t)SOUND_CAPTURE_TIMEOUT_MS * MATH_US_PER_MS;
+    const int64_t deadline = timing_now_us() + ((int64_t)SOUND_CAPTURE_TIMEOUT_MS * MATH_US_PER_MS);
     portENTER_CRITICAL(&control_lock);
-    capture_sequence = capture_sequence % SOUND_CAPTURE_SEQUENCE_MAX + 1;
+    capture_sequence = (capture_sequence % SOUND_CAPTURE_SEQUENCE_MAX) + 1;
     const uint32_t sequence = capture_sequence;
     portEXIT_CRITICAL(&control_lock);
     uint32_t result;

@@ -273,12 +273,13 @@ static void
 check_audio_codec(void) {
     const char* step = sound_init_failure();
     char detail[96];
+    int length;
     if (step) {
-        (void)snprintf(detail, sizeof detail, "audio: init failed (%s)", step);
+        length = snprintf(detail, sizeof detail, "audio: init failed (%s)", step);
     } else {
-        (void)snprintf(detail, sizeof detail, "0x%02x  ES8311", BOARD_AUDIO_CODEC_I2C_ADDR);
+        length = snprintf(detail, sizeof detail, "0x%02x  ES8311", BOARD_AUDIO_CODEC_I2C_ADDR);
     }
-    report("audio codec", step == NULL, POST_REQUIRED, detail);
+    report("audio codec", step == NULL && length >= 0, POST_REQUIRED, length >= 0 ? detail : step);
 }
 
 static void

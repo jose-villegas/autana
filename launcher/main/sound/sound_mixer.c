@@ -78,8 +78,8 @@ sound_control_play(sound_control_t* control, const sound_t* sound, const sound_p
     const int slot = choose_voice_slot(control);
     sound_control_voice_t* voice = &control->voices[slot];
     const uint32_t generation =
-        (voice->handle.id ? (voice->handle.id - 1) / SOUND_VOICE_COUNT + 1 : 0) % SOUND_VOICE_GENERATIONS;
-    const sound_voice_t handle = {.id = generation * SOUND_VOICE_COUNT + (uint32_t)slot + 1};
+        (voice->handle.id ? ((voice->handle.id - 1) / SOUND_VOICE_COUNT) + 1 : 0) % SOUND_VOICE_GENERATIONS;
+    const sound_voice_t handle = {.id = (generation * SOUND_VOICE_COUNT) + (uint32_t)slot + 1};
     *voice = (sound_control_voice_t){.handle = handle,
                                      .started = ++control->starts,
                                      .opts = options,
