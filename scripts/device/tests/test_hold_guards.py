@@ -163,7 +163,7 @@ class HoldGuardTests(Store):
             self.assertEqual(self.store.status(BOARD_A)["reclaimable"]["reason"], "dead process")
             record = self.store.read_json(self.store.lock_path(BOARD_A))
             record["host"] = socket.gethostname() + "-remote"
-            self.store.write_json(self.store.lock_path(BOARD_A), record)
+            device_lock.write_json(self.store.lock_path(BOARD_A), record)
             self.assertTrue(self.store.check_token(BOARD_A, token))
 
     def test_take_and_hand_inside_hold_refuse_without_queueing(self):

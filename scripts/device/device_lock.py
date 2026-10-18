@@ -374,9 +374,6 @@ class LockStore:
                 time.sleep(0.02)
         return None
 
-    def write_json(self, path, value):
-        write_json(path, value)
-
     def boards(self):
         """Every board a lock, reservation or waiter in this root names."""
         paths = ([path for path in self.root.glob("*.json")
@@ -397,7 +394,7 @@ class LockStore:
         until seen_boards() needs it, so a repeat sighting is a no-op."""
         path = self.seen_path(board)
         if not self.read_json(path):
-            self.write_json(path, {"board": board})
+            write_json(path, {"board": board})
 
     @contextlib.contextmanager
     def guard(self, board):
@@ -441,7 +438,7 @@ class LockStore:
     def note_last_holder(self, board, lock, how):
         """Keeps who held the board last, for the message a command prints when
         the port stays busy after it won the lock. Under guard()."""
-        self.write_json(self.last_path(board), {
+        write_json(self.last_path(board), {
             "board": board, "owner": lock.get("owner", "unknown"),
             "purpose": lock.get("purpose", "unknown"), "pid": lock.get("pid"),
             "host": lock.get("host"), "token": lock.get("token"),
@@ -459,7 +456,7 @@ class LockStore:
                 sequence = 1
             sequence_path.write_text(str(sequence), encoding="ascii")
             ticket = uuid.uuid4().hex
-            self.write_json(directory / (ticket + ".json"), {
+            write_json(directory / (ticket + ".json"), {
                 "board": board,
                 "created_at": self.now(),
                 "owner": owner,
@@ -567,7 +564,7 @@ class LockStore:
             }
             if estimate is not None:
                 held["estimated_end"] = now + estimate
-            self.write_json(self.lock_path(board), held)
+            write_json(self.lock_path(board), held)
             (self.queue_dir(board) / (ticket + ".json")).unlink(missing_ok=True)
             return Held(held, reclaimed), evicted, reason
 
@@ -614,7 +611,7 @@ class LockStore:
             if not lock or lock.get("token") != token or self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
                 return False
             lock["heartbeat_at"] = self.now()
-            self.write_json(self.lock_path(board), lock)
+            write_json(self.lock_path(board), lock)
             return True
 
     def live_lock(self, board, token, stale_seconds=DEFAULT_STALE_SECONDS):
@@ -664,7 +661,7 @@ class LockStore:
                 lock["expires_at"] = now + seconds
             else:
                 lock["until_released"] = True
-            self.write_json(self.lock_path(board), lock)
+            write_json(self.lock_path(board), lock)
             return True
 
     def reserve_human(self, board, owner, note, wait=0, on_wait=None):
@@ -673,7 +670,7 @@ class LockStore:
             if lock and lock.get("kind") == "human" and not self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
                 lock.update(owner=owner, purpose=note, heartbeat_at=self.now(),
                             expires_at=self.now() + HUMAN_RESERVATION_SECONDS)
-                self.write_json(self.lock_path(board), lock)
+                write_json(self.lock_path(board), lock)
                 return lock["token"], True
         held = self.acquire(board, owner, "hand", wait=wait, on_wait=on_wait, purpose=note)
         if not held:

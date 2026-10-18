@@ -17,6 +17,7 @@ read -r lane estimate <<< "$info"
 wait_seconds=$("$PY" "$driver" wait-seconds --until "$WINDOW_END") || exit 1
 args=(run --plan "$plan" --repo "$repo" --data "$data" --out "$out/$board"
       --board "$board" --lane "$lane" --until "$WINDOW_END" "$@")
+unset BOARD_CI_LOG
 if [ "$board" = "$SELFTEST_BOARD" ]; then
     export BOARD_CI_LOG="$out/$board-selftest.log"
     shell=$BASH

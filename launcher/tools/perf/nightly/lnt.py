@@ -5,7 +5,10 @@ from pathlib import Path
 
 MICROSECONDS_PER_SECOND = 1_000_000
 # Build variant and options every nightly capture uses.
-IMAGE = "diag --perf-scope --layout-seed 0"
+VARIANT = "diag"
+LAYOUT_SEED = 0
+BUILD_FLAGS = ("--perf-scope", "--layout-seed", str(LAYOUT_SEED))
+IMAGE = " ".join((VARIANT, *BUILD_FLAGS))
 
 
 def lnt_report(machine, board, commit, pr, role, night, build_id, image_hash, start, end, rows):

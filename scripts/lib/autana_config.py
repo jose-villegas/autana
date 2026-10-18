@@ -22,6 +22,11 @@ BOARD_ENV = "_AUTANA_BOARD"
 TOKEN_ENV = "_AUTANA_DEVICE_LOCK_TOKEN"
 # The autana command a running process is for; device.py names its lock by it.
 COMMAND_ENV = "_AUTANA_COMMAND"
+BUILD_SERIAL_ENV = "_AUTANA_BUILD_SERIAL"
+BUILD_SERIAL_DIRECTORY = "build-serial"
+BUILD_PRIORITY_ENV = "_AUTANA_BUILD_PRIORITY"
+BUILD_PRIORITY_BELOW_NORMAL = "below_normal"
+BUILD_LATEST_START_ENV = "_AUTANA_BUILD_LATEST_START"
 
 # Exit statuses beyond 0, 1 and 2: 75 (EX_TEMPFAIL) is a board that was busy
 # or not handed back, 130 is Ctrl+C. Documented in docs/tools/Device-Lock.md.

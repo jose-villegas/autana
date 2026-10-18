@@ -21,10 +21,9 @@ sys.path.insert(0, str(PERF.parent / "build"))
 from build_paths import remove_output
 import autana_config
 from capture import require_same_board
-from device import build_directory_lock
 from device_lock import normalise_board, short_id, write_json
 from layout_measure import autana_command, run_flash, run_stamped, REPORT_LINE, latest_build
-from nightly.lnt import lnt_report, night_manifest, read_last_night
+from nightly.lnt import lnt_report, night_manifest, read_last_night, VARIANT, BUILD_FLAGS, LAYOUT_SEED
 
 IMAGE_HEADER_BYTES = 24
 SEGMENT_HEADER_BYTES = 8
@@ -41,7 +40,6 @@ CAPTURE_FAILURE_LIMIT = 2
 SELFTEST_ALLOWANCE_SECONDS = 120 * 60
 CAPTURE_TIMEOUT_SECONDS = 1800
 BUILD_TIMEOUT_SECONDS = 3600
-BUILD_MUTEX_DIRECTORY = "nightly-build"
 
 
 @dataclass
@@ -195,6 +193,8 @@ def run_chain(steps, args, runner=None, clock=None):
         if clock.now() < selftest_at or clock.now() + timedelta(seconds=SELFTEST_ALLOWANCE_SECONDS) > deadline:
             return
         begin = clock.now()
+        os.environ[autana_config.BUILD_LATEST_START_ENV] = str(
+            (deadline - timedelta(seconds=SELFTEST_ALLOWANCE_SECONDS)).timestamp())
         selftest["started"] = begin.isoformat()
         with (output / "selftest.log").open("w", encoding="utf-8") as log:
             try:
@@ -224,17 +224,17 @@ def run_chain(steps, args, runner=None, clock=None):
                 continue
             begin = clock.now()
             result.outcome = "build_failed"
+            code = None
             with (output / f"{index:0{STEP_INDEX_DIGITS}}-{step.commit[:REPORT_SHA_DIGITS]}-build.log").open("w", encoding="utf-8") as log:
                 try:
-                    with build_directory_lock(autana_config.user_cache_dir() / BUILD_MUTEX_DIRECTORY):
-                        if not worktree.exists():
-                            git(args.repo, "worktree", "add", "--detach", str(worktree), step.commit)
-                        git(worktree, "checkout", "--detach", step.commit)
-                        git(worktree, "submodule", "update", "--init", "--recursive")
-                        code, _, _ = runner(autana_command("--project", str(worktree), "build", "diag",
-                                                          "--perf-scope", "--layout-seed", "0"), log,
-                                             BUILD_TIMEOUT_SECONDS, below_normal=True)
-                    result.build_seconds = (clock.now() - begin).total_seconds()
+                    if not worktree.exists():
+                        git(args.repo, "worktree", "add", "--detach", str(worktree), step.commit)
+                    git(worktree, "checkout", "--detach", step.commit)
+                    git(worktree, "submodule", "update", "--init", "--recursive")
+                    os.environ[autana_config.BUILD_LATEST_START_ENV] = str(
+                        (deadline - timedelta(seconds=worst_step + reserve)).timestamp())
+                    code, _, _ = runner(autana_command("--project", str(worktree), "build", VARIANT,
+                                                      *BUILD_FLAGS), log, BUILD_TIMEOUT_SECONDS)
                     if code:
                         raise RuntimeError(f"build exited {code}")
                     build = latest_build(worktree)
@@ -243,17 +243,25 @@ def run_chain(steps, args, runner=None, clock=None):
                 except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as error:
                     log.write(str(error) + "\n")
             result.build_seconds = (clock.now() - begin).total_seconds()
+            remaining = max(0, worst_step - result.build_seconds) + reserve
+            if code == autana_config.EXIT_BUSY or clock.now() + timedelta(seconds=remaining) > deadline:
+                stop_reason = "window"
+                result.outcome = "not_run_window"
+                save()
+                continue
             if result.image_hash:
                 if step.role != "anchor" and result.image_hash == previous_hash:
                     result.outcome = "skipped_same_image"
                 else:
+                    os.environ[autana_config.BUILD_LATEST_START_ENV] = str(
+                        (deadline - timedelta(seconds=remaining)).timestamp())
                     measure = clock.now()
                     result.outcome = "capture_failed"
                     try:
                         capture_args = SimpleNamespace(project=worktree, out=output / f"{index:0{STEP_INDEX_DIGITS}}-capture",
                                                        suite=args.suite, runs=1, timeout=CAPTURE_TIMEOUT_SECONDS,
                                                        wait=0)
-                        record = run_flash(capture_args, seed=0, runner=runner)
+                        record = run_flash(capture_args, seed=LAYOUT_SEED, runner=runner)
                         actual = require_same_board({"previous": machine, "capture": record["board"]}
                                                     if machine else {"capture": record["board"]})
                         if not actual or normalise_board(args.board) not in (normalise_board(actual), short_id(actual)):
@@ -345,6 +353,10 @@ def plan(args, clock=None):
                                     started=clock.now().isoformat(), lanes=lanes))
 
 
+def lane_of(plan, board):
+    return plan["lanes"][short_id(board)]
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -373,16 +385,17 @@ def main():
         command.add_argument("--from", dest="from_sha")
         command.add_argument("--max-steps", type=int)
     args = parser.parse_args()
+    os.environ[autana_config.BUILD_SERIAL_ENV] = str(autana_config.user_cache_dir() / autana_config.BUILD_SERIAL_DIRECTORY)
+    os.environ[autana_config.BUILD_PRIORITY_ENV] = autana_config.BUILD_PRIORITY_BELOW_NORMAL
     if args.command == "wait-seconds":
         now = Clock().now()
         print(max(0, int((local_time(args.until, now, next_occurrence=True) - now).total_seconds())))
         return 0
     if args.command == "lane-info":
-        lanes = json.loads(args.plan.read_text(encoding="utf-8"))["lanes"]
-        board = args.board if args.board in lanes else short_id(args.board)
-        if board not in lanes:
+        try:
+            lane = lane_of(json.loads(args.plan.read_text(encoding="utf-8")), args.board)
+        except KeyError:
             parser.error(f"unknown board in plan: {args.board}")
-        lane = lanes[board]
         print(lane["lane"], lane["estimate"])
         return 0
     if args.command == "plan":
@@ -395,7 +408,7 @@ def main():
     if not os.environ.get("_AUTANA_DEVICE_LOCK_TOKEN"):
         parser.error("run requires an enclosing autana lock run hold")
     planned = json.loads(args.plan.read_text(encoding="utf-8"))
-    lane = planned["lanes"].get(args.board) or planned["lanes"][short_id(args.board)]
+    lane = lane_of(planned, args.board)
     if lane["lane"] != args.lane:
         parser.error("lane differs from the shared plan")
     args.previous, args.night, args.started = lane["previous"], planned["night"], planned["started"]

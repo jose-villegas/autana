@@ -7,7 +7,6 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
-import threading
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -18,12 +17,12 @@ sys.path.insert(0, str(PERF.parents[2] / "scripts/device/tests"))
 import port_guard
 from nightly import scoped_chain as chain, lnt
 from test_perf_compare import FakeAutana
-from layout_measure import parse_report, parse_timings
+from layout_measure import make_table, parse_report, parse_timings
 import layout_measure
-import device
 import autana_config
 
 MACHINE = "00:11:22:33:20:E8"
+OTHER_MACHINE = "00:11:22:33:21:24"
 
 
 IMAGE_HASH_APPENDED_OFFSET = 23
@@ -64,14 +63,15 @@ class Replay(FakeAutana):
         self.clock = clock
         self.builds, self.captures, self.durations = iter(builds), iter(captures), iter(durations)
         self.selftest_code = selftest_code
-        self.boundaries, self.tokens = [], []
+        self.boundaries, self.tokens, self.timeouts = [], [], []
 
     def __call__(self, command, log, timeout, **options):
         self.tokens.append(os.environ.get("_AUTANA_DEVICE_LOCK_TOKEN"))
+        self.timeouts.append((command, timeout))
         if command == ["selftest-replay"]:
             self.boundaries.append(self.clock.now())
             self.clock.sleep(60)
-            return self.selftest_code, [(0, "report: selftest.md")], 60
+            return self.selftest_code, [(0, "report: first.md"), (60, "report: selftest.md")], 60
         if "build" in command:
             self.clock.sleep(next(self.durations, 60))
             code = next(self.builds, 0)
@@ -137,110 +137,14 @@ class NightlyTests(unittest.TestCase):
             results = chain.run_chain(self.steps() if steps is None else steps, self.args, replay, self.clock)
         self.assertTrue(all(token == "outer-hold" for token in replay.tokens))
         self.assertEqual(chain.git(self.repo, "worktree", "list", "--porcelain").count("worktree "), 1)
-        self.assertEqual([len(item["steps"]) for item in writes if item["steps"]][-1], len(results))
+        self.assertEqual(len(writes[-1]["steps"]), len(results))
         return results, replay, writes
 
-    def contending_lanes(self, failure=None):
-        entered, contended, built = (threading.Event() for _ in range(3))
-        active, errors, results = [], [], {}
-        clocks = [Clock(), Clock()]
-        for lane in range(2):
-            (self.root / str(lane)).mkdir(exist_ok=True)
-        replays = [Replay(self.root / str(lane), clocks[lane]) for lane in range(2)]
-        original_lock = device.try_lock_file
-        wait_seconds = 30 * 60
-        wait_limit = 10
-
-        def try_lock(handle):
-            acquired = original_lock(handle)
-            if not acquired and threading.current_thread().name == "lane-1" and not contended.is_set():
-                clocks[1].sleep(wait_seconds)
-                contended.set()
-            return acquired
-
-        def run(lane):
-            args = SimpleNamespace(**vars(self.args))
-            args.until = "23:33"
-            args.out, args.data = self.root / f"out-{lane}", self.root / f"data-{lane}"
-            def runner(command, log, timeout, **options):
-                if "build" in command:
-                    self.assertFalse(active, "lane builds overlap")
-                    active.append(lane)
-                    try:
-                        if lane == 0:
-                            entered.set()
-                            self.assertTrue(contended.wait(wait_limit), "second lane did not wait for the mutex")
-                            if isinstance(failure, Exception):
-                                raise failure
-                            if failure:
-                                return failure, [], 0
-                        else:
-                            built.set()
-                        return replays[lane](command, log, timeout, **options)
-                    finally:
-                        active.remove(lane)
-                if lane == 0 and "suite" in command:
-                    self.assertTrue(built.wait(wait_limit), "capture holds the build mutex")
-                return replays[lane](command, log, timeout, **options)
-            try:
-                steps = self.steps(indices=(1,) if lane == 0 else (1, 3))
-                results[lane] = chain.run_chain(steps, args, runner, clocks[lane])
-            except BaseException as error:
-                errors.append(error)
-
-        with patch.object(autana_config, "user_cache_dir", return_value=self.root / "cache"), \
-                patch.object(device, "try_lock_file", side_effect=try_lock), \
-                patch("layout_measure.capture_board", return_value=MACHINE):
-            threads = [threading.Thread(target=run, args=(lane,), name=f"lane-{lane}") for lane in range(2)]
-            threads[0].start()
-            ready = entered.wait(wait_limit)
-            threads[1].start()
-            for thread in threads:
-                thread.join(wait_limit * 2)
-            self.assertTrue(ready)
-            self.assertFalse(any(thread.is_alive() for thread in threads))
-        self.assertEqual(errors, [])
-        self.assertEqual(results[0][0].outcome, "build_failed" if failure else "measured")
-        self.assertEqual(results[1][0].outcome, "measured")
-        self.assertEqual(results[1][0].build_seconds, wait_seconds + 60)
-        self.assertEqual(results[1][1].outcome, "not_run_window")
-
-    def test_lane_builds_serialize_and_capture_releases_mutex(self):
-        self.contending_lanes()
-
-    def test_failed_and_raised_builds_release_mutex(self):
-        for failure in (1, RuntimeError("build failed")):
-            with self.subTest(failure=failure):
-                self.contending_lanes(failure)
-
-    def test_only_build_process_starts_below_normal_priority(self):
-        original_popen = subprocess.Popen
-        original_runner = layout_measure.run_stamped
-        launches, priorities = [], []
-        replay = Replay(self.root, self.clock)
-        def popen(command, **options):
-            launches.append(options.copy())
-            return original_popen(command, **options)
-        def runner(command, log, timeout, **options):
-            priorities.append(("build" in command, options))
-            original_runner([sys.executable, "-c", "print('ready')"], io.StringIO(), timeout, **options)
-            return replay(command, log, timeout, **options)
-        with patch.object(subprocess, "Popen", side_effect=popen), \
-                patch("layout_measure.capture_board", return_value=MACHINE):
-            results = chain.run_chain(self.steps(indices=(1,)), self.args, runner, self.clock)
-        self.assertEqual(results[0].outcome, "measured")
-        launches = [options for options in launches if options.get("bufsize") == 1]
-        self.assertEqual(len(launches), len(priorities))
-        self.assertTrue(any(build for build, _ in priorities))
-        self.assertTrue(any(not build for build, _ in priorities))
-        for (build, _), options in zip(priorities, launches):
-            if os.name == "nt":
-                self.assertEqual(bool(options.get("creationflags", 0) & subprocess.BELOW_NORMAL_PRIORITY_CLASS), build)
-            elif build:
-                self.assertIs(options["preexec_fn"].func, os.nice)
-                self.assertEqual(options["preexec_fn"].args, (layout_measure.BUILD_NICE_INCREMENT,))
-            else:
-                self.assertNotIn("preexec_fn", options)
+    def capture_with(self, **fields):
+        original = chain.run_flash
+        def capture(*args, **kwargs):
+            return dict(original(*args, **kwargs), **fields)
+        return patch.object(chain, "run_flash", side_effect=capture)
 
     def test_worktree_git_commands_enable_longpaths(self):
         commands = []
@@ -461,19 +365,6 @@ class NightlyTests(unittest.TestCase):
             chain.write_json(self.args.data / "scoped/20E8" / night / "night.json", {"night": night})
         self.assertEqual(lnt.read_last_night(self.args.data, "20E8")["night"], "2026-10-18-2230")
 
-    def test_table_mode_preserves_all_stage_rows(self):
-        path = PERF.parents[1] / "main/apps/render_lab/tools/report_performance.py"
-        capture = self.root / "fixture.log"
-        text = "\n".join(f"capybara_perf: stage=frame paused={paused} quarter={quarter} mean_us={412+paused}"
-                         for quarter in ("portrait", "landscape") for paused in (0, 1))
-        text += "\ncapybara_perf: stage=skin cores=2 mean_us=17\ncapybara_perf: stage=custom mean_us=19\n"
-        capture.write_text(text)
-        table = self.root / "table.md"
-        subprocess.run([sys.executable, str(path), str(capture), str(table), "--table"], check=True, capture_output=True)
-        self.assertEqual(parse_report(table), parse_timings(text))
-        self.assertEqual(len(parse_report(table)), 6)
-
-
     def test_attempted_tail_not_planned_again(self):
         for outcome in ("skipped_same_image", "build_failed"):
             with self.subTest(outcome=outcome):
@@ -509,15 +400,235 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(latest["last_measured"], self.commits[3])
 
     def test_flashing_different_build_fails_capture(self):
-        original = chain.run_flash
-        def other_build(*args, **kwargs):
-            record = original(*args, **kwargs)
-            record["build_id"] = "different-diag"
-            return record
-        with patch.object(chain, "run_flash", side_effect=other_build):
+        with self.capture_with(build_id="different-diag"):
             results, _, _ = self.run_chain(self.steps(indices=(1,)))
         self.assertEqual(results[0].outcome, "capture_failed")
         self.assertIn("differs from hashed build", (self.args.out / "00-error.log").read_text())
+
+    def test_capture_failure_retries_cursor_and_fourth_step_runs(self):
+        self.args.previous = dict(last_measured=self.commits[0], last_attempted=self.commits[0])
+        results, _, writes = self.run_chain(self.steps(indices=(1,)), captures=(True,))
+        self.assertEqual(results[0].outcome, "capture_failed")
+        self.assertEqual(writes[-1]["last_attempted"], self.commits[0])
+        planned = chain.plan_steps(self.repo, "HEAD", writes[-1], 0, 2)
+        self.assertIn(self.commits[1], [step.commit for step in planned])
+        results, _, _ = self.run_chain(self.steps(indices=(1, 2, 3, 4)), captures=(True, False, True, False))
+        self.assertEqual([r.outcome for r in results], ["capture_failed", "measured", "capture_failed", "measured"])
+
+    def test_stopped_reason_survives_later_window(self):
+        self.args.until = "23:20"
+        results, _, writes = self.run_chain(self.steps(indices=(1, 2, 3, 4)),
+                                           captures=(True, True), durations=(60, 26 * 60))
+        self.assertEqual([r.outcome for r in results],
+                         ["capture_failed", "capture_failed", "not_run_stopped", "not_run_stopped"])
+        self.assertEqual(writes[-1]["stop_reason"], "capture_failures")
+
+    def test_exact_budget_plan_clock_and_night(self):
+        self.args.started = self.clock.now().isoformat()
+        self.args.night = "planned-night"
+        self.args.until = "22:53"
+        for extra, outcome in ((0, "measured"), (1, "not_run_window")):
+            self.clock = Clock()
+            self.clock.sleep(extra)
+            results, _, writes = self.run_chain(self.steps(indices=(1,)), durations=(22 * 60,))
+            self.assertEqual(results[0].outcome, outcome)
+            self.assertEqual(writes[-1]["night"], "planned-night")
+        self.clock = Clock(0, 0)
+        self.clock.value += timedelta(days=1)
+        self.args.until = "23:00"
+        results, _, _ = self.run_chain(self.steps(indices=(1,)))
+        self.assertEqual(results[0].outcome, "not_run_window")
+        now = Clock(7, 0).now()
+        self.assertEqual(chain.local_time("07:00", now, True), now + timedelta(days=1))
+
+    def test_window_after_build_and_build_lock_timeout_preserves_cursor(self):
+        self.args.until = "23:00"
+        for duration, code in ((61 * 60, 0), (8 * 60, autana_config.EXIT_BUSY)):
+            self.clock = Clock()
+            results, replay, writes = self.run_chain(self.steps(indices=(1,)), durations=(duration,), builds=(code,))
+            self.assertEqual(results[0].outcome, "not_run_window")
+            self.assertIsNone(writes[-1]["last_attempted"])
+            self.assertFalse(any("suite" in cmd for cmd in replay.calls))
+
+    def test_selftest_limits_timeout_saved_metadata_and_reserve_release(self):
+        self.args.selftest = ["selftest-replay"]
+        self.args.until = "00:30"
+        self.args.started = Clock(22, 0).now().isoformat()
+        for waiting in (False, True):
+            for extra, expected in ((0, "passed"), (1, "not_run")):
+                self.clock = Clock()
+                self.args.selftest_at = "22:30" if waiting else "22:29"
+                if waiting:
+                    self.clock.value -= timedelta(seconds=1)
+                    self.args.selftest_at = "22:30" if extra == 0 else "22:31"
+                else:
+                    self.clock.sleep(extra)
+                _, replay, writes = self.run_chain(steps=[])
+                self.assertEqual(writes[-1]["selftest"]["outcome"], expected)
+                if waiting and expected == "not_run":
+                    self.assertEqual(self.clock.sleeps, [])
+                if expected == "passed":
+                    self.assertEqual(writes[1]["cleanup"], "pending")
+                    saved = writes[1]["selftest"]
+                    self.assertEqual(saved["started"], replay.boundaries[0].isoformat())
+                    self.assertEqual(saved["seconds"], 60)
+                    self.assertEqual(saved["report"], "selftest.md")
+                    self.assertEqual(replay.timeouts[0][1], chain.SELFTEST_ALLOWANCE_SECONDS)
+        self.clock = Clock()
+        self.args.selftest_at = "22:29"
+        results, _, _ = self.run_chain(self.steps(indices=(1,)))
+        self.assertEqual(results[0].outcome, "measured")
+
+    def test_capture_identity_rows_start_and_empty_capture(self):
+        for previous in (None, dict(machine=MACHINE)):
+            self.args.previous = previous
+            with self.capture_with(board=OTHER_MACHINE):
+                results, _, _ = self.run_chain(self.steps(indices=(1,)))
+            self.assertEqual(results[0].outcome, "capture_failed")
+        self.args.previous = dict(machine=OTHER_MACHINE)
+        results, _, _ = self.run_chain(self.steps(indices=(1,)))
+        self.assertEqual(results[0].outcome, "capture_failed")
+        self.args.previous = dict(machine=MACHINE)
+        self.clock = Clock()
+        results, replay, writes = self.run_chain(self.steps(indices=(1,)))
+        manifest = self.args.data / "scoped/20E8" / Clock().now().strftime("%Y-%m-%d-%H%M") / "night.json"
+        report = json.loads((manifest.parent / results[0].report).read_text())
+        self.assertEqual(report["machine"]["name"], MACHINE)
+        self.assertEqual(report["run"]["start_time"], (Clock().now() + timedelta(seconds=60)).isoformat())
+        self.assertTrue(all(test["name"].startswith("suite/") for test in report["tests"]))
+        with self.capture_with(suites={}):
+            results, _, _ = self.run_chain(self.steps(indices=(1,)))
+        self.assertEqual(results[0].outcome, "capture_failed")
+        self.assertTrue(all(timeout == chain.BUILD_TIMEOUT_SECONDS for cmd, timeout in replay.timeouts if "build" in cmd))
+        self.assertTrue(all(timeout == chain.CAPTURE_TIMEOUT_SECONDS for cmd, timeout in replay.timeouts if "suite" in cmd))
+        suites = [cmd for cmd, _ in replay.timeouts if "suite" in cmd]
+        self.assertTrue(suites)
+        self.assertEqual(suites[0][suites[0].index("--runs") + 1], "1")
+
+    def test_invalid_history_lane_and_range(self):
+        for previous in ({"last_measured": "missing"}, {"last_attempted": "missing"}):
+            with self.assertRaisesRegex(ValueError, next(iter(previous))):
+                chain.plan_steps(self.repo, "HEAD", previous, 0, 2)
+        with self.assertRaises(ValueError):
+            chain.plan_steps(self.repo, "HEAD", None, 2, 2)
+        with self.assertRaises(ValueError):
+            chain.select_steps(self.repo, "HEAD", None, 0, 2, max_steps=-1)
+        chain.git(self.repo, "checkout", "-qb", "off", self.commits[0])
+        chain.git(self.repo, "commit", "--allow-empty", "-qm", "off history")
+        off = chain.git(self.repo, "rev-parse", "HEAD")
+        with self.assertRaisesRegex(ValueError, "first-parent"):
+            chain.select_steps(self.repo, self.commits[-1], None, 0, 2, from_sha=off)
+        selected = chain.select_steps(self.repo, self.commits[-1], {"last_measured": self.commits[0]}, 0, 2, self.commits[0])
+        self.assertEqual([s.position for s in selected], [1, 2, 4, 6])
+
+    def test_invalid_images_fail_build_and_hash_length(self):
+        valid = app_image()
+        oversized = bytearray(valid)
+        oversized[chain.IMAGE_HEADER_BYTES + chain.SEGMENT_DATA_LENGTH_OFFSET:chain.APP_DESC_OFFSET] = (len(valid) * 2).to_bytes(chain.SEGMENT_DATA_LENGTH_BYTES, "little")
+        no_descriptor = bytearray(valid)
+        no_descriptor[chain.IMAGE_SEGMENT_COUNT_OFFSET] = 0
+        original = Replay.__call__
+        for image, message in ((b"short", "too short"), (oversized, "exceeds image"), (no_descriptor, "omit app descriptor")):
+            def truncated(replay, command, *args, **kwargs):
+                result = original(replay, command, *args, **kwargs)
+                if "build" in command:
+                    project = Path(command[command.index("--project") + 1])
+                    (project / "launcher/build.diag/launcher.bin").write_bytes(image)
+                return result
+            with patch.object(Replay, "__call__", truncated):
+                results, _, _ = self.run_chain(self.steps(indices=(1,)))
+            self.assertEqual(results[0].outcome, "build_failed")
+            self.assertIn(message, next(self.args.out.glob("*-build.log")).read_text())
+        results, _, writes = self.run_chain(self.steps(indices=(1,)))
+        self.assertEqual(len(results[0].image_hash), chain.IMAGE_HASH_DIGITS)
+        self.assertEqual(writes[0]["cleanup"], "pending")
+        self.assertEqual({key: writes[-1]["steps"][0][key] for key in ("commit", "pr", "role", "position")},
+                         vars(self.steps(indices=(1,))[0]))
+        chain.write_json(self.args.data / "scoped/20E8/not-a-night/night.json", {"night": "invalid"})
+        self.assertNotEqual(lnt.read_last_night(self.args.data, "20E8")["night"], "invalid")
+
+    def test_main_refusals_replan_and_wait_rollover(self):
+        planned = dict(tip=self.commits[-1], night="2026-10-18", started=self.clock.now().isoformat(),
+                       lanes={"20E8": dict(lane="0/2", previous=None, steps=[])})
+        path = self.root / "plan.json"
+        path.write_text(json.dumps(planned))
+        base = ["chain", "run", "--plan", str(path), "--board", "20E8", "--lane", "0/2",
+                "--until", "07:00", "--data", str(self.args.data), "--out", str(self.args.out)]
+        suite = ["--suite", "suite", "-", "-"]
+        for command, token in ((base + suite, ""), (base, "token"),
+                               (base + suite + ["--selftest-at", "01:00"], "token"),
+                               (base + suite + ["--lane", "1/2"], "token")):
+            with patch.object(sys, "argv", command), patch.dict(os.environ, _AUTANA_DEVICE_LOCK_TOKEN=token), \
+                    patch.object(chain, "run_chain", return_value=[]), \
+                    patch.object(chain, "read_last_night", return_value={"selftest": {"outcome": "not_run"}}), \
+                    self.assertRaises(SystemExit) as caught:
+                chain.main()
+            self.assertEqual(caught.exception.code, 2)
+        with patch.object(sys, "argv", base + suite + ["--max-steps", "0"]), \
+                patch.dict(os.environ, _AUTANA_DEVICE_LOCK_TOKEN="token"), \
+                patch.object(chain, "select_steps", return_value=[]) as select, \
+                patch.object(chain, "run_chain", return_value=[]), \
+                patch.object(chain, "read_last_night", return_value={"selftest": {"outcome": "not_run"}}):
+            self.assertEqual(chain.main(), 0)
+            self.assertEqual(select.call_args.args[-1], 0)
+        with patch.object(sys, "argv", ["chain", "wait-seconds", "--until", "22:00"]), \
+                patch.object(chain, "Clock", return_value=self.clock), patch("sys.stdout", new_callable=io.StringIO) as output:
+            chain.main()
+        self.assertEqual(int(output.getvalue()), int(timedelta(hours=23, minutes=30).total_seconds()))
+
+    def test_plan_reads_each_boards_manifest(self):
+        previous = {"20E8": {"last_measured": self.commits[0]}, "2124": {"last_measured": self.commits[2]}}
+        args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=list(previous), data=self.args.data,
+                               out=self.root / "plan.json", queue_at=None, from_sha=None, max_steps=None,
+                               selftest_board=None)
+        with patch.object(chain, "read_last_night", side_effect=lambda data, board: previous[board]):
+            chain.plan(args, self.clock)
+        planned = json.loads(args.out.read_text())
+        self.assertEqual({board: lane["previous"] for board, lane in planned["lanes"].items()}, previous)
+
+    def test_cleanup_fallback_deletes_tree_and_copies_records(self):
+        original_git, original_replay, original_remove = chain.git, Replay.__call__, chain.remove_output
+        def records(replay, command, *args, **kwargs):
+            result = original_replay(replay, command, *args, **kwargs)
+            if "build" in command:
+                project = Path(command[command.index("--project") + 1])
+                record = project / ".records/device/record.json"
+                record.parent.mkdir(parents=True, exist_ok=True)
+                record.write_text("device record")
+            return result
+        def fail_remove(repo, *words):
+            if "worktree" in words and "remove" in words:
+                raise subprocess.CalledProcessError(1, words)
+            return original_git(repo, *words)
+        def remove(path):
+            path = Path(path)
+            if path.name != "tree":
+                self.assertFalse((path / "tree").exists())
+            original_remove(path)
+        with patch.object(chain, "git", side_effect=fail_remove), patch.object(Replay, "__call__", records), \
+                patch.object(chain, "remove_output", side_effect=remove):
+            _, _, writes = self.run_chain(self.steps(indices=(1,)))
+        self.assertFalse(list(self.args.out.glob("nightly-*")))
+        self.assertEqual((self.args.out / "device/record.json").read_text(), "device record")
+        self.assertEqual(writes[0]["cleanup"], "pending")
+
+    def test_latest_build_and_missing_booted_build(self):
+        for name, stamp in (("build.new", 300), ("build.old", 100), ("build.middle", 200)):
+            path = self.repo / "launcher" / name / "build_id.txt"
+            path.parent.mkdir(parents=True)
+            path.write_text(name)
+            os.utime(path, (stamp, stamp))
+        self.assertEqual(layout_measure.latest_build(self.repo).name, "build.new")
+        with self.assertRaises(RuntimeError):
+            layout_measure.booted_build_id(self.root / "missing", [])
+
+    def test_generic_table_preserves_stage_rows(self):
+        capture = self.root / "capture.log"
+        text = "stage=frame paused=0 quarter=portrait mean_us=412\nstage=frame paused=1 quarter=landscape mean_us=413"
+        capture.write_text(text)
+        table = make_table("-", capture, self.root / "table.md")
+        self.assertEqual(parse_report(table), parse_timings(text))
+        self.assertEqual(len(parse_report(table)), 2)
 
     def test_full_serial_board_selection(self):
         self.args.board = MACHINE.lower()
@@ -553,7 +664,7 @@ class LaneSettingsTests(unittest.TestCase):
             plan.write_text(json.dumps({"lanes": {"board": {"lane": "0/1", "estimate": 42}}}))
             script = PERF / "nightly/lane.sh"
             command = r"""
-autana() { printf '%s\n' "$@"; }
+autana() { printf '%s\n' "$@"; printf 'BOARD_CI_LOG=%s\n' "${BOARD_CI_LOG:-}"; }
 export -f autana
 bash "$1" board "$2" data out -- --suite suite - "table with spaces"
 """
@@ -565,6 +676,15 @@ bash "$1" board "$2" data out -- --suite suite - "table with spaces"
             self.assertEqual(args[args.index("--suite") + 1:args.index("--suite") + 4],
                              ["suite", "-", "table with spaces"])
             self.assertEqual(args[args.index("--estimate") + 1], "42")
+            env["SELFTEST_BOARD"] = "another-board"
+            env["BOARD_CI_LOG"] = "inherited-log"
+            other = subprocess.run(["bash", "-c", command, "lane-test", script.as_posix(), plan.as_posix()],
+                                   cwd=root, env=env, capture_output=True, text=True, check=True).stdout.splitlines()
+            self.assertNotIn("--selftest", other)
+            self.assertNotIn("--selftest-at", other)
+            self.assertIn("BOARD_CI_LOG=", other)
+            env["SELFTEST_BOARD"] = "board"
+
             for option, setting in (("--until", "WINDOW_END"), ("--selftest-at", "SELFTEST_AT")):
                 with self.subTest(option=option):
                     self.assertEqual(args[args.index(option) + 1], env[setting])

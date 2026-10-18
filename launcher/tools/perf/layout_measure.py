@@ -1,5 +1,4 @@
 """Seeded capture acquisition and variance estimates shared by performance tools."""
-from functools import partial
 import json
 import os
 import math
@@ -23,7 +22,6 @@ from process_tree import stop_process_tree, launch_process_tree, close_process_t
 from device_capture import RESULT_RE, BUILD_ID_RE as BUILD_LINE  # noqa: E402
 
 MEAN_RE = re.compile(r"\b(?P<name>\S+) (?:(?:both cores|one core): )?mean\s+(?P<value>\d+)us\b")
-BUILD_NICE_INCREMENT = 5
 NUMBER_RE = re.compile(r"^[+-]?\d+$")
 
 
@@ -88,7 +86,7 @@ def autana_command(*words, override=None):
     return command + list(words)
 
 
-def run_stamped(command, log, timeout=1800, *, below_normal=False):
+def run_stamped(command, log, timeout=1800):
     """Stamp each output line; past the deadline, stop the command's whole process tree."""
     import queue
     import threading
@@ -96,14 +94,8 @@ def run_stamped(command, log, timeout=1800, *, below_normal=False):
     deadline = started + timeout
     lines = []
     messages = queue.Queue()
-    options = {}
-    if below_normal:
-        if os.name == "nt":
-            options["creationflags"] = subprocess.BELOW_NORMAL_PRIORITY_CLASS
-        else:
-            options["preexec_fn"] = partial(os.nice, BUILD_NICE_INCREMENT)
     process = launch_process_tree(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                               text=True, bufsize=1, cwd=REPO, **options)
+                               text=True, bufsize=1, cwd=REPO)
     def read():
         for line in process.stdout:
             messages.put((time.monotonic() - started, line.rstrip("\n")))
