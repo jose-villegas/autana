@@ -146,7 +146,7 @@ read_injected_fifo(imu_sample_t* out, int capacity, bool* overflowed) {
     const int count = elapsed > capacity ? capacity : (int)elapsed;
     *overflowed = elapsed > capacity;
     for (int i = 0; i < count; i++) {
-        memcpy((unsigned char*)out + (size_t)i * sizeof sample, &sample, sizeof sample);
+        memcpy((unsigned char*)out + ((size_t)i * sizeof sample), &sample, sizeof sample);
     }
     return count;
 }
