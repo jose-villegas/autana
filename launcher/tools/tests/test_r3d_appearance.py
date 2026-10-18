@@ -112,18 +112,19 @@ class StretchTests(unittest.TestCase):
                 fitted[3:] = points[3:]
                 report = stretch_report(mesh, mesh._replace(points=fitted), np.arange(len(tris)))
                 self.assertEqual(len(report["parts"]), 2)
-                self.assertEqual(report["parts"][0]["share"], expected)
-                self.assertEqual(report["parts"][1]["share"], 0)
-                self.assertEqual(report["small"], dict(triangles=1, share=expected))
-                self.assertEqual(report["rest"]["share"], 0)
-                self.assertEqual(report["worst"][0]["part"], report["parts"][0]["part"])
+                self.assertEqual(report["parts"][0]["stretch"], expected)
+                self.assertEqual(report["parts"][1]["stretch"], 0)
+                self.assertEqual(report["small"]["triangles"], 1)
+                self.assertEqual(report["small"]["stretch"], expected)
+                self.assertEqual(report["rest"]["stretch"], 0)
+                self.assertEqual(report["worst"]["stretch"][0]["part"], report["parts"][0]["part"])
                 self.assertAlmostEqual(report["parts"][0]["mean_start_edge"], (2 + np.sqrt(2)) / 3)
         report = stretch_report(mesh, mesh._replace(points=fitted, tris=tris[1:]), np.array([1]))
         self.assertEqual(len(report["parts"]), 1)
         self.assertEqual(report["parts"][0]["triangles"], 1)
         self.assertEqual(report["parts"][0]["part"], 1)
         self.assertEqual(report["small"]["triangles"], 0)
-        self.assertEqual(report["rest"], dict(triangles=1, share=0.0))
+        self.assertEqual(report["rest"], dict(triangles=1, stretch=0.0, area_growth=0.0, moved=0.0))
 
     def test_part_size_uses_unique_edges_before_pruning(self):
         from r3d.appearance_simplify import stretch_report
@@ -137,7 +138,7 @@ class StretchTests(unittest.TestCase):
             with self.subTest(kept=kept):
                 report = stretch_report(mesh, mesh._replace(tris=tris[kept]), kept)
                 self.assertAlmostEqual(report["parts"][0]["mean_start_edge"], expected)
-                self.assertEqual(report["small"], dict(triangles=len(kept) - 1, share=0.0))
+                self.assertEqual(report["small"], dict(triangles=len(kept) - 1, stretch=0.0, area_growth=0.0, moved=0.0))
 
     def test_collapsed_start_triangle_counts_as_stretched(self):
         from r3d.appearance_simplify import stretch_report, triangle_stretch
@@ -150,8 +151,57 @@ class StretchTests(unittest.TestCase):
         fitted_mesh = mesh._replace(points=fitted)
         self.assertTrue(np.isinf(triangle_stretch(points, fitted, mesh)[0]))
         report = stretch_report(mesh, fitted_mesh, np.array([0]))
-        self.assertEqual(report["parts"][0]["share"], 100.0)
-        self.assertEqual(report["rest"], dict(triangles=1, share=100.0))
+        self.assertEqual(report["parts"][0]["stretch"], 100.0)
+        self.assertEqual(report["rest"], dict(triangles=1, stretch=100.0, area_growth=0.0, moved=100.0))
+
+    def test_area_growth_detects_opening_without_long_edge_stretch(self):
+        from r3d.appearance_simplify import AREA_GROWTH_RATIO, STRETCH_RATIO, stretch_report, triangle_area_growth, triangle_stretch
+
+        points = np.array([[0., 0., 0.], [1., 0., 0.], [0., 1 / (AREA_GROWTH_RATIO * STRETCH_RATIO), 0.]])
+        tris = np.array([[2, 0, 1]])
+        mesh = FitMesh(points, np.ones_like(points), tris, np.zeros(len(tris)), 1, np.array([1, 2, 0]))
+        for ratio, expected in ((AREA_GROWTH_RATIO * 0.99, 0.0), (AREA_GROWTH_RATIO, 0.0),
+                                (AREA_GROWTH_RATIO * 1.01, 100.0)):
+            with self.subTest(ratio=ratio):
+                fitted = points.copy()
+                fitted[2, 1] *= ratio
+                self.assertAlmostEqual(triangle_area_growth(points, fitted, mesh)[0], ratio)
+                self.assertLess(triangle_stretch(points, fitted, mesh)[0], STRETCH_RATIO)
+                report = stretch_report(mesh, mesh._replace(points=fitted), np.array([0]))
+                self.assertEqual(report["rest"]["area_growth"], expected)
+                self.assertEqual(report["parts"][0]["area_growth"], expected)
+                self.assertEqual(report["worst"]["area_growth"][0]["area_growth"], expected)
+                self.assertEqual(report["rest"]["stretch"], 0.0)
+
+    def test_translation_counts_corner_moves_in_mean_start_edges(self):
+        from r3d.appearance_simplify import MOVED_EDGES, stretch_report, triangle_edges, triangle_moved
+
+        points = np.array([[0., 0., 0.], [0.003, 0., 0.], [0., 0.004, 0.]])
+        tris = np.array([[0, 1, 2]])
+        mesh = FitMesh(points, np.ones_like(points), tris, np.zeros(len(tris)), 1, np.arange(len(points)))
+        mean_edge = triangle_edges(points, tris, mesh.vertex_point).mean()
+        for ratio, expected in ((MOVED_EDGES * 0.99, 0.0), (MOVED_EDGES, 0.0), (MOVED_EDGES * 1.01, 100.0)):
+            with self.subTest(ratio=ratio):
+                fitted = points + [0., 0., ratio * mean_edge]
+                self.assertAlmostEqual(triangle_moved(points, fitted, mesh)[0], ratio)
+                report = stretch_report(mesh, mesh._replace(points=fitted), np.array([0]))
+                self.assertEqual(report["rest"], dict(triangles=1, stretch=0.0, area_growth=0.0, moved=expected))
+                self.assertEqual(report["parts"][0]["moved"], expected)
+                self.assertEqual(report["worst"]["moved"][0]["moved"], expected)
+
+    def test_zero_area_start_triangle_that_opens_counts_as_grown(self):
+        from r3d.appearance_simplify import stretch_report, triangle_area_growth, triangle_moved
+
+        points = np.zeros((3, 3))
+        tris = np.array([[0, 1, 2]])
+        mesh = FitMesh(points, np.ones_like(points), tris, np.zeros(len(tris)), 1, np.arange(len(points)))
+        fitted = np.eye(3)
+        self.assertTrue(np.isinf(triangle_area_growth(points, fitted, mesh)[0]))
+        self.assertTrue(np.isinf(triangle_moved(points, fitted, mesh)[0]))
+        report = stretch_report(mesh, mesh._replace(points=fitted), np.array([0]))
+        self.assertEqual(report["rest"]["area_growth"], 100.0)
+        unchanged = stretch_report(mesh, mesh, np.array([0]))
+        self.assertEqual(unchanged["rest"], dict(triangles=1, stretch=0.0, area_growth=0.0, moved=0.0))
 
 
 @unittest.skipIf(torch is None, "needs PyTorch")
@@ -479,7 +529,7 @@ class PruneAndCostTests(unittest.TestCase):
                     self.assertEqual(budget, len(pruned.tris))
                     report = json.loads((pathlib.Path(directory) / "stretch.json").read_text())
                     self.assertEqual(sum(row["triangles"] for row in report["parts"]), len(pruned.tris))
-                    self.assertEqual(report["rest"]["share"], 0)
+                    self.assertEqual(report["rest"]["stretch"], 0)
 
     def test_invalid_surface_flags_fail_before_loading_a_scene(self):
         from r3d import appearance_simplify as appearance
