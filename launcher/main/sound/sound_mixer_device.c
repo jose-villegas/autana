@@ -1,4 +1,4 @@
-/* The mixer task owns PCM writes; producers reserve control state before queueing commands. */
+/* The mixer task owns PCM writes; callers never wait for it (locking rules at control_lock). */
 #include "sound/sound_engine.h"
 
 #include <stdatomic.h>
@@ -17,6 +17,9 @@
 #include "profile/frame_cost.h"
 
 static const char* TAG = "sound";
+/* Covers handle reservation only. A nonblocking producer flag serializes zero-wait queue sends
+ * outside it; decoding, mixing and I2S writes never take it. A finished voice retires only a
+ * matching handle, so it cannot revive a stopped voice or overwrite a newer reservation. */
 static portMUX_TYPE control_lock = portMUX_INITIALIZER_UNLOCKED;
 static sound_control_t control;
 static atomic_flag producer = ATOMIC_FLAG_INIT;

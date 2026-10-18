@@ -1,190 +1,332 @@
 # Sound mixer
 
-The engine's `sound/` layer plays [stored sounds](Sound-Assets.md) through the
-platform `audio/` driver. `sound_play.h` is the app API. `sound_engine.h` is for
-boot, the shell and development inspection; `sound_mixer.h` contains the
-portable control plane and PCM renderer.
+The sound mixer plays [stored sounds](Sound-Assets.md) on the speaker: an app
+asks for a sound, and one background task mixes every playing sound into the
+codec (the audio chip that drives the speaker). The app API is `sound/sound_play.h`; the shell and boot use
+`sound/sound_engine.h`.
 
-## Task and commands
+## Playing a sound
 
-`SOUND_MIXER_TASK_CORE`, `SOUND_MIXER_TASK_PRIORITY`, `SOUND_MIXER_TASK_STACK`,
-`SOUND_MIXER_QUEUE_DEPTH` and `SOUND_MIXER_BLOCK_FRAMES` in `sound_engine.h`
-own the scheduling and buffering limits. The block size derives from
-`AUDIO_CODEC_BLOCK_SAMPLES`; a block lasts
-`SOUND_MIXER_BLOCK_FRAMES / AUDIO_OUT_SAMPLE_RATE_HZ` seconds.
+An app opens a sound from an asset pack once, keeps it in app state, and plays
+it by pointer. A pack is the read-only bundle of baked content in flash
+([Asset packs](../assets/README.md)); the engine pack ships a `tap` click any
+app may use:
 
-The mixer preempts present and the job worker on core 1, then blocks in the
-driver's PCM write for most of the block interval. It drains commands before
-mixing into an int32 accumulator and saturating with `maths_saturate()`. The
-mixer alone calls `audio_out_write()`; it writes silence while idle and while
-the amplifier warms. TX auto-clear zeroes stale DMA data on underrun.
+```c
+#include "asset/asset_store.h"                          /* asset_store_pack, ASSET_ENGINE_PACK */
+#include "sound/sound_play.h"
 
-```mermaid
-flowchart TB
-    subgraph Path["Command and PCM flow"]
-        direction LR
-        Caller["Caller reserves handle<br/>in control state"] --> Queue["Command queue"] --> Mixer["Mixer task"]
-        Mixer --> Driver["audio/ driver"] --> DMA["I2S TX DMA"]
-    end
-    subgraph Amp["Amplifier states"]
-        direction LR
-        Off["Off"] -->|voice starts| Warming["Warming, silence"]
-        Warming -->|startup elapsed| On["On, mix voices"]
-        On -->|idle deadline| Off
-        Warming -->|idle deadline| Off
-    end
+static sound_t tap;                                       /* app state, not a stack local */
+if (sound_open(asset_store_pack(ASSET_ENGINE_PACK), "tap", &tap) != ASSET_OK) { /* no click */ }
+sound_voice_t v = sound_play(&tap, NULL);                 /* SFX bus, full gain, once */
+sound_stop(v);                                            /* optional; stale handles are ignored */
 ```
 
-Applications never wait for the mixer. A short control lock protects handle
-reservation; a nonblocking producer reservation serializes zero-wait queue
-sends outside that lock. Decoding, mixing and I2S writes happen outside it.
+`sound_play()` never waits: it returns a handle at once and the mixer starts
+the sound within one block of 128 samples, about 5.8 ms. If the open failed,
+or sound is off, `sound_play()` returns the null voice and nothing plays.
 
-The renderer owns its cursors separately from the control plane, so producers can reserve or stop voices while the task is writing.
-Completion publication only retires the matching handle and cannot revive a
-stopped voice or overwrite a newer reservation.
+### Your own sound
 
-Queue entries carry an opcode, full voice handle and app generation, packed
-options, and a payload shared by sound pointers, tone frequency and capture
-completion. Their size is asserted against `SOUND_COMMAND_BYTES`; the
-depth permits a play and a control call per voice within one frame.
+To add your own sound, put `NAME.sound.toml` and its WAV in your app's pack
+folder; the build bakes it into entry `NAME` ([Sound assets](Sound-Assets.md),
+[Packs](../assets/README.md#packs)). Then open it from your pack with
+`asset_store_pack()` the same way.
 
-A full queue drops a command without changing control state, returns a null
-voice or invalid bus for allocating calls, and increments `dropped_commands`,
-visible in `autana sound stats`.
+| Format | Pack size per second | Example: 220 ms click |
+|---|---|---|
+| PCM16, 22,050 Hz mono | about 44 KB | about 9.7 KB |
+| IMA-ADPCM (4:1 compressed, slightly lossy) | about 11 KB | about 2.5 KB (the engine `tap`) |
+
+A sound costs no RAM beyond its small `sound_t`: samples are read from the
+pack in flash.
+
+### Which bus
+
+| Sound | Bus |
+|---|---|
+| UI feedback: taps, clicks, confirmations | `SOUND_BUS_SYSTEM`, so the shell's UI volume applies |
+| Game effects | `SOUND_BUS_SFX`, the default |
+| Music | `SOUND_BUS_MUSIC` |
+
+Pass the bus in `sound_play_opts_t`; NULL options mean SFX, full gain,
+`SOUND_PRIORITY_NORMAL` and no loop.
+
+### First-click delay
+
+The speaker amplifier switches off 2 s after the last sound and needs about
+250 ms to warm up (`SOUND_AMP_IDLE_MS`, `AUDIO_OUT_AMP_STARTUP_MS`). The first
+click after a quiet spell therefore starts about 250 ms late; later clicks
+start within one block.
+
+### Keep the sound alive until the app exits
+
+`sound_play()` stores your pointer and copies no samples, so the `sound_t` and
+its pack must stay valid until the app exits. Stopping a voice, losing it to a
+steal, or `sound_is_playing()` returning false do not free it: the mixer may
+still read it for up to one block.
+
+App exit is safe: the shell stops every voice and bus the app started and
+waits for the mixer before it releases packs and app memory
+([App exit](#app-exit)).
+
+## Cost
+
+A click costs its pack bytes in flash (2.5 KB for the engine `tap`), no RAM
+beyond its `sound_t`, and about 0.05 ms of CPU per block while it plays.
+
+The mixer uses under 1 % of core 1 and about 6.3 KB of internal heap, paid at
+boot whether or not anything plays. Measured on the reference board (A308) with
+a development build (the firmware flavour that adds console commands):
+
+| Cost | Value |
+|---|---|
+| CPU, one ADPCM voice looping | 0.05 ms average, 0.09 ms worst per 5.8 ms block |
+| Display push (the frame loop's present stage), idle vs one voice looping | 8.93–9.02 ms vs 8.91–9.02 ms per frame: no change |
+| Internal heap, vs the same build without the mixer | −6,300 B free (2.2 % of 282,739); largest free block −4,096 B |
+| Extra RAM while a development capture runs | about 1.4 KB of microphone buffers (`open_dma_bytes` 1,448): TX is already open, so only RX is new; freed when it closes, within a few dozen bytes. [Audio-Path's RAM capture](Audio-Path.md#ram) predates the mixer and opened both |
+
+Per-voice cost and PCM16 against ADPCM have not been measured yet. Internal RAM
+is the chip's fast on-die memory; the 8 MB PSRAM (slower external RAM) is not used.
+
+### Measuring it
+
+| Number | Command |
+|---|---|
+| CPU | the `sound_mix` entry in the frame-cost report a development build prints, average/worst ms per block |
+| Heap and largest block | `autana heap --json`, against a build without the mixer |
+| Mixer sizes and stack headroom | `autana sound stats` |
+| Capture RX DMA | `open_dma_bytes` in `autana tone ... --json` |
+
+The mixer runs on another task, so `profile/frame_cost.c` adds its time to the
+report separately instead of bracketing it like a frame stage.
+
+### Internal RAM
+
+`autana sound stats` prints the mixer's own allocations:
+
+| Part | Bytes | Where it lives |
+|---|---|---|
+| Task stack (`stack`) | 2,560 | `SOUND_MIXER_TASK_STACK`; holds the block's mix, decode and output buffers |
+| TX sample buffers (`tx_samples`) | 1,024 | `AUDIO_CODEC_DMA_BLOCKS` x `AUDIO_CODEC_BLOCK_SAMPLES` x 16-bit, allocated once at boot |
+| Mixer and control state (`mixer`) | 788 | voice table, bus table and development stats |
+| Command queue (`queue`) | 340 | `SOUND_MIXER_QUEUE_DEPTH` 16-byte entries plus the queue's own control block |
+| Total | 4,712 | |
+
+The other 1.6 KB of the heap cost is ESP-IDF's: the I2S channel, DMA
+descriptors, codec handles, the task control block and allocation headers.
+
+`stack_min_free` in `sound stats` is the stack's high-water mark. The playback
+peak was 1,964 bytes, so `SOUND_MIXER_STACK_PLAYBACK_BYTES` rounds it up to
+2,048 and `SOUND_MIXER_STACK_MARGIN_BYTES` adds 512.
 
 ## Voices and buses
 
-Keep the `sound_t` and its pack alive until app exit, in app state, never a
-stack local. `sound_play()` borrows the pointer; a queued PLAY dereferences it.
+A voice is one playing sound, and a bus is a volume group that voices play
+through. The limits are named in `sound_play.h`.
 
-Stop, stealing and `sound_is_playing() == false` are not reclamation fences:
-the mixer may still read the source for up to a block.
+### Handles and stealing
 
-App exit is the release point: the shell's barrier waits for the mixer before
-packs and the arena are released. Engine-owned SYSTEM sounds survive exit
-and need storage that survives the app.
+Each voice slot keeps a voice generation: a counter it bumps every time the
+slot is reused, so an old handle can never reach a newer sound in its slot.
 
-Every voice and custom bus belongs to the running app generation, regardless
-of bus routing, or to the engine while the launcher runs; plays during the
-exit callback window return the null voice.
-
-| Contract | Owner or behavior |
+| Rule | Behaviour |
 |---|---|
-| Voice capacity | `SOUND_VOICE_COUNT` in `sound_play.h` |
-| Voice handle | Slot and generation encoded in `sound_voice_t.id`, zero is null |
-| Default options | SFX bus, full percent gain, `SOUND_PRIORITY_NORMAL`, one-shot |
-| Full voice table | Steal the lowest priority, then the oldest start among equals |
-| Stale handles | Stop and gain changes have no effect; `sound_is_playing()` is false |
-| Bus capacity | `SOUND_BUS_COUNT_MAX`, including SYSTEM, SFX and MUSIC |
-| Custom buses | Flat routes to master, created by name, invalid when capacity is exhausted |
-| Bus destruction | Stops its voices; the slot is available for another create |
-| Built-in buses | Remain allocated across application exits |
-| Master | `SOUND_BUS_MASTER` is accepted by `sound_set_bus_gain()` |
+| Capacity | 8 voices at once (`SOUND_VOICE_COUNT`) |
+| Handle | `sound_voice_t.id` encodes the slot and its voice generation; 0 is the null voice |
+| Stale handle | after a stop or a steal, stop and gain calls do nothing and `sound_is_playing()` is false |
+| Full table | a new play always steals: the lowest priority voice, then the oldest among equals |
 
-All gains are percent values bounded by `SOUND_GAIN_MAX_PCT`. Out-of-range
-values are ignored. Once per block, the renderer multiplies each bus gain by
-master gain and folds each voice gain into a fixed-point factor. Each sample
-uses a 32-bit multiply and shift before accumulation. Codec output volume is fixed by
-`AUDIO_OUT_CODEC_VOLUME` in `audio_out.c`; application gain never changes it.
+### Buses and gain
 
-Authored loops wrap inside `sound_read()`. With `opts.loop` enabled on
-a sound without loop points, a short read re-seeks to frame zero. One-shot
-playback of a sound with loop points stops at `loop_end`, with no release tail.
-
-## Amplifier and lifetime
-
-| State | Output and transition |
+| Bus | Purpose |
 |---|---|
-| Off | Silence; the first active voice enables the amplifier without sleeping |
-| Warming | Silence, every voice position holds until `AUDIO_OUT_AMP_STARTUP_MS` |
-| On | Mix active voices; disable after `SOUND_AMP_IDLE_MS` without a voice |
+| `SOUND_BUS_SYSTEM` | UI sounds; one volume for the shell and every app |
+| `SOUND_BUS_SFX` | game sound effects; the default |
+| `SOUND_BUS_MUSIC` | music |
+| custom | `sound_bus_create(name)`, up to `SOUND_BUS_COUNT_MAX` buses in all; invalid handle when full |
+| `SOUND_BUS_MASTER` | gain only: scales every bus |
 
-`sound_init()` runs at boot beside the audio POST check. The driver opens TX
-once and keeps its DMA. RX DMA exists only during a development capture.
+Every bus feeds master directly; there is no nesting. Gains are percents up to
+`SOUND_GAIN_MAX_PCT`, and out-of-range values are ignored. Each sample is
+scaled by:
 
-Capture callers queue a sequence-tagged park request. The mixer acknowledges
-between PCM blocks and parks, holding voice positions.
+`voice gain x bus gain x master gain`
 
-The caller's task opens or closes RX through the shared codec adapter, then
-resumes the mixer.
+The mixer folds the three into one fixed-point factor per voice per block, so a
+sample costs one 32-bit multiply and shift. The codec's own volume is fixed at
+`AUDIO_OUT_CODEC_VOLUME` in `audio_out.c`; apps never change it.
 
-The adapter pauses TX while RX changes, preserving its ESP32-S3 safeguard.
-A timed-out park request is cancelled; late commands cannot park the mixer,
-and late acknowledgements cannot satisfy a later request.
+Destroying a bus stops its voices and frees its slot. The three built-in buses
+are never destroyed.
 
-`shell_exit_app()` closes the app generation before the exit callback and
-system teardown. The barrier retires app voices and buses and waits for the
-retired read epoch; queued commands from that generation are rejected.
+### Loops
 
-The epoch covers command application and PCM mixing, excluding blocking I2S
-writes and capture. `SOUND_EXIT_READ_TIMEOUT_MS` aborts on a stuck reader.
-`sound_begin_app()` opens a fresh generation before the next app enters.
-
-Engine-owned voices and buses survive exit. Built-in non-SYSTEM bus gains and
-master reset through a mixer command; SYSTEM retains the shell's UI volume.
-The shell restores engine ownership after the exit callbacks finish.
-
-On initialization failure the engine records the failed step, logs it once
-and leaves playback disabled. POST prints `audio: init failed (<step>)` and
-boot continues.
-
-Playback calls become silent no-ops: a play returns a null voice, a bus create
-returns an invalid bus, and playing queries return false. The driver logs each
-failed operation while retaining the first startup failure for POST.
+- A sound with loop points loops inside them by itself (`sound_read()` wraps).
+- `opts.loop` on a sound without loop points restarts it from frame 0.
+- A sound with loop points played without `opts.loop` stops at `loop_end`; it cuts off there, with no release tail yet.
 
 ## Development console
 
+Development builds can play pack sounds from a terminal with
+[`autana`](../tools/Autana-CLI.md), the board's command-line tool.
+
 | Command | Result |
 |---|---|
-| `autana sound play tap` | Play the engine pack's tap sound once |
-| `autana sound play tap loop 50` | Loop at the requested percent gain |
-| `autana sound stop <voice>` | Stop the returned voice handle |
-| `autana sound stop all` | Stop all voices, including SYSTEM |
-| `autana sound stats` | Ready state, drops, amp state, voice metadata and RAM sizes |
+| `autana sound play tap` | play the engine pack's tap sound once |
+| `autana sound play tap loop 50` | loop it at 50 % gain |
+| `autana sound stop <voice>` | stop the voice the play returned |
+| `autana sound stop all` | stop every voice, SYSTEM included |
+| `autana sound stats` | ready state, drops, amplifier state, voices and RAM sizes |
 
-Successful console replies end in `SOUND_END`; errors start with `SOUND error:`
-or `SOUND usage:`. The CLI waits for that terminal reply when collecting voice
-states. The console retains immutable named sound views in PSRAM with the
-mounted engine pack, so returning from a command leaves its voices' views
-valid. The `tone` verb uses a SYSTEM tone source rendered with the existing
-`audio_tone` synthesizer; [capture and detection](Audio-Path.md#development-check)
-keep their console output and JSON fields.
+Replies end in `SOUND_END`; errors start with `SOUND error:` or
+`SOUND usage:`. The console keeps the sounds it opened in PSRAM, so a voice
+outlives the command that started it. The `tone` verb plays through the mixer
+as an engine tone on the SYSTEM bus; its
+[capture and detection](Audio-Path.md#development-check) output is unchanged.
 
-The frame-cost report includes `sound_mix` average/worst milliseconds per
-block and its block count in the same reporting window as the frame stages.
-`profile/frame_cost.c` accumulates that foreign-task duration separately;
-frame-task brackets and hardware counters retain their task ownership.
+## Task and queue
 
-## Internal RAM
+From here on the page is for firmware contributors. One task on core 1 is the
+only writer to the speaker: callers queue commands, and the task mixes and
+writes one block at a time.
 
-`autana sound stats` reports `sizeof` values from the firmware and, in a
-development build, `stack_min_free` from `uxTaskGetStackHighWaterMark()` in
-bytes, sampled on the mixer task. `SOUND_MIXER_STACK_PLAYBACK_BYTES` rounds
-the A308 playback peak of 1,964 bytes up to 2,048 bytes.
-`SOUND_MIXER_STACK_MARGIN_BYTES` adds 512 bytes of headroom.
+```mermaid
+flowchart LR
+    Caller["App or shell<br/>reserves a handle"] --> Queue["Command queue"] --> Mixer["Mixer task"]
+    Mixer --> Driver["audio/ driver"] --> DMA["I2S TX DMA"]
+```
 
-The allocation formula below includes control and renderer state and the
-configured stack. Board heap deltas include the IDF's channel, codec and
-allocator metadata and are measured separately.
-Static mixer, control and queue storage reduces free internal heap before boot
-code runs; task and driver allocations appear during `sound_init()`. A total
-comparison uses boot headroom between builds, not just the initialization delta.
+### Scheduling
 
-| Allocation | Computed owner |
+| Constant (`sound_engine.h`) | What it limits | Where its value comes from |
+|---|---|---|
+| `SOUND_MIXER_TASK_CORE` | the core the mixer runs on | core 1, beside present and the job worker |
+| `SOUND_MIXER_TASK_PRIORITY` | its priority | above `PRESENT_TASK_PRIORITY` and `JOB_CORE1_PRIORITY` |
+| `SOUND_MIXER_TASK_STACK` | its stack | `SOUND_MIXER_STACK_PLAYBACK_BYTES` + `SOUND_MIXER_STACK_MARGIN_BYTES` |
+| `SOUND_MIXER_QUEUE_DEPTH` | queued commands | a play and a control call per voice within one frame |
+| `SOUND_MIXER_BLOCK_FRAMES` | frames mixed per write | `AUDIO_CODEC_BLOCK_SAMPLES` |
+
+A block lasts `SOUND_MIXER_BLOCK_FRAMES / AUDIO_OUT_SAMPLE_RATE_HZ` seconds.
+
+Present (the task that pushes frames to the display) and the job worker (the
+background task for frame work) share core 1. The mixer preempts both, then
+blocks in the driver's write for most of each block. Each block it applies
+queued commands, mixes into 32-bit sums, saturates to 16-bit and writes.
+
+### Locking
+
+Callers never wait for the mixer. A short lock covers only handle reservation;
+decoding, mixing and I2S writes happen outside it. The full rules are in the
+comment at `control_lock` in `sound_mixer_device.c`.
+
+### Queue and overflow
+
+| Field of a queue entry | Holds |
 |---|---|
-| Renderer voice table | `sizeof mixer.voices` (`voices` field in stats) |
-| Mixer/control state | `sizeof mixer + sizeof control`, plus the dev snapshot, capture handshake and stack watermark (`mixer`, includes voice table) |
-| Queue payload and control | `sizeof queue_storage + sizeof queue_control` (`queue`) |
-| Task stack, including PCM scratch buffers | `SOUND_MIXER_TASK_STACK`, 2,560 bytes (`stack`) |
-| TX DMA sample payload | `AUDIO_CODEC_DMA_BLOCKS * AUDIO_CODEC_BLOCK_SAMPLES * sizeof(int16_t)` (`tx_samples`) |
-| Accounted permanent total | `mixer + queue + stack + tx_samples` (voice table already included) |
-| Driver and scheduler overhead | IDF DMA descriptors, channel/data interfaces, codec state, task control block and allocation headers |
+| Opcode and flags | play, stop, gain, bus or capture command; loop and tone flags |
+| Voice handle | the slot and its voice generation |
+| App generation | which app sent it, so commands from an exited app are dropped |
+| Options | bus, gain and priority |
+| Payload | the sound pointer, a tone frequency or a capture sequence number |
 
-The output, accumulator and decode scratch arrays live on the mixer stack.
-Capture buffers live on the console stack and RX DMA is released at capture
-close. The engine's pack remains mounted for playback. A renderer voice keeps
-its handle, routing/gain/loop options, and playing/source flags,
-and a union of cursor or tone state; it holds no copied sound view or decoded
-sample buffer. Control voices keep handles, start order, owner generations, routing/options
-and playing/audible flags. Console view-cache entries live in PSRAM, with only the
-list head in internal RAM.
+Each entry is 16 bytes, checked at compile time against `SOUND_COMMAND_BYTES`.
+
+When the queue is full the command is dropped:
+
+| Call | Result |
+|---|---|
+| `sound_play()` | the null voice |
+| `sound_bus_create()` | an invalid bus |
+| stop and gain calls | nothing changes |
+| any dropped command | `dropped_commands` in `autana sound stats` goes up |
+
+### Amplifier
+
+The amplifier is powered only while sound plays, with a warm-up before the
+first sample.
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    Off --> Warming: a voice starts
+    Warming --> On: startup elapsed
+    On --> Off: idle deadline
+    Warming --> Off: idle deadline
+```
+
+| State | Output |
+|---|---|
+| Off | silence; the first voice turns the amplifier on without sleeping |
+| Warming | silence for `AUDIO_OUT_AMP_STARTUP_MS`; every voice's position holds |
+| On | the mix; off again after `SOUND_AMP_IDLE_MS` with no voice |
+
+During silence the task keeps writing blocks, so the DMA never runs dry. The
+TX channel's auto-clear setting zeroes stale data if it ever does.
+
+## App exit and capture
+
+Both points stop the mixer from reading something that is about to change: the
+app's memory at exit, and the codec's input channel during a capture.
+
+### App exit
+
+At exit the shell retires the app's sounds before anything is freed. Each app
+gets a new app generation when it enters; every voice, bus and queued command
+records the app generation that made it.
+
+```mermaid
+sequenceDiagram
+    participant Shell
+    participant Mixer
+    participant App
+    Shell->>Shell: retire the app generation, stop its voices, destroy its buses
+    Shell->>Mixer: wait until its current block no longer reads the app's sounds
+    Mixer-->>Shell: block finished
+    Shell->>App: exit()
+    Shell->>Shell: shell systems release packs
+    Shell->>Shell: back to engine owner, built-in gains reset
+    Shell->>Shell: rewind app memory
+    Note over Mixer: drops queued commands from the retired generation as it drains
+```
+
+- Calls made during the app's `exit()` change nothing, and `sound_play()` returns the null voice.
+- Sounds the shell plays (engine owned) survive every exit; their storage must too.
+- The SYSTEM bus keeps the shell's UI volume; SFX, MUSIC and master reset.
+- If the mixer does not finish within `SOUND_EXIT_READ_TIMEOUT_MS` it is stuck, and the board aborts rather than free memory it might read.
+
+### Capture
+
+A development capture (`autana tone`) parks the mixer while its own task
+changes the codec's input. Parked means the mixer stops between blocks and
+holds every voice's position.
+
+```mermaid
+sequenceDiagram
+    participant Console as Console task
+    participant Mixer
+    participant Codec
+    Console->>Mixer: park (numbered request)
+    Mixer-->>Console: parked (same number)
+    Console->>Codec: pause TX, open or close RX, resume TX
+    Console->>Mixer: resume
+```
+
+The ESP32-S3 codec adapter refuses to change RX (the microphone input) while
+TX (the speaker output) runs, which is why TX pauses. Each request carries a
+number, so a late reply to a timed-out request never satisfies the next one.
+
+## Initialization failure
+
+If the codec or the task cannot start, sound is off and boot continues.
+
+| Where | What happens |
+|---|---|
+| Log | the failed step, once |
+| POST (the power-on self-test) | `audio: init failed (<step>)` |
+| `sound_play()` | the null voice |
+| `sound_bus_create()` | an invalid bus |
+| `sound_is_playing()` | false |
+| Other calls | nothing |
+
+Later driver errors are logged each time; POST keeps the first startup failure.
