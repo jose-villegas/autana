@@ -2399,6 +2399,27 @@ class ResetReconnectTests(unittest.TestCase):
         self.assertIs(caught.exception, failure)
         connection.close.assert_called_once_with()
 
+    def test_flash_boot_of_a_chip_left_in_download_mode_gets_the_watchdog(self):
+        run = self.usb.esptool(self.now, self.sleep)
+        afters = []
+
+        def resetting(command, **kwargs):
+            after = command[command.index("--after") + 1]
+            afters.append(after)
+            self.usb.boot_line = (b"BUILD_ID=abc\n" + device.CONSOLE_UP + b"\n"
+                                  if after == "watchdog_reset" else b"")
+            return run(command, **kwargs)
+
+        args = Namespace(owner="agent", purpose="boot", variant="diag", worktree=".")
+        with mock.patch.object(device.subprocess, "run", side_effect=resetting), \
+             mock.patch.object(device, "resolve_capture_path", return_value=(os.devnull, False)), \
+             mock.patch.object(device, "record_capture", return_value="boot.log"), \
+             mock.patch.object(device, "git_commit", return_value=None), \
+             contextlib.redirect_stdout(io.StringIO()) as output:
+            device.await_console(args, BOARD, "abc", None, device.reset())
+        self.assertEqual(afters, ["hard_reset", "watchdog_reset"])
+        self.assertIn("booted BUILD_ID=abc", output.getvalue())
+
     def test_flash_boot_uses_returned_handle_without_opening_again(self):
         held = Namespace(held={"acquired_at": None}, kind="batch")
         def write(*unused):
