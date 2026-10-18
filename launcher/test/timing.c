@@ -37,6 +37,7 @@
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "gfx/present/gfx_mode.h"
 #include "test_harness.h"
 #include "unity.h"
 
@@ -148,11 +149,13 @@ run_body(void (*body)(void), suite_test_verdict_t* verdict) {
     UBaseType_t tasks_before = uxTaskGetNumberOfTasks();
     count_idle_passes();
     const size_t stack_free_before = uxTaskGetStackHighWaterMark(NULL);
+    (void)gfx_mode_take_denials(); /* only this body's own count */
 
     frame_watch_test_begin();
     call_protected(body);
     call_protected(suite_run_test_cleanup);
     verdict->watch = frame_watch_test_end();
+    verdict->layouts_denied = gfx_mode_take_denials();
     verdict->stack_free = uxTaskGetStackHighWaterMark(NULL);
     verdict->stack_deepened = verdict->stack_free < stack_free_before;
 
@@ -199,6 +202,10 @@ suite_judge_watched_test(void) {
                                   "work repeated frame after frame - see the FRAME_WATCH lines above");
     TEST_ASSERT_EQUAL_UINT32_MESSAGE(0, verdict->watch.dropped,
                                      "the frame watch ran out of room, so it may have missed one");
+    /* A refused layout leaves the test running a fallback it never meant to
+     * test, so it fails here rather than passing on that fallback. */
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(0, verdict->layouts_denied,
+                                     "gfx could not allocate a layout the test asked for - see the gfx error above");
 }
 #endif
 

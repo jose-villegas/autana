@@ -13,8 +13,9 @@ typedef struct {
     size_t leaked_8bit;
     size_t leaked_32bit;
     frame_watch_verdict_t watch;
-    size_t stack_free;   /* the main task's high-water mark after the first run */
-    bool stack_deepened; /* the first run set that mark */
+    size_t stack_free;       /* the main task's high-water mark after the first run */
+    bool stack_deepened;     /* the first run set that mark */
+    unsigned layouts_denied; /* gfx_mode_enter() refusals in the first run */
 } suite_test_verdict_t;
 
 /* Runs body the way RUN_TEST runs every test on the board and fills in

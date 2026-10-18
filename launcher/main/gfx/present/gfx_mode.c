@@ -108,6 +108,7 @@ static int band_render_height;
  * installed. Not a gfx_target.h render target: no drawing primitive writes
  * through it. */
 static uint8_t* indexed_image;
+static unsigned denials;
 static int indexed_grid_w, indexed_grid_h, indexed_cell_size;
 static gfx_color_t indexed_lut256[GFX_INDEXED_PALETTE_SIZE];
 static bool indexed_dither16_on;
@@ -436,6 +437,7 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
         if (granted.index_grid_w <= 0 || granted.index_grid_h <= 0 || granted.cell_size <= 0
             || !alloc_indexed_image(granted.index_grid_w, granted.index_grid_h)) {
             free_indexed_image();
+            denials++;
             return &current_mode; /* stays GFX_LAYOUT_FULL_FB */
         }
         free_full_framebuffer();
@@ -448,6 +450,7 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
     } else if (granted.layout == GFX_LAYOUT_BANDS) {
         if (!alloc_band_buffers(granted.band_height)) {
             free_band_buffers();
+            denials++;
             return &current_mode; /* stays GFX_LAYOUT_FULL_FB */
         }
         free_full_framebuffer();
@@ -503,6 +506,13 @@ gfx_mode_exit(void) {
 const gfx_mode_t*
 gfx_mode_current(void) {
     return &current_mode;
+}
+
+unsigned
+gfx_mode_take_denials(void) {
+    const unsigned taken = denials;
+    denials = 0;
+    return taken;
 }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT

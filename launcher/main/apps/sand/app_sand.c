@@ -576,6 +576,12 @@ start_sim(void) {
     input_ready = false;
     overlays_skipped_reason_logged = false;
 
+    /* The index image before the sim buffers: it must live in internal RAM
+     * and has no fallback, while the sim buffers are plain malloc and spill
+     * to PSRAM when internal RAM runs short. Asked for the other way round,
+     * the sim buffers take the internal block and the grant is denied. */
+    apply_gfx_action(sand_colour_on_start_sim(&colour_state, (sand_colour_mode_t)color_mode));
+
     const bool buffers_ok = alloc_sim_buffers(&buffers);
     /* LOUD, NOT FATAL, unlike the essential buffers: sand_enable_impulses
      * (NULL, ...) safely disables just DETONATE, so failing here alone
@@ -598,6 +604,8 @@ start_sim(void) {
                  "largest free block is %u",
                  GRID_W_MAX, GRID_H_MAX, GRID_W_MAX * GRID_H_MAX, (unsigned)memory_largest_block(MEMORY_8BIT));
         free_sim_buffers();
+        /* The failure screen, like the menu, has no indexed draw path. */
+        apply_gfx_action(sand_colour_on_enter_menu(&colour_state));
         failed = true;
         ui.screen = SAND_UI_RUNNING;
         return;
@@ -627,7 +635,6 @@ start_sim(void) {
 
     ESP_LOGI(TAG, "%d x %d grid, %d bytes, %d px cells", grid_w, grid_h, grid_w * grid_h, cell);
 
-    apply_gfx_action(sand_colour_on_start_sim(&colour_state, (sand_colour_mode_t)color_mode));
     if (!sand_colour_indexed_active(&colour_state)) {
         draw_clear(material_palette()[SAND_EMPTY]);
     }
