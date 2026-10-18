@@ -619,6 +619,38 @@ test_the_far_samples_climb_from_the_mesh_edge_to_far(void) {
     TEST_ASSERT_EQUAL_INT32(BOOT_ANIM_FAR_Q12, boot_anim_axis_far[BOOT_ANIM_AXIS_FAR_SAMPLES - 1].r);
 }
 
+/* The far lines start inside the mesh and thin out with distance: the
+ * gaps between them never shrink, and the last is within far. */
+static void
+test_the_far_lines_thin_out_with_distance(void) {
+    TEST_ASSERT_TRUE(boot_anim_far_lines[0] > 0);
+    TEST_ASSERT_TRUE(boot_anim_far_lines[0] < boot_anim_axis_far[0].r);
+    for (int n = 2; n < BOOT_ANIM_FAR_LINES; n++) {
+        TEST_ASSERT_TRUE(boot_anim_far_lines[n] - boot_anim_far_lines[n - 1]
+                         >= boot_anim_far_lines[n - 1] - boot_anim_far_lines[n - 2]);
+    }
+    TEST_ASSERT_TRUE(boot_anim_far_lines[BOOT_ANIM_FAR_LINES - 1] <= BOOT_ANIM_FAR_Q12);
+}
+
+static void
+test_the_far_chord_is_the_floor_of_the_true_half_chord(void) {
+    const int32_t radii[] = {boot_anim_axis_far[0].r, BOOT_ANIM_ONE * 37, BOOT_ANIM_FAR_Q12};
+    for (size_t i = 0; i < sizeof(radii) / sizeof(radii[0]); i++) {
+        const int32_t r = radii[i];
+        for (int n = 0; n < BOOT_ANIM_FAR_LINES; n++) {
+            const int32_t c = boot_anim_far_lines[n];
+            const int64_t h = ((int64_t)r * r) - ((int64_t)c * c);
+            const int64_t half = boot_anim_far_chord(r, c);
+            if (h <= 0) {
+                TEST_ASSERT_EQUAL_INT64(0, half);
+                continue;
+            }
+            TEST_ASSERT_TRUE(half * half <= h);
+            TEST_ASSERT_TRUE((half + 1) * (half + 1) > h);
+        }
+    }
+}
+
 /* The floor reaches the mesh's edge until the mesh has arrived, then grows
  * outward, never back, to far over BOOT_ANIM_FAR_GROW_MS. */
 static void
@@ -1811,6 +1843,8 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_the_axis_lines_leave_the_mesh_without_a_step);
     RUN_TEST(test_the_far_samples_climb_from_the_mesh_edge_to_far);
     RUN_TEST(test_the_floor_grows_from_the_mesh_edge_to_far);
+    RUN_TEST(test_the_far_lines_thin_out_with_distance);
+    RUN_TEST(test_the_far_chord_is_the_floor_of_the_true_half_chord);
 
     RUN_TEST(test_a_span_starts_and_ends_halfway_between_its_points);
     RUN_TEST(test_a_repeated_point_pins_the_end_of_the_curve);

@@ -123,7 +123,7 @@ def validate_floor(cfg):
                "ripple_wavelength_m", "ripple_clock_s", "ripple_group_speed_m_s",
                "ripple_width_m", "ripple_dispersion_m_s", "ripple_source_radius_m",
                "ripple_calm_fraction", "crest_height_m", "crest_colour_stride", "grid_level", "floor_grey",
-               "far_m", "far_grow_power",
+               "far_m", "far_grow_power", "far_line_cells", "far_front", "far_front_steps",
                "grid_edge_fade_fraction",
                "ripple_height_m", "swell_height_m", "swell"}
     for key in sorted(set(cfg) - allowed):
@@ -189,6 +189,11 @@ def validate_floor(cfg):
     if meters_to_q12(cfg["far_m"]) * FAR_CAMERA_SCALE >= (1 << 31):
         fail("far_m must fit the camera transform's 32-bit input")
     floor_number(cfg.get("far_grow_power"), "far_grow_power", positive=True)
+    floor_number(cfg.get("far_line_cells"), "far_line_cells", positive=True, integer=True)
+    floor_number(cfg.get("far_front"), "far_front")
+    if cfg["far_front"] >= 1:
+        fail("far_front must be less than 1")
+    floor_number(cfg.get("far_front_steps"), "far_front_steps", positive=True, integer=True)
 
 
 def floor_array(w, ctype, name, rows):
@@ -374,6 +379,37 @@ def emit_axis_far(cfg, w):
                    % FLOOR_PHASE_TURN for sine in cfg["swell"]] for component in (math.cos, math.sin)]
         w("    {%d, {%d, %d, %d}, {%s}, {%s}},\n" % ((r_q12,) + node + (", ".join(map(str, phases[0])),
                                                      ", ".join(map(str, phases[1])))))
+    w("};\n")
+
+
+def far_lines(cfg):
+    """Where the far grid's lines cross the axis, out from the origin: every
+    far_line_cells-th mesh line near the mesh, the gap doubling each time the
+    distance doubles, since far lines crowd on screen anyway."""
+    edge = mesh_step_q12(cfg) * (cfg["timing"]["mesh_cells"] // 2)
+    far = meters_to_q12(cfg["far_m"])
+    lines = []
+    c = 0
+    while True:
+        spacing = cfg["far_line_cells"] * mesh_step_q12(cfg)
+        band = 2 * edge
+        while c >= band:
+            band *= 2
+            spacing *= 2
+        c += spacing
+        if c > far:
+            return lines
+        lines.append(c)
+
+
+def emit_far_grid(cfg, w):
+    lines = far_lines(cfg)
+    w("\n#define BOOT_ANIM_FAR_FRONT_Q8 %d\n" % round(cfg["far_front"] * 256))
+    w("#define BOOT_ANIM_FAR_FRONT_STEPS %d\n" % cfg["far_front_steps"])
+    w("#define BOOT_ANIM_FAR_LINES %d\n\n" % len(lines))
+    w("static const int32_t boot_anim_far_lines[BOOT_ANIM_FAR_LINES] = {\n")
+    for at in range(0, len(lines), 8):
+        w("    " + ", ".join(map(str, lines[at:at + 8])) + ",\n")
     w("};\n")
 
 
@@ -727,6 +763,7 @@ def main():
     emit_floor(cfg, w)
     emit_crest(cfg, w)
     emit_axis_far(cfg, w)
+    emit_far_grid(cfg, w)
 
 
 if __name__ == "__main__":
