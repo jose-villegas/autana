@@ -1,6 +1,7 @@
 /* The host harness enters the registered screen with synthetic time and
  * input. Hardware-facing entry code links here because it needs no board
- * access. */
+ * access. display_quarter_now returns the requested orientation; shell_home_edge
+ * returns the bottom edge because synthetic input has no home gesture. */
 
 #include <stdbool.h>
 #include <stddef.h>

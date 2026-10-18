@@ -6,7 +6,6 @@
 
 #include "render_host.h"
 
-#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,25 +34,18 @@
  * before that wraps, so a run past this is refused instead of written. */
 #define VIDEO_MAX_BYTES ((int64_t)1024 * 1024 * 1024)
 
-static bool tune_set;
-
 static void
 tune_reply(const char* line) {
-    tune_set = strncmp(line, "TUNE_OK ", strlen("TUNE_OK ")) == 0;
     fprintf(stderr, "%s\n", line);
 }
 
 bool
 render_host_set_tunable(const char* name, int32_t value) {
-    char line[TUNE_NAME_MAX + sizeof("SET  ") + sizeof("-2147483648")];
-    const int written = snprintf(line, sizeof line, "SET %s %ld", name, (long)value);
-    if (written < 0 || (size_t)written >= sizeof line) {
-        fprintf(stderr, "render_host: tunable command is too long\n");
+    if (!tune_set(tune_shared(), name, value)) {
+        fprintf(stderr, "render_host: unknown tunable or value outside range: %s\n", name);
         return false;
     }
-    tune_set = false;
-    (void)tune_handle_line(line, tune_reply);
-    return tune_set;
+    return true;
 }
 
 static bool
@@ -67,14 +59,12 @@ set_tunable_option(const char* assignment) {
     const size_t length = (size_t)(equal - assignment);
     memcpy(name, assignment, length);
     name[length] = '\0';
-    char* end;
-    errno = 0;
-    const long value = strtol(equal + 1, &end, 0);
-    if (errno != 0 || end == equal + 1 || *end != '\0' || value < INT32_MIN || value > INT32_MAX) {
+    int32_t value;
+    if (!tune_parse_value(equal + 1, &value)) {
         fprintf(stderr, "render_host: invalid tunable value %s\n", equal + 1);
         return false;
     }
-    return render_host_set_tunable(name, (int32_t)value);
+    return render_host_set_tunable(name, value);
 }
 
 /* The output canvas for `quarter`/`panel`, decided before gfx_init(): both
@@ -170,7 +160,7 @@ usage(const char* argv0) {
     fprintf(stderr,
             "usage: %s [--quarter N] [--panel] [--frames N] [--dt N] [-o PATH] [--video PATH]\n"
             "       [--set owner.name=value ...] [--tunables]\n"
-            "       render_host.h lists what each one does; the scene may take more.\n",
+            "       docs/tools/Render-Harness.md lists options; the scene may take more.\n",
             argv0);
     return 2;
 }
@@ -198,6 +188,7 @@ main(int argc, char** argv) {
             quarter = (int)strtol(argv[++i], NULL, 10);
         } else if (strcmp(a, "--tunables") == 0) {
             (void)tune_handle_line("TUNE", tune_reply);
+            return 0;
         } else if (strcmp(a, "--set") == 0 && has_value) {
             if (!set_tunable_option(argv[++i])) {
                 return usage(argv[0]);

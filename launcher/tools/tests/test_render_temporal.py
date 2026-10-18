@@ -25,8 +25,8 @@ class TemporalChangeTest(unittest.TestCase):
     def test_one_toggling_block_is_counted(self):
         old = np.zeros((BLOCK, BLOCK, 3), dtype=np.uint8)
         new = np.full_like(old, CHANNEL_MAX)
-        self.assertEqual(render_temporal.temporal_change(old, old, old, new), (1.0, 100.0))
-        self.assertEqual(render_temporal.temporal_change(old, old, new, old), (1.0, 100.0))
+        self.assertEqual(render_temporal.temporal_change(old, old, old, new), (CHANNEL_MAX, 100.0))
+        self.assertEqual(render_temporal.temporal_change(old, old, new, old), (CHANNEL_MAX, 100.0))
 
     def test_sub_block_checkerboard_is_filtered(self):
         board = np.indices((2 * BLOCK, 2 * BLOCK)).sum(axis=0) % 2
@@ -45,12 +45,12 @@ class TemporalCsvTest(unittest.TestCase):
             b.write_bytes(avi_bytes(BLOCK, BLOCK, [black, white], 100))
             csv_path.write_text("frame,mean_abs\n0,0\n1,255\n")
             summary = render_temporal.compare_temporal(a, b, csv_path)
-            self.assertIn("extra frame-to-frame change 1.00000000", summary)
+            self.assertIn("extra frame-to-frame change (levels of 255) 255.000", summary)
             self.assertIn("blocks popping 100.0000%", summary)
             with csv_path.open() as handle:
                 rows = list(csv.DictReader(handle))
             self.assertEqual([row["mean_abs"] for row in rows], ["0", "255"])
-            self.assertEqual([float(row["extra_change"]) for row in rows], [0, 1])
+            self.assertEqual([float(row["extra_change_levels"]) for row in rows], [0, CHANNEL_MAX])
             self.assertEqual(render_temporal.compare_temporal(a, b, csv_path), summary)
             self.assertEqual(csv_path.read_text().count("blocks_popping_pct"), 1)
 
