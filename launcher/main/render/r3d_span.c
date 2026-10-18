@@ -18,7 +18,6 @@
 #define ATTRIBUTES  4
 #define DEPTH_MAX   ((int32_t)R3D_DEPTH_NEAREST << R3D_DEPTH_SHIFT)
 #define DEPTH_SCALE ((float)DEPTH_MAX)
-#define COLOR_SCALE 256.0f
 #define STEP_MAX    4194304.0f
 
 _Static_assert(((int64_t)R3D_DEPTH_NEAREST << R3D_DEPTH_SHIFT) <= INT32_MAX, "16.8 depth fits int32");
@@ -112,9 +111,9 @@ gradient(const plane_t* p, float va, float vb, float vc, int k, gradients_t* out
 static void
 colour_gradients(const plane_t* p, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c,
                  gradients_t* out) {
-    gradient(p, a->r * COLOR_SCALE, b->r * COLOR_SCALE, c->r * COLOR_SCALE, 1, out);
-    gradient(p, a->g * COLOR_SCALE, b->g * COLOR_SCALE, c->g * COLOR_SCALE, 2, out);
-    gradient(p, a->b * COLOR_SCALE, b->b * COLOR_SCALE, c->b * COLOR_SCALE, 3, out);
+    gradient(p, a->r * R3D_SPAN_COLOR_SCALE, b->r * R3D_SPAN_COLOR_SCALE, c->r * R3D_SPAN_COLOR_SCALE, 1, out);
+    gradient(p, a->g * R3D_SPAN_COLOR_SCALE, b->g * R3D_SPAN_COLOR_SCALE, c->g * R3D_SPAN_COLOR_SCALE, 2, out);
+    gradient(p, a->b * R3D_SPAN_COLOR_SCALE, b->b * R3D_SPAN_COLOR_SCALE, c->b * R3D_SPAN_COLOR_SCALE, 3, out);
 }
 
 /* A pixel centre just outside the triangle extrapolates past the vertex
@@ -472,18 +471,12 @@ sort_by_y(const r3d_span_vertex_t** v0, const r3d_span_vertex_t** v1, const r3d_
     return odd;
 }
 
-static inline uint16_t
-pack_rgb(float r, float g, float b) {
-    return r3d_span_pack((int32_t)(mathf_clamp(r, 0.0F, UINT8_MAX) * COLOR_SCALE),
-                         (int32_t)(mathf_clamp(g, 0.0F, UINT8_MAX) * COLOR_SCALE),
-                         (int32_t)(mathf_clamp(b, 0.0F, UINT8_MAX) * COLOR_SCALE));
-}
-
 static inline void
 set_flat(fill_t* f, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c) {
     const float third = 1.0F / (float)TRIANGLE_VERTICES;
     f->flat_z = (uint16_t)(mathf_clamp((a->z + b->z + c->z) * third, 0.0F, 1.0F) * (float)R3D_DEPTH_NEAREST);
-    f->flat_color = pack_rgb((a->r + b->r + c->r) * third, (a->g + b->g + c->g) * third, (a->b + b->b + c->b) * third);
+    f->flat_color =
+        r3d_span_pack_rgb((a->r + b->r + c->r) * third, (a->g + b->g + c->g) * third, (a->b + b->b + c->b) * third);
 }
 
 static inline int32_t
@@ -553,6 +546,7 @@ static small_limits_t small_limits[SMALL_MAX_SIDE_TUNE + 1];
 static uint32_t small_generation = UINT32_MAX;
 static int small_side_limit = SMALL_MAX_SIDE;
 static int small_cell_bits = SMALL_DITHER_PATTERN_BITS_MAX;
+static bool small_colors_needed;
 
 void
 r3d_span_begin(void) {
@@ -562,10 +556,16 @@ r3d_span_begin(void) {
     }
     small_side_limit = small_max_side;
     small_cell_bits = small_dither_cell_bits;
+    small_colors_needed = small_side_limit > SMALL_MAX_SIDE && small_dither != 0;
     for (int side = SMALL_MAX_SIDE + 1; side <= small_side_limit; side++) {
         small_limits[side] = small_limits_for_side(side);
     }
     small_generation = generation;
+}
+
+bool
+r3d_span_vertex_colors(void) {
+    return small_colors_needed;
 }
 #else
 #define small_side_limit small_max_side
@@ -644,6 +644,11 @@ typedef struct {
     int phase_mask, rank_shift, level_shift;
 } small_dither_t;
 
+static inline uint16_t
+pack_vertex(const r3d_span_vertex_t* v) {
+    return v->packed_color & R3D_SPAN_COLOR_VALID ? (uint16_t)v->packed_color : r3d_span_pack_rgb(v->r, v->g, v->b);
+}
+
 /* This tree's barycentric ordered-dither pick has no source paper; it reuses
  * gfx_dither4x4 to distribute vertex colours at the edges. */
 static bool
@@ -651,12 +656,9 @@ prepare_small_dither(small_dither_t* d, const r3d_span_vertex_t* a, const r3d_sp
                      const r3d_span_vertex_t* c, bool positive, int coverage) {
     const r3d_span_vertex_t* p = positive ? b : c;
     const r3d_span_vertex_t* q = positive ? c : b;
-    d->color[0] = pack_rgb(q->r, q->g, q->b);
-    d->color[1] = pack_rgb(a->r, a->g, a->b);
-    d->color[2] = pack_rgb(p->r, p->g, p->b);
-    if (d->color[0] == d->color[1] && d->color[0] == d->color[2]) {
-        return false;
-    }
+    d->color[0] = pack_vertex(q);
+    d->color[1] = pack_vertex(a);
+    d->color[2] = pack_vertex(p);
     d->edge[0] = small_edge(a, p);
     d->edge[1] = small_edge(p, q);
     d->edge[2] = small_edge(q, a);
@@ -669,7 +671,7 @@ prepare_small_dither(small_dither_t* d, const r3d_span_vertex_t* a, const r3d_sp
     d->rank_shift = 2 * (SMALL_DITHER_PATTERN_BITS_MAX - cell_bits);
     d->level_shift = 1 + (2 * cell_bits);
     d->total = total;
-    return true;
+    return d->color[0] != d->color[1] || d->color[0] != d->color[2];
 }
 
 static inline uint16_t
@@ -685,8 +687,7 @@ fill_small_dither(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
                   const r3d_span_vertex_t* c, bool positive, recti_t box, int coverage) {
     small_dither_t d;
     if (!prepare_small_dither(&d, a, b, c, positive, coverage)) {
-        fill_small(target, a, b, c, positive, box, NULL);
-        return;
+        d.coverage_limit = 0;
     }
     fill_t f;
     set_flat(&f, a, b, c);

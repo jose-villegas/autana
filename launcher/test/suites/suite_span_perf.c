@@ -18,9 +18,9 @@
 #define SPAN_SOLID_COLOR   0xFFFF
 
 static const r3d_span_vertex_t triangle[] = {
-    {0, 0, 0.25F, 255, 32, 64},
-    {SPAN_WIDTH * R3D_SUBPIXEL, 0, 0.5F, 32, 255, 64},
-    {0, SPAN_HEIGHT* R3D_SUBPIXEL, 0.75F, 64, 32, 255},
+    {0, 0, 0.25F, 255, 32, 64, 0},
+    {SPAN_WIDTH * R3D_SUBPIXEL, 0, 0.5F, 32, 255, 64, 0},
+    {0, SPAN_HEIGHT* R3D_SUBPIXEL, 0.75F, 64, 32, 255, 0},
 };
 
 static void

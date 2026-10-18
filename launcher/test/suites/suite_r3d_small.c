@@ -1,6 +1,7 @@
 #ifndef DEVICE_BUILD
-#define TUNE_HOT_LIVE  1
-#define r3d_span_begin hot_begin
+#define TUNE_HOT_LIVE          1
+#define r3d_span_begin         hot_begin
+#define r3d_span_vertex_colors hot_vertex_colors
 #include "render/r3d_span.h"
 
 /* Private selection and packing invariants need the live copy in this TU;
@@ -78,7 +79,8 @@ oracle_vertices(r3d_span_vertex_t v[TRIANGLE_VERTICES], rng_t* random, int side)
                                    (float)(1 + rng_below(random, UINT8_MAX)) / (float)(UINT8_MAX + 1),
                                    (float)rng_below(random, UINT8_MAX + 1),
                                    (float)rng_below(random, UINT8_MAX + 1),
-                                   (float)rng_below(random, UINT8_MAX + 1)};
+                                   (float)rng_below(random, UINT8_MAX + 1),
+                                   0};
     }
     v[0].x = R3D_SUBPIXEL;
     v[1].x = (side + 1) * R3D_SUBPIXEL;
@@ -136,9 +138,9 @@ test_small_spread_channel_boundaries_and_faces(void) {
         const float step =
             (float)UINT8_MAX / (channel == 1 ? (float)gfx_rgb565_g6(UINT16_MAX) : (float)gfx_rgb565_r5(UINT16_MAX));
         for (int delta = -1; delta <= 1; delta++) {
-            r3d_span_vertex_t v[3] = {{0, 0, 0.2F, 0, 0, 0},
-                                      {SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0, 0.8F, 0, 0, 0},
-                                      {0, SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0.5F, 0, 0, 0}};
+            r3d_span_vertex_t v[3] = {{0, 0, 0.2F, 0, 0, 0, 0},
+                                      {SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0, 0.8F, 0, 0, 0, 0},
+                                      {0, SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0.5F, 0, 0, 0, 0}};
             if (channel == 0) {
                 v[1].r = step + (float)delta * 0.01F;
             }
@@ -209,9 +211,9 @@ test_small_dither_uniform_colours(void) {
     const r3d_span_target_t target = fixture();
     knob("r3d_span.small_max_side", SMALL_MAX_SIDE_TUNE);
     knob("r3d_span.small_dither", SMALL_DITHER_COVERAGE_EIGHTHS);
-    const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {{0, 0, 0.5F, 255, 0, 0},
-                                                    {SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0, 0.5F, 255, 0, 0},
-                                                    {0, SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0.5F, 255, 0, 0}};
+    const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {{0, 0, 0.5F, 255, 0, 0, 0},
+                                                    {SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0, 0.5F, 255, 0, 0, 0},
+                                                    {0, SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0.5F, 255, 0, 0, 0}};
     hot_triangle(&target, &v[0], &v[1], &v[2]);
     assert_uniform_colour(GFX_RGB(0xFF0000));
 }
@@ -223,9 +225,9 @@ test_small_dither_vertex_shares(void) {
     knob("r3d_span.small_flat_spread_near", gfx_rgb565_g6(UINT16_MAX));
     knob("r3d_span.small_max_side", SMALL_MAX_SIDE_TUNE);
     knob("r3d_span.small_dither", SMALL_DITHER_COVERAGE_EIGHTHS);
-    const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {{0, 0, 0.5F, 255, 0, 0},
-                                                    {SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0, 0.5F, 0, 255, 0},
-                                                    {0, SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0.5F, 0, 0, 255}};
+    const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {{0, 0, 0.5F, 255, 0, 0, 0},
+                                                    {SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0, 0.5F, 0, 255, 0, 0},
+                                                    {0, SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0.5F, 0, 0, 255, 0}};
     int counts[TRIANGLE_VERTICES] = {0};
     int total = 0;
     float expected[TRIANGLE_VERTICES] = {0};
@@ -270,9 +272,9 @@ test_small_dither_coverage_and_solid_fill(void) {
     (void)fixture();
     knob("r3d_span.small_max_side", SMALL_MAX_SIDE_TUNE);
     knob("r3d_span.small_dither", SMALL_DITHER_COVERAGE_EIGHTHS);
-    r3d_span_vertex_t v[3] = {{0, 0, 0.5F, 255, 0, 0},
-                              {SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0, 0.5F, 0, 255, 0},
-                              {0, SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0.5F, 0, 0, 255}};
+    r3d_span_vertex_t v[3] = {{0, 0, 0.5F, 255, 0, 0, 0},
+                              {SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0, 0.5F, 0, 255, 0, 0},
+                              {0, SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0.5F, 0, 0, 255, 0}};
     const uint16_t flat = GFX_RGB(0x555555);
     for (int coverage = 0; coverage <= SMALL_DITHER_COVERAGE_EIGHTHS; coverage += 2) {
         knob("r3d_span.small_dither", coverage);
@@ -305,9 +307,9 @@ test_small_dither_pattern_repeats_on_both_axes(void) {
     for (int bits = 1; bits <= 2; bits++) {
         knob("r3d_span.small_dither_cell_bits", bits);
         memset(pixels, 0, sizeof(*pixels) * TEST_PIXELS * 2);
-        const r3d_span_vertex_t v[3] = {{0, 0, 0.5F, 255, 0, 0},
-                                        {SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0, 0.5F, 0, 255, 0},
-                                        {0, SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0.5F, 0, 0, 255}};
+        const r3d_span_vertex_t v[3] = {{0, 0, 0.5F, 255, 0, 0, 0},
+                                        {SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0, 0.5F, 0, 255, 0, 0},
+                                        {0, SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0.5F, 0, 0, 255, 0}};
         hot_triangle(&target, &v[0], &v[1], &v[2]);
         memcpy(pixels + TEST_PIXELS * 2, pixels, sizeof(*pixels) * TEST_PIXELS * 2);
         for (int axis = 0; axis < 2; axis++) {
@@ -327,7 +329,7 @@ test_small_two_by_two_dither_spans_all_ranks(void) {
     (void)fixture();
     knob("r3d_span.small_dither_cell_bits", 1);
     const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {
-        {0, 0, 0.5F, 255, 0, 0}, {R3D_SUBPIXEL, 0, 0.5F, 0, 255, 0}, {0, R3D_SUBPIXEL, 0.5F, 0, 0, 255}};
+        {0, 0, 0.5F, 255, 0, 0, 0}, {R3D_SUBPIXEL, 0, 0.5F, 0, 255, 0, 0}, {0, R3D_SUBPIXEL, 0.5F, 0, 0, 255, 0}};
     small_dither_t d;
     TEST_ASSERT_TRUE(prepare_small_dither(&d, &v[0], &v[1], &v[2], true, SMALL_DITHER_COVERAGE_EIGHTHS));
     d.coverage_limit = d.total;
@@ -376,9 +378,9 @@ test_small_edge_sum_is_constant(void) {
 static void
 test_small_selection_and_uniform_packing(void) {
     (void)fixture();
-    r3d_span_vertex_t v[3] = {{0, 0, 0.5F, 255, 0, 0},
-                              {SMALL_MAX_SIDE * R3D_SUBPIXEL, 0, 0.5F, 0, 255, 0},
-                              {0, SMALL_MAX_SIDE * R3D_SUBPIXEL, 0.5F, 0, 0, 255}};
+    r3d_span_vertex_t v[3] = {{0, 0, 0.5F, 255, 0, 0, 0},
+                              {SMALL_MAX_SIDE * R3D_SUBPIXEL, 0, 0.5F, 0, 255, 0, 0},
+                              {0, SMALL_MAX_SIDE * R3D_SUBPIXEL, 0.5F, 0, 0, 255, 0}};
     recti_t centres = {0, 0, SMALL_MAX_SIDE, SMALL_MAX_SIDE};
     knob("r3d_span.small_flat_spread_far", 0);
     knob("r3d_span.small_flat_spread_near", 0);
@@ -419,7 +421,7 @@ test_small_gate_and_dither_ramps(void) {
     knob("r3d_span.small_dither", SMALL_DITHER_COVERAGE_EIGHTHS);
     knob("r3d_span.small_dither_ramp", 1);
     r3d_span_vertex_t v[TRIANGLE_VERTICES] = {
-        {0, 0, 0.5F, 0, 0, 0}, {R3D_SUBPIXEL, 0, 0.5F, 0, 0, 0}, {0, R3D_SUBPIXEL, 0.5F, 0, 0, 0}};
+        {0, 0, 0.5F, 0, 0, 0, 0}, {R3D_SUBPIXEL, 0, 0.5F, 0, 0, 0, 0}, {0, R3D_SUBPIXEL, 0.5F, 0, 0, 0, 0}};
     for (int side = 1; side <= SMALL_MAX_SIDE_TUNE; side++) {
         const recti_t centres = {0, 0, side, 1};
         const int coverage = side <= SMALL_MAX_SIDE ? 0
@@ -510,9 +512,9 @@ assert_split_patterns(void) {
         for (int offset = -EXPERIMENT_SIDE; offset < TEST_SIDE; offset++) {
             for (int winding = 0; winding < 2; winding++) {
                 const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {
-                    {offset * R3D_SUBPIXEL, offset * R3D_SUBPIXEL, 0.2F, 255, 0, 0},
-                    {(offset + EXPERIMENT_SIDE) * R3D_SUBPIXEL, offset * R3D_SUBPIXEL, 0.8F, 0, 255, 0},
-                    {offset * R3D_SUBPIXEL, (offset + EXPERIMENT_SIDE) * R3D_SUBPIXEL, 0.5F, 0, 0, 255}};
+                    {offset * R3D_SUBPIXEL, offset * R3D_SUBPIXEL, 0.2F, 255, 0, 0, 0},
+                    {(offset + EXPERIMENT_SIDE) * R3D_SUBPIXEL, offset * R3D_SUBPIXEL, 0.8F, 0, 255, 0, 0},
+                    {offset * R3D_SUBPIXEL, (offset + EXPERIMENT_SIDE) * R3D_SUBPIXEL, 0.5F, 0, 0, 255, 0}};
                 assert_clipped_split(v, winding);
             }
         }
@@ -548,9 +550,9 @@ assert_writer_matches_fill_depth(void) {
     const r3d_span_writer_t writer = {.span = mark_writer};
     for (int solid = 0; solid <= 1; solid++) {
         for (int spread = 0; spread <= 255; spread += 255) {
-            r3d_span_vertex_t v[3] = {{0, 0, 0.2F, 0, 0, 0},
-                                      {SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0, 0.8F, (float)spread, 0, 0},
-                                      {0, SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0.5F, 0, 0, 0}};
+            r3d_span_vertex_t v[3] = {{0, 0, 0.2F, 0, 0, 0, 0},
+                                      {SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0, 0.8F, (float)spread, 0, 0, 0},
+                                      {0, SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0.5F, 0, 0, 0, 0}};
             r3d_span_target_t target = fixture();
             target.writers = &writer;
             target.writer_count = 1;
@@ -633,7 +635,7 @@ reference_small(const r3d_span_target_t* target, const r3d_span_vertex_t v[3], b
         edges[k] = small_edge(v + order[k], v + order[(k + 1) % TRIANGLE_VERTICES]);
         total -= edges[k].bias;
         const r3d_span_vertex_t* opposite = v + order[(k + 2) % TRIANGLE_VERTICES];
-        colors[k] = pack_rgb(opposite->r, opposite->g, opposite->b);
+        colors[k] = r3d_span_pack_rgb(opposite->r, opposite->g, opposite->b);
     }
     const int divisor = TRIANGLE_VERTICES * SMALL_DITHER_COVERAGE_EIGHTHS;
     const int32_t limit = (coverage * total + divisor - 1) / divisor;
@@ -696,6 +698,10 @@ test_small_randomized_reference(void) {
                             const r3d_span_vertex_t swap = v[0];
                             v[0] = v[2];
                             v[2] = swap;
+                        }
+                        for (int k = 0; k < TRIANGLE_VERTICES; k++) {
+                            v[k].packed_color =
+                                sample & 1 ? R3D_SPAN_COLOR_VALID | r3d_span_pack_rgb(v[k].r, v[k].g, v[k].b) : 0;
                         }
                         const r3d_span_target_t actual =
                             r3d_span_target(pixels, pixels + TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);

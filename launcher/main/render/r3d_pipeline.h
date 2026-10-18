@@ -40,12 +40,13 @@ typedef struct {
     float near_subpixels;   /* near_z / R3D_SUBPIXEL */
 } r3d_lens_t;
 
-/* 8 bytes: the screen position is snapped to r3d_span's subpixels once, so
+/* The screen position is snapped to r3d_span's subpixels once, so
  * every test on it is exact. A triangle with a vertex that has no position
  * here is rebuilt from the mesh, as near clipping needs. */
 typedef struct {
-    int16_t sx, sy; /* 1/R3D_SUBPIXEL pixels, valid while iz > 0 */
-    float iz;       /* near_z / z; 0 behind the near plane, below 0 in front but too far off screen to snap */
+    int16_t sx, sy;        /* 1/R3D_SUBPIXEL pixels, valid while iz > 0 */
+    uint32_t packed_color; /* optional target-format colour, with R3D_SPAN_COLOR_VALID */
+    float iz;              /* near_z / z; 0 behind the near plane, below 0 in front but too far off screen to snap */
 } r3d_pipeline_vertex_t;
 
 /* Scales the frame's ready basis to the mesh's position ticks. */

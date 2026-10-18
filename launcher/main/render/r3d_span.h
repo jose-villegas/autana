@@ -15,9 +15,15 @@
 /* Resolve live small-fill limits before dispatching the frame's row workers. */
 #if defined(TUNE_HOT_LIVE) && TUNE_HOT_LIVE
 void r3d_span_begin(void);
+bool r3d_span_vertex_colors(void);
 #else
 static inline void
 r3d_span_begin(void) {}
+
+static inline bool
+r3d_span_vertex_colors(void) {
+    return false;
+}
 #endif
 
 typedef struct r3d_span_writer r3d_span_writer_t;
@@ -57,21 +63,24 @@ struct r3d_span_writer {
 /* The depth encoding: inverse depth scaled to 16 bits, so a larger value is
  * nearer. A cleared buffer holds R3D_DEPTH_EMPTY, infinitely far, which no
  * drawn pixel can equal. */
-#define R3D_DEPTH_EMPTY    0
-#define R3D_DEPTH_NEAREST  UINT16_MAX
+#define R3D_DEPTH_EMPTY      0
+#define R3D_DEPTH_NEAREST    UINT16_MAX
 /* A span walks depth as 16.8: the 16-bit depth is z >> R3D_DEPTH_SHIFT. */
-#define R3D_DEPTH_SHIFT    8
+#define R3D_DEPTH_SHIFT      8
 
-#define R3D_SUBPIXEL_SHIFT 4
-#define R3D_SUBPIXEL       (1 << R3D_SUBPIXEL_SHIFT)
+#define R3D_SUBPIXEL_SHIFT   4
+#define R3D_SUBPIXEL         (1 << R3D_SUBPIXEL_SHIFT)
 /* Every coordinate r3d_span_triangle() takes is inside +-R3D_SPAN_RANGE
  * subpixels (1024 pixels), which keeps each edge's arithmetic in 32 bits. */
-#define R3D_SPAN_RANGE     (1 << 14)
+#define R3D_SPAN_RANGE       (1 << 14)
+
+#define R3D_SPAN_COLOR_VALID (UINT32_C(1) << 16)
 
 typedef struct {
-    int32_t x, y;  /* screen position in subpixels; pixel i's centre is at R3D_SUBPIXEL i + R3D_SUBPIXEL / 2 */
-    float z;       /* inverse depth, (0, 1] */
-    float r, g, b; /* 0..255 */
+    int32_t x, y;          /* screen position in subpixels; pixel i's centre is at R3D_SUBPIXEL i + R3D_SUBPIXEL / 2 */
+    float z;               /* inverse depth, (0, 1] */
+    float r, g, b;         /* 0..255 */
+    uint32_t packed_color; /* R3D_SPAN_COLOR_VALID | target-format 565, or zero to pack on demand */
 } r3d_span_vertex_t;
 
 void r3d_span_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
