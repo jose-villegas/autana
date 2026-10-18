@@ -63,6 +63,13 @@ swell, growing over `far_grow_ms` once the mesh has arrived, eased in by
 `far_grow_power`. From `axis_extend_start_ms` they run on past the horizon
 to the panel's edge.
 
+The plane itself goes on past the mesh as flat, straight grid lines: every
+`far_line_cells`-th mesh line near the mesh, the gap doubling each time the
+distance does. They are cut to the circle of the floor's reach, so the plane
+arrives radially; its outer `far_front` share fades in over
+`far_front_steps` rings until the reach is complete. Near the horizon the
+lines merge into a band.
+
 The camera-plane walk retains fractional bits until projection. Views
 outside its input bounds use the full transform. The comparison below aligns
 the float reference's camera, photograph timing, swell start and constant grey

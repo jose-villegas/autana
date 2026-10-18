@@ -128,7 +128,10 @@ class TimelineGeneratorTests(unittest.TestCase):
                             ("crest_colour_stride", (0, -2, 1.5, 5)),
                             ("grid_level", (0, -0.5, 1.5, float("nan"))),
                             ("far_m", (0, -1, 12, 1e6, float("nan"))),
-                            ("far_grow_power", (0, -1, float("nan")))):
+                            ("far_grow_power", (0, -1, float("nan"))),
+                            ("far_line_cells", (0, -1, 1.5)),
+                            ("far_front", (-0.1, 1, float("nan"))),
+                            ("far_front_steps", (0, -1, 2.5))):
             for value in values:
                 result = self.generate(config_change=lambda c: c.update({key: value}))
                 self.assertNotEqual(result.returncode, 0)

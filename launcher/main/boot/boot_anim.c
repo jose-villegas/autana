@@ -328,6 +328,61 @@ draw_axis_lines_far(const mesh_pass_t* pass) {
     }
 }
 
+/* One far line, the one through `c` along re (along_im false) or im,
+ * between the circles of radius r_in and r_out, both halves; inside the
+ * mesh's own disc the mesh draws instead. */
+static void
+draw_far_ring(const mesh_pass_t* pass, bool along_im, int32_t c, int32_t r_in, int32_t r_out, gfx_color_t col) {
+    const int32_t edge = boot_anim_axis_far[0].r;
+    const int32_t inner = boot_anim_far_chord(mathi_max(r_in, edge), c);
+    const int32_t outer = boot_anim_far_chord(r_out, c);
+    if (outer <= inner) {
+        return;
+    }
+    const unsigned flags = DRAW_LINE_DASH(BOOT_ANIM_MESH_DASH_ON_PX, BOOT_ANIM_MESH_DASH_OFF_PX);
+    for (int half = -1; half <= 1; half += 2) {
+        const int32_t from = half * inner;
+        const int32_t to = half * outer;
+        const vec3x_t a = along_im ? boot_anim_to_camera_space(c, from, 0, pass->view)
+                                   : boot_anim_to_camera_space(from, c, 0, pass->view);
+        const vec3x_t b = along_im ? boot_anim_to_camera_space(c, to, 0, pass->view)
+                                   : boot_anim_to_camera_space(to, c, 0, pass->view);
+        int x0, y0, x1, y1;
+        if (r3d_project_segment_cs_x(a, b, pass->view, &x0, &y0, &x1, &y1)) {
+            draw_line_ex(x0, y0, x1, y1, col, flags);
+        }
+    }
+}
+
+/* The flat plane past the mesh: straight grid lines, unlifted, out to the
+ * floor's reach and cut to its circle so it arrives radially. Its outer
+ * BOOT_ANIM_FAR_FRONT_Q8 share fades in over BOOT_ANIM_FAR_FRONT_STEPS rings
+ * until the reach is complete. The lines on the axes are drawn on their own. */
+static void
+draw_far_grid(const mesh_pass_t* pass) {
+    const int32_t reach = pass->floor.far_reach;
+    if (reach <= boot_anim_axis_far[0].r) {
+        return;
+    }
+    const uint8_t level = scale8(BOOT_ANIM_GRID_LEVEL, pass->ink);
+    const int32_t front = reach >= BOOT_ANIM_FAR_Q12 ? 0 : (int32_t)(((int64_t)reach * BOOT_ANIM_FAR_FRONT_Q8) >> 8);
+    const int32_t solid = reach - front;
+    for (int n = 0; n < BOOT_ANIM_FAR_LINES && boot_anim_far_lines[n] <= reach; n++) {
+        for (int line = 0; line < 4; line++) {
+            const bool along_im = (line & 1) != 0;
+            const int32_t c = (line & 2) != 0 ? -boot_anim_far_lines[n] : boot_anim_far_lines[n];
+            draw_far_ring(pass, along_im, c, 0, solid, lit(BOOT_ANIM_FLOOR_GREY, level));
+            for (int k = 0; front > 0 && k < BOOT_ANIM_FAR_FRONT_STEPS; k++) {
+                const int32_t r_in = solid + (int32_t)(((int64_t)front * k) / BOOT_ANIM_FAR_FRONT_STEPS);
+                const int32_t r_out = solid + (int32_t)(((int64_t)front * (k + 1)) / BOOT_ANIM_FAR_FRONT_STEPS);
+                const uint8_t fade =
+                    (uint8_t)((UINT8_MAX * (BOOT_ANIM_FAR_FRONT_STEPS - k)) / (BOOT_ANIM_FAR_FRONT_STEPS + 1));
+                draw_far_ring(pass, along_im, c, r_in, r_out, lit(BOOT_ANIM_FLOOR_GREY, scale8(level, fade)));
+            }
+        }
+    }
+}
+
 /* Deltas retain the narrow transform's rounding and input bounds. */
 static vec3x_t
 mesh_plane(const mesh_pass_t* pass, vec3x_t* row) {
@@ -378,6 +433,7 @@ draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t*
         plane = (vec3x_t){plane.x + row.x, plane.y + row.y, plane.z + row.z};
     }
 
+    draw_far_grid(&pass);
     draw_axis_lines_far(&pass);
 }
 
