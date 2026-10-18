@@ -195,6 +195,7 @@ sound_control_begin_app(sound_control_t* control) {
 
 void
 sound_control_end_app(sound_control_t* control) {
+    sound_control_exit(control);
     control->app_generation = SOUND_APP_GENERATION_ENGINE;
 }
 

@@ -623,6 +623,15 @@ test_sound_exit_resets_app_gains_and_preserves_system_gain(void) {
     TEST_ASSERT_EQUAL_UINT8(SOUND_GAIN_MAX_PCT, f->mixer.bus_gain[SOUND_BUS_SFX.id]);
     TEST_ASSERT_EQUAL_UINT8(SOUND_GAIN_MAX_PCT, f->mixer.bus_gain[SOUND_BUS_MUSIC.id]);
     TEST_ASSERT_EQUAL_UINT8(SOUND_GAIN_MAX_PCT, f->mixer.master_gain);
+    f->control.reset_gains = false;
+    TEST_ASSERT_TRUE(sound_control_bus_command(&f->control, SOUND_BUS_SFX, SOUND_COMMAND_BUS_GAIN, 0, &command));
+    sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
+    sound_control_end_app(&f->control);
+    TEST_ASSERT_TRUE(f->control.reset_gains);
+    TEST_ASSERT_EQUAL_UINT8(SOUND_GAIN_MAX_PCT, f->control.buses[SOUND_BUS_SFX.id].gain_pct);
+    command = (sound_command_t){.kind = SOUND_COMMAND_APP_EXIT};
+    sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
+    TEST_ASSERT_EQUAL_UINT8(SOUND_GAIN_MAX_PCT, f->mixer.bus_gain[SOUND_BUS_SFX.id]);
 }
 
 void
