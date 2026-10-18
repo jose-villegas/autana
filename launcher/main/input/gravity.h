@@ -9,6 +9,7 @@
 #include "input/imu.h"
 #include "input/input.h"
 #include "math/linear/vec3f.h"
+#include "math/scalar/units.h"
 
 /* Ours, tuned on the board. */
 #define GRAVITY_TAU_S                     0.5F
@@ -27,8 +28,8 @@
 /* x-io Fusion, FusionAhrs.c: restart trust near the configured gyro full scale. */
 #define GRAVITY_GYRO_OVERRANGE_RATIO      0.98F
 #define GRAVITY_GYRO_OVERRANGE_DPS        (GRAVITY_GYRO_OVERRANGE_RATIO * IMU_GYRO_RANGE_DPS)
-/* M0 board capture: rest gyro noise peaks at +/-4 deg/s. */
-#define GRAVITY_STILL_DPS                 6.0F
+/* M0 board capture: rest gyro noise peaks at +/-2 deg/s. */
+#define GRAVITY_STILL_DPS                 3.0F
 /* Ours, maintainer choice: clear fast-flip error promptly, outlast a held swing reversal. */
 #define GRAVITY_STILL_RECOVER_MS          500U
 /* QMI8658C datasheet, Table 8: board-level initial gyro offset tolerance. */
@@ -41,13 +42,18 @@
 #define GRAVITY_BIAS_MAX_DPS                                                                                           \
     (GRAVITY_GYRO_OFFSET_TOL_DPS + (GRAVITY_GYRO_OFFSET_TCO_DPS_PER_C * GRAVITY_GYRO_TEMP_SPAN_C))
 /* Ours: target 2% settling time for a datasheet-sized gyro offset. */
-#define GRAVITY_BIAS_SETTLE_S 20.0F
+#define GRAVITY_BIAS_SETTLE_S    20.0F
 /* Integral gain in 1/s^2; derivation: docs/input/Gravity.md. */
-#define GRAVITY_BIAS_KI       (4.0F / (GRAVITY_TAU_S * GRAVITY_BIAS_SETTLE_S))
+#define GRAVITY_BIAS_KI          (4.0F / (GRAVITY_TAU_S * GRAVITY_BIAS_SETTLE_S))
 /* Acceleration magnitude below which strength is zero, in g. */
-#define GRAVITY_FREE_FALL_G   0.3F
+#define GRAVITY_FREE_FALL_G      0.3F
 /* Maximum prediction and correction interval, in milliseconds. */
-#define GRAVITY_MAX_DT_MS     100U
+#define GRAVITY_MAX_DT_MS        100U
+
+/* Microsecond forms of the limits above. */
+#define GRAVITY_RECOVER_US       (GRAVITY_RECOVER_MS * MATH_US_PER_MS)
+#define GRAVITY_STILL_RECOVER_US (GRAVITY_STILL_RECOVER_MS * MATH_US_PER_MS)
+#define GRAVITY_MAX_DT_US        (GRAVITY_MAX_DT_MS * MATH_US_PER_MS)
 
 typedef struct {
     /* Unit vector, screen axes: x right, y down, z out. */
@@ -56,10 +62,12 @@ typedef struct {
     vec3f_t linear;
     /* Gyro bias in deg/s, learned only from accepted acceleration. */
     vec3f_t gyro_bias;
-    /* Time-weighted rejection debt, clamped to GRAVITY_RECOVER_MS. */
-    uint32_t distrust_ms;
+    /* Last delivered rotation in deg/s, held across missing samples. */
+    vec3f_t rotation;
+    /* Time-weighted rejection debt, clamped to GRAVITY_RECOVER_US. */
+    uint32_t distrust_us;
     /* Continuous still rejection time; motion or acceptance cancels early recovery. */
-    uint32_t still_ms;
+    uint32_t still_us;
     bool recovering;
     bool primed;
 } gravity_t;
@@ -67,9 +75,11 @@ typedef struct {
 /* Reset to down=(0,0,-1), zero linear g and bias deg/s; adopt the first nonzero acceleration exactly. */
 void gravity_reset(gravity_t* g);
 /* Motion uses INPUT_ACCEL_ONE_G and INPUT_ROTATION_ONE_DPS counts in screen axes.
- * dt_ms is clamped to GRAVITY_MAX_DT_MS; zero dt skips prediction and blending.
+ * dt_us is clamped to GRAVITY_MAX_DT_US; zero dt skips prediction and blending.
  * Zero acceleration cannot correct down; only the initial prime may snap at zero dt. */
-void gravity_update(gravity_t* g, const input_motion_t* m, uint32_t dt_ms);
+void gravity_update(gravity_t* g, const input_motion_t* m, uint32_t dt_us);
+/* A gap soft-restarts correction; lost time holds the previous rotation before delivered samples. */
+void gravity_update_batch(gravity_t* g, const input_motion_batch_t* batch);
 /* Unit down vector in screen axes, including during free fall. */
 vec3f_t gravity_down(const gravity_t* g);
 /* Last acceleration minus down in screen axes, in g; zero after reset. */

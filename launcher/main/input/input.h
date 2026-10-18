@@ -7,6 +7,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "input/buttons.h"
 #include "math/linear/vec3i.h"
@@ -43,6 +44,22 @@ typedef struct {
     int turn_speed;
     vec3i_t rotation;
 } input_motion_t;
+
+/* Must equal IMU_SAMPLE_US; checked in input_device.c. */
+#define INPUT_MOTION_SAMPLE_US 4460U
+/* Must equal IMU_FIFO_SAMPLES; checked in input_device.c. */
+#define INPUT_MOTION_SAMPLES   128
+
+typedef struct {
+    input_motion_t samples[INPUT_MOTION_SAMPLES]; /* oldest first, INPUT_MOTION_SAMPLE_US apart */
+    int lost;                                     /* samples lost during the preceding drain's read mode */
+    int count;                                    /* zero when there is no new sample */
+    bool gap;                                     /* overflow or failed drain; correction must restart */
+} input_motion_batch_t;
+
+/* One consumer drains per frame: FIFO state is process-wide.
+ * False on an absent sensor or failed read. */
+bool input_read_motion_batch(input_motion_batch_t* out);
 
 /* One sensor read (an I2C transaction: call it only in frames that need it).
  * False when there is no sensor or no reading. */

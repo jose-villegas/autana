@@ -5,6 +5,8 @@
 
 #include "input/input_shell.h"
 
+#include <string.h>
+
 #include "esp_log.h"
 
 #include "input/buttons.h"
@@ -27,6 +29,9 @@ static imu_calib_t accel_calib;
 _Static_assert(INPUT_ACCEL_ONE_G == IMU_COUNTS_PER_G, "input_read_motion() passes sensor counts through");
 
 _Static_assert(INPUT_ROTATION_ONE_DPS == IMU_COUNTS_PER_DPS, "rotation passes sensor counts through");
+_Static_assert(INPUT_MOTION_SAMPLE_US == IMU_SAMPLE_US, "batch timing matches the sensor ODR");
+_Static_assert(INPUT_MOTION_SAMPLES == IMU_FIFO_SAMPLES, "batch holds the whole FIFO");
+_Static_assert(sizeof(input_motion_t) >= sizeof(imu_sample_t), "raw samples expand in place");
 
 void
 input_start(void) {
@@ -77,16 +82,40 @@ input_poll(input_t* out) {
     buttons_read(&out->boot, &out->power);
 }
 
+static input_motion_t
+motion_from_sample(const imu_sample_t* sample) {
+    return (input_motion_t){.acceleration =
+                                imu_calib_apply(&accel_calib, imu_axes_screen(sample->ax, sample->ay, sample->az)),
+                            .turn_speed = imu_turn_speed(sample),
+                            .rotation = imu_axes_screen(sample->gx, sample->gy, sample->gz)};
+}
+
 bool
 input_read_motion(input_motion_t* out) {
     imu_sample_t sample;
     if (!imu_read(&sample)) {
         return false;
     }
-    *out = (input_motion_t){.acceleration =
-                                imu_calib_apply(&accel_calib, imu_axes_screen(sample.ax, sample.ay, sample.az)),
-                            .turn_speed = imu_turn_speed(&sample),
-                            .rotation = imu_axes_screen(sample.gx, sample.gy, sample.gz)};
+    *out = motion_from_sample(&sample);
+    return true;
+}
+
+bool
+input_read_motion_batch(input_motion_batch_t* out) {
+    out->count = 0;
+    out->gap = false;
+    out->lost = 0;
+    const int count = imu_read_fifo((imu_sample_t*)out->samples, &out->lost, &out->gap);
+    if (count < 0) {
+        return false;
+    }
+    /* Expansion runs backwards so a converted sample cannot overwrite unread raw axes. */
+    for (int i = count - 1; i >= 0; i--) {
+        imu_sample_t raw;
+        memcpy(&raw, (const unsigned char*)out->samples + ((size_t)i * sizeof raw), sizeof raw);
+        out->samples[i] = motion_from_sample(&raw);
+    }
+    out->count = count;
     return true;
 }
 
