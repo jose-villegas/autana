@@ -178,7 +178,7 @@ scene_camera_set_present(scene, cam, CAMERA_PRESENT_NEAREST);
 
 | Mode | Rows drawn | Look |
 |---|---|---|
-| `CAMERA_PRESENT_NEAREST` | The height the fixed scale or dynamic resolution chose | Today's picture |
+| `CAMERA_PRESENT_NEAREST` | The height the fixed scale or dynamic resolution chose | The default picture |
 | `CAMERA_PRESENT_SCANLINE` | Half that height | Each row shown twice, the second at `UPSCALE_SCANLINE_KEEP` (half brightness) |
 | `CAMERA_PRESENT_DOUBLE` | Half that height | Each row shown twice, unchanged |
 
