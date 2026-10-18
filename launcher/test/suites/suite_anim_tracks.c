@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "anim/anim_tracks.h"
+#include "anim/anim_tracks_format.h"
 #include "asset/asset_bytes.h"
 #include "asset/asset_store.h"
 #include "boot/boot_anim.h"

@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "anim/anim_tracks_format.h"
+
 anim_bind_status_t
 anim_bind_field(const anim_binding_t* binding, const anim_component_ref_t* components, int component_count,
                 uint8_t* dirty, uint8_t dirty_bit, anim_bound_t* out) {
