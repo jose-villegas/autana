@@ -721,15 +721,21 @@ test_sound_stale_bus_commands_cannot_change_next_session(void) {
     }
 }
 
+static sound_voice_t
+reserve_replacement(fixture_t* f, sound_command_t* command) {
+    const sound_voice_t old = play(f, NULL);
+    TEST_ASSERT_TRUE(sound_control_voice_command(&f->control, old, SOUND_COMMAND_STOP, 0, command));
+    const sound_voice_t next = sound_control_play(&f->control, &f->sound, NULL, 0, command, f->control.app_generation);
+    TEST_ASSERT_NOT_EQUAL(old.id, next.id);
+    return next;
+}
+
 static void
 test_sound_completion_preserves_a_queued_replacement(void) {
     fixture_t* f = fixture();
-    const sound_voice_t old = play(f, NULL);
-    f->mixer.voices[0].playing = false;
     sound_command_t command;
-    TEST_ASSERT_TRUE(sound_control_voice_command(&f->control, old, SOUND_COMMAND_STOP, 0, &command));
-    const sound_voice_t next = sound_control_play(&f->control, &f->sound, NULL, 0, &command, f->control.app_generation);
-    TEST_ASSERT_NOT_EQUAL(old.id, next.id);
+    const sound_voice_t next = reserve_replacement(f, &command);
+    f->mixer.voices[0].playing = false;
     sound_control_complete(&f->control, &f->mixer);
     TEST_ASSERT_TRUE(sound_control_is_playing(&f->control, next));
     sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
@@ -742,11 +748,8 @@ test_sound_completion_preserves_a_queued_replacement(void) {
 static void
 test_sound_sync_stops_an_unreplaced_renderer_handle(void) {
     fixture_t* f = fixture();
-    const sound_voice_t old = play(f, NULL);
     sound_command_t command;
-    TEST_ASSERT_TRUE(sound_control_voice_command(&f->control, old, SOUND_COMMAND_STOP, 0, &command));
-    const sound_voice_t next = sound_control_play(&f->control, &f->sound, NULL, 0, &command, f->control.app_generation);
-    TEST_ASSERT_NOT_EQUAL(old.id, next.id);
+    (void)reserve_replacement(f, &command);
     sound_mixer_sync(&f->mixer, &f->control);
     TEST_ASSERT_FALSE(f->mixer.voices[0].playing);
 }
