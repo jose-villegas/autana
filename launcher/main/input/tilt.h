@@ -54,7 +54,7 @@
 
 /* A turn this fast, in deg/s summed across the gyroscope's axes, reads as
  * fully turning: brisk, but reachable with a flick of the wrist. */
-#define TILT_TURN_FULL_DPS  300
+#define TILT_TURN_FULL_DPS  150
 
 typedef struct {
     /* Smoothed in-plane gravity, in input units scaled by 256. The extra bits

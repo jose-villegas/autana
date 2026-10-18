@@ -26,9 +26,9 @@ AXES = ("x", "y", "z")
 STAMP = re.compile(r"\((\d+)\)")
 CALIB = re.compile(r"calib x off (-?\d+) scale (-?\d+) y off (-?\d+) scale (-?\d+) z off (-?\d+) scale (-?\d+) gyro (-?\d+),(-?\d+),(-?\d+)")
 POSE = re.compile(r"pose (\w+) ((?:-?\d+ ){6}\d+)")
-MOTION = re.compile(r"motion raw (-?\d+),(-?\d+),(-?\d+).*?tilt (-?\d+).*?bearing (-?\d+).*?turn (\d+).*?rot (-?\d+),(-?\d+),(-?\d+) quarter (\d+)(?: grav_mg -?\d+,-?\d+,-?\d+ bias_dps10 -?\d+,-?\d+,-?\d+)?")
+MOTION = re.compile(r"motion raw (-?\d+),(-?\d+),(-?\d+).*?tilt (-?\d+).*?bearing (-?\d+).*?turn (\d+).*?rot (-?\d+),(-?\d+),(-?\d+) quarter (\d+)(?: grav_mg -?\d+,-?\d+,-?\d+ bias_dps10 -?\d+,-?\d+,-?\d+)?(?: samples \d+ lost \d+ drain_us \d+)?")
 
-TURN = re.compile(r"turn ms (\d+) down (-?\d+\.\d{6}) (-?\d+\.\d{6}) (-?\d+\.\d{6}) accel (-?\d+\.\d{6}) (-?\d+\.\d{6}) (-?\d+\.\d{6})")
+TURN = re.compile(r"turn ms (\d+) down (-?\d+\.\d{6}) (-?\d+\.\d{6}) (-?\d+\.\d{6}) accel (-?\d+\.\d{6}) (-?\d+\.\d{6}) (-?\d+\.\d{6})(?: gyro_deg -?\d+\.\d)?")
 
 
 def parse(lines):
