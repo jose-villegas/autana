@@ -131,6 +131,7 @@ class TimelineGeneratorTests(unittest.TestCase):
                             ("far_m", (0, -1, 12, 1e6, float("nan"))),
                             ("far_grow_power", (0, -1, float("nan"))),
                             ("far_line_cells", (0, -1, 1.5)),
+                            ("far_line_growth", (0, 1, -2, float("nan"))),
                             ("far_front", (-0.1, 1, float("nan"))),
                             ("far_front_steps", (0, -1, 2.5))):
             for value in values:

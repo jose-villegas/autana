@@ -123,7 +123,8 @@ def validate_floor(cfg):
                "ripple_wavelength_m", "ripple_clock_s", "ripple_group_speed_m_s",
                "ripple_width_m", "ripple_dispersion_m_s", "ripple_source_radius_m",
                "ripple_calm_fraction", "crest_height_m", "crest_colour_stride", "grid_level", "floor_grey",
-               "far_m", "far_grow_power", "far_line_cells", "far_front", "far_front_steps",
+               "far_m", "far_grow_power", "far_line_cells", "far_line_growth", "far_front",
+               "far_front_steps",
                "grid_edge_fade_fraction",
                "ripple_height_m", "swell_height_m", "swell"}
     for key in sorted(set(cfg) - allowed):
@@ -190,6 +191,9 @@ def validate_floor(cfg):
         fail("far_m must fit the camera transform's 32-bit input")
     floor_number(cfg.get("far_grow_power"), "far_grow_power", positive=True)
     floor_number(cfg.get("far_line_cells"), "far_line_cells", positive=True, integer=True)
+    floor_number(cfg.get("far_line_growth"), "far_line_growth", positive=True)
+    if cfg["far_line_growth"] <= 1:
+        fail("far_line_growth must be greater than 1")
     floor_number(cfg.get("far_front"), "far_front")
     if cfg["far_front"] >= 1:
         fail("far_front must be less than 1")
@@ -384,17 +388,18 @@ def emit_axis_far(cfg, w):
 
 def far_lines(cfg):
     """Where the far grid's lines cross the axis, out from the origin: every
-    far_line_cells-th mesh line near the mesh, the gap doubling each time the
-    distance doubles, since far lines crowd on screen anyway."""
+    far_line_cells-th mesh line inside the mesh's edge, then the gap doubling
+    each time the distance grows by far_line_growth, since far lines crowd on
+    screen anyway."""
     edge = mesh_step_q12(cfg) * (cfg["timing"]["mesh_cells"] // 2)
     far = meters_to_q12(cfg["far_m"])
     lines = []
     c = 0
     while True:
         spacing = cfg["far_line_cells"] * mesh_step_q12(cfg)
-        band = 2 * edge
+        band = edge
         while c >= band:
-            band *= 2
+            band *= cfg["far_line_growth"]
             spacing *= 2
         c += spacing
         if c > far:

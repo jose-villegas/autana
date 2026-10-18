@@ -63,8 +63,8 @@ swell, growing over `far_grow_ms` once the mesh has arrived, eased in by
 `far_grow_power`. They end at the horizon, where the far grid converges.
 
 The plane itself goes on past the mesh as flat, straight grid lines: every
-`far_line_cells`-th mesh line near the mesh, the gap doubling each time the
-distance does. They are cut to the circle of the floor's reach, so the plane
+`far_line_cells`-th mesh line inside the mesh's edge, then the gap doubling
+each time the distance grows by `far_line_growth`. They are cut to the circle of the floor's reach, so the plane
 arrives radially; its outer `far_front` share fades in over
 `far_front_steps` rings until the reach is complete. Near the horizon the
 lines merge into a band.
