@@ -25,6 +25,8 @@
 # put --frames and --dt in the renderer arguments, and writes <dir>/<label>.mp4
 # (A | B | heatmap per frame, A and B labelled as above) and
 # <label>.frames.csv (changed share, mean difference and holes per frame).
+# Temporal columns measure triangle-scale pops after a 4x4 box blur, with
+# a threshold of 8/255. Ordered dither reads as noise: judge it by eye.
 # --fps sets the playback rate; the default is the recorded one, 1000/dt.
 # Needs ffmpeg.
 #
@@ -301,6 +303,9 @@ if [ "$video" = 1 ]; then
             --label-a "$label_a" --label-b "$label_b" \
             --out "$(to_native "$out/$label.mp4")" --csv "$(to_native "$out/$label.frames.csv")" \
             --summary "$(to_native "$out/summary.txt")"
+        "$PYTHON" "$(to_native "$TOOLS_DIR/render_temporal.py")" \
+            --video "$(to_native "$out/a/$label.avi")" "$(to_native "$out/b/$label.avi")" \
+            --csv "$(to_native "$out/$label.frames.csv")" --summary "$(to_native "$out/summary.txt")"
         echo "video $out/$label.mp4"
     done < "$labels"
     rm -f "$out/a"/*.avi "$out/b"/*.avi
