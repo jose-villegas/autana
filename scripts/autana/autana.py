@@ -584,19 +584,23 @@ def reset(args):
 
 
 def coredump(args):
-    """The last panic's core dump from flash, decoded; --erase clears it."""
+    """The last panic's core dump from flash, saved and decoded; --core
+    decodes a saved one with no board; --erase clears it."""
     elf, rest = pop_value(list(args), "--elf")
+    core, rest = pop_value(rest, "--core")
     erase = "--erase" in rest
     if erase:
         rest.remove("--erase")
     reject_unknown("coredump", rest)
-    if rest or (erase and elf):
-        sys.exit("usage: autana coredump [--elf PATH] | autana coredump --erase")
+    if rest or (erase and (elf or core)):
+        sys.exit("usage: autana coredump [--core FILE] [--elf PATH] | autana coredump --erase")
     command = device_command("coredump")
     if erase:
         command.append("--erase")
     if elf:
         command += ["--elf", elf]
+    if core:
+        command += ["--core", core]
     return call_device(command)
 
 
@@ -1601,7 +1605,8 @@ COMMAND_GROUPS = (
         one("monitor", monitor, "monitor [seconds] [--follow] [--stream] [--elf PATH]",
             "the console live until Ctrl+C, or for N s"),
         Command("coredump", coredump, (
-            ("coredump [--elf PATH]", "the last panic's core dump from flash, decoded against the running build"),
+            ("coredump [--elf PATH]", "the last panic's core dump from flash, saved, decoded against the build that crashed"),
+            ("coredump --core FILE [--elf PATH]", "decode a saved dump; no board"),
             ("coredump --erase", "clear it, so the next crash's dump is told from this one"),)),
         Command("screenshot", screenshot, (
             ("screenshot [--as-shown|--framebuffer] [-o PATH]", "the panel as PATH.png plus PATH.json"),
