@@ -15,12 +15,12 @@ names. Under docs/plans/, which names what is not built yet, names are not
 checked; section citations still are.
 
 docs/Citations.md numbers the papers and specs the tree cites, one table row
-each, `| <a id="N"></a>[N] | ...<br>Named in code: `name`<br>Cited by: ... |`.
+each, `| <a id="N"></a>[N] | ...<br>name cited by: ... |`.
 Entries ascend, and a deleted entry's number is not reused. Every
 `Citations.md#N` a tracked document writes must name an entry. Code and its
 comments never cite by number: a `Citations.md#N` in a source file fails, and
 the comment names its source (author, year or section) in place. An entry
-code uses carries that name once, and the entry's "Cited by" line must link
+code uses opens its "cited by" line with that name, written once, and the line must link
 exactly the documents that cite it by number plus the source files that
 contain the name. The gates' own tests write citations as fixtures, so they
 cite nothing. --fix rewrites every "Cited by" line to what the tree says.
@@ -48,11 +48,10 @@ FILE = re.compile(r"^(?:launcher/|apps/|[\w.-]+/)*(?:[\w.-]+\.(?:c|h|py|sh|cmake
 PLANS = "docs/plans/"
 SKIP_FENCES = {"sh", "shell", "bash", "console", "text", "output"}
 CITATIONS = "docs/Citations.md"
-CITED_BY = re.compile(r"<br>Cited by: ([^|\n]*) \|$")
-NAMED = re.compile(r"<br>Named in code: `([^`\n]+)`")
+CITED_BY = re.compile(r"<br>(?:([^<|\n]+?) cited by|Cited by): ([^|\n]*) \|$")
+ROW_START = re.compile(r'^\| <a id="', re.MULTILINE)
 CITATION_ROW = re.compile(
-    r'^\| <a id="([^"\n]*)"></a>\[(\d+)\] \| [^|\n]+?(?:' + NAMED.pattern + ")?"
-    + CITED_BY.pattern, re.MULTILINE)
+    r'^\| <a id="([^"\n]*)"></a>\[(\d+)\] \| [^|\n]+?' + CITED_BY.pattern, re.MULTILINE)
 PAPER = re.compile(r"Citations\.md#(\d+)\b")
 CELL_LINK = re.compile(r"\]\(([^)\s#]+)\)")
 CITING_DOCUMENTS = ["*.md"]
@@ -255,11 +254,14 @@ def citation_rows(root):
     if not path.is_file():
         return rows, problems
     text = path.read_text(encoding="utf-8")
+    parsed = {m.start() for m in CITATION_ROW.finditer(text)}
+    for start in ROW_START.finditer(text):
+        if start.start() not in parsed:
+            problems.append(f"{CITATIONS}:{text.count(chr(10), 0, start.start()) + 1}: entry does not end in "
+                            "\"cited by: ...\" or \"name cited by: ...\"")
     for m in CITATION_ROW.finditer(text):
         number = text.count("\n", 0, m.start()) + 1
         anchor, shown, name, cited_line = m.group(1), int(m.group(2)), m.group(3), m.group(4)
-        if name is None and "Named in code" in m.group(0):
-            problems.append(f"{CITATIONS}:{number}: [{shown}] has a malformed \"Named in code\" field")
         if anchor != str(shown):
             problems.append(f"{CITATIONS}:{number}: anchor \"{anchor}\" is not its number [{shown}]")
         if rows and shown <= max(rows):
