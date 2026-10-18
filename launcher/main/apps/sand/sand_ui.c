@@ -53,8 +53,9 @@ handle_panel_input(sand_ui_t* ui, const input_t* input, bool close, unsigned clo
  * doc comment in sand_ui.h for the full contract, and the "WHO
  * HIT-TESTS AND WHO DECIDES" note there for why the hit-test producing
  * `index` belongs to the UI, not this module. palette_screen.c is the
- * only caller, from inside its own per-tile ui_button() loop, so there is no "index hits nothing" branch here: an index this
- * function is ever handed already named a real tile. */
+ * only caller, from inside its own per-tile ui_button() loop, so there is
+ * no "index hits nothing" branch here: an index this function is ever
+ * handed already named a real tile. */
 unsigned
 sand_ui_tile_clicked(sand_ui_t* ui, int index) {
     /* Swallow the first click after opening with a finger already down;

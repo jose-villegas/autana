@@ -992,8 +992,7 @@ draw_mode_label(int gx, int gy) {
     const int turn = gravity_quarter_turn(gx, gy);
 
     const int upright_w = (turn % 2 == 0) ? GFX_WIDTH : GFX_HEIGHT;
-    /* Centred along the top edge of the upright canvas. */
-    const recti_t upright = {(upright_w - span) / 2, LABEL_MARGIN, span, tall};
+    const recti_t upright = ui_centered_rect(upright_w, span, tall, LABEL_MARGIN);
     const affine2x_t t = ui_transform_quarter_turn(turn, GFX_WIDTH, GFX_HEIGHT);
     const recti_t box = affine2x_map_recti(&t, upright);
     int x = 0;

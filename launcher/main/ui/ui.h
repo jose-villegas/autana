@@ -275,7 +275,9 @@ void ui_outline(recti_t r, uint32_t rgb);
 /* The lit and shaded edges of a button's bezel round `r`, shaded off
  * `face_rgb`; the inside is left as drawn. `sunken` swaps the pair. */
 void ui_bevel(recti_t r, uint32_t face_rgb, bool sunken);
-void ui_icon(recti_t r, const draw_image_t* icon);
+/* `icon` filling `r` in the text colour; a NULL icon (no pack holds it)
+ * draws `fallback` centred instead, or nothing for a NULL `fallback`. */
+void ui_icon(recti_t r, const draw_image_t* icon, const char* fallback);
 /* The system check mark filling `r` in the text colour: one recorded mark,
  * painted from the engine pack, however detailed the icon. */
 void ui_check(recti_t r);
