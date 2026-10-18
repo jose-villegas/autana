@@ -179,7 +179,7 @@ scene_camera_set_present(scene, cam, CAMERA_PRESENT_NEAREST);
 | Mode | Rows drawn | Look |
 |---|---|---|
 | `CAMERA_PRESENT_NEAREST` | The height the fixed scale or dynamic resolution chose | The default picture |
-| `CAMERA_PRESENT_SCANLINE` | Half that height | Each row shown twice, the second at `UPSCALE_SCANLINE_KEEP` (half brightness) |
+| `CAMERA_PRESENT_SCANLINE` | Half that height | Each row shown twice, the second at the brightness `UPSCALE_SCANLINE_KEEP` keeps |
 | `CAMERA_PRESENT_DOUBLE` | Half that height | Each row shown twice, unchanged |
 
 The halved draw expands into the half picture when its height divides the half
