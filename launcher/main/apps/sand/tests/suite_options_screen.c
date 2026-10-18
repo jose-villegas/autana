@@ -305,6 +305,74 @@ test_a_tap_at_the_sliders_left_end_reports_the_coarsest_quality(void) {
     TEST_ASSERT_EQUAL_INT(QUALITY_COUNT - 1, tap_at(s.x + 4, s.y + s.h / 2).quality);
 }
 
+/* Out of line, so the whole layout is off the stack under the taps. */
+static __attribute__((noinline)) recti_t
+dither_rect(bool landscape) {
+    return layout_for(landscape).dither;
+}
+
+#define TOUCH_HOLD_FRAMES 4
+
+static bool
+apply_fired(sand_options_hits_t h) {
+    return h.apply;
+}
+
+static bool
+cancel_fired(sand_options_hits_t h) {
+    return h.cancel;
+}
+
+/* A tap on `r` fires on the frame the touch is released, never on the press
+ * or while it is held. */
+static void
+assert_fires_on_release_only(recti_t r, bool (*fired)(sand_options_hits_t)) {
+    const affine2x_t transform = ui_transform_quarter_turn(0, GFX_WIDTH, GFX_HEIGHT);
+    const vec2i_t at = affine2x_map_pixel(&transform, (vec2i_t){r.x + r.w / 2, r.y + r.h / 2});
+    TEST_ASSERT_FALSE_MESSAGE(fired(options_frame(true, true, false, at.x, at.y)), "fired on the press");
+    for (int hold = 0; hold < TOUCH_HOLD_FRAMES; hold++) {
+        TEST_ASSERT_FALSE_MESSAGE(fired(options_frame(true, false, false, at.x, at.y)), "fired while held");
+    }
+    TEST_ASSERT_TRUE_MESSAGE(fired(options_frame(false, false, true, at.x, at.y)), "did not fire on the release");
+}
+
+static void
+test_apply_and_cancel_fire_on_release_only(void) {
+    tap_fixture(SAND_COLOUR_256, false);
+    menu.draft.quality = 0;
+    assert_fires_on_release_only(layout_for(false).apply, apply_fired);
+    tap_fixture(SAND_COLOUR_256, false);
+    assert_fires_on_release_only(layout_for(false).cancel, cancel_fired);
+}
+
+/* Picking the row that already is the draft changes nothing, so reports nothing. */
+static void
+assert_repicking_the_current_dither_reports_no_hit(bool landscape) {
+    tap_fixture(SAND_COLOUR_16, landscape);
+    const recti_t dither = dither_rect(landscape);
+    (void)tap(dither);
+    recti_t rows;
+    int scroll_y = 0;
+    TEST_ASSERT_TRUE_MESSAGE(ui_probe_list(&rows, &scroll_y), "the tap must have opened the list");
+
+    const recti_t list = ui_probe_dropdown_list_rect(dither, DITHER_COUNT, dither.h, canvas_h(landscape));
+    const int current = menu.draft.dither;
+    const int scroll = ui_dropdown_list_scroll(current, DITHER_COUNT, dither.h, list.h);
+    const sand_options_hits_t hits = tap_at(list.x + list.w / 2, list.y + current * dither.h - scroll + dither.h / 2);
+    TEST_ASSERT_LESS_THAN_INT_MESSAGE(0, hits.dither, "the row already picked is no new pick");
+    TEST_ASSERT_EQUAL_INT(current, menu.draft.dither);
+}
+
+static void
+test_repicking_the_current_dither_reports_no_hit_portrait(void) {
+    assert_repicking_the_current_dither_reports_no_hit(false);
+}
+
+static void
+test_repicking_the_current_dither_reports_no_hit_landscape(void) {
+    assert_repicking_the_current_dither_reports_no_hit(true);
+}
+
 static void
 test_a_tap_on_cancel_reports_cancel_and_not_apply(void) {
     tap_fixture(SAND_COLOUR_256, false);
@@ -346,12 +414,6 @@ static void
 test_the_header_is_present_in_portrait_and_absent_in_landscape(void) {
     TEST_ASSERT_GREATER_THAN_INT(0, layout_for(false).header.h);
     TEST_ASSERT_EQUAL_INT(0, layout_for(true).header.h);
-}
-
-/* Out of line, so the whole layout is off the stack under the taps. */
-static __attribute__((noinline)) recti_t
-dither_rect(bool landscape) {
-    return layout_for(landscape).dither;
 }
 
 static void
@@ -470,6 +532,9 @@ run_options_screen_suite(void) {
     RUN_TEST(test_a_tap_on_cancel_reports_cancel_and_not_apply);
     RUN_TEST(test_the_draft_colour_tile_is_selected_even_when_uncommitted);
     RUN_TEST(test_the_header_is_present_in_portrait_and_absent_in_landscape);
+    RUN_TEST(test_apply_and_cancel_fire_on_release_only);
+    RUN_TEST(test_repicking_the_current_dither_reports_no_hit_portrait);
+    RUN_TEST(test_repicking_the_current_dither_reports_no_hit_landscape);
 }
 
 SUITE_REGISTER(run_options_screen_suite);

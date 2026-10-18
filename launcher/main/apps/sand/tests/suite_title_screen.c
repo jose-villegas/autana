@@ -169,6 +169,28 @@ test_a_tap_reports_the_button_under_it(void) {
     }
 }
 
+#define TOUCH_HOLD_FRAMES 4
+
+/* A tap fires on the frame the touch is released, never on the press or
+ * while it is held. */
+static void
+test_a_title_button_fires_on_release_only(void) {
+    title_screen_layout_t lay;
+    layout_for(false, &lay);
+    const sand_title_button_t live[] = {SAND_TITLE_START, SAND_TITLE_OPTIONS, SAND_TITLE_EXIT};
+    for (size_t i = 0; i < sizeof live / sizeof live[0]; i++) {
+        tap_fixture(false);
+        const recti_t r = lay.buttons[live[i]];
+        const int x = r.x + r.w / 2;
+        const int y = r.y + r.h / 2;
+        TEST_ASSERT_EQUAL_INT_MESSAGE(SAND_TITLE_NONE, title_frame(true, true, false, x, y), "fired on the press");
+        for (int hold = 0; hold < TOUCH_HOLD_FRAMES; hold++) {
+            TEST_ASSERT_EQUAL_INT_MESSAGE(SAND_TITLE_NONE, title_frame(true, false, false, x, y), "fired while held");
+        }
+        TEST_ASSERT_EQUAL_INT_MESSAGE(live[i], title_frame(false, false, true, x, y), title_screen_label(live[i]));
+    }
+}
+
 static void
 test_a_landscape_tap_reports_the_button_under_it(void) {
     title_screen_layout_t lay;
@@ -215,6 +237,7 @@ run_title_screen_suite(void) {
     RUN_TEST(test_every_string_fits_its_rect_landscape);
     RUN_TEST(test_the_title_grows_where_the_canvas_is_wide_enough);
     RUN_TEST(test_a_tap_reports_the_button_under_it);
+    RUN_TEST(test_a_title_button_fires_on_release_only);
     RUN_TEST(test_a_landscape_tap_reports_the_button_under_it);
     RUN_TEST(test_disabled_buttons_are_inked_muted);
     RUN_TEST(test_a_disabled_button_blocks_a_nearby_live_target);
