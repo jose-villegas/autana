@@ -100,32 +100,30 @@ def write_flat_start(directory, count=4):
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class StretchTests(unittest.TestCase):
     def test_small_part_stretch_is_reported_separately(self):
-        from r3d.appearance_simplify import STRETCH_RATIO, part_stretch, start_parts, triangle_stretch
+        from r3d.appearance_simplify import STRETCH_RATIO, stretch_report
 
         points = np.array([[0., 0., 0.], [1., 0., 0.], [0., 1., 0.],
                            [10., 0., 0.], [20., 0., 0.], [10., 10., 0.]])
         tris = np.array([[0, 1, 2], [3, 4, 5]])
         mesh = FitMesh(points, np.ones_like(points), tris, np.zeros(len(tris)), 1, np.arange(len(points)))
-        parts = start_parts(mesh)
-        self.assertEqual(len(np.unique(parts)), 2)
         fitted = points.copy()
         ratio = STRETCH_RATIO + 1
         fitted[1, 0] = np.sqrt(2 * ratio ** 2 - 1)
-        stretch = triangle_stretch(points, fitted, mesh)
-        np.testing.assert_allclose(stretch, [ratio, 1])
-        edges = point_edges(tris, mesh.vertex_point)
-        global_edge = np.linalg.norm(points[edges[:, 0]] - points[edges[:, 1]], axis=1).mean()
-        corners = points[mesh.vertex_point[tris]]
-        start_edge = np.linalg.norm(corners - np.roll(corners, -1, axis=1), axis=2).mean(axis=1)
-        report = part_stretch(parts, stretch, start_edge, global_edge)
-        expected = float(np.mean(stretch[:1] > STRETCH_RATIO) * 100)
+        report = stretch_report(mesh, mesh._replace(points=fitted), np.arange(len(tris)))
+        self.assertEqual(len(report["parts"]), 2)
+        expected = float(100 * (ratio > STRETCH_RATIO))
         self.assertEqual(report["parts"][0]["share"], expected)
         self.assertEqual(report["parts"][1]["share"], 0)
-        self.assertEqual(report["small"]["share"], expected)
-        self.assertEqual(report["small"]["triangles"], 1)
+        self.assertEqual(report["small"], dict(triangles=1, share=expected))
         self.assertEqual(report["rest"]["share"], 0)
-        self.assertEqual(report["worst"][0]["part"], int(parts[0]))
-        self.assertAlmostEqual(report["parts"][0]["mean_start_edge"], start_edge[0])
+        self.assertEqual(report["worst"][0]["part"], report["parts"][0]["part"])
+        self.assertAlmostEqual(report["parts"][0]["mean_start_edge"], (2 + np.sqrt(2)) / 3)
+        report = stretch_report(mesh, mesh._replace(points=fitted, tris=tris[1:]), np.array([1]))
+        self.assertEqual(len(report["parts"]), 1)
+        self.assertEqual(report["parts"][0]["triangles"], 1)
+        self.assertEqual(report["parts"][0]["part"], 1)
+        self.assertEqual(report["small"]["triangles"], 0)
+        self.assertEqual(report["rest"], dict(triangles=1, share=0.0))
 
 
 @unittest.skipIf(torch is None, "needs PyTorch")
@@ -421,7 +419,7 @@ class PruneAndCostTests(unittest.TestCase):
                         mesh = mesh._replace(rgb=np.full((len(mesh.tris), 3), 0.5))
                     points, rgb = mesh.points + 1, mesh.rgb / 2
                     fitted = mesh._replace(points=points, rgb=rgb)
-                    pruned = prune(fitted, np.ones(len(mesh.tris)), len(mesh.tris) - 1)
+                    pruned, _kept = prune(fitted, np.ones(len(mesh.tris)), len(mesh.tris) - 1)
                     calls = mock.Mock()
                     with mock.patch.multiple(appearance,
                             load_scene=mock.Mock(return_value=SimpleNamespace(camera=SimpleNamespace(
@@ -451,7 +449,6 @@ class PruneAndCostTests(unittest.TestCase):
                     self.assertIs(pruned_mesh, covered)
                     self.assertIs(shown, calls.coverage.return_value)
                     self.assertEqual(budget, len(pruned.tris))
-                    self.assertEqual(calls.prune.call_args.kwargs, {"return_kept": True})
                     report = json.loads((pathlib.Path(directory) / "stretch.json").read_text())
                     self.assertEqual(sum(row["triangles"] for row in report["parts"]), len(pruned.tris))
                     self.assertEqual(report["rest"]["share"], 0)
@@ -506,17 +503,17 @@ class PruneAndCostTests(unittest.TestCase):
     def test_pruning_keeps_the_budget_and_what_shows_most(self):
         mesh = FitMesh(np.zeros((9, 3)), np.zeros((9, 3)), np.arange(18).reshape(6, 3) % 9, np.zeros(6), 8, np.arange(9))
         shown = np.array([0, 50, 3, 0, 900, 7])
-        pruned = prune(mesh, shown, 3)
+        pruned, _kept = prune(mesh, shown, 3)
         self.assertEqual(len(pruned[2]), 3)
         kept = {tuple(t) for t in pruned[2]}
         for index in (4, 1, 5):
             self.assertIn(tuple(mesh[2][index]), kept)
-        self.assertEqual(len(prune(mesh, shown, 6)[2]), 4, "a triangle no view shows was kept")
+        self.assertEqual(len(prune(mesh, shown, 6)[0].tris), 4, "a triangle no view shows was kept")
 
     def test_a_flat_mesh_keeps_each_colour_with_its_triangle(self):
         colours = np.arange(18, dtype=float).reshape(6, 3) / 17.0
         mesh = FitMesh(np.zeros((9, 3)), colours, np.arange(18).reshape(6, 3) % 9, np.zeros(6), 8, np.arange(9), True)
-        pruned = prune(mesh, np.array([0, 50, 3, 0, 900, 7]), 3)
+        pruned, _kept = prune(mesh, np.array([0, 50, 3, 0, 900, 7]), 3)
         self.assertEqual(pruned.rgb.tolist(), colours[[1, 4, 5]].tolist())
 
     def terms(self, positions, tris):
@@ -859,7 +856,7 @@ class AppearanceFitTests(unittest.TestCase):
             mesh = start_mesh(pathlib.Path(directory) / "pair.mesh")
         matrix = projection([0.0, 0.0, 3.0], [0.0, 0.0, -1.0], 24, 20, 0.62, 0.5)
         shown = coverage(mesh, [(matrix, None)], (48, 40))
-        pruned = prune(mesh, shown, len(front_tris))
+        pruned, _kept = prune(mesh, shown, len(front_tris))
         z = mesh[0][mesh[5]][pruned[2]][..., 2]
         self.assertEqual(len(pruned[2]), len(front_tris))
         self.assertTrue(np.all(np.abs(z) < 1e-6), "a hidden triangle outlived a visible one")
