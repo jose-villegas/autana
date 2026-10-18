@@ -10,7 +10,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4] / "tools" / "
 from build.c_header import read_define
 from generated_blocks import replace_block
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4] / "tools" / "perf"))
-from capture import build_id
+from capture import build_id, QUARTERS, capture_quarters, select_quarter
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[5] / "scripts/device"))
 from device_report import BUDGET_TABLE_HEADER
 
@@ -29,19 +29,23 @@ SETUP_FIELDS = tuple(re.findall(r"(\w+)=%d", read_define(LOG_HEADER, "SKIN_PERF_
 PHASE_BEFORE_ENTER = read_define(LOG_HEADER, "SKIN_PERF_PHASE_BEFORE_ENTER")
 PHASE_LOADED = read_define(LOG_HEADER, "SKIN_PERF_PHASE_LOADED")
 PHASE_PLAYING = read_define(LOG_HEADER, "SKIN_PERF_PHASE_PLAYING")
-STAGE_ANIMATE = read_define(LOG_HEADER, "SKIN_PERF_STAGE_ANIMATE")
-STAGE_SKIN = read_define(LOG_HEADER, "SKIN_PERF_STAGE_SKIN")
-STAGE_ANIMATION_STEP = read_define(LOG_HEADER, "SKIN_PERF_STAGE_ANIMATION_STEP")
-STAGE_RENDER = read_define(LOG_HEADER, "SKIN_PERF_STAGE_RENDER")
-STAGE_RENDER_DELTA = read_define(LOG_HEADER, "SKIN_PERF_STAGE_RENDER_DELTA")
+STAGE_ANIMATE, STAGE_SKIN, STAGE_ANIMATION_STEP, STAGE_RENDER, STAGE_RENDER_DELTA, STAGE_FRAME, STAGE_FRAME_DELTA = (
+    read_define(LOG_HEADER, "SKIN_PERF_STAGE_" + name)
+    for name in ("ANIMATE", "SKIN", "ANIMATION_STEP", "RENDER", "RENDER_DELTA", "FRAME", "FRAME_DELTA"))
 
 STAGES = ((STAGE_ANIMATE, CORES_ONE), (STAGE_ANIMATE, CORES_TWO), (STAGE_SKIN, CORES_ONE), (STAGE_SKIN, CORES_TWO),
           (STAGE_ANIMATION_STEP, CORES_UNKNOWN))
 PHASES = (PHASE_BEFORE_ENTER, PHASE_LOADED, PHASE_PLAYING)
 RENDER_KEYS = ((STAGE_RENDER, "0"), (STAGE_RENDER, "1"), (STAGE_RENDER_DELTA, ""))
+FRAME_KEYS = ((STAGE_FRAME, "0"), (STAGE_FRAME, "1"), (STAGE_FRAME_DELTA, ""))
 
-def parse_capture(text):
-    build = build_id(text)
+def parse_capture(text, quarter="portrait"):
+    observed = capture_quarters(text)
+    return _parse_capture(select_quarter(text, quarter, observed), bool(observed),
+                          quarter=quarter if observed else None)
+
+
+def _capture_runs(text):
     runs = {}
     current = None
     for line in text.splitlines():
@@ -57,10 +61,24 @@ def parse_capture(text):
             if "phase" in fields:
                 current[("phase", fields["phase"])] = fields
             elif "stage" in fields:
-                current[(fields["stage"], fields.get("cores", fields.get("paused", "")))] = fields
+                current[(fields["stage"], fields.get("cores", fields.get("paused", "")), fields.get("quarter"))] = fields
+    return runs
+
+
+def _parse_capture(text, tagged, source=None, quarter=None):
+    render_stages = {STAGE_RENDER, STAGE_FRAME, STAGE_RENDER_DELTA, STAGE_FRAME_DELTA}
+    build = build_id(text)
+    source = _capture_runs(text) if source is None else source
+    runs = {}
+    for number, raw in source.items():
+        current = runs[number] = {}
+        for key, fields in raw.items():
+            if key[0] in render_stages and fields.get("quarter") != quarter:
+                continue
+            current[key[:2]] = fields
     if not runs:
         raise ValueError("capture has no runs")
-    required = (*STAGES, *RENDER_KEYS, *(("phase", phase) for phase in PHASES))
+    required = (*STAGES, *RENDER_KEYS, *(FRAME_KEYS if tagged else ()), *(("phase", phase) for phase in PHASES))
     for key in required:
         if not any(key in run for run in runs.values()):
             raise ValueError(f"capture missing {' '.join(key)}")
@@ -100,7 +118,11 @@ def parse_capture(text):
             raise ValueError(f"invalid {field}")
     if setup["lighting"] not in LIGHTING_MODES:
         raise ValueError("invalid lighting")
+    frames = tuple(statistics.median(int(run[key]["mean_us"]) for run in runs.values() if key in run)
+                   for key in FRAME_KEYS) if all(any(key in run for run in runs.values()) for key in FRAME_KEYS) else None
     return {
+        "frames": frames,
+        "frame_counts": tuple(sum(key in run for run in runs.values()) for key in FRAME_KEYS),
         "setup": setup,
         "build": build, "run_count": len(runs), "vertices": vertices.pop(), "samples": samples.pop(),
         "stages": {key: statistics.median(int(run[key]["mean_us"]) for run in runs.values() if key in run) for key in STAGES},
@@ -116,7 +138,14 @@ def parse_capture(text):
 
 
 def budget(text, repeat="autana suite run_capybara_perf_suite --flash --perf-scope"):
-    data = parse_capture(text)
+    observed = capture_quarters(text)
+    if observed:
+        capture_quarters(text, expected=QUARTERS)
+    quarters = [q for q in QUARTERS if q in observed] or [None]
+    source = _capture_runs(text)
+    parsed = {q: _parse_capture(select_quarter(text, q or "portrait", observed), bool(observed), source, q)
+              for q in quarters}
+    data = parsed[quarters[0]]
     stages, costs = data["stages"], data["per_vertex"]
     limit = BUDGET_NS_PER_VERTEX / NANOSECONDS_PER_MICROSECOND
     setup = data["setup"]
@@ -131,15 +160,23 @@ def budget(text, repeat="autana suite run_capybara_perf_suite --flash --perf-sco
     step = (STAGE_ANIMATION_STEP, CORES_UNKNOWN)
     table.extend(("", "| As a frame runs it (worker use not recorded) | Per frame |", "|---|---:|"))
     table.append(f"| Whole animation step | {stages[step]:g} µs ({costs[step]:.3f} µs / vertex) |")
-    playing, paused, _ = data["render"]
-    delta = playing - paused
-    table.append(f"| Scene render, playing minus paused | {delta:+g} µs ({playing:g} vs {paused:g} µs) |")
+    for quarter, rendered in parsed.items():
+        playing, paused, _ = rendered["render"]
+        delta = playing - paused
+        label = f" quarter={quarter}" if quarter else ""
+        table.append(f"| Scene render{label}, playing minus paused | {delta:+g} µs ({playing:g} vs {paused:g} µs) |")
+        if quarter is not None and rendered["frames"] is not None:
+            playing, paused, _ = rendered["frames"]
+            table.append(f"| Full frame{label}, playing minus paused | {playing-paused:+g} µs ({playing:g} vs {paused:g} µs) |")
+        counts = list(zip(RENDER_KEYS, rendered["render_counts"]))
+        if quarter is not None:
+            counts.extend(zip(FRAME_KEYS, rendered["frame_counts"]))
+        for (stage, slot), count in counts:
+            if count < data["run_count"]:
+                table.extend(("", f"{stage}{label}, paused={slot}: {count} of {data['run_count']} runs."))
     for key, count in data["stage_counts"].items():
         if count < data["run_count"]:
             table.extend(("", f"{key[0]}, {key[1]} core(s): {count} of {data['run_count']} runs."))
-    for (stage, slot), count in zip(RENDER_KEYS, data["render_counts"]):
-        if count < data["run_count"]:
-            table.extend(("", f"{stage}, paused={slot}: {count} of {data['run_count']} runs."))
     within = [costs[(STAGE_SKIN, core)] <= limit for core in (CORES_ONE, CORES_TWO)]
     if all(within):
         verdict = "within budget on both cores"
@@ -163,7 +200,9 @@ def budget(text, repeat="autana suite run_capybara_perf_suite --flash --perf-sco
 def performance_report(text):
     if not re.search(r"^RUN=", text, re.MULTILINE):
         text = "RUN=1\n" + text
-    data = parse_capture(text)
+    observed = capture_quarters(text)
+    quarter = next((q for q in QUARTERS if q in observed), "portrait")
+    data = parse_capture(text, quarter)
     goal = data["vertices"] * BUDGET_NS_PER_VERTEX / NANOSECONDS_PER_MICROSECOND
     lines = [BUDGET_TABLE_HEADER, "|---|---:|---:|---:|---|"]
     for core in (CORES_ONE, CORES_TWO):
