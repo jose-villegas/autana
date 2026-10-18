@@ -4,6 +4,9 @@
   "threshold": 1.0,
   "alpha": 0.05,
   "max_seeds": 4,
+  "command": "launcher/tools/perf/perf_compare.sh HEAD HEAD --max-seeds 4 --rng-seed 2201843632212987578 --send-a 'sound stop all' --send-b 'sound stop all' --send-b 'sound play tap loop' --suite run_sponza_perf_suite - - --suite run_capybara_perf_suite - - --suite run_sand_perf_suite frame_budget,present_cost_against,real_frame,settled_sand_costs 'python3 launcher/main/apps/sand/tools/report_performance.py @CAPTURE@ @TABLE@ --source @PROJECT@/launcher/main/apps/sand/tests/suite_sand_perf.c'",
+  "label_a": "Silence",
+  "label_b": "One looping voice",
   "rows": {
     "run_capybara_perf_suite/animate cores=1": {
       "a": 209.75,

@@ -4,6 +4,7 @@ import argparse
 import json
 import math
 import random
+import shlex
 import sys
 import subprocess
 from pathlib import Path
@@ -250,7 +251,9 @@ def measure(args, runner=None):
                  for side in records}
     write_summary(destination / "summary.md", args, records, decisions, estimates, sizes, plan,
                   incomplete=incomplete)
-    payload = dict(threshold=args.threshold, alpha=args.alpha, look_alpha=look_alpha,
+    payload = dict(command=getattr(args, "command", None),
+                   label_a=args.label_a, label_b=args.label_b, threshold=args.threshold,
+                   alpha=args.alpha, look_alpha=look_alpha,
                    rng_seed=args.rng_seed, max_seeds=args.max_seeds, first_pass=sizes[0],
                    max_runs=MAX_RUNS, incomplete=incomplete,
                    rows=decisions, estimates=estimates, plan=plan)
@@ -346,7 +349,9 @@ def main(argv=None):
     parser.add_argument("--timeout", type=int, default=1800)
     parser.add_argument("--wait", type=int, default=3600)
     parser.add_argument("--autana", help="inject an autana-compatible command for host replay")
+    argv = list(sys.argv[1:] if argv is None else argv)
     args = parser.parse_args(argv)
+    args.command = shlex.join(["python", "launcher/tools/perf/perf_compare.py", *argv])
     if args.restore_project:
         return subprocess.call(autana_command("--wait", str(args.wait), "flash", "rel",
                                              "--project", str(args.restore_project), override=args.autana))
