@@ -12,17 +12,29 @@
 
 #include "gfx/target/gfx_render_target.h"
 
+#define R3D_SPAN_SMALL_MAX_SIDE 4
+#ifndef R3D_SPAN_SMALL_MAX_SIDE_DEFAULT
+#define R3D_SPAN_SMALL_MAX_SIDE_DEFAULT R3D_SPAN_SMALL_MAX_SIDE
+#endif
+#ifndef R3D_SPAN_SMALL_DITHER_DEFAULT
+#define R3D_SPAN_SMALL_DITHER_DEFAULT 0
+#endif
+
 /* Resolve live small-fill limits before dispatching the frame's row workers. */
 #if defined(TUNE_HOT_LIVE) && TUNE_HOT_LIVE
+#define R3D_SPAN_VERTEX_COLORS 1
 void r3d_span_begin(void);
 bool r3d_span_vertex_colors(void);
 #else
+#define R3D_SPAN_VERTEX_COLORS                                                                                         \
+    (R3D_SPAN_SMALL_MAX_SIDE_DEFAULT > R3D_SPAN_SMALL_MAX_SIDE && R3D_SPAN_SMALL_DITHER_DEFAULT != 0)
+
 static inline void
 r3d_span_begin(void) {}
 
 static inline bool
 r3d_span_vertex_colors(void) {
-    return false;
+    return R3D_SPAN_VERTEX_COLORS;
 }
 #endif
 

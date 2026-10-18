@@ -208,7 +208,9 @@ static inline r3d_pipeline_rows_t
 transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_cluster_t* c,
                   r3d_pipeline_vertex_t* cs) {
     const int end = c->vertex_first + c->vertex_count;
+#if R3D_SPAN_VERTEX_COLORS
     const bool pack_colors = r3d_span_vertex_colors() && mesh->colors != NULL;
+#endif
     int y0 = INT16_MAX;
     int y1 = INT16_MIN;
     bool unbounded = false;
@@ -231,6 +233,7 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
         out->sx = (int16_t)r3d_span_unbias(b.x);
         out->sy = (int16_t)r3d_span_unbias(b.y);
         out->iz = lens->near_subpixels * inv;
+#if R3D_SPAN_VERTEX_COLORS
         out->packed_color = 0;
         if (pack_colors) {
             const uint8_t* rgb = mesh->colors[v];
@@ -239,6 +242,7 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
                                                 (int32_t)rgb[1] * (int32_t)R3D_SPAN_COLOR_SCALE,
                                                 (int32_t)rgb[2] * (int32_t)R3D_SPAN_COLOR_SCALE);
         }
+#endif
         y0 = out->sy < y0 ? out->sy : y0;
         y1 = out->sy > y1 ? out->sy : y1;
     }
@@ -467,18 +471,19 @@ draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
 
 static inline __attribute__((always_inline)) void
 draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], const uint16_t* tri,
-              const uint16_t* face_color, bool double_sided, const r3d_span_target_t* target, bool writes) {
+              const uint16_t* face_color, bool double_sided, const r3d_span_target_t* target, bool writes,
+              r3d_pipeline_work_t* work) {
     if (misses_every_centre(v[0], v[1], v[2], target)) {
         return;
     }
     if (facing_away(signed_area2(v[0]->sx, v[0]->sy, v[1]->sx, v[1]->sy, v[2]->sx, v[2]->sy), double_sided)) {
         return;
     }
-    r3d_span_vertex_t s[3];
+    r3d_span_vertex_t* s = work->clip.projected;
     for (int k = 0; k < 3; k++) {
         const uint8_t* rgb = face_color == NULL ? mesh->colors[tri[k]] : (const uint8_t[3]){0, 0, 0};
         s[k] = (r3d_span_vertex_t){v[k]->sx, v[k]->sy, v[k]->iz, rgb[0], rgb[1], rgb[2], 0};
-#if TUNE_HOT_LIVE
+#if R3D_SPAN_VERTEX_COLORS
         s[k].packed_color = v[k]->packed_color;
 #endif
     }
@@ -494,7 +499,7 @@ draw_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_c
         const uint16_t* face_color = mesh->face_colors == NULL ? NULL : &mesh->face_colors[t];
         const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
         if (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F) {
-            draw_in_front(mesh, v, tri, face_color, c->double_sided, target, writes);
+            draw_in_front(mesh, v, tri, face_color, c->double_sided, target, writes, work);
         } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
             draw_rebuilt(mesh, lens, tri, face_color, c->double_sided, target, work);
         }
