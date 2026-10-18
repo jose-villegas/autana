@@ -80,7 +80,19 @@ MIX_DOCUMENT = Path("docs/audio/Sound-Mixer.md")
 US_PER_SECOND = 1_000_000
 US_PER_MS = 1000
 PERCENT = 100
-MIX_WINDOW = re.compile(r"sound_mix ([0-9.]+)/([0-9.]+) ms/block n=(\d+)")
+
+
+def mix_stage_names(tree):
+    main = tree / "launcher/main"
+    owners = [("sound/sound_mixer_device.c", r'FRAME_COST_EXTERNAL\(\s*"([^"]+)"'),
+              ("shell/shell_apps.c", r'FRAME_COST_END\(\s*began,\s*"([^"]+)"')]
+    names = []
+    for owner, pattern in owners:
+        matches = re.findall(pattern, (main / owner).read_text())
+        if len(matches) != 1:
+            raise ValueError(f"{owner}: expected exactly one frame-cost stage")
+        names.append(matches[0])
+    return names
 
 
 def mix_period(tree):
@@ -110,16 +122,33 @@ def render_mix(path, tree=ROOT):
     sounds = {key.split()[1]: value for key, value in records if key.startswith("sound ")}
     if not sounds or not voices or min(voices) < 0 or capacity < max(voices):
         raise ValueError("invalid sound points or capacity")
+    mix_stage, present_stage = mix_stage_names(tree)
+    mix_window = re.compile(re.escape(mix_stage) + r" ([0-9.]+)/([0-9.]+) ms/block n=(\d+)")
+    present_window = re.compile(r"\b" + re.escape(present_stage) + r" ([0-9.]+)/[0-9.]+")
+    total_window = re.compile(r"\| total ([0-9.]+)")
     points = {}
+    playing = {}
+    dropped = {}
     stats = {}
     for key, value in records:
         if key.startswith("point "):
             _, sound, count = key.split()
-            match = MIX_WINDOW.search(value)
+            match = mix_window.search(value)
             if match is None or int(match[3]) <= 0:
                 raise ValueError(f"invalid window: {key}")
+            present = present_window.search(value)
+            total = total_window.search(value)
+            if present is None:
+                raise ValueError(f"missing {present_stage} stage: {key}")
+            if total is None:
+                raise ValueError(f"missing total: {key}")
             points.setdefault((sound, int(count)), []).append(
-                (float(match[1]) * US_PER_MS, float(match[2]) * US_PER_MS, int(match[3])))
+                (float(match[1]) * US_PER_MS, float(match[2]) * US_PER_MS, int(match[3]),
+                 float(present[1]), float(total[1])))
+        elif key.startswith("playing ") or key.startswith("dropped "):
+            kind, sound, count = key.split()
+            target = playing if kind == "playing" else dropped
+            target.setdefault((sound, int(count)), []).append(int(value))
         elif key == f"stats {list(sounds)[-1]} {max(voices)}":
             stats.update(re.findall(r"(stack_min_free|margin|stack|voices|queue|mixer)=(\d+)", value))
     expected = {(sound, count) for sound in sounds for count in voices if count}
@@ -127,21 +156,35 @@ def render_mix(path, tree=ROOT):
         expected.add((next(iter(sounds)), 0))
     if points.keys() != expected:
         raise ValueError("missing or unexpected point windows")
+    for point in expected:
+        if playing.get(point) != [point[1]]:
+            raise ValueError(f"missing or mismatched playing record: {point}")
+        drops = dropped.get(point, [])
+        if len(drops) != 2 or drops[0] != drops[1]:
+            raise ValueError(f"missing or changed dropped count: {point}")
+    if 0 not in voices:
+        raise ValueError("missing zero-voice point")
+    silent = points[(next(iter(sounds)), 0)]
+    baseline = sum(w[3] for w in silent) / len(silent)
     period = mix_period(tree)
     rows = []
     for (sound, count), windows in points.items():
-        blocks = sum(n for _, _, n in windows)
-        average = sum(avg * n for avg, _, n in windows) / blocks
-        worst = max(worst for _, worst, _ in windows)
+        blocks = sum(w[2] for w in windows)
+        average = sum(w[0] * w[2] for w in windows) / blocks
+        worst = max(w[1] for w in windows)
+        present = sum(w[3] for w in windows) / len(windows)
+        total = sum(w[4] for w in windows) / len(windows)
         rows.append((f"{sound} ({sounds[sound]})", count, f"{average:.2f}", f"{worst:.2f}",
-                     f"{average / period * PERCENT:.2f}", f"{worst / period * PERCENT:.2f}", blocks))
+                     f"{average / period * PERCENT:.2f}", f"{worst / period * PERCENT:.2f}", blocks,
+                     f"{present:.2f}", f"{total:.2f}", f"{present - baseline:+.2f}"))
     fields = ["stack_min_free", "margin", "stack", "voices", "queue", "mixer"]
     if any(field not in stats for field in fields):
         raise ValueError("missing highest-point stats")
     caption = (f"Board **{header[1]}**, build **{builds[0]}**, capacity **{capacity} voices**, "
                f"block period **{period:.2f} ?s** ([raw capture](data/{path.name})).\n\n")
     return caption + markdown(
-        ["Sound", "Voices", "Average ?s", "Worst ?s", "Core-1 load, average %", "Core-1 load, worst %", "Blocks"],
+        ["Sound", "Voices", "Average ?s", "Worst ?s", "Core-1 load, average %", "Core-1 load, worst %", "Blocks",
+         f"{present_stage} ms/frame", "Frame total ms/frame", f"{present_stage} change ms/frame"],
         rows) + "\nHighest-point memory (bytes):\n\n" + markdown(fields, [[stats[field] for field in fields]])
 
 

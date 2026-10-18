@@ -110,6 +110,12 @@ captures; regenerate it with
 Hold one board lock across flashing and capture. The image script's header
 contains the scratch-copy recipe.
 
+The capture checks silence before each point and active voices before
+monitoring. Tables reject missing voice checks and rising drop counts.
+
+Present and frame-total times are means of window averages. Present change
+uses the same capture's silent point.
+
 The mixer runs on another task, so `profile/frame_cost.c` adds its time to the
 report separately instead of bracketing it like a frame stage.
 
@@ -216,7 +222,8 @@ flowchart LR
 | `SOUND_MIXER_TASK_CORE` | the core the mixer runs on | core 1, beside present and the job worker |
 | `SOUND_MIXER_TASK_PRIORITY` | its priority | above `PRESENT_TASK_PRIORITY` and `JOB_CORE1_PRIORITY` |
 | `SOUND_MIXER_TASK_STACK` | its stack | `SOUND_MIXER_STACK_PLAYBACK_BYTES` + `SOUND_MIXER_STACK_MARGIN_BYTES` |
-| `SOUND_MIXER_QUEUE_DEPTH` | queued commands | a play and a control call per voice within one frame |
+| `SOUND_MIXER_COMMANDS_PER_VOICE` | commands per voice between drains | one play and one control call |
+| `SOUND_MIXER_QUEUE_DEPTH` | queued commands | `SOUND_MIXER_COMMANDS_PER_VOICE * SOUND_VOICE_COUNT` |
 | `SOUND_MIXER_BLOCK_FRAMES` | frames mixed per write | `AUDIO_CODEC_BLOCK_SAMPLES` |
 
 A block lasts `SOUND_MIXER_BLOCK_FRAMES / AUDIO_OUT_SAMPLE_RATE_HZ` seconds.
