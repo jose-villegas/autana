@@ -19,6 +19,7 @@
 #include "asset/asset_pack.h"
 #include "gfx/target/gfx_color.h"
 #ifndef DEVICE_BUILD
+#include "display/display.h"
 #include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_internal.h"
@@ -1650,9 +1651,10 @@ test_a_loaded_scene_that_is_not_active_keeps_its_time(void) {
 }
 
 #ifndef DEVICE_BUILD
+
 int
 display_quarter_now(void) {
-    return 0;
+    return DISPLAY_PORTRAIT;
 }
 
 static void
