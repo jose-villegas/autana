@@ -189,9 +189,61 @@ open_the_meshes(void) {
     }
 }
 
+/* One core's draw of a cleared picture, stopped after the stage `stop`
+ * names (r3d_span_stop_after; 0 runs every stage); the clear is not timed. */
+static int64_t
+stopped_draw_us(const raster_t* raster, const r3d_lens_t* lens, int visible, int stop) {
+    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
+    memset(gfx_render_target_depth(&b.picture, 0), 0,
+           (size_t)raster->width * (size_t)raster->height * sizeof(uint16_t));
+    const r3d_span_target_t target = {b.picture, NULL, 0};
+    r3d_span_stop_after = stop;
+    const int64_t start = timing_now_us();
+    r3d_pipeline_draw(raster->instances[0].mesh, lens, b.culled + 1, visible, b.cs, b.rows, &target, b.work[0]);
+    const int64_t us = timing_now_us() - start;
+    r3d_span_stop_after = 0;
+    return us;
+}
+
+/* Each bake's draw split into its stages, one core, as the mean over the
+ * flythrough's poses: each stage is the difference of two stopped draws. */
+static void
+report_stage_split(int bake) {
+    bench_t* b = memory_alloc(sizeof(*b), MEMORY_INTERNAL);
+    TEST_ASSERT_NOT_NULL(b);
+    const r3d_instance_t instance = {&meshes[bake], NULL};
+    bench_open(b, &instance, NULL);
+    const r3d_pipeline_buffers_t parts = r3d_pipeline_carve(&b->raster);
+    const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
+    int64_t stopped[4] = {0};
+    int poses = 0;
+    for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_POSE_EVERY_MS) {
+        const r3d_lens_t lens = view_at(&meshes[bake], t_ms);
+        const int visible = r3d_pipeline_cull(&meshes[bake], &lens, parts.culled + 1, parts.work[0]);
+        r3d_pipeline_transform(&meshes[bake], &lens, parts.culled + 1, visible, parts.cs, parts.rows);
+        for (int stop = 0; stop <= 3; stop++) {
+            stopped[stop] += stopped_draw_us(&b->raster, &lens, visible, stop);
+        }
+        poses++;
+    }
+    TEST_ASSERT_GREATER_THAN_INT(0, poses);
+    ESP_LOGI(TAG,
+             "stage_split: bake=%s %dx%d poses=%d tris=%d one core us/pose setup %lld edges %lld carry %lld fill "
+             "%lld" R3D_PERF_QUARTER_FORMAT,
+             sponza_bakes[bake], b->raster.width, b->raster.height, poses, meshes[bake].triangle_count,
+             (long long)(stopped[1] / poses), (long long)((stopped[2] - stopped[1]) / poses),
+             (long long)((stopped[3] - stopped[2]) / poses), (long long)((stopped[0] - stopped[3]) / poses),
+             perf_quarter->name);
+    bench_close(b);
+    memory_free(b);
+}
+
 void
 test_sponza_draw_stage_breakdown(void) {
     open_the_meshes();
+    for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
+        report_stage_split(i);
+    }
     bench_t* b = memory_alloc(sizeof(*b), MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL(b);
     const r3d_instance_t atrium = {&meshes[SPONZA_BAKE_FULL], NULL};
