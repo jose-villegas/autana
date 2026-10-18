@@ -360,21 +360,23 @@ The gate measures the largest RGB565 channel spread across the vertices.
 For sides above side 4, its limit interpolates from the near gate at side 5
 to the far gate at the size limit.
 
-| Today (defaults) | Flat ≤8 | Flat ≤8 gate ramp | Flat ≤8 + dither 4, ramp 1 | Flat bake |
-|---|---|---|---|---|
-| ![Defaults](../images/render/sponza-small-fill-defaults.gif) | ![Flat ≤8](../images/render/sponza-small-fill-flat8.gif) | ![Gate ramp](../images/render/sponza-small-fill-gate.gif) | ![Ramped dither](../images/render/sponza-small-fill-dither.gif) | ![Flat bake](../images/render/sponza-small-fill-bake.gif) |
+| Technique | Look and difference from defaults |
+|---|---|
+| Today (defaults) | ![Defaults](../images/render/sponza-small-fill-defaults.gif) |
+| Flat ≤8 | ![Flat ≤8](../images/render/sponza-small-fill-flat8.gif)<br>![Flat ≤8 vs defaults, difference x8](../images/render/sponza-small-fill-flat8-diff.gif) |
+| Flat ≤8 gate ramp | ![Gate ramp](../images/render/sponza-small-fill-gate.gif)<br>![Gate ramp vs defaults, difference x8](../images/render/sponza-small-fill-gate-diff.gif) |
+| Flat ≤8 + dither 4 ramp 1 | ![Ramped dither](../images/render/sponza-small-fill-dither.gif)<br>![Dither 4 ramp 1 vs defaults, difference x8](../images/render/sponza-small-fill-dither-diff.gif) |
+| Flat bake (fitted) | ![Flat bake](../images/render/sponza-small-fill-bake.gif)<br>![Flat bake vs defaults, difference x8](../images/render/sponza-small-fill-bake-diff.gif) |
 
-Clips share a two-second window and a 160×160 crop, enlarged 2× without smoothing
-at 8 fps with a full GIF palette. The crop and window maximize changed-pixel share
+Clips share a 2.5-second window and a 160×160 crop, enlarged 2× without smoothing
+at 6 fps with a full GIF palette. The crop and window maximize changed-pixel share
 for flat ≤8 versus defaults in the source comparison.
 
 Unspecified tunables keep their defaults. The gate ramp uses the near gate off,
 far 4, and size limit 8. Dither uses coverage 4, ramp 1, and the same size limit.
 
-![Flat up to 8 versus defaults, amplified difference](../images/render/sponza-small-fill-diff.gif)
-
-The heatmap shows absolute RGB difference x8 for flat <=8 versus defaults,
-with the same crop and window. The [temporal method](../tools/Render-Harness.md#temporal-video-columns) measures
+Each heatmap shows absolute RGB difference x8 from defaults with the same crop
+and window. The [temporal method](../tools/Render-Harness.md#temporal-video-columns) measures
 triangle-scale pops; judge dither by eye because it reads as noise here.
 
 <!-- generated: small-fill-temporal sha256=9118343727391865f2ba297704e028de2a5b036b4ba5d86fc1da43fa61a426b3 -->
