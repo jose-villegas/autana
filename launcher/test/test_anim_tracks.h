@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <string.h>
 #include "anim/anim_tracks.h"
+#include "anim/anim_tracks_format.h"
 #include "test_pack.h"
 
 enum {

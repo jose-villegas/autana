@@ -143,7 +143,7 @@ class TrackHostTests(unittest.TestCase):
         inputs = track_host.inputs(cc)
         names = {path.name for path in inputs}
         self.assertLessEqual({path.name for path in track_host.SOURCES}, names)
-        self.assertLessEqual({"anim_tracks.h", "asset_bytes.h", "quatf.h", "vec3f.h"}, names)
+        self.assertLessEqual({"anim_tracks.h", "anim_tracks_format.h", "asset_bytes.h", "quatf.h", "vec3f.h"}, names)
         before = track_host.build_key(cc)
         header = next(path for path in inputs if path.name == "quatf.h")
         edited = self.dir / header.name

@@ -95,5 +95,5 @@ header's opening comment; `--check` verifies it.
 | [include/math/scalar/mathx.h](include/math/scalar/mathx.h) | mathx: Q16.16 fixed-point scalar operations for the math templates (docs/math/README.md). |
 | [include/math/scalar/rng.h](include/math/scalar/rng.h) | rng: a small deterministic pseudo-random generator, for anything that wants one. |
 | [include/math/scalar/trig.h](include/math/scalar/trig.h) | trig, sine and cosine of a 16-bit phase, in integers: TRIG_TURN is one turn and the result has TRIG_SIN_SHIFT fractional bits, at most TRIG_SIN_MAX. |
-| [include/math/scalar/units.h](include/math/scalar/units.h) | units: MATH_MS_PER_S, the milliseconds in a second, for integer time conversions. |
+| [include/math/scalar/units.h](include/math/scalar/units.h) | units: integer time conversion scales. |
 <!-- /generated: package-headers -->
