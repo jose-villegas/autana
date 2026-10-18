@@ -60,7 +60,8 @@ static const char* TAG = "boot_anim_perf";
  * workload is deterministic per checkpoint, so a fixed count carries as much
  * data as a time-bounded ring would, and seven checkpoints still finish in
  * well under a minute. */
-#define SAMPLES_PER_CHECKPOINT 60
+#define SAMPLES_PER_CHECKPOINT  60
+#define HIDDEN_SEND_WAIT_MAX_US 1000
 
 typedef enum {
     FIELD_TOTAL,
@@ -237,6 +238,15 @@ time_frames(const checkpoint_frame_t* f, bool contend) {
         samples[SAMPLES_PER_CHECKPOINT - 1].values[FIELD_SEND] = gfx_get_present_send_us();
     }
     gfx_readback_end();
+    if (gfx_mode_current()->layout == GFX_LAYOUT_DOUBLE_FB) {
+        for (int i = 0; i < SAMPLES_PER_CHECKPOINT; i++) {
+            const frame_sample_t* s = &samples[i];
+            TEST_ASSERT_GREATER_THAN_INT32(0, s->values[FIELD_SEND]);
+            if (s->values[FIELD_DRAW] > s->values[FIELD_SEND]) {
+                TEST_ASSERT_LESS_OR_EQUAL_INT32(HIDDEN_SEND_WAIT_MAX_US, s->values[FIELD_WAIT]);
+            }
+        }
+    }
 }
 
 typedef struct {
