@@ -35,7 +35,7 @@ DISPLAY = ROOT / "launcher/components/esp32_s3_touch_amoled_1_8/include/bsp/disp
 
 INK, MUTED, FAINT = "#0b0b0b", "#52514e", "#c9c7c2"
 SHAPE_FILL, POINT, PIXEL_FILL = "#2a78d6", "#eb6834", "#1baf7a"
-TRS_MARGIN = 0.5  # units of room below the origin in the 3D panels
+TRS_MARGIN = 0  # units of room beyond the farthest corner in the 3D panels
 TRS_PANEL_SIZE = 3.2  # the 3D panels need more room
 PANEL_SIZE = 3.0  # inches per panel, wide and high
 PANEL_TITLE_ROOM = 0.3  # inches above each row for the panel titles
@@ -43,8 +43,8 @@ VIEW_ELEVATION, VIEW_AZIMUTH = 25, -60  # degrees, the same for every panel
 DPI = 110
 TITLE_SIZE = 10
 LABEL_SIZE = 8
-SHAPE_ALPHA = 0.35
-GHOST_ALPHA = 0.5  # the previous panel's dashed outline
+SHAPE_ALPHA = 0.3
+GHOST_WIDTH = 1.0  # the previous panel's dashed outline
 POINT_SIZE = 40
 PIXEL_PANELS = 4  # camera, offset, picture, whole pixel
 PIXEL_WINDOW = 3  # whole pixels shown on each side of the chosen one
@@ -76,8 +76,8 @@ def trs_figure(trs, output):
     values = dict(zip(("sx", "sy", "sz"), trs["scale"]), angle=trs["angle_degrees"],
                   **dict(zip(("ax", "ay", "az"), trs["axis"])), **dict(zip(("tx", "ty", "tz"), trs["position"])))
     corners = [p for name, _ in stages for p in trs[name]]
-    low = -TRS_MARGIN
-    high = math.ceil(max(max(c) for c in corners))
+    high = math.ceil(max(abs(v) for c in corners for v in c)) + TRS_MARGIN
+    low = -high
     count = trs["outline_corners"]
     size = (TRS_PANEL_SIZE * len(stages), TRS_PANEL_SIZE + PANEL_TITLE_ROOM)
     figure = plt.figure(figsize=size, layout="constrained")
@@ -91,19 +91,18 @@ def trs_figure(trs, output):
         axis.set_box_aspect((1, 1, 1))
         axis.view_init(elev=VIEW_ELEVATION, azim=VIEW_AZIMUTH)
         axis.tick_params(labelsize=LABEL_SIZE, colors=MUTED)
-        axis.set_xticks(range(0, high + 1))
-        axis.set_yticks(range(0, high + 1))
-        axis.set_zticks(range(0, high + 1))
+        axis.set_xticks(range(low, high + 1))
+        axis.set_yticks(range(low, high + 1))
+        axis.set_zticks(range(low, high + 1))
         for label, direction in zip("xyz", ((1, 0, 0), (0, 1, 0), (0, 0, 1))):
             end = [high * d for d in direction]
-            axis.plot([0, end[0]], [0, end[1]], [0, end[2]], color=MUTED, linewidth=1)
+            axis.plot([-end[0], end[0]], [-end[1], end[1]], [-end[2], end[2]], color=MUTED, linewidth=1)
             axis.text(*[(high + 0.2) * d for d in direction], label, fontsize=LABEL_SIZE, color=MUTED)
         if previous is not None:
             for ring in prism_edges(previous, count):
-                axis.plot(*zip(*ring), color=MUTED, linestyle="--", linewidth=0.8, alpha=GHOST_ALPHA)
+                axis.plot(*zip(*ring), color=INK, linestyle="--", linewidth=GHOST_WIDTH)
         axis.add_collection3d(Poly3DCollection(prism_faces(trs[name], count), facecolor=SHAPE_FILL,
                                                alpha=SHAPE_ALPHA, edgecolor=SHAPE_FILL))
-        axis.scatter(*trs[name][0], s=POINT_SIZE / 2, color=INK, zorder=3)
         previous = trs[name]
     figure.savefig(output, dpi=DPI, metadata={"Software": None})
     plt.close(figure)
