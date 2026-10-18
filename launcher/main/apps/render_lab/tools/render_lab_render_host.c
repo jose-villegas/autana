@@ -35,6 +35,17 @@ static int shell_quarter;
 static int option_count;
 static char** option_args;
 
+/* --menu: BOOT on the first frame opens the scene menu over the scene. */
+static bool menu;
+
+/* --tap X,Y: one press and release there, in panel coordinates, from TAP_FRAME. */
+#define TAP_FRAME 2
+static bool tap;
+static render_input_step_t touch[] = {
+    {TAP_FRAME, true, 0, 0},
+    {TAP_FRAME + 1, false, 0, 0},
+};
+
 /* --size WxH: the scene drawn at that render size, either axis on its own,
  * as one dynamic-resolution step; 0 keeps the scene's own scale. */
 static int size_width, size_height;
@@ -128,6 +139,8 @@ apply_flags(int argc, char** argv) {
     for (int i = 0; i < argc; i++) {
         if (strcmp(argv[i], "--no-hud") == 0) {
             render_lab_show_hud = false;
+        } else if (strcmp(argv[i], "--menu") == 0) {
+            menu = true;
         }
     }
 }
@@ -140,6 +153,19 @@ options(int argc, char** argv) {
     const char* view;
     const char* scale;
     const char* size;
+    const char* at;
+    if (!option_value(argc, argv, "--tap", &at)) {
+        return false;
+    }
+    if (at != NULL) {
+        if (sscanf(at, "%d,%d", &touch[0].x, &touch[0].y) != 2) {
+            (void)fprintf(stderr, "render_lab_render_host: --tap is X,Y in panel pixels, not %s\n", at);
+            return false;
+        }
+        touch[1].x = touch[0].x;
+        touch[1].y = touch[0].y;
+        tap = true;
+    }
     if (!option_value(argc, argv, "--scene", &scene) || !option_value(argc, argv, "--view", &view)
         || !option_value(argc, argv, "--camera", &render_lab_start_camera)
         || !option_value(argc, argv, "--scale", &scale) || !option_value(argc, argv, "--size", &size)) {
@@ -202,7 +228,9 @@ setup(int quarter) {
 static void
 draw(const render_frame_t* frame) {
     ui_clear_band_overlay();
-    app_list()->frame(frame->dt_ms, &frame->input);
+    input_t in = tap ? frame->input : (input_t){0};
+    in.boot.pressed = menu && frame->index == 0;
+    app_list()->frame(frame->dt_ms, &in);
 }
 
 const render_scene_t render_scene = {
@@ -210,6 +238,8 @@ const render_scene_t render_scene = {
     .quarter = 1,
     .frames = 30,
     .dt_ms = 16,
+    .input = touch,
+    .input_count = sizeof touch / sizeof touch[0],
     .options = options,
     .setup = setup,
     .draw = draw,
