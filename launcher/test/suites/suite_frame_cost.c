@@ -696,6 +696,12 @@ static void
 test_external_report_preserves_submillisecond_worst(void) {
     frame_cost_external_t slot = {0};
     char output[FRAME_COST_REPORT_MAX];
+    TEST_ASSERT_TRUE(frame_cost_external_add(&slot, "sound_mix", 1005));
+    TEST_ASSERT_GREATER_THAN_INT(0, frame_cost_external_report(&slot, output, sizeof output, 0));
+    TEST_ASSERT_EQUAL_STRING(" || sound_mix 1.005/1.005 ms/block n=1", output);
+    TEST_ASSERT_TRUE(frame_cost_external_add(&slot, "sound_mix", 0));
+    TEST_ASSERT_GREATER_THAN_INT(0, frame_cost_external_report(&slot, output, sizeof output, 0));
+    TEST_ASSERT_EQUAL_STRING(" || sound_mix 0.000/0.000 ms/block n=1", output);
     TEST_ASSERT_TRUE(frame_cost_external_add(&slot, "sound_mix", 23));
     TEST_ASSERT_TRUE(frame_cost_external_add(&slot, "sound_mix", 81));
     TEST_ASSERT_GREATER_THAN_INT(0, frame_cost_external_report(&slot, output, sizeof output, 0));
