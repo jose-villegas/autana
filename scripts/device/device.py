@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
 from console_protocol import replies_to, require_development
 from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, BUILD_ID_REQUEST,
-                            crash_signs)
+                            crash_signs, suite_failure_signs)
 
 from process_tree import (stop_process_tree, launch_process_tree, close_process_tree,
                           install_console_interrupt_handler)
@@ -538,11 +538,14 @@ def print_suite_output(data, record_path, command, reason, verbose, boots_allowe
         for suite_name, count in failures_by_suite(text):
             print(f"  {suite_name}: {count} FAIL")
     crashed = print_crash_signs(data, boots_allowed)
+    signs = suite_failure_signs(text, failed)
+    for sign in signs:
+        print(sign)
     print(f"{command} capture: {record_path}")
     print(f"{command} capture ended: {reason}")
     if reason != "complete":
         raise RuntimeError(f"no completion line arrived: the capture ended {reason}")
-    return failed + crashed
+    return failed + crashed + len(signs)
 
 
 def print_reset_output(data, verbose):

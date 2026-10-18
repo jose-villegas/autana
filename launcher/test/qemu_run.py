@@ -81,7 +81,7 @@ import device_profile  # noqa: E402  (path must be set up first)
 from espressif import espressif_tools_root, idf_python, idf_path  # noqa: E402  (path must be set up first)
 from device_report import SUITE_COMPLETE_RE  # noqa: E402  (the board tool's own reading)
 from device_capture import (BOOTS_FROM_RESET, BUILD_ID_RE, BUILD_ID_REQUEST,  # noqa: E402
-                            crash_signs)  # (the board tool's own crash verdict)
+                            crash_signs, suite_failure_signs)  # (the board tool's own crash verdict)
 from console_protocol import ANSI  # noqa: E402
 import screenshot as wire  # noqa: E402  (the board tool's own protocol)
 import patched_qemu  # noqa: E402  (path must be set up first)
@@ -389,13 +389,14 @@ def summarise(log_path):
         print("  FAIL %s: %s" % (name, why[:120]))
     # A run starts from QEMU's own power-on.
     crashes = crash_signs(text, BOOTS_FROM_RESET)
-    for sign in crashes:
+    signs = suite_failure_signs(text, len(failed))
+    for sign in crashes + signs:
         print("  " + sign)
     sentinel = re.search(r"^%s .*$" % SENTINEL, text, flags=re.M)
     print("%d passed, %d failed, %d skipped%s" %
           (passed, len(failed), ignored,
            "; " + sentinel.group(0) if sentinel else ""))
-    return sentinel is not None, len(failed) + len(crashes)
+    return sentinel is not None, len(failed) + len(crashes) + len(signs)
 
 
 def verdict(log_path, finished, actions):

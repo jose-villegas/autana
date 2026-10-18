@@ -1,2 +1,2 @@
-# The engine standard pack: artwork every app may use. Every entry root under
+# The engine standard pack: content every app may use. Every entry root under
 # this folder is an entry of pack "engine"; no pack depends on another.

@@ -5,6 +5,7 @@
 #include <stdbool.h>
 
 #include "asset/asset_directory.h"
+#include "asset/asset_directory_format.h"
 #include "asset/asset_store_backend.h"
 #include "core/memory.h"
 #include "esp_log.h"

@@ -35,6 +35,7 @@
 #include <math.h>
 #include <stdio.h>
 
+#include "draw/draw_image_format.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_test.h"

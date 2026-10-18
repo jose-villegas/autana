@@ -1,5 +1,6 @@
 #include <math.h>
 #include <stdlib.h>
+#include "anim/anim_skeleton_format.h"
 #include "anim/playback/anim_layer.h"
 #include "suites.h"
 #include "unity.h"

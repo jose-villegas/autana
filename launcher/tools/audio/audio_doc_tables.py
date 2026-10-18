@@ -14,8 +14,8 @@ sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 from doc_tables import markdown
 from generated_blocks import replace_block
 
-CAPTURE = Path("docs/notes/data/audio_capture.txt")
-DOCUMENT = Path("docs/notes/Audio.md")
+CAPTURE = Path("docs/audio/data/audio_capture.txt")
+DOCUMENT = Path("docs/audio/Audio-Path.md")
 REGENERATE = "python launcher/tools/audio/audio_doc_tables.py --write"
 
 

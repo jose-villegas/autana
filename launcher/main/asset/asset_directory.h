@@ -14,12 +14,6 @@
 
 #include "asset/asset_pack.h"
 
-#define ASSET_DIRECTORY_MAGIC       "ABDR"
-#define ASSET_DIRECTORY_VERSION     2U
-#define ASSET_DIRECTORY_HEADER_SIZE 16U
-#define ASSET_DIRECTORY_ROW_SIZE    40U
-#define ASSET_MMU_PAGE_SIZE         65536U /* Separate pages keep mapping lifetimes independent. */
-
 /* A validated directory. Holds no copy: `base` must outlive it. */
 typedef struct {
     const uint8_t* base;

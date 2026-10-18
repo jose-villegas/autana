@@ -20,20 +20,22 @@ TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS / "device"))
 sys.path.insert(0, str(TOOLS / "render"))
 
+from build.c_header import read_define  # noqa: E402
 import gfx_color  # noqa: E402
 from render_diff import read_png  # noqa: E402
 
+FORMAT_OWNER = TOOLS.parent / "main/draw/draw_image_format.h"
 TYPE = b"IMAG"
-VERSION = 1
+VERSION = read_define(FORMAT_OWNER, "DRAW_IMAGE_VERSION")
 SUFFIX = ".image.toml"
 # draw_image_format_t: gfx_color_t pixels, byte-swapped RGB565; and one bit a
 # pixel, the most significant leftmost, 1 ink, a row a whole number of bytes.
-FORMAT_RGB565 = 1
-FORMAT_MONO1 = 2
+FORMAT_RGB565 = read_define(FORMAT_OWNER, "DRAW_IMAGE_FORMAT_RGB565")
+FORMAT_MONO1 = read_define(FORMAT_OWNER, "DRAW_IMAGE_FORMAT_MONO1")
 FORMATS = {FORMAT_RGB565: 16, FORMAT_MONO1: 1}  # bits per pixel
-MONO1_STRIDE_STEP = 8  # a MONO1 stride is whole bytes
+MONO1_STRIDE_STEP = read_define(FORMAT_OWNER, "DRAW_IMAGE_MONO1_STRIDE_STEP")
 HEADER = struct.Struct("<HHHHII")
-PIXEL_ALIGN = 4
+PIXEL_ALIGN = read_define(FORMAT_OWNER, "DRAW_IMAGE_PIXEL_ALIGN")
 SIDE_MAX = 0xFFFF
 
 

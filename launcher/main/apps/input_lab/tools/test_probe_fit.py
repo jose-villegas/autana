@@ -29,6 +29,12 @@ class ParseTest(unittest.TestCase):
         [p] = probe_fit.parse([probe_line(100, 200, 110, 230, q=1, cal=1)])
         self.assertEqual((p["ax"], p["ay"], p["fx"], p["fy"], p["q"], p["cal"]), (100, 200, 110, 230, 1, 1))
 
+    def test_replay_framing_preserves_probe_parsing(self):
+        line = probe_line(100, 200, 110, 230)
+        self.assertEqual(probe_fit.parse([line]), probe_fit.parse([
+            "LABDUMP_BEGIN", "LABDUMP " + line,
+            "LABDUMP GRAV face_up down 0 0 -1 bias_dps 0 0 0", "LABDUMP_END"]))
+
     def test_ignores_other_console_lines(self):
         self.assertEqual(probe_fit.parse(["input_lab: round random screen 448x368 quarter 1", "shell: x"]), [])
 

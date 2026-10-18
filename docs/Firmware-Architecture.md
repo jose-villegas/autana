@@ -72,8 +72,9 @@ flowchart TB
         subgraph R6["rendering"]
             Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
         end
-        subgraph R7["drawing and animation"]
+        subgraph R7["drawing, animation and sound"]
             Draw["draw/<br/><i>shapes, text, images, palettes into a target</i>"]
+            Sound["sound/<br/><i>stored sounds and sample cursors</i>"]
             Anim["anim/<br/><i>keyed tracks sampled over time, tweens</i>"]
         end
         subgraph R8["content"]
@@ -115,7 +116,7 @@ flowchart TB
     Shell -.->|"calls through app/app.h"| Apps
 ```
 
-Audio layer: [path and board notes](notes/Audio.md).
+Audio layer: [audio docs](audio/README.md).
 
 - **Includes are layer-qualified**: `"gfx/gfx.h"`, not `"gfx.h"`, even
   between two files in the same folder, so an app reaching past `ui` into

@@ -134,6 +134,7 @@ $MAIN_DIR/input/touch_inject_fsm.c
 $MAIN_DIR/input/gesture.c
 $MAIN_DIR/input/touch_gesture.c
 $MAIN_DIR/input/tilt.c
+$MAIN_DIR/input/gravity.c
 $MAIN_DIR/input/button_fsm.c
 $MAIN_DIR/display/display.c
 $MAIN_DIR/boot/boot_anim.c
@@ -149,6 +150,8 @@ $MAIN_DIR/anim/anim_skeleton.c
 $MAIN_DIR/anim/pose/anim_pose.c
 $MAIN_DIR/anim/playback/anim_playhead.c
 $MAIN_DIR/anim/playback/anim_layer.c
+$MAIN_DIR/sound/sound.c
+$MAIN_DIR/audio/audio_adpcm.c
 $MAIN_DIR/render/r3d_skin.c
 $MAIN_DIR/render/skin/r3d_skinning.c
 $MAIN_DIR/render/skin/r3d_skin_light.c
@@ -515,6 +518,9 @@ export AUTANA_PACKS_WAITING
 AUTANA_ANIM_PROBE="$BUILD_DIR/anim_probe.bin"
 export AUTANA_ANIM_PROBE
 "$PYTHON" "$TEST_DIR/../tools/tests/anim_probe.py" -o "$AUTANA_ANIM_PROBE"
+AUTANA_SOUND_PROBE="$BUILD_DIR/sound_probe.apak"
+export AUTANA_SOUND_PROBE
+"$PYTHON" "$TEST_DIR/../tools/tests/sound_probe.py" -o "$BUILD_DIR"
 AUTANA_SKIN_PROBE="$BUILD_DIR/skin_probe.bin"
 export AUTANA_SKIN_PROBE
 "$PYTHON" "$TEST_DIR/../tools/tests/skin_probe.py" -o "$AUTANA_SKIN_PROBE"

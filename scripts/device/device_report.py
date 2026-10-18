@@ -27,7 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config
 from device_lock import board_label
-from device_capture import RESULT_RE, results, SELFTEST_COMPLETE_RE, BOOTS_ON_RUNNING, crash_signs  # noqa: E402
+from device_capture import RESULT_RE, results, SELFTEST_COMPLETE_RE, suite_failure_signs  # noqa: E402
 
 # The line a RUNSUITE ends with, read here for the board (device.py) and for
 # QEMU (launcher/test/qemu_run.py). An image that predates --test prints no
@@ -480,11 +480,14 @@ def selftest_markdown(parsed, text, capture_path, captured_at):
         lines.append("> **No `SELFTEST_COMPLETE` line found** - the capture may have "
                      "timed out or the device may have crashed mid-run. Treat this "
                      "report as partial.")
-    elif failures_reported != len(failed):
+    elif failures_reported < len(failed):
         lines.append("")
         lines.append(f"> Device reported `failures={failures_reported}` but this report "
                      f"parsed {len(failed)} FAIL lines - a parsing mismatch, not "
                      "necessarily a device problem. Check the raw capture.")
+    for sign in suite_failure_signs(text, len(failed)):
+        lines.append("")
+        lines.append(f"> **Run failed:** `{sign}`")
     lines.append("")
 
     if failed:
