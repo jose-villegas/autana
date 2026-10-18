@@ -641,56 +641,55 @@ class PaperCitationTest(unittest.TestCase):
                     f"{path}:1: cites docs/Citations.md by number; "
                     "name the source (author, year, section) in place"])
 
-    def test_a_source_file_naming_its_source_passes(self):
-        rows = '| <a id="1"></a>[1] | A<br>Cited by: [Guide.md](Guide.md) |\n'
-        self.assertEqual(self.problems(rows, [("docs/Guide.md", "[[1]](Citations.md#1)\n"),
-                                              ("launcher/main/a.c", "/* Gouraud 1971. */\n")]), [])
+    def named(self, listed, **files):
+        """problems() for an entry named `Gouraud 1971` whose Cited by lists `listed`,
+        over files given as dir__name_ext=text."""
+        rows = ('| <a id="1"></a>[1] | A<br>Named in code: `Gouraud 1971`<br>Cited by: '
+                + listed + ' |\n')
+        return self.problems(rows, [(".".join(key.replace("__", "/").rsplit("_", 1)), text)
+                                    for key, text in files.items()])
 
-    NAMED = '| <a id="1"></a>[1] | A<br>Named in code: `Gouraud 1971`<br>Cited by: %s |\n'
+    GUIDE = "[[1]](Citations.md#1)\n"
+    A_C = "/* Gouraud 1971. */\n"
+    NO_SOURCE = ["docs/Citations.md:1: [1] names `Gouraud 1971` in code, "
+                 "and no source file does; drop the name or the entry"]
+
+    def test_a_source_file_naming_its_source_passes(self):
+        self.assertEqual(self.named("[a.c](../launcher/main/a.c), [a.py](../scripts/a.py)",
+                                    launcher__main__a_c=self.A_C, scripts__a_py="# Gouraud 1971\n"), [])
 
     def test_a_source_file_with_the_name_must_be_listed(self):
-        found = self.problems(self.NAMED % "[a.c](../launcher/main/a.c)",
-                              [("launcher/main/a.c", "/* Gouraud 1971. */\n"),
-                               ("editor/src/b.cpp", "// Gouraud 1971\n")])
+        found = self.named("[a.c](../launcher/main/a.c)", launcher__main__a_c=self.A_C,
+                           editor__src__b_cpp="// Gouraud 1971\n")
         self.assertEqual(found, ["docs/Citations.md:1: [1] cited by, not listed: editor/src/b.cpp" + FIX])
 
     def test_a_listed_file_that_drops_the_name_is_flagged(self):
-        found = self.problems(self.NAMED % "[a.c](../launcher/main/a.c), [b.c](../launcher/main/b.c)",
-                              [("launcher/main/a.c", "/* Gouraud 1971. */\n"),
-                               ("launcher/main/b.c", "/* Phong. */\n")])
+        found = self.named("[a.c](../launcher/main/a.c), [b.c](../launcher/main/b.c)",
+                           launcher__main__a_c=self.A_C, launcher__main__b_c="/* Phong. */\n")
         self.assertEqual(found, ["docs/Citations.md:1: [1] listed, does not cite it: launcher/main/b.c" + FIX])
 
     def test_a_name_no_source_file_contains_is_flagged(self):
-        found = self.problems(self.NAMED % "[Guide.md](Guide.md)",
-                              [("docs/Guide.md", "[[1]](Citations.md#1)\n"),
-                               ("launcher/main/a.c", "/* Phong. */\n")])
-        self.assertEqual(found, ["docs/Citations.md:1: [1] names `Gouraud 1971` in code, "
-                                 "and no source file does; drop the name or the entry"])
-
-    def test_documents_and_sources_list_together(self):
-        rows = self.NAMED % "[Guide.md](Guide.md), [a.c](../launcher/main/a.c), [a.py](../scripts/a.py)"
-        self.assertEqual(self.problems(rows, [("docs/Guide.md", "[[1]](Citations.md#1)\n"),
-                                              ("launcher/main/a.c", "/* Gouraud 1971. */\n"),
-                                              ("scripts/a.py", "# Gouraud 1971\n")]), [])
+        self.assertEqual(self.named("[Guide.md](Guide.md)", docs__Guide_md=self.GUIDE,
+                                    launcher__main__a_c="/* Phong. */\n"), self.NO_SOURCE)
 
     def test_a_name_inside_a_document_is_not_a_source_file(self):
-        found = self.problems(self.NAMED % "[Guide.md](Guide.md)",
-                              [("docs/Guide.md", "[[1]](Citations.md#1) Gouraud 1971\n")])
-        self.assertEqual(found, ["docs/Citations.md:1: [1] names `Gouraud 1971` in code, "
-                                 "and no source file does; drop the name or the entry"])
+        self.assertEqual(self.named("[Guide.md](Guide.md)", docs__Guide_md=self.GUIDE + "Gouraud 1971\n"),
+                         self.NO_SOURCE)
+
+    def test_documents_and_sources_list_together(self):
+        self.assertEqual(self.named("[Guide.md](Guide.md), [a.c](../launcher/main/a.c)",
+                                    docs__Guide_md=self.GUIDE, launcher__main__a_c=self.A_C), [])
 
     def test_the_gates_own_tests_naming_a_source_do_not_list(self):
-        found = self.problems(self.NAMED % "[Guide.md](Guide.md), [a.c](../launcher/main/a.c)",
-                              [("docs/Guide.md", "[[1]](Citations.md#1)\n"),
-                               ("launcher/main/a.c", "/* Gouraud 1971. */\n"),
-                               ("scripts/gates/tests/test_x.py", "# Gouraud 1971\n")])
-        self.assertEqual(found, [])
+        self.assertEqual(self.named("[Guide.md](Guide.md), [a.c](../launcher/main/a.c)",
+                                    docs__Guide_md=self.GUIDE, launcher__main__a_c=self.A_C,
+                                    scripts__gates__tests__test_x_py="# Gouraud 1971\n"), [])
 
     def test_fix_rewrites_the_lists_to_what_the_tree_says(self):
-        rows = self.NAMED % "[stale.c](../launcher/stale.c)"
-        with gate_tree.temporary_tree([("docs/Citations.md", rows),
-                                       ("docs/Guide.md", "[[1]](Citations.md#1)\n"),
-                                       ("launcher/main/a.c", "/* Gouraud 1971. */\n")]) as root:
+        rows = ('| <a id="1"></a>[1] | A<br>Named in code: `Gouraud 1971`<br>Cited by: '
+                '[stale.c](../launcher/stale.c) |\n')
+        with gate_tree.temporary_tree([("docs/Citations.md", rows), ("docs/Guide.md", self.GUIDE),
+                                       ("launcher/main/a.c", self.A_C)]) as root:
             self.assertTrue(check_doc_citations.fix_cited_by(root))
             self.assertEqual(check_doc_citations.unresolved_papers(root), [])
             self.assertFalse(check_doc_citations.fix_cited_by(root))
