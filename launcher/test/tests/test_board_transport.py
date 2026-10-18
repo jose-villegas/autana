@@ -15,6 +15,24 @@ import console_pytest
 PYTEST_TIMEOUT_S = 60
 
 
+class RecipeStepTests(unittest.TestCase):
+    def test_a_step_timeout_reaches_the_expect_and_defaults_otherwise(self):
+        console = mock.Mock()
+        console_pytest.run_recipe(console, [{"command": "SCREENSHOT", "expect": "SCREENSHOT_END", "timeout": 90},
+                                            {"command": "HOME", "expect": "HOME_OK"}])
+        self.assertEqual(console.exchange.call_args_list, [
+            mock.call("SCREENSHOT", "SCREENSHOT_END", timeout=90),
+            mock.call("HOME", "HOME_OK", timeout=console_pytest.REPLY_TIMEOUT_S)])
+
+    def test_bad_steps_are_refused(self):
+        for step in ({"command": "HOME", "expect": "HOME_OK", "timeout": 0},
+                     {"command": "HOME", "expect": "HOME_OK", "timeout": "90"},
+                     {"command": "HOME", "expect": "HOME_OK", "wait": 1},
+                     {"command": "HOME"}):
+            with self.subTest(step=step), self.assertRaises(AssertionError):
+                console_pytest.run_recipe(mock.Mock(), [step])
+
+
 class BoardTransportTests(unittest.TestCase):
     def test_qemu_waits_for_boot_before_probing(self):
         dut = mock.Mock(spec=["expect", "write", "qemu"])

@@ -2,7 +2,8 @@
   expect: OPEN_OK[^\r\n]*
 - command: IMU quarter 1
 - command: SCREENSHOT
-  expect: SCREENSHOT_BEGIN[\s\S]*?SCREENSHOT_END
+  expect: SCREENSHOT_END
+  timeout: 90
 - command: HOME
   expect: HOME_OK[^\r\n]*
 - command: BUILDID

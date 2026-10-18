@@ -106,9 +106,9 @@ class Console:
         self.sample_s = 0
         self.quarters = iter(())
 
-    def exchange(self, command, expected, *, decline=False):
+    def exchange(self, command, expected, *, decline=False, timeout=REPLY_TIMEOUT_S):
         self.dut.write(command)
-        match = self.dut.expect([("(?:" + expected + r")\r?\n").encode(), ERROR])
+        match = self.dut.expect([("(?:" + expected + r")\r?\n").encode(), ERROR], timeout=timeout)
         reply = match[0].decode().rstrip("\r\n")
         assert not re.search(ERROR.decode(), reply) or (decline and reply.endswith("_ERR not handled")), reply
         return reply
@@ -155,8 +155,10 @@ def run_recipe(console, steps):
             assert set(step) == {"command"} and len(parts) == 3 and parts[2].isdigit(), step
             console.tilt(int(parts[2]))
         else:
-            assert set(step) == {"command", "expect"} and isinstance(step["expect"], str), step
-            console.exchange(command, step["expect"])
+            assert {"command", "expect"} <= set(step) <= {"command", "expect", "timeout"}, step
+            timeout = step.get("timeout", REPLY_TIMEOUT_S)
+            assert isinstance(step["expect"], str) and isinstance(timeout, (int, float)) and timeout > 0, step
+            console.exchange(command, step["expect"], timeout=timeout)
 
 
 class RecipeFile(pytest.File):
