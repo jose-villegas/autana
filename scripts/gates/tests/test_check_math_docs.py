@@ -1,6 +1,7 @@
 """check_math_docs.py: the page tracks the headers, in both directions."""
 
 import pathlib
+import shutil
 import sys
 import tempfile
 import unittest
@@ -93,6 +94,60 @@ class CheckMathDocs(unittest.TestCase):
             index.write_text(index.read_text() + "\n[motion](Motion.md)\n")
             self.assertEqual([], check_math_docs.check(root))
 
+
+    def test_motion_declarations_with_general_return_types_are_required(self):
+        for result in ("bool", "int", "uint32_t", "const unsigned long", "const char*", "void* const"):
+            with self.subTest(result=result), tempfile.TemporaryDirectory() as d:
+                root = pathlib.Path(d)
+                make_tree(root)
+                header = root / "launcher/packages/math/include/math/motion/helpers.h"
+                header.write_text(result + " orbit_ready(void);\n")
+                self.assertTrue(any("orbit_ready" in p for p in check_math_docs.check(root)))
+                (root / "docs/math/Motion.md").write_text("`orbit_ready()`\n")
+                index = root / check_math_docs.PAGE
+                index.write_text(index.read_text() + "\n[motion](Motion.md)\n")
+                self.assertEqual([], check_math_docs.check(root))
+
+    def test_real_headers_and_pages_require_declarations_and_generated_functions(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            for directory in (check_math_docs.MATH.parent, check_math_docs.PAGE.parent):
+                shutil.copytree(REPO / directory, root / directory)
+            header = root / "launcher/packages/math/include/math/motion/orbit_motion.h"
+            original = header.read_text()
+            for result in ("bool", "int"):
+                with self.subTest(result=result):
+                    header.write_text(original + "\n" + result + " orbit_undocumented(void);\n")
+                    self.assertTrue(any("orbit_undocumented" in p for p in check_math_docs.check(root)))
+            header.write_text(original)
+            page = root / "docs/math/Projection.md"
+            original = page.read_text()
+            for name in ("projectf_clip_near", "projectx_clip_near"):
+                with self.subTest(name=name):
+                    page.write_text(original.replace(name, "omitted"))
+                    self.assertTrue(any(name in p for p in check_math_docs.check(root)))
+            page.write_text(original)
+            self.assertEqual([], check_math_docs.check(root))
+
+    def test_non_family_instantiation_functions_are_required_on_any_page(self):
+        with tempfile.TemporaryDirectory() as d:
+            root = pathlib.Path(d)
+            make_tree(root)
+            directory = root / "launcher/packages/math/include/math/projection"
+            directory.mkdir()
+            (directory / "clip_template.h").write_text(
+                "#define MATH_DEFINE_CLIP_NEAR(P) MATH_CLIP(P, clip_near)\n"
+                "#define MATH_CLIP(P, OP) static inline int P##_##OP(int n) { return n; }\n")
+            (directory / "projectf.h").write_text("MATH_DEFINE_CLIP_NEAR(projectf)\n")
+            self.assertTrue(any("projectf_clip_near" in p for p in check_math_docs.check(root)))
+            page = root / "docs/math/Projection.md"
+            page.write_text("`projectf_clip_near(n)`\n")
+            index = root / check_math_docs.PAGE
+            index.write_text(index.read_text() + "\n[projection](Projection.md)\n")
+            self.assertEqual([], check_math_docs.check(root))
+            index.write_text(index.read_text() + page.read_text())
+            page.write_text("")
+            self.assertEqual([], check_math_docs.check(root))
 
     def test_inline_math_limit_reports_each_page(self):
         with tempfile.TemporaryDirectory() as d:
