@@ -29,6 +29,10 @@ void gfx_clip_restore(recti_t clip);
 
 /* gfx_mode.c: the framebuffer and the mode it is held in. */
 extern gfx_color_t* fb;
+extern gfx_color_t* present_fb;
+
+/* Waits for the send task before changing its source or reading back. */
+void gfx_present_drain(void);
 extern gfx_mode_t current_mode;
 
 bool alloc_full_framebuffer(void);

@@ -82,16 +82,23 @@ Requested with `gfx_mode_enter()` from an app's `enter()`, released with
 `gfx_mode_exit()` from its `exit()`. `gfx_mode_resolve()` (`gfx_mode.h`) turns
 the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 
-| | Full framebuffer | Band ring | Indexed |
-|---|---|---|---|
-| Request | the default | `GFX_LAYOUT_BANDS` | `GFX_LAYOUT_INDEXED` |
-| App writes | pixels, anywhere | pixels, one band at a time | palette indices, `gfx_indexed_image()` |
-| Buffer | 322 KiB, PSRAM | 2 x `GFX_BAND_HEIGHT` rows, DMA RAM | grid_w x grid_h bytes, internal RAM |
-| Who sends | present task | gfx, from the shell's frame loop | present task |
-| Sends | dirty cells, runs or strips | dirty bands, whole | dirty strips, whole |
-| Content kept between frames | yes | **no**: a band is gone once sent | yes |
-| For | anything that redraws part of a frame | a full-redraw renderer | a cell grid with a palette |
-| Used by | the launcher, any microui screen | engine self-tests | a frame that is a grid of palette indices |
+| | Full framebuffer | Band ring | Indexed | Double framebuffer |
+|---|---|---|---| --- |
+| Request | the default | `GFX_LAYOUT_BANDS` | `GFX_LAYOUT_INDEXED` | `GFX_LAYOUT_DOUBLE_FB` |
+| App writes | pixels, anywhere | pixels, one band at a time | palette indices, `gfx_indexed_image()` | pixels, whole frame |
+| Buffer | 322 KiB, PSRAM | 2 x `GFX_BAND_HEIGHT` rows, DMA RAM | grid_w x grid_h bytes, internal RAM | 2 x `GFX_FRAMEBUFFER_BYTES`, PSRAM |
+| Who sends | present task | gfx, from the shell's frame loop | present task | present task |
+| Sends | dirty cells, runs or strips | dirty bands, whole | dirty strips, whole | every strip, whole |
+| Content kept between frames | yes | **no**: a band is gone once sent | yes | front only; redraw every back pixel |
+| For | anything that redraws part of a frame | a full-redraw renderer | a cell grid with a palette | a full-redraw renderer |
+| Used by | the launcher, any microui screen | engine self-tests | a frame that is a grid of palette indices | full-frame pixel rendering |
+
+Double mode draws into the back buffer while the front is sent. Present
+begin drains the preceding send and swaps them; present wait returns at once.
+Dirty tracking, interlace, healing and half-picture expansion are disabled.
+
+Mode exit drains the send, keeps the last presented frame as the single
+framebuffer, and frees the other. Readback also drains before reading the front.
 
 - `gfx_mode_enter()` asserts the mode is `GFX_LAYOUT_FULL_FB`: modes do not nest.
 - A failed allocation grants nothing: the returned mode is still
@@ -232,7 +239,8 @@ cold, and sent from the caller's core.
 Prefer reading PSRAM to writing it in bulk. A retained framebuffer is read
 by core 1 into internal DMA buffers while core 0 updates app state; drawing
 waits for that read to finish. A catch-up copy between PSRAM framebuffers
-costs 6–15 ms per frame, so presentation uses one retained framebuffer.
+costs 6–15 ms per frame. Single-buffer layouts retain their contents;
+`GFX_LAYOUT_DOUBLE_FB` requires a full redraw and makes no catch-up copy.
 The mesh raster is a measured exception: its colour and depth targets and upscaled framebuffer are written in PSRAM.
 See [Board and Memory](notes/Board-and-Memory.md#psram-throughput) for
 memory throughput and placement.

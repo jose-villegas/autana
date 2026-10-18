@@ -187,12 +187,11 @@ as well as stored sounds and sample cursors.
 
 368 × 448 × 2 bytes = **322 KiB**, allocated in PSRAM
 (`MEMORY_PSRAM` in `core/memory.h`), so it does not count against the
-internal heap (see [Board-and-Memory.md](notes/Board-and-Memory.md)). There
-is room in PSRAM for a second one; the
-[presentation memory policy](Gfx-and-Presentation.md#presentation-memory-policy)
-explains the copy cost that keeps presentation on one retained framebuffer.
-See [transfer payload](notes/Display-and-Rendering.md#transfer-payload) for
-the QSPI bus budget.
+internal heap (see [Board-and-Memory.md](notes/Board-and-Memory.md)).
+
+There is one front, one back, only in `GFX_LAYOUT_DOUBLE_FB`.
+See the [presentation memory policy](Gfx-and-Presentation.md#presentation-memory-policy)
+and [transfer payload](notes/Display-and-Rendering.md#transfer-payload).
 
 "One framebuffer" is really "one destination at a time": an app may ask at
 `enter()` for a band ring (a few strips of rows, sent as each fills) or an
