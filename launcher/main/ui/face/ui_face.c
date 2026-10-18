@@ -484,10 +484,10 @@ ui_bevel(recti_t r, uint32_t face_rgb, bool sunken) {
 }
 
 void
-ui_icon(recti_t r, const draw_image_t* icon) {
+ui_icon(recti_t r, const draw_image_t* icon, const char* fallback) {
     UI_FACE_COST_BEGIN(face_from);
     UI_FACE_COST_BEGIN(backend_from);
-    ui_draw_icon(ui_context(), ui_mu_from_recti(r), icon, NULL, theme.text);
+    ui_draw_icon(ui_context(), ui_mu_from_recti(r), icon, fallback, theme.text);
     UI_FACE_COST_END(backend_from, "ui.backend");
     UI_FACE_COST_END(face_from, "ui.face");
 }

@@ -114,7 +114,7 @@ icon_fill_emit(void* ctx_, recti_t rect) {
  * place a command's colour crosses into gfx's. */
 static gfx_color_t
 mu_color_to_gfx(mu_Color c) {
-    return gfx_rgb(((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b);
+    return gfx_rgb(ui_rgb_value(c));
 }
 
 static void

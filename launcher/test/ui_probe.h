@@ -64,7 +64,7 @@ ui_probe_text_rgb(const char* s, uint32_t* rgb) {
     if (text == NULL) {
         return false;
     }
-    *rgb = ((uint32_t)text->color.r << 16) | ((uint32_t)text->color.g << 8) | text->color.b;
+    *rgb = ui_rgb_value(text->color);
     return true;
 }
 
@@ -76,7 +76,7 @@ ui_probe_fill_rgb(recti_t r, uint32_t* rgb) {
     while (mu_next_command(ui_context(), &cmd)) {
         const mu_Rect c = cmd->rect.rect;
         if (cmd->type == MU_COMMAND_RECT && c.x == r.x && c.y == r.y && c.w == r.w && c.h == r.h) {
-            *rgb = ((uint32_t)cmd->rect.color.r << 16) | ((uint32_t)cmd->rect.color.g << 8) | cmd->rect.color.b;
+            *rgb = ui_rgb_value(cmd->rect.color);
             return true;
         }
     }

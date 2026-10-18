@@ -132,6 +132,8 @@ static const ui_theme_t THEME = {
     .icon_side = 32,
 };
 
+/* Spelled out rather than ui_theme_from_face(), so the face's own
+ * conversion is checked against an independent copy. */
 #define LEGACY_THEME_COLOR(t, member) .member = ui_rgb((t).member)
 
 static ui_mu_theme_t
@@ -251,7 +253,7 @@ emit_face(verb_t verb, int* value, bool* on) {
         case VERB_PANEL: ui_panel(BOX); break;
         case VERB_FILL: ui_fill(BOX, FACE_RGB); break;
         case VERB_OUTLINE: ui_outline(BOX, FACE_RGB); break;
-        case VERB_ICON: ui_icon(BOX, &ICON); break;
+        case VERB_ICON: ui_icon(BOX, &ICON, NULL); break;
         case VERB_BEVEL: ui_bevel(BOX, FACE_RGB, true); break;
         case VERB_CHECK: ui_check(BOX); break;
         case VERB_SWATCHES: ui_swatches(BOX, SWATCHES, SWATCH_COLS, SWATCH_ROWS); break;

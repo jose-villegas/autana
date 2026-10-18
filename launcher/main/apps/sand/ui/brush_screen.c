@@ -223,12 +223,7 @@ draw_brush_info(recti_t button) {
         button.w - 2 * BRUSH_INFO_ICON_PAD,
         button.h - 2 * BRUSH_INFO_ICON_PAD,
     };
-    const draw_image_t* info = sand_icon(SAND_ICON_INFO);
-    if (info != NULL) {
-        ui_icon(icon_r, info);
-    } else {
-        ui_text_centre(icon_r, sand_icon_set.names[SAND_ICON_INFO].text);
-    }
+    ui_icon(icon_r, sand_icon(SAND_ICON_INFO), sand_icon_set.names[SAND_ICON_INFO].text);
 }
 
 static void
