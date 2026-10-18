@@ -1,6 +1,7 @@
 /* Native probe of the fused runtime kernel over a flat triangle. */
 #include <stdlib.h>
 #include <string.h>
+#include "render/r3d_skin_format.h"
 #include "render/skin/r3d_skin_light.h"
 
 enum { PATCH_VERTICES = 3, PATCH_CLUSTERS = 1 };

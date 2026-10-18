@@ -4,7 +4,9 @@
 
 render_view_t
 camera_view(const camera_t* camera, const transformf_t* pose, viewport_t viewport) {
-    return render_view_make(pose, camera->half_fov_short_tan, camera->near_z, viewport);
+    render_view_t view = render_view_make(pose, camera->half_fov_short_tan, camera->near_z, viewport);
+    view.present = camera->present;
+    return view;
 }
 
 static const anim_field_t LENS_FIELDS[] = {

@@ -110,7 +110,7 @@ line_dash_step(line_dash_t* dash) {
     return visible;
 }
 
-/* Bresenham (docs/Citations.md#30), treats both axes alike, no case analysis. */
+/* Bresenham, treats both axes alike, no case analysis. */
 static void
 walk(const gfx_surface_t* state, int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags, unsigned offset) {
     const int dx = mathi_abs(x1 - x0);

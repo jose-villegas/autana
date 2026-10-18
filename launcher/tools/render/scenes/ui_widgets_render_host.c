@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include "display/display.h"
 #include "gfx/gfx.h"
 #include "render_host.h"
 #include "ui/controls/ui_icons.h"
@@ -44,7 +45,7 @@ static int picked_item = 1;
 
 int
 display_quarter_now(void) {
-    return 0;
+    return DISPLAY_PORTRAIT;
 }
 
 static bool

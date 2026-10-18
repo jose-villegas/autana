@@ -258,7 +258,7 @@ class Renderer:
         return clip, rast, keep
 
     def barycentrics(self, clip, rast, keep, locations=None):
-        """Perspective weights via 2D homogeneous coordinates (Olano and Greer 1997, docs/Citations.md#70)."""
+        """Perspective weights via 2D homogeneous coordinates (Olano and Greer 1997)."""
         import torch
 
         from r3d.appearance_gather import gather
@@ -300,7 +300,7 @@ class Renderer:
         return pixels.index_copy(0, y * local.shape[1] + x, values).reshape(*local.shape, attributes.shape[-1])
 
     def antialias(self, image, clip, rast, keep):
-        """Analytic visibility coverage, Laine et al. 2020 section 3.6 (docs/Citations.md#2)."""
+        """Analytic visibility coverage, Laine et al. 2020 section 3.6."""
         import torch
 
         from r3d.appearance_gather import gather
@@ -429,7 +429,8 @@ def uniform_laplacian(points, edges):
 def vertex_scale(start, edges):
     """Each point's mean start edge length, capped at the start's mean edge length
     so large parts keep the global hold; points without edges take the global
-    mean (docs/Citations.md#78)."""
+    mean (the scale-dependent Laplacian of Desbrun, Meyer, Schröder and Barr,
+    Implicit Fairing of Irregular Meshes, SIGGRAPH 1999)."""
     import torch
 
     length = (start[edges[:, 0]] - start[edges[:, 1]]).norm(dim=1)

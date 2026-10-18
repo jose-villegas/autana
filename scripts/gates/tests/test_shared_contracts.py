@@ -61,7 +61,9 @@ Source: `capture.log`
 </details>
 ''')
         for sentinel, warning in [('', 'No `SELFTEST_COMPLETE` line found'),
-                                  ('SELFTEST_COMPLETE failures=2 elapsed_ms=42', 'parsing mismatch')]:
+                                  ('SELFTEST_COMPLETE failures=0 elapsed_ms=42', 'parsing mismatch'),
+                                  ('SELFTEST_COMPLETE failures=2 elapsed_ms=42',
+                                   '**Run failed:** `SELFTEST_COMPLETE failures=2, but 1 FAIL lines`')]:
             markdown, _, _ = device_report.selftest_markdown(parsed, sentinel, 'capture.log',
                 datetime(2026, 1, 2, tzinfo=timezone.utc))
             self.assertIn(warning, markdown)
