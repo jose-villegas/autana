@@ -1,20 +1,7 @@
 /*
- * imu: the QMI8658 six-axis accelerometer and gyroscope.
- *
- * Sits on the shared I2C bus at 0x6b, the same bus POST probes. There is no
- * driver for it in the BSP, so this is written against the QST datasheet.
- *
- * Which sensor answers which question is worth being clear about, because it
- * is easy to reach for the wrong one:
- *
- *   - the ACCELEROMETER senses gravity, so it says which way is down. That is
- *     what tilting the board changes, and what steering by tilt wants.
- *   - the GYROSCOPE senses rotation RATE, which is zero however the board is
- *     tilted, as long as it is being held still. It is what tells you the
- *     board is being shaken or spun.
- *
- * Both are read in one transfer (the data registers are contiguous), so using
- * both costs nothing over using either.
+ * imu: QMI8658 stream FIFO drained by imu_read_fifo().
+ * imu_read() returns the latest single sample. Register values follow the
+ * QST QMI8658A datasheet Rev A (2022).
  */
 #pragma once
 
@@ -23,8 +10,37 @@
 
 #include "build/build_variant.h"
 #include "input/imu_sample.h"
+#include "math/scalar/units.h"
 
+/* Must agree with CTRL3's full-scale code in imu.c. */
 #define IMU_GYRO_RANGE_DPS 512.0F
+
+/* QST QMI8658A datasheet Rev A (2022), Table 22 CTRL2/CTRL3 (6DOF);
+ * Lewis He, SensorLib GyroODR. We use stream mode, 128 samples,
+ * and the datasheet count-before-request drain sequence. */
+#define IMU_ODR_BASE_HZ    7174.4
+#define IMU_ODR_CODE       5
+#define IMU_ODR_DIVIDER    (1U << IMU_ODR_CODE)
+#define IMU_ODR_HZ         (IMU_ODR_BASE_HZ / IMU_ODR_DIVIDER)
+#define IMU_SAMPLE_US      ((uint32_t)((MATH_US_PER_S / IMU_ODR_HZ) + 0.5))
+#define IMU_FIFO_SAMPLES   128
+
+/* QMI8658A datasheet section 8.7: read mode discards arrivals, so loss is
+ * locked time / IMU_SAMPLE_US. Carry fractional time across drains; gaps break continuity. */
+static inline int
+imu_fifo_lost(uint64_t locked_us, uint32_t* remainder_us, bool gap) {
+    if (gap) {
+        *remainder_us = 0;
+        return 0;
+    }
+    const uint64_t total_us = locked_us + *remainder_us;
+    *remainder_us = (uint32_t)(total_us % IMU_SAMPLE_US);
+    return (int)(total_us / IMU_SAMPLE_US);
+}
+
+/* Oldest first; lost covers the preceding drain's read mode. Overflow marks a gap.
+ * Returns -1 on a bus error. */
+int imu_read_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed);
 
 /* Configures and starts the sensor. Safe to call more than once.
  * Returns false if the chip does not answer or identifies as something else. */
@@ -32,7 +48,7 @@ bool imu_init(void);
 
 bool imu_ready(void);
 
-/* Reads all six axes. Returns false on a bus error, leaving `out` untouched. */
+/* Reads the latest six axes. Returns false on a bus error. */
 bool imu_read(imu_sample_t* out);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
