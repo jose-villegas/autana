@@ -3,7 +3,7 @@
  * launcher/tools/audio/sound_asset.py. Opening it checks the header, the loop
  * and every ADPCM block header; the samples then stay in the pack, so a mapped
  * pack plays with no copy and no RAM. A cursor reads them out as int16. The
- * layout is in docs/audio/Sound-Assets.md.
+ * stored layout is sound_format.h.
  *
  * No allocation and no ESP-IDF.
  */
@@ -14,30 +14,10 @@
 #include "asset/asset_pack.h"
 #include "audio/audio_adpcm.h"
 #include "audio/audio_out.h"
+#include "sound/sound_format.h"
 
-#define SOUND_ASSET                ASSET_TYPE('S', 'O', 'N', 'D')
-#define SOUND_VERSION              1U
-/* The stored rate every sound is baked at. */
-#define SOUND_SAMPLE_RATE_HZ       AUDIO_OUT_SAMPLE_RATE_HZ
-#define SOUND_HEADER_SIZE          32U
-#define SOUND_ALIGNMENT            4U
-#define SOUND_CHANNELS             1U
-#define SOUND_DEFAULT_BLOCK_FRAMES 505U
-#define SOUND_PCM_BYTES            2U
-#define SOUND_AT_VERSION           0U
-#define SOUND_AT_FORMAT            2U
-#define SOUND_AT_CHANNELS          3U
-#define SOUND_AT_SAMPLE_RATE       4U
-#define SOUND_AT_FRAMES            8U
-#define SOUND_AT_LOOP_START        12U
-#define SOUND_AT_LOOP_END          16U
-#define SOUND_AT_BLOCK_FRAMES      20U
-#define SOUND_AT_RESERVED16        22U
-#define SOUND_AT_RESERVED32        24U
-#define SOUND_AT_DATA              28U
-
-#define SOUND_FORMAT_PCM16         0U
-#define SOUND_FORMAT_IMA_ADPCM     1U
+/* The stored rate every sound is baked at: the output rate, so playback never resamples. */
+#define SOUND_SAMPLE_RATE_HZ AUDIO_OUT_SAMPLE_RATE_HZ
 
 typedef enum { SOUND_PCM16 = SOUND_FORMAT_PCM16, SOUND_IMA_ADPCM = SOUND_FORMAT_IMA_ADPCM } sound_format_t;
 

@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "math/linear/transformf.h"
+#include "render/r3d_skin_format.h"
 #include "render/skin/r3d_skin_light_internal.h"
 #include "skin_light_reference.h"
 #include "suites.h"
@@ -72,7 +73,7 @@ static void
 test_reference_decodes_packed_normal_length(void) {
     fixture_t* f = malloc(sizeof *f);
     TEST_ASSERT_NOT_NULL(f);
-    for (int influences = R3D_SKIN_INFLUENCES_MIN; influences <= R3D_SKIN_INFLUENCES_MAX; influences += 2) {
+    for (int influences = R3D_SKIN_INFLUENCES_MIN; influences <= (int)R3D_SKIN_INFLUENCES_MAX; influences += 2) {
         fixture(influences, f);
         f->skin.vertices = f->records;
         for (int v = 0; v < VERTICES; v++) {
@@ -162,7 +163,7 @@ static void
 test_fused_decodes_albedo_and_split_matches_single(void) {
     static const int16_t positions[VERTICES][3] = {{-23, 51, 7}, {91, -31, 16}, {7, 19, -52}, {-41, 13, 37}};
     static const uint8_t colors[VERTICES][3] = {{128, 64, 32}, {255, 19, 83}, {47, 211, 128}, {91, 173, 237}};
-    for (int influences = R3D_SKIN_INFLUENCES_MIN; influences <= R3D_SKIN_INFLUENCES_MAX; influences += 2) {
+    for (int influences = R3D_SKIN_INFLUENCES_MIN; influences <= (int)R3D_SKIN_INFLUENCES_MAX; influences += 2) {
         fixture_t* f = malloc(sizeof *f);
         TEST_ASSERT_NOT_NULL(f);
         fixture(influences, f);
@@ -259,7 +260,7 @@ test_fused_rotations_unequal_weights_match_independent_reference(void) {
                  {r3d_skin_clusters_renormalised, true, R3D_SKIN_LIGHT_TRANSFER_ERROR_BOUND},
                  {r3d_skin_clusters_table, true, R3D_SKIN_LIGHT_TABLE_ERROR_BOUND}};
 
-    for (int influences = R3D_SKIN_INFLUENCES_MIN; influences <= R3D_SKIN_INFLUENCES_MAX; influences += 2) {
+    for (int influences = R3D_SKIN_INFLUENCES_MIN; influences <= (int)R3D_SKIN_INFLUENCES_MAX; influences += 2) {
         fixture_t* f = malloc(sizeof *f);
         TEST_ASSERT_NOT_NULL(f);
         fixture(influences, f);

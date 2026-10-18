@@ -21,7 +21,7 @@ from build.c_header import read_define
 
 TYPE = b"SOND"
 SUFFIX = ".sound.toml"
-SOUND_HEADER = TOOLS.parent / "main/sound/sound.h"
+SOUND_HEADER = TOOLS.parent / "main/sound/sound_format.h"
 ADPCM_HEADER = TOOLS.parent / "main/audio/audio_adpcm.h"
 
 

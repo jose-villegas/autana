@@ -1,4 +1,5 @@
 #include "sound/sound.h"
+#include "sound/sound_format.h"
 
 #include "asset/asset_bytes.h"
 #include "asset/asset_entry.h"

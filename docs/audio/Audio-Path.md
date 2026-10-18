@@ -26,14 +26,19 @@ The codec, control and GPIO interfaces have one shared bring-up. The BSP's
 Signal path during a loopback check:
 
 ```mermaid
-flowchart LR
-    Tx["I2S TX<br/>DMA"] --> Dac["ES8311<br/>DAC"]
-    Dac --> Amp["power<br/>amplifier"] --> Speaker["speaker"]
-    Speaker -->|over the air| Mic["microphone"]
-    Mic --> Adc["ES8311<br/>ADC"] --> Rx["I2S RX<br/>DMA"]
-    Enable["board_audio_amp_enable()<br/>on GPIO 46"] -. enable .-> Amp
-    Codec["audio_codec"] -. I2C config .-> Dac
-    Codec -. I2C config .-> Adc
+flowchart TB
+    subgraph Play["Out: I2S to the speaker"]
+        direction LR
+        Tx["I2S TX<br/>DMA"] --> Dac["ES8311<br/>DAC"] --> Amp["power<br/>amplifier"] --> Speaker["speaker"]
+        Enable["board_audio_amp_enable()<br/>on GPIO 46"] -. enables .-> Amp
+    end
+    subgraph Capture["In: microphone to I2S"]
+        direction LR
+        Mic["microphone"] --> Adc["ES8311<br/>ADC"] --> Rx["I2S RX<br/>DMA"]
+    end
+    Codec["audio_codec"] -. configures the DAC over I2C .-> Play
+    Play -->|over the air| Capture
+    Codec -. configures the ADC over I2C .-> Capture
 ```
 
 The [volume table](#level-vs-volume) shows compression at high volume.

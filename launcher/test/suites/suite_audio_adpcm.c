@@ -5,6 +5,7 @@
 #include "asset/asset_store.h"
 #include "audio/audio_adpcm.h"
 #include "sound/sound.h"
+#include "sound/sound_format.h"
 #include "suites.h"
 #include "unity.h"
 #ifndef DEVICE_BUILD

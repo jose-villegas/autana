@@ -482,7 +482,8 @@ chrome moves, that file has to move with it.
 
 ```sh
 ./launcher/tools/render/render_compare.sh --script <host-render-script> \
-    [-o DIR] [--clear RRGGBB] [--video [--fps N]] [--crops N] <A> <B> \
+    [-o DIR] [--clear RRGGBB] [--video [--fps N]] [--crops N] \
+    [--label-a TEXT] [--label-b TEXT] <A> <B> \
     [--render LABEL "<renderer arguments>" ...]
 ```
 
@@ -502,9 +503,10 @@ flowchart LR
 | `A`, `B` | Revisions (each built in a temporary worktree, removed afterwards) or existing directories. |
 | `--script` | The scene's own host-render script, so the tool names no scene. By default it runs at both revisions and the images of the same name are compared. |
 | `--render` | Replaces that with ad-hoc renders: the script's `--build-only` builds the renderer, which runs with the arguments given. A revision from before `--build-only` runs its full script instead. |
+| `--label-a`, `--label-b` | What each side shows, such as `Today (main)` or the technique and setting being tried. They name the panels of the sheet, the crops and the video in place of the short hashes. |
 | `--clear` | The colour the scene clears to. A pixel clear on one side and drawn on the other is red and counted as a hole on the side that left it clear. |
 | sheet | `compare.png`, a row per render: A, B, then the absolute difference as a greyscale heatmap, amplified 8 times. `summary.txt` gives the resolved short hashes and per render the changed share, mean difference and holes. |
-| `--video` | Records every render's frames on both sides through the renderer's own `--video` (with `--render`, put `--frames` and `--dt` in the arguments; a scene runs from time zero). Writes `<label>.mp4`, labelled with the short hashes and frame time, and `<label>.frames.csv` with per-frame changed share, mean difference and holes. ffmpeg packs the frames into H.264 because an uncompressed side-by-side is tens of megabytes; `--fps` sets playback (default `1000/dt`). |
+| `--video` | Records every render's frames on both sides through the renderer's own `--video` (with `--render`, put `--frames` and `--dt` in the arguments; a scene runs from time zero). Writes `<label>.mp4`, its panels labelled as the sheet's, with the frame time, and `<label>.frames.csv` with per-frame changed share, mean difference and holes. ffmpeg packs the frames into H.264 because an uncompressed side-by-side is tens of megabytes; `--fps` sets playback (default `1000/dt`). |
 | `--crops N` | `compare.crops.png` and `<label>.crops.png`: the `N` places the two differ most, A above B, enlarged 4 times without smoothing. Changed pixels (a channel off by more than 8, or a hole) within 3 px are one place; holes rank first, then total difference; a place over 64 px is cut to its strongest 64 px window. A video uses its two worst frames. Nothing is written where nothing differs. |
 
 The renderer arguments are split on spaces and never expanded as patterns.

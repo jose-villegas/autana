@@ -47,6 +47,21 @@ display_reset_quarter(void) {
     display_orientation_init(&shell_orientation);
 }
 
+void
+display_hold_quarter(int quarter) {
+    display_orientation_hold(&shell_orientation, quarter);
+}
+
+void
+display_release_quarter(void) {
+    display_orientation_release(&shell_orientation);
+}
+
+bool
+display_quarter_held(void) {
+    return shell_orientation.held;
+}
+
 bool
 display_sample_orientation(int64_t now_us, display_gravity_reader_t read) {
     return display_orientation_sample(&shell_orientation, now_us, read);

@@ -36,9 +36,11 @@ PCM16 data is signed little-endian samples. Each ADPCM block holds an int16
 predictor, u8 step index in 0..88 and u8 reserved zero, then low-nibble-first
 IMA codes. Its byte size is `4 + (block_frames - 1) / 2`.
 
-The baker takes its block size from `SOUND_DEFAULT_BLOCK_FRAMES` in
-`sound/sound.h`. The stored sample rate is `AUDIO_OUT_SAMPLE_RATE_HZ` from
-`audio/audio_out.h`, so the mixer needs no resampling. The first block starts at index zero; later blocks carry the
+Every value in the header table comes from `sound/sound_format.h`, the SOND
+file layout, which the baker and the reader both read. The stored sample rate
+is `AUDIO_OUT_SAMPLE_RATE_HZ`, so the mixer needs no resampling.
+
+The first ADPCM block starts at step index zero; later blocks carry the
 previous ending index. Each block opens with its first sample stored exactly
 as the predictor. The last block is padded by repeating its final sample, and
 `frames` tells the reader where to stop.
@@ -69,20 +71,27 @@ read-only `position` shows the next stored frame for progress displays. The view
 and its mapped pack must outlive the cursor.
 
 ```mermaid
-flowchart TD
-    T["NAME.sound.toml: source, format, loop"] -->|source| W[WAV]
-    W --> M[Average channels to mono]
-    M --> R[Resample to 22,050 Hz, skipped when the rate matches]
-    R --> F{format}
-    T -->|format| F
-    F -->|pcm16| P[int16 samples]
-    F -->|adpcm| A[IMA-ADPCM blocks]
-    T -->|loop| L[Check loop frames]
-    P --> L
-    A --> L
-    L --> S[SOND entry: 32-byte header + data]
-    S --> K[Pack]
-    K --> O[sound_open maps it in place]
+flowchart TB
+    subgraph Source["1. Read the source"]
+        direction LR
+        T["NAME.sound.toml<br/>source, format, loop"] -->|source| W[WAV]
+        W --> M[Average channels<br/>to mono]
+        M --> R["Resample to 22,050 Hz<br/>skipped when the rate matches"]
+    end
+    subgraph Encode["2. Encode by the toml's format, check its loop"]
+        direction LR
+        F{format} -->|pcm16| P[int16 samples]
+        F -->|adpcm| A[IMA-ADPCM blocks]
+        P --> L[Check loop frames]
+        A --> L
+    end
+    subgraph Use["3. Store and read"]
+        direction LR
+        S["SOND entry<br/>32-byte header + data"] --> K[Pack]
+        K --> O[sound_open maps it in place]
+    end
+    Source -->|mono samples, format, loop| Encode
+    Encode -->|samples and header fields| Use
 ```
 
 `format` is the only switch.

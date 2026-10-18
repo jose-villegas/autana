@@ -14,7 +14,7 @@ from pathlib import Path
 from asset.asset_pack import PackError, NAME_BYTES, padded
 from build.c_header import read_define
 
-DIRECTORY_READER = Path(__file__).resolve().parents[2] / "main/asset/asset_directory.h"
+DIRECTORY_READER = Path(__file__).resolve().parents[2] / "main/asset/asset_directory_format.h"
 
 DIRECTORY_MAGIC = b"ABDR"
 DIRECTORY_VERSION = read_define(DIRECTORY_READER, "ASSET_DIRECTORY_VERSION")

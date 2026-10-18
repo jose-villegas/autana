@@ -5,6 +5,7 @@
 #include "asset/asset_bytes.h"
 #include "audio/audio_adpcm.h"
 #include "sound/sound.h"
+#include "sound/sound_format.h"
 #include "suites.h"
 #include "test_pack.h"
 #include "unity.h"
