@@ -44,7 +44,7 @@ defaults|Defaults|${FULL}_fitted_full||${ID}-small-fill-defaults
 flat8|Flat <=8|${FULL}_fitted_full|--set r3d_span.small_max_side=8|${ID}-small-fill-flat8
 gate|Gate ramp|${FULL}_fitted_full|--set r3d_span.small_max_side=8 --set r3d_span.small_flat_spread_far=4 --set r3d_span.small_flat_spread_near=64|${ID}-small-fill-gate
 dither|Dither 4, ramp 1|${FULL}_fitted_full|--set r3d_span.small_max_side=8 --set r3d_span.small_dither=4 --set r3d_span.small_dither_ramp=1|${ID}-small-fill-dither
-bake|Flat bake|${FULL}_flat||${ID}-small-fill-bake
+bake|Flat bake|${FULL}_flat_fitted||${ID}-small-fill-bake
 EOF
     # The highest changed share over a two-second window and 160-pixel square,
     # measured from defaults versus flat8; keep every look on the same pixels.

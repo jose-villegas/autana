@@ -377,14 +377,14 @@ The heatmap shows absolute RGB difference x8 for flat <=8 versus defaults,
 with the same crop and window. The [temporal method](../tools/Render-Harness.md#temporal-video-columns) measures
 triangle-scale pops; judge dither by eye because it reads as noise here.
 
-<!-- generated: small-fill-temporal sha256=cbd26004fe0795317c459ee2353eebc7f2513d808b92c2c1020b96f57cff44cf -->
+<!-- generated: small-fill-temporal sha256=9118343727391865f2ba297704e028de2a5b036b4ba5d86fc1da43fa61a426b3 -->
 | Look vs defaults | Extra frame-to-frame change (levels of 255) | Blocks popping (>8/255) |
 |---|---|---|
 | Defaults | 0.000 | 0.0000% |
 | Flat <=8 | 0.541 | 1.1677% |
 | Gate ramp | 0.404 | 0.7357% |
 | Dither 4, ramp 1 | 0.643 | 1.6966% |
-| Flat bake | 7.812 | 25.4338% |
+| Flat bake | 3.563 | 11.3966% |
 <!-- /generated: small-fill-temporal -->
 
 #### Board frame cost
