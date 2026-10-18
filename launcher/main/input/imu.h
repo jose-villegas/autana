@@ -1,7 +1,7 @@
 /*
  * imu: QMI8658 stream FIFO drained by imu_read_fifo().
  * imu_read() returns the latest single sample. Register values follow the
- * QMI8658A datasheet, docs/Citations.md#78.
+ * QST QMI8658A datasheet Rev A (2022).
  */
 #pragma once
 
@@ -15,8 +15,8 @@
 /* Must agree with CTRL3's full-scale code in imu.c. */
 #define IMU_GYRO_RANGE_DPS 512.0F
 
-/* QMI8658A Rev A, Table 22 CTRL2/CTRL3 (6DOF), docs/Citations.md#78;
- * SensorLib GyroODR, docs/Citations.md#79. We use stream mode, 128 samples,
+/* QST QMI8658A datasheet Rev A (2022), Table 22 CTRL2/CTRL3 (6DOF);
+ * Lewis He, SensorLib GyroODR. We use stream mode, 128 samples,
  * and the datasheet count-before-request drain sequence. */
 #define IMU_ODR_BASE_HZ    7174.4
 #define IMU_ODR_CODE       5
@@ -25,7 +25,7 @@
 #define IMU_SAMPLE_US      ((uint32_t)((MATH_US_PER_S / IMU_ODR_HZ) + 0.5))
 #define IMU_FIFO_SAMPLES   128
 
-/* Section 8.7, docs/Citations.md#78: read mode discards arrivals, so loss is
+/* QMI8658A datasheet section 8.7: read mode discards arrivals, so loss is
  * locked time / IMU_SAMPLE_US. Carry fractional time across drains; gaps break continuity. */
 static inline int
 imu_fifo_lost(uint64_t locked_us, uint32_t* remainder_us, bool gap) {
