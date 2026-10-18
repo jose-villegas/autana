@@ -1,6 +1,7 @@
 /* Detector compared with an independent double-precision DFT on the host. */
 #include <math.h>
 #include <stdlib.h>
+#include "math/linear/math_const.h"
 #include "math/scalar/trig.h"
 #include "math/signal/goertzel.h"
 #include "suites.h"
@@ -141,7 +142,8 @@ test_goertzel_streaming_silence_rejection(void) {
 }
 
 #define TEST_FLOAT_BLOCK         5u
-#define TEST_FLOAT_OFFSET        0.25F
+#define TEST_FLOAT_AMPLITUDE     0.5F
+#define TEST_FLOAT_TOLERANCE     0.001F
 #define TEST_RESET_SAMPLES       3u
 #define TEST_FULL_SCALE_FACTOR   4.0F
 #define TEST_AMPLITUDE_TOLERANCE 4.0F
@@ -180,8 +182,8 @@ test_goertzel_float_blocks(void) {
     float* samples = malloc(TEST_SAMPLES * sizeof *samples);
     TEST_ASSERT_NOT_NULL(samples);
     for (size_t i = 0; i < TEST_SAMPLES; i++) {
-        samples[i] = (float)trig_sin((uint16_t)((uint64_t)i * TEST_TARGET_HZ * TRIG_TURN / TEST_SAMPLE_RATE_HZ))
-                     + TEST_FLOAT_OFFSET;
+        samples[i] = TEST_FLOAT_AMPLITUDE
+                     * sinf(MATH_TAU * (float)(i * TEST_TARGET_HZ % TEST_SAMPLE_RATE_HZ) / (float)TEST_SAMPLE_RATE_HZ);
     }
     goertzel_t single;
     goertzel_t blocks;
@@ -197,6 +199,8 @@ test_goertzel_float_blocks(void) {
     }
     free(samples);
     assert_same_state(&single, &blocks);
+    /* A normalized fractional sine keeps its amplitude: nothing rounds float samples. */
+    TEST_ASSERT_FLOAT_WITHIN(TEST_FLOAT_TOLERANCE, TEST_FLOAT_AMPLITUDE, goertzel_amplitude(&blocks));
 }
 
 static void

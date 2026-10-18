@@ -13,7 +13,7 @@ typedef struct {
     size_t samples;
 } goertzel_t;
 
-/* 0 <= hz < sample_rate_hz / 2; hz need not fall on an integer DFT bin. */
+/* 0 < hz < sample_rate_hz / 2 (DC cancels in float); hz need not fall on an integer DFT bin. */
 void goertzel_init(goertzel_t* state, float hz, float sample_rate_hz);
 /* Clears the stream, keeps the frequency. */
 void goertzel_reset(goertzel_t* state);
