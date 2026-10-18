@@ -673,6 +673,12 @@ class PaperCitationTest(unittest.TestCase):
                                               ("launcher/main/a.c", "/* Gouraud 1971. */\n"),
                                               ("scripts/a.py", "# Gouraud 1971\n")]), [])
 
+    def test_a_name_inside_a_document_is_not_a_source_file(self):
+        found = self.problems(self.NAMED % "[Guide.md](Guide.md)",
+                              [("docs/Guide.md", "[[1]](Citations.md#1) Gouraud 1971\n")])
+        self.assertEqual(found, ["docs/Citations.md:1: [1] names `Gouraud 1971` in code, "
+                                 "and no source file does; drop the name or the entry"])
+
     def test_the_gates_own_tests_naming_a_source_do_not_list(self):
         found = self.problems(self.NAMED % "[Guide.md](Guide.md), [a.c](../launcher/main/a.c)",
                               [("docs/Guide.md", "[[1]](Citations.md#1)\n"),
