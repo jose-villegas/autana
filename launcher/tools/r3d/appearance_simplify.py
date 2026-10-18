@@ -622,9 +622,10 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
              clear=(0.0, 0.0, 0.0), cost=None, cost_weight=0.0, scale=1, normal_weight=0.0, surface_weight=0.0,
              surface_margin=0.0, source=None):
     """Fit fixed triangles; return positions, colours and colour-only error history.
-    Position learning rates use bounding diagonals. Laplacian drift and the source
-    envelope use capped local start edge scales, averaged per triangle for the
-    envelope; normals and predicted cost add their weighted penalties.
+    Position steps use bounding diagonals and each vertex's capped local start scale.
+    Laplacian drift and the source envelope use capped local start edge scales,
+    averaged per triangle for the envelope; normals and predicted cost add their
+    weighted penalties.
     Both learning rates decay tenfold over the run."""
     import torch
 
@@ -644,10 +645,12 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
 
     edges = torch.as_tensor(point_edges(tris, vertex_point), device=device)
     start = torch.as_tensor(points0, dtype=torch.float32, device=device)
-    points = start.clone().requires_grad_(True)
+    delta = torch.zeros_like(start).requires_grad_(True)
     colours = torch.as_tensor(rgb0, dtype=torch.float32, device=device).requires_grad_(True)
     rest = uniform_laplacian(start, edges)
     point_scale = vertex_scale(start, edges)
+    mean_edge = (start[edges[:, 0]] - start[edges[:, 1]]).norm(dim=1).mean()
+    step_scale = point_scale / mean_edge
     matrices = [torch.as_tensor(view[0], dtype=torch.float32, device=device) for view in views]
     targets = [torch.as_tensor(view[1], device=device) for view in views]
     normals = [None if len(view) < 3 or view[2] is None else torch.as_tensor(view[2], device=device) for view in views]
@@ -669,7 +672,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         sample_scale = point_scale[:, 0][corners].mean(1).repeat_interleave(SURFACE_SAMPLES_PER_TRIANGLE)[:, None]
         barycentric = torch.as_tensor(uniform_barycentric(surface_rng, (len(tris), SURFACE_SAMPLES_PER_TRIANGLE)),
                                       dtype=start.dtype, device=device)
-    adam = torch.optim.Adam([{"params": [points], "lr": lr_position * diagonal}, {"params": [colours], "lr": lr_colour}])
+    adam = torch.optim.Adam([{"params": [delta], "lr": lr_position * diagonal}, {"params": [colours], "lr": lr_colour}])
     schedule = torch.optim.lr_scheduler.LambdaLR(adam, lambda step: 0.1 ** (step / max(steps, 1)))
     history = torch.empty(steps, device=device)
     finite = torch.ones((), dtype=torch.bool, device=device)
@@ -677,6 +680,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     for step in range(steps):
         chosen = rng.choice(len(views), size=min(batch, len(views)), replace=False)
         adam.zero_grad()
+        points = start + step_scale * delta
         error, predicted, colour_error, surface = 0.0, 0.0, 0.0, 0.0
         if normal_weight:
             render = renderer_for(chosen[0])
@@ -724,6 +728,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         if report and (step % report == 0 or step == steps - 1):
             log(f"step {step}: mean dE76 {float(history[step]):.3f}, predicted {float(predicted):.2f} ms, drift {float(drift):.3e}, "
                 f"surface {float(surface):.6f}, {time.time() - started:.1f} s")
+    points = start + step_scale * delta
     return points.detach().cpu().numpy().astype(np.float64), colours.detach().cpu().numpy().astype(np.float64), history.cpu().tolist()
 
 

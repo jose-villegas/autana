@@ -319,6 +319,43 @@ class AppearanceMeshTests(unittest.TestCase):
                     np.testing.assert_array_less(final, max_stretch * lengths)
 
     @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_position_step_uses_capped_local_start_scale(self):
+        from r3d import appearance_simplify as appearance
+
+        tiny_size = 0.01
+        large_size = 1.0
+        separation = 2 * large_size
+        triangle = np.array([[0.0, 0, 0], [1.0, 0, 0], [0.0, 1.0, 0]])
+        points = np.concatenate([tiny_size * triangle, large_size * triangle + [separation, 0, 0]])
+        tris = np.arange(len(points)).reshape(-1, 3)
+        mesh = FitMesh(points, np.full_like(points, 0.5), tris, np.ones(len(tris)), 64, np.arange(len(points)))
+        target = np.full((1, len(points), 3), 0.75, dtype=np.float32)
+        views = [(np.eye(4), target)]
+        render = mock.Mock(side_effect=lambda points, colours, *args: (0.5 + points[:, 2:3]).expand(-1, 3)[None])
+        start = torch.as_tensor(points, dtype=torch.float32)
+        edges = torch.as_tensor(point_edges(tris, mesh.vertex_point))
+        mean_edge = (start[edges[:, 0]] - start[edges[:, 1]]).norm(dim=1).mean()
+        step_scale = appearance.vertex_scale(start, edges).numpy() / float(mean_edge)
+        lr_position = 0.001
+        diagonal = np.linalg.norm(points.max(axis=0) - points.min(axis=0))
+        bound = lr_position * diagonal * step_scale[:, 0]
+        tolerance = np.finfo(np.float32).eps * diagonal
+        tiny_count = len(triangle)
+        np.testing.assert_array_less(bound[:tiny_count], bound[tiny_count:])
+        np.testing.assert_allclose(step_scale[tiny_count:], 1)
+        with mock.patch.object(appearance, "Renderer", return_value=render):
+            for seed in (1, 7, 19):
+                with self.subTest(seed=seed):
+                    fitted, _, _ = appearance.optimise(
+                        mesh, views, (len(points), 1), steps=1, batch=1, lr_position=lr_position,
+                        lr_colour=0, laplacian=0, report=0, device="cpu", seed=seed)
+                    displacement = np.linalg.norm(fitted - points, axis=1)
+                    np.testing.assert_array_less(displacement, bound + tolerance)
+                    np.testing.assert_array_less(displacement[:tiny_count], bound[tiny_count:])
+                    self.assertTrue(np.all(displacement > 0))
+                    np.testing.assert_allclose(displacement[tiny_count:], bound[tiny_count:], atol=tolerance)
+
+    @unittest.skipIf(torch is None, "needs PyTorch")
     def test_surface_envelope_and_tangential_pull(self):
         from r3d.appearance_simplify import SURFACE_TANGENTIAL_WEIGHT, surface_loss
 
