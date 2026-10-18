@@ -174,8 +174,6 @@ def check(root):
         if header.name.endswith("_template.h"):
             continue
         defined.update(HAND_WRITTEN.findall(text))
-        if header.name.startswith("math"):
-            continue
         for prefix in DEFINE_CALL.findall(text):
             if "`%s`" % prefix not in page:
                 problems.append("%s: the page does not name the type `%s`" % (PAGE.as_posix(), prefix))

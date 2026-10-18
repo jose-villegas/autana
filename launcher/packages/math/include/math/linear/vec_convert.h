@@ -1,7 +1,9 @@
-/* vec_convert: explicit vector conversions; narrowing saturates, rounding ties away from zero. */
+/*
+ * vec_convert: explicit vector conversions; narrowing saturates, rounding ties away from zero. Int16
+ * conversions take a scale: one integer step is scale units. Header-only and static inline.
+ */
 #pragma once
 
-#include <math.h>
 #include <stdint.h>
 
 #include "math/linear/vec2f.h"
