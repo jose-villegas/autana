@@ -2,13 +2,18 @@
 
 A scene's camera can draw each frame at a render size picked to hold a frame
 budget, instead of one fixed scale. The sizes are a ladder of steps, finest
-first; `render_context_compose()` expands a draw into the half
-picture when its width is exactly half and its height divides the half height and otherwise upscales to the panel size with
-`render/upscale.h`, which takes any ratio in either axis. The code is
-`launcher/main/render/resolution/`. It is opt-in, a setting of the render
-context rather than of a scene or a camera: an app turns it on with
-`render_context_set_dynamic_resolution()` ([Mesh-Rendering.md](Mesh-Rendering.md#the-render-context)),
-and with no call every frame draws at the context's fixed scale.
+first.
+
+`render_context_compose()` expands a draw into the half picture when its width is
+exactly half and its height divides the half height. Otherwise it upscales to the
+panel size with `render/upscale.h`, which takes any ratio in either axis.
+
+The code is `launcher/main/render/resolution/`. Resolution selection is a
+setting of the render context rather than of a scene or a camera.
+
+An app opts in with `render_context_set_dynamic_resolution()`
+([Mesh-Rendering.md](Mesh-Rendering.md#the-render-context)). With no call every
+frame draws at the context's fixed scale.
 
 | Policy | Chooses | From | Guards against flapping |
 |---|---|---|---|
@@ -161,38 +166,26 @@ What the table shows:
 
 `render_context_set_scale(context, width_percent, height_percent)` sets the
 fixed shares independently. A 50% width and 25% height draws 184×112 on a
-368×448 destination. `raster_fits_half_picture()` accepts exactly half width
-when the half height is a whole multiple of the drawn height. Compose then
-upscales to 184×224 through the kept-width path, and present doubles that
-picture in both axes. A 184×179 draw retains full-destination composition.
-Independent fixed shares and this compatibility predicate are permanent APIs.
+368×448 destination.
 
-The 1×2 look experiment is off by default.
-`render_context_set_scanlines(context, strength)` darkens the second half of
-each repeated-row run, only when every source row has the same even run
-length. The rule uses the actual row map, or the block path's uniform factor;
-odd and uneven runs retain their pixels. `UPSCALE_SCANLINE_UNIT` names the
-32nds: zero leaves the existing copy loops untouched, half the unit halves
-each RGB565 channel with truncation, and `UPSCALE_SCANLINE_MAX` makes it black.
+`raster_fits_half_picture()` accepts exactly half width when the half height
+is a whole multiple of the drawn height. Compose upscales to the half picture;
+present doubles it in both axes. Other sizes compose to the full destination.
+
+The scanline experiment is off by default. `render_context_set_scanlines()`
+darkens the second half of each repeated-row run when every source row has
+the same even run length. Odd and uneven runs retain their pixels.
+
+The rule uses the actual row map, or the block path's uniform factor.
+See `UPSCALE_SCANLINE_UNIT` for strength units: zero preserves colour,
+half the unit halves each RGB565 channel, and `UPSCALE_SCANLINE_MAX` gives black.
+
 Depth-empty pixels use the clear colour before darkening. A doubled row in
-the half picture becomes two bright and two dark panel rows. Rotation changes
-how the viewer sees those panel rows, rather than the axis being sampled.
+the half picture becomes two bright and two dark panel rows.
+The runs follow panel rows, so a rotated display shows them as columns.
 
-Removal inventory for the engine portion:
-
-| File under `launcher/main/render/` | Remove |
-|---|---|
-| `upscale.h` | `UPSCALE_SCANLINE_UNIT`, `UPSCALE_SCANLINE_MAX`, `upscale_t.scanline_strength`, `upscale_t.scanline_run` |
-| `upscale.c` | strength initialization, run eligibility calculation in `upscale_init()`, `scanline_rows()`, its conditional call in `upscale_rows()` |
-| `raster.c` | strength preservation around map initialization in `raster_upscale()` |
-| `context/render_context.h`, `context/render_context.c` | `render_context_set_scanlines()` |
-
-The caller's tools README owns its complete removal inventory, host commands
-and visual comparisons. The height-only tests remain; the experiment's
-strength settings and assertions in `launcher/test/suites/suite_scene.c` and
-`test_scanline_runs_preserve_bright_rows_and_darken_clear_pixels()` with its
-`assert_scanline_rows_match_reference()` helper in
-`launcher/test/suites/suite_upscale.c` belong to the experiment.
+The caller's tools README owns the removal inventory and its check
+(`git grep -n -i scanline ...`), host commands and visual comparisons.
 
 ## Refreshing
 

@@ -155,7 +155,8 @@ static void
 upscale_slice(void* ctx) {
     const slice_t* s = ctx;
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(s->raster);
-    upscale_rows(&s->raster->upscale, &b.picture, s->raster->clear, s->destination, s->first, s->count);
+    upscale_rows(&s->raster->upscale, &b.picture, s->raster->clear, s->destination, s->first, s->count,
+                 s->raster->scanline);
 }
 
 int
@@ -378,8 +379,15 @@ raster_draw_culled(const raster_t* raster, const render_view_t* view) {
 
 bool
 raster_fits_half_picture(const raster_t* raster) {
-    return raster->width > 0 && raster->height > 0 && 2 * raster->width == raster->destination_width
-           && raster->destination_height % 2 == 0 && (raster->destination_height / 2) % raster->height == 0;
+    return raster->width > 0 && raster->height > 0 && raster->destination_height > 0
+           && 2 * raster->width == raster->destination_width && raster->destination_height % 2 == 0
+           && (raster->destination_height / 2) % raster->height == 0;
+}
+
+resolution_step_t
+raster_compose_size(const raster_t* raster) {
+    const int divisor = raster_fits_half_picture(raster) ? 2 : 1;
+    return (resolution_step_t){raster->destination_width / divisor, raster->destination_height / divisor};
 }
 
 void
@@ -400,11 +408,9 @@ raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
     if (raster->upscale.source_width != raster->width || raster->upscale.source_height != raster->height
         || raster->upscale.destination_width != width || raster->upscale.destination_height != height
         || raster->upscale.columns != columns || raster->upscale.rows != rows) {
-        const int strength = raster->upscale.scanline_strength;
         const bool initialized =
             upscale_init(&raster->upscale, raster->width, raster->height, width, height, columns, rows);
         assert(initialized);
-        raster->upscale.scanline_strength = strength;
     }
     const int mid = height / 2;
     slice_t mine = {raster, NULL, NULL, NULL, 0, mid, height - mid, false, NULL, 0, destination, 0, NULL, NULL};

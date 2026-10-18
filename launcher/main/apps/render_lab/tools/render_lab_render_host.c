@@ -11,8 +11,6 @@
  * shell itself.
  */
 
-#include <errno.h>
-#include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -61,7 +59,7 @@ static bool tune_set;
 
 static void
 note_reply(const char* line) {
-    tune_set = strncmp(line, "TUNE_OK", 7) == 0;
+    tune_set = strncmp(line, "TUNE_OK ", sizeof "TUNE_OK " - 1) == 0;
     if (!tune_set) {
         (void)fprintf(stderr, "render_lab_render_host: %s\n", line);
     }
@@ -101,19 +99,22 @@ tune_options(int argc, char** argv) {
         if (++i == argc) {
             return false;
         }
-        const char* equal = strchr(argv[i], '=');
-        if (equal == NULL || equal == argv[i] || equal - argv[i] > TUNE_NAME_MAX) {
+        if (strchr(argv[i], '=') == NULL) {
             return false;
         }
-        char name[TUNE_NAME_MAX + 1];
-        const size_t length = (size_t)(equal - argv[i]);
-        memcpy(name, argv[i], length);
-        name[length] = '\0';
-        char* end;
-        errno = 0;
-        const long value = strtol(equal + 1, &end, 0);
-        if (errno != 0 || end == equal + 1 || *end != '\0' || value < INT_MIN || value > INT_MAX
-            || !set_tunable(name, (int)value)) {
+        const size_t length = strlen(argv[i]);
+        char* line = malloc(sizeof "SET " + length);
+        if (line == NULL) {
+            return false;
+        }
+        memcpy(line, "SET ", sizeof "SET " - 1);
+        strcpy(line + sizeof "SET " - 1, argv[i]);
+        char* equal = strchr(line, '=');
+        *equal = ' ';
+        tune_set = false;
+        (void)tune_handle_line(line, note_reply);
+        free(line);
+        if (!tune_set) {
             return false;
         }
     }

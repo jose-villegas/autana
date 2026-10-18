@@ -74,7 +74,7 @@ bench_open(bench_t* b, const r3d_instance_t* instance, const raster_attachment_t
         .attachments = attachments,
         .attachment_count = attachments == NULL ? 0 : 1,
     };
-    b->raster.upscale.scanline_strength = render_lab_scanline();
+    b->raster.scanline = render_lab_scanline();
     b->scratch = memory_alloc(raster_scratch_bytes(&b->raster), MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(b->scratch);
     TEST_ASSERT_NOT_NULL(b->panel);
@@ -213,8 +213,8 @@ test_sponza_draw_stage_breakdown(void) {
     const render_view_t frame_view = render_view_make(
         &sky_pose, 1.0F, 1.0F, (viewport_t){GFX_WIDTH, GFX_HEIGHT, render_lab_test_quarter(DISPLAY_PORTRAIT)});
     const raster_stats_t none = raster_draw(&b->raster, &frame_view);
-    raster_upscale(&b->raster, b->panel, raster_fits_half_picture(&b->raster) ? GFX_WIDTH / 2 : GFX_WIDTH,
-                   raster_fits_half_picture(&b->raster) ? GFX_HEIGHT / 2 : GFX_HEIGHT);
+    const resolution_step_t composed = raster_compose_size(&b->raster);
+    raster_upscale(&b->raster, b->panel, composed.width, composed.height);
     ESP_LOGI(TAG, "stage, both cores: %-20s %7lldus (%d clusters)", "empty frame", (long long)(timing_now_us() - start),
              none.clusters);
 
@@ -268,8 +268,8 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
         }
         const int64_t start = timing_now_us();
         const raster_stats_t stats = raster_draw(&b->raster, &view);
-        raster_upscale(&b->raster, b->panel, raster_fits_half_picture(&b->raster) ? GFX_WIDTH / 2 : GFX_WIDTH,
-                       raster_fits_half_picture(&b->raster) ? GFX_HEIGHT / 2 : GFX_HEIGHT);
+        const resolution_step_t composed = raster_compose_size(&b->raster);
+        raster_upscale(&b->raster, b->panel, composed.width, composed.height);
         const int64_t us = timing_now_us() - start;
         ESP_LOGI(TAG, "%s t=%5us clusters=%4d tris=%5d | both cores: frame %7lldus", label, (unsigned)(t_ms / 1000),
                  stats.clusters, stats.triangles, (long long)us);

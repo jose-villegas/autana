@@ -14,6 +14,7 @@
 #include "render/r3d_instance.h"
 #include "render/raster_attachment.h"
 #include "render/render_view.h"
+#include "render/resolution/resolution.h"
 #include "render/upscale.h"
 
 /* The caller's options; the scratch block holds everything else. */
@@ -30,6 +31,7 @@ struct raster {
      * clear colour wherever depth says nothing was drawn. */
     bool upscaled;
     int destination_width, destination_height;
+    int scanline;
     upscale_t upscale; /* maps retained in `scratch`, rebuilt when size changes */
     void* scratch;     /* raster_scratch_bytes() of it */
     /* Drawn beside colour and depth, at most GFX_ATTACHMENTS_MAX - GFX_ATTACHMENT_FURTHER. */
@@ -81,6 +83,7 @@ void raster_draw_culled(const raster_t* raster, const render_view_t* view);
 
 /* The half picture can hold the width and whole repeats of every drawn row. */
 bool raster_fits_half_picture(const raster_t* raster);
+resolution_step_t raster_compose_size(const raster_t* raster);
 
 /* Fills `destination` from what was last drawn, both cores taking
  * half the destination rows. The destination is at least the drawn size. */

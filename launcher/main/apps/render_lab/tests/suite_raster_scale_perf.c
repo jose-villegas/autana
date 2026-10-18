@@ -147,9 +147,9 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
             camera_view(lens, scene_entity_transform(scene, camera_entity), (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
         const int64_t start = timing_now_us();
         const raster_stats_t stats = raster_draw(raster, &view);
-        raster->upscale.scanline_strength = render_lab_scanline();
-        raster_upscale(raster, destination, raster_fits_half_picture(raster) ? GFX_WIDTH / 2 : GFX_WIDTH,
-                       raster_fits_half_picture(raster) ? GFX_HEIGHT / 2 : GFX_HEIGHT);
+        raster->scanline = render_lab_scanline();
+        const resolution_step_t composed = raster_compose_size(raster);
+        raster_upscale(raster, destination, composed.width, composed.height);
         frame_us[poses++] = (int32_t)(timing_now_us() - start);
         triangles += stats.triangles;
     }
@@ -245,9 +245,9 @@ count_along_path(raster_t* raster, gfx_color_t* destination, int bracket, const 
         const render_view_t view =
             camera_view(lens, scene_entity_transform(scene, camera_entity), raster_viewport(raster, 0));
         (void)raster_draw(raster, &view);
-        raster->upscale.scanline_strength = render_lab_scanline();
-        raster_upscale(raster, destination, raster_fits_half_picture(raster) ? GFX_WIDTH / 2 : GFX_WIDTH,
-                       raster_fits_half_picture(raster) ? GFX_HEIGHT / 2 : GFX_HEIGHT);
+        raster->scanline = render_lab_scanline();
+        const resolution_step_t composed = raster_compose_size(raster);
+        raster_upscale(raster, destination, composed.width, composed.height);
     }
     const int length = frame_cost_take_counts(report, FRAME_COST_REPORT_MAX);
     frame_cost_shared_post_arm(-1, 0);

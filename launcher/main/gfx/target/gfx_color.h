@@ -80,7 +80,7 @@ gfx_color_rgb565(uint8_t r5, uint8_t g6, uint8_t b5) {
 /* Channel separation leaves five multiplier bits without cross-channel carries. */
 #define GFX_COLOR_SCALE_UNIT 32
 
-/* Scale a stored pixel by keep/UNIT, truncating each channel. */
+/* Fast truncating fade-to-black form of gfx_color_mix: keep/UNIT of each channel. */
 static inline gfx_color_t
 gfx_color_scale(gfx_color_t pixel, unsigned keep) {
     const uint32_t channels = 0x07e0f81fU;

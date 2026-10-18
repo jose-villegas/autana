@@ -89,7 +89,7 @@ render_context_set_scale(render_context_t* c, int width_percent, int height_perc
 void
 render_context_set_scanlines(render_context_t* c, int strength) {
     assert(strength >= 0 && strength <= UPSCALE_SCANLINE_MAX);
-    c->raster.upscale.scanline_strength = strength;
+    c->raster.scanline = strength;
 }
 
 void
@@ -225,16 +225,16 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
 bool
 render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* half) {
     const raster_t* r = &c->raster;
-    const bool expanded = half != NULL && raster_fits_half_picture(r);
+    const resolution_step_t size =
+        half != NULL ? raster_compose_size(r) : (resolution_step_t){r->destination_width, r->destination_height};
+    const bool expanded = half != NULL && size.width != r->destination_width;
     destination = expanded ? half : destination;
-    const int width = expanded ? r->destination_width / 2 : r->destination_width;
-    const int height = expanded ? r->destination_height / 2 : r->destination_height;
     if (c->policy == RENDER_FIXED) {
-        raster_upscale(&c->raster, destination, width, height);
+        raster_upscale(&c->raster, destination, size.width, size.height);
         return expanded;
     }
     const int64_t began_us = timing_now_us();
-    raster_upscale(&c->raster, destination, width, height);
+    raster_upscale(&c->raster, destination, size.width, size.height);
     c->frame.upscale_us = (int32_t)(timing_now_us() - began_us);
     const int32_t cost_us = c->frame.draw_us + c->frame.upscale_us;
     if (c->policy == RENDER_STEPPED) {

@@ -17,7 +17,10 @@ int render_lab_scale(void);
 int render_lab_rows(void);
 int render_lab_scanline(void);
 
-/* Applies the tunables to panel dimensions, or UNIT dimensions for percentages. */
+/* Effective independent shares of the destination, in percent. */
+resolution_step_t render_lab_render_percent(void);
+
+/* Applies the tunables to destination dimensions. */
 resolution_step_t render_lab_render_size(int width, int height);
 void render_lab_apply_raster_settings(void);
 

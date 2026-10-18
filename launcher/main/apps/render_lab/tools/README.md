@@ -22,14 +22,19 @@ capture.
 ### Height-only raster experiment
 
 `--tune NAME=VALUE` is repeatable and uses the console tune protocol.
-`render_lab.rows` is a separate height divisor in the same hundredths as
-`render_lab.scale`; zero follows `scale`, and positive values below
-`RENDER_LAB_SCALE_UNIT` use that unit. Defaults remain `scale=200`, `rows=0`,
-`scanline=0`. The scene applies these settings each frame. Perf suites read
-them when the test runs and log the raster size, effective rows divisor and
-strength and effective quarter. `render_lab.perf_quarter` selects a quarter for
-device performance suites; its default of -1 preserves each suite's orientation.
-Their compose work uses the same half-picture predicate as the scene.
+Defaults are defined by the `TUNE` declarations in `render_lab_view.c` and
+`tests/render_lab_test.c`; the scale constants live in `render_lab_view.h`.
+
+| Tunable (`render_lab.` prefix) | Meaning | Default owner |
+|---|---|---|
+| `scale` | Width divisor in hundredths | `TUNE(render_lab, scale, ...)` |
+| `rows` | Height divisor; zero follows scale, positive values clamp to `RENDER_LAB_SCALE_UNIT` | `TUNE(render_lab, rows, ...)` |
+| `scanline` | Repeated-row darkening; see `UPSCALE_SCANLINE_UNIT` | `TUNE(render_lab, scanline, ...)` |
+| `perf_quarter` | Perf suite orientation override | `TUNE(render_lab, perf_quarter, ...)` |
+
+The scene applies these settings each frame. Perf suites read them at test
+entry and log the raster size, effective rows divisor, strength and quarter.
+Compose uses the same half-picture size owner as the scene.
 
 These commands render both scenes in quarter 0 and rotated quarter 1, at the
 same pose used in the sheets. The host reads the real gfx panel rows, including
@@ -52,9 +57,11 @@ done
 
 `render_compare.sh --render LABEL "ARGS"` accepts these same renderer arguments.
 Use `launcher/tools/render/render_compare.py --row` with `--crops 3` to compare
-default versus 1×2 plain, or plain versus strength 16. Keep captures outside the
-repository. Scanline runs follow panel rows, so they appear vertical in quarter 1.
-Clear sky darkens too. Strength uses every 32nd from unchanged to black.
+default versus 1×2 plain, or plain versus strength 16.
+
+Keep captures outside the repository. Scanline runs follow panel rows, so they
+appear vertical in quarter 1. Clear sky darkens too. For strength units, see
+`UPSCALE_SCANLINE_UNIT`.
 
 The complete source removal inventory below matches the experiment's names
 under `launcher/main/render/`, this app and `launcher/test/suites/`.
@@ -62,19 +69,20 @@ Existing `DRAW_DITHER_SCANLINES4` patterns are independent.
 
 | File | Experiment symbols or statements to remove |
 |---|---|
-| `launcher/main/render/upscale.h` | `UPSCALE_SCANLINE_UNIT`, `UPSCALE_SCANLINE_MAX`, `upscale_t.scanline_strength`, `upscale_t.scanline_run` |
-| `launcher/main/render/upscale.c` | strength initialization and run eligibility in `upscale_init()`, `scanline_run()`, `scanline_pixel()`, shaded paired-row calls |
+| `launcher/main/render/upscale.h` | `UPSCALE_SCANLINE_UNIT`, `UPSCALE_SCANLINE_MAX`, `upscale_t.scanline_run`, `upscale_rows()` strength parameter |
+| `launcher/main/render/upscale.c` | run eligibility in `upscale_init()`, `scanline_dark()`, row shading, shaded paired-row calls |
 | `launcher/main/gfx/target/gfx_color.h`, `gfx_target.h` | `GFX_COLOR_SCALE_UNIT`, `gfx_color_scale()`, `gfx_color_pair_scale()`, `gfx_target_paired_rows_shaded()` and its plain-copy wrapper call |
-| `launcher/main/render/raster.c` | cached strength preservation in `raster_upscale()` |
+| `launcher/main/render/raster.h` | `raster_t.scanline` |
+| `launcher/main/render/raster.c` | strength argument in `upscale_slice()` |
 | `launcher/main/render/context/render_context.h`, `render_context.c` | `render_context_set_scanlines()` |
-| `launcher/main/apps/render_lab/app_render_lab.c` | `TUNE(render_lab, scanline, ...)`, `render_lab_scanline()`, the setter call in `render_lab_apply_raster_settings()` |
+| `launcher/main/apps/render_lab/render_lab_view.c` | `TUNE(render_lab, scanline, ...)`, `render_lab_scanline()`, the setter call in `render_lab_apply_raster_settings()` |
 | `launcher/main/apps/render_lab/render_lab_view.h` | `render_lab_scanline()` declaration |
 | `launcher/main/apps/render_lab/tests/suite_sponza_perf.c` | strength assignment and header field |
 | `launcher/main/apps/render_lab/tests/suite_capybara_perf.c` | header strength field |
 | `launcher/main/apps/render_lab/tests/suite_raster_scale_perf.c` | strength assignments, setter and header field |
 | `launcher/main/apps/render_lab/tools/tests/test_render_views.py` | `COLOR_HEADER`, `SCANLINE_UNIT`, scanline tunings and dark-row assertions |
-| `launcher/test/suites/suite_scene.c` | strength setting in `test_height_only_scale_composes_whole_runs_in_the_half_picture()` |
-| `launcher/test/suites/suite_upscale.c` | scanline tests, `assert_scanline_rows_match_reference()` and registrations |
+| `launcher/test/suites/suite_scene.c` | `assert_composed_scanlines()`, `test_context_scanlines_compose_both_quarters_and_disabled_pairs()`, `test_context_scanline_strength_survives_fixed_and_dynamic_size_changes()`; strength in `test_height_only_scale_composes_whole_runs_in_the_half_picture()` |
+| `launcher/test/suites/suite_upscale.c` | scanline tests, `assert_scanline_rows_match_reference()`, `test_odd_half_picture_repeat_keeps_pixels()`, shaded calls in `test_shaded_paired_copy_strip_starts_on_bottom_of_pair()` and registrations |
 | `docs/Shared-Helpers.md` | regenerate the catalogue after removing the public symbols |
 | `docs/render/Dynamic-Resolution.md`, this README | experiment prose and inventory |
 
@@ -85,9 +93,11 @@ git grep -n -i scanline -- launcher/main/render launcher/main/gfx/target launche
     launcher/test/suites/suite_scene.c launcher/test/suites/suite_upscale.c docs/render/Dynamic-Resolution.md
 ```
 
-Keep height-only fixed scaling, `raster_fits_half_picture()`, `rows`, the
-general `--tune` option and plain-row regression coverage when removing the
-experiment. The engine contract is in
+Keep height-only fixed scaling, `raster_fits_half_picture()`,
+`raster_compose_size()`, `rows`, the general `--tune` option and plain-row
+regression coverage. Keep `perf_quarter` as test infrastructure.
+
+The engine contract is in
 [Dynamic resolution](../../../../../docs/render/Dynamic-Resolution.md).
 
 ### Debug views

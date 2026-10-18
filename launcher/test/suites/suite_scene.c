@@ -1782,6 +1782,62 @@ test_height_only_scale_composes_whole_runs_in_the_half_picture(void) {
 }
 
 static void
+assert_composed_scanlines(render_context_t* context, int quarter, int strength) {
+    scene_render(0, quarter, GFX_WIDTH, GFX_HEIGHT);
+    raster_t* raster = &context->raster;
+    memset(raster_depth(raster), 0, sizeof(uint16_t) * raster->width * raster->height);
+    const scene_target_t target = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
+    const bool half = scene_compose(0, quarter, &target);
+    const resolution_step_t size = raster_compose_size(raster);
+    const int run = size.height / raster->height;
+    TEST_ASSERT_EQUAL_INT(0, run % 2);
+    const uint16_t* pixels = half ? target.half_pixels : target.pixels;
+    const uint16_t bright = pixels[0];
+    TEST_ASSERT_EQUAL_HEX16(raster->clear, bright);
+    for (int y = 0; y < size.height; y++) {
+        const bool dark = y % run >= run / 2;
+        for (int x = 0; x < size.width; x++) {
+            const uint16_t pixel = pixels[y * size.width + x];
+            if (strength != 0 && dark) {
+                TEST_ASSERT_TRUE(gfx_color_swap(pixel) < gfx_color_swap(bright));
+                TEST_ASSERT_EQUAL_HEX16(gfx_color_scale(bright, UPSCALE_SCANLINE_UNIT - strength), pixel);
+            } else {
+                TEST_ASSERT_EQUAL_HEX16(bright, pixel);
+            }
+        }
+    }
+}
+
+static void
+test_context_scanlines_compose_both_quarters_and_disabled_pairs(void) {
+    expanded_fixture();
+    render_context_t* context = render_context_main();
+    render_context_set_scale(context, RENDER_CONTEXT_DEFAULT_SCALE_PERCENT, RENDER_CONTEXT_DEFAULT_SCALE_PERCENT / 2);
+    for (int quarter = 0; quarter <= 1; quarter++) {
+        for (int strength = 0; strength <= UPSCALE_SCANLINE_UNIT / 2; strength += UPSCALE_SCANLINE_UNIT / 2) {
+            render_context_set_scanlines(context, strength);
+            assert_composed_scanlines(context, quarter, strength);
+        }
+    }
+}
+
+static void
+test_context_scanline_strength_survives_fixed_and_dynamic_size_changes(void) {
+    expanded_fixture();
+    render_context_t* context = render_context_main();
+    const int strength = UPSCALE_SCANLINE_UNIT / 2;
+    render_context_set_scanlines(context, strength);
+    render_context_set_scale(context, RENDER_CONTEXT_DEFAULT_SCALE_PERCENT, RENDER_CONTEXT_DEFAULT_SCALE_PERCENT / 2);
+    assert_composed_scanlines(context, 0, strength);
+    render_context_set_scale(context, RENDER_CONTEXT_DEFAULT_SCALE_PERCENT / 2, RENDER_CONTEXT_DEFAULT_SCALE_PERCENT);
+    assert_composed_scanlines(context, 0, strength);
+    const resolution_step_t step = {GFX_WIDTH, GFX_HEIGHT / 2};
+    const resolution_config_t config = resolution_config(&step, 1, 1, INT32_MAX);
+    render_context_set_dynamic_resolution(context, &config, NULL, 0);
+    assert_composed_scanlines(context, 0, strength);
+}
+
+static void
 test_non_half_compose_upscales_to_the_full_destination(void) {
     expanded_fixture();
     render_context_set_scale(render_context_main(), 75, 75);
@@ -3228,6 +3284,8 @@ run_scene_suite(void) {
     RUN_TEST(test_expanded_overlay_resets_and_restores_clip);
     RUN_TEST(test_ui_replay_over_expanded_scene_matches_full_frame);
     RUN_TEST(test_height_only_scale_composes_whole_runs_in_the_half_picture);
+    RUN_TEST(test_context_scanlines_compose_both_quarters_and_disabled_pairs);
+    RUN_TEST(test_context_scanline_strength_survives_fixed_and_dynamic_size_changes);
     RUN_TEST(test_non_half_compose_upscales_to_the_full_destination);
     RUN_TEST(test_failed_half_allocation_keeps_full_upscale_unexpanded);
     RUN_TEST(test_expanded_frame_without_ui_does_not_replay_the_previous_hud);

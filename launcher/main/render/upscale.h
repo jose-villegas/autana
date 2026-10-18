@@ -23,7 +23,6 @@ typedef enum {
 #define UPSCALE_SCANLINE_MAX  UPSCALE_SCANLINE_UNIT
 
 typedef struct {
-    int scanline_strength;
     int scanline_run;
     int source_width, source_height;
     int destination_width, destination_height;
@@ -39,6 +38,7 @@ bool upscale_init(upscale_t* scale, int source_width, int source_height, int des
 
 /* Scales destination rows [first_row, first_row + row_count) from
  * `source`'s colour. When `source` has a depth attachment too, a zero depth
- * writes `clear` instead of its colour. `destination` is 4-byte aligned. */
+ * writes `clear` instead of its colour. `destination` is 4-byte aligned.
+ * Strength uses UPSCALE_SCANLINE_UNIT; zero copies unchanged. */
 void upscale_rows(const upscale_t* scale, const gfx_render_target_t* source, uint16_t clear, uint16_t* destination,
-                  int first_row, int row_count);
+                  int first_row, int row_count, int strength);

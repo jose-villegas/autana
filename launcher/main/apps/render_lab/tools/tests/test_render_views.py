@@ -136,7 +136,7 @@ class RenderViews(unittest.TestCase):
                                               "--tune", "render_lab.scanline=" + str(strength))
                     self.assertEqual(0, run.returncode, run.stderr[-2000:])
                     width, height, rows = read_bmp(target)
-                    self.assertEqual((368, 448), (width, height))
+                    self.assertEqual(read_bmp(self.out / "sponza-portrait.bmp")[:2], (width, height))
                     changed = 0
                     for y in range(0, height, 4):
                         self.assertEqual(rows[y], rows[y + 1])
@@ -158,6 +158,29 @@ class RenderViews(unittest.TestCase):
                 self.assertNotEqual(0, run.returncode)
                 self.assertIn("needs a value", run.stderr)
                 self.assertFalse(target.exists() and target.stat().st_size > 0)
+
+    def test_invalid_tune_options_fail_without_an_image(self):
+        tune_header = COLOR_HEADER.parents[2] / "services/tune.h"
+        name_max = int(re.search(r"^#define TUNE_NAME_MAX\s+(\d+)", tune_header.read_text(), re.M)[1])
+        cases = [(), ("render_lab.rows",), ("render_lab.rows 200",), ("=1",), ("x" * (name_max + 1) + "=1",),
+                 ("render_lab.rows=",), ("render_lab.rows=no",), ("render_lab.rows=200junk",),
+                 ("render_lab.rows=-1",), ("no_such_tunable=1",)]
+        for value in cases:
+            with self.subTest(value=value):
+                target = self.out / "invalid-tune.bmp"
+                target.unlink(missing_ok=True)
+                run = subprocess.run([str(self.binary), "--scene", "sponza", "-o", str(target), "--tune", *value],
+                                     capture_output=True, text=True, timeout=120)
+                self.assertNotEqual(0, run.returncode)
+                self.assertFalse(target.exists())
+
+    def test_view_tunable_uses_the_console_parser(self):
+        default, path = self.render("--scene", "sponza", "--view", "depth")
+        self.assertEqual(0, default.returncode, default.stderr)
+        expected = path.read_bytes()
+        tuned, path = self.render("--scene", "sponza", "--tune", "render_lab.view=1")
+        self.assertEqual(0, tuned.returncode, tuned.stderr)
+        self.assertEqual(expected, path.read_bytes())
 
     def test_an_unknown_view_is_refused(self):
         run, _ = self.render("--scene", "sponza", "--view", "octree")
