@@ -100,8 +100,8 @@ captures; regenerate it with
 
 | Number | Command |
 |---|---|
-| Measurement image | `python launcher/tools/audio/sound_mix_image.py SCRATCH --voices N` prepares a detached scratch copy; flash it with `autana --project SCRATCH flash dev` |
-| Mix capture | From the scratch tree, `python launcher/tools/audio/sound_mix_capture.py --tree . --board ID --out docs/audio/data/sound_mix_capture_NAME.txt`; copy the capture here and run `audio_doc_tables.py --write` |
+| Measurement image | `python launcher/tools/audio/sound_mix_image.py SCRATCH --sound tap --format pcm16 --voices N` prepares a detached scratch copy; flash it with `autana --project SCRATCH flash dev` |
+| Mix capture | From the scratch tree, `python launcher/tools/audio/sound_mix_capture.py --tree . --board ID --sounds tap,tap_pcm16 --out docs/audio/data/sound_mix_capture_NAME.txt`; copy the capture here and run `audio_doc_tables.py --write` |
 | CPU | the `sound_mix` entry in the frame-cost report a development build prints, average/worst ms per block |
 | Heap and largest block | `autana heap --json`, against a build without the mixer |
 | Mixer sizes and stack headroom | `autana sound stats` |

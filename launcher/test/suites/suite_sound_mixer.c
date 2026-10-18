@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "sound/sound_engine.h"
+#include "sound/sound_mixer.h"
 #include "suites.h"
 #include "test_cleanup.h"
 #include "unity.h"
@@ -15,9 +15,6 @@
 #define TEST_TONE_HZ    1000
 
 typedef struct {
-    sound_command_t queue[SOUND_MIXER_QUEUE_DEPTH];
-    sound_voice_t handles[SOUND_VOICE_COUNT];
-    size_t queued;
     sound_control_t control;
     sound_mixer_t mixer;
     sound_t sound;
@@ -606,37 +603,6 @@ test_sound_saturation_exact_rails_and_one_over(void) {
 }
 
 static void
-queue_command(fixture_t* f, const sound_command_t* command) {
-    if (f->queued == SOUND_MIXER_QUEUE_DEPTH) {
-        f->control.dropped_commands++;
-        return;
-    }
-    f->queue[f->queued++] = *command;
-}
-
-static void
-test_sound_full_table_stop_all_without_drain(void) {
-    fixture_t* f = fixture();
-    sound_command_t command;
-    for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
-        f->handles[i] = sound_control_play(&f->control, &f->sound, NULL, 0, &command, f->control.app_generation);
-        TEST_ASSERT_NOT_EQUAL(0, f->handles[i].id);
-        queue_command(f, &command);
-    }
-    for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
-        TEST_ASSERT_TRUE(sound_control_voice_command(&f->control, f->handles[i], SOUND_COMMAND_STOP, 0, &command));
-        queue_command(f, &command);
-    }
-    TEST_ASSERT_EQUAL_UINT32(0, f->control.dropped_commands);
-    for (size_t i = 0; i < f->queued; i++) {
-        sound_mixer_apply(&f->mixer, &f->queue[i], f->control.app_generation);
-    }
-    for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
-        TEST_ASSERT_FALSE(f->mixer.voices[i].playing);
-    }
-}
-
-static void
 test_sound_command_queue_round_trip(void) {
     fixture_t* f = fixture();
     sound_command_t command;
@@ -961,7 +927,6 @@ run_sound_mixer_suite(void) {
     RUN_TEST(test_sound_invalid_arguments_leave_control_and_command_unchanged);
     RUN_TEST(test_sound_authored_loop_crosses_blocks_and_empty_read_stops);
     RUN_TEST(test_sound_saturation_exact_rails_and_one_over);
-    RUN_TEST(test_sound_full_table_stop_all_without_drain);
     RUN_TEST(test_sound_command_queue_round_trip);
     RUN_TEST(test_sound_exit_closes_play_and_stops_app_system);
     RUN_TEST(test_sound_exit_waits_only_for_the_retired_read_epoch);

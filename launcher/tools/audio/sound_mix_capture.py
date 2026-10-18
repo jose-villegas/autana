@@ -1,7 +1,7 @@
 """Capture sound-mix report windows from the flashed measurement image.
 
 Run from the image's tree inside one autana lock hold, after flashing it.
-python launcher/tools/audio/sound_mix_capture.py --tree . --board A308 --out capture.txt
+python launcher/tools/audio/sound_mix_capture.py --tree . --board A308 --sounds NAME,NAME_FORMAT --out capture.txt
 """
 import argparse
 from datetime import date
@@ -17,13 +17,24 @@ import tomllib
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools/build"))
 from c_header import read_define
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from audio_doc_tables import mix_period, mix_stage_names
+sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
+from frame_cost import US_PER_SECOND, MS_PER_SECOND
 
 REPORT_WINDOWS = 2
 STOP_ATTEMPTS = 3
-US_PER_SECOND = 1_000_000
-MS_PER_SECOND = 1000
+
+
+def mix_stage_names(tree):
+    main = tree / "launcher/main"
+    owners = [("sound/sound_mixer_device.c", r'FRAME_COST_EXTERNAL\(\s*"([^"]+)"'),
+              ("shell/shell_apps.c", r'FRAME_COST_END\(\s*began,\s*"([^"]+)"')]
+    names = []
+    for owner, pattern in owners:
+        matches = re.findall(pattern, (main / owner).read_text())
+        if len(matches) != 1:
+            raise ValueError(f"{owner}: expected exactly one frame-cost stage")
+        names.append(matches[0])
+    return names
 
 
 def playing_count(stats):
@@ -53,8 +64,15 @@ def capture(args, sleep=time.sleep):
     window = read_define(main / "shell/shell.c", "SHELL_REPORT_WINDOW_US") / US_PER_SECOND
     startup = read_define(main / "audio/audio_out_device.h", "AUDIO_OUT_AMP_STARTUP_MS") / MS_PER_SECOND
     idle = read_define(main / "sound/sound_mixer.h", "SOUND_AMP_IDLE_MS") / MS_PER_SECOND
-    block_period = mix_period(args.tree) / US_PER_SECOND
-    mix_stage, _ = mix_stage_names(args.tree)
+    engine = (main / "sound/sound_engine.h").read_text(encoding="utf-8")
+    alias = re.search(r"^#define[ \t]+SOUND_MIXER_BLOCK_FRAMES[ \t]+([A-Za-z_]\w*)[ \t]*$",
+                      engine, re.MULTILINE)
+    if alias is None:
+        raise ValueError("SOUND_MIXER_BLOCK_FRAMES must be one identifier alias")
+    frames = read_define(main / "audio/audio_codec.h", alias[1])
+    period_us = frames * US_PER_SECOND / read_define(main / "audio/audio_out.h", "AUDIO_OUT_SAMPLE_RATE_HZ")
+    block_period = period_us / US_PER_SECOND
+    mix_stage, present_stage = mix_stage_names(args.tree)
     capacity = sum("SOUND slot=" in line for line in run("sound", "stats").splitlines())
     if max(voices) > capacity:
         raise ValueError(f"requested {max(voices)} voices exceeds board capacity {capacity}")
@@ -67,6 +85,10 @@ def capture(args, sleep=time.sleep):
         output.write(f"# autana sound-mix capture on {args.board}, {date.today()}, "
                      "one record per line: <record>\t<payload>\n")
         record("buildid", json.dumps(json.loads(run("buildid", "--json"))))
+        record("stage mix", mix_stage)
+        record("stage present", present_stage)
+        record("period_us", period_us)
+        record("window_seconds", window)
         record("capacity", capacity)
         record("voices", ",".join(map(str, voices)))
         for name, fmt in formats.items():
@@ -112,7 +134,7 @@ def main():
     parser.add_argument("--tree", type=Path, required=True)
     parser.add_argument("--board", required=True)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--sounds", default="tap,tap_pcm16")
+    parser.add_argument("--sounds", required=True)
     parser.add_argument("--voices", default="0,1,4,8,16,32")
     parser.add_argument("--seconds", type=int, default=15)
     args = parser.parse_args()
