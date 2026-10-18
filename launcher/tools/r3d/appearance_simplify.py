@@ -427,8 +427,9 @@ def uniform_laplacian(points, edges):
 
 
 def vertex_scale(start, edges):
-    """Own mean start edge, capped at the start's mean edge so large parts keep
-    today's hold; isolated points use the global mean (docs/Citations.md#78)."""
+    """Each point's mean start edge length, capped at the start's mean edge length
+    so large parts keep the global hold; points without edges take the global
+    mean (docs/Citations.md#78)."""
     import torch
 
     length = (start[edges[:, 0]] - start[edges[:, 1]]).norm(dim=1)
@@ -550,10 +551,10 @@ def refine(mesh, error, budget):
     return mesh._replace(points=points, rgb=rgb, tris=tris, double=double, vertex_point=vertex_point)
 
 
-def surface_loss(samples, centres, normals, edge_length, margin):
+def surface_loss(samples, centres, normals, scale, margin):
     """From the fit to the source: a point-to-plane band of half-width `margin`
     and a small pull, normalised by scalar or per-sample start geometry scales."""
-    offset = (samples - centres) / edge_length
+    offset = (samples - centres) / scale
     envelope = ((offset * normals).sum(-1).abs() - margin).clamp_min(0).square()
     return (envelope + SURFACE_TANGENTIAL_WEIGHT * offset.square().sum(-1)).mean()
 
@@ -715,7 +716,7 @@ def main(argv=None):
     parser.add_argument("--cost-weight", type=float, default=0.0, help="dE76 per predicted millisecond")
     parser.add_argument("--object", help="the scene object whose source anchors the fit")
     parser.add_argument("--surface-weight", type=float, default=0.0, help="weight of the source-surface envelope")
-    parser.add_argument("--surface-margin", type=float, default=0.0, help="source envelope margin in start mean edge lengths")
+    parser.add_argument("--surface-margin", type=float, default=0.0, help="source envelope margin in local start edge scales")
     parser.add_argument("--normal-weight", type=float, default=0.0, help="weight of the L1 normal term")
     parser.add_argument("--refine-to", type=int, help="first split the start's worst triangles up to this many")
     parser.add_argument("--score", action="store_true", help="fit nothing: print the start's mean normal error on the poses")
