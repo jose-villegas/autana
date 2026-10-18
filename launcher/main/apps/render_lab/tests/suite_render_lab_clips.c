@@ -29,7 +29,9 @@ static clip_fixture_t* shown;
 
 static void
 release_fixture(void) {
+#ifndef ESP_PLATFORM
     ui_probe_widgets_stop();
+#endif
     render_lab_clips_destroy(&shown->choice);
     memory_free(shown->blocked_heap);
     memory_free(shown);
@@ -265,6 +267,9 @@ test_menu_calls_optional_controls(void) {
     TEST_ASSERT_EQUAL_INT(1, controls_drawn);
 }
 
+/* The menu tests find the dropdown and slider by label through the host-only
+ * widget probe; the device's clip_dispatch suite taps the same menu. */
+#ifndef ESP_PLATFORM
 static recti_t clip_rect;
 static recti_t slider_rect;
 static bool dropdown_open;
@@ -374,12 +379,16 @@ test_draw_accepts_blend_boundaries_for_next_pick(void) {
     }
 }
 
+#endif
+
 void
 run_render_lab_clips_suite(void) {
     RUN_TEST(test_console_success_reports_applied_blend_and_end);
     RUN_TEST(test_init_plays_without_blend_and_console_uses_default);
     RUN_TEST(test_listing_rejects_extra_arguments);
+#ifndef ESP_PLATFORM
     RUN_TEST(test_draw_accepts_blend_boundaries_for_next_pick);
+#endif
     RUN_TEST(test_listing_marks_default_and_fallback_playback);
     RUN_TEST(test_console_errors_leave_playback_unchanged);
     RUN_TEST(test_console_accepts_name_and_blend_boundaries);
@@ -390,7 +399,9 @@ run_render_lab_clips_suite(void) {
 #endif
     RUN_TEST(test_console_uses_current_blend_when_omitted);
     RUN_TEST(test_menu_calls_optional_controls);
+#ifndef ESP_PLATFORM
     RUN_TEST(test_menu_dropdown_plays_with_selected_blend);
+#endif
 }
 
 SUITE_REGISTER(run_render_lab_clips_suite);

@@ -58,7 +58,7 @@ ui_probe_list(recti_t* rows, int* scroll_y) {
     return true;
 }
 
-#if !defined(ESP_PLATFORM) || defined(DEVICE_BUILD)
+#ifndef ESP_PLATFORM
 #define UI_PROBE_WIDGETS  8
 #define UI_PROBE_KEY_MAX  48
 #define UI_PROBE_KEY_MARK "###"

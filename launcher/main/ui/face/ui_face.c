@@ -50,8 +50,6 @@ static bool imbalance;
 
 #ifndef ESP_PLATFORM
 void (*ui_face_misuse_for_test)(void);
-#endif
-#if !defined(ESP_PLATFORM) || defined(DEVICE_BUILD)
 void (*ui_face_widget_for_test)(const char* label, recti_t r);
 #endif
 
@@ -140,7 +138,7 @@ is_disabled(void) {
 
 static mu_Id
 widget_id(const char* label, recti_t r) {
-#if !defined(ESP_PLATFORM) || defined(DEVICE_BUILD)
+#ifndef ESP_PLATFORM
     if (ui_face_widget_for_test) {
         ui_face_widget_for_test(label, r);
     }
@@ -393,7 +391,9 @@ ink_alpha(void) {
     void name(recti_t r, const char* s) {                                                                              \
         UI_FACE_COST_BEGIN(face_from);                                                                                 \
         mu_Color color = theme.ink;                                                                                    \
-        color.a = (unsigned char)(color.a * ink_alpha() / UINT8_MAX);                                                  \
+        if (alpha_depth > 0) {                                                                                         \
+            color.a = (unsigned char)(color.a * ink_alpha() / UINT8_MAX);                                              \
+        }                                                                                                              \
         UI_FACE_COST_BEGIN(backend_from);                                                                              \
         ui_text_in(ui_context(), ui_mu_from_recti(r), s, color, theme.text_scale, alignment);                          \
         UI_FACE_COST_END(backend_from, "ui.backend");                                                                  \

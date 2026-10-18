@@ -78,7 +78,6 @@ static menu_budget_fixture_t* menu_budget;
 
 static void
 release_menu_budget(void) {
-    ui_probe_widgets_stop();
     memory_free(menu_budget);
     menu_budget = NULL;
 }
@@ -110,16 +109,16 @@ test_menu_with_full_clip_list_and_long_names_fits_budget(void) {
     }
     menu_budget->choice = (render_lab_clips_t){
         .items = menu_budget->items, .count = BUDGET_CLIP_COUNT, .blend_ms = RENDER_LAB_BLEND_MAX_MS};
-    ui_probe_widgets_start();
     const input_t idle = {0};
     budget_menu_frame(&idle);
     budget_menu_frame(&idle);
-    recti_t anchor;
-    TEST_ASSERT_TRUE(ui_probe_widget("CLIP", &anchor));
+    /* The dropdown shows the chosen name, centred on the canvas like the
+     * menu's other rows. */
+    recti_t chosen;
+    TEST_ASSERT_TRUE(ui_probe_text(menu_budget->names[0], &chosen));
     input_t tap = {.down = true, .pressed = true};
     const affine2x_t transform = ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT);
-    const vec2i_t mapped_pixel =
-        affine2x_map_pixel(&transform, (vec2i_t){anchor.x + (anchor.w / 2), anchor.y + (anchor.h / 2)});
+    const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){ui_width() / 2, chosen.y + (chosen.h / 2)});
     tap.x = mapped_pixel.x;
     tap.y = mapped_pixel.y;
     budget_menu_frame(&tap);
