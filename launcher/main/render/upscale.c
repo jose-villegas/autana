@@ -67,6 +67,20 @@ upscale_init(upscale_t* scale, int source_width, int source_height, int destinat
     return true;
 }
 
+static int
+scanline_run(const upscale_t* scale) {
+    return scale->scanline_strength == 0 ? 0 : scale->scanline_run;
+}
+
+static uint16_t
+scanline_pixel(const upscale_t* scale, uint16_t pixel, int y) {
+    const int run = scanline_run(scale);
+    if (run == 0 || y % run < run / 2) {
+        return pixel;
+    }
+    return gfx_color_scale(pixel, UPSCALE_SCANLINE_UNIT - scale->scanline_strength);
+}
+
 static void
 upscale_block_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
                    uint16_t* destination, int first_row, int row_count) {
@@ -75,7 +89,8 @@ upscale_block_rows(const upscale_t* scale, const uint16_t* source, const uint16_
         const uint16_t* input_depth = depth == NULL ? NULL : depth + row;
         uint16_t* output = destination + ((size_t)y * scale->destination_width);
         for (int x = 0; x < scale->source_width; x++) {
-            const uint16_t pixel = gfx_target_shown_pixel(source + row, input_depth, x, clear);
+            const uint16_t pixel =
+                scanline_pixel(scale, gfx_target_shown_pixel(source + row, input_depth, x, clear), y);
             for (int repeat = 0; repeat < scale->factor; repeat++) {
                 output[(x * scale->factor) + repeat] = pixel;
             }
@@ -87,14 +102,28 @@ static void
 upscale_kept_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
                   uint16_t* destination, int first_row, int row_count) {
     const gfx_target_t target = {destination, 0, scale->destination_height, scale->destination_width};
-    gfx_target_paired_rows(target, source, depth, clear, scale->source_width, scale->rows, first_row, row_count, false);
+    if (scanline_run(scale) == 0) {
+        gfx_target_paired_rows(target, source, depth, clear, scale->source_width, scale->rows, first_row, row_count,
+                               false);
+    } else {
+        gfx_target_paired_rows_shaded(target, source, depth, clear, scale->source_width, scale->rows, first_row,
+                                      row_count, false, scale->scanline_run,
+                                      UPSCALE_SCANLINE_UNIT - scale->scanline_strength);
+    }
 }
 
 static void
 upscale_doubled_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
                      uint16_t* destination, int first_row, int row_count) {
     const gfx_target_t target = {destination, 0, scale->destination_height, scale->destination_width};
-    gfx_target_paired_rows(target, source, depth, clear, scale->source_width, scale->rows, first_row, row_count, true);
+    if (scanline_run(scale) == 0) {
+        gfx_target_paired_rows(target, source, depth, clear, scale->source_width, scale->rows, first_row, row_count,
+                               true);
+    } else {
+        gfx_target_paired_rows_shaded(target, source, depth, clear, scale->source_width, scale->rows, first_row,
+                                      row_count, true, scale->scanline_run,
+                                      UPSCALE_SCANLINE_UNIT - scale->scanline_strength);
+    }
 }
 
 static void
@@ -105,25 +134,8 @@ upscale_mapped_rows(const upscale_t* scale, const uint16_t* source, const uint16
         const uint16_t* input_depth = depth == NULL ? NULL : depth + row;
         uint16_t* output = destination + ((size_t)y * scale->destination_width);
         for (int x = 0; x < scale->destination_width; x++) {
-            output[x] = gfx_target_shown_pixel(source + row, input_depth, scale->columns[x], clear);
-        }
-    }
-}
-
-static void
-scanline_rows(const upscale_t* scale, uint16_t* destination, int first_row, int row_count) {
-    const unsigned keep = (unsigned)(UPSCALE_SCANLINE_UNIT - scale->scanline_strength);
-    const int run = scale->scanline_run;
-    for (int y = first_row; y < first_row + row_count; y++) {
-        if (y % run < run / 2) {
-            continue;
-        }
-        uint16_t* row = destination + (size_t)y * scale->destination_width;
-        for (int x = 0; x < scale->destination_width; x++) {
-            const uint16_t native = gfx_color_swap(row[x]);
-            row[x] = gfx_color_rgb565((uint8_t)(gfx_rgb565_r5(native) * keep / UPSCALE_SCANLINE_UNIT),
-                                      (uint8_t)(gfx_rgb565_g6(native) * keep / UPSCALE_SCANLINE_UNIT),
-                                      (uint8_t)(gfx_rgb565_b5(native) * keep / UPSCALE_SCANLINE_UNIT));
+            output[x] =
+                scanline_pixel(scale, gfx_target_shown_pixel(source + row, input_depth, scale->columns[x], clear), y);
         }
     }
 }
@@ -147,8 +159,5 @@ upscale_rows(const upscale_t* scale, const gfx_render_target_t* picture, uint16_
             break;
         case UPSCALE_BLOCKS: upscale_block_rows(scale, source, depth, clear, destination, first_row, row_count); break;
         case UPSCALE_MAPPED: upscale_mapped_rows(scale, source, depth, clear, destination, first_row, row_count); break;
-    }
-    if (scale->scanline_strength != 0 && scale->scanline_run != 0) {
-        scanline_rows(scale, destination, first_row, row_count);
     }
 }

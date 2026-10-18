@@ -88,10 +88,18 @@ render_lab_scanline(void) {
     return scanline;
 }
 
+resolution_step_t
+render_lab_render_size(int width, int height) {
+    const int width_percent = RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_scale();
+    const int height_percent = RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_rows();
+    return (resolution_step_t){width * width_percent / RENDER_LAB_SCALE_UNIT,
+                               height * height_percent / RENDER_LAB_SCALE_UNIT};
+}
+
 void
 render_lab_apply_raster_settings(void) {
-    render_context_set_scale(render_context_main(), RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_scale(),
-                             RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_rows());
+    const resolution_step_t percent = render_lab_render_size(RENDER_LAB_SCALE_UNIT, RENDER_LAB_SCALE_UNIT);
+    render_context_set_scale(render_context_main(), percent.width, percent.height);
     render_context_set_scanlines(render_context_main(), render_lab_scanline());
 }
 

@@ -8,6 +8,7 @@
 #include "core/job.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "display/display.h"
 #include "esp_cpu.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
@@ -55,10 +56,9 @@ fixture(void) {
     active = memory_alloc(sizeof *active, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(active);
     *active = (fixture_t){0};
-    ESP_LOGI(TAG, "raster=%dx%d rows=%d scanline=%d",
-             GFX_WIDTH * (RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_scale()) / RENDER_LAB_SCALE_UNIT,
-             GFX_HEIGHT * (RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_rows()) / RENDER_LAB_SCALE_UNIT,
-             render_lab_rows(), render_lab_scanline());
+    const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
+    ESP_LOGI(TAG, "raster=%dx%d rows=%d scanline=%d quarter=%d", size.width, size.height, render_lab_rows(),
+             render_lab_scanline(), render_lab_test_quarter(display_quarter_now()));
     heap_report(SKIN_PERF_PHASE_BEFORE_ENTER);
     render_lab_test_enter(&active->saved, "capybara");
     suite_set_test_cleanup(release_fixture);

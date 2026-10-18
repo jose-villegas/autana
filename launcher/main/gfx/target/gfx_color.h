@@ -77,6 +77,25 @@ gfx_color_rgb565(uint8_t r5, uint8_t g6, uint8_t b5) {
     return gfx_color_swap((uint16_t)(((uint16_t)r5 << 11) | ((uint16_t)g6 << 5) | b5));
 }
 
+/* Channel separation leaves five multiplier bits without cross-channel carries. */
+#define GFX_COLOR_SCALE_UNIT 32
+
+/* Scale a stored pixel by keep/UNIT, truncating each channel. */
+static inline gfx_color_t
+gfx_color_scale(gfx_color_t pixel, unsigned keep) {
+    const uint32_t channels = 0x07e0f81fU;
+    const uint32_t native = gfx_color_swap(pixel);
+    const uint32_t spread = (native | (native << 16)) & channels;
+    const uint32_t scaled = (spread * keep / GFX_COLOR_SCALE_UNIT) & channels;
+    return gfx_color_swap((uint16_t)(scaled | (scaled >> 16)));
+}
+
+/* Both halves use 32-bit multiplies on the 32-bit CPU. */
+static inline uint32_t
+gfx_color_pair_scale(uint32_t pair, unsigned keep) {
+    return gfx_color_scale((uint16_t)pair, keep) | ((uint32_t)gfx_color_scale((uint16_t)(pair >> 16), keep) << 16);
+}
+
 /* A whole turn: six sectors of 256, so the sector is a shift and the ramp
  * within one is a byte. */
 #define GFX_HUE_TURN 1536

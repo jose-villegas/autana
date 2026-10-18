@@ -4,6 +4,7 @@
 #include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_view.h"
 #include "core/timing.h"
+#include "display/display.h"
 #include "gfx/present/gfx_fb_guard.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
@@ -11,8 +12,18 @@
 #include "render/context/render_context.h"
 #include "scene/scene_internal.h"
 #include "scene/scene_shell.h"
+#include "services/tune.h"
 #include "ui/ui.h"
 #include "unity.h"
+
+#define PERF_QUARTER_DEFAULT (-1)
+TUNE_OWNER(render_lab);
+TUNE(render_lab, perf_quarter, PERF_QUARTER_DEFAULT, PERF_QUARTER_DEFAULT, DISPLAY_LANDSCAPE_UPSIDE_DOWN);
+
+int
+render_lab_test_quarter(int fallback) {
+    return perf_quarter == PERF_QUARTER_DEFAULT ? fallback : perf_quarter;
+}
 
 scene_t*
 render_lab_test_loaded_scene(const char* key) {
@@ -58,11 +69,12 @@ render_lab_test_frame(bool switching, const input_t* input) {
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     render_lab_apply_raster_settings();
     const int64_t render_start = timing_now_us();
-    scene_shell_render(RENDER_LAB_TEST_FRAME_MS);
+    const int quarter = render_lab_test_quarter(display_quarter_now());
+    scene_shell_render_at_quarter(RENDER_LAB_TEST_FRAME_MS, quarter);
     const int64_t render_us = timing_now_us() - render_start;
     gfx_present_wait();
     ui_clear_band_overlay();
-    scene_shell_compose(RENDER_LAB_TEST_FRAME_MS);
+    scene_shell_compose_at_quarter(RENDER_LAB_TEST_FRAME_MS, quarter);
     if (switching) {
         TEST_ASSERT_TRUE_MESSAGE(gfx_frame_expanded(), "the switch must encounter an expanded picture");
     }

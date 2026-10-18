@@ -263,9 +263,7 @@ test_raster_counters(void) {
 #else
     TEST_ASSERT_NOT_NULL_MESSAGE(scene, "the scene did not load: see the log above");
     const r3d_instance_t instance = {&mesh, NULL};
-    const resolution_step_t size = {
-        GFX_WIDTH * (RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_scale()) / RENDER_LAB_SCALE_UNIT,
-        GFX_HEIGHT * (RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_rows()) / RENDER_LAB_SCALE_UNIT};
+    const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
     raster_t raster = {.instances = &instance,
                        .instance_count = 1,
                        .upscaled = true,
@@ -415,9 +413,7 @@ fly(const char* camera, const char* policy, const ladder_t* ladder, const resolu
     const uint32_t period = scene_animator_clip_duration_ms(flown, scene_find(flown, camera), 0);
     const int frames = (int)((period + FRAME_DT_MS - 1) / FRAME_DT_MS);
     TEST_ASSERT_TRUE(frames > 0 && frames <= FRAMES_MAX);
-    render_context_set_scale(render_context_main(), RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_scale(),
-                             RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_rows());
-    render_context_set_scanlines(render_context_main(), render_lab_scanline());
+    render_lab_apply_raster_settings();
     render_context_set_dynamic_resolution(render_context_main(), config, model, ladder == NULL ? 0 : ladder->half);
     scene_target_t target = {picture, GFX_WIDTH, GFX_HEIGHT, NULL};
     gfx_color_t* half = memory_alloc(sizeof(*half) * (GFX_WIDTH / 2) * (GFX_HEIGHT / 2), MEMORY_PSRAM);

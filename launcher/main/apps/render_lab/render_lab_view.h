@@ -16,6 +16,9 @@ int render_lab_scale(void);
 /* Effective height divisor: zero rows follows the width divisor. */
 int render_lab_rows(void);
 int render_lab_scanline(void);
+
+/* Applies the tunables to panel dimensions, or UNIT dimensions for percentages. */
+resolution_step_t render_lab_render_size(int width, int height);
 void render_lab_apply_raster_settings(void);
 
 /* The tunable render_lab.budget: 0 draws at render_lab.scale; otherwise

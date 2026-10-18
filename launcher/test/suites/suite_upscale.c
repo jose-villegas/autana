@@ -299,8 +299,40 @@ test_scanline_runs_preserve_bright_rows_and_darken_clear_pixels(void) {
     }
 }
 
+static void
+test_scanline_all_colors_match_channel_reference(void) {
+    enum { WIDTH = 2, HEIGHT = 1, OUTPUT_HEIGHT = 2 };
+
+    uint16_t source[WIDTH], columns[2 * WIDTH], rows[OUTPUT_HEIGHT];
+    uint32_t output[WIDTH * OUTPUT_HEIGHT];
+    upscale_t scale;
+    const gfx_render_target_t picture = gfx_render_target_of_color(source, WIDTH, HEIGHT);
+    for (int width = WIDTH; width <= 2 * WIDTH; width += WIDTH) {
+        TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, width, OUTPUT_HEIGHT, columns, rows));
+        for (int strength = 0; strength <= UPSCALE_SCANLINE_MAX; strength++) {
+            scale.scanline_strength = strength;
+            const unsigned keep = UPSCALE_SCANLINE_UNIT - strength;
+            for (unsigned color = 0; color <= UINT16_MAX; color++) {
+                source[0] = (uint16_t)color;
+                source[1] = (uint16_t)~color;
+                upscale_rows(&scale, &picture, 0, (uint16_t*)output, 0, OUTPUT_HEIGHT);
+                for (int x = 0; x < width; x++) {
+                    const uint16_t pixel = source[x * WIDTH / width];
+                    const uint16_t native = gfx_color_swap(pixel);
+                    const uint16_t expected = gfx_color_rgb565(gfx_rgb565_r5(native) * keep / UPSCALE_SCANLINE_UNIT,
+                                                               gfx_rgb565_g6(native) * keep / UPSCALE_SCANLINE_UNIT,
+                                                               gfx_rgb565_b5(native) * keep / UPSCALE_SCANLINE_UNIT);
+                    TEST_ASSERT_EQUAL_HEX16(pixel, ((uint16_t*)output)[x]);
+                    TEST_ASSERT_EQUAL_HEX16(expected, ((uint16_t*)output)[width + x]);
+                }
+            }
+        }
+    }
+}
+
 void
 run_upscale_suite(void) {
+    RUN_TEST(test_scanline_all_colors_match_channel_reference);
     RUN_TEST(test_scanline_runs_preserve_bright_rows_and_darken_clear_pixels);
     RUN_TEST(test_two_times_matches_the_frame_doubling_reference);
     RUN_TEST(test_integer_factors_copy_each_source_pixel_to_its_block);

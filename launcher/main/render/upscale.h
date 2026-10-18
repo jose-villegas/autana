@@ -19,7 +19,7 @@ typedef enum {
 } upscale_path_t;
 
 /* Repeated-row darkening in 32nds: zero preserves colour, the maximum is black. */
-#define UPSCALE_SCANLINE_UNIT 32
+#define UPSCALE_SCANLINE_UNIT GFX_COLOR_SCALE_UNIT
 #define UPSCALE_SCANLINE_MAX  UPSCALE_SCANLINE_UNIT
 
 typedef struct {

@@ -33,6 +33,8 @@ bool scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target);
 /* The two above on the panel's pictures and orientation. Compose marks an
  * exact-half picture for expansion, otherwise the full framebuffer dirty;
  * it does nothing without an active camera. */
+void scene_shell_render_at_quarter(uint32_t dt_ms, int quarter);
+void scene_shell_compose_at_quarter(uint32_t dt_ms, int quarter);
 void scene_shell_render(uint32_t dt_ms);
 void scene_shell_compose(uint32_t dt_ms);
 

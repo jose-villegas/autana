@@ -27,7 +27,9 @@ capture.
 `RENDER_LAB_SCALE_UNIT` use that unit. Defaults remain `scale=200`, `rows=0`,
 `scanline=0`. The scene applies these settings each frame. Perf suites read
 them when the test runs and log the raster size, effective rows divisor and
-strength. Their compose work uses the same half-picture predicate as the scene.
+strength and effective quarter. `render_lab.perf_quarter` selects a quarter for
+device performance suites; its default of -1 preserves each suite's orientation.
+Their compose work uses the same half-picture predicate as the scene.
 
 These commands render both scenes in quarter 0 and rotated quarter 1, at the
 same pose used in the sheets. The host reads the real gfx panel rows, including
@@ -49,20 +51,10 @@ done
 ```
 
 `render_compare.sh --render LABEL "ARGS"` accepts these same renderer arguments.
-The sheets below use `launcher/tools/render/render_compare.py --row` with
-`--crops 3`: default versus 1×2 plain, then plain versus strength 16. Rows show
-Sponza quarter 0, Sponza quarter 1, Capybara quarter 0 and Capybara quarter 1.
-The third column amplifies the pixel difference. The scanline runs follow
-panel rows, so they appear vertical in quarter 1. Clear sky darkens too.
-These are host pictures; no device timing is attached to this experiment.
-
-![Default and height-only plain raster](images/scanline-1x2/plain.png)
-
-[Enlarged differing regions](images/scanline-1x2/plain.crops.png)
-
-![Height-only plain and scanline present](images/scanline-1x2/scanline.png)
-
-[Enlarged differing regions](images/scanline-1x2/scanline.crops.png)
+Use `launcher/tools/render/render_compare.py --row` with `--crops 3` to compare
+default versus 1×2 plain, or plain versus strength 16. Keep captures outside the
+repository. Scanline runs follow panel rows, so they appear vertical in quarter 1.
+Clear sky darkens too. Strength uses every 32nd from unchanged to black.
 
 The complete source removal inventory below matches the experiment's names
 under `launcher/main/render/`, this app and `launcher/test/suites/`.
@@ -71,7 +63,8 @@ Existing `DRAW_DITHER_SCANLINES4` patterns are independent.
 | File | Experiment symbols or statements to remove |
 |---|---|
 | `launcher/main/render/upscale.h` | `UPSCALE_SCANLINE_UNIT`, `UPSCALE_SCANLINE_MAX`, `upscale_t.scanline_strength`, `upscale_t.scanline_run` |
-| `launcher/main/render/upscale.c` | strength initialization and run eligibility in `upscale_init()`, `scanline_rows()`, its call in `upscale_rows()` |
+| `launcher/main/render/upscale.c` | strength initialization and run eligibility in `upscale_init()`, `scanline_run()`, `scanline_pixel()`, shaded paired-row calls |
+| `launcher/main/gfx/target/gfx_color.h`, `gfx_target.h` | `GFX_COLOR_SCALE_UNIT`, `gfx_color_scale()`, `gfx_color_pair_scale()`, `gfx_target_paired_rows_shaded()` and its plain-copy wrapper call |
 | `launcher/main/render/raster.c` | cached strength preservation in `raster_upscale()` |
 | `launcher/main/render/context/render_context.h`, `render_context.c` | `render_context_set_scanlines()` |
 | `launcher/main/apps/render_lab/app_render_lab.c` | `TUNE(render_lab, scanline, ...)`, `render_lab_scanline()`, the setter call in `render_lab_apply_raster_settings()` |
@@ -79,16 +72,16 @@ Existing `DRAW_DITHER_SCANLINES4` patterns are independent.
 | `launcher/main/apps/render_lab/tests/suite_sponza_perf.c` | strength assignment and header field |
 | `launcher/main/apps/render_lab/tests/suite_capybara_perf.c` | header strength field |
 | `launcher/main/apps/render_lab/tests/suite_raster_scale_perf.c` | strength assignments, setter and header field |
-| `launcher/main/apps/render_lab/tools/tests/test_render_views.py` | `UPSCALE_HEADER`, `SCANLINE_UNIT`, scanline tunings and dark-row assertions |
+| `launcher/main/apps/render_lab/tools/tests/test_render_views.py` | `COLOR_HEADER`, `SCANLINE_UNIT`, scanline tunings and dark-row assertions |
 | `launcher/test/suites/suite_scene.c` | strength setting in `test_height_only_scale_composes_whole_runs_in_the_half_picture()` |
-| `launcher/test/suites/suite_upscale.c` | `test_scanline_runs_preserve_bright_rows_and_darken_clear_pixels()` and registration |
+| `launcher/test/suites/suite_upscale.c` | scanline tests and registrations |
 | `docs/Shared-Helpers.md` | regenerate the catalogue after removing the public symbols |
-| `docs/render/Dynamic-Resolution.md`, this README and `images/scanline-1x2/` | experiment prose, inventory and images |
+| `docs/render/Dynamic-Resolution.md`, this README | experiment prose and inventory |
 
 Check the inventory with:
 
 ```sh
-git grep -n -i scanline -- launcher/main/render launcher/main/apps/render_lab \
+git grep -n -i scanline -- launcher/main/render launcher/main/gfx/target launcher/main/apps/render_lab \
     launcher/test/suites/suite_scene.c launcher/test/suites/suite_upscale.c docs/render/Dynamic-Resolution.md
 ```
 

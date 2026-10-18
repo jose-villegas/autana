@@ -23,10 +23,12 @@
 
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/sponza_content.h"
+#include "apps/render_lab/tests/render_lab_test.h"
 #include "asset/asset_store.h"
 #include "core/job.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "display/display.h"
 #include "display/viewport.h"
 #include "gfx/gfx.h"
 #include "math/linear/transformf.h"
@@ -52,16 +54,6 @@ static r3d_lit_mesh_t meshes[SPONZA_BAKE_COUNT];
 
 #define PANEL_PIXELS ((size_t)GFX_WIDTH * GFX_HEIGHT)
 
-static int
-render_width(void) {
-    return GFX_WIDTH * (RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_scale()) / RENDER_LAB_SCALE_UNIT;
-}
-
-static int
-render_height(void) {
-    return GFX_HEIGHT * (RENDER_LAB_SCALE_UNIT * RENDER_LAB_SCALE_UNIT / render_lab_rows()) / RENDER_LAB_SCALE_UNIT;
-}
-
 typedef struct {
     void* scratch;
     gfx_color_t* panel;
@@ -74,8 +66,8 @@ bench_open(bench_t* b, const r3d_instance_t* instance, const raster_attachment_t
     b->raster = (raster_t){
         .instances = instance,
         .instance_count = 1,
-        .width = render_width(),
-        .height = render_height(),
+        .width = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT).width,
+        .height = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT).height,
         .upscaled = true,
         .destination_width = GFX_WIDTH,
         .destination_height = GFX_HEIGHT,
@@ -87,8 +79,8 @@ bench_open(bench_t* b, const r3d_instance_t* instance, const raster_attachment_t
     TEST_ASSERT_NOT_NULL(b->scratch);
     TEST_ASSERT_NOT_NULL(b->panel);
     b->raster.scratch = b->scratch;
-    ESP_LOGI(TAG, "raster=%dx%d rows=%d scanline=%d", b->raster.width, b->raster.height, render_lab_rows(),
-             render_lab_scanline());
+    ESP_LOGI(TAG, "raster=%dx%d rows=%d scanline=%d quarter=%d", b->raster.width, b->raster.height, render_lab_rows(),
+             render_lab_scanline(), render_lab_test_quarter(DISPLAY_PORTRAIT));
     ESP_LOGI(TAG, "heap after setup: internal free %u largest %u, psram free %u largest %u",
              (unsigned)memory_free_bytes(MEMORY_INTERNAL), (unsigned)memory_largest_block(MEMORY_INTERNAL),
              (unsigned)memory_free_bytes(MEMORY_PSRAM), (unsigned)memory_largest_block(MEMORY_PSRAM));
@@ -104,7 +96,9 @@ static r3d_lens_t
 view_at(const r3d_lit_mesh_t* mesh, uint32_t t_ms) {
     (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
     const render_view_t view = camera_view(flythrough, scene_entity_transform(sponza, camera_entity),
-                                           (viewport_t){render_width(), render_height(), 0});
+                                           (viewport_t){render_lab_render_size(GFX_WIDTH, GFX_HEIGHT).width,
+                                                        render_lab_render_size(GFX_WIDTH, GFX_HEIGHT).height,
+                                                        render_lab_test_quarter(DISPLAY_PORTRAIT)});
     r3d_lens_t lens;
     r3d_lens_init(&lens, &view, mesh->position_scale);
     return lens;
@@ -216,7 +210,8 @@ test_sponza_draw_stage_breakdown(void) {
     const transformf_t sky_pose =
         transformf_looking((vec3f_t){0.0F, 20000.0F, 0.0F}, (vec3f_t){0.0F, 1.0F, 0.01F}, (vec3f_t){0.0F, 1.0F, 0.0F});
     start = timing_now_us();
-    const render_view_t frame_view = render_view_make(&sky_pose, 1.0F, 1.0F, (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
+    const render_view_t frame_view = render_view_make(
+        &sky_pose, 1.0F, 1.0F, (viewport_t){GFX_WIDTH, GFX_HEIGHT, render_lab_test_quarter(DISPLAY_PORTRAIT)});
     const raster_stats_t none = raster_draw(&b->raster, &frame_view);
     raster_upscale(&b->raster, b->panel, raster_fits_half_picture(&b->raster) ? GFX_WIDTH / 2 : GFX_WIDTH,
                    raster_fits_half_picture(&b->raster) ? GFX_HEIGHT / 2 : GFX_HEIGHT);
@@ -238,7 +233,8 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     TEST_ASSERT_NOT_NULL(b);
     bench_open(b, instance, attachments);
     ESP_LOGI(TAG, "=== %s FRAME COST (%d tris, %d verts, %d clusters, rendered %dx%d) ===", label, mesh->triangle_count,
-             mesh->vertex_count, mesh->cluster_count, render_width(), render_height());
+             mesh->vertex_count, mesh->cluster_count, render_lab_render_size(GFX_WIDTH, GFX_HEIGHT).width,
+             render_lab_render_size(GFX_WIDTH, GFX_HEIGHT).height);
     const tune_entry_t* culling = tune_find(tune_shared(), "render.cull");
     TEST_ASSERT_NOT_NULL(culling);
     int size = 0;
@@ -250,10 +246,10 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
     ESP_LOGI(TAG,
              "CAPTURE build_id=%s pack_crc32=%08x object=%s size=%d cull=%ld period_ms=%u pose_every_ms=%u "
-             "raster=%dx%d rows=%d scanline=%d",
+             "raster=%dx%d rows=%d scanline=%d quarter=%d",
              build_id(), (unsigned)asset_crc32(pack->base, pack->size), object_name, size, (long)*culling->value,
              (unsigned)period, (unsigned)SPONZA_POSE_EVERY_MS, b->raster.width, b->raster.height, render_lab_rows(),
-             render_lab_scanline());
+             render_lab_scanline(), render_lab_test_quarter(DISPLAY_PORTRAIT));
     char* report = memory_alloc(FRAME_COST_REPORT_MAX, MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL(report);
     (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX);
@@ -262,8 +258,9 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     int samples = 0;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_POSE_EVERY_MS) {
         (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-        const render_view_t view = camera_view(flythrough, scene_entity_transform(sponza, camera_entity),
-                                               (viewport_t){GFX_WIDTH, GFX_HEIGHT, 0});
+        const render_view_t view =
+            camera_view(flythrough, scene_entity_transform(sponza, camera_entity),
+                        (viewport_t){GFX_WIDTH, GFX_HEIGHT, render_lab_test_quarter(DISPLAY_PORTRAIT)});
         if (moving != NULL) {
             transformf_set_position(moving,
                                     (vec3f_t){(t_ms / SPONZA_POSE_EVERY_MS) % 2 == 0 ? 0.0F : 0.01F, 0.0F, 0.0F});

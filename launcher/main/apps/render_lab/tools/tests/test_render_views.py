@@ -26,8 +26,8 @@ TURNS = {
     "landscape": ("sponza-landscape", "sponza-depth-landscape", "sponza-tiles-landscape"),
     "flipped": ("sponza-flipped", "sponza-depth-flipped", "sponza-tiles-flipped"),
 }
-UPSCALE_HEADER = pathlib.Path(__file__).resolve().parents[6] / "launcher/main/render/upscale.h"
-SCANLINE_UNIT = int(re.search(r"^#define UPSCALE_SCANLINE_UNIT\s+(\d+)", UPSCALE_HEADER.read_text(), re.M)[1])
+COLOR_HEADER = pathlib.Path(__file__).resolve().parents[6] / "launcher/main/gfx/target/gfx_color.h"
+SCANLINE_UNIT = int(re.search(r"^#define GFX_COLOR_SCALE_UNIT\s+(\d+)", COLOR_HEADER.read_text(), re.M)[1])
 GREY_SLACK = 12  # the 565 expansion makes a grey's channels differ by a few levels
 
 
