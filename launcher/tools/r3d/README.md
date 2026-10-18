@@ -197,7 +197,8 @@ what the fit changes from the paper.
 | Schedule | Adam<sup>[[3]](../../../docs/Citations.md#3)</sup>; both learning rates decay tenfold over `--steps` |
 | Output | `write_lit_mesh()`, the writer `mesh_import.py` and `rebake.py` end in, plus a vertex-coloured OBJ |
 
-Beside `loss.txt`, `stretch.json` reports triangle stretch by connected start part, with small-part totals and the worst parts.
+Beside `loss.txt`, `stretch.json` reports triangle stretch by connected part
+of the fit's start (after `--refine-to`), with small-part totals and the worst parts.
 
 The fitted colours are the bake, so the mesh enters the import at its last
 stage instead of being lit again. Every `--poses`/`--reference` pair trains

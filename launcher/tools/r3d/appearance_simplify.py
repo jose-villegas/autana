@@ -137,40 +137,45 @@ def point_edges(tris, vertex_point):
 
 
 def start_parts(mesh) -> np.ndarray:
-    """Connected-part labels for start triangles, including colour seams."""
+    """Connected-part labels for welded start points, including colour seams."""
     edges = point_edges(mesh.tris, mesh.vertex_point)
     graph = coo_matrix((np.ones(len(edges)), (edges[:, 0], edges[:, 1])),
                        shape=(len(mesh.points), len(mesh.points)))
     _, labels = connected_components(graph, directed=False)
-    _, parts = np.unique(labels[mesh.vertex_point[mesh.tris[:, 0]]], return_inverse=True)
-    return parts
+    return labels
 
 
-def _triangle_edges(points, mesh):
-    corners = points[mesh.vertex_point[mesh.tris]]
-    return np.linalg.norm(corners - np.roll(corners, -1, axis=1), axis=2)
+def triangle_edges(points, tris, vertex_point):
+    """Each triangle's edge lengths in corner order, shaped (n, 3)."""
+    corners = vertex_point[tris]
+    return np.stack([np.linalg.norm(points[corners[:, k]] - points[corners[:, (k + 1) % 3]], axis=1) for k in range(3)], axis=1)
 
 
 def triangle_stretch(start_points, fitted_points, mesh) -> np.ndarray:
     """Each triangle's longest fitted edge relative to its longest start edge."""
-    start_edge = _triangle_edges(start_points, mesh).max(axis=1)
-    fitted_edge = _triangle_edges(fitted_points, mesh).max(axis=1)
+    start_edge = triangle_edges(start_points, mesh.tris, mesh.vertex_point).max(axis=1)
+    fitted_edge = triangle_edges(fitted_points, mesh.tris, mesh.vertex_point).max(axis=1)
     ratio = np.where(fitted_edge > 0, np.inf, 1.0)
     return np.divide(fitted_edge, start_edge, out=ratio, where=start_edge > 0)
 
 
 def stretch_report(start, fitted, kept) -> dict:
     """Stretch by connected start part, with small-part totals and worst parts."""
-    parts = start_parts(start)[kept]
+    labels = start_parts(start)
+    parts = labels[start.vertex_point[start.tris[kept, 0]]]
     stretch = triangle_stretch(start.points, fitted.points, fitted)
-    start_edge = _triangle_edges(start.points, start).mean(axis=1)[kept]
     edges = point_edges(start.tris, start.vertex_point)
-    global_edge = np.linalg.norm(start.points[edges[:, 0]] - start.points[edges[:, 1]], axis=1).mean()
-    ids, inverse, count = np.unique(parts, return_inverse=True, return_counts=True)
-    mean_edge = np.bincount(inverse, weights=start_edge) / count
-    stretched = np.bincount(inverse, weights=np.asarray(stretch) > STRETCH_RATIO, minlength=len(ids))
-    rows = [dict(part=int(part), triangles=int(count[i]), mean_start_edge=float(mean_edge[i]),
-                 share=float(100 * stretched[i] / count[i])) for i, part in enumerate(ids)]
+    length = np.linalg.norm(start.points[edges[:, 0]] - start.points[edges[:, 1]], axis=1)
+    global_edge = length.mean()
+    edge_parts = labels[edges[:, 0]]
+    part_count = int(labels.max()) + 1
+    edge_count = np.bincount(edge_parts, minlength=part_count)
+    edge_total = np.bincount(edge_parts, weights=length, minlength=part_count)
+    mean_edge = np.divide(edge_total, edge_count, out=np.zeros(part_count), where=edge_count > 0)
+    count = np.bincount(parts, minlength=part_count)
+    stretched = np.bincount(parts, weights=stretch > STRETCH_RATIO, minlength=part_count)
+    rows = [dict(part=int(part), triangles=int(count[part]), mean_start_edge=float(mean_edge[part]),
+                 share=float(100 * stretched[part] / count[part])) for part in np.flatnonzero(count)]
     report = dict(parts=rows)
     for name, mask in (("small", mean_edge < global_edge), ("rest", mean_edge >= global_edge)):
         triangles = int(count[mask].sum())
@@ -456,7 +461,9 @@ def coverage(mesh, views, size, device="cuda"):
 
 
 def prune(mesh, shown, budget):
-    """The mesh of up to `budget` most-shown triangles and their original indices."""
+    """Drop never-shown triangles first, then those showing fewest pixels to
+    meet `budget`. A flat mesh's colours go with their triangles. Return the
+    pruned mesh and the kept start indices."""
     order = np.argsort(-np.asarray(shown), kind="stable")
     keep = np.sort(order[: min(budget, int(np.count_nonzero(shown)))])
     pruned = mesh._replace(rgb=mesh.rgb[keep] if mesh.flat else mesh.rgb, tris=mesh.tris[keep],
@@ -576,7 +583,7 @@ def refine(mesh, error, budget):
     positions = points[vertex_point]
     while len(tris) < budget:
         corners = vertex_point[tris]
-        lengths = np.stack([np.linalg.norm(points[corners[:, k]] - points[corners[:, (k + 1) % 3]], axis=1) for k in range(3)], axis=1)
+        lengths = triangle_edges(points, tris, vertex_point)
         longest = lengths.argmax(axis=1)
         marked_points = set()
         for index in np.argsort(-error)[: max(1, (budget - len(tris)) // 2)]:
