@@ -147,7 +147,8 @@ Only reads the board, so running a command twice changes nothing.
 | Command | What it does |
 |---|---|
 | `autana monitor [seconds] [--follow] [--stream] [--elf PATH]` | In a terminal: the console live, until Ctrl+C or for `seconds`. Piped: needs `seconds` or `--follow`, and prints only errors and `FRAME_WATCH` warnings unless `--stream`. Exits 1 on a crash or reboot. |
-| `autana coredump [--elf PATH]` | The last panic's core dump, decoded against the matching build. Resets the board ([Debugging](../notes/Debugging.md#after-a-crash-the-reset-reason-and-the-core-dump)). |
+| `autana coredump [--elf PATH]` | The last panic's core dump, saved to the records and decoded against the build that crashed. Resets the board ([Debugging](../notes/Debugging.md#after-a-crash-the-reset-reason-and-the-core-dump)). |
+| `autana coredump --core FILE [--elf PATH]` | Decode a saved dump. No board. |
 | `autana coredump --erase` | Clear the dump so the next crash's is told apart. Resets the board. |
 | `autana screenshot [--as-shown\|--framebuffer] [-o PATH]` | `PATH.png` plus a `PATH.json` state snapshot. Landscape by default. |
 | `autana screenshot --frames N -o PATH` | `N` frames as `PATH-00` on: the loop is frozen and stepped a frame between captures, then resumed. |
