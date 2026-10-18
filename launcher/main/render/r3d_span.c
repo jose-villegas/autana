@@ -96,7 +96,7 @@ plane_of(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_
     return true;
 }
 
-static void
+static inline __attribute__((always_inline)) void
 gradient(const plane_t* p, float va, float vb, float vc, int k, gradients_t* out) {
     const float d1 = vb - va;
     const float d2 = vc - va;
@@ -750,6 +750,7 @@ set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TR
     plane_t p;
     g->x_origin = box.x;
     if (f->shading == FILL_FLAT) {
+        p = (plane_t){0};
         set_flat(f, v[0], v[1], v[2]);
     } else if (plane_of(v[0], v[1], v[2], box.x, y_anchor, &p)) {
         gradient(&p, v[0]->z * DEPTH_SCALE, v[1]->z * DEPTH_SCALE, v[2]->z * DEPTH_SCALE, 0, g);
