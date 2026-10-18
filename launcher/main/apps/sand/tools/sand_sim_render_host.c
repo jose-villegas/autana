@@ -158,7 +158,7 @@ board_angle(int frame) {
 }
 
 /* How fast the simulated board turns, for tilt's filter only. */
-#define SIMULATED_TURN_DPS 106
+#define SIMULATED_TURN_DPS 53
 
 static void
 drive_tilt(const render_frame_t* frame, int* gx, int* gy) {
