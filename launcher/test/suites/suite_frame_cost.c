@@ -650,12 +650,12 @@ test_external_duration_windows_and_truncation(void) {
     TEST_ASSERT_FALSE(frame_cost_external_add(slot, "other", 9000));
     TEST_ASSERT_EQUAL_UINT32(2, slot->n);
     TEST_ASSERT_GREATER_THAN(5, frame_cost_external_report(slot, output, sizeof output, 5));
-    TEST_ASSERT_EQUAL_STRING("frame || sound_mix 2.00/3.0 ms/block n=2", output);
+    TEST_ASSERT_EQUAL_STRING("frame || sound_mix 2.00/3.00 ms/block n=2", output);
     TEST_ASSERT_EQUAL_UINT32(0, slot->n);
     TEST_ASSERT_EQUAL_INT64(0, slot->worst_us);
     TEST_ASSERT_TRUE(frame_cost_external_add(slot, "sound_mix", 500));
     TEST_ASSERT_GREATER_THAN(0, frame_cost_external_report(slot, output, sizeof output, 0));
-    TEST_ASSERT_EQUAL_STRING(" || sound_mix 0.50/0.5 ms/block n=1", output);
+    TEST_ASSERT_EQUAL_STRING(" || sound_mix 0.50/0.50 ms/block n=1", output);
     TEST_ASSERT_TRUE(frame_cost_external_add(slot, "sound_mix", 1000));
     TEST_ASSERT_EQUAL_INT(0, frame_cost_external_report(slot, output, 1, 0));
     TEST_ASSERT_EQUAL_STRING("", output);
@@ -669,8 +669,43 @@ test_external_duration_windows_and_truncation(void) {
     free(slot);
 }
 
+static void
+test_external_report_exact_capacity_and_short_buffer(void) {
+    frame_cost_external_t slot = {0};
+    static const char expected[] = "frame || sound_mix 1.00/1.00 ms/block n=1";
+    char output[sizeof expected + 1];
+    const int prefix = (int)strlen("frame");
+    for (size_t capacity = sizeof expected - 1; capacity <= sizeof expected; capacity++) {
+        memset(output, 'x', sizeof output);
+        memcpy(output, "frame", sizeof "frame");
+        TEST_ASSERT_TRUE(frame_cost_external_add(&slot, "sound_mix", 1000));
+        const int length = frame_cost_external_report(&slot, output, capacity, prefix);
+        TEST_ASSERT_EQUAL_STRING(capacity == sizeof expected ? expected : "frame", output);
+        TEST_ASSERT_EQUAL_INT(capacity == sizeof expected ? sizeof expected - 1 : prefix, length);
+        TEST_ASSERT_EQUAL_CHAR('x', output[capacity]);
+    }
+    memset(output, 'x', sizeof output);
+    TEST_ASSERT_TRUE(frame_cost_external_add(&slot, "sound_mix", 1000));
+    TEST_ASSERT_EQUAL_INT(sizeof expected, frame_cost_external_report(&slot, output, sizeof expected, sizeof expected));
+    for (size_t i = 0; i < sizeof output; i++) {
+        TEST_ASSERT_EQUAL_CHAR('x', output[i]);
+    }
+}
+
+static void
+test_external_report_preserves_submillisecond_worst(void) {
+    frame_cost_external_t slot = {0};
+    char output[FRAME_COST_REPORT_MAX];
+    TEST_ASSERT_TRUE(frame_cost_external_add(&slot, "sound_mix", 20));
+    TEST_ASSERT_TRUE(frame_cost_external_add(&slot, "sound_mix", 80));
+    TEST_ASSERT_GREATER_THAN_INT(0, frame_cost_external_report(&slot, output, sizeof output, 0));
+    TEST_ASSERT_EQUAL_STRING(" || sound_mix 0.05/0.08 ms/block n=2", output);
+}
+
 void
 suite_frame_cost(void) {
+    RUN_TEST(test_external_report_preserves_submillisecond_worst);
+    RUN_TEST(test_external_report_exact_capacity_and_short_buffer);
     RUN_TEST(test_charges_to_one_name_add_up_and_the_report_is_per_frame);
     RUN_TEST(test_a_name_is_one_slot_whether_or_not_it_is_the_same_literal);
     RUN_TEST(test_a_report_forgets_so_the_next_window_starts_clean);

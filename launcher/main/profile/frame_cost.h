@@ -401,9 +401,9 @@ frame_cost_external_report(frame_cost_external_t* slot, char* out, size_t capaci
         return length;
     }
     const int64_t average = slot->total_us / slot->n;
-    const int wrote = snprintf(out + length, capacity - (size_t)length, " || %s %d.%02d/%d.%01d ms/block n=%u",
+    const int wrote = snprintf(out + length, capacity - (size_t)length, " || %s %d.%02d/%d.%02d ms/block n=%u",
                                slot->name, (int)(average / 1000), (int)(average % 1000 / 10),
-                               (int)(slot->worst_us / 1000), (int)(slot->worst_us % 1000 / 100), (unsigned)slot->n);
+                               (int)(slot->worst_us / 1000), (int)(slot->worst_us % 1000 / 10), (unsigned)slot->n);
     slot->total_us = 0;
     slot->worst_us = 0;
     slot->n = 0;
