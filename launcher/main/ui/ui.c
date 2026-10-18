@@ -273,7 +273,7 @@ paint_canvas(const mu_Container* cnt) {
 #endif
 }
 
-/* FNV-1a. Cheap, and only ever run over the few
+/* FNV-1a (Fowler, Noll, Vo). Cheap, and only ever run over the few
  * hundred bytes a canvas's commands occupy; the buffer is 8 KiB but almost
  * none of it is used. */
 static uint64_t

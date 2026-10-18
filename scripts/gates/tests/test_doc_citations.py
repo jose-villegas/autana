@@ -634,6 +634,7 @@ class PaperCitationTest(unittest.TestCase):
         guide = ("docs/Guide.md", "[[1]](Citations.md#1)\n")
         for path, line in [("launcher/main/a.c", "/* Gouraud (docs/Citations.md#1). */\n"),
                            ("scripts/tool.py", "# After docs/Citations.md#1\n"),
+                           ("launcher/CMakeLists.txt", "# docs/Citations.md#1\n"),
                            ("launcher/tools/x.sh", 'X="docs/Citations.md#1"\n')]:
             with self.subTest(path=path):
                 self.assertEqual(self.problems(rows, [guide, (path, line)]), [

@@ -19,9 +19,9 @@ each, `| <a id="N"></a>[N] | ...<br>Cited by: ... |`.
 Entries ascend, and a deleted entry's number is not reused. Every
 `Citations.md#N` a tracked document writes must name an entry, and an
 entry's "Cited by" line must link exactly the documents that cite it ("none"
-for an entry only code names). Code and its comments never cite by number: a `Citations.md#N` in a
-source file fails, and the comment names its source (author, year or section)
-in place. The gates' own tests write citations as fixtures, so they cite
+for an entry only code names). Code and its comments never cite by number: a
+`Citations.md#N` in a source file fails, and the comment names its source
+(author, year or section) in place. The gates' own tests write citations as fixtures, so they cite
 nothing.
 
 Without an ESP-IDF checkout, a name this tree does not define cannot be
@@ -53,7 +53,7 @@ CITATION_ROW = re.compile(
 PAPER = re.compile(r"Citations\.md#(\d+)\b")
 CELL_LINK = re.compile(r"\]\(([^)\s#]+)\)")
 CITING_DOCUMENTS = ["*.md"]
-CODE_SOURCES = ["*.c", "*.h", "*.py", "*.sh", "*.mjs", "*.cmake", "CMakeLists.txt"]
+CODE_SOURCES = ["*.c", "*.h", "*.py", "*.sh", "*.mjs", "*.cmake", "*CMakeLists.txt"]
 GATE_TESTS = "scripts/gates/tests/"
 
 # A citation of one or more sections of a doc: `X.md`'s "Section", or "One"
@@ -302,9 +302,8 @@ def code_citations(root):
 
 def unresolved_papers(root):
     """Every problem between docs/Citations.md and what cites it: a source file
-    citing by number, a number
-    with no entry, a cited-by line that differs
-    from the citing documents, and an entry out of order."""
+    citing by number, a number with no entry, a cited-by line that differs from
+    the citing documents, and an entry out of order."""
     rows, problems = citation_rows(root)
     problems += code_citations(root)
     cited = paper_citations(root)
