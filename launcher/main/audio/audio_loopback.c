@@ -3,7 +3,6 @@
 
 #include "audio/audio_codec.h"
 #include "audio/audio_in.h"
-#include "math/scalar/trig.h"
 #include "math/signal/goertzel.h"
 
 bool
@@ -27,6 +26,6 @@ audio_loopback_measure(uint16_t hz, uint16_t ms, float* db) {
             remaining -= n;
         }
     }
-    *db = goertzel_level_db(&detector, TRIG_SIN_MAX);
+    *db = goertzel_level_db(&detector, INT16_MAX);
     return ok;
 }
