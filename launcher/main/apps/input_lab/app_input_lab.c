@@ -127,6 +127,7 @@ static uint32_t motion_since_drain_ms;
 static int64_t motion_drain_us;
 /* Bias-corrected gyro rotation since the turn step armed, in degrees: proves the gyro scale on its own. */
 static vec3f_t turn_gyro_deg;
+static vec3f_t turn_gyro_rate;
 static vec3i_t raw_acceleration;
 static imu_probe_round_t imu_round;
 static imu_record_t imu_record;
@@ -458,14 +459,17 @@ static void
 integrate_turn_gyro(const input_motion_batch_t* batch) {
     if (imu_round.step != IMU_PROBE_TURN && imu_round.step != IMU_PROBE_TRACE) {
         turn_gyro_deg = (vec3f_t){0};
+        turn_gyro_rate = (vec3f_t){0};
         return;
     }
     const float dt = (float)INPUT_MOTION_SAMPLE_US / (float)MATH_US_PER_S;
+    /* Samples lost to FIFO read mode advance at the last rate, as gravity_update_batch does. */
+    turn_gyro_deg = vec3f_add(turn_gyro_deg, vec3f_scale(turn_gyro_rate, dt * (float)batch->lost));
     for (int i = 0; i < batch->count; i++) {
-        const vec3f_t rate =
+        turn_gyro_rate =
             vec3f_sub(vec3f_scale(vec3f_from_vec3i(batch->samples[i].rotation), 1.0F / INPUT_ROTATION_ONE_DPS),
                       gravity_gyro_bias(&gravity));
-        turn_gyro_deg = vec3f_add(turn_gyro_deg, vec3f_scale(rate, dt));
+        turn_gyro_deg = vec3f_add(turn_gyro_deg, vec3f_scale(turn_gyro_rate, dt));
     }
 }
 
