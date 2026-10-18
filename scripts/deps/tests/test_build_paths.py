@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / 'launcher/tools/build'))
 import build_paths
@@ -59,6 +60,56 @@ class BuildPathsTests(unittest.TestCase):
         (orphan / build_paths.OWNER_FILE).write_text(str(self.root / 'missing/launcher'))
         build_paths.prepare(self.launcher, 'build.diag')
         self.assertFalse(orphan.exists())
+
+    def test_prune_continues_after_removal_error(self):
+        for error in (PermissionError, FileNotFoundError):
+            with self.subTest(error=error.__name__):
+                blocked = self.build_root / 'deadbeef'
+                removable = self.build_root / 'cafebabe'
+                for orphan in (blocked, removable):
+                    orphan.mkdir(parents=True, exist_ok=True)
+                    (orphan / build_paths.OWNER_FILE).write_text(str(self.root / 'missing'))
+                remove_output = build_paths.remove_output
+
+                def remove(path):
+                    if path == blocked:
+                        if error is FileNotFoundError:
+                            remove_output(path)
+                        raise error(str(path))
+                    remove_output(path)
+
+                stderr = io.StringIO()
+                with mock.patch.object(build_paths, 'remove_output', side_effect=remove), contextlib.redirect_stderr(stderr):
+                    target = build_paths.prepare(self.launcher, 'build.diag')
+                self.assertEqual(target, (self.launcher / 'build.diag').resolve())
+                self.assertTrue(target.is_dir())
+                self.assertFalse(removable.exists())
+                self.assertEqual(blocked.exists(), error is PermissionError)
+                self.assertIn('=== pruned 1 orphan build folders ===', stderr.getvalue())
+                self.assertIn('=== could not prune 1 orphan build folders (in use or removed concurrently) ===', stderr.getvalue())
+                build_paths.prepare(self.launcher, 'build.diag')
+                self.assertFalse(blocked.exists())
+
+    def test_prune_continues_when_owner_vanishes(self):
+        orphan = self.build_root / 'deadbeef'
+        orphan.mkdir(parents=True)
+        owner = orphan / build_paths.OWNER_FILE
+        owner.write_text(str(self.root / 'missing'))
+        read_text = Path.read_text
+
+        def read(path, *args, **kwargs):
+            if path == owner:
+                build_paths.remove_output(orphan)
+                raise FileNotFoundError(str(path))
+            return read_text(path, *args, **kwargs)
+
+        stderr = io.StringIO()
+        with mock.patch.object(Path, 'read_text', read), contextlib.redirect_stderr(stderr):
+            target = build_paths.prepare(self.launcher, 'build.diag')
+        self.assertEqual(target, (self.launcher / 'build.diag').resolve())
+        self.assertTrue(target.is_dir())
+        self.assertFalse(orphan.exists())
+        self.assertIn('=== could not prune 1 orphan build folders (in use or removed concurrently) ===', stderr.getvalue())
 
     def test_prune_keeps_live_owner(self):
         folder = self.build_root / 'deadbeef'
