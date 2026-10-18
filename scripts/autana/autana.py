@@ -782,7 +782,7 @@ def suite_list(args):
 
 
 SUITE_USAGE = ("usage: autana suite <name> [<name> ...] [seconds] [--runs N] [--test PATTERN] "
-              "[--flash] [--perf-scope] [--layout-seed N] [--hot-tunables] [--set NAME=VALUE] [--verbose] [--out PATH] "
+              "[--flash] [--perf-scope] [--layout-seed N] [--hot-tunables] [--set NAME=VALUE] [--send LINE] [--verbose] [--out PATH] "
               "[--expect-build-id ID] | "
               "autana suite list [text]")
 
@@ -796,7 +796,8 @@ def suite(args):
     list) narrows the run, on the device, to the tests whose name contains
     a pattern. `--set NAME=VALUE` (repeatable) sets a tunable under each
     capture's own lock, just before it runs, and stops the batch unless the
-    board echoes the value."""
+    board echoes the value. `--send LINE` repeats console lines before every
+    capture; the sequence should be idempotent."""
     if not args:
         sys.exit(SUITE_USAGE)
     if args[0] == "list":
@@ -848,6 +849,10 @@ def suite(args):
         if not name or not equals:
             sys.exit(f"usage: --set NAME=VALUE with a whole number, decimal or 0x hex, not {value}")
         settings.append(value)
+    console_lines = []
+    while "--send" in rest:
+        value, rest = pop_value(rest, "--send")
+        console_lines.append(value)
     reject_unknown("suite", rest)
     if rest:
         sys.exit(SUITE_USAGE)
@@ -869,6 +874,8 @@ def suite(args):
         command += ["--test", value]
     for value in settings:
         command += ["--set", value]
+    for line in console_lines:
+        command += ["--send", line]
     if not flash:
         command.append("--no-flash")
     for name in names:
@@ -1607,6 +1614,8 @@ COMMAND_GROUPS = (
              "capture (1800 when omitted)"),
             ("suite <name> --test PATTERN[,PATTERN]",
              "only the tests whose name contains a pattern; --test repeats"),
+            ("suite <name> --send LINE",
+             "send before every capture; repeatable, sequence should be idempotent"),
             ("suite <name> --set NAME=VALUE",
              "set a tunable under each capture's lock first; --set repeats"),
             ("suite list [text] [--json]", "the suites this project registers"))),

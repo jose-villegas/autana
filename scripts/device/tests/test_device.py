@@ -1416,6 +1416,52 @@ class TuneSetTests(unittest.TestCase):
         self.assertEqual(b"".join(connection.writes), b"\nSET r3d.side 3\n\nRUNSUITE sand\n")
 
 
+class ConsoleSetupTests(unittest.TestCase):
+    def run_setup(self, replies, lines):
+        connection = FakeConnection(replies)
+        args = suite_args()
+        args.console_send = lines
+        with tempfile.TemporaryDirectory() as directory:
+            args.out = str(Path(directory) / "capture.log")
+            with mock.patch.object(device, "open_when_free", return_value=connection), \
+                 mock.patch.object(device, "records_root", return_value=Path(directory) / "records"), \
+                 mock.patch.object(device, "TUNE_SET_SECONDS", 0.001), \
+                 mock.patch("builtins.print"):
+                try:
+                    device.run_suite(args, mock_store(), BOARD)
+                finally:
+                    self.writes = connection.writes
+                    self.entries = [json.loads(line) for line in
+                                    (Path(directory) / "records/index.jsonl").read_text().splitlines()]
+        return connection
+
+    def test_lines_precede_runsuite_and_are_recorded(self):
+        lines = ["sound stop all", "sound play tap loop"]
+        self.run_setup([b"SOUND_END\n", b"SOUND playing\nSOUND_END\n",
+                        b"RUNSUITE_COMPLETE name=sand found=1\n"], lines)
+        self.assertEqual(self.writes[:2], [b"\nsound stop all\n", b"\nsound play tap loop\n"])
+        self.assertIn(b"RUNSUITE", self.writes[2])
+        self.assertEqual(self.entries[0]["console_send"], lines)
+
+    def test_error_and_partial_timeout_stop_before_runsuite(self):
+        for reply in (b"SOUND error: no clip\nSOUND_ERR missing\n",
+                      b"SOUND error: no clip\n", b""):
+            with self.subTest(reply=reply), self.assertRaisesRegex(device.BatchEnding, "sound play missing") as error:
+                self.run_setup([reply], ["sound play missing"])
+            self.assertFalse(any(b"RUNSUITE" in write for write in self.writes))
+            if reply:
+                self.assertIn("SOUND error: no clip", str(error.exception))
+
+    def test_silence_is_retried(self):
+        class AnswersSecondAsk(FakeConnection):
+            def read(self, unused_size):
+                return b"SOUND_END\n" if len(self.writes) == 2 else b""
+        connection = AnswersSecondAsk()
+        with mock.patch.object(device, "TUNE_SET_SECONDS", 0.001), mock.patch("builtins.print"):
+            device.apply_console_lines(connection, ["sound stop all"])
+        self.assertEqual(len(connection.writes), 2)
+
+
 class TestFilterRunTests(unittest.TestCase):
     """`--test` narrows a suite on the board: the request carries the
     patterns, a pattern that selects nothing or one the board cannot take is
@@ -1516,11 +1562,16 @@ class BatchTests(unittest.TestCase):
     the property that stops another agent flashing between two captures of
     the same image. No serial port, lock file or build is touched here."""
 
+    def test_console_lines_forwarded_to_every_run(self):
+        lines = ["sound stop all", "sound play tap loop"]
+        _, calls, _, _ = self.run_batch(suites=("first", "second"), runs=2, console_send=lines)
+        self.assertEqual([args.console_send for args in calls["suite_args"]], [lines] * 4)
+
     def run_batch(self, suites=("run_sand_perf_suite",), runs=3, fail_run=None,
                   perf_scope=False, script_text="--diag --dev --perf-scope", out=False,
                   expect_build_id=None, flashed_build_id="abc123-diag", flash=True,
                   test_filter=None, filter_error_run=None, error_class=None,
-                  layout_seed=0, truncated_run=None):
+                  layout_seed=0, truncated_run=None, console_send=None):
         real_run_suite = device.run_suite
         calls = {"locks": 0, "build": [], "flash": [], "run_suite": [], "events": [],
                  "suite_args": []}
@@ -1579,7 +1630,7 @@ class BatchTests(unittest.TestCase):
                              variant="diag", suite=list(suites), runs=runs, perf_scope=perf_scope,
                              max_seconds=1, idle_seconds=None, out=out_path,
                              expect_build_id=expect_build_id, flash=flash,
-                             test_filter=test_filter, layout_seed=layout_seed)
+                             test_filter=test_filter, layout_seed=layout_seed, console_send=console_send)
             store = mock.Mock()
             with mock.patch.object(device, "HeldLock", FakeLock), \
                  mock.patch.object(device, "build_image", fake_build_image), \

@@ -21,6 +21,34 @@ import seed_statistics as stats
 
 
 class AcquisitionTests(unittest.TestCase):
+    def test_console_setup_is_per_side_on_every_request(self):
+        with tempfile.TemporaryDirectory() as root:
+            args = arguments(root)
+            args.send_b = ["sound stop all", "sound play tap loop"]
+            args.suite = [('suite', 'q', '-'), ('suite', 'h', '-')]
+            fake = FakeAutana(root)
+            commands = []
+            def runner(command, log, timeout):
+                if 'status' not in command:
+                    commands.append(command)
+                    if '--layout-seed' not in command:
+                        command = command + ['--layout-seed', '3']
+                return fake(command, log, timeout)
+            with contextlib.redirect_stdout(io.StringIO()):
+                tool.measure(args, runner)
+            self.assertTrue(commands)
+            for command in commands:
+                expected = args.send_b if command[command.index('--project') + 1] == str(args.project_b) else []
+                self.assertEqual([command[i + 1] for i, part in enumerate(command) if part == '--send'], expected)
+            plan = json.loads((args.out / 'plan.json').read_text())['plan']
+            for item in plan:
+                self.assertEqual(item['console_send'], args.send_b if item['side'] == 'b' else [])
+            summary = (args.out / 'summary.md').read_text()
+            for line in args.send_b:
+                self.assertIn(line, summary)
+            self.assertIn('A setup: none', summary)
+
+
     def test_shortest_unique_filters_and_batches(self):
         names = ['prefix_long_test_alpha', 'prefix_long_test_beta', 'prefix_long_test_gamma']
         owners = {'s/' + name: ('s', name) for name in names}
