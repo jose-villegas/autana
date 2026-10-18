@@ -8,8 +8,6 @@ affine2 inversion's `out` are written through a pointer.
 
 ## vec2 (`f i s x`)
 
-<details><summary>Functions and formulas</summary>
-
 | Function | Purpose | Formula |
 |---|---|---|
 | `P_min(a, b)` | component-wise min | $`\min(a_k,b_k)`$ |
@@ -26,11 +24,7 @@ affine2 inversion's `out` are written through a pointer.
 | `P_<c1><c2>(v)` | swizzle, each `c` one of `x y`: `vec2f_yx(v)` swaps | $`(v_{c_1},\ v_{c_2})`$ |
 | `P_<c1><c2><c3>(v)` | swizzle to the vec3 of the same number type, each `c` one of `x y` | $`(v_{c_1},\ v_{c_2},\ v_{c_3})`$ |
 
-</details>
-
 ## vec3 (`f i s x`)
-
-<details><summary>Functions and formulas</summary>
 
 | Function | Purpose | Formula |
 |---|---|---|
@@ -52,8 +46,6 @@ affine2 inversion's `out` are written through a pointer.
 | `P_from_xy(xy, z)` | the vec3 of a vec2 and a `z` | $`(\mathit{xy}_x,\ \mathit{xy}_y,\ z)`$ |
 | `vec3f_octahedral(n)` | the point of the square $`[-1, 1]^2`$ a direction maps to<sup>[[21]](../Citations.md#21)</sup>, the $`z < 0`$ half folded over the diagonals; any length but zero; `f` only | $`(u, v) = \frac{(n_x,\ n_y)}{\lvert n_x\rvert + \lvert n_y\rvert + \lvert n_z\rvert}`$<br> folded to $`(\mathrm{sign}(u)\,(1 - \lvert v\rvert),\ \mathrm{sign}(v)\,(1 - \lvert u\rvert))`$ when $`n_z < 0`$ |
 | `vec3f_from_octahedral(p)` | the unit direction of a point of the square, the inverse of `vec3f_octahedral`; `f` only | $`z = 1 - \lvert p_x\rvert - \lvert p_y\rvert`$<br> the point unfolded when $`z < 0`$<br> then normalized |
-
-</details>
 
 A swizzle copies components and does no arithmetic. One that changes dimension
 returns the other vector type of the same number type: `vec3f_xz(v)` is a `vec2f_t`.
@@ -139,8 +131,6 @@ the columns of `L = [a c; b d]` and its translation.
 
 ## transform (`f x`)
 
-<details><summary>Functions and formulas</summary>
-
 | Function | Purpose | Formula |
 |---|---|---|
 | `P_set_position(&t, p)` | sets position, clears the cache | $`\mathit{position} \leftarrow p`$ |
@@ -156,8 +146,6 @@ the columns of `L = [a c; b d]` and its translation.
 | `P_looking(position, forward, up)` | unit-scale pose looking along `forward` from `position` | $`\mathit{look\_along}(\mathit{forward}, \mathit{up})`$ |
 | `P_look_along(&t, direction, up)` | faces a nonzero `direction`; `up` must not be parallel to it | $`f = \frac{\mathit{direction}}{\lVert \mathit{direction} \rVert}`$<br> $`r = \frac{\mathit{up} \times f}{\lVert \mathit{up} \times f \rVert}`$<br> $`u = f \times r`$<br> then $`\mathit{rotation} = \mathrm{from\_basis}(r, u, f)`$ |
 | `P_look_at(&t, target, up)` | faces `target` with `up` as the sky; `up` must not be parallel to the line to `target`, and `target` must not be the position | $`f = \frac{\mathit{target} - \mathit{position}}{\lVert \mathit{target} - \mathit{position} \rVert}`$<br> $`r = \frac{\mathit{up} \times f}{\lVert \mathit{up} \times f \rVert}`$<br> $`u = f \times r`$<br> then $`\mathit{rotation} = \mathrm{from\_basis}(r, u, f)`$ |
-
-</details>
 
 ## The transform cache
 

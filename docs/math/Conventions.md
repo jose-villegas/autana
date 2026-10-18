@@ -30,8 +30,6 @@ A template is a header holding one macro per group of functions; an
 instantiation header (`vec3f.h`, `quatx.h`, ...) calls the macros and adds
 any type-specific operations.
 
-<details><summary>Template headers and their instantiations</summary>
-
 | Template header | Macros | Generates | Instantiated for |
 |---|---|---|---|
 | `vec2_template.h` | `MATH_DEFINE_VEC2` | the vec2 type, arithmetic, dot | `vec2f`, `vec2i`, `vec2s`, `vec2x` |
@@ -45,8 +43,6 @@ any type-specific operations.
 | `project_template.h` | `MATH_DEFINE_CLIP_NEAR` | near-plane segment clipping, no type | `projectf`, `projectx` |
 | `rect_template.h` | `MATH_DEFINE_RECT` | half-open rectangles | `rectf`, `recti`, `rects`, `rectx` |
 | `plane_template.h` | `MATH_DEFINE_PLANE` | planes, signed distance, frustum planes from a matrix's rows | `planef`, `planex` |
-
-</details>
 
 The macro arguments:
 

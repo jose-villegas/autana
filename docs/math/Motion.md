@@ -30,8 +30,6 @@ A transform orbits a target, with direct steering, a decaying fling and a critic
 
 A row of points on springs carries a wave along caller-owned Q16 pixel offsets and velocities.
 
-<details><summary>Spring-line state and operations</summary>
-
 | Function | Purpose |
 |---|---|
 | `spring_line_t` | Caller-owned arrays, active half-open range, tension, stiffness, damping and carried time |
@@ -47,8 +45,6 @@ A row of points on springs carries a wave along caller-owned Q16 pixel offsets a
 | `spring_line_tick` | Advances velocities then offsets by one tick, with free ends |
 | `spring_line_advance` | Runs ticks for the elapsed milliseconds, carrying the remainder; returns ticks run |
 | `spring_line_apply` | Writes rest plus offset, reports changed columns, and returns furthest movement in whole pixels rounded up |
-
-</details>
 
 | Constant | Purpose |
 |---|---|
