@@ -464,11 +464,12 @@ small distance-pull weight live beside it in `appearance_simplify.py`.
 `surface_weight` weighs the mean squared point-to-plane distance beyond
 `surface_margin`, plus a small squared distance pull to the matched sample.
 For a fitted sample $`x`$, its nearest source sample $`c`$ and that source
-face's normal $`n`$, write $`d=(x-c)/e_x`$, where $`e_x`$ is the triangle's
-mean vertex scale. The surface contribution is
+face's normal $`n`$, write $`d=(x-c)/e_x`$, where $`e_x`$ is the mean $`e_i`$ over the corners
+of the triangle holding $`x`$. The surface contribution is
 $`w\,\mathrm{mean}(\max(0,|n\cdot d|-\epsilon)^2+t\lVert d\rVert^2)`$,
 where $`w`$ is `surface_weight`, $`\epsilon`$ is `surface_margin`, and $`t`$
-is `SURFACE_TANGENTIAL_WEIGHT`. Both distances use that local scale. The plane envelope is zero inside the margin; the small pull remains active there.
+is `SURFACE_TANGENTIAL_WEIGHT`. Both distances are measured in $`e_x`$.
+The plane envelope is zero inside the margin; the small pull remains active there.
 
 Colour history, `loss.txt` and the printed mean ΔE76 exclude surface, normal,
 Laplacian and cost penalties. The surface loss is reported beside drift.
@@ -533,7 +534,7 @@ and a learning rate decaying geometrically. It changes the rest:
 | Forward model | deferred physically based shading | the device's Gouraud or flat colours, no shading |
 | Image term | L1 on log-tonemapped sRGB | mean CIE 1976 $`\Delta E^*_{ab}`$<sup>[[4]](../Citations.md#4)</sup> |
 | Laplacian weight | decays during the fit | constant $`\lambda`$; each vertex's drift uses its own mean start edge length, capped at the start's mean edge length |
-| Further terms | none | a point-to-plane band, of half-width `surface_margin`, from the fit to the source surface and a small tangential pull, both in each sample's triangle's mean vertex scale; $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../Citations.md#6)</sup> |
+| Further terms | none | a point-to-plane band, of half-width `surface_margin`, from the fit to the source surface and a small tangential pull, both in the mean of that capped scale over each sample's triangle; $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../Citations.md#6)</sup> |
 | Triangle budget | set by the start | the fitted mesh's, pruned to `budget` by coverage after fitting; a refined fitted mesh can be the start |
 
 A global unit gives small parts a fraction of the hold, so the image term

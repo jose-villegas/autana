@@ -295,7 +295,7 @@ and writes the renderer's mesh into the work folder. The fit uses deterministic
 reductions and seeded sampling; the lock pins the bytes a fit made.
 
 The surface term anchors fitted triangles to the alpha-masked source, with a
-recipe weight and margin in start mean edge lengths;
+recipe weight and a margin in each triangle's start edge scale;
 [Scene-Files describes the surface term](../../../docs/render/Scene-Files.md#fitoptimise).
 
 ### Reference on the GPU
