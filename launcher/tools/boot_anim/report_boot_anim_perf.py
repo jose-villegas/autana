@@ -187,7 +187,7 @@ def main() -> int:
     warning_count = len(gaps) + len(duplicates)
     suffix = f" ({warning_count} warning(s) - see stderr)" if warning_count else ""
     print(f"{len(runs)} checkpoint(s) -> {args.out_path}{suffix}")
-    return 0
+    return 1 if gaps else 0
 
 
 if __name__ == "__main__":

@@ -132,10 +132,39 @@ class ReporterExitCodeTest(CaptureFixture):
         out = self.out_path()
         done = subprocess.run([sys.executable, str(script),
                                self.capture(capture), out], capture_output=True, text=True)
-        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotEqual(done.returncode, 0, done.stderr)
         self.assertIn("| `curve` | 25 |", pathlib.Path(out).read_text())
         self.assertIn("Total", done.stderr)
         self.assertNotIn("missing Draw", done.stderr)
+
+    def boot_capture(self, mode=None, missing=None):
+        suffix = f", mode={mode}" if mode else ""
+        text = f"boot_anim_perf: === BOOT_ANIM PERF curve (now_ms=1, 2 samples{suffix}) ===\n"
+        for phase in ("Total", "Image", "Present", "Draw", "Wait", "Send"):
+            if phase == missing or (mode is None and phase in ("Draw", "Wait", "Send")):
+                continue
+            text += f"boot_anim_perf: {phase}: min=1us max=2us avg=1us med=1us p95=2us\n"
+        for phase in ("Clear", "Floor", "Axes", "Curve", "Zeros", "Title"):
+            text += f"boot_anim_perf: {phase}: avg=1us\n"
+        return text
+
+    def test_boot_anim_legacy_capture_needs_no_layout_phases(self):
+        done = self.run_reporter("boot_anim/report_boot_anim_perf.py", self.boot_capture())
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertNotIn("missing", done.stderr)
+
+    def test_boot_anim_moded_capture_requires_wait_and_send(self):
+        for phase in ("Wait", "Send"):
+            with self.subTest(phase=phase):
+                done = self.run_reporter("boot_anim/report_boot_anim_perf.py",
+                                         self.boot_capture("DOUBLE_FB", missing=phase))
+                self.assertNotEqual(done.returncode, 0)
+                self.assertIn(f"missing {phase}", done.stderr)
+
+    def test_boot_anim_duplicate_label_and_mode_is_flagged(self):
+        capture = self.boot_capture("DOUBLE_FB")
+        done = self.run_reporter("boot_anim/report_boot_anim_perf.py", capture + capture)
+        self.assertIn("more than one BOOT_ANIM PERF header", done.stderr)
 
     def test_boot_anim_refuses_a_capture_with_no_checkpoint(self):
         done = self.run_reporter("boot_anim/report_boot_anim_perf.py", BOOT + RESULT)
