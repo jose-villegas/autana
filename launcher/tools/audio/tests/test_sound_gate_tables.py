@@ -32,8 +32,8 @@ class SoundGateTablesTest(unittest.TestCase):
             for number in (1, 2):
                 capture = folder / f"capture_{number}.log"
                 capture.write_text("ms/frame avg/worst: frame 1.00/2.00"
-                                   f" || sound_mix {number}.00/{number + 1}.00 ms/block n={number}\n"
-                                   "unrelated || sound_mix 99.00/99.00 ms/block n=99\n")
+                                   f" || {gate.SOUND_MIX_NAME} {number}.00/{number + 1}.00 ms/block n={number}\n"
+                                   f"unrelated || {gate.SOUND_MIX_NAME} 99.00/99.00 ms/block n=99\n")
                 absent = folder / f"absent_{number}.log"
                 absent.write_text("ms/frame avg/worst: frame 1.00/2.00\n")
                 runs = [dict(capture=str(path), rows={"a": 100, "z": 100}, owners={}, instructions={})

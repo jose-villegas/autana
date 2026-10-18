@@ -14,7 +14,9 @@ from statistics import mean, median
 import sys
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
+from build.c_header import read_define
 from perf_compare import observations
 from capture import capture_board, require_same_board
 from device_report import find_manifest_entry, read_capture_text
@@ -27,7 +29,9 @@ REGENERATE = "python launcher/tools/audio/sound_gate_tables.py --write"
 PERCENT = 100
 SIDES = {"a": "Silence", "b": "One looping voice"}
 ROW_FIELDS = ("a", "b", "ratio", "interval", "verdict")
-SOUND_MIX = re.compile(r" \|\| sound_mix (\d+\.\d{2})/(\d+\.\d{2}) ms/block n=(\d+)(?:\s|$)")
+SOUND_MIX_NAME = read_define(ROOT / "launcher/main/sound/sound_engine.h", "SOUND_MIXER_FRAME_COST_NAME")
+SOUND_MIX = re.compile(r" \|\| " + re.escape(SOUND_MIX_NAME) +
+                       r" (\d+\.\d{2})/(\d+\.\d{2}) ms/block n=(\d+)(?:\s|$)")
 
 
 def capture_date(path):

@@ -5,6 +5,8 @@
 #include "sound/sound_mixer.h"
 #include "sound/sound_status.h"
 
+#define SOUND_MIXER_FRAME_COST_NAME      "sound_mix"
+
 #define SOUND_MIXER_TASK_CORE            1
 /* Preempts PRESENT_TASK_PRIORITY and JOB_CORE1_PRIORITY on core 1,
  * then blocks in I2S for most of each block. */

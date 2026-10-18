@@ -319,7 +319,9 @@ mixer_task(void* unused) {
         portENTER_CRITICAL(&control_lock);
         sound_control_end_read(&control);
         portEXIT_CRITICAL(&control_lock);
-        FRAME_COST_EXTERNAL("sound_mix", mix_us);
+        _Static_assert(sizeof(SOUND_MIXER_FRAME_COST_NAME) - 1 <= FRAME_COST_NAME_MAX,
+                       "mixer frame-cost name exceeds report capacity");
+        FRAME_COST_EXTERNAL(SOUND_MIXER_FRAME_COST_NAME, mix_us);
         if (mixer.amp != previous_amp) {
             if ((mixer.amp == SOUND_AMP_OFF || previous_amp == SOUND_AMP_OFF)
                 && !audio_out_amp_enable(mixer.amp != SOUND_AMP_OFF)) {
