@@ -188,6 +188,7 @@ typedef struct {
     uint16_t swell;
     bool calm;
     uint16_t phase[BOOT_ANIM_SWELL_COUNT];
+    int32_t far_reach; /* Q12: how far out the floor reaches */
 } boot_anim_floor_state_t;
 
 /* Time samples interpolate across phase wrap; spatial tables are nearest samples. */
@@ -207,6 +208,7 @@ boot_anim_floor_state(uint32_t now_ms) {
                                    + mathi_lerp(0, (int16_t)(b->ripple_phase - a->ripple_phase), fraction,
                                                 BOOT_ANIM_FLOOR_TIME_STEP_MS)),
         .swell = mathi_lerp(a->swell, b->swell, fraction, BOOT_ANIM_FLOOR_TIME_STEP_MS),
+        .far_reach = mathi_lerp(a->far_reach, b->far_reach, fraction, BOOT_ANIM_FLOOR_TIME_STEP_MS),
         .calm = ms > BOOT_ANIM_RIPPLE_IMPACT_MS + BOOT_ANIM_RIPPLE_CALM_AFTER_MS,
     };
     if (now_ms <= BOOT_ANIM_RIPPLE_IMPACT_MS) {
@@ -230,8 +232,7 @@ boot_anim_floor_node(int i, int j) {
 
 /* Heights are Q12 metres; only the impact contributes to crest colour. */
 static inline int32_t
-boot_anim_floor_ripple(int i, int j, const boot_anim_floor_state_t* state) {
-    const boot_anim_floor_node_t* node = boot_anim_floor_node(i, j);
+boot_anim_ripple_at(const boot_anim_floor_node_t* node, const boot_anim_floor_state_t* state) {
     const int x = ((uint32_t)mathi_abs(node->radius - state->radius) * state->inv_width) >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
     if (x > BOOT_ANIM_RIPPLE_GAUSSIAN_EXTENT) {
         return 0;
@@ -248,17 +249,44 @@ boot_anim_floor_ripple(int i, int j, const boot_anim_floor_state_t* state) {
 }
 
 static inline int32_t
-boot_anim_floor_swell(int i, int j, const boot_anim_floor_state_t* state) {
+boot_anim_floor_ripple(int i, int j, const boot_anim_floor_state_t* state) {
+    return boot_anim_ripple_at(boot_anim_floor_node(i, j), state);
+}
+
+/* The swell at a place whose spatial phases are `place`. */
+static inline int32_t
+boot_anim_swell_at(const uint16_t place[BOOT_ANIM_SWELL_COUNT], const boot_anim_floor_state_t* state) {
     if (state->swell == 0) {
         return 0;
     }
     int32_t swell = 0;
     for (int k = 0; k < BOOT_ANIM_SWELL_COUNT; k++) {
-        const uint16_t phase = (uint16_t)(boot_anim_swell_re[i + (BOOT_ANIM_MESH_CELLS / 2)][k]
-                                          + boot_anim_swell_im[j + (BOOT_ANIM_MESH_CELLS / 2)][k] + state->phase[k]);
+        const uint16_t phase = (uint16_t)(place[k] + state->phase[k]);
         swell += (boot_anim_swell_weights[k] * trig_sin(phase)) >> TRIG_SIN_SHIFT;
     }
     return (swell * state->swell) >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
+}
+
+static inline int32_t
+boot_anim_floor_swell(int i, int j, const boot_anim_floor_state_t* state) {
+    uint16_t place[BOOT_ANIM_SWELL_COUNT];
+    for (int k = 0; k < BOOT_ANIM_SWELL_COUNT; k++) {
+        place[k] = (uint16_t)(boot_anim_swell_re[i + (BOOT_ANIM_MESH_CELLS / 2)][k]
+                              + boot_anim_swell_im[j + (BOOT_ANIM_MESH_CELLS / 2)][k]);
+    }
+    return boot_anim_swell_at(place, state);
+}
+
+/* The height of axis sample `n` out along (dir_re, dir_im), one of the four
+ * unit directions: past the mesh only the lines on the axes go on. */
+static inline int32_t
+boot_anim_axis_far_height(int n, int dir_re, int dir_im, const boot_anim_floor_state_t* state) {
+    const boot_anim_axis_far_t* sample = &boot_anim_axis_far[n];
+    uint16_t place[BOOT_ANIM_SWELL_COUNT];
+    for (int k = 0; k < BOOT_ANIM_SWELL_COUNT; k++) {
+        place[k] = (uint16_t)((dir_re * sample->swell_re[k]) + (dir_im * sample->swell_im[k]));
+    }
+    return boot_anim_ripple_at(&sample->node, state) + boot_anim_swell_at(place, state);
 }
 
 static inline int32_t
@@ -459,50 +487,28 @@ boot_anim_axis_reach(uint32_t now_ms) {
     return tween_ease_out(tween_ramp(now_ms, 0, BOOT_ANIM_AXES_MS));
 }
 
+/* Band by band, outward: how far band `band` has faded in. */
+static inline uint8_t
+boot_anim_grid_arrival(uint32_t now_ms, int band) {
+    const uint32_t start = BOOT_ANIM_GRID_START_MS + ((uint32_t)band * BOOT_ANIM_GRID_BAND_MS);
+    return tween_ramp(now_ms, start, BOOT_ANIM_GRID_FADE_MS);
+}
+
 static inline uint8_t
 boot_anim_grid_alpha(uint32_t now_ms, int band) {
     if (band >= BOOT_ANIM_GRID_FADE) {
         return 0;
     }
-    const uint32_t start = BOOT_ANIM_GRID_START_MS + ((uint32_t)band * BOOT_ANIM_GRID_BAND_MS);
-    const uint32_t arrived = tween_ramp(now_ms, start, BOOT_ANIM_GRID_FADE_MS);
+    const uint32_t arrived = boot_anim_grid_arrival(now_ms, band);
     const uint32_t left = (uint32_t)(BOOT_ANIM_GRID_FADE - band);
     const uint32_t ramp = BOOT_ANIM_GRID_FADE - BOOT_ANIM_GRID_EDGE_FADE_BAND;
     return (uint8_t)(arrived * mathi_min(left, ramp) / ramp);
 }
 
+/* How far past the horizon toward the panel's edge the axis lines run. */
 static inline uint8_t
-boot_anim_grid_spoke_reach(uint32_t now_ms) {
-    return tween_ramp(now_ms, BOOT_ANIM_GRID_SPOKE_START_MS, BOOT_ANIM_GRID_SPOKE_DRAW_MS);
-}
-
-/* NOT linear in `reach`: a point projects to roughly 1/r on screen, so
- * linear-in-radius puts almost all screen-space growth in the first few
- * percent of the reveal. Interpolating 1/target keeps growth roughly
- * even instead. Below `near`, stays linear-in-radius: 1/target needs a
- * positive radius to anchor to, and 1/0 does not exist. Algebraically:
- * target = (near*far) / (far - (far-near)*frac). Plain math (not
- * boot_anim.c) so it is host-testable; see suite_boot_anim.c. */
-static inline int32_t
-boot_anim_spoke_reveal_target(int32_t near, int32_t far, uint8_t reach) {
-    if (reach == 0) {
-        return 0;
-    }
-    if (reach >= 255 || far <= 0) {
-        return far;
-    }
-
-    const int32_t r0 = (int32_t)(((int64_t)near * 255) / far);
-    if (reach <= r0 || r0 <= 0) {
-        return (int32_t)(((int64_t)far * reach) / 255);
-    }
-
-    const int32_t frac_q8 = (int32_t)(((int64_t)(reach - r0) << 8) / (255 - r0));
-    const int64_t denom_q8 = ((int64_t)far << 8) - ((int64_t)(far - near) * frac_q8);
-    if (denom_q8 <= 0) {
-        return far; /* degenerate: clamp rather than divide by <=0 */
-    }
-    return (int32_t)((((int64_t)near * far) << 8) / denom_q8);
+boot_anim_axis_extend_reach(uint32_t now_ms) {
+    return tween_ramp(now_ms, BOOT_ANIM_AXIS_EXTEND_START_MS, BOOT_ANIM_AXIS_EXTEND_MS);
 }
 
 /* The title is laid out in the viewer's frame because the board is held one
@@ -718,9 +724,7 @@ boot_anim_finale_reach(uint32_t now_ms) {
     return tween_ease_out(tween_ramp(now_ms, BOOT_ANIM_FADE_START_MS, BOOT_ANIM_MS - BOOT_ANIM_FADE_START_MS));
 }
 
-/* Axes run past the panel and rely on clipping. Equal to
- * BOOT_ANIM_GRID_SPOKE_FAR_UNITS but deliberately not shared: both need only
- * clear the panel. */
+/* Axes run past the panel and rely on clipping. */
 #define BOOT_ANIM_AXIS_FAR_UNITS 500
 
 /* Host render tests call this directly and read the firmware framebuffer.

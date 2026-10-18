@@ -107,7 +107,8 @@ class TimelineGeneratorTests(unittest.TestCase):
             result = self.generate(config_change=lambda c: c.update({key: 1}))
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("unknown key: " + key, result.stderr)
-        for key in ("ripple_decay_ms", "swell_start_ms", "grid_hue_ms", "grid_hue_spread", "grid_whiten_max", "mesh_dash", "grid_max", "grid_ceiling_max"):
+        for key in ("ripple_decay_ms", "swell_start_ms", "grid_hue_ms", "grid_hue_spread", "grid_whiten_max", "mesh_dash", "grid_max", "grid_ceiling_max",
+                    "grid_spokes", "grid_spoke_dash", "grid_spoke_start_ms", "grid_spoke_draw_ms"):
             result = self.generate(lambda t: t.update({key: 1}))
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("unknown timing key(s): " + key, result.stderr)
@@ -125,11 +126,17 @@ class TimelineGeneratorTests(unittest.TestCase):
                             ("grid_edge_fade_fraction", (-1, 1, float("nan"))),
                             ("ripple_calm_fraction", (-1, 2, float("nan"))),
                             ("crest_colour_stride", (0, -2, 1.5, 5)),
-                            ("grid_level", (0, -0.5, 1.5, float("nan")))):
+                            ("grid_level", (0, -0.5, 1.5, float("nan"))),
+                            ("far_m", (0, -1, 12, 1e6, float("nan"))),
+                            ("far_grow_power", (0, -1, float("nan")))):
             for value in values:
                 result = self.generate(config_change=lambda c: c.update({key: value}))
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(key, result.stderr)
+        for value in (0, -1):
+            result = self.generate(lambda t: t.update({"far_grow_ms": value}))
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("far_grow_ms", result.stderr)
         for key in ("mesh_dash_on_px", "mesh_dash_off_px"):
             for value in (0, -1, 256, 0.5):
                 result = self.generate(lambda t: t.update({key: value}))

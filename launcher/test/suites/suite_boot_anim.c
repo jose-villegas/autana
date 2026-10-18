@@ -347,79 +347,6 @@ test_project_segment_cs_clips_asymmetric_coordinates(void) {
                                   "identically whether reached through the clipping path or not");
 }
 
-/* boot_anim_spoke_reveal_target()'s own two guaranteed endpoints,
- * regardless of where its internal linear/reciprocal switchover (`r0`)
- * happens to fall for a given near/far pair: reach=0 must stay exactly at
- * the origin (nothing drawn yet), and reach=255 must land exactly on
- * `far` (a spoke actually finishes where it was told to, not asymptotic-
- * ally close). Both are relied on directly by draw_grid_spoke() in
- * boot_anim.c; see its own comment on `near_target`/`target`. */
-static void
-test_spoke_reveal_target_hits_its_endpoints_exactly(void) {
-    const int32_t near = 10 * BOOT_ANIM_ONE;
-    const int32_t far = 500 * BOOT_ANIM_ONE;
-
-    TEST_ASSERT_EQUAL_INT32(0, boot_anim_spoke_reveal_target(near, far, 0));
-    TEST_ASSERT_EQUAL_INT32(far, boot_anim_spoke_reveal_target(near, far, 255));
-}
-
-/* Reciprocal interpolation exists to keep ON-SCREEN growth roughly even,
- * which this test cannot see a screen to check directly; 1/target
- * advancing in roughly equal steps as `reach` does is the algebraic
- * property that guarantees it, since screen position is itself roughly
- * proportional to 1/target under a perspective projection (see
- * r3d_camera_to_screen_x()).
- *
- * Bounded as a difference-of-differences rather than by exact equality:
- * the reach-to-r0 knot and integer rounding both perturb it. */
-static void
-test_spoke_reveal_target_advances_evenly_in_screen_space(void) {
-    const int32_t near = 10 * BOOT_ANIM_ONE;
-    const int32_t far = 500 * BOOT_ANIM_ONE;
-    const int steps = 10;
-
-    /* Starts at i=1 (reach>0), not 0: reach=0's own target=0 is already
-     * covered exactly by
-     * test_spoke_reveal_target_hits_its_endpoints_exactly() above, and 1/0
-     * has no meaningful "screen position" to compare against the next
-     * step's here. */
-    float prev_inv = -1.0F;
-    float prev_delta = 0.0F;
-    for (int i = 1; i <= steps; i++) {
-        const uint8_t reach = (uint8_t)((255 * i) / steps);
-        const int32_t target = boot_anim_spoke_reveal_target(near, far, reach);
-        TEST_ASSERT_TRUE_MESSAGE(target > 0, "every non-zero reach should produce a positive target");
-        const float inv = 1.0F / (float)target;
-        if (prev_inv >= 0.0F) {
-            const float delta = prev_inv - inv;
-            TEST_ASSERT_TRUE_MESSAGE(delta >= 0.0F, "1/target should never increase as reach climbs - the "
-                                                    "target itself must be monotonically non-decreasing");
-            if (i > 2) {
-                /* prev_delta == 0 would mean the PRIOR step had zero
-                 * shrinkage: a plateau, not something these constants
-                 * produce, but an explicit message beats an inf/NaN
-                 * ratio silently failing the comparison below for a
-                 * reason this test's own output does not explain. */
-                TEST_ASSERT_TRUE_MESSAGE(prev_delta > 0.0F, "the previous reach step had zero shrinkage in "
-                                                            "1/target - a plateau these test constants should "
-                                                            "never actually produce");
-                /* Consecutive per-step shrinkages should stay within 25%
-                 * of each other; loose on purpose (a fixed-point
-                 * approximation, not exact reciprocal interpolation), but
-                 * tight enough to reject a linear-in-radius formula, whose
-                 * first step alone covers ~90% of the span. */
-                const float ratio = delta / prev_delta;
-                TEST_ASSERT_TRUE_MESSAGE(ratio > 0.75F && ratio < 1.25F,
-                                         "consecutive reach steps should shrink 1/target by "
-                                         "roughly the same amount - a front-loaded reveal "
-                                         "would fail this");
-            }
-            prev_delta = delta;
-        }
-        prev_inv = inv;
-    }
-}
-
 /* "Scale renders as 1,1,1 for default values", the exact ask this table
  * exists to satisfy: an untouched space's scale has to read back as 1.0, on every axis, not some other number that happens to look
  * right today. */
@@ -658,22 +585,58 @@ test_the_title_wave_never_swings_wider_as_it_calms(void) {
     }
 }
 
-/* The reach's own endpoints, read off whatever the seed authors: a start
- * and draw of 0 still lands the two assertions below on 0ms and 1ms
- * exactly, covering the all-zero case (gen_boot_anim_timeline.py's own
- * comment); a seed that animates its spokes instead simply moves where
- * they are sampled, which is the point. tween_ramp() makes the second
- * assertion exact at the boundary rather than merely close; see its own
- * comment on reaching 255 AT start + duration, not one millisecond
- * after. */
 static void
-test_the_seeds_spokes_reach_their_full_length(void) {
-    TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, boot_anim_grid_spoke_reach(BOOT_ANIM_GRID_SPOKE_START_MS),
-                                    "a spoke should have no length at all before its own draw begins");
-    TEST_ASSERT_EQUAL_UINT8_MESSAGE(
-        255, boot_anim_grid_spoke_reach(BOOT_ANIM_GRID_SPOKE_START_MS + BOOT_ANIM_GRID_SPOKE_DRAW_MS + 1),
-        "a spoke should be at full length once its own draw window has "
-        "passed");
+test_the_axis_lines_reach_the_panel_edge_over_their_window(void) {
+    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_axis_extend_reach(BOOT_ANIM_AXIS_EXTEND_START_MS));
+    TEST_ASSERT_EQUAL_UINT8(UINT8_MAX,
+                            boot_anim_axis_extend_reach(BOOT_ANIM_AXIS_EXTEND_START_MS + BOOT_ANIM_AXIS_EXTEND_MS));
+}
+
+/* The far samples start on the mesh's edge node, so the axis lines carry on
+ * from the mesh without a step, in all four directions and at every moment
+ * the floor moves. */
+static void
+test_the_axis_lines_leave_the_mesh_without_a_step(void) {
+    const int half = BOOT_ANIM_MESH_CELLS / 2;
+    const int dirs[4][2] = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
+    for (uint32_t ms = 0; ms <= BOOT_ANIM_MS; ms += BOOT_ANIM_FLOOR_TIME_STEP_MS * 7) {
+        const boot_anim_floor_state_t state = boot_anim_floor_state(ms);
+        for (int d = 0; d < 4; d++) {
+            const int i = dirs[d][0] * half;
+            const int j = dirs[d][1] * half;
+            TEST_ASSERT_EQUAL_INT32(boot_anim_floor_height(i, j, &state),
+                                    boot_anim_axis_far_height(0, dirs[d][0], dirs[d][1], &state));
+        }
+    }
+}
+
+static void
+test_the_far_samples_climb_from_the_mesh_edge_to_far(void) {
+    TEST_ASSERT_EQUAL_INT32((BOOT_ANIM_MESH_CELLS / 2) * BOOT_ANIM_MESH_STEP_Q12, boot_anim_axis_far[0].r);
+    for (int n = 1; n < BOOT_ANIM_AXIS_FAR_SAMPLES; n++) {
+        TEST_ASSERT_TRUE(boot_anim_axis_far[n].r > boot_anim_axis_far[n - 1].r);
+    }
+    TEST_ASSERT_EQUAL_INT32(BOOT_ANIM_FAR_Q12, boot_anim_axis_far[BOOT_ANIM_AXIS_FAR_SAMPLES - 1].r);
+}
+
+/* The floor reaches the mesh's edge until the mesh has arrived, then grows
+ * outward, never back, to far over BOOT_ANIM_FAR_GROW_MS. */
+static void
+test_the_floor_grows_from_the_mesh_edge_to_far(void) {
+    const uint32_t start = BOOT_ANIM_GRID_START_MS + ((uint32_t)BOOT_ANIM_GRID_BANDS * BOOT_ANIM_GRID_BAND_MS);
+    const int32_t edge = boot_anim_axis_far[0].r;
+    TEST_ASSERT_EQUAL_INT32(edge, boot_anim_floor_state(0).far_reach);
+    /* Baked every BOOT_ANIM_FLOOR_TIME_STEP_MS: the ends are exact one step out. */
+    TEST_ASSERT_EQUAL_INT32(edge, boot_anim_floor_state(start - BOOT_ANIM_FLOOR_TIME_STEP_MS).far_reach);
+    TEST_ASSERT_EQUAL_INT32(
+        BOOT_ANIM_FAR_Q12,
+        boot_anim_floor_state(start + BOOT_ANIM_FAR_GROW_MS + BOOT_ANIM_FLOOR_TIME_STEP_MS).far_reach);
+    int32_t prev = edge;
+    for (uint32_t ms = start - BOOT_ANIM_FLOOR_TIME_STEP_MS; ms <= start + BOOT_ANIM_FAR_GROW_MS; ms++) {
+        const int32_t reach = boot_anim_floor_state(ms).far_reach;
+        TEST_ASSERT_TRUE(reach >= prev);
+        prev = reach;
+    }
 }
 
 /* Smoothing */
@@ -1830,8 +1793,6 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_project_point_rejects_a_point_at_the_near_plane);
     RUN_TEST(test_project_segment_cs_rejects_a_segment_entirely_behind);
     RUN_TEST(test_project_segment_cs_clips_asymmetric_coordinates);
-    RUN_TEST(test_spoke_reveal_target_hits_its_endpoints_exactly);
-    RUN_TEST(test_spoke_reveal_target_advances_evenly_in_screen_space);
     RUN_TEST(test_an_untouched_scale_reads_back_as_identity);
     RUN_TEST(test_the_seeds_curve_stays_near_the_panel_throughout);
     RUN_TEST(test_the_seeds_three_axes_project_to_distinct_directions);
@@ -1846,7 +1807,10 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_the_title_wave_is_at_full_swing_before_it_calms);
     RUN_TEST(test_the_title_wave_reaches_stillness_after_its_fade);
     RUN_TEST(test_the_title_wave_never_swings_wider_as_it_calms);
-    RUN_TEST(test_the_seeds_spokes_reach_their_full_length);
+    RUN_TEST(test_the_axis_lines_reach_the_panel_edge_over_their_window);
+    RUN_TEST(test_the_axis_lines_leave_the_mesh_without_a_step);
+    RUN_TEST(test_the_far_samples_climb_from_the_mesh_edge_to_far);
+    RUN_TEST(test_the_floor_grows_from_the_mesh_edge_to_far);
 
     RUN_TEST(test_a_span_starts_and_ends_halfway_between_its_points);
     RUN_TEST(test_a_repeated_point_pins_the_end_of_the_curve);
