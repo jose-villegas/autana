@@ -34,7 +34,9 @@ typedef struct {
     bool loop;
 } sound_play_opts_t;
 
-/* Keep sound_t and its pack alive while it plays: use app state, never a stack local.
+/* Keep sound_t and its pack alive until app exit: use app state, never a stack local.
+ * Stop, stealing and sound_is_playing() == false are not reclamation fences:
+ * queued play and the current mix block may still read them. The shell's exit barrier waits before release.
  * A full table always steals the lowest-priority oldest voice, even for a lower-priority new play.
  * NULL options select SFX, full gain, normal priority and one-shot playback. */
 sound_voice_t sound_play(const sound_t* sound, const sound_play_opts_t* opts);

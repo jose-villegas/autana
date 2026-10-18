@@ -113,13 +113,15 @@ typedef struct {
 } sound_mixer_t;
 
 void sound_control_init(sound_control_t* control, bool ready);
+bool sound_control_admit(const sound_control_t* control, uint32_t generation);
 sound_voice_t sound_control_play(sound_control_t* control, const sound_t* sound, const sound_play_opts_t* opts,
-                                 uint16_t tone_hz, sound_command_t* command);
+                                 uint16_t tone_hz, sound_command_t* command, uint32_t generation);
 bool sound_control_voice_command(sound_control_t* control, sound_voice_t voice, sound_command_kind_t kind, uint8_t gain,
                                  sound_command_t* command);
 bool sound_control_is_playing(const sound_control_t* control, sound_voice_t voice);
 bool sound_control_is_audible(const sound_control_t* control, sound_voice_t voice);
-sound_bus_t sound_control_bus_create(sound_control_t* control, const char* name, sound_command_t* command);
+sound_bus_t sound_control_bus_create(sound_control_t* control, const char* name, sound_command_t* command,
+                                     uint32_t generation);
 bool sound_control_bus_command(sound_control_t* control, sound_bus_t bus, sound_command_kind_t kind, uint8_t gain,
                                sound_command_t* command);
 void sound_control_begin_app(sound_control_t* control);

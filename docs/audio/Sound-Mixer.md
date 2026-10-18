@@ -37,8 +37,9 @@ flowchart TB
 
 Applications never wait for the mixer. A short control lock protects handle
 reservation; a nonblocking producer reservation serializes zero-wait queue
-sends outside that lock. Decoding, mixing and I2S writes happen outside it. The renderer owns its cursors separately from the control
-plane, so producers can reserve or stop voices while the task is writing.
+sends outside that lock. Decoding, mixing and I2S writes happen outside it.
+
+The renderer owns its cursors separately from the control plane, so producers can reserve or stop voices while the task is writing.
 Completion publication only retires the matching handle and cannot revive a
 stopped voice or overwrite a newer reservation.
 
@@ -53,11 +54,15 @@ visible in `autana sound stats`.
 
 ## Voices and buses
 
-Keep the `sound_t` and its pack alive while any voice plays it, in app state,
-never a stack local: `sound_play()` stores the pointer and copies no samples.
-App exit is safe because the shell stops its voices and waits for the mixer's
-read before releasing packs and emptying the arena; engine-owned SYSTEM sounds
-survive exit and need storage that survives the app.
+Keep the `sound_t` and its pack alive until app exit, in app state, never a
+stack local. `sound_play()` borrows the pointer; a queued PLAY dereferences it.
+
+Stop, stealing and `sound_is_playing() == false` are not reclamation fences:
+the mixer may still read the source for up to a block.
+
+App exit is the release point: the shell's barrier waits for the mixer before
+packs and the arena are released. Engine-owned SYSTEM sounds survive exit
+and need storage that survives the app.
 
 Every voice and custom bus belongs to the running app generation, regardless
 of bus routing, or to the engine while the launcher runs; plays during the
@@ -162,7 +167,7 @@ comparison uses boot headroom between builds, not just the initialization delta.
 | Allocation | Computed owner |
 |---|---|
 | Renderer voice table | `sizeof mixer.voices` (`voices` field in stats) |
-| Mixer/control state | `sizeof mixer + sizeof control`, plus the dev stack watermark (`mixer`, includes voice table) |
+| Mixer/control state | `sizeof mixer + sizeof control`, plus the dev snapshot, capture sequence and stack watermark (`mixer`, includes voice table) |
 | Queue payload and control | `sizeof queue_storage + sizeof queue_control` (`queue`) |
 | Task stack, including PCM scratch buffers | `SOUND_MIXER_TASK_STACK` (`stack`) |
 | TX DMA sample payload | `AUDIO_CODEC_DMA_BLOCKS * AUDIO_CODEC_BLOCK_SAMPLES * sizeof(int16_t)` (`tx_samples`) |

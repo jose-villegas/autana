@@ -5,6 +5,16 @@
 #include "math/scalar/mathi.h"
 #include "math/scalar/maths.h"
 
+static bool
+control_open(const sound_control_t* control) {
+    return control->ready && control->app_generation != SOUND_APP_GENERATION_NONE;
+}
+
+bool
+sound_control_admit(const sound_control_t* control, uint32_t generation) {
+    return control_open(control) && control->app_generation == generation;
+}
+
 static int
 voice_slot(sound_voice_t voice) {
     return voice.id == 0 ? -1 : (int)((voice.id - 1) % SOUND_VOICE_COUNT);
@@ -35,13 +45,15 @@ sound_control_init(sound_control_t* control, bool ready) {
 
 sound_voice_t
 sound_control_play(sound_control_t* control, const sound_t* sound, const sound_play_opts_t* opts, uint16_t tone_hz,
-                   sound_command_t* command) {
+                   sound_command_t* command, uint32_t admitted_generation) {
+    if (!sound_control_admit(control, admitted_generation)) {
+        return SOUND_VOICE_NULL;
+    }
     const sound_play_opts_t options = opts ? *opts
                                            : (sound_play_opts_t){.bus = SOUND_BUS_SFX,
                                                                  .gain_pct = SOUND_GAIN_MAX_PCT,
                                                                  .priority = SOUND_PRIORITY_NORMAL};
-    if (!control->ready || control->app_generation == SOUND_APP_GENERATION_NONE
-        || (!tone_hz && (!sound || !sound->data || !sound->frames)) || options.bus.id >= SOUND_BUS_COUNT_MAX
+    if ((!tone_hz && (!sound || !sound->data || !sound->frames)) || options.bus.id >= SOUND_BUS_COUNT_MAX
         || !control->buses[options.bus.id].used || options.gain_pct > SOUND_GAIN_MAX_PCT) {
         return SOUND_VOICE_NULL;
     }
@@ -87,7 +99,7 @@ bool
 sound_control_voice_command(sound_control_t* control, sound_voice_t handle, sound_command_kind_t kind, uint8_t gain,
                             sound_command_t* command) {
     sound_control_voice_t* voice = control_voice(control, handle);
-    if (!voice || gain > SOUND_GAIN_MAX_PCT) {
+    if (!control_open(control) || !voice || gain > SOUND_GAIN_MAX_PCT) {
         return false;
     }
     *command = (sound_command_t){
@@ -114,8 +126,8 @@ sound_control_is_audible(const sound_control_t* control, sound_voice_t voice) {
 }
 
 sound_bus_t
-sound_control_bus_create(sound_control_t* control, const char* name, sound_command_t* command) {
-    if (!control->ready || control->app_generation == SOUND_APP_GENERATION_NONE || !name) {
+sound_control_bus_create(sound_control_t* control, const char* name, sound_command_t* command, uint32_t generation) {
+    if (!sound_control_admit(control, generation) || !name) {
         return SOUND_BUS_INVALID;
     }
     size_t length = 0;
@@ -141,7 +153,7 @@ sound_control_bus_create(sound_control_t* control, const char* name, sound_comma
 bool
 sound_control_bus_command(sound_control_t* control, sound_bus_t bus, sound_command_kind_t kind, uint8_t gain,
                           sound_command_t* command) {
-    if (!control->ready || gain > SOUND_GAIN_MAX_PCT
+    if (!control_open(control) || gain > SOUND_GAIN_MAX_PCT
         || (bus.id != SOUND_BUS_MASTER.id && (bus.id >= SOUND_BUS_COUNT_MAX || !control->buses[bus.id].used))
         || (kind == SOUND_COMMAND_BUS_DESTROY && (bus.id < SOUND_BUS_BUILTIN_COUNT || bus.id >= SOUND_BUS_COUNT_MAX))) {
         return false;
@@ -271,7 +283,8 @@ sound_mixer_apply(sound_mixer_t* mixer, const sound_command_t* command, uint32_t
         }
         return;
     }
-    if (command->app_generation != SOUND_APP_GENERATION_ENGINE && command->app_generation != app_generation) {
+    if (command->app_generation == SOUND_APP_GENERATION_NONE
+        || (command->app_generation != SOUND_APP_GENERATION_ENGINE && command->app_generation != app_generation)) {
         return;
     }
     if (apply_bus_command(mixer, command)) {

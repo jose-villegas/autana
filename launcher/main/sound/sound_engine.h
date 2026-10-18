@@ -22,7 +22,9 @@
 /* Yield between barrier checks so the mixer can retire its current read. */
 #define SOUND_CONTROL_POLL_MS          1
 #define SOUND_CAPTURE_OK               1
-#define SOUND_CAPTURE_FAILED           2
+#define SOUND_CAPTURE_FAILED           0
+#define SOUND_CAPTURE_RESULT_BITS      1
+#define SOUND_CAPTURE_SEQUENCE_MAX     (UINT32_MAX >> SOUND_CAPTURE_RESULT_BITS)
 #define SOUND_MIXER_BLOCK_FRAMES       AUDIO_CODEC_BLOCK_SAMPLES
 
 typedef struct {

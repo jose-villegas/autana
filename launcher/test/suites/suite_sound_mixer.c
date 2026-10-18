@@ -54,7 +54,8 @@ fixture(void) {
 static sound_voice_t
 play(fixture_t* f, const sound_play_opts_t* opts) {
     sound_command_t command;
-    const sound_voice_t voice = sound_control_play(&f->control, &f->sound, opts, 0, &command);
+    const sound_voice_t voice =
+        sound_control_play(&f->control, &f->sound, opts, 0, &command, f->control.app_generation);
     TEST_ASSERT_NOT_EQUAL(0, voice.id);
     sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
     return voice;
@@ -183,18 +184,20 @@ test_sound_bus_capacity_destroy_and_reuse(void) {
     sound_command_t command;
     sound_bus_t buses[SOUND_BUS_COUNT_MAX];
     for (int i = SOUND_BUS_BUILTIN_COUNT; i < SOUND_BUS_COUNT_MAX; i++) {
-        buses[i] = sound_control_bus_create(&f->control, "test", &command);
+        buses[i] = sound_control_bus_create(&f->control, "test", &command, f->control.app_generation);
         TEST_ASSERT_EQUAL_INT(i, buses[i].id);
         sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
     }
-    TEST_ASSERT_EQUAL_INT(SOUND_BUS_INVALID.id, sound_control_bus_create(&f->control, "full", &command).id);
+    TEST_ASSERT_EQUAL_INT(SOUND_BUS_INVALID.id,
+                          sound_control_bus_create(&f->control, "full", &command, f->control.app_generation).id);
     const sound_bus_t bus = buses[SOUND_BUS_BUILTIN_COUNT];
     const sound_play_opts_t opts = {.bus = bus, .gain_pct = SOUND_GAIN_MAX_PCT};
     const sound_voice_t voice = play(f, &opts);
     TEST_ASSERT_TRUE(sound_control_bus_command(&f->control, bus, SOUND_COMMAND_BUS_DESTROY, 0, &command));
     sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
     TEST_ASSERT_FALSE(sound_control_is_playing(&f->control, voice));
-    TEST_ASSERT_EQUAL_INT(bus.id, sound_control_bus_create(&f->control, "reuse", &command).id);
+    TEST_ASSERT_EQUAL_INT(bus.id,
+                          sound_control_bus_create(&f->control, "reuse", &command, f->control.app_generation).id);
     TEST_ASSERT_FALSE(sound_control_bus_command(&f->control, SOUND_BUS_SYSTEM, SOUND_COMMAND_BUS_DESTROY, 0, &command));
 }
 
@@ -204,10 +207,13 @@ test_sound_exit_drops_queued_app_commands_preserves_system(void) {
     sound_command_t app_command, system_command;
     const sound_play_opts_t opts = {.bus = SOUND_BUS_SYSTEM, .gain_pct = SOUND_GAIN_MAX_PCT};
     sound_control_end_app(&f->control);
-    const sound_voice_t system = sound_control_play(&f->control, &f->sound, &opts, 0, &system_command);
+    const sound_voice_t system =
+        sound_control_play(&f->control, &f->sound, &opts, 0, &system_command, f->control.app_generation);
     sound_control_begin_app(&f->control);
-    const sound_voice_t app = sound_control_play(&f->control, &f->sound, NULL, 0, &app_command);
-    const sound_bus_t bus = sound_control_bus_create(&f->control, "app", &(sound_command_t){0});
+    const sound_voice_t app =
+        sound_control_play(&f->control, &f->sound, NULL, 0, &app_command, f->control.app_generation);
+    const sound_bus_t bus =
+        sound_control_bus_create(&f->control, "app", &(sound_command_t){0}, f->control.app_generation);
     TEST_ASSERT_TRUE(bus.id < SOUND_BUS_COUNT_MAX);
     sound_control_exit(&f->control);
     sound_mixer_sync(&f->mixer, &f->control);
@@ -256,11 +262,13 @@ test_sound_failed_init_is_noop(void) {
     fixture_t* f = fixture();
     sound_control_init(&f->control, false);
     sound_command_t command;
-    TEST_ASSERT_EQUAL_UINT32(0, sound_control_play(&f->control, &f->sound, NULL, 0, &command).id);
+    TEST_ASSERT_EQUAL_UINT32(
+        0, sound_control_play(&f->control, &f->sound, NULL, 0, &command, f->control.app_generation).id);
     TEST_ASSERT_FALSE(sound_control_is_playing(&f->control, SOUND_VOICE_NULL));
     TEST_ASSERT_FALSE(
         sound_control_voice_command(&f->control, (sound_voice_t){.id = 1}, SOUND_COMMAND_STOP, 0, &command));
-    TEST_ASSERT_EQUAL_INT(SOUND_BUS_INVALID.id, sound_control_bus_create(&f->control, "no", &command).id);
+    TEST_ASSERT_EQUAL_INT(SOUND_BUS_INVALID.id,
+                          sound_control_bus_create(&f->control, "no", &command, f->control.app_generation).id);
     TEST_ASSERT_FALSE(sound_control_bus_command(&f->control, SOUND_BUS_SFX, SOUND_COMMAND_BUS_GAIN, 0, &command));
     const uint32_t generation = f->control.app_generation;
     sound_control_exit(&f->control);
@@ -272,7 +280,8 @@ test_sound_tone_source_holds_phase_until_warm(void) {
     fixture_t* f = fixture();
     sound_command_t command;
     const sound_play_opts_t opts = {.bus = SOUND_BUS_SYSTEM, .gain_pct = SOUND_GAIN_MAX_PCT};
-    const sound_voice_t voice = sound_control_play(&f->control, NULL, &opts, TEST_TONE_HZ, &command);
+    const sound_voice_t voice =
+        sound_control_play(&f->control, NULL, &opts, TEST_TONE_HZ, &command, f->control.app_generation);
     TEST_ASSERT_NOT_EQUAL(0, voice.id);
     sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
     render(f, 0, TEST_FRAMES);
@@ -297,7 +306,7 @@ test_sound_borrows_view_and_retires_a_stopped_queued_steal(void) {
         (void)play(f, NULL);
     }
     sound_command_t pending;
-    const sound_voice_t next = sound_control_play(&f->control, &f->sound, NULL, 0, &pending);
+    const sound_voice_t next = sound_control_play(&f->control, &f->sound, NULL, 0, &pending, f->control.app_generation);
     TEST_ASSERT_NOT_EQUAL(0, next.id);
     TEST_ASSERT_FALSE(sound_control_is_playing(&f->control, old));
     TEST_ASSERT_TRUE(sound_control_voice_command(&f->control, next, SOUND_COMMAND_STOP, 0, &pending));
@@ -343,8 +352,10 @@ test_sound_exit_closes_play_and_stops_app_system(void) {
     TEST_ASSERT_FALSE(sound_control_is_playing(&f->control, voice));
     TEST_ASSERT_EQUAL_UINT32(SOUND_APP_GENERATION_NONE, f->control.app_generation);
     sound_command_t command;
-    TEST_ASSERT_EQUAL_UINT32(0, sound_control_play(&f->control, &f->sound, &opts, 0, &command).id);
-    TEST_ASSERT_EQUAL_UINT32(0, sound_control_play(&f->control, &f->sound, NULL, 0, &command).id);
+    TEST_ASSERT_EQUAL_UINT32(
+        0, sound_control_play(&f->control, &f->sound, &opts, 0, &command, f->control.app_generation).id);
+    TEST_ASSERT_EQUAL_UINT32(
+        0, sound_control_play(&f->control, &f->sound, NULL, 0, &command, f->control.app_generation).id);
 }
 
 static void
@@ -359,7 +370,7 @@ static void
 test_sound_gain_sweep_uses_each_stage_and_bus(void) {
     fixture_t* f = fixture();
     sound_command_t command;
-    const sound_bus_t created = sound_control_bus_create(&f->control, "gain", &command);
+    const sound_bus_t created = sound_control_bus_create(&f->control, "gain", &command, f->control.app_generation);
     sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
     const sound_bus_t buses[] = {SOUND_BUS_SYSTEM, SOUND_BUS_MUSIC, created};
     for (size_t b = 0; b < sizeof buses / sizeof buses[0]; b++) {
@@ -390,13 +401,14 @@ static void
 test_sound_bus_reuse_resets_render_gain(void) {
     fixture_t* f = fixture();
     sound_command_t command;
-    const sound_bus_t bus = sound_control_bus_create(&f->control, "first", &command);
+    const sound_bus_t bus = sound_control_bus_create(&f->control, "first", &command, f->control.app_generation);
     sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
     TEST_ASSERT_TRUE(sound_control_bus_command(&f->control, bus, SOUND_COMMAND_BUS_GAIN, 0, &command));
     sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
     TEST_ASSERT_TRUE(sound_control_bus_command(&f->control, bus, SOUND_COMMAND_BUS_DESTROY, 0, &command));
     sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
-    TEST_ASSERT_EQUAL_UINT8(bus.id, sound_control_bus_create(&f->control, "next", &command).id);
+    TEST_ASSERT_EQUAL_UINT8(bus.id,
+                            sound_control_bus_create(&f->control, "next", &command, f->control.app_generation).id);
     sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
     const sound_play_opts_t opts = {.bus = bus, .gain_pct = SOUND_GAIN_MAX_PCT};
     (void)play(f, &opts);
@@ -437,7 +449,8 @@ test_sound_exit_never_reads_retired_source_and_preserves_engine(void) {
     sound_control_end_app(&f->control);
     const sound_voice_t engine = play(f, &opts);
     sound_control_begin_app(&f->control);
-    const sound_bus_t bus = sound_control_bus_create(&f->control, "owned", &(sound_command_t){0});
+    const sound_bus_t bus =
+        sound_control_bus_create(&f->control, "owned", &(sound_command_t){0}, f->control.app_generation);
     sound_control_exit(&f->control);
     render(f, TEST_STARTUP_MS + 2, TEST_FRAMES);
     TEST_ASSERT_TRUE(sound_control_is_playing(&f->control, engine));
@@ -492,7 +505,7 @@ test_sound_free_slot_precedes_steal_and_handles_wrap(void) {
     }
     sound_voice_t handles[SOUND_VOICE_COUNT];
     for (int slot = 0; slot < SOUND_VOICE_COUNT; slot++) {
-        handles[slot] = sound_control_play(&f->control, &f->sound, NULL, 0, &command);
+        handles[slot] = sound_control_play(&f->control, &f->sound, NULL, 0, &command, f->control.app_generation);
         TEST_ASSERT_NOT_EQUAL(0, handles[slot].id);
         for (int previous = 0; previous < slot; previous++) {
             TEST_ASSERT_NOT_EQUAL(handles[previous].id, handles[slot].id);
@@ -508,25 +521,30 @@ test_sound_invalid_arguments_leave_control_and_command_unchanged(void) {
     const sound_command_t before = command;
     const sound_control_t saved = f->control;
     sound_play_opts_t opts = {.bus = SOUND_BUS_SFX, .gain_pct = SOUND_GAIN_MAX_PCT + 1};
-    TEST_ASSERT_EQUAL_UINT32(0, sound_control_play(&f->control, &f->sound, &opts, 0, &command).id);
+    TEST_ASSERT_EQUAL_UINT32(
+        0, sound_control_play(&f->control, &f->sound, &opts, 0, &command, f->control.app_generation).id);
     opts.gain_pct = SOUND_GAIN_MAX_PCT;
     opts.bus = SOUND_BUS_INVALID;
-    TEST_ASSERT_EQUAL_UINT32(0, sound_control_play(&f->control, &f->sound, &opts, 0, &command).id);
-    TEST_ASSERT_EQUAL_UINT32(0, sound_control_play(&f->control, NULL, NULL, 0, &command).id);
-    TEST_ASSERT_EQUAL_UINT8(SOUND_BUS_INVALID.id, sound_control_bus_create(&f->control, "", &command).id);
+    TEST_ASSERT_EQUAL_UINT32(
+        0, sound_control_play(&f->control, &f->sound, &opts, 0, &command, f->control.app_generation).id);
+    TEST_ASSERT_EQUAL_UINT32(0, sound_control_play(&f->control, NULL, NULL, 0, &command, f->control.app_generation).id);
+    TEST_ASSERT_EQUAL_UINT8(SOUND_BUS_INVALID.id,
+                            sound_control_bus_create(&f->control, "", &command, f->control.app_generation).id);
     char name[SOUND_BUS_NAME_MAX + 1];
     memset(name, 'x', sizeof name);
     name[sizeof name - 1] = '\0';
-    TEST_ASSERT_EQUAL_UINT8(SOUND_BUS_INVALID.id, sound_control_bus_create(&f->control, name, &command).id);
+    TEST_ASSERT_EQUAL_UINT8(SOUND_BUS_INVALID.id,
+                            sound_control_bus_create(&f->control, name, &command, f->control.app_generation).id);
     TEST_ASSERT_EQUAL_MEMORY(&saved, &f->control, sizeof saved);
     TEST_ASSERT_EQUAL_MEMORY(&before, &command, sizeof before);
     name[SOUND_BUS_NAME_MAX - 1] = '\0';
-    const sound_bus_t bus = sound_control_bus_create(&f->control, name, &command);
+    const sound_bus_t bus = sound_control_bus_create(&f->control, name, &command, f->control.app_generation);
     TEST_ASSERT_NOT_EQUAL(SOUND_BUS_INVALID.id, bus.id);
     TEST_ASSERT_TRUE(sound_control_bus_command(&f->control, bus, SOUND_COMMAND_BUS_DESTROY, 0, &command));
     TEST_ASSERT_FALSE(sound_control_bus_command(&f->control, bus, SOUND_COMMAND_BUS_GAIN, 0, &command));
     opts.bus = bus;
-    TEST_ASSERT_EQUAL_UINT32(0, sound_control_play(&f->control, &f->sound, &opts, 0, &command).id);
+    TEST_ASSERT_EQUAL_UINT32(
+        0, sound_control_play(&f->control, &f->sound, &opts, 0, &command, f->control.app_generation).id);
 }
 
 static void
@@ -575,7 +593,8 @@ test_sound_saturation_exact_rails_and_one_over(void) {
         f->extra_pcm[1] = (uint8_t)((uint16_t)sign >> CHAR_BIT);
         f->extra_sound = (sound_t){.data = f->extra_pcm, .frames = 1, .format = SOUND_PCM16};
         sound_command_t command;
-        TEST_ASSERT_NOT_EQUAL(0, sound_control_play(&f->control, &f->extra_sound, &opts, 0, &command).id);
+        TEST_ASSERT_NOT_EQUAL(
+            0, sound_control_play(&f->control, &f->extra_sound, &opts, 0, &command, f->control.app_generation).id);
         sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
         sound_mixer_render(&f->mixer, f->out, f->accumulator, f->scratch, TEST_FRAMES, 0, 0);
         TEST_ASSERT_EQUAL_INT32((int32_t)rail + sign, f->accumulator[0]);
@@ -589,7 +608,7 @@ test_sound_command_queue_round_trip(void) {
     sound_command_t command;
     const sound_play_opts_t opts = {
         .bus = SOUND_BUS_MUSIC, .gain_pct = TEST_HALF_GAIN, .priority = SOUND_PRIORITY_MAX, .loop = true};
-    (void)sound_control_play(&f->control, NULL, &opts, TEST_TONE_HZ, &command);
+    (void)sound_control_play(&f->control, NULL, &opts, TEST_TONE_HZ, &command, f->control.app_generation);
     uint8_t queued[sizeof command];
     memcpy(queued, &command, sizeof command);
     sound_command_t restored;
@@ -624,8 +643,7 @@ test_sound_exit_resets_app_gains_and_preserves_system_gain(void) {
     TEST_ASSERT_EQUAL_UINT8(SOUND_GAIN_MAX_PCT, f->mixer.bus_gain[SOUND_BUS_MUSIC.id]);
     TEST_ASSERT_EQUAL_UINT8(SOUND_GAIN_MAX_PCT, f->mixer.master_gain);
     f->control.reset_gains = false;
-    TEST_ASSERT_TRUE(sound_control_bus_command(&f->control, SOUND_BUS_SFX, SOUND_COMMAND_BUS_GAIN, 0, &command));
-    sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
+    TEST_ASSERT_FALSE(sound_control_bus_command(&f->control, SOUND_BUS_SFX, SOUND_COMMAND_BUS_GAIN, 0, &command));
     sound_control_end_app(&f->control);
     TEST_ASSERT_TRUE(f->control.reset_gains);
     TEST_ASSERT_EQUAL_UINT8(SOUND_GAIN_MAX_PCT, f->control.buses[SOUND_BUS_SFX.id].gain_pct);
@@ -634,8 +652,188 @@ test_sound_exit_resets_app_gains_and_preserves_system_gain(void) {
     TEST_ASSERT_EQUAL_UINT8(SOUND_GAIN_MAX_PCT, f->mixer.bus_gain[SOUND_BUS_SFX.id]);
 }
 
+static void
+test_sound_exit_window_rejects_controls_and_none_commands(void) {
+    fixture_t* f = fixture();
+    sound_control_end_app(&f->control);
+    const sound_voice_t engine = play(f, NULL);
+    sound_control_begin_app(&f->control);
+    sound_control_exit(&f->control);
+    sound_command_t command;
+    TEST_ASSERT_FALSE(sound_control_voice_command(&f->control, engine, SOUND_COMMAND_STOP, 0, &command));
+    TEST_ASSERT_TRUE(sound_control_is_playing(&f->control, engine));
+    TEST_ASSERT_FALSE(sound_control_bus_command(&f->control, SOUND_BUS_SYSTEM, SOUND_COMMAND_BUS_GAIN, 0, &command));
+    TEST_ASSERT_EQUAL_UINT8(SOUND_GAIN_MAX_PCT, f->control.buses[SOUND_BUS_SYSTEM.id].gain_pct);
+    command = (sound_command_t){.kind = SOUND_COMMAND_BUS_GAIN, .bus = SOUND_BUS_SYSTEM};
+    sound_mixer_apply(&f->mixer, &command, SOUND_APP_GENERATION_NONE);
+    TEST_ASSERT_EQUAL_UINT8(SOUND_GAIN_MAX_PCT, f->mixer.bus_gain[SOUND_BUS_SYSTEM.id]);
+    command = (sound_command_t){.kind = SOUND_COMMAND_STOP, .voice = engine};
+    sound_mixer_apply(&f->mixer, &command, SOUND_APP_GENERATION_NONE);
+    TEST_ASSERT_TRUE(f->mixer.voices[(engine.id - 1) % SOUND_VOICE_COUNT].playing);
+}
+
+static void
+test_sound_producer_admission_cannot_cross_teardown(void) {
+    fixture_t* f = fixture();
+    const uint32_t admitted = f->control.app_generation;
+    TEST_ASSERT_TRUE(sound_control_admit(&f->control, admitted));
+    sound_control_exit(&f->control);
+    TEST_ASSERT_FALSE(sound_control_admit(&f->control, admitted));
+    sound_control_end_app(&f->control);
+    TEST_ASSERT_FALSE(sound_control_admit(&f->control, admitted));
+    sound_command_t command;
+    TEST_ASSERT_EQUAL_UINT32(0, sound_control_play(&f->control, &f->sound, NULL, 0, &command, admitted).id);
+    TEST_ASSERT_EQUAL_UINT8(SOUND_BUS_INVALID.id,
+                            sound_control_bus_create(&f->control, "retired", &command, admitted).id);
+    sound_control_begin_app(&f->control);
+    TEST_ASSERT_FALSE(sound_control_admit(&f->control, admitted));
+    TEST_ASSERT_TRUE(sound_control_admit(&f->control, f->control.app_generation));
+    f->control.ready = false;
+    TEST_ASSERT_FALSE(sound_control_admit(&f->control, f->control.app_generation));
+}
+
+static void
+test_sound_stale_bus_commands_cannot_change_next_session(void) {
+    fixture_t* f = fixture();
+    const uint32_t retired = f->control.app_generation;
+    sound_control_exit(&f->control);
+    sound_control_begin_app(&f->control);
+    sound_command_t command;
+    const sound_bus_t bus = sound_control_bus_create(&f->control, "current", &command, f->control.app_generation);
+    const sound_play_opts_t opts = {.bus = bus, .gain_pct = SOUND_GAIN_MAX_PCT, .loop = true};
+    const sound_voice_t voice = play(f, &opts);
+    const int slot = (int)((voice.id - 1) % SOUND_VOICE_COUNT);
+    const sound_command_kind_t kinds[] = {SOUND_COMMAND_BUS_GAIN, SOUND_COMMAND_BUS_CREATE, SOUND_COMMAND_BUS_DESTROY};
+    const uint32_t owners[] = {retired, SOUND_APP_GENERATION_ENGINE, f->control.app_generation};
+    for (size_t owner = 0; owner < sizeof owners / sizeof owners[0]; owner++) {
+        for (size_t kind = 0; kind < sizeof kinds / sizeof kinds[0]; kind++) {
+            f->mixer.bus_gain[bus.id] = TEST_HALF_GAIN;
+            f->mixer.voices[slot].playing = true;
+            command = (sound_command_t){.kind = kinds[kind], .app_generation = owners[owner], .bus = bus};
+            sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
+            const bool accepted = owners[owner] != retired;
+            const int gain = !accepted || kinds[kind] == SOUND_COMMAND_BUS_DESTROY ? TEST_HALF_GAIN
+                             : kinds[kind] == SOUND_COMMAND_BUS_CREATE             ? SOUND_GAIN_MAX_PCT
+                                                                                   : 0;
+            TEST_ASSERT_EQUAL_UINT8(gain, f->mixer.bus_gain[bus.id]);
+            TEST_ASSERT_EQUAL_INT(!accepted || kinds[kind] != SOUND_COMMAND_BUS_DESTROY, f->mixer.voices[slot].playing);
+        }
+    }
+}
+
+static void
+test_sound_completion_preserves_a_queued_replacement(void) {
+    fixture_t* f = fixture();
+    const sound_voice_t old = play(f, NULL);
+    f->mixer.voices[0].playing = false;
+    sound_command_t command;
+    TEST_ASSERT_TRUE(sound_control_voice_command(&f->control, old, SOUND_COMMAND_STOP, 0, &command));
+    const sound_voice_t next = sound_control_play(&f->control, &f->sound, NULL, 0, &command, f->control.app_generation);
+    TEST_ASSERT_NOT_EQUAL(old.id, next.id);
+    sound_control_complete(&f->control, &f->mixer);
+    TEST_ASSERT_TRUE(sound_control_is_playing(&f->control, next));
+    sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
+    render(f, 0, 1);
+    render(f, TEST_STARTUP_MS, 1);
+    TEST_ASSERT_TRUE(sound_control_is_audible(&f->control, next));
+    TEST_ASSERT_EQUAL_INT16(TEST_SAMPLE, f->out[0]);
+}
+
+static void
+test_sound_sync_stops_an_unreplaced_renderer_handle(void) {
+    fixture_t* f = fixture();
+    const sound_voice_t old = play(f, NULL);
+    sound_command_t command;
+    TEST_ASSERT_TRUE(sound_control_voice_command(&f->control, old, SOUND_COMMAND_STOP, 0, &command));
+    const sound_voice_t next = sound_control_play(&f->control, &f->sound, NULL, 0, &command, f->control.app_generation);
+    TEST_ASSERT_NOT_EQUAL(old.id, next.id);
+    sound_mixer_sync(&f->mixer, &f->control);
+    TEST_ASSERT_FALSE(f->mixer.voices[0].playing);
+}
+
+static void
+test_sound_none_generation_never_has_a_pending_read(void) {
+    fixture_t* f = fixture();
+    TEST_ASSERT_FALSE(sound_control_read_pending(&f->control, SOUND_APP_GENERATION_NONE));
+    (void)sound_control_begin_read(&f->control);
+    sound_control_end_read(&f->control);
+    TEST_ASSERT_FALSE(sound_control_read_pending(&f->control, SOUND_APP_GENERATION_NONE));
+}
+
+static void
+test_sound_exit_preserves_engine_owners_and_retires_only_app_owners(void) {
+    fixture_t* f = fixture();
+    sound_control_end_app(&f->control);
+    const sound_voice_t engine = play(f, NULL);
+    sound_command_t command;
+    const sound_bus_t engine_bus = sound_control_bus_create(&f->control, "engine", &command, f->control.app_generation);
+    sound_control_exit(&f->control);
+    TEST_ASSERT_TRUE(sound_control_is_playing(&f->control, engine));
+    TEST_ASSERT_TRUE(f->control.buses[engine_bus.id].used);
+    sound_control_begin_app(&f->control);
+    const sound_voice_t app = play(f, NULL);
+    const sound_bus_t app_bus = sound_control_bus_create(&f->control, "app", &command, f->control.app_generation);
+    sound_control_exit(&f->control);
+    TEST_ASSERT_TRUE(sound_control_is_playing(&f->control, engine));
+    TEST_ASSERT_TRUE(f->control.buses[engine_bus.id].used);
+    TEST_ASSERT_FALSE(sound_control_is_playing(&f->control, app));
+    TEST_ASSERT_FALSE(f->control.buses[app_bus.id].used);
+}
+
+static void
+test_sound_stopped_warming_amp_turns_off_and_rewarms(void) {
+    fixture_t* f = fixture();
+    const sound_voice_t voice = play(f, NULL);
+    render(f, 0, 1);
+    TEST_ASSERT_EQUAL_INT(SOUND_AMP_WARMING, f->mixer.amp);
+    sound_command_t command;
+    TEST_ASSERT_TRUE(sound_control_voice_command(&f->control, voice, SOUND_COMMAND_STOP, 0, &command));
+    render(f, SOUND_AMP_IDLE_MS, 1);
+    TEST_ASSERT_EQUAL_INT(SOUND_AMP_OFF, f->mixer.amp);
+    (void)play(f, NULL);
+    render(f, SOUND_AMP_IDLE_MS + 1, 1);
+    TEST_ASSERT_EQUAL_INT(SOUND_AMP_WARMING, f->mixer.amp);
+    TEST_ASSERT_EQUAL_UINT32(0, f->mixer.voices[0].source.cursor.position);
+}
+
+static void
+test_sound_exact_public_boundaries_and_app_generation_wrap(void) {
+    fixture_t* f = fixture();
+    sound_command_t command;
+    const sound_play_opts_t invalid = {.bus = SOUND_BUS_MASTER, .gain_pct = SOUND_GAIN_MAX_PCT};
+    TEST_ASSERT_EQUAL_UINT32(
+        0, sound_control_play(&f->control, &f->sound, &invalid, 0, &command, f->control.app_generation).id);
+    const sound_voice_t voice = play(f, NULL);
+    TEST_ASSERT_TRUE(sound_control_voice_command(&f->control, voice, SOUND_COMMAND_GAIN, SOUND_GAIN_MAX_PCT, &command));
+    for (int i = 0; i < SOUND_BUS_BUILTIN_COUNT; i++) {
+        const sound_bus_t bus = {.id = (uint8_t)i};
+        TEST_ASSERT_FALSE(sound_control_bus_command(&f->control, bus, SOUND_COMMAND_BUS_DESTROY, 0, &command));
+        TEST_ASSERT_TRUE(
+            sound_control_bus_command(&f->control, bus, SOUND_COMMAND_BUS_GAIN, SOUND_GAIN_MAX_PCT, &command));
+    }
+    TEST_ASSERT_TRUE(
+        sound_control_bus_command(&f->control, SOUND_BUS_MASTER, SOUND_COMMAND_BUS_GAIN, SOUND_GAIN_MAX_PCT, &command));
+    f->control.next_generation = UINT32_MAX;
+    sound_control_begin_app(&f->control);
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, f->control.app_generation);
+    sound_control_begin_app(&f->control);
+    TEST_ASSERT_EQUAL_UINT32(SOUND_APP_GENERATION_FIRST, f->control.app_generation);
+    sound_control_begin_app(&f->control);
+    TEST_ASSERT_EQUAL_UINT32(SOUND_APP_GENERATION_FIRST + 1, f->control.app_generation);
+}
+
 void
 run_sound_mixer_suite(void) {
+    RUN_TEST(test_sound_exit_window_rejects_controls_and_none_commands);
+    RUN_TEST(test_sound_producer_admission_cannot_cross_teardown);
+    RUN_TEST(test_sound_stale_bus_commands_cannot_change_next_session);
+    RUN_TEST(test_sound_completion_preserves_a_queued_replacement);
+    RUN_TEST(test_sound_sync_stops_an_unreplaced_renderer_handle);
+    RUN_TEST(test_sound_none_generation_never_has_a_pending_read);
+    RUN_TEST(test_sound_exit_preserves_engine_owners_and_retires_only_app_owners);
+    RUN_TEST(test_sound_stopped_warming_amp_turns_off_and_rewarms);
+    RUN_TEST(test_sound_exact_public_boundaries_and_app_generation_wrap);
+
     RUN_TEST(test_sound_exit_resets_app_gains_and_preserves_system_gain);
     RUN_TEST(test_sound_gain_sweep_uses_each_stage_and_bus);
     RUN_TEST(test_sound_bus_reuse_resets_render_gain);
