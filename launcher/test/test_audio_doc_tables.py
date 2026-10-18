@@ -72,9 +72,11 @@ class SoundMixTablesTest(unittest.TestCase):
             '# autana sound-mix capture on A308, 2026-10-18, records\n'
             'buildid\t{"build_id":"test-dev"}\ncapacity\t8\nvoices\t0,1\n'
             'sound tap\tadpcm\n'
-            'point tap 0\tsound_mix 0.001/0.002 ms/block n=1\n'
-            'point tap 1\tsound_mix 0.050/0.091 ms/block n=2\n'
-            'point tap 1\tsound_mix 0.080/0.090 ms/block n=1\n'
+            'playing tap 0\t0\ndropped tap 0\t4\ndropped tap 0\t4\n'
+            'point tap 0\tpresent 9.0/10.0 | total 17.0 || sound_mix 0.001/0.002 ms/block n=1\n'
+            'playing tap 1\t1\ndropped tap 1\t4\ndropped tap 1\t4\n'
+            'point tap 1\tpresent 10.0/11.0 | total 18.0 || sound_mix 0.050/0.091 ms/block n=2\n'
+            'point tap 1\tpresent 12.0/13.0 | total 20.0 || sound_mix 0.080/0.090 ms/block n=1\n'
             'stats tap 1\tSOUND ram voices=100 queue=200 stack=300 mixer=400\n'
             'stats tap 1\tSOUND stack_min_free=50 margin=20\n'
             'buildid\t{"build_id":"test-dev"}\n', encoding="utf-8")
@@ -86,6 +88,7 @@ class SoundMixTablesTest(unittest.TestCase):
             body = audio.render_mix(path)
             self.assertIn("60.00 | 91.00 | 1.03 | 1.57 | 3", body)
             self.assertIn("5804.99 ?s", body)
+            self.assertIn("11.00 | 19.00 | +2.00", body)
             self.assertIn("capacity **8 voices**", body)
             self.assertIn("50 | 20 | 300 | 100 | 200 | 400", body)
             tree = Path(directory)
@@ -97,13 +100,43 @@ class SoundMixTablesTest(unittest.TestCase):
             header.write_text(header.read_text().replace("128u", "256u"))
             self.assertAlmostEqual(audio.mix_period(tree), 2 * audio.mix_period(ROOT))
 
+    def test_stage_names_follow_owners_and_require_one_match(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = self.fixture(directory)
+            tree = Path(directory)
+            for owner in ["sound/sound_engine.h", "audio/audio_codec.h", "audio/audio_out.h",
+                          "sound/sound_mixer_device.c", "shell/shell_apps.c"]:
+                target = tree / "launcher/main" / owner
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes((ROOT / "launcher/main" / owner).read_bytes())
+            for owner, token, replacement in [("sound/sound_mixer_device.c", "sound_mix", "mix_test"),
+                                               ("shell/shell_apps.c", "present", "present_test")]:
+                target = tree / "launcher/main" / owner
+                original = target.read_text()
+                target.write_text(original.replace(f'"{token}"', f'"{replacement}"'))
+                path.write_text(path.read_text().replace(token + " ", replacement + " "))
+                self.assertIn("60.00 | 91.00", audio.render_mix(path, tree))
+                renamed = target.read_text()
+                for invalid in ["", renamed + renamed]:
+                    target.write_text(invalid)
+                    with self.assertRaisesRegex(ValueError, "exactly one"):
+                        audio.render_mix(path, tree)
+                target.write_text(renamed)
+
     def test_rejects_invalid_capture(self):
         with tempfile.TemporaryDirectory() as directory:
             path = self.fixture(directory)
             original = path.read_text()
             for old, new, error in [('test-dev', 'other-dev', 'build'),
                                     ('voices\t0,1', 'voices\t0,1,4', 'point'),
-                                    ('capacity\t8', 'capacity\t0', 'capacity')]:
+                                    ('capacity\t8', 'capacity\t0', 'capacity'),
+                                    ('playing tap 1\t1', 'playing tap 1\t0', 'playing'),
+                                    ('playing tap 1\t1\n', '', 'playing'),
+                                    ('dropped tap 1\t4\ndropped tap 1\t4',
+                                     'dropped tap 1\t4\ndropped tap 1\t5', 'dropped'),
+                                    ('dropped tap 1\t4\n', '', 'dropped'),
+                                    ('present 9.0/10.0', 'absent 9.0/10.0', 'present'),
+                                    ('total 17.0', 'absent 17.0', 'total')]:
                 path.write_text(original.replace(old, new, 1))
                 with self.assertRaisesRegex(ValueError, error):
                     audio.render_mix(path)
@@ -157,7 +190,7 @@ class SoundMixToolsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "checkout"):
             image.prepare(ROOT)
 
-    def test_capture_fake_autana_sequence(self):
+    def capture_fake_autana_sequence(self, leftovers=0):
         capture = load_tool("sound_mix_capture")
         with tempfile.TemporaryDirectory() as directory:
             tree = Path(directory)
@@ -165,7 +198,9 @@ class SoundMixToolsTest(unittest.TestCase):
             sounds.mkdir(parents=True)
             for sound, fmt in [("tap", "adpcm"), ("tap_pcm16", "pcm16")]:
                 (sounds / f"{sound}.sound.toml").write_text(f'format = "{fmt}"\n')
-            for owner in ["shell/shell.c", "audio/audio_out_device.h", "sound/sound_mixer.h"]:
+            for owner in ["shell/shell.c", "audio/audio_out_device.h", "sound/sound_mixer.h",
+                          "sound/sound_engine.h", "audio/audio_codec.h", "audio/audio_out.h",
+                          "sound/sound_mixer_device.c", "shell/shell_apps.c"]:
                 target = tree / "launcher/main" / owner
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes((ROOT / "launcher/main" / owner).read_bytes())
@@ -175,10 +210,16 @@ class SoundMixToolsTest(unittest.TestCase):
                 'import json,sys\nfrom pathlib import Path\n'
                 f'log=Path({str(log)!r})\n'
                 'with log.open("a") as f: f.write(json.dumps(sys.argv[1:])+"\\n")\n'
+                f'leftovers={leftovers}\n'
+                'state=log.with_suffix(".state")\n'
+                'playing,stops=json.loads(state.read_text()) if state.exists() else [0,0]\n'
                 'args=sys.argv[1:]\n'
+                'if args==["sound","stop","all"]: stops+=1; playing=int(stops<=leftovers)\n'
+                'if args[:2]==["sound","play"]: playing+=1\n'
+                'state.write_text(json.dumps([playing,stops]))\n'
                 'if args==["buildid","--json"]: print(json.dumps({"build_id":"fake-dev"}))\n'
-                'elif args==["sound","stats"]: print("SOUND slot=0\\nSOUND slot=1\\nSOUND ram voices=10 queue=20 stack=30 mixer=40\\nSOUND stack_min_free=5 margin=2")\n'
-                'elif args[:1]==["monitor"]: print("noise\\nsound_mix 0.052/0.091 ms/block n=2")\n')
+                'elif args==["sound","stats"]: print(f"SOUND ready=1 dropped=0\\nSOUND slot=0 playing={int(playing>0)}\\nSOUND slot=1 playing={int(playing>1)}\\nSOUND ram voices=10 queue=20 stack=30 mixer=40\\nSOUND stack_min_free=5 margin=2")\n'
+                'elif args[:1]==["monitor"]: print("noise\\npresent 9.0/10.0 | total 17.0 || sound_mix 0.052/0.091 ms/block n=2")\n')
             wrapper = tree / ("autana.cmd" if os.name == "nt" else "autana")
             wrapper.write_text(f'@"{sys.executable}" "{stub}" %*\n' if os.name == "nt" else
                                f'#!/bin/sh\nexec "{sys.executable}" "{stub}" "$@"\n')
@@ -186,17 +227,27 @@ class SoundMixToolsTest(unittest.TestCase):
             args = argparse.Namespace(autana=str(wrapper), tree=tree, out=tree / "capture.txt",
                                       board="TEST", sounds="tap,tap_pcm16", voices="0,1,2", seconds=1)
             waits = []
+            if leftovers > capture.STOP_ATTEMPTS:
+                with self.assertRaisesRegex(ValueError, "stop all"):
+                    capture.capture(args, sleep=waits.append)
+                commands = [json.loads(line) for line in log.read_text().splitlines()]
+                self.assertEqual(commands.count(["sound", "stop", "all"]), capture.STOP_ATTEMPTS + 1)
+                self.assertEqual(waits, [audio.mix_period(tree) / audio.US_PER_SECOND] * capture.STOP_ATTEMPTS)
+                return
             capture.capture(args, sleep=waits.append)
             commands = [json.loads(line) for line in log.read_text().splitlines()]
             expected = [["sound", "stats"], ["buildid", "--json"]]
-            expected += [["sound", "stop", "all"], ["monitor", "1", "--stream"]]
+            expected += ([["sound", "stop", "all"], ["sound", "stats"]] * (leftovers + 1)
+                         + [["sound", "stats"], ["monitor", "1", "--stream"], ["sound", "stats"]])
             for sound in ["tap", "tap_pcm16"]:
                 for count in [1, 2]:
-                    expected += [["sound", "stop", "all"]] + [["sound", "play", sound, "loop"]] * count
-                    expected += [["monitor", "1", "--stream"]]
+                    expected += [["sound", "stop", "all"], ["sound", "stats"]] + [["sound", "play", sound, "loop"]] * count
+                    expected += [["sound", "stats"], ["monitor", "1", "--stream"], ["sound", "stats"]]
             expected += [["sound", "stats"], ["sound", "stop", "all"], ["buildid", "--json"]]
             self.assertEqual(commands, expected)
-            self.assertEqual(waits, [5.0, 3.25, 3.25, 3.25, 3.25])
+            block = audio.mix_period(tree) / audio.US_PER_SECOND
+            self.assertEqual(waits, [block] * (leftovers + 1) + [5.0]
+                             + [block, 3.25] * 4)
             body = audio.render_mix(args.out)
             self.assertIn("fake-dev", body)
             args.voices = "3"
@@ -209,6 +260,15 @@ class SoundMixToolsTest(unittest.TestCase):
             args.autana = str(tree / "absent")
             with self.assertRaises(OSError):
                 capture.capture(args, sleep=waits.append)
+
+    def test_capture_fake_autana_sequence(self):
+        self.capture_fake_autana_sequence()
+
+    def test_leftover_retries_then_succeeds(self):
+        self.capture_fake_autana_sequence(leftovers=1)
+
+    def test_persistent_leftover_fails(self):
+        self.capture_fake_autana_sequence(leftovers=100)
 
 
 if __name__ == "__main__":
