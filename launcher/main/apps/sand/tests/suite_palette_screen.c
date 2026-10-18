@@ -28,10 +28,6 @@
 
 #define TOUCH_HOLD_FRAMES 4
 
-/* What the screen is specified to ink, as 0xRRGGBB. */
-#define LABEL_RGB         0x000000
-#define BADGE_CHECK_RGB   0x141414
-
 static uint8_t* modes;
 
 static void
@@ -81,14 +77,17 @@ settle(sand_ui_t* ui, bool landscape) {
 
 static recti_t
 cell(int index) {
-    int x, y, w, h;
+    int x;
+    int y;
+    int w;
+    int h;
     palette_tile_rect(index, SAND_BRUSH_COUNT, palette_cols(ui_width()), ui_width(), ui_height(), &x, &y, &w, &h);
     return (recti_t){x, y, w, h};
 }
 
 static vec2i_t
 centre(recti_t r) {
-    return (vec2i_t){r.x + r.w / 2, r.y + r.h / 2};
+    return (vec2i_t){r.x + (r.w / 2), r.y + (r.h / 2)};
 }
 
 /* Presses at `from`, holds and releases at `to`, asserting the selection
@@ -201,19 +200,22 @@ test_a_tap_in_the_grout_between_tiles_selects_nothing(void) {
 
     const recti_t left = cell(1);
     const recti_t right = cell(2);
-    const vec2i_t between_columns = {right.x, left.y + left.h / 2};
+    const vec2i_t between_columns = {right.x, left.y + (left.h / 2)};
     drag_tap(&ui, false, between_columns, between_columns);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, ui.brush, "the grout between two columns is no tile");
 
     const int cols = palette_cols(ui_width());
     const recti_t above = cell(1);
     const recti_t below = cell(1 + cols);
-    const vec2i_t between_rows = {above.x + above.w / 2, below.y};
+    const vec2i_t between_rows = {above.x + (above.w / 2), below.y};
     drag_tap(&ui, false, between_rows, between_rows);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, ui.brush, "the grout between two rows is no tile");
 }
 
 #ifndef ESP_PLATFORM
+/* What the screen is specified to ink, as 0xRRGGBB. */
+#define LABEL_RGB       0x000000
+#define BADGE_CHECK_RGB 0x141414
 
 static void
 visual_fixture(sand_ui_t* ui) {

@@ -230,7 +230,7 @@ tap_at(int x, int y) {
 
 static sand_options_hits_t
 tap(recti_t r) {
-    return tap_at(r.x + r.w / 2, r.y + r.h / 2);
+    return tap_at(r.x + (r.w / 2), r.y + (r.h / 2));
 }
 
 static void
@@ -281,7 +281,7 @@ assert_dither_dropdown_absent_for(sand_colour_mode_t colour) {
                               "a tap where the dither dropdown would sit must hit nothing under this colour mode");
 
     const recti_t list = ui_probe_dropdown_list_rect(lay.dither, DITHER_COUNT, lay.dither.h, canvas_h(false));
-    const sand_options_hits_t hits = tap_at(list.x + list.w / 2, list.y + lay.dither.h / 2);
+    const sand_options_hits_t hits = tap_at(list.x + (list.w / 2), list.y + (lay.dither.h / 2));
     TEST_ASSERT_FALSE_MESSAGE(any_hit(hits), "no list can have opened, so nothing sits where its first row would");
 }
 
@@ -328,7 +328,7 @@ cancel_fired(sand_options_hits_t h) {
 static void
 assert_fires_on_release_only(recti_t r, bool (*fired)(sand_options_hits_t)) {
     const affine2x_t transform = ui_transform_quarter_turn(0, GFX_WIDTH, GFX_HEIGHT);
-    const vec2i_t at = affine2x_map_pixel(&transform, (vec2i_t){r.x + r.w / 2, r.y + r.h / 2});
+    const vec2i_t at = affine2x_map_pixel(&transform, (vec2i_t){r.x + (r.w / 2), r.y + (r.h / 2)});
     TEST_ASSERT_FALSE_MESSAGE(fired(options_frame(true, true, false, at.x, at.y)), "fired on the press");
     for (int hold = 0; hold < TOUCH_HOLD_FRAMES; hold++) {
         TEST_ASSERT_FALSE_MESSAGE(fired(options_frame(true, false, false, at.x, at.y)), "fired while held");
@@ -358,7 +358,8 @@ assert_repicking_the_current_dither_reports_no_hit(bool landscape) {
     const recti_t list = ui_probe_dropdown_list_rect(dither, DITHER_COUNT, dither.h, canvas_h(landscape));
     const int current = menu.draft.dither;
     const int scroll = ui_dropdown_list_scroll(current, DITHER_COUNT, dither.h, list.h);
-    const sand_options_hits_t hits = tap_at(list.x + list.w / 2, list.y + current * dither.h - scroll + dither.h / 2);
+    const sand_options_hits_t hits =
+        tap_at(list.x + (list.w / 2), list.y + (current * dither.h) - scroll + (dither.h / 2));
     TEST_ASSERT_LESS_THAN_INT_MESSAGE(0, hits.dither, "the row already picked is no new pick");
     TEST_ASSERT_EQUAL_INT(current, menu.draft.dither);
 }
@@ -443,7 +444,7 @@ test_the_dither_dropdown_picks_from_its_list(void) {
     TEST_ASSERT_FALSE(any_hit(tap(dither)));
 
     const recti_t list = ui_probe_dropdown_list_rect(dither, DITHER_COUNT, dither.h, canvas_h(false));
-    const sand_options_hits_t hits = tap_at(list.x + list.w / 2, list.y + dither.h / 2);
+    const sand_options_hits_t hits = tap_at(list.x + (list.w / 2), list.y + (dither.h / 2));
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, hits.dither, "the top row of the list is the first dither");
     TEST_ASSERT_FALSE_MESSAGE(hits.color >= 0, "the list, not a tile beneath it, takes the tap");
 }
@@ -456,7 +457,7 @@ test_a_landscape_tap_picks_the_open_dither_list_row(void) {
     const recti_t list = ui_probe_dropdown_list_rect(dither, DITHER_COUNT, dither.h, canvas_h(true));
     const int row = menu.draft.dither + 1;
     const int scroll = ui_dropdown_list_scroll(menu.draft.dither, DITHER_COUNT, dither.h, list.h);
-    const sand_options_hits_t hits = tap_at(list.x + list.w / 2, list.y + row * dither.h - scroll + dither.h / 2);
+    const sand_options_hits_t hits = tap_at(list.x + (list.w / 2), list.y + (row * dither.h) - scroll + (dither.h / 2));
     TEST_ASSERT_EQUAL_INT(row, hits.dither);
     TEST_ASSERT_FALSE(hits.color >= 0);
 }
@@ -480,8 +481,8 @@ assert_a_drag_leaves_the_fitting_dither_list_unscrolled(bool landscape) {
     int before = 0;
     TEST_ASSERT_TRUE_MESSAGE(ui_probe_list(&rows, &before), "the tap must have opened the list");
     TEST_ASSERT_EQUAL_INT_MESSAGE(DITHER_COUNT * dither.h, list.h, "the overlay fits all rows");
-    const int x = list.x + list.w / 2;
-    const int y0 = list.y + list.h - dither.h / 2;
+    const int x = list.x + (list.w / 2);
+    const int y0 = list.y + list.h - (dither.h / 2);
     finger_at(landscape, true, false, x, y0);
     for (int i = 0; i < 3; i++) {
         finger_at(landscape, false, false, x, y0);

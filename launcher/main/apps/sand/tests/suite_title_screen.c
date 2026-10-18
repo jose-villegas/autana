@@ -110,7 +110,8 @@ test_every_string_fits_its_rect_landscape(void) {
 
 static void
 test_the_title_grows_where_the_canvas_is_wide_enough(void) {
-    title_screen_layout_t portrait, landscape;
+    title_screen_layout_t portrait;
+    title_screen_layout_t landscape;
     layout_for(false, &portrait);
     layout_for(true, &landscape);
     TEST_ASSERT_GREATER_THAN_INT(portrait.title_scale, landscape.title_scale);
@@ -129,8 +130,8 @@ title_frame(bool down, bool pressed, bool released, int x, int y) {
 
 static sand_title_button_t
 tap(recti_t r) {
-    const int x = r.x + r.w / 2;
-    const int y = r.y + r.h / 2;
+    const int x = r.x + (r.w / 2);
+    const int y = r.y + (r.h / 2);
     const affine2x_t transform = ui_transform_quarter_turn(ui_width() == GFX_HEIGHT ? 1 : 0, GFX_WIDTH, GFX_HEIGHT);
     const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){x, y});
     sand_title_button_t hit = SAND_TITLE_NONE;
@@ -181,8 +182,8 @@ test_a_title_button_fires_on_release_only(void) {
     for (size_t i = 0; i < sizeof live / sizeof live[0]; i++) {
         tap_fixture(false);
         const recti_t r = lay.buttons[live[i]];
-        const int x = r.x + r.w / 2;
-        const int y = r.y + r.h / 2;
+        const int x = r.x + (r.w / 2);
+        const int y = r.y + (r.h / 2);
         TEST_ASSERT_EQUAL_INT_MESSAGE(SAND_TITLE_NONE, title_frame(true, true, false, x, y), "fired on the press");
         for (int hold = 0; hold < TOUCH_HOLD_FRAMES; hold++) {
             TEST_ASSERT_EQUAL_INT_MESSAGE(SAND_TITLE_NONE, title_frame(true, false, false, x, y), "fired while held");
