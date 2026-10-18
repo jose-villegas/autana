@@ -83,6 +83,14 @@ upscale_block_rows(const upscale_t* scale, const uint16_t* source, const uint16_
     }
 }
 
+/* Experimental shading stays in flash to preserve the default copy's IRAM budget. */
+static __attribute__((noinline)) void
+upscale_paired_rows_shaded(const upscale_t* scale, gfx_target_t target, const uint16_t* source, const uint16_t* depth,
+                           uint16_t clear, int first_row, int row_count, bool doubled, int strength) {
+    gfx_target_paired_rows_shaded(target, source, depth, clear, scale->source_width, scale->rows, first_row, row_count,
+                                  doubled, scale->scanline_run, UPSCALE_SCANLINE_UNIT - strength);
+}
+
 static inline __attribute__((always_inline)) void
 upscale_paired_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
                     uint16_t* destination, int first_row, int row_count, bool doubled, int strength) {
@@ -91,8 +99,7 @@ upscale_paired_rows(const upscale_t* scale, const uint16_t* source, const uint16
         gfx_target_paired_rows(target, source, depth, clear, scale->source_width, scale->rows, first_row, row_count,
                                doubled);
     } else {
-        gfx_target_paired_rows_shaded(target, source, depth, clear, scale->source_width, scale->rows, first_row,
-                                      row_count, doubled, scale->scanline_run, UPSCALE_SCANLINE_UNIT - strength);
+        upscale_paired_rows_shaded(scale, target, source, depth, clear, first_row, row_count, doubled, strength);
     }
 }
 
