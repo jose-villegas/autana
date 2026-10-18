@@ -12,11 +12,13 @@
 
 enum { LINE_START = 10, LINE_STEPS = 9, DASH_ON = 2, DASH_OFF = 2 };
 
-#define LINE_INK  GFX_RGB(0xFFFFFF)
-#define LINE_BASE GFX_RGB(0x203040)
+#define LINE_INK   GFX_RGB(0xFFFFFF)
+#define LINE_BASE  GFX_RGB(0x203040)
 
 /* The band the band-target test draws into, away from the frame's edges. */
-#define BAND_ROW  (GFX_BAND_HEIGHT * 4)
+#define BAND_ROW   (GFX_BAND_HEIGHT * 4)
+/* Where the band test's long lines end across the screen. */
+#define LINE_FAR_X (GFX_WIDTH / 4)
 
 static void
 fixture(void) {
@@ -91,9 +93,9 @@ test_band_target_matches_the_full_frame(void) {
     static const unsigned patterns[] = {0, DRAW_LINE_DASH(DASH_ON, DASH_OFF) | DRAW_LINE_OPEN | DRAW_LINE_ADD};
     const int lines[][4] = {
         {LINE_START, top - LINE_STEPS, LINE_START + LINE_STEPS, bottom + LINE_STEPS}, /* through both edges */
-        {LINE_START, top - LINE_STEPS, LINE_START * 9, top + LINE_STEPS},             /* shallow, through the top */
-        {LINE_START * 9, bottom + LINE_STEPS, LINE_START, bottom - LINE_STEPS}, /* backwards, through the bottom */
-        {LINE_START, top + 1, LINE_START * 9, bottom - 1},                      /* inside the band */
+        {LINE_START, top - LINE_STEPS, LINE_FAR_X, top + LINE_STEPS},                 /* shallow, through the top */
+        {LINE_FAR_X, bottom + LINE_STEPS, LINE_START, bottom - LINE_STEPS}, /* backwards, through the bottom */
+        {LINE_START, top + 1, LINE_FAR_X, bottom - 1},                      /* inside the band */
     };
     for (size_t p = 0; p < sizeof patterns / sizeof *patterns; p++) {
         for (size_t l = 0; l < sizeof lines / sizeof *lines; l++) {
