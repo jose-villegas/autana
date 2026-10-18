@@ -1,6 +1,6 @@
 /*
  * mat4x: a 4x4 matrix of a Q16.16. The operations are mat4_template.h's;
- * docs/math/README.md says how they are made.
+ * docs/math/Linear.md says how they are made.
  */
 #pragma once
 
