@@ -1,6 +1,7 @@
 #include "gfx/present/gfx_mode.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_fb_guard.h"
 #include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_present.h"
@@ -108,7 +109,6 @@ static int band_render_height;
  * installed. Not a gfx_target.h render target: no drawing primitive writes
  * through it. */
 static uint8_t* indexed_image;
-static unsigned denials;
 static int indexed_grid_w, indexed_grid_h, indexed_cell_size;
 static gfx_color_t indexed_lut256[GFX_INDEXED_PALETTE_SIZE];
 static bool indexed_dither16_on;
@@ -425,6 +425,18 @@ gfx_reset_for_test(void) {
 }
 #endif
 
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+static unsigned denials;
+
+static void
+note_denial(void) {
+    denials++;
+}
+#else
+static inline void
+note_denial(void) {}
+#endif
+
 const gfx_mode_t*
 gfx_mode_enter(const gfx_mode_request_t* request) {
     GFX_PRESENT_GUARD();
@@ -437,7 +449,7 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
         if (granted.index_grid_w <= 0 || granted.index_grid_h <= 0 || granted.cell_size <= 0
             || !alloc_indexed_image(granted.index_grid_w, granted.index_grid_h)) {
             free_indexed_image();
-            denials++;
+            note_denial();
             return &current_mode; /* stays GFX_LAYOUT_FULL_FB */
         }
         free_full_framebuffer();
@@ -450,7 +462,7 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
     } else if (granted.layout == GFX_LAYOUT_BANDS) {
         if (!alloc_band_buffers(granted.band_height)) {
             free_band_buffers();
-            denials++;
+            note_denial();
             return &current_mode; /* stays GFX_LAYOUT_FULL_FB */
         }
         free_full_framebuffer();
@@ -508,12 +520,12 @@ gfx_mode_current(void) {
     return &current_mode;
 }
 
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 unsigned
-gfx_mode_take_denials(void) {
-    const unsigned taken = denials;
-    denials = 0;
-    return taken;
+gfx_mode_denials(void) {
+    return denials;
 }
+#endif
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* Bands whose last submit carried overlay borders, and whether the band in

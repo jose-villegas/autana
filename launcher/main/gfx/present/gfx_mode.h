@@ -76,11 +76,6 @@ void gfx_mode_exit(void);
 
 const gfx_mode_t* gfx_mode_current(void);
 
-/* How many gfx_mode_enter() calls since the last take were refused the
- * layout they asked for (its storage could not be allocated) and stayed
- * GFX_LAYOUT_FULL_FB; the count starts again from zero. */
-unsigned gfx_mode_take_denials(void);
-
 /* Exact-half PSRAM picture, allocated lazily and freed on mode exit.
  * Returns NULL outside GFX_LAYOUT_FULL_FB or when allocation fails. */
 gfx_color_t* gfx_half_picture(void);
