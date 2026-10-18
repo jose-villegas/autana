@@ -23,6 +23,7 @@
 #include "console/verbs/console_inject_parse.h"
 #include "console/verbs/console_navigation_parse.h"
 #include "console/verbs/console_perf_parse.h"
+#include "console/verbs/console_sound_parse.h"
 
 #define REPLIES_MAX 8
 
@@ -874,8 +875,70 @@ test_quarter_injection_matches_forward_mapping(void) {
     }
 }
 
+static void
+test_sound_arguments(void) {
+    console_sound_args_t args;
+    TEST_ASSERT_TRUE(console_sound_parse("play tap loop 25", &args));
+    TEST_ASSERT_EQUAL_INT(CONSOLE_SOUND_PLAY, args.action);
+    TEST_ASSERT_EQUAL_STRING("tap", args.name);
+    TEST_ASSERT_TRUE(args.loop);
+    TEST_ASSERT_EQUAL_INT(AUDIO_OUT_VOLUME_MAX_PCT / 4, args.gain_pct);
+    TEST_ASSERT_TRUE(console_sound_parse("play tap", &args));
+    TEST_ASSERT_EQUAL_INT(AUDIO_OUT_VOLUME_MAX_PCT, args.gain_pct);
+    TEST_ASSERT_FALSE(args.loop);
+    TEST_ASSERT_TRUE(console_sound_parse("play tap 0", &args));
+    TEST_ASSERT_EQUAL_INT(0, args.gain_pct);
+    TEST_ASSERT_TRUE(console_sound_parse("stop", &args));
+    TEST_ASSERT_EQUAL_INT(CONSOLE_SOUND_STOP, args.action);
+    TEST_ASSERT_EQUAL_UINT32(0, args.voice);
+    TEST_ASSERT_TRUE(console_sound_parse("stop all", &args));
+    TEST_ASSERT_TRUE(console_sound_parse("stop 123", &args));
+    TEST_ASSERT_EQUAL_UINT32(123, args.voice);
+    TEST_ASSERT_TRUE(console_sound_parse("stats", &args));
+    TEST_ASSERT_EQUAL_INT(CONSOLE_SOUND_STATS, args.action);
+    static const char* const invalid[] = {"",
+                                          "play",
+                                          "play tap loop loop",
+                                          "play tap 101",
+                                          "play tap -1",
+                                          "play tap 999999999999999999999999999",
+                                          "stats extra",
+                                          "stop 0",
+                                          "stop 1 extra",
+                                          "stop alligator",
+                                          "play tap looping",
+                                          "stop -1",
+                                          "stop 4294967296",
+                                          "play a_name_far_longer_than_the_asset_entry_name_limit",
+                                          "play tap 20 extra"};
+    for (size_t i = 0; i < sizeof invalid / sizeof invalid[0]; i++) {
+        TEST_ASSERT_FALSE_MESSAGE(console_sound_parse(invalid[i], &args), invalid[i]);
+    }
+}
+
+static void
+test_sound_parse_boundaries_and_whitespace(void) {
+    console_sound_args_t args;
+    char line[CONSOLE_LINE_MAX];
+    char name[ASSET_NAME_MAX + 1];
+    memset(name, 'x', ASSET_NAME_MAX);
+    name[ASSET_NAME_MAX - 1] = '\0';
+    (void)snprintf(line, sizeof line, "play %s loop 0", name);
+    TEST_ASSERT_TRUE(console_sound_parse(line, &args));
+    name[ASSET_NAME_MAX - 1] = 'x';
+    name[ASSET_NAME_MAX] = '\0';
+    (void)snprintf(line, sizeof line, "play %s", name);
+    TEST_ASSERT_FALSE(console_sound_parse(line, &args));
+    TEST_ASSERT_TRUE(console_sound_parse(" \tplay\ttap \vloop\r100\n", &args));
+    TEST_ASSERT_FALSE(console_sound_parse("play tap loop 100 extra", &args));
+    TEST_ASSERT_TRUE(console_sound_parse("stop 4294967295", &args));
+    TEST_ASSERT_EQUAL_UINT32(UINT32_MAX, args.voice);
+}
+
 void
 suite_console(void) {
+    RUN_TEST(test_sound_parse_boundaries_and_whitespace);
+    RUN_TEST(test_sound_arguments);
     RUN_TEST(test_exact_name_matches);
     RUN_TEST(test_name_plus_space_carries_args_without_the_verb_or_the_space);
     RUN_TEST(test_a_verb_does_not_swallow_a_longer_word_that_starts_with_its_name);

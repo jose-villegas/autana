@@ -86,6 +86,11 @@ sponza-depth-flipped|--quarter 3 --no-hud --scene sponza --frames 2 --view depth
 sponza-tiles-landscape|--quarter 1 --no-hud --scene sponza --frames 2 --view tiles|448x368|nopin
 sponza-tiles-portrait|--quarter 0 --no-hud --scene sponza --frames 2 --view tiles|368x448|nopin
 sponza-tiles-flipped|--quarter 3 --no-hud --scene sponza --frames 2 --view tiles|448x368|nopin
+menu-sponza-landscape|--quarter 1 --menu --scene sponza --frames 4|448x368
+menu-sponza-portrait|--quarter 0 --menu --scene sponza --frames 4|368x448
+menu-capybara-landscape|--quarter 1 --menu --scene capybara --frames 4|448x368
+menu-capybara-portrait|--quarter 0 --menu --scene capybara --frames 4|368x448
+menu-capybara-clips|--quarter 0 --menu --scene capybara --tap 184,166 --frames 6|368x448
 "
 
 # The scenes read their meshes from asset packs of the baked meshes in the tree.

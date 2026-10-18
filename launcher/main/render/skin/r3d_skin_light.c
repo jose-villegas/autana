@@ -26,7 +26,7 @@ r3d_skin_light_transfer_build(float tonemap_white, r3d_skin_light_transfer_t* ou
     }
 }
 
-/* Normal-indexed illumination (docs/Citations.md#58), octahedral directions (docs/Citations.md#21). */
+/* Normal-indexed illumination (Miller and Hoffman 1984), octahedral directions (Cigolle et al. 2014). */
 float
 r3d_skin_light_table_build(const r3d_skin_lights_t* lights, r3d_skin_light_table_t* out) {
     /* Light-change builds use two passes to avoid a large scratch buffer and an allocation failure path. */
