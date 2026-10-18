@@ -108,7 +108,8 @@ class TimelineGeneratorTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("unknown key: " + key, result.stderr)
         for key in ("ripple_decay_ms", "swell_start_ms", "grid_hue_ms", "grid_hue_spread", "grid_whiten_max", "mesh_dash", "grid_max", "grid_ceiling_max",
-                    "grid_spokes", "grid_spoke_dash", "grid_spoke_start_ms", "grid_spoke_draw_ms"):
+                    "grid_spokes", "grid_spoke_dash", "grid_spoke_start_ms", "grid_spoke_draw_ms",
+                    "axis_extend_start_ms", "axis_extend_ms"):
             result = self.generate(lambda t: t.update({key: 1}))
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("unknown timing key(s): " + key, result.stderr)

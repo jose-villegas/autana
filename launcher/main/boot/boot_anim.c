@@ -253,43 +253,6 @@ axis_far_point(const mesh_pass_t* pass, const int dir[2], int n) {
     return boot_anim_to_camera_space(dir[0] * r, dir[1] * r, lift, pass->view);
 }
 
-/* Past the horizon the axis line goes on as a screen line toward the panel's
- * edge, aimed from the mesh's edge to the far end: points far apart on
- * screen, so a pixel of rounding barely turns it. It grows over the visible
- * stretch only. */
-static void
-draw_axis_extension(const int dir[2], uint8_t extend, gfx_color_t c, unsigned flags, const boot_anim_view_t* view) {
-    const int32_t edge = boot_anim_axis_far[0].r;
-    int ax, ay, bx, by;
-    if (extend == 0 || !boot_anim_project_point(dir[0] * edge, dir[1] * edge, 0, view, &ax, &ay)
-        || !boot_anim_project_point(dir[0] * BOOT_ANIM_FAR_Q12, dir[1] * BOOT_ANIM_FAR_Q12, 0, view, &bx, &by)) {
-        return;
-    }
-    const int64_t ux = bx - ax;
-    const int64_t uy = by - ay;
-    /* The visible stretch is num / den of (ux, uy): the nearer border wins. */
-    int64_t num = -1;
-    int64_t den = 1;
-    if (ux != 0) {
-        num = ux > 0 ? (GFX_WIDTH - 1 - bx) : bx;
-        den = ux > 0 ? ux : -ux;
-    }
-    if (uy != 0) {
-        const int64_t num_y = uy > 0 ? (GFX_HEIGHT - 1 - by) : by;
-        const int64_t den_y = uy > 0 ? uy : -uy;
-        if (num < 0 || (num_y * den) < (num * den_y)) {
-            num = num_y;
-            den = den_y;
-        }
-    }
-    if (num <= 0) {
-        return;
-    }
-    const int64_t grow = num * extend;
-    const int64_t scale = den * UINT8_MAX;
-    draw_line_ex(bx, by, bx + (int)((ux * grow) / scale), by + (int)((uy * grow) / scale), c, flags);
-}
-
 /* Past the mesh only the lines on the axes go on, still lifted by the ripple
  * and the swell, out to the floor's reach; the last span is cut there. */
 static void
@@ -300,7 +263,6 @@ draw_axis_lines_far(const mesh_pass_t* pass) {
     }
     const gfx_color_t c = lit(COL_AXIS, pass->ink);
     const unsigned flags = DRAW_LINE_DASH(BOOT_ANIM_MESH_DASH_ON_PX, BOOT_ANIM_MESH_DASH_OFF_PX);
-    const uint8_t extend = reach >= BOOT_ANIM_FAR_Q12 ? boot_anim_axis_extend_reach(pass->now_ms) : 0;
     for (int d = 0; d < 4; d++) {
         vec3x_t prev = axis_far_point(pass, axis_dirs[d], 0);
         for (int n = 1; n < BOOT_ANIM_AXIS_FAR_SAMPLES; n++) {
@@ -324,7 +286,6 @@ draw_axis_lines_far(const mesh_pass_t* pass) {
             }
             prev = next;
         }
-        draw_axis_extension(axis_dirs[d], extend, c, flags, pass->view);
     }
 }
 

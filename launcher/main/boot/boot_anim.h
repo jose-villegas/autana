@@ -513,12 +513,6 @@ boot_anim_far_chord(int32_t r, int32_t c) {
     return h > 0 ? (int32_t)mathi_isqrt64((uint64_t)h) : 0;
 }
 
-/* How far past the horizon toward the panel's edge the axis lines run. */
-static inline uint8_t
-boot_anim_axis_extend_reach(uint32_t now_ms) {
-    return tween_ramp(now_ms, BOOT_ANIM_AXIS_EXTEND_START_MS, BOOT_ANIM_AXIS_EXTEND_MS);
-}
-
 /* The title is laid out in the viewer's frame because the board is held one
  * quarter turn from the panel's native orientation. */
 
