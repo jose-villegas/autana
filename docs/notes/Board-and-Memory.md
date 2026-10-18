@@ -45,6 +45,17 @@ POST (`launcher/main/selftest/post.c`) also checks the MAC/eFuse and the I2C bus
 itself. It raises the amp GPIO with `board_audio_amp_enable()` before probing
 the codec.
 
+### Audio
+
+The ES8311 codec and the speaker amplifier. The audio path, sound assets and captured
+levels are in the [audio docs](../audio/README.md).
+
+| Constraint | Owner |
+|---|---|
+| The amplifier on GPIO 46 has one owner, `board_audio_amp_enable()`. The codec PA pin is unused. | `launcher/main/board/board_esp32s3.c`, `launcher/main/audio/audio_codec.c` |
+| `audio_out_amp()` waits `AUDIO_OUT_AMP_STARTUP_MS` (250 ms) for the amplifier to pass sound. | `launcher/main/audio/audio_out.c` |
+| The microphone gain rationale is in the comment at `AUDIO_IN_GAIN_DB`. | `launcher/main/audio/audio_in.c` |
+
 ### Revisions
 
 | Revision | Touch answers at | Panel | X gap |
@@ -70,88 +81,68 @@ KB = 1024 B; MB = 1024 KB. Linked is the heap range the link leaves; at runtime 
 Arena and framebuffer sizes come from source headers, flash size from the build's sdkconfig and partitions from the partition table it names, chip totals from the device profile (datasheet), and pool/heap from the build.
 <!-- /generated: memory-tiers -->
 
-In full-framebuffer mode the framebuffer is in PSRAM; band and indexed modes
-free it. The band ring aliases the internal DMA bounce slots. See
-[Gfx-and-Presentation.md](../Gfx-and-Presentation.md) for presentation.
-The app arena (`launcher/main/app/app_arena.h`) uses explicit external-memory
-placement, so its reservation reduces the PSRAM heap before apps allocate.
+### Quick answers
 
-`CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` makes ordinary allocations up to
-that threshold **try** internal RAM first, with PSRAM fallback. This is a
-preference, not a placement guarantee. `memory_alloc()` requests the named
-kind explicitly and does not fall back to another kind. Use `MEMORY_INTERNAL`
-for required internal placement and `MEMORY_DMA` for the panel's buffers.
+| Question | Answer |
+|---|---|
+| Where does an ordinary allocation up to 64 KB go? | internal RAM if there is room, PSRAM otherwise |
+| How do I force a placement? | `memory_alloc()` with `MEMORY_INTERNAL` or `MEMORY_DMA`; it never falls back |
+| Why did a DMA buffer fail? | free bytes are not enough; compare [the largest block](#dma-memory-and-the-largest-block) |
+| Why did the task crash on entering a function? | a large local overran the [task stack](#task-stacks-are-not-the-heap) |
+| What can I read right now? | `autana heap`, POST, `HEAPMARK`; see [Measuring memory](#measuring-memory) |
 
-Read current free-heap and largest-block measurements from POST and the
-development build's `HEAPMARK` lines. The host model's budget is recorded in
-`launcher/tools/device/device_profiles/esp32s3.sh`; it is not a live heap
-measurement of every build variant.
+### Placement: who decides where an allocation lands
 
-IRAM and DRAM share the internal SRAM pool; code placement reduces the
-space available for static data and the heap. The [internal memory map](../memory/Internal-Memory-Map.md)
+| Mechanism | Effect |
+|---|---|
+| `CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL=65536` | ordinary allocations up to that size **try** internal RAM first, with PSRAM fallback; a preference, not a guarantee |
+| `memory_alloc()` | requests the named kind explicitly and never falls back to another kind |
+| `memory_alloc(MEMORY_INTERNAL)` | required internal placement |
+| `memory_alloc(MEMORY_DMA)` | the panel's buffers |
+| App arena (`launcher/main/app/app_arena.h`) | explicit external placement; its reservation shrinks the PSRAM heap before apps allocate |
+
+### Internal SRAM
+
+IRAM and DRAM share one pool, so code placement reduces the space left for
+static data and the heap. The [internal memory map](../memory/Internal-Memory-Map.md)
 records linked ranges, placement budgets, variant differences and isolated
 experiments.
 
 ![Shared internal pool by variant](../memory/images/internal-pool.svg)
 
-### PSRAM throughput
-
-Device measurements put PSRAM reads at 33–58 MB/s depending on access
-pattern, versus 365–724 MB/s for internal RAM. Sequential copies measure
-about 58 MB/s out of PSRAM, 47 MB/s into it and 22 MB/s from PSRAM to PSRAM.
-Writes incur cache-line loads before writeback, so bulk copies are costly
-beside the arithmetic they support. These are measured access-pattern
-ranges, not a guarantee for a particular buffer or clock configuration.
-Prefer internal SRAM for hot working data where it fits, and read PSRAM
-for bulk or cold content. The [presentation memory policy](../Gfx-and-Presentation.md#presentation-memory-policy)
-explains why presentation keeps one retained framebuffer.
-
-### Cycle budgets
-
-At 240 MHz, one core has about 24 cycles per physical pixel at 60 fps,
-48 at 30 fps, or 97 per half-resolution pixel at 60 fps. These are clock
-and pixel-count budgets, not measured rendering costs.
-
-### Cache is carved from the same pool
+#### Cache is carved from the same pool
 
 | Cache | Build configuration | Access |
 |---|---|---|
 | Instruction | 32 KiB, 32-byte lines, 8-way | flash-resident instructions |
 | Data | 64 KiB, 64-byte lines, 8-way | mapped flash data and PSRAM |
 
-`launcher/sdkconfig.defaults` selects the instruction-cache size with
-`CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB` and the data-cache size and line size
-with `CONFIG_ESP32S3_DATA_CACHE_64KB` and `CONFIG_ESP32S3_DATA_CACHE_LINE_64B`;
-the remaining settings use ESP-IDF's ESP32-S3 cache defaults. The larger data
-cache serves the renderer's PSRAM vertex, depth and colour streams. Cache
-storage consumes internal SRAM: increasing its capacity reduces the internal
-heap available to allocations. Internal working data avoids external-memory
-cache traffic;
-flash-resident `const` data is not internal working data. Inspect the linker
-map for actual placement, including explicitly RAM-mapped code and tables.
+`launcher/sdkconfig.defaults` selects the sizes with
+`CONFIG_ESP32S3_INSTRUCTION_CACHE_32KB`, `CONFIG_ESP32S3_DATA_CACHE_64KB` and
+`CONFIG_ESP32S3_DATA_CACHE_LINE_64B`. The larger data cache serves the renderer's PSRAM vertex, depth and
+colour streams.
+
+Cache storage consumes internal SRAM, so a larger cache shrinks the internal
+heap. Internal working data avoids external-memory cache traffic; flash-resident
+`const` data is not internal working data. Inspect the linker map for actual
+placement, including explicitly RAM-mapped code and tables.
+
 Changing code layout can change cache behaviour even when a hot function's
 instructions are identical; measure the linked image on the device.
 
-### Static growth still taxes the internal heap
+#### Static growth still taxes the internal heap
 
 Ordinary mutable file-scope statics reserve internal DRAM for the whole boot,
 including those in development and self-test code. Explicit PSRAM placement
-and flash-resident constant tables have different costs. Allocate optional
-debug buffers on use and mutable large test fixtures per test, then free them.
-Clean up earlier allocations before an assertion can abort a failing fixture.
+and flash-resident constant tables have different costs.
 
-Check `.bss`, `.data` and RAM-resident code in the linker map and size report
-for every build variant (release, `--dev`, `--diag`). From `launcher/`, run
-`idf.py -B build.dev size` and `idf.py -B build.diag size` as well as the
-release size report. Link-time size does not prove that a contiguous block
-will remain available after runtime allocations.
-
-Compare `memory_free_bytes(MEMORY_DMA)` and
-`memory_largest_block(MEMORY_DMA)` from the same pool. Total free heap across
-other capabilities does not establish whether a DMA buffer fits. Watch POST
-and `HEAPMARK` after changing either static storage or allocation order.
+Allocate optional debug buffers on use and mutable large test fixtures per
+test, then free them. Clean up earlier allocations before an assertion can
+abort a failing fixture.
 
 ### Task stacks are not the heap
+
+A crash like this one means a large local variable overran the task stack:
 
 ```
 Guru Meditation Error: Core 0 panic'ed (Stack protection fault).
@@ -163,6 +154,57 @@ Detected in task "main" at 0x4200b2f8
 |---|---|---|
 | a stack protection fault pointing at a function's opening brace | a large local overran the task stack on frame setup | `malloc` it |
 | a frozen picture after a crash | the panel's GRAM keeps the last frame | do not take it as the firmware running |
+
+### PSRAM
+
+In full-framebuffer mode the framebuffer is in PSRAM; band and indexed modes
+free it. The band ring aliases the internal DMA bounce slots. See
+[Gfx-and-Presentation.md](../Gfx-and-Presentation.md) for presentation.
+
+#### PSRAM throughput
+
+Device measurements put PSRAM reads at 33–58 MB/s depending on access
+pattern, versus 365–724 MB/s for internal RAM. These are measured
+access-pattern ranges, not a guarantee for a particular buffer or clock
+configuration.
+
+| Sequential copy | Measured |
+|---|---|
+| out of PSRAM | about 58 MB/s |
+| into PSRAM | 47 MB/s |
+| PSRAM to PSRAM | 22 MB/s |
+
+Writes incur cache-line loads before writeback, so bulk copies are costly
+beside the arithmetic they support.
+
+Prefer internal SRAM for hot working data where it fits, and read PSRAM for
+bulk or cold content. The [presentation memory policy](../Gfx-and-Presentation.md#presentation-memory-policy)
+explains why presentation keeps one retained framebuffer.
+
+### DMA memory and the largest block
+
+Compare `memory_free_bytes(MEMORY_DMA)` and `memory_largest_block(MEMORY_DMA)`
+from the same pool. Total free heap across other capabilities does not
+establish whether a DMA buffer fits. Link-time size does not prove that a
+contiguous block will remain available after runtime allocations.
+
+### Measuring memory
+
+| Question | Where to look |
+|---|---|
+| Free heap and largest block now | POST, the development build's `HEAPMARK` lines, and `autana heap` (internal DMA pool, [Autana-CLI.md](../tools/Autana-CLI.md)) |
+| Static `.bss`, `.data`, RAM-resident code | the linker map and size report, for every variant (release, `--dev`, `--diag`) |
+| Host model's budget | `launcher/tools/device/device_profiles/esp32s3.sh`; not a live heap measurement of every variant |
+
+From `launcher/`, run `idf.py -B build.dev size` and `idf.py -B build.diag size`
+as well as the release size report. Watch POST and `HEAPMARK` after changing
+static storage or allocation order.
+
+### Cycle budgets
+
+At 240 MHz, one core has about 24 cycles per physical pixel at 60 fps,
+48 at 30 fps, or 97 per half-resolution pixel at 60 fps. These are clock
+and pixel-count budgets, not measured rendering costs.
 
 ## Storage
 

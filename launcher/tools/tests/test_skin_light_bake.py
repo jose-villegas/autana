@@ -18,7 +18,7 @@ from r3d.light import albedo_from_uv, face_colours, LIGHT_GAMMA
 from anim import track_host
 from build import packages
 from build.c_header import read_define
-SKIN_OWNER = TOOLS.parent / "main/render/r3d_skin.h"
+SKIN_OWNER = TOOLS.parent / "main/render/r3d_skin_format.h"
 NORMAL_SCALE = read_define(SKIN_OWNER, "R3D_SKIN_NORMAL_SCALE")
 
 

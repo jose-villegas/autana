@@ -1,5 +1,6 @@
 #include <stdlib.h>
 #include <string.h>
+#include "anim/anim_skeleton_format.h"
 #include "anim/pose/anim_pose.h"
 #include "suites.h"
 #include "test_anim_tracks.h"

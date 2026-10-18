@@ -10,6 +10,7 @@ cannot be written fails the run rather than
 reporting an image.
 """
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -25,6 +26,7 @@ TURNS = {
     "landscape": ("sponza-landscape", "sponza-depth-landscape", "sponza-tiles-landscape"),
     "flipped": ("sponza-flipped", "sponza-depth-flipped", "sponza-tiles-flipped"),
 }
+COLOR_HEADER = pathlib.Path(__file__).resolve().parents[6] / "launcher/main/gfx/target/gfx_color.h"
 GREY_SLACK = 12  # the 565 expansion makes a grey's channels differ by a few levels
 
 
@@ -112,6 +114,56 @@ class RenderViews(unittest.TestCase):
         )
         return run, target
 
+    def test_default_size_and_explicit_disabled_tunables_match(self):
+        for scene in ("sponza-fitted-full", "capybara"):
+            for quarter in (0, 1):
+                images = []
+                for extra in ((), ("--size", "184x224"),
+                              ("--tune", "render_lab.present=0")):
+                    run, target = self.render("--scene", scene, "--quarter", str(quarter), "--frames", "2", *extra)
+                    self.assertEqual(0, run.returncode, run.stderr[-2000:])
+                    images.append(target.read_bytes())
+                self.assertEqual(images[0], images[1])
+                self.assertEqual(images[0], images[2])
+
+    def test_height_only_present_repeats_panel_rows_in_both_quarters(self):
+        for scene in ("sponza-fitted-full", "capybara"):
+            for quarter in (0, 1):
+                for present in (2, 1):
+                    run, target = self.render("--scene", scene, "--quarter", str(quarter), "--frames", "2", "--panel",
+                                              "--tune", "render_lab.present=" + str(present))
+                    self.assertEqual(0, run.returncode, run.stderr[-2000:])
+                    width, height, rows = read_bmp(target)
+                    self.assertEqual(read_bmp(self.out / "sponza-portrait.bmp")[:2], (width, height))
+                    changed = 0
+                    for y in range(0, height, 4):
+                        self.assertEqual(rows[y], rows[y + 1])
+                        self.assertEqual(rows[y + 2], rows[y + 3])
+                        if present == 2:
+                            self.assertEqual(rows[y], rows[y + 2])
+                        else:
+                            for bright, dark in zip(rows[y], rows[y + 2]):
+                                self.assertTrue(all(d <= b for b, d in zip(bright, dark)))
+                                changed += bright != dark
+                    if present == 1:
+                        self.assertGreater(changed, 0)
+
+    def test_live_raster_tunings_apply_on_the_next_frame_without_reentry(self):
+        for scene in ("sponza", "capybara"):
+            for tuning, initial in (("render_lab.present=1", ()), ("render_lab.present=2", ())):
+                with self.subTest(scene=scene, tuning=tuning):
+                    common = ("--scene", scene, "--dt", "0", *initial)
+                    images = {}
+                    for mode, extra in (("base", ()), ("startup", ("--tune", tuning)),
+                                        ("live", ("--live-tune", tuning))):
+                        for frames in (1, 2):
+                            run, target = self.render(*common, "--frames", str(frames), *extra)
+                            self.assertEqual(0, run.returncode, run.stderr[-2000:])
+                            images[mode, frames] = target.read_bytes()
+                    self.assertEqual(images["base", 1], images["live", 1])
+                    self.assertEqual(images["startup", 2], images["live", 2])
+                    self.assertNotEqual(images["base", 2], images["live", 2])
+
     def test_a_view_option_with_no_value_is_refused_and_writes_nothing(self):
         for option in ("--view", "--scene"):
             with self.subTest(option=option):
@@ -120,6 +172,29 @@ class RenderViews(unittest.TestCase):
                 self.assertNotEqual(0, run.returncode)
                 self.assertIn("needs a value", run.stderr)
                 self.assertFalse(target.exists() and target.stat().st_size > 0)
+
+    def test_invalid_tune_options_fail_without_an_image(self):
+        tune_header = COLOR_HEADER.parents[2] / "services/tune.h"
+        name_max = int(re.search(r"^#define TUNE_NAME_MAX\s+(\d+)", tune_header.read_text(), re.M)[1])
+        cases = [(), ("render_lab.present",), ("render_lab.present 200",), ("=1",), ("x" * (name_max + 1) + "=1",),
+                 ("render_lab.present=",), ("render_lab.present=no",), ("render_lab.present=200junk",),
+                 ("render_lab.present=-1",), ("no_such_tunable=1",)]
+        for value in cases:
+            with self.subTest(value=value):
+                target = self.out / "invalid-tune.bmp"
+                target.unlink(missing_ok=True)
+                run = subprocess.run([str(self.binary), "--scene", "sponza", "-o", str(target), "--tune", *value],
+                                     capture_output=True, text=True, timeout=120)
+                self.assertNotEqual(0, run.returncode)
+                self.assertFalse(target.exists())
+
+    def test_view_tunable_uses_the_console_parser(self):
+        default, path = self.render("--scene", "sponza", "--view", "depth")
+        self.assertEqual(0, default.returncode, default.stderr)
+        expected = path.read_bytes()
+        tuned, path = self.render("--scene", "sponza", "--tune", "render_lab.view=1")
+        self.assertEqual(0, tuned.returncode, tuned.stderr)
+        self.assertEqual(expected, path.read_bytes())
 
     def test_an_unknown_view_is_refused(self):
         run, _ = self.render("--scene", "sponza", "--view", "octree")

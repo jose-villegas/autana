@@ -15,7 +15,7 @@ Gyro prediction is minus angular velocity crossed with down in screen axes.
 
 The sensor uses matching CTRL2/CTRL3 ODR code 5: 7174.4 / 32 = 224.2 Hz in
 6DOF mode, with a rounded sample interval of 4460 us. The register table and FIFO
-protocol follow QMI8658A Rev A and SensorLib.<sup>[[77]](../Citations.md#77)</sup><sup>[[78]](../Citations.md#78)</sup>
+protocol follow QMI8658A Rev A and SensorLib.<sup>[[79]](../Citations.md#79)</sup><sup>[[78]](../Citations.md#78)</sup>
 
 `batch.sample_us` measures the interval at runtime over two-second drain windows,
 accepting estimates within 20% of nominal. Unit oscillators vary: the board

@@ -4,8 +4,10 @@
 #include <stddef.h>
 #include <string.h>
 #include "anim/anim_skeleton.h"
+#include "anim/anim_skeleton_format.h"
 #include "asset/asset_bytes.h"
 #include "asset/asset_entry.h"
+#include "render/r3d_skin_format.h"
 
 static asset_status_t
 read_header(asset_view_t entry, r3d_skin_t* out) {
@@ -48,7 +50,7 @@ read_header(asset_view_t entry, r3d_skin_t* out) {
 static asset_status_t
 check_inverse_binds(const r3d_skin_t* skin) {
     for (int i = 0; i < skin->joint_count; i++) {
-        for (int k = 0; k < R3D_SKIN_MATRIX_WIDTH; k++) {
+        for (int k = 0; k < (int)R3D_SKIN_MATRIX_WIDTH; k++) {
             if (!isfinite(skin->inverse_binds[i][k])) {
                 return ASSET_ERR_FORMAT;
             }
@@ -70,7 +72,7 @@ check_record(const r3d_skin_t* skin, const uint8_t* row) {
         return ASSET_ERR_FORMAT;
     }
     int nonzero = 0;
-    for (int k = 0; k < R3D_SKIN_NORMAL_WIDTH; k++) {
+    for (int k = 0; k < (int)R3D_SKIN_NORMAL_WIDTH; k++) {
         const int8_t value = (int8_t)row[(skin->influences * 2) + k];
         if (value < -R3D_SKIN_NORMAL_SCALE) {
             return ASSET_ERR_FORMAT;
