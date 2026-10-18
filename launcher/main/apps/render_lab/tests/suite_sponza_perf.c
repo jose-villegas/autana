@@ -63,11 +63,12 @@ typedef struct {
 static void
 bench_open(bench_t* b, const r3d_instance_t* instance, const raster_attachment_t* const* attachments) {
     b->panel = memory_alloc(sizeof(gfx_color_t) * PANEL_PIXELS, MEMORY_PSRAM);
+    const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
     b->raster = (raster_t){
         .instances = instance,
         .instance_count = 1,
-        .width = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT).width,
-        .height = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT).height,
+        .width = size.width,
+        .height = size.height,
         .upscaled = true,
         .destination_width = GFX_WIDTH,
         .destination_height = GFX_HEIGHT,
@@ -95,10 +96,10 @@ bench_close(bench_t* b) {
 static r3d_lens_t
 view_at(const r3d_lit_mesh_t* mesh, uint32_t t_ms) {
     (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-    const render_view_t view = camera_view(flythrough, scene_entity_transform(sponza, camera_entity),
-                                           (viewport_t){render_lab_render_size(GFX_WIDTH, GFX_HEIGHT).width,
-                                                        render_lab_render_size(GFX_WIDTH, GFX_HEIGHT).height,
-                                                        render_lab_test_quarter(DISPLAY_PORTRAIT)});
+    const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
+    const render_view_t view =
+        camera_view(flythrough, scene_entity_transform(sponza, camera_entity),
+                    (viewport_t){size.width, size.height, render_lab_test_quarter(DISPLAY_PORTRAIT)});
     r3d_lens_t lens;
     r3d_lens_init(&lens, &view, mesh->position_scale);
     return lens;
@@ -233,8 +234,7 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     TEST_ASSERT_NOT_NULL(b);
     bench_open(b, instance, attachments);
     ESP_LOGI(TAG, "=== %s FRAME COST (%d tris, %d verts, %d clusters, rendered %dx%d) ===", label, mesh->triangle_count,
-             mesh->vertex_count, mesh->cluster_count, render_lab_render_size(GFX_WIDTH, GFX_HEIGHT).width,
-             render_lab_render_size(GFX_WIDTH, GFX_HEIGHT).height);
+             mesh->vertex_count, mesh->cluster_count, b->raster.width, b->raster.height);
     const tune_entry_t* culling = tune_find(tune_shared(), "render.cull");
     TEST_ASSERT_NOT_NULL(culling);
     int size = 0;

@@ -83,7 +83,7 @@ upscale_block_rows(const upscale_t* scale, const uint16_t* source, const uint16_
     }
 }
 
-static void
+static inline __attribute__((always_inline)) void
 upscale_paired_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
                     uint16_t* destination, int first_row, int row_count, bool doubled, int strength) {
     const gfx_target_t target = {destination, 0, scale->destination_height, scale->destination_width};

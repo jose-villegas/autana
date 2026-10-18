@@ -22,6 +22,8 @@ capture.
 ### Height-only raster experiment
 
 `--tune NAME=VALUE` is repeatable and uses the console tune protocol.
+`--live-tune NAME=VALUE` sends the same command after scene entry; the
+scene frame hook applies it to the next rendered frame.
 Defaults are defined by the `TUNE` declarations in `render_lab_view.c` and
 `tests/render_lab_test.c`; the scale constants live in `render_lab_view.h`.
 
@@ -63,8 +65,7 @@ Keep captures outside the repository. Scanline runs follow panel rows, so they
 appear vertical in quarter 1. Clear sky darkens too. For strength units, see
 `UPSCALE_SCANLINE_UNIT`. Paired copies only; other paths ignore the strength.
 
-The complete source removal inventory below matches the experiment's names
-under `launcher/main/render/`, this app and `launcher/test/suites/`.
+The inventory lists every place the experiment touches; the check below finds the scanline-named ones.
 Existing `DRAW_DITHER_SCANLINES4` patterns are independent.
 
 | File | Experiment symbols or statements to remove |
@@ -83,6 +84,7 @@ Existing `DRAW_DITHER_SCANLINES4` patterns are independent.
 | `launcher/main/apps/render_lab/tools/tests/test_render_views.py` | `COLOR_HEADER`, `SCANLINE_UNIT`, scanline tunings and dark-row assertions |
 | `launcher/test/suites/suite_scene.c` | `assert_composed_scanlines()`, `test_context_scanlines_compose_both_quarters_and_disabled_pairs()`, `test_context_scanline_strength_survives_fixed_and_dynamic_size_changes()`; strength in `test_height_only_scale_composes_whole_runs_in_the_half_picture()` |
 | `launcher/test/suites/suite_upscale.c` | scanline tests, `assert_scanline_rows_match_reference()`, `test_odd_half_picture_repeat_keeps_pixels()`, shaded calls in `test_shaded_paired_copy_strip_starts_on_bottom_of_pair()` and registrations |
+| `launcher/test/suites/suite_upscale_perf.c` | `SCANLINE_STRENGTH` and the strength argument of each `upscale_rows()` call |
 | `docs/Shared-Helpers.md` | regenerate the catalogue after removing the public symbols |
 | `docs/render/Dynamic-Resolution.md`, this README | experiment prose and inventory |
 
@@ -90,7 +92,9 @@ Check the inventory with:
 
 ```sh
 git grep -n -i scanline -- launcher/main/render launcher/main/gfx/target launcher/main/apps/render_lab \
-    launcher/test/suites/suite_scene.c launcher/test/suites/suite_upscale.c docs/render/Dynamic-Resolution.md
+    launcher/test/suites/suite_scene.c launcher/test/suites/suite_upscale.c \
+    launcher/test/suites/suite_upscale_perf.c docs/render/Dynamic-Resolution.md
+git grep -n 'gfx_color_scale\|gfx_color_pair_scale\|GFX_COLOR_SCALE_UNIT\|paired_rows_shaded' -- launcher
 ```
 
 Keep height-only fixed scaling, `raster_fits_half_picture()`,

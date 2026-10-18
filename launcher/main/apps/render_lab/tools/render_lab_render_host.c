@@ -32,6 +32,8 @@
 #include "ui/ui.h"
 
 static int shell_quarter;
+static int option_count;
+static char** option_args;
 
 /* --size WxH: the scene drawn at that render size, either axis on its own,
  * as one dynamic-resolution step; 0 keeps the scene's own scale. */
@@ -91,9 +93,9 @@ view_from_name(const char* name) {
 }
 
 static bool
-tune_options(int argc, char** argv) {
+tune_options(int argc, char** argv, const char* option) {
     for (int i = 0; i < argc; i++) {
-        if (strcmp(argv[i], "--tune") != 0) {
+        if (strcmp(argv[i], option) != 0) {
             continue;
         }
         if (++i == argc) {
@@ -154,10 +156,12 @@ options(int argc, char** argv) {
         (void)fprintf(stderr, "render_lab_render_host needs --scene <key>\n");
         return false;
     }
+    option_count = argc;
+    option_args = argv;
     apply_flags(argc, argv);
     render_lab_start_scene_key = scene;
     return (view == NULL || view_from_name(view)) && (scale == NULL || set_tunable("render_lab.scale", atoi(scale)))
-           && tune_options(argc, argv);
+           && tune_options(argc, argv, "--tune");
 }
 
 int
@@ -192,7 +196,7 @@ setup(int quarter) {
         const resolution_config_t one = resolution_config(&size, 1, 1, INT32_MAX);
         render_context_set_dynamic_resolution(render_context_main(), &one, NULL, 0);
     }
-    return true;
+    return tune_options(option_count, option_args, "--live-tune");
 }
 
 static void

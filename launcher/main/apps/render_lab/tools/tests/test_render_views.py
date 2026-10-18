@@ -150,6 +150,24 @@ class RenderViews(unittest.TestCase):
                     if strength:
                         self.assertGreater(changed, 0)
 
+    def test_live_raster_tunings_apply_on_the_next_frame_without_reentry(self):
+        for scene in ("sponza", "capybara"):
+            for tuning, initial in (("render_lab.rows=400", ()),
+                                    ("render_lab.scanline=" + str(SCANLINE_UNIT // 2),
+                                     ("--tune", "render_lab.rows=400"))):
+                with self.subTest(scene=scene, tuning=tuning):
+                    common = ("--scene", scene, "--dt", "0", *initial)
+                    images = {}
+                    for mode, extra in (("base", ()), ("startup", ("--tune", tuning)),
+                                        ("live", ("--live-tune", tuning))):
+                        for frames in (1, 2):
+                            run, target = self.render(*common, "--frames", str(frames), *extra)
+                            self.assertEqual(0, run.returncode, run.stderr[-2000:])
+                            images[mode, frames] = target.read_bytes()
+                    self.assertEqual(images["base", 1], images["live", 1])
+                    self.assertEqual(images["startup", 2], images["live", 2])
+                    self.assertNotEqual(images["base", 2], images["live", 2])
+
     def test_a_view_option_with_no_value_is_refused_and_writes_nothing(self):
         for option in ("--view", "--scene"):
             with self.subTest(option=option):

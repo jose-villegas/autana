@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <string.h>
 #include "apps/render_lab/render_lab_view.h"
 
@@ -24,6 +25,7 @@ static void
 fixture(void) {
     size_command("RESET render_lab.scale");
     size_command("RESET render_lab.rows");
+    size_command("RESET render_lab.scanline");
 }
 
 static void
@@ -58,9 +60,30 @@ test_render_size_and_percent_follow_and_clamp(void) {
     fixture();
 }
 
+static void
+test_scanline_reset_and_protocol_range(void) {
+    fixture();
+    const tune_entry_t* entry = tune_find(tune_shared(), "render_lab.scanline");
+    TEST_ASSERT_NOT_NULL(entry);
+    TEST_ASSERT_EQUAL_INT(0, *entry->value);
+    TEST_ASSERT_EQUAL_INT(0, render_lab_scanline());
+    char command[TUNE_NAME_MAX + 16];
+    snprintf(command, sizeof command, "SET render_lab.scanline %d", UPSCALE_SCANLINE_MAX);
+    size_command(command);
+    TEST_ASSERT_EQUAL_INT(UPSCALE_SCANLINE_MAX, render_lab_scanline());
+    snprintf(command, sizeof command, "SET render_lab.scanline %d", UPSCALE_SCANLINE_MAX + 1);
+    tune_ok = false;
+    TEST_ASSERT_TRUE(tune_handle_line(command, size_reply));
+    TEST_ASSERT_FALSE(tune_ok);
+    TEST_ASSERT_EQUAL_INT(UPSCALE_SCANLINE_MAX, render_lab_scanline());
+    size_command("RESET render_lab.scanline");
+    TEST_ASSERT_EQUAL_INT(0, render_lab_scanline());
+}
+
 void
 run_render_size_suite(void) {
     RUN_TEST(test_render_size_and_percent_follow_and_clamp);
+    RUN_TEST(test_scanline_reset_and_protocol_range);
 }
 
 SUITE_REGISTER(run_render_size_suite);
