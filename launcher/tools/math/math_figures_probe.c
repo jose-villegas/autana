@@ -12,10 +12,10 @@
 #include <stdlib.h>
 
 #include "math/linear/mat4f.h"
-#include "math/linear/math_const.h"
 #include "math/linear/projectf.h"
 #include "math/linear/quatf.h"
 #include "math/linear/transformf.h"
+#include "math/scalar/math_const.h"
 #include "render/r3d_project.h"
 #include "render/render_view.h"
 
