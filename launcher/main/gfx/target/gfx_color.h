@@ -180,6 +180,18 @@ static const uint8_t gfx_dither4x4[4][4] = {
     {15, 7, 13, 5},
 };
 
+/* The finest coordinate bit selects the most significant Bayer digit,
+ * matching gfx_dither4x4. Coordinates tile for a square of side 2^bits. */
+static inline int
+gfx_dither_rank(int x, int y, int bits) {
+    static const uint8_t cell[2][2] = {{0, 2}, {3, 1}};
+    int rank = 0;
+    for (int bit = 0; bit < bits; bit++) {
+        rank = rank * 4 + cell[(y >> bit) & 1][(x >> bit) & 1];
+    }
+    return rank;
+}
+
 /* The alpha -> Bayer-level scaling gfx_dither_covers() compares against
  * the table, exposed on its own so a caller with a whole ROW of pixels
  * at one alpha can compute the level once instead of per pixel; see

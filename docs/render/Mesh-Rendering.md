@@ -339,6 +339,31 @@ vertex range, so each span clamps its ends. A kept triangle whose planes
 stay inside their ranges at every centre of its bounding box, most of them,
 fills its spans without those clamps, which would change nothing there.
 
+### Ordered colour experiment
+
+On a development build made with `--hot-tunables`,
+`autana tune r3d_span.blend_steps 1` enables ordered colour blending for
+walked Gouraud triangles. The default 0 keeps interpolated colour;
+1..8 selects intervals in a palette between the lowest- and highest-luma
+vertices. `r3d_span.dither_cell_bits` selects 2x2, 4x4 or 8x8 cells with
+values 1..3 (default 2). Depth and attachment writers retain their planes.
+The shared rank accessor selects immutable, 8x8-tiled banks so both render
+cores can read a pattern while the console changes its selection.
+
+Removal sites (`git grep blend_steps` locates the knob references):
+
+| Site | Remove with the experiment |
+|---|---|
+| `render/r3d_span.c` | Palette constants and tunable, `FILL_DITHER`, live-only fill state, scalar clamp limit, `fill_dither`, two-attribute dispatch and carry, `luma`, `set_up_dither`, setup branch |
+| `test/suites/suite_r3d_dither.c` | Behaviour suite and its tunable resets |
+| This section | Knob usage and removal map |
+
+The shared gfx rank helper and render rank banks support other ordered
+colour callers independently of this experiment. The host renderer builds
+with `TUNE_HOT_LIVE=1`; setting arbitrary engine knobs requires a caller
+of `tune_handle_line("SET owner.name value", reply)` before rendering.
+Its scene-specific command-line options do not expose arbitrary tunables.
+
 ## Memory
 
 The layer allocates nothing, and nothing a frame needs lives at file
