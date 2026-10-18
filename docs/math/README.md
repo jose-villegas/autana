@@ -1,8 +1,9 @@
-# Math: vectors, rotations, matrices, transforms
+# Math: vectors, rotations, matrices, transforms, signals
 
 The [math package](../../launcher/packages/math/README.md) holds scalar operations
 in `scalar/`, vectors and transforms in `linear/`, shapes and queries in
-`geometry/`, and orbit steering and spring lines in `motion/`:
+`geometry/`, orbit steering and spring lines in `motion/`, and single-bin
+detection on sample blocks in `signal/`. All but `signal/` are:
 
 - header-only and static inline, with no ESP-IDF, so a host suite checks every line;
 - each family written once as a template ([Templates](Conventions.md#templates)) and instantiated per number type;
@@ -40,4 +41,5 @@ Look the plain name up on a page in the [pages table](#pages); read `*_template.
 | [Projection](Projection.md) | Near clipping and camera-to-pixel mapping |
 | [Geometry](Geometry.md) | Rectangles, planes and frustum queries |
 | [Motion](Motion.md) | Orbit steering and spring lines |
+| [Signal](Signal.md) | Goertzel single-bin detection |
 | [Benchmark](Benchmark.md) | Board cycles, retired instructions and QEMU counts |

@@ -75,14 +75,6 @@ Always an explicit call named for destination and source, both `vec2` and `vec3`
 | `vec3i_from_vec3s(v)`, `vec2i_from_vec2s(v)` | exact widening |
 | `vec3s_from_vec3i(v)`, `vec2s_from_vec2i(v)` | saturating narrowing |
 
-The scalar steps behind them, in `vec_convert.h`:
-
-| Function | Purpose | Formula |
-|---|---|---|
-| `mathf_round_s(v, scale)` | int16, rounded and saturated | $`\mathrm{round}(v/scale)`$ |
-| `mathf_to_x(v)` | Q16.16, rounded and saturated | $`\mathrm{round}(v\,2^{16})`$ |
-| `mathx_to_f(v)` | float | $`v/2^{16}`$ |
-
 ## quat (`f x`)
 
 | Function | Purpose | Formula |
