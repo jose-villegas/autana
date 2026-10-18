@@ -634,6 +634,13 @@ start_sim(void) {
     tilt_reset(&tilt, INPUT_ACCEL_ONE_G);
 
     ESP_LOGI(TAG, "%d x %d grid, %d bytes, %d px cells", grid_w, grid_h, grid_w * grid_h, cell);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    /* Which sim buffers internal RAM could not hold (the index image is
+     * allocated first): each one here reads at PSRAM speed. */
+    ESP_LOGI(TAG, "sim buffers in PSRAM: grid=%d stamps=%d lanes=%d sleep=%d", memory_in_psram(buffers.grid),
+             memory_in_psram(buffers.step_stamps), memory_in_psram(buffers.lane_scratch),
+             memory_in_psram(buffers.sleep_blocks));
+#endif
 
     if (!sand_colour_indexed_active(&colour_state)) {
         draw_clear(material_palette()[SAND_EMPTY]);
