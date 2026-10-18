@@ -133,6 +133,8 @@ typedef struct {
     bool stepping;
     uint8_t ink;
     int stride;
+    int drawn;          /* the last curve sample the pen has drawn */
+    int32_t colour_pen; /* the curve's colour progress */
     const boot_anim_view_t* view;
 } mesh_pass_t;
 
@@ -188,6 +190,20 @@ mesh_node(const mesh_pass_t* pass, int i, int j, vec3x_t plane) {
     return node;
 }
 
+/* Below the crest height's first step the edge is the floor's grey, so
+ * only crests pay for the curve's colour. */
+static gfx_color_t
+mesh_edge_color(const mesh_pass_t* pass, int i, int j, int32_t ripple, bool on_axis) {
+    if (on_axis) {
+        return gfx_rgb(COL_AXIS);
+    }
+    if (boot_anim_crest_amount(ripple) == 0) {
+        return gfx_rgb(BOOT_ANIM_FLOOR_GREY);
+    }
+    const int sample = boot_anim_crest_sample(i, j, pass->drawn);
+    return boot_anim_floor_color(ripple, boot_anim_crest_rgb(sample, pass->colour_pen));
+}
+
 static void
 draw_mesh_edge(const mesh_pass_t* pass, const mesh_node_t* a, int ai, int aj, const mesh_node_t* b, int bi, int bj) {
     const bool a_front = (a->flags & MESH_NODE_FRONT) != 0;
@@ -196,11 +212,15 @@ draw_mesh_edge(const mesh_pass_t* pass, const mesh_node_t* a, int ai, int aj, co
         return;
     }
     const int band = (a->band_q4 + b->band_q4) >> (BOOT_ANIM_FLOOR_BAND_SHIFT + 1);
-    const uint8_t alpha = scale8(boot_anim_grid_alpha(pass->now_ms, band), pass->ink);
+    /* The lines on the axes carry the axes' flat colour, not the crests'. */
+    const bool on_axis = (aj == 0 && bj == 0) || (ai == 0 && bi == 0);
+    const uint8_t level = on_axis ? UINT8_MAX : BOOT_ANIM_GRID_LEVEL;
+    const uint8_t alpha = scale8(scale8(boot_anim_grid_alpha(pass->now_ms, band), level), pass->ink);
     if (alpha == 0) {
         return;
     }
-    const gfx_color_t c = gfx_color_mix(COL_BG, boot_anim_floor_color((a->ripple + b->ripple) / 2), alpha);
+    const gfx_color_t c =
+        gfx_color_mix(COL_BG, mesh_edge_color(pass, ai, aj, (a->ripple + b->ripple) / 2, on_axis), alpha);
     const unsigned flags = DRAW_LINE_DASH(BOOT_ANIM_MESH_DASH_ON_PX, BOOT_ANIM_MESH_DASH_OFF_PX);
     if (a_front && b_front) {
         draw_line_ex(a->sx, a->sy, b->sx, b->sy, c, flags);
@@ -337,6 +357,8 @@ draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t*
         .clip = surface.clip,
         .ink = ink,
         .stride = gfx_dither_level(reveal) >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL ? 2 : 1,
+        .drawn = (int)((boot_anim_pen(now_ms) * (int32_t)(BOOT_ANIM_CURVE_POINTS - 1)) >> BOOT_ANIM_Q),
+        .colour_pen = boot_anim_colour_progress(now_ms),
         .view = view,
         .stepping = view->units_ok && ((MESH_HALF + 2) * BOOT_ANIM_MESH_STEP_Q12 < R3D_X_INPUT_XZ_LIMIT),
     };

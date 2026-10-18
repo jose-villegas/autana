@@ -31,6 +31,7 @@ what someone editing the timeline wants.
 import json
 import math
 import pathlib
+import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -121,12 +122,13 @@ def validate_floor(cfg):
     allowed = {"timing", "camera_half_fov_short_tan", "grid_step_m",
                "ripple_wavelength_m", "ripple_clock_s", "ripple_group_speed_m_s",
                "ripple_width_m", "ripple_dispersion_m_s", "ripple_source_radius_m",
-               "ripple_calm_fraction", "white_height_m", "floor_grey", "grid_edge_fade_fraction",
+               "ripple_calm_fraction", "crest_height_m", "crest_colour_stride", "grid_level", "floor_grey",
+               "grid_edge_fade_fraction",
                "ripple_height_m", "swell_height_m", "swell"}
     for key in sorted(set(cfg) - allowed):
         fail("unknown key: " + key)
     for key in ("ripple_wavelength_m", "ripple_clock_s", "ripple_group_speed_m_s",
-                "ripple_width_m", "ripple_dispersion_m_s", "ripple_source_radius_m", "white_height_m"):
+                "ripple_width_m", "ripple_dispersion_m_s", "ripple_source_radius_m", "crest_height_m"):
         floor_number(cfg.get(key), key, positive=True)
     for key in ("ripple_height_m", "swell_height_m"):
         floor_number(cfg.get(key), key)
@@ -156,8 +158,14 @@ def validate_floor(cfg):
             fail(key + " must be less than 1")
     if round(cfg["grid_edge_fade_fraction"] * cfg["timing"]["grid_bands"]) >= cfg["timing"]["grid_bands"]:
         fail("grid_edge_fade_fraction must leave a fade band")
-    if not 0 < meters_to_q12(cfg["white_height_m"]) < (1 << 15):
-        fail("white_height_m must fit positive signed Q12")
+    if not 0 < meters_to_q12(cfg["crest_height_m"]) < (1 << 15):
+        fail("crest_height_m must fit positive signed Q12")
+    floor_number(cfg.get("crest_colour_stride"), "crest_colour_stride", positive=True, integer=True)
+    if (cfg["timing"]["mesh_cells"] // 2) % cfg["crest_colour_stride"]:
+        fail("crest_colour_stride must divide mesh_cells / 2")
+    floor_number(cfg.get("grid_level"), "grid_level", positive=True)
+    if cfg["grid_level"] > 1:
+        fail("grid_level must be at most 1")
     floor_number(cfg.get("floor_grey"), "floor_grey", integer=True)
     if cfg["floor_grey"] > 0xFFFFFF:
         fail("floor_grey must fit RGB24")
@@ -193,7 +201,8 @@ def emit_floor(cfg, w):
                 "ripple_height_m", "swell_height_m"):
         w("#define BOOT_ANIM_%s %s\n" % (key.upper(), repr(float(cfg[key]))))
     w("#define BOOT_ANIM_FLOOR_GREY 0x%06X\n" % cfg["floor_grey"])
-    w("#define BOOT_ANIM_WHITE_HEIGHT_Q12 %d\n" % meters_to_q12(cfg["white_height_m"]))
+    w("#define BOOT_ANIM_CREST_HEIGHT_Q12 %d\n" % meters_to_q12(cfg["crest_height_m"]))
+    w("#define BOOT_ANIM_GRID_LEVEL %d\n" % round(cfg["grid_level"] * 255))
     w("#define BOOT_ANIM_GRID_EDGE_FADE_BAND %d\n" % round(cfg["grid_edge_fade_fraction"] * timing["grid_bands"]))
     w("#define BOOT_ANIM_RIPPLE_WAVELENGTH_SHAPE %d\n" % round(cfg["ripple_wavelength_m"] * FLOOR_SHAPE_SCALE))
     w("#define BOOT_ANIM_RIPPLE_INV_WAVELENGTH %d\n" % round(FLOOR_GAIN_ONE / cfg["ripple_wavelength_m"]))
@@ -264,6 +273,65 @@ def emit_floor(cfg, w):
     w("static const uint8_t boot_anim_mesh_row_half[2][%d] = {\n" % (half + 1))
     for row in rows:
         w("    {" + ", ".join(map(str, row)) + "},\n")
+    w("};\n")
+
+
+# The curve the pen draws, read from its own generated header: the crest
+# colours follow its samples, so they must be the very points shipped.
+CURVE_HEADER = pathlib.Path(__file__).resolve().parents[2] / "main" / "boot" / "boot_anim_curve.h"
+
+
+def load_curve_plane():
+    text = CURVE_HEADER.read_text(encoding="utf-8")
+    body = text[text.index("boot_anim_curve[BOOT_ANIM_CURVE_POINTS]"):]
+    body = body[:body.index("};")]
+    points = [(int(x), int(y)) for x, y, _ in re.findall(r"\{\s*(-?\d+),\s*(-?\d+),\s*(-?\d+)\s*\}", body)]
+    if not points:
+        fail("no curve samples in " + str(CURVE_HEADER))
+    return points
+
+
+def crest_runs(cfg):
+    """For every crest colour node, the runs of curve samples that come
+    nearer to it than every sample before them: while the pen is inside a
+    run, the nearest drawn sample is the pen's own; between runs it holds."""
+    half = cfg["timing"]["mesh_cells"] // 2
+    stride = cfg["crest_colour_stride"]
+    step = mesh_step_q12(cfg)
+    points = load_curve_plane()
+    starts, runs = [], []
+    for cj in range(-half, half + 1, stride):
+        for ci in range(-half, half + 1, stride):
+            x, y = ci * step, cj * step
+            starts.append(len(runs))
+            best = None
+            for k, (px, py) in enumerate(points):
+                d = (px - x) ** 2 + (py - y) ** 2
+                if best is None or d < best:
+                    best = d
+                    if len(runs) > starts[-1] and runs[-1][1] == k - 1:
+                        runs[-1][1] = k
+                    else:
+                        runs.append([k, k])
+    starts.append(len(runs))
+    if len(runs) >= (1 << 16) or len(points) >= (1 << 16):
+        fail("crest runs must fit unsigned 16-bit indices")
+    return starts, runs
+
+
+def emit_crest(cfg, w):
+    starts, runs = crest_runs(cfg)
+    side = cfg["timing"]["mesh_cells"] // cfg["crest_colour_stride"] + 1
+    w("\n#define BOOT_ANIM_CREST_STRIDE %d\n" % cfg["crest_colour_stride"])
+    w("#define BOOT_ANIM_CREST_SIDE %d\n" % side)
+    w("#define BOOT_ANIM_CREST_MAX_RUNS %d\n\n" % max(b - a for a, b in zip(starts, starts[1:])))
+    w("static const uint16_t boot_anim_crest_run_start[%d] = {\n" % len(starts))
+    for at in range(0, len(starts), 16):
+        w("    " + ", ".join(map(str, starts[at:at + 16])) + ",\n")
+    w("};\n\n")
+    w("static const uint16_t boot_anim_crest_runs[%d][2] = {\n" % len(runs))
+    for at in range(0, len(runs), 8):
+        w("    " + ", ".join("{%d, %d}" % tuple(r) for r in runs[at:at + 8]) + ",\n")
     w("};\n")
 
 
@@ -623,6 +691,7 @@ def main():
     w("#define BOOT_ANIM_GRID_STEP_Q12 %d\n\n" % meters_to_q12(cfg["grid_step_m"]))
 
     emit_floor(cfg, w)
+    emit_crest(cfg, w)
 
 
 if __name__ == "__main__":

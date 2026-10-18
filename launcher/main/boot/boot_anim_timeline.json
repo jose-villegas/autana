@@ -71,7 +71,9 @@
     "ripple_dispersion_m_s": 1.0,
     "ripple_source_radius_m": 1.0,
     "ripple_calm_fraction": 0.4,
-    "white_height_m": 0.3,
+    "crest_height_m": 0.3,
+    "crest_colour_stride": 2,
+    "grid_level": 0.7,
     "floor_grey": 3158064,
     "grid_edge_fade_fraction": 0.75
 }
