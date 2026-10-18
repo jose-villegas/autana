@@ -23,7 +23,6 @@ autana() {
 python() {
     case "$*" in
         *resolve-port*) printf 'COM7\\r\\n' ;;
-        *pytest*) echo "pytest $*" >> "$RUNNER_TEMP/calls"; return "$CI_PYTEST_EXIT" ;;
     esac
 }
 '''
@@ -32,6 +31,10 @@ python() {
                 env = dict(os.environ, RUNNER_TEMP=Path(directory).as_posix(),
                            CI_SELFTEST_EXIT=str(selftest), CI_PYTEST_EXIT=str(console),
                            GITHUB_STEP_SUMMARY=str(Path(directory) / "summary"))
+                venv_python = Path(directory) / "device-tests/Scripts/python"
+                venv_python.parent.mkdir(parents=True)
+                venv_python.write_text('#!/bin/sh\necho "pytest $*" >> "$RUNNER_TEMP/calls"\nexit "$CI_PYTEST_EXIT"\n')
+                venv_python.chmod(0o755)
                 result = subprocess.run([shutil.which("bash"), "-c", stub + textwrap.dedent(sequence)],
                                         env=env, cwd=directory, capture_output=True, text=True)
                 self.assertEqual(result.returncode == 0, selftest == console == 0, result.stderr)

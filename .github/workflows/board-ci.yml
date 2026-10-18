@@ -59,7 +59,10 @@ jobs:
       - name: Prepare the shell image and console tests
         run: |
           export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
-          python -m pip install -r launcher/test/device/requirements.txt
+          # The tests' packages go in a venv of this run, not the runner's Python.
+          PY=$(. scripts/lib/python.sh && find_python)
+          "$PY" -m venv "$RUNNER_TEMP/device-tests"
+          "$RUNNER_TEMP/device-tests/Scripts/python" -m pip install -r launcher/test/device/requirements.txt
           autana build diag
 
       - name: Self-test and console tests under one board lock
@@ -75,7 +78,7 @@ jobs:
           console_status=0
           autana flash diag || console_status=$?
           if [ "$console_status" -eq 0 ]; then
-            python -m pytest launcher/test/device --embedded-services idf,serial \
+            "$RUNNER_TEMP/device-tests/Scripts/python" -m pytest launcher/test/device --embedded-services idf,serial \
               --build-dir build.diag --port "$(python scripts/device/device.py resolve-port | tr -d "\r")" \
               --skip-autoflash --root-logdir .records/device/pytest-logs \
               --junitxml=.records/device/pytest-logs/results.xml \
