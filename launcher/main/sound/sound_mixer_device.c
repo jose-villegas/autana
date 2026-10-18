@@ -274,6 +274,18 @@ drain_commands(void) {
     }
 }
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
+static void
+publish_render_snapshot(size_t stack_free) {
+    stack_min_free_bytes = stack_free;
+    render_snapshot.amp = mixer.amp;
+    for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
+        render_snapshot.tone_sources[i] = mixer.voices[i].tone_source;
+        render_snapshot.positions[i] = mixer.voices[i].tone_source ? 0 : mixer.voices[i].source.cursor.position;
+    }
+}
+#endif
+
 static void
 mixer_task(void* unused) {
     int16_t out[SOUND_MIXER_BLOCK_FRAMES];
@@ -317,12 +329,7 @@ mixer_task(void* unused) {
         portENTER_CRITICAL(&control_lock);
         sound_control_complete(&control, &mixer);
 #if CONFIG_LAUNCHER_DEVELOPMENT
-        stack_min_free_bytes = stack_free;
-        render_snapshot.amp = mixer.amp;
-        for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
-            render_snapshot.tone_sources[i] = mixer.voices[i].tone_source;
-            render_snapshot.positions[i] = mixer.voices[i].tone_source ? 0 : mixer.voices[i].source.cursor.position;
-        }
+        publish_render_snapshot(stack_free);
 #endif
         portEXIT_CRITICAL(&control_lock);
         if (!audio_out_write(out, SOUND_MIXER_BLOCK_FRAMES)) {
