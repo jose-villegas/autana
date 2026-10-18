@@ -127,9 +127,10 @@ PR run, a maintainer dispatches `gh workflow run board-ci.yml --ref <branch>`
 against the PR branch. Board CI is not a required check. If no board becomes
 free within the wait, the job succeeds with a neutral skipped notice and summary.
 
-[Nightly scoped performance](../launcher/tools/perf/README.md#nightly-scoped-chain)
-measures first-parent commits on separate board series and runs the shared
-Board CI self-test steps inside the designated board's overnight hold.
+The [nightly scoped performance](../launcher/tools/perf/README.md#nightly-scoped-chain)
+workflow measures first-parent commits on each board in turn. Its designated
+board also runs the Board CI self-test steps (`scripts/ci/board-steps.sh`)
+inside the same overnight hold.
 
 ## Two runners, one set of suites
 

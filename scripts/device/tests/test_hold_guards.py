@@ -130,7 +130,10 @@ class HoldGuardTests(Store):
         def child(*args, **kwargs):
             entry = device_lock.status_entry(self.store, BOARD_A, durations={})
             self.assertEqual(entry["estimated_free"], self.clock.now() + 30)
-            self.assertEqual(entry["holder"]["purpose"], "run")
+            self.assertEqual(entry["holder"]["purpose"], device.command_label("run"))
+            record = self.store.status(BOARD_A)["lock"]
+            self.assertEqual(record["kind"], "run")
+            self.assertNotIn("until_released", record)
             self.assertTrue(self.store.check_token(BOARD_A, os.environ[device.TOKEN_ENV]))
 
         with self.scope(), mock.patch.object(device, "run_to_end", side_effect=child):

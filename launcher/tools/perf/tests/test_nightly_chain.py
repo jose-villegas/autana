@@ -19,6 +19,25 @@ from layout_measure import parse_report, parse_timings
 MACHINE = "00:11:22:33:20:E8"
 
 
+IMAGE_HASH_APPENDED_OFFSET = 23
+IMAGE_CHECKSUM_BYTES = 1
+IMAGE_SHA256_BYTES = 32
+IMAGE_MAX_PADDING_BYTES = 15
+IMAGE_TEST_PADDING_BYTES = 4
+
+
+def app_image(code=b"code", trailer=None):
+    if trailer is None:
+        trailer = bytes(IMAGE_MAX_PADDING_BYTES + IMAGE_CHECKSUM_BYTES + IMAGE_SHA256_BYTES)
+    header = bytearray(chain.IMAGE_HEADER_BYTES)
+    segments = (b"a" * chain.APP_DESC_BYTES, code)
+    header[chain.IMAGE_SEGMENT_COUNT_OFFSET] = len(segments)
+    header[IMAGE_HASH_APPENDED_OFFSET] = 1
+    def segment(data):
+        return bytes(chain.SEGMENT_DATA_LENGTH_OFFSET) + len(data).to_bytes(chain.SEGMENT_DATA_LENGTH_BYTES, "little") + data
+    return header + b"".join(segment(data) for data in segments) + trailer
+
+
 class Clock:
     def __init__(self, hour=22, minute=30):
         self.value = datetime(2026, 10, 18, hour, minute, tzinfo=timezone.utc)
@@ -52,7 +71,7 @@ class Replay(FakeAutana):
             project = Path(command[command.index("--project") + 1])
             build = project / "launcher/build.diag"
             build.mkdir(parents=True, exist_ok=True)
-            (build / "launcher.bin").write_bytes(b"a" * 512 + (project / "code").read_bytes() + b"t" * chain.IMAGE_TRAILER_BYTES)
+            (build / "launcher.bin").write_bytes(app_image((project / "code").read_bytes()))
             (build / "assets.bin").write_bytes(b"assets")
             (build / "build_id.txt").write_text("0-diag")
             return code, [], 60
@@ -188,16 +207,17 @@ class NightlyTests(unittest.TestCase):
     def test_image_hash_excludes_metadata_but_includes_code_and_assets(self):
         build = self.root / "image"
         build.mkdir()
-        app = bytearray(b"a" * 1024)
+        trailer_bytes = IMAGE_TEST_PADDING_BYTES + IMAGE_CHECKSUM_BYTES + IMAGE_SHA256_BYTES
+        app = bytearray(app_image(trailer=bytes(trailer_bytes)))
         (build / "launcher.bin").write_bytes(app)
         (build / "assets.bin").write_bytes(b"assets")
         expected = chain.image_hash(build)
         for index in (chain.APP_DESC_OFFSET, chain.APP_DESC_OFFSET + chain.APP_DESC_BYTES - 1,
-                      len(app) - chain.IMAGE_TRAILER_BYTES, len(app) - 1):
+                      *range(len(app) - trailer_bytes, len(app))):
             app[index] ^= 1
         (build / "launcher.bin").write_bytes(app)
         self.assertEqual(chain.image_hash(build), expected)
-        app[chain.APP_DESC_OFFSET + chain.APP_DESC_BYTES] ^= 1
+        app[len(app) - trailer_bytes - 1] ^= 1
         (build / "launcher.bin").write_bytes(app)
         self.assertNotEqual(chain.image_hash(build), expected)
         changed = chain.image_hash(build)
@@ -325,9 +345,9 @@ class NightlyTests(unittest.TestCase):
                                             "build_id", "image_hash", "night", "role"})
         self.assertEqual(report["tests"], [{"name": "suite/frame quarter=landscape", "execution_time": [0.000412]}])
         self.assertIsNone(lnt.read_last_night(self.args.data, "20E8"))
-        for night in ("2026-10-18", "2026-10-16"):
+        for night in ("2026-10-18-2230", "2026-10-18-0900"):
             chain.write_json(self.args.data / "scoped/20E8" / night / "night.json", {"night": night})
-        self.assertEqual(lnt.read_last_night(self.args.data, "20E8")["night"], "2026-10-18")
+        self.assertEqual(lnt.read_last_night(self.args.data, "20E8")["night"], "2026-10-18-2230")
 
     def test_table_mode_preserves_all_stage_rows(self):
         path = PERF.parents[1] / "main/apps/render_lab/tools/report_performance.py"
@@ -342,6 +362,71 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(len(parse_report(table)), 6)
 
 
+    def test_attempted_tail_not_planned_again(self):
+        for outcome in ("skipped_same_image", "build_failed"):
+            with self.subTest(outcome=outcome):
+                self.args.previous = dict(last_measured=self.commits[1], last_attempted=self.commits[1],
+                                          machine=MACHINE, last_image_hash="same")
+                with patch.object(chain, "image_hash", return_value="same"):
+                    _, _, writes = self.run_chain(self.steps(indices=(3, 5)),
+                                                   builds=(1, 1) if outcome == "build_failed" else ())
+                previous = writes[-1]
+                self.assertEqual([row["outcome"] for row in previous["steps"]], [outcome] * 2)
+                self.assertEqual(previous["last_attempted"], self.commits[5])
+                self.assertEqual(previous["last_measured"], self.commits[1])
+                planned = chain.plan_steps(self.repo, "HEAD", previous, 0, 2)
+                self.assertEqual([(step.commit, step.role) for step in planned], [(self.commits[1], "anchor")])
+
+    def test_explicit_earlier_range_preserves_cursors_and_hash(self):
+        self.args.previous = dict(last_measured=self.commits[3], last_attempted=self.commits[5],
+                                  machine=MACHINE, last_image_hash="newest")
+        selected = chain.select_steps(self.repo, "HEAD", self.args.previous, 0, 2, self.commits[0])
+        self.assertEqual(sum(step.commit == self.commits[3] for step in selected), 1)
+        _, _, writes = self.run_chain(self.steps(indices=(1,)))
+        for key in ("last_measured", "last_attempted", "last_image_hash"):
+            self.assertEqual(writes[-1][key], self.args.previous[key])
+
+    def test_same_day_nights_have_distinct_directories(self):
+        self.run_chain(self.steps(indices=(1,)))
+        self.clock.value += timedelta(hours=1)
+        self.run_chain(self.steps(indices=(3,)))
+        paths = list((self.args.data / "scoped/20E8").glob("*/night.json"))
+        self.assertEqual(len(paths), 2)
+        latest = lnt.read_last_night(self.args.data, "20E8")
+        self.assertEqual(latest["night"], "2026-10-18")
+        self.assertEqual(latest["last_measured"], self.commits[3])
+
+    def test_flashing_different_build_fails_capture(self):
+        original = chain.run_flash
+        def other_build(*args, **kwargs):
+            record = original(*args, **kwargs)
+            record["build_id"] = "different-diag"
+            return record
+        with patch.object(chain, "run_flash", side_effect=other_build):
+            results, _, _ = self.run_chain(self.steps(indices=(1,)))
+        self.assertEqual(results[0].outcome, "capture_failed")
+        self.assertIn("differs from hashed build", (self.args.out / "00-error.log").read_text())
+
+    def test_full_serial_board_selection(self):
+        self.args.board = MACHINE.lower()
+        results, _, _ = self.run_chain(self.steps(indices=(1,)))
+        self.assertEqual(results[0].outcome, "measured")
+
+    def test_squash_pr_is_last_subject_match(self):
+        chain.git(self.repo, "commit", "--allow-empty", "-qm", "fix (#7) and (#8) (#999)")
+        self.assertEqual(chain.history_steps(self.repo, "HEAD")[-1].pr, 999)
+
+    def test_lane_info_reports_share_and_rejects_unknown_board(self):
+        plan = self.root / "plan.json"
+        plan.write_text(json.dumps({"lanes": {"20E8": {"lane": "0/2", "estimate": 42}}}))
+        for board, expected in (("20E8", 0), (MACHINE.lower(), 0), ("missing", 2)):
+            result = subprocess.run([sys.executable, str(PERF / "nightly/scoped_chain.py"),
+                                     "lane-info", "--plan", str(plan), "--board", board],
+                                    capture_output=True, text=True)
+            self.assertEqual(result.returncode, expected, result.stderr)
+            self.assertIn("0/2 42" if expected == 0 else "unknown board", result.stdout + result.stderr)
+
+
 class LaneSettingsTests(unittest.TestCase):
     def test_lane_uses_configured_window_and_selftest_boundary(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -351,21 +436,23 @@ class LaneSettingsTests(unittest.TestCase):
             library.write_text('find_python() { printf "%s\\n" "$TEST_PYTHON"; }\n')
             driver = root / "launcher/tools/perf/nightly/scoped_chain.py"
             driver.parent.mkdir(parents=True)
-            driver.write_text('import sys\nprint("123" if sys.argv[1] == "wait-seconds" else "")\n')
+            driver.write_text('import sys\nprint("123" if sys.argv[1] == "wait-seconds" else "0/1 42")\n')
             plan = root / "plan.json"
             plan.write_text(json.dumps({"lanes": {"board": {"lane": "0/1", "estimate": 42}}}))
             script = PERF / "nightly/lane.sh"
             command = r"""
-cygpath() { printf '%s\n' "${@: -1}"; }
 autana() { printf '%s\n' "$@"; }
-export -f cygpath autana
-bash "$1" board "$2" data out
+export -f autana
+bash "$1" board "$2" data out -- --suite suite - "table with spaces"
 """
             env = dict(os.environ, TEST_PYTHON=sys.executable, SELFTEST_BOARD="board",
                        WINDOW_END="05:45", SELFTEST_AT="23:15")
             result = subprocess.run(["bash", "-c", command, "lane-test", script.as_posix(), plan.as_posix()],
                                     cwd=root, env=env, capture_output=True, text=True, check=True)
             args = result.stdout.splitlines()
+            self.assertEqual(args[args.index("--suite") + 1:args.index("--suite") + 4],
+                             ["suite", "-", "table with spaces"])
+            self.assertEqual(args[args.index("--estimate") + 1], "42")
             for option, setting in (("--until", "WINDOW_END"), ("--selftest-at", "SELFTEST_AT")):
                 with self.subTest(option=option):
                     self.assertEqual(args[args.index(option) + 1], env[setting])

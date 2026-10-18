@@ -19,15 +19,18 @@ REPO = PERF.parents[2]
 sys.path.insert(0, str(PERF))
 sys.path.insert(0, str(PERF.parent / "build"))
 from build_paths import remove_output
-from capture import require_same_board, board_label
-from layout_measure import autana_command, run_flash, run_stamped, REPORT_LINE, write_json
+from capture import require_same_board
+from device_lock import normalise_board, short_id, write_json
+from layout_measure import autana_command, run_flash, run_stamped, REPORT_LINE, latest_build
 from nightly.lnt import lnt_report, night_manifest, read_last_night
 
 IMAGE_HEADER_BYTES = 24
 SEGMENT_HEADER_BYTES = 8
 APP_DESC_OFFSET = IMAGE_HEADER_BYTES + SEGMENT_HEADER_BYTES
 APP_DESC_BYTES = 256
-IMAGE_TRAILER_BYTES = 48
+IMAGE_SEGMENT_COUNT_OFFSET = 1
+SEGMENT_DATA_LENGTH_OFFSET = 4
+SEGMENT_DATA_LENGTH_BYTES = 4
 IMAGE_HASH_DIGITS = 16
 REPORT_SHA_DIGITS = 12
 STEP_INDEX_DIGITS = 2
@@ -60,10 +63,19 @@ class StepResult:
 def image_hash(build_dir):
     directory = Path(build_dir)
     app = (directory / "launcher.bin").read_bytes()
-    if len(app) < APP_DESC_OFFSET + APP_DESC_BYTES + IMAGE_TRAILER_BYTES:
+    if len(app) < APP_DESC_OFFSET + APP_DESC_BYTES:
         raise ValueError("application image is too short")
+    end = IMAGE_HEADER_BYTES
+    for _ in range(app[IMAGE_SEGMENT_COUNT_OFFSET]):
+        length_at = end + SEGMENT_DATA_LENGTH_OFFSET
+        length = int.from_bytes(app[length_at:length_at + SEGMENT_DATA_LENGTH_BYTES], "little")
+        end += SEGMENT_HEADER_BYTES + length
+        if end > len(app):
+            raise ValueError("application segment exceeds image")
+    if end < APP_DESC_OFFSET + APP_DESC_BYTES:
+        raise ValueError("application segments omit app descriptor")
     assets = (directory / "assets.bin").read_bytes()
-    image = app[:APP_DESC_OFFSET] + app[APP_DESC_OFFSET + APP_DESC_BYTES:-IMAGE_TRAILER_BYTES]
+    image = app[:APP_DESC_OFFSET] + bytes(APP_DESC_BYTES) + app[APP_DESC_OFFSET + APP_DESC_BYTES:end]
     return hashlib.sha256(image + assets).hexdigest()[:IMAGE_HASH_DIGITS]
 
 
@@ -76,7 +88,8 @@ def history_steps(repo, tip):
     steps = []
     for position, line in enumerate(history.splitlines(), start=1):
         commit, subject = line.split("\0", 1)
-        pr = re.search(r"\(#(\d+)\)|Merge pull request #(\d+)", subject)
+        matches = list(re.finditer(r"\(#(\d+)\)|Merge pull request #(\d+)", subject))
+        pr = matches[-1] if matches else None
         steps.append(Step(commit, int(pr[1] or pr[2]) if pr else None, "new", position))
     return steps
 
@@ -89,13 +102,16 @@ def plan_steps(repo, tip, last_night, lane, lanes):
     anchor = (last_night or {}).get("last_measured")
     if anchor and anchor not in commits:
         raise ValueError("last_measured is not on the tip's first-parent history")
-    anchor_position = commits.index(anchor) + 1 if anchor else 0
+    attempted = (last_night or {}).get("last_attempted") or anchor
+    if attempted and attempted not in commits:
+        raise ValueError("last_attempted is not on the tip first-parent history")
+    attempted_position = commits.index(attempted) + 1 if attempted else 0
     selected = []
     for step in history:
         if step.commit == anchor:
             step.role = "anchor"
             selected.append(step)
-        elif step.position > anchor_position and step.position % lanes == lane:
+        elif step.position > attempted_position and step.position % lanes == lane:
             selected.append(step)
     return selected if anchor else selected[-1:]
 
@@ -108,9 +124,10 @@ def select_steps(repo, tip, previous, lane, lanes, from_sha=None, max_steps=None
         commits = [step.commit for step in history]
         if first not in commits:
             raise ValueError("--from is not on the tip's first-parent history")
-        # An explicit range supplies its own baseline candidates.
+        # --from replaces the planned new steps; the anchor stays.
         steps = [step for step in steps if step.role == "anchor"]
-        steps.extend(step for step in history[commits.index(first):] if step.position % lanes == lane)
+        steps.extend(step for step in history[commits.index(first):]
+                     if step.position % lanes == lane and step.commit != (previous or {}).get("last_measured"))
     if max_steps is not None:
         if max_steps < 0:
             raise ValueError("--max-steps must be nonnegative")
@@ -143,22 +160,24 @@ def run_chain(steps, args, runner=None, clock=None):
     night = getattr(args, "night", None) or started.date().isoformat()
     output = Path(args.out).resolve()
     output.mkdir(parents=True, exist_ok=True)
-    board = args.board
+    board = short_id(args.board)
     previous = getattr(args, "previous", None) or {}
     machine = previous.get("machine")
     last_measured = previous.get("last_measured")
-    previous_hash = previous.get("last_image_hash") or next(
-        (row.get("image_hash") for row in reversed(previous.get("steps", [])) if row["outcome"] == "measured"), None)
+    last_attempted = previous.get("last_attempted") or last_measured
+    previous_hash = previous.get("last_image_hash")
+    positions = {step.commit: step.position for step in history_steps(args.repo, "HEAD")}
     results, failures, worst_step, stop_reason = [], 0, FIRST_STEP_SECONDS, None
     selftest = dict(board=board, outcome="not_run", report=None, started=None, seconds=0)
     selftest_at = (local_time(args.selftest_at, night_started, next_occurrence=True)
                    if getattr(args, "selftest_at", None) else None)
-    manifest = Path(args.data) / "scoped" / board / night / "night.json"
+    manifest = Path(args.data) / "scoped" / board / night_started.strftime("%Y-%m-%d-%H%M") / "night.json"
 
     cleanup = "pending"
 
     def save():
         value = night_manifest(board, machine, night, args.lane, results, stop_reason, last_measured, selftest)
+        value["last_attempted"] = last_attempted
         value["cleanup"] = cleanup
         value["last_image_hash"] = previous_hash
         write_json(manifest, value)
@@ -184,13 +203,6 @@ def run_chain(steps, args, runner=None, clock=None):
                 log.write(str(error) + "\n")
                 selftest["outcome"] = "failed"
         selftest["seconds"] = (clock.now() - begin).total_seconds()
-        summary = os.environ.get("GITHUB_STEP_SUMMARY")
-        if summary:
-            with open(summary, "a", encoding="utf-8") as stream:
-                stream.write(f"Self-test {board}: {selftest['outcome']}\n\n")
-                report = selftest["report"]
-                if report and Path(report).is_file():
-                    stream.write(Path(report).read_text(encoding="utf-8"))
         save()
 
     save()
@@ -221,8 +233,7 @@ def run_chain(steps, args, runner=None, clock=None):
                     result.build_seconds = (clock.now() - begin).total_seconds()
                     if code:
                         raise RuntimeError(f"build exited {code}")
-                    builds = list(worktree.glob("launcher/build*/build_id.txt"))
-                    build = max(builds, key=lambda path: path.stat().st_mtime).parent
+                    build = latest_build(worktree)
                     result.build_id = (build / "build_id.txt").read_text().strip()
                     result.image_hash = image_hash(build)
                 except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as error:
@@ -241,8 +252,10 @@ def run_chain(steps, args, runner=None, clock=None):
                         record = run_flash(capture_args, seed=0, runner=runner)
                         actual = require_same_board({"previous": machine, "capture": record["board"]}
                                                     if machine else {"capture": record["board"]})
-                        if not actual or board_label(actual).split()[0].upper() != board.upper():
+                        if not actual or normalise_board(args.board) not in (normalise_board(actual), short_id(actual)):
                             raise ValueError("capture does not identify the requested board")
+                        if record["build_id"] != result.build_id:
+                            raise ValueError(f"flashed build {record['build_id']} differs from hashed build {result.build_id}")
                         machine = actual
                         rows = {}
                         for suite, entry in record["suites"].items():
@@ -257,13 +270,18 @@ def run_chain(steps, args, runner=None, clock=None):
                                               record["build_id"], result.image_hash, measure.isoformat(),
                                               clock.now().isoformat(), rows))
                         result.outcome = "measured"
-                        previous_hash, last_measured, failures = result.image_hash, step.commit, 0
+                        if step.position >= positions.get(last_measured, 0):
+                            previous_hash, last_measured = result.image_hash, step.commit
+                        failures = 0
                     except (OSError, RuntimeError, ValueError) as error:
                         (output / f"{index:0{STEP_INDEX_DIGITS}}-error.log").write_text(str(error), encoding="utf-8")
                         failures += 1
                         if failures >= CAPTURE_FAILURE_LIMIT:
                             stop_reason = "capture_failures"
                     result.measure_seconds = (clock.now() - measure).total_seconds()
+            if result.outcome in ("measured", "skipped_same_image", "build_failed"):
+                if step.position >= positions.get(last_attempted, 0):
+                    last_attempted = step.commit
             worst_step = max(worst_step, (clock.now() - begin).total_seconds())
             save()
         test_if_due(wait=True)
@@ -312,12 +330,13 @@ def plan(args, clock=None):
     tip = git(args.repo, "rev-parse", args.tip + "^{commit}")
     lanes = {}
     for lane, board in enumerate(args.boards):
+        board = short_id(board)
         previous = read_last_night(args.data, board)
         steps = select_steps(args.repo, tip, previous, lane, len(args.boards), args.from_sha, args.max_steps)
         lanes[board] = dict(lane=f"{lane}/{len(args.boards)}", previous=previous,
                             steps=[asdict(step) for step in steps],
                             estimate=len(steps) * FIRST_STEP_SECONDS
-                            + (SELFTEST_ALLOWANCE_SECONDS if board == args.selftest_board else 0))
+                            + (SELFTEST_ALLOWANCE_SECONDS if args.selftest_board and board == short_id(args.selftest_board) else 0))
     write_json(Path(args.out), dict(tip=tip, night=clock.now().date().isoformat(),
                                     started=clock.now().isoformat(), lanes=lanes))
 
@@ -327,6 +346,9 @@ def main():
     commands = parser.add_subparsers(dest="command", required=True)
     waiting = commands.add_parser("wait-seconds")
     waiting.add_argument("--until", required=True)
+    info = commands.add_parser("lane-info")
+    info.add_argument("--plan", type=Path, required=True)
+    info.add_argument("--board", required=True)
     planning = commands.add_parser("plan")
     planning.add_argument("--boards", nargs="+", required=True)
     planning.add_argument("--tip", default="origin/main")
@@ -351,6 +373,14 @@ def main():
         now = Clock().now()
         print(max(0, int((local_time(args.until, now, next_occurrence=True) - now).total_seconds())))
         return 0
+    if args.command == "lane-info":
+        lanes = json.loads(args.plan.read_text(encoding="utf-8"))["lanes"]
+        board = args.board if args.board in lanes else short_id(args.board)
+        if board not in lanes:
+            parser.error(f"unknown board in plan: {args.board}")
+        lane = lanes[board]
+        print(lane["lane"], lane["estimate"])
+        return 0
     if args.command == "plan":
         plan(args)
         return 0
@@ -361,7 +391,7 @@ def main():
     if not os.environ.get("_AUTANA_DEVICE_LOCK_TOKEN"):
         parser.error("run requires an enclosing autana lock run hold")
     planned = json.loads(args.plan.read_text(encoding="utf-8"))
-    lane = planned["lanes"][args.board]
+    lane = planned["lanes"].get(args.board) or planned["lanes"][short_id(args.board)]
     if lane["lane"] != args.lane:
         parser.error("lane differs from the shared plan")
     args.previous, args.night, args.started = lane["previous"], planned["night"], planned["started"]
@@ -370,7 +400,7 @@ def main():
         index, count = map(int, args.lane.split("/"))
         steps = select_steps(args.repo, planned["tip"], args.previous, index, count, args.from_sha, args.max_steps)
     results = run_chain(steps, args)
-    manifest = read_last_night(args.data, args.board)
+    manifest = read_last_night(args.data, short_id(args.board))
     return int(any(result.outcome in ("build_failed", "capture_failed") for result in results)
                or manifest["selftest"]["outcome"] == "failed")
 

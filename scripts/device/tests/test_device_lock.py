@@ -18,6 +18,28 @@ import device_lock
 import device_hook
 import lock_scope
 
+class JsonWriterTests(unittest.TestCase):
+    def test_shared_writer_retries_replace_with_unique_temporary_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "record.json"
+            original = os.replace
+            temporary = []
+            def replace(source, target):
+                temporary.append(source)
+                if len(temporary) == 1:
+                    raise PermissionError("reader holds file")
+                original(source, target)
+            with mock.patch.object(device_lock.os, "replace", side_effect=replace), \
+                    mock.patch.object(device_lock.time, "sleep") as sleep:
+                device_lock.write_json(path, {"first": 1}, indent=2)
+                device_lock.write_json(path, {"second": 2})
+            self.assertEqual(temporary[0], temporary[1])
+            self.assertNotEqual(temporary[1], temporary[2])
+            self.assertEqual(json.loads(path.read_text()), {"second": 2})
+            self.assertEqual(list(Path(directory).glob("*.tmp")), [])
+            sleep.assert_called_once()
+
+
 class Clock:
     def __init__(self):
         self.value = 1000.0

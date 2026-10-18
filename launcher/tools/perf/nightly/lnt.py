@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 MICROSECONDS_PER_SECOND = 1_000_000
+# Build variant and options every nightly capture uses.
 IMAGE = "diag --perf-scope --layout-seed 0"
 
 
@@ -29,5 +30,5 @@ def night_manifest(board, machine, night, lane, results, stop_reason, last_measu
 
 
 def read_last_night(data_dir, board):
-    paths = sorted((Path(data_dir) / "scoped" / board).glob("????-??-??/night.json"))
+    paths = sorted((Path(data_dir) / "scoped" / board).glob("????-??-??-????/night.json"))
     return json.loads(paths[-1].read_text(encoding="utf-8")) if paths else None

@@ -144,6 +144,22 @@ def caller_pid(explicit=None):
     raise OSError("invoking shell exited; use --pid")
 
 
+def write_json(path, value, indent=None):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
+    temporary.write_text(json.dumps(value, sort_keys=True, indent=indent) + "\n", encoding="utf-8")
+    # Windows refuses to replace a file another process has open, and
+    # boards() reads without the guard.
+    for _ in range(250):
+        try:
+            os.replace(temporary, path)
+            return
+        except PermissionError:
+            time.sleep(0.02)
+    os.replace(temporary, path)
+
+
 def normalise_board(serial):
     """A board's USB serial number as every lock file and record spells it."""
     return serial.strip().upper()
@@ -359,18 +375,7 @@ class LockStore:
         return None
 
     def write_json(self, path, value):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
-        temporary.write_text(json.dumps(value, sort_keys=True) + "\n", encoding="utf-8")
-        # Windows refuses to replace a file another process has open, and
-        # boards() reads without the guard.
-        for _ in range(250):
-            try:
-                os.replace(temporary, path)
-                return
-            except PermissionError:
-                time.sleep(0.02)
-        os.replace(temporary, path)
+        write_json(path, value)
 
     def boards(self):
         """Every board a lock, reservation or waiter in this root names."""
@@ -514,15 +519,15 @@ class LockStore:
         return not (started is not None and isinstance(acquired, (int, float))
                     and started > acquired + PID_REUSE_SLACK_SECONDS)
 
-    def claim(self, board, ticket, stale_seconds=DEFAULT_STALE_SECONDS):
-        held, evicted, reason = self._claim(board, ticket, stale_seconds)
+    def claim(self, board, ticket, stale_seconds=DEFAULT_STALE_SECONDS, estimate=None):
+        held, evicted, reason = self._claim(board, ticket, stale_seconds, estimate)
         if held and held["kind"] != "hand":
             note = (f"reclaimed from {evicted.get('owner', 'unknown')} ({reason})"
                     if evicted else "")
             device_hook.emit("acquired", board, held["owner"], held["purpose"], note=note)
         return held
 
-    def _claim(self, board, ticket, stale_seconds):
+    def _claim(self, board, ticket, stale_seconds, estimate):
         with self.guard(board):
             self.prune_crashed_waiters(board)
             pending = self.tickets(board)
@@ -560,18 +565,20 @@ class LockStore:
                 "protocol": LOCK_PROTOCOL,
                 "autana_version": __version__,
             }
+            if estimate is not None:
+                held["estimated_end"] = now + estimate
             self.write_json(self.lock_path(board), held)
             (self.queue_dir(board) / (ticket + ".json")).unlink(missing_ok=True)
             return Held(held, reclaimed), evicted, reason
 
     def acquire(self, board, owner, kind, wait=0, stale_seconds=DEFAULT_STALE_SECONDS,
-                on_wait=None, purpose=None):
+                on_wait=None, purpose=None, estimate=None):
         ticket = self.enqueue(board, owner, kind, purpose=purpose)
         deadline = self.now() + wait
         label = purpose or purpose_of(kind)
         waiting = False
         while True:
-            held = self.claim(board, ticket, stale_seconds)
+            held = self.claim(board, ticket, stale_seconds, estimate)
             if held:
                 return held
             if not self.read_json(self.queue_dir(board) / (ticket + ".json")):

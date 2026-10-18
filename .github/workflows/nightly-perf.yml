@@ -14,6 +14,9 @@ on:
       selftest_at:
         description: Local self-test time (HH:MM; defaults to SELFTEST_AT)
         required: false
+      window_end:
+        description: Local window end (HH:MM; defaults to WINDOW_END)
+        required: false
       queue_at:
         description: Local queue time (HH:MM; empty starts immediately)
         required: false
@@ -24,9 +27,13 @@ permissions:
 
 env:
   SCOPED_BOARDS: 20E8 2124
+  NIGHTLY_SUITES: |
+    run_sand_perf_suite|-|python3 launcher/main/apps/sand/tools/report_performance.py @CAPTURE@ @TABLE@ --source @PROJECT@/launcher/main/apps/sand/tests/suite_sand_perf.c
+    run_sponza_perf_suite|-|-
+    run_capybara_perf_suite|-|python3 launcher/main/apps/render_lab/tools/report_performance.py @CAPTURE@ @TABLE@ --table
   SELFTEST_BOARD: '2124'
   SELFTEST_AT: ${{ inputs.selftest_at || '01:00' }}
-  WINDOW_END: '07:00'
+  WINDOW_END: ${{ inputs.window_end || '07:00' }}
   QUEUE_AT: '22:30'
   GH_TOKEN: ${{ github.token }}
   GIT_CONFIG_COUNT: '4'
@@ -42,7 +49,7 @@ env:
 jobs:
   nightly:
     runs-on: [self-hosted, windows, board]
-    # Queue window plus result publication.
+    # From QUEUE_AT to WINDOW_END, plus the publish step.
     timeout-minutes: 600
     defaults:
       run:
@@ -93,9 +100,13 @@ jobs:
       - name: Run each board lane and wait for both
         run: |
           export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
+          suites=()
+          while IFS="|" read -r suite tests table; do
+            [ -z "$suite" ] || suites+=(--suite "$suite" "$tests" "$table")
+          done <<< "$NIGHTLY_SUITES"
           pids=()
           for board in $SCOPED_BOARDS; do
-            bash launcher/tools/perf/nightly/lane.sh "$board" "$PERF_OUT/plan.json" "$PERF_DATA" "$PERF_OUT" &
+            bash launcher/tools/perf/nightly/lane.sh "$board" "$PERF_OUT/plan.json" "$PERF_DATA" "$PERF_OUT" -- "${suites[@]}" &
             pids+=($!)
           done
           status=0
@@ -103,6 +114,31 @@ jobs:
             wait "$pid" || status=1
           done
           exit "$status"
+
+      - name: Summarize board outcomes
+        if: always() && env.PERF_DATA != ''
+        run: |
+          PY=$(. scripts/lib/python.sh && find_python)
+          "$PY" - <<'PY'
+          from collections import Counter
+          from datetime import datetime
+          import json
+          import os
+          from pathlib import Path
+          plan = json.loads((Path(os.environ["PERF_OUT"]) / "plan.json").read_text())
+          night = datetime.fromisoformat(plan["started"]).strftime("%Y-%m-%d-%H%M")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as summary:
+              for board in plan["lanes"]:
+                  path = Path(os.environ["PERF_DATA"]) / "scoped" / board / night / "night.json"
+                  if not path.is_file():
+                      summary.write(f"{board}: no night manifest\n\n")
+                      continue
+                  manifest = json.loads(path.read_text())
+                  counts = Counter(step["outcome"] for step in manifest["steps"])
+                  summary.write(f"{board}: " + ", ".join(f"{key}={value}" for key, value in sorted(counts.items())) + "\n\n")
+                  test = manifest["selftest"]
+                  summary.write(f"Self-test {board}: {test['outcome']}; report: {test['report']}\n\n")
+          PY
 
       - name: Publish night manifests and LNT reports
         if: always() && env.PERF_DATA != ''

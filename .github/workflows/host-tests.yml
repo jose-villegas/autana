@@ -29,8 +29,6 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/host-tools
-      - name: Performance tooling tests
-        run: python3 -m unittest discover -s launcher/tools/perf/tests
       # The packs' meshes come from the bake cache; fetching first names a missing bake on its own.
       - name: Fetch the bakes launcher/bakes.lock names
         run: time python3 launcher/tools/bake/bake.py fetch

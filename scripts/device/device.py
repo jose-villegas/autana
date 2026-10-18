@@ -620,7 +620,7 @@ class HeldLock:
 
     HEARTBEAT_SECONDS = 5
 
-    def __init__(self, store, board, owner, kind, wait, announce_waiters=False):
+    def __init__(self, store, board, owner, kind, wait, announce_waiters=False, estimate=None):
         self.store = store
         self.announce_waiters = announce_waiters
         self.board = board
@@ -635,7 +635,7 @@ class HeldLock:
             self.held = device_lock.Held(record, "")
         else:
             self.held = store.acquire(board, owner, kind, wait=wait, on_wait=self.wait_notice,
-                                      purpose=command_label(kind))
+                                      purpose=command_label(kind), estimate=estimate)
         if not self.held:
             raise LockBusy("device lock was not acquired: "
                            + device_lock.busy_text(store.status(board), store.now()))
@@ -2242,10 +2242,7 @@ def main(argv=None):
             child = args.child[1:] if args.child[:1] == ["--"] else args.child
             if not child:
                 parser.error("run needs -- <command...>")
-            with HeldLock(store, board, args.owner, "run", args.wait) as held:
-                if args.estimate is not None and not held.borrowed:
-                    if not store.hold(board, held.held["token"], "run", pid=os.getpid(), estimate=args.estimate):
-                        raise LockBusy("device lock was lost before the estimate was recorded")
+            with HeldLock(store, board, args.owner, "run", args.wait, estimate=args.estimate) as held:
                 try:
                     run_to_end(child, held.lost)
                     result = 0
