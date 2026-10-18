@@ -368,7 +368,7 @@ to the far gate at the size limit.
 | Flat ≤8 + dither 4 ramp 1 | ![Ramped dither](../images/render/sponza-small-fill-dither.gif)<br>![Dither 4 ramp 1 vs defaults, difference x8](../images/render/sponza-small-fill-dither-diff.gif) |
 | Flat bake (fitted) | ![Flat bake](../images/render/sponza-small-fill-bake.gif)<br>![Flat bake vs defaults, difference x8](../images/render/sponza-small-fill-bake-diff.gif) |
 
-Clips show full renderer frames for 5.0 seconds from source frame 1 at 6 fps,
+Clips show full renderer frames for 5.5 seconds from source frame 1 at 6 fps,
 with a per-GIF full palette and no dithering or scaling.
 
 Unspecified tunables keep their defaults. The gate ramp uses the near gate off,

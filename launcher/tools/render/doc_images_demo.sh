@@ -47,11 +47,10 @@ dither|Dither 4, ramp 1|${FULL}_fitted_full|--set r3d_span.small_max_side=8 --se
 bake|Flat bake|${FULL}_flat_fitted||${ID}-small-fill-bake|${ID}-small-fill-bake-diff
 EOF
     small_fill_first=1
-    small_fill_seconds=5
+    small_fill_end=56
     small_fill_frames=60
     small_fill_dt=100
     small_fill_fps=6
-    small_fill_end=$((small_fill_first + small_fill_seconds * 1000 / small_fill_dt))
     small_fill_window="trim=start_frame=$small_fill_first:end_frame=$small_fill_end,setpts=PTS-STARTPTS,fps=$small_fill_fps"
     small_fill_palette="max_colors=256:reserve_transparent=0:stats_mode=full"
     while IFS='|' read -r look label object settings gif diff; do
