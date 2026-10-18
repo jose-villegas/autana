@@ -259,6 +259,11 @@ static struct {
     int drawn_frame;
 } live;
 
+const mu_Container*
+ui_dropdown_open_list(void) {
+    return live.list != NULL && live.list->open ? live.list : NULL;
+}
+
 void
 ui_widgets_reset(void) {
     memset(&live, 0, sizeof live);

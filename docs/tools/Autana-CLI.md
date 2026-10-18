@@ -176,6 +176,9 @@ Changes state the way a person holding the board could.
 | `autana apps --json` | The same, as JSON. |
 | `autana open <name>` | Enter an app; case-insensitive unambiguous prefix. |
 | `autana home` | Back to the launcher. |
+| `autana sound play <name> [loop] [gain]` | Play a sound from the engine pack; gain is a percent, full gain when omitted. |
+| `autana sound stop [voice\|all]` | Stop a voice or all voices; all when omitted. |
+| `autana sound stats` | Voice states, dropped commands, amplifier state and mixer RAM sizes. |
 
 Coordinates are pixels of the default `autana screenshot`, whichever way the
 board is held; read a button's centre off that image. Pixels from an
@@ -206,7 +209,7 @@ below the input layer, with a matching resume or release. Hidden from bare
 | `autana debug resume` | Run it again. |
 | `autana debug step [N]` | Advance `N` frames while frozen; 1 when omitted. |
 | `autana debug touch <down\|up> <x> <y>` | One raw touch level at a panel-frame point (a `--framebuffer` pixel); `up` hands back to the controller. |
-| `autana debug imu <ax> <ay> <az>` | Raw accelerometer counts; `autana debug imu release` hands back to the sensor. |
+| `autana debug imu <ax> <ay> <az>` | Raw accelerometer counts; `autana debug imu quarter <q>` turns the screen to display quarter q, and `autana debug imu release` hands back to the sensor. |
 
 `freeze`, `resume`, `step`, `touch`, `imu` and `debug framewatch` are accepted
 as aliases and print the canonical spelling once.

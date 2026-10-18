@@ -37,4 +37,16 @@ app_t app_example = {
 - No `#if` needed: `APP_CONSOLE_PTR()` is `NULL` in release and the handler
   goes with it.
 
+Apps with switchable scenes answer `scenes` with one
+`<PREFIX> scene=<key> ...` line per scene, followed by `<PREFIX>_END`.
+`scene <key>` selects that key and ends with `<PREFIX>_END` or reports
+`<PREFIX>_ERR <reason>`. Keys are unique, nonempty words. An app without
+switchable scenes may decline `scenes` with `<PREFIX>_ERR not handled`.
+
+The development console's `APPS` reply lists
+`APPS name=<name> running=<0|1>`, appending `console=<prefix>` when the
+app declares `.console`; `APPS_END` terminates the list. The prefix comes
+from that app's `APP_CONSOLE()` declaration. `autana apps --json` includes
+it as the optional `console` field.
+
 An app that adds a command documents it itself.

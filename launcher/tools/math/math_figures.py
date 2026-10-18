@@ -26,7 +26,8 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from matplotlib.patches import Polygon, Rectangle
+from matplotlib.patches import Rectangle
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 PROBE = ROOT / "launcher/tools/math/math_figures_probe.c"
 PROBE_SOURCES = (PROBE, ROOT / "launcher/main/render/render_view.c")
@@ -34,13 +35,16 @@ DISPLAY = ROOT / "launcher/components/esp32_s3_touch_amoled_1_8/include/bsp/disp
 
 INK, MUTED, FAINT = "#0b0b0b", "#52514e", "#c9c7c2"
 SHAPE_FILL, POINT, PIXEL_FILL = "#2a78d6", "#eb6834", "#1baf7a"
+TRS_MARGIN = 0  # units of room beyond the farthest corner in the 3D panels
+TRS_PANEL_SIZE = 3.2  # the 3D panels need more room
 PANEL_SIZE = 3.0  # inches per panel, wide and high
 PANEL_TITLE_ROOM = 0.3  # inches above each row for the panel titles
+VIEW_ELEVATION, VIEW_AZIMUTH = 25, -60  # degrees, the same for every panel
 DPI = 110
 TITLE_SIZE = 10
 LABEL_SIZE = 8
-SHAPE_ALPHA = 0.35
-GHOST_ALPHA = 0.5  # the previous panel's dashed outline
+SHAPE_ALPHA = 0.3
+GHOST_WIDTH = 1.0  # the previous panel's dashed outline
 POINT_SIZE = 40
 PIXEL_PANELS = 4  # camera, offset, picture, whole pixel
 PIXEL_WINDOW = 3  # whole pixels shown on each side of the chosen one
@@ -66,32 +70,55 @@ def square_axes(axis, title):
 
 
 def trs_figure(trs, output):
-    stages = (("local", "local"), ("scaled", "1. scale {sx:g} x {sy:g}"),
-              ("rotated", "2. rotate {angle:g} deg about +z"), ("placed", "3. translate to ({tx:g}, {ty:g})"))
-    values = dict(sx=trs["scale"][0], sy=trs["scale"][1], angle=trs["angle_degrees"],
-                  tx=trs["position"][0], ty=trs["position"][1])
+    stages = (("local", "local"), ("scaled", "1. scale {sx:g} x {sy:g} x {sz:g}"),
+              ("rotated", "2. rotate {angle:g} deg about ({ax:.2f}, {ay:.2f}, {az:.2f})"),
+              ("placed", "3. translate to ({tx:g}, {ty:g}, {tz:g})"))
+    values = dict(zip(("sx", "sy", "sz"), trs["scale"]), angle=trs["angle_degrees"],
+                  **dict(zip(("ax", "ay", "az"), trs["axis"])), **dict(zip(("tx", "ty", "tz"), trs["position"])))
     corners = [p for name, _ in stages for p in trs[name]]
-    low = math.floor(min(min(x for x, _ in corners), min(y for _, y in corners), 0))
-    high = math.ceil(max(max(x for x, _ in corners), max(y for _, y in corners)))
-    size = (PANEL_SIZE * len(stages), PANEL_SIZE + PANEL_TITLE_ROOM)
-    figure, axes = plt.subplots(1, len(stages), figsize=size, layout="constrained")
+    high = math.ceil(max(abs(v) for c in corners for v in c)) + TRS_MARGIN
+    low = -high
+    count = trs["outline_corners"]
+    size = (TRS_PANEL_SIZE * len(stages), TRS_PANEL_SIZE + PANEL_TITLE_ROOM)
+    figure = plt.figure(figsize=size, layout="constrained")
     previous = None
-    for axis, (name, title) in zip(axes, stages):
-        square_axes(axis, title.format(**values))
+    for index, (name, title) in enumerate(stages):
+        axis = figure.add_subplot(1, len(stages), index + 1, projection="3d")
+        axis.set_title(title.format(**values), fontsize=TITLE_SIZE, color=INK)
         axis.set_xlim(low, high)
         axis.set_ylim(low, high)
-        axis.axhline(0, color=FAINT, linewidth=0.8)
-        axis.axvline(0, color=FAINT, linewidth=0.8)
+        axis.set_zlim(low, high)
+        axis.set_box_aspect((1, 1, 1))
+        axis.view_init(elev=VIEW_ELEVATION, azim=VIEW_AZIMUTH)
+        axis.tick_params(labelsize=LABEL_SIZE, colors=MUTED)
+        axis.set_xticks(range(low, high + 1))
+        axis.set_yticks(range(low, high + 1))
+        axis.set_zticks(range(low, high + 1))
+        for label, direction in zip("xyz", ((1, 0, 0), (0, 1, 0), (0, 0, 1))):
+            end = [high * d for d in direction]
+            axis.plot([-end[0], end[0]], [-end[1], end[1]], [-end[2], end[2]], color=MUTED, linewidth=1)
+            axis.text(*[(high + 0.2) * d for d in direction], label, fontsize=LABEL_SIZE, color=MUTED)
         if previous is not None:
-            axis.add_patch(Polygon(previous, closed=True, fill=False, edgecolor=MUTED, linestyle="--",
-                                   alpha=GHOST_ALPHA))
-        axis.add_patch(Polygon(trs[name], closed=True, facecolor=SHAPE_FILL, alpha=SHAPE_ALPHA, edgecolor=SHAPE_FILL))
-        axis.scatter(*trs[name][0], s=POINT_SIZE / 2, color=INK, zorder=3)
-        axis.set_xlabel("x", fontsize=LABEL_SIZE, color=MUTED)
-        axis.set_ylabel("y", fontsize=LABEL_SIZE, color=MUTED)
+            for ring in prism_edges(previous, count):
+                axis.plot(*zip(*ring), color=INK, linestyle="--", linewidth=GHOST_WIDTH)
+        axis.add_collection3d(Poly3DCollection(prism_faces(trs[name], count), facecolor=SHAPE_FILL,
+                                               alpha=SHAPE_ALPHA, edgecolor=SHAPE_FILL))
         previous = trs[name]
     figure.savefig(output, dpi=DPI, metadata={"Software": None})
     plt.close(figure)
+
+
+def prism_faces(points, count):
+    """The block's faces: both L outlines and one quad per side."""
+    back, front = points[:count], points[count:]
+    sides = [[back[i], back[(i + 1) % count], front[(i + 1) % count], front[i]] for i in range(count)]
+    return [back, front, *sides]
+
+
+def prism_edges(points, count):
+    """The block's edges as polylines: both outlines and the joins between them."""
+    back, front = points[:count], points[count:]
+    return [back + back[:1], front + front[:1], *([back[i], front[i]] for i in range(count))]
 
 
 def pixel_figure(px, output):

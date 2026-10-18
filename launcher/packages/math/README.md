@@ -1,11 +1,10 @@
 # math
 
-The engine's maths library: scalar operations per number type, vectors to
-transforms over them, shapes, and motion (springs, orbiting a target). It depends on
-nothing but the C library and libm, so every layer of the firmware, the host
-tests, the tools and the editor build it. It may carry functions nothing calls
-yet, so the API covers what the types imply rather than only what today's
-callers use.
+The engine's maths library: scalar operations, linear algebra, shapes, motion
+and signal processing. It depends on nothing but the C library and libm, so every
+layer of the firmware, the host tests, the tools and the editor build it. The API
+covers what its types imply rather than only what today's callers use, so it may
+carry functions nothing calls yet.
 
 | Folder | Holds |
 |---|---|
@@ -13,6 +12,7 @@ callers use.
 | `include/math/linear/` | Vectors, quaternions, 4x4 matrices and transforms, each one template instantiated per number type; [docs/math/README.md](../../../docs/math/README.md) is the reference |
 | `include/math/geometry/` | Shapes and their queries: half-open rectangles (`rectf`, `recti`, `rects`, `rectx`) and oriented planes (`planef`, `planex`), instantiated from geometry templates |
 | `include/math/motion/` | Integer springs on a fixed tick, orbiting a target |
+| `include/math/signal/` | Signal processing on sample blocks: Goertzel single-bin detection |
 | `src/` | The few functions that are not inline |
 | `tests/` | Its suites, run by both runners like every other suite |
 
@@ -61,7 +61,6 @@ header's opening comment; `--check` verifies it.
 | [include/math/linear/mat4_template.h](include/math/linear/mat4_template.h) | mat4_template: a 4x4 matrix indexed m[row][col], acting on column vectors, for one number type; see docs/math/README.md for the macro arguments. |
 | [include/math/linear/mat4f.h](include/math/linear/mat4f.h) | mat4f: a 4x4 matrix of a float. |
 | [include/math/linear/mat4x.h](include/math/linear/mat4x.h) | mat4x: a 4x4 matrix of a Q16.16. |
-| [include/math/linear/math_const.h](include/math/linear/math_const.h) | math_const: float circle constants, degree/radian conversion factors, and the natural log of 2, which turns a half-life into a rate. |
 | [include/math/linear/project_template.h](include/math/linear/project_template.h) | project_template: shared near-plane endpoint selection for pinhole clipping. |
 | [include/math/linear/projectf.h](include/math/linear/projectf.h) | projectf: pinhole projection in pixels with camera +y up and picture y down. |
 | [include/math/linear/projectx.h](include/math/linear/projectx.h) | projectx: near-plane segment clipping in any fixed camera-space scale. |
@@ -81,12 +80,13 @@ header's opening comment; `--check` verifies it.
 | [include/math/linear/vec3i.h](include/math/linear/vec3i.h) | vec3i: a 3-component vector of an int32. |
 | [include/math/linear/vec3s.h](include/math/linear/vec3s.h) | vec3s: a 3-component vector of an int16. |
 | [include/math/linear/vec3x.h](include/math/linear/vec3x.h) | vec3x: a 3-component vector of a Q16.16. |
-| [include/math/linear/vec_convert.h](include/math/linear/vec_convert.h) | vec_convert: explicit vector conversions between float, int32, int16 and Q16.16. |
+| [include/math/linear/vec_convert.h](include/math/linear/vec_convert.h) | vec_convert: explicit vector conversions; narrowing saturates, rounding ties away from zero. |
 | [include/math/linear/vec_ops_template.h](include/math/linear/vec_ops_template.h) | vec_ops_template: component-wise arithmetic and lerp for vectors of every dimension and number type. |
 | [include/math/linear/vec_swizzle_template.h](include/math/linear/vec_swizzle_template.h) | vec_swizzle_template: swizzles, a new vector made of named components of another (vec3f_zyx, vec2f_yx), for every number type. |
 | [include/math/motion/orbit_motion.h](include/math/motion/orbit_motion.h) | orbit_motion: moves a transform around a target, turntable style: it turns about the world's up axis (yaw) and tilts above or below the target (pitch), always facing it. |
 | [include/math/motion/spring_line.h](include/math/motion/spring_line.h) | spring_line, a row of points on springs: each is pulled toward rest and toward its neighbours, so a push travels along the row as a wave and dies away. |
 | [include/math/scalar/fixed.h](include/math/scalar/fixed.h) | fixed: shift-based fixed-point arithmetic at caller-selected scales. |
+| [include/math/scalar/math_const.h](include/math/scalar/math_const.h) | math_const: float circle constants, degree/radian conversion factors, and the natural log of 2, which turns a half-life into a rate. |
 | [include/math/scalar/mathf.h](include/math/scalar/mathf.h) | mathf: single-precision float's scalar operations for the math templates (docs/math/README.md). |
 | [include/math/scalar/mathf_round.h](include/math/scalar/mathf_round.h) | mathf_round: scalar rounding to nearest, ties away from zero; finite inputs saturate to the destination type. |
 | [include/math/scalar/mathf_rsqrt.h](include/math/scalar/mathf_rsqrt.h) | mathf_rsqrt: reciprocal square root for positive normal-range inputs; one Newton correction of the FPU seed. |
@@ -95,5 +95,6 @@ header's opening comment; `--check` verifies it.
 | [include/math/scalar/mathx.h](include/math/scalar/mathx.h) | mathx: Q16.16 fixed-point scalar operations for the math templates (docs/math/README.md). |
 | [include/math/scalar/rng.h](include/math/scalar/rng.h) | rng: a small deterministic pseudo-random generator, for anything that wants one. |
 | [include/math/scalar/trig.h](include/math/scalar/trig.h) | trig, sine and cosine of a 16-bit phase, in integers: TRIG_TURN is one turn and the result has TRIG_SIN_SHIFT fractional bits, at most TRIG_SIN_MAX. |
-| [include/math/scalar/units.h](include/math/scalar/units.h) | units: MATH_MS_PER_S, the milliseconds in a second, for integer time conversions. |
+| [include/math/scalar/units.h](include/math/scalar/units.h) | units: integer time conversion scales. |
+| [include/math/signal/goertzel.h](include/math/signal/goertzel.h) | Streaming single-bin detection (Goertzel, 1958). |
 <!-- /generated: package-headers -->

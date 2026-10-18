@@ -37,7 +37,7 @@ import device_lock  # noqa: E402  (path must be set up first)
 import autana_config  # noqa: E402  (path must be set up first)
 from espressif import idf_python, idf_note_lines, require_idf  # noqa: E402
 from version import __version__  # noqa: E402
-from device_capture import BUILD_ID_REQUEST, PERF_SEGMENT  # noqa: E402
+from device_capture import BUILD_ID_REQUEST, PERF_SEGMENT, parse_apps  # noqa: E402
 
 # The launcher hint belongs to this invocation; children resolve their own caller.
 CALLER_PID = os.environ.pop(device_lock.CALLER_PID_ENV, None)
@@ -470,6 +470,19 @@ def tone(args):
         print(error, file=sys.stderr)
         return 1
     print(json.dumps(result) if json_output else replies[-1])
+    return 0
+
+
+def sound(args):
+    prefix = "SOUND"
+    code, replies = send(prefix + " " + " ".join(args), reply=prefix,
+                         until=[prefix + "_END", prefix + " error:", prefix + " usage:"])
+    if code or not replies:
+        return code or 1
+    if replies[-1].startswith(("SOUND error:", "SOUND usage:")):
+        print(replies[-1], file=sys.stderr)
+        return 1
+    print("\n".join(replies))
     return 0
 
 
@@ -1065,8 +1078,12 @@ def imu(args):
         code, replies = send("IMU release", reply="IMU", optional=True, seconds=0.5)
         print("\n".join(replies) if replies else "sent")
         return code
+    if len(args) == 2 and args[0] == "quarter" and is_int(args[1]):
+        code, replies = send("IMU " + " ".join(args), reply="IMU", until=["IMU_OK", "IMU_ERR"])
+        print("\n".join(replies))
+        return code
     if len(args) != 3 or not all(is_int(value) for value in args):
-        sys.exit("usage: autana imu <ax> <ay> <az> | autana imu release")
+        sys.exit("usage: autana debug imu <ax> <ay> <az> | quarter <q> | release")
     code, replies = send("IMU " + " ".join(args), reply="IMU",
                          optional=True, seconds=0.5)
     print("\n".join(replies) if replies else "sent")
@@ -1133,17 +1150,12 @@ def apps(args):
     if not json_output:
         print("\n".join(reply for reply in replies if reply.startswith("APPS ")))
     elif code == 0:
-        print(json.dumps({"apps": parse_apps(replies)}))
+        try:
+            print(json.dumps({"apps": parse_apps(replies)}))
+        except ValueError as error:
+            print(str(error), file=sys.stderr)
+            return 1
     return code
-
-
-def parse_apps(replies):
-    rows = []
-    for reply in replies:
-        match = re.fullmatch(r"APPS name=(.*) running=([01])", reply)
-        if match:
-            rows.append({"name": match[1], "running": match[2] == "1"})
-    return rows
 
 
 def open_app(args):
@@ -1621,6 +1633,10 @@ COMMAND_GROUPS = (
         one("framewatch", framewatch, "framewatch", "allocations and log lines repeating frame after frame, as JSON"),
     )),
     ("drive", "Drive", (
+        Command("sound", sound, (
+            ("sound play <name> [loop] [gain]", "play an engine-pack sound; development builds"),
+            ("sound stop [voice|all]", "stop a voice or all voices; all when omitted"),
+            ("sound stats", "voice states, dropped commands, amplifier state and RAM sizes"))),
         one("tap", tap, "tap <x> <y>", "tap a point, in pixels of the default screenshot"),
         one("press", press, "press <x> <y> [ms]", "hold a point, as tap reads it; 1000 ms when omitted"),
         one("drag", drag, "drag <x0> <y0> <x1> <y1> <ms>", "drag between two points, as tap reads them"),

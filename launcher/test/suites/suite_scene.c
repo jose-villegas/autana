@@ -11,6 +11,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "anim/anim_tracks_format.h"
+#include "math/scalar/math_const.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -1750,6 +1752,102 @@ test_failed_half_allocation_keeps_full_upscale_unexpanded(void) {
 }
 
 static void
+test_camera_present_composes_half_picture_and_uneven_fallback(void) {
+    expanded_fixture();
+    render_context_t* c = render_context_main();
+    render_context_set_scale(c, RENDER_CONTEXT_DEFAULT_SCALE_PERCENT);
+    TEST_ASSERT_TRUE(scene_camera_set_present(scene_loaded_at(0), scene_find(scene_loaded_at(0), "camera"),
+                                              CAMERA_PRESENT_SCANLINE));
+    const scene_target_t target = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
+    TEST_ASSERT_NOT_NULL(target.half_pixels);
+    for (int quarter = 0; quarter <= 1; quarter++) {
+        scene_render(0, quarter, GFX_WIDTH, GFX_HEIGHT);
+        TEST_ASSERT_EQUAL_INT(GFX_WIDTH / 2, c->raster.width);
+        TEST_ASSERT_EQUAL_INT(GFX_HEIGHT / 4, c->raster.height);
+        TEST_ASSERT_TRUE(raster_fits_half_picture(&c->raster));
+        raster_upscale(&c->raster, fx.held, GFX_WIDTH / 2, GFX_HEIGHT / 2);
+        TEST_ASSERT_TRUE(scene_compose(0, quarter, &target));
+        gfx_expand_frame();
+        for (int y = 0; y < GFX_HEIGHT; y++) {
+            gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
+            for (int x = 0; x < GFX_WIDTH; x++) {
+                TEST_ASSERT_EQUAL_HEX16(fx.held[(y / 2) * (GFX_WIDTH / 2) + x / 2], fx.pixels[y * GFX_WIDTH + x]);
+            }
+        }
+    }
+    const resolution_step_t uneven = {GFX_WIDTH / 2, 179};
+    const resolution_config_t one = resolution_config(&uneven, 1, 1, INT32_MAX);
+    render_context_set_dynamic_resolution(c, &one, NULL, 0);
+    scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
+    TEST_ASSERT_EQUAL_INT(uneven.height / 2, c->raster.height);
+    TEST_ASSERT_FALSE(raster_fits_half_picture(&c->raster));
+    c->raster.present = CAMERA_PRESENT_NEAREST;
+    raster_upscale(&c->raster, fx.held, GFX_WIDTH, GFX_HEIGHT);
+    c->raster.present = CAMERA_PRESENT_SCANLINE;
+    target.half_pixels[0] = SENTINEL;
+    TEST_ASSERT_FALSE(scene_compose(0, 0, &target));
+    TEST_ASSERT_EQUAL_HEX16(SENTINEL, target.half_pixels[0]);
+    TEST_ASSERT_EQUAL_MEMORY(fx.held, target.pixels, GFX_FRAMEBUFFER_BYTES);
+}
+
+static void
+assert_composed_scanlines(render_context_t* context, int quarter, camera_present_t present) {
+    scene_render(0, quarter, GFX_WIDTH, GFX_HEIGHT);
+    raster_t* raster = &context->raster;
+    memset(raster_depth(raster), 0, sizeof(uint16_t) * raster->width * raster->height);
+    const scene_target_t target = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
+    const bool half = scene_compose(0, quarter, &target);
+    const resolution_step_t size = raster_compose_size(raster);
+    const int run = size.height / raster->height;
+    TEST_ASSERT_EQUAL_INT(0, run % 2);
+    const uint16_t* pixels = half ? target.half_pixels : target.pixels;
+    const uint16_t bright = pixels[0];
+    TEST_ASSERT_EQUAL_HEX16(raster->clear, bright);
+    for (int y = 0; y < size.height; y++) {
+        const bool dark = y % run >= run / 2;
+        for (int x = 0; x < size.width; x++) {
+            const uint16_t pixel = pixels[y * size.width + x];
+            if (present == CAMERA_PRESENT_SCANLINE && dark) {
+                TEST_ASSERT_TRUE(gfx_color_swap(pixel) < gfx_color_swap(bright));
+                TEST_ASSERT_EQUAL_HEX16(gfx_color_scale(bright, UPSCALE_SCANLINE_KEEP), pixel);
+            } else {
+                TEST_ASSERT_EQUAL_HEX16(bright, pixel);
+            }
+        }
+    }
+}
+
+static void
+test_camera_present_scanline_and_double_compose_both_quarters(void) {
+    expanded_fixture();
+    render_context_t* context = render_context_main();
+    render_context_set_scale(context, RENDER_CONTEXT_DEFAULT_SCALE_PERCENT);
+    for (int quarter = 0; quarter <= 1; quarter++) {
+        for (camera_present_t present = CAMERA_PRESENT_SCANLINE; present <= CAMERA_PRESENT_DOUBLE; present++) {
+            TEST_ASSERT_TRUE(
+                scene_camera_set_present(scene_loaded_at(0), scene_find(scene_loaded_at(0), "camera"), present));
+            assert_composed_scanlines(context, quarter, present);
+        }
+    }
+}
+
+static void
+test_camera_present_default_setter_and_dynamic_size(void) {
+    expanded_fixture();
+    scene_t* scene = scene_loaded_at(0);
+    const scene_entity_t camera = scene_find(scene, "camera");
+    TEST_ASSERT_EQUAL_INT(CAMERA_PRESENT_NEAREST, scene_camera_lens(scene, NULL)->present);
+    TEST_ASSERT_FALSE(scene_camera_set_present(scene, scene_find(scene, "red"), CAMERA_PRESENT_SCANLINE));
+    TEST_ASSERT_FALSE(scene_camera_set_present(scene, SCENE_ENTITY_NONE, CAMERA_PRESENT_SCANLINE));
+    TEST_ASSERT_TRUE(scene_camera_set_present(scene, camera, CAMERA_PRESENT_SCANLINE));
+    assert_composed_scanlines(render_context_main(), 0, CAMERA_PRESENT_SCANLINE);
+    const resolution_step_t step = {GFX_WIDTH, GFX_HEIGHT};
+    const resolution_config_t config = resolution_config(&step, 1, 1, INT32_MAX);
+    render_context_set_dynamic_resolution(render_context_main(), &config, NULL, 0);
+    assert_composed_scanlines(render_context_main(), 0, CAMERA_PRESENT_SCANLINE);
+}
+
+static void
 test_non_half_compose_upscales_to_the_full_destination(void) {
     expanded_fixture();
     render_context_set_scale(render_context_main(), 75);
@@ -2445,7 +2543,7 @@ test_a_camera_view_stands_at_its_pose_looking_down_the_rotated_plus_z(void) {
     transformf_set_position(&pose, (vec3f_t){3.0F, 2.0F, 4.0F});
     transformf_look_at(&pose, (vec3f_t){0.0F, 1.0F, 0.0F}, (vec3f_t){0.0F, 1.0F, 0.0F});
     transformf_set_scale(&pose, (vec3f_t){2.0F, 3.0F, 4.0F});
-    const camera_t camera = {1.0F, 1.0F};
+    const camera_t camera = {.half_fov_short_tan = 1.0F, .near_z = 1.0F};
     const render_view_t view = camera_view(&camera, &pose, (viewport_t){SIZE, SIZE, 0});
     const vec3f_t ahead = quatf_rotate(pose.rotation, (vec3f_t){0.0F, 0.0F, 1.0F});
     TEST_ASSERT_TRUE(vec3f_equal(pose.position, view.position));
@@ -3195,6 +3293,9 @@ run_scene_suite(void) {
     RUN_TEST(test_expanded_frame_lifecycle_and_raw_draw_guard);
     RUN_TEST(test_expanded_overlay_resets_and_restores_clip);
     RUN_TEST(test_ui_replay_over_expanded_scene_matches_full_frame);
+    RUN_TEST(test_camera_present_composes_half_picture_and_uneven_fallback);
+    RUN_TEST(test_camera_present_scanline_and_double_compose_both_quarters);
+    RUN_TEST(test_camera_present_default_setter_and_dynamic_size);
     RUN_TEST(test_non_half_compose_upscales_to_the_full_destination);
     RUN_TEST(test_failed_half_allocation_keeps_full_upscale_unexpanded);
     RUN_TEST(test_expanded_frame_without_ui_does_not_replay_the_previous_hud);

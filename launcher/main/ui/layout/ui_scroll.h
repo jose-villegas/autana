@@ -50,6 +50,11 @@ ui_scroll_view_config_t ui_scroll_view_default(void);
  * ui_begin_screen() just opened. */
 int ui_scroll_view_begin(mu_Context* ctx, const char* title, int opt, ui_scroll_view_config_t config, uint32_t dt_ms);
 
+/* `config`'s axis lock and momentum step, applied to the window just opened:
+ * what ui_scroll_view_begin() does after ui_begin_screen(), for a window
+ * opened another way. */
+void ui_scroll_view_step(mu_Context* ctx, ui_scroll_view_config_t config, uint32_t dt_ms);
+
 /* Closes the window ui_scroll_view_begin() opened. */
 void ui_scroll_view_end(mu_Context* ctx);
 

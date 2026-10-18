@@ -426,6 +426,20 @@ scene_camera_lens(const scene_t* scene, const char* camera) {
     return index < 0 ? NULL : &scene->cameras[index].lens;
 }
 
+bool
+scene_camera_set_present(scene_t* scene, scene_entity_t camera, camera_present_t present) {
+    if (scene == NULL || present < CAMERA_PRESENT_NEAREST || present > CAMERA_PRESENT_DOUBLE) {
+        return false;
+    }
+    for (int i = 0; i < scene->asset.camera_count; i++) {
+        if (scene->cameras[i].entity == camera) {
+            scene->cameras[i].lens.present = present;
+            return true;
+        }
+    }
+    return false;
+}
+
 const scene_transform_t*
 scene_entity_transform(const scene_t* scene, scene_entity_t entity) {
     assert(entity < scene->asset.entity_count);

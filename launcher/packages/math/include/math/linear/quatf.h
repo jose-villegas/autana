@@ -7,9 +7,9 @@
 #include <float.h>
 #include <stddef.h>
 
-#include "math/linear/math_const.h"
 #include "math/linear/quat_template.h"
 #include "math/linear/vec3f.h"
+#include "math/scalar/math_const.h"
 #include "math/scalar/mathf.h"
 
 MATH_DEFINE_QUAT(quatf, vec3f, float, mathf)
@@ -17,7 +17,7 @@ MATH_DEFINE_QUAT_NORMALIZE(quatf, vec3f, float, mathf)
 
 /* Shortest-arc interpolation, t in 0..1; b is negated when a . b < 0, so q and
  * -q give one path. Nearly parallel inputs take nlerp; the rest Eberly's series
- * in cos - 1 (docs/Citations.md#71), on half the arc past a 120-degree
+ * in cos - 1 (Eberly 2011), on half the arc past a 120-degree
  * rotation, summed to float precision. */
 static inline quatf_t
 quatf_slerp(quatf_t a, quatf_t b, float t) {

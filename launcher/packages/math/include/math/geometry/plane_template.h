@@ -1,7 +1,7 @@
 /*
  * plane_template: oriented planes for one number type; see docs/math/README.md
  * for macro arguments. Inside means dot(normal, point) + d >= 0.
- * Frustum extraction follows Gribb and Hartmann<sup>[[77]](../../../../../../docs/Citations.md#77)</sup>:
+ * Frustum extraction follows Gribb and Hartmann 2001:
  * z supplies the w row, and the screen rectangle sets the sides. The map is affine.
  */
 #pragma once
