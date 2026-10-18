@@ -8,7 +8,7 @@
 #include "unity.h"
 
 #include "input/gravity.h"
-#include "input/imu_rate.h"
+#include "input/imu.h"
 #include "math/linear/math_const.h"
 #include "math/linear/vec_convert.h"
 #include "math/scalar/units.h"
@@ -60,94 +60,12 @@ angle_error(vec3f_t expected, vec3f_t actual) {
     return atan2f(sqrtf(vec3f_dot(cross, cross)), vec3f_dot(expected, actual)) * (2.0F * QUARTER_TURN_DEG) / MATH_PI;
 }
 
-#define RATE_PERCENT_SCALE   100U
-#define RATE_SLOW_PCT        8U
-#define RATE_OUTSIDE_PCT     (IMU_RATE_BOUND_PCT + IMU_RATE_BOUND_PCT / 2U)
-#define RATE_TRUE_US         (IMU_SAMPLE_US * RATE_PERCENT_SCALE / (RATE_PERCENT_SCALE - RATE_SLOW_PCT))
-#define RATE_QUANTISATION_US (RATE_TRUE_US * RATE_TRUE_US / IMU_RATE_WINDOW_US + 1U)
-
-static uint32_t
-estimate_interval(imu_rate_t* rate, uint32_t interval_us, int64_t start_us) {
-    uint32_t previous = 0;
-    uint32_t measured = imu_rate_update(rate, 0, start_us, false);
-    for (uint32_t elapsed = FRAME_US; elapsed <= IMU_RATE_WINDOW_US + FRAME_US; elapsed += FRAME_US) {
-        const uint32_t total = elapsed / interval_us;
-        measured = imu_rate_update(rate, (int)(total - previous), start_us + elapsed, false);
-        previous = total;
-    }
-    return measured;
-}
-
-static void
-test_rate_measures_slow_and_nominal_streams(void) {
-    imu_rate_t rate = {0};
-    const uint32_t measured = estimate_interval(&rate, RATE_TRUE_US, 0);
-    TEST_ASSERT_UINT32_WITHIN(RATE_QUANTISATION_US, RATE_TRUE_US, measured);
-    rate = (imu_rate_t){0};
-    TEST_ASSERT_UINT32_WITHIN(RATE_QUANTISATION_US, IMU_SAMPLE_US, estimate_interval(&rate, IMU_SAMPLE_US, 0));
-    printf("rate: true_us=%u measured_us=%u quantisation_us=%u\n", (unsigned)RATE_TRUE_US, (unsigned)measured,
-           (unsigned)RATE_QUANTISATION_US);
-}
-
-static void
-test_rate_rejects_outlier_and_discards_gap(void) {
-    imu_rate_t rate = {0};
-    const uint32_t outside_us = IMU_SAMPLE_US * (RATE_PERCENT_SCALE + RATE_OUTSIDE_PCT) / RATE_PERCENT_SCALE;
-    TEST_ASSERT_EQUAL_UINT32(IMU_SAMPLE_US, estimate_interval(&rate, outside_us, 0));
-    rate = (imu_rate_t){0};
-    imu_rate_update(&rate, 0, 0, false);
-    imu_rate_update(&rate, (int)(IMU_RATE_WINDOW_US / RATE_TRUE_US), IMU_RATE_WINDOW_US - FRAME_US, false);
-    TEST_ASSERT_EQUAL_UINT32(IMU_SAMPLE_US, imu_rate_update(&rate, 0, IMU_RATE_WINDOW_US, true));
-    TEST_ASSERT_EQUAL_UINT32(IMU_SAMPLE_US, imu_rate_update(&rate, 1, IMU_RATE_WINDOW_US + FRAME_US, false));
-    TEST_ASSERT_UINT32_WITHIN(RATE_QUANTISATION_US, RATE_TRUE_US,
-                              estimate_interval(&rate, RATE_TRUE_US, IMU_RATE_WINDOW_US + FRAME_US));
-    const uint32_t measured = rate.sample_us;
-    TEST_ASSERT_EQUAL_UINT32(measured, imu_rate_update(&rate, -1, IMU_RATE_WINDOW_US * 3U, false));
-    TEST_ASSERT_FALSE(rate.active);
-}
-
-static void
-test_measured_interval_corrects_slow_quarter_turn(void) {
-    fixture();
-    imu_rate_t rate = {0};
-    input_motion_batch_t* batch = malloc(sizeof *batch);
-    TEST_ASSERT_NOT_NULL(batch);
-    *batch = (input_motion_batch_t){.sample_us = estimate_interval(&rate, RATE_TRUE_US, 0)};
-    const input_motion_t initial = {.acceleration = {0, 0, -INPUT_ACCEL_ONE_G}};
-    gravity_update(&g, &initial, 0);
-    gravity_t nominal = g;
-    const uint32_t samples = TURN_MS * MATH_US_PER_MS / RATE_TRUE_US;
-    const float turn_dps = QUARTER_TURN_DEG * MATH_US_PER_S / (float)(samples * RATE_TRUE_US);
-    uint32_t remaining = samples;
-    while (remaining > 0) {
-        batch->count = (int)(remaining < INPUT_MOTION_SAMPLES ? remaining : INPUT_MOTION_SAMPLES);
-        for (int i = 0; i < batch->count; i++) {
-            batch->samples[i] = sample((vec3f_t){0}, (vec3f_t){turn_dps, 0, 0});
-        }
-        const uint32_t measured_us = batch->sample_us;
-        gravity_update_batch(&g, batch);
-        batch->sample_us = INPUT_MOTION_SAMPLE_US;
-        gravity_update_batch(&nominal, batch);
-        batch->sample_us = measured_us;
-        remaining -= (uint32_t)batch->count;
-    }
-    free(batch);
-    const vec3f_t target = {0, -1, 0};
-    const float measured_error = angle_error(target, gravity_down(&g));
-    const float nominal_error = angle_error(target, gravity_down(&nominal));
-    printf("rate turn: measured_error_deg=%.3f nominal_error_deg=%.3f\n", (double)measured_error,
-           (double)nominal_error);
-    TEST_ASSERT_TRUE(nominal_error > ANGLE_TOLERANCE_DEG);
-    TEST_ASSERT_FLOAT_WITHIN(ANGLE_TOLERANCE_DEG, QUARTER_TURN_DEG * RATE_SLOW_PCT / RATE_PERCENT_SCALE, nominal_error);
-    TEST_ASSERT_TRUE(measured_error < ANGLE_TOLERANCE_DEG);
-}
-
 static void
 test_fast_turn_batch_retains_between_frame_rotation(void) {
     fixture();
     input_motion_batch_t* batch = malloc(sizeof *batch);
     TEST_ASSERT_NOT_NULL(batch);
-    *batch = (input_motion_batch_t){.sample_us = INPUT_MOTION_SAMPLE_US};
+    *batch = (input_motion_batch_t){};
     gravity_t frame;
     gravity_reset(&frame);
     const input_motion_t initial = {.acceleration = {0, 0, -INPUT_ACCEL_ONE_G}};
@@ -193,7 +111,7 @@ test_fifo_gap_soft_restarts_and_reconverges(void) {
     TEST_ASSERT_NOT_NULL(batch);
     const input_motion_t initial = {.acceleration = {0, 0, -INPUT_ACCEL_ONE_G}};
     gravity_update(&g, &initial, 0);
-    *batch = (input_motion_batch_t){.gap = true, .sample_us = INPUT_MOTION_SAMPLE_US};
+    *batch = (input_motion_batch_t){.gap = true};
     gravity_update_batch(&g, batch);
     const bool restarted = g.recovering && g.distrust_us == GRAVITY_RECOVER_US;
     batch->count = IMU_FIFO_SAMPLES;
@@ -226,7 +144,7 @@ test_gap_full_batch_changes_hidden_turn_recovery(void) {
     gravity_t clean = g;
     input_motion_batch_t* batch = malloc(sizeof *batch);
     TEST_ASSERT_NOT_NULL(batch);
-    *batch = (input_motion_batch_t){.count = IMU_FIFO_SAMPLES, .sample_us = IMU_SAMPLE_US};
+    *batch = (input_motion_batch_t){.count = IMU_FIFO_SAMPLES};
     for (int i = 0; i < batch->count; i++) {
         batch->samples[i] = sample((vec3f_t){0, 0, -1}, (vec3f_t){0, 0, GRAVITY_STILL_DPS * 2.0F});
     }
@@ -243,8 +161,7 @@ test_gyro_only_batch_needs_every_sample(void) {
     fixture();
     input_motion_batch_t* batch = malloc(sizeof *batch);
     TEST_ASSERT_NOT_NULL(batch);
-    *batch =
-        (input_motion_batch_t){.count = (int)(TURN_MS * MATH_US_PER_MS / IMU_SAMPLE_US), .sample_us = IMU_SAMPLE_US};
+    *batch = (input_motion_batch_t){.count = (int)(TURN_MS * MATH_US_PER_MS / IMU_SAMPLE_US)};
     const float rate = QUARTER_TURN_DEG * MATH_US_PER_S / (float)(batch->count * IMU_SAMPLE_US);
     const input_motion_t initial = sample((vec3f_t){0, 0, -1}, (vec3f_t){0});
     gravity_update(&g, &initial, 0);
@@ -266,21 +183,18 @@ test_gyro_only_batch_needs_every_sample(void) {
 }
 
 static void
-test_lost_samples_advance_at_produced_rate(void) {
+test_lost_samples_advance_at_datasheet_rate(void) {
     fixture();
 
     enum { LOST_PER_DRAIN = 2, DELIVERED_PER_DRAIN = 8, DRAINS = 5 };
 
-    imu_rate_t rate = {0};
     input_motion_batch_t* batch = malloc(sizeof *batch);
     TEST_ASSERT_NOT_NULL(batch);
     const uint32_t produced_per_drain = DELIVERED_PER_DRAIN + LOST_PER_DRAIN;
     const uint32_t drain_us = produced_per_drain * IMU_SAMPLE_US;
-    imu_rate_update(&rate, 0, 0, false);
-    for (uint32_t elapsed = drain_us; elapsed <= IMU_RATE_WINDOW_US + drain_us; elapsed += drain_us) {
-        imu_rate_update(&rate, (int)produced_per_drain, elapsed, false);
-    }
-    *batch = (input_motion_batch_t){.count = DELIVERED_PER_DRAIN, .lost = LOST_PER_DRAIN, .sample_us = rate.sample_us};
+    uint32_t remainder_us = 0;
+    const int lost = imu_fifo_lost(LOST_PER_DRAIN * IMU_SAMPLE_US, &remainder_us, false);
+    *batch = (input_motion_batch_t){.count = DELIVERED_PER_DRAIN, .lost = lost};
     const float turn_rate = QUARTER_TURN_DEG * MATH_US_PER_S / (float)(DRAINS * drain_us);
     const input_motion_t initial = sample((vec3f_t){0, 0, -1}, (vec3f_t){0});
     gravity_update(&g, &initial, 0);
@@ -293,7 +207,7 @@ test_lost_samples_advance_at_produced_rate(void) {
         gravity_update_batch(&g, batch);
         batch->lost = 0;
         gravity_update_batch(&unadvanced, batch);
-        batch->lost = LOST_PER_DRAIN;
+        batch->lost = lost;
     }
     free(batch);
     const float error = angle_error((vec3f_t){0, -1, 0}, g.down);
@@ -308,7 +222,7 @@ test_lost_prediction_clamps_without_acceleration_correction(void) {
     fixture();
     input_motion_batch_t* batch = malloc(sizeof *batch);
     TEST_ASSERT_NOT_NULL(batch);
-    *batch = (input_motion_batch_t){.count = 1, .lost = IMU_FIFO_SAMPLES, .sample_us = IMU_SAMPLE_US};
+    *batch = (input_motion_batch_t){.count = 1, .lost = IMU_FIFO_SAMPLES};
     const input_motion_t initial = sample((vec3f_t){0, 0, -1}, (vec3f_t){0});
     gravity_update(&g, &initial, 0);
     batch->samples[0] = sample((vec3f_t){0}, (vec3f_t){FAST_TURN_DPS, 0, 0});
@@ -335,7 +249,7 @@ test_lost_time_uses_previous_rotation_before_delivered_samples(void) {
     const gravity_t start = g;
     input_motion_batch_t* batch = malloc(sizeof *batch);
     TEST_ASSERT_NOT_NULL(batch);
-    *batch = (input_motion_batch_t){.lost = 1, .sample_us = IMU_SAMPLE_US};
+    *batch = (input_motion_batch_t){.lost = 1};
     gravity_update_batch(&g, batch);
     const float radians = FAST_TURN_DPS * IMU_SAMPLE_US / MATH_US_PER_S * MATH_PI / (2.0F * QUARTER_TURN_DEG);
     const vec3f_t target = {0, -sinf(radians), -cosf(radians)};
@@ -350,51 +264,31 @@ test_lost_time_uses_previous_rotation_before_delivered_samples(void) {
 }
 
 static void
-test_timestamp_wrap_counts_produced_samples(void) {
-    TEST_ASSERT_EQUAL_UINT32(0, imu_timestamp_delta(IMU_TIMESTAMP_MASK, IMU_TIMESTAMP_MASK));
-    TEST_ASSERT_EQUAL_UINT32(1, imu_timestamp_delta(0, IMU_TIMESTAMP_MASK));
-    TEST_ASSERT_EQUAL_UINT32(
-        IMU_FIFO_SAMPLES, imu_timestamp_delta(IMU_FIFO_SAMPLES / 2U, IMU_TIMESTAMP_MASK - IMU_FIFO_SAMPLES / 2U + 1U));
-    TEST_ASSERT_EQUAL_UINT32(IMU_TIMESTAMP_MASK, imu_timestamp_delta(IMU_TIMESTAMP_MASK - 1U, IMU_TIMESTAMP_MASK));
+test_fifo_lock_loss_carries_fractional_time(void) {
+    uint32_t remainder_us = 0;
+    uint64_t total_us = 0;
+    uint32_t total_lost = 0;
+    const uint32_t drains = IMU_FIFO_SAMPLES * IMU_FIFO_SAMPLES;
+    for (uint32_t i = 0; i < drains; i++) {
+        const uint32_t locked_us = IMU_SAMPLE_US / 2U + i % IMU_SAMPLE_US;
+        total_us += locked_us;
+        total_lost += (uint32_t)imu_fifo_lost(locked_us, &remainder_us, false);
+        TEST_ASSERT_EQUAL_UINT64(total_us / IMU_SAMPLE_US, total_lost);
+        TEST_ASSERT_EQUAL_UINT32(total_us % IMU_SAMPLE_US, remainder_us);
+    }
 }
 
 static void
-test_rate_exact_bounds_and_retained_estimate(void) {
-    const uint32_t low =
-        (IMU_SAMPLE_US * (RATE_PERCENT_SCALE - IMU_RATE_BOUND_PCT) + RATE_PERCENT_SCALE - 1U) / RATE_PERCENT_SCALE;
-    const uint32_t high = IMU_SAMPLE_US * (RATE_PERCENT_SCALE + IMU_RATE_BOUND_PCT) / RATE_PERCENT_SCALE;
-    const uint32_t intervals[] = {low, high, low - 1U, high + 1U};
-    for (size_t i = 0; i < sizeof intervals / sizeof intervals[0]; i++) {
-        imu_rate_t rate = {0};
-        const uint32_t accepted = estimate_interval(&rate, RATE_TRUE_US, 0);
-        const uint32_t samples = (IMU_RATE_WINDOW_US + intervals[i] - 1U) / intervals[i];
-        const int64_t end = (int64_t)samples * intervals[i];
-        imu_rate_update(&rate, 0, 0, false);
-        TEST_ASSERT_EQUAL_UINT32(i < 2 ? intervals[i] : accepted, imu_rate_update(&rate, (int)samples, end, false));
-    }
-    imu_rate_t rate = {0};
-    const uint32_t accepted = estimate_interval(&rate, RATE_TRUE_US, 0);
-    imu_rate_update(&rate, 0, 0, false);
-    TEST_ASSERT_EQUAL_UINT32(accepted, imu_rate_update(&rate, 0, IMU_RATE_WINDOW_US, false));
-    TEST_ASSERT_EQUAL_INT64(IMU_RATE_WINDOW_US, rate.start_us);
-    TEST_ASSERT_EQUAL_UINT32(accepted, imu_rate_update(&rate, IMU_FIFO_SAMPLES, IMU_RATE_WINDOW_US + FRAME_US, true));
-    TEST_ASSERT_FALSE(rate.active);
-    imu_rate_update(&rate, 0, 0, false);
-    imu_rate_update(&rate, IMU_FIFO_SAMPLES, FRAME_US, false);
-    imu_rate_update(&rate, IMU_FIFO_SAMPLES, FRAME_US, false);
-    TEST_ASSERT_EQUAL_UINT32(0, rate.samples);
-    TEST_ASSERT_EQUAL_INT64(FRAME_US, rate.start_us);
-    imu_rate_update(&rate, IMU_FIFO_SAMPLES, FRAME_US * 2U, false);
-    imu_rate_update(&rate, IMU_FIFO_SAMPLES, FRAME_US + 1U, false);
-    TEST_ASSERT_EQUAL_UINT32(0, rate.samples);
-    TEST_ASSERT_EQUAL_INT64(FRAME_US + 1U, rate.start_us);
-    imu_rate_update(&rate, 0, 0, false);
-    const int count = (int)(IMU_RATE_WINDOW_US / IMU_SAMPLE_US);
-    imu_rate_update(&rate, count - 1, IMU_RATE_WINDOW_US - 1U, false);
-    TEST_ASSERT_EQUAL_UINT32(accepted, rate.sample_us);
-    const uint32_t expected = (IMU_RATE_WINDOW_US + (uint32_t)count / 2U) / (uint32_t)count;
-    TEST_ASSERT_EQUAL_UINT32(expected, imu_rate_update(&rate, 1, IMU_RATE_WINDOW_US, false));
-    TEST_ASSERT_EQUAL_INT64(IMU_RATE_WINDOW_US, rate.start_us);
+test_fifo_lock_loss_gap_resets_remainder(void) {
+    uint32_t remainder_us = 0;
+    const uint32_t fractional_us = IMU_SAMPLE_US - 1U;
+    TEST_ASSERT_EQUAL_INT(0, imu_fifo_lost(fractional_us, &remainder_us, false));
+    TEST_ASSERT_EQUAL_UINT32(fractional_us, remainder_us);
+    TEST_ASSERT_EQUAL_INT(0, imu_fifo_lost(IMU_SAMPLE_US, &remainder_us, true));
+    TEST_ASSERT_EQUAL_UINT32(0, remainder_us);
+    TEST_ASSERT_EQUAL_INT(0, imu_fifo_lost(fractional_us, &remainder_us, false));
+    TEST_ASSERT_EQUAL_INT(1, imu_fifo_lost(1, &remainder_us, false));
+    TEST_ASSERT_EQUAL_UINT32(0, remainder_us);
 }
 
 static void
@@ -847,16 +741,13 @@ test_gyro_overrange_boundary(void) {
 
 void
 run_gravity_suite(void) {
+    RUN_TEST(test_fifo_lock_loss_carries_fractional_time);
+    RUN_TEST(test_fifo_lock_loss_gap_resets_remainder);
     RUN_TEST(test_lost_prediction_clamps_without_acceleration_correction);
     RUN_TEST(test_lost_time_uses_previous_rotation_before_delivered_samples);
-    RUN_TEST(test_timestamp_wrap_counts_produced_samples);
     RUN_TEST(test_gap_full_batch_changes_hidden_turn_recovery);
     RUN_TEST(test_gyro_only_batch_needs_every_sample);
-    RUN_TEST(test_lost_samples_advance_at_produced_rate);
-    RUN_TEST(test_rate_exact_bounds_and_retained_estimate);
-    RUN_TEST(test_rate_measures_slow_and_nominal_streams);
-    RUN_TEST(test_rate_rejects_outlier_and_discards_gap);
-    RUN_TEST(test_measured_interval_corrects_slow_quarter_turn);
+    RUN_TEST(test_lost_samples_advance_at_datasheet_rate);
     RUN_TEST(test_leaky_recovery_streams);
     RUN_TEST(test_recovery_full_gain_and_exit);
     RUN_TEST(test_gyro_overrange_boundary);

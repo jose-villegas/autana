@@ -25,9 +25,22 @@
 #define IMU_SAMPLE_US      ((uint32_t)((MATH_US_PER_S / IMU_ODR_HZ) + 0.5))
 #define IMU_FIFO_SAMPLES   128
 
-/* Oldest first; produced and lost refer to pre-request snapshots. Overflow marks a gap.
- * snapshot_us is the host time of the counter snapshot. Returns -1 on a bus error. */
-int imu_read_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* produced, int* lost, int64_t* snapshot_us, bool* overflowed);
+/* Section 8.7, docs/Citations.md#78: read mode discards arrivals, so loss is
+ * locked time / IMU_SAMPLE_US. Carry fractional time across drains; gaps break continuity. */
+static inline int
+imu_fifo_lost(uint64_t locked_us, uint32_t* remainder_us, bool gap) {
+    if (gap) {
+        *remainder_us = 0;
+        return 0;
+    }
+    const uint64_t total_us = locked_us + *remainder_us;
+    *remainder_us = (uint32_t)(total_us % IMU_SAMPLE_US);
+    return (int)(total_us / IMU_SAMPLE_US);
+}
+
+/* Oldest first; lost covers the preceding drain's read mode. Overflow marks a gap.
+ * Returns -1 on a bus error. */
+int imu_read_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed);
 
 /* Configures and starts the sensor. Safe to call more than once.
  * Returns false if the chip does not answer or identifies as something else. */
