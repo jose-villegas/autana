@@ -51,11 +51,12 @@
 static const char* TAG = "shell";
 
 /* A stall must not reach an app as one long step. */
-#define FRAME_DT_MAX_MS        250
-#define SHELL_REPORT_WINDOW_US 1500000
+#define FRAME_DT_MAX_MS 250
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* Report throughput on TIMER, not frames. CONFIG_LAUNCHER_DEVELOPMENT only */
+#define SHELL_REPORT_WINDOW_US 1500000
+
 static __attribute__((noinline)) void
 report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
     (*frames)++;
