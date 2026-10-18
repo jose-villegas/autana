@@ -3,7 +3,7 @@
 # The demo scene's images for docs/images/, run by
 # launcher/tools/render/render_doc_images.sh.
 #
-#   doc_images_demo.sh <out-tree> <work-dir> SCENE.scene.toml OBJECT [--meshlets-only]
+#   doc_images_demo.sh <out-tree> <work-dir> SCENE.scene.toml OBJECT [--meshlets-only|--small-fill-only]
 #
 # OBJECT is the full renderer; the scene must also place OBJECT_lite,
 # OBJECT_flat, OBJECT_fitted, OBJECT_fitted_full and OBJECT_flat_fitted.
@@ -19,8 +19,8 @@ set -eu
 . scripts/lib/run.sh
 . launcher/tools/render/gif_from_avi.sh
 
-[ "$#" = 4 ] || { [ "$#" = 5 ] && [ "$5" = --meshlets-only ]; } || {
-    echo "$0: needs OUT WORK SCENE OBJECT [--meshlets-only]" >&2
+[ "$#" = 4 ] || { [ "$#" = 5 ] && { [ "$5" = --meshlets-only ] || [ "$5" = --small-fill-only ]; }; } || {
+    echo "$0: needs OUT WORK SCENE OBJECT [--meshlets-only|--small-fill-only]" >&2
     exit 2
 }
 SCENE=$3
@@ -34,6 +34,54 @@ run mkdir -p "$W" "$RENDER"
 build=$(run sh launcher/tools/render/scene_viewer.sh "$SCENE" --build-only -o "$W")
 HOST=${build#built }
 
+small_fill_images() {
+    run "$HOST" --scene "$ID" --object "${FULL}_fitted_full" --frames 1 --tunables \
+        -o "$W/small-fill-tunables.bmp" 2> "$W/small-fill-tunables.log"
+    for look in defaults flat8 gate dither bake; do
+        set -- --object "${FULL}_fitted_full"
+        case "$look" in
+            flat8) set -- "$@" --set r3d_span.small_max_side=8 ;;
+            gate) set -- "$@" --set r3d_span.small_max_side=8 --set r3d_span.small_flat_spread=4 \
+                --set r3d_span.small_flat_spread_near=255 ;;
+            dither) set -- "$@" --set r3d_span.small_max_side=8 --set r3d_span.small_dither=2 \
+                --set r3d_span.small_dither_ramp=1 ;;
+            bake) set -- --object "${FULL}_flat" ;;
+        esac
+        run "$HOST" --scene "$ID" --quarter 1 --frames 30 --dt 100 "$@" \
+            -o "$W/small-fill-$look.bmp" --video "$W/small-fill-$look.avi" 2> "$W/small-fill-$look.log"
+    done
+    if cmp -s "$W/small-fill-defaults.bmp" "$W/small-fill-flat8.bmp"; then
+        echo "small-fill: --set did not change the render" >&2
+        exit 1
+    fi
+    run "$PYTHON" launcher/tools/render/render_temporal.py --out "$W/small-fill-range.mp4" \
+        --video-column "defaults: side=4" "$W/small-fill-defaults.avi" \
+        --video-column "flat: side=8" "$W/small-fill-flat8.avi" \
+        --video-column "side=8 gate=4 near=255" "$W/small-fill-gate.avi" \
+        --video-column "side=8 dither=2 ramp=1" "$W/small-fill-dither.avi" \
+        --video-column "flat bake" "$W/small-fill-bake.avi"
+    gif_from_avi "$W/small-fill-range.mp4" "$RENDER/${ID}-small-fill-range.gif" "fps=8,scale=1600:-1:flags=lanczos" \
+        "max_colors=128:stats_mode=diff"
+    for look in defaults flat8 gate dither bake; do
+        run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/small-fill-$look.mp4" \
+            --video "$W/small-fill-defaults.avi" "$W/small-fill-$look.avi" \
+            --label-a defaults --label-b "$look" --csv "$W/small-fill-$look.frames.csv" \
+            > "$W/small-fill-$look-compare.log"
+        run "$PYTHON" launcher/tools/render/render_temporal.py \
+            --video "$W/small-fill-defaults.avi" "$W/small-fill-$look.avi" \
+            --csv "$W/small-fill-$look.frames.csv" >> "$W/small-fill-$look-compare.log"
+    done
+    gif_from_avi "$W/small-fill-flat8.mp4" "$RENDER/${ID}-small-fill-diff.gif" "fps=8,scale=1200:-1:flags=lanczos" \
+        "max_colors=128:stats_mode=diff"
+    run "$PYTHON" launcher/tools/render/doc_tables.py "$W" "$TABLES" "$ID" "$FULL" \
+        --small-fill-data docs/render/data/small-fill
+}
+
+if [ "${5:-}" = --small-fill-only ]; then
+    small_fill_images
+    exit 0
+fi
+
 for object in "$FULL" "${FULL}_lite" "${FULL}_fitted"; do
     run "$HOST" --quarter 1 --frames 30 --dt 100 -o "$W/meshlets-$object.bmp" \
         --scene "$ID" --object "$object" --view meshlets 2> "$W/meshlets-$object.log"
@@ -43,6 +91,7 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/${ID}-meshl
     --still-column lite "$W/meshlets-${FULL}_lite.bmp" \
     --still-column fitted "$W/meshlets-${FULL}_fitted.bmp"
 [ "${5:-}" != --meshlets-only ] || exit 0
+small_fill_images
 
 # One looping flythrough per demo target and view, the same three seconds of
 # it so the GIFs compare, small enough to sit side by side in a table.

@@ -339,6 +339,74 @@ vertex range, so each span clamps its ends. A kept triangle whose planes
 stay inside their ranges at every centre of its bounding box, most of them,
 fills its spans without those clamps, which would change nothing there.
 
+### Small-fill levers
+
+Defaults keep the standard look; the flat bake is the fully flat end of this range.
+The live scene viewer accepts repeatable `--set owner.name=value` options.
+
+<!-- generated: small-fill-levers sha256=6c7e5250c4e072ea74ef2c06cdffefe16510db054ff9651f08a180a8ae9f182b -->
+| Axis | Tunable | Range | Default | Effect |
+|---|---|---|---|---|
+| size | `r3d_span.small_max_side` | 0..16 | 4 | Bounding-box centres per side eligible for flat fill; 0 disables it |
+| gate | `r3d_span.small_flat_spread` | 0..255 | 255 | Maximum RGB565 channel spread at the largest eligible side |
+| gate | `r3d_span.small_flat_spread_near` | 0..255 | 255 | Spread limit just above the default side; interpolated to the far gate |
+| dither | `r3d_span.small_dither` | 0..8 | 0 | Ordered edge coverage in eighths; 0 disables it |
+| dither | `r3d_span.small_dither_ramp` | 0..1 | 0 | Ramp coverage from 0 at the default side to the chosen coverage |
+| dither | `r3d_span.small_dither_cell_bits` | 1..2 | 2 | Log2 of the ordered pattern side in pixels |
+<!-- /generated: small-fill-levers -->
+
+The gate measures the largest RGB565 channel spread across the vertices.
+For sides above the default bound, its limit interpolates from the near gate
+at the first extra side to the far gate at the chosen maximum side.
+
+![Fitted full mesh: defaults, flat up to 8, gate ramp, ramped edge dither, and flat bake](../images/render/sponza-small-fill-range.gif)
+
+Panels share the camera path and timestamps. Labels state each override;
+unspecified tunables keep their defaults. The last panel uses the flat bake.
+
+![Defaults versus flat up to 8, with amplified difference](../images/render/sponza-small-fill-diff.gif)
+
+The comparison shows defaults | flat <=8 | absolute RGB difference x8.
+The temporal instrument compares changes between consecutive frames after a
+4x4 box blur of mean RGB luma: `|(B_t - B_previous) - (A_t - A_previous)|`.
+
+<!-- generated: small-fill-temporal sha256=a5f41db88999624a6d46e4a1191941a66b14426dffd3724d9d010e4ae511a8d9 -->
+| Look vs defaults | Extra frame-to-frame change (mean /255) | Blocks popping (>8/255) |
+|---|---|---|
+| Defaults | 0.000000 | 0.0000% |
+| Flat <=8 | 0.002123 | 1.1677% |
+| Gate ramp | 0.001703 | 0.8830% |
+| Dither 2, ramp 1 | 0.002281 | 1.3831% |
+| Flat bake | 0.030634 | 25.4338% |
+<!-- /generated: small-fill-temporal -->
+
+Means cover frame transitions, excluding the first frame. Blocks popping
+is the share of sliding windows above 8/255. This measures triangle-scale
+pops; ordered dither reads as noise here, so judge dither by eye.
+
+#### Board frame cost
+
+The table covers the fitted-full raster frame in the Sponza bake suite.
+It is generated from the committed [size sweep](data/small-fill/sweep48-sweep.json)
+and [look sweep](data/small-fill/s2-sweep.json), with their adjacent plans.
+
+<!-- generated: small-fill-board sha256=b7ebca44cc97c3d368b2e59978b6eebd37e855774d1ce0b2c73e542da371394b -->
+| Look (size 8 unless defaults) | Local measured frame ms | Capture | Frame vs defaults |
+|---|---|---|---|
+| Defaults | 48.320 | sweep48, point 0 | 0.00% |
+| Flat <=8 | 45.311 | sweep48, point 1 | -6.23% |
+| Gate 4, near 255 | 46.445 | s2, point 2 | -5.01% |
+| Dither 4, ramp 1 | 48.247 | s2, point 1 | -1.32% |
+| Gate + dither 4, ramp 1 | 48.438 | s2, point 3 | -0.93% |
+<!-- /generated: small-fill-board -->
+
+The sweeps use separate builds. Look-sweep ratios against its flat <=8 point
+multiply the size sweep's flat <=8/default ratio. Local times are measured;
+chained percentages estimate the change against defaults across builds.
+
+The measured dither uses coverage 4 and ramp 1; the video uses coverage 2.
+The timings therefore describe the captured settings, not that video panel.
+
 ## Memory
 
 The layer allocates nothing, and nothing a frame needs lives at file
