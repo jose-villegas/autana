@@ -64,7 +64,7 @@ imu_probe_average_read(const imu_probe_average_t* average) {
     return (input_motion_t){.acceleration = {a[0], a[1], a[2]}, .rotation = {r[0], r[1], r[2]}};
 }
 
-/* Six-position offset and sensitivity: docs/Citations.md#67.
+/* Six-position offset and sensitivity: ST AN4508.
  * Accel offset is calib.offset in Q12 counts; imu_probe_mg converts it.
  * Sensitivity is ppm (unity = IMU_PROBE_SCALE_ONE), gyro offset mdps. */
 imu_probe_fit_t
