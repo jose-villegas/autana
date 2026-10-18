@@ -1,5 +1,6 @@
 """Board transport contracts without opening a physical port."""
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -26,6 +27,31 @@ class BoardTransportTests(unittest.TestCase):
         next(fixture)
         self.assertEqual(dut.write.call_args_list[0], mock.call(console_pytest.BUILD_ID_REQUEST))
         self.assertEqual(original_expect.call_count, 5)
+        fixture.close()
+
+    def test_qemu_boot_patterns_match_a_real_boot_transcript(self):
+        transcript = (b"ESP-ROM:esp32s3-20210327\r\nBuild:Mar 27 2021\r\n"
+                      b"rst:0x1 (POWERON),boot:0x8 (SPI_FAST_FLASH_BOOT)\r\nI (12) boot: ESP-IDF\r\n"
+                      b"RESET_REASON=POWERON\r\n" + console_pytest.qemu_run.LISTENING.encode() + b"\r\n"
+                      b"BUILD_ID=host\r\nIMU_OK quarter=0 quarters=4 sample_ms=10\r\n")
+
+        consumed = [0]
+
+        def expect(patterns, **kwargs):
+            """pexpect's way: the earliest match after what earlier calls consumed."""
+            patterns = patterns if isinstance(patterns, list) else [patterns]
+            found = [match for match in (re.compile(pattern) if isinstance(pattern, bytes) else pattern
+                                         for pattern in patterns)
+                     for match in [match.search(transcript, consumed[0])] if match]
+            self.assertTrue(found, f"no pattern matched the boot transcript: {patterns!r}")
+            first = min(found, key=lambda match: match.start())
+            consumed[0] = first.end()
+            return [first.group(0)]
+
+        dut = mock.Mock(spec=["expect", "write", "qemu"])
+        dut.expect.side_effect = expect
+        fixture = console_pytest.console.__wrapped__(dut)
+        next(fixture)
         fixture.close()
 
     def test_board_boot_lines_fail_the_initial_probe(self):
