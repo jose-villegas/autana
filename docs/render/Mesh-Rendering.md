@@ -360,13 +360,19 @@ The gate measures the largest RGB565 channel spread across the vertices.
 For sides above side 4, its limit interpolates from the near gate at side 5
 to the far gate at the size limit.
 
-| Technique | Look and difference from defaults |
-|---|---|
-| Today (defaults) | ![Defaults](../images/render/sponza-small-fill-defaults.gif) |
-| Flat ≤8 | ![Flat ≤8](../images/render/sponza-small-fill-flat8.gif)<br>![Flat ≤8 vs defaults, difference x8](../images/render/sponza-small-fill-flat8-diff.gif) |
-| Flat ≤8 gate ramp | ![Gate ramp](../images/render/sponza-small-fill-gate.gif)<br>![Gate ramp vs defaults, difference x8](../images/render/sponza-small-fill-gate-diff.gif) |
-| Flat ≤8 + dither 4 ramp 1 | ![Ramped dither](../images/render/sponza-small-fill-dither.gif)<br>![Dither 4 ramp 1 vs defaults, difference x8](../images/render/sponza-small-fill-dither-diff.gif) |
-| Flat bake (fitted) | ![Flat bake](../images/render/sponza-small-fill-bake.gif)<br>![Flat bake vs defaults, difference x8](../images/render/sponza-small-fill-bake-diff.gif) |
+<table>
+<tr><th width="50%">Technique</th><th width="50%">Diff</th></tr>
+<tr><th colspan="2">Today (defaults)</th></tr>
+<tr><td width="50%"><img src="../images/render/sponza-small-fill-defaults.gif" width="100%" alt="Defaults"></td><td width="50%"></td></tr>
+<tr><th colspan="2">Flat ≤8</th></tr>
+<tr><td width="50%"><img src="../images/render/sponza-small-fill-flat8.gif" width="100%" alt="Flat ≤8"></td><td width="50%"><img src="../images/render/sponza-small-fill-flat8-diff.gif" width="100%" alt="Flat ≤8 vs defaults, difference x8"></td></tr>
+<tr><th colspan="2">Flat ≤8 gate ramp</th></tr>
+<tr><td width="50%"><img src="../images/render/sponza-small-fill-gate.gif" width="100%" alt="Gate ramp"></td><td width="50%"><img src="../images/render/sponza-small-fill-gate-diff.gif" width="100%" alt="Gate ramp vs defaults, difference x8"></td></tr>
+<tr><th colspan="2">Flat ≤8 + dither 4 ramp 1</th></tr>
+<tr><td width="50%"><img src="../images/render/sponza-small-fill-dither.gif" width="100%" alt="Ramped dither"></td><td width="50%"><img src="../images/render/sponza-small-fill-dither-diff.gif" width="100%" alt="Dither 4 ramp 1 vs defaults, difference x8"></td></tr>
+<tr><th colspan="2">Flat bake (fitted)</th></tr>
+<tr><td width="50%"><img src="../images/render/sponza-small-fill-bake.gif" width="100%" alt="Flat bake"></td><td width="50%"><img src="../images/render/sponza-small-fill-bake-diff.gif" width="100%" alt="Flat bake vs defaults, difference x8"></td></tr>
+</table>
 
 Clips show full renderer frames for 5.5 seconds from source frame 1 at 6 fps,
 with a per-GIF full palette and no dithering or scaling.
