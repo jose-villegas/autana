@@ -712,7 +712,7 @@ def lock_wait(args):
 
 def lock_run(args):
     if "--" not in args:
-        sys.exit("usage: autana lock run [--keep-on-failure <seconds>] -- <command...>")
+        sys.exit("usage: autana lock run [--keep-on-failure <seconds>] [--estimate <seconds>] -- <command...>")
     return call_device(device_command("run", *args))
 
 
@@ -1573,7 +1573,7 @@ def debug(args):
 
 
 LOCK_USAGES = (
-    ("lock run [--keep-on-failure <seconds>] -- <command...>", "hold the board while a command runs"),
+    ("lock run [--keep-on-failure <seconds>] [--estimate <seconds>] -- <command...>", "hold the board while a command runs"),
     ("lock take [--for <seconds> | --until-released [--pid <pid>]] [--estimate <seconds>] <note...>", "hold the board across commands; print its token"),
     ("lock wait", "wait until free without taking the board; --wait caps it"),
     ("lock release [<token>]", "release a lock this session holds, given its token"),

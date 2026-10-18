@@ -64,7 +64,7 @@ class GuardRetryTests(unittest.TestCase):
     def test_a_replace_refused_as_busy_is_retried(self):
         path = Path(self.directory.name) / "lock.json"
         with mock.patch.object(device_lock.os, "replace", side_effect=refuse_once(REAL_REPLACE)):
-            self.store.write_json(path, {"board": BOARD})
+            device_lock.write_json(path, {"board": BOARD})
         self.assertEqual(self.store.read_json(path), {"board": BOARD})
 
 
@@ -85,7 +85,7 @@ WORKER = textwrap.dedent("""
             store.boards()
         else:
             with store.guard({board!r}):
-                store.write_json(store.lock_path({board!r}), {{"board": {board!r}, "by": role}})
+                device_lock.write_json(store.lock_path({board!r}), {{"board": {board!r}, "by": role}})
 """)
 
 
