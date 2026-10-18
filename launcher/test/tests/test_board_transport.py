@@ -32,7 +32,8 @@ class BoardTransportTests(unittest.TestCase):
     def test_qemu_boot_patterns_match_a_real_boot_transcript(self):
         transcript = (b"ESP-ROM:esp32s3-20210327\r\nBuild:Mar 27 2021\r\n"
                       b"rst:0x1 (POWERON),boot:0x8 (SPI_FAST_FLASH_BOOT)\r\nI (12) boot: ESP-IDF\r\n"
-                      b"RESET_REASON=POWERON\r\n" + console_pytest.qemu_run.LISTENING.encode() + b"\r\n"
+                      b"I (6529) console: " + console_pytest.qemu_run.LISTENING.encode() + b", 'apps'\r\n"
+                      b"RESET_REASON=POWERON\r\nCOREDUMP=none\r\n"
                       b"BUILD_ID=host\r\nIMU_OK quarter=0 quarters=4 sample_ms=10\r\n")
 
         consumed = [0]
