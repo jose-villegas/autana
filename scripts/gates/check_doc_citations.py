@@ -53,7 +53,8 @@ CITATION_ROW = re.compile(
 PAPER = re.compile(r"Citations\.md#(\d+)\b")
 CELL_LINK = re.compile(r"\]\(([^)\s#]+)\)")
 CITING_DOCUMENTS = ["*.md"]
-CODE_SOURCES = ["*.c", "*.h", "*.py", "*.sh", "*.mjs", "*.cmake", "*CMakeLists.txt"]
+CODE_SOURCES = ["*.c", "*.h", "*.cpp", "*.cc", "*.cxx", "*.hpp", "*.py", "*.sh", "*.mjs", "*.js",
+                "*.cmake", "*CMakeLists.txt"]
 GATE_TESTS = "scripts/gates/tests/"
 
 # A citation of one or more sections of a doc: `X.md`'s "Section", or "One"
