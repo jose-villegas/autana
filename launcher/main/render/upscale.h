@@ -18,7 +18,11 @@ typedef enum {
     UPSCALE_BLOCKS,  /* both axes by one integer factor, where neither above applies */
 } upscale_path_t;
 
+/* Repeated rows retain half brightness. */
+#define UPSCALE_SCANLINE_KEEP (GFX_COLOR_SCALE_UNIT / 2)
+
 typedef struct {
+    int scanline_run;
     int source_width, source_height;
     int destination_width, destination_height;
     int factor; /* UPSCALE_BLOCKS's */
@@ -31,8 +35,12 @@ typedef struct {
 bool upscale_init(upscale_t* scale, int source_width, int source_height, int destination_width, int destination_height,
                   uint16_t* columns, uint16_t* rows);
 
-/* Scales destination rows [first_row, first_row + row_count) from
- * `source`'s colour. When `source` has a depth attachment too, a zero depth
- * writes `clear` instead of its colour. `destination` is 4-byte aligned. */
+/* Scales destination rows [first_row, first_row + row_count) from `source`.
+ * A zero attached depth writes `clear`. `destination` is 4-byte aligned.
+ */
 void upscale_rows(const upscale_t* scale, const gfx_render_target_t* source, uint16_t clear, uint16_t* destination,
                   int first_row, int row_count);
+
+/* Paired copies with uniform even runs only; other runs copy unchanged. */
+void upscale_rows_scanlined(const upscale_t* scale, const gfx_render_target_t* source, uint16_t clear,
+                            uint16_t* destination, int first_row, int row_count);

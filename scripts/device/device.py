@@ -519,6 +519,8 @@ def print_crash_signs(data, boots_allowed):
     signs = crash_signs(data.decode("utf-8", errors="replace"), boots_allowed)
     for sign in signs:
         print(sign)
+    if signs:
+        keep_crashed_elf(data)
     return len(signs)
 
 
@@ -1006,13 +1008,55 @@ def decode_addresses(addresses, elf):
     return [line for line in result.stdout.splitlines() if line.strip()]
 
 
+ELF_ARCHIVE_KEEP = 24
+# The panic handler's own line naming the crashed build (esp_system's panic.c).
+PANIC_ELF_SHA = re.compile(rb"ELF file SHA256: ([0-9a-f]+)")
+
+
+def elf_archive():
+    """Where a capture that saw a crash keeps the crashed build's ELF as
+    <BUILD_ID>.elf, beside the records, so its core dump stays decodable
+    after the build directory has been built over."""
+    return records_root() / "elf"
+
+
+def keep_crashed_elf(data):
+    """Copies the ELF of the build that crashed in capture `data` into
+    elf_archive(), dropping all but the newest ELF_ARCHIVE_KEEP there: the
+    build the panic names, else the capture's BUILD_ID. Nothing when this
+    worktree has no ELF of that build. A convenience: a failure here is one
+    stderr line, never the capture's."""
+    named = PANIC_ELF_SHA.findall(data)
+    build = named[-1].decode("ascii") if named else latest_build_id_from_bytes(data)
+    archive = elf_archive()
+    elf = find_elf_for_build_id(Path.cwd(), build)
+    if elf is None or elf.parent == archive:
+        return
+    try:
+        archive.mkdir(parents=True, exist_ok=True)
+        build_id = (elf.parent / "build_id.txt").read_text(encoding="ascii").strip()
+        shutil.copyfile(elf, archive / (build_id + ".elf"))
+        newest_first = sorted(archive.glob("*.elf"), key=lambda path: path.stat().st_mtime, reverse=True)
+        for stale in newest_first[ELF_ARCHIVE_KEEP:]:
+            stale.unlink(missing_ok=True)
+    except OSError as error:
+        print(f"could not keep the crashed build's ELF: {error}", file=sys.stderr)
+
+
+def same_build(build_id, other):
+    """Whether two build names are one build: a BUILD_ID's hash before its
+    first '-', or a core dump's ELF SHA-256 hex, which may run longer. The
+    variant can be ignored because BUILD_ID's hash is the ELF's own SHA-256."""
+    own, theirs = build_id.split("-", 1)[0], other.split("-", 1)[0]
+    return bool(own and theirs) and (own.startswith(theirs) or theirs.startswith(own))
+
+
 def find_elf_for_build_id(worktree, build_id):
-    """The launcher.elf whose own build_id.txt matches `build_id`, searched
-    across every launcher/build*/ directory, the build actually on the
-    board, not merely the newest one on disk (a `--dev` build built after
-    the board was last flashed `--diag`, say, would otherwise decode
-    against the wrong symbols). None when `build_id` is empty or nothing
-    under this worktree matches."""
+    """The launcher.elf of build `build_id` (a BUILD_ID, or a core dump's ELF
+    hash): a launcher/build*/ directory of this worktree whose build_id.txt
+    names it, else the archive's copy. Matches by name, so a `--dev` build
+    built later than a `--diag` one cannot stand in for it. None when
+    `build_id` is empty or nothing matches."""
     if not build_id:
         return None
     for build_dir in sorted(Path(worktree).glob("launcher/build*")):
@@ -1021,10 +1065,13 @@ def find_elf_for_build_id(worktree, build_id):
             seen = id_file.read_text(encoding="ascii").strip()
         except OSError:
             continue
-        if seen != build_id:
+        if not same_build(seen, build_id):
             continue
         elf = build_dir / "launcher.elf"
         if elf.is_file():
+            return elf
+    for elf in sorted(elf_archive().glob("*.elf")):
+        if same_build(elf.stem, build_id):
             return elf
     return None
 
@@ -1580,43 +1627,76 @@ def listen(args, store, board):
 
 
 COREDUMP_PARTITION = "coredump"
-COREDUMP_BUILD_ID_SECONDS = 5
+# The dump's ESP_CORE_DUMP_INFO note (espcoredump's core_dump_elf.c): a
+# 4-byte version, then the crashed app's ELF SHA-256 as NUL-padded hex in a
+# 64-byte field. ELF pads a note's name to 4 bytes.
+COREDUMP_INFO_NOTE = b"ESP_CORE_DUMP_INFO\0"
+COREDUMP_INFO_VERSION_BYTES = 4
+COREDUMP_INFO_SHA_BYTES = 64
+ELF_NOTE_ALIGN = 4
+# An erased partition: its first word, the dump's total length, still reads
+# as flash's erased state.
+ERASED_FLASH = b"\xff"
+COREDUMP_ERASED_HEADER_BYTES = 4
+
+
+def coredump_build(raw):
+    """The build a raw core dump came from: the hex ELF SHA-256 its app
+    wrote into the dump, as many digits as the app kept. None when `raw`
+    holds no dump."""
+    at = raw.find(COREDUMP_INFO_NOTE)
+    if at < 0:
+        return None
+    name_end = at + -(-len(COREDUMP_INFO_NOTE) // ELF_NOTE_ALIGN) * ELF_NOTE_ALIGN
+    sha_at = name_end + COREDUMP_INFO_VERSION_BYTES
+    sha = raw[sha_at:sha_at + COREDUMP_INFO_SHA_BYTES].split(b"\0", 1)[0]
+    return sha.decode("ascii") if re.fullmatch(rb"[0-9a-f]+", sha) else None
 
 
 def coredump(args, store, board):
-    """The last panic's core dump, read from the board's coredump partition
-    under the lock and decoded against the ELF of the build the board runs
-    (or --elf); --erase clears the partition, so the next crash's dump is
-    told from this one. Either way esptool resets the board."""
+    """The last panic's core dump, read raw from the board's coredump
+    partition under the lock into the records, then decoded with the board
+    free; --erase clears the partition, so the next crash's dump is told
+    from this one. Either way esptool resets the board."""
     with HeldLock(store, board, args.owner, "coredump", args.wait):
-        elf = Path(args.elf) if args.elf else None
-        if elf is None and not args.erase:
-            with open_when_free() as connection:
-                replies, _ = exchange(connection, BUILD_ID_REQUEST, "BUILD_ID=", ("BUILD_ID=",),
-                                      COREDUMP_BUILD_ID_SECONDS)
-            build_id = latest_build_id_from_bytes(" ".join(replies).encode())
-            elf = find_elf_for_build_id(Path.cwd(), build_id)
-            if elf is None:
-                print(f"no launcher.elf under this worktree matches BUILD_ID={build_id}; pass --elf",
-                      file=sys.stderr)
-                return 1
-        port = locked_port()
+        parttool = Path(idf_path()) / "components" / "partition_table" / "parttool.py"
+        command = [idf_python(), str(parttool), "--port", locked_port()]
         if args.erase:
-            parttool = Path(idf_path()) / "components" / "partition_table" / "parttool.py"
-            command = [idf_python(), str(parttool), "--port", port,
-                       "erase_partition", "--partition-name=" + COREDUMP_PARTITION]
+            command += ["erase_partition", "--partition-name=" + COREDUMP_PARTITION]
             run_resetting(lambda: subprocess.run(command, check=True)).close()
             print("coredump partition erased")
             return 0
-        command = [idf_python(), "-m", "esp_coredump", "--chip", "esp32s3", "--port", port, "info_corefile"]
-        gdb = toolchain_tool("xtensa-esp-elf-gdb", "xtensa-esp32s3-elf-gdb")
-        if gdb:
-            command += ["--gdb", str(gdb)]
+        core, _ = resolve_capture_path(None, "coredump", args.owner, now())
+        core = core.with_suffix(".bin")
+        command += ["read_partition", "--partition-name=" + COREDUMP_PARTITION, "--output", str(core)]
         try:
-            run_resetting(lambda: subprocess.run(command + [str(elf)], check=True)).close()
+            run_resetting(lambda: subprocess.run(command, check=True)).close()
         except subprocess.CalledProcessError as failure:
             return failure.returncode
+    if core.read_bytes()[:COREDUMP_ERASED_HEADER_BYTES] == ERASED_FLASH * COREDUMP_ERASED_HEADER_BYTES:
+        core.unlink()
+        print("no core dump in flash")
         return 0
+    return decode_coredump(core, args.elf)
+
+
+def decode_coredump(core, elf=None):
+    """Decodes the raw dump saved at `core`, no board needed, against the
+    ELF of the build that crashed, which the dump itself names, or `elf`.
+    A dump outlives later flashes, so the board's running build is no guide."""
+    build = coredump_build(Path(core).read_bytes())
+    print(f"core dump of build {build or 'unknown'}, saved as {core}")
+    elf = Path(elf) if elf else find_elf_for_build_id(Path.cwd(), build)
+    if elf is None:
+        print(f"no launcher.elf in this worktree or {elf_archive()} is build {build or 'unknown'}: "
+              f"build that commit, then `autana coredump --core {core} --elf PATH`", file=sys.stderr)
+        return 1
+    command = [idf_python(), "-m", "esp_coredump", "--chip", "esp32s3", "info_corefile",
+               "--core", str(core), "--core-format", "raw"]
+    gdb = toolchain_tool("xtensa-esp-elf-gdb", "xtensa-esp32s3-elf-gdb")
+    if gdb:
+        command += ["--gdb", str(gdb)]
+    return subprocess.run(command + [str(elf)]).returncode
 
 
 def replies_to(data, reply, until):
@@ -2053,8 +2133,10 @@ def main(argv=None):
                                help="decode any crash addresses seen against this .elf's symbols")
     coredump_parser = subparsers.add_parser(
         "coredump", help="decode the last panic's core dump from flash, or erase it")
-    coredump_parser.add_argument("--erase", action="store_true")
-    coredump_parser.add_argument("--elf", help="decode against this .elf instead of the running build's")
+    coredump_source = coredump_parser.add_mutually_exclusive_group()
+    coredump_source.add_argument("--erase", action="store_true")
+    coredump_source.add_argument("--core", help="decode this saved raw dump; no board")
+    coredump_parser.add_argument("--elf", help="decode against this .elf instead of the crashed build's")
     reset_parser = subparsers.add_parser("reset", help="reboot the board and wait for USB serial")
     reset_parser.add_argument("--capture", action="store_true",
                               help="capture the boot console after the reset")
@@ -2134,9 +2216,11 @@ def main(argv=None):
     args = parser.parse_args(argv)
     args.purpose = command_label(args.command)
 
-    # Touches no lock and no board; it only reads a capture already on disk,
-    # so it is handled before board discovery even runs, unlike every command
-    # below this.
+    # report and coredump --core touch no lock and no board; each only reads
+    # a file already on disk, so they are handled before board discovery even
+    # runs, unlike every command below this.
+    if args.command == "coredump" and args.core:
+        return decode_coredump(args.core, args.elf)
     if args.command == "report":
         index_path = Path(args.index) if args.index else records_root() / "index.jsonl"
         try:

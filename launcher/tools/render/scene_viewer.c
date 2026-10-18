@@ -14,6 +14,7 @@ static char** object_names;
 static int object_count;
 static int shell_quarter;
 static int size_width, size_height;
+static camera_present_t present;
 static int view = RENDER_DEBUG_VIEW_SHADED;
 
 static bool
@@ -37,6 +38,17 @@ options(int argc, char** argv) {
             if (sscanf(value, "%dx%d%c", &size_width, &size_height, &trailing) != 2 || size_width <= 0
                 || size_height <= 0 || size_width > GFX_WIDTH || size_height > GFX_HEIGHT) {
                 fprintf(stderr, "scene_viewer: --size is WxH within %dx%d, not %s\n", GFX_WIDTH, GFX_HEIGHT, value);
+                return false;
+            }
+        } else if (strcmp(flag, "--present") == 0) {
+            if (strcmp(value, "nearest") == 0) {
+                present = CAMERA_PRESENT_NEAREST;
+            } else if (strcmp(value, "scanline") == 0) {
+                present = CAMERA_PRESENT_SCANLINE;
+            } else if (strcmp(value, "double") == 0) {
+                present = CAMERA_PRESENT_DOUBLE;
+            } else {
+                fprintf(stderr, "scene_viewer: --present is nearest, scanline or double\n");
                 return false;
             }
         } else if (strcmp(flag, "--view") == 0) {
@@ -128,6 +140,9 @@ setup(int quarter) {
             scene_unload(scene);
             return false;
         }
+    }
+    for (int i = 0; i < scene_entity_count(scene); i++) {
+        (void)scene_camera_set_present(scene, (scene_entity_t)i, present);
     }
     render_context_t* context = render_context_main();
     render_context_set_debug_view(context, view);
