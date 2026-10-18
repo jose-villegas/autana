@@ -149,7 +149,7 @@ directory that says where each lies:
 The partition and every pack start on MMU pages so releasing one mapping
 cannot invalidate another pack. Padding costs less than one MMU page per pack;
 [`asset_directory.py`](../../launcher/tools/asset/asset_directory.py) writes version 2
-using `ASSET_MMU_PAGE_SIZE` from `asset_directory.h`.
+using `ASSET_MMU_PAGE_SIZE` from `asset_directory_format.h`.
 
 ## Checks
 

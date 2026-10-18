@@ -3,6 +3,7 @@
 #include <stddef.h>
 
 #include "asset/asset_store.h"
+#include "draw/draw_image_format.h"
 #include "esp_log.h"
 #include "ui/ui.h"
 #include "ui/ui_mu.h"

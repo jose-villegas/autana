@@ -23,6 +23,7 @@
 #include "unity.h"
 
 #include "bbox_extend.h"
+#include "draw/draw_image_format.h"
 #include "draw/icon.h"
 #include "ui/controls/ui_icons.h"
 

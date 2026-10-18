@@ -2,6 +2,7 @@
 #include "skin_light_baseline.h"
 
 #include <assert.h>
+#include "render/r3d_skin_format.h"
 #include "skin_light_baseline_internal.h"
 
 vec3f_t

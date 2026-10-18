@@ -45,7 +45,9 @@
 #ifndef DEVICE_BUILD
 #include <stdio.h>
 
+#include "anim/anim_skeleton_format.h"
 #include "asset/asset_file.h"
+#include "render/r3d_skin_format.h"
 #include "test_asset_dir.h"
 #include "ui/ui_mu.h"
 #endif

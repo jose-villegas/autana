@@ -7,6 +7,7 @@
 #ifndef ESP_PLATFORM
 #include "gfx/present/gfx_test.h"
 #endif
+#include "draw/draw_image_format.h"
 #include "suites.h"
 #include "test_cleanup.h"
 #include "timing.h"

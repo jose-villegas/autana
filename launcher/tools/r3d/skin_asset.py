@@ -11,7 +11,7 @@ from r3d import gltf_skin, mesh_asset
 from r3d.import_settings import SKIN_LIGHTING
 
 TYPE = b'SKIN'
-OWNER = Path(__file__).resolve().parents[2] / 'main/render/r3d_skin.h'
+OWNER = Path(__file__).resolve().parents[2] / 'main/render/r3d_skin_format.h'
 VERSION = read_define(OWNER, 'R3D_SKIN_VERSION')
 LIGHTING_MODES = {name: read_define(OWNER, 'R3D_SKIN_LIGHT_' + name.upper())
                   for name in SKIN_LIGHTING}
