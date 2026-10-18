@@ -85,7 +85,8 @@ test_rate_measures_slow_and_nominal_streams(void) {
     TEST_ASSERT_UINT32_WITHIN(RATE_QUANTISATION_US, RATE_TRUE_US, measured);
     rate = (imu_rate_t){0};
     TEST_ASSERT_UINT32_WITHIN(RATE_QUANTISATION_US, IMU_SAMPLE_US, estimate_interval(&rate, IMU_SAMPLE_US, 0));
-    printf("rate: true_us=%u measured_us=%u quantisation_us=%u\n", RATE_TRUE_US, measured, RATE_QUANTISATION_US);
+    printf("rate: true_us=%u measured_us=%u quantisation_us=%u\n", (unsigned)RATE_TRUE_US, (unsigned)measured,
+           (unsigned)RATE_QUANTISATION_US);
 }
 
 static void

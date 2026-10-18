@@ -50,9 +50,9 @@ typedef struct {
 
 typedef struct {
     input_motion_t samples[INPUT_MOTION_SAMPLES]; /* oldest first, sample_us apart */
-    uint32_t sample_us;
-    int count; /* zero when there is no new sample */
-    bool gap;  /* samples were lost before samples[0] */
+    uint32_t sample_us;                           /* measured interval; INPUT_MOTION_SAMPLE_US until the first window */
+    int count;                                    /* zero when there is no new sample */
+    bool gap;                                     /* samples were lost before samples[0] */
 } input_motion_batch_t;
 
 /* Every sample since the last call. False when there is no sensor or the read failed. */

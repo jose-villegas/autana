@@ -115,7 +115,7 @@ input_read_motion_batch(input_motion_batch_t* out) {
     /* Expansion runs backwards so a converted sample cannot overwrite unread raw axes. */
     for (int i = count - 1; i >= 0; i--) {
         imu_sample_t raw;
-        memcpy(&raw, (const unsigned char*)out->samples + (size_t)i * sizeof raw, sizeof raw);
+        memcpy(&raw, (const unsigned char*)out->samples + ((size_t)i * sizeof raw), sizeof raw);
         out->samples[i] = motion_from_sample(&raw);
     }
     out->count = count;
