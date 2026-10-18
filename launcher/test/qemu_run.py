@@ -82,9 +82,11 @@ from espressif import espressif_tools_root, idf_python, idf_path  # noqa: E402  
 from device_report import SUITE_COMPLETE_RE  # noqa: E402  (the board tool's own reading)
 from device_capture import (BOOTS_FROM_RESET, BUILD_ID_RE, BUILD_ID_REQUEST,  # noqa: E402
                             crash_signs, suite_failure_signs)  # (the board tool's own crash verdict)
+from console_protocol import ANSI  # noqa: E402
 import screenshot as wire  # noqa: E402  (the board tool's own protocol)
 import patched_qemu  # noqa: E402  (path must be set up first)
 
+MEBIBYTE_BYTES = 1024 * 1024
 ICOUNT_SHIFT = 0
 
 QEMU_PASS_RE = re.compile(r":PASS$", re.M)
@@ -93,7 +95,6 @@ QEMU_FAIL_RE = re.compile(r"^\S*:\d+:(\w+):FAIL:? ?(.*)$", re.M)
 
 SENTINEL = "SELFTEST_COMPLETE"
 LISTENING = "listening for 'screenshot'"
-ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
 def icount_suites(root):
@@ -143,6 +144,11 @@ def efuse_with_mac(image):
     image[MAC_FILE_OFFSET:MAC_FILE_OFFSET + 4] = QEMU_MAC[2:][::-1]
     image[MAC_FILE_OFFSET + 4:MAC_FILE_OFFSET + 6] = QEMU_MAC[:2][::-1]
     return bytes(image)
+
+
+def psram_mib():
+    profile = device_profile.load(None, None)
+    return device_profile.require(profile, "DP_PSRAM_BYTES", int) // MEBIBYTE_BYTES
 
 
 def free_port():
@@ -400,19 +406,21 @@ def verdict(log_path, finished, actions):
     return 0 if finished and not failures else 1
 
 
+def qemu_machine_args(psram_mib, efuse_path):
+    return ["-m", "%dM" % psram_mib,
+            "-drive", "file=%s,if=none,format=raw,id=efuse" % efuse_path,
+            "-global", "driver=nvram.esp32s3.efuse,property=drive,value=efuse",
+            "-global", "driver=timer.esp32s3.timg,property=wdt_disable,value=true",
+            "-global", "driver=ssi_psram,property=is_octal,value=true",
+            "-monitor", "none"]
+
+
 def qemu_command(args, qemu, psram_mib, flash, efuse, port):
-    cmd = [qemu, "-M", "esp32s3", "-m", "%dM" % psram_mib,
+    cmd = [qemu, "-M", "esp32s3", *qemu_machine_args(psram_mib, efuse),
            "-drive", "file=%s,if=mtd,format=raw" % flash,
-           "-drive", "file=%s,if=none,format=raw,id=efuse" % efuse,
-           "-global", "driver=nvram.esp32s3.efuse,property=drive,value=efuse",
-           "-global", "driver=timer.esp32s3.timg,property=wdt_disable,"
-                      "value=true",
-           "-global", "driver=ssi_psram,property=is_octal,value=true",
-           "-nographic", "-monitor", "none",
-           "-serial", "tcp:127.0.0.1:%d,server=on,wait=on" % port]
+           "-nographic", "-serial", "tcp:127.0.0.1:%d,server=on,wait=on" % port]
     if args.icount:
         cmd += ["-icount", f"shift={ICOUNT_SHIFT},sleep=off"]
-
     return cmd
 
 
@@ -494,10 +502,8 @@ def main(argv):
         os.remove(log_path)
 
     # The board's own PSRAM size: QEMU would happily offer more.
-    profile = device_profile.load(None, None)
-    psram_mib = device_profile.require(profile, "DP_PSRAM_BYTES", int) >> 20
     port = free_port()
-    cmd = qemu_command(args, qemu, psram_mib, flash, efuse, port)
+    cmd = qemu_command(args, qemu, psram_mib(), flash, efuse, port)
 
     proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL,
                             stdout=subprocess.DEVNULL,

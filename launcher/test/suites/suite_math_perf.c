@@ -8,6 +8,7 @@
 #include "math/linear/transformf.h"
 #include "math/linear/transformx.h"
 #include "math/linear/vec_convert.h"
+#include "math/scalar/math_const.h"
 #include "math/scalar/mathf_rsqrt.h"
 #include "math/scalar/trig.h"
 #include "perf_stats.h"
