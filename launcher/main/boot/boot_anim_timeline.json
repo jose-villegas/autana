@@ -20,10 +20,9 @@
         "title_wave_stagger_ms": 75,
         "fade_start_ms": 4800,
         "pen_finish_ms": 4800,
-        "grid_spokes": 4,
-        "grid_spoke_dash": 1,
-        "grid_spoke_start_ms": 2300,
-        "grid_spoke_draw_ms": 800,
+        "far_grow_ms": 1500,
+        "axis_extend_start_ms": 2300,
+        "axis_extend_ms": 800,
         "title_height_px": 40,
         "title_x_px": 95,
         "image_start_ms": 4000,
@@ -74,6 +73,8 @@
     "crest_height_m": 0.3,
     "crest_colour_stride": 2,
     "grid_level": 0.7,
+    "far_m": 500,
+    "far_grow_power": 3,
     "floor_grey": 3158064,
     "grid_edge_fade_fraction": 0.75
 }

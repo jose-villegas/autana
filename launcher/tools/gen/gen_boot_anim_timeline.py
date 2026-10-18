@@ -123,6 +123,7 @@ def validate_floor(cfg):
                "ripple_wavelength_m", "ripple_clock_s", "ripple_group_speed_m_s",
                "ripple_width_m", "ripple_dispersion_m_s", "ripple_source_radius_m",
                "ripple_calm_fraction", "crest_height_m", "crest_colour_stride", "grid_level", "floor_grey",
+               "far_m", "far_grow_power",
                "grid_edge_fade_fraction",
                "ripple_height_m", "swell_height_m", "swell"}
     for key in sorted(set(cfg) - allowed):
@@ -182,6 +183,12 @@ def validate_floor(cfg):
         floor_number(cfg["timing"].get(key), key, positive=True, integer=True)
         if cfg["timing"][key] > 255:
             fail(key + " must fit an unsigned byte")
+    floor_number(cfg.get("far_m"), "far_m", positive=True)
+    if meters_to_q12(cfg["far_m"]) <= mesh_step_q12(cfg) * (cfg["timing"]["mesh_cells"] // 2):
+        fail("far_m must reach past the mesh's edge")
+    if meters_to_q12(cfg["far_m"]) * FAR_CAMERA_SCALE >= (1 << 31):
+        fail("far_m must fit the camera transform's 32-bit input")
+    floor_number(cfg.get("far_grow_power"), "far_grow_power", positive=True)
 
 
 def floor_array(w, ctype, name, rows):
@@ -237,7 +244,7 @@ def emit_floor(cfg, w):
         for start in range(0, len(values), 16):
             w("    " + ", ".join(map(str, values[start:start + 16])) + ",\n")
         w("};\n\n")
-    w("typedef struct { int16_t radius, amplitude, calm_start; uint16_t inv_width, ripple_phase, swell; uint16_t phase[BOOT_ANIM_SWELL_COUNT]; } boot_anim_floor_time_t;\n")
+    w("typedef struct { int16_t radius, amplitude, calm_start; uint16_t inv_width, ripple_phase, swell; uint16_t phase[BOOT_ANIM_SWELL_COUNT]; int32_t far_reach; } boot_anim_floor_time_t;\n")
     w("static const boot_anim_floor_time_t boot_anim_floor_times[] = {\n")
     for ms in range(0, timing["total_ms"] + FLOOR_TIME_STEP_MS * 2, FLOOR_TIME_STEP_MS):
         tau = max(0, ms - timing["ripple_impact_ms"]) / 1000
@@ -254,7 +261,7 @@ def emit_floor(cfg, w):
                    round(FLOOR_GAIN_ONE / sigma), ripple_phase, gain)
         if any(not -(1 << 15) <= v < (1 << 15) for v in scalars[:3]):
             fail("ripple frame scalars must fit signed 16-bit fields")
-        w("    {%s, {%s}},\n" % (", ".join(map(str, scalars)), ", ".join(map(str, phases))))
+        w("    {%s, {%s}, %d},\n" % (", ".join(map(str, scalars)), ", ".join(map(str, phases)), far_reach(cfg, ms)))
     w("};\n\n")
     weights = [meters_to_q12(cfg["swell_height_m"] * s["weight"]) for s in cfg["swell"]]
     w("static const int16_t boot_anim_swell_weights[] = {" + ", ".join(map(str, weights)) + "};\n")
@@ -319,6 +326,57 @@ def crest_runs(cfg):
     return starts, runs
 
 
+# boot_anim_to_camera_space() scales a Q12 floor coordinate by this before a
+# 32-bit multiply; far_m must stay inside it.
+FAR_CAMERA_SCALE = 16
+# Past the mesh the axis lines take a sample every mesh step, then every
+# sixteenth of the distance from the origin, as far apart on screen as the
+# distance allows.
+FAR_SAMPLE_DIVISOR = 16
+
+
+def far_reach(cfg, ms):
+    """How far out the floor reaches at `ms`, Q12: from the mesh's edge to
+    far_m over far_grow_ms once the mesh has arrived, eased in by
+    far_grow_power so the near plane, most of the screen, fills slowly."""
+    timing = cfg["timing"]
+    edge = mesh_step_q12(cfg) * (timing["mesh_cells"] // 2)
+    start = timing["grid_start_ms"] + timing["grid_bands"] * timing["grid_band_ms"]
+    t = min(1.0, max(0.0, (ms - start) / timing["far_grow_ms"]))
+    return round(edge + (meters_to_q12(cfg["far_m"]) - edge) * t ** cfg["far_grow_power"])
+
+
+def axis_far_samples(cfg):
+    edge = mesh_step_q12(cfg) * (cfg["timing"]["mesh_cells"] // 2)
+    far = meters_to_q12(cfg["far_m"])
+    step = mesh_step_q12(cfg)
+    radii = [edge]
+    while radii[-1] < far:
+        radii.append(min(far, radii[-1] + max(step, radii[-1] // FAR_SAMPLE_DIVISOR)))
+    return radii
+
+
+def emit_axis_far(cfg, w):
+    """The axis lines past the mesh, one row per sample out along +re and +im:
+    its distance, its ripple node and its swell phases. The negative
+    directions negate the phases; the first sample is the mesh's edge node."""
+    radii = axis_far_samples(cfg)
+    w("\n#define BOOT_ANIM_FAR_Q12 %d\n" % meters_to_q12(cfg["far_m"]))
+    w("#define BOOT_ANIM_AXIS_FAR_SAMPLES %d\n\n" % len(radii))
+    w("typedef struct { int32_t r; boot_anim_floor_node_t node; uint16_t swell_re[BOOT_ANIM_SWELL_COUNT], "
+      "swell_im[BOOT_ANIM_SWELL_COUNT]; } boot_anim_axis_far_t;\n")
+    w("static const boot_anim_axis_far_t boot_anim_axis_far[] = {\n")
+    for r_q12 in radii:
+        r = r_q12 / BOOT_ANIM_ONE
+        node = (min(round(r * FLOOR_SHAPE_SCALE), (1 << 16) - 1), 0,
+                round(r * FLOOR_PHASE_TURN / cfg["ripple_wavelength_m"]) % FLOOR_PHASE_TURN)
+        phases = [[round(r * component(math.radians(sine["direction_deg"])) / sine["wavelength_m"] * FLOOR_PHASE_TURN)
+                   % FLOOR_PHASE_TURN for sine in cfg["swell"]] for component in (math.cos, math.sin)]
+        w("    {%d, {%d, %d, %d}, {%s}, {%s}},\n" % ((r_q12,) + node + (", ".join(map(str, phases[0])),
+                                                     ", ".join(map(str, phases[1])))))
+    w("};\n")
+
+
 def emit_crest(cfg, w):
     starts, runs = crest_runs(cfg)
     side = cfg["timing"]["mesh_cells"] // cfg["crest_colour_stride"] + 1
@@ -359,12 +417,8 @@ def validate(cfg):
              "boot_anim_grid_climb() subtracts them as unsigned, so the "
              "grid would never climb at all" %
              (timing["grid_start_ms"], timing["total_ms"]))
-    if timing["grid_spokes"] < 0:
-        fail("grid_spokes must not be negative (%r given) - 0 hides them, "
-             "there is no such thing as fewer" % (timing["grid_spokes"],))
-    if timing["grid_spoke_dash"] not in (0, 1):
-        fail("grid_spoke_dash must be 0 or 1 (%r given)" %
-             (timing["grid_spoke_dash"],))
+    if timing["far_grow_ms"] <= 0:
+        fail("far_grow_ms must be positive (%r given)" % (timing["far_grow_ms"],))
     if not 0 <= timing["title_shadow_alpha"] <= 255:
         fail("title_shadow_alpha must be 0..255 (%r given) - it is written "
              "straight into a #define read as a C uint8_t; a value outside "
@@ -492,16 +546,13 @@ TIMING_ORDER = [
     ("mesh_cells", "BOOT_ANIM_MESH_CELLS",
      "cells along each side of the floor's square mesh - even, so one line "
      "runs through the origin"),
-    ("grid_spokes", "BOOT_ANIM_GRID_SPOKES",
-     "radial guide lines from the origin to the floor's own edge - 0 hides them"),
-    ("grid_spoke_dash", "BOOT_ANIM_GRID_SPOKE_DASH",
-     "draws each spoke as alternating dashes instead of a solid line - "
-     "0 solid, 1 dashed"),
-    ("grid_spoke_start_ms", "BOOT_ANIM_GRID_SPOKE_START_MS",
-     "spokes start drawing outward from the origin"),
-    ("grid_spoke_draw_ms", "BOOT_ANIM_GRID_SPOKE_DRAW_MS",
-     "how long a spoke takes to reach the floor's own edge - 0 draws the "
-     "full length instantly"),
+    ("far_grow_ms", "BOOT_ANIM_FAR_GROW_MS",
+     "how long the floor takes to grow from the mesh's edge to far_m once "
+     "the mesh has arrived"),
+    ("axis_extend_start_ms", "BOOT_ANIM_AXIS_EXTEND_START_MS",
+     "the axis lines start running on past the horizon to the panel's edge"),
+    ("axis_extend_ms", "BOOT_ANIM_AXIS_EXTEND_MS",
+     "how long they take to reach the panel's edge"),
     ("grid_fade_ms", "BOOT_ANIM_GRID_FADE_MS", None),
     ("ripple_impact_ms", "BOOT_ANIM_RIPPLE_IMPACT_MS", None),
     ("ripple_calm_after_ms", "BOOT_ANIM_RIPPLE_CALM_AFTER_MS", None),
@@ -583,23 +634,6 @@ def main():
     timing = cfg.get("timing", {})
     timing.setdefault("pen_finish_ms", timing.get("fade_start_ms"))
 
-    # grid_spokes is newer than the floor grid itself: the radial guide
-    # lines used to be a fixed 8, unauthored; 8 is the exact same default
-    # for a file baked before this existed, so it keeps looking the way it
-    # always did.
-    timing.setdefault("grid_spokes", 8)
-    # grid_spoke_dash is newer still; a file baked before it existed drew
-    # every spoke solid, so 0 (solid) is what keeps it looking the same.
-    timing.setdefault("grid_spoke_dash", 0)
-    # grid_spoke_start_ms/grid_spoke_draw_ms are newer again; a file baked
-    # before they existed drew every spoke at full length the instant it
-    # was eligible to show at all, with no outward reveal of its own. 0/0
-    # reproduces exactly that: tween_ramp()'s own "dur_ms of 0 jumps
-    # straight to 255 the instant now_ms passes start_ms" (see tween.h)
-    # means a spoke is already full length by the first frame it would
-    # have appeared in before these existed.
-    timing.setdefault("grid_spoke_start_ms", 0)
-    timing.setdefault("grid_spoke_draw_ms", 0)
     # image_start_ms/image_fade_ms are newer again; a file baked before
     # they existed had no photograph in it at all, and total_ms is what
     # reproduces that exactly: boot_anim_run() never draws a frame past
@@ -692,6 +726,7 @@ def main():
 
     emit_floor(cfg, w)
     emit_crest(cfg, w)
+    emit_axis_far(cfg, w)
 
 
 if __name__ == "__main__":

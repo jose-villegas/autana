@@ -87,25 +87,6 @@ units(int n) {
     return (int32_t)n * BOOT_ANIM_ONE;
 }
 
-/* NEAR portion vertices span distance, smooth growth, dashed segments, not
- * wave. */
-#define BOOT_ANIM_GRID_SPOKE_STEPS      32
-
-/* NEAR spoke reach limit, unrelated to grid size. */
-#define BOOT_ANIM_GRID_SPOKE_NEAR_UNITS 10
-
-/* ITS limit is panel edge crossing. Walked as a single extra segment.
- * Clipping handles rest. */
-#define BOOT_ANIM_GRID_SPOKE_FAR_UNITS  500
-
-static void
-polar_point(int32_t radius, uint16_t turn, int32_t* re, int32_t* im) {
-    const int32_t cos_v = trig_cos(turn);
-    const int32_t sin_v = trig_sin(turn);
-    *re = (int32_t)(((int64_t)radius * cos_v) >> TRIG_SIN_SHIFT);
-    *im = (int32_t)(((int64_t)radius * sin_v) >> TRIG_SIN_SHIFT);
-}
-
 /* Camera setup scratch must be released before drawing a mesh row. */
 __attribute__((noinline)) boot_anim_view_t
 boot_anim_view(const boot_anim_motion_t* motion, int w, int h, uint32_t now_ms) {
@@ -214,8 +195,10 @@ draw_mesh_edge(const mesh_pass_t* pass, const mesh_node_t* a, int ai, int aj, co
     const int band = (a->band_q4 + b->band_q4) >> (BOOT_ANIM_FLOOR_BAND_SHIFT + 1);
     /* The lines on the axes carry the axes' flat colour, not the crests'. */
     const bool on_axis = (aj == 0 && bj == 0) || (ai == 0 && bi == 0);
-    const uint8_t level = on_axis ? UINT8_MAX : BOOT_ANIM_GRID_LEVEL;
-    const uint8_t alpha = scale8(scale8(boot_anim_grid_alpha(pass->now_ms, band), level), pass->ink);
+    /* The axis lines run on past the mesh, so they do not fade at its edge. */
+    const uint8_t fade =
+        on_axis ? boot_anim_grid_arrival(pass->now_ms, band) : boot_anim_grid_alpha(pass->now_ms, band);
+    const uint8_t alpha = scale8(scale8(fade, on_axis ? UINT8_MAX : BOOT_ANIM_GRID_LEVEL), pass->ink);
     if (alpha == 0) {
         return;
     }
@@ -260,70 +243,88 @@ draw_mesh_row(const mesh_pass_t* pass, int j, int row_half, int above_half, mesh
     }
 }
 
-#define BOOT_ANIM_GRID_SPOKE_DASH_STEPS 3
+static const int axis_dirs[4][2] = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
 
-/* Drawn FLAT: a spoke is a plane guide line, not the surface the wave
- * moves. TWO PARTS, ONE reveal: `reach` scales one target radius
- * across the full near..far span: the near portion (stepped, dashable)
- * walks to min(target, near); the tail (one segment, undashed) appears
- * once that is done. Stepping the tail at the near resolution wastes
- * budget nothing is close enough to see. `dash` skips whole segment
- * GROUPS (a full draw_line_ex() call each), not pixel-thinning, genuinely
- * cheaper. */
-static void
-draw_grid_spoke(uint16_t turn, int32_t near, int32_t far, gfx_color_t c, bool dash, uint8_t reach,
-                const boot_anim_view_t* view) {
-    vec3x_t prev_cs;
-    bool have_prev = false;
-    int32_t last_radius = 0;
-
-    const int32_t target = boot_anim_spoke_reveal_target(near, far, reach);
-    const int32_t near_target = target < near ? target : near;
-    const boot_anim_plane_t floor_plane = boot_anim_plane(0, view);
-    const int max_step = near > 0 ? (int)(((int64_t)BOOT_ANIM_GRID_SPOKE_STEPS * near_target) / near) : 0;
-
-    for (int step = 0; step <= max_step; step++) {
-        const int32_t radius = (near * step) / BOOT_ANIM_GRID_SPOKE_STEPS;
-        int32_t re, im;
-        polar_point(radius, turn, &re, &im);
-        const vec3x_t cs = boot_anim_plane_point(&floor_plane, re, im);
-
-        /* Groups of BOOT_ANIM_GRID_SPOKE_DASH_STEPS alternate on and off to
-         * form a visible dash. */
-        const bool draw_segment = !dash || ((step / BOOT_ANIM_GRID_SPOKE_DASH_STEPS) % 2) == 1;
-        if (have_prev && draw_segment) {
-            int ax, ay, bx, by;
-            if (r3d_project_segment_cs_x(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
-                draw_line_ex(ax, ay, bx, by, c, 0u);
-            }
-        }
-        prev_cs = cs;
-        have_prev = true;
-        last_radius = radius;
-    }
-
-    if (have_prev && last_radius < target) {
-        int32_t re, im;
-        polar_point(target, turn, &re, &im);
-        const vec3x_t cs = boot_anim_plane_point(&floor_plane, re, im);
-        int ax, ay, bx, by;
-        if (r3d_project_segment_cs_x(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
-            draw_line_ex(ax, ay, bx, by, c, 0u);
-        }
-    }
+/* The point of axis sample `n` out along `dir`, in camera space, lifted. */
+static vec3x_t
+axis_far_point(const mesh_pass_t* pass, const int dir[2], int n) {
+    const int32_t r = boot_anim_axis_far[n].r;
+    const int32_t lift = boot_anim_zeta_to_t_q8(boot_anim_axis_far_height(n, dir[0], dir[1], &pass->floor));
+    return boot_anim_to_camera_space(dir[0] * r, dir[1] * r, lift, pass->view);
 }
 
+/* Past the horizon the axis line goes on as a screen line toward the panel's
+ * edge, aimed from the mesh's edge to the far end: points far apart on
+ * screen, so a pixel of rounding barely turns it. It grows over the visible
+ * stretch only. */
 static void
-draw_spokes(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
-    const uint8_t spoke_reach = boot_anim_grid_spoke_reach(now_ms);
-    if (spoke_reach == 0) {
+draw_axis_extension(const int dir[2], uint8_t extend, gfx_color_t c, unsigned flags, const boot_anim_view_t* view) {
+    const int32_t edge = boot_anim_axis_far[0].r;
+    int ax, ay, bx, by;
+    if (extend == 0 || !boot_anim_project_point(dir[0] * edge, dir[1] * edge, 0, view, &ax, &ay)
+        || !boot_anim_project_point(dir[0] * BOOT_ANIM_FAR_Q12, dir[1] * BOOT_ANIM_FAR_Q12, 0, view, &bx, &by)) {
         return;
     }
-    const gfx_color_t spoke_c = lit(COL_AXIS, ink);
-    for (int i = 0; i < BOOT_ANIM_GRID_SPOKES; i++) {
-        const uint16_t turn = (uint16_t)((i * (int)TRIG_TURN) / BOOT_ANIM_GRID_SPOKES);
-        draw_grid_spoke(turn, units(BOOT_ANIM_GRID_SPOKE_NEAR_UNITS), units(BOOT_ANIM_GRID_SPOKE_FAR_UNITS), spoke_c,
-                        BOOT_ANIM_GRID_SPOKE_DASH != 0, spoke_reach, view);
+    const int64_t ux = bx - ax;
+    const int64_t uy = by - ay;
+    /* The visible stretch is num / den of (ux, uy): the nearer border wins. */
+    int64_t num = -1;
+    int64_t den = 1;
+    if (ux != 0) {
+        num = ux > 0 ? (GFX_WIDTH - 1 - bx) : bx;
+        den = ux > 0 ? ux : -ux;
+    }
+    if (uy != 0) {
+        const int64_t num_y = uy > 0 ? (GFX_HEIGHT - 1 - by) : by;
+        const int64_t den_y = uy > 0 ? uy : -uy;
+        if (num < 0 || (num_y * den) < (num * den_y)) {
+            num = num_y;
+            den = den_y;
+        }
+    }
+    if (num <= 0) {
+        return;
+    }
+    const int64_t grow = num * extend;
+    const int64_t scale = den * UINT8_MAX;
+    draw_line_ex(bx, by, bx + (int)((ux * grow) / scale), by + (int)((uy * grow) / scale), c, flags);
+}
+
+/* Past the mesh only the lines on the axes go on, still lifted by the ripple
+ * and the swell, out to the floor's reach; the last span is cut there. */
+static void
+draw_axis_lines_far(const mesh_pass_t* pass) {
+    const int32_t reach = pass->floor.far_reach;
+    if (reach <= boot_anim_axis_far[0].r) {
+        return;
+    }
+    const gfx_color_t c = lit(COL_AXIS, pass->ink);
+    const unsigned flags = DRAW_LINE_DASH(BOOT_ANIM_MESH_DASH_ON_PX, BOOT_ANIM_MESH_DASH_OFF_PX);
+    const uint8_t extend = reach >= BOOT_ANIM_FAR_Q12 ? boot_anim_axis_extend_reach(pass->now_ms) : 0;
+    for (int d = 0; d < 4; d++) {
+        vec3x_t prev = axis_far_point(pass, axis_dirs[d], 0);
+        for (int n = 1; n < BOOT_ANIM_AXIS_FAR_SAMPLES; n++) {
+            vec3x_t next = axis_far_point(pass, axis_dirs[d], n);
+            const int32_t r0 = boot_anim_axis_far[n - 1].r;
+            const int32_t r1 = boot_anim_axis_far[n].r;
+            const bool last = r1 >= reach;
+            if (last && r1 > reach) {
+                const int64_t part = reach - r0;
+                const int64_t span = r1 - r0;
+                next = (vec3x_t){prev.x + (int32_t)(((int64_t)(next.x - prev.x) * part) / span),
+                                 prev.y + (int32_t)(((int64_t)(next.y - prev.y) * part) / span),
+                                 prev.z + (int32_t)(((int64_t)(next.z - prev.z) * part) / span)};
+            }
+            int x0, y0, x1, y1;
+            if (r3d_project_segment_cs_x(prev, next, pass->view, &x0, &y0, &x1, &y1)) {
+                draw_line_ex(x0, y0, x1, y1, c, flags);
+            }
+            if (last) {
+                break;
+            }
+            prev = next;
+        }
+        draw_axis_extension(axis_dirs[d], extend, c, flags, pass->view);
     }
 }
 
@@ -377,7 +378,7 @@ draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t*
         plane = (vec3x_t){plane.x + row.x, plane.y + row.y, plane.z + row.z};
     }
 
-    draw_spokes(now_ms, ink, view);
+    draw_axis_lines_far(&pass);
 }
 
 /* The axes */
