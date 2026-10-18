@@ -505,7 +505,11 @@ class StageTests(unittest.TestCase):
         for stage in ("mesh", "reference", "fit"):
             self.assertIn("device/gfx_color.py", self.names(stage), stage)
         for stage in ("reference", "fit"):
-            self.assertIn("render/render_compare.py", self.names(stage), stage)
+            self.assertIn("render/colour_maths.py", self.names(stage), stage)
+
+    def test_the_render_comparison_tool_is_in_no_stage(self):
+        for stage in bake.STAGES:
+            self.assertNotIn("render/render_compare.py", self.names(stage), stage)
 
     def test_a_stage_stops_at_another_stages_entry_and_at_what_consumes_bakes(self):
         self.assertFalse({"r3d/fitted_variant.py", "r3d/appearance_simplify.py", "r3d/reference_render.py"}
