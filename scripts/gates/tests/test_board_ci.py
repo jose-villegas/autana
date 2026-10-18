@@ -4,14 +4,12 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
-import textwrap
 import unittest
 
 
 class BoardSequenceTests(unittest.TestCase):
     def test_both_results_decide_the_sequence_verdict(self):
-        workflow = Path(__file__).resolve().parents[3] / ".github/workflows/board-ci.yml"
-        sequence = workflow.read_text().split("<<'SH'\n", 1)[1].split("\n          SH", 1)[0]
+        steps = Path(__file__).resolve().parents[3] / "scripts/ci/board-steps.sh"
         stub = '''
 autana() {
     echo "$*" >> "$RUNNER_TEMP/calls"
@@ -37,7 +35,7 @@ esac
                 venv_python.parent.mkdir(parents=True)
                 venv_python.write_text(venv_stub)
                 venv_python.chmod(0o755)
-                result = subprocess.run([shutil.which("bash"), "-c", stub + textwrap.dedent(sequence)],
+                result = subprocess.run([shutil.which("bash"), "-c", stub + ". " + steps.as_posix()],
                                         env=env, cwd=directory, capture_output=True, text=True)
                 self.assertEqual(result.returncode == 0, selftest == console == 0, result.stderr)
                 calls = (Path(directory) / "calls").read_text().splitlines()

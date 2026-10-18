@@ -6,6 +6,7 @@ import collections
 import contextlib
 import errno
 import gzip
+from functools import partial
 import json
 import math
 import os
@@ -612,7 +613,7 @@ class HeldLock:
 
     HEARTBEAT_SECONDS = 5
 
-    def __init__(self, store, board, owner, kind, wait, announce_waiters=False):
+    def __init__(self, store, board, owner, kind, wait, announce_waiters=False, estimate=None):
         self.store = store
         self.announce_waiters = announce_waiters
         self.board = board
@@ -627,7 +628,7 @@ class HeldLock:
             self.held = device_lock.Held(record, "")
         else:
             self.held = store.acquire(board, owner, kind, wait=wait, on_wait=self.wait_notice,
-                                      purpose=command_label(kind))
+                                      purpose=command_label(kind), estimate=estimate)
         if not self.held:
             raise LockBusy("device lock was not acquired: "
                            + device_lock.busy_text(store.status(board), store.now()))
@@ -1170,13 +1171,13 @@ def try_lock_file(handle):
 
 
 @contextlib.contextmanager
-def build_directory_lock(build_dir):
-    """Holds `build_dir` for one build and its snapshot, so two builds of one
-    worktree's variant never interleave in one directory. An OS file lock:
-    the system drops it with the process that held it. Yields the folder
-    build_paths.py prepared, to pass to build.sh as --prepared-build, or None
-    for a project older than build_paths.py, whose build.sh has no such option
-    (autana is one tool for every checkout, perf_compare's old revisions too)."""
+def build_directory_lock(build_dir, timeout=None):
+    """Lock one build directory through its snapshot; yield its prepared path,
+    or None when the checkout has no --prepared-build support."""
+    latest = os.environ.get(autana_config.BUILD_LATEST_START_ENV)
+    if timeout is None and latest:
+        timeout = max(0, float(latest) - time.time())
+    expires = time.monotonic() + timeout if timeout is not None else None
     build_dir = Path(build_dir)
     prepared = None
     if (build_dir.parent / "tools/build/build_paths.py").is_file():
@@ -1187,7 +1188,10 @@ def build_directory_lock(build_dir):
         if not try_lock_file(handle):
             print("waiting for another build in " + str(build_dir), file=sys.stderr)
             while not try_lock_file(handle):
-                time.sleep(BUILD_LOCK_POLL_SECONDS)
+                if expires is not None and time.monotonic() >= expires:
+                    raise TimeoutError("build lock wait exceeded its window")
+                time.sleep(min(BUILD_LOCK_POLL_SECONDS, max(0, expires - time.monotonic()))
+                           if expires is not None else BUILD_LOCK_POLL_SECONDS)
         yield prepared
 
 
@@ -1249,26 +1253,47 @@ def remove_image_directory(image):
     shutil.rmtree(image, ignore_errors=True)
 
 
-def build_snapshot(build, build_dir, image_dir, **popen):
-    """Runs `build` and snapshots its image, holding the build directory
-    throughout and no board lock at all. Returns the build id."""
+BUILD_NICE_INCREMENT = 5
+
+
+@contextlib.contextmanager
+def build_policy(environment):
+    """Private process-tree policy limits compilation, never board captures."""
+    latest = environment.get(autana_config.BUILD_LATEST_START_ENV)
+    latest = float(latest) if latest else None
+    serial = environment.get(autana_config.BUILD_SERIAL_ENV)
+    options = {}
+    if environment.get(autana_config.BUILD_PRIORITY_ENV) == autana_config.BUILD_PRIORITY_BELOW_NORMAL:
+        if os.name == "nt":
+            options["creationflags"] = subprocess.BELOW_NORMAL_PRIORITY_CLASS
+        else:
+            options["preexec_fn"] = partial(os.nice, BUILD_NICE_INCREMENT)
+    with build_directory_lock(serial, timeout=max(0, latest - time.time()) if latest else None) if serial else contextlib.nullcontext():
+        if latest is not None and time.time() > latest:
+            raise TimeoutError("build cannot start inside its window")
+        yield options
+
+
+def build_snapshot(build, build_dir, image_dir=None, **popen):
+    """Compile under the process policy and directory lock; optionally snapshot."""
     with build_directory_lock(build_dir) as prepared:
-        run_to_end(build + (["--prepared-build", prepared.as_posix()] if prepared else []), None, **dict(popen, env=script_environment(popen.get("env"))))
-        return snapshot_image(prepared or build_dir, image_dir)
+        environment = script_environment(popen.pop("env", None))
+        with build_policy(environment) as priority:
+            run_to_end(build + (["--prepared-build", prepared.as_posix()] if prepared else []), None,
+                       **dict(popen, env=environment, **priority))
+        return snapshot_image(prepared or build_dir, image_dir) if image_dir else None
 
 
 def build_worktree(worktree, variant, build_flags=()):
-    """The build half of a flash on its own, for `autana build`: no board and
-    no lock but the build directory's. The build's output goes to this
-    process's; returns its exit status."""
+    """Build one worktree without acquiring a board; return the build's exit status."""
     worktree = Path(worktree).resolve()
     if not (worktree / BUILD_SCRIPT).is_file():
         raise RuntimeError("build tool not found: " + str(worktree / BUILD_SCRIPT))
     build, _ = flash_commands(git_bash(), worktree, variant, build_flags)
     try:
-        with build_directory_lock(build_directory(worktree, variant)) as prepared:
-            run_to_end(build + (["--prepared-build", prepared.as_posix()] if prepared else []), None, cwd=worktree, stdin=subprocess.DEVNULL,
-                       env=script_environment())
+        build_snapshot(build, build_directory(worktree, variant), cwd=worktree, stdin=subprocess.DEVNULL)
+    except TimeoutError:
+        return autana_config.EXIT_BUSY
     except subprocess.CalledProcessError as failed:
         return failed.returncode
     return 0
@@ -1937,9 +1962,13 @@ def batch(args, store, board):
     return 1 if any(e["error"] or e["failed"] for e in entries) else 0
 
 
+WAIT_UNIT_SECONDS = {"s": 1, "m": 60, "h": 60 * 60}
+
+
 def human_wait_seconds(value):
     try:
-        seconds = float(value)
+        unit = value[-1:]
+        seconds = float(value[:-1] if unit in WAIT_UNIT_SECONDS else value) * WAIT_UNIT_SECONDS.get(unit, 1)
     except ValueError as error:
         raise argparse.ArgumentTypeError("wait must be a nonnegative number") from error
     if not math.isfinite(seconds) or seconds < 0:
@@ -2068,6 +2097,7 @@ def main(argv=None):
     run = subparsers.add_parser("run")
     run.set_defaults(auto_pick=True)
     run.add_argument("--keep-on-failure", type=hold_seconds)
+    run.add_argument("--estimate", type=human_wait_seconds)
     run.add_argument("child", nargs=argparse.REMAINDER)
     wait_parser = subparsers.add_parser("wait-free")
     wait_parser.add_argument("--cap", type=human_wait_seconds)
@@ -2300,7 +2330,7 @@ def main(argv=None):
             child = args.child[1:] if args.child[:1] == ["--"] else args.child
             if not child:
                 parser.error("run needs -- <command...>")
-            with HeldLock(store, board, args.owner, "run", args.wait) as held:
+            with HeldLock(store, board, args.owner, "run", args.wait, estimate=args.estimate) as held:
                 try:
                     run_to_end(child, held.lost)
                     result = 0
