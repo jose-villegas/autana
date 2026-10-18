@@ -356,6 +356,9 @@ Set them with `--set` ([Render-Harness](../tools/Render-Harness.md)).
 | size | `r3d_span.small_max_side` | 0..16 | 4 | Bounding-box centres per side eligible for flat fill; 0 disables it |
 <!-- /generated: small-fill-levers -->
 
+Live small-fill limits resolve before row workers run. Dither rows use exact
+edge bounds, with the interior taking the flat depth-test loop.
+
 The gate measures the largest RGB565 channel spread across the vertices.
 For sides above side 4, its limit interpolates from the near gate at side 5
 to the far gate at the size limit.

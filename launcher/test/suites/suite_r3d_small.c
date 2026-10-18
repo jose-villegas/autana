@@ -340,7 +340,7 @@ test_small_two_by_two_dither_spans_all_ranks(void) {
         for (int x = 0; x <= d.phase_mask; x++) {
             const int rank = gfx_dither4x4[y & d.phase_mask][x & d.phase_mask] >> d.rank_shift;
             const int32_t threshold = (d.total * (2 * rank + 1)) >> d.level_shift;
-            const uint16_t color = small_dither_pick(&d, threshold, third, third, d.total - 2 * third, 0);
+            const uint16_t color = small_dither_pick(&d, threshold, third, third);
             for (int i = 0; i < TRIANGLE_VERTICES; i++) {
                 counts[i] += color == d.color[i];
             }
@@ -682,7 +682,7 @@ test_small_randomized_reference(void) {
                     rng_seed(&random, ORACLE_SEED + (uint32_t)(side * 100 + setting * 10 + mode));
                     for (int sample = 0; sample < ORACLE_SAMPLES; sample++) {
                         r3d_span_vertex_t v[3];
-                        oracle_vertices(v, &random, side);
+                        oracle_vertices(v, &random, 1 + (sample + setting + mode) % SMALL_MAX_SIDE_TUNE);
                         const int offset = (sample % 3 - 1) * side * R3D_SUBPIXEL;
                         for (int k = 0; k < TRIANGLE_VERTICES; k++) {
                             v[k].x += offset;
