@@ -7,6 +7,9 @@
 
 #include "test_cleanup.h"
 
+#include "gfx/target/gfx_color.h"
+#include "gfx/target/gfx_target.h"
+#include "render/raster.h"
 #include "render/upscale.h"
 
 static void
@@ -233,8 +236,182 @@ test_each_width_takes_its_path_and_matches_the_maps(void) {
     }
 }
 
+static void
+assert_scanline_rows_match_reference(const upscale_t* scale, const uint16_t* plain, int run, uint16_t clear,
+                                     uint16_t dark_clear, uint16_t dark_color) {
+    const int width = scale->destination_width;
+    const int height = scale->destination_height;
+    const uint16_t* actual = held.actual;
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            const uint16_t pixel = plain[y * width + x];
+            const bool dark = run != 0 && y % run >= run / 2;
+            const uint16_t expected = dark ? (pixel == clear ? dark_clear : dark_color) : pixel;
+            TEST_ASSERT_EQUAL_HEX16(expected, actual[y * width + x]);
+        }
+    }
+}
+
+static void
+test_scanline_runs_preserve_bright_rows_and_darken_clear_pixels(void) {
+    enum {
+        WIDTH = 4,
+        HEIGHT = 3,
+        MAX_WIDTH = 16,
+        MAX_HEIGHT = 12,
+        RED = 24,
+        GREEN = 48,
+        BLUE = 16,
+        CLEAR_RED = 16,
+        CLEAR_GREEN = 32,
+        CLEAR_BLUE = 24
+    };
+
+    uint16_t source[WIDTH * HEIGHT], depth[WIDTH * HEIGHT];
+    uint16_t plain[MAX_WIDTH * MAX_HEIGHT];
+    held.actual = malloc(sizeof *held.actual * MAX_WIDTH * MAX_HEIGHT);
+    suite_set_test_cleanup(release_buffers);
+    TEST_ASSERT_NOT_NULL(held.actual);
+    uint16_t* actual = held.actual;
+    uint16_t columns[MAX_WIDTH], rows[MAX_HEIGHT];
+    const uint16_t color = gfx_color_rgb565(RED, GREEN, BLUE);
+    const uint16_t clear = gfx_color_rgb565(CLEAR_RED, CLEAR_GREEN, CLEAR_BLUE);
+    for (int i = 0; i < WIDTH * HEIGHT; i++) {
+        source[i] = color;
+        depth[i] = i % 2;
+    }
+    gfx_render_target_t picture = gfx_render_target_of_color(source, WIDTH, HEIGHT);
+    picture.attachment[GFX_ATTACHMENT_DEPTH] = (gfx_attachment_t){depth, sizeof *depth};
+    picture.count = GFX_ATTACHMENT_DEPTH + 1;
+    static const int sizes[][3] = {
+        /* width, height, uniform even run (zero means ineligible) */
+        {8, 6, 2}, {4, 6, 2}, {16, 12, 0}, {5, 6, 0}, {8, 9, 0}, {8, 7, 0}, {8, 12, 0}, {8, 3, 0},
+    };
+    for (size_t c = 0; c < sizeof sizes / sizeof *sizes; c++) {
+        const int width = sizes[c][0], height = sizes[c][1], run = sizes[c][2];
+        upscale_t scale;
+        TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, width, height, columns, rows));
+        TEST_ASSERT_EQUAL_INT(run, scale.scanline_run);
+        upscale_rows(&scale, &picture, clear, plain, 0, height);
+        {
+            const unsigned keep = UPSCALE_SCANLINE_KEEP;
+            const uint16_t dark_color =
+                gfx_color_rgb565(RED * keep / GFX_COLOR_SCALE_UNIT, GREEN * keep / GFX_COLOR_SCALE_UNIT,
+                                 BLUE * keep / GFX_COLOR_SCALE_UNIT);
+            const uint16_t dark_clear =
+                gfx_color_rgb565(CLEAR_RED * keep / GFX_COLOR_SCALE_UNIT, CLEAR_GREEN * keep / GFX_COLOR_SCALE_UNIT,
+                                 CLEAR_BLUE * keep / GFX_COLOR_SCALE_UNIT);
+            const int split = height / 2;
+            upscale_rows_scanlined(&scale, &picture, clear, actual, 0, split);
+            upscale_rows_scanlined(&scale, &picture, clear, actual, split, height - split);
+            assert_scanline_rows_match_reference(&scale, plain, run, clear, dark_clear, dark_color);
+        }
+    }
+}
+
+static void
+test_scanline_all_colors_match_channel_reference(void) {
+    enum { WIDTH = 2, HEIGHT = 1, OUTPUT_HEIGHT = 2 };
+
+    uint16_t source[WIDTH], columns[2 * WIDTH], rows[OUTPUT_HEIGHT];
+    uint32_t output[WIDTH * OUTPUT_HEIGHT];
+    upscale_t scale;
+    const gfx_render_target_t picture = gfx_render_target_of_color(source, WIDTH, HEIGHT);
+    for (int width = WIDTH; width <= 2 * WIDTH; width += WIDTH) {
+        TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, width, OUTPUT_HEIGHT, columns, rows));
+        {
+            const unsigned keep = UPSCALE_SCANLINE_KEEP;
+            for (unsigned color = 0; color <= UINT16_MAX; color++) {
+                source[0] = (uint16_t)color;
+                source[1] = (uint16_t)~color;
+                upscale_rows_scanlined(&scale, &picture, 0, (uint16_t*)output, 0, OUTPUT_HEIGHT);
+                for (int x = 0; x < width; x++) {
+                    const uint16_t pixel = source[x * WIDTH / width];
+                    const uint16_t native = gfx_color_swap(pixel);
+                    const uint16_t expected = gfx_color_rgb565(gfx_rgb565_r5(native) * keep / GFX_COLOR_SCALE_UNIT,
+                                                               gfx_rgb565_g6(native) * keep / GFX_COLOR_SCALE_UNIT,
+                                                               gfx_rgb565_b5(native) * keep / GFX_COLOR_SCALE_UNIT);
+                    TEST_ASSERT_EQUAL_HEX16(pixel, ((uint16_t*)output)[x]);
+                    TEST_ASSERT_EQUAL_HEX16(expected, ((uint16_t*)output)[width + x]);
+                }
+            }
+        }
+    }
+}
+
+static void
+test_half_picture_fit_table_and_compose_size(void) {
+    static const struct {
+        int width, height, destination_width, destination_height;
+        bool fits;
+    } cases[] = {
+        {0, 2, 8, 12, false}, {4, 0, 8, 12, false}, {3, 2, 8, 12, false}, {4, 2, 0, 12, false},
+        {4, 2, 8, 13, false}, {4, 2, 8, 12, true},  {4, 4, 8, 12, false}, {4, 12, 8, 12, false},
+        {4, 2, 8, 0, false},  {4, 1, 8, 6, true},   {4, 5, 8, 12, false}, {4, 7, 8, 24, false},
+    };
+
+    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
+        const raster_t raster = {.width = cases[i].width,
+                                 .height = cases[i].height,
+                                 .destination_width = cases[i].destination_width,
+                                 .destination_height = cases[i].destination_height};
+        TEST_ASSERT_EQUAL_INT(cases[i].fits, raster_fits_half_picture(&raster));
+        const resolution_step_t size = raster_compose_size(&raster);
+        const int divisor = cases[i].fits ? 2 : 1;
+        TEST_ASSERT_EQUAL_INT(cases[i].destination_width / divisor, size.width);
+        TEST_ASSERT_EQUAL_INT(cases[i].destination_height / divisor, size.height);
+    }
+}
+
+static void
+test_odd_half_picture_repeat_keeps_pixels(void) {
+    enum { WIDTH = 4, HEIGHT = 1, REPEAT = 3, OUTPUT_HEIGHT = HEIGHT * REPEAT };
+
+    const uint16_t source[WIDTH] = {0x1234, 0x5678, 0x9abc, 0xdef0};
+    uint16_t columns[WIDTH], rows[OUTPUT_HEIGHT];
+    uint32_t output[WIDTH * OUTPUT_HEIGHT / 2];
+    upscale_t scale;
+    TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, WIDTH, OUTPUT_HEIGHT, columns, rows));
+    const gfx_render_target_t picture = gfx_render_target_of_color((uint16_t*)source, WIDTH, HEIGHT);
+    upscale_rows_scanlined(&scale, &picture, 0, (uint16_t*)output, 0, OUTPUT_HEIGHT);
+    for (int y = 0; y < OUTPUT_HEIGHT; y++) {
+        TEST_ASSERT_EQUAL_MEMORY(source, (uint16_t*)output + y * WIDTH, sizeof source);
+    }
+}
+
+static void
+test_shaded_paired_copy_strip_starts_on_bottom_of_pair(void) {
+    enum { WIDTH = 4, HEIGHT = 2, REPEAT = 4, OUTPUT_HEIGHT = HEIGHT * REPEAT, FIRST = 1 };
+
+    uint16_t source[WIDTH * HEIGHT] = {0x1234, 0x5678, 0x9abc, 0xdef0, 0x4321, 0x8765, 0xcba9, 0xfed0};
+    uint16_t rows[OUTPUT_HEIGHT];
+    uint32_t whole[WIDTH * OUTPUT_HEIGHT / 2], strip[WIDTH * (OUTPUT_HEIGHT - FIRST) / 2];
+    for (int y = 0; y < OUTPUT_HEIGHT; y++) {
+        rows[y] = y / REPEAT;
+    }
+    const gfx_target_t target = {(uint16_t*)whole, 0, OUTPUT_HEIGHT, WIDTH};
+    const gfx_target_t band = {(uint16_t*)strip, FIRST, OUTPUT_HEIGHT - FIRST, WIDTH};
+    for (unsigned keep = 0; keep <= GFX_COLOR_SCALE_UNIT; keep += GFX_COLOR_SCALE_UNIT / 2) {
+        gfx_target_paired_rows_shaded(target, source, NULL, 0, WIDTH, rows, 0, OUTPUT_HEIGHT, false, REPEAT, keep);
+        gfx_target_paired_rows_shaded(band, source, NULL, 0, WIDTH, rows, FIRST, OUTPUT_HEIGHT - FIRST, false, REPEAT,
+                                      keep);
+        TEST_ASSERT_EQUAL_MEMORY((uint16_t*)whole + FIRST * WIDTH, strip, sizeof strip);
+    }
+    gfx_target_paired_rows(target, source, NULL, 0, WIDTH, rows, 0, OUTPUT_HEIGHT, false);
+    gfx_target_paired_rows(band, source, NULL, 0, WIDTH, rows, FIRST, OUTPUT_HEIGHT - FIRST, false);
+    TEST_ASSERT_EQUAL_MEMORY((uint16_t*)whole + FIRST * WIDTH, strip, sizeof strip);
+    for (int y = 0; y < OUTPUT_HEIGHT; y++) {
+        TEST_ASSERT_EQUAL_MEMORY(source + (y / REPEAT) * WIDTH, (uint16_t*)whole + y * WIDTH, WIDTH * sizeof *source);
+    }
+}
+
 void
 run_upscale_suite(void) {
+    RUN_TEST(test_scanline_all_colors_match_channel_reference);
+    RUN_TEST(test_scanline_runs_preserve_bright_rows_and_darken_clear_pixels);
+    RUN_TEST(test_half_picture_fit_table_and_compose_size);
+    RUN_TEST(test_odd_half_picture_repeat_keeps_pixels);
+    RUN_TEST(test_shaded_paired_copy_strip_starts_on_bottom_of_pair);
     RUN_TEST(test_two_times_matches_the_frame_doubling_reference);
     RUN_TEST(test_integer_factors_copy_each_source_pixel_to_its_block);
     RUN_TEST(test_fractional_maps_cover_destination_in_order_and_at_source_corners);
