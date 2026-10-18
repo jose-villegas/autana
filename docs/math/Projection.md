@@ -1,8 +1,6 @@
-# Projection
+# Projection: projectf.h, projectx.h
 
 Camera-space clipping and mapping to picture pixels. [Math index](README.md).
-
-### Projection: projectf.h, projectx.h
 
 A camera point reaches the picture through these functions; segments are
 cut at the near plane in camera space.

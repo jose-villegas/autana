@@ -2,13 +2,11 @@
 
 Per-type arithmetic, fixed point, random draws and units. [Math index](README.md).
 
-## Scalar
-
 `math/scalar/` holds per-type arithmetic, fixed point, random draws, trigonometry
 and time units. The tables list the range, lerp and rounding helpers; the
 [catalogue](../Shared-Helpers.md) lists the rest.
 
-### mathi.h
+## mathi.h
 
 These take and return plain integers, not structs.
 
@@ -23,7 +21,7 @@ These take and return plain integers, not structs.
 | `mathi_lerp(a, b, t, n)` | `t` of `n` steps from `a` to `b`, the step truncated toward `a`; `n > 0`, `0 <= t <= n` | $`a + \mathrm{trunc}((b-a)t/n)`$ |
 | `mathi_lerp_u8(a, b, w)` | `mathi_lerp` with `n = UINT8_MAX` | $`a + \mathrm{trunc}((b-a)w/255)`$ |
 
-### mathf.h
+## mathf.h
 
 | Function | Purpose | Formula |
 |---|---|---|
@@ -34,7 +32,7 @@ These take and return plain integers, not structs.
 | `mathf_repeat(v, len)` | into `[0, len)`; `len > 0`; a remainder rounded to `len` maps to zero | $`v - \lfloor v/len\rfloor len`$ |
 | `mathf_wrap(v, lo, hi)` | into `[lo, hi)`; `lo < hi` | $`lo + \mathrm{repeat}(v-lo,hi-lo)`$ |
 
-### maths.h
+## maths.h
 
 Lerp and range helpers widen to `mathi.h`; lerp weights are int32 and the step truncates toward `a`.
 
@@ -43,7 +41,7 @@ Lerp and range helpers widen to `mathi.h`; lerp weights are int32 and the step t
 | `maths_lerp(a, b, t, n)` | interpolation across the int16 range | $`a + \mathrm{trunc}((b-a)t/n)`$ |
 | `maths_min(a, b)`, `maths_max(a, b)`, `maths_clamp(v, lo, hi)`, `maths_repeat(v, len)`, `maths_wrap(v, lo, hi)` | range helpers on the value | as in `mathi.h` |
 
-### mathx.h
+## mathx.h
 
 `mathx_lerp` saturates as `mathx_add` and `mathx_mul` do; the range helpers apply `mathi.h` to the raw Q16.16 value.
 
@@ -52,7 +50,7 @@ Lerp and range helpers widen to `mathi.h`; lerp weights are int32 and the step t
 | `mathx_lerp(a, b, t)` | interpolation by a Q16.16 weight `t` | $`\mathrm{add}(a,\mathrm{mul}(\mathrm{sub}(b,a),t))`$ |
 | `mathx_min(a, b)`, `mathx_max(a, b)`, `mathx_clamp(v, lo, hi)`, `mathx_repeat(v, len)`, `mathx_wrap(v, lo, hi)` | range helpers on the value | as in `mathi.h` |
 
-### mathf_round.h
+## mathf_round.h
 
 | Function | Purpose | Formula |
 |---|---|---|
@@ -63,7 +61,7 @@ Lerp and range helpers widen to `mathi.h`; lerp weights are int32 and the step t
 
 `MATH_FLOAT_INT_LIMIT` is the largest float below 2^31 that converts to int32.
 
-### mathf_rsqrt.h
+## mathf_rsqrt.h
 
 | Function | Purpose | Formula |
 |---|---|---|
@@ -71,7 +69,7 @@ Lerp and range helpers widen to `mathi.h`; lerp weights are int32 and the step t
 
 The device result is within `MATHF_RSQRT_RELATIVE_LIMIT` relative error of the exact value, which the device sweep checks.
 
-### fixed.h
+## fixed.h
 
 Fixed-point multiplication, division and rounding at a caller-selected shift:
 
@@ -82,7 +80,7 @@ Fixed-point multiplication, division and rounding at a caller-selected shift:
 | `fx_div_round_wide` | nonzero denominator; keeps the wide result |
 | `fx_div_round` | nonzero denominator; wraps a result outside int32 |
 
-### rng.h
+## rng.h
 
 `rng_t` is an explicitly seeded xorshift32 generator.
 
@@ -94,13 +92,13 @@ Fixed-point multiplication, division and rounding at a caller-selected shift:
 | `rng_chance` | never and always consume no draw |
 | `rng_hash` | a counter-based draw with no state, mixed by `rng_avalanche32` |
 
-### trig.h
+## trig.h
 
 `trig_sin` and `trig_cos` take a uint16 phase, `TRIG_TURN` to a turn, and return
 integers with `TRIG_SIN_SHIFT` fractional bits, at most `TRIG_SIN_MAX`.
 
 `trig_sin_quadrant` interpolates the quarter-wave table; cosine adds `TRIG_QUARTER_TURN`.
 
-### units.h
+## units.h
 
 `MATH_MS_PER_S` owns the integer milliseconds per second for time conversions.

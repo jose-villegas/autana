@@ -54,6 +54,14 @@ def problems_for(**kwargs):
 
 
 class CheckMathDocs(unittest.TestCase):
+    def test_family_sections_accept_both_heading_levels(self):
+        for heading in ("##", "###"):
+            with self.subTest(heading=heading):
+                text = heading + " vec2 (`f i s x`)\n\n`P_add(a)`\n\n## vec3\n`P_other(a)`\n"
+                body = check_math_docs.section(text, "vec2")
+                self.assertIn("`P_add(a)`", body)
+                self.assertNotIn("P_other", body)
+
     def test_family_must_be_on_its_folder_page(self):
         with tempfile.TemporaryDirectory() as d:
             root = pathlib.Path(d)
@@ -64,7 +72,7 @@ class CheckMathDocs(unittest.TestCase):
             for name in ("vec2_template.h", "vec2f.h"):
                 (source / name).rename(target / name)
             problems = check_math_docs.check(root)
-            self.assertTrue(any("Curves.md has no `### vec2`" in p for p in problems))
+            self.assertTrue(any("Curves.md has no family section for `vec2`" in p for p in problems))
             page = root / "docs/math/Curves.md"
             page.write_text(check_math_docs.section((root / "docs/math/Linear.md").read_text(), "vec2"))
             index = root / check_math_docs.PAGE
@@ -274,7 +282,7 @@ class CheckMathDocs(unittest.TestCase):
             self.assertTrue(any("vec2q" in p for p in check_math_docs.check(d)))
 
     def test_a_missing_family_section_fails(self):
-        self.assertTrue(any("no `### quat` section" in p for p in problems_for(skip_section="quat")))
+        self.assertTrue(any("no family section for `quat`" in p for p in problems_for(skip_section="quat")))
 
     def test_a_template_that_defines_nothing_fails_instead_of_passing_on_nothing(self):
         self.assertTrue(any("defines no functions" in p for p in problems_for(empty_template="mat4")))

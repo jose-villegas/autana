@@ -2,9 +2,7 @@
 
 Half-open rectangles and oriented planes. [Math index](README.md).
 
-## Geometry
-
-### rect (`f i s x`)
+## rect (`f i s x`)
 
 `P` is `rectf`, `recti`, `rects` or `rectx`. A rectangle stores `x, y, w, h`:
 its corner and size, with exclusive right and bottom edges. A nonpositive
@@ -24,7 +22,7 @@ width or height is empty. Queries clamp result sizes to zero.
 
 The queries use half-open edges; crossed edges produce an empty rectangle.
 
-### plane (`f x`)
+## plane (`f x`)
 
 `planef_t` and `planex_t` hold a vec3 `normal` and a scalar `d`; inside is
 `dot(normal, point) + d >= 0`. Distances are scaled by the normal's length
@@ -38,6 +36,12 @@ until the plane is normalized.
 | `P_normalize(p)` | unit normal; normal must be nonzero; for `x`, `dot(normal, normal)` must be representable, as for `vec3x_normalize` | $`(p_n, p_d)/\lVert p_n\rVert`$ |
 | `P_from_rows(&m, a, b, c, e)` | the plane $`a x + b y + c z + e \ge 0`$ of affine m's target, in m's source space | $`n_j = a m_{0j} + b m_{1j} + c m_{2j},\ d = a m_{03} + b m_{13} + c m_{23} + e`$ |
 | `P_frustum(&m, near_z, center, screen, out)` | near and screen side planes in affine m's source space | `P_from_rows` of each lens-space plane below |
+
+![Signed plane-value bands before and after normalizing a non-unit normal, sharing the same zero line](../images/math/plane-distance.png)
+
+![Triangle winding in two panels with opposite normals and green shading on opposite inside sides](../images/math/plane-from-points.png)
+
+![A left plane and sample point in lens space beside the transformed world-space plane and sample, with equal signed values](../images/math/plane-from-rows.png)
 
 `P_frustum` reads rows as in Gribb and Hartmann<sup>[[77]](../Citations.md#77)</sup>,
 with z as the homogeneous w row of a y-down camera with `screen = center + xy / z`.
@@ -53,18 +57,6 @@ Each output is `P_from_rows` of one lens-space plane, in this order:
 
 `PLANE_FRUSTUM_COUNT` sizes the output. There is no far plane, and the
 planes are not normalized.
-
-![Signed plane-value bands before and after normalizing a non-unit normal, sharing the same zero line](../images/math/plane-distance.png)
-
-Normalization preserves the zero line and makes signed values measure perpendicular distance.
-
-![Triangle winding in two panels with opposite normals and green shading on opposite inside sides](../images/math/plane-from-points.png)
-
-Swapping b and c reverses the winding, normal and inside side.
-
-![A left plane and sample point in lens space beside the transformed world-space plane and sample, with equal signed values](../images/math/plane-from-rows.png)
-
-Reading the lens-space plane through the matrix rows preserves its signed value at the mapped point.
 
 ![Camera frustum clipped to its axes box beside a ground-plane slice with named zero lines and arrows pointing inside; grid points passing every plane are green](../images/math/frustum.png)
 
