@@ -20,11 +20,13 @@ autana() {
         flash) return 0 ;;
     esac
 }
-python() {
-    case "$*" in
-        *resolve-port*) printf 'COM7\\r\\n' ;;
-    esac
-}
+'''
+        # The run's venv Python: answers resolve-port, records a pytest run.
+        venv_stub = '''#!/bin/sh
+case "$*" in
+    *resolve-port*) printf 'COM7\\r\\n' ;;
+    *pytest*) echo "pytest $*" >> "$RUNNER_TEMP/calls"; exit "$CI_PYTEST_EXIT" ;;
+esac
 '''
         for selftest, console in ((0, 0), (0, 1), (1, 0), (1, 1)):
             with self.subTest(selftest=selftest), tempfile.TemporaryDirectory() as directory:
@@ -33,7 +35,7 @@ python() {
                            GITHUB_STEP_SUMMARY=str(Path(directory) / "summary"))
                 venv_python = Path(directory) / "device-tests/Scripts/python"
                 venv_python.parent.mkdir(parents=True)
-                venv_python.write_text('#!/bin/sh\necho "pytest $*" >> "$RUNNER_TEMP/calls"\nexit "$CI_PYTEST_EXIT"\n')
+                venv_python.write_text(venv_stub)
                 venv_python.chmod(0o755)
                 result = subprocess.run([shutil.which("bash"), "-c", stub + textwrap.dedent(sequence)],
                                         env=env, cwd=directory, capture_output=True, text=True)
@@ -42,5 +44,5 @@ python() {
                 self.assertEqual(calls[:2], ["selftest", "flash diag"])
                 self.assertIn("--embedded-services idf,serial", calls[2])
                 self.assertIn("--port COM7", calls[2])
-                self.assertIn("--skip-autoflash", calls[2])
+                self.assertIn("--skip-autoflash y", calls[2])
                 self.assertIn("--root-logdir", calls[2])

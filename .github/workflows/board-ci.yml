@@ -80,8 +80,8 @@ jobs:
           autana flash diag || console_status=$?
           if [ "$console_status" -eq 0 ]; then
             "$RUNNER_TEMP/device-tests/Scripts/python" -m pytest launcher/test/device --embedded-services idf,serial \
-              --build-dir build.diag --port "$(python scripts/device/device.py resolve-port | tr -d "\r")" \
-              --skip-autoflash --root-logdir .records/device/pytest-logs \
+              --build-dir build.diag --port "$("$RUNNER_TEMP/device-tests/Scripts/python" scripts/device/device.py resolve-port | tr -d "\r")" \
+              --skip-autoflash y --root-logdir .records/device/pytest-logs \
               --junitxml=.records/device/pytest-logs/results.xml \
               | tee .records/device/pytest-logs/pytest.log || console_status=$?
           fi
