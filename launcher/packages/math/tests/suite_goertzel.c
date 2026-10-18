@@ -1,7 +1,7 @@
 /* Detector compared with an independent double-precision DFT on the host. */
 #include <math.h>
 #include <stdlib.h>
-#include "math/linear/math_const.h"
+#include "math/scalar/math_const.h"
 #include "math/scalar/trig.h"
 #include "math/signal/goertzel.h"
 #include "suites.h"
