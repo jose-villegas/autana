@@ -641,4 +641,4 @@ nonpositive or nonfinite lenses, invalid clear colours, duplicate light,
 animator or skinned-renderer entities, unknown kind or wrap, invalid clip
 ranges or defaults, colours outside 0..1, and negative or nonfinite lighting
 settings. `default_clip=SCENE_ASSET_DEFAULT_CLIP_NONE` means no playback. Light-kind codes belong to
-`scene_internal.h`; wrap codes belong to `anim_track.h`.
+`scene_format.h`; wrap codes belong to `anim_track.h`.
