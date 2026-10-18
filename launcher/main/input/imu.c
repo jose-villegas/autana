@@ -277,6 +277,11 @@ imu_read_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
     const bool resumed = write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG);
     const uint64_t locked_us = (uint64_t)(timing_now_us() - lock_start_us);
     fifo_gap = !ok || !resumed;
+    if (fifo_gap) {
+        /* A failed burst may have consumed part of a sample (reads consume, section 8.8):
+         * reset and reconfigure, as imu_init does, so the next count starts on a sample boundary. */
+        (void)(write_command(CTRL9_RST_FIFO) && write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG));
+    }
     *lost = fifo_gap || *overflowed ? 0 : pending_lost;
     /* Read-mode losses follow this burst, so gravity advances them with the next batch. */
     pending_lost = imu_fifo_lost(locked_us, &loss_remainder_us, fifo_gap || *overflowed);
