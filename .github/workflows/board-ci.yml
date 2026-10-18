@@ -59,10 +59,11 @@ jobs:
       - name: Prepare the shell image and console tests
         run: |
           export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
-          # The tests' packages go in a venv of this run, not the runner's Python.
+          # The tests' packages go in a venv and pip cache of this run, not the runner's.
           PY=$(. scripts/lib/python.sh && find_python)
           "$PY" -m venv "$RUNNER_TEMP/device-tests"
-          "$RUNNER_TEMP/device-tests/Scripts/python" -m pip install -r launcher/test/device/requirements.txt
+          PIP_CACHE_DIR="$RUNNER_TEMP/pip-cache" "$RUNNER_TEMP/device-tests/Scripts/python" -m pip install \
+            -r launcher/test/device/requirements.txt
           autana build diag
 
       - name: Self-test and console tests under one board lock
