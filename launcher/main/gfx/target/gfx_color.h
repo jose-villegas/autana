@@ -58,9 +58,11 @@ gfx_rgb565_r5(uint16_t native) {
     return (native >> 11) & 0x1Fu;
 }
 
+#define GFX_RGB565_G6_MAX 0x3Fu
+
 static inline unsigned
 gfx_rgb565_g6(uint16_t native) {
-    return (native >> 5) & 0x3Fu;
+    return (native >> 5) & GFX_RGB565_G6_MAX;
 }
 
 static inline unsigned

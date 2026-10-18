@@ -1,15 +1,7 @@
-/*
- * render_lab_render_host - this app itself, entered and stepped on a host,
- * started on the scene --scene names.
- *
- * A render_host.h scene: the real enter()/frame(), the real gfx and ui
- * layers, no board, no IDF header, no clock or finger but the harness's own.
- * app_*.c is excluded from the host test runner as hardware-facing, but it
- * asks nothing of the board, so this links the real app_registry.c - its
- * own APP_REGISTER() constructor lands the one app that runs here - and
- * only display_quarter_now() and shell_home_edge() below stand in for the
- * shell itself.
- */
+/* The host harness enters the registered screen with synthetic time and
+ * input. Hardware-facing entry code links here because it needs no board
+ * access. display_quarter_now returns the requested orientation; shell_home_edge
+ * returns the bottom edge because synthetic input has no home gesture. */
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -68,34 +60,21 @@ option_value(int argc, char** argv, const char* name, const char** out) {
     return true;
 }
 
-static bool tune_set;
+static bool tune_succeeded;
 
 static void
 note_reply(const char* line) {
-    tune_set = strncmp(line, "TUNE_OK ", sizeof "TUNE_OK " - 1) == 0;
-    if (!tune_set) {
+    tune_succeeded = strncmp(line, "TUNE_OK ", sizeof "TUNE_OK " - 1) == 0;
+    if (!tune_succeeded) {
         (void)fprintf(stderr, "render_lab_render_host: %s\n", line);
     }
-}
-
-/* The console protocol owns tunable names and range validation. */
-static bool
-set_tunable(const char* name, int value) {
-    char line[TUNE_NAME_MAX + 16];
-    const int length = snprintf(line, sizeof line, "SET %s %d", name, value);
-    if (length < 0 || (size_t)length >= sizeof line) {
-        return false;
-    }
-    tune_set = false;
-    (void)tune_handle_line(line, note_reply);
-    return tune_set;
 }
 
 static bool
 view_from_name(const char* name) {
     const int view = render_context_debug_view_named(name);
     if (view != RENDER_DEBUG_VIEW_UNKNOWN) {
-        return set_tunable("render_lab.view", view);
+        return render_host_set_tunable("render_lab.view", view);
     }
     (void)fprintf(stderr, "render_lab_render_host: --view is ");
     render_context_print_debug_views(stderr);
@@ -124,10 +103,10 @@ tune_options(int argc, char** argv, const char* option) {
         strcpy(line + sizeof "SET " - 1, argv[i]);
         char* equal = strchr(line, '=');
         *equal = ' ';
-        tune_set = false;
+        tune_succeeded = false;
         (void)tune_handle_line(line, note_reply);
         free(line);
-        if (!tune_set) {
+        if (!tune_succeeded) {
             return false;
         }
     }
@@ -186,7 +165,8 @@ options(int argc, char** argv) {
     option_args = argv;
     apply_flags(argc, argv);
     render_lab_start_scene_key = scene;
-    return (view == NULL || view_from_name(view)) && (scale == NULL || set_tunable("render_lab.scale", atoi(scale)))
+    return (view == NULL || view_from_name(view))
+           && (scale == NULL || render_host_set_tunable("render_lab.scale", atoi(scale)))
            && tune_options(argc, argv, "--tune");
 }
 
