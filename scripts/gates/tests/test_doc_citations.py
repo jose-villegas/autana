@@ -633,6 +633,7 @@ class PaperCitationTest(unittest.TestCase):
         rows = '| <a id="1"></a>[1] | A<br>Cited by: [Guide.md](Guide.md) |\n'
         guide = ("docs/Guide.md", "[[1]](Citations.md#1)\n")
         for path, line in [("launcher/main/a.c", "/* Gouraud (docs/Citations.md#1). */\n"),
+                           ("editor/src/a.cpp", "// docs/Citations.md#1\n"),
                            ("scripts/tool.py", "# After docs/Citations.md#1\n"),
                            ("launcher/CMakeLists.txt", "# docs/Citations.md#1\n"),
                            ("launcher/tools/x.sh", 'X="docs/Citations.md#1"\n')]:
