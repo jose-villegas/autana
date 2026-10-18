@@ -2,6 +2,7 @@
 #ifdef DEVICE_BUILD
 #include <stdio.h>
 #include <string.h>
+#include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/tests/r3d_perf_quarters.h"
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "apps/render_lab/tests/skin_perf_log.h"
@@ -10,6 +11,7 @@
 #include "core/timing.h"
 #include "esp_cpu.h"
 #include "esp_log.h"
+#include "gfx/gfx.h"
 #include "perf_stats.h"
 #include "render/r3d_span_internal.h"
 #include "scene/scene_internal.h"
@@ -246,6 +248,9 @@ test_animation_and_frame_cost(void) {
     report_stage(f, SKIN_PERF_STAGE_ANIMATION_STEP, step, 1, false, SKIN_PERF_CORES_UNKNOWN);
     for (size_t q = 0; q < R3D_PERF_QUARTER_COUNT; q++) {
         const r3d_perf_quarter_t* quarter = &r3d_perf_quarters[q];
+        const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
+        ESP_LOGI(TAG, "raster=%dx%d present=%d" R3D_PERF_QUARTER_FORMAT, size.width, size.height, render_lab_present(),
+                 quarter->name);
         render_lab_test_hold_quarter(quarter->quarter);
         perf_stats_t playing_render;
         perf_stats_t paused_render;

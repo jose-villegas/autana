@@ -19,7 +19,7 @@ hand:
     `P_<c1>...<ck>(`, its names are every k letters of S's struct fields,
     and N must be that field count;
   * every function an instantiation header or vec_convert.h writes by hand
-    (`quatf_slerp`, `vec3f_from_vec3x`, `mathf_to_x`, ...) and each
+    (`quatf_slerp`, `vec3f_from_vec3x`, ...) and each
     `TRANSFORM<S>_IDENTITY` initializer must be named on the page;
   * the other way round: every `name(` the page puts in backticks must exist,
     as `P_` or a prefix of that function's own family, or as a function a
@@ -174,8 +174,6 @@ def check(root):
         if header.name.endswith("_template.h"):
             continue
         defined.update(HAND_WRITTEN.findall(text))
-        if header.name.startswith("math"):
-            continue
         for prefix in DEFINE_CALL.findall(text):
             if "`%s`" % prefix not in page:
                 problems.append("%s: the page does not name the type `%s`" % (PAGE.as_posix(), prefix))

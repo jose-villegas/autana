@@ -28,6 +28,7 @@
 #include "core/job.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "display/display.h"
 #include "display/viewport.h"
 #include "gfx/gfx.h"
 #include "math/linear/transformf.h"
@@ -55,16 +56,6 @@ static r3d_lit_mesh_t meshes[SPONZA_BAKE_COUNT];
 
 #define PANEL_PIXELS ((size_t)GFX_WIDTH * GFX_HEIGHT)
 
-static int
-render_width(void) {
-    return GFX_WIDTH * 100 / render_lab_scale();
-}
-
-static int
-render_height(void) {
-    return GFX_HEIGHT * 100 / render_lab_scale();
-}
-
 typedef struct {
     void* scratch;
     gfx_color_t* panel;
@@ -74,21 +65,25 @@ typedef struct {
 static void
 bench_open(bench_t* b, const r3d_instance_t* instance, const raster_attachment_t* const* attachments) {
     b->panel = memory_alloc(sizeof(gfx_color_t) * PANEL_PIXELS, MEMORY_PSRAM);
+    const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
     b->raster = (raster_t){
         .instances = instance,
         .instance_count = 1,
-        .width = render_width(),
-        .height = render_height(),
+        .width = size.width,
+        .height = size.height,
         .upscaled = true,
         .destination_width = GFX_WIDTH,
         .destination_height = GFX_HEIGHT,
         .attachments = attachments,
         .attachment_count = attachments == NULL ? 0 : 1,
     };
+    b->raster.present = render_lab_present();
     b->scratch = memory_alloc(raster_scratch_bytes(&b->raster), MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(b->scratch);
     TEST_ASSERT_NOT_NULL(b->panel);
     b->raster.scratch = b->scratch;
+    ESP_LOGI(TAG, "raster=%dx%d present=%d" R3D_PERF_QUARTER_FORMAT, b->raster.width, b->raster.height,
+             render_lab_present(), perf_quarter->name);
     ESP_LOGI(TAG, "heap after setup: internal free %u largest %u, psram free %u largest %u" R3D_PERF_QUARTER_FORMAT,
              (unsigned)memory_free_bytes(MEMORY_INTERNAL), (unsigned)memory_largest_block(MEMORY_INTERNAL),
              (unsigned)memory_free_bytes(MEMORY_PSRAM), (unsigned)memory_largest_block(MEMORY_PSRAM),
@@ -104,8 +99,9 @@ bench_close(bench_t* b) {
 static r3d_lens_t
 view_at(const r3d_lit_mesh_t* mesh, uint32_t t_ms) {
     (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
+    const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
     const render_view_t view = camera_view(flythrough, scene_entity_transform(sponza, camera_entity),
-                                           (viewport_t){render_width(), render_height(), perf_quarter->quarter});
+                                           (viewport_t){size.width, size.height, perf_quarter->quarter});
     r3d_lens_t lens;
     r3d_lens_init(&lens, &view, mesh->position_scale);
     return lens;
@@ -275,7 +271,8 @@ test_sponza_draw_stage_breakdown(void) {
     const render_view_t frame_view =
         render_view_make(&sky_pose, 1.0F, 1.0F, (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
     const raster_stats_t none = raster_draw(&b->raster, &frame_view);
-    raster_upscale(&b->raster, b->panel, GFX_WIDTH, GFX_HEIGHT);
+    const resolution_step_t composed = raster_compose_size(&b->raster);
+    raster_upscale(&b->raster, b->panel, composed.width, composed.height);
     ESP_LOGI(TAG, "stage, both cores: %-20s %7lldus (%d clusters)" R3D_PERF_QUARTER_FORMAT, "empty frame",
              (long long)(timing_now_us() - start), none.clusters, perf_quarter->name);
 
@@ -294,7 +291,7 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     TEST_ASSERT_NOT_NULL(b);
     bench_open(b, instance, attachments);
     ESP_LOGI(TAG, "=== %s FRAME COST (%d tris, %d verts, %d clusters, rendered %dx%d) ===" R3D_PERF_QUARTER_FORMAT,
-             label, mesh->triangle_count, mesh->vertex_count, mesh->cluster_count, render_width(), render_height(),
+             label, mesh->triangle_count, mesh->vertex_count, mesh->cluster_count, b->raster.width, b->raster.height,
              perf_quarter->name);
     const tune_entry_t* culling = tune_find(tune_shared(), "render.cull");
     TEST_ASSERT_NOT_NULL(culling);
@@ -307,9 +304,10 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
     ESP_LOGI(TAG,
              "CAPTURE build_id=%s pack_crc32=%08x object=%s size=%d cull=%ld period_ms=%u "
-             "pose_every_ms=%u" R3D_PERF_QUARTER_FORMAT,
+             "pose_every_ms=%u raster=%dx%d present=%d" R3D_PERF_QUARTER_FORMAT,
              build_id(), (unsigned)asset_crc32(pack->base, pack->size), object_name, size, (long)*culling->value,
-             (unsigned)period, (unsigned)SPONZA_POSE_EVERY_MS, perf_quarter->name);
+             (unsigned)period, (unsigned)SPONZA_POSE_EVERY_MS, b->raster.width, b->raster.height, render_lab_present(),
+             perf_quarter->name);
     char* report = memory_alloc(FRAME_COST_REPORT_MAX, MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL(report);
     (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX);
@@ -327,7 +325,8 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
         }
         const int64_t start = timing_now_us();
         const raster_stats_t stats = raster_draw(&b->raster, &view);
-        raster_upscale(&b->raster, b->panel, GFX_WIDTH, GFX_HEIGHT);
+        const resolution_step_t composed = raster_compose_size(&b->raster);
+        raster_upscale(&b->raster, b->panel, composed.width, composed.height);
         const int64_t us = timing_now_us() - start;
         ESP_LOGI(TAG, "%s t=%5us clusters=%4d tris=%5d | both cores: frame %7lldus" R3D_PERF_QUARTER_FORMAT, label,
                  (unsigned)(t_ms / 1000), stats.clusters, stats.triangles, (long long)us, perf_quarter->name);
@@ -412,6 +411,7 @@ run_sponza_perf_suite(void) {
     pack = loaded.pack;
     flythrough = loaded.lens;
     camera_entity = sponza == NULL ? SCENE_ENTITY_NONE : scene_find(sponza, sponza_cameras[0]);
+    (void)scene_camera_set_present(sponza, camera_entity, render_lab_present());
     for (size_t q = 0; q < R3D_PERF_QUARTER_COUNT; q++) {
         perf_quarter = &r3d_perf_quarters[q];
         RUN_TEST(test_sponza_draw_stage_breakdown);

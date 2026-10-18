@@ -15,9 +15,9 @@
 
 #include <stdbool.h>
 
-#include "math/linear/math_const.h"
 #include "math/linear/transformf.h"
 #include "math/linear/vec3f.h"
+#include "math/scalar/math_const.h"
 
 /* The steepest pitch either way. Short of a quarter turn: the pose faces the
  * target with look_at against the world's up, which is undefined straight up

@@ -25,6 +25,7 @@
 #include "shell/shell.h"
 #include "shell/ui/ui_launcher.h"
 #include "shell/ui/ui_ridge.h"
+#include "sound/sound_engine.h"
 #include "ui/ui.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -100,6 +101,7 @@ app_boot_init(void) {
 
     heap_mark("after gfx_init");
     display_load_panel_clock();
+    (void)sound_init();
 
     if (!post_run_after_display()) {
         show_post_failures();

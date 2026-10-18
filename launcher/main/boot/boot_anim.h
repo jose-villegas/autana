@@ -611,8 +611,8 @@ boot_anim_ink(uint32_t now_ms) {
     return (uint8_t)(255u - tween_ramp(now_ms, BOOT_ANIM_FADE_START_MS, BOOT_ANIM_MS - BOOT_ANIM_FADE_START_MS));
 }
 
-/* Crossfade to the photograph, 0..255, over BOOT_ANIM_IMAGE_START_MS/
- * FADE_MS. Plain tween_ramp(), not eased: ease_out(r) + ease_out(255-r)
+/* Crossfade to the photograph, 0..255, from BOOT_ANIM_IMAGE_START_MS for
+ * BOOT_ANIM_IMAGE_FADE_MS. Plain tween_ramp(), not eased: ease_out(r) + ease_out(255-r)
  * is NOT 255 at every r, so easing either half of a cross-dissolve makes
  * the midpoint read brighter than either end; linear is what keeps the
  * two halves summing to one whole picture throughout. The scene shows

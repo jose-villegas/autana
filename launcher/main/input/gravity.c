@@ -3,8 +3,8 @@
 #include <float.h>
 #include <math.h>
 
-#include "math/linear/math_const.h"
 #include "math/linear/vec_convert.h"
+#include "math/scalar/math_const.h"
 #include "math/scalar/units.h"
 
 #define HALF_TURN_DEG      180.0F

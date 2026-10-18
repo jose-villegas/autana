@@ -2,12 +2,10 @@
 #pragma once
 
 #include <stdbool.h>
-#include <stdint.h>
 
-#include "microui.h"
-#include "ui/layout/ui_scroll.h"
-
-typedef void (*render_lab_controls_fn)(mu_Context* ctx, ui_flow_t* flow, int width);
+/* Draws a scene's rows into the menu's flow, each `width` wide and centred:
+ * ui_row_centre(width, h), then a widget at ui_next(). */
+typedef void (*render_lab_controls_fn)(int width);
 
 typedef struct {
     render_lab_controls_fn controls;
@@ -19,7 +17,5 @@ typedef struct {
 } render_lab_menu_screen_result_t;
 
 /* Draws the scene picker and the closing hint. Caller
- * brackets this with ui_begin()/ui_end*(). `dt_ms` drives the scroll
- * view's own momentum, unused while this screen keeps the default (none). */
-render_lab_menu_screen_result_t
-render_lab_menu_screen_draw(mu_Context* ctx, const render_lab_menu_screen_state_t* state, uint32_t dt_ms);
+ * brackets this with ui_begin()/ui_end*(). */
+render_lab_menu_screen_result_t render_lab_menu_screen_draw(const render_lab_menu_screen_state_t* state);

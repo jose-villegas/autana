@@ -5,6 +5,10 @@
  */
 #pragma once
 
+#include "display/display.h"
+#include "display/viewport.h"
+#include "input/imu_sample.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -52,6 +56,29 @@ console_imu_parse(const char* args, int* ax, int* ay, int* az) {
     *ax = a;
     *ay = b;
     *az = c;
+    return true;
+}
+
+/* Transpose the sensor's orthogonal axis mapping to construct a raw sample
+ * whose gravity follows the viewport's down axis. */
+static inline bool
+console_imu_quarter_parse(const char* args, imu_sample_t* sample, int* parsed_quarter) {
+    int quarter;
+    char trailing;
+    if (sscanf(args, "quarter %d %c", &quarter, &trailing) != 1 || quarter < 0 || quarter >= DISPLAY_QUARTER_COUNT) {
+        return false;
+    }
+    *parsed_quarter = quarter;
+    const viewport_quarter_axes_t axes = viewport_quarter_axes(quarter);
+    const vec2i_t down = {axes.x_down, axes.y_down};
+    const vec3i_t raw_x = imu_axes_screen(IMU_COUNTS_PER_G, 0, 0);
+    const vec3i_t raw_y = imu_axes_screen(0, IMU_COUNTS_PER_G, 0);
+    const vec3i_t raw_z = imu_axes_screen(0, 0, IMU_COUNTS_PER_G);
+    *sample = (imu_sample_t){
+        .ax = (int16_t)vec2i_dot(down, vec3i_xy(raw_x)),
+        .ay = (int16_t)vec2i_dot(down, vec3i_xy(raw_y)),
+        .az = (int16_t)vec2i_dot(down, vec3i_xy(raw_z)),
+    };
     return true;
 }
 

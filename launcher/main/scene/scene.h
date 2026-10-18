@@ -66,6 +66,8 @@ const r3d_lit_mesh_t* scene_entity_mesh(const scene_t* scene, scene_entity_t ent
 
 /* The lens of the scene's camera `camera` (NULL: its first); NULL when the scene has no such camera. */
 const camera_t* scene_camera_lens(const scene_t* scene, const char* camera);
+/* Returns false for a non-camera entity or an invalid presentation. */
+bool scene_camera_set_present(scene_t* scene, scene_entity_t camera, camera_present_t present);
 
 /* Setters attach a directional light, initially white with zero intensity; refusals change nothing. */
 bool scene_light_set_color(scene_t* scene, scene_entity_t entity, vec3f_t linear_rgb);

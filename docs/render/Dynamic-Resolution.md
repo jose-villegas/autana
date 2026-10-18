@@ -2,13 +2,18 @@
 
 A scene's camera can draw each frame at a render size picked to hold a frame
 budget, instead of one fixed scale. The sizes are a ladder of steps, finest
-first; `render_context_compose()` copies an exact-half draw into the half
-picture when available and otherwise upscales to the panel size with
-`render/upscale.h`, which takes any ratio in either axis. The code is
-`launcher/main/render/resolution/`. It is opt-in, a setting of the render
-context rather than of a scene or a camera: an app turns it on with
-`render_context_set_dynamic_resolution()` ([Mesh-Rendering.md](Mesh-Rendering.md#the-render-context)),
-and with no call every frame draws at the context's fixed scale.
+first.
+
+`render_context_compose()` expands a draw into the half picture when its width is
+exactly half and its height divides the half height. Otherwise it upscales to the
+panel size with `render/upscale.h`, which takes any ratio in either axis.
+
+The code is `launcher/main/render/resolution/`. Resolution selection is a
+setting of the render context rather than of a scene or a camera.
+
+An app opts in with `render_context_set_dynamic_resolution()`
+([Mesh-Rendering.md](Mesh-Rendering.md#the-render-context)). With no call every
+frame draws at the context's fixed scale.
 
 | Policy | Chooses | From | Guards against flapping |
 |---|---|---|---|
@@ -26,7 +31,7 @@ sees, measures how well the refit tracks a view the fit did not cover.
 
 The cost a policy holds is the part that scales: the draw and the compose
 each step pays. Calibration uses the render context's compose decision,
-including the copy into the half picture at the exactly-half step.
+including expansion into the half picture for steps that fit it.
 The present and whatever an app draws over the scene are not in it. The
 predictor culls once with the picture's unfitted lens, before it chooses a
 size, and draws from the scratch block's census list with a fitted lens. The
@@ -156,6 +161,42 @@ What the table shows:
   the setup floor in the stage table shows.
 
 ![Frame cost and render size along the path, per policy and budget](../images/render/dynamic-resolution-flight.png)
+
+## Camera presentation
+
+A camera can draw half the rows and let the present fill the rest.
+`CAMERA_PRESENT_SCANLINE` darkens every second row, `CAMERA_PRESENT_DOUBLE`
+repeats it, and `CAMERA_PRESENT_NEAREST` (the default) draws the full height.
+
+One call turns it on; there are no other settings:
+
+```c
+scene_camera_set_present(scene, cam, CAMERA_PRESENT_SCANLINE);
+scene_camera_set_present(scene, cam, CAMERA_PRESENT_DOUBLE);
+scene_camera_set_present(scene, cam, CAMERA_PRESENT_NEAREST);
+```
+
+| Mode | Rows drawn | Look |
+|---|---|---|
+| `CAMERA_PRESENT_NEAREST` | The chosen render height | The default picture |
+| `CAMERA_PRESENT_SCANLINE` | Half that height | Each row twice, the second dimmed to `UPSCALE_SCANLINE_KEEP` |
+| `CAMERA_PRESENT_DOUBLE` | Half that height | Each row twice, unchanged |
+
+The halved draw expands into the half picture when its height divides the half
+height, as in `render_context_compose()` above. When the row map is uneven, such
+as a dynamic-resolution step that does not divide, the frame is drawn as NEAREST.
+
+The saving comes from the halved draw: fewer rows, spans and edge steps. SCANLINE
+adds a darkened copy of every second row; DOUBLE costs a little less. On a dense
+benchmark scene SCANLINE cut the frame by about a quarter; the measured tables
+are in the test app's tools README.
+
+The GIFs show the same flythrough in each mode. The dark lines run along the
+panel's rows, which is vertical in this orientation.
+
+| NEAREST | SCANLINE | DOUBLE |
+|---|---|---|
+| ![Nearest presentation](../images/render/sponza-present-nearest.gif) | ![Scanline presentation](../images/render/sponza-present-scanline.gif) | ![Doubled presentation](../images/render/sponza-present-double.gif) |
 
 ## Refreshing
 

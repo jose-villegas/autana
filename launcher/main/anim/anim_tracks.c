@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "anim/anim_tracks_format.h"
 #include "asset/asset_bytes.h"
 
 _Static_assert(ANIM_TRACKS_AT_PAD + ANIM_TRACKS_HEADER_PAD_SIZE == ANIM_TRACKS_HEADER_SIZE,

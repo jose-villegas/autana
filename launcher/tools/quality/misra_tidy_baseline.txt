@@ -140,7 +140,7 @@ readability-isolate-declaration	main/input/touch.c	1
 readability-isolate-declaration	main/shell/shell.c	2
 readability-isolate-declaration	main/shell/shell_apps.c	2
 readability-isolate-declaration	main/ui/ui.c	1
-readability-math-missing-parentheses	main/apps/input_lab/app_input_lab.c	4
+readability-math-missing-parentheses	main/apps/input_lab/app_input_lab.c	3
 readability-math-missing-parentheses	main/apps/input_lab/tests/suite_touch_probe.c	2
 readability-math-missing-parentheses	main/apps/input_lab/touch_probe.c	2
 readability-math-missing-parentheses	main/apps/render_lab/ui/render_lab_menu_screen.c	2

@@ -12,6 +12,8 @@
 #include "math/linear/mat3f.h"
 #include "render/skin/r3d_skin_light.h"
 #include "scene/scene.h"
+#include "scene/scene_conventions.h"
+#include "scene/scene_format.h"
 #include "scene/scene_shell.h"
 
 /* Absent ambient contributes zero. */
@@ -19,7 +21,6 @@
 #define SCENE_TONEMAP_WHITE_NONE      0.0F
 #define SCENE_LIGHT_INTENSITY_DEFAULT 0.0F
 #define SCENE_LIGHT_COLOR_DEFAULT     ((vec3f_t){1.0F, 1.0F, 1.0F})
-#define SCENE_LIGHT_AXIS              ((vec3f_t){0.0F, 1.0F, 0.0F})
 
 typedef enum { SCENE_LIGHT_NONE, SCENE_LIGHT_DIRECTIONAL } scene_light_kind_t;
 
@@ -41,30 +42,8 @@ typedef struct {
     vec3f_t position;
 } scene_asset_transform_t;
 
-/* The scene pack entry, written by tools/r3d/scene_asset.py; the layout is
- * in docs/render/Scene-Files.md. Its rows are read in place, so they are the
- * entry's bytes, little-endian as the device is. */
-#define SCENE_ASSET                   ASSET_TYPE('S', 'C', 'N', 'E')
-#define SCENE_ASSET_VERSION           2U
-#define SCENE_LIGHT_KIND_DIRECTIONAL  1U
-#define SCENE_ASSET_DEFAULT_CLIP_NONE 0xFFFFU
-#define SCENE_ASSET_HEADER_SIZE       56U
-#define SCENE_ASSET_AT_COUNTS         2U
-#define SCENE_ASSET_AT_OFFSETS        20U
-
-typedef enum {
-    SCENE_ASSET_NAMES,
-    SCENE_ASSET_TRANSFORMS,
-    SCENE_ASSET_RENDERERS,
-    SCENE_ASSET_CAMERAS,
-    SCENE_ASSET_LIGHTS,
-    SCENE_ASSET_SKINS,
-    SCENE_ASSET_ANIMATORS,
-    SCENE_ASSET_CLIPS,
-    SCENE_ASSET_SETTINGS,
-    SCENE_ASSET_PART_COUNT
-} scene_asset_part_t;
-
+/* The rows of the SCNE entry (scene_format.h) are read in place, so they are
+ * the entry's bytes, little-endian as the device is. */
 typedef struct {
     uint16_t entity, pad;
     char mesh[ASSET_NAME_MAX];

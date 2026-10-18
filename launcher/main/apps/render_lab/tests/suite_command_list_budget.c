@@ -1,9 +1,9 @@
 /*
- * Portable suite: measures the peak bytes this app's two microui screens'
- * command list reaches, driving the REAL render_lab_hud_screen_draw()/
- * render_lab_menu_screen_draw() against a real microui (ui_init() +
- * ui_begin(), the same calls app_render_lab.c makes) rather than a
- * hand-mirrored reconstruction - see docs/Building-a-Screen.md.
+ * Portable suite: measures the peak bytes this app's two screens' command
+ * list reaches, driving the REAL render_lab_hud_screen_draw()/
+ * render_lab_menu_screen_draw() through ui_begin(), the same calls
+ * app_render_lab.c makes, rather than a hand-mirrored reconstruction - see
+ * docs/Building-a-Screen.md.
  */
 
 #include "suites.h"
@@ -22,9 +22,8 @@
 #include "apps/render_lab/ui/render_lab_hud_screen.h"
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "core/memory.h"
-#include "draw/draw.h"
 #include "test_cleanup.h"
-#include "ui/ui_mu.h"
+#include "ui_probe.h"
 
 /* Landscape (448x368 logical) - this app's shipping orientation. */
 static void
@@ -49,7 +48,7 @@ test_hud_screen_command_list_fits_budget(void) {
 
     const input_t input = {0};
     ui_begin(&input);
-    render_lab_hud_screen_draw(ui_context(), &state);
+    render_lab_hud_screen_draw(&state);
     ui_budget_assert("render lab HUD");
 }
 
@@ -63,19 +62,16 @@ test_menu_screen_command_list_fits_budget(void) {
 
     const input_t input = {0};
     ui_begin(&input);
-    render_lab_menu_screen_draw(ui_context(), &state, 16);
+    render_lab_menu_screen_draw(&state);
     ui_budget_assert("render lab menu");
 }
 
 #define BUDGET_CLIP_COUNT ((GFX_HEIGHT / UI_ROW_HEIGHT) + 1)
-#define BUDGET_FRAME_MS   16
 
 typedef struct {
     render_lab_clips_t choice;
     const char* items[BUDGET_CLIP_COUNT];
     char names[BUDGET_CLIP_COUNT][ASSET_NAME_MAX];
-    mu_Rect anchor;
-    bool open;
 } menu_budget_fixture_t;
 
 static menu_budget_fixture_t* menu_budget;
@@ -87,18 +83,15 @@ release_menu_budget(void) {
 }
 
 static void
-budget_controls(mu_Context* ctx, ui_flow_t* flow, int width) {
-    menu_budget->anchor =
-        (mu_Rect){(flow->canvas_w - width) / 2, flow->y + draw_text_height() + flow->gap, width, UI_ROW_HEIGHT};
-    render_lab_clips_draw(ctx, flow, width, &menu_budget->choice);
-    menu_budget->open = ui_dropdown_is_open(ctx, "clip");
+budget_controls(int width) {
+    render_lab_clips_draw(width, &menu_budget->choice);
 }
 
 static void
 budget_menu_frame(const input_t* input) {
     ui_begin(input);
     const render_lab_menu_screen_state_t state = {.scene_name = menu_budget->names[0], .controls = budget_controls};
-    (void)render_lab_menu_screen_draw(ui_context(), &state, BUDGET_FRAME_MS);
+    (void)render_lab_menu_screen_draw(&state);
     ui_budget_assert("animated menu with clip list");
 }
 
@@ -119,11 +112,13 @@ test_menu_with_full_clip_list_and_long_names_fits_budget(void) {
     const input_t idle = {0};
     budget_menu_frame(&idle);
     budget_menu_frame(&idle);
+    /* The dropdown shows the chosen name, centred on the canvas like the
+     * menu's other rows. */
+    recti_t chosen;
+    TEST_ASSERT_TRUE(ui_probe_text(menu_budget->names[0], &chosen));
     input_t tap = {.down = true, .pressed = true};
     const affine2x_t transform = ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT);
-    const vec2i_t mapped_pixel =
-        affine2x_map_pixel(&transform, (vec2i_t){menu_budget->anchor.x + (menu_budget->anchor.w / 2),
-                                                 menu_budget->anchor.y + (menu_budget->anchor.h / 2)});
+    const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){ui_width() / 2, chosen.y + (chosen.h / 2)});
     tap.x = mapped_pixel.x;
     tap.y = mapped_pixel.y;
     budget_menu_frame(&tap);
@@ -133,7 +128,9 @@ test_menu_with_full_clip_list_and_long_names_fits_budget(void) {
     tap.released = true;
     budget_menu_frame(&tap);
     budget_menu_frame(&idle);
-    TEST_ASSERT_TRUE(menu_budget->open);
+    recti_t rows;
+    int scroll;
+    TEST_ASSERT_TRUE(ui_probe_list(&rows, &scroll));
 }
 
 void
