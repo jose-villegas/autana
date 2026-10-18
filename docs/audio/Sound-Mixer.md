@@ -82,7 +82,7 @@ a development build (the firmware flavour that adds console commands):
 | Cost | Value |
 |---|---|
 | CPU, one ADPCM voice looping | 0.05 ms average, 0.09 ms worst per 5.8 ms block |
-| Display push | See [Frame time with a voice playing](#frame-time-with-a-voice-playing) |
+| Frame time, one voice looping vs silence | See [Frame time with a voice playing](#frame-time-with-a-voice-playing) |
 | Internal heap, vs the same build without the mixer | −6,300 B free (2.2 % of 282,739); largest free block −4,096 B |
 | Extra RAM while a development capture runs | about 1.4 KB of microphone buffers (`open_dma_bytes` 1,448): TX is already open, so only RX is new; freed when it closes, within a few dozen bytes. [Audio-Path's RAM capture](Audio-Path.md#ram) predates the mixer and opened both |
 
@@ -91,12 +91,9 @@ is the chip's fast on-die memory; the 8 MB PSRAM (slower external RAM) is not us
 
 ### Frame time with a voice playing
 
-The same build runs on both sides, with one looping voice against silence,
-over the repository's standard seeded perf suites. The full repeat command,
-including each suite's arguments, is in [the comparison data](data/sound_gate.json).
-
-Repeat with the command below plus the `--suite` arguments recorded in
-`data/sound_gate.json`:
+The same build runs on both sides: one looping voice vs silence over the
+repository's standard seeded perf suites. The full `repeat_command`, including
+every `--suite`, is in [the comparison data](data/sound_gate.json):
 
 ```sh
 launcher/tools/perf/perf_compare.sh HEAD HEAD --max-seeds 4 \
