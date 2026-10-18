@@ -1024,19 +1024,23 @@ def keep_crashed_elf(data):
     """Copies the ELF of the build that crashed in capture `data` into
     elf_archive(), dropping all but the newest ELF_ARCHIVE_KEEP there: the
     build the panic names, else the capture's BUILD_ID. Nothing when this
-    worktree has no ELF of that build."""
+    worktree has no ELF of that build. A convenience: a failure here is one
+    stderr line, never the capture's."""
     named = PANIC_ELF_SHA.findall(data)
     build = named[-1].decode("ascii") if named else latest_build_id_from_bytes(data)
     archive = elf_archive()
     elf = find_elf_for_build_id(Path.cwd(), build)
     if elf is None or elf.parent == archive:
         return
-    archive.mkdir(parents=True, exist_ok=True)
-    build_id = (elf.parent / "build_id.txt").read_text(encoding="ascii").strip()
-    shutil.copyfile(elf, archive / (build_id + ".elf"))
-    newest_first = sorted(archive.glob("*.elf"), key=lambda path: path.stat().st_mtime, reverse=True)
-    for stale in newest_first[ELF_ARCHIVE_KEEP:]:
-        stale.unlink(missing_ok=True)
+    try:
+        archive.mkdir(parents=True, exist_ok=True)
+        build_id = (elf.parent / "build_id.txt").read_text(encoding="ascii").strip()
+        shutil.copyfile(elf, archive / (build_id + ".elf"))
+        newest_first = sorted(archive.glob("*.elf"), key=lambda path: path.stat().st_mtime, reverse=True)
+        for stale in newest_first[ELF_ARCHIVE_KEEP:]:
+            stale.unlink(missing_ok=True)
+    except OSError as error:
+        print(f"could not keep the crashed build's ELF: {error}", file=sys.stderr)
 
 
 def same_build(build_id, other):

@@ -1952,6 +1952,12 @@ class FindElfForBuildIdTests(unittest.TestCase):
                            b"BUILD_ID=aaaaaaaaaaaa-diag\nassert failed\nELF file SHA256: 834b7bb03fd6e\n")
         self.assertEqual([path.name for path in self.archive.glob("*.elf")], ["834b7bb03fd6-diag.elf"])
 
+    def test_a_failed_copy_is_one_line_not_the_captures_failure(self):
+        with mock.patch.object(device.shutil, "copyfile", side_effect=OSError("disk full")), \
+             contextlib.redirect_stderr(io.StringIO()) as errors:
+            self.keep_crash_of("834b7bb03fd6-diag", b"ELF file SHA256: 834b7bb03fd6e\n")
+        self.assertIn("disk full", errors.getvalue())
+
     def test_a_crash_with_no_elf_here_keeps_nothing(self):
         self.keep_crash_of("aaaaaaaaaaaa-diag", b"ELF file SHA256: 834b7bb03fd6e\n")
         self.assertFalse(self.archive.exists())
