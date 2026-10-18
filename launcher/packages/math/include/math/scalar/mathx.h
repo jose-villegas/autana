@@ -1,6 +1,6 @@
 /*
  * mathx: Q16.16 fixed-point scalar operations for the math templates
- * (docs/math/README.md).
+ * (docs/math/Scalar.md).
  *
  * Operations saturate, except the mathx_dot2c(), mathx_dot3c() and
  * mathx_dot3_narrow() fast paths, which wrap and floor; saturation turns

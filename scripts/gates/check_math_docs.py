@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Fail when docs/math/README.md and the math headers disagree about what exists.
+"""Fail when docs/math/*.md and the math headers disagree about what exists.
 
     python scripts/gates/check_math_docs.py [--root ROOT]
 
-The reference page names every function of every family and every
+Each family's folder names its reference page (linear/ becomes Linear.md).
+The index links every page. Motion headers' public types and functions must
+be named in Motion.md. The reference pages name every family function and
 instantiated type; the headers are the truth, read here and never listed by
 hand:
 
@@ -43,8 +45,27 @@ PAGE = pathlib.Path("docs/math/README.md")
 # TeX source length stands in for rendered width: 110 fits one step, not a derivation.
 MAX_INLINE_MATH_CHARS = 110
 
-FAMILIES = ("vec2", "vec3", "quat", "affine2", "mat4", "transform", "rect", "plane")
-FAMILY_DIRS = {family: MATH.parent / "geometry" if family in ("rect", "plane") else MATH for family in FAMILIES}
+def family_dirs(root):
+    """Primary type templates, keyed by family and owned by their folder."""
+    directories = {}
+    for template in sorted((root / MATH.parent).rglob("*_template.h")):
+        family = template.stem.removesuffix("_template")
+        text = template.read_text(encoding="utf-8")
+        if (re.search(r"^#define MATH_DEFINE_" + family.upper() + r"\(", text, re.M)
+                and re.search(r"typedef struct", text)):
+            directories[family] = template.parent.relative_to(root)
+    return directories
+
+
+
+FAMILY_DIRS = family_dirs(pathlib.Path(__file__).resolve().parents[2])
+FAMILIES = tuple(FAMILY_DIRS)
+
+
+def family_page(directory):
+    return PAGE.parent / (directory.name.capitalize() + ".md")
+
+
 TEMPLATE_FUNCTION = re.compile(r"^\s*static inline (?:__attribute__\(\(\w+\)\) )?[^\n(]*?P##_(\w+)\(", re.M)
 DEFINE_CALL = re.compile(r"^MATH_DEFINE_\w+\((\w+),", re.M)
 HEADER_CALL = re.compile(r"^(MATH_DEFINE_\w+)\(([^)]*)\)", re.M)
@@ -53,7 +74,8 @@ MACRO_CALL = re.compile(r"\b(MATH_\w+)\(([^()]*)\)")
 BOUND_FUNCTION = re.compile(r"^\s*static inline (?:__attribute__\(\(\w+\)\) )?[^\n(]*?P##_(?:##(\w+)|(\w+))\(", re.M)
 SWIZZLE_CALL = re.compile(r"\bMATH_DEFINE_SWIZZLE(\d+)\((\w+), (\w+), (\d+)\)")
 FIELDS = re.compile(r"typedef struct \{[\s\\]*T ([\w, ]+);")
-HAND_WRITTEN = re.compile(r"^static inline [^\n]*\n(\w+)\(", re.M)
+HAND_WRITTEN = re.compile(r"^(?:static inline [^\n]*\n|(?:void|float|[A-Za-z]\w*_t) )([A-Za-z]\w*)\(", re.M)
+PUBLIC_TYPE = re.compile(r"^typedef struct\s*\{.*?\}\s*(\w+);", re.M | re.S)
 IDENTITY = re.compile(r"^#define (TRANSFORM\w+_IDENTITY)\b", re.M)
 FENCE = re.compile(r"^```.*?^```", re.M | re.S)
 INLINE_MATH = re.compile(r"\$`([^`\n]*)`\$|(`+).*?(?<!`)\2(?!`)|(?<![\\$])\$(?!\$)([^$\n]*)\$(?!\$)")
@@ -79,6 +101,8 @@ def instantiations(root):
     template: each prefix's family; the `P##_name(` functions of a template
     outside the families, by family; the swizzle pattern each family section
     must name; every swizzle name; and problems."""
+    FAMILY_DIRS = family_dirs(root)
+    FAMILIES = tuple(FAMILY_DIRS)
     family_templates = {f + "_template.h" for f in FAMILIES}
     macros = {}
     fields = {}
@@ -138,18 +162,24 @@ def instantiations(root):
 
 def check(root):
     root = pathlib.Path(root)
-    page = read(root / PAGE)
+    FAMILY_DIRS = family_dirs(root)
+    FAMILIES = tuple(FAMILY_DIRS)
+    pages = {p.relative_to(root): read(p) for p in sorted((root / PAGE.parent).glob("*.md"))}
+    # Benchmarks also cite platform APIs; their formulas and index link are still checked.
+    page = "\n".join(text for path, text in pages.items() if path.name != "Benchmark.md")
     family_of, functions, patterns, swizzle_names, problems = instantiations(root)
-
-    for line_number, line in enumerate(FENCE.sub(lambda m: "\n" * m.group(0).count("\n"), page).splitlines(), start=1):
-        for quoted_formula, code_delimiter, plain_formula in INLINE_MATH.findall(line):
-            formula = quoted_formula or plain_formula
-            if len(formula) > MAX_INLINE_MATH_CHARS:
-                problems.append(
-                    "%s:%d: inline math has %d characters (limit %d); "
-                    "split the formula into one span per step joined with <br>"
-                    % (PAGE.as_posix(), line_number, len(formula), MAX_INLINE_MATH_CHARS)
-                )
+    for path, text in pages.items():
+        if path != PAGE and not re.search(r"\]\(" + re.escape(path.name) + r"(?:#[^)]*)?\)", pages[PAGE]):
+            problems.append("%s: index lacks a link to %s" % (PAGE.as_posix(), path.name))
+        for line_number, line in enumerate(FENCE.sub(lambda m: "\n" * m.group(0).count("\n"), text).splitlines(), start=1):
+            for quoted_formula, code_delimiter, plain_formula in INLINE_MATH.findall(line):
+                formula = quoted_formula or plain_formula
+                if len(formula) > MAX_INLINE_MATH_CHARS:
+                    problems.append(
+                        "%s:%d: inline math has %d characters (limit %d); "
+                        "split the formula into one span per step joined with <br>"
+                        % (path.as_posix(), line_number, len(formula), MAX_INLINE_MATH_CHARS)
+                    )
 
     for family in FAMILIES:
         template = root / FAMILY_DIRS[family] / (family + "_template.h")
@@ -157,14 +187,15 @@ def check(root):
         if not own:
             problems.append("%s defines no functions: the gate would pass on nothing" % template.name)
         functions[family] |= own
-        body = section(page, family)
+        path = family_page(FAMILY_DIRS[family])
+        body = section(pages.get(path, ""), family)
         if not body:
-            problems.append("%s has no `### %s` section" % (PAGE.as_posix(), family))
+            problems.append("%s has no `### %s` section" % (path.as_posix(), family))
             continue
         wanted = ["P_%s(" % name for name in sorted(functions[family])] + sorted(patterns[family])
         for entry in wanted:
             if entry not in body:
-                problems.append("%s: the %s section lacks `%s`" % (PAGE.as_posix(), family, entry))
+                problems.append("%s: the %s section lacks `%s`" % (path.as_posix(), family, entry))
     family_functions = set().union(*functions.values())
 
     defined = set()
@@ -183,8 +214,14 @@ def check(root):
             if name not in page:
                 problems.append("%s: the page does not name %s (%s)" % (PAGE.as_posix(), name, header.name))
 
-    for header in sorted((root / MATH.parent / "scalar").glob("*.h")):
-        defined.update(HAND_WRITTEN.findall(read(header)))
+    for header in sorted((root / MATH.parent).rglob("*.h")):
+        text = read(header)
+        defined.update(HAND_WRITTEN.findall(text))
+        if header.parent.name == "motion":
+            path = family_page(header.parent)
+            for name in HAND_WRITTEN.findall(text) + PUBLIC_TYPE.findall(text):
+                if name not in pages.get(path, ""):
+                    problems.append("%s: the page does not name %s (%s)" % (path.as_posix(), name, header.name))
 
     valid = set(defined) | swizzle_names | {"P_%s" % f for f in family_functions}
     valid |= {"%s_%s" % (p, f) for p, family in family_of.items() for f in functions[family]}
