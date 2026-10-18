@@ -116,7 +116,7 @@ static void
 test_boot_clip_opening_touch_does_not_select_overlay_row(void) {
     dispatch_fixture_t* f = fixture();
 
-    enum { HOLD_FRAMES = 8, MOTION_PIXELS = 2, OVERLAPPED_ROW = 2 };
+    enum { HOLD_FRAMES = 8, MOTION_PIXELS = 2 };
 
     for (int motion = 0; motion <= MOTION_PIXELS; motion += MOTION_PIXELS) {
         enter(f, "capybara");
@@ -149,13 +149,15 @@ test_boot_clip_opening_touch_does_not_select_overlay_row(void) {
         TEST_ASSERT_TRUE(ui_probe_list(&rows, &scroll));
         TEST_ASSERT_EQUAL_INT(UI_MARGIN, rows.y);
         TEST_ASSERT_TRUE(idle.x >= rows.x && idle.x < recti_right(rows));
-        const int covered_row = (idle.y - rows.y + scroll) / UI_ROW_HEIGHT;
-        TEST_ASSERT_EQUAL_INT(OVERLAPPED_ROW, covered_row);
         scene_t* scene = render_lab_test_loaded_scene("capybara");
         const scene_entity_t subject = scene_find(scene, "capybara");
         const scene_animator_t* animator = &scene->animators[subject];
         TEST_ASSERT_EQUAL_STRING_MESSAGE("idle", scene_animator_clip_name(scene, subject, animator->layer.current.clip),
                                          "opening release must not play the overlay row under the finger");
+        /* The finger rested on another clip's row; which one is the menu's layout. */
+        const int covered_row = (idle.y - rows.y + scroll) / UI_ROW_HEIGHT;
+        TEST_ASSERT_TRUE(covered_row >= 0 && covered_row < scene_animator_clip_count(scene, subject));
+        TEST_ASSERT_NOT_EQUAL_INT(animator->layer.current.clip, covered_row);
         for (int frame = 0; frame < UI_DROPDOWN_CLOSE_FRAMES; frame++) {
             render_lab_test_frame(false, NULL);
             TEST_ASSERT_TRUE(ui_probe_list(&rows, &scroll));

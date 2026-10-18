@@ -117,6 +117,8 @@ flowchart TB
 ```
 
 Audio layer: [audio docs](audio/README.md).
+The engine sound layer owns [the mixer, voices and buses](audio/Sound-Mixer.md)
+as well as stored sounds and sample cursors.
 
 - **Includes are layer-qualified**: `"gfx/gfx.h"`, not `"gfx.h"`, even
   between two files in the same folder, so an app reaching past `ui` into
