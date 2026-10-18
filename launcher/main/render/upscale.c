@@ -54,9 +54,10 @@ upscale_init(upscale_t* scale, int source_width, int source_height, int destinat
     }
     const int run = destination_height / source_height;
     scale->scanline_run = 0;
-    if (destination_height % source_height == 0 && run % 2 == 0) {
+    if ((scale->path == UPSCALE_KEPT || scale->path == UPSCALE_DOUBLED) && destination_height % source_height == 0
+        && run % 2 == 0) {
         scale->scanline_run = run;
-        for (int y = 0; scale->path != UPSCALE_BLOCKS && y < destination_height; y++) {
+        for (int y = 0; y < destination_height; y++) {
             if (rows[y] != y / run) {
                 scale->scanline_run = 0;
                 break;
@@ -66,26 +67,15 @@ upscale_init(upscale_t* scale, int source_width, int source_height, int destinat
     return true;
 }
 
-static bool
-scanline_dark(const upscale_t* scale, int strength, int y) {
-    const int run = scale->scanline_run;
-    return strength != 0 && run != 0 && y % run >= run / 2;
-}
-
 static void
 upscale_block_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
-                   uint16_t* destination, int first_row, int row_count, int strength) {
-    const unsigned keep = UPSCALE_SCANLINE_UNIT - strength;
+                   uint16_t* destination, int first_row, int row_count) {
     for (int y = first_row; y < first_row + row_count; y++) {
-        const bool dark = scanline_dark(scale, strength, y);
         const size_t row = (size_t)(y / scale->factor) * scale->source_width;
         const uint16_t* input_depth = depth == NULL ? NULL : depth + row;
         uint16_t* output = destination + ((size_t)y * scale->destination_width);
         for (int x = 0; x < scale->source_width; x++) {
-            uint16_t pixel = gfx_target_shown_pixel(source + row, input_depth, x, clear);
-            if (dark) {
-                pixel = gfx_color_scale(pixel, keep);
-            }
+            const uint16_t pixel = gfx_target_shown_pixel(source + row, input_depth, x, clear);
             for (int repeat = 0; repeat < scale->factor; repeat++) {
                 output[(x * scale->factor) + repeat] = pixel;
             }
@@ -108,16 +98,13 @@ upscale_paired_rows(const upscale_t* scale, const uint16_t* source, const uint16
 
 static void
 upscale_mapped_rows(const upscale_t* scale, const uint16_t* source, const uint16_t* depth, uint16_t clear,
-                    uint16_t* destination, int first_row, int row_count, int strength) {
-    const unsigned keep = UPSCALE_SCANLINE_UNIT - strength;
+                    uint16_t* destination, int first_row, int row_count) {
     for (int y = first_row; y < first_row + row_count; y++) {
-        const bool dark = scanline_dark(scale, strength, y);
         const size_t row = (size_t)scale->rows[y] * scale->source_width;
         const uint16_t* input_depth = depth == NULL ? NULL : depth + row;
         uint16_t* output = destination + ((size_t)y * scale->destination_width);
         for (int x = 0; x < scale->destination_width; x++) {
-            const uint16_t pixel = gfx_target_shown_pixel(source + row, input_depth, scale->columns[x], clear);
-            output[x] = dark ? gfx_color_scale(pixel, keep) : pixel;
+            output[x] = gfx_target_shown_pixel(source + row, input_depth, scale->columns[x], clear);
         }
     }
 }
@@ -141,11 +128,7 @@ upscale_rows(const upscale_t* scale, const gfx_render_target_t* picture, uint16_
         case UPSCALE_DOUBLED:
             upscale_paired_rows(scale, source, depth, clear, destination, first_row, row_count, true, strength);
             break;
-        case UPSCALE_BLOCKS:
-            upscale_block_rows(scale, source, depth, clear, destination, first_row, row_count, strength);
-            break;
-        case UPSCALE_MAPPED:
-            upscale_mapped_rows(scale, source, depth, clear, destination, first_row, row_count, strength);
-            break;
+        case UPSCALE_BLOCKS: upscale_block_rows(scale, source, depth, clear, destination, first_row, row_count); break;
+        case UPSCALE_MAPPED: upscale_mapped_rows(scale, source, depth, clear, destination, first_row, row_count); break;
     }
 }

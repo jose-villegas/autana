@@ -176,7 +176,8 @@ The scanline experiment is off by default. `render_context_set_scanlines()`
 darkens the second half of each repeated-row run when every source row has
 the same even run length. Odd and uneven runs retain their pixels.
 
-The rule uses the actual row map, or the block path's uniform factor.
+The rule uses the actual row map for paired copies only; other paths ignore
+the strength.
 See `UPSCALE_SCANLINE_UNIT` for strength units: zero preserves colour,
 half the unit halves each RGB565 channel, and `UPSCALE_SCANLINE_MAX` gives black.
 

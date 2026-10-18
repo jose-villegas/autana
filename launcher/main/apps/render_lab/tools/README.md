@@ -61,7 +61,7 @@ default versus 1×2 plain, or plain versus strength 16.
 
 Keep captures outside the repository. Scanline runs follow panel rows, so they
 appear vertical in quarter 1. Clear sky darkens too. For strength units, see
-`UPSCALE_SCANLINE_UNIT`.
+`UPSCALE_SCANLINE_UNIT`. Paired copies only; other paths ignore the strength.
 
 The complete source removal inventory below matches the experiment's names
 under `launcher/main/render/`, this app and `launcher/test/suites/`.
@@ -70,7 +70,7 @@ Existing `DRAW_DITHER_SCANLINES4` patterns are independent.
 | File | Experiment symbols or statements to remove |
 |---|---|
 | `launcher/main/render/upscale.h` | `UPSCALE_SCANLINE_UNIT`, `UPSCALE_SCANLINE_MAX`, `upscale_t.scanline_run`, `upscale_rows()` strength parameter |
-| `launcher/main/render/upscale.c` | run eligibility in `upscale_init()`, `scanline_dark()`, row shading, shaded paired-row calls |
+| `launcher/main/render/upscale.c` | run eligibility in `upscale_init()`, shaded paired-row calls |
 | `launcher/main/gfx/target/gfx_color.h`, `gfx_target.h` | `GFX_COLOR_SCALE_UNIT`, `gfx_color_scale()`, `gfx_color_pair_scale()`, `gfx_target_paired_rows_shaded()` and its plain-copy wrapper call |
 | `launcher/main/render/raster.h` | `raster_t.scanline` |
 | `launcher/main/render/raster.c` | strength argument in `upscale_slice()` |

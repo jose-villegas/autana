@@ -285,13 +285,14 @@ test_scanline_runs_preserve_bright_rows_and_darken_clear_pixels(void) {
     picture.count = GFX_ATTACHMENT_DEPTH + 1;
     static const int sizes[][3] = {
         /* width, height, uniform even run (zero means ineligible) */
-        {8, 6, 2}, {4, 6, 2}, {16, 12, 4}, {5, 6, 2}, {8, 9, 0}, {8, 7, 0}, {8, 12, 0}, {8, 3, 0},
+        {8, 6, 2}, {4, 6, 2}, {16, 12, 0}, {5, 6, 0}, {8, 9, 0}, {8, 7, 0}, {8, 12, 0}, {8, 3, 0},
     };
     static const int strengths[] = {0, UPSCALE_SCANLINE_UNIT / 2, UPSCALE_SCANLINE_MAX};
     for (size_t c = 0; c < sizeof sizes / sizeof *sizes; c++) {
         const int width = sizes[c][0], height = sizes[c][1], run = sizes[c][2];
         upscale_t scale;
         TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, width, height, columns, rows));
+        TEST_ASSERT_EQUAL_INT(run, scale.scanline_run);
         upscale_rows(&scale, &picture, clear, plain, 0, height, 0);
         for (size_t i = 0; i < sizeof strengths / sizeof *strengths; i++) {
             const unsigned keep = UPSCALE_SCANLINE_UNIT - strengths[i];

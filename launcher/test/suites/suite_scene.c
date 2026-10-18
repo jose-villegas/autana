@@ -1830,7 +1830,8 @@ test_context_scanline_strength_survives_fixed_and_dynamic_size_changes(void) {
     render_context_set_scale(context, RENDER_CONTEXT_DEFAULT_SCALE_PERCENT, RENDER_CONTEXT_DEFAULT_SCALE_PERCENT / 2);
     assert_composed_scanlines(context, 0, strength);
     render_context_set_scale(context, RENDER_CONTEXT_DEFAULT_SCALE_PERCENT / 2, RENDER_CONTEXT_DEFAULT_SCALE_PERCENT);
-    assert_composed_scanlines(context, 0, strength);
+    assert_composed_scanlines(context, 0, 0);
+    TEST_ASSERT_EQUAL_INT(strength, context->raster.scanline);
     const resolution_step_t step = {GFX_WIDTH, GFX_HEIGHT / 2};
     const resolution_config_t config = resolution_config(&step, 1, 1, INT32_MAX);
     render_context_set_dynamic_resolution(context, &config, NULL, 0);
