@@ -133,7 +133,7 @@ Sampling cannot resolve motion above the sensor bandwidth. FIFO read mode
 discards arrivals (section 8.7). Loss is the read-mode duration divided by
 `IMU_SAMPLE_US`, carrying fractional microseconds across drains.<sup>[[78]](../Citations.md#78)</sup>
 
-`esp_timer` measures from just before `REQ_FIFO` through the `FIFO_CTRL` rewrite.
+`esp_timer` measures from just before `CTRL9_REQ_FIFO` through the `REG_FIFO_CTRL` rewrite.
 The next batch reports this loss and first predicts with the preceding batch's
 last rotation, bounded by `GRAVITY_MAX_DT_US`. Gaps clear pending loss and remainder.
 
@@ -145,6 +145,6 @@ agrees with the datasheet ODR multiplied by time outside FIFO read mode.
 | Every frame | 197.8 Hz | 10.8% | 200.0 Hz |
 | Every 500 ms | 210.4 Hz | 6.1% | 210.5 Hz |
 
-The count precedes `REQ_FIFO` (section 8.8). CTRL9 status uses consecutive I2C
+The count precedes `CTRL9_REQ_FIFO` (section 8.8). CTRL9 status uses consecutive I2C
 reads, with no minimum polling delay (section 5.10.1). Every drain attempts to
 leave read mode, including error paths.<sup>[[78]](../Citations.md#78)</sup>
