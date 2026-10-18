@@ -24,66 +24,32 @@ size_command(const char* line) {
 static void
 fixture(void) {
     size_command("RESET render_lab.scale");
-    size_command("RESET render_lab.rows");
-    size_command("RESET render_lab.scanline");
+    size_command("RESET render_lab.present");
 }
 
 static void
 test_render_size_and_percent_follow_and_clamp(void) {
     fixture();
-    const resolution_step_t defaults = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
-    TEST_ASSERT_EQUAL_INT(184, defaults.width);
-    TEST_ASSERT_EQUAL_INT(224, defaults.height);
-
-    static const struct {
-        const char* scale;
-        const char* rows;
-        int width_percent, height_percent;
-    } cases[] = {
-        {"SET render_lab.scale 200", "SET render_lab.rows 0", 50, 50},
-        {"SET render_lab.scale 400", "SET render_lab.rows 0", 25, 25},
-        {"SET render_lab.scale 200", "SET render_lab.rows 400", 50, 25},
-        {"SET render_lab.scale 400", "SET render_lab.rows 1", 25, 100},
-        {"SET render_lab.scale 100", "SET render_lab.rows 800", 100, 12},
-    };
-
-    for (size_t i = 0; i < sizeof cases / sizeof *cases; i++) {
-        size_command(cases[i].scale);
-        size_command(cases[i].rows);
-        const resolution_step_t percent = render_lab_render_percent();
-        const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
-        TEST_ASSERT_EQUAL_INT(cases[i].width_percent, percent.width);
-        TEST_ASSERT_EQUAL_INT(cases[i].height_percent, percent.height);
-        TEST_ASSERT_EQUAL_INT(GFX_WIDTH * cases[i].width_percent / RENDER_LAB_SCALE_UNIT, size.width);
-        TEST_ASSERT_EQUAL_INT(GFX_HEIGHT * cases[i].height_percent / RENDER_LAB_SCALE_UNIT, size.height);
-    }
-    fixture();
-}
-
-static void
-test_scanline_reset_and_protocol_range(void) {
-    fixture();
-    const tune_entry_t* entry = tune_find(tune_shared(), "render_lab.scanline");
-    TEST_ASSERT_NOT_NULL(entry);
-    TEST_ASSERT_EQUAL_INT(0, *entry->value);
-    TEST_ASSERT_EQUAL_INT(0, render_lab_scanline());
-    char command[TUNE_NAME_MAX + 16];
-    snprintf(command, sizeof command, "SET render_lab.scanline %d", UPSCALE_SCANLINE_MAX);
-    size_command(command);
-    TEST_ASSERT_EQUAL_INT(UPSCALE_SCANLINE_MAX, render_lab_scanline());
-    snprintf(command, sizeof command, "SET render_lab.scanline %d", UPSCALE_SCANLINE_MAX + 1);
+    resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
+    TEST_ASSERT_EQUAL_INT(184, size.width);
+    TEST_ASSERT_EQUAL_INT(224, size.height);
+    TEST_ASSERT_EQUAL_INT(CAMERA_PRESENT_NEAREST, render_lab_present());
+    size_command("SET render_lab.present 1");
+    size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
+    TEST_ASSERT_EQUAL_INT(184, size.width);
+    TEST_ASSERT_EQUAL_INT(112, size.height);
+    TEST_ASSERT_EQUAL_INT(CAMERA_PRESENT_SCANLINE, render_lab_present());
+    size_command("SET render_lab.present 2");
+    TEST_ASSERT_EQUAL_INT(CAMERA_PRESENT_DOUBLE, render_lab_present());
     tune_ok = false;
-    TEST_ASSERT_TRUE(tune_handle_line(command, size_reply));
+    TEST_ASSERT_TRUE(tune_handle_line("SET render_lab.present 3", size_reply));
     TEST_ASSERT_FALSE(tune_ok);
-    TEST_ASSERT_EQUAL_INT(UPSCALE_SCANLINE_MAX, render_lab_scanline());
-    size_command("RESET render_lab.scanline");
-    TEST_ASSERT_EQUAL_INT(0, render_lab_scanline());
+    fixture();
 }
 
 void
 run_render_size_suite(void) {
     RUN_TEST(test_render_size_and_percent_follow_and_clamp);
-    RUN_TEST(test_scanline_reset_and_protocol_range);
 }
 
 SUITE_REGISTER(run_render_size_suite);

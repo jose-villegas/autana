@@ -287,24 +287,23 @@ test_scanline_runs_preserve_bright_rows_and_darken_clear_pixels(void) {
         /* width, height, uniform even run (zero means ineligible) */
         {8, 6, 2}, {4, 6, 2}, {16, 12, 0}, {5, 6, 0}, {8, 9, 0}, {8, 7, 0}, {8, 12, 0}, {8, 3, 0},
     };
-    static const int strengths[] = {0, UPSCALE_SCANLINE_UNIT / 2, UPSCALE_SCANLINE_MAX};
     for (size_t c = 0; c < sizeof sizes / sizeof *sizes; c++) {
         const int width = sizes[c][0], height = sizes[c][1], run = sizes[c][2];
         upscale_t scale;
         TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, width, height, columns, rows));
         TEST_ASSERT_EQUAL_INT(run, scale.scanline_run);
         upscale_rows(&scale, &picture, clear, plain, 0, height);
-        for (size_t i = 0; i < sizeof strengths / sizeof *strengths; i++) {
-            const unsigned keep = UPSCALE_SCANLINE_UNIT - strengths[i];
+        {
+            const unsigned keep = UPSCALE_SCANLINE_KEEP;
             const uint16_t dark_color =
-                gfx_color_rgb565(RED * keep / UPSCALE_SCANLINE_UNIT, GREEN * keep / UPSCALE_SCANLINE_UNIT,
-                                 BLUE * keep / UPSCALE_SCANLINE_UNIT);
+                gfx_color_rgb565(RED * keep / GFX_COLOR_SCALE_UNIT, GREEN * keep / GFX_COLOR_SCALE_UNIT,
+                                 BLUE * keep / GFX_COLOR_SCALE_UNIT);
             const uint16_t dark_clear =
-                gfx_color_rgb565(CLEAR_RED * keep / UPSCALE_SCANLINE_UNIT, CLEAR_GREEN * keep / UPSCALE_SCANLINE_UNIT,
-                                 CLEAR_BLUE * keep / UPSCALE_SCANLINE_UNIT);
+                gfx_color_rgb565(CLEAR_RED * keep / GFX_COLOR_SCALE_UNIT, CLEAR_GREEN * keep / GFX_COLOR_SCALE_UNIT,
+                                 CLEAR_BLUE * keep / GFX_COLOR_SCALE_UNIT);
             const int split = height / 2;
-            upscale_rows_scanlined(&scale, &picture, clear, actual, 0, split, strengths[i]);
-            upscale_rows_scanlined(&scale, &picture, clear, actual, split, height - split, strengths[i]);
+            upscale_rows_scanlined(&scale, &picture, clear, actual, 0, split);
+            upscale_rows_scanlined(&scale, &picture, clear, actual, split, height - split);
             assert_scanline_rows_match_reference(&scale, plain, run, clear, dark_clear, dark_color);
         }
     }
@@ -320,18 +319,18 @@ test_scanline_all_colors_match_channel_reference(void) {
     const gfx_render_target_t picture = gfx_render_target_of_color(source, WIDTH, HEIGHT);
     for (int width = WIDTH; width <= 2 * WIDTH; width += WIDTH) {
         TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, width, OUTPUT_HEIGHT, columns, rows));
-        for (int strength = 0; strength <= UPSCALE_SCANLINE_MAX; strength++) {
-            const unsigned keep = UPSCALE_SCANLINE_UNIT - strength;
+        {
+            const unsigned keep = UPSCALE_SCANLINE_KEEP;
             for (unsigned color = 0; color <= UINT16_MAX; color++) {
                 source[0] = (uint16_t)color;
                 source[1] = (uint16_t)~color;
-                upscale_rows_scanlined(&scale, &picture, 0, (uint16_t*)output, 0, OUTPUT_HEIGHT, strength);
+                upscale_rows_scanlined(&scale, &picture, 0, (uint16_t*)output, 0, OUTPUT_HEIGHT);
                 for (int x = 0; x < width; x++) {
                     const uint16_t pixel = source[x * WIDTH / width];
                     const uint16_t native = gfx_color_swap(pixel);
-                    const uint16_t expected = gfx_color_rgb565(gfx_rgb565_r5(native) * keep / UPSCALE_SCANLINE_UNIT,
-                                                               gfx_rgb565_g6(native) * keep / UPSCALE_SCANLINE_UNIT,
-                                                               gfx_rgb565_b5(native) * keep / UPSCALE_SCANLINE_UNIT);
+                    const uint16_t expected = gfx_color_rgb565(gfx_rgb565_r5(native) * keep / GFX_COLOR_SCALE_UNIT,
+                                                               gfx_rgb565_g6(native) * keep / GFX_COLOR_SCALE_UNIT,
+                                                               gfx_rgb565_b5(native) * keep / GFX_COLOR_SCALE_UNIT);
                     TEST_ASSERT_EQUAL_HEX16(pixel, ((uint16_t*)output)[x]);
                     TEST_ASSERT_EQUAL_HEX16(expected, ((uint16_t*)output)[width + x]);
                 }
@@ -374,7 +373,7 @@ test_odd_half_picture_repeat_keeps_pixels(void) {
     upscale_t scale;
     TEST_ASSERT_TRUE(upscale_init(&scale, WIDTH, HEIGHT, WIDTH, OUTPUT_HEIGHT, columns, rows));
     const gfx_render_target_t picture = gfx_render_target_of_color((uint16_t*)source, WIDTH, HEIGHT);
-    upscale_rows_scanlined(&scale, &picture, 0, (uint16_t*)output, 0, OUTPUT_HEIGHT, UPSCALE_SCANLINE_MAX);
+    upscale_rows_scanlined(&scale, &picture, 0, (uint16_t*)output, 0, OUTPUT_HEIGHT);
     for (int y = 0; y < OUTPUT_HEIGHT; y++) {
         TEST_ASSERT_EQUAL_MEMORY(source, (uint16_t*)output + y * WIDTH, sizeof source);
     }

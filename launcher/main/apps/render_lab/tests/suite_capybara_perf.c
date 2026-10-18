@@ -58,8 +58,7 @@ fixture(void) {
     TEST_ASSERT_NOT_NULL(active);
     *active = (fixture_t){0};
     const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
-    ESP_LOGI(TAG, "raster=%dx%d rows=%d scanline=%d", size.width, size.height, render_lab_rows(),
-             render_lab_scanline());
+    ESP_LOGI(TAG, "raster=%dx%d present=%d", size.width, size.height, render_lab_present());
     heap_report(SKIN_PERF_PHASE_BEFORE_ENTER);
     render_lab_test_enter(&active->saved, "capybara");
     suite_set_test_cleanup(release_fixture);

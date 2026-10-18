@@ -18,9 +18,8 @@ typedef enum {
     UPSCALE_BLOCKS,  /* both axes by one integer factor, where neither above applies */
 } upscale_path_t;
 
-/* Repeated-row darkening in 32nds: zero preserves colour, the maximum is black. */
-#define UPSCALE_SCANLINE_UNIT GFX_COLOR_SCALE_UNIT
-#define UPSCALE_SCANLINE_MAX  UPSCALE_SCANLINE_UNIT
+/* Repeated rows retain half brightness. */
+#define UPSCALE_SCANLINE_KEEP (GFX_COLOR_SCALE_UNIT / 2)
 
 typedef struct {
     int scanline_run;
@@ -42,7 +41,6 @@ bool upscale_init(upscale_t* scale, int source_width, int source_height, int des
 void upscale_rows(const upscale_t* scale, const gfx_render_target_t* source, uint16_t clear, uint16_t* destination,
                   int first_row, int row_count);
 
-/* Strength uses UPSCALE_SCANLINE_UNIT; zero copies unchanged.
- * Paired copies with uniform even runs only; other runs copy unchanged. */
+/* Paired copies with uniform even runs only; other runs copy unchanged. */
 void upscale_rows_scanlined(const upscale_t* scale, const gfx_render_target_t* source, uint16_t clear,
-                            uint16_t* destination, int first_row, int row_count, int strength);
+                            uint16_t* destination, int first_row, int row_count);

@@ -58,7 +58,6 @@ render_context_print_debug_views(FILE* out) {
 
 static render_context_t main_context = {
     .scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
-    .height_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
     .frame = {.step = -1},
 };
 
@@ -73,23 +72,14 @@ render_context_release(render_context_t* c) {
     memory_free(c->debug_view_state);
     *c = (render_context_t){
         .scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
-        .height_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
         .frame = {.step = -1},
     };
 }
 
 void
-render_context_set_scale(render_context_t* c, int width_percent, int height_percent) {
-    assert(width_percent > 0 && width_percent <= 100);
-    assert(height_percent > 0 && height_percent <= 100);
-    c->scale_percent = width_percent;
-    c->height_percent = height_percent;
-}
-
-void
-render_context_set_scanlines(render_context_t* c, int strength) {
-    assert(strength >= 0 && strength <= UPSCALE_SCANLINE_MAX);
-    c->raster.scanline = strength;
+render_context_set_scale(render_context_t* c, int percent) {
+    assert(percent > 0 && percent <= 100);
+    c->scale_percent = percent;
 }
 
 void
@@ -182,7 +172,9 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     r->instances = instances;
     r->instance_count = count;
     r->width = step < 0 ? view->viewport.width * c->scale_percent / 100 : c->ladder.steps[step].width;
-    r->height = step < 0 ? view->viewport.height * c->height_percent / 100 : c->ladder.steps[step].height;
+    r->height = step < 0 ? view->viewport.height * c->scale_percent / 100 : c->ladder.steps[step].height;
+    r->present = view->present;
+    r->height = raster_present_size((resolution_step_t){r->width, r->height}, r->present).height;
     r->clear = clear;
     r->upscaled = true; /* render_context_compose() names the picture */
     r->destination_width = view->viewport.width;
@@ -204,7 +196,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
             const int chosen = resolution_predict_choose(&c->predict, &c->ladder, c->frame.stats.triangles);
             c->frame.predicted_us = (int32_t)c->predict.chosen_us;
             r->width = c->ladder.steps[chosen].width;
-            r->height = c->ladder.steps[chosen].height;
+            r->height = raster_present_size(c->ladder.steps[chosen], r->present).height;
             c->frame.width = r->width;
             c->frame.height = r->height;
             raster_draw_culled(r, view);

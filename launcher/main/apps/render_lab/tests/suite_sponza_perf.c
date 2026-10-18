@@ -77,13 +77,13 @@ bench_open(bench_t* b, const r3d_instance_t* instance, const raster_attachment_t
         .attachments = attachments,
         .attachment_count = attachments == NULL ? 0 : 1,
     };
-    b->raster.scanline = render_lab_scanline();
+    b->raster.present = render_lab_present();
     b->scratch = memory_alloc(raster_scratch_bytes(&b->raster), MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(b->scratch);
     TEST_ASSERT_NOT_NULL(b->panel);
     b->raster.scratch = b->scratch;
-    ESP_LOGI(TAG, "raster=%dx%d rows=%d scanline=%d" R3D_PERF_QUARTER_FORMAT, b->raster.width, b->raster.height,
-             render_lab_rows(), render_lab_scanline(), perf_quarter->name);
+    ESP_LOGI(TAG, "raster=%dx%d present=%d" R3D_PERF_QUARTER_FORMAT, b->raster.width, b->raster.height,
+             render_lab_present(), perf_quarter->name);
     ESP_LOGI(TAG, "heap after setup: internal free %u largest %u, psram free %u largest %u" R3D_PERF_QUARTER_FORMAT,
              (unsigned)memory_free_bytes(MEMORY_INTERNAL), (unsigned)memory_largest_block(MEMORY_INTERNAL),
              (unsigned)memory_free_bytes(MEMORY_PSRAM), (unsigned)memory_largest_block(MEMORY_PSRAM),
@@ -304,10 +304,10 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     const uint32_t period = scene_animator_clip_duration_ms(sponza, camera_entity, 0);
     ESP_LOGI(TAG,
              "CAPTURE build_id=%s pack_crc32=%08x object=%s size=%d cull=%ld period_ms=%u "
-             "pose_every_ms=%u raster=%dx%d rows=%d scanline=%d" R3D_PERF_QUARTER_FORMAT,
+             "pose_every_ms=%u raster=%dx%d present=%d" R3D_PERF_QUARTER_FORMAT,
              build_id(), (unsigned)asset_crc32(pack->base, pack->size), object_name, size, (long)*culling->value,
-             (unsigned)period, (unsigned)SPONZA_POSE_EVERY_MS, b->raster.width, b->raster.height, render_lab_rows(),
-             render_lab_scanline(), perf_quarter->name);
+             (unsigned)period, (unsigned)SPONZA_POSE_EVERY_MS, b->raster.width, b->raster.height, render_lab_present(),
+             perf_quarter->name);
     char* report = memory_alloc(FRAME_COST_REPORT_MAX, MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL(report);
     (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX);
@@ -411,6 +411,7 @@ run_sponza_perf_suite(void) {
     pack = loaded.pack;
     flythrough = loaded.lens;
     camera_entity = sponza == NULL ? SCENE_ENTITY_NONE : scene_find(sponza, sponza_cameras[0]);
+    (void)scene_camera_set_present(sponza, camera_entity, render_lab_present());
     for (size_t q = 0; q < R3D_PERF_QUARTER_COUNT; q++) {
         perf_quarter = &r3d_perf_quarters[q];
         RUN_TEST(test_sponza_draw_stage_breakdown);

@@ -162,57 +162,34 @@ What the table shows:
 
 ![Frame cost and render size along the path, per policy and budget](../images/render/dynamic-resolution-flight.png)
 
-## Height-only scale and experimental scanline present
+## Camera presentation
 
-`render_context_set_scale(context, width_percent, height_percent)` sets the
-fixed shares independently. A 50% width and 25% height draws 184×112 on a
-368×448 destination.
+A camera's `present` selects how its picture reaches the panel. Set it with
+`scene_camera_set_present()`; the default is `CAMERA_PRESENT_NEAREST`.
 
-`raster_fits_half_picture()` accepts exactly half width when the half height
-is a whole multiple of the drawn height. Compose upscales to the half picture;
-present doubles it in both axes. Other sizes compose to the full destination.
-
-The scanline experiment is off by default. `render_context_set_scanlines()`
-darkens the second half of each repeated-row run when every source row has
-the same even run length. Odd and uneven runs retain their pixels.
-
-The rule uses the actual row map for paired copies only; other paths ignore
-the strength. `upscale_rows()` copies unchanged from IRAM. The raster selects
-`upscale_rows_scanlined()` in flash for nonzero strength; it falls back to
-`upscale_rows()` when the run is ineligible.
-See `UPSCALE_SCANLINE_UNIT` for strength units: zero preserves colour,
-half the unit halves each RGB565 channel, and `UPSCALE_SCANLINE_MAX` gives black.
-
-Depth-empty pixels use the clear colour before darkening. A doubled row in
-the half picture becomes two bright and two dark panel rows.
-The runs follow panel rows, so a rotated display shows them as columns.
-
-The caller's tools README owns the removal inventory and its check
-(`git grep -n -i scanline ...`), host commands and visual comparisons.
-
-## Refreshing
-
-The tables and the chart are made by the docs generator,
-`launcher/tools/render/render_doc_images.sh`, like every other measured page,
-from the board capture and per-path quality CSVs in `data/`:
-`dynamic-resolution-quality-camera.csv` and
-`dynamic-resolution-quality-tour.csv`.
-The capture is the suite's `scale_split`, `scale_spans`, `dynres_step` and
-`dynres_frames` lines; each CSV is made by the test scene's quality script, which
-renders the path at each size on a host and scores it. A new board run
-replaces the capture, and the generator does the rest:
-
-```sh
-autana suite run_raster_scale_perf_suite --flash --out docs/render/data/dynamic-resolution-board.log
-sh launcher/tools/render/render_doc_images.sh
+```c
+scene_camera_set_present(scene, cam, CAMERA_PRESENT_SCANLINE);  // half rows drawn, every second row dark
+scene_camera_set_present(scene, cam, CAMERA_PRESENT_DOUBLE);    // half rows drawn, rows doubled
+scene_camera_set_present(scene, cam, CAMERA_PRESENT_NEAREST);   // default
 ```
 
-For the pipeline captures and GPU-stage tables, see
-[Render-Pipeline.md](Render-Pipeline.md#refreshing).
+NEAREST keeps the chosen resolution and ordinary nearest-neighbour copy.
+SCANLINE and DOUBLE halve the height chosen by fixed scale or dynamic resolution.
+SCANLINE darkens the repeated row to `UPSCALE_SCANLINE_KEEP`, half brightness.
 
-The raster-scale perf suite forces portrait and landscape for every timed
-window. Its rows carry `quarter=portrait` or `quarter=landscape`, including
-calibration, policy flights, span splits and refit costs. Render sizes are
-physical panel sizes; the viewport quarter determines their upright axes.
-`dynres_report.py --quarter portrait` selects one quarter for its tables and
-chart; `--quarter landscape` selects the other. The default is portrait.
+DOUBLE repeats it unchanged. Uneven row maps, including a non-divisible
+resolution step, use the ordinary upscale without darkening for that frame.
+Compatible sizes compose through the half picture before panel expansion.
+
+| Presentation | Cost relative to NEAREST |
+|---|---|
+| NEAREST | Ordinary draw and copy |
+| SCANLINE | Fewer rows to rasterize; adds a darkened row copy |
+| DOUBLE | The same reduced draw; plain repeated-row copy |
+
+The demo-image pipeline renders the same fitted-full flythrough in each mode.
+These GIFs retain the native panel size, with no resampling of the row pattern.
+
+| NEAREST | SCANLINE | DOUBLE |
+|---|---|---|
+| ![Nearest presentation](../images/render/sponza-present-nearest.gif) | ![Scanline presentation](../images/render/sponza-present-scanline.gif) | ![Doubled presentation](../images/render/sponza-present-double.gif) |

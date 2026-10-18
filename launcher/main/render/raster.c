@@ -155,11 +155,10 @@ static void
 upscale_slice(void* ctx) {
     const slice_t* s = ctx;
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(s->raster);
-    if (s->raster->scanline == 0) {
+    if (s->raster->present != CAMERA_PRESENT_SCANLINE) {
         upscale_rows(&s->raster->upscale, &b.picture, s->raster->clear, s->destination, s->first, s->count);
     } else {
-        upscale_rows_scanlined(&s->raster->upscale, &b.picture, s->raster->clear, s->destination, s->first, s->count,
-                               s->raster->scanline);
+        upscale_rows_scanlined(&s->raster->upscale, &b.picture, s->raster->clear, s->destination, s->first, s->count);
     }
 }
 
@@ -379,6 +378,14 @@ raster_census(const raster_t* raster, const render_view_t* view) {
 void
 raster_draw_culled(const raster_t* raster, const render_view_t* view) {
     draw_instances(raster, view, NULL);
+}
+
+resolution_step_t
+raster_present_size(resolution_step_t size, camera_present_t present) {
+    if (present != CAMERA_PRESENT_NEAREST) {
+        size.height = size.height > 1 ? size.height / 2 : 1;
+    }
+    return size;
 }
 
 bool

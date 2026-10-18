@@ -52,7 +52,6 @@ typedef struct {
     void* scratch;
     size_t scratch_bytes;
     int scale_percent;
-    int height_percent;
 
     enum { RENDER_FIXED, RENDER_STEPPED, RENDER_PREDICTED } policy;
 
@@ -74,10 +73,7 @@ void render_context_release(render_context_t* context);
 
 /* The share of the destination's size each axis draws at, upscaled on the
  * way out; it holds while dynamic resolution is off. */
-void render_context_set_scale(render_context_t* context, int width_percent, int height_percent);
-
-/* Repeated-row darkening, in UPSCALE_SCANLINE_UNIT units; zero disables it. */
-void render_context_set_scanlines(render_context_t* context, int strength);
+void render_context_set_scale(render_context_t* context, int percent);
 
 /* Opts in: each frame draws at a step of `config` to hold its budget, chosen
  * by the stepped controller, or by the predictor when `model` is not NULL.

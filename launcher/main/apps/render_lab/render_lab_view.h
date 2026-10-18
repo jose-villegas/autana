@@ -13,12 +13,7 @@ int render_lab_debug_view(void);
 /* The tunable render_lab.scale in hundredths: 200 renders at half size. */
 int render_lab_scale(void);
 
-/* Effective height divisor: zero rows follows the width divisor. */
-int render_lab_rows(void);
-int render_lab_scanline(void);
-
-/* Effective independent shares of the destination, in percent. */
-resolution_step_t render_lab_render_percent(void);
+camera_present_t render_lab_present(void);
 
 /* Applies the tunables to destination dimensions. */
 resolution_step_t render_lab_render_size(int width, int height);

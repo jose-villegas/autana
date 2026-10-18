@@ -138,6 +138,7 @@ add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
 
 static int64_t
 measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size, int32_t* frame_us, char* report) {
+    size = raster_present_size(size, render_lab_present());
     raster->width = size.width;
     raster->height = size.height;
     (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX); /* forget whatever ran before */
@@ -150,7 +151,7 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
                                                (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
         const int64_t start = timing_now_us();
         const raster_stats_t stats = raster_draw(raster, &view);
-        raster->scanline = render_lab_scanline();
+        raster->present = render_lab_present();
         const resolution_step_t composed = raster_compose_size(raster);
         raster_upscale(raster, destination, composed.width, composed.height);
         frame_us[poses++] = (int32_t)(timing_now_us() - start);
@@ -252,7 +253,7 @@ count_along_path(raster_t* raster, gfx_color_t* destination, int bracket, const 
         const render_view_t view = camera_view(lens, scene_entity_transform(scene, camera_entity),
                                                raster_viewport(raster, perf_quarter->quarter));
         (void)raster_draw(raster, &view);
-        raster->scanline = render_lab_scanline();
+        raster->present = render_lab_present();
         const resolution_step_t composed = raster_compose_size(raster);
         raster_upscale(raster, destination, composed.width, composed.height);
     }
@@ -278,8 +279,7 @@ test_raster_counters(void) {
                        .height = size.height,
                        .destination_width = GFX_WIDTH,
                        .destination_height = GFX_HEIGHT};
-    ESP_LOGI(TAG, "raster=%dx%d rows=%d scanline=%d", raster.width, raster.height, render_lab_rows(),
-             render_lab_scanline());
+    ESP_LOGI(TAG, "raster=%dx%d present=%d", raster.width, raster.height, render_lab_present());
     raster.scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_PSRAM);
     gfx_color_t* destination = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
     int32_t* frame_us = malloc(sizeof(*frame_us) * POSES_MAX);
@@ -329,6 +329,7 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
     raster->instances = &instance;
     raster->instance_count = 1;
     raster->upscaled = true;
+    raster->present = render_lab_present();
     raster->width = config->steps[0].width;
     raster->height = config->steps[0].height;
     raster->destination_width = GFX_WIDTH;
@@ -345,7 +346,7 @@ calibrate(const resolution_config_t* config, resolution_model_t* model) {
         int count = 0;
         for (int step = 0; step < config->step_count; step++) {
             raster->width = config->steps[step].width;
-            raster->height = config->steps[step].height;
+            raster->height = raster_present_size(config->steps[step], render_lab_present()).height;
             for (uint32_t t_ms = 0; t_ms < period; t_ms += POSE_EVERY_MS) {
                 (void)scene_animator_seek(scene, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
                 *view = camera_view(lens, scene_entity_transform(scene, camera_entity),
@@ -416,6 +417,7 @@ fly(const char* camera, const char* policy, const ladder_t* ladder, const resolu
         scene_entity_set_enabled(flown, scene_find(flown, sponza_bakes[i]), i == (int)SPONZA_BAKE_FULL);
     }
     TEST_ASSERT_TRUE(scene_activate(flown, camera));
+    TEST_ASSERT_TRUE(scene_camera_set_present(flown, scene_find(flown, camera), render_lab_present()));
     TEST_ASSERT_NOT_NULL(scene_camera_lens(flown, camera));
     const uint32_t period = scene_animator_clip_duration_ms(flown, scene_find(flown, camera), 0);
     const int frames = (int)((period + FRAME_DT_MS - 1) / FRAME_DT_MS);
@@ -552,6 +554,7 @@ run_raster_scale_perf_suite(void) {
     pack = loaded.pack;
     lens = loaded.lens;
     camera_entity = scene == NULL ? SCENE_ENTITY_NONE : scene_find(scene, sponza_cameras[0]);
+    (void)scene_camera_set_present(scene, camera_entity, render_lab_present());
     if (scene != NULL) {
         const scene_entity_t full = scene_find(scene, sponza_bakes[SPONZA_BAKE_FULL]);
         const char* id = full == SCENE_ENTITY_NONE ? NULL : scene_entity_mesh_id(scene, full);

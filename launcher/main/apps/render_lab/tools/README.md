@@ -19,88 +19,38 @@ across compilers. HUD renders also format a `double` fps readout.
 The fps text comes from the host fixture - time the board with a device
 capture.
 
-### Height-only raster experiment
+### Camera presentation
 
-`--tune NAME=VALUE` is repeatable and uses the console tune protocol.
-`--live-tune NAME=VALUE` sends the same command after scene entry; the
-scene frame hook applies it to the next rendered frame.
-Defaults are defined by the `TUNE` declarations in `render_lab_view.c`;
-the scale constants live in `render_lab_view.h`.
+`render_lab.present` selects NEAREST (0), SCANLINE (1), or DOUBLE (2),
+matching `camera_present_t`. Its default is NEAREST. Both scene frame hooks
+apply it to their camera; perf suites use the same sizing and compose helpers.
 
-| Tunable (`render_lab.` prefix) | Meaning | Default owner |
-|---|---|---|
-| `scale` | Width divisor in hundredths | `TUNE(render_lab, scale, ...)` |
-| `rows` | Height divisor; zero follows scale, positive values clamp to `RENDER_LAB_SCALE_UNIT` | `TUNE(render_lab, rows, ...)` |
-| `scanline` | Repeated-row darkening; see `UPSCALE_SCANLINE_UNIT` | `TUNE(render_lab, scanline, ...)` |
-
-The scene applies these settings each frame. Perf suites read them at test
-entry and log the raster size, effective rows divisor, strength and quarter.
-Compose uses the same half-picture size owner as the scene.
-
-These commands render both scenes in quarter 0 and rotated quarter 1, at the
-same pose used in the sheets. The host reads the real gfx panel rows, including
-half-picture doubling, before rotating the output for the viewer.
+`--tune NAME=VALUE` applies a console tuning before entry; repeat it for
+multiple settings. `--live-tune NAME=VALUE` applies after entry, so the frame
+hook changes the next rendered frame without reloading the scene.
 
 ```sh
-sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh --build-only -o /tmp/raster-look
-for scene in sponza-fitted-full capybara; do
-    for quarter in 0 1; do
-        /tmp/raster-look/render_lab_render --scene "$scene" --quarter "$quarter" --no-hud --frames 2 --dt 5000 \
-            -o "/tmp/raster-look/$scene-q$quarter-today.bmp"
-        /tmp/raster-look/render_lab_render --scene "$scene" --quarter "$quarter" --no-hud --frames 2 --dt 5000 \
-            --tune render_lab.rows=400 -o "/tmp/raster-look/$scene-q$quarter-plain.bmp"
-        /tmp/raster-look/render_lab_render --scene "$scene" --quarter "$quarter" --no-hud --frames 2 --dt 5000 \
-            --tune render_lab.rows=400 --tune render_lab.scanline=16 \
-            -o "/tmp/raster-look/$scene-q$quarter-scanline.bmp"
-    done
-done
+autana tune render_lab.present 1
+autana suite sponza_perf --set render_lab.present=1
+sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh --scene sponza-fitted-full \
+    --tune render_lab.present=1 --no-hud --panel -o /tmp/present.bmp
 ```
 
-`render_compare.sh --render LABEL "ARGS"` accepts these same renderer arguments.
-Use `launcher/tools/render/render_compare.py --row` with `--crops 3` to compare
-default versus 1×2 plain, or plain versus strength 16.
+A308, seeded `perf_compare` across eight seeds, in milliseconds:
 
-Keep captures outside the repository. Scanline runs follow panel rows, so they
-appear vertical in quarter 1. Clear sky darkens too. For strength units, see
-`UPSCALE_SCANLINE_UNIT`. Paired copies only; other paths ignore the strength.
+| Scene | NEAREST ms | SCANLINE ms | Δ |
+|---|---:|---:|---:|
+| sponza fitted-full | 45.4 | 32.9 | −27.7% |
+| sponza full | 43.1 | 31.2 | −27.7% |
+| sponza flat | 32.7 | 25.1 | −23.3% |
+| sponza lite | 34.8 | 24.3 | −30.0% |
+| sponza fitted | 35.2 | 24.8 | −29.5% |
+| sponza flat-fitted | 32.9 | 25.4 | −22.7% |
+| capybara render (paused) | 6.75 | 3.87 | −42.7% |
 
-The inventory lists every place the experiment touches; the check below finds the scanline-named ones.
-Existing `DRAW_DITHER_SCANLINES4` patterns are independent.
-
-| File | Experiment symbols or statements to remove |
-|---|---|
-| `launcher/main/render/upscale.h` | `UPSCALE_SCANLINE_UNIT`, `UPSCALE_SCANLINE_MAX`, `upscale_t.scanline_run`, `upscale_rows_scanlined()` declaration |
-| `launcher/main/render/upscale.c` | run eligibility in `upscale_init()`, `upscale_rows_scanlined()` |
-| `launcher/main/gfx/target/gfx_color.h`, `gfx_target.h` | `GFX_COLOR_SCALE_UNIT`, `gfx_color_scale()`, `gfx_color_pair_scale()`, `gfx_target_paired_rows_shaded()` and its plain-copy wrapper call |
-| `launcher/main/render/raster.h` | `raster_t.scanline` |
-| `launcher/main/render/raster.c` | scanline dispatch in `upscale_slice()` |
-| `launcher/main/render/context/render_context.h`, `render_context.c` | `render_context_set_scanlines()` |
-| `launcher/main/apps/render_lab/render_lab_view.c` | `TUNE(render_lab, scanline, ...)`, `render_lab_scanline()`, the setter call in `render_lab_apply_raster_settings()` |
-| `launcher/main/apps/render_lab/render_lab_view.h` | `render_lab_scanline()` declaration |
-| `launcher/main/apps/render_lab/tests/suite_sponza_perf.c` | strength assignment and header field |
-| `launcher/main/apps/render_lab/tests/suite_capybara_perf.c` | header strength field |
-| `launcher/main/apps/render_lab/tests/suite_raster_scale_perf.c` | strength assignments, setter and header field |
-| `launcher/main/apps/render_lab/tools/tests/test_render_views.py` | `COLOR_HEADER`, `SCANLINE_UNIT`, scanline tunings and dark-row assertions |
-| `launcher/test/suites/suite_scene.c` | `assert_composed_scanlines()`, `test_context_scanlines_compose_both_quarters_and_disabled_pairs()`, `test_context_scanline_strength_survives_fixed_and_dynamic_size_changes()`; strength in `test_height_only_scale_composes_whole_runs_in_the_half_picture()` |
-| `launcher/test/suites/suite_upscale.c` | scanline tests, `assert_scanline_rows_match_reference()`, `test_odd_half_picture_repeat_keeps_pixels()`, shaded calls in `test_shaded_paired_copy_strip_starts_on_bottom_of_pair()` and registrations |
-| `docs/Shared-Helpers.md` | regenerate the catalogue after removing the public symbols |
-| `docs/render/Dynamic-Resolution.md`, this README | experiment prose and inventory |
-
-Check the inventory with:
-
-```sh
-git grep -n -i scanline -- launcher/main/render launcher/main/gfx/target launcher/main/apps/render_lab \
-    launcher/test/suites/suite_scene.c launcher/test/suites/suite_upscale.c \
-    docs/render/Dynamic-Resolution.md
-git grep -n 'gfx_color_scale\|gfx_color_pair_scale\|GFX_COLOR_SCALE_UNIT\|paired_rows_shaded' -- launcher
-```
-
-Keep height-only fixed scaling, `raster_fits_half_picture()`,
-`raster_compose_size()`, `rows`, the general `--tune` option and plain-row
-regression coverage.
-
-The engine contract is in
-[Dynamic resolution](../../../../../docs/render/Dynamic-Resolution.md).
+DOUBLE measures about 0.8 ms faster than SCANLINE on every Sponza bake in a
+scoped A/B across both quarters. Scanlines follow panel rows and darken the
+clear background too. See the engine's [presentation GIFs](../../../../../docs/render/Dynamic-Resolution.md#camera-presentation).
 
 ### Debug views
 

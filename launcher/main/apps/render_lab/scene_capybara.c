@@ -124,6 +124,9 @@ scene_capybara_enter(void) {
     (void)scene_activate(capybara, CAPYBARA_CAMERA);
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     render_lab_apply_raster_settings();
+    if (capybara != NULL) {
+        (void)scene_camera_set_present(capybara, scene_find(capybara, CAPYBARA_CAMERA), render_lab_present());
+    }
 #if TUNE_ENABLED
     render_context_set_debug_view(render_context_main(), render_lab_debug_view());
 #endif
@@ -155,6 +158,9 @@ static void
 scene_capybara_frame(uint32_t dt_ms) {
     (void)dt_ms;
     render_lab_apply_raster_settings();
+    if (capybara != NULL) {
+        (void)scene_camera_set_present(capybara, scene_find(capybara, CAPYBARA_CAMERA), render_lab_present());
+    }
 #if TUNE_ENABLED
     render_context_set_debug_view(render_context_main(), render_lab_debug_view());
 #endif

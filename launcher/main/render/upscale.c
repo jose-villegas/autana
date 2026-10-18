@@ -135,9 +135,9 @@ upscale_rows(const upscale_t* scale, const gfx_render_target_t* picture, uint16_
 /* Scanline dispatch stays in flash to preserve the default copy's IRAM budget. */
 void
 upscale_rows_scanlined(const upscale_t* scale, const gfx_render_target_t* picture, uint16_t clear,
-                       uint16_t* destination, int first_row, int row_count, int strength) {
+                       uint16_t* destination, int first_row, int row_count) {
     assert(scale != NULL);
-    if (strength == 0 || scale->scanline_run == 0 || (scale->path != UPSCALE_KEPT && scale->path != UPSCALE_DOUBLED)) {
+    if (scale->scanline_run == 0 || (scale->path != UPSCALE_KEPT && scale->path != UPSCALE_DOUBLED)) {
         upscale_rows(scale, picture, clear, destination, first_row, row_count);
         return;
     }
@@ -151,6 +151,5 @@ upscale_rows_scanlined(const upscale_t* scale, const gfx_render_target_t* pictur
         picture->count > GFX_ATTACHMENT_DEPTH ? gfx_render_target_depth(picture, picture->row0) : NULL;
     const gfx_target_t target = {destination, 0, scale->destination_height, scale->destination_width};
     gfx_target_paired_rows_shaded(target, source, depth, clear, scale->source_width, scale->rows, first_row, row_count,
-                                  scale->path == UPSCALE_DOUBLED, scale->scanline_run,
-                                  UPSCALE_SCANLINE_UNIT - strength);
+                                  scale->path == UPSCALE_DOUBLED, scale->scanline_run, UPSCALE_SCANLINE_KEEP);
 }
