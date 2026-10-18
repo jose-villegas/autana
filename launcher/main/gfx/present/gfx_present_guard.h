@@ -61,9 +61,10 @@ gfx_present_guard_check(void) {
 #endif
 }
 
-/* Folds to nothing in a release device build; active in development device
- * builds and on every host build. Call at the top of a public gfx_* entry
- * point that reads or writes drawing state or the framebuffer. */
+/* Compiled out on release because a release image never overlaps update/frame
+ * with a single-buffer send; live on host where the contract is proven.
+ * Call at the top of a public gfx_* entry point that reads or writes drawing
+ * state or the framebuffer. */
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
 #define GFX_PRESENT_GUARD() gfx_present_guard_check()
 #else
