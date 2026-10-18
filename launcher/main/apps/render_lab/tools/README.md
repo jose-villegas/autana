@@ -23,6 +23,15 @@ capture.
 enters; repeat it for more settings. `--live-tune NAME=VALUE` applies it after
 entry, so the frame hook changes the next frame without reloading the scene.
 
+### Menu renders
+
+`--menu` presses BOOT on the first frame, so the render shows the scene menu
+instead of the scene. `--tap X,Y` adds one press and release there, in panel
+pixels: `menu-capybara-clips` opens the clip list. The menu draws over a
+solid background with no float on its path, so these renders are pinned in
+`render_lab_render_baseline.txt`. Re-pin with `--update-baseline` after
+looking at the images.
+
 ### Camera presentation
 
 `render_lab.present` selects the scene camera's present mode: NEAREST (0, the
