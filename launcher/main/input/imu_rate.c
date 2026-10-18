@@ -12,12 +12,14 @@ imu_rate_update(imu_rate_t* rate, int samples, int64_t drain_us, bool gap) {
         rate->samples = 0;
         return rate->sample_us;
     }
-    if (!rate->active || drain_us <= rate->start_us) {
+    if (!rate->active || drain_us <= rate->last_us) {
         rate->active = true;
         rate->start_us = drain_us;
+        rate->last_us = drain_us;
         rate->samples = 0;
         return rate->sample_us;
     }
+    rate->last_us = drain_us;
     rate->samples += (uint32_t)samples;
     const int64_t elapsed = drain_us - rate->start_us;
     if (elapsed >= IMU_RATE_WINDOW_US) {

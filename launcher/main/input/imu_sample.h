@@ -24,6 +24,15 @@ typedef struct {
 
 _Static_assert(sizeof(imu_sample_t) == 12, "FIFO order is six little-endian int16 axes");
 
+#define IMU_TIMESTAMP_BITS 24U
+#define IMU_TIMESTAMP_MASK ((1U << IMU_TIMESTAMP_BITS) - 1U)
+
+/* QMI8658A section 5.5, Table 24: highest-ODR sample count, circular over 24 bits. */
+static inline uint32_t
+imu_timestamp_delta(uint32_t current, uint32_t previous) {
+    return (current - previous) & IMU_TIMESTAMP_MASK;
+}
+
 #define IMU_COUNTS_PER_G   4096
 #define IMU_COUNTS_PER_DPS 64
 

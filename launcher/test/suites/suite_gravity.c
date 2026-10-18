@@ -164,8 +164,9 @@ test_fast_turn_batch_retains_between_frame_rotation(void) {
         batch->count = (int)(end - samples);
         vec3f_t truth = {0};
         for (int i = 0; i < batch->count; i++) {
-            /* Endpoint rest isolates rotation that a frame's final gyro reading cannot observe. */
-            const float rate = i + 1 == batch->count ? 0 : fminf(FAST_TURN_DPS, (QUARTER_TURN_DEG - angle) / sample_s);
+            const float last_rate = FAST_TURN_DPS / (float)GRAVITY_RECOVER_ACCEPT_WEIGHT;
+            const float rate =
+                fminf(i + 1 == batch->count ? last_rate : FAST_TURN_DPS, (QUARTER_TURN_DEG - angle) / sample_s);
             angle += rate * sample_s;
             const float radians = angle * MATH_PI / (2.0F * QUARTER_TURN_DEG);
             truth = (vec3f_t){0, -sinf(radians), -cosf(radians)};
@@ -181,7 +182,7 @@ test_fast_turn_batch_retains_between_frame_rotation(void) {
     printf("gravity fast turn: batch max %.6f deg, frame max %.6f deg, ODR %.1f Hz\n", (double)batch_max,
            (double)frame_max, IMU_ODR_HZ);
     TEST_ASSERT_FLOAT_WITHIN(FLOAT_TOLERANCE, QUARTER_TURN_DEG, angle);
-    TEST_ASSERT_TRUE(batch_max <= GRAVITY_REJECT_DEG);
+    TEST_ASSERT_TRUE(batch_max <= ANGLE_TOLERANCE_DEG / 10.0F);
     TEST_ASSERT_TRUE(frame_max > GRAVITY_REJECT_DEG);
 }
 
@@ -203,12 +204,197 @@ test_fifo_gap_soft_restarts_and_reconverges(void) {
     gravity_update_batch(&g, batch);
     const uint32_t bound_us = IMU_FIFO_SAMPLES * INPUT_MOTION_SAMPLE_US;
     const float error = angle_error(target, gravity_down(&g));
+    TEST_ASSERT_TRUE(isfinite(g.down.x) && isfinite(g.down.y) && isfinite(g.down.z));
+    TEST_ASSERT_FLOAT_WITHIN(FLOAT_TOLERANCE, 1.0F, vec3f_dot(g.down, g.down));
+    batch->gap = false;
+    gravity_update_batch(&g, batch);
+    TEST_ASSERT_FALSE(batch->gap);
     const bool within_bound = GRAVITY_STILL_RECOVER_US + INPUT_MOTION_SAMPLE_US <= bound_us;
     free(batch);
     TEST_ASSERT_TRUE(restarted);
     TEST_ASSERT_TRUE(within_bound);
     TEST_ASSERT_TRUE(error <= GRAVITY_REJECT_DEG);
     TEST_ASSERT_FALSE(g.recovering);
+}
+
+static void
+test_gap_full_batch_changes_hidden_turn_recovery(void) {
+    fixture();
+    const input_motion_t old_pose = sample((vec3f_t){0, 0, -1}, (vec3f_t){0});
+    gravity_update(&g, &old_pose, 0);
+    g.down = (vec3f_t){0, -1, 0};
+    gravity_t clean = g;
+    input_motion_batch_t* batch = malloc(sizeof *batch);
+    TEST_ASSERT_NOT_NULL(batch);
+    *batch = (input_motion_batch_t){.count = IMU_FIFO_SAMPLES, .sample_us = IMU_SAMPLE_US};
+    for (int i = 0; i < batch->count; i++) {
+        batch->samples[i] = sample((vec3f_t){0, 0, -1}, (vec3f_t){0, 0, GRAVITY_STILL_DPS * 2.0F});
+    }
+    gravity_update_batch(&clean, batch);
+    batch->gap = true;
+    gravity_update_batch(&g, batch);
+    free(batch);
+    TEST_ASSERT_TRUE(angle_error(g.down, clean.down) > ANGLE_TOLERANCE_DEG);
+    TEST_ASSERT_TRUE(angle_error((vec3f_t){0, 0, -1}, g.down) < angle_error((vec3f_t){0, 0, -1}, clean.down));
+}
+
+static void
+test_gyro_only_batch_needs_every_sample(void) {
+    fixture();
+    input_motion_batch_t* batch = malloc(sizeof *batch);
+    TEST_ASSERT_NOT_NULL(batch);
+    *batch =
+        (input_motion_batch_t){.count = (int)(TURN_MS * MATH_US_PER_MS / IMU_SAMPLE_US), .sample_us = IMU_SAMPLE_US};
+    const float rate = QUARTER_TURN_DEG * MATH_US_PER_S / (float)(batch->count * IMU_SAMPLE_US);
+    const input_motion_t initial = sample((vec3f_t){0, 0, -1}, (vec3f_t){0});
+    gravity_update(&g, &initial, 0);
+    const gravity_t start = g;
+    for (int i = 0; i < batch->count; i++) {
+        batch->samples[i] = sample((vec3f_t){0}, (vec3f_t){rate, 0, 0});
+    }
+    gravity_update_batch(&g, batch);
+    TEST_ASSERT_TRUE(angle_error((vec3f_t){0, -1, 0}, g.down) < ANGLE_TOLERANCE_DEG);
+    for (int skip = 0; skip < batch->count; skip++) {
+        gravity_t skipped = start;
+        const input_motion_t saved = batch->samples[skip];
+        batch->samples[skip] = (input_motion_t){0};
+        gravity_update_batch(&skipped, batch);
+        batch->samples[skip] = saved;
+        TEST_ASSERT_TRUE(angle_error(g.down, skipped.down) > ANGLE_TOLERANCE_DEG);
+    }
+    free(batch);
+}
+
+static void
+test_lost_samples_advance_at_produced_rate(void) {
+    fixture();
+
+    enum { LOST_PER_DRAIN = 2, DELIVERED_PER_DRAIN = 8, DRAINS = 5 };
+
+    imu_rate_t rate = {0};
+    input_motion_batch_t* batch = malloc(sizeof *batch);
+    TEST_ASSERT_NOT_NULL(batch);
+    const uint32_t produced_per_drain = DELIVERED_PER_DRAIN + LOST_PER_DRAIN;
+    const uint32_t drain_us = produced_per_drain * IMU_SAMPLE_US;
+    imu_rate_update(&rate, 0, 0, false);
+    for (uint32_t elapsed = drain_us; elapsed <= IMU_RATE_WINDOW_US + drain_us; elapsed += drain_us) {
+        imu_rate_update(&rate, (int)produced_per_drain, elapsed, false);
+    }
+    *batch = (input_motion_batch_t){.count = DELIVERED_PER_DRAIN, .lost = LOST_PER_DRAIN, .sample_us = rate.sample_us};
+    const float turn_rate = QUARTER_TURN_DEG * MATH_US_PER_S / (float)(DRAINS * drain_us);
+    const input_motion_t initial = sample((vec3f_t){0, 0, -1}, (vec3f_t){0});
+    gravity_update(&g, &initial, 0);
+    g.rotation = (vec3f_t){turn_rate, 0, 0};
+    gravity_t unadvanced = g;
+    for (int i = 0; i < batch->count; i++) {
+        batch->samples[i] = sample((vec3f_t){0}, (vec3f_t){turn_rate, 0, 0});
+    }
+    for (int i = 0; i < DRAINS; i++) {
+        gravity_update_batch(&g, batch);
+        batch->lost = 0;
+        gravity_update_batch(&unadvanced, batch);
+        batch->lost = LOST_PER_DRAIN;
+    }
+    free(batch);
+    const float error = angle_error((vec3f_t){0, -1, 0}, g.down);
+    const float missing = angle_error((vec3f_t){0, -1, 0}, unadvanced.down);
+    printf("lost samples: advanced_error_deg=%.3f unadvanced_error_deg=%.3f\n", (double)error, (double)missing);
+    TEST_ASSERT_TRUE(error < ANGLE_TOLERANCE_DEG);
+    TEST_ASSERT_TRUE(missing > ANGLE_TOLERANCE_DEG);
+}
+
+static void
+test_lost_prediction_clamps_without_acceleration_correction(void) {
+    fixture();
+    input_motion_batch_t* batch = malloc(sizeof *batch);
+    TEST_ASSERT_NOT_NULL(batch);
+    *batch = (input_motion_batch_t){.count = 1, .lost = IMU_FIFO_SAMPLES, .sample_us = IMU_SAMPLE_US};
+    const input_motion_t initial = sample((vec3f_t){0, 0, -1}, (vec3f_t){0});
+    gravity_update(&g, &initial, 0);
+    batch->samples[0] = sample((vec3f_t){0}, (vec3f_t){FAST_TURN_DPS, 0, 0});
+    g.rotation = (vec3f_t){FAST_TURN_DPS, 0, 0};
+    gravity_t expected = g;
+    gravity_update(&expected, &batch->samples[0], IMU_SAMPLE_US);
+    uint32_t remaining = GRAVITY_MAX_DT_US;
+    while (remaining > 0) {
+        const uint32_t step = remaining < IMU_SAMPLE_US ? remaining : IMU_SAMPLE_US;
+        gravity_update(&expected, &batch->samples[0], step);
+        remaining -= step;
+    }
+    gravity_update_batch(&g, batch);
+    free(batch);
+    TEST_ASSERT_TRUE(angle_error(expected.down, g.down) < ANGLE_TOLERANCE_DEG);
+    TEST_ASSERT_FLOAT_WITHIN(FLOAT_TOLERANCE, 1.0F, vec3f_dot(g.down, g.down));
+}
+
+static void
+test_lost_time_uses_previous_rotation_before_delivered_samples(void) {
+    fixture();
+    const input_motion_t previous = sample((vec3f_t){0, 0, -1}, (vec3f_t){FAST_TURN_DPS, 0, 0});
+    gravity_update(&g, &previous, 0);
+    const gravity_t start = g;
+    input_motion_batch_t* batch = malloc(sizeof *batch);
+    TEST_ASSERT_NOT_NULL(batch);
+    *batch = (input_motion_batch_t){.lost = 1, .sample_us = IMU_SAMPLE_US};
+    gravity_update_batch(&g, batch);
+    const float radians = FAST_TURN_DPS * IMU_SAMPLE_US / MATH_US_PER_S * MATH_PI / (2.0F * QUARTER_TURN_DEG);
+    const vec3f_t target = {0, -sinf(radians), -cosf(radians)};
+    const float empty_error = angle_error(target, g.down);
+    g = start;
+    batch->count = 1;
+    batch->samples[0] = sample((vec3f_t){0}, (vec3f_t){-FAST_TURN_DPS, 0, 0});
+    gravity_update_batch(&g, batch);
+    free(batch);
+    TEST_ASSERT_TRUE(empty_error < ANGLE_TOLERANCE_DEG / 10.0F);
+    TEST_ASSERT_TRUE(angle_error(start.down, g.down) < ANGLE_TOLERANCE_DEG / 10.0F);
+}
+
+static void
+test_timestamp_wrap_counts_produced_samples(void) {
+    TEST_ASSERT_EQUAL_UINT32(0, imu_timestamp_delta(IMU_TIMESTAMP_MASK, IMU_TIMESTAMP_MASK));
+    TEST_ASSERT_EQUAL_UINT32(1, imu_timestamp_delta(0, IMU_TIMESTAMP_MASK));
+    TEST_ASSERT_EQUAL_UINT32(
+        IMU_FIFO_SAMPLES, imu_timestamp_delta(IMU_FIFO_SAMPLES / 2U, IMU_TIMESTAMP_MASK - IMU_FIFO_SAMPLES / 2U + 1U));
+    TEST_ASSERT_EQUAL_UINT32(IMU_TIMESTAMP_MASK, imu_timestamp_delta(IMU_TIMESTAMP_MASK - 1U, IMU_TIMESTAMP_MASK));
+}
+
+static void
+test_rate_exact_bounds_and_retained_estimate(void) {
+    const uint32_t low =
+        (IMU_SAMPLE_US * (RATE_PERCENT_SCALE - IMU_RATE_BOUND_PCT) + RATE_PERCENT_SCALE - 1U) / RATE_PERCENT_SCALE;
+    const uint32_t high = IMU_SAMPLE_US * (RATE_PERCENT_SCALE + IMU_RATE_BOUND_PCT) / RATE_PERCENT_SCALE;
+    const uint32_t intervals[] = {low, high, low - 1U, high + 1U};
+    for (size_t i = 0; i < sizeof intervals / sizeof intervals[0]; i++) {
+        imu_rate_t rate = {0};
+        const uint32_t accepted = estimate_interval(&rate, RATE_TRUE_US, 0);
+        const uint32_t samples = (IMU_RATE_WINDOW_US + intervals[i] - 1U) / intervals[i];
+        const int64_t end = (int64_t)samples * intervals[i];
+        imu_rate_update(&rate, 0, 0, false);
+        TEST_ASSERT_EQUAL_UINT32(i < 2 ? intervals[i] : accepted, imu_rate_update(&rate, (int)samples, end, false));
+    }
+    imu_rate_t rate = {0};
+    const uint32_t accepted = estimate_interval(&rate, RATE_TRUE_US, 0);
+    imu_rate_update(&rate, 0, 0, false);
+    TEST_ASSERT_EQUAL_UINT32(accepted, imu_rate_update(&rate, 0, IMU_RATE_WINDOW_US, false));
+    TEST_ASSERT_EQUAL_INT64(IMU_RATE_WINDOW_US, rate.start_us);
+    TEST_ASSERT_EQUAL_UINT32(accepted, imu_rate_update(&rate, IMU_FIFO_SAMPLES, IMU_RATE_WINDOW_US + FRAME_US, true));
+    TEST_ASSERT_FALSE(rate.active);
+    imu_rate_update(&rate, 0, 0, false);
+    imu_rate_update(&rate, IMU_FIFO_SAMPLES, FRAME_US, false);
+    imu_rate_update(&rate, IMU_FIFO_SAMPLES, FRAME_US, false);
+    TEST_ASSERT_EQUAL_UINT32(0, rate.samples);
+    TEST_ASSERT_EQUAL_INT64(FRAME_US, rate.start_us);
+    imu_rate_update(&rate, IMU_FIFO_SAMPLES, FRAME_US * 2U, false);
+    imu_rate_update(&rate, IMU_FIFO_SAMPLES, FRAME_US + 1U, false);
+    TEST_ASSERT_EQUAL_UINT32(0, rate.samples);
+    TEST_ASSERT_EQUAL_INT64(FRAME_US + 1U, rate.start_us);
+    imu_rate_update(&rate, 0, 0, false);
+    const int count = (int)(IMU_RATE_WINDOW_US / IMU_SAMPLE_US);
+    imu_rate_update(&rate, count - 1, IMU_RATE_WINDOW_US - 1U, false);
+    TEST_ASSERT_EQUAL_UINT32(accepted, rate.sample_us);
+    const uint32_t expected = (IMU_RATE_WINDOW_US + (uint32_t)count / 2U) / (uint32_t)count;
+    TEST_ASSERT_EQUAL_UINT32(expected, imu_rate_update(&rate, 1, IMU_RATE_WINDOW_US, false));
+    TEST_ASSERT_EQUAL_INT64(IMU_RATE_WINDOW_US, rate.start_us);
 }
 
 static void
@@ -661,6 +847,13 @@ test_gyro_overrange_boundary(void) {
 
 void
 run_gravity_suite(void) {
+    RUN_TEST(test_lost_prediction_clamps_without_acceleration_correction);
+    RUN_TEST(test_lost_time_uses_previous_rotation_before_delivered_samples);
+    RUN_TEST(test_timestamp_wrap_counts_produced_samples);
+    RUN_TEST(test_gap_full_batch_changes_hidden_turn_recovery);
+    RUN_TEST(test_gyro_only_batch_needs_every_sample);
+    RUN_TEST(test_lost_samples_advance_at_produced_rate);
+    RUN_TEST(test_rate_exact_bounds_and_retained_estimate);
     RUN_TEST(test_rate_measures_slow_and_nominal_streams);
     RUN_TEST(test_rate_rejects_outlier_and_discards_gap);
     RUN_TEST(test_measured_interval_corrects_slow_quarter_turn);

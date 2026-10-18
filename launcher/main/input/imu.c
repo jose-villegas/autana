@@ -38,6 +38,9 @@ static const char* TAG = "imu";
 #define REG_FIFO_SMPL_CNT       0x15
 #define REG_FIFO_DATA           0x17
 #define REG_STATUSINT           0x2D
+#define REG_TIMESTAMP_L         0x30
+#define TIMESTAMP_BYTES         (IMU_TIMESTAMP_BITS / TIMESTAMP_BYTE_SHIFT)
+#define TIMESTAMP_BYTE_SHIFT    8U
 #define REG_AX_L                0x35 /* 12 contiguous bytes: accel then gyro */
 
 #define WHO_AM_I_VALUE          0x05
@@ -63,7 +66,8 @@ static const char* TAG = "imu";
 #define FIFO_COUNT_MSB_SHIFT    8
 #define FIFO_WORD_BYTES         2
 #define CTRL9_TIMEOUT_US        (100U * MATH_US_PER_MS)
-#define CTRL9_POLL_US           100U
+/* Section 5.10.1 specifies no minimum delay: poll once per I2C status transaction. */
+#define CTRL9_POLL_US           0U
 
 /* CTRL7: enable the accelerometer and the gyroscope. */
 #define CTRL7_ENABLE_ACCEL_GYRO 0x03
@@ -71,6 +75,9 @@ static const char* TAG = "imu";
 static i2c_master_dev_handle_t dev;
 static bool ready;
 static bool fifo_gap;
+static bool timestamp_valid;
+static uint32_t previous_timestamp;
+static int loss_remainder;
 
 static bool
 write_reg(uint8_t reg, uint8_t value) {
@@ -100,7 +107,6 @@ wait_command(bool done) {
 }
 
 /* SensorLib (MIT), docs/Citations.md#79, writeCommand/configFIFO/readFromFifo:
- * https://github.com/lewisxhe/SensorLib/blob/master/src/SensorQMI8658.hpp
  * QMI8658A Rev A, docs/Citations.md#78, sections 5.10 and 8 require acknowledgement before REG_FIFO_DATA. */
 static bool
 write_command(uint8_t command) {
@@ -133,7 +139,7 @@ imu_inject_release(void) {
 }
 
 static int
-read_injected_fifo(imu_sample_t* out, int capacity, bool* overflowed) {
+read_injected_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* produced, bool* overflowed) {
     portENTER_CRITICAL(&injected_lock);
     if (!injected) {
         portEXIT_CRITICAL(&injected_lock);
@@ -143,8 +149,9 @@ read_injected_fifo(imu_sample_t* out, int capacity, bool* overflowed) {
     const int64_t elapsed = (esp_timer_get_time() - injected_drain_us) / IMU_SAMPLE_US;
     injected_drain_us += elapsed * IMU_SAMPLE_US;
     portEXIT_CRITICAL(&injected_lock);
-    const int count = elapsed > capacity ? capacity : (int)elapsed;
-    *overflowed = elapsed > capacity;
+    const int count = elapsed > IMU_FIFO_SAMPLES ? IMU_FIFO_SAMPLES : (int)elapsed;
+    *produced = (int)elapsed;
+    *overflowed = elapsed > IMU_FIFO_SAMPLES;
     for (int i = 0; i < count; i++) {
         memcpy((unsigned char*)out + ((size_t)i * sizeof sample), &sample, sizeof sample);
     }
@@ -236,65 +243,74 @@ imu_read(imu_sample_t* out) {
     portEXIT_CRITICAL(&injected_lock);
 #endif
 
-    /* One twelve-byte burst rather than six word reads. Beyond being faster, it
-     * guarantees all six axes come from the same sample; reading them
-     * separately can straddle an update and produce a vector that never
-     * physically existed. */
-    uint8_t raw[12];
-    if (!read_regs(REG_AX_L, raw, sizeof(raw))) {
+    return read_regs(REG_AX_L, (uint8_t*)out, sizeof *out);
+}
+
+static bool
+read_fifo_clock(int count, bool gap, int* produced, int* lost, int64_t* snapshot_us) {
+    uint8_t timestamp_bytes[TIMESTAMP_BYTES];
+    if (!read_regs(REG_TIMESTAMP_L, timestamp_bytes, sizeof timestamp_bytes)) {
         return false;
     }
-
-/* Little-endian pairs. The cast through uint16_t then int16_t is what makes
-     * the sign extension well defined. */
-#define AXIS(i) ((int16_t)((uint16_t)raw[(i)] | ((uint16_t)raw[(i) + 1] << 8)))
-
-    out->ax = AXIS(0);
-    out->ay = AXIS(2);
-    out->az = AXIS(4);
-    out->gx = AXIS(6);
-    out->gy = AXIS(8);
-    out->gz = AXIS(10);
-
+    uint32_t timestamp = 0;
+    for (size_t i = 0; i < sizeof timestamp_bytes; i++) {
+        timestamp |= (uint32_t)timestamp_bytes[i] << (i * TIMESTAMP_BYTE_SHIFT);
+    }
+    *snapshot_us = esp_timer_get_time();
+    const bool continuous = timestamp_valid && !gap;
+    *produced = continuous ? (int)imu_timestamp_delta(timestamp, previous_timestamp) : count;
+    previous_timestamp = timestamp;
+    timestamp_valid = true;
+    if (!continuous) {
+        loss_remainder = 0;
+    }
+    /* Between pre-request snapshots, produced = retained + discarded + new arrivals.
+     * The next FIFO count is retained + new arrivals, so delta - count is the preceding
+     * read-mode loss. Count-to-timestamp skew is at most one sample; carrying negative
+     * remainders preserves cumulative accounting. Section 5.5, Table 24 and section 8.7,
+     * docs/Citations.md#78. */
+    const int missing = continuous ? *produced - count + loss_remainder : 0;
+    *lost = missing > 0 ? missing : 0;
+    loss_remainder = missing < 0 ? missing : 0;
     return true;
 }
 
 int
-imu_read_fifo(imu_sample_t* out, int capacity, bool* overflowed) {
+imu_read_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* produced, int* lost, int64_t* snapshot_us, bool* overflowed) {
     *overflowed = false;
-    if (!ready || capacity <= 0 || out == NULL) {
+    *produced = 0;
+    *lost = 0;
+    *snapshot_us = esp_timer_get_time();
+    if (!ready || out == NULL) {
         return -1;
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    const int injected_count = read_injected_fifo(out, capacity, overflowed);
+    const int injected_count = read_injected_fifo(out, produced, overflowed);
     if (injected_count >= 0) {
         return injected_count;
     }
 #endif
-    /* Freeze the FIFO before counting so the burst and count describe the same contents. */
-    bool ok = write_command(CTRL9_REQ_FIFO);
     uint8_t status[2];
+    bool ok = read_regs(REG_FIFO_SMPL_CNT, status, sizeof status);
     int count = 0;
-    if (ok) {
-        ok = read_regs(REG_FIFO_SMPL_CNT, status, sizeof status);
-    }
     if (ok) {
         const int words = ((status[1] & FIFO_STATUS_COUNT_MSB) << FIFO_COUNT_MSB_SHIFT) | status[0];
         const int bytes = words * FIFO_WORD_BYTES;
         count = bytes / (int)sizeof *out;
         ok = count <= IMU_FIFO_SAMPLES && bytes % sizeof *out == 0;
-        *overflowed = fifo_gap || (status[1] & (FIFO_STATUS_FULL | FIFO_STATUS_OVERFLOW)) != 0 || count > capacity;
+        *overflowed = fifo_gap || (status[1] & (FIFO_STATUS_FULL | FIFO_STATUS_OVERFLOW)) != 0;
     }
-    /* A small caller still receives the newest complete samples without a second FIFO-sized buffer. */
-    while (ok && count > capacity) {
-        imu_sample_t discarded;
-        ok = read_regs(REG_FIFO_DATA, (uint8_t*)&discarded, sizeof discarded);
-        count--;
+    if (ok) {
+        ok = read_fifo_clock(count, *overflowed, produced, lost, snapshot_us) && write_command(CTRL9_REQ_FIFO);
     }
     if (ok && count > 0) {
         ok = read_regs(REG_FIFO_DATA, (uint8_t*)out, (size_t)count * sizeof *out);
     }
     const bool resumed = write_reg(REG_FIFO_CTRL, FIFO_CTRL_CONFIG);
     fifo_gap = !ok || !resumed;
+    if (fifo_gap || *overflowed) {
+        timestamp_valid = false;
+        loss_remainder = 0;
+    }
     return fifo_gap ? -1 : count;
 }

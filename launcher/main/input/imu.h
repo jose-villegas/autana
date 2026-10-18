@@ -1,20 +1,7 @@
 /*
- * imu: the QMI8658 six-axis accelerometer and gyroscope.
- *
- * Sits on the shared I2C bus at 0x6b, the same bus POST probes. There is no
- * driver for it in the BSP, so this is written against the QST datasheet.
- *
- * Which sensor answers which question is worth being clear about, because it
- * is easy to reach for the wrong one:
- *
- *   - the ACCELEROMETER senses gravity, so it says which way is down. That is
- *     what tilting the board changes, and what steering by tilt wants.
- *   - the GYROSCOPE senses rotation RATE, which is zero however the board is
- *     tilted, as long as it is being held still. It is what tells you the
- *     board is being shaken or spun.
- *
- * Both are read in one transfer (the data registers are contiguous), so using
- * both costs nothing over using either.
+ * imu: QMI8658 stream FIFO drained by imu_read_fifo().
+ * imu_read() returns the latest single sample. Register values follow the
+ * QMI8658A datasheet, docs/Citations.md#78.
  */
 #pragma once
 
@@ -25,10 +12,12 @@
 #include "input/imu_sample.h"
 #include "math/scalar/units.h"
 
+/* Must agree with CTRL3's full-scale code in imu.c. */
 #define IMU_GYRO_RANGE_DPS 512.0F
 
 /* QMI8658A Rev A, Table 22 CTRL2/CTRL3 (6DOF), docs/Citations.md#78;
- * SensorLib GyroODR code 5. */
+ * SensorLib GyroODR, docs/Citations.md#79. We use stream mode, 128 samples,
+ * and the datasheet count-before-request drain sequence. */
 #define IMU_ODR_BASE_HZ    7174.4
 #define IMU_ODR_CODE       5
 #define IMU_ODR_DIVIDER    (1U << IMU_ODR_CODE)
@@ -36,8 +25,9 @@
 #define IMU_SAMPLE_US      ((uint32_t)((MATH_US_PER_S / IMU_ODR_HZ) + 0.5))
 #define IMU_FIFO_SAMPLES   128
 
-/* Oldest first; overflow means samples preceding out[0] were lost. Returns -1 on a bus error. */
-int imu_read_fifo(imu_sample_t* out, int capacity, bool* overflowed);
+/* Oldest first; produced and lost refer to pre-request snapshots. Overflow marks a gap.
+ * snapshot_us is the host time of the counter snapshot. Returns -1 on a bus error. */
+int imu_read_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* produced, int* lost, int64_t* snapshot_us, bool* overflowed);
 
 /* Configures and starts the sensor. Safe to call more than once.
  * Returns false if the chip does not answer or identifies as something else. */
@@ -45,7 +35,7 @@ bool imu_init(void);
 
 bool imu_ready(void);
 
-/* Reads all six axes. Returns false on a bus error, leaving `out` untouched. */
+/* Reads the latest six axes. Returns false on a bus error. */
 bool imu_read(imu_sample_t* out);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
