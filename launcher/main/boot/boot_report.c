@@ -60,8 +60,7 @@ report_core_dump(void) {
     if (esp_core_dump_get_panic_reason(reason, sizeof reason) != ESP_OK) {
         reason[0] = '\0';
     }
-    /* A dump outlives every flash until it is erased, so it names the build
-     * it came from, as BUILD_ID does: an old crash is told from a new one. */
+    /* A dump outlives every flash until it is erased, so it names its build, as BUILD_ID does. */
     esp_core_dump_summary_t summary;
     const char* build = esp_core_dump_get_summary(&summary) == ESP_OK ? (const char*)summary.app_elf_sha256 : "";
     (void)printf("COREDUMP=present build=%.*s panic=\"%s\"\n", BUILD_ID_HASH_CHARS, build, reason);

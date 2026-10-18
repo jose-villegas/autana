@@ -24,11 +24,11 @@ a file lock on the build directory keeps a second build of the same worktree
 and variant out until this one is done. `device.py` then copies the image
 (`flash_args`, every file it lists and `build_id.txt`) into a snapshot of its
 own, a private temporary folder that no other flash shares and that is
-removed once the write is done, has failed or was stopped. Only the build's
-`launcher.elf` goes into the records, as `<records>/elf/<BUILD_ID>.elf` (only the
-newest are kept), so a core dump stays decodable after its build directory
-is built over. Only then does it queue for the board, and
-under the lock `scripts/device/flash_image.sh` writes the snapshot with
+removed once the write is done, has failed or was stopped. The build's
+`launcher.elf` is also copied to `<records>/elf/<BUILD_ID>.elf`, the newest
+few kept, so a core dump stays decodable after its build directory is built
+over. Once the snapshot is made, `device.py` queues for the board, and under
+the lock `scripts/device/flash_image.sh` writes the snapshot with
 esptool, never `idf.py flash`: nothing builds while the board is held, a later
 build in that directory cannot change what is written, and the `BUILD_ID`
 recorded is the snapshot's own. `flash_image.sh` checks the live lock token

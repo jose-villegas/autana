@@ -1034,10 +1034,9 @@ def same_build(build_id, other):
 def find_elf_for_build_id(worktree, build_id):
     """The launcher.elf of build `build_id` (a BUILD_ID, or a core dump's ELF
     hash): a launcher/build*/ directory of this worktree whose build_id.txt
-    names it, else the archive's copy. The build actually on the board, not
-    merely the newest one on disk (a `--dev` build built after the board
-    was last flashed `--diag`, say, would otherwise decode against the wrong
-    symbols). None when `build_id` is empty or nothing matches."""
+    names it, else the archive's copy. Matches by name, so a `--dev` build
+    built later than a `--diag` one cannot stand in for it. None when
+    `build_id` is empty or nothing matches."""
     if not build_id:
         return None
     for build_dir in sorted(Path(worktree).glob("launcher/build*")):
