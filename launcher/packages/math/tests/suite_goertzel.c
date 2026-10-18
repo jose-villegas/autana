@@ -9,7 +9,6 @@
 #define TEST_SAMPLE_RATE_HZ        22050u
 #define TEST_SAMPLES               TEST_SAMPLE_RATE_HZ
 #define TEST_OFF_TONE_REJECTION_DB 30.0f
-#define TEST_MAX_RECORD_SAMPLES    1323000u
 #define TEST_ODD_BLOCK             7u
 #define TEST_TARGET_HZ             1000u
 #define TEST_REJECT_HZ             3000u
@@ -31,6 +30,7 @@ fixture(void) {
 #ifndef DEVICE_BUILD
 #define TEST_PI           3.14159265358979323846
 #define TEST_DB_TOLERANCE 0.5f
+#define TEST_MAX_RECORD_S 60u
 
 static void
 test_goertzel_reference(void) {
@@ -91,7 +91,7 @@ test_goertzel_max_record(void) {
     int16_t* samples = fixture();
     goertzel_t state;
     goertzel_init(&state, TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ);
-    const size_t total = TEST_MAX_RECORD_SAMPLES;
+    const size_t total = (size_t)TEST_MAX_RECORD_S * TEST_SAMPLE_RATE_HZ;
     for (size_t offset = 0; offset < total;) {
         const size_t n = total - offset < TEST_SAMPLES ? total - offset : TEST_SAMPLES;
         for (size_t i = 0; i < n; i++) {
