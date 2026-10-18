@@ -1,6 +1,7 @@
 /* Plain-value UI verbs share the microui control and command builders. */
 #include "core/memory.h"
 #include "draw/draw.h"
+#include "ui/layout/ui_scroll.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
 
@@ -20,6 +21,8 @@
 static ui_mu_theme_t theme;
 static unsigned window_ordinal;
 static bool window_open;
+/* ui_row_centre()'s width for the current row; 0 for the window's width. */
+static int row_w;
 static mu_Id tap_id;
 static bool tap_released;
 static bool toggle_preview;
@@ -41,11 +44,13 @@ static struct {
 } colors[UI_FACE_SCOPE_DEPTH];
 
 static int scales[UI_FACE_SCOPE_DEPTH];
-static int disabled_depth, color_depth, scale_depth;
+static uint8_t alphas[UI_FACE_SCOPE_DEPTH];
+static int disabled_depth, color_depth, scale_depth, alpha_depth;
 static bool imbalance;
 
 #ifndef ESP_PLATFORM
 void (*ui_face_misuse_for_test)(void);
+void (*ui_face_widget_for_test)(const char* label, recti_t r);
 #endif
 
 static void
@@ -82,8 +87,9 @@ ui_face_begin(const input_t* input) {
     theme = ui_theme_from_style(ui_context()->style);
     window_ordinal = 0;
     window_open = false;
+    row_w = 0;
     id_count = 0;
-    disabled_depth = color_depth = scale_depth = 0;
+    disabled_depth = color_depth = scale_depth = alpha_depth = 0;
     imbalance = false;
 }
 
@@ -93,10 +99,10 @@ ui_face_end(void) {
         mu_end_window(ui_context());
         window_open = false;
     }
-    if (disabled_depth != 0 || color_depth != 0 || scale_depth != 0) {
+    if (disabled_depth != 0 || color_depth != 0 || scale_depth != 0 || alpha_depth != 0) {
         face_misuse();
     }
-    disabled_depth = color_depth = scale_depth = 0;
+    disabled_depth = color_depth = scale_depth = alpha_depth = 0;
     imbalance = false;
 }
 
@@ -124,7 +130,14 @@ is_disabled(void) {
 }
 
 static mu_Id
-widget_id(const char* label) {
+widget_id(const char* label, recti_t r) {
+#ifndef ESP_PLATFORM
+    if (ui_face_widget_for_test) {
+        ui_face_widget_for_test(label, r);
+    }
+#else
+    (void)r;
+#endif
     const char* key = strstr(label, UI_FACE_LABEL_KEY_MARKER);
     key = key ? key + sizeof(UI_FACE_LABEL_KEY_MARKER) - 1 : label;
     const mu_Id hash = mu_get_id(ui_context(), key, (int)strlen(key));
@@ -163,6 +176,7 @@ open_window(recti_t r) {
         return;
     }
     id_count = 0;
+    row_w = 0;
     mu_Context* ctx = ui_context();
     UI_FACE_COST_BEGIN(backend_from);
     if (window_open) {
@@ -188,15 +202,42 @@ ui_window(recti_t r) {
     UI_FACE_COST_END(face_from, "ui.face");
 }
 
+/* Momentum needs a frame time the face does not take, so a face scroll
+ * window keeps ui_scroll_view_default()'s none. */
 void
-ui_row(int h) {
+ui_scroll_window(recti_t r) {
     UI_FACE_COST_BEGIN(face_from);
+    open_window(r);
+    UI_FACE_COST_BEGIN(backend_from);
+    if (window_open) {
+        ui_scroll_view_step(ui_context(), ui_scroll_view_default(), 0);
+    }
+    UI_FACE_COST_END(backend_from, "ui.backend");
+    UI_FACE_COST_END(face_from, "ui.face");
+}
+
+static void
+row(int w, int h) {
+    row_w = w;
     UI_FACE_COST_BEGIN(backend_from);
     const int widths[] = {-1};
     if (window_open) {
         mu_layout_row(ui_context(), 1, widths, h);
     }
     UI_FACE_COST_END(backend_from, "ui.backend");
+}
+
+void
+ui_row(int h) {
+    UI_FACE_COST_BEGIN(face_from);
+    row(0, h);
+    UI_FACE_COST_END(face_from, "ui.face");
+}
+
+void
+ui_row_centre(int w, int h) {
+    UI_FACE_COST_BEGIN(face_from);
+    row(w, h);
     UI_FACE_COST_END(face_from, "ui.face");
 }
 
@@ -204,8 +245,13 @@ recti_t
 ui_next(void) {
     UI_FACE_COST_BEGIN(face_from);
     UI_FACE_COST_BEGIN(backend_from);
-    const recti_t result = window_open ? ui_recti_from_mu(mu_layout_next(ui_context())) : (recti_t){0};
+    recti_t result = window_open ? ui_recti_from_mu(mu_layout_next(ui_context())) : (recti_t){0};
     UI_FACE_COST_END(backend_from, "ui.backend");
+    /* A row wider than its window keeps the window's width. */
+    if (row_w > 0 && row_w < result.w) {
+        result.x += (result.w - row_w) / 2;
+        result.w = row_w;
+    }
     UI_FACE_COST_END(face_from, "ui.face");
     return result;
 }
@@ -224,7 +270,7 @@ tap_hit(mu_Id id, recti_t r, bool pressed, bool enabled) {
 
 static bool
 button(recti_t r, const char* label, bool selected, bool tile) {
-    const mu_Id id = widget_id(label);
+    const mu_Id id = widget_id(label, r);
     const ui_widget_button_t b = {.label = label, .enabled = !is_disabled(), .selected = selected};
     UI_FACE_COST_BEGIN(backend_from);
     const bool hit =
@@ -253,7 +299,7 @@ ui_tile(recti_t r, const char* label, bool selected) {
 bool
 ui_toggle(recti_t r, const char* label, bool* on) {
     UI_FACE_COST_BEGIN(face_from);
-    const mu_Id id = widget_id(label);
+    const mu_Id id = widget_id(label, r);
     bool preview = tap_id == id ? toggle_preview : *on;
     if (tap_released && !mu_mouse_over(ui_context(), ui_mu_from_recti(r))) {
         preview = *on;
@@ -276,7 +322,7 @@ ui_toggle(recti_t r, const char* label, bool* on) {
 bool
 ui_slider(recti_t r, const char* label, int* value, int lo, int hi) {
     UI_FACE_COST_BEGIN(face_from);
-    const mu_Id id = widget_id(label);
+    const mu_Id id = widget_id(label, r);
     const bool enabled = !is_disabled();
     UI_FACE_COST_BEGIN(backend_from);
     const bool result = ui_theme_slider_int_id(ui_context(), id, ui_mu_from_recti(r), value, lo, hi,
@@ -293,7 +339,7 @@ dropdown(recti_t r, const char* label, int* index, const char* const* names, con
     if (count <= 0) {
         return false;
     }
-    const mu_Id id = widget_id(label);
+    const mu_Id id = widget_id(label, r);
     char name[UI_FACE_NAME_MAX];
     const int length = snprintf(name, sizeof name, UI_FACE_DROPDOWN_NAME_FORMAT, id);
     if (length < 0 || (size_t)length >= sizeof name) {
@@ -328,11 +374,19 @@ ui_dropdown_icons(recti_t r, const char* label, int* index, const char* const* n
     return result;
 }
 
+static uint8_t
+ink_alpha(void) {
+    return alpha_depth > 0 ? alphas[(alpha_depth < UI_FACE_SCOPE_DEPTH ? alpha_depth : UI_FACE_SCOPE_DEPTH) - 1]
+                           : UINT8_MAX;
+}
+
 #define UI_FACE_TEXT(name, alignment, ink)                                                                             \
     void name(recti_t r, const char* s) {                                                                              \
         UI_FACE_COST_BEGIN(face_from);                                                                                 \
+        mu_Color color = theme.ink;                                                                                    \
+        color.a = (unsigned char)(color.a * ink_alpha() / UINT8_MAX);                                                  \
         UI_FACE_COST_BEGIN(backend_from);                                                                              \
-        ui_text_in(ui_context(), ui_mu_from_recti(r), s, theme.ink, theme.text_scale, alignment);                      \
+        ui_text_in(ui_context(), ui_mu_from_recti(r), s, color, theme.text_scale, alignment);                          \
         UI_FACE_COST_END(backend_from, "ui.backend");                                                                  \
         UI_FACE_COST_END(face_from, "ui.face");                                                                        \
     }
@@ -494,6 +548,29 @@ ui_scale_end(void) {
     }
     if (--scale_depth < UI_FACE_SCOPE_DEPTH) {
         theme.text_scale = scales[scale_depth];
+    }
+    UI_FACE_COST_END(face_from, "ui.face");
+}
+
+void
+ui_alpha_begin(uint8_t alpha) {
+    UI_FACE_COST_BEGIN(face_from);
+    if (alpha_depth < UI_FACE_SCOPE_DEPTH) {
+        alphas[alpha_depth] = alpha;
+    } else {
+        face_misuse();
+    }
+    alpha_depth++;
+    UI_FACE_COST_END(face_from, "ui.face");
+}
+
+void
+ui_alpha_end(void) {
+    UI_FACE_COST_BEGIN(face_from);
+    if (alpha_depth > 0) {
+        alpha_depth--;
+    } else {
+        face_misuse();
     }
     UI_FACE_COST_END(face_from, "ui.face");
 }

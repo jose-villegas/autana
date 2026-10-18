@@ -227,7 +227,12 @@ void ui_theme(const ui_theme_t* theme);
  * close at the next window verb or ui_end(). */
 void ui_screen(void);
 void ui_window(recti_t r);
+/* A window whose flowed rows scroll vertically once they overflow `r`. */
+void ui_scroll_window(recti_t r);
+/* Flow: ui_next() hands out the rows the window's width wide, or `w` wide and
+ * centred after ui_row_centre(), each row below the last. */
 void ui_row(int h);
+void ui_row_centre(int w, int h);
 recti_t ui_next(void);
 
 bool ui_button(recti_t r, const char* label);
@@ -261,3 +266,7 @@ void ui_color_begin(ui_color_slot_t slot, uint32_t rgb);
 void ui_color_end(void);
 void ui_scale_begin(int scale);
 void ui_scale_end(void);
+/* Text verbs inside draw their ink at `alpha`/255 coverage, dithered; 0 draws
+ * no text. */
+void ui_alpha_begin(uint8_t alpha);
+void ui_alpha_end(void);

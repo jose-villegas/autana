@@ -15,6 +15,7 @@
 #endif
 
 #include "draw/draw_font.h"
+#include "math/geometry/recti.h"
 #include "microui.h"
 #include "ui/controls/ui_style.h"
 #include "ui/input/ui_pointer.h"
@@ -91,6 +92,8 @@ ui_font_scaled_t ui_resolve_font_scaled(mu_Font font);
 extern void (*ui_canvas_painted_for_test)(const mu_Container*);
 /* Observes face scope and identity misuse in host tests. */
 extern void (*ui_face_misuse_for_test)(void);
+/* Observes each face widget's label and rectangle in host tests. */
+extern void (*ui_face_widget_for_test)(const char* label, recti_t r);
 #endif
 
 #include "ui/controls/ui_widgets.h"

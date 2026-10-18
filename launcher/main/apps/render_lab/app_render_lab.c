@@ -17,7 +17,6 @@
 #include "scene/scene.h"
 #include "services/tune.h"
 #include "ui/ui.h"
-#include "ui/ui_mu.h"
 
 extern const render_lab_scene_t scene_sponza;
 extern const render_lab_scene_t scene_capybara;
@@ -170,7 +169,6 @@ switch_to_next_scene(void) {
 
 static void
 draw_fps(const input_t* input) {
-    mu_Context* ctx = ui_context();
     ui_begin(input);
 
     const render_lab_hud_screen_state_t state = {
@@ -179,7 +177,7 @@ draw_fps(const input_t* input) {
         .scene_title_alpha = scene_title_alpha(),
         .status = current_scene()->status != NULL ? current_scene()->status() : NULL,
     };
-    render_lab_hud_screen_draw(ctx, &state);
+    render_lab_hud_screen_draw(&state);
 
     /* The scene changes underneath the HUD every frame, so the overlay
      * must composite over the current scene without an opaque window. */
@@ -187,15 +185,14 @@ draw_fps(const input_t* input) {
 }
 
 static void
-draw_menu(const input_t* input, uint32_t dt_ms) {
-    mu_Context* ctx = ui_context();
+draw_menu(const input_t* input) {
     ui_begin(input);
 
     const render_lab_menu_screen_state_t state = {
         .scene_name = current_scene()->name,
         .controls = current_scene()->controls,
     };
-    const render_lab_menu_screen_result_t result = render_lab_menu_screen_draw(ctx, &state, dt_ms);
+    const render_lab_menu_screen_result_t result = render_lab_menu_screen_draw(&state);
 
     if (result.next_scene_clicked) {
         scene_switch_pending = true;
@@ -260,7 +257,7 @@ render_lab_frame(uint32_t dt_ms, const input_t* input) {
      * throughput specifically, so counting a frame that only ever drew the
      * menu would blend two unrelated numbers into one misleading reading. */
     if (menu_open) {
-        draw_menu(input, dt_ms);
+        draw_menu(input);
         return;
     }
 

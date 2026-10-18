@@ -4,6 +4,7 @@
 #include "draw/draw_font_roles.h"
 #include "perf_stats.h"
 #include "suites.h"
+#include "ui/layout/ui_scroll.h"
 #include "ui/ui_internal.h"
 #include "ui/ui_mu.h"
 #include "unity.h"
@@ -15,6 +16,7 @@
 #define UI_ICOUNT_HI          100
 #define UI_ICOUNT_VALUE       25
 #define UI_ICOUNT_SCALE       2
+#define UI_ICOUNT_ALPHA       128
 #define UI_ICOUNT_RGB         0x314159
 #define UI_ICOUNT_COLUMNS     2
 #define UI_ICOUNT_ROWS        1
@@ -66,7 +68,10 @@ typedef void (*ui_icount_emit_fn)(ui_icount_state_t*);
 
 UI_ICOUNT_PAIR(screen, ui_screen(), ui_begin_screen(ctx, UI_ICOUNT_WINDOW_NAME, UI_ICOUNT_FLAGS))
 UI_ICOUNT_PAIR(window, ui_window(box), mu_begin_window_ex(ctx, UI_ICOUNT_WINDOW_NAME, r, UI_ICOUNT_FLAGS))
+UI_ICOUNT_PAIR(scroll_window, ui_scroll_window(box),
+               ui_scroll_view_begin(ctx, UI_ICOUNT_WINDOW_NAME, UI_ICOUNT_FLAGS, ui_scroll_view_default(), 0))
 UI_ICOUNT_PAIR(row, ui_row(box.h), mu_layout_row(ctx, 1, (int[]){-1}, box.h))
+UI_ICOUNT_EMIT(face, row_centre, ui_row_centre(box.w, box.h))
 UI_ICOUNT_PAIR(next, ui_next(), mu_layout_next(ctx))
 UI_ICOUNT_PAIR(button, ui_button(box, UI_ICOUNT_LABEL), ui_icon_button(ctx, UI_ICOUNT_LABEL, r, &button, &state->theme))
 UI_ICOUNT_PAIR(tile, ui_tile(box, UI_ICOUNT_LABEL, false),
@@ -99,6 +104,7 @@ UI_ICOUNT_EMIT(face, theme, ui_theme(&theme))
 UI_ICOUNT_EMIT(face, disabled, (ui_disabled_begin(true), ui_disabled_end()))
 UI_ICOUNT_EMIT(face, color, (ui_color_begin(UI_COLOR_TEXT, UI_ICOUNT_RGB), ui_color_end()))
 UI_ICOUNT_EMIT(face, scale, (ui_scale_begin(UI_ICOUNT_SCALE), ui_scale_end()))
+UI_ICOUNT_EMIT(face, alpha, (ui_alpha_begin(UI_ICOUNT_ALPHA), ui_alpha_end()))
 
 static void
 measure_row(const char* name, ui_icount_emit_fn emit, bool window) {
@@ -121,7 +127,7 @@ measure_row(const char* name, ui_icount_emit_fn emit, bool window) {
                 ui_row(box.h);
             }
             emit(&state);
-            if (window && emit != face_screen && emit != face_window) {
+            if (window && emit != face_screen && emit != face_window && emit != face_scroll_window) {
                 mu_end_window(ui_context());
             }
             ui_face_end();
@@ -143,8 +149,11 @@ test_ui_instruction_rows(void) {
         {"ui_mu_screen", legacy_screen, true},
         {"ui_face_window", face_window, true},
         {"ui_mu_window", legacy_window, true},
+        {"ui_face_scroll_window", face_scroll_window, true},
+        {"ui_mu_scroll_window", legacy_scroll_window, true},
         {"ui_face_row", face_row, false},
         {"ui_mu_row", legacy_row, false},
+        {"ui_face_row_centre", face_row_centre, false},
         {"ui_face_next", face_next, false},
         {"ui_mu_next", legacy_next, false},
         {"ui_face_button", face_button, false},
@@ -184,6 +193,7 @@ test_ui_instruction_rows(void) {
         {"ui_face_disabled", face_disabled, false},
         {"ui_face_color", face_color, false},
         {"ui_face_scale", face_scale, false},
+        {"ui_face_alpha", face_alpha, false},
     };
 
     for (size_t i = 0; i < sizeof rows / sizeof rows[0]; i++) {

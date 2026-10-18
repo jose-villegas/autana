@@ -2,47 +2,29 @@
 
 #include <stdio.h>
 
-#include "draw/draw.h"
-#include "ui/layout/ui_scroll.h"
 #include "ui/ui.h"
 
-#define MENU_BTN_W   300
-#define MENU_BTN_H   UI_ROW_HEIGHT
-#define MENU_BTN_GAP 20
-#define MENU_ROWS    1
+#define MENU_BTN_W 300
 
 render_lab_menu_screen_result_t
-render_lab_menu_screen_draw(mu_Context* ctx, const render_lab_menu_screen_state_t* state, uint32_t dt_ms) {
+render_lab_menu_screen_draw(const render_lab_menu_screen_state_t* state) {
     render_lab_menu_screen_result_t result = {0};
 
-    /* ui_set_button_style(UI_BUTTON_BEZEL) is required, not automatic -
-     * ui_begin() resets the button style to UI_BUTTON_FLAT every frame
-     * (see ui.h), so a bezelled button needs asking for on every frame
-     * that draws one, the same as ui_launcher.c's own menu does. */
-    ui_set_button_style(UI_BUTTON_BEZEL);
+    ui_scroll_window((recti_t){0, 0, ui_width(), ui_height()});
 
-    const int opt = MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME;
-    if (ui_scroll_view_begin(ctx, "Render Lab Menu", opt, ui_scroll_view_default(), dt_ms)) {
-        const int hint_h = draw_text_height() + 4;
-        const int total_h = MENU_ROWS * MENU_BTN_H + MENU_ROWS * MENU_BTN_GAP + hint_h;
-        const int top = state->controls != NULL ? UI_MARGIN : ui_flow_top(ui_height(), 1, total_h, 0, 0);
-        ui_flow_t flow = ui_flow_start(ui_width(), top, MENU_BTN_GAP);
-
-        char label[40];
-        snprintf(label, sizeof label, "NEXT SCENE: %s", state->scene_name);
-        ui_flow_row(ctx, &flow, MENU_BTN_W, MENU_BTN_H);
-        if (mu_button(ctx, label)) {
-            result.next_scene_clicked = true;
-        }
-
-        if (state->controls != NULL) {
-            state->controls(ctx, &flow, MENU_BTN_W);
-        }
-        ui_flow_row(ctx, &flow, MENU_BTN_W, hint_h);
-        mu_label(ctx, "BOOT to close");
-
-        ui_scroll_view_end(ctx);
+    /* The scene name is shown, not part of the identity. */
+    char label[48];
+    snprintf(label, sizeof label, "NEXT SCENE: %s###next scene", state->scene_name);
+    ui_row_centre(MENU_BTN_W, UI_ROW_HEIGHT);
+    if (ui_button(ui_next(), label)) {
+        result.next_scene_clicked = true;
     }
+
+    if (state->controls != NULL) {
+        state->controls(MENU_BTN_W);
+    }
+    ui_row_centre(MENU_BTN_W, ui_text_height() + UI_TEXT_PAD);
+    ui_text(ui_next(), "BOOT to close");
 
     return result;
 }

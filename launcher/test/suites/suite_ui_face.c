@@ -10,6 +10,7 @@
 #include "suites.h"
 #include "test_cleanup.h"
 #include "timing.h"
+#include "ui/layout/ui_scroll.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
@@ -27,6 +28,12 @@
 #define CHOICE_COUNT      3
 #define SWATCH_COLS       2
 #define SWATCH_ROWS       1
+#define CENTRE_W          120
+#define FADE_ALPHA        96
+#define INNER_ALPHA       32
+/* More rows than any canvas holds, so a scroll window overflows. */
+#define OVERFLOW_ROWS     12
+#define STRAY_SCROLL_X    7
 static const recti_t BOX = {40, 100, 240, 60};
 static const recti_t SECOND = {40, 240, 240, 60};
 static const char* const NAMES[] = {"One", "Two", "Three"};
@@ -333,6 +340,85 @@ test_ui_row_and_next(void) {
     TEST_ASSERT_EQUAL_INT(expected.y, actual.y);
     TEST_ASSERT_EQUAL_INT(expected.w, actual.w);
     TEST_ASSERT_EQUAL_INT(expected.h, actual.h);
+}
+
+/* In one window: a centred row is the window-wide row narrowed to `w` about
+ * its middle, a row wider than the window keeps the window's width, and
+ * ui_row() after a centred row is window-wide again. */
+static void
+test_ui_row_centre_and_next(void) {
+    fixture();
+    begin_face();
+    ui_row(BOX.h);
+    const recti_t full = ui_next();
+    ui_row_centre(CENTRE_W, BOX.h);
+    const recti_t centred = ui_next();
+    ui_row_centre(full.w + 1, BOX.h);
+    const recti_t wide = ui_next();
+    ui_row(BOX.h);
+    const recti_t after = ui_next();
+    end_face();
+    TEST_ASSERT_EQUAL_INT(full.x + ((full.w - CENTRE_W) / 2), centred.x);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(recti_bottom(full), centred.y);
+    TEST_ASSERT_EQUAL_INT(CENTRE_W, centred.w);
+    TEST_ASSERT_EQUAL_INT(BOX.h, centred.h);
+    TEST_ASSERT_GREATER_OR_EQUAL_INT(recti_bottom(centred), wide.y);
+    TEST_ASSERT_EQUAL_INT(full.x, wide.x);
+    TEST_ASSERT_EQUAL_INT(full.w, wide.w);
+    TEST_ASSERT_EQUAL_INT(full.x, after.x);
+    TEST_ASSERT_EQUAL_INT(full.w, after.w);
+}
+
+static void
+draw_overflowing_rows(void) {
+    for (int i = 0; i < OVERFLOW_ROWS; i++) {
+        ui_row(UI_ROW_HEIGHT);
+        ui_fill(ui_next(), FACE_RGB);
+    }
+}
+
+/* A face scroll window builds what ui_scroll_view_begin() with the default
+ * configuration builds. */
+static void
+test_ui_scroll_window_commands(void) {
+    fixture();
+    ui_begin(NULL);
+    TEST_ASSERT_TRUE(ui_scroll_view_begin(ui_context(), "Reference", WINDOW_FLAGS, ui_scroll_view_default(), 0));
+    for (int i = 0; i < OVERFLOW_ROWS; i++) {
+        const int widths[] = {-1};
+        mu_layout_row(ui_context(), 1, widths, UI_ROW_HEIGHT);
+        mu_draw_rect(ui_context(), mu_layout_next(ui_context()), ui_rgb(FACE_RGB));
+    }
+    ui_scroll_view_end(ui_context());
+    mu_end(ui_context());
+    ui_end_pointer_frame();
+    save_commands();
+    ui_init();
+    ui_begin(NULL);
+    ui_scroll_window((recti_t){0, 0, ui_width(), ui_height()});
+    draw_overflowing_rows();
+    end_face();
+    compare_commands();
+}
+
+/* Its rows overflow into content taller than the window, and it scrolls
+ * vertically only: a horizontal scroll is undone on the next frame. */
+static void
+test_ui_scroll_window_scrolls_vertically(void) {
+    fixture();
+    const recti_t canvas = {0, 0, ui_width(), ui_height()};
+    ui_begin(NULL);
+    ui_scroll_window(canvas);
+    draw_overflowing_rows();
+    end_face();
+    mu_Container* cnt = ui_context()->root_list.items[0];
+    TEST_ASSERT_GREATER_THAN_INT(cnt->body.h, cnt->content_size.y);
+    cnt->scroll.x = STRAY_SCROLL_X;
+    ui_begin(NULL);
+    ui_scroll_window(canvas);
+    TEST_ASSERT_EQUAL_INT(0, cnt->scroll.x);
+    draw_overflowing_rows();
+    end_face();
 }
 
 typedef enum { ID_DUPLICATE, ID_WINDOWS, ID_HIDDEN, ID_DYNAMIC, ID_STABLE } identity_t;
@@ -664,6 +750,43 @@ test_scale_scope(void) {
     TEST_ASSERT_NOT_NULL(text);
     TEST_ASSERT_EQUAL_INT(draw_font_height(draw_font_ui(), THEME.text_scale), ui_context()->text_height(text->font));
 }
+
+static void
+assert_alpha(const char* label, unsigned char alpha) {
+    const mu_TextCommand* text = text_command(label);
+    TEST_ASSERT_NOT_NULL(text);
+    TEST_ASSERT_EQUAL_UINT8(alpha, text->color.a);
+}
+
+/* Every text verb inside the scope takes its alpha, the innermost scope
+ * wins, and text after it is opaque again. */
+static void
+test_alpha_scope(void) {
+    fixture();
+    begin_face();
+    ui_theme(&THEME);
+    ui_alpha_begin(FADE_ALPHA);
+    ui_text(BOX, "Text");
+    ui_text_right(BOX, "Right");
+    ui_text_centre(BOX, "Centre");
+    ui_caption(BOX, "Caption");
+    ui_alpha_begin(INNER_ALPHA);
+    ui_text(BOX, "Inner");
+    ui_alpha_end();
+    ui_text(BOX, "Outer");
+    ui_alpha_end();
+    ui_text(BOX, "Rest");
+    end_face();
+    assert_alpha("Text", FADE_ALPHA);
+    assert_alpha("Right", FADE_ALPHA);
+    assert_alpha("Centre", FADE_ALPHA);
+    assert_alpha("Caption", FADE_ALPHA);
+    assert_alpha("Inner", INNER_ALPHA);
+    assert_alpha("Outer", FADE_ALPHA);
+    assert_alpha("Rest", UINT8_MAX);
+    assert_ink("Rest", THEME.text);
+}
+
 #ifndef ESP_PLATFORM
 static void
 report_imbalance(void) {
@@ -1118,6 +1241,24 @@ test_unmatched_color_end_reports(void) {
 }
 
 static void
+test_open_alpha_reports(void) {
+    scope_fixture();
+    begin_face();
+    ui_alpha_begin(FADE_ALPHA);
+    (void)ui_end(UI_NO_BACKGROUND);
+    TEST_ASSERT_EQUAL_INT(1, reports);
+}
+
+static void
+test_unmatched_alpha_end_reports(void) {
+    scope_fixture();
+    begin_face();
+    ui_alpha_end();
+    (void)ui_end(UI_NO_BACKGROUND);
+    TEST_ASSERT_EQUAL_INT(1, reports);
+}
+
+static void
 test_unmatched_scale_end_reports(void) {
     scope_fixture();
     begin_face();
@@ -1222,6 +1363,9 @@ run_ui_face_suite(void) {
     RUN_TEST(test_ui_screen_commands);
     RUN_TEST(test_ui_window_commands);
     RUN_TEST(test_ui_row_and_next);
+    RUN_TEST(test_ui_row_centre_and_next);
+    RUN_TEST(test_ui_scroll_window_commands);
+    RUN_TEST(test_ui_scroll_window_scrolls_vertically);
     RUN_TEST(test_identity_duplicate_label);
     RUN_TEST(test_identity_two_windows);
     RUN_TEST(test_identity_hidden_labels);
@@ -1240,6 +1384,7 @@ run_ui_face_suite(void) {
     RUN_TEST(test_color_text_scope);
     RUN_TEST(test_scale_scope);
     RUN_TEST(test_text_height_follows_scale);
+    RUN_TEST(test_alpha_scope);
 #ifndef ESP_PLATFORM
     RUN_TEST(test_scope_depth_boundary);
     RUN_TEST(test_nested_scope_values);
@@ -1261,6 +1406,8 @@ run_ui_face_suite(void) {
     RUN_TEST(test_unmatched_disabled_end_reports);
     RUN_TEST(test_unmatched_color_end_reports);
     RUN_TEST(test_unmatched_scale_end_reports);
+    RUN_TEST(test_open_alpha_reports);
+    RUN_TEST(test_unmatched_alpha_end_reports);
 #endif
     RUN_TEST(test_toggle_theme_scopes);
     RUN_TEST(test_ui_theme_custom_and_reset);

@@ -2,8 +2,6 @@
 #pragma once
 #include "console/console_verbs.h"
 #include "scene/scene.h"
-#include "ui/layout/ui_scroll.h"
-#include "ui/ui_mu.h"
 
 #define RENDER_LAB_BLEND_DEFAULT_MS             250
 #define RENDER_LAB_BLEND_MAX_MS                 1000
@@ -25,4 +23,5 @@ bool render_lab_clips_init(render_lab_clips_t* choice, scene_t* scene, scene_ent
                            const char* default_clip);
 void render_lab_clips_destroy(render_lab_clips_t* choice);
 bool render_lab_clips_reply(render_lab_clips_t* choice, const char* args, console_reply_fn reply);
-void render_lab_clips_draw(mu_Context* ctx, ui_flow_t* flow, int width, render_lab_clips_t* choice);
+/* The clip picker and blend slider, as menu rows `width` wide. */
+void render_lab_clips_draw(int width, render_lab_clips_t* choice);

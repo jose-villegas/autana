@@ -181,8 +181,8 @@ scene_capybara_console(const char* args, console_reply_fn reply) {
 }
 
 static void
-scene_capybara_controls(mu_Context* ctx, ui_flow_t* flow, int width) {
-    render_lab_clips_draw(ctx, flow, width, &choice);
+scene_capybara_controls(int width) {
+    render_lab_clips_draw(width, &choice);
 }
 
 const render_lab_scene_t scene_capybara = {.name = "Capybara",
