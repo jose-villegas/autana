@@ -52,9 +52,8 @@ handle_panel_input(sand_ui_t* ui, const input_t* input, bool close, unsigned clo
 /* What a click on palette tile `index` means, see this function's own
  * doc comment in sand_ui.h for the full contract, and the "WHO
  * HIT-TESTS AND WHO DECIDES" note there for why the hit-test producing
- * `index` belongs to microui, not this module. draw_palette() in
- * app_sand.c is the only caller, from inside its own per-tile mu_button()
- * loop, so there is no "index hits nothing" branch here: an index this
+ * `index` belongs to the UI, not this module. palette_screen.c is the
+ * only caller, from inside its own per-tile ui_button() loop, so there is no "index hits nothing" branch here: an index this
  * function is ever handed already named a real tile. */
 unsigned
 sand_ui_tile_clicked(sand_ui_t* ui, int index) {

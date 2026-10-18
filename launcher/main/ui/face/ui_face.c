@@ -114,12 +114,7 @@ ui_theme(const ui_theme_t* t) {
         UI_FACE_COST_END(face_from, "ui.face");
         return;
     }
-#define UI_FACE_THEME_COLOR(member) .member = ui_rgb(t->member)
-    theme = (ui_mu_theme_t){
-        UI_FACE_THEME_COLOR(panel_face), UI_FACE_THEME_COLOR(panel_edge),  UI_FACE_THEME_COLOR(button_face),
-        UI_FACE_THEME_COLOR(accent),     UI_FACE_THEME_COLOR(accent_face), UI_FACE_THEME_COLOR(on_accent),
-        UI_FACE_THEME_COLOR(text),       UI_FACE_THEME_COLOR(caption),     UI_FACE_THEME_COLOR(muted),
-        .text_scale = t->text_scale,     .icon_side = t->icon_side};
+    theme = ui_theme_from_face(t);
     UI_FACE_COST_END(face_from, "ui.face");
 }
 
@@ -276,9 +271,9 @@ tap_hit(mu_Id id, recti_t r, bool pressed, bool enabled) {
 }
 
 static bool
-button(recti_t r, const char* label, bool selected, bool tile) {
+button(recti_t r, const char* label, const draw_image_t* icon, bool selected, bool tile) {
     const mu_Id id = widget_id(label, r);
-    const ui_widget_button_t b = {.label = label, .enabled = !is_disabled(), .selected = selected};
+    const ui_widget_button_t b = {.icon = icon, .label = label, .enabled = !is_disabled(), .selected = selected};
     UI_FACE_COST_BEGIN(backend_from);
     const bool hit =
         tile ? ui_tile_button_id(ui_context(), id, ui_mu_from_recti(r), &b, visible_label_length(label), &theme)
@@ -290,7 +285,15 @@ button(recti_t r, const char* label, bool selected, bool tile) {
 bool
 ui_button(recti_t r, const char* label) {
     UI_FACE_COST_BEGIN(face_from);
-    const bool result = button(r, label, false, false);
+    const bool result = button(r, label, NULL, false, false);
+    UI_FACE_COST_END(face_from, "ui.face");
+    return result;
+}
+
+bool
+ui_button_icon(recti_t r, const char* label, const draw_image_t* icon) {
+    UI_FACE_COST_BEGIN(face_from);
+    const bool result = button(r, label, icon, false, false);
     UI_FACE_COST_END(face_from, "ui.face");
     return result;
 }
@@ -298,9 +301,25 @@ ui_button(recti_t r, const char* label) {
 bool
 ui_tile(recti_t r, const char* label, bool selected) {
     UI_FACE_COST_BEGIN(face_from);
-    const bool result = button(r, label, selected, true);
+    const bool result = button(r, label, NULL, selected, true);
     UI_FACE_COST_END(face_from, "ui.face");
     return result;
+}
+
+bool
+ui_tile_icon(recti_t r, const char* label, const draw_image_t* icon, bool selected) {
+    UI_FACE_COST_BEGIN(face_from);
+    const bool result = button(r, label, icon, selected, true);
+    UI_FACE_COST_END(face_from, "ui.face");
+    return result;
+}
+
+recti_t
+ui_tile_icon_rect(recti_t r) {
+    UI_FACE_COST_BEGIN(face_from);
+    const recti_t icon = ui_recti_from_mu(ui_mu_tile_icon_rect(ui_mu_from_recti(r), &theme));
+    UI_FACE_COST_END(face_from, "ui.face");
+    return icon;
 }
 
 bool
@@ -412,6 +431,7 @@ UI_FACE_TEXT(ui_text, UI_ALIGN_LEFT, text)
 UI_FACE_TEXT(ui_text_right, UI_ALIGN_RIGHT, text)
 UI_FACE_TEXT(ui_text_centre, UI_ALIGN_CENTRE, text)
 UI_FACE_TEXT(ui_caption, UI_ALIGN_LEFT, caption)
+UI_FACE_TEXT(ui_caption_centre, UI_ALIGN_CENTRE, caption)
 
 void
 ui_header(recti_t r, const char* title) {
@@ -450,10 +470,33 @@ ui_outline(recti_t r, uint32_t rgb) {
 }
 
 void
+ui_bevel(recti_t r, uint32_t face_rgb, bool sunken) {
+    UI_FACE_COST_BEGIN(face_from);
+    UI_FACE_COST_BEGIN(backend_from);
+    ui_span_t spans[UI_BEZEL_MAX_SPANS];
+    const int n = ui_bezel_spans(ui_mu_from_recti(r), ui_rgb(face_rgb), sunken, spans, UI_BEZEL_MAX_SPANS);
+    /* Span 0 is the face, left as the caller drew it. */
+    for (int i = 1; i < n; i++) {
+        mu_draw_rect(ui_context(), spans[i].rect, spans[i].color);
+    }
+    UI_FACE_COST_END(backend_from, "ui.backend");
+    UI_FACE_COST_END(face_from, "ui.face");
+}
+
+void
 ui_icon(recti_t r, const draw_image_t* icon) {
     UI_FACE_COST_BEGIN(face_from);
     UI_FACE_COST_BEGIN(backend_from);
     ui_draw_icon(ui_context(), ui_mu_from_recti(r), icon, NULL, theme.text);
+    UI_FACE_COST_END(backend_from, "ui.backend");
+    UI_FACE_COST_END(face_from, "ui.face");
+}
+
+void
+ui_check(recti_t r) {
+    UI_FACE_COST_BEGIN(face_from);
+    UI_FACE_COST_BEGIN(backend_from);
+    mu_draw_icon(ui_context(), MU_ICON_CHECK, ui_mu_from_recti(r), theme.text);
     UI_FACE_COST_END(backend_from, "ui.backend");
     UI_FACE_COST_END(face_from, "ui.face");
 }

@@ -41,6 +41,68 @@ ui_probe_text(const char* s, recti_t* out) {
     return true;
 }
 
+/* The clip rectangle in force when text `s` was drawn. */
+static inline bool
+ui_probe_text_clip(const char* s, recti_t* out) {
+    mu_Rect clip = {0};
+    mu_Command* cmd = NULL;
+    while (mu_next_command(ui_context(), &cmd)) {
+        if (cmd->type == MU_COMMAND_CLIP) {
+            clip = cmd->clip.rect;
+        } else if (cmd->type == MU_COMMAND_TEXT && strcmp(cmd->text.str, s) == 0) {
+            *out = ui_recti_from_mu(clip);
+            return true;
+        }
+    }
+    return false;
+}
+
+/* The colour text `s` was drawn in, as 0xRRGGBB. */
+static inline bool
+ui_probe_text_rgb(const char* s, uint32_t* rgb) {
+    const mu_TextCommand* text = ui_probe_text_command(s);
+    if (text == NULL) {
+        return false;
+    }
+    *rgb = ((uint32_t)text->color.r << 16) | ((uint32_t)text->color.g << 8) | text->color.b;
+    return true;
+}
+
+/* The colour of the first rectangle filled exactly at `r`: a button's face
+ * is its bezel's first span. */
+static inline bool
+ui_probe_fill_rgb(recti_t r, uint32_t* rgb) {
+    mu_Command* cmd = NULL;
+    while (mu_next_command(ui_context(), &cmd)) {
+        const mu_Rect c = cmd->rect.rect;
+        if (cmd->type == MU_COMMAND_RECT && c.x == r.x && c.y == r.y && c.w == r.w && c.h == r.h) {
+            *rgb = ((uint32_t)cmd->rect.color.r << 16) | ((uint32_t)cmd->rect.color.g << 8) | cmd->rect.color.b;
+            return true;
+        }
+    }
+    return false;
+}
+
+/* How wide a label may be inside a button, or a dropdown, `w` wide under
+ * `theme`. */
+static inline int
+ui_probe_button_label_width(int w, bool has_icon, const ui_theme_t* theme) {
+    const ui_mu_theme_t t = ui_theme_from_face(theme);
+    return ui_icon_button_label_width(w, has_icon, &t);
+}
+
+static inline int
+ui_probe_dropdown_label_width(int w, const ui_theme_t* theme) {
+    const ui_mu_theme_t t = ui_theme_from_face(theme);
+    return ui_dropdown_label_width(w, &t);
+}
+
+/* Where a dropdown at `anchor` opens its list of `count` rows `row_h` tall. */
+static inline recti_t
+ui_probe_dropdown_list_rect(recti_t anchor, int count, int row_h, int canvas_h) {
+    return ui_recti_from_mu(ui_dropdown_list_rect(ui_mu_from_recti(anchor), count, row_h, canvas_h, UI_MARGIN));
+}
+
 /* The ink coverage text `s` was drawn at, 0-255; -1 when it was not drawn. */
 static inline int
 ui_probe_text_alpha(const char* s) {
