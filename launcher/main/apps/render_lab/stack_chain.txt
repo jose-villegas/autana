@@ -18,7 +18,7 @@ indirect render_lab_menu_screen_draw : scene_capybara_controls
 indirect render_lab_test_enter : render_lab_enter
 indirect render_lab_test_frame : render_lab_update render_lab_frame
 indirect check_camera_paths : check_the_flythrough_keeps_clear_of_every_triangle check_the_flythrough_sees_mostly_building
-indirect tune.c:change tune_registry_handle_line : suite_sponza_perf.c:cull_reply
+indirect tune_registry_handle_line : suite_sponza_perf.c:cull_reply
 
 root test_console_scene_requests_survive_expanded_frames test
 indirect test_console_scene_requests_survive_expanded_frames : render_lab_enter render_lab_console render_lab_exit

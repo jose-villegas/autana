@@ -143,12 +143,15 @@ class DocImageFailureTest(unittest.TestCase):
             demo.touch()
             images = root / "docs/images/render"
             images.mkdir(parents=True)
-            for stem in ("gallery-full", "gallery-missing", "unknown-full"):
+            for stem in ("gallery-full", "gallery-missing", "unknown-full",
+                         "gallery-small-fill-flat8-diff", "gallery-small-fill-gate-diff",
+                         "gallery-small-fill-dither-diff", "gallery-small-fill-bake-diff"):
                 (images / f"{stem}.gif").touch()
             done = subprocess.run(["sh", str(tools / "render_doc_images.sh"), "--orphans"],
                                   cwd=images, capture_output=True, text=True)
             self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
             self.assertNotIn("orphan render/gallery-full.gif", done.stdout)
+            self.assertNotIn("orphan render/gallery-small-fill-", done.stdout)
             self.assertIn("orphan render/gallery-missing.gif", done.stdout)
             self.assertIn("orphan render/unknown-full.gif", done.stdout)
 

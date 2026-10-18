@@ -1,6 +1,6 @@
 /*
  * transform_template: where a thing is, as a position, a rotation and a
- * scale, for one number type; see docs/math/README.md for the macro arguments. Position,
+ * scale, for one number type; see docs/math/Conventions.md#templates for the macro arguments. Position,
  * rotation and scale are the truth; the model matrix is derived and cached.
  *
  * Which matrix call to use:

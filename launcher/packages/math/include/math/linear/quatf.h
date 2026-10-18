@@ -1,15 +1,15 @@
 /*
  * quatf: a float rotation with host-exact, halved-arc polynomial slerp.
- * The rest is quat_template.h's; docs/math/README.md says how it is made.
+ * The rest is quat_template.h's; docs/math/Linear.md says how it is made.
  */
 #pragma once
 
 #include <float.h>
 #include <stddef.h>
 
-#include "math/linear/math_const.h"
 #include "math/linear/quat_template.h"
 #include "math/linear/vec3f.h"
+#include "math/scalar/math_const.h"
 #include "math/scalar/mathf.h"
 
 MATH_DEFINE_QUAT(quatf, vec3f, float, mathf)
