@@ -76,9 +76,14 @@ def console(dut):
     if boot:
         match = original_expect([RESET_CAUSE, FORBIDDEN[0]], timeout=BOOT_TIMEOUT_S)
         assert not FORBIDDEN[0].search(match[0]), f"firmware crash: {match[0]!r}"
-        match = original_expect([RESET_REASON, *FORBIDDEN], timeout=BOOT_TIMEOUT_S)
-        assert RESET_REASON.search(match[0]), f"firmware crash or reset: {match[0]!r}"
-        dut.expect(qemu_run.LISTENING.encode(), timeout=BOOT_TIMEOUT_S)
+        # This boot's RESET_REASON and the console's listening line, in either
+        # order; anything else matching FORBIDDEN first is a crash or a reset.
+        awaited = [RESET_REASON, re.compile(re.escape(qemu_run.LISTENING.encode()))]
+        while awaited:
+            match = original_expect([*awaited, *FORBIDDEN], timeout=BOOT_TIMEOUT_S)
+            seen = [pattern for pattern in awaited if pattern.search(match[0])]
+            assert seen, f"firmware crash or reset: {match[0]!r}"
+            awaited.remove(seen[0])
         shell.exchange(BUILD_ID_REQUEST, BUILD_ID_RE.pattern)
     else:
         dut.expect(BUILD_ID_RE.pattern.encode())
