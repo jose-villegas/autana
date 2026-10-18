@@ -51,7 +51,16 @@ typedef struct {
 } ui_mu_theme_t;
 
 ui_mu_theme_t ui_theme_from_style(const mu_Style* style);
-ui_mu_theme_t ui_theme_from_face(const ui_theme_t* theme);
+
+/* Inline, so ui_theme() builds the face's theme in place each frame. */
+static inline ui_mu_theme_t
+ui_theme_from_face(const ui_theme_t* t) {
+#define UI_THEME_COLOR(member) .member = ui_rgb(t->member)
+    return (ui_mu_theme_t){UI_THEME_COLOR(panel_face),  UI_THEME_COLOR(panel_edge),  UI_THEME_COLOR(button_face),
+                           UI_THEME_COLOR(accent),      UI_THEME_COLOR(accent_face), UI_THEME_COLOR(on_accent),
+                           UI_THEME_COLOR(text),        UI_THEME_COLOR(caption),     UI_THEME_COLOR(muted),
+                           .text_scale = t->text_scale, .icon_side = t->icon_side};
+}
 
 typedef enum { UI_ALIGN_LEFT, UI_ALIGN_CENTRE, UI_ALIGN_RIGHT } ui_align_t;
 

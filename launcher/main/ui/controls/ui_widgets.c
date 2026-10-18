@@ -29,15 +29,6 @@ ui_theme_from_style(const mu_Style* style) {
                            .native_toggle = true};
 }
 
-ui_mu_theme_t
-ui_theme_from_face(const ui_theme_t* t) {
-#define UI_THEME_COLOR(member) .member = ui_rgb(t->member)
-    return (ui_mu_theme_t){UI_THEME_COLOR(panel_face),  UI_THEME_COLOR(panel_edge),  UI_THEME_COLOR(button_face),
-                           UI_THEME_COLOR(accent),      UI_THEME_COLOR(accent_face), UI_THEME_COLOR(on_accent),
-                           UI_THEME_COLOR(text),        UI_THEME_COLOR(caption),     UI_THEME_COLOR(muted),
-                           .text_scale = t->text_scale, .icon_side = t->icon_side};
-}
-
 static void
 draw_spans(mu_Context* ctx, const ui_span_t* spans, int n) {
     for (int i = 0; i < n; i++) {
