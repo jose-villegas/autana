@@ -243,10 +243,15 @@ rows. Single-viewport render documentation readers select portrait by default;
 The nightly workflow measures first-parent commits on main, assigning each
 commit by its stable first-parent position modulo the board count. Each board
 has its own series and repeats its previous measured commit as an anchor.
-A fresh board starts with its newest assigned commit. Equal executable and
-asset hashes skip a flash; anchors always measure. Build failures remain gaps;
-the time window and consecutive capture failure limit leave an unattempted
-tail for the same board's next night.
+
+A fresh board starts with its newest assigned commit. A flash is skipped when
+the commit's image hash equals the same board's previous measured image hash,
+usually two commits back in a two-board split.
+
+Hashes are never compared across boards; anchors always measure.
+
+Build failures remain gaps. The time window and consecutive capture failure
+limit leave an unattempted tail for the same board's next night.
 
 The orphan `perf-data` branch stores
 `scoped/<board>/<YYYY-MM-DD>/night.json` and `<NN>-<sha12>.json` reports.
@@ -264,15 +269,21 @@ to the lane; `--max-steps` limits new candidates and retains the anchor.
 ```sh
 python launcher/tools/perf/nightly/scoped_chain.py plan \
   --boards BOARD_A BOARD_B --data DATA --out plan.json \
-  --from SHA --max-steps 2 --suite run_sponza_perf_suite - -
+  --from SHA --max-steps 2
 autana --board BOARD_A --wait 3600 lock run -- \
   python launcher/tools/perf/nightly/scoped_chain.py run \
   --plan plan.json --data DATA --board BOARD_A --lane 0/2 \
   --until 07:00 --out captures --suite run_sponza_perf_suite - -
 ```
 
-The workflow queues at local 22:30 and stops starting steps that cannot fit
-before local 07:00. It runs each board lane concurrently in one job. The
-designated self-test lane waits until its configured self-test boundary when
-its chain finishes early. Partial manifests are written after every step;
-raw captures and result directories are uploaded even when a lane fails.
+The workflow's `QUEUE_AT`, `WINDOW_END`, and `SELFTEST_AT` settings control
+local queue, window-end, and self-test times. Dispatch inputs `queue_at` and
+`selftest_at` override the queue and self-test settings. An empty dispatch
+`queue_at` starts immediately.
+
+Each board lane runs concurrently in one job. Steps start only when they fit
+before `WINDOW_END`. The self-test lane waits for `SELFTEST_AT` when its chain
+finishes early.
+
+Partial manifests are written after every step. Raw captures and result
+directories are uploaded even when a lane fails.

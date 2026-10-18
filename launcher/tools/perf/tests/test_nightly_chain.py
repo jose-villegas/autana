@@ -160,16 +160,21 @@ class NightlyTests(unittest.TestCase):
 
     def test_shared_tip_and_explicit_range_limit(self):
         args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=["20E8", "2124"], data=self.args.data,
-                               out=self.root / "plan.json", queue_at="22:00", suite=[], from_sha=self.commits[1],
+                               out=self.root / "plan.json", queue_at="22:00", from_sha=self.commits[1],
                                max_steps=2, selftest_board="2124")
-        with patch.object(chain, "job_estimate", return_value=10):
-            chain.plan(args, self.clock)
+        chain.plan(args, self.clock)
         plan = json.loads(args.out.read_text())
         self.assertEqual(plan["tip"], self.commits[-1])
         self.assertEqual(self.clock.sleeps, [0])
         for board, lane in plan["lanes"].items():
+            reserve = chain.SELFTEST_ALLOWANCE_SECONDS if board == args.selftest_board else 0
+            self.assertEqual(lane["estimate"], len(lane["steps"]) * chain.FIRST_STEP_SECONDS + reserve)
             self.assertEqual(len(lane["steps"]), 2)
             self.assertLessEqual(lane["steps"][-1]["position"], 6)
+        args.queue_at = None
+        self.clock.sleeps.clear()
+        chain.plan(args, self.clock)
+        self.assertEqual(self.clock.sleeps, [])
         previous = {"last_measured": self.commits[0]}
         limited = chain.select_steps(self.repo, "HEAD", previous, 0, 2, self.commits[1], 1)
         self.assertEqual([step.role for step in limited], ["anchor", "new"])
@@ -261,6 +266,57 @@ class NightlyTests(unittest.TestCase):
         subprocess.run([sys.executable, str(path), str(capture), str(table), "--table"], check=True, capture_output=True)
         self.assertEqual(parse_report(table), parse_timings(text))
         self.assertEqual(len(parse_report(table)), 6)
+
+
+class LaneSettingsTests(unittest.TestCase):
+    def test_lane_uses_configured_window_and_selftest_boundary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            library = root / "scripts/lib/python.sh"
+            library.parent.mkdir(parents=True)
+            library.write_text('find_python() { printf "%s\\n" "$TEST_PYTHON"; }\n')
+            driver = root / "launcher/tools/perf/nightly/scoped_chain.py"
+            driver.parent.mkdir(parents=True)
+            driver.write_text('import sys\nprint("123" if sys.argv[1] == "wait-seconds" else "")\n')
+            plan = root / "plan.json"
+            plan.write_text(json.dumps({"lanes": {"board": {"lane": "0/1", "estimate": 42}}}))
+            script = PERF / "nightly/lane.sh"
+            command = r"""
+cygpath() { printf '%s\n' "${@: -1}"; }
+autana() { printf '%s\n' "$@"; }
+export -f cygpath autana
+bash "$1" board "$2" data out
+"""
+            env = dict(os.environ, TEST_PYTHON=sys.executable, SELFTEST_BOARD="board",
+                       WINDOW_END="05:45", SELFTEST_AT="23:15")
+            result = subprocess.run(["bash", "-c", command, "lane-test", script.as_posix(), plan.as_posix()],
+                                    cwd=root, env=env, capture_output=True, text=True, check=True)
+            args = result.stdout.splitlines()
+            for option, setting in (("--until", "WINDOW_END"), ("--selftest-at", "SELFTEST_AT")):
+                with self.subTest(option=option):
+                    self.assertEqual(args[args.index(option) + 1], env[setting])
+
+    def test_workflow_queue_input_can_start_immediately(self):
+        workflow = (PERF.parents[2] / ".github/workflows/nightly-perf.yml").read_text()
+        start = workflow.index("          args=()")
+        end = workflow.index("\n      - name:", start)
+        script = "\n".join(line[10:] for line in workflow[start:end].splitlines())
+        command = 'driver() { printf "%s\\n" "$@"; }; PY=driver; ' + script
+        for event, requested, expected in (("schedule", "", "22:30"),
+                                           ("workflow_dispatch", "", None),
+                                           ("workflow_dispatch", "21:15", "21:15")):
+            with self.subTest(event=event, requested=requested):
+                env = dict(os.environ, GITHUB_EVENT_NAME=event, DISPATCH_QUEUE_AT=requested,
+                           QUEUE_AT="22:30", FROM_SHA="", MAX_STEPS="", SCOPED_BOARDS="board",
+                           SELFTEST_BOARD="board")
+                result = subprocess.run(["bash", "-c", command], env=env, capture_output=True,
+                                        text=True, check=True)
+                args = result.stdout.splitlines()
+                if expected is None:
+                    self.assertNotIn("--queue-at", args)
+                else:
+                    self.assertEqual(args[args.index("--queue-at") + 1], expected)
+                self.assertNotIn("--suite", args)
 
 
 if __name__ == "__main__":

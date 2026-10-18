@@ -11,6 +11,12 @@ on:
       max_steps:
         description: Maximum new candidates per board
         required: false
+      selftest_at:
+        description: Local self-test time (HH:MM; defaults to SELFTEST_AT)
+        required: false
+      queue_at:
+        description: Local queue time (HH:MM; empty starts immediately)
+        required: false
 
 concurrency: nightly-perf
 permissions:
@@ -19,6 +25,9 @@ permissions:
 env:
   SCOPED_BOARDS: 20E8 2124
   SELFTEST_BOARD: '2124'
+  SELFTEST_AT: ${{ inputs.selftest_at || '01:00' }}
+  WINDOW_END: '07:00'
+  QUEUE_AT: '22:30'
   GH_TOKEN: ${{ github.token }}
   GIT_CONFIG_COUNT: '4'
   GIT_CONFIG_KEY_0: core.hooksPath
@@ -33,7 +42,7 @@ env:
 jobs:
   nightly:
     runs-on: [self-hosted, windows, board]
-    # 22:30 queue through 07:00 plus result publication.
+    # Queue window plus result publication.
     timeout-minutes: 600
     defaults:
       run:
@@ -50,6 +59,7 @@ jobs:
         env:
           FROM_SHA: ${{ inputs.from }}
           MAX_STEPS: ${{ inputs.max_steps }}
+          DISPATCH_QUEUE_AT: ${{ inputs.queue_at }}
         run: |
           export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
           PY=$(. scripts/lib/python.sh && find_python)
@@ -70,12 +80,15 @@ jobs:
             git -C "$data" checkout --orphan perf-data
           fi
           args=()
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            QUEUE_AT=$DISPATCH_QUEUE_AT
+          fi
+          [ -z "$QUEUE_AT" ] || args+=(--queue-at "$QUEUE_AT")
           [ -z "$FROM_SHA" ] || args+=(--from "$FROM_SHA")
           [ -z "$MAX_STEPS" ] || args+=(--max-steps "$MAX_STEPS")
-          "$PY" launcher/tools/perf/nightly/scoped_chain.py plan --queue-at 22:30 \
+          "$PY" launcher/tools/perf/nightly/scoped_chain.py plan \
             --boards $SCOPED_BOARDS --selftest-board "$SELFTEST_BOARD" --data "$data" --out "$out/plan.json" \
-            --suite run_sand_perf_suite - - --suite run_sponza_perf_suite - - \
-            --suite run_capybara_perf_suite - - "${args[@]}"
+            "${args[@]}"
 
       - name: Run each board lane and wait for both
         run: |

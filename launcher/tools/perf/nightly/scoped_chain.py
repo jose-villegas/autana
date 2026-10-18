@@ -19,7 +19,6 @@ REPO = PERF.parents[2]
 sys.path.insert(0, str(PERF))
 from capture import require_same_board, board_label
 from layout_measure import autana_command, run_flash, run_stamped, REPORT_LINE, write_json
-from perf_job import job_estimate
 from nightly.lnt import lnt_report, night_manifest, read_last_night
 
 IMAGE_HEADER_BYTES = 24
@@ -285,9 +284,7 @@ def plan(args, clock=None):
         steps = select_steps(args.repo, tip, previous, lane, len(args.boards), args.from_sha, args.max_steps)
         lanes[board] = dict(lane=f"{lane}/{len(args.boards)}", previous=previous,
                             steps=[asdict(step) for step in steps],
-                            estimate=job_estimate(len(steps), len(steps) * len(args.suite),
-                                                  CAPTURE_TIMEOUT_SECONDS, restore=False)
-                            + len(steps) * FIRST_STEP_SECONDS
+                            estimate=len(steps) * FIRST_STEP_SECONDS
                             + (SELFTEST_ALLOWANCE_SECONDS if board == args.selftest_board else 0))
     write_json(Path(args.out), dict(tip=tip, night=clock.now().date().isoformat(),
                                     started=clock.now().isoformat(), lanes=lanes))
@@ -308,13 +305,13 @@ def main():
     running.add_argument("--board", required=True)
     running.add_argument("--lane", required=True)
     running.add_argument("--until", required=True)
+    running.add_argument("--suite", nargs=3, action="append", default=[])
     running.add_argument("--selftest-at")
     running.add_argument("--selftest", nargs=argparse.REMAINDER)
     for command in (planning, running):
         command.add_argument("--repo", type=Path, default=REPO)
         command.add_argument("--data", type=Path, required=True)
         command.add_argument("--out", type=Path, required=True)
-        command.add_argument("--suite", nargs=3, action="append", default=[])
         command.add_argument("--from", dest="from_sha")
         command.add_argument("--max-steps", type=int)
     args = parser.parse_args()
