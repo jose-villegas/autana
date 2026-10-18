@@ -185,7 +185,7 @@ class AcquisitionTest(ShellJobTests, unittest.TestCase):
                     result = fake(command, log, timeout)
                     if "suite" not in command:
                         return result
-                    candidate = command[command.index('--project') + 1].endswith('/b')
+                    candidate = pathlib.Path(command[command.index('--project') + 1]).name == 'b'
                     for _, line in result[1]:
                         if not line.startswith('report: '):
                             continue

@@ -188,6 +188,22 @@ int main(void) {
             path = self.capture(root, row, pack=pack)
         return path
 
+    def test_both_quarter_capture_uses_portrait_stage_means(self):
+        import meshlet_sizes
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            self.capture_rows(root)
+            for row in meshlet_sizes.ROWS:
+                path = root / f"meshlets-{row}-board.log"
+                lines = path.read_text().splitlines()
+                tagged = []
+                for quarter, draw in (("portrait", "3/4"), ("landscape", "30/40")):
+                    tagged.extend(line.replace("r3d.draw 3/4", f"r3d.draw {draw}") + f" quarter={quarter}"
+                                  for line in lines if not line.startswith((":test_", "RUNSUITE_COMPLETE")))
+                path.write_text("\n".join([*tagged, *lines[-2:]]) + "\n")
+            self.assertEqual(meshlet_sizes.capture_means(root, "atrium"),
+                             {key: [1, 2, 3, 8] for key in ("cull-off", *meshlet_sizes.ROWS)})
+
     def test_monitor_capture_is_rejected_and_suite_accepted(self):
         import meshlet_sizes
         with tempfile.TemporaryDirectory() as directory:
