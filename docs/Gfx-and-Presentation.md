@@ -361,7 +361,7 @@ Both are pure headers, loud on development and host builds, silent on release.
 
 | Guard | Catches | On release |
 |---|---|---|
-| `gfx_present_guard.h` | a `gfx_*` call between `gfx_present_begin()` and `gfx_present_wait()` | compiled out |
+| `gfx_present_guard.h` | a `gfx_*` call between `gfx_present_begin()` and `gfx_present_wait()` outside double mode | compiled out |
 | `gfx_fb_guard.h` | a draw with no live target: band mode between bands, or after the framebuffer was freed | the draw is a no-op, never a NULL write |
 
 ## Readback
