@@ -234,6 +234,33 @@ class AppearanceMeshTests(unittest.TestCase):
             self.assertEqual(query.call_args.args[0].shape, (len(tris) * appearance.SURFACE_SAMPLES_PER_TRIANGLE, 3))
 
     @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_local_scale_holds_tiny_edges_against_image_pull(self):
+        from r3d import appearance_simplify as appearance
+
+        tiny_size = 0.05
+        large_ratio = 40
+        target_spread = 8
+        max_stretch = 2
+        tiny = tiny_size * np.array([[-1, 0, 0], [1, 0, 0], [0, 1, 0]])
+        points = np.concatenate([tiny, tiny * large_ratio + [large_ratio * tiny_size, 0, 0]])
+        tris = np.arange(len(points)).reshape(-1, 3)
+        mesh = FitMesh(points, np.full_like(points, 0.5), tris, np.ones(len(tris)), 64, np.arange(len(points)))
+        target = (0.5 + target_spread * tiny).astype(np.float32)[None]
+        views = [(np.eye(4), target)]
+        render = mock.Mock(side_effect=lambda points, colours, *args: (0.5 + points[:len(tiny)])[None])
+        edges = point_edges(tris[:1], mesh.vertex_point)
+        lengths = np.linalg.norm(points[edges[:, 0]] - points[edges[:, 1]], axis=1)
+        with mock.patch.object(appearance, "Renderer", return_value=render):
+            for seed in (1, 7, 19):
+                with self.subTest(seed=seed):
+                    fitted, _, history = appearance.optimise(
+                        mesh, views, (len(tiny), 1), steps=60, batch=1, lr_position=0.001,
+                        lr_colour=0, laplacian=40, report=0, device="cpu", seed=seed)
+                    final = np.linalg.norm(fitted[edges[:, 0]] - fitted[edges[:, 1]], axis=1)
+                    self.assertLess(history[-1], history[0])
+                    np.testing.assert_array_less(final, max_stretch * lengths)
+
+    @unittest.skipIf(torch is None, "needs PyTorch")
     def test_surface_envelope_and_tangential_pull(self):
         from r3d.appearance_simplify import SURFACE_TANGENTIAL_WEIGHT, surface_loss
 
@@ -254,6 +281,19 @@ class AppearanceMeshTests(unittest.TestCase):
                             envelope = surface_loss(point, centre, normal, scale, margin)
                             self.assertEqual(envelope.item(), 0)
                             self.assertEqual(torch.count_nonzero(torch.autograd.grad(envelope, point)[0]).item(), 0)
+
+    @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_surface_sample_scales_match_scalar_rows(self):
+        from r3d.appearance_simplify import surface_loss
+
+        scales = torch.tensor([[1.0], [7.0]])
+        samples = torch.tensor([[0.5, 0.0, 1.0], [1.0, 0.0, -2.0]])
+        centres = torch.zeros_like(samples)
+        normals = torch.tensor([[0.0, 0.0, 1.0]]).expand_as(samples)
+        margin = 0.25
+        rows = [surface_loss(sample[None], centre[None], normal[None], scale.item(), margin)
+                for sample, centre, normal, scale in zip(samples, centres, normals, scales)]
+        torch.testing.assert_close(surface_loss(samples, centres, normals, scales, margin), torch.stack(rows).mean())
 
     def test_projection_casts_the_reference_pinhole_rays(self):
         try:
