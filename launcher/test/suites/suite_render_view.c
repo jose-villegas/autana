@@ -1,4 +1,5 @@
 /* render_view: pose basis, panel turns and perspective fit without raster scratch. */
+#include "math/scalar/math_const.h"
 #include "suites.h"
 #include "unity.h"
 
