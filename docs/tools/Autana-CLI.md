@@ -107,6 +107,7 @@ registered suite, for a full pre-merge pass.
 | `autana suite <name>... [seconds] [--runs N] [--flash] [--layout-seed N] [--hot-tunables] [--verbose]` | Run suites under one lock, `N` times each (1 when omitted), `seconds` capping each capture (1800 when omitted). `--flash` builds and flashes the diagnostics image first, so nobody flashes between captures. |
 | `autana suite <name> --test PATTERN[,PATTERN]` | Only tests whose name contains a pattern; `--test` repeats. |
 | `autana suite <name> --set NAME=VALUE` | Set a tunable ([Live-Tuning.md](Live-Tuning.md)) before each capture; `--set` repeats. |
+| `autana suite <name> --send LINE` | Send a console line after tunables, before every capture; `--send` repeats in order. The sequence should be idempotent; an error or incomplete reply stops the batch. |
 | `autana suite list [text] [--json]` | The registered suites; `[on request]` ones run only by name. |
 | `autana selftest [seconds] [--verbose] [--perf-scope] [--out PATH]` | Build the autorun diagnostics image, flash, run every suite; 3000 s when omitted. |
 | `autana tone <hz> <ms> [volume] [--json]` | Development builds only: plays `<hz>` for `<ms>` at `[volume]` % (firmware default 30) and reports the tone level against a silence baseline in dBFS, whether it was heard, and the DMA bytes held while open. |

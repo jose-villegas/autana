@@ -319,6 +319,8 @@ def run_flash(args, seed, runner=None):
                                          "--project", str(project), "suite", name,
                                          str(getattr(args, "timeout", 1800)), "--runs", str(args.runs),
                                          override=override)
+                for line in getattr(args, "send", None) or []:
+                    command += ["--send", line]
                 if tests != "-":
                     command += ["--test", tests]
                 if index == 0:

@@ -73,6 +73,16 @@ launcher/tools/perf/perf_compare.sh A A -o calibration \
   'python3 path/to/report_performance.py @CAPTURE@ @TABLE@ --source @PROJECT@/path/to/suite.c'
 ```
 
+`--send-a LINE` and `--send-b LINE` send console setup before every capture.
+Each side's sequence should be idempotent: stop voices before starting a loop.
+Use the same revision on both sides to measure runtime setup alone:
+
+```sh
+launcher/tools/perf/perf_compare.sh HEAD HEAD -o sound-comparison \
+  --suite run_sponza_perf_suite flythrough - \
+  --send-b 'sound stop all' --send-b 'sound play tap loop'
+```
+
 `--perf-scope` is forced for every seeded flash.
 Captures, status checks and restore use `autana` on PATH; `--autana COMMAND`
 overrides all three for a host replay.

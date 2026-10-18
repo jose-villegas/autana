@@ -402,7 +402,7 @@ def append_manifest(entry, root=None):
 
 def record_capture(path, managed, *, started_at, board, owner, purpose, command, commit,
                     suite=None, build_id=None, worktree=None, reason=None, error=None, root=None,
-                    acquired_at=None, test_filter=None):
+                    acquired_at=None, test_filter=None, console_send=None):
     """The permanent trail: written for every flash/run-suite/listen call, so
     even a capture left behind in a doomed worktree still has metadata here."""
     path = Path(path)
@@ -430,6 +430,8 @@ def record_capture(path, managed, *, started_at, board, owner, purpose, command,
     }
     if test_filter:
         entry["test_filter"] = test_filter
+    if console_send:
+        entry["console_send"] = console_send
     append_manifest(entry, root)
     return path
 
@@ -1472,6 +1474,7 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
         with holding(store, board, args, held_lock, "run-suite") as held:
             with open_when_free() as connection:
                 apply_tunables(connection, getattr(args, "tune_set", None) or [])
+                apply_console_lines(connection, getattr(args, "console_send", None) or [])
                 connection.write(suite_request(args.suite, patterns))
                 data, reason = capture(connection, output, args.max_seconds, args.idle_seconds,
                                        args.expect_build_id, args.suite)
@@ -1486,7 +1489,8 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
             worktree=worktree if worktree is not None else str(Path.cwd()),
             commit=commit if commit is not None else git_commit(), reason=reason, error=error,
             acquired_at=held.held["acquired_at"] if held else None,
-            test_filter=patterns or None)
+            test_filter=patterns or None,
+            console_send=getattr(args, "console_send", None))
         try:
             report_path = device_report.write_report_for_capture(
                 final_path, records_root() / "index.jsonl")
@@ -1770,6 +1774,29 @@ def apply_tunables(connection, settings):
         print(found[-1], flush=True)
 
 
+class ConsoleRefused(BatchEnding):
+    """A setup line failed or did not complete its reply."""
+
+
+def apply_console_lines(connection, lines):
+    for line in lines:
+        words = line.split()
+        if not words:
+            raise ConsoleRefused(f"{line!r}: empty console line")
+        prefix = words[0].upper()
+        endings = (prefix + "_END", prefix + "_ERR")
+        replies = []
+        for _ in range(TUNE_SET_ATTEMPTS):
+            found, complete = exchange(connection, line, prefix, endings, TUNE_SET_SECONDS)
+            replies.extend(found)
+            if complete:
+                break
+        if complete:
+            print("\n".join(found), flush=True)
+        if not complete or found[-1].startswith(prefix + "_ERR"):
+            raise ConsoleRefused(f"{line!r}: " + ("\n".join(replies) or "no reply"))
+
+
 def send(args, store, board):
     """Write one console line and print what the device answers.
 
@@ -1920,7 +1947,8 @@ def batch(args, store, board):
                     owner=args.owner, wait=args.wait, suite=suite_name, out=out, purpose=purpose,
                     max_seconds=args.max_seconds, idle_seconds=args.idle_seconds,
                     expect_build_id=build_id, verbose=getattr(args, "verbose", False),
-                    test_filter=patterns, tune_set=getattr(args, "tune_set", None))
+                    test_filter=patterns, tune_set=getattr(args, "tune_set", None),
+                    console_send=getattr(args, "console_send", None))
                 print(f"batch: {suite_name} run {run}/{args.runs}", flush=True)
                 # A suite FAIL is a result, not a broken run: a perf capture always
                 # carries its budget targets' FAILs, and its duration still counts.
@@ -2121,6 +2149,8 @@ def main(argv=None):
     suite.add_argument("--idle-seconds", type=float, default=300)
     suite.add_argument("--expect-build-id")
     suite.add_argument("--verbose", action="store_true")
+    suite.add_argument("--send", dest="console_send", action="append", metavar="LINE",
+                       help="send before every capture; repeatable, sequence should be idempotent")
     suite.add_argument("--set", dest="tune_set", action="append", metavar="NAME=VALUE",
                        help="SET a tunable under the capture's lock first; repeatable")
     listen_parser = subparsers.add_parser("listen")
@@ -2198,6 +2228,8 @@ def main(argv=None):
     batch_parser.add_argument("--layout-seed", type=int, default=0,
                               help="pad the layout by this seed (needs --flash, the default)")
     batch_parser.add_argument("--max-seconds", type=float, default=1800)
+    batch_parser.add_argument("--send", dest="console_send", action="append", metavar="LINE",
+                              help="send before every capture; repeatable, sequence should be idempotent")
     batch_parser.add_argument("--set", dest="tune_set", action="append", metavar="NAME=VALUE",
                               help="SET a tunable under each capture's lock first; repeatable")
     batch_parser.add_argument("--test", dest="test_filter", action="append", metavar="PATTERN",
