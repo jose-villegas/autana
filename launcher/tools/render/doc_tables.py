@@ -120,7 +120,7 @@ def write_small_fill(work, out, scene_id, object_name, data):
         ["Axis", "Tunable", "Range", "Default", "Effect"], levers), encoding="utf-8")
     temporal = []
     for line in (work / "small-fill-looks.tsv").read_text().splitlines():
-        name, label, _, _ = line.split("|")
+        name, label, _, _, _ = line.split("|")
         with (work / f"small-fill-{name}.frames.csv").open() as handle:
             frames = list(csv.DictReader(handle))[1:]
         if not frames:

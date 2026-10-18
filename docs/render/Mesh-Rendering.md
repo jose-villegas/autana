@@ -341,8 +341,8 @@ fills its spans without those clamps, which would change nothing there.
 
 ### Small-fill levers
 
-Defaults keep the standard look. The last panel of the clip below is the flat bake
-(one face colour per triangle), the fully flat end of this range.
+Defaults keep the standard look. The flat bake uses one face colour per triangle,
+the fully flat end of this range.
 Set them with `--set` ([Render-Harness](../tools/Render-Harness.md)).
 
 <!-- generated: small-fill-levers sha256=a0b778d320a8b267f45708e5a20402005fb7de6b32591c51265996b19741b946 -->
@@ -360,11 +360,16 @@ The gate measures the largest RGB565 channel spread across the vertices.
 For sides above side 4, its limit interpolates from the near gate at side 5
 to the far gate at the size limit.
 
-![Fitted full mesh: defaults, flat up to 8, gate ramp, ramped edge dither, and flat bake](../images/render/sponza-small-fill-range.gif)
+| Today (defaults) | Flat ≤8 | Flat ≤8 gate ramp | Flat ≤8 + dither 4, ramp 1 | Flat bake |
+|---|---|---|---|---|
+| ![Defaults](../images/render/sponza-small-fill-defaults.gif) | ![Flat ≤8](../images/render/sponza-small-fill-flat8.gif) | ![Gate ramp](../images/render/sponza-small-fill-gate.gif) | ![Ramped dither](../images/render/sponza-small-fill-dither.gif) | ![Flat bake](../images/render/sponza-small-fill-bake.gif) |
 
-Panels share the camera path and timestamps. Unspecified tunables keep their
-defaults; the gate ramp uses the near gate off, far 4, and the size limit is 8.
-The dither panel uses coverage 4, ramp 1, and the same size limit.
+Clips share a two-second window and a 160×160 crop, enlarged 2× without smoothing
+at 8 fps with a full GIF palette. The crop and window maximize changed-pixel share
+for flat ≤8 versus defaults in the source comparison.
+
+Unspecified tunables keep their defaults. The gate ramp uses the near gate off,
+far 4, and size limit 8. Dither uses coverage 4, ramp 1, and the same size limit.
 
 ![Defaults versus flat up to 8, with amplified difference](../images/render/sponza-small-fill-diff.gif)
 
