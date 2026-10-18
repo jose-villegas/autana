@@ -4,6 +4,7 @@
 #include "math/scalar/mathi.h"
 #include "services/tune.h"
 
+#include <stddef.h>
 #include <string.h>
 
 TUNE_OWNER(draw);
@@ -77,18 +78,6 @@ draw_pixel(int x, int y, gfx_color_t color) {
     }
 }
 
-/* One pixel of a line already clipped to the surface's clip; only the
- * target's own rows remain to check. */
-static void
-plot(const gfx_surface_t* state, int x, int y, gfx_color_t color, unsigned flags) {
-    if (!gfx_target_row_range_overlaps(state->target, y, y + 1)) {
-        return;
-    }
-    gfx_color_t* const dst = &gfx_target_row(state->target, y)[x];
-
-    *dst = (flags & DRAW_LINE_ADD) ? gfx_color_add(*dst, color) : color;
-}
-
 typedef struct {
     unsigned on, period, phase;
 } line_dash_t;
@@ -110,21 +99,29 @@ line_dash_step(line_dash_t* dash) {
     return visible;
 }
 
-/* Bresenham, treats both axes alike, no case analysis. */
+/* Bresenham, treats both axes alike, no case analysis. The endpoints are
+ * already clipped to the surface's clip, so only the target's own rows
+ * remain to check: a band holds some of a line's rows. The pixel's place in
+ * the target steps with it, rather than being found from its row each time. */
 static void
 walk(const gfx_surface_t* state, int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags, unsigned offset) {
     const int dx = mathi_abs(x1 - x0);
     const int dy = -mathi_abs(y1 - y0);
     const int sx = x0 < x1 ? 1 : -1;
     const int sy = y0 < y1 ? 1 : -1;
+    const gfx_target_t target = state->target;
+    const ptrdiff_t row_step = (ptrdiff_t)sy * target.stride;
+    ptrdiff_t at = ((ptrdiff_t)(y0 - target.y0) * target.stride) + x0;
+    const bool add = (flags & DRAW_LINE_ADD) != 0;
     int err = dx + dy;
     bool first = true;
     line_dash_t dash = line_dash(flags, offset);
 
     for (;;) {
         const bool visible = line_dash_step(&dash);
-        if (visible && !(first && (flags & DRAW_LINE_OPEN))) {
-            plot(state, x0, y0, color, flags);
+        if (visible && !(first && (flags & DRAW_LINE_OPEN)) && y0 >= target.y0 && y0 < target.y0 + target.height) {
+            gfx_color_t* const dst = &target.buf[at];
+            *dst = add ? gfx_color_add(*dst, color) : color;
         }
         first = false;
 
@@ -135,10 +132,12 @@ walk(const gfx_surface_t* state, int x0, int y0, int x1, int y1, gfx_color_t col
         if (e2 >= dy) {
             err += dy;
             x0 += sx;
+            at += sx;
         }
         if (e2 <= dx) {
             err += dx;
             y0 += sy;
+            at += row_step;
         }
     }
 }

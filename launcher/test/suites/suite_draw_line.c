@@ -7,9 +7,16 @@
 #include "gfx/present/gfx_test.h"
 #include "test_cleanup.h"
 
+#include <stdlib.h>
+#include <string.h>
+
 enum { LINE_START = 10, LINE_STEPS = 9, DASH_ON = 2, DASH_OFF = 2 };
 
-#define LINE_INK GFX_RGB(0xFFFFFF)
+#define LINE_INK  GFX_RGB(0xFFFFFF)
+#define LINE_BASE GFX_RGB(0x203040)
+
+/* The band the band-target test draws into, away from the frame's edges. */
+#define BAND_ROW  (GFX_BAND_HEIGHT * 4)
 
 static void
 fixture(void) {
@@ -60,12 +67,62 @@ test_open_dash_keeps_its_phase(void) {
     assert_line(1, 0, DRAW_LINE_DASH(3, 1) | DRAW_LINE_OPEN | DRAW_LINE_ADD, 0x176);
 }
 
+static gfx_color_t* full_rows;
+
+static void
+release_full_rows(void) {
+    free(full_rows);
+    full_rows = NULL;
+    gfx_reset_for_test();
+}
+
+/* A band holds only some of a line's rows: those it holds get exactly the
+ * full frame's pixels, dash phase and additive blend included, and the
+ * framebuffer outside the band is untouched. */
+static void
+test_band_target_matches_the_full_frame(void) {
+    fixture();
+    const size_t row_bytes = GFX_WIDTH * sizeof *full_rows;
+    full_rows = malloc(GFX_BAND_HEIGHT * row_bytes);
+    suite_set_test_cleanup(release_full_rows);
+    TEST_ASSERT_NOT_NULL(full_rows);
+    const int top = BAND_ROW;
+    const int bottom = BAND_ROW + GFX_BAND_HEIGHT - 1;
+    static const unsigned patterns[] = {0, DRAW_LINE_DASH(DASH_ON, DASH_OFF) | DRAW_LINE_OPEN | DRAW_LINE_ADD};
+    const int lines[][4] = {
+        {LINE_START, top - LINE_STEPS, LINE_START + LINE_STEPS, bottom + LINE_STEPS}, /* through both edges */
+        {LINE_START, top - LINE_STEPS, LINE_START * 9, top + LINE_STEPS},             /* shallow, through the top */
+        {LINE_START * 9, bottom + LINE_STEPS, LINE_START, bottom - LINE_STEPS}, /* backwards, through the bottom */
+        {LINE_START, top + 1, LINE_START * 9, bottom - 1},                      /* inside the band */
+    };
+    for (size_t p = 0; p < sizeof patterns / sizeof *patterns; p++) {
+        for (size_t l = 0; l < sizeof lines / sizeof *lines; l++) {
+            draw_clear(LINE_BASE);
+            draw_line_ex(lines[l][0], lines[l][1], lines[l][2], lines[l][3], LINE_INK, patterns[p]);
+            memcpy(full_rows, gfx_framebuffer() + (size_t)BAND_ROW * GFX_WIDTH, GFX_BAND_HEIGHT * row_bytes);
+            draw_clear(LINE_BASE);
+            gfx_band_begin_for_test(BAND_ROW);
+            draw_line_ex(lines[l][0], lines[l][1], lines[l][2], lines[l][3], LINE_INK, patterns[p]);
+            gfx_band_end_for_test();
+            const gfx_color_t* pixels = gfx_framebuffer();
+            for (int y = 0; y < GFX_HEIGHT; y++) {
+                for (int x = 0; x < GFX_WIDTH; x++) {
+                    const bool held = y >= BAND_ROW && y < BAND_ROW + GFX_BAND_HEIGHT;
+                    const gfx_color_t expected = held ? full_rows[((y - BAND_ROW) * GFX_WIDTH) + x] : LINE_BASE;
+                    TEST_ASSERT_EQUAL_HEX16(expected, pixels[(y * GFX_WIDTH) + x]);
+                }
+            }
+        }
+    }
+}
+
 void
 suite_draw_line(void) {
     RUN_TEST(test_horizontal_dash_pixels);
     RUN_TEST(test_vertical_dash_pixels);
     RUN_TEST(test_diagonal_dash_pixels);
     RUN_TEST(test_open_dash_keeps_its_phase);
+    RUN_TEST(test_band_target_matches_the_full_frame);
 }
 
 SUITE_REGISTER(suite_draw_line);
