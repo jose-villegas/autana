@@ -19,16 +19,18 @@
 #include "render/r3d_project.h"
 #include "render/render_view.h"
 
-/* An L-shaped block, so a turn or a mirror shows: local units, the L's corners in drawing
- * order on the back face (z = 0), then the same corners on the front face (z = SHAPE_DEPTH). */
+/* An L-shaped block centred on the origin, so a turn or a mirror shows: local units, the L's
+ * corners in drawing order on the back face (z = -SHAPE_DEPTH / 2), then the same corners on the
+ * front face (z = SHAPE_DEPTH / 2). */
 static const vec3f_t OUTLINE[] = {
-    {0.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, {1.0F, 0.4F, 0.0F},
-    {0.4F, 0.4F, 0.0F}, {0.4F, 1.5F, 0.0F}, {0.0F, 1.5F, 0.0F},
+    {0.0F, 0.0F, 0.0F}, {1.5F, 0.0F, 0.0F},  {1.5F, 0.6F, 0.0F},
+    {0.6F, 0.6F, 0.0F}, {0.6F, 2.25F, 0.0F}, {0.0F, 2.25F, 0.0F},
 };
 #define OUTLINE_CORNERS ((int)(sizeof OUTLINE / sizeof OUTLINE[0]))
-static const float SHAPE_DEPTH = 0.6F;
+static const float SHAPE_DEPTH = 0.9F;
+static const vec3f_t OUTLINE_CENTRE = {0.75F, 1.125F, 0.0F};
 
-static const vec3f_t TRS_SCALE = {1.5F, 0.75F, 1.5F};
+static const vec3f_t TRS_SCALE = {1.6F, 0.6F, 1.4F};
 static const vec3f_t TRS_AXIS = {0.0F, 1.0F, 1.0F}; /* normalised below */
 static const float TRS_ANGLE_DEGREES = 50.0F;
 static const vec3f_t TRS_POSITION = {2.0F, 1.0F, 1.0F};
@@ -42,8 +44,9 @@ static void
 print_shape(const char* name, const mat4f_t* m, const char* tail) {
     printf("  \"%s\": [", name);
     for (int i = 0; i < 2 * OUTLINE_CORNERS; i++) {
-        vec3f_t corner = OUTLINE[i % OUTLINE_CORNERS];
-        corner.z = i < OUTLINE_CORNERS ? 0.0F : SHAPE_DEPTH;
+        const vec3f_t outline = OUTLINE[i % OUTLINE_CORNERS];
+        const vec3f_t corner = {outline.x - OUTLINE_CENTRE.x, outline.y - OUTLINE_CENTRE.y,
+                                (i < OUTLINE_CORNERS ? -0.5F : 0.5F) * SHAPE_DEPTH};
         const vec3f_t p = mat4f_apply(m, corner);
         printf("%s[%.6g, %.6g, %.6g]", i ? ", " : "", (double)p.x, (double)p.y, (double)p.z);
     }

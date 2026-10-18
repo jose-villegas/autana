@@ -63,7 +63,7 @@ M = T\,R\,S, \qquad p_{\text{world}} = M\,p_{\text{local}}, \qquad
 V = R^{\mathsf T}\,T(-\text{position})
 ```
 
-![One L-shaped block in four 3D panels: as authored, scaled 1.5 by 0.75 by 1.5, then turned 50 degrees about (0, 1, 1), then moved to (2, 1, 1)](../images/math/trs-order.png)
+![One L-shaped block in four 3D panels: as authored, scaled 1.6 by 0.6 by 1.4, then turned 50 degrees about (0, 1, 1), then moved to (2, 1, 1)](../images/math/trs-order.png)
 
 The panels apply `mat4f_from_trs` with one more part each; the dashed block is the panel before.
 
