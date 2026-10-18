@@ -54,7 +54,7 @@ CLONE_SUFFIX = re.compile(r"(?:[.$][a-z_]+[.$]\d+|[.$]cold)+$")
 BLOCK = "internal-memory-map"
 TIERS_BLOCK = "memory-tiers"
 HEADROOM_BLOCK = "internal-memory-headroom"
-CHIP_CITATION = '<sup>[[66]](../Citations.md#66)</sup>'
+CHIP_CITATION = '<sup>[[{0}]](../Citations.md#{0})</sup>'.format(66)
 TIER_POLICY = (
     ("Internal SRAM", "stacks, ordinary mutable statics, DMA gather and bounce buffers, hot working data", "budget static storage and the largest allocation together"),
     ("PSRAM", "full framebuffer (`MEMORY_PSRAM`) and app arena", "keep frequently accessed working data internal where it fits"),

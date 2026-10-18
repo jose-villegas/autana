@@ -334,7 +334,7 @@ signed_area2(int32_t ax, int32_t ay, int32_t bx, int32_t by, int32_t cx, int32_t
     return ((bx - ax) * (cy - ay)) - ((cx - ax) * (by - ay));
 }
 
-/* One Sutherland-Hodgman pass (docs/Citations.md#33): the polygon's part on the plane's inside. */
+/* One Sutherland-Hodgman pass (Sutherland-Hodgman 1974): the polygon's part on the plane's inside. */
 static int
 clip_to_plane(const planef_t* p, const clip_vertex_t* in, int n, clip_vertex_t* out) {
     int m = 0;

@@ -17,9 +17,11 @@ checked; section citations still are.
 docs/Citations.md numbers the papers and specs the tree cites, one table row
 each, `| <a id="N"></a>[N] | ...<br>Cited by: ... |`.
 Entries ascend, and a deleted entry's number is not reused. Every
-`Citations.md#N` a tracked document or source file writes must name an entry,
-every entry must be cited, and its "Cited by" line must link exactly the files
-that cite it. The gates' own tests write citations as fixtures, so they cite
+`Citations.md#N` a tracked document writes must name an entry, and an
+entry's "Cited by" line must link exactly the documents that cite it ("none"
+for an entry only code names). Code and its comments never cite by number: a `Citations.md#N` in a
+source file fails, and the comment names its source (author, year or section)
+in place. The gates' own tests write citations as fixtures, so they cite
 nothing.
 
 Without an ESP-IDF checkout, a name this tree does not define cannot be
@@ -50,7 +52,8 @@ CITATION_ROW = re.compile(
     + CITED_BY.pattern, re.MULTILINE)
 PAPER = re.compile(r"Citations\.md#(\d+)\b")
 CELL_LINK = re.compile(r"\]\(([^)\s#]+)\)")
-CITING_SOURCES = ["*.md", "*.c", "*.h", "*.py", "*.sh", "*.mjs"]
+CITING_DOCUMENTS = ["*.md"]
+CODE_SOURCES = ["*.c", "*.h", "*.py", "*.sh", "*.mjs", "*.cmake", "CMakeLists.txt"]
 GATE_TESTS = "scripts/gates/tests/"
 
 # A citation of one or more sections of a doc: `X.md`'s "Section", or "One"
@@ -268,10 +271,10 @@ def citation_rows(root):
 
 def paper_citations(root):
     """{number: {citing path: first line}} for every `Citations.md#N` the
-    tracked documents and sources write, outside Citations.md itself."""
+    tracked documents write, outside Citations.md itself."""
     root = pathlib.Path(root)
     cited = {}
-    for rel in sorted(tracked_files(root, CITING_SOURCES)):
+    for rel in sorted(tracked_files(root, CITING_DOCUMENTS)):
         if rel == CITATIONS or rel.startswith(GATE_TESTS) or not (root / rel).is_file():
             continue
         text = (root / rel).read_text(encoding="utf-8", errors="replace")
@@ -281,11 +284,29 @@ def paper_citations(root):
     return cited
 
 
+def code_citations(root):
+    """["path:line: ..."] for every `Citations.md#N` a source file writes:
+    code names its source in place, only documents cite by number."""
+    root = pathlib.Path(root)
+    found = []
+    for rel in sorted(tracked_files(root, CODE_SOURCES)):
+        if rel.startswith(GATE_TESTS) or not (root / rel).is_file():
+            continue
+        text = (root / rel).read_text(encoding="utf-8", errors="replace")
+        for number, line in enumerate(text.splitlines(), 1):
+            if PAPER.search(line):
+                found.append(f"{rel}:{number}: cites {CITATIONS} by number; "
+                             "name the source (author, year, section) in place")
+    return found
+
+
 def unresolved_papers(root):
-    """Every problem between docs/Citations.md and what cites it: a number
-    with no entry, an entry nothing cites, a cited-by line that differs
-    from the citing files, and an entry out of order."""
+    """Every problem between docs/Citations.md and what cites it: a source file
+    citing by number, a number
+    with no entry, a cited-by line that differs
+    from the citing documents, and an entry out of order."""
     rows, problems = citation_rows(root)
+    problems += code_citations(root)
     cited = paper_citations(root)
     for n, citers in sorted(cited.items()):
         if n not in rows:
@@ -293,9 +314,7 @@ def unresolved_papers(root):
                 problems.append(f"{rel}:{line}: cites [{n}], which {CITATIONS} has no row for")
     for n, (line, cited_by) in sorted(rows.items()):
         actual = set(cited.get(n, {}))
-        if not actual:
-            problems.append(f"{CITATIONS}:{line}: [{n}] is cited nowhere")
-        elif cited_by != actual:
+        if cited_by != actual:
             extra, absent = sorted(cited_by - actual), sorted(actual - cited_by)
             detail = "; ".join(filter(None, [
                 absent and "cited by, not listed: " + ", ".join(absent),
