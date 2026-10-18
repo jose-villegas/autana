@@ -121,7 +121,6 @@ $TEST_DIR/test_asset_dir.c
 $TEST_DIR/test_fence.c
 $MAIN_DIR/sound/sound_mixer.c
 $MAIN_DIR/audio/audio_tone.c
-$MAIN_DIR/audio/audio_goertzel.c
 $MAIN_DIR/app/app_arena.c
 $MAIN_DIR/app/app_registry.c
 $MAIN_DIR/shell/shell_system.c

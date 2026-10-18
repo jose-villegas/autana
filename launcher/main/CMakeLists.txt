@@ -143,7 +143,6 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
     )
     # Acoustic detection belongs to the development console.
     list(APPEND app_srcs
-        "audio/audio_goertzel.c"
         "audio/audio_loopback.c"
     )
 endif()
