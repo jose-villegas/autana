@@ -19,17 +19,19 @@
 #include "render/r3d_project.h"
 #include "render/render_view.h"
 
-/* An L, so a turn or a mirror shows: local units, corners in drawing order. */
-static const vec3f_t SHAPE[] = {
+/* An L-shaped block, so a turn or a mirror shows: local units, the L's corners in drawing
+ * order on the back face (z = 0), then the same corners on the front face (z = SHAPE_DEPTH). */
+static const vec3f_t OUTLINE[] = {
     {0.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 0.0F}, {1.0F, 0.4F, 0.0F},
     {0.4F, 0.4F, 0.0F}, {0.4F, 1.5F, 0.0F}, {0.0F, 1.5F, 0.0F},
 };
-#define SHAPE_CORNERS ((int)(sizeof SHAPE / sizeof SHAPE[0]))
+#define OUTLINE_CORNERS ((int)(sizeof OUTLINE / sizeof OUTLINE[0]))
+static const float SHAPE_DEPTH = 0.6F;
 
-static const vec3f_t TRS_SCALE = {1.5F, 0.75F, 1.0F};
-static const vec3f_t TRS_AXIS = {0.0F, 0.0F, 1.0F};
-static const float TRS_ANGLE_DEGREES = 30.0F;
-static const vec3f_t TRS_POSITION = {2.0F, 1.0F, 0.0F};
+static const vec3f_t TRS_SCALE = {1.5F, 0.75F, 1.5F};
+static const vec3f_t TRS_AXIS = {0.0F, 1.0F, 1.0F}; /* normalised below */
+static const float TRS_ANGLE_DEGREES = 50.0F;
+static const vec3f_t TRS_POSITION = {2.0F, 1.0F, 1.0F};
 
 /* The example camera sits at the origin looking down +z, as TRANSFORMF_IDENTITY places it. */
 static const float VIEW_HALF_FOV_SHORT_TAN = 0.5F;
@@ -39,9 +41,11 @@ static const vec3f_t VIEW_POINT = {0.62F, 0.41F, 2.0F};
 static void
 print_shape(const char* name, const mat4f_t* m, const char* tail) {
     printf("  \"%s\": [", name);
-    for (int i = 0; i < SHAPE_CORNERS; i++) {
-        const vec3f_t p = mat4f_apply(m, SHAPE[i]);
-        printf("%s[%.6g, %.6g]", i ? ", " : "", (double)p.x, (double)p.y);
+    for (int i = 0; i < 2 * OUTLINE_CORNERS; i++) {
+        vec3f_t corner = OUTLINE[i % OUTLINE_CORNERS];
+        corner.z = i < OUTLINE_CORNERS ? 0.0F : SHAPE_DEPTH;
+        const vec3f_t p = mat4f_apply(m, corner);
+        printf("%s[%.6g, %.6g, %.6g]", i ? ", " : "", (double)p.x, (double)p.y, (double)p.z);
     }
     printf("]%s\n", tail);
 }
@@ -57,7 +61,8 @@ main(int argc, char** argv) {
     const vec3f_t origin = {0.0F, 0.0F, 0.0F};
     const vec3f_t unit = {1.0F, 1.0F, 1.0F};
     const quatf_t none = quatf_identity();
-    const quatf_t turn = quatf_from_axis_angle(TRS_AXIS, TRS_ANGLE_DEGREES * MATH_RADIANS_PER_DEGREE);
+    const vec3f_t axis = vec3f_normalize(TRS_AXIS);
+    const quatf_t turn = quatf_from_axis_angle(axis, TRS_ANGLE_DEGREES * MATH_RADIANS_PER_DEGREE);
     const mat4f_t local = mat4f_from_trs(origin, none, unit);
     const mat4f_t scaled = mat4f_from_trs(origin, none, TRS_SCALE);
     const mat4f_t rotated = mat4f_from_trs(origin, turn, TRS_SCALE);
@@ -73,8 +78,11 @@ main(int argc, char** argv) {
     r3d_project_screen(VIEW_POINT, &lens, &pixel_x, &pixel_y);
 
     printf("{\n \"trs\": {\n");
-    printf("  \"scale\": [%.6g, %.6g], \"angle_degrees\": %.6g, \"position\": [%.6g, %.6g],\n", (double)TRS_SCALE.x,
-           (double)TRS_SCALE.y, (double)TRS_ANGLE_DEGREES, (double)TRS_POSITION.x, (double)TRS_POSITION.y);
+    printf("  \"scale\": [%.6g, %.6g, %.6g], \"angle_degrees\": %.6g, \"axis\": [%.6g, %.6g, %.6g],\n",
+           (double)TRS_SCALE.x, (double)TRS_SCALE.y, (double)TRS_SCALE.z, (double)TRS_ANGLE_DEGREES, (double)axis.x,
+           (double)axis.y, (double)axis.z);
+    printf("  \"position\": [%.6g, %.6g, %.6g], \"outline_corners\": %d,\n", (double)TRS_POSITION.x,
+           (double)TRS_POSITION.y, (double)TRS_POSITION.z, OUTLINE_CORNERS);
     print_shape("local", &local, ",");
     print_shape("scaled", &scaled, ",");
     print_shape("rotated", &rotated, ",");
