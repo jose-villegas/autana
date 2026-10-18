@@ -206,6 +206,8 @@ Lerp and range helpers widen to `mathi.h`; lerp weights are int32 and the step t
 
 ### mathx.h
 
+`mathx_lerp` saturates as `mathx_add` and `mathx_mul` do; the range helpers apply `mathi.h` to the raw Q16.16 value.
+
 | Function | Purpose | Formula |
 |---|---|---|
 | `mathx_lerp(a, b, t)` | interpolation by a Q16.16 weight `t` | $`\mathrm{add}(a,\mathrm{mul}(\mathrm{sub}(b,a),t))`$ |
