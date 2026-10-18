@@ -7,6 +7,7 @@
 #include "sound/sound.h"
 #include "sound/sound_format.h"
 #include "suites.h"
+#include "test_alloc.h"
 #include "test_pack.h"
 #include "unity.h"
 
@@ -27,6 +28,7 @@ static const uint8_t CURSOR_CODES[] = {0x01, 0xa3, 0x5f, 0x82};
 
 typedef struct {
     uint8_t* bytes;
+    void* raw;
     uint8_t* entry;
     test_pack_t builder;
 } fixture_t;
@@ -34,7 +36,7 @@ typedef struct {
 static fixture_t
 fixture(sound_format_t format) {
     fixture_t f = {0};
-    f.bytes = malloc(PACK_CAPACITY);
+    f.bytes = test_alloc_aligned(PACK_CAPACITY, ASSET_PACK_BASE_ALIGN, &f.raw);
     TEST_ASSERT_NOT_NULL(f.bytes);
     f.builder = test_pack_begin(f.bytes, PACK_CAPACITY, 1);
     const uint32_t data_bytes =
@@ -70,7 +72,7 @@ reject_fixture(fixture_t* f, asset_status_t expected) {
     memset(&sound, 0xff, sizeof sound);
     const asset_status_t status = open_fixture(f, NAME, &sound);
     const bool cleared = sound_empty(&sound);
-    free(f->bytes);
+    test_free_aligned(f->raw);
     TEST_ASSERT_EQUAL(expected, status);
     TEST_ASSERT_TRUE(cleared);
 }
@@ -98,7 +100,7 @@ check_valid(sound_format_t format) {
     memset(&sound, 0xff, sizeof sound);
     const asset_status_t status = open_fixture(&f, NAME, &sound);
     const bool in_place = sound.data == f.entry + SOUND_HEADER_SIZE + SOUND_ALIGNMENT;
-    free(f.bytes);
+    test_free_aligned(f.raw);
     TEST_ASSERT_EQUAL(ASSET_OK, status);
     TEST_ASSERT_TRUE(in_place);
     TEST_ASSERT_EQUAL(FRAMES, sound.frames);
@@ -226,7 +228,7 @@ test_missing_or_wrong_type(void) {
     test_pack_put32(f.bytes + ASSET_PACK_HEADER_SIZE + ASSET_NAME_MAX, ASSET_TYPE('N', 'O', 'N', 'E'));
     memset(&sound, 0xff, sizeof sound);
     const asset_status_t wrong_type = open_fixture(&f, NAME, &sound);
-    free(f.bytes);
+    test_free_aligned(f.raw);
     TEST_ASSERT_EQUAL(ASSET_ERR_NOT_FOUND, missing);
     TEST_ASSERT_TRUE(missing_cleared);
     TEST_ASSERT_EQUAL(ASSET_ERR_TYPE, wrong_type);
@@ -324,7 +326,7 @@ check_cursor(sound_format_t format) {
             TEST_ASSERT_EQUAL(0, sound_read(&cursor, split, FRAMES));
         }
     }
-    free(f.bytes);
+    test_free_aligned(f.raw);
 }
 
 static void
@@ -369,7 +371,7 @@ check_loop(sound_format_t format, uint32_t start, uint32_t end) {
         i += count;
     }
     TEST_ASSERT_EQUAL_INT16_ARRAY(expected, actual, READ_FRAMES);
-    free(f.bytes);
+    test_free_aligned(f.raw);
 }
 
 static void
@@ -410,7 +412,7 @@ test_step_index_max_and_full_loop(void) {
     TEST_ASSERT_EQUAL(ASSET_OK, open_fixture(&f, NAME, &sound));
     TEST_ASSERT_EQUAL(0, sound.loop_start);
     TEST_ASSERT_EQUAL(FRAMES, sound.loop_end);
-    free(f.bytes);
+    test_free_aligned(f.raw);
 }
 
 void
