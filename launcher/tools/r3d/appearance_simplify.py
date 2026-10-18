@@ -36,6 +36,7 @@ from scipy.sparse.csgraph import connected_components
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import log  # noqa: E402
+from r3d.geometry import triangle_areas  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
 from r3d.lit_mesh import finest_triangles, read_lit_mesh  # noqa: E402
 from r3d.cost_model import load as load_cost  # noqa: E402
@@ -55,6 +56,10 @@ CUBLAS_WORKSPACE = ":4096:8"
 RASTER_EPSILON = 1.0 / 16.0
 # A triangle counts as stretched when its longest fitted edge exceeds this many times its longest start edge.
 STRETCH_RATIO = 2.0
+# A triangle counts as grown when its fitted area exceeds this many times its start area.
+AREA_GROWTH_RATIO = 4.0
+# A triangle counts as moved when its largest corner displacement exceeds this many mean start edges.
+MOVED_EDGES = 1.0
 # How many worst parts the log lists.
 STRETCH_WORST = 5
 
@@ -151,19 +156,42 @@ def triangle_edges(points, tris, vertex_point):
     return np.stack([np.linalg.norm(points[corners[:, k]] - points[corners[:, (k + 1) % 3]], axis=1) for k in range(3)], axis=1)
 
 
+def ratio_with_inf(value, start):
+    """Ratios with infinity for positive values over zero and unity for zero over zero."""
+    ratio = np.where(value > 0, np.inf, 1.0)
+    return np.divide(value, start, out=ratio, where=start > 0)
+
+
 def triangle_stretch(start_points, fitted_points, mesh) -> np.ndarray:
     """Each triangle's longest fitted edge relative to its longest start edge."""
     start_edge = triangle_edges(start_points, mesh.tris, mesh.vertex_point).max(axis=1)
     fitted_edge = triangle_edges(fitted_points, mesh.tris, mesh.vertex_point).max(axis=1)
-    ratio = np.where(fitted_edge > 0, np.inf, 1.0)
-    return np.divide(fitted_edge, start_edge, out=ratio, where=start_edge > 0)
+    return ratio_with_inf(fitted_edge, start_edge)
+
+
+def triangle_area_growth(start_points, fitted_points, mesh) -> np.ndarray:
+    """Each triangle's fitted area relative to its start area."""
+    corners = mesh.vertex_point[mesh.tris]
+    return ratio_with_inf(triangle_areas(fitted_points, corners), triangle_areas(start_points, corners))
+
+
+def triangle_moved(start_points, fitted_points, mesh) -> np.ndarray:
+    """Each triangle's largest corner move relative to its mean start edge."""
+    corners = mesh.vertex_point[mesh.tris]
+    moved = np.linalg.norm(fitted_points[corners] - start_points[corners], axis=2).max(axis=1)
+    mean_edge = triangle_edges(start_points, mesh.tris, mesh.vertex_point).mean(axis=1)
+    return ratio_with_inf(moved, mean_edge)
 
 
 def stretch_report(start, fitted, kept) -> dict:
-    """Stretch by connected start part, with small-part totals and worst parts."""
+    """Edge stretch, area growth and displacement by start part, with small-part totals and worst parts."""
     labels = start_parts(start)
     parts = labels[start.vertex_point[start.tris[kept, 0]]]
-    stretch = triangle_stretch(start.points, fitted.points, fitted)
+    flags = {
+        "stretch": triangle_stretch(start.points, fitted.points, fitted) > STRETCH_RATIO,
+        "area_growth": triangle_area_growth(start.points, fitted.points, fitted) > AREA_GROWTH_RATIO,
+        "moved": triangle_moved(start.points, fitted.points, fitted) > MOVED_EDGES,
+    }
     edges = point_edges(start.tris, start.vertex_point)
     length = np.linalg.norm(start.points[edges[:, 0]] - start.points[edges[:, 1]], axis=1)
     global_edge = length.mean()
@@ -173,15 +201,20 @@ def stretch_report(start, fitted, kept) -> dict:
     edge_total = np.bincount(edge_parts, weights=length, minlength=part_count)
     mean_edge = np.divide(edge_total, edge_count, out=np.zeros(part_count), where=edge_count > 0)
     count = np.bincount(parts, minlength=part_count)
-    stretched = np.bincount(parts, weights=stretch > STRETCH_RATIO, minlength=part_count)
-    rows = [dict(part=int(part), triangles=int(count[part]), mean_start_edge=float(mean_edge[part]),
-                 share=float(100 * stretched[part] / count[part])) for part in np.flatnonzero(count)]
-    report = dict(parts=rows)
-    for name, mask in (("small", mean_edge < global_edge), ("rest", mean_edge >= global_edge)):
-        triangles = int(count[mask].sum())
-        report[name] = dict(triangles=triangles,
-                            share=float(100 * stretched[mask].sum() / triangles) if triangles else 0.0)
-    report["worst"] = sorted(rows, key=lambda row: (-row["share"], -row["triangles"], row["part"]))[:STRETCH_WORST]
+    rows = [dict(part=int(part), triangles=int(count[part]), mean_start_edge=float(mean_edge[part]))
+            for part in np.flatnonzero(count)]
+    groups = {"small": mean_edge < global_edge, "rest": mean_edge >= global_edge}
+    report = dict(parts=rows, worst={})
+    for name, mask in groups.items():
+        report[name] = dict(triangles=int(count[mask].sum()))
+    for measure, flagged in flags.items():
+        measured = np.bincount(parts, weights=flagged, minlength=part_count)
+        for row in rows:
+            row[measure] = float(100 * measured[row["part"]] / row["triangles"])
+        for name, mask in groups.items():
+            triangles = report[name]["triangles"]
+            report[name][measure] = float(100 * measured[mask].sum() / triangles) if triangles else 0.0
+        report["worst"][measure] = sorted(rows, key=lambda row: (-row[measure], -row["triangles"], row["part"]))[:STRETCH_WORST]
     return report
 
 
@@ -832,9 +865,10 @@ def main(argv=None):
             fitted = pruned
         count = write_mesh(out, name, fitted)
         report = stretch_report(fit_start, fitted, kept)
-        log(f"stretch > {STRETCH_RATIO:g}x: small parts {report['small']['share']:.2f}%, rest {report['rest']['share']:.2f}%")
-        log("worst parts: " + ", ".join(f"{row['part']}: {row['share']:.2f}% ({row['triangles']} triangles)"
-                                      for row in report["worst"]))
+        for measure, threshold in (("stretch", STRETCH_RATIO), ("area_growth", AREA_GROWTH_RATIO), ("moved", MOVED_EDGES)):
+            log(f"{measure} > {threshold:g}x: small parts {report['small'][measure]:.2f}%, rest {report['rest'][measure]:.2f}%")
+            log(f"worst {measure} parts: " + ", ".join(f"{row['part']}: {row[measure]:.2f}% ({row['triangles']} triangles)"
+                                                    for row in report["worst"][measure]))
         (out / "stretch.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         np.savetxt(out / "loss.txt", np.array(history), fmt="%.4f", header="mean dE76 before pruning")
         print(f"{out}: {count} triangles, mean dE76 before pruning {np.mean(history[:20]):.3f} -> {np.mean(history[-20:]):.3f}")
