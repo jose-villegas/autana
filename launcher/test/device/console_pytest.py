@@ -13,7 +13,8 @@ import yaml
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/test"))
 import qemu_run
-from device_capture import BUILD_ID_RE, BUILD_ID_REQUEST, CRASH_LINE_RE, IMU_QUARTER_RE, RESET_LINE_RE
+from device_capture import (BUILD_ID_RE, BUILD_ID_REQUEST, CRASH_LINE_RE, IMU_QUARTER_RE,
+                            RESET_CAUSE_RE, RESET_LINE_RE, RESET_REASON_RE)
 
 BOOT_TIMEOUT_S = 120
 REPLY_TIMEOUT_S = 15
@@ -51,8 +52,7 @@ def qemu_extra_args(embedded_services, test_case_tempdir):
 @pytest.fixture
 def console(dut):
     original_expect = dut.expect
-    # QEMU starts and EspSerial explicitly resets; plain Serial only opens the port.
-    boot = hasattr(dut, "qemu") or callable(getattr(getattr(dut, "serial", None), "hard_reset", None))
+    boot = hasattr(dut, "qemu")
     def checked_expect(pattern, **kwargs):
         patterns = pattern if isinstance(pattern, list) else [pattern]
         match = original_expect([*patterns, *FORBIDDEN],
@@ -65,12 +65,16 @@ def console(dut):
     shell = Console(dut)
     if not boot:
         dut.write(BUILD_ID_REQUEST)
-    expected = FORBIDDEN[1] if boot else BUILD_ID_RE.pattern.encode()
-    match = original_expect([expected, *FORBIDDEN], timeout=BOOT_TIMEOUT_S)
-    assert not FORBIDDEN[0].search(match[0]), f"firmware crash: {match[0]!r}"
-    if FORBIDDEN[1].search(match[0]):
+    if boot:
+        match = original_expect([RESET_CAUSE_RE.pattern.encode(), FORBIDDEN[0]], timeout=BOOT_TIMEOUT_S)
+        assert not FORBIDDEN[0].search(match[0]), f"firmware crash: {match[0]!r}"
+        reason = RESET_REASON_RE.pattern.encode()
+        match = original_expect([reason, *FORBIDDEN], timeout=BOOT_TIMEOUT_S)
+        assert re.search(reason, match[0]), f"firmware crash or reset: {match[0]!r}"
         dut.expect(qemu_run.LISTENING.encode(), timeout=BOOT_TIMEOUT_S)
         shell.exchange(BUILD_ID_REQUEST, BUILD_ID_RE.pattern)
+    else:
+        dut.expect(BUILD_ID_RE.pattern.encode())
     probe = shell.exchange("IMU quarter 0", IMU_QUARTER_RE.pattern)
     match = IMU_QUARTER_RE.fullmatch(probe)
     assert match and int(match[1]) == 0 and int(match[2]) > 0 and int(match[3]) > 0, probe

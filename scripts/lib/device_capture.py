@@ -24,12 +24,13 @@ SUITE_OVERFLOW_RE = re.compile(r"SUITE OVERFLOW:")
 # assert(), which aborts after it. Searched, not anchored: a capture can carry
 # a log prefix or colour codes in front.
 CRASH_LINE_RE = re.compile(r"Guru Meditation|panic'ed|abort\(\) was called|assert failed:")
-# The ROM's first two lines, once per boot: "ESP-ROM:esp32s3-20210327", then
-# the reset cause, "rst:0xc (RTC_SW_CPU_RST),boot:0x8 (SPI_FAST_FLASH_BOOT)".
-# Either can be lost in a USB reset gap, so a boot is counted by whichever
-# shows more often.
+# The ROM prints its banner and reset cause; firmware prints RESET_REASON.
+# A USB reset gap can hide any of them, so count the most frequent form.
 BOOT_BANNER = "ESP-ROM:esp32s3"
-RESET_LINE_RE = re.compile(r"^rst:0x[0-9a-fA-F]+ \(\w+\).*$", re.M)
+RESET_CAUSE_RE = re.compile(r"^rst:0x[0-9a-fA-F]+ \(\w+\).*$", re.M)
+RESET_REASON_RE = re.compile(r"^RESET_REASON=\w+.*$", re.M)
+RESET_LINE_RE = re.compile(r"(?:" + RESET_CAUSE_RE.pattern + "|" + re.escape(BOOT_BANNER)
+                           + r"[^\r\n]*|" + RESET_REASON_RE.pattern + ")", re.M)
 # The boots a capture may hold before one more is a reboot: its own, for a run
 # that starts from a reset; none, for a capture opened on a running board.
 BOOTS_FROM_RESET = 1
@@ -39,8 +40,8 @@ BOOTS_ON_RUNNING = 0
 def reboot_sign(text, boots_allowed):
     """"rebooted: ..." when the capture holds more boots than `boots_allowed`,
     else None."""
-    resets = RESET_LINE_RE.findall(text)
-    boots = max(text.count(BOOT_BANNER), len(resets))
+    resets = RESET_CAUSE_RE.findall(text)
+    boots = max(text.count(BOOT_BANNER), len(resets), len(RESET_REASON_RE.findall(text)))
     if boots <= boots_allowed:
         return None
     return "rebooted: %d boots, expected at most %d%s" % (
