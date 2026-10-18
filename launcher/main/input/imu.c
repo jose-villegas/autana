@@ -241,6 +241,20 @@ imu_read(imu_sample_t* out) {
     return read_regs(REG_AX_L, (uint8_t*)out, sizeof *out);
 }
 
+/* Whole samples waiting, before read mode (section 8.8); false on a bus error or a partial sample. */
+static bool
+read_fifo_count(int* count, bool* overflowed) {
+    uint8_t status[2];
+    if (!read_regs(REG_FIFO_SMPL_CNT, status, sizeof status)) {
+        return false;
+    }
+    const int words = ((status[1] & FIFO_STATUS_COUNT_MSB) << FIFO_COUNT_MSB_SHIFT) | status[0];
+    const int bytes = words * FIFO_WORD_BYTES;
+    *count = bytes / (int)sizeof(imu_sample_t);
+    *overflowed = fifo_gap || (status[1] & (FIFO_STATUS_FULL | FIFO_STATUS_OVERFLOW)) != 0;
+    return *count <= IMU_FIFO_SAMPLES && bytes % sizeof(imu_sample_t) == 0;
+}
+
 int
 imu_read_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
     *overflowed = false;
@@ -257,16 +271,8 @@ imu_read_fifo(imu_sample_t out[IMU_FIFO_SAMPLES], int* lost, bool* overflowed) {
         return injected_count;
     }
 #endif
-    uint8_t status[2];
-    bool ok = read_regs(REG_FIFO_SMPL_CNT, status, sizeof status);
     int count = 0;
-    if (ok) {
-        const int words = ((status[1] & FIFO_STATUS_COUNT_MSB) << FIFO_COUNT_MSB_SHIFT) | status[0];
-        const int bytes = words * FIFO_WORD_BYTES;
-        count = bytes / (int)sizeof *out;
-        ok = count <= IMU_FIFO_SAMPLES && bytes % sizeof *out == 0;
-        *overflowed = fifo_gap || (status[1] & (FIFO_STATUS_FULL | FIFO_STATUS_OVERFLOW)) != 0;
-    }
+    bool ok = read_fifo_count(&count, overflowed);
     const int64_t lock_start_us = timing_now_us();
     if (ok) {
         ok = write_command(CTRL9_REQ_FIFO);
