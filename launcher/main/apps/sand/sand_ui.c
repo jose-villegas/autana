@@ -35,14 +35,16 @@ close_panel(sand_ui_t* ui, unsigned closed) {
 
 /* While a panel is open: `close` is its closing edge, never the opening
  * one, as sand_ui_step() reads the screen once. Taps are decided elsewhere
- * (sand_ui.h); this disarms `swallow_release` once the finger is up. */
+ * (sand_ui.h); this disarms `swallow_release` once the finger is up and
+ * its release frame has passed, since the UI delivers a tap on that frame,
+ * after this step. */
 static unsigned
 handle_panel_input(sand_ui_t* ui, const input_t* input, bool close, unsigned closed) {
     if (close) {
         return close_panel(ui, closed);
     }
 
-    if (ui->swallow_release && !input->down) {
+    if (ui->swallow_release && !input->down && !input->released) {
         ui->swallow_release = false;
     }
 

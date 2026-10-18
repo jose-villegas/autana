@@ -129,6 +129,45 @@ test_a_tap_selects_exactly_its_tile_landscape(void) {
     assert_a_tap_selects_exactly_its_tile(true);
 }
 
+/* One app pass: sand_ui_step() reads the input before the open panel draws
+ * the same frame, as app_sand.c orders them. */
+static void
+app_frame(sand_ui_t* ui, input_t in) {
+    const affine2x_t transform = ui_transform_quarter_turn(0, GFX_WIDTH, GFX_HEIGHT);
+    const vec2i_t pixel = affine2x_map_pixel(&transform, (vec2i_t){in.x, in.y});
+    in.x = pixel.x;
+    in.y = pixel.y;
+    (void)sand_ui_step(ui, &in);
+    if (ui->screen == SAND_UI_PALETTE) {
+        ui_begin(&in);
+        palette_screen_draw(ui);
+        ui_end_commands();
+    }
+}
+
+/* A finger landing on a tile as BOOT opens the palette is a pour's touch,
+ * not a pick: its release, delivered by the UI after sand_ui_step(), must
+ * still be swallowed. The next real tap selects. */
+static void
+test_a_touch_that_opens_with_the_palette_selects_nothing_on_release(void) {
+    sand_ui_t ui = fixture(false, 0);
+    ui.screen = SAND_UI_RUNNING;
+    const vec2i_t at = centre(cell(1));
+    app_frame(&ui, (input_t){.down = true, .pressed = true, .boot.released = true, .x = at.x, .y = at.y});
+    TEST_ASSERT_EQUAL_INT(SAND_UI_PALETTE, ui.screen);
+    for (int i = 0; i < TOUCH_HOLD_FRAMES; i++) {
+        app_frame(&ui, (input_t){.down = true, .x = at.x, .y = at.y});
+    }
+    app_frame(&ui, (input_t){.released = true, .x = at.x, .y = at.y});
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, ui.brush, "the opening touch's release must be swallowed");
+    app_frame(&ui, (input_t){0});
+    TEST_ASSERT_FALSE(ui.swallow_release);
+
+    app_frame(&ui, (input_t){.down = true, .pressed = true, .x = at.x, .y = at.y});
+    app_frame(&ui, (input_t){.released = true, .x = at.x, .y = at.y});
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, ui.brush, "the next real tap selects");
+}
+
 static void
 test_the_second_tile_selects_a_different_brush_than_the_first(void) {
     sand_ui_t ui = fixture(false, SAND_BRUSH_COUNT - 1);
@@ -262,6 +301,7 @@ run_palette_screen_suite(void) {
     RUN_TEST(test_a_tap_selects_exactly_its_tile_portrait);
     RUN_TEST(test_a_tap_selects_exactly_its_tile_landscape);
     RUN_TEST(test_the_second_tile_selects_a_different_brush_than_the_first);
+    RUN_TEST(test_a_touch_that_opens_with_the_palette_selects_nothing_on_release);
     RUN_TEST(test_a_press_that_slides_off_its_tile_selects_nothing);
     RUN_TEST(test_a_tap_in_the_grout_between_tiles_selects_nothing);
 #ifndef ESP_PLATFORM
