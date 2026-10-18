@@ -19,7 +19,9 @@ REPO = PERF.parents[2]
 sys.path.insert(0, str(PERF))
 sys.path.insert(0, str(PERF.parent / "build"))
 from build_paths import remove_output
+import autana_config
 from capture import require_same_board
+from device import build_directory_lock
 from device_lock import normalise_board, short_id, write_json
 from layout_measure import autana_command, run_flash, run_stamped, REPORT_LINE, latest_build
 from nightly.lnt import lnt_report, night_manifest, read_last_night
@@ -39,6 +41,7 @@ CAPTURE_FAILURE_LIMIT = 2
 SELFTEST_ALLOWANCE_SECONDS = 120 * 60
 CAPTURE_TIMEOUT_SECONDS = 1800
 BUILD_TIMEOUT_SECONDS = 3600
+BUILD_MUTEX_DIRECTORY = "nightly-build"
 
 
 @dataclass
@@ -209,8 +212,6 @@ def run_chain(steps, args, runner=None, clock=None):
     directory = tempfile.mkdtemp(prefix="nightly-", dir=output)
     worktree = Path(directory) / "tree"
     try:
-        if steps:
-            git(args.repo, "worktree", "add", "--detach", str(worktree), steps[0].commit)
         for index, step in enumerate(steps):
             test_if_due()
             reserve = (SELFTEST_ALLOWANCE_SECONDS if selftest_at and selftest["outcome"] == "not_run" else 0)
@@ -225,11 +226,14 @@ def run_chain(steps, args, runner=None, clock=None):
             result.outcome = "build_failed"
             with (output / f"{index:0{STEP_INDEX_DIGITS}}-{step.commit[:REPORT_SHA_DIGITS]}-build.log").open("w", encoding="utf-8") as log:
                 try:
-                    git(worktree, "checkout", "--detach", step.commit)
-                    git(worktree, "submodule", "update", "--init", "--recursive")
-                    code, _, _ = runner(autana_command("--project", str(worktree), "build", "diag",
-                                                      "--perf-scope", "--layout-seed", "0"), log,
-                                         BUILD_TIMEOUT_SECONDS)
+                    with build_directory_lock(autana_config.user_cache_dir() / BUILD_MUTEX_DIRECTORY):
+                        if not worktree.exists():
+                            git(args.repo, "worktree", "add", "--detach", str(worktree), step.commit)
+                        git(worktree, "checkout", "--detach", step.commit)
+                        git(worktree, "submodule", "update", "--init", "--recursive")
+                        code, _, _ = runner(autana_command("--project", str(worktree), "build", "diag",
+                                                          "--perf-scope", "--layout-seed", "0"), log,
+                                             BUILD_TIMEOUT_SECONDS, below_normal=True)
                     result.build_seconds = (clock.now() - begin).total_seconds()
                     if code:
                         raise RuntimeError(f"build exited {code}")

@@ -1,20 +1,27 @@
 """Board-free replays of nightly planning, acquisition and publication."""
 from datetime import datetime, timedelta, timezone
+import io
 import json
 import os
 from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import threading
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
 PERF = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PERF))
+sys.path.insert(0, str(PERF.parents[2] / "scripts/device/tests"))
+import port_guard
 from nightly import scoped_chain as chain, lnt
 from test_perf_compare import FakeAutana
 from layout_measure import parse_report, parse_timings
+import layout_measure
+import device
+import autana_config
 
 MACHINE = "00:11:22:33:20:E8"
 
@@ -59,7 +66,7 @@ class Replay(FakeAutana):
         self.selftest_code = selftest_code
         self.boundaries, self.tokens = [], []
 
-    def __call__(self, command, log, timeout):
+    def __call__(self, command, log, timeout, **options):
         self.tokens.append(os.environ.get("_AUTANA_DEVICE_LOCK_TOKEN"))
         if command == ["selftest-replay"]:
             self.boundaries.append(self.clock.now())
@@ -87,6 +94,9 @@ class NightlyTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        cache = patch.object(autana_config, "user_cache_dir", return_value=self.root / "cache")
+        cache.start()
+        self.addCleanup(cache.stop)
         self.repo = self.root / "repo"
         self.repo.mkdir()
         chain.git(self.repo, "init")
@@ -129,6 +139,108 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(chain.git(self.repo, "worktree", "list", "--porcelain").count("worktree "), 1)
         self.assertEqual([len(item["steps"]) for item in writes if item["steps"]][-1], len(results))
         return results, replay, writes
+
+    def contending_lanes(self, failure=None):
+        entered, contended, built = (threading.Event() for _ in range(3))
+        active, errors, results = [], [], {}
+        clocks = [Clock(), Clock()]
+        for lane in range(2):
+            (self.root / str(lane)).mkdir(exist_ok=True)
+        replays = [Replay(self.root / str(lane), clocks[lane]) for lane in range(2)]
+        original_lock = device.try_lock_file
+        wait_seconds = 30 * 60
+        wait_limit = 10
+
+        def try_lock(handle):
+            acquired = original_lock(handle)
+            if not acquired and threading.current_thread().name == "lane-1" and not contended.is_set():
+                clocks[1].sleep(wait_seconds)
+                contended.set()
+            return acquired
+
+        def run(lane):
+            args = SimpleNamespace(**vars(self.args))
+            args.until = "23:33"
+            args.out, args.data = self.root / f"out-{lane}", self.root / f"data-{lane}"
+            def runner(command, log, timeout, **options):
+                if "build" in command:
+                    self.assertFalse(active, "lane builds overlap")
+                    active.append(lane)
+                    try:
+                        if lane == 0:
+                            entered.set()
+                            self.assertTrue(contended.wait(wait_limit), "second lane did not wait for the mutex")
+                            if isinstance(failure, Exception):
+                                raise failure
+                            if failure:
+                                return failure, [], 0
+                        else:
+                            built.set()
+                        return replays[lane](command, log, timeout, **options)
+                    finally:
+                        active.remove(lane)
+                if lane == 0 and "suite" in command:
+                    self.assertTrue(built.wait(wait_limit), "capture holds the build mutex")
+                return replays[lane](command, log, timeout, **options)
+            try:
+                steps = self.steps(indices=(1,) if lane == 0 else (1, 3))
+                results[lane] = chain.run_chain(steps, args, runner, clocks[lane])
+            except BaseException as error:
+                errors.append(error)
+
+        with patch.object(autana_config, "user_cache_dir", return_value=self.root / "cache"), \
+                patch.object(device, "try_lock_file", side_effect=try_lock), \
+                patch("layout_measure.capture_board", return_value=MACHINE):
+            threads = [threading.Thread(target=run, args=(lane,), name=f"lane-{lane}") for lane in range(2)]
+            threads[0].start()
+            ready = entered.wait(wait_limit)
+            threads[1].start()
+            for thread in threads:
+                thread.join(wait_limit * 2)
+            self.assertTrue(ready)
+            self.assertFalse(any(thread.is_alive() for thread in threads))
+        self.assertEqual(errors, [])
+        self.assertEqual(results[0][0].outcome, "build_failed" if failure else "measured")
+        self.assertEqual(results[1][0].outcome, "measured")
+        self.assertEqual(results[1][0].build_seconds, wait_seconds + 60)
+        self.assertEqual(results[1][1].outcome, "not_run_window")
+
+    def test_lane_builds_serialize_and_capture_releases_mutex(self):
+        self.contending_lanes()
+
+    def test_failed_and_raised_builds_release_mutex(self):
+        for failure in (1, RuntimeError("build failed")):
+            with self.subTest(failure=failure):
+                self.contending_lanes(failure)
+
+    def test_only_build_process_starts_below_normal_priority(self):
+        original_popen = subprocess.Popen
+        original_runner = layout_measure.run_stamped
+        launches, priorities = [], []
+        replay = Replay(self.root, self.clock)
+        def popen(command, **options):
+            launches.append(options.copy())
+            return original_popen(command, **options)
+        def runner(command, log, timeout, **options):
+            priorities.append(("build" in command, options))
+            original_runner([sys.executable, "-c", "print('ready')"], io.StringIO(), timeout, **options)
+            return replay(command, log, timeout, **options)
+        with patch.object(subprocess, "Popen", side_effect=popen), \
+                patch("layout_measure.capture_board", return_value=MACHINE):
+            results = chain.run_chain(self.steps(indices=(1,)), self.args, runner, self.clock)
+        self.assertEqual(results[0].outcome, "measured")
+        launches = [options for options in launches if options.get("bufsize") == 1]
+        self.assertEqual(len(launches), len(priorities))
+        self.assertTrue(any(build for build, _ in priorities))
+        self.assertTrue(any(not build for build, _ in priorities))
+        for (build, _), options in zip(priorities, launches):
+            if os.name == "nt":
+                self.assertEqual(bool(options.get("creationflags", 0) & subprocess.BELOW_NORMAL_PRIORITY_CLASS), build)
+            elif build:
+                self.assertIs(options["preexec_fn"].func, os.nice)
+                self.assertEqual(options["preexec_fn"].args, (layout_measure.BUILD_NICE_INCREMENT,))
+            else:
+                self.assertNotIn("preexec_fn", options)
 
     def test_worktree_git_commands_enable_longpaths(self):
         commands = []

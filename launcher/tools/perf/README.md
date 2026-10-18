@@ -254,11 +254,17 @@ flowchart LR
     subgraph B[Board B lock]
         LaneB[Anchor and new steps]
     end
+    Mutex[Shared build mutex]
+    Mutex -. Checkout and build .-> A
+    Mutex -. Checkout and build .-> B
     A --> Publish[Publish]
     B --> Publish
     Publish --> Data[perf-data reports]
     Publish --> Artifacts[Raw capture artifacts]
 ```
+
+Builds are serialised across lanes and run at below-normal priority so the
+host stays responsive.
 
 A flash is skipped when the commit's image hash equals the same board's
 previous measured image hash. Hashes are compared only within one board's
