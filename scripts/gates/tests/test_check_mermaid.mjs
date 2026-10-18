@@ -1,6 +1,6 @@
 // Unit tests for the pure parts of check-mermaid.mjs: fence extraction, the
-// line-number rewrite and which mmdc runs. Nothing here runs mmdc or git, so it
-// runs with plain `node --test`, no mermaid-cli or Chrome required.
+// line-number rewrite, which mmdc runs, diagram sizes and the GitHub version parsing.
+// Nothing here runs mmdc, git or the network: plain `node --test`, no mermaid-cli or Chrome.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -14,6 +14,12 @@ import {
   browserConfigArgs,
   mmdcCommand,
   pinnedVersion,
+  pinnedMermaidVersion,
+  svgSize,
+  isTall,
+  TALL_RATIO,
+  viewscreenBundlePath,
+  bundleMermaidVersion,
 } from '../check-mermaid.mjs';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -182,4 +188,39 @@ test('the pinned version is the exact one package.json names', () => {
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('the pinned mermaid is the one package.json overrides it to', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mermaid-pin-'));
+  try {
+    writeFileSync(join(dir, 'package.json'), JSON.stringify({ overrides: { mermaid: '12.1.0' } }));
+    assert.equal(pinnedMermaidVersion(dir), '12.1.0');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('reads a diagram size from the root svg viewBox', () => {
+  const header = '<svg id="my-svg" width="100%" class="flowchart" style="max-width: 418px;" viewBox="4 4 418 1607" role="graphics-document document">';
+  assert.deepEqual(svgSize(`${header}<g></g></svg>`), { width: 418, height: 1607 });
+  assert.deepEqual(svgSize('<svg viewBox="-8 -8 546.32 2180.5">'), { width: 546.32, height: 2180.5 });
+  assert.equal(svgSize('<svg width="10" height="10"><g viewBox="0 0 1 1"></g></svg>'), null);
+  assert.equal(svgSize('<svg viewBox="0 0 0 0">'), null);
+});
+
+test('a diagram is tall only past TALL_RATIO times its width', () => {
+  const width = 400;
+  assert.equal(isTall({ width, height: width * TALL_RATIO }), false);
+  assert.equal(isTall({ width, height: width * TALL_RATIO - 1 }), false);
+  assert.equal(isTall({ width, height: width * TALL_RATIO + 1 }), true);
+});
+
+test("finds GitHub's mermaid bundle and the version it renders with", () => {
+  const page = '<link rel="stylesheet" href="/static/assets/mermaid-b7a7.css"/>\n' +
+    '<script src="/static/assets/mermaidMarkdown-b7a7.js" type="text/javascript"></script>';
+  assert.equal(viewscreenBundlePath(page), '/static/assets/mermaidMarkdown-b7a7.js');
+  assert.equal(viewscreenBundlePath('<html></html>'), null);
+  const bundle = 'A.insertBefore(T,B);try{await C.renderer.draw(e,t,"12.1.0",C)}catch(a){throw a}';
+  assert.equal(bundleMermaidVersion(bundle), '12.1.0');
+  assert.equal(bundleMermaidVersion('a.version="3.4.16"'), null);
 });
