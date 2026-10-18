@@ -449,7 +449,7 @@ integrate_turn_gyro(const input_motion_batch_t* batch) {
         turn_gyro_deg = (vec3f_t){0};
         return;
     }
-    const float dt = (float)INPUT_MOTION_SAMPLE_US / (float)MATH_US_PER_S;
+    const float dt = (float)batch->sample_us / (float)MATH_US_PER_S;
     for (int i = 0; i < batch->count; i++) {
         const vec3f_t rate =
             vec3f_sub(vec3f_scale(vec3f_from_vec3i(batch->samples[i].rotation), 1.0F / INPUT_ROTATION_ONE_DPS),
@@ -488,12 +488,12 @@ read_motion(uint32_t dt_ms) {
         const vec3i_t bias_dps10 = motion_log_vector(gravity_gyro_bias(&gravity), OFFSET_SCALE);
         ESP_LOGI(TAG,
                  "motion raw %d,%d,%d tilt %d bearing %d filt %d,%d str %d shake %d turn %d rot %d,%d,%d quarter %d "
-                 "grav_mg %d,%d,%d bias_dps10 %d,%d,%d samples %d drain_us %lld",
+                 "grav_mg %d,%d,%d bias_dps10 %d,%d,%d samples %d drain_us %lld sample_us %u",
                  raw_acceleration.x, raw_acceleration.y, raw_acceleration.z, (int)lroundf(motion_probe.tilt_deg),
                  motion_probe.bearing_deg, tilt_x(&tilt), tilt_y(&tilt), tilt_strength(&tilt), tilt_shake(&tilt),
                  motion.turn_speed, motion.rotation.x, motion.rotation.y, motion.rotation.z, display_quarter_now(),
                  (int)down_mg.x, (int)down_mg.y, (int)down_mg.z, (int)bias_dps10.x, (int)bias_dps10.y,
-                 (int)bias_dps10.z, motion_samples, (long long)motion_drain_us);
+                 (int)bias_dps10.z, motion_samples, (long long)motion_drain_us, (unsigned)motion_batch->sample_us);
         motion_samples = 0;
         motion_drain_us = 0;
     }

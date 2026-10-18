@@ -8,10 +8,12 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_timer.h"
 
 #include "input/buttons.h"
 #include "input/imu.h"
 #include "input/imu_calib.h"
+#include "input/imu_rate.h"
 #include "input/touch.h"
 #include "services/settings.h"
 
@@ -25,6 +27,7 @@ static const char TAG[] = "input";
 
 static const char* const ACCEL_KEYS[] = {IMU_SETTINGS_ACCEL_X, IMU_SETTINGS_ACCEL_Y, IMU_SETTINGS_ACCEL_Z};
 static imu_calib_t accel_calib;
+static imu_rate_t motion_rate;
 
 _Static_assert(INPUT_ACCEL_ONE_G == IMU_COUNTS_PER_G, "input_read_motion() passes sensor counts through");
 
@@ -105,6 +108,7 @@ input_read_motion_batch(input_motion_batch_t* out) {
     out->count = 0;
     out->gap = false;
     const int count = imu_read_fifo((imu_sample_t*)out->samples, INPUT_MOTION_SAMPLES, &out->gap);
+    out->sample_us = imu_rate_update(&motion_rate, count, esp_timer_get_time(), out->gap || count < 0);
     if (count < 0) {
         return false;
     }

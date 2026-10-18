@@ -17,6 +17,10 @@ The sensor uses matching CTRL2/CTRL3 ODR code 5: 7174.4 / 32 = 224.2 Hz in
 6DOF mode, with a rounded sample interval of 4460 us. The register table and FIFO
 protocol follow QMI8658A Rev A and SensorLib.<sup>[[77]](../Citations.md#77)</sup><sup>[[78]](../Citations.md#78)</sup>
 
+`batch.sample_us` measures the interval at runtime over two-second drain windows,
+accepting estimates within 20% of nominal. Unit oscillators vary: the board
+measures 205.4 Hz versus 224.2 Hz nominal; gaps discard the open window.
+
 ```mermaid
 flowchart LR
     subgraph Predict
@@ -140,7 +144,7 @@ The constants are owned by `launcher/main/input/gravity.h`:
 | `GRAVITY_BIAS_KI` | derived from TAU and SETTLE_S | Linearised integral loop, derived above |
 | `GRAVITY_FREE_FALL_G` | 0.3 g | Acceleration magnitude below which strength is zero |
 | `GRAVITY_MAX_DT_MS` | 100 ms | Maximum prediction and correction interval |
-| `INPUT_MOTION_SAMPLE_US` | derived from `IMU_ODR_HZ` | Per-sample integration interval<sup>[[78]](../Citations.md#78)</sup> |
+| `INPUT_MOTION_SAMPLE_US` | derived from `IMU_ODR_HZ` | Nominal interval until a runtime estimate is accepted<sup>[[78]](../Citations.md#78)</sup> |
 
 ## Limits
 
