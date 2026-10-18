@@ -57,8 +57,6 @@ fixture(void) {
     active = memory_alloc(sizeof *active, MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(active);
     *active = (fixture_t){0};
-    const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
-    ESP_LOGI(TAG, "raster=%dx%d present=%d", size.width, size.height, render_lab_present());
     heap_report(SKIN_PERF_PHASE_BEFORE_ENTER);
     render_lab_test_enter(&active->saved, "capybara");
     suite_set_test_cleanup(release_fixture);
@@ -250,6 +248,9 @@ test_animation_and_frame_cost(void) {
     report_stage(f, SKIN_PERF_STAGE_ANIMATION_STEP, step, 1, false, SKIN_PERF_CORES_UNKNOWN);
     for (size_t q = 0; q < R3D_PERF_QUARTER_COUNT; q++) {
         const r3d_perf_quarter_t* quarter = &r3d_perf_quarters[q];
+        const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
+        ESP_LOGI(TAG, "raster=%dx%d present=%d" R3D_PERF_QUARTER_FORMAT, size.width, size.height, render_lab_present(),
+                 quarter->name);
         render_lab_test_hold_quarter(quarter->quarter);
         perf_stats_t playing_render;
         perf_stats_t paused_render;

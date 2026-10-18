@@ -279,7 +279,8 @@ test_raster_counters(void) {
                        .height = size.height,
                        .destination_width = GFX_WIDTH,
                        .destination_height = GFX_HEIGHT};
-    ESP_LOGI(TAG, "raster=%dx%d present=%d", raster.width, raster.height, render_lab_present());
+    ESP_LOGI(TAG, "raster=%dx%d present=%d" R3D_PERF_QUARTER_FORMAT, raster.width, raster.height, render_lab_present(),
+             perf_quarter->name);
     raster.scratch = memory_alloc(raster_scratch_bytes(&raster), MEMORY_PSRAM);
     gfx_color_t* destination = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
     int32_t* frame_us = malloc(sizeof(*frame_us) * POSES_MAX);
