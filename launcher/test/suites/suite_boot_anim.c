@@ -1078,14 +1078,50 @@ test_the_floor_fades_out_with_distance_rather_than_stopping(void) {
 }
 
 static void
-test_only_positive_crests_whiten_the_floor(void) {
-    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(BOOT_ANIM_FLOOR_GREY), boot_anim_floor_color(-BOOT_ANIM_ONE));
-    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(BOOT_ANIM_FLOOR_GREY), boot_anim_floor_color(0));
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFFFFFF), boot_anim_floor_color(BOOT_ANIM_WHITE_HEIGHT_Q12));
-    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFFFFFF), boot_anim_floor_color(BOOT_ANIM_ONE));
-    const int half = BOOT_ANIM_WHITE_HEIGHT_Q12 / 2;
-    TEST_ASSERT_EQUAL_HEX16(gfx_color_mix(gfx_rgb(BOOT_ANIM_FLOOR_GREY), GFX_RGB(0xFFFFFF), UINT8_MAX / 4),
-                            boot_anim_floor_color(half));
+test_only_positive_crests_take_the_crest_colour(void) {
+    const uint32_t crest = 0x20C0FF;
+    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(BOOT_ANIM_FLOOR_GREY), boot_anim_floor_color(-BOOT_ANIM_ONE, crest));
+    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(BOOT_ANIM_FLOOR_GREY), boot_anim_floor_color(0, crest));
+    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(crest), boot_anim_floor_color(BOOT_ANIM_CREST_HEIGHT_Q12, crest));
+    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(crest), boot_anim_floor_color(BOOT_ANIM_ONE, crest));
+    const int half = BOOT_ANIM_CREST_HEIGHT_Q12 / 2;
+    TEST_ASSERT_EQUAL_HEX16(gfx_color_mix(gfx_rgb(BOOT_ANIM_FLOOR_GREY), gfx_rgb(crest), UINT8_MAX / 4),
+                            boot_anim_floor_color(half, crest));
+}
+
+/* The nearest of the first drawn + 1 curve samples to the colour node over
+ * mesh node (i, j), found the slow way. */
+static int
+nearest_drawn_sample(int i, int j, int drawn) {
+    const int half = BOOT_ANIM_MESH_CELLS / 2;
+    const int stride = BOOT_ANIM_CREST_STRIDE;
+    const int64_t x = (int64_t)((((i + half + (stride / 2)) / stride) * stride) - half) * BOOT_ANIM_MESH_STEP_Q12;
+    const int64_t y = (int64_t)((((j + half + (stride / 2)) / stride) * stride) - half) * BOOT_ANIM_MESH_STEP_Q12;
+    int best = 0;
+    int64_t best_d = INT64_MAX;
+    for (int k = 0; k <= drawn; k++) {
+        const int64_t dx = boot_anim_curve[k].re - x;
+        const int64_t dy = boot_anim_curve[k].im - y;
+        const int64_t d = (dx * dx) + (dy * dy);
+        if (d < best_d) {
+            best_d = d;
+            best = k;
+        }
+    }
+    return best;
+}
+
+static void
+test_the_crest_runs_give_the_nearest_drawn_sample(void) {
+    const int half = BOOT_ANIM_MESH_CELLS / 2;
+    const int drawn_step = 37; /* coprime to the run lengths, so runs' insides and ends are both hit */
+    for (int j = -half; j <= half; j += 3) {
+        for (int i = -half; i <= half; i += 5) {
+            for (int drawn = 0; drawn < BOOT_ANIM_CURVE_POINTS; drawn += drawn_step) {
+                TEST_ASSERT_EQUAL_INT(nearest_drawn_sample(i, j, drawn), boot_anim_crest_sample(i, j, drawn));
+            }
+        }
+    }
 }
 
 static void
@@ -1838,7 +1874,8 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_the_seed_finishes_the_crossfade_before_the_dissolve_starts);
     RUN_TEST(test_the_floor_fades_in_from_the_origin_outward);
     RUN_TEST(test_the_floor_fades_out_with_distance_rather_than_stopping);
-    RUN_TEST(test_only_positive_crests_whiten_the_floor);
+    RUN_TEST(test_only_positive_crests_take_the_crest_colour);
+    RUN_TEST(test_the_crest_runs_give_the_nearest_drawn_sample);
     RUN_TEST(test_the_axes_are_there_before_the_curve_starts_climbing);
 
     RUN_TEST(test_height_changes_the_hue);

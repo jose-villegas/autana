@@ -266,11 +266,37 @@ boot_anim_floor_height(int i, int j, const boot_anim_floor_state_t* state) {
     return boot_anim_floor_ripple(i, j, state) + boot_anim_floor_swell(i, j, state);
 }
 
+/* How far a crest of `ripple` has turned from the floor's grey, 0..255:
+ * squared, so only the tops take colour. */
+static inline uint8_t
+boot_anim_crest_amount(int32_t ripple) {
+    const int32_t crest = (mathi_clamp(ripple, 0, BOOT_ANIM_CREST_HEIGHT_Q12) * 255) / BOOT_ANIM_CREST_HEIGHT_Q12;
+    return (uint8_t)((crest * crest) / 255);
+}
+
 static inline gfx_color_t
-boot_anim_floor_color(int32_t ripple) {
-    const int32_t crest = (mathi_clamp(ripple, 0, BOOT_ANIM_WHITE_HEIGHT_Q12) * 255) / BOOT_ANIM_WHITE_HEIGHT_Q12;
-    const uint8_t whiten = (uint8_t)((crest * crest) / 255);
-    return gfx_color_mix(gfx_rgb(BOOT_ANIM_FLOOR_GREY), GFX_RGB(0xFFFFFF), whiten);
+boot_anim_floor_color(int32_t ripple, uint32_t crest_rgb) {
+    return gfx_color_mix(gfx_rgb(BOOT_ANIM_FLOOR_GREY), gfx_rgb(crest_rgb), boot_anim_crest_amount(ripple));
+}
+
+/* The curve sample nearest mesh node (i, j) in the floor plane among the
+ * first `drawn` + 1, from the baked runs of every BOOT_ANIM_CREST_STRIDE-th
+ * node: inside a run the pen's own sample is the nearest, between runs the
+ * last one holds. */
+static inline int
+boot_anim_crest_sample(int i, int j, int drawn) {
+    const int half = BOOT_ANIM_MESH_CELLS / 2;
+    const int ci = (i + half + (BOOT_ANIM_CREST_STRIDE / 2)) / BOOT_ANIM_CREST_STRIDE;
+    const int cj = (j + half + (BOOT_ANIM_CREST_STRIDE / 2)) / BOOT_ANIM_CREST_STRIDE;
+    const int node = (cj * BOOT_ANIM_CREST_SIDE) + ci;
+    int sample = 0;
+    for (int r = boot_anim_crest_run_start[node]; r < boot_anim_crest_run_start[node + 1]; r++) {
+        if (boot_anim_crest_runs[r][0] > drawn) {
+            break;
+        }
+        sample = mathi_min(drawn, boot_anim_crest_runs[r][1]);
+    }
+    return sample;
 }
 
 /* Spline interpolation keeps the curve's tight turns smooth without a larger
@@ -674,6 +700,15 @@ boot_anim_stroke(int32_t along_q12, int32_t pen_q12) {
     s.width = best >= BOOT_ANIM_FAT_TRAIL ? BOOT_ANIM_FAT_WIDTH : 1;
 
     return s;
+}
+
+/* The colour curve sample `sample` is drawn in at colour progress
+ * `colour_pen`, without bloom or glow: what a crest under it turns toward. */
+static inline uint32_t
+boot_anim_crest_rgb(int sample, int32_t colour_pen) {
+    const int32_t phase1_span = (int32_t)(BOOT_ANIM_CURVE_PHASE1_POINTS - 1);
+    const int32_t along = ((sample * BOOT_ANIM_ONE) + (phase1_span / 2)) / phase1_span;
+    return gfx_hue_rgb(boot_anim_stroke(along, colour_pen).hue);
 }
 
 /* Axes reach their full extent over the fade interval, so the scene has one
