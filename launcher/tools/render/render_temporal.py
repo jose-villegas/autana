@@ -7,7 +7,8 @@ import subprocess
 import numpy as np
 from PIL import Image
 
-from render_compare import captioned, read_video
+# These helpers stay private because render_compare is frozen until the next rebake.
+from render_compare import _box_mean, _ffmpeg_command, captioned, read_video
 
 TEMPORAL_BLOCK_SIDE = 4
 TEMPORAL_POP_THRESHOLD = 8
@@ -22,15 +23,9 @@ def temporal_change(previous_a, a, previous_b, b):
     if any(frame.shape != frames[0].shape for frame in frames):
         raise ValueError("temporal frames must have the same shape")
     size = min(TEMPORAL_BLOCK_SIDE, *frames[0].shape[:2])
-    pa, ca, pb, cb = [box_mean(frame.mean(axis=2), size) for frame in frames]
+    pa, ca, pb, cb = [_box_mean(frame.mean(axis=2), size) for frame in frames]
     difference = np.abs((cb - pb) - (ca - pa))
     return float(difference.mean()), float(100 * np.mean(difference > TEMPORAL_POP_THRESHOLD))
-
-
-def box_mean(values, size):
-    total = np.pad(values.cumsum(axis=0).cumsum(axis=1), ((1, 0), (1, 0)))
-    window = total[size:, size:] - total[:-size, size:] - total[size:, :-size] + total[:-size, :-size]
-    return window / (size * size)
 
 
 def write_video(frames, fps, out):
@@ -39,10 +34,7 @@ def write_video(frames, fps, out):
     try:
         for picture in frames:
             if process is None:
-                command = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo", "-pix_fmt", "rgb24",
-                           "-s", "%dx%d" % picture.size, "-r", "%g" % fps, "-i", "-",
-                           "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2", "-c:v", "libx264", "-crf", "16",
-                           "-preset", "medium", "-pix_fmt", "yuv420p", "-movflags", "+faststart", str(out)]
+                command = _ffmpeg_command("ffmpeg", picture.size, fps, str(out))
                 process = subprocess.Popen(command, stdin=subprocess.PIPE)
             process.stdin.write(picture.tobytes())
     finally:
