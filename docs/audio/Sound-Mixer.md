@@ -190,7 +190,7 @@ slot is reused, so an old handle can never reach a newer sound in its slot.
 
 | Rule | Behaviour |
 |---|---|
-| Capacity | 8 voices at once (`SOUND_VOICE_COUNT`) |
+| Capacity | 8 voices at once (`SOUND_VOICE_COUNT`); 32 is the measured ceiling, where present loses about 1 ms per frame ([Cost](#cost)) |
 | Handle | `sound_voice_t.id` encodes the slot and its voice generation; 0 is the null voice |
 | Stale handle | after a stop or a steal, stop and gain calls do nothing and `sound_is_playing()` is false |
 | Full table | a new play always steals: the lowest priority voice, then the oldest among equals |
