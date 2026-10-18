@@ -61,26 +61,6 @@ current_scene(void) {
  * which a pin cannot rely on across compilers. Read every frame. */
 bool render_lab_show_hud = true;
 
-TUNE_OWNER(render_lab);
-TUNE(render_lab, view, RENDER_DEBUG_VIEW_SHADED, RENDER_DEBUG_VIEW_SHADED, RENDER_DEBUG_VIEW_COUNT);
-TUNE(render_lab, scale, 200, 100, 800);
-TUNE(render_lab, budget, 0, 0, 200);
-
-int
-render_lab_debug_view(void) {
-    return (int)view;
-}
-
-int
-render_lab_scale(void) {
-    return scale;
-}
-
-int
-render_lab_budget_ms(void) {
-    return budget;
-}
-
 /* How long a scene's name stays on screen after the scene is entered. The
  * BOOT menu shows the name at any time, so the HUD does not keep it. */
 #define SCENE_TITLE_MS      2000

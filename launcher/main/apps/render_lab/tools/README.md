@@ -19,6 +19,46 @@ across compilers. HUD renders also format a `double` fps readout.
 The fps text comes from the host fixture - time the board with a device
 capture.
 
+`render_lab_render --tune NAME=VALUE` applies a console tuning before the scene
+enters; repeat it for more settings. `--live-tune NAME=VALUE` applies it after
+entry, so the frame hook changes the next frame without reloading the scene.
+
+### Camera presentation
+
+`render_lab.present` selects the scene camera's present mode: NEAREST (0, the
+default), SCANLINE (1) or DOUBLE (2), in `camera_present_t` order. Both scenes
+apply it every frame, and the perf suites size and compose the same way.
+
+```sh
+autana tune render_lab.present 1
+autana suite run_sponza_perf_suite --set render_lab.present=1
+sh launcher/main/apps/render_lab/tools/render_lab_render_host.sh --build-only -o /tmp/present
+/tmp/present/render_lab_render --scene sponza-fitted-full --tune render_lab.present=1 --no-hud -o /tmp/present/scan.bmp
+```
+
+Seeded `perf_compare` on A308, 2026-10-18, eight seeds per side, ms per frame:
+
+| Scene | NEAREST | SCANLINE | Δ |
+|---|---:|---:|---:|
+| sponza fitted-full | 45.4 | 32.9 | −27.7% |
+| sponza full | 43.1 | 31.2 | −27.7% |
+| sponza flat | 32.7 | 25.1 | −23.3% |
+| sponza lite | 34.8 | 24.3 | −30.0% |
+| sponza fitted | 35.2 | 24.8 | −29.5% |
+| sponza flat-fitted | 32.9 | 25.4 | −22.7% |
+| capybara render (paused) | 6.75 | 3.87 | −42.7% |
+
+A separate scoped A/B on the same day (one flash, two interleaved repeats) timed
+all three modes on sponza fitted-full, in ms:
+
+| Quarter | NEAREST | DOUBLE | SCANLINE |
+|---|---:|---:|---:|
+| portrait | 45.4 | 31.9 | 32.7 |
+| landscape | 42.4 | 30.3 | 31.1 |
+
+The lines follow the panel's rows and darken the clear background too. The
+engine page shows the [presentation GIFs](../../../../../docs/render/Dynamic-Resolution.md#camera-presentation).
+
 ### Debug views
 
 `--view shaded|depth|tiles|motion|meshlets` selects the declared context view.
