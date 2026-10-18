@@ -2,7 +2,7 @@
 """Fail when a documentation citation resolves neither in this tree nor in
 ESP-IDF.
 
-    python scripts/gates/check_doc_citations.py [--root ROOT] [--require-idf]
+    python scripts/gates/check_doc_citations.py [--root ROOT] [--require-idf] [--fix]
 
 A backticked function (`name()`), path or CONSTANT_NAME a doc cites must be
 defined in this tree (the vendored components under launcher/components/
@@ -15,20 +15,22 @@ names. Under docs/plans/, which names what is not built yet, names are not
 checked; section citations still are.
 
 docs/Citations.md numbers the papers and specs the tree cites, one table row
-each, `| <a id="N"></a>[N] | ...<br>Cited by: ... |`.
+each, `| <a id="N"></a>[N] | ...<br>Named in code: `name`<br>Cited by: ... |`.
 Entries ascend, and a deleted entry's number is not reused. Every
-`Citations.md#N` a tracked document writes must name an entry, and an
-entry's "Cited by" line must link exactly the documents that cite it ("none"
-for an entry only code names). Code and its comments never cite by number: a
-`Citations.md#N` in a source file fails, and the comment names its source
-(author, year or section) in place. The gates' own tests write citations as fixtures, so they cite
-nothing.
+`Citations.md#N` a tracked document writes must name an entry. Code and its
+comments never cite by number: a `Citations.md#N` in a source file fails, and
+the comment names its source (author, year or section) in place. An entry
+code uses carries that name once, and the entry's "Cited by" line must link
+exactly the documents that cite it by number plus the source files that
+contain the name. The gates' own tests write citations as fixtures, so they
+cite nothing. --fix rewrites every "Cited by" line to what the tree says.
 
 Without an ESP-IDF checkout, a name this tree does not define cannot be
 told apart from a typo, so it is counted, not failed, and one line says so.
 --require-idf, which CI passes, makes a missing checkout, or a missing
 toolchain C library beside it, an error instead.
 """
+import os
 import pathlib
 import re
 import sys
@@ -47,8 +49,9 @@ PLANS = "docs/plans/"
 SKIP_FENCES = {"sh", "shell", "bash", "console", "text", "output"}
 CITATIONS = "docs/Citations.md"
 CITED_BY = re.compile(r"<br>Cited by: ([^|\n]*) \|$")
+NAMED = re.compile(r"<br>Named in code: `([^`\n]+)`")
 CITATION_ROW = re.compile(
-    r'^\| <a id="([^"\n]*)"></a>\[(\d+)\] \| [^|\n]+'
+    r'^\| <a id="([^"\n]*)"></a>\[(\d+)\] \| [^|\n]+?(?:' + NAMED.pattern + ")?"
     + CITED_BY.pattern, re.MULTILINE)
 PAPER = re.compile(r"Citations\.md#(\d+)\b")
 CELL_LINK = re.compile(r"\]\(([^)\s#]+)\)")
@@ -243,9 +246,9 @@ def unresolved_sections(root):
 
 
 def citation_rows(root):
-    """{number: (line, set of cited-by paths)} from docs/Citations.md, and
-    the problems its entries have on their own. Cited-by links resolve
-    relative to docs/."""
+    """{number: (line, name, set of cited-by paths)} from docs/Citations.md,
+    and the problems its entries have on their own. `name` is what code calls
+    the entry, or None. Cited-by links resolve relative to docs/."""
     root = pathlib.Path(root)
     rows, problems = {}, []
     path = root / CITATIONS
@@ -254,7 +257,7 @@ def citation_rows(root):
     text = path.read_text(encoding="utf-8")
     for m in CITATION_ROW.finditer(text):
         number = text.count("\n", 0, m.start()) + 1
-        anchor, shown, cited_line = m.group(1), int(m.group(2)), m.group(3)
+        anchor, shown, name, cited_line = m.group(1), int(m.group(2)), m.group(3), m.group(4)
         if anchor != str(shown):
             problems.append(f"{CITATIONS}:{number}: anchor \"{anchor}\" is not its number [{shown}]")
         if rows and shown <= max(rows):
@@ -266,7 +269,7 @@ def citation_rows(root):
                 cited_by.add(resolved.relative_to(root.resolve()).as_posix())
             except ValueError:
                 problems.append(f"{CITATIONS}:{number}: cited-by link {target} leaves the tree")
-        rows[shown] = (number, cited_by)
+        rows[shown] = (number, name, cited_by)
     return rows, problems
 
 
@@ -301,26 +304,85 @@ def code_citations(root):
     return found
 
 
+def named_in_code(root, rows):
+    """{number: {source path: first line}} for every source file containing
+    the name an entry carries, outside the gates' own tests."""
+    root = pathlib.Path(root)
+    names = {n: name for n, (_, name, _) in rows.items() if name}
+    found = {}
+    if not names:
+        return found
+    for rel in sorted(tracked_files(root, CODE_SOURCES)):
+        if rel.startswith(GATE_TESTS) or not (root / rel).is_file():
+            continue
+        for number, line in enumerate((root / rel).read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            for n, name in names.items():
+                if name in line:
+                    found.setdefault(n, {}).setdefault(rel, number)
+    return found
+
+
+def citers(root):
+    """(rows, problems, {number: sorted citing paths}): the documents citing
+    an entry by number plus the source files naming it."""
+    rows, problems = citation_rows(root)
+    by_number = {n: set(docs) for n, docs in paper_citations(root).items()}
+    for n, files in named_in_code(root, rows).items():
+        by_number.setdefault(n, set()).update(files)
+    return rows, problems, {n: sorted(paths) for n, paths in by_number.items()}
+
+
+def cited_by_cell(paths):
+    """The "Cited by" cell for `paths`: links relative to docs/."""
+    if not paths:
+        return "none"
+    return ", ".join(f"[{p}]({os.path.relpath(p, pathlib.PurePosixPath(CITATIONS).parent).replace(os.sep, '/')})"
+                     for p in paths)
+
+
 def unresolved_papers(root):
     """Every problem between docs/Citations.md and what cites it: a source file
     citing by number, a number with no entry, a cited-by line that differs from
-    the citing documents, and an entry out of order."""
-    rows, problems = citation_rows(root)
+    the citing documents plus the files naming the entry, a name no file
+    carries, and an entry out of order."""
+    rows, problems, cited = citers(root)
     problems += code_citations(root)
-    cited = paper_citations(root)
-    for n, citers in sorted(cited.items()):
+    for n, paths in sorted(cited.items()):
         if n not in rows:
-            for rel, line in sorted(citers.items()):
+            for rel, line in sorted(paper_citations(root).get(n, {}).items()):
                 problems.append(f"{rel}:{line}: cites [{n}], which {CITATIONS} has no row for")
-    for n, (line, cited_by) in sorted(rows.items()):
-        actual = set(cited.get(n, {}))
-        if cited_by != actual:
+    for n, (line, name, cited_by) in sorted(rows.items()):
+        actual = set(cited.get(n, ()))
+        if name and not any(p for p in actual if not p.endswith(".md")):
+            problems.append(f"{CITATIONS}:{line}: [{n}] names `{name}` in code, "
+                            "and no source file does; drop the name or the entry")
+        if not actual and not name:
+            problems.append(f"{CITATIONS}:{line}: [{n}] is cited nowhere")
+        elif cited_by != actual:
             extra, absent = sorted(cited_by - actual), sorted(actual - cited_by)
             detail = "; ".join(filter(None, [
                 absent and "cited by, not listed: " + ", ".join(absent),
                 extra and "listed, does not cite it: " + ", ".join(extra)]))
-            problems.append(f"{CITATIONS}:{line}: [{n}] {detail}")
+            problems.append(f"{CITATIONS}:{line}: [{n}] {detail} (python scripts/gates/check_doc_citations.py --fix)")
     return problems
+
+
+def fix_cited_by(root):
+    """Rewrite every "Cited by" cell of docs/Citations.md to the citing
+    documents plus the source files naming the entry; True if it changed."""
+    root = pathlib.Path(root)
+    path = root / CITATIONS
+    rows, _, cited = citers(root)
+    text = path.read_text(encoding="utf-8")
+
+    def cell(m):
+        paths = cited.get(int(m.group(2)), [])
+        return m.group(0)[:m.start(4) - m.start()] + cited_by_cell(paths) + " |"
+
+    fixed = CITATION_ROW.sub(cell, text)
+    if fixed != text:
+        path.write_text(fixed, encoding="utf-8", newline="")
+    return fixed != text
 
 
 def _spelling(citation):
@@ -370,12 +432,15 @@ def check(root, outside):
 def main(argv):
     root = pathlib.Path(".")
     require_idf = "--require-idf" in argv
-    argv = [arg for arg in argv if arg != "--require-idf"]
+    fix = "--fix" in argv
+    argv = [arg for arg in argv if arg not in ("--require-idf", "--fix")]
     if argv[:1] == ["--root"] and len(argv) == 2:
         root = pathlib.Path(argv[1])
     elif argv:
-        print("usage: check_doc_citations.py [--root ROOT] [--require-idf]", file=sys.stderr)
+        print("usage: check_doc_citations.py [--root ROOT] [--require-idf] [--fix]", file=sys.stderr)
         return 2
+    if fix:
+        print("rewrote the Cited by lines" if fix_cited_by(root) else "Cited by lines already match")
     outside = outside_vocabulary()
     if require_idf and required_missing(outside):
         print(required_missing(outside), file=sys.stderr)
