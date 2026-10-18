@@ -555,11 +555,11 @@ print(json.dumps(inputs))
         for name in ("code launcher/tools/render/doc_stages.py", "code launcher/tools/render/render_compare.py",
                      "code launcher/tools/r3d/fitted_variant.py", "file launcher/tools/r3d/board_cost_weights.txt",
                      "host launcher/main/render/raster.c", "host launcher/tools/render/scene_viewer.c",
+                     "native launcher/main/display/display.h",
                      "bake sponza.atrium.mesh", "bake sponza.atrium_fitted.mesh"):
             self.assertIn(name, inputs)
         self.assertNotIn("code launcher/tools/bake/bake.py", inputs)
-        self.assertEqual([name for name in inputs if "/apps/" in name],
-                         ["native launcher/main/apps/render_lab/tests/r3d_perf_quarters.h"])
+        self.assertEqual([name for name in inputs if "/apps/" in name], [])
 
 
 if __name__ == "__main__":
