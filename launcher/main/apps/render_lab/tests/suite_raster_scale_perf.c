@@ -168,13 +168,12 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
     }
     qsort(frame_us, (size_t)poses, sizeof *frame_us, compare_us);
     ESP_LOGI(TAG,
-             "scale_split: %dx%d poses=%d tris=%lld frame mean/p50/max us %lld/%ld/%ld | %s"
-             " quarter=%s",
+             "scale_split: %dx%d poses=%d tris=%lld frame mean/p50/max us %lld/%ld/%ld | %s" R3D_PERF_QUARTER_FORMAT,
              size.width, size.height, poses, (long long)(triangles / poses), (long long)(sum / poses),
              (long)frame_us[poses / 2], (long)frame_us[poses - 1], report, perf_quarter->name);
     ESP_LOGI(TAG,
-             "scale_spans: %dx%d one core us/pose setup %lld edges %lld carry %lld fill %lld clear %lld"
-             " quarter=%s",
+             "scale_spans: %dx%d one core us/pose setup %lld edges %lld carry %lld fill %lld clear "
+             "%lld" R3D_PERF_QUARTER_FORMAT,
              size.width, size.height, (long long)(spans.setup / poses), (long long)(spans.edges / poses),
              (long long)(spans.carry / poses), (long long)(spans.fill / poses), (long long)(spans.clear / poses),
              perf_quarter->name);
@@ -286,19 +285,13 @@ test_raster_counters(void) {
     TEST_ASSERT_NOT_NULL(frame_us);
     TEST_ASSERT_NOT_NULL(report);
     const int64_t mean_us = measure_size(&raster, destination, size, frame_us, report);
-    ESP_LOGI(TAG,
-             "raster both cores: mean %lldus"
-             " quarter=%s",
-             (long long)mean_us, perf_quarter->name);
+    ESP_LOGI(TAG, "raster both cores: mean %lldus" R3D_PERF_QUARTER_FORMAT, (long long)mean_us, perf_quarter->name);
     const int bracket = frame_cost_shared_name_index("r3d.draw");
     TEST_ASSERT_TRUE(bracket >= 0);
     /* Counters cover core 0's half of the draw. */
     for (size_t event = 0; event < sizeof counter_events / sizeof counter_events[0]; event++) {
         count_along_path(&raster, destination, bracket, counter_events[event], report);
-        ESP_LOGI(TAG,
-                 "%s"
-                 " quarter=%s",
-                 report, perf_quarter->name);
+        ESP_LOGI(TAG, "%s" R3D_PERF_QUARTER_FORMAT, report, perf_quarter->name);
     }
     free(report);
     free(frame_us);
@@ -386,10 +379,7 @@ log_frames(const char* camera, const char* policy, const char* ladder, int32_t b
             length += snprintf(line + length, line_size - (size_t)length, " %d:%ld:%ld:%ld:%ld", r->step,
                                (long)r->draw_us, (long)r->upscale_us, (long)r->triangles, (long)r->predicted_us);
         }
-        ESP_LOGI(TAG,
-                 "%s"
-                 " quarter=%s",
-                 line, perf_quarter->name);
+        ESP_LOGI(TAG, "%s" R3D_PERF_QUARTER_FORMAT, line, perf_quarter->name);
     }
     free(line);
 }
@@ -407,11 +397,8 @@ record_frame(frame_record_t* record, int64_t began_us, int64_t drawn_us, int64_t
 static __attribute__((noinline)) void
 log_refit(const char* camera, const ladder_t* ladder, const resolution_config_t* config) {
     const resolution_predict_t* refit = &render_context_main()->predict;
-    ESP_LOGI(TAG,
-             "dynres_refit: %s %s %ld scale %.3f offset_us %.0f"
-             " quarter=%s",
-             camera, ladder->name, (long)config->budget_us, (double)refit->scale, (double)refit->offset_us,
-             perf_quarter->name);
+    ESP_LOGI(TAG, "dynres_refit: %s %s %ld scale %.3f offset_us %.0f" R3D_PERF_QUARTER_FORMAT, camera, ladder->name,
+             (long)config->budget_us, (double)refit->scale, (double)refit->offset_us, perf_quarter->name);
 }
 
 /* The path flown through the scene manager at FRAME_DT_MS a frame: at the
@@ -467,16 +454,14 @@ configure(const ladder_t* ladder, int32_t budget_us, resolution_config_t* config
 static __attribute__((noinline)) void
 log_fit(const ladder_t* ladder, const resolution_config_t* config, const resolution_model_t* model) {
     ESP_LOGI(TAG,
-             "dynres_model: %s base %.0f per_triangle %.4f per_triangle_row %.4f per_pixel_share %.0f"
-             " quarter=%s",
+             "dynres_model: %s base %.0f per_triangle %.4f per_triangle_row %.4f per_pixel_share "
+             "%.0f" R3D_PERF_QUARTER_FORMAT,
              ladder->name, (double)model->base_us, (double)model->per_triangle_us, (double)model->per_triangle_row_us,
              (double)model->per_pixel_share_us, perf_quarter->name);
     for (int step = 0; step < ladder->count; step++) {
-        ESP_LOGI(TAG,
-                 "dynres_step: %s %d %dx%d upscale %.0f"
-                 " quarter=%s",
-                 ladder->name, step, config->steps[step].width, config->steps[step].height,
-                 (double)model->upscale_us[step], perf_quarter->name);
+        ESP_LOGI(TAG, "dynres_step: %s %d %dx%d upscale %.0f" R3D_PERF_QUARTER_FORMAT, ladder->name, step,
+                 config->steps[step].width, config->steps[step].height, (double)model->upscale_us[step],
+                 perf_quarter->name);
     }
 }
 
@@ -549,10 +534,8 @@ test_dynamic_resolution_refit_cost(void) {
         total_us += elapsed_us;
         max_us = elapsed_us > max_us ? elapsed_us : max_us;
     }
-    ESP_LOGI(TAG,
-             "dynres_refit_cost: calls 1000 mean_us %.3f max_us %lld"
-             " quarter=%s",
-             (double)total_us / 1000.0, (long long)max_us, perf_quarter->name);
+    ESP_LOGI(TAG, "dynres_refit_cost: calls 1000 mean_us %.3f max_us %lld", (double)total_us / 1000.0,
+             (long long)max_us);
     memory_free(config);
     memory_free(predict);
     TEST_PASS();
@@ -574,15 +557,13 @@ run_raster_scale_perf_suite(void) {
             scene = NULL;
         }
     }
+    RUN_TEST(test_dynamic_resolution_refit_cost);
     for (size_t q = 0; q < R3D_PERF_QUARTER_COUNT; q++) {
         perf_quarter = &r3d_perf_quarters[q];
-        display_hold_quarter(perf_quarter->quarter);
-        RUN_TEST(test_dynamic_resolution_refit_cost);
         RUN_TEST(test_raster_stage_split_by_size);
         RUN_TEST(test_raster_counters);
         RUN_TEST(test_dynamic_resolution_policies_along_the_path);
     }
-    display_release_quarter();
     loaded = (sponza_suite_t){scene, pack, lens};
     sponza_suite_release(&loaded);
     scene = NULL;

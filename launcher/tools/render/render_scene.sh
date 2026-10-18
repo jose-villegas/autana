@@ -209,7 +209,7 @@ render_scene_build() {
         _rs_flags="$_rs_flags -I $_rs_launcher/$_rs_inc"
     done
 
-    _rs_files="$_rs_tools/render/render_host.c $_rs_tools/render/render_video.c $_rs_tools/render/render_watch.c $_rs_launcher/main/display/display_host.c"
+    _rs_files="$_rs_tools/render/render_host.c $_rs_tools/render/render_video.c $_rs_tools/render/render_watch.c"
     # Every scene uses drawing and presentation, excluding device-only backends.
     _rs_files="$_rs_files $(find "$_rs_launcher/main/gfx" "$_rs_launcher/main/draw" -name '*.c' ! -name '*_device.c' | sort | tr '
 ' ' ')"

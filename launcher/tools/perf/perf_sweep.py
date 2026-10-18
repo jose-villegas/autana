@@ -301,19 +301,16 @@ def report(directory):
     require_same_board({f"{index}: {item.get('capture', 'unnamed')}": item.get("board")
                         for index, item in enumerate(saved["captures"]) if not item.get("error")})
     multi_seed = len(saved["seeds"]) >= 2
-    gathered, units, shared = {}, {}, None
+    gathered, units = {}, {}
     for capture in saved["captures"]:
         if capture.get("error"):
             continue
         found, found_units = (capture_metrics(capture) if capture.get("table") and Path(capture["capture"]).exists()
                               else (capture.get("metrics", {}), capture.get("units", {})))
         units.update(found_units)
-        # A metric some capture lacks is not the suite's measurement.
-        shared = set(found) if shared is None else shared & set(found)
         for metric, value in found.items():
             key = (capture["build"], capture["point"], metric)
             gathered.setdefault(key, {}).setdefault(capture["seed"], {})[capture["round"]] = value
-    gathered = {key: seeds for key, seeds in gathered.items() if key[2] in (shared or set())}
     # A knob point and its build's baseline run on the same images, so layout
     # is shared and the interleaved run is the unit; two builds differ in
     # layout, so there the seed mean is.

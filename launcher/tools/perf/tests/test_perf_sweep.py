@@ -213,6 +213,41 @@ class SweepTests(ShellJobTests, unittest.TestCase):
                 self.assertTrue(all("--hot-tunables" in call for call in fake.calls if "--flash" in call))
                 self.assertTrue(all("--set" in call for call in captures))
 
+    def test_quarter_identity_through_acquisition_and_report(self):
+        for baseline in ("legacy", "portrait", "both"):
+            with self.subTest(baseline=baseline), tempfile.TemporaryDirectory() as root:
+                args = arguments(root)
+                fake = FakeAutana(root)
+                def runner(command, log, timeout):
+                    result = fake(command, log, timeout)
+                    candidate = 'r3d_span.small_max_side=2' not in command
+                    for _, line in result[1]:
+                        if not line.startswith('report: '):
+                            continue
+                        path = Path(line.removeprefix('report: ')).with_suffix('.log')
+                        suffix = ' quarter=portrait' if candidate or baseline != 'legacy' else ''
+                        text = f'mesh both cores: mean 10000us{suffix}\n'
+                        if candidate or baseline == 'both':
+                            text += 'mesh both cores: mean 20000us quarter=landscape\n'
+                        path.write_text(text + ':1:test_counters:PASS\n')
+                    return result
+                self.assertEqual(tool.run(args, runner), 0)
+                result = tool.report(args.out)
+                base, candidate = result['rows'][0]['metrics'], result['rows'][2]['metrics']
+                self.assertEqual(candidate['suite/mesh quarter=landscape']['mean'], 20000)
+                if baseline == 'both':
+                    self.assertEqual(base['suite/mesh quarter=landscape']['mean'], 20000)
+                    self.assertEqual(candidate['suite/mesh quarter=landscape']['ratio'], 1)
+                else:
+                    self.assertIsNone(base['suite/mesh quarter=landscape']['mean'])
+                    self.assertEqual(candidate['suite/mesh quarter=landscape']['verdict'], 'inconclusive')
+                if baseline != 'legacy':
+                    self.assertEqual(base['suite/mesh quarter=portrait']['mean'], 10000)
+                    self.assertEqual(candidate['suite/mesh quarter=portrait']['ratio'], 1)
+                else:
+                    self.assertIsNone(base['suite/mesh quarter=portrait']['mean'])
+                    self.assertEqual(base['suite/mesh']['mean'], 10000)
+
     def test_report_units_verdicts_and_table(self):
         for seeds in ((1,), tuple(range(1, 17))):
             with self.subTest(seeds=seeds), tempfile.TemporaryDirectory() as root:

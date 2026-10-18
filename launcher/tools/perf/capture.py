@@ -48,7 +48,8 @@ def require_same_board(boards: Mapping[str, str | None]) -> str | None:
     return next(iter(groups), None)
 
 
-QUARTERS = ("portrait", "landscape")
+QUARTER_HEADER = Path(__file__).resolve().parents[2] / "main/apps/render_lab/tests/r3d_perf_quarters.h"
+QUARTERS = tuple(re.findall(r'{"([^"\n]+)",\s*DISPLAY_\w+}', QUARTER_HEADER.read_text(encoding="utf-8")))
 QUARTER_RE = re.compile(r"\bquarter=(\S+)")
 
 
@@ -65,12 +66,22 @@ def quarter_row(name, line):
     return f"{name} quarter={quarter}" if quarter else name
 
 
-def select_quarter(text, quarter="portrait"):
-    """Select one orientation for tools whose tables describe a single viewport."""
+def capture_quarters(text, expected=()):
+    """Validate tagged quarters and require any quarters the caller expects."""
+    observed = {name for line in text.splitlines() if (name := quarter_name(line))}
+    missing = set(expected) - observed
+    if missing:
+        raise ValueError("capture missing render quarter " + ", ".join(sorted(missing)))
+    return observed
+
+
+def select_quarter(text, quarter="portrait", observed=None):
+    """Keep shared metadata and one tagged viewport without changing row identity."""
     if quarter not in QUARTERS:
         raise ValueError(f"invalid render quarter {quarter}")
-    observed = {name for line in text.splitlines() if (name := quarter_name(line))}
+    if observed is None:
+        observed = capture_quarters(text)
     if (observed or quarter != "portrait") and quarter not in observed:
         raise ValueError(f"capture has no quarter={quarter} rows")
-    return "\n".join(QUARTER_RE.sub("", line).rstrip() for line in text.splitlines()
+    return "\n".join(line for line in text.splitlines()
                      if quarter_name(line) in (None, quarter))

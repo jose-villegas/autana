@@ -10,7 +10,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4] / "tools" / "
 from build.c_header import read_define
 from generated_blocks import replace_block
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[4] / "tools" / "perf"))
-from capture import build_id, QUARTERS, quarter_name
+from capture import build_id, QUARTERS, capture_quarters, select_quarter
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[5] / "scripts/device"))
 from device_report import BUDGET_TABLE_HEADER
 
@@ -40,16 +40,12 @@ RENDER_KEYS = ((STAGE_RENDER, "0"), (STAGE_RENDER, "1"), (STAGE_RENDER_DELTA, ""
 FRAME_KEYS = ((STAGE_FRAME, "0"), (STAGE_FRAME, "1"), (STAGE_FRAME_DELTA, ""))
 
 def parse_capture(text, quarter="portrait"):
-    if quarter not in QUARTERS:
-        raise ValueError(f"invalid render quarter {quarter}")
-    observed = {quarter_name(line) for line in text.splitlines()
-                if f"stage={STAGE_RENDER} " in line and quarter_name(line)}
-    if observed and set(QUARTERS) != observed:
-        raise ValueError("capture missing render quarter " + ", ".join(sorted(set(QUARTERS) - observed)))
-    if not observed and quarter != "portrait":
-        raise ValueError(f"capture has no quarter={quarter} rows")
-    render_stages = {STAGE_RENDER, STAGE_FRAME, STAGE_RENDER_DELTA, STAGE_FRAME_DELTA}
-    build = build_id(text)
+    observed = capture_quarters(text)
+    return _parse_capture(select_quarter(text, quarter, observed), bool(observed),
+                          quarter=quarter if observed else None)
+
+
+def _capture_runs(text):
     runs = {}
     current = None
     for line in text.splitlines():
@@ -65,12 +61,24 @@ def parse_capture(text, quarter="portrait"):
             if "phase" in fields:
                 current[("phase", fields["phase"])] = fields
             elif "stage" in fields:
-                if fields["stage"] in render_stages and quarter_name(line) not in (None, quarter):
-                    continue
-                current[(fields["stage"], fields.get("cores", fields.get("paused", "")))] = fields
+                current[(fields["stage"], fields.get("cores", fields.get("paused", "")), fields.get("quarter"))] = fields
+    return runs
+
+
+def _parse_capture(text, tagged, source=None, quarter=None):
+    render_stages = {STAGE_RENDER, STAGE_FRAME, STAGE_RENDER_DELTA, STAGE_FRAME_DELTA}
+    build = build_id(text)
+    source = _capture_runs(text) if source is None else source
+    runs = {}
+    for number, raw in source.items():
+        current = runs[number] = {}
+        for key, fields in raw.items():
+            if key[0] in render_stages and fields.get("quarter") != quarter:
+                continue
+            current[key[:2]] = fields
     if not runs:
         raise ValueError("capture has no runs")
-    required = (*STAGES, *RENDER_KEYS, *(FRAME_KEYS if observed else ()), *(("phase", phase) for phase in PHASES))
+    required = (*STAGES, *RENDER_KEYS, *(FRAME_KEYS if tagged else ()), *(("phase", phase) for phase in PHASES))
     for key in required:
         if not any(key in run for run in runs.values()):
             raise ValueError(f"capture missing {' '.join(key)}")
@@ -130,7 +138,12 @@ def parse_capture(text, quarter="portrait"):
 
 
 def budget(text, repeat="autana suite run_capybara_perf_suite --flash --perf-scope"):
-    data = parse_capture(text)
+    observed = capture_quarters(text)
+    quarters = [q for q in QUARTERS if q in observed] or [None]
+    source = _capture_runs(text)
+    parsed = {q: _parse_capture(select_quarter(text, q or "portrait", observed), bool(observed), source, q)
+              for q in quarters}
+    data = parsed[quarters[0]]
     stages, costs = data["stages"], data["per_vertex"]
     limit = BUDGET_NS_PER_VERTEX / NANOSECONDS_PER_MICROSECOND
     setup = data["setup"]
@@ -145,10 +158,7 @@ def budget(text, repeat="autana suite run_capybara_perf_suite --flash --perf-sco
     step = (STAGE_ANIMATION_STEP, CORES_UNKNOWN)
     table.extend(("", "| As a frame runs it (worker use not recorded) | Per frame |", "|---|---:|"))
     table.append(f"| Whole animation step | {stages[step]:g} µs ({costs[step]:.3f} µs / vertex) |")
-    quarters = [q for q in QUARTERS if any(quarter_name(line) == q and "paused=" in line
-                                         for line in text.splitlines())]
-    for quarter in quarters or [None]:
-        rendered = parse_capture(text, quarter or "portrait")
+    for quarter, rendered in parsed.items():
         playing, paused, _ = rendered["render"]
         delta = playing - paused
         label = f" quarter={quarter}" if quarter else ""
@@ -188,7 +198,9 @@ def budget(text, repeat="autana suite run_capybara_perf_suite --flash --perf-sco
 def performance_report(text):
     if not re.search(r"^RUN=", text, re.MULTILINE):
         text = "RUN=1\n" + text
-    data = parse_capture(text)
+    observed = capture_quarters(text)
+    quarter = next((q for q in QUARTERS if q in observed), "portrait")
+    data = parse_capture(text, quarter)
     goal = data["vertices"] * BUDGET_NS_PER_VERTEX / NANOSECONDS_PER_MICROSECOND
     lines = [BUDGET_TABLE_HEADER, "|---|---:|---:|---:|---|"]
     for core in (CORES_ONE, CORES_TWO):

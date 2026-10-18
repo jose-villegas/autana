@@ -141,6 +141,6 @@ The frame perf harness holds the display quarter, so gravity cannot change
 a test frame's orientation. Timed render and frame windows run separately
 in forced portrait and landscape, paused and playing; their rows carry
 `quarter=portrait` or `quarter=landscape`. Skin, animate and animation-step
-windows run once in portrait because they do not render. The report keeps
+windows have no quarter because they do not render. The report keeps
 each render quarter separate. The skin budget comes from
 `SKIN_PERF_BUDGET_NS_PER_VERTEX`.

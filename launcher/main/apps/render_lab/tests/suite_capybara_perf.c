@@ -187,13 +187,13 @@ frame_cost(fixture_t* f, bool paused, perf_stats_t* render_stats, const char* qu
     *render_stats = perf_stats_compute(f->render_us, PERF_SAMPLES);
     ESP_LOGI(TAG,
              SKIN_PERF_PREFIX " stage=" SKIN_PERF_STAGE_RENDER
-                              " paused=%d samples=%d joints=%d mean_us=%lld p95_us=%lld" SKIN_PERF_QUARTER_FORMAT,
+                              " paused=%d samples=%d joints=%d mean_us=%lld p95_us=%lld" R3D_PERF_QUARTER_FORMAT,
              paused, PERF_SAMPLES, joints, (long long)render_stats->avg, (long long)render_stats->p95, quarter);
     const perf_stats_t stats = perf_stats_compute(f->elapsed_us, PERF_SAMPLES);
     TEST_ASSERT_GREATER_THAN_INT64(0, stats.avg);
     ESP_LOGI(TAG,
              SKIN_PERF_PREFIX " stage=" SKIN_PERF_STAGE_FRAME
-                              " paused=%d samples=%d joints=%d mean_us=%lld p95_us=%lld" SKIN_PERF_QUARTER_FORMAT,
+                              " paused=%d samples=%d joints=%d mean_us=%lld p95_us=%lld" R3D_PERF_QUARTER_FORMAT,
              paused, PERF_SAMPLES, joints, (long long)stats.avg, (long long)stats.p95, quarter);
     return stats;
 }
@@ -223,12 +223,12 @@ test_animation_and_frame_cost(void) {
         const int joints = f->scene->animators[f->subject].skeleton.joint_count;
         ESP_LOGI(TAG,
                  SKIN_PERF_PREFIX " stage=" SKIN_PERF_STAGE_RENDER_DELTA
-                                  " joints=%d mean_us=%lld p95_us=%lld" SKIN_PERF_QUARTER_FORMAT,
+                                  " joints=%d mean_us=%lld p95_us=%lld" R3D_PERF_QUARTER_FORMAT,
                  joints, (long long)(playing_render.avg - paused_render.avg),
                  (long long)(playing_render.p95 - paused_render.p95), quarter->name);
         ESP_LOGI(TAG,
                  SKIN_PERF_PREFIX " stage=" SKIN_PERF_STAGE_FRAME_DELTA
-                                  " joints=%d mean_us=%lld p95_us=%lld" SKIN_PERF_QUARTER_FORMAT,
+                                  " joints=%d mean_us=%lld p95_us=%lld" R3D_PERF_QUARTER_FORMAT,
                  joints, (long long)(playing.avg - paused.avg), (long long)(playing.p95 - paused.p95), quarter->name);
     }
 }

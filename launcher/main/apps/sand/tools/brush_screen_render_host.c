@@ -24,6 +24,7 @@
 
 #include "apps/sand/ui/brush_screen.h"
 #include "apps/sand/ui/sand_icons.h"
+#include "display/display.h"
 #include "draw/draw.h"
 #include "draw/draw_font_roles.h"
 #include "draw/icon.h"
@@ -279,11 +280,9 @@ static affine2x_t transform;
 static int screen_w;
 static int screen_h;
 
-#include "display/display_host.h"
-
 int
 display_quarter_now(void) {
-    return display_host_quarter(DISPLAY_PORTRAIT);
+    return DISPLAY_PORTRAIT;
 }
 
 static bool

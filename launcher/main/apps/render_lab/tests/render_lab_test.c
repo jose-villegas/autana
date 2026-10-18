@@ -1,6 +1,5 @@
 #include "apps/render_lab/tests/render_lab_test.h"
 #ifdef DEVICE_BUILD
-#include <assert.h>
 #include <string.h>
 #include "apps/render_lab/render_lab.h"
 #include "core/timing.h"
@@ -58,7 +57,7 @@ render_lab_test_exit(const render_lab_test_t* saved) {
 
 int64_t
 render_lab_test_frame(bool switching, const input_t* input) {
-    assert(display_quarter_held());
+    TEST_ASSERT_TRUE_MESSAGE(display_quarter_held(), "a test frame needs a held quarter");
     const input_t idle = {0};
     if (input == NULL) {
         input = &idle;

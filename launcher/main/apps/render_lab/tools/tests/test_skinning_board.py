@@ -43,11 +43,13 @@ class SkinningBoard(unittest.TestCase):
             for paused in (0, 1):
                 lines.append(f"{PREFIX} stage=frame paused={paused} mean_us={500-paused} quarter={quarter}")
             lines.append(f"{PREFIX} stage=frame_delta mean_us=1 quarter={quarter}")
-        rendered = budget("\n".join(lines))
+        with patch.object(report_performance, "_capture_runs", wraps=report_performance._capture_runs) as parsed:
+            rendered = budget("\n".join(lines))
+        parsed.assert_called_once()
         self.assertIn("Full frame quarter=portrait", rendered)
         self.assertIn("Full frame quarter=landscape", rendered)
-        with self.assertRaisesRegex(ValueError, "missing render quarter landscape"):
-            budget("\n".join(line for line in lines if "quarter=landscape" not in line))
+        self.assertIn("Scene render quarter=portrait",
+                      budget("\n".join(line for line in lines if "quarter=landscape" not in line)))
         self.assertIn("quarter=portrait", rendered)
         self.assertIn("quarter=landscape", rendered)
         for quarter in report_performance.QUARTERS:
@@ -57,8 +59,29 @@ class SkinningBoard(unittest.TestCase):
         rows = parse_timings("\n".join(lines))
         self.assertEqual(rows[f"{STAGE_SKIN} cores={CORES_ONE}"], 100)
         self.assertNotIn(f"{STAGE_SKIN} cores={CORES_ONE} quarter=portrait", rows)
-        self.assertIn("700", rendered)
-        self.assertIn("100", rendered)
+        self.assertIn("| Scene render quarter=landscape, playing minus paused | +601 µs (700 vs 99 µs) |", rendered)
+        self.assertIn("| Scene render quarter=portrait, playing minus paused | +1 µs (100 vs 99 µs) |", rendered)
+
+    def test_legacy_invalid_and_landscape_only(self):
+        text = "BUILD_ID=sample-diag\n" + run_capture(1, 100)
+        self.assertEqual(parse_capture(text)["render"], (100, 99, 1))
+        with self.assertRaises(ValueError):
+            parse_capture(text, "diagonal")
+        lines = []
+        for line in text.splitlines():
+            if "paused=" in line or f"stage={STAGE_RENDER_DELTA} " in line:
+                line += " quarter=landscape"
+            lines.append(line)
+        for paused in (0, 1):
+            lines.append(f"{PREFIX} stage=frame paused={paused} mean_us={500-paused} quarter=landscape")
+        lines.append(f"{PREFIX} stage=frame_delta mean_us=1 quarter=landscape")
+        self.assertEqual(parse_capture("\n".join(lines), "landscape")["render"], (100, 99, 1))
+        self.assertIn("Scene render quarter=landscape", budget("\n".join(lines)))
+        lines.extend(line.replace("quarter=landscape", "quarter=portrait").replace("mean_us=100", "mean_us=700")
+                     for line in list(lines) if "quarter=landscape" in line)
+        lines.extend(line.replace("mean_us=100", "mean_us=900") for line in text.splitlines()
+                     if "paused=" in line or f"stage={STAGE_RENDER_DELTA} " in line)
+        self.assertEqual(parse_capture("\n".join(lines), "landscape")["render"], (100, 99, 1))
 
     def test_check_exit_status_and_byte_preservation(self):
         with tempfile.TemporaryDirectory() as temp:

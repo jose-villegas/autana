@@ -1,7 +1,8 @@
 /*
  * display_shell: panel startup, saved clock and shell orientation. The sampler
  * and its holds are host-testable in display.c; device entry points live in
- * display_device.c. The shell supplies the UI handler for holds.
+ * display_device.c. A hold does not move the UI transform; the shell
+ * re-applies it on the next change or after a release.
  */
 #pragma once
 
@@ -24,14 +25,15 @@ typedef struct {
     display_t display;
     int64_t next_sample_us;
     bool held;
+    bool released;
 } display_orientation_t;
 
 /* Starts at DISPLAY_DEFAULT_QUARTER, due to sample at once. */
 void display_orientation_init(display_orientation_t* o);
 
 /* Reads gravity through `read` when DISPLAY_SAMPLE_MS has passed since the
- * last attempt, a failed read included, and feeds display_update(). True only
- * when the quarter changed. */
+ * last attempt, a failed read included, and feeds display_update(). True when
+ * the quarter changed or the sampler has been released. */
 bool display_orientation_sample(display_orientation_t* o, int64_t now_us, display_gravity_reader_t read);
 
 void display_orientation_hold(display_orientation_t* o, int quarter);
@@ -57,5 +59,5 @@ void display_release_quarter(void);
 bool display_quarter_held(void);
 
 /* Samples the shell's orientation, asking `read` for gravity at most every
- * DISPLAY_SAMPLE_MS. True when the quarter changed. */
+ * DISPLAY_SAMPLE_MS. True when the quarter changed or after a release. */
 bool display_sample_orientation(int64_t now_us, display_gravity_reader_t read);

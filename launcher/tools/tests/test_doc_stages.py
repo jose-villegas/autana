@@ -189,6 +189,12 @@ with mock.patch.object(stages, "ROOT", Path(sys.argv[2])), mock.patch.object(
         capture.write_text("abcdef123456-diag\nlite both cores: mean 42000us\n")
         self.assertEqual(stages.capture_rows(capture, "abcdef123456", "sponza", "atrium"), {"lite": 42.0})
 
+    def test_capture_selects_portrait_and_resolves_variant_names(self):
+        capture = self.tmp / "capture.txt"
+        capture.write_text("abcdef123456-diag\natrium_lite both cores: mean 42000us quarter=portrait\n"
+                           "atrium_lite both cores: mean 84000us quarter=landscape\n")
+        self.assertEqual(stages.capture_rows(capture, "abcdef123456", "sponza", "atrium"), {"lite": 42.0})
+
     def test_source_stamp_ignores_doc_refresh_but_not_recipe(self):
         (self.tmp / "launcher").mkdir()
         source = self.tmp / "launcher/recipe.toml"
@@ -552,7 +558,8 @@ print(json.dumps(inputs))
                      "bake sponza.atrium.mesh", "bake sponza.atrium_fitted.mesh"):
             self.assertIn(name, inputs)
         self.assertNotIn("code launcher/tools/bake/bake.py", inputs)
-        self.assertFalse([name for name in inputs if "/apps/" in name])
+        self.assertEqual([name for name in inputs if "/apps/" in name],
+                         ["native launcher/main/apps/render_lab/tests/r3d_perf_quarters.h"])
 
 
 if __name__ == "__main__":

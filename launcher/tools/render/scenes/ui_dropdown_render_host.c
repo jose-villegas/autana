@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 
+#include "display/display.h"
 #include "gfx/gfx.h"
 #include "render_host.h"
 #include "ui/layout/ui_transform.h"
@@ -33,11 +34,9 @@ static char labels[ITEM_COUNT][16];
 static const char* items[ITEM_COUNT];
 static int selected = 2;
 
-#include "display/display_host.h"
-
 int
 display_quarter_now(void) {
-    return display_host_quarter(DISPLAY_PORTRAIT);
+    return DISPLAY_PORTRAIT;
 }
 
 static bool

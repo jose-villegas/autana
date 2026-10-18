@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "display/display.h"
 #include "gfx/gfx.h"
 #include "render_host.h"
 #include "ui/layout/ui_transform.h"
@@ -46,11 +47,9 @@ static bool pending;
 static bool open_dither;
 static affine2x_t transform;
 
-#include "display/display_host.h"
-
 int
 display_quarter_now(void) {
-    return display_host_quarter(DISPLAY_PORTRAIT);
+    return DISPLAY_PORTRAIT;
 }
 
 static bool

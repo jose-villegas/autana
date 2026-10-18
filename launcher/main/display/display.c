@@ -116,6 +116,7 @@ display_orientation_init(display_orientation_t* o) {
     o->display.quarter = DISPLAY_DEFAULT_QUARTER;
     o->next_sample_us = 0;
     o->held = false;
+    o->released = false;
 }
 
 bool
@@ -129,7 +130,9 @@ display_orientation_sample(display_orientation_t* o, int64_t now_us, display_gra
     if (!read(&gravity)) {
         return false;
     }
-    return display_update(&o->display, gravity);
+    const bool changed = display_update(&o->display, gravity) || o->released;
+    o->released = false;
+    return changed;
 }
 
 void
@@ -142,5 +145,6 @@ display_orientation_hold(display_orientation_t* o, int quarter) {
 void
 display_orientation_release(display_orientation_t* o) {
     o->held = false;
+    o->released = true;
     o->next_sample_us = 0;
 }

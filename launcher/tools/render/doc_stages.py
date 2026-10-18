@@ -250,7 +250,7 @@ def bake_steps_table(variants):
 
 
 def capture_rows(path, commit, id, object_name):
-    from capture import select_quarter
+    from capture import QUARTERS, select_quarter
     text = select_quarter(path.read_text(encoding="utf-8", errors="replace"))
     import re
     builds = re.findall(r"\b([0-9a-f]{12,40})-diag\b", text)
@@ -262,7 +262,8 @@ def capture_rows(path, commit, id, object_name):
     names = [aliases.get(match.group("name"), match.group("name")) for match in MEAN_RE.finditer(text)]
     if len(names) != len(set(names)):
         raise ValueError(f"{path}: duplicate variant means; give one --capture per run")
-    return {aliases.get(name, name): value / 1000 for name, value in parse_timings(text).items()
+    return {aliases.get(base := name.removesuffix(f" quarter={QUARTERS[0]}"), base): value / 1000
+            for name, value in parse_timings(text).items()
 }
 
 def board_means(captures, commit, id, object_name):

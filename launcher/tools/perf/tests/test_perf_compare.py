@@ -177,6 +177,37 @@ class AcquisitionTest(ShellJobTests, unittest.TestCase):
             payload = tool.measure(arguments(root, cap), fake)
         return payload, output.getvalue()
 
+    def test_quarter_identity_through_acquisition_and_comparison(self):
+        for baseline in ("legacy", "portrait", "both"):
+            with self.subTest(baseline=baseline), tempfile.TemporaryDirectory() as root:
+                fake = FakeAutana(root)
+                def runner(command, log, timeout):
+                    result = fake(command, log, timeout)
+                    if "suite" not in command:
+                        return result
+                    candidate = command[command.index('--project') + 1].endswith('/b')
+                    for _, line in result[1]:
+                        if not line.startswith('report: '):
+                            continue
+                        path = pathlib.Path(line.removeprefix('report: ')).with_suffix('.log')
+                        suffix = ' quarter=portrait' if candidate or baseline != 'legacy' else ''
+                        text = f'mesh both cores: mean 10000us{suffix}\n'
+                        if candidate or baseline == 'both':
+                            text += 'mesh both cores: mean 20000us quarter=landscape\n'
+                        path.write_text(text + ':1:test_quiet:PASS\n')
+                    return result
+                payload, _ = self.measure(root, runner, cap=4)
+                rows = payload['rows']
+                self.assertEqual(rows['suite/mesh quarter=landscape']['b'], 20000)
+                self.assertEqual(rows['suite/mesh quarter=landscape']['verdict'],
+                                 'no change' if baseline == 'both' else 'added')
+                if baseline != 'legacy':
+                    self.assertEqual(rows['suite/mesh quarter=portrait']['verdict'], 'no change')
+                    self.assertEqual(rows['suite/mesh quarter=portrait']['ratio'], 1)
+                else:
+                    self.assertEqual(rows['suite/mesh']['verdict'], 'removed')
+                    self.assertEqual(rows['suite/mesh quarter=portrait']['verdict'], 'added')
+
     def test_ab_and_aa_replay_interleaved_distinct_seed_sets(self):
         for shift in (False, True):
             with tempfile.TemporaryDirectory() as root:

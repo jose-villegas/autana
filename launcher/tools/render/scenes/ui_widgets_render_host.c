@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include "display/display.h"
 #include "gfx/gfx.h"
 #include "render_host.h"
 #include "ui/controls/ui_icons.h"
@@ -42,11 +43,9 @@ static int microui_value = 6;
 static int checked = 1;
 static int picked_item = 1;
 
-#include "display/display_host.h"
-
 int
 display_quarter_now(void) {
-    return display_host_quarter(DISPLAY_PORTRAIT);
+    return DISPLAY_PORTRAIT;
 }
 
 static bool

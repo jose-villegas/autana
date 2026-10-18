@@ -265,10 +265,16 @@ static void
 test_held_quarter_wins_without_sampling_gravity(void) {
     display_orientation_t o;
     begin_scripted_sampler(&o);
-    display_orientation_hold(&o, DISPLAY_PORTRAIT);
-    TEST_ASSERT_TRUE(o.held);
-    TEST_ASSERT_FALSE(display_orientation_sample(&o, 0, scripted_gravity));
-    TEST_ASSERT_EQUAL_INT(DISPLAY_PORTRAIT, display_quarter(&o.display));
+    const int64_t step = (int64_t)DISPLAY_SAMPLE_MS * 1000;
+    const int quarters[] = {DISPLAY_PORTRAIT, DISPLAY_PORTRAIT_UPSIDE_DOWN};
+    for (size_t q = 0; q < sizeof quarters / sizeof quarters[0]; q++) {
+        display_orientation_hold(&o, quarters[q]);
+        TEST_ASSERT_TRUE(o.held);
+        for (int sample = 0; sample < 4; sample++) {
+            TEST_ASSERT_FALSE(display_orientation_sample(&o, sample * step, scripted_gravity));
+            TEST_ASSERT_EQUAL_INT(quarters[q], display_quarter(&o.display));
+        }
+    }
     TEST_ASSERT_EQUAL_INT(0, scripted->reads);
 }
 
@@ -285,11 +291,24 @@ test_release_resamples_before_the_previous_deadline(void) {
     TEST_ASSERT_EQUAL_INT(2, scripted->reads);
 }
 
+static void
+test_release_reports_change_even_with_flat_gravity(void) {
+    display_orientation_t o;
+    begin_scripted_sampler(&o);
+    display_orientation_hold(&o, DISPLAY_PORTRAIT);
+    script_gravity(0, 0);
+    display_orientation_release(&o);
+    TEST_ASSERT_TRUE(display_orientation_sample(&o, 0, scripted_gravity));
+    TEST_ASSERT_EQUAL_INT(DISPLAY_PORTRAIT, display_quarter(&o.display));
+    TEST_ASSERT_FALSE(display_orientation_sample(&o, (int64_t)DISPLAY_SAMPLE_MS * 1000, scripted_gravity));
+}
+
 /* suite */
 
 void
 run_display_suite(void) {
     RUN_TEST(test_held_quarter_wins_without_sampling_gravity);
+    RUN_TEST(test_release_reports_change_even_with_flat_gravity);
     RUN_TEST(test_release_resamples_before_the_previous_deadline);
     RUN_TEST(test_gravity_straight_down_reads_upright);
     RUN_TEST(test_gravity_to_the_left_reads_quarter_one);

@@ -92,11 +92,9 @@ select_objects(scene_t* scene) {
     return true;
 }
 
-#include "display/display_host.h"
-
 int
 display_quarter_now(void) {
-    return display_host_quarter(shell_quarter);
+    return shell_quarter;
 }
 
 static bool

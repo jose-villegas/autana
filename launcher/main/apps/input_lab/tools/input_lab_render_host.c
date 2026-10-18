@@ -4,7 +4,6 @@
 #include "app/app.h"
 #include "apps/input_lab/imu_probe.h"
 #include "display/display.h"
-#include "display/display_host.h"
 #include "gfx/gfx.h"
 #include "render_host.h"
 #include "ui/layout/ui_transform.h"
@@ -31,7 +30,7 @@ timespec_get(struct timespec* now, int base) {
 
 int
 display_quarter_now(void) {
-    return display_host_quarter(shell_quarter);
+    return shell_quarter;
 }
 
 bool
