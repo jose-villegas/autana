@@ -20,11 +20,11 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 import frame_cost
+from frame_cost import MS_PER_SECOND
 from capture import capture_board, require_same_board
 
 VIEW_TABLE = ROOT / "launcher/main/render/context/render_context.c"
 FRAME_RATES = (30, 60)  # the budgets marked on the chart, frames per second
-MS_PER_SECOND = 1000
 BLOCK = "pipeline-frame-stages"
 LABEL_SHARE = 0.07  # a segment this share of the axis or wider carries its value inside
 PERCENT_SCALE = 100

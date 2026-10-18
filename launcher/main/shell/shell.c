@@ -56,6 +56,8 @@ static const char* TAG = "shell";
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* Report throughput on TIMER, not frames. CONFIG_LAUNCHER_DEVELOPMENT only */
+#define SHELL_REPORT_WINDOW_US 1500000
+
 static __attribute__((noinline)) void
 report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
     (*frames)++;
@@ -72,7 +74,7 @@ report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
     }
 
     const int64_t since = now_us - *window_start;
-    if (since >= 1500000) {
+    if (since >= SHELL_REPORT_WINDOW_US) {
         uint32_t points = 0, moved = 0;
         touch_take_sample_counts(&points, &moved);
         const double per_s = 1000000.0 / (double)since;

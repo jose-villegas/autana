@@ -13,6 +13,8 @@ ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 from doc_tables import markdown
 from generated_blocks import replace_block
+sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
+from frame_cost import frame_cost_window, US_PER_MS
 
 CAPTURE = Path("docs/audio/data/audio_capture.txt")
 DOCUMENT = Path("docs/audio/Audio-Path.md")
@@ -74,10 +76,104 @@ def render(path):
     return tables
 
 
-def update(capture, document, check=False):
+
+MIX_CAPTURES = Path("docs/audio/data")
+MIX_DOCUMENT = Path("docs/audio/Sound-Mixer.md")
+PERCENT = 100
+
+
+def render_mix(path):
+    lines = path.read_text(encoding="utf-8").splitlines()
+    header = re.fullmatch(r"# autana sound-mix capture on ([\w-]+), ([\d-]+),.*", lines[0])
+    if not header:
+        raise ValueError("missing sound-mix board and date")
+    records = [line.split("\t", 1) for line in lines[1:] if line and not line.startswith("#")]
+    builds = [json.loads(value)["build_id"] for key, value in records if key == "buildid"]
+    if len(builds) != 2 or len(set(builds)) != 1:
+        raise ValueError("capture needs two matching build ids")
+    metadata = dict(records)
+    for name in ("capacity", "voices", "period_us", "stage mix", "stage present", "window_seconds"):
+        if name not in metadata:
+            raise ValueError(f"missing {name} record")
+    capacity = int(metadata["capacity"])
+    voices = list(map(int, metadata["voices"].split(",")))
+    period = float(metadata["period_us"])
+    window_seconds = float(metadata["window_seconds"])
+    sounds = {key.split()[1]: value for key, value in records if key.startswith("sound ")}
+    if not sounds or not voices or min(voices) < 0 or capacity < max(voices) or period <= 0 or window_seconds <= 0:
+        raise ValueError("invalid sound points, capacity, period or window seconds")
+    if 0 not in voices:
+        raise ValueError("missing zero-voice point")
+    mix_stage, present_stage = metadata["stage mix"], metadata["stage present"]
+    points = {}
+    playing = {}
+    dropped = {}
+    stats = {}
+    for key, value in records:
+        if key.startswith("point "):
+            _, sound, count = key.split()
+            window = frame_cost_window(value)
+            mix = window["external"].get(mix_stage) if window else None
+            if mix is None or mix[2] <= 0:
+                raise ValueError(f"invalid window: {key}")
+            present = window["brackets"].get(present_stage)
+            if present is None:
+                raise ValueError(f"missing {present_stage} stage: {key}")
+            if window["total"] is None:
+                raise ValueError(f"missing total: {key}")
+            points.setdefault((sound, int(count)), []).append(
+                (mix[0] * US_PER_MS, mix[1] * US_PER_MS, mix[2], present[0], window["total"]))
+        elif key.startswith("playing ") or key.startswith("dropped "):
+            kind, sound, count = key.split()
+            target = playing if kind == "playing" else dropped
+            target.setdefault((sound, int(count)), []).append(int(value))
+        elif key == f"stats {list(sounds)[-1]} {max(voices)}":
+            stats.update(re.findall(r"(stack_min_free|margin|stack|voices|queue|mixer)=(\d+)", value))
+    expected = {(sound, count) for sound in sounds for count in voices if count}
+    if 0 in voices:
+        expected.add((next(iter(sounds)), 0))
+    if points.keys() != expected:
+        raise ValueError("missing or unexpected point windows")
+    for point in expected:
+        if playing.get(point) != [point[1]]:
+            raise ValueError(f"missing or mismatched playing record: {point}")
+        drops = dropped.get(point, [])
+        if len(drops) != 2 or drops[0] != drops[1]:
+            raise ValueError(f"missing or changed dropped count: {point}")
+    silent = points[(next(iter(sounds)), 0)]
+    baseline = sum(w[3] for w in silent) / len(silent)
+    rows = []
+    for (sound, count), windows in points.items():
+        blocks = sum(w[2] for w in windows)
+        average = sum(w[0] * w[2] for w in windows) / blocks
+        worst = max(w[1] for w in windows)
+        present = sum(w[3] for w in windows) / len(windows)
+        total = sum(w[4] for w in windows) / len(windows)
+        rows.append((f"{sound} ({sounds[sound]})", count, f"{average:.2f}", f"{worst:.2f}",
+                     f"{average / period * PERCENT:.2f}", f"{worst / period * PERCENT:.2f}", blocks,
+                     f"{present:.2f}", f"{total:.2f}", f"{present - baseline:+.2f}"))
+    fields = ["stack_min_free", "margin", "stack", "voices", "queue", "mixer"]
+    if any(field not in stats for field in fields):
+        raise ValueError("missing highest-point stats")
+    caption = (f"Board **{header[1]}**, build **{builds[0]}**, capacity **{capacity} voices**, "
+               f"window **{window_seconds:g} s**, block period **{period:.2f} µs** ([raw capture](data/{path.name})).\n\n")
+    return caption + markdown(
+        ["Sound", "Voices", "Average µs", "Worst µs", "Core-1 load, average %", "Core-1 load, worst %", "Blocks",
+         f"{present_stage} ms/frame", "Frame total ms/frame", f"{present_stage} change ms/frame"],
+        rows) + "\nHighest-point memory (bytes):\n\n" + markdown(fields, [[stats[field] for field in fields]])
+
+
+
+def update(capture, document, check=False, mix_captures=None, mix_document=None):
     changed = False
     for name, body in render(capture).items():
         changed |= replace_block(document, name, body, check=check)
+    if mix_captures is not None:
+        captures = sorted(Path(mix_captures).glob("sound_mix_capture*.txt"))
+        if not captures:
+            raise ValueError("no sound-mix capture files")
+        body = f"> Generated by: `{REGENERATE}`\n\n" + "\n".join(render_mix(path) for path in captures)
+        changed |= replace_block(mix_document, "sound-mix-cost", body, check=check)
     return changed
 
 
@@ -88,10 +184,12 @@ def main():
     mode.add_argument("--check", action="store_true")
     parser.add_argument("--capture", type=Path, default=ROOT / CAPTURE)
     parser.add_argument("--document", type=Path, default=ROOT / DOCUMENT)
+    parser.add_argument("--mix-captures", type=Path, default=ROOT / MIX_CAPTURES)
+    parser.add_argument("--mix-document", type=Path, default=ROOT / MIX_DOCUMENT)
     args = parser.parse_args()
     try:
-        changed = update(args.capture, args.document, args.check)
-    except (ValueError, KeyError, OSError) as error:
+        changed = update(args.capture, args.document, args.check, args.mix_captures, args.mix_document)
+    except (ValueError, KeyError, OSError, RuntimeError) as error:
         parser.exit(2, f"{error}\n")
     print(f"audio tables: {'stale' if changed and args.check else 'updated' if changed else 'current'}")
     return int(args.check and changed)
