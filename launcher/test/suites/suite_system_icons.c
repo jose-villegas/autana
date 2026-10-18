@@ -23,6 +23,7 @@
 #include "unity.h"
 
 #include "bbox_extend.h"
+#include "draw/draw_image_format.h"
 #include "draw/icon.h"
 #include "ui/controls/ui_icons.h"
 
@@ -30,7 +31,7 @@
 static const draw_image_t*
 system_icon(ui_icon_id_t id) {
     ui_icons_init();
-    const draw_image_t* icon = ui_icon(id);
+    const draw_image_t* icon = ui_icon_image(id);
     TEST_ASSERT_NOT_NULL_MESSAGE(icon, "no system icon: the suites run with the packs build_pack.py writes");
     return icon;
 }
@@ -115,7 +116,7 @@ reference_icon_bbox(const draw_image_t* icon, int iw, int ih, int* min_x, int* m
 /* Independent geometry from icon_test_bit() lookups must agree
  * with icon_walk_blocks(), without depending on the streaming walker. */
 static int
-reference_blocks(const draw_image_t* icon, int box_w, int box_h, icon_rect_t* out, int max) {
+reference_blocks(const draw_image_t* icon, int box_w, int box_h, recti_t* out, int max) {
     const int iw = icon->width, ih = icon->height;
     const int scale = reference_icon_scale(iw, ih, box_w, box_h);
 
@@ -162,8 +163,8 @@ reference_blocks(const draw_image_t* icon, int box_w, int box_h, icon_rect_t* ou
  * clamp), must emit the exact same rects as reference_blocks() above. */
 static void
 test_streaming_walker_matches_reference_extraction(void) {
-    icon_rect_t* cc_buf = malloc(sizeof(icon_rect_t) * TEST_MAX_BLOCKS);
-    icon_rect_t* ref = malloc(sizeof(icon_rect_t) * TEST_MAX_BLOCKS);
+    recti_t* cc_buf = malloc(sizeof(recti_t) * TEST_MAX_BLOCKS);
+    recti_t* ref = malloc(sizeof(recti_t) * TEST_MAX_BLOCKS);
     TEST_ASSERT_NOT_NULL(cc_buf);
     TEST_ASSERT_NOT_NULL(ref);
 
@@ -208,7 +209,7 @@ static void
 test_content_bbox_centring_uses_a_specific_expected_origin(void) {
     const draw_image_t* icon = system_icon(UI_ICON_CHECK);
 
-    icon_rect_t* cc_buf = malloc(sizeof(icon_rect_t) * TEST_MAX_BLOCKS);
+    recti_t* cc_buf = malloc(sizeof(recti_t) * TEST_MAX_BLOCKS);
     TEST_ASSERT_NOT_NULL(cc_buf);
     icon_test_collect_t cc = {.blocks = cc_buf, .count = 0, .cap = TEST_MAX_BLOCKS};
     icon_walk_blocks(icon, 32, 32, icon_test_collect, &cc);
@@ -228,7 +229,7 @@ test_home_bakes_and_walks_at_fifty_runs(void) {
     const draw_image_t* icon = system_icon(UI_ICON_HOME);
     TEST_ASSERT_EQUAL_INT_MESSAGE(50, icon_test_runs(icon), "home was expected to bake at 50 runs");
 
-    icon_rect_t* cc_buf = malloc(sizeof(icon_rect_t) * TEST_MAX_BLOCKS);
+    recti_t* cc_buf = malloc(sizeof(recti_t) * TEST_MAX_BLOCKS);
     TEST_ASSERT_NOT_NULL(cc_buf);
     icon_test_collect_t cc = {.blocks = cc_buf, .count = 0, .cap = TEST_MAX_BLOCKS};
     icon_walk_blocks(icon, icon->width, icon->height, icon_test_collect, &cc);

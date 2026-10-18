@@ -1,0 +1,56 @@
+name: Patched QEMU
+description: Build and cache the patched emulator, then run a command in ESP-IDF.
+inputs:
+  command:
+    description: Shell command run from launcher/ after the emulator is ready.
+    required: true
+  compile:
+    description: Restore compiler caches and fetch bakes for firmware compilation.
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    # Espressif's QEMU rebuilt with launcher/test/qemu/patches, which
+    # qemu_run.py runs in place of the prebuilt one. Built only when no
+    # cache holds this QEMU version and patch set; patched_qemu.py names
+    # the directory and removes any other, so one entry is saved per pair.
+    - id: qemu-cache
+      uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: launcher/build.qemu-xtensa
+        key: qemu-xtensa-
+        restore-keys: qemu-xtensa-
+
+    - uses: ./.github/actions/idf-build
+      if: inputs.compile == 'true'
+      with:
+        cache-name: qemu
+        command: >-
+          (python3 test/qemu/patched_qemu.py path
+          || (apt-get update -qq
+          && python3 test/qemu/patched_qemu.py deps | xargs apt-get install -y -qq
+          && python3 test/qemu/patched_qemu.py build))
+          && ${{ inputs.command }}
+
+    - name: Run without compiler caches or bakes
+      if: inputs.compile != 'true'
+      shell: bash
+      env:
+        TEST_COMMAND: ${{ inputs.command }}
+      run: |
+        image=$(sh scripts/ci/idf_image.sh)
+        docker run --rm -e TEST_COMMAND -v "$GITHUB_WORKSPACE:/app" -w /app/launcher "$image" \
+          /bin/bash -c 'git config --global --add safe.directory /app && (python3 test/qemu/patched_qemu.py path || (apt-get update -qq && python3 test/qemu/patched_qemu.py deps | xargs apt-get install -y -qq && python3 test/qemu/patched_qemu.py build)) && eval "$TEST_COMMAND"'
+
+    - id: qemu-built
+      shell: bash
+      if: ${{ !cancelled() }}
+      run: echo "name=$(cd launcher/build.qemu-xtensa 2>/dev/null && ls -d */bin | cut -d/ -f1)" >> "$GITHUB_OUTPUT"
+
+    - if: >-
+        ${{ !cancelled() && steps.qemu-built.outputs.name != ''
+        && steps.qemu-cache.outputs.cache-matched-key != format('qemu-xtensa-{0}', steps.qemu-built.outputs.name) }}
+      uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      with:
+        path: launcher/build.qemu-xtensa
+        key: qemu-xtensa-${{ steps.qemu-built.outputs.name }}

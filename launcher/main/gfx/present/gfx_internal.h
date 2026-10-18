@@ -10,7 +10,6 @@
 #include "gfx/present/modes/band/gfx_band.h"
 #include "gfx/present/send/gfx_dirty.h"
 #include "gfx/present/send/gfx_heal.h"
-#include "gfx/target/gfx_box.h"
 #include "gfx/target/gfx_target.h"
 
 #ifdef ESP_PLATFORM
@@ -25,8 +24,8 @@ gfx_target_t gfx_present_target(void);
 bool gfx_present_in_band(void);
 /* Save and restore the clip verbatim, including empty boxes. Restore does not
  * clamp; callers must supply a saved clip or a screen-intersected box. */
-gfx_box_t gfx_clip_save(void);
-void gfx_clip_restore(gfx_box_t clip);
+recti_t gfx_clip_save(void);
+void gfx_clip_restore(recti_t clip);
 
 /* gfx_mode.c: the framebuffer and the mode it is held in. */
 extern gfx_color_t* fb;
@@ -69,7 +68,7 @@ bool send_fb_rows(int y0, int y1);
 /* gfx_debug.c: the overlays and counts gfx_debug.h switches and reads. */
 extern bool debug_overlay_on;
 extern bool leaf_overlay_on;
-extern dirty_leaf_rect_t* leaf_rect_scratch;
+extern recti_t* leaf_rect_scratch;
 extern int dev_strips_sent_full;
 extern int dev_strips_sent_gathered;
 extern int dev_strips_sent_partial;

@@ -48,20 +48,26 @@ def visible_from_region(p, tri_v, double, intersector, rounds, rng, lo, hi):
     normal /= np.maximum(np.linalg.norm(normal, axis=1, keepdims=True), 1e-12)
     points = 1 + (area / max(area.mean(), 1e-12)).astype(np.int64)
     lo, hi = np.array(lo), np.array(hi)
+    packed = np.stack([a, b, c, normal], axis=1)
     seen = np.zeros(len(tri_v), dtype=bool)
+    todo = np.repeat(np.arange(len(tri_v)), points)
+    gathered = packed[todo].transpose(1, 0, 2).copy()
+    gathered_double = double[todo]
     for _ in range(rounds):
-        todo = np.repeat(np.nonzero(~seen)[0], points[~seen])
         if len(todo) == 0:
             break
+        gathered_a, gathered_b, gathered_c, gathered_normal = gathered
         r1, r2 = np.sqrt(rng.random(len(todo)))[:, None], rng.random(len(todo))[:, None]
-        on = (1 - r1) * a[todo] + r1 * (1 - r2) * b[todo] + r1 * r2 * c[todo]
+        on = (1 - r1) * gathered_a
+        on += r1 * (1 - r2) * gathered_b
+        on += r1 * r2 * gathered_c
         eye = lo + rng.random((len(todo), 3)) * (hi - lo)
         d = eye - on
         dist = np.linalg.norm(d, axis=1)
         d /= dist[:, None]
-        side = (d * normal[todo]).sum(axis=1)
-        facing = (side > 0.01) | double[todo]
-        origin = on + normal[todo] * np.where(side >= 0, 0.5, -0.5)[:, None]
+        side = (d * gathered_normal).sum(axis=1)
+        facing = (side > 0.01) | gathered_double
+        origin = on + gathered_normal * np.where(side >= 0, 0.5, -0.5)[:, None]
         hit = np.zeros(len(todo), dtype=bool)
         if np.any(facing):
             f = np.nonzero(facing)[0]
@@ -69,7 +75,13 @@ def visible_from_region(p, tri_v, double, intersector, rounds, rng, lo, hi):
             hit_dist = np.full(len(f), np.inf)
             hit_dist[index_ray] = np.linalg.norm(locations - origin[f][index_ray], axis=1)
             hit[f] = hit_dist < dist[f] - 1.0
-        seen[todo[facing & ~hit]] = True
+        visible = facing & ~hit
+        seen[todo[visible]] = True
+        if np.any(visible):
+            keep = ~seen[todo]
+            todo = todo[keep]
+            gathered = gathered[:, keep].copy()
+            gathered_double = gathered_double[keep]
     log(f"visible from the region: {np.count_nonzero(seen)} of {len(tri_v)} triangles")
     return seen
 

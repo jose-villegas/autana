@@ -155,7 +155,11 @@ static void
 upscale_slice(void* ctx) {
     const slice_t* s = ctx;
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(s->raster);
-    upscale_rows(&s->raster->upscale, &b.picture, s->raster->clear, s->destination, s->first, s->count);
+    if (s->raster->present != CAMERA_PRESENT_SCANLINE) {
+        upscale_rows(&s->raster->upscale, &b.picture, s->raster->clear, s->destination, s->first, s->count);
+    } else {
+        upscale_rows_scanlined(&s->raster->upscale, &b.picture, s->raster->clear, s->destination, s->first, s->count);
+    }
 }
 
 int
@@ -207,8 +211,8 @@ instance_lens(const raster_t* raster, const r3d_instance_t* instance, const rend
     } else {
         r3d_lens_init(lens, view, mesh->position_scale);
     }
-    if (instance->placement != NULL) {
-        r3d_lens_place(lens, instance->placement, mesh->position_scale);
+    if (instance->model != NULL) {
+        r3d_lens_place(lens, instance->model, mesh->position_scale);
     }
 }
 
@@ -374,6 +378,27 @@ raster_census(const raster_t* raster, const render_view_t* view) {
 void
 raster_draw_culled(const raster_t* raster, const render_view_t* view) {
     draw_instances(raster, view, NULL);
+}
+
+resolution_step_t
+raster_present_size(resolution_step_t size, camera_present_t present) {
+    if (present != CAMERA_PRESENT_NEAREST) {
+        size.height = size.height > 1 ? size.height / 2 : 1;
+    }
+    return size;
+}
+
+bool
+raster_fits_half_picture(const raster_t* raster) {
+    return raster->width > 0 && raster->height > 0 && raster->destination_height > 0
+           && 2 * raster->width == raster->destination_width && raster->destination_height % 2 == 0
+           && (raster->destination_height / 2) % raster->height == 0;
+}
+
+resolution_step_t
+raster_compose_size(const raster_t* raster) {
+    const int divisor = raster_fits_half_picture(raster) ? 2 : 1;
+    return (resolution_step_t){raster->destination_width / divisor, raster->destination_height / divisor};
 }
 
 void

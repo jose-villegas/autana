@@ -1,6 +1,7 @@
 #include "render/r3d_span.h"
 #include "render/r3d_span_internal.h"
 
+#include <limits.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -26,13 +27,27 @@ static const int32_t value_max[ATTRIBUTES] = {DEPTH_MAX, 65280, 65280, 65280};
 
 /* A triangle whose bounding box holds at most this many pixel centres a
  * side has each centre tested against its edge functions
- * (docs/Citations.md#32) instead of walked, in one colour and one depth: past
- * 4 its lost gradient shows on the walls. */
-#define SMALL_MAX_SIDE      4
-#define SMALL_MAX_SIDE_TUNE 16
+ * (Pineda 1988) instead of walked, in one colour and one depth: past
+ * the default 4 its lost gradient shows on the walls. */
+#define SMALL_MAX_SIDE                4
+#define SMALL_MAX_SIDE_TUNE           16
+#define SMALL_FLAT_SPREAD_OFF         ((int)GFX_RGB565_G6_MAX + 1)
+#define SMALL_DITHER_COVERAGE_EIGHTHS 8
+#define SMALL_DITHER_PATTERN_SIDE     (sizeof gfx_dither4x4 / sizeof gfx_dither4x4[0])
+#define SMALL_DITHER_PATTERN_BITS_MAX (__builtin_ctz((unsigned)SMALL_DITHER_PATTERN_SIDE))
+#define SMALL_FILL_WALK               (-1)
+#define TRIANGLE_VERTICES             3
 
+/* Above SMALL_MAX_SIDE, flat fill can be gated by vertex colour spread or
+ * have its edges ordered-dithered to vertex colours in size-ramped eighths.
+ * Defaults leave both off. */
 TUNE_OWNER(r3d_span);
 TUNE_HOT(r3d_span, small_max_side, SMALL_MAX_SIDE, 0, SMALL_MAX_SIDE_TUNE);
+TUNE_HOT(r3d_span, small_flat_spread_far, SMALL_FLAT_SPREAD_OFF, 0, SMALL_FLAT_SPREAD_OFF);
+TUNE_HOT(r3d_span, small_flat_spread_near, SMALL_FLAT_SPREAD_OFF, 0, SMALL_FLAT_SPREAD_OFF);
+TUNE_HOT(r3d_span, small_dither, 0, 0, SMALL_DITHER_COVERAGE_EIGHTHS);
+TUNE_HOT(r3d_span, small_dither_cell_bits, SMALL_DITHER_PATTERN_BITS_MAX, 1, SMALL_DITHER_PATTERN_BITS_MAX);
+TUNE_HOT(r3d_span, small_dither_ramp, 0, 0, 1);
 TUNE_HOT(r3d_span, flat_max_rows, R3D_SPAN_FLAT_MAX_ROWS, 0, 8);
 TUNE_HOT(r3d_span, flat_max_width, R3D_SPAN_FLAT_MAX_WIDTH, 0, 8 * R3D_SUBPIXEL);
 
@@ -457,13 +472,18 @@ sort_by_y(const r3d_span_vertex_t** v0, const r3d_span_vertex_t** v1, const r3d_
     return odd;
 }
 
+static inline uint16_t
+pack_rgb(float r, float g, float b) {
+    return r3d_span_pack((int32_t)(mathf_clamp(r, 0.0F, UINT8_MAX) * COLOR_SCALE),
+                         (int32_t)(mathf_clamp(g, 0.0F, UINT8_MAX) * COLOR_SCALE),
+                         (int32_t)(mathf_clamp(b, 0.0F, UINT8_MAX) * COLOR_SCALE));
+}
+
 static inline void
 set_flat(fill_t* f, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c) {
-    const float third = 1.0F / 3.0F;
+    const float third = 1.0F / (float)TRIANGLE_VERTICES;
     f->flat_z = (uint16_t)(mathf_clamp((a->z + b->z + c->z) * third, 0.0F, 1.0F) * (float)R3D_DEPTH_NEAREST);
-    f->flat_color = r3d_span_pack((int32_t)(mathf_clamp((a->r + b->r + c->r) * third, 0.0F, 255.0F) * COLOR_SCALE),
-                                  (int32_t)(mathf_clamp((a->g + b->g + c->g) * third, 0.0F, 255.0F) * COLOR_SCALE),
-                                  (int32_t)(mathf_clamp((a->b + b->b + c->b) * third, 0.0F, 255.0F) * COLOR_SCALE));
+    f->flat_color = pack_rgb((a->r + b->r + c->r) * third, (a->g + b->g + c->g) * third, (a->b + b->b + c->b) * third);
 }
 
 static inline int32_t
@@ -492,10 +512,76 @@ small_side(const small_edge_t* e, int32_t x, int32_t y) {
     return (e->dx * (y - e->ay)) - (e->dy * (x - e->ax)) - e->bias;
 }
 
+static inline bool
+channel_within_spread(float a, float b, float c, float limit) {
+    const float low = a < b ? (a < c ? a : c) : (b < c ? b : c);
+    const float high = a > b ? (a > c ? a : c) : (b > c ? b : c);
+    return high - low <= limit;
+}
+
+typedef struct {
+    uint8_t spread, coverage;
+    float rb_limit, g_limit;
+} small_limits_t;
+
+static inline bool
+colours_within_spread(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c,
+                      const small_limits_t* limits) {
+    return channel_within_spread(a->r, b->r, c->r, limits->rb_limit)
+           && channel_within_spread(a->g, b->g, c->g, limits->g_limit)
+           && channel_within_spread(a->b, b->b, c->b, limits->rb_limit);
+}
+
+static inline small_limits_t
+small_limits_for_side(int side) {
+    const int extra_sides = small_max_side - SMALL_MAX_SIDE;
+    int spread = extra_sides == 1 ? small_flat_spread_far : small_flat_spread_near;
+    int coverage = small_dither;
+    if (extra_sides > 1) {
+        spread += (small_flat_spread_far - small_flat_spread_near) * (side - SMALL_MAX_SIDE - 1) / (extra_sides - 1);
+    }
+    if (small_dither_ramp) {
+        coverage = coverage * (side - SMALL_MAX_SIDE) / mathi_max(extra_sides, 1);
+    }
+    return (small_limits_t){(uint8_t)spread, (uint8_t)coverage,
+                            ((float)spread * UINT8_MAX) / (float)gfx_rgb565_r5(UINT16_MAX),
+                            ((float)spread * UINT8_MAX) / (float)gfx_rgb565_g6(UINT16_MAX)};
+}
+
+/* Negative selects the walk; otherwise the result is dither coverage, with zero selecting flat. */
+static inline __attribute__((always_inline)) int
+select_small(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, recti_t centres,
+             bool solid) {
+    const int side = mathi_max(centres.w, centres.h);
+    if (side > small_max_side) {
+        return SMALL_FILL_WALK;
+    }
+    if (solid || side <= SMALL_MAX_SIDE) {
+        return 0;
+    }
+    const small_limits_t limits = small_limits_for_side(side);
+    if (limits.spread != SMALL_FLAT_SPREAD_OFF && !colours_within_spread(a, b, c, &limits)) {
+        return SMALL_FILL_WALK;
+    }
+    return limits.coverage;
+}
+
+typedef struct {
+    uint16_t* depth;
+    uint16_t* color;
+    int32_t centre;
+} small_row_t;
+
+static inline __attribute__((always_inline)) small_row_t
+small_row(const r3d_span_target_t* target, int y) {
+    return (small_row_t){gfx_render_target_depth(&target->rows, y), gfx_render_target_color(&target->rows, y),
+                         (y << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL};
+}
+
 /* Keep small-triangle temporaries off the row-walk call chain. */
 static __attribute__((noinline)) void
 fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-           const r3d_span_vertex_t* c, bool positive, r3d_span_box_t box, const uint16_t* face) {
+           const r3d_span_vertex_t* c, bool positive, recti_t box, const uint16_t* face) {
     fill_t f;
     set_flat(&f, a, b, c);
     if (face != NULL) {
@@ -506,26 +592,101 @@ fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3
     }
     const r3d_span_vertex_t* p = positive ? b : c;
     const r3d_span_vertex_t* q = positive ? c : b;
-    const small_edge_t e[3] = {small_edge(a, p), small_edge(p, q), small_edge(q, a)};
-    for (int y = box.y0; y < box.y1; y++) {
-        uint16_t* depth = gfx_render_target_depth(&target->rows, y);
-        uint16_t* color = gfx_render_target_color(&target->rows, y);
-        const int32_t cy = (y << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
-        for (int x = box.x0; x < box.x1; x++) {
+    const small_edge_t e[TRIANGLE_VERTICES] = {small_edge(a, p), small_edge(p, q), small_edge(q, a)};
+    for (int y = box.y; y < recti_bottom(box); y++) {
+        const small_row_t row = small_row(target, y);
+        for (int x = box.x, end = recti_right(box); x < end; x++) {
             const int32_t cx = (x << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
-            if ((small_side(&e[0], cx, cy) | small_side(&e[1], cx, cy) | small_side(&e[2], cx, cy)) >= 0
-                && f.flat_z > depth[x]) {
-                depth[x] = f.flat_z;
-                color[x] = f.flat_color;
+            if ((small_side(&e[0], cx, row.centre) | small_side(&e[1], cx, row.centre)
+                 | small_side(&e[2], cx, row.centre))
+                    >= 0
+                && f.flat_z > row.depth[x]) {
+                row.depth[x] = f.flat_z;
+                row.color[x] = f.flat_color;
+            }
+        }
+    }
+}
+
+typedef struct {
+    small_edge_t edge[TRIANGLE_VERTICES];
+    uint16_t color[TRIANGLE_VERTICES];
+    int32_t total;
+    int32_t coverage_limit;
+    int phase_mask, rank_shift, level_shift;
+} small_dither_t;
+
+/* This tree's barycentric ordered-dither pick has no source paper; it reuses
+ * gfx_dither4x4 to distribute vertex colours at the edges. */
+static bool
+prepare_small_dither(small_dither_t* d, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                     const r3d_span_vertex_t* c, bool positive, int coverage) {
+    const r3d_span_vertex_t* p = positive ? b : c;
+    const r3d_span_vertex_t* q = positive ? c : b;
+    d->color[0] = pack_rgb(q->r, q->g, q->b);
+    d->color[1] = pack_rgb(a->r, a->g, a->b);
+    d->color[2] = pack_rgb(p->r, p->g, p->b);
+    if (d->color[0] == d->color[1] && d->color[0] == d->color[2]) {
+        return false;
+    }
+    d->edge[0] = small_edge(a, p);
+    d->edge[1] = small_edge(p, q);
+    d->edge[2] = small_edge(q, a);
+    const int32_t total =
+        small_side(&d->edge[0], a->x, a->y) + small_side(&d->edge[1], a->x, a->y) + small_side(&d->edge[2], a->x, a->y);
+    const int divisor = TRIANGLE_VERTICES * SMALL_DITHER_COVERAGE_EIGHTHS;
+    d->coverage_limit = (coverage * total + divisor - 1) / divisor;
+    /* Row workers may see different settings during a knob change; each triangle is self-consistent. */
+    const int cell_bits = small_dither_cell_bits;
+    d->phase_mask = (1 << cell_bits) - 1;
+    d->rank_shift = 2 * (SMALL_DITHER_PATTERN_BITS_MAX - cell_bits);
+    d->level_shift = 1 + (2 * cell_bits);
+    d->total = total;
+    return true;
+}
+
+static inline uint16_t
+small_dither_pick(const small_dither_t* d, int x, int y, int32_t s0, int32_t s1, int32_t s2, uint16_t flat) {
+    if (r3d_span_min3(s0, s1, s2) >= d->coverage_limit) {
+        return flat;
+    }
+    const int rank = gfx_dither4x4[y & d->phase_mask][x & d->phase_mask] >> d->rank_shift;
+    const int32_t threshold = (d->total * (2 * rank + 1)) >> d->level_shift;
+    return d->color[threshold < s0 ? 0 : threshold < s0 + s1 ? 1 : 2];
+}
+
+static __attribute__((noinline)) void
+fill_small_dither(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                  const r3d_span_vertex_t* c, bool positive, recti_t box, int coverage) {
+    small_dither_t d;
+    if (!prepare_small_dither(&d, a, b, c, positive, coverage)) {
+        fill_small(target, a, b, c, positive, box, NULL);
+        return;
+    }
+    fill_t f;
+    set_flat(&f, a, b, c);
+    if (r3d_span_stop_after != 0) {
+        return;
+    }
+    for (int y = box.y; y < recti_bottom(box); y++) {
+        const small_row_t row = small_row(target, y);
+        for (int x = box.x, end = recti_right(box); x < end; x++) {
+            const int32_t cx = (x << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
+            const int32_t s0 = small_side(&d.edge[0], cx, row.centre);
+            const int32_t s1 = small_side(&d.edge[1], cx, row.centre);
+            const int32_t s2 = small_side(&d.edge[2], cx, row.centre);
+            if ((s0 | s1 | s2) >= 0 && f.flat_z > row.depth[x]) {
+                row.depth[x] = f.flat_z;
+                row.color[x] = small_dither_pick(&d, x, y, s0, s1, s2, f.flat_color);
             }
         }
     }
 }
 
 static inline __attribute__((always_inline)) void
-plane_limits(int32_t top, int32_t dx, int32_t dy, r3d_span_box_t box, int64_t* low, int64_t* high) {
-    const int64_t across = (int64_t)dx * (box.x1 - 1 - box.x0);
-    const int64_t bottom = top + ((int64_t)dy * (box.y1 - 1 - box.y0));
+plane_limits(int32_t top, int32_t dx, int32_t dy, recti_t box, int64_t* low, int64_t* high) {
+    const int64_t across = (int64_t)dx * (box.w - 1);
+    const int64_t bottom = top + ((int64_t)dy * (box.h - 1));
     *low = (top < bottom ? top : bottom) + (across < 0 ? across : 0);
     *high = (top > bottom ? top : bottom) + (across > 0 ? across : 0);
 }
@@ -535,7 +696,7 @@ plane_limits(int32_t top, int32_t dx, int32_t dy, r3d_span_box_t box, int64_t* l
  * from below zero lifts the span by at most the lowest corner's shortfall.
  * The corners lie past where the walk steps, so the sums need 64 bits. */
 int32_t
-r3d_span_plane_bound(int32_t top, int32_t dx, int32_t dy, r3d_span_box_t box) {
+r3d_span_plane_bound(int32_t top, int32_t dx, int32_t dy, recti_t box) {
     int64_t low;
     int64_t high;
     plane_limits(top, dx, dy, box, &low, &high);
@@ -544,7 +705,7 @@ r3d_span_plane_bound(int32_t top, int32_t dx, int32_t dy, r3d_span_box_t box) {
 }
 
 bool
-r3d_span_plane_in_range(int32_t top, int32_t dx, int32_t dy, int32_t max, r3d_span_box_t box) {
+r3d_span_plane_in_range(int32_t top, int32_t dx, int32_t dy, int32_t max, recti_t box) {
     int64_t low;
     int64_t high;
     plane_limits(top, dx, dy, box, &low, &high);
@@ -552,10 +713,10 @@ r3d_span_plane_in_range(int32_t top, int32_t dx, int32_t dy, int32_t max, r3d_sp
 }
 
 RENDER_IRAM_ATTR bool
-r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, r3d_span_box_t box) {
-    for (int y = box.y0; y < box.y1; y++) {
+r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, recti_t box) {
+    for (int y = box.y; y < recti_bottom(box); y++) {
         const uint16_t* depth = gfx_render_target_depth(&target->rows, y);
-        for (int x = box.x0; x < box.x1; x++) {
+        for (int x = box.x, end = recti_right(box); x < end; x++) {
             if (depth[x] < bound) {
                 return false;
             }
@@ -567,15 +728,15 @@ r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, r3d_span_box_t b
 /* The colour planes, unless a face colour stands in for them, and whether
  * every plane stays in range across the box so spans need no clamp. */
 static void
-set_up_planes(const fill_t* f, const r3d_span_vertex_t* const v[3], const plane_t* p, r3d_span_box_t box, int y_anchor,
-              gradients_t* g) {
+set_up_planes(const fill_t* f, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], const plane_t* p, recti_t box,
+              int y_anchor, gradients_t* g) {
     g->in_range = r3d_span_plane_in_range(g->base[0], g->dx[0], g->dy[0], value_max[0], box);
     if (f->shading == FILL_FACE) {
         return;
     }
     colour_gradients(p, v[0], v[1], v[2], g);
     for (int k = 1; k < ATTRIBUTES; k++) {
-        g->base[k] = first_row_value(g, k, box.y0, y_anchor);
+        g->base[k] = first_row_value(g, k, box.y, y_anchor);
         g->in_range = g->in_range && r3d_span_plane_in_range(g->base[k], g->dx[k], g->dy[k], value_max[k], box);
     }
 }
@@ -584,15 +745,15 @@ set_up_planes(const fill_t* f, const r3d_span_vertex_t* const v[3], const plane_
  * already hidden; false when it would write nothing. Setup temporaries
  * must leave the stack before the row walk. */
 static __attribute__((noinline)) bool
-set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3], r3d_span_box_t box, int y_anchor,
-            fill_t* f, gradients_t* g) {
+set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TRIANGLE_VERTICES], recti_t box,
+            int y_anchor, fill_t* f, gradients_t* g) {
     plane_t p;
-    g->x_origin = box.x0;
+    g->x_origin = box.x;
     if (f->shading == FILL_FLAT) {
         set_flat(f, v[0], v[1], v[2]);
-    } else if (plane_of(v[0], v[1], v[2], box.x0, y_anchor, &p)) {
+    } else if (plane_of(v[0], v[1], v[2], box.x, y_anchor, &p)) {
         gradient(&p, v[0]->z * DEPTH_SCALE, v[1]->z * DEPTH_SCALE, v[2]->z * DEPTH_SCALE, 0, g);
-        g->base[0] = first_row_value(g, 0, box.y0, y_anchor);
+        g->base[0] = first_row_value(g, 0, box.y, y_anchor);
     } else {
         return false;
     }
@@ -610,39 +771,35 @@ set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3]
     return true;
 }
 
-static inline r3d_span_box_t
-window_box(const r3d_span_target_t* target, r3d_span_box_t box) {
-    box.x0 = box.x0 < 0 ? 0 : box.x0;
-    box.x1 = box.x1 > target->rows.width ? target->rows.width : box.x1;
-    box.y0 = mathi_clamp(box.y0, target->rows.row0, target->rows.row1);
-    box.y1 = mathi_clamp(box.y1, target->rows.row0, target->rows.row1);
-    return box;
-}
-
 static RENDER_IRAM_ATTR void
 r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                        const r3d_span_vertex_t* c, const uint16_t* face) {
     const r3d_span_extent_t e = r3d_span_extent_limits(a, b, c, flat_max_rows, flat_max_width);
-    const r3d_span_box_t box = window_box(target, e.centres);
-    if (box.y0 >= box.y1 || box.x0 >= box.x1) {
+    const recti_t box = r3d_span_window_box(target, e.centres);
+    if (recti_is_empty(box)) {
         return; /* no pixel centre inside this window */
     }
     const int32_t area2 = r3d_span_area2(a, b, c);
     if (area2 == 0) {
         return;
     }
-    if (e.centres.x1 - e.centres.x0 <= small_max_side && e.centres.y1 - e.centres.y0 <= small_max_side) {
-        fill_small(target, a, b, c, area2 > 0, box, face);
+    const int coverage = select_small(a, b, c, e.centres, face != NULL);
+    if (coverage != SMALL_FILL_WALK) {
+        if (coverage != 0) {
+            fill_small_dither(target, a, b, c, area2 > 0, box, coverage);
+        } else {
+            fill_small(target, a, b, c, area2 > 0, box, face);
+        }
         return;
     }
 
     fill_t f = {e.flat ? FILL_FLAT : face != NULL ? FILL_FACE : FILL_GOURAUD, face, 0, 0, NULL};
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
-    const int y_anchor = mathi_clamp(e.centres.y0, -1, target->rows.row1 + 1);
+    const int y_anchor = mathi_clamp(e.centres.y, -1, target->rows.row1 + 1);
     gradients_t g = {0};
     f.g = &g;
-    if (!set_up_fill(target, (const r3d_span_vertex_t* const[3]){a, b, c}, box, y_anchor, &f, &g)) {
+    if (!set_up_fill(target, (const r3d_span_vertex_t* const[TRIANGLE_VERTICES]){a, b, c}, box, y_anchor, &f, &g)) {
         return;
     }
     if (r3d_span_stop_after == 1) {
@@ -653,8 +810,13 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     const r3d_span_vertex_t* v2 = c;
     const bool odd = sort_by_y(&v0, &v1, &v2);
     /* v1 lies right of the long edge v0-v2 when v0-v1-v2 winds positive. */
-    const walk_t w = {
-        v0, v1, v2, box.y0, mathi_clamp(r3d_span_first_centre(v1->y), box.y0, box.y1), box.y1, (area2 > 0) != odd};
+    const walk_t w = {v0,
+                      v1,
+                      v2,
+                      box.y,
+                      mathi_clamp(r3d_span_first_centre(v1->y), box.y, recti_bottom(box)),
+                      recti_bottom(box),
+                      (area2 > 0) != odd};
     walk(target, &f, &w, false);
 }
 
@@ -663,42 +825,47 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
  * skipped when hidden: the fill has already written its depth. */
 void
 r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                        const r3d_span_vertex_t* c) {
+                        const r3d_span_vertex_t* c, bool solid) {
     const r3d_span_vertex_t* v0 = a;
     const r3d_span_vertex_t* v1 = b;
     const r3d_span_vertex_t* v2 = c;
     const bool odd = sort_by_y(&v0, &v1, &v2);
     const r3d_span_extent_t e = r3d_span_extent_limits(a, b, c, flat_max_rows, flat_max_width);
-    const r3d_span_box_t box = window_box(target, e.centres);
+    const recti_t box = r3d_span_window_box(target, e.centres);
     const int32_t area2 = r3d_span_area2(a, b, c);
-    if (box.y0 >= box.y1 || box.x0 >= box.x1 || area2 == 0) {
+    if (recti_is_empty(box) || area2 == 0) {
         return;
     }
     /* FILL_FACE selects a depth carry here; writers do not read face colour. */
     fill_t f = {e.flat ? FILL_FLAT : FILL_FACE, NULL, 0, 0, NULL};
-    if (e.centres.x1 - e.centres.x0 <= small_max_side && e.centres.y1 - e.centres.y0 <= small_max_side) {
+    if (select_small(a, b, c, e.centres, solid) != SMALL_FILL_WALK) {
         set_flat(&f, a, b, c);
-        for (int y = box.y0; y < box.y1; y++) {
-            write_span(target, y, box.x0, box.x1 - 1, (int32_t)f.flat_z << R3D_DEPTH_SHIFT, 0);
+        for (int y = box.y; y < recti_bottom(box); y++) {
+            write_span(target, y, box.x, recti_right(box) - 1, (int32_t)f.flat_z << R3D_DEPTH_SHIFT, 0);
         }
         return;
     }
-    const int y_anchor = mathi_clamp(e.centres.y0, -1, target->rows.row1 + 1);
+    const int y_anchor = mathi_clamp(e.centres.y, -1, target->rows.row1 + 1);
     gradients_t g = {0};
     plane_t p;
     f.g = &g;
-    g.x_origin = box.x0;
+    g.x_origin = box.x;
     if (f.shading == FILL_FLAT) {
         set_flat(&f, a, b, c);
-    } else if (plane_of(a, b, c, box.x0, y_anchor, &p)) {
+    } else if (plane_of(a, b, c, box.x, y_anchor, &p)) {
         gradient(&p, a->z * DEPTH_SCALE, b->z * DEPTH_SCALE, c->z * DEPTH_SCALE, 0, &g);
-        g.base[0] = first_row_value(&g, 0, box.y0, y_anchor);
+        g.base[0] = first_row_value(&g, 0, box.y, y_anchor);
         g.in_range = r3d_span_plane_in_range(g.base[0], g.dx[0], g.dy[0], value_max[0], box);
     } else {
         return;
     }
-    const walk_t w = {
-        v0, v1, v2, box.y0, mathi_clamp(r3d_span_first_centre(v1->y), box.y0, box.y1), box.y1, (area2 > 0) != odd};
+    const walk_t w = {v0,
+                      v1,
+                      v2,
+                      box.y,
+                      mathi_clamp(r3d_span_first_centre(v1->y), box.y, recti_bottom(box)),
+                      recti_bottom(box),
+                      (area2 > 0) != odd};
     walk(target, &f, &w, true);
 }
 

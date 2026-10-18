@@ -1,8 +1,8 @@
 /*
  * Portable suite: measures the peak bytes the developer-toggles page's
- * command list reaches, driving the REAL toggles_screen_draw() against a
- * real microui (ui_init() + ui_begin(), the same calls app_diagnostics.c
- * makes) rather than a hand-mirrored reconstruction; see
+ * command list reaches, and taps the page, driving the REAL
+ * toggles_screen_draw() through ui_begin()/ui_end() as app_diagnostics.c
+ * does rather than a hand-mirrored reconstruction; see
  * docs/Building-a-Screen.md.
  *
  * CONFIG_LAUNCHER_SELFTEST is never defined on a host build, so this run
@@ -10,8 +10,6 @@
  * it; see that file's own top comment. A SELFTEST device build's own copy
  * of this suite measures the fuller page, button and all.
  */
-
-#include <string.h>
 
 #include "suites.h"
 #include "ui_budget.h"
@@ -26,18 +24,27 @@
 #include "shell/apps/diagnostics/ui/toggles_screen.h"
 
 /* Landscape (448x368 logical): this project's shipping orientation. */
+#define FIXTURE_QUARTER    1
+
+/* Finer than any row, so every toggle on the canvas is tapped at least once. */
+#define TAP_STEP_PX        (UI_ROW_HEIGHT / 8)
+
+/* tap()'s bits for the four rows above the fold at FIXTURE_QUARTER: overlay,
+ * leaf, interlace and panel clock. */
+#define ABOVE_FOLD_TOGGLES 0xFU
+
 static void
 fixture(void) {
     ui_init();
-    ui_set_transform(ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT));
+    ui_set_transform(ui_transform_quarter_turn(FIXTURE_QUARTER, GFX_WIDTH, GFX_HEIGHT));
 }
 
 static void
 test_toggles_screen_command_list_fits_budget(void) {
     fixture();
 
-    /* Worst case: every checkbox on and the orientation readout showing a
-     * real sample, all three of its rows drawn. */
+    /* Worst case: every toggle on and the orientation readout showing a
+     * real sample, all six of its rows drawn. */
     const toggles_screen_state_t state = {
         .overlay_on = true,
         .leaf_on = true,
@@ -57,58 +64,59 @@ test_toggles_screen_command_list_fits_budget(void) {
 
     const input_t input = {0};
     ui_begin(&input);
-    toggles_screen_draw(ui_context(), &state);
+    toggles_screen_draw(&state);
     ui_budget_assert("diagnostics developer toggles");
 }
 
-static bool
-find_text_pos(const char* str, mu_Vec2* out) {
-    mu_Command* cmd = NULL;
-    while (mu_next_command(ui_context(), &cmd)) {
-        if (cmd->type == MU_COMMAND_TEXT && strcmp(cmd->text.str, str) == 0) {
-            *out = cmd->text.pos;
-            return true;
-        }
-    }
-    return false;
+static toggles_screen_result_t
+frame(const toggles_screen_state_t* state, const input_t* in) {
+    ui_begin(in);
+    const toggles_screen_result_t result = toggles_screen_draw(state);
+    ui_end(TOGGLES_SCREEN_BACKGROUND);
+    return result;
 }
 
+/* Which toggles one press-and-release at (x, y) flipped, as a bit per field. */
+static unsigned
+tap(const toggles_screen_state_t* state, int x, int y) {
+    const input_t idle = {0};
+    const input_t press = {.down = true, .pressed = true, .x = x, .y = y, .press_x = x, .press_y = y};
+    const input_t release = {.released = true, .x = x, .y = y, .press_x = x, .press_y = y};
+    (void)frame(state, &idle);
+    (void)frame(state, &press);
+    const toggles_screen_result_t r = frame(state, &release);
+    return (unsigned)(r.overlay_on != state->overlay_on) | (unsigned)(r.leaf_on != state->leaf_on) << 1
+           | (unsigned)(r.interlace_on != state->interlace_on) << 2 | (unsigned)(r.fast_clock != state->fast_clock) << 3
+           | (unsigned)(r.send_audit_on != state->send_audit_on) << 4
+           | (unsigned)(r.show_orientation != state->show_orientation) << 5;
+}
+
+/* Every row has its own identity and its own field: a tap anywhere flips at
+ * most one toggle, the rows bind top to bottom in tap()'s bit order (the
+ * order the page draws them), and each toggle above the fold is reachable.
+ * The last two rows sit below the fold at this quarter and are not tapped. */
 static void
 test_a_tap_on_one_toggle_changes_only_that_toggle(void) {
     fixture();
-    mu_Context* ctx = ui_context();
-
     const toggles_screen_state_t state = {.overlay_on = true, .interlace_on = true};
 
-    const input_t input = {0};
-    ui_begin(&input);
-    toggles_screen_draw(ctx, &state);
-    mu_end(ctx);
-
-    mu_Vec2 at;
-    TEST_ASSERT_TRUE_MESSAGE(find_text_pos("gfx leaf-rect overlay", &at), "the leaf row's label was never drawn");
-
-    /* microui only focuses a control it already saw hovered, and only
-     * hovers inside the window the previous frame ended over: one frame to
-     * enter the window, one to hover the row, then the press. */
-    mu_input_mousemove(ctx, at.x, at.y);
-    for (int frame = 0; frame < 2; frame++) {
-        mu_begin(ctx);
-        toggles_screen_draw(ctx, &state);
-        mu_end(ctx);
+    /* Taps arrive in panel space, as the touch controller reports them. */
+    const affine2x_t t = ui_transform_quarter_turn(FIXTURE_QUARTER, GFX_WIDTH, GFX_HEIGHT);
+    unsigned reached = 0;
+    unsigned row = 0;
+    for (int y = 0; y < ui_height(); y += TAP_STEP_PX) {
+        const vec2i_t panel = affine2x_map_pixel(&t, (vec2i_t){ui_width() / 2, y});
+        const unsigned flipped = tap(&state, panel.x, panel.y);
+        TEST_ASSERT_TRUE_MESSAGE((flipped & (flipped - 1)) == 0, "one tap flipped more than one toggle");
+        if (flipped != 0 && flipped != row) {
+            TEST_ASSERT_TRUE_MESSAGE(flipped > row, "a row flipped another row's field");
+            row = flipped;
+        }
+        reached |= flipped;
     }
 
-    mu_input_mousedown(ctx, at.x, at.y, MU_MOUSE_LEFT);
-    mu_begin(ctx);
-    const toggles_screen_result_t result = toggles_screen_draw(ctx, &state);
-    mu_end(ctx);
-
-    TEST_ASSERT_TRUE_MESSAGE(result.leaf_on, "the tapped toggle did not flip");
-    TEST_ASSERT_TRUE_MESSAGE(result.overlay_on, "the row above flipped with it");
-    TEST_ASSERT_TRUE_MESSAGE(result.interlace_on, "the row below flipped with it");
-    TEST_ASSERT_FALSE(result.fast_clock);
-    TEST_ASSERT_FALSE(result.send_audit_on);
-    TEST_ASSERT_FALSE(result.show_orientation);
+    TEST_ASSERT_EQUAL_HEX_MESSAGE(ABOVE_FOLD_TOGGLES, reached & ABOVE_FOLD_TOGGLES,
+                                  "a visible toggle was never reachable");
 }
 
 void

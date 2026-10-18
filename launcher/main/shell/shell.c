@@ -44,6 +44,7 @@
 
 #if CONFIG_LAUNCHER_SELFTEST
 #include "suites.h"
+#include "unity.h"
 #endif
 
 #include "esp_log.h"
@@ -55,6 +56,8 @@ static const char* TAG = "shell";
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* Report throughput on TIMER, not frames. CONFIG_LAUNCHER_DEVELOPMENT only */
+#define SHELL_REPORT_WINDOW_US 1500000
+
 static __attribute__((noinline)) void
 report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
     (*frames)++;
@@ -71,7 +74,7 @@ report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
     }
 
     const int64_t since = now_us - *window_start;
-    if (since >= 1500000) {
+    if (since >= SHELL_REPORT_WINDOW_US) {
         uint32_t points = 0, moved = 0;
         touch_take_sample_counts(&points, &moved);
         const double per_s = 1000000.0 / (double)since;
@@ -164,11 +167,13 @@ run_pending_selftest_suite(const console_frame_request_t* requests) {
         return;
     }
     static suite_run_t run;
+    UNITY_BEGIN();
     suites_run_request(requests->suite, &run);
     if (!run.found) {
         ESP_LOGE(TAG, "no suite named '%s' is registered", run.name);
     }
     suite_report_frame_watch();
+    (void)UNITY_END();
     /* On its own line, so a harness knows the suite ended without having to
      * guess from how long the console has been quiet. */
     suites_print_run(&run);
@@ -241,7 +246,9 @@ offer_console_line(const app_t* current) {
 static void
 console_list_apps(const app_t* current) {
     for (const app_t* app = app_list(); app != NULL; app = app->next) {
-        printf("APPS name=%s running=%d\n", app->name, app == current ? 1 : 0);
+        const char* prefix = app->console != NULL ? app->console->prefix : NULL;
+        printf("APPS name=%s running=%d%s%s\n", app->name, app == current ? 1 : 0, prefix != NULL ? " console=" : "",
+               prefix != NULL ? prefix : "");
     }
     printf("APPS_END\n");
     fflush(stdout);

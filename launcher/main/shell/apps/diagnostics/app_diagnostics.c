@@ -20,12 +20,10 @@
  * already a dense list with no obvious room, and a second page costs
  * nothing the report's own layout has to account for.
  *
- * The toggle screen is built with microui like any other app UI (see
- * ui_launcher.c), a real checkbox, tappable, drawn and dirty-tracked the
- * same way the launcher's own menu is, rather than hand-rolling a
- * one-off control that reads a button directly. Any future developer
- * toggle belongs on this same page as another mu_checkbox() row, not as
- * its own bespoke screen.
+ * The toggle screen is built with ui.h like any other app UI, so it is
+ * drawn and dirty-tracked the way the launcher's own menu is, rather than
+ * hand-rolling a one-off control that reads a button directly. Any future developer toggle belongs on this same page as another
+ * ui_toggle() row, not as its own bespoke screen.
  */
 
 #include <stdio.h>
@@ -45,8 +43,7 @@
 #include "shell/apps/diagnostics/ui/toggles_screen.h"
 #include "ui/ui.h"
 
-#define PAGE_COUNT     2
-#define COL_BACKGROUND 0x0A0C14
+#define PAGE_COUNT 2
 
 static int page;
 
@@ -67,7 +64,7 @@ static int show_orientation;
 static int selftest_failures = -1;
 
 /* Set by a tap of the button below; consumed at the top of
- * diagnostics_frame(), never run from inside mu_button()'s own if-block;
+ * diagnostics_frame(), never run from inside ui_button()'s own if-block;
  * see the comment there for why. */
 static bool selftest_pending;
 #endif /* CONFIG_LAUNCHER_SELFTEST */
@@ -87,10 +84,9 @@ diagnostics_enter(void) {
 
 static void
 draw_toggles_page(const input_t* input) {
-    mu_Context* ctx = ui_context();
     ui_begin(input);
 
-    /* imu_read() is an I2C transaction: read only while the checkbox is
+    /* imu_read() is an I2C transaction: read only while the toggle is
      * already on, not on the frame that turns it on (that frame shows the
      * previous reading's absence for one repaint and self-corrects the
      * next), so a page most visits never enable never pays for it. */
@@ -121,7 +117,7 @@ draw_toggles_page(const input_t* input) {
         }
     }
 
-    const toggles_screen_result_t result = toggles_screen_draw(ctx, &state);
+    const toggles_screen_result_t result = toggles_screen_draw(&state);
 
     gfx_set_debug_overlay(result.overlay_on);
     gfx_set_leaf_overlay(result.leaf_on);
@@ -139,7 +135,7 @@ draw_toggles_page(const input_t* input) {
     }
 #endif
 
-    ui_end(COL_BACKGROUND);
+    ui_end(TOGGLES_SCREEN_BACKGROUND);
 }
 
 static void
@@ -148,9 +144,9 @@ diagnostics_frame(uint32_t dt_ms, const input_t* input) {
 
 #if CONFIG_LAUNCHER_SELFTEST
     /* Consumed here, before this frame's own ui_begin()/ui_end() bracket
-     * opens, never from inside mu_button()'s own if-block in
+     * opens, never from inside ui_button()'s own if-block in
      * draw_toggles_page(). selftest_run() runs suite_ui.c, whose
-     * fixture() calls ui_init()/mu_init() on the same ui_context()
+     * fixture() calls ui_init() on the same UI context
      * singleton every window in this shell draws through; running it
      * synchronously mid-frame would stomp state ui_end() further down
      * still relies on. */
@@ -170,7 +166,7 @@ diagnostics_frame(uint32_t dt_ms, const input_t* input) {
         page = (page + 1) % PAGE_COUNT;
         if (page == 1) {
             /* Switching in from the report page, drawn entirely outside
-             * microui; ui_end() compares this page's own command list
+             * ui.h; ui_end() compares this page's own command list
              * against its last paint and would otherwise see no change
              * and skip repainting, leaving the report's pixels on screen
              * underneath. See ui_invalidate()'s own comment. */

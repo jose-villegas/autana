@@ -28,6 +28,7 @@
  */
 
 #include "ui/ui.h"
+#include "profile/frame_cost.h"
 
 #include <assert.h>
 #include <limits.h>
@@ -47,6 +48,7 @@
 #include "ui/controls/ui_icons.h"
 #include "ui/input/ui_bridge.h"
 #include "ui/ui_internal.h"
+#include "ui/ui_mu.h"
 
 static uint32_t ui_band_fallbacks;
 
@@ -102,9 +104,9 @@ typedef struct {
 } icon_fill_ctx_t;
 
 static void
-icon_fill_emit(void* ctx_, int x, int y, int w, int h) {
+icon_fill_emit(void* ctx_, recti_t rect) {
     const icon_fill_ctx_t* fc = ctx_;
-    draw_rect(x, y, w, h, fc->color);
+    draw_rect(rect.x, rect.y, rect.w, rect.h, fc->color);
 }
 
 /* microui colour to the panel's own, alpha dropped; a style works in
@@ -116,7 +118,7 @@ mu_color_to_gfx(mu_Color c) {
 }
 
 static void
-draw_text_command(const mu_Command* cmd, ui_transform_t t) {
+draw_text_command(const mu_Command* cmd, affine2x_t t) {
     const mu_Color ink = cmd->text.color;
     const mu_Color halo = ui_text_halo(ink);
     const ui_font_scaled_t fs = ui_resolve_font_scaled(cmd->text.font);
@@ -186,7 +188,7 @@ draw_text_command(const mu_Command* cmd, ui_transform_t t) {
 
 static void
 draw_command(const mu_Command* cmd) {
-    const ui_transform_t t = ui_effective_transform();
+    const affine2x_t t = ui_effective_transform();
 
     switch (cmd->type) {
 
@@ -213,7 +215,7 @@ draw_command(const mu_Command* cmd) {
              * collapses a tree yet to ask for them. */
             const mu_Color c = cmd->icon.color;
             const gfx_color_t color = mu_color_to_gfx(c);
-            const draw_image_t* check = cmd->icon.id == MU_ICON_CHECK ? ui_icon(UI_ICON_CHECK) : NULL;
+            const draw_image_t* check = cmd->icon.id == MU_ICON_CHECK ? ui_icon_image(UI_ICON_CHECK) : NULL;
             if (check != NULL) {
                 icon_fill_ctx_t fc = {.color = color};
                 ui_transform_icon_blocks(t, check, cmd->icon.rect, icon_fill_emit, &fc);
@@ -271,7 +273,7 @@ paint_canvas(const mu_Container* cnt) {
 #endif
 }
 
-/* FNV-1a (docs/Citations.md#29). Cheap, and only ever run over the few
+/* FNV-1a (Fowler, Noll, Vo). Cheap, and only ever run over the few
  * hundred bytes a canvas's commands occupy; the buffer is 8 KiB but almost
  * none of it is used. */
 static uint64_t
@@ -404,6 +406,19 @@ repaint_marked_canvases(int n, const bool* repaint, uint32_t background_rgb) {
     return drew;
 }
 
+void
+ui_end_commands(void) {
+    UI_FACE_COST_BEGIN(backend_from);
+    ui_face_end();
+    mu_end(&ui_ctx);
+    ui_end_pointer_frame();
+    UI_FACE_COST_END(backend_from, "ui.backend");
+
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    report_command_list_high_water(ui_ctx.command_list.idx);
+#endif
+}
+
 bool
 ui_end(uint32_t background_rgb) {
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
@@ -417,12 +432,8 @@ ui_end(uint32_t background_rgb) {
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
     const int64_t began_us = band_stats_frames > 0 ? timing_now_us() : 0;
 #endif
-    mu_end(&ui_ctx);
-    ui_end_pointer_frame();
-
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    report_command_list_high_water(ui_ctx.command_list.idx);
-#endif
+    ui_end_commands();
+    FRAME_COST_BEGIN(paint_from);
 
     const int n = ui_ctx.root_list.idx;
     bool repaint[MU_ROOTLIST_SIZE] = {false};
@@ -438,6 +449,7 @@ ui_end(uint32_t background_rgb) {
         report_band_stats(0, timing_now_us() - began_us);
     }
 #endif
+    FRAME_COST_END(paint_from, "ui.paint");
     return drew;
 }
 
@@ -455,12 +467,8 @@ ui_end_over(ui_backdrop_fn paint_backdrop) {
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
     const int64_t began_us = band_stats_frames > 0 ? timing_now_us() : 0;
 #endif
-    mu_end(&ui_ctx);
-    ui_end_pointer_frame();
-
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    report_command_list_high_water(ui_ctx.command_list.idx);
-#endif
+    ui_end_commands();
+    FRAME_COST_BEGIN(paint_from);
 
     const int n = ui_ctx.root_list.idx;
     bool repaint[MU_ROOTLIST_SIZE] = {false};
@@ -487,6 +495,7 @@ ui_end_over(ui_backdrop_fn paint_backdrop) {
         report_band_stats(0, timing_now_us() - began_us);
     }
 #endif
+    FRAME_COST_END(paint_from, "ui.paint");
     return drew;
 }
 
@@ -547,7 +556,7 @@ static uint32_t ui_band_background;
 static bool ui_band_active;
 
 typedef struct {
-    int x, y, w, h;
+    recti_t rect;
     uint32_t rgb;
 } ui_extra_rect_t;
 
@@ -558,7 +567,7 @@ static int replay_rect_count;
 void
 ui_queue_band_overlay_rect(int x, int y, int w, int h, uint32_t rgb) {
     if (extra_rect_count < UI_EXTRA_RECT_MAX) {
-        extra_rects[extra_rect_count++] = (ui_extra_rect_t){x, y, w, h, rgb};
+        extra_rects[extra_rect_count++] = (ui_extra_rect_t){{x, y, w, h}, rgb};
     }
 }
 
@@ -569,7 +578,7 @@ ui_queue_band_overlay_rect(int x, int y, int w, int h, uint32_t rgb) {
  * takes to mean "always replay". */
 static bool
 command_row_range(const mu_Command* cmd, int* y0, int* y1) {
-    const ui_transform_t t = ui_effective_transform();
+    const affine2x_t t = ui_effective_transform();
 
     switch (cmd->type) {
         case MU_COMMAND_RECT: {
@@ -719,12 +728,8 @@ ui_end_for_bands(uint32_t background_rgb) {
     ui_band_overflow = 0;
     ui_band_fallbacks = 0;
     ui_band_background = background_rgb;
-    mu_end(&ui_ctx);
-    ui_end_pointer_frame();
-
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    report_command_list_high_water(ui_ctx.command_list.idx);
-#endif
+    ui_end_commands();
+    FRAME_COST_BEGIN(paint_from);
 
     ui_band_bin_count = 0;
     const int n = ui_ctx.root_list.idx;
@@ -749,7 +754,7 @@ ui_end_for_bands(uint32_t background_rgb) {
 
     for (int i = 0; i < extra_rect_count; i++) {
         const ui_extra_rect_t* r = &extra_rects[i];
-        bin_fill_rect(mu_rect(r->x, r->y, r->w, r->h), ui_rgb(r->rgb));
+        bin_fill_rect(ui_mu_from_recti(r->rect), ui_rgb(r->rgb));
     }
     replay_rect_count = extra_rect_count;
     extra_rect_count = 0;
@@ -758,6 +763,7 @@ ui_end_for_bands(uint32_t background_rgb) {
     ui_band_cost_us = began_us != 0 ? timing_now_us() - began_us : 0;
     ui_band_stats_pending = began_us != 0;
 #endif
+    FRAME_COST_END(paint_from, "ui.paint");
 }
 
 static bool
@@ -783,7 +789,7 @@ replay_full_band(void) {
     }
     for (int i = 0; i < replay_rect_count; i++) {
         const ui_extra_rect_t* r = &extra_rects[i];
-        draw_rect(r->x, r->y, r->w, r->h, gfx_rgb(r->rgb));
+        draw_rect(r->rect.x, r->rect.y, r->rect.w, r->rect.h, gfx_rgb(r->rgb));
     }
 }
 

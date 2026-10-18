@@ -2,7 +2,6 @@
 #include "suites.h"
 #ifdef DEVICE_BUILD
 #include <stdio.h>
-#include <string.h>
 #include "apps/render_lab/render_lab_clips.h"
 #include "apps/render_lab/tests/render_lab_test.h"
 #include "core/memory.h"
@@ -11,10 +10,9 @@
 #include "gfx/present/gfx_present_guard.h"
 #include "scene/scene_internal.h"
 #include "test_cleanup.h"
-#include "ui/controls/ui_widgets.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
-#include "ui/ui_internal.h"
+#include "ui_probe.h"
 #include "unity.h"
 
 #define DISPATCH_BLEND_MS 300
@@ -104,20 +102,12 @@ test_boot_menu_draws_controls_only_for_animated_scene(void) {
         const input_t boot = {.boot = {.pressed = true}};
         render_lab_test_frame(false, &boot);
         render_lab_test_frame(false, NULL);
-        bool clip = false;
-        bool blend = false;
-        bool close = false;
-        mu_Command* command = NULL;
-        while (mu_next_command(ui_context(), &command)) {
-            if (command->type == MU_COMMAND_TEXT) {
-                clip |= strcmp(command->text.str, "CLIP") == 0;
-                blend |= strncmp(command->text.str, "BLEND: ", sizeof("BLEND: ") - 1) == 0;
-                close |= strcmp(command->text.str, "BOOT to close") == 0;
-            }
-        }
-        TEST_ASSERT_TRUE(close);
-        TEST_ASSERT_EQUAL_INT(i == 0, clip);
-        TEST_ASSERT_EQUAL_INT(i == 0, blend);
+        char blend[sizeof("BLEND:  ms") + RENDER_LAB_BLEND_TEXT_SIZE];
+        TEST_ASSERT_TRUE(snprintf(blend, sizeof blend, "BLEND: %d ms", RENDER_LAB_BLEND_DEFAULT_MS) >= 0);
+        recti_t drawn;
+        TEST_ASSERT_TRUE(ui_probe_text("BOOT to close", &drawn));
+        TEST_ASSERT_EQUAL_INT(i == 0, ui_probe_text("CLIP", &drawn));
+        TEST_ASSERT_EQUAL_INT(i == 0, ui_probe_text(blend, &drawn));
         leave(f);
     }
 }
@@ -126,7 +116,7 @@ static void
 test_boot_clip_opening_touch_does_not_select_overlay_row(void) {
     dispatch_fixture_t* f = fixture();
 
-    enum { HOLD_FRAMES = 8, MOTION_PIXELS = 2, OVERLAPPED_ROW = 2 };
+    enum { HOLD_FRAMES = 8, MOTION_PIXELS = 2 };
 
     for (int motion = 0; motion <= MOTION_PIXELS; motion += MOTION_PIXELS) {
         enter(f, "capybara");
@@ -139,17 +129,12 @@ test_boot_clip_opening_touch_does_not_select_overlay_row(void) {
         render_lab_test_frame(false, &boot);
         render_lab_test_frame(false, NULL);
         input_t touch = {.down = true, .pressed = true};
-        bool found = false;
-        mu_Command* command = NULL;
-        while (mu_next_command(ui_context(), &command)) {
-            if (command->type == MU_COMMAND_TEXT && strcmp(command->text.str, "idle") == 0) {
-                ui_transform_point(ui_effective_transform(), command->text.pos.x, command->text.pos.y, &touch.x,
-                                   &touch.y);
-                found = true;
-                break;
-            }
-        }
-        TEST_ASSERT_TRUE(found);
+        recti_t idle;
+        TEST_ASSERT_TRUE(ui_probe_text("idle", &idle));
+        const affine2x_t transform = ui_effective_transform();
+        const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){idle.x, idle.y});
+        touch.x = mapped_pixel.x;
+        touch.y = mapped_pixel.y;
         render_lab_test_frame(false, &touch);
         touch.pressed = false;
         for (int frame = 0; frame < HOLD_FRAMES; frame++) {
@@ -159,31 +144,32 @@ test_boot_clip_opening_touch_does_not_select_overlay_row(void) {
         touch.down = false;
         touch.released = true;
         render_lab_test_frame(false, &touch);
-        TEST_ASSERT_EQUAL_INT(2, ui_context()->root_list.idx);
-        const mu_Container* overlay = ui_context()->root_list.items[1];
-        TEST_ASSERT_TRUE(overlay->open);
-        TEST_ASSERT_EQUAL_INT(UI_MARGIN, overlay->rect.y);
-        const mu_Vec2 opening = ui_context()->mouse_pos;
-        TEST_ASSERT_TRUE(opening.x >= overlay->body.x && opening.x < overlay->body.x + overlay->body.w);
-        const int covered_row = (opening.y - overlay->body.y + overlay->scroll.y) / UI_ROW_HEIGHT;
-        TEST_ASSERT_EQUAL_INT(OVERLAPPED_ROW, covered_row);
+        recti_t rows;
+        int scroll;
+        TEST_ASSERT_TRUE(ui_probe_list(&rows, &scroll));
+        TEST_ASSERT_EQUAL_INT(UI_MARGIN, rows.y);
+        TEST_ASSERT_TRUE(idle.x >= rows.x && idle.x < recti_right(rows));
         scene_t* scene = render_lab_test_loaded_scene("capybara");
         const scene_entity_t subject = scene_find(scene, "capybara");
         const scene_animator_t* animator = &scene->animators[subject];
         TEST_ASSERT_EQUAL_STRING_MESSAGE("idle", scene_animator_clip_name(scene, subject, animator->layer.current.clip),
                                          "opening release must not play the overlay row under the finger");
+        /* The finger rested on another clip's row; which one is the menu's layout. */
+        const int covered_row = (idle.y - rows.y + scroll) / UI_ROW_HEIGHT;
+        TEST_ASSERT_TRUE(covered_row >= 0 && covered_row < scene_animator_clip_count(scene, subject));
+        TEST_ASSERT_NOT_EQUAL_INT(animator->layer.current.clip, covered_row);
         for (int frame = 0; frame < UI_DROPDOWN_CLOSE_FRAMES; frame++) {
             render_lab_test_frame(false, NULL);
-            TEST_ASSERT_EQUAL_INT(2, ui_context()->root_list.idx);
-            TEST_ASSERT_TRUE(ui_context()->root_list.items[1]->open);
+            TEST_ASSERT_TRUE(ui_probe_list(&rows, &scroll));
         }
-        const mu_Container* list = ui_context()->root_list.items[1];
         const int item = 1;
         const char* expected = scene_animator_clip_name(scene, subject, item);
         touch = (input_t){.down = true, .pressed = true};
-        ui_transform_point(ui_effective_transform(), list->body.x + (list->body.w / 2),
-                           list->body.y + (item * UI_ROW_HEIGHT) + (UI_ROW_HEIGHT / 2) - list->scroll.y, &touch.x,
-                           &touch.y);
+        const vec2i_t item_pixel =
+            affine2x_map_pixel(&transform, (vec2i_t){rows.x + (rows.w / 2),
+                                                     rows.y + (item * UI_ROW_HEIGHT) + (UI_ROW_HEIGHT / 2) - scroll});
+        touch.x = item_pixel.x;
+        touch.y = item_pixel.y;
         render_lab_test_frame(false, &touch);
         touch.pressed = false;
         for (int frame = 0; frame < HOLD_FRAMES; frame++) {

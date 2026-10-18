@@ -4,13 +4,14 @@
 |---|---|
 | [report_boot_anim_perf.py](report_boot_anim_perf.py) | Formats a boot animation performance capture. |
 | [report_boot_anim_perf.sh](report_boot_anim_perf.sh) | Captures and reports boot animation performance. |
+| [plane_tilt.py](plane_tilt.py) | Tilts the space toward the camera over a stretch of the boot clip while the t line keeps its place on screen. |
 
 ## Where the animation lives
 
 | File | Holds | Regenerate |
 |---|---|---|
-| `main/boot/boot_anim_timeline.json` | Timing and single settings: everything but the camera and space, edited by hand | `python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json main/boot/boot_anim_motion.glb > main/boot/boot_anim_timeline.h` |
-| `main/boot/boot_anim_motion.glb` | The camera and the space: a glTF animation named `boot_motion` with nodes `camera` and `space`, authored in any glTF tool | authored |
+| `main/boot/boot_anim_timeline.json` | Timing, scalar settings and baked floor tables; everything but camera and space motion | `python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json main/boot/boot_anim_motion.glb > main/boot/boot_anim_timeline.h` |
+| `main/boot/boot_anim_motion.glb` | The camera and the space: a glTF animation named `boot_motion` with nodes `camera` and `space`, authored in any glTF tool. Its last turn (3.1 to 4.3 s) carries a 25 degree tilt toward the camera | authored, then `python tools/boot_anim/plane_tilt.py main/boot/boot_anim_motion.glb -25 3.1 4.3`; the tilt adds to what the clip holds |
 | `main/boot/boot_anim_motion.anim.toml` | Names that animation as the boot clip, baked into its own asset pack | `python tools/r3d/build_pack.py -o <dir>` (the firmware build runs it) |
 | `main/boot/boot.png` | The photograph the animation crossfades to, drawn in the 448 x 368 reading frame | authored |
 | `main/boot/boot.image.toml` | Names that photograph as the boot picture, turned into the panel's frame and baked into its own asset pack | `python tools/r3d/build_pack.py -o <dir>` (the firmware build runs it) |
@@ -39,3 +40,54 @@ python tools/gen/gen_boot_anim_timeline.py main/boot/boot_anim_timeline.json mai
 board is held. The other renders are pinned, so a change to what boot draws
 fails the run until it is re-pinned with `--update-baseline`; `whole.avi`
 renders first and is written either way.
+
+## Baked floor
+
+`gen_boot_anim_timeline.py` emits the floor tables into
+`main/boot/boot_anim_timeline.h`, together with the timeline constants.
+`ripple_impact_ms` starts a dispersive Gaussian packet. The group clock
+`ripple_clock_s`, group speed, initial width, dispersion, source radius,
+wavelength and height are top-level `ripple_*` settings. The calm centre's
+radius fraction and delay are authored separately. The directional `swell`
+entries contain wavelength, period, direction in degrees and weight;
+`swell_height_m` and `swell_in_ms` set their shared envelope. The swell starts
+at `title_start_ms`, together with the title's first letter.
+
+Quadrant-symmetric tables hold node radii, distance bands and ripple phases.
+Gaussian and smoothstep lookups combine with interpolated frame scalars;
+separable swell phase offsets use the row and column coordinates. The host
+suite checks the heights against direct floating-point evaluation; its
+maximum error and tolerance are printed by `test_baked_floor_matches_direct_float`.
+
+Edges use `floor_grey`, approaching pure white with the squared positive
+ripple height divided by `white_height_m`. The swell contributes no colour.
+Arrival uses `grid_band_ms`; alpha stays full to `grid_edge_fade_fraction`
+of the reach, then ramps to zero. `mesh_dash_on_px` and `mesh_dash_off_px`
+set each line's pixel pattern through `DRAW_LINE_DASH`. Spokes and axes have
+their own colours. Screen outcodes reject invisible edges before colour setup.
+
+The camera-plane walk retains fractional bits until projection. Views
+outside its input bounds use the full transform. The comparison below aligns
+the float reference's camera, photograph timing, swell start and constant grey
+with these settings. Each row is reference, baked result and amplified pixel
+difference; the crops enlarge the strongest differences.
+
+![Aligned float reference and baked floor](look_compare/compare.png)
+
+![Enlarged reference comparison](look_compare/compare.crops.png)
+
+The [capture notes](look_compare/README.md) identify reference controls
+and the instruction-count measurements.
+
+Instruction measurements use the on-request `run_boot_floor_cost_suite`:
+
+```sh
+python .dev/scripts/quiet.py -- bash launcher/test/run_tests.sh --sanitize
+AUTANA_ASSET_DIR=launcher/test/build/assets launcher/test/build/host_tests --run run_boot_floor_cost_suite
+python .dev/scripts/quiet.py -- bash launcher/test/run_qemu_tests.sh --suite run_boot_floor_cost_suite --icount --timeout 600
+```
+
+The ink-zero row bounds projection plus traversal and rejection; it includes
+the flat spokes. The ordinary row measures the complete floor. Point and
+horizontal-line rows calibrate an estimate of setup and pixel costs; varied
+slopes, clipping, dash lengths and endpoint flags make that split approximate.

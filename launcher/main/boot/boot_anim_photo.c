@@ -9,6 +9,7 @@
 #include "boot/boot_anim.h"
 
 #include "asset/asset_store.h"
+#include "draw/draw_image_format.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
 

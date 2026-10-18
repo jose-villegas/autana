@@ -65,6 +65,9 @@ class ProblemsTest(unittest.TestCase):
     def test_this_firmwares_own_names_that_resemble_vendor_ones_pass(self):
         self.assertEqual(self.problems("int x = vec_len(a) + value_of(b) + extent + pdf_pages + config_load();\n"), [])
 
+    def test_a_hex_literal_is_not_a_name(self):
+        self.assertEqual(self.problems("unsigned m = 0xFU | 0xAbCd;\n"), [])
+
     def test_a_comment_or_string_naming_vendor_code_is_not_code(self):
         self.assertEqual(self.problems(
             '/* esp_timer_get_time() and vTaskDelay */\n// nvs_flash_init\nconst char* s = "esp_err_t";\n'), [])

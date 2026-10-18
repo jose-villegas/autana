@@ -126,6 +126,15 @@ class OpenSerialTests(unittest.TestCase):
             connection = device.open_serial()
         self.assertEqual(connection.write_timeout, device.BOOT_WAIT_SECONDS)
 
+    def test_modem_policy_wraps_the_open(self):
+        events = []
+        with self.stalled(), \
+                mock.patch.object(device.board_serial, "before_open", side_effect=lambda port: events.append(("before", port))), \
+                mock.patch.object(StalledSerial, "open", side_effect=lambda: events.append(("open", None))), \
+                mock.patch.object(device.board_serial, "after_open", side_effect=lambda port: events.append(("after", port))):
+            connection = device.open_serial()
+        self.assertEqual(events, [("before", connection), ("open", None), ("after", connection)])
+
     def test_a_write_the_board_never_takes_is_an_error(self):
         with self.stalled():
             connection = device.open_serial()
@@ -377,6 +386,19 @@ class InterruptedConnection(FakeConnection):
 
 
 class DeviceTests(unittest.TestCase):
+    def test_suite_verdict_requires_its_completion_line(self):
+        for command, marker in (("suite", b"RUNSUITE_COMPLETE name=sand found=1\n"),
+                                ("selftest", b"SELFTEST_COMPLETE failures=0 elapsed_ms=42\n")):
+            for data, reason, incomplete in ((b"", "idle", True),
+                                             (b":1:good:PASS\n", "timeout", True),
+                                             (b":1:good:PASS\n" + marker, "complete", False)):
+                with self.subTest(command=command, reason=reason), mock.patch("builtins.print") as printed:
+                    if incomplete:
+                        with self.assertRaisesRegex(RuntimeError, f"no completion line arrived: the capture ended {reason}"):
+                            device.print_suite_output(data, "record.log", command, reason, False, 0)
+                    else:
+                        self.assertEqual(device.print_suite_output(data, "record.log", command, reason, False, 0), 0)
+
     def test_suite_output_shows_failure_messages_and_caps_the_list(self):
         data = (b"boot detail\n" + b":1:good:PASS\n" +
                 b"".join(f"file.c:{line}:bad_{line}:FAIL: wrong {line}\n".encode()
@@ -408,7 +430,7 @@ class DeviceTests(unittest.TestCase):
         self.assertFalse(any("by suite" in call.args[0] for call in printed.call_args_list))
 
     def test_a_run_that_crashed_fails_with_every_test_passed(self):
-        data = b":1:good:PASS\nabort() was called at PC 0x40376f2b on core 0\n"
+        data = b":1:good:PASS\nabort() was called at PC 0x40376f2b on core 0\nRUNSUITE_COMPLETE name=sand found=1\n"
         with mock.patch("builtins.print") as printed:
             failed = device.print_suite_output(data, "record.log", "suite", "complete", False, 0)
         self.assertTrue(failed)
@@ -418,9 +440,10 @@ class DeviceTests(unittest.TestCase):
         boot = b"ESP-ROM:esp32s3-20210327\nrst:0x1 (POWERON),boot:0x8 (SPI_FAST_FLASH_BOOT)\n"
         with mock.patch("builtins.print"):
             self.assertFalse(device.print_suite_output(
-                boot + b":1:good:PASS\n", "record.log", "selftest", "complete", False, 1))
+                boot + b":1:good:PASS\nSELFTEST_COMPLETE failures=0\n",
+                "record.log", "selftest", "complete", False, 1))
             self.assertTrue(device.print_suite_output(
-                boot + b":1:good:PASS\n" + boot, "record.log", "selftest", "complete", False, 1))
+                boot + b":1:good:PASS\nSELFTEST_COMPLETE failures=0\n" + boot, "record.log", "selftest", "complete", False, 1))
 
     def test_a_passing_run_still_names_its_capture(self):
         data = b"boot detail\n:1:good:PASS\n"
@@ -463,6 +486,20 @@ class DeviceTests(unittest.TestCase):
 """
         self.assertEqual(device.count_suite_results(data), (7, 1))
 
+    def test_selftest_summary_does_not_complete_a_capture(self):
+        summary = b":1:good:PASS\n1 Tests 0 Failures 0 Ignored\n"
+        marker = b"SELFTEST_COMPLETE failures=0 elapsed_ms=42\n"
+        for ending in ("idle", "timeout", "complete"):
+            with self.subTest(ending=ending), tempfile.TemporaryDirectory() as directory:
+                chunks = [summary]
+                if ending == "complete":
+                    chunks += [b"E (1) selftest: final diagnostic\n", marker]
+                data, reason = device.capture(FakeConnection(chunks),
+                                              Path(directory) / "capture.log", 0.02,
+                                              0 if ending == "idle" else None)
+                self.assertEqual(reason, ending)
+                self.assertEqual(marker in data, ending == "complete")
+
     def test_capture_rejects_build_id_seen_after_expected_id(self):
         connection = FakeConnection([
             b"BUILD_ID=expected\n",
@@ -475,7 +512,7 @@ class DeviceTests(unittest.TestCase):
 
     def test_capture_stops_at_single_suite_completion_and_counts_results(self):
         connection = FakeConnection([
-            b":1:test_one:PASS\nSUITE_DONE sand\n",
+            b":1:test_one:PASS\nRUNSUITE_COMPLETE name=sand found=1\n",
             b"late output\n",
         ])
         with tempfile.TemporaryDirectory() as directory:
@@ -543,7 +580,7 @@ class DeviceTests(unittest.TestCase):
             self.assertEqual(output.read_bytes(), b"before\n")
 
     def test_monitor_capture_ignores_test_completion(self):
-        chunks = [b"TESTS_DONE\n", b"ordinary after tests\n"]
+        chunks = [b"SELFTEST_COMPLETE failures=0 elapsed_ms=42\n", b"ordinary after tests\n"]
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "capture.log"
             with self.assertRaises(KeyboardInterrupt):
@@ -566,7 +603,7 @@ class DeviceTests(unittest.TestCase):
                                suite_name="sand")
 
     def test_run_suite_prints_result_counts(self):
-        connection = FakeConnection([b":1:test_one:PASS\nSUITE_DONE sand\n"])
+        connection = FakeConnection([b":1:test_one:PASS\nRUNSUITE_COMPLETE name=sand found=1\n"])
         args = suite_args()
         store = mock_store()
         with tempfile.TemporaryDirectory() as directory, \
@@ -580,7 +617,7 @@ class DeviceTests(unittest.TestCase):
     def test_run_suite_returns_failure_status(self):
         connection = FakeConnection([
             b":623:test_a_timed_out_job_falls_back_inline:FAIL: Expected 1 Was 0\n"
-            b"SUITE_DONE sand\n"
+            b"RUNSUITE_COMPLETE name=sand found=1\n"
         ])
         args = suite_args()
         store = mock_store()
@@ -639,7 +676,7 @@ class DeviceTests(unittest.TestCase):
         connection = FakeConnection([b"I (9) screenshot: ignoring line: 'TUNE'\n"])
         store = mock_store()
         with mock.patch.object(device, "open_when_free", return_value=connection):
-            with self.assertRaisesRegex(RuntimeError, "needs a development build"):
+            with self.assertRaisesRegex(RuntimeError, "needs a development image"):
                 device.send(self.send_args("TUNE"), store, BOARD)
 
     def test_send_forwards_an_app_command_and_completes_on_its_own_end_line(self):
@@ -699,7 +736,7 @@ class DeviceTests(unittest.TestCase):
                     contextlib.redirect_stdout(io.StringIO()) as output:
                 self.assertEqual(device.main(["--board", BOARD, "take-back"]), 0)
             self.assertIsNone(store.status(BOARD)["human"])
-        self.assertEqual(output.getvalue(), f"board {BOARD} (not on USB)\n  unlocked\n")
+        self.assertEqual(output.getvalue(), f"{device.short_id(BOARD)} {BOARD} not on USB\n  unlocked\n")
 
     def test_hand_records_reservation(self):
         store = mock.Mock()
@@ -1005,7 +1042,7 @@ class RecordCaptureTests(unittest.TestCase):
 
 class RunSuiteDefaultPathTests(unittest.TestCase):
     def test_without_out_uses_the_default_path_and_writes_an_index_line(self):
-        connection = FakeConnection([b":1:test_one:PASS\nSUITE_DONE sand\n"])
+        connection = FakeConnection([b":1:test_one:PASS\nRUNSUITE_COMPLETE name=sand found=1\n"])
         args = suite_args(owner="agent a")
         store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
@@ -1213,7 +1250,7 @@ class FlashCommandLineTests(unittest.TestCase):
             calls.append(list(extra_flags))
             return contextlib.nullcontext("built")
 
-        with mock.patch.object(device, "board_for_lock", return_value=BOARD), \
+        with mock.patch.object(device, "board_for_lock", return_value=(BOARD, None)), \
              mock.patch.object(device, "build_image", fake_build_image), \
              mock.patch.object(device, "write_image", side_effect=fake_write_image), \
              mock.patch.object(device, "await_console", side_effect=lambda args, board, build_id, acquired, connection: connection.close()), \
@@ -1232,7 +1269,7 @@ class FlashCommandLineTests(unittest.TestCase):
             store.root = Path(directory) / "lock"
             connection = FakeConnection([b"BUILD_ID=abc\n" + device.CONSOLE_UP])
             with recorded_serial(connection, Path(directory) / "records"), \
-                 mock.patch.object(device, "board_for_lock", return_value=BOARD), \
+                 mock.patch.object(device, "board_for_lock", return_value=(BOARD, None)), \
                  mock.patch.object(device.device_lock, "LockStore", return_value=store), \
                  mock.patch.object(device, "run_to_end", side_effect=fake_flash.scripts()), \
                  mock.patch.object(device, "find_board", return_value=device.Board(BOARD, BOARD)), \
@@ -1291,7 +1328,7 @@ class RunSuiteReportGenerationTests(unittest.TestCase):
 
     def test_writes_a_report_beside_the_default_path_capture(self):
         connection = FakeConnection([
-            b":1:test_one:PASS\n:2:test_two:FAIL: Expected 1 Was 0\nSUITE_DONE sand\n"
+            b":1:test_one:PASS\n:2:test_two:FAIL: Expected 1 Was 0\nRUNSUITE_COMPLETE name=sand found=1\n"
         ])
         args = suite_args()
         store = mock_store()
@@ -1308,7 +1345,7 @@ class RunSuiteReportGenerationTests(unittest.TestCase):
             self.assertIn("test_two", text)
 
     def test_a_broken_reporter_step_does_not_fail_the_suite_command(self):
-        connection = FakeConnection([b":1:test_one:PASS\nSUITE_DONE sand\n"])
+        connection = FakeConnection([b":1:test_one:PASS\nRUNSUITE_COMPLETE name=sand found=1\n"])
         args = suite_args()
         store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
@@ -1324,7 +1361,7 @@ class RunSuiteRecordsWorktreeTests(unittest.TestCase):
     invocation (Device-Lock.md); run-suite used to leave worktree null."""
 
     def test_run_suite_records_the_ambient_cwd_as_worktree(self):
-        connection = FakeConnection([b":1:test_one:PASS\nSUITE_DONE sand\n"])
+        connection = FakeConnection([b":1:test_one:PASS\nRUNSUITE_COMPLETE name=sand found=1\n"])
         args = suite_args()
         store = mock_store()
         with tempfile.TemporaryDirectory() as directory:
@@ -1376,7 +1413,7 @@ class TuneSetTests(unittest.TestCase):
                 self.apply("r3d.side=3", *chunks)
 
     def test_the_set_precedes_the_run_request(self):
-        connection = FakeConnection([b"TUNE_OK r3d.side=3\n", b"SUITE_DONE sand\n"])
+        connection = FakeConnection([b"TUNE_OK r3d.side=3\n", b"RUNSUITE_COMPLETE name=sand found=1\n"])
         args = Namespace(owner="agent", purpose="test", wait=0, suite="sand", out=None, max_seconds=1,
                          idle_seconds=None, expect_build_id=None, test_filter=[], tune_set=["r3d.side=3"])
         with tempfile.TemporaryDirectory() as directory:
@@ -1420,7 +1457,7 @@ class TestFilterRunTests(unittest.TestCase):
         self.assertEqual(b"".join(writes), b"\nRUNSUITE sand fire,gas\n")
 
     def test_no_filter_sends_only_the_suite_name(self):
-        _, _, writes, _ = self.run_filtered([b"SUITE_DONE sand\n"], [])
+        _, _, writes, _ = self.run_filtered([b"RUNSUITE_COMPLETE name=sand found=1\n"], [])
         self.assertEqual(b"".join(writes), b"\nRUNSUITE sand\n")
 
     def test_a_filtered_run_completes_and_records_its_filter(self):
@@ -1449,15 +1486,17 @@ class TestFilterRunTests(unittest.TestCase):
         self.assertIsInstance(error, device.TestFilterError)
         self.assertRegex(str(error), "^this image predates --test")
 
-    def test_a_filtered_run_with_no_completion_line_is_a_filter_error(self):
-        # An image that predates the filter drops a long request whole.
-        _, error, _, _ = self.run_filtered([b"SUITE_DONE sand\n"], ["fire"])
-        self.assertIsInstance(error, device.TestFilterError)
-        self.assertRegex(str(error), "no RUNSUITE_COMPLETE")
+    def test_a_filtered_truncated_run_is_a_capture_error(self):
+        _, error, _, _ = self.run_filtered([b":1:good:PASS\n"], ["fire"])
+        self.assertIsInstance(error, RuntimeError)
+        self.assertNotIsInstance(error, device.TestFilterError)
+        self.assertRegex(str(error), "no completion line arrived: the capture ended timeout")
 
-    def test_an_unfiltered_run_with_no_completion_line_is_still_fine(self):
-        code, error, _, _ = self.run_filtered([b"SUITE_DONE sand\n"], [])
-        self.assertEqual((code, error), (0, None))
+    def test_an_unfiltered_truncated_run_is_a_capture_error(self):
+        _, error, _, _ = self.run_filtered([b":1:good:PASS\n"], [])
+        self.assertIsInstance(error, RuntimeError)
+        self.assertNotIsInstance(error, device.TestFilterError)
+        self.assertRegex(str(error), "no completion line arrived: the capture ended timeout")
 
     def test_a_request_too_long_for_the_console_line_is_a_filter_error(self):
         connection = FakeConnection([b"W (5) console: console line too long (max 48) - dropped\n"])
@@ -1490,7 +1529,8 @@ class BatchTests(unittest.TestCase):
                   perf_scope=False, script_text="--diag --dev --perf-scope", out=False,
                   expect_build_id=None, flashed_build_id="abc123-diag", flash=True,
                   test_filter=None, filter_error_run=None, error_class=None,
-                  layout_seed=0):
+                  layout_seed=0, truncated_run=None):
+        real_run_suite = device.run_suite
         calls = {"locks": 0, "build": [], "flash": [], "run_suite": [], "events": [],
                  "suite_args": []}
 
@@ -1526,6 +1566,12 @@ class BatchTests(unittest.TestCase):
             calls["suite_args"].append(args)
             if filter_error_run is not None and len(calls["run_suite"]) == filter_error_run:
                 raise (error_class or device.TestFilterError)("the board cannot filter")
+            if truncated_run == len(calls["run_suite"]):
+                args.idle_seconds = 0
+                with mock.patch.object(device, "holding", return_value=contextlib.nullcontext(held_lock)), \
+                     mock.patch.object(device, "open_when_free",
+                                       return_value=FakeConnection([b":1:test_one:PASS\n"])):
+                    return real_run_suite(args, store, port, held_lock, worktree, commit)
             if args.out:
                 Path(args.out).write_text(":1:test_one:PASS\n", encoding="utf-8")
             if fail_run is not None and len(calls["run_suite"]) == fail_run:
@@ -1571,7 +1617,7 @@ class BatchTests(unittest.TestCase):
 
     def test_the_command_line_flag_reaches_batch_as_the_filter(self):
         seen = []
-        with mock.patch.object(device, "board_for_lock", return_value=BOARD), \
+        with mock.patch.object(device, "board_for_lock", return_value=(BOARD, None)), \
              mock.patch.object(device, "device_lock") as fake_lock_module, \
              mock.patch.object(device, "batch", side_effect=lambda args, *unused: seen.append(args) or 0):
             fake_lock_module.LockStore.return_value = mock.Mock()
@@ -1645,6 +1691,13 @@ class BatchTests(unittest.TestCase):
         for suite, out, purpose, unused_held_lock, unused_expected, worktree, commit in calls["run_suite"]:
             self.assertEqual(worktree, calls["worktree"])
             self.assertEqual(commit, "c0ffee")
+
+    def test_a_truncated_unfiltered_capture_is_a_run_error(self):
+        code, calls, summary, manifest = self.run_batch(runs=2, truncated_run=1)
+        self.assertEqual(code, 1)
+        self.assertEqual(len(calls["run_suite"]), 2)
+        self.assertIn("- run 1: no completion line arrived: the capture ended idle", summary)
+        self.assertIn("no completion line arrived", manifest[-1]["error"])
 
     def test_a_capture_error_is_recorded_and_the_batch_continues(self):
         code, calls, summary, _ = self.run_batch(runs=3, fail_run=2)
@@ -1867,6 +1920,66 @@ class FindElfForBuildIdTests(unittest.TestCase):
     """find_elf_for_build_id() picks the build actually on the board: the
     one whose own build_id.txt matches; never merely the newest on disk."""
 
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.archive = Path(directory.name) / "elf"
+        patcher = mock.patch.object(device, "elf_archive", return_value=self.archive)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_a_core_dumps_longer_hash_names_the_same_build(self):
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = Path(directory)
+            build = worktree / "launcher" / "build.diag"
+            build.mkdir(parents=True)
+            (build / "build_id.txt").write_text("834b7bb03fd6-diag\n", encoding="ascii")
+            (build / "launcher.elf").write_bytes(b"")
+            self.assertEqual(device.find_elf_for_build_id(worktree, "834b7bb03fd6e"), build / "launcher.elf")
+            self.assertIsNone(device.find_elf_for_build_id(worktree, "834b7bb03fd7e"))
+
+    def test_a_build_built_over_is_found_in_the_archive(self):
+        self.archive.mkdir()
+        (self.archive / "834b7bb03fd6-diag.elf").write_bytes(b"")
+        with tempfile.TemporaryDirectory() as directory:
+            found = device.find_elf_for_build_id(Path(directory), "834b7bb03fd6e")
+        self.assertEqual(found, self.archive / "834b7bb03fd6-diag.elf")
+
+    def keep_crash_of(self, build_id, capture):
+        """keep_crashed_elf() over `capture` in a worktree whose one build is `build_id`."""
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory) / "launcher" / "build.diag"
+            build.mkdir(parents=True)
+            (build / "build_id.txt").write_text(build_id + "\n", encoding="ascii")
+            (build / "launcher.elf").write_bytes(b"elf")
+            with mock.patch.object(device.Path, "cwd", return_value=Path(directory)):
+                device.keep_crashed_elf(capture)
+
+    def test_a_crash_keeps_the_build_its_panic_names(self):
+        # The capture's BUILD_ID line may be another build's; the panic's own line wins.
+        self.keep_crash_of("834b7bb03fd6-diag",
+                           b"BUILD_ID=aaaaaaaaaaaa-diag\nassert failed\nELF file SHA256: 834b7bb03fd6e\n")
+        self.assertEqual([path.name for path in self.archive.glob("*.elf")], ["834b7bb03fd6-diag.elf"])
+
+    def test_a_failed_copy_is_one_line_not_the_captures_failure(self):
+        with mock.patch.object(device.shutil, "copyfile", side_effect=OSError("disk full")), \
+             contextlib.redirect_stderr(io.StringIO()) as errors:
+            self.keep_crash_of("834b7bb03fd6-diag", b"ELF file SHA256: 834b7bb03fd6e\n")
+        self.assertIn("disk full", errors.getvalue())
+
+    def test_a_crash_with_no_elf_here_keeps_nothing(self):
+        self.keep_crash_of("aaaaaaaaaaaa-diag", b"ELF file SHA256: 834b7bb03fd6e\n")
+        self.assertFalse(self.archive.exists())
+
+    def test_the_archive_keeps_the_newest_crashed_builds(self):
+        for index in range(device.ELF_ARCHIVE_KEEP + 1):
+            build_id = f"{index:012x}-dev"
+            self.keep_crash_of(build_id, f"BUILD_ID={build_id}\n".encode())
+            os.utime(self.archive / f"{build_id}.elf", (index, index))
+        kept = sorted(path.name for path in self.archive.glob("*.elf"))
+        self.assertEqual(len(kept), device.ELF_ARCHIVE_KEEP)
+        self.assertNotIn(f"{0:012x}-dev.elf", kept)
+
     def test_no_build_id_finds_nothing(self):
         self.assertIsNone(device.find_elf_for_build_id(Path("C:/wt"), ""))
 
@@ -1928,7 +2041,8 @@ class SerialLineOrderTests(unittest.TestCase):
             with self.subTest(failure=failure), \
                  mock.patch.dict(sys.modules, {"serial": Namespace(Serial=Serial)}), \
                  mock.patch.object(device, "locked_port", return_value="fake"), \
-                 mock.patch.object(device, "os", Namespace(name="posix")):
+                 mock.patch.object(device, "os", Namespace(name="posix")), \
+                 mock.patch.object(device.board_serial, "os", Namespace(name="posix")):
                 with self.assertRaises(failure):
                     device.open_serial()
                 self.assertTrue(handles[-1].closed)
@@ -1953,7 +2067,8 @@ class SerialLineOrderTests(unittest.TestCase):
                             self.closed = True
                     with mock.patch.dict(sys.modules, {"serial": Namespace(Serial=Serial)}), \
                          mock.patch.object(device, "locked_port", return_value="fake"), \
-                         mock.patch.object(device, "os", Namespace(name="posix")):
+                         mock.patch.object(device, "os", Namespace(name="posix")), \
+                         mock.patch.object(device.board_serial, "os", Namespace(name="posix")):
                         if code == errno.EIO:
                             with self.assertRaises(OSError) as caught:
                                 device.open_serial()
@@ -1988,7 +2103,8 @@ class SerialLineOrderTests(unittest.TestCase):
             with self.subTest(platform=platform), \
                  mock.patch.dict(sys.modules, {"serial": Namespace(Serial=Serial)}), \
                  mock.patch.object(device, "locked_port", return_value="fake-port"), \
-                 mock.patch.object(device, "os", Namespace(name=platform)):
+                 mock.patch.object(device, "os", Namespace(name=platform)), \
+                 mock.patch.object(device.board_serial, "os", Namespace(name=platform)):
                 connection = device.open_serial()
                 self.assertEqual(connection.transitions[-1], (False, False))
                 self.assertNotIn((False, True), connection.transitions)
@@ -2023,6 +2139,7 @@ class ResetReconnectTests(unittest.TestCase):
 
         for patch in (mock.patch.dict(sys.modules, {"serial": self.usb.serial_module(self.now, self.sleep, self.platform)}),
                       mock.patch.object(device, "os", Namespace(name=self.platform)),
+                      mock.patch.object(device.board_serial, "os", Namespace(name=self.platform)),
                       mock.patch.object(device, "plugged_boards", self.boards),
                       mock.patch.object(device, "require_live_lock"),
                       mock.patch.object(device, "require_unlost"),
@@ -2295,6 +2412,27 @@ class ResetReconnectTests(unittest.TestCase):
         self.assertIs(caught.exception, failure)
         connection.close.assert_called_once_with()
 
+    def test_flash_boot_of_a_chip_left_in_download_mode_gets_the_watchdog(self):
+        run = self.usb.esptool(self.now, self.sleep)
+        afters = []
+
+        def resetting(command, **kwargs):
+            after = command[command.index("--after") + 1]
+            afters.append(after)
+            self.usb.boot_line = (b"BUILD_ID=abc\n" + device.CONSOLE_UP + b"\n"
+                                  if after == "watchdog_reset" else b"")
+            return run(command, **kwargs)
+
+        args = Namespace(owner="agent", purpose="boot", variant="diag", worktree=".")
+        with mock.patch.object(device.subprocess, "run", side_effect=resetting), \
+             mock.patch.object(device, "resolve_capture_path", return_value=(os.devnull, False)), \
+             mock.patch.object(device, "record_capture", return_value="boot.log"), \
+             mock.patch.object(device, "git_commit", return_value=None), \
+             contextlib.redirect_stdout(io.StringIO()) as output:
+            device.await_console(args, BOARD, "abc", None, device.reset())
+        self.assertEqual(afters, ["hard_reset", "watchdog_reset"])
+        self.assertIn("booted BUILD_ID=abc", output.getvalue())
+
     def test_flash_boot_uses_returned_handle_without_opening_again(self):
         held = Namespace(held={"acquired_at": None}, kind="batch")
         def write(*unused):
@@ -2497,11 +2635,11 @@ class ListenLifecycleTests(unittest.TestCase):
         self.assertNotIn("error: broken", text)
 
     def test_timed_listen_continues_past_test_completion(self):
-        connection = InterruptedConnection([b"TESTS_DONE\n", b"after tests\n"])
+        connection = InterruptedConnection([b"SELFTEST_COMPLETE failures=0 elapsed_ms=42\n", b"after tests\n"])
         code, _, entry, payload, _ = self.run_listen(connection, ["--seconds", "1"])
         self.assertEqual(code, 0)
         self.assertEqual(entry["reason"], "stopped")
-        self.assertEqual(payload, b"TESTS_DONE\nafter tests\n")
+        self.assertEqual(payload, b"SELFTEST_COMPLETE failures=0 elapsed_ms=42\nafter tests\n")
 
     def test_partial_echo_gets_newline_before_path(self):
         class Output(io.StringIO):
@@ -2546,89 +2684,115 @@ class ListenLifecycleTests(unittest.TestCase):
         store.release.assert_called_once()
 
 
+def raw_core_dump(build_hash):
+    """Coredump-partition bytes as the panic handler leaves them: a header,
+    then ELF notes, one of them the app's build. The other bytes are filler."""
+    note = device.COREDUMP_INFO_NOTE + b"\0" * (-len(device.COREDUMP_INFO_NOTE) % device.ELF_NOTE_ALIGN)
+    sha = build_hash.encode().ljust(device.COREDUMP_INFO_SHA_BYTES, b"\0")
+    return b"\x24\x42" * 10 + note + struct.pack("<I", 3) + sha + b"\xa5" * 32
+
+
+class CoredumpBuildTests(unittest.TestCase):
+    """coredump_build() names the build the dump itself came from."""
+
+    def test_reads_the_hash_the_dump_carries(self):
+        self.assertEqual(device.coredump_build(raw_core_dump("834b7bb03fd6e")), "834b7bb03fd6e")
+
+    def test_an_erased_partition_holds_no_dump(self):
+        self.assertIsNone(device.coredump_build(b"\xff" * 4096))
+
+    def test_a_note_without_hex_is_no_build(self):
+        self.assertIsNone(device.coredump_build(raw_core_dump("not-hex")))
+
+
 class CoredumpTests(unittest.TestCase):
-    """Decode the dump against the running build, under the board lock."""
+    """Read the dump raw under the board lock, then decode it against the
+    build it came from, which is not the running one after a later flash."""
 
-    def test_failed_coredump_commands_keep_failure_and_reconnect(self):
-        for erase in (True, False):
-            with self.subTest(erase=erase):
-                command = ["--board", BOARD, "coredump"] + (["--erase"] if erase else ["--elf", "firmware.elf"])
-                connection = FakeConnection()
-                def run(command, check=False):
-                    result = subprocess.CompletedProcess(command, 7)
-                    if check:
-                        result.check_returncode()
-                    return result
-                with mock.patch.object(device.subprocess, "run", run), \
-                     mock.patch.object(device.device_lock, "LockStore", return_value=mock_store()), \
-                     mock.patch.object(device, "locked_port", return_value="COM9"), \
-                     mock.patch.object(device, "toolchain_tool", return_value=None), \
-                     mock.patch.object(device, "idf_path", return_value="idf"), \
-                     mock.patch.object(device, "reconnect_after_reset", return_value=connection) as reconnect, \
-                     mock.patch.object(connection, "close") as closed, \
-                     contextlib.redirect_stdout(io.StringIO()) as output:
-                    self.assertEqual(device.main(command), 1 if erase else 7)
-                self.assertNotIn("erased", output.getvalue())
-                reconnect.assert_called_once_with()
-                closed.assert_called_once_with()
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
 
-    def test_info_failure_without_returning_port_keeps_exit_status(self):
-        failure = subprocess.CalledProcessError(7, ["esp_coredump"])
-        args = Namespace(owner="agent", purpose="dump", wait=0, erase=False, elf="firmware.elf")
-        with mock.patch.object(device.subprocess, "run", side_effect=failure), \
-             mock.patch.object(device, "locked_port", return_value="COM9"), \
-             mock.patch.object(device, "toolchain_tool", return_value=None), \
-             mock.patch.object(device, "reconnect_after_reset",
-                               side_effect=device.PortUnavailable("missing")) as reconnect:
-            self.assertEqual(device.coredump(args, mock_store(), BOARD), failure.returncode)
-        reconnect.assert_called_once_with()
-
-    def run_coredump(self, erase=False, elf=None, found_elf=Path("wt/launcher/build.dev/launcher.elf")):
+    def run_coredump(self, raw=b"", erase=False, elf=None, found_elf=Path("archive/834b7bb03fd6-diag.elf"),
+                     read_fails=False):
         args = Namespace(owner="agent", purpose="autana coredump", wait=0, erase=erase, elf=elf)
         store = mock_store()
-        with mock.patch.object(device, "open_when_free", return_value=FakeConnection([])), \
-             mock.patch.object(device, "exchange", return_value=(["BUILD_ID=abc123-dev"], True)) as asked, \
-             mock.patch.object(device, "find_elf_for_build_id", return_value=found_elf) as finder, \
-             mock.patch.object(device, "locked_port", return_value="COM9"), \
-             mock.patch.object(device, "toolchain_tool", return_value=None), \
-             mock.patch.object(device, "idf_path", return_value="idf"), \
-             mock.patch.object(device.subprocess, "run",
-                               return_value=subprocess.CompletedProcess([], 0)) as run, \
-             mock.patch.object(device, "reconnect_after_reset") as reconnect, \
-             mock.patch("builtins.print"):
+        core = self.root / "120000_coredump_agent.log"
+        commands = []
+
+        def run(command, check=False):
+            commands.append(command)
+            if read_fails and "read_partition" in command:
+                raise subprocess.CalledProcessError(7, command)
+            if "read_partition" in command:
+                Path(command[command.index("--output") + 1]).write_bytes(raw)
+            return subprocess.CompletedProcess(command, 0)
+
+        with mock.patch.object(device, "resolve_capture_path", return_value=(core, True)),              mock.patch.object(device, "find_elf_for_build_id", return_value=found_elf) as finder,              mock.patch.object(device, "locked_port", return_value="COM9"),              mock.patch.object(device, "toolchain_tool", return_value=None),              mock.patch.object(device, "idf_path", return_value="idf"),              mock.patch.object(device.subprocess, "run", side_effect=run),              mock.patch.object(device, "reconnect_after_reset") as reconnect,              mock.patch("builtins.print"):
             code = device.coredump(args, store, BOARD)
         store.release.assert_called_once()
         # esptool resets the board on its way out, read or erase.
-        self.assertEqual(reconnect.call_count, int(found_elf is not None or erase))
-        return code, asked, finder, run
+        self.assertEqual(reconnect.call_count, 1)
+        return code, finder, commands, core.with_suffix(".bin")
 
-    def test_decodes_against_the_running_builds_elf(self):
-        code, asked, finder, run = self.run_coredump()
+    def test_decodes_against_the_build_the_dump_names_not_the_running_one(self):
+        code, finder, commands, saved = self.run_coredump(raw_core_dump("834b7bb03fd6e"))
         self.assertEqual(code, 0)
-        self.assertEqual(asked.call_args[0][1], device.BUILD_ID_REQUEST)
-        self.assertEqual(finder.call_args[0][1], "abc123-dev")
-        command = run.call_args[0][0]
-        self.assertEqual(command[command.index("--port") + 1], "COM9")
-        self.assertEqual(command[-2:], ["info_corefile", str(Path("wt/launcher/build.dev/launcher.elf"))])
+        self.assertEqual(finder.call_args[0][1], "834b7bb03fd6e")
+        read, decode = commands
+        self.assertEqual(read[read.index("--port") + 1], "COM9")
+        self.assertNotIn("--port", decode)
+        self.assertEqual(decode[decode.index("--core") + 1], str(saved))
+        self.assertEqual(decode[-1], str(Path("archive/834b7bb03fd6-diag.elf")))
+        self.assertTrue(saved.is_file())
 
-    def test_no_matching_elf_reads_nothing(self):
-        code, _, _, run = self.run_coredump(found_elf=None)
+    def test_no_elf_for_the_dumps_build_keeps_the_dump_and_fails(self):
+        code, _, commands, saved = self.run_coredump(raw_core_dump("834b7bb03fd6e"), found_elf=None)
         self.assertEqual(code, 1)
-        run.assert_not_called()
+        self.assertEqual(len(commands), 1)
+        self.assertTrue(saved.is_file())
 
-    def test_an_elf_given_skips_the_question(self):
-        code, asked, _, run = self.run_coredump(elf="other.elf")
+    def test_an_empty_partition_reads_as_no_dump(self):
+        code, finder, commands, saved = self.run_coredump(b"\xff" * 64)
         self.assertEqual(code, 0)
-        asked.assert_not_called()
-        self.assertEqual(run.call_args[0][0][-1], "other.elf")
+        finder.assert_not_called()
+        self.assertEqual(len(commands), 1)
+        self.assertFalse(saved.exists())
+
+    def test_a_dump_that_names_no_build_is_kept(self):
+        code, finder, commands, saved = self.run_coredump(b"\x10\x20\x00\x00" + b"\xa5" * 60, found_elf=None)
+        self.assertEqual(code, 1)
+        self.assertEqual(len(commands), 1)
+        self.assertTrue(saved.is_file())
+
+    def test_an_elf_given_is_the_one_decoded(self):
+        code, finder, commands, _ = self.run_coredump(raw_core_dump("834b7bb03fd6e"), elf="other.elf")
+        self.assertEqual(code, 0)
+        finder.assert_not_called()
+        self.assertEqual(commands[-1][-1], "other.elf")
+
+    def test_a_failed_read_keeps_its_exit_status(self):
+        code, _, commands, _ = self.run_coredump(read_fails=True)
+        self.assertEqual(code, 7)
+        self.assertEqual(len(commands), 1)
 
     def test_erase_clears_only_the_coredump_partition(self):
-        code, asked, _, run = self.run_coredump(erase=True)
+        code, finder, commands, _ = self.run_coredump(erase=True)
         self.assertEqual(code, 0)
-        asked.assert_not_called()
-        command = run.call_args[0][0]
-        self.assertIn("erase_partition", command)
-        self.assertIn("--partition-name=" + device.COREDUMP_PARTITION, command)
+        finder.assert_not_called()
+        self.assertIn("erase_partition", commands[0])
+        self.assertIn("--partition-name=" + device.COREDUMP_PARTITION, commands[0])
+
+    def test_a_saved_dump_decodes_with_no_board(self):
+        saved = self.root / "dump.bin"
+        saved.write_bytes(raw_core_dump("834b7bb03fd6e"))
+        with mock.patch.object(device.subprocess, "run",
+                               return_value=subprocess.CompletedProcess([], 0)) as run,              mock.patch.object(device, "toolchain_tool", return_value=None),              mock.patch.object(device, "board_for_lock") as board,              contextlib.redirect_stdout(io.StringIO()):
+            code = device.main(["coredump", "--core", str(saved), "--elf", "x.elf"])
+        self.assertEqual(code, 0)
+        board.assert_not_called()
+        self.assertEqual(run.call_args[0][0][-1], "x.elf")
 
 
 class WaiterNoticeTests(unittest.TestCase):
@@ -2753,7 +2917,7 @@ class SelftestTests(unittest.TestCase):
     """selftest() flashes diag+autorun under one held lock, then resets,
     waits for USB serial, and captures until SELFTEST_COMPLETE."""
 
-    def run_selftest(self, perf_scope=False):
+    def run_selftest(self, perf_scope=False, capture=None):
         calls = {"flash_extra_flags": None, "held_lock": None, "events": []}
 
         def fake_build_image(args, port, extra_flags=()):
@@ -2793,10 +2957,29 @@ class SelftestTests(unittest.TestCase):
                  mock.patch.object(device, "reset", fake_reset), \
                  mock.patch.object(device, "open_when_free", side_effect=fake_wait), \
                  mock.patch.object(device, "records_root", return_value=root), \
-                 mock.patch.object(device, "git_commit", return_value="deadbeef"):
-                code = device.selftest(args, store, BOARD)
+                 mock.patch.object(device, "git_commit", return_value="deadbeef"), \
+                 mock.patch.object(device, "reset_and_capture", wraps=device.reset_and_capture) as captured:
+                if capture is not None:
+                    captured.side_effect = lambda path, *unused: (Path(path).write_bytes(capture[0]), capture)[1]
+                try:
+                    code = device.selftest(args, store, BOARD)
+                except RuntimeError as caught:
+                    code = caught
+                calls["reports"] = "\n".join(path.read_text(encoding="utf-8")
+                                             for path in root.rglob("*.md"))
                 entry = json.loads((root / "index.jsonl").read_text(encoding="utf-8").strip())
         return code, calls, entry
+
+    def test_incomplete_selftest_fails_and_keeps_the_report(self):
+        for reason in ("idle", "timeout"):
+            with self.subTest(reason=reason), contextlib.redirect_stdout(io.StringIO()) as output:
+                code, calls, entry = self.run_selftest(capture=(b"", reason))
+                self.assertIsInstance(code, RuntimeError)
+                self.assertEqual(str(code), f"no completion line arrived: the capture ended {reason}")
+                self.assertIn("selftest results: 0 PASS, 0 FAIL", output.getvalue())
+                self.assertEqual(entry["reason"], reason)
+                self.assertIn("# Device Capture Report", calls["reports"])
+                self.assertIn(reason, calls["reports"])
 
     def test_successful_selftest_closes_flash_handle(self):
         code, calls, _ = self.run_selftest()
@@ -2832,6 +3015,15 @@ class SelftestTests(unittest.TestCase):
     def test_the_capture_ends_on_selftest_complete_not_its_deadline(self):
         _, _, entry = self.run_selftest()
         self.assertEqual(entry["reason"], "complete")
+
+    def test_sentinel_failures_without_fail_lines_fail_selftest(self):
+        with contextlib.redirect_stdout(io.StringIO()) as output:
+            code, _, entry = self.run_selftest(capture=(
+                b":1:test_one:PASS\nSELFTEST_COMPLETE failures=2 elapsed_ms=10\n", "complete"))
+        self.assertEqual(code, 1)
+        self.assertEqual(entry["reason"], "complete")
+        self.assertIsNone(entry["error"])
+        self.assertIn("SELFTEST_COMPLETE failures=2, but 0 FAIL lines", output.getvalue())
 
     def test_a_failing_run_is_reported_but_still_records_cleanly(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -3018,6 +3210,8 @@ class ScreenshotCommandTests(unittest.TestCase):
         with mock.patch.object(device, "open_when_free", return_value=connection):
             with self.assertRaisesRegex(RuntimeError, "no room in PSRAM"):
                 device.screenshot(args, store, BOARD)
+
+
 
 
 if __name__ == "__main__":

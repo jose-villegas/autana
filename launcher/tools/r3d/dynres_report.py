@@ -24,6 +24,10 @@ import gzip
 import pathlib
 import re
 import statistics
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "perf"))
+from capture import capture_board, require_same_board, QUARTERS, select_quarter
 
 
 DESTINATION = (368, 448)
@@ -39,12 +43,13 @@ _REFIT_COST = re.compile(r"dynres_refit_cost: calls (\d+) mean_us ([\d.]+) max_u
 _REFIT = re.compile(r"dynres_refit: (\w+) (\w+) (\d+) scale ([\d.eE+-]+) offset_us ([\d.eE+-]+)")
 
 
-def read_captures(paths, refit=None):
+def read_captures(paths, refit=None, quarter="portrait"):
+    require_same_board({str(path): capture_board(path) for path in paths})
     splits, spans, ladders, frames = {}, {}, {}, {}
     for path in paths:
         raw = pathlib.Path(path).read_bytes()
         text = (gzip.decompress(raw) if path.endswith(".gz") else raw).decode("utf-8", errors="replace")
-        for line in text.splitlines():
+        for line in select_quarter(text, quarter).splitlines():
             if m := SPLIT.search(line):
                 size = (int(m[1]), int(m[2]))
                 stages = {name: float(avg) for name, avg, _ in STAGE.findall(m[8])}
@@ -240,10 +245,11 @@ def main():
     parser.add_argument("captures", nargs="+")
     parser.add_argument("--tables", required=True, type=pathlib.Path)
     parser.add_argument("--chart", required=True)
+    parser.add_argument("--quarter", choices=QUARTERS, default="portrait")
     parser.add_argument("--quality", action="append", default=[], metavar="CAMERA=CSV")
     args = parser.parse_args()
     refit = {}
-    splits, spans, ladders, runs = read_captures(args.captures, refit)
+    splits, spans, ladders, runs = read_captures(args.captures, refit, args.quarter)
     if not splits or not runs:
         parser.error("the captures hold no scale_split or no dynres_frames lines")
     scores = {}
@@ -257,7 +263,8 @@ def main():
     tables = {"dynres-stages": stages_table(splits, spans), "dynres-findings": findings_table(splits, spans),
               "dynres-policies": policies_table(rows), "dynres-prediction": prediction_table(runs, refit)}
     for name, body in tables.items():
-        (args.tables / f"{name}.md").write_text(body + "\n", encoding="utf-8")
+        label = f"Render quarter={args.quarter}.\n\n" if args.quarter != "portrait" else ""
+        (args.tables / f"{name}.md").write_text(label + body + "\n", encoding="utf-8")
     chart(rows, args.chart)
 
 

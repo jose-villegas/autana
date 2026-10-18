@@ -1,27 +1,20 @@
-/*
- * ui_dropdown_render_host, ui_dropdown() on its own, driven by a scripted
- * finger: open it, drag its list down and back up, pick another item, then
- * all of it again from the new pick. Twelve items fit neither above nor
- * below the dropdown, so the list overlays the canvas and has to scroll.
- *
- * Touch comes from the script below by frame, not the harness's declared
- * steps: a drag needs a new position every frame, which a step table would
- * spell out one line per frame.
- */
+/* Scripted touch opens, scrolls and picks ui_mu_dropdown() items. Positions
+ * advance each frame so the list exercises dragging across the canvas. */
 
 #include <stdbool.h>
 #include <stdio.h>
 
+#include "display/display.h"
 #include "gfx/gfx.h"
 #include "render_host.h"
-#include "ui/controls/ui_widgets.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
+#include "ui/ui_mu.h"
 
 #define BACKGROUND 0x0A0C14
 #define ITEM_COUNT 12
 
-static const ui_theme_t THEME = {
+static const ui_mu_theme_t THEME = {
     .panel_face = UI_RGB(0x131C2E),
     .panel_edge = UI_RGB(0xE8ECF4),
     .button_face = UI_RGB(0x1B2740),
@@ -38,19 +31,19 @@ static const ui_theme_t THEME = {
 static const mu_Rect DROPDOWN = {40, 360, 288, UI_TAP_MIN};
 
 static char labels[ITEM_COUNT][16];
-static ui_dropdown_item_t items[ITEM_COUNT];
+static const char* items[ITEM_COUNT];
 static int selected = 2;
 
 int
 display_quarter_now(void) {
-    return 0;
+    return DISPLAY_PORTRAIT;
 }
 
 static bool
 setup(int quarter) {
     for (int i = 0; i < ITEM_COUNT; i++) {
         snprintf(labels[i], sizeof labels[i], "OPTION %02d", i + 1);
-        items[i] = (ui_dropdown_item_t){.label = labels[i]};
+        items[i] = labels[i];
     }
     ui_init();
     ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
@@ -103,7 +96,7 @@ draw(const render_frame_t* frame) {
     ui_set_text_style(UI_TEXT_PLAIN);
     if (ui_begin_screen(ui_context(), "Dropdown", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
         ui_header_bar(ui_context(), mu_rect(0, 0, ui_width(), 36), "DROPDOWN", 2, &THEME);
-        const int picked = ui_dropdown(ui_context(), "demo", DROPDOWN, items, ITEM_COUNT, selected, &THEME);
+        const int picked = ui_mu_dropdown(ui_context(), "demo", DROPDOWN, items, NULL, ITEM_COUNT, selected, &THEME);
         if (picked >= 0) {
             selected = picked;
         }

@@ -5,6 +5,7 @@
 
 #include "math/scalar/mathi.h"
 #include "ui/ui.h"
+#include "ui/ui_mu.h"
 
 ui_scroll_view_config_t
 ui_scroll_view_default(void) {
@@ -79,10 +80,14 @@ ui_scroll_view_begin(mu_Context* ctx, const char* title, int opt, ui_scroll_view
 
     const int open = ui_begin_screen(ctx, title, opt);
     ctx->style->scrollbar_size = saved_scrollbar_size;
-    if (!open) {
-        return open;
+    if (open) {
+        ui_scroll_view_step(ctx, config, dt_ms);
     }
+    return open;
+}
 
+void
+ui_scroll_view_step(mu_Context* ctx, ui_scroll_view_config_t config, uint32_t dt_ms) {
     mu_Container* cnt = mu_get_current_container(ctx);
 
     if (config.axis == UI_SCROLL_AXIS_VERTICAL || config.axis == UI_SCROLL_AXIS_BOTH) {
@@ -94,8 +99,6 @@ ui_scroll_view_begin(mu_Context* ctx, const char* title, int opt, ui_scroll_view
     if (config.axis != UI_SCROLL_AXIS_HORIZONTAL && config.axis != UI_SCROLL_AXIS_BOTH) {
         cnt->scroll.x = 0;
     }
-
-    return open;
 }
 
 void

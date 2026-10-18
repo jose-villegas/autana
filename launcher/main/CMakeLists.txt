@@ -1,6 +1,12 @@
 # The shell and the board drivers. Apps are NOT listed here; see below.
 set(app_srcs
     "main.c"
+    "sound/sound_mixer.c"
+    "sound/sound_mixer_device.c"
+    "audio/audio_codec.c"
+    "audio/audio_out.c"
+    "audio/audio_in.c"
+    "audio/audio_tone.c"
     "app/app_arena.c"
     "app/app_registry.c"
     "boot/boot_anim.c"
@@ -20,6 +26,7 @@ set(app_srcs
     "gfx/present/gfx_mode.c"
     "gfx/present/gfx_present.c"
     "input/touch.c"
+    "input/imu_calib.c"
     "input/touch_calib.c"
     "input/touch_point.c"
     "input/touch_fsm.c"
@@ -29,9 +36,11 @@ set(app_srcs
     "input/imu.c"
     "input/input_device.c"
     "input/tilt.c"
+    "input/gravity.c"
     "ui/ui.c"
     "ui/input/ui_bridge.c"
     "ui/ui_build.c"
+    "ui/face/ui_face.c"
     "ui/ui_canvas_marks.c"
     "ui/controls/ui_icons.c"
     "shell/ui/ui_launcher.c"
@@ -47,6 +56,8 @@ set(app_srcs
     "anim/pose/anim_pose.c"
     "anim/playback/anim_playhead.c"
     "anim/playback/anim_layer.c"
+    "sound/sound.c"
+    "audio/audio_adpcm.c"
     "render/r3d_skin.c"
     "render/skin/r3d_skinning.c"
     "render/skin/r3d_skin_light.c"
@@ -119,6 +130,8 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/console.c"
         "console/verbs/console_buildid.c"
         "console/verbs/console_heap.c"
+        "console/verbs/console_tone.c"
+        "console/verbs/console_sound.c"
         "console/verbs/console_freeze.c"
         "console/console_frame_request.c"
         "console/verbs/console_frame_watch.c"
@@ -127,6 +140,10 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/verbs/console_tune.c"
         "console/verbs/console_screenshot.c"
         "console/capture/device_state.c"
+    )
+    # Acoustic detection belongs to the development console.
+    list(APPEND app_srcs
+        "audio/audio_loopback.c"
     )
 endif()
 if(CONFIG_LAUNCHER_SELFTEST)
@@ -142,6 +159,11 @@ endif()
 
 # board/board.h binds this target's hardware facts to board_esp32s3.c.
 list(APPEND app_srcs "board/board_esp32s3.c" "board/board_panel.c")
+# At 120 MHz, PSRAM tuning runs with the USB port off the bus; the wrap that
+# routes it through board_usb.c is added after idf_component_register below.
+if(CONFIG_SPIRAM_SPEED_120M)
+    list(APPEND app_srcs "board/board_usb.c")
+endif()
 
 # Apps are discovered, not listed.
 #
@@ -210,7 +232,7 @@ list(APPEND app_srcs ${discovered_apps})
 # esp_lcd_co5300 brings up the V2 (CO5300 panel) revision; see board/board_panel.c. It is
 # a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
 # own declaration (main/idf_component.yml) to see its headers.
-set(app_reqs math microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
+set(app_reqs esp_codec_dev esp_driver_i2s math microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash esp_partition
              fatfs esp_driver_sdmmc sdmmc
              esp_driver_usb_serial_jtag esp_driver_uart vfs nvs_flash esp_app_format espcoredump
@@ -389,6 +411,13 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     esptool_py_flash_target(assets-flash "${flash_main_args}" "${flash_sub_args}")
     esptool_py_flash_target_image(assets-flash assets "${asset_offset}" "${asset_image}")
     add_dependencies(assets-flash asset_pack_image)
+endif()
+
+if(CONFIG_SPIRAM_SPEED_120M)
+    # Routes ESP-IDF's PSRAM tuning through board/board_usb.c, so the USB port
+    # is off the bus for it. tools/build/check_psram_tuning_wrap.py checks the
+    # linked image.
+    target_link_options(${COMPONENT_LIB} INTERFACE "-Wl,--wrap=mspi_timing_psram_tuning")
 endif()
 
 if(CONFIG_LAUNCHER_SELFTEST)

@@ -23,7 +23,7 @@ static const int16_t raster_rig_wall[4][3] = {{-400, -400, 0}, {400, -400, 0}, {
 
 typedef struct {
     r3d_quad_t quad[RASTER_RIG_QUADS];
-    r3d_placement_t placement[RASTER_RIG_QUADS]; /* each placed quad's, set before a draw */
+    mat4f_t model[RASTER_RIG_QUADS]; /* each placed quad's, set before a draw */
     r3d_instance_t instance[RASTER_RIG_QUADS];
     raster_t raster;
     render_view_t view;
@@ -57,7 +57,7 @@ raster_rig_attach(raster_rig_t* r, const raster_attachment_t* const* attachments
 }
 
 /* `count` quads at `positions`, drawn in that order, quad i placed by
- * placement[i] when `placed` has bit i; pictures up to `width` by `height`,
+ * model[i] when `placed` has bit i; pictures up to `width` by `height`,
  * the size it draws at until changed; `own_bytes` of zeroed room in `own`.
  * Nothing is attached until raster_rig_attach(). */
 static inline raster_rig_t*
@@ -70,7 +70,7 @@ raster_rig_open(const int16_t (*const positions[])[3], int count, unsigned place
     suite_set_test_cleanup(raster_rig_release);
     for (int i = 0; i < count; i++) {
         r3d_quad_init(&r->quad[i], positions[i]);
-        r->instance[i] = (r3d_instance_t){&r->quad[i].mesh, (placed & (1U << i)) != 0 ? &r->placement[i] : NULL};
+        r->instance[i] = (r3d_instance_t){&r->quad[i].mesh, (placed & (1U << i)) != 0 ? &r->model[i] : NULL};
     }
     r->raster = (raster_t){.instances = r->instance, .instance_count = count, .clear = 0x1234};
     r->width = width;

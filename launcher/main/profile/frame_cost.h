@@ -31,9 +31,9 @@
 /* A buffer for the time line at its worst: every slot with a name of the
  * longest length and its two figures at their widest, the total, and a drop
  * count. A smaller one loses the tail without a word. */
-#define FRAME_COST_REPORT_MAX     672
-_Static_assert(FRAME_COST_REPORT_MAX >= FRAME_COST_SLOTS * (FRAME_COST_NAME_MAX + 28) + 48,
-               "FRAME_COST_REPORT_MAX no longer holds every slot at its longest");
+#define FRAME_COST_REPORT_MAX     768
+_Static_assert(FRAME_COST_REPORT_MAX >= FRAME_COST_SLOTS * (FRAME_COST_NAME_MAX + 28) + 48 + FRAME_COST_NAME_MAX + 64,
+               "FRAME_COST_REPORT_MAX must hold every frame slot and the widest external stage");
 
 /* The counts line of the armed name: "perf: ", the name, the three cycle
  * figures, the event name, its average and n, each at its widest. */
@@ -368,6 +368,52 @@ frame_cost_report(frame_cost_t* cost, uint32_t frames, char* out, size_t out_siz
     return length;
 }
 
+typedef struct {
+    const char* name;
+    int64_t total_us;
+    int64_t worst_us;
+    uint32_t n;
+} frame_cost_external_t;
+
+/* One name owns a foreign-task accumulator across reporting windows. */
+static inline bool
+frame_cost_external_add(frame_cost_external_t* slot, const char* name, int64_t us) {
+    if (slot->name && strcmp(slot->name, name) != 0) {
+        return false;
+    }
+    slot->name = name;
+    slot->total_us += us;
+    slot->worst_us = us > slot->worst_us ? us : slot->worst_us;
+    slot->n++;
+    return true;
+}
+
+static inline int
+frame_cost_external_report(frame_cost_external_t* slot, char* out, size_t capacity, int length) {
+    if (!slot->n || !capacity || length < 0 || (size_t)length >= capacity) {
+        return length;
+    }
+    if (capacity - (size_t)length <= sizeof " || ") {
+        out[length] = '\0';
+        slot->total_us = 0;
+        slot->worst_us = 0;
+        slot->n = 0;
+        return length;
+    }
+    const int64_t average = slot->total_us / slot->n;
+    const int wrote = snprintf(out + length, capacity - (size_t)length, " || %s %d.%03d/%d.%03d ms/block n=%u",
+                               slot->name, (int)(average / 1000), (int)(average % 1000), (int)(slot->worst_us / 1000),
+                               (int)(slot->worst_us % 1000), (unsigned)slot->n);
+    slot->total_us = 0;
+    slot->worst_us = 0;
+    slot->n = 0;
+    if (wrote < 0 || (size_t)(length + wrote) >= capacity) {
+        out[length] = '\0';
+        return length;
+    }
+    return length + wrote;
+}
+
 #if defined(ESP_PLATFORM) && CONFIG_LAUNCHER_DEVELOPMENT
 #define FRAME_COST_ENABLED 1
 #else
@@ -375,6 +421,8 @@ frame_cost_report(frame_cost_t* cost, uint32_t frames, char* out, size_t out_siz
 #endif
 
 #if FRAME_COST_ENABLED
+/* One foreign-task stage accumulates durations without using the frame task's nesting or counters. */
+void frame_cost_external(const char* name, int64_t us);
 int frame_cost_begin(void);
 int64_t frame_cost_end(int mark, const char* name);
 int frame_cost_take_report(uint32_t frames, char* out, size_t out_size);
@@ -413,7 +461,8 @@ bool frame_cost_count_end(uint32_t* cycles, uint32_t* value);
 const char* frame_cost_name_at(int index);
 int frame_cost_names_dropped(void);
 
-#define FRAME_COST_BEGIN(mark) const int mark = frame_cost_begin()
+#define FRAME_COST_EXTERNAL(name, us) frame_cost_external((name), (us))
+#define FRAME_COST_BEGIN(mark)        const int mark = frame_cost_begin()
 #define FRAME_COST_END(mark, name)                                                                                     \
     do {                                                                                                               \
         _Static_assert(sizeof(name) - 1 <= FRAME_COST_NAME_MAX, name " is too long a frame_cost name");                \
@@ -428,6 +477,7 @@ int frame_cost_names_dropped(void);
         frame_cost_end((mark), (name));                                                                                \
     })
 #else
-#define FRAME_COST_BEGIN(mark)     ((void)0)
-#define FRAME_COST_END(mark, name) ((void)0)
+#define FRAME_COST_EXTERNAL(name, us) ((void)0)
+#define FRAME_COST_BEGIN(mark)        ((void)0)
+#define FRAME_COST_END(mark, name)    ((void)0)
 #endif

@@ -23,31 +23,19 @@ firmware works. Needs the Xtensa objdump from ESP-IDF's toolchain.
 
 import pathlib
 import re
-import shutil
 import subprocess
 import sys
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import packages  # noqa: E402
+from espressif import xtensa_tool  # noqa: E402
+from objdump_calls import parse_calls  # noqa: E402
 
 SOFT_DOUBLE = re.compile(r"^__\w*df\w*$")
 LOGGING = re.compile(r"^(esp_log|esp_log_write|esp_log_writev|printf|snprintf|vsnprintf|sprintf|esp_rom_printf|"
                      r"ets_printf|fprintf|vprintf|__wrap_\w*printf)$")
-FUNCTION = re.compile(r"^[0-9a-f]+ <([^>]+)>:\s*$")
 RELOCATION = re.compile(r"^\s*[0-9a-f]+:\s+R_XTENSA_\w+\s+(\S+)")
-
-
-def find_objdump():
-    found = shutil.which("xtensa-esp32s3-elf-objdump")
-    if found:
-        return found
-    from espressif import espressif_tools_root
-    pattern = "tools/xtensa-esp-elf/*/xtensa-esp-elf/bin/xtensa-esp32s3-elf-objdump*"
-    for candidate in sorted(espressif_tools_root().glob(pattern)):
-        if candidate.is_file():
-            return str(candidate)
-    sys.exit("check_no_soft_double.py: no xtensa-esp32s3-elf-objdump on PATH or under the ESP-IDF tools")
 
 
 def objects(build, launcher=packages.LAUNCHER):
@@ -62,24 +50,8 @@ def objects(build, launcher=packages.LAUNCHER):
 
 def calls_by_function(objdump, obj):
     """{function: set of called symbols} for one object file."""
-    return parse_calls(subprocess.run([objdump, "-dr", str(obj)], capture_output=True, text=True, check=True).stdout)
-
-
-def parse_calls(text):
-    """{function: set of called symbols} from `objdump -dr` text."""
-    calls = {}
-    current = None
-    for line in text.splitlines():
-        m = FUNCTION.match(line)
-        if m:
-            # The literal pool a function loads its calls from is a section of
-            # its own, named for the function: they are one function here.
-            current = calls.setdefault(m.group(1).removeprefix(".literal."), set())
-            continue
-        m = RELOCATION.match(line)
-        if m and current is not None:
-            current.add(re.sub(r"[+-]0x[0-9a-f]+$", "", m.group(1)))
-    return calls
+    return parse_calls(subprocess.run([objdump, "-dr", str(obj)], capture_output=True, text=True, check=True).stdout,
+                       RELOCATION)
 
 
 def offenders(calls):
@@ -94,7 +66,7 @@ def offenders(calls):
 
 def main(argv):
     build = pathlib.Path(argv[1]) if len(argv) > 1 else REPO / "launcher" / "build.diag"
-    objdump = find_objdump()
+    objdump = xtensa_tool("objdump")
     bad = []
     count = 0
     for obj in objects(build):

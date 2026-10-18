@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "display/display.h"
 #include "gfx/gfx.h"
 #include "render_host.h"
 #include "ui/layout/ui_transform.h"
@@ -21,6 +22,7 @@
 #include "apps/sand/ui/options_screen.h"
 #include "apps/sand/ui/sand_icons.h"
 #include "apps/sand/ui/title_screen.h"
+#include "ui/ui_mu.h"
 
 #define BACKGROUND 0x0A0C14
 
@@ -43,11 +45,11 @@ static bool show_options;
 static sand_colour_mode_t colour = SAND_COLOUR_256;
 static bool pending;
 static bool open_dither;
-static ui_transform_t transform;
+static affine2x_t transform;
 
 int
 display_quarter_now(void) {
-    return 0;
+    return DISPLAY_PORTRAIT;
 }
 
 static bool
@@ -97,7 +99,10 @@ dither_tap(int index) {
     options_screen_layout_t lay;
     options_screen_layout(ui_width(), ui_height(), &lay);
     input_t in = {0};
-    ui_transform_point(transform, lay.dither.x + lay.dither.w / 2, lay.dither.y + lay.dither.h / 2, &in.x, &in.y);
+    const vec2i_t mapped_pixel =
+        affine2x_map_pixel(&transform, (vec2i_t){lay.dither.x + lay.dither.w / 2, lay.dither.y + lay.dither.h / 2});
+    in.x = mapped_pixel.x;
+    in.y = mapped_pixel.y;
     in.down = index >= 2 && index < 7;
     in.pressed = index == 2;
     in.released = index == 7;

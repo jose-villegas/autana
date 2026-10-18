@@ -38,7 +38,7 @@ class HoldGuardTests(Store):
 
     def main(self, *words):
         with mock.patch.object(device.device_lock, "LockStore", return_value=self.store), \
-                mock.patch.object(device, "board_for_lock", return_value=BOARD_A):
+                mock.patch.object(device, "board_for_lock", return_value=(BOARD_A, None)):
             return device.main(["--board", BOARD_A, "--wait", "0", *words])
 
     def assert_token_refused(self, words, message):

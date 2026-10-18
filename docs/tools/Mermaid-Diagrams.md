@@ -5,12 +5,38 @@ only render target here. It fails silently: a broken diagram shows a parse
 error where the picture should be, so `scripts/gates/check-mermaid.mjs`
 renders every one through `mmdc` (mermaid-cli) and checks that it parses.
 
+## Rendering the way GitHub does
+
+GitHub draws each diagram in an iframe from
+`viewscreen.githubusercontent.com/markdown/mermaid`, whose `mermaidMarkdown` bundle
+carries its own mermaid and options.
+
+The check renders with that mermaid version, pinned through `overrides` in
+`scripts/gates/mermaid/package.json`, and those options, copied into
+`scripts/gates/mermaid/github-config.json`, so a diagram comes out the shape GitHub
+shows. `check-mermaid.mjs --github-version` reads the version GitHub runs today:
+
+- exit 0 when it matches the pin
+- exit 1 when GitHub moved: bump the override
+- exit 2 when the version cannot be read: a network failure, or the page or bundle changed shape
+
+## Tall diagrams
+
+A diagram more than `TALL_RATIO` (in `check-mermaid.mjs`) times taller than wide is
+reported `TALL` with its size, and annotated on the pull request in CI. It is a
+warning for now; `TALL_FAILS` turns it into a failure once no tracked diagram is tall.
+
+The usual cause: mermaid drops a subgraph's `direction` once a link crosses the
+subgraph's boundary, so a `flowchart TB` of `direction LR` subgraphs stacks into
+one column. Link subgraph to subgraph, or set the flowchart's own direction.
+
 ## Validate
 
 ```sh
 node scripts/gates/check-mermaid.mjs                 # every git-tracked *.md
 node scripts/gates/check-mermaid.mjs path/to/file.md  # one file or directory
-node scripts/gates/check-mermaid.mjs --verbose        # also list passes
+node scripts/gates/check-mermaid.mjs --verbose        # also list passes, with sizes
+node scripts/gates/check-mermaid.mjs --github-version # GitHub's mermaid against the pin
 ```
 
 File discovery is `git ls-files`, so an untracked scratch file and a vendored
@@ -47,9 +73,13 @@ changes under any `.md` file or the validator itself, unlike this repo's
 other workflows, because installing Chrome is real per-run cost that
 nothing else here can affect.
 
+A weekly scheduled run (or a manual one) runs only `--github-version`, so a
+GitHub upgrade turns it red without waiting for a `.md` change.
+
 ## Tests
 
 `scripts/gates/tests/test_check_mermaid.mjs` covers the pure parts: fence
 extraction, the line-number rewrite, and the Windows argument-quoting
-helper, with `node --test`, no `mmdc` or `git` involved.
+helper, the SVG size, the tall rule and the GitHub version parsing, with
+`node --test`, no `mmdc` or `git` involved.
 `scripts/run-tool-tests.sh` runs it alongside the Python tool suites.

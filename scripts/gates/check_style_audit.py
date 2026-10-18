@@ -324,9 +324,9 @@ LAYER_ROWS = (
     # System
     "apps", "shell", "boot selftest console", "app",
     # Engine
-    "ui scene", "render", "draw anim", "asset",
+    "ui scene", "render", "draw anim sound", "asset",
     # Platform
-    "input", "display", "gfx", "services", "profile", "core", "board", "build",
+    "input audio", "display", "gfx", "services", "profile", "core", "board", "build",
 )
 LAYER_TIER = {layer: tier for tier, row in enumerate(LAYER_ROWS) for layer in row.split()}
 LAYER_DIRS = tuple(layer for layer in LAYER_TIER if layer != "apps")
@@ -407,6 +407,9 @@ def rule_include_direction(root, path, text):
 # no firmware include root, so neither resolves and the rule passes both.
 # launcher/test/check_packages_alone.sh compiles each package file with only
 # its own include root, which catches what no resolver here can see.
+# PACKAGE-CONFIG keeps build settings local too: CONFIG_<PACKAGE>_ in C/H,
+# CMakeLists.txt and Kconfig, and <PACKAGE>_ for Kconfig declarations.
+# Comments do not consume settings and are ignored in all these files.
 
 ANY_INCLUDE = re.compile(r'^\s*#\s*include\s+[<"]([^>"]+)[>"]')
 
@@ -424,6 +427,34 @@ def rule_package_include(root, path, text):
         if resolved is not None and not resolved.is_relative_to(package):
             yield number, (f'"{m.group(1)}" reaches outside the {package.name} package '
                            f"({relpath(root, resolved)}) - a package includes only itself")
+
+
+PACKAGE_CONFIG_SYMBOL = re.compile(r"\bCONFIG_[A-Za-z0-9_]+\b")
+PACKAGE_KCONFIG_ENTRY = re.compile(r"^\s*(?:menuconfig|config)\s+([A-Za-z0-9_]+)\b")
+PACKAGE_BUILD_TOKEN = re.compile(r'"(?:\\.|[^"\\])*"|#?\[(=*)\[.*?\]\1\]|#[^\n]*', re.DOTALL)
+
+
+@text_rule("PACKAGE-CONFIG")
+def rule_package_config(root, path, text):
+    package = package_of(root, path)
+    if package is None:
+        return
+    if path.suffix in (".c", ".h"):
+        code = blank_comments(text)
+    elif path.name in ("CMakeLists.txt", "Kconfig"):
+        code = PACKAGE_BUILD_TOKEN.sub(
+            lambda m: "".join("\n" if ch == "\n" else " " for ch in m.group())
+            if m.group().startswith("#") else m.group(), text)
+    else:
+        return
+    prefix = package.name.upper() + "_"
+    for number, line in enumerate(code.splitlines(), 1):
+        for symbol in PACKAGE_CONFIG_SYMBOL.findall(line):
+            if not symbol.startswith("CONFIG_" + prefix):
+                yield number, f"{symbol} is outside the {package.name} package - use CONFIG_{prefix} settings"
+        entry = PACKAGE_KCONFIG_ENTRY.match(line) if path.name == "Kconfig" else None
+        if entry and not entry.group(1).startswith(prefix):
+            yield number, f"{entry.group(1)} is outside the {package.name} package - name Kconfig entries {prefix}"
 
 
 # RULE: a personal home-directory path, or one machine's ESP-IDF checkout,

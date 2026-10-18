@@ -13,17 +13,17 @@ import sys
 from typing import NamedTuple
 from types import SimpleNamespace
 
-INPUTS_PYTHON_MINIMUM = (3, 12)
-
 ROOT = Path(__file__).resolve().parents[3]
+INPUTS_PYTHON_MINIMUM = tuple(map(int, (ROOT / "scripts/lib/python-min-version").read_text().strip().split(".")))
 TOOLS = ROOT / "launcher/tools"
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from capture import capture_board, require_same_board
 from build import compile_db
 from generated_blocks import apply_tables, tracked_files
 from doc_tables import markdown
-from layout_measure import MEAN_RE, parse_report
+from layout_measure import parse_timings, MEAN_RE
 from r3d.process_budget import WSL_MEMORY_REQUIRED_BYTES, WINDOWS_MEMORY_REQUIRED_BYTES
 from r3d.import_settings import content_checksum, load_import_settings, source_files
 from r3d.scene_name import scene_id
@@ -250,7 +250,8 @@ def bake_steps_table(variants):
 
 
 def capture_rows(path, commit, id, object_name):
-    text = path.read_text(encoding="utf-8", errors="replace")
+    from capture import QUARTERS, select_quarter
+    text = select_quarter(path.read_text(encoding="utf-8", errors="replace"))
     import re
     builds = re.findall(r"\b([0-9a-f]{12,40})-diag\b", text)
     if not builds or any(not commit.startswith(build) for build in builds):
@@ -261,10 +262,12 @@ def capture_rows(path, commit, id, object_name):
     names = [aliases.get(match.group("name"), match.group("name")) for match in MEAN_RE.finditer(text)]
     if len(names) != len(set(names)):
         raise ValueError(f"{path}: duplicate variant means; give one --capture per run")
-    return {aliases.get(name, name): value / 1000 for name, value in parse_report(path).items()
+    return {aliases.get(base := name.removesuffix(f" quarter={QUARTERS[0]}"), base): value / 1000
+            for name, value in parse_timings(text).items()
 }
 
 def board_means(captures, commit, id, object_name):
+    require_same_board({str(path): capture_board(path) for path in captures})
     runs = [capture_rows(path, commit, id, object_name) for path in captures]
     for path, rows in zip(captures, runs):
         missing = set((id, *VARIANTS)) - rows.keys()
@@ -275,11 +278,13 @@ name: statistics.median(rows[name] for rows in runs) for name in (id, *VARIANTS)
 }
 
 def board_frames(captures, expected, id, object_name):
+    require_same_board({str(path): capture_board(path) for path in captures})
     import re
     pattern = rf"({re.escape(id)}|lite|{re.escape(object_name)}|{re.escape(object_name + '_lite')}) t=\s*(\d+)s .*?both cores: frame\s+(\d+)us"
     values = {}
     for capture in captures:
-        found = re.findall(pattern, capture.read_text(encoding="utf-8", errors="replace"))
+        from capture import select_quarter
+        found = re.findall(pattern, select_quarter(capture.read_text(encoding="utf-8", errors="replace")))
         parsed = [({object_name: id, object_name + "_lite": "lite"}.get(name, name), int(time), int(value) / 1000)
                   for name, time, value in found]
         keys = [(name, time) for name, time, _ in parsed]

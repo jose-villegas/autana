@@ -20,9 +20,6 @@ int scene_fail_allocation_after = -1;
 static scene_t* loaded[LOADED_MAX];
 static int loaded_count;
 
-static const r3d_placement_t IDENTITY = {{{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 1.0F}},
-                                         {0.0F, 0.0F, 0.0F}};
-
 /* The block's layout: the header, then each array on its own alignment. */
 typedef struct {
     size_t renderers, cameras, instances, flags, locals, animators, skins, lights, total;
@@ -221,23 +218,23 @@ open_lights(scene_t* scene) {
 }
 
 static bool
-local_from_placement(const scene_placement_t* placement, transformf_t* out) {
+local_from_row(const scene_asset_transform_t* row, transformf_t* out) {
     mat4f_t matrix = mat4f_identity();
-    for (int r = 0; r < 3; r++) {
-        for (int c = 0; c < 3; c++) {
-            matrix.m[r][c] = placement->m[r][c];
+    for (int r = 0; r < MAT3F_AXES; r++) {
+        for (int c = 0; c < MAT3F_AXES; c++) {
+            matrix.m[r][c] = row->linear.m[r][c];
         }
     }
-    matrix.m[0][3] = placement->position.x;
-    matrix.m[1][3] = placement->position.y;
-    matrix.m[2][3] = placement->position.z;
+    matrix.m[0][3] = row->position.x;
+    matrix.m[1][3] = row->position.y;
+    matrix.m[2][3] = row->position.z;
     return transformf_from_mat(matrix, out);
 }
 
 static scene_failure_t
 open_transforms(scene_t* scene) {
     for (int e = 0; e < scene->asset.entity_count; e++) {
-        if (!local_from_placement(&scene->asset.transforms[e], &scene->locals[e])) {
+        if (!local_from_row(&scene->asset.transforms[e], &scene->locals[e])) {
             return scene_failure_make(SCENE_ERR_ASSET, ASSET_ERR_FORMAT, scene->asset.names[e]);
         }
     }
@@ -429,6 +426,20 @@ scene_camera_lens(const scene_t* scene, const char* camera) {
     return index < 0 ? NULL : &scene->cameras[index].lens;
 }
 
+bool
+scene_camera_set_present(scene_t* scene, scene_entity_t camera, camera_present_t present) {
+    if (scene == NULL || present < CAMERA_PRESENT_NEAREST || present > CAMERA_PRESENT_DOUBLE) {
+        return false;
+    }
+    for (int i = 0; i < scene->asset.camera_count; i++) {
+        if (scene->cameras[i].entity == camera) {
+            scene->cameras[i].lens.present = present;
+            return true;
+        }
+    }
+    return false;
+}
+
 const scene_transform_t*
 scene_entity_transform(const scene_t* scene, scene_entity_t entity) {
     assert(entity < scene->asset.entity_count);
@@ -457,6 +468,7 @@ scene_entity_set_enabled(scene_t* scene, scene_entity_t entity, bool enabled) {
 }
 
 bool
-scene_transform_is_identity(const scene_placement_t* transform) {
-    return memcmp(transform, &IDENTITY, sizeof IDENTITY) == 0;
+scene_transform_is_identity(const mat4f_t* transform) {
+    const mat4f_t identity = mat4f_identity();
+    return memcmp(transform, &identity, sizeof identity) == 0;
 }

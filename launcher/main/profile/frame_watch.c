@@ -56,6 +56,11 @@ static TaskHandle_t frame_task;
 static frame_watch_t watch;
 static vprintf_like_t forward_vprintf;
 
+void*
+frame_watch_task(void) {
+    return frame_task;
+}
+
 /* Heap hooks and their callees must remain callable while flash cache is disabled.
  * IRAM budget: 78 B */
 static IRAM_ATTR bool

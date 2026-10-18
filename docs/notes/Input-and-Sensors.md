@@ -56,7 +56,7 @@ one I2C read per call, into `input_motion_t`:
 
 | Field | Meaning |
 |---|---|
-| `acceleration` | raw accelerometer, unfiltered: screen axes (x right, y down, z out of the screen), pointing the way down at rest, in Q12 g (`INPUT_ACCEL_ONE_G`). Upright reads +1 g on y, flat and screen up -1 g on z |
+| `acceleration` | offset-calibrated accelerometer, unfiltered: screen axes (x right, y down, z out of the screen), pointing the way down at rest, in Q12 g (`INPUT_ACCEL_ONE_G`). Upright reads +1 g on y, flat and screen up -1 g on z |
 | `rotation` | signed raw gyro counts, Q6 deg/s (`INPUT_ROTATION_ONE_DPS`), in the same panel axes: x = -gy, y = gx, z = gz |
 | `turn_speed` | deg/s, the sum of the gyroscope's absolute rates over all three axes: a speed, no sign or axis |
 
@@ -65,39 +65,89 @@ the front, +x tips the bottom edge toward the viewer, +y turns the right edge aw
 
 ### Calibration round
 
-A tap on the development Motion page starts a calibration round when idle
-or showing results. Taps during a round are ignored. BOOT abandons the round
-and selects another page. Its prompts name the face and edges as
-seen on the pinned `DISPLAY_DEFAULT_QUARTER` page; measurements stay in panel
-axes. No measured correction is applied to input readings.
+A tap on the development Motion page starts a calibration round when idle.
+Taps during a round are ignored. Prompts name the face and edges as seen on the pinned
+`DISPLAY_DEFAULT_QUARTER` page; measurements stay in panel axes.
+
+For an unplugged round, open the Motion page, disconnect USB while running on
+battery, and tap to start. Follow each pose prompt and hold still until the
+full-screen white flash confirms its reading. At the turn prompt, hold the
+display upright, screen facing you and bottom edge down, until `ARMED: TURN NOW`, then turn
+90 degrees clockwise quickly. A longer cyan flash means the round is complete.
+Keep this app open, reconnect USB, and run `autana labdump > imu-round.log`
+on the PC. The command prints the kept lines between `LABDUMP_BEGIN` and
+`LABDUMP_END`, then frees them. `autana` sets DTR/RTS low before opening on
+Windows. On POSIX hosts (including Linux), it opens with both raised, then
+lowers RTS before DTR. Results live in RAM: a reset, a new round, or leaving
+the app discards them; SAVE and CLEAR keep them available for replay.
+
+Each pose records `GRAV` down (unit vector) and gyro bias (deg/s) alongside
+the calibration reading; see [Gravity.md](../input/Gravity.md) for these
+estimates. After the upright hold, rotation above
+`IMU_PROBE_TURN_THRESHOLD` starts the `turn` trace at time zero. Each line
+contains estimated unit `down` and the same sample's unit `accel` direction
+(zero during zero acceleration), so their angular separation exposes lag.
+`imu_probe.h` owns its duration and sampling bound; timestamps are elapsed
+milliseconds from the trigger. Missing readings are not synthesized.
+Every kept line starts with `LABDUMP` so its payload can be told apart from
+the console's log lines; the calibration tools accept both live lines and
+replayed dumps.
+
+`input_read_motion()` subtracts the stored accelerometer offset before any
+consumer filters or reads acceleration. The settings service stores Q12 g
+screen-axis counts in space `imu`, keys `accel_x`, `accel_y`, `accel_z`.
+A save writes `accel_valid` as 0, then the axes, then `accel_valid` as 1.
+A missing marker, a marker other than 1, missing axes or any offset beyond
+`IMU_CALIB_OFFSET_MAX` select zero offset. A failed write leaves the live offset unchanged.
+Scale is reported but never applied; gyro readings remain raw.
+
+The Motion page shows the stored offset. Its raw acceleration display, bubble
+and `motion raw` log reconstruct sensor counts by adding that offset back.
+The round measures calibrated samples, so the fitted offset is a residual.
+SAVE stores the current offset plus this residual; CLEAR stores zero. The results
+HUD labels the residual, while `calib` logs the absolute sensor offset in mg.
+`imu_calib saved` logs Q12 counts;
+`imu_calib cleared` confirms zero offset.
 
 ```mermaid
 stateDiagram-v2
-    direction LR
-    [*] --> Prompt
-    Prompt --> Settling: fresh reading
-    Settling --> Measuring: still and gravity aligned
-    Settling --> Settling: motion or reading gap
-    Measuring --> Settling: motion or reading gap
-    Measuring --> Prompt: next pose
-    Measuring --> Done: final pose
-    Done --> [*]
+    direction TB
+    [*] --> Round
+    state Round {
+        [*] --> Prompt
+        Prompt --> Settling: fresh reading
+        Settling --> Measuring: still and gravity aligned
+        Settling --> Settling: motion or reading gap
+        Measuring --> Settling: motion or reading gap
+        Measuring --> Prompt: next pose
+        Measuring --> Upright: final pose and fit
+        Upright --> Armed: upright without turning for settle interval
+        Armed --> Trace: rotation threshold
+        Trace --> Results: window elapsed
+        Results --> [*]: SAVE or CLEAR stored
+        Results --> Results: save failed
+    }
+    Round --> [*]: BOOT
 ```
 
 Settling uses recent per-axis accelerometer and gyro means. Thresholds and
 durations are owned by `imu_probe.h`; constant gyro bias does not prevent
 settling. Align each pose carefully: the gravity gate rejects wrong poses
-but does not establish precision alignment.
+but does not establish precision alignment. Upright arming instead accepts
+acceleration within the bottom-down cone `IMU_PROBE_UPRIGHT_MIN` and rotation
+at or below `IMU_PROBE_TURN_THRESHOLD` for `IMU_PROBE_SETTLE_MS`; it does not
+require pose-grade stillness. Missing readings, gaps and departures reset
+that interval. The cone follows the pinned page quarter.
 
 For each axis, the positive and negative gravity windows give
 `offset = (up + down) / 2` and
 `scale = (up - down) / (2 * INPUT_ACCEL_ONE_G)`, the diagonal six-position
 calibration model described by STMicroelectronics AN4508
 [[67]](../Citations.md#67). This measures offset and sensitivity, not cross-axis
-misalignment. The gyro zero-rate estimate averages samples across all pose
-windows. `pose` lines contain rounded Q12 g and Q6 deg/s means and sample
-counts; `calib` reports offsets in mg, sensitivity in ppm (unity is 1000000),
-and gyro offsets in mdps.
+misalignment. `input/imu_calib.c` owns the offset and sensitivity fit. The gyro
+zero-rate estimate averages samples across all pose windows. `pose` lines contain
+rounded Q12 g and Q6 deg/s means and sample counts; `calib` reports offsets in
+mg, sensitivity in ppm (unity is 1000000), and gyro offsets in mdps.
 
 The Motion log records the shell quarter even though the page remains pinned.
 The tool reports calibration fits and consecutive-round differences, the longest
@@ -106,7 +156,9 @@ Stillness requires turn speed at most 15 deg/s and tilt within 2 degrees of the
 stretch's start; a gap above 250 ms ends the stretch. The first and last windows
 default to 60 seconds and may overlap. Flat samples require tilt below 10 degrees,
 negative z and the same turn limit; transitions require consecutive flat-still
-samples. Thresholds are named in `motion_fit.py`.
+samples. Turn traces report the maximum and final angle between estimated
+down and acceleration per round, excluding samples without a direction.
+Thresholds are named in `motion_fit.py`.
 
 #### Measured on the board
 
@@ -189,6 +241,12 @@ rotation.
 A consumer that quantizes direction into coarse steps needs its own treatment
 of that quantization. Smoothing the input alone cannot restore discarded
 angular resolution.
+
+## Gravity estimation
+
+`gravity_t` exposes a unit down vector, linear acceleration and learned gyro
+bias; [Gravity.md](../input/Gravity.md) describes its update, recovery and bias learning.
+The shell reads tilt today; gravity is not in `input_t`.
 
 ## Related
 

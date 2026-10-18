@@ -23,6 +23,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "anim/anim_tracks_format.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -32,8 +33,10 @@
 #include <stdlib.h>
 
 #ifndef DEVICE_BUILD
+#include <math.h>
 #include <stdio.h>
 
+#include "draw/draw_image_format.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_test.h"
@@ -513,163 +516,112 @@ test_the_seeds_three_axes_project_to_distinct_directions(void) {
     expect_three_distinct_axes(seed);
 }
 
-/* The wave */
-
-/* `amp_q12`/`wavelength_q12`/`period_ms` are fabricated here, not read
- * from BOOT_ANIM_WAVE_HEIGHT_Q12/WAVELENGTH_Q12/PERIOD_MS; see
- * boot_anim_wave_height()'s own comment on why it takes all three as
- * parameters: the shipped seed's own height is 0 (off by default;
- * test_the_seeds_wave_is_coherently_authored() below is what actually
- * checks that), which at 0 would make every one of these assertions trivially
- * true for the wrong reason. */
-static void
-test_wave_height_is_zero_when_the_amplitude_is_zero(void) {
-    TEST_ASSERT_EQUAL_INT32(0, boot_anim_wave_height(BOOT_ANIM_ONE, 0, 0, BOOT_ANIM_ONE, 1000));
-}
+#define FLOOR_DECAY_STEP_MS 800
 
 static void
-test_wave_height_is_zero_when_the_wavelength_is_not_positive(void) {
-    TEST_ASSERT_EQUAL_INT32(0, boot_anim_wave_height(BOOT_ANIM_ONE, 0, BOOT_ANIM_ONE, 0, 1000));
-    TEST_ASSERT_EQUAL_INT32(0, boot_anim_wave_height(BOOT_ANIM_ONE, 0, BOOT_ANIM_ONE, -1, 1000));
-}
-
-/* sin() is exactly periodic in r for a fixed t: a vertex a full
- * wavelength further out should read back the identical height. This is
- * the structural fact that actually lets several rings show the ripple's
- * own crests/troughs at once, all from the one formula, rather than
- * needing a moving front to explain which rings are "lit" yet; see
- * boot_anim_wave_height(). */
-static void
-test_wave_height_is_periodic_in_radius(void) {
-    const int32_t wavelength = 3 * BOOT_ANIM_ONE;
-    const int32_t amp_q12 = BOOT_ANIM_ONE;
-    const int32_t r = 2 * BOOT_ANIM_ONE;
-
-    const int32_t a = boot_anim_wave_height(r, 0, amp_q12, wavelength, 0);
-    const int32_t b = boot_anim_wave_height(r + wavelength, 0, amp_q12, wavelength, 0);
-
-    TEST_ASSERT_EQUAL_INT32_MESSAGE(a, b,
-                                    "a vertex a full wavelength further out should be at the exact "
-                                    "same point in the same crest/trough cycle");
-}
-
-/* Also exactly periodic in TIME, for a fixed r: one full period_ms
- * brings the pattern back to where it started. */
-static void
-test_wave_height_is_periodic_in_time(void) {
-    const int32_t wavelength = 3 * BOOT_ANIM_ONE;
-    const int32_t amp_q12 = BOOT_ANIM_ONE;
-    const int32_t r = 2 * BOOT_ANIM_ONE;
-    const uint32_t period_ms = 1000;
-
-    const int32_t a = boot_anim_wave_height(r, 250, amp_q12, wavelength, period_ms);
-    const int32_t b = boot_anim_wave_height(r, 250 + period_ms, amp_q12, wavelength, period_ms);
-
-    TEST_ASSERT_EQUAL_INT32_MESSAGE(a, b,
-                                    "a full period later, the same vertex should be back at the same "
-                                    "height");
-}
-
-/* The travelling look itself: the same point in the crest/trough cycle
- * that is a quarter wavelength closer to the origin right now is exactly
- * where THIS vertex will be a quarter period from now; see
- * boot_anim_wave_height()'s own comment on why subtracting the time term
- * is what makes a crest's own radius grow with time, the pattern moving
- * outward rather than inward. */
-static void
-test_wave_height_travels_outward_with_time(void) {
-    const int32_t wavelength = 4 * BOOT_ANIM_ONE;
-    const int32_t amp_q12 = BOOT_ANIM_ONE;
-    const uint32_t period_ms = 4000;
-    const int32_t r = 10 * BOOT_ANIM_ONE;
-
-    const int32_t at_r_a_quarter_period_later = boot_anim_wave_height(r, period_ms / 4, amp_q12, wavelength, period_ms);
-    const int32_t a_quarter_wavelength_closer_right_now =
-        boot_anim_wave_height(r - wavelength / 4, 0, amp_q12, wavelength, period_ms);
-
-    TEST_ASSERT_EQUAL_INT32_MESSAGE(at_r_a_quarter_period_later, a_quarter_wavelength_closer_right_now,
-                                    "a quarter period from now, this vertex should read the way a "
-                                    "vertex a quarter wavelength closer to the origin reads right now "
-                                    "- the pattern travels OUTWARD as time advances");
-}
-
-/* period_ms of 0 is a legitimate, if unusual, choice (a static ripple
- * that never travels), not a division by zero. */
-static void
-test_wave_height_is_frozen_when_the_period_is_zero(void) {
-    const int32_t wavelength = 3 * BOOT_ANIM_ONE;
-    const int32_t amp_q12 = BOOT_ANIM_ONE;
-    const int32_t r = 2 * BOOT_ANIM_ONE;
-
-    const int32_t at_t0 = boot_anim_wave_height(r, 0, amp_q12, wavelength, 0);
-    const int32_t at_t_later = boot_anim_wave_height(r, 999999, amp_q12, wavelength, 0);
-
-    TEST_ASSERT_EQUAL_INT32_MESSAGE(at_t0, at_t_later,
-                                    "a period of 0 should freeze the pattern's own time term rather "
-                                    "than crash or drift");
-}
-
-/* A seed value an author is expected to change is not a fact worth
- * pinning to a specific number; what's worth pinning is that whatever
- * they tune stays COHERENT: boot_anim_wave_height() reads height,
- * wavelength and period together, and a nonzero height against a zero
- * wavelength or period is the combination that silently draws nothing
- * (see that function's own early-out). Holds whether the ripple is
- * authored on or off. */
-static void
-test_the_seeds_wave_is_coherently_authored(void) {
-    TEST_ASSERT_TRUE_MESSAGE(BOOT_ANIM_WAVE_HEIGHT_Q12 >= 0,
-                             "a negative wave height would flip every crest into a trough");
-    if (BOOT_ANIM_WAVE_HEIGHT_Q12 != 0) {
-        TEST_ASSERT_TRUE_MESSAGE(BOOT_ANIM_WAVE_WAVELENGTH_Q12 > 0,
-                                 "the seed authors a wave height but no wavelength - "
-                                 "boot_anim_wave_height() would return flat and the ripple "
-                                 "would silently never appear");
-        TEST_ASSERT_TRUE_MESSAGE(BOOT_ANIM_WAVE_PERIOD_MS > 0,
-                                 "the seed authors a wave height but no period - the ripple "
-                                 "would be frozen rather than travelling");
+test_floor_is_flat_through_impact(void) {
+    for (uint32_t ms = 0; ms <= BOOT_ANIM_RIPPLE_IMPACT_MS; ms++) {
+        const boot_anim_floor_state_t state = boot_anim_floor_state(ms);
+        for (int i = -(BOOT_ANIM_MESH_CELLS / 2); i <= BOOT_ANIM_MESH_CELLS / 2; i++) {
+            TEST_ASSERT_EQUAL_INT32(0, boot_anim_floor_height(i, 0, &state));
+        }
     }
 }
 
-/* boot_anim_wave_envelope() takes no parameters of its own to fabricate:
- * unlike boot_anim_wave_height() above, IT is the timeline, the same
- * reason boot_anim_grid_alpha() reads BOOT_ANIM_GRID_START_MS/RING_MS/
- * FADE_MS directly rather than taking them as arguments, so these test
- * against the seed's own real generated values (BOOT_ANIM_WAVE_IN_MS,
- * BOOT_ANIM_WAVE_OUT_MS, BOOT_ANIM_MS). */
 static void
-test_wave_envelope_is_zero_at_the_very_start(void) {
-    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_wave_envelope(0));
-}
-
-/* The whole point of wave_in_ms being a MOMENT rather than a duration:
- * the ripple stays muted right up to and including that moment itself;
- * an author controls exactly when it is allowed to start, not merely how
- * long a ramp beginning at frame 0 takes. */
-static void
-test_wave_envelope_is_still_muted_at_wave_in_ms_itself(void) {
-    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_wave_envelope(BOOT_ANIM_WAVE_IN_MS));
+test_floor_is_flat_well_ahead_of_the_train(void) {
+    const boot_anim_floor_state_t state = boot_anim_floor_state(BOOT_ANIM_RIPPLE_IMPACT_MS + 1);
+    TEST_ASSERT_EQUAL_INT32(0, boot_anim_floor_height(BOOT_ANIM_MESH_CELLS / 2, BOOT_ANIM_MESH_CELLS / 2, &state));
 }
 
 static void
-test_wave_envelope_reaches_full_strength_after_the_ramp(void) {
-    TEST_ASSERT_EQUAL_UINT8(255, boot_anim_wave_envelope(BOOT_ANIM_WAVE_IN_MS + BOOT_ANIM_WAVE_ENVELOPE_RAMP_MS));
+test_ripple_peak_falls_over_time(void) {
+    int previous = INT32_MAX;
+    for (uint32_t ms = BOOT_ANIM_RIPPLE_IMPACT_MS + 1; ms < BOOT_ANIM_MS; ms += FLOOR_DECAY_STEP_MS) {
+        boot_anim_floor_state_t state = boot_anim_floor_state(ms);
+        state.swell = 0;
+        int peak = 0;
+        for (int j = 0; j <= BOOT_ANIM_MESH_CELLS / 2; j++) {
+            for (int i = 0; i <= BOOT_ANIM_MESH_CELLS / 2; i++) {
+                peak = mathi_max(peak, mathi_abs(boot_anim_floor_height(i, j, &state)));
+            }
+        }
+        TEST_ASSERT_TRUE(peak < previous);
+        previous = peak;
+    }
 }
 
 static void
-test_wave_envelope_plateaus_between_in_and_out(void) {
-    const uint32_t midpoint = (BOOT_ANIM_WAVE_IN_MS + BOOT_ANIM_WAVE_OUT_MS) / 2;
-
-    TEST_ASSERT_EQUAL_UINT8(255, boot_anim_wave_envelope(midpoint));
+test_swell_is_zero_through_its_start(void) {
+    for (uint32_t ms = 0; ms <= BOOT_ANIM_TITLE_START_MS; ms++) {
+        const boot_anim_floor_state_t state = boot_anim_floor_state(ms);
+        TEST_ASSERT_EQUAL_INT32(0, state.swell);
+    }
 }
 
-/* Symmetric with test_wave_envelope_is_still_muted_at_wave_in_ms_itself
- * above: still at FULL strength right at wave_out_ms itself; that moment
- * is when the fade-out ramp starts, not when it has already finished. */
+#ifndef DEVICE_BUILD
+#define FLOOR_REFERENCE_TOLERANCE_M   0.02
+#define FLOOR_REFERENCE_STEP_MS       37
+#define FLOOR_REFERENCE_TAU           6.2831853071795864769
+#define FLOOR_REFERENCE_DEG_PER_TURN  360.0
+#define FLOOR_REFERENCE_MS_PER_SECOND 1000.0
+
+static double
+floor_reference_height(int i, int j, uint32_t ms) {
+    const double re = (double)(i * BOOT_ANIM_MESH_STEP_Q12) / BOOT_ANIM_ONE;
+    const double im = (double)(j * BOOT_ANIM_MESH_STEP_Q12) / BOOT_ANIM_ONE;
+    const double radius = hypot(re, im);
+    double height = 0;
+    if (ms > BOOT_ANIM_RIPPLE_IMPACT_MS) {
+        const double tau = (double)(ms - BOOT_ANIM_RIPPLE_IMPACT_MS) / FLOOR_REFERENCE_MS_PER_SECOND;
+        const double clock_s = BOOT_ANIM_RIPPLE_CLOCK_S;
+        const double group_speed = BOOT_ANIM_RIPPLE_GROUP_SPEED_M_S;
+        const double wavelength = BOOT_ANIM_RIPPLE_WAVELENGTH_M;
+        const double width = BOOT_ANIM_RIPPLE_WIDTH_M;
+        const double dispersion = BOOT_ANIM_RIPPLE_DISPERSION_M_S;
+        const double source_radius = BOOT_ANIM_RIPPLE_SOURCE_RADIUS_M;
+        const double calm_fraction = BOOT_ANIM_RIPPLE_CALM_FRACTION;
+        const double calm_after_s = ((double)BOOT_ANIM_RIPPLE_CALM_AFTER_MS / FLOOR_REFERENCE_MS_PER_SECOND);
+        const double w = clock_s * (1 - exp(-tau / clock_s));
+        const double group_radius = group_speed * w;
+        const double sigma = hypot(width, dispersion * tau);
+        const double amplitude =
+            BOOT_ANIM_RIPPLE_HEIGHT_M * sqrt(source_radius * width / ((group_radius + source_radius) * sigma));
+        const double u = fmin(1, fmax(0, (radius - (calm_fraction * group_radius) + (wavelength / 2)) / wavelength));
+        const double calm = tau > calm_after_s ? u * u * (3 - (2 * u)) : 1;
+        const double x = (radius - group_radius) / sigma;
+        height = -amplitude * calm * exp(-(x * x) / 2)
+                 * cos(FLOOR_REFERENCE_TAU * (radius - (2 * group_radius)) / wavelength);
+    }
+    if (ms > BOOT_ANIM_TITLE_START_MS) {
+        const double fade = fmin(1, (double)(ms - BOOT_ANIM_TITLE_START_MS) / BOOT_ANIM_SWELL_IN_MS);
+        for (int k = 0; k < BOOT_ANIM_SWELL_COUNT; k++) {
+            const boot_anim_swell_setting_t* sine = &boot_anim_swell_settings[k];
+            const double angle = sine->direction_deg * FLOOR_REFERENCE_TAU / FLOOR_REFERENCE_DEG_PER_TURN;
+            const double along = (re * cos(angle)) + (im * sin(angle));
+            height += BOOT_ANIM_SWELL_HEIGHT_M * fade * sine->weight
+                      * sin(FLOOR_REFERENCE_TAU * ((along / sine->wavelength_m) - ((double)ms / sine->period_ms)));
+        }
+    }
+    return height;
+}
+
 static void
-test_wave_envelope_is_still_full_at_wave_out_ms_itself(void) {
-    TEST_ASSERT_EQUAL_UINT8(255, boot_anim_wave_envelope(BOOT_ANIM_WAVE_OUT_MS));
+test_baked_floor_matches_direct_float(void) {
+    double maximum_error = 0;
+    for (uint32_t ms = 0; ms <= BOOT_ANIM_MS; ms += FLOOR_REFERENCE_STEP_MS) {
+        const boot_anim_floor_state_t state = boot_anim_floor_state(ms);
+        for (int j = -(BOOT_ANIM_MESH_CELLS / 2); j <= BOOT_ANIM_MESH_CELLS / 2; j++) {
+            for (int i = -(BOOT_ANIM_MESH_CELLS / 2); i <= BOOT_ANIM_MESH_CELLS / 2; i++) {
+                const double baked = (double)boot_anim_floor_height(i, j, &state) / BOOT_ANIM_ONE;
+                maximum_error = fmax(maximum_error, fabs(baked - floor_reference_height(i, j, ms)));
+            }
+        }
+    }
+    printf("FLOOR_REFERENCE max_error_m=%.6f tolerance_m=%.6f\n", maximum_error, FLOOR_REFERENCE_TOLERANCE_M);
+    TEST_ASSERT_TRUE(maximum_error < FLOOR_REFERENCE_TOLERANCE_M);
 }
+#endif
 
 /* The title's idle wave calming down: a different wave entirely from the
  * floor ripple above (see boot_anim_title_wave()), but the same "255 minus
@@ -705,19 +657,6 @@ test_the_title_wave_never_swings_wider_as_it_calms(void) {
                                               "supposed to be calming");
         prev = now;
     }
-}
-
-/* Measured from BOOT_ANIM_WAVE_OUT_MS, not BOOT_ANIM_MS: the envelope's
- * contract is that it reaches zero one ramp after the fade-out STARTS,
- * and whether that lands before the animation's own end is a timeline
- * choice, not a property of this function. The seed currently parks
- * wave_out_ms exactly at total_ms, so the ripple is still at full
- * strength on the last frame: fine, since boot_anim_ink() has been
- * taking the whole picture to black since fade_start_ms long before
- * then. */
-static void
-test_wave_envelope_fades_back_to_zero_after_its_ramp(void) {
-    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_wave_envelope(BOOT_ANIM_WAVE_OUT_MS + BOOT_ANIM_WAVE_ENVELOPE_RAMP_MS));
 }
 
 /* The reach's own endpoints, read off whatever the seed authors: a start
@@ -1060,7 +999,7 @@ test_the_curve_is_finished_by_pen_finish_ms(void) {
 }
 
 /* Not a claim boot_anim_pen() itself makes (see its own comment on why
- * PEN_FINISH_MS landing after FADE_START_MS is only ever a generator
+ * BOOT_ANIM_PEN_FINISH_MS landing after BOOT_ANIM_FADE_START_MS is only ever a generator
  * warning, not a refusal) but true of the SEED this repo ships, and worth
  * catching if a future edit to the committed timeline quietly breaks it. */
 static void
@@ -1126,120 +1065,28 @@ test_the_floor_fades_in_from_the_origin_outward(void) {
     TEST_ASSERT_EQUAL_UINT8(0, boot_anim_grid_alpha(t, 3));
 }
 
-/* The floor has no edge: it fades out with distance instead of stopping.
- * Checked as NON-increasing per band plus a real drop across any span,
- * not strictly dimmer at every band: falloff is left * ceiling / FADE,
- * so with 128 bands against a ceiling of 64, each band is worth half a
- * level and adjacent pairs land on the same integer (63, 63, 62, 62,
- * ...): arithmetic, not a regression, invisible on the panel since the
- * eye reads the overall gradient. */
 static void
 test_the_floor_fades_out_with_distance_rather_than_stopping(void) {
     const uint32_t settled = BOOT_ANIM_MS;
-    const int span = BOOT_ANIM_GRID_FADE / 8;
-
-    for (int band = 2; band < BOOT_ANIM_GRID_FADE; band++) {
-        TEST_ASSERT_TRUE_MESSAGE(boot_anim_grid_alpha(settled, band) <= boot_anim_grid_alpha(settled, band - 1),
-                                 "a floor band was BRIGHTER than the one inside it - the grid "
-                                 "would read as lit from the far edge inward");
+    const int start = BOOT_ANIM_GRID_EDGE_FADE_BAND;
+    for (int band = 0; band <= start; band++) {
+        TEST_ASSERT_EQUAL_UINT8(255, boot_anim_grid_alpha(settled, band));
     }
-    for (int band = span; band < BOOT_ANIM_GRID_FADE; band += span) {
-        TEST_ASSERT_TRUE_MESSAGE(boot_anim_grid_alpha(settled, band) < boot_anim_grid_alpha(settled, band - span),
-                                 "the floor stopped dimming across a whole eighth of its own "
-                                 "reach - it would read as a tile with an edge rather than as "
-                                 "a plane");
+    for (int band = start + 1; band <= BOOT_ANIM_GRID_FADE; band++) {
+        TEST_ASSERT_TRUE(boot_anim_grid_alpha(settled, band) < boot_anim_grid_alpha(settled, band - 1));
     }
-    TEST_ASSERT_EQUAL_UINT8_MESSAGE(0, boot_anim_grid_alpha(settled, BOOT_ANIM_GRID_FADE),
-                                    "the floor should be completely gone by the end of its fade");
-}
-
-/* Backdrop, not subject: the floor covers far more of the screen than the
- * curve does, so it is never let all the way up to the axes' own full 255.
- * The ceiling itself climbs though (see boot_anim_grid_climb()'s own
- * comment for why alpha has to climb alongside the whitening, not stay
- * fixed while only the colour moves), so the bound checked here is the
- * per-moment BOOT_ANIM_GRID_CEILING_MAX, not the starting BOOT_ANIM_GRID_MAX. */
-static void
-test_the_floor_stays_dim_enough_to_be_a_backdrop(void) {
-    for (uint32_t t = 0; t <= BOOT_ANIM_MS; t += 25) {
-        for (int band = 1; band <= BOOT_ANIM_GRID_BANDS; band++) {
-            TEST_ASSERT_TRUE_MESSAGE(boot_anim_grid_alpha(t, band) <= BOOT_ANIM_GRID_CEILING_MAX,
-                                     "the floor got brighter than its cap");
-        }
-    }
-}
-
-/* The clock boot_anim_grid_alpha()'s own ceiling and boot_anim_grid_whiten()
- * both ride: starts flat at 0 before the floor appears, climbs steadily
- * and monotonically, and reaches its top exactly at BOOT_ANIM_MS. */
-static void
-test_the_grid_climb_runs_the_whole_animation(void) {
-    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_grid_climb(0));
-    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_grid_climb(BOOT_ANIM_GRID_START_MS));
-    TEST_ASSERT_EQUAL_UINT8(255, boot_anim_grid_climb(BOOT_ANIM_MS));
-
-    uint8_t last = 0;
-    for (uint32_t t = 0; t <= BOOT_ANIM_MS; t += 25) {
-        const uint8_t v = boot_anim_grid_climb(t);
-        TEST_ASSERT_TRUE_MESSAGE(v >= last, "the climb must never step backwards as time moves forward");
-        last = v;
-    }
-}
-
-/* The floor's opacity ceiling climbs from BOOT_ANIM_GRID_MAX to
- * BOOT_ANIM_GRID_CEILING_MAX alongside the whitening rather than sitting
- * fixed; checked through the innermost ring's alpha, since the ceiling
- * has no exposed function of its own. Travel is authored: a seed with
- * the two constants EQUAL (both 64, currently) asks for a floor at one
- * brightness while only hue climbs. What must hold either way: opacity
- * never goes BACKWARDS. Strict-climb is still asserted where the seed
- * asks for one. */
-static void
-test_the_floor_opacity_never_falls_back(void) {
-    /* Band 1's own fade-in (BOOT_ANIM_GRID_BAND_MS + BOOT_ANIM_GRID_FADE_MS
-     * after BOOT_ANIM_GRID_START_MS) is long done by either of these, plus
-     * a little slack, so the only thing left changing its alpha between
-     * them is the ceiling itself climbing, not "arrived" still ramping. */
-    const uint32_t early_ms = BOOT_ANIM_GRID_START_MS + BOOT_ANIM_GRID_BAND_MS + BOOT_ANIM_GRID_FADE_MS + 50;
-    const uint8_t early = boot_anim_grid_alpha(early_ms, 1);
-    const uint8_t late = boot_anim_grid_alpha(BOOT_ANIM_MS, 1);
-
-    TEST_ASSERT_TRUE_MESSAGE(late >= early, "the floor's own opacity fell back over the animation - a settled "
-                                            "ring should never gutter once it has arrived");
-
-    if (BOOT_ANIM_GRID_CEILING_MAX > BOOT_ANIM_GRID_MAX) {
-        TEST_ASSERT_TRUE_MESSAGE(late > early, "the seed authors a ceiling above the floor's starting max, "
-                                               "so its opacity should visibly climb over the animation and "
-                                               "not just its colour");
-    }
-}
-
-/* Starts at 0 the moment the floor itself appears, climbs steadily, never
- * doubles back, and reaches its cap by the time everything else has faded
- * away. */
-static void
-test_the_floor_whitens_steadily_from_its_own_start_to_a_cap(void) {
-    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_grid_whiten(BOOT_ANIM_GRID_START_MS));
-    TEST_ASSERT_EQUAL_UINT8(BOOT_ANIM_GRID_WHITEN_MAX, boot_anim_grid_whiten(BOOT_ANIM_MS));
-
-    uint8_t last = 0;
-    for (uint32_t t = BOOT_ANIM_GRID_START_MS; t <= BOOT_ANIM_MS; t += 25) {
-        const uint8_t w = boot_anim_grid_whiten(t);
-        TEST_ASSERT_TRUE_MESSAGE(w >= last, "whitening must never step backwards as time moves forward");
-        last = w;
-    }
+    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_grid_alpha(settled, BOOT_ANIM_GRID_FADE));
 }
 
 static void
-test_the_floor_colour_travels_with_time_and_distance(void) {
-    TEST_ASSERT_TRUE_MESSAGE(boot_anim_grid_hue(BOOT_ANIM_GRID_HUE_MS / 4, 1) > boot_anim_grid_hue(0, 1),
-                             "the floor colour should move on as time passes");
-    TEST_ASSERT_TRUE_MESSAGE(boot_anim_grid_hue(0, 2) > boot_anim_grid_hue(0, 1),
-                             "rings should not all change together - the drift travels outward");
-
-    /* A whole period brings it back round to where it started. */
-    TEST_ASSERT_EQUAL_UINT32(gfx_hue_rgb(boot_anim_grid_hue(0, 1)),
-                             gfx_hue_rgb(boot_anim_grid_hue(BOOT_ANIM_GRID_HUE_MS, 1)));
+test_only_positive_crests_whiten_the_floor(void) {
+    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(BOOT_ANIM_FLOOR_GREY), boot_anim_floor_color(-BOOT_ANIM_ONE));
+    TEST_ASSERT_EQUAL_HEX16(gfx_rgb(BOOT_ANIM_FLOOR_GREY), boot_anim_floor_color(0));
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFFFFFF), boot_anim_floor_color(BOOT_ANIM_WHITE_HEIGHT_Q12));
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFFFFFF), boot_anim_floor_color(BOOT_ANIM_ONE));
+    const int half = BOOT_ANIM_WHITE_HEIGHT_Q12 / 2;
+    TEST_ASSERT_EQUAL_HEX16(gfx_color_mix(gfx_rgb(BOOT_ANIM_FLOOR_GREY), GFX_RGB(0xFFFFFF), UINT8_MAX / 4),
+                            boot_anim_floor_color(half));
 }
 
 static void
@@ -1954,19 +1801,13 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_the_seeds_curve_stays_near_the_panel_throughout);
     RUN_TEST(test_the_seeds_three_axes_project_to_distinct_directions);
 
-    RUN_TEST(test_wave_height_is_zero_when_the_amplitude_is_zero);
-    RUN_TEST(test_wave_height_is_zero_when_the_wavelength_is_not_positive);
-    RUN_TEST(test_wave_height_is_periodic_in_radius);
-    RUN_TEST(test_wave_height_is_periodic_in_time);
-    RUN_TEST(test_wave_height_travels_outward_with_time);
-    RUN_TEST(test_wave_height_is_frozen_when_the_period_is_zero);
-    RUN_TEST(test_the_seeds_wave_is_coherently_authored);
-    RUN_TEST(test_wave_envelope_is_zero_at_the_very_start);
-    RUN_TEST(test_wave_envelope_is_still_muted_at_wave_in_ms_itself);
-    RUN_TEST(test_wave_envelope_reaches_full_strength_after_the_ramp);
-    RUN_TEST(test_wave_envelope_plateaus_between_in_and_out);
-    RUN_TEST(test_wave_envelope_is_still_full_at_wave_out_ms_itself);
-    RUN_TEST(test_wave_envelope_fades_back_to_zero_after_its_ramp);
+    RUN_TEST(test_floor_is_flat_through_impact);
+    RUN_TEST(test_floor_is_flat_well_ahead_of_the_train);
+    RUN_TEST(test_ripple_peak_falls_over_time);
+    RUN_TEST(test_swell_is_zero_through_its_start);
+#ifndef DEVICE_BUILD
+    RUN_TEST(test_baked_floor_matches_direct_float);
+#endif
     RUN_TEST(test_the_title_wave_is_at_full_swing_before_it_calms);
     RUN_TEST(test_the_title_wave_reaches_stillness_after_its_fade);
     RUN_TEST(test_the_title_wave_never_swings_wider_as_it_calms);
@@ -1998,11 +1839,7 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_the_seed_finishes_the_crossfade_before_the_dissolve_starts);
     RUN_TEST(test_the_floor_fades_in_from_the_origin_outward);
     RUN_TEST(test_the_floor_fades_out_with_distance_rather_than_stopping);
-    RUN_TEST(test_the_floor_stays_dim_enough_to_be_a_backdrop);
-    RUN_TEST(test_the_grid_climb_runs_the_whole_animation);
-    RUN_TEST(test_the_floor_opacity_never_falls_back);
-    RUN_TEST(test_the_floor_whitens_steadily_from_its_own_start_to_a_cap);
-    RUN_TEST(test_the_floor_colour_travels_with_time_and_distance);
+    RUN_TEST(test_only_positive_crests_whiten_the_floor);
     RUN_TEST(test_the_axes_are_there_before_the_curve_starts_climbing);
 
     RUN_TEST(test_height_changes_the_hue);

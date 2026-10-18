@@ -23,9 +23,60 @@ PASSING = (
 )
 FAILING = "/src/suite_gfx.c:61:test_clip:FAIL: Expected 3 Was 4\n"
 IGNORED = "/src/suite_sand_perf.c:1953:test_counters:IGNORE: no PMU\n"
-COMPLETE = "SELFTEST_COMPLETE tests=4 failures=1\n"
+COMPLETE = "SELFTEST_COMPLETE failures=0 elapsed_ms=42\n"
 BOOT = "ESP-ROM:esp32s3-20210327\nrst:0x1 (POWERON),boot:0x8 (SPI_FAST_FLASH_BOOT)\n"
 ABORT = "abort() was called at PC 0x40376f2b on core 0\n"
+
+
+class IcountDiscoveryTest(unittest.TestCase):
+    def test_finds_current_ratchet_suites(self):
+        suites = qemu_run.icount_suites(Path(__file__).resolve().parents[3])
+        self.assertTrue({"run_sand_icount_suite", "run_span_icount_suite"} <= set(suites))
+
+    def test_floor_cost_suite_is_explicit_only(self):
+        root = Path(__file__).resolve().parents[3]
+        suites = qemu_run.registered_suites(root)
+        self.assertIn("run_boot_floor_cost_suite", suites)
+        self.assertTrue(suites["run_boot_floor_cost_suite"][1])
+        self.assertFalse(any(name.startswith("run_boot_floor_") for name in qemu_run.icount_suites(root)))
+
+    def test_ignores_other_registrations_and_build_output(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for folder in ("launcher/main", "launcher/test", "launcher/build"):
+                (root / folder).mkdir(parents=True)
+            (root / "launcher/main/suite_probe.c").write_text(
+                "  SUITE_REGISTER_ON_REQUEST(run_z_icount_suite);\n"
+                "SUITE_REGISTER(run_autorun_icount_suite);\n"
+                "SUITE_REGISTER_ON_REQUEST(run_other_suite);\n"
+                "/*\nSUITE_REGISTER_ON_REQUEST(run_comment_icount_suite);\n*/\n"
+                '"SUITE_REGISTER_ON_REQUEST(run_string_icount_suite);";\n'
+                "void probe(void) { SUITE_REGISTER_ON_REQUEST(run_inline_icount_suite); }\n")
+            (root / "launcher/test/suite_duplicate.c").write_text(
+                "SUITE_REGISTER_ON_REQUEST(run_a_icount_suite);\n"
+                "SUITE_REGISTER_ON_REQUEST(run_a_icount_suite);\n")
+            (root / "launcher/build/suite_stale.c").write_text(
+                "SUITE_REGISTER_ON_REQUEST(run_stale_icount_suite);\n")
+            self.assertEqual(["run_a_icount_suite", "run_z_icount_suite"], qemu_run.icount_suites(root))
+
+    def test_ratchet_options_append_suites_and_enable_instruction_counting(self):
+        with unittest.mock.patch.object(qemu_run, "icount_suites", return_value=["run_a_icount_suite", "run_z_icount_suite"]):
+            with unittest.mock.patch.object(qemu_run.subprocess, "Popen") as start:
+                args = qemu_run.parse_args(["unused", "--suite", "first", "--suite", "second", "--icount-ratchet"])
+                self.assertTrue(args.icount)
+                self.assertEqual(["first", "second", "run_a_icount_suite", "run_z_icount_suite"], args.suite)
+                command = qemu_run.qemu_command(args, "emulator", 8, "flash", "efuse", 1234)
+                self.assertEqual(f"shift={qemu_run.ICOUNT_SHIFT},sleep=off", command[command.index("-icount") + 1])
+                start.assert_not_called()
+
+    def test_empty_discovery_fails_before_starting_emulator(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaisesRegex(ValueError, "no instruction ratchet suites"):
+                qemu_run.icount_suites(directory)
+        with unittest.mock.patch.object(qemu_run, "icount_suites", side_effect=ValueError("no ratchet suites")):
+            with self.assertRaises(SystemExit) as error:
+                qemu_run.main(["unused", "--icount-ratchet"])
+            self.assertEqual(2, error.exception.code)
 
 
 class VerdictTest(unittest.TestCase):
@@ -40,7 +91,16 @@ class VerdictTest(unittest.TestCase):
         self.assertEqual(0, self.verdict(PASSING + IGNORED + COMPLETE))
 
     def test_a_failing_test_fails_the_run_even_when_it_completes(self):
-        self.assertEqual(1, self.verdict(PASSING + FAILING + COMPLETE))
+        self.assertEqual(1, self.verdict(PASSING + FAILING +
+                                        "SELFTEST_COMPLETE failures=1 elapsed_ms=42\n"))
+
+    def test_sentinel_failures_without_fail_lines_fail_the_run(self):
+        self.assertEqual(1, self.verdict(PASSING +
+                                        "SELFTEST_COMPLETE failures=2 elapsed_ms=42\n"))
+
+    def test_suite_overflow_fails_a_driven_run(self):
+        self.assertEqual(1, self.verdict(PASSING + "I suites: SUITE OVERFLOW: run_extra_suite\n",
+                                        actions=[("suite", "x")]))
 
     def test_an_autorun_that_never_completes_fails(self):
         self.assertEqual(1, self.verdict(PASSING, finished=False))

@@ -1,4 +1,5 @@
 #include "render/r3d_pipeline.h"
+
 #include "render/r3d_span_internal.h"
 
 #include <assert.h>
@@ -8,25 +9,18 @@
 #include <string.h>
 
 #include "display/viewport.h"
+#include "math/geometry/planef.h"
+#include "math/linear/mat3f.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
 #include "render/code_layout.h"
 
-static void
-set_row(float row[4], vec3f_t axis, vec3f_t eye, float scale, float ticks_to_units) {
-    row[0] = axis.x * scale * ticks_to_units;
-    row[1] = axis.y * scale * ticks_to_units;
-    row[2] = axis.z * scale * ticks_to_units;
-    row[3] = -vec3f_dot(axis, eye) * scale;
-}
-
 void
 r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_scale) {
     const float ticks_to_units = 1.0F / (float)position_scale;
-    lens->m = mat4f_identity();
-    set_row(lens->m.m[0], view->screen_x, view->position, view->pixels_per_unit, ticks_to_units);
-    set_row(lens->m.m[1], view->screen_y, view->position, view->pixels_per_unit, ticks_to_units);
-    set_row(lens->m.m[2], view->forward, view->position, 1.0F, ticks_to_units);
+    const mat4f_t camera = mat4f_view_from_axes(view->screen_x, view->screen_y, view->forward, view->position);
+    const mat4f_t pixels = mat4f_scale_rows(camera, (vec3f_t){view->pixels_per_unit, view->pixels_per_unit, 1.0F});
+    lens->m = mat4f_scale_columns(pixels, (vec3f_t){ticks_to_units, ticks_to_units, ticks_to_units});
     lens->center_x = view->center_x;
     lens->center_y = view->center_y;
     lens->near_z = view->near_z;
@@ -41,10 +35,7 @@ void
 r3d_lens_fit(r3d_lens_t* lens, int width, int height) {
     const float scale_x = (float)width / (float)lens->width;
     const float scale_y = (float)height / (float)lens->height;
-    for (int j = 0; j < 4; j++) {
-        lens->m.m[0][j] *= scale_x;
-        lens->m.m[1][j] *= scale_y;
-    }
+    lens->m = mat4f_scale_rows(lens->m, (vec3f_t){scale_x, scale_y, 1.0F});
     lens->center_x = (float)width * 0.5F;
     lens->center_y = (float)height * 0.5F;
     lens->snap_cx = (lens->center_x * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
@@ -53,69 +44,36 @@ r3d_lens_fit(r3d_lens_t* lens, int width, int height) {
     lens->height = height;
 }
 
-/* Returns the placement as a matrix on position ticks: its position, in model
- * units, scaled by position_scale ticks per unit. */
-static mat4f_t
-r3d_placement_matrix(const r3d_placement_t* placement, int position_scale) {
-    const vec3f_t p = vec3f_scale(placement->position, (float)position_scale);
-    return (mat4f_t){{
-        {placement->m[0][0], placement->m[0][1], placement->m[0][2], p.x},
-        {placement->m[1][0], placement->m[1][1], placement->m[1][2], p.y},
-        {placement->m[2][0], placement->m[2][1], placement->m[2][2], p.z},
-        {0.0F, 0.0F, 0.0F, 1.0F},
-    }};
-}
-
 void
-r3d_lens_place(r3d_lens_t* lens, const r3d_placement_t* placement, int position_scale) {
-    lens->m = mat4f_mul_affine(lens->m, r3d_placement_matrix(placement, position_scale));
-}
-
-#define PLANE_COUNT    5
-#define ALL_PLANES     ((1u << PLANE_COUNT) - 1u)
-#define WALK_STACK_MAX 256
-
-typedef struct {
-    float w[4]; /* inside where w . (x, y, z, 1) >= 0, in position ticks */
-} plane_t;
-
-/* The camera's five planes (near, left, right, top, bottom) written in lens
- * space, then carried back through the lens's matrix to position ticks, so a
- * box is tested without transforming its corners. */
-static void
-frustum_planes(const r3d_lens_t* lens, plane_t planes[PLANE_COUNT]) {
-    const float right = (float)lens->width - lens->center_x;
-    const float bottom = (float)lens->height - lens->center_y;
-    const float in_lens[PLANE_COUNT][4] = {
-        {0.0F, 0.0F, 1.0F, -lens->near_z},  {1.0F, 0.0F, lens->center_x, 0.0F}, {-1.0F, 0.0F, right, 0.0F},
-        {0.0F, 1.0F, lens->center_y, 0.0F}, {0.0F, -1.0F, bottom, 0.0F},
-    };
-    for (int p = 0; p < PLANE_COUNT; p++) {
-        for (int j = 0; j < 4; j++) {
-            planes[p].w[j] = (in_lens[p][0] * lens->m.m[0][j]) + (in_lens[p][1] * lens->m.m[1][j])
-                             + (in_lens[p][2] * lens->m.m[2][j]);
-        }
-        planes[p].w[3] += in_lens[p][3];
+r3d_lens_place(r3d_lens_t* lens, const mat4f_t* model, int position_scale) {
+    mat4f_t placed = *model;
+    for (int row = 0; row < MAT3F_AXES; row++) {
+        placed.m[row][MAT3F_AXES] *= (float)position_scale;
     }
+    lens->m = mat4f_mul_affine(lens->m, placed);
 }
+
+#define ALL_PLANES     ((1u << PLANE_FRUSTUM_COUNT) - 1u)
+#define WALK_STACK_MAX 256
 
 typedef enum { BOX_OUTSIDE, BOX_CROSSING } box_side_t;
 
 /* Clears from *mask every plane the box lies wholly inside, so a node's
  * children skip it. */
 static box_side_t
-classify_box(const int16_t lo[3], const int16_t hi[3], const plane_t planes[PLANE_COUNT], unsigned* mask) {
-    const float c[3] = {0.5F * ((float)lo[0] + (float)hi[0]), 0.5F * ((float)lo[1] + (float)hi[1]),
-                        0.5F * ((float)lo[2] + (float)hi[2])};
+classify_box(const int16_t lo[3], const int16_t hi[3], const planef_t planes[PLANE_FRUSTUM_COUNT], unsigned* mask) {
+    const vec3f_t c = {0.5F * ((float)lo[0] + (float)hi[0]), 0.5F * ((float)lo[1] + (float)hi[1]),
+                       0.5F * ((float)lo[2] + (float)hi[2])};
     const float e[3] = {0.5F * ((float)hi[0] - (float)lo[0]), 0.5F * ((float)hi[1] - (float)lo[1]),
                         0.5F * ((float)hi[2] - (float)lo[2])};
-    for (int p = 0; p < PLANE_COUNT; p++) {
+    for (int p = 0; p < PLANE_FRUSTUM_COUNT; p++) {
         if (!(*mask & (1U << p))) {
             continue;
         }
-        const float* w = planes[p].w;
-        const float d = (w[0] * c[0]) + (w[1] * c[1]) + (w[2] * c[2]) + w[3];
-        const float r = (fabsf(w[0]) * e[0]) + (fabsf(w[1]) * e[1]) + (fabsf(w[2]) * e[2]);
+        const planef_t* plane = &planes[p];
+        const float d = planef_distance(*plane, c);
+        const float r =
+            (fabsf(plane->normal.x) * e[0]) + (fabsf(plane->normal.y) * e[1]) + (fabsf(plane->normal.z) * e[2]);
         if (d + r < 0.0F) {
             return BOX_OUTSIDE;
         }
@@ -138,28 +96,23 @@ typedef struct {
     uint8_t mask;
 } walk_entry_t;
 
-#define CLIP_PLANES     5
-#define CLIP_VERTEX_MAX (3 + CLIP_PLANES)
+#define CLIP_VERTEX_MAX (3 + PLANE_FRUSTUM_COUNT)
 
 typedef struct {
     float x, y, z, r, g, b;
 } clip_vertex_t;
 
-typedef struct {
-    float x, y, z, w; /* inside where x lx + y ly + z lz + w >= 0 */
-} clip_plane_t;
-
 struct r3d_pipeline_work {
     union {
         struct {
-            plane_t planes[PLANE_COUNT];
+            planef_t planes[PLANE_FRUSTUM_COUNT];
             walk_entry_t stack[WALK_STACK_MAX];
         } cull;
 
         struct {
             clip_vertex_t poly[CLIP_VERTEX_MAX], other[CLIP_VERTEX_MAX];
             r3d_span_vertex_t projected[CLIP_VERTEX_MAX];
-            clip_plane_t planes[CLIP_PLANES];
+            planef_t planes[PLANE_FRUSTUM_COUNT];
         } clip;
     };
 };
@@ -200,8 +153,9 @@ push_children(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_
 
 int
 r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out, r3d_pipeline_work_t* work) {
-    plane_t* planes = work->cull.planes;
-    frustum_planes(lens, planes);
+    planef_t* planes = work->cull.planes;
+    planef_frustum(&lens->m, lens->near_z, (vec2f_t){lens->center_x, lens->center_y},
+                   rectf_from_edges(0.0F, 0.0F, (float)lens->width, (float)lens->height), planes);
 
     walk_entry_t* stack = work->cull.stack;
     int top = 0;
@@ -380,20 +334,15 @@ signed_area2(int32_t ax, int32_t ay, int32_t bx, int32_t by, int32_t cx, int32_t
     return ((bx - ax) * (cy - ay)) - ((cx - ax) * (by - ay));
 }
 
-static inline float
-plane_distance(const clip_plane_t* p, const clip_vertex_t* v) {
-    return (p->x * v->x) + (p->y * v->y) + (p->z * v->z) + p->w;
-}
-
-/* One Sutherland-Hodgman pass (docs/Citations.md#33): the polygon's part on the plane's inside. */
+/* One Sutherland-Hodgman pass (Sutherland and Hodgman 1974): the polygon's part on the plane's inside. */
 static int
-clip_to_plane(const clip_plane_t* p, const clip_vertex_t* in, int n, clip_vertex_t* out) {
+clip_to_plane(const planef_t* p, const clip_vertex_t* in, int n, clip_vertex_t* out) {
     int m = 0;
     for (int i = 0; i < n; i++) {
         const clip_vertex_t* a = &in[i];
         const clip_vertex_t* b = &in[(i + 1) % n];
-        const float da = plane_distance(p, a);
-        const float db = plane_distance(p, b);
+        const float da = planef_distance(*p, (vec3f_t){a->x, a->y, a->z});
+        const float db = planef_distance(*p, (vec3f_t){b->x, b->y, b->z});
         if (da >= 0.0F) {
             out[m++] = *a;
         }
@@ -407,20 +356,21 @@ clip_to_plane(const clip_plane_t* p, const clip_vertex_t* in, int n, clip_vertex
     return m;
 }
 
+/* The identity as a constant, so the guard planes built through it stay in lens
+ * space and fold to the values they had when they were written out by hand. */
+static const mat4f_t LENS_SPACE = MAT4F_IDENTITY;
+
 /* The near plane, then the screen's guard band: every corner left projects
  * inside what r3d_span takes. */
 static int
 clip_to_guard(const r3d_lens_t* lens, r3d_pipeline_work_t* work, int n) {
     clip_vertex_t* poly = work->clip.poly;
     const float g = (float)GUARD_PIXELS;
-    clip_plane_t* planes = work->clip.planes;
-    planes[0] = (clip_plane_t){0.0F, 0.0F, 1.0F, -lens->near_z};
-    planes[1] = (clip_plane_t){1.0F, 0.0F, lens->center_x + g, 0.0F};
-    planes[2] = (clip_plane_t){-1.0F, 0.0F, g - lens->center_x, 0.0F};
-    planes[3] = (clip_plane_t){0.0F, 1.0F, lens->center_y + g, 0.0F};
-    planes[4] = (clip_plane_t){0.0F, -1.0F, g - lens->center_y, 0.0F};
+    planef_t* planes = work->clip.planes;
+    planef_frustum(&LENS_SPACE, lens->near_z, (vec2f_t){lens->center_x, lens->center_y}, rectf_from_edges(-g, -g, g, g),
+                   planes);
     clip_vertex_t* other = work->clip.other;
-    for (int p = 0; p < CLIP_PLANES && n >= 3; p++) {
+    for (int p = 0; p < PLANE_FRUSTUM_COUNT && n >= 3; p++) {
         n = clip_to_plane(&planes[p], poly, n, other);
         memcpy(poly, other, sizeof(clip_vertex_t) * (size_t)n);
     }
@@ -438,7 +388,7 @@ fill_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const
         r3d_span_triangle_solid(target, a, b, c, *face_color);
     }
     if (writes) {
-        r3d_span_triangle_write(target, a, b, c);
+        r3d_span_triangle_write(target, a, b, c, face_color != NULL);
     }
 }
 

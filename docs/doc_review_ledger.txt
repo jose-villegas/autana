@@ -41,3 +41,13 @@ docs/math/README.md	2026-10-12
 docs/Shared-Helpers.md	2026-10-12
 docs/plans/UI-Editor-Plan.md	2026-10-14
 docs/Firmware-Architecture.md	2026-10-14
+docs/Firmware-Architecture.md	2026-10-17
+docs/audio/Audio-Path.md	2026-10-17	checked against audio/, console_tone.c and the committed capture
+docs/audio/Audio-Path.md	2026-10-17	call and signal diagrams, memory constraint and board settings checked against their source owners
+docs/notes/Board-and-Memory.md	2026-10-17	memory section split under subheaders; facts and generated tiers unchanged, autana heap checked against Autana-CLI.md
+docs/audio/Audio-Path.md	2026-10-18	path and capture lifetime checked against audio/ and sound/
+docs/audio/Sound-Mixer.md	2026-10-18	rework: app example, cost, exit order and capture checked against sound/ and shell_apps.c
+docs/math/README.md	2026-10-18	split into an index; links checked against every docs/math page
+docs/math/Projection.md	2026-10-18	moved from the math README; checked against projectf.h and projectx.h
+docs/math/Geometry.md	2026-10-18	moved from the math README plus five generated figures; checked against rect and plane templates
+docs/math/Motion.md	2026-10-18	new; checked against orbit_motion.h and spring_line.h

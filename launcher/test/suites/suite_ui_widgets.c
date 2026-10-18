@@ -28,14 +28,14 @@
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_test.h"
 #include "input/input.h"
-#include "ui/controls/ui_widgets.h"
 #include "ui/input/ui_bridge.h"
 #include "ui/layout/ui_scroll.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
+#include "ui/ui_mu.h"
 
-static const ui_theme_t THEME = {
+static const ui_mu_theme_t THEME = {
     .panel_face = UI_RGB(0x202020),
     .panel_edge = UI_RGB(0x505050),
     .button_face = UI_RGB(0x303030),
@@ -56,7 +56,7 @@ test_theme_from_style_maps_widget_colors(void) {
     for (int i = 0; i < MU_COLOR_MAX; i++) {
         style.colors[i] = (mu_Color){(uint8_t)i, (uint8_t)(i + 1), (uint8_t)(i + 2), (uint8_t)(i + 3)};
     }
-    const ui_theme_t theme = ui_theme_from_style(&style);
+    const ui_mu_theme_t theme = ui_theme_from_style(&style);
     TEST_ASSERT_EQUAL_MEMORY(&style.colors[MU_COLOR_BUTTON], &theme.button_face, sizeof(mu_Color));
     TEST_ASSERT_EQUAL_MEMORY(&style.colors[MU_COLOR_BUTTONFOCUS], &theme.accent_face, sizeof(mu_Color));
     TEST_ASSERT_EQUAL_MEMORY(&style.colors[MU_COLOR_TEXT], &theme.text, sizeof(mu_Color));
@@ -149,7 +149,7 @@ tap(const widget_t* w) {
 static void
 fixture(void) {
     ui_init();
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(affine2x_identity());
 }
 
 static void
@@ -172,11 +172,11 @@ typedef struct {
 
 static contact_t
 transformed_contact(int x, int y) {
-    int px, py;
-    ui_transform_point(ui_effective_transform(), x, y, &px, &py);
-    return (contact_t){.press = {.down = true, .pressed = true, .x = px, .y = py},
-                       .hold = {.down = true, .x = px, .y = py},
-                       .release = {.released = true, .x = px, .y = py}};
+    const affine2x_t transform = ui_effective_transform();
+    const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){x, y});
+    return (contact_t){.press = {.down = true, .pressed = true, .x = mapped_pixel.x, .y = mapped_pixel.y},
+                       .hold = {.down = true, .x = mapped_pixel.x, .y = mapped_pixel.y},
+                       .release = {.released = true, .x = mapped_pixel.x, .y = mapped_pixel.y}};
 }
 
 static void
@@ -184,7 +184,7 @@ test_a_reachable_touch_outside_a_button_submits_it(void) {
     const widget_t w = {.enabled = true};
     for (int turn = 0; turn <= 1; turn++) {
         fixture();
-        const ui_transform_t transform = ui_transform_quarter_turn(turn, GFX_WIDTH, GFX_HEIGHT);
+        const affine2x_t transform = ui_transform_quarter_turn(turn, GFX_WIDTH, GFX_HEIGHT);
         ui_set_transform(transform);
         const contact_t contact = transformed_contact(BUTTON.x - 20, BUTTON.y + BUTTON.h / 2);
         const input_t idle = {0};
@@ -387,7 +387,7 @@ test_a_list_opens_scrolled_so_the_row_sits_centred(void) {
                                   "the selected row must be centred in the list, not merely visible");
 }
 
-static const ui_dropdown_item_t ITEMS[] = {{.label = "ZERO"}, {.label = "ONE"}, {.label = "TWO"}};
+static const char* const ITEMS[] = {"ZERO", "ONE", "TWO"};
 static const mu_Rect DROPDOWN = {40, 60, 240, 44};
 
 static bool dropdown_open;
@@ -403,7 +403,7 @@ dropdown_frame(const input_t* in, int selected) {
     const bool began = paint_frames ? mu_begin_window_ex(ui_context(), "Widgets", mu_rect(20, 40, 300, 80), opts)
                                     : ui_begin_screen(ui_context(), "Widgets", opts);
     if (began) {
-        picked = ui_dropdown(ui_context(), "pick", DROPDOWN, ITEMS, 3, selected, &THEME);
+        picked = ui_mu_dropdown(ui_context(), "pick", DROPDOWN, ITEMS, NULL, 3, selected, &THEME);
         dropdown_open = ui_dropdown_is_open(ui_context(), "pick");
         mu_end_window(ui_context());
     }
@@ -567,7 +567,7 @@ chevron_hash(void) {
     return h;
 }
 
-/* was_open is read at the top of ui_dropdown(), before this same frame's own
+/* was_open is read at the top of ui_mu_dropdown(), before this same frame's own
  * click can open the list, so the very frame the list's own open flag
  * flips true must still draw the closed chevron, changing only on the frame
  * after. Finds that transition frame rather than assuming which one it is. */
@@ -642,8 +642,7 @@ enum {
 };
 
 static const mu_Rect MENU_ANCHOR = {40, 140, 300, MENU_ROW_HEIGHT};
-static const ui_dropdown_item_t MENU_ITEMS[] = {
-    {.label = "IDLE"}, {.label = "WALK"}, {.label = "FAST"}, {.label = "GALLOP"}, {.label = "BOUND"}};
+static const char* const MENU_ITEMS[] = {"IDLE", "WALK", "FAST", "GALLOP", "BOUND"};
 
 static int menu_pick;
 
@@ -653,7 +652,7 @@ build_menu_frame(const input_t* in, int revision, int commands, bool scrollable)
     mu_Context* ctx = ui_context();
     if (ui_scroll_view_begin(ctx, "Menu", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME,
                              ui_scroll_view_default(), 16)) {
-        menu_pick = ui_dropdown(ctx, "pick", MENU_ANCHOR, MENU_ITEMS, MENU_ITEM_COUNT, 0, &THEME);
+        menu_pick = ui_mu_dropdown(ctx, "pick", MENU_ANCHOR, MENU_ITEMS, NULL, MENU_ITEM_COUNT, 0, &THEME);
         dropdown_open = ui_dropdown_is_open(ctx, "pick");
         const mu_Color saved_text = ctx->style->colors[MU_COLOR_TEXT];
         ctx->style->colors[MU_COLOR_TEXT] = ui_rgb(MENU_INK);
@@ -836,9 +835,9 @@ menu_repaint_frames(bool bands) {
     const input_t idle = {0};
     menu_frame(&idle, bands, 0);
     menu_frame(&idle, bands, 0);
-    int ink_x, ink_y;
-    ui_transform_point(ui_effective_transform(), 80, 230, &ink_x, &ink_y);
-    TEST_ASSERT_EQUAL_MESSAGE(gfx_rgb(MENU_INK), gfx_framebuffer()[ink_y * GFX_WIDTH + ink_x],
+    const affine2x_t transform = ui_effective_transform();
+    const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){80, 230});
+    TEST_ASSERT_EQUAL_MESSAGE(gfx_rgb(MENU_INK), gfx_framebuffer()[mapped_pixel.y * GFX_WIDTH + mapped_pixel.x],
                               "dense menu commands must all be painted before opening the list");
     menu_frame(&contact.press, bands, 0);
     for (int frame = 0; frame < MENU_FRAMES; frame++) {
@@ -925,9 +924,7 @@ test_closing_the_list_restores_the_pixels_under_it(void) {
 }
 #endif
 
-static const ui_dropdown_item_t MANY[] = {{.label = "0"}, {.label = "1"}, {.label = "2"}, {.label = "3"},
-                                          {.label = "4"}, {.label = "5"}, {.label = "6"}, {.label = "7"},
-                                          {.label = "8"}, {.label = "9"}};
+static const char* const MANY[] = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9"};
 #define MANY_COUNT ((int)(sizeof MANY / sizeof MANY[0]))
 
 static bool many_open;
@@ -937,7 +934,7 @@ many_frame(const input_t* in, int selected) {
     ui_begin(in);
     int picked = -1;
     if (ui_begin_screen(ui_context(), "Widgets", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
-        picked = ui_dropdown(ui_context(), "many", DROPDOWN, MANY, MANY_COUNT, selected, &THEME);
+        picked = ui_mu_dropdown(ui_context(), "many", DROPDOWN, MANY, NULL, MANY_COUNT, selected, &THEME);
         many_open = ui_dropdown_is_open(ui_context(), "many");
         mu_end_window(ui_context());
     }
@@ -1009,7 +1006,7 @@ many_frame_scroll(int x, int y, int selected, int scroll_dy) {
     }
     int picked = -1;
     if (ui_begin_screen(ui_context(), "Widgets", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
-        picked = ui_dropdown(ui_context(), "many", DROPDOWN, MANY, MANY_COUNT, selected, &THEME);
+        picked = ui_mu_dropdown(ui_context(), "many", DROPDOWN, MANY, NULL, MANY_COUNT, selected, &THEME);
         many_open = ui_dropdown_is_open(ui_context(), "many");
         mu_end_window(ui_context());
     }
@@ -1109,7 +1106,7 @@ over_button_frame(const input_t* in, bool* button) {
     if (ui_begin_screen(ui_context(), "Widgets", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
         mu_layout_set_next(ui_context(), BUTTON, 0);
         *button = mu_button(ui_context(), "GO") != 0 || *button;
-        picked = ui_dropdown(ui_context(), "pick", DROPDOWN, ITEMS, 3, 0, &THEME);
+        picked = ui_mu_dropdown(ui_context(), "pick", DROPDOWN, ITEMS, NULL, 3, 0, &THEME);
         dropdown_open = ui_dropdown_is_open(ui_context(), "pick");
         mu_end_window(ui_context());
     }
@@ -1318,7 +1315,7 @@ test_a_list_its_dropdown_stopped_drawing_is_closed_when_it_returns(void) {
 /* One frame drawing a swatch grid alone, so its command list holds nothing
  * but the grid's own cells. */
 static void
-swatch_frame(mu_Rect r, const mu_Color* colors, int cols, int rows) {
+swatch_frame(mu_Rect r, const uint32_t* colors, int cols, int rows) {
     const input_t idle = {0};
     ui_begin(&idle);
     if (ui_begin_screen(ui_context(), "Widgets", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
@@ -1338,9 +1335,9 @@ test_ui_swatch_grid_tiles_the_rect_exactly(void) {
     const mu_Rect r = {10, 20, 100, 33};
     const int cols = 3;
     const int rows = 2;
-    mu_Color colors[6];
+    uint32_t colors[6];
     for (int i = 0; i < 6; i++) {
-        colors[i] = ui_rgb((uint32_t)(0x010203 * (i + 1)));
+        colors[i] = (uint32_t)(0x010203 * (i + 1));
     }
     swatch_frame(r, colors, cols, rows);
 
