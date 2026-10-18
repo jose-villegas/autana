@@ -132,7 +132,7 @@ static const ui_theme_t THEME = {
     .icon_side = 32,
 };
 
-/* Spelled out rather than ui_theme_from_face(), so the face's own
+/* Spelled out rather than UI_THEME_FROM_FACE(), so the face's own
  * conversion is checked against an independent copy. */
 #define LEGACY_THEME_COLOR(t, member) .member = ui_rgb((t).member)
 

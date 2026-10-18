@@ -114,7 +114,7 @@ ui_theme(const ui_theme_t* t) {
         UI_FACE_COST_END(face_from, "ui.face");
         return;
     }
-    theme = ui_theme_from_face(t);
+    theme = UI_THEME_FROM_FACE(t);
     UI_FACE_COST_END(face_from, "ui.face");
 }
 

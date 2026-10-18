@@ -52,15 +52,20 @@ typedef struct {
 
 ui_mu_theme_t ui_theme_from_style(const mu_Style* style);
 
-/* Inline, so ui_theme() builds the face's theme in place each frame. */
-static inline ui_mu_theme_t
-ui_theme_from_face(const ui_theme_t* t) {
-#define UI_THEME_COLOR(member) .member = ui_rgb(t->member)
-    return (ui_mu_theme_t){UI_THEME_COLOR(panel_face),  UI_THEME_COLOR(panel_edge),  UI_THEME_COLOR(button_face),
-                           UI_THEME_COLOR(accent),      UI_THEME_COLOR(accent_face), UI_THEME_COLOR(on_accent),
-                           UI_THEME_COLOR(text),        UI_THEME_COLOR(caption),     UI_THEME_COLOR(muted),
-                           .text_scale = t->text_scale, .icon_side = t->icon_side};
-}
+/* ui_theme_t `t` as an ui_mu_theme_t literal: assigned straight into its
+ * destination, so ui_theme() builds the face's theme in place each frame. */
+#define UI_THEME_FROM_FACE(t)                                                                                          \
+    ((ui_mu_theme_t){.panel_face = ui_rgb((t)->panel_face),                                                            \
+                     .panel_edge = ui_rgb((t)->panel_edge),                                                            \
+                     .button_face = ui_rgb((t)->button_face),                                                          \
+                     .accent = ui_rgb((t)->accent),                                                                    \
+                     .accent_face = ui_rgb((t)->accent_face),                                                          \
+                     .on_accent = ui_rgb((t)->on_accent),                                                              \
+                     .text = ui_rgb((t)->text),                                                                        \
+                     .caption = ui_rgb((t)->caption),                                                                  \
+                     .muted = ui_rgb((t)->muted),                                                                      \
+                     .text_scale = (t)->text_scale,                                                                    \
+                     .icon_side = (t)->icon_side})
 
 typedef enum { UI_ALIGN_LEFT, UI_ALIGN_CENTRE, UI_ALIGN_RIGHT } ui_align_t;
 
