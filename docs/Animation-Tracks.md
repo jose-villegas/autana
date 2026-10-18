@@ -88,7 +88,8 @@ source = "NAME.glb"     # a .glb, .fbx or .keys.toml beside this one
 animation = "walk"      # the animation's name in the glTF
 ```
 
-The entry's type is `TRCK`. It is little-endian, and every offset counts from
+[anim_tracks_format.h](../launcher/main/anim/anim_tracks_format.h) owns the
+`TRCK` layout. It is little-endian, and every offset counts from
 the entry's first byte:
 
 | Part | Layout |

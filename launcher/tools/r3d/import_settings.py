@@ -19,7 +19,7 @@ from r3d.scene_name import scene_id
 from gltf.gltf_read import ASSET_SUFFIXES
 
 MESHLET_TRIANGLES = 32
-SCENE_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_internal.h"
+SCENE_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_conventions.h"
 LIGHT_AXIS = read_define(SCENE_OWNER, "SCENE_LIGHT_AXIS")
 SKIN_LIGHTING = ("direct", "renormalised", "table")
 ANIM_WRAPS = ("clamp", "loop")

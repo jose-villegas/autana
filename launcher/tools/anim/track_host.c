@@ -25,6 +25,7 @@
 #include "anim/anim_binding.h"
 #include "anim/anim_track.h"
 #include "anim/anim_tracks.h"
+#include "anim/anim_tracks_format.h"
 #include "anim/playback/anim_playhead.h"
 #include "asset/asset_file.h"
 
