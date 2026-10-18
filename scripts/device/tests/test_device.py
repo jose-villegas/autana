@@ -1472,8 +1472,9 @@ class ConsoleSetupTests(unittest.TestCase):
     def test_silence_restarts_the_sequence(self):
         connection = FakeConnection()
         with mock.patch.object(device, "exchange", side_effect=[
-                (["SOUND_END"], True), ([], False),
-                (["SOUND_END"], True), (["SOUND_END"], True)]) as exchange, mock.patch("builtins.print"):
+                ([device.reply_prefix("sound stop all")[1][0]], True), ([], False),
+                ([device.reply_prefix("sound stop all")[1][0]], True),
+                ([device.reply_prefix("sound play tap loop")[1][0]], True)]) as exchange, mock.patch("builtins.print"):
             device.apply_console_lines(connection, ["sound stop all", "sound play tap loop"])
         self.assertEqual([call.args[1] for call in exchange.call_args_list],
                          ["sound stop all", "sound play tap loop"] * 2)
