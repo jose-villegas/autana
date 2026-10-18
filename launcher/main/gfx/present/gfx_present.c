@@ -844,7 +844,7 @@ run_present_raw_full(void) {
 /* Dispatches to the present task when async, runs directly otherwise; see
  * gfx_set_present_async(). Shared by gfx_present_begin() and the raw-full
  * test helper below, which only differ in present_task_mode. */
-static void
+static inline void
 dispatch_present(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     present_dispatched_us = timing_now_us();
