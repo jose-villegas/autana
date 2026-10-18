@@ -9,10 +9,13 @@
 #include "math/linear/projectf.h"
 #include "math/linear/transformf.h"
 
+typedef enum { CAMERA_PRESENT_NEAREST, CAMERA_PRESENT_SCANLINE, CAMERA_PRESENT_DOUBLE } camera_present_t;
+
 typedef struct {
     vec3f_t position, screen_x, screen_y, forward;
     float pixels_per_unit, center_x, center_y, near_z;
     viewport_t viewport;
+    camera_present_t present;
 } render_view_t;
 
 /* The view as a pinhole lens: one focal length on both axes. */
