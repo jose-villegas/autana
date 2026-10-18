@@ -9,6 +9,7 @@
 #include "xtensa_perfmon_access.h"
 
 #include "core/timing.h"
+#include "math/scalar/units.h"
 
 /* select/mask pairs from xtensa/xt_perf_consts.h. The S3's caches sit
  * outside the core, which sees an instruction-cache miss as a busy
@@ -60,6 +61,18 @@ frame_cost_event_at(int index) {
 static frame_cost_t shared;
 static TaskHandle_t owner_task;
 static int foreign_task_calls;
+static portMUX_TYPE external_lock = portMUX_INITIALIZER_UNLOCKED;
+
+static frame_cost_external_t external;
+
+void
+frame_cost_external(const char* name, int64_t us) {
+    portENTER_CRITICAL(&external_lock);
+    const bool accepted = frame_cost_external_add(&external, name, us);
+    portEXIT_CRITICAL(&external_lock);
+    configASSERT(accepted);
+    (void)accepted;
+}
 
 int
 frame_cost_shared_name_index(const char* name) {
@@ -155,6 +168,15 @@ frame_cost_take_counts(char* out, size_t out_size) {
 int
 frame_cost_take_report(uint32_t frames, char* out, size_t out_size) {
     int length = frame_cost_report(&shared, frames, out, out_size);
+    if (frames && out_size) {
+        portENTER_CRITICAL(&external_lock);
+        frame_cost_external_t window = external;
+        external.total_us = 0;
+        external.worst_us = 0;
+        external.n = 0;
+        portEXIT_CRITICAL(&external_lock);
+        length = frame_cost_external_report(&window, out, out_size, length);
+    }
     if (frames == 0 || out_size == 0 || foreign_task_calls == 0) {
         return length;
     }

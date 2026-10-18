@@ -14,7 +14,7 @@ calibration are described in [Input-and-Sensors.md](../notes/Input-and-Sensors.m
 Gyro prediction is minus angular velocity crossed with down in screen axes.
 
 The nominal ODR and interval are `IMU_ODR_HZ` and `IMU_SAMPLE_US` in `input/imu.h`.
-Matching CTRL2/CTRL3 codes follow QMI8658A Rev A and SensorLib.<sup>[[79]](../Citations.md#79)</sup><sup>[[78]](../Citations.md#78)</sup>
+Matching CTRL2/CTRL3 codes follow QMI8658A Rev A and SensorLib.<sup>[[80]](../Citations.md#80)</sup><sup>[[79]](../Citations.md#79)</sup>
 
 Every delivered and lost sample integrates at `INPUT_MOTION_SAMPLE_US`.
 `input_device.c` checks this datasheet interval against `IMU_SAMPLE_US`, and
@@ -131,7 +131,7 @@ the next batch soft-restarts correction at full TAU gain, preserving down and bi
 
 Sampling cannot resolve motion above the sensor bandwidth. FIFO read mode
 discards arrivals (section 8.7). Loss is the read-mode duration divided by
-`IMU_SAMPLE_US`, carrying fractional microseconds across drains.<sup>[[78]](../Citations.md#78)</sup>
+`IMU_SAMPLE_US`, carrying fractional microseconds across drains.<sup>[[79]](../Citations.md#79)</sup>
 
 `esp_timer` measures from just before `CTRL9_REQ_FIFO` through the `REG_FIFO_CTRL` rewrite.
 The next batch reports this loss and first predicts with the preceding batch's
@@ -147,4 +147,4 @@ agrees with the datasheet ODR multiplied by time outside FIFO read mode.
 
 The count precedes `CTRL9_REQ_FIFO` (section 8.8). CTRL9 status uses consecutive I2C
 reads, with no minimum polling delay (section 5.10.1). Every drain attempts to
-leave read mode, including error paths.<sup>[[78]](../Citations.md#78)</sup>
+leave read mode, including error paths.<sup>[[79]](../Citations.md#79)</sup>
