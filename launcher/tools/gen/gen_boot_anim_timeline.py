@@ -585,10 +585,6 @@ TIMING_ORDER = [
     ("far_grow_ms", "BOOT_ANIM_FAR_GROW_MS",
      "how long the floor takes to grow from the mesh's edge to far_m once "
      "the mesh has arrived"),
-    ("axis_extend_start_ms", "BOOT_ANIM_AXIS_EXTEND_START_MS",
-     "the axis lines start running on past the horizon to the panel's edge"),
-    ("axis_extend_ms", "BOOT_ANIM_AXIS_EXTEND_MS",
-     "how long they take to reach the panel's edge"),
     ("grid_fade_ms", "BOOT_ANIM_GRID_FADE_MS", None),
     ("ripple_impact_ms", "BOOT_ANIM_RIPPLE_IMPACT_MS", None),
     ("ripple_calm_after_ms", "BOOT_ANIM_RIPPLE_CALM_AFTER_MS", None),

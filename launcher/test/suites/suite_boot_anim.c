@@ -585,13 +585,6 @@ test_the_title_wave_never_swings_wider_as_it_calms(void) {
     }
 }
 
-static void
-test_the_axis_lines_reach_the_panel_edge_over_their_window(void) {
-    TEST_ASSERT_EQUAL_UINT8(0, boot_anim_axis_extend_reach(BOOT_ANIM_AXIS_EXTEND_START_MS));
-    TEST_ASSERT_EQUAL_UINT8(UINT8_MAX,
-                            boot_anim_axis_extend_reach(BOOT_ANIM_AXIS_EXTEND_START_MS + BOOT_ANIM_AXIS_EXTEND_MS));
-}
-
 /* The far samples start on the mesh's edge node, so the axis lines carry on
  * from the mesh without a step, in all four directions and at every moment
  * the floor moves. */
@@ -1839,7 +1832,6 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_the_title_wave_is_at_full_swing_before_it_calms);
     RUN_TEST(test_the_title_wave_reaches_stillness_after_its_fade);
     RUN_TEST(test_the_title_wave_never_swings_wider_as_it_calms);
-    RUN_TEST(test_the_axis_lines_reach_the_panel_edge_over_their_window);
     RUN_TEST(test_the_axis_lines_leave_the_mesh_without_a_step);
     RUN_TEST(test_the_far_samples_climb_from_the_mesh_edge_to_far);
     RUN_TEST(test_the_floor_grows_from_the_mesh_edge_to_far);

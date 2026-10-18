@@ -60,8 +60,7 @@ reject invisible edges before colour setup.
 The mesh lines on the axes keep the axes' colour and skip the edge fade. Past
 the mesh they go on alone to `far_m`, still lifted by the ripple and the
 swell, growing over `far_grow_ms` once the mesh has arrived, eased in by
-`far_grow_power`. From `axis_extend_start_ms` they run on past the horizon
-to the panel's edge.
+`far_grow_power`. They end at the horizon, where the far grid converges.
 
 The plane itself goes on past the mesh as flat, straight grid lines: every
 `far_line_cells`-th mesh line near the mesh, the gap doubling each time the
