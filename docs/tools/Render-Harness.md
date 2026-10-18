@@ -38,6 +38,12 @@ The camera follows its own path at `--frames N` times `--dt MS` (defaults:
 30 frames, 16 ms). `--view shaded|depth|tiles|motion|meshlets` selects the render
 context's view, with shaded as the default. The names match the declared
 `render_debug_view_t` table in `render/context/render_context.c`. A debug view needs an enabled mesh.
+
+`--set owner.name=value` sets any registered tunable before drawing; repeat it
+for several values. Invalid names, values and ranges fail the render.
+The viewer compiles hot tunables live. `--tunables` prints every registered
+tunable with its default and range on stderr. It exits without rendering.
+
 `--size WxH` fixes the internal render resolution through a one-step ladder;
 the output still has the panel's dimensions. Each render axis must fit the
 panel framebuffer, 368 by 448.
@@ -136,8 +142,8 @@ GPU images live under `docs/images/render/gpu/`; CPU checks leave that stage
 to its own `--check`. GPU `--check` verifies the saved full run and its input
 fingerprint without fitting again. `--smoke` writes only scratch data.
 `--stage gpu --inputs` prints that fingerprint and runs nothing; it needs
-a Python 3.12 or later (standard library only), a C compiler and the
-tree, with no GPU, LFS objects or bakes.
+Python meeting `scripts/lib/python-min-version` (standard library only), a C
+compiler and the tree, with no GPU, LFS objects or bakes.
 It is a SHA-256 over what the stage's output is made from, each found from the
 code rather than listed:
 
@@ -362,11 +368,9 @@ a different compiler and C library than anyone's desk. The self-test report
 and the home screen are pinned: `draw.c` does no float maths, and the scroll
 view's momentum, the one part of the UI that reaches the maths library, is
 switched off at a zero time constant, so it is linked but never called.
-The boot animation is pinned as well: its slerp calls `acosf` and
-`sinf`, whose last bit can differ between libms, but MinGW-w64's and glibc's
-render its pinned frames identically, and a last-bit difference moves a pixel
-only where a sum lands on a rounding boundary. A render that is not integer-exact ends its line
-with `|nopin` and is checked for its declared size alone (`scene_pin=0` does
+The boot animation is pinned as well: its slerp uses host-exact arithmetic
+with floating-point contraction disabled. A render that is not integer-exact
+ends its line with `|nopin` and is checked for its declared size alone (`scene_pin=0` does
 the same for a whole scene). Anything that formats a `double` for display
 or rasterises in float belongs there. A scene whose pin can fail for a
 reason nobody changed teaches the reader to ignore the pin.
@@ -484,7 +488,8 @@ chrome moves, that file has to move with it.
 
 ```sh
 ./launcher/tools/render/render_compare.sh --script <host-render-script> \
-    [-o DIR] [--clear RRGGBB] [--video [--fps N]] [--crops N] <A> <B> \
+    [-o DIR] [--clear RRGGBB] [--video [--fps N]] [--crops N] \
+    [--label-a TEXT] [--label-b TEXT] <A> <B> \
     [--render LABEL "<renderer arguments>" ...]
 ```
 
@@ -504,9 +509,10 @@ flowchart LR
 | `A`, `B` | Revisions (each built in a temporary worktree, removed afterwards) or existing directories. |
 | `--script` | The scene's own host-render script, so the tool names no scene. By default it runs at both revisions and the images of the same name are compared. |
 | `--render` | Replaces that with ad-hoc renders: the script's `--build-only` builds the renderer, which runs with the arguments given. A revision from before `--build-only` runs its full script instead. |
+| `--label-a`, `--label-b` | What each side shows, such as `Today (main)` or the technique and setting being tried. They name the panels of the sheet, the crops and the video in place of the short hashes. |
 | `--clear` | The colour the scene clears to. A pixel clear on one side and drawn on the other is red and counted as a hole on the side that left it clear. |
 | sheet | `compare.png`, a row per render: A, B, then the absolute difference as a greyscale heatmap, amplified 8 times. `summary.txt` gives the resolved short hashes and per render the changed share, mean difference and holes. |
-| `--video` | Records every render's frames on both sides through the renderer's own `--video` (with `--render`, put `--frames` and `--dt` in the arguments; a scene runs from time zero). Writes `<label>.mp4`, labelled with the short hashes and frame time, and `<label>.frames.csv` with per-frame changed share, mean difference and holes. ffmpeg packs the frames into H.264 because an uncompressed side-by-side is tens of megabytes; `--fps` sets playback (default `1000/dt`). |
+| `--video` | Records every render's frames on both sides through the renderer's own `--video` (with `--render`, put `--frames` and `--dt` in the arguments; a scene runs from time zero). Writes `<label>.mp4`, its panels labelled as the sheet's, with the frame time, and `<label>.frames.csv` with per-frame changed share, mean difference, holes and temporal change. ffmpeg packs the frames into H.264 because an uncompressed side-by-side is tens of megabytes; `--fps` sets playback (default `1000/dt`). |
 | `--crops N` | `compare.crops.png` and `<label>.crops.png`: the `N` places the two differ most, A above B, enlarged 4 times without smoothing. Changed pixels (a channel off by more than 8, or a hole) within 3 px are one place; holes rank first, then total difference; a place over 64 px is cut to its strongest 64 px window. A video uses its two worst frames. Nothing is written where nothing differs. |
 
 The renderer arguments are split on spaces and never expanded as patterns.
@@ -522,6 +528,26 @@ header of `render_compare.sh` has the details.
 The tool needs Pillow and numpy (`launcher/tools/render/requirements.txt`).
 
 ---
+
+### Temporal video columns
+
+`render_compare.sh --video` adds these columns to `<label>.frames.csv` and
+reports their transition means in the summary. The first frame records zero
+and is excluded from the means.
+
+| Column | Meaning |
+|---|---|
+| `extra_change_levels` | Mean absolute extra frame-to-frame change (levels of 255), to 3 decimals |
+| `blocks_popping_pct` | Percentage of sliding 4x4 windows with extra change above 8/255 |
+
+Each frame's RGB channels are averaged to luma, then box-blurred over 4x4
+windows. The extra change is `abs((B_t - B_previous) - (A_t - A_previous))`.
+This measures triangle-scale pops; ordered dither reads as noise, so judge it by eye.
+
+`render_temporal.py --video-column LABEL AVI`, repeated left to right, makes a labelled video
+of synchronized looks without a heatmap. All inputs need the same frame rate
+and frame count. `--panel-width PX` scales each picture before adding its label
+(0 keeps the native size).
 
 ## Related
 

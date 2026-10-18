@@ -222,6 +222,8 @@ held_out_every_ms = 5000
 steps = 2000
 batch = 8
 laplacian = 10.0
+surface_weight = 10.0
+surface_margin = 0.25
 normal_weight = 1.0
 ```
 
@@ -235,7 +237,7 @@ normal_weight = 1.0
 | `shading: flat` | `flat = { fixed = N }` / `flat = { auto = { min, max, area } }` | Stores one averaged RGB565 colour per face. | Off. | [shading: flat](#shading-flat) |
 | `fit.prune` | `budget`, `coverage_every_ms` | Prunes the fitted mesh to the triangle budget. | Required in `fit`; the cost weight is `fitted_variant.py sweep --cost-weights`, not a scene key. | [fit.prune](#fitprune) |
 | `fit.poses` | `size`, `train_every_ms`, `held_out_every_ms` | Selects training and held-out camera-path poses. | Required in `fit`. | [fit.poses](#fitposes) |
-| `fit.optimise` | `steps`, `batch`, `laplacian`, `normal_weight` | Sets optimiser steps, batch size and loss weights. | Required in `fit`. | [fit.optimise](#fitoptimise) |
+| `fit.optimise` | `steps`, `batch`, `laplacian`, `normal_weight`, `surface_weight`, `surface_margin` | Sets optimiser steps, batch size and loss weights. | Required in `fit`. | [fit.optimise](#fitoptimise) |
 | `indirect: off` | `indirect = false` | Bakes this renderer without bounce light. | Bounce light on when the scene recipe is present. | [indirect: off](#indirect-off) |
 
 #### bake renderer
@@ -318,8 +320,7 @@ nothing tracked changes.
 
 `budget` is the triangle count the fit keeps, at most the variant's `triangles`;
 `coverage_every_ms` samples the camera path for the dense pose set that pruning
-counts pixels over, at the coverage file's own size, and that the fit's coverage
-term is held to.
+counts pixels over, at the coverage file's own size.
 
 Source visibility is the renderer's [`visibility`](#visibility-camera_region)
 (region by default). A region source keeps the backing surfaces that
@@ -391,17 +392,19 @@ The fit draws welded positions $`P`$ and vertex colours $`C`$ with a
 differentiable rasterizer $`\mathcal{R}`$, nvdiffrast<sup>[[2]](../Citations.md#2)</sup>, over a random batch $`B`$ of training
 poses. $`\Omega`$ is the frame pixels, $`P^0`$ the start positions, $`N(i)`$
 the positions sharing an edge with $`i`$, $`\bar e`$ the start mean edge
-length, $`\hat n`$ the fitted normal, $`n^{\rm ref}`$ the reference normal, and
+length, $`e_i`$ each vertex's mean start edge length capped at $`\bar e`$,
+$`\hat n`$ the fitted normal, $`n^{\rm ref}`$ the reference normal, and
 $`\hat t_v`$ the predicted frame time for pose $`v`$. It minimises the colour
 term $`\mathcal{E}_{\Delta E}`$, the Laplacian term
-$`\mathcal{E}_{\mathcal{L}}`$, the normal term $`\mathcal{E}_n`$, and the cost
-term $`\mathcal{E}_c`$:
+$`\mathcal{E}_{\mathcal{L}}`$, the normal term $`\mathcal{E}_n`$, the cost
+term $`\mathcal{E}_c`$, and the surface term $`\mathcal{E}_s`$:
 
 ```math
 \min_{P,\,C}\; \mathcal{E}_{\Delta E}(P, C)
 + \lambda\,\mathcal{E}_{\mathcal{L}}(P)
 + \lambda_n\,\mathcal{E}_n(P)
 + \kappa\,\mathcal{E}_c(P)
++ w\,\mathcal{E}_s(P)
 ```
 
 `steps` is $`K`$, `batch` is $`|B|`$, `laplacian` is $`\lambda`$ and
@@ -427,7 +430,7 @@ $`\lambda_n`$, and $`\kappa`$ weigh the Laplacian, normal, and cost terms:
 ```math
 \mathcal{E}_{\mathcal{L}}(P) =
 \frac{1}{|V|}\sum_{i \in V}
-\left\lVert \frac{\mathcal{L}(P)_i - \mathcal{L}(P^0)_i}{\bar e} \right\rVert^2
+\left\lVert \frac{\mathcal{L}(P)_i - \mathcal{L}(P^0)_i}{e_i} \right\rVert^2
 ```
 
 $`\mathcal{E}_n`$ is the mean L1 difference between $`\hat n_v(P)_p`$ and
@@ -453,43 +456,25 @@ any other bake; generated results live in the scene tools README. One mesh can
 fit the whole path, or meshes can fit path segments and swap as the camera
 moves; segment fits see fewer training poses.
 
-```mermaid
-flowchart LR
-    S["simplified bake<br/>smooth or flat"] --> F["fit positions<br/>and colours"]
-    P["camera path poses"] --> R["reference renders"]
-    R --> F
-    S --> T["start-derived<br/>coverage targets"]
-    P --> E["dense coverage poses<br/>exclude held-out matches"]
-    E --> M["mine current holes"]
-    T --> M
-    F --> M
-    M -->|hard poses| F
-    F --> W["write_lit_mesh"]
-    W --> H["host render<br/>held-out poses"]
-    H --> C["render_compare.py<br/>scores and sheets"]
-```
+The surface term anchors fixed barycentric samples of the fitted triangles to
+area-weighted samples of the alpha-masked source used for the reference renders.
+A seeded RNG fixes both sample sets; CPU nearest-neighbour queries refresh the
+source correspondences at `SURFACE_QUERY_EVERY` steps. Sampling counts and the
+small distance-pull weight live beside it in `appearance_simplify.py`.
+`surface_weight` weighs the mean squared point-to-plane distance beyond
+`surface_margin`, plus a small squared distance pull to the matched sample.
+For a fitted sample $`x`$, its nearest source sample $`c`$ and that source
+face's normal $`n`$, write $`d=(x-c)/e_x`$, where $`e_x`$ is the mean $`e_i`$ over the corners
+of the triangle holding $`x`$. The surface contribution is
+$`w\,\mathrm{mean}(\max(0,|n\cdot d|-\epsilon)^2+t\lVert d\rVert^2)`$,
+where $`w`$ is `surface_weight`, $`\epsilon`$ is `surface_margin`, and $`t`$
+is `SURFACE_TANGENTIAL_WEIGHT`. Both distances are measured in $`e_x`$.
+The plane envelope is zero inside the margin; the small pull remains active there.
 
-Coverage uses the start mesh's drawn pixels at the
-`fit.prune.coverage_every_ms` camera-path poses as its target. The
-antialiased alpha of every drawn triangle, backing included, provides
-position gradients at silhouettes. Mining at step zero and every
-`--mine-every` steps keeps poses where the fit shows background on a
-start-covered pixel. Each step samples up to `batch` of those poses with
-a coverage term only: `--coverage-weight` times the mean start-masked
-missing alpha over all view pixels, in ΔE76 per fully open pixel. No
-reference image is needed for these views. Matching held-out eye and
-forward samples never enter the hard pool. Every held-out pose must match a
-coverage pose, so `coverage_every_ms` must include the `held_out_every_ms`
-samples. Hard-pose sampling has its own seeded RNG, preserving the training
-view sequence with coverage enabled or disabled. The defaults live at
-`COVERAGE_WEIGHT` and `MINE_EVERY` in `appearance_simplify.py`;
-`--coverage-weight 0` disables mining and extra renders.
-
-Colour history, `loss.txt` and the printed mean ΔE76 exclude coverage,
-normal, Laplacian and cost penalties. Coverage loss and hard-pool size are
-reported separately, together with holed-pose counts for the start, fitted
-and pruned mesh. Pruning counts shown pixels at the recipe's coverage
-spacing; this sampling is part of the reference cache key.
+Colour history, `loss.txt` and the printed mean ΔE76 exclude surface, normal,
+Laplacian and cost penalties. The surface loss is reported beside drift.
+Pruning counts shown pixels at the recipe's coverage spacing; this sampling is
+part of the reference cache key.
 
 Colour alone permits geometry that matches one view but differs from another.
 `normal_weight` weighs $`\mathcal{E}_n`$: mean
@@ -548,9 +533,19 @@ and a learning rate decaying geometrically. It changes the rest:
 | Fitted | positions, textures, normal maps, material parameters | welded positions and vertex or face colours, which are the lighting bake |
 | Forward model | deferred physically based shading | the device's Gouraud or flat colours, no shading |
 | Image term | L1 on log-tonemapped sRGB | mean CIE 1976 $`\Delta E^*_{ab}`$<sup>[[4]](../Citations.md#4)</sup> |
-| Laplacian weight | decays during the fit | constant $`\lambda`$; the drift is measured in start mean edge lengths |
-| Further terms | none | $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../Citations.md#6)</sup> |
+| Laplacian weight | decays during the fit | constant $`\lambda`$; each vertex's drift uses its own mean start edge length, capped at the start's mean edge length |
+| Further terms | none | a point-to-plane band, of half-width `surface_margin`, from the fit to the source surface and a small tangential pull, both in the mean of that capped scale over each sample's triangle; $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../Citations.md#6)</sup> |
 | Triangle budget | set by the start | the fitted mesh's, pruned to `budget` by coverage after fitting; a refined fitted mesh can be the start |
+
+A global unit gives small parts a fraction of the hold, so the image term
+stretches them; local edge scales keep the hold even<sup>[[78]](../Citations.md#78)</sup>.
+
+Section 5.3 of the paper has no distance-to-reference term<sup>[[1]](../Citations.md#1)</sup>.
+Here the start is already a decimation of the reference surface, so the fit can
+be held to that surface. The relative Laplacian alone is blind to smooth drift;
+the band limits movement away from the source while its margin
+allows local fitting and the small tangential pull holds samples near their
+matches.
 
 #### indirect: off
 
@@ -631,7 +626,7 @@ this order:
 |---|---|
 | header, 56 bytes | `u16 version=2`, nine `u16` part counts, nine `u32` part offsets |
 | names | `char name[32]` per entity, NUL padded |
-| transforms | `f32 m[3][3]`, `f32 position[3]` per entity; count equals names |
+| transforms | `scene_asset_transform_t`: `f32 linear[3][3]`, `f32 position[3]` per entity; count equals names |
 | renderers | `u16 entity`, `u16 zero`, `char mesh_id[32]` |
 | cameras | `u16 entity`, `u16 zero`, `f32 half_fov_short_tan`, `f32 near_z`, `u32 clear_rgb` |
 | lights | `u16 entity`, `u8 kind`, `u8 zero`, `f32 colour[3]` (linear), `f32 intensity` (unscaled) |
@@ -651,4 +646,4 @@ nonpositive or nonfinite lenses, invalid clear colours, duplicate light,
 animator or skinned-renderer entities, unknown kind or wrap, invalid clip
 ranges or defaults, colours outside 0..1, and negative or nonfinite lighting
 settings. `default_clip=SCENE_ASSET_DEFAULT_CLIP_NONE` means no playback. Light-kind codes belong to
-`scene_internal.h`; wrap codes belong to `anim_track.h`.
+`scene_format.h`; wrap codes belong to `anim_track.h`.

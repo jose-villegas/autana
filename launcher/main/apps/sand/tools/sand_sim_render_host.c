@@ -10,6 +10,7 @@
 
 #include "gfx/gfx.h"
 #include "input/tilt.h"
+#include "math/scalar/math_const.h"
 #include "render_host.h"
 
 #include "apps/sand/material_palette.h"
@@ -161,7 +162,7 @@ board_angle(int frame) {
 
 static void
 drive_tilt(const render_frame_t* frame, int* gx, int* gy) {
-    const double radians = board_angle(frame->index) * 0.017453292519943295;
+    const double radians = board_angle(frame->index) * MATH_RADIANS_PER_DEGREE;
     const int sx = (int)lround(256.0 * sin(radians));
     const int sy = (int)lround(256.0 * cos(radians));
     tilt_update(&tilt, (vec3i_t){-sy, sx, 0}, SIMULATED_TURN_DPS, frame->dt_ms);

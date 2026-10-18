@@ -108,7 +108,7 @@ if os.environ.get("FAKE_REPOINT"):
             tools = root / "launcher" / "tools" / "build"
             tools.mkdir(parents=True)
             (root / "scripts/lib").mkdir(parents=True)
-            for name in ("python.sh", "autana_config.py"):
+            for name in ("python.sh", "python-min-version", "autana_config.py"):
                 shutil.copy(ENGINE / "scripts/lib" / name, root / "scripts/lib" / name)
             (root / "autana.local.toml").write_text(f"build_root = '{(root / 'b').as_posix()}'\n")
             for name in ("build.sh", "idf.sh", "idf_shim.bat", "idf_variant.sh", "write_build_id.sh", "espressif.py", "build_paths.py"):
@@ -124,7 +124,7 @@ if os.environ.get("FAKE_REPOINT"):
                 commit = subprocess.check_output(['git', '-C', str(export.parent), 'rev-parse', 'HEAD'], text=True).strip()
                 (root / 'launcher/idf-pin.json').write_text(json.dumps({
                     'commit': commit, 'image': 'espressif/idf:release-v6.1@sha256:test'}))
-                (root / 'tools/python_env/idf6.1_py3.14_env').mkdir(parents=True)
+                (root / 'tools/python_env/idf6.1_py3.14_env').mkdir(parents=True, exist_ok=True)
                 with (root / 'autana.local.toml').open('a') as config:
                     config.write(f"idf_installs = ['{export.parent.as_posix()}']\n")
                 if missing:

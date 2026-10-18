@@ -60,26 +60,6 @@ current_scene(void) {
  * which a pin cannot rely on across compilers. Read every frame. */
 bool render_lab_show_hud = true;
 
-TUNE_OWNER(render_lab);
-TUNE(render_lab, view, RENDER_DEBUG_VIEW_SHADED, RENDER_DEBUG_VIEW_SHADED, RENDER_DEBUG_VIEW_COUNT);
-TUNE(render_lab, scale, 200, 100, 800);
-TUNE(render_lab, budget, 0, 0, 200);
-
-int
-render_lab_debug_view(void) {
-    return (int)view;
-}
-
-int
-render_lab_scale(void) {
-    return scale;
-}
-
-int
-render_lab_budget_ms(void) {
-    return budget;
-}
-
 /* How long a scene's name stays on screen after the scene is entered. The
  * BOOT menu shows the name at any time, so the HUD does not keep it. */
 #define SCENE_TITLE_MS      2000
@@ -169,7 +149,6 @@ switch_to_next_scene(void) {
 
 static void
 draw_fps(const input_t* input) {
-    mu_Context* ctx = ui_context();
     ui_begin(input);
 
     const render_lab_hud_screen_state_t state = {
@@ -178,7 +157,7 @@ draw_fps(const input_t* input) {
         .scene_title_alpha = scene_title_alpha(),
         .status = current_scene()->status != NULL ? current_scene()->status() : NULL,
     };
-    render_lab_hud_screen_draw(ctx, &state);
+    render_lab_hud_screen_draw(&state);
 
     /* The scene changes underneath the HUD every frame, so the overlay
      * must composite over the current scene without an opaque window. */
@@ -186,15 +165,14 @@ draw_fps(const input_t* input) {
 }
 
 static void
-draw_menu(const input_t* input, uint32_t dt_ms) {
-    mu_Context* ctx = ui_context();
+draw_menu(const input_t* input) {
     ui_begin(input);
 
     const render_lab_menu_screen_state_t state = {
         .scene_name = current_scene()->name,
         .controls = current_scene()->controls,
     };
-    const render_lab_menu_screen_result_t result = render_lab_menu_screen_draw(ctx, &state, dt_ms);
+    const render_lab_menu_screen_result_t result = render_lab_menu_screen_draw(&state);
 
     if (result.next_scene_clicked) {
         scene_switch_pending = true;
@@ -259,7 +237,7 @@ render_lab_frame(uint32_t dt_ms, const input_t* input) {
      * throughput specifically, so counting a frame that only ever drew the
      * menu would blend two unrelated numbers into one misleading reading. */
     if (menu_open) {
-        draw_menu(input, dt_ms);
+        draw_menu(input);
         return;
     }
 

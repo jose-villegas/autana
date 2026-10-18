@@ -21,3 +21,13 @@ The C scan includes macro parentheses and switch default checks even when
 their pinned count is zero. The unused return value check names C functions
 in `launcher/.clang-tidy`. Cppcheck's MISRA addon checks conditions that use
 integer expressions as booleans and the internal linkage rules.
+
+## Instruction counts
+
+`icount_gate.py LOG` checks named instruction rows against
+`icount_baseline.txt`. `--baseline PATH` selects another baseline;
+`--update-baseline` writes sorted, rounded entries from the capture.
+`ICOUNT_INFO` rows have a third `info` field in the baseline; their counts
+feed reports but changes, additions and omissions never fail the ratchet.
+See [the testing guide](../../../docs/Testing-Guide.md#qemu-the-device-image-with-no-board)
+for capture commands and the ratchet policy.

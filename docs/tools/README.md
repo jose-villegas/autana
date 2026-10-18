@@ -10,6 +10,8 @@ The rest of this index explains the repository's checks and tools in depth.
 | | |
 |---|---|
 | [Autana-CLI.md](Autana-CLI.md) | The `autana` terminal command: every command it takes, where it lives, and how it is put on the PATH. |
+| [Build-Environment.md](Build-Environment.md) | Which ESP-IDF `autana build` picks and where its build folders live. |
+| [App-Commands.md](App-Commands.md) | Giving an app its own console command. |
 | [Docs-Search.md](Docs-Search.md) | `autana docs`: answering a question from the documentation one section at a time, how it ranks, and the optional local models. |
 | [Device-Lock.md](Device-Lock.md) | The board lock in `scripts/device/`, the only code that opens the serial port: what to do when the board is busy, what is and is not guaranteed, failure modes, running a shared rig or CI, and how it works. |
 | [Flash-and-Captures.md](Flash-and-Captures.md) | What a flash proves, measuring with one lock across a flash and its captures, `send` and screenshots, where captures and records land, and wait estimates. |

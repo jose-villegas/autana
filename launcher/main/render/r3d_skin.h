@@ -5,35 +5,9 @@
 #pragma once
 #include <stdint.h>
 #include "asset/asset_pack.h"
+#include "render/r3d_skin_format.h"
 
-#define R3D_SKIN_ID_SUFFIX          ".skin"
-#define R3D_SKIN_ASSET              ASSET_TYPE('S', 'K', 'I', 'N')
-#define R3D_SKIN_VERSION            2U
-#define R3D_SKIN_LIGHT_DIRECT       0U
-#define R3D_SKIN_LIGHT_RENORMALISED 1U
-#define R3D_SKIN_LIGHT_TABLE        2U
-#define R3D_SKIN_WEIGHT_SUM         255U
-#define R3D_SKIN_NORMAL_SCALE       127
-#define R3D_SKIN_WEIGHT_RECIP       (1.0F / (float)R3D_SKIN_WEIGHT_SUM)
-#define R3D_SKIN_NORMAL_RECIP       (1.0F / (float)R3D_SKIN_NORMAL_SCALE)
-
-enum {
-    R3D_SKIN_HEADER_SIZE = 20,
-    R3D_SKIN_AT_LIGHTING_MODE = 16,
-    R3D_SKIN_AT_PAD = 17,
-    R3D_SKIN_AT_VERSION = 0,
-    R3D_SKIN_AT_JOINTS = 2,
-    R3D_SKIN_AT_INFLUENCES = 3,
-    R3D_SKIN_AT_VERTICES = 4,
-    R3D_SKIN_AT_INVERSE = 8,
-    R3D_SKIN_AT_RECORDS = 12,
-    R3D_SKIN_ALIGNMENT = 4,
-    R3D_SKIN_MATRIX_WIDTH = 12,
-    R3D_SKIN_INFLUENCES_MIN = 2,
-    R3D_SKIN_INFLUENCES_MAX = 4,
-    R3D_SKIN_NORMAL_WIDTH = 3,
-    R3D_SKIN_RECORD_TAIL = R3D_SKIN_NORMAL_WIDTH + 1,
-};
+#define R3D_SKIN_ID_SUFFIX ".skin"
 
 typedef struct {
     uint8_t joint_count;

@@ -113,6 +113,20 @@ everything else; go there once you are capturing that app's numbers.
 
 ---
 
+## Board CI
+
+[Board CI](../.github/workflows/board-ci.yml) runs `autana selftest` on a
+self-hosted Windows board runner: it builds and flashes the `diag` variant with
+autorun, captures every registered boot-time suite, and checks the running
+build ID against the built image. The job summary identifies the board and
+build and counts passing and failing tests; the artifact contains
+this checkout's `.records/device` captures, including failed runs.
+
+It runs nightly and by manual dispatch. For an on-demand
+PR run, a maintainer dispatches `gh workflow run board-ci.yml --ref <branch>`
+against the PR branch. Board CI is not a required check. If no board becomes
+free within the wait, the job succeeds with a neutral skipped notice and summary.
+
 ## Two runners, one set of suites
 
 Portable suites (`test/suites/`, each package's `packages/*/tests/`, and each
@@ -468,22 +482,16 @@ home, about a minute with no board: the boot animation, the frame loop,
 the launcher, entering and leaving an app and the rotation, none of which a
 suite reaches. Leave `--icount` off: a press is timed in the emulated clock,
 which then runs far slower than the host's. An app that does not set
-`home_gesture` ignores the swipe here as it does on the board, and the PWR
-button has no stand-in, so such an app cannot be left.
+`home_gesture` ignores the swipe here as it does on the board;
+`--do "send home"` returns directly to the launcher.
 
 **A crash fails the run.** After every step the image must answer `BUILDID`
-within `qemu_run.py`'s `HEARTBEAT_S`, or the rest of the steps are skipped.
+within `launcher/test/qemu_run.py`'s `HEARTBEAT_S`, or the rest of the
+steps are skipped.
 Any run, driven or autorun, fails on a crash line (a panic, `abort()`, a
 failed `assert`) or a second boot banner, whatever its tests reported. The
 board's captures (`autana suite`, `selftest`, `monitor`) give the same
 verdict, from `scripts/lib/device_capture.py`'s `crash_signs()`.
-
-A driven tour reaches the shell's lifecycle the way the board does, null
-panel and all. A change whose in-app scene switch broke the gfx mode's
-framebuffer contract, resetting the board on every switch, asserts and
-reboots on its first switch here too; its parent takes every ordered pair
-of its fourteen switch targets, 182 switches, on one boot. A lifecycle
-regression of that kind needs no board to catch.
 
 **What a run is evidence of.** Pass and fail, for any test that does not
 read a clock: a time a test measures, against a ceiling pegged on the
@@ -502,10 +510,9 @@ panel, the real touch controller, the IMU or timing.
 one nanosecond per executed instruction, so a `us per step` line times 1000
 is instructions per step: for a measurement that sends nothing, since time
 spent waiting on the null panel's modelled bus passes with no instructions
-behind it. A step that runs on one core repeats run to run, and keeps
-repeating while the host is busy: across five concurrent instances on a
-32-thread desktop, one-core measurements moved at most 1.05%, and three in
-four were identical to the digit.
+behind it. One-core steps repeat run to run; `--icount` passes `sleep=off`,
+so guest timers advance by instructions rather than host time; captures of
+a one-core kernel differ by far less than the ratchet's tolerance.
 
 **A step shared between two cores cannot be ranked this way at all.** The
 count sums both cores, so the second one is charged for whatever it does
@@ -517,6 +524,43 @@ thread instead, and take the two-core verdict from the board. The count
 answers whether a change removed work; on this chip that does not predict
 whether it removed time (see
 [`notes/Debugging.md`](notes/Debugging.md#performance-seems-off)).
+
+**Hot kernel instruction ratchet.** Selected serial simulation steps,
+raster span kernels, float math rows and UI face/backend rows are guarded in
+`launcher/tools/quality/icount_baseline.txt`. Math measures every row;
+`ICOUNT_INFO` rows carry a third `info` baseline field and never fail comparison
+for changed counts, missing rows or new rows. Frame totals and whole
+suites are excluded so unrelated code growth carries no instruction budget.
+A ratchet suite registers as `SUITE_REGISTER_ON_REQUEST(run_<name>_icount_suite)`;
+adding a row requires that registration and a baseline entry. The runner
+discovers these suites from the sources and enables instruction counting.
+`.github/workflows/icount-ratchet.yml` runs them in CI; locally, from the
+repository root:
+
+```sh
+./launcher/test/run_qemu_tests.sh --icount-ratchet
+python launcher/tools/quality/icount_gate.py launcher/build.qemu.shell/qemu_serial.log
+```
+
+The capture lands in `launcher/build.qemu.shell/qemu_serial.log`. The gate
+fails for guarded rows above or below the baseline by more than 0.5%, or on a
+missing or unexpected guarded row. The C reporting helper rejects rows too short
+to bound clock rounding. Baseline entries round to whole instructions. An
+improvement requires lowering the baseline in the same PR. An increase requires a stated reason
+and a baseline update in the same PR. After confirming two captures agree
+within tolerance, generate the baseline:
+
+```sh
+python launcher/tools/quality/icount_gate.py --update-baseline launcher/build.qemu.shell/qemu_serial.log
+```
+
+UI face/backend pairs include identical frame setup, so their difference
+measures the face's instruction share. Theme and scope rows measure face
+state without a backend partner; scope rows measure begin and end together.
+
+A compiler or IDF bump re-baselines the kernels in one deliberate commit.
+The tolerance and capture-length rule live in `launcher/test/perf_stats.h`;
+the gate reads the prefix and tolerance there.
 
 **Instances are independent.** Each `qemu_run.py --workdir` holds its own
 flash image, eFuse file and console log, and the build directory is only
@@ -543,6 +587,78 @@ version and patch set and caches it.
 sudo apt-get install $(python3 launcher/test/qemu/patched_qemu.py deps)   # once
 python3 launcher/test/qemu/patched_qemu.py build                          # minutes, once per QEMU version
 ```
+
+### Console recipes and lifecycle coverage
+
+`launcher/test/device/` uses [pytest-embedded](https://docs.espressif.com/projects/pytest-embedded/en/latest/)
+for console transport, logs and Unity results.
+From the repository root, install its pinned dependencies in a virtual environment:
+
+```sh
+python -m pip install -r launcher/test/device/requirements.txt
+sh launcher/test/run_qemu_tests.sh --suite suite_console --build-only
+python launcher/test/qemu/patched_qemu.py build
+pytest launcher/test/device
+```
+
+The QEMU plugin merges the flash image from `flasher_args.json`. The fixtures
+reuse `qemu_run.py` for device-profile PSRAM size, eFuse MAC and watchdog
+settings. Each test gets its own log.
+The console suite sends `RUNSUITE suite_console` and parses its Unity output
+with `expect_unity_test_output()`.
+
+For a board, build the shell image with Unity suites before taking the lock, then flash
+and test within the hold. The existing `resolve-port` command reads the board
+selected by that hold. Pytest opens the port without flashing.
+
+Board tests share one open port per session, with DTR and RTS held low.
+Each test has its own DUT and log. The first exchange probes BUILDID;
+any boot banner, reset line or crash fails the test. QEMU tests wait for boot.
+
+```sh
+autana build diag
+autana lock run -- bash -c 'autana flash diag && pytest launcher/test/device --embedded-services idf,serial --build-dir build.diag --port "$(python scripts/device/device.py resolve-port | tr -d "\r")" --skip-autoflash y'
+```
+
+Engine recipes live in `launcher/test/device/`; app recipes live in
+`launcher/main/apps/<app>/tests/test_*.yaml`. Collection includes app YAML
+recipes without collecting their other test files. Each recipe is one test
+with fixture setup and teardown. Each step contains `command` (one console
+line) and `expect` (a regular expression), and may give `timeout` in
+seconds where a reply takes longer than the default, such as a full
+screenshot. `IMU quarter <q>` steps contain only `command`. A tilt checks a BUILDID barrier and holds for
+the sample period reported by the startup `IMU quarter 0` probe.
+Screenshot replies remain in the test's serial log.
+
+The tour discovers `APPS` and each advertised console's `scenes` reply.
+An app that declines `scenes` has one app state. Empty app lists, malformed
+replies and a discovery with no scene pairs fail the test. The generated
+`tour-model.json` beside the serial log uses GraphWalker's JSON format.
+For apps with scenes, the scene current immediately after OPEN is the
+landing state. App transitions connect landing states and home; scene
+transitions connect every ordered pair within an app. Every edge changes
+state. NetworkX loads the written model and its `eulerian_circuit` visits
+every edge without a JVM.
+
+```mermaid
+flowchart TD
+    Discover["Discover apps and scenes"] --> Model["Write GraphWalker JSON"]
+    Model --> Load["Load written JSON"]
+    Load --> Walk["NetworkX Euler circuit"]
+    Walk --> Send["Command reply and scene check"]
+    Send --> Check["Tilt and BUILDID"]
+    Check --> Hold["Hold through IMU sample period"]
+    Hold -->|Next edge| Walk
+    Check -->|Crash, reset or invalid reply| Fail["Fail pytest test"]
+```
+
+Every scene switch must report `current=1` on its requested key through a
+fresh `scenes` query. Every edge requires a BUILDID heartbeat. Crash and
+reset patterns come from `scripts/lib/device_capture.py` and apply to all
+expectations, including the Unity summary. CI runs the suite, recipe and
+tour against the instruction ratchet's existing shell build and uploads the
+pytest logs and model. Board CI runs pytest after selftest within the same
+hold, flashes the shell image with Unity suites first, and uploads both captures.
 
 ---
 

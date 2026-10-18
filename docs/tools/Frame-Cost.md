@@ -18,8 +18,11 @@ then the total those averages add up to (the numbers below show the line's
 shape and are not measurements):
 
 ```
-ms/frame avg/worst: ui.build 0.41/0.6  ui.paint 1.20/9.8  present 8.31/16.6  frame.rest 0.90/1.4 | total 10.82
+ms/frame avg/worst: ui.face 0.10/0.2  ui.backend 0.31/0.4  ui.paint 1.20/9.8  present 8.31/16.6  frame.rest 0.90/1.4 | total 10.82
 ```
+
+`ui.build` brackets launcher construction, and `ui.paint` paints commands or bins them for band replay in development builds.
+The per-verb `ui.face` and `ui.backend` brackets are enabled only in a perf-scope build; build and flash one with `autana flash diag --perf-scope`.
 
 Charges are exclusive: a bracket nested inside another is taken out of the
 outer one, so nothing is counted twice. `frame.rest` is one whole-iteration bracket

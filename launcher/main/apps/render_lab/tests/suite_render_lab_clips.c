@@ -1,15 +1,15 @@
 #include <stdio.h>
 #include <string.h>
+#include "anim/anim_tracks_format.h"
 #include "apps/render_lab/render_lab_clips.h"
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "core/memory.h"
-#include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "scene/scene_internal.h"
 #include "suites.h"
 #include "test_cleanup.h"
-#include "ui/controls/ui_widgets.h"
 #include "ui/ui.h"
+#include "ui_probe.h"
 #include "unity.h"
 
 #define TEST_BLEND_MS   300
@@ -30,6 +30,9 @@ static clip_fixture_t* shown;
 
 static void
 release_fixture(void) {
+#ifndef ESP_PLATFORM
+    ui_probe_widgets_stop();
+#endif
     render_lab_clips_destroy(&shown->choice);
     memory_free(shown->blocked_heap);
     memory_free(shown);
@@ -203,7 +206,7 @@ test_picker_init_destroy_releases_items(void) {
     TEST_ASSERT_EQUAL_INT(TEST_CLIP_COUNT, f->choice.count);
     TEST_ASSERT_NOT_NULL(f->choice.items);
     for (int i = 0; i < TEST_CLIP_COUNT; i++) {
-        TEST_ASSERT_EQUAL_STRING(f->clips[i].id, f->choice.items[i].label);
+        TEST_ASSERT_EQUAL_STRING(f->clips[i].id, f->choice.items[i]);
     }
     TEST_ASSERT_LESS_THAN(free_before, memory_free_bytes(MEMORY_PSRAM));
     render_lab_clips_destroy(&f->choice);
@@ -216,6 +219,7 @@ test_picker_init_destroy_releases_items(void) {
 static void
 test_picker_init_reports_allocation_failure(void) {
     clip_fixture_t* f = fixture();
+    ui_probe_widgets_start();
     f->blocked_heap = memory_alloc(memory_largest_block(MEMORY_PSRAM), MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(f->blocked_heap);
     TEST_ASSERT_FALSE(render_lab_clips_init(&f->choice, &f->scene, 0, "gallop"));
@@ -226,13 +230,13 @@ test_picker_init_reports_allocation_failure(void) {
     TEST_ASSERT_EQUAL_INT(0, f->animator.layer.current.clip);
     ui_init();
     ui_begin(NULL);
-    ui_flow_t flow = ui_flow_start(ui_width(), UI_MARGIN, UI_MARGIN);
-    const ui_flow_t before = flow;
-    const int commands = ui_context()->command_list.idx;
-    render_lab_clips_draw(ui_context(), &flow, ui_width(), &f->choice);
-    TEST_ASSERT_EQUAL_INT(commands, ui_context()->command_list.idx);
-    TEST_ASSERT_EQUAL_MEMORY(&before, &flow, sizeof flow);
+    ui_screen();
+    render_lab_clips_draw(ui_width(), &f->choice);
     ui_end(UI_NO_BACKGROUND);
+    recti_t drawn;
+    TEST_ASSERT_FALSE(ui_probe_widget("CLIP", &drawn));
+    TEST_ASSERT_FALSE(ui_probe_widget("BLEND", &drawn));
+    TEST_ASSERT_FALSE(ui_probe_text("CLIP", &drawn));
     TEST_ASSERT_NULL(f->choice.items);
     TEST_ASSERT_EQUAL_INT(0, f->choice.count);
     TEST_ASSERT_EQUAL_INT(RENDER_LAB_BLEND_DEFAULT_MS, f->choice.blend_ms);
@@ -242,10 +246,10 @@ test_picker_init_reports_allocation_failure(void) {
 static int controls_drawn;
 
 static void
-controls(mu_Context* ctx, ui_flow_t* flow, int width) {
+controls(int width) {
     controls_drawn++;
-    ui_flow_row(ctx, flow, width, UI_ROW_HEIGHT);
-    mu_label(ctx, "TEST CONTROL");
+    ui_row_centre(width, UI_ROW_HEIGHT);
+    ui_text(ui_next(), "TEST CONTROL");
 }
 
 static void
@@ -254,38 +258,49 @@ test_menu_calls_optional_controls(void) {
     controls_drawn = 0;
     ui_begin(NULL);
     const render_lab_menu_screen_state_t state = {.scene_name = "Test", .controls = controls};
-    (void)render_lab_menu_screen_draw(ui_context(), &state, 0);
+    (void)render_lab_menu_screen_draw(&state);
     ui_end(UI_NO_BACKGROUND);
     TEST_ASSERT_EQUAL_INT(1, controls_drawn);
     ui_begin(NULL);
     const render_lab_menu_screen_state_t plain = {.scene_name = "Plain"};
-    (void)render_lab_menu_screen_draw(ui_context(), &plain, 0);
+    (void)render_lab_menu_screen_draw(&plain);
     ui_end(UI_NO_BACKGROUND);
     TEST_ASSERT_EQUAL_INT(1, controls_drawn);
 }
 
-static mu_Rect clip_rect;
-static mu_Rect slider_rect;
+/* The menu tests find the dropdown and slider by label through the host-only
+ * widget probe; the device's clip_dispatch suite taps the same menu. */
+#ifndef ESP_PLATFORM
+static recti_t clip_rect;
+static recti_t slider_rect;
 static bool dropdown_open;
+static recti_t list_rows;
+static int list_scroll;
 
 static void
-clip_controls(mu_Context* ctx, ui_flow_t* flow, int width) {
-    clip_rect = (mu_Rect){(flow->canvas_w - width) / 2, flow->y + draw_text_height() + flow->gap, width, UI_ROW_HEIGHT};
-    render_lab_clips_draw(ctx, flow, width, &shown->choice);
-    slider_rect = (mu_Rect){clip_rect.x, flow->y - flow->gap - UI_ROW_HEIGHT, width, UI_ROW_HEIGHT};
-    dropdown_open = ui_dropdown_is_open(ctx, "clip");
+clip_controls(int width) {
+    render_lab_clips_draw(width, &shown->choice);
 }
 
 static void
 menu_frame(const input_t* input) {
     ui_begin(input);
     const render_lab_menu_screen_state_t state = {.scene_name = "Animated", .controls = clip_controls};
-    (void)render_lab_menu_screen_draw(ui_context(), &state, 0);
+    (void)render_lab_menu_screen_draw(&state);
     ui_end(UI_NO_BACKGROUND);
+    TEST_ASSERT_TRUE(ui_probe_widget("CLIP", &clip_rect));
+    TEST_ASSERT_TRUE(ui_probe_widget("BLEND", &slider_rect));
+    dropdown_open = ui_probe_list(&list_rows, &list_scroll);
+}
+
+/* Row `i` of the open list, one dropdown height per row. */
+static recti_t
+list_row(int i) {
+    return (recti_t){list_rows.x, list_rows.y + (i * clip_rect.h) - list_scroll, list_rows.w, clip_rect.h};
 }
 
 static void
-menu_tap(mu_Rect rect) {
+menu_tap(recti_t rect) {
     input_t input = {.down = true, .pressed = true, .x = rect.x + (rect.w / 2), .y = rect.y + (rect.h / 2)};
     menu_frame(&input);
     input.pressed = false;
@@ -321,7 +336,8 @@ static void
 test_menu_dropdown_plays_with_selected_blend(void) {
     clip_fixture_t* f = fixture();
     TEST_ASSERT_TRUE(render_lab_clips_init(&f->choice, &f->scene, 0, "idle"));
-    const ui_dropdown_item_t* items = f->choice.items;
+    const char* const* items = f->choice.items;
+    ui_probe_widgets_start();
     const size_t free_before = memory_free_bytes(MEMORY_PSRAM);
     ui_init();
     menu_frame(NULL);
@@ -331,10 +347,7 @@ test_menu_dropdown_plays_with_selected_blend(void) {
     TEST_ASSERT_EQUAL_INT(TEST_BLEND_MS, f->choice.blend_ms);
     menu_tap(clip_rect);
     TEST_ASSERT_TRUE(dropdown_open);
-    mu_Rect list = ui_dropdown_list_rect(clip_rect, TEST_CLIP_COUNT, clip_rect.h, ui_height(), UI_MARGIN);
-    list.y += clip_rect.h;
-    list.h = clip_rect.h;
-    menu_tap(list);
+    menu_tap(list_row(1));
     TEST_ASSERT_EQUAL_INT(1, f->choice.selected);
     TEST_ASSERT_EQUAL_INT(1, f->animator.layer.current.clip);
     TEST_ASSERT_EQUAL_INT(TEST_BLEND_MS, f->animator.layer.blend_ms);
@@ -347,6 +360,7 @@ test_draw_accepts_blend_boundaries_for_next_pick(void) {
     clip_fixture_t* f = fixture();
     TEST_ASSERT_TRUE(render_lab_clips_init(&f->choice, &f->scene, 0, "idle"));
     ui_init();
+    ui_probe_widgets_start();
     menu_frame(NULL);
     menu_frame(NULL);
     static const int blends[] = {0, RENDER_LAB_BLEND_MAX_MS};
@@ -355,11 +369,8 @@ test_draw_accepts_blend_boundaries_for_next_pick(void) {
         TEST_ASSERT_EQUAL_INT(blends[i], f->choice.blend_ms);
         menu_tap(clip_rect);
         TEST_ASSERT_TRUE(dropdown_open);
-        mu_Rect list = ui_dropdown_list_rect(clip_rect, TEST_CLIP_COUNT, clip_rect.h, ui_height(), UI_MARGIN);
         const int picked = 1 - f->choice.selected;
-        list.y += picked * clip_rect.h;
-        list.h = clip_rect.h;
-        menu_tap(list);
+        menu_tap(list_row(picked));
         for (int frame = 0; frame < UI_DROPDOWN_CLOSE_FRAMES; frame++) {
             menu_frame(NULL);
         }
@@ -369,12 +380,16 @@ test_draw_accepts_blend_boundaries_for_next_pick(void) {
     }
 }
 
+#endif
+
 void
 run_render_lab_clips_suite(void) {
     RUN_TEST(test_console_success_reports_applied_blend_and_end);
     RUN_TEST(test_init_plays_without_blend_and_console_uses_default);
     RUN_TEST(test_listing_rejects_extra_arguments);
+#ifndef ESP_PLATFORM
     RUN_TEST(test_draw_accepts_blend_boundaries_for_next_pick);
+#endif
     RUN_TEST(test_listing_marks_default_and_fallback_playback);
     RUN_TEST(test_console_errors_leave_playback_unchanged);
     RUN_TEST(test_console_accepts_name_and_blend_boundaries);
@@ -385,7 +400,9 @@ run_render_lab_clips_suite(void) {
 #endif
     RUN_TEST(test_console_uses_current_blend_when_omitted);
     RUN_TEST(test_menu_calls_optional_controls);
+#ifndef ESP_PLATFORM
     RUN_TEST(test_menu_dropdown_plays_with_selected_blend);
+#endif
 }
 
 SUITE_REGISTER(run_render_lab_clips_suite);

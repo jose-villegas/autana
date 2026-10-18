@@ -12,15 +12,16 @@ from build.c_header import read_define
 from r3d.import_settings import ANIM_WRAPS, SettingsError, color_fits, load_scene
 from r3d import skin_pack
 
-OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_internal.h"
+OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_format.h"
+INTERNAL = OWNER.with_name("scene_internal.h")
 ANIM_OWNER = OWNER.parents[1] / "anim/anim_track.h"
 TYPE = b"SCNE"
 VERSION = read_define(OWNER, "SCENE_ASSET_VERSION")
 DIRECTIONAL = read_define(OWNER, "SCENE_LIGHT_KIND_DIRECTIONAL")
 LIGHT_KINDS = {"directional": DIRECTIONAL}
-DEFAULT_COLOR = read_define(OWNER, "SCENE_LIGHT_COLOR_DEFAULT")
-AMBIENT_NONE = read_define(OWNER, "SCENE_AMBIENT_INTENSITY_NONE")
-TONEMAP_NONE = read_define(OWNER, "SCENE_TONEMAP_WHITE_NONE")
+DEFAULT_COLOR = read_define(INTERNAL, "SCENE_LIGHT_COLOR_DEFAULT")
+AMBIENT_NONE = read_define(INTERNAL, "SCENE_AMBIENT_INTENSITY_NONE")
+TONEMAP_NONE = read_define(INTERNAL, "SCENE_TONEMAP_WHITE_NONE")
 DEFAULT_CLIP_NONE = read_define(OWNER, "SCENE_ASSET_DEFAULT_CLIP_NONE")
 WRAPS = {name: read_define(ANIM_OWNER, "ANIM_WRAP_" + name.upper()) for name in ANIM_WRAPS}
 PARTS = ("names", "transforms", "renderers", "cameras", "lights", "skinned_renderers", "animators", "clips", "settings")

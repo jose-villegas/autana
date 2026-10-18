@@ -1,0 +1,1 @@
+I (41179) shell: ms/frame avg/worst: ui.build 0.18/0.2  ridge.layers 2.23/2.3  ridge.paint 1.77/2.2  ui.paint 2.66/2.8  present 9.54/10.2  frame.rest 1.23/1.6 | total 17.63 || sound_mix 0.004/0.015 ms/block n=260

@@ -24,7 +24,7 @@ file counted twice:
   `--sysroot`/`--gcc-toolchain` pointing at the same `xtensa-esp-elf` GCC
   install ESP-IDF itself uses, found under the ESP-IDF tools root:
   the tools paired with the resolved ESP-IDF checkout; see
-  [Which ESP-IDF](Autana-CLI.md#which-esp-idf)).
+  [Which ESP-IDF](Build-Environment.md#which-esp-idf)).
 - **`launcher/test/run_tests.sh --print-sources`/`--print-flags`**: the
   same host-portable file list and flags that script proves compile,
   used for whatever the diagnostics build's database does not contain: the
@@ -108,9 +108,11 @@ python launcher/tools/quality/complexity_gate.py --changed origin/main  # only f
 the build, and a failing ratchet stops it there: the two halves CI's
 `build-diagnostics.yml` workflow decides are one local command. Point it at a
 different ref with `COMPLEXITY_GATE_BASE`. With no `build.diag` on disk
-yet the ratchet has no database to read and runs after that build instead;
-the database is also the previous build's, so a `.c` file added since then
-fails the ratchet as unmeasured until a build catches the database up.
+yet the ratchet has no database to read and runs after that build instead. So it
+does when the database is older than a first-party `.c`, a `CMakeLists.txt`,
+a `.cmake` or a `sdkconfig.defaults*` file: that database is the previous
+build's and cannot know a file added since, so the build runs first and the
+ratchet reads the one it writes.
 
 A file only a build variant compiles (`gfx/present/panel/gfx_null_panel_device.c`, which
 exists for `CONFIG_LAUNCHER_QEMU` alone) is in no diagnostics build's database

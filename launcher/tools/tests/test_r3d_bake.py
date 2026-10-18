@@ -708,5 +708,63 @@ class MeshletTests(unittest.TestCase):
             self.assertEqual(once, twice)
             self.assertEqual(canonical(back.pos, back.tris), canonical(mesh.pos, mesh.tris))
 
+
+def exact_output_digest(*values):
+    """Includes array metadata and bytes, edge indices, and generator state."""
+    import hashlib
+    import json
+
+    digest = hashlib.sha256()
+    for value in values:
+        if isinstance(value, np.ndarray):
+            digest.update(str((value.dtype.str, value.shape)).encode())
+            digest.update(value.tobytes())
+        else:
+            if value and all(isinstance(key, tuple) for key in value):
+                value = [(tuple(map(int, key)), int(index)) for key, index in sorted(value.items())]
+            digest.update(json.dumps(value, sort_keys=True).encode())
+    return digest.hexdigest()
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class ExactSplitTests(unittest.TestCase):
+    # Output digests from main e9dc4d138f; metadata and midpoint order are part of the contract.
+    SPLIT_DIGEST = "a74966c8177e7b47bac53d43c28ca0b227228380559e3afce042183f7fc0a51a"
+    DENSIFY_DIGEST = "ac378455206752dbbc9f9ba3c9a377faefafc1ede98f0123e1c32c97e93e25ff"
+
+    def test_split_preserves_every_case_rotation_dtype_and_midpoint(self):
+        outputs = []
+        for seed in range(5):
+            rng = np.random.default_rng(seed)
+            for dtype in (np.float64, np.float32, np.int64):
+                p = (rng.normal(size=(90, 3)) * 20).astype(dtype)
+                tris = np.concatenate([np.arange(len(p)).reshape(-1, 3), rng.integers(0, len(p), (100, 3))])
+                tris = np.concatenate([np.roll(tris, rotation, axis=1) for rotation in range(3)])
+                edges = {tuple(sorted(edge)) for tri in tris for edge in zip(tri, np.roll(tri, -1))}
+                for probability in (0, 0.25, 0.5, 0.75, 1):
+                    marked = {edge for edge in sorted(edges) if rng.random() < probability}
+                    outputs.extend(split_marked_edges(p, tris, marked))
+                for mask in range(8):
+                    marked = {edge for bit, edge in enumerate(((0, 1), (1, 2), (0, 2))) if mask & (1 << bit)}
+                    outputs.extend(split_marked_edges(p, np.array([[0, 1, 2], [1, 2, 0], [2, 0, 1]]), marked))
+                outputs.extend(split_marked_edges(p, np.empty((0, 3), dtype=np.int64), set()))
+        outputs.extend(split_marked_edges(np.empty((0, 3)), np.empty((0, 3), dtype=np.int64), set()))
+        self.assertEqual(exact_output_digest(*outputs), self.SPLIT_DIGEST)
+
+    def test_densify_preserves_several_rounds_and_labels(self):
+        outputs = []
+        for seed in range(4):
+            rng = np.random.default_rng(seed)
+            p, tris = grid(3)
+            p += rng.normal(scale=0.1, size=p.shape)
+            labels = rng.integers(0, 7, len(tris), dtype=np.int16)
+            for rounds in (0, 1, 3, 7):
+                result = simplify_module.densify(p, tris, labels, max_edge=0.4, rounds=rounds)
+                outputs.extend(result)
+                if rounds >= 3:
+                    self.assertGreater(len(result[1]), len(tris) * 4)
+        self.assertEqual(exact_output_digest(*outputs), self.DENSIFY_DIGEST)
+
+
 if __name__ == "__main__":
     unittest.main()

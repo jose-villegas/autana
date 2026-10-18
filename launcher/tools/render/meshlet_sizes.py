@@ -11,6 +11,7 @@ sys.path.insert(0, str(ROOT / "launcher/tools"))
 from r3d.cost_model import FEATURES, mesh_rows
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 import frame_cost
+from capture import build_ids, capture_board, quarter_row, require_same_board
 from r3d.import_settings import load_scene
 from r3d.lit_mesh import read_lit_mesh
 from r3d.poses import sample_camera_path
@@ -23,10 +24,13 @@ BLOCK = re.compile(r"=== (\w+) FRAME COST .*?===.*?(?:\1 both cores: mean [^\n]+
 
 
 def capture_means(directory, object_name, expected_packs=None, expected_poses=None, expected_geometry=None):
+    paths = [pathlib.Path(directory) / f"meshlets-{row}-board.log" for row in ROWS]
+    require_same_board({str(path): capture_board(path) for path in paths})
     result, packs, poses = {}, {}, None
     for row in ROWS:
         path = pathlib.Path(directory) / f"meshlets-{row}-board.log"
-        text = path.read_text(encoding="utf-8")
+        from capture import select_quarter
+        text = select_quarter(path.read_text(encoding="utf-8"))
         if re.search(r"\bFAIL\b", text):
             raise ValueError(f"{path}: failed suite")
         if (not re.search(r":test_\w*frame_cost\w*:PASS\b", text)
@@ -56,7 +60,7 @@ def capture_means(directory, object_name, expected_packs=None, expected_poses=No
                 geometry = tuple(map(int, re.search(r"FRAME COST \((\d+) tris, (\d+) verts, (\d+) clusters", block).groups()))
                 if geometry != expected_geometry[row]:
                     raise ValueError(f"{path}: header geometry differs from selected bake")
-            reported = re.findall(r"BUILD_ID[= ]([0-9a-f]{12}-\w+)", text)
+            reported = build_ids(text)
             if any(value != build for value in reported) or any(identity[0] != build for identity in IDENTITY.findall(text)):
                 raise ValueError(f"{path}: mismatched build id")
             if expected_packs is not None and pack != expected_packs[row]:
@@ -72,11 +76,12 @@ def capture_means(directory, object_name, expected_packs=None, expected_poses=No
                 raise ValueError(f"{path}: suite poses differ from the host camera samples")
             poses = times
             packs[row] = pack
+            stages = [quarter_row(stage, block) for stage in STAGES]
             means = dict(frame_cost.frame_cost_means(path, text=block))
-            if (any(not set(STAGES).issubset(dict(window)) for window in frame_cost.frame_cost_windows(path, block))
+            if (any(not set(stages).issubset(dict(window)) for window in frame_cost.frame_cost_windows(path, block))
                     or block.count("ms/frame avg/worst:") != len(frames)):
                 raise ValueError(f"{path}: missing per-pose frame stages")
-            result[key] = [*(means[stage] for stage in STAGES), statistics.mean(int(us) for _, us in frames) / 1000]
+            result[key] = [*(means[stage] for stage in stages), statistics.mean(int(us) for _, us in frames) / 1000]
     if len(set(packs.values())) != len(ROWS):
         raise ValueError("captures need distinct size pack hashes")
     return {key: result[key] for key in ("cull-off", *ROWS)}

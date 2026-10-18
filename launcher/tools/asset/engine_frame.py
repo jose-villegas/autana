@@ -6,12 +6,13 @@ under "The offline tools".
 
 import struct
 
+from audio import sound_asset
 from gfx import image_asset
 from asset import table_asset
 from anim import tracks_asset, skeleton_asset
 from r3d import mesh_asset, scene_asset, skin_asset
 
-FRAMELESS = frozenset((image_asset.TYPE, table_asset.TYPE))
+FRAMELESS = frozenset((image_asset.TYPE, table_asset.TYPE, sound_asset.TYPE))
 
 AXIS_SIGNS = (1, 1, -1)
 ROTATION_SIGNS = (-1, -1, 1, 1)
@@ -42,7 +43,7 @@ def _mirror_matrix(matrix, column_signs):
 
 
 def to_engine(kind, entry):
-    """A source entry mirrored once into the engine frame, preserving its layout; an image or table entry has no frame and comes back as it is."""
+    """A source entry mirrored once into the engine frame, preserving its layout; an image, table or sound entry has no frame and comes back as it is."""
     if kind in FRAMELESS:
         return entry
     out = bytearray(entry)

@@ -14,13 +14,13 @@ bake's key is a SHA-256 of its kind, its recipe (the parsed import and
 renderer settings and the scene inputs its look reads), its sources (an LFS
 pointer's oid stands for the file, so no source is downloaded) and the code
 of the tool that makes it. LOCK, written only by this tool, records for
-each key the SHA-256 of the bytes made for it, because a fit is not
-byte-reproducible even on one machine, and a mesh bake only on hosts of one
-CPU vendor: r3d/isa.py pins the ray tracer to AVX2, whose reciprocal estimates
-AMD and Intel each define their own way. LOCK's `mesh_cpu_vendor` names the
-vendor its meshes were made on; a run records its host's, and `lock --from-run`
-refuses a run whose meshes were made on another, as `bake --out` does on such a
-host.
+each key the SHA-256 of the bytes made for it. A fit is byte-reproducible on
+the same GPU model in a pinned environment; a different GPU may differ.
+A mesh bake is byte-reproducible only on hosts of one CPU vendor: r3d/isa.py
+pins the ray tracer to AVX2, whose reciprocal estimates AMD and Intel each
+define their own way. LOCK's `mesh_cpu_vendor` names the vendor its meshes
+were made on; a run records its host's, and `lock --from-run` refuses a run
+whose meshes were made on another, as `bake --out` does on such a host.
 
 A fit's start is a mesh bake of its own (`<entry>.start.mesh`, locked and published, held by no pack).
 The fit's key names the start's locked bytes, so it is unknown until the start is locked: `list` says the
@@ -58,12 +58,14 @@ clone. Standard library only; Python 3.12 or later.
 
 import argparse
 import ast
+import concurrent.futures
 import dataclasses
 import fnmatch
 import functools
 import hashlib
 import io
 import json
+import multiprocessing
 import os
 import pathlib
 import platform
@@ -1083,6 +1085,51 @@ def publish(found, lock, cache):
         print(f"published {name} ({bake.output})")
 
 
+def _mesh_rows(found, cache, lock, blender, again):
+    """Make each mesh key once, preserving the callers' order for rows and fit starts."""
+    from bake import produce
+    from r3d import process_budget as budget
+
+    unique = {}
+    for item in found:
+        if item.key is None:
+            raise BakeMissing(describe(item, unlocked(item), "bake its start first: bake.py bake --kind mesh"))
+        unique.setdefault(item.key, item)
+    rows = {key: row for key in unique if not again and (row := produce.made(key, cache))}
+    pending = [item for key, item in unique.items() if key not in rows]
+    if pending:
+        cores = budget.cores_available()
+        try:
+            capacity = budget.worker_capacity(budget.available_bytes(gpu=False), budget.BAKE_BYTES, budget.FLOORS, cores)
+            reason = "memory" if capacity < cores else "cores"
+        except (OSError, KeyError, ValueError) as error:
+            capacity, reason = 1, f"memory unavailable: {error}"
+        workers = max(1, min(capacity, len(pending)))
+        print(f"mesh workers: {workers} ({reason}; {len(pending)} unique meshes)")
+        if workers == 1:
+            for item in pending:
+                rows[item.key] = produce.produce(item, cache, lock, blender)
+        else:
+            executor = concurrent.futures.ProcessPoolExecutor(max_workers=workers,
+                                                              mp_context=multiprocessing.get_context("spawn"))
+            active = {}
+            remaining = iter(pending)
+            try:
+                while True:
+                    while len(active) < workers and (item := next(remaining, None)) is not None:
+                        active[executor.submit(produce.produce, item, cache, lock, blender)] = item.key
+                    if not active:
+                        break
+                    done, _ = concurrent.futures.wait(active, return_when=concurrent.futures.FIRST_COMPLETED)
+                    for future in done:
+                        rows[active.pop(future)] = future.result()
+            finally:
+                for future in active:
+                    future.cancel()
+                executor.shutdown(wait=True, cancel_futures=True)
+    return [rows[item.key] for item in found]
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("command", choices=("list", "bake", "lock", "check", "fetch", "path", "publish", "tool"))
@@ -1146,16 +1193,17 @@ def main(argv=None):
                 if kind == "fit" and made_starts:
                     # A fit's key names its start's bytes: the lock's, else those this run just made.
                     found = bakes(paths, {**made_starts, **starts}, poses)
-                for bake in found:
-                    if not to_make(bake, kind):
-                        continue
-                    if bake.key is None:
-                        raise BakeMissing(describe(bake, unlocked(bake), "bake its start first: bake.py bake --kind mesh"))
-                    row = (None if args.again else produce.made(bake.key, cache)) or produce.produce(
-                        bake, cache, lock, args.blender)
-                    rows.append(row)
-                    if bake.kind == "mesh" and not bake.packed:
-                        made_starts[bake.key] = row["sha256"]
+                selected = [bake for bake in found if to_make(bake, kind)]
+                if kind == "mesh":
+                    made_rows = _mesh_rows(selected, cache, lock, args.blender, args.again)
+                    made_starts.update({bake.key: row["sha256"] for bake, row in zip(selected, made_rows) if not bake.packed})
+                    rows.extend(made_rows)
+                else:
+                    for bake in selected:
+                        if bake.key is None:
+                            raise BakeMissing(describe(bake, unlocked(bake), "bake its start first: bake.py bake --kind mesh"))
+                        rows.append((None if args.again else produce.made(bake.key, cache)) or produce.produce(
+                            bake, cache, lock, args.blender))
             for row in rows:
                 locked = lock.get(row["key"])
                 versus = "" if locked is None else (

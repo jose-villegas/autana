@@ -18,6 +18,7 @@
 #include "gfx/target/gfx_color.h"
 #include "render_video.h"
 #include "render_watch.h"
+#include "services/tune.h"
 #include "ui/layout/ui_transform.h"
 
 #include "scene/scene_shell.h"
@@ -32,6 +33,39 @@
 /* RIFF AVI 1.0 keeps its whole size in a 32-bit field; players choke well
  * before that wraps, so a run past this is refused instead of written. */
 #define VIDEO_MAX_BYTES ((int64_t)1024 * 1024 * 1024)
+
+static void
+tune_reply(const char* line) {
+    fprintf(stderr, "%s\n", line);
+}
+
+bool
+render_host_set_tunable(const char* name, int32_t value) {
+    if (!tune_set(tune_shared(), name, value)) {
+        fprintf(stderr, "render_host: unknown tunable or value outside range: %s\n", name);
+        return false;
+    }
+    return true;
+}
+
+static bool
+set_tunable_option(const char* assignment) {
+    char name[TUNE_NAME_MAX + 1];
+    const char* equal = strchr(assignment, '=');
+    if (equal == NULL || equal == assignment || equal - assignment > TUNE_NAME_MAX) {
+        fprintf(stderr, "render_host: --set needs owner.name=value\n");
+        return false;
+    }
+    const size_t length = (size_t)(equal - assignment);
+    memcpy(name, assignment, length);
+    name[length] = '\0';
+    int32_t value;
+    if (!tune_parse_value(equal + 1, &value)) {
+        fprintf(stderr, "render_host: invalid tunable value %s\n", equal + 1);
+        return false;
+    }
+    return render_host_set_tunable(name, value);
+}
 
 /* The output canvas for `quarter`/`panel`, decided before gfx_init(): both
  * GFX_WIDTH and GFX_HEIGHT are compile-time, so a --video run can be sized
@@ -48,10 +82,10 @@ output_size(int quarter, bool panel, int* out_w, int* out_h) {
  * chunk both carry unchanged, so the BMP write and every --video frame
  * share this instead of each walking the framebuffer on its own. */
 static void
-convert_frame(ui_transform_t t, bool panel, int out_w, int out_h, int32_t stride, uint8_t* buf) {
-    ui_transform_t inverse = ui_transform_identity();
+convert_frame(affine2x_t t, bool panel, int out_w, int out_h, int32_t stride, uint8_t* buf) {
+    affine2x_t inverse = affine2x_identity();
     if (!panel) {
-        (void)ui_transform_invert(t, &inverse);
+        (void)affine2x_invert(t, &inverse);
     }
     gfx_color_t pixels[GFX_WIDTH];
     for (int py = 0; py < GFX_HEIGHT; py++) {
@@ -125,7 +159,8 @@ static int
 usage(const char* argv0) {
     fprintf(stderr,
             "usage: %s [--quarter N] [--panel] [--frames N] [--dt N] [-o PATH] [--video PATH]\n"
-            "       render_host.h lists what each one does; the scene may take more.\n",
+            "       [--set owner.name=value ...] [--tunables]\n"
+            "       docs/tools/Render-Harness.md lists options; the scene may take more.\n",
             argv0);
     return 2;
 }
@@ -151,6 +186,13 @@ main(int argc, char** argv) {
             panel = true;
         } else if (strcmp(a, "--quarter") == 0 && has_value) {
             quarter = (int)strtol(argv[++i], NULL, 10);
+        } else if (strcmp(a, "--tunables") == 0) {
+            (void)tune_handle_line("TUNE", tune_reply);
+            return 0;
+        } else if (strcmp(a, "--set") == 0 && has_value) {
+            if (!set_tunable_option(argv[++i])) {
+                return usage(argv[0]);
+            }
         } else if (strcmp(a, "--frames") == 0 && has_value) {
             frames = (int)strtol(argv[++i], NULL, 10);
         } else if (strcmp(a, "--dt") == 0 && has_value) {
@@ -219,7 +261,7 @@ main(int argc, char** argv) {
         fprintf(stderr, "no framebuffer to read: the scene left gfx in band mode\n");
         return 1;
     }
-    const ui_transform_t t = ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT);
+    const affine2x_t t = ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT);
     const int32_t stride = screenshot_bmp_row_stride(out_w);
 
     uint8_t* frame_buf = malloc((size_t)stride * out_h);

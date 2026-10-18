@@ -106,7 +106,7 @@ test_launcher_backdrop_motion_and_rest(void) {
         {.name = "Gamma", .summary = "Third screen"},
     };
     fixture(apps, sizeof apps / sizeof *apps);
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(affine2x_identity());
 
     /* Still first: breathing and the wave never rest, and what follows is
      * about what the launcher costs when nothing moves. */

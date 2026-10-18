@@ -1,5 +1,6 @@
 #include "draw/draw.h"
 #include "gfx/gfx.h"
+#include "gfx/target/gfx_segment_clip.h"
 #include "math/scalar/mathi.h"
 #include "services/tune.h"
 
@@ -15,14 +16,14 @@ TUNE(draw, tight_fill_marks, 1, 0, 1);
  * tight_fill_marks to the constant 1 (services/tune.h), so the branch and
  * gfx_mark_rows_dirty() call below cost nothing there. */
 static inline void
-mark_fill(const gfx_surface_t* state, int x0, int y0, int x1, int y1) {
+mark_fill(const gfx_surface_t* state, recti_t rect) {
     if (!state->marks) {
         return;
     }
     if (tight_fill_marks) {
-        gfx_mark_drawn(x0, y0, x1 - x0, y1 - y0);
+        gfx_mark_drawn(rect.x, rect.y, rect.w, rect.h);
     } else {
-        gfx_mark_rows_dirty(y0, y1);
+        gfx_mark_rows_dirty(rect.y, recti_bottom(rect));
     }
 }
 
@@ -30,12 +31,12 @@ mark_fill(const gfx_surface_t* state, int x0, int y0, int x1, int y1) {
 
 void
 draw_set_clip(int x, int y, int w, int h) {
-    gfx_set_clip_box(gfx_box_intersect((gfx_box_t){x, y, x + w, y + h}, GFX_SCREEN_BOX));
+    gfx_set_clip(recti_intersect((recti_t){x, y, w, h}, GFX_SCREEN_RECT));
 }
 
 void
 draw_clear_clip(void) {
-    gfx_set_clip_box(GFX_SCREEN_BOX);
+    gfx_set_clip(GFX_SCREEN_RECT);
 }
 
 /* Primitives */
@@ -67,11 +68,7 @@ draw_pixel(int x, int y, gfx_color_t color) {
     if (!gfx_draw_begin(&state)) {
         return;
     }
-    if (x < state.clip.x0 || x >= state.clip.x1) {
-        return;
-    }
-    const gfx_box_t rect = gfx_target_clip_rect(state.target, state.clip, (gfx_box_t){x, y, x + 1, y + 1});
-    if (rect.y0 >= rect.y1) {
+    if (!recti_contains(state.clip, x, y) || !gfx_target_row_range_overlaps(state.target, y, y + 1)) {
         return;
     }
     gfx_target_row(state.target, y)[x] = color;
@@ -80,14 +77,11 @@ draw_pixel(int x, int y, gfx_color_t color) {
     }
 }
 
-/* One pixel of a line. */
+/* One pixel of a line already clipped to the surface's clip; only the
+ * target's own rows remain to check. */
 static void
 plot(const gfx_surface_t* state, int x, int y, gfx_color_t color, unsigned flags) {
-    if (x < state->clip.x0 || x >= state->clip.x1) {
-        return;
-    }
-    const gfx_box_t rect = gfx_target_clip_rect(state->target, state->clip, (gfx_box_t){x, y, x + 1, y + 1});
-    if (rect.y0 >= rect.y1) {
+    if (!gfx_target_row_range_overlaps(state->target, y, y + 1)) {
         return;
     }
     gfx_color_t* const dst = &gfx_target_row(state->target, y)[x];
@@ -95,18 +89,41 @@ plot(const gfx_surface_t* state, int x, int y, gfx_color_t color, unsigned flags
     *dst = (flags & DRAW_LINE_ADD) ? gfx_color_add(*dst, color) : color;
 }
 
-/* Bresenham (docs/Citations.md#30), treats both axes alike, no case analysis. */
+typedef struct {
+    unsigned on, period, phase;
+} line_dash_t;
+
+static line_dash_t
+line_dash(unsigned flags, unsigned offset) {
+    const unsigned on = (flags >> DRAW_LINE_DASH_ON_BIT) & DRAW_LINE_DASH_MASK;
+    const unsigned off = (flags >> DRAW_LINE_DASH_OFF_BIT) & DRAW_LINE_DASH_MASK;
+    const unsigned period = (flags & DRAW_LINE_DASHED) ? on + off : 0;
+    return (line_dash_t){on, period, period ? offset % period : 0};
+}
+
+static bool
+line_dash_step(line_dash_t* dash) {
+    const bool visible = !dash->period || dash->phase < dash->on;
+    if (++dash->phase == dash->period) {
+        dash->phase = 0;
+    }
+    return visible;
+}
+
+/* Bresenham, treats both axes alike, no case analysis. */
 static void
-walk(const gfx_surface_t* state, int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
+walk(const gfx_surface_t* state, int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags, unsigned offset) {
     const int dx = mathi_abs(x1 - x0);
     const int dy = -mathi_abs(y1 - y0);
     const int sx = x0 < x1 ? 1 : -1;
     const int sy = y0 < y1 ? 1 : -1;
     int err = dx + dy;
     bool first = true;
+    line_dash_t dash = line_dash(flags, offset);
 
     for (;;) {
-        if (!(first && (flags & DRAW_LINE_OPEN))) {
+        const bool visible = line_dash_step(&dash);
+        if (visible && !(first && (flags & DRAW_LINE_OPEN))) {
             plot(state, x0, y0, color, flags);
         }
         first = false;
@@ -126,21 +143,22 @@ walk(const gfx_surface_t* state, int x0, int y0, int x1, int y1, gfx_color_t col
     }
 }
 
-/* Box intersects clip, marked once. Overestimating costs bus time;
- * underestimating leaves stale. */
+/* Clipped endpoints lie inside the clip, so every pixel between them does,
+ * and their box is the dirty region, marked once. Overestimating costs bus
+ * time; underestimating leaves stale. */
 static void
 line_walk(const gfx_surface_t* state, int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags) {
-    if (!gfx_box_clip_segment(&state->clip, &x0, &y0, &x1, &y1)) {
+    const int start_x = x0;
+    const int start_y = y0;
+    if (!gfx_clip_segment(&state->clip, &x0, &y0, &x1, &y1)) {
         return;
     }
 
-    const gfx_box_t box = gfx_box_intersect(
-        (gfx_box_t){mathi_min(x0, x1), mathi_min(y0, y1), mathi_max(x0, x1) + 1, mathi_max(y0, y1) + 1}, state->clip);
+    const unsigned offset = (unsigned)mathi_max(mathi_abs(x0 - start_x), mathi_abs(y0 - start_y));
+    walk(state, x0, y0, x1, y1, color, flags, offset);
 
-    walk(state, x0, y0, x1, y1, color, flags);
-
-    if (state->marks && box.x0 < box.x1 && box.y0 < box.y1) {
-        gfx_mark_drawn(box.x0, box.y0, box.x1 - box.x0, box.y1 - box.y0);
+    if (state->marks) {
+        gfx_mark_drawn(mathi_min(x0, x1), mathi_min(y0, y1), mathi_abs(x1 - x0) + 1, mathi_abs(y1 - y0) + 1);
     }
 }
 
@@ -168,11 +186,10 @@ draw_rect(int x, int y, int w, int h, gfx_color_t color) {
     if (!gfx_draw_begin(&state)) {
         return;
     }
-    int x0, y0, x1, y1;
-    gfx_target_fill_rect(state.target, state.clip.x0, state.clip.y0, state.clip.x1, state.clip.y1, x, y, w, h, color,
-                         &x0, &y0, &x1, &y1);
 
-    mark_fill(&state, x0, y0, x1, y1);
+    const recti_t painted = gfx_target_fill_rect(state.target, state.clip, (recti_t){x, y, w, h}, color);
+
+    mark_fill(&state, painted);
 }
 
 /*
@@ -192,11 +209,12 @@ fill_rect_alpha(const gfx_surface_t* state, int x, int y, int w, int h, gfx_colo
         return;
     }
 
-    const gfx_box_t rect = gfx_target_clip_rect(state->target, state->clip, (gfx_box_t){x, y, x + w, y + h});
+    const recti_t rect = gfx_target_clip_rect(state->target, state->clip, (recti_t){x, y, w, h});
 
-    for (int row = rect.y0; row < rect.y1; row++) {
+    for (int row = rect.y; row < recti_bottom(rect); row++) {
         gfx_color_t* dst = gfx_target_row(state->target, row);
-        for (int col = rect.x0; col < rect.x1; col++) {
+        for (int i = 0; i < rect.w; i++) {
+            const int col = rect.x + i;
             if (blend) {
                 dst[col] = gfx_color_mix(dst[col], color, alpha);
             } else if (gfx_dither_covers(col, row, alpha)) {
@@ -205,7 +223,7 @@ fill_rect_alpha(const gfx_surface_t* state, int x, int y, int w, int h, gfx_colo
         }
     }
 
-    mark_fill(state, rect.x0, rect.y0, rect.x1, rect.y1);
+    mark_fill(state, rect);
 }
 
 void
@@ -267,14 +285,14 @@ draw_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_str
         return;
     }
 
-    const gfx_box_t rect = gfx_target_clip_rect(state.target, state.clip, (gfx_box_t){x, y, x + w, y + h});
-    if (rect.x0 >= rect.x1 || rect.y0 >= rect.y1) {
+    const recti_t rect = gfx_target_clip_rect(state.target, state.clip, (recti_t){x, y, w, h});
+    if (recti_is_empty(rect)) {
         return;
     }
 
     const int level = gfx_dither_level(alpha);
 
-    for (int row = rect.y0; row < rect.y1; row++) {
+    for (int row = rect.y; row < recti_bottom(rect); row++) {
         const uint8_t* cells = gfx_dither4x4[row & 3];
         const bool p[4] = {level > cells[0], level > cells[1], level > cells[2], level > cells[3]};
 
@@ -283,18 +301,18 @@ draw_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_str
         }
 
         gfx_color_t* dst = gfx_target_row(state.target, row);
-        const gfx_color_t* s = src + (size_t)(row - y) * (size_t)src_stride + (rect.x0 - x);
+        const gfx_color_t* s = src + (size_t)(row - y) * (size_t)src_stride + (rect.x - x);
 
         if (p[0] && p[1] && p[2] && p[3]) {
-            memcpy(dst + rect.x0, s, (size_t)(rect.x1 - rect.x0) * sizeof *dst);
+            memcpy(dst + rect.x, s, (size_t)rect.w * sizeof *dst);
             continue;
         }
 
-        blit_dither_row(dst + rect.x0, s, rect.x0, rect.x1, p);
+        blit_dither_row(dst + rect.x, s, rect.x, recti_right(rect), p);
     }
 
     if (state.marks) {
-        gfx_mark_rows_dirty(rect.y0, rect.y1);
+        gfx_mark_rows_dirty(rect.y, recti_bottom(rect));
     }
 }
 
@@ -336,10 +354,9 @@ glyph_font(const gfx_surface_t* state, const draw_font_t* font, int x, int y, un
             draw_font_run_box_rect(font, x, y, boxes[i].row0, boxes[i].row1, boxes[i].col0, boxes[i].col1, scale, turn,
                                    &rx, &ry, &rw, &rh);
         }
-        int x0, y0, x1, y1;
-        gfx_target_fill_rect(state->target, state->clip.x0, state->clip.y0, state->clip.x1, state->clip.y1, rx, ry, rw,
-                             rh, color, &x0, &y0, &x1, &y1);
-        mark_fill(state, x0, y0, x1, y1);
+
+        const recti_t painted = gfx_target_fill_rect(state->target, state->clip, (recti_t){rx, ry, rw, rh}, color);
+        mark_fill(state, painted);
     }
 }
 

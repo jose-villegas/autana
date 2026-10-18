@@ -51,14 +51,14 @@ DP_LARGEST_ALLOC_SOURCE="one sand grid (184x224), unchanged by the port"
 
 # Total on-chip SRAM; the IRAM/DRAM pool is part of it. Not a free figure.
 DP_SRAM_BYTES=524288
-DP_SRAM_SOURCE="docs/Citations.md#66 section 4.1.2.1"
+DP_SRAM_SOURCE="ESP32-S3 datasheet section 4.1.2.1"
 
 # Total PSRAM capacity, not a post-boot free figure the way DP_FREE_HEAP_BYTES
 # is. No post-init free-PSRAM measurement is recorded anywhere in this file, so
 # a test that wants realistic PSRAM headroom charges its own buffers (the
 # framebuffer included) against this pool via heap_caps_malloc, same as device.
 DP_PSRAM_BYTES=8388608
-DP_PSRAM_SOURCE="ESP32-S3R8 package, 8 MB octal (launcher/sdkconfig.defaults CONFIG_SPIRAM_MODE_OCT); docs/Citations.md#66 section 1.2"
+DP_PSRAM_SOURCE="ESP32-S3R8 package, 8 MB octal (launcher/sdkconfig.defaults CONFIG_SPIRAM_MODE_OCT); ESP32-S3 datasheet section 1.2"
 
 # Below this many bytes, an allocation that names neither MALLOC_CAP_INTERNAL
 # nor MALLOC_CAP_SPIRAM tries internal RAM before PSRAM; at or above it, PSRAM

@@ -25,6 +25,7 @@
 #include "apps/sand/ui/palette_screen.h"
 #include "apps/sand/ui/sand_icons.h"
 #include "apps/sand/ui/title_screen.h"
+#include "ui/ui_mu.h"
 
 /* Landscape (448x368 logical) - this app's shipping orientation, and what
  * suite_brush_screen.c/suite_palette.c already assert every rect below
@@ -131,7 +132,7 @@ static void
 test_options_screen_with_its_dither_list_open_fits_budget(void) {
     TEST_ASSERT_TRUE(ui_icon_set_load(&sand_icon_set));
     ui_init();
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(affine2x_identity());
 
     const options_screen_labels_t labels = {
         .quality_names = TEST_QUALITY_NAMES,

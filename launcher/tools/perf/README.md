@@ -6,6 +6,15 @@ seed sets. Arguments accept revisions or existing project directories.
 The wrapper restores `origin/main`'s release image afterwards;
 `--no-restore` omits that flash.
 
+Capture comparisons require one USB serial throughout the input set.
+A mixed set exits non-zero before comparison and lists each board's short
+id, full serial and captures. A capture without board provenance is unknown:
+unknown captures can be compared together, but cannot be mixed with a known
+board. The shared identity check in `capture.py` reads board fields in saved
+measurement records and the device capture index. Raw captures need matching
+device index entries; seeded measurement and sweep records retain the serial.
+A held comparison job routes every capture through the same board.
+
 `autana status` shows the job name, estimated finish and queued starts.
 Estimates use recorded flash and capture durations, with the configured capture
 deadline and `DEFAULT_FLASH_SECONDS` in `perf_job.py` as fallbacks.
@@ -220,3 +229,11 @@ agreement and Holm across the table's cells.
 `plan.json` and per-capture JSON retain failures; two consecutive capture
 failures stop acquisition. Rebuild the generated report with
 `python launcher/tools/perf/perf_sweep.py report DIR`.
+
+Render perf captures force every timed render window through portrait and
+landscape. Rows carry `quarter=portrait` or `quarter=landscape`; the quarter
+is part of the metric name in comparisons, layout pilots and sweeps. Stage
+and span metrics retain that identity too. Untagged captures retain their
+unqualified row names, so comparisons do not silently pair them with tagged
+rows. Single-viewport render documentation readers select portrait by default;
+`dynres_report.py --quarter landscape` selects landscape explicitly.

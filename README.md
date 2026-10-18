@@ -7,6 +7,8 @@
 
 Autana is software for the [Waveshare ESP32-S3-Touch-AMOLED-1.8](https://www.waveshare.com/esp32-s3-touch-amoled-1.8.htm): a home screen that launches a falling-sand sandbox and software-rendered mesh flythroughs. Touch and board motion control the apps. The firmware draws each frame in software and sends its pixels directly to the board's AMOLED screen.
 
+The papers and specifications behind its techniques are in [Citations](docs/Citations.md).
+
 <table>
 <tr><th width="33%">Boot animation</th><th width="33%">Launcher, board rocking</th><th width="33%">Falling Sand, board turning</th></tr>
 <tr><td width="33%"><img src="docs/images/overview/boot-anim.gif" width="100%" alt="The boot animation growing a grid and moving the camera through it before fading to black"></td><td width="33%"><img src="docs/images/overview/launcher-home.gif" width="100%" alt="The launcher listing Falling Sand and Render Lab, its backdrop ridge levelling as the board rocks"></td><td width="33%"><img src="docs/images/overview/sand-simulation.gif" width="100%" alt="A volcano spilling toward a lake beside growing and burning trees as the board turns"></td></tr>
@@ -50,7 +52,7 @@ Project applications live under `launcher/main/apps/`; system applications live 
 
 ## Run it on the board
 
-The firmware targets the Waveshare ESP32-S3-Touch-AMOLED-1.8 specifically. For a board build, install the commit in `launcher/idf-pin.json` and its tools. A build without it stops and prints the clone and install commands. autana finds it under `C:\Espressif` or `~/esp`; `IDF_PATH` set for one command selects another checkout ([Which ESP-IDF](docs/tools/Autana-CLI.md#which-esp-idf)). On Windows, use Git Bash for these commands; the build wrapper calls the ESP-IDF Windows environment through `cmd`.
+The firmware targets the Waveshare ESP32-S3-Touch-AMOLED-1.8 specifically. For a board build, install the commit in `launcher/idf-pin.json` and its tools. A build without it stops and prints the clone and install commands. autana finds it under `C:\Espressif` or `~/esp`; `IDF_PATH` set for one command selects another checkout ([Which ESP-IDF](docs/tools/Build-Environment.md#which-esp-idf)). On Windows, use Git Bash for these commands; the build wrapper calls the ESP-IDF Windows environment through `cmd`.
 
 ```sh
 ./tools/autana flash dev
@@ -65,14 +67,15 @@ The firmware targets the Waveshare ESP32-S3-Touch-AMOLED-1.8 specifically. For a
 |---|---|
 | Change a game or add one | [Building an App](docs/Building-an-App.md), [Building a Screen](docs/Building-a-Screen.md) |
 | Draw 3D, import a mesh or set up a scene | [3D rendering and scenes](docs/render/README.md), [Building a Scene](docs/render/Building-a-Scene.md) |
+| Understand gravity estimation and input features | [Input docs](docs/input/README.md) |
 | Understand the frame loop and drawing path | [Firmware Architecture](docs/Firmware-Architecture.md), [Graphics and Presentation](docs/Gfx-and-Presentation.md) |
 | Follow the sand simulation | [Sand docs](docs/sand/README.md), [Simulation](docs/sand/Sand-Simulation.md) |
 | Run or add tests | [Testing Guide](docs/Testing-Guide.md) |
 | Work with fonts and controls | [Text and Fonts](docs/Text-and-Fonts.md), [UI Toolkit](docs/UI-Toolkit.md) |
 | Build, flash, render, or inspect the board | [Tools index](docs/tools/README.md), [board notes](docs/notes/README.md) |
+| Play sounds or add one | [Audio docs](docs/audio/README.md), [Sound assets](docs/audio/Sound-Assets.md) |
 | Check build flags and C style | [Build Variants](docs/Build-Variants.md), [C Style Guide](docs/C-Style-Guide.md) |
 | Explore proposed work | [Rendering Roadmap](docs/plans/Autana-Rendering-Roadmap.md), [plans](docs/plans/README.md) |
-| Find the paper or spec a technique comes from | [Citations](docs/Citations.md) |
 
 The [`launcher/tools/` index](launcher/tools/README.md) maps build wrappers, generators, render scenes, and quality checks. `scripts/install-git-hooks.sh` installs optional local checks; [Mermaid diagrams](docs/tools/Mermaid-Diagrams.md) need `npm install -g @mermaid-js/mermaid-cli` if you edit them, and [math formulas](docs/tools/Math-Formulas.md) need `npm ci --prefix scripts/gates`. The complexity gate also needs `git submodule update --init`; see its [guide](docs/tools/Complexity-Gate.md).
 

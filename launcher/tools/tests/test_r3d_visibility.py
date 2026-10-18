@@ -280,5 +280,32 @@ class RegionTests(unittest.TestCase):
         self.assertLessEqual(sum(counted), 2 * len(tris))
 
 
+
+@needs_mitsuba
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class ExactRegionTests(unittest.TestCase):
+    # Output digest from main e9dc4d138f, including the generator state after every call.
+    REGION_DIGEST = "da968db2e185065b4675f746f9cafa852dd2926702c09c9c14154f5f8dfbc082"
+
+    def test_region_preserves_mask_and_rng_with_unseen_faces(self):
+        from tests.test_r3d_bake import exact_output_digest
+
+        wall = [card([x, y, 0], half=0.5) for x in range(-3, 4) for y in range(-3, 4) if (x, y) != (0, 0)]
+        p, tris, query = scene(*wall, card([0, 0, -5], half=3.5), card([0, 12, 0], away=True),
+                              card([0, 16, 0], away=True))
+        double = np.zeros(len(tris), dtype=bool)
+        double[-2:] = True
+        outputs = []
+        for seed in range(4):
+            for rounds in (0, 1, 4, 16):
+                rng = np.random.default_rng(seed)
+                seen = visible_from_region(p, tris, double, query, rounds, rng, [-0.5, -0.5, 5], [0.5, 0.5, 6])
+                outputs.extend((seen, rng.bit_generator.state))
+                self.assertFalse(seen[-4:-2].any())
+                if rounds:
+                    self.assertTrue(seen[-2:].all())
+        self.assertEqual(exact_output_digest(*outputs), self.REGION_DIGEST)
+
+
 if __name__ == "__main__":
     unittest.main()

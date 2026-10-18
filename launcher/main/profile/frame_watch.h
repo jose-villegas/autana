@@ -241,6 +241,9 @@ frame_watch_format_json(const frame_watch_t* w, char* out, size_t out_size) {
  * hook and starts counting. Safe to call again. */
 void frame_watch_start(void);
 
+/* The task whose presents end frames, or NULL before the watch starts. */
+void* frame_watch_task(void);
+
 /* A task whose work belongs to the frame: the panel's sender, a second
  * core's worker. */
 void frame_watch_add_task(void* task);

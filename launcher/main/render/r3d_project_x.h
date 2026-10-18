@@ -11,6 +11,7 @@
 #include <stdint.h>
 
 #include "math/linear/mat4x.h"
+#include "math/linear/projectx.h"
 #include "math/linear/vec_convert.h"
 #include "math/scalar/mathx.h"
 #include "render/render_view.h"
@@ -18,15 +19,9 @@
 /* Camera space is +y up; the camera pose's scale has no effect. */
 static inline mat4f_t
 r3d_line_matrix(const render_view_t* view, const transformf_t* model) {
-    mat4f_t camera = mat4f_identity();
-    const vec3f_t axes[] = {view->screen_x, vec3f_scale(view->screen_y, -1.0F), view->forward};
-    for (int r = 0; r < 3; r++) {
-        camera.m[r][0] = axes[r].x;
-        camera.m[r][1] = axes[r].y;
-        camera.m[r][2] = axes[r].z;
-        camera.m[r][3] = -vec3f_dot(axes[r], view->position);
-    }
-    return mat4f_mul(camera, transformf_compute_matrix(model));
+    return mat4f_mul(
+        mat4f_view_from_axes(view->screen_x, vec3f_scale(view->screen_y, -1.0F), view->forward, view->position),
+        transformf_compute_matrix(model));
 }
 
 /* One meter in camera space. */
@@ -135,21 +130,8 @@ r3d_project_point_cs_x(vec3x_t p, const r3d_line_view_x_t* view, int* screen_x, 
 /* Clips to the near plane; false if the segment is at or behind it. */
 static inline bool
 r3d_project_segment_cs_x(vec3x_t p0, vec3x_t p1, const r3d_line_view_x_t* view, int* ax, int* ay, int* bx, int* by) {
-    const bool front0 = p0.z > view->near_z;
-    const bool front1 = p1.z > view->near_z;
-
-    if (!front0 && !front1) {
+    if (!projectx_clip_near(view->near_z, &p0, &p1)) {
         return false;
-    }
-
-    if (front0 != front1) {
-        vec3x_t* behind = front0 ? &p1 : &p0;
-        const vec3x_t* front = front0 ? &p0 : &p1;
-        const int64_t frac_q16 = ((int64_t)(view->near_z - behind->z) * MATHX_ONE) / (front->z - behind->z);
-
-        behind->x += (int32_t)(((int64_t)(front->x - behind->x) * frac_q16) >> MATHX_SHIFT);
-        behind->y += (int32_t)(((int64_t)(front->y - behind->y) * frac_q16) >> MATHX_SHIFT);
-        behind->z = view->near_z;
     }
 
     r3d_camera_to_screen_x(p0, view, ax, ay);
