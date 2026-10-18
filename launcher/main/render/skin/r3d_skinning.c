@@ -4,6 +4,7 @@
 #include <string.h>
 #include "math/scalar/mathf_round.h"
 #include "math/scalar/mathi.h"
+#include "render/r3d_skin_format.h"
 #include "render/skin/r3d_skin_light_internal.h"
 
 static inline __attribute__((always_inline)) void

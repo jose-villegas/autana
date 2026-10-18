@@ -3,12 +3,14 @@
 # The demo scene's images for docs/images/, run by
 # launcher/tools/render/render_doc_images.sh.
 #
-#   doc_images_demo.sh <out-tree> <work-dir> SCENE.scene.toml OBJECT [--meshlets-only|--small-fill-only]
+#   doc_images_demo.sh <out-tree> <work-dir> SCENE.scene.toml OBJECT [--meshlets-only|--small-fill-only|--present-only]
 #
 # OBJECT is the full renderer; the scene must also place OBJECT_lite,
 # OBJECT_flat, OBJECT_fitted, OBJECT_fitted_full and OBJECT_flat_fitted.
 #
 # <out-tree> holds images in render/ and measured blocks in tables/.
+# --meshlets-only makes only the meshlet sheet; --present-only makes only the
+# three camera present GIFs (nearest, scanline, double) of OBJECT_fitted_full.
 #
 # Run from the repository root with $PYTHON set to a Python that has Pillow and numpy
 # (the fidelity sheet also needs launcher/tools/r3d/requirements.txt, found by find_r3d_python);
@@ -19,8 +21,8 @@ set -eu
 . scripts/lib/run.sh
 . launcher/tools/render/gif_from_avi.sh
 
-[ "$#" = 4 ] || { [ "$#" = 5 ] && { [ "$5" = --meshlets-only ] || [ "$5" = --small-fill-only ]; }; } || {
-    echo "$0: needs OUT WORK SCENE OBJECT [--meshlets-only|--small-fill-only]" >&2
+[ "$#" = 4 ] || { [ "$#" = 5 ] && { [ "$5" = --meshlets-only ] || [ "$5" = --small-fill-only ] || [ "$5" = --present-only ]; }; } || {
+    echo "$0: needs OUT WORK SCENE OBJECT [--meshlets-only|--small-fill-only|--present-only]" >&2
     exit 2
 }
 SCENE=$3
@@ -81,6 +83,7 @@ if [ "${5:-}" = --small-fill-only ]; then
     exit 0
 fi
 
+if [ "${5:-}" != --present-only ]; then
 for object in "$FULL" "${FULL}_lite" "${FULL}_fitted"; do
     run "$HOST" --quarter 1 --frames 30 --dt 100 -o "$W/meshlets-$object.bmp" \
         --scene "$ID" --object "$object" --view meshlets 2> "$W/meshlets-$object.log"
@@ -91,6 +94,7 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/${ID}-meshl
     --still-column fitted "$W/meshlets-${FULL}_fitted.bmp"
 [ "${5:-}" != --meshlets-only ] || exit 0
 small_fill_images
+fi
 
 # One looping flythrough per demo target and view, the same three seconds of
 # it so the GIFs compare, small enough to sit side by side in a table.
@@ -99,9 +103,14 @@ demo_gif() {
     shift
     run "$HOST" --quarter 1 --frames 30 --dt 100 \
         -o "$W/$name.bmp" --video "$W/$name.avi" "$@" 2> "$W/$name.log"
-    gif_from_avi "$W/$name.avi" "$RENDER/$name.gif" "fps=8,scale=240:-1:flags=lanczos" \
+    gif_from_avi "$W/$name.avi" "$RENDER/$name.gif" "${DEMO_GIF_FILTERS:-fps=8,scale=240:-1:flags=lanczos}" \
         "max_colors=64:stats_mode=diff"
 }
+DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-nearest --scene "$ID" --object "${FULL}_fitted_full" --present nearest
+DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-scanline --scene "$ID" --object "${FULL}_fitted_full" --present scanline
+DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-double --scene "$ID" --object "${FULL}_fitted_full" --present double
+[ "${5:-}" != --present-only ] || exit 0
+
 demo_gif ${ID}-full --scene "$ID" --object "$FULL"
 demo_gif ${ID}-lite --scene "$ID" --object "${FULL}_lite"
 demo_gif ${ID}-flat --scene "$ID" --object "${FULL}_flat"

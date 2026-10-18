@@ -3,6 +3,7 @@
 #include <math.h>
 #include <stddef.h>
 #include <string.h>
+#include "anim/anim_skeleton_format.h"
 #include "asset/asset_bytes.h"
 #include "asset/asset_entry.h"
 
@@ -55,13 +56,14 @@ check_joint(const anim_skeleton_t* skeleton, int i, uint32_t strings_size) {
 
 static asset_status_t
 check_rest(const float* rest) {
-    for (int k = 0; k < ANIM_SKELETON_REST_WIDTH; k++) {
+    for (int k = 0; k < (int)ANIM_SKELETON_REST_WIDTH; k++) {
         if (!isfinite(rest[k])) {
             return ASSET_ERR_FORMAT;
         }
     }
     float norm = 0.0F;
-    for (int k = ANIM_SKELETON_ROTATION; k < ANIM_SKELETON_ROTATION + ANIM_SKELETON_ROTATION_WIDTH; k++) {
+    for (int k = (int)ANIM_SKELETON_ROTATION; k < (int)ANIM_SKELETON_ROTATION + (int)ANIM_SKELETON_ROTATION_WIDTH;
+         k++) {
         const float q = rest[k];
         norm += q * q;
     }

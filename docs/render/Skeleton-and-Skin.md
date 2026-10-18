@@ -42,7 +42,7 @@ strings; strings end at the entry end. Gaps and reserved bytes are zero.
 | Vertex, at vertices_off, 2*influences+4 bytes | `u8 joints[influences]`, `u8 weights[influences]`, `i8 normal[3]`, `u8 zero` |
 
 Lighting codes are `R3D_SKIN_LIGHT_DIRECT`, `R3D_SKIN_LIGHT_RENORMALISED` and
-`R3D_SKIN_LIGHT_TABLE` in `render/r3d_skin.h`; unknown codes are refused.
+`R3D_SKIN_LIGHT_TABLE` in `render/r3d_skin_format.h`; unknown codes are refused.
 The import's `[skin].lighting` selects the mode, default `direct`; skin attachment
 fills the renderer's private mode. SKIN v1 is refused with `ASSET_ERR_VERSION`.
 

@@ -5,7 +5,8 @@
 # A | B | amplified difference rows, and a summary.
 #
 #   ./launcher/tools/render/render_compare.sh --script <host-render-script> \
-#       [-o <dir>] [--clear RRGGBB] [--video [--fps N]] [--crops N] <A> <B> \
+#       [-o <dir>] [--clear RRGGBB] [--video [--fps N]] [--crops N] \
+#       [--label-a TEXT] [--label-b TEXT] <A> <B> \
 #       [--render <label> "<renderer arguments>" ...]
 #
 # <A> and <B> are git revisions, each checked out in a temporary worktree
@@ -22,12 +23,16 @@
 #
 # --video also records every render's frames on both sides, so with --render
 # put --frames and --dt in the renderer arguments, and writes <dir>/<label>.mp4
-# (A | B | heatmap per frame, labelled with the revisions' short hashes) and
+# (A | B | heatmap per frame, A and B labelled as above) and
 # <label>.frames.csv (changed share, mean difference and holes per frame).
 # Temporal columns measure triangle-scale pops after a 4x4 box blur, with
 # a threshold of 8/255. Ordered dither reads as noise: judge it by eye.
 # --fps sets the playback rate; the default is the recorded one, 1000/dt.
 # Needs ffmpeg.
+#
+# --label-a and --label-b name the two sides in every sheet, crop and video
+# panel in place of the revisions' short names: what each side shows, such
+# as "Today (main)" or the technique and setting being tried.
 #
 # --crops N also writes compare.crops.png and <label>.crops.png: the N places
 # the two revisions differ most, A above B, enlarged. A video's come from its
@@ -112,6 +117,8 @@ while [ $# -gt 0 ]; do
         --samples) samples=${2:?--samples needs a number}; shift 2 ;;
         --r3d-python) r3d_python=${2:?--r3d-python needs a path}; shift 2 ;;
         --fps) fps=${2:?--fps needs a number}; shift 2 ;;
+        --label-a) name_a=${2:?--label-a needs text}; shift 2 ;;
+        --label-b) name_b=${2:?--label-b needs text}; shift 2 ;;
         --render)
             [ $# -ge 3 ] || usage
             printf '%s\t%s\n' "$2" "$3" >> "$renders"
@@ -236,9 +243,9 @@ if [ "$frames_only" = 1 ]; then
     exit 0
 fi
 
-label_a=$(short_name "$rev_a")
+label_a=${name_a:-$(short_name "$rev_a")}
 label_b=""
-[ -n "$rev_b" ] && label_b=$(short_name "$rev_b")
+[ -n "$rev_b" ] && label_b=${name_b:-$(short_name "$rev_b")}
 printf 'a: %s\nb: %s\n' "$label_a" "${label_b:-the source reference}" > "$out/summary.txt"
 render_side a "$rev_a"
 if [ -n "$reference" ]; then
