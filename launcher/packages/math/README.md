@@ -1,11 +1,10 @@
 # math
 
-The engine's maths library: scalar operations per number type, vectors to
-transforms over them, shapes, and motion (springs, orbiting a target). It depends on
-nothing but the C library and libm, so every layer of the firmware, the host
-tests, the tools and the editor build it. It may carry functions nothing calls
-yet, so the API covers what the types imply rather than only what today's
-callers use.
+The engine's maths library covers scalar operations, linear algebra, shapes,
+motion, and signal processing. It depends on the C library and libm; firmware,
+host tests, tools, and the editor build it.
+
+The API covers what its types imply, including functions without callers.
 
 | Folder | Holds |
 |---|---|
@@ -13,6 +12,7 @@ callers use.
 | `include/math/linear/` | Vectors, quaternions, 4x4 matrices and transforms, each one template instantiated per number type; [docs/math/README.md](../../../docs/math/README.md) is the reference |
 | `include/math/geometry/` | Shapes and their queries: half-open rectangles (`rectf`, `recti`, `rects`, `rectx`) and oriented planes (`planef`, `planex`), instantiated from geometry templates |
 | `include/math/motion/` | Integer springs on a fixed tick, orbiting a target |
+| `include/math/signal/` | Signal processing on sample blocks: Goertzel single-bin detection |
 | `src/` | The few functions that are not inline |
 | `tests/` | Its suites, run by both runners like every other suite |
 
@@ -96,4 +96,5 @@ header's opening comment; `--check` verifies it.
 | [include/math/scalar/rng.h](include/math/scalar/rng.h) | rng: a small deterministic pseudo-random generator, for anything that wants one. |
 | [include/math/scalar/trig.h](include/math/scalar/trig.h) | trig, sine and cosine of a 16-bit phase, in integers: TRIG_TURN is one turn and the result has TRIG_SIN_SHIFT fractional bits, at most TRIG_SIN_MAX. |
 | [include/math/scalar/units.h](include/math/scalar/units.h) | units: integer time conversion scales. |
+| [include/math/signal/goertzel.h](include/math/signal/goertzel.h) | Streaming single-bin detection (Goertzel, 1958). |
 <!-- /generated: package-headers -->
