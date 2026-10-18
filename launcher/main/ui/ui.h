@@ -266,7 +266,7 @@ void ui_color_begin(ui_color_slot_t slot, uint32_t rgb);
 void ui_color_end(void);
 void ui_scale_begin(int scale);
 void ui_scale_end(void);
-/* Text verbs inside draw their ink at `alpha`/255 coverage, dithered; 0 draws
- * no text. */
+/* Text verbs inside draw their ink at `alpha`/255 coverage, dithered and
+ * without the outline halo; 0 draws no text, 255 is opaque. */
 void ui_alpha_begin(uint8_t alpha);
 void ui_alpha_end(void);

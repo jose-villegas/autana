@@ -369,6 +369,23 @@ test_ui_row_centre_and_next(void) {
     TEST_ASSERT_EQUAL_INT(full.w, after.w);
 }
 
+/* A centred row ends with its window: the next window's first ui_next(),
+ * with no ui_row() of its own, is as wide as one before any centring. */
+static void
+test_ui_row_centre_ends_with_window(void) {
+    fixture();
+    begin_face();
+    const recti_t plain = ui_next();
+    ui_screen();
+    ui_row_centre(CENTRE_W, BOX.h);
+    (void)ui_next();
+    ui_screen();
+    const recti_t after = ui_next();
+    end_face();
+    TEST_ASSERT_EQUAL_INT(plain.x, after.x);
+    TEST_ASSERT_EQUAL_INT(plain.w, after.w);
+}
+
 static void
 draw_overflowing_rows(void) {
     for (int i = 0; i < OVERFLOW_ROWS; i++) {
@@ -787,6 +804,21 @@ test_alpha_scope(void) {
     assert_ink("Rest", THEME.text);
 }
 
+/* The scope scales an ink's own coverage: a caption the shell look leaves
+ * clear stays clear inside it. */
+static void
+test_alpha_scales_ink_coverage(void) {
+    fixture();
+    begin_face();
+    ui_alpha_begin(FADE_ALPHA);
+    ui_caption(BOX, "Clear");
+    ui_alpha_end();
+    end_face();
+    const mu_TextCommand* text = text_command("Clear");
+    TEST_ASSERT_NOT_NULL(text);
+    TEST_ASSERT_EQUAL_UINT8(ui_theme_from_style(ui_context()->style).caption.a * FADE_ALPHA / UINT8_MAX, text->color.a);
+}
+
 #ifndef ESP_PLATFORM
 static void
 report_imbalance(void) {
@@ -819,8 +851,10 @@ test_scope_depth_boundary(void) {
             ui_color_begin(UI_COLOR_TEXT, FACE_RGB);
             ui_scale_begin(SCOPE_SCALE);
             ui_disabled_begin(true);
+            ui_alpha_begin(FADE_ALPHA);
         }
         for (int i = 0; i < depth; i++) {
+            ui_alpha_end();
             ui_disabled_end();
             ui_scale_end();
             ui_color_end();
@@ -830,6 +864,7 @@ test_scope_depth_boundary(void) {
         TEST_ASSERT_EQUAL_INT(depth > UI_FACE_SCOPE_DEPTH ? 1 : 0, reports);
         assert_ink("Restored", THEME.text);
         assert_scale("Restored", THEME.text_scale);
+        assert_alpha("Restored", UINT8_MAX);
     }
 }
 
@@ -1364,6 +1399,7 @@ run_ui_face_suite(void) {
     RUN_TEST(test_ui_window_commands);
     RUN_TEST(test_ui_row_and_next);
     RUN_TEST(test_ui_row_centre_and_next);
+    RUN_TEST(test_ui_row_centre_ends_with_window);
     RUN_TEST(test_ui_scroll_window_commands);
     RUN_TEST(test_ui_scroll_window_scrolls_vertically);
     RUN_TEST(test_identity_duplicate_label);
@@ -1385,6 +1421,7 @@ run_ui_face_suite(void) {
     RUN_TEST(test_scale_scope);
     RUN_TEST(test_text_height_follows_scale);
     RUN_TEST(test_alpha_scope);
+    RUN_TEST(test_alpha_scales_ink_coverage);
 #ifndef ESP_PLATFORM
     RUN_TEST(test_scope_depth_boundary);
     RUN_TEST(test_nested_scope_values);

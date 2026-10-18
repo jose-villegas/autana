@@ -25,7 +25,8 @@ capture.
 instead of the scene. `--tap X,Y` adds one press and release there, in panel
 pixels: `menu-capybara-clips` opens the clip list. The menu draws over a
 solid background with no float on its path, so these renders are pinned in
-`render_lab_render_baseline.txt`.
+`render_lab_render_baseline.txt`. Re-pin with `--update-baseline` after
+looking at the images.
 
 ### Debug views
 

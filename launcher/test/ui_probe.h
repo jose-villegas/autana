@@ -11,21 +11,37 @@
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
 #include "ui/ui_mu.h"
+#include "unity.h"
+
+static inline const mu_TextCommand*
+ui_probe_text_command(const char* s) {
+    mu_Command* cmd = NULL;
+    while (mu_next_command(ui_context(), &cmd)) {
+        if (cmd->type == MU_COMMAND_TEXT && strcmp(cmd->text.str, s) == 0) {
+            return &cmd->text;
+        }
+    }
+    return NULL;
+}
 
 /* Where a line of text `s` was drawn in the last built frame, in canvas
  * coordinates: its first glyph's corner and its measured size. */
 static inline bool
 ui_probe_text(const char* s, recti_t* out) {
-    mu_Context* ctx = ui_context();
-    mu_Command* cmd = NULL;
-    while (mu_next_command(ctx, &cmd)) {
-        if (cmd->type == MU_COMMAND_TEXT && strcmp(cmd->text.str, s) == 0) {
-            *out = (recti_t){cmd->text.pos.x, cmd->text.pos.y, ctx->text_width(cmd->text.font, s, -1),
-                             ctx->text_height(cmd->text.font)};
-            return true;
-        }
+    const mu_TextCommand* text = ui_probe_text_command(s);
+    if (text == NULL) {
+        return false;
     }
-    return false;
+    const mu_Context* ctx = ui_context();
+    *out = (recti_t){text->pos.x, text->pos.y, ctx->text_width(text->font, s, -1), ctx->text_height(text->font)};
+    return true;
+}
+
+/* The ink coverage text `s` was drawn at, 0-255; -1 when it was not drawn. */
+static inline int
+ui_probe_text_alpha(const char* s) {
+    const mu_TextCommand* text = ui_probe_text_command(s);
+    return text == NULL ? -1 : text->color.a;
 }
 
 /* The open dropdown list: the window over the screen, its rows' area and
@@ -62,7 +78,7 @@ ui_probe_observe(const char* label, recti_t r) {
         i++;
     }
     if (i == UI_PROBE_WIDGETS) {
-        return;
+        TEST_FAIL_MESSAGE("more widgets than ui_probe.h records; raise UI_PROBE_WIDGETS");
     }
     if (i == ui_probe_widget_count) {
         ui_probe_widget_count++;
