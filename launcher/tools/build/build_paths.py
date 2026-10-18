@@ -30,13 +30,24 @@ def is_junction(path):
 
 def remove_output(path):
     """Remove links themselves; never traverse their build targets."""
+    path = os.path.abspath(path)
+    if os.name == 'nt' and not path.startswith('\\\\?\\'):
+        path = '\\\\?\\UNC\\' + path[2:] if path.startswith('\\\\') else '\\\\?\\' + path
     path = Path(path)
     if is_junction(path):
         os.rmdir(path)
     elif path.is_symlink():
         path.unlink()
     elif path.is_dir():
-        shutil.rmtree(path)
+        def writable(function, name, error):
+            if isinstance(error, tuple):
+                error = error[1]
+            if os.name != 'nt' or not isinstance(error, PermissionError):
+                raise error
+            os.chmod(name, os.stat(name).st_mode | stat.S_IWRITE)
+            function(name)
+
+        shutil.rmtree(path, **{'onexc' if sys.version_info >= (3, 12) else 'onerror': writable})
     elif path.exists():
         path.unlink()
 

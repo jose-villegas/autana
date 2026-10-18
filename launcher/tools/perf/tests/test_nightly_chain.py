@@ -111,6 +111,80 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual([len(item["steps"]) for item in writes if item["steps"]][-1], len(results))
         return results, replay, writes
 
+    def test_worktree_git_commands_enable_longpaths(self):
+        commands = []
+        original = subprocess.check_output
+
+        def record(command, **options):
+            if command[0] == "git":
+                commands.append(command)
+            return original(command, **options)
+
+        with patch.object(chain.subprocess, "check_output", side_effect=record):
+            self.run_chain()
+        for verb in ("add", "checkout", "submodule", "remove"):
+            selected = [command for command in commands if verb in command]
+            self.assertTrue(selected, verb)
+            for command in selected:
+                self.assertIn(["-c", "core.longpaths=true"],
+                              [command[i:i + 2] for i in range(len(command) - 1)])
+
+    def test_cleanup_failure_saves_manifest_and_preserves_results(self):
+        original = subprocess.check_output
+        commands = []
+
+        def fail_remove(command, **options):
+            commands.append(command)
+            if "worktree" in command and "remove" in command:
+                raise subprocess.CalledProcessError(255, command, stderr="Filename too long")
+            return original(command, **options)
+
+        with patch.object(chain.subprocess, "check_output", side_effect=fail_remove):
+            results, _, writes = self.run_chain()
+        self.assertEqual([result.outcome for result in results], ["measured"] * 3)
+        self.assertTrue(writes[-1]["cleanup"].startswith("failed:"))
+        self.assertIn("Filename too long", (self.args.out / "cleanup.log").read_text())
+        self.assertTrue(any("prune" in command for command in commands))
+        self.assertFalse(list(self.args.out.glob("nightly-*")))
+
+    def test_directory_cleanup_failure_still_saves_manifest(self):
+        with patch.object(chain, "remove_output", side_effect=OSError("directory busy")):
+            results, _, writes = self.run_chain()
+        self.assertEqual([result.outcome for result in results], ["measured"] * 3)
+        self.assertIn("directory busy", writes[-1]["cleanup"])
+        self.assertIn("directory busy", (self.args.out / "cleanup.log").read_text())
+
+    def test_cleanup_warning_does_not_change_lane_exit_status(self):
+        plan = self.root / "plan.json"
+        plan.write_text(json.dumps(dict(night="2026-10-18", started=self.clock.now().isoformat(),
+                                       lanes={"20E8": dict(lane="0/2", previous=None,
+                                                          steps=[vars(self.steps()[0])])})))
+        command = ["scoped_chain", "run", "--plan", str(plan), "--board", "20E8", "--lane", "0/2",
+                   "--until", "07:00", "--repo", str(self.repo), "--data", str(self.args.data),
+                   "--out", str(self.args.out), "--suite", "suite", "-", "-",
+                   "--selftest-at", "22:31", "--selftest", "selftest-replay"]
+        original = subprocess.check_output
+
+        def fail_remove(command, **options):
+            if "worktree" in command and "remove" in command:
+                raise subprocess.CalledProcessError(255, command)
+            return original(command, **options)
+
+        for build, capture, selftest, expected in ((0, False, 0, 0), (1, False, 0, 1),
+                                                  (0, True, 0, 1), (0, False, 1, 1)):
+            clock = Clock()
+            replay = Replay(self.root, clock, builds=(build,), captures=(capture,), selftest_code=selftest)
+            with self.subTest(build=build, capture=capture, selftest=selftest), \
+                    patch.object(sys, "argv", command), \
+                    patch.dict(os.environ, _AUTANA_DEVICE_LOCK_TOKEN="outer-hold"), \
+                    patch("layout_measure.capture_board", return_value=MACHINE), \
+                    patch.object(chain, "Clock", return_value=clock), \
+                    patch.object(chain, "run_stamped", replay), \
+                    patch.object(chain.subprocess, "check_output", side_effect=fail_remove):
+                self.assertEqual(chain.main(), expected)
+                manifest = lnt.read_last_night(self.args.data, "20E8")
+                self.assertTrue(manifest["cleanup"].startswith("failed:"))
+
     def test_image_hash_excludes_metadata_but_includes_code_and_assets(self):
         build = self.root / "image"
         build.mkdir()

@@ -43,6 +43,27 @@ class BuildPathsTests(unittest.TestCase):
         self.assertFalse(link.exists())
         self.assertEqual((target / 'sentinel').read_text(), 'keep')
 
+    @unittest.skipUnless(os.name == 'nt', 'Windows long paths and read-only files')
+    def test_remove_deep_readonly_tree_preserves_junction_target(self):
+        import stat
+        tree = self.root / 'deep'
+        extended = Path('\\\\?\\' + str(tree.resolve()))
+        nested = extended
+        while len(str(nested)) <= 300:
+            nested /= 'nested-directory'
+        nested.mkdir(parents=True)
+        file = nested / 'readonly'
+        file.write_text('remove')
+        file.chmod(stat.S_IREAD)
+        target = self.root / 'external'
+        target.mkdir()
+        (target / 'sentinel').write_text('keep')
+        import _winapi
+        _winapi.CreateJunction(str(target), str(extended / 'junction'))
+        build_paths.remove_output(tree)
+        self.assertFalse(tree.exists())
+        self.assertEqual((target / 'sentinel').read_text(), 'keep')
+
     def test_repoint_preserves_previous_target(self):
         target = build_paths.prepare(self.launcher, 'build.dev')
         (target / 'sentinel').write_text('keep')

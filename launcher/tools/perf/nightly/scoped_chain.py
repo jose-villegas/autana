@@ -17,6 +17,8 @@ from types import SimpleNamespace
 PERF = Path(__file__).resolve().parents[1]
 REPO = PERF.parents[2]
 sys.path.insert(0, str(PERF))
+sys.path.insert(0, str(PERF.parent / "build"))
+from build_paths import remove_output
 from capture import require_same_board, board_label
 from layout_measure import autana_command, run_flash, run_stamped, REPORT_LINE, write_json
 from nightly.lnt import lnt_report, night_manifest, read_last_night
@@ -66,7 +68,7 @@ def image_hash(build_dir):
 
 
 def git(repo, *words):
-    return subprocess.check_output(["git", "-C", str(repo), *words], text=True).strip()
+    return subprocess.check_output(["git", "-C", str(repo), "-c", "core.longpaths=true", *words], text=True, stderr=subprocess.STDOUT).strip()
 
 
 def history_steps(repo, tip):
@@ -153,8 +155,11 @@ def run_chain(steps, args, runner=None, clock=None):
                    if getattr(args, "selftest_at", None) else None)
     manifest = Path(args.data) / "scoped" / board / night / "night.json"
 
+    cleanup = "pending"
+
     def save():
         value = night_manifest(board, machine, night, args.lane, results, stop_reason, last_measured, selftest)
+        value["cleanup"] = cleanup
         value["last_image_hash"] = previous_hash
         write_json(manifest, value)
 
@@ -189,85 +194,112 @@ def run_chain(steps, args, runner=None, clock=None):
         save()
 
     save()
-    with tempfile.TemporaryDirectory(prefix="nightly-", dir=output) as directory:
-        worktree = Path(directory) / "tree"
+    directory = tempfile.mkdtemp(prefix="nightly-", dir=output)
+    worktree = Path(directory) / "tree"
+    try:
+        if steps:
+            git(args.repo, "worktree", "add", "--detach", str(worktree), steps[0].commit)
+        for index, step in enumerate(steps):
+            test_if_due()
+            reserve = (SELFTEST_ALLOWANCE_SECONDS if selftest_at and selftest["outcome"] == "not_run" else 0)
+            if not stop_reason and clock.now() + timedelta(seconds=worst_step + reserve) > deadline:
+                stop_reason = "window"
+            result = StepResult(step, "not_run_stopped" if stop_reason == "capture_failures" else "not_run_window")
+            results.append(result)
+            if stop_reason:
+                save()
+                continue
+            begin = clock.now()
+            result.outcome = "build_failed"
+            with (output / f"{index:0{STEP_INDEX_DIGITS}}-{step.commit[:REPORT_SHA_DIGITS]}-build.log").open("w", encoding="utf-8") as log:
+                try:
+                    git(worktree, "checkout", "--detach", step.commit)
+                    git(worktree, "submodule", "update", "--init", "--recursive")
+                    code, _, _ = runner(autana_command("--project", str(worktree), "build", "diag",
+                                                      "--perf-scope", "--layout-seed", "0"), log,
+                                         BUILD_TIMEOUT_SECONDS)
+                    result.build_seconds = (clock.now() - begin).total_seconds()
+                    if code:
+                        raise RuntimeError(f"build exited {code}")
+                    builds = list(worktree.glob("launcher/build*/build_id.txt"))
+                    build = max(builds, key=lambda path: path.stat().st_mtime).parent
+                    result.build_id = (build / "build_id.txt").read_text().strip()
+                    result.image_hash = image_hash(build)
+                except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as error:
+                    log.write(str(error) + "\n")
+            result.build_seconds = (clock.now() - begin).total_seconds()
+            if result.image_hash:
+                if step.role != "anchor" and result.image_hash == previous_hash:
+                    result.outcome = "skipped_same_image"
+                else:
+                    measure = clock.now()
+                    result.outcome = "capture_failed"
+                    try:
+                        capture_args = SimpleNamespace(project=worktree, out=output / f"{index:0{STEP_INDEX_DIGITS}}-capture",
+                                                       suite=args.suite, runs=1, timeout=CAPTURE_TIMEOUT_SECONDS,
+                                                       wait=0)
+                        record = run_flash(capture_args, seed=0, runner=runner)
+                        actual = require_same_board({"previous": machine, "capture": record["board"]}
+                                                    if machine else {"capture": record["board"]})
+                        if not actual or board_label(actual).split()[0].upper() != board.upper():
+                            raise ValueError("capture does not identify the requested board")
+                        machine = actual
+                        rows = {}
+                        for suite, entry in record["suites"].items():
+                            for run in entry["runs"]:
+                                for row, value in run["rows"].items():
+                                    rows.setdefault(suite + "/" + row, []).append(value)
+                        if not rows:
+                            raise ValueError("capture has no timing rows")
+                        result.report = f"{index:0{STEP_INDEX_DIGITS}}-{step.commit[:REPORT_SHA_DIGITS]}.json"
+                        write_json(manifest.parent / result.report,
+                                   lnt_report(machine, board, step.commit, step.pr, step.role, night,
+                                              record["build_id"], result.image_hash, measure.isoformat(),
+                                              clock.now().isoformat(), rows))
+                        result.outcome = "measured"
+                        previous_hash, last_measured, failures = result.image_hash, step.commit, 0
+                    except (OSError, RuntimeError, ValueError) as error:
+                        (output / f"{index:0{STEP_INDEX_DIGITS}}-error.log").write_text(str(error), encoding="utf-8")
+                        failures += 1
+                        if failures >= CAPTURE_FAILURE_LIMIT:
+                            stop_reason = "capture_failures"
+                    result.measure_seconds = (clock.now() - measure).total_seconds()
+            worst_step = max(worst_step, (clock.now() - begin).total_seconds())
+            save()
+        test_if_due(wait=True)
+    finally:
+        errors = []
+        try:
+            records = worktree / ".records/device"
+            if records.exists():
+                shutil.copytree(records, output / "device", dirs_exist_ok=True)
+        except OSError as error:
+            errors.append(str(error))
+        try:
+            if worktree.exists():
+                git(args.repo, "worktree", "remove", "--force", "--force", str(worktree))
+        except (OSError, subprocess.CalledProcessError) as error:
+            errors.append(str(error) + ": " + str(getattr(error, "output", None) or getattr(error, "stderr", "")))
+            try:
+                remove_output(worktree)
+            except OSError as error:
+                errors.append(str(error))
+        try:
+            remove_output(directory)
+        except OSError as error:
+            errors.append(str(error))
         try:
             if steps:
-                git(args.repo, "worktree", "add", "--detach", str(worktree), steps[0].commit)
-            for index, step in enumerate(steps):
-                test_if_due()
-                reserve = (SELFTEST_ALLOWANCE_SECONDS if selftest_at and selftest["outcome"] == "not_run" else 0)
-                if not stop_reason and clock.now() + timedelta(seconds=worst_step + reserve) > deadline:
-                    stop_reason = "window"
-                result = StepResult(step, "not_run_stopped" if stop_reason == "capture_failures" else "not_run_window")
-                results.append(result)
-                if stop_reason:
-                    save()
-                    continue
-                begin = clock.now()
-                result.outcome = "build_failed"
-                with (output / f"{index:0{STEP_INDEX_DIGITS}}-{step.commit[:REPORT_SHA_DIGITS]}-build.log").open("w", encoding="utf-8") as log:
-                    try:
-                        git(worktree, "checkout", "--detach", step.commit)
-                        git(worktree, "submodule", "update", "--init", "--recursive")
-                        code, _, _ = runner(autana_command("--project", str(worktree), "build", "diag",
-                                                          "--perf-scope", "--layout-seed", "0"), log,
-                                             BUILD_TIMEOUT_SECONDS)
-                        result.build_seconds = (clock.now() - begin).total_seconds()
-                        if code:
-                            raise RuntimeError(f"build exited {code}")
-                        builds = list(worktree.glob("launcher/build*/build_id.txt"))
-                        build = max(builds, key=lambda path: path.stat().st_mtime).parent
-                        result.build_id = (build / "build_id.txt").read_text().strip()
-                        result.image_hash = image_hash(build)
-                    except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as error:
-                        log.write(str(error) + "\n")
-                result.build_seconds = (clock.now() - begin).total_seconds()
-                if result.image_hash:
-                    if step.role != "anchor" and result.image_hash == previous_hash:
-                        result.outcome = "skipped_same_image"
-                    else:
-                        measure = clock.now()
-                        result.outcome = "capture_failed"
-                        try:
-                            capture_args = SimpleNamespace(project=worktree, out=output / f"{index:0{STEP_INDEX_DIGITS}}-capture",
-                                                           suite=args.suite, runs=1, timeout=CAPTURE_TIMEOUT_SECONDS,
-                                                           wait=0)
-                            record = run_flash(capture_args, seed=0, runner=runner)
-                            actual = require_same_board({"previous": machine, "capture": record["board"]}
-                                                        if machine else {"capture": record["board"]})
-                            if not actual or board_label(actual).split()[0].upper() != board.upper():
-                                raise ValueError("capture does not identify the requested board")
-                            machine = actual
-                            rows = {}
-                            for suite, entry in record["suites"].items():
-                                for run in entry["runs"]:
-                                    for row, value in run["rows"].items():
-                                        rows.setdefault(suite + "/" + row, []).append(value)
-                            if not rows:
-                                raise ValueError("capture has no timing rows")
-                            result.report = f"{index:0{STEP_INDEX_DIGITS}}-{step.commit[:REPORT_SHA_DIGITS]}.json"
-                            write_json(manifest.parent / result.report,
-                                       lnt_report(machine, board, step.commit, step.pr, step.role, night,
-                                                  record["build_id"], result.image_hash, measure.isoformat(),
-                                                  clock.now().isoformat(), rows))
-                            result.outcome = "measured"
-                            previous_hash, last_measured, failures = result.image_hash, step.commit, 0
-                        except (OSError, RuntimeError, ValueError) as error:
-                            (output / f"{index:0{STEP_INDEX_DIGITS}}-error.log").write_text(str(error), encoding="utf-8")
-                            failures += 1
-                            if failures >= CAPTURE_FAILURE_LIMIT:
-                                stop_reason = "capture_failures"
-                        result.measure_seconds = (clock.now() - measure).total_seconds()
-                worst_step = max(worst_step, (clock.now() - begin).total_seconds())
-                save()
-            test_if_due(wait=True)
+                git(args.repo, "worktree", "prune")
+        except (OSError, subprocess.CalledProcessError) as error:
+            errors.append(str(error))
+        cleanup = "failed: " + "; ".join(errors) if errors else "passed"
+        try:
+            if errors:
+                (output / "cleanup.log").write_text(cleanup + "\n", encoding="utf-8")
+        except OSError as error:
+            cleanup += "; cleanup log: " + str(error)
         finally:
-            if worktree.exists():
-                records = worktree / ".records/device"
-                if records.exists():
-                    shutil.copytree(records, output / "device", dirs_exist_ok=True)
-                git(args.repo, "worktree", "remove", "--force", "--force", str(worktree))
             save()
     return results
 
