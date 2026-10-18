@@ -1,5 +1,7 @@
 #include "render/render_view.h"
 
+#include <assert.h>
+
 static void
 view_frame(render_view_t* view, vec3f_t right, vec3f_t down, float half_fov_short_tan, viewport_t viewport) {
     const viewport_quarter_axes_t axes = viewport_quarter_axes(viewport.quarter);
@@ -28,6 +30,7 @@ render_view_make(const transformf_t* pose, float half_fov_short_tan, float near_
 
 void
 render_view_refit(render_view_t* view, viewport_t viewport) {
+    assert(view->lens.fx == view->lens.fy);
     const viewport_quarter_axes_t before = viewport_quarter_axes(view->viewport.quarter);
     const vec3f_t right = vec3f_add(vec3f_scale(view->screen_x, (float)before.x_right),
                                     vec3f_scale(view->screen_y, (float)before.y_right));

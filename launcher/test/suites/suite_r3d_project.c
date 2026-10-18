@@ -308,9 +308,9 @@ test_line_points_follow_the_view_and_raster_lens_in_every_quarter(void) {
                     TEST_ASSERT_FLOAT_WITHIN(float_bound_px, expected_y, (float)fy);
                     TEST_ASSERT_FLOAT_WITHIN(fixed_bound_px, expected_x, (float)qx);
                     TEST_ASSERT_FLOAT_WITHIN(fixed_bound_px, expected_y, (float)qy);
-                    const vec3f_t lp = mat4f_apply(&lens.m, point);
-                    TEST_ASSERT_FLOAT_WITHIN(lens_bound_px, expected_x, lens.project.cx + lp.x / lp.z);
-                    TEST_ASSERT_FLOAT_WITHIN(lens_bound_px, expected_y, lens.project.cy + lp.y / lp.z);
+                    const vec2f_t screen = projectf_screen(&lens.project, mat4f_apply(&lens.m, point));
+                    TEST_ASSERT_FLOAT_WITHIN(lens_bound_px, expected_x, screen.x);
+                    TEST_ASSERT_FLOAT_WITHIN(lens_bound_px, expected_y, screen.y);
                 }
             }
         }

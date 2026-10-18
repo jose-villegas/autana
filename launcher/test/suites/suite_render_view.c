@@ -93,9 +93,10 @@ test_point_straight_ahead_projects_to_center(void) {
         const render_view_t view = view_of(&pose, quarter);
         r3d_lens_t lens;
         r3d_lens_init(&lens, &view, 1);
-        const vec3f_t point = mat4f_apply(&lens.m, vec3f_add(view.position, vec3f_scale(view.forward, AHEAD_Z)));
-        TEST_ASSERT_FLOAT_WITHIN(EPSILON, view.lens.cx, lens.project.cx + point.x / point.z);
-        TEST_ASSERT_FLOAT_WITHIN(EPSILON, view.lens.cy, lens.project.cy + point.y / point.z);
+        const vec2f_t screen = projectf_screen(
+            &lens.project, mat4f_apply(&lens.m, vec3f_add(view.position, vec3f_scale(view.forward, AHEAD_Z))));
+        TEST_ASSERT_FLOAT_WITHIN(EPSILON, view.lens.cx, screen.x);
+        TEST_ASSERT_FLOAT_WITHIN(EPSILON, view.lens.cy, screen.y);
     }
 }
 
@@ -117,15 +118,15 @@ test_off_axis_lens_projection_and_anisotropic_fit(void) {
             const float focal = (float)HEIGHT / (2.0F * HALF_FOV_TAN);
             const float x = (float)width * 0.5F + focal * offsets[quarter][0] / AHEAD_Z;
             const float y = (float)height * 0.5F + focal * offsets[quarter][1] / AHEAD_Z;
-            vec3f_t p = mat4f_apply(&lens.m, ticks);
-            TEST_ASSERT_FLOAT_WITHIN(EPSILON, x, lens.project.cx + p.x / p.z);
-            TEST_ASSERT_FLOAT_WITHIN(EPSILON, y, lens.project.cy + p.y / p.z);
+            vec2f_t screen = projectf_screen(&lens.project, mat4f_apply(&lens.m, ticks));
+            TEST_ASSERT_FLOAT_WITHIN(EPSILON, x, screen.x);
+            TEST_ASSERT_FLOAT_WITHIN(EPSILON, y, screen.y);
             TEST_ASSERT_EQUAL_FLOAT(NEAR_Z, lens.project.near_z);
             TEST_ASSERT_EQUAL_FLOAT(NEAR_Z / (float)R3D_SUBPIXEL, lens.near_subpixels);
             r3d_lens_fit(&lens, width / 2, height / 4);
-            p = mat4f_apply(&lens.m, ticks);
-            TEST_ASSERT_FLOAT_WITHIN(EPSILON, x * 0.5F, lens.project.cx + p.x / p.z);
-            TEST_ASSERT_FLOAT_WITHIN(EPSILON, y * 0.25F, lens.project.cy + p.y / p.z);
+            screen = projectf_screen(&lens.project, mat4f_apply(&lens.m, ticks));
+            TEST_ASSERT_FLOAT_WITHIN(EPSILON, x * 0.5F, screen.x);
+            TEST_ASSERT_FLOAT_WITHIN(EPSILON, y * 0.25F, screen.y);
         }
     }
 }

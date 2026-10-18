@@ -204,15 +204,18 @@ test_frustum_near_plane_sits_at_near_z(void) {
 static void
 test_frustum_corner_rays_lie_on_both_side_planes(void) {
     frustum_fixture_t f;
-    frustum_fixture(&f, &PLANE_LENS);
-    for (int x = PLANE_FRUSTUM_LEFT; x <= PLANE_FRUSTUM_RIGHT; x++) {
-        for (int y = PLANE_FRUSTUM_TOP; y <= PLANE_FRUSTUM_BOTTOM; y++) {
-            const vec3f_t corner = {(frustum_edge(x) - PLANE_LENS.cx) * PLANE_DEPTH,
-                                    (frustum_edge(y) - PLANE_LENS.cy) * PLANE_DEPTH, PLANE_DEPTH};
-            TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, 0.0F, planef_distance(f.planes[x], corner));
-            TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, 0.0F, planef_distance(f.planes[y], corner));
-            for (int p = 0; p < PLANE_FRUSTUM_COUNT; p++) {
-                assert_fixed_plane(f.planes[p], f.fixed[p], corner);
+    const projectf_t lenses[] = {PLANE_LENS, PLANE_SCALED_LENS};
+    for (size_t i = 0; i < sizeof(lenses) / sizeof(lenses[0]); i++) {
+        frustum_fixture(&f, &lenses[i]);
+        for (int x = PLANE_FRUSTUM_LEFT; x <= PLANE_FRUSTUM_RIGHT; x++) {
+            for (int y = PLANE_FRUSTUM_TOP; y <= PLANE_FRUSTUM_BOTTOM; y++) {
+                const vec3f_t corner = {(frustum_edge(x) - lenses[i].cx) * PLANE_DEPTH / lenses[i].fx,
+                                        (lenses[i].cy - frustum_edge(y)) * PLANE_DEPTH / lenses[i].fy, PLANE_DEPTH};
+                TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, 0.0F, planef_distance(f.planes[x], corner));
+                TEST_ASSERT_FLOAT_WITHIN(PLANE_FLOAT_TOLERANCE, 0.0F, planef_distance(f.planes[y], corner));
+                for (int p = 0; p < PLANE_FRUSTUM_COUNT; p++) {
+                    assert_fixed_plane(f.planes[p], f.fixed[p], corner);
+                }
             }
         }
     }

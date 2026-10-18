@@ -68,7 +68,7 @@ open_the_meshes(void) {
     open_the_mesh(mesh_of(SPONZA_BAKE_FLAT), &mesh_flat);
 }
 
-/* The flat reference: every cluster's eight corners against each plane. */
+/* Hand-written planes keep this an independent check of the cull. */
 static bool
 cluster_in_view(const r3d_lit_cluster_t* c, const r3d_lens_t* lens) {
     int beyond[5] = {0};

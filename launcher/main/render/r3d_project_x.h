@@ -1,12 +1,9 @@
-/*
- * r3d_project_x: fixed-point line projection with a 32-bit per-point divide.
- * Owns the camera-space model matrix, built per frame from render_view_t
- * and a model. Matrix entries and camera points carry R3D_X_UNIT_ONE per
- * meter. Q16.16 model points need no further shift after mat4x_apply().
- * Header-only and ESP-IDF-free.
- */
+/* r3d_project_x: fixed-point line projection with a 32-bit per-point divide.
+ * Per-frame render_view_t and model matrix: R3D_X_UNIT_ONE per meter;
+ * mat4x_apply() maps Q16.16 model points without another shift. ESP-IDF-free. */
 #pragma once
 
+#include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -66,6 +63,7 @@ typedef struct {
  * the caller checks those inputs, else uses mat4x_apply(). */
 static inline r3d_line_view_x_t
 r3d_line_view_x_make(const render_view_t* view, const transformf_t* model, const float meters_per_unit[3]) {
+    assert(view->lens.fx == view->lens.fy);
     const mat4f_t matrix = r3d_line_matrix(view, model);
     r3d_line_view_x_t out;
     for (int r = 0; r < 4; r++) {

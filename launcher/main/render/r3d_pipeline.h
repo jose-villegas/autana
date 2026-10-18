@@ -29,12 +29,10 @@
 #include "sdkconfig.h"
 #endif
 
-/* A view made ready for one viewport and one mesh's position scale.
- * Lens space: x and y are already pixels at unit depth, turned for the
- * panel's quarter, so a screen position is centre + (x, y) / z. */
+/* A view made ready for one viewport and one mesh's position scale. */
 typedef struct {
     mat4f_t m;          /* position ticks to lens space */
-    projectf_t project; /* m folds in focal lengths and turn; picture-y-down requires fx = 1, fy = -1. */
+    projectf_t project; /* m already applies the focal lengths and turn, so lens space's pinhole is {1, -1}. */
     int width, height;
     float snap_cx, snap_cy; /* the centre in subpixels, plus R3D_SNAP_BIAS */
     float near_subpixels;   /* near_z / R3D_SUBPIXEL */
