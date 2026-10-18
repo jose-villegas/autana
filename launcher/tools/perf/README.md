@@ -229,3 +229,11 @@ agreement and Holm across the table's cells.
 `plan.json` and per-capture JSON retain failures; two consecutive capture
 failures stop acquisition. Rebuild the generated report with
 `python launcher/tools/perf/perf_sweep.py report DIR`.
+
+Render perf captures force every timed render window through portrait and
+landscape. Rows carry `quarter=portrait` or `quarter=landscape`; the quarter
+is part of the metric name in comparisons, layout pilots and sweeps. Stage
+and span metrics retain that identity too. Untagged captures retain their
+unqualified row names, so comparisons do not silently pair them with tagged
+rows. Single-viewport render documentation readers select portrait by default;
+`dynres_report.py --quarter landscape` selects landscape explicitly.
