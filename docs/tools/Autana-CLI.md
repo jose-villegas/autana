@@ -67,7 +67,7 @@ guards sessions and CI jobs on one PC, not two PCs plugged into one board.
 |---|---|
 | `autana devices [--json]` | Short ids, serials, ports and availability. Same JSON as `status --json`. |
 | `autana status [--json]` | Every board: free or held, the holder, estimated free time, and the queue. |
-| `autana lock run [--keep-on-failure <seconds>] -- <command...>` | Hold the board while the command runs; it inherits the token. |
+| `autana lock run [--keep-on-failure <seconds>] [--estimate <seconds>] -- <command...>` | Hold the board while the command runs; it inherits the token. |
 | `autana lock take [--for <seconds> \| --until-released [--pid <pid>]] [--estimate <seconds>] <note...>` | Wait for the board and print a token. A timed hold lasts at most an hour. |
 | `autana lock release [<token>]` | Release a hold early. |
 | `autana lock wait` | Wait until the board is free, without taking it. |
