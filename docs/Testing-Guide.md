@@ -609,7 +609,11 @@ with `expect_unity_test_output()`.
 
 For a board, build the shell image with Unity suites before taking the lock, then flash
 and test within the hold. The existing `resolve-port` command reads the board
-selected by that hold. Pytest opens the port without flashing:
+selected by that hold. Pytest opens the port without flashing.
+
+Board tests share one open port per session, with DTR and RTS held low.
+Each test has its own DUT and log. The first exchange probes BUILDID;
+any boot banner, reset line or crash fails the test. QEMU tests wait for boot.
 
 ```sh
 autana build diag

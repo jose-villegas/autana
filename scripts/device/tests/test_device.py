@@ -126,6 +126,15 @@ class OpenSerialTests(unittest.TestCase):
             connection = device.open_serial()
         self.assertEqual(connection.write_timeout, device.BOOT_WAIT_SECONDS)
 
+    def test_modem_policy_wraps_the_open(self):
+        events = []
+        with self.stalled(), \
+                mock.patch.object(device.board_serial, "before_open", side_effect=lambda port: events.append(("before", port))), \
+                mock.patch.object(StalledSerial, "open", side_effect=lambda: events.append(("open", None))), \
+                mock.patch.object(device.board_serial, "after_open", side_effect=lambda port: events.append(("after", port))):
+            connection = device.open_serial()
+        self.assertEqual(events, [("before", connection), ("open", None), ("after", connection)])
+
     def test_a_write_the_board_never_takes_is_an_error(self):
         with self.stalled():
             connection = device.open_serial()
@@ -2032,7 +2041,8 @@ class SerialLineOrderTests(unittest.TestCase):
             with self.subTest(failure=failure), \
                  mock.patch.dict(sys.modules, {"serial": Namespace(Serial=Serial)}), \
                  mock.patch.object(device, "locked_port", return_value="fake"), \
-                 mock.patch.object(device, "os", Namespace(name="posix")):
+                 mock.patch.object(device, "os", Namespace(name="posix")), \
+                 mock.patch.object(device.board_serial, "os", Namespace(name="posix")):
                 with self.assertRaises(failure):
                     device.open_serial()
                 self.assertTrue(handles[-1].closed)
@@ -2057,7 +2067,8 @@ class SerialLineOrderTests(unittest.TestCase):
                             self.closed = True
                     with mock.patch.dict(sys.modules, {"serial": Namespace(Serial=Serial)}), \
                          mock.patch.object(device, "locked_port", return_value="fake"), \
-                         mock.patch.object(device, "os", Namespace(name="posix")):
+                         mock.patch.object(device, "os", Namespace(name="posix")), \
+                         mock.patch.object(device.board_serial, "os", Namespace(name="posix")):
                         if code == errno.EIO:
                             with self.assertRaises(OSError) as caught:
                                 device.open_serial()
@@ -2092,7 +2103,8 @@ class SerialLineOrderTests(unittest.TestCase):
             with self.subTest(platform=platform), \
                  mock.patch.dict(sys.modules, {"serial": Namespace(Serial=Serial)}), \
                  mock.patch.object(device, "locked_port", return_value="fake-port"), \
-                 mock.patch.object(device, "os", Namespace(name=platform)):
+                 mock.patch.object(device, "os", Namespace(name=platform)), \
+                 mock.patch.object(device.board_serial, "os", Namespace(name=platform)):
                 connection = device.open_serial()
                 self.assertEqual(connection.transitions[-1], (False, False))
                 self.assertNotIn((False, True), connection.transitions)
@@ -2127,6 +2139,7 @@ class ResetReconnectTests(unittest.TestCase):
 
         for patch in (mock.patch.dict(sys.modules, {"serial": self.usb.serial_module(self.now, self.sleep, self.platform)}),
                       mock.patch.object(device, "os", Namespace(name=self.platform)),
+                      mock.patch.object(device.board_serial, "os", Namespace(name=self.platform)),
                       mock.patch.object(device, "plugged_boards", self.boards),
                       mock.patch.object(device, "require_live_lock"),
                       mock.patch.object(device, "require_unlost"),

@@ -28,6 +28,7 @@ import lock_scope
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
+import board_serial
 from console_protocol import replies_to, require_development
 from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, BUILD_ID_REQUEST,
                             crash_signs, suite_failure_signs)
@@ -288,9 +289,7 @@ def open_serial():
     a second open by itself; POSIX needs `exclusive`, an advisory flock that
     keeps out our readers and esptool but not screen or ModemManager, else two
     readers silently split the byte stream. A refused open is an OSError,
-    which open_when_free treats as busy. DTR low with RTS high resets USB
-    Serial/JTAG, so Windows sets both low before the open, and POSIX, which
-    opens with both raised, lowers RTS before DTR."""
+    which open_when_free treats as busy."""
     port = locked_port()
     try:
         import serial
@@ -322,8 +321,6 @@ def open_serial():
                 time.sleep(FLUSH_POLL_SECONDS)
 
     connection = BoardSerial()
-    if os.name != "nt":
-        connection.exclusive = True
     connection.port = port
     connection.baudrate = BAUD
     connection.timeout = 0.2
@@ -331,18 +328,10 @@ def open_serial():
     # in the OS forever, holding the lock with it. A reading board drains a
     # line at once; the longest a healthy one goes without reading is its boot.
     connection.write_timeout = BOOT_WAIT_SECONDS
-    if os.name == "nt":
-        connection.dtr = connection.rts = False
+    board_serial.before_open(connection)
     try:
         connection.open()
-        if os.name != "nt":
-            try:
-                connection.rts = False
-                connection.dtr = False
-            except OSError as error:
-                # A PTY has no modem lines to lower.
-                if error.errno not in (errno.EINVAL, errno.ENOTTY):
-                    raise
+        board_serial.after_open(connection)
     except BaseException:
         connection.close()
         raise
