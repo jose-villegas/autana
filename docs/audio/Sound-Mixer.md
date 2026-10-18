@@ -73,30 +73,42 @@ waits for the mixer before it releases packs and app memory
 ## Cost
 
 A click costs its pack bytes in flash (2.5 KB for the engine `tap`), no RAM
-beyond its `sound_t`, and about 0.05 ms of CPU per block while it plays.
+beyond its `sound_t`.
 
-The mixer uses under 1 % of core 1 and about 6.3 KB of internal heap, paid at
-boot whether or not anything plays. Measured on the reference board (A308) with
-a development build (the firmware flavour that adds console commands):
+The mixer allocates internal heap at boot whether or not anything plays.
+Heap and display measurements on the reference board (A308), with a
+development build:
 
 | Cost | Value |
 |---|---|
-| CPU, one ADPCM voice looping | 0.05 ms average, 0.09 ms worst per 5.8 ms block |
 | Display push (the frame loop's present stage), idle vs one voice looping | 8.93–9.02 ms vs 8.91–9.02 ms per frame: no change |
 | Internal heap, vs the same build without the mixer | −6,300 B free (2.2 % of 282,739); largest free block −4,096 B |
 | Extra RAM while a development capture runs | about 1.4 KB of microphone buffers (`open_dma_bytes` 1,448): TX is already open, so only RX is new; freed when it closes, within a few dozen bytes. [Audio-Path's RAM capture](Audio-Path.md#ram) predates the mixer and opened both |
 
-Per-voice cost and PCM16 against ADPCM have not been measured yet. Internal RAM
-is the chip's fast on-die memory; the 8 MB PSRAM (slower external RAM) is not used.
+Internal RAM is the chip's fast on-die memory; the 8 MB PSRAM (slower external
+RAM) is not used.
+
+The table comes from [sound_mix_capture.py](../../launcher/tools/audio/sound_mix_capture.py)
+captures; regenerate it with
+`python launcher/tools/audio/audio_doc_tables.py --write`.
+
+<!-- generated: sound-mix-cost sha256=75a11da44c802486bc6f65640aa48a730f0f684c5c07a42ba3cd1735eb3fb070 -->
+
+<!-- /generated: sound-mix-cost -->
 
 ### Measuring it
 
 | Number | Command |
 |---|---|
+| Measurement image | `python launcher/tools/audio/sound_mix_image.py SCRATCH --voices N` prepares a detached scratch copy; flash it with `autana --project SCRATCH flash dev` |
+| Mix capture | From the scratch tree, `python launcher/tools/audio/sound_mix_capture.py --tree . --board ID --out docs/audio/data/sound_mix_capture_NAME.txt`; copy the capture here and run `audio_doc_tables.py --write` |
 | CPU | the `sound_mix` entry in the frame-cost report a development build prints, average/worst ms per block |
 | Heap and largest block | `autana heap --json`, against a build without the mixer |
 | Mixer sizes and stack headroom | `autana sound stats` |
 | Capture RX DMA | `open_dma_bytes` in `autana tone ... --json` |
+
+Hold one board lock across flashing and capture. The image script's header
+contains the scratch-copy recipe.
 
 The mixer runs on another task, so `profile/frame_cost.c` adds its time to the
 report separately instead of bracketing it like a frame stage.
