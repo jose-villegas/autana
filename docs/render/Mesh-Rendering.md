@@ -371,10 +371,10 @@ for flat ≤8 versus defaults in the source comparison.
 Unspecified tunables keep their defaults. The gate ramp uses the near gate off,
 far 4, and size limit 8. Dither uses coverage 4, ramp 1, and the same size limit.
 
-![Defaults versus flat up to 8, with amplified difference](../images/render/sponza-small-fill-diff.gif)
+![Flat up to 8 versus defaults, amplified difference](../images/render/sponza-small-fill-diff.gif)
 
-The comparison shows defaults | flat <=8 | absolute RGB difference x8.
-The [temporal method](../tools/Render-Harness.md#temporal-video-columns) measures
+The heatmap shows absolute RGB difference x8 for flat <=8 versus defaults,
+with the same crop and window. The [temporal method](../tools/Render-Harness.md#temporal-video-columns) measures
 triangle-scale pops; judge dither by eye because it reads as noise here.
 
 <!-- generated: small-fill-temporal sha256=cbd26004fe0795317c459ee2353eebc7f2513d808b92c2c1020b96f57cff44cf -->

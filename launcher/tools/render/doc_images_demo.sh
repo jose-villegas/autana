@@ -85,14 +85,15 @@ import subprocess
 import sys
 from PIL import Image
 sys.path.insert(0, "launcher/tools/render")
-from render_compare import GAIN, compose_frame, read_video
+from render_compare import GAIN, captioned, heatmap, read_video
 work = pathlib.Path(sys.argv[1])
 side, x, y = map(int, sys.argv[2:])
 fps, defaults = read_video(work / "small-fill-defaults.avi")
 _, flat = read_video(work / "small-fill-flat8.avi")
 box = (x, y, x + side, y + side)
-frames = [compose_frame(Image.fromarray(a).crop(box), Image.fromarray(b).crop(box),
-                        None, GAIN, "defaults", "flat <=8") for a, b in zip(defaults, flat)]
+frames = [captioned(captioned(heatmap(Image.fromarray(a).crop(box), Image.fromarray(b).crop(box),
+                                    None, GAIN), f"difference x{GAIN}"), "flat <=8 vs defaults")
+          for a, b in zip(defaults, flat)]
 subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo",
                 "-pix_fmt", "rgb24", "-s", "%dx%d" % frames[0].size, "-r", str(fps), "-i", "-",
                 "-c:v", "rawvideo", "-pix_fmt", "bgr24", str(work / "small-fill-diff.avi")],
