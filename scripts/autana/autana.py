@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
 from suite_registry import registered_suites  # noqa: E402
 from process_tree import launch_process_tree, close_process_tree, install_console_interrupt_handler  # noqa: E402
+from console_protocol import reply_prefix
 import device_lock  # noqa: E402  (path must be set up first)
 import autana_config  # noqa: E402  (path must be set up first)
 from espressif import idf_python, idf_note_lines, require_idf  # noqa: E402
@@ -476,10 +477,10 @@ def tone(args):
 def sound(args):
     prefix = "SOUND"
     code, replies = send(prefix + " " + " ".join(args), reply=prefix,
-                         until=[prefix + "_END", prefix + " error:", prefix + " usage:"])
+                         until=[prefix + "_END", prefix + "_ERR"])
     if code or not replies:
         return code or 1
-    if replies[-1].startswith(("SOUND error:", "SOUND usage:")):
+    if replies[-1].startswith("SOUND_ERR"):
         print(replies[-1], file=sys.stderr)
         return 1
     print("\n".join(replies))
@@ -1481,9 +1482,9 @@ def forward(line, verb):
     that window, since nothing then completes early."""
     if verb.startswith("-"):
         sys.exit(f"autana: unknown option {verb.split('=', 1)[0]}; 'autana help' lists the commands")
-    reply = verb.upper()
+    reply, endings = reply_prefix(line)
     with command_named(f"console {verb}"):
-        _, replies = send(line, reply=reply, until=[reply + "_END", reply + "_ERR"], optional=True)
+        _, replies = send(line, reply=reply, until=list(endings), optional=True)
     return replies
 
 

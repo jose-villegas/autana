@@ -1387,7 +1387,7 @@ class TuneSetTests(unittest.TestCase):
 
     def apply(self, setting, *chunks):
         connection = FakeConnection(list(chunks))
-        with mock.patch.object(device, "TUNE_SET_SECONDS", 0.05), mock.patch("builtins.print"):
+        with mock.patch.object(device, "EXCHANGE_SECONDS", 0.05), mock.patch("builtins.print"):
             device.apply_tunables(connection, [setting])
         return b"".join(connection.writes)
 
@@ -1403,7 +1403,7 @@ class TuneSetTests(unittest.TestCase):
                 return b"TUNE_OK r3d.side=3\n" if len(self.writes) == 2 else b""
 
         connection = AnswersSecondAsk()
-        with mock.patch.object(device, "TUNE_SET_SECONDS", 0.05), mock.patch("builtins.print"):
+        with mock.patch.object(device, "EXCHANGE_SECONDS", 0.05), mock.patch("builtins.print"):
             device.apply_tunables(connection, ["r3d.side=3"])
         self.assertEqual(len(connection.writes), 2)
 
@@ -1434,7 +1434,7 @@ class ConsoleSetupTests(unittest.TestCase):
             args.out = str(Path(directory) / "capture.log")
             with mock.patch.object(device, "open_when_free", return_value=connection), \
                  mock.patch.object(device, "records_root", return_value=Path(directory) / "records"), \
-                 mock.patch.object(device, "TUNE_SET_SECONDS", 0.001), \
+                 mock.patch.object(device, "EXCHANGE_SECONDS", 0.001), \
                  mock.patch("builtins.print"):
                 try:
                     device.run_suite(args, mock_store(), BOARD)
@@ -1453,20 +1453,37 @@ class ConsoleSetupTests(unittest.TestCase):
         self.assertEqual(self.entries[0]["console_send"], lines)
 
     def test_error_and_partial_timeout_stop_before_runsuite(self):
-        for reply in (b"SOUND error: no clip\nSOUND_ERR missing\n",
-                      b"SOUND error: no clip\n", b""):
+        for reply in (b"SOUND pending no clip\nSOUND_ERR missing\n",
+                      b"SOUND pending no clip\n", b""):
             with self.subTest(reply=reply), self.assertRaisesRegex(device.BatchEnding, "sound play missing") as error:
                 self.run_setup([reply], ["sound play missing"])
             self.assertFalse(any(b"RUNSUITE" in write for write in self.writes))
             if reply:
-                self.assertIn("SOUND error: no clip", str(error.exception))
+                self.assertIn("SOUND pending no clip", str(error.exception))
+                self.assertEqual(len(self.writes), 1)
+
+    def test_partial_reply_is_never_retried(self):
+        connection = FakeConnection()
+        with mock.patch.object(device, "exchange", return_value=(["SOUND pending"], False)) as exchange:
+            with self.assertRaises(device.ConsoleRefused):
+                device.apply_console_lines(connection, ["sound stop all", "sound play tap loop"])
+        self.assertEqual(exchange.call_count, 1)
+
+    def test_silence_restarts_the_sequence(self):
+        connection = FakeConnection()
+        with mock.patch.object(device, "exchange", side_effect=[
+                (["SOUND_END"], True), ([], False),
+                (["SOUND_END"], True), (["SOUND_END"], True)]) as exchange, mock.patch("builtins.print"):
+            device.apply_console_lines(connection, ["sound stop all", "sound play tap loop"])
+        self.assertEqual([call.args[1] for call in exchange.call_args_list],
+                         ["sound stop all", "sound play tap loop"] * 2)
 
     def test_silence_is_retried(self):
         connection = FakeConnection()
         def reply_on_retry(unused_size):
             return b"SOUND_END\n" if len(connection.writes) == 2 else b""
         with mock.patch.object(connection, "read", side_effect=reply_on_retry), \
-             mock.patch.object(device, "TUNE_SET_SECONDS", 0.001), mock.patch("builtins.print"):
+             mock.patch.object(device, "EXCHANGE_SECONDS", 0.001), mock.patch("builtins.print"):
             device.apply_console_lines(connection, ["sound stop all"])
         self.assertEqual(connection.writes, [b"\nsound stop all\n"] * 2)
 

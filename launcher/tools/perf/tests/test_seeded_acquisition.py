@@ -7,6 +7,7 @@ import math
 import os
 from pathlib import Path
 import random
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -24,6 +25,8 @@ class AcquisitionTests(unittest.TestCase):
     def test_console_setup_is_per_side_on_every_request(self):
         with tempfile.TemporaryDirectory() as root:
             args = arguments(root)
+            args.command = "python comparison.py --send-b 'sound play tap loop'"
+            args.label_a, args.label_b = "Quiet", "Voice"
             args.send_b = ["sound stop all", "sound play tap loop"]
             args.suite = [('suite', 'q', '-'), ('suite', 'h', '-')]
             fake = FakeAutana(root)
@@ -43,10 +46,21 @@ class AcquisitionTests(unittest.TestCase):
             plan = json.loads((args.out / 'plan.json').read_text())['plan']
             for item in plan:
                 self.assertEqual(item['console_send'], args.send_b if item['side'] == 'b' else [])
+            payload = json.loads((args.out / 'comparison.json').read_text())
+            for key in ("command", "label_a", "label_b"):
+                self.assertEqual(payload[key], getattr(args, key))
             summary = (args.out / 'summary.md').read_text()
             for line in args.send_b:
                 self.assertIn(line, summary)
             self.assertIn('A setup: none', summary)
+            argv = ["--out", str(args.out), "--project-a", str(args.project_a),
+                    "--project-b", str(args.project_b), "--suite", "suite", "-", "-",
+                    "--label-a", "Quiet", "--label-b", "Voice", "--send-b", args.send_b[-1]]
+            with patch.object(tool, "measure") as measure:
+                self.assertEqual(tool.main(argv), 0)
+            parsed = measure.call_args.args[0]
+            self.assertEqual(shlex.split(parsed.command)[2:], argv)
+            self.assertEqual((parsed.label_a, parsed.label_b), ("Quiet", "Voice"))
 
 
     def test_shortest_unique_filters_and_batches(self):

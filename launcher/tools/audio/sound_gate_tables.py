@@ -8,15 +8,13 @@ import argparse
 from collections import Counter
 import json
 from pathlib import Path
-import re
-import shlex
-from statistics import mean, median
 import sys
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 from build.c_header import read_define
+from frame_cost import EXTERNAL, REPORT_PREFIX
 from perf_compare import observations
 from capture import capture_board, require_same_board
 from device_report import find_manifest_entry, read_capture_text
@@ -27,11 +25,8 @@ DATA = ROOT / "docs/audio/data/sound_gate.json"
 DOCUMENT = ROOT / "docs/audio/Sound-Mixer.md"
 REGENERATE = "python launcher/tools/audio/sound_gate_tables.py --write"
 PERCENT = 100
-SIDES = {"a": "Silence", "b": "One looping voice"}
 ROW_FIELDS = ("a", "b", "ratio", "interval", "verdict")
 SOUND_MIX_NAME = read_define(ROOT / "launcher/main/sound/sound_engine.h", "SOUND_MIXER_FRAME_COST_NAME")
-SOUND_MIX = re.compile(r" \|\| " + re.escape(SOUND_MIX_NAME) +
-                       r" (\d+\.\d{2})/(\d+\.\d{2}) ms/block n=(\d+)(?:\s|$)")
 
 
 def capture_date(path):
@@ -45,16 +40,21 @@ def capture_date(path):
     raise ValueError(f"missing capture date in records index: {path}")
 
 
-def extract(directory, allow_incomplete=False):
+def extract(directory, allow_incomplete=False, command=None, label_a=None, label_b=None):
     comparison = json.loads((directory / "comparison.json").read_text(encoding="utf-8"))
     if comparison["incomplete"] and not allow_incomplete:
         raise ValueError("comparison is incomplete; use --allow-incomplete to extract it")
     result = {key: comparison[key] for key in
               ("incomplete", "rng_seed", "threshold", "alpha", "max_seeds")}
+    for key, override in (("command", command), ("label_a", label_a), ("label_b", label_b)):
+        value = override if override is not None else comparison.get(key)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"missing {key}; pass --{key.replace('_', '-')} for an older comparison")
+        result[key] = value
     result["rows"] = {name: {key: row[key] for key in ROW_FIELDS}
                       for name, row in sorted(comparison["rows"].items())}
     sides, boards, dates = {}, {}, set()
-    for side in SIDES:
+    for side in ("a", "b"):
         records = [json.loads(path.read_text(encoding="utf-8"))
                    for path in sorted((directory / side).glob("flash_*.json"))]
         if not records:
@@ -84,11 +84,11 @@ def extract(directory, allow_incomplete=False):
                         boards[str(path)] = capture_board(path)
                         dates.add(capture_date(path))
                         for line in read_capture_text(path).splitlines():
-                            if "ms/frame avg/worst:" not in line:
+                            if REPORT_PREFIX not in line:
                                 continue
-                            match = SOUND_MIX.search(line)
-                            if match:
-                                average, peak, count = match.groups()
+                            for name, average, peak, count in EXTERNAL.findall(line):
+                                if name != SOUND_MIX_NAME:
+                                    continue
                                 count = int(count)
                                 weighted += float(average) * count
                                 worst = max(worst, float(peak))
@@ -100,18 +100,9 @@ def extract(directory, allow_incomplete=False):
                            **{SOUND_MIX_NAME: dict(average_ms=weighted / blocks if blocks else None,
                                           worst_ms=worst if blocks else None,
                                           blocks=blocks, suites=sorted(suites))})
-    first_plans = [next(item for item in comparison["plan"] if item["side"] == side) for side in SIDES]
+    first_plans = [next(item for item in comparison["plan"] if item["side"] == side) for side in ("a", "b")]
     if first_plans[0]["suites"] != first_plans[1]["suites"]:
         raise ValueError("sides must start with the same suite selection")
-    command = ["launcher/tools/perf/perf_compare.sh", "HEAD", "HEAD",
-               "--max-seeds", str(result["max_seeds"]), "--rng-seed", str(result["rng_seed"]),
-               "--threshold", f"{result['threshold']:g}", "--alpha", f"{result['alpha']:g}"]
-    for suite in first_plans[0]["suites"]:
-        command.extend(["--suite", *suite])
-    for side in SIDES:
-        for line in sides[side]["console_send"]:
-            command.extend([f"--send-{side}", line])
-    result["repeat_command"] = shlex.join(command)
     result.update(board=require_same_board(boards), capture_date=sorted(dates), sides=sides)
     return result
 
@@ -127,9 +118,9 @@ def number(value):
 def render(path):
     data = json.loads(path.read_text(encoding="utf-8"))
     prefix = f"> Generated by: `{REGENERATE}`\n\n"
-    arms = "; ".join(f"{label}: builds {', '.join(data['sides'][side]['build_ids'])}, "
+    arms = "; ".join(f"{data['label_' + side]}: builds {', '.join(data['sides'][side]['build_ids'])}, "
                      f"seeds {', '.join(map(str, data['sides'][side]['seeds']))}"
-                     for side, label in SIDES.items())
+                     for side in ("a", "b"))
     header = (f"Board **{data['board']}**; {arms}; "
               f"seed cap {data['max_seeds']} per side; threshold ±{data['threshold']:g}%; "
               f"alpha {data['alpha']:g}; RNG seed {data['rng_seed']}.\n\n")
@@ -138,23 +129,21 @@ def render(path):
     rows = list(data["rows"].values())
     verdicts = sorted({row["verdict"] for row in rows})
     counts = Counter(row["verdict"] for row in rows)
-    changes = [delta(row["ratio"]) for row in rows if row["ratio"] is not None]
     worst = max((row for row in rows if row["ratio"] is not None),
                 key=lambda row: row["ratio"], default=None)
     interval = worst["interval"] if worst else None
     summary = [(sum(row["a"] is not None and row["b"] is not None for row in rows),
                 *(counts[verdict] for verdict in verdicts),
-                number(mean(changes) if changes else None),
-                number(median(changes) if changes else None),
                 number(delta(worst["ratio"]) if worst else None),
-                ", ".join(number(delta(bound)) for bound in interval) if interval else "n/a")]
+                ", ".join(number(delta(bound)) for bound in interval) if interval else "n/a",
+                sum(row["interval"] is not None and row["interval"][0] > 1 for row in rows))]
     tables = {"sound-gate": prefix + header + markdown(
-        ["Rows measured", *verdicts, "Mean Delta time %", "Median Delta time %",
-         "Worst Delta time %", "Worst row interval (Delta %)"], summary)}
+        ["Rows measured", *verdicts, "Worst Delta time %",
+         "Worst row interval (Delta %)", "Intervals wholly above zero"], summary)}
     mix_rows = []
-    for side, label in SIDES.items():
+    for side in ("a", "b"):
         mix = data["sides"][side][SOUND_MIX_NAME]
-        mix_rows.append((label, number(mix["average_ms"]), number(mix["worst_ms"]), mix["blocks"]))
+        mix_rows.append((data["label_" + side], number(mix["average_ms"]), number(mix["worst_ms"]), mix["blocks"]))
     tables["sound-gate-mix"] = prefix + markdown(
         ["Arm", "Average ms/block", "Worst ms/block", "Blocks"], mix_rows)
     return tables
@@ -175,6 +164,9 @@ def main():
     mode.add_argument("--write", action="store_true")
     mode.add_argument("--check", action="store_true")
     parser.add_argument("--allow-incomplete", action="store_true")
+    parser.add_argument("--command")
+    parser.add_argument("--label-a")
+    parser.add_argument("--label-b")
     parser.add_argument("--data", type=Path, default=DATA)
     parser.add_argument("--document", type=Path, default=DOCUMENT)
     args = parser.parse_args()
@@ -182,7 +174,7 @@ def main():
         parser.error("choose extract COMPARE_DIR, --write or --check")
     try:
         if args.action:
-            data = extract(args.directory, args.allow_incomplete)
+            data = extract(args.directory, args.allow_incomplete, args.command, args.label_a, args.label_b)
             args.data.parent.mkdir(parents=True, exist_ok=True)
             args.data.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
             print(f"sound gate: extracted {len(data['rows'])} rows to {args.data}")

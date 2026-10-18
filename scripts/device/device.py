@@ -29,7 +29,7 @@ import lock_scope
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
 import board_serial
-from console_protocol import replies_to, require_development
+from console_protocol import replies_to, require_development, reply_prefix
 from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, BUILD_ID_REQUEST,
                             crash_signs, suite_failure_signs)
 
@@ -1712,12 +1712,28 @@ def exchange(connection, line, reply, until, seconds):
 
 
 TUNE_REPLY_ENDS = ("TUNE_OK", "TUNE_ERR", "TUNE_END")
-TUNE_SET_SECONDS = 3.0
-TUNE_SET_ATTEMPTS = 3
+EXCHANGE_SECONDS = 3.0
+EXCHANGE_ATTEMPTS = 3
 
 
 class TuneRefused(BatchEnding):
     """A --set the board refused or did not echo."""
+
+
+def exchange_retrying(connection, requests):
+    """Retry an idempotent sequence only on silence; partial replies stop it."""
+    for _ in range(EXCHANGE_ATTEMPTS):
+        replies = []
+        for line, prefix, endings in requests:
+            found, complete = exchange(connection, line, prefix, endings, EXCHANGE_SECONDS)
+            if not found:
+                break
+            replies.extend(found)
+            if not complete or found[-1].startswith(endings[1]):
+                return line, replies, False
+        else:
+            return line, replies, True
+    return line, found, False
 
 
 def apply_tunables(connection, settings):
@@ -1726,14 +1742,9 @@ def apply_tunables(connection, settings):
     echoes each value back."""
     for setting in settings:
         name, _, value = setting.partition("=")
-        # A board still winding down the last suite can drop a line; SET is
-        # idempotent, so silence is asked again before it counts as refusal.
-        for _ in range(TUNE_SET_ATTEMPTS):
-            found, complete = exchange(connection, f"SET {name} {value}", "TUNE", TUNE_REPLY_ENDS,
-                                       TUNE_SET_SECONDS)
-            if complete:
-                break
-        if not found or not found[-1].startswith("TUNE_OK " + name + "="):
+        _, found, complete = exchange_retrying(
+            connection, [(f"SET {name} {value}", "TUNE", TUNE_REPLY_ENDS)])
+        if not complete or not found or not found[-1].startswith("TUNE_OK " + name + "="):
             raise TuneRefused(f"SET {name} {value}: {found[-1] if found else 'no reply'}")
         if found[-1].split("=", 1)[1] != str(int(value, 0)):
             raise TuneRefused(f"SET {name} {value}: board holds {found[-1]}")
@@ -1745,22 +1756,23 @@ class ConsoleRefused(BatchEnding):
 
 
 def apply_console_lines(connection, lines):
+    """Apply an idempotent setup sequence; silence retries it from the start.
+
+    A partial reply or an error refuses the sequence without resending a line.
+    """
+    requests = []
     for line in lines:
-        words = line.split()
-        if not words:
-            raise ConsoleRefused(f"{line!r}: empty console line")
-        prefix = words[0].upper()
-        endings = (prefix + "_END", prefix + "_ERR")
-        replies = []
-        for _ in range(TUNE_SET_ATTEMPTS):
-            found, complete = exchange(connection, line, prefix, endings, TUNE_SET_SECONDS)
-            replies.extend(found)
-            if complete:
-                break
-        if complete:
-            print("\n".join(found), flush=True)
-        if not complete or found[-1].startswith(prefix + "_ERR"):
-            raise ConsoleRefused(f"{line!r}: " + ("\n".join(replies) or "no reply"))
+        try:
+            prefix, endings = reply_prefix(line)
+        except ValueError as error:
+            raise ConsoleRefused(f"{line!r}: {error}") from error
+        requests.append((line, prefix, endings))
+    if not requests:
+        return
+    line, found, complete = exchange_retrying(connection, requests)
+    if not complete:
+        raise ConsoleRefused(f"{line!r}: " + ("\n".join(found) or "no reply"))
+    print("\n".join(found), flush=True)
 
 
 def send(args, store, board):
