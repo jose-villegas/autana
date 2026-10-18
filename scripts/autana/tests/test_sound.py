@@ -5,6 +5,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "device" / "tests"))
+import isolation  # noqa: E402,F401
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import autana
 
