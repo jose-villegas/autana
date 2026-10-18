@@ -27,7 +27,7 @@ static uint8_t queue_storage[SOUND_MIXER_QUEUE_DEPTH * sizeof(sound_command_t)];
 static const char* failure;
 static bool attempted;
 #if CONFIG_LAUNCHER_DEVELOPMENT
-static TaskHandle_t mixer_task_handle;
+static size_t stack_min_free_bytes;
 #endif
 
 static bool
@@ -202,14 +202,13 @@ sound_get_stats(sound_stats_t* out) {
                            .stack_bytes = SOUND_MIXER_TASK_STACK,
                            .dma_sample_bytes = AUDIO_CODEC_DMA_BLOCKS * AUDIO_CODEC_BLOCK_SAMPLES * sizeof(int16_t),
                            .mixer_bytes = sizeof mixer + sizeof control};
-    out->mixer_bytes += sizeof mixer_task_handle;
-    const TaskHandle_t handle = mixer_task_handle;
+    out->mixer_bytes += sizeof stack_min_free_bytes;
+    out->stack_min_free_bytes = stack_min_free_bytes;
     out->stack_margin_bytes = SOUND_MIXER_STACK_MARGIN_BYTES;
     for (int i = 0; i < SOUND_VOICE_COUNT; i++) {
         out->positions[i] = mixer.voices[i].tone_source ? 0 : mixer.voices[i].source.cursor.position;
     }
     portEXIT_CRITICAL(&control_lock);
-    out->stack_min_free_bytes = handle ? uxTaskGetStackHighWaterMark(handle) : 0;
 }
 
 #endif
@@ -223,7 +222,7 @@ fail(const char* step) {
     }
     control.ready = false;
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    mixer_task_handle = NULL;
+    stack_min_free_bytes = 0;
 #endif
     portEXIT_CRITICAL(&control_lock);
     if (first_failure) {
@@ -295,8 +294,14 @@ mixer_task(void* unused) {
             }
             previous_amp = mixer.amp;
         }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        const size_t stack_free = uxTaskGetStackHighWaterMark(NULL);
+#endif
         portENTER_CRITICAL(&control_lock);
         sound_control_complete(&control, &mixer);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        stack_min_free_bytes = stack_free;
+#endif
         portEXIT_CRITICAL(&control_lock);
         if (!audio_out_write(out, SOUND_MIXER_BLOCK_FRAMES)) {
             fail("I2S write");
@@ -362,12 +367,8 @@ sound_init(void) {
         return false;
     }
     control.ready = true;
-    TaskHandle_t* task_handle = NULL;
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    task_handle = &mixer_task_handle;
-#endif
     if (xTaskCreatePinnedToCore(mixer_task, "sound_mixer", SOUND_MIXER_TASK_STACK, NULL, SOUND_MIXER_TASK_PRIORITY,
-                                task_handle, SOUND_MIXER_TASK_CORE)
+                                NULL, SOUND_MIXER_TASK_CORE)
         != pdPASS) {
         fail("mixer task");
         return false;
