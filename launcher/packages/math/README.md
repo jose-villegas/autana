@@ -1,10 +1,10 @@
 # math
 
-The engine's maths library covers scalar operations, linear algebra, shapes,
-motion, and signal processing. It depends on the C library and libm; firmware,
-host tests, tools, and the editor build it.
-
-The API covers what its types imply, including functions without callers.
+The engine's maths library: scalar operations, linear algebra, shapes, motion
+and signal processing. It depends on nothing but the C library and libm, so every
+layer of the firmware, the host tests, the tools and the editor build it. The API
+covers what its types imply rather than only what today's callers use, so it may
+carry functions nothing calls yet.
 
 | Folder | Holds |
 |---|---|

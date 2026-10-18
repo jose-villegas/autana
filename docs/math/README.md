@@ -1,12 +1,9 @@
-# Math: vectors, rotations, matrices, transforms
+# Math: vectors, rotations, matrices, transforms, signals
 
 `math/linear/` and `math/geometry/` hold the firmware's vectors, rotations,
-matrices, transforms and shapes, on the per-type scalar operations in `math/scalar/`.
-
-`math/signal/` provides single-bin detection on sample blocks.
-All are part of the [math package](../../launcher/packages/math/README.md).
-
-The linear and geometry families are:
+matrices, transforms and shapes, on the per-type scalar operations in `math/scalar/`;
+`math/signal/` holds single-bin detection on sample blocks.
+All are part of the [math package](../../launcher/packages/math/README.md). Except `math/signal/`, they are:
 
 - header-only and static inline, with no ESP-IDF, so a host suite checks every line;
 - each family written once as a template ([Templates](#templates)) and instantiated per number type;
@@ -480,7 +477,7 @@ planes are not normalized.
 
 `goertzel_t` accumulates one frequency across sample blocks with a float
 recurrence, including non-integer DFT bins.<sup>[[72]](../Citations.md#72)</sup>
-The caller supplies frequency and sample rate in Hz, and a positive full scale.
+The caller supplies frequency and sample rate in Hz, with $`0 \le hz < sample\_rate\_hz/2`$, and a positive full scale.
 
 | Function | Result |
 |---|---|

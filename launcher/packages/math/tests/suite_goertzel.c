@@ -27,6 +27,15 @@ fixture(void) {
     suite_set_test_cleanup(cleanup);
     return buffer;
 }
+
+/* An on-bin TEST_TARGET_HZ tone from the integer sine table, divided down by divisor. */
+static void
+fill_tone(int16_t* samples, int32_t divisor) {
+    for (size_t i = 0; i < TEST_SAMPLES; i++) {
+        samples[i] =
+            (int16_t)(trig_sin((uint16_t)((uint64_t)i * TEST_TARGET_HZ * TRIG_TURN / TEST_SAMPLE_RATE_HZ)) / divisor);
+    }
+}
 #ifndef DEVICE_BUILD
 #define TEST_PI           3.14159265358979323846
 #define TEST_DB_TOLERANCE 0.5f
@@ -113,9 +122,7 @@ test_goertzel_streaming_silence_rejection(void) {
     goertzel_feed_s(&state, samples, TEST_SAMPLES);
     TEST_ASSERT_EQUAL_FLOAT(GOERTZEL_LEVEL_FLOOR_DB, goertzel_level_db(&state, TRIG_SIN_MAX));
     TEST_ASSERT_EQUAL_FLOAT(0, goertzel_power(&state));
-    for (size_t i = 0; i < TEST_SAMPLES; i++) {
-        samples[i] = (int16_t)trig_sin((uint16_t)((uint64_t)i * TEST_TARGET_HZ * TRIG_TURN / TEST_SAMPLE_RATE_HZ));
-    }
+    fill_tone(samples, 1);
     goertzel_init(&state, TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ);
     goertzel_feed_s(&state, samples, TEST_SAMPLES);
     goertzel_t split;
@@ -133,59 +140,87 @@ test_goertzel_streaming_silence_rejection(void) {
                      >= TEST_OFF_TONE_REJECTION_DB);
 }
 
-static void
-test_goertzel_float_feed(void) {
-    int16_t* samples = fixture();
-    goertzel_t integers;
-    goertzel_t floats;
-    goertzel_init(&integers, TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ);
-    goertzel_init(&floats, TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ);
-    for (size_t i = 0; i < TEST_SAMPLES; i++) {
-        samples[i] = (int16_t)trig_sin((uint16_t)((uint64_t)i * TEST_TARGET_HZ * TRIG_TURN / TEST_SAMPLE_RATE_HZ));
-        const float sample = (float)samples[i];
-        goertzel_feed_f(&floats, &sample, 1);
-    }
-    goertzel_feed_s(&integers, samples, TEST_SAMPLES);
-    TEST_ASSERT_EQUAL_MEMORY(&integers.coefficient, &floats.coefficient, sizeof integers.coefficient);
-    TEST_ASSERT_EQUAL_MEMORY(&integers.previous, &floats.previous, sizeof integers.previous);
-    TEST_ASSERT_EQUAL_MEMORY(&integers.previous2, &floats.previous2, sizeof integers.previous2);
-    TEST_ASSERT_EQUAL_UINT(integers.samples, floats.samples);
-}
-
-static void
-test_goertzel_reset(void) {
-    const int16_t sample = TRIG_SIN_MAX;
-    goertzel_t state;
-    goertzel_t fresh;
-    goertzel_init(&state, TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ);
-    goertzel_init(&fresh, TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ);
-    TEST_ASSERT_EQUAL_FLOAT(0.0F, goertzel_amplitude(&state));
-    TEST_ASSERT_EQUAL_FLOAT(GOERTZEL_LEVEL_FLOOR_DB, goertzel_level_db(&state, TRIG_SIN_MAX));
-    goertzel_feed_s(&state, &sample, 1);
-    goertzel_reset(&state);
-    TEST_ASSERT_EQUAL_FLOAT(fresh.coefficient, state.coefficient);
-    TEST_ASSERT_EQUAL_FLOAT(fresh.previous, state.previous);
-    TEST_ASSERT_EQUAL_FLOAT(fresh.previous2, state.previous2);
-    TEST_ASSERT_EQUAL_UINT(fresh.samples, state.samples);
-    goertzel_feed_s(&state, &sample, 1);
-    goertzel_feed_s(&fresh, &sample, 1);
-    TEST_ASSERT_EQUAL_FLOAT(goertzel_power(&fresh), goertzel_power(&state));
-}
-
+#define TEST_FLOAT_BLOCK         5u
+#define TEST_FLOAT_OFFSET        0.25F
+#define TEST_RESET_SAMPLES       3u
 #define TEST_FULL_SCALE_FACTOR   4.0F
 #define TEST_AMPLITUDE_TOLERANCE 4.0F
 #define TEST_LEVEL_TOLERANCE     0.001F
 #define TEST_AMPLITUDE_DIVISOR   2
 #define TEST_AMPLITUDE           (TRIG_SIN_MAX / TEST_AMPLITUDE_DIVISOR)
 #define TEST_AMPLITUDE_DB_SCALE  20.0F
+#define TEST_TINY_FULL_SCALE     1.0e12F
+
+static void
+assert_same_state(const goertzel_t* expected, const goertzel_t* actual) {
+    TEST_ASSERT_EQUAL_MEMORY(&expected->coefficient, &actual->coefficient, sizeof expected->coefficient);
+    TEST_ASSERT_EQUAL_MEMORY(&expected->previous, &actual->previous, sizeof expected->previous);
+    TEST_ASSERT_EQUAL_MEMORY(&expected->previous2, &actual->previous2, sizeof expected->previous2);
+    TEST_ASSERT_EQUAL_UINT(expected->samples, actual->samples);
+}
+
+static void
+test_goertzel_float_feed(void) {
+    int16_t* samples = fixture();
+    fill_tone(samples, 1);
+    goertzel_t integers;
+    goertzel_t floats;
+    goertzel_init(&integers, TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ);
+    goertzel_init(&floats, TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ);
+    for (size_t i = 0; i < TEST_SAMPLES; i++) {
+        const float sample = (float)samples[i];
+        goertzel_feed_f(&floats, &sample, 1);
+    }
+    goertzel_feed_s(&integers, samples, TEST_SAMPLES);
+    assert_same_state(&integers, &floats);
+}
+
+static void
+test_goertzel_float_blocks(void) {
+    float* samples = malloc(TEST_SAMPLES * sizeof *samples);
+    TEST_ASSERT_NOT_NULL(samples);
+    for (size_t i = 0; i < TEST_SAMPLES; i++) {
+        samples[i] = (float)trig_sin((uint16_t)((uint64_t)i * TEST_TARGET_HZ * TRIG_TURN / TEST_SAMPLE_RATE_HZ))
+                     + TEST_FLOAT_OFFSET;
+    }
+    goertzel_t single;
+    goertzel_t blocks;
+    goertzel_init(&single, TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ);
+    goertzel_init(&blocks, TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ);
+    for (size_t i = 0; i < TEST_SAMPLES; i++) {
+        goertzel_feed_f(&single, samples + i, 1);
+    }
+    for (size_t i = 0; i < TEST_SAMPLES;) {
+        const size_t n = TEST_SAMPLES - i < TEST_FLOAT_BLOCK ? TEST_SAMPLES - i : TEST_FLOAT_BLOCK;
+        goertzel_feed_f(&blocks, samples + i, n);
+        i += n;
+    }
+    free(samples);
+    assert_same_state(&single, &blocks);
+}
+
+static void
+test_goertzel_reset(void) {
+    static const int16_t samples[TEST_RESET_SAMPLES] = {TRIG_SIN_MAX, -TRIG_SIN_MAX, TRIG_SIN_MAX};
+    goertzel_t state;
+    goertzel_t fresh;
+    goertzel_init(&state, TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ);
+    goertzel_init(&fresh, TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ);
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, goertzel_amplitude(&state));
+    TEST_ASSERT_EQUAL_FLOAT(GOERTZEL_LEVEL_FLOOR_DB, goertzel_level_db(&state, TRIG_SIN_MAX));
+    goertzel_feed_s(&state, samples, TEST_RESET_SAMPLES);
+    TEST_ASSERT_NOT_EQUAL(0.0F, state.previous2);
+    goertzel_reset(&state);
+    assert_same_state(&fresh, &state);
+    goertzel_feed_s(&state, samples, TEST_RESET_SAMPLES);
+    goertzel_feed_s(&fresh, samples, TEST_RESET_SAMPLES);
+    assert_same_state(&fresh, &state);
+}
 
 static void
 test_goertzel_amplitude_and_scale(void) {
     int16_t* samples = fixture();
-    for (size_t i = 0; i < TEST_SAMPLES; i++) {
-        samples[i] = (int16_t)(trig_sin((uint16_t)((uint64_t)i * TEST_TARGET_HZ * TRIG_TURN / TEST_SAMPLE_RATE_HZ))
-                               / TEST_AMPLITUDE_DIVISOR);
-    }
+    fill_tone(samples, TEST_AMPLITUDE_DIVISOR);
     goertzel_t state;
     goertzel_init(&state, TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ);
     goertzel_feed_s(&state, samples, TEST_SAMPLES);
@@ -193,6 +228,9 @@ test_goertzel_amplitude_and_scale(void) {
     const float level = goertzel_level_db(&state, TRIG_SIN_MAX);
     TEST_ASSERT_FLOAT_WITHIN(TEST_LEVEL_TOLERANCE, level - TEST_AMPLITUDE_DB_SCALE * log10f(TEST_FULL_SCALE_FACTOR),
                              goertzel_level_db(&state, TRIG_SIN_MAX * TEST_FULL_SCALE_FACTOR));
+    /* Non-zero power far below the floor still reads the floor. */
+    TEST_ASSERT_TRUE(goertzel_power(&state) > 0.0F);
+    TEST_ASSERT_EQUAL_FLOAT(GOERTZEL_LEVEL_FLOOR_DB, goertzel_level_db(&state, TEST_TINY_FULL_SCALE));
 }
 
 void
@@ -204,6 +242,7 @@ run_goertzel_suite(void) {
 #endif
     RUN_TEST(test_goertzel_streaming_silence_rejection);
     RUN_TEST(test_goertzel_float_feed);
+    RUN_TEST(test_goertzel_float_blocks);
     RUN_TEST(test_goertzel_reset);
     RUN_TEST(test_goertzel_amplitude_and_scale);
 }
