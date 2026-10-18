@@ -5,6 +5,7 @@
 #include "apps/input_lab/imu_probe.h"
 #include "display/display.h"
 #include "gfx/gfx.h"
+#include "math/scalar/units.h"
 #include "render_host.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
@@ -46,6 +47,24 @@ input_read_motion(input_motion_t* out) {
         const vec3i_t direction = imu_probe_pose_direction(pose, DISPLAY_DEFAULT_QUARTER);
         out->acceleration = (vec3i_t){direction.x * INPUT_ACCEL_ONE_G, direction.y * INPUT_ACCEL_ONE_G,
                                       direction.z * INPUT_ACCEL_ONE_G};
+    }
+    return true;
+}
+
+bool
+input_read_motion_batch(input_motion_batch_t* out) {
+    const int64_t now_us = (int64_t)clock_frame * FRAME_MS * MATH_US_PER_MS;
+    static int64_t last_us;
+    if (now_us < last_us) {
+        last_us = 0;
+    }
+    const int count = (int)((now_us - last_us) / INPUT_MOTION_SAMPLE_US);
+    last_us += (int64_t)count * INPUT_MOTION_SAMPLE_US;
+    out->count = mathi_min(count, INPUT_MOTION_SAMPLES);
+    out->gap = count > INPUT_MOTION_SAMPLES;
+    out->lost = 0;
+    for (int i = 0; i < out->count; i++) {
+        input_read_motion(&out->samples[i]);
     }
     return true;
 }

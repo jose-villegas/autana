@@ -169,6 +169,8 @@ the tool; the command below uses plain capture names:
 python motion_fit.py cjsd1-round1.log cjsd1-round2.log
 ```
 
+Gyro figures in these captures are twice the true rate (a range misconfiguration since fixed); halve them.
+
 All vectors below are x,y,z; gyro values and noise are mdps, offsets mg and
 scales ppm. The incomplete calibration round is excluded from the fit comparison.
 

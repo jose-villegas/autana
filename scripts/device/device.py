@@ -823,11 +823,20 @@ def reset(after="hard_reset"):
 
 def reset_and_capture(output, seconds, idle_seconds, expected_build_id=None,
                       complete=tests_done):
-    """A board that says nothing at all after the RTS reset is taken for a chip
-    in download mode, the one case RTS cannot start, and gets the watchdog. One
-    that spoke, even without a BUILD_ID, is left alone."""
+    """The console after an RTS reset, with the download-mode fallback of
+    capture_with_watchdog_fallback."""
+    return capture_with_watchdog_fallback(output, seconds, idle_seconds, expected_build_id,
+                                          complete, connection=reset())
+
+
+def capture_with_watchdog_fallback(output, seconds, idle_seconds, expected_build_id=None,
+                                   complete=tests_done, *, connection):
+    """The console after a reset whose port `connection` is. A board that says
+    nothing at all is taken for a chip in download mode, the one case RTS
+    cannot start, and gets the watchdog. One that spoke, even without a
+    BUILD_ID, is left alone."""
     data, reason = capture_after_reset(output, seconds, idle_seconds, expected_build_id,
-                                       complete, connection=reset())
+                                       complete, connection=connection)
     if reason != "silent":
         return data, reason
     print("board silent after an RTS reset, as from download mode; "
@@ -894,8 +903,8 @@ def await_console(args, board, build_id, acquired_at, connection):
         raise
     data, reason = b"", None
     try:
-        data, reason = capture_after_reset(output, BOOT_WAIT_SECONDS, None, build_id,
-                                           console_up(build_id), connection=connection)
+        data, reason = capture_with_watchdog_fallback(output, BOOT_WAIT_SECONDS, None, build_id,
+                                                      console_up(build_id), connection=connection)
     finally:
         path = record_capture(output, managed, started_at=started_at, board=board,
                               owner=args.owner, purpose=args.purpose, command="boot",
