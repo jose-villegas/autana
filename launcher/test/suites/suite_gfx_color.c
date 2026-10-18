@@ -451,8 +451,28 @@ test_mixing_toward_black_twice_is_darker_than_once(void) {
                              "settling anywhere");
 }
 
+static void
+test_dither_rank_matches_table_and_permutations(void) {
+    for (int bits = 1; bits <= 3; bits++) {
+        bool seen[64] = {false};
+        const int side = 1 << bits;
+        for (int y = 0; y < side; y++) {
+            for (int x = 0; x < side; x++) {
+                const int rank = gfx_dither_rank(x, y, bits);
+                TEST_ASSERT_INT_WITHIN(side * side - 1, 0, rank);
+                TEST_ASSERT_FALSE(seen[rank]);
+                seen[rank] = true;
+                if (bits == 2) {
+                    TEST_ASSERT_EQUAL_INT(gfx_dither4x4[y][x], rank);
+                }
+            }
+        }
+    }
+}
+
 void
 run_gfx_color_suite(void) {
+    RUN_TEST(test_dither_rank_matches_table_and_permutations);
     RUN_TEST(test_t_zero_returns_a_exactly);
     RUN_TEST(test_t_255_returns_b_exactly);
     RUN_TEST(test_mixing_a_colour_with_itself_is_identity_at_any_t);

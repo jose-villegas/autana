@@ -36,6 +36,67 @@ TUNE_HOT(r3d_span, small_max_side, SMALL_MAX_SIDE, 0, SMALL_MAX_SIDE_TUNE);
 TUNE_HOT(r3d_span, flat_max_rows, R3D_SPAN_FLAT_MAX_ROWS, 0, 8);
 TUNE_HOT(r3d_span, flat_max_width, R3D_SPAN_FLAT_MAX_WIDTH, 0, 8 * R3D_SUBPIXEL);
 
+/* Pattern size is shared by ordered colour experiments; there is no off size. */
+#define DITHER_CELL_BITS     2
+#define DITHER_CELL_BITS_MAX 3
+/* Palette intervals; zero keeps interpolated colour. */
+#define BLEND_STEPS          0
+#define BLEND_STEPS_MAX      8
+#if TUNE_HOT_LIVE
+#define BLEND_SHIFT 8
+#define BLEND_UNIT  (1 << BLEND_SHIFT)
+#endif
+
+TUNE_HOT(r3d_span, blend_steps, BLEND_STEPS, 0, BLEND_STEPS_MAX);
+TUNE_HOT(r3d_span, dither_cell_bits, DITHER_CELL_BITS, 1, DITHER_CELL_BITS_MAX);
+
+#if TUNE_HOT_LIVE
+const r3d_dither_ranks_t*
+r3d_dither_ranks(void) {
+    static const r3d_dither_ranks_t patterns[DITHER_CELL_BITS_MAX] = {
+        {.ranks =
+             {
+                 {0, 2, 0, 2, 0, 2, 0, 2},
+                 {3, 1, 3, 1, 3, 1, 3, 1},
+                 {0, 2, 0, 2, 0, 2, 0, 2},
+                 {3, 1, 3, 1, 3, 1, 3, 1},
+                 {0, 2, 0, 2, 0, 2, 0, 2},
+                 {3, 1, 3, 1, 3, 1, 3, 1},
+                 {0, 2, 0, 2, 0, 2, 0, 2},
+                 {3, 1, 3, 1, 3, 1, 3, 1},
+             },
+         .levels = 1 << (2 * 1)},
+        {.ranks =
+             {
+                 {0, 8, 2, 10, 0, 8, 2, 10},
+                 {12, 4, 14, 6, 12, 4, 14, 6},
+                 {3, 11, 1, 9, 3, 11, 1, 9},
+                 {15, 7, 13, 5, 15, 7, 13, 5},
+                 {0, 8, 2, 10, 0, 8, 2, 10},
+                 {12, 4, 14, 6, 12, 4, 14, 6},
+                 {3, 11, 1, 9, 3, 11, 1, 9},
+                 {15, 7, 13, 5, 15, 7, 13, 5},
+             },
+         .levels = 1 << (2 * 2)},
+        {.ranks =
+             {
+                 {0, 32, 8, 40, 2, 34, 10, 42},
+                 {48, 16, 56, 24, 50, 18, 58, 26},
+                 {12, 44, 4, 36, 14, 46, 6, 38},
+                 {60, 28, 52, 20, 62, 30, 54, 22},
+                 {3, 35, 11, 43, 1, 33, 9, 41},
+                 {51, 19, 59, 27, 49, 17, 57, 25},
+                 {15, 47, 7, 39, 13, 45, 5, 37},
+                 {63, 31, 55, 23, 61, 29, 53, 21},
+             },
+         .levels = 1 << (2 * 3)},
+    };
+    const int bits = dither_cell_bits;
+    return &patterns[bits - 1];
+}
+
+#endif
+
 int r3d_span_stop_after;
 
 typedef struct {
@@ -43,6 +104,9 @@ typedef struct {
     int32_t dx[ATTRIBUTES];
     int32_t dy[ATTRIBUTES];
     int x_origin;
+#if TUNE_HOT_LIVE
+    int32_t scalar_max;
+#endif
     bool in_range; /* every plane stays inside its range across the whole box */
 } gradients_t;
 
@@ -106,13 +170,19 @@ colour_gradients(const plane_t* p, const r3d_span_vertex_t* a, const r3d_span_ve
  * range, and a wrapped channel would be a wrong-coloured pixel. Each span's
  * start is clamped; only a span whose end would still leave the range pays
  * for a step recomputed from both clamped ends. */
+#if TUNE_HOT_LIVE
+#define SPAN_MAX(k) (k)
+#else
+#define SPAN_MAX(k) value_max[k]
+#endif
+
 static inline void
 clamp_span(int k, int count, int32_t* value, int32_t* step) {
-    const int32_t start = mathi_clamp(*value, 0, value_max[k]);
+    const int32_t start = mathi_clamp(*value, 0, SPAN_MAX(k));
     const int32_t end = start + (*step * count);
     *value = start;
-    if (count > 0 && (end < 0 || end > value_max[k])) {
-        *step = (mathi_clamp(end, 0, value_max[k]) - start) / count;
+    if (count > 0 && (end < 0 || end > SPAN_MAX(k))) {
+        *step = (mathi_clamp(end, 0, SPAN_MAX(k)) - start) / count;
     }
 }
 
@@ -124,13 +194,25 @@ span_start(const gradients_t* g, uint32_t carried, int k, int skip, int count, i
         *value = (int32_t)(carried + ((uint32_t)*step * (uint32_t)skip));
     }
     if (!g->in_range) {
+#if TUNE_HOT_LIVE
+        const int32_t max = k == 1 && g->scalar_max != 0 ? g->scalar_max : value_max[k];
+        clamp_span(max, count, value, step);
+#else
         clamp_span(k, count, value, step);
+#endif
     }
 }
 
 #define HALF_PIXEL (R3D_SUBPIXEL / 2)
 
-typedef enum { FILL_FLAT, FILL_FACE, FILL_GOURAUD } shading_t;
+typedef enum {
+    FILL_FLAT,
+    FILL_FACE,
+    FILL_GOURAUD,
+#if TUNE_HOT_LIVE
+    FILL_DITHER,
+#endif
+} shading_t;
 
 typedef struct {
     shading_t shading;
@@ -138,6 +220,10 @@ typedef struct {
     uint16_t flat_z;
     uint16_t flat_color;
     gradients_t* g;
+#if TUNE_HOT_LIVE
+    uint16_t palette[BLEND_STEPS_MAX + 1];
+    const r3d_dither_ranks_t* pattern;
+#endif
 } fill_t;
 
 /* An edge's first column at or right of it, row by row, exactly: ceil(n /
@@ -260,6 +346,24 @@ fill_gouraud(uint16_t* depth, uint16_t* color, int count, const uint32_t value[A
     }
 }
 
+#if TUNE_HOT_LIVE
+static RENDER_IRAM_ATTR __attribute__((noinline)) void
+fill_dither(uint16_t* depth, uint16_t* color, int count, int32_t z, int32_t dz, int32_t t, int32_t dt, int x_first,
+            const uint8_t thresholds[R3D_DITHER_SIDE], const uint16_t* palette) {
+    for (int i = 0; i < count; i++) {
+        const uint16_t zq = (uint16_t)(z >> R3D_DEPTH_SHIFT);
+        if (zq > depth[i]) {
+            depth[i] = zq;
+            /* Clamped t <= steps*256 and threshold < 256, hence index <= steps. */
+            const int index = (t + thresholds[(x_first + i) & (R3D_DITHER_SIDE - 1)]) >> BLEND_SHIFT;
+            color[i] = palette[index];
+        }
+        z += dz;
+        t += dt;
+    }
+}
+#endif
+
 static inline __attribute__((always_inline)) void
 fill_clipped_gouraud(const gradients_t* g, const uint32_t row[ATTRIBUTES], int column, const row_span_t* span) {
     uint32_t value[ATTRIBUTES];
@@ -299,6 +403,20 @@ fill_carried_span(const r3d_span_target_t* target, const fill_t* f, const uint32
         } else {
             fill_solid(span->depth, span->color, span->last - span->first + 1, z, dz, f->flat_color);
         }
+#if TUNE_HOT_LIVE
+    } else if (n == 2) {
+        int32_t z, dz, t, dt;
+        const int skip = column < 0 ? -column : 0;
+        const int count = span->last - span->first;
+        span_start(g, row[0], 0, skip, count, &z, &dz);
+        span_start(g, row[1], 1, skip, count, &t, &dt);
+        uint8_t thresholds[R3D_DITHER_SIDE];
+        for (int x = 0; x < R3D_DITHER_SIDE; x++) {
+            thresholds[x] = (uint8_t)((2 * f->pattern->ranks[y & (R3D_DITHER_SIDE - 1)][x] + 1)
+                                      << (BLEND_SHIFT - 1 - __builtin_ctz((unsigned)f->pattern->levels)));
+        }
+        fill_dither(span->depth, span->color, count + 1, z, dz, t, dt, span->first, thresholds, f->palette);
+#endif
     } else if (g->in_range && column >= 0) {
         fill_gouraud(span->depth, span->color, span->last - span->first + 1, row, g->dx);
     } else {
@@ -347,6 +465,10 @@ walk_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTRIBU
         flat_rows(target, f, y0, y1, &left, &right);
     } else if (f->shading == FILL_FACE) {
         carried_rows(target, f, row, y0, y1, &left, &right, 1, false);
+#if TUNE_HOT_LIVE
+    } else if (f->shading == FILL_DITHER) {
+        carried_rows(target, f, row, y0, y1, &left, &right, 2, false);
+#endif
     } else {
         carried_rows(target, f, row, y0, y1, &left, &right, ATTRIBUTES, false);
     }
@@ -406,6 +528,11 @@ carried_attributes(const fill_t* f, bool writing) {
     if (f->shading == FILL_FLAT || (!writing && r3d_span_stop_after == 2)) {
         return 0;
     }
+#if TUNE_HOT_LIVE
+    if (!writing && f->shading == FILL_DITHER) {
+        return 2;
+    }
+#endif
     return writing || f->shading == FILL_FACE ? 1 : ATTRIBUTES;
 }
 
@@ -564,6 +691,55 @@ r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, recti_t box) {
     return true;
 }
 
+#if TUNE_HOT_LIVE
+static float
+luma(const r3d_span_vertex_t* v) {
+    const float red_weight = 2.0F;
+    const float green_weight = 5.0F;
+    return red_weight * v->r + green_weight * v->g + v->b;
+}
+
+static void
+set_up_dither(fill_t* f, const r3d_span_vertex_t* const v[3], const plane_t* p, recti_t box, int y_anchor, int steps,
+              gradients_t* g) {
+    const r3d_span_vertex_t* a = v[0];
+    const r3d_span_vertex_t* b = v[0];
+    for (int i = 1; i < 3; i++) {
+        if (luma(v[i]) < luma(a)) {
+            a = v[i];
+        }
+        if (luma(v[i]) > luma(b)) {
+            b = v[i];
+        }
+    }
+    for (int i = 0; i <= steps; i++) {
+        const float t = (float)i / (float)steps;
+        f->palette[i] = r3d_span_pack((int32_t)((a->r + (b->r - a->r) * t) * COLOR_SCALE),
+                                      (int32_t)((a->g + (b->g - a->g) * t) * COLOR_SCALE),
+                                      (int32_t)((a->b + (b->b - a->b) * t) * COLOR_SCALE));
+    }
+    if (f->palette[0] == f->palette[steps]) {
+        f->flat_color = f->palette[0];
+        f->shading = FILL_FACE;
+        return;
+    }
+    const float dr = b->r - a->r, dg = b->g - a->g, db = b->b - a->b;
+    const float inverse = mathf_recip(dr * dr + dg * dg + db * db);
+    float t[3];
+    g->scalar_max = steps * BLEND_UNIT;
+    for (int i = 0; i < 3; i++) {
+        t[i] =
+            mathf_clamp(((v[i]->r - a->r) * dr + (v[i]->g - a->g) * dg + (v[i]->b - a->b) * db) * inverse, 0.0F, 1.0F)
+            * (float)g->scalar_max;
+    }
+    gradient(p, t[0], t[1], t[2], 1, g);
+    g->base[1] = first_row_value(g, 1, box.y, y_anchor);
+    g->in_range = g->in_range && r3d_span_plane_in_range(g->base[1], g->dx[1], g->dy[1], g->scalar_max, box);
+    f->shading = FILL_DITHER;
+    f->pattern = r3d_dither_ranks();
+}
+#endif
+
 /* The colour planes, unless a face colour stands in for them, and whether
  * every plane stays in range across the box so spans need no clamp. */
 static void
@@ -605,6 +781,14 @@ set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[3]
         return false;
     }
     if (f->shading != FILL_FLAT) {
+#if TUNE_HOT_LIVE
+        const int steps = blend_steps;
+        if (f->shading == FILL_GOURAUD && steps != 0) {
+            g->in_range = r3d_span_plane_in_range(g->base[0], g->dx[0], g->dy[0], value_max[0], box);
+            set_up_dither(f, v, &p, box, y_anchor, steps, g);
+            return true;
+        }
+#endif
         set_up_planes(f, v, &p, box, y_anchor, g);
     }
     return true;
@@ -627,7 +811,11 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
         return;
     }
 
+#if TUNE_HOT_LIVE
+    fill_t f = {.shading = e.flat ? FILL_FLAT : face != NULL ? FILL_FACE : FILL_GOURAUD, .face = face};
+#else
     fill_t f = {e.flat ? FILL_FLAT : face != NULL ? FILL_FACE : FILL_GOURAUD, face, 0, 0, NULL};
+#endif
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
     const int y_anchor = mathi_clamp(e.centres.y, -1, target->rows.row1 + 1);
@@ -671,7 +859,11 @@ r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t
         return;
     }
     /* FILL_FACE selects a depth carry here; writers do not read face colour. */
+#if TUNE_HOT_LIVE
+    fill_t f = {.shading = e.flat ? FILL_FLAT : FILL_FACE};
+#else
     fill_t f = {e.flat ? FILL_FLAT : FILL_FACE, NULL, 0, 0, NULL};
+#endif
     if (e.centres.w <= small_max_side && e.centres.h <= small_max_side) {
         set_flat(&f, a, b, c);
         for (int y = box.y; y < recti_bottom(box); y++) {

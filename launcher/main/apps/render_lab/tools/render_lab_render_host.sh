@@ -60,7 +60,7 @@ $(CDPATH= cd -- "$SCRIPT_DIR/../../../../" &&
     find main/apps/render_lab \( -type d \( -name tools -o -name tests \) -prune \) -o \
         \( -type f -name '*.c' ! -name 'suite_*.c' -print \) | LC_ALL=C sort)
 "
-scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0"
+scene_defines="-DCONFIG_LAUNCHER_DEVELOPMENT=0 -DTUNE_HOT_LIVE=1"
 
 # The lit-mesh scene's views (--view shaded|depth|tiles|motion|meshlets) are raster_show()
 # over the same frame, so each is unpinned for the reason the shaded one is: its

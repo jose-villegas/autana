@@ -13,6 +13,16 @@
 
 #include "render/r3d_span.h"
 
+#define R3D_DITHER_SIDE 8
+
+typedef struct {
+    uint8_t ranks[R3D_DITHER_SIDE][R3D_DITHER_SIDE];
+    int levels;
+} r3d_dither_ranks_t;
+
+/* Shared screen-fixed ranks, tiled to the largest supported cell. */
+const r3d_dither_ranks_t* r3d_dither_ranks(void);
+
 /* An upper bound on the depth a triangle writes inside `box`, as the
  * 16-bit depth, from its depth plane in 16.8: `top` at the centre of pixel
  * (box.x, box.y), stepping `dx` a column and `dy` a row. */

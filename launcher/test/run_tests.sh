@@ -7,6 +7,7 @@
 #   ./test/run_tests.sh --verbose
 #   ./test/run_tests.sh --build-only     # compile, link and the stack gate; run nothing
 #   ./test/run_tests.sh --jobs 4         # parallel compiles (default: half the CPUs, at most 8)
+#   ./test/run_tests.sh --hot-tunables # exercise live hot-path experiments
 #   ./test/run_tests.sh --sanitize       # with UBSan, and ASan on Linux
 #   ./test/run_tests.sh --build-dir DIR  # build here, not in test/build
 #
@@ -28,6 +29,7 @@
 set -eu
 
 VERBOSE=0
+HOT_TUNABLES=0
 SANITIZE=0
 BUILD_DIR=""
 BUILD_ONLY=0
@@ -35,6 +37,7 @@ JOBS=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --verbose) VERBOSE=1 ;;
+        --hot-tunables) HOT_TUNABLES=1 ;;
         --sanitize) SANITIZE=1 ;;
         --build-dir)
             [ $# -ge 2 ] || { echo "--build-dir needs a folder" >&2; exit 2; }
@@ -85,7 +88,7 @@ fi
 # and strictness costs nothing in tests.
 # 64-bit pointers and 8-byte alignment make every command bigger on the host.
 BASE_CFLAGS="-std=c11 -Wall -Wextra -Werror -Werror=vla -ffp-contract=off -Wno-unused-parameter -g -O1"
-CFLAGS="$BASE_CFLAGS"
+CFLAGS="$BASE_CFLAGS -DTUNE_HOT_LIVE=$HOT_TUNABLES"
 # shellcheck source=../tools/build/host_make.sh
 . "$TEST_DIR/../tools/build/host_make.sh"
 if [ "$SANITIZE" = 1 ]; then
@@ -282,6 +285,7 @@ if [ -z "${QUIET_INNER:-}" ]; then
     . "$TEST_DIR/../../scripts/quiet.sh"
     quiet_begin "$QUIET_LOG"
     [ "$VERBOSE" = 1 ] && set -- "$@" --verbose
+    [ "$HOT_TUNABLES" = 1 ] && set -- "$@" --hot-tunables
     [ "$SANITIZE" = 1 ] && set -- "$@" --sanitize
     [ "$BUILD_ONLY" = 1 ] && set -- "$@" --build-only
     [ -n "$JOBS" ] && set -- "$@" --jobs "$JOBS"
