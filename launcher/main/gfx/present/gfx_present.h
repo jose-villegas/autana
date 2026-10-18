@@ -61,11 +61,12 @@ void gfx_present(void);
 
 /*
  * Split present: gfx_present_begin() hands the framebuffer to the core-1
- * present task and returns at once; gfx_present_wait() blocks until sent.
- * Except in GFX_LAYOUT_DOUBLE_FB, no gfx_* call that touches drawing state or the
- * framebuffer may run: app.h's update() contract, asserted in development
- * builds (gfx_present_guard.h). gfx_set_present_async(false) sends
- * synchronously on the caller instead, for A/B measurement.
+ * present task and returns at once; in double mode it first drains the
+ * previous send. gfx_present_wait() blocks until sent, except in double mode.
+ * Outside double mode, no gfx_* call that touches drawing state or the
+ * framebuffer may run between begin and wait: the update() contract,
+ * asserted in development builds (gfx_present_guard.h).
+ * gfx_set_present_async(false) sends synchronously on the caller for A/B measurement.
  */
 void gfx_present_begin(void);
 void gfx_present_wait(void);
