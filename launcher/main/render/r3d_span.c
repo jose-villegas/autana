@@ -548,18 +548,46 @@ small_limits_for_side(int side) {
                             ((float)spread * UINT8_MAX) / (float)gfx_rgb565_g6(UINT16_MAX)};
 }
 
+#if TUNE_HOT_LIVE
+static small_limits_t small_limits[SMALL_MAX_SIDE_TUNE + 1];
+static uint32_t small_generation = UINT32_MAX;
+static int small_side_limit = SMALL_MAX_SIDE;
+static int small_cell_bits = SMALL_DITHER_PATTERN_BITS_MAX;
+
+void
+r3d_span_begin(void) {
+    const uint32_t generation = TUNE_GENERATION(r3d_span);
+    if (generation == small_generation) {
+        return;
+    }
+    small_side_limit = small_max_side;
+    small_cell_bits = small_dither_cell_bits;
+    for (int side = SMALL_MAX_SIDE + 1; side <= small_side_limit; side++) {
+        small_limits[side] = small_limits_for_side(side);
+    }
+    small_generation = generation;
+}
+#else
+#define small_side_limit small_max_side
+#define small_cell_bits  small_dither_cell_bits
+#endif
+
 /* Negative selects the walk; otherwise the result is dither coverage, with zero selecting flat. */
 static inline __attribute__((always_inline)) int
 select_small(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, recti_t centres,
              bool solid) {
     const int side = mathi_max(centres.w, centres.h);
-    if (side > small_max_side) {
+    if (side > small_side_limit) {
         return SMALL_FILL_WALK;
     }
     if (solid || side <= SMALL_MAX_SIDE) {
         return 0;
     }
+#if TUNE_HOT_LIVE
+    const small_limits_t limits = small_limits[side];
+#else
     const small_limits_t limits = small_limits_for_side(side);
+#endif
     if (limits.spread != SMALL_FLAT_SPREAD_OFF && !colours_within_spread(a, b, c, &limits)) {
         return SMALL_FILL_WALK;
     }
@@ -636,8 +664,7 @@ prepare_small_dither(small_dither_t* d, const r3d_span_vertex_t* a, const r3d_sp
         small_side(&d->edge[0], a->x, a->y) + small_side(&d->edge[1], a->x, a->y) + small_side(&d->edge[2], a->x, a->y);
     const int divisor = TRIANGLE_VERTICES * SMALL_DITHER_COVERAGE_EIGHTHS;
     d->coverage_limit = (coverage * total + divisor - 1) / divisor;
-    /* Row workers may see different settings during a knob change; each triangle is self-consistent. */
-    const int cell_bits = small_dither_cell_bits;
+    const int cell_bits = small_cell_bits;
     d->phase_mask = (1 << cell_bits) - 1;
     d->rank_shift = 2 * (SMALL_DITHER_PATTERN_BITS_MAX - cell_bits);
     d->level_shift = 1 + (2 * cell_bits);

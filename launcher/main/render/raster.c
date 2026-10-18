@@ -307,6 +307,7 @@ static inline __attribute__((always_inline)) void
 draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t* stats) {
     assert(raster->instance_count > 0);
     assert_view_size(raster, view);
+    r3d_span_begin();
     bool resolves = false;
     for (int i = 0; i < raster->attachment_count; i++) {
         const raster_attachment_t* a = raster->attachments[i];
@@ -360,6 +361,7 @@ raster_stats_t
 raster_census(const raster_t* raster, const render_view_t* view) {
     assert(raster->instance_count > 0);
     assert_view_size(raster, view);
+    r3d_span_begin();
     raster_stats_t stats = {0, 0};
     FRAME_COST_BEGIN(counted_from);
     draw_work_t* work = scratch_draw(raster);

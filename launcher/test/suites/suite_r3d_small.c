@@ -1,9 +1,10 @@
 #ifndef DEVICE_BUILD
+#define TUNE_HOT_LIVE  1
+#define r3d_span_begin hot_begin
 #include "render/r3d_span.h"
 
 /* Private selection and packing invariants need the live copy in this TU;
  * the separately compiled constant fill remains the default-image oracle. */
-#define TUNE_HOT_LIVE           1
 #define r3d_span_triangle       hot_triangle
 #define r3d_span_triangle_solid hot_triangle_solid
 #define r3d_span_triangle_write hot_triangle_write
@@ -28,6 +29,7 @@
 static void
 knob(const char* name, int value) {
     TEST_ASSERT_TRUE(tune_set(tune_shared(), name, value));
+    hot_begin();
 }
 
 static void
@@ -38,6 +40,7 @@ reset_knobs(void) {
             TEST_ASSERT_TRUE(tune_set(registry, e->name, e->initial));
         }
     }
+    hot_begin();
 }
 
 static uint16_t* pixels;

@@ -12,6 +12,14 @@
 
 #include "gfx/target/gfx_render_target.h"
 
+/* Resolve live small-fill limits before dispatching the frame's row workers. */
+#if defined(TUNE_HOT_LIVE) && TUNE_HOT_LIVE
+void r3d_span_begin(void);
+#else
+static inline void
+r3d_span_begin(void) {}
+#endif
+
 typedef struct r3d_span_writer r3d_span_writer_t;
 
 /* Where a triangle is filled: a render target whose colour is the panel's
