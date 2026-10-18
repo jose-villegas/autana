@@ -1453,13 +1453,13 @@ class ConsoleSetupTests(unittest.TestCase):
                 self.assertIn("SOUND error: no clip", str(error.exception))
 
     def test_silence_is_retried(self):
-        class AnswersSecondAsk(FakeConnection):
-            def read(self, unused_size):
-                return b"SOUND_END\n" if len(self.writes) == 2 else b""
-        connection = AnswersSecondAsk()
-        with mock.patch.object(device, "TUNE_SET_SECONDS", 0.001), mock.patch("builtins.print"):
+        connection = FakeConnection()
+        def reply_on_retry(unused_size):
+            return b"SOUND_END\n" if len(connection.writes) == 2 else b""
+        with mock.patch.object(connection, "read", side_effect=reply_on_retry), \
+             mock.patch.object(device, "TUNE_SET_SECONDS", 0.001), mock.patch("builtins.print"):
             device.apply_console_lines(connection, ["sound stop all"])
-        self.assertEqual(len(connection.writes), 2)
+        self.assertEqual(connection.writes, [b"\nsound stop all\n"] * 2)
 
 
 class TestFilterRunTests(unittest.TestCase):
