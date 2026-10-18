@@ -50,6 +50,8 @@ static bool imbalance;
 
 #ifndef ESP_PLATFORM
 void (*ui_face_misuse_for_test)(void);
+#endif
+#if !defined(ESP_PLATFORM) || defined(DEVICE_BUILD)
 void (*ui_face_widget_for_test)(const char* label, recti_t r);
 #endif
 
@@ -123,15 +125,22 @@ ui_theme(const ui_theme_t* t) {
     UI_FACE_COST_END(face_from, "ui.face");
 }
 
+/* The innermost recorded slot of a scope `depth` deep, or -1 with none open;
+ * a scope past UI_FACE_SCOPE_DEPTH reads the deepest recorded one. */
+static int
+scope_top(int depth) {
+    return depth > 0 ? (depth < UI_FACE_SCOPE_DEPTH ? depth : UI_FACE_SCOPE_DEPTH) - 1 : -1;
+}
+
 static bool
 is_disabled(void) {
-    const int depth = disabled_depth < UI_FACE_SCOPE_DEPTH ? disabled_depth : UI_FACE_SCOPE_DEPTH;
-    return depth > 0 && disabled[depth - 1];
+    const int slot = scope_top(disabled_depth);
+    return slot >= 0 && disabled[slot];
 }
 
 static mu_Id
 widget_id(const char* label, recti_t r) {
-#ifndef ESP_PLATFORM
+#if !defined(ESP_PLATFORM) || defined(DEVICE_BUILD)
     if (ui_face_widget_for_test) {
         ui_face_widget_for_test(label, r);
     }
@@ -376,8 +385,8 @@ ui_dropdown_icons(recti_t r, const char* label, int* index, const char* const* n
 
 static uint8_t
 ink_alpha(void) {
-    return alpha_depth > 0 ? alphas[(alpha_depth < UI_FACE_SCOPE_DEPTH ? alpha_depth : UI_FACE_SCOPE_DEPTH) - 1]
-                           : UINT8_MAX;
+    const int slot = scope_top(alpha_depth);
+    return slot >= 0 ? alphas[slot] : UINT8_MAX;
 }
 
 #define UI_FACE_TEXT(name, alignment, ink)                                                                             \
@@ -462,65 +471,78 @@ ui_swatches(recti_t r, const uint32_t* rgb, int cols, int rows) {
     UI_FACE_COST_END(face_from, "ui.face");
 }
 
+/* The slot a _begin fills, or -1 past UI_FACE_SCOPE_DEPTH (reported). The
+ * depth still counts, so the matching _end balances. */
+static int
+scope_push(int* depth) {
+    const int slot = (*depth)++;
+    if (slot < UI_FACE_SCOPE_DEPTH) {
+        return slot;
+    }
+    face_misuse();
+    return -1;
+}
+
+/* The slot an _end restores, or -1 for an _end with no _begin (reported) or
+ * one closing a scope past the depth. */
+static int
+scope_pop(int* depth) {
+    if (*depth <= 0) {
+        face_misuse();
+        return -1;
+    }
+    const int slot = --(*depth);
+    return slot < UI_FACE_SCOPE_DEPTH ? slot : -1;
+}
+
 void
 ui_disabled_begin(bool value) {
     UI_FACE_COST_BEGIN(face_from);
-    if (disabled_depth < UI_FACE_SCOPE_DEPTH) {
-        disabled[disabled_depth] = value || is_disabled();
-    } else {
-        face_misuse();
+    const bool outer = is_disabled();
+    const int slot = scope_push(&disabled_depth);
+    if (slot >= 0) {
+        disabled[slot] = value || outer;
     }
-    disabled_depth++;
     UI_FACE_COST_END(face_from, "ui.face");
 }
 
 void
 ui_disabled_end(void) {
     UI_FACE_COST_BEGIN(face_from);
-    if (disabled_depth > 0) {
-        disabled_depth--;
-    } else {
-        face_misuse();
-    }
+    (void)scope_pop(&disabled_depth);
     UI_FACE_COST_END(face_from, "ui.face");
 }
 
 void
 ui_color_begin(ui_color_slot_t slot, uint32_t rgb) {
     UI_FACE_COST_BEGIN(face_from);
-    if (color_depth < UI_FACE_SCOPE_DEPTH) {
-        colors[color_depth].text = theme.text;
-        colors[color_depth].caption = theme.caption;
-        colors[color_depth].face = theme.button_face;
-        colors[color_depth].selected = theme.on_accent;
-        colors[color_depth].native_toggle = theme.native_toggle;
+    const int saved = scope_push(&color_depth);
+    if (saved >= 0) {
+        colors[saved].text = theme.text;
+        colors[saved].caption = theme.caption;
+        colors[saved].face = theme.button_face;
+        colors[saved].selected = theme.on_accent;
+        colors[saved].native_toggle = theme.native_toggle;
         if (slot == UI_COLOR_FACE) {
             theme.button_face = ui_rgb(rgb);
             theme.native_toggle = false;
         } else {
             theme.text = theme.caption = theme.on_accent = ui_rgb(rgb);
         }
-    } else {
-        face_misuse();
     }
-    color_depth++;
     UI_FACE_COST_END(face_from, "ui.face");
 }
 
 void
 ui_color_end(void) {
     UI_FACE_COST_BEGIN(face_from);
-    if (color_depth <= 0) {
-        face_misuse();
-        UI_FACE_COST_END(face_from, "ui.face");
-        return;
-    }
-    if (--color_depth < UI_FACE_SCOPE_DEPTH) {
-        theme.text = colors[color_depth].text;
-        theme.caption = colors[color_depth].caption;
-        theme.button_face = colors[color_depth].face;
-        theme.on_accent = colors[color_depth].selected;
-        theme.native_toggle = colors[color_depth].native_toggle;
+    const int saved = scope_pop(&color_depth);
+    if (saved >= 0) {
+        theme.text = colors[saved].text;
+        theme.caption = colors[saved].caption;
+        theme.button_face = colors[saved].face;
+        theme.on_accent = colors[saved].selected;
+        theme.native_toggle = colors[saved].native_toggle;
     }
     UI_FACE_COST_END(face_from, "ui.face");
 }
@@ -528,26 +550,20 @@ ui_color_end(void) {
 void
 ui_scale_begin(int scale) {
     UI_FACE_COST_BEGIN(face_from);
-    if (scale_depth < UI_FACE_SCOPE_DEPTH) {
-        scales[scale_depth] = theme.text_scale;
+    const int saved = scope_push(&scale_depth);
+    if (saved >= 0) {
+        scales[saved] = theme.text_scale;
         theme.text_scale = scale;
-    } else {
-        face_misuse();
     }
-    scale_depth++;
     UI_FACE_COST_END(face_from, "ui.face");
 }
 
 void
 ui_scale_end(void) {
     UI_FACE_COST_BEGIN(face_from);
-    if (scale_depth <= 0) {
-        face_misuse();
-        UI_FACE_COST_END(face_from, "ui.face");
-        return;
-    }
-    if (--scale_depth < UI_FACE_SCOPE_DEPTH) {
-        theme.text_scale = scales[scale_depth];
+    const int saved = scope_pop(&scale_depth);
+    if (saved >= 0) {
+        theme.text_scale = scales[saved];
     }
     UI_FACE_COST_END(face_from, "ui.face");
 }
@@ -555,22 +571,16 @@ ui_scale_end(void) {
 void
 ui_alpha_begin(uint8_t alpha) {
     UI_FACE_COST_BEGIN(face_from);
-    if (alpha_depth < UI_FACE_SCOPE_DEPTH) {
-        alphas[alpha_depth] = alpha;
-    } else {
-        face_misuse();
+    const int slot = scope_push(&alpha_depth);
+    if (slot >= 0) {
+        alphas[slot] = alpha;
     }
-    alpha_depth++;
     UI_FACE_COST_END(face_from, "ui.face");
 }
 
 void
 ui_alpha_end(void) {
     UI_FACE_COST_BEGIN(face_from);
-    if (alpha_depth > 0) {
-        alpha_depth--;
-    } else {
-        face_misuse();
-    }
+    (void)scope_pop(&alpha_depth);
     UI_FACE_COST_END(face_from, "ui.face");
 }

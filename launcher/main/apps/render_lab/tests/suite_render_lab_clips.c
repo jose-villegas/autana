@@ -216,6 +216,7 @@ test_picker_init_destroy_releases_items(void) {
 static void
 test_picker_init_reports_allocation_failure(void) {
     clip_fixture_t* f = fixture();
+    ui_probe_widgets_start();
     f->blocked_heap = memory_alloc(memory_largest_block(MEMORY_PSRAM), MEMORY_PSRAM);
     TEST_ASSERT_NOT_NULL(f->blocked_heap);
     TEST_ASSERT_FALSE(render_lab_clips_init(&f->choice, &f->scene, 0, "gallop"));
@@ -225,7 +226,6 @@ test_picker_init_reports_allocation_failure(void) {
     request(f, "clip idle");
     TEST_ASSERT_EQUAL_INT(0, f->animator.layer.current.clip);
     ui_init();
-    ui_probe_widgets_start();
     ui_begin(NULL);
     ui_screen();
     render_lab_clips_draw(ui_width(), &f->choice);
@@ -331,9 +331,9 @@ test_menu_dropdown_plays_with_selected_blend(void) {
     clip_fixture_t* f = fixture();
     TEST_ASSERT_TRUE(render_lab_clips_init(&f->choice, &f->scene, 0, "idle"));
     const char* const* items = f->choice.items;
+    ui_probe_widgets_start();
     const size_t free_before = memory_free_bytes(MEMORY_PSRAM);
     ui_init();
-    ui_probe_widgets_start();
     menu_frame(NULL);
     menu_frame(NULL);
     TEST_ASSERT_FALSE(dropdown_open);

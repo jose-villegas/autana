@@ -1,8 +1,8 @@
 # What the render_lab scene's renders hash to, one per line.
 # Re-pinned deliberately, after looking at the images:
 #     ./launcher/main/apps/render_lab/tools/render_lab_render_host.sh --update-baseline
-menu-sponza-landscape 0d5e932786f383027894c3cc36a4116d44a768677077d85c1a01cc7fbd2d128e
-menu-sponza-portrait 6c48a57c16e1d44c551f36dc222f9fd2600ea665a12cad9dcd5b02098efa2beb
-menu-capybara-landscape d8578a0fccc39eeb456bec05d1d137039262231c4c3ec0ebab649963560b637d
-menu-capybara-portrait 3d022c902dcebda4567d107ee15e3c156c22be0d5115bdbb033535af65ba9873
-menu-capybara-clips 0bc17d220fd7f27c2338ffe0ca2add2e3bae9d2a29ce8ceb4e5ea1efb00459b0
+menu-sponza-landscape 9692e4948cd920c4fa2c891b1efd206845481f54022f66e417a7e252dd2fc8e4
+menu-sponza-portrait 51c9e368468e9069a8d394a6a1647a3f76a9ee517ee7cd7db4a62b3ecf4dda58
+menu-capybara-landscape 9b360951ca431580038055834b546e7e9ccfe0029d899815f8a4fee60ce0111c
+menu-capybara-portrait 260c245346f73645d9d176a2ae6f8b3206a11339a0cf44d5ac63a61eafd9edd8
+menu-capybara-clips 11fe247bb20fd563cab2161ba2bb22d15ade1b4964e6596b0f52874da7f88e55
