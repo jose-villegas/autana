@@ -137,7 +137,7 @@ def point_edges(tris, vertex_point):
 
 
 def start_parts(mesh) -> np.ndarray:
-    """Connected start triangles share welded positions, including colour seams."""
+    """Connected-part labels for start triangles, including colour seams."""
     edges = point_edges(mesh.tris, mesh.vertex_point)
     graph = coo_matrix((np.ones(len(edges)), (edges[:, 0], edges[:, 1])),
                        shape=(len(mesh.points), len(mesh.points)))
@@ -146,17 +146,26 @@ def start_parts(mesh) -> np.ndarray:
     return parts
 
 
+def _triangle_edges(points, mesh):
+    corners = points[mesh.vertex_point[mesh.tris]]
+    return np.linalg.norm(corners - np.roll(corners, -1, axis=1), axis=2)
+
+
 def triangle_stretch(start_points, fitted_points, mesh) -> np.ndarray:
-    corners = mesh.vertex_point[mesh.tris]
-    start = start_points[corners]
-    fitted = fitted_points[corners]
-    start_edge = np.linalg.norm(start - np.roll(start, -1, axis=1), axis=2).max(axis=1)
-    fitted_edge = np.linalg.norm(fitted - np.roll(fitted, -1, axis=1), axis=2).max(axis=1)
+    """Each triangle's longest fitted edge relative to its longest start edge."""
+    start_edge = _triangle_edges(start_points, mesh).max(axis=1)
+    fitted_edge = _triangle_edges(fitted_points, mesh).max(axis=1)
     ratio = np.where(fitted_edge > 0, np.inf, 1.0)
     return np.divide(fitted_edge, start_edge, out=ratio, where=start_edge > 0)
 
 
-def part_stretch(parts, stretch, start_edge, global_edge) -> dict:
+def stretch_report(start, fitted, kept) -> dict:
+    """Stretch by connected start part, with small-part totals and worst parts."""
+    parts = start_parts(start)[kept]
+    stretch = triangle_stretch(start.points, fitted.points, fitted)
+    start_edge = _triangle_edges(start.points, start).mean(axis=1)[kept]
+    edges = point_edges(start.tris, start.vertex_point)
+    global_edge = np.linalg.norm(start.points[edges[:, 0]] - start.points[edges[:, 1]], axis=1).mean()
     ids, inverse, count = np.unique(parts, return_inverse=True, return_counts=True)
     mean_edge = np.bincount(inverse, weights=start_edge) / count
     stretched = np.bincount(inverse, weights=np.asarray(stretch) > STRETCH_RATIO, minlength=len(ids))
@@ -446,15 +455,13 @@ def coverage(mesh, views, size, device="cuda"):
     return total.cpu().numpy()
 
 
-def prune(mesh, shown, budget, *, return_kept=False):
-    """The mesh without the triangles that show least, down to `budget`:
-    every triangle no view shows goes first, then those showing fewest
-    pixels. A flat mesh's colours go with their triangles."""
+def prune(mesh, shown, budget):
+    """The mesh of up to `budget` most-shown triangles and their original indices."""
     order = np.argsort(-np.asarray(shown), kind="stable")
     keep = np.sort(order[: min(budget, int(np.count_nonzero(shown)))])
     pruned = mesh._replace(rgb=mesh.rgb[keep] if mesh.flat else mesh.rgb, tris=mesh.tris[keep],
                            double=np.asarray(mesh.double)[keep])
-    return (pruned, keep) if return_kept else pruned
+    return pruned, keep
 
 
 def uniform_laplacian(points, edges):
@@ -813,16 +820,11 @@ def main(argv=None):
         if args.budget is not None:
             shown = coverage(fitted, coverage_views if args.coverage_poses else views,
                              coverage_size if args.coverage_poses else size)
-            pruned, kept = prune(fitted, shown, args.budget, return_kept=True)
+            pruned, kept = prune(fitted, shown, args.budget)
             log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: {np.count_nonzero(shown == 0)} never shown")
             fitted = pruned
         count = write_mesh(out, name, fitted)
-        edges = point_edges(fit_start.tris, fit_start.vertex_point)
-        global_edge = np.linalg.norm(fit_start.points[edges[:, 0]] - fit_start.points[edges[:, 1]], axis=1).mean()
-        corners = fit_start.points[fit_start.vertex_point[fit_start.tris]]
-        start_edge = np.linalg.norm(corners - np.roll(corners, -1, axis=1), axis=2).mean(axis=1)
-        stretch = triangle_stretch(fit_start.points, fitted.points, fitted)
-        report = part_stretch(start_parts(fit_start)[kept], stretch, start_edge[kept], global_edge)
+        report = stretch_report(fit_start, fitted, kept)
         log(f"stretch > {STRETCH_RATIO:g}x: small parts {report['small']['share']:.2f}%, rest {report['rest']['share']:.2f}%")
         log("worst parts: " + ", ".join(f"{row['part']}: {row['share']:.2f}% ({row['triangles']} triangles)"
                                       for row in report["worst"]))
