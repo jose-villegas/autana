@@ -119,6 +119,8 @@ static input_motion_t motion;
 static input_motion_batch_t* motion_batch;
 static int motion_samples;
 static int64_t motion_drain_us;
+/* Bias-corrected gyro rotation since the turn step armed, in degrees: proves the gyro scale on its own. */
+static vec3f_t turn_gyro_deg;
 static vec3i_t raw_acceleration;
 static imu_probe_round_t imu_round;
 static imu_record_t imu_record;
@@ -442,6 +444,21 @@ motion_log_vector(vec3f_t value, int scale) {
 }
 
 static void
+integrate_turn_gyro(const input_motion_batch_t* batch) {
+    if (imu_round.step != IMU_PROBE_TURN && imu_round.step != IMU_PROBE_TRACE) {
+        turn_gyro_deg = (vec3f_t){0};
+        return;
+    }
+    const float dt = (float)INPUT_MOTION_SAMPLE_US / (float)MATH_US_PER_S;
+    for (int i = 0; i < batch->count; i++) {
+        const vec3f_t rate =
+            vec3f_sub(vec3f_scale(vec3f_from_vec3i(batch->samples[i].rotation), 1.0F / INPUT_ROTATION_ONE_DPS),
+                      gravity_gyro_bias(&gravity));
+        turn_gyro_deg = vec3f_add(turn_gyro_deg, vec3f_scale(rate, dt));
+    }
+}
+
+static void
 read_motion(uint32_t dt_ms) {
     motion_log_ms += dt_ms;
     const int64_t drain_start_us = timing_now_us();
@@ -456,6 +473,7 @@ read_motion(uint32_t dt_ms) {
     }
     if (read) {
         gravity_update_batch(&gravity, motion_batch);
+        integrate_turn_gyro(motion_batch);
     }
     if (!have_motion) {
         motion_log_ms %= MOTION_LOG_PERIOD_MS;
@@ -567,10 +585,10 @@ update_imu_round(uint32_t dt_ms, const input_t* input) {
         const vec3f_t acceleration = vec3f_from_vec3i(motion.acceleration);
         const vec3f_t direction =
             vec3f_dot(acceleration, acceleration) > 0.0F ? vec3f_normalize(acceleration) : (vec3f_t){0};
-        LOG_IMU_LINE("turn ms %u down %.*f %.*f %.*f accel %.*f %.*f %.*f", (unsigned)imu_round.trace_ms,
+        LOG_IMU_LINE("turn ms %u down %.*f %.*f %.*f accel %.*f %.*f %.*f gyro_deg %.1f", (unsigned)imu_round.trace_ms,
                      IMU_GRAVITY_DIGITS, (double)down.x, IMU_GRAVITY_DIGITS, (double)down.y, IMU_GRAVITY_DIGITS,
                      (double)down.z, IMU_GRAVITY_DIGITS, (double)direction.x, IMU_GRAVITY_DIGITS, (double)direction.y,
-                     IMU_GRAVITY_DIGITS, (double)direction.z);
+                     IMU_GRAVITY_DIGITS, (double)direction.z, (double)sqrtf(vec3f_dot(turn_gyro_deg, turn_gyro_deg)));
     }
     if (previous != IMU_PROBE_DONE && imu_round.step == IMU_PROBE_DONE) {
         imu_flash_ms = IMU_DONE_FLASH_MS;

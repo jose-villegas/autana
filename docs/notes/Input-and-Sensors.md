@@ -170,7 +170,8 @@ python motion_fit.py cjsd1-round1.log cjsd1-round2.log
 ```
 
 All vectors below are x,y,z; gyro values and noise are mdps, offsets mg and
-scales ppm. The incomplete calibration round is excluded from the fit comparison.
+scales ppm. These captures set the gyro to +/-256 dps but read it as +/-512, so
+every gyro figure here is twice the true rate. The incomplete calibration round is excluded from the fit comparison.
 
 | Measurement | Capture 1 | Capture 2 (after power cycle) |
 |---|---|---|
