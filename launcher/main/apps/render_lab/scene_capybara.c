@@ -123,7 +123,10 @@ scene_capybara_enter(void) {
     place_camera();
     (void)scene_activate(capybara, CAPYBARA_CAMERA);
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
-    render_context_set_scale(render_context_main(), 10000 / render_lab_scale());
+    render_lab_apply_raster_settings();
+    if (capybara != NULL) {
+        (void)scene_camera_set_present(capybara, scene_find(capybara, CAPYBARA_CAMERA), render_lab_present());
+    }
 #if TUNE_ENABLED
     render_context_set_debug_view(render_context_main(), render_lab_debug_view());
 #endif
@@ -154,6 +157,10 @@ scene_capybara_steer(uint32_t dt_ms, const input_t* input) {
 static void
 scene_capybara_frame(uint32_t dt_ms) {
     (void)dt_ms;
+    render_lab_apply_raster_settings();
+    if (capybara != NULL) {
+        (void)scene_camera_set_present(capybara, scene_find(capybara, CAPYBARA_CAMERA), render_lab_present());
+    }
 #if TUNE_ENABLED
     render_context_set_debug_view(render_context_main(), render_lab_debug_view());
 #endif
@@ -181,8 +188,8 @@ scene_capybara_console(const char* args, console_reply_fn reply) {
 }
 
 static void
-scene_capybara_controls(mu_Context* ctx, ui_flow_t* flow, int width) {
-    render_lab_clips_draw(ctx, flow, width, &choice);
+scene_capybara_controls(int width) {
+    render_lab_clips_draw(width, &choice);
 }
 
 const render_lab_scene_t scene_capybara = {.name = "Capybara",

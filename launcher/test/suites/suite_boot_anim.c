@@ -998,7 +998,7 @@ test_the_curve_is_finished_by_pen_finish_ms(void) {
 }
 
 /* Not a claim boot_anim_pen() itself makes (see its own comment on why
- * PEN_FINISH_MS landing after FADE_START_MS is only ever a generator
+ * BOOT_ANIM_PEN_FINISH_MS landing after BOOT_ANIM_FADE_START_MS is only ever a generator
  * warning, not a refusal) but true of the SEED this repo ships, and worth
  * catching if a future edit to the committed timeline quietly breaks it. */
 static void

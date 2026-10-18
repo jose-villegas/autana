@@ -1,6 +1,8 @@
 /*
- * units: MATH_MS_PER_S, the milliseconds in a second, for integer time conversions.
+ * units: integer time conversion scales.
  */
 #pragma once
 
-#define MATH_MS_PER_S 1000u
+#define MATH_MS_PER_S  1000u
+
+#define MATH_US_PER_MS 1000u

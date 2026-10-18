@@ -27,6 +27,7 @@
 #include "shell/shell_system.h"
 #include "shell/ui/ui_launcher.h"
 #include "shell/ui/ui_ridge.h"
+#include "sound/sound_engine.h"
 #include "ui/layout/ui_anchor.h"
 #include "ui/ui.h"
 
@@ -168,8 +169,10 @@ apply_pending_full_redraw(const app_t* app) {
 void
 shell_exit_app(const app_t** current) {
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
+    sound_stop_app_voices();
     (*current)->exit();
     shell_systems_app_exit();
+    sound_end_app();
 #if CONFIG_LAUNCHER_DEVELOPMENT
     const size_t internal_after_exit = memory_free_bytes(MEMORY_INTERNAL);
     const size_t eight_bit_after_exit = memory_free_bytes(MEMORY_8BIT);
@@ -216,6 +219,7 @@ shell_start_app(const app_t** current, const app_t* next) {
     app_internal_free_before_enter = memory_free_bytes(MEMORY_INTERNAL);
     app_8bit_free_before_enter = memory_free_bytes(MEMORY_8BIT);
 #endif
+    sound_begin_app();
     (*current)->enter();
     frame_ready = false;
     frame_watch_restart();

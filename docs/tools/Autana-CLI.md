@@ -176,6 +176,9 @@ Changes state the way a person holding the board could.
 | `autana apps --json` | The same, as JSON. |
 | `autana open <name>` | Enter an app; case-insensitive unambiguous prefix. |
 | `autana home` | Back to the launcher. |
+| `autana sound play <name> [loop] [gain]` | Play a sound from the engine pack; gain is a percent, full gain when omitted. |
+| `autana sound stop [voice\|all]` | Stop a voice or all voices; all when omitted. |
+| `autana sound stats` | Voice states, dropped commands, amplifier state and mixer RAM sizes. |
 
 Coordinates are pixels of the default `autana screenshot`, whichever way the
 board is held; read a button's centre off that image. Pixels from an

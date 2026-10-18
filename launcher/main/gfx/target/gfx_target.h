@@ -65,10 +65,12 @@ gfx_target_shown_pixel(const uint16_t* input, const uint16_t* input_depth, int x
 }
 
 /* Paired 32-bit stores share a source row across repeated output rows.
- * NULL rows selects exact 2x expansion; target.y0 addresses a strip. */
+ * NULL rows selects exact 2x expansion; target.y0 addresses a strip.
+ * A nonzero dark_run shades its latter half, with the supplied keep fraction in GFX_COLOR_SCALE_UNIT. */
 static inline __attribute__((always_inline)) void
-gfx_target_paired_rows(gfx_target_t target, const uint16_t* source, const uint16_t* depth, uint16_t clear,
-                       int source_width, const uint16_t* rows, int first_row, int row_count, bool doubled) {
+gfx_target_paired_rows_shaded(gfx_target_t target, const uint16_t* source, const uint16_t* depth, uint16_t clear,
+                              int source_width, const uint16_t* rows, int first_row, int row_count, bool doubled,
+                              int dark_run, unsigned keep) {
     const int end = first_row + row_count;
     const int stores = target.stride / 2;
     for (int y = first_row; y < end;) {
@@ -79,16 +81,27 @@ gfx_target_paired_rows(gfx_target_t target, const uint16_t* source, const uint16
         uint32_t* top = (uint32_t*)gfx_target_row(target, y);
         uint32_t* bottom = top + stores;
         const bool both = y + 1 < end && (rows == NULL ? (y + 1) / 2 : rows[y + 1]) == source_y;
+        const bool top_dark = dark_run != 0 && y % dark_run >= dark_run / 2;
+        const bool bottom_dark = dark_run != 0 && (y + 1) % dark_run >= dark_run / 2;
+        const bool needs_dark = top_dark || (both && bottom_dark);
         for (int x = 0; x < stores; x++) {
             const uint32_t pair =
                 doubled ? 0x10001U * gfx_target_shown_pixel(input, input_depth, x, clear)
                         : gfx_target_shown_pixel(input, input_depth, 2 * x, clear)
                               | ((uint32_t)gfx_target_shown_pixel(input, input_depth, (2 * x) + 1, clear) << 16);
-            top[x] = pair;
+            const uint32_t dark = needs_dark ? gfx_color_pair_scale(pair, keep) : 0;
+            top[x] = top_dark ? dark : pair;
             if (both) {
-                bottom[x] = pair;
+                bottom[x] = bottom_dark ? dark : pair;
             }
         }
         y += both ? 2 : 1;
     }
+}
+
+static inline __attribute__((always_inline)) void
+gfx_target_paired_rows(gfx_target_t target, const uint16_t* source, const uint16_t* depth, uint16_t clear,
+                       int source_width, const uint16_t* rows, int first_row, int row_count, bool doubled) {
+    gfx_target_paired_rows_shaded(target, source, depth, clear, source_width, rows, first_row, row_count, doubled, 0,
+                                  GFX_COLOR_SCALE_UNIT);
 }
