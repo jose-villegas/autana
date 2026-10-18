@@ -21,6 +21,7 @@ The optimiser needs PyTorch with CUDA and nvdiffrast; see the README.
 """
 
 import argparse
+import json
 from contextlib import contextmanager
 import os
 import pathlib
@@ -29,6 +30,8 @@ import time
 from typing import NamedTuple
 
 import numpy as np
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -50,6 +53,10 @@ SURFACE_TANGENTIAL_WEIGHT = 0.05
 CUBLAS_WORKSPACE_ENV = "CUBLAS_WORKSPACE_CONFIG"
 CUBLAS_WORKSPACE = ":4096:8"
 RASTER_EPSILON = 1.0 / 16.0
+# A triangle counts as stretched when its longest fitted edge exceeds this many times its longest start edge.
+STRETCH_RATIO = 2.0
+# How many worst parts the log lists.
+STRETCH_WORST = 5
 
 
 @contextmanager
@@ -127,6 +134,41 @@ def point_edges(tris, vertex_point):
     edges = np.concatenate([corners[:, [0, 1]], corners[:, [1, 2]], corners[:, [2, 0]]])
     edges = np.sort(edges[edges[:, 0] != edges[:, 1]], axis=1)
     return np.unique(edges, axis=0)
+
+
+def start_parts(mesh) -> np.ndarray:
+    """Connected start triangles share welded positions, including colour seams."""
+    edges = point_edges(mesh.tris, mesh.vertex_point)
+    graph = coo_matrix((np.ones(len(edges)), (edges[:, 0], edges[:, 1])),
+                       shape=(len(mesh.points), len(mesh.points)))
+    _, labels = connected_components(graph, directed=False)
+    _, parts = np.unique(labels[mesh.vertex_point[mesh.tris[:, 0]]], return_inverse=True)
+    return parts
+
+
+def triangle_stretch(start_points, fitted_points, mesh) -> np.ndarray:
+    corners = mesh.vertex_point[mesh.tris]
+    start = start_points[corners]
+    fitted = fitted_points[corners]
+    start_edge = np.linalg.norm(start - np.roll(start, -1, axis=1), axis=2).max(axis=1)
+    fitted_edge = np.linalg.norm(fitted - np.roll(fitted, -1, axis=1), axis=2).max(axis=1)
+    ratio = np.where(fitted_edge > 0, np.inf, 1.0)
+    return np.divide(fitted_edge, start_edge, out=ratio, where=start_edge > 0)
+
+
+def part_stretch(parts, stretch, start_edge, global_edge) -> dict:
+    ids, inverse, count = np.unique(parts, return_inverse=True, return_counts=True)
+    mean_edge = np.bincount(inverse, weights=start_edge) / count
+    stretched = np.bincount(inverse, weights=np.asarray(stretch) > STRETCH_RATIO, minlength=len(ids))
+    rows = [dict(part=int(part), triangles=int(count[i]), mean_start_edge=float(mean_edge[i]),
+                 share=float(100 * stretched[i] / count[i])) for i, part in enumerate(ids)]
+    report = dict(parts=rows)
+    for name, mask in (("small", mean_edge < global_edge), ("rest", mean_edge >= global_edge)):
+        triangles = int(count[mask].sum())
+        report[name] = dict(triangles=triangles,
+                            share=float(100 * stretched[mask].sum() / triangles) if triangles else 0.0)
+    report["worst"] = sorted(rows, key=lambda row: (-row["share"], -row["triangles"], row["part"]))[:STRETCH_WORST]
+    return report
 
 
 def projection(eye, forward, width, height, lens, near):
@@ -404,14 +446,15 @@ def coverage(mesh, views, size, device="cuda"):
     return total.cpu().numpy()
 
 
-def prune(mesh, shown, budget):
+def prune(mesh, shown, budget, *, return_kept=False):
     """The mesh without the triangles that show least, down to `budget`:
     every triangle no view shows goes first, then those showing fewest
     pixels. A flat mesh's colours go with their triangles."""
     order = np.argsort(-np.asarray(shown), kind="stable")
     keep = np.sort(order[: min(budget, int(np.count_nonzero(shown)))])
-    return mesh._replace(rgb=mesh.rgb[keep] if mesh.flat else mesh.rgb, tris=mesh.tris[keep],
-                         double=np.asarray(mesh.double)[keep])
+    pruned = mesh._replace(rgb=mesh.rgb[keep] if mesh.flat else mesh.rgb, tris=mesh.tris[keep],
+                           double=np.asarray(mesh.double)[keep])
+    return (pruned, keep) if return_kept else pruned
 
 
 def uniform_laplacian(points, edges):
@@ -759,19 +802,31 @@ def main(argv=None):
             from r3d.reference_render import source_for
 
             source, _job = source_for(scene, args.object, lit=False)
+        fit_start = fitted
         cost = None if args.cost_model is None else load_cost(args.cost_model)[0]
         points, rgb, history = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,
                                         args.laplacian, clear=clear, cost=cost, cost_weight=args.cost_weight,
                                         scale=args.scale, normal_weight=args.normal_weight, source=source,
                                         surface_weight=args.surface_weight, surface_margin=args.surface_margin)
         fitted = fitted._replace(points=points, rgb=rgb)
+        kept = np.arange(len(fit_start.tris))
         if args.budget is not None:
             shown = coverage(fitted, coverage_views if args.coverage_poses else views,
                              coverage_size if args.coverage_poses else size)
-            pruned = prune(fitted, shown, args.budget)
+            pruned, kept = prune(fitted, shown, args.budget, return_kept=True)
             log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: {np.count_nonzero(shown == 0)} never shown")
             fitted = pruned
         count = write_mesh(out, name, fitted)
+        edges = point_edges(fit_start.tris, fit_start.vertex_point)
+        global_edge = np.linalg.norm(fit_start.points[edges[:, 0]] - fit_start.points[edges[:, 1]], axis=1).mean()
+        corners = fit_start.points[fit_start.vertex_point[fit_start.tris]]
+        start_edge = np.linalg.norm(corners - np.roll(corners, -1, axis=1), axis=2).mean(axis=1)
+        stretch = triangle_stretch(fit_start.points, fitted.points, fitted)
+        report = part_stretch(start_parts(fit_start)[kept], stretch, start_edge[kept], global_edge)
+        log(f"stretch > {STRETCH_RATIO:g}x: small parts {report['small']['share']:.2f}%, rest {report['rest']['share']:.2f}%")
+        log("worst parts: " + ", ".join(f"{row['part']}: {row['share']:.2f}% ({row['triangles']} triangles)"
+                                      for row in report["worst"]))
+        (out / "stretch.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         np.savetxt(out / "loss.txt", np.array(history), fmt="%.4f", header="mean dE76 before pruning")
         print(f"{out}: {count} triangles, mean dE76 before pruning {np.mean(history[:20]):.3f} -> {np.mean(history[-20:]):.3f}")
     # The fit's cached device memory goes back for a reference set traced next in this process.

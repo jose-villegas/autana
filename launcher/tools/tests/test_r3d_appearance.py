@@ -6,6 +6,7 @@ small synthetic scene the image error falls. What draws on the GPU needs
 CUDA, PyTorch and nvdiffrast and is skipped without them; the rest needs the
 pinned r3d environment (tools/r3d/requirements.txt)."""
 
+import json
 import pathlib
 import sys
 import tempfile
@@ -94,6 +95,37 @@ def write_flat_start(directory, count=4):
     face = np.where(left[:, None], [[200.0, 60.0, 40.0]], [[40.0, 90.0, 200.0]])
     write_lit_mesh(directory, "flat", positions, None, tris, np.zeros(len(tris), dtype=int), position_scale=64, face_rgb=face)
     return pathlib.Path(directory) / "flat.mesh"
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class StretchTests(unittest.TestCase):
+    def test_small_part_stretch_is_reported_separately(self):
+        from r3d.appearance_simplify import STRETCH_RATIO, part_stretch, start_parts, triangle_stretch
+
+        points = np.array([[0., 0., 0.], [1., 0., 0.], [0., 1., 0.],
+                           [10., 0., 0.], [20., 0., 0.], [10., 10., 0.]])
+        tris = np.array([[0, 1, 2], [3, 4, 5]])
+        mesh = FitMesh(points, np.ones_like(points), tris, np.zeros(len(tris)), 1, np.arange(len(points)))
+        parts = start_parts(mesh)
+        self.assertEqual(len(np.unique(parts)), 2)
+        fitted = points.copy()
+        ratio = STRETCH_RATIO + 1
+        fitted[1, 0] = np.sqrt(2 * ratio ** 2 - 1)
+        stretch = triangle_stretch(points, fitted, mesh)
+        np.testing.assert_allclose(stretch, [ratio, 1])
+        edges = point_edges(tris, mesh.vertex_point)
+        global_edge = np.linalg.norm(points[edges[:, 0]] - points[edges[:, 1]], axis=1).mean()
+        corners = points[mesh.vertex_point[tris]]
+        start_edge = np.linalg.norm(corners - np.roll(corners, -1, axis=1), axis=2).mean(axis=1)
+        report = part_stretch(parts, stretch, start_edge, global_edge)
+        expected = float(np.mean(stretch[:1] > STRETCH_RATIO) * 100)
+        self.assertEqual(report["parts"][0]["share"], expected)
+        self.assertEqual(report["parts"][1]["share"], 0)
+        self.assertEqual(report["small"]["share"], expected)
+        self.assertEqual(report["small"]["triangles"], 1)
+        self.assertEqual(report["rest"]["share"], 0)
+        self.assertEqual(report["worst"][0]["part"], int(parts[0]))
+        self.assertAlmostEqual(report["parts"][0]["mean_start_edge"], start_edge[0])
 
 
 @unittest.skipIf(torch is None, "needs PyTorch")
@@ -401,7 +433,7 @@ class PruneAndCostTests(unittest.TestCase):
                             write_mesh=calls.write_mesh):
                         calls.optimise.return_value = (points, rgb, [1.0])
                         calls.coverage.return_value = np.ones(len(mesh.tris))
-                        calls.prune.return_value = pruned
+                        calls.prune.return_value = (pruned, np.arange(len(pruned.tris)))
                         calls.write_mesh.return_value = len(pruned.tris)
                         appearance.main(["--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
                                          "--reference", "reference", "--coverage-poses", "coverage.txt",
@@ -419,6 +451,10 @@ class PruneAndCostTests(unittest.TestCase):
                     self.assertIs(pruned_mesh, covered)
                     self.assertIs(shown, calls.coverage.return_value)
                     self.assertEqual(budget, len(pruned.tris))
+                    self.assertEqual(calls.prune.call_args.kwargs, {"return_kept": True})
+                    report = json.loads((pathlib.Path(directory) / "stretch.json").read_text())
+                    self.assertEqual(sum(row["triangles"] for row in report["parts"]), len(pruned.tris))
+                    self.assertEqual(report["rest"]["share"], 0)
 
     def test_invalid_surface_flags_fail_before_loading_a_scene(self):
         from r3d import appearance_simplify as appearance
@@ -464,6 +500,8 @@ class PruneAndCostTests(unittest.TestCase):
             self.assertEqual(len(written), 3)
             np.testing.assert_array_equal(written[2].points, points)
             np.testing.assert_array_equal(written[2].rgb, rgb)
+            report = json.loads((pathlib.Path(directory) / "stretch.json").read_text())
+            self.assertEqual(sum(row["triangles"] for row in report["parts"]), len(mesh.tris))
 
     def test_pruning_keeps_the_budget_and_what_shows_most(self):
         mesh = FitMesh(np.zeros((9, 3)), np.zeros((9, 3)), np.arange(18).reshape(6, 3) % 9, np.zeros(6), 8, np.arange(9))
