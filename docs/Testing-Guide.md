@@ -617,15 +617,16 @@ any boot banner, reset line or crash fails the test. QEMU tests wait for boot.
 
 ```sh
 autana build diag
-autana lock run -- bash -c 'autana flash diag && pytest launcher/test/device --embedded-services idf,serial --build-dir build.diag --port "$(python scripts/device/device.py resolve-port | tr -d "\r")" --skip-autoflash'
+autana lock run -- bash -c 'autana flash diag && pytest launcher/test/device --embedded-services idf,serial --build-dir build.diag --port "$(python scripts/device/device.py resolve-port | tr -d "\r")" --skip-autoflash y'
 ```
 
 Engine recipes live in `launcher/test/device/`; app recipes live in
 `launcher/main/apps/<app>/tests/test_*.yaml`. Collection includes app YAML
 recipes without collecting their other test files. Each recipe is one test
 with fixture setup and teardown. Each step contains `command` (one console
-line) and `expect` (a regular expression), except `IMU quarter <q>` steps,
-which contain only `command`. A tilt checks a BUILDID barrier and holds for
+line) and `expect` (a regular expression), and may give `timeout` in
+seconds where a reply takes longer than the default, such as a full
+screenshot. `IMU quarter <q>` steps contain only `command`. A tilt checks a BUILDID barrier and holds for
 the sample period reported by the startup `IMU quarter 0` probe.
 Screenshot replies remain in the test's serial log.
 
