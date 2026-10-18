@@ -190,7 +190,8 @@ Removal inventory for the engine portion:
 The caller's tools README owns its complete removal inventory, host commands
 and visual comparisons. The height-only tests remain; the experiment's
 strength settings and assertions in `launcher/test/suites/suite_scene.c` and
-`test_scanline_runs_preserve_bright_rows_and_darken_clear_pixels()` in
+`test_scanline_runs_preserve_bright_rows_and_darken_clear_pixels()` with its
+`assert_scanline_rows_match_reference()` helper in
 `launcher/test/suites/suite_upscale.c` belong to the experiment.
 
 ## Refreshing

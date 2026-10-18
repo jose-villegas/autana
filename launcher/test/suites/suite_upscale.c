@@ -235,6 +235,22 @@ test_each_width_takes_its_path_and_matches_the_maps(void) {
 }
 
 static void
+assert_scanline_rows_match_reference(const upscale_t* scale, const uint16_t* plain, int run, uint16_t clear,
+                                     uint16_t dark_clear, uint16_t dark_color) {
+    const int width = scale->destination_width;
+    const int height = scale->destination_height;
+    const uint16_t* actual = held.actual;
+    for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+            const uint16_t pixel = plain[y * width + x];
+            const bool dark = run != 0 && y % run >= run / 2;
+            const uint16_t expected = dark ? (pixel == clear ? dark_clear : dark_color) : pixel;
+            TEST_ASSERT_EQUAL_HEX16(expected, actual[y * width + x]);
+        }
+    }
+}
+
+static void
 test_scanline_runs_preserve_bright_rows_and_darken_clear_pixels(void) {
     enum {
         WIDTH = 4,
@@ -287,14 +303,7 @@ test_scanline_runs_preserve_bright_rows_and_darken_clear_pixels(void) {
             const int split = height / 2;
             upscale_rows(&scale, &picture, clear, actual, 0, split);
             upscale_rows(&scale, &picture, clear, actual, split, height - split);
-            for (int y = 0; y < height; y++) {
-                for (int x = 0; x < width; x++) {
-                    const uint16_t pixel = plain[y * width + x];
-                    const bool dark = run != 0 && y % run >= run / 2;
-                    const uint16_t expected = dark ? (pixel == clear ? dark_clear : dark_color) : pixel;
-                    TEST_ASSERT_EQUAL_HEX16(expected, actual[y * width + x]);
-                }
-            }
+            assert_scanline_rows_match_reference(&scale, plain, run, clear, dark_clear, dark_color);
         }
     }
 }

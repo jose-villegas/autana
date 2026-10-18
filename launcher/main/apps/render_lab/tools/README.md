@@ -74,7 +74,7 @@ Existing `DRAW_DITHER_SCANLINES4` patterns are independent.
 | `launcher/main/apps/render_lab/tests/suite_raster_scale_perf.c` | strength assignments, setter and header field |
 | `launcher/main/apps/render_lab/tools/tests/test_render_views.py` | `COLOR_HEADER`, `SCANLINE_UNIT`, scanline tunings and dark-row assertions |
 | `launcher/test/suites/suite_scene.c` | strength setting in `test_height_only_scale_composes_whole_runs_in_the_half_picture()` |
-| `launcher/test/suites/suite_upscale.c` | scanline tests and registrations |
+| `launcher/test/suites/suite_upscale.c` | scanline tests, `assert_scanline_rows_match_reference()` and registrations |
 | `docs/Shared-Helpers.md` | regenerate the catalogue after removing the public symbols |
 | `docs/render/Dynamic-Resolution.md`, this README | experiment prose and inventory |
 
