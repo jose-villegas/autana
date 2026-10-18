@@ -392,7 +392,8 @@ The fit draws welded positions $`P`$ and vertex colours $`C`$ with a
 differentiable rasterizer $`\mathcal{R}`$, nvdiffrast<sup>[[2]](../Citations.md#2)</sup>, over a random batch $`B`$ of training
 poses. $`\Omega`$ is the frame pixels, $`P^0`$ the start positions, $`N(i)`$
 the positions sharing an edge with $`i`$, $`\bar e`$ the start mean edge
-length, $`\hat n`$ the fitted normal, $`n^{\rm ref}`$ the reference normal, and
+length, $`e_i`$ each vertex's mean start edge length capped at $`\bar e`$,
+$`\hat n`$ the fitted normal, $`n^{\rm ref}`$ the reference normal, and
 $`\hat t_v`$ the predicted frame time for pose $`v`$. It minimises the colour
 term $`\mathcal{E}_{\Delta E}`$, the Laplacian term
 $`\mathcal{E}_{\mathcal{L}}`$, the normal term $`\mathcal{E}_n`$, the cost
@@ -429,7 +430,7 @@ $`\lambda_n`$, and $`\kappa`$ weigh the Laplacian, normal, and cost terms:
 ```math
 \mathcal{E}_{\mathcal{L}}(P) =
 \frac{1}{|V|}\sum_{i \in V}
-\left\lVert \frac{\mathcal{L}(P)_i - \mathcal{L}(P^0)_i}{\bar e} \right\rVert^2
+\left\lVert \frac{\mathcal{L}(P)_i - \mathcal{L}(P^0)_i}{e_i} \right\rVert^2
 ```
 
 $`\mathcal{E}_n`$ is the mean L1 difference between $`\hat n_v(P)_p`$ and
@@ -463,11 +464,12 @@ small distance-pull weight live beside it in `appearance_simplify.py`.
 `surface_weight` weighs the mean squared point-to-plane distance beyond
 `surface_margin`, plus a small squared distance pull to the matched sample.
 For a fitted sample $`x`$, its nearest source sample $`c`$ and that source
-face's normal $`n`$, write $`d=(x-c)/\bar e`$. The surface contribution is
+face's normal $`n`$, write $`d=(x-c)/e_x`$, where $`e_x`$ is the mean $`e_i`$ over the corners
+of the triangle holding $`x`$. The surface contribution is
 $`w\,\mathrm{mean}(\max(0,|n\cdot d|-\epsilon)^2+t\lVert d\rVert^2)`$,
 where $`w`$ is `surface_weight`, $`\epsilon`$ is `surface_margin`, and $`t`$
-is `SURFACE_TANGENTIAL_WEIGHT`. Both distances are measured in start mean edge
-lengths. The plane envelope is zero inside the margin; the small pull remains active there.
+is `SURFACE_TANGENTIAL_WEIGHT`. Both distances are measured in $`e_x`$.
+The plane envelope is zero inside the margin; the small pull remains active there.
 
 Colour history, `loss.txt` and the printed mean ΔE76 exclude surface, normal,
 Laplacian and cost penalties. The surface loss is reported beside drift.
@@ -531,9 +533,12 @@ and a learning rate decaying geometrically. It changes the rest:
 | Fitted | positions, textures, normal maps, material parameters | welded positions and vertex or face colours, which are the lighting bake |
 | Forward model | deferred physically based shading | the device's Gouraud or flat colours, no shading |
 | Image term | L1 on log-tonemapped sRGB | mean CIE 1976 $`\Delta E^*_{ab}`$<sup>[[4]](../Citations.md#4)</sup> |
-| Laplacian weight | decays during the fit | constant $`\lambda`$; the drift is measured in start mean edge lengths |
-| Further terms | none | a point-to-plane band, of half-width `surface_margin`, from the fit to the source surface and a small tangential pull, in start mean edge lengths; $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../Citations.md#6)</sup> |
+| Laplacian weight | decays during the fit | constant $`\lambda`$; each vertex's drift uses its own mean start edge length, capped at the start's mean edge length |
+| Further terms | none | a point-to-plane band, of half-width `surface_margin`, from the fit to the source surface and a small tangential pull, both in the mean of that capped scale over each sample's triangle; $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../Citations.md#6)</sup> |
 | Triangle budget | set by the start | the fitted mesh's, pruned to `budget` by coverage after fitting; a refined fitted mesh can be the start |
+
+A global unit gives small parts a fraction of the hold, so the image term
+stretches them; local edge scales keep the hold even<sup>[[78]](../Citations.md#78)</sup>.
 
 Section 5.3 of the paper has no distance-to-reference term<sup>[[1]](../Citations.md#1)</sup>.
 Here the start is already a decimation of the reference surface, so the fit can
