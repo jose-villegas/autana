@@ -13,20 +13,16 @@
 #include <stdint.h>
 
 #include "asset/asset_pack.h"
+#include "draw/draw_image_format.h"
 #include "gfx/target/gfx_color.h"
-
-#define DRAW_IMAGE_ASSET   ASSET_TYPE('I', 'M', 'A', 'G')
-#define DRAW_IMAGE_VERSION 1U
 
 /* How a pixel is stored. One type holds every picture the engine draws, so a
  * new kind of picture is a new format here, not a new entry type. */
 typedef enum {
-    DRAW_IMAGE_RGB565 = 1, /* gfx_color_t: byte-swapped RGB565, as the panel takes it */
-    DRAW_IMAGE_MONO1 = 2,  /* one bit, the most significant leftmost, 1 ink; a row is stride / 8 bytes */
+    DRAW_IMAGE_RGB565 = DRAW_IMAGE_FORMAT_RGB565, /* gfx_color_t: byte-swapped RGB565, as the panel takes it */
+    DRAW_IMAGE_MONO1 =
+        DRAW_IMAGE_FORMAT_MONO1, /* one bit, the most significant leftmost, 1 ink; a row is stride / 8 bytes */
 } draw_image_format_t;
-
-/* A MONO1 stride is whole bytes. */
-#define DRAW_IMAGE_MONO1_STRIDE_STEP 8U
 
 /* An opened entry. Holds no copy: the pack must outlive it. */
 typedef struct {

@@ -23,7 +23,7 @@ PASSING = (
 )
 FAILING = "/src/suite_gfx.c:61:test_clip:FAIL: Expected 3 Was 4\n"
 IGNORED = "/src/suite_sand_perf.c:1953:test_counters:IGNORE: no PMU\n"
-COMPLETE = "SELFTEST_COMPLETE tests=4 failures=1\n"
+COMPLETE = "SELFTEST_COMPLETE failures=0 elapsed_ms=42\n"
 BOOT = "ESP-ROM:esp32s3-20210327\nrst:0x1 (POWERON),boot:0x8 (SPI_FAST_FLASH_BOOT)\n"
 ABORT = "abort() was called at PC 0x40376f2b on core 0\n"
 
@@ -91,7 +91,16 @@ class VerdictTest(unittest.TestCase):
         self.assertEqual(0, self.verdict(PASSING + IGNORED + COMPLETE))
 
     def test_a_failing_test_fails_the_run_even_when_it_completes(self):
-        self.assertEqual(1, self.verdict(PASSING + FAILING + COMPLETE))
+        self.assertEqual(1, self.verdict(PASSING + FAILING +
+                                        "SELFTEST_COMPLETE failures=1 elapsed_ms=42\n"))
+
+    def test_sentinel_failures_without_fail_lines_fail_the_run(self):
+        self.assertEqual(1, self.verdict(PASSING +
+                                        "SELFTEST_COMPLETE failures=2 elapsed_ms=42\n"))
+
+    def test_suite_overflow_fails_a_driven_run(self):
+        self.assertEqual(1, self.verdict(PASSING + "I suites: SUITE OVERFLOW: run_extra_suite\n",
+                                        actions=[("suite", "x")]))
 
     def test_an_autorun_that_never_completes_fails(self):
         self.assertEqual(1, self.verdict(PASSING, finished=False))

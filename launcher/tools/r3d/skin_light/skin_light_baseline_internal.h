@@ -3,6 +3,7 @@
 #include <assert.h>
 #include "math/linear/vec3f.h"
 #include "math/scalar/mathf_round.h"
+#include "render/r3d_skin_format.h"
 #include "render/skin/r3d_skin_light_internal.h"
 #include "skin_light_baseline.h"
 
@@ -10,7 +11,7 @@
 static inline __attribute__((always_inline)) vec3f_t
 light_normal(const mat4f_t* palette, const uint8_t* joints, const float* weights, int influences, vec3f_t normal) {
     vec3f_t rows[R3D_SKIN_NORMAL_WIDTH];
-    for (int axis = 0; axis < R3D_SKIN_NORMAL_WIDTH; axis++) {
+    for (int axis = 0; axis < (int)R3D_SKIN_NORMAL_WIDTH; axis++) {
         const float* r = palette[joints[0]].m[axis];
         rows[axis] = vec3f_scale((vec3f_t){r[0], r[1], r[2]}, weights[0]);
         for (int i = 1; i < influences; i++) {

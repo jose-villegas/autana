@@ -5,7 +5,7 @@ from pathlib import Path
 
 from build.c_header import read_define
 
-TABLE_READER = Path(__file__).resolve().parents[2] / "main/asset/asset_table.h"
+TABLE_READER = Path(__file__).resolve().parents[2] / "main/asset/asset_table_format.h"
 
 TYPE = b"TABL"
 VERSION = read_define(TABLE_READER, "ASSET_TABLE_VERSION")

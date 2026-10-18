@@ -2,6 +2,7 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
+#include "render/r3d_skin_format.h"
 #include "render/skin/r3d_skinning.h"
 #include "suites.h"
 #include "unity.h"
@@ -93,7 +94,7 @@ test_palette_inverse_bind_and_position_ticks(void) {
 
 static void
 test_skin_ranges_two_and_four_influences_and_refit(void) {
-    for (int influences = R3D_SKIN_INFLUENCES_MIN; influences <= R3D_SKIN_INFLUENCES_MAX; influences += 2) {
+    for (int influences = R3D_SKIN_INFLUENCES_MIN; influences <= (int)R3D_SKIN_INFLUENCES_MAX; influences += 2) {
         fixture_t f = fixture(influences);
         r3d_skin_palette(&f.skin, f.model, POSITION_SCALE, f.palette);
         r3d_skin_clusters(&f.skin, &f.bind, f.palette, 1, 1, &f.out);
@@ -119,7 +120,7 @@ test_skin_ranges_two_and_four_influences_and_refit(void) {
 
 static void
 test_rotated_nonuniform_palette_transforms_off_axis_vertices(void) {
-    for (int influences = R3D_SKIN_INFLUENCES_MIN; influences <= R3D_SKIN_INFLUENCES_MAX; influences += 2) {
+    for (int influences = R3D_SKIN_INFLUENCES_MIN; influences <= (int)R3D_SKIN_INFLUENCES_MAX; influences += 2) {
         fixture_t f = fixture(influences);
         for (int j = 0; j < JOINTS; j++) {
             f.palette[j] = mat4f_identity();
@@ -142,7 +143,7 @@ test_extreme_inverse_bind_with_zero_weight_clamps_nan(void) {
     static const float inverse[JOINTS][R3D_SKIN_MATRIX_WIDTH] = {
         {FLT_MAX, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0},
     };
-    for (int influences = R3D_SKIN_INFLUENCES_MIN; influences <= R3D_SKIN_INFLUENCES_MAX; influences += 2) {
+    for (int influences = R3D_SKIN_INFLUENCES_MIN; influences <= (int)R3D_SKIN_INFLUENCES_MAX; influences += 2) {
         fixture_t f = fixture(influences);
         f.bind.positions = positions;
         f.skin.inverse_binds = inverse;
