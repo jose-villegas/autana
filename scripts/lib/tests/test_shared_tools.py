@@ -203,6 +203,33 @@ CRASH = ('assert failed: gfx_present gfx.c:120 (fb != NULL)\n'
 BOOT = 'ESP-ROM:esp32s3-20210327\nrst:0xc (RTC_SW_CPU_RST),boot:0x8 (SPI_FAST_FLASH_BOOT)\n'
 
 
+class SuiteFailureSignTests(unittest.TestCase):
+    def test_no_hidden_failures_show_none(self):
+        for text, failed in [('', 0), ('SELFTEST_COMPLETE', 0),
+                             ('SELFTEST_COMPLETE failures=0 elapsed_ms=30', 0),
+                             ('SELFTEST_COMPLETE failures=1 elapsed_ms=30', 1),
+                             ('SELFTEST_COMPLETE failures=1 elapsed_ms=30', 2)]:
+            with self.subTest(text=text, failed=failed):
+                self.assertEqual(capture.suite_failure_signs(text, failed), [])
+
+    def test_each_prefixed_overflow_line_is_a_sign(self):
+        lines = ['I suites: SUITE OVERFLOW: run_first_suite',
+                 'SUITE OVERFLOW: run_second_suite']
+        self.assertEqual(capture.suite_failure_signs('\r\n'.join(lines), 0), lines)
+
+    def test_sentinel_exceeding_fail_count_is_a_sign(self):
+        for failed in (0, 1):
+            with self.subTest(failed=failed):
+                self.assertEqual(capture.suite_failure_signs(
+                    'I SELFTEST_COMPLETE failures=2 elapsed_ms=30', failed),
+                    [f'SELFTEST_COMPLETE failures=2, but {failed} FAIL lines'])
+
+    def test_overflow_and_sentinel_are_both_reported(self):
+        self.assertEqual(capture.suite_failure_signs(
+            'SUITE OVERFLOW: run_extra_suite\nSELFTEST_COMPLETE failures=2 elapsed_ms=30', 0),
+            ['SUITE OVERFLOW: run_extra_suite', 'SELFTEST_COMPLETE failures=2, but 0 FAIL lines'])
+
+
 class CrashSignTests(unittest.TestCase):
     def test_a_clean_boot_shows_none(self):
         self.assertEqual(capture.crash_signs(BOOT + ':1:one:PASS\n', 1), [])
