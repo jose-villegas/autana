@@ -41,6 +41,7 @@ pmu_read(uint8_t reg, uint8_t* value) {
     return i2c_master_transmit_receive(pmu, &reg, sizeof reg, value, sizeof *value, AXP2101_TIMEOUT_MS) == ESP_OK;
 }
 
+/* POST and buttons_start run before the console task starts. */
 static bool
 ensure_device(void) {
     if (pmu != NULL) {
@@ -70,18 +71,6 @@ power_start(void) {
     if (pmu_ready || !ensure_device()) {
         return;
     }
-    uint8_t gauge = 0;
-    uint8_t adc = 0;
-    if (pmu_read(AXP2101_REG_GAUGE_ENABLE, &gauge) && pmu_read(AXP2101_REG_ADC_ENABLE, &adc)) {
-        ESP_LOGI(TAG, "AXP2101 gauge enable %d, VBAT ADC enable %d", (gauge & AXP2101_GAUGE_ENABLE) != 0,
-                 (adc & AXP2101_ADC_VBAT_ENABLE) != 0);
-    } else {
-        ESP_LOGW(TAG, "Could not read AXP2101 gauge/ADC enables");
-    }
-    power_battery_t first;
-    (void)power_read_battery_now(&first);
-    last_battery_us = timing_now_us();
-
     /* Keep charging and battery interrupt enables intact; they belong to the PMU. */
     uint8_t enables = 0;
     if (!pmu_read(AXP2101_REG_INTEN2, &enables)) {
@@ -98,6 +87,18 @@ power_start(void) {
 
     pmu_ready = true;
     ESP_LOGI(TAG, "PWR button via AXP2101, BOOT button on GPIO %d", BOARD_BOOT_GPIO);
+
+    uint8_t gauge = 0;
+    uint8_t adc = 0;
+    if (pmu_read(AXP2101_REG_GAUGE_ENABLE, &gauge) && pmu_read(AXP2101_REG_ADC_ENABLE, &adc)) {
+        ESP_LOGI(TAG, "AXP2101 gauge enable %d, VBAT ADC enable %d", (gauge & AXP2101_GAUGE_ENABLE) != 0,
+                 (adc & AXP2101_ADC_VBAT_ENABLE) != 0);
+    } else {
+        ESP_LOGW(TAG, "Could not read AXP2101 gauge/ADC enables");
+    }
+    power_battery_t first;
+    (void)power_read_battery_now(&first, NULL);
+    last_battery_us = timing_now_us();
 
     /* 0x22/0x27 default from EFUSE/POR: ask this board once, log, never write. */
     uint8_t levels = 0;
@@ -122,8 +123,12 @@ power_start(void) {
 }
 
 bool
-power_read_battery_raw(power_battery_t* out, power_registers_t* regs) {
+power_read_battery_now(power_battery_t* out, power_registers_t* regs) {
     const int64_t read_us = timing_now_us();
+    power_registers_t local;
+    if (regs == NULL) {
+        regs = &local;
+    }
     *regs = (power_registers_t){0};
     const bool ok = ensure_device() && pmu_read(AXP2101_REG_STATUS, &regs->status)
                     && pmu_read(AXP2101_REG_CHARGE, &regs->charge) && pmu_read(AXP2101_REG_VBAT_HIGH, &regs->vbat_high)
@@ -131,12 +136,6 @@ power_read_battery_raw(power_battery_t* out, power_registers_t* regs) {
     *out = ok ? power_decode(regs, read_us) : (power_battery_t){.read_us = read_us};
     power_cache_store(&cache, out);
     return ok;
-}
-
-bool
-power_read_battery_now(power_battery_t* out) {
-    power_registers_t regs;
-    return power_read_battery_raw(out, &regs);
 }
 
 power_battery_t
@@ -160,7 +159,7 @@ power_poll(void) {
     const int64_t now_us = timing_now_us();
     if (pmu != NULL && now_us - last_battery_us >= POWER_BATTERY_PERIOD_US) {
         power_battery_t battery;
-        (void)power_read_battery_now(&battery);
+        (void)power_read_battery_now(&battery, NULL);
         last_battery_us = now_us;
     }
     return events;

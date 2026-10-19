@@ -13,8 +13,8 @@
  *   contact chatters for a few milliseconds on both make and break. Reading it
  *   naively turns one press into several.
  *
- *   PWR is reported by power/ through the AXP2101, which debounces in hardware and reports a
- *   finished "short press" EVENT over I2C. Nothing here applies to it.
+ *   PWR comes from the AXP2101 via power/, which debounces in hardware
+ *   and reports a finished "short press" EVENT over I2C. Nothing here applies to it.
  */
 #pragma once
 

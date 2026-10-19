@@ -1,6 +1,6 @@
 # power
 
-The AXP2101 owner uses the board I2C bus at 400 kHz. Key interrupts are
+The AXP2101 owner uses the board I2C bus. Key interrupts are
 polled by input; battery snapshots refresh at `POWER_BATTERY_PERIOD_US`.
 Battery reads never change gauge, ADC, charging or power-off settings.
 
@@ -18,5 +18,4 @@ The cache keeps the newest `read_us`, including failed reads marked invalid.
 A load copies the whole snapshot under its lock. Register decoding and cache
 ordering are portable and covered by the `power` suite.
 
-`BATTERY` reads fresh register bytes on the development console task.
-`autana battery --json` exposes the decoded fields and raw status bytes.
+The cache's first reader is planned for a later UI; no UI reads it yet.

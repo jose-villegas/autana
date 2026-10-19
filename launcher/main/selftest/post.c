@@ -225,7 +225,7 @@ check_temperature(void) {
 static void
 check_pmu(void) {
     power_battery_t battery;
-    const bool pmu_ok = power_read_battery_now(&battery);
+    const bool pmu_ok = power_read_battery_now(&battery, NULL);
     char detail[sizeof results[0].detail];
     int length;
     if (!pmu_ok) {
