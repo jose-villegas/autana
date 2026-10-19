@@ -41,6 +41,7 @@ from r3d.import_settings import load_scene  # noqa: E402
 from r3d.lit_mesh import finest_triangles, read_lit_mesh  # noqa: E402
 from r3d.cost_model import load as load_cost  # noqa: E402
 from r3d.poses import camera_basis, read_poses  # noqa: E402
+from r3d.repair import _border_edges  # noqa: E402
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
@@ -51,6 +52,8 @@ SURFACE_QUERY_EVERY = 25
 SURFACE_SAMPLES_PER_TRIANGLE = 6
 SURFACE_REFERENCE_SAMPLES = 4_000_000
 SURFACE_TANGENTIAL_WEIGHT = 0.05
+# A start border point within this many capped local start edge scales of another part's triangle is held on it during the fit.
+SEAM_MARGIN = 0.25
 CUBLAS_WORKSPACE_ENV = "CUBLAS_WORKSPACE_CONFIG"
 CUBLAS_WORKSPACE = ":4096:8"
 RASTER_EPSILON = 1.0 / 16.0
@@ -133,18 +136,12 @@ def start_mesh(path):
                    vertex_point.reshape(-1), flat)
 
 
-def point_edges(tris, vertex_point, return_counts=False):
-    """The unique undirected edges between welded positions, optionally with triangle-use counts."""
+def point_edges(tris, vertex_point):
+    """The unique undirected edges between welded positions."""
     corners = vertex_point[tris]
     edges = np.concatenate([corners[:, [0, 1]], corners[:, [1, 2]], corners[:, [2, 0]]])
-    valid = edges[:, 0] != edges[:, 1]
-    edges = np.sort(edges, axis=1)
-    if return_counts:
-        uses = np.column_stack([edges, np.tile(np.arange(len(tris)), 3)])
-        edges = np.unique(uses[valid], axis=0)[:, :2]
-    else:
-        edges = edges[valid]
-    return np.unique(edges, axis=0, return_counts=return_counts)
+    edges = np.sort(edges[edges[:, 0] != edges[:, 1]], axis=1)
+    return np.unique(edges, axis=0)
 
 
 def start_parts(mesh) -> np.ndarray:
@@ -164,22 +161,27 @@ class SeamHolds(NamedTuple):
 
 
 def seam_holds(mesh: FitMesh, tolerance: np.ndarray) -> SeamHolds:
-    """Choose nearest cross-part border contacts without dependencies between holds."""
+    """Hold each border point that starts within `tolerance` (a per-point distance) of
+    another part's triangle on that triangle's closest point. Nearest contacts win,
+    and a point already held, or a corner of a held point's target, is never used
+    again, so no hold depends on another."""
     from scipy.spatial import cKDTree
 
-    edges, counts = point_edges(mesh.tris, mesh.vertex_point, return_counts=True)
-    border = np.unique(edges[counts == 1])
+    border = np.unique(_border_edges(mesh.vertex_point, mesh.tris))
     corners = mesh.vertex_point[mesh.tris]
     candidates = []
     if len(corners):
         labels = start_parts(mesh)
         triangles = mesh.points[corners]
         centroids = triangles.mean(axis=1)
-        radius = np.linalg.norm(triangles - centroids[:, None], axis=2).max()
+        triangle_radius = np.linalg.norm(triangles - centroids[:, None], axis=2).max(axis=1)
+        radius = triangle_radius.max()
         tree = cKDTree(centroids)
         for point in border:
             nearby = np.array(sorted(tree.query_ball_point(mesh.points[point], radius + tolerance[point])), dtype=np.int64)
             nearby = nearby[labels[corners[nearby, 0]] != labels[point]]
+            nearby = nearby[np.linalg.norm(mesh.points[point] - centroids[nearby], axis=1)
+                            <= triangle_radius[nearby] + tolerance[point]]
             if not len(nearby):
                 continue
             a, b, c = triangles[nearby].transpose(1, 0, 2)
@@ -722,7 +724,9 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     Laplacian drift and the source envelope use capped local start edge scales,
     averaged per triangle for the envelope; normals and predicted cost add their
     weighted penalties.
-    Both learning rates decay tenfold over the run."""
+    Both learning rates decay tenfold over the run.
+    A positive `seam_margin` also pins border points that start near another part
+    to that part's moving triangles."""
     import torch
 
     points0, rgb0, tris, double, _scale, vertex_point, flat = mesh
@@ -750,6 +754,11 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         holds = seam_holds(mesh, seam_margin * point_scale.detach().cpu().numpy()[:, 0])
         log(f"seam holds: {len(holds.points)} points")
     step_scale = point_scale / point_scale.max()
+
+    def held_positions():
+        points = start + step_scale * delta
+        return hold_seams(points, holds) if holds is not None else points
+
     matrices = [torch.as_tensor(view[0], dtype=torch.float32, device=device) for view in views]
     targets = [torch.as_tensor(view[1], device=device) for view in views]
     normals = [None if len(view) < 3 or view[2] is None else torch.as_tensor(view[2], device=device) for view in views]
@@ -779,9 +788,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     for step in range(steps):
         chosen = rng.choice(len(views), size=min(batch, len(views)), replace=False)
         adam.zero_grad()
-        points = start + step_scale * delta
-        if holds is not None:
-            points = hold_seams(points, holds)
+        points = held_positions()
         error, predicted, colour_error, surface = 0.0, 0.0, 0.0, 0.0
         if normal_weight:
             render = renderer_for(chosen[0])
@@ -829,9 +836,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         if report and (step % report == 0 or step == steps - 1):
             log(f"step {step}: mean dE76 {float(history[step]):.3f}, predicted {float(predicted):.2f} ms, drift {float(drift):.3e}, "
                 f"surface {float(surface):.6f}, {time.time() - started:.1f} s")
-    points = start + step_scale * delta
-    if holds is not None:
-        points = hold_seams(points, holds)
+    points = held_positions()
     return points.detach().cpu().numpy().astype(np.float64), colours.detach().cpu().numpy().astype(np.float64), history.cpu().tolist()
 
 
@@ -883,7 +888,7 @@ def main(argv=None):
     parser.add_argument("--object", help="the scene object whose source anchors the fit")
     parser.add_argument("--surface-weight", type=float, default=0.0, help="weight of the source-surface envelope")
     parser.add_argument("--surface-margin", type=float, default=0.0, help="source envelope margin in local start edge scales")
-    parser.add_argument("--seam-margin", type=float, default=0.0, help="seam contact margin in local start edge scales")
+    parser.add_argument("--seam-margin", type=float, default=SEAM_MARGIN, help="seam hold margin in local start edge scales (0 holds nothing)")
     parser.add_argument("--normal-weight", type=float, default=0.0, help="weight of the L1 normal term")
     parser.add_argument("--refine-to", type=int, help="first split the start's worst triangles up to this many")
     parser.add_argument("--score", action="store_true", help="fit nothing: print the start's mean normal error on the poses")

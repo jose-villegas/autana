@@ -318,12 +318,11 @@ class SweepTests(unittest.TestCase):
             out = pathlib.Path(command[command.index("--out") + 1])
             out.mkdir(parents=True)
             self.assertEqual(command[command.index("--object") + 1], job.object.name)
-            for key in ("surface_weight", "surface_margin", "seam_margin"):
+            for key in ("surface_weight", "surface_margin"):
                 self.assertEqual(float(command[command.index("--" + key.replace("_", "-")) + 1]), getattr(recipe, key))
             (out / pathlib.Path(command[command.index("--start") + 1]).name).write_bytes(fitted_bytes)
 
-        recipe = SimpleNamespace(steps=3, budget=2, batch=1, laplacian=0.5, normal_weight=0.25,
-                                 surface_weight=10.0, surface_margin=0.25, seam_margin=0.25)
+        recipe = SimpleNamespace(steps=3, budget=2, batch=1, laplacian=0.5, normal_weight=0.25, surface_weight=10.0, surface_margin=0.25)
         job = SimpleNamespace(asset_name="scene.entry", object=SimpleNamespace(name="entry"), renderer=SimpleNamespace(
             fit=recipe, variant=SimpleNamespace(name="variant_name")))
         with tempfile.TemporaryDirectory() as directory:
