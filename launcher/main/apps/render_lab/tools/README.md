@@ -268,12 +268,8 @@ The pixel-equivalence checks in that suite and the camera checks in
 and the capybara gallop for one clip period in each perf quarter. It times
 update, render, compose and present with the HUD hidden.
 
-The warm-up at dt 0 is excluded from statistics; its wall time supplies
-the first clip advance. Later frames advance by the previous wall time,
-carrying fractional milliseconds, until advances reach the clip duration.
-
 The [perf tools](../../../../tools/perf/README.md#real-time-playback)
-define the `frame_profile:` line format.
+define playback timing and the `frame_profile:` line format.
 
 Each suite owns a table of mean goals and p95 ceilings per row and quarter.
 Zero means unpegged: it logs without enforcing a budget. Board ceilings

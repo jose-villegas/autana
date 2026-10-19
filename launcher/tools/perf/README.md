@@ -356,9 +356,9 @@ directories are uploaded even when a lane fails.
 
 ## Real-time playback
 
-The [app tools](../../main/apps/render_lab/tools/README.md#frame-timing-profiles)
-name the suite for whole app frame wall times during clip playback. Scenario
-time follows the previous frame's wall time, including fractional milliseconds.
+`frame_profile:` rows time whole app frames while a clip plays; the render_lab
+suite that emits them is described in its
+[tools README](../../main/apps/render_lab/tools/README.md#frame-timing-profiles).
 
 `frame_profile:` reports frame count and mean, median, p95, worst and best
 wall times. Mean FPS is timed frames / total wall time; low FPS is 1/p95,
@@ -370,3 +370,5 @@ frame's wall time.
 
 The capture parser compares mean microseconds for each scenario and quarter.
 The fields are defined in `launcher/test/frame_profile.h`.
+
+Pose-time parsers accept `t=...ms`; the `t=...s` form is for older captures.

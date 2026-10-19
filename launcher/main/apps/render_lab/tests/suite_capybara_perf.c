@@ -164,7 +164,7 @@ report_stage(fixture_t* f, const char* stage, job_fn_t fn, int count, bool split
         char name[sizeof("skin " SKIN_PERF_CORES_UNKNOWN " core(s)")];
         const int length = snprintf(name, sizeof name, "skin %s core(s)", cores);
         TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof name);
-        (void)perf_goal(TAG, name, us.avg, goal_us);
+        (void)perf_goal(name, us.avg, goal_us);
     }
     ESP_LOGI(TAG,
              SKIN_PERF_PREFIX " stage=%s cores=%s worker_samples=%d samples=%d vertices=%d" SKIN_PERF_SETUP_FORMAT

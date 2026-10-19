@@ -402,11 +402,11 @@ static bool gas_ab_reporting;
 
 static void
 perf_target(const char* name, int64_t measured_us, int64_t goal_us, int64_t ceiling_us) {
-    if (perf_goal("device_tests", name, measured_us, goal_us)) {
+    if (perf_goal(name, measured_us, goal_us)) {
         perf_unmet_targets++;
     }
     if (!gas_ab_reporting) {
-        perf_guard("device_tests", name, measured_us, ceiling_us);
+        perf_guard(name, measured_us, ceiling_us);
     }
 }
 
@@ -1434,7 +1434,7 @@ test_flipping_gravity_on_a_settled_pile_fits_in_the_frame_budget(void) {
 
     real_board_close(&b);
 
-    perf_guard("device_tests", "settled-pile gravity flip", per_step, 13320);
+    perf_guard("settled-pile gravity flip", per_step, 13320);
     free(real);
 }
 
@@ -2872,7 +2872,7 @@ static void
 test_present_cost_against_the_lava_stress_scene(void) {
     const int64_t mean_us =
         present_cost_of_scene(37u, build_lava_stress_scene, 30, 20, "lava stress", "lava stress scene");
-    perf_guard("device_tests", "present: lava stress", mean_us, 8350);
+    perf_guard("present: lava stress", mean_us, 8350);
 }
 
 static void
@@ -2884,7 +2884,7 @@ test_present_cost_against_the_thermal_shock_scene(void) {
      * this lattice dirties every strip every frame, so an oracle sends the
      * same 164,864 pixels. Watch pixels sent. A failure likely means the
      * scene dirties MORE pixels, not a slower present. */
-    perf_guard("device_tests", "present: thermal shock", mean_us, 11320);
+    perf_guard("present: thermal shock", mean_us, 11320);
 }
 
 /* Present cost with column-precise dirty tracking, against the two scenes

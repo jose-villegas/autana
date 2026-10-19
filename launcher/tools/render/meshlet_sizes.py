@@ -27,7 +27,7 @@ def capture_means(directory, object_name, expected_packs=None, expected_poses=No
     paths = [pathlib.Path(directory) / f"meshlets-{row}-board.log" for row in ROWS]
     require_same_board({str(path): capture_board(path) for path in paths})
     from doc_stages import capture_pose_every_ms
-    every_ms = None
+    every_ms = capture_pose_every_ms(paths)
     result, packs, poses = {}, {}, None
     for row in ROWS:
         path = pathlib.Path(directory) / f"meshlets-{row}-board.log"
@@ -39,8 +39,6 @@ def capture_means(directory, object_name, expected_packs=None, expected_poses=No
                 or not re.search(r"RUNSUITE_COMPLETE name=\w+ found=1 selected=[1-9]\d* unmatched=0", text)):
             raise ValueError(f"{path}: needs successful suite PASS and complete verdict")
         measured = text[:re.search(r":test_\w*frame_cost\w*:PASS\b", text).start()]
-        if every_ms is None:
-            every_ms = capture_pose_every_ms(paths)
         blocks_by_label = {}
         for match in BLOCK.finditer(measured):
             blocks_by_label.setdefault(match[1], []).append(match[0])

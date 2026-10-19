@@ -266,9 +266,15 @@ int main(void) {
             root = pathlib.Path(directory)
             for row, pack in (("16", "a"), ("32", "b"), ("64", "c")):
                 self.capture(root, row, pack=pack, suite=False)
-            with self.assertRaisesRegex(ValueError, "complete"):
+            with self.assertRaisesRegex(ValueError, "pose interval"):
                 meshlet_sizes.capture_means(root, "atrium")
             self.capture_rows(root)
+            path = root / "meshlets-16-board.log"
+            complete = path.read_text()
+            path.write_text(complete[:complete.index("RUNSUITE_COMPLETE")])
+            with self.assertRaisesRegex(ValueError, "complete"):
+                meshlet_sizes.capture_means(root, "atrium")
+            path.write_text(complete)
             self.assertEqual(meshlet_sizes.capture_means(root, "atrium")["32"], [1, 2, 3, 8])
 
     def test_order_missing_capture_and_identity(self):

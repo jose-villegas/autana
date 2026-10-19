@@ -351,8 +351,8 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
              label, (long long)stats.avg, 1e6 * samples / (double)frame_sum, (long long)stats.max, (long long)stats.med,
              (long long)stats.p95, perf_quarter->name);
     const size_t q = (size_t)(perf_quarter - r3d_perf_quarters);
-    (void)perf_goal(TAG, label, stats.avg, budget[q].mean_goal_us);
-    perf_guard(TAG, label, stats.p95, budget[q].p95_ceiling_us);
+    (void)perf_goal(label, stats.avg, budget[q].mean_goal_us);
+    perf_guard(label, stats.p95, budget[q].p95_ceiling_us);
     memory_free(report);
     bench_close(b);
     memory_free(b);
