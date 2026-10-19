@@ -84,6 +84,7 @@ bench_open(bench_t* b, const r3d_instance_t* instance, const raster_attachment_t
     TEST_ASSERT_NOT_NULL(b->scratch);
     TEST_ASSERT_NOT_NULL(b->panel);
     b->raster.scratch = b->scratch;
+    b->buffers = r3d_pipeline_carve(&b->raster);
     ESP_LOGI(TAG, "raster=%dx%d present=%d" R3D_PERF_QUARTER_FORMAT, b->raster.width, b->raster.height,
              render_lab_present(), perf_quarter->name);
     ESP_LOGI(TAG, "heap after setup: internal free %u largest %u, psram free %u largest %u" R3D_PERF_QUARTER_FORMAT,
@@ -98,15 +99,13 @@ bench_close(bench_t* b) {
     memory_free(b->panel);
 }
 
-static r3d_lens_t
-view_at(const r3d_lit_mesh_t* mesh, uint32_t t_ms) {
+static __attribute__((noinline)) void
+view_at(const r3d_lit_mesh_t* mesh, uint32_t t_ms, r3d_lens_t* lens) {
     (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
     const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
     const render_view_t view = camera_view(flythrough, scene_entity_transform(sponza, camera_entity),
                                            (viewport_t){size.width, size.height, perf_quarter->quarter});
-    r3d_lens_t lens;
-    r3d_lens_init(&lens, &view, mesh->position_scale);
-    return lens;
+    r3d_lens_init(lens, &view, mesh->position_scale);
 }
 
 static void
@@ -217,7 +216,8 @@ report_stage_split(int bake) {
     int64_t stopped[4] = {0};
     int poses = 0;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_POSE_EVERY_MS) {
-        const r3d_lens_t lens = view_at(&meshes[bake], t_ms);
+        r3d_lens_t lens;
+        view_at(&meshes[bake], t_ms, &lens);
         const int visible = r3d_pipeline_cull(&meshes[bake], &lens, parts.culled + 1, parts.work[0]);
         r3d_pipeline_transform(&meshes[bake], &lens, parts.culled + 1, visible, parts.cs, parts.rows);
         for (int stop = 0; stop <= 3; stop++) {
@@ -247,8 +247,7 @@ test_sponza_draw_stage_breakdown(void) {
     TEST_ASSERT_NOT_NULL(b);
     const r3d_instance_t atrium = {&meshes[SPONZA_BAKE_FULL], NULL};
     bench_open(b, &atrium, NULL);
-    b->lens = view_at(atrium.mesh, 0);
-    b->buffers = r3d_pipeline_carve(&b->raster);
+    view_at(atrium.mesh, 0, &b->lens);
     const r3d_lens_t* lens = &b->lens;
     const r3d_pipeline_buffers_t* parts = &b->buffers;
     const int visible = r3d_pipeline_cull(atrium.mesh, lens, parts->culled + 1, parts->work[0]);
