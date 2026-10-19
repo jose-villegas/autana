@@ -116,8 +116,8 @@ test_a_grid_spans_the_allowed_area_corner_to_corner(void) {
 static void
 test_a_grid_index_runs_along_a_row_first(void) {
     const touch_probe_target_t t = touch_probe_grid(7, 5, 5, 448, 368, 12, 8);
-    TEST_ASSERT_EQUAL_INT(8 + (448 - 16 - 12) / 2, t.x);
-    TEST_ASSERT_EQUAL_INT(8 + (368 - 16 - 12) / 4, t.y);
+    TEST_ASSERT_EQUAL_INT(8 + ((448 - 16 - 12) / 2), t.x);
+    TEST_ASSERT_EQUAL_INT(8 + ((368 - 16 - 12) / 4), t.y);
 }
 
 static void
