@@ -28,14 +28,16 @@ static const int32_t value_max[ATTRIBUTES] = {DEPTH_MAX, 65280, 65280, 65280};
  * side has each centre tested against its edge functions
  * (Pineda 1988) instead of walked, in one colour and one depth: past
  * the default 4 its lost gradient shows on the walls. */
-#define SMALL_MAX_SIDE                R3D_SPAN_SMALL_MAX_SIDE
-#define SMALL_MAX_SIDE_TUNE           16
-#define SMALL_FLAT_SPREAD_OFF         ((int)GFX_RGB565_G6_MAX + 1)
-#define SMALL_DITHER_COVERAGE_EIGHTHS 8
-#define SMALL_DITHER_PATTERN_SIDE     (sizeof gfx_dither4x4 / sizeof gfx_dither4x4[0])
-#define SMALL_DITHER_PATTERN_BITS_MAX (__builtin_ctz((unsigned)SMALL_DITHER_PATTERN_SIDE))
-#define SMALL_FILL_WALK               (-1)
-#define TRIANGLE_VERTICES             3
+#define SMALL_MAX_SIDE                  R3D_SPAN_SMALL_MAX_SIDE
+#define SMALL_MAX_SIDE_TUNE             16
+#define SMALL_FLAT_SPREAD_OFF           ((int)GFX_RGB565_G6_MAX + 1)
+#define SMALL_DITHER_COVERAGE_EIGHTHS   8
+#define SMALL_DITHER_PATTERN_SIDE       (sizeof gfx_dither4x4 / sizeof gfx_dither4x4[0])
+#define SMALL_DITHER_PATTERN_BITS_MAX   (__builtin_ctz((unsigned)SMALL_DITHER_PATTERN_SIDE))
+#define SMALL_DITHER_PATTERN_BITS_MIN   1
+#define SMALL_DITHER_PRECOMPUTED_LEVELS (1 << (2 * SMALL_DITHER_PATTERN_BITS_MIN))
+#define SMALL_FILL_WALK                 (-1)
+#define TRIANGLE_VERTICES               3
 
 /* Above SMALL_MAX_SIDE, flat fill can be gated by vertex colour spread or
  * have its edges ordered-dithered to vertex colours in size-ramped eighths.
@@ -45,7 +47,8 @@ TUNE_HOT(r3d_span, small_max_side, R3D_SPAN_SMALL_MAX_SIDE_DEFAULT, 0, SMALL_MAX
 TUNE_HOT(r3d_span, small_flat_spread_far, SMALL_FLAT_SPREAD_OFF, 0, SMALL_FLAT_SPREAD_OFF);
 TUNE_HOT(r3d_span, small_flat_spread_near, SMALL_FLAT_SPREAD_OFF, 0, SMALL_FLAT_SPREAD_OFF);
 TUNE_HOT(r3d_span, small_dither, R3D_SPAN_SMALL_DITHER_DEFAULT, 0, SMALL_DITHER_COVERAGE_EIGHTHS);
-TUNE_HOT(r3d_span, small_dither_cell_bits, SMALL_DITHER_PATTERN_BITS_MAX, 1, SMALL_DITHER_PATTERN_BITS_MAX);
+TUNE_HOT(r3d_span, small_dither_cell_bits, SMALL_DITHER_PATTERN_BITS_MAX, SMALL_DITHER_PATTERN_BITS_MIN,
+         SMALL_DITHER_PATTERN_BITS_MAX);
 TUNE_HOT(r3d_span, small_dither_ramp, 0, 0, 1);
 TUNE_HOT(r3d_span, flat_max_rows, R3D_SPAN_FLAT_MAX_ROWS, 0, 8);
 TUNE_HOT(r3d_span, flat_max_width, R3D_SPAN_FLAT_MAX_WIDTH, 0, 8 * R3D_SUBPIXEL);
@@ -639,9 +642,9 @@ typedef struct {
 
 /* This tree's barycentric ordered-dither pick has no source paper; it reuses
  * gfx_dither4x4 to distribute vertex colours at the edges. */
-static bool
+static inline __attribute__((always_inline)) bool
 prepare_small_dither(small_dither_t* d, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                     const r3d_span_vertex_t* c, bool positive, int coverage) {
+                     const r3d_span_vertex_t* c, bool positive, int coverage, int cell_bits) {
     const r3d_span_vertex_t* p = positive ? b : c;
     const r3d_span_vertex_t* q = positive ? c : b;
     d->color[0] = r3d_span_pack_rgb(q->r, q->g, q->b);
@@ -657,7 +660,6 @@ prepare_small_dither(small_dither_t* d, const r3d_span_vertex_t* a, const r3d_sp
         small_side(&d->edge[0], a->x, a->y) + small_side(&d->edge[1], a->x, a->y) + small_side(&d->edge[2], a->x, a->y);
     const int divisor = TRIANGLE_VERTICES * SMALL_DITHER_COVERAGE_EIGHTHS;
     d->coverage_limit = (coverage * total + divisor - 1) / divisor;
-    const int cell_bits = small_cell_bits;
     d->phase_mask = (1 << cell_bits) - 1;
     d->rank_shift = 2 * (SMALL_DITHER_PATTERN_BITS_MAX - cell_bits);
     d->level_shift = 1 + (2 * cell_bits);
@@ -666,22 +668,37 @@ prepare_small_dither(small_dither_t* d, const r3d_span_vertex_t* a, const r3d_sp
 }
 
 static inline uint16_t
-small_dither_pick(const small_dither_t* d, int x, int y, int32_t s0, int32_t s1, int32_t s2, uint16_t flat) {
+small_dither_pick(const small_dither_t* d, const uint8_t* pattern, const int32_t* thresholds, int x, int32_t s0,
+                  int32_t s1, int32_t s2, uint16_t flat) {
     if (r3d_span_min3(s0, s1, s2) >= d->coverage_limit) {
         return flat;
     }
-    const int rank = gfx_dither4x4[y & d->phase_mask][x & d->phase_mask] >> d->rank_shift;
-    const int32_t threshold = (d->total * (2 * rank + 1)) >> d->level_shift;
+    int32_t threshold;
+    if (thresholds != NULL) {
+        threshold = thresholds[x & d->phase_mask];
+    } else {
+        const int rank = pattern[x & d->phase_mask] >> d->rank_shift;
+        threshold = (d->total * (2 * rank + 1)) >> d->level_shift;
+    }
     return d->color[threshold < s0 ? 0 : threshold < s0 + s1 ? 1 : 2];
 }
 
-static __attribute__((noinline)) void
-fill_small_dither(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                  const r3d_span_vertex_t* c, bool positive, recti_t box, int coverage) {
+static inline __attribute__((always_inline)) void
+fill_small_dither_cell(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                       const r3d_span_vertex_t* c, bool positive, recti_t box, int coverage, int cell_bits) {
     small_dither_t d;
-    if (!prepare_small_dither(&d, a, b, c, positive, coverage)) {
+    if (!prepare_small_dither(&d, a, b, c, positive, coverage, cell_bits)) {
         fill_small(target, a, b, c, positive, box, NULL);
         return;
+    }
+    int32_t thresholds[SMALL_DITHER_PRECOMPUTED_LEVELS];
+    const bool precompute = cell_bits == SMALL_DITHER_PATTERN_BITS_MIN;
+    if (precompute) {
+        const int mask = (1 << SMALL_DITHER_PATTERN_BITS_MIN) - 1;
+        for (int index = 0; index < SMALL_DITHER_PRECOMPUTED_LEVELS; index++) {
+            const int rank = gfx_dither4x4[index >> SMALL_DITHER_PATTERN_BITS_MIN][index & mask] >> d.rank_shift;
+            thresholds[index] = (d.total * (2 * rank + 1)) >> d.level_shift;
+        }
     }
     fill_t f;
     set_flat(&f, a, b, c);
@@ -690,6 +707,8 @@ fill_small_dither(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
     }
     for (int y = box.y; y < recti_bottom(box); y++) {
         const small_row_t row = small_row(target, y);
+        const uint8_t* pattern = gfx_dither4x4[y & d.phase_mask];
+        const int32_t* row_thresholds = precompute ? thresholds + ((y & d.phase_mask) << cell_bits) : NULL;
         for (int x = box.x, end = recti_right(box); x < end; x++) {
             const int32_t cx = (x << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
             const int32_t s0 = small_side(&d.edge[0], cx, row.centre);
@@ -697,9 +716,19 @@ fill_small_dither(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
             const int32_t s2 = small_side(&d.edge[2], cx, row.centre);
             if ((s0 | s1 | s2) >= 0 && f.flat_z > row.depth[x]) {
                 row.depth[x] = f.flat_z;
-                row.color[x] = small_dither_pick(&d, x, y, s0, s1, s2, f.flat_color);
+                row.color[x] = small_dither_pick(&d, pattern, row_thresholds, x, s0, s1, s2, f.flat_color);
             }
         }
+    }
+}
+
+static __attribute__((noinline)) void
+fill_small_dither(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                  const r3d_span_vertex_t* c, bool positive, recti_t box, int coverage) {
+    if (small_cell_bits == SMALL_DITHER_PATTERN_BITS_MIN) {
+        fill_small_dither_cell(target, a, b, c, positive, box, coverage, SMALL_DITHER_PATTERN_BITS_MIN);
+    } else {
+        fill_small_dither_cell(target, a, b, c, positive, box, coverage, SMALL_DITHER_PATTERN_BITS_MAX);
     }
 }
 

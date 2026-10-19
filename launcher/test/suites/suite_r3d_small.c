@@ -329,14 +329,16 @@ test_small_two_by_two_dither_spans_all_ranks(void) {
     const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {
         {0, 0, 0.5F, 255, 0, 0}, {R3D_SUBPIXEL, 0, 0.5F, 0, 255, 0}, {0, R3D_SUBPIXEL, 0.5F, 0, 0, 255}};
     small_dither_t d;
-    TEST_ASSERT_TRUE(prepare_small_dither(&d, &v[0], &v[1], &v[2], true, SMALL_DITHER_COVERAGE_EIGHTHS));
+    TEST_ASSERT_TRUE(
+        prepare_small_dither(&d, &v[0], &v[1], &v[2], true, SMALL_DITHER_COVERAGE_EIGHTHS, small_cell_bits));
     d.coverage_limit = d.total;
     int counts[TRIANGLE_VERTICES] = {0};
     const int32_t third = d.total / TRIANGLE_VERTICES;
     knob("r3d_span.small_dither_cell_bits", SMALL_DITHER_PATTERN_BITS_MAX);
     for (int y = 0; y <= d.phase_mask; y++) {
         for (int x = 0; x <= d.phase_mask; x++) {
-            const uint16_t color = small_dither_pick(&d, x, y, third, third, d.total - 2 * third, 0);
+            const uint16_t color =
+                small_dither_pick(&d, gfx_dither4x4[y & d.phase_mask], NULL, x, third, third, d.total - 2 * third, 0);
             for (int i = 0; i < TRIANGLE_VERTICES; i++) {
                 counts[i] += color == d.color[i];
             }
@@ -405,7 +407,8 @@ test_small_selection_and_uniform_packing(void) {
     knob("r3d_span.small_flat_spread_far", SMALL_FLAT_SPREAD_OFF);
     knob("r3d_span.small_flat_spread_near", SMALL_FLAT_SPREAD_OFF);
     small_dither_t d;
-    TEST_ASSERT_FALSE(prepare_small_dither(&d, &v[0], &v[1], &v[2], true, SMALL_DITHER_COVERAGE_EIGHTHS));
+    TEST_ASSERT_FALSE(
+        prepare_small_dither(&d, &v[0], &v[1], &v[2], true, SMALL_DITHER_COVERAGE_EIGHTHS, small_cell_bits));
 }
 
 static void
@@ -447,7 +450,8 @@ test_small_gate_and_dither_ramps(void) {
     const recti_t centres = {0, 0, SMALL_MAX_SIDE_TUNE, SMALL_MAX_SIDE_TUNE};
     TEST_ASSERT_EQUAL_INT(SMALL_DITHER_COVERAGE_EIGHTHS, select_small(&v[0], &v[1], &v[2], centres, false));
     small_dither_t d;
-    TEST_ASSERT_TRUE(prepare_small_dither(&d, &v[0], &v[1], &v[2], true, SMALL_DITHER_COVERAGE_EIGHTHS));
+    TEST_ASSERT_TRUE(
+        prepare_small_dither(&d, &v[0], &v[1], &v[2], true, SMALL_DITHER_COVERAGE_EIGHTHS, small_cell_bits));
     knob("r3d_span.small_max_side", SMALL_MAX_SIDE + 1);
     knob("r3d_span.small_dither_ramp", 1);
     knob("r3d_span.small_flat_spread_near", 0);
