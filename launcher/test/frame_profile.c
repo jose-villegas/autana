@@ -17,10 +17,15 @@ frame_profile_play(const frame_profile_scenario_t* s, frame_profile_frame_fn fra
         return p;
     }
     int64_t previous_us = frame(ctx, 0);
+    if (previous_us <= 0 || previous_us > INT32_MAX) {
+        ESP_LOGE("frame_profile", "%s: invalid warm-up frame time", s->row);
+        memory_free(samples);
+        return p;
+    }
     int64_t elapsed_us = 0;
     while (elapsed_us < s->duration_us) {
-        if (p.frames == capacity || previous_us <= 0 || previous_us > INT32_MAX) {
-            ESP_LOGE("frame_profile", "%s: sample capacity exhausted or invalid frame time", s->row);
+        if (p.frames == capacity) {
+            ESP_LOGE("frame_profile", "%s: sample capacity exhausted", s->row);
             memory_free(samples);
             return (frame_profile_t){0};
         }
@@ -53,8 +58,6 @@ frame_profile_log(const char* tag, const char* row, const frame_profile_t* p, co
                                   " %.2f " FRAME_PROFILE_LOW " %.2f " FRAME_PROFILE_WORST " %.2f " FRAME_PROFILE_QUARTER
                                   "%s",
              row, p->frames, (long long)p->frame_us.avg, (long long)p->frame_us.med, (long long)p->frame_us.p95,
-             (long long)p->frame_us.max, (long long)p->frame_us.min,
-             (double)FRAME_PROFILE_US_PER_SECOND * p->frames / p->total_us,
-             (double)FRAME_PROFILE_US_PER_SECOND / p->frame_us.p95,
-             (double)FRAME_PROFILE_US_PER_SECOND / p->frame_us.max, quarter);
+             (long long)p->frame_us.max, (long long)p->frame_us.min, (double)MATH_US_PER_S * p->frames / p->total_us,
+             (double)MATH_US_PER_S / p->frame_us.p95, (double)MATH_US_PER_S / p->frame_us.max, quarter);
 }

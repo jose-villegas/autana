@@ -54,8 +54,8 @@ sequenceDiagram
 
 Each `--suite NAME TESTS TABLE` takes a registered suite name, comma-separated
 test patterns (`-` for all), and a table command (`-` reads the capture's
-`<row> both cores: mean <N>us`, `<row> one core: mean <N>us`, or
-`<row> mean <N>us` lines, or `frame_profile:` rows). Pattern width and count limits come
+`<row> both cores: mean <N>us`, `<row> one core: mean <N>us`,
+`<row> mean <N>us` lines, or a `frame_profile:` row). Pattern width and count limits come
 from each project's `launcher/test/suites.h`; a pattern over the width is
 refused before any flash, and patterns over the count run as several requests
 on the same flash. Each test must match patterns in one request only; a row
@@ -356,15 +356,17 @@ directories are uploaded even when a lane fails.
 
 ## Real-time playback
 
-`run_render_lab_frame_profile_suite` reports whole app frame wall times
-for clip playback. Unlike fixed-pose frame costs, scenario time follows the
-previous frame's wall time, including fractional milliseconds.
+The [app tools](../../main/apps/render_lab/tools/README.md#frame-timing-profiles)
+name the suite for whole app frame wall times during clip playback. Scenario
+time follows the previous frame's wall time, including fractional milliseconds.
 
-The `frame_profile:` line includes frame count, mean, median, p95, worst
-and best times, then FPS mean, low and worst. Mean FPS uses total timed
-frames divided by total wall time; low and worst use p95 and maximum time.
-The warm-up frame is excluded. `quarter=` distinguishes orientations.
+`frame_profile:` reports frame count and mean, median, p95, worst and best
+wall times. Mean FPS is timed frames / total wall time; low FPS is 1/p95,
+worst FPS is 1/worst frame time. `quarter=` identifies orientation.
 
-Use `--suite run_render_lab_frame_profile_suite - -` for capture comparisons.
+The warm-up runs at dt 0 and is excluded from statistics. Its wall time
+supplies the first clip advance. Each later frame advances by the previous
+frame's wall time.
+
 The capture parser compares mean microseconds for each scenario and quarter.
-The log tokens are defined in `launcher/test/frame_profile.h`.
+The fields are defined in `launcher/test/frame_profile.h`.

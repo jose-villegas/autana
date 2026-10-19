@@ -167,9 +167,12 @@ which runs the device's track sampler over the clip, at the poses
 (`launcher/demo/sponza/sponza.scene.toml`):
 
 ```sh
+pose_every_ms=$(python -c \
+    'import sys; sys.path.insert(0, "launcher/tools"); from build.c_header import read_define; print(read_define("launcher/main/apps/render_lab/sponza_content.h", "SPONZA_PERF_POSE_EVERY_MS"))')
 python launcher/tools/anim/track_host.py \
     launcher/demo/sponza/flythrough.anim.toml \
-    --every 500 --poses camera 184 224 0.62 6 |
+    --every "$pose_every_ms" \
+    --poses camera 184 224 0.62 6 |
     ./launcher/tools/r3d/report_triangle_sizes.sh \
         --mesh sponza.atrium -
 ```
@@ -257,20 +260,20 @@ matching reference views.
 
 `run_sponza_perf_suite` measures fixed camera poses at the spacing in
 `SPONZA_PERF_POSE_EVERY_MS`. Each frame-cost row reports mean, worst,
-median and p95 before presentation. Stage splits and pixel checks use
-`SPONZA_POSE_EVERY_MS`.
+median and p95 before presentation, with stage splits at those same poses.
+The pixel-equivalence checks in that suite and the camera checks in
+`suite_sponza.c` use `SPONZA_POSE_EVERY_MS`.
 
 `run_render_lab_frame_profile_suite` plays each Sponza scene's camera clip
 and the capybara gallop for one clip period in each perf quarter. It times
 update, render, compose and present with the HUD hidden.
 
-An untimed warm-up starts at clip time zero. Each timed frame advances by
-the previous frame's wall time, carrying fractional milliseconds. The loop
-stops when those advances reach the clip duration.
+The warm-up at dt 0 is excluded from statistics; its wall time supplies
+the first clip advance. Later frames advance by the previous wall time,
+carrying fractional milliseconds, until advances reach the clip duration.
 
-`frame_profile:` rows report frame count and mean, median, p95, worst and
-best wall times. FPS mean uses the exact total time; low FPS uses p95 and
-worst FPS uses the slowest frame. `quarter=` identifies the orientation.
+The [perf tools](../../../../tools/perf/README.md#real-time-playback)
+define the `frame_profile:` line format.
 
 Each suite owns a table of mean goals and p95 ceilings per row and quarter.
 Zero means unpegged: it logs without enforcing a budget. Board ceilings

@@ -5,6 +5,7 @@ import copy
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import statistics
@@ -277,25 +278,31 @@ def board_means(captures, commit, id, object_name):
 name: statistics.median(rows[name] for rows in runs) for name in (id, *VARIANTS)
 }
 
-def board_frames(captures, expected, id, object_name):
+def capture_pose_every_ms(paths) -> int:
+    intervals = set()
+    for path in paths:
+        values = set(map(int, re.findall(r"pose_every_ms=(\d+)", path.read_text(encoding="utf-8"))))
+        if len(values) != 1 or min(values) <= 0:
+            raise ValueError(f"{path}: needs a common positive pose interval")
+        intervals.update(values)
+    if len(intervals) != 1:
+        raise ValueError("board captures need a common positive pose interval")
+    return intervals.pop()
+
+
+def board_frames(captures, expected, id, object_name, every_ms):
     require_same_board({str(path): capture_board(path) for path in captures})
-    import re
-    pattern = rf"({re.escape(id)}|lite|{re.escape(object_name)}|{re.escape(object_name + '_lite')}) t=\s*(\d+)s .*?both cores: frame\s+(\d+)us"
+    pattern = rf"({re.escape(id)}|lite|{re.escape(object_name)}|{re.escape(object_name + '_lite')}) t=\s*(\d+)(ms|s) .*?both cores: frame\s+(\d+)us"
     values = {}
     for capture in captures:
         from capture import select_quarter
         text = select_quarter(capture.read_text(encoding="utf-8", errors="replace"))
-        intervals = set(map(int, re.findall(r"pose_every_ms=(\d+)", text)))
-        if len(intervals) > 1 or (intervals and min(intervals) <= 0):
-            raise ValueError(f"{capture}: needs a common positive pose interval")
-        every_ms = next(iter(intervals), None)
-        parsed, counts = [], {}
-        for name, time, value in re.findall(pattern, text):
+        parsed = []
+        for name, time, unit, value in re.findall(pattern, text):
             name = {object_name: id, object_name + "_lite": "lite"}.get(name, name)
-            time_ms = counts.get(name, 0) * every_ms if every_ms else int(time) * 1000
-            if int(time) != time_ms // 1000:
+            time_ms = int(time) * (1000 if unit == "s" else 1)
+            if time_ms % every_ms:
                 raise ValueError(f"{capture}: needs each full/lite pose exactly once")
-            counts[name] = counts.get(name, 0) + 1
             parsed.append((name, time_ms, int(value) / 1000))
         keys = [(name, time) for name, time, _ in parsed]
         if len(keys) != len(expected) or set(keys) != set(expected):
@@ -333,16 +340,12 @@ def board(args, out, work):
         [(name, f"{means[name]:.3f}") for name in (id, *VARIANTS)]), encoding="utf-8")
     scene = load_scene(scene_path)
     job = placed_variant(scene, args.object + "_fitted")
-    intervals = {int(value) for capture in args.capture for value in
-                 re.findall(r"pose_every_ms=(\d+)", capture.read_text(encoding="utf-8"))}
-    if len(intervals) != 1 or min(intervals) <= 0:
-        raise ValueError("board captures need a common positive pose interval")
-    every_ms = intervals.pop()
+    every_ms = capture_pose_every_ms(args.capture)
     poses = camera_path_poses(scene, job.renderer.fit, every_ms, either_way_up=False)
     for capture in args.capture:
         capture_viewport(capture, poses[:2])
     frame_values = board_frames(args.capture, [(name, index * every_ms) for name in (id, "lite")
-                                             for index in range(len(poses[-1]))], id, args.object)
+                                             for index in range(len(poses[-1]))], id, args.object, every_ms)
     (work / "board-poses.txt").write_text(poses_text(*poses))
     rows, times, records = [], [], []
     for name, asset in ((id, args.object), ("lite", args.object + "_lite")):

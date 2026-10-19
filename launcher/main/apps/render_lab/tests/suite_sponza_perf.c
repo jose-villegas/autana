@@ -47,24 +47,6 @@
 
 static const r3d_perf_quarter_t* perf_quarter;
 
-typedef struct {
-    const char* row;
-    perf_budget_t quarters[R3D_PERF_QUARTER_COUNT];
-} frame_budget_t;
-
-static const frame_budget_t frame_budgets[] = {
-    {"atrium", {{0}}},
-    {"atrium_flat", {{0}}},
-    {"atrium_lite", {{0}}},
-    {"atrium_fitted", {{0}}},
-    {"atrium_fitted_full", {{0}}},
-    {"atrium_flat_fitted", {{0}}},
-    {"cull_off", {{0}}},
-    {"motion", {{0}}},
-    {"motion_moving", {{0}}},
-    {"placed", {{0}}},
-};
-
 static const char* TAG = "sponza_perf";
 
 /* The scene, loaded for the suite, its pack, and one mesh for each bake. */
@@ -305,7 +287,8 @@ test_sponza_draw_stage_breakdown(void) {
  * nudged every frame so an attached motion tags every triangle. */
 static void
 report_frame_cost(const char* label, const char* object_name, const r3d_instance_t* instance,
-                  const raster_attachment_t* const* attachments, transformf_t* moving, mat4f_t* model) {
+                  const raster_attachment_t* const* attachments, transformf_t* moving, mat4f_t* model,
+                  const perf_budget_t budget[R3D_PERF_QUARTER_COUNT]) {
     const r3d_lit_mesh_t* mesh = instance->mesh;
     bench_t* b = memory_alloc(sizeof(*b), MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL(b);
@@ -351,8 +334,8 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
         const resolution_step_t composed = raster_compose_size(&b->raster);
         raster_upscale(&b->raster, b->panel, composed.width, composed.height);
         const int64_t us = timing_now_us() - start;
-        ESP_LOGI(TAG, "%s t=%5us clusters=%4d tris=%5d | both cores: frame %7lldus" R3D_PERF_QUARTER_FORMAT, label,
-                 (unsigned)(t_ms / 1000), stats.clusters, stats.triangles, (long long)us, perf_quarter->name);
+        ESP_LOGI(TAG, "%s t=%6ums clusters=%4d tris=%5d | both cores: frame %7lldus" R3D_PERF_QUARTER_FORMAT, label,
+                 (unsigned)t_ms, stats.clusters, stats.triangles, (long long)us, perf_quarter->name);
         (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX);
         ESP_LOGI(TAG, "ms/frame avg/worst: %s" R3D_PERF_QUARTER_FORMAT, report, perf_quarter->name);
         frame_sum += us;
@@ -368,16 +351,8 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
              label, (long long)stats.avg, 1e6 * samples / (double)frame_sum, (long long)stats.max, (long long)stats.med,
              (long long)stats.p95, perf_quarter->name);
     const size_t q = (size_t)(perf_quarter - r3d_perf_quarters);
-    bool budget_found = false;
-    for (size_t i = 0; i < sizeof frame_budgets / sizeof frame_budgets[0]; i++) {
-        if (strcmp(frame_budgets[i].row, label) == 0) {
-            const perf_budget_t* budget = &frame_budgets[i].quarters[q];
-            (void)perf_goal(label, stats.avg, budget->mean_goal_us);
-            perf_guard(label, stats.p95, budget->p95_ceiling_us);
-            budget_found = true;
-        }
-    }
-    TEST_ASSERT_TRUE_MESSAGE(budget_found, "frame row needs a budget entry");
+    (void)perf_goal(TAG, label, stats.avg, budget[q].mean_goal_us);
+    perf_guard(TAG, label, stats.p95, budget[q].p95_ceiling_us);
     memory_free(report);
     bench_close(b);
     memory_free(b);
@@ -412,13 +387,15 @@ test_sponza_frame_cost_along_the_flythrough(void) {
     saved_cull = *culling->value;
     suite_set_test_cleanup(restore_culling);
     (void)tune_handle_line("RESET render.cull", cull_reply);
+    static const perf_budget_t bake_budgets[SPONZA_BAKE_COUNT][R3D_PERF_QUARTER_COUNT] = {0};
+    static const perf_budget_t cull_off_budget[R3D_PERF_QUARTER_COUNT] = {0};
     for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
         const r3d_instance_t instance = {&meshes[i], NULL};
-        report_frame_cost(sponza_bakes[i], sponza_bakes[i], &instance, NULL, NULL, NULL);
+        report_frame_cost(sponza_bakes[i], sponza_bakes[i], &instance, NULL, NULL, NULL, bake_budgets[i]);
     }
     (void)tune_handle_line("SET render.cull 0", cull_reply);
     const r3d_instance_t full = {&meshes[SPONZA_BAKE_FULL], NULL};
-    report_frame_cost("cull_off", sponza_bakes[SPONZA_BAKE_FULL], &full, NULL, NULL, NULL);
+    report_frame_cost("cull_off", sponza_bakes[SPONZA_BAKE_FULL], &full, NULL, NULL, NULL, cull_off_budget);
     TEST_PASS();
 }
 
@@ -432,14 +409,17 @@ test_sponza_frame_cost_with_motion(void) {
     *motion = (raster_motion_t){0};
     const raster_attachment_t attachment = raster_motion_view(motion);
     const raster_attachment_t* const attached[] = {&attachment};
+    static const perf_budget_t motion_budget[R3D_PERF_QUARTER_COUNT] = {0};
+    static const perf_budget_t moving_budget[R3D_PERF_QUARTER_COUNT] = {0};
+    static const perf_budget_t placed_budget[R3D_PERF_QUARTER_COUNT] = {0};
     const r3d_instance_t still = {&meshes[0], NULL};
-    report_frame_cost("motion", sponza_bakes[0], &still, attached, NULL, NULL);
+    report_frame_cost("motion", sponza_bakes[0], &still, attached, NULL, NULL, motion_budget);
     raster_motion_forget(motion);
     transformf_t pose = TRANSFORMF_IDENTITY;
     mat4f_t model = transformf_compute_matrix(&pose);
     const r3d_instance_t moving = {&meshes[0], &model};
-    report_frame_cost("motion_moving", sponza_bakes[0], &moving, attached, &pose, &model);
-    report_frame_cost("placed", sponza_bakes[0], &moving, NULL, &pose, &model);
+    report_frame_cost("motion_moving", sponza_bakes[0], &moving, attached, &pose, &model, moving_budget);
+    report_frame_cost("placed", sponza_bakes[0], &moving, NULL, &pose, &model, placed_budget);
     memory_free(motion);
     TEST_PASS();
 }

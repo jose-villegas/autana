@@ -95,6 +95,45 @@ class MeshletSettingsTests(unittest.TestCase):
         self.assertNotEqual(mesh_recipe(job, scene, {}), mesh_recipe(changed, scene, {}))
 
 class MeshletReportTests(unittest.TestCase):
+    def test_pose_interval_contracts_and_swapped_rows(self):
+        import meshlet_sizes
+        changes = (("pose_every_ms=5000", "pose_every_ms=0"),
+                   ("pose_every_ms=5000", ""),
+                   ("pose_every_ms=5000", "pose_every_ms=2500"),
+                   ("pose_every_ms=5000", "pose_every_ms=5000 pose_every_ms=2500"),
+                   ("t=    0s", "t=    5s"))
+        for old, new in changes:
+            with self.subTest(new=new), tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                path = self.capture_rows(root)
+                path.write_text(path.read_text().replace(old, new))
+                with self.assertRaisesRegex(ValueError, "pose|identity"):
+                    meshlet_sizes.capture_means(root, "atrium")
+
+    def test_table_validates_later_intervals_before_sampling(self):
+        import meshlet_sizes
+        from types import SimpleNamespace as NS
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            path = self.capture_rows(root)
+            path.write_text(path.read_text().replace("pose_every_ms=5000", "pose_every_ms=2500"))
+            scene = NS(camera=NS(component=None), renderers=[NS(object=NS(name="atrium", identity=True))])
+            with mock.patch.object(meshlet_sizes, "load_scene", return_value=scene), \
+                    mock.patch.object(meshlet_sizes, "default_size", return_value=(184, 224)), \
+                    self.assertRaisesRegex(ValueError, "pose interval"):
+                meshlet_sizes.table(pathlib.Path("room.scene.toml"), root, root, "atrium")
+
+    def test_swapped_pose_times_are_rejected(self):
+        import meshlet_sizes
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            path = self.capture_rows(root)
+            path.write_text(path.read_text().replace("t=    0s", "t=temporary")
+                            .replace("t=    5s", "t=    0s").replace("t=temporary", "t=    5s"))
+            with self.assertRaisesRegex(ValueError, "poses"):
+                meshlet_sizes.capture_means(root, "atrium")
+
     @unittest.skipUnless(shutil.which("gcc"), "needs gcc")
     def test_assertion_after_cull_switch_restores_the_prior_setting(self):
         source = (TOOLS.parents[1] / "launcher/main/apps/render_lab/tests/suite_sponza_perf.c").read_text()
@@ -116,7 +155,8 @@ static void suite_set_test_cleanup(void (*fn)(void)) { cleanup = fn; }
 #define TEST_ASSERT_NOT_NULL(p) do { if ((p) == 0) longjmp(aborted, 1); } while (0)
 #define TEST_PASS() ((void)0)
 #define ESP_LOGI(...) ((void)0)
-enum { SPONZA_BAKE_COUNT = 1, SPONZA_BAKE_FULL = 0 };
+enum { SPONZA_BAKE_COUNT = 1, SPONZA_BAKE_FULL = 0, R3D_PERF_QUARTER_COUNT = 2 };
+typedef struct { int mean_goal_us, p95_ceiling_us; } perf_budget_t;
 static const int meshes[1];
 static const char* const sponza_bakes[] = {"renderer"};
 typedef struct { const int* mesh; void* model; } r3d_instance_t;
@@ -196,11 +236,11 @@ int main(void) {
             for path in root.glob("*.log"):
                 path.write_text(path.read_text().replace("period_ms=10000 pose_every_ms=5000",
                                                         "period_ms=1000 pose_every_ms=500")
-                                .replace("t=    5s", "t=    0s")
+                                .replace("t=    5s", "t=  500ms")
                                 .replace("worst 9000us", "worst 9000us, med 9000us, p95 9000us"))
             self.assertEqual(meshlet_sizes.capture_means(root, "atrium")["32"], [1, 2, 3, 8])
             path = root / "meshlets-64-board.log"
-            path.write_text(path.read_text().replace("atrium t=    0s clusters=1 tris=1 | both cores: frame 9000us\n", ""))
+            path.write_text(path.read_text().replace("atrium t=  500ms clusters=1 tris=1 | both cores: frame 9000us\n", ""))
             with self.assertRaisesRegex(ValueError, "poses"):
                 meshlet_sizes.capture_means(root, "atrium")
 

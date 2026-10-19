@@ -18,14 +18,6 @@
 #include "services/tune.h"
 #include "ui/ui.h"
 
-extern const render_lab_scene_t scene_sponza;
-extern const render_lab_scene_t scene_capybara;
-extern const render_lab_scene_t scene_sponza_lite;
-extern const render_lab_scene_t scene_sponza_flat;
-extern const render_lab_scene_t scene_sponza_fitted;
-extern const render_lab_scene_t scene_sponza_fitted_full;
-extern const render_lab_scene_t scene_sponza_flat_fitted;
-
 static const render_lab_scene_t* const scenes[] = {
     &scene_sponza,        &scene_sponza_lite,        &scene_sponza_flat,
     &scene_sponza_fitted, &scene_sponza_fitted_full, &scene_sponza_flat_fitted,

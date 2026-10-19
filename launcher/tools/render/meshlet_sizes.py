@@ -26,6 +26,8 @@ BLOCK = re.compile(r"=== (\w+) FRAME COST .*?===.*?(?:\1 both cores: mean [^\n]+
 def capture_means(directory, object_name, expected_packs=None, expected_poses=None, expected_geometry=None):
     paths = [pathlib.Path(directory) / f"meshlets-{row}-board.log" for row in ROWS]
     require_same_board({str(path): capture_board(path) for path in paths})
+    from doc_stages import capture_pose_every_ms
+    every_ms = None
     result, packs, poses = {}, {}, None
     for row in ROWS:
         path = pathlib.Path(directory) / f"meshlets-{row}-board.log"
@@ -37,6 +39,8 @@ def capture_means(directory, object_name, expected_packs=None, expected_poses=No
                 or not re.search(r"RUNSUITE_COMPLETE name=\w+ found=1 selected=[1-9]\d* unmatched=0", text)):
             raise ValueError(f"{path}: needs successful suite PASS and complete verdict")
         measured = text[:re.search(r":test_\w*frame_cost\w*:PASS\b", text).start()]
+        if every_ms is None:
+            every_ms = capture_pose_every_ms(paths)
         blocks_by_label = {}
         for match in BLOCK.finditer(measured):
             blocks_by_label.setdefault(match[1], []).append(match[0])
@@ -66,11 +70,11 @@ def capture_means(directory, object_name, expected_packs=None, expected_poses=No
             if expected_packs is not None and pack != expected_packs[row]:
                 raise ValueError(f"{path}: pack hash differs from the row bake")
             every, period = int(every), int(period)
-            if every <= 0 or period <= 0:
+            if every != every_ms or period <= 0:
                 raise ValueError(f"{path}: invalid suite pose interval")
-            frames = re.findall(rf"{re.escape(label)} t=\s*(\d+)s .*?both cores: frame\s+(\d+)us", block)
+            frames = re.findall(rf"{re.escape(label)} t=\s*(\d+)(ms|s) .*?both cores: frame\s+(\d+)us", block)
             times = list(range(0, period, every))
-            if ([int(time) for time, _ in frames] != [time // 1000 for time in times]
+            if ([int(time) * (1000 if unit == "s" else 1) for time, unit, _ in frames] != times
                     or (poses is not None and times != poses)):
                 raise ValueError(f"{path}: needs the shared suite poses exactly once")
             if expected_poses is not None and times != list(expected_poses):
@@ -82,7 +86,7 @@ def capture_means(directory, object_name, expected_packs=None, expected_poses=No
             if (any(not set(stages).issubset(dict(window)) for window in frame_cost.frame_cost_windows(path, block))
                     or block.count("ms/frame avg/worst:") != len(frames)):
                 raise ValueError(f"{path}: missing per-pose frame stages")
-            result[key] = [*(means[stage] for stage in stages), statistics.mean(int(us) for _, us in frames) / 1000]
+            result[key] = [*(means[stage] for stage in stages), statistics.mean(int(us) for _, _, us in frames) / 1000]
     if len(set(packs.values())) != len(ROWS):
         raise ValueError("captures need distinct size pack hashes")
     return {key: result[key] for key in ("cull-off", *ROWS)}
@@ -120,10 +124,8 @@ def table(scene_path, captures, bakes, object_name=None):
     from doc_stages import capture_viewport, markdown
     for row in ROWS:
         capture_viewport(captures / f"meshlets-{row}-board.log", (width, height))
-    identity = IDENTITY.search((captures / f"meshlets-{ROWS[0]}-board.log").read_text(encoding="utf-8"))
-    if identity is None:
-        raise ValueError("capture needs a suite pose interval")
-    every_ms = int(identity[7])
+    from doc_stages import capture_pose_every_ms
+    every_ms = capture_pose_every_ms([captures / f"meshlets-{row}-board.log" for row in ROWS])
     poses = sample_camera_path(camera.path.animation, camera.path.node, every_ms, width, height,
                                camera.half_fov_short_tan, camera.near_z)
     from r3d.build_pack import pack_bytes

@@ -19,18 +19,19 @@ scripted_frame(void* ctx, int64_t dt_us) {
 
 static void
 test_previous_frame_drives_duration_and_statistics(void) {
-    const int64_t times[] = {700, 100, 200, 300};
-    const int64_t steps[] = {0, 700, 100, 200};
+    const int64_t times[] = {7 * MATH_US_PER_MS, MATH_US_PER_MS, 2 * MATH_US_PER_MS, 3 * MATH_US_PER_MS};
+    const int64_t steps[] = {0, 7 * MATH_US_PER_MS, MATH_US_PER_MS, 2 * MATH_US_PER_MS};
     fixture_t f = {times, steps, sizeof times / sizeof times[0], 0};
-    const frame_profile_scenario_t scenario = {"script", 1000};
+    const frame_profile_scenario_t scenario = {"script", 10 * MATH_US_PER_MS};
     const frame_profile_t p = frame_profile_play(&scenario, scripted_frame, &f);
     TEST_ASSERT_EQUAL_INT(f.count, f.calls);
     TEST_ASSERT_EQUAL_INT(3, p.frames);
-    TEST_ASSERT_EQUAL_INT64(100, p.frame_us.min);
-    TEST_ASSERT_EQUAL_INT64(300, p.frame_us.max);
-    TEST_ASSERT_EQUAL_INT64(200, p.frame_us.avg);
-    TEST_ASSERT_EQUAL_INT64(200, p.frame_us.med);
-    TEST_ASSERT_EQUAL_INT64(300, p.frame_us.p95);
+    TEST_ASSERT_EQUAL_INT64(6 * MATH_US_PER_MS, p.total_us);
+    TEST_ASSERT_EQUAL_INT64(MATH_US_PER_MS, p.frame_us.min);
+    TEST_ASSERT_EQUAL_INT64(3 * MATH_US_PER_MS, p.frame_us.max);
+    TEST_ASSERT_EQUAL_INT64(2 * MATH_US_PER_MS, p.frame_us.avg);
+    TEST_ASSERT_EQUAL_INT64(2 * MATH_US_PER_MS, p.frame_us.med);
+    TEST_ASSERT_EQUAL_INT64(3 * MATH_US_PER_MS, p.frame_us.p95);
 }
 
 static int64_t
