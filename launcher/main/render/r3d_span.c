@@ -33,7 +33,7 @@ static const int32_t value_max[ATTRIBUTES] = {DEPTH_MAX, 65280, 65280, 65280};
 #define SMALL_GRAIN_PAIR       2
 #define SMALL_GRAIN_GREEN_STEP 2
 #define SMALL_GRAIN_RB_MAX     ((int)GFX_RGB565_G6_MAX >> 1)
-#define SMALL_GRAIN_MIDPOINT   ((2 * SMALL_GRAIN_GREEN_STEP * SMALL_GRAIN_RB_MAX + (int)GFX_RGB565_G6_MAX + 1) / 2)
+#define SMALL_GRAIN_MIDPOINT   (((2 * SMALL_GRAIN_GREEN_STEP * SMALL_GRAIN_RB_MAX) + (int)GFX_RGB565_G6_MAX + 1) / 2)
 #define SMALL_FILL_WALK        (-1)
 #define TRIANGLE_VERTICES      3
 
@@ -627,9 +627,9 @@ small_grain_shade(uint16_t color) {
     const bool lighter =
         r < SMALL_GRAIN_RB_MAX && g <= (int)GFX_RGB565_G6_MAX - SMALL_GRAIN_GREEN_STEP && b < SMALL_GRAIN_RB_MAX;
     const bool darker = r > 0 && g >= SMALL_GRAIN_GREEN_STEP && b > 0;
-    const bool dark_half = SMALL_GRAIN_GREEN_STEP * (r + b) + g < SMALL_GRAIN_MIDPOINT;
+    const bool dark_half = ((SMALL_GRAIN_GREEN_STEP * (r + b)) + g) < SMALL_GRAIN_MIDPOINT;
     const int step = dark_half ? (lighter ? 1 : darker ? -1 : 0) : (darker ? -1 : lighter ? 1 : 0);
-    return gfx_color_rgb565((uint8_t)(r + step), (uint8_t)(g + SMALL_GRAIN_GREEN_STEP * step), (uint8_t)(b + step));
+    return gfx_color_rgb565((uint8_t)(r + step), (uint8_t)(g + (SMALL_GRAIN_GREEN_STEP * step)), (uint8_t)(b + step));
 }
 
 static inline __attribute__((always_inline)) void
