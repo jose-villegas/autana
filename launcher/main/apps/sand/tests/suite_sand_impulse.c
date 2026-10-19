@@ -82,7 +82,8 @@ static const char ONE_PUSH_STILL_TRACKED[] = "the single push roll here succeeds
 static void
 test_the_disc_count_table_matches_a_direct_lattice_count(void) {
     int first_bad = -1;
-    int expected_there = 0, got_there = 0;
+    int expected_there = 0;
+    int got_there = 0;
 
     for (int r = 0; r <= 40; r++) {
         int expect = 0;
@@ -450,11 +451,11 @@ test_the_cap_degrades_gracefully(void) {
                                   "the buffer holds 2, so exactly 2 of the 5 true disc members "
                                   "must have been queued - not fewer, and the rest must not have "
                                   "silently bumped one of the first two out");
-    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)(7 * W + 3), s.impulse_buf[0].index,
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)((7 * W) + 3), s.impulse_buf[0].index,
                                      "the accumulator's own arithmetic (see this test's top comment) "
                                      "fires on DOWN (3,7) first, not UP - even thinning, not a "
                                      "first-come truncation");
-    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)(6 * W + 4), s.impulse_buf[1].index,
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)((6 * W) + 4), s.impulse_buf[1].index,
                                      "and on RIGHT (4,6) second - the last of the buffer's 2 slots");
 
     const int expected = sand_count(&s);
@@ -503,16 +504,17 @@ test_two_overlapping_blasts_share_the_buffer_evenly(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(8, s.impulse_count,
                                   "the second blast had exactly 4 slots of real room left and must "
                                   "have filled every one of them, no more and no less");
-    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)(1 * W + 5), s.impulse_buf[4].index,
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)((1 * W) + 5), s.impulse_buf[4].index,
                                      "worked by hand against room=4 (see this test's own top comment): "
                                      "UP, (5,1), fires first");
-    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)(3 * W + 6), s.impulse_buf[5].index, "down-right, (6,3), fires second");
-    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)(0 * W + 5), s.impulse_buf[6].index,
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)((3 * W) + 6), s.impulse_buf[5].index,
+                                     "down-right, (6,3), fires second");
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)((0 * W) + 5), s.impulse_buf[6].index,
                                      "ring 2's own UP cell, (5,0), fires third - reaching ring 2 at "
                                      "all is exactly what the old, buggy keep (sized from the WHOLE "
                                      "buffer instead of what was actually left) never did, because it "
                                      "ran out of real room while still inside ring 1");
-    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)(2 * W + 7), s.impulse_buf[7].index,
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)((2 * W) + 7), s.impulse_buf[7].index,
                                      "and RIGHT, (7,2), fires fourth and last - the buffer's own "
                                      "final slot, spent evenly across the whole disc rather than "
                                      "concentrated in the first ring the scan happened to reach");
@@ -1254,7 +1256,7 @@ test_a_thrown_liquid_grain_pays_no_drag_displacing_water(void) {
      * order. Derived from the constants rather than restated: reading the
      * count off the raw 255 agreed only while the decay was gentle enough
      * for both to land on 3 cells. */
-    unsigned expect_speed = 255u;
+    unsigned expect_speed = 255U;
     expect_speed -= expect_speed >> SAND_SPLASH_SPEED_DECAY_SHIFT;
     const int extra_cells = (int)expect_speed / SAND_IMPULSE_CELLS_PER_STEP_DIVISOR;
     for (int c = 0; c < extra_cells; c++) {
@@ -1314,8 +1316,8 @@ test_a_thrown_chunk_displacing_nothing_loses_only_the_plain_ramp(void) {
      * to, derived from the constants rather than restated. The claim is
      * unchanged: open air costs the ramp and nothing else, no drag, because
      * there was nothing there to displace. */
-    const int air_cells = 1 + (255 - SAND_IMPULSE_SPEED_RAMP) / SAND_IMPULSE_CELLS_PER_STEP_DIVISOR;
-    TEST_ASSERT_EQUAL_INT_MESSAGE(255 - SAND_IMPULSE_SPEED_RAMP * air_cells, s.impulse_buf[0].speed,
+    const int air_cells = 1 + ((255 - SAND_IMPULSE_SPEED_RAMP) / SAND_IMPULSE_CELLS_PER_STEP_DIVISOR);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(255 - (SAND_IMPULSE_SPEED_RAMP * air_cells), s.impulse_buf[0].speed,
                                   "a chunk moving into an EMPTY cell must lose exactly the plain "
                                   "ramp and not one speck more - drag is charged per cell displaced, "
                                   "so flight through open air has to stay byte-for-byte what it was "
@@ -1362,7 +1364,7 @@ test_a_sub_divisor_speed_impulse_never_moves_more_than_one_cell_a_step(void) {
 
     sand_t g;
     memset(cells, 0, (size_t)SUBDIV_W * SUBDIV_H);
-    sand_init(&g, cells, SUBDIV_W, SUBDIV_H, 4242u);
+    sand_init(&g, cells, SUBDIV_W, SUBDIV_H, 4242U);
     sand_enable_impulses(&g, buf, 8);
 
     enum { SX = 1, SY = 2, DIR_RIGHT = 2 };
@@ -1423,8 +1425,8 @@ test_a_full_speed_static_chunk_moves_several_cells_in_one_push(void) {
                                   "scene itself is broken, not that this run was merely unlucky, and "
                                   "open air ahead means no TRANSFER entry should appear either");
 
-    const int expected_cells = 1 + (255 - SAND_IMPULSE_SPEED_RAMP) / SAND_IMPULSE_CELLS_PER_STEP_DIVISOR;
-    const int expected_index = ROW * W + (SX + expected_cells);
+    const int expected_cells = 1 + ((255 - SAND_IMPULSE_SPEED_RAMP) / SAND_IMPULSE_CELLS_PER_STEP_DIVISOR);
+    const int expected_index = (ROW * W) + (SX + expected_cells);
     TEST_ASSERT_EQUAL_INT_MESSAGE(expected_index, s.impulse_buf[0].index,
                                   "a full-speed KIND_STATIC push through open air must cover several "
                                   "cells in one step, not one - this is the whole point of "
@@ -1489,7 +1491,8 @@ static void
 test_blocker_normal_and_reflect_off_normal_match_the_exhaustive_arc_table(void) {
     fixture();
     sand_clear(&s);
-    const int cx = W / 2, cy = H / 2;
+    const int cx = W / 2;
+    const int cy = H / 2;
 
     for (int dir = 0; dir < 8; dir++) {
         const int* l = ring_dir(dir - 1);
@@ -2134,7 +2137,8 @@ ricochet_collect_candidates(ricochet_tracker_t* tr, const sand_t* g) {
  * RICOCHET_MATCH_RADIUS - or -1 if none is close enough. */
 static int
 ricochet_nearest_candidate(const ricochet_tracker_t* tr, int n_cand, const ricochet_lineage_t* li) {
-    int best = -1, best_d = RICOCHET_MATCH_RADIUS * 4 + 1;
+    int best = -1;
+    int best_d = (RICOCHET_MATCH_RADIUS * 4) + 1;
     for (int ci = 0; ci < n_cand; ci++) {
         if (tr->cand_used[ci]) {
             continue;
@@ -2334,8 +2338,10 @@ static long
 ejecta_dirt_total(uint8_t* cells, impulse_t* buf) {
     long total = 0;
     for (uint32_t seed = 1; seed <= (uint32_t)EJECTA_SEEDS; seed++) {
-        const int dx0 = 10, dx1 = dx0 + EJECTA_DIRT_W;
-        const int dy1 = EJECTA_H - 1, dy0 = dy1 - EJECTA_DIRT_H;
+        const int dx0 = 10;
+        const int dx1 = dx0 + EJECTA_DIRT_W;
+        const int dy1 = EJECTA_H - 1;
+        const int dy0 = dy1 - EJECTA_DIRT_H;
         sand_t g;
         memset(cells, 0, (size_t)EJECTA_W * EJECTA_H);
         sand_init(&g, cells, EJECTA_W, EJECTA_H, seed);
@@ -2596,8 +2602,10 @@ static long
 ejecta_water_total(uint8_t* cells, impulse_t* buf) {
     long total = 0;
     for (uint32_t seed = 1; seed <= (uint32_t)EJECTA_SEEDS; seed++) {
-        const int dx0 = 20, dx1 = dx0 + EJECTA_WATER_W;
-        const int dy1 = EJECTA_H - 1, dy0 = dy1 - 1;
+        const int dx0 = 20;
+        const int dx1 = dx0 + EJECTA_WATER_W;
+        const int dy1 = EJECTA_H - 1;
+        const int dy0 = dy1 - 1;
         sand_t g;
         memset(cells, 0, (size_t)EJECTA_W * EJECTA_H);
         sand_init(&g, cells, EJECTA_W, EJECTA_H, seed);
@@ -2673,7 +2681,7 @@ test_a_struck_water_cell_is_handed_impulse_in_a_backward_cone_from_the_mover(voi
      * the one water cell it displaced. The transfer is half of that. */
     const uint8_t mover_speed =
         (uint8_t)(255 - SAND_IMPULSE_SPEED_RAMP - impulse_drag_of(CELL_MAKE(MAT_WATER, MASS_MAX)));
-    const uint16_t vacated = (uint16_t)(ROW * W + SX);
+    const uint16_t vacated = (uint16_t)((ROW * W) + SX);
 
     int found = -1;
     for (int i = 0; i < s.impulse_count; i++) {
@@ -2794,7 +2802,7 @@ test_a_long_plow_through_a_wide_bank_never_exhausts_the_impulse_buffer(void) {
 
     sand_t g;
     memset(cells, 0, (size_t)BUDGET_W * BUDGET_H);
-    sand_init(&g, cells, BUDGET_W, BUDGET_H, 9u);
+    sand_init(&g, cells, BUDGET_W, BUDGET_H, 9U);
     sand_enable_impulses(&g, buf, BUDGET_IMPULSE_MAX);
 
     sand_fill_box(&g, 0, BUDGET_H - 1, BUDGET_W, BUDGET_H, STONE);
@@ -2862,11 +2870,13 @@ test_a_thrown_powder_grain_conserves_the_dirt_it_ejects(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(buf, "conservation impulse queue must fit in what the framebuffer "
                                       "leaves");
 
-    const int dx0 = 10, dx1 = dx0 + EJECTA_DIRT_W;
-    const int dy1 = EJECTA_H - 1, dy0 = dy1 - EJECTA_DIRT_H;
+    const int dx0 = 10;
+    const int dx1 = dx0 + EJECTA_DIRT_W;
+    const int dy1 = EJECTA_H - 1;
+    const int dy0 = dy1 - EJECTA_DIRT_H;
     sand_t g;
     memset(cells, 0, (size_t)EJECTA_W * EJECTA_H);
-    sand_init(&g, cells, EJECTA_W, EJECTA_H, 5u);
+    sand_init(&g, cells, EJECTA_W, EJECTA_H, 5U);
     sand_enable_impulses(&g, buf, EJECTA_W * EJECTA_H);
     sand_fill_box(&g, 0, EJECTA_H - 1, EJECTA_W, EJECTA_H, STONE);
     sand_fill_box(&g, dx0, dy0, dx1, dy1, CELL_MAKE(MAT_DIRT, 0));
@@ -2904,11 +2914,13 @@ test_a_thrown_powder_grain_conserves_the_water_mass_it_ejects(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(buf, "conservation impulse queue must fit in what the framebuffer "
                                       "leaves");
 
-    const int dx0 = 20, dx1 = dx0 + EJECTA_WATER_W;
-    const int dy1 = EJECTA_H - 1, dy0 = dy1 - 1;
+    const int dx0 = 20;
+    const int dx1 = dx0 + EJECTA_WATER_W;
+    const int dy1 = EJECTA_H - 1;
+    const int dy0 = dy1 - 1;
     sand_t g;
     memset(cells, 0, (size_t)EJECTA_W * EJECTA_H);
-    sand_init(&g, cells, EJECTA_W, EJECTA_H, 5u);
+    sand_init(&g, cells, EJECTA_W, EJECTA_H, 5U);
     sand_enable_impulses(&g, buf, EJECTA_W * EJECTA_H);
     sand_fill_box(&g, 0, EJECTA_H - 1, EJECTA_W, EJECTA_H, STONE);
     sand_fill_box(&g, dx0, dy0, dx1, dy0 + 1, CELL_MAKE(MAT_WATER, MASS_MAX));
