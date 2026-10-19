@@ -65,6 +65,7 @@ fixture(void) {
 
 #define ORACLE_SEED            937U
 #define ORACLE_SAMPLES         32
+#define ORACLE_RAMP_BITS       1
 /* Colour+depth checksum recorded with merge-base a6740475c's r3d_span.c.
  * Re-record: bash launcher/tools/render/record_span_oracle.sh a6740475c
  * The constant-fill assertion prints the recorded checksum. */
@@ -794,7 +795,7 @@ test_small_randomized_reference(void) {
                 knob("r3d_span.small_dither", coverage);
                 for (int mode = 0; mode < 4; mode++) {
                     knob("r3d_span.small_dither_ramp", mode & 1);
-                    knob("r3d_span.small_dither_cell_bits", 1 + (mode >> 1));
+                    knob("r3d_span.small_dither_cell_bits", 1 + (mode >> ORACLE_RAMP_BITS));
                     rng_t random;
                     rng_seed(&random, ORACLE_SEED + (uint32_t)(side * 100 + setting * 10 + mode));
                     for (int sample = 0; sample < ORACLE_SAMPLES; sample++) {
