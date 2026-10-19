@@ -19,10 +19,6 @@
 #include <time.h>
 #endif
 
-#ifdef TIMING_TEST_CLOCK
-extern int64_t (*timing_test_clock)(void);
-#endif
-
 /* Microseconds since boot, monotonic. On a host, wall-clock microseconds
  * since the epoch. */
 static inline __attribute__((always_inline)) int64_t
@@ -30,11 +26,6 @@ timing_now_us(void) {
 #ifdef ESP_PLATFORM
     return esp_timer_get_time();
 #else
-#ifdef TIMING_TEST_CLOCK
-    if (timing_test_clock != NULL) {
-        return timing_test_clock();
-    }
-#endif
     struct timespec now;
     (void)timespec_get(&now, TIME_UTC);
     return (int64_t)now.tv_sec * 1000000 + now.tv_nsec / 1000;

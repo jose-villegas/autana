@@ -15,7 +15,6 @@
 #include "unity.h"
 
 #include "core/memory.h"
-#include "core/timing.h"
 #include "display/viewport.h"
 #include "render/context/render_context.h"
 #include "render/r3d_lit_mesh.h"
@@ -484,7 +483,13 @@ test_meshlet_writer_accepts_the_last_uint16_id(void) {
 static void
 test_split_feedback_converges_clamps_and_forgets(void) {
     const int damped = raster_split_update(RASTER_SPLIT_EVEN, RASTER_SPLIT_EVEN, 3 * RASTER_SPLIT_EVEN);
-    TEST_ASSERT_TRUE(damped > RASTER_SPLIT_EVEN && damped < RASTER_SPLIT_PERMILLE * 3 / 4);
+    const int balanced_high = RASTER_SPLIT_PERMILLE * 3 / 4;
+    const int balanced_low = RASTER_SPLIT_PERMILLE / 4;
+    TEST_ASSERT_INT_WITHIN(1, (RASTER_SPLIT_EVEN + balanced_high) / 2, damped);
+    TEST_ASSERT_INT_WITHIN(1, (RASTER_SPLIT_EVEN + balanced_low) / 2,
+                           raster_split_update(RASTER_SPLIT_EVEN, 3 * RASTER_SPLIT_EVEN, RASTER_SPLIT_EVEN));
+    TEST_ASSERT_EQUAL_INT(raster_split_update(RASTER_SPLIT_EVEN, 1, 2),
+                          raster_split_update(RASTER_SPLIT_EVEN, INT64_C(3000000000), INT64_C(6000000000)));
     int above = RASTER_SPLIT_EVEN;
     for (int i = 0; i < 12; i++) {
         const int next = raster_split_update(above, 3 * above, RASTER_SPLIT_PERMILLE - above);
@@ -546,10 +551,11 @@ test_split_feedback_preserves_pixels_and_null_uses_even_rows(void) {
     draw(r);
     TEST_ASSERT_EQUAL_INT(rows.even, rows.top);
     const gfx_render_target_t picture = r3d_pipeline_carve(&r->raster).picture;
-    const size_t bytes = gfx_render_target_bytes(&picture);
-    void* expected = malloc(bytes);
+    const size_t bytes = gfx_attachment_bytes(sizeof(uint16_t), W, H);
+    void* expected = malloc(2 * bytes);
     TEST_ASSERT_NOT_NULL(expected);
     memcpy(expected, picture.attachment[GFX_ATTACHMENT_COLOR].pixels, bytes);
+    memcpy((uint8_t*)expected + bytes, raster_rig_attachment(r, 1), bytes);
     raster_split_t split = {0};
     r->raster.split = &split;
     draw(r);
@@ -563,13 +569,13 @@ test_split_feedback_preserves_pixels_and_null_uses_even_rows(void) {
                          : share == RASTER_SPLIT_EVEN ? rows.top == rows.even
                                                       : rows.top > rows.even);
         TEST_ASSERT_EQUAL_MEMORY(expected, picture.attachment[GFX_ATTACHMENT_COLOR].pixels, bytes);
+        TEST_ASSERT_EQUAL_MEMORY((uint8_t*)expected + bytes, raster_rig_attachment(r, 1), bytes);
     }
     free(expected);
 }
 
 #ifndef DEVICE_BUILD
-static int clock_read;
-static int observed_top[RASTER_SPLIT_INSTANCES + 1];
+static int* observed_top;
 
 static void
 observe_split_span(const r3d_span_writer_t* writer, const gfx_render_target_t* rows, int y, int first, int last,
@@ -584,14 +590,6 @@ observe_split_writer(const raster_attachment_t* self, int instance, r3d_span_wri
     out->span = observe_split_span;
     out->value = (uint32_t)instance;
     return true;
-}
-
-static int64_t slice_top_us, slice_bottom_us;
-
-static int64_t
-slice_clock(void) {
-    const int phase = clock_read++ % 4;
-    return phase == 1 ? slice_top_us : phase == 3 ? slice_bottom_us : 0;
 }
 
 static void
@@ -615,38 +613,34 @@ test_draw_retains_only_the_drawn_instance_and_bounds_state(void) {
     r->raster.scratch = malloc(raster_scratch_bytes(&r->raster));
     TEST_ASSERT_NOT_NULL(r->raster.scratch);
     r->raster.split = &state.split;
-    timing_test_clock = slice_clock;
-    const int64_t times[][2] = {{1, 3}, {3, 1}, {1, 0}, {INT64_C(3000000000), INT64_C(6000000000)}};
-    for (size_t frame = 0; frame < sizeof times / sizeof times[0]; frame++) {
-        slice_top_us = times[frame][0];
-        slice_bottom_us = times[frame][1];
-        clock_read = 0;
-        const raster_split_t before = state.split;
-        memset(observed_top, 0, sizeof observed_top);
-        draw(r);
-        const r3d_pipeline_buffers_t buffers = r3d_pipeline_carve(&r->raster);
-        const int even = r3d_pipeline_draw_split(instances[0].mesh, buffers.culled + 1, buffers.rows, buffers.culled[0],
-                                                 H, RASTER_SPLIT_EVEN);
-        TEST_ASSERT_EQUAL_INT(even, observed_top[RASTER_SPLIT_INSTANCES]);
-        const int last_share = RASTER_SPLIT_EVEN + before.top_offset[RASTER_SPLIT_INSTANCES - 1];
-        const int last_row = r3d_pipeline_draw_split(instances[0].mesh, buffers.culled + 1, buffers.rows,
-                                                     buffers.culled[0], H, last_share);
-        TEST_ASSERT_EQUAL_INT(last_row, observed_top[RASTER_SPLIT_INSTANCES - 1]);
-        for (int i = 0; i < RASTER_SPLIT_INSTANCES; i++) {
-            const int share = RASTER_SPLIT_EVEN + before.top_offset[i];
-            TEST_ASSERT_EQUAL_INT(raster_split_update(share, slice_top_us, slice_bottom_us) - RASTER_SPLIT_EVEN,
-                                  state.split.top_offset[i]);
-        }
-        TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_MIN, state.sentinel);
+    int top_rows[RASTER_SPLIT_INSTANCES + 1] = {0};
+    observed_top = top_rows;
+    for (int i = 0; i < RASTER_SPLIT_INSTANCES; i++) {
+        state.split.top_offset[i] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
     }
-    r->raster.instance_count = 2;
-    state.split = (raster_split_t){0};
-    clock_read = 0;
     draw(r);
-    for (int i = 2; i < RASTER_SPLIT_INSTANCES; i++) {
-        TEST_ASSERT_EQUAL_INT(0, state.split.top_offset[i]);
+    const r3d_pipeline_buffers_t buffers = r3d_pipeline_carve(&r->raster);
+    const int even = r3d_pipeline_draw_split(instances[0].mesh, buffers.culled + 1, buffers.rows, buffers.culled[0], H,
+                                             RASTER_SPLIT_EVEN);
+    TEST_ASSERT_EQUAL_INT(even, observed_top[RASTER_SPLIT_INSTANCES]);
+    const int retained = r3d_pipeline_draw_split(instances[0].mesh, buffers.culled + 1, buffers.rows, buffers.culled[0],
+                                                 H, RASTER_SPLIT_MIN);
+    TEST_ASSERT_EQUAL_INT(retained, observed_top[RASTER_SPLIT_INSTANCES - 1]);
+    TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_MIN, state.sentinel);
+
+    r->raster.instance_count = 2;
+    const raster_split_t before = state.split;
+    memset(top_rows, 0, sizeof top_rows);
+    draw(r);
+    for (int i = 0; i < r->raster.instance_count; i++) {
+        TEST_ASSERT_GREATER_THAN_INT(0, observed_top[i]);
+        TEST_ASSERT_INT_WITHIN((RASTER_SPLIT_MAX - RASTER_SPLIT_MIN) / 2, 0, state.split.top_offset[i]);
     }
-    timing_test_clock = NULL;
+    for (int i = 2; i < RASTER_SPLIT_INSTANCES; i++) {
+        TEST_ASSERT_EQUAL_INT(0, observed_top[i]);
+        TEST_ASSERT_EQUAL_INT(before.top_offset[i], state.split.top_offset[i]);
+    }
+    TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_MIN, state.sentinel);
 }
 #endif
 

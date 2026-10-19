@@ -24,7 +24,6 @@
 #include "core/timing.h"
 #else
 #include <time.h>
-int64_t (*timing_test_clock)(void);
 #endif
 
 #ifdef HOST_HEAP_ARENA
@@ -225,7 +224,6 @@ suite_run_test_timed(void (*func)(void), const char* name, int line) {
     const unsigned long stack_free_bytes = (unsigned long)uxTaskGetStackHighWaterMark(NULL);
 #else
     UnityDefaultTestRun(func, name, line);
-    timing_test_clock = NULL;
 #endif
 
 #ifdef DEVICE_BUILD
