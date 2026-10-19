@@ -10,7 +10,7 @@
 #include "power/power_cache.h"
 #include "power/power_decode.h"
 
-static const char* TAG = "buttons";
+static const char* TAG = "power";
 static i2c_master_dev_handle_t pmu;
 static bool pmu_ready;
 static int64_t last_battery_us;
@@ -82,6 +82,7 @@ power_start(void) {
     (void)power_read_battery_now(&first);
     last_battery_us = timing_now_us();
 
+    /* Keep charging and battery interrupt enables intact; they belong to the PMU. */
     uint8_t enables = 0;
     if (!pmu_read(AXP2101_REG_INTEN2, &enables)) {
         ESP_LOGW(TAG, "AXP2101 did not answer; PWR button unavailable");
@@ -92,11 +93,13 @@ power_start(void) {
         return;
     }
 
+    /* A press latched before boot must not arrive as the first event. */
     pmu_write(AXP2101_REG_INTSTS2, AXP2101_PKEY_SHORT | AXP2101_PKEY_LONG);
 
     pmu_ready = true;
     ESP_LOGI(TAG, "PWR button via AXP2101, BOOT button on GPIO %d", BOARD_BOOT_GPIO);
 
+    /* 0x22/0x27 default from EFUSE/POR: ask this board once, log, never write. */
     uint8_t levels = 0;
     uint8_t pwroff = 0;
     if (pmu_read(AXP2101_REG_LEVELS, &levels) && pmu_read(AXP2101_REG_PWROFF, &pwroff)) {
@@ -155,7 +158,7 @@ power_poll(void) {
         }
     }
     const int64_t now_us = timing_now_us();
-    if (now_us - last_battery_us >= POWER_BATTERY_PERIOD_US) {
+    if (pmu != NULL && now_us - last_battery_us >= POWER_BATTERY_PERIOD_US) {
         power_battery_t battery;
         (void)power_read_battery_now(&battery);
         last_battery_us = now_us;
