@@ -14,7 +14,7 @@ console_verb_battery(const char* args, console_reply_fn reply) {
     }
     power_battery_t battery;
     power_registers_t regs;
-    (void)power_read_battery_raw(&battery, &regs);
+    (void)power_read_battery_now(&battery, &regs);
     char line[CONSOLE_BATTERY_REPLY_MAX];
     console_battery_reply(line, sizeof line, &battery, &regs);
     reply(line);

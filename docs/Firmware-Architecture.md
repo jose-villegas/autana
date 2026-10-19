@@ -119,8 +119,8 @@ flowchart TB
     Shell -.->|"calls through app/app.h"| Apps
 ```
 
-Power layer: [the PMU owner](../launcher/main/power/README.md), using only
-`core/` and `board/` project dependencies.
+Power layer: [the PMU owner](../launcher/main/power/README.md); it includes only
+`core/` and `board/`.
 
 Audio layer: [audio docs](audio/README.md).
 The engine sound layer owns [the mixer, voices and buses](audio/Sound-Mixer.md)
@@ -158,9 +158,9 @@ as well as stored sounds and sample cursors.
   above gfx/ because it draws into gfx's
   [render targets](Gfx-and-Presentation.md#render-targets).
 - **Drivers are split from the logic they feed.** `power_device.c`, `touch.c`, `buttons.c`
-  and `imu.c` touch hardware; `touch_fsm`, `button_fsm`, `gesture` and
-  `tilt` are pure and tested on a laptop. The same split runs through every
-  folder, and is what the [Testing-Guide.md](Testing-Guide.md) relies on.
+  and `imu.c` touch hardware; `power_decode`, `power_cache`, `touch_fsm`,
+  `button_fsm`, `gesture` and `tilt` are pure and tested on a laptop.
+  The same split runs through every folder, and is what the [Testing-Guide.md](Testing-Guide.md) relies on.
 - **The shell names no vendor firmware.** `main.c` and `shell/` reach the
   chip's vendor code only through modules that own it:
   `input/input_shell.h` (`input_start`, `input_poll`, `input_read_gravity`),

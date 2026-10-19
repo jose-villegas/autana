@@ -1,4 +1,4 @@
-/* Lock hooks cover whole snapshots, never I2C. */
+/* power_cache: the newest battery snapshot, copied whole under caller-supplied lock hooks (never held across I2C). */
 #pragma once
 #include "power/power.h"
 

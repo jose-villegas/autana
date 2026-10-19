@@ -38,23 +38,16 @@ typedef struct {
     bool long_press;
 } power_key_events_t;
 
-typedef struct {
-    uint8_t status;
-    uint8_t charge;
-    uint8_t vbat_high;
-    uint8_t vbat_low;
-    uint8_t percent;
-} power_registers_t;
+typedef struct power_registers power_registers_t;
 
 void power_start(void);
-/* Input polling task only, once per tick (50 Hz): takes and clears PWR-key events (0x49)
+/* Input polling task only, once per tick: takes and clears PWR-key events (0x49)
  * each call and refreshes the battery once per POWER_BATTERY_PERIOD_US.
  * This is the only steady-state PMU traffic on the shared bus; other bus users
  * may count on that budget. A second task would double both. */
 power_key_events_t power_poll(void);
 /* Any task: a cached copy, with no I2C. */
 power_battery_t power_read_battery(void);
-/* POST and the console task only: blocking I2C, then a cache store. */
-bool power_read_battery_now(power_battery_t* out);
-/* console only: blocking, raw bytes for cross-checks */
-bool power_read_battery_raw(power_battery_t* out, power_registers_t* regs);
+/* POST, startup, input polling and the console task: blocking I2C, then a cache store.
+ * regs may be NULL when raw bytes are not needed. */
+bool power_read_battery_now(power_battery_t* out, power_registers_t* regs);
