@@ -5,6 +5,7 @@
 #include "unity.h"
 
 #include "core/memory.h"
+#include "draw/draw.h"
 #include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_present_guard.h"
@@ -13,6 +14,7 @@
 #include "test_cleanup.h"
 
 #define FRAME_COLOUR GFX_RGB(0x204060)
+#define CLEAR_COLOUR GFX_RGB(0x102030)
 
 static void
 fixture(void) {
@@ -163,6 +165,83 @@ test_double_fb_keeps_tracker_all_dirty_until_exit(void) {
     TEST_ASSERT_TRUE(gfx_region_dirty(0, 0, 1, 1));
 }
 
+/* Every pixel of the buffer the next frame draws into. */
+static bool
+back_buffer_is(gfx_color_t colour) {
+    const gfx_target_t back = gfx_present_target();
+    for (int i = 0; i < GFX_WIDTH * GFX_HEIGHT; i++) {
+        if (back.buf[i] != colour) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void
+test_clear_on_send_fills_each_sent_frame(void) {
+    fixture();
+    enter_double();
+    gfx_set_clear_on_send(true, CLEAR_COLOUR);
+    draw_clear(FRAME_COLOUR);
+    gfx_present();
+    /* The other buffer was never sent with the clear on. */
+    TEST_ASSERT_FALSE(gfx_framebuffer_holds(CLEAR_COLOUR));
+    draw_clear(FRAME_COLOUR);
+    gfx_present();
+    TEST_ASSERT_TRUE(gfx_framebuffer_holds(CLEAR_COLOUR));
+    TEST_ASSERT_FALSE(gfx_framebuffer_holds(FRAME_COLOUR));
+    TEST_ASSERT_TRUE(back_buffer_is(CLEAR_COLOUR));
+    draw_clear(CLEAR_COLOUR);
+    TEST_ASSERT_TRUE(gfx_framebuffer_holds(CLEAR_COLOUR));
+    draw_pixel(0, 0, FRAME_COLOUR);
+    TEST_ASSERT_FALSE(gfx_framebuffer_holds(CLEAR_COLOUR));
+    /* The shown frame is cleared away behind the panel. */
+    TEST_ASSERT_EQUAL_INT(GFX_READBACK_UNAVAILABLE, gfx_readback_begin());
+}
+
+static void
+test_raw_framebuffer_access_forgets_the_fill(void) {
+    fixture();
+    enter_double();
+    gfx_set_clear_on_send(true, CLEAR_COLOUR);
+    gfx_present();
+    gfx_present();
+    TEST_ASSERT_TRUE(gfx_framebuffer_holds(CLEAR_COLOUR));
+    gfx_framebuffer()[0] = FRAME_COLOUR;
+    TEST_ASSERT_FALSE(gfx_framebuffer_holds(CLEAR_COLOUR));
+    draw_clear(CLEAR_COLOUR);
+    TEST_ASSERT_TRUE(back_buffer_is(CLEAR_COLOUR));
+}
+
+static void
+test_clear_on_send_ends_with_its_mode(void) {
+    fixture();
+    TEST_ASSERT_FALSE(gfx_set_clear_on_send(true, CLEAR_COLOUR)); /* full framebuffer: refused */
+    gfx_present();
+    gfx_present();
+    TEST_ASSERT_FALSE(gfx_framebuffer_holds(CLEAR_COLOUR));
+    enter_double();
+    TEST_ASSERT_TRUE(gfx_set_clear_on_send(true, CLEAR_COLOUR));
+    gfx_present();
+    gfx_present();
+    gfx_mode_exit();
+    /* The frame kept at exit was cleared on send: nothing to read back. */
+    TEST_ASSERT_TRUE(gfx_framebuffer_holds(CLEAR_COLOUR));
+    TEST_ASSERT_TRUE(back_buffer_is(CLEAR_COLOUR));
+    TEST_ASSERT_EQUAL_INT(GFX_READBACK_UNAVAILABLE, gfx_readback_begin());
+    draw_pixel(0, 0, FRAME_COLOUR);
+    gfx_present();
+    TEST_ASSERT_EQUAL_INT(GFX_READBACK_READY, gfx_readback_begin());
+    gfx_readback_end();
+    enter_double();
+    draw_clear(FRAME_COLOUR);
+    gfx_present();
+    draw_clear(FRAME_COLOUR);
+    gfx_present();
+    TEST_ASSERT_FALSE(gfx_framebuffer_holds(CLEAR_COLOUR));
+    TEST_ASSERT_TRUE(back_buffer_is(FRAME_COLOUR));
+}
+
 void
 run_gfx_double_fb_suite(void) {
     RUN_TEST(test_double_fb_swaps_draw_target_and_reads_front);
@@ -171,6 +250,9 @@ run_gfx_double_fb_suite(void) {
     RUN_TEST(test_double_fb_exit_keeps_front_and_releases_back);
     RUN_TEST(test_double_fb_cycle_and_reset_release_buffers);
     RUN_TEST(test_double_fb_keeps_tracker_all_dirty_until_exit);
+    RUN_TEST(test_clear_on_send_fills_each_sent_frame);
+    RUN_TEST(test_raw_framebuffer_access_forgets_the_fill);
+    RUN_TEST(test_clear_on_send_ends_with_its_mode);
 }
 #else
 void

@@ -45,6 +45,11 @@ bool gfx_init(void);
  * Whatever is written must be marked with gfx_mark_dirty(). */
 gfx_color_t* gfx_framebuffer(void);
 
+/* True while the framebuffer is known to hold `colour` and nothing else: a
+ * send filled it (gfx_set_clear_on_send(), gfx_present.h) and nothing has
+ * drawn into it or asked for it since. */
+bool gfx_framebuffer_holds(gfx_color_t colour);
+
 /* A draw writes into the framebuffer, band or replay strip, with its
  * current clip and dirty-marking policy. */
 typedef struct {

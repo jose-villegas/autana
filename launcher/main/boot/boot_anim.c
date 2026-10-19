@@ -740,6 +740,12 @@ boot_anim_clear_frame(void) {
     draw_clear(COL_BG);
 }
 
+/* Core 1 clears each frame once it is sent, so the clear above is free. */
+void
+boot_anim_clear_on_send(bool on) {
+    (void)gfx_set_clear_on_send(on, COL_BG); /* without the double layout, the clear stays on core 0 */
+}
+
 void
 boot_anim_set_ending_backdrop(boot_anim_backdrop_fn paint) {
     ending_backdrop = paint;
@@ -803,6 +809,7 @@ boot_anim_run(void) {
 #endif
     const gfx_mode_request_t mode = {.layout = GFX_LAYOUT_DOUBLE_FB};
     gfx_mode_enter(&mode);
+    boot_anim_clear_on_send(true);
     boot_anim_motion_t motion;
     boot_anim_motion_load(&motion);
     draw_image_t photo = {0};
