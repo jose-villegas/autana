@@ -5,7 +5,6 @@
 #include "draw/draw_image_format.h"
 #include "perf_stats.h"
 #include "suites.h"
-#include "ui/layout/ui_scroll.h"
 #include "ui/ui_internal.h"
 #include "unity.h"
 
@@ -68,8 +67,7 @@ typedef void (*ui_icount_emit_fn)(ui_icount_state_t*);
 
 UI_ICOUNT_PAIR(screen, ui_screen(), ui_begin_screen(ctx, UI_ICOUNT_WINDOW_NAME, UI_ICOUNT_FLAGS))
 UI_ICOUNT_PAIR(window, ui_window(box), mu_begin_window_ex(ctx, UI_ICOUNT_WINDOW_NAME, r, UI_ICOUNT_FLAGS))
-UI_ICOUNT_PAIR(scroll_window, ui_scroll_window(box),
-               ui_scroll_view_begin(ctx, UI_ICOUNT_WINDOW_NAME, UI_ICOUNT_FLAGS, ui_scroll_view_default(), 0))
+UI_ICOUNT_PAIR(scroll_window, ui_scroll_window(box), ui_begin_screen(ctx, UI_ICOUNT_WINDOW_NAME, UI_ICOUNT_FLAGS))
 UI_ICOUNT_PAIR(row, ui_row(box.h), mu_layout_row(ctx, 1, (int[]){-1}, box.h))
 UI_ICOUNT_EMIT(face, row_centre, ui_row_centre(box.w, box.h))
 UI_ICOUNT_PAIR(next, ui_next(), mu_layout_next(ctx))

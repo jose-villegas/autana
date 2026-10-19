@@ -48,7 +48,6 @@ set(app_srcs
     "ui/input/ui_pointer.c"
     "ui/input/ui_snap.c"
     "shell/ui/ui_ridge.c"
-    "ui/layout/ui_scroll.c"
     "ui/controls/ui_widgets.c"
     "anim/anim_track.c"
     "anim/anim_tracks.c"
