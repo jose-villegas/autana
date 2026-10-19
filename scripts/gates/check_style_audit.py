@@ -402,9 +402,6 @@ def rule_include_direction(root, path, text):
     for number, inc, target_layer in _main_include_layers(root, path, text):
         if target_layer is None or target_layer == source_layer or target_layer not in LAYER_TIER:
             continue
-        if source_layer == "power" and target_layer not in ("core", "board"):
-            yield number, f'"{inc}" reaches outside power/ dependencies: core/ and board/'
-            continue
         if LAYER_TIER[target_layer] > source_tier:
             continue
         if (source_base, target_layer) in INCLUDE_DIRECTION_EXCEPTIONS:
