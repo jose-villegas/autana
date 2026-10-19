@@ -361,18 +361,11 @@ Set them with `--set` ([Render-Harness](../tools/Render-Harness.md)).
 Live small-fill limits resolve before row workers run. Small dither triangles
 test coverage and choose vertex colours in one pixel loop.
 Optional ordered grain selects four clamped RGB565 shades of the flat colour in a screen-anchored 2x2 pattern.
-Its signed offsets refresh with the live small-fill limits; each row alternates its two shades with XOR.
 
 The gate measures the largest RGB565 channel spread across the vertices.
 For sides above side 4, its limit interpolates from the near gate at side 5
 to the far gate at the size limit.
 The gate and dither share the triangle's packed vertex colours.
-Flat and dither fills average available packed channels, rounded to nearest.
-Ungated flat fills and grain retain the floating-channel average.
-
-This frame uses size limit 12, near gate off and far gate 8.
-
-[![Packed-channel flat colour and floating-channel reference](../images/render/sponza-small-fill-packed-flat.png)](../images/render/sponza-small-fill-packed-flat.crops.png)
 
 The RGB565 gate's quantization is visible against a floating-channel reference.
 This frame uses size limit 8, near gate off and far gate 4.
