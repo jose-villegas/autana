@@ -476,7 +476,8 @@ static uint32_t leaf_time_ms;
 
 static void
 paint_begin(material_frame_t* mf, uint32_t time_ms) {
-    const int gx = GRAVITY_X, gy = GRAVITY_Y;
+    const int gx = GRAVITY_X;
+    const int gy = GRAVITY_Y;
     material_frame_set_gravity(mf, gx, gy);
     mf->foam_phase = 7;
     mf->cullet_phase = 5;
@@ -487,7 +488,8 @@ paint_begin(material_frame_t* mf, uint32_t time_ms) {
     material_wood_leaf_top5(gx, gy, &last_down, leaf_top5);
     leaf_time_ms = time_ms;
 
-    const int ax = mathi_abs(gx), ay = mathi_abs(gy);
+    const int ax = mathi_abs(gx);
+    const int ay = mathi_abs(gy);
     depth_vertical_dominant = ay >= ax;
     const unsigned dom = depth_vertical_dominant ? (unsigned)ay : (unsigned)ax;
     depth_scale_q8 = dom != 0U ? (256U * (unsigned)mathi_len(gx, gy)) / dom : 256U;
@@ -706,7 +708,8 @@ paint_column(material_frame_t* mf, const paint_row_ctx_t* ctx, int cy, int cx, i
     const int qx = depth_vertical_dominant ? cx + ctx->row_step : cx - ctx->hdir;
     const bool qx_ok = qx >= 0 && qx < ctx->w;
     bool cross_row;
-    const uint8_t *src_ptr, *src_arr;
+    const uint8_t* src_ptr;
+    const uint8_t* src_arr;
     column_liquid_source(ctx, cx, step, &cross_row, &src_ptr, &src_arr);
     const bool here_liquid = material_of(ctx->row[cx])->kind == KIND_LIQUID;
     const bool same_material =
@@ -764,7 +767,9 @@ linear_to_srgb(double c) {
 
 static uint16_t
 lab_to_key(gfx_lab_t p) {
-    const double L = p.l / 100.0, A = p.a / 100.0, B = p.b / 100.0;
+    const double L = p.l / 100.0;
+    const double A = p.a / 100.0;
+    const double B = p.b / 100.0;
     double l = L + 0.3963377774 * A + 0.2158037573 * B;
     double m = L - 0.1055613458 * A - 0.0638541728 * B;
     double s = L - 0.0894841775 * A - 1.2914855480 * B;
@@ -774,7 +779,9 @@ lab_to_key(gfx_lab_t p) {
     const double r = linear_to_srgb(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s);
     const double g = linear_to_srgb(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s);
     const double b = linear_to_srgb(-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s);
-    const unsigned r5 = (unsigned)lround(r * 31.0), g6 = (unsigned)lround(g * 63.0), b5 = (unsigned)lround(b * 31.0);
+    const unsigned r5 = (unsigned)lround(r * 31.0);
+    const unsigned g6 = (unsigned)lround(g * 63.0);
+    const unsigned b5 = (unsigned)lround(b * 31.0);
     return (uint16_t)(r5 << 11 | g6 << 5 | b5);
 }
 
@@ -823,7 +830,10 @@ lloyd_assign(const gq_t* q, const gfx_lab_t* c, int k, int* assign, int iter, do
 static void
 lloyd_update_centers(const gq_t* q, gfx_lab_t* c, int k, const int* assign) {
     for (int j = q->fixed; j < k; j++) {
-        double sl = 0, sa = 0, sb = 0, sw = 0;
+        double sl = 0;
+        double sa = 0;
+        double sb = 0;
+        double sw = 0;
         for (int i = 0; i < q->n; i++) {
             if (assign[i] == j) {
                 sl += q->w[i] * q->p[i].l;
@@ -1015,7 +1025,10 @@ quant_seed_centers(gq_t* q) {
     if (q->n == 0) {
         return;
     }
-    double sl = 0, sa = 0, sb = 0, sw = 0;
+    double sl = 0;
+    double sa = 0;
+    double sb = 0;
+    double sw = 0;
     for (int j = 0; j < q->n; j++) {
         sl += q->w[j] * q->p[j].l;
         sa += q->w[j] * q->p[j].a;
@@ -1524,7 +1537,8 @@ write_png(const char* path, const uint8_t* rgb, int w, int h) {
     size_t o = 0;
     z[o++] = 0x78;
     z[o++] = 0x01;
-    uint32_t s1 = 1, s2 = 0;
+    uint32_t s1 = 1;
+    uint32_t s2 = 0;
     for (size_t pos = 0; pos < raw_len || pos == 0;) {
         const size_t n = raw_len - pos > 65535 ? 65535 : raw_len - pos;
         z[o++] = pos + n >= raw_len ? 1 : 0;
@@ -1626,10 +1640,12 @@ fill(uint8_t* rgb, int w, int x0, int y0, int x1, int y1, uint32_t colour) {
 
 static void
 write_swatches(const char* dir) {
-    const int w = 16 * SWATCH_W, h = 16 * SWATCH_H;
+    const int w = 16 * SWATCH_W;
+    const int h = 16 * SWATCH_H;
     uint8_t* rgb = calloc((size_t)w * (size_t)h, 3);
     for (int i = 0; i < PALETTE_SIZE; i++) {
-        const int x0 = (i % 16) * SWATCH_W, y0 = (i / 16) * SWATCH_H;
+        const int x0 = (i % 16) * SWATCH_W;
+        const int y0 = (i / 16) * SWATCH_H;
         if (i >= palette_used) {
             fill(rgb, w, x0, y0, x0 + SWATCH_W, y0 + SWATCH_H, 0x202020);
             continue;
@@ -1775,7 +1791,10 @@ ega_farthest_seed(gfx_lab_t* c, const ega_points_t* pts) {
 static void
 ega_lloyd(gfx_lab_t* c, const ega_points_t* pts) {
     for (int iter = 0; iter < 40; iter++) {
-        double sl[EGA_ENTRIES] = {0}, sa[EGA_ENTRIES] = {0}, sb[EGA_ENTRIES] = {0}, sw[EGA_ENTRIES] = {0};
+        double sl[EGA_ENTRIES] = {0};
+        double sa[EGA_ENTRIES] = {0};
+        double sb[EGA_ENTRIES] = {0};
+        double sw[EGA_ENTRIES] = {0};
         for (int i = 0; i < pts->n; i++) {
             const gfx_lab_t p = key_lab[pts->key[i]];
             int best = 0;
@@ -1916,7 +1935,8 @@ static ega_palette_t ega_local[SCENE_COUNT];
 
 static void
 view_put(uint8_t* rgb, int w, int ox, int oy, int px, int py, uint32_t colour) {
-    const int vx = PANEL_H - 1 - py, vy = px;
+    const int vx = PANEL_H - 1 - py;
+    const int vy = px;
     uint8_t* p = rgb + ((oy + vy) * w + ox + vx) * 3;
     p[0] = (uint8_t)(colour >> 16);
     p[1] = (uint8_t)(colour >> 8);
@@ -2027,10 +2047,12 @@ render_scene(const char* dir, int si, FILE* f, gfx_color_t* fb, uint8_t* grp) {
     ega_points(&pts, scene_used);
     ega_build(&ega_local[si], &pts, gfx_color_swap(material_palette()[SAND_EMPTY]));
 
-    static ega_choice_t choice_global[KEYS], choice_local[KEYS];
+    static ega_choice_t choice_global[KEYS];
+    static ega_choice_t choice_local[KEYS];
     scene_build_choices(si, choice_global, choice_local);
 
-    const int w = VIEW_W * 3 + PANEL_GAP * 2, h = VIEW_H + LABEL_H;
+    const int w = VIEW_W * 3 + PANEL_GAP * 2;
+    const int h = VIEW_H + LABEL_H;
     uint8_t* rgb = calloc((size_t)w * (size_t)h, 3);
     uint8_t* rgb_local = calloc((size_t)w * (size_t)h, 3);
     panel_labels(rgb, w, "ORIGINAL", "256 COLOURS", "16 COLOURS DITHERED");
@@ -2191,7 +2213,8 @@ write_header_banner(FILE* f) {
 static void
 write_reverse_index(FILE* f) {
     static uint8_t rgb565_to_index[KEYS];
-    int collisions, unswept;
+    int collisions;
+    int unswept;
     build_rgb565_to_index(rgb565_to_index, &collisions, &unswept);
     fprintf(stderr, "reverse index: %d keys, %d group collisions, %d never swept (OKLab-nearest fallback)\n", KEYS,
             collisions, unswept);
@@ -2273,7 +2296,8 @@ write_sand_palette_header(const char* path) {
     validate_palette_or_exit();
 
     uint16_t entry_key[PALETTE_SIZE];
-    gfx_color_t sand256_rgb[PALETTE_SIZE], sand16_rgb[EGA_ENTRIES];
+    gfx_color_t sand256_rgb[PALETTE_SIZE];
+    gfx_color_t sand16_rgb[EGA_ENTRIES];
     build_output_rgb(entry_key, sand256_rgb, sand16_rgb);
 
     write_header_banner(f);
@@ -2440,7 +2464,8 @@ static void
 dp_coarsen_cells(gfx_color_t* fb, uint8_t* grp, int cell, int qgw, int qgh, uint16_t* cell_key, uint8_t* cell_grp) {
     for (int qy = 0; qy < qgh; qy++) {
         for (int qx = 0; qx < qgw; qx++) {
-            const int px = qx * cell, py = qy * cell;
+            const int px = qx * cell;
+            const int py = qy * cell;
             cell_key[qy * qgw + qx] = gfx_color_swap(fb[py * PANEL_W + px]);
             cell_grp[qy * qgw + qx] = grp[py * PANEL_W + px];
         }
@@ -2468,7 +2493,8 @@ dp_draw_labels(uint8_t* rgb, int w) {
 static void
 dp_plot_pixel(int px, int py, int cell, int qgw, uint8_t* rgb, int w, const uint16_t* cell_key, const uint8_t* cell_grp,
               const ega_choice_t* cell_choice, const ega_choice_t* cell_nearest, double* sum_e, double* max_e) {
-    const int cx = px / cell, cy = py / cell;
+    const int cx = px / cell;
+    const int cy = py / cell;
     const int c = cy * qgw + cx;
     const uint16_t key = cell_key[c];
     const int idx = map_index[cell_grp[c]][key];
@@ -2509,7 +2535,8 @@ run_one_dp_case(const char* out_dir, int si, const dp_quality_t* q, FILE* stats)
     paint_frame(grids[si], common_fb, common_grp, 1234U + 97U * (uint32_t)si);
 
     const int cell = q->cell;
-    const int qgw = PANEL_W / cell, qgh = PANEL_H / cell;
+    const int qgw = PANEL_W / cell;
+    const int qgh = PANEL_H / cell;
     static uint16_t cell_key[(PANEL_W / CELL_PX) * (PANEL_H / CELL_PX)];
     static uint8_t cell_grp[(PANEL_W / CELL_PX) * (PANEL_H / CELL_PX)];
     dp_coarsen_cells(common_fb, common_grp, cell, qgw, qgh, cell_key, cell_grp);
@@ -2519,11 +2546,13 @@ run_one_dp_case(const char* out_dir, int si, const dp_quality_t* q, FILE* stats)
     dp_choose_cells(qgw * qgh, cell_key, cell_choice, cell_nearest);
 
     const int panels = 2 + DP_VARIANT_COUNT;
-    const int w = VIEW_W * panels + PANEL_GAP * (panels - 1), h = VIEW_H + LABEL_H;
+    const int w = VIEW_W * panels + PANEL_GAP * (panels - 1);
+    const int h = VIEW_H + LABEL_H;
     uint8_t* rgb = calloc((size_t)w * (size_t)h, 3);
     dp_draw_labels(rgb, w);
 
-    double sum_e[DP_VARIANT_COUNT] = {0}, max_e[DP_VARIANT_COUNT] = {0};
+    double sum_e[DP_VARIANT_COUNT] = {0};
+    double max_e[DP_VARIANT_COUNT] = {0};
     dp_plot_panels(cell, qgw, rgb, w, cell_key, cell_grp, cell_choice, cell_nearest, sum_e, max_e);
 
     char path[512];
@@ -2563,7 +2592,9 @@ static void
 report_sweep_group(FILE* f, group_t g, uint8_t* any_seen, uint8_t* any_used, int* total_all, int* total_used) {
     const int n = count_seen(g, PIN_NONE);
     int on_scene = 0;
-    double max_e = 0.0, sum_e = 0.0, scene_sum = 0.0;
+    double max_e = 0.0;
+    double sum_e = 0.0;
+    double scene_sum = 0.0;
     uint64_t scene_px = 0;
     for (int k = 0; k < KEYS; k++) {
         if (seen[g][k] & PIN_NONE) {
@@ -2598,12 +2629,15 @@ report_sweep_table(FILE* f) {
     fprintf(f, "SWEEP: distinct RGB565 colours per group\n");
     fprintf(f, "  %-10s %8s %8s %8s %8s %8s %8s %8s %8s %9s %9s\n", "group", "all", "hash=0", "mask=0", "depth=0",
             "S0 only", "on-scene", "budget", "maxdE", "meandE", "scenedE");
-    int total_all = 0, total_used = 0;
-    static uint8_t any_seen[KEYS], any_used[KEYS];
+    int total_all = 0;
+    int total_used = 0;
+    static uint8_t any_seen[KEYS];
+    static uint8_t any_used[KEYS];
     for (int g = 0; g < G_COUNT; g++) {
         report_sweep_group(f, (group_t)g, any_seen, any_used, &total_all, &total_used);
     }
-    int union_all = 0, union_used = 0;
+    int union_all = 0;
+    int union_used = 0;
     for (int k = 0; k < KEYS; k++) {
         union_all += any_seen[k];
         union_used += any_used[k];

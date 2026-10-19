@@ -488,7 +488,10 @@ static void
 step_one_gas_chunk(void* pass, int lane, int cx, int cy) {
     gas_pass_t* const c = pass;
     sand_t* const s = &c->lanes[lane].local;
-    int x0, x1, y0, y1;
+    int x0;
+    int x1;
+    int y0;
+    int y1;
 
     sand_chunk_pass_cells(cx, cy, &x0, &x1, &y0, &y1);
     const int from = (c->y_step > 0) ? y0 : y1 - 1;
@@ -706,7 +709,8 @@ equalise_gas_one_cell(sand_t* s, uint8_t* row, const uint8_t* arow, const uint8_
                       int rdx, int rdy, int sight, uint8_t gas_id, cell_t grain, bool* stayed_in_row, int* touched_x,
                       bool carry_ok, gas_run_t* run, unsigned* late) {
     bool moved = false;
-    int tx = 0, ty = 0;
+    int tx = 0;
+    int ty = 0;
 
     if (!has_room_above(arow, x, rdx, s->w) && neighbour_is_open(nrow, x, px, s->w, gas_id)) {
         int at;
@@ -864,7 +868,8 @@ equalise_gas_one_row(sand_t* s, int y, int w, int x_from, int x_to, int x_step, 
     const uint8_t* const nrow = dest_row(s, y + py);
     bool any_gas = false;
     bool touched = false;
-    int touched_x0 = 0, touched_x1 = 0;
+    int touched_x0 = 0;
+    int touched_x1 = 0;
 
     const bool along_col = px == 0 && py != 0 && gas_line_fast_on && w <= GAS_COL_MAX;
 
@@ -932,7 +937,10 @@ static void
 equalise_gas_one_chunk(void* pass, int lane, int cx, int cy) {
     gas_equalise_pass_t* const c = pass;
     sand_t* const s = &c->lanes[lane].local;
-    int x0, x1, y0, y1;
+    int x0;
+    int x1;
+    int y0;
+    int y1;
 
     sand_chunk_pass_cells(cx, cy, &x0, &x1, &y0, &y1);
     const int x_from = (c->x_step > 0) ? x0 : x1 - 1;
@@ -1091,15 +1099,19 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
     }
     build_gas_tables();
 
-    const int rdx = -dx, rdy = -dy;
+    const int rdx = -dx;
+    const int rdy = -dy;
     const int rslide_a[2] = {-slide_a[0], -slide_a[1]};
     const int rslide_b[2] = {-slide_b[0], -slide_b[1]};
-    const int rload_dx = -load_dx, rload_dy = -load_dy;
+    const int rload_dx = -load_dx;
+    const int rload_dy = -load_dy;
     const int rx_step = -x_step;
 
     const int* sweep_slide_a = rslide_a;
     const int* sweep_slide_b = rslide_b;
-    int y_from, y_to, y_step;
+    int y_from;
+    int y_to;
+    int y_step;
     sand_choose_sweep_order(s, rdy, !s->gas_walk, &sweep_slide_a, &sweep_slide_b, &y_from, &y_to, &y_step);
 
     /* driven_by_gravity()'s descent = m . g dot product is against real

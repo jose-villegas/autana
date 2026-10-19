@@ -81,13 +81,6 @@ cert-err33-c	main/services/tune.c	5
 readability-isolate-declaration	main/apps/input_lab/app_input_lab.c	4
 readability-isolate-declaration	main/apps/input_lab/tests/suite_touch_probe.c	6
 readability-isolate-declaration	main/apps/input_lab/touch_probe.c	2
-readability-isolate-declaration	main/apps/sand/app_sand.c	9
-readability-isolate-declaration	main/apps/sand/sand.c	12
-readability-isolate-declaration	main/apps/sand/sand_gas.c	7
-readability-isolate-declaration	main/apps/sand/sand_impulse.c	1
-readability-isolate-declaration	main/apps/sand/sand_liquid.c	12
-readability-isolate-declaration	main/apps/sand/sand_plants.c	37
-readability-isolate-declaration	main/apps/sand/sand_reactions.c	19
 readability-isolate-declaration	main/apps/sand/tests/suite_palette.c	16
 readability-isolate-declaration	main/apps/sand/tests/suite_row_runs.c	26
 readability-isolate-declaration	main/apps/sand/tests/suite_sand_chunk_sched.c	2
@@ -119,11 +112,6 @@ readability-isolate-declaration	main/apps/sand/tests/suite_sand_spawning.c	5
 readability-isolate-declaration	main/apps/sand/tests/suite_sand_tone.c	7
 readability-isolate-declaration	main/apps/sand/tests/suite_sand_two_core.c	9
 readability-isolate-declaration	main/apps/sand/tests/suite_sand_ui.c	1
-readability-isolate-declaration	main/apps/sand/tools/chunk_layout.c	3
-readability-isolate-declaration	main/apps/sand/tools/colour_lever1_counters.c	3
-readability-isolate-declaration	main/apps/sand/tools/serial_lag.c	2
-readability-isolate-declaration	main/apps/sand/tools/shading_palette.c	25
-readability-isolate-declaration	main/apps/sand/ui/palette_screen.c	1
 readability-isolate-declaration	main/boot/boot_anim.c	13
 readability-isolate-declaration	main/selftest/post_ui.c	1
 readability-isolate-declaration	main/console/verbs/console_inject.c	2

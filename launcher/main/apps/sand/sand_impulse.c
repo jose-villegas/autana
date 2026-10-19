@@ -109,7 +109,8 @@ queue_outward_impulse(disc_walk_t* w, int dx, int dy) {
      * directions. The centre cell (dx, dy) = (0, 0) is reported as no
      * direction, leaving it unchanged. It spends one unit of `keep` due to a
      * fixed, one-time rounding cost. */
-    int qdx, qdy;
+    int qdx;
+    int qdy;
     sand_gravity_direction(dx, dy, &qdx, &qdy);
     if (qdx == 0 && qdy == 0) {
         return;

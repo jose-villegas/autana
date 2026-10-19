@@ -454,7 +454,8 @@ static void
 crack_run(sand_t* s, int x, int y, int w, int h, material_id_t from, material_id_t into) {
     assert(react_deferred_of(s) == NULL); /* a lane on core 1 would share the frontier */
     uint16_t* const frontier = crack_frontier;
-    int top = 0, done = 0;
+    int top = 0;
+    int done = 0;
 
     const size_t first = (size_t)y * (size_t)w + (size_t)x;
     place_cracked(s, x, y, first, into);
@@ -496,13 +497,16 @@ is_cool_off_link(sand_t* s, int nx, int ny, int w, int h, uint8_t product) {
  * freezing each in turn. */
 static void
 cool_off_chain(sand_t* s, int x, int y, int w, int h, uint8_t product, int chance) {
-    int cx = x, cy = y;
+    int cx = x;
+    int cy = y;
     for (int link = 0; link < SAND_LAVA_COOLOFF_MAX_CHAIN; link++) {
         if (chance == 0 || (int)(rng_next(&s->rng) & 0xFF) >= chance) {
             return;
         }
         /* Collect eligible neighbours first for uniform pick. */
-        int cand_x[4], cand_y[4], n_cand = 0;
+        int cand_x[4];
+        int cand_y[4];
+        int n_cand = 0;
         for (int d = 0; d < 4; d++) {
             const int nx = cx + reaction_dirs[d][0];
             const int ny = cy + reaction_dirs[d][1];
@@ -653,7 +657,9 @@ soak_share_with(sand_t* s, uint8_t* row, int x, int y, int nx, int ny, size_t na
         return false; /* not something that drinks */
     }
 
-    int give, cost, recv_m;
+    int give;
+    int cost;
+    int recv_m;
     if (nr->soaks_to != 0) {
         give = held / 2;
         if (give == 0) {
@@ -729,7 +735,8 @@ percolate_open_slots(sand_t* s, int x, int y, int w, int h, int down, int open[3
     int n_open = 0;
     for (int i = 0; i < 3; i++) {
         const int* fd = ring_dir(down + percolate_slot_offset(i));
-        const int nx = x + fd[0], ny = y + fd[1];
+        const int nx = x + fd[0];
+        const int ny = y + fd[1];
         if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
             continue;
         }
@@ -745,7 +752,8 @@ percolate_open_slots(sand_t* s, int x, int y, int w, int h, int down, int open[3
 static void
 percolate_into(sand_t* s, uint8_t* row, int x, int y, int w, cell_t c, uint8_t held, int down, int pick) {
     const int* fd = ring_dir(down + percolate_slot_offset(pick));
-    const int nx = x + fd[0], ny = y + fd[1];
+    const int nx = x + fd[0];
+    const int ny = y + fd[1];
     const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
     const cell_t below = s->cells[nat];
     const reaction_t* br = reaction_of(below);
@@ -980,7 +988,8 @@ cold_medium_at(sand_t* s, int cx, int cy, int w, int h, size_t* cat) {
 static bool
 cold_carry_ray(sand_t* s, int x, int y, int w, int h, const int* dir) {
     bool spent_on_heat = false;
-    int cx = x, cy = y;
+    int cx = x;
+    int cy = y;
     for (int depth = 1; depth < COLD_REACH; depth++) {
         cx += dir[0];
         cy += dir[1];
@@ -1429,7 +1438,8 @@ emit_into_empty_neighbor(sand_t* s, int x, int y, int w, int h, uint8_t spec) {
  * down. */
 static inline bool
 emit_against_gravity(sand_t* s, int x, int y, int w, int h, uint8_t spec) {
-    const int dx = s->last_step_dx, dy = s->last_step_dy;
+    const int dx = s->last_step_dx;
+    const int dy = s->last_step_dy;
     if (dx == 0 && dy == 0) {
         return false; /* no down yet, so no up to rise into */
     }
@@ -1439,7 +1449,8 @@ emit_against_gravity(sand_t* s, int x, int y, int w, int h, uint8_t spec) {
      * uses when it walks gravity-ward. */
     for (int k = 0; k < 3; k++) {
         const int* d = ring_dir(up + (k == 0 ? 0 : k == 1 ? 1 : 7));
-        const int ux = x + d[0], uy = y + d[1];
+        const int ux = x + d[0];
+        const int uy = y + d[1];
         if ((unsigned)ux >= (unsigned)w || (unsigned)uy >= (unsigned)h) {
             continue;
         }
@@ -1645,8 +1656,10 @@ conduct_heat_or_defer(sand_t* s, int x, int y, int w, int h) {
  * "which way is down" (sand.h) rather than taking one. */
 static void
 acid_bubble(sand_t* s, int x, int y) {
-    const int dx = s->last_step_dx, dy = s->last_step_dy;
-    const int ux = x - dx, uy = y - dy; /* one step AGAINST gravity */
+    const int dx = s->last_step_dx;
+    const int dy = s->last_step_dy;
+    const int ux = x - dx;
+    const int uy = y - dy; /* one step AGAINST gravity */
     if (!CELL_IS_EMPTY(sand_at(s, ux, uy))) {
         return; /* not exposed - nothing above to pop into */
     }
@@ -1707,7 +1720,8 @@ dilution_backing_is(const sand_t* s, int bx, int by, int w, int h, uint8_t m) {
  * water. */
 static int
 dilution_water_wins_chance(const sand_t* s, int x, int y, int nx, int ny, int w, int h) {
-    int acid_backing = 0, water_backing = 0;
+    int acid_backing = 0;
+    int water_backing = 0;
     for (int bd = 0; bd < 4; bd++) {
         if (dilution_backing_is(s, x + reaction_dirs[bd][0], y + reaction_dirs[bd][1], w, h, MAT_ACID)) {
             acid_backing++;
@@ -1913,7 +1927,8 @@ finish_exploding_burnout(const burning_cell_t* cell) {
     REACTION_DOC(
         explodes,
         "at burn-out, if it is one corner of a 2x2 that is all lit and the board's blast cooldown has run out");
-    int dx = 0, dy = 0;
+    int dx = 0;
+    int dy = 0;
     if (s->impulse_buf != NULL && s->fuse_blast_wait == 0 && find_lit_two_by_two(s, x, y, w, h, grain, rx, &dx, &dy)) {
         spend_lit_two_by_two(s, x, y, w, dx, dy);
         react_deferred_t* const d = react_deferred_of(s);
@@ -2464,7 +2479,8 @@ static inline __attribute__((always_inline)) bool
 crust_due(const reacting_cell_t* k) {
     const reaction_row_t* rr = k->rr;
     sand_t* s = rr->s;
-    const int x = k->x, y = rr->y;
+    const int x = k->x;
+    const int y = rr->y;
     const reaction_t* r = k->r;
     /* Rest is a rule here, so crust never forms with sleeping off. */
     const unsigned faces =
@@ -2494,7 +2510,8 @@ react_stage_crust(reacting_cell_t* k) {
     }
     const reaction_row_t* rr = k->rr;
     sand_t* s = rr->s;
-    const int x = k->x, y = rr->y;
+    const int x = k->x;
+    const int y = rr->y;
     const reaction_t* r = k->r;
     if (crust_due(k)
         && (int)(sand_rng_next_at(s, x, y, SAND_RNG_SLOT_REACT_CRUST) & (CRUST_ROLL_MAX - 1))
@@ -2923,7 +2940,10 @@ static void
 react_one_chunk(void* pass, int lane, int cx, int cy) {
     react_pass_t* const c = pass;
     sand_t* const s = &c->lanes[lane].local;
-    int x0, x1, y0, y1;
+    int x0;
+    int x1;
+    int y0;
+    int y1;
     unsigned found = 0;
 
     sand_chunk_pass_cells(cx, cy, &x0, &x1, &y0, &y1);
@@ -3034,7 +3054,8 @@ react_drain_next(react_drain_t* drain) {
 
 static void
 reach_confined_ignitions(sand_t* s) {
-    const int w = s->w, h = s->h;
+    const int w = s->w;
+    const int h = s->h;
     react_drain_t drain = REACT_DRAIN(confined_ignite, REACT_EXPLOSION_DEFER_MAX);
     const react_coord_t* e;
     while ((e = react_drain_next(&drain)) != NULL) {
@@ -3075,7 +3096,8 @@ reach_fuse_explosions(sand_t* s) {
 
 static void
 reach_cracks_and_cooloffs(sand_t* s) {
-    const int w = s->w, h = s->h;
+    const int w = s->w;
+    const int h = s->h;
     react_drain_t cracks = REACT_DRAIN(crack, REACT_CRACK_DEFER_MAX);
     const react_crack_defer_t* crack;
     while ((crack = react_drain_next(&cracks)) != NULL) {
@@ -3119,7 +3141,8 @@ reach_scan_cell(sand_t* s, uint8_t* row, int x, int y, int w, int h) {
 
 static unsigned
 reach_rescan(sand_t* s) {
-    const int w = s->w, h = s->h;
+    const int w = s->w;
+    const int h = s->h;
     unsigned found = 0;
     for (int y = 0; y < h; y++) {
         uint8_t* const row = s->cells + (size_t)y * (size_t)w;

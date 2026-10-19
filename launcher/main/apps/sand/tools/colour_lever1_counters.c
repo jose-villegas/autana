@@ -140,7 +140,8 @@ static long
 changed_span_cells(const uint16_t* cur, const uint16_t* prev) {
     long total = 0;
     for (int cy = 0; cy < GRID_H; cy++) {
-        int x0 = GRID_W, x1 = 0;
+        int x0 = GRID_W;
+        int x1 = 0;
         for (int cx = 0; cx < GRID_W; cx++) {
             const int i = cy * GRID_W + cx;
             if (cur[i] == prev[i]) {
@@ -180,7 +181,8 @@ static long
 before_row_span(const uint8_t* grid, const uint8_t* prev_grid) {
     long total = 0;
     for (int cy = 0; cy < GRID_H; cy++) {
-        int x0 = GRID_W, x1 = 0;
+        int x0 = GRID_W;
+        int x1 = 0;
         for (int cx = 0; cx < GRID_W; cx++) {
             const int idx = cy * GRID_W + cx;
             if (grid[idx] == prev_grid[idx]) {
@@ -240,7 +242,8 @@ run_scene(const char* name, scene_build_fn build, scene_step_fn step, const uint
     sand_init(&sim, grid, GRID_W, GRID_H, 0xC0107000U);
     build(&sim);
 
-    static uint8_t prev_grid[GRID_W * GRID_H], prev_idx256[GRID_W * GRID_H];
+    static uint8_t prev_grid[GRID_W * GRID_H];
+    static uint8_t prev_idx256[GRID_W * GRID_H];
     static repr_grid_t prev_repr[GFX_DITHER_MODE_COUNT];
     static repr_grid_t cur_repr[GFX_DITHER_MODE_COUNT];
     memset(prev_grid, 0, sizeof prev_grid);

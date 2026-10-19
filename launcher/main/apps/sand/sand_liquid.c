@@ -149,7 +149,8 @@ equalise_one_cell(sand_t* s, uint8_t* row, int x, int y, const uint8_t* below_ro
                          * level instantly sideways, resembling "runny" */
     }
 
-    int lowest, at;
+    int lowest;
+    int at;
     const int drop_q8 = find_shallowest(s, x, y, px, py, sight, id, mass, bias_q8, &lowest, &at, work);
 
     /* Avoids trading mass imbalance - `>> 9` halves and converts q8 to whole
@@ -369,7 +370,8 @@ equalise_one_row(sand_t* s, int y, int x0, int x1, int w, int x_step, const xflo
 
     bool any_liquid = false;
     bool touched = false;
-    int touched_x0 = 0, touched_x1 = 0;
+    int touched_x0 = 0;
+    int touched_x1 = 0;
 
     const uint8_t* blocks = work->block_read != NULL ? work->block_read : s->block_state;
     const uint8_t* brow = blocks != NULL ? blocks + (size_t)((unsigned)y / SAND_BLOCK_H) * (size_t)s->block_cols : NULL;
@@ -477,7 +479,10 @@ equalise_one_chunk(void* pass, int lane, int cx, int cy) {
     liquid_pass_t* const c = pass;
     sand_t* const s = &c->lanes[lane].local;
     liquid_lane_t* const own = &c->per_lane[lane];
-    int x0, x1, y0, y1;
+    int x0;
+    int x1;
+    int y0;
+    int y1;
 
     sand_chunk_pass_cells(cx, cy, &x0, &x1, &y0, &y1);
 
@@ -634,8 +639,10 @@ typedef struct {
 
 static liquid_sort_t
 liquid_sort_init(sand_t* s, uint8_t* swapped, uint16_t is_liquid, int dx, int dy) {
-    const int w = s->w, h = s->h;
-    const int x0 = (dx > 0) ? 0 : w - 1, xstep = (dx > 0) ? 1 : -1;
+    const int w = s->w;
+    const int h = s->h;
+    const int x0 = (dx > 0) ? 0 : w - 1;
+    const int xstep = (dx > 0) ? 1 : -1;
 
     return (liquid_sort_t){.s = s,
                            .swapped = swapped,
@@ -657,7 +664,8 @@ liquid_sort_init(sand_t* s, uint8_t* swapped, uint16_t is_liquid, int dx, int dy
 static void
 liquid_sort_x_bounds(const liquid_sort_t* sort, int first_ray, int xi_first, int ray_step, int* out_lo, int* out_hi) {
     const int ray_base = sort->ray_base;
-    int xi_lo = xi_first, xi_hi = sort->s->w;
+    int xi_lo = xi_first;
+    int xi_hi = sort->s->w;
 
     if (ray_step == 0) {
         if (first_ray < ray_base || first_ray - ray_base >= RISE_RAYS) {
@@ -694,18 +702,22 @@ float_liquid_row(const liquid_sort_t* sort, int y) {
     uint8_t* const swapped = sort->swapped;
     const int w = s->w;
     const uint16_t is_liquid = sort->is_liquid;
-    const int dx = sort->dx, dy = sort->dy;
+    const int dx = sort->dx;
+    const int dy = sort->dy;
     const int ray_base = sort->ray_base;
     const bool viscous_liquid = !SAND_SKIP_IF(!s->may_have_viscous_liquid);
-    const int x0 = sort->x0, xstep = sort->xstep;
-    const int xi_first = sort->xi_first, ray_step = sort->ray_step;
+    const int x0 = sort->x0;
+    const int xstep = sort->xstep;
+    const int xi_first = sort->xi_first;
+    const int ray_step = sort->ray_step;
     const int uy = y - dy;
 
     uint8_t* const row = &cells[(size_t)y * (size_t)w];
     uint8_t* const urow = &cells[(size_t)uy * (size_t)w];
     const int first_x = x0 + xi_first * xstep;
     const int first_ray = liquid_sort_ray(s, first_x, y, dx, dy);
-    int xi_lo, xi_hi;
+    int xi_lo;
+    int xi_hi;
     liquid_sort_x_bounds(sort, first_ray, xi_first, ray_step, &xi_lo, &xi_hi);
 
     bool moved = false;
@@ -716,11 +728,13 @@ float_liquid_row(const liquid_sort_t* sort, int y) {
         if (((swapped[(ray - ray_base) >> 3] >> ((ray - ray_base) & 7)) & 1U) != 0U) {
             continue;
         }
-        const cell_t me = row[x], above = urow[ux];
+        const cell_t me = row[x];
+        const cell_t above = urow[ux];
         if (CELL_IS_EMPTY(me) || CELL_IS_EMPTY(above)) {
             continue;
         }
-        const uint8_t mine = CELL_MATERIAL(me), theirs = CELL_MATERIAL(above);
+        const uint8_t mine = CELL_MATERIAL(me);
+        const uint8_t theirs = CELL_MATERIAL(above);
         /* The viscosity roll the ordinary move pays keeps a rise a lazy drift. */
         const bool can_swap =
             ((is_liquid >> mine) & 1U) != 0 && theirs != mine && ((is_liquid >> theirs) & 1U) != 0

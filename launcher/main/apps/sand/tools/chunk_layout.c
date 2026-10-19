@@ -169,7 +169,8 @@ measure(const quality_t* q, const scene_t* sc, const gravity_t* g, int side_x, i
     for (int i = 0; i < STEPS; i++) {
         uint16_t cost[SAND_CHUNKS_MAX];
         sand_chunk_order_t order;
-        int dx, dy;
+        int dx;
+        int dy;
 
         memset(sand_chunk_work, 0, sizeof sand_chunk_work);
         sand_step(&b.s, g->gx, g->gy, 0);
@@ -278,7 +279,10 @@ balance_of(long long span, long long work) {
  * pair's own aggregate. False when the grid cannot be cut that way at all. */
 static bool
 measure_layout(const quality_t* q, int side_x, int side_y, layout_t* out) {
-    long long work = 0, span = 0, land_work = 0, land_span = 0;
+    long long work = 0;
+    long long span = 0;
+    long long land_work = 0;
+    long long land_span = 0;
     int chunks = 0;
 
     for (int si = 0; si < SCENES; si++) {
@@ -348,7 +352,8 @@ report_quality(const quality_t* q) {
 
     const int keep_x[] = {ship[0], ship[2]};
     const int keep_y[] = {ship[1], ship[3]};
-    int sx[AXIS_SAMPLES + 2], sy[AXIS_SAMPLES + 2];
+    int sx[AXIS_SAMPLES + 2];
+    int sy[AXIS_SAMPLES + 2];
     const int nx = axis_sides(q->w, keep_x, 2, sx);
     const int ny = axis_sides(q->h, keep_y, 2, sy);
     layout_t found[(AXIS_SAMPLES + 2) * (AXIS_SAMPLES + 2)];

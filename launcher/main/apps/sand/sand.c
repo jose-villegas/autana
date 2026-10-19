@@ -716,7 +716,10 @@ gravity_axes(int gx, int gy, int* ax, int* ay, int* sx, int* sy) {
 
 void
 sand_gravity_direction(int gx, int gy, int* dx, int* dy) {
-    int ax, ay, sx, sy;
+    int ax;
+    int ay;
+    int sx;
+    int sy;
     if (!gravity_axes(gx, gy, &ax, &ay, &sx, &sy)) {
         *dx = 0;
         *dy = 0;
@@ -768,7 +771,10 @@ diagonal_weight(int r) {
 
 void
 sand_gravity_direction_dithered(sand_t* s, int gx, int gy, int* dx, int* dy) {
-    int ax, ay, sx, sy;
+    int ax;
+    int ay;
+    int sx;
+    int sy;
     if (!gravity_axes(gx, gy, &ax, &ay, &sx, &sy)) {
         *dx = 0;
         *dy = 0;
@@ -1228,7 +1234,9 @@ step_one_block(const sweep_ctx_t* ctx, int bx) {
         return;
     }
 
-    int cx_from, cx_to, cx_step;
+    int cx_from;
+    int cx_to;
+    int cx_step;
     span_x_order(lo, hi, ctx->x_step, &cx_from, &cx_to, &cx_step);
 
     dest_state_t dest = DEST_UNKNOWN;
@@ -1344,8 +1352,10 @@ finalize_settling(sand_t* s, uint8_t settled_bit) {
  * gravitational potential. See xflow_t. */
 static void
 build_xflow(xflow_t* f, int gx, int gy) {
-    const int ax = mathi_abs(gx), ay = mathi_abs(gy);
-    const int sx = mathi_sign(gx), sy = mathi_sign(gy);
+    const int ax = mathi_abs(gx);
+    const int ay = mathi_abs(gy);
+    const int sx = mathi_sign(gx);
+    const int sy = mathi_sign(gy);
 
     /* Whichever of gx/gy has the larger magnitude picks the major ray:
      * `ax` runs perpendicular to that axis, `dg` built from the same two
@@ -1684,7 +1694,10 @@ chunk_awake_costs(const sand_t* s, const sand_chunk_plan_t* p, uint16_t* cost) {
 
     for (int cy = 0; cy < p->rows; cy++) {
         for (int cx = 0; cx < p->cols; cx++) {
-            int x0, x1, y0, y1;
+            int x0;
+            int x1;
+            int y0;
+            int y1;
 
             sand_chunk_cells(p, cx, cy, &x0, &x1, &y0, &y1);
             const int awake = blocks_settled_over(s, x0, x1, y0, y1, s->settled_bit) ? 0 : (x1 - x0) * (y1 - y0);
@@ -1716,7 +1729,8 @@ chunk_pass_divides(const sand_t* s, const sand_chunk_plan_t* p, int tx, int ty) 
 bool
 sand_chunk_pass_ready(const sand_t* s, sand_split_pass_t pass, int tx, int ty) {
     sand_chunk_plan_t fits;
-    int side_x, side_y;
+    int side_x;
+    int side_y;
 
     if (!sand_two_core_step_enabled() || (sand_split_passes & (unsigned)pass) == 0 || s->lane_scratch == NULL) {
         return false;
@@ -1786,7 +1800,8 @@ bool
 sand_chunk_pass_run(sand_t* s, sand_split_pass_t pass_id, int tx, int ty, sand_chunk_pass_stamps_t stamps,
                     sand_chunk_fn_t fn, void* pass) {
     sand_lane_t* const lanes = sand_lanes(s);
-    int side_x, side_y;
+    int side_x;
+    int side_y;
 
     if (!sand_chunk_pass_ready(s, pass_id, tx, ty) || lanes == NULL) {
         return false;
@@ -1850,7 +1865,10 @@ static void
 sweep_one_chunk(void* pass, int lane, int cx, int cy) {
     sweep_pass_t* const c = pass;
     sand_t* const view = &c->lanes[lane].local;
-    int x0, x1, y0, y1;
+    int x0;
+    int x1;
+    int y0;
+    int y1;
 
     sand_chunk_pass_cells(cx, cy, &x0, &x1, &y0, &y1);
     if (SAND_SKIP_IF(blocks_settled_over(view, x0, x1, y0, y1, c->settled_bit))) {
@@ -1897,7 +1915,8 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
     /* Dithered rather than nearest, so a tilt between two of the eight
      * directions flows at its true angle instead of snapping. Costs one random
      * number per STEP - not per grain - so it is free at this scale. */
-    int dx, dy;
+    int dx;
+    int dy;
     sand_gravity_direction_dithered(s, gx, gy, &dx, &dy);
 
     /* Load measures directionally, ignoring dithering. Grain weight, a pile
@@ -1905,7 +1924,8 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
      * diagonal steps appear empty above vertical columns, treating buried
      * grains as free surface grains roughly one in eight, shifting pile bases
      * sideways. */
-    int load_dx, load_dy;
+    int load_dx;
+    int load_dy;
     sand_gravity_direction(gx, gy, &load_dx, &load_dy);
 
     if (dx == 0 && dy == 0) {
@@ -1937,7 +1957,9 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
     s->last_step_dx = dx;
     s->last_step_dy = dy;
 
-    int y_from, y_to, y_step;
+    int y_from;
+    int y_to;
+    int y_step;
     sand_choose_sweep_order(s, dy, !SAND_FACT_RULE(s->may_have_liquid), &slide_a, &slide_b, &y_from, &y_to, &y_step);
 
     compute_driven(sweep_driven, slide_a, slide_b, gx, gy);

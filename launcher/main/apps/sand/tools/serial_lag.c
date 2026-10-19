@@ -150,7 +150,8 @@ compare_step(const sand_t* split, const sand_t* serial) {
     lag_step_t d = {0, 0, 0, 0};
 
     for (int y = 0; y < LAG_H; y++) {
-        int mass_split = 0, mass_serial = 0;
+        int mass_split = 0;
+        int mass_serial = 0;
         for (int x = 0; x < LAG_W; x++) {
             const cell_t a = sand_at(split, x, y);
             const cell_t b = sand_at(serial, x, y);
@@ -198,7 +199,8 @@ keep_worst(lag_result_t* out, lag_step_t d, int step) {
 
 static lag_result_t
 measure(const lag_case_t* c) {
-    sand_t split, serial;
+    sand_t split;
+    sand_t serial;
     sand_init(&split, cells_split, LAG_W, LAG_H, 7U);
     sand_init(&serial, cells_serial, LAG_W, LAG_H, 7U);
     sand_enable_sleeping(&split, blocks_split);

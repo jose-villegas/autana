@@ -86,11 +86,13 @@ rests_on_nonkin(const sand_t* s, int x, int y, int w, int h, int down, cell_t se
  * verdict can be checked at admission without changing the chosen body. */
 static bool
 support_visit(sand_t* s, support_t* sp, int at, int w, int h, int down, cell_t self, const reaction_t* r) {
-    const int cx = at % w, cy = at / w;
+    const int cx = at % w;
+    const int cy = at / w;
 
     for (int d = 0; d < 8; d++) {
         const int* nd = ring_dir(down + d);
-        const int nx = cx + nd[0], ny = cy + nd[1];
+        const int nx = cx + nd[0];
+        const int ny = cy + nd[1];
         if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
             continue;
         }
@@ -208,12 +210,14 @@ typedef struct {
 static bool
 root_lookahead(sand_t* s, int cx, int cy, int w, int h, const reaction_t* r, int down, stem_step_t* st) {
     const int* fd = ring_dir(down);
-    const int tx = cx + fd[0], ty = cy + fd[1];
+    const int tx = cx + fd[0];
+    const int ty = cy + fd[1];
     if ((unsigned)tx >= (unsigned)w || (unsigned)ty >= (unsigned)h
         || s->cells[(size_t)ty * (size_t)w + (size_t)tx] != (cell_t)r->roots_to) {
         return false;
     }
-    const int ax = tx + s->last_load_dx, ay = ty + s->last_load_dy;
+    const int ax = tx + s->last_load_dx;
+    const int ay = ty + s->last_load_dy;
     if ((unsigned)ax >= (unsigned)w || (unsigned)ay >= (unsigned)h) {
         return false;
     }
@@ -234,7 +238,8 @@ static void
 scan_below(sand_t* s, int cx, int cy, int w, int h, const reaction_t* r, cell_t self, int down, stem_step_t* st) {
     for (int i = 0; i < 3; i++) {
         const int* fd = ring_dir(down + below_fan[i]);
-        const int tx = cx + fd[0], ty = cy + fd[1];
+        const int tx = cx + fd[0];
+        const int ty = cy + fd[1];
         if ((unsigned)tx >= (unsigned)w || (unsigned)ty >= (unsigned)h) {
             continue;
         }
@@ -279,7 +284,8 @@ soil_offers(cell_t c, bool wants_room) {
  * of soil to the first one that offers what the caller wants. */
 static int
 drink_below_collar(sand_t* s, int cx, int cy, int w, int h, const reaction_t* r, bool wants_room) {
-    const int dx = s->last_load_dx, dy = s->last_load_dy;
+    const int dx = s->last_load_dx;
+    const int dy = s->last_load_dy;
     for (int depth = 0; depth < ROOT_REACH; depth++) {
         if ((unsigned)cx >= (unsigned)w || (unsigned)cy >= (unsigned)h) {
             return -1;
@@ -314,7 +320,8 @@ find_water(sand_t* s, int x, int y, int w, int h, const reaction_t* r, cell_t se
 
     *contact_at = -1;
 
-    int cx = x, cy = y;
+    int cx = x;
+    int cy = y;
     int lift_count = 0;
     int roots_passed = 0;
     for (int step = 0; step < GROW_REACH; step++) {
@@ -433,7 +440,8 @@ step_one_conducting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t
 
     for (int k = 0; k < 8; k++) {
         const int* nd = ring_dir(down + k);
-        const int nx = x + nd[0], ny = y + nd[1];
+        const int nx = x + nd[0];
+        const int ny = y + nd[1];
         if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
             continue;
         }
@@ -446,7 +454,8 @@ step_one_conducting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t
     if ((int)(rng_next(&s->rng) & 0xFF) >= ROOT_CONDUCT_CHANCE) {
         return true;
     }
-    const cell_t src_c = s->cells[src.at], dst_c = s->cells[dst.at];
+    const cell_t src_c = s->cells[src.at];
+    const cell_t dst_c = s->cells[dst.at];
     retone_moisture(s, src.x, src.y, soil_set_moisture(src_c, (uint8_t)(src.m - 1), (uint8_t)(dst.m + 1)));
     retone_moisture(s, dst.x, dst.y, with_moisture(dst_c, (uint8_t)(dst.m + 1), reaction_of(dst_c)));
     return true;
@@ -457,7 +466,8 @@ count_root_neighbors(sand_t* s, int x, int y, int w, int h, const reaction_t* r)
     int root_neighbors = 0;
     for (int d = 0; d < 8; d++) {
         const int* nd = ring_dir(d);
-        const int nx = x + nd[0], ny = y + nd[1];
+        const int nx = x + nd[0];
+        const int ny = y + nd[1];
         if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
             continue;
         }
@@ -473,7 +483,8 @@ static void
 away_from_parent(sand_t* s, int x, int y, int w, int h, const reaction_t* r, int* away_x, int* away_y) {
     for (int d = 0; d < 8; d++) {
         const int* nd = ring_dir(d);
-        const int nx = x + nd[0], ny = y + nd[1];
+        const int nx = x + nd[0];
+        const int ny = y + nd[1];
         if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
             continue;
         }
@@ -505,10 +516,12 @@ root_weight(const int* nd, int away_x, int away_y, int gx, int gy) {
 
 static void
 gather_root_cands(sand_t* s, int x, int y, int w, int h, int away_x, int away_y, root_cands_t* rc) {
-    const int gx = s->last_load_dx, gy = s->last_load_dy;
+    const int gx = s->last_load_dx;
+    const int gy = s->last_load_dy;
     for (int d = 0; d < 8; d++) {
         const int* nd = ring_dir(d);
-        const int nx = x + nd[0], ny = y + nd[1];
+        const int nx = x + nd[0];
+        const int ny = y + nd[1];
         if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
             continue;
         }
@@ -543,7 +556,8 @@ step_one_rooting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
      * downward carries more weight, so a root spreads sideways from where
      * it started and seeks water beneath itself rather than beside it -
      * with no root or wood beside it, gravity alone steers. */
-    int away_x = 0, away_y = 0;
+    int away_x = 0;
+    int away_y = 0;
     away_from_parent(s, x, y, w, h, r, &away_x, &away_y);
 
     root_cands_t rc;
@@ -570,7 +584,8 @@ step_one_rooting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
  * from stem to roots. */
 bool
 step_one_drinking_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r, cell_t self) {
-    int lx = -1, ly = -1;
+    int lx = -1;
+    int ly = -1;
     SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, nat, n, {
         if (!CELL_IS_EMPTY(n) && material_of(n)->kind == KIND_LIQUID && reaction_of(n)->wets != 0) {
             lx = nx;
@@ -582,7 +597,9 @@ step_one_drinking_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* 
         return false; /* nothing to drink */
     }
 
-    int lift = 0, contact_at = -1, root_depth = 0; /* drinking never spends
+    int lift = 0;
+    int contact_at = -1;
+    int root_depth = 0; /* drinking never spends
                                                      * soil moisture, so
                                                      * nothing here roots -
                                                      * scratch values */
@@ -611,7 +628,10 @@ step_one_drinking_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* 
  * Trunks live. */
 bool
 step_one_sprouting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
-    int soil_at = -1, empty_at = -1, ex = 0, ey = 0;
+    int soil_at = -1;
+    int empty_at = -1;
+    int ex = 0;
+    int ey = 0;
 
     SAND_FOR_NEIGHBOUR(s, x, y, w, h, nx, ny, nat, n, {
         if (CELL_IS_EMPTY(n)) {
@@ -646,7 +666,8 @@ is_crowned(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
     bool crowned = false;
     for (int d = 0; d < 8 && !crowned; d++) {
         const int* nd = ring_dir(d);
-        const int nx = x + nd[0], ny = y + nd[1];
+        const int nx = x + nd[0];
+        const int ny = y + nd[1];
         if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
             continue;
         }
@@ -662,7 +683,8 @@ find_bud_site(sand_t* s, int x, int y, int w, int h, int* bx, int* by) {
     static const int out[5] = {7, 0, 1, 2, 6};
     for (int d = 0; d < 5; d++) {
         const int* nd = ring_dir(up_i + out[d]);
-        const int nx = x + nd[0], ny = y + nd[1];
+        const int nx = x + nd[0];
+        const int ny = y + nd[1];
         if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
             continue;
         }
@@ -683,19 +705,23 @@ step_one_budding_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
     if (!is_crowned(s, x, y, w, h, r)) {
         return false;
     }
-    const int ax = x - s->last_load_dx, ay = y - s->last_load_dy;
+    const int ax = x - s->last_load_dx;
+    const int ay = y - s->last_load_dy;
     if ((unsigned)ax < (unsigned)w && (unsigned)ay < (unsigned)h
         && s->cells[(size_t)ay * (size_t)w + (size_t)ax] == self) {
         return false;
     }
 
-    int bx = 0, by = 0;
+    int bx = 0;
+    int by = 0;
     const int at = find_bud_site(s, x, y, w, h, &bx, &by);
     if (at < 0) {
         return true; /* crowned, but boxed in */
     }
 
-    int lift = 0, contact_at = -1, root_depth = 0;
+    int lift = 0;
+    int contact_at = -1;
+    int root_depth = 0;
     const int soil_at = find_water(s, x, y, w, h, r, self, &lift, &contact_at, &root_depth, false);
     if (soil_at < 0) {
         return true; /* nothing to drink */
@@ -721,7 +747,8 @@ stem_next(sand_t* s, int x, int y, int ux, int uy, int w, int h, cell_t self, in
     const int up = ring_of(ux, uy);
     for (int i = 0; i < 3; i++) {
         const int* d = ring_dir(up + (i == 0 ? 0 : i == 1 ? 1 : 7));
-        const int nx = x + d[0], ny = y + d[1];
+        const int nx = x + d[0];
+        const int ny = y + d[1];
         if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
             continue;
         }
@@ -741,7 +768,8 @@ stem_next(sand_t* s, int x, int y, int ux, int uy, int w, int h, cell_t self, in
  * is free. */
 static bool
 shove_aside(sand_t* s, int gx, int gy, int dx, int dy, int w, int h) {
-    int ex = gx, ey = gy;
+    int ex = gx;
+    int ey = gy;
     int run = 0;
 
     while (run < PUSH_REACH) {
@@ -768,7 +796,8 @@ shove_aside(sand_t* s, int gx, int gy, int dx, int dy, int w, int h) {
 
     /* Back to front, so nothing is overwritten before it has moved. */
     for (int i = 0; i < run; i++) {
-        const int tx = ex, ty = ey;
+        const int tx = ex;
+        const int ty = ey;
         ex -= dx;
         ey -= dy;
         s->cells[(size_t)ty * (size_t)w + (size_t)tx] = s->cells[(size_t)ey * (size_t)w + (size_t)ex];
@@ -787,7 +816,8 @@ static int
 stem_walk(sand_t* s, int* px, int* py, int ux, int uy, int w, int h, cell_t self, int steps) {
     int taken = 0;
     while (taken < steps) {
-        int nx, ny;
+        int nx;
+        int ny;
         if (!stem_next(s, *px, *py, ux, uy, w, h, self, &nx, &ny)) {
             break;
         }
@@ -805,7 +835,8 @@ count_packed(sand_t* s, int x, int y, int w, int h, cell_t self, const reaction_
     int packed = 0;
     for (int d = 0; d < 8; d++) {
         const int* nd = ring_dir(d);
-        const int nx = x + nd[0], ny = y + nd[1];
+        const int nx = x + nd[0];
+        const int ny = y + nd[1];
         if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
             packed++;
             continue;
@@ -857,7 +888,8 @@ grow_heading(sand_t* s, int sx, int sy, int ux, int uy, int w, int h, cell_t sel
     if (r->holds_line != 0 && (int)(rng_next(&s->rng) & 0xFF) < r->holds_line) {
         /* One stem cell back is the whole baseline: a longer one measured
          * more horizontal drift (38 against 24). */
-        int px, py;
+        int px;
+        int py;
         if (stem_next(s, sx, sy, -ux, -uy, w, h, self, &px, &py)) {
             head = ring_of(sx - px, sy - py);
         }
@@ -954,7 +986,8 @@ hang_canopy(sand_t* s, const crown_t* t, int up_i, int w, int h, const reaction_
     for (int i = 0; i < t->n; i++) {
         for (int c = 0; c < 4; c++) {
             const int* cd = ring_dir(up_i + crown[c]);
-            const int lx = t->x[i] + cd[0], ly = t->y[i] + cd[1];
+            const int lx = t->x[i] + cd[0];
+            const int ly = t->y[i] + cd[1];
             if ((unsigned)lx >= (unsigned)w || (unsigned)ly >= (unsigned)h) {
                 continue;
             }
@@ -979,9 +1012,11 @@ shape_tree(sand_t* s, int fx, int fy, int ux, int uy, int w, int h, cell_t self,
     crown_t top;
     top.n = 0;
 
-    int cx = fx, cy = fy;
+    int cx = fx;
+    int cy = fy;
     for (int i = 0; i < hard; i++) {
-        int nx = 0, ny = 0;
+        int nx = 0;
+        int ny = 0;
         const bool more = stem_next(s, cx, cy, ux, uy, w, h, self, &nx, &ny);
         place_cell(s, cx, cy, (size_t)cy * (size_t)w + (size_t)cx, CELL_MAKE(r->hardens_to, 0));
 
@@ -1010,9 +1045,11 @@ shape_tree(sand_t* s, int fx, int fy, int ux, int uy, int w, int h, cell_t self,
  * growth. */
 static void
 harden_stem(sand_t* s, int x, int y, int ux, int uy, int w, int h, cell_t self, const reaction_t* r) {
-    int cx = x, cy = y;
+    int cx = x;
+    int cy = y;
     stem_walk(s, &cx, &cy, -ux, -uy, w, h, self, GROW_REACH);
-    const int fx = cx, fy = cy;
+    const int fx = cx;
+    const int fy = cy;
 
     const int trunk = 1 + stem_walk(s, &cx, &cy, ux, uy, w, h, self, GROW_REACH - 1);
     if (trunk < r->harden_run) {
@@ -1041,7 +1078,9 @@ step_one_growing_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
         return true; /* inside the crowd, not at its edge */
     }
 
-    int lift = 0, contact_at = -1, root_depth = 0;
+    int lift = 0;
+    int contact_at = -1;
+    int root_depth = 0;
     const int soil_at = find_water(s, x, y, w, h, r, self, &lift, &contact_at, &root_depth, false);
     if (soil_at < 0) {
         return true; /* nothing to drink */
@@ -1053,7 +1092,8 @@ step_one_growing_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
         return true;
     }
 
-    int tx = x, ty = y;
+    int tx = x;
+    int ty = y;
     const int run = 1 + stem_walk(s, &tx, &ty, ux, uy, w, h, self, GROW_REACH);
 
     /* Round RING, not up-plus-perpendicular: one step round is adjacent. */
@@ -1061,11 +1101,13 @@ step_one_growing_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
     const grow_plan_t plan = plan_growth(s, run, side);
 
     /* Back up the stem to the chosen site, the same way. */
-    int sx = x, sy = y;
+    int sx = x;
+    int sy = y;
     stem_walk(s, &sx, &sy, ux, uy, w, h, self, plan.site);
 
     const int* hd = ring_dir(grow_heading(s, sx, sy, ux, uy, w, h, self, r) + plan.turn);
-    const int dx = hd[0], dy = hd[1];
+    const int dx = hd[0];
+    const int dy = hd[1];
 
     if (plan.thicken && thick_enough(s, sx, sy, dx, dy, w, h, self, r, lift + plan.site)) {
         return true;

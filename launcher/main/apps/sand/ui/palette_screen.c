@@ -44,7 +44,10 @@ draw_palette_badge(sand_ui_t* ui, int i, recti_t tile) {
 
 static void
 draw_palette_tile(sand_ui_t* ui, int i, int cols) {
-    int x, y, w, h;
+    int x;
+    int y;
+    int w;
+    int h;
     palette_tile_rect(i, ui->brush_count, cols, ui_width(), ui_height(), &x, &y, &w, &h);
     const recti_t tile = {x + PALETTE_GROUT, y + PALETTE_GROUT, w - 2 * PALETTE_GROUT, h - 2 * PALETTE_GROUT};
 
