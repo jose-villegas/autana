@@ -743,7 +743,7 @@ boot_anim_clear_frame(void) {
 /* Core 1 clears each frame once it is sent, so the clear above is free. */
 void
 boot_anim_clear_on_send(bool on) {
-    gfx_set_clear_on_send(on, COL_BG);
+    (void)gfx_set_clear_on_send(on, COL_BG); /* without the double layout, the clear stays on core 0 */
 }
 
 void

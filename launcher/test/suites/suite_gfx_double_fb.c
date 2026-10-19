@@ -216,16 +216,23 @@ test_raw_framebuffer_access_forgets_the_fill(void) {
 static void
 test_clear_on_send_ends_with_its_mode(void) {
     fixture();
-    gfx_set_clear_on_send(true, CLEAR_COLOUR);
+    TEST_ASSERT_FALSE(gfx_set_clear_on_send(true, CLEAR_COLOUR)); /* full framebuffer: refused */
     gfx_present();
     gfx_present();
-    TEST_ASSERT_FALSE(gfx_framebuffer_holds(CLEAR_COLOUR)); /* full framebuffer: ignored */
+    TEST_ASSERT_FALSE(gfx_framebuffer_holds(CLEAR_COLOUR));
     enter_double();
-    gfx_set_clear_on_send(true, CLEAR_COLOUR);
+    TEST_ASSERT_TRUE(gfx_set_clear_on_send(true, CLEAR_COLOUR));
     gfx_present();
     gfx_present();
     gfx_mode_exit();
-    TEST_ASSERT_FALSE(gfx_framebuffer_holds(CLEAR_COLOUR));
+    /* The frame kept at exit was cleared on send: nothing to read back. */
+    TEST_ASSERT_TRUE(gfx_framebuffer_holds(CLEAR_COLOUR));
+    TEST_ASSERT_TRUE(back_buffer_is(CLEAR_COLOUR));
+    TEST_ASSERT_EQUAL_INT(GFX_READBACK_UNAVAILABLE, gfx_readback_begin());
+    draw_pixel(0, 0, FRAME_COLOUR);
+    gfx_present();
+    TEST_ASSERT_EQUAL_INT(GFX_READBACK_READY, gfx_readback_begin());
+    gfx_readback_end();
     enter_double();
     draw_clear(FRAME_COLOUR);
     gfx_present();

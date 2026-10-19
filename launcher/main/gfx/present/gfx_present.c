@@ -924,6 +924,7 @@ gfx_present_begin(void) {
 #ifdef ESP_PLATFORM
     frame_watch_presented();
 #endif
+    send_clears = false; /* this send keeps its frame */
     gfx_present_guard_begin();
 #ifdef ESP_PLATFORM
     if (band_is_transient()) {
@@ -1009,15 +1010,18 @@ gfx_present_sent_frame_filled(void) {
     return send_clears;
 }
 
+#ifndef ESP_PLATFORM
 void
-gfx_present_forget_fill(void) {
+gfx_present_fill_reset_for_test(void) {
     send_clears = false;
 }
+#endif
 
-void
+bool
 gfx_set_clear_on_send(bool on, gfx_color_t colour) {
     clear_on_send = on && current_mode.layout == GFX_LAYOUT_DOUBLE_FB;
     clear_on_send_colour = colour;
+    return clear_on_send == on;
 }
 
 void
