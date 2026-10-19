@@ -10,15 +10,38 @@ ESP32-S3R8, dual-core Xtensa LX7 @ 240 MHz, single-precision FPU. Flash and
 PSRAM clocks are set in `launcher/sdkconfig.defaults`.
 
 ```mermaid
-flowchart LR
+flowchart TB
     SOC["ESP32-S3"]
-    SOC --- QSPI["SPI2, QSPI"] --- PANEL["SH8601 / CO5300 panel<br/>368 x 448 RGB565"]
-    SOC --- MEM["SPI0/1"] --- FL["flash 16 MB"]
-    MEM --- PS["PSRAM 8 MB octal"]
-    SOC --- SD["SDMMC, 1-bit"] --- CARD["microSD"]
-    SOC --- G46["GPIO 46"] --- AMP["speaker amp"]
-    SOC --- G0["GPIO 0"] --- BOOT["BOOT button"]
-    SOC --- I2C["I2C0<br/>SDA 15, SCL 14"] --- DEV["touch 0x38 / 0x15<br/>AXP2101 0x34, PWR button<br/>QMI8658 0x6B<br/>PCF85063 0x51<br/>ES8311 0x18<br/>TCA9554 0x20, optional"]
+    subgraph MEMORY["Memory"]
+        FL["flash 16 MB"]
+        PS["PSRAM 8 MB octal"]
+    end
+    subgraph SHOW["Display"]
+        PANEL["SH8601 / CO5300<br/>368 x 448 RGB565"]
+    end
+    subgraph STORE["Storage"]
+        CARD["microSD"]
+    end
+    subgraph INPUT["Input"]
+        TOUCH["touch<br/>I2C 0x38 / 0x15"]
+        IMU["QMI8658 IMU<br/>I2C 0x6B"]
+        BOOT["BOOT button<br/>GPIO 0"]
+    end
+    subgraph SOUND["Audio"]
+        CODEC["ES8311 codec<br/>I2C 0x18"]
+        AMP["speaker amp<br/>GPIO 46"]
+    end
+    subgraph SYS["Power and time"]
+        PMU["AXP2101<br/>battery, PWR button<br/>I2C 0x34"]
+        RTC["PCF85063 RTC<br/>I2C 0x51"]
+        IOX["TCA9554 expander<br/>I2C 0x20, optional"]
+    end
+    SOC ---|"SPI0/1"| MEMORY
+    SOC ---|"SPI2 QSPI"| SHOW
+    SOC ---|"SDMMC 1-bit"| STORE
+    SOC ---|"I2C0 + GPIO"| INPUT
+    SOC ---|"I2C0 + GPIO"| SOUND
+    SOC ---|"I2C0"| SYS
 ```
 
 The display, SD card and external memory use separate buses. CPU work and
