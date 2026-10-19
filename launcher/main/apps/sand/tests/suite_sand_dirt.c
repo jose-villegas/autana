@@ -356,7 +356,8 @@ test_soil_loses_its_tone_across_a_wetting_and_gets_a_fresh_one_drying(void) {
     fixture();
     sand_clear(&s);
 
-    const int x = W / 2, y = H / 2;
+    const int x = W / 2;
+    const int y = H / 2;
     sand_set(&s, x - 1, y, STONE);
     sand_set(&s, x + 1, y, STONE);
     sand_set(&s, x, y + 1, STONE);
@@ -944,7 +945,8 @@ test_water_percolates_diagonally_as_well_as_straight_down(void) {
     /* One row above the floor, so the grains the water has to reach
      * are resting on it - a grain with empty space under it falls
      * out of the scene before any of this gets a turn. */
-    const int cx = W / 2, cy = H - 3;
+    const int cx = W / 2;
+    const int cy = H - 3;
 
     sand_set(&s, cx, cy, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
     sand_set(&s, cx - 1, cy, STONE); /* no way out sideways */

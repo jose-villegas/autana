@@ -40,7 +40,8 @@
 static void
 test_the_brush_and_the_setter_agree_about_every_material(void) {
     for (int m = 1; m < MAT_COUNT; m++) {
-        const int cx = W / 2, cy = H / 2;
+        const int cx = W / 2;
+        const int cy = H / 2;
 
         /* The brush. */
         fixture();
@@ -76,7 +77,8 @@ test_the_brush_and_the_setter_agree_about_every_material(void) {
      * comparison here, through sand_spawn_cell() rather than
      * sand_spawn(). */
     {
-        const int cx = W / 2, cy = H / 2;
+        const int cx = W / 2;
+        const int cy = H / 2;
 
         fixture();
         sand_clear(&s);
@@ -390,15 +392,20 @@ test_an_edge_shows_less_temperature_than_the_body(void) {
 
     for (unsigned k = 0; k < sizeof tempered / sizeof tempered[0]; k++) {
         const uint8_t m = tempered[k];
-        gfx_color_t body[3], ed[3], hot[3], hot_ed[3];
+        gfx_color_t body[3];
+        gfx_color_t ed[3];
+        gfx_color_t hot[3];
+        gfx_color_t hot_ed[3];
 
         material_colours(&f, CELL_MAKE(m, SAND_AMBIENT_HEAT), 0u, 0u, 255u, body);
         material_colours(&f, CELL_MAKE(m, SAND_AMBIENT_HEAT), 0u, MATERIAL_EDGE_LEFT, 255u, ed);
         material_colours(&f, CELL_MAKE(m, MATERIAL_VARIANTS - 1), 0u, 0u, 255u, hot);
         material_colours(&f, CELL_MAKE(m, MATERIAL_VARIANTS - 1), 0u, MATERIAL_EDGE_LEFT, 255u, hot_ed);
 
-        const gfx_color_t rest_body = body[0], rest_edge = ed[0];
-        const gfx_color_t hot_body = hot[0], hot_edge = hot_ed[0];
+        const gfx_color_t rest_body = body[0];
+        const gfx_color_t rest_edge = ed[0];
+        const gfx_color_t hot_body = hot[0];
+        const gfx_color_t hot_edge = hot_ed[0];
 
         char why[224];
         snprintf(why, sizeof why,
@@ -539,7 +546,8 @@ test_stone_speckles_by_position_at_every_temperature(void) {
     }
 
     /* Stable: the same cell asked twice gets the same answer. */
-    gfx_color_t one[3], two[3];
+    gfx_color_t one[3];
+    gfx_color_t two[3];
     const cell_t c = CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT);
     material_colours(&f, c, 12345u, 0u, 255u, one);
     material_colours(&f, c, 12345u, 0u, 255u, two);
@@ -793,7 +801,8 @@ test_cullet_glints_move_with_the_phase(void) {
 
     bool moved = false;
     for (unsigned hash = 0u; hash < n && !moved; hash++) {
-        gfx_color_t col0[3], col1[3];
+        gfx_color_t col0[3];
+        gfx_color_t col1[3];
         f.cullet_phase = 0u;
         material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), hash, 0u, 255u, col0);
         f.cullet_phase = 1u;

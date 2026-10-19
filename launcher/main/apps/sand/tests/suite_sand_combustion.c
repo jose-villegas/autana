@@ -1108,7 +1108,8 @@ scan_slab_chill(const sand_t* g, int w2, int h2, int slab_top) {
 
 static void
 test_cold_conducts_deep_into_a_slab(void) {
-    const int W2 = 40, H2 = 60;
+    const int W2 = 40;
+    const int H2 = 60;
     const int slab_top = 10;
     uint8_t* cells = calloc(W2 * H2, 1);
     TEST_ASSERT_NOT_NULL(cells);
@@ -1596,7 +1597,8 @@ test_a_resting_snowbank_stays_settled_over_a_floor_it_chills(void) {
         sand_step(&g, 0, 1000, 0); /* land, and be marked settled */
     }
 
-    int first_loose = -1, loose_steps = 0;
+    int first_loose = -1;
+    int loose_steps = 0;
     for (int i = 1; i <= WATCH; i++) {
         sand_step(&g, 0, 1000, 0);
         if (count_loose_snow(&g, GW, GH) != 0) {

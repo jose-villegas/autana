@@ -559,7 +559,8 @@ test_a_settled_pool_does_not_flicker(void) {
      * since a hand is never perfectly level. A pool level along one axis
      * can read as wildly unbalanced along the other, and colour comes
      * straight off fill level, so the swing is visible as flicker. */
-    const int gx = 60, gy = 1000;
+    const int gx = 60;
+    const int gy = 1000;
 
     wide_open(3u);
     for (int i = 0; i < 90; i++) {
@@ -702,7 +703,8 @@ test_a_pool_settles_at_the_angle_it_is_tilted_to(void) {
     const int steps = 2500;
 
     for (size_t i = 0; i < sizeof fixtures / sizeof fixtures[0]; i++) {
-        const int w = fixtures[i].w, h = fixtures[i].h;
+        const int w = fixtures[i].w;
+        const int h = fixtures[i].h;
         char why[256];
 
         /* 20 degrees: true slope 0.364, 373 in q10. */
@@ -990,7 +992,8 @@ test_pouring_water_over_a_dirt_bed_never_moves_a_dirt_cell(void) {
 
     free(buf);
 
-    int left_its_cell = 0, arrived_elsewhere = 0;
+    int left_its_cell = 0;
+    int arrived_elsewhere = 0;
     count_dirt_movement(&fx.stir_sim, was_dirt, STIR_W * STIR_H, &left_its_cell, &arrived_elsewhere);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, left_its_cell,

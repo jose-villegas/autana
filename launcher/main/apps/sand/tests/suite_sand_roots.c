@@ -515,7 +515,8 @@ test_a_root_eats_a_moist_neighbour_and_only_spends_its_own_moisture(void) {
     sand_clear(&s);
     sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
 
-    const int cx = W / 2, cy = 3;
+    const int cx = W / 2;
+    const int cy = 3;
     /* Dirt is KIND_POWDER (material.c) */
     sand_set(&s, cx - 1, cy + 2, STONE);
     sand_set(&s, cx, cy + 2, STONE);
@@ -556,7 +557,8 @@ test_a_root_eats_a_moist_neighbour_and_only_spends_its_own_moisture(void) {
 /* CELL_IS_EMPTY() */
 static void
 test_a_root_never_eats_dry_dirt_sand_or_empty_space(void) {
-    const int cx = ROOT_X, cy = ROOT_Y;
+    const int cx = ROOT_X;
+    const int cy = ROOT_Y;
     sheltered_root_fixture();
     /* Three candidates, one per guard in gather_root_cands()'s
      * neighbour scan - all beside the root rather than below it, since
@@ -594,7 +596,8 @@ surface_rule_lets_growth_through(int satellite_roots) {
     sand_init(&t, grid, 8, 8, 12345u);
     sand_set_soak(&t, SAND_SOAK_PER_MATERIAL);
 
-    const int cx = 4, cy = 4;
+    const int cx = 4;
+    const int cy = 4;
     /* Two cells wider than the candidates, as in sheltered_root_fixture(). */
     for (int x = cx - 2; x <= cx + 2; x++) {
         sand_set(&t, x, cy + 2, STONE);
@@ -665,8 +668,10 @@ root_growth_verdict(int cx, int ry, int max_steps) {
  * predict 86%. */
 static void
 test_a_root_tip_grows_on_away_from_its_parent_and_down(void) {
-    const int cx = W / 2, ty = H - 4;
-    int below = 0, beside = 0;
+    const int cx = W / 2;
+    const int ty = H - 4;
+    int below = 0;
+    int beside = 0;
 
     for (uint32_t seed = 1; seed <= 120u; seed++) {
         sand_init(&s, cells, W, H, seed);
@@ -697,8 +702,10 @@ test_a_root_tip_grows_on_away_from_its_parent_and_down(void) {
  * under a trunk as detailed in `step_one_rooting_cell()`. */
 static void
 test_the_first_root_under_a_trunk_heads_down(void) {
-    const int cx = W / 2, ry = H - 4;
-    int below = 0, beside = 0;
+    const int cx = W / 2;
+    const int ry = H - 4;
+    int below = 0;
+    int beside = 0;
 
     for (uint32_t seed = 1; seed <= 120u; seed++) {
         sand_init(&s, cells, W, H, seed);
@@ -730,7 +737,8 @@ test_a_root_carries_a_level_of_water_down_through_itself(void) {
     sand_clear(&s);
     sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
 
-    const int cx = W / 2, ry = H - 3;
+    const int cx = W / 2;
+    const int ry = H - 3;
     sand_fill_box(&s, 0, 0, W, H, STONE);
     sand_set(&s, cx, ry, MATX(MATX_ROOT));
     sand_set(&s, cx - 1, ry, CELL_MAKE(MAT_WOOD, 0));    /* shelter; blocks the source's slide */
@@ -763,7 +771,8 @@ test_conduction_never_pushes_water_up_or_into_anything_but_soil(void) {
     sand_clear(&s);
     sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
 
-    const int cx = W / 2, ry = H - 3;
+    const int cx = W / 2;
+    const int ry = H - 3;
     sand_fill_box(&s, 0, 0, W, H, STONE);
     sand_set(&s, cx, ry, MATX(MATX_ROOT));
     sand_set(&s, cx, ry + 1, CELL_SOIL(MAT_DIRT, 1, 6)); /* wet, BENEATH - only ever a sink */
@@ -811,7 +820,8 @@ test_a_thickly_rooted_cell_stops_growing(void) {
  * moist candidates; they never make a dry cell one. */
 static void
 test_roots_grow_toward_the_wet_side_only(void) {
-    const int cx = ROOT_X, cy = ROOT_Y;
+    const int cx = ROOT_X;
+    const int cy = ROOT_Y;
     /* Both dirt candidates are KIND_POWDER: without the fixture's ledge
      * neither survives long enough to be eaten or to prove it was not. */
     sheltered_root_fixture();
@@ -863,7 +873,8 @@ test_a_continuously_watered_root_system_still_saturates(void) {
      * on, produced a flat 0 for the entire run). */
     sand_set(&t, cx, bed_top + 1, MATX(MATX_ROOT));
 
-    int mid_count = -1, final_count = -1;
+    int mid_count = -1;
+    int final_count = -1;
     for (int i = 0; i < 3000; i++) {
         for (int dx = -6; dx <= 6; dx++) {
             const int x = cx + dx;
@@ -946,7 +957,10 @@ test_a_root_darkens_as_more_root_grows_around_it(void) {
 static void
 test_leaf_tints_toward_the_wave_highlight(void) {
     material_frame_t f = {0};
-    gfx_color_t at_rest[3], mid[3], peak[3], other_hash_peak[3];
+    gfx_color_t at_rest[3];
+    gfx_color_t mid[3];
+    gfx_color_t peak[3];
+    gfx_color_t other_hash_peak[3];
 
     /* hash 0's own base grain sits at LEAF_DARK, below the highlight's own
      * green, so blending toward it must raise green monotonically. */
@@ -965,7 +979,9 @@ test_leaf_tints_toward_the_wave_highlight(void) {
  * way sand_paint_row_n() hands a NULL `above` on the grid's first row. */
 static void
 test_root_neighbours_are_counted_across_three_rows(void) {
-    const cell_t R = MATX(MATX_ROOT), D = CELL_SOIL(MAT_DIRT, 0, 3), Wd = CELL_MAKE(MAT_WOOD, 0);
+    const cell_t R = MATX(MATX_ROOT);
+    const cell_t D = CELL_SOIL(MAT_DIRT, 0, 3);
+    const cell_t Wd = CELL_MAKE(MAT_WOOD, 0);
     const uint8_t above[5] = {R, R, R, D, D};
     const uint8_t row[5] = {D, R, R, Wd, R};
     const uint8_t below[5] = {D, D, R, R, D};
@@ -1098,7 +1114,8 @@ static void
 test_unlit_wood_tints_green_only_beside_a_leaf(void) {
     material_frame_t f = {0};
     const cell_t wood = CELL_MAKE(MAT_WOOD, 0);
-    gfx_color_t away[3], beside[3];
+    gfx_color_t away[3];
+    gfx_color_t beside[3];
 
     const material_pattern_t pat_away = material_colours(&f, wood, 3u, 0u, 0u, away);
     const material_pattern_t pat_beside = material_colours(&f, wood, 3u, 0u, 129u, beside);
@@ -1116,7 +1133,9 @@ static void
 test_wood_leaf_tint_blends_smoothly_between_its_anchors(void) {
     material_frame_t f = {0};
     const cell_t wood = CELL_MAKE(MAT_WOOD, 0);
-    gfx_color_t lo[3], mid[3], hi[3];
+    gfx_color_t lo[3];
+    gfx_color_t mid[3];
+    gfx_color_t hi[3];
 
     material_colours(&f, wood, 3u, 0u, 1u, lo);
     material_colours(&f, wood, 3u, 0u, 129u, mid);
@@ -1211,7 +1230,8 @@ test_wood_leaf_wind_axis_stays_perpendicular_to_gravity(void) {
     static const int gys[] = {0, 0, 40, -80, -70};
 
     for (size_t i = 0; i < sizeof gxs / sizeof gxs[0]; i++) {
-        int ux_q8 = 0, uy_q8 = 0;
+        int ux_q8 = 0;
+        int uy_q8 = 0;
         material_wood_leaf_wind_axis(gxs[i], gys[i], &ux_q8, &uy_q8);
         const long dot = ((long)gxs[i] * ux_q8) + ((long)gys[i] * uy_q8);
         char why[80];
@@ -1222,7 +1242,8 @@ test_wood_leaf_wind_axis_stays_perpendicular_to_gravity(void) {
         TEST_ASSERT_TRUE_MESSAGE(dot > -400 && dot < 400, why);
     }
 
-    int ux_q8 = 0, uy_q8 = 0;
+    int ux_q8 = 0;
+    int uy_q8 = 0;
     material_wood_leaf_wind_axis(0, 0, &ux_q8, &uy_q8);
     TEST_ASSERT_EQUAL_INT_MESSAGE(256, ux_q8, "zero gravity defaults to sweeping along grid-x");
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, uy_q8, "zero gravity defaults to sweeping along grid-x");
@@ -1307,7 +1328,8 @@ test_the_right_extended_materials_are_grained(void) {
 static void
 test_metal_shine_does_not_vary_between_cells(void) {
     material_frame_t f = {0};
-    gfx_color_t a[3], b[3];
+    gfx_color_t a[3];
+    gfx_color_t b[3];
     material_colours(&f, MATX(MATX_METAL), 0u, 0u, 255u, a);
     material_colours(&f, MATX(MATX_METAL), 5u, 0u, 255u, b);
 
@@ -1390,7 +1412,8 @@ bathe_ice_in_air(int cx, int cy, int x0, int x1, int y0, int y1, material_id_t a
  * all, and must leave ice alone however much of it there is. */
 static void
 test_steam_melts_ice_and_plain_gas_does_not(void) {
-    const int cx = W / 2, cy = H / 2;
+    const int cx = W / 2;
+    const int cy = H / 2;
 
     for (int pass = 0; pass < 2; pass++) {
         const material_id_t air = pass ? MAT_GAS : MAT_STEAM;
@@ -1465,7 +1488,8 @@ sand_shade_range(int* lo, int* hi) {
  * board. */
 static void
 test_two_pours_apart_in_time_lay_down_different_shades(void) {
-    int lo[2], hi[2];
+    int lo[2];
+    int hi[2];
 
     fixture();
     sand_clear(&s);
@@ -1522,7 +1546,8 @@ sand_shade_histogram(int hist[MATERIAL_VARIANTS]) {
  * business, not this test's. */
 static void
 test_a_moving_grain_keeps_the_shade_it_was_poured_with(void) {
-    int before[MATERIAL_VARIANTS], after[MATERIAL_VARIANTS];
+    int before[MATERIAL_VARIANTS];
+    int after[MATERIAL_VARIANTS];
 
     fixture();
     sand_clear(&s);

@@ -103,7 +103,8 @@ static void
 cs_build(cs_case_t* c, int grid, int which_off) {
     const int side_x = cs_grids[grid][2];
     const int side_y = cs_grids[grid][3];
-    int off_x, off_y;
+    int off_x;
+    int off_y;
 
     cs_offset(which_off, side_x, side_y, &off_x, &off_y);
     TEST_ASSERT_TRUE_MESSAGE(
@@ -164,7 +165,10 @@ cs_downstream(int c, int n, int t) {
 
 static void
 cs_tally_chunk(const cs_case_t* c, uint8_t* seen, int cx, int cy, const char* label) {
-    int x0, x1, y0, y1;
+    int x0;
+    int x1;
+    int y0;
+    int y1;
     sand_chunk_cells(&c->plan, cx, cy, &x0, &x1, &y0, &y1);
 
     if (cx > 0 && cx < c->plan.cols - 1) {

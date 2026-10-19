@@ -120,8 +120,10 @@ footprint_line_hit(const uint8_t* footprint, int w, int h, int i0, int i1, int a
  * edges then its left/right edges - touches the footprint anywhere. */
 static bool
 footprint_ring_hit(const uint8_t* footprint, int w, int h, int x, int y, int r) {
-    const int x0 = x - r, x1 = x + r;
-    const int y0 = y - r, y1 = y + r;
+    const int x0 = x - r;
+    const int x1 = x + r;
+    const int y0 = y - r;
+    const int y1 = y + r;
 
     return footprint_line_hit(footprint, w, h, x0, x1, y0, true)
            || footprint_line_hit(footprint, w, h, x0, x1, y1, true)
@@ -443,7 +445,8 @@ water_within(const sand_t* s, int cx, int cy, int r) {
             if ((unsigned)x >= (unsigned)s->w || (unsigned)y >= (unsigned)s->h) {
                 continue;
             }
-            const int dx = x - cx, dy = y - cy;
+            const int dx = x - cx;
+            const int dy = y - cy;
             if ((dx * dx) + (dy * dy) > r * r) {
                 continue;
             }
@@ -463,7 +466,8 @@ empty_within(const sand_t* s, int cx, int cy, int r) {
             if ((unsigned)x >= (unsigned)s->w || (unsigned)y >= (unsigned)s->h) {
                 continue;
             }
-            const int dx = x - cx, dy = y - cy;
+            const int dx = x - cx;
+            const int dy = y - cy;
             if ((dx * dx) + (dy * dy) > r * r) {
                 continue;
             }
@@ -497,7 +501,8 @@ carve_circle_empty(sand_t* g, int w, int h, int cx, int cy, int r) {
             if ((unsigned)x >= (unsigned)w || (unsigned)y >= (unsigned)h) {
                 continue;
             }
-            const int ddx = x - cx, ddy = y - cy;
+            const int ddx = x - cx;
+            const int ddy = y - cy;
             if ((ddx * ddx) + (ddy * ddy) <= r * r) {
                 sand_set(g, x, y, SAND_EMPTY);
             }

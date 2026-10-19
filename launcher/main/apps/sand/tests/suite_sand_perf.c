@@ -795,7 +795,8 @@ time_two_core_arm(void (*build)(sand_t*, uint8_t*, uint8_t*), int gy, bool two_c
 
 static void
 report_two_core_ab(const char* scene, void (*build)(sand_t*, uint8_t*, uint8_t*), int gy) {
-    int64_t serial_per_step = 0, two_core_per_step = 0;
+    int64_t serial_per_step = 0;
+    int64_t two_core_per_step = 0;
     time_two_core_arm(build, gy, false, &serial_per_step);
     time_two_core_arm(build, gy, true, &two_core_per_step);
 
@@ -1032,7 +1033,9 @@ test_the_sweep_measures_both_cuts_every_quality_ships(void) {
         const sweep_quality_t* const q = &sweep_qualities[qi];
 
         for (int travel = 0; travel < SAND_CHUNK_TRAVEL_CLASSES; travel++) {
-            int side_x, side_y, found = 0;
+            int side_x;
+            int side_y;
+            int found = 0;
             char why[160];
 
             sand_chunk_table_sides(q->w, q->h, (sand_chunk_travel_t)travel, &side_x, &side_y);
@@ -1076,7 +1079,8 @@ test_the_sweeps_gas_scenes_put_work_in_both_gas_passes(void) {
         TEST_ASSERT_NOT_NULL(box);
         TEST_ASSERT_NOT_NULL(before);
 
-        sand_t cs, bs;
+        sand_t cs;
+        sand_t bs;
         sand_init(&cs, column, GW, GH, SWEEP_SEED);
         sand_init(&bs, box, GW, GH, SWEEP_SEED);
         const int cw = build_layout_gas_column_scene(&cs);
@@ -1277,7 +1281,8 @@ sweep_floor_arm(const sweep_quality_t* q, bool two_core, int* out_settle_steps) 
      * and a side asked for by name is also what carries the two smallest
      * grids past SAND_CHUNK_SPLIT_MIN_CELLS - without it the split arm here
      * would be a second serial arm. */
-    int side_x, side_y;
+    int side_x;
+    int side_y;
     sand_chunk_table_sides(q->w, q->h, SAND_CHUNK_TRAVEL_OTHER, &side_x, &side_y);
     TEST_ASSERT_TRUE(sand_chunk_side_for_test(side_x, side_y));
 
@@ -1615,7 +1620,10 @@ test_the_wood_leaf_shading_on_a_grove(void) {
     int down = 0;
     material_wood_leaf_top5(0, SCENE_GRAVITY, &down, top5);
 
-    int wood = 0, leaf = 0, near_leaf = 0, rows_lit = 0;
+    int wood = 0;
+    int leaf = 0;
+    int near_leaf = 0;
+    int rows_lit = 0;
     unsigned sink = 0;
 
     const int64_t start = timing_now_us();
@@ -1890,7 +1898,8 @@ run_xtperf_over_scene(const xtperf_scene_t* scene, uint64_t* total_cycles, uint6
             board_bookkeeping_open(real);
         }
 
-        uint32_t cycles = 0, value = 0;
+        uint32_t cycles = 0;
+        uint32_t value = 0;
         measure_xtperf_event(scene->name, real, scene->gx, scene->gy, 0, scene->steps, e, &cycles, &value);
 
         if (scene->bookkeeping) {
@@ -2605,7 +2614,8 @@ test_pouring_sand_onto_a_landscape_sand_bed_fits_in_the_frame_budget(void) {
 static int
 mirror_row_reconcile(const uint8_t* row, int w, int cy, uint16_t* row_x0, uint16_t* row_x1, uint8_t* row_n,
                      uint16_t* send_x0, uint16_t* send_x1) {
-    uint16_t cur_x0[ROW_MAX_RUNS], cur_x1[ROW_MAX_RUNS];
+    uint16_t cur_x0[ROW_MAX_RUNS];
+    uint16_t cur_x1[ROW_MAX_RUNS];
     const int cur_n = row_runs_find_or_span(row, w, SAND_EMPTY, cur_x0, cur_x1);
 
     uint16_t* rprev_x0 = &row_x0[cy * ROW_MAX_RUNS];
@@ -2629,7 +2639,8 @@ mirror_app_sand_marking(const uint8_t* cells, int w, int h, uint8_t* dirty_rows,
         }
         dirty_rows[cy] = 0;
 
-        uint16_t send_x0[2 * ROW_MAX_RUNS], send_x1[2 * ROW_MAX_RUNS];
+        uint16_t send_x0[2 * ROW_MAX_RUNS];
+        uint16_t send_x1[2 * ROW_MAX_RUNS];
         const int send_n = mirror_row_reconcile(&cells[(size_t)cy * w], w, cy, row_x0, row_x1, row_n, send_x0, send_x1);
 
         for (int i = 0; i < send_n; i++) {
@@ -2662,7 +2673,9 @@ run_present_against_scene(sand_t* s, const uint8_t* cells, int w, int h, uint8_t
 
     gfx_reset_strip_send_counts();
 
-    int64_t sim_us = 0, mark_us = 0, present_us = 0;
+    int64_t sim_us = 0;
+    int64_t mark_us = 0;
+    int64_t present_us = 0;
     for (int i = 0; i < measured_steps; i++) {
         const int64_t t0 = timing_now_us();
         sand_step(s, gx, gy, gz);
@@ -2870,8 +2883,12 @@ present_cost_of_scene(uint32_t seed, void (*build)(sand_t* s), int settle_steps,
 
     build(real);
 
-    int full_bands = 0, gathered = 0, partial_bands = 0;
-    int64_t sim_us = 0, mark_us = 0, present_us = 0;
+    int full_bands = 0;
+    int gathered = 0;
+    int partial_bands = 0;
+    int64_t sim_us = 0;
+    int64_t mark_us = 0;
+    int64_t present_us = 0;
     const int64_t mean_us = run_present_against_scene(real, b.big, REAL_W, REAL_H, b.dirty, b.x0, b.x1, b.n, 0,
                                                       SCENE_GRAVITY, 0, settle_steps, measured_steps, &full_bands,
                                                       &gathered, &partial_bands, &sim_us, &mark_us, &present_us);
@@ -2957,10 +2974,12 @@ mirror_app_sand_marking_span(const uint8_t* cells, int w, int h, uint8_t* dirty_
         }
         dirty_rows[cy] = 0;
 
-        int wx0, wx1;
+        int wx0;
+        int wx1;
         mirror_row_window(w, cy, dirty_x0, dirty_x1, &wx0, &wx1);
 
-        uint16_t send_x0[2 * ROW_MAX_RUNS], send_x1[2 * ROW_MAX_RUNS];
+        uint16_t send_x0[2 * ROW_MAX_RUNS];
+        uint16_t send_x1[2 * ROW_MAX_RUNS];
         const int send_n = mirror_row_reconcile(&cells[(size_t)cy * w], w, cy, row_x0, row_x1, row_n, send_x0, send_x1);
 
         mirror_row_send_dirty(cy, wx0, wx1, send_x0, send_x1, send_n, pixels_sent_accum);
@@ -3168,7 +3187,8 @@ test_acid_bubbles_do_not_favour_one_wall(void) {
      * sat, not where it is. */
     fill_acid_pool(&fx.bubble_sim, BUBBLE_W, POOL_TOP, BUBBLE_H);
 
-    int left_pops = 0, right_pops = 0;
+    int left_pops = 0;
+    int right_pops = 0;
     const int mid = BUBBLE_W / 2;
     for (int i = 0; i < 300; i++) {
         sand_step(&fx.bubble_sim, 0, SCENE_GRAVITY, 0);
@@ -3403,7 +3423,9 @@ test_water_slope_pouring_water_logs_the_pass_split(void) {
     sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 41u);
     build_water_slope_scene(real);
 
-    int64_t liquid_total = 0, reactions_total = 0, sweep_total = 0;
+    int64_t liquid_total = 0;
+    int64_t reactions_total = 0;
+    int64_t sweep_total = 0;
     const int steps = WATER_SLOPE_COVER_STEPS;
     for (int i = 0; i < steps; i++) {
         water_slope_water_pour(real, i);
@@ -3647,7 +3669,8 @@ test_present_cost_at_40_mhz_80_mhz_and_80_mhz_with_heal_on_a_real_pour(void) {
 
     for (int brush = 0; brush < 2; brush++) {
         for (int row = 0; row < CLOCK_ROW_COUNT; row++) {
-            clock_row_window_t pour, settled;
+            clock_row_window_t pour;
+            clock_row_window_t settled;
             clock_row_run(brush, (clock_row_t)row, &pour, &settled);
             ESP_LOGI("device_tests",
                      "CLOCK_ROW %s pour %s MHz: present %lld us, %lld bytes (heal %lld) | settled: present %lld "

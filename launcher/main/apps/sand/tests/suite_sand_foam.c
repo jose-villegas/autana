@@ -65,7 +65,8 @@ test_water_foams_where_its_rim_is_curved(void) {
 
     int spike_foamed = 0;
     for (unsigned hash = 0; hash < 8u; hash++) {
-        gfx_color_t flat_col[3], spike_col[3];
+        gfx_color_t flat_col[3];
+        gfx_color_t spike_col[3];
         material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, flat_mask, 255u, flat_col);
         material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, spike_mask, 255u, spike_col);
 
@@ -214,7 +215,8 @@ test_a_diagonal_neighbour_alone_is_not_an_edge(void) {
     const unsigned diagonal_only = MATERIAL_EDGE_UP_LEFT;
 
     {
-        gfx_color_t interior[3], diagonal[3];
+        gfx_color_t interior[3];
+        gfx_color_t diagonal[3];
         const material_pattern_t pat_i = material_colours(&f, CELL_MAKE(MAT_GLASS, 5), 1u, 0u, 255u, interior);
         const material_pattern_t pat_d =
             material_colours(&f, CELL_MAKE(MAT_GLASS, 5), 1u, diagonal_only, 255u, diagonal);
@@ -229,7 +231,8 @@ test_a_diagonal_neighbour_alone_is_not_an_edge(void) {
     }
 
     {
-        gfx_color_t interior[3], diagonal[3];
+        gfx_color_t interior[3];
+        gfx_color_t diagonal[3];
         material_colours(&f, CELL_MAKE(MAT_STONE, 5), 1u, 0u, 255u, interior);
         material_colours(&f, CELL_MAKE(MAT_STONE, 5), 1u, diagonal_only, 255u, diagonal);
 
@@ -240,7 +243,8 @@ test_a_diagonal_neighbour_alone_is_not_an_edge(void) {
     }
 
     {
-        gfx_color_t interior[3], diagonal[3];
+        gfx_color_t interior[3];
+        gfx_color_t diagonal[3];
         material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), 1u, 0u, 255u, interior);
         material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), 1u, diagonal_only, 255u, diagonal);
 
@@ -408,7 +412,8 @@ count_foam_flips(unsigned mask, unsigned phase_a, unsigned phase_b) {
     material_frame_t f = {0};
     int flips = 0;
     for (unsigned h = 0; h < (unsigned)FOAM_FLIP_SAMPLE; h++) {
-        gfx_color_t col_a[3], col_b[3];
+        gfx_color_t col_a[3];
+        gfx_color_t col_b[3];
         f.foam_phase = phase_a;
         material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), h, mask, 255u, col_a);
         f.foam_phase = phase_b;
@@ -432,7 +437,8 @@ test_foam_flip_rate_stays_even_across_the_phase_cycle(void) {
     const unsigned curvature1_mask =
         MATERIAL_EDGE_UP | MATERIAL_EDGE_DOWN | MATERIAL_EDGE_UP_LEFT | MATERIAL_EDGE_UP_RIGHT; /* count 4 */
 
-    int min_flips = FOAM_FLIP_SAMPLE + 1, max_flips = -1;
+    int min_flips = FOAM_FLIP_SAMPLE + 1;
+    int max_flips = -1;
     for (unsigned phase = 0; phase < 8u; phase++) {
         const int flips = count_foam_flips(curvature1_mask, phase, phase + 1u);
         if (flips < min_flips) {

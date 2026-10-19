@@ -48,7 +48,8 @@ is_real_cell(cell_t c) {
 
 static long
 channel_error_sq(gfx_color_t a, gfx_color_t b) {
-    const uint32_t ca = gfx_color_rgb888(a), cb = gfx_color_rgb888(b);
+    const uint32_t ca = gfx_color_rgb888(a);
+    const uint32_t cb = gfx_color_rgb888(b);
     const long dr = (long)((ca >> 16) & 0xFFu) - (long)((cb >> 16) & 0xFFu);
     const long dg = (long)((ca >> 8) & 0xFFu) - (long)((cb >> 8) & 0xFFu);
     const long db = (long)(ca & 0xFFu) - (long)(cb & 0xFFu);
@@ -64,7 +65,8 @@ channel_error_sq(gfx_color_t a, gfx_color_t b) {
 static void
 test_every_material_bytes_body_colour_maps_within_budget(void) {
     material_frame_t f = {0};
-    int sampled = 0, exact = 0;
+    int sampled = 0;
+    int exact = 0;
     for (unsigned c = 0; c < 256u; c++) {
         if (!is_real_cell((cell_t)c)) {
             continue;
@@ -123,11 +125,13 @@ test_expansion_reproduces_the_real_lut_cell_for_cell(void) {
 static void
 test_metal_shine_cells_get_a_different_index_in_256_and_16(void) {
     material_frame_t f = {0};
-    int shine_ux_q8, shine_uy_q8;
+    int shine_ux_q8;
+    int shine_uy_q8;
     material_shine_direction(1000, 0, &shine_ux_q8, &shine_uy_q8);
 
     const cell_t metal = MATX(MATX_METAL);
-    int shine_idx = -1, body_idx = -1;
+    int shine_idx = -1;
+    int body_idx = -1;
 
     for (int cy = 0; cy < 24 && (shine_idx < 0 || body_idx < 0); cy++) {
         for (int cx = 0; cx < 24; cx++) {

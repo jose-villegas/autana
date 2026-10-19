@@ -295,7 +295,8 @@ test_a_sparse_pour_scatters_across_the_whole_disc(void) {
     for (unsigned seed = 1u; seed <= 4u; seed++) {
         share_pour(grid, radius, (uint32_t)seed, MATX(MATX_PLANT), SAND_BRUSH_SHARE_PLANT);
 
-        int rows = 0, cols = 0;
+        int rows = 0;
+        int cols = 0;
         for (int d = -radius; d <= radius; d++) {
             bool in_row = false;
             bool in_col = false;
@@ -649,7 +650,8 @@ test_an_emitted_powder_still_lands_in_a_valid_shade(void) {
  * representatives only ever catches the kinds someone thought to check. */
 static void
 test_an_emitter_and_sand_spawn_cell_agree_about_every_material(void) {
-    const int x = 3, y = 3;
+    const int x = 3;
+    const int y = 3;
 
     for (int m = 1; m < MAT_COUNT; m++) {
         const cell_t placeholder = CELL_MAKE((material_id_t)m, 0);
@@ -794,7 +796,8 @@ test_adding_at_an_existing_emitter_replaces_its_cell(void) {
                                   "the second add must replace the first emitter's cell, not add a "
                                   "second emitter at the same point");
 
-    int x, y;
+    int x;
+    int y;
     cell_t cell;
     TEST_ASSERT_TRUE_MESSAGE(sand_emitter_at(&s, 0, &x, &y, &cell), "setup");
     TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GAS, CELL_MATERIAL(cell),
@@ -821,7 +824,8 @@ test_the_emitter_cap_is_respected(void) {
                                   "stay exactly at the cap");
 
     for (int i = 0; i < SAND_MAX_EMITTERS; i++) {
-        int x, y;
+        int x;
+        int y;
         cell_t cell;
         TEST_ASSERT_TRUE_MESSAGE(sand_emitter_at(&s, i, &x, &y, &cell),
                                  "every emitter that was already there must still be readable");
@@ -857,7 +861,8 @@ test_remove_emitters_only_removes_those_in_radius(void) {
                                   "same disc test sand_erase() uses");
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, sand_emitter_count(&s), "and exactly one emitter must remain");
 
-    int x, y;
+    int x;
+    int y;
     cell_t cell;
     TEST_ASSERT_TRUE_MESSAGE(sand_emitter_at(&s, 0, &x, &y, &cell), "setup");
     TEST_ASSERT_EQUAL_INT_MESSAGE(4, x, "the survivor must be the one outside the radius");

@@ -1129,7 +1129,9 @@ static void
 test_the_grain_hash_does_not_stripe(void) {
     enum { N = 64, BUCKETS = 8 };
 
-    int same_row = 0, same_col = 0, seen[BUCKETS] = {0};
+    int same_row = 0;
+    int same_col = 0;
+    int seen[BUCKETS] = {0};
     for (int y = 0; y < N; y++) {
         for (int x = 0; x < N; x++) {
             const unsigned h = material_grain_hash(x, y) & (BUCKETS - 1);
@@ -1189,8 +1191,10 @@ test_a_tilt_between_two_directions_is_dithered_not_snapped(void) {
 
     /* Well off any of the eight axes, so the two it falls between should
      * both come up. */
-    int steps_seen = 0, load_seen = 0;
-    int step_dx[8] = {0}, load_dx[8] = {0};
+    int steps_seen = 0;
+    int load_seen = 0;
+    int step_dx[8] = {0};
+    int load_dx[8] = {0};
 
     for (int i = 0; i < 200; i++) {
         sand_step(&s, 400, 1000, 0);

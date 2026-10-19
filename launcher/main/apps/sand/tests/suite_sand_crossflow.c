@@ -377,7 +377,8 @@ static unsigned
 crossflow_level_faults(int px, int py) {
     crossflow_fixture_t* split = crossflow_fixture();
     crossflow_fixture_t* serial = crossflow_fixture();
-    int x0, y0;
+    int x0;
+    int y0;
     const int len = crossflow_line(split, px, py, &x0, &y0);
 
     (void)crossflow_line(serial, px, py, &x0, &y0);

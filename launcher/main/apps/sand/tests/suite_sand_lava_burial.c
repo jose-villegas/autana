@@ -72,7 +72,8 @@ test_buried_lava_bursts_into_stone_and_fire(void) {
     fixture();
     sand_clear(&s);
     sand_fill_box(&s, 0, 0, W, H, STONE);
-    const int cx = W / 2, cy = H / 2;
+    const int cx = W / 2;
+    const int cy = H / 2;
     sand_set(&s, cx, cy, CELL_MAKE(MAT_LAVA, MASS_MAX));
 
     impulse_t* buf = impulses_open(&s, W * H);
@@ -269,7 +270,8 @@ static void
 test_cover_primitive_matches_the_exhaustive_shape_table(void) {
     fixture();
     sand_clear(&s);
-    const int cx = W / 2, cy = H / 2;
+    const int cx = W / 2;
+    const int cy = H / 2;
     sand_set(&s, cx, cy, CELL_MAKE(MAT_LAVA, MASS_MAX));
     const uint8_t density = material_by_id((material_id_t)MAT_LAVA)->density;
 
@@ -314,7 +316,8 @@ test_a_wide_pool_under_a_crust_bursts(void) {
         }
     }
 
-    const int tx = 3, ty = 2; /* interior: not touching the pool's own
+    const int tx = 3;
+    const int ty = 2; /* interior: not touching the pool's own
                                   * left/right edge, so both diagonal
                                   * neighbours above it are genuine crust */
     ASSERT_MATERIAL_AT(MAT_LAVA, tx, ty, "fixture check: lava at the cell under test");
@@ -365,7 +368,8 @@ test_a_wide_pool_under_a_sideways_crust_bursts(void) {
         }
     }
 
-    const int tx = 2, ty = 3; /* interior: touching the crust directly
+    const int tx = 2;
+    const int ty = 3; /* interior: touching the crust directly
                                   * to its left, but not the pool's own
                                   * top/bottom edge, so both diagonal
                                   * neighbours toward the crust are
@@ -424,7 +428,8 @@ test_buried_lava_still_becomes_stone_with_impulses_off(void) {
     fixture();
     sand_clear(&s);
     sand_fill_box(&s, 0, 0, W, H, STONE);
-    const int cx = W / 2, cy = H / 2;
+    const int cx = W / 2;
+    const int cy = H / 2;
     sand_set(&s, cx, cy, CELL_MAKE(MAT_LAVA, MASS_MAX));
     sand_set_lava_burst(&s, 255);
 

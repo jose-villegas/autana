@@ -113,7 +113,8 @@ test_sixteen_sorts_by_luma_not_by_a_single_channel(void) {
     sand_mode_swatches(none_lut, lut256, LUT_SIZE, UI_ENTRIES, swatches);
 
     const sand_mode_swatch_t* s = &swatches[SAND_COLOUR_16];
-    int dark_pos = -1, bright_pos = -1;
+    int dark_pos = -1;
+    int bright_pos = -1;
     for (int i = 0; i < 16; i++) {
         if (s->rgb[i] == dark) {
             dark_pos = i;
@@ -160,7 +161,8 @@ test_256_sample_spans_the_whole_sand_range(void) {
     const int n = s->cols * s->rows;
     const int sand_range = LUT_SIZE - UI_ENTRIES;
 
-    int first_idx = -1, last_idx = -1;
+    int first_idx = -1;
+    int last_idx = -1;
     for (int i = UI_ENTRIES; i < LUT_SIZE; i++) {
         if (gfx_color_rgb888(lut256[i]) == s->rgb[0]) {
             first_idx = i;

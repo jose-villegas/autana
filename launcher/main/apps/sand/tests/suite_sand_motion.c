@@ -55,7 +55,8 @@ assert_looks_like(const char* rows[], int count, const char* why) {
 static void
 test_gravity_quantises_to_eight_directions(void) {
     fixture();
-    int dx, dy;
+    int dx;
+    int dy;
 
     sand_gravity_direction(0, 100, &dx, &dy);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, dx, "straight down");
@@ -91,7 +92,8 @@ test_ring_of_matches_the_direction_ring(void) {
 static void
 test_a_slight_tilt_still_reads_as_straight_down(void) {
     fixture();
-    int dx, dy;
+    int dx;
+    int dy;
 
     /* 10 degrees off vertical must not become a diagonal, or the sand would
      * visibly lean while the board looks level. The boundary is 22.5 deg. */
@@ -103,7 +105,8 @@ test_a_slight_tilt_still_reads_as_straight_down(void) {
 static void
 test_no_gravity_has_no_direction(void) {
     fixture();
-    int dx = 9, dy = 9;
+    int dx = 9;
+    int dy = 9;
 
     sand_gravity_direction(0, 0, &dx, &dy);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, dx, "a zero vector has no direction");
@@ -119,7 +122,8 @@ diagonal_share(int gx, int gy, int trials) {
     fixture();
     int diagonals = 0;
     for (int i = 0; i < trials; i++) {
-        int dx, dy;
+        int dx;
+        int dy;
         sand_gravity_direction_dithered(&s, gx, gy, &dx, &dy);
         if (dx != 0 && dy != 0) {
             diagonals++;

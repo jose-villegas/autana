@@ -196,7 +196,10 @@ paint_full_frame_indexed(const uint8_t* grid, gfx_indexed_repaint_kind_t kind, c
                          const gfx_color_t* cell_table, int* out_x0, int* out_y0, int* out_x1, int* out_y1) {
     material_frame_t f = {0};
     uint8_t* img = gfx_indexed_image();
-    int x0 = CM_GRID_W, y0 = CM_GRID_H, x1 = 0, y1 = 0;
+    int x0 = CM_GRID_W;
+    int y0 = CM_GRID_H;
+    int x1 = 0;
+    int y1 = 0;
     for (int cy = 0; cy < CM_GRID_H; cy++) {
         for (int cx = 0; cx < CM_GRID_W; cx++) {
             const unsigned hash = material_grain_hash(cx, cy);
@@ -233,7 +236,10 @@ static bool prev_grid_valid;
  * frame. */
 static bool
 diff_bounding_box(const uint8_t* grid, int* out_x0, int* out_y0, int* out_x1, int* out_y1) {
-    int x0 = CM_GRID_W, y0 = CM_GRID_H, x1 = 0, y1 = 0;
+    int x0 = CM_GRID_W;
+    int y0 = CM_GRID_H;
+    int x1 = 0;
+    int y1 = 0;
     bool any = false;
     for (int cy = 0; cy < CM_GRID_H; cy++) {
         for (int cx = 0; cx < CM_GRID_W; cx++) {
@@ -316,7 +322,10 @@ measure_mode_frame(sand_t* sim, uint8_t* grid, int i, const colour_scene_t* scen
         sand_step(sim, gx, CM_GRAVITY_Y, 0);
     }
 
-    int dx0, dy0, dx1, dy1;
+    int dx0;
+    int dy0;
+    int dx1;
+    int dy1;
     const bool changed = diff_bounding_box(grid, &dx0, &dy0, &dx1, &dy1);
 
     const int64_t t0 = timing_now_us();
@@ -325,7 +334,10 @@ measure_mode_frame(sand_t* sim, uint8_t* grid, int i, const colour_scene_t* scen
          * above already called changed dither to the SAME 16-colour
          * (or, in 256 mode, the same index), so this can be, and often
          * is, smaller than [dx0,dx1)x[dy0,dy1). */
-        int ix0, iy0, ix1, iy1;
+        int ix0;
+        int iy0;
+        int ix1;
+        int iy1;
         const int cells = paint_full_frame_indexed(grid, kind, class_table, cell_table, &ix0, &iy0, &ix1, &iy1);
         if (cells > 0) {
             gfx_mark_dirty(ix0 * CM_CELL, iy0 * CM_CELL, (ix1 - ix0) * CM_CELL, (iy1 - iy0) * CM_CELL);
@@ -375,7 +387,9 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, gfx_dither_mode_t 
     }
 
     gfx_reset_strip_send_counts();
-    int64_t draw_total = 0, present_total = 0, cells_marked_total = 0;
+    int64_t draw_total = 0;
+    int64_t present_total = 0;
+    int64_t cells_marked_total = 0;
 
     for (int i = 0; i < CM_MEASURED_FRAMES; i++) {
         measure_mode_frame(&sim, grid, i, scene, indexed, kind, class_table, cell_table, &draw_total, &present_total,
@@ -423,7 +437,8 @@ log_and_check(const colour_scene_t* scene, colour_mode_t mode, const char* dithe
 static void
 test_colour_modes_on_scene(int scene_index) {
     const colour_scene_t* scene = &scenes[scene_index];
-    mode_result_t full, c256;
+    mode_result_t full;
+    mode_result_t c256;
 
     measure_mode(scene, CM_MODE_FULL, GFX_DITHER_PIXEL_BAYER4, &full);
     measure_mode(scene, CM_MODE_256, GFX_DITHER_PIXEL_BAYER4, &c256);

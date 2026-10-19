@@ -306,7 +306,8 @@ test_chilling_hot_glass_also_transforms_the_chilling_snow_cell(void) {
 
     sand_step(g, 0, 1000, 0);
 
-    int cracked = 0, melted = 0;
+    int cracked = 0;
+    int melted = 0;
     for (int i = 0; i < GLASS_CHILL_TRIALS; i++) {
         const int base = i * 3;
         if (CELL_MATERIAL(sand_at(g, base + 1, 0)) != MAT_GLASS) {
@@ -452,7 +453,8 @@ test_frost_spreads_beyond_the_snow_touching_it(void) {
         sand_set(&s, x, H - 2, GLASS);
     }
     /* Snow on the middle two cells only. */
-    const int lo = (W / 2) - 1, hi = W / 2;
+    const int lo = (W / 2) - 1;
+    const int hi = W / 2;
     for (int x = lo; x <= hi; x++) {
         sand_set(&s, x, H - 3, SNOW);
     }

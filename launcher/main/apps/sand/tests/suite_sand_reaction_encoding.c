@@ -354,7 +354,8 @@ test_ice_cracks_hot_glass_and_stays_where_it_is_put(void) {
         sand_set(&s, x, H - 2, CELL_MAKE(MAT_GLASS, MATERIAL_VARIANTS - 1));
         sand_set(&s, x, H - 3, MATX(MATX_ICE));
     }
-    const int ice_x = 1, ice_y = H - 3;
+    const int ice_x = 1;
+    const int ice_y = H - 3;
 
     run_steps(&s, 60, 0, 1000);
 
@@ -516,7 +517,8 @@ test_acid_dissolves_dune_sand_but_not_cullet(void) {
         sand_set(&s, 4, y, GLASS); /* keeps the two acid columns from ever meeting */
     }
 
-    const int dune_x = 2, cullet_x = 6;
+    const int dune_x = 2;
+    const int cullet_x = 6;
     sand_set(&s, dune_x, H - 2, CELL_MAKE(MAT_SAND, 8));
     sand_set(&s, cullet_x, H - 2, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE));
     for (int y = 0; y < H - 2; y++) {
@@ -758,7 +760,8 @@ test_water_winning_the_dilution_boils_the_water_cell_to_steam(void) {
     acid_water_separated_fixture(cells);
     sand_step(&fx.separated_dilute_sim, 0, 1000, 0);
 
-    int water_wins = 0, water_wins_with_steam = 0;
+    int water_wins = 0;
+    int water_wins_with_steam = 0;
     for (int x = 0; x < SEPARATED_W; x += 2) {
         if (CELL_MATERIAL(sand_at(&fx.separated_dilute_sim, x, 1)) != MAT_WATER) {
             continue; /* not a water-wins column, see the sibling test */
@@ -787,7 +790,8 @@ test_acid_winning_the_dilution_boils_the_acid_cell_to_gas(void) {
     acid_water_separated_fixture(cells);
     sand_step(&fx.separated_dilute_sim, 0, 1000, 0);
 
-    int acid_wins = 0, acid_wins_with_gas = 0;
+    int acid_wins = 0;
+    int acid_wins_with_gas = 0;
     for (int x = 0; x < SEPARATED_W; x += 2) {
         if (CELL_MATERIAL(sand_at(&fx.separated_dilute_sim, x, 0)) != MAT_ACID) {
             continue; /* not an acid-wins column, see the sibling test */
@@ -837,7 +841,8 @@ test_oil_mostly_boils_off_into_gas_not_acid(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(done, "per-column done tracking must fit");
     acid_oil_dilute_fixture(oil_dilute_cells);
 
-    int gas = 0, acid_spread = 0;
+    int gas = 0;
+    int acid_spread = 0;
     for (int i = 0; i < 300; i++) {
         sand_step(&fx.oil_dilute_sim, 0, 1000, 0);
         for (int x = 0; x < OIL_DILUTE_W; x++) {
@@ -908,7 +913,8 @@ test_the_acid_that_ate_oil_can_die_in_a_single_bite(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(done, "per-column done tracking must fit");
     acid_oil_dilute_fixture(oil_dilute_cells);
 
-    int died_outright = 0, chipped_by_one = 0;
+    int died_outright = 0;
+    int chipped_by_one = 0;
     for (int i = 0; i < 300; i++) {
         sand_step(&fx.oil_dilute_sim, 0, 1000, 0);
         for (int x = 0; x < OIL_DILUTE_W; x++) {
@@ -992,7 +998,8 @@ pour_and_count(material_id_t tap, int* out_pool_mat, int* out_tap_mat) {
         sand_step(&fx.dilute_pour_sim, 0, 1000, 0);
     }
 
-    int pool_mat = 0, tap_mat = 0;
+    int pool_mat = 0;
+    int tap_mat = 0;
     const material_id_t pool = (tap == MAT_ACID) ? MAT_WATER : MAT_ACID;
     for (int y = 0; y < DILUTE_POUR_H - 1; y++) {
         for (int x = 0; x < DILUTE_POUR_W; x++) {
@@ -1019,7 +1026,8 @@ pour_and_measure_tap_gain(material_id_t pool, material_id_t tap, int bias) {
     acid_water_pour_fixture(cells, pool);
     sand_set_acid_dilute_mass_bias(&fx.dilute_pour_sim, bias);
 
-    int pool_left, tap_now;
+    int pool_left;
+    int tap_now;
     pour_and_count(tap, &pool_left, &tap_now);
 
     free(cells);
@@ -1053,7 +1061,8 @@ acid_water_contest_pour(sand_t* g, int tapw, int tap0, int wcols) {
 /* Cell counts of water and acid left on the grid. */
 static void
 acid_water_contest_count(sand_t* g, int gw, int gh, int* water_left, int* acid_left) {
-    int wn = 0, an = 0;
+    int wn = 0;
+    int an = 0;
     for (int y = 0; y < gh; y++) {
         for (int x = 0; x < gw; x++) {
             const int m = CELL_MATERIAL(sand_at(g, x, y));
@@ -1094,11 +1103,14 @@ acid_water_contest(int water_pct, int* water_left, int* acid_left) {
 
 static void
 test_pouring_more_of_a_liquid_wins_the_contest_against_the_other(void) {
-    int last_water = -1, last_acid = INT_MAX - 8;
-    int even_water = 0, even_acid = 0;
+    int last_water = -1;
+    int last_acid = INT_MAX - 8;
+    int even_water = 0;
+    int even_acid = 0;
 
     for (int pct = 10; pct <= 90; pct += 10) {
-        int w = 0, a = 0;
+        int w = 0;
+        int a = 0;
         acid_water_contest(pct, &w, &a);
 
         char why[192];
@@ -2058,7 +2070,9 @@ boiler_column(cell_t liquid, int top) {
 
 static void
 test_boiling_converts_the_cell_nearest_the_heat(void) {
-    const int x = BOILER_X, water_top = 1, water_bottom = BOILER_BOTTOM;
+    const int x = BOILER_X;
+    const int water_top = 1;
+    const int water_bottom = BOILER_BOTTOM;
     boiler_column(CELL_MAKE(MAT_WATER, MASS_MAX), water_top);
 
     bool boiled = false;
@@ -2089,7 +2103,8 @@ test_boiling_converts_the_cell_nearest_the_heat(void) {
  * other chance fields. */
 static void
 test_sand_set_boils_zero_disables_conducted_heat_boiling(void) {
-    const int x = BOILER_X, water_y = BOILER_BOTTOM;
+    const int x = BOILER_X;
+    const int water_y = BOILER_BOTTOM;
     boiler_column(CELL_MAKE(MAT_WATER, MASS_MAX), water_y);
     sand_set_boils(&wide, 0);
 
@@ -2109,7 +2124,8 @@ test_sand_set_boils_zero_disables_conducted_heat_boiling(void) {
 
 static void
 test_boiled_steam_starts_at_full_life(void) {
-    const int x = BOILER_X, water_y = BOILER_BOTTOM;
+    const int x = BOILER_X;
+    const int water_y = BOILER_BOTTOM;
     boiler_column(CELL_MAKE(MAT_WATER, MASS_MAX), water_y);
     sand_set_boils(&wide, 255);
 
@@ -2133,7 +2149,8 @@ test_boiled_steam_starts_at_full_life(void) {
 
 static void
 test_boiling_acid_produces_gas_not_steam(void) {
-    const int x = BOILER_X, acid_y = BOILER_BOTTOM;
+    const int x = BOILER_X;
+    const int acid_y = BOILER_BOTTOM;
     boiler_column(CELL_MAKE(MAT_ACID, MASS_MAX), acid_y);
     sand_set_boils(&wide, 255);
 
@@ -2157,11 +2174,13 @@ test_the_boiler_end_to_end(void) {
 
     const int x = 10;
     const int wood_y = 19;
-    const int slab_top = 8, slab_bottom = 18;  /* 11 rows thick,
+    const int slab_top = 8;
+    const int slab_bottom = 18; /* 11 rows thick,
                                                   * matching the pour
                                                   * brush's real
                                                   * thickness */
-    const int water_top = 5, water_bottom = 7; /* 3 cells of water */
+    const int water_top = 5;
+    const int water_bottom = 7; /* 3 cells of water */
 
     sand_set(&wide, x, wood_y, WOOD);
     for (int y = slab_top; y <= slab_bottom; y++) {

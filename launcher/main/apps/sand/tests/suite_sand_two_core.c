@@ -836,7 +836,8 @@ tc_assert_free_fall_moves_one_cell(int phase, int gx, int gy, int start_x, int s
 static void
 tc_assert_forced_slide_moves_at_most_one_cell(int phase, int gx, int gy, int start_x, int start_y) {
     tc_board_t* b = tc_board_open(TC_W, TC_H, phase);
-    int dx, dy;
+    int dx;
+    int dy;
     sand_gravity_direction(gx, gy, &dx, &dy);
     sand_set(&b->s, start_x + dx, start_y + dy, STONE);
     sand_set(&b->s, start_x, start_y, SAND);
@@ -973,7 +974,8 @@ test_two_core_step_matches_serial_fall_distance_at_a_seam(void) {
             TEST_ASSERT_NOT_NULL(serial_blocks);
             TEST_ASSERT_NOT_NULL(two_core_blocks);
 
-            sand_t serial_s, two_core_s;
+            sand_t serial_s;
+            sand_t two_core_s;
             sand_init(&serial_s, serial_cells, TC_W, TC_H, 1u);
             sand_init(&two_core_s, two_core_cells, TC_W, TC_H, 1u);
             sand_enable_sleeping(&serial_s, serial_blocks);
@@ -1142,7 +1144,9 @@ static int
 tc_body_breaks_at(cell_t fill, material_id_t material, int tx, int ty, bool two_core) {
     const int side = tc_force_square_side(TC_W, TC_H);
     tc_board_t* b = tc_board_open(TC_W, TC_H, 1);
-    int x0, y0, broke = -1;
+    int x0;
+    int y0;
+    int broke = -1;
 
     tc_build_solid_body(&b->s, side, fill, &x0, &y0);
     const int steps = tc_body_steps(x0, y0, tx, ty);
@@ -1532,7 +1536,8 @@ test_two_core_step_conserves_grains_on_a_dense_column_and_pile(void) {
     for (size_t sc = 0; sc < sizeof scenes / sizeof scenes[0]; sc++) {
         for (size_t g = 0; g < sizeof gxs / sizeof gxs[0]; g++) {
             for (size_t o = 0; o < sizeof offsets / sizeof offsets[0]; o++) {
-                int serial_n = 0, two_core_n = 0;
+                int serial_n = 0;
+                int two_core_n = 0;
                 tc_run_zero_rng_and_hash(scenes[sc].build, scenes[sc].steps, gxs[g], gys[g], offsets[o], false,
                                          &serial_n);
                 tc_run_zero_rng_and_hash(scenes[sc].build, scenes[sc].steps, gxs[g], gys[g], offsets[o], true,
@@ -1576,7 +1581,8 @@ test_landscape_water_column_has_no_line_mass_lag(void) {
     TEST_ASSERT_NOT_NULL(serial_blocks);
     TEST_ASSERT_NOT_NULL(split_blocks);
 
-    sand_t serial, split;
+    sand_t serial;
+    sand_t split;
     sand_init(&serial, serial_cells, TC_W, TC_H, 7u);
     sand_init(&split, split_cells, TC_W, TC_H, 7u);
     sand_enable_sleeping(&serial, serial_blocks);
@@ -1657,7 +1663,8 @@ test_split_gas_equalise_keeps_seam_order(void) {
         TEST_ASSERT_NOT_NULL(serial_cells);
         TEST_ASSERT_NOT_NULL(split_cells);
 
-        sand_t serial, split;
+        sand_t serial;
+        sand_t split;
         sand_init(&serial, serial_cells, TC_W, TC_H, 1u);
         sand_init(&split, split_cells, TC_W, TC_H, 1u);
         void* scratch = lane_scratch_open(&split);
@@ -2356,7 +2363,8 @@ test_each_quality_grid_takes_the_cut_its_travel_class_asks_for(void) {
         for (int travel = 0; travel < SAND_CHUNK_TRAVEL_CLASSES; travel++) {
             const int* const expect = (travel == SAND_CHUNK_TRAVEL_X) ? want[i].along_x : want[i].other;
             sand_chunk_plan_t plan;
-            int side_x, side_y;
+            int side_x;
+            int side_y;
             char why[160];
 
             sand_chunk_table_sides(want[i].w, want[i].h, (sand_chunk_travel_t)travel, &side_x, &side_y);
@@ -2388,7 +2396,10 @@ test_only_a_step_travelling_along_x_alone_takes_the_long_cut(void) {
 static void
 tc_assert_forced_sides(const sand_t* probe, int force_x, int force_y, int want_x, int want_y) {
     for (int travel = 0; travel < SAND_CHUNK_TRAVEL_CLASSES; travel++) {
-        int table_x, table_y, side_x, side_y;
+        int table_x;
+        int table_y;
+        int side_x;
+        int side_y;
         char why[160];
 
         sand_chunk_table_sides(probe->w, probe->h, (sand_chunk_travel_t)travel, &table_x, &table_y);
@@ -2435,7 +2446,10 @@ test_a_stamp_is_never_read_under_a_cut_it_was_not_written_under(void) {
     sand_init(s, cells, TC_W, TC_H, 0u);
     sand_enable_step_stamps(s, stamps);
 
-    int wide_x, wide_y, narrow_x, narrow_y;
+    int wide_x;
+    int wide_y;
+    int narrow_x;
+    int narrow_y;
     sand_chunk_table_sides(TC_W, TC_H, SAND_CHUNK_TRAVEL_X, &wide_x, &wide_y);
     sand_chunk_table_sides(TC_W, TC_H, SAND_CHUNK_TRAVEL_OTHER, &narrow_x, &narrow_y);
     TEST_ASSERT_NOT_EQUAL_MESSAGE(wide_x, narrow_x, "this board must cut its two classes differently to mean anything");

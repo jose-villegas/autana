@@ -198,7 +198,8 @@ static void
 test_watered_dirt_steaming_precedes_resolving_when_it_happens(void) {
     lava_beside_dirt(SOIL_MOISTURE_MAX);
 
-    int steamed_at = -1, resolved_at = -1;
+    int steamed_at = -1;
+    int resolved_at = -1;
     for (int i = 0; i < 4000 && resolved_at < 0; i++) {
         sand_step(&s, 0, 1000, 0);
         if (steamed_at < 0 && count_cells_of(MAT_STEAM) > 0) {
@@ -375,7 +376,8 @@ test_dry_dirt_smelting_reaches_both_metal_and_stone(void) {
 
     run_steps(&flaw, 6000, 0, 1000);
 
-    int stone_count = 0, metal_count = 0;
+    int stone_count = 0;
+    int metal_count = 0;
     for (int k = 0; k < FLAW_TEST_PODS; k++) {
         const int lava_x = 2 + (FLAW_TEST_SPACING * k);
         const cell_t c = sand_at(&flaw, lava_x + 1, y);
@@ -1083,7 +1085,8 @@ test_acid_rain_resolves_to_both_acid_and_water(void) {
     sand_set(&s, 2, 4, STONE);
     sand_set(&s, 5, 4, STONE);
 
-    int acid_seen = 0, water_seen = 0;
+    int acid_seen = 0;
+    int water_seen = 0;
     for (int trial = 0; trial < ACID_RAIN_TRIALS; trial++) {
         sand_set(&s, 3, 3, STEAM);
         sand_set(&s, 3, 4, STEAM);

@@ -30,7 +30,9 @@ fill(cell_t* row, cell_t c) {
 
 static void
 test_paint_edge_mask_flags_each_empty_side(void) {
-    cell_t above[ROW_W], row[ROW_W], below[ROW_W];
+    cell_t above[ROW_W];
+    cell_t row[ROW_W];
+    cell_t below[ROW_W];
     fill(above, STONE);
     fill(row, STONE);
     fill(below, STONE);
@@ -69,7 +71,9 @@ test_paint_edge_mask_treats_the_grid_border_as_occupied(void) {
 
 static void
 test_paint_edge_mask_reads_diagonals_only_for_exposed_water(void) {
-    cell_t above[ROW_W], row[ROW_W], below[ROW_W];
+    cell_t above[ROW_W];
+    cell_t row[ROW_W];
+    cell_t below[ROW_W];
     fill(above, STONE);
     fill(row, STONE);
     fill(below, STONE);
@@ -149,7 +153,8 @@ test_paint_depth_count_holds_a_column_that_already_committed(void) {
 
 static void
 test_paint_clip_send_keeps_to_the_painted_span(void) {
-    int x0, x1;
+    int x0;
+    int x1;
 
     TEST_ASSERT_TRUE(sand_paint_clip_send(2, 12, 4, 9, false, 0, 0, &x0, &x1));
     TEST_ASSERT_EQUAL_INT(4, x0);
@@ -166,7 +171,8 @@ test_paint_clip_send_keeps_to_the_painted_span(void) {
 
 static void
 test_paint_clip_send_narrows_indexed_sends_to_what_changed(void) {
-    int x0, x1;
+    int x0;
+    int x1;
 
     TEST_ASSERT_TRUE(sand_paint_clip_send(2, 12, 4, 9, true, 5, 7, &x0, &x1));
     TEST_ASSERT_EQUAL_INT(5, x0);

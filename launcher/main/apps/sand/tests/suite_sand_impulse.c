@@ -82,7 +82,8 @@ static const char ONE_PUSH_STILL_TRACKED[] = "the single push roll here succeeds
 static void
 test_the_disc_count_table_matches_a_direct_lattice_count(void) {
     int first_bad = -1;
-    int expected_there = 0, got_there = 0;
+    int expected_there = 0;
+    int got_there = 0;
 
     for (int r = 0; r <= 40; r++) {
         int expect = 0;
@@ -1490,7 +1491,8 @@ static void
 test_blocker_normal_and_reflect_off_normal_match_the_exhaustive_arc_table(void) {
     fixture();
     sand_clear(&s);
-    const int cx = W / 2, cy = H / 2;
+    const int cx = W / 2;
+    const int cy = H / 2;
 
     for (int dir = 0; dir < 8; dir++) {
         const int* l = ring_dir(dir - 1);
@@ -2135,7 +2137,8 @@ ricochet_collect_candidates(ricochet_tracker_t* tr, const sand_t* g) {
  * RICOCHET_MATCH_RADIUS - or -1 if none is close enough. */
 static int
 ricochet_nearest_candidate(const ricochet_tracker_t* tr, int n_cand, const ricochet_lineage_t* li) {
-    int best = -1, best_d = (RICOCHET_MATCH_RADIUS * 4) + 1;
+    int best = -1;
+    int best_d = (RICOCHET_MATCH_RADIUS * 4) + 1;
     for (int ci = 0; ci < n_cand; ci++) {
         if (tr->cand_used[ci]) {
             continue;
@@ -2335,8 +2338,10 @@ static long
 ejecta_dirt_total(uint8_t* cells, impulse_t* buf) {
     long total = 0;
     for (uint32_t seed = 1; seed <= (uint32_t)EJECTA_SEEDS; seed++) {
-        const int dx0 = 10, dx1 = dx0 + EJECTA_DIRT_W;
-        const int dy1 = EJECTA_H - 1, dy0 = dy1 - EJECTA_DIRT_H;
+        const int dx0 = 10;
+        const int dx1 = dx0 + EJECTA_DIRT_W;
+        const int dy1 = EJECTA_H - 1;
+        const int dy0 = dy1 - EJECTA_DIRT_H;
         sand_t g;
         memset(cells, 0, (size_t)EJECTA_W * EJECTA_H);
         sand_init(&g, cells, EJECTA_W, EJECTA_H, seed);
@@ -2597,8 +2602,10 @@ static long
 ejecta_water_total(uint8_t* cells, impulse_t* buf) {
     long total = 0;
     for (uint32_t seed = 1; seed <= (uint32_t)EJECTA_SEEDS; seed++) {
-        const int dx0 = 20, dx1 = dx0 + EJECTA_WATER_W;
-        const int dy1 = EJECTA_H - 1, dy0 = dy1 - 1;
+        const int dx0 = 20;
+        const int dx1 = dx0 + EJECTA_WATER_W;
+        const int dy1 = EJECTA_H - 1;
+        const int dy0 = dy1 - 1;
         sand_t g;
         memset(cells, 0, (size_t)EJECTA_W * EJECTA_H);
         sand_init(&g, cells, EJECTA_W, EJECTA_H, seed);
@@ -2863,8 +2870,10 @@ test_a_thrown_powder_grain_conserves_the_dirt_it_ejects(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(buf, "conservation impulse queue must fit in what the framebuffer "
                                       "leaves");
 
-    const int dx0 = 10, dx1 = dx0 + EJECTA_DIRT_W;
-    const int dy1 = EJECTA_H - 1, dy0 = dy1 - EJECTA_DIRT_H;
+    const int dx0 = 10;
+    const int dx1 = dx0 + EJECTA_DIRT_W;
+    const int dy1 = EJECTA_H - 1;
+    const int dy0 = dy1 - EJECTA_DIRT_H;
     sand_t g;
     memset(cells, 0, (size_t)EJECTA_W * EJECTA_H);
     sand_init(&g, cells, EJECTA_W, EJECTA_H, 5u);
@@ -2905,8 +2914,10 @@ test_a_thrown_powder_grain_conserves_the_water_mass_it_ejects(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(buf, "conservation impulse queue must fit in what the framebuffer "
                                       "leaves");
 
-    const int dx0 = 20, dx1 = dx0 + EJECTA_WATER_W;
-    const int dy1 = EJECTA_H - 1, dy0 = dy1 - 1;
+    const int dx0 = 20;
+    const int dx1 = dx0 + EJECTA_WATER_W;
+    const int dy1 = EJECTA_H - 1;
+    const int dy0 = dy1 - 1;
     sand_t g;
     memset(cells, 0, (size_t)EJECTA_W * EJECTA_H);
     sand_init(&g, cells, EJECTA_W, EJECTA_H, 5u);

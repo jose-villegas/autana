@@ -99,7 +99,8 @@ test_a_liquid_interior_is_shaded_by_depth(void) {
     const gfx_color_t* pal = material_palette();
     const cell_t c = CELL_MAKE(MAT_WATER, MASS_MAX);
 
-    gfx_color_t shallow[3], deep[3];
+    gfx_color_t shallow[3];
+    gfx_color_t deep[3];
     material_colours(&f, c, 0u, 0u, 0u, shallow);
     material_colours(&f, c, 0u, 0u, 255u, deep);
 
@@ -129,7 +130,8 @@ static void
 test_only_a_liquid_interior_reads_depth(void) {
     material_frame_t f = {0};
 
-    gfx_color_t rim_shallow[3], rim_deep[3];
+    gfx_color_t rim_shallow[3];
+    gfx_color_t rim_deep[3];
     material_colours(&f, CELL_MAKE(MAT_OIL, 8), 0u, MATERIAL_EDGE_UP, 0u, rim_shallow);
     material_colours(&f, CELL_MAKE(MAT_OIL, 8), 0u, MATERIAL_EDGE_UP, 255u, rim_deep);
     TEST_ASSERT_EQUAL_MESSAGE(rim_shallow[0], rim_deep[0],
@@ -138,14 +140,16 @@ test_only_a_liquid_interior_reads_depth(void) {
                               "already has its own fill level and liquid_spec[]'s specular "
                               "shift to show instead");
 
-    gfx_color_t glass_shallow[3], glass_deep[3];
+    gfx_color_t glass_shallow[3];
+    gfx_color_t glass_deep[3];
     material_colours(&f, CELL_MAKE(MAT_GLASS, 5), 1u, 0u, 0u, glass_shallow);
     material_colours(&f, CELL_MAKE(MAT_GLASS, 5), 1u, 0u, 255u, glass_deep);
     TEST_ASSERT_EQUAL_MESSAGE(glass_shallow[0], glass_deep[0],
                               "glass must ignore depth entirely - it is not a liquid, and depth "
                               "must not leak into a code path that has nothing to do with it");
 
-    gfx_color_t stone_shallow[3], stone_deep[3];
+    gfx_color_t stone_shallow[3];
+    gfx_color_t stone_deep[3];
     material_colours(&f, CELL_MAKE(MAT_STONE, 5), 1u, 0u, 0u, stone_shallow);
     material_colours(&f, CELL_MAKE(MAT_STONE, 5), 1u, 0u, 255u, stone_deep);
     TEST_ASSERT_EQUAL_MESSAGE(stone_shallow[0], stone_deep[0],
@@ -174,7 +178,8 @@ test_a_liquid_rim_still_shows_its_fill(void) {
      * has nothing to do with. */
     const unsigned mask = MATERIAL_EDGE_UP | MATERIAL_EDGE_UP_LEFT | MATERIAL_EDGE_UP_RIGHT;
 
-    gfx_color_t shallow[3], deep[3];
+    gfx_color_t shallow[3];
+    gfx_color_t deep[3];
     material_colours(&f, CELL_MAKE(MAT_WATER, 1), 0u, mask, 255u, shallow);
     material_colours(&f, CELL_MAKE(MAT_WATER, MASS_MAX), 0u, mask, 255u, deep);
 
@@ -235,7 +240,8 @@ test_a_liquid_rim_catches_the_light_from_above(void) {
  * whole band to a single unmoving phase across every pixel of a cell. */
 static void
 test_shine_direction_holds_the_old_diagonal_with_no_gravity(void) {
-    int ux_q8 = 0, uy_q8 = 0;
+    int ux_q8 = 0;
+    int uy_q8 = 0;
     material_shine_direction(0, 0, &ux_q8, &uy_q8);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(181, ux_q8,
@@ -246,7 +252,8 @@ test_shine_direction_holds_the_old_diagonal_with_no_gravity(void) {
 
 static void
 test_shine_direction_is_minus_gravity_turned_left(void) {
-    int ux_q8 = 999, uy_q8 = 999;
+    int ux_q8 = 999;
+    int uy_q8 = 999;
 
     material_shine_direction(0, 1000, &ux_q8, &uy_q8);
     TEST_ASSERT_TRUE_MESSAGE(uy_q8 < -150 && uy_q8 > -215,
@@ -267,7 +274,10 @@ test_shine_direction_is_minus_gravity_turned_left(void) {
 
 static void
 test_shine_direction_is_a_genuine_angle_not_a_snap(void) {
-    int axis_ux_q8, axis_uy_q8, diag_ux_q8, diag_uy_q8;
+    int axis_ux_q8;
+    int axis_uy_q8;
+    int diag_ux_q8;
+    int diag_uy_q8;
 
     material_shine_direction(1000, 0, &axis_ux_q8, &axis_uy_q8);
     material_shine_direction(1000, 1000, &diag_ux_q8, &diag_uy_q8);
@@ -296,7 +306,8 @@ test_shine_direction_is_unit_length(void) {
     static const int gys[] = {0, 1000, -1000, 400, -900};
 
     for (unsigned i = 0; i < sizeof gxs / sizeof gxs[0]; i++) {
-        int ux_q8, uy_q8;
+        int ux_q8;
+        int uy_q8;
         material_shine_direction(gxs[i], gys[i], &ux_q8, &uy_q8);
 
         /* mathi_len() overshoots by 8% at 2:1 ratio, undershoots by 1% on
@@ -401,9 +412,12 @@ test_local_depth_follows_the_puddles_own_shape(void) {
      * pool. See the DIVERGENCE assertion below for why a single call is the
      * right thing to check here, not an artifact of not bothering to settle
      * further. */
-    unsigned depth_obstructed[PH], depth_clear[PH];
-    unsigned char obst_stable = 0, obst_top_row = 255;
-    unsigned char clear_stable = 0, clear_top_row = 255;
+    unsigned depth_obstructed[PH];
+    unsigned depth_clear[PH];
+    unsigned char obst_stable = 0;
+    unsigned char obst_top_row = 255;
+    unsigned char clear_stable = 0;
+    unsigned char clear_top_row = 255;
     mirror_local_depth_column(&fx.obst_pool, OBST_X, PH, &obst_stable, &obst_top_row, depth_obstructed, 1u,
                               MATERIAL_LIQUID_DEPTH_BAND);
     mirror_local_depth_column(&fx.obst_pool, CLEAR_X, PH, &clear_stable, &clear_top_row, depth_clear, 1u,
@@ -710,11 +724,14 @@ test_the_blend_has_no_jump_crossing_45_degrees(void) {
 
     int lum[BLEND_SWEEP_N];
     for (size_t i = 0; i < BLEND_SWEEP_N; i++) {
-        const int gx = BLEND_SWEEP[i].gx, gy = BLEND_SWEEP[i].gy;
+        const int gx = BLEND_SWEEP[i].gx;
+        const int gy = BLEND_SWEEP[i].gy;
         bool vdom;
         bool vrev;
         bool hrev;
-        unsigned ax, ay, scale_q8;
+        unsigned ax;
+        unsigned ay;
+        unsigned scale_q8;
         ray_walk_frame_facts(gx, gy, &vdom, &vrev, &hrev, &ax, &ay, &scale_q8);
 
         ray_walk_state_t st;
@@ -740,7 +757,8 @@ test_the_blend_has_no_jump_crossing_45_degrees(void) {
      * depth 255), not a hand-picked luminance number - robust to the ramp
      * ever being retuned. Three quarters of that span is the threshold,
      * matching every earlier shape's own version of this test. */
-    gfx_color_t shallow[3], deep[3];
+    gfx_color_t shallow[3];
+    gfx_color_t deep[3];
     material_colours(&f, CELL_MAKE(MAT_WATER, MASS_MAX), 0u, 0u, 0u, shallow);
     material_colours(&f, CELL_MAKE(MAT_WATER, MASS_MAX), 0u, 0u, 255u, deep);
     const int full_span = panel_luminance(shallow[0]) - panel_luminance(deep[0]);
@@ -789,7 +807,8 @@ mirror_debounce_decide(unsigned char* stable, unsigned char* top_row, bool same_
 
 static void
 test_a_same_row_reset_commits_but_a_different_row_does_not(void) {
-    unsigned char stable = 0, top_row = 255;
+    unsigned char stable = 0;
+    unsigned char top_row = 255;
 
     unsigned last = 0;
     for (int i = 0; i < 10; i++) {
@@ -868,7 +887,8 @@ test_a_continuously_moving_boundary_does_not_run_away(void) {
     sand_init(&fx.debounce_test, debounce_test_cells, DEBOUNCE_TEST_W, DEBOUNCE_TEST_H, 2u);
     sand_fill_box(&fx.debounce_test, CX, START_TOP, CX + 1, DEBOUNCE_TEST_H, CELL_MAKE(MAT_WATER, MASS_MAX));
 
-    unsigned char stable = 0, top_row = 255;
+    unsigned char stable = 0;
+    unsigned char top_row = 255;
     unsigned depth[DEBOUNCE_TEST_H];
 
     /* Settle once, exactly like the sibling test below, before the drain
@@ -1298,7 +1318,8 @@ test_a_shallow_puddle_still_shows_real_darkening(void) {
     enum { NEAR_SURFACE_Y = 3, NEAR_BOTTOM_Y = PH - 1 };
 
     unsigned depth[PH];
-    unsigned char stable = 0, top_row = 255;
+    unsigned char stable = 0;
+    unsigned char top_row = 255;
     mirror_local_depth_column(&fx.shallow_pool, 0, PH, &stable, &top_row, depth, 1u, MATERIAL_LIQUID_DEPTH_BAND);
 
     const unsigned near_surface_depth = depth[NEAR_SURFACE_Y];
@@ -1310,8 +1331,10 @@ test_a_shallow_puddle_still_shows_real_darkening(void) {
                              "as broken");
 
     const cell_t c = CELL_MAKE(MAT_WATER, MASS_MAX);
-    gfx_color_t near_surface_col[3], near_bottom_col[3];
-    gfx_color_t shallowest[3], deepest[3];
+    gfx_color_t near_surface_col[3];
+    gfx_color_t near_bottom_col[3];
+    gfx_color_t shallowest[3];
+    gfx_color_t deepest[3];
     material_colours(&f, c, 0u, 0u, near_surface_depth, near_surface_col);
     material_colours(&f, c, 0u, 0u, near_bottom_depth, near_bottom_col);
     material_colours(&f, c, 0u, 0u, 0u, shallowest);
@@ -1613,7 +1636,8 @@ wake_test_run(int steps) {
     double prev_mean = -1.0;
 
     for (int f = 0; f < steps; f++) {
-        int gx, gy;
+        int gx;
+        int gy;
         wake_test_frame_gravity(&wobble, f, &gx, &gy);
         repaint_rig_frame(&rig, gx, gy, wake_test_row_carries_liquid, MATERIAL_LIQUID_DEPTH_BAND, true);
 
@@ -1729,7 +1753,8 @@ flip_test_sweep_column(int top, int bottom, bool v_reverse, bool apply_fix, unsi
 
 static double
 flip_test_run(bool apply_fix) {
-    unsigned char stable = 0, top_row = 255;
+    unsigned char stable = 0;
+    unsigned char top_row = 255;
     bool v_reverse_prev = false; /* matches local_depth_v_reverse_prev's own
                                      zero-initialized default in sand_paint_row_state_t */
     unsigned depth[FLIP_TEST_H];
@@ -1917,7 +1942,8 @@ band_test_run(void) {
     for (int f = 0; f < BAND_TEST_FRAMES; f++) {
         band_test_maybe_reseed(&fx.band_test_grid, f);
 
-        int gx, gy;
+        int gx;
+        int gy;
         band_test_frame_gravity(&wobble, f, &gx, &gy);
         repaint_rig_frame(&rig, gx, gy, band_test_row_carries_liquid, ceiling, false);
 
@@ -2047,7 +2073,9 @@ flash_test_frame_reset(int gx, int gy, int grid_w, int grid_h, bool gate, ray_wa
     bool vdom;
     bool vrev;
     bool hrev;
-    unsigned ax, ay, scale_q8;
+    unsigned ax;
+    unsigned ay;
+    unsigned scale_q8;
     ray_walk_frame_facts(gx, gy, &vdom, &vrev, &hrev, &ax, &ay, &scale_q8);
 
     bool vrev_matters = (vrev != *vrev_prev);
@@ -2096,7 +2124,9 @@ flash_test_paint(int gx, int gy, bool wake_fired) {
     bool vdom;
     bool vrev;
     bool hrev;
-    unsigned ax, ay, scale_q8;
+    unsigned ax;
+    unsigned ay;
+    unsigned scale_q8;
     ray_walk_frame_facts(gx, gy, &vdom, &vrev, &hrev, &ax, &ay, &scale_q8);
 
     if (wake_fired) {
@@ -2186,7 +2216,8 @@ flash_test_count_crossed(void) {
             if (flash_displayed[k] < 0 || flash_displayed_prev[k] < 0 || !flash_test_is_interior_liquid(x, y)) {
                 continue;
             }
-            const int a = flash_displayed_prev[k], b = flash_displayed[k];
+            const int a = flash_displayed_prev[k];
+            const int b = flash_displayed[k];
             const int diff = a > b ? a - b : b - a;
             if (diff > FLASH_TEST_SHADE_STEP) {
                 crossed++;
@@ -2340,10 +2371,12 @@ tremor_test_run(bool gate_reset, int* resets, int* changed) {
 
 static void
 test_axis_lock_tremor_does_not_wipe_the_depth_debounce(void) {
-    int gated_resets = 0, gated_changed = 0;
+    int gated_resets = 0;
+    int gated_changed = 0;
     tremor_test_run(true, &gated_resets, &gated_changed);
 
-    int ungated_resets = 0, ungated_changed = 0;
+    int ungated_resets = 0;
+    int ungated_changed = 0;
     tremor_test_run(false, &ungated_resets, &ungated_changed);
 
     char why[1000];
@@ -2415,7 +2448,9 @@ shadow_test_coherent_pass(int gx, int gy, unsigned depth_out[]) {
     bool vdom;
     bool vrev;
     bool hrev;
-    unsigned ax, ay, scale_q8;
+    unsigned ax;
+    unsigned ay;
+    unsigned scale_q8;
     ray_walk_frame_facts(gx, gy, &vdom, &vrev, &hrev, &ax, &ay, &scale_q8);
 
     ray_walk_state_t st;
@@ -2442,7 +2477,8 @@ typedef struct {
  * with a genuine deficit. */
 static void
 shadow_test_accumulate(const unsigned depth[], int sx, int sy, int dx, int dy, shadow_moment_t* m) {
-    const int x = sx + dx, y = sy + dy;
+    const int x = sx + dx;
+    const int y = sy + dy;
     if (x < 2 || y < 2 || x >= SHADOW_TEST_W - 2 || y >= SHADOW_TEST_H - 2) {
         return;
     }
@@ -2551,7 +2587,8 @@ test_a_submerged_obstacle_casts_a_gravity_aligned_shadow(void) {
     size_t worst_i = 0;
 
     for (size_t i = 0; i < SHADOW_SWEEP_N; i++) {
-        const int gx = SHADOW_SWEEP[i].gx, gy = SHADOW_SWEEP[i].gy;
+        const int gx = SHADOW_SWEEP[i].gx;
+        const int gy = SHADOW_SWEEP[i].gy;
         shadow_test_coherent_pass(gx, gy, depth);
 
         double off_by = 0.0;
@@ -2633,8 +2670,10 @@ test_a_fixed_depth_reads_the_same_at_every_tilt_angle(void) {
     int worst_i = -1;
 
     for (size_t i = 0; i < DEFECT2_SWEEP_N; i++) {
-        const int gx = DEFECT2_SWEEP[i].gx, gy = DEFECT2_SWEEP[i].gy;
-        const unsigned ax = (unsigned)gx, ay = (unsigned)gy;
+        const int gx = DEFECT2_SWEEP[i].gx;
+        const int gy = DEFECT2_SWEEP[i].gy;
+        const unsigned ax = (unsigned)gx;
+        const unsigned ay = (unsigned)gy;
         const int len = mathi_len(gx, gy);
         const bool vdom = (ay >= ax);
         const unsigned dom_axis = vdom ? ay : ax;
@@ -2701,8 +2740,10 @@ test_a_saturated_liquid_body_reads_the_same_shade_at_every_tilt_angle(void) {
     material_frame_t f = {0};
     int lum[SATURATED_SWEEP_N];
     for (size_t i = 0; i < SATURATED_SWEEP_N; i++) {
-        const int gx = SATURATED_SWEEP[i].gx, gy = SATURATED_SWEEP[i].gy;
-        const unsigned ax = (unsigned)gx, ay = (unsigned)gy;
+        const int gx = SATURATED_SWEEP[i].gx;
+        const int gy = SATURATED_SWEEP[i].gy;
+        const unsigned ax = (unsigned)gx;
+        const unsigned ay = (unsigned)gy;
         const int len = mathi_len(gx, gy);
         const bool vdom = (ay >= ax);
         const unsigned dom_axis = vdom ? ay : ax;
