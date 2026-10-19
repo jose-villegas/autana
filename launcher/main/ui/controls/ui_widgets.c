@@ -10,7 +10,6 @@
 #include "ui/controls/ui_style.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
-#include "ui/ui_mu.h"
 
 #define BUTTON_PAD      8
 #define BUTTON_ICON_GAP 8

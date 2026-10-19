@@ -48,7 +48,6 @@
 #include "ui/controls/ui_icons.h"
 #include "ui/input/ui_bridge.h"
 #include "ui/ui_internal.h"
-#include "ui/ui_mu.h"
 
 static uint32_t ui_band_fallbacks;
 
@@ -136,7 +135,7 @@ draw_text_command(const mu_Command* cmd, affine2x_t t) {
      * every other command. */
     const int tw = draw_font_text_width(font, cmd->text.str, -1, scale);
     const int th = draw_font_height(font, scale);
-    const mu_Rect box = ui_transform_rect(t, (mu_Rect){cmd->text.pos.x, cmd->text.pos.y, tw, th});
+    const mu_Rect box = ui_transform_mu_rect(t, (mu_Rect){cmd->text.pos.x, cmd->text.pos.y, tw, th});
 
     /* draw_text_font()'s (x, y) is the FIRST GLYPH's cell, not a
      * corner of the box; see ui_text_glyph0_origin()'s own comment
@@ -199,7 +198,7 @@ draw_command(const mu_Command* cmd) {
             if (c.a == 0) {
                 break;
             }
-            const mu_Rect r = ui_transform_rect(t, cmd->rect.rect);
+            const mu_Rect r = ui_transform_mu_rect(t, cmd->rect.rect);
             draw_rect(r.x, r.y, r.w, r.h, mu_color_to_gfx(c));
             break;
         }
@@ -218,16 +217,16 @@ draw_command(const mu_Command* cmd) {
             const draw_image_t* check = cmd->icon.id == MU_ICON_CHECK ? ui_icon_image(UI_ICON_CHECK) : NULL;
             if (check != NULL) {
                 icon_fill_ctx_t fc = {.color = color};
-                ui_transform_icon_blocks(t, check, cmd->icon.rect, icon_fill_emit, &fc);
+                ui_transform_icon_blocks(t, check, ui_recti_from_mu(cmd->icon.rect), icon_fill_emit, &fc);
             } else {
-                const mu_Rect r = ui_transform_rect(t, cmd->icon.rect);
+                const mu_Rect r = ui_transform_mu_rect(t, cmd->icon.rect);
                 draw_rect(r.x + r.w / 3, r.y + r.h / 3, r.w / 3, r.h / 3, color);
             }
             break;
         }
 
         case MU_COMMAND_CLIP: {
-            const mu_Rect r = ui_transform_rect(t, cmd->clip.rect);
+            const mu_Rect r = ui_transform_mu_rect(t, cmd->clip.rect);
             draw_set_clip(r.x, r.y, r.w, r.h);
             break;
         }
@@ -304,7 +303,7 @@ rects_overlap(mu_Rect a, mu_Rect b) {
  * Landscape. */
 static mu_Rect
 canvas_physical_rect(const mu_Container* cnt) {
-    return ui_transform_rect(ui_effective_transform(), cnt->rect);
+    return ui_transform_mu_rect(ui_effective_transform(), cnt->rect);
 }
 
 /* Which canvases changed. Also repaint one whose bands are already dirty:
@@ -582,7 +581,7 @@ command_row_range(const mu_Command* cmd, int* y0, int* y1) {
 
     switch (cmd->type) {
         case MU_COMMAND_RECT: {
-            const mu_Rect r = ui_transform_rect(t, cmd->rect.rect);
+            const mu_Rect r = ui_transform_mu_rect(t, cmd->rect.rect);
             *y0 = r.y;
             *y1 = r.y + r.h;
             return true;
@@ -591,7 +590,7 @@ command_row_range(const mu_Command* cmd, int* y0, int* y1) {
             const ui_font_scaled_t fs = ui_resolve_font_scaled(cmd->text.font);
             const int tw = draw_font_text_width(fs.font, cmd->text.str, -1, fs.scale);
             const int th = draw_font_height(fs.font, fs.scale);
-            const mu_Rect box = ui_transform_rect(t, (mu_Rect){cmd->text.pos.x, cmd->text.pos.y, tw, th});
+            const mu_Rect box = ui_transform_mu_rect(t, (mu_Rect){cmd->text.pos.x, cmd->text.pos.y, tw, th});
             *y0 = box.y;
             *y1 = box.y + box.h;
             if (cmd->text.color.a == 255) {
@@ -605,7 +604,7 @@ command_row_range(const mu_Command* cmd, int* y0, int* y1) {
             return true;
         }
         case MU_COMMAND_ICON: {
-            const mu_Rect r = ui_transform_rect(t, cmd->icon.rect);
+            const mu_Rect r = ui_transform_mu_rect(t, cmd->icon.rect);
             *y0 = r.y;
             *y1 = r.y + r.h;
             return true;

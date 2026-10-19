@@ -9,7 +9,6 @@
 #include <string.h>
 
 #include "suites.h"
-#include "ui_budget.h"
 #include "unity.h"
 
 #include "app/app.h"
@@ -53,7 +52,7 @@ test_palette_screen_command_list_fits_budget(void) {
     const input_t input = {0};
     ui_begin(&input);
     palette_screen_draw(&ui);
-    ui_budget_assert("sand palette");
+    ui_probe_budget_assert("sand palette");
 }
 
 static void
@@ -77,7 +76,7 @@ test_brush_screen_command_list_fits_budget(void) {
     const input_t input = {0};
     ui_begin(&input);
     brush_screen_draw(&ui);
-    ui_budget_assert("sand brush");
+    ui_probe_budget_assert("sand brush");
 }
 
 static void
@@ -87,7 +86,7 @@ test_title_screen_command_list_fits_budget(void) {
     const input_t input = {0};
     ui_begin(&input);
     title_screen_draw();
-    ui_budget_assert("sand title");
+    ui_probe_budget_assert("sand title");
 }
 
 /* Shaped like the app's, for layout, taps and command-list size; the
@@ -122,7 +121,7 @@ test_options_screen_command_list_fits_budget(void) {
     const input_t input = {0};
     ui_begin(&input);
     options_screen_draw(&menu, committed, &labels);
-    ui_budget_assert("sand options");
+    ui_probe_budget_assert("sand options");
 }
 
 /* The dither list open: every row, swatch and all, on top of the screen.
@@ -162,13 +161,13 @@ test_options_screen_with_its_dither_list_open_fits_budget(void) {
     for (size_t i = 0; i < sizeof steps / sizeof steps[0]; i++) {
         ui_begin(&steps[i]);
         options_screen_draw(&menu, committed, &labels);
-        ui_end_commands();
+        ui_probe_end_frame();
     }
 
     const input_t idle = {0};
     ui_begin(&idle);
     options_screen_draw(&menu, committed, &labels);
-    ui_budget_assert("sand options, dither list open");
+    ui_probe_budget_assert("sand options, dither list open");
     recti_t rows;
     int scroll;
     TEST_ASSERT_TRUE_MESSAGE(ui_probe_list(&rows, &scroll), "the list must actually be open for this to measure it");

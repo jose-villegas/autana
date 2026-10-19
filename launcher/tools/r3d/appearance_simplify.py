@@ -21,6 +21,7 @@ The optimiser needs PyTorch with CUDA and nvdiffrast; see the README.
 """
 
 import argparse
+import json
 from contextlib import contextmanager
 import os
 import pathlib
@@ -29,10 +30,13 @@ import time
 from typing import NamedTuple
 
 import numpy as np
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import log  # noqa: E402
+from r3d.geometry import triangle_areas  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
 from r3d.lit_mesh import finest_triangles, read_lit_mesh  # noqa: E402
 from r3d.cost_model import load as load_cost  # noqa: E402
@@ -50,6 +54,14 @@ SURFACE_TANGENTIAL_WEIGHT = 0.05
 CUBLAS_WORKSPACE_ENV = "CUBLAS_WORKSPACE_CONFIG"
 CUBLAS_WORKSPACE = ":4096:8"
 RASTER_EPSILON = 1.0 / 16.0
+# A triangle counts as stretched when its longest fitted edge exceeds this many times its longest start edge.
+STRETCH_RATIO = 2.0
+# A triangle counts as grown when its fitted area exceeds this many times its start area.
+AREA_GROWTH_RATIO = 4.0
+# A triangle counts as moved when its largest corner displacement exceeds this many mean start edges.
+MOVED_EDGES = 1.0
+# How many worst parts the log lists.
+STRETCH_WORST = 5
 
 
 @contextmanager
@@ -127,6 +139,83 @@ def point_edges(tris, vertex_point):
     edges = np.concatenate([corners[:, [0, 1]], corners[:, [1, 2]], corners[:, [2, 0]]])
     edges = np.sort(edges[edges[:, 0] != edges[:, 1]], axis=1)
     return np.unique(edges, axis=0)
+
+
+def start_parts(mesh) -> np.ndarray:
+    """Connected-part labels for welded start points, including colour seams."""
+    edges = point_edges(mesh.tris, mesh.vertex_point)
+    graph = coo_matrix((np.ones(len(edges)), (edges[:, 0], edges[:, 1])),
+                       shape=(len(mesh.points), len(mesh.points)))
+    _, labels = connected_components(graph, directed=False)
+    return labels
+
+
+def triangle_edges(points, tris, vertex_point):
+    """Each triangle's edge lengths in corner order, shaped (n, 3)."""
+    corners = vertex_point[tris]
+    return np.stack([np.linalg.norm(points[corners[:, k]] - points[corners[:, (k + 1) % 3]], axis=1) for k in range(3)], axis=1)
+
+
+def ratio_with_inf(value, start):
+    """Ratios with infinity for positive values over zero and unity for zero over zero."""
+    ratio = np.where(value > 0, np.inf, 1.0)
+    return np.divide(value, start, out=ratio, where=start > 0)
+
+
+def triangle_stretch(start_points, fitted_points, mesh) -> np.ndarray:
+    """Each triangle's longest fitted edge relative to its longest start edge."""
+    start_edge = triangle_edges(start_points, mesh.tris, mesh.vertex_point).max(axis=1)
+    fitted_edge = triangle_edges(fitted_points, mesh.tris, mesh.vertex_point).max(axis=1)
+    return ratio_with_inf(fitted_edge, start_edge)
+
+
+def triangle_area_growth(start_points, fitted_points, mesh) -> np.ndarray:
+    """Each triangle's fitted area relative to its start area."""
+    corners = mesh.vertex_point[mesh.tris]
+    return ratio_with_inf(triangle_areas(fitted_points, corners), triangle_areas(start_points, corners))
+
+
+def triangle_moved(start_points, fitted_points, mesh) -> np.ndarray:
+    """Each triangle's largest corner move relative to its mean start edge."""
+    corners = mesh.vertex_point[mesh.tris]
+    moved = np.linalg.norm(fitted_points[corners] - start_points[corners], axis=2).max(axis=1)
+    mean_edge = triangle_edges(start_points, mesh.tris, mesh.vertex_point).mean(axis=1)
+    return ratio_with_inf(moved, mean_edge)
+
+
+def stretch_report(start, fitted, kept) -> dict:
+    """Edge stretch, area growth and displacement by start part, with small-part totals and worst parts."""
+    labels = start_parts(start)
+    parts = labels[start.vertex_point[start.tris[kept, 0]]]
+    flags = {
+        "stretch": triangle_stretch(start.points, fitted.points, fitted) > STRETCH_RATIO,
+        "area_growth": triangle_area_growth(start.points, fitted.points, fitted) > AREA_GROWTH_RATIO,
+        "moved": triangle_moved(start.points, fitted.points, fitted) > MOVED_EDGES,
+    }
+    edges = point_edges(start.tris, start.vertex_point)
+    length = np.linalg.norm(start.points[edges[:, 0]] - start.points[edges[:, 1]], axis=1)
+    global_edge = length.mean()
+    edge_parts = labels[edges[:, 0]]
+    part_count = int(labels.max()) + 1
+    edge_count = np.bincount(edge_parts, minlength=part_count)
+    edge_total = np.bincount(edge_parts, weights=length, minlength=part_count)
+    mean_edge = np.divide(edge_total, edge_count, out=np.zeros(part_count), where=edge_count > 0)
+    count = np.bincount(parts, minlength=part_count)
+    rows = [dict(part=int(part), triangles=int(count[part]), mean_start_edge=float(mean_edge[part]))
+            for part in np.flatnonzero(count)]
+    groups = {"small": mean_edge < global_edge, "rest": mean_edge >= global_edge}
+    report = dict(parts=rows, worst={})
+    for name, mask in groups.items():
+        report[name] = dict(triangles=int(count[mask].sum()))
+    for measure, flagged in flags.items():
+        measured = np.bincount(parts, weights=flagged, minlength=part_count)
+        for row in rows:
+            row[measure] = float(100 * measured[row["part"]] / row["triangles"])
+        for name, mask in groups.items():
+            triangles = report[name]["triangles"]
+            report[name][measure] = float(100 * measured[mask].sum() / triangles) if triangles else 0.0
+        report["worst"][measure] = sorted(rows, key=lambda row: (-row[measure], -row["triangles"], row["part"]))[:STRETCH_WORST]
+    return report
 
 
 def projection(eye, forward, width, height, lens, near):
@@ -405,13 +494,14 @@ def coverage(mesh, views, size, device="cuda"):
 
 
 def prune(mesh, shown, budget):
-    """The mesh without the triangles that show least, down to `budget`:
-    every triangle no view shows goes first, then those showing fewest
-    pixels. A flat mesh's colours go with their triangles."""
+    """Drop never-shown triangles first, then those showing fewest pixels to
+    meet `budget`. A flat mesh's colours go with their triangles. Return the
+    pruned mesh and the kept start indices."""
     order = np.argsort(-np.asarray(shown), kind="stable")
     keep = np.sort(order[: min(budget, int(np.count_nonzero(shown)))])
-    return mesh._replace(rgb=mesh.rgb[keep] if mesh.flat else mesh.rgb, tris=mesh.tris[keep],
-                         double=np.asarray(mesh.double)[keep])
+    pruned = mesh._replace(rgb=mesh.rgb[keep] if mesh.flat else mesh.rgb, tris=mesh.tris[keep],
+                           double=np.asarray(mesh.double)[keep])
+    return pruned, keep
 
 
 def uniform_laplacian(points, edges):
@@ -526,7 +616,7 @@ def refine(mesh, error, budget):
     positions = points[vertex_point]
     while len(tris) < budget:
         corners = vertex_point[tris]
-        lengths = np.stack([np.linalg.norm(points[corners[:, k]] - points[corners[:, (k + 1) % 3]], axis=1) for k in range(3)], axis=1)
+        lengths = triangle_edges(points, tris, vertex_point)
         longest = lengths.argmax(axis=1)
         marked_points = set()
         for index in np.argsort(-error)[: max(1, (budget - len(tris)) // 2)]:
@@ -565,9 +655,10 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
              clear=(0.0, 0.0, 0.0), cost=None, cost_weight=0.0, scale=1, normal_weight=0.0, surface_weight=0.0,
              surface_margin=0.0, source=None):
     """Fit fixed triangles; return positions, colours and colour-only error history.
-    Position learning rates use bounding diagonals. Laplacian drift and the source
-    envelope use capped local start edge scales, averaged per triangle for the
-    envelope; normals and predicted cost add their weighted penalties.
+    Position steps use bounding diagonals and each vertex's capped local start scale.
+    Laplacian drift and the source envelope use capped local start edge scales,
+    averaged per triangle for the envelope; normals and predicted cost add their
+    weighted penalties.
     Both learning rates decay tenfold over the run."""
     import torch
 
@@ -587,10 +678,11 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
 
     edges = torch.as_tensor(point_edges(tris, vertex_point), device=device)
     start = torch.as_tensor(points0, dtype=torch.float32, device=device)
-    points = start.clone().requires_grad_(True)
+    delta = torch.zeros_like(start).requires_grad_(True)
     colours = torch.as_tensor(rgb0, dtype=torch.float32, device=device).requires_grad_(True)
     rest = uniform_laplacian(start, edges)
     point_scale = vertex_scale(start, edges)
+    step_scale = point_scale / point_scale.max()
     matrices = [torch.as_tensor(view[0], dtype=torch.float32, device=device) for view in views]
     targets = [torch.as_tensor(view[1], device=device) for view in views]
     normals = [None if len(view) < 3 or view[2] is None else torch.as_tensor(view[2], device=device) for view in views]
@@ -612,7 +704,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         sample_scale = point_scale[:, 0][corners].mean(1).repeat_interleave(SURFACE_SAMPLES_PER_TRIANGLE)[:, None]
         barycentric = torch.as_tensor(uniform_barycentric(surface_rng, (len(tris), SURFACE_SAMPLES_PER_TRIANGLE)),
                                       dtype=start.dtype, device=device)
-    adam = torch.optim.Adam([{"params": [points], "lr": lr_position * diagonal}, {"params": [colours], "lr": lr_colour}])
+    adam = torch.optim.Adam([{"params": [delta], "lr": lr_position * diagonal}, {"params": [colours], "lr": lr_colour}])
     schedule = torch.optim.lr_scheduler.LambdaLR(adam, lambda step: 0.1 ** (step / max(steps, 1)))
     history = torch.empty(steps, device=device)
     finite = torch.ones((), dtype=torch.bool, device=device)
@@ -620,6 +712,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     for step in range(steps):
         chosen = rng.choice(len(views), size=min(batch, len(views)), replace=False)
         adam.zero_grad()
+        points = start + step_scale * delta
         error, predicted, colour_error, surface = 0.0, 0.0, 0.0, 0.0
         if normal_weight:
             render = renderer_for(chosen[0])
@@ -662,11 +755,12 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         history[step] = colour_error.detach()
         finite &= torch.isfinite(loss.detach())
         if (report and step % report == 0) or step == steps - 1:
-            if not (finite & torch.isfinite(points).all() & torch.isfinite(colours).all()).item():
+            if not (finite & torch.isfinite(delta).all() & torch.isfinite(colours).all()).item():
                 raise ValueError("fit requires finite loss and parameters")
         if report and (step % report == 0 or step == steps - 1):
             log(f"step {step}: mean dE76 {float(history[step]):.3f}, predicted {float(predicted):.2f} ms, drift {float(drift):.3e}, "
                 f"surface {float(surface):.6f}, {time.time() - started:.1f} s")
+    points = start + step_scale * delta
     return points.detach().cpu().numpy().astype(np.float64), colours.detach().cpu().numpy().astype(np.float64), history.cpu().tolist()
 
 
@@ -759,19 +853,27 @@ def main(argv=None):
             from r3d.reference_render import source_for
 
             source, _job = source_for(scene, args.object, lit=False)
+        fit_start = fitted
         cost = None if args.cost_model is None else load_cost(args.cost_model)[0]
         points, rgb, history = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,
                                         args.laplacian, clear=clear, cost=cost, cost_weight=args.cost_weight,
                                         scale=args.scale, normal_weight=args.normal_weight, source=source,
                                         surface_weight=args.surface_weight, surface_margin=args.surface_margin)
         fitted = fitted._replace(points=points, rgb=rgb)
+        kept = np.arange(len(fit_start.tris))
         if args.budget is not None:
             shown = coverage(fitted, coverage_views if args.coverage_poses else views,
                              coverage_size if args.coverage_poses else size)
-            pruned = prune(fitted, shown, args.budget)
+            pruned, kept = prune(fitted, shown, args.budget)
             log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: {np.count_nonzero(shown == 0)} never shown")
             fitted = pruned
         count = write_mesh(out, name, fitted)
+        report = stretch_report(fit_start, fitted, kept)
+        for measure, threshold in (("stretch", STRETCH_RATIO), ("area_growth", AREA_GROWTH_RATIO), ("moved", MOVED_EDGES)):
+            log(f"{measure} > {threshold:g}x: small parts {report['small'][measure]:.2f}%, rest {report['rest'][measure]:.2f}%")
+            log(f"worst {measure} parts: " + ", ".join(f"{row['part']}: {row[measure]:.2f}% ({row['triangles']} triangles)"
+                                                    for row in report["worst"][measure]))
+        (out / "stretch.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         np.savetxt(out / "loss.txt", np.array(history), fmt="%.4f", header="mean dE76 before pruning")
         print(f"{out}: {count} triangles, mean dE76 before pruning {np.mean(history[:20]):.3f} -> {np.mean(history[-20:]):.3f}")
     # The fit's cached device memory goes back for a reference set traced next in this process.

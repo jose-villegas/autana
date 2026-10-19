@@ -7,7 +7,6 @@
  */
 
 #include "suites.h"
-#include "ui_budget.h"
 #include "unity.h"
 
 #include <string.h>
@@ -49,7 +48,7 @@ test_hud_screen_command_list_fits_budget(void) {
     const input_t input = {0};
     ui_begin(&input);
     render_lab_hud_screen_draw(&state);
-    ui_budget_assert("render lab HUD");
+    ui_probe_budget_assert("render lab HUD");
 }
 
 static void
@@ -63,7 +62,7 @@ test_menu_screen_command_list_fits_budget(void) {
     const input_t input = {0};
     ui_begin(&input);
     render_lab_menu_screen_draw(&state);
-    ui_budget_assert("render lab menu");
+    ui_probe_budget_assert("render lab menu");
 }
 
 #define BUDGET_CLIP_COUNT ((GFX_HEIGHT / UI_ROW_HEIGHT) + 1)
@@ -92,7 +91,7 @@ budget_menu_frame(const input_t* input) {
     ui_begin(input);
     const render_lab_menu_screen_state_t state = {.scene_name = menu_budget->names[0], .controls = budget_controls};
     (void)render_lab_menu_screen_draw(&state);
-    ui_budget_assert("animated menu with clip list");
+    ui_probe_budget_assert("animated menu with clip list");
 }
 
 static void

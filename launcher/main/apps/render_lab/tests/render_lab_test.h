@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "app/app.h"
-#include "console/console_verbs.h"
+#include "app/app_console.h"
 #include "scene/scene.h"
 
 #define RENDER_LAB_TEST_FRAME_MS 16

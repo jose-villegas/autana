@@ -1,68 +1,13 @@
 #include "console/console_verbs.h"
 
-#include <stdio.h>
 #include <string.h>
 
 #include "core/registry.h"
 
-void
-console_reply_stdio(const char* line) {
-    (void)printf("%s\n", line);
-    (void)fflush(stdout);
-}
-
-/* Verb names are matched ignoring case, so the lowercase name a person
- * types and the uppercase one a harness has always sent are the same
- * verb. ASCII by hand rather than strcasecmp(): this file is built for
- * the device and for a host test, and tolower()'s locale is a dependency
- * neither needs. */
-static char
-folded(char c) {
-    return (c >= 'A' && c <= 'Z') ? (char)(c - 'A' + 'a') : c;
-}
-
-static int
-name_cmp(const char* a, const char* b) {
-    while (*a != '\0' && folded(*a) == folded(*b)) {
-        a++;
-        b++;
-    }
-    return (int)(unsigned char)folded(*a) - (int)(unsigned char)folded(*b);
-}
-
-/* 0 if the first `n` characters of `line` are `name`, ignoring case. */
-static int
-name_ncmp(const char* line, const char* name, size_t n) {
-    for (size_t i = 0; i < n; i++) {
-        const int d = (int)(unsigned char)folded(line[i]) - (int)(unsigned char)folded(name[i]);
-        if (d != 0 || line[i] == '\0') {
-            return d;
-        }
-    }
-    return 0;
-}
-
 bool
 console_register(console_registry_t* registry, console_verb_t* verb) {
-    static const registry_rule_t rule = REGISTRY_RULE(console_verb_t, name_cmp, NULL);
+    static const registry_rule_t rule = REGISTRY_RULE(console_verb_t, console_name_cmp, NULL);
     return registry_add(&registry->first, &rule, verb) != REGISTRY_CLASH;
-}
-
-bool
-console_word_match(const char* line, const char* name, const char** args) {
-    const size_t n = strlen(name);
-    if (name_ncmp(line, name, n) != 0) {
-        return false;
-    }
-    if (line[n] == '\0') {
-        *args = line + n;
-        return true;
-    }
-    if (line[n] == ' ') {
-        *args = line + n + 1;
-        return true;
-    }
-    return false;
 }
 
 bool
@@ -90,14 +35,14 @@ console_find_clash(const console_registry_t* verbs, const char* const* prefixes,
             return CONSOLE_CLASH_LENGTH;
         }
         for (const console_verb_t* v = verbs->first; v != NULL; v = v->next) {
-            if (name_cmp(v->name, prefixes[i]) == 0) {
+            if (console_name_cmp(v->name, prefixes[i]) == 0) {
                 *from = prefixes[i];
                 *other = v->name;
                 return CONSOLE_CLASH_VERB;
             }
         }
         for (int j = 0; j < i; j++) {
-            if (name_cmp(prefixes[j], prefixes[i]) == 0) {
+            if (console_name_cmp(prefixes[j], prefixes[i]) == 0) {
                 *from = prefixes[i];
                 *other = prefixes[j];
                 return CONSOLE_CLASH_APP;

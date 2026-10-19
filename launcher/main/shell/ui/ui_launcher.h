@@ -6,7 +6,6 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "input/input.h"
-#include "microui.h"
 
 struct app;
 
@@ -27,10 +26,9 @@ ui_launcher_heal_opt_in(void) {
  * this module's own top comment for why, and docs/Building-a-Screen.md for
  * the same split every app's own screen already keeps. Returns the app the
  * user picked, or NULL if none. */
-const struct app* ui_launcher_draw(mu_Context* ctx, uint32_t dt_ms);
+const struct app* ui_launcher_draw(void);
 
 /* ui_begin(), ui_launcher_draw(), ui_end(): what the shell calls once per
- * frame. `dt_ms` drives the scroll view's own momentum, unused while this
- * screen keeps the default (none). A NULL `input` only repaints; see
- * ui_begin(). */
+ * frame. `dt_ms` steps the ridge backdrop. A NULL `input` only repaints;
+ * see ui_begin(). */
 const struct app* ui_launcher_frame(const input_t* input, uint32_t dt_ms);

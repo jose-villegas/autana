@@ -91,7 +91,7 @@ convert_frame(affine2x_t t, bool panel, int out_w, int out_h, int32_t stride, ui
     for (int py = 0; py < GFX_HEIGHT; py++) {
         gfx_read_panel_row(py, pixels);
         for (int px = 0; px < GFX_WIDTH; px++) {
-            const mu_Rect mapped = ui_transform_rect(inverse, (mu_Rect){px, py, 1, 1});
+            const recti_t mapped = ui_transform_rect(inverse, (recti_t){px, py, 1, 1});
             if (mapped.x < 0 || mapped.x >= out_w || mapped.y < 0 || mapped.y >= out_h) {
                 continue;
             }

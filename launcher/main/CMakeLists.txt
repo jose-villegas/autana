@@ -127,6 +127,7 @@ endif()
 # each actually answers on.
 if(CONFIG_LAUNCHER_DEVELOPMENT)
     list(APPEND app_srcs
+        "app/app_console.c"
         "console/console_verbs.c"
         "console/console.c"
         "console/verbs/console_buildid.c"
@@ -288,6 +289,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/suites.c"
         "../test/timing.c"
         "../test/test_cleanup.c"
+        "../test/ui_probe.c"
         ${suite_srcs}
         ${app_suites}
     )

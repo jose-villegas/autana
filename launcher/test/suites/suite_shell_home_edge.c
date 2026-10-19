@@ -15,8 +15,8 @@ edge_under_logical_bottom(int quarter) {
     const bool swaps_axes = transform.x_axis.x == 0;
     const int logical_w = swaps_axes ? GFX_HEIGHT : GFX_WIDTH;
     const int logical_h = swaps_axes ? GFX_WIDTH : GFX_HEIGHT;
-    const mu_Rect bottom = {0, logical_h - GESTURE_HOME_ZONE_DEPTH, logical_w, GESTURE_HOME_ZONE_DEPTH};
-    const mu_Rect physical = ui_transform_rect(transform, bottom);
+    const recti_t bottom = {0, logical_h - GESTURE_HOME_ZONE_DEPTH, logical_w, GESTURE_HOME_ZONE_DEPTH};
+    const recti_t physical = ui_transform_rect(transform, bottom);
     const bool spans_width = physical.x == 0 && physical.w == GFX_WIDTH;
     const bool spans_height = physical.y == 0 && physical.h == GFX_HEIGHT;
     const bool hugs[4] = {

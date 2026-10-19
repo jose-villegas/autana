@@ -12,7 +12,7 @@
  */
 
 #include "suites.h"
-#include "ui_budget.h"
+#include "ui_probe.h"
 #include "unity.h"
 
 #include "app/app.h"
@@ -65,7 +65,7 @@ test_toggles_screen_command_list_fits_budget(void) {
     const input_t input = {0};
     ui_begin(&input);
     toggles_screen_draw(&state);
-    ui_budget_assert("diagnostics developer toggles");
+    ui_probe_budget_assert("diagnostics developer toggles");
 }
 
 static toggles_screen_result_t
