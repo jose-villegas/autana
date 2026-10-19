@@ -8,7 +8,6 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
-#include "ui/ui_mu.h"
 
 #define UI_FACE_WINDOW_FLAGS         (MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)
 #define UI_FACE_NAME_MAX             32

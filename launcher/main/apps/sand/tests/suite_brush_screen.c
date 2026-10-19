@@ -276,7 +276,7 @@ static void
 brush_frame(sand_ui_t* ui, const input_t* in) {
     ui_begin(in);
     brush_screen_draw(ui);
-    ui_end_commands();
+    ui_probe_end_frame();
 }
 
 #define TOUCH_HOLD_FRAMES 4

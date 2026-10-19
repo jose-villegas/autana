@@ -124,7 +124,7 @@ title_frame(bool down, bool pressed, bool released, int x, int y) {
     input_t in = {.down = down, .pressed = pressed, .released = released, .x = x, .y = y};
     ui_begin(&in);
     const sand_title_button_t hit = title_screen_draw();
-    ui_end_commands();
+    ui_probe_end_frame();
     return hit;
 }
 

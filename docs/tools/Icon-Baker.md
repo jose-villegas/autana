@@ -79,7 +79,7 @@ icon of the set is `NULL`:
 
 - a control with a label beside its icon shows the label alone;
 - an icon-only control draws its icon's short text in the icon's box
-  (`ui_icon_set_draw()`, `ui_draw_system_icon()`): a chevron is `v`, `^` or
+  (`ui_icon()`'s fallback): a chevron is `v`, `^` or
   `>`, an info button `i`. Each set's names table holds the texts.
 
 No control is drawn blank. A render with no packs (`|nopacks` in a scene's

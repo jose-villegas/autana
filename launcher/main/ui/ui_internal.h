@@ -1,5 +1,5 @@
 /* Private UI state and backend entry points shared by the frame builder,
- * face and painter. Screens use ui.h or ui_mu.h. */
+ * face and painter. Screens use ui.h. */
 #pragma once
 
 #include <stdbool.h>
@@ -20,7 +20,24 @@
 #include "ui/controls/ui_style.h"
 #include "ui/input/ui_pointer.h"
 #include "ui/layout/ui_transform.h"
+#include "ui/ui.h"
 #include "ui/ui_canvas_marks.h"
+
+static inline recti_t
+ui_recti_from_mu(mu_Rect r) {
+    return (recti_t){r.x, r.y, r.w, r.h};
+}
+
+static inline mu_Rect
+ui_mu_from_recti(recti_t r) {
+    return (mu_Rect){r.x, r.y, r.w, r.h};
+}
+
+/* ui_transform_rect() on a microui rect. */
+static inline mu_Rect
+ui_transform_mu_rect(affine2x_t t, mu_Rect r) {
+    return ui_mu_from_recti(ui_transform_rect(t, ui_recti_from_mu(r)));
+}
 
 /* What a mu_Font actually points at; see ui_build.c's ui_set_font() comment
  * for why the scale rides inside the font rather than a separate
@@ -96,7 +113,36 @@ extern void (*ui_face_misuse_for_test)(void);
 extern void (*ui_face_widget_for_test)(const char* label, recti_t r);
 #endif
 
-#include "ui/controls/ui_widgets.h"
+/* The microui context, for building the UI between ui_begin and ui_end. */
+mu_Context* ui_context(void);
+
+static inline mu_Color
+ui_rgb(uint32_t rgb) {
+    return (mu_Color)UI_RGB(rgb);
+}
+
+/* Opens a full-screen window sized to THIS FRAME's canvas, fixing a
+ * microui mismatch: mu_begin_window_ex() only trusts its rect the first
+ * time a window (by title) opens, right for a desktop manager
+ * remembering a drag, wrong here, where every window must always BE
+ * (0, 0, ui_width(), ui_height()), which changes at runtime as the
+ * canvas rotates. Uncorrected, a rect pins to the first-open
+ * orientation, and a bigger later orientation leaves part of the screen
+ * uncleared, showing a previous app's frame. */
+int ui_begin_screen(mu_Context* ctx, const char* title, int opt);
+
+/* `icon` filling `r` in `color`, its runs streamed by icon_walk_blocks()
+ * rather than collected, so an icon's run count does not bound artwork. A
+ * NULL `icon` (no pack holds it) draws `text` centred in `r` instead, in the
+ * current font; a control with a label beside its icon passes NULL `text`
+ * and keeps the label alone. */
+void ui_draw_icon(mu_Context* ctx, mu_Rect r, const draw_image_t* icon, const char* text, mu_Color color);
+
+/* An integer-valued slider over the next layout row, shaped like
+ * mu_slider_ex(), but integer: that one's float/"%.2f" thumb is the wrong
+ * shape for a "06 PX" control. Writes through `value`, returns whether it
+ * changed this frame. */
+bool ui_slider_int(mu_Context* ctx, int* value, int lo, int hi, int step);
 
 #define UI_FACE_IDS_MAX 32
 
@@ -108,18 +154,6 @@ void ui_face_end(void);
  * the pointer frame. Every ui_end*() starts with it; a test reading the list
  * without painting calls it alone. */
 void ui_end_commands(void);
-bool ui_icon_button_id(mu_Context* ctx, mu_Id id, mu_Rect r, const ui_widget_button_t* button, int label_len,
-                       const ui_mu_theme_t* theme);
-bool ui_tile_button_id(mu_Context* ctx, mu_Id id, mu_Rect r, const ui_widget_button_t* button, int label_len,
-                       const ui_mu_theme_t* theme);
 bool ui_slider_int_id(mu_Context* ctx, mu_Id id, int* value, int lo, int hi, int step, bool enabled);
-bool ui_theme_slider_int_id(mu_Context* ctx, mu_Id id, mu_Rect r, int* value, int lo, int hi, int step, bool enabled,
-                            const ui_mu_theme_t* theme);
-int ui_dropdown_id(mu_Context* ctx, mu_Id mid, const char* id, mu_Rect r, const char* const* names,
-                   const draw_image_t* const* icons, int count, int selected, bool enabled, const ui_mu_theme_t* theme);
 
-/* The dropdown list open this frame, or NULL: at most one is. */
-const mu_Container* ui_dropdown_open_list(void);
-
-bool ui_toggle_id(mu_Context* ctx, mu_Id mid, mu_Rect r, const char* label, int label_len, bool* on, bool enabled,
-                  const ui_mu_theme_t* theme);
+#include "ui/controls/ui_widgets.h"
