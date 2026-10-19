@@ -84,34 +84,46 @@ cull_bound_make(const int64_t c[4], const r3d_x_grid_t* grid) {
     return b;
 }
 
-/* Walks a bound's edge to this row's: it moves a few k a row. */
+/* A rising bound's last k that holds, -1 for none: walked from the last
+ * row's, as it moves a few k a row. */
+static int16_t
+cull_bound_last(cull_bound_t* b, int k_max) {
+    while (b->edge < k_max && b->value + b->slope <= 0) {
+        b->edge++;
+        b->value += b->slope;
+    }
+    while (b->edge >= 0 && b->value > 0) {
+        b->edge--;
+        b->value -= b->slope;
+    }
+    return b->edge;
+}
+
+/* A falling bound's first k that holds, k_max + 1 for none. */
+static int16_t
+cull_bound_first(cull_bound_t* b, int k_max) {
+    while (b->edge > 0 && b->value - b->slope <= 0) {
+        b->edge--;
+        b->value -= b->slope;
+    }
+    while (b->edge <= k_max && b->value > 0) {
+        b->edge++;
+        b->value += b->slope;
+    }
+    return b->edge;
+}
+
+/* The k of this row a bound holds for. */
 static void
 cull_bound_settle(cull_bound_t* b, int k_max, int16_t* lo, int16_t* hi) {
+    *lo = 0;
+    *hi = (int16_t)k_max;
     if (b->slope > 0) {
-        while (b->edge < k_max && b->value + b->slope <= 0) {
-            b->edge++;
-            b->value += b->slope;
-        }
-        while (b->edge >= 0 && b->value > 0) {
-            b->edge--;
-            b->value -= b->slope;
-        }
-        *lo = 0;
-        *hi = b->edge;
+        *hi = cull_bound_last(b, k_max);
     } else if (b->slope < 0) {
-        while (b->edge > 0 && b->value - b->slope <= 0) {
-            b->edge--;
-            b->value -= b->slope;
-        }
-        while (b->edge <= k_max && b->value > 0) {
-            b->edge++;
-            b->value += b->slope;
-        }
-        *lo = b->edge;
-        *hi = (int16_t)k_max;
-    } else {
-        *lo = 0;
-        *hi = (int16_t)(b->value <= 0 ? k_max : -1);
+        *lo = cull_bound_first(b, k_max);
+    } else if (b->value > 0) {
+        *hi = -1;
     }
 }
 
