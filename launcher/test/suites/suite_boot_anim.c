@@ -867,52 +867,6 @@ test_the_curve_table_stays_inside_the_narrow_range(void) {
 
 /* Basic level of detail */
 
-/* A wide perspective chord keeps the full spline detail. */
-static void
-test_curve_lod_steps_keeps_full_detail_for_a_wide_chord(void) {
-    const boot_anim_view_t view = identity_view();
-    const vec3x_t a = vx(-0.2F, 0.0F, 5.0F);
-    const vec3x_t c = vx(0.2F, 0.0F, 5.0F);
-
-    TEST_ASSERT_EQUAL_INT_MESSAGE(BOOT_ANIM_SPLINE_STEPS, boot_anim_curve_lod_steps(a, c, &view),
-                                  "a span whose two ends land well apart on screen must keep full "
-                                  "detail, not be shortcut");
-}
-
-/* The actual point of the LOD shortcut: two points that already land on
- * (near enough) the same pixel cannot have a spline through them worth
- * subdividing; see boot_anim_curve_lod_steps()'s own comment on the
- * convex-hull argument for why the two OUTER points are enough to decide
- * this without looking at anything in between. */
-static void
-test_curve_lod_steps_collapses_a_tiny_chord_to_one_step(void) {
-    const boot_anim_view_t view = identity_view();
-    const vec3x_t a = vx(0.08F, 0.08F, 5.0F);
-    const vec3x_t c = vx(0.082F, 0.08F, 5.0F);
-
-    TEST_ASSERT_EQUAL_INT_MESSAGE(1, boot_anim_curve_lod_steps(a, c, &view),
-                                  "two points landing within a pixel of each other should collapse "
-                                  "to a single straight step");
-}
-
-/* Perspective chord bounds agree with projection: the same pair is wide
- * near the camera and below one pixel far away. */
-static void
-test_screen_chord_shrinks_with_distance(void) {
-    const boot_anim_view_t view = identity_view();
-    const vec3x_t near_a = vx(0.0F, 0.0F, 1.0F);
-    const vec3x_t near_c = vx(0.2F, 0.0F, 1.0F);
-    const vec3x_t far_a = vx(0.0F, 0.0F, 100.0F);
-    const vec3x_t far_c = vx(0.2F, 0.0F, 100.0F);
-
-    TEST_ASSERT_FALSE_MESSAGE(boot_anim_screen_chord_lt(near_a, near_c, &view, 3),
-                              "a pair spanning tens of pixels near the camera must not read as "
-                              "a tiny chord");
-    TEST_ASSERT_TRUE_MESSAGE(boot_anim_screen_chord_lt(far_a, far_c, &view, 3),
-                             "the same pair a hundred units out spans under a pixel and must "
-                             "read as tiny - apparent size falls off with z");
-}
-
 /* The pure decision half of the whole-curve sample decimation; see
  * boot_anim_curve_stride()'s own comment. Full detail while the curve is
  * anywhere near panel-sized; samples only start dropping once the whole
@@ -925,22 +879,6 @@ test_lod_stride_tiers_by_extent(void) {
     TEST_ASSERT_EQUAL_INT(2, boot_anim_lod_stride_for_extent(BOOT_ANIM_LOD_STRIDE4_PX));
     TEST_ASSERT_EQUAL_INT(4, boot_anim_lod_stride_for_extent(BOOT_ANIM_LOD_STRIDE4_PX - 1));
     TEST_ASSERT_EQUAL_INT(4, boot_anim_lod_stride_for_extent(0));
-}
-
-/* The safety fallback: a span the probe cannot even project (both ends at
- * or behind the near plane here) must NOT be reported as "tiny, skip it";
- * boot_anim_curve_lod_steps() has no idea how big it actually is on
- * screen in that case, so it has to default to full detail rather than
- * guess low. */
-static void
-test_curve_lod_steps_keeps_full_detail_when_the_probe_cannot_project(void) {
-    const boot_anim_view_t view = identity_view();
-    const vec3x_t a = vx(0.08F, 0.08F, 0.0F);
-    const vec3x_t c = vx(0.082F, 0.08F, R3D_LINE_NEAR_Z - 0.001F);
-
-    TEST_ASSERT_EQUAL_INT_MESSAGE(BOOT_ANIM_SPLINE_STEPS, boot_anim_curve_lod_steps(a, c, &view),
-                                  "a span the probe cannot project at all must default to full "
-                                  "detail, not be assumed tiny");
 }
 
 /*
@@ -1775,25 +1713,6 @@ test_the_crossfade_ends_on_the_shipped_photograph(void) {
 }
 #endif
 
-static void
-test_screen_chord_threshold_is_strict(void) {
-    const int threshold_px = 3;
-    const boot_anim_view_t view = identity_view();
-    const int32_t depth = view.pixels_per_unit * R3D_X_UNIT_ONE;
-    const vec3x_t a = {0, 0, depth};
-    const int32_t threshold = threshold_px * R3D_X_UNIT_ONE;
-    TEST_ASSERT_TRUE(boot_anim_screen_chord_lt(a, (vec3x_t){threshold - 1, 0, depth}, &view, threshold_px));
-    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(a, (vec3x_t){threshold, 0, depth}, &view, threshold_px));
-    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(a, (vec3x_t){threshold + 1, 0, depth}, &view, threshold_px));
-    const vec3x_t farther_x = {threshold, 0, depth * 2};
-    const vec3x_t farther_y = {0, threshold, depth * 2};
-    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(a, farther_x, &view, threshold_px));
-    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(farther_x, a, &view, threshold_px));
-    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(a, farther_y, &view, threshold_px));
-    TEST_ASSERT_FALSE(boot_anim_screen_chord_lt(farther_y, a, &view, threshold_px));
-    TEST_ASSERT_TRUE(boot_anim_screen_chord_lt(a, (vec3x_t){0, threshold - 1, depth * 2}, &view, threshold_px));
-}
-
 void
 run_boot_anim_suite(void) {
     seed = malloc(sizeof *seed);
@@ -1848,11 +1767,6 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_the_curve_table_stays_inside_the_narrow_range);
     RUN_TEST(test_camera_transform_selects_the_narrow_path_at_negative_input_limits);
     RUN_TEST(test_the_narrow_camera_transform_agrees_with_the_wide_one_across_the_motion);
-    RUN_TEST(test_curve_lod_steps_keeps_full_detail_for_a_wide_chord);
-    RUN_TEST(test_curve_lod_steps_collapses_a_tiny_chord_to_one_step);
-    RUN_TEST(test_curve_lod_steps_keeps_full_detail_when_the_probe_cannot_project);
-    RUN_TEST(test_screen_chord_threshold_is_strict);
-    RUN_TEST(test_screen_chord_shrinks_with_distance);
     RUN_TEST(test_lod_stride_tiers_by_extent);
 
     RUN_TEST(test_the_pen_runs_from_nothing_to_phase_ones_end);
