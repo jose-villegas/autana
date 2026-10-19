@@ -743,7 +743,13 @@ test_a_scene_gives_each_entity_s_mesh_id_and_each_camera_s_lens(void) {
     const scene_entity_t camera = scene_find(scene, "camera");
     const scene_transform_t* flight = scene_entity_transform(scene, camera);
     TEST_ASSERT_EQUAL_UINT32(1000, scene_animator_clip_duration_ms(scene, camera, 0));
+    render_context_main()->split.top_offset[0] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
     TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, 500));
+    TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN, render_context_main()->split.top_offset[0]);
+    TEST_ASSERT_TRUE(scene_activate(scene, NULL));
+    render_context_main()->split.top_offset[0] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
+    TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, 500));
+    TEST_ASSERT_EQUAL_INT(0, render_context_main()->split.top_offset[0]);
     TEST_ASSERT_EQUAL_FLOAT(2.5F, flight->position.x);
     TEST_ASSERT_EQUAL_FLOAT(1.0F, quatf_rotate(flight->rotation, (vec3f_t){0, 0, 1}).z);
 }
@@ -1343,7 +1349,9 @@ test_two_scenes_are_held_at_once_and_the_active_camera_decides_which_is_seen(voi
     scene_t* solo = load("test_solo");
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
+    render_context_main()->split.top_offset[0] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
     TEST_ASSERT_TRUE(scene_activate(solo, "eye"));
+    TEST_ASSERT_EQUAL_INT(0, render_context_main()->split.top_offset[0]);
     render_context_set_scale(render_context_main(), 100);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x0000FF), pixel(0.0F));

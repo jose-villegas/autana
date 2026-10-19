@@ -2419,6 +2419,18 @@ test_the_draw_split_falls_inside_the_rows_the_work_covers(void) {
 }
 
 static void
+test_draw_split_accumulates_bounded_uneven_buckets(void) {
+    const r3d_lit_cluster_t clusters[] = {{.triangle_count = 1}, {.triangle_count = 3}};
+    const r3d_lit_mesh_t mesh = {.clusters = clusters};
+    const uint16_t visible[] = {0, 1};
+    const r3d_pipeline_rows_t rows[] = {{0, 9, false}, {40, 49, false}};
+    const int height = 640;
+    TEST_ASSERT_EQUAL_INT(10, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, RASTER_SPLIT_PERMILLE / 4));
+    TEST_ASSERT_EQUAL_INT(43, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, RASTER_SPLIT_EVEN));
+    TEST_ASSERT_EQUAL_INT(46, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, RASTER_SPLIT_PERMILLE * 3 / 4));
+}
+
+static void
 test_draw_split_interpolates_the_requested_share_and_clamps_rows(void) {
     const r3d_lit_cluster_t clusters[] = {{.triangle_count = 10}};
     const r3d_lit_mesh_t mesh = {.clusters = clusters};
@@ -2443,6 +2455,7 @@ test_draw_split_interpolates_the_requested_share_and_clamps_rows(void) {
 
 static void
 run_r3d_lit_suite(void) {
+    RUN_TEST(test_draw_split_accumulates_bounded_uneven_buckets);
     RUN_TEST(test_draw_split_interpolates_the_requested_share_and_clamps_rows);
     RUN_TEST(test_two_triangles_sharing_an_edge_cover_a_square_exactly_once);
     RUN_TEST(test_tiny_and_large_triangles_tile_without_gaps_or_overlap);

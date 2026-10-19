@@ -211,10 +211,13 @@ report_stage_split(fixture_t* f, const char* quarter) {
     static const char* const names[4] = {"whole", "setup", "edges", "carry"};
     (void)scene_animator_set_paused(f->scene, f->subject, SCENE_ANIMATOR_CURRENT, true);
     (void)scene_animator_set_paused(f->scene, f->subject, SCENE_ANIMATOR_PREVIOUS, true);
+    render_context_t* context = render_context_main();
+    const raster_split_t split = context->split;
     int64_t mean[4];
     for (int stop = 0; stop <= 3; stop++) {
         r3d_span_stop_after = stop;
         for (int i = -1; i < PERF_SAMPLES; i++) {
+            context->split = split;
             const int64_t us = render_lab_test_frame(false, NULL);
             if (i >= 0) {
                 f->render_us[i] = (int32_t)us;
@@ -225,6 +228,7 @@ report_stage_split(fixture_t* f, const char* quarter) {
         ESP_LOGI(TAG, "stage_split: capybara stop=%s render mean_us=%lld" R3D_PERF_QUARTER_FORMAT, names[stop],
                  (long long)mean[stop], quarter);
     }
+    context->split = split;
     ESP_LOGI(TAG,
              "stage_split: capybara both cores us/frame to_setup %lld edges %lld carry %lld fill "
              "%lld" R3D_PERF_QUARTER_FORMAT,
@@ -238,7 +242,6 @@ test_animation_and_frame_cost(void) {
     char command[ASSET_NAME_MAX];
     TEST_ASSERT_TRUE(snprintf(command, sizeof command, CLIP_COMMAND, CLIP_CUT_MS) >= 0);
     TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
-    raster_split_forget(&render_context_main()->split);
     assert_skin_changes(f);
     heap_report(SKIN_PERF_PHASE_PLAYING);
     const int clusters = scene_entity_mesh(f->scene, f->subject)->cluster_count;

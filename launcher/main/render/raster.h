@@ -13,28 +13,10 @@
 #include "gfx/target/gfx_render_target.h"
 #include "render/r3d_instance.h"
 #include "render/raster_attachment.h"
+#include "render/raster_split.h"
 #include "render/render_view.h"
 #include "render/resolution/resolution.h"
 #include "render/upscale.h"
-
-/* Bounds the split state size; instances past this cap draw with an even share. */
-#define RASTER_SPLIT_INSTANCES 16
-#define RASTER_SPLIT_PERMILLE  1000
-#define RASTER_SPLIT_EVEN      (RASTER_SPLIT_PERMILLE / 2)
-#define RASTER_SPLIT_MIN       150
-#define RASTER_SPLIT_MAX       (RASTER_SPLIT_PERMILLE - RASTER_SPLIT_MIN)
-
-/* Caller-owned shares of draw weight assigned to the top slice, by instance.
- * Zero entries mean even. Forget on a cut; NULL state keeps every draw even.
- * Instances beyond the state capacity also draw with an even share. */
-typedef struct {
-    int16_t top_permille[RASTER_SPLIT_INSTANCES];
-} raster_split_t;
-
-void raster_split_forget(raster_split_t* split);
-/* Half-damped balanced share from positive slice times; zero share means even.
- * Nonpositive times leave the share unchanged. */
-int raster_split_update(int top_permille, int64_t top_us, int64_t bottom_us);
 
 /* The caller's options; the scratch block holds everything else. */
 struct raster {

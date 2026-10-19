@@ -74,6 +74,10 @@ render_context_release(render_context_t* c) {
         .scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
         .frame = {.step = -1},
     };
+}
+
+void
+render_context_forget(render_context_t* c) {
     raster_split_forget(&c->split);
 }
 

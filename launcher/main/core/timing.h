@@ -26,6 +26,11 @@ timing_now_us(void) {
 #ifdef ESP_PLATFORM
     return esp_timer_get_time();
 #else
+#ifdef TIMING_TEST_CLOCK
+    if (timing_test_clock != NULL) {
+        return timing_test_clock();
+    }
+#endif
     struct timespec now;
     (void)timespec_get(&now, TIME_UTC);
     return (int64_t)now.tv_sec * 1000000 + now.tv_nsec / 1000;

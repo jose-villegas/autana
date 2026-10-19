@@ -69,6 +69,7 @@ set(app_srcs
     "asset/asset_store_flash.c"
     "render/render_view.c"
     "render/raster.c"
+    "render/raster_split.c"
     "render/r3d_lit_mesh.c"
     "render/r3d_pipeline.c"
     "render/upscale.c"
