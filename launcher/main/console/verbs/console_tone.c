@@ -58,7 +58,7 @@ console_verb_tone(const char* args, console_reply_fn reply) {
     ok = audio_out_amp_hold(false) && ok;
     ok = sound_capture_close() && ok;
     if (!ok) {
-        reply("TONE error: loopback failed");
+        reply(opened ? "TONE error: loopback failed" : "TONE error: codec open failed");
         return;
     }
     char line[CONSOLE_TONE_REPLY_BYTES];

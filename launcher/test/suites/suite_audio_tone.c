@@ -112,30 +112,30 @@ test_loopback_measured_budget(void) {
 
 static void
 test_loopback_frequency_boundaries_and_blocks(void) {
-    const size_t count = AUDIO_LOOPBACK_MIN_FREQUENCY_SAMPLES;
+    const size_t count = AUDIO_FREQUENCY_MIN_SAMPLES;
     int16_t* samples = fixture(count);
     audio_tone_t tone;
     audio_tone_init(&tone, TEST_HZ);
     audio_tone_fill(&tone, samples, count, TEST_HALF_VOLUME);
-    audio_loopback_frequency_t single;
-    audio_loopback_frequency_init(&single, TEST_HZ);
+    audio_frequency_t single;
+    audio_frequency_init(&single, TEST_HZ);
     for (size_t i = 0; i < count; i++) {
-        audio_loopback_frequency_feed(&single, samples + i, 1);
+        audio_frequency_feed(&single, samples + i, 1);
         if (i + 1 < count) {
-            TEST_ASSERT_TRUE(isnan(audio_loopback_frequency_hz(&single)));
+            TEST_ASSERT_TRUE(isnan(audio_frequency_hz(&single)));
         }
     }
-    TEST_ASSERT_TRUE(isfinite(audio_loopback_frequency_hz(&single)));
-    static const size_t chunks[] = {7, AUDIO_LOOPBACK_WINDOW_SAMPLES - 1, AUDIO_LOOPBACK_WINDOW_SAMPLES + 17};
+    TEST_ASSERT_TRUE(isfinite(audio_frequency_hz(&single)));
+    static const size_t chunks[] = {7, AUDIO_FREQUENCY_WINDOW_SAMPLES - 1, AUDIO_FREQUENCY_WINDOW_SAMPLES + 17};
     for (size_t c = 0; c < sizeof chunks / sizeof chunks[0]; c++) {
-        audio_loopback_frequency_t blocks;
-        audio_loopback_frequency_init(&blocks, TEST_HZ);
+        audio_frequency_t blocks;
+        audio_frequency_init(&blocks, TEST_HZ);
         for (size_t i = 0; i < count;) {
             const size_t n = count - i < chunks[c] ? count - i : chunks[c];
-            audio_loopback_frequency_feed(&blocks, samples + i, n);
+            audio_frequency_feed(&blocks, samples + i, n);
             i += n;
         }
-        TEST_ASSERT_EQUAL_FLOAT(audio_loopback_frequency_hz(&single), audio_loopback_frequency_hz(&blocks));
+        TEST_ASSERT_EQUAL_FLOAT(audio_frequency_hz(&single), audio_frequency_hz(&blocks));
         TEST_ASSERT_EQUAL_UINT(single.advances, blocks.advances);
         TEST_ASSERT_EQUAL_UINT(single.bin.samples, blocks.bin.samples);
     }
@@ -154,13 +154,13 @@ assert_frequency_estimate(int16_t* samples, size_t n, uint16_t hz, float offset,
             (int16_t)lroundf(TEST_ESTIMATE_AMPLITUDE
                              * (sinf(MATH_TAU * actual * (float)i / AUDIO_OUT_SAMPLE_RATE_HZ + (float)seed) + noise));
     }
-    audio_loopback_frequency_t state;
-    audio_loopback_frequency_init(&state, hz);
+    audio_frequency_t state;
+    audio_frequency_init(&state, hz);
     for (size_t i = 0; i < n; i++) {
-        audio_loopback_frequency_feed(&state, samples + i, 1);
+        audio_frequency_feed(&state, samples + i, 1);
     }
     TEST_ASSERT_FLOAT_WITHIN(seed == 1 ? TEST_ESTIMATE_TOLERANCE_HZ : TEST_ESTIMATE_NOISE_TOLERANCE_HZ, actual,
-                             audio_loopback_frequency_hz(&state));
+                             audio_frequency_hz(&state));
 }
 
 static void

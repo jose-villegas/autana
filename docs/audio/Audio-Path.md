@@ -82,7 +82,7 @@ requested.
 The estimate is valid only while the tone stays within the unambiguous range
 above; a drifting or modulated tone gives a wrong value.
 
-Below `AUDIO_LOOPBACK_MIN_FREQUENCY_SAMPLES`, the reply says `measured n/a`
+Below `AUDIO_FREQUENCY_MIN_SAMPLES`, the reply says `measured n/a`
 and both JSON frequency fields are null.
 
 The detector discards `AUDIO_LOOPBACK_SETTLE_MS` of capture before measuring.

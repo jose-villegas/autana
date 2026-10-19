@@ -37,7 +37,7 @@ audio_out_amp_enable(bool enabled) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     return set_amp(false, enabled);
 #else
-    return board_audio_amp_enable(enabled) == 0;
+    return audio_codec_check("amplifier", board_audio_amp_enable(enabled));
 #endif
 }
 

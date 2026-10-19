@@ -13,8 +13,8 @@ audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, float* measured_hz) 
     int16_t in[AUDIO_CODEC_BLOCK_SAMPLES];
     goertzel_t detector;
     goertzel_init(&detector, (float)hz, (float)AUDIO_OUT_SAMPLE_RATE_HZ);
-    audio_loopback_frequency_t frequency;
-    audio_loopback_frequency_init(&frequency, hz);
+    audio_frequency_t frequency;
+    audio_frequency_init(&frequency, hz);
     size_t remaining = audio_loopback_sample_budget(ms);
     size_t settle = audio_out_samples(AUDIO_LOOPBACK_SETTLE_MS);
     bool ok = true;
@@ -25,13 +25,13 @@ audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, float* measured_hz) 
             const size_t skipped = settle < n ? settle : n;
             settle -= skipped;
             goertzel_feed_s(&detector, in + skipped, n - skipped);
-            audio_loopback_frequency_feed(&frequency, in + skipped, n - skipped);
+            audio_frequency_feed(&frequency, in + skipped, n - skipped);
             remaining -= n;
         }
     }
     *db = goertzel_level_db(&detector, INT16_MAX);
     if (measured_hz) {
-        *measured_hz = audio_loopback_frequency_hz(&frequency);
+        *measured_hz = audio_frequency_hz(&frequency);
     }
     return ok;
 }
