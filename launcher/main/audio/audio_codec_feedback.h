@@ -42,6 +42,8 @@ audio_codec_feedback_set(audio_codec_feedback_t* state, void* context, audio_cod
         return true;
     }
     if (set_reg(context, AUDIO_CODEC_FEEDBACK_REG, state->saved) != 0) {
+        /* A failed restore leaves the route unknown. */
+        state->enabled = false;
         return false;
     }
     state->restore_pending = false;

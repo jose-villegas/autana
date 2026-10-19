@@ -64,10 +64,12 @@ console_verb_tone(const char* args, console_reply_fn reply) {
         return;
     }
     char measured[TONE_MEASURED_TEXT_BYTES];
-    if (isfinite(measured_hz)) {
-        (void)snprintf(measured, sizeof measured, "%.2f Hz", (double)measured_hz);
-    } else {
-        (void)snprintf(measured, sizeof measured, "n/a");
+    const int measured_length = isfinite(measured_hz)
+                                    ? snprintf(measured, sizeof measured, "%.2f Hz", (double)measured_hz)
+                                    : snprintf(measured, sizeof measured, "n/a");
+    if (measured_length < 0 || (size_t)measured_length >= sizeof measured) {
+        reply("TONE error: frequency formatting failed");
+        return;
     }
     (void)printf("TONE %s %u Hz: %.1f dB (silence %.1f dB), path %s, measured %s, open %zu B DMA\n",
                  heard ? "heard" : "not heard", (unsigned)parsed.hz, (double)tone_db, (double)silence_db,

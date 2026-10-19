@@ -69,7 +69,7 @@ goertzel_phase(const goertzel_t* state) {
     if (!state->samples) {
         return 0.0F;
     }
-    const float real = state->previous - cosf(state->omega) * state->previous2;
+    const float real = state->previous - (cosf(state->omega) * state->previous2);
     const float imaginary = sinf(state->omega) * state->previous2;
     const float rotation = (float)remainder((double)state->omega * (double)(state->samples - 1), (double)MATH_TAU);
     const float phase = remainderf(atan2f(imaginary, real) - rotation, MATH_TAU);

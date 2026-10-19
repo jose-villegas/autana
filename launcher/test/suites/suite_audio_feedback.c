@@ -55,6 +55,7 @@ test_feedback_restore_errors(void) {
         TEST_ASSERT_EQUAL(failure != 3, restored);
         if (!restored) {
             TEST_ASSERT_TRUE(state.restore_pending);
+            TEST_ASSERT_FALSE(audio_codec_feedback_set(&state, &fake, get_reg, set_reg, true));
             TEST_ASSERT_TRUE(audio_codec_feedback_set(&state, &fake, get_reg, set_reg, false));
         }
         TEST_ASSERT_EQUAL_HEX(TEST_REGISTER_OLD, fake.value);
