@@ -47,14 +47,14 @@ cull_plane_set(int64_t c[4], int64_t x, int64_t y, int64_t z, int64_t w) {
 /* Bound n as c . U + c[3] <= 0 for a sum U: U.z < (near_z + 1) * one; its
  * opposite; then x * ppu <= left * z, x * ppu >= right * z,
  * -y * ppu <= top * z and -y * ppu >= bottom * z. The sides' pixel offsets
- * from the centre take a slack of one pixel per truncating divide, and a
+ * from the centre take the projection's own rounding as slack, and a
  * point's z, floor(U.z / one), lies between U.z / one - 1 and U.z / one:
  * each side takes its worse end. */
 static void
 cull_plane(const r3d_line_view_x_t* view, const recti_t* clip, int n, int64_t c[4]) {
     const int64_t one = 1 << R3D_X_INPUT_SHIFT;
     const int64_t ppu = view->pixels_per_unit;
-    const int64_t slack = 1 + ((ppu + R3D_X_UNIT_ONE - 1) / R3D_X_UNIT_ONE);
+    const int64_t slack = r3d_x_screen_rounding_px(view);
     const int64_t left = clip->x - view->center_x - slack;
     const int64_t right = recti_right(*clip) - view->center_x + slack;
     const int64_t top = clip->y - view->center_y - slack;

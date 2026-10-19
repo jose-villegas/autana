@@ -245,6 +245,28 @@ test_the_fixed_projection_lands_within_two_pixels_of_the_float_one(void) {
     }
 }
 
+#define ROUNDING_STEPS 37
+
+static void
+test_the_screen_rounding_bound_holds_for_points_on_both_sides(void) {
+    const render_view_t view = fixture();
+    const transformf_t model = TRANSFORMF_IDENTITY;
+    const float meters_per_unit[] = {1.0F, 1.0F, 1.0F};
+    const r3d_line_view_x_t view_x = r3d_line_view_x_make(&view, &model, meters_per_unit);
+    const int bound = r3d_x_screen_rounding_px(&view_x);
+    for (int zi = 1; zi <= ROUNDING_STEPS; zi++) {
+        for (int xi = -ROUNDING_STEPS; xi <= ROUNDING_STEPS; xi++) {
+            const vec3x_t p = {xi * 97, -xi * 61, view_x.near_z + (zi * 29)};
+            int sx, sy;
+            r3d_camera_to_screen_x(p, &view_x, &sx, &sy);
+            const double exact_x = view_x.center_x + ((double)p.x * view_x.pixels_per_unit / p.z);
+            const double exact_y = view_x.center_y - ((double)p.y * view_x.pixels_per_unit / p.z);
+            TEST_ASSERT_TRUE(fabs(sx - exact_x) < bound);
+            TEST_ASSERT_TRUE(fabs(sy - exact_y) < bound);
+        }
+    }
+}
+
 static void
 test_the_fixed_segment_clip_and_point_test_follow_the_near_plane(void) {
     render_view_t float_view = fixture();
@@ -563,6 +585,7 @@ run_r3d_project_suite(void) {
     RUN_TEST(test_a_pixel_offset_truncates_toward_zero_on_both_sides);
     RUN_TEST(test_the_fixed_projection_lands_within_two_pixels_of_the_float_one);
     RUN_TEST(test_the_fixed_segment_clip_and_point_test_follow_the_near_plane);
+    RUN_TEST(test_the_screen_rounding_bound_holds_for_points_on_both_sides);
     RUN_TEST(test_a_point_at_the_camera_plane_projects_to_a_far_off_but_defined_pixel);
 
     RUN_TEST(test_segment_with_both_ends_behind_returns_false);
