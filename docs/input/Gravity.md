@@ -21,21 +21,18 @@ Every delivered and lost sample integrates at `INPUT_MOTION_SAMPLE_US`.
 batch capacity against `IMU_FIFO_SAMPLES`.
 
 ```mermaid
-flowchart TB
+flowchart LR
     subgraph Input["Drain and timing"]
-        direction LR
         Drain["Count FIFO<br/>then request read mode"] --> Batch["Batch: oldest first<br/>delivered, lost, gap"]
     end
+    Missing["Advance bounded lost time<br/>holding previous batch's rotation"]
     subgraph Update["For each delivered sample"]
-        direction LR
         Predict["Datasheet interval<br/>predict down from gyro"] --> Judge["Overrange and<br/>acceleration trust"]
         Judge --> Correct["Adopt, pull, learn bias<br/>or hold correction"]
     end
-    Missing["Advance bounded lost time<br/>holding previous batch's rotation"]
     Linear["Unit down and<br/>linear acceleration"]
-    Input --> Missing
-    Missing --> Update
-    Update --> Linear
+    Batch --> Missing --> Predict
+    Correct --> Linear
 ```
 
 Strength is the in-plane share of the unit down vector, clamped to 0..1 and
