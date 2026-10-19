@@ -13,6 +13,7 @@
  */
 #pragma once
 
+#include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -79,7 +80,7 @@ gfx_color_rgb565(uint8_t r5, uint8_t g6, uint8_t b5) {
     return gfx_color_swap((uint16_t)(((uint16_t)r5 << 11) | ((uint16_t)g6 << 5) | b5));
 }
 
-#define GFX_COLOR_MEAN3_RB_SHIFT   16
+#define GFX_COLOR_MEAN3_RB_SHIFT   (sizeof(uint16_t) * CHAR_BIT)
 #define GFX_COLOR_MEAN3_COUNT      3
 #define GFX_COLOR_MEAN3_SHIFT      9
 #define GFX_COLOR_MEAN3_MULTIPLIER (((1U << GFX_COLOR_MEAN3_SHIFT) + GFX_COLOR_MEAN3_COUNT - 1) / GFX_COLOR_MEAN3_COUNT)
