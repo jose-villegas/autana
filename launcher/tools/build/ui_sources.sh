@@ -9,7 +9,6 @@ main/ui/ui_canvas_marks.c
 main/ui/controls/ui_icons.c
 main/ui/input/ui_pointer.c
 main/ui/input/ui_snap.c
-main/ui/layout/ui_scroll.c
 main/ui/controls/ui_widgets.c
 components/microui/src/microui.c
 "

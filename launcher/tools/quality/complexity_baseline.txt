@@ -421,8 +421,6 @@
 9	launcher/main/shell/ui/ui_ridge.c:697	extend_repaint_range
 9	launcher/main/shell/ui/ui_ridge.c:929	flush_swept_run
 9	launcher/main/shell/ui/ui_ridge.c:744	group_rows
-9	launcher/main/ui/layout/ui_scroll.c:49	step_momentum
-9	launcher/main/ui/layout/ui_scroll.c:78	ui_scroll_view_begin
 9	launcher/main/ui/controls/ui_widgets.c:64	begin_control
 9	launcher/test/heap_arena.c:288	arena_pool_scan
 9	launcher/test/suites/suite_boot_anim.c:100	test_the_curve_keeps_away_from_the_axis_everywhere_else
@@ -975,7 +973,6 @@
 6	launcher/test/suites/suite_touch_fsm.c:168	test_a_full_tap_produces_exactly_one_press_and_one_release
 6	launcher/test/suites/suite_ui_pointer.c:293	test_a_vertical_drag_on_scrollable_content_scrolls_and_never_presses
 6	launcher/test/suites/suite_ui_pointer_microui.c:374	list_frame
-6	launcher/test/suites/suite_ui_scroll.c:70	build_rows
 6	launcher/test/suites/suite_ui_widgets.c:934	test_a_tap_submits_once_when_the_backdrop_repaints_during_it
 6	launcher/test/suites/suite_upscale.c:71	test_fractional_maps_cover_destination_in_order_and_at_source_corners
 6	launcher/test/suites/suite_upscale.c:40	test_integer_factors_copy_each_source_pixel_to_its_block
@@ -1174,7 +1171,6 @@
 5	launcher/test/suites/suite_ui_pointer_microui.c:116	taps_counted
 5	launcher/test/suites/suite_ui_pointer_microui.c:323	test_a_drag_moves_a_slider_microui_would_not_track_on_a_tap
 5	launcher/test/suites/suite_ui_pointer_microui.c:296	test_a_tap_outside_the_button_submits_nothing
-5	launcher/test/suites/suite_ui_scroll.c:139	tap
 5	launcher/tools/r3d/triangle_sizes.c:180	r3d_sizes_read_poses
 4	launcher/components/microui/src/microui.c:492	mu_draw_text
 4	launcher/main/anim/anim_track.c:104	anim_track_sample
@@ -2224,7 +2220,6 @@
 2	launcher/main/shell/ui/ui_ridge.c:1094	gradient_due
 2	launcher/main/shell/ui/ui_ridge.c:1348	pluck_from_shaking
 2	launcher/main/shell/ui/ui_ridge.c:476	row_body_color
-2	launcher/main/ui/layout/ui_scroll.c:27	clamp_int
 2	launcher/main/ui/input/ui_snap.c:6	nearest_edge
 2	launcher/main/ui/controls/ui_widgets.c:95	draw_icon_and_label
 2	launcher/main/ui/controls/ui_widgets.c:155	ui_dropdown_list_scroll
