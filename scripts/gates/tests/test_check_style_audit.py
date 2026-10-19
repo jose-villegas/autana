@@ -53,9 +53,9 @@ class StyleAuditTest(unittest.TestCase):
     def test_power_include_tier(self):
         files = {
             "launcher/main/input/input.c": '#include "power/power.h"\n',
-            "launcher/main/power/power.h": '#include "input/input.h"\n#include "gfx/gfx.h"\n',
+            "launcher/main/power/power.h": '#include "input/input.h"\n#include "audio/audio.h"\n',
             "launcher/main/input/input.h": "#pragma once\n",
-            "launcher/main/gfx/gfx.h": "#pragma once\n",
+            "launcher/main/audio/audio.h": "#pragma once\n",
         }
         self.assertEqual([(hit.path, hit.line) for hit in self.audit("INCLUDE-DIRECTION", files)],
                          [("launcher/main/power/power.h", 1), ("launcher/main/power/power.h", 2)])

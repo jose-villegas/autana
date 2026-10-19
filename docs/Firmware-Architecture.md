@@ -119,8 +119,8 @@ flowchart TB
     Shell -.->|"calls through app/app.h"| Apps
 ```
 
-Power layer: [the PMU owner](../launcher/main/power/README.md); it includes only
-`core/` and `board/`.
+Power layer: [the PMU owner](../launcher/main/power/README.md); `power/` sits
+below `input/` and `audio/`.
 
 Audio layer: [audio docs](audio/README.md).
 The engine sound layer owns [the mixer, voices and buses](audio/Sound-Mixer.md)
