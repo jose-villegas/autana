@@ -3,6 +3,7 @@
  * of drawing and microui functions. */
 #pragma once
 
+#include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -12,12 +13,17 @@
 /* 0xRRGGBB, opaque: UI_RGB() as an initializer, so a theme can be const
  * data, and ui_rgb() in an expression. */
 #define UI_RGB(rgb)                                                                                                    \
-    {(unsigned char)(((rgb) >> 16) & 0xFF), (unsigned char)(((rgb) >> 8) & 0xFF), (unsigned char)((rgb) & 0xFF), 255}
+    {(unsigned char)(((rgb) >> UI_RGB_RED_SHIFT) & 0xFF), (unsigned char)(((rgb) >> UI_RGB_GREEN_SHIFT) & 0xFF),       \
+     (unsigned char)((rgb) & 0xFF), 255}
+
+/* Where red and green sit in an 0xRRGGBB value; blue is the low byte. */
+#define UI_RGB_RED_SHIFT   (2 * CHAR_BIT)
+#define UI_RGB_GREEN_SHIFT CHAR_BIT
 
 /* UI_RGB()'s inverse: a colour's 0xRRGGBB, alpha dropped. */
 static inline uint32_t
 ui_rgb_value(mu_Color c) {
-    return ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b;
+    return ((uint32_t)c.r << UI_RGB_RED_SHIFT) | ((uint32_t)c.g << UI_RGB_GREEN_SHIFT) | c.b;
 }
 
 /* One flat rectangle of a styled frame, in paint order: later spans draw
