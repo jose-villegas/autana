@@ -613,6 +613,25 @@ test_small_experiment_writer_matches_fill_depth(void) {
     }
 }
 
+static uint16_t
+reference_grain(uint16_t color, int amplitude, int x, int y) {
+    const int bits = *tune_find(tune_shared(), "r3d_span.small_grain_cell_bits")->value;
+    int rank = 0;
+    for (int bit = 0; bit < bits; bit++) {
+        const int bx = (x >> bit) & 1, by = (y >> bit) & 1;
+        rank += (2 * (bx ^ by) + by) << (2 * (bits - bit - 1));
+    }
+    rank >>= 2 * bits - 2;
+    const int numerator = amplitude * (2 * rank + 1 - SMALL_GRAIN_LEVELS);
+    const int magnitude = (abs(numerator) + SMALL_GRAIN_LEVELS / 2) / SMALL_GRAIN_LEVELS;
+    const int offset = numerator < 0 ? -magnitude : magnitude;
+    const uint16_t native = gfx_color_swap(color);
+    return gfx_color_rgb565(
+        (uint8_t)mathi_clamp((int)gfx_rgb565_r5(native) + offset, 0, (int)gfx_rgb565_r5(UINT16_MAX)),
+        (uint8_t)mathi_clamp((int)gfx_rgb565_g6(native) + offset, 0, (int)GFX_RGB565_G6_MAX),
+        (uint8_t)mathi_clamp((int)gfx_rgb565_b5(native) + offset, 0, (int)gfx_rgb565_b5(UINT16_MAX)));
+}
+
 /* Scalar small-fill oracle, independent of production selection, threshold preparation and the pixel loop. */
 static void
 reference_small(const r3d_span_target_t* target, const r3d_span_vertex_t v[3], bool solid) {
@@ -620,6 +639,7 @@ reference_small(const r3d_span_target_t* target, const r3d_span_vertex_t v[3], b
     const int side = mathi_max(extent.centres.w, extent.centres.h);
     bool selected = side <= small_max_side;
     int coverage = 0;
+    int grain = 0;
     if (selected && !solid && side > SMALL_MAX_SIDE) {
         const int extra = small_max_side - SMALL_MAX_SIDE;
         int spread = extra == 1 ? small_flat_spread_far : small_flat_spread_near;
@@ -639,6 +659,13 @@ reference_small(const r3d_span_target_t* target, const r3d_span_vertex_t v[3], b
                 high = channels[k][j] > high ? channels[k][j] : high;
             }
             selected = selected && high - low <= (float)spread;
+        }
+        const tune_entry_t* grain_entry = tune_find(tune_shared(), "r3d_span.small_grain");
+        if (grain_entry != NULL) {
+            grain = *grain_entry->value;
+            if (*tune_find(tune_shared(), "r3d_span.small_grain_ramp")->value) {
+                grain = grain * (side - SMALL_MAX_SIDE) / mathi_max(extra, 1);
+            }
         }
         coverage = small_dither_ramp ? small_dither * (side - SMALL_MAX_SIDE) / mathi_max(extra, 1) : small_dither;
     }
@@ -683,6 +710,9 @@ reference_small(const r3d_span_target_t* target, const r3d_span_vertex_t v[3], b
                 continue;
             }
             uint16_t color = flat.flat_color;
+            if (grain && !(colors[0] == colors[1] && colors[1] == colors[2])) {
+                color = reference_grain(color, grain, x, y);
+            }
             if (coverage && !(colors[0] == colors[1] && colors[1] == colors[2])
                 && (edge[0] < limit || edge[1] < limit || edge[2] < limit)) {
                 const int bits = small_dither_cell_bits, mask = (1 << bits) - 1;
@@ -754,8 +784,62 @@ test_small_randomized_reference(void) {
     }
 }
 
+static void
+test_small_grain_randomized_reference(void) {
+    const r3d_span_target_t actual = fixture();
+    const r3d_span_target_t expected =
+        r3d_span_target(pixels + 2 * TEST_PIXELS, pixels + 3 * TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
+    knob("r3d_span.small_max_side", SMALL_MAX_SIDE_TUNE);
+    for (int amplitude = 0; amplitude <= SMALL_GRAIN_AMPLITUDE_MAX; amplitude++) {
+        knob("r3d_span.small_grain", amplitude);
+        for (int mode = 0; mode < SMALL_GRAIN_LEVELS; mode++) {
+            knob("r3d_span.small_grain_cell_bits", 1 + (mode >> 1));
+            knob("r3d_span.small_grain_ramp", mode & 1);
+            for (int coverage = 0; coverage <= SMALL_DITHER_COVERAGE_EIGHTHS; coverage++) {
+                knob("r3d_span.small_dither", coverage);
+                knob("r3d_span.small_dither_cell_bits", 1 + (coverage & 1));
+                knob("r3d_span.small_dither_ramp", coverage & 1);
+                rng_t random;
+                rng_seed(&random, ORACLE_SEED + (uint32_t)(amplitude * 100 + mode * 10 + coverage));
+                for (int sample = 0; sample < ORACLE_SAMPLES * 2; sample++) {
+                    r3d_span_vertex_t v[TRIANGLE_VERTICES];
+                    oracle_vertices(v, &random, 1 + sample % SMALL_MAX_SIDE_TUNE);
+                    for (int k = 0; k < TRIANGLE_VERTICES; k++) {
+                        if (sample % 3 == 0) {
+                            const float channel = sample & 1 ? (float)UINT8_MAX : 0.0F;
+                            v[k].r = v[k].g = v[k].b = channel;
+                            v[k].g += k == 0 ? (channel == 0.0F ? 12.0F : -12.0F) : 0.0F;
+                        }
+                        if (sample % 5 == 0) {
+                            v[k].r = v[k].g = v[k].b = 99.0F;
+                        }
+                    }
+                    if (sample & 1) {
+                        const r3d_span_vertex_t swap = v[0];
+                        v[0] = v[2];
+                        v[2] = swap;
+                    }
+                    for (int i = 0; i < 2 * TEST_PIXELS; i++) {
+                        pixels[i] = (uint16_t)rng_below(&random, UINT16_MAX + 1);
+                    }
+                    memcpy(pixels + 2 * TEST_PIXELS, pixels, sizeof(*pixels) * 2 * TEST_PIXELS);
+                    const bool solid = sample % 7 == 0;
+                    reference_small(&expected, v, solid);
+                    if (solid) {
+                        hot_triangle_solid(&actual, v, v + 1, v + 2, GFX_RGB(0x123456));
+                    } else {
+                        hot_triangle(&actual, v, v + 1, v + 2);
+                    }
+                    TEST_ASSERT_EQUAL_MEMORY(pixels + 2 * TEST_PIXELS, pixels, sizeof(*pixels) * 2 * TEST_PIXELS);
+                }
+            }
+        }
+    }
+}
+
 void
 run_r3d_small_suite(void) {
+    RUN_TEST(test_small_grain_randomized_reference);
     RUN_TEST(test_small_gate_compares_quantized_channels);
     RUN_TEST(test_small_randomized_reference);
     RUN_TEST(test_small_experiment_clipped_split_rows);

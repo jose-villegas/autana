@@ -36,6 +36,8 @@ static const int32_t value_max[ATTRIBUTES] = {DEPTH_MAX, 65280, 65280, 65280};
 #define SMALL_DITHER_PATTERN_BITS_MAX   (__builtin_ctz((unsigned)SMALL_DITHER_PATTERN_SIDE))
 #define SMALL_DITHER_PATTERN_BITS_MIN   1
 #define SMALL_DITHER_PRECOMPUTED_LEVELS (1 << (2 * SMALL_DITHER_PATTERN_BITS_MIN))
+#define SMALL_GRAIN_LEVELS              4
+#define SMALL_GRAIN_AMPLITUDE_MAX       4
 #define SMALL_FILL_WALK                 (-1)
 #define TRIANGLE_VERTICES               3
 
@@ -50,6 +52,10 @@ TUNE_HOT(r3d_span, small_dither, R3D_SPAN_SMALL_DITHER_DEFAULT, 0, SMALL_DITHER_
 TUNE_HOT(r3d_span, small_dither_cell_bits, SMALL_DITHER_PATTERN_BITS_MAX, SMALL_DITHER_PATTERN_BITS_MIN,
          SMALL_DITHER_PATTERN_BITS_MAX);
 TUNE_HOT(r3d_span, small_dither_ramp, 0, 0, 1);
+TUNE_HOT(r3d_span, small_grain, 0, 0, SMALL_GRAIN_AMPLITUDE_MAX);
+TUNE_HOT(r3d_span, small_grain_cell_bits, SMALL_DITHER_PATTERN_BITS_MIN, SMALL_DITHER_PATTERN_BITS_MIN,
+         SMALL_DITHER_PATTERN_BITS_MAX);
+TUNE_HOT(r3d_span, small_grain_ramp, 0, 0, 1);
 TUNE_HOT(r3d_span, flat_max_rows, R3D_SPAN_FLAT_MAX_ROWS, 0, 8);
 TUNE_HOT(r3d_span, flat_max_width, R3D_SPAN_FLAT_MAX_WIDTH, 0, 8 * R3D_SUBPIXEL);
 
@@ -514,7 +520,7 @@ channel_within_spread(int32_t a, int32_t b, int32_t c, int limit) {
 }
 
 typedef struct {
-    uint8_t spread, coverage;
+    uint8_t spread, coverage, grain;
 } small_limits_t;
 
 static inline bool
@@ -534,16 +540,24 @@ small_limits_for_side(int side) {
     const int extra_sides = small_max_side - SMALL_MAX_SIDE;
     int spread = extra_sides == 1 ? small_flat_spread_far : small_flat_spread_near;
     int coverage = small_dither;
+    int grain = small_grain;
     if (extra_sides > 1) {
         spread += (small_flat_spread_far - small_flat_spread_near) * (side - SMALL_MAX_SIDE - 1) / (extra_sides - 1);
     }
     if (small_dither_ramp) {
         coverage = coverage * (side - SMALL_MAX_SIDE) / mathi_max(extra_sides, 1);
     }
-    return (small_limits_t){(uint8_t)spread, (uint8_t)coverage};
+    if (small_grain_ramp) {
+        grain = grain * (side - SMALL_MAX_SIDE) / mathi_max(extra_sides, 1);
+    }
+    return (small_limits_t){(uint8_t)spread, (uint8_t)coverage, (uint8_t)grain};
 }
 
+static uint8_t small_grain_pattern[SMALL_DITHER_PATTERN_SIDE][SMALL_DITHER_PATTERN_SIDE];
+
 #if TUNE_HOT_LIVE
+#define SMALL_GRAIN_RANK_SHIFT (2 * SMALL_DITHER_PATTERN_BITS_MAX - 2)
+static int small_grain_mask;
 static small_limits_t small_limits[SMALL_MAX_SIDE_TUNE + 1];
 static uint32_t small_generation = UINT32_MAX;
 static int small_side_limit = SMALL_MAX_SIDE;
@@ -557,6 +571,12 @@ r3d_span_begin(void) {
     }
     small_side_limit = small_max_side;
     small_cell_bits = small_dither_cell_bits;
+    small_grain_mask = (1 << small_grain_cell_bits) - 1;
+    for (int y = 0; y < (int)SMALL_DITHER_PATTERN_SIDE; y++) {
+        for (int x = 0; x < (int)SMALL_DITHER_PATTERN_SIDE; x++) {
+            small_grain_pattern[y][x] = gfx_dither4x4[y][x] >> SMALL_GRAIN_RANK_SHIFT;
+        }
+    }
     for (int side = SMALL_MAX_SIDE + 1; side <= small_side_limit; side++) {
         small_limits[side] = small_limits_for_side(side);
     }
@@ -565,6 +585,7 @@ r3d_span_begin(void) {
 #else
 #define small_side_limit small_max_side
 #define small_cell_bits  small_dither_cell_bits
+#define small_grain_mask ((1 << small_grain_cell_bits) - 1)
 #endif
 
 /* Negative selects the walk; otherwise the result is dither coverage, with zero selecting flat. */
@@ -583,7 +604,7 @@ select_small(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_s
 #else
     const small_limits_t limits = small_limits_for_side(side);
 #endif
-    if (limits.spread != SMALL_FLAT_SPREAD_OFF || (colors != NULL && limits.coverage != 0)) {
+    if (limits.spread != SMALL_FLAT_SPREAD_OFF || (colors != NULL && (limits.coverage != 0 || limits.grain != 0))) {
         const uint16_t ca = r3d_span_pack_rgb(a->r, a->g, a->b);
         const uint16_t cb = r3d_span_pack_rgb(b->r, b->g, b->b);
         const uint16_t cc = r3d_span_pack_rgb(c->r, c->g, c->b);
@@ -611,6 +632,31 @@ small_row(const r3d_span_target_t* target, int y) {
                          (y << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL};
 }
 
+static inline __attribute__((always_inline)) bool
+small_visible(const small_edge_t edges[TRIANGLE_VERTICES], const small_row_t* row, int x, uint16_t depth) {
+    const int32_t cx = (x << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
+    return (small_side(&edges[0], cx, row->centre) | small_side(&edges[1], cx, row->centre)
+            | small_side(&edges[2], cx, row->centre))
+               >= 0
+           && depth > row->depth[x];
+}
+
+static __attribute__((noinline)) void
+prepare_small_grain(uint16_t shades[SMALL_GRAIN_LEVELS], uint16_t color, int amplitude) {
+    const uint16_t native = gfx_color_swap(color);
+    const int red = (int)gfx_rgb565_r5(native);
+    const int green = (int)gfx_rgb565_g6(native);
+    const int blue = (int)gfx_rgb565_b5(native);
+    for (int level = 0; level < SMALL_GRAIN_LEVELS; level++) {
+        const int numerator = amplitude * (2 * level + 1 - SMALL_GRAIN_LEVELS);
+        const int magnitude = ((numerator < 0 ? -numerator : numerator) + SMALL_GRAIN_LEVELS / 2) / SMALL_GRAIN_LEVELS;
+        const int offset = numerator < 0 ? -magnitude : magnitude;
+        shades[level] = gfx_color_rgb565((uint8_t)mathi_clamp(red + offset, 0, (int)gfx_rgb565_r5(UINT16_MAX)),
+                                         (uint8_t)mathi_clamp(green + offset, 0, (int)GFX_RGB565_G6_MAX),
+                                         (uint8_t)mathi_clamp(blue + offset, 0, (int)gfx_rgb565_b5(UINT16_MAX)));
+    }
+}
+
 /* Keep small-triangle temporaries off the row-walk call chain. */
 static __attribute__((noinline)) void
 fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
@@ -636,6 +682,32 @@ fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3
                 && f.flat_z > row.depth[x]) {
                 row.depth[x] = f.flat_z;
                 row.color[x] = f.flat_color;
+            }
+        }
+    }
+}
+
+static __attribute__((noinline)) void
+fill_small_grain(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                 const r3d_span_vertex_t* c, bool positive, recti_t box, int amplitude) {
+    fill_t f;
+    set_flat(&f, a, b, c);
+    if (r3d_span_stop_after != 0) {
+        return;
+    }
+    uint16_t shades[SMALL_GRAIN_LEVELS];
+    prepare_small_grain(shades, f.flat_color, amplitude);
+    const small_edge_t edges[TRIANGLE_VERTICES] = {small_edge(a, positive ? b : c),
+                                                   small_edge(positive ? b : c, positive ? c : b),
+                                                   small_edge(positive ? c : b, a)};
+    const int mask = small_grain_mask;
+    for (int y = box.y; y < recti_bottom(box); y++) {
+        const uint8_t* row_pattern = small_grain_pattern[y & mask];
+        const small_row_t row = small_row(target, y);
+        for (int x = box.x, end = recti_right(box); x < end; x++) {
+            if (small_visible(edges, &row, x, f.flat_z)) {
+                row.depth[x] = f.flat_z;
+                row.color[x] = shades[row_pattern[x & mask]];
             }
         }
     }
@@ -695,7 +767,7 @@ small_dither_pick(const small_dither_t* d, const uint8_t* pattern, const int32_t
 static inline __attribute__((always_inline)) void
 fill_small_dither_cell(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                        const r3d_span_vertex_t* c, bool positive, recti_t box, int coverage, int cell_bits,
-                       const uint16_t* colors) {
+                       const uint16_t* colors, int grain, bool grained) {
     small_dither_t d;
     if (!prepare_small_dither(&d, a, b, c, positive, coverage, cell_bits, colors)) {
         fill_small(target, a, b, c, positive, box, NULL);
@@ -715,8 +787,14 @@ fill_small_dither_cell(const r3d_span_target_t* target, const r3d_span_vertex_t*
     if (r3d_span_stop_after != 0) {
         return;
     }
+    uint16_t shades[SMALL_GRAIN_LEVELS];
+    if (grained) {
+        prepare_small_grain(shades, f.flat_color, grain);
+    }
+    const int grain_mask = small_grain_mask;
     for (int y = box.y; y < recti_bottom(box); y++) {
         const small_row_t row = small_row(target, y);
+        const uint8_t* grain_pattern = small_grain_pattern[y & grain_mask];
         const uint8_t* pattern = gfx_dither4x4[y & d.phase_mask];
         const int32_t* row_thresholds = precompute ? thresholds + ((y & d.phase_mask) << cell_bits) : NULL;
         for (int x = box.x, end = recti_right(box); x < end; x++) {
@@ -726,7 +804,8 @@ fill_small_dither_cell(const r3d_span_target_t* target, const r3d_span_vertex_t*
             const int32_t s2 = small_side(&d.edge[2], cx, row.centre);
             if ((s0 | s1 | s2) >= 0 && f.flat_z > row.depth[x]) {
                 row.depth[x] = f.flat_z;
-                row.color[x] = small_dither_pick(&d, pattern, row_thresholds, x, s0, s1, s2, f.flat_color);
+                const uint16_t flat = grained ? shades[grain_pattern[x & grain_mask]] : f.flat_color;
+                row.color[x] = small_dither_pick(&d, pattern, row_thresholds, x, s0, s1, s2, flat);
             }
         }
     }
@@ -736,9 +815,24 @@ static __attribute__((noinline)) void
 fill_small_dither(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                   const r3d_span_vertex_t* c, bool positive, recti_t box, int coverage, const uint16_t* colors) {
     if (small_cell_bits == SMALL_DITHER_PATTERN_BITS_MIN) {
-        fill_small_dither_cell(target, a, b, c, positive, box, coverage, SMALL_DITHER_PATTERN_BITS_MIN, colors);
+        fill_small_dither_cell(target, a, b, c, positive, box, coverage, SMALL_DITHER_PATTERN_BITS_MIN, colors, 0,
+                               false);
     } else {
-        fill_small_dither_cell(target, a, b, c, positive, box, coverage, SMALL_DITHER_PATTERN_BITS_MAX, colors);
+        fill_small_dither_cell(target, a, b, c, positive, box, coverage, SMALL_DITHER_PATTERN_BITS_MAX, colors, 0,
+                               false);
+    }
+}
+
+static __attribute__((noinline)) void
+fill_small_dither_grain(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                        const r3d_span_vertex_t* c, bool positive, recti_t box, int coverage, const uint16_t* colors,
+                        int grain) {
+    if (small_cell_bits == SMALL_DITHER_PATTERN_BITS_MIN) {
+        fill_small_dither_cell(target, a, b, c, positive, box, coverage, SMALL_DITHER_PATTERN_BITS_MIN, colors, grain,
+                               true);
+    } else {
+        fill_small_dither_cell(target, a, b, c, positive, box, coverage, SMALL_DITHER_PATTERN_BITS_MAX, colors, grain,
+                               true);
     }
 }
 
@@ -845,6 +939,21 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     uint16_t colors[TRIANGLE_VERTICES];
     const int coverage = select_small(a, b, c, e.centres, face != NULL, colors);
     if (coverage != SMALL_FILL_WALK) {
+        if (small_grain != 0 && face == NULL && mathi_max(e.centres.w, e.centres.h) > SMALL_MAX_SIDE) {
+#if TUNE_HOT_LIVE
+            const int grain = small_limits[mathi_max(e.centres.w, e.centres.h)].grain;
+#else
+            const int grain = small_limits_for_side(mathi_max(e.centres.w, e.centres.h)).grain;
+#endif
+            if (grain != 0 && !(colors[0] == colors[1] && colors[1] == colors[2])) {
+                if (coverage != 0) {
+                    fill_small_dither_grain(target, a, b, c, area2 > 0, box, coverage, colors, grain);
+                } else {
+                    fill_small_grain(target, a, b, c, area2 > 0, box, grain);
+                }
+                return;
+            }
+        }
         if (coverage != 0) {
             fill_small_dither(target, a, b, c, area2 > 0, box, coverage, colors);
         } else {
