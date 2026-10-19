@@ -1,23 +1,21 @@
 #ifndef DEVICE_BUILD
-#define TUNE_HOT_LIVE                   0
-#define R3D_SPAN_SMALL_MAX_SIDE_DEFAULT 8
-#define R3D_SPAN_SMALL_DITHER_DEFAULT   4
-#define r3d_span_triangle               constant_r3d_span_triangle
-#define r3d_span_triangle_solid         constant_r3d_span_triangle_solid
-#define r3d_span_triangle_write         constant_r3d_span_triangle_write
-#define r3d_span_hidden                 constant_r3d_span_hidden
-#define r3d_span_plane_bound            constant_r3d_span_plane_bound
-#define r3d_span_plane_in_range         constant_r3d_span_plane_in_range
-#define r3d_span_stop_after             constant_r3d_span_stop_after
-#define r3d_lens_init                   constant_r3d_lens_init
-#define r3d_lens_fit                    constant_r3d_lens_fit
-#define r3d_lens_place                  constant_r3d_lens_place
-#define r3d_pipeline_work_bytes         constant_r3d_pipeline_work_bytes
-#define r3d_pipeline_cull               constant_r3d_pipeline_cull
-#define r3d_pipeline_transform          constant_r3d_pipeline_transform
-#define r3d_pipeline_transform_split    constant_r3d_pipeline_transform_split
-#define r3d_pipeline_draw_split         constant_r3d_pipeline_draw_split
-#define r3d_pipeline_draw               constant_r3d_pipeline_draw
+#define r3d_span_begin               constant_r3d_span_begin
+#define r3d_span_triangle            constant_r3d_span_triangle
+#define r3d_span_triangle_solid      constant_r3d_span_triangle_solid
+#define r3d_span_triangle_write      constant_r3d_span_triangle_write
+#define r3d_span_hidden              constant_r3d_span_hidden
+#define r3d_span_plane_bound         constant_r3d_span_plane_bound
+#define r3d_span_plane_in_range      constant_r3d_span_plane_in_range
+#define r3d_span_stop_after          constant_r3d_span_stop_after
+#define r3d_lens_init                constant_r3d_lens_init
+#define r3d_lens_fit                 constant_r3d_lens_fit
+#define r3d_lens_place               constant_r3d_lens_place
+#define r3d_pipeline_work_bytes      constant_r3d_pipeline_work_bytes
+#define r3d_pipeline_cull            constant_r3d_pipeline_cull
+#define r3d_pipeline_transform       constant_r3d_pipeline_transform
+#define r3d_pipeline_transform_split constant_r3d_pipeline_transform_split
+#define r3d_pipeline_draw_split      constant_r3d_pipeline_draw_split
+#define r3d_pipeline_draw            constant_r3d_pipeline_draw
 
 #include <stdlib.h>
 #include <string.h>
@@ -26,7 +24,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#define TEST_SIDE   R3D_SPAN_SMALL_MAX_SIDE_DEFAULT
+#define TEST_SIDE   8
 #define TEST_PIXELS (TEST_SIDE * TEST_SIDE)
 
 static uint16_t* pixels;
@@ -41,7 +39,7 @@ cleanup(void) {
 }
 
 static void
-test_constant_dither_matches_pipeline_colours(void) {
+test_styles_match_pipeline_colours(void) {
     pixels = calloc(TEST_PIXELS * 4, sizeof(*pixels));
     suite_set_test_cleanup(cleanup);
     TEST_ASSERT_NOT_NULL(pixels);
@@ -70,21 +68,25 @@ test_constant_dither_matches_pipeline_colours(void) {
     const r3d_span_target_t expected = r3d_span_target(pixels, pixels + TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
     const r3d_span_target_t actual =
         r3d_span_target(pixels + TEST_PIXELS * 2, pixels + TEST_PIXELS * 3, TEST_SIDE, 0, TEST_SIDE);
-    r3d_span_triangle(&expected, reference, reference + 1, reference + 2);
     const r3d_pipeline_vertex_t* vertices[3] = {transformed, transformed + 1, transformed + 2};
-    draw_in_front(&mesh, vertices, triangle, NULL, true, &actual, false, work);
-    TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
-    int coloured = 0;
-    for (int i = 0; i < TEST_PIXELS; i++) {
-        coloured += pixels[i] != 0;
+    for (small_fill_style_t style = SMALL_FILL_FLAT; style <= SMALL_FILL_DITHER; style++) {
+        r3d_span_begin((small_fill_t){TEST_SIDE, 0, style});
+        memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));
+        r3d_span_triangle(&expected, reference, reference + 1, reference + 2);
+        draw_in_front(&mesh, vertices, triangle, NULL, true, &actual, false, work);
+        TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
+        int coloured = 0;
+        for (int i = 0; i < TEST_PIXELS; i++) {
+            coloured += pixels[i] != 0;
+        }
+        TEST_ASSERT_GREATER_THAN(0, coloured);
     }
-    TEST_ASSERT_GREATER_THAN(0, coloured);
 }
 
 void
-run_r3d_constant_dither_suite(void) {
-    RUN_TEST(test_constant_dither_matches_pipeline_colours);
+run_r3d_style_pipeline_suite(void) {
+    RUN_TEST(test_styles_match_pipeline_colours);
 }
 
-SUITE_REGISTER(run_r3d_constant_dither_suite);
+SUITE_REGISTER(run_r3d_style_pipeline_suite);
 #endif

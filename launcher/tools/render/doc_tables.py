@@ -10,6 +10,12 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
+VIEW_HEADER = pathlib.Path(__file__).resolve().parents[2] / "main/render/render_view.h"
+SMALL_FILL_STYLES = re.findall(r"SMALL_FILL_([A-Z]+)", re.search(
+    r"typedef enum \{([^}]+)\} small_fill_style_t;", VIEW_HEADER.read_text()).group(1))
+SWEEP_GATE_OFF = 64
+MICROSECONDS_PER_MILLISECOND = 1000
+
 SCORE = re.compile(r"^(.+): mean DeltaE76 ([\d.]+), p95 DeltaE76 ([\d.]+), luma SSIM (-?[\d.]+), "
                    r"edge DeltaE76 ([\d.]+), interior DeltaE76 ([\d.]+)", re.M)
 
@@ -76,29 +82,18 @@ def scores(path):
     return found
 
 
-def lever_description(name, high):
-    descriptions = {
-        "small_max_side": ("size", "Bounding-box centres per side eligible for flat fill; 0 disables it"),
-        "small_flat_spread_far": ("gate", f"Far gate: maximum RGB565 channel spread at the size limit; {high} is off"),
-        "small_flat_spread_near": ("gate", f"Near gate: spread limit from side 5; interpolated to the far gate; {high} is off"),
-        "small_dither": ("dither", "Ordered edge coverage in eighths above side 4; 0 disables it"),
-        "small_dither_ramp": ("dither", "Ramp coverage from 0 at side 4 to the chosen coverage"),
-        "small_dither_cell_bits": ("dither", "Log2 of the ordered pattern side in pixels"),
-        "small_grain": ("grain", "XOR low RGB565 channel bits in a 2x2 pattern; 0 disables it"),
-        "small_grain_ramp": ("grain", "Ramp amplitude from 0 at side 4 to full at the size limit"),
-    }
-    return descriptions[name]
-
-
 def sweep_rows(data, name):
     """Validated perf_sweep rows and their recorded plan."""
     plan = json.loads((data / f"{name}-plan.json").read_text())
     rows = json.loads((data / f"{name}-sweep.json").read_text())["rows"]
     if len(rows) != len(plan["points"]) or len({row["build"] for row in rows}) != 1:
         raise ValueError(f"{name}: needs one build and every planned point")
+    if len({capture["board"] for capture in plan["captures"]}) != 1:
+        raise ValueError(f"{name}: needs one board")
     rows = sorted(rows, key=lambda row: row["point"])
     for index, row in enumerate(rows):
-        if row["point"] != index or row["knobs"] != plan["points"][index]["knobs"]:
+        point = plan["points"][index]
+        if row["point"] != index or row["knobs"] != point.get("knobs", point):
             raise ValueError(f"{name}: sweep differs from its plan")
         for metric in row["metrics"].values():
             if not metric["observations"] or metric["mean"] <= 0:
@@ -106,20 +101,58 @@ def sweep_rows(data, name):
     return plan, rows
 
 
+def small_fill_board(data, scene_id, object_name):
+    """Flat camera settings plus optional camera-style measurements in p7."""
+    mesh = f"run_{scene_id}_perf_suite/{object_name}_fitted_full quarter=landscape"
+    tables = []
+    for name in ("p5a", "p7"):
+        if name == "p7" and not (data / f"{name}-plan.json").exists():
+            continue
+        _, rows = sweep_rows(data, name)
+        skin = [key for key in rows[0]["metrics"] if re.search(
+            r"/render paused=0 (?:joints=\d+ )?quarter=landscape$", key)]
+        if len(skin) != 1:
+            raise ValueError(f"{name}: needs one skinned landscape render metric")
+        base = rows[0]["metrics"]
+        measured = []
+        for row in rows:
+            knobs = row["knobs"]
+            if name == "p5a":
+                ceiling = knobs["r3d_span.small_max_side"]
+                gate = knobs["r3d_span.small_flat_spread_far"]
+                gate = 0 if gate == SWEEP_GATE_OFF else gate
+                style = SMALL_FILL_STYLES[0]
+            else:
+                ceiling = knobs["render_lab.small_fill_ceiling"]
+                gate = knobs["render_lab.small_fill_gate"]
+                style = SMALL_FILL_STYLES[knobs["render_lab.small_fill_style"]]
+            values = []
+            for metric in (mesh, skin[0]):
+                value = row["metrics"][metric]["mean"]
+                values.extend((f"{value / MICROSECONDS_PER_MILLISECOND:.3f}", f"{100 * (value / base[metric]['mean'] - 1):+.2f}%"))
+            measured.append((ceiling, gate, style, *values, f"{name}, point {row['point']}"))
+        tables.append(markdown(["Ceiling", "Gate", "Style", "Mesh frame ms", "vs first row",
+                               "Skinned render ms", "vs first row", "Capture"], measured))
+    return "\n".join(tables)
+
+
 def write_small_fill(work, out, scene_id, object_name, data):
-    """Levers from the live source registry, temporal CSVs and recorded board sweeps."""
+    """Camera axes from the source registry, temporal CSVs and recorded board sweeps."""
     out.mkdir(parents=True, exist_ok=True)
     catalog = dict((name, (int(default), int(low), int(high))) for name, low, high, default in re.findall(
-        r"TUNE r3d_span\.(\w+)=-?\d+ min=(-?\d+) max=(-?\d+) default=(-?\d+)",
+        r"TUNE render_lab\.small_fill_(\w+)=-?\d+ min=(-?\d+) max=(-?\d+) default=(-?\d+)",
         (work / "small-fill-tunables.log").read_text()))
-    levers = []
-    for name, (default, low, high) in catalog.items():
-        if not name.startswith("small_"):
-            continue
-        axis, effect = lever_description(name, high)
-        levers.append((axis, f"`r3d_span.{name}`", f"{low}..{high}", default, effect))
+    effects = {
+        "ceiling": "Largest bounding-box side in pixel centres; 0 disables small fill",
+        "gate": "Vertex RGB565 spread limit at the ceiling; 0 disables the colour gate",
+        "style": ", ".join(f"{name} ({index})" for index, name in enumerate(SMALL_FILL_STYLES)),
+    }
+    if set(catalog) != set(effects):
+        raise ValueError("small fill needs the camera's three axes")
+    levers = [(f"`{name}`", f"{catalog[name][1]}..{catalog[name][2]}", catalog[name][0], effect)
+              for name, effect in effects.items()]
     (out / "small-fill-levers.md").write_text(markdown(
-        ["Axis", "Tunable", "Range", "Default", "Effect"], levers), encoding="utf-8")
+        ["Camera field", "Range", "Default", "Effect"], levers), encoding="utf-8")
     temporal = []
     for line in (work / "small-fill-looks.tsv").read_text().splitlines():
         name, label = line.split("|")[:2]
@@ -130,30 +163,8 @@ def write_small_fill(work, out, scene_id, object_name, data):
         temporal.append((label, f'{sum(float(f["extra_change_levels"]) for f in frames) / len(frames):.3f}',
                          f'{sum(float(f["blocks_popping_pct"]) for f in frames) / len(frames):.4f}%'))
     (out / "small-fill-temporal.md").write_text(markdown(
-        ["Look vs defaults", "Extra frame-to-frame change (levels of 255)", "Blocks popping (>8/255)"], temporal), encoding="utf-8")
-    baseline_plan, baseline = sweep_rows(data, "sweep48")
-    look_plan, looks = sweep_rows(data, "s2")
-    metric = f"run_{scene_id}_perf_suite/{object_name}_fitted_full"
-    def mean_for_label(plan, rows, label):
-        return next(row["metrics"][metric]["mean"] for point, row in zip(plan["points"], rows, strict=True)
-                    if point["label"] == label)
-
-    defaults = mean_for_label(baseline_plan, baseline, "Defaults")
-    flat = mean_for_label(baseline_plan, baseline, "Flat <=8")
-    bridge = mean_for_label(look_plan, looks, "Flat <=8")
-    measured = []
-    for row, point in zip(baseline, baseline_plan["points"], strict=True):
-        value = row["metrics"][metric]["mean"]
-        measured.append((point["label"], f"{value / 1000:.3f}", f'sweep48, point {row["point"]}',
-                         f"{100 * (value / defaults - 1):+.2f}%"))
-    for row, point in zip(looks, look_plan["points"], strict=True):
-        if point["label"] == "Flat <=8":
-            continue
-        value = row["metrics"][metric]["mean"]
-        measured.append((point["label"], f"{value / 1000:.3f}", f's2, point {row["point"]}',
-                         f"{100 * (flat / defaults * value / bridge - 1):+.2f}%"))
-    (out / "small-fill-board.md").write_text(markdown(
-        ["Look (size 8 unless defaults)", "Local measured frame ms", "Capture", "Frame vs defaults"], measured), encoding="utf-8")
+        ["Look vs Today", "Extra frame-to-frame change (levels of 255)", "Blocks popping (>8/255)"], temporal), encoding="utf-8")
+    (out / "small-fill-board.md").write_text(small_fill_board(data, scene_id, object_name), encoding="utf-8")
 
 
 def write_tables(work, out, scene_id, object_name):
