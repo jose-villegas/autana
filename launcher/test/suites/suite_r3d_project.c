@@ -259,10 +259,11 @@ test_the_screen_rounding_bound_holds_for_points_on_both_sides(void) {
             const vec3x_t p = {xi * 97, -xi * 61, view_x.near_z + (zi * 29)};
             int sx, sy;
             r3d_camera_to_screen_x(p, &view_x, &sx, &sy);
-            const double exact_x = view_x.center_x + ((double)p.x * view_x.pixels_per_unit / p.z);
-            const double exact_y = view_x.center_y - ((double)p.y * view_x.pixels_per_unit / p.z);
-            TEST_ASSERT_TRUE(fabs(sx - exact_x) < bound);
-            TEST_ASSERT_TRUE(fabs(sy - exact_y) < bound);
+            /* |s - (center +- q * ppu / z)| < bound, scaled through by z. */
+            const int64_t ex = (((int64_t)(sx - view_x.center_x)) * p.z) - ((int64_t)p.x * view_x.pixels_per_unit);
+            const int64_t ey = (((int64_t)(view_x.center_y - sy)) * p.z) - ((int64_t)p.y * view_x.pixels_per_unit);
+            TEST_ASSERT_TRUE(ex < (int64_t)bound * p.z && -ex < (int64_t)bound * p.z);
+            TEST_ASSERT_TRUE(ey < (int64_t)bound * p.z && -ey < (int64_t)bound * p.z);
         }
     }
 }
