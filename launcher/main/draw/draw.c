@@ -112,10 +112,37 @@ put(gfx_target_t target, gfx_color_t* dst, int x, int y, gfx_color_t color, bool
     *dst = add ? gfx_color_add(*dst, color) : color;
 }
 
-/* Bresenham, treats both axes alike, no case analysis; one body, specialised
- * by the constant `rows_held`. A line whose rows the target holds whole, as
- * every line of a full framebuffer does, steps a pointer; otherwise each
- * pixel's row is checked, so a band draws only the rows it holds. */
+/* Where a line's walk stands: the pixel, its Bresenham error, and (when the
+ * target holds the line's rows) its place in the target. */
+typedef struct {
+    int x, y, err;
+    gfx_color_t* dst;
+} line_cursor_t;
+
+/* One Bresenham step, treating both axes alike, no case analysis. */
+static inline __attribute__((always_inline)) void
+line_advance(line_cursor_t* c, int dx, int dy, int sx, int sy, ptrdiff_t row_step, bool rows_held) {
+    const int e2 = 2 * c->err;
+    if (e2 >= dy) {
+        c->err += dy;
+        c->x += sx;
+        if (rows_held) {
+            c->dst += sx;
+        }
+    }
+    if (e2 <= dx) {
+        c->err += dx;
+        c->y += sy;
+        if (rows_held) {
+            c->dst += row_step;
+        }
+    }
+}
+
+/* One body, specialised by the constant `rows_held`. A line whose rows the
+ * target holds whole, as every line of a full framebuffer does, steps a
+ * pointer; otherwise each pixel's row is checked, so a band draws only the
+ * rows it holds. */
 static inline __attribute__((always_inline)) void
 walk_steps(gfx_target_t target, int x, int y, int x1, int y1, gfx_color_t color, unsigned flags, line_dash_t dash,
            bool rows_held) {
@@ -125,31 +152,16 @@ walk_steps(gfx_target_t target, int x, int y, int x1, int y1, gfx_color_t color,
     const int sy = y < y1 ? 1 : -1;
     const bool add = (flags & DRAW_LINE_ADD) != 0;
     const ptrdiff_t row_step = (ptrdiff_t)sy * target.stride;
-    gfx_color_t* dst = rows_held ? &gfx_target_row(target, y)[x] : NULL;
-    int err = dx + dy;
+    line_cursor_t c = {x, y, dx + dy, rows_held ? &gfx_target_row(target, y)[x] : NULL};
 
     /* The first pixel of an open line keeps its place in the dash. */
     if (line_dash_step(&dash) && !(flags & DRAW_LINE_OPEN)) {
-        put(target, dst, x, y, color, add, rows_held);
+        put(target, c.dst, c.x, c.y, color, add, rows_held);
     }
     for (int remaining = mathi_max(dx, -dy); remaining > 0; remaining--) {
-        const int e2 = 2 * err;
-        if (e2 >= dy) {
-            err += dy;
-            x += sx;
-            if (rows_held) {
-                dst += sx;
-            }
-        }
-        if (e2 <= dx) {
-            err += dx;
-            y += sy;
-            if (rows_held) {
-                dst += row_step;
-            }
-        }
+        line_advance(&c, dx, dy, sx, sy, row_step, rows_held);
         if (line_dash_step(&dash)) {
-            put(target, dst, x, y, color, add, rows_held);
+            put(target, c.dst, c.x, c.y, color, add, rows_held);
         }
     }
 }
