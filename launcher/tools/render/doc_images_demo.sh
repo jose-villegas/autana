@@ -53,19 +53,20 @@ EOF
     small_fill_fps=6
     small_fill_window="trim=start_frame=$small_fill_first:end_frame=$small_fill_end,setpts=PTS-STARTPTS,fps=$small_fill_fps"
     small_fill_palette="max_colors=256:reserve_transparent=0:stats_mode=full"
-    while IFS='|' read -r look label object settings gif diff; do
+    # The table comes in on fd 3: the renderer and ffmpeg inherit stdin and may read it.
+    while IFS='|' read -r look label object settings gif diff <&3; do
         # Settings are whitespace-separated command arguments from the table above.
         set -- $settings
         run "$HOST" --scene "$ID" --quarter 1 --frames "$small_fill_frames" --dt "$small_fill_dt" --object "$object" "$@" \
             -o "$W/small-fill-$look.bmp" --video "$W/small-fill-$look.avi" 2> "$W/small-fill-$look.log"
         gif_from_avi "$W/small-fill-$look.avi" "$RENDER/$gif.gif" \
             "$small_fill_window" "$small_fill_palette"
-    done < "$W/small-fill-looks.tsv"
+    done 3< "$W/small-fill-looks.tsv"
     if cmp -s "$W/small-fill-defaults.bmp" "$W/small-fill-flat8.bmp"; then
         echo "small-fill: --set did not change the render" >&2
         exit 1
     fi
-    while IFS='|' read -r look label object settings gif diff; do
+    while IFS='|' read -r look label object settings gif diff <&3; do
         run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/small-fill-$look.mp4" \
             --video "$W/small-fill-defaults.avi" "$W/small-fill-$look.avi" \
             --label-a defaults --label-b "$look" --csv "$W/small-fill-$look.frames.csv" \
@@ -73,7 +74,7 @@ EOF
         run "$PYTHON" launcher/tools/render/render_temporal.py \
             --video "$W/small-fill-defaults.avi" "$W/small-fill-$look.avi" \
             --csv "$W/small-fill-$look.frames.csv" >> "$W/small-fill-$look-compare.log"
-    done < "$W/small-fill-looks.tsv"
+    done 3< "$W/small-fill-looks.tsv"
     run "$PYTHON" - "$W" <<'PY'
 import pathlib
 import subprocess
@@ -96,11 +97,11 @@ for row in (work / "small-fill-looks.tsv").read_text().splitlines():
                     "-c:v", "rawvideo", "-pix_fmt", "bgr24", str(work / f"small-fill-{look}-diff.avi")],
                    input=b"".join(frame.tobytes() for frame in frames), check=True)
 PY
-    while IFS='|' read -r look label object settings gif diff; do
+    while IFS='|' read -r look label object settings gif diff <&3; do
         [ "$look" != defaults ] || continue
         gif_from_avi "$W/small-fill-$look-diff.avi" "$RENDER/$diff.gif" \
             "$small_fill_window" "$small_fill_palette"
-    done < "$W/small-fill-looks.tsv"
+    done 3< "$W/small-fill-looks.tsv"
     run "$PYTHON" launcher/tools/render/doc_tables.py "$W" "$TABLES" "$ID" "$FULL" \
         --small-fill-data docs/render/data/small-fill
 }

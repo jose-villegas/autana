@@ -168,6 +168,7 @@ $MAIN_DIR/asset/asset_store_file.c
 $MAIN_DIR/render/r3d_lit_mesh.c
 $MAIN_DIR/render/render_view.c
 $MAIN_DIR/render/raster.c
+$MAIN_DIR/render/raster_split.c
 $MAIN_DIR/render/raster_show.c
 $MAIN_DIR/render/raster_motion.c
 $MAIN_DIR/render/raster_meshlets.c

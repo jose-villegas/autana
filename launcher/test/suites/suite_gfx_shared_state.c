@@ -16,9 +16,11 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include "core/memory.h"
 #include "draw/draw.h"
 #include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_test.h"
@@ -96,6 +98,61 @@ test_draw_is_refused_while_a_mode_has_freed_the_framebuffer(void) {
     draw_pixel(DRAWN_X, DRAWN_Y, 0x4321);
     TEST_ASSERT_EQUAL_UINT(after_exit, gfx_fb_guard_trips);
     TEST_ASSERT_EQUAL_HEX16(0x4321, gfx_framebuffer()[DRAWN_Y * GFX_WIDTH + DRAWN_X]);
+}
+
+/* Enters `request` while `kind` holds no free block of `block_bytes`: holds
+ * such blocks until no more fit, each keeping the one before it, then gives
+ * them all back. Returns the layout granted. */
+static gfx_layout_t
+enter_with_memory_held(const gfx_mode_request_t* request, size_t block_bytes, memory_kind_t kind) {
+    void* held = NULL;
+    void* block;
+    while ((block = memory_alloc(block_bytes, kind)) != NULL) {
+        *(void**)block = held;
+        held = block;
+    }
+    const gfx_layout_t granted = gfx_mode_enter(request)->layout;
+    while (held != NULL) {
+        void* const next = *(void**)held;
+        memory_free(held);
+        held = next;
+    }
+    return granted;
+}
+
+/* Every gfx_mode_enter() that stays FULL for want of storage counts once, in
+ * any layout; a grant counts nothing. */
+static void
+test_a_refused_layout_counts_once_and_a_granted_one_not_at_all(void) {
+    fixture();
+    const unsigned before = gfx_mode_denials();
+
+    TEST_ASSERT_EQUAL_INT(GFX_LAYOUT_INDEXED, gfx_mode_enter(&indexed_request)->layout);
+    gfx_mode_exit();
+    TEST_ASSERT_EQUAL_UINT(before, gfx_mode_denials());
+
+    const gfx_mode_request_t no_cells = {.layout = GFX_LAYOUT_INDEXED};
+    TEST_ASSERT_EQUAL_INT_MESSAGE(GFX_LAYOUT_FULL_FB, gfx_mode_enter(&no_cells)->layout, "no cells");
+    const gfx_mode_request_t past_the_pool = {
+        .layout = GFX_LAYOUT_INDEXED,
+        .index_grid_w = (int)memory_total_bytes(MEMORY_INTERNAL) + 1,
+        .index_grid_h = 1,
+        .cell_size = 1,
+    };
+    TEST_ASSERT_EQUAL_INT_MESSAGE(GFX_LAYOUT_FULL_FB, gfx_mode_enter(&past_the_pool)->layout, "past the pool");
+    TEST_ASSERT_EQUAL_UINT(before + 2, gfx_mode_denials());
+
+    const gfx_mode_request_t bands = {.layout = GFX_LAYOUT_BANDS};
+    const size_t band_bytes = (size_t)GFX_WIDTH * GFX_BAND_HEIGHT * sizeof(gfx_color_t);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(GFX_LAYOUT_FULL_FB, enter_with_memory_held(&bands, band_bytes, MEMORY_INTERNAL),
+                                  "bands with internal RAM held");
+    TEST_ASSERT_EQUAL_UINT(before + 3, gfx_mode_denials());
+
+    const gfx_mode_request_t double_fb = {.layout = GFX_LAYOUT_DOUBLE_FB};
+    TEST_ASSERT_EQUAL_INT_MESSAGE(GFX_LAYOUT_FULL_FB,
+                                  enter_with_memory_held(&double_fb, GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM),
+                                  "double framebuffer with PSRAM held");
+    TEST_ASSERT_EQUAL_UINT(before + 4, gfx_mode_denials());
 }
 
 static void
@@ -469,6 +526,7 @@ run_gfx_shared_state_suite(void) {
     RUN_TEST(test_row_marking_draw_is_seen_by_the_presenter);
     RUN_TEST(test_draw_is_refused_while_a_mode_has_freed_the_framebuffer);
     RUN_TEST(test_band_mode_refuses_draws_too);
+    RUN_TEST(test_a_refused_layout_counts_once_and_a_granted_one_not_at_all);
     RUN_TEST(test_draw_between_present_begin_and_wait_trips_the_present_guard);
     RUN_TEST(test_invalidate_alone_forces_one_full_band_frame);
 #endif

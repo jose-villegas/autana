@@ -59,7 +59,7 @@ screen. Project loading and authored project screens remain planned.
 | Need | Becomes | Why |
 |---|---|---|
 | a scrim behind a panel over a paused screen | toolkit feature `ui_scrim_*` `[M]` | a game's pause menu needs the same |
-| scroll with snap and momentum | toolkit (already `ui_scroll`, `ui_snap`) | an app already uses it |
+| scroll with snap | toolkit (already `ui_snap`) | an app already uses it |
 | `ui_invalidate()` | toolkit (already) | any client whose screen another drawer overwrote calls it |
 | baked layout tables | toolkit (already `ui_layout.h`) | the editor's output, the same for every project |
 | the app list, its icons and the launch tap | shell code | only the shell knows the registry |
