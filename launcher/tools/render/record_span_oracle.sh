@@ -32,7 +32,9 @@ if loop not in source:
 Path(runner).write_text(source.replace(loop, replacement))
 PY
 bash "$RUNNER" --build-dir "$SCRATCH" --build-only
-if grep -q test_old_look_flat_is_bit_identical "$SCRATCH/oracle-suite.c"; then
+if grep -q test_ceiling_four_flat_is_bit_identical "$SCRATCH/oracle-suite.c"; then
+    pattern=ceiling_four_flat
+elif grep -q test_old_look_flat_is_bit_identical "$SCRATCH/oracle-suite.c"; then
     pattern=old_look_flat
 else
     pattern=defaults

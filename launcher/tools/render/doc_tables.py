@@ -11,8 +11,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 VIEW_HEADER = pathlib.Path(__file__).resolve().parents[2] / "main/render/render_view.h"
-SMALL_FILL_STYLES = re.findall(r"SMALL_FILL_([A-Z]+)", re.search(
-    r"typedef enum \{([^}]+)\} small_fill_style_t;", VIEW_HEADER.read_text()).group(1))
+SMALL_FILL_STYLES = re.findall(r"SMALL_FILL_([A-Z]+)(?=\s*[,}])", re.search(
+    r"typedef enum \{([^}]+)\} small_fill_style_t;", VIEW_HEADER.read_text()).group(1) + "}")
 SWEEP_GATE_OFF = 64
 MICROSECONDS_PER_MILLISECOND = 1000
 
@@ -139,9 +139,12 @@ def small_fill_board(data, scene_id, object_name):
 def write_small_fill(work, out, scene_id, object_name, data):
     """Camera axes from the source registry, temporal CSVs and recorded board sweeps."""
     out.mkdir(parents=True, exist_ok=True)
-    catalog = dict((name, (int(default), int(low), int(high))) for name, low, high, default in re.findall(
-        r"TUNE render_lab\.small_fill_(\w+)=-?\d+ min=(-?\d+) max=(-?\d+) default=(-?\d+)",
-        (work / "small-fill-tunables.log").read_text()))
+    from ctypes import c_uint8
+    header = VIEW_HEADER.read_text()
+    defaults = dict(re.findall(r"#define SMALL_FILL_(CEILING|GATE)_DEFAULT\s+(\d+)", header))
+    style = re.search(r"#define SMALL_FILL_STYLE_DEFAULT\s+SMALL_FILL_(\w+)", header).group(1)
+    catalog = {name.lower(): (int(default), 0, c_uint8(-1).value) for name, default in defaults.items()}
+    catalog["style"] = (SMALL_FILL_STYLES.index(style), 0, len(SMALL_FILL_STYLES) - 1)
     effects = {
         "ceiling": "Largest bounding-box side in pixel centres; 0 disables small fill",
         "gate": "Vertex RGB565 spread limit at the ceiling; 0 disables the colour gate",
@@ -163,7 +166,7 @@ def write_small_fill(work, out, scene_id, object_name, data):
         temporal.append((label, f'{sum(float(f["extra_change_levels"]) for f in frames) / len(frames):.3f}',
                          f'{sum(float(f["blocks_popping_pct"]) for f in frames) / len(frames):.4f}%'))
     (out / "small-fill-temporal.md").write_text(markdown(
-        ["Look vs Today", "Extra frame-to-frame change (levels of 255)", "Blocks popping (>8/255)"], temporal), encoding="utf-8")
+        ["Look vs Ceiling 4, no gate", "Extra frame-to-frame change (levels of 255)", "Blocks popping (>8/255)"], temporal), encoding="utf-8")
     (out / "small-fill-board.md").write_text(small_fill_board(data, scene_id, object_name), encoding="utf-8")
 
 

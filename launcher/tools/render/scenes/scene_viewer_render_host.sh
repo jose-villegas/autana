@@ -6,7 +6,6 @@ scene_name=scene_viewer
 scene_defines="-DTUNE_HOT_LIVE=1"
 scene_sources="
 main/services/tune.c
-main/apps/render_lab/render_lab_view.c
 main/core/job.c
 main/render/render_view.c
 main/render/raster.c

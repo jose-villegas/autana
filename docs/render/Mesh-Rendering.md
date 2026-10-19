@@ -339,7 +339,7 @@ fills its spans without those clamps, which would change nothing there.
 
 ### Small fill
 
-Small triangles skip plane setup and use one depth and a flat colour.
+Small triangles skip plane setup and use one depth, with colour from the camera's style.
 The camera owns the bounding-box ceiling, colour gate and style;
 `render_view_t.small_fill` carries them to the frame's row workers.
 
@@ -360,21 +360,26 @@ fill.style = SMALL_FILL_GRAIN;
 scene_camera_set_small_fill(scene, camera, fill);
 ```
 
-The gate compares packed RGB565 channel spreads. Above side 4, its limit
-starts at 64 and tightens linearly to `gate` at the ceiling.
-A ceiling of 5 uses `gate` directly. Face colours and sides up to 4 bypass the gate and use FLAT.
+One gate limit applies to all packed RGB565 per-channel spreads: green's
+six bits get half the relative tolerance of red and blue. Above
+`R3D_SPAN_SMALL_MAX_SIDE`, the limit tightens from `SMALL_SPREAD_OFF`
+to `gate` at the ceiling.
+
+If only one side is eligible, it uses `gate` directly. Face colours and sides
+through `R3D_SPAN_SMALL_MAX_SIDE` bypass the gate and use FLAT.
 
 FLAT writes the averaged colour. DITHER uses screen-anchored ordered picks
 of the vertex colours. GRAIN alternates flat and one shade in a 2×2 checker,
 moving R/B by one step and G by two in the same direction.
 
-GRAIN lightens the darker half and darkens the brighter half. If that would
-overflow, it tries the opposite direction. When neither is safe, the shade
-equals flat. Channels never clamp independently.
+GRAIN splits the colour range: a colour in its dark half gets the lighter
+shade; a colour in its bright half gets the darker shade. If that step
+overflows, it tries the other direction. If neither fits, the shade is flat.
+Channels never clamp independently.
 
 <table>
-<tr><th>Look</th><th>Picture</th><th>Difference from Today ×8</th></tr>
-<tr><td>Today: {4, 0, FLAT}</td><td><img src="../images/render/sponza-small-fill-today.gif" width="100%" alt="Today"></td><td></td></tr>
+<tr><th>Look</th><th>Picture</th><th>Difference from Ceiling 4, no gate ×8</th></tr>
+<tr><td>Ceiling 4, no gate</td><td><img src="../images/render/sponza-small-fill-ceiling-4-no-gate.gif" width="100%" alt="Ceiling 4, no gate"></td><td></td></tr>
 <tr><td>Default</td><td><img src="../images/render/sponza-small-fill-default.gif" width="100%" alt="Default flat fill"></td><td><img src="../images/render/sponza-small-fill-default-diff.gif" width="100%" alt="Default difference"></td></tr>
 <tr><td>Grain</td><td><img src="../images/render/sponza-small-fill-grain.gif" width="100%" alt="Hue-safe grain"></td><td><img src="../images/render/sponza-small-fill-grain-diff.gif" width="100%" alt="Grain difference"></td></tr>
 <tr><td>Dither</td><td><img src="../images/render/sponza-small-fill-dither.gif" width="100%" alt="Ordered vertex colours"></td><td><img src="../images/render/sponza-small-fill-dither-diff.gif" width="100%" alt="Dither difference"></td></tr>
@@ -384,10 +389,10 @@ Clips show the same full renderer frames and camera window, one look per GIF.
 The [temporal method](../tools/Render-Harness.md#temporal-video-columns)
 measures triangle-scale pops; the difference clips also show spatial noise.
 
-<!-- generated: small-fill-temporal sha256=3c48cbaa386c4516d72573e8607da63c4e84595b70e868863358cefe38bc3929 -->
-| Look vs Today | Extra frame-to-frame change (levels of 255) | Blocks popping (>8/255) |
+<!-- generated: small-fill-temporal sha256=4428b8304d2599d663cd519706d0ce9596db0453bb56179e3ee8167edc366bc2 -->
+| Look vs Ceiling 4, no gate | Extra frame-to-frame change (levels of 255) | Blocks popping (>8/255) |
 |---|---|---|
-| Today | 0.000 | 0.0000% |
+| Ceiling 4, no gate | 0.000 | 0.0000% |
 | Default | 0.799 | 1.6689% |
 | Grain | 0.904 | 1.8737% |
 | Dither | 1.052 | 3.0096% |
@@ -401,9 +406,11 @@ records build IDs, captures and layout seeds.
 
 Times are seed means in landscape: the fitted-full mesh frame and the
 animated skinned render. Each sweep's percentages compare with its first row.
-Style timings require a committed camera-style sweep.
+The [camera-style sweep](data/small-fill/p7-sweep.json) compares the styles
+with the baseline on the same build; its [plan](data/small-fill/p7-plan.json)
+records both orientations. This table shows landscape.
 
-<!-- generated: small-fill-board sha256=358e5804bd0ab54f8e034f3f2ddd8771f553b22c57501d75837d73f46b084ae8 -->
+<!-- generated: small-fill-board sha256=a75ce821fab519f172bd8ade0e3b0ae380e4a19787d8bec0d6cf7901f7bbc7c8 -->
 | Ceiling | Gate | Style | Mesh frame ms | vs first row | Skinned render ms | vs first row | Capture |
 |---|---|---|---|---|---|---|---|
 | 4 | 0 | FLAT | 41.103 | +0.00% | 8.743 | +0.00% | p5a, point 0 |
@@ -422,12 +429,21 @@ Style timings require a committed camera-style sweep.
 | 16 | 8 | FLAT | 36.457 | -11.30% | 7.960 | -8.96% | p5a, point 13 |
 | 16 | 16 | FLAT | 36.285 | -11.72% | 7.965 | -8.90% | p5a, point 14 |
 | 16 | 24 | FLAT | 36.159 | -12.03% | 7.961 | -8.95% | p5a, point 15 |
+
+| Ceiling | Gate | Style | Mesh frame ms | vs first row | Skinned render ms | vs first row | Capture |
+|---|---|---|---|---|---|---|---|
+| 4 | 16 | FLAT | 40.113 | +0.00% | 8.577 | +0.00% | p7, point 0 |
+| 4 | 16 | GRAIN | 40.116 | +0.01% | 8.579 | +0.01% | p7, point 1 |
+| 4 | 16 | DITHER | 40.119 | +0.02% | 8.575 | -0.02% | p7, point 2 |
+| 12 | 16 | FLAT | 36.972 | -7.83% | 8.038 | -6.29% | p7, point 3 |
+| 12 | 16 | GRAIN | 38.649 | -3.65% | 8.294 | -3.30% | p7, point 4 |
+| 12 | 16 | DITHER | 38.985 | -2.81% | 8.351 | -2.63% | p7, point 5 |
 <!-- /generated: small-fill-board -->
 
 ## Memory
 
-The layer allocates nothing. The span filler caches camera settings and a
-per-side spread table before row workers start.
+The layer allocates nothing. Raster draw work owns the resolved camera
+settings and per-side spread table, shared read-only by the row workers.
 
 Per-vertex and per-cluster buffers, the census list, picture attachments and
 upscale maps share one block. The list follows geometry at an offset

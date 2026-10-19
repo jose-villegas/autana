@@ -3,7 +3,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "apps/render_lab/render_lab_view.h"
 #include "gfx/gfx.h"
 #include "render/context/render_context.h"
 #include "render_host.h"
@@ -16,6 +15,7 @@ static int object_count;
 static int shell_quarter;
 static int size_width, size_height;
 static camera_present_t present;
+static small_fill_t small_fill = SMALL_FILL_DEFAULT;
 static int view = RENDER_DEBUG_VIEW_SHADED;
 
 static bool
@@ -41,6 +41,16 @@ options(int argc, char** argv) {
                 fprintf(stderr, "scene_viewer: --size is WxH within %dx%d, not %s\n", GFX_WIDTH, GFX_HEIGHT, value);
                 return false;
             }
+        } else if (strcmp(flag, "--small-fill") == 0) {
+            unsigned ceiling, gate, style;
+            char trailing;
+            if (sscanf(value, "%u,%u,%u%c", &ceiling, &gate, &style, &trailing) != 3 || ceiling > UINT8_MAX
+                || gate > UINT8_MAX || style >= SMALL_FILL_STYLE_COUNT) {
+                fprintf(stderr, "scene_viewer: --small-fill is CEILING,GATE,STYLE within 0..%u,0..%u,0..%u\n",
+                        UINT8_MAX, UINT8_MAX, SMALL_FILL_STYLE_COUNT - 1);
+                return false;
+            }
+            small_fill = (small_fill_t){(uint8_t)ceiling, (uint8_t)gate, (small_fill_style_t)style};
         } else if (strcmp(flag, "--present") == 0) {
             if (strcmp(value, "nearest") == 0) {
                 present = CAMERA_PRESENT_NEAREST;
@@ -144,7 +154,7 @@ setup(int quarter) {
     }
     for (int i = 0; i < scene_entity_count(scene); i++) {
         (void)scene_camera_set_present(scene, (scene_entity_t)i, present);
-        (void)scene_camera_set_small_fill(scene, (scene_entity_t)i, render_lab_small_fill());
+        (void)scene_camera_set_small_fill(scene, (scene_entity_t)i, small_fill);
     }
     render_context_t* context = render_context_main();
     render_context_set_debug_view(context, view);

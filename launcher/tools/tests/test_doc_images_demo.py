@@ -140,6 +140,38 @@ class DocImageFailureTest(unittest.TestCase):
             self.assertEqual(styles.count("| Ceiling |"), 2)
             self.assertNotIn(next(iter(points[0])).split(".")[0], styles)
 
+
+    def test_board_sweep_refuses_multiple_boards(self):
+        import json
+        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+        import doc_tables
+        with tempfile.TemporaryDirectory() as directory:
+            data = pathlib.Path(directory)
+            (data / "p7-plan.json").write_text(json.dumps({
+                "points": [{}], "captures": [{"board": "a"}, {"board": "b"}]}))
+            (data / "p7-sweep.json").write_text(json.dumps({"rows": [{
+                "build": "test", "point": 0, "knobs": {},
+                "metrics": {"frame": {"mean": 1, "observations": [1]}}}]}))
+            with self.assertRaisesRegex(ValueError, "one board"):
+                doc_tables.sweep_rows(data, "p7")
+
+    def test_small_fill_header_lists_only_selectable_styles(self):
+        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+        import doc_tables
+        self.assertEqual(doc_tables.SMALL_FILL_STYLES, ["FLAT", "GRAIN", "DITHER"])
+
+    def test_timing_samples_preserves_requested_identity_fields(self):
+        sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
+        from layout_measure import timing_samples
+        text = ("stage=render cores=2 paused=0 joints=22 quarter=portrait mean_us=123 p95_us=150\n"
+                "stage=render cores=1 paused=1 joints=7 quarter=landscape mean_us=90 p95_us=100")
+        self.assertEqual(list(timing_samples(
+            text, identity_fields=("cores", "paused", "joints"), percentiles=True)), [
+                ("render cores=2 paused=0 joints=22 quarter=portrait", 123),
+                ("render.p95 cores=2 paused=0 joints=22 quarter=portrait", 150),
+                ("render cores=1 paused=1 joints=7 quarter=landscape", 90),
+                ("render.p95 cores=1 paused=1 joints=7 quarter=landscape", 100)])
+
     def test_driver_supplies_all_four_demo_arguments(self):
         source = (ROOT / "launcher/tools/render/render_doc_images.sh").read_text()
         assignments = [line for line in source.splitlines() if line.startswith(("DEMO_SCENE=", "DEMO_OBJECT="))]
@@ -174,7 +206,7 @@ class DocImageFailureTest(unittest.TestCase):
             images = root / "docs/images/render"
             images.mkdir(parents=True)
             for stem in ("gallery-full", "gallery-missing", "unknown-full",
-                         "gallery-small-fill-today", "gallery-small-fill-default-diff",
+                         "gallery-small-fill-ceiling-4-no-gate", "gallery-small-fill-default-diff",
                          "gallery-small-fill-dither-diff", "gallery-small-fill-grain-diff"):
                 (images / f"{stem}.gif").touch()
             done = subprocess.run(["sh", str(tools / "render_doc_images.sh"), "--orphans"],

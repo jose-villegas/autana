@@ -37,13 +37,11 @@ build=$(run sh launcher/tools/render/scene_viewer.sh "$SCENE" --build-only -o "$
 HOST=${build#built }
 
 small_fill_images() {
-    run "$HOST" --scene "$ID" --object "${FULL}_fitted_full" --frames 1 --tunables \
-        -o "$W/small-fill-tunables.bmp" 2> "$W/small-fill-tunables.log"
     cat > "$W/small-fill-looks.tsv" <<EOF
-today|Today|${FULL}_fitted_full|--set render_lab.small_fill_ceiling=4 --set render_lab.small_fill_gate=0 --set render_lab.small_fill_style=0|${ID}-small-fill-today|
+ceiling-4-no-gate|Ceiling 4, no gate|${FULL}_fitted_full|--small-fill 4,0,0|${ID}-small-fill-ceiling-4-no-gate|
 default|Default|${FULL}_fitted_full||${ID}-small-fill-default|${ID}-small-fill-default-diff
-grain|Grain|${FULL}_fitted_full|--set render_lab.small_fill_style=1|${ID}-small-fill-grain|${ID}-small-fill-grain-diff
-dither|Dither|${FULL}_fitted_full|--set render_lab.small_fill_style=2|${ID}-small-fill-dither|${ID}-small-fill-dither-diff
+grain|Grain|${FULL}_fitted_full|--small-fill 12,16,1|${ID}-small-fill-grain|${ID}-small-fill-grain-diff
+dither|Dither|${FULL}_fitted_full|--small-fill 12,16,2|${ID}-small-fill-dither|${ID}-small-fill-dither-diff
 EOF
     small_fill_first=1
     small_fill_end=56
@@ -60,17 +58,17 @@ EOF
         gif_from_avi "$W/small-fill-$look.avi" "$RENDER/$gif.gif" \
             "$small_fill_window" "$small_fill_palette"
     done 3< "$W/small-fill-looks.tsv"
-    if cmp -s "$W/small-fill-today.bmp" "$W/small-fill-default.bmp"; then
-        echo "small-fill: --set did not change the render" >&2
+    if cmp -s "$W/small-fill-ceiling-4-no-gate.bmp" "$W/small-fill-default.bmp"; then
+        echo "small-fill: --small-fill did not change the render" >&2
         exit 1
     fi
     while IFS='|' read -r look label object settings gif diff <&3; do
         run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/small-fill-$look.mp4" \
-            --video "$W/small-fill-today.avi" "$W/small-fill-$look.avi" \
-            --label-a Today --label-b "$look" --csv "$W/small-fill-$look.frames.csv" \
+            --video "$W/small-fill-ceiling-4-no-gate.avi" "$W/small-fill-$look.avi" \
+            --label-a "Ceiling 4, no gate" --label-b "$look" --csv "$W/small-fill-$look.frames.csv" \
             > "$W/small-fill-$look-compare.log"
         run "$PYTHON" launcher/tools/render/render_temporal.py \
-            --video "$W/small-fill-today.avi" "$W/small-fill-$look.avi" \
+            --video "$W/small-fill-ceiling-4-no-gate.avi" "$W/small-fill-$look.avi" \
             --csv "$W/small-fill-$look.frames.csv" >> "$W/small-fill-$look-compare.log"
     done 3< "$W/small-fill-looks.tsv"
     run "$PYTHON" - "$W" <<'PY'
@@ -81,22 +79,22 @@ from PIL import Image
 sys.path.insert(0, "launcher/tools/render")
 from render_compare import GAIN, heatmap, read_video
 work = pathlib.Path(sys.argv[1])
-fps, today = read_video(work / "small-fill-today.avi")
-today = list(today)
+fps, baseline = read_video(work / "small-fill-ceiling-4-no-gate.avi")
+baseline = list(baseline)
 for row in (work / "small-fill-looks.tsv").read_text().splitlines():
     look, label, _, _, _, _ = row.split("|")
-    if look == "today":
+    if look == "ceiling-4-no-gate":
         continue
     _, variant = read_video(work / f"small-fill-{look}.avi")
     frames = [heatmap(Image.fromarray(a), Image.fromarray(b), None, GAIN)
-              for a, b in zip(today, variant)]
+              for a, b in zip(baseline, variant)]
     subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo",
                     "-pix_fmt", "rgb24", "-s", "%dx%d" % frames[0].size, "-r", str(fps), "-i", "-",
                     "-c:v", "rawvideo", "-pix_fmt", "bgr24", str(work / f"small-fill-{look}-diff.avi")],
                    input=b"".join(frame.tobytes() for frame in frames), check=True)
 PY
     while IFS='|' read -r look label object settings gif diff <&3; do
-        [ "$look" != today ] || continue
+        [ "$look" != ceiling-4-no-gate ] || continue
         gif_from_avi "$W/small-fill-$look-diff.avi" "$RENDER/$diff.gif" \
             "$small_fill_window" "$small_fill_palette"
     done 3< "$W/small-fill-looks.tsv"
