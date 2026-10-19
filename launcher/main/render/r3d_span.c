@@ -340,6 +340,8 @@ carried_rows(const r3d_span_target_t* target, const fill_t* f, uint32_t row[ATTR
         if (step_edge(left)) {
             advance = extra_increment;
         }
+        /* n is 1 or ATTRIBUTES. Written-out adds avoid a hardware loop
+         * that recomputes its trip count every row. */
         row[0] += advance[0];
         if (n == ATTRIBUTES) {
             row[1] += advance[1];
