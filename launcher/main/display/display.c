@@ -82,7 +82,8 @@ neighbor_quarter(int q, int perp) {
 
 bool
 display_update(display_t* d, vec2i_t gravity) {
-    int aligned, perp;
+    int aligned;
+    int perp;
     split_gravity(d->quarter, gravity.x, gravity.y, &aligned, &perp);
 
     const int perp_abs = (perp < 0) ? -perp : perp;

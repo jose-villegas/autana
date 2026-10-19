@@ -611,7 +611,8 @@ static bool
 gfx_band_dirty(void) {
     const int row0 = band_render_row0;
     const int row1 = band_render_row0 + band_render_height;
-    int x0, x1;
+    int x0;
+    int x1;
     bool dirty = band_frame_force_all || dirty_band_extent(row0, row1, &x0, &x1);
 #if CONFIG_LAUNCHER_DEVELOPMENT
     /* A border exists only in the band that was sent, and gfx holds no

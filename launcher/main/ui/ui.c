@@ -145,7 +145,8 @@ draw_text_command(const mu_Command* cmd, affine2x_t t) {
      * label-drawing code solves for itself, ported rather than called
      * directly because ui/ sits below apps/, so reaching into an
      * app's source would be a backwards layering dependency. */
-    int mx, my;
+    int mx;
+    int my;
     ui_text_glyph0_origin(font, ui_recti_from_mu(box), quarter, scale, &mx, &my);
 
     /* A text colour's alpha is dithered coverage. No halo has a

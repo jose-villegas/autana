@@ -25,7 +25,8 @@ touch_probe_offset(touch_probe_target_t target, int x, int y, int* dx, int* dy) 
 
 bool
 touch_probe_record(touch_probe_stats_t* stats, touch_probe_target_t target, int x, int y) {
-    int dx, dy;
+    int dx;
+    int dy;
     touch_probe_offset(target, x, y, &dx, &dy);
     const bool hit = x >= target.x && x < target.x + target.side && y >= target.y && y < target.y + target.side;
 
@@ -121,7 +122,8 @@ median(int* v, int n) {
 
 void
 touch_probe_settled(const touch_probe_sample_t* samples, int n, int from_ms, int to_ms, int* x, int* y) {
-    int xs[SETTLE_MAX], ys[SETTLE_MAX];
+    int xs[SETTLE_MAX];
+    int ys[SETTLE_MAX];
     int count = 0;
     int last = 0;
     for (int i = 0; i < n; i++) {

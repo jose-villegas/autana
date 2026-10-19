@@ -66,7 +66,9 @@ report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
      * Presents that sent a strip, and the touch samples feeding them, are
      * what a swipe actually sees. */
     static uint32_t drawn;
-    int full = 0, gathered = 0, partial = 0;
+    int full = 0;
+    int gathered = 0;
+    int partial = 0;
     gfx_get_strip_send_counts(&full, &gathered, &partial);
     if (full + gathered + partial > 0) {
         drawn++;
@@ -75,7 +77,8 @@ report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
 
     const int64_t since = now_us - *window_start;
     if (since >= SHELL_REPORT_WINDOW_US) {
-        uint32_t points = 0, moved = 0;
+        uint32_t points = 0;
+        uint32_t moved = 0;
         touch_take_sample_counts(&points, &moved);
         const double per_s = 1000000.0 / (double)since;
         ESP_LOGI(TAG, "%.1f fps, %.1f drawn/s, touch %.1f points/s %.1f moved/s", (double)*frames * per_s,

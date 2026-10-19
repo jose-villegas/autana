@@ -390,7 +390,10 @@ glyph_font(const gfx_surface_t* state, const draw_font_t* font, int x, int y, un
     draw_font_run_box_t boxes[DRAW_FONT_RUN_BOXES_MAX];
     const int n = draw_font_glyph_run_boxes(font, ch, boxes, DRAW_FONT_RUN_BOXES_MAX);
     for (int i = 0; i < n; i++) {
-        int rx, ry, rw, rh;
+        int rx;
+        int ry;
+        int rw;
+        int rh;
         if (halo) {
             draw_font_run_box_rect_dilated(font, x, y, boxes[i].row0, boxes[i].row1, boxes[i].col0, boxes[i].col1,
                                            scale, turn, &rx, &ry, &rw, &rh);
@@ -469,7 +472,8 @@ draw_text_font_halo(int x, int y, const char* text, gfx_color_t color, int scale
 static void
 rotated_font_pixel_dither(const gfx_surface_t* state, const draw_font_t* font, int x, int y, int row, int col,
                           int scale, int turn, gfx_color_t color, uint8_t alpha) {
-    int px, py;
+    int px;
+    int py;
     switch (turn) {
         case 1:
             px = font->cell_h - 1 - row;

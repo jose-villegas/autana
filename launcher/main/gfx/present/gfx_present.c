@@ -626,9 +626,12 @@ send_run(int row, int run_start, int run_end, int box_x0, int box_x1, int box_y0
  * large parts. */
 static void
 send_one_row(int row, int* queued) {
-    int run_start[GRID_COLS], run_end[GRID_COLS];
-    int box_x0[GRID_COLS], box_x1[GRID_COLS];
-    int box_y0[GRID_COLS], box_y1[GRID_COLS];
+    int run_start[GRID_COLS];
+    int run_end[GRID_COLS];
+    int box_x0[GRID_COLS];
+    int box_x1[GRID_COLS];
+    int box_y0[GRID_COLS];
+    int box_y1[GRID_COLS];
     int split_n[GRID_COLS];
     int split_x0[GRID_COLS][LEAF_REFINE_MAX_RUNS];
     int split_x1[GRID_COLS][LEAF_REFINE_MAX_RUNS];

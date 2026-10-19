@@ -181,7 +181,8 @@ poll_controller(bool* have_point, int* x, int* y) {
 static void
 poll_once(void) {
     bool have_point = false;
-    int x = 0, y = 0;
+    int x = 0;
+    int y = 0;
     const int64_t now_us = timing_now_us();
 
 #if CONFIG_LAUNCHER_DEVELOPMENT

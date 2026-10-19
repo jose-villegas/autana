@@ -262,10 +262,18 @@ calibration_on(void) {
 static void
 finish_tap(int release_x, int release_y) {
     const touch_probe_sample_t first = tap.samples[0];
-    int settled_x, settled_y;
+    int settled_x;
+    int settled_y;
     touch_probe_settled(tap.samples, tap.count, SETTLE_FROM_MS, SETTLE_TO_MS, &settled_x, &settled_y);
 
-    int fx, fy, sx, sy, rx, ry, aim_panel_x, aim_panel_y;
+    int fx;
+    int fy;
+    int sx;
+    int sy;
+    int rx;
+    int ry;
+    int aim_panel_x;
+    int aim_panel_y;
     to_screen(first.x, first.y, &fx, &fy);
     to_screen(settled_x, settled_y, &sx, &sy);
     to_screen(release_x, release_y, &rx, &ry);
@@ -314,7 +322,9 @@ drag_bezel(const input_t* input) {
     if (!input->down) {
         return;
     }
-    int x, press_y, y;
+    int x;
+    int press_y;
+    int y;
     to_screen(input->press_x, input->press_y, &x, &press_y);
     to_screen(input->x, input->y, &x, &y);
     const int radius = radius_at_press + ((press_y - y) / BEZEL_DRAG_PX);
@@ -395,7 +405,8 @@ hud_line(int row, const char* text) {
 static void
 hud_offset_line(int row, const char* label, float mean, float spread) {
     char line[64];
-    char mean_text[24], spread_text[24];
+    char mean_text[24];
+    char spread_text[24];
     motion_probe_format_fixed(mean_text, sizeof mean_text, (int)lroundf(mean * OFFSET_SCALE), OFFSET_DIGITS, true);
     motion_probe_format_fixed(spread_text, sizeof spread_text, (int)lroundf(spread * OFFSET_SCALE), OFFSET_DIGITS,
                               false);

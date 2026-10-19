@@ -47,7 +47,8 @@ report_text(const report_pen_t* pen, int x, int y, const char* text, int scale, 
     const recti_t box =
         ui_transform_rect(pen->transform, (recti_t){x, y, text_width(text, scale), draw_font_height(font, scale)});
 
-    int gx, gy;
+    int gx;
+    int gy;
     ui_text_glyph0_origin(font, box, pen->quarter, scale, &gx, &gy);
     draw_text_font(gx, gy, text, colour, scale, pen->quarter, font);
 }
