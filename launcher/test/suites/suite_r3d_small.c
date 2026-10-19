@@ -727,6 +727,29 @@ reference_small(const r3d_span_target_t* target, const r3d_span_vertex_t v[3], b
 }
 
 static void
+check_randomized_small(rng_t* random, r3d_span_vertex_t v[TRIANGLE_VERTICES], bool solid, bool reverse) {
+    if (reverse) {
+        const r3d_span_vertex_t swap = v[0];
+        v[0] = v[2];
+        v[2] = swap;
+    }
+    const r3d_span_target_t actual = r3d_span_target(pixels, pixels + TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
+    const r3d_span_target_t expected =
+        r3d_span_target(pixels + 2 * TEST_PIXELS, pixels + 3 * TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
+    for (int i = 0; i < 2 * TEST_PIXELS; i++) {
+        pixels[i] = (uint16_t)rng_below(random, UINT16_MAX + 1);
+    }
+    memcpy(pixels + 2 * TEST_PIXELS, pixels, sizeof(*pixels) * 2 * TEST_PIXELS);
+    reference_small(&expected, v, solid);
+    if (solid) {
+        hot_triangle_solid(&actual, v, v + 1, v + 2, GFX_RGB(0x123456));
+    } else {
+        hot_triangle(&actual, v, v + 1, v + 2);
+    }
+    TEST_ASSERT_EQUAL_MEMORY(pixels + 2 * TEST_PIXELS, pixels, sizeof(*pixels) * 2 * TEST_PIXELS);
+}
+
+static void
 test_small_randomized_reference(void) {
     (void)fixture();
     const int spreads[] = {0, 1, 4, SMALL_FLAT_SPREAD_OFF, SMALL_FLAT_SPREAD_OFF};
@@ -756,27 +779,7 @@ test_small_randomized_reference(void) {
                                 v[k].r = v[k].g = v[k].b = 99.0F;
                             }
                         }
-                        if (sample & 2) {
-                            const r3d_span_vertex_t swap = v[0];
-                            v[0] = v[2];
-                            v[2] = swap;
-                        }
-                        const r3d_span_target_t actual =
-                            r3d_span_target(pixels, pixels + TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
-                        const r3d_span_target_t expected = r3d_span_target(
-                            pixels + 2 * TEST_PIXELS, pixels + 3 * TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
-                        for (int i = 0; i < 2 * TEST_PIXELS; i++) {
-                            pixels[i] = (uint16_t)rng_below(&random, UINT16_MAX + 1);
-                        }
-                        memcpy(pixels + 2 * TEST_PIXELS, pixels, sizeof(*pixels) * 2 * TEST_PIXELS);
-                        const bool solid = sample % 5 == 0;
-                        reference_small(&expected, v, solid);
-                        if (solid) {
-                            hot_triangle_solid(&actual, v, v + 1, v + 2, GFX_RGB(0x123456));
-                        } else {
-                            hot_triangle(&actual, v, v + 1, v + 2);
-                        }
-                        TEST_ASSERT_EQUAL_MEMORY(pixels + 2 * TEST_PIXELS, pixels, sizeof(*pixels) * 2 * TEST_PIXELS);
+                        check_randomized_small(&random, v, sample % 5 == 0, (sample & 2) != 0);
                     }
                 }
             }
@@ -786,9 +789,7 @@ test_small_randomized_reference(void) {
 
 static void
 test_small_grain_randomized_reference(void) {
-    const r3d_span_target_t actual = fixture();
-    const r3d_span_target_t expected =
-        r3d_span_target(pixels + 2 * TEST_PIXELS, pixels + 3 * TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
+    (void)fixture();
     knob("r3d_span.small_max_side", SMALL_MAX_SIDE_TUNE);
     for (int amplitude = 0; amplitude <= SMALL_GRAIN_AMPLITUDE_MAX; amplitude++) {
         knob("r3d_span.small_grain", amplitude);
@@ -814,23 +815,7 @@ test_small_grain_randomized_reference(void) {
                             v[k].r = v[k].g = v[k].b = 99.0F;
                         }
                     }
-                    if (sample & 1) {
-                        const r3d_span_vertex_t swap = v[0];
-                        v[0] = v[2];
-                        v[2] = swap;
-                    }
-                    for (int i = 0; i < 2 * TEST_PIXELS; i++) {
-                        pixels[i] = (uint16_t)rng_below(&random, UINT16_MAX + 1);
-                    }
-                    memcpy(pixels + 2 * TEST_PIXELS, pixels, sizeof(*pixels) * 2 * TEST_PIXELS);
-                    const bool solid = sample % 7 == 0;
-                    reference_small(&expected, v, solid);
-                    if (solid) {
-                        hot_triangle_solid(&actual, v, v + 1, v + 2, GFX_RGB(0x123456));
-                    } else {
-                        hot_triangle(&actual, v, v + 1, v + 2);
-                    }
-                    TEST_ASSERT_EQUAL_MEMORY(pixels + 2 * TEST_PIXELS, pixels, sizeof(*pixels) * 2 * TEST_PIXELS);
+                    check_randomized_small(&random, v, sample % 7 == 0, (sample & 1) != 0);
                 }
             }
         }

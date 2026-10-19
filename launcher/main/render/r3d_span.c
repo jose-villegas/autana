@@ -765,6 +765,30 @@ small_dither_pick(const small_dither_t* d, const uint8_t* pattern, const int32_t
 }
 
 static inline __attribute__((always_inline)) void
+fill_small_dither_rows(const r3d_span_target_t* target, const small_dither_t* d, const fill_t* f, recti_t box,
+                       int cell_bits, const int32_t* thresholds, const uint16_t* shades, bool grained) {
+    const int grain_mask = small_grain_mask;
+    for (int y = box.y; y < recti_bottom(box); y++) {
+        const small_row_t row = small_row(target, y);
+        const uint8_t* grain_pattern = small_grain_pattern[y & grain_mask];
+        const uint8_t* pattern = gfx_dither4x4[y & d->phase_mask];
+        const int32_t* row_thresholds =
+            cell_bits == SMALL_DITHER_PATTERN_BITS_MIN ? thresholds + ((y & d->phase_mask) << cell_bits) : NULL;
+        for (int x = box.x, end = recti_right(box); x < end; x++) {
+            const int32_t cx = (x << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
+            const int32_t s0 = small_side(&d->edge[0], cx, row.centre);
+            const int32_t s1 = small_side(&d->edge[1], cx, row.centre);
+            const int32_t s2 = small_side(&d->edge[2], cx, row.centre);
+            if ((s0 | s1 | s2) >= 0 && f->flat_z > row.depth[x]) {
+                row.depth[x] = f->flat_z;
+                const uint16_t flat = grained ? shades[grain_pattern[x & grain_mask]] : f->flat_color;
+                row.color[x] = small_dither_pick(d, pattern, row_thresholds, x, s0, s1, s2, flat);
+            }
+        }
+    }
+}
+
+static inline __attribute__((always_inline)) void
 fill_small_dither_cell(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                        const r3d_span_vertex_t* c, bool positive, recti_t box, int coverage, int cell_bits,
                        const uint16_t* colors, int grain, bool grained) {
@@ -791,24 +815,7 @@ fill_small_dither_cell(const r3d_span_target_t* target, const r3d_span_vertex_t*
     if (grained) {
         prepare_small_grain(shades, f.flat_color, grain);
     }
-    const int grain_mask = small_grain_mask;
-    for (int y = box.y; y < recti_bottom(box); y++) {
-        const small_row_t row = small_row(target, y);
-        const uint8_t* grain_pattern = small_grain_pattern[y & grain_mask];
-        const uint8_t* pattern = gfx_dither4x4[y & d.phase_mask];
-        const int32_t* row_thresholds = precompute ? thresholds + ((y & d.phase_mask) << cell_bits) : NULL;
-        for (int x = box.x, end = recti_right(box); x < end; x++) {
-            const int32_t cx = (x << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
-            const int32_t s0 = small_side(&d.edge[0], cx, row.centre);
-            const int32_t s1 = small_side(&d.edge[1], cx, row.centre);
-            const int32_t s2 = small_side(&d.edge[2], cx, row.centre);
-            if ((s0 | s1 | s2) >= 0 && f.flat_z > row.depth[x]) {
-                row.depth[x] = f.flat_z;
-                const uint16_t flat = grained ? shades[grain_pattern[x & grain_mask]] : f.flat_color;
-                row.color[x] = small_dither_pick(&d, pattern, row_thresholds, x, s0, s1, s2, flat);
-            }
-        }
-    }
+    fill_small_dither_rows(target, &d, &f, box, cell_bits, thresholds, shades, grained);
 }
 
 static __attribute__((noinline)) void
@@ -833,6 +840,17 @@ fill_small_dither_grain(const r3d_span_target_t* target, const r3d_span_vertex_t
     } else {
         fill_small_dither_cell(target, a, b, c, positive, box, coverage, SMALL_DITHER_PATTERN_BITS_MAX, colors, grain,
                                true);
+    }
+}
+
+static inline __attribute__((always_inline)) void
+fill_small_grained(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
+                   const r3d_span_vertex_t* c, bool positive, recti_t box, int coverage, const uint16_t* colors,
+                   int grain) {
+    if (coverage != 0) {
+        fill_small_dither_grain(target, a, b, c, positive, box, coverage, colors, grain);
+    } else {
+        fill_small_grain(target, a, b, c, positive, box, grain);
     }
 }
 
@@ -924,6 +942,20 @@ set_up_fill(const r3d_span_target_t* target, const r3d_span_vertex_t* const v[TR
     return true;
 }
 
+static inline __attribute__((always_inline)) int
+select_small_grain(recti_t centres, const uint16_t* face, const uint16_t colors[TRIANGLE_VERTICES]) {
+    const int side = mathi_max(centres.w, centres.h);
+    if (small_grain == 0 || face != NULL || side <= SMALL_MAX_SIDE) {
+        return 0;
+    }
+#if TUNE_HOT_LIVE
+    const int grain = small_limits[side].grain;
+#else
+    const int grain = small_limits_for_side(side).grain;
+#endif
+    return colors[0] == colors[1] && colors[1] == colors[2] ? 0 : grain;
+}
+
 static RENDER_IRAM_ATTR void
 r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                        const r3d_span_vertex_t* c, const uint16_t* face) {
@@ -939,20 +971,10 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     uint16_t colors[TRIANGLE_VERTICES];
     const int coverage = select_small(a, b, c, e.centres, face != NULL, colors);
     if (coverage != SMALL_FILL_WALK) {
-        if (small_grain != 0 && face == NULL && mathi_max(e.centres.w, e.centres.h) > SMALL_MAX_SIDE) {
-#if TUNE_HOT_LIVE
-            const int grain = small_limits[mathi_max(e.centres.w, e.centres.h)].grain;
-#else
-            const int grain = small_limits_for_side(mathi_max(e.centres.w, e.centres.h)).grain;
-#endif
-            if (grain != 0 && !(colors[0] == colors[1] && colors[1] == colors[2])) {
-                if (coverage != 0) {
-                    fill_small_dither_grain(target, a, b, c, area2 > 0, box, coverage, colors, grain);
-                } else {
-                    fill_small_grain(target, a, b, c, area2 > 0, box, grain);
-                }
-                return;
-            }
+        const int grain = select_small_grain(e.centres, face, colors);
+        if (grain != 0) {
+            fill_small_grained(target, a, b, c, area2 > 0, box, coverage, colors, grain);
+            return;
         }
         if (coverage != 0) {
             fill_small_dither(target, a, b, c, area2 > 0, box, coverage, colors);
