@@ -938,6 +938,8 @@ def rule_heading_comment(root, path, text, comments):
 def run_audit(root, rule_filter=None, file_filter=None, files=None):
     """Run every active rule's walker exactly once per matching file,
     returning (findings, files_scanned)."""
+    _BACKEND_REACH.clear()
+    _backend_headers.cache_clear()
     active = [r for r in RULES if not rule_filter or r.id == rule_filter]
     findings = []
     scanned = set()
