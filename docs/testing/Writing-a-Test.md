@@ -3,8 +3,7 @@
 How to make code testable, what to test, the conventions every suite follows,
 and the steps to add one. Back to the [Testing Guide](../Testing-Guide.md).
 
-The framework is Unity (ThrowTheSwitch's C library, no relation to the game
-engine). The host runner uses a vendored copy, the device the one ESP-IDF
+The framework is Unity (ThrowTheSwitch's C library). The host runner uses a vendored copy, the device the one ESP-IDF
 bundles. Same API, so suites do not care which they build against.
 
 ## The loop
@@ -12,8 +11,6 @@ bundles. Same API, so suites do not care which they build against.
 1. Write the test and watch it fail.
 2. Make it pass the simplest way.
 3. Clean up with the tests green; back to red for the next one.
-
-The red step is not ceremony: a test never seen red might assert nothing.
 
 ### Prove a test can fail
 
@@ -112,6 +109,35 @@ TEST_ASSERT_FALSE_MESSAGE(second.pressed,
     "an edge must be consumed by the frame that reads it");
 ```
 
+## A minimal suite
+
+A trimmed real one, `launcher/test/suites/suite_button_fsm.c`:
+
+```c
+#include "suites.h"
+#include "unity.h"
+#include "input/button_fsm.h"
+
+static button_fsm_t b;
+static int64_t now;
+
+static void fixture(void) { button_fsm_reset(&b); now = 1000000; }
+
+static void test_a_held_press_is_reported_once(void) {
+    fixture();
+    /* ...feed samples with advancing `now`... */
+    TEST_ASSERT_TRUE_MESSAGE(button_fsm_take_pressed(&b), "a level held past the debounce window must produce a press");
+}
+
+void run_button_fsm_suite(void) { RUN_TEST(test_a_held_press_is_reported_once); }
+SUITE_REGISTER(run_button_fsm_suite);
+```
+
+The module under test (`input/button_fsm.c`) is ordinary firmware source next
+to its neighbours; only the suite is auto-discovered. Run it with
+`launcher/test/run_tests.sh` (host) or `autana suite run_button_fsm_suite`
+(board). See [Building-an-App.md](../Building-an-App.md) for app layout.
+
 ## Adding a suite
 
 1. **Create the file.**
@@ -125,7 +151,10 @@ TEST_ASSERT_FALSE_MESSAGE(second.pressed,
    Suites are found by their `suite_` name, not by folder, so a misplaced one
    still runs.
 2. **Write the tests,** then `void run_<name>_suite(void)` calling `RUN_TEST(...)` for each.
-3. **Register it from inside itself:** `SUITE_REGISTER(run_<name>_suite);`. Nothing else lists it: no `suites.h` entry, no call in `host_main.c` or `selftest.c`. Both runners discover `suite_*.c`, so it joins the full scope and runs alone with `autana suite run_<name>_suite`. If a perf capture needs it, declare it in `launcher/test/scope_perf.cmake` (engine suite) or the app's `scope_perf.cmake`, with every other source the run links. See [scoped builds](../Build-Variants.md#a-diagnostics-build-can-be-scoped).
+3. **Register it from inside itself:** `SUITE_REGISTER(run_<name>_suite);`.
+   - Nothing else lists it: no `suites.h` entry, no call in `host_main.c` or `selftest.c`.
+   - Both runners discover `suite_*.c`, so it joins the full scope and runs alone with `autana suite run_<name>_suite`.
+   - If a perf capture needs it, declare it in `launcher/test/scope_perf.cmake` (engine suite) or the app's `scope_perf.cmake`, with every other source the run links. See [scoped builds](../Build-Variants.md#a-diagnostics-build-can-be-scoped).
 4. **Name any pack it reads.** A suite that reads a pack from the tree (`asset_store_pack()`, directly or via `scene_load()`) adds `SUITE_READS(run_<name>_suite, SPONZA_SCENE);` beside its registration. The host run fails when a suite reads a pack it did not name.
 5. **Guard hardware with `#ifdef DEVICE_BUILD`,** the `RUN_TEST` line included. A portable suite can have a device-only section: `suite_job.c` runs every test on both and fences the one assertion that holds only on a host, where a job runs inline instead of on a second core.
 6. **Keep big fixtures off `.bss`** (below).
@@ -187,3 +216,8 @@ Portable suites reach the rest by including the headers directly:
 - `suite_gfx_mode.c`, `suite_gfx_band.c`: mode-grant arithmetic and the band-ring state machine.
 - `suite_gfx_band_run.c`: `gfx_band_run()` over host-malloc'd band buffers. Only the DMA send and strip-bounce aliasing need the device.
 - `suite_ui_launcher.c`: `ui_launcher.c`'s microui integration.
+
+## Related
+
+- [`Building-an-App.md`](../Building-an-App.md): the app folder layout app suites live in.
+- [`notes/README.md`](../notes/README.md): the hardware constraints behind device-only tests.

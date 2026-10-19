@@ -7,15 +7,22 @@ Back to the [Testing Guide](../Testing-Guide.md).
 
 ## Run it
 
+**You need ESP-IDF** at the version in `launcher/idf-pin.json`
+([which checkout `autana` picks](../tools/Build-Environment.md)), and a shell
+that can `source` scripts: Git Bash on Windows, any shell on Linux. The
+one-time QEMU download is a few hundred MB and needs no admin rights.
+
 ```sh
 . launcher/tools/build/idf.sh
 idf_init "$PWD/launcher" "$PWD/launcher/tools/build"
 idf_in "$PWD/launcher" python "$IDF_PATH/tools/idf_tools.py" install qemu-xtensa # once
-./launcher/test/run_qemu_tests.sh --perf-scope             # build + run
 ./launcher/test/run_qemu_tests.sh --suite suite_job --screenshot shot.png
+./launcher/test/run_qemu_tests.sh --perf-scope             # whole perf scope, build + run
 ```
 
-The last form is the everyday one. It builds the image without autorun
+The first form is the everyday one; `suite_job` is a suite name (find yours
+under [Writing a test](Writing-a-Test.md#finding-the-suite-for-an-area)).
+A good run ends with the suite's Unity summary and writes `shot.png`. It builds the image without autorun
 (`build.qemu.shell/`), boots into the shell, then speaks the board's console
 protocol: `runsuite <name>` per `--suite`, waited out to `RUNSUITE_COMPLETE`,
 then `screenshot`, decoded to a PNG and a `.json` state.
@@ -41,10 +48,12 @@ last, in its own `build.qemu*/`. That fragment:
 
 The null panel keeps what the code depends on: a strip occupies the bus for
 its transfer time at the current panel clock, one after another. So bus time
-keeps its order (a window cheaper than a band, a band cheaper than a frame,
-nothing sent costing nothing). A whole present's measured cost does not,
-because the emulator prices the CPU work. A test that compares two presents'
-times reports the comparison there instead of enforcing it.
+keeps its order: a window cheaper than a band, a band cheaper than a frame,
+nothing sent costing nothing.
+
+A whole present's measured cost does not keep it, because the emulator prices
+the CPU work. A test comparing two presents' times reports the comparison there
+instead of enforcing it.
 
 Other missing hardware is stood in for:
 
@@ -86,10 +95,11 @@ verdict through `crash_signs()` in `scripts/lib/device_capture.py`.
 
 A run is evidence of pass and fail for any test that does not read a clock.
 A measured time against a ceiling pegged on the board is reported, not
-enforced. Tests of hardware QEMU lacks skip themselves (the performance
-monitor, since every counter reads zero; a touch controller physically
-answering), so any failure that remains is real and worth a board look.
-A run says nothing about the real panel, touch controller, IMU or timing.
+enforced.
+
+- Tests of hardware QEMU lacks skip themselves: the performance monitor (every counter reads zero) and a touch controller physically answering.
+- So any failure that remains is real and worth a board look.
+- A run says nothing about the real panel, touch controller, IMU or timing.
 
 Without `--icount` each core gets a host thread, so a busy host stretches
 two-core tests by minutes.
@@ -119,8 +129,9 @@ desktop it is, not on the runner.
 
 Espressif's prebuilt QEMU has races that fail a correct image, for example
 `LoadStorePIFAddrError` on an ordinary register access
-([espressif/qemu#174](https://github.com/espressif/qemu/issues/174)). Each fix
-is a file in `launcher/test/qemu/patches/` naming its upstream issue.
+([espressif/qemu#174](https://github.com/espressif/qemu/issues/174)).
+
+Each fix is a file in `launcher/test/qemu/patches/` naming its upstream issue.
 `patched_qemu.py` rebuilds the QEMU version ESP-IDF installs with them into
 `launcher/build.qemu-xtensa/`; `qemu_run.py` uses it when present and prints
 which QEMU it started. CI builds it once per version and patch set, cached.

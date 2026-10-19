@@ -4,25 +4,37 @@ The portable suites, compiled and run on your own machine. This is the
 everyday red-green loop: the tests take seconds, the wait is compiling.
 Back to the [Testing Guide](../Testing-Guide.md).
 
-## Install a compiler
+## Install what you need
 
-You need a **host** C compiler, not the ESP32 toolchain.
+You need a **host** C compiler (not the ESP32 toolchain), GNU make and
+Python 3. ESP-IDF and a board are not needed.
 
 | Platform | Install |
 |---|---|
-| Windows | `winget install BrechtSanders.WinLibs.POSIX.UCRT` |
-| Debian/Ubuntu | `sudo apt install build-essential` |
+| Windows | [Git for Windows](https://git-scm.com/download/win) for Git Bash, then `winget install BrechtSanders.WinLibs.POSIX.UCRT` (compiler and `mingw32-make`) and `winget install Python.Python.3.12` |
+| Debian/Ubuntu | `sudo apt install build-essential python3` |
+
+Open **Git Bash** (not PowerShell) for the commands in these docs; reopen it
+after installing so it sees the new `PATH`.
 
 `run_tests.sh` is POSIX sh: Git Bash or MSYS on Windows, native on Linux. It
 looks for a compiler in `$CC`, then `PATH`, then where winget puts MinGW, and
 says how to install one if none is found.
 
-The Python tools and `scripts/run-tool-tests.sh` need `python3`; the `.mjs`
-suites need `nodejs`. On Debian: `sudo apt install python3 nodejs`. The
+The `.mjs` suites additionally need Node.js (`winget install OpenJS.NodeJS.LTS`,
+or `sudo apt install nodejs`). The
 scripts try `python3`, `python`, then `py`; `python` in these docs means
 `python3` there.
 
 ## Run them
+
+A first cold build compiles everything; reruns take seconds. A good run ends
+with Unity's summary:
+
+```
+... Tests 0 Failures 0 Ignored
+OK
+```
 
 ```sh
 ./launcher/test/run_tests.sh                  # portable suites, on this machine
@@ -69,6 +81,9 @@ refuses the push on failure.
 
 ## The host enforces the device's memory limits
 
+*Reference: skip this section until a host run fails with a stack or heap
+message, or you want to know why one can.*
+
 The host has megabytes of stack and gigabytes of heap; the board does not.
 The real figures live in `launcher/tools/device/device_profiles/esp32s3.sh`
 (`DP_MAIN_TASK_STACK_BYTES`, `DP_FREE_HEAP_BYTES`,
@@ -76,8 +91,8 @@ The real figures live in `launcher/tools/device/device_profiles/esp32s3.sh`
 is a new profile, not an edit everywhere; a never-measured field is the
 literal `unmeasured`, and the loaders refuse to hand it to a gate.
 
-Three bug classes used to cost a build-flash-capture cycle each. The host now
-catches them:
+The host catches three bug classes that would otherwise cost a
+build-flash-capture cycle each:
 
 | Bug | Host check |
 |---|---|

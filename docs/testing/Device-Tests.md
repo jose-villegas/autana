@@ -8,6 +8,16 @@ Every board operation goes through `autana`, which queues on the device lock
 instead of fighting for the port; `autana status` shows who holds it. See
 [Device-Lock.md](../tools/Device-Lock.md).
 
+## First board run
+
+1. Install `autana` and put it on your `PATH` ([how](../tools/Autana-CLI.md)), and ESP-IDF ([which one](../tools/Build-Environment.md)).
+2. Build and flash the diag image once: `autana build diag`, then `autana flash diag`.
+3. Run a suite: `autana suite run_button_fsm_suite`. It ends with a `RUNSUITE_COMPLETE name=... found=1` line.
+
+Use Git Bash on Windows. A diag build is the normal firmware plus every
+suite; the *device lock* is `autana`'s queue for the one USB port, so two
+commands never fight for the board.
+
 ## Which run, when
 
 1. **While developing:** `autana suite <name>` for the area you touched, on a normal diag build (SELFTEST on, AUTORUN off, full scope).
@@ -69,12 +79,16 @@ A markdown report instead of a pass/fail line:
 ```
 
 An app's frame-budget capture script lives in its own `tools/` and writes
-under its own `tools/results/`. Every report script only declares its
-capture timeout, suite, sentinel, reporter and output location, then hands the
-work to `launcher/tools/device/device_report.sh`. That builds the diagnostics
-variant, flashes and captures under one held lock (`autana selftest`, or
-`autana suite --runs 1 --flash` for one suite), writes the report and
-reflashes release firmware unless given `--no-restore`.
+under its own `tools/results/`.
+
+Every report script only declares its capture timeout, suite, sentinel,
+reporter and output location. It hands the work to
+`launcher/tools/device/device_report.sh`, which:
+
+- builds the diagnostics variant;
+- flashes and captures under one held lock (`autana selftest`, or `autana suite --runs 1 --flash` for one suite);
+- writes the report;
+- reflashes release firmware unless given `--no-restore`.
 
 - A report script takes its board from `--board SERIAL`, else the only board plugged in.
 - Its one positional argument is the report path, ending in `.md`.

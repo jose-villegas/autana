@@ -9,8 +9,8 @@ machine.
 
 ```sh
 autana docs how do I make a function testable on the host
-autana docs --section docs/testing/QEMU.md:20                      # one section whole
-autana docs --outline docs/testing/QEMU.md                  # headings, lines, sizes
+autana docs --section docs/testing/QEMU.md:36                     # one section whole
+autana docs --outline docs/testing/QEMU.md                 # headings, lines, sizes
 autana docs --ask can an app call vTaskDelay inside frame     # a written answer, with sources
 ```
 

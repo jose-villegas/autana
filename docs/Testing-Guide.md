@@ -4,10 +4,22 @@ How this project tests firmware, and why. Read the topic you need; none of
 them depends on reading the others first.
 
 **First result, no hardware:** in Git Bash on Windows or a Linux terminal,
-run `launcher/test/run_tests.sh`. It needs a host C compiler, not ESP-IDF
-or a board. A good run ends with `0 Failures` and `OK`; most of the wait is
-compiling. [Host tests](testing/Host-Tests.md#install-a-compiler) lists the
-one-line compiler install.
+run `launcher/test/run_tests.sh`.
+
+- It needs a host C compiler, not ESP-IDF or a board.
+- A good run ends with `0 Failures` and `OK`; most of the wait is compiling.
+ On Windows you need three installs first: [Git for Windows](https://git-scm.com/download/win)
+(provides Git Bash), a compiler (WinLibs, which includes `make`) and
+Python 3; [Host tests](testing/Host-Tests.md#install-what-you-need) has the
+commands.
+
+| Word | Means |
+|---|---|
+| suite | one C file of related tests, e.g. `suite_gesture.c` |
+| diag build | the self-test firmware: the normal firmware plus every suite (`CONFIG_LAUNCHER_SELFTEST`) |
+| scope | which sources a diag build compiles: all suites ("full"), or only the performance ones ("perf scope") |
+| autorun | the diag image runs every suite at boot instead of waiting for a command |
+| `BUILDID` | a console command that returns the running image's build ID; used as a "still alive" check |
 
 ```mermaid
 flowchart LR
@@ -40,7 +52,7 @@ your question.
 Portable suites (`launcher/test/suites/`, each package's `tests/`, each app's
 `tests/`) compile into every runner that can take them. A device-only suite
 guards its body with `#ifdef DEVICE_BUILD`; a host-only one uses the opposite
-guard and registers once outside it.
+guard, defines an empty runner for the device, and registers once outside it.
 
 ```mermaid
 flowchart LR
@@ -68,9 +80,19 @@ flowchart LR
 | QEMU | every suite | the Xtensa build behaves; no timing | minutes, no board |
 | Board | every suite | the same source works on this chip | `runsuite` seconds; full run about 18 minutes |
 
+POST is a third thing, a boot-time hardware check rather than a Unity suite:
+[Device tests: POST](testing/Device-Tests.md#post-is-a-third-thing).
+
 The host runner is the red-green-refactor loop. The board run is the
 guarantee. It runs the portable suites too, because passing on a laptop does
 not prove the Xtensa build behaves the same.
 
 Release images contain no test code: the suites are never compiled in. See
 [`Build-Variants.md`](Build-Variants.md#release-builds-contain-no-test-code).
+
+## Related
+
+- [`Build-Variants.md`](Build-Variants.md): what RELEASE, DEVELOPMENT and SELFTEST gate, and the scope choice.
+- [`Building-an-App.md`](Building-an-App.md): how an app plugs into the shell, and the folder layout app suites assume.
+- [`tools/Render-Harness.md`](tools/Render-Harness.md): rendering a real screen on a host and diffing it against a capture.
+- [`notes/README.md`](notes/README.md): the hardware constraints behind the device-only performance tests.

@@ -87,7 +87,7 @@ SELFTEST build (`selftest/selftest.c` is only added to `app_srcs` under
 ## A diagnostics build can be scoped
 
 A diagnostics build compiles **every** suite, and a full run takes the time
-[Testing-Guide.md](testing/Device-Tests.md#which-run-when) gives.
+[Device tests: which run, when](testing/Device-Tests.md#which-run-when) gives.
 Perf-scoped compiles only the sources declared in
 `launcher/test/scope_perf.cmake`, `launcher/main/apps/*/scope_perf.cmake` and
 `launcher/main/shell/apps/*/scope_perf.cmake`,

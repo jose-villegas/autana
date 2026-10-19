@@ -143,7 +143,7 @@ instances run at once:
 It prices the chunking itself, through the one-thread arm. The two-lane arm
 is readable there only for its abort count, because an instruction count
 sums both cores, see
-[`../Testing-Guide.md`](../testing/QEMU.md)
+[`../testing/QEMU.md`](../testing/QEMU.md)
 for why, and for what several instances at once cost each other.
 
 **The board.** The only stage that says whether the second core wins. Five

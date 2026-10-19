@@ -402,7 +402,7 @@ free in `exit()`, and keep what a frame needs from one frame to the next. A
 log line belongs to a change: log when a value changes, not every frame it
 holds.
 
-The gates are in [Testing-Guide.md](testing/Performance-and-Budgets.md#the-frame-watch-as-a-gate):
+The gates are in [Performance and budgets](testing/Performance-and-Budgets.md#the-frame-watch-as-a-gate):
 every host render scene, and every on-device test that presents more than
 `FRAME_WATCH_WARMUP` times.
 

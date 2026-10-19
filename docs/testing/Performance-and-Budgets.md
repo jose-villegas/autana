@@ -7,11 +7,12 @@ perf test follows. Back to the [Testing Guide](../Testing-Guide.md).
 
 **Assert sanity, not just a log line.** A test that logs a number and asserts
 nothing is decoration: a band-render test once passed while band mode rendered
-nothing, because nothing checked any bytes were sent. Assert something cheap
-and real beside the number (bytes sent greater than zero, a frame time not
-impossibly fast).
+nothing, because nothing checked any bytes were sent.
+
+Assert something cheap and real beside the number (bytes sent greater than
+zero, a frame time not impossibly fast).
 `test_present_overlap_against_serial` is the pattern: it logs the overlap and
-asserts only sanity, deliberately no budget, because the ratio is not tuned.
+asserts only sanity, with no budget, because the ratio is not tuned.
 
 **Log before asserting.** See [Device tests](Device-Tests.md#two-device-only-traps).
 
