@@ -12,10 +12,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "microui.h"
-
 #include "apps/sand/sand_menu.h"
 #include "apps/sand/sand_mode_swatches.h"
+#include "ui/ui.h"
 
 #define OPTIONS_SCREEN_TITLE      "OPTIONS"
 #define OPTIONS_SCREEN_QUALITY    "QUALITY"
@@ -38,17 +37,17 @@ typedef struct {
 } options_screen_labels_t;
 
 typedef struct {
-    mu_Rect header;
-    mu_Rect quality_panel;
-    mu_Rect quality_caption;
-    mu_Rect quality_value;
-    mu_Rect quality_slider;
-    mu_Rect color_caption;
-    mu_Rect tiles[OPTIONS_SCREEN_TILE_COUNT];
-    mu_Rect dither_caption;
-    mu_Rect dither;
-    mu_Rect apply;
-    mu_Rect cancel;
+    recti_t header;
+    recti_t quality_panel;
+    recti_t quality_caption;
+    recti_t quality_value;
+    recti_t quality_slider;
+    recti_t color_caption;
+    recti_t tiles[OPTIONS_SCREEN_TILE_COUNT];
+    recti_t dither_caption;
+    recti_t dither;
+    recti_t apply;
+    recti_t cancel;
 } options_screen_layout_t;
 
 void options_screen_layout(int screen_w, int screen_h, options_screen_layout_t* out);
@@ -67,5 +66,5 @@ int options_screen_quality_from_slider(int slider, int quality_count);
 
 /* Caller brackets this with ui_begin()/ui_end(). `committed` is what APPLY
  * would replace, for the pending count. */
-sand_options_hits_t options_screen_draw(mu_Context* ctx, const sand_menu_t* menu, sand_options_t committed,
+sand_options_hits_t options_screen_draw(const sand_menu_t* menu, sand_options_t committed,
                                         const options_screen_labels_t* labels);

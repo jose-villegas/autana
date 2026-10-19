@@ -5,13 +5,11 @@
 
 #include "draw/draw_font_roles.h"
 #include "gfx/target/gfx_color.h"
-#include "ui/controls/ui_style.h"
 #include "ui/ui.h"
 
 #include "apps/sand/material_palette.h"
 #include "apps/sand/sand_swatch.h"
 #include "apps/sand/ui/sand_icons.h"
-#include "ui/ui_mu.h"
 
 /* Space between the three stacked panels - and between a panel's own
  * caption row and the control below it, which reuses the same value so the
@@ -60,23 +58,23 @@ _Static_assert(BLOCK_H <= 368 - (2 * UI_MARGIN), "the brush screen's three panel
  * centring shape palette.c's row_left_x() uses, so "equal widths, equal
  * gaps" holds exactly rather than only up to a rounding pixel on one end. */
 static void
-lay_out_segments(mu_Rect row, int gap, int n, mu_Rect* out) {
+lay_out_segments(recti_t row, int gap, int n, recti_t* out) {
     const int seg_w = (row.w - (n - 1) * gap) / n;
     const int used = n * seg_w + (n - 1) * gap;
     const int start_x = row.x + (row.w - used) / 2;
 
     for (int i = 0; i < n; i++) {
-        out[i] = (mu_Rect){start_x + i * (seg_w + gap), row.y, seg_w, row.h};
+        out[i] = (recti_t){start_x + i * (seg_w + gap), row.y, seg_w, row.h};
     }
 }
 
 static void
-layout_header(mu_Rect panel, brush_screen_layout_t* out) {
+layout_header(recti_t panel, brush_screen_layout_t* out) {
     const int content_h = panel.h - 2 * BRUSH_SCREEN_PAD;
 
-    out->swatch = (mu_Rect){panel.x + BRUSH_SCREEN_PAD, panel.y + BRUSH_SCREEN_PAD, SWATCH_SIDE, SWATCH_SIDE};
+    out->swatch = (recti_t){panel.x + BRUSH_SCREEN_PAD, panel.y + BRUSH_SCREEN_PAD, SWATCH_SIDE, SWATCH_SIDE};
 
-    out->info_button = (mu_Rect){
+    out->info_button = (recti_t){
         panel.x + panel.w - BRUSH_SCREEN_PAD - INFO_BTN_SIDE,
         panel.y + BRUSH_SCREEN_PAD + (content_h - INFO_BTN_SIDE) / 2,
         INFO_BTN_SIDE,
@@ -86,8 +84,8 @@ layout_header(mu_Rect panel, brush_screen_layout_t* out) {
     const int text_x = out->swatch.x + SWATCH_SIDE + BRUSH_SCREEN_INNER;
     const int text_w = out->info_button.x - BRUSH_SCREEN_INNER - text_x;
 
-    out->material_caption = (mu_Rect){text_x, panel.y + BRUSH_SCREEN_PAD, text_w, CAPTION_ROW_H};
-    out->material_name = (mu_Rect){
+    out->material_caption = (recti_t){text_x, panel.y + BRUSH_SCREEN_PAD, text_w, CAPTION_ROW_H};
+    out->material_name = (recti_t){
         text_x,
         out->material_caption.y + CAPTION_ROW_H + 4,
         text_w,
@@ -96,13 +94,13 @@ layout_header(mu_Rect panel, brush_screen_layout_t* out) {
 }
 
 static void
-layout_mode(mu_Rect panel, brush_screen_layout_t* out) {
+layout_mode(recti_t panel, brush_screen_layout_t* out) {
     const int content_w = panel.w - 2 * BRUSH_SCREEN_PAD;
     const int content_h = panel.h - 2 * BRUSH_SCREEN_PAD;
 
-    out->mode_caption = (mu_Rect){panel.x + BRUSH_SCREEN_PAD, panel.y + BRUSH_SCREEN_PAD, content_w, CAPTION_ROW_H};
+    out->mode_caption = (recti_t){panel.x + BRUSH_SCREEN_PAD, panel.y + BRUSH_SCREEN_PAD, content_w, CAPTION_ROW_H};
 
-    const mu_Rect row = {
+    const recti_t row = {
         panel.x + BRUSH_SCREEN_PAD,
         out->mode_caption.y + CAPTION_ROW_H + BRUSH_SCREEN_INNER,
         content_w,
@@ -112,24 +110,24 @@ layout_mode(mu_Rect panel, brush_screen_layout_t* out) {
 }
 
 static void
-layout_size(mu_Rect panel, brush_screen_layout_t* out) {
+layout_size(recti_t panel, brush_screen_layout_t* out) {
     const int content_w = panel.w - 2 * BRUSH_SCREEN_PAD;
     const int content_h = panel.h - 2 * BRUSH_SCREEN_PAD;
 
-    out->size_value = (mu_Rect){
+    out->size_value = (recti_t){
         panel.x + panel.w - BRUSH_SCREEN_PAD - SIZE_VALUE_W,
         panel.y + BRUSH_SCREEN_PAD,
         SIZE_VALUE_W,
         CAPTION_ROW_H,
     };
-    out->size_caption = (mu_Rect){
+    out->size_caption = (recti_t){
         panel.x + BRUSH_SCREEN_PAD,
         panel.y + BRUSH_SCREEN_PAD,
         content_w - SIZE_VALUE_W - BRUSH_SCREEN_INNER,
         CAPTION_ROW_H,
     };
 
-    out->slider_track = (mu_Rect){
+    out->slider_track = (recti_t){
         panel.x + BRUSH_SCREEN_PAD,
         out->size_caption.y + CAPTION_ROW_H + BRUSH_SCREEN_INNER,
         content_w,
@@ -147,14 +145,14 @@ brush_screen_layout(int screen_w, int screen_h, brush_screen_layout_t* out) {
      * than left pinned to the top - see BLOCK_H's own _Static_assert. */
     const int top_y = UI_MARGIN + (screen_h - 2 * UI_MARGIN - BLOCK_H) / 2;
 
-    out->header_panel = (mu_Rect){panel_x, top_y, panel_w, HEADER_H};
-    out->mode_panel = (mu_Rect){
+    out->header_panel = (recti_t){panel_x, top_y, panel_w, HEADER_H};
+    out->mode_panel = (recti_t){
         panel_x,
         out->header_panel.y + HEADER_H + BRUSH_SCREEN_GAP,
         panel_w,
         MODE_H,
     };
-    out->size_panel = (mu_Rect){
+    out->size_panel = (recti_t){
         panel_x,
         out->mode_panel.y + MODE_H + BRUSH_SCREEN_GAP,
         panel_w,
@@ -196,19 +194,10 @@ static const sand_icon_id_t SEGMENT_ICONS[BRUSH_SCREEN_SEGMENT_COUNT] = {
     [BRUSH_SCREEN_SEG_BOOM] = SAND_ICON_BOOM,
 };
 
-static void
-draw_brush_bezel(mu_Context* ctx, mu_Rect r, uint32_t face_rgb, bool sunken) {
-    ui_span_t spans[UI_BEZEL_MAX_SPANS];
-    const int n = ui_bezel_spans(r, ui_rgb(face_rgb), sunken, spans, UI_BEZEL_MAX_SPANS);
-    for (int i = 0; i < n; i++) {
-        mu_draw_rect(ctx, spans[i].rect, spans[i].color);
-    }
-}
-
 #define BRUSH_SWATCH_CELLS 8
 
 static void
-draw_brush_swatch(mu_Context* ctx, mu_Rect r, cell_t spec) {
+draw_brush_swatch(recti_t r, cell_t spec) {
     const gfx_color_t* palette = material_palette();
     uint32_t colors[BRUSH_SWATCH_CELLS * BRUSH_SWATCH_CELLS];
     for (int row = 0; row < BRUSH_SWATCH_CELLS; row++) {
@@ -217,110 +206,86 @@ draw_brush_swatch(mu_Context* ctx, mu_Rect r, cell_t spec) {
             colors[row * BRUSH_SWATCH_CELLS + col] = gfx_color_rgb888(palette[cell]);
         }
     }
-    ui_swatch_grid(ctx, r, colors, BRUSH_SWATCH_CELLS, BRUSH_SWATCH_CELLS);
+    ui_swatches(r, colors, BRUSH_SWATCH_CELLS, BRUSH_SWATCH_CELLS);
+    ui_bevel(r, gfx_color_rgb888(material_brush_color(spec)), false);
+}
 
-    ui_span_t spans[UI_BEZEL_MAX_SPANS];
-    const int n =
-        ui_bezel_spans(r, ui_rgb(gfx_color_rgb888(material_brush_color(spec))), false, spans, UI_BEZEL_MAX_SPANS);
-    for (int i = 1; i < n; i++) {
-        mu_draw_rect(ctx, spans[i].rect, spans[i].color);
-    }
+/* No handler: the panel this button opens is separate, later work. Drawn
+ * now because it's in the design; not a bug that tapping it does nothing
+ * yet. Without the pack, the icon's text stands in. */
+static void
+draw_brush_info(recti_t button) {
+    ui_fill(button, SAND_THEME_BUTTON_FACE_COLOR);
+    ui_bevel(button, SAND_THEME_BUTTON_FACE_COLOR, false);
+    const recti_t icon_r = {
+        button.x + BRUSH_INFO_ICON_PAD,
+        button.y + BRUSH_INFO_ICON_PAD,
+        button.w - 2 * BRUSH_INFO_ICON_PAD,
+        button.h - 2 * BRUSH_INFO_ICON_PAD,
+    };
+    ui_icon(icon_r, sand_icon(SAND_ICON_INFO), sand_icon_set.names[SAND_ICON_INFO].text);
 }
 
 static void
-draw_brush_header(mu_Context* ctx, sand_ui_t* ui, const brush_screen_layout_t* lay) {
-    ui_set_font_scaled(draw_font_ui(), BRUSH_SCREEN_CAPTION_SCALE);
-
-    ui_mu_panel(ctx, lay->header_panel, &sand_ui_theme);
-    draw_brush_swatch(ctx, lay->swatch, ui->brushes[ui->brush].cell);
-    ui_text_in(ctx, lay->material_caption, BRUSH_SCREEN_MATERIAL_CAPTION, sand_ui_theme.caption,
-               BRUSH_SCREEN_CAPTION_SCALE, UI_ALIGN_LEFT);
+draw_brush_header(sand_ui_t* ui, const brush_screen_layout_t* lay) {
+    ui_panel(lay->header_panel);
+    draw_brush_swatch(lay->swatch, ui->brushes[ui->brush].cell);
+    ui_caption(lay->material_caption, BRUSH_SCREEN_MATERIAL_CAPTION);
 
     /* 4 is the starting scale, but "Gunpowder" (the longest name any
      * brush carries) doesn't fit it in the name rect at the narrower
      * of the two real canvases - drop a size at a time rather than let
-     * ui_text_in()'s clip cut the tail off a real material name. */
+     * the text's clip cut the tail off a real material name. */
     const char* name = material_name(ui->brushes[ui->brush].cell);
     int name_scale = 4;
-    for (; name_scale > 1; name_scale--) {
-        ui_set_font_scaled(draw_font_ui(), name_scale);
-        if (ui_measure_text(name) <= lay->material_name.w) {
-            break;
-        }
+    while (name_scale > 1 && draw_font_text_width(draw_font_ui(), name, -1, name_scale) > lay->material_name.w) {
+        name_scale--;
     }
-    ui_text_in(ctx, lay->material_name, name, sand_ui_theme.text, name_scale, UI_ALIGN_LEFT);
-    ui_set_font_scaled(draw_font_ui(), BRUSH_SCREEN_CAPTION_SCALE);
+    ui_scale_begin(name_scale);
+    ui_text(lay->material_name, name);
+    ui_scale_end();
 
-    draw_brush_bezel(ctx, lay->info_button, SAND_THEME_BUTTON_FACE_COLOR, false);
-    /* No handler: the panel this button opens is separate, later work.
-     * Drawn now because it's in the design; not a bug that tapping it
-     * does nothing yet. */
-    const mu_Rect icon_r = {
-        lay->info_button.x + BRUSH_INFO_ICON_PAD,
-        lay->info_button.y + BRUSH_INFO_ICON_PAD,
-        lay->info_button.w - 2 * BRUSH_INFO_ICON_PAD,
-        lay->info_button.h - 2 * BRUSH_INFO_ICON_PAD,
-    };
-    ui_icon_set_draw(ctx, icon_r, &sand_icon_set, SAND_ICON_INFO, sand_ui_theme.text);
+    draw_brush_info(lay->info_button);
 }
 
 static void
-draw_brush_mode_segment(mu_Context* ctx, sand_ui_t* ui, mu_Rect r, int i) {
-    const char* seg_name = brush_screen_segment_label((brush_screen_segment_t)i);
-    const ui_widget_button_t segment = {
-        .icon = sand_icon(SEGMENT_ICONS[i]),
-        .label = seg_name,
-        .enabled = true,
-        .selected = (sand_mode_t)i == ui->mode,
-    };
-    if (ui_tile_button(ctx, seg_name, r, &segment, &sand_ui_theme)) {
-        sand_ui_mode_clicked(ui, i);
-    }
-}
-
-static void
-draw_brush_mode_block(mu_Context* ctx, sand_ui_t* ui, const brush_screen_layout_t* lay) {
-    ui_mu_panel(ctx, lay->mode_panel, &sand_ui_theme);
-    ui_text_in(ctx, lay->mode_caption, BRUSH_SCREEN_MODE_CAPTION, sand_ui_theme.caption, BRUSH_SCREEN_CAPTION_SCALE,
-               UI_ALIGN_LEFT);
+draw_brush_mode_block(sand_ui_t* ui, const brush_screen_layout_t* lay) {
+    ui_panel(lay->mode_panel);
+    ui_caption(lay->mode_caption, BRUSH_SCREEN_MODE_CAPTION);
 
     for (int i = 0; i < BRUSH_SCREEN_SEGMENT_COUNT; i++) {
-        draw_brush_mode_segment(ctx, ui, lay->segments[i], i);
+        if (ui_tile_icon(lay->segments[i], brush_screen_segment_label((brush_screen_segment_t)i),
+                         sand_icon(SEGMENT_ICONS[i]), (sand_mode_t)i == ui->mode)) {
+            sand_ui_mode_clicked(ui, i);
+        }
     }
 }
 
 static void
-draw_brush_size_block(mu_Context* ctx, sand_ui_t* ui, const brush_screen_layout_t* lay) {
-    ui_mu_panel(ctx, lay->size_panel, &sand_ui_theme);
-
-    const char* size_caption = brush_screen_size_caption((brush_screen_segment_t)ui->mode);
-    ui_text_in(ctx, lay->size_caption, size_caption, sand_ui_theme.caption, BRUSH_SCREEN_CAPTION_SCALE, UI_ALIGN_LEFT);
+draw_brush_size_block(sand_ui_t* ui, const brush_screen_layout_t* lay) {
+    ui_panel(lay->size_panel);
+    ui_caption(lay->size_caption, brush_screen_size_caption((brush_screen_segment_t)ui->mode));
 
     char size_value[8];
     snprintf(size_value, sizeof size_value, "%02u PX", (unsigned)sand_ui_radius(ui));
-    ui_text_in(ctx, lay->size_value, size_value, sand_ui_theme.text, BRUSH_SCREEN_CAPTION_SCALE, UI_ALIGN_RIGHT);
+    ui_text_right(lay->size_value, size_value);
 
     int radius = sand_ui_radius(ui);
-    if (ui_theme_slider_int(ctx, lay->slider_track, &radius, SAND_UI_RADIUS_MIN, SAND_UI_RADIUS_MAX, 1,
-                            &sand_ui_theme)) {
+    if (ui_slider(lay->slider_track, BRUSH_SCREEN_SIZE_SLIDER, &radius, SAND_UI_RADIUS_MIN, SAND_UI_RADIUS_MAX)) {
         sand_ui_set_radius(ui, (uint8_t)radius);
     }
 }
 
 void
-brush_screen_draw(mu_Context* ctx, sand_ui_t* ui) {
+brush_screen_draw(sand_ui_t* ui) {
     ui_set_text_style(UI_TEXT_PLAIN);
 
     brush_screen_layout_t lay;
     brush_screen_layout(ui_width(), ui_height(), &lay);
 
-    if (!ui_begin_screen(ctx, "Sand Brush", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
-        return;
-    }
-
-    draw_brush_header(ctx, ui, &lay);
-    draw_brush_mode_block(ctx, ui, &lay);
-    draw_brush_size_block(ctx, ui, &lay);
-
-    mu_end_window(ctx);
+    ui_screen();
+    ui_theme(&sand_ui_theme);
+    draw_brush_header(ui, &lay);
+    draw_brush_mode_block(ui, &lay);
+    draw_brush_size_block(ui, &lay);
 }

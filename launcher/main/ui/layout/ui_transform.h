@@ -133,7 +133,7 @@ ui_transform_quarter(affine2x_t t) {
  * corner already IS where glyph 0 belongs: no correction, none
  * applied. */
 static inline void
-ui_text_glyph0_origin(const draw_font_t* font, mu_Rect box, int quarter, int scale, int* out_x, int* out_y) {
+ui_text_glyph0_origin(const draw_font_t* font, recti_t box, int quarter, int scale, int* out_x, int* out_y) {
     *out_x = box.x;
     *out_y = box.y;
     /* Turns 2 and 3 walk BACKWARD, so glyph 0 starts ONE GLYPH CELL in

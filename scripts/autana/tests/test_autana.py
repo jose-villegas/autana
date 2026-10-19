@@ -204,7 +204,7 @@ class BoardHolderTests(unittest.TestCase):
     def status_output(self, holder_pid, owner="killed@0pac", port="COM3"):
         with tempfile.TemporaryDirectory() as root:
             store = device_lock.LockStore(root, is_alive=lambda pid: pid == 1)
-            store.write_json(store.lock_path(self.BOARD), {
+            device_lock.write_json(store.lock_path(self.BOARD), {
                 "acquired_at": store.now(), "board": self.BOARD, "heartbeat_at": store.now(),
                 "expected_build_id": "", "host": socket.gethostname(), "kind": "screenshot",
                 "owner": owner, "pid": holder_pid, "purpose": "autana screenshot",
@@ -1098,6 +1098,11 @@ class SuiteCommandTests(unittest.TestCase):
     def test_expect_build_id_is_forwarded(self):
         command = forwarded_command(autana.suite, ["run_gfx_suite", "--expect-build-id", "abc123-diag"])
         self.assertEqual(value_after(command, "--expect-build-id"), "abc123-diag")
+
+    def test_each_send_is_forwarded(self):
+        lines = ["sound stop all", "sound play tap loop"]
+        command = forwarded_command(autana.suite, ["sand", "--send", lines[0], "--send", lines[1]])
+        self.assertEqual([command[i + 1] for i, part in enumerate(command) if part == "--send"], lines)
 
     def test_each_set_is_forwarded(self):
         command = forwarded_command(

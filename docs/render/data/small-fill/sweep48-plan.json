@@ -1,0 +1,26 @@
+{
+  "builds": [
+    {
+      "label": "here",
+      "build_ids": {
+        "1": "cc9cdb185272-diag",
+        "2": "ba6474899165-diag",
+        "3": "2cee5cc31297-diag"
+      }
+    }
+  ],
+  "points": [
+    {
+      "label": "Defaults",
+      "knobs": {
+        "r3d_span.small_max_side": 4
+      }
+    },
+    {
+      "label": "Flat <=8",
+      "knobs": {
+        "r3d_span.small_max_side": 8
+      }
+    }
+  ]
+}

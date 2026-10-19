@@ -87,7 +87,7 @@ mark_rect_border(gfx_color_t* buf, int stride, int w, int h, gfx_color_t colour)
     }
 }
 
-/* Used for full-width send border. No scratch copy: direct to fb. Inverse
+/* Used for full-width send border. No scratch copy: direct to present_fb. Inverse
  * save/restore. */
 #define BORDER_PIXELS      (2 * (COL_WIDTH + STRIP_HEIGHT))
 
@@ -177,7 +177,7 @@ gfx_set_leaf_overlay(bool on) {
 
 #ifdef ESP_PLATFORM
 /* `send_shadow` holds every pixel handed to the panel, so after a present
- * it must equal `fb`. A difference is a pixel never sent, or one copied out
+ * it must equal `present_fb`. A difference is a pixel never sent, or one copied out
  * of PSRAM wrong (also counted on its own). A glitch this stays silent on
  * lies past the send buffers, on the QSPI link. */
 static gfx_color_t* send_shadow;
@@ -202,6 +202,7 @@ gfx_send_audit_uncovered_px(void) {
 void
 gfx_set_send_audit(bool on) {
     GFX_PRESENT_GUARD();
+    gfx_present_drain();
     if (on == (send_shadow != NULL)) {
         return;
     }
@@ -229,7 +230,7 @@ count_differing_px(const gfx_color_t* a, const gfx_color_t* b, int n) {
 }
 
 /* `buf` is what is about to go to the panel for [x0, x0+w) x [y0, y0+h),
- * already copied out of `fb`. */
+ * already copied out of `present_fb`. */
 void
 send_audit_capture(int x0, int y0, int w, int h, const gfx_color_t* buf) {
     if (send_shadow == NULL) {
@@ -237,7 +238,7 @@ send_audit_capture(int x0, int y0, int w, int h, const gfx_color_t* buf) {
     }
     for (int r = 0; r < h; r++) {
         const gfx_color_t* src = buf + (size_t)r * w;
-        const gfx_color_t* fb_row = fb + (size_t)(y0 + r) * GFX_WIDTH + x0;
+        const gfx_color_t* fb_row = present_fb + (size_t)(y0 + r) * GFX_WIDTH + x0;
         if (memcmp(src, fb_row, (size_t)w * sizeof(gfx_color_t)) != 0) {
             send_audit_copy_fault_px += count_differing_px(src, fb_row, w);
         }
@@ -245,14 +246,14 @@ send_audit_capture(int x0, int y0, int w, int h, const gfx_color_t* buf) {
     }
 }
 
-/* Runs after a full-framebuffer present has drained, while `fb` still
+/* Runs after a full-framebuffer present has drained, while `present_fb` still
  * holds exactly what that present was meant to send. An overlay or
  * interlace legitimately leaves the shadow out of step, so the audit
  * pauses under either and re-primes after: everything is marked dirty and
  * the next present resends it. */
 static void
 send_audit_scan_row(int y) {
-    const gfx_color_t* fb_row = fb + (size_t)y * GFX_WIDTH;
+    const gfx_color_t* fb_row = present_fb + (size_t)y * GFX_WIDTH;
     const gfx_color_t* shadow_row = send_shadow + (size_t)y * GFX_WIDTH;
     if (memcmp(fb_row, shadow_row, (size_t)GFX_WIDTH * sizeof(gfx_color_t)) == 0) {
         return;
@@ -279,10 +280,11 @@ send_audit_log_if_due(void) {
         return;
     }
     send_audit_log_at_us = now + SEND_AUDIT_LOG_US;
-    ESP_LOGW(TAG,
-             "send audit: %lld px on the panel differ from fb (first at %d,%d), %lld px read back wrong from PSRAM",
-             (long long)send_audit_uncovered_px, send_audit_first_x, send_audit_first_y,
-             (long long)send_audit_copy_fault_px);
+    ESP_LOGW(
+        TAG,
+        "send audit: %lld px on the panel differ from present_fb (first at %d,%d), %lld px read back wrong from PSRAM",
+        (long long)send_audit_uncovered_px, send_audit_first_x, send_audit_first_y,
+        (long long)send_audit_copy_fault_px);
     send_audit_uncovered_px = 0;
     send_audit_copy_fault_px = 0;
     send_audit_first_x = -1;
@@ -337,13 +339,13 @@ static void
 save_overlay_borders(int y, int leaf_n) {
     if (debug_overlay_on) {
         for (int col = 0; col < GRID_COLS; col++) {
-            gfx_color_t* cell = fb + (size_t)y * GFX_WIDTH + col * COL_WIDTH;
+            gfx_color_t* cell = present_fb + (size_t)y * GFX_WIDTH + col * COL_WIDTH;
             save_border(cell, GFX_WIDTH, COL_WIDTH, STRIP_HEIGHT, overlay_cell_save()[col]);
         }
     }
     for (int i = 0; i < leaf_n; i++) {
         const recti_t* r = &leaf_rect_scratch[i];
-        gfx_color_t* at = fb + (size_t)r->y * GFX_WIDTH + r->x;
+        gfx_color_t* at = present_fb + (size_t)r->y * GFX_WIDTH + r->x;
         save_border(at, GFX_WIDTH, r->w, r->h, overlay_leaf_save()[i]);
     }
 }
@@ -352,13 +354,13 @@ static void
 draw_overlay_borders(int y, int leaf_n) {
     if (debug_overlay_on) {
         for (int col = 0; col < GRID_COLS; col++) {
-            gfx_color_t* cell = fb + (size_t)y * GFX_WIDTH + col * COL_WIDTH;
+            gfx_color_t* cell = present_fb + (size_t)y * GFX_WIDTH + col * COL_WIDTH;
             mark_rect_border(cell, GFX_WIDTH, COL_WIDTH, STRIP_HEIGHT, gfx_rgb(0x00FFFF));
         }
     }
     for (int i = 0; i < leaf_n; i++) {
         const recti_t* r = &leaf_rect_scratch[i];
-        gfx_color_t* at = fb + (size_t)r->y * GFX_WIDTH + r->x;
+        gfx_color_t* at = present_fb + (size_t)r->y * GFX_WIDTH + r->x;
         mark_rect_border(at, GFX_WIDTH, r->w, r->h, gfx_rgb(0x00FF00));
     }
 }
@@ -368,12 +370,12 @@ static void
 restore_overlay_borders(int y, int leaf_n) {
     for (int i = leaf_n - 1; i >= 0; i--) {
         const recti_t* r = &leaf_rect_scratch[i];
-        gfx_color_t* at = fb + (size_t)r->y * GFX_WIDTH + r->x;
+        gfx_color_t* at = present_fb + (size_t)r->y * GFX_WIDTH + r->x;
         restore_border(at, GFX_WIDTH, r->w, r->h, overlay_leaf_save()[i]);
     }
     if (debug_overlay_on) {
         for (int col = GRID_COLS - 1; col >= 0; col--) {
-            gfx_color_t* cell = fb + (size_t)y * GFX_WIDTH + col * COL_WIDTH;
+            gfx_color_t* cell = present_fb + (size_t)y * GFX_WIDTH + col * COL_WIDTH;
             restore_border(cell, GFX_WIDTH, COL_WIDTH, STRIP_HEIGHT, overlay_cell_save()[col]);
         }
     }
@@ -405,7 +407,7 @@ send_row_with_overlays(int row, int y) {
 }
 
 /* Strip rows whose last send carried overlay borders. A border exists only
- * in the bytes sent, never in `fb`, so the panel keeps it until its row is
+ * in the bytes sent, never in `present_fb`, so the panel keeps it until its row is
  * sent again, and the dirty tracker never resends a row nothing changed
  * in. Outlives the overlay toggles so switching one off still cleans up. */
 uint32_t overlay_bordered_rows;

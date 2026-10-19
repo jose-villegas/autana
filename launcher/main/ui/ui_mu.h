@@ -22,28 +22,6 @@ ui_rgb(uint32_t rgb) {
  * uncleared, showing a previous app's frame. */
 int ui_begin_screen(mu_Context* ctx, const char* title, int opt);
 
-/*
- * FILL content (a banner, a status strip) has no natural width of its own
- * and spans whatever the canvas currently is, which mu_layout_row() with a
- * -1 column already does. FIXED content (a few large tap targets sized to
- * what they need to say) should keep that width and centre instead.
- *
- * ui_centered_rect() is the shared primitive for the fixed case. `canvas_w`
- * is a parameter rather than an internal ui_width() call, which is what
- * keeps it host-testable without reaching the framebuffer.
- */
-
-/* A rect `w` wide, `h` tall, horizontally centred within a canvas
- * `canvas_w` wide, at vertical position `y`. Does not clamp `w` to
- * `canvas_w`: a `w` that exceeds `canvas_w` yields a negative x, which
- * is a caller bug (a button wider than the screen it is centred on)
- * rather than something to paper over silently here. Clamp at the call
- * site if `w` might ever exceed `canvas_w`. */
-static inline mu_Rect
-ui_centered_rect(int canvas_w, int w, int h, int y) {
-    return (mu_Rect){(canvas_w - w) / 2, y, w, h};
-}
-
 /* `icon` filling `r` in `color`, its runs streamed by icon_walk_blocks()
  * rather than collected, so an icon's run count does not bound artwork. A
  * NULL `icon` (no pack holds it) draws `text` centred in `r` instead, in the
@@ -73,6 +51,16 @@ typedef struct {
 } ui_mu_theme_t;
 
 ui_mu_theme_t ui_theme_from_style(const mu_Style* style);
+
+/* ui_theme_t `t` as an ui_mu_theme_t literal: assigned straight into its
+ * destination, so ui_theme() builds the face's theme in place each frame. */
+#define UI_THEME_FACE_COLOR(t, member) .member = ui_rgb((t)->member)
+#define UI_THEME_FROM_FACE(t)                                                                                          \
+    ((ui_mu_theme_t){UI_THEME_FACE_COLOR(t, panel_face), UI_THEME_FACE_COLOR(t, panel_edge),                           \
+                     UI_THEME_FACE_COLOR(t, button_face), UI_THEME_FACE_COLOR(t, accent),                              \
+                     UI_THEME_FACE_COLOR(t, accent_face), UI_THEME_FACE_COLOR(t, on_accent),                           \
+                     UI_THEME_FACE_COLOR(t, text), UI_THEME_FACE_COLOR(t, caption), UI_THEME_FACE_COLOR(t, muted),     \
+                     .text_scale = (t)->text_scale, .icon_side = (t)->icon_side})
 
 typedef enum { UI_ALIGN_LEFT, UI_ALIGN_CENTRE, UI_ALIGN_RIGHT } ui_align_t;
 
@@ -104,9 +92,8 @@ bool ui_theme_slider_int(mu_Context* ctx, mu_Rect r, int* value, int lo, int hi,
 int ui_icon_button_label_width(int button_w, bool has_icon, const ui_mu_theme_t* theme);
 
 /* The icon above the label, for one of a row of choices; the icon takes
- * whatever square the label leaves: ui_tile_icon_rect(), where a caller
- * with no icon may draw its own picture of the choice instead. */
-mu_Rect ui_tile_icon_rect(mu_Rect r, const ui_mu_theme_t* theme);
+ * whatever square the label leaves: ui_mu_tile_icon_rect(). */
+mu_Rect ui_mu_tile_icon_rect(mu_Rect r, const ui_mu_theme_t* theme);
 
 /* `colors` as a `cols` x `rows` grid of equal cells filling `r`, row by
  * row. */

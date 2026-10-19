@@ -3,6 +3,7 @@
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 scene_name=scene_viewer
+scene_defines="-DTUNE_HOT_LIVE=1"
 scene_sources="
 main/services/tune.c
 main/core/job.c
