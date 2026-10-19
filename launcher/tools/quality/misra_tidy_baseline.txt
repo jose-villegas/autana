@@ -51,16 +51,6 @@ cert-err33-c	main/apps/sand/tools/sand_menu_render_host.c	1
 cert-err33-c	main/apps/sand/tools/shading_palette.c	84
 cert-err33-c	main/apps/sand/ui/brush_screen.c	1
 cert-err33-c	main/apps/sand/ui/options_screen.c	2
-<<<<<<< HEAD
-=======
-readability-isolate-declaration	main/apps/sand/app_sand.c	9
-readability-isolate-declaration	main/apps/sand/sand.c	12
-readability-isolate-declaration	main/apps/sand/sand_gas.c	7
-readability-isolate-declaration	main/apps/sand/sand_impulse.c	1
-readability-isolate-declaration	main/apps/sand/sand_liquid.c	12
-readability-isolate-declaration	main/apps/sand/sand_plants.c	37
-readability-isolate-declaration	main/apps/sand/sand_reactions.c	19
->>>>>>> origin/feature/quizzical-tesla-0d38d9
 readability-isolate-declaration	main/apps/sand/tests/suite_palette.c	16
 readability-isolate-declaration	main/apps/sand/tests/suite_row_runs.c	26
 readability-isolate-declaration	main/apps/sand/tests/suite_sand_chunk_sched.c	2
@@ -92,25 +82,6 @@ readability-isolate-declaration	main/apps/sand/tests/suite_sand_spawning.c	5
 readability-isolate-declaration	main/apps/sand/tests/suite_sand_tone.c	7
 readability-isolate-declaration	main/apps/sand/tests/suite_sand_two_core.c	9
 readability-isolate-declaration	main/apps/sand/tests/suite_sand_ui.c	1
-<<<<<<< HEAD
-=======
-readability-isolate-declaration	main/apps/sand/tools/chunk_layout.c	3
-readability-isolate-declaration	main/apps/sand/tools/colour_lever1_counters.c	3
-readability-isolate-declaration	main/apps/sand/tools/serial_lag.c	2
-readability-isolate-declaration	main/apps/sand/tools/shading_palette.c	25
-readability-isolate-declaration	main/apps/sand/ui/palette_screen.c	1
-readability-math-missing-parentheses	main/apps/sand/app_sand.c	11
-readability-math-missing-parentheses	main/apps/sand/material_palette.c	15
-readability-math-missing-parentheses	main/apps/sand/palette.c	3
-readability-math-missing-parentheses	main/apps/sand/sand.c	32
-readability-math-missing-parentheses	main/apps/sand/sand_chunk_sched.c	4
-readability-math-missing-parentheses	main/apps/sand/sand_gas.c	7
-readability-math-missing-parentheses	main/apps/sand/sand_impulse.c	14
-readability-math-missing-parentheses	main/apps/sand/sand_liquid.c	14
-readability-math-missing-parentheses	main/apps/sand/sand_mode_swatches.c	4
-readability-math-missing-parentheses	main/apps/sand/sand_plants.c	36
-readability-math-missing-parentheses	main/apps/sand/sand_reactions.c	49
->>>>>>> origin/feature/quizzical-tesla-0d38d9
 readability-math-missing-parentheses	main/apps/sand/tests/suite_brush_screen.c	2
 readability-math-missing-parentheses	main/apps/sand/tests/suite_command_list_budget.c	2
 readability-math-missing-parentheses	main/apps/sand/tests/suite_options_screen.c	2
@@ -136,30 +107,6 @@ readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_seeds.c	4
 readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_spawning.c	12
 readability-math-missing-parentheses	main/apps/sand/tests/suite_sand_two_core.c	20
 readability-math-missing-parentheses	main/apps/sand/tests/suite_title_screen.c	1
-<<<<<<< HEAD
-=======
-readability-math-missing-parentheses	main/apps/sand/tools/chunk_layout.c	2
-readability-math-missing-parentheses	main/apps/sand/tools/colour_lever1_counters.c	9
-readability-math-missing-parentheses	main/apps/sand/tools/grid_fingerprint.c	1
-readability-math-missing-parentheses	main/apps/sand/tools/rng_low_bits.c	3
-readability-math-missing-parentheses	main/apps/sand/tools/sand_menu_render_host.c	2
-readability-math-missing-parentheses	main/apps/sand/tools/sand_sim_render_host.c	3
-readability-math-missing-parentheses	main/apps/sand/tools/serial_lag.c	3
-readability-math-missing-parentheses	main/apps/sand/tools/shading_palette.c	70
-readability-math-missing-parentheses	main/apps/sand/ui/brush_screen.c	15
-readability-math-missing-parentheses	main/apps/sand/ui/options_screen.c	5
-readability-math-missing-parentheses	main/apps/sand/ui/palette_screen.c	4
-readability-math-missing-parentheses	main/apps/sand/ui/title_screen.c	10
-readability-uppercase-literal-suffix	main/apps/sand/material_palette.c	31
-readability-uppercase-literal-suffix	main/apps/sand/sand.c	6
-readability-uppercase-literal-suffix	main/apps/sand/sand_chunk_sched.c	2
-readability-uppercase-literal-suffix	main/apps/sand/sand_gas.c	13
-readability-uppercase-literal-suffix	main/apps/sand/sand_heal.c	1
-readability-uppercase-literal-suffix	main/apps/sand/sand_impulse.c	2
-readability-uppercase-literal-suffix	main/apps/sand/sand_liquid.c	11
-readability-uppercase-literal-suffix	main/apps/sand/sand_plants.c	8
-readability-uppercase-literal-suffix	main/apps/sand/sand_reactions.c	34
->>>>>>> origin/feature/quizzical-tesla-0d38d9
 readability-uppercase-literal-suffix	main/apps/sand/tests/suite_sand_chunk_sched.c	9
 readability-uppercase-literal-suffix	main/apps/sand/tests/suite_sand_colour_modes.c	5
 readability-uppercase-literal-suffix	main/apps/sand/tests/suite_sand_combustion.c	16
@@ -189,13 +136,3 @@ readability-uppercase-literal-suffix	main/apps/sand/tests/suite_sand_seeds.c	2
 readability-uppercase-literal-suffix	main/apps/sand/tests/suite_sand_spawning.c	7
 readability-uppercase-literal-suffix	main/apps/sand/tests/suite_sand_tone.c	93
 readability-uppercase-literal-suffix	main/apps/sand/tests/suite_sand_two_core.c	130
-<<<<<<< HEAD
-=======
-readability-uppercase-literal-suffix	main/apps/sand/tools/chunk_layout.c	1
-readability-uppercase-literal-suffix	main/apps/sand/tools/colour_lever1_counters.c	2
-readability-uppercase-literal-suffix	main/apps/sand/tools/grid_fingerprint.c	23
-readability-uppercase-literal-suffix	main/apps/sand/tools/rng_low_bits.c	18
-readability-uppercase-literal-suffix	main/apps/sand/tools/sand_sim_render_host.c	1
-readability-uppercase-literal-suffix	main/apps/sand/tools/serial_lag.c	3
-readability-uppercase-literal-suffix	main/apps/sand/tools/shading_palette.c	109
->>>>>>> origin/feature/quizzical-tesla-0d38d9
