@@ -509,23 +509,24 @@ small_side(const small_edge_t* e, int32_t x, int32_t y) {
 }
 
 static inline bool
-channel_within_spread(float a, float b, float c, float limit) {
-    const float low = a < b ? (a < c ? a : c) : (b < c ? b : c);
-    const float high = a > b ? (a > c ? a : c) : (b > c ? b : c);
-    return high - low <= limit;
+channel_within_spread(int32_t a, int32_t b, int32_t c, int limit) {
+    return r3d_span_max3(a, b, c) - r3d_span_min3(a, b, c) <= limit;
 }
 
 typedef struct {
     uint8_t spread, coverage;
-    float rb_limit, g_limit;
 } small_limits_t;
 
 static inline bool
-colours_within_spread(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c,
-                      const small_limits_t* limits) {
-    return channel_within_spread(a->r, b->r, c->r, limits->rb_limit)
-           && channel_within_spread(a->g, b->g, c->g, limits->g_limit)
-           && channel_within_spread(a->b, b->b, c->b, limits->rb_limit);
+colours_within_spread(uint16_t a, uint16_t b, uint16_t c, int limit) {
+    a = gfx_color_swap(a);
+    b = gfx_color_swap(b);
+    c = gfx_color_swap(c);
+    return channel_within_spread((int32_t)gfx_rgb565_r5(a), (int32_t)gfx_rgb565_r5(b), (int32_t)gfx_rgb565_r5(c), limit)
+           && channel_within_spread((int32_t)gfx_rgb565_g6(a), (int32_t)gfx_rgb565_g6(b), (int32_t)gfx_rgb565_g6(c),
+                                    limit)
+           && channel_within_spread((int32_t)gfx_rgb565_b5(a), (int32_t)gfx_rgb565_b5(b), (int32_t)gfx_rgb565_b5(c),
+                                    limit);
 }
 
 static inline small_limits_t
@@ -539,9 +540,7 @@ small_limits_for_side(int side) {
     if (small_dither_ramp) {
         coverage = coverage * (side - SMALL_MAX_SIDE) / mathi_max(extra_sides, 1);
     }
-    return (small_limits_t){(uint8_t)spread, (uint8_t)coverage,
-                            ((float)spread * UINT8_MAX) / (float)gfx_rgb565_r5(UINT16_MAX),
-                            ((float)spread * UINT8_MAX) / (float)gfx_rgb565_g6(UINT16_MAX)};
+    return (small_limits_t){(uint8_t)spread, (uint8_t)coverage};
 }
 
 #if TUNE_HOT_LIVE
@@ -571,7 +570,7 @@ r3d_span_begin(void) {
 /* Negative selects the walk; otherwise the result is dither coverage, with zero selecting flat. */
 static inline __attribute__((always_inline)) int
 select_small(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, recti_t centres,
-             bool solid) {
+             bool solid, uint16_t* colors) {
     const int side = mathi_max(centres.w, centres.h);
     if (side > small_side_limit) {
         return SMALL_FILL_WALK;
@@ -584,8 +583,18 @@ select_small(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_s
 #else
     const small_limits_t limits = small_limits_for_side(side);
 #endif
-    if (limits.spread != SMALL_FLAT_SPREAD_OFF && !colours_within_spread(a, b, c, &limits)) {
-        return SMALL_FILL_WALK;
+    if (limits.spread != SMALL_FLAT_SPREAD_OFF || (colors != NULL && limits.coverage != 0)) {
+        const uint16_t ca = r3d_span_pack_rgb(a->r, a->g, a->b);
+        const uint16_t cb = r3d_span_pack_rgb(b->r, b->g, b->b);
+        const uint16_t cc = r3d_span_pack_rgb(c->r, c->g, c->b);
+        if (colors != NULL) {
+            colors[0] = ca;
+            colors[1] = cb;
+            colors[2] = cc;
+        }
+        if (limits.spread != SMALL_FLAT_SPREAD_OFF && !colours_within_spread(ca, cb, cc, limits.spread)) {
+            return SMALL_FILL_WALK;
+        }
     }
     return limits.coverage;
 }
@@ -644,12 +653,12 @@ typedef struct {
  * gfx_dither4x4 to distribute vertex colours at the edges. */
 static inline __attribute__((always_inline)) bool
 prepare_small_dither(small_dither_t* d, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                     const r3d_span_vertex_t* c, bool positive, int coverage, int cell_bits) {
+                     const r3d_span_vertex_t* c, bool positive, int coverage, int cell_bits, const uint16_t* colors) {
     const r3d_span_vertex_t* p = positive ? b : c;
     const r3d_span_vertex_t* q = positive ? c : b;
-    d->color[0] = r3d_span_pack_rgb(q->r, q->g, q->b);
-    d->color[1] = r3d_span_pack_rgb(a->r, a->g, a->b);
-    d->color[2] = r3d_span_pack_rgb(p->r, p->g, p->b);
+    d->color[0] = colors[positive ? 2 : 1];
+    d->color[1] = colors[0];
+    d->color[2] = colors[positive ? 1 : 2];
     if (d->color[0] == d->color[1] && d->color[0] == d->color[2]) {
         return false;
     }
@@ -685,9 +694,10 @@ small_dither_pick(const small_dither_t* d, const uint8_t* pattern, const int32_t
 
 static inline __attribute__((always_inline)) void
 fill_small_dither_cell(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                       const r3d_span_vertex_t* c, bool positive, recti_t box, int coverage, int cell_bits) {
+                       const r3d_span_vertex_t* c, bool positive, recti_t box, int coverage, int cell_bits,
+                       const uint16_t* colors) {
     small_dither_t d;
-    if (!prepare_small_dither(&d, a, b, c, positive, coverage, cell_bits)) {
+    if (!prepare_small_dither(&d, a, b, c, positive, coverage, cell_bits, colors)) {
         fill_small(target, a, b, c, positive, box, NULL);
         return;
     }
@@ -724,11 +734,11 @@ fill_small_dither_cell(const r3d_span_target_t* target, const r3d_span_vertex_t*
 
 static __attribute__((noinline)) void
 fill_small_dither(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                  const r3d_span_vertex_t* c, bool positive, recti_t box, int coverage) {
+                  const r3d_span_vertex_t* c, bool positive, recti_t box, int coverage, const uint16_t* colors) {
     if (small_cell_bits == SMALL_DITHER_PATTERN_BITS_MIN) {
-        fill_small_dither_cell(target, a, b, c, positive, box, coverage, SMALL_DITHER_PATTERN_BITS_MIN);
+        fill_small_dither_cell(target, a, b, c, positive, box, coverage, SMALL_DITHER_PATTERN_BITS_MIN, colors);
     } else {
-        fill_small_dither_cell(target, a, b, c, positive, box, coverage, SMALL_DITHER_PATTERN_BITS_MAX);
+        fill_small_dither_cell(target, a, b, c, positive, box, coverage, SMALL_DITHER_PATTERN_BITS_MAX, colors);
     }
 }
 
@@ -832,10 +842,11 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     if (area2 == 0) {
         return;
     }
-    const int coverage = select_small(a, b, c, e.centres, face != NULL);
+    uint16_t colors[TRIANGLE_VERTICES];
+    const int coverage = select_small(a, b, c, e.centres, face != NULL, colors);
     if (coverage != SMALL_FILL_WALK) {
         if (coverage != 0) {
-            fill_small_dither(target, a, b, c, area2 > 0, box, coverage);
+            fill_small_dither(target, a, b, c, area2 > 0, box, coverage, colors);
         } else {
             fill_small(target, a, b, c, area2 > 0, box, face);
         }
@@ -887,7 +898,7 @@ r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t
     }
     /* FILL_FACE selects a depth carry here; writers do not read face colour. */
     fill_t f = {e.flat ? FILL_FLAT : FILL_FACE, NULL, 0, 0, NULL};
-    if (select_small(a, b, c, e.centres, solid) != SMALL_FILL_WALK) {
+    if (select_small(a, b, c, e.centres, solid, NULL) != SMALL_FILL_WALK) {
         set_flat(&f, a, b, c);
         for (int y = box.y; y < recti_bottom(box); y++) {
             write_span(target, y, box.x, recti_right(box) - 1, (int32_t)f.flat_z << R3D_DEPTH_SHIFT, 0);

@@ -362,6 +362,12 @@ test coverage and choose vertex colours in one pixel loop.
 The gate measures the largest RGB565 channel spread across the vertices.
 For sides above side 4, its limit interpolates from the near gate at side 5
 to the far gate at the size limit.
+The gate and dither share the triangle's packed vertex colours.
+
+The RGB565 gate's quantization is visible against a floating-channel reference.
+This frame uses size limit 8, near gate off and far gate 4.
+
+[![RGB565 gate and floating-channel reference](../images/render/sponza-small-fill-integer-gate.png)](../images/render/sponza-small-fill-integer-gate.crops.png)
 
 <table>
 <tr><th width="50%">Technique</th><th width="50%">Diff</th></tr>

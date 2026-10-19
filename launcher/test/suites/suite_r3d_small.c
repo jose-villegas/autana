@@ -133,8 +133,8 @@ test_small_spread_channel_boundaries_and_faces(void) {
     knob("r3d_span.small_flat_spread_far", 1);
     knob("r3d_span.small_flat_spread_near", 1);
     for (int channel = 0; channel < 3; channel++) {
-        const float step =
-            (float)UINT8_MAX / (channel == 1 ? (float)gfx_rgb565_g6(UINT16_MAX) : (float)gfx_rgb565_r5(UINT16_MAX));
+        const float step = 2.0F * (float)(UINT8_MAX + 1)
+                           / (float)(1 + (channel == 1 ? gfx_rgb565_g6(UINT16_MAX) : gfx_rgb565_r5(UINT16_MAX)));
         for (int delta = -1; delta <= 1; delta++) {
             r3d_span_vertex_t v[3] = {{0, 0, 0.2F, 0, 0, 0},
                                       {SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0, 0.8F, 0, 0, 0},
@@ -151,11 +151,35 @@ test_small_spread_channel_boundaries_and_faces(void) {
             const r3d_span_target_t target = fixture();
             hot_triangle(&target, &v[0], &v[1], &v[2]);
             const bool flat = pixels[TEST_PIXELS + 1] == pixels[TEST_PIXELS + 10];
-            TEST_ASSERT_EQUAL_INT(delta <= 0, flat);
+            TEST_ASSERT_EQUAL_INT(delta < 0, flat);
             memset(pixels, 0, sizeof(*pixels) * TEST_PIXELS * 2);
             hot_triangle_solid(&target, &v[0], &v[1], &v[2], GFX_RGB(0x123456));
             TEST_ASSERT_EQUAL_UINT16(pixels[TEST_PIXELS + 1], pixels[TEST_PIXELS + 10]);
         }
+    }
+}
+
+static void
+test_small_gate_compares_quantized_channels(void) {
+    (void)fixture();
+    knob("r3d_span.small_max_side", SMALL_MAX_SIDE_TUNE);
+    knob("r3d_span.small_flat_spread_near", 0);
+    knob("r3d_span.small_flat_spread_far", 0);
+    for (int channel = 0; channel < TRIANGLE_VERTICES; channel++) {
+        const int channel_max = channel == 1 ? (int)GFX_RGB565_G6_MAX : (int)gfx_rgb565_r5(UINT16_MAX);
+        const float step = (float)(UINT8_MAX + 1) / (float)(channel_max + 1);
+        r3d_span_vertex_t v[TRIANGLE_VERTICES] = {{0, 0, 0.5F, 0, 0, 0},
+                                                  {SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0, 0.5F, 0, 0, 0},
+                                                  {0, SMALL_MAX_SIDE_TUNE * R3D_SUBPIXEL, 0.5F, 0, 0, 0}};
+        if (channel == 0) {
+            v[1].r = step - 1;
+        } else if (channel == 1) {
+            v[1].g = step - 1;
+        } else {
+            v[1].b = step - 1;
+        }
+        const recti_t centres = {0, 0, SMALL_MAX_SIDE_TUNE, SMALL_MAX_SIDE_TUNE};
+        TEST_ASSERT_EQUAL_INT(0, select_small(v, v + 1, v + 2, centres, false, NULL));
     }
 }
 
@@ -322,6 +346,14 @@ test_small_dither_pattern_repeats_on_both_axes(void) {
     }
 }
 
+static bool
+prepare_test_dither(small_dither_t* d, const r3d_span_vertex_t v[TRIANGLE_VERTICES]) {
+    const uint16_t colors[TRIANGLE_VERTICES] = {r3d_span_pack_rgb(v[0].r, v[0].g, v[0].b),
+                                                r3d_span_pack_rgb(v[1].r, v[1].g, v[1].b),
+                                                r3d_span_pack_rgb(v[2].r, v[2].g, v[2].b)};
+    return prepare_small_dither(d, v, v + 1, v + 2, true, SMALL_DITHER_COVERAGE_EIGHTHS, small_cell_bits, colors);
+}
+
 static void
 test_small_two_by_two_dither_spans_all_ranks(void) {
     (void)fixture();
@@ -329,8 +361,7 @@ test_small_two_by_two_dither_spans_all_ranks(void) {
     const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {
         {0, 0, 0.5F, 255, 0, 0}, {R3D_SUBPIXEL, 0, 0.5F, 0, 255, 0}, {0, R3D_SUBPIXEL, 0.5F, 0, 0, 255}};
     small_dither_t d;
-    TEST_ASSERT_TRUE(
-        prepare_small_dither(&d, &v[0], &v[1], &v[2], true, SMALL_DITHER_COVERAGE_EIGHTHS, small_cell_bits));
+    TEST_ASSERT_TRUE(prepare_test_dither(&d, v));
     d.coverage_limit = d.total;
     int counts[TRIANGLE_VERTICES] = {0};
     const int32_t third = d.total / TRIANGLE_VERTICES;
@@ -383,17 +414,17 @@ test_small_selection_and_uniform_packing(void) {
     knob("r3d_span.small_flat_spread_far", 0);
     knob("r3d_span.small_flat_spread_near", 0);
     knob("r3d_span.small_dither", 2);
-    TEST_ASSERT_EQUAL_INT(0, select_small(&v[0], &v[1], &v[2], centres, false));
+    TEST_ASSERT_EQUAL_INT(0, select_small(&v[0], &v[1], &v[2], centres, false, NULL));
     centres.w++;
-    TEST_ASSERT_EQUAL_INT(SMALL_FILL_WALK, select_small(&v[0], &v[1], &v[2], centres, false));
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_WALK, select_small(&v[0], &v[1], &v[2], centres, false, NULL));
     knob("r3d_span.small_max_side", SMALL_MAX_SIDE_TUNE);
-    TEST_ASSERT_EQUAL_INT(SMALL_FILL_WALK, select_small(&v[0], &v[1], &v[2], centres, false));
-    TEST_ASSERT_EQUAL_INT(0, select_small(&v[0], &v[1], &v[2], centres, true));
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_WALK, select_small(&v[0], &v[1], &v[2], centres, false, NULL));
+    TEST_ASSERT_EQUAL_INT(0, select_small(&v[0], &v[1], &v[2], centres, true, NULL));
     knob("r3d_span.small_flat_spread_far", SMALL_FLAT_SPREAD_OFF);
     knob("r3d_span.small_flat_spread_near", SMALL_FLAT_SPREAD_OFF);
-    TEST_ASSERT_EQUAL_INT(2, select_small(&v[0], &v[1], &v[2], centres, false));
+    TEST_ASSERT_EQUAL_INT(2, select_small(&v[0], &v[1], &v[2], centres, false, NULL));
     knob("r3d_span.small_dither", 0);
-    TEST_ASSERT_EQUAL_INT(0, select_small(&v[0], &v[1], &v[2], centres, false));
+    TEST_ASSERT_EQUAL_INT(0, select_small(&v[0], &v[1], &v[2], centres, false, NULL));
     knob("r3d_span.small_dither", SMALL_DITHER_COVERAGE_EIGHTHS);
     knob("r3d_span.small_flat_spread_far", 1);
     knob("r3d_span.small_flat_spread_near", 1);
@@ -403,12 +434,11 @@ test_small_selection_and_uniform_packing(void) {
         v[k].b = (float)k;
     }
     centres.w = SMALL_MAX_SIDE;
-    TEST_ASSERT_EQUAL_INT(0, select_small(&v[0], &v[1], &v[2], centres, false));
+    TEST_ASSERT_EQUAL_INT(0, select_small(&v[0], &v[1], &v[2], centres, false, NULL));
     knob("r3d_span.small_flat_spread_far", SMALL_FLAT_SPREAD_OFF);
     knob("r3d_span.small_flat_spread_near", SMALL_FLAT_SPREAD_OFF);
     small_dither_t d;
-    TEST_ASSERT_FALSE(
-        prepare_small_dither(&d, &v[0], &v[1], &v[2], true, SMALL_DITHER_COVERAGE_EIGHTHS, small_cell_bits));
+    TEST_ASSERT_FALSE(prepare_test_dither(&d, v));
 }
 
 static void
@@ -427,11 +457,12 @@ test_small_gate_and_dither_ramps(void) {
                                                     : SMALL_DITHER_COVERAGE_EIGHTHS * (side - SMALL_MAX_SIDE)
                                                           / (SMALL_MAX_SIDE_TUNE - SMALL_MAX_SIDE);
         const int limit = side - SMALL_MAX_SIDE - 1;
-        v[1].r = side <= SMALL_MAX_SIDE ? 0 : ((float)limit * UINT8_MAX) / gfx_rgb565_r5(UINT16_MAX);
-        TEST_ASSERT_EQUAL_INT(coverage, select_small(&v[0], &v[1], &v[2], centres, false));
+        const float step = (float)(UINT8_MAX + 1) / (float)(gfx_rgb565_r5(UINT16_MAX) + 1);
+        v[1].r = side <= SMALL_MAX_SIDE ? 0 : ((float)limit + 1) * step - 1;
+        TEST_ASSERT_EQUAL_INT(coverage, select_small(&v[0], &v[1], &v[2], centres, false, NULL));
         if (side > SMALL_MAX_SIDE) {
             v[1].r += 1;
-            TEST_ASSERT_EQUAL_INT(SMALL_FILL_WALK, select_small(&v[0], &v[1], &v[2], centres, false));
+            TEST_ASSERT_EQUAL_INT(SMALL_FILL_WALK, select_small(&v[0], &v[1], &v[2], centres, false, NULL));
         }
     }
     knob("r3d_span.small_flat_spread_near", SMALL_FLAT_SPREAD_OFF);
@@ -441,25 +472,24 @@ test_small_gate_and_dither_ramps(void) {
         const recti_t centres = {0, 0, 1, side};
         TEST_ASSERT_EQUAL_INT(SMALL_DITHER_COVERAGE_EIGHTHS * (side - SMALL_MAX_SIDE)
                                   / (SMALL_MAX_SIDE_TUNE - SMALL_MAX_SIDE),
-                              select_small(&v[0], &v[1], &v[2], centres, false));
+                              select_small(&v[0], &v[1], &v[2], centres, false, NULL));
     }
     knob("r3d_span.small_dither_ramp", 0);
     knob("r3d_span.small_flat_spread_far", 1);
     knob("r3d_span.small_flat_spread_near", 1);
     v[1].r = (float)UINT8_MAX / gfx_rgb565_r5(UINT16_MAX);
     const recti_t centres = {0, 0, SMALL_MAX_SIDE_TUNE, SMALL_MAX_SIDE_TUNE};
-    TEST_ASSERT_EQUAL_INT(SMALL_DITHER_COVERAGE_EIGHTHS, select_small(&v[0], &v[1], &v[2], centres, false));
+    TEST_ASSERT_EQUAL_INT(SMALL_DITHER_COVERAGE_EIGHTHS, select_small(&v[0], &v[1], &v[2], centres, false, NULL));
     small_dither_t d;
-    TEST_ASSERT_TRUE(
-        prepare_small_dither(&d, &v[0], &v[1], &v[2], true, SMALL_DITHER_COVERAGE_EIGHTHS, small_cell_bits));
+    TEST_ASSERT_TRUE(prepare_test_dither(&d, v));
     knob("r3d_span.small_max_side", SMALL_MAX_SIDE + 1);
     knob("r3d_span.small_dither_ramp", 1);
     knob("r3d_span.small_flat_spread_near", 0);
     const recti_t narrow = {0, 0, SMALL_MAX_SIDE + 1, 1};
-    TEST_ASSERT_EQUAL_INT(SMALL_DITHER_COVERAGE_EIGHTHS, select_small(&v[0], &v[1], &v[2], narrow, false));
+    TEST_ASSERT_EQUAL_INT(SMALL_DITHER_COVERAGE_EIGHTHS, select_small(&v[0], &v[1], &v[2], narrow, false, NULL));
     knob("r3d_span.small_flat_spread_near", 1);
     knob("r3d_span.small_flat_spread_far", 0);
-    TEST_ASSERT_EQUAL_INT(SMALL_FILL_WALK, select_small(&v[0], &v[1], &v[2], narrow, false));
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_WALK, select_small(&v[0], &v[1], &v[2], narrow, false, NULL));
 }
 
 #define EXPERIMENT_SIDE 8
@@ -583,8 +613,7 @@ test_small_experiment_writer_matches_fill_depth(void) {
     }
 }
 
-/* Scalar snapshot of main's small-fill rules, independent of the production
- * selection, threshold preparation and pixel loop. */
+/* Scalar small-fill oracle, independent of production selection, threshold preparation and the pixel loop. */
 static void
 reference_small(const r3d_span_target_t* target, const r3d_span_vertex_t v[3], bool solid) {
     const r3d_span_extent_t extent = r3d_span_extent(v, v + 1, v + 2);
@@ -597,16 +626,19 @@ reference_small(const r3d_span_target_t* target, const r3d_span_vertex_t v[3], b
         if (extra > 1) {
             spread += (small_flat_spread_far - small_flat_spread_near) * (side - SMALL_MAX_SIDE - 1) / (extra - 1);
         }
-        const float channels[3][3] = {{v[0].r, v[1].r, v[2].r}, {v[0].g, v[1].g, v[2].g}, {v[0].b, v[1].b, v[2].b}};
+        float channels[3][3] = {{v[0].r, v[1].r, v[2].r}, {v[0].g, v[1].g, v[2].g}, {v[0].b, v[1].b, v[2].b}};
         for (int k = 0; k < TRIANGLE_VERTICES && spread != SMALL_FLAT_SPREAD_OFF; k++) {
+            const int channel_max = k == 1 ? (int)GFX_RGB565_G6_MAX : (int)gfx_rgb565_r5(UINT16_MAX);
+            const int scale = (UINT8_MAX + 1) / (channel_max + 1);
+            for (int j = 0; j < TRIANGLE_VERTICES; j++) {
+                channels[k][j] = (float)((int)channels[k][j] / scale);
+            }
             float low = channels[k][0], high = low;
             for (int j = 1; j < TRIANGLE_VERTICES; j++) {
                 low = channels[k][j] < low ? channels[k][j] : low;
                 high = channels[k][j] > high ? channels[k][j] : high;
             }
-            const float limit =
-                ((float)spread * UINT8_MAX) / (float)(k == 1 ? GFX_RGB565_G6_MAX : gfx_rgb565_r5(UINT16_MAX));
-            selected = selected && high - low <= limit;
+            selected = selected && high - low <= (float)spread;
         }
         coverage = small_dither_ramp ? small_dither * (side - SMALL_MAX_SIDE) / mathi_max(extra, 1) : small_dither;
     }
@@ -724,6 +756,7 @@ test_small_randomized_reference(void) {
 
 void
 run_r3d_small_suite(void) {
+    RUN_TEST(test_small_gate_compares_quantized_channels);
     RUN_TEST(test_small_randomized_reference);
     RUN_TEST(test_small_experiment_clipped_split_rows);
     RUN_TEST(test_small_gate_and_dither_ramps);
