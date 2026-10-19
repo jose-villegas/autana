@@ -106,7 +106,7 @@ test_sixteen_sorts_by_luma_not_by_a_single_channel(void) {
     const uint32_t bright = gfx_color_rgb888(GFX_RGB(0xC08000)); /* bright orange, no blue, large luma */
 
     for (int i = 0; i < LUT_SIZE; i++) {
-        none_lut[i] = GFX_RGB((uint32_t)((0x101010u * (uint32_t)(i % 14)) + 0x40));
+        none_lut[i] = GFX_RGB((uint32_t)((0x101010U * (uint32_t)(i % 14)) + 0x40));
     }
     none_lut[14] = GFX_RGB(0x000060);
     none_lut[15] = GFX_RGB(0xC08000);

@@ -53,7 +53,7 @@
  * see exactly what the frame-budget test below measures. */
 static void
 build_mixed_gravity_flip_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
-    sand_init(real, big, REAL_W, REAL_H, 17u);
+    sand_init(real, big, REAL_W, REAL_H, 17U);
     sand_enable_sleeping(real, blocks);
 
     const int sand_x1 = (REAL_W * 3) / 10;             /* ~30% from the left */
@@ -92,10 +92,10 @@ build_mixed_gravity_flip_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
  * reason build_mixed_gravity_flip_scene() is. */
 static uint32_t
 grid_hash(const uint8_t* grid, size_t n) {
-    uint32_t h = 2166136261u;
+    uint32_t h = 2166136261U;
     for (size_t i = 0; i < n; i++) {
         h ^= grid[i];
-        h *= 16777619u;
+        h *= 16777619U;
     }
     return h;
 }
@@ -181,7 +181,7 @@ test_the_soak_only_skip_dispatches_far_fewer_cells_than_a_full_walk(void) {
  * report_fingerprint.sh's device/host equivalence anchor, see its own
  * top comment for why 20 flip steps and this hash. Kept here beside the
  * scene it hashes rather than duplicated. */
-#define MIXED_FLIP_20_STEP_HASH 0x6a6aa1cfu
+#define MIXED_FLIP_20_STEP_HASH 0x6a6aa1cfU
 
 /* Equivalence half of the regression above: the soak-only skip must be
  * byte-identical to the reference full walk. Pinned to serial like
@@ -245,7 +245,7 @@ test_the_soak_only_skip_hash_survives_ambient_two_core_state(void) {
  * pile is cheaper and would flatter the measurement. */
 static void
 build_full_size_step_scene(sand_t* real, uint8_t* big) {
-    sand_init(real, big, REAL_W, REAL_H, 99u);
+    sand_init(real, big, REAL_W, REAL_H, 99U);
 
     for (int y = 0; y < REAL_H / 2; y++) {
         for (int x = 0; x < REAL_W; x++) {
@@ -612,7 +612,7 @@ test_a_frame_budget_board_really_reaches_the_split_path(void) {
     board_bookkeeping_close();
     free(big);
 
-    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0u, dispatched,
+    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0U, dispatched,
                                           "a frame-budget fixture must arm a board its sweep can be split over");
     free(real);
 }
@@ -621,7 +621,7 @@ test_a_frame_budget_board_really_reaches_the_split_path(void) {
  * genuinely flowing rather than already settled - the expensive case. */
 static void
 build_quality_water_pour_scene(sand_t* real, uint8_t* big, uint8_t* blocks, int w, int h) {
-    sand_init(real, big, w, h, 11u);
+    sand_init(real, big, w, h, 11U);
     sand_enable_sleeping(real, blocks);
     sand_fill_box(real, w / 4, 0, (w * 3) / 4, h / 2, CELL_MAKE(MAT_WATER, MASS_MAX));
 }
@@ -696,7 +696,7 @@ test_a_screen_of_water_fits_in_the_frame_budget(void) {
 #ifdef DEVICE_BUILD
 static void
 build_fire_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
-    sand_init(real, big, REAL_W, REAL_H, 19u);
+    sand_init(real, big, REAL_W, REAL_H, 19U);
     sand_enable_sleeping(real, blocks);
     sand_fill_box(real, 0, 0, REAL_W, REAL_H, FIRE);
 }
@@ -844,14 +844,14 @@ typedef struct {
 
 static void
 build_quality_sand_pour_scene(sand_t* real, uint8_t* big, uint8_t* blocks, int w, int h) {
-    sand_init(real, big, w, h, 11u);
+    sand_init(real, big, w, h, 11U);
     sand_enable_sleeping(real, blocks);
     sand_fill_box(real, w / 4, 0, (w * 3) / 4, h / 2, SAND_FIRST_SHADE);
 }
 
 static void
 build_quality_gas_scene(sand_t* real, uint8_t* big, uint8_t* blocks, int w, int h) {
-    sand_init(real, big, w, h, 17u);
+    sand_init(real, big, w, h, 17U);
     sand_enable_sleeping(real, blocks);
     sand_fill_box(real, 0, h / 2, w, h, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
 }
@@ -864,7 +864,7 @@ build_quality_fire_scene(sand_t* real, uint8_t* big, uint8_t* blocks, int w, int
 
 static void
 build_quality_mixed_scene(sand_t* real, uint8_t* big, uint8_t* blocks, int w, int h) {
-    sand_init(real, big, w, h, 23u);
+    sand_init(real, big, w, h, 23U);
     sand_enable_sleeping(real, blocks);
 
     for (int y = 0; y < h / 3; y++) {
@@ -1408,7 +1408,7 @@ test_a_screen_of_settled_sand_costs_almost_nothing(void) {
     /* The user-visible complaint this answers: adding lots of sand dropped the
      * framerate, even though most of it was just sitting there. */
     real_board_t b;
-    sand_t* const real = real_board_open(&b, 5u);
+    sand_t* const real = real_board_open(&b, 5U);
 
     /* Every cell full, so nothing can move anywhere. */
     sand_fill_box(real, 0, 0, REAL_W, REAL_H, SAND_FIRST_SHADE);
@@ -1432,7 +1432,7 @@ static void
 test_flipping_gravity_on_a_settled_pile_fits_in_the_frame_budget(void) {
     /* Worst case pouring: all blocks wake at once. */
     real_board_t b;
-    sand_t* const real = real_board_open(&b, 13u);
+    sand_t* const real = real_board_open(&b, 13U);
 
     /* A big pour: the middle half of the screen's width, filled from the
      * floor up to half the screen's height - wide enough to span many
@@ -1470,7 +1470,7 @@ test_flipping_gravity_on_a_settled_pile_fits_in_the_frame_budget(void) {
 static void
 test_turning_a_settled_pool_to_landscape_fits_in_the_frame_budget(void) {
     real_board_t b;
-    sand_t* const real = real_board_open(&b, 17u);
+    sand_t* const real = real_board_open(&b, 17U);
 
     /* About 40% of the grid, full width, resting on the floor - the user's
      * own "fill the screen to about 40% with water in portrait". */
@@ -1575,9 +1575,9 @@ wood_leaf_row_pass(const uint8_t* row, const uint8_t* above, const uint8_t* belo
         const bool is_leaf = row[x] == MATX(MATX_LEAF);
         const bool tinted =
             is_leaf
-            || (row[x] == CELL_MAKE(MAT_WOOD, 0) && material_wood_near_leaf(above, row, below, x, w, top5, hash, 5u));
+            || (row[x] == CELL_MAKE(MAT_WOOD, 0) && material_wood_near_leaf(above, row, below, x, w, top5, hash, 5U));
         if (tinted) {
-            *sink += material_wood_leaf_wave(rep * 40u, x, w, hash);
+            *sink += material_wood_leaf_wave(rep * 40U, x, w, hash);
             lit = 1;
         }
         if (rep == 0) {
@@ -1613,7 +1613,7 @@ test_the_wood_leaf_shading_on_a_grove(void) {
 
     sand_t* const real = malloc(sizeof *real);
     TEST_ASSERT_NOT_NULL(real);
-    sand_init(real, big, REAL_W, REAL_H, 3u);
+    sand_init(real, big, REAL_W, REAL_H, 3U);
     build_tree_grove_scene(real);
 
     int8_t top5[5][2];
@@ -1660,7 +1660,7 @@ test_the_wood_leaf_shading_on_a_grove(void) {
              "(wood %d, of which %d beside a leaf; leaf %d; %d of %d rows "
              "carry foliage and so wake every gust tick) [%u]",
              (long long)per_pass, (long long)control_pass, (long long)(per_pass - control_pass), wood, near_leaf, leaf,
-             rows_lit, REAL_H, sink & 1u);
+             rows_lit, REAL_H, sink & 1U);
 
     free(big);
     free(real);
@@ -1675,7 +1675,7 @@ test_the_wood_leaf_shading_on_a_grove(void) {
 static void
 test_pouring_water_onto_a_plant_bed_costs_more_than_steady_growth(void) {
     real_board_t b;
-    sand_t* const real = real_board_open(&b, 11u);
+    sand_t* const real = real_board_open(&b, 11U);
     sand_set_soak(real, SAND_SOAK_PER_MATERIAL);
     build_plant_bed_scene(real);
     plant_bed_settle(real);
@@ -1714,7 +1714,7 @@ test_pouring_water_onto_a_plant_bed_costs_more_than_steady_growth(void) {
 static void
 test_a_growing_plant_bed_fits_in_the_frame_budget(void) {
     real_board_t b;
-    sand_t* const real = real_board_open(&b, 11u);
+    sand_t* const real = real_board_open(&b, 11U);
     sand_set_soak(real, SAND_SOAK_PER_MATERIAL);
     build_plant_bed_scene(real);
     plant_bed_settle(real);
@@ -1728,7 +1728,7 @@ test_a_campfire_on_a_sand_bed_fits_in_the_frame_budget(void) {
     /* Settled so the sand lands and the fire catches, and the timed steps are
      * a burning campfire rather than a scene still falling into place.
      * Perf-scoped, with the block at 16x32. */
-    const int64_t per_step = run_settled_row(&(const settled_row_t){.seed = 23u,
+    const int64_t per_step = run_settled_row(&(const settled_row_t){.seed = 23U,
                                                                     .build = build_campfire_scene,
                                                                     .settle_steps = 30,
                                                                     .steps = 20,
@@ -1744,7 +1744,7 @@ test_a_campfire_on_a_sand_bed_fits_in_the_frame_budget(void) {
 static void
 test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget(void) {
     real_board_t b;
-    sand_t* const real = real_board_open(&b, 31u);
+    sand_t* const real = real_board_open(&b, 31U);
 
     build_smoke_and_steam_scene(real);
     const int total = REAL_W * REAL_H;
@@ -1776,7 +1776,7 @@ test_turning_a_packed_screen_of_gas_fits_in_the_frame_budget(void) {
 static void
 test_turning_a_half_screen_of_gas_fits_in_the_frame_budget(void) {
     real_board_t b;
-    sand_t* const real = real_board_open(&b, 31u);
+    sand_t* const real = real_board_open(&b, 31U);
 
     /* 40% of the grid, full width, against the ceiling - where gas ends up. */
     sand_fill_box(real, 0, 0, REAL_W, (REAL_H * 2) / 5, CELL_MAKE(MAT_GAS, 0));
@@ -1974,7 +1974,7 @@ test_a_gravity_flip_on_every_material_at_once_stays_sane(void) {
      * gunpowder patches below can never detonate - see
      * ALL_PAIRS_IMPULSE_MAX. */
     real_board_t b;
-    sand_t* const real = real_board_open_impulses(&b, ALL_PAIRS_IMPULSE_MAX, 23u);
+    sand_t* const real = real_board_open_impulses(&b, ALL_PAIRS_IMPULSE_MAX, 23U);
     board_bookkeeping_open(real);
 
     /* build_all_pairs_scene() (suite_sand_scenes.c) also plants the
@@ -1997,7 +1997,7 @@ test_a_gravity_flip_on_every_material_at_once_stays_sane(void) {
 static void
 test_fire_cascading_through_a_full_screen_of_gas_fits_in_the_frame_budget(void) {
     real_board_t b;
-    sand_t* const real = real_board_open(&b, 17u);
+    sand_t* const real = real_board_open(&b, 17U);
 
     sand_fill_box(real, 0, 0, REAL_W, REAL_H, CELL_MAKE(MAT_GAS, MATERIAL_VARIANTS - 1));
     sand_set(real, 0, 0, FIRE);
@@ -2051,7 +2051,7 @@ test_the_gas_budget_rows_on_the_serial_path(void) {
 static void
 test_a_full_screen_of_fire_fits_in_the_frame_budget(void) {
     real_board_t b;
-    sand_t* const real = real_board_open(&b, 19u);
+    sand_t* const real = real_board_open(&b, 19U);
 
     sand_fill_box(real, 0, 0, REAL_W, REAL_H, FIRE);
     const int total = REAL_W * REAL_H;
@@ -2165,7 +2165,7 @@ static void
 test_four_liquids_reacting_at_once_fits_in_the_frame_budget(void) {
     /* Settled first - the same "let it get going" step as the every-material
      * flip test above, so the measured window lands on a live scene. */
-    const int64_t per_step = run_settled_row(&(const settled_row_t){.seed = 29u,
+    const int64_t per_step = run_settled_row(&(const settled_row_t){.seed = 29U,
                                                                     .app_rates = true,
                                                                     .build = build_four_liquid_scene,
                                                                     .settle_steps = 10,
@@ -2177,7 +2177,7 @@ test_four_liquids_reacting_at_once_fits_in_the_frame_budget(void) {
 static void
 test_the_lava_stress_scene_fits_in_the_frame_budget(void) {
     real_board_t b;
-    sand_t* const real = real_board_open(&b, 37u);
+    sand_t* const real = real_board_open(&b, 37U);
     use_app_rates(real);
 
     build_lava_stress_scene(real);
@@ -2195,7 +2195,7 @@ test_the_lava_stress_scene_fits_in_the_frame_budget(void) {
 static void
 test_a_screen_of_smoke_and_steam_fits_in_the_frame_budget(void) {
     real_board_t b;
-    sand_t* const real = real_board_open(&b, 31u);
+    sand_t* const real = real_board_open(&b, 31U);
 
     build_smoke_and_steam_scene(real);
     const int total = REAL_W * REAL_H;
@@ -2235,7 +2235,7 @@ test_the_thermal_shock_scene_fits_in_the_frame_budget(void) {
      * comment covers the cullet timeline); the ceiling is chosen against
      * the device's 5-second task watchdog at that fixed count - raising the
      * count without minding the ceiling needs re-doing the bet. */
-    const int64_t per_step = run_settled_row(&(const settled_row_t){.seed = 41u,
+    const int64_t per_step = run_settled_row(&(const settled_row_t){.seed = 41U,
                                                                     .app_rates = true,
                                                                     .build = build_thermal_shock_scene,
                                                                     .steps = 10,
@@ -2245,7 +2245,7 @@ test_the_thermal_shock_scene_fits_in_the_frame_budget(void) {
 
 static void
 test_the_boiler_scene_fits_in_the_frame_budget(void) {
-    const int64_t per_step = run_settled_row(&(const settled_row_t){.seed = 43u,
+    const int64_t per_step = run_settled_row(&(const settled_row_t){.seed = 43U,
                                                                     .app_rates = true,
                                                                     .build = build_boiler_scene,
                                                                     .settle_steps = 20,
@@ -2264,7 +2264,7 @@ test_the_boiler_scene_fits_in_the_frame_budget(void) {
 static void
 test_the_wet_earth_scene_fits_in_the_frame_budget(void) {
     /* Perf-scoped, with the block at 16x32. */
-    const int64_t per_step = run_settled_row(&(const settled_row_t){.seed = 53u,
+    const int64_t per_step = run_settled_row(&(const settled_row_t){.seed = 53U,
                                                                     .app_rates = true,
                                                                     .soak = true,
                                                                     .build = build_wet_earth_scene,
@@ -2284,7 +2284,7 @@ test_the_wet_earth_scene_fits_in_the_frame_budget(void) {
 static void
 test_the_water_over_lava_scene_fits_in_the_frame_budget(void) {
     real_board_t b;
-    sand_t* const real = real_board_open_impulses(&b, WATER_LAVA_IMPULSE_MAX, 59u);
+    sand_t* const real = real_board_open_impulses(&b, WATER_LAVA_IMPULSE_MAX, 59U);
     board_bookkeeping_open(real);
 
     build_water_over_lava_scene(real);
@@ -2296,7 +2296,7 @@ test_the_water_over_lava_scene_fits_in_the_frame_budget(void) {
 static void
 test_the_gas_ignition_vessel_logs_the_blast_stress(void) {
     real_board_t b;
-    sand_t* const real = real_board_open_impulses(&b, GAS_IGNITION_VESSEL_IMPULSE_MAX, 71u);
+    sand_t* const real = real_board_open_impulses(&b, GAS_IGNITION_VESSEL_IMPULSE_MAX, 71U);
     build_gas_ignition_vessel_scene(real);
 
     pass_split_t split = {.peak_total = -1};
@@ -2349,7 +2349,7 @@ test_the_gas_ignition_vessel_logs_the_blast_stress(void) {
 static void
 test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
     real_board_t b;
-    sand_t* const real = real_board_open_impulses(&b, GUNPOWDER_BASIN_IMPULSE_MAX, 61u);
+    sand_t* const real = real_board_open_impulses(&b, GUNPOWDER_BASIN_IMPULSE_MAX, 61U);
     board_bookkeeping_open(real);
 
     build_gunpowder_basin_scene(real);
@@ -2393,7 +2393,7 @@ test_the_gunpowder_basin_scene_fits_in_the_frame_budget(void) {
 static void
 test_the_plant_ruin_scene_fits_in_the_frame_budget(void) {
     real_board_t b;
-    sand_t* const real = real_board_open(&b, 11u);
+    sand_t* const real = real_board_open(&b, 11U);
     use_app_rates(real);
     sand_set_soak(real, SAND_SOAK_PER_MATERIAL);
 
@@ -2418,7 +2418,7 @@ test_the_plant_ruin_scene_fits_in_the_frame_budget(void) {
 static void
 test_the_filling_basin_scene_fits_in_the_frame_budget(void) {
     real_board_t b;
-    sand_t* const real = real_board_open(&b, 17u);
+    sand_t* const real = real_board_open(&b, 17U);
     use_app_rates(real);
 
     build_filling_basin_scene(real);
@@ -2442,7 +2442,7 @@ test_the_filling_basin_scene_fits_in_the_frame_budget(void) {
 static void
 test_the_snowfall_scene_fits_in_the_frame_budget(void) {
     real_board_t b;
-    sand_t* const real = real_board_open(&b, 23u);
+    sand_t* const real = real_board_open(&b, 23U);
     use_app_rates(real);
     sand_set_crust(real, CRUST_ROLL_MAX);
 
@@ -2463,7 +2463,7 @@ test_the_snowfall_scene_fits_in_the_frame_budget(void) {
  * the plant bed row over again. */
 static void
 test_pouring_the_plant_brush_fits_in_the_frame_budget(void) {
-    const int64_t per_step = run_settled_row(&(const settled_row_t){.seed = 11u,
+    const int64_t per_step = run_settled_row(&(const settled_row_t){.seed = 11U,
                                                                     .soak = true,
                                                                     .build = build_plant_pour_scene,
                                                                     .settle_steps = PLANT_POUR_SETTLE_STEPS,
@@ -2480,7 +2480,7 @@ test_pouring_the_plant_brush_fits_in_the_frame_budget(void) {
 static void
 test_a_settled_plant_garden_fits_in_the_frame_budget(void) {
     real_board_t b;
-    sand_t* const real = real_board_open(&b, 11u);
+    sand_t* const real = real_board_open(&b, 11U);
     sand_set_soak(real, SAND_SOAK_PER_MATERIAL);
     build_dry_plant_heap_scene(real);
 
@@ -2498,7 +2498,7 @@ test_a_settled_plant_garden_fits_in_the_frame_budget(void) {
  * what a garden does for all but the first few hundred steps of its life. */
 static void
 test_a_finished_tree_fits_in_the_frame_budget(void) {
-    const int64_t per_step = run_settled_row(&(const settled_row_t){.seed = 11u,
+    const int64_t per_step = run_settled_row(&(const settled_row_t){.seed = 11U,
                                                                     .soak = true,
                                                                     .build = build_plant_bed_scene,
                                                                     .settle_steps = MATURE_TREE_SETTLE_STEPS,
@@ -2541,7 +2541,7 @@ landscape_scene_us_per_step(sand_t* real, bool water, int64_t* worst_out) {
 static int64_t
 landscape_pour_row(void (*build)(sand_t*), bool water, const char* scene) {
     real_board_t b;
-    sand_t* const real = real_board_open(&b, 29u);
+    sand_t* const real = real_board_open(&b, 29U);
     use_app_rates(real);
     build(real);
 
@@ -2906,14 +2906,14 @@ present_cost_of_scene(uint32_t seed, void (*build)(sand_t* s), int settle_steps,
 static void
 test_present_cost_against_the_lava_stress_scene(void) {
     const int64_t mean_us =
-        present_cost_of_scene(37u, build_lava_stress_scene, 30, 20, "lava stress", "lava stress scene");
+        present_cost_of_scene(37U, build_lava_stress_scene, 30, 20, "lava stress", "lava stress scene");
     perf_guard("present: lava stress", mean_us, 8350);
 }
 
 static void
 test_present_cost_against_the_thermal_shock_scene(void) {
     const int64_t mean_us =
-        present_cost_of_scene(41u, build_thermal_shock_scene, 0, 10, "thermal shock", "thermal shock lattice");
+        present_cost_of_scene(41U, build_thermal_shock_scene, 0, 10, "thermal shock", "thermal shock lattice");
 
     /* 70/70 full strip-sends and zero gathered is correct, not a target:
      * this lattice dirties every strip every frame, so an oracle sends the
@@ -3031,7 +3031,7 @@ run_present_against_scene_span(sand_t* s, const uint8_t* cells, int w, int h, ui
  * a row with. */
 static void
 build_landscape_gas_over_sand_pile_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
-    sand_init(real, big, REAL_W, REAL_H, 53u);
+    sand_init(real, big, REAL_W, REAL_H, 53U);
     sand_enable_sleeping(real, blocks);
     use_app_rates(real);
     build_landscape_deep_bed_scene(real);
@@ -3050,7 +3050,7 @@ build_landscape_gas_over_sand_pile_scene(sand_t* real, uint8_t* big, uint8_t* bl
  * levelling" case names. */
 static void
 build_landscape_levelling_pool_scene(sand_t* real, uint8_t* big, uint8_t* blocks) {
-    sand_init(real, big, REAL_W, REAL_H, 59u);
+    sand_init(real, big, REAL_W, REAL_H, 59U);
     sand_enable_sleeping(real, blocks);
     sand_fill_box(real, 0, 0, POOL_UNEVEN_DEEP_X1, REAL_H / 2, CELL_MAKE(MAT_WATER, MASS_MAX));
     sand_fill_box(real, 0, REAL_H / 2, POOL_UNEVEN_SHALLOW_X1, REAL_H, CELL_MAKE(MAT_WATER, MASS_MAX));
@@ -3175,7 +3175,7 @@ test_acid_bubbles_do_not_favour_one_wall(void) {
     impulse_t* bubble_buf = malloc(512 * sizeof *bubble_buf);
     TEST_ASSERT_NOT_NULL_MESSAGE(bubble_cells, "acid-bubble pool grid must fit in what the framebuffer leaves");
     TEST_ASSERT_NOT_NULL_MESSAGE(bubble_buf, "acid-bubble impulse queue must fit in what the framebuffer leaves");
-    sand_init(&fx.bubble_sim, bubble_cells, BUBBLE_W, BUBBLE_H, 3u);
+    sand_init(&fx.bubble_sim, bubble_cells, BUBBLE_W, BUBBLE_H, 3U);
     sand_enable_impulses(&fx.bubble_sim, bubble_buf, 512);
 
     /* NOT sleeping-enabled here, unlike test_acid_bubbles_still_bubble_
@@ -3240,7 +3240,7 @@ test_acid_bubbles_still_fire_once_the_block_is_asleep(void) {
                                                       "leaves");
     TEST_ASSERT_NOT_NULL_MESSAGE(sleepy_bubble_buf, "sleepy acid-bubble impulse queue must fit in what the "
                                                     "framebuffer leaves");
-    sand_init(&fx.sleepy_bubble_sim, sleepy_bubble_cells, BUBBLE_W, BUBBLE_H, 3u);
+    sand_init(&fx.sleepy_bubble_sim, sleepy_bubble_cells, BUBBLE_W, BUBBLE_H, 3U);
     sand_enable_sleeping(&fx.sleepy_bubble_sim, sleepy_bubble_blocks);
     sand_enable_impulses(&fx.sleepy_bubble_sim, sleepy_bubble_buf, 512);
 
@@ -3368,7 +3368,7 @@ static void
 test_submerged_pile_settles_and_logs_the_pass_split(void) {
     uint8_t* big;
     uint8_t* blocks;
-    sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 29u);
+    sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 29U);
     sand_set_soak(real, SAND_SOAK_PER_MATERIAL);
     build_landscape_bed_scene(real);
 
@@ -3420,7 +3420,7 @@ static void
 test_water_slope_pouring_water_logs_the_pass_split(void) {
     uint8_t* big;
     uint8_t* blocks;
-    sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 41u);
+    sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 41U);
     build_water_slope_scene(real);
 
     int64_t liquid_total = 0;
@@ -3470,7 +3470,7 @@ test_water_slope_controls_log_the_pass_split(void) {
                                         build_water_slope_flat_covered_scene, build_water_slope_stone_covered_scene};
 
     for (int i = 0; i < 4; i++) {
-        sand_init(real, big, REAL_W, REAL_H, 41u);
+        sand_init(real, big, REAL_W, REAL_H, 41U);
         sand_enable_sleeping(real, blocks);
         builds[i](real);
         if (i == 0) {
@@ -3498,7 +3498,7 @@ static void
 test_water_slope_gravity_flip_logs_a_per_step_table(void) {
     uint8_t* big;
     uint8_t* blocks;
-    sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 41u);
+    sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 41U);
     build_water_slope_covered_scene(real);
 
     const long mass_before = water_slope_water_mass(real);
@@ -3542,7 +3542,7 @@ static void
 test_water_slope_captured_scene_diagonal_flip_logs_a_per_step_table(void) {
     uint8_t* big;
     uint8_t* blocks;
-    sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 41u);
+    sand_t* const real = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 41U);
     build_captured_water_slope_scene(real);
 
     const long mass_before = water_slope_water_mass(real);

@@ -64,11 +64,11 @@ test_water_foams_where_its_rim_is_curved(void) {
                                 | MATERIAL_EDGE_DOWN_RIGHT;
 
     int spike_foamed = 0;
-    for (unsigned hash = 0; hash < 8u; hash++) {
+    for (unsigned hash = 0; hash < 8U; hash++) {
         gfx_color_t flat_col[3];
         gfx_color_t spike_col[3];
-        material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, flat_mask, 255u, flat_col);
-        material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, spike_mask, 255u, spike_col);
+        material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, flat_mask, 255U, flat_col);
+        material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, spike_mask, 255U, spike_col);
 
         char why[192];
         snprintf(why, sizeof why,
@@ -110,11 +110,11 @@ test_a_flat_rim_still_never_foams(void) {
      * curved already uses for its own flat check. */
     const unsigned flat_mask = MATERIAL_EDGE_UP | MATERIAL_EDGE_UP_LEFT | MATERIAL_EDGE_UP_RIGHT;
 
-    for (unsigned phase = 0; phase < 8u; phase++) {
+    for (unsigned phase = 0; phase < 8U; phase++) {
         f.foam_phase = phase;
-        for (unsigned hash = 0; hash < 8u; hash++) {
+        for (unsigned hash = 0; hash < 8U; hash++) {
             gfx_color_t col[3];
-            material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, flat_mask, 255u, col);
+            material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, flat_mask, 255U, col);
 
             char why[192];
             snprintf(why, sizeof why,
@@ -149,9 +149,9 @@ test_only_water_foams(void) {
         const uint8_t id = non_water[k];
         const gfx_color_t plain = pal[CELL_MAKE(id, FOAM_TEST_FILL)];
 
-        for (unsigned hash = 0; hash < 8u; hash++) {
+        for (unsigned hash = 0; hash < 8U; hash++) {
             gfx_color_t col[3];
-            material_colours(&f, CELL_MAKE(id, FOAM_TEST_FILL), hash, spike_mask, 255u, col);
+            material_colours(&f, CELL_MAKE(id, FOAM_TEST_FILL), hash, spike_mask, 255U, col);
 
             char why[128];
             snprintf(why, sizeof why,
@@ -176,7 +176,7 @@ test_a_liquid_interior_never_foams(void) {
     const gfx_color_t body = pal[CELL_MAKE(MAT_WATER, MASS_MAX)];
 
     static const unsigned interior_masks[] = {
-        0u,
+        0U,
         MATERIAL_EDGE_UP_LEFT,
         MATERIAL_EDGE_UP_RIGHT,
         MATERIAL_EDGE_DOWN_LEFT,
@@ -185,9 +185,9 @@ test_a_liquid_interior_never_foams(void) {
     };
 
     for (unsigned k = 0; k < sizeof interior_masks / sizeof interior_masks[0]; k++) {
-        for (unsigned hash = 0; hash < 8u; hash++) {
+        for (unsigned hash = 0; hash < 8U; hash++) {
             gfx_color_t col[3];
-            material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, interior_masks[k], 255u, col);
+            material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, interior_masks[k], 255U, col);
 
             char why[192];
             snprintf(why, sizeof why,
@@ -217,9 +217,9 @@ test_a_diagonal_neighbour_alone_is_not_an_edge(void) {
     {
         gfx_color_t interior[3];
         gfx_color_t diagonal[3];
-        const material_pattern_t pat_i = material_colours(&f, CELL_MAKE(MAT_GLASS, 5), 1u, 0u, 255u, interior);
+        const material_pattern_t pat_i = material_colours(&f, CELL_MAKE(MAT_GLASS, 5), 1U, 0U, 255U, interior);
         const material_pattern_t pat_d =
-            material_colours(&f, CELL_MAKE(MAT_GLASS, 5), 1u, diagonal_only, 255u, diagonal);
+            material_colours(&f, CELL_MAKE(MAT_GLASS, 5), 1U, diagonal_only, 255U, diagonal);
 
         TEST_ASSERT_EQUAL_MESSAGE(pat_i, pat_d,
                                   "a lone diagonal neighbour must not change glass's pattern - "
@@ -233,8 +233,8 @@ test_a_diagonal_neighbour_alone_is_not_an_edge(void) {
     {
         gfx_color_t interior[3];
         gfx_color_t diagonal[3];
-        material_colours(&f, CELL_MAKE(MAT_STONE, 5), 1u, 0u, 255u, interior);
-        material_colours(&f, CELL_MAKE(MAT_STONE, 5), 1u, diagonal_only, 255u, diagonal);
+        material_colours(&f, CELL_MAKE(MAT_STONE, 5), 1U, 0U, 255U, interior);
+        material_colours(&f, CELL_MAKE(MAT_STONE, 5), 1U, diagonal_only, 255U, diagonal);
 
         TEST_ASSERT_EQUAL_MESSAGE(interior[0], diagonal[0],
                                   "a lone diagonal neighbour must not switch stone onto its "
@@ -245,8 +245,8 @@ test_a_diagonal_neighbour_alone_is_not_an_edge(void) {
     {
         gfx_color_t interior[3];
         gfx_color_t diagonal[3];
-        material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), 1u, 0u, 255u, interior);
-        material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), 1u, diagonal_only, 255u, diagonal);
+        material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), 1U, 0U, 255U, interior);
+        material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), 1U, diagonal_only, 255U, diagonal);
 
         TEST_ASSERT_EQUAL_MESSAGE(interior[0], diagonal[0],
                                   "a lone diagonal neighbour must not turn an interior water "
@@ -269,7 +269,7 @@ test_foam_moves_between_frames(void) {
     material_frame_t f = {0};
     const gfx_color_t* pal = material_palette();
     const gfx_color_t plain = pal[CELL_MAKE(MAT_WATER, FOAM_TEST_FILL)];
-    const unsigned fixed_hash = 3u; /* arbitrary - any value works except
+    const unsigned fixed_hash = 3U; /* arbitrary - any value works except
                                        * one that happens to sit exactly on
                                        * the threshold boundary for every
                                        * phase in the sweep, which 3 does
@@ -278,11 +278,11 @@ test_foam_moves_between_frames(void) {
     bool ever_foamed = false;
     bool ever_plain = false;
 
-    for (unsigned phase = 0; phase < 16u; phase++) {
+    for (unsigned phase = 0; phase < 16U; phase++) {
         f.foam_phase = phase;
 
         gfx_color_t col[3];
-        material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), fixed_hash, foam_spike_mask, 255u, col);
+        material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), fixed_hash, foam_spike_mask, 255U, col);
 
         if (col[0] != plain) {
             ever_foamed = true;
@@ -304,11 +304,11 @@ test_foam_moves_between_frames(void) {
 static void
 fill_foam_table(unsigned mask, gfx_color_t plain, bool foamed[8][8]) {
     material_frame_t f = {0};
-    for (unsigned phase = 0; phase < 8u; phase++) {
+    for (unsigned phase = 0; phase < 8U; phase++) {
         f.foam_phase = phase;
-        for (unsigned hash = 0; hash < 8u; hash++) {
+        for (unsigned hash = 0; hash < 8U; hash++) {
             gfx_color_t col[3];
-            material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, mask, 255u, col);
+            material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), hash, mask, 255U, col);
             foamed[phase][hash] = (col[0] != plain);
         }
     }
@@ -318,9 +318,9 @@ fill_foam_table(unsigned mask, gfx_color_t plain, bool foamed[8][8]) {
  * the 8 hashes is neither empty nor complete. */
 static void
 assert_foam_not_degenerate(const bool foamed[8][8], unsigned curvature) {
-    for (unsigned phase = 0; phase < 8u; phase++) {
+    for (unsigned phase = 0; phase < 8U; phase++) {
         unsigned count = 0;
-        for (unsigned hash = 0; hash < 8u; hash++) {
+        for (unsigned hash = 0; hash < 8U; hash++) {
             if (foamed[phase][hash]) {
                 count++;
             }
@@ -333,7 +333,7 @@ assert_foam_not_degenerate(const bool foamed[8][8], unsigned curvature) {
                  "of them, or the rim is pulsing as a whole instead of "
                  "shimmering cell by cell",
                  curvature, phase);
-        TEST_ASSERT_TRUE_MESSAGE(count > 0 && count < 8u, why);
+        TEST_ASSERT_TRUE_MESSAGE(count > 0 && count < 8U, why);
     }
 }
 
@@ -341,10 +341,10 @@ assert_foam_not_degenerate(const bool foamed[8][8], unsigned curvature) {
  * different foaming subset - the property XOR mixing broke. */
 static void
 assert_foam_never_stalls(const bool foamed[8][8], unsigned curvature) {
-    for (unsigned phase = 0; phase < 8u; phase++) {
-        const unsigned next = (phase + 1u) % 8u;
+    for (unsigned phase = 0; phase < 8U; phase++) {
+        const unsigned next = (phase + 1U) % 8U;
         bool differs = false;
-        for (unsigned hash = 0; hash < 8u; hash++) {
+        for (unsigned hash = 0; hash < 8U; hash++) {
             if (foamed[phase][hash] != foamed[next][hash]) {
                 differs = true;
             }
@@ -415,9 +415,9 @@ count_foam_flips(unsigned mask, unsigned phase_a, unsigned phase_b) {
         gfx_color_t col_a[3];
         gfx_color_t col_b[3];
         f.foam_phase = phase_a;
-        material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), h, mask, 255u, col_a);
+        material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), h, mask, 255U, col_a);
         f.foam_phase = phase_b;
-        material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), h, mask, 255u, col_b);
+        material_colours(&f, CELL_MAKE(MAT_WATER, FOAM_TEST_FILL), h, mask, 255U, col_b);
         if (col_a[0] != col_b[0]) {
             flips++;
         }
@@ -439,8 +439,8 @@ test_foam_flip_rate_stays_even_across_the_phase_cycle(void) {
 
     int min_flips = FOAM_FLIP_SAMPLE + 1;
     int max_flips = -1;
-    for (unsigned phase = 0; phase < 8u; phase++) {
-        const int flips = count_foam_flips(curvature1_mask, phase, phase + 1u);
+    for (unsigned phase = 0; phase < 8U; phase++) {
+        const int flips = count_foam_flips(curvature1_mask, phase, phase + 1U);
         if (flips < min_flips) {
             min_flips = flips;
         }

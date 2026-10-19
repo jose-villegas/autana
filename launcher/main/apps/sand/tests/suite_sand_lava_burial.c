@@ -236,14 +236,14 @@ static void
 check_cover_combo(int cx, int cy, unsigned combo, int anti, unsigned lid_ring_bits, uint8_t density, int* sealed) {
     for (int i = 0; i < 8; i++) {
         const int* d = ring_dir(i);
-        sand_set(&s, cx + d[0], cy + d[1], (combo & (1u << i)) ? STONE : CELL_EMPTY);
+        sand_set(&s, cx + d[0], cy + d[1], (combo & (1U << i)) ? STONE : CELL_EMPTY);
     }
 
     const unsigned mask = cover_mask(&s, cx, cy, W, H, density);
     unsigned expected = 0;
     for (int i = 0; i < 3; i++) {
-        if (combo & (1u << ((anti - 1 + i) & 7))) {
-            expected |= 1u << i;
+        if (combo & (1U << ((anti - 1 + i) & 7))) {
+            expected |= 1U << i;
         }
     }
     TEST_ASSERT_EQUAL_INT_MESSAGE((int)expected, (int)mask,
@@ -280,10 +280,10 @@ test_cover_primitive_matches_the_exhaustive_shape_table(void) {
         s.last_load_dx = grav[0];
         s.last_load_dy = grav[1];
         const int anti = g + 4; /* ring_of(grav) is just g */
-        const unsigned lid_ring_bits = (1u << ((anti + 7) & 7)) | (1u << (anti & 7)) | (1u << ((anti + 1) & 7));
+        const unsigned lid_ring_bits = (1U << ((anti + 7) & 7)) | (1U << (anti & 7)) | (1U << ((anti + 1) & 7));
 
         int sealed = 0;
-        for (unsigned combo = 0; combo < 256u; combo++) {
+        for (unsigned combo = 0; combo < 256U; combo++) {
             check_cover_combo(cx, cy, combo, anti, lid_ring_bits, density, &sealed);
         }
 

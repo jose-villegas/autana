@@ -114,7 +114,7 @@ static void
 wet_soil_bed(sand_t* t, uint8_t** grid, int w, int h, int wet_top) {
     *grid = malloc((size_t)w * h);
     TEST_ASSERT_NOT_NULL_MESSAGE(*grid, "the soil bed must fit in what the framebuffer leaves");
-    sand_init(t, *grid, w, h, 12345u);
+    sand_init(t, *grid, w, h, 12345U);
     sand_set_soak(t, SAND_SOAK_PER_MATERIAL);
     sand_fill_box(t, 0, h - 1, w, h, STONE);
     sand_fill_box(t, 0, wet_top, w, h - 1, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
@@ -593,7 +593,7 @@ static bool
 surface_rule_lets_growth_through(int satellite_roots) {
     sand_t t;
     uint8_t grid[8 * 8];
-    sand_init(&t, grid, 8, 8, 12345u);
+    sand_init(&t, grid, 8, 8, 12345U);
     sand_set_soak(&t, SAND_SOAK_PER_MATERIAL);
 
     const int cx = 4;
@@ -673,7 +673,7 @@ test_a_root_tip_grows_on_away_from_its_parent_and_down(void) {
     int below = 0;
     int beside = 0;
 
-    for (uint32_t seed = 1; seed <= 120u; seed++) {
+    for (uint32_t seed = 1; seed <= 120U; seed++) {
         sand_init(&s, cells, W, H, seed);
         sand_clear(&s);
         sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
@@ -707,7 +707,7 @@ test_the_first_root_under_a_trunk_heads_down(void) {
     int below = 0;
     int beside = 0;
 
-    for (uint32_t seed = 1; seed <= 120u; seed++) {
+    for (uint32_t seed = 1; seed <= 120U; seed++) {
         sand_init(&s, cells, W, H, seed);
         sand_clear(&s);
         sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
@@ -934,13 +934,13 @@ test_a_root_darkens_as_more_root_grows_around_it(void) {
     material_frame_t f = {0};
     gfx_color_t col[3];
     gfx_color_t by_count[6];
-    for (unsigned n = 0; n < 6u; n++) {
-        material_colours(&f, MATX(MATX_ROOT), 3u, 0u, n, col);
+    for (unsigned n = 0; n < 6U; n++) {
+        material_colours(&f, MATX(MATX_ROOT), 3U, 0U, n, col);
         by_count[n] = col[0];
     }
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(by_count[0], by_count[1],
                                     "a tip (one root neighbour) wears the same fresh colour as a lone seed");
-    for (unsigned n = 1; n < 5u; n++) {
+    for (unsigned n = 1; n < 5U; n++) {
         TEST_ASSERT_TRUE_MESSAGE(r5(by_count[n + 1]) <= r5(by_count[n]) && g6(by_count[n + 1]) <= g6(by_count[n])
                                      && b5(by_count[n + 1]) <= b5(by_count[n]),
                                  "each extra root neighbour may only darken a root, never lighten it");
@@ -964,10 +964,10 @@ test_leaf_tints_toward_the_wave_highlight(void) {
 
     /* hash 0's own base grain sits at LEAF_DARK, below the highlight's own
      * green, so blending toward it must raise green monotonically. */
-    material_colours(&f, MATX(MATX_LEAF), 0u, 0u, 0u, at_rest);
-    material_colours(&f, MATX(MATX_LEAF), 0u, 0u, 129u, mid);
-    material_colours(&f, MATX(MATX_LEAF), 0u, 0u, 256u, peak);
-    material_colours(&f, MATX(MATX_LEAF), 5u, 0u, 256u, other_hash_peak);
+    material_colours(&f, MATX(MATX_LEAF), 0U, 0U, 0U, at_rest);
+    material_colours(&f, MATX(MATX_LEAF), 0U, 0U, 129U, mid);
+    material_colours(&f, MATX(MATX_LEAF), 0U, 0U, 256U, peak);
+    material_colours(&f, MATX(MATX_LEAF), 5U, 0U, 256U, other_hash_peak);
 
     TEST_ASSERT_TRUE_MESSAGE(g6(mid[0]) > g6(at_rest[0]) && g6(mid[0]) < g6(peak[0]),
                              "the midpoint must sit strictly between the base grain and the peak");
@@ -987,13 +987,13 @@ test_root_neighbours_are_counted_across_three_rows(void) {
     const uint8_t below[5] = {D, D, R, R, D};
     /* (2): above-left R, above R, left R, below R, below-right R = 5;
      * above-right D, right Wd, below-left D do not count. */
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(5u, material_root_neighbours(above, row, below, 2, 5),
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(5U, material_root_neighbours(above, row, below, 2, 5),
                                    "counts root on all eight sides and nothing else - dirt and wood "
                                    "are not root");
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(3u, material_root_neighbours(NULL, row, below, 2, 5),
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(3U, material_root_neighbours(NULL, row, below, 2, 5),
                                    "a NULL above row (the grid's top edge) contributes nothing - the "
                                    "two roots above (2) drop out, left/below/below-right remain");
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(1u, material_root_neighbours(above, row, below, 4, 5),
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(1U, material_root_neighbours(above, row, below, 4, 5),
                                    "the right-hand grid edge is not read past");
 }
 
@@ -1086,12 +1086,12 @@ static const uint8_t dirt_below[5] = {NEAR_LEAF_DIRT, NEAR_LEAF_DIRT, NEAR_LEAF_
  * read instead of up to eight. */
 static void
 test_wood_near_leaf_checks_its_assigned_slot(void) {
-    TEST_ASSERT_TRUE_MESSAGE(material_wood_near_leaf(leaf_above, wood_row, dirt_below, 2, 5, up_five, 0u, 1u),
+    TEST_ASSERT_TRUE_MESSAGE(material_wood_near_leaf(leaf_above, wood_row, dirt_below, 2, 5, up_five, 0U, 1U),
                              "hash 0 picks slot 0 (up), where the leaf actually is");
-    TEST_ASSERT_FALSE_MESSAGE(material_wood_near_leaf(leaf_above, wood_row, dirt_below, 2, 5, up_five, 1u, 1u),
+    TEST_ASSERT_FALSE_MESSAGE(material_wood_near_leaf(leaf_above, wood_row, dirt_below, 2, 5, up_five, 1U, 1U),
                               "hash 1 picks slot 1 (up-left), empty - the leaf at slot 0 must not "
                               "leak through a different slot's check");
-    TEST_ASSERT_FALSE_MESSAGE(material_wood_near_leaf(NULL, wood_row, dirt_below, 2, 5, up_five, 0u, 1u),
+    TEST_ASSERT_FALSE_MESSAGE(material_wood_near_leaf(NULL, wood_row, dirt_below, 2, 5, up_five, 0U, 1U),
                               "a NULL above row (the grid's top edge) must not crash or false-positive");
 }
 
@@ -1100,9 +1100,9 @@ test_wood_near_leaf_checks_its_assigned_slot(void) {
  * wider window, which is what makes coverage a tunable dial. */
 static void
 test_wood_near_leaf_widens_coverage_with_more_slots(void) {
-    TEST_ASSERT_FALSE_MESSAGE(material_wood_near_leaf(leaf_above, wood_row, dirt_below, 2, 5, up_five, 4u, 1u),
+    TEST_ASSERT_FALSE_MESSAGE(material_wood_near_leaf(leaf_above, wood_row, dirt_below, 2, 5, up_five, 4U, 1U),
                               "checking only slot 4 (right) finds nothing - the leaf is at slot 0");
-    TEST_ASSERT_TRUE_MESSAGE(material_wood_near_leaf(leaf_above, wood_row, dirt_below, 2, 5, up_five, 4u, 2u),
+    TEST_ASSERT_TRUE_MESSAGE(material_wood_near_leaf(leaf_above, wood_row, dirt_below, 2, 5, up_five, 4U, 2U),
                              "checking 2 slots from the same start wraps around to slot 0 too");
 }
 
@@ -1117,8 +1117,8 @@ test_unlit_wood_tints_green_only_beside_a_leaf(void) {
     gfx_color_t away[3];
     gfx_color_t beside[3];
 
-    const material_pattern_t pat_away = material_colours(&f, wood, 3u, 0u, 0u, away);
-    const material_pattern_t pat_beside = material_colours(&f, wood, 3u, 0u, 129u, beside);
+    const material_pattern_t pat_away = material_colours(&f, wood, 3U, 0U, 0U, away);
+    const material_pattern_t pat_beside = material_colours(&f, wood, 3U, 0U, 129U, beside);
 
     TEST_ASSERT_EQUAL_MESSAGE(MATERIAL_SPECKLED, pat_away, "plain wood keeps its grained pattern");
     TEST_ASSERT_EQUAL_MESSAGE(MATERIAL_FLAT, pat_beside, "the live blend has no per-cell grain");
@@ -1137,9 +1137,9 @@ test_wood_leaf_tint_blends_smoothly_between_its_anchors(void) {
     gfx_color_t mid[3];
     gfx_color_t hi[3];
 
-    material_colours(&f, wood, 3u, 0u, 1u, lo);
-    material_colours(&f, wood, 3u, 0u, 129u, mid);
-    material_colours(&f, wood, 3u, 0u, 256u, hi);
+    material_colours(&f, wood, 3U, 0U, 1U, lo);
+    material_colours(&f, wood, 3U, 0U, 129U, mid);
+    material_colours(&f, wood, 3U, 0U, 256U, hi);
 
     TEST_ASSERT_TRUE_MESSAGE(g6(mid[0]) > g6(lo[0]) && g6(mid[0]) < g6(hi[0]),
                              "the midpoint must sit strictly between the two anchors, not equal "
@@ -1158,22 +1158,22 @@ test_wood_leaf_wave_rises_then_falls_smoothly(void) {
      * FALL 140 - a short, thin gust against a longer quiet gap. hash 0's
      * own roll (see test_wood_leaf_wave_sometimes_sits_a_gust_out) happens
      * to activate cycle 0, so this still isolates the shape cleanly. */
-    const unsigned at_start = material_wood_leaf_wave(0u, 0, 100, 0u);
-    const unsigned at_rise_mid = material_wood_leaf_wave(30u, 0, 100, 0u);
-    const unsigned at_peak = material_wood_leaf_wave(60u, 0, 100, 0u);
-    const unsigned at_fall_mid = material_wood_leaf_wave(130u, 0, 100, 0u);
-    const unsigned at_settled = material_wood_leaf_wave(200u, 0, 100, 0u);
-    const unsigned at_quiet = material_wood_leaf_wave(400u, 0, 100, 0u);
-    const unsigned at_wrap = material_wood_leaf_wave(600u, 0, 100, 0u);
+    const unsigned at_start = material_wood_leaf_wave(0U, 0, 100, 0U);
+    const unsigned at_rise_mid = material_wood_leaf_wave(30U, 0, 100, 0U);
+    const unsigned at_peak = material_wood_leaf_wave(60U, 0, 100, 0U);
+    const unsigned at_fall_mid = material_wood_leaf_wave(130U, 0, 100, 0U);
+    const unsigned at_settled = material_wood_leaf_wave(200U, 0, 100, 0U);
+    const unsigned at_quiet = material_wood_leaf_wave(400U, 0, 100, 0U);
+    const unsigned at_wrap = material_wood_leaf_wave(600U, 0, 100, 0U);
 
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, at_start, "the gust starts at baseline");
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0U, at_start, "the gust starts at baseline");
     TEST_ASSERT_TRUE_MESSAGE(at_rise_mid > at_start && at_rise_mid < at_peak,
                              "rising smoothly toward the peak, not jumping straight there");
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(255u, at_peak, "the peak sits at the end of the rise");
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(255U, at_peak, "the peak sits at the end of the rise");
     TEST_ASSERT_TRUE_MESSAGE(at_fall_mid < at_peak && at_fall_mid > at_settled,
                              "falling smoothly back down, not snapping");
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, at_settled, "back to baseline once the fall finishes");
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, at_quiet, "the quiet gap between gusts stays flat, not a slow ramp");
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0U, at_settled, "back to baseline once the fall finishes");
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0U, at_quiet, "the quiet gap between gusts stays flat, not a slow ramp");
     TEST_ASSERT_EQUAL_UINT_MESSAGE(at_start, at_wrap, "one full period returns to the same baseline");
 }
 
@@ -1184,8 +1184,8 @@ test_wood_leaf_wave_shifts_with_position(void) {
     /* 60ms puts pos 0 exactly at its peak; pos 10 of a 100-wide span
      * shifts by 10*WOOD_LEAF_WAVE_SCREEN_SPAN_MS(4000)/100 = 400ms, landing it in the
      * quiet gap instead - proving the travelling band is narrow. */
-    const unsigned at_pos0 = material_wood_leaf_wave(60u, 0, 100, 0u);
-    const unsigned at_pos10 = material_wood_leaf_wave(60u, 10, 100, 0u);
+    const unsigned at_pos0 = material_wood_leaf_wave(60U, 0, 100, 0U);
+    const unsigned at_pos10 = material_wood_leaf_wave(60U, 10, 100, 0U);
 
     TEST_ASSERT_NOT_EQUAL_UINT_MESSAGE(at_pos0, at_pos10,
                                        "different screen columns must sit at different points on the wave "
@@ -1197,8 +1197,8 @@ test_wood_leaf_wave_shifts_with_position(void) {
  * same gust still light up at slightly different moments within it. */
 static void
 test_wood_leaf_wave_salts_by_hash(void) {
-    const unsigned at_hash0 = material_wood_leaf_wave(60u, 0, 100, 0u);
-    const unsigned at_hash100 = material_wood_leaf_wave(60u, 0, 100, 100u);
+    const unsigned at_hash0 = material_wood_leaf_wave(60U, 0, 100, 0U);
+    const unsigned at_hash100 = material_wood_leaf_wave(60U, 0, 100, 100U);
 
     TEST_ASSERT_NOT_EQUAL_UINT_MESSAGE(at_hash0, at_hash100,
                                        "two cells at the same time and position must still differ by hash "
@@ -1211,13 +1211,13 @@ test_wood_leaf_wave_salts_by_hash(void) {
  * the same cell must skip some gusts, and which ones must vary over time. */
 static void
 test_wood_leaf_wave_sometimes_sits_a_gust_out(void) {
-    const unsigned cycle0_peak = material_wood_leaf_wave(60u, 0, 100, 0u);
-    const unsigned cycle1_peak = material_wood_leaf_wave(660u, 0, 100, 0u);
-    const unsigned cycle2_peak = material_wood_leaf_wave(1260u, 0, 100, 0u);
+    const unsigned cycle0_peak = material_wood_leaf_wave(60U, 0, 100, 0U);
+    const unsigned cycle1_peak = material_wood_leaf_wave(660U, 0, 100, 0U);
+    const unsigned cycle2_peak = material_wood_leaf_wave(1260U, 0, 100, 0U);
 
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(255u, cycle0_peak, "cycle 0's gust must activate");
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, cycle1_peak, "cycle 1's gust must be rolled out");
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(255u, cycle2_peak, "cycle 2's gust must activate again");
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(255U, cycle0_peak, "cycle 0's gust must activate");
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0U, cycle1_peak, "cycle 1's gust must be rolled out");
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(255U, cycle2_peak, "cycle 2's gust must activate again");
 }
 
 /* The wind axis must stay perpendicular to gravity - a grid axis (raw `cx`)
@@ -1258,8 +1258,8 @@ distinct_hash_colours(cell_t c, uint8_t depth, material_pattern_t expect_pattern
     gfx_color_t col[3] = {0, 0, 0};
     int distinct = 0;
     gfx_color_t seen[8];
-    for (unsigned hash = 0; hash < 8u; hash++) {
-        const material_pattern_t pat = material_colours(&f, c, hash, 0u, depth, col);
+    for (unsigned hash = 0; hash < 8U; hash++) {
+        const material_pattern_t pat = material_colours(&f, c, hash, 0U, depth, col);
         TEST_ASSERT_EQUAL_MESSAGE(expect_pattern, pat, why);
 
         bool known = false;
@@ -1288,7 +1288,7 @@ test_the_right_extended_materials_are_grained(void) {
          * case), and 255 sits so far into that blend that RGB565
          * quantisation collapses all 8 hashes toward the same pixel - a
          * real property of the blend, not what THIS test checks. */
-        const int distinct = distinct_hash_colours(c, k == MATX_LEAF ? 0u : 255u, expect, why);
+        const int distinct = distinct_hash_colours(c, k == MATX_LEAF ? 0U : 255U, expect, why);
 
         if (speckled || hatched) {
             TEST_ASSERT_GREATER_THAN_MESSAGE(4, distinct,
@@ -1311,7 +1311,7 @@ test_the_right_extended_materials_are_grained(void) {
         const cell_t c = GUNPOWDER_CELL(v);
         char why[64];
         snprintf(why, sizeof why, "gunpowder code %d", v);
-        const int distinct = distinct_hash_colours(c, 255u, MATERIAL_FLAT, why);
+        const int distinct = distinct_hash_colours(c, 255U, MATERIAL_FLAT, why);
         TEST_ASSERT_EQUAL_INT_MESSAGE(1, distinct,
                                       "gunpowder is ungrained - its colour must not vary with "
                                       "position, only with its own code (tone or moisture level)");
@@ -1330,8 +1330,8 @@ test_metal_shine_does_not_vary_between_cells(void) {
     material_frame_t f = {0};
     gfx_color_t a[3];
     gfx_color_t b[3];
-    material_colours(&f, MATX(MATX_METAL), 0u, 0u, 255u, a);
-    material_colours(&f, MATX(MATX_METAL), 5u, 0u, 255u, b);
+    material_colours(&f, MATX(MATX_METAL), 0U, 0U, 255U, a);
+    material_colours(&f, MATX(MATX_METAL), 5U, 0U, 255U, b);
 
     TEST_ASSERT_EQUAL_MESSAGE(a[1], a[0],
                               "metal's line colour must mirror its body - there is no separate "
@@ -1973,7 +1973,7 @@ test_a_falling_plant_tip_does_not_also_drink_the_same_step(void) {
     sand_t* g = malloc(sizeof *g);
     TEST_ASSERT_NOT_NULL_MESSAGE(g, "plant-fall trial sand_t must fit in what the framebuffer leaves");
 
-    sand_init(g, cells, w, PLANT_FALL_H, 5u);
+    sand_init(g, cells, w, PLANT_FALL_H, 5U);
     sand_clear(g);
     for (int i = 0; i < PLANT_FALL_TRIALS; i++) {
         const int x = i * 2;

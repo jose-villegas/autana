@@ -50,9 +50,9 @@ static long
 channel_error_sq(gfx_color_t a, gfx_color_t b) {
     const uint32_t ca = gfx_color_rgb888(a);
     const uint32_t cb = gfx_color_rgb888(b);
-    const long dr = (long)((ca >> 16) & 0xFFu) - (long)((cb >> 16) & 0xFFu);
-    const long dg = (long)((ca >> 8) & 0xFFu) - (long)((cb >> 8) & 0xFFu);
-    const long db = (long)(ca & 0xFFu) - (long)(cb & 0xFFu);
+    const long dr = (long)((ca >> 16) & 0xFFU) - (long)((cb >> 16) & 0xFFU);
+    const long dg = (long)((ca >> 8) & 0xFFU) - (long)((cb >> 8) & 0xFFU);
+    const long db = (long)(ca & 0xFFU) - (long)(cb & 0xFFU);
     return (dr * dr) + (dg * dg) + (db * db);
 }
 
@@ -67,13 +67,13 @@ test_every_material_bytes_body_colour_maps_within_budget(void) {
     material_frame_t f = {0};
     int sampled = 0;
     int exact = 0;
-    for (unsigned c = 0; c < 256u; c++) {
+    for (unsigned c = 0; c < 256U; c++) {
         if (!is_real_cell((cell_t)c)) {
             continue;
         }
-        for (unsigned hash = 0; hash <= 255u; hash += 255u) {
+        for (unsigned hash = 0; hash <= 255U; hash += 255U) {
             gfx_color_t out[3];
-            material_colours(&f, (cell_t)c, hash, 0u, 0u, out);
+            material_colours(&f, (cell_t)c, hash, 0U, 0U, out);
 
             const int idx = material_palette256_index(out[0]);
             TEST_ASSERT_GREATER_OR_EQUAL_INT(SAND_PALETTE_UI_ENTRIES, idx);
@@ -137,7 +137,7 @@ test_metal_shine_cells_get_a_different_index_in_256_and_16(void) {
         for (int cx = 0; cx < 24; cx++) {
             const unsigned hash = material_grain_hash(cx, cy);
             gfx_color_t col[3];
-            const material_pattern_t pat = material_colours(&f, metal, hash, 0u, 0u, col);
+            const material_pattern_t pat = material_colours(&f, metal, hash, 0U, 0U, col);
             TEST_ASSERT_EQUAL_INT(MATERIAL_HATCHED, pat);
 
             const int shine_q8 = ((cx * SHINE_TEST_CELL + SHINE_TEST_CELL / 2) * shine_ux_q8)
@@ -220,11 +220,11 @@ check_settled_cell_maps_and_expands(const uint8_t* row, int cx, int cy, const ch
                                     size_t n_sizes) {
     material_frame_t f = {0};
     const unsigned hash = material_grain_hash(cx, cy);
-    const unsigned mask = ((cx > 0 && CELL_IS_EMPTY(row[cx - 1])) ? MATERIAL_EDGE_LEFT : 0u)
-                          | ((cx < SCENE_W - 1 && CELL_IS_EMPTY(row[cx + 1])) ? MATERIAL_EDGE_RIGHT : 0u);
+    const unsigned mask = ((cx > 0 && CELL_IS_EMPTY(row[cx - 1])) ? MATERIAL_EDGE_LEFT : 0U)
+                          | ((cx < SCENE_W - 1 && CELL_IS_EMPTY(row[cx + 1])) ? MATERIAL_EDGE_RIGHT : 0U);
 
     gfx_color_t out[3];
-    material_colours(&f, row[cx], hash, mask, 0u, out);
+    material_colours(&f, row[cx], hash, mask, 0U, out);
     const int idx = material_palette256_index(out[0]);
 
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(SAND_PALETTE_UI_ENTRIES, idx, scene_name);
@@ -252,7 +252,7 @@ test_settled_scenes_map_and_expand_correctly_at_every_quality(void) {
     const size_t n_sizes = sizeof cell_sizes / sizeof cell_sizes[0];
 
     for (size_t si = 0; si < sizeof scenes / sizeof scenes[0]; si++) {
-        sand_init(&scene_sim, scene_grid, SCENE_W, SCENE_H, 0x51EED000u + (uint32_t)si);
+        sand_init(&scene_sim, scene_grid, SCENE_W, SCENE_H, 0x51EED000U + (uint32_t)si);
         scenes[si].build(&scene_sim);
 
         for (int cy = 0; cy < SCENE_H; cy++) {

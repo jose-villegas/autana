@@ -32,7 +32,7 @@ static const int cs_grids[][4] = {
 
 static const int cs_dirs[][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
 
-static const uint32_t cs_seeds[] = {1u, 7u, 12345u};
+static const uint32_t cs_seeds[] = {1U, 7U, 12345U};
 
 #define CS_GRIDS ((int)(sizeof cs_grids / sizeof cs_grids[0]))
 #define CS_DIRS  ((int)(sizeof cs_dirs / sizeof cs_dirs[0]))
@@ -129,7 +129,7 @@ cs_sweep(int grids, cs_check_fn check, void* ctx) {
             cs_case_t c;
             cs_build(&c, g, oi);
             for (int d = 0; d < CS_DIRS; d++) {
-                for (unsigned phase = 0; phase < 2u; phase++) {
+                for (unsigned phase = 0; phase < 2U; phase++) {
                     cs_set_pass(&c, d, phase);
                     check(&c, ctx);
                 }
@@ -340,15 +340,15 @@ cs_pick_lane(int which, int step, uint32_t* rnd) {
     if (which == 2) {
         return step & 1;
     }
-    *rnd = (*rnd * 1664525u) + 1013904223u;
-    return (int)((*rnd >> 16) & 1u);
+    *rnd = (*rnd * 1664525U) + 1013904223U;
+    return (int)((*rnd >> 16) & 1U);
 }
 
 /* Drives both lanes by hand, re-entering the other lane from inside the
  * chunk body so an overlap would really happen if the order permitted one. */
 static void
 cs_interleave(cs_run_t* r, const cs_case_t* c, int which) {
-    uint32_t rnd = (which < 3) ? 0u : cs_seeds[which - 3];
+    uint32_t rnd = (which < 3) ? 0U : cs_seeds[which - 3];
     const int count = c->order.count;
 
     cs_run_begin(r, c, true);
@@ -433,7 +433,7 @@ cs_check_lone_lane_gives_up(const cs_case_t* c, void* ctx) {
     cs_run_t* r = (cs_run_t*)ctx;
 
     cs_run_begin(r, c, false);
-    sand_chunk_run_lane(&r->k, 1, 2u, cs_run_fn, r);
+    sand_chunk_run_lane(&r->k, 1, 2U, cs_run_fn, r);
 
     TEST_ASSERT_NOT_EQUAL_UINT8_MESSAGE(0, r->k.abort, c->label);
     TEST_ASSERT_LESS_THAN_INT_MESSAGE(c->order.count, r->seq_n, c->label);

@@ -250,7 +250,7 @@ test_wet_dirt_can_still_steam_before_spoiling_at_least_sometimes(void) {
     uint8_t* steam_cells = malloc((size_t)STEAM_TEST_W * STEAM_TEST_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(steam_cells, "wet-dirt steam-pods grid must fit in what the framebuffer leaves");
     sand_t st;
-    sand_init(&st, steam_cells, STEAM_TEST_W, STEAM_TEST_H, 3u);
+    sand_init(&st, steam_cells, STEAM_TEST_W, STEAM_TEST_H, 3U);
     sand_set_mobility(&st, 0);
 
     const int y = 2;
@@ -302,7 +302,7 @@ test_wet_dirt_can_still_steam_before_spoiling_at_least_sometimes(void) {
 
 static void
 test_wet_dirt_can_spoil_into_sand_instead_of_smelting(void) {
-    wide_open(3u);
+    wide_open(3U);
     sand_set_mobility(&wide, 0);
 
     const int y = 2;
@@ -359,7 +359,7 @@ test_dry_dirt_smelting_reaches_both_metal_and_stone(void) {
     uint8_t* flaw_cells = malloc((size_t)FLAW_TEST_W * FLAW_TEST_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(flaw_cells, "dry-dirt flaw-pods grid must fit in what the framebuffer leaves");
     sand_t flaw;
-    sand_init(&flaw, flaw_cells, FLAW_TEST_W, FLAW_TEST_H, 3u);
+    sand_init(&flaw, flaw_cells, FLAW_TEST_W, FLAW_TEST_H, 3U);
     sand_set_mobility(&flaw, 0);
 
     const int y = 2;
@@ -572,7 +572,7 @@ steps_to_boil_through(int wall_len, cell_t wall_cell, int budget) {
     /* Self-contained, like steps_to_boil() above: malloc, use, free, all
      * within one call - the test below calls this twice and gets a
      * fresh grid each time. */
-    wide_open(3u);
+    wide_open(3U);
     sand_set_mobility(&wide, 0);
     /* This measures CONDUCTION speed, not water's own new resistance to
      * boiling once heat arrives - forced to 255 so a slow real `boils`
@@ -661,7 +661,7 @@ test_the_rod_terminates_at_conduct_reach_not_the_far_wall(void) {
     uint8_t* rod_cells = malloc((size_t)ROD_W * ROD_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(rod_cells, "metal-rod grid must fit in what the framebuffer leaves");
     sand_t rod;
-    sand_init(&rod, rod_cells, ROD_W, ROD_H, 3u);
+    sand_init(&rod, rod_cells, ROD_W, ROD_H, 3U);
     sand_set_mobility(&rod, 0);
     sand_set_conduction(&rod, 255);
     /* The lava source sits boxed in on 3-4 sides for the whole run - more
@@ -999,7 +999,7 @@ count_room_wall_stone(void) {
 static void
 test_a_rained_acid_cell_keeps_dissolving_after_the_collapse(void) {
     bool found_acid_seed = false;
-    for (unsigned seed = 1u; seed < 64u && !found_acid_seed; seed++) {
+    for (unsigned seed = 1U; seed < 64U && !found_acid_seed; seed++) {
         build_sealed_dissolve_room(seed);
 
         sand_step(&s, 0, 1000, 0);

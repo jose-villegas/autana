@@ -294,7 +294,7 @@ test_chilling_hot_glass_also_transforms_the_chilling_snow_cell(void) {
     sand_t* g = malloc(sizeof *g);
     TEST_ASSERT_NOT_NULL_MESSAGE(g, "glass-chill trial sand_t must fit in what the framebuffer leaves");
 
-    sand_init(g, chill_cells, w, 2, 9u);
+    sand_init(g, chill_cells, w, 2, 9U);
     sand_clear(g);
     for (int i = 0; i < GLASS_CHILL_TRIALS; i++) {
         const int base = i * 3;

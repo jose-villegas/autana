@@ -1256,7 +1256,7 @@ test_a_thrown_liquid_grain_pays_no_drag_displacing_water(void) {
      * order. Derived from the constants rather than restated: reading the
      * count off the raw 255 agreed only while the decay was gentle enough
      * for both to land on 3 cells. */
-    unsigned expect_speed = 255u;
+    unsigned expect_speed = 255U;
     expect_speed -= expect_speed >> SAND_SPLASH_SPEED_DECAY_SHIFT;
     const int extra_cells = (int)expect_speed / SAND_IMPULSE_CELLS_PER_STEP_DIVISOR;
     for (int c = 0; c < extra_cells; c++) {
@@ -1364,7 +1364,7 @@ test_a_sub_divisor_speed_impulse_never_moves_more_than_one_cell_a_step(void) {
 
     sand_t g;
     memset(cells, 0, (size_t)SUBDIV_W * SUBDIV_H);
-    sand_init(&g, cells, SUBDIV_W, SUBDIV_H, 4242u);
+    sand_init(&g, cells, SUBDIV_W, SUBDIV_H, 4242U);
     sand_enable_impulses(&g, buf, 8);
 
     enum { SX = 1, SY = 2, DIR_RIGHT = 2 };
@@ -2802,7 +2802,7 @@ test_a_long_plow_through_a_wide_bank_never_exhausts_the_impulse_buffer(void) {
 
     sand_t g;
     memset(cells, 0, (size_t)BUDGET_W * BUDGET_H);
-    sand_init(&g, cells, BUDGET_W, BUDGET_H, 9u);
+    sand_init(&g, cells, BUDGET_W, BUDGET_H, 9U);
     sand_enable_impulses(&g, buf, BUDGET_IMPULSE_MAX);
 
     sand_fill_box(&g, 0, BUDGET_H - 1, BUDGET_W, BUDGET_H, STONE);
@@ -2876,7 +2876,7 @@ test_a_thrown_powder_grain_conserves_the_dirt_it_ejects(void) {
     const int dy0 = dy1 - EJECTA_DIRT_H;
     sand_t g;
     memset(cells, 0, (size_t)EJECTA_W * EJECTA_H);
-    sand_init(&g, cells, EJECTA_W, EJECTA_H, 5u);
+    sand_init(&g, cells, EJECTA_W, EJECTA_H, 5U);
     sand_enable_impulses(&g, buf, EJECTA_W * EJECTA_H);
     sand_fill_box(&g, 0, EJECTA_H - 1, EJECTA_W, EJECTA_H, STONE);
     sand_fill_box(&g, dx0, dy0, dx1, dy1, CELL_MAKE(MAT_DIRT, 0));
@@ -2920,7 +2920,7 @@ test_a_thrown_powder_grain_conserves_the_water_mass_it_ejects(void) {
     const int dy0 = dy1 - 1;
     sand_t g;
     memset(cells, 0, (size_t)EJECTA_W * EJECTA_H);
-    sand_init(&g, cells, EJECTA_W, EJECTA_H, 5u);
+    sand_init(&g, cells, EJECTA_W, EJECTA_H, 5U);
     sand_enable_impulses(&g, buf, EJECTA_W * EJECTA_H);
     sand_fill_box(&g, 0, EJECTA_H - 1, EJECTA_W, EJECTA_H, STONE);
     sand_fill_box(&g, dx0, dy0, dx1, dy0 + 1, CELL_MAKE(MAT_WATER, MASS_MAX));

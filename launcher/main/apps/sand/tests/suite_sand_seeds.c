@@ -330,7 +330,7 @@ check_the_fall_flag_is_honest(sand_t* g) {
 
 static void
 test_the_fall_flag_is_never_clear_while_a_plant_can_move(void) {
-    wide_open(7u);
+    wide_open(7U);
     sand_set_soak(&wide, SAND_SOAK_PER_MATERIAL);
     sand_set_decay(&wide, SAND_DECAY_PER_MATERIAL);
 
@@ -803,7 +803,7 @@ test_a_limb_travels_outward_instead_of_climbing(void) {
     for (unsigned seed = 1; seed <= 8; seed++) {
         sand_t t;
         memset(limb_cells, 0, (size_t)LIMB_W * LIMB_H);
-        sand_init(&t, limb_cells, LIMB_W, LIMB_H, seed * 7919u);
+        sand_init(&t, limb_cells, LIMB_W, LIMB_H, seed * 7919U);
         sand_set_soak(&t, SAND_SOAK_PER_MATERIAL);
         sand_set_decay(&t, SAND_DECAY_PER_MATERIAL);
 

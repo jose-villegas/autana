@@ -338,7 +338,7 @@ test_lava_beside_dry_gunpowder_lights_it_through_the_heat_path(void) {
 
 static void
 test_heat_conducted_through_stone_lights_gunpowder(void) {
-    wide_open(3u);
+    wide_open(3U);
     sand_set_conduction(&wide, 255);
     sand_set_mobility(&wide, 0);
 
@@ -480,7 +480,7 @@ test_a_lit_two_by_two_of_gunpowder_detonates(void) {
  * the lit code once the blast has actually happened. */
 static void
 test_a_detonating_two_by_two_leaves_no_lit_gunpowder_behind(void) {
-    wide_open(11u);
+    wide_open(11U);
     sand_set_decay(&wide, SAND_DECAY_PER_MATERIAL);
     sand_set_mobility(&wide, 0); /* hold the 2x2 in place until burn-out -
                                     * see test_gunpowder_without_impulses_
@@ -554,7 +554,7 @@ square_gone(int x) {
  * linking them; decay 255 forces all eight cells out on the same step. */
 static void
 test_fuse_blasts_are_capped_at_one_per_step(void) {
-    wide_open(5u);
+    wide_open(5U);
     sand_set_decay(&wide, 255);
 
     impulse_t* buf = impulses_open(&wide, WIDE_W * WIDE_H);
@@ -603,7 +603,7 @@ test_fuse_blasts_are_capped_at_one_per_step(void) {
  * its burn-out cannot race group A's inside one pass. */
 static void
 test_a_longer_fuse_cooldown_delays_the_next_blast(void) {
-    wide_open(5u);
+    wide_open(5U);
     sand_set_decay(&wide, 255);
     sand_set_fuse_cooldown(&wide, 3);
 
@@ -770,7 +770,7 @@ test_gunpowder_without_impulses_burns_to_fire(void) {
      * leaves is a transient that can decay before the last resolves.
      * Sampling at the step a cell stops being gunpowder keeps the claim
      * indifferent to how long the fuse burns. */
-    uint8_t became[4] = {0xFFu, 0xFFu, 0xFFu, 0xFFu};
+    uint8_t became[4] = {0xFFU, 0xFFU, 0xFFU, 0xFFU};
     const int cx[4] = {3, 4, 3, 4};
     const int cy[4] = {H - 3, H - 3, H - 2, H - 2};
     bool all_resolved = false;
@@ -781,7 +781,7 @@ test_gunpowder_without_impulses_burns_to_fire(void) {
             const cell_t c = sand_at(&s, cx[k], cy[k]);
             if (cell_is_gunpowder(c)) {
                 all_resolved = false;
-            } else if (became[k] == 0xFFu) {
+            } else if (became[k] == 0xFFU) {
                 became[k] = CELL_MATERIAL(c);
             }
         }
@@ -914,7 +914,7 @@ test_heat_dries_wet_gunpowder_one_level_with_steam(void) {
  * independent of that trial's own moisture roll. */
 static void
 ignite_trial_row(sand_t* g, uint8_t* cells, int w, int trials, cell_t gp_byte) {
-    sand_init(g, cells, w, 2, 7u);
+    sand_init(g, cells, w, 2, 7U);
     sand_set_mobility(g, 0);   /* keep fire from rising away before
                                 * reactions gets a turn at it this same
                                 * step, see test_an_open_gas_pocket_
@@ -1052,8 +1052,8 @@ test_water_wets_gunpowder_and_it_dries_out_slowly(void) {
 
     sand_t gp;
     sand_t dirt;
-    sand_init(&gp, gp_grid, 3, WET_DRY_TRIALS, 21u);
-    sand_init(&dirt, dirt_grid, 3, WET_DRY_TRIALS, 21u);
+    sand_init(&gp, gp_grid, 3, WET_DRY_TRIALS, 21U);
+    sand_init(&dirt, dirt_grid, 3, WET_DRY_TRIALS, 21U);
 
     for (int y = 0; y < WET_DRY_TRIALS; y++) {
         sand_set(&gp, 0, y, STONE);

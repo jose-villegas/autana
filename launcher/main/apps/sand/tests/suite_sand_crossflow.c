@@ -29,7 +29,7 @@ static crossflow_fixture_t*
 crossflow_fixture(void) {
     crossflow_fixture_t* f = malloc(sizeof *f);
     TEST_ASSERT_NOT_NULL(f);
-    sand_init(&f->s, f->cells, CF_W, CF_H, 42u);
+    sand_init(&f->s, f->cells, CF_W, CF_H, 42U);
     sand_enable_sleeping(&f->s, f->blocks);
     sand_track_dirty_rows(&f->s, f->dirty);
     sand_track_dirty_cols(&f->s, f->x0, f->x1);
@@ -73,7 +73,7 @@ enum { SORT_W = 8, SORT_H = 8 };
 
 static void
 sort_fixture(sand_t* s, uint8_t cells[SORT_W * SORT_H]) {
-    sand_init(s, cells, SORT_W, SORT_H, 42u);
+    sand_init(s, cells, SORT_W, SORT_H, 42U);
     for (int y = 0; y < SORT_H; y++) {
         for (int x = 0; x < SORT_W; x++) {
             const bool border = x == 0 || x == SORT_W - 1 || y == 0 || y == SORT_H - 1;
@@ -163,7 +163,7 @@ crossflow_viscous_drew_sequentially(bool two_core, bool ask_for_the_split) {
     const rng_t before = f->s.rng;
     const xflow_t flow = {.ax = {0, 1}, .dg = {0, 1}};
     const two_core_scope_t core = two_core_scope_begin(two_core);
-    const split_passes_scope_t passes = split_passes_scope_begin(ask_for_the_split ? SAND_SPLIT_CROSSFLOW : 0u);
+    const split_passes_scope_t passes = split_passes_scope_begin(ask_for_the_split ? SAND_SPLIT_CROSSFLOW : 0U);
     TEST_ASSERT_TRUE(sand_chunk_side_for_test(SAND_CHUNK_SIDE_MIN, SAND_CHUNK_SIDE_MIN));
     sand_step_liquids(&f->s, &flow, 1, 0);
     (void)sand_chunk_side_for_test(0, 0);
@@ -181,7 +181,7 @@ crossflow_viscous_drew_sequentially(bool two_core, bool ask_for_the_split) {
  * itself. */
 static void
 test_split_crossflow_runs_only_when_asked_for_and_then_hashes_its_draws(void) {
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, SAND_SPLIT_PASSES_SHIPPED & SAND_SPLIT_CROSSFLOW,
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0U, SAND_SPLIT_PASSES_SHIPPED & SAND_SPLIT_CROSSFLOW,
                                    "the shipped mask must leave cross-flow serial");
     TEST_ASSERT_TRUE_MESSAGE(crossflow_viscous_drew_sequentially(false, false),
                              "a serial walk's viscosity roll must come off the sequential stream");
@@ -366,9 +366,9 @@ crossflow_line(crossflow_fixture_t* f, int px, int py, int* x0, int* y0) {
 }
 
 enum {
-    CF_FAULT_MASS = 1u,   /* the line did not keep the mass it started with */
-    CF_FAULT_STEP = 2u,   /* levelled, but with a step left at a border    */
-    CF_FAULT_SERIAL = 4u, /* levelled, but not where serial put the mass   */
+    CF_FAULT_MASS = 1U,   /* the line did not keep the mass it started with */
+    CF_FAULT_STEP = 2U,   /* levelled, but with a step left at a border    */
+    CF_FAULT_SERIAL = 4U, /* levelled, but not where serial put the mass   */
 };
 
 /* Reported rather than asserted per ray, so one direction failing does not
@@ -455,7 +455,7 @@ crossflow_seeded_pool(uint32_t seed) {
 static void
 test_crossflow_never_gives_to_a_chunk_ranked_later(void) {
     static const int rays[][2] = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}, {1, 1}, {-1, -1}, {-1, 1}, {1, -1}};
-    static const uint32_t seeds[] = {1u, 7u, 42u, 12345u};
+    static const uint32_t seeds[] = {1U, 7U, 42U, 12345U};
     const unsigned moves_before = sand_liquid_moves;
 
     sand_liquid_late_arrivals = 0;

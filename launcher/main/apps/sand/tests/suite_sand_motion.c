@@ -594,7 +594,7 @@ test_a_buried_grain_will_not_slide(void) {
          * the diagonal - the case that used to let the base walk sideways -
          * some steps, so 200 identically-seeded trials would all replay the
          * same one and prove nothing. */
-        sand_init(&s, cells, W, H, 7000u + (uint32_t)trial);
+        sand_init(&s, cells, W, H, 7000U + (uint32_t)trial);
         load(bed, 8);
         sand_step(&s, 300, 1000, 0);
 
@@ -685,7 +685,7 @@ test_a_flat_bed_does_not_slide_on_a_slight_tilt(void) {
      *
      * Room on both sides to slide into, so staying put is a real result. */
     for (int trial = 0; trial < 20; trial++) {
-        sand_init(&s, cells, W, H, 31u + (uint32_t)trial);
+        sand_init(&s, cells, W, H, 31U + (uint32_t)trial);
         sand_fill_box(&s, 2, H - 1, 6, H, SAND_FIRST_SHADE);
         const long before = centre_of_mass_x();
 
@@ -746,8 +746,8 @@ test_a_deep_bed_is_harder_to_move_than_a_thin_one(void) {
     long thin = 0;
 
     for (int t = 0; t < trials; t++) {
-        deep += settled_base_x(4, 101u + (uint32_t)t);
-        thin += settled_base_x(1, 101u + (uint32_t)t);
+        deep += settled_base_x(4, 101U + (uint32_t)t);
+        thin += settled_base_x(1, 101U + (uint32_t)t);
     }
 
     const int deep_base = (int)(deep / trials);

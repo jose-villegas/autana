@@ -165,7 +165,7 @@ paint_full_frame_full(const uint8_t* grid) {
         for (int cx = 0; cx < CM_GRID_W; cx++) {
             const unsigned hash = material_grain_hash(cx, cy);
             gfx_color_t col[3];
-            material_colours(&f, grid[(cy * CM_GRID_W) + cx], hash, 0u, 0u, col);
+            material_colours(&f, grid[(cy * CM_GRID_W) + cx], hash, 0U, 0U, col);
             gfx_color_t* p = fb + ((size_t)(cy * CM_CELL) * GFX_WIDTH) + (size_t)(cx * CM_CELL);
             for (int dy = 0; dy < CM_CELL; dy++) {
                 for (int dx = 0; dx < CM_CELL; dx++) {
@@ -204,7 +204,7 @@ paint_full_frame_indexed(const uint8_t* grid, gfx_indexed_repaint_kind_t kind, c
         for (int cx = 0; cx < CM_GRID_W; cx++) {
             const unsigned hash = material_grain_hash(cx, cy);
             gfx_color_t col[3];
-            material_colours(&f, grid[(cy * CM_GRID_W) + cx], hash, 0u, 0u, col);
+            material_colours(&f, grid[(cy * CM_GRID_W) + cx], hash, 0U, 0U, col);
             const int i = (cy * CM_GRID_W) + cx;
             const uint8_t new_idx = (uint8_t)material_palette256_index(col[0]);
             const uint8_t old_idx = img[i];
@@ -371,7 +371,7 @@ measure_mode(const colour_scene_t* scene, colour_mode_t mode, gfx_dither_mode_t 
     prev_grid_valid = false;
 
     sand_t sim;
-    sand_init(&sim, grid, CM_GRID_W, CM_GRID_H, 0xC0107000u);
+    sand_init(&sim, grid, CM_GRID_W, CM_GRID_H, 0xC0107000U);
     scene->build(&sim);
 
     const bool indexed = mode != CM_MODE_FULL;

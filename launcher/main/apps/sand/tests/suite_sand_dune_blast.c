@@ -94,12 +94,12 @@ settle_fully(sand_t* s, size_t cells_len) {
 
 static inline bool
 footprint_get(const uint8_t* mask, size_t idx) {
-    return (mask[idx >> 3] >> (idx & 7)) & 1u;
+    return (mask[idx >> 3] >> (idx & 7)) & 1U;
 }
 
 static inline void
 footprint_set(uint8_t* mask, size_t idx) {
-    mask[idx >> 3] |= (uint8_t)(1u << (idx & 7));
+    mask[idx >> 3] |= (uint8_t)(1U << (idx & 7));
 }
 
 /* Whether row `at` (if on-grid) touches the footprint anywhere in [i0, i1]
@@ -328,7 +328,7 @@ test_the_sand_dune_scene_throws_grains_beyond_its_own_footprint(void) {
     const size_t cells_len = (size_t)REAL_W * REAL_H;
     sand_t real;
     blast_board_t board;
-    blast_board_open(&board, &real, 51u, true);
+    blast_board_open(&board, &real, 51U, true);
     uint8_t* const footprint = board.footprint;
 
     build_sand_dune_scene(&real);
@@ -515,7 +515,7 @@ test_the_water_pool_scene_refills_its_own_cavity(void) {
     const size_t cells_len = (size_t)REAL_W * REAL_H;
     sand_t real;
     blast_board_t board;
-    blast_board_open(&board, &real, 61u, false);
+    blast_board_open(&board, &real, 61U, false);
 
     build_dune_beside_water_scene(&real);
     const bool settled = settle_fully(&real, cells_len);
@@ -654,7 +654,7 @@ test_the_vessel_scene_lets_nothing_reach_outside_it(void) {
     const size_t cells_len = (size_t)REAL_W * REAL_H;
     sand_t real;
     blast_board_t board;
-    blast_board_open(&board, &real, 71u, false);
+    blast_board_open(&board, &real, 71U, false);
 
     build_dune_in_a_vessel_scene(&real);
     const bool settled = settle_fully(&real, cells_len);
@@ -877,7 +877,7 @@ test_the_layered_dune_scene_throws_more_than_one_band(void) {
     const size_t cells_len = (size_t)REAL_W * REAL_H;
     sand_t real;
     blast_board_t board;
-    blast_board_open(&board, &real, 97u, true);
+    blast_board_open(&board, &real, 97U, true);
     uint8_t* const footprint = board.footprint;
 
     build_layered_dune_scene(&real);

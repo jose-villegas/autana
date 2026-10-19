@@ -185,7 +185,7 @@ test_the_mixed_scene_puts_every_material_pair_in_contact(void) {
     uint8_t* big;
     uint8_t* blocks;
     sand_t s;
-    sand_test_grid_init(&s, &big, &blocks, REAL_W, REAL_H, 23u);
+    sand_test_grid_init(&s, &big, &blocks, REAL_W, REAL_H, 23U);
 
     build_all_pairs_scene(&s);
 
@@ -333,7 +333,7 @@ test_the_four_liquid_scene_keeps_reacting_after_settling(void) {
     uint8_t* big;
     uint8_t* blocks;
     sand_t s;
-    sand_test_grid_init(&s, &big, &blocks, REAL_W, REAL_H, 29u);
+    sand_test_grid_init(&s, &big, &blocks, REAL_W, REAL_H, 29U);
     use_app_rates(&s);
 
     build_four_liquid_scene(&s);
@@ -408,7 +408,7 @@ test_the_lava_stress_scene_reaches_every_reaction_it_claims(void) {
     uint8_t* big;
     uint8_t* blocks;
     sand_t s;
-    sand_test_grid_init(&s, &big, &blocks, REAL_W, REAL_H, 37u);
+    sand_test_grid_init(&s, &big, &blocks, REAL_W, REAL_H, 37U);
     use_app_rates(&s);
 
     build_lava_stress_scene(&s);
@@ -498,7 +498,7 @@ test_the_smoke_and_steam_scene_stays_a_gas_screen(void) {
     uint8_t* big;
     uint8_t* blocks;
     sand_t s;
-    sand_test_grid_init(&s, &big, &blocks, REAL_W, REAL_H, 31u);
+    sand_test_grid_init(&s, &big, &blocks, REAL_W, REAL_H, 31U);
     /* This scene's whole point is a screen where every cell is one gas
      * or the other, conserved - and reaction_t.condenses genuinely is
      * not conserving: a 2x2 patch of steam collapsing into one water
@@ -612,7 +612,7 @@ build_thermal_shock_scene(sand_t* s) {
 
 static inline bool
 ever_cullet_get(const uint8_t* mask, size_t idx) {
-    return (mask[idx >> 3] >> (idx & 7)) & 1u;
+    return (mask[idx >> 3] >> (idx & 7)) & 1U;
 }
 
 /* Sets the bit for `idx` and reports whether it was actually clear
@@ -620,7 +620,7 @@ ever_cullet_get(const uint8_t* mask, size_t idx) {
  * the mask. */
 static inline bool
 ever_cullet_set(uint8_t* mask, size_t idx) {
-    const uint8_t bit = (uint8_t)(1u << (idx & 7));
+    const uint8_t bit = (uint8_t)(1U << (idx & 7));
     const bool was_clear = (mask[idx >> 3] & bit) == 0;
     mask[idx >> 3] |= bit;
     return was_clear;
@@ -818,7 +818,7 @@ test_the_thermal_shock_scene_shatters_in_both_directions(void) {
     memset(ever_cullet, 0, EVER_CULLET_BYTES);
 
     sand_t s;
-    sand_init(&s, big, REAL_W, REAL_H, 41u);
+    sand_init(&s, big, REAL_W, REAL_H, 41U);
     sand_enable_sleeping(&s, blocks);
     use_app_rates(&s);
 
@@ -1112,7 +1112,7 @@ test_the_boiler_scene_keeps_boiling_across_the_window(void) {
     uint8_t* big;
     uint8_t* blocks;
     sand_t s;
-    sand_test_grid_init(&s, &big, &blocks, REAL_W, REAL_H, 43u);
+    sand_test_grid_init(&s, &big, &blocks, REAL_W, REAL_H, 43U);
     use_app_rates(&s);
     /* Condensation is not one-for-one the way boiling is - a 2x2 patch of
      * steam collapses into a SINGLE water cell, a net loss of three - so
@@ -1706,7 +1706,7 @@ test_the_wet_earth_scene_keeps_percolating_across_the_window(void) {
     uint8_t* big;
     uint8_t* blocks;
     sand_t s;
-    sand_test_grid_init(&s, &big, &blocks, REAL_W, REAL_H, 53u);
+    sand_test_grid_init(&s, &big, &blocks, REAL_W, REAL_H, 53U);
     use_app_rates(&s);
     sand_set_soak(&s, SAND_SOAK_PER_MATERIAL);
 
@@ -1860,7 +1860,7 @@ test_the_water_over_lava_scene_reaches_the_quench_cooloff_and_burst_paths_it_cla
     TEST_ASSERT_NOT_NULL(impulses);
 
     sand_t s;
-    sand_init(&s, big, REAL_W, REAL_H, 59u);
+    sand_init(&s, big, REAL_W, REAL_H, 59U);
     sand_enable_sleeping(&s, blocks);
     use_app_rates(&s);
     sand_enable_impulses(&s, impulses, WATER_LAVA_IMPULSE_MAX);
@@ -2050,7 +2050,7 @@ test_the_gas_ignition_vessel_logs_blasts_per_step(void) {
     TEST_ASSERT_NOT_NULL(impulses);
 
     sand_t s;
-    sand_init(&s, big, REAL_W, REAL_H, 71u);
+    sand_init(&s, big, REAL_W, REAL_H, 71U);
     sand_enable_sleeping(&s, blocks);
     use_app_rates(&s);
     sand_enable_impulses(&s, impulses, GAS_IGNITION_VESSEL_IMPULSE_MAX);
@@ -2206,7 +2206,7 @@ test_the_gunpowder_basin_scene_reaches_the_reactions_it_claims(void) {
     }
 
     sand_t s;
-    sand_init(&s, big, REAL_W, REAL_H, 61u);
+    sand_init(&s, big, REAL_W, REAL_H, 61U);
     sand_enable_sleeping(&s, blocks);
     use_app_rates(&s);
     sand_enable_impulses(&s, impulses, GUNPOWDER_BASIN_IMPULSE_MAX);
@@ -2454,7 +2454,7 @@ test_the_plant_ruin_scene_eats_roots_and_burns_a_canopy(void) {
     uint8_t* big;
     uint8_t* blocks;
     sand_t s2;
-    sand_test_grid_init(&s2, &big, &blocks, REAL_W, REAL_H, 11u);
+    sand_test_grid_init(&s2, &big, &blocks, REAL_W, REAL_H, 11U);
     use_app_rates(&s2);
     sand_set_soak(&s2, SAND_SOAK_PER_MATERIAL);
 
@@ -2523,7 +2523,7 @@ static void
 test_the_mature_tree_scene_is_finished_but_can_be_restarted(void) {
     uint8_t* big;
     uint8_t* blocks;
-    sand_t* const s2 = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 11u);
+    sand_t* const s2 = sand_test_grid_open(&big, &blocks, REAL_W, REAL_H, 11U);
     sand_set_soak(s2, SAND_SOAK_PER_MATERIAL);
     build_plant_bed_scene(s2);
     run_steps(s2, MATURE_TREE_SETTLE_STEPS, 0, 1000);
@@ -2596,7 +2596,7 @@ test_the_filling_basin_scene_runs_from_the_lip_to_the_pool(void) {
     uint8_t* big;
     uint8_t* blocks;
     sand_t s2;
-    sand_test_grid_init(&s2, &big, &blocks, REAL_W, REAL_H, 17u);
+    sand_test_grid_init(&s2, &big, &blocks, REAL_W, REAL_H, 17U);
     use_app_rates(&s2);
 
     build_filling_basin_scene(&s2);
@@ -2644,7 +2644,7 @@ test_the_snowfall_scene_holds_a_crusting_bank_and_a_live_fall(void) {
     uint8_t* big;
     uint8_t* blocks;
     sand_t s2;
-    sand_test_grid_init(&s2, &big, &blocks, REAL_W, REAL_H, 23u);
+    sand_test_grid_init(&s2, &big, &blocks, REAL_W, REAL_H, 23U);
     use_app_rates(&s2);
     sand_set_crust(&s2, CRUST_ROLL_MAX);
 
@@ -2704,7 +2704,7 @@ test_the_plant_pour_scene_keeps_a_loose_heap_in_the_air(void) {
     uint8_t* big;
     uint8_t* blocks;
     sand_t s2;
-    sand_test_grid_init(&s2, &big, &blocks, REAL_W, REAL_H, 11u);
+    sand_test_grid_init(&s2, &big, &blocks, REAL_W, REAL_H, 11U);
     sand_set_soak(&s2, SAND_SOAK_PER_MATERIAL);
     build_plant_pour_scene(&s2);
 
@@ -2758,7 +2758,7 @@ test_the_settled_plant_heap_is_dry_and_still_full_of_plants(void) {
     uint8_t* big;
     uint8_t* blocks;
     sand_t s2;
-    sand_test_grid_init(&s2, &big, &blocks, REAL_W, REAL_H, 11u);
+    sand_test_grid_init(&s2, &big, &blocks, REAL_W, REAL_H, 11U);
     sand_set_soak(&s2, SAND_SOAK_PER_MATERIAL);
     build_dry_plant_heap_scene(&s2);
 
@@ -3073,7 +3073,7 @@ test_the_landscape_beds_sleep_against_the_landscape_floor(void) {
     sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s2;
-    landscape_fixture(&s2, big, blocks, 29u);
+    landscape_fixture(&s2, big, blocks, 29U);
     build_landscape_bed_scene(&s2);
 
     const int shallow = sand_count(&s2);
@@ -3086,7 +3086,7 @@ test_the_landscape_beds_sleep_against_the_landscape_floor(void) {
         }
     }
 
-    landscape_fixture(&s2, big, blocks, 29u);
+    landscape_fixture(&s2, big, blocks, 29U);
     build_landscape_deep_bed_scene(&s2);
 
     const int deep = sand_count(&s2);
@@ -3137,7 +3137,7 @@ test_the_landscape_water_pour_keeps_taking_the_board_awake(void) {
     sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s2;
-    landscape_fixture(&s2, big, blocks, 29u);
+    landscape_fixture(&s2, big, blocks, 29U);
     build_landscape_bed_scene(&s2);
 
     const int asleep_before = (int)sand_sleep_block_bytes(REAL_W, REAL_H);
@@ -3192,9 +3192,9 @@ test_the_soak_only_skip_matches_the_full_walk_pouring_water_onto_a_sand_bed(void
 
     sand_t full;
     sand_t fast;
-    landscape_fixture(&full, big_full, blocks_full, 29u);
+    landscape_fixture(&full, big_full, blocks_full, 29U);
     build_landscape_bed_scene(&full);
-    landscape_fixture(&fast, big_fast, blocks_fast, 29u);
+    landscape_fixture(&fast, big_fast, blocks_fast, 29U);
     build_landscape_bed_scene(&fast);
 
     const int steps = LANDSCAPE_PRIME_STEPS + LANDSCAPE_MEASURED_STEPS;
@@ -3249,7 +3249,7 @@ test_the_water_slope_is_the_reported_shape(void) {
     TEST_ASSERT_NOT_NULL(big);
 
     sand_t s2;
-    sand_init(&s2, big, REAL_W, REAL_H, 41u);
+    sand_init(&s2, big, REAL_W, REAL_H, 41U);
     build_water_slope_scene(&s2);
 
     const int sand_cells = landscape_material_count(&s2, MAT_SAND);
@@ -3271,7 +3271,7 @@ test_the_water_slope_stone_control_holds_no_sand(void) {
     TEST_ASSERT_NOT_NULL(big);
 
     sand_t s2;
-    sand_init(&s2, big, REAL_W, REAL_H, 41u);
+    sand_init(&s2, big, REAL_W, REAL_H, 41U);
     build_water_slope_stone_scene(&s2);
 
     const int stone_cells = landscape_material_count(&s2, MAT_STONE);
@@ -3293,7 +3293,7 @@ test_pouring_water_over_the_slope_reaches_the_floor(void) {
     sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s2;
-    landscape_fixture(&s2, big, blocks, 41u);
+    landscape_fixture(&s2, big, blocks, 41U);
     build_water_slope_covered_scene(&s2);
 
     /* The slope's own floor-side edge, x_edge(y) = y * (w-1) / (h-1) - see
@@ -3334,7 +3334,7 @@ test_the_gravity_flip_conserves_water_mass_over_the_covered_slope(void) {
     sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s2;
-    landscape_fixture(&s2, big, blocks, 41u);
+    landscape_fixture(&s2, big, blocks, 41U);
     build_water_slope_covered_scene(&s2);
     const long mass_before = water_slope_total_water_mass(&s2);
 
@@ -3364,7 +3364,7 @@ test_the_captured_slope_scene_matches_the_sampled_screenshot(void) {
     TEST_ASSERT_NOT_NULL(big);
 
     sand_t s2;
-    sand_init(&s2, big, REAL_W, REAL_H, 41u);
+    sand_init(&s2, big, REAL_W, REAL_H, 41U);
     build_captured_water_slope_scene(&s2);
 
     const int sand_cells = landscape_material_count(&s2, MAT_SAND);
@@ -3388,7 +3388,7 @@ test_the_captured_slope_scenes_water_is_live(void) {
     sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s2;
-    landscape_fixture(&s2, big, blocks, 41u);
+    landscape_fixture(&s2, big, blocks, 41U);
     build_captured_water_slope_scene(&s2);
 
     const long mass_before = water_slope_total_water_mass(&s2);
@@ -3421,7 +3421,7 @@ test_a_submerged_pile_settles_asleep_with_headroom(void) {
     sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s2;
-    landscape_fixture(&s2, big, blocks, 41u);
+    landscape_fixture(&s2, big, blocks, 41U);
     build_submerged_pile_scene(&s2);
 
     /* Checked on the FRESH scene, before the long settle below has any
@@ -3466,7 +3466,7 @@ test_a_soaking_no_plant_board_stays_on_the_soak_only_path(void) {
     sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s2;
-    landscape_fixture(&s2, big, blocks, 29u);
+    landscape_fixture(&s2, big, blocks, 29U);
     build_submerged_pile_scene(&s2);
 
     const unsigned d0 = sand_reactions_cells_dispatched;
@@ -3502,7 +3502,7 @@ test_a_drying_no_plant_board_stays_off_the_full_walk(void) {
     sand_test_grid_buffers_open(&big, &blocks, REAL_W, REAL_H);
 
     sand_t s2;
-    landscape_fixture(&s2, big, blocks, 29u);
+    landscape_fixture(&s2, big, blocks, 29U);
     build_submerged_pile_scene(&s2);
 
     /* Run until the water is entirely gone (absorbed by soaking), or give

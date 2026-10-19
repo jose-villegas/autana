@@ -246,7 +246,7 @@ disc_cells(int radius) {
 static int
 share_pour(uint8_t* grid, int radius, uint32_t seed, cell_t spec, int share_pct) {
     memset(grid, SAND_EMPTY, (size_t)REAL_W * REAL_H);
-    sand_init(&fx.loc, grid, REAL_W, REAL_H, seed * 2654435761u);
+    sand_init(&fx.loc, grid, REAL_W, REAL_H, seed * 2654435761U);
     return sand_spawn_cell_share(&fx.loc, REAL_W / 2, REAL_H / 2, radius, spec, share_pct);
 }
 
@@ -264,7 +264,7 @@ test_the_plant_brush_pours_its_share_of_the_disc(void) {
     uint8_t* grid = malloc((size_t)REAL_W * REAL_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(grid, "setup");
 
-    for (unsigned seed = 1u; seed <= 8u; seed++) {
+    for (unsigned seed = 1U; seed <= 8U; seed++) {
         const int filled = share_pour(grid, radius, (uint32_t)seed, MATX(MATX_PLANT), SAND_BRUSH_SHARE_PLANT);
 
         char why[256];
@@ -292,7 +292,7 @@ test_a_sparse_pour_scatters_across_the_whole_disc(void) {
     uint8_t* grid = malloc((size_t)REAL_W * REAL_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(grid, "setup");
 
-    for (unsigned seed = 1u; seed <= 4u; seed++) {
+    for (unsigned seed = 1U; seed <= 4U; seed++) {
         share_pour(grid, radius, (uint32_t)seed, MATX(MATX_PLANT), SAND_BRUSH_SHARE_PLANT);
 
         int rows = 0;
@@ -332,7 +332,7 @@ test_a_full_share_fills_the_whole_disc(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(grid, "setup");
 
     for (int k = 0; k < SAND_BRUSH_COUNT; k++) {
-        const int filled = share_pour(grid, radius, 1u, sand_brushes[k].cell, SAND_SPAWN_SHARE_FULL);
+        const int filled = share_pour(grid, radius, 1U, sand_brushes[k].cell, SAND_SPAWN_SHARE_FULL);
 
         char why[256];
         snprintf(why, sizeof why,
@@ -919,7 +919,7 @@ test_sand_init_clears_emitters_from_a_previous_use(void) {
     sand_add_emitter(&s, 3, 3, WATER);
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, sand_emitter_count(&s), "setup");
 
-    sand_init(&s, cells, W, H, 12345u);
+    sand_init(&s, cells, W, H, 12345U);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, sand_emitter_count(&s),
                                   "sand_init() must clear emitters left over from a previous use of "

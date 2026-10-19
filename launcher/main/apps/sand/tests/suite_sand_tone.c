@@ -397,10 +397,10 @@ test_an_edge_shows_less_temperature_than_the_body(void) {
         gfx_color_t hot[3];
         gfx_color_t hot_ed[3];
 
-        material_colours(&f, CELL_MAKE(m, SAND_AMBIENT_HEAT), 0u, 0u, 255u, body);
-        material_colours(&f, CELL_MAKE(m, SAND_AMBIENT_HEAT), 0u, MATERIAL_EDGE_LEFT, 255u, ed);
-        material_colours(&f, CELL_MAKE(m, MATERIAL_VARIANTS - 1), 0u, 0u, 255u, hot);
-        material_colours(&f, CELL_MAKE(m, MATERIAL_VARIANTS - 1), 0u, MATERIAL_EDGE_LEFT, 255u, hot_ed);
+        material_colours(&f, CELL_MAKE(m, SAND_AMBIENT_HEAT), 0U, 0U, 255U, body);
+        material_colours(&f, CELL_MAKE(m, SAND_AMBIENT_HEAT), 0U, MATERIAL_EDGE_LEFT, 255U, ed);
+        material_colours(&f, CELL_MAKE(m, MATERIAL_VARIANTS - 1), 0U, 0U, 255U, hot);
+        material_colours(&f, CELL_MAKE(m, MATERIAL_VARIANTS - 1), 0U, MATERIAL_EDGE_LEFT, 255U, hot_ed);
 
         const gfx_color_t rest_body = body[0];
         const gfx_color_t rest_edge = ed[0];
@@ -451,7 +451,7 @@ test_each_material_is_painted_the_way_it_should_be(void) {
              * roll on its own terms, checked deliberately rather than by
              * accident here. Wood gets depth 0: nonzero now means "beside a
              * leaf" for MAT_WOOD only, tested separately. */
-            const material_pattern_t pat = material_colours(&f, c, 1u, 0u, m == MAT_WOOD ? 0u : 255u, col);
+            const material_pattern_t pat = material_colours(&f, c, 1U, 0U, m == MAT_WOOD ? 0U : 255U, col);
 
             char why[128];
             snprintf(why, sizeof why, "%s variant %d", material_by_id((material_id_t)m)->name, v);
@@ -491,11 +491,11 @@ test_glass_grain_varies_at_every_phase(void) {
     for (int phase = 0; phase < 256; phase++) {
         f.glass_phase = phase;
         gfx_color_t base[3];
-        material_colours(&f, CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT), 0u, 0u, 255u, base);
+        material_colours(&f, CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT), 0U, 0U, 255U, base);
         bool varied = false;
-        for (unsigned hash = 1; hash < 256u; hash++) {
+        for (unsigned hash = 1; hash < 256U; hash++) {
             gfx_color_t col[3];
-            material_colours(&f, CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT), hash, 0u, 255u, col);
+            material_colours(&f, CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT), hash, 0U, 255U, col);
             varied |= colour_gap(base[0], col[0]) > 0;
         }
         TEST_ASSERT_TRUE_MESSAGE(varied, "glass must vary from cell to cell at every phase");
@@ -519,9 +519,9 @@ test_stone_speckles_by_position_at_every_temperature(void) {
         gfx_color_t seen[8];
         int distinct = 0;
 
-        for (unsigned h = 0; h < 8u; h++) {
+        for (unsigned h = 0; h < 8U; h++) {
             gfx_color_t col[3] = {0, 0, 0};
-            material_colours(&f, c, h, 0u, 255u, col);
+            material_colours(&f, c, h, 0U, 255U, col);
             const gfx_color_t a = col[0];
             TEST_ASSERT_EQUAL_MESSAGE(col[0], col[1],
                                       "a speckled cell is one flat colour - the variation is "
@@ -549,8 +549,8 @@ test_stone_speckles_by_position_at_every_temperature(void) {
     gfx_color_t one[3];
     gfx_color_t two[3];
     const cell_t c = CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT);
-    material_colours(&f, c, 12345u, 0u, 255u, one);
-    material_colours(&f, c, 12345u, 0u, 255u, two);
+    material_colours(&f, c, 12345U, 0U, 255U, one);
+    material_colours(&f, c, 12345U, 0U, 255U, two);
     TEST_ASSERT_EQUAL_MESSAGE(one[0], two[0],
                               "the same cell must speckle the same way every time it is asked, "
                               "or a stone wall shimmers");
@@ -580,7 +580,7 @@ test_cullet_shades_are_four_distinct_tints(void) {
     gfx_color_t col[SAND_CULLET_SHADES][3];
     for (int i = 0; i < SAND_CULLET_SHADES; i++) {
         const material_pattern_t pat =
-            material_colours(&f, CELL_MAKE(MAT_SAND, (uint8_t)(SAND_CULLET_BASE + i)), 1u, 0u, 255u, col[i]);
+            material_colours(&f, CELL_MAKE(MAT_SAND, (uint8_t)(SAND_CULLET_BASE + i)), 1U, 0U, 255U, col[i]);
         TEST_ASSERT_EQUAL_MESSAGE(MATERIAL_FLAT, pat, "cullet is a shade, not a pattern - it must stay flat");
     }
 
@@ -610,7 +610,7 @@ test_cullet_changes_colour_as_the_phase_advances(void) {
      * visits (0..CULLET_CYCLE_LEN) is checked directly in the CULLET GLINT
      * tests further down. */
     gfx_color_t at_phase_0[3];
-    material_colours(&f, c, 1u, 0u, 255u, at_phase_0);
+    material_colours(&f, c, 1U, 0U, 255U, at_phase_0);
 
     gfx_color_t prev[3];
     memcpy(prev, at_phase_0, sizeof prev);
@@ -618,7 +618,7 @@ test_cullet_changes_colour_as_the_phase_advances(void) {
     for (unsigned phase = 1; phase <= CULLET_CYCLE_LEN; phase++) {
         gfx_color_t col[3];
         f.cullet_phase = phase;
-        material_colours(&f, c, 1u, 0u, 255u, col);
+        material_colours(&f, c, 1U, 0U, 255U, col);
 
         char why[64];
         snprintf(why, sizeof why, "phase %u must paint a different colour than phase %u", phase, phase - 1);
@@ -639,15 +639,15 @@ test_dune_sand_ignores_the_cullet_phase(void) {
     material_frame_t f = {0};
     gfx_color_t at_rest[SAND_DUNE_SHADES][3];
     for (int v = 0; v < SAND_DUNE_SHADES; v++) {
-        material_colours(&f, CELL_MAKE(MAT_SAND, (uint8_t)v), 0u, 0u, 255u, at_rest[v]);
+        material_colours(&f, CELL_MAKE(MAT_SAND, (uint8_t)v), 0U, 0U, 255U, at_rest[v]);
     }
 
-    static const unsigned phases_to_try[] = {5u, CULLET_CYCLE_LEN};
+    static const unsigned phases_to_try[] = {5U, CULLET_CYCLE_LEN};
     for (unsigned pi = 0; pi < sizeof phases_to_try / sizeof phases_to_try[0]; pi++) {
         f.cullet_phase = phases_to_try[pi];
         for (int v = 0; v < SAND_DUNE_SHADES; v++) {
             gfx_color_t col[3];
-            material_colours(&f, CELL_MAKE(MAT_SAND, (uint8_t)v), 0u, 0u, 255u, col);
+            material_colours(&f, CELL_MAKE(MAT_SAND, (uint8_t)v), 0U, 0U, 255U, col);
             char why[80];
             snprintf(why, sizeof why, "dune shade %d must ignore cullet phase %u", v, phases_to_try[pi]);
             TEST_ASSERT_EQUAL_MESSAGE(at_rest[v][0], col[0], why);
@@ -664,7 +664,7 @@ test_cullet_never_dresses_as_beach(void) {
     material_frame_t f = {0};
     gfx_color_t dune[SAND_DUNE_SHADES][3];
     for (int v = 0; v < SAND_DUNE_SHADES; v++) {
-        material_colours(&f, CELL_MAKE(MAT_SAND, (uint8_t)v), 0u, 0u, 255u, dune[v]);
+        material_colours(&f, CELL_MAKE(MAT_SAND, (uint8_t)v), 0U, 0U, 255U, dune[v]);
     }
 
     /* hash 1, not 0, through the whole phase range this loop covers
@@ -678,7 +678,7 @@ test_cullet_never_dresses_as_beach(void) {
         f.cullet_phase = phase;
         for (int i = 0; i < SAND_CULLET_SHADES; i++) {
             gfx_color_t col[3];
-            material_colours(&f, CELL_MAKE(MAT_SAND, (uint8_t)(SAND_CULLET_BASE + i)), 1u, 0u, 255u, col);
+            material_colours(&f, CELL_MAKE(MAT_SAND, (uint8_t)(SAND_CULLET_BASE + i)), 1U, 0U, 255U, col);
             for (int v = 0; v < SAND_DUNE_SHADES; v++) {
                 char why[112];
                 snprintf(why, sizeof why, "cullet shade %d at phase %u must not match dune shade %d", i, phase, v);
@@ -706,7 +706,7 @@ test_cullet_stays_pale_at_every_phase(void) {
         f.cullet_phase = phase;
         for (int i = 0; i < SAND_CULLET_SHADES; i++) {
             gfx_color_t col[3];
-            material_colours(&f, CELL_MAKE(MAT_SAND, (uint8_t)(SAND_CULLET_BASE + i)), 1u, 0u, 255u, col);
+            material_colours(&f, CELL_MAKE(MAT_SAND, (uint8_t)(SAND_CULLET_BASE + i)), 1U, 0U, 255U, col);
             const int lum = panel_luminance(col[0]);
             char why[96];
             snprintf(why, sizeof why, "cullet shade %d at phase %u must stay pale (%d <= floor %d)", i, phase, lum,
@@ -734,17 +734,17 @@ test_a_cullet_glint_is_pure_white(void) {
     material_frame_t f = {0};
 
     gfx_color_t pale[3];
-    material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), 1u, 0u, 255u, pale);
+    material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), 1U, 0U, 255U, pale);
 
     gfx_color_t glinting[3];
-    unsigned hash = 0u;
-    for (; hash < 4096u; hash++) {
-        material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), hash, 0u, 255u, glinting);
+    unsigned hash = 0U;
+    for (; hash < 4096U; hash++) {
+        material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), hash, 0U, 255U, glinting);
         if (glinting[0] != pale[0]) {
             break;
         }
     }
-    TEST_ASSERT_TRUE_MESSAGE(hash < 4096u, "no hash in 0..4095 made cullet shade 12 glint at phase 0 - is the "
+    TEST_ASSERT_TRUE_MESSAGE(hash < 4096U, "no hash in 0..4095 made cullet shade 12 glint at phase 0 - is the "
                                            "glint roll broken, or CULLET_GLINT_ONE_IN retuned far past 4096?");
 
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(GFX_RGB(0xFFFFFF), glinting[0],
@@ -761,13 +761,13 @@ test_cullet_glints_are_rare(void) {
     material_frame_t f = {0};
 
     gfx_color_t pale[3];
-    material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), 1u, 0u, 255u, pale);
+    material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), 1U, 0U, 255U, pale);
 
-    const unsigned n = 4096u;
-    unsigned glints = 0u;
-    for (unsigned hash = 0u; hash < n; hash++) {
+    const unsigned n = 4096U;
+    unsigned glints = 0U;
+    for (unsigned hash = 0U; hash < n; hash++) {
         gfx_color_t col[3];
-        material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), hash, 0u, 255u, col);
+        material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), hash, 0U, 255U, col);
         if (col[0] != pale[0]) {
             glints++;
         }
@@ -778,7 +778,7 @@ test_cullet_glints_are_rare(void) {
              "%u of %u cells glinted - expected roughly 1/192, want it between "
              "1/384 and 1/96",
              glints, n);
-    TEST_ASSERT_TRUE_MESSAGE(glints >= n / 384u && glints <= n / 96u, why);
+    TEST_ASSERT_TRUE_MESSAGE(glints >= n / 384U && glints <= n / 96U, why);
 }
 
 /* Glistening, not blinking, means the SET of grains that glint has to move:
@@ -790,23 +790,23 @@ test_cullet_glints_are_rare(void) {
 static void
 test_cullet_glints_move_with_the_phase(void) {
     material_frame_t f = {0};
-    const unsigned n = 1024u;
+    const unsigned n = 1024U;
 
     gfx_color_t pale0[3];
-    material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), 1u, 0u, 255u, pale0);
+    material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), 1U, 0U, 255U, pale0);
 
-    f.cullet_phase = 1u;
+    f.cullet_phase = 1U;
     gfx_color_t pale1[3];
-    material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), 1u, 0u, 255u, pale1);
+    material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), 1U, 0U, 255U, pale1);
 
     bool moved = false;
-    for (unsigned hash = 0u; hash < n && !moved; hash++) {
+    for (unsigned hash = 0U; hash < n && !moved; hash++) {
         gfx_color_t col0[3];
         gfx_color_t col1[3];
-        f.cullet_phase = 0u;
-        material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), hash, 0u, 255u, col0);
-        f.cullet_phase = 1u;
-        material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), hash, 0u, 255u, col1);
+        f.cullet_phase = 0U;
+        material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), hash, 0U, 255U, col0);
+        f.cullet_phase = 1U;
+        material_colours(&f, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), hash, 0U, 255U, col1);
 
         const bool glinted0 = col0[0] != pale0[0];
         const bool glinted1 = col1[0] != pale1[0];
@@ -831,14 +831,14 @@ test_dune_sand_never_glints(void) {
     material_frame_t f = {0};
     const gfx_color_t* pal = material_palette();
 
-    static const unsigned phases_to_try[] = {0u, 3u};
+    static const unsigned phases_to_try[] = {0U, 3U};
     for (unsigned pi = 0; pi < sizeof phases_to_try / sizeof phases_to_try[0]; pi++) {
         f.cullet_phase = phases_to_try[pi];
         for (int v = 0; v < SAND_DUNE_SHADES; v++) {
             const gfx_color_t expect = pal[CELL_MAKE(MAT_SAND, (uint8_t)v)];
-            for (unsigned hash = 0u; hash < 256u; hash++) {
+            for (unsigned hash = 0U; hash < 256U; hash++) {
                 gfx_color_t col[3];
-                material_colours(&f, CELL_MAKE(MAT_SAND, (uint8_t)v), hash, 0u, 255u, col);
+                material_colours(&f, CELL_MAKE(MAT_SAND, (uint8_t)v), hash, 0U, 255U, col);
                 char why[128];
                 snprintf(why, sizeof why,
                          "dune shade %d, hash %u, phase %u must stay the plain "

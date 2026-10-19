@@ -559,7 +559,7 @@ test_acid_dissolves_dune_sand_but_not_cullet(void) {
  * memory budget. */
 static void
 acid_fizz_fixture(uint8_t* cells) {
-    sand_init(&fx.fizz_sim, cells, FIZZ_W, FIZZ_H, 5u);
+    sand_init(&fx.fizz_sim, cells, FIZZ_W, FIZZ_H, 5U);
     sand_set_evaporates(&fx.fizz_sim, 0); /* isolate fizz, see the tests'
                                           * own comments for why */
     sand_fill_box(&fx.fizz_sim, 0, 4, FIZZ_W, FIZZ_H, CELL_MAKE(MAT_SAND, 8));
@@ -642,7 +642,7 @@ test_the_fizz_rises_out_of_the_acid(void) {
  * memory budget. */
 static void
 acid_water_dilute_fixture(uint8_t* cells) {
-    sand_init(&fx.dilute_sim, cells, DILUTE_W, DILUTE_H, 7u);
+    sand_init(&fx.dilute_sim, cells, DILUTE_W, DILUTE_H, 7U);
     sand_set_evaporates(&fx.dilute_sim, 0); /* isolate dilution from the
                                              * unrelated evaporates roll -
                                              * same reasoning as the fizz
@@ -740,7 +740,7 @@ test_the_dilution_split_favours_neither_side(void) {
  * own comment above for why. */
 static void
 acid_water_separated_fixture(uint8_t* cells) {
-    sand_init(&fx.separated_dilute_sim, cells, SEPARATED_W, SEPARATED_H, 7u);
+    sand_init(&fx.separated_dilute_sim, cells, SEPARATED_W, SEPARATED_H, 7U);
     sand_set_evaporates(&fx.separated_dilute_sim, 0);
     for (int x = 0; x < SEPARATED_W; x++) {
         if (x % 2 == 0) {
@@ -820,7 +820,7 @@ test_acid_winning_the_dilution_boils_the_acid_cell_to_gas(void) {
  * own comment above for why. */
 static void
 acid_oil_dilute_fixture(uint8_t* cells) {
-    sand_init(&fx.oil_dilute_sim, cells, OIL_DILUTE_W, OIL_DILUTE_H, 11u);
+    sand_init(&fx.oil_dilute_sim, cells, OIL_DILUTE_W, OIL_DILUTE_H, 11U);
     sand_set_evaporates(&fx.oil_dilute_sim, 0);
     for (int x = 0; x < OIL_DILUTE_W; x++) {
         sand_set(&fx.oil_dilute_sim, x, 0, CELL_MAKE(MAT_OIL, MASS_MAX));
@@ -980,7 +980,7 @@ test_acid_evaporates_into_gas_when_forced(void) {
  * the mass-bias override differing, not seed-to-seed noise on top. */
 static void
 acid_water_pour_fixture(uint8_t* cells, material_id_t pool) {
-    sand_init(&fx.dilute_pour_sim, cells, DILUTE_POUR_W, DILUTE_POUR_H, 17u);
+    sand_init(&fx.dilute_pour_sim, cells, DILUTE_POUR_W, DILUTE_POUR_H, 17U);
     sand_set_evaporates(&fx.dilute_pour_sim, 0); /* isolate the mass bias from
                                                 * the unrelated ambient
                                                 * evaporates roll - same
@@ -1088,7 +1088,7 @@ acid_water_contest(int water_pct, int* water_left, int* acid_left) {
 
     sand_t g;
     memset(&g, 0, sizeof g);
-    sand_init(&g, cells, GW, GH, 5u);
+    sand_init(&g, cells, GW, GH, 5U);
     acid_water_contest_build_walls(&g, GW, GH);
 
     const int wcols = (TAPW * water_pct + 50) / 100;
@@ -1310,7 +1310,7 @@ test_oil_flows_more_slowly_than_water(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "oil-vs-water flow-rate grid must fit in what the framebuffer "
                                              "leaves");
     for (int k = 0; k < 2; k++) {
-        sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 5u);
+        sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 5U);
         sand_set_mobility(&wide, SAND_MOBILITY_PER_MATERIAL);
         sand_fill_box(&wide, 0, WIDE_H - 1, WIDE_W, WIDE_H, STONE);
         for (int y = 1; y <= WIDE_H - 2; y++) {
@@ -1538,7 +1538,7 @@ test_lava_quenched_into_stone_mid_pass_arms_the_heat_holder_flag(void) {
 static void
 build_lava_shaft(sand_t* p, uint8_t* cells) {
     /* 0u, not 71u: seed 0 exercises SAND_LAVA_COOLOFF_MAX_CHAIN, 71 does not. */
-    sand_init(p, cells, LAVA_SHAFT_W, LAVA_SHAFT_H, 0u);
+    sand_init(p, cells, LAVA_SHAFT_W, LAVA_SHAFT_H, 0U);
     for (int y = 0; y < LAVA_SHAFT_H; y++) {
         sand_set(p, LAVA_SHAFT_X - 1, y, STONE);
         sand_set(p, LAVA_SHAFT_X + 1, y, STONE);
@@ -1932,7 +1932,7 @@ static int
 build_boiler_room(int wall_len) {
     /* Ownership passes to caller of `wide`: see call sites
      * (test_a_thick_wall_still_conducts, steps_to_boil). */
-    wide_open(3u);
+    wide_open(3U);
     sand_set_mobility(&wide, 0);
 
     const int y = 2;
@@ -1991,7 +1991,7 @@ test_conduction_stops_at_the_reach_cap(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(cap_cells, "conduction-reach-cap grid must fit in what the framebuffer "
                                             "leaves");
     sand_t cap;
-    sand_init(&cap, cap_cells, CAP_W, CAP_H, 3u);
+    sand_init(&cap, cap_cells, CAP_W, CAP_H, 3U);
     sand_set_mobility(&cap, 0);
     sand_set_conduction(&cap, 255);
 
@@ -2057,7 +2057,7 @@ test_a_thick_wall_conducts_more_slowly_than_a_thin_one(void) {
  * nowhere to send any mass while conduction does its work. */
 static void
 boiler_column(cell_t liquid, int top) {
-    wide_open(3u);
+    wide_open(3U);
     sand_set_conduction(&wide, 255);
     sand_set_mobility(&wide, 0);
 
@@ -2170,7 +2170,7 @@ test_boiling_acid_produces_gas_not_steam(void) {
 
 static void
 test_the_boiler_end_to_end(void) {
-    wide_open(3u);
+    wide_open(3U);
 
     const int x = 10;
     const int wood_y = 19;
