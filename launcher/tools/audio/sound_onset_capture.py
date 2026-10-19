@@ -11,6 +11,13 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
+
+ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "scripts/lib"))
+from console_protocol import reply_prefix
+
+SOUND_PREFIX, SOUND_UNTIL = reply_prefix("sound")
 
 EVENTS = ('amp-on', 'start', 'stop', 'steal', 'amp-off')
 DEFAULTS = {'sound.declick_us': 0, 'sound.amp_mute': 0, 'sound.dac_ramp': 0}
@@ -68,7 +75,7 @@ def capture(args):
                     for _ in range(args.runs):
                         reply = run(*command.split())
                         lines = reply.splitlines()
-                        if len(lines) != 2 or lines[-1] != 'SOUND_END' or not lines[0].startswith('SOUND onset '):
+                        if len(lines) != 2 or lines[-1] != SOUND_UNTIL[0] or not lines[0].startswith(SOUND_PREFIX + ' onset '):
                             raise ValueError(f'invalid onset reply: {reply}')
                         record(arm, command, lines[0])
         finally:

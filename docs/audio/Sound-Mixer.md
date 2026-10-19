@@ -335,7 +335,7 @@ and median peak time per event and arm; `--check` rejects stale or invalid data.
 | `console/verbs/console_sound_parse.h` | `CONSOLE_SOUND_ONSET_*`, `console_sound_event_t`, `console_sound_events`, `CONSOLE_SOUND_ONSET`, parsed `hz`/`event`, onset parsing branch |
 | `console/verbs/console_sound.c` | `ONSET_*`, `onset_peak_t`, `onset_window`, `onset_db`, `stop_all`, `onset_wait`, `onset_prepare`, `onset_trigger`, `onset_measure`, `sound_onset`, onset dispatch and added includes |
 | `scripts/autana/autana.py` | `SOUND_ONSET_SECONDS`, onset reply timeout; `SoundOnsetCommandTests` in `scripts/autana/tests/test_autana.py` |
-| `launcher/tools/audio/sound_onset_capture.py` | Entire capture tool |
+| `launcher/tools/audio/sound_onset_capture.py` | Entire capture tool, including `SOUND_PREFIX`/`SOUND_UNTIL` from the shared console protocol |
 | `launcher/tools/audio/audio_doc_tables.py` | `ONSET_*`, `render_onset`, `update_onset`, onset CLI option and dispatch, math/statistics imports |
 | Tests | `test_sound_declick_*`, `TEST_DECLICK_*` in `suite_sound_mixer.c`; onset assertions in `suite_console.c`; `tests/test_sound_onset_tables.py`, `tests/test_sound_onset_capture.py`, `tests/fixtures/onset.txt` |
 | docs/Shared-Helpers.md | Regenerate after removing the experiment declarations |

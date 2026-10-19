@@ -40,7 +40,7 @@ class OnsetCaptureTest(unittest.TestCase):
                     if fail:
                         raise ValueError('capture failed')
                     event = command[-1]
-                    reply = f'SOUND onset event={event} hz=500 gain=33 pre_db=-60.0 peak_db=-50.0 excess_db=10.0 at_ms=20\nSOUND_END'
+                    reply = f'SOUND onset event={event} hz=500 gain=33 pre_db=-60.0 peak_db=-50.0 excess_db=10.0 at_ms=20\n{onset.SOUND_UNTIL[0]}'
                 return argparse.Namespace(stdout=reply)
 
             with tempfile.TemporaryDirectory() as directory:

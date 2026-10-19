@@ -1609,13 +1609,15 @@ class ConsoleRoutingTests(unittest.TestCase):
 
 class SoundOnsetCommandTests(unittest.TestCase):
     def test_onset_has_long_reply_timeout(self):
-        with sent_reply((0, ["SOUND onset event=amp-off", "SOUND_END"])) as sent:
+        prefix, until = autana.reply_prefix("sound onset amp-off")
+        with sent_reply((0, [prefix + " onset event=amp-off", until[0]])) as sent:
             self.assertEqual(autana.sound(["onset", "amp-off"]), 0)
         self.assertEqual(sent.call_args.kwargs["seconds"], autana.SOUND_ONSET_SECONDS)
-        self.assertEqual(sent.call_args.kwargs["until"], ["SOUND_END", "SOUND_ERR"])
+        self.assertEqual(sent.call_args.kwargs["until"], list(until))
 
     def test_other_sound_commands_keep_the_default_timeout(self):
-        with sent_reply((0, ["SOUND_END"])) as sent:
+        _, until = autana.reply_prefix("sound stats")
+        with sent_reply((0, [until[0]])) as sent:
             self.assertEqual(autana.sound(["stats"]), 0)
         self.assertNotIn("seconds", sent.call_args.kwargs)
 
