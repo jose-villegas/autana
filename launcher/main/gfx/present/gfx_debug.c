@@ -313,6 +313,19 @@ send_audit_check(void) {
     send_audit_log_if_due();
 }
 
+/* Green border on each dirty leaf of `row` inside the `height` rows from
+ * `y0`; `buf` holds those rows starting at buffer row 0. */
+static void
+mark_leaf_borders(int row, int y0, int height, gfx_color_t* buf) {
+    const int n = dirty_leaf_rects(row, recti_from_edges(0, y0, GFX_WIDTH, y0 + height), leaf_rect_scratch,
+                                   LEAF_RECTS_PER_ROW_MAX);
+    for (int i = 0; i < n; i++) {
+        const recti_t* r = &leaf_rect_scratch[i];
+        gfx_color_t* at = buf + ((size_t)(r->y - y0) * GFX_WIDTH) + r->x;
+        mark_rect_border(at, GFX_WIDTH, r->w, r->h, gfx_rgb(0x00FF00));
+    }
+}
+
 /* The expanded strip in `slot` is a disposable copy, so borders drawn here
  * never need restoring. Must run before dirty_row_sent() clears the row's
  * leaf bits. */
@@ -325,13 +338,7 @@ mark_strip_overlay(gfx_color_t* slot, int row) {
         }
     }
     if (leaf_overlay_on) {
-        const int n = dirty_leaf_rects(row, recti_from_edges(0, y, GFX_WIDTH, y + STRIP_HEIGHT), leaf_rect_scratch,
-                                       LEAF_RECTS_PER_ROW_MAX);
-        for (int i = 0; i < n; i++) {
-            const recti_t* r = &leaf_rect_scratch[i];
-            gfx_color_t* at = slot + ((size_t)(r->y - y) * GFX_WIDTH) + r->x;
-            mark_rect_border(at, GFX_WIDTH, r->w, r->h, gfx_rgb(0x00FF00));
-        }
+        mark_leaf_borders(row, y, STRIP_HEIGHT, slot);
     }
 }
 
@@ -436,13 +443,7 @@ mark_band_overlay(gfx_color_t* buf, int row0, int height) {
         const int row_first = row0 / STRIP_HEIGHT;
         const int row_last = (row0 + height - 1) / STRIP_HEIGHT;
         for (int row = row_first; row <= row_last; row++) {
-            const int n = dirty_leaf_rects(row, recti_from_edges(0, row0, GFX_WIDTH, row0 + height), leaf_rect_scratch,
-                                           LEAF_RECTS_PER_ROW_MAX);
-            for (int i = 0; i < n; i++) {
-                const recti_t* r = &leaf_rect_scratch[i];
-                gfx_color_t* at = buf + ((size_t)(r->y - row0) * GFX_WIDTH) + r->x;
-                mark_rect_border(at, GFX_WIDTH, r->w, r->h, gfx_rgb(0x00FF00));
-            }
+            mark_leaf_borders(row, row0, height, buf);
         }
     }
 }
