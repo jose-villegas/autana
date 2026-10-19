@@ -645,6 +645,7 @@ test_small_experiment_writer_matches_fill_depth(void) {
 
 static void
 test_small_grain_shades_distinct(void) {
+    hot_begin();
     uint16_t shades[SMALL_GRAIN_AMPLITUDE_MAX][SMALL_GRAIN_LEVELS];
     const uint16_t middle = gfx_color_rgb565((uint8_t)(gfx_rgb565_r5(UINT16_MAX) / 2), (uint8_t)(GFX_RGB565_G6_MAX / 2),
                                              (uint8_t)(gfx_rgb565_b5(UINT16_MAX) / 2));
@@ -658,6 +659,7 @@ test_small_grain_shades_distinct(void) {
 
 static void
 test_small_grain_shades_neutral(void) {
+    hot_begin();
     const int red = (int)gfx_rgb565_r5(UINT16_MAX) / 2;
     const int green = (int)GFX_RGB565_G6_MAX / 2;
     const int blue = (int)gfx_rgb565_b5(UINT16_MAX) / 2;

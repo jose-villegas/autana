@@ -553,10 +553,15 @@ small_limits_for_side(int side) {
     return (small_limits_t){(uint8_t)spread, (uint8_t)coverage, (uint8_t)grain};
 }
 
+typedef struct {
+    int8_t green, rb;
+} small_grain_offset_t;
+
 static const uint8_t small_grain_pattern[SMALL_GRAIN_PATTERN_SIDE][SMALL_GRAIN_PATTERN_SIDE] = {{0, 2}, {3, 1}};
 
 #if TUNE_HOT_LIVE
 static small_limits_t small_limits[SMALL_MAX_SIDE_TUNE + 1];
+static small_grain_offset_t small_grain_offsets[SMALL_GRAIN_AMPLITUDE_MAX + 1][SMALL_GRAIN_LEVELS];
 static uint32_t small_generation = UINT32_MAX;
 static int small_side_limit = SMALL_MAX_SIDE;
 static int small_cell_bits = SMALL_DITHER_PATTERN_BITS_MAX;
@@ -566,6 +571,14 @@ r3d_span_begin(void) {
     const uint32_t generation = TUNE_GENERATION(r3d_span);
     if (generation == small_generation) {
         return;
+    }
+    for (int amplitude = 1; amplitude <= SMALL_GRAIN_AMPLITUDE_MAX; amplitude++) {
+        for (int level = 0; level < SMALL_GRAIN_LEVELS; level++) {
+            const int numerator = amplitude * (2 * level + 1 - SMALL_GRAIN_LEVELS);
+            const int green = fx_round_shift32(numerator, SMALL_GRAIN_HALF_SHIFT);
+            small_grain_offsets[amplitude][level] =
+                (small_grain_offset_t){(int8_t)green, (int8_t)fx_round_shift32(green, SMALL_GRAIN_RB_SHIFT)};
+        }
     }
     small_side_limit = small_max_side;
     small_cell_bits = small_dither_cell_bits;
@@ -644,9 +657,14 @@ prepare_small_grain(uint16_t shades[SMALL_GRAIN_LEVELS], uint16_t color, int amp
     const int green = (int)gfx_rgb565_g6(native);
     const int blue = (int)gfx_rgb565_b5(native);
     for (int level = 0; level < SMALL_GRAIN_LEVELS; level++) {
+#if TUNE_HOT_LIVE
+        const small_grain_offset_t offset = small_grain_offsets[amplitude][level];
+        const int green_offset = offset.green, rb_offset = offset.rb;
+#else
         const int numerator = amplitude * (2 * level + 1 - SMALL_GRAIN_LEVELS);
         const int green_offset = fx_round_shift32(numerator, SMALL_GRAIN_HALF_SHIFT);
         const int rb_offset = fx_round_shift32(green_offset, SMALL_GRAIN_RB_SHIFT);
+#endif
         shades[level] = gfx_color_rgb565((uint8_t)mathi_clamp(red + rb_offset, 0, (int)gfx_rgb565_r5(UINT16_MAX)),
                                          (uint8_t)mathi_clamp(green + green_offset, 0, (int)GFX_RGB565_G6_MAX),
                                          (uint8_t)mathi_clamp(blue + rb_offset, 0, (int)gfx_rgb565_b5(UINT16_MAX)));
@@ -707,10 +725,12 @@ fill_small_grain(const r3d_span_target_t* target, const r3d_span_vertex_t* a, co
     for (int y = box.y; y < recti_bottom(box); y++) {
         const uint8_t* row_pattern = small_grain_pattern[y & SMALL_GRAIN_PATTERN_MASK];
         const small_row_t row = small_row(target, y);
-        for (int x = box.x, end = recti_right(box); x < end; x++) {
+        uint16_t color = shades[row_pattern[box.x & SMALL_GRAIN_PATTERN_MASK]];
+        const uint16_t toggle = shades[row_pattern[0]] ^ shades[row_pattern[1]];
+        for (int x = box.x, end = recti_right(box); x < end; x++, color ^= toggle) {
             if (small_visible(edges, &row, x, f.flat_z)) {
                 row.depth[x] = f.flat_z;
-                row.color[x] = shades[row_pattern[x & SMALL_GRAIN_PATTERN_MASK]];
+                row.color[x] = color;
             }
         }
     }

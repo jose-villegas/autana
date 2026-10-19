@@ -361,6 +361,7 @@ Set them with `--set` ([Render-Harness](../tools/Render-Harness.md)).
 Live small-fill limits resolve before row workers run. Small dither triangles
 test coverage and choose vertex colours in one pixel loop.
 Optional ordered grain selects four clamped RGB565 shades of the flat colour in a screen-anchored 2x2 pattern.
+Its signed offsets refresh with the live small-fill limits; each row alternates its two shades with XOR.
 
 The gate measures the largest RGB565 channel spread across the vertices.
 For sides above side 4, its limit interpolates from the near gate at side 5
