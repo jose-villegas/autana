@@ -33,6 +33,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
 from suite_registry import registered_suites  # noqa: E402
 from process_tree import launch_process_tree, close_process_tree, install_console_interrupt_handler  # noqa: E402
+from console_protocol import reply_prefix
 import device_lock  # noqa: E402  (path must be set up first)
 import autana_config  # noqa: E402  (path must be set up first)
 from espressif import idf_python, idf_note_lines, require_idf  # noqa: E402
@@ -476,10 +477,10 @@ def tone(args):
 def sound(args):
     prefix = "SOUND"
     code, replies = send(prefix + " " + " ".join(args), reply=prefix,
-                         until=[prefix + "_END", prefix + " error:", prefix + " usage:"])
+                         until=[prefix + "_END", prefix + "_ERR"])
     if code or not replies:
         return code or 1
-    if replies[-1].startswith(("SOUND error:", "SOUND usage:")):
+    if replies[-1].startswith("SOUND_ERR"):
         print(replies[-1], file=sys.stderr)
         return 1
     print("\n".join(replies))
@@ -782,7 +783,7 @@ def suite_list(args):
 
 
 SUITE_USAGE = ("usage: autana suite <name> [<name> ...] [seconds] [--runs N] [--test PATTERN] "
-              "[--flash] [--perf-scope] [--layout-seed N] [--hot-tunables] [--set NAME=VALUE] [--verbose] [--out PATH] "
+              "[--flash] [--perf-scope] [--layout-seed N] [--hot-tunables] [--set NAME=VALUE] [--send LINE] [--verbose] [--out PATH] "
               "[--expect-build-id ID] | "
               "autana suite list [text]")
 
@@ -796,7 +797,8 @@ def suite(args):
     list) narrows the run, on the device, to the tests whose name contains
     a pattern. `--set NAME=VALUE` (repeatable) sets a tunable under each
     capture's own lock, just before it runs, and stops the batch unless the
-    board echoes the value."""
+    board echoes the value. `--send LINE` repeats console lines before every
+    capture; the sequence should be idempotent."""
     if not args:
         sys.exit(SUITE_USAGE)
     if args[0] == "list":
@@ -848,6 +850,10 @@ def suite(args):
         if not name or not equals:
             sys.exit(f"usage: --set NAME=VALUE with a whole number, decimal or 0x hex, not {value}")
         settings.append(value)
+    console_lines = []
+    while "--send" in rest:
+        value, rest = pop_value(rest, "--send")
+        console_lines.append(value)
     reject_unknown("suite", rest)
     if rest:
         sys.exit(SUITE_USAGE)
@@ -869,6 +875,8 @@ def suite(args):
         command += ["--test", value]
     for value in settings:
         command += ["--set", value]
+    for line in console_lines:
+        command += ["--send", line]
     if not flash:
         command.append("--no-flash")
     for name in names:
@@ -1474,9 +1482,9 @@ def forward(line, verb):
     that window, since nothing then completes early."""
     if verb.startswith("-"):
         sys.exit(f"autana: unknown option {verb.split('=', 1)[0]}; 'autana help' lists the commands")
-    reply = verb.upper()
+    reply, endings = reply_prefix(line)
     with command_named(f"console {verb}"):
-        _, replies = send(line, reply=reply, until=[reply + "_END", reply + "_ERR"], optional=True)
+        _, replies = send(line, reply=reply, until=list(endings), optional=True)
     return replies
 
 
@@ -1606,6 +1614,8 @@ COMMAND_GROUPS = (
              "capture (1800 when omitted)"),
             ("suite <name> --test PATTERN[,PATTERN]",
              "only the tests whose name contains a pattern; --test repeats"),
+            ("suite <name> --send LINE",
+             "send before every capture; repeatable, sequence should be idempotent"),
             ("suite <name> --set NAME=VALUE",
              "set a tunable under each capture's lock first; --set repeats"),
             ("suite list [text] [--json]", "the suites this project registers"))),

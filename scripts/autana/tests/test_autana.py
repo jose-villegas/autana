@@ -1099,6 +1099,11 @@ class SuiteCommandTests(unittest.TestCase):
         command = forwarded_command(autana.suite, ["run_gfx_suite", "--expect-build-id", "abc123-diag"])
         self.assertEqual(value_after(command, "--expect-build-id"), "abc123-diag")
 
+    def test_each_send_is_forwarded(self):
+        lines = ["sound stop all", "sound play tap loop"]
+        command = forwarded_command(autana.suite, ["sand", "--send", lines[0], "--send", lines[1]])
+        self.assertEqual([command[i + 1] for i, part in enumerate(command) if part == "--send"], lines)
+
     def test_each_set_is_forwarded(self):
         command = forwarded_command(
             autana.suite, ["run_gfx_suite", "--set", "r3d_span.small_max_side=3", "--set", "a.b=0x10"])

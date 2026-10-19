@@ -34,18 +34,18 @@ class SoundTests(unittest.TestCase):
                 with contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(0, autana.sound(args))
                 send.assert_called_once_with('SOUND ' + ' '.join(args), reply='SOUND',
-                    until=['SOUND' + '_END', 'SOUND error:', 'SOUND usage:'])
+                    until=['SOUND' + '_END', 'SOUND' + '_ERR'])
 
     def test_sound_forwards_bad_args_for_firmware_validation(self):
         for args in ([], ['play'], ['play', 'tap', '101'], ['play', 'tap', '-1'],
                      ['play', 'tap', 'loop', 'loop'], ['stop', '-1'], ['stats', 'extra']):
-            with self.subTest(args=args), patch.object(autana, 'send', return_value=(0, ['SOUND usage: invalid'])) as send:
+            with self.subTest(args=args), patch.object(autana, 'send', return_value=(0, ['SOUND_ERR invalid'])) as send:
                 with contextlib.redirect_stderr(io.StringIO()):
                     self.assertEqual(1, autana.sound(args))
                 self.assertEqual('SOUND ' + ' '.join(args), send.call_args.args[0])
 
     def test_sound_reports_error_and_transport_failure(self):
-        for result in ((0, ['SOUND error: full']), (0, []), (2, [])):
+        for result in ((0, ['SOUND_ERR full']), (0, []), (2, [])):
             with self.subTest(result=result), patch.object(autana, 'send', return_value=result):
                 with contextlib.redirect_stderr(io.StringIO()):
                     self.assertNotEqual(0, autana.sound(['stats']))

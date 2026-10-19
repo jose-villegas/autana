@@ -237,7 +237,8 @@ class AcquisitionTest(ShellJobTests, unittest.TestCase):
                     contextlib.redirect_stdout(io.StringIO()):
                 tool.main(["--estimate-plan", "--max-seeds", str(args.max_seeds),
                            "--project-a", str(args.project_a), "--project-b", str(args.project_b),
-                           "--suite", "suite", "-", "-"])
+                           "--suite", "suite", "-", "-",
+                           "--send-a", "sound stop all", "--send-b", "sound play tap loop"])
             # Two sides: 2 * 4 = 8 flashes; 2 * (4 + 2 repeats) = 12 captures.
             estimate.assert_called_once_with(8, 12, 1800, True)
 
@@ -251,7 +252,10 @@ class AcquisitionTest(ShellJobTests, unittest.TestCase):
 
     def test_shell_validation_takes_no_hold(self):
         from shell_job import replay
-        for options in (("--validate-plan",), ("--bad-option",), ("--help",)):
+        for options in (("--validate-plan",),
+                        ("--validate-plan", "--send-a", "sound stop all",
+                         "--send-b", "sound stop all", "--send-b", "sound play tap loop"),
+                        ("--bad-option",), ("--help",)):
             result, calls = replay(self, "compare", extra=options)
             self.assertEqual(calls, [])
             self.assertEqual(result.returncode == 0, options != ("--bad-option",), result.stderr)

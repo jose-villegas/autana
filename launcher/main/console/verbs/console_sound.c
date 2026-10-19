@@ -41,7 +41,7 @@ console_sound_view(const char* name) {
     return &view->sound;
 }
 
-static const char format_error[] = "SOUND error: formatting failed";
+static const char format_error[] = "SOUND_ERR formatting failed";
 
 static void
 sound_stats(console_reply_fn reply) {
@@ -73,7 +73,7 @@ static void
 console_verb_sound(const char* args, console_reply_fn reply) {
     console_sound_args_t parsed;
     if (!console_sound_parse(args, &parsed)) {
-        reply("SOUND usage: sound play <name> [loop] [gain] | stop [voice|all] | stats");
+        reply("SOUND_ERR usage: sound play <name> [loop] [gain] | stop [voice|all] | stats");
         return;
     }
     if (parsed.action == CONSOLE_SOUND_STATS) {
@@ -95,14 +95,14 @@ console_verb_sound(const char* args, console_reply_fn reply) {
     }
     const sound_t* sound = console_sound_view(parsed.name);
     if (!sound) {
-        reply("SOUND error: sound unavailable");
+        reply("SOUND_ERR sound unavailable");
         return;
     }
     const sound_play_opts_t opts = {
         .bus = SOUND_BUS_SFX, .gain_pct = parsed.gain_pct, .priority = SOUND_PRIORITY_NORMAL, .loop = parsed.loop};
     const sound_voice_t voice = sound_play(sound, &opts);
     if (!voice.id) {
-        reply("SOUND error: playback unavailable");
+        reply("SOUND_ERR playback unavailable");
         return;
     }
     char line[CONSOLE_SOUND_REPLY_MAX];

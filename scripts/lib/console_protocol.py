@@ -4,6 +4,15 @@ import re
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 
 
+def reply_prefix(line):
+    """Derive the reply contract from a console line's verb."""
+    words = line.split()
+    if not words:
+        raise ValueError("empty console line")
+    prefix = words[0].upper()
+    return prefix, (prefix + "_END", prefix + "_ERR")
+
+
 def replies_to(data, reply, until):
     """Extract replies even when firmware logging prefixes their lines."""
     found = []
