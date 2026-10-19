@@ -6,7 +6,7 @@
  * app_sand.c is the hardware-facing entry point and stays unlinked on a
  * host build; sand_app_enter_running_for_test() is its own SELFTEST-only
  * hook (like sand_app_alloc_selfcheck() in suite_sand_perf.c) for reaching
- * a running grid without a real touch drag through microui.
+ * a running grid without a real touch drag through the UI.
  */
 
 #include "suites.h"
