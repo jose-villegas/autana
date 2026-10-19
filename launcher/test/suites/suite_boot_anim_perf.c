@@ -47,9 +47,10 @@
  * not a hand-copy of boot_anim_draw_frame()'s own sequencing, means this
  * suite exercises the exact code a real frame runs. */
 extern void boot_anim_clear_frame(void);
+extern void boot_anim_clear_on_send(bool on);
 extern void draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view);
 extern void draw_axes(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view);
-extern int32_t draw_curve(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view);
+extern int32_t draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view);
 extern void draw_zeros(int32_t pen_t_q8, uint8_t ink, const boot_anim_view_t* view);
 extern void draw_image(const draw_image_t* photo, uint8_t ink, uint8_t reveal);
 extern void draw_title(uint32_t now_ms, uint8_t ink);
@@ -184,7 +185,7 @@ assert_double_samples(void) {
 }
 
 static __attribute__((noinline)) void
-time_frames(const checkpoint_frame_t* f, bool contend) {
+time_frames(const checkpoint_frame_t* f, bool contend, bool clear_on_send) {
     for (int i = 0; i < SAMPLES_PER_CHECKPOINT; i++) {
         int64_t t0, t1;
         frame_sample_t* s = &samples[i];
@@ -210,7 +211,7 @@ time_frames(const checkpoint_frame_t* f, bool contend) {
             s->values[FIELD_AXES] = (int32_t)(t1 - t0);
 
             t0 = timing_now_us();
-            const int32_t reached = draw_curve(f->now_ms, f->ink, f->reveal, &f->view);
+            const int32_t reached = draw_curve(f->now_ms, f->ink, &f->view);
             t1 = timing_now_us();
             s->values[FIELD_CURVE] = (int32_t)(t1 - t0);
 
@@ -251,7 +252,8 @@ time_frames(const checkpoint_frame_t* f, bool contend) {
 
         s->values[FIELD_TOTAL] = (int32_t)(t1 - frame_start);
     }
-    TEST_ASSERT_EQUAL_INT(GFX_READBACK_READY, gfx_readback_begin());
+    /* Drains the last send; a frame cleared on send cannot be read back. */
+    TEST_ASSERT_EQUAL_INT(clear_on_send ? GFX_READBACK_UNAVAILABLE : GFX_READBACK_READY, gfx_readback_begin());
     if (!contend) {
         samples[SAMPLES_PER_CHECKPOINT - 1].values[FIELD_SEND] = gfx_get_present_send_us();
     }
@@ -303,7 +305,7 @@ report_checkpoint(const checkpoint_t* cp, const char* mode) {
 
 static void
 run_checkpoint(const boot_anim_motion_t* motion, const draw_image_t* photo, const checkpoint_t* cp, const char* mode,
-               bool contend) {
+               bool contend, bool clear_on_send) {
     samples = malloc(sizeof(frame_sample_t) * SAMPLES_PER_CHECKPOINT);
     stat_scratch = malloc(sizeof(int32_t) * SAMPLES_PER_CHECKPOINT);
     if (samples == NULL || stat_scratch == NULL) {
@@ -320,9 +322,9 @@ run_checkpoint(const boot_anim_motion_t* motion, const draw_image_t* photo, cons
     sample_checkpoint(motion, photo, cp->now_ms, &frame);
     boot_anim_draw_frame(motion, photo, cp->now_ms);
     gfx_present();
-    TEST_ASSERT_EQUAL_INT(GFX_READBACK_READY, gfx_readback_begin());
+    TEST_ASSERT_EQUAL_INT(clear_on_send ? GFX_READBACK_UNAVAILABLE : GFX_READBACK_READY, gfx_readback_begin());
     gfx_readback_end();
-    time_frames(&frame, contend);
+    time_frames(&frame, contend, clear_on_send);
     report_checkpoint(cp, mode);
 
     free(samples);
@@ -364,17 +366,21 @@ test_boot_anim_performance_by_checkpoint(void) {
         gfx_layout_t layout;
         const char* name;
         bool contend;
+        bool clear_on_send; /* gfx_set_clear_on_send(): core 1 clears, the boot's clear is free */
     } passes[] = {
-        {GFX_LAYOUT_FULL_FB, "FULL_FB", false},
-        {GFX_LAYOUT_DOUBLE_FB, "DOUBLE_FB", false},
-        {GFX_LAYOUT_DOUBLE_FB, "DOUBLE_FB_CONTENDED", true},
+        {GFX_LAYOUT_FULL_FB, "FULL_FB", false, false},
+        {GFX_LAYOUT_DOUBLE_FB, "DOUBLE_FB", false, false},
+        {GFX_LAYOUT_DOUBLE_FB, "DOUBLE_FB_CLEAR_ON_SEND", false, true},
+        {GFX_LAYOUT_DOUBLE_FB, "DOUBLE_FB_CONTENDED", true, false},
     };
 
     for (size_t pass = 0; pass < sizeof passes / sizeof passes[0]; pass++) {
         const gfx_mode_request_t request = {.layout = passes[pass].layout};
         TEST_ASSERT_EQUAL_INT(passes[pass].layout, gfx_mode_enter(&request)->layout);
+        boot_anim_clear_on_send(passes[pass].clear_on_send);
         for (size_t i = 0; i < sizeof checkpoints / sizeof checkpoints[0]; i++) {
-            run_checkpoint(&motion, &photo, &checkpoints[i], passes[pass].name, passes[pass].contend);
+            run_checkpoint(&motion, &photo, &checkpoints[i], passes[pass].name, passes[pass].contend,
+                           passes[pass].clear_on_send);
         }
         gfx_mode_exit();
     }

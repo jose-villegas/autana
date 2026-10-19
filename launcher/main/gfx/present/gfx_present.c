@@ -34,7 +34,7 @@ _Static_assert(GFX_HEAL_STRIP_ROWS <= STRIP_HEIGHT, "a heal strip must fit one s
  * places it: the compiler's clones of a function inherit the attribute, and
  * a mapping entry names only the original. Development overlays and send
  * auditing make dev and diag larger.
- * IRAM budget: release 2851 B, dev 3884 B, diag 3884 B */
+ * IRAM budget: release 2863 B, dev 3896 B, diag 3896 B */
 #define GFX_PRESENT_IRAM_ATTR IRAM_ATTR
 static const char* TAG = "gfx";
 #else
@@ -59,6 +59,20 @@ unsigned gfx_present_guard_trips;
 #endif
 
 static bool present_async_on = true;
+
+/* gfx_set_clear_on_send()'s choice, and what the send in flight does with
+ * present_fb once it has copied it out: core 1 reads the second pair, which
+ * core 0 sets only while no send runs. */
+static bool clear_on_send;
+static gfx_color_t clear_on_send_colour;
+static bool send_clears;
+static gfx_color_t send_clear_colour;
+
+/* The sent frame, filled for its next turn as the back buffer. */
+static void
+fill_sent_frame(void) {
+    gfx_target_fill((gfx_target_t){present_fb, 0, GFX_HEIGHT, GFX_WIDTH}, send_clear_colour);
+}
 #ifdef ESP_PLATFORM
 static bool present_pending;
 #endif
@@ -805,6 +819,9 @@ run_present_raw_full(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     send_audit_check();
 #endif
+    if (send_clears) {
+        fill_sent_frame();
+    }
 }
 
 static void GFX_PRESENT_IRAM_ATTR
@@ -880,10 +897,20 @@ begin_double_frame(void) {
     gfx_color_t* drawn = fb;
     fb = present_fb;
     present_fb = drawn;
+    /* The buffer coming back was filled by its own send, if that one cleared. */
+    fb_filled = send_clears;
+    fb_fill_colour = send_clear_colour;
+    send_clears = clear_on_send;
+    send_clear_colour = clear_on_send_colour;
 #ifdef ESP_PLATFORM
     frame_watch_presented();
     present_task_mode = PRESENT_TASK_RAW_FULL;
     dispatch_present();
+#else
+    /* No send on a host: the frame is filled at once. */
+    if (send_clears) {
+        fill_sent_frame();
+    }
 #endif
 }
 
@@ -897,6 +924,7 @@ gfx_present_begin(void) {
 #ifdef ESP_PLATFORM
     frame_watch_presented();
 #endif
+    send_clears = false; /* this send keeps its frame */
     gfx_present_guard_begin();
 #ifdef ESP_PLATFORM
     if (band_is_transient()) {
@@ -975,6 +1003,25 @@ gfx_set_panel_clock_hz(int hz) {
 int
 gfx_panel_clock_hz(void) {
     return panel_clock_requested_hz;
+}
+
+bool
+gfx_present_sent_frame_filled(void) {
+    return send_clears;
+}
+
+#ifndef ESP_PLATFORM
+void
+gfx_present_fill_reset_for_test(void) {
+    send_clears = false;
+}
+#endif
+
+bool
+gfx_set_clear_on_send(bool on, gfx_color_t colour) {
+    clear_on_send = on && current_mode.layout == GFX_LAYOUT_DOUBLE_FB;
+    clear_on_send_colour = colour;
+    return clear_on_send == on;
 }
 
 void

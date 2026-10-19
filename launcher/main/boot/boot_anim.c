@@ -583,7 +583,7 @@ draw_curve_segment(curve_segment_t* segment, vec3x_t next_cs, gfx_color_t color,
 /* Re-colours within half the curve's length of the head. No second
  * framebuffer available. */
 int32_t
-draw_curve(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view) {
+draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
     const int32_t pen = boot_anim_pen(now_ms);
     if (pen <= 0) {
         return 0;
@@ -598,13 +598,6 @@ draw_curve(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t*
     const int32_t phase1_span = (int32_t)(BOOT_ANIM_CURVE_PHASE1_POINTS - 1);
 
     const int stride = boot_anim_curve_stride(view);
-
-    /* BOOT_ANIM_DISSOLVE_HALF_LEVEL halves; COARSE_LEVEL collapses to chord.
-     * Quadratic limits deviation. */
-    const int dissolve_level = gfx_dither_level(reveal);
-    const int max_steps = dissolve_level >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL ? 1
-                          : dissolve_level >= BOOT_ANIM_DISSOLVE_HALF_LEVEL ? 2
-                                                                            : BOOT_ANIM_SPLINE_STEPS;
 
     boot_anim_pt_t s0 = boot_anim_sample(-stride);
     boot_anim_pt_t s1 = boot_anim_sample(0);
@@ -625,23 +618,14 @@ draw_curve(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t*
         /* Head jumps from sample to sample without partial span. */
         const int32_t limit = (stride == 1 && i == last) ? part : BOOT_ANIM_ONE;
 
-        /* See boot_anim_curve_lod_steps(). Dissolve cap limits. */
-        int steps = boot_anim_curve_lod_steps(ta, tc, view);
-        if (steps > max_steps) {
-            steps = max_steps;
-        }
-
         const boot_anim_stroke_t s = boot_anim_stroke(a0 + ((a1 - a0) >> 1), colour);
         gfx_color_t span_c = gfx_rgb(gfx_hue_rgb(s.hue));
         span_c = gfx_color_mix(span_c, COL_WHITE, s.bloom);
         span_c = gfx_color_mix(COL_BG, span_c, scale8(s.glow, ink));
 
-        for (int step = 1; step <= steps; step++) {
-            const int32_t t = (limit * step) / steps;
-
-            const vec3x_t next_cs = boot_anim_spline_cs(ta, tb, tc, t);
-            draw_curve_segment(&segment, next_cs, span_c, s.width, view);
-        }
+        /* One chord a span, to where the spline ends it: the samples sit a
+         * few pixels apart, so subdividing showed nothing on the panel. */
+        draw_curve_segment(&segment, boot_anim_spline_cs(ta, tb, tc, limit), span_c, s.width, view);
 
         a0 = a1;
         ta = tb;
@@ -740,6 +724,12 @@ boot_anim_clear_frame(void) {
     draw_clear(COL_BG);
 }
 
+/* Core 1 clears each frame once it is sent, so the clear above is free. */
+void
+boot_anim_clear_on_send(bool on) {
+    (void)gfx_set_clear_on_send(on, COL_BG); /* without the double layout, the clear stays on core 0 */
+}
+
 void
 boot_anim_set_ending_backdrop(boot_anim_backdrop_fn paint) {
     ending_backdrop = paint;
@@ -756,7 +746,7 @@ draw_scene(const boot_anim_motion_t* motion, const draw_image_t* photo, uint32_t
         draw_floor(now_ms, ink, reveal, &view);
         draw_axes(now_ms, ink, &view);
 
-        const int32_t reached = draw_curve(now_ms, ink, reveal, &view);
+        const int32_t reached = draw_curve(now_ms, ink, &view);
         draw_zeros(reached, ink, &view);
     }
 
@@ -803,6 +793,7 @@ boot_anim_run(void) {
 #endif
     const gfx_mode_request_t mode = {.layout = GFX_LAYOUT_DOUBLE_FB};
     gfx_mode_enter(&mode);
+    boot_anim_clear_on_send(true);
     boot_anim_motion_t motion;
     boot_anim_motion_load(&motion);
     draw_image_t photo = {0};

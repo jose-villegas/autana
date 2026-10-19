@@ -29,6 +29,8 @@ unsigned gfx_fb_guard_trips;
 
 gfx_color_t* fb;
 gfx_color_t* present_fb;
+bool fb_filled;
+gfx_color_t fb_fill_colour;
 static gfx_color_t* half_image;
 static bool frame_expanded;
 static gfx_band_overlay_fn frame_overlay;
@@ -89,6 +91,9 @@ gfx_draw_begin(gfx_surface_t* out) {
     GFX_PRESENT_GUARD();
     if (!GFX_REQUIRE_FRAMEBUFFER()) {
         return false;
+    }
+    if (fb_filled) {
+        fb_filled = false;
     }
     out->target = band_render_active ? strip_target : (gfx_target_t){fb, 0, GFX_HEIGHT, GFX_WIDTH};
     out->clip = clip;
@@ -327,11 +332,19 @@ gfx_init(void) {
     return true;
 }
 
+bool
+gfx_framebuffer_holds(gfx_color_t colour) {
+    return fb_filled && fb_fill_colour == colour;
+}
+
 gfx_color_t*
 gfx_framebuffer(void) {
     /* gfx can't guess intent. "Everything" wastes resources. Raw writers use
      * gfx_mark_dirty(). Be cautious. */
     GFX_PRESENT_GUARD();
+    if (fb_filled) {
+        fb_filled = false;
+    }
     /* fb is already NULL in band mode, the right answer for a caller that
      * checks. This call is only the loud dev-time signal that one reached
      * for the framebuffer at all while it does not exist. */
@@ -414,6 +427,8 @@ gfx_reset_for_test(void) {
     if (current_mode.layout == GFX_LAYOUT_DOUBLE_FB) {
         gfx_mode_exit();
     }
+    gfx_present_fill_reset_for_test();
+    fb_filled = false;
     clear_expanded_frame(true);
     frame_overlay = NULL;
     band_render_active = false;
@@ -457,6 +472,7 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
             return &current_mode;
         }
         fb = back;
+        fb_filled = false;
         dirty_mark_all();
     } else if (granted.layout == GFX_LAYOUT_INDEXED) {
         if (granted.index_grid_w <= 0 || granted.index_grid_h <= 0 || granted.cell_size <= 0
@@ -494,8 +510,12 @@ gfx_mode_exit(void) {
     gfx_present_drain();
     GFX_PRESENT_GUARD();
     if (current_mode.layout == GFX_LAYOUT_DOUBLE_FB) {
+        (void)gfx_set_clear_on_send(false, 0);
         memory_free(fb);
         fb = present_fb;
+        /* A frame cleared on send stays cleared: readback has nothing to read
+         * until the next send, and the next draw_clear() of it is free. */
+        fb_filled = gfx_present_sent_frame_filled();
         reset_mode_to_full_fb();
         gfx_clip_restore(GFX_SCREEN_RECT);
         gfx_mark_all_dirty();
@@ -757,6 +777,9 @@ gfx_readback_t
 gfx_readback_begin(void) {
     gfx_present_drain();
     GFX_PRESENT_GUARD();
+    if (gfx_present_sent_frame_filled()) {
+        return GFX_READBACK_UNAVAILABLE; /* the shown frame is already cleared away */
+    }
     if (!band_is_transient()) {
         return GFX_READBACK_READY;
     }
