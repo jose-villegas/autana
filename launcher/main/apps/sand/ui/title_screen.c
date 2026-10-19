@@ -15,7 +15,7 @@
 #define MAIN_GAP        10
 #define MAIN_COUNT      3
 #define FOOTER_W_MAX    360
-#define FOOTER_H        (UI_TAP_MIN + 2 * FOOTER_PAD)
+#define FOOTER_H        (UI_TAP_MIN + (2 * FOOTER_PAD))
 #define FOOTER_PAD      8
 #define TITLE_SCALE_MAX 3
 
@@ -50,12 +50,12 @@ largest_title_scale(int room) {
 
 static void
 layout_footer(int screen_w, int screen_h, title_screen_layout_t* out) {
-    const int w = mathi_min(screen_w - 2 * UI_MARGIN, FOOTER_W_MAX);
+    const int w = mathi_min(screen_w - (2 * UI_MARGIN), FOOTER_W_MAX);
     out->footer = ui_centered_rect(screen_w, w, FOOTER_H, screen_h - UI_MARGIN - FOOTER_H);
 
     const int button_w = (w - 3 * FOOTER_PAD) / 2;
     const int y = out->footer.y + FOOTER_PAD;
-    const int h = FOOTER_H - 2 * FOOTER_PAD;
+    const int h = FOOTER_H - (2 * FOOTER_PAD);
     out->buttons[SAND_TITLE_GUIDE] = (recti_t){out->footer.x + FOOTER_PAD, y, button_w, h};
     out->buttons[SAND_TITLE_EXIT] = (recti_t){out->footer.x + out->footer.w - FOOTER_PAD - button_w, y, button_w, h};
 }
@@ -63,16 +63,16 @@ layout_footer(int screen_w, int screen_h, title_screen_layout_t* out) {
 void
 title_screen_layout(int screen_w, int screen_h, title_screen_layout_t* out) {
     out->header = (recti_t){0, 0, screen_w, HEADER_H};
-    out->title_scale = largest_title_scale(screen_w - 2 * UI_MARGIN);
-    out->subtitle = (recti_t){UI_MARGIN, HEADER_H + SUBTITLE_GAP, screen_w - 2 * UI_MARGIN, SUBTITLE_H};
+    out->title_scale = largest_title_scale(screen_w - (2 * UI_MARGIN));
+    out->subtitle = (recti_t){UI_MARGIN, HEADER_H + SUBTITLE_GAP, screen_w - (2 * UI_MARGIN), SUBTITLE_H};
     layout_footer(screen_w, screen_h, out);
 
-    const int stack_h = MAIN_COUNT * MAIN_H + (MAIN_COUNT - 1) * MAIN_GAP;
+    const int stack_h = (MAIN_COUNT * MAIN_H) + ((MAIN_COUNT - 1) * MAIN_GAP);
     const int room_top = out->subtitle.y + out->subtitle.h;
-    const int top = room_top + (out->footer.y - room_top - stack_h) / 2;
-    const int w = mathi_min(screen_w - 2 * UI_MARGIN, MAIN_W_MAX);
+    const int top = room_top + ((out->footer.y - room_top - stack_h) / 2);
+    const int w = mathi_min(screen_w - (2 * UI_MARGIN), MAIN_W_MAX);
     for (int i = 0; i < MAIN_COUNT; i++) {
-        out->buttons[SAND_TITLE_START + i] = ui_centered_rect(screen_w, w, MAIN_H, top + i * (MAIN_H + MAIN_GAP));
+        out->buttons[SAND_TITLE_START + i] = ui_centered_rect(screen_w, w, MAIN_H, top + (i * (MAIN_H + MAIN_GAP)));
     }
 }
 

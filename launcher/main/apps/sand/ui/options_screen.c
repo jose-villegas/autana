@@ -70,7 +70,7 @@ static int
 layout_quality(int x, int w, int y, options_screen_layout_t* out) {
     out->quality_panel = (recti_t){x, y, w, QUALITY_PANEL_H};
     const int inner_x = x + PANEL_PAD;
-    const int inner_w = w - 2 * PANEL_PAD;
+    const int inner_w = w - (2 * PANEL_PAD);
     const int half = inner_w / 2;
     out->quality_caption = (recti_t){inner_x, y + PANEL_PAD, half, CAPTION_H};
     out->quality_value = (recti_t){inner_x + half, y + PANEL_PAD, inner_w - half, CAPTION_H};
@@ -84,16 +84,16 @@ layout_tiles(int x, int w, int y, options_screen_layout_t* out) {
     y += CAPTION_H + CAPTION_GAP;
     const int n = OPTIONS_SCREEN_TILE_COUNT;
     const int tile_w = (w - (n - 1) * TILE_GAP) / n;
-    const int start_x = x + (w - (n * tile_w + (n - 1) * TILE_GAP)) / 2;
+    const int start_x = x + ((w - (n * tile_w + (n - 1) * TILE_GAP)) / 2);
     for (int i = 0; i < n; i++) {
-        out->tiles[i] = (recti_t){start_x + i * (tile_w + TILE_GAP), y, tile_w, TILE_H};
+        out->tiles[i] = (recti_t){start_x + (i * (tile_w + TILE_GAP)), y, tile_w, TILE_H};
     }
     return y + TILE_H + SECTION_GAP;
 }
 
 void
 options_screen_layout(int screen_w, int screen_h, options_screen_layout_t* out) {
-    const int w = mathi_min(screen_w - 2 * UI_MARGIN, COLUMN_W_MAX);
+    const int w = mathi_min(screen_w - (2 * UI_MARGIN), COLUMN_W_MAX);
     const int x = (screen_w - w) / 2;
 
     /* The header is the one row a short canvas can spare: every other row is
@@ -128,7 +128,7 @@ draw_quality(const options_screen_layout_t* lay, const sand_menu_t* menu, const 
 static void
 draw_mode_swatch(recti_t tile, const sand_mode_swatch_t* swatch) {
     const recti_t icon = ui_tile_icon_rect(tile);
-    const recti_t strip = {tile.x + SWATCH_INSET, icon.y, tile.w - 2 * SWATCH_INSET, icon.h};
+    const recti_t strip = {tile.x + SWATCH_INSET, icon.y, tile.w - (2 * SWATCH_INSET), icon.h};
     ui_swatches(strip, swatch->rgb, swatch->cols, swatch->rows);
 }
 
