@@ -354,18 +354,15 @@ clip_to_plane(const planef_t* p, const clip_vertex_t* in, int n, clip_vertex_t* 
     return m;
 }
 
-/* The identity as a constant, so the guard planes built through it stay in lens
- * space and fold to the values they had when they were written out by hand. */
+/* Guard planes are evaluated in lens space. */
 static const mat4f_t LENS_SPACE = MAT4F_IDENTITY;
 
 /* The near plane, then the screen's guard band: every corner left projects
  * inside what r3d_span takes. */
 static int
-clip_to_guard(const r3d_lens_t* lens, r3d_pipeline_work_t* work, int n) {
+clip_to_guard(r3d_pipeline_work_t* work, int n) {
     clip_vertex_t* poly = work->clip.poly;
-    const float g = (float)GUARD_PIXELS;
-    planef_t* planes = work->clip.planes;
-    planef_frustum(&LENS_SPACE, &lens->project, rectf_from_edges(-g, -g, g, g), planes);
+    const planef_t* planes = work->clip.planes;
     clip_vertex_t* other = work->clip.other;
     for (int p = 0; p < PLANE_FRUSTUM_COUNT && n >= 3; p++) {
         n = clip_to_plane(&planes[p], poly, n, other);
@@ -393,7 +390,7 @@ static inline __attribute__((always_inline)) void
 draw_clipped(const r3d_lens_t* lens, bool double_sided, const uint16_t* face_color, const r3d_span_target_t* target,
              r3d_pipeline_work_t* work) {
     clip_vertex_t* poly = work->clip.poly;
-    const int n = clip_to_guard(lens, work, 3);
+    const int n = clip_to_guard(work, 3);
     if (n < 3) {
         return;
     }
@@ -508,6 +505,9 @@ RENDER_IRAM_ATTR void
 r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
                   const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
                   r3d_pipeline_work_t* work) {
+    /* Guard planes depend only on the lens, so build them once per draw. */
+    const float g = (float)GUARD_PIXELS;
+    planef_frustum(&LENS_SPACE, &lens->project, rectf_from_edges(-g, -g, g, g), work->clip.planes);
     if (target->writer_count != 0) {
         draw_writing(mesh, lens, clusters, count, cs, rows, target, work);
         return;
