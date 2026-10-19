@@ -53,7 +53,7 @@ gas_mask(void) {
     uint16_t mask = 0;
     for (int m = 0; m < MATERIAL_MAX; m++) {
         if (material_by_id((material_id_t)m)->kind == KIND_GAS) {
-            mask |= (uint16_t)(1u << m);
+            mask |= (uint16_t)(1U << m);
         }
     }
     return mask;
@@ -89,7 +89,7 @@ static bool gas_row_map_live;
 static inline void
 gas_row_arm(int y) {
     if (gas_row_map_live && (unsigned)y < (unsigned)GAS_ROW_MAX) {
-        gas_row_map.w[(unsigned)y >> 5] |= 1u << ((unsigned)y & 31u);
+        gas_row_map.w[(unsigned)y >> 5] |= 1U << ((unsigned)y & 31U);
     }
 }
 
@@ -98,7 +98,7 @@ gas_row_may_hold(int y) {
     if (!gas_row_map_live) {
         return true;
     }
-    return ((gas_row_map.w[(unsigned)y >> 5] >> ((unsigned)y & 31u)) & 1u) != 0u;
+    return ((gas_row_map.w[(unsigned)y >> 5] >> ((unsigned)y & 31U)) & 1U) != 0U;
 }
 
 /*
@@ -216,7 +216,7 @@ build_gas_tables(void) {
     }
     for (int r = 0; r < MATERIAL_ROWS; r++) {
         if (materials[r].kind == KIND_GAS) {
-            gas_kind_mask |= 1u << r;
+            gas_kind_mask |= 1U << r;
         }
     }
     for (int m = 0; m < MATERIAL_MAX; m++) {
@@ -420,7 +420,7 @@ step_one_gas_row(sand_t* s, const gas_row_t* r, const gas_pass_t* c) {
     bool any = false;
     for (int x = x_from; x != x_to; x += rx_step) {
         const cell_t cell = row[x];
-        if (CELL_IS_EMPTY(cell) || ((gas_kind_mask >> (cell >> 3)) & 1u) == 0u) {
+        if (CELL_IS_EMPTY(cell) || ((gas_kind_mask >> (cell >> 3)) & 1U) == 0U) {
             continue;
         }
         /* Presence, not movement: a gas cell that neither moves nor decays
@@ -781,7 +781,7 @@ equalise_gas_one_row_cell(sand_t* s, uint8_t* row, const uint8_t* arow, const ui
         return false;
     }
     const uint8_t id = CELL_MATERIAL(c);
-    if (((is_gas >> id) & 1u) == 0) {
+    if (((is_gas >> id) & 1U) == 0) {
         /* Same reasoning as the empty case just above: whatever this cell
          * holds, it is not gas, so it cannot extend a gas run either. */
         run->id = -1;
@@ -821,7 +821,7 @@ row_is_packed(const uint8_t* row, int w, uint16_t is_gas, bool* any_gas, int* ma
         if (CELL_IS_EMPTY(c)) {
             return false;
         }
-        if (((is_gas >> CELL_MATERIAL(c)) & 1u) != 0) {
+        if (((is_gas >> CELL_MATERIAL(c)) & 1U) != 0) {
             gas = true;
             const int cur = material_of(c)->sight;
             if (cur > sight) {
@@ -1014,7 +1014,7 @@ gas_row_audit(const sand_t* s) {
         const uint8_t* row = s->cells + (size_t)y * (size_t)s->w;
         for (int x = 0; x < s->w; x++) {
             const cell_t c = row[x];
-            if (!CELL_IS_EMPTY(c) && ((gas_kind_mask >> (c >> 3)) & 1u) != 0u) {
+            if (!CELL_IS_EMPTY(c) && ((gas_kind_mask >> (c >> 3)) & 1U) != 0U) {
                 sand_gas_row_audit_failures++;
                 return;
             }

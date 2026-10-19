@@ -153,7 +153,7 @@ measure(const quality_t* q, const scene_t* sc, const gravity_t* g, int side_x, i
     }
     out->chunks = plan.cols * plan.rows;
 
-    board_open(&b, q->w, q->h, 11u);
+    board_open(&b, q->w, q->h, 11U);
     const int warm = sc->build(&b.s);
     if (!sand_chunk_side_for_test(side_x, side_y)) {
         fprintf(stderr, "chunk_layout: %dx%d refused\n", side_x, side_y);

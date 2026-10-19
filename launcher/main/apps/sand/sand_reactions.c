@@ -48,7 +48,7 @@
  * seen_materials is the same mask being rebuilt from what THIS pass actually
  * walks, so the board can narrow as well as widen - a latch alone only ever
  * grows. */
-SAND_FACT static uint8_t present_pair_bits = 0xFFu;
+SAND_FACT static uint8_t present_pair_bits = 0xFFU;
 static uint16_t seen_materials;
 /* The walk's per-cell gates, read from these pass-start copies: the flags
  * themselves are cleared at pass start so a cell latched mid-pass - even
@@ -69,7 +69,7 @@ SAND_FACT static bool acid_rain_possible = true;
  * the board, not of the cell asking, exactly as the pair bits are.
  *
  * 255 until the first pass has looked: it gates work being skipped. */
-SAND_FACT static uint8_t max_smothering_density = 255u;
+SAND_FACT static uint8_t max_smothering_density = 255U;
 
 /* A 17th material would fall out of the mask silently, and a material missing
  * from it reads as absent - which SKIPS work rather than adding it. Wrong
@@ -565,7 +565,7 @@ try_soak_convert(sand_t* s, int x, int y, int w, const reaction_t* r, uint8_t he
     REACTION_DOC(soaked_to, "once fully saturated, at a per-step chance");
     const unsigned convert_period = (s->soak_convert > 0) ? (unsigned)s->soak_convert : SOAKED_CONVERT_PERIOD;
     if (r->soaked_to != 0 && held >= r->moist_max
-        && (((unsigned)s->step_phase + (unsigned)x * 5u + (unsigned)y * 33u) & (convert_period - 1u)) == 0u
+        && (((unsigned)s->step_phase + (unsigned)x * 5U + (unsigned)y * 33U) & (convert_period - 1U)) == 0U
         && sand_rng_chance_at(s, x, y, SAND_RNG_SLOT_REACT_SOAK_CONVERT, r->soaked_chance)) {
         const size_t at = (size_t)y * (size_t)w + (size_t)x;
         place_reacted(s, x, y, at, r->soaked_to);
@@ -1118,7 +1118,7 @@ step_one_cold_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
      * would make the rate four times what it reads as. */
     const bool carries =
         !SAND_SKIP_IF((present_pair_bits & PAIR_CONDUCTS) == 0) && r->chills != 0
-        && (((unsigned)s->step_phase + (unsigned)x * 5u + (unsigned)y * 33u) & (COLD_CARRY_PERIOD - 1u)) == 0u;
+        && (((unsigned)s->step_phase + (unsigned)x * 5U + (unsigned)y * 33U) & (COLD_CARRY_PERIOD - 1U)) == 0U;
     const bool spent_on_heat = carries && cold_carry_walk(s, x, y, w, h);
 
     /* THE SOURCE PAYS FOR THE DEPTH TOO. Cooling something HOT has always cost
@@ -1213,7 +1213,7 @@ static unsigned
 temper_drain(const sand_t* s, int x, int y, const reaction_t* r, uint8_t temp, bool wet) {
     unsigned drain = r->cools;
     if (temp < SAND_AMBIENT_HEAT
-        && (((unsigned)s->step_phase + (unsigned)x * 17u + (unsigned)y * 3u) & (COLD_REWARM_PERIOD - 1u)) != 0u) {
+        && (((unsigned)s->step_phase + (unsigned)x * 17U + (unsigned)y * 3U) & (COLD_REWARM_PERIOD - 1U)) != 0U) {
         drain = 0; /* not this cell's step to warm back up */
     }
     if (temp > SAND_AMBIENT_HEAT) {
@@ -1221,8 +1221,8 @@ temper_drain(const sand_t* s, int x, int y, const reaction_t* r, uint8_t temp, b
         if (wet) {
             drain *= SAND_WET_COOLING_FACTOR;
         }
-        if (drain > 255u) {
-            drain = 255u;
+        if (drain > 255U) {
+            drain = 255U;
         }
     }
     return drain;
@@ -1664,7 +1664,7 @@ dissolver_evaporates(sand_t* s, int x, int y, int w, const reaction_t* r) {
     const bool per_material = s->evaporates < 0;
     const int evaporates = per_material ? r->evaporates : s->evaporates;
     if (evaporates != 0 && (int)(rng_next(&s->rng) & 0xFF) < evaporates
-        && (!per_material || (rng_next(&s->rng) & 63u) == 0)) {
+        && (!per_material || (rng_next(&s->rng) & 63U) == 0)) {
         const size_t at = (size_t)y * (size_t)w + (size_t)x;
         place_reacted(s, x, y, at, MAT_GAS);
         return true;
@@ -2470,12 +2470,12 @@ crust_due(const reacting_cell_t* k) {
     const unsigned faces =
         (r->crusts != 0 && SAND_FACT_RULE(cell_settled(s, x, y)))
             ? crust_faces(s, x, y, rr->w, rr->h, CELL_MATERIAL(k->c), CELL_MATERIAL((cell_t)r->crusts_to))
-            : 0u;
+            : 0U;
     const unsigned phase = (unsigned)s->step_phase;
     const bool seed_due = ((faces & FACE_FOREIGN) != 0)
-                          && ((phase + (unsigned)x * 11u + (unsigned)y * 7u) & (CRUST_SEED_PERIOD - 1u)) == 0u;
+                          && ((phase + (unsigned)x * 11U + (unsigned)y * 7U) & (CRUST_SEED_PERIOD - 1U)) == 0U;
     const bool widen_due = ((faces & FACE_CRUST) != 0)
-                           && ((phase + (unsigned)x * 5u + (unsigned)y * 33u) & (CRUST_WIDEN_PERIOD - 1u)) == 0u;
+                           && ((phase + (unsigned)x * 5U + (unsigned)y * 33U) & (CRUST_WIDEN_PERIOD - 1U)) == 0U;
     return seed_due || widen_due;
 }
 
@@ -2671,7 +2671,7 @@ step_one_reacting_row(sand_t* s, int y, int w, int h, int x_lo, int x_hi) {
     uint16_t seen = 0;
     for (int x = x_lo; x < x_hi; x++) {
         const cell_t c = row[x];
-        seen |= (uint16_t)(1u << CELL_MATERIAL(c));
+        seen |= (uint16_t)(1U << CELL_MATERIAL(c));
         if (CELL_IS_EMPTY(c)) {
             x = empty_run_end(row, x + 1, x_hi) - 1;
             continue;
@@ -2821,12 +2821,12 @@ fill_burn_plan(burn_plan_t* p, const sand_t* s, const reaction_t* r, const mater
     const uint8_t own_rate = lit ? r->burn_decay : mat->decay;
     p->tick_rate = (s->decay >= 0) ? (uint8_t)s->decay : own_rate;
     p->flare = r->flare;
-    p->flags = (uint8_t)((lit ? BURN_LIT : 0u)
+    p->flags = (uint8_t)((lit ? BURN_LIT : 0U)
                          | ((mat->kind != KIND_LIQUID && r->explodes == 0
                              && !SAND_SKIP_IF(mat->density >= max_smothering_density))
                                 ? BURN_SMOTHERS
-                                : 0u)
-                         | ((mat->kind == KIND_LIQUID && r->quench_to != 0) ? BURN_LAVA : 0u));
+                                : 0U)
+                         | ((mat->kind == KIND_LIQUID && r->quench_to != 0) ? BURN_LAVA : 0U));
 }
 
 /* Indexed exactly as step_one_reacting_row() indexes it, so a suite reading a
@@ -3000,7 +3000,7 @@ react_drain_begin(uint8_t* a, uint8_t* a_count, uint8_t* b, uint8_t* b_count, si
         const unsigned held = *drain.counts[i];
         react_sort_row_major(drain.entries[i], held, size);
         sand_reactions_defer_queued[i] += held;
-        const unsigned fill_q8 = held * 256u / cap;
+        const unsigned fill_q8 = held * 256U / cap;
         if (fill_q8 > sand_reactions_defer_peak_q8) {
             sand_reactions_defer_peak_q8 = fill_q8;
         }
@@ -3241,9 +3241,9 @@ note_present_materials(const sand_t* s) {
     present_pair_bits = 0;
     max_smothering_density = 0;
     acid_rain_possible =
-        (s->may_have_materials & (1u << MAT_STEAM)) != 0 && (s->may_have_materials & (1u << MAT_GAS)) != 0;
+        (s->may_have_materials & (1U << MAT_STEAM)) != 0 && (s->may_have_materials & (1U << MAT_GAS)) != 0;
     for (int m = 0; m < MATERIAL_MAX; m++) {
-        if ((s->may_have_materials & (1u << m)) == 0) {
+        if ((s->may_have_materials & (1U << m)) == 0) {
             continue;
         }
         present_pair_bits |= pair_theirs_bits((uint8_t)m);

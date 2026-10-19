@@ -85,8 +85,8 @@ byte_histograms(uint32_t seed, uint32_t* low, uint32_t* high) {
     memset(high, 0, sizeof(uint32_t) * 256);
     for (int i = 0; i < STREAM_DRAWS; i++) {
         const uint32_t x = rng_next(&r);
-        low[x & 0xFFu]++;
-        high[(x >> 24) & 0xFFu]++;
+        low[x & 0xFFU]++;
+        high[(x >> 24) & 0xFFU]++;
     }
 }
 
@@ -102,7 +102,7 @@ low_byte_period(uint32_t seed) {
     rng_t r;
     rng_seed(&r, seed);
     for (int i = 0; i < PERIOD_WINDOW + PERIOD_LIMIT; i++) {
-        bytes[i] = (uint8_t)(rng_next(&r) & 0xFFu);
+        bytes[i] = (uint8_t)(rng_next(&r) & 0xFFU);
     }
     int found = 0;
     for (int p = 1; p <= PERIOD_LIMIT && found == 0; p++) {
@@ -136,9 +136,9 @@ joint_chi_square(uint32_t seed, int decimate, int shift_a, int shift_b) {
         for (int d = 0; d < decimate; d++) {
             cur = rng_next(&r);
         }
-        const uint32_t a = ((prev >> shift_a) & 0xFFu) >> 4;
-        const uint32_t b = ((cur >> shift_b) & 0xFFu) >> 4;
-        joint[a * 16u + b]++;
+        const uint32_t a = ((prev >> shift_a) & 0xFFU) >> 4;
+        const uint32_t b = ((cur >> shift_b) & 0xFFU) >> 4;
+        joint[a * 16U + b]++;
         pairs++;
         prev = cur;
     }
@@ -162,10 +162,10 @@ conditional_rates(uint32_t seed, int decimate, double* unconditional, double* gi
         for (int d = 0; d < decimate; d++) {
             cur = rng_next(&r);
         }
-        const uint32_t hit = ((cur & 0xFFu) < (uint32_t)WALK_LOWER_DIAGONALS) ? 1u : 0u;
+        const uint32_t hit = ((cur & 0xFFU) < (uint32_t)WALK_LOWER_DIAGONALS) ? 1U : 0U;
         hits += hit;
         total++;
-        if ((prev & 0xFFu) < (uint32_t)POCKET_MOBILITY) {
+        if ((prev & 0xFFU) < (uint32_t)POCKET_MOBILITY) {
             cond_hits += hit;
             cond_total++;
         }
@@ -183,11 +183,11 @@ static void
 hashed_histograms(uint32_t seed, uint32_t cell, uint32_t slot, uint32_t* low, uint32_t* joint) {
     memset(low, 0, sizeof(uint32_t) * 256);
     memset(joint, 0, sizeof(uint32_t) * 256);
-    uint32_t prev = rng_hash(seed, 0u, cell, slot) & 0xFFu;
-    for (uint32_t phase = 1; phase <= 0xFFFFu; phase++) {
-        const uint32_t cur = rng_hash(seed, phase, cell, slot) & 0xFFu;
+    uint32_t prev = rng_hash(seed, 0U, cell, slot) & 0xFFU;
+    for (uint32_t phase = 1; phase <= 0xFFFFU; phase++) {
+        const uint32_t cur = rng_hash(seed, phase, cell, slot) & 0xFFU;
         low[cur]++;
-        joint[(prev >> 4) * 16u + (cur >> 4)]++;
+        joint[(prev >> 4) * 16U + (cur >> 4)]++;
         prev = cur;
     }
 }
@@ -238,10 +238,10 @@ first_walk_roll(const uint32_t* draws, int n) {
     if (n < 1) {
         return -1;
     }
-    if ((int)(draws[0] & 0xFFu) >= POCKET_MOBILITY) {
+    if ((int)(draws[0] & 0xFFU) >= POCKET_MOBILITY) {
         return -1;
     }
-    return (n >= 2) ? (int)(draws[1] & 0xFFu) : -1;
+    return (n >= 2) ? (int)(draws[1] & 0xFFU) : -1;
 }
 
 typedef struct {
@@ -364,7 +364,7 @@ run_pocket(uint32_t seed, pocket_result_t* out) {
 
 static void
 hist_range(const uint32_t* counts, uint32_t* lowest, uint32_t* highest) {
-    *lowest = 0xFFFFFFFFu;
+    *lowest = 0xFFFFFFFFU;
     *highest = 0;
     for (int i = 0; i < 256; i++) {
         if (counts[i] < *lowest) {

@@ -45,7 +45,7 @@ is_kin(cell_t a, cell_t self, const reaction_t* r) {
 
 static inline unsigned
 support_slot(uint16_t at) {
-    return (((unsigned)at * 2654435761u) >> 26) & (SUPPORT_SLOTS - 1u);
+    return (((unsigned)at * 2654435761U) >> 26) & (SUPPORT_SLOTS - 1U);
 }
 
 typedef struct {
@@ -58,14 +58,14 @@ typedef struct {
 static bool
 support_admit(support_t* sp, uint16_t at) {
     unsigned k = support_slot(at);
-    while (((sp->filled >> k) & 1u) != 0u) {
+    while (((sp->filled >> k) & 1U) != 0U) {
         if (sp->slot[k] == at) {
             return false;
         }
-        k = (k + 1u) & (SUPPORT_SLOTS - 1u);
+        k = (k + 1U) & (SUPPORT_SLOTS - 1U);
     }
     sp->slot[k] = at;
-    sp->filled |= (uint64_t)1u << k;
+    sp->filled |= (uint64_t)1U << k;
     sp->body[sp->n++] = at;
     return true;
 }
@@ -120,7 +120,7 @@ anchored(sand_t* s, int x, int y, int w, int h, cell_t self, const reaction_t* r
 
     const uint16_t seed = (uint16_t)((size_t)y * (size_t)w + (size_t)x);
     sp.slot[support_slot(seed)] = seed;
-    sp.filled |= (uint64_t)1u << support_slot(seed);
+    sp.filled |= (uint64_t)1U << support_slot(seed);
     sp.body[sp.n++] = seed;
 
     const int down = ring_of(s->last_load_dx, s->last_load_dy);

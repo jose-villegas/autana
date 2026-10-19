@@ -214,7 +214,7 @@ equalise_one_row_cell(sand_t* s, uint8_t* row, int x, int y, const uint8_t* ax_r
         return false;
     }
     const uint8_t id = CELL_MATERIAL(c);
-    if (((is_liquid >> id) & 1u) == 0) {
+    if (((is_liquid >> id) & 1U) == 0) {
         return false;
     }
     /* DERIVED HERE, NOT CARRIED IN, and derived only once the cell is known to
@@ -280,7 +280,7 @@ equalise_one_block(sand_t* s, uint8_t* row, int y, int cx_from, int cx_to, int x
 static inline bool
 span_has_liquid(const uint8_t* row, int x0, int x1, uint16_t is_liquid) {
     for (int x = x0; x < x1; x++) {
-        if (((is_liquid >> CELL_MATERIAL(row[x])) & 1u) != 0) {
+        if (((is_liquid >> CELL_MATERIAL(row[x])) & 1U) != 0) {
             return true;
         }
     }
@@ -713,7 +713,7 @@ float_liquid_row(const liquid_sort_t* sort, int y) {
     for (int xi = xi_lo, ray = first_ray + (xi_lo - xi_first) * ray_step; xi < xi_hi; xi++, ray += ray_step) {
         const int x = x0 + xi * xstep;
         const int ux = x - dx;
-        if (((swapped[(ray - ray_base) >> 3] >> ((ray - ray_base) & 7)) & 1u) != 0u) {
+        if (((swapped[(ray - ray_base) >> 3] >> ((ray - ray_base) & 7)) & 1U) != 0U) {
             continue;
         }
         const cell_t me = row[x], above = urow[ux];
@@ -723,7 +723,7 @@ float_liquid_row(const liquid_sort_t* sort, int y) {
         const uint8_t mine = CELL_MATERIAL(me), theirs = CELL_MATERIAL(above);
         /* The viscosity roll the ordinary move pays keeps a rise a lazy drift. */
         const bool can_swap =
-            ((is_liquid >> mine) & 1u) != 0 && theirs != mine && ((is_liquid >> theirs) & 1u) != 0
+            ((is_liquid >> mine) & 1U) != 0 && theirs != mine && ((is_liquid >> theirs) & 1U) != 0
             && material_by_id((material_id_t)theirs)->density > material_by_id((material_id_t)mine)->density
             && (!viscous_liquid || liquid_may_move(s, x, y, mine));
         if (!can_swap) {
@@ -732,7 +732,7 @@ float_liquid_row(const liquid_sort_t* sort, int y) {
 
         urow[ux] = me;
         row[x] = above;
-        swapped[(ray - ray_base) >> 3] |= (uint8_t)(1u << ((ray - ray_base) & 7));
+        swapped[(ray - ray_base) >> 3] |= (uint8_t)(1U << ((ray - ray_base) & 7));
         mark_slide(s, x, y, ux, uy);
         wake_block_and_neighbors(s, x, y);
         wake_block_and_neighbors(s, ux, uy);
@@ -799,8 +799,8 @@ sand_step_liquids(sand_t* s, const xflow_t* flow, int dx, int dy) {
      * and the answer is the same for all of them. A screen of water - what a
      * liquid scene usually is - therefore pays a popcount, not a pass. */
     SAND_FACT const uint16_t liquids_here = s->may_have_materials & liquid_mask();
-    if (!SAND_SKIP_IF((liquids_here & (uint16_t)(liquids_here - 1u)) == 0u)
-        && (s->step_phase & (LIQUID_SORT_PERIOD - 1u)) == 0u) {
+    if (!SAND_SKIP_IF((liquids_here & (uint16_t)(liquids_here - 1U)) == 0U)
+        && (s->step_phase & (LIQUID_SORT_PERIOD - 1U)) == 0U) {
         SAND_PASS_BEGIN(float);
         (void)float_lighter_liquids(s, dx, dy);
         SAND_PASS_END(s, float);

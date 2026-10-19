@@ -100,7 +100,7 @@ shade_frame(const uint8_t* grid, uint8_t* idx256) {
                 water_depth = 0;
             }
             gfx_color_t col[3];
-            material_colours(&f, c, hash, 0u, depth, col);
+            material_colours(&f, c, hash, 0U, depth, col);
             idx256[cy * GRID_W + cx] = (uint8_t)material_palette256_index(col[0]);
         }
     }
@@ -237,7 +237,7 @@ run_scene(const char* name, scene_build_fn build, scene_step_fn step, const uint
           const uint8_t* checker2_class) {
     static uint8_t grid[GRID_W * GRID_H];
     sand_t sim;
-    sand_init(&sim, grid, GRID_W, GRID_H, 0xC0107000u);
+    sand_init(&sim, grid, GRID_W, GRID_H, 0xC0107000U);
     build(&sim);
 
     static uint8_t prev_grid[GRID_W * GRID_H], prev_idx256[GRID_W * GRID_H];

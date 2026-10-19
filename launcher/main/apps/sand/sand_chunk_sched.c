@@ -80,8 +80,8 @@ order_push_in_line(sand_chunk_order_t* o, int cols, int line, int j, bool j_is_x
 
 static void
 order_axis_line(sand_chunk_order_t* o, int cols, int line, int span, bool j_is_x, unsigned phase) {
-    for (unsigned half = 0; half < 2u; half++) {
-        const int want = (int)((phase ^ half) & 1u);
+    for (unsigned half = 0; half < 2U; half++) {
+        const int want = (int)((phase ^ half) & 1U);
         for (int j = 0; j < span; j++) {
             if ((j & 1) == want) {
                 order_push_in_line(o, cols, line, j, j_is_x);

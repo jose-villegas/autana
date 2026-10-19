@@ -508,8 +508,8 @@ pick_open_ejecta_dir(sand_t* s, size_t old_index, int dir_for_transfer) {
     const unsigned first = rng_below(&s->rng, 3);
     int chosen = -1;
 
-    for (unsigned k = 0; k < 3u && chosen < 0; k++) {
-        const int cand = (base + (int)((first + k) % 3u)) & 7;
+    for (unsigned k = 0; k < 3U && chosen < 0; k++) {
+        const int cand = (base + (int)((first + k) % 3U)) & 7;
         const int* cd = ring_dir(cand);
         if (CELL_IS_EMPTY(sand_at(s, ex + cd[0], ey + cd[1]))) {
             chosen = cand;

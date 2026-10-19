@@ -134,7 +134,7 @@ setup(int quarter) {
     if (quarter != 1) {
         return false;
     }
-    sand_init(&sim, cells, GRID_W, GRID_H, 0x564f4c43u);
+    sand_init(&sim, cells, GRID_W, GRID_H, 0x564f4c43U);
     sand_paint_row_state_init(&paint);
     sand_set_scatter(&sim, SAND_SCATTER_PER_MATERIAL);
     sand_set_decay(&sim, SAND_DECAY_PER_MATERIAL);

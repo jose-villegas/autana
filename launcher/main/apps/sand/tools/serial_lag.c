@@ -125,7 +125,7 @@ cell_mass(cell_t c) {
     if (CELL_IS_EMPTY(c)) {
         return 0;
     }
-    return ((liquid_mask() >> CELL_MATERIAL(c)) & 1u) != 0 ? CELL_VARIANT(c) : 1;
+    return ((liquid_mask() >> CELL_MATERIAL(c)) & 1U) != 0 ? CELL_VARIANT(c) : 1;
 }
 
 typedef struct {
@@ -199,8 +199,8 @@ keep_worst(lag_result_t* out, lag_step_t d, int step) {
 static lag_result_t
 measure(const lag_case_t* c) {
     sand_t split, serial;
-    sand_init(&split, cells_split, LAG_W, LAG_H, 7u);
-    sand_init(&serial, cells_serial, LAG_W, LAG_H, 7u);
+    sand_init(&split, cells_split, LAG_W, LAG_H, 7U);
+    sand_init(&serial, cells_serial, LAG_W, LAG_H, 7U);
     sand_enable_sleeping(&split, blocks_split);
     sand_enable_sleeping(&serial, blocks_serial);
     sand_enable_step_stamps(&split, stamps_split);

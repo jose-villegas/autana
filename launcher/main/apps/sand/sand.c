@@ -1010,10 +1010,10 @@ build_sweep_tables(void) {
     }
     for (int r = 0; r < MATERIAL_ROWS; r++) {
         if (materials[r].kind == KIND_STATIC || materials[r].kind == KIND_GAS) {
-            sweep_skip_mask |= 1u << r;
+            sweep_skip_mask |= 1U << r;
         }
         if (materials[r].kind == KIND_LIQUID) {
-            sweep_liquid_mask |= 1u << r;
+            sweep_liquid_mask |= 1U << r;
         }
     }
     sweep_cell_liquid_mask = liquid_mask();
@@ -1089,10 +1089,10 @@ step_one_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* b
      * Only a powder reaches materials[] now, and only for its density and
      * scatter, which no mask can carry. */
     const unsigned mrow = (unsigned)grain >> 3;
-    if (((sweep_skip_mask >> mrow) & 1u) != 0) {
+    if (((sweep_skip_mask >> mrow) & 1U) != 0) {
         return false;
     }
-    if (((sweep_liquid_mask >> mrow) & 1u) != 0) {
+    if (((sweep_liquid_mask >> mrow) & 1U) != 0) {
         return step_one_liquid_grain(s, row, prow, arow, brow, x, y, w, dx, dy, slide_a, slide_b, grain, dest);
     }
 
@@ -1246,7 +1246,7 @@ step_one_block(const sweep_ctx_t* ctx, int bx) {
          * is questioned before it is built. Counted BEFORE the stamped skip:
          * a cell that arrived here this pass is still liquid sitting in this
          * block, and cross-flow looks nowhere the sweep did not mark. */
-        saw_liquid |= (unsigned)(ctx->is_liquid >> CELL_MATERIAL(c)) & 1u;
+        saw_liquid |= (unsigned)(ctx->is_liquid >> CELL_MATERIAL(c)) & 1U;
         if (sand_row_cell_stamped(ctx->stamp_row, x)) {
             continue;
         }
@@ -1401,7 +1401,7 @@ viscous_liquid_possible(const sand_t* s) {
         return s->mobility != 0 && s->mobility < 255;
     }
     for (int m = 0; m < MATERIAL_MAX; m++) {
-        if ((s->may_have_materials & (1u << m)) == 0) {
+        if ((s->may_have_materials & (1U << m)) == 0) {
             continue;
         }
         const material_t* mat = material_by_id((material_id_t)m);
