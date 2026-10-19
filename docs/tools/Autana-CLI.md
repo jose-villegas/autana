@@ -184,6 +184,7 @@ Changes state the way a person holding the board could.
 | `autana sound play <name> [loop] [gain]` | Play a sound from the engine pack; gain is a percent, full gain when omitted. |
 | `autana sound stop [voice\|all]` | Stop a voice or all voices; all when omitted. |
 | `autana sound stats` | Voice states, dropped commands, amplifier state and mixer RAM sizes. |
+| `autana sound onset <event> [hz] [gain]` | Measure amplifier, start, stop and steal transients; see [Sound mixer](../audio/Sound-Mixer.md#clicks-at-start-stop-and-amplifier-changes). |
 
 Coordinates are pixels of the default `autana screenshot`, whichever way the
 board is held; read a button's centre off that image. Pixels from an

@@ -334,6 +334,7 @@ and median peak time per event and arm; `--check` rejects stale or invalid data.
 | `audio/audio_out.c` | `AUDIO_OUT_DAC_RAMP_*`, `amp_mute_enabled`, `amp_ready`, `dac_ramp_rate`; configure/ready functions, mute branch and close resets |
 | `console/verbs/console_sound_parse.h` | `CONSOLE_SOUND_ONSET_*`, `console_sound_event_t`, `console_sound_events`, `CONSOLE_SOUND_ONSET`, parsed `hz`/`event`, onset parsing branch |
 | `console/verbs/console_sound.c` | `ONSET_*`, `onset_peak_t`, `onset_window`, `onset_db`, `stop_all`, `onset_wait`, `onset_prepare`, `onset_trigger`, `onset_measure`, `sound_onset`, onset dispatch and added includes |
+| `docs/tools/Autana-CLI.md` | Onset command row |
 | `scripts/autana/autana.py` | `SOUND_ONSET_SECONDS`, onset reply timeout; `SoundOnsetCommandTests` in `scripts/autana/tests/test_autana.py` |
 | `launcher/tools/audio/sound_onset_capture.py` | Entire capture tool, including `SOUND_PREFIX`/`SOUND_UNTIL` from the shared console protocol |
 | `launcher/tools/audio/audio_doc_tables.py` | `ONSET_*`, `render_onset`, `update_onset`, onset CLI option and dispatch, math/statistics imports |
