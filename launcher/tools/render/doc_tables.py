@@ -137,7 +137,7 @@ def small_fill_board(data, scene_id, object_name):
 
 
 def write_small_fill(work, out, scene_id, object_name, data):
-    """Camera axes from the source registry, temporal CSVs and recorded board sweeps."""
+    """Camera axes from render_view.h, temporal CSVs and recorded board sweeps."""
     out.mkdir(parents=True, exist_ok=True)
     from ctypes import c_uint8
     header = VIEW_HEADER.read_text()

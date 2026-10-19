@@ -158,7 +158,7 @@ class DocImageFailureTest(unittest.TestCase):
     def test_small_fill_header_lists_only_selectable_styles(self):
         sys.path.insert(0, str(ROOT / "launcher/tools/render"))
         import doc_tables
-        self.assertEqual(doc_tables.SMALL_FILL_STYLES, ["FLAT", "GRAIN", "DITHER"])
+        self.assertEqual(doc_tables.SMALL_FILL_STYLES, ["FLAT", "GRAIN", "DITHER"])  # magic: independent expected enum spellings.
 
     def test_timing_samples_preserves_requested_identity_fields(self):
         sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
