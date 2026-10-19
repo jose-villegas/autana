@@ -124,7 +124,8 @@ pmu_init(void) {
      * from EFUSE/POR, so this is not something the datasheet can answer and
      * the only way to know is to ask the chip, once, here. Observation only;
      * neither register is written. */
-    uint8_t levels = 0, pwroff = 0;
+    uint8_t levels = 0;
+    uint8_t pwroff = 0;
     if (pmu_read(AXP2101_REG_LEVELS, &levels) && pmu_read(AXP2101_REG_PWROFF, &pwroff)) {
         static const char* irq_level[4] = {"1s", "1.5s", "2s", "2.5s"};
         static const char* off_level[4] = {"4s", "6s", "8s", "10s"};
@@ -132,8 +133,8 @@ pmu_init(void) {
         const uint8_t irqlevel = (levels >> 4) & 0x3;
         const uint8_t offlevel = (levels >> 2) & 0x3;
         const uint8_t onlevel = levels & 0x3;
-        const bool pwroff_en = (pwroff & (1u << 1)) != 0;
-        const bool pwroff_mode = (pwroff & (1u << 0)) != 0;
+        const bool pwroff_en = (pwroff & (1U << 1)) != 0;
+        const bool pwroff_mode = (pwroff & (1U << 0)) != 0;
         ESP_LOGI(TAG,
                  "AXP2101 PWR thresholds: irqlevel %s, offlevel %s, onlevel %s, "
                  "pwroff_en %d, pwroff_mode %s",

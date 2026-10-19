@@ -27,7 +27,7 @@
 #define GFX_HEAL_PHASE_STEP (3 * GFX_HEAL_UNIT_ROWS)
 
 /* The most strips one plan can return: every unit's strip, disjoint. */
-#define GFX_HEAL_MAX_STRIPS (GFX_HEIGHT / GFX_HEAL_STRIP_ROWS + 1)
+#define GFX_HEAL_MAX_STRIPS ((GFX_HEIGHT / GFX_HEAL_STRIP_ROWS) + 1)
 
 _Static_assert(GFX_HEAL_UNITS <= 64, "pending units must fit one uint64_t");
 _Static_assert(GFX_HEAL_STRIP_ROWS % GFX_HEAL_UNIT_ROWS == 0, "a strip must cover whole units");

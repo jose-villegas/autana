@@ -84,7 +84,7 @@ class ShippedCorrectionTest(unittest.TestCase):
         with open(TOUCH_C, encoding="utf-8") as f:
             source = f.read()
         body = re.search(r"PANEL_FIT = \{(.*?)\}", source, re.S).group(1)
-        return {k: float(v) for k, v in re.findall(r"\.(\w+) = (-?[\d.]+)f", body)}
+        return {k: float(v) for k, v in re.findall(r"\.(\w+) = (-?[\d.]+)[fF]", body)}
 
     def test_the_shipped_fit_is_the_uncorrected_capture_fitted(self):
         probes = [p for p in fixture("uncorrected.log") if probe_fit.usable(p) and p["mode"] == "random"]

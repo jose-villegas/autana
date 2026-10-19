@@ -15,10 +15,12 @@ static void
 forward_to_tune(const char* verb, const char* args, console_reply_fn reply) {
     (void)reply;
     char line[CONSOLE_LINE_MAX];
-    if (args[0] == '\0') {
-        snprintf(line, sizeof line, "%s", verb);
-    } else {
-        snprintf(line, sizeof line, "%s %s", verb, args);
+    const int length =
+        args[0] == '\0' ? snprintf(line, sizeof line, "%s", verb) : snprintf(line, sizeof line, "%s %s", verb, args);
+    if (length < 0 || (size_t)length >= sizeof line) {
+        /* A clipped command would SET some other value: refuse it. */
+        console_reply_stdio("TUNE_ERR line-too-long");
+        return;
     }
     tune_handle_line(line, console_reply_stdio);
 }
