@@ -8,7 +8,6 @@ set(app_srcs
     "audio/audio_in.c"
     "audio/audio_tone.c"
     "app/app_arena.c"
-    "app/app_console.c"
     "app/app_registry.c"
     "boot/boot_anim.c"
     "boot/boot_anim_motion.c"
@@ -127,6 +126,7 @@ endif()
 # each actually answers on.
 if(CONFIG_LAUNCHER_DEVELOPMENT)
     list(APPEND app_srcs
+        "app/app_console.c"
         "console/console_verbs.c"
         "console/console.c"
         "console/verbs/console_buildid.c"

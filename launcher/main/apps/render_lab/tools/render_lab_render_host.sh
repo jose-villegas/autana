@@ -55,7 +55,6 @@ main/scene/scene_shell.c
 main/render/r3d_lit_mesh.c
 main/input/gesture.c
 main/input/orbit_motion_touch.c
-main/console/console_verbs.c
 main/apps/render_lab/tools/render_lab_render_host.c
 $(CDPATH= cd -- "$SCRIPT_DIR/../../../../" &&
     find main/apps/render_lab \( -type d \( -name tools -o -name tests \) -prune \) -o \

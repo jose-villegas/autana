@@ -265,24 +265,36 @@ class StyleAuditTest(unittest.TestCase):
 
     def assert_include_cases(self, rule_id, tree, cases):
         """Each (source, include, expected): `source` holding only that
-        include, over `tree`, draws `expected` findings of `rule_id`."""
+        include, over `tree`, draws `expected` findings of `rule_id`. An
+        include written <...> is kept angled; any other is quoted."""
         for source, include, expected in cases:
             with self.subTest(source=source, include=include):
-                findings = self.audit(rule_id, {**tree, source: f'#include "{include}"\n'})
+                line = f"#include {include}\n" if include.startswith("<") else f'#include "{include}"\n'
+                findings = self.audit(rule_id, {**tree, source: line})
                 self.assertEqual(len(findings), expected)
 
     def test_an_app_or_the_editor_including_the_system_band_is_flagged_but_not_the_app_contract(self):
-        targets = ("shell/shell.h", "console/console_verbs.h", "selftest/post.h", "app/app.h", "ui/ui.h")
+        targets = ("shell/shell.h", "console/console_verbs.h", "selftest/post.h", "boot/boot_anim.h",
+                   "app/app.h", "ui/ui.h")
         self.assert_include_cases("SYSTEM-BAND", {"launcher/main/" + t: "#pragma once\n" for t in targets}, (
             ("launcher/main/apps/x/x.c", "shell/shell.h", 1),
             ("launcher/main/apps/x/x.c", "console/console_verbs.h", 1),
+            ("launcher/main/apps/x/x.h", "boot/boot_anim.h", 1),
             ("launcher/main/apps/x/tests/suite_x.c", "selftest/post.h", 1),
+            ("launcher/main/apps/x/x.c", "<console/console_verbs.h>", 1),
             ("editor/src/x.cpp", "shell/shell.h", 1),
+            ("editor/src/x.cpp", "<selftest/post.h>", 1),
             ("launcher/main/apps/x/x.c", "app/app.h", 0),
             ("launcher/main/apps/x/x.c", "ui/ui.h", 0),
             ("editor/src/x.cpp", "ui/ui.h", 0),
             ("launcher/main/shell/apps/x/x.c", "selftest/post.h", 0),
         ))
+
+    def test_the_system_band_refused_follows_the_layer_table(self):
+        system = dict(check_style_audit.LAYER_BANDS)["system"]
+        between = {layer for row in system[1:-1] for layer in row.split()}
+        self.assertEqual(check_style_audit.SYSTEM_BAND_REFUSED, between)
+        self.assertNotIn(system[-1], between)
 
     BACKEND = {"launcher/components/microui/include/microui.h": "#pragma once\n"}
 
@@ -292,16 +304,22 @@ class StyleAuditTest(unittest.TestCase):
             "launcher/main/ui/ui.h": "#pragma once\n",
             "launcher/main/ui/ui_internal.h": '#include "microui.h"\n',
             "launcher/main/ui/deep.h": '#include "ui/ui_internal.h"\n',
+            "launcher/main/ui/deeper.h": '#include "ui/deep.h"\n',
+            "launcher/main/ui/relative.h": '#include "../../components/microui/include/microui.h"\n',
             "launcher/test/probe.h": '#include "ui/ui_internal.h"\n',
         }, (
             ("launcher/main/apps/x/x.c", "microui.h", 1),
+            ("launcher/main/apps/x/x.c", "<microui.h>", 1),
+            ("launcher/main/shell/x.c", "../../components/microui/include/microui.h", 1),
+            ("launcher/main/shell/x.c", "ui/relative.h", 1),
             ("launcher/main/shell/x.c", "ui/ui_internal.h", 1),
-            ("launcher/main/shell/x.c", "ui/deep.h", 1),
+            ("launcher/main/shell/x.c", "ui/deeper.h", 1),
             ("editor/src/x.cpp", "ui/ui_internal.h", 1),
             ("launcher/main/apps/x/tests/suite_x.c", "probe.h", 1),
             ("launcher/main/apps/x/x.c", "ui/ui.h", 0),
             ("launcher/main/ui/ui.c", "ui/ui_internal.h", 0),
             ("launcher/test/suites/suite_x.c", "ui/ui_internal.h", 0),
+            ("launcher/tools/render/x.c", "ui/ui_internal.h", 0),
         ))
 
     def test_a_leaking_header_outside_ui_is_reported_once_at_its_own_include(self):

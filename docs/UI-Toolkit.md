@@ -13,7 +13,8 @@ and the house rules it must follow, are in
 A screen uses only the plain-value face in `ui/ui.h`, taught in
 [`Building-a-Screen.md`](Building-a-Screen.md). The controls and helpers
 below are the layer the face verbs are built from, in `ui/ui_internal.h`
-and private to `ui/`: the include gate refuses them anywhere else. They are
+and the `ui/` headers that include microui, private to `ui/`: the include
+gate refuses them anywhere else. They are
 catalogued here for whoever adds a face verb.
 
 The board is held either way up, so a screen must work in both
@@ -24,7 +25,7 @@ code, drawn on a host by the gallery scene,
 
 ## At a glance
 
-| A screen needs | Call | Header |
+| A face verb needs | Call | Header |
 |---|---|---|
 | a frame to draw in | `ui_begin()`, `ui_begin_screen()`, `ui_end()` | `ui/ui.h`, `ui/ui_internal.h` |
 | a button with an icon beside its label | `ui_icon_button()` | `ui/ui_internal.h` |

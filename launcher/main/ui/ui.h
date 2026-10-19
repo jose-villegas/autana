@@ -1,32 +1,25 @@
 /*
- * ui: shared microui integration, for the shell and for apps.
- * The module also hosts the plain-value face.
+ * ui: the plain-value UI face, for the shell and for apps. The library
+ * behind it is private to ui/.
  *
  * Everything an app needs to draw a UI, and nothing about any particular UI.
  * The launcher is one caller; an app wanting a settings panel or a readout is
  * another, and gets the same touch handling and the same redraw skipping for
  * free.
  *
- * microui is immediate-mode and does no drawing itself: each frame it turns a
- * UI description into a list of rectangles, text and icons, and this module
- * walks that list painting into the shared framebuffer.
+ * The face is immediate mode and does no drawing itself: each frame a screen
+ * describes its UI again, the frame becomes a list of rectangles, text and
+ * icons, and ui_end() walks that list painting into the shared framebuffer.
+ * A retained-mode toolkit wants to own the display and the refresh cycle,
+ * which fights an app that owns its own drawing. Here a list of primitives is
+ * rendered whenever and into whatever the caller likes.
  *
- * That command-list model is why microui suits this device. A retained-mode
- * toolkit wants to own the display and the refresh cycle, which fights an app
- * that owns its own drawing. Here we render a list of primitives whenever we
- * like, into whatever we like.
- *
- * This module knows about dirty bands because immediate mode rebuilds and
- * repaints the whole UI every frame, which normally means clearing the screen
- * every frame, marking every band dirty and forcing a full-frame transfer,
- * throwing away the saving partial updates exist to provide. That would hit
- * any app that drew a UI, not only the launcher.
- *
- * The fix is that an immediate-mode UI is only *rebuilt* every frame, not
- * necessarily *changed*. microui's command list is a complete description of
- * the output, so if it hashes the same as last frame the picture is identical
- * and both the repaint and the transfer can be skipped. A static menu then
- * costs nothing at all.
+ * The UI is only *rebuilt* every frame, not necessarily *changed*. The list
+ * is a complete description of the output, so if it hashes the same as last
+ * frame the picture is identical and both the repaint and the transfer are
+ * skipped, and a static menu costs nothing at all. Repainting every frame
+ * instead would mark every band dirty and force a full-frame transfer in any
+ * app that drew a UI.
  */
 #pragma once
 
@@ -76,10 +69,10 @@
 /* How button frames are drawn for the rest of this UI frame.
  *
  * Buttons only. Checkboxes, sliders and text boxes frame themselves from
- * MU_COLOR_BASE and are left alone; a 3px bezel around a 64px checkbox reads
+ * the base colour and are left alone; a 3px bezel around a 64px checkbox reads
  * as a mistake, not as a style. */
 typedef enum {
-    /* microui's own: a flat fill plus a one-pixel MU_COLOR_BORDER box. */
+    /* A flat fill plus a one-pixel border box. */
     UI_BUTTON_FLAT = 0,
 
     /* Lit from the top left, and inverted while a finger is on it, so a
@@ -96,8 +89,8 @@ typedef enum {
 
 void ui_init(void);
 
-/* Start a UI frame: touch becomes microui's mouse events, and the button
- * style resets to UI_BUTTON_FLAT (the shell shares one mu_Context). A NULL
+/* Start a UI frame: touch becomes the controls' pointer events, and the
+ * button style resets to UI_BUTTON_FLAT (the shell shares one UI context). A NULL
  * `input` opens a repaint-only boot frame: no input is fed and no pointer
  * state is reported. Use it before input starts, with no touch in progress. */
 void ui_begin(const input_t* input);
@@ -105,11 +98,11 @@ void ui_begin(const input_t* input);
 /* Choose how button frames are drawn for the rest of this frame.
  *
  * Call it after ui_begin() and before the buttons it should apply to; it can
- * be changed again mid-frame, so one UI can mix styles. See ui_style.h for
- * what each style is and why only buttons are affected. */
+ * be changed again mid-frame, so one UI can mix styles; ui_button_style_t
+ * above says what each style is and why only buttons are affected. */
 void ui_set_button_style(ui_button_style_t style);
 
-/* Choose how MU_COMMAND_TEXT is drawn for the rest of this frame. Unlike
+/* Choose how text is drawn for the rest of this frame. Unlike
  * ui_set_button_style(), this is not reset by ui_begin() and is not part
  * of the frame's description in the sense that matters for the repaint
  * hash; see the comment above ui_set_text_style()'s definition in ui.c
@@ -117,7 +110,7 @@ void ui_set_button_style(ui_button_style_t style);
  * does not. */
 void ui_set_text_style(ui_text_style_t style);
 
-/* Choose the font microui measures and draws MU_COMMAND_TEXT with, until
+/* Choose the font text is measured and drawn with, until
  * called again; ui_init() seeds it with draw_font_ui(). NULL falls back
  * to draw_font_ui() rather than being stored. Unlike ui_set_text_style()
  * and ui_set_transform() below, this does NOT need ui_invalidate(); see
@@ -147,8 +140,8 @@ int ui_measure_text(const char* str);
  * byte-identical regardless; see ui_set_text_style()'s ui.c comment for
  * the full argument. */
 
-/* ONE TRANSFORM PER RENDERED PASS, NOT A STACK. microui's command list has no
- * way to carry a transform change partway through it, and components/microui/
+/* ONE TRANSFORM PER RENDERED PASS, NOT A STACK. The frame's command list has
+ * no way to carry a transform change partway through it, and the vendored library
  * is deliberately unpatched, so there is no per-widget nesting. */
 void ui_set_transform(affine2x_t t);
 
@@ -216,8 +209,8 @@ void ui_replay_band(int row0, int row1);
 uint32_t ui_band_fallback_count(void);
 
 /* Queues a plain opaque rect for the NEXT ui_end_for_bands() call to bin
- * alongside its own microui commands, for pixels to show in band mode
- * that were never built through microui, such as the shell's own
+ * alongside the frame's own commands, for pixels to show in band mode
+ * that were never built through the face, such as the shell's own
  * home-swipe hint. Drained (and cleared) by that call, so state it every
  * frame it is wanted. `rgb` is plain 0xRRGGBB, not a gfx_color_t; ui.h
  * does not otherwise depend on gfx.h. */

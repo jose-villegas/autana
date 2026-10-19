@@ -14,7 +14,8 @@ host C compiler, as described in the [README](../README.md#try-it-without-a-boar
 
 ## The face
 
-A screen includes `ui/ui.h` and nothing else of the toolkit. Its verbs take
+A screen includes `ui/ui.h`, plus the toolkit headers that do not reach the
+backend (`ui/layout/ui_anchor.h`, `ui/controls/ui_icons.h`). Its verbs take
 plain values: a `recti_t` for where, a string for what, a pointer for the
 value a control edits, `0xRRGGBB` for a colour. The library behind them is
 private to `ui/`, and the include gate refuses it anywhere else, so the
@@ -253,14 +254,13 @@ and not a colour; the launcher's ridge (`shell/ui/ui_ridge.c`) is the model.
    put back on top with no backdrop call.
 3. At rest it must draw nothing. A backdrop that redraws an identical frame
    dirties the screen, and the launcher stops being free while idle.
-4. React to the raw `input_t`, mapped with `ui_to_logical()`, not to the
-   controls: a press is held back until it is known to be a tap and not a
+4. React to the raw `input_t`, not to the controls: a press is held back until it is known to be a tap and not a
    scroll, which is a frame or two too late for feedback.
 
 ### Knowing what a screen costs
 
-Everything a frame builds spends an 8 KiB command list on the device,
-roughly 250 rects for a whole screen. A `CONFIG_LAUNCHER_DEVELOPMENT` build
+Everything a frame builds spends the device's fixed command list, roughly
+250 rects for a whole screen. A `CONFIG_LAUNCHER_DEVELOPMENT` build
 logs the high-water mark from `ui_end()`, and a screen's budget suite calls
 `ui_probe_budget_assert()` to keep headroom for one more screen. Check it
 before adding a texture or a fifth icon.
@@ -294,7 +294,7 @@ before adding a texture or a fifth icon.
 - [ ] every fixed string measured against its own rect
 - [ ] every tap target >= `UI_TAP_MIN`
 - [ ] taps routed through a face control, decided by the state module
-- [ ] only `ui/ui.h` included from the toolkit
+- [ ] no toolkit header that reaches the backend included
 - [ ] nothing painted outside the face
 - [ ] `run_tests.sh` green, `check_app_sources.sh` green
 - [ ] new behavioural tests seen red first, on a mutation that compiled
