@@ -87,18 +87,18 @@ test_mean_and_spread_follow_the_taps(void) {
     touch_probe_record(&s, t, 106, 216);
     touch_probe_record(&s, t, 106, 226);
     touch_probe_record(&s, t, 106, 236);
-    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, touch_probe_mean_dx(&s));
-    TEST_ASSERT_FLOAT_WITHIN(0.001f, 20.0f, touch_probe_mean_dy(&s));
-    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, touch_probe_spread_dx(&s));
-    TEST_ASSERT_FLOAT_WITHIN(0.001f, 10.0f, touch_probe_spread_dy(&s));
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, 0.0F, touch_probe_mean_dx(&s));
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, 20.0F, touch_probe_mean_dy(&s));
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, 0.0F, touch_probe_spread_dx(&s));
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, 10.0F, touch_probe_spread_dy(&s));
     TEST_ASSERT_EQUAL_INT(30 * 30, s.worst_dist2);
 }
 
 static void
 test_no_taps_reads_as_zero_not_nan(void) {
     const touch_probe_stats_t s = {0};
-    TEST_ASSERT_EQUAL_FLOAT(0.0f, touch_probe_mean_dy(&s));
-    TEST_ASSERT_EQUAL_FLOAT(0.0f, touch_probe_spread_dy(&s));
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, touch_probe_mean_dy(&s));
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, touch_probe_spread_dy(&s));
 }
 
 static void

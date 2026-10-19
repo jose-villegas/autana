@@ -278,12 +278,12 @@ paint_canvas(const mu_Container* cnt) {
  * none of it is used. */
 static uint64_t
 hash_canvas(const mu_Container* cnt) {
-    uint64_t h = 1469598103934665603ull;
+    uint64_t h = 1469598103934665603ULL;
     mu_Command* cmd = NULL;
     while (next_canvas_command(cnt, &cmd)) {
         const unsigned char* p = (const unsigned char*)cmd;
         for (int i = 0; i < cmd->base.size; i++) {
-            h = (h ^ p[i]) * 1099511628211ull;
+            h = (h ^ p[i]) * 1099511628211ULL;
         }
     }
     return h;
@@ -654,7 +654,7 @@ hash_bytes(uint64_t h, const void* data, size_t len) {
     const unsigned char* p = (const unsigned char*)data;
     for (size_t i = 0; i < len; i++) {
         h ^= p[i];
-        h *= 1099511628211ull;
+        h *= 1099511628211ULL;
     }
     return h;
 }
@@ -667,7 +667,7 @@ hash_bytes(uint64_t h, const void* data, size_t len) {
  * in this band, mu_Command byte layout and all. */
 static uint64_t
 hash_band_entries(int row0, int row1) {
-    uint64_t h = 1469598103934665603ull;
+    uint64_t h = 1469598103934665603ULL;
 
     for (int i = 0; i < ui_band_bin_count; i++) {
         const ui_band_entry_t* e = &ui_band_bin[i];

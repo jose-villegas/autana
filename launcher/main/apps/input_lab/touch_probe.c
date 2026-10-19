@@ -44,17 +44,17 @@ touch_probe_record(touch_probe_stats_t* stats, touch_probe_target_t target, int 
 
 static float
 mean(int64_t sum, int n) {
-    return n > 0 ? (float)sum / (float)n : 0.0f;
+    return n > 0 ? (float)sum / (float)n : 0.0F;
 }
 
 static float
 spread(int64_t sum, int64_t sum2, int n) {
     if (n < 2) {
-        return 0.0f;
+        return 0.0F;
     }
     const float m = (float)sum / (float)n;
     const float variance = ((float)sum2 - (float)n * m * m) / (float)(n - 1);
-    return variance > 0.0f ? sqrtf(variance) : 0.0f;
+    return variance > 0.0F ? sqrtf(variance) : 0.0F;
 }
 
 float

@@ -26,12 +26,12 @@ static esp_lcd_touch_handle_t panel;
  * across both orientations: the long axis alone reads 18% stretched about a
  * point 165 px down it, the same whichever way the board is held. */
 static const touch_calib_fit_t PANEL_FIT = {
-    .xx = 1.119f,
-    .xy = 0.019f,
-    .x0 = -23.1f,
-    .yx = 0.015f,
-    .yy = 1.183f,
-    .y0 = -29.2f,
+    .xx = 1.119F,
+    .xy = 0.019F,
+    .x0 = -23.1F,
+    .yx = 0.015F,
+    .yy = 1.183F,
+    .y0 = -29.2F,
 };
 static touch_calib_t calib;
 
@@ -206,7 +206,7 @@ poll_once(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     if (have_point) {
         point_samples++;
-        moved_samples += (x != last_x || y != last_y) ? 1u : 0u;
+        moved_samples += (x != last_x || y != last_y) ? 1U : 0U;
         last_x = x;
         last_y = y;
     }

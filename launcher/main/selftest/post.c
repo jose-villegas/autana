@@ -206,7 +206,7 @@ check_mac(void) {
 
 static void
 check_temperature(void) {
-    float celsius = 0.0f;
+    float celsius = 0.0F;
     const board_temp_sensor_status_t status = board_temp_sensor_read_celsius(&celsius);
 
     char detail[96];
@@ -217,7 +217,7 @@ check_temperature(void) {
     }
 
     /* A plausible reading also rules out a sensor stuck at a fixed value. */
-    const bool valid = status == BOARD_TEMP_SENSOR_OK && celsius > -40.0f && celsius < 125.0f;
+    const bool valid = status == BOARD_TEMP_SENSOR_OK && celsius > -40.0F && celsius < 125.0F;
     report("temp sensor", valid, POST_REQUIRED, detail);
 }
 

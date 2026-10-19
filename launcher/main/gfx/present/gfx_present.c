@@ -705,7 +705,7 @@ run_present_strips(bool (*send_rows)(int y0, int y1)) {
      * quiet need the clean resend. */
     for (int row = 0; row < STRIP_COUNT; row++) {
         if (dirty_row_is_dirty(row)) {
-            overlay_bordered_rows &= ~(1u << row);
+            overlay_bordered_rows &= ~(1U << row);
         }
     }
     send_overlay_bordered_rows_clean(send_rows, &queued);
@@ -716,7 +716,7 @@ run_present_strips(bool (*send_rows)(int y0, int y1)) {
         }
 #if CONFIG_LAUNCHER_DEVELOPMENT
         if (overlay_any_on()) {
-            overlay_bordered_rows |= 1u << row;
+            overlay_bordered_rows |= 1U << row;
             strip_overlay_row = row;
         }
 #endif
@@ -750,13 +750,13 @@ send_dirty_rows(int* queued) {
         }
 
         if (interlace_on && (row % 2) != frame_parity) {
-            remaining_cell_dirty |= cell_dirty & (((1u << GRID_COLS) - 1u) << (row * GRID_COLS));
+            remaining_cell_dirty |= cell_dirty & (((1U << GRID_COLS) - 1U) << (row * GRID_COLS));
             continue;
         }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
         if (overlay_any_on()) {
-            overlay_bordered_rows |= 1u << row;
+            overlay_bordered_rows |= 1U << row;
         }
 #endif
         send_one_row(row, queued);

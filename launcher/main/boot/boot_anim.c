@@ -73,7 +73,7 @@ static boot_anim_backdrop_fn ending_backdrop;
 /* Folds global dissolve into existing alpha. */
 static uint8_t
 scale8(uint8_t a, uint8_t b) {
-    return (uint8_t)(((uint32_t)a * b + 127u) / 255u);
+    return (uint8_t)(((uint32_t)a * b + 127U) / 255U);
 }
 
 /* `rgb` lifted `alpha` of the way off the background. */
@@ -147,7 +147,7 @@ mesh_point(const mesh_pass_t* pass, int i, int j) {
 
 static vec3x_t
 mesh_stepped_point(const mesh_pass_t* pass, int i, int j, vec3x_t plane, int32_t lift) {
-    if (!pass->stepping || (uint32_t)(lift + R3D_X_INPUT_Y_LIMIT) >= 2u * R3D_X_INPUT_Y_LIMIT) {
+    if (!pass->stepping || (uint32_t)(lift + R3D_X_INPUT_Y_LIMIT) >= 2U * R3D_X_INPUT_Y_LIMIT) {
         return boot_anim_to_camera_space(i * BOOT_ANIM_MESH_STEP_Q12, j * BOOT_ANIM_MESH_STEP_Q12, lift, pass->view);
     }
     return (vec3x_t){
@@ -168,7 +168,7 @@ mesh_node(const mesh_pass_t* pass, int i, int j, vec3x_t plane) {
     node.sx = (int16_t)sx;
     node.sy = (int16_t)sy;
     node.band_q4 = (int16_t)boot_anim_floor_node(i, j)->band_q4;
-    node.flags = (uint8_t)(gfx_clip_outcode(&pass->clip, sx, sy) | (front ? MESH_NODE_FRONT : 0u));
+    node.flags = (uint8_t)(gfx_clip_outcode(&pass->clip, sx, sy) | (front ? MESH_NODE_FRONT : 0U));
     return node;
 }
 
@@ -423,7 +423,7 @@ draw_arm(int32_t re, int32_t im, int32_t t, uint8_t reach, uint8_t ink, const bo
     int bx;
     int by;
     if (boot_anim_project_segment(0, 0, 0, fre, fim, ft, view, &ax, &ay, &bx, &by)) {
-        draw_line_ex(ax, ay, bx, by, lit(COL_AXIS, ink), 0u);
+        draw_line_ex(ax, ay, bx, by, lit(COL_AXIS, ink), 0U);
     }
 }
 
@@ -513,7 +513,7 @@ draw_stroke(int x0, int y0, int x1, int y1, gfx_color_t c, int width, bool joine
         const int bx = shallow ? x1 : x1 + off;
         const int by = shallow ? y1 + off : y1;
 
-        draw_line_ex(ax, ay, bx, by, c, DRAW_LINE_ADD | (joined ? DRAW_LINE_OPEN : 0u));
+        draw_line_ex(ax, ay, bx, by, c, DRAW_LINE_ADD | (joined ? DRAW_LINE_OPEN : 0U));
     }
 }
 

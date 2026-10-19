@@ -418,7 +418,7 @@ _Static_assert(STRIP_COUNT <= 32, "one bit per strip row");
 void
 send_overlay_bordered_rows_clean(bool (*send_rows)(int y0, int y1), int* queued) {
     for (int row = 0; row < STRIP_COUNT; row++) {
-        if ((overlay_bordered_rows & (1u << row)) && send_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT)) {
+        if ((overlay_bordered_rows & (1U << row)) && send_rows(row * STRIP_HEIGHT, (row + 1) * STRIP_HEIGHT)) {
             (*queued)++;
         }
     }

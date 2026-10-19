@@ -133,8 +133,8 @@ pmu_init(void) {
         const uint8_t irqlevel = (levels >> 4) & 0x3;
         const uint8_t offlevel = (levels >> 2) & 0x3;
         const uint8_t onlevel = levels & 0x3;
-        const bool pwroff_en = (pwroff & (1u << 1)) != 0;
-        const bool pwroff_mode = (pwroff & (1u << 0)) != 0;
+        const bool pwroff_en = (pwroff & (1U << 1)) != 0;
+        const bool pwroff_mode = (pwroff & (1U << 0)) != 0;
         ESP_LOGI(TAG,
                  "AXP2101 PWR thresholds: irqlevel %s, offlevel %s, onlevel %s, "
                  "pwroff_en %d, pwroff_mode %s",

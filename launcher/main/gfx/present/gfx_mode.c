@@ -618,7 +618,7 @@ gfx_band_dirty(void) {
     /* A border exists only in the band that was sent, and gfx holds no
      * copy to resend: the one way to take it off the panel is to have the
      * app render the band once more. */
-    if (!dirty && (band_overlay_bordered & (1u << (row0 / band_render_height)))) {
+    if (!dirty && (band_overlay_bordered & (1U << (row0 / band_render_height)))) {
         band_overlay_cleanup_only = true;
         dirty = true;
     }
@@ -701,7 +701,7 @@ gfx_band_submit(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     /* Drawn into the buffer about to be sent. A band submitted only to
      * clean last frame's borders (gfx_band_dirty()) goes out bare. */
-    const uint32_t band_bit = 1u << (band_render_row0 / band_render_height);
+    const uint32_t band_bit = 1U << (band_render_row0 / band_render_height);
     if (overlay_any_on() && !band_overlay_cleanup_only) {
         mark_band_overlay(band_buf[band_current_slot], band_render_row0, band_render_height);
         band_overlay_bordered |= band_bit;
