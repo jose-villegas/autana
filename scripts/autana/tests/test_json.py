@@ -77,7 +77,8 @@ class JsonReadTests(unittest.TestCase):
 
     def test_tone_short_capture_has_no_frequency(self):
         reply = "TONE heard 440 Hz: -21.5 dB (silence -63.0 dB), path internal, measured n/a, open 8192 B DMA"
-        result = autana.parse_tone(reply)
+        with mock.patch.object(autana, "send", return_value=(0, [reply])):
+            result = self.output(autana.tone, ["440", "1", "--internal", "--json"])
         self.assertIsNone(result["measured_hz"])
         self.assertIsNone(result["hz_error"])
 
@@ -124,7 +125,7 @@ class JsonReadTests(unittest.TestCase):
 
     def test_tone_rejects_invalid_args_before_send(self):
         for args in ([], ["440"], ["440", "200", "30", "extra"], ["440", ""],
-                     ["440", "200", "--json", "30"],
+                     ["440", "200", "--json", "30"], ["440", "200", "--internal", "30"],
                      ["-1", "200"], ["+440", "200"], ["440.0", "200"],
                      ["\u0664\u0664\u0660", "200"], ["440", "200", "-1"], ["440", "200", "oops"],
                      ["440", "200", "--unknown"], ["440", "200", "--json", "--json"], ["440", "200", "--internal", "--internal"]):

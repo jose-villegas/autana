@@ -1630,7 +1630,7 @@ COMMAND_GROUPS = (
         one("selftest", selftest, "selftest [seconds] [--verbose]",
             "build diagnostics+autorun, run every suite on the board"),
         one("tone", tone, "tone <hz> <ms> [volume] [--internal] [--json]",
-            "check a tone through the mic or silent codec feedback; hz_error is measured minus requested Hz; fewer than two analysis windows gives measured n/a (JSON null); development builds"),
+            "check a tone through the mic or silent codec feedback; development builds"),
     )),
     ("watch", "Watch the board", (
         one("monitor", monitor, "monitor [seconds] [--follow] [--stream] [--elf PATH]",

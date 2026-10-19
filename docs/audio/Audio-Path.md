@@ -59,8 +59,9 @@ tone through the mixer, measures again, then stops the voice. It waits for
 amplifier warm-up before measuring. A Goertzel filter measures the requested frequency.<sup>[[72]](../Citations.md#72)</sup>
 
 `--internal` routes DAC data to both ADCDAT slots inside the ES8311. It holds
-the speaker amplifier off for the whole check. Capture close restores the exact
-register read-back and releases the hold, including when a check fails.
+the speaker amplifier off for the whole check. The verb restores the exact register
+read-back and releases the hold on every exit, before closing capture.
+Both modes refuse to measure until any pending register restore succeeds.
 
 ```mermaid
 flowchart LR
@@ -68,13 +69,18 @@ flowchart LR
     Dac -.-> Amp["amplifier held off"]
 ```
 
-`goertzel_phase()` references each window's first sample. Consecutive windows
-of `AUDIO_LOOPBACK_WINDOW_SAMPLES` give phase advances; the wrapped difference
-from the nominal advance estimates the frequency offset.<sup>[[82]](../Citations.md#82)</sup>
+Each window's Goertzel phase<sup>[[72]](../Citations.md#72)</sup> is referenced to its first sample.
+
+The wrapped difference between consecutive windows' phase advances and the
+nominal advance gives the frequency offset, as in the phase vocoder<sup>[[82]](../Citations.md#82)</sup>,
+here from a single bin rather than a filter bank.
 
 The unambiguous offset range is ±sample rate / (2 × window samples). The reply
 reports `path` and `measured_hz`; JSON adds `hz_error` in Hz, measured minus
-requested. Phase estimates require a stable tone near the requested frequency.
+requested.
+
+The estimate is valid only while the tone stays within the unambiguous range
+above; a drifting or modulated tone gives a wrong value.
 
 Below `AUDIO_LOOPBACK_MIN_FREQUENCY_SAMPLES`, the reply says `measured n/a`
 and both JSON frequency fields are null.

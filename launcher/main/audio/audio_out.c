@@ -6,12 +6,14 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 
-#include "audio/audio_codec.h"
+#include "audio/audio_codec_device.h"
 #include "audio/audio_out_device.h"
 #include "board/board.h"
+#include "build/build_variant.h"
 
 #define AUDIO_OUT_CODEC_VOLUME 30
 static esp_codec_dev_handle_t output;
+#if CONFIG_LAUNCHER_DEVELOPMENT
 static audio_out_amp_t amp;
 static StaticSemaphore_t amp_mutex_storage;
 static SemaphoreHandle_t amp_mutex;
@@ -28,24 +30,35 @@ set_amp(bool hold, bool enabled) {
     return audio_codec_check("amplifier", status);
 }
 
+#endif
+
 bool
 audio_out_amp_enable(bool enabled) {
+#if CONFIG_LAUNCHER_DEVELOPMENT
     return set_amp(false, enabled);
+#else
+    return board_audio_amp_enable(enabled) == 0;
+#endif
 }
 
+#if CONFIG_LAUNCHER_DEVELOPMENT
 bool
 audio_out_amp_hold(bool held) {
     return set_amp(true, held);
 }
+
+#endif
 
 bool
 audio_out_open(void) {
     if (output) {
         return true;
     }
+#if CONFIG_LAUNCHER_DEVELOPMENT
     if (!amp_mutex) {
         amp_mutex = xSemaphoreCreateMutexStatic(&amp_mutex_storage);
     }
+#endif
     output = audio_codec_device_open(ESP_CODEC_DEV_TYPE_OUT);
     if (!output) {
         return false;

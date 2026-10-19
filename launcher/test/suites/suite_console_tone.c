@@ -1,6 +1,7 @@
 /* Tone command accepts complete decimal arguments within audio limits. */
 #include <stdio.h>
 #include "console/verbs/console_tone_parse.h"
+#include "console/verbs/console_tone_reply.h"
 #include "suites.h"
 #include "unity.h"
 #define TEST_TARGET_HZ   1000u
@@ -26,6 +27,8 @@ test_tone_parse_valid(void) {
     TEST_ASSERT_EQUAL_UINT16(TEST_DURATION_MS, args.ms);
     TEST_ASSERT_EQUAL_UINT8(CONSOLE_TONE_DEFAULT_VOLUME_PCT, args.volume_pct);
     TEST_ASSERT_FALSE(args.internal);
+    TEST_ASSERT_TRUE(console_tone_parse("1000\t100\tinternal\t \r\n", &args));
+    TEST_ASSERT_TRUE(args.internal);
     TEST_ASSERT_TRUE(console_tone_parse("1000 100 internal", &args));
     TEST_ASSERT_TRUE(args.internal);
     TEST_ASSERT_TRUE(console_tone_parse("1000 100 10 internal ", &args));
@@ -60,6 +63,10 @@ test_tone_parse_invalid(void) {
                                           "1000 internal 100",
                                           "1000 100 internal 10",
                                           "1000 100 internal junk",
+                                          "1000 100internal",
+                                          "1000 100 internally",
+                                          "internal",
+                                          "1000 internal",
                                           "1000 100 internal internal"};
     console_tone_args_t args = fixture();
     for (size_t i = 0; i < sizeof invalid / sizeof invalid[0]; i++) {
@@ -98,7 +105,9 @@ typedef enum {
     TEST_TONE_BASELINE_FAIL,
     TEST_TONE_START_FAIL,
     TEST_TONE_MEASURE_FAIL,
-    TEST_TONE_CLOSE_FAIL
+    TEST_TONE_CLOSE_FAIL,
+    TEST_TONE_RESTORE_FAIL,
+    TEST_TONE_RELEASE_FAIL
 } tone_failure_t;
 
 static struct {
@@ -133,6 +142,9 @@ static int
 tone_set_reg(void* context, int reg, int value) {
     (void)context;
     TEST_ASSERT_EQUAL_INT(AUDIO_CODEC_FEEDBACK_REG, reg);
+    if (device.failure == TEST_TONE_RESTORE_FAIL && value == TEST_TONE_REGISTER_OLD) {
+        return TEST_TONE_IO_ERROR;
+    }
     device.reg = value;
     return device.failure == TEST_TONE_SET_FAIL && value != TEST_TONE_REGISTER_OLD ? TEST_TONE_IO_ERROR : 0;
 }
@@ -145,7 +157,7 @@ audio_codec_dac_feedback(bool on) {
 bool
 audio_out_amp_hold(bool held) {
     (void)audio_out_amp_update(&device.amp, true, held);
-    return !(held && device.failure == TEST_TONE_HOLD_FAIL);
+    return !(held && device.failure == TEST_TONE_HOLD_FAIL) && !(!held && device.failure == TEST_TONE_RELEASE_FAIL);
 }
 
 bool
@@ -156,12 +168,7 @@ sound_capture_open(void) {
 bool
 sound_capture_close(void) {
     device.closes++;
-    if (device.failure == TEST_TONE_CLOSE_FAIL) {
-        return false;
-    }
-    const bool restored = audio_codec_dac_feedback(false);
-    (void)audio_out_amp_hold(false);
-    return restored;
+    return device.failure != TEST_TONE_CLOSE_FAIL;
 }
 
 sound_voice_t
@@ -225,7 +232,7 @@ tone_collect(const char* reply) {
 
 static void
 test_tone_capture_restores_every_exit(void) {
-    for (tone_failure_t failure = TEST_TONE_OK; failure <= TEST_TONE_CLOSE_FAIL; failure++) {
+    for (tone_failure_t failure = TEST_TONE_OK; failure <= TEST_TONE_RELEASE_FAIL; failure++) {
         memset(&device, 0, sizeof device);
         device.failure = failure;
         device.internal = true;
@@ -233,6 +240,12 @@ test_tone_capture_restores_every_exit(void) {
         device.amp.requested = true;
         TEST_ASSERT_TRUE(console_registry_handle_line(&registry, "tone 1000 100 internal", tone_collect));
         TEST_ASSERT_EQUAL_UINT(1, device.closes);
+        if (failure == TEST_TONE_RESTORE_FAIL) {
+            TEST_ASSERT_TRUE(device.feedback.restore_pending);
+            TEST_ASSERT_NOT_NULL(device.reply);
+            TEST_ASSERT_NOT_NULL(strstr(device.reply, "TONE error:"));
+            continue;
+        }
         TEST_ASSERT_EQUAL_HEX(TEST_TONE_REGISTER_OLD, device.reg);
         TEST_ASSERT_FALSE(device.feedback.restore_pending);
         TEST_ASSERT_FALSE(device.amp.held);
@@ -248,6 +261,35 @@ test_tone_capture_restores_every_exit(void) {
 }
 
 static void
+test_tone_pending_restore_blocks_both_modes(void) {
+    memset(&device, 0, sizeof device);
+    device.internal = true;
+    device.reg = TEST_TONE_REGISTER_OLD;
+    device.failure = TEST_TONE_RESTORE_FAIL;
+    TEST_ASSERT_TRUE(console_registry_handle_line(&registry, "tone 1000 100 internal", tone_collect));
+    TEST_ASSERT_NOT_NULL(device.reply);
+    TEST_ASSERT_NOT_NULL(strstr(device.reply, "TONE error:"));
+    TEST_ASSERT_TRUE(device.feedback.restore_pending);
+    const unsigned measures = device.measures;
+    static const char* const commands[] = {"tone 1000 100", "tone 1000 100 internal"};
+    device.internal = false;
+    for (size_t i = 0; i < sizeof commands / sizeof commands[0]; i++) {
+        device.reply = NULL;
+        TEST_ASSERT_TRUE(console_registry_handle_line(&registry, commands[i], tone_collect));
+        TEST_ASSERT_NOT_NULL(device.reply);
+        TEST_ASSERT_NOT_NULL(strstr(device.reply, "TONE error:"));
+        TEST_ASSERT_EQUAL_UINT(measures, device.measures);
+        TEST_ASSERT_TRUE(device.feedback.restore_pending);
+    }
+    device.failure = TEST_TONE_OK;
+    device.reply = NULL;
+    TEST_ASSERT_TRUE(console_registry_handle_line(&registry, commands[0], tone_collect));
+    TEST_ASSERT_NULL(device.reply);
+    TEST_ASSERT_FALSE(device.feedback.restore_pending);
+    TEST_ASSERT_EQUAL_UINT(measures + 2, device.measures);
+}
+
+static void
 test_tone_acoustic_has_no_feedback(void) {
     memset(&device, 0, sizeof device);
     device.reg = TEST_TONE_REGISTER_OLD;
@@ -260,12 +302,28 @@ test_tone_acoustic_has_no_feedback(void) {
 }
 #endif
 
+static void
+test_tone_reply_frequency(void) {
+    const console_tone_args_t args = fixture();
+    static const float values[] = {TEST_TARGET_HZ, NAN, INFINITY, -INFINITY};
+    char line[CONSOLE_TONE_REPLY_BYTES];
+    char expected[CONSOLE_TONE_MEASURED_BYTES];
+    snprintf(expected, sizeof expected, "measured %.2f Hz", (double)TEST_TARGET_HZ);
+    for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
+        TEST_ASSERT_TRUE(console_tone_reply(line, sizeof line, &args, true, -12, -100, values[i], 0));
+        TEST_ASSERT_NOT_NULL(strstr(line, i == 0 ? expected : "measured n/a"));
+        puts(line);
+    }
+}
+
 void
 run_console_tone_suite(void) {
 #ifndef ESP_PLATFORM
     RUN_TEST(test_tone_capture_restores_every_exit);
+    RUN_TEST(test_tone_pending_restore_blocks_both_modes);
     RUN_TEST(test_tone_acoustic_has_no_feedback);
 #endif
+    RUN_TEST(test_tone_reply_frequency);
     RUN_TEST(test_tone_parse_valid);
     RUN_TEST(test_tone_parse_invalid);
 }

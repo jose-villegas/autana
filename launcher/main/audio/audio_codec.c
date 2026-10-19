@@ -1,5 +1,6 @@
 /* One codec lifetime with persistent transmit DMA and capture-owned receive DMA. */
 #include "audio/audio_codec.h"
+#include "audio/audio_codec_device.h"
 
 #include <assert.h>
 
@@ -12,8 +13,8 @@
 
 #include "audio/audio_codec_feedback.h"
 #include "audio/audio_out.h"
-#include "audio/audio_out_device.h"
 #include "board/board.h"
+#include "build/build_variant.h"
 #include "profile/frame_watch.h"
 
 #define AUDIO_CODEC_PROBE_TIMEOUT_MS 100
@@ -32,6 +33,7 @@ static const audio_codec_if_t* codec;
 static esp_codec_dev_handle_t input_device;
 static unsigned references;
 static const char* failed_step;
+#if CONFIG_LAUNCHER_DEVELOPMENT
 static audio_codec_feedback_t feedback;
 
 static int
@@ -55,6 +57,8 @@ audio_codec_dac_feedback(bool on) {
                                                  ? ESP_CODEC_DEV_OK
                                                  : ESP_CODEC_DEV_DRV_ERR);
 }
+
+#endif
 
 const char*
 audio_codec_failure(void) {
@@ -275,8 +279,6 @@ audio_codec_device_close(esp_codec_dev_handle_t device) {
     }
     const bool capture = device == input_device;
     if (capture) {
-        (void)audio_codec_dac_feedback(false);
-        (void)audio_out_amp_hold(false);
         /* The S3 codec adapter defers RX shutdown while TX runs. This dev-capture gap is owned by the mixer. */
         (void)audio_codec_check("pause TX for capture close",
                                 output_data->enable(output_data, ESP_CODEC_DEV_TYPE_OUT, false));

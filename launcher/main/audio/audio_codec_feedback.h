@@ -32,7 +32,7 @@ audio_codec_feedback_set(audio_codec_feedback_t* state, void* context, audio_cod
         if (get_reg(context, AUDIO_CODEC_FEEDBACK_REG, &state->saved) != 0) {
             return false;
         }
-        /* A failed write may reach the device; the close path must still restore its read-back. */
+        /* A failed write may reach the device; the caller must still restore its read-back. */
         state->restore_pending = true;
         state->enabled =
             set_reg(context, AUDIO_CODEC_FEEDBACK_REG, (int)audio_codec_feedback_register((unsigned)state->saved)) == 0;
@@ -50,3 +50,5 @@ audio_codec_feedback_set(audio_codec_feedback_t* state, void* context, audio_cod
     state->enabled = false;
     return true;
 }
+
+bool audio_codec_dac_feedback(bool on);

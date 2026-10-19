@@ -243,7 +243,8 @@ test_goertzel_amplitude_and_scale(void) {
 
 static void
 test_goertzel_phase(void) {
-    static const float phases[] = {-2.0F, 0.0F, 1.2F};
+    static const float phases[] = {-2.0F, 0.0F, 1.2F, MATH_PI - TEST_PHASE_TOLERANCE * 2,
+                                   MATH_PI + TEST_PHASE_TOLERANCE * 2};
     static const float bins[] = {TEST_TARGET_HZ, TEST_TARGET_HZ + 3.7F};
     const size_t count = TEST_PHASE_SAMPLES;
     int16_t* samples = fixture();
@@ -267,7 +268,7 @@ test_goertzel_phase(void) {
             TEST_ASSERT_FLOAT_WITHIN(TEST_PHASE_TOLERANCE, (float)atan2(im, re), goertzel_phase(&state));
             TEST_ASSERT_EQUAL_FLOAT(goertzel_phase(&state), goertzel_phase(&split));
             if (b == 0) {
-                TEST_ASSERT_FLOAT_WITHIN(TEST_PHASE_TOLERANCE, phases[p], goertzel_phase(&state));
+                TEST_ASSERT_FLOAT_WITHIN(TEST_PHASE_TOLERANCE, remainderf(phases[p], MATH_TAU), goertzel_phase(&state));
             }
             for (size_t i = 0; i < count; i++) {
                 samples[i] = (int16_t)lround(
@@ -282,10 +283,17 @@ test_goertzel_phase(void) {
     }
 }
 
+static void
+test_goertzel_phase_negative_pi(void) {
+    const goertzel_t state = {.omega = MATH_PI / 2, .previous = -1, .previous2 = -0.0F, .samples = 1};
+    TEST_ASSERT_EQUAL_FLOAT(MATH_PI, goertzel_phase(&state));
+}
+
 void
 run_goertzel_suite(void) {
 #ifndef DEVICE_BUILD
     RUN_TEST(test_goertzel_phase);
+    RUN_TEST(test_goertzel_phase_negative_pi);
     RUN_TEST(test_goertzel_reference);
     RUN_TEST(test_goertzel_noninteger_bins);
     RUN_TEST(test_goertzel_max_record);

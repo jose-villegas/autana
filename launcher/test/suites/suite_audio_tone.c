@@ -1,6 +1,7 @@
 /* Portable synthesis checks against time, amplitude and chunking contracts. */
 #include <math.h>
 #include <stdlib.h>
+#include "audio/audio_frequency.h"
 #include "audio/audio_loopback.h"
 #include "audio/audio_tone.h"
 #include "math/scalar/math_const.h"
@@ -110,15 +111,34 @@ test_loopback_measured_budget(void) {
 #define TEST_ESTIMATE_NOISE_TOLERANCE_HZ 0.5F
 
 static void
-test_loopback_frequency_short(void) {
-    audio_loopback_frequency_t state;
-    audio_loopback_frequency_init(&state, TEST_HZ);
-    TEST_ASSERT_TRUE(isnan(audio_loopback_frequency_hz(&state)));
-    const int16_t sample = 0;
-    for (size_t i = 0; i + 1 < AUDIO_LOOPBACK_MIN_FREQUENCY_SAMPLES; i++) {
-        audio_loopback_frequency_feed(&state, &sample, 1);
+test_loopback_frequency_boundaries_and_blocks(void) {
+    const size_t count = AUDIO_LOOPBACK_MIN_FREQUENCY_SAMPLES;
+    int16_t* samples = fixture(count);
+    audio_tone_t tone;
+    audio_tone_init(&tone, TEST_HZ);
+    audio_tone_fill(&tone, samples, count, TEST_HALF_VOLUME);
+    audio_loopback_frequency_t single;
+    audio_loopback_frequency_init(&single, TEST_HZ);
+    for (size_t i = 0; i < count; i++) {
+        audio_loopback_frequency_feed(&single, samples + i, 1);
+        if (i + 1 < count) {
+            TEST_ASSERT_TRUE(isnan(audio_loopback_frequency_hz(&single)));
+        }
     }
-    TEST_ASSERT_TRUE(isnan(audio_loopback_frequency_hz(&state)));
+    TEST_ASSERT_TRUE(isfinite(audio_loopback_frequency_hz(&single)));
+    static const size_t chunks[] = {7, AUDIO_LOOPBACK_WINDOW_SAMPLES - 1, AUDIO_LOOPBACK_WINDOW_SAMPLES + 17};
+    for (size_t c = 0; c < sizeof chunks / sizeof chunks[0]; c++) {
+        audio_loopback_frequency_t blocks;
+        audio_loopback_frequency_init(&blocks, TEST_HZ);
+        for (size_t i = 0; i < count;) {
+            const size_t n = count - i < chunks[c] ? count - i : chunks[c];
+            audio_loopback_frequency_feed(&blocks, samples + i, n);
+            i += n;
+        }
+        TEST_ASSERT_EQUAL_FLOAT(audio_loopback_frequency_hz(&single), audio_loopback_frequency_hz(&blocks));
+        TEST_ASSERT_EQUAL_UINT(single.advances, blocks.advances);
+        TEST_ASSERT_EQUAL_UINT(single.bin.samples, blocks.bin.samples);
+    }
 }
 
 static void
@@ -160,7 +180,7 @@ test_loopback_frequency_estimate(void) {
 
 void
 run_audio_tone_suite(void) {
-    RUN_TEST(test_loopback_frequency_short);
+    RUN_TEST(test_loopback_frequency_boundaries_and_blocks);
     RUN_TEST(test_loopback_frequency_estimate);
     RUN_TEST(test_loopback_measured_budget);
     RUN_TEST(test_tone_frequency);

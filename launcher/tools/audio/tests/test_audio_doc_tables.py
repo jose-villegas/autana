@@ -74,6 +74,51 @@ class AudioDocTablesTest(unittest.TestCase):
         self.save()
         self.assertIn("| 300 | -21.5 | -12.3 | n/a | n/a |", tables.render(self.capture)["audio-loopback"])
 
+    def test_invalid_comparison_records(self):
+        original = json.loads(json.dumps(self.records))
+        cases = [("duplicate", "duplicate internal"), ("path", "path disagree"),
+                 ("unknown", "flags"), ("flag_duplicate", "flags"),
+                 ("duration", "duration and volume"), ("volume", "duration and volume"),
+                 ("volume_sweep", "volume sweep"), ("heaps", "heaps"),
+                 ("header", "header"), ("build", "build id"),
+                 ("measured_hz", "measured_hz"), ("hz_error", "hz_error")]
+        for case, error in cases:
+            with self.subTest(case=case):
+                self.records = json.loads(json.dumps(original))
+                if case == "duplicate":
+                    self.records.append(self.records[5])
+                elif case == "path":
+                    self.records[5][1]["path"] = "acoustic"
+                elif case in ("unknown", "flag_duplicate"):
+                    self.records[5][0] += " --bad" if case == "unknown" else " --internal"
+                elif case in ("duration", "volume"):
+                    self.records[5][0] = "tone 300 600 --internal" if case == "duration" else "tone 300 500 31 --internal"
+                elif case == "volume_sweep":
+                    self.records.append(["tone 1000 600 30", self.records[4][1]])
+                elif case == "heaps":
+                    self.records.pop()
+                elif case == "build":
+                    self.records.append(["buildid", {"build_id": "other-dev"}])
+                elif case in ("measured_hz", "hz_error"):
+                    del self.records[5][1][case]
+                self.save()
+                if case == "header":
+                    self.capture.write_text(self.capture.read_text().replace("# autana", "# invalid"))
+                with self.assertRaisesRegex(ValueError, error):
+                    tables.render(self.capture)
+
+    def test_null_frequency_is_independent_for_each_path(self):
+        for path, expected in (("internal", "| 300 | -21.5 | -12.3 | -0.03 | n/a |"),
+                               ("acoustic", "| 300 | -21.5 | -12.3 | n/a | +0.02 |")):
+            with self.subTest(path=path):
+                for command, reply in self.records:
+                    if command.startswith("tone"):
+                        missing = reply["path"] == path
+                        reply["hz_error"] = None if missing else (0.02 if path == "acoustic" else -0.03)
+                        reply["measured_hz"] = None if missing else reply["hz"] + reply["hz_error"]
+                self.save()
+                self.assertIn(expected, tables.render(self.capture)["audio-loopback"])
+
     def test_legacy_capture_without_comparison_stays_current(self):
         rendered = tables.render(tables.ROOT / tables.CAPTURE)
         self.assertNotIn("audio-loopback", rendered)
