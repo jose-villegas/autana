@@ -89,7 +89,9 @@ instantiate(const scene_asset_t* asset) {
     memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_CHANGED, asset->entity_count);
     for (int i = 0; i < asset->camera_count; i++) {
         const scene_asset_camera_t* c = &asset->cameras[i];
-        scene->cameras[i] = (scene_camera_t){.lens = {.half_fov_short_tan = c->half_fov_short_tan, .near_z = c->near_z},
+        scene->cameras[i] = (scene_camera_t){.lens = {.half_fov_short_tan = c->half_fov_short_tan,
+                                                      .near_z = c->near_z,
+                                                      .small_fill = SMALL_FILL_DEFAULT},
                                              .entity = c->entity,
                                              .clear = GFX_RGB(c->clear_rgb)};
     }
@@ -434,6 +436,20 @@ scene_camera_set_present(scene_t* scene, scene_entity_t camera, camera_present_t
     for (int i = 0; i < scene->asset.camera_count; i++) {
         if (scene->cameras[i].entity == camera) {
             scene->cameras[i].lens.present = present;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool
+scene_camera_set_small_fill(scene_t* scene, scene_entity_t camera, small_fill_t fill) {
+    if (scene == NULL || fill.style < SMALL_FILL_FLAT || fill.style > SMALL_FILL_DITHER) {
+        return false;
+    }
+    for (int i = 0; i < scene->asset.camera_count; i++) {
+        if (scene->cameras[i].entity == camera) {
+            scene->cameras[i].lens.small_fill = fill;
             return true;
         }
     }

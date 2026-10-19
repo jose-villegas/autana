@@ -418,7 +418,7 @@ fly(const char* camera, const char* policy, const ladder_t* ladder, const resolu
         scene_entity_set_enabled(flown, scene_find(flown, sponza_bakes[i]), i == (int)SPONZA_BAKE_FULL);
     }
     TEST_ASSERT_TRUE(scene_activate(flown, camera));
-    TEST_ASSERT_TRUE(scene_camera_set_present(flown, scene_find(flown, camera), render_lab_present()));
+    TEST_ASSERT_TRUE(render_lab_apply_camera_settings(flown, scene_find(flown, camera)));
     TEST_ASSERT_NOT_NULL(scene_camera_lens(flown, camera));
     const uint32_t period = scene_animator_clip_duration_ms(flown, scene_find(flown, camera), 0);
     const int frames = (int)((period + FRAME_DT_MS - 1) / FRAME_DT_MS);
@@ -555,7 +555,7 @@ run_raster_scale_perf_suite(void) {
     pack = loaded.pack;
     lens = loaded.lens;
     camera_entity = scene == NULL ? SCENE_ENTITY_NONE : scene_find(scene, sponza_cameras[0]);
-    (void)scene_camera_set_present(scene, camera_entity, render_lab_present());
+    (void)render_lab_apply_camera_settings(scene, camera_entity);
     if (scene != NULL) {
         const scene_entity_t full = scene_find(scene, sponza_bakes[SPONZA_BAKE_FULL]);
         const char* id = full == SCENE_ENTITY_NONE ? NULL : scene_entity_mesh_id(scene, full);

@@ -411,7 +411,7 @@ run_sponza_perf_suite(void) {
     pack = loaded.pack;
     flythrough = loaded.lens;
     camera_entity = sponza == NULL ? SCENE_ENTITY_NONE : scene_find(sponza, sponza_cameras[0]);
-    (void)scene_camera_set_present(sponza, camera_entity, render_lab_present());
+    (void)render_lab_apply_camera_settings(sponza, camera_entity);
     for (size_t q = 0; q < R3D_PERF_QUARTER_COUNT; q++) {
         perf_quarter = &r3d_perf_quarters[q];
         RUN_TEST(test_sponza_draw_stage_breakdown);

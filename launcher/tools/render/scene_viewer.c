@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "apps/render_lab/render_lab_view.h"
 #include "gfx/gfx.h"
 #include "render/context/render_context.h"
 #include "render_host.h"
@@ -143,6 +144,7 @@ setup(int quarter) {
     }
     for (int i = 0; i < scene_entity_count(scene); i++) {
         (void)scene_camera_set_present(scene, (scene_entity_t)i, present);
+        (void)scene_camera_set_small_fill(scene, (scene_entity_t)i, render_lab_small_fill());
     }
     render_context_t* context = render_context_main();
     render_context_set_debug_view(context, view);

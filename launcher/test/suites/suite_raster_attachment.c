@@ -88,8 +88,8 @@ rig_open(const raster_attachment_t* const* attachments, int count) {
 
 static void
 draw(raster_rig_t* r) {
-    const render_view_t frame_view = render_view_fixture(&camera, &r->raster, 0);
-    raster_draw(&r->raster, &frame_view);
+    r->view = render_view_fixture(&camera, &r->raster, 0);
+    raster_draw(&r->raster, &r->view);
 }
 
 static void
@@ -222,7 +222,6 @@ test_cluster_values_and_constant_writers(void) {
         writers[k].attachment = GFX_ATTACHMENT_FURTHER + k;
     }
     const r3d_span_target_t target = {buffers.picture, writers, 2};
-    r->view = render_view_fixture(&camera, &r->raster, 0);
     raster_lens(&r->raster, &r->view, 1, &r->lens);
     const uint16_t visible = 1;
     r3d_pipeline_transform(&r->quad[0].mesh, &r->lens, &visible, 1, buffers.cs, buffers.rows);

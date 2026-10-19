@@ -1848,6 +1848,31 @@ test_camera_present_default_setter_and_dynamic_size(void) {
 }
 
 static void
+test_camera_small_fill_default_setter_and_view(void) {
+    expanded_fixture();
+    scene_t* scene = scene_loaded_at(0);
+    const scene_entity_t camera = scene_find(scene, "camera");
+    const camera_t* lens = scene_camera_lens(scene, NULL);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_DEFAULT, lens->small_fill.ceiling);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_GATE_DEFAULT, lens->small_fill.gate);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_FLAT, lens->small_fill.style);
+    const small_fill_t fill = {4, 0, SMALL_FILL_DITHER};
+    TEST_ASSERT_FALSE(scene_camera_set_small_fill(NULL, camera, fill));
+    TEST_ASSERT_FALSE(scene_camera_set_small_fill(scene, scene_find(scene, "red"), fill));
+    TEST_ASSERT_FALSE(scene_camera_set_small_fill(scene, SCENE_ENTITY_NONE, fill));
+    TEST_ASSERT_FALSE(scene_camera_set_small_fill(scene, camera, (small_fill_t){4, 0, SMALL_FILL_DITHER + 1}));
+    TEST_ASSERT_TRUE(scene_camera_set_small_fill(scene, camera, fill));
+    const transformf_t pose = TRANSFORMF_IDENTITY;
+    const render_view_t view = camera_view(lens, &pose, (viewport_t){64, 48, 0});
+    TEST_ASSERT_EQUAL_INT(fill.ceiling, view.small_fill.ceiling);
+    TEST_ASSERT_EQUAL_INT(fill.gate, view.small_fill.gate);
+    TEST_ASSERT_EQUAL_INT(fill.style, view.small_fill.style);
+    TEST_ASSERT_EQUAL_INT(fill.ceiling, lens->small_fill.ceiling);
+    TEST_ASSERT_EQUAL_INT(fill.gate, lens->small_fill.gate);
+    TEST_ASSERT_EQUAL_INT(fill.style, lens->small_fill.style);
+}
+
+static void
 test_non_half_compose_upscales_to_the_full_destination(void) {
     expanded_fixture();
     render_context_set_scale(render_context_main(), 75);
@@ -3296,6 +3321,7 @@ run_scene_suite(void) {
     RUN_TEST(test_camera_present_composes_half_picture_and_uneven_fallback);
     RUN_TEST(test_camera_present_scanline_and_double_compose_both_quarters);
     RUN_TEST(test_camera_present_default_setter_and_dynamic_size);
+    RUN_TEST(test_camera_small_fill_default_setter_and_view);
     RUN_TEST(test_non_half_compose_upscales_to_the_full_destination);
     RUN_TEST(test_failed_half_allocation_keeps_full_upscale_unexpanded);
     RUN_TEST(test_expanded_frame_without_ui_does_not_replay_the_previous_hud);
