@@ -207,7 +207,7 @@ landscape_slide_y(cell_t grain, int gravity_x, bool with_water) {
     fixture();
     sand_set_scatter(&s, 0);
     for (int y = 1; y < H - 1; y++) {
-        const int x = start_x + motion_x * y;
+        const int x = start_x + (motion_x * y);
         sand_set(&s, x, y, STONE);
         sand_set(&s, x, y - 1, STONE);
         sand_set(&s, x - motion_x, y + 1, STONE);

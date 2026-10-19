@@ -74,11 +74,11 @@ test_find_gives_up_past_the_cap(void) {
      * one more than this module ever tries to track individually. Built
      * from ROW_MAX_RUNS rather than a hardcoded blob count, so this stays
      * the right boundary case regardless of the cap's tuned value. */
-    const int width = 2 * (ROW_MAX_RUNS + 1) + 1;
-    uint8_t row[2 * (ROW_MAX_RUNS + 1) + 1];
+    const int width = (2 * (ROW_MAX_RUNS + 1)) + 1;
+    uint8_t row[(2 * (ROW_MAX_RUNS + 1)) + 1];
     for (int i = 0; i <= ROW_MAX_RUNS; i++) {
         row[2 * i] = FULL;
-        row[2 * i + 1] = EMPTY;
+        row[(2 * i) + 1] = EMPTY;
     }
     row[width - 1] = EMPTY;
     int x0[ROW_MAX_RUNS], x1[ROW_MAX_RUNS];

@@ -175,7 +175,7 @@ cs_tally_chunk(const cs_case_t* c, uint8_t* seen, int cx, int cy, const char* la
     }
     for (int y = y0; y < y1; y++) {
         for (int x = x0; x < x1; x++) {
-            seen[y * c->plan.w + x]++;
+            seen[(y * c->plan.w) + x]++;
         }
     }
 }
@@ -245,12 +245,12 @@ cs_assert_earlier(const cs_case_t* c, int idx, int nx, int ny) {
     if ((unsigned)nx >= (unsigned)c->plan.cols || (unsigned)ny >= (unsigned)c->plan.rows) {
         return;
     }
-    TEST_ASSERT_LESS_THAN_INT_MESSAGE(c->order.rank[idx], c->order.rank[ny * c->plan.cols + nx], c->label);
+    TEST_ASSERT_LESS_THAN_INT_MESSAGE(c->order.rank[idx], c->order.rank[(ny * c->plan.cols) + nx], c->label);
 }
 
 static void
 cs_check_chunk_downstream(const cs_case_t* c, int cx, int cy) {
-    const int idx = cy * c->plan.cols + cx;
+    const int idx = (cy * c->plan.cols) + cx;
 
     cs_assert_earlier(c, idx, cx + c->tx, cy + c->ty);
     if (c->tx != 0 && c->ty != 0) {
@@ -296,7 +296,7 @@ cs_run_begin(cs_run_t* r, const cs_case_t* c, bool reenter) {
 
 static void
 cs_assert_free_to_run(const cs_run_t* r, int cx, int cy) {
-    const int idx = cy * r->c->plan.cols + cx;
+    const int idx = (cy * r->c->plan.cols) + cx;
     int nb[8];
     const int n = cs_neighbours(r->c->plan.cols, r->c->plan.rows, cx, cy, nb);
 
@@ -311,7 +311,7 @@ cs_assert_free_to_run(const cs_run_t* r, int cx, int cy) {
 static void
 cs_run_fn(void* pass, int lane, int cx, int cy) {
     cs_run_t* r = (cs_run_t*)pass;
-    const int idx = cy * r->c->plan.cols + cx;
+    const int idx = (cy * r->c->plan.cols) + cx;
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(r->k.order.rank[idx] & 1, lane, r->c->label);
     r->running[idx] = 1;
@@ -353,7 +353,7 @@ cs_interleave(cs_run_t* r, const cs_case_t* c, int which) {
         if (!sand_chunk_step_lane(&r->k, lane, cs_run_fn, r)) {
             sand_chunk_step_lane(&r->k, 1 - lane, cs_run_fn, r);
         }
-        TEST_ASSERT_LESS_THAN_INT_MESSAGE(4 * count + 64, step, c->label);
+        TEST_ASSERT_LESS_THAN_INT_MESSAGE((4 * count) + 64, step, c->label);
     }
 }
 
@@ -382,7 +382,7 @@ cs_check_complete(const cs_run_t* r) {
 
 static void
 cs_assert_ranked_neighbours_ran_first(const cs_run_t* r, int cx, int cy, const uint8_t* when) {
-    const int idx = cy * r->c->plan.cols + cx;
+    const int idx = (cy * r->c->plan.cols) + cx;
     int nb[8];
     const int n = cs_neighbours(r->c->plan.cols, r->c->plan.rows, cx, cy, nb);
 
@@ -461,7 +461,7 @@ cs_check_uniform_makespan(const cs_case_t* c, void* ctx) {
     for (int i = 0; i < SAND_CHUNKS_MAX; i++) {
         cost[i] = 1;
     }
-    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(6 * n / 10 + 2, cs_makespan(c, cost), c->label);
+    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE((6 * n / 10) + 2, cs_makespan(c, cost), c->label);
 }
 
 static void
@@ -490,7 +490,7 @@ cs_cost_one_line(const cs_case_t* c, uint16_t* cost) {
     for (int cy = 0; cy < c->plan.rows; cy++) {
         for (int cx = 0; cx < c->plan.cols; cx++) {
             if (cs_on_line(c, cx, cy)) {
-                cost[cy * c->plan.cols + cx] = CS_LINE_COST;
+                cost[(cy * c->plan.cols) + cx] = CS_LINE_COST;
                 n++;
             }
         }
@@ -508,7 +508,7 @@ cs_check_line_makespan(const cs_case_t* c, void* ctx) {
     (void)ctx;
 
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(CS_LINE_COST, line_cost, c->label);
-    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(6 * line_cost / 10 + 10, cs_makespan(c, cost), c->label);
+    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE((6 * line_cost / 10) + 10, cs_makespan(c, cost), c->label);
 }
 
 static void

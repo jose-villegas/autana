@@ -52,7 +52,7 @@ channel_error_sq(gfx_color_t a, gfx_color_t b) {
     const long dr = (long)((ca >> 16) & 0xFFu) - (long)((cb >> 16) & 0xFFu);
     const long dg = (long)((ca >> 8) & 0xFFu) - (long)((cb >> 8) & 0xFFu);
     const long db = (long)(ca & 0xFFu) - (long)(cb & 0xFFu);
-    return dr * dr + dg * dg + db * db;
+    return (dr * dr) + (dg * dg) + (db * db);
 }
 
 /* Every material's body colour maps within the study's own error budget -
@@ -105,7 +105,7 @@ test_expansion_reproduces_the_real_lut_cell_for_cell(void) {
 
     for (int gx = 0; gx < 4; gx++) {
         for (int dx = 0; dx < 3; dx++) {
-            TEST_ASSERT_EQUAL_HEX16(sand_palette256_lut[row[gx]], out[gx * 3 + dx]);
+            TEST_ASSERT_EQUAL_HEX16(sand_palette256_lut[row[gx]], out[(gx * 3) + dx]);
         }
     }
 }
@@ -136,8 +136,8 @@ test_metal_shine_cells_get_a_different_index_in_256_and_16(void) {
             const material_pattern_t pat = material_colours(&f, metal, hash, 0u, 0u, col);
             TEST_ASSERT_EQUAL_INT(MATERIAL_HATCHED, pat);
 
-            const int shine_q8 = (cx * SHINE_TEST_CELL + SHINE_TEST_CELL / 2) * shine_ux_q8
-                                 + (cy * SHINE_TEST_CELL + SHINE_TEST_CELL / 2) * shine_uy_q8;
+            const int shine_q8 = ((cx * SHINE_TEST_CELL + SHINE_TEST_CELL / 2) * shine_ux_q8)
+                                 + ((cy * SHINE_TEST_CELL + SHINE_TEST_CELL / 2) * shine_uy_q8);
             const int along = (shine_q8 >> 8) & (SHINE_TEST_PERIOD - 1);
 
             if (along < SHINE_TEST_CELL && shine_idx < 0) {
@@ -155,8 +155,8 @@ test_metal_shine_cells_get_a_different_index_in_256_and_16(void) {
 
     bool dither_differs = false;
     for (int phase = 0; phase < GFX_INDEXED_DITHER16_PHASES; phase++) {
-        if (sand_palette16_dither_rgb[shine_idx * GFX_INDEXED_DITHER16_PHASES + phase]
-            != sand_palette16_dither_rgb[body_idx * GFX_INDEXED_DITHER16_PHASES + phase]) {
+        if (sand_palette16_dither_rgb[(shine_idx * GFX_INDEXED_DITHER16_PHASES) + phase]
+            != sand_palette16_dither_rgb[(body_idx * GFX_INDEXED_DITHER16_PHASES) + phase]) {
             dither_differs = true;
             break;
         }

@@ -220,7 +220,7 @@ build_layout_mixed_flip_scene(sand_t* s) {
     const int w = s->w;
     const int h = s->h;
     const int sand_x1 = (w * 3) / 10;
-    const int water_x0 = w - (w * 3) / 10;
+    const int water_x0 = w - ((w * 3) / 10);
 
     sand_fill_box(s, 0, h / 2, sand_x1, h, SAND_FIRST_SHADE);
     sand_fill_box(s, water_x0, h / 2, w, h, CELL_MAKE(MAT_WATER, MASS_MAX));
@@ -298,7 +298,7 @@ build_layout_gas_box_scene(sand_t* s) {
     const int h = s->h;
     const cell_t stone = CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT);
 
-    sand_fill_box(s, 1, 1 + h / 4, w - 1, h - 1, LAYOUT_GAS_LIFE);
+    sand_fill_box(s, 1, 1 + (h / 4), w - 1, h - 1, LAYOUT_GAS_LIFE);
     sand_fill_box(s, 0, 0, 1, h, stone);
     sand_fill_box(s, w - 1, 0, w, h, stone);
     sand_fill_box(s, 0, 0, w, 1, stone);
@@ -685,7 +685,7 @@ count_new_cullet(const sand_t* s, uint8_t* ever_cullet) {
         for (int x = 0; x < REAL_W; x++) {
             const cell_t c = sand_at(s, x, y);
             if (CELL_MATERIAL(c) == MAT_SAND && CELL_VARIANT(c) >= SAND_CULLET_BASE
-                && ever_cullet_set(ever_cullet, (size_t)y * REAL_W + (size_t)x)) {
+                && ever_cullet_set(ever_cullet, ((size_t)y * REAL_W) + (size_t)x)) {
                 new_cullet++;
             }
         }
@@ -751,11 +751,11 @@ static bool
 tile_has_cullet(const uint8_t* ever_cullet, int tr, int tc) {
     for (int ly = 0; ly < 9; ly++) {
         for (int lx = 0; lx < 9; lx++) {
-            const int x = tc * 9 + lx, y = tr * 9 + ly;
+            const int x = (tc * 9) + lx, y = (tr * 9) + ly;
             if (x >= REAL_W || y >= REAL_H) {
                 continue;
             }
-            if (ever_cullet_get(ever_cullet, (size_t)y * REAL_W + (size_t)x)) {
+            if (ever_cullet_get(ever_cullet, ((size_t)y * REAL_W) + (size_t)x)) {
                 return true;
             }
         }
@@ -1295,7 +1295,7 @@ build_tree_grove_scene(sand_t* s) {
 static int
 build_plant_ground(sand_t* s) {
     const int bed_top = (REAL_H * 7) / 10;
-    const int dirt_top = REAL_H - (REAL_H - bed_top) / 2;
+    const int dirt_top = REAL_H - ((REAL_H - bed_top) / 2);
     sand_fill_box(s, 0, bed_top, REAL_W, dirt_top, CELL_SOIL(MAT_DIRT, 1, 0));
     sand_fill_box(s, 0, dirt_top, REAL_W, REAL_H, CELL_MAKE(MAT_SAND, 0));
     return bed_top;
@@ -1403,17 +1403,17 @@ build_dry_plant_heap_scene(sand_t* s) {
 
 void
 plant_pour_stamp(sand_t* s, int step) {
-    const int span = REAL_W - 2 * PLANT_POUR_MARGIN;
+    const int span = REAL_W - (2 * PLANT_POUR_MARGIN);
     const int cycle = step % (2 * span);
-    const int x = PLANT_POUR_MARGIN + ((cycle < span) ? cycle : (2 * span - cycle - 1));
+    const int x = PLANT_POUR_MARGIN + ((cycle < span) ? cycle : ((2 * span) - cycle - 1));
 
     /* Poured close over the earth, not from the ceiling: a plant falls one
      * cell in about three steps, so a brush held at the top spends the whole
      * window in free air and the heap never meets the ground it piles on. */
-    const int top = (REAL_H * 7) / 10 - 24;
+    const int top = ((REAL_H * 7) / 10) - 24;
 
     for (int r = 0; r < PLANT_POUR_ROWS; r++) {
-        sand_spawn_cell(s, x, top + 8 * r, PLANT_POUR_RADIUS, MATX(MATX_PLANT));
+        sand_spawn_cell(s, x, top + (8 * r), PLANT_POUR_RADIUS, MATX(MATX_PLANT));
     }
 }
 
@@ -1447,7 +1447,7 @@ build_plant_ruin_scene(sand_t* s) {
 
 static void
 plant_ruin_pour_side(sand_t* s, int x0, int x1, cell_t what) {
-    const int top = (REAL_H * 7) / 10 - 28;
+    const int top = ((REAL_H * 7) / 10) - 28;
 
     for (int y = top; y < top + PLANT_RUIN_POUR_ROWS; y++) {
         for (int x = x0; x < x1; x++) {
@@ -1494,7 +1494,7 @@ plant_ruin_lava_pour(sand_t* s) {
  * in two, every other column opens a step for it to take. */
 static int
 filling_basin_ramp_top(int x) {
-    return FILLING_BASIN_RAMP_Y0 + (x - FILLING_BASIN_WALL) / 2;
+    return FILLING_BASIN_RAMP_Y0 + ((x - FILLING_BASIN_WALL) / 2);
 }
 
 void
@@ -1978,7 +1978,7 @@ build_gunpowder_basin_scene(sand_t* s) {
     gunpowder_basin_wall_run(s, ix1, iy0 - 4, iy1 + 4, true);
     gunpowder_basin_wall_run(s, iy1, ix0 - 4, ix1 + 4, false);
 
-    const int fx = ix0 + GUNPOWDER_BASIN_INT_W / 2;
+    const int fx = ix0 + (GUNPOWDER_BASIN_INT_W / 2);
     const int fy = iy0;
     gunpowder_basin_fill_interior(s, ix0, ix1, iy0, iy1, fx, fy);
 
@@ -2219,8 +2219,8 @@ test_the_gunpowder_basin_scene_reaches_the_reactions_it_claims(void) {
              "exactly one fixed cell before a single step runs - got "
              "%d dry cells and %d fire cells painted",
              painted.dry, painted.fire);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(GUNPOWDER_BASIN_INT_W * GUNPOWDER_BASIN_INT_H
-                                      - GUNPOWDER_BASIN_SPARK * GUNPOWDER_BASIN_SPARK,
+    TEST_ASSERT_EQUAL_INT_MESSAGE((GUNPOWDER_BASIN_INT_W * GUNPOWDER_BASIN_INT_H)
+                                      - (GUNPOWDER_BASIN_SPARK * GUNPOWDER_BASIN_SPARK),
                                   painted.dry, why);
     TEST_ASSERT_EQUAL_INT_MESSAGE(GUNPOWDER_BASIN_SPARK * GUNPOWDER_BASIN_SPARK, painted.fire, why);
 
@@ -2234,7 +2234,7 @@ test_the_gunpowder_basin_scene_reaches_the_reactions_it_claims(void) {
              "the chain must have consumed nearly the whole interior by "
              "the end of the window - %d dry cells are still unlit "
              "out of %d painted",
-             end.dry, GUNPOWDER_BASIN_INT_W * GUNPOWDER_BASIN_INT_H - 1);
+             end.dry, (GUNPOWDER_BASIN_INT_W * GUNPOWDER_BASIN_INT_H) - 1);
     TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(50, end.dry, why);
 
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, end.fire_outside,
@@ -2682,7 +2682,7 @@ test_the_plant_pour_scene_keeps_a_loose_heap_in_the_air(void) {
         sand_step(&s2, 0, 1000, 0);
     }
 
-    const int poured_at = (REAL_H * 7) / 10 - 24 + PLANT_POUR_RADIUS;
+    const int poured_at = ((REAL_H * 7) / 10) - 24 + PLANT_POUR_RADIUS;
     int airborne = 0, lowest = -1;
     for (int y = 0; y < REAL_H; y++) {
         for (int x = 0; x < REAL_W; x++) {
@@ -2774,10 +2774,10 @@ test_the_settled_plant_heap_is_dry_and_still_full_of_plants(void) {
 static int
 landscape_sweep_y(int step) {
     const int margin = LANDSCAPE_POUR_RADIUS + 2;
-    const int span = REAL_H - 2 * margin;
+    const int span = REAL_H - (2 * margin);
     const int cycle = step % (2 * span);
 
-    return margin + ((cycle < span) ? cycle : (2 * span - cycle - 1));
+    return margin + ((cycle < span) ? cycle : ((2 * span) - cycle - 1));
 }
 
 /* Walks inward from the ceiling until something lands, because a player
@@ -2800,7 +2800,7 @@ landscape_stamp(sand_t* s, cell_t cell, int step) {
 static void
 landscape_pour(sand_t* s, cell_t cell, int step) {
     for (int k = 0; k < LANDSCAPE_POUR_STAMPS; k++) {
-        landscape_stamp(s, cell, step * LANDSCAPE_POUR_STAMPS + k);
+        landscape_stamp(s, cell, (step * LANDSCAPE_POUR_STAMPS) + k);
     }
 }
 
@@ -2823,7 +2823,7 @@ build_landscape_bed(sand_t* s, int steps) {
 
     for (int i = 0; i < steps; i++) {
         for (int k = 0; k < LANDSCAPE_BED_STAMPS; k++) {
-            landscape_stamp(s, CELL_MAKE(MAT_SAND, 0), i * LANDSCAPE_BED_STAMPS + k);
+            landscape_stamp(s, CELL_MAKE(MAT_SAND, 0), (i * LANDSCAPE_BED_STAMPS) + k);
         }
         sand_step(s, LANDSCAPE_GX, 0, 0);
     }
@@ -2972,8 +2972,8 @@ build_water_slope_stone_covered_scene(sand_t* s) {
 void
 water_slope_gravity_sweep(sand_t* s, int gx0, int gy0, int gx1, int gy1, int steps) {
     for (int i = 1; i <= steps; i++) {
-        const int gx = gx0 + ((gx1 - gx0) * i) / steps;
-        const int gy = gy0 + ((gy1 - gy0) * i) / steps;
+        const int gx = gx0 + (((gx1 - gx0) * i) / steps);
+        const int gy = gy0 + (((gy1 - gy0) * i) / steps);
         sand_step(s, gx, gy, 0);
     }
 }
@@ -2996,7 +2996,7 @@ build_captured_water_slope_scene(sand_t* s) {
     memset(s->cells, CELL_EMPTY, (size_t)s->w * (size_t)s->h);
     for (int y = 0; y < REAL_H; y++) {
         for (int x = 0; x < REAL_W; x++) {
-            const cell_t c = captured_slope_cells[y * CAPTURED_SLOPE_W + x];
+            const cell_t c = captured_slope_cells[(y * CAPTURED_SLOPE_W) + x];
             if (!CELL_IS_EMPTY(c)) {
                 sand_set(s, x, y, c);
             }
@@ -3268,7 +3268,7 @@ test_pouring_water_over_the_slope_reaches_the_floor(void) {
     int reached_near_floor = 0;
     for (int y = REAL_H - 20; y < REAL_H; y++) {
         const int x_edge = (y * (REAL_W - 1)) / (REAL_H - 1);
-        for (int x = x_edge - 2 * WATER_SLOPE_DISC_STEP - WATER_SLOPE_POUR_RADIUS; x < x_edge; x++) {
+        for (int x = x_edge - (2 * WATER_SLOPE_DISC_STEP) - WATER_SLOPE_POUR_RADIUS; x < x_edge; x++) {
             if (x >= 0 && x < REAL_W && CELL_MATERIAL(sand_at(&s2, x, y)) == MAT_WATER) {
                 reached_near_floor++;
                 break;

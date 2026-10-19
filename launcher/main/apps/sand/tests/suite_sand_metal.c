@@ -257,7 +257,7 @@ test_wet_dirt_can_still_steam_before_spoiling_at_least_sometimes(void) {
         sand_set(&st, x, y + 1, STONE); /* one shared floor */
     }
     for (int k = 0; k < STEAM_TEST_PODS; k++) {
-        const int lava_x = 2 + STEAM_TEST_SPACING * k;
+        const int lava_x = 2 + (STEAM_TEST_SPACING * k);
         sand_set(&st, lava_x - 1, y, STONE);
         sand_set(&st, lava_x, y - 1, STONE);
         sand_set(&st, lava_x, y, CELL_MAKE(MAT_LAVA, MASS_MAX));
@@ -309,7 +309,7 @@ test_wet_dirt_can_spoil_into_sand_instead_of_smelting(void) {
         sand_set(&wide, x, y + 1, STONE); /* one shared floor */
     }
     for (int k = 0; k < SPOILS_TEST_PODS; k++) {
-        const int lava_x = 2 + 4 * k;
+        const int lava_x = 2 + (4 * k);
         sand_set(&wide, lava_x - 1, y, STONE);
         sand_set(&wide, lava_x, y - 1, STONE);
         sand_set(&wide, lava_x, y, CELL_MAKE(MAT_LAVA, MASS_MAX));
@@ -320,7 +320,7 @@ test_wet_dirt_can_spoil_into_sand_instead_of_smelting(void) {
     for (int i = 0; i < 8000 && !spoiled; i++) {
         sand_step(&wide, 0, 1000, 0);
         for (int k = 0; k < SPOILS_TEST_PODS && !spoiled; k++) {
-            const int lava_x = 2 + 4 * k;
+            const int lava_x = 2 + (4 * k);
             spoiled = CELL_MATERIAL(sand_at(&wide, lava_x + 1, y)) == MAT_SAND;
         }
     }
@@ -347,7 +347,7 @@ test_wet_dirt_can_spoil_into_sand_instead_of_smelting(void) {
  * real regression, not bad luck. */
 #define FLAW_TEST_PODS    400
 #define FLAW_TEST_SPACING 4
-#define FLAW_TEST_W       (2 + FLAW_TEST_SPACING * FLAW_TEST_PODS + 2)
+#define FLAW_TEST_W       (2 + (FLAW_TEST_SPACING * FLAW_TEST_PODS) + 2)
 #define FLAW_TEST_H       6
 
 static void
@@ -366,7 +366,7 @@ test_dry_dirt_smelting_reaches_both_metal_and_stone(void) {
         sand_set(&flaw, x, y + 1, STONE); /* one shared floor */
     }
     for (int k = 0; k < FLAW_TEST_PODS; k++) {
-        const int lava_x = 2 + FLAW_TEST_SPACING * k;
+        const int lava_x = 2 + (FLAW_TEST_SPACING * k);
         sand_set(&flaw, lava_x - 1, y, STONE);
         sand_set(&flaw, lava_x, y - 1, STONE);
         sand_set(&flaw, lava_x, y, CELL_MAKE(MAT_LAVA, MASS_MAX));
@@ -377,7 +377,7 @@ test_dry_dirt_smelting_reaches_both_metal_and_stone(void) {
 
     int stone_count = 0, metal_count = 0;
     for (int k = 0; k < FLAW_TEST_PODS; k++) {
-        const int lava_x = 2 + FLAW_TEST_SPACING * k;
+        const int lava_x = 2 + (FLAW_TEST_SPACING * k);
         const cell_t c = sand_at(&flaw, lava_x + 1, y);
         if (CELL_MATERIAL(c) == MAT_STONE) {
             stone_count++;

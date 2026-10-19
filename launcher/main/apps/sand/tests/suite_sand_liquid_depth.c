@@ -301,7 +301,7 @@ test_shine_direction_is_unit_length(void) {
 
         /* mathi_len() overshoots by 8% at 2:1 ratio, undershoots by 1% on
          * diagonal. Tolerance: [256/1.08, 256/0.99]. */
-        const long mag_sq = (long)ux_q8 * ux_q8 + (long)uy_q8 * uy_q8;
+        const long mag_sq = ((long)ux_q8 * ux_q8) + ((long)uy_q8 * uy_q8);
         char why[64];
         snprintf(why, sizeof why, "gravity (%d, %d)", gxs[i], gys[i]);
         TEST_ASSERT_TRUE_MESSAGE(mag_sq > 230L * 230L && mag_sq < 265L * 265L, why);
@@ -626,7 +626,7 @@ mirror_ray_walk_row(sand_t* g, int cy, int grid_w, int grid_h, bool vertical_dom
     const int cx_step = h_reverse ? -1 : 1;
 
     for (int i = 0; i < grid_w; i++) {
-        const int cx = cx_first + i * cx_step;
+        const int cx = cx_first + (i * cx_step);
         const int step = vertical_dominant ? 0 : mirror_ray_walk_h_step(&herr, ax, ay, ysign);
 
         mirror_ray_walk_column(g, cx, cy, grid_w, grid_h, vertical_dominant, row_step, hdir, step, surf_cy, chain_ok,
@@ -1090,13 +1090,13 @@ test_pouring_onto_a_settled_pool_redirties_a_bounded_band_below(void) {
      * mark_depth_band()'s doing, not the pour actually having reached
      * that deep. */
     for (int x = 0; x < DEPTH_TEST_W; x++) {
-        TEST_ASSERT_EQUAL_UINT8_MESSAGE(settled_snapshot[near_row * DEPTH_TEST_W + x],
-                                        depth_test_cells[near_row * DEPTH_TEST_W + x],
+        TEST_ASSERT_EQUAL_UINT8_MESSAGE(settled_snapshot[(near_row * DEPTH_TEST_W) + x],
+                                        depth_test_cells[(near_row * DEPTH_TEST_W) + x],
                                         "setup: a cell already at MASS_MAX before the pour cannot "
                                         "have changed content - if it did, this is not isolating "
                                         "mark_depth_band()'s own effect");
-        TEST_ASSERT_EQUAL_UINT8_MESSAGE(settled_snapshot[far_row * DEPTH_TEST_W + x],
-                                        depth_test_cells[far_row * DEPTH_TEST_W + x],
+        TEST_ASSERT_EQUAL_UINT8_MESSAGE(settled_snapshot[(far_row * DEPTH_TEST_W) + x],
+                                        depth_test_cells[(far_row * DEPTH_TEST_W) + x],
                                         "setup: same, for the control row outside the band");
     }
 
@@ -1209,7 +1209,7 @@ test_pouring_onto_a_settled_pool_in_landscape_redirties_a_bounded_column_band(vo
                  y, col_x0[y], col_x1[y]);
         TEST_ASSERT_TRUE_MESSAGE(col_x0[y] < col_x1[y], sentinel_why);
 
-        const size_t far_at = (size_t)y * (size_t)LANDSCAPE_DEPTH_TEST_W + (size_t)far_x;
+        const size_t far_at = ((size_t)y * (size_t)LANDSCAPE_DEPTH_TEST_W) + (size_t)far_x;
         char why[224];
         snprintf(why, sizeof why,
                  "row %d: a cell already at MASS_MAX before the pour cannot have changed content, so "
@@ -1397,7 +1397,7 @@ wake_test_row_has_liquid(unsigned mask) {
 static void
 wake_test_frame_gravity(rng_t* wobble, int f, int* gx, int* gy) {
     const int phase = f % 90;
-    const int tri = (phase < 45) ? (-40 + (phase * 80) / 45) : (40 - ((phase - 45) * 80) / 45);
+    const int tri = (phase < 45) ? (-40 + ((phase * 80) / 45)) : (40 - (((phase - 45) * 80) / 45));
     *gx = tri + (int)rng_below(wobble, 21) - 10;
     *gy = 950 + (int)rng_below(wobble, 11) - 5;
 }
@@ -1409,7 +1409,7 @@ local_depth_mark_occupancy_dirty(sand_t* g, int w, int h, const bool* prev_occup
     for (int y = 0; y < h; y++) {
         for (int x = 0; x < w; x++) {
             const bool now = !CELL_IS_EMPTY(sand_at(g, x, y));
-            if (now != prev_occupied[y * w + x]) {
+            if (now != prev_occupied[(y * w) + x]) {
                 row_dirty[y] = true;
             }
         }
@@ -1558,7 +1558,7 @@ wake_test_interior_mean_depth(sand_t* g, const int8_t* displayed_depth) {
             if ((wake_test_edge_mask(g, x, y) & MATERIAL_EDGE_CARDINAL) != 0) {
                 continue;
             }
-            const int d = displayed_depth[y * WAKE_TEST_W + x];
+            const int d = displayed_depth[(y * WAKE_TEST_W) + x];
             if (d < 0) {
                 continue;
             }
@@ -1709,7 +1709,7 @@ flip_test_sweep_column(int top, int bottom, bool v_reverse, bool apply_fix, unsi
     const int n = bottom - top + 1;
 
     for (int i = 0; i < n; i++) {
-        const int cy = cy_first + i * cy_step;
+        const int cy = cy_first + (i * cy_step);
         const int neighbour_cy = v_reverse ? cy + 1 : cy - 1;
 
         /* Every row in [top, bottom] is water by construction - the only
@@ -1836,9 +1836,10 @@ band_test_maybe_reseed(sand_t* g, int f) {
 static void
 band_test_frame_gravity(rng_t* wobble, int f, int* gx, int* gy) {
     const int sway_phase = f % 250;
-    const int sway = (sway_phase < 125) ? (-115 + (sway_phase * 230) / 125) : (115 - ((sway_phase - 125) * 230) / 125);
+    const int sway =
+        (sway_phase < 125) ? (-115 + ((sway_phase * 230) / 125)) : (115 - (((sway_phase - 125) * 230) / 125));
     const int tremor_phase = f % 17;
-    const int tremor = (tremor_phase < 8) ? (-30 + (tremor_phase * 60) / 8) : (30 - ((tremor_phase - 8) * 60) / 9);
+    const int tremor = (tremor_phase < 8) ? (-30 + ((tremor_phase * 60) / 8)) : (30 - (((tremor_phase - 8) * 60) / 9));
     *gy = sway + tremor + rng_below(wobble, 21) - 10;
     *gx = 950 + rng_below(wobble, 11) - 5;
 }
@@ -1875,8 +1876,8 @@ band_test_is_jump(sand_t* g, const int8_t* displayed_depth, int x, int y) {
         || (wake_test_edge_mask(g, x, y) & MATERIAL_EDGE_CARDINAL) != 0) {
         return false;
     }
-    const int a = displayed_depth[(y - 1) * BAND_TEST_W + x];
-    const int b = displayed_depth[y * BAND_TEST_W + x];
+    const int a = displayed_depth[((y - 1) * BAND_TEST_W) + x];
+    const int b = displayed_depth[(y * BAND_TEST_W) + x];
     if (a < 0 || b < 0) {
         return false;
     }
@@ -2085,7 +2086,7 @@ flash_test_paint_row(int cy, bool vdom, bool vrev, bool hrev, unsigned ax, unsig
         if (!CELL_IS_EMPTY(c) && material_of(c)->kind == KIND_LIQUID) {
             flash_row_has_liquid[cy] = 1;
         }
-        flash_displayed[cy * FLASH_TEST_W + x] = (int8_t)row_depth[x];
+        flash_displayed[(cy * FLASH_TEST_W) + x] = (int8_t)row_depth[x];
     }
 }
 
@@ -2181,7 +2182,7 @@ flash_test_count_crossed(void) {
     int crossed = 0;
     for (int y = 0; y < FLASH_TEST_H; y++) {
         for (int x = 0; x < FLASH_TEST_W; x++) {
-            const int k = y * FLASH_TEST_W + x;
+            const int k = (y * FLASH_TEST_W) + x;
             if (flash_displayed[k] < 0 || flash_displayed_prev[k] < 0 || !flash_test_is_interior_liquid(x, y)) {
                 continue;
             }
@@ -2275,7 +2276,7 @@ tremor_test_count_changed(const int8_t* before) {
     int diff = 0;
     for (int y = 0; y < FLASH_TEST_H; y++) {
         for (int x = 0; x < FLASH_TEST_W; x++) {
-            const int k = y * FLASH_TEST_W + x;
+            const int k = (y * FLASH_TEST_W) + x;
             if (before[k] < 0 || flash_displayed[k] < 0 || !flash_test_is_interior_liquid(x, y)) {
                 continue;
             }
@@ -2426,7 +2427,7 @@ shadow_test_coherent_pass(int gx, int gy, unsigned depth_out[]) {
         mirror_ray_walk_row(&fx.shadow_test_grid, cy, SHADOW_TEST_W, SHADOW_TEST_H, vdom, vrev, hrev, ax, ay, scale_q8,
                             MATERIAL_LIQUID_DEPTH_BAND, &st, row_depth);
         for (int x = 0; x < SHADOW_TEST_W; x++) {
-            depth_out[cy * SHADOW_TEST_W + x] = row_depth[x];
+            depth_out[(cy * SHADOW_TEST_W) + x] = row_depth[x];
         }
     }
 }
@@ -2448,7 +2449,7 @@ shadow_test_accumulate(const unsigned depth[], int sx, int sy, int dx, int dy, s
     if (!shadow_test_is_liquid(x, y)) {
         return;
     }
-    const int deficit = (int)MATERIAL_LIQUID_DEPTH_BAND - (int)depth[y * SHADOW_TEST_W + x];
+    const int deficit = (int)MATERIAL_LIQUID_DEPTH_BAND - (int)depth[(y * SHADOW_TEST_W) + x];
     if (deficit <= 0) {
         return;
     }
@@ -2514,7 +2515,7 @@ shadow_test_build_scene(sand_t* g) {
 
     for (int dy = -1; dy <= 1; dy++) {
         for (int dx = -1; dx <= 1; dx++) {
-            sand_set(g, SHADOW_TEST_W / 2 + dx, SHADOW_TEST_H / 2 + dy, CELL_MAKE(MAT_STONE, 0));
+            sand_set(g, (SHADOW_TEST_W / 2) + dx, (SHADOW_TEST_H / 2) + dy, CELL_MAKE(MAT_STONE, 0));
         }
     }
     run_steps(g, 30, 1000, 1000);

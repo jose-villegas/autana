@@ -699,7 +699,7 @@ burst_board_from_frame(uint8_t fill) {
     sand_set_mobility(&s, 0);
     impulse_t* impulses = impulses_open(&s, BW * BH);
     for (int i = 0; i < 6; i++) {
-        build_confined_gas_pocket(&s, 10 + i * 40);
+        build_confined_gas_pocket(&s, 10 + (i * 40));
     }
     for (int i = 0; i < BURST_STEPS; i++) {
         s.step_phase = (uint16_t)i;
@@ -745,7 +745,7 @@ test_confined_gas_blasts_chain_without_losing_a_pocket(void) {
     impulse_t* impulses = impulses_open(&chain, CW * CH);
 
     for (int i = 0; i < CELL_COUNT; i++) {
-        build_confined_gas_pocket(&chain, 10 + i * CELL_SPACING);
+        build_confined_gas_pocket(&chain, 10 + (i * CELL_SPACING));
     }
 
     int completed_step = 0;

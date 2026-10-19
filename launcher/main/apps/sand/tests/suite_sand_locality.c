@@ -93,7 +93,7 @@ test_two_separate_active_spots_in_the_same_block_row_do_not_wake_each_other(void
     TEST_ASSERT_NOT_NULL(left_before);
     for (int y = 0; y < LOC_H; y++) {
         for (int x = 0; x < SAND_BLOCK_W; x++) {
-            left_before[y * SAND_BLOCK_W + x] = sand_at(&fx.loc, x, y);
+            left_before[(y * SAND_BLOCK_W) + x] = sand_at(&fx.loc, x, y);
         }
     }
 
@@ -111,7 +111,7 @@ test_two_separate_active_spots_in_the_same_block_row_do_not_wake_each_other(void
     bool left_unchanged = true;
     for (int y = 0; y < LOC_H && left_unchanged; y++) {
         for (int x = 0; x < SAND_BLOCK_W; x++) {
-            if (sand_at(&fx.loc, x, y) != left_before[y * SAND_BLOCK_W + x]) {
+            if (sand_at(&fx.loc, x, y) != left_before[(y * SAND_BLOCK_W) + x]) {
                 left_unchanged = false;
                 break;
             }
@@ -215,7 +215,7 @@ test_sideways_tilt_wakes_only_the_disturbed_column(void) {
     uint8_t right_before[8 * 4]; /* a small window around the right grain */
     for (int y = 8; y < 12; y++) {
         for (int x = 16; x < 24; x++) {
-            right_before[(y - 8) * 8 + (x - 16)] = sand_at(&fx.loc, x, y);
+            right_before[((y - 8) * 8) + (x - 16)] = sand_at(&fx.loc, x, y);
         }
     }
 
@@ -228,7 +228,7 @@ test_sideways_tilt_wakes_only_the_disturbed_column(void) {
     bool right_unchanged = true;
     for (int y = 8; y < 12 && right_unchanged; y++) {
         for (int x = 16; x < 24; x++) {
-            if (sand_at(&fx.loc, x, y) != right_before[(y - 8) * 8 + (x - 16)]) {
+            if (sand_at(&fx.loc, x, y) != right_before[((y - 8) * 8) + (x - 16)]) {
                 right_unchanged = false;
                 break;
             }

@@ -719,7 +719,7 @@ test_a_settled_pile_under_two_core_stepping_shows_no_tile_seam(void) {
      * pixel-exact one, and the pile's own surface already has real jumps
      * near its edges. The claim is only that a boundary is not a special,
      * repeatable outlier. */
-    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(interior_worst + TC_W / 10, boundary_worst, why);
+    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(interior_worst + (TC_W / 10), boundary_worst, why);
 }
 
 /* A free-fall step advances the phase without touching a cell, so the next
@@ -863,7 +863,7 @@ tc_assert_one_cell_at(int phase, int gx, int gy, int x, int y) {
 static void
 tc_assert_row_seams_move_one_cell(int phase, int side) {
     for (int boundary = side; boundary < TC_H; boundary += side) {
-        const int rows[] = {boundary - 2, boundary - 1, boundary, boundary + 1, boundary - side / 2};
+        const int rows[] = {boundary - 2, boundary - 1, boundary, boundary + 1, boundary - (side / 2)};
         for (size_t r = 0; r < sizeof rows / sizeof rows[0]; r++) {
             for (size_t g = 0; g < sizeof tc_ring / sizeof tc_ring[0]; g++) {
                 if (tc_ring[g][0] == 0 || tc_ring[g][1] == 0) {
@@ -912,8 +912,8 @@ static void
 tc_assert_a_crossing_liquid_marks_where_it_lands(int gx, int gy, int start_x, int start_y, int dest_x, int dest_y) {
     tc_board_t* b = tc_board_open(TC_W, TC_H, 1);
     const int cols = b->s.block_cols;
-    const int started = (start_y / SAND_BLOCK_H) * cols + start_x / SAND_BLOCK_W;
-    const int landed = (dest_y / SAND_BLOCK_H) * cols + dest_x / SAND_BLOCK_W;
+    const int started = ((start_y / SAND_BLOCK_H) * cols) + (start_x / SAND_BLOCK_W);
+    const int landed = ((dest_y / SAND_BLOCK_H) * cols) + (dest_x / SAND_BLOCK_W);
 
     sand_set(&b->s, start_x, start_y, WATER);
     tc_board_step(b, gx, gy, true);
@@ -942,8 +942,8 @@ tc_assert_a_crossing_liquid_marks_where_it_lands(int gx, int gy, int start_x, in
 static void
 test_a_liquid_crossing_a_chunk_border_stays_in_cross_flow_reach(void) {
     const int side = 2 * SAND_BLOCK_H; /* a multiple of both block axes */
-    const int x = (TC_W / 2 / SAND_BLOCK_W) * SAND_BLOCK_W + SAND_BLOCK_W / 2;
-    const int y = (side / 2 / SAND_BLOCK_H) * SAND_BLOCK_H + SAND_BLOCK_H / 2;
+    const int x = ((TC_W / 2 / SAND_BLOCK_W) * SAND_BLOCK_W) + (SAND_BLOCK_W / 2);
+    const int y = ((side / 2 / SAND_BLOCK_H) * SAND_BLOCK_H) + (SAND_BLOCK_H / 2);
 
     TEST_ASSERT_TRUE_MESSAGE(sand_chunk_side_for_test(side, side), "the crossing side must clear the chunk floor");
     tc_assert_a_crossing_liquid_marks_where_it_lands(0, 1000, x, side - 1, x, side);
@@ -1088,8 +1088,8 @@ test_smaller_quality_seams_match_serial(void) {
  * astride one for every step it can travel. */
 static void
 tc_build_solid_body(sand_t* s, int side, cell_t fill, int* out_x0, int* out_y0) {
-    const int x0 = side - TC_BODY_SIDE / 2;
-    const int y0 = side - TC_BODY_SIDE / 2;
+    const int x0 = side - (TC_BODY_SIDE / 2);
+    const int y0 = side - (TC_BODY_SIDE / 2);
 
     sand_fill_box(s, x0, y0, x0 + TC_BODY_SIDE, y0 + TC_BODY_SIDE, fill);
     *out_x0 = x0;
@@ -1245,9 +1245,9 @@ static void
 tc_build_gas_shaft(sand_t* s, int side, int dx, int dy) {
     const bool vertical = (dy != 0);
     const int span = vertical ? TC_H : TC_W;
-    const int across = side + side / 2;
+    const int across = side + (side / 2);
     const int rise = -(vertical ? dy : dx);
-    const int lead = (rise < 0) ? 2 * side - 1 : 2 * side;
+    const int lead = (rise < 0) ? (2 * side) - 1 : 2 * side;
     const int from = (rise < 0) ? lead : 0;
     const int to = (rise < 0) ? span - 1 : lead;
 
@@ -1294,7 +1294,7 @@ test_a_split_rising_body_of_gas_opens_no_gap(void) {
 
     /* The run has to cross a border, and its shaft has to clear the walls. */
     TEST_ASSERT_TRUE(2 * side < TC_W);
-    TEST_ASSERT_TRUE(side + side / 2 + 1 < TC_H);
+    TEST_ASSERT_TRUE(side + (side / 2) + 1 < TC_H);
 
     for (size_t i = 0; i < sizeof pulls / sizeof pulls[0]; i++) {
         for (int phase = 0; phase < TC_SHAFT_PHASES; phase++) {
@@ -1583,7 +1583,7 @@ test_landscape_water_column_has_no_line_mass_lag(void) {
     sand_enable_sleeping(&split, split_blocks);
     void* scratch = lane_scratch_open(&split);
     for (int y = 0; y < TC_H / 2; y++) {
-        for (int x = TC_W / 2 - 6; x < TC_W / 2 + 6; x++) {
+        for (int x = (TC_W / 2) - 6; x < (TC_W / 2) + 6; x++) {
             sand_set(&serial, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
             sand_set(&split, x, y, CELL_MAKE(MAT_WATER, MASS_MAX));
         }
@@ -2116,7 +2116,7 @@ tc_run_fluids_and_hash(bool two_core, bool with_scratch) {
     for (int y = 1; y < TC_H - 1; y++) {
         for (int x = 1; x < TC_W - 1; x++) {
             if ((x * 7 + y * 13) % 5 == 0) {
-                sand_set(&s, x, y, CELL_MAKE(MAT_WATER, 1 + (x + y) % 15));
+                sand_set(&s, x, y, CELL_MAKE(MAT_WATER, 1 + ((x + y) % 15)));
             } else if ((x * 3 + y * 5) % 11 == 0) {
                 sand_set(&s, x, y, GAS);
             }
@@ -2585,7 +2585,7 @@ tc_run_crossflow_and_hash(void) {
     sand_test_grid_init(&s, &cells, &blocks, TC_W, TC_H, 5u);
     sand_fill_box(&s, 0, TC_H / 3, TC_W, TC_H, CELL_MAKE(MAT_OIL, MASS_MAX));
     for (int x = 0; x < TC_W; x++) {
-        sand_set(&s, x, TC_H / 3 - 1, CELL_MAKE(MAT_OIL, (uint8_t)(1 + (x * 7) % MASS_MAX)));
+        sand_set(&s, x, (TC_H / 3) - 1, CELL_MAKE(MAT_OIL, (uint8_t)(1 + ((x * 7) % MASS_MAX))));
     }
     memset(blocks, BLOCK_HAS_LIQUID, sand_sleep_block_bytes(TC_W, TC_H));
     /* Pinned strictly between 0 and 255, the two values that skip the roll,

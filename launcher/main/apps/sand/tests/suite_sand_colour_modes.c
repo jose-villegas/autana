@@ -165,11 +165,11 @@ paint_full_frame_full(const uint8_t* grid) {
         for (int cx = 0; cx < CM_GRID_W; cx++) {
             const unsigned hash = material_grain_hash(cx, cy);
             gfx_color_t col[3];
-            material_colours(&f, grid[cy * CM_GRID_W + cx], hash, 0u, 0u, col);
-            gfx_color_t* p = fb + (size_t)(cy * CM_CELL) * GFX_WIDTH + (size_t)(cx * CM_CELL);
+            material_colours(&f, grid[(cy * CM_GRID_W) + cx], hash, 0u, 0u, col);
+            gfx_color_t* p = fb + ((size_t)(cy * CM_CELL) * GFX_WIDTH) + (size_t)(cx * CM_CELL);
             for (int dy = 0; dy < CM_CELL; dy++) {
                 for (int dx = 0; dx < CM_CELL; dx++) {
-                    p[dy * GFX_WIDTH + dx] = col[0];
+                    p[(dy * GFX_WIDTH) + dx] = col[0];
                 }
             }
         }
@@ -201,8 +201,8 @@ paint_full_frame_indexed(const uint8_t* grid, gfx_indexed_repaint_kind_t kind, c
         for (int cx = 0; cx < CM_GRID_W; cx++) {
             const unsigned hash = material_grain_hash(cx, cy);
             gfx_color_t col[3];
-            material_colours(&f, grid[cy * CM_GRID_W + cx], hash, 0u, 0u, col);
-            const int i = cy * CM_GRID_W + cx;
+            material_colours(&f, grid[(cy * CM_GRID_W) + cx], hash, 0u, 0u, col);
+            const int i = (cy * CM_GRID_W) + cx;
             const uint8_t new_idx = (uint8_t)material_palette256_index(col[0]);
             const uint8_t old_idx = img[i];
             if (!gfx_indexed_cell_repaint(kind, class_table, cell_table, false, old_idx, new_idx, cx, cy)) {
@@ -237,7 +237,7 @@ diff_bounding_box(const uint8_t* grid, int* out_x0, int* out_y0, int* out_x1, in
     bool any = false;
     for (int cy = 0; cy < CM_GRID_H; cy++) {
         for (int cx = 0; cx < CM_GRID_W; cx++) {
-            const int i = cy * CM_GRID_W + cx;
+            const int i = (cy * CM_GRID_W) + cx;
             if (prev_grid_valid && grid[i] == prev_grid[i]) {
                 continue;
             }

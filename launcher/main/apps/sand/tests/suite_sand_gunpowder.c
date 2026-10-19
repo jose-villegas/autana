@@ -966,11 +966,11 @@ test_damp_gunpowder_ignites_less_readily_than_dry(void) {
 
     int dry_lit = 0, damp_lit = 0;
     for (int i = 0; i < DAMP_TEST_TRIALS; i++) {
-        const cell_t dry_c = sand_at(dry_g, i * 3 + 1, 0);
+        const cell_t dry_c = sand_at(dry_g, (i * 3) + 1, 0);
         if (cell_is_gunpowder(dry_c) && cell_code(dry_c) == GUNPOWDER_LIT) {
             dry_lit++;
         }
-        const cell_t damp_c = sand_at(damp_g, i * 3 + 1, 0);
+        const cell_t damp_c = sand_at(damp_g, (i * 3) + 1, 0);
         if (cell_is_gunpowder(damp_c) && cell_code(damp_c) == GUNPOWDER_LIT) {
             damp_lit++;
         }
@@ -1017,13 +1017,13 @@ test_water_wets_gunpowder_and_it_dries_out_slowly(void) {
      * at 2 in 256, a mean of ~128 steps - long enough that an open
      * diagonal lets the powder slide away and the water spread off,
      * losing the cell under test. */
-    sand_set(&s, 2, H / 2 + 1, STONE);
-    sand_set(&s, 3, H / 2 + 1, STONE);
-    sand_set(&s, 4, H / 2 + 1, STONE);
-    sand_set(&s, 2, H / 2 - 1, STONE);
-    sand_set(&s, 4, H / 2 - 1, STONE);
+    sand_set(&s, 2, (H / 2) + 1, STONE);
+    sand_set(&s, 3, (H / 2) + 1, STONE);
+    sand_set(&s, 4, (H / 2) + 1, STONE);
+    sand_set(&s, 2, (H / 2) - 1, STONE);
+    sand_set(&s, 4, (H / 2) - 1, STONE);
     sand_set(&s, 3, H / 2, GUNPOWDER_CELL(0));
-    sand_set(&s, 3, H / 2 - 1, WATER);
+    sand_set(&s, 3, (H / 2) - 1, WATER);
 
     /* Breaks the moment it wets, so this only has to be generous - and it
      * has to be, because a keg soaks deliberately slowly (reaction_t.soaks

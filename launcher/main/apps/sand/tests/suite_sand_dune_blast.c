@@ -464,7 +464,7 @@ empty_within(const sand_t* s, int cx, int cy, int r) {
                 continue;
             }
             const int dx = x - cx, dy = y - cy;
-            if ((dx * dx) + dy * dy > r * r) {
+            if ((dx * dx) + (dy * dy) > r * r) {
                 continue;
             }
             if (sand_at(s, x, y) == SAND_EMPTY) {

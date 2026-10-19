@@ -231,7 +231,7 @@ static void
 assert_every_change_was_merged(const crossflow_fixture_t* f, const uint8_t* before) {
     for (int y = 0; y < CF_H; y++) {
         for (int x = 0; x < CF_W; x++) {
-            if (f->cells[y * CF_W + x] == before[y * CF_W + x]) {
+            if (f->cells[(y * CF_W) + x] == before[(y * CF_W) + x]) {
                 continue;
             }
             TEST_ASSERT_TRUE_MESSAGE(f->dirty[y], "a changed row must be repainted");
@@ -248,25 +248,25 @@ assert_every_change_was_merged(const crossflow_fixture_t* f, const uint8_t* befo
  * board matches serial cell for cell, repaint for repaint, wake for wake. */
 static void
 run_crossflow_seam_trial(int px, int py, int phase, int trial) {
-    const int delta = trial / 2 - SAND_LIQUID_SIGHT - 1;
+    const int delta = (trial / 2) - SAND_LIQUID_SIGHT - 1;
     const int distance = (trial & 1) ? SAND_LIQUID_SIGHT : 1;
     crossflow_fixture_t* serial = crossflow_fixture();
     crossflow_fixture_t* split = crossflow_fixture();
     uint8_t* before = malloc(CF_W * CF_H);
     TEST_ASSERT_NOT_NULL(before);
 
-    const int y = 2 * SAND_CHUNK_SIDE_MIN + delta;
+    const int y = (2 * SAND_CHUNK_SIDE_MIN) + delta;
     crossflow_fixture_t* fixtures[] = {serial, split};
     for (int i = 0; i < 2; i++) {
         sand_t* s = &fixtures[i]->s;
         s->step_phase = (uint16_t)phase;
         sand_set(s, 9, y, CELL_MAKE(MAT_WATER, 15));
         for (int k = 1; k < distance; k++) {
-            sand_set(s, 9 + k * px, y + k * py, CELL_MAKE(MAT_WATER, 14));
-            sand_set(s, 9 + k * px - py, y + k * py + px, CELL_EMPTY);
+            sand_set(s, 9 + (k * px), y + (k * py), CELL_MAKE(MAT_WATER, 14));
+            sand_set(s, 9 + (k * px) - py, y + (k * py) + px, CELL_EMPTY);
         }
-        sand_set(s, 9 + distance * px, y + distance * py, CELL_EMPTY);
-        sand_set(s, 9 + (distance + 1) * px, y + (distance + 1) * py, CELL_EMPTY);
+        sand_set(s, 9 + (distance * px), y + (distance * py), CELL_EMPTY);
+        sand_set(s, 9 + ((distance + 1) * px), y + ((distance + 1) * py), CELL_EMPTY);
     }
     memcpy(before, split->cells, CF_W * CF_H);
 
@@ -315,7 +315,7 @@ crossflow_pool(void) {
     crossflow_fixture_t* f = crossflow_fixture();
     for (int y = 1; y < CF_H - 1; y++) {
         for (int x = 1; x < CF_W - 1; x++) {
-            sand_set(&f->s, x, y, CELL_MAKE(MAT_WATER, 1 + (x * 7 + y * 11) % 15));
+            sand_set(&f->s, x, y, CELL_MAKE(MAT_WATER, 1 + ((x * 7 + y * 11) % 15)));
         }
     }
     return f;
@@ -360,7 +360,7 @@ crossflow_line(crossflow_fixture_t* f, int px, int py, int* x0, int* y0) {
     *x0 = (px > 0) ? 0 : (px < 0) ? len - 1 : 9;
     *y0 = (py == 0) ? 80 : (py > 0) ? lo : lo + len - 1;
     for (int i = 0; i < len; i++) {
-        sand_set(&f->s, *x0 + i * px, *y0 + i * py, CELL_MAKE(MAT_WATER, (uint8_t)(1 + i % 15)));
+        sand_set(&f->s, *x0 + (i * px), *y0 + (i * py), CELL_MAKE(MAT_WATER, (uint8_t)(1 + (i % 15))));
     }
     return len;
 }
@@ -392,7 +392,7 @@ crossflow_level_faults(int px, int py) {
     unsigned faults = 0;
     int previous = 0;
     for (int i = 0; i < len; i++) {
-        const size_t at = (size_t)(y0 + i * py) * (size_t)CF_W + (size_t)(x0 + i * px);
+        const size_t at = ((size_t)(y0 + (i * py)) * (size_t)CF_W) + (size_t)(x0 + (i * px));
         const int level = CELL_VARIANT(split->cells[at]);
 
         if (i > 0 && abs(level - previous) > 1) {

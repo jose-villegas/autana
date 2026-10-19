@@ -1213,7 +1213,7 @@ test_wood_leaf_wind_axis_stays_perpendicular_to_gravity(void) {
     for (size_t i = 0; i < sizeof gxs / sizeof gxs[0]; i++) {
         int ux_q8 = 0, uy_q8 = 0;
         material_wood_leaf_wind_axis(gxs[i], gys[i], &ux_q8, &uy_q8);
-        const long dot = (long)gxs[i] * ux_q8 + (long)gys[i] * uy_q8;
+        const long dot = ((long)gxs[i] * ux_q8) + ((long)gys[i] * uy_q8);
         char why[80];
         snprintf(why, sizeof why, "gravity (%d,%d), dot %ld", gxs[i], gys[i], dot);
         /* Exactly 0 for the true rotation; a few units of Q8 truncation
@@ -1488,7 +1488,7 @@ test_two_pours_apart_in_time_lay_down_different_shades(void) {
         run_steps(&s, 64, 0, 1000);
     }
 
-    const int gap = (lo[0] + hi[0]) / 2 - (lo[1] + hi[1]) / 2;
+    const int gap = ((lo[0] + hi[0]) / 2) - ((lo[1] + hi[1]) / 2);
     TEST_ASSERT_GREATER_OR_EQUAL_MESSAGE(3, gap < 0 ? -gap : gap,
                                          "and two pours a couple of seconds apart must be visibly different "
                                          "shades - that difference IS the layer, and without it a pile is "
@@ -1614,7 +1614,7 @@ test_every_material_has_a_palette_block(void) {
     for (int m = 0; m < MAT_COUNT; m++) {
         int set = 0;
         for (int v = 0; v < MATERIAL_VARIANTS; v++) {
-            if (pal[m * MATERIAL_VARIANTS + v] != 0) {
+            if (pal[(m * MATERIAL_VARIANTS) + v] != 0) {
                 set++;
             }
         }
@@ -1667,7 +1667,7 @@ test_ice_is_its_own_colour(void) {
 
     for (int m = 0; m < MAT_COUNT; m++) {
         for (int v = 0; v < MATERIAL_VARIANTS; v++) {
-            if (pal[m * MATERIAL_VARIANTS + v] == ice) {
+            if (pal[(m * MATERIAL_VARIANTS) + v] == ice) {
                 char why[128];
                 snprintf(why, sizeof why, "ice shares a colour with %s variant %d",
                          material_by_id((material_id_t)m)->name, v);

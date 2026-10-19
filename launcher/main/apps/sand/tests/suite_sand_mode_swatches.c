@@ -89,7 +89,7 @@ test_256_samples_only_sand_colours(void) {
  * separate so this test proves the ORDER, not merely re-runs the sort. */
 static int
 luma_of(uint32_t rgb) {
-    return (int)(((rgb >> 16) & 0xFF) * 299 + ((rgb >> 8) & 0xFF) * 587 + (rgb & 0xFF) * 114);
+    return (int)((((rgb >> 16) & 0xFF) * 299) + (((rgb >> 8) & 0xFF) * 587) + ((rgb & 0xFF) * 114));
 }
 
 /* Every grey has R==G==B, so sorting by any one channel or by full luma
@@ -106,7 +106,7 @@ test_sixteen_sorts_by_luma_not_by_a_single_channel(void) {
     const uint32_t bright = gfx_color_rgb888(GFX_RGB(0xC08000)); /* bright orange, no blue, large luma */
 
     for (int i = 0; i < LUT_SIZE; i++) {
-        none_lut[i] = GFX_RGB((uint32_t)(0x101010u * (uint32_t)(i % 14) + 0x40));
+        none_lut[i] = GFX_RGB((uint32_t)((0x101010u * (uint32_t)(i % 14)) + 0x40));
     }
     none_lut[14] = GFX_RGB(0x000060);
     none_lut[15] = GFX_RGB(0xC08000);
@@ -171,9 +171,9 @@ test_256_sample_spans_the_whole_sand_range(void) {
     }
     TEST_ASSERT_NOT_EQUAL_MESSAGE(-1, first_idx, "the first sample must be a real sand colour");
     TEST_ASSERT_NOT_EQUAL_MESSAGE(-1, last_idx, "the last sample must be a real sand colour");
-    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(UI_ENTRIES + sand_range / 10, first_idx,
+    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(UI_ENTRIES + (sand_range / 10), first_idx,
                                           "the first sample must sit near the start of the sand range");
-    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(LUT_SIZE - 1 - sand_range / 10, last_idx,
+    TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(LUT_SIZE - 1 - (sand_range / 10), last_idx,
                                              "the last sample must sit near the end of the sand range, not just "
                                              "past the UI block");
 }

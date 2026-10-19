@@ -84,7 +84,7 @@ static void
 test_two_falling_seeds_do_not_hold_each_other_up(void) {
     stone_floor_fixture();
     sand_set(&s, W / 2, 1, MATX(MATX_PLANT));
-    sand_set(&s, W / 2 + 1, 1, MATX(MATX_PLANT));
+    sand_set(&s, (W / 2) + 1, 1, MATX(MATX_PLANT));
 
     /* Long enough to fall the height of the board at a leaf's pace, and
      * no longer. */
@@ -212,7 +212,7 @@ test_a_settled_plant_lets_the_reaction_pass_stand_down(void) {
     /* Resting on the floor, so it never moves - it just sits there being
      * a plant. */
     sand_set(&s, W / 2, H - 2, MATX(MATX_PLANT));
-    sand_set(&s, W / 2 + 1, H - 2, CELL_MAKE(MAT_WOOD, 0));
+    sand_set(&s, (W / 2) + 1, H - 2, CELL_MAKE(MAT_WOOD, 0));
 
     run_steps(&s, 100, 0, 1000);
 
@@ -263,7 +263,7 @@ test_dissolving_the_ground_under_a_settled_plant_drops_it(void) {
     run_steps(&s, 100, 0, 1000);
     TEST_ASSERT_FALSE_MESSAGE(s.faller_may_move, "the plant has to be standing still before the acid arrives");
 
-    sand_set(&s, W / 2 - 1, H - 2, CELL_MAKE(MAT_ACID, MASS_MAX));
+    sand_set(&s, (W / 2) - 1, H - 2, CELL_MAKE(MAT_ACID, MASS_MAX));
 
     run_steps(&s, 200, 0, 1000);
 
@@ -312,7 +312,7 @@ check_the_fall_flag_is_honest(sand_t* g) {
     }
     for (int y = 0; y < g->h; y++) {
         for (int x = 0; x < g->w; x++) {
-            const cell_t c = g->cells[(size_t)y * (size_t)g->w + (size_t)x];
+            const cell_t c = g->cells[((size_t)y * (size_t)g->w) + (size_t)x];
             if (CELL_IS_EMPTY(c)) {
                 continue;
             }

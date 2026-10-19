@@ -72,7 +72,7 @@ assert_every_change_is_marked(material_id_t m, int steps, const char* what) {
 
         for (int y = 0; y < H; y++) {
             for (int x = 0; x < W; x++) {
-                if (seen[y * W + x] == s.cells[y * W + x]) {
+                if (seen[(y * W) + x] == s.cells[(y * W) + x]) {
                     continue;
                 }
                 /* The whole byte, not just the material nibble: a cell
@@ -300,8 +300,8 @@ test_a_sparse_pour_scatters_across_the_whole_disc(void) {
             bool in_row = false;
             bool in_col = false;
             for (int e = -radius; e <= radius; e++) {
-                in_row = in_row || sand_at(&fx.loc, REAL_W / 2 + e, REAL_H / 2 + d) != SAND_EMPTY;
-                in_col = in_col || sand_at(&fx.loc, REAL_W / 2 + d, REAL_H / 2 + e) != SAND_EMPTY;
+                in_row = in_row || sand_at(&fx.loc, (REAL_W / 2) + e, (REAL_H / 2) + d) != SAND_EMPTY;
+                in_col = in_col || sand_at(&fx.loc, (REAL_W / 2) + d, (REAL_H / 2) + e) != SAND_EMPTY;
             }
             rows += in_row ? 1 : 0;
             cols += in_col ? 1 : 0;
@@ -312,9 +312,9 @@ test_a_sparse_pour_scatters_across_the_whole_disc(void) {
                  "seed %u reached %d rows and %d columns of the disc's %d, and at most %d of "
                  "them are short enough to be missed by chance - a pour clumping onto a "
                  "lattice is what leaves whole lines empty",
-                 seed, rows, cols, 2 * radius + 1, thin_lines);
-        TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(2 * radius + 1 - thin_lines, rows, why);
-        TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(2 * radius + 1 - thin_lines, cols, why);
+                 seed, rows, cols, (2 * radius) + 1, thin_lines);
+        TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE((2 * radius) + 1 - thin_lines, rows, why);
+        TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE((2 * radius) + 1 - thin_lines, cols, why);
     }
 
     free(grid);
@@ -354,7 +354,7 @@ test_erase_removes_a_disc(void) {
     TEST_ASSERT_GREATER_THAN_MESSAGE(0, removed, "an erase must remove grains");
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(SAND_EMPTY, sand_at(&s, 4, 4), "the centre is inside the disc");
     TEST_ASSERT_NOT_EQUAL_MESSAGE(SAND_EMPTY, sand_at(&s, 0, 0), "a corner far outside the radius must be untouched");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(W * H - removed, sand_count(&s),
+    TEST_ASSERT_EQUAL_INT_MESSAGE((W * H) - removed, sand_count(&s),
                                   "the reported count must match what actually left the grid");
 }
 
@@ -377,7 +377,8 @@ test_erase_is_clipped_to_the_grid(void) {
     const int removed = sand_erase(&s, 0, 0, 3);
 
     TEST_ASSERT_GREATER_THAN_MESSAGE(0, removed, "the on-grid part must go");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(W * H - removed, sand_count(&s), "cells off the grid must not be counted as removed");
+    TEST_ASSERT_EQUAL_INT_MESSAGE((W * H) - removed, sand_count(&s),
+                                  "cells off the grid must not be counted as removed");
 }
 
 static void
@@ -406,7 +407,7 @@ test_material_counts_tallies_every_cell_by_material(void) {
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(2, counts[MAT_WATER], "two cells were set to water");
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, counts[MAT_STONE], "one cell was set to stone");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(W * H - 3, counts[MAT_EMPTY], "every other cell is still empty");
+    TEST_ASSERT_EQUAL_INT_MESSAGE((W * H) - 3, counts[MAT_EMPTY], "every other cell is still empty");
 }
 
 static void

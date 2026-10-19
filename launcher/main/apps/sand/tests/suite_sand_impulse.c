@@ -450,11 +450,11 @@ test_the_cap_degrades_gracefully(void) {
                                   "the buffer holds 2, so exactly 2 of the 5 true disc members "
                                   "must have been queued - not fewer, and the rest must not have "
                                   "silently bumped one of the first two out");
-    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)(7 * W + 3), s.impulse_buf[0].index,
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)((7 * W) + 3), s.impulse_buf[0].index,
                                      "the accumulator's own arithmetic (see this test's top comment) "
                                      "fires on DOWN (3,7) first, not UP - even thinning, not a "
                                      "first-come truncation");
-    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)(6 * W + 4), s.impulse_buf[1].index,
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)((6 * W) + 4), s.impulse_buf[1].index,
                                      "and on RIGHT (4,6) second - the last of the buffer's 2 slots");
 
     const int expected = sand_count(&s);
@@ -503,16 +503,17 @@ test_two_overlapping_blasts_share_the_buffer_evenly(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(8, s.impulse_count,
                                   "the second blast had exactly 4 slots of real room left and must "
                                   "have filled every one of them, no more and no less");
-    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)(1 * W + 5), s.impulse_buf[4].index,
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)((1 * W) + 5), s.impulse_buf[4].index,
                                      "worked by hand against room=4 (see this test's own top comment): "
                                      "UP, (5,1), fires first");
-    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)(3 * W + 6), s.impulse_buf[5].index, "down-right, (6,3), fires second");
-    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)(0 * W + 5), s.impulse_buf[6].index,
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)((3 * W) + 6), s.impulse_buf[5].index,
+                                     "down-right, (6,3), fires second");
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)((0 * W) + 5), s.impulse_buf[6].index,
                                      "ring 2's own UP cell, (5,0), fires third - reaching ring 2 at "
                                      "all is exactly what the old, buggy keep (sized from the WHOLE "
                                      "buffer instead of what was actually left) never did, because it "
                                      "ran out of real room while still inside ring 1");
-    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)(2 * W + 7), s.impulse_buf[7].index,
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE((uint16_t)((2 * W) + 7), s.impulse_buf[7].index,
                                      "and RIGHT, (7,2), fires fourth and last - the buffer's own "
                                      "final slot, spent evenly across the whole disc rather than "
                                      "concentrated in the first ring the scan happened to reach");
@@ -1314,8 +1315,8 @@ test_a_thrown_chunk_displacing_nothing_loses_only_the_plain_ramp(void) {
      * to, derived from the constants rather than restated. The claim is
      * unchanged: open air costs the ramp and nothing else, no drag, because
      * there was nothing there to displace. */
-    const int air_cells = 1 + (255 - SAND_IMPULSE_SPEED_RAMP) / SAND_IMPULSE_CELLS_PER_STEP_DIVISOR;
-    TEST_ASSERT_EQUAL_INT_MESSAGE(255 - SAND_IMPULSE_SPEED_RAMP * air_cells, s.impulse_buf[0].speed,
+    const int air_cells = 1 + ((255 - SAND_IMPULSE_SPEED_RAMP) / SAND_IMPULSE_CELLS_PER_STEP_DIVISOR);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(255 - (SAND_IMPULSE_SPEED_RAMP * air_cells), s.impulse_buf[0].speed,
                                   "a chunk moving into an EMPTY cell must lose exactly the plain "
                                   "ramp and not one speck more - drag is charged per cell displaced, "
                                   "so flight through open air has to stay byte-for-byte what it was "
@@ -1423,8 +1424,8 @@ test_a_full_speed_static_chunk_moves_several_cells_in_one_push(void) {
                                   "scene itself is broken, not that this run was merely unlucky, and "
                                   "open air ahead means no TRANSFER entry should appear either");
 
-    const int expected_cells = 1 + (255 - SAND_IMPULSE_SPEED_RAMP) / SAND_IMPULSE_CELLS_PER_STEP_DIVISOR;
-    const int expected_index = ROW * W + (SX + expected_cells);
+    const int expected_cells = 1 + ((255 - SAND_IMPULSE_SPEED_RAMP) / SAND_IMPULSE_CELLS_PER_STEP_DIVISOR);
+    const int expected_index = (ROW * W) + (SX + expected_cells);
     TEST_ASSERT_EQUAL_INT_MESSAGE(expected_index, s.impulse_buf[0].index,
                                   "a full-speed KIND_STATIC push through open air must cover several "
                                   "cells in one step, not one - this is the whole point of "
@@ -2134,7 +2135,7 @@ ricochet_collect_candidates(ricochet_tracker_t* tr, const sand_t* g) {
  * RICOCHET_MATCH_RADIUS - or -1 if none is close enough. */
 static int
 ricochet_nearest_candidate(const ricochet_tracker_t* tr, int n_cand, const ricochet_lineage_t* li) {
-    int best = -1, best_d = RICOCHET_MATCH_RADIUS * 4 + 1;
+    int best = -1, best_d = (RICOCHET_MATCH_RADIUS * 4) + 1;
     for (int ci = 0; ci < n_cand; ci++) {
         if (tr->cand_used[ci]) {
             continue;
@@ -2673,7 +2674,7 @@ test_a_struck_water_cell_is_handed_impulse_in_a_backward_cone_from_the_mover(voi
      * the one water cell it displaced. The transfer is half of that. */
     const uint8_t mover_speed =
         (uint8_t)(255 - SAND_IMPULSE_SPEED_RAMP - impulse_drag_of(CELL_MAKE(MAT_WATER, MASS_MAX)));
-    const uint16_t vacated = (uint16_t)(ROW * W + SX);
+    const uint16_t vacated = (uint16_t)((ROW * W) + SX);
 
     int found = -1;
     for (int i = 0; i < s.impulse_count; i++) {

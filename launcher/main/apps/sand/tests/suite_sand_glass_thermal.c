@@ -377,8 +377,8 @@ test_glass_looks_different_at_the_shock_threshold(void) {
 
     int gap[MATERIAL_VARIANTS] = {0};
     for (int v = 1; v < MATERIAL_VARIANTS; v++) {
-        const gfx_color_t a = pal[MAT_GLASS * MATERIAL_VARIANTS + v - 1];
-        const gfx_color_t b = pal[MAT_GLASS * MATERIAL_VARIANTS + v];
+        const gfx_color_t a = pal[(MAT_GLASS * MATERIAL_VARIANTS) + v - 1];
+        const gfx_color_t b = pal[(MAT_GLASS * MATERIAL_VARIANTS) + v];
         gap[v] = colour_gap(a, b);
     }
 
@@ -429,8 +429,8 @@ test_snow_frosts_a_resting_pane(void) {
     /* And the palette has to disagree about the two, or the number moving
      * is still invisible. */
     const gfx_color_t* pal = material_palette();
-    TEST_ASSERT_NOT_EQUAL_MESSAGE(pal[MAT_GLASS * MATERIAL_VARIANTS + SAND_AMBIENT_HEAT],
-                                  pal[MAT_GLASS * MATERIAL_VARIANTS + coldest],
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(pal[(MAT_GLASS * MATERIAL_VARIANTS) + SAND_AMBIENT_HEAT],
+                                  pal[(MAT_GLASS * MATERIAL_VARIANTS) + coldest],
                                   "and a frosted pane must not be drawn in the same colour as a "
                                   "resting one");
 }
@@ -452,7 +452,7 @@ test_frost_spreads_beyond_the_snow_touching_it(void) {
         sand_set(&s, x, H - 2, GLASS);
     }
     /* Snow on the middle two cells only. */
-    const int lo = W / 2 - 1, hi = W / 2;
+    const int lo = (W / 2) - 1, hi = W / 2;
     for (int x = lo; x <= hi; x++) {
         sand_set(&s, x, H - 3, SNOW);
     }
