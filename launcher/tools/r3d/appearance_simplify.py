@@ -682,8 +682,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     colours = torch.as_tensor(rgb0, dtype=torch.float32, device=device).requires_grad_(True)
     rest = uniform_laplacian(start, edges)
     point_scale = vertex_scale(start, edges)
-    mean_edge = (start[edges[:, 0]] - start[edges[:, 1]]).norm(dim=1).mean()
-    step_scale = point_scale / mean_edge
+    step_scale = point_scale / point_scale.max()
     matrices = [torch.as_tensor(view[0], dtype=torch.float32, device=device) for view in views]
     targets = [torch.as_tensor(view[1], device=device) for view in views]
     normals = [None if len(view) < 3 or view[2] is None else torch.as_tensor(view[2], device=device) for view in views]
@@ -756,7 +755,7 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         history[step] = colour_error.detach()
         finite &= torch.isfinite(loss.detach())
         if (report and step % report == 0) or step == steps - 1:
-            if not (finite & torch.isfinite(points).all() & torch.isfinite(colours).all()).item():
+            if not (finite & torch.isfinite(delta).all() & torch.isfinite(colours).all()).item():
                 raise ValueError("fit requires finite loss and parameters")
         if report and (step % report == 0 or step == steps - 1):
             log(f"step {step}: mean dE76 {float(history[step]):.3f}, predicted {float(predicted):.2f} ms, drift {float(drift):.3e}, "

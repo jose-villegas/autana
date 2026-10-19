@@ -540,7 +540,7 @@ and a learning rate decaying geometrically. It changes the rest:
 
 A global unit gives small parts a fraction of the hold, so the image term
 stretches them; local edge scales keep the hold even<sup>[[78]](../Citations.md#78)</sup>.
-Adam's step does not shrink with gradient size, so the step is scaled too.
+Adam's step length does not depend on gradient size, so the position offset is scaled by the same local scale.
 
 Section 5.3 of the paper has no distance-to-reference term<sup>[[1]](../Citations.md#1)</sup>.
 Here the start is already a decimation of the reference surface, so the fit can
