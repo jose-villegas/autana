@@ -212,7 +212,7 @@ class OwnerProblemsTest(unittest.TestCase):
             ("launcher/main/core/memory/memory.c", HEAP_CALL, heap),
             ("launcher/main/services/memory.c", HEAP_CALL, heap),
             ("launcher/main/services/timing.h", CLOCK_READ, clock),
-            ("launcher/main/input/touch_device.h", CLOCK_READ, clock),
+            ("launcher/main/input/touch/touch_device.h", CLOCK_READ, clock),
         )
         for rel, text, reasons in cases:
             with self.subTest(rel=rel):
