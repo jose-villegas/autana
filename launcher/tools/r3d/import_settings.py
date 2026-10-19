@@ -150,7 +150,7 @@ def face_sample_options(value, where):
 FIT_GROUPS = {
     "prune": ("budget", "coverage_every_ms"),
     "poses": ("size", "train_every_ms", "held_out_every_ms"),
-    "optimise": ("steps", "batch", "laplacian", "normal_weight", "surface_weight", "surface_margin", "seam_margin"),
+    "optimise": ("steps", "batch", "laplacian", "normal_weight", "surface_weight", "surface_margin"),
 }
 FIT_KEYS = tuple(key for keys in FIT_GROUPS.values() for key in keys)
 
@@ -181,7 +181,7 @@ def load_fit(value, variant, where):
     fit.size = pixel_size(values["size"], f"{where}.poses.size")
     fit.laplacian = number(values["laplacian"], f"{where}.laplacian")
     fit.normal_weight = number(values["normal_weight"], f"{where}.normal_weight")
-    for key in ("surface_weight", "surface_margin", "seam_margin"):
+    for key in ("surface_weight", "surface_margin"):
         value = number(values[key], f"{where}.{key}")
         if value < 0:
             raise SettingsError(f"{where}.{key} must be nonnegative")

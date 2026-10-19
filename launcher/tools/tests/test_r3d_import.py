@@ -45,7 +45,7 @@ FLAT_FIT = ('fit = { budget = 8, train_every_ms = 1000, held_out_every_ms = 5000
             'batch = 4, laplacian = 10.0, normal_weight = 1.0 }\n')
 FIT = ('[objects.mesh_renderer.fit.prune]\nbudget = 8\ncoverage_every_ms = 100\n'
        '[objects.mesh_renderer.fit.poses]\nsize = [184, 224]\ntrain_every_ms = 1000\nheld_out_every_ms = 5000\n'
-       '[objects.mesh_renderer.fit.optimise]\nsteps = 20\nbatch = 4\nlaplacian = 10.0\nnormal_weight = 1.0\nsurface_weight = 10.0\nsurface_margin = 0.25\nseam_margin = 0.25\n'
+       '[objects.mesh_renderer.fit.optimise]\nsteps = 20\nbatch = 4\nlaplacian = 10.0\nnormal_weight = 1.0\nsurface_weight = 10.0\nsurface_margin = 0.25\n'
        '')
 INDIRECT = 'indirect = { bounces = 2, rays = 8 }\n'
 THIN = '[geometry]\nthin = { material = "m", keep = 0.5 }\n'

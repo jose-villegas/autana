@@ -116,6 +116,26 @@ class SeamHoldTests(unittest.TestCase):
         np.testing.assert_array_equal(holds.corners, [[3, 4, 5]])
         np.testing.assert_allclose(holds.barycentric, [[0.5, 0.25, 0.25]])
 
+    def test_triangle_radius_filters_distant_candidates_without_changing_holds(self):
+        from r3d import appearance_simplify as appearance
+
+        mesh = self.mesh()
+        tolerance = np.zeros(len(mesh.points))
+        tolerance[0] = 0.1
+        expected = appearance.seam_holds(mesh, tolerance)
+        distant = mesh.points[3:] + [10, 0, 0]
+        large = np.array([[-200, -200, 100], [200, -200, 100], [0, 200, 100]])
+        points = np.vstack([mesh.points, distant, large])
+        mesh = mesh._replace(points=points, tris=np.vstack([mesh.tris, [6, 7, 8], [9, 10, 11]]),
+                             vertex_point=np.arange(len(points)))
+        tolerance = np.r_[tolerance, np.zeros(len(distant) + len(large))]
+        with mock.patch.object(appearance, "closest_point_on_triangles",
+                               wraps=appearance.closest_point_on_triangles) as closest:
+            actual = appearance.seam_holds(mesh, tolerance)
+        np.testing.assert_array_equal(closest.call_args_list[0].args[1], mesh.points[[3, 9]])
+        for first, second in zip(expected, actual):
+            np.testing.assert_array_equal(first, second)
+
     def test_outside_tolerance_and_same_part_are_not_held(self):
         from r3d.appearance_simplify import seam_holds
 
@@ -383,8 +403,8 @@ class AppearanceMeshTests(unittest.TestCase):
         recipe = dict(prune=dict(budget=1, coverage_every_ms=1),
                       poses=dict(size=[2, 2], train_every_ms=1, held_out_every_ms=2),
                       optimise=dict(steps=1, batch=1, laplacian=1, normal_weight=0,
-                                    surface_weight=10.0, surface_margin=0.25, seam_margin=0.25))
-        for key in ("surface_weight", "surface_margin", "seam_margin"):
+                                    surface_weight=10.0, surface_margin=0.25))
+        for key in ("surface_weight", "surface_margin"):
             for value in (None, -1, float("nan"), float("inf"), "bad", True):
                 with self.subTest(key=key, value=value):
                     options = {group: dict(table) for group, table in recipe.items()}
@@ -395,7 +415,7 @@ class AppearanceMeshTests(unittest.TestCase):
                     with self.assertRaises(SettingsError):
                         load_fit(options, SimpleNamespace(triangles=1), "fit")
         fit = load_fit(recipe, SimpleNamespace(triangles=1), "fit")
-        self.assertEqual((fit.surface_weight, fit.surface_margin, fit.seam_margin), (10.0, 0.25, 0.25))
+        self.assertEqual((fit.surface_weight, fit.surface_margin), (10.0, 0.25))
 
     @unittest.skipIf(torch is None, "needs PyTorch")
     def test_surface_optimise_pulls_to_plane_refreshes_and_repeats(self):
@@ -637,6 +657,7 @@ class PruneAndCostTests(unittest.TestCase):
                         appearance.main(["--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
                                          "--reference", "reference", "--coverage-poses", "coverage.txt",
                                          "--budget", str(len(pruned.tris)), "--out", directory])
+                    self.assertEqual(calls.optimise.call_args.kwargs["seam_margin"], appearance.SEAM_MARGIN)
                     self.assertEqual([call[0] for call in calls.mock_calls],
                                      ["optimise", "coverage", "prune", "write_mesh"])
                     covered, views, size = calls.coverage.call_args.args
