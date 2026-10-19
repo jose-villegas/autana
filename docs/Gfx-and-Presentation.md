@@ -246,9 +246,11 @@ sequenceDiagram
     end
 ```
 
-A present's own code, from `gfx_present()` down to the SPI queue, runs from
-IRAM (`main/linker.lf`, `CONFIG_SPI_MASTER_IN_IRAM`): from flash its cost
-moved with whatever else the image linked. suite_gfx
+Single-buffer presentation runs from IRAM (`main/linker.lf`,
+`CONFIG_SPI_MASTER_IN_IRAM`) to avoid instruction-cache misses.
+Double-mode setup and the raw full-frame loop run from flash.
+
+suite_gfx
 `test_narrow_present_counters` measures it warm, with the instruction cache
 cold, and sent from the caller's core.
 
