@@ -553,7 +553,7 @@ small_limits_for_side(int side) {
     return (small_limits_t){(uint8_t)spread, (uint8_t)coverage, (uint8_t)grain};
 }
 
-#define SMALL_GRAIN_CHANNEL_LSB_RGB 0x080408u
+#define SMALL_GRAIN_CHANNEL_LSB_RGB 0x080408U
 #define SMALL_GRAIN_MASK(bits)      GFX_RGB(SMALL_GRAIN_CHANNEL_LSB_RGB*(bits))
 
 static const uint16_t
