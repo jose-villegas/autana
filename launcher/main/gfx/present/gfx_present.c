@@ -253,7 +253,7 @@ present_task_fn(void* arg) {
 
     /* Sized for STRIP_COUNT * GRID_COLS: see send_one_row(). Undersizing
      * blocks this task's own send loop forever. */
-    strip_sent = xSemaphoreCreateCounting(STRIP_COUNT * GRID_COLS + 2, 0);
+    strip_sent = xSemaphoreCreateCounting((STRIP_COUNT * GRID_COLS) + 2, 0);
     if (strip_sent == NULL) {
         ESP_LOGE(TAG, "Could not create the strip-transfer semaphore");
         present_bringup_ok = false;
