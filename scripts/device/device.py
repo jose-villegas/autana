@@ -30,7 +30,7 @@ import lock_scope
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
 import board_serial
-from console_protocol import replies_to, require_development
+from console_protocol import replies_to, require_development, reply_prefix
 from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, BUILD_ID_REQUEST,
                             crash_signs, suite_failure_signs)
 
@@ -393,7 +393,7 @@ def append_manifest(entry, root=None):
 
 def record_capture(path, managed, *, started_at, board, owner, purpose, command, commit,
                     suite=None, build_id=None, worktree=None, reason=None, error=None, root=None,
-                    acquired_at=None, test_filter=None):
+                    acquired_at=None, test_filter=None, console_send=None):
     """The permanent trail: written for every flash/run-suite/listen call, so
     even a capture left behind in a doomed worktree still has metadata here."""
     path = Path(path)
@@ -421,6 +421,8 @@ def record_capture(path, managed, *, started_at, board, owner, purpose, command,
     }
     if test_filter:
         entry["test_filter"] = test_filter
+    if console_send:
+        entry["console_send"] = console_send
     append_manifest(entry, root)
     return path
 
@@ -1496,6 +1498,7 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
         with holding(store, board, args, held_lock, "run-suite") as held:
             with open_when_free() as connection:
                 apply_tunables(connection, getattr(args, "tune_set", None) or [])
+                apply_console_lines(connection, getattr(args, "console_send", None) or [])
                 connection.write(suite_request(args.suite, patterns))
                 data, reason = capture(connection, output, args.max_seconds, args.idle_seconds,
                                        args.expect_build_id, args.suite)
@@ -1510,7 +1513,8 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
             worktree=worktree if worktree is not None else str(Path.cwd()),
             commit=commit if commit is not None else git_commit(), reason=reason, error=error,
             acquired_at=held.held["acquired_at"] if held else None,
-            test_filter=patterns or None)
+            test_filter=patterns or None,
+            console_send=getattr(args, "console_send", None))
         try:
             report_path = device_report.write_report_for_capture(
                 final_path, records_root() / "index.jsonl")
@@ -1742,12 +1746,28 @@ def exchange(connection, line, reply, until, seconds):
 
 
 TUNE_REPLY_ENDS = ("TUNE_OK", "TUNE_ERR", "TUNE_END")
-TUNE_SET_SECONDS = 3.0
-TUNE_SET_ATTEMPTS = 3
+EXCHANGE_SECONDS = 3.0
+EXCHANGE_ATTEMPTS = 3
 
 
 class TuneRefused(BatchEnding):
     """A --set the board refused or did not echo."""
+
+
+def exchange_retrying(connection, requests):
+    """Retry an idempotent sequence only on silence; partial replies stop it."""
+    for _ in range(EXCHANGE_ATTEMPTS):
+        replies = []
+        for line, prefix, endings in requests:
+            found, complete = exchange(connection, line, prefix, endings, EXCHANGE_SECONDS)
+            if not found:
+                break
+            replies.extend(found)
+            if not complete or found[-1].startswith(endings[1]):
+                return line, replies, False
+        else:
+            return line, replies, True
+    return line, found, False
 
 
 def apply_tunables(connection, settings):
@@ -1756,18 +1776,37 @@ def apply_tunables(connection, settings):
     echoes each value back."""
     for setting in settings:
         name, _, value = setting.partition("=")
-        # A board still winding down the last suite can drop a line; SET is
-        # idempotent, so silence is asked again before it counts as refusal.
-        for _ in range(TUNE_SET_ATTEMPTS):
-            found, complete = exchange(connection, f"SET {name} {value}", "TUNE", TUNE_REPLY_ENDS,
-                                       TUNE_SET_SECONDS)
-            if complete:
-                break
-        if not found or not found[-1].startswith("TUNE_OK " + name + "="):
+        _, found, complete = exchange_retrying(
+            connection, [(f"SET {name} {value}", "TUNE", TUNE_REPLY_ENDS)])
+        if not complete or not found or not found[-1].startswith("TUNE_OK " + name + "="):
             raise TuneRefused(f"SET {name} {value}: {found[-1] if found else 'no reply'}")
         if found[-1].split("=", 1)[1] != str(int(value, 0)):
             raise TuneRefused(f"SET {name} {value}: board holds {found[-1]}")
         print(found[-1], flush=True)
+
+
+class ConsoleRefused(BatchEnding):
+    """A setup line failed or did not complete its reply."""
+
+
+def apply_console_lines(connection, lines):
+    """Apply an idempotent setup sequence; silence retries it from the start.
+
+    A partial reply or an error refuses the sequence without resending a line.
+    """
+    requests = []
+    for line in lines:
+        try:
+            prefix, endings = reply_prefix(line)
+        except ValueError as error:
+            raise ConsoleRefused(f"{line!r}: {error}") from error
+        requests.append((line, prefix, endings))
+    if not requests:
+        return
+    line, found, complete = exchange_retrying(connection, requests)
+    if not complete:
+        raise ConsoleRefused(f"{line!r}: " + ("\n".join(found) or "no reply"))
+    print("\n".join(found), flush=True)
 
 
 def send(args, store, board):
@@ -1920,7 +1959,8 @@ def batch(args, store, board):
                     owner=args.owner, wait=args.wait, suite=suite_name, out=out, purpose=purpose,
                     max_seconds=args.max_seconds, idle_seconds=args.idle_seconds,
                     expect_build_id=build_id, verbose=getattr(args, "verbose", False),
-                    test_filter=patterns, tune_set=getattr(args, "tune_set", None))
+                    test_filter=patterns, tune_set=getattr(args, "tune_set", None),
+                    console_send=getattr(args, "console_send", None))
                 print(f"batch: {suite_name} run {run}/{args.runs}", flush=True)
                 # A suite FAIL is a result, not a broken run: a perf capture always
                 # carries its budget targets' FAILs, and its duration still counts.
@@ -2126,6 +2166,8 @@ def main(argv=None):
     suite.add_argument("--idle-seconds", type=float, default=300)
     suite.add_argument("--expect-build-id")
     suite.add_argument("--verbose", action="store_true")
+    suite.add_argument("--send", dest="console_send", action="append", metavar="LINE",
+                       help="send before every capture; repeatable, sequence should be idempotent")
     suite.add_argument("--set", dest="tune_set", action="append", metavar="NAME=VALUE",
                        help="SET a tunable under the capture's lock first; repeatable")
     listen_parser = subparsers.add_parser("listen")
@@ -2203,6 +2245,8 @@ def main(argv=None):
     batch_parser.add_argument("--layout-seed", type=int, default=0,
                               help="pad the layout by this seed (needs --flash, the default)")
     batch_parser.add_argument("--max-seconds", type=float, default=1800)
+    batch_parser.add_argument("--send", dest="console_send", action="append", metavar="LINE",
+                              help="send before every capture; repeatable, sequence should be idempotent")
     batch_parser.add_argument("--set", dest="tune_set", action="append", metavar="NAME=VALUE",
                               help="SET a tunable under each capture's lock first; repeatable")
     batch_parser.add_argument("--test", dest="test_filter", action="append", metavar="PATTERN",
