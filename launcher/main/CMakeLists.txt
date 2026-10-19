@@ -70,6 +70,7 @@ set(app_srcs
     "render/render_view.c"
     "render/raster.c"
     "render/r3d_lit_mesh.c"
+    "render/r3d_grid_cull_x.c"
     "render/r3d_pipeline.c"
     "render/upscale.c"
     "render/resolution/resolution.c"

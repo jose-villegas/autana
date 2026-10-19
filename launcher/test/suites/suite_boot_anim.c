@@ -486,6 +486,38 @@ test_swell_is_zero_through_its_start(void) {
     }
 }
 
+#define FLOOR_BOUND_STEP_MS 53
+
+/* boot_anim_floor_lift_bound()'s premise: no ripple table gains past one. */
+static void
+test_the_ripple_tables_gain_at_most_one(void) {
+    for (unsigned n = 0; n < sizeof boot_anim_ripple_gaussian / sizeof boot_anim_ripple_gaussian[0]; n++) {
+        TEST_ASSERT_LESS_OR_EQUAL_UINT32(1u << BOOT_ANIM_FLOOR_GAIN_SHIFT, boot_anim_ripple_gaussian[n]);
+    }
+    for (unsigned n = 0; n < sizeof boot_anim_ripple_smoothstep / sizeof boot_anim_ripple_smoothstep[0]; n++) {
+        TEST_ASSERT_LESS_OR_EQUAL_UINT32(1u << BOOT_ANIM_FLOOR_GAIN_SHIFT, boot_anim_ripple_smoothstep[n]);
+    }
+}
+
+static void
+test_no_node_lifts_further_than_its_frames_bound(void) {
+    int32_t tightest = INT32_MAX;
+    for (uint32_t ms = 0; ms < BOOT_ANIM_MS; ms += FLOOR_BOUND_STEP_MS) {
+        const boot_anim_floor_state_t state = boot_anim_floor_state(ms);
+        const int32_t bound = boot_anim_floor_lift_bound(&state);
+        int32_t peak = 0;
+        for (int j = -(BOOT_ANIM_MESH_CELLS / 2); j <= BOOT_ANIM_MESH_CELLS / 2; j++) {
+            for (int i = -(BOOT_ANIM_MESH_CELLS / 2); i <= BOOT_ANIM_MESH_CELLS / 2; i++) {
+                peak = mathi_max(peak, mathi_abs(boot_anim_zeta_to_t_q8(boot_anim_floor_height(i, j, &state))));
+            }
+        }
+        TEST_ASSERT_LESS_OR_EQUAL_INT32(bound, peak);
+        tightest = mathi_min(tightest, bound - peak);
+    }
+    /* Some frame comes within a few units of its bound. */
+    TEST_ASSERT_LESS_OR_EQUAL_INT32(8, tightest);
+}
+
 #ifndef DEVICE_BUILD
 #define FLOOR_REFERENCE_TOLERANCE_M   0.02
 #define FLOOR_REFERENCE_STEP_MS       37
@@ -1746,6 +1778,8 @@ run_boot_anim_suite(void) {
     RUN_TEST(test_floor_is_flat_well_ahead_of_the_train);
     RUN_TEST(test_ripple_peak_falls_over_time);
     RUN_TEST(test_swell_is_zero_through_its_start);
+    RUN_TEST(test_the_ripple_tables_gain_at_most_one);
+    RUN_TEST(test_no_node_lifts_further_than_its_frames_bound);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_baked_floor_matches_direct_float);
 #endif

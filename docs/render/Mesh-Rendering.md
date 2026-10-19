@@ -70,6 +70,7 @@ exactly.
 | `r3d_span.h` | One depth-tested triangle filled into a window of rows, Gouraud-shaded or face-coloured, its coverage exact on 1/16-pixel positions, and the span writer a further attachment fills through |
 | `r3d_project.h` | Float pixel snapping through a `projectf_t` lens and math near clipping |
 | `r3d_project_x.h` | Camera-space model matrix and fixed-point pixel projection, with math near clipping |
+| `r3d_grid_cull_x.h` | The points of a lifted grid that projection certainly puts behind the near plane or past one clip side, as the columns per row an edge walk must visit |
 
 Only
 `r3d_pipeline.h` and `r3d_span_internal.h` are internal: render/ and any

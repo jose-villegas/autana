@@ -42,6 +42,7 @@
 #include "gfx/target/gfx_segment_clip.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
+#include "render/r3d_grid_cull_x.h"
 
 #ifdef ESP_PLATFORM
 #include "esp_log.h"
@@ -222,21 +223,53 @@ mesh_row_half(int j, int stride) {
     return boot_anim_mesh_row_half[stride - 1][mathi_abs(j)];
 }
 
+/* The i of a row the walk makes nodes for, empty when lo > hi. */
+typedef struct {
+    int lo, hi;
+} mesh_span_t;
+
+_Static_assert(BOOT_ANIM_MESH_CELLS <= R3D_X_GRID_K_MAX, "a row's span is an int8_t");
+
+/* Outlined: the grid kept in draw_floor()'s frame would push the row walk's
+ * spills out of short reach, and every node would pay. False when the
+ * frame's lifts leave the narrow transform. */
+static __attribute__((noinline)) bool
+mesh_cull_spans(const mesh_pass_t* pass, vec3x_t plane, vec3x_t row, int8_t spans[][2]) {
+    const int32_t lift_bound = boot_anim_floor_lift_bound(&pass->floor);
+    if (!pass->stepping || lift_bound >= R3D_X_INPUT_Y_LIMIT) {
+        return false;
+    }
+    const int32_t (*u)[4] = pass->view->units;
+    const int k_max = (2 * MESH_HALF) / pass->stride;
+    const r3d_x_grid_t grid = {
+        .base = plane,
+        .step = pass->column,
+        .row = row,
+        .rise = {u[0][1], u[1][1], u[2][1]},
+        .h_max = lift_bound,
+        .k_max = k_max,
+        .r_max = k_max,
+    };
+    r3d_x_grid_cull_spans(pass->view, &pass->clip, &grid, spans);
+    return true;
+}
+
 static void
-draw_mesh_row(const mesh_pass_t* pass, int j, int row_half, int above_half, mesh_node_t* above, vec3x_t plane) {
+draw_mesh_row(const mesh_pass_t* pass, int j, mesh_span_t span, mesh_span_t above_span, mesh_node_t* above,
+              vec3x_t plane) {
     const int stride = pass->stride;
     mesh_node_t left = {0};
     for (int i = -MESH_HALF; i <= MESH_HALF; i += stride) {
         const vec3x_t point = plane;
         plane = (vec3x_t){plane.x + pass->column.x, plane.y + pass->column.y, plane.z + pass->column.z};
-        if (mathi_abs(i) > row_half) {
+        if (i < span.lo || i > span.hi) {
             continue;
         }
         mesh_node_t node = mesh_node(pass, i, j, point);
-        if (i - stride >= -row_half) {
+        if (i - stride >= span.lo) {
             draw_mesh_edge(pass, &left, i - stride, j, &node, i, j);
         }
-        if (mathi_abs(i) <= above_half) {
+        if (i >= above_span.lo && i <= above_span.hi) {
             draw_mesh_edge(pass, &above[i + MESH_HALF], i, j - stride, &node, i, j);
         }
         above[i + MESH_HALF] = node;
@@ -387,12 +420,19 @@ draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t*
     }
     vec3x_t row;
     vec3x_t plane = mesh_plane(&pass, &row);
+    int8_t spans[BOOT_ANIM_MESH_CELLS + 1][2];
+    const bool culling = mesh_cull_spans(&pass, plane, row, spans);
     mesh_node_t above[BOOT_ANIM_MESH_CELLS + 1];
-    int above_half = -1;
-    for (int j = -MESH_HALF; j <= MESH_HALF; j += pass.stride) {
+    mesh_span_t above_span = {1, 0};
+    for (int j = -MESH_HALF, r = 0; j <= MESH_HALF; j += pass.stride, r++) {
         const int row_half = mesh_row_half(j, pass.stride);
-        draw_mesh_row(&pass, j, row_half, above_half, above, plane);
-        above_half = row_half;
+        mesh_span_t span = {-row_half, row_half};
+        if (culling) {
+            span.lo = mathi_max(span.lo, -MESH_HALF + (spans[r][0] * pass.stride));
+            span.hi = mathi_min(span.hi, -MESH_HALF + (spans[r][1] * pass.stride));
+        }
+        draw_mesh_row(&pass, j, span, above_span, above, plane);
+        above_span = span;
         plane = (vec3x_t){plane.x + row.x, plane.y + row.y, plane.z + row.z};
     }
 

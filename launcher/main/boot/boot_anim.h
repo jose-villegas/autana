@@ -294,6 +294,20 @@ boot_anim_floor_height(int i, int j, const boot_anim_floor_state_t* state) {
     return boot_anim_floor_ripple(i, j, state) + boot_anim_floor_swell(i, j, state);
 }
 
+/* No node's lift this frame, boot_anim_zeta_to_t_q8() of its height, is
+ * further from 0: every table gain is at most one, and each shift floors by
+ * under one. */
+static inline int32_t
+boot_anim_floor_lift_bound(const boot_anim_floor_state_t* state) {
+    int32_t weights = 0;
+    for (int k = 0; k < BOOT_ANIM_SWELL_COUNT; k++) {
+        weights += mathi_abs(boot_anim_swell_weights[k]) + 1;
+    }
+    const int32_t ripple = mathi_abs(state->amplitude) + 3;
+    const int32_t swell = ((weights * state->swell) >> BOOT_ANIM_FLOOR_GAIN_SHIFT) + 1;
+    return boot_anim_zeta_to_t_q8(ripple + swell) + 1;
+}
+
 /* How far a crest of `ripple` has turned from the floor's grey, 0..255:
  * squared, so only the tops take colour. */
 static inline uint8_t
