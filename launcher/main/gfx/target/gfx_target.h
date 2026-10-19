@@ -26,6 +26,18 @@ gfx_target_clip_rect(gfx_target_t target, recti_t clip, recti_t rect) {
                             mathi_min(mathi_min(recti_bottom(rect), recti_bottom(clip)), target.y0 + target.height));
 }
 
+/* Every pixel of the target set to `colour`, two pixels a store: a target's
+ * rows are whole and its buffer word-aligned. */
+static inline void
+gfx_target_fill(gfx_target_t target, gfx_color_t colour) {
+    const uint32_t pair = ((uint32_t)colour << 16) | colour;
+    uint32_t* words = (uint32_t*)target.buf;
+    const size_t count = ((size_t)target.stride * (size_t)target.height) / 2;
+    for (size_t i = 0; i < count; i++) {
+        words[i] = pair;
+    }
+}
+
 /* The row pointer for absolute row `y`, once it is known to lie inside
  * [target.y0, target.y0 + target.height): gfx_target_clip_rect() is
  * what a caller uses to know that. */

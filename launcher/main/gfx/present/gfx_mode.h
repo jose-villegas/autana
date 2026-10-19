@@ -75,7 +75,8 @@ gfx_mode_resolve(const gfx_mode_request_t* request, int full_width, int full_hei
  * nesting one app's mode inside another's is not supported. */
 const gfx_mode_t* gfx_mode_enter(const gfx_mode_request_t* request);
 
-/* Double mode drains its send and keeps the front (last presented frame).
+/* Double mode drains its send and keeps the front: the last presented frame,
+ * or its clear colour if gfx_set_clear_on_send() was on.
  * Frees whatever the current mode allocated and restores GFX_LAYOUT_FULL_FB
  * at full resolution, no interlace, the mode every app but the one just
  * exiting assumes is already in force. */
@@ -122,7 +123,7 @@ uint8_t* gfx_indexed_image(void);
 typedef enum {
     GFX_READBACK_READY,
     GFX_READBACK_PENDING,
-    GFX_READBACK_UNAVAILABLE, /* band mode, and no room for its snapshot */
+    GFX_READBACK_UNAVAILABLE, /* band mode with no room for its snapshot, or a shown frame cleared on send */
 } gfx_readback_t;
 
 gfx_readback_t gfx_readback_begin(void);
