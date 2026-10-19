@@ -14,7 +14,7 @@
  *   - resource limits: does the framebuffer actually fit?
  *
  * Anything that is pure logic belongs in the host suite instead. See
- * docs/Testing-Guide.md.
+ * docs/testing/Writing-a-Test.md.
  */
 
 #include "suites.h"
