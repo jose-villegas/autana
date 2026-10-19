@@ -108,10 +108,11 @@ test_band_target_matches_the_full_frame(void) {
             gfx_band_end_for_test();
             const gfx_color_t* pixels = gfx_framebuffer();
             for (int y = 0; y < GFX_HEIGHT; y++) {
-                for (int x = 0; x < GFX_WIDTH; x++) {
-                    const bool held = y >= BAND_ROW && y < BAND_ROW + GFX_BAND_HEIGHT;
-                    const gfx_color_t expected = held ? full_rows[((y - BAND_ROW) * GFX_WIDTH) + x] : LINE_BASE;
-                    TEST_ASSERT_EQUAL_HEX16(expected, pixels[(y * GFX_WIDTH) + x]);
+                const gfx_color_t* row = pixels + ((size_t)y * GFX_WIDTH);
+                if (y >= BAND_ROW && y < BAND_ROW + GFX_BAND_HEIGHT) {
+                    TEST_ASSERT_EQUAL_MEMORY(full_rows + ((size_t)(y - BAND_ROW) * GFX_WIDTH), row, row_bytes);
+                } else {
+                    TEST_ASSERT_EACH_EQUAL_HEX16(LINE_BASE, row, GFX_WIDTH);
                 }
             }
         }

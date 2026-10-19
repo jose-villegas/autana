@@ -78,18 +78,6 @@ draw_pixel(int x, int y, gfx_color_t color) {
     }
 }
 
-/* One pixel of a line already clipped to the surface's clip; only the
- * target's own rows remain to check. */
-static void
-plot(const gfx_surface_t* state, int x, int y, gfx_color_t color, unsigned flags) {
-    if (!gfx_target_row_range_overlaps(state->target, y, y + 1)) {
-        return;
-    }
-    gfx_color_t* const dst = &gfx_target_row(state->target, y)[x];
-
-    *dst = (flags & DRAW_LINE_ADD) ? gfx_color_add(*dst, color) : color;
-}
-
 typedef struct {
     unsigned on, period, phase;
 } line_dash_t;
@@ -111,69 +99,68 @@ line_dash_step(line_dash_t* dash) {
     return visible;
 }
 
-/* Bresenham, treats both axes alike, no case analysis. */
-static void
-walk(const gfx_surface_t* state, int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags, unsigned offset) {
-    const int dx = mathi_abs(x1 - x0);
-    const int dy = -mathi_abs(y1 - y0);
-    const int sx = x0 < x1 ? 1 : -1;
-    const int sy = y0 < y1 ? 1 : -1;
-    int err = dx + dy;
-    bool first = true;
-    line_dash_t dash = line_dash(flags, offset);
-
-    /* A line whose rows the target holds whole, as every line of a full
-     * framebuffer does, steps a pointer instead of finding its row for each
-     * pixel: the same pixels, without a multiply and a row check apiece. A
-     * line crossing a band's edge takes the loop below, which skips the rows
-     * the band does not hold. */
-    const gfx_target_t target = state->target;
-    if (mathi_min(y0, y1) >= target.y0 && mathi_max(y0, y1) < target.y0 + target.height) {
-        gfx_color_t* dst = &gfx_target_row(target, y0)[x0];
-        const ptrdiff_t row_step = (ptrdiff_t)sy * target.stride;
-        const bool add = (flags & DRAW_LINE_ADD) != 0;
-        int remaining = mathi_max(dx, -dy);
-        if (flags & DRAW_LINE_OPEN) {
-            (void)line_dash_step(&dash);
-        } else if (line_dash_step(&dash)) {
-            *dst = add ? gfx_color_add(*dst, color) : color;
+/* One pixel of a line, already inside the surface's clip: `dst` when the
+ * target holds the line's rows, else (x, y) if the target holds that row. */
+static inline __attribute__((always_inline)) void
+put(gfx_target_t target, gfx_color_t* dst, int x, int y, gfx_color_t color, bool add, bool rows_held) {
+    if (!rows_held) {
+        if (!gfx_target_holds_rows(target, y, y + 1)) {
+            return;
         }
-        for (; remaining > 0; remaining--) {
-            const int e2 = 2 * err;
-            if (e2 >= dy) {
-                err += dy;
-                dst += sx;
-            }
-            if (e2 <= dx) {
-                err += dx;
-                dst += row_step;
-            }
-            if (line_dash_step(&dash)) {
-                *dst = add ? gfx_color_add(*dst, color) : color;
-            }
-        }
-        return;
+        dst = &gfx_target_row(target, y)[x];
     }
+    *dst = add ? gfx_color_add(*dst, color) : color;
+}
 
-    for (;;) {
-        const bool visible = line_dash_step(&dash);
-        if (visible && !(first && (flags & DRAW_LINE_OPEN))) {
-            plot(state, x0, y0, color, flags);
-        }
-        first = false;
+/* Bresenham, treats both axes alike, no case analysis; one body, specialised
+ * by the constant `rows_held`. A line whose rows the target holds whole, as
+ * every line of a full framebuffer does, steps a pointer; otherwise each
+ * pixel's row is checked, so a band draws only the rows it holds. */
+static inline __attribute__((always_inline)) void
+walk_steps(gfx_target_t target, int x, int y, int x1, int y1, gfx_color_t color, unsigned flags, line_dash_t dash,
+           bool rows_held) {
+    const int dx = mathi_abs(x1 - x);
+    const int dy = -mathi_abs(y1 - y);
+    const int sx = x < x1 ? 1 : -1;
+    const int sy = y < y1 ? 1 : -1;
+    const bool add = (flags & DRAW_LINE_ADD) != 0;
+    const ptrdiff_t row_step = (ptrdiff_t)sy * target.stride;
+    gfx_color_t* dst = rows_held ? &gfx_target_row(target, y)[x] : NULL;
+    int err = dx + dy;
 
-        if (x0 == x1 && y0 == y1) {
-            break;
-        }
+    /* The first pixel of an open line keeps its place in the dash. */
+    if (line_dash_step(&dash) && !(flags & DRAW_LINE_OPEN)) {
+        put(target, dst, x, y, color, add, rows_held);
+    }
+    for (int remaining = mathi_max(dx, -dy); remaining > 0; remaining--) {
         const int e2 = 2 * err;
         if (e2 >= dy) {
             err += dy;
-            x0 += sx;
+            x += sx;
+            if (rows_held) {
+                dst += sx;
+            }
         }
         if (e2 <= dx) {
             err += dx;
-            y0 += sy;
+            y += sy;
+            if (rows_held) {
+                dst += row_step;
+            }
         }
+        if (line_dash_step(&dash)) {
+            put(target, dst, x, y, color, add, rows_held);
+        }
+    }
+}
+
+static void
+walk(const gfx_surface_t* state, int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags, unsigned offset) {
+    const line_dash_t dash = line_dash(flags, offset);
+    if (gfx_target_holds_rows(state->target, mathi_min(y0, y1), mathi_max(y0, y1) + 1)) {
+        walk_steps(state->target, x0, y0, x1, y1, color, flags, dash, true);
+    } else {
+        walk_steps(state->target, x0, y0, x1, y1, color, flags, dash, false);
     }
 }
 
