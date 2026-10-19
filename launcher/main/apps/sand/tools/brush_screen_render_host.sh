@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 #
-# The sand app's brush screen on a host - see brush_screen_render_host.c and
+# The sand app's brush screen and palette on a host - see brush_screen_render_host.c and
 # docs/tools/Render-Harness.md.
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -13,6 +13,8 @@ main/services/tune.c
 main/apps/sand/ui/brush_screen.c
 main/apps/sand/material.c
 main/apps/sand/material_palette.c
+main/apps/sand/palette.c
+main/apps/sand/ui/palette_screen.c
 main/apps/sand/sand_ui.c
 main/apps/sand/ui/sand_icons.c
 main/apps/sand/ui/sand_theme.c
@@ -23,6 +25,8 @@ scene_renders="
 portrait|--quarter 0|368x448
 landscape|--quarter 1|448x368
 portrait-no-pack|--quarter 0|368x448|nopacks
+palette-portrait|--quarter 0 --palette|368x448
+palette-landscape|--quarter 1 --palette|448x368
 "
 
 . "$SCRIPT_DIR/../../../../tools/render/render_scene.sh"

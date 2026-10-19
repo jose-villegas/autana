@@ -179,7 +179,8 @@ beside the arithmetic they support.
 
 Prefer internal SRAM for hot working data where it fits, and read PSRAM for
 bulk or cold content. The [presentation memory policy](../Gfx-and-Presentation.md#presentation-memory-policy)
-explains why presentation keeps one retained framebuffer.
+explains the catch-up copy that keeps single-buffer presentation retained,
+and why double mode redraws every pixel instead.
 
 ### DMA memory and the largest block
 

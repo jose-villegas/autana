@@ -164,7 +164,7 @@ drag(int x, int y0, int y1, int steps) {
 static mu_Rect
 old_row_rect(int i) {
     const int y = UI_BANNER_HEIGHT + UI_ROW_GAP + i * (UI_ROW_HEIGHT + UI_ROW_GAP);
-    return ui_centered_rect(ui_width(), LAUNCHER_BTN_W, UI_ROW_HEIGHT, y);
+    return ui_mu_from_recti(ui_centered_rect(ui_width(), LAUNCHER_BTN_W, UI_ROW_HEIGHT, y));
 }
 
 static void

@@ -26,15 +26,12 @@ STOP_ATTEMPTS = 3
 
 def mix_stage_names(tree):
     main = tree / "launcher/main"
-    owners = [("sound/sound_mixer_device.c", r'FRAME_COST_EXTERNAL\(\s*"([^"]+)"'),
-              ("shell/shell_apps.c", r'FRAME_COST_END\(\s*began,\s*"([^"]+)"')]
-    names = []
-    for owner, pattern in owners:
-        matches = re.findall(pattern, (main / owner).read_text())
-        if len(matches) != 1:
-            raise ValueError(f"{owner}: expected exactly one frame-cost stage")
-        names.append(matches[0])
-    return names
+    mixer = read_define(main / "sound/sound_engine.h", "SOUND_MIXER_FRAME_COST_NAME")
+    owner = main / "shell/shell_apps.c"
+    matches = re.findall(r'FRAME_COST_END\(\s*began,\s*"([^"]+)"', owner.read_text())
+    if len(matches) != 1:
+        raise ValueError(f"{owner}: expected exactly one frame-cost stage")
+    return [mixer, matches[0]]
 
 
 def playing_count(stats):

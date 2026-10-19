@@ -126,6 +126,20 @@ class HoldGuardTests(Store):
                                        "--estimate", "30", "perf", "job"), 0)
         self.assert_estimated_hold()
 
+    def test_estimate_for_run_is_visible_during_child_and_released(self):
+        def child(*args, **kwargs):
+            entry = device_lock.status_entry(self.store, BOARD_A, durations={})
+            self.assertEqual(entry["estimated_free"], self.clock.now() + 30)
+            self.assertEqual(entry["holder"]["purpose"], device.command_label("run"))
+            record = self.store.status(BOARD_A)["lock"]
+            self.assertEqual(record["kind"], "run")
+            self.assertNotIn("until_released", record)
+            self.assertTrue(self.store.check_token(BOARD_A, os.environ[device.TOKEN_ENV]))
+
+        with self.scope(), mock.patch.object(device, "run_to_end", side_effect=child):
+            self.assertEqual(self.main("run", "--estimate", "30", "--", "child"), 0)
+        self.assertIsNone(self.store.status(BOARD_A)["lock"])
+
     def assert_estimated_hold(self):
         ticket = self.store.enqueue(BOARD_A, "waiter", "flash")
         second = self.store.enqueue(BOARD_A, "second", "flash")
@@ -149,7 +163,7 @@ class HoldGuardTests(Store):
             self.assertEqual(self.store.status(BOARD_A)["reclaimable"]["reason"], "dead process")
             record = self.store.read_json(self.store.lock_path(BOARD_A))
             record["host"] = socket.gethostname() + "-remote"
-            self.store.write_json(self.store.lock_path(BOARD_A), record)
+            device_lock.write_json(self.store.lock_path(BOARD_A), record)
             self.assertTrue(self.store.check_token(BOARD_A, token))
 
     def test_take_and_hand_inside_hold_refuse_without_queueing(self):

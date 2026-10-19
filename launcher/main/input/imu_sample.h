@@ -22,6 +22,8 @@ typedef struct {
     int16_t gx, gy, gz; /* gyroscope,       64 counts per dps (+/- 512)   */
 } imu_sample_t;
 
+_Static_assert(sizeof(imu_sample_t) == 12, "FIFO order is six little-endian int16 axes");
+
 #define IMU_COUNTS_PER_G   4096
 #define IMU_COUNTS_PER_DPS 64
 

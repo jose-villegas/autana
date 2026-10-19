@@ -37,6 +37,7 @@
 #include "draw/draw.h"
 #include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/target/gfx_segment_clip.h"
 #include "math/scalar/fixed.h"
@@ -800,6 +801,8 @@ boot_anim_run(void) {
     int64_t photo_mount_us = 0;
     int64_t photo_frame_us = 0;
 #endif
+    const gfx_mode_request_t mode = {.layout = GFX_LAYOUT_DOUBLE_FB};
+    gfx_mode_enter(&mode);
     boot_anim_motion_t motion;
     boot_anim_motion_load(&motion);
     draw_image_t photo = {0};
@@ -844,6 +847,7 @@ boot_anim_run(void) {
          * idle task feeds the watchdog. */
         timing_yield();
     }
+    gfx_mode_exit();
     /* Boot plays once and nothing else reads its clip: releasing gives back the
      * pack and its mount slot. */
     boot_anim_motion_release(&motion);
