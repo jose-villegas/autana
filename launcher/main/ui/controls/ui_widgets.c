@@ -20,10 +20,14 @@
 
 ui_mu_theme_t
 ui_theme_from_style(const mu_Style* style) {
-    return (ui_mu_theme_t){.button_face = style->colors[MU_COLOR_BUTTON],
+    return (ui_mu_theme_t){.panel_face = UI_RGB(UI_SHELL_PANEL_FACE),
+                           .button_face = style->colors[MU_COLOR_BUTTON],
+                           .accent = style->colors[MU_COLOR_BUTTONFOCUS],
                            .accent_face = style->colors[MU_COLOR_BUTTONFOCUS],
                            .text = style->colors[MU_COLOR_TEXT],
                            .on_accent = style->colors[MU_COLOR_TEXT],
+                           .caption = UI_RGB(UI_SHELL_CAPTION),
+                           .muted = UI_RGB(UI_SHELL_MUTED),
                            .text_scale = DRAW_GLYPH_SCALE,
                            .native_toggle = true};
 }

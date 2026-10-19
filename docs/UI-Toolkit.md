@@ -4,36 +4,44 @@ What the shell's `launcher/main/ui/` layer gives any screen, in the shell or
 in an app: the controls, the drawing helpers, the layout arithmetic and the
 frame calls around them. A screen describes its whole UI again every frame
 through the plain-value face in `ui/ui.h`, and the frame becomes a list of
-drawing commands. This is the catalog. How to put a screen together, and the
-house rules it must follow, are in
+drawing commands. This is the index: each control has its own page below.
+How to put a screen together, and the house rules it must follow, are in
 [`Building-a-Screen.md`](Building-a-Screen.md). The library behind the face
 is private to `ui/`, and the include gate refuses it anywhere else.
 
-The board is held either way up, so a screen must work in both
-orientations, and every picture below shows both. Each comes from the real
-code, drawn on a host by the gallery scene,
-`launcher/tools/render/scenes/ui_widgets_render_host.sh` (see
+Every example on these pages is a file in
+`launcher/tools/render/ui_examples/`, shown whole, and every picture is that
+file drawn on a host by `ui_examples_render_host.sh` (see
 [Regenerating the images](#regenerating-the-images)).
 
-## At a glance
+## Controls
 
-| A screen needs | Call | Header |
+| Control | Call | For |
 |---|---|---|
-| a frame to draw in | `ui_begin()`, `ui_screen()`, `ui_end()` | `ui/ui.h` |
-| a button, with or without an icon | `ui_button()`, `ui_button_icon()` | `ui/ui.h` |
-| one of a row of choices, icon above label | `ui_tile()`, `ui_tile_icon()` | `ui/ui.h` |
-| a whole-number setting | `ui_slider()` | `ui/ui.h` |
-| on or off | `ui_toggle()` | `ui/ui.h` |
-| a pick from a list, without scrolling the screen | `ui_dropdown()`, `ui_dropdown_icons()` | `ui/ui.h` |
-| a captioned section, a title bar | `ui_panel()`, `ui_header()` | `ui/ui.h` |
-| text aligned in a rect | `ui_text()`, `ui_text_right()`, `ui_text_centre()`, `ui_caption()` | `ui/ui.h` |
-| a grid of colours | `ui_swatches()` | `ui/ui.h` |
-| an icon | `ui_icon()`, `ui_check()` | `ui/ui.h` |
-| rows that may overflow and scroll | `ui_scroll_window()`, `ui_row()`, `ui_next()` | `ui/ui.h` |
-| a rect placed against an edge or centre | `ui_anchor_rect()`, `ui_rect_inset()`, `ui_centered_rect()` | `ui/layout/ui_anchor.h`, `ui/ui.h` |
-| another text size | `ui_scale_begin()`, `ui_set_font_scaled()`, `ui_measure_text()` | `ui/ui.h` |
-| raised buttons | `ui_set_button_style(UI_BUTTON_BEZEL)` | `ui/ui.h` |
-| the UI turned with the board | `ui_set_transform()`, `ui_width()`, `ui_height()` | `ui/ui.h`, `ui/layout/ui_transform.h` |
+| [Button](ui/button.md) | `ui_button()` | an action, by a label |
+| [Button with an icon](ui/button_icon.md) | `ui_button_icon()` | an action, by an icon and a label |
+| [Tile](ui/tile.md) | `ui_tile()` | one of a row of choices |
+| [Tile with an icon](ui/tile_icon.md) | `ui_tile_icon()`, `ui_tile_icon_rect()` | one of a row of choices, icon above label |
+| [Toggle](ui/toggle.md) | `ui_toggle()` | on or off |
+| [Slider](ui/slider.md) | `ui_slider()` | a whole number in a range |
+| [Dropdown](ui/dropdown.md) | `ui_dropdown()` | one of a list, without scrolling the screen |
+| [Dropdown with icons](ui/dropdown_icons.md) | `ui_dropdown_icons()` | the same, an icon beside each name |
+| [Text](ui/text.md) | `ui_text()`, `ui_text_right()`, `ui_text_centre()`, `ui_caption()`, `ui_caption_centre()` | a line of text in a rect |
+| [Header](ui/header.md) | `ui_header()` | a title bar |
+| [Panel](ui/panel.md) | `ui_panel()` | a captioned section |
+| [Swatches](ui/swatches.md) | `ui_swatches()` | a grid of colours |
+| [Icon](ui/icon.md) | `ui_icon()`, `ui_check()` | an icon, or the check mark |
+
+How the controls share a finger, a scroll and a scope:
+
+| Page | Covers |
+|---|---|
+| [Input](ui/input.md) | a tap from press to release, a tap that misses, a control's identity |
+| [Scrolling](ui/scrolling.md) | scroll windows, when a moving finger is a drag, flowed rows and fixed rects |
+| [Scopes](ui/scopes.md) | `ui_disabled_begin()`, `ui_color_begin()`, `ui_scale_begin()`, `ui_alpha_begin()`, and the frame settings |
+
+`ui_fill()`, `ui_outline()` and `ui_bevel()` are the marks the controls are
+built from, for a screen drawing its own.
 
 ## One frame
 
@@ -52,9 +60,10 @@ Nothing draws pixels directly. Every control and helper appends commands to
 the frame's command list, and `ui_end()` paints them only when the list hashes
 differently from the last frame, so a screen that does not change costs
 nothing: hashing a few kilobytes of commands is far cheaper than repainting
-and sending a whole screen to the panel. Anything painted outside the list is invisible to that hash and
-survives on screen as a stale smear, which is why every entry below emits
-commands. In an [expanded frame](Gfx-and-Presentation.md#expanded-frames)
+and sending a whole screen to the panel.
+
+Anything painted outside the list is invisible to the hash and stays on
+screen as a stale smear. In an [expanded frame](Gfx-and-Presentation.md#expanded-frames)
 `ui_end()` bins the commands as `ui_end_for_bands()` does, and the present
 replays them over each strip it sends.
 
@@ -62,65 +71,85 @@ replays them over each strip it sends.
 
 ![A settings screen in portrait: a title bar, a volume slider, a MUTE toggle and an output dropdown](images/ui/settings.png) ![The same settings screen in landscape](images/ui/settings-landscape.png)
 
-This is the gallery's settings view, drawn by this code under the gallery's theme. The same
-code draws both orientations, because it measures against `ui_width()`
-rather than a fixed width:
+The same code draws both orientations, because it measures against
+`ui_width()` rather than a fixed width. The render wraps it in
+`ui_begin()`, `ui_screen()` and `ui_end()`:
 
+<!-- generated: ui-settings-example check: python launcher/tools/render/ui_examples_doc.py --check -->
 ```c
-static int volume = 5;
-static bool muted;
-static int output;
+/* A whole settings screen: a title bar, then rows flowing down a window below it. */
+#include "ui/ui.h"
+
+typedef struct {
+    int volume;
+    bool muted;
+    int output;
+} settings_example_t;
 
 static const char* const OUTPUTS[] = {"SPEAKER", "HEADPHONES", "BLUETOOTH", "OFF"};
 
-static void
-settings_frame(const input_t* input) {
-    const int row_w = ui_width() - 2 * UI_MARGIN;
-    ui_begin(input);
-    ui_theme(&THEME);
-    ui_screen();
+bool
+settings_example(settings_example_t* s) {
     ui_header((recti_t){0, 0, ui_width(), UI_TITLE_HEIGHT}, "SETTINGS");
-    ui_slider((recti_t){UI_MARGIN, 72, row_w, UI_TAP_MIN}, "volume", &volume, 0, 10);
-    ui_toggle((recti_t){UI_MARGIN, 144, row_w, UI_TAP_MIN}, "MUTE", &muted);
-    ui_dropdown((recti_t){UI_MARGIN, 216, row_w, UI_TAP_MIN}, "output", &output, OUTPUTS, 4);
-    ui_end(0x0A0C14);
+    ui_window((recti_t){0, UI_TITLE_HEIGHT, ui_width(), ui_height() - UI_TITLE_HEIGHT});
+    bool changed = false;
+    ui_row(UI_ROW_HEIGHT);
+    changed |= ui_slider(ui_next(), "volume", &s->volume, 0, 10);
+    ui_row(UI_ROW_HEIGHT);
+    changed |= ui_toggle(ui_next(), "MUTE", &s->muted);
+    ui_row(UI_ROW_HEIGHT);
+    changed |= ui_dropdown(ui_next(), "output", &s->output, OUTPUTS, 4);
+    return changed;
 }
 ```
+<!-- /generated: ui-settings-example -->
 
 - **The caller owns every value.** `volume`, `muted` and `output` live in
   the screen, and each call is handed the current value. A slider, toggle
   or dropdown writes through the pointer and returns true on the frame it
   changed. Between frames the toolkit remembers only the pressed control and
   whether a dropdown's list is open and how far it is scrolled.
-- **Labels are ids.** A control's identity is its label, so two controls with
-  the same label are told apart by call order, which breaks if a screen
-  skips one some frames; `"Text###key"` shows `Text` and keys on `key`
-  alone.
+- **Labels are ids.** See [identity](ui/input.md#identity).
 - **One file here, three in a real screen.** A shipped screen splits this
   into layout, state and drawing, each tested on a host, as
-  [`Building-a-Screen.md`](Building-a-Screen.md) describes: the screen in
-  the app's `ui/` folder, its layout test in the app's `tests/`.
+  [`Building-a-Screen.md`](Building-a-Screen.md) describes.
 
 ### Which control
 
 | For | Use |
 |---|---|
-| a whole number in a range | `ui_slider()` |
-| on or off | `ui_toggle()`, or two tiles when the choice deserves pictures |
-| one of two to four choices, all worth seeing at once | a row of `ui_tile_icon()`s, with `selected` on the current one |
-| one of a longer list, or where there is no room for a row | `ui_dropdown()` |
-| an action | `ui_button_icon()`, or `ui_button()` for a label alone |
+| a whole number in a range | [`ui_slider()`](ui/slider.md) |
+| on or off | [`ui_toggle()`](ui/toggle.md), or two tiles when the choice deserves pictures |
+| one of two to four choices, all worth seeing at once | a row of [`ui_tile_icon()`](ui/tile_icon.md)s, with `selected` on the current one |
+| one of a longer list, or where there is no room for a row | [`ui_dropdown()`](ui/dropdown.md) |
+| an action | [`ui_button_icon()`](ui/button_icon.md), or [`ui_button()`](ui/button.md) for a label alone |
 
-## Themed widgets
+## States
 
-![The themed widgets in portrait: a panel holding a slider, two icon buttons, three tiles, a swatch grid and a closed dropdown](images/ui/widgets.png) ![The same widgets in landscape, re-flowed into rows and two columns](images/ui/widgets-landscape.png)
+Each control's page has a States table: its unchanged example drawn in each
+state the face can put it in, and when a tap there fired. A state whose
+pixels match rest is not pictured; its row says "looks like rest".
+
+| State | What the render does to the example |
+|---|---|
+| rest | nothing: it is drawn alone |
+| pressed | a finger is held on its middle |
+| tapped | a finger pressed its middle and lifted before the picture |
+| disabled | it is drawn inside `ui_disabled_begin(true)` |
+| no-pack | it runs with no asset pack, so every icon is missing |
+
+Fires is "on release", "while held" or "no", measured by one more tap on
+the middle after the picture. Values a caller passes in, like `selected`
+or `on`, are not states: the example draws them itself.
+
+## Theme
 
 `ui_theme(&theme)` states a screen's colours once, for the rest of the
-frame; `NULL` restores the shell look. `ui_theme_t`:
+frame; `NULL` restores the shell look the pictures here use. `ui_theme_t`:
 
 | Field | Used for |
 |---|---|
-| `panel_face`, `panel_edge` | `ui_panel()` and `ui_header()` |
+| `panel_face`, `panel_edge` | `ui_panel()` and `ui_header()`, and a slider's frame; the shell look has no edge |
 | `button_face` | a control at rest |
 | `accent` | headings |
 | `accent_face`, `on_accent` | the selected choice, and the ink on it |
@@ -131,106 +160,61 @@ frame; `NULL` restores the shell look. `ui_theme_t`:
 
 Those are all of its fields; colours are `0xRRGGBB`.
 
+![A screen in warm colours: a NEW GAME title bar, a level slider, a HARD toggle and a START button](images/ui/themed.png) ![The same screen in landscape](images/ui/themed-landscape.png)
+
+<!-- generated: ui-themed-example check: python launcher/tools/render/ui_examples_doc.py --check -->
 ```c
+/* A screen in its own colours: ui_theme() once, then the same verbs as any other. */
+#include "ui/ui.h"
+
+typedef struct {
+    int level;
+    bool hard;
+} themed_example_t;
+
 static const ui_theme_t THEME = {
-    .panel_face = 0x131C2E,
-    .accent_face = 0xE0A63C,
-    /* ... */
+    .panel_face = 0x2A1A10,
+    .panel_edge = 0xF2D6B0,
+    .button_face = 0x3A2616,
+    .accent = 0xFFB347,
+    .accent_face = 0xFFB347,
+    .on_accent = 0x2A1A06,
+    .text = 0xFFF1E0,
+    .caption = 0xC9A27A,
+    .muted = 0x6B5340,
     .text_scale = 2,
     .icon_side = 24,
 };
+
+bool
+themed_example(themed_example_t* s) {
+    ui_theme(&THEME);
+    ui_header((recti_t){0, 0, ui_width(), UI_TITLE_HEIGHT}, "NEW GAME");
+    ui_window((recti_t){0, UI_TITLE_HEIGHT, ui_width(), ui_height() - UI_TITLE_HEIGHT});
+    bool changed = false;
+    ui_row(UI_ROW_HEIGHT);
+    changed |= ui_slider(ui_next(), "level", &s->level, 0, 9);
+    ui_row(UI_ROW_HEIGHT);
+    changed |= ui_toggle(ui_next(), "HARD", &s->hard);
+    ui_row(UI_ROW_HEIGHT);
+    changed |= ui_button(ui_next(), "START");
+    return changed;
+}
 ```
-
-| Control | Returns | Notes |
-|---|---|---|
-| `ui_button_icon()` | true on the frame a tap is released on it | icon at the left, label centred in the rest; a `NULL` icon is `ui_button()` |
-| `ui_tile_icon()` | the same | icon above the label, `selected` drawn on `accent_face`; `ui_tile_icon_rect()` gives the icon's square, where a caller may draw its own picture instead |
-| `ui_slider()` | whether the value changed | fill on `accent_face`, knob in `text` |
-| `ui_toggle()` | whether the value changed | a box with a check, label beside it |
-| `ui_dropdown()` | whether the pick changed the index | see below |
-
-Wrap controls in `ui_disabled_begin(true)` / `ui_disabled_end()` to draw
-them in `muted` and take no tap, and in `ui_color_begin(UI_COLOR_FACE, rgb)` or `UI_COLOR_TEXT` to recolour a
-few (the gallery's ON button is `accent_face` with `on_accent` ink). Every
-`_begin` pairs with its `_end`, at most `UI_FACE_SCOPE_DEPTH` deep, and a
-disabled scope cannot be re-enabled by a nested one. A control
-looks pressed only when a press has landed on it, never while a drag merely
-slides across it.
-
-### Dropdown
-
-![A dropdown near the bottom of the portrait screen with its list open above it, the current choice highlighted](images/ui/dropdown-open.png) ![The same open dropdown in landscape](images/ui/dropdown-open-landscape.png)
-
-The dropdown shows the current item and a chevron. A tap opens the whole
-list over the screen:
-
-| | |
-|---|---|
-| Placement | below the dropdown when every row fits there, above when they fit there, otherwise over the canvas between its margins, covering the dropdown. |
-| Scrolling | a list taller than its room scrolls, and opens with the current item centred. |
-| Closing | a pick stays on screen `UI_DROPDOWN_CLOSE_FRAMES` frames after the finger lifts, so the choice is seen landing. A tap outside the list closes it. |
-| Identity | give each dropdown its own label or `###key`. |
-
-`ui_dropdown()` takes a `names` array; `ui_dropdown_icons()` adds a
-parallel `icons` array. It needs at least one item.
-
-## Plain controls
-
-![The plain controls in portrait: a flat button, a bezel button, a toggle, an integer slider, and text at scales 1, 2 and 3](images/ui/controls.png) ![The same controls in landscape, in two columns](images/ui/controls-landscape.png)
-
-With no `ui_theme()` call these draw in the colours `ui_init()` sets. The
-slider holds a whole number. Its geometry is the pure
-`ui/controls/ui_slider.h`: the track, fill and knob for a value, and the
-value under a finger, quantized and clamped.
+<!-- /generated: ui-themed-example -->
 
 ### Button styles
 
-`ui_style.h` decides how a button's frame looks, separately from what it is:
-
-| | |
-|---|---|
-| `UI_BUTTON_FLAT` | a flat fill plus a one-pixel border. The default. |
-| `UI_BUTTON_BEZEL` | lit from the top left, and sunk while a finger is on it. |
-
-```c
-ui_begin(input);
-ui_set_button_style(UI_BUTTON_BEZEL);   /* every frame */
-```
-
-- **Stated every frame.** `ui_begin()` resets the style, because the whole
-  shell shares one UI context: a style one screen chose would otherwise
-  leak into the next app's buttons. It can change mid-frame, so one screen
-  can mix both.
-- **Buttons only.** Toggles and sliders frame themselves and
-  are left alone.
-- **The default is unchanged.** `UI_BUTTON_FLAT` and every non-button
-  frame draw as the backend does with no style set.
-- **Sunk on hover as well as focus.** On a touchscreen there is no pointer
-  until a finger is on the glass, so hover is contact. The one synthesized
-  frame before the press lands has hover but not focus yet, and keying on
-  hover keeps the bezel sinking smoothly instead of flashing in a frame
-  late.
-- **Pure geometry.** `ui_bezel_spans()` and `ui_panel_spans()` return where
-  the rectangles go and nothing else, so `test/suites/suite_ui_style.c`
-  checks the shape without linking `draw.c`.
-
-## Drawing helpers
-
-| Helper | Draws |
-|---|---|
-| `ui_panel()` | a face with a plain border, grouping controls without inviting a press |
-| `ui_header()` | a full-width bar with an edge along its bottom and a centred title |
-| `ui_text()`, `ui_text_right()`, `ui_text_centre()` | a string clipped to a rect, centred vertically, aligned left, right or centre; `ui_caption()` in the caption colour |
-| `ui_swatches()` | colours as a `cols` x `rows` grid of equal cells filling a rect |
-| `ui_icon()` | an icon (a one-bit `draw_image_t` from a pack) filling a rect, in one colour, or a short text when there is no icon |
-| `ui_fill()`, `ui_outline()`, `ui_bevel()`, `ui_check()` | the marks the controls are built from, for a screen drawing its own |
+`ui_set_button_style()` chooses `UI_BUTTON_FLAT` (the default) or
+`UI_BUTTON_BEZEL`, for the rest of the frame; `ui_begin()` resets it. Every
+face control draws a bezel, sunk while pressed, whatever the style, so the
+style changes nothing a face control draws. `ui_bezel_spans()` and
+`ui_panel_spans()` in `ui/controls/ui_style.h` are pure geometry, so
+`test/suites/suite_ui_style.c` checks the shapes without linking `draw.c`.
 
 The system icons come from the engine pack through `ui_icon_image()`
-(`ui/controls/ui_icons.h`), loaded by `ui_init()`;
-an app's icons are a `ui_icon_set_t` in the app's own pack, which the app
-loads with `ui_icon_set_load()` and releases with `ui_icon_set_release()`, so
-deleting the app deletes them. Without a pack a control shows its label alone, and an
-icon-only control its short text ([icons](tools/Icon-Baker.md)).
+(`ui/controls/ui_icons.h`), loaded by `ui_init()`. Without a pack a control
+shows its label alone, and an icon its short text: the no-pack rows.
 
 ## Layout
 
@@ -249,24 +233,13 @@ here. 56 px is about 4.4 mm.
 - **Canvas size.** `ui_width()` and `ui_height()` are the logical canvas:
   368x448 in portrait and 448x368 in landscape. Lay out against them,
   never `GFX_WIDTH`/`GFX_HEIGHT`. A layout that stacks in portrait usually
-  wants rows or columns in landscape, as the widgets view above does, and a
-  layout test holds it at both sizes.
+  wants rows or columns in landscape, and a layout test holds it at both
+  sizes.
 - **Fixed rects.** `ui_centered_rect()` centres a rect horizontally.
   `ui_anchor_rect()` places one against a parent's edge, corner or centre
   (`UI_ANCHOR_*`) with a pivot and offset, and `ui_rect_inset()` makes a
   safe area.
-- **Rows that may overflow.** Open the window with
-  `ui_scroll_window(r)` and place rows with `ui_row()` and `ui_next()`.
-  The window scrolls vertically once the rows overflow `r`; a horizontal
-  drag is refused.
-
-```c
-ui_scroll_window((recti_t){0, 0, ui_width(), ui_height()});
-for (int i = 0; i < count; i++) {
-    ui_row(UI_ROW_HEIGHT);
-    if (ui_button(ui_next(), labels[i])) { chosen = i; }
-}
-```
+- **Rows that may overflow.** [Scrolling](ui/scrolling.md).
 
 ## Text
 
@@ -305,12 +278,12 @@ How a panel over a paused app and a drawn backdrop use these is in
 ## What a screen costs
 
 The frame's command list is 8 KiB on the device (`MU_COMMANDLIST_SIZE`,
-set in the vendored backend's header), and everything drawn spends it. An open dropdown list
-adds its rows on top of the screen beneath it. The gallery's widgets page
-with its list open exceeds 8 KiB on a 64-bit host, whose larger commands
-need a 9 KiB limit in host tests and the render harness. The screen budget
-suites reserve space for additional controls; their device/QEMU run checks
-the device limit. A development build logs the high-water mark from
+set in the vendored backend's header), and everything drawn spends it. An
+open dropdown list adds its rows on top of the screen beneath it, and a busy
+screen with its list open exceeds 8 KiB on a 64-bit host, whose larger
+commands need a 9 KiB limit in host tests and the render harness. The screen
+budget suites reserve space for additional controls; their device/QEMU run
+checks the device limit. A development build logs the high-water mark from
 `ui_end()`; check it before adding a texture or another icon.
 
 ## Adding to the toolkit
@@ -325,8 +298,12 @@ screen, once a second screen could use it. It must:
 - respect `UI_TAP_MIN`
 - have a host test in `test/suites/suite_ui_widgets.c` that drives real
   taps through `ui_begin()`
-- appear in the gallery scene (a view in
-  `launcher/tools/render/scenes/ui_widgets_render_host.c`) and in this document
+- have an example, `launcher/tools/render/ui_examples/<name>.c`, defining
+  `<name>_example_t` and `bool <name>_example(<name>_example_t*)` with face
+  verbs alone and no `ui_begin()` or `ui_end()`; the scene fails to build
+  without both
+- have a page, `docs/ui/<name>.md`, in the shape of the others, and a row in
+  the table above
 
 A control that shows everything at once sits inline, like
 `ui_swatches()` or a row of tiles. One that must show more than its own
@@ -339,14 +316,19 @@ something else.
 ## Regenerating the images
 
 ```sh
-sh launcher/tools/render/scenes/ui_widgets_render_host.sh
+sh launcher/tools/render/scenes/ui_examples_render_host.sh
+python launcher/tools/render/ui_examples_doc.py
 ```
 
-It renders each view to `launcher/tools/results/render/ui_widgets/` and
-checks it against `ui_widgets_render_baseline.txt`, so a change that moves a
-pixel fails until the new picture is looked at and re-pinned with
-`--update-baseline`. `launcher/tools/render/render_doc_images.sh` turns those
-renders into `docs/images/ui/`; see "Images in these docs" in
+The scene renders every file in `ui_examples/`, each cut to what it drew
+plus `UI_MARGIN`, into `launcher/tools/results/render/ui_examples/`, and
+checks it against `ui_examples_render_baseline.txt`, so a change that moves
+a pixel fails until the new picture is looked at and re-pinned with
+`--update-baseline`. A file in `ui_examples/screens/` is a whole screen,
+drawn at rest only. `ui_examples_doc.py` copies each example file into its
+page; `--check` fails when one is stale.
+`launcher/tools/render/render_doc_images.sh` turns the renders into
+`docs/images/ui/` and the States tables; see "Images in these docs" in
 [`tools/Render-Harness.md`](tools/Render-Harness.md).
 
 ### Band replay measurements

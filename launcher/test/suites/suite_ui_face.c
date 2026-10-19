@@ -1477,6 +1477,23 @@ test_ui_theme_custom_and_reset(void) {
     compare_commands();
 }
 
+/* With no ui_theme() call, captions, disabled labels and a header title all
+ * draw in ink a reader can see. */
+static void
+test_the_shell_look_draws_every_text_visibly(void) {
+    fixture();
+    begin_face();
+    ui_caption(BOX, "Caption");
+    ui_disabled_begin(true);
+    (void)ui_button(SECOND, "Muted");
+    ui_disabled_end();
+    ui_header((recti_t){0, 0, ui_width(), UI_TITLE_HEIGHT}, "Title");
+    end_face();
+    TEST_ASSERT_EQUAL_INT(UINT8_MAX, ui_probe_text_alpha("Caption"));
+    TEST_ASSERT_EQUAL_INT(UINT8_MAX, ui_probe_text_alpha("Muted"));
+    TEST_ASSERT_EQUAL_INT(UINT8_MAX, ui_probe_text_alpha("Title"));
+}
+
 static void
 test_ui_screen_twice_closes_first(void) {
     fixture();
@@ -1583,6 +1600,7 @@ run_ui_face_suite(void) {
 #endif
     RUN_TEST(test_toggle_theme_scopes);
     RUN_TEST(test_ui_theme_custom_and_reset);
+    RUN_TEST(test_the_shell_look_draws_every_text_visibly);
     RUN_TEST(test_ui_screen_twice_closes_first);
 }
 
