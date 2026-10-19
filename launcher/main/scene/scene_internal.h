@@ -187,6 +187,8 @@ void* scene_allocate(size_t bytes, memory_kind_t kind);
 int scene_loaded_count(void);
 scene_t* scene_loaded_at(int index);
 
+/* Only activation and a seek of the active camera count as cuts. Other discontinuities,
+ * such as a camera transform teleport or a clip switch, converge within a few frames. */
 void scene_draw_camera_cut(const scene_t* scene, scene_entity_t entity);
 
 /* The index of the scene's camera `camera` (NULL: its first), or -1. */

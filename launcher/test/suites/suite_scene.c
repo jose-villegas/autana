@@ -2267,6 +2267,9 @@ test_property_animation_moves_a_drawn_entity(void) {
     TEST_ASSERT_TRUE(scene_animator_set_clips(scene, entity, NULL, clips, 1, NULL));
     TEST_ASSERT_EQUAL_INT(0, scene->animators[entity].layer.shown.joint_count);
     TEST_ASSERT_TRUE(scene_animator_play(scene, entity, 0, 0));
+    render_context_main()->split.top_offset[0] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
+    TEST_ASSERT_TRUE(scene_animator_seek(scene, entity, SCENE_ANIMATOR_CURRENT, 0));
+    TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN, render_context_main()->split.top_offset[0]);
     frame(0);
     const uint16_t red = fx.pixels[CENTER * SIZE + CENTER];
     frame(RIG_DURATION_MS / 2);
@@ -2305,7 +2308,9 @@ test_inactive_property_target_invalidates_its_entity_matrix(void) {
     TEST_ASSERT_TRUE(scene_animator_play(scene, owner, 0, 0));
     TEST_ASSERT_TRUE(scene_entity_transform(scene, target)->cached);
     scene->flags[target] &= (uint8_t)~SCENE_FLAG_DIRTY;
+    render_context_main()->split.top_offset[0] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
     TEST_ASSERT_TRUE(scene_animator_seek(scene, owner, SCENE_ANIMATOR_CURRENT, RIG_DURATION_MS / 2));
+    TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN, render_context_main()->split.top_offset[0]);
     scene_transform_t sampled = *scene_entity_transform(scene, target);
     TEST_ASSERT_EQUAL_FLOAT(RIG_TRAVEL / 2, transformf_matrix(&sampled).m[0][3]);
     TEST_ASSERT_TRUE((scene->flags[target] & SCENE_FLAG_DIRTY) != 0);
