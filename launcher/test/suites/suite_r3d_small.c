@@ -354,10 +354,9 @@ test_grain_screen_phase_with_odd_window_and_known_shades(void) {
     actual.rows.attachment[GFX_ATTACHMENT_COLOR].pixels = pixels + TEST_SIDE;
     actual.rows.attachment[GFX_ATTACHMENT_DEPTH].pixels = pixels + TEST_PIXELS + TEST_SIDE;
     resolve_fill((small_fill_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_GRAIN});
-    const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {
-        {-R3D_SUBPIXEL, -R3D_SUBPIXEL, 0.5F, 0, 0, 0},
-        {(ORACLE_MAX_SIDE - 1) * R3D_SUBPIXEL, -R3D_SUBPIXEL, 0.5F, 0, 0, 0},
-        {-R3D_SUBPIXEL, (ORACLE_MAX_SIDE - 1) * R3D_SUBPIXEL, 0.5F, 0, 0, 0}};
+    const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {{-R3D_SUBPIXEL, 0, 0.5F, 0, 0, 0},
+                                                    {(ORACLE_MAX_SIDE - 1) * R3D_SUBPIXEL, 0, 0.5F, 0, 0, 0},
+                                                    {-R3D_SUBPIXEL, ORACLE_MAX_SIDE * R3D_SUBPIXEL, 0.5F, 0, 0, 0}};
     draw_triangle(&actual, v, false);
     TEST_ASSERT_EQUAL_HEX16(gfx_color_rgb565(1, TEST_GREEN_STEP, 1), pixels[TEST_SIDE]);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x000000), pixels[TEST_SIDE + 1]);
@@ -382,12 +381,23 @@ test_dither_equal_packed_colours_and_equal_edges_use_flat(void) {
     resolve_fill((small_fill_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_FLAT});
     draw_triangle(&expected, v, false);
     TEST_ASSERT_EQUAL_MEMORY(pixels + TEST_PIXELS * 2, pixels, TEST_PIXELS * 2 * sizeof(*pixels));
-    const uint16_t colors[TRIANGLE_VERTICES] = {GFX_RGB(0xff0000), GFX_RGB(0x00ff00), GFX_RGB(0x0000ff)};
-    const uint16_t flat = GFX_RGB(0x555555);
-    for (int rank = 0; rank < SMALL_SPREAD_OFF; rank++) {
-        TEST_ASSERT_EQUAL_HEX16(
-            flat, small_dither_pick(colors, flat, rank, ORACLE_MAX_SIDE, ORACLE_MAX_SIDE, ORACLE_MAX_SIDE));
+    memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));
+    const int centre = (ORACLE_MAX_SIDE / 2) * R3D_SUBPIXEL + HALF_PIXEL;
+    const int reach = (R3D_SPAN_SMALL_MAX_SIDE + 1) * R3D_SUBPIXEL;
+    v[0] = (r3d_span_vertex_t){centre + reach, centre, 0.5F, UINT8_MAX, 0, 0};
+    v[1] = (r3d_span_vertex_t){centre, centre + 1, 0.5F, 0, UINT8_MAX, 0};
+    v[2] = (r3d_span_vertex_t){centre - reach + 1, centre - 1, 0.5F, 0, 0, UINT8_MAX};
+    for (int edge = 0; edge < TRIANGLE_VERTICES; edge++) {
+        const small_edge_t line = small_edge(v + edge, v + (edge + 1) % TRIANGLE_VERTICES);
+        TEST_ASSERT_EQUAL_INT(reach - 1, small_side(&line, centre, centre));
     }
+    resolve_fill((small_fill_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_DITHER});
+    draw_triangle(&actual, v, false);
+    resolve_fill((small_fill_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_FLAT});
+    draw_triangle(&expected, v, false);
+    const int pixel = (ORACLE_MAX_SIDE / 2) * (TEST_SIDE + 1);
+    TEST_ASSERT_NOT_EQUAL(R3D_DEPTH_EMPTY, pixels[TEST_PIXELS + pixel]);
+    TEST_ASSERT_EQUAL_HEX16(pixels[TEST_PIXELS * 2 + pixel], pixels[pixel]);
 }
 
 static void
