@@ -93,10 +93,12 @@ void r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const
  * their vertices; 0 when there are none. */
 int r3d_pipeline_transform_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, int count);
 
-/* A row between 1 and height - 1 that divides a cheap estimate of raster
- * work: each visible cluster's triangle count across the buckets it spans. */
+/* A row between 1 and height - 1 assigning top_permille / RASTER_SPLIT_PERMILLE
+ * of estimated draw weight to the top slice, interpolated within its bucket.
+ * Weight is each visible cluster's triangle count across the buckets it spans.
+ * With no weight, returns the middle row. */
 int r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, const r3d_pipeline_rows_t* rows,
-                            int count, int height);
+                            int count, int height, int top_permille);
 
 /* One way of the data cache: addresses this far apart share a cache set. */
 #if defined(ESP_PLATFORM)
@@ -105,9 +107,8 @@ int r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters
 #define R3D_PIPELINE_CACHE_WAY 8192 /* the board's 64 KB in 8 ways */
 #endif
 
-/* Pointer-bearing state needs host alignment without widening the board's
- * four-byte carve. */
-#define R3D_PIPELINE_WORK_ALIGNMENT _Alignof(r3d_span_target_t)
+/* Slice timings and pointer-bearing state share this carve. */
+#define R3D_PIPELINE_WORK_ALIGNMENT _Alignof(int64_t)
 
 /* A raster's scratch block as its parts: the one layout
  * raster_scratch_bytes() sizes. The census list comes first, so it stays put
