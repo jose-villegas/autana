@@ -79,6 +79,26 @@ gfx_color_rgb565(uint8_t r5, uint8_t g6, uint8_t b5) {
     return gfx_color_swap((uint16_t)(((uint16_t)r5 << 11) | ((uint16_t)g6 << 5) | b5));
 }
 
+#define GFX_COLOR_MEAN3_RB_SHIFT   16
+#define GFX_COLOR_MEAN3_COUNT      3
+#define GFX_COLOR_MEAN3_SHIFT      9
+#define GFX_COLOR_MEAN3_MULTIPLIER (((1U << GFX_COLOR_MEAN3_SHIFT) + GFX_COLOR_MEAN3_COUNT - 1) / GFX_COLOR_MEAN3_COUNT)
+
+/* Native RGB565 inputs; panel-order output. The reciprocal is exact through three 6-bit channels plus rounding. */
+static inline gfx_color_t
+gfx_color_rgb565_mean3(uint16_t na, uint16_t nb, uint16_t nc) {
+    const unsigned rb_a = (gfx_rgb565_r5(na) << GFX_COLOR_MEAN3_RB_SHIFT) | gfx_rgb565_b5(na);
+    const unsigned rb_b = (gfx_rgb565_r5(nb) << GFX_COLOR_MEAN3_RB_SHIFT) | gfx_rgb565_b5(nb);
+    const unsigned rb_c = (gfx_rgb565_r5(nc) << GFX_COLOR_MEAN3_RB_SHIFT) | gfx_rgb565_b5(nc);
+    const unsigned bias = GFX_COLOR_MEAN3_COUNT / 2;
+    const unsigned rb_sum = rb_a + rb_b + rb_c + (bias << GFX_COLOR_MEAN3_RB_SHIFT) + bias;
+    const unsigned rb = (rb_sum * GFX_COLOR_MEAN3_MULTIPLIER) >> GFX_COLOR_MEAN3_SHIFT;
+    const unsigned green = gfx_rgb565_g6(na) + gfx_rgb565_g6(nb) + gfx_rgb565_g6(nc) + bias;
+    return gfx_color_rgb565((uint8_t)(rb >> GFX_COLOR_MEAN3_RB_SHIFT),
+                            (uint8_t)((green * GFX_COLOR_MEAN3_MULTIPLIER) >> GFX_COLOR_MEAN3_SHIFT),
+                            (uint8_t)(rb & gfx_rgb565_b5(UINT16_MAX)));
+}
+
 /* Channel separation leaves five multiplier bits without cross-channel carries. */
 #define GFX_COLOR_SCALE_UNIT 32
 

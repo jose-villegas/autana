@@ -528,9 +528,6 @@ typedef struct {
 
 static inline bool
 colours_within_spread(uint16_t a, uint16_t b, uint16_t c, int limit) {
-    a = gfx_color_swap(a);
-    b = gfx_color_swap(b);
-    c = gfx_color_swap(c);
     return channel_within_spread((int32_t)gfx_rgb565_r5(a), (int32_t)gfx_rgb565_r5(b), (int32_t)gfx_rgb565_r5(c), limit)
            && channel_within_spread((int32_t)gfx_rgb565_g6(a), (int32_t)gfx_rgb565_g6(b), (int32_t)gfx_rgb565_g6(c),
                                     limit)
@@ -585,7 +582,7 @@ r3d_span_begin(void) {
 /* Negative selects the walk; otherwise the result is dither coverage, with zero selecting flat. */
 static inline __attribute__((always_inline)) int
 select_small(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, recti_t centres,
-             bool solid, uint16_t* colors) {
+             bool solid, uint16_t* colors, bool* packed, uint16_t* flat) {
     const int side = mathi_max(centres.w, centres.h);
     if (side > small_side_limit) {
         return SMALL_FILL_WALK;
@@ -607,8 +604,13 @@ select_small(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_s
             colors[1] = cb;
             colors[2] = cc;
         }
-        if (limits.spread != SMALL_FLAT_SPREAD_OFF && !colours_within_spread(ca, cb, cc, limits.spread)) {
+        const uint16_t na = gfx_color_swap(ca), nb = gfx_color_swap(cb), nc = gfx_color_swap(cc);
+        if (limits.spread != SMALL_FLAT_SPREAD_OFF && !colours_within_spread(na, nb, nc, limits.spread)) {
             return SMALL_FILL_WALK;
+        }
+        if (flat != NULL && limits.coverage == 0 && limits.grain == 0) {
+            *flat = gfx_color_rgb565_mean3(na, nb, nc);
+            *packed = true;
         }
     }
     return limits.coverage;
@@ -656,7 +658,15 @@ static __attribute__((noinline)) void
 fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
            const r3d_span_vertex_t* c, bool positive, recti_t box, const uint16_t* face) {
     fill_t f;
-    set_flat(&f, a, b, c);
+#if TUNE_HOT_LIVE
+    if (face != NULL) {
+        const float third = 1.0F / (float)TRIANGLE_VERTICES;
+        f.flat_z = (uint16_t)(mathf_clamp((a->z + b->z + c->z) * third, 0.0F, 1.0F) * (float)R3D_DEPTH_NEAREST);
+    } else
+#endif
+    {
+        set_flat(&f, a, b, c);
+    }
     if (face != NULL) {
         f.flat_color = *face;
     }
@@ -802,6 +812,10 @@ fill_small_dither_cell(const r3d_span_target_t* target, const r3d_span_vertex_t*
     set_flat(&f, a, b, c);
     if (r3d_span_stop_after != 0) {
         return;
+    }
+    if (!grained) {
+        f.flat_color =
+            gfx_color_rgb565_mean3(gfx_color_swap(colors[0]), gfx_color_swap(colors[1]), gfx_color_swap(colors[2]));
     }
     uint16_t shades[SMALL_GRAIN_LEVELS];
     if (grained) {
@@ -961,7 +975,9 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
         return;
     }
     uint16_t colors[TRIANGLE_VERTICES];
-    const int coverage = select_small(a, b, c, e.centres, face != NULL, colors);
+    bool packed = false;
+    uint16_t flat;
+    const int coverage = select_small(a, b, c, e.centres, face != NULL, colors, &packed, &flat);
     if (coverage != SMALL_FILL_WALK) {
         const int grain = select_small_grain(e.centres, face, colors);
         if (grain != 0) {
@@ -971,7 +987,11 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
         if (coverage != 0) {
             fill_small_dither(target, a, b, c, area2 > 0, box, coverage, colors);
         } else {
-            fill_small(target, a, b, c, area2 > 0, box, face);
+            if (packed) {
+                fill_small(target, a, b, c, area2 > 0, box, &flat);
+            } else {
+                fill_small(target, a, b, c, area2 > 0, box, face);
+            }
         }
         return;
     }
@@ -1021,7 +1041,7 @@ r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t
     }
     /* FILL_FACE selects a depth carry here; writers do not read face colour. */
     fill_t f = {e.flat ? FILL_FLAT : FILL_FACE, NULL, 0, 0, NULL};
-    if (select_small(a, b, c, e.centres, solid, NULL) != SMALL_FILL_WALK) {
+    if (select_small(a, b, c, e.centres, solid, NULL, NULL, NULL) != SMALL_FILL_WALK) {
         set_flat(&f, a, b, c);
         for (int y = box.y; y < recti_bottom(box); y++) {
             write_span(target, y, box.x, recti_right(box) - 1, (int32_t)f.flat_z << R3D_DEPTH_SHIFT, 0);
