@@ -99,6 +99,13 @@ def write_flat_start(directory, count=4):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class SeamHoldTests(unittest.TestCase):
+    def test_optimise_defaults_to_the_shared_seam_margin(self):
+        from inspect import signature
+        from r3d import appearance_simplify as appearance
+
+        self.assertEqual(signature(appearance.optimise).parameters["seam_margin"].default,
+                         appearance.SEAM_MARGIN)
+
     def mesh(self):
         points = np.array([[0.5, 0.5, 0.1], [4, 0, 1], [0, 4, 1],
                            [0, 0, 0], [2, 0, 0], [0, 2, 0]], dtype=float)
@@ -377,7 +384,7 @@ class AppearanceMeshTests(unittest.TestCase):
         with mock.patch.object(appearance, "Renderer", return_value=render):
             with self.assertRaisesRegex(ValueError, "finite"):
                 appearance.optimise(mesh, [(np.eye(4), target)], (1, 1), steps=2, batch=1,
-                                    lr_position=0, lr_colour=0, laplacian=0, report=0, device="cpu")
+                                    lr_position=0, lr_colour=0, laplacian=0, report=0, device="cpu", seam_margin=0)
 
     @unittest.skipIf(torch is None, "needs PyTorch")
     def test_normal_loss_without_angles_handles_empty_masks(self):
@@ -428,7 +435,7 @@ class AppearanceMeshTests(unittest.TestCase):
         views = [(np.eye(4), np.zeros((1, 1, 3), dtype=np.float32))]
         options = dict(steps=appearance.SURFACE_QUERY_EVERY + 1, batch=1, lr_position=0.01,
                        lr_colour=0, laplacian=0, report=0, device="cpu", source=source,
-                       surface_weight=10, surface_margin=0.25)
+                       surface_weight=10, surface_margin=0.25, seam_margin=0)
         render = mock.Mock(side_effect=lambda points, colours, *args: colours.mean(0).reshape(1, 1, 3))
         queries = []
 
@@ -472,7 +479,7 @@ class AppearanceMeshTests(unittest.TestCase):
                 with self.subTest(seed=seed):
                     fitted, _, history = appearance.optimise(
                         mesh, views, (len(tiny), 1), steps=60, batch=1, lr_position=0.001,
-                        lr_colour=0, laplacian=40, report=0, device="cpu", seed=seed)
+                        lr_colour=0, laplacian=40, report=0, device="cpu", seed=seed, seam_margin=0)
                     final = np.linalg.norm(fitted[edges[:, 0]] - fitted[edges[:, 1]], axis=1)
                     self.assertLess(history[-1], history[0])
                     np.testing.assert_array_less(final, max_stretch * lengths)
@@ -504,7 +511,7 @@ class AppearanceMeshTests(unittest.TestCase):
                 with mock.patch.object(appearance, "Renderer", return_value=render):
                     fitted, _, _ = appearance.optimise(
                         mesh, views, (len(points), 1), steps=1, batch=1, lr_position=lr_position,
-                        lr_colour=0, laplacian=0, report=0, device="cpu")
+                        lr_colour=0, laplacian=0, report=0, device="cpu", seam_margin=0)
                 displacement = np.linalg.norm(fitted - points, axis=1)
                 np.testing.assert_array_less(displacement, bound + tolerance)
                 np.testing.assert_array_less(displacement[:tiny_count], bound[tiny_count:])
@@ -950,7 +957,7 @@ class AppearanceFitTests(unittest.TestCase):
                  for matrix, x in zip(matrices, (-0.2, 0.2))]
         moved = mesh._replace(points=points * [0.8, 1, 1])
         options = dict(steps=SURFACE_QUERY_EVERY + 1, batch=2, lr_position=0.001, lr_colour=0.01, laplacian=0.1, report=0,
-                       surface_weight=10, surface_margin=0.25, source=SimpleNamespace(p=points, tri_v=tris))
+                       surface_weight=10, surface_margin=0.25, source=SimpleNamespace(p=points, tri_v=tris), seam_margin=0)
         for normal_weight in (0, 1):
             with self.subTest(normal_weight=normal_weight):
                 first = optimise(moved, views, size, normal_weight=normal_weight, **options)
@@ -968,7 +975,7 @@ class AppearanceFitTests(unittest.TestCase):
             truth = Renderer(mesh[2], mesh[3], mesh[5], size, "cuda")
             target = draw(truth, mesh[0] * [1.3, 0.8, 1.0], mesh[1][::-1].copy(), matrix)
             _points, _rgb, history = optimise(mesh, [(matrix, target)], size, steps=150, batch=1, lr_position=0.01,
-                                              lr_colour=0.05, laplacian=0.0, report=0)
+                                              lr_colour=0.05, laplacian=0.0, report=0, seam_margin=0)
             self.assertLess(np.mean(history[-10:]), 0.5 * np.mean(history[:3]))
 
     def test_a_flat_fit_moves_the_edge_between_two_face_colours(self):
@@ -983,7 +990,7 @@ class AppearanceFitTests(unittest.TestCase):
         shifted = mesh.points + np.where(np.abs(mesh.points[:, :1]) < 0.4, [[0.15, 0.0, 0.0]], 0.0)
         target = draw(truth, shifted, mesh.rgb, matrix)
         points, rgb, history = optimise(mesh, [(matrix, target)], size, steps=150, batch=1, lr_position=0.005,
-                                        lr_colour=0.0, laplacian=0.0, report=0)
+                                        lr_colour=0.0, laplacian=0.0, report=0, seam_margin=0)
         self.assertEqual(rgb.shape, mesh.rgb.shape)
         self.assertLess(np.mean(history[-10:]), 0.5 * np.mean(history[:3]), "the colour edge did not move")
         self.assertGreater(points[np.abs(mesh.points[:, 0]) < 1e-9, 0].mean(), 0.05)
@@ -1021,7 +1028,7 @@ class AppearanceFitTests(unittest.TestCase):
         start = np.full((count, 3), 0.5)
         mesh = FitMesh(positions, start, tris, double, 64, vertex_point, True)
         _points, rgb, _history = optimise(mesh, [(matrix, target)], size, steps=400, batch=1, lr_position=0.0, lr_colour=0.05,
-                                          laplacian=0.0, report=0)
+                                          laplacian=0.0, report=0, seam_margin=0)
         with torch.no_grad():
             ids = truth.visible_ids(cuda(positions), cuda(matrix)).cpu().numpy()
         coverage_pixels = np.bincount(ids[ids >= 0], minlength=count)
@@ -1047,7 +1054,7 @@ class AppearanceFitTests(unittest.TestCase):
             self.assertEqual(target.shape[:2], (2 * height, 2 * width))
             views.append((matrix, target))
         _points, _rgb, history = optimise(mesh, views, None, steps=150, batch=2, lr_position=0.01, lr_colour=0.05,
-                                          laplacian=0.0, report=0)
+                                          laplacian=0.0, report=0, seam_margin=0)
         self.assertLess(np.mean(history[-10:]), 0.5 * np.mean(history[:3]))
 
     def test_the_normal_term_turns_the_surface_toward_the_reference_normals(self):
@@ -1064,7 +1071,7 @@ class AppearanceFitTests(unittest.TestCase):
         view = (matrix, colour, reference, eye)
         before = normal_error(mesh, [view], size)
         points, _rgb, _history = optimise(mesh, [view], size, steps=200, batch=1, lr_position=0.02, lr_colour=0.0,
-                                          laplacian=0.0, report=0, normal_weight=1.0)
+                                          laplacian=0.0, report=0, normal_weight=1.0, seam_margin=0)
         after = normal_error(mesh._replace(points=points), [view], size)
         self.assertLess(after, 0.5 * before)
 
