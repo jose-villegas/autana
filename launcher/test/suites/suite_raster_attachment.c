@@ -15,6 +15,7 @@
 #include "unity.h"
 
 #include "core/memory.h"
+#include "core/timing.h"
 #include "display/viewport.h"
 #include "render/context/render_context.h"
 #include "render/r3d_lit_mesh.h"

@@ -19,6 +19,10 @@
 #include <time.h>
 #endif
 
+#ifdef TIMING_TEST_CLOCK
+extern int64_t (*timing_test_clock)(void);
+#endif
+
 /* Microseconds since boot, monotonic. On a host, wall-clock microseconds
  * since the epoch. */
 static inline __attribute__((always_inline)) int64_t

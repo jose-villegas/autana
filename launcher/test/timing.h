@@ -21,8 +21,6 @@
 
 #ifndef DEVICE_BUILD
 #define TIMING_TEST_CLOCK 1
-#include <stdint.h>
-extern int64_t (*timing_test_clock)(void);
 #endif
 
 #define RUN_TEST(func) suite_run_test_timed(func, #func, __LINE__)
