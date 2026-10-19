@@ -7,4 +7,3 @@ Fixed-point placement. No drawing.
 | `ui_transform.h` | Affine transform of UI space to screen space, header-only |
 | `ui_anchor.h` | Anchors and pivots for rectangle placement |
 | `ui_layout.h` | `ui_layout_rect_t`, the rectangle the baked screen tables store; with conversion to `recti_t`; shared with the editor |
-| `ui_scroll.*` | Scroll offset and momentum |

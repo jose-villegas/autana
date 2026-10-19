@@ -2,20 +2,12 @@
 
 What the shell's `launcher/main/ui/` layer gives any screen, in the shell or
 in an app: the controls, the drawing helpers, the layout arithmetic and the
-frame calls around them. It is built on
-[microui](https://github.com/rxi/microui), a small immediate-mode GUI
-library vendored in `launcher/components/microui/`: a screen describes its
-whole UI again every frame, and the library turns that description into a
-list of drawing commands. This is the catalog. How to put a screen together,
-and the house rules it must follow, are in
-[`Building-a-Screen.md`](Building-a-Screen.md).
-
-A screen uses only the plain-value face in `ui/ui.h`, taught in
-[`Building-a-Screen.md`](Building-a-Screen.md). The controls and helpers
-below are the layer the face verbs are built from, in `ui/ui_internal.h`
-and the `ui/` headers that include microui, private to `ui/`: the include
-gate refuses them anywhere else. They are catalogued here for whoever adds
-a face verb.
+frame calls around them. A screen describes its whole UI again every frame
+through the plain-value face in `ui/ui.h`, and the frame becomes a list of
+drawing commands. This is the catalog. How to put a screen together, and the
+house rules it must follow, are in
+[`Building-a-Screen.md`](Building-a-Screen.md). The library behind the face
+is private to `ui/`, and the include gate refuses it anywhere else.
 
 The board is held either way up, so a screen must work in both
 orientations, and every picture below shows both. Each comes from the real
@@ -25,30 +17,30 @@ code, drawn on a host by the gallery scene,
 
 ## At a glance
 
-| A face verb needs | Call | Header |
+| A screen needs | Call | Header |
 |---|---|---|
-| a frame to draw in | `ui_begin()`, `ui_begin_screen()`, `ui_end()` | `ui/ui.h`, `ui/ui_internal.h` |
-| a button with an icon beside its label | `ui_icon_button()` | `ui/ui_internal.h` |
-| one of a row of choices, icon above label | `ui_tile_button()` | `ui/ui_internal.h` |
-| a whole-number setting | `ui_theme_slider_int()`, `ui_slider_int()` | `ui/ui_internal.h`, `ui/ui.h` |
-| a pick from a list, without a scroll view | `ui_mu_dropdown()` | `ui/ui_internal.h` |
-| a plain button, checkbox or label | `mu_button()`, `mu_checkbox()`, `mu_label()` | `microui.h` |
-| a captioned section, a title bar | `ui_mu_panel()`, `ui_header_bar()` | `ui/ui_internal.h` |
-| text aligned in a rect | `ui_text_in()` | `ui/ui_internal.h` |
-| a grid of colours | `ui_swatch_grid()` | `ui/ui_internal.h` |
-| an icon | `ui_draw_icon()` | `ui/ui_internal.h` |
-| rows that may overflow and scroll | `ui_scroll_view_begin()`, `ui_flow_row()` | `ui/layout/ui_scroll.h` |
+| a frame to draw in | `ui_begin()`, `ui_screen()`, `ui_end()` | `ui/ui.h` |
+| a button, with or without an icon | `ui_button()`, `ui_button_icon()` | `ui/ui.h` |
+| one of a row of choices, icon above label | `ui_tile()`, `ui_tile_icon()` | `ui/ui.h` |
+| a whole-number setting | `ui_slider()` | `ui/ui.h` |
+| on or off | `ui_toggle()` | `ui/ui.h` |
+| a pick from a list, without scrolling the screen | `ui_dropdown()`, `ui_dropdown_icons()` | `ui/ui.h` |
+| a captioned section, a title bar | `ui_panel()`, `ui_header()` | `ui/ui.h` |
+| text aligned in a rect | `ui_text()`, `ui_text_right()`, `ui_text_centre()`, `ui_caption()` | `ui/ui.h` |
+| a grid of colours | `ui_swatches()` | `ui/ui.h` |
+| an icon | `ui_icon()`, `ui_check()` | `ui/ui.h` |
+| rows that may overflow and scroll | `ui_scroll_window()`, `ui_row()`, `ui_next()` | `ui/ui.h` |
 | a rect placed against an edge or centre | `ui_anchor_rect()`, `ui_rect_inset()`, `ui_centered_rect()` | `ui/layout/ui_anchor.h`, `ui/ui.h` |
-| another text size | `ui_set_font_scaled()`, `ui_measure_text()` | `ui/ui.h` |
-| raised buttons | `ui_set_button_style(UI_BUTTON_BEZEL)` | `ui/ui.h`, `ui/controls/ui_style.h` |
+| another text size | `ui_scale_begin()`, `ui_set_font_scaled()`, `ui_measure_text()` | `ui/ui.h` |
+| raised buttons | `ui_set_button_style(UI_BUTTON_BEZEL)` | `ui/ui.h` |
 | the UI turned with the board | `ui_set_transform()`, `ui_width()`, `ui_height()` | `ui/ui.h`, `ui/layout/ui_transform.h` |
 
 ## One frame
 
 ```mermaid
 flowchart LR
-    Input["input_t"] --> Begin["ui_begin()<br/>touch becomes microui events"]
-    Begin --> Window["ui_begin_screen() or<br/>ui_scroll_view_begin()"]
+    Input["input_t"] --> Begin["ui_begin()<br/>touch becomes pointer events"]
+    Begin --> Window["ui_screen() or<br/>ui_scroll_window()"]
     Window --> Controls["controls and drawing helpers<br/>append commands"]
     Controls --> End["ui_end(), ui_end_over()<br/>or ui_end_for_bands()"]
     End --> Hash{"command list<br/>hash changed?"}
@@ -57,7 +49,7 @@ flowchart LR
 ```
 
 Nothing draws pixels directly. Every control and helper appends commands to
-microui's command list, and `ui_end()` paints them only when the list hashes
+the frame's command list, and `ui_end()` paints them only when the list hashes
 differently from the last frame, so a screen that does not change costs
 nothing: hashing a few kilobytes of commands is far cheaper than repainting
 and sending a whole screen to the panel. Anything painted outside the list is invisible to that hash and
@@ -68,48 +60,42 @@ replays them over each strip it sends.
 
 ## A whole screen
 
-![A settings screen in portrait: a title bar, a volume slider, a MUTE checkbox and an output dropdown](images/ui/settings.png) ![The same settings screen in landscape](images/ui/settings-landscape.png)
+![A settings screen in portrait: a title bar, a volume slider, a MUTE toggle and an output dropdown](images/ui/settings.png) ![The same settings screen in landscape](images/ui/settings-landscape.png)
 
-This is the gallery's settings view, drawn by exactly this code. The same
+This is the gallery's settings view, drawn by this code under the gallery's theme. The same
 code draws both orientations, because it measures against `ui_width()`
 rather than a fixed width:
 
 ```c
 static int volume = 5;
-static int muted;
+static bool muted;
 static int output;
 
 static const char* const OUTPUTS[] = {"SPEAKER", "HEADPHONES", "BLUETOOTH", "OFF"};
 
 static void
 settings_frame(const input_t* input) {
-    mu_Context* ctx = ui_context();
+    const int row_w = ui_width() - 2 * UI_MARGIN;
     ui_begin(input);
-    if (ui_begin_screen(ctx, "Settings", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
-        const int w = ui_width();
-        const int row_w = w - 2 * UI_MARGIN;
-        ui_header_bar(ctx, mu_rect(0, 0, w, UI_TITLE_HEIGHT), "SETTINGS", 2, &THEME);
-        ui_theme_slider_int(ctx, mu_rect(UI_MARGIN, 72, row_w, UI_TAP_MIN), &volume, 0, 10, 1, &THEME);
-        mu_layout_set_next(ctx, mu_rect(UI_MARGIN, 144, row_w, UI_TAP_MIN), 0);
-        mu_checkbox(ctx, "MUTE", &muted);
-        const int picked =
-            ui_mu_dropdown(ctx, "output", mu_rect(UI_MARGIN, 216, row_w, UI_TAP_MIN), OUTPUTS, NULL, 4, output, &THEME);
-        if (picked >= 0) {
-            output = picked;
-        }
-        mu_end_window(ctx);
-    }
+    ui_theme(&THEME);
+    ui_screen();
+    ui_header((recti_t){0, 0, ui_width(), UI_TITLE_HEIGHT}, "SETTINGS");
+    ui_slider((recti_t){UI_MARGIN, 72, row_w, UI_TAP_MIN}, "volume", &volume, 0, 10);
+    ui_toggle((recti_t){UI_MARGIN, 144, row_w, UI_TAP_MIN}, "MUTE", &muted);
+    ui_dropdown((recti_t){UI_MARGIN, 216, row_w, UI_TAP_MIN}, "output", &output, OUTPUTS, 4);
     ui_end(0x0A0C14);
 }
 ```
 
 - **The caller owns every value.** `volume`, `muted` and `output` live in
-  the screen, and each call is handed the current value. A slider and a
-  checkbox write through the pointer; a dropdown returns the pick, and the
-  caller stores it. The only thing the toolkit remembers between frames is
+  the screen, and each call is handed the current value. A slider, toggle
+  or dropdown writes through the pointer and returns true on the frame it
+  changed. Between frames the toolkit remembers only the pressed control and
   whether a dropdown's list is open and how far it is scrolled.
-- **Ids are strings.** A control's identity is its label or `id`, so two
-  controls in one window need different ones.
+- **Labels are ids.** A control's identity is its label, so two controls with
+  the same label are told apart by call order, which breaks if a screen
+  skips one some frames; `"Text###key"` shows `Text` and keys on `key`
+  alone.
 - **One file here, three in a real screen.** A shipped screen splits this
   into layout, state and drawing, each tested on a host, as
   [`Building-a-Screen.md`](Building-a-Screen.md) describes: the screen in
@@ -119,22 +105,22 @@ settings_frame(const input_t* input) {
 
 | For | Use |
 |---|---|
-| a whole number in a range | `ui_theme_slider_int()` on a themed screen; `ui_slider_int()` beside microui's own controls, in their colours |
-| on or off | `mu_checkbox()`, or two tiles when the choice deserves pictures |
-| one of two to four choices, all worth seeing at once | a row of `ui_tile_button()`s, with `selected` on the current one |
-| one of a longer list, or where there is no room for a row | `ui_mu_dropdown()` |
-| an action | `ui_icon_button()`, or `mu_button()` for a label alone |
+| a whole number in a range | `ui_slider()` |
+| on or off | `ui_toggle()`, or two tiles when the choice deserves pictures |
+| one of two to four choices, all worth seeing at once | a row of `ui_tile_icon()`s, with `selected` on the current one |
+| one of a longer list, or where there is no room for a row | `ui_dropdown()` |
+| an action | `ui_button_icon()`, or `ui_button()` for a label alone |
 
 ## Themed widgets
 
 ![The themed widgets in portrait: a panel holding a slider, two icon buttons, three tiles, a swatch grid and a closed dropdown](images/ui/widgets.png) ![The same widgets in landscape, re-flowed into rows and two columns](images/ui/widgets-landscape.png)
 
-`ui/ui_internal.h`. Each control takes a `ui_mu_theme_t`, so a screen states its
-colours once:
+`ui_theme(&theme)` states a screen's colours once, for the rest of the
+frame; `NULL` restores the shell look. `ui_theme_t`:
 
 | Field | Used for |
 |---|---|
-| `panel_face`, `panel_edge` | `ui_mu_panel()` and `ui_header_bar()` |
+| `panel_face`, `panel_edge` | `ui_panel()` and `ui_header()` |
 | `button_face` | a control at rest |
 | `accent` | headings |
 | `accent_face`, `on_accent` | the selected choice, and the ink on it |
@@ -143,34 +129,33 @@ colours once:
 | `text_scale` | label size, in glyph cells |
 | `icon_side` | an icon beside a label (a tile sizes its own) |
 
-Those are all of its fields.
+Those are all of its fields; colours are `0xRRGGBB`.
 
 ```c
-static const ui_mu_theme_t THEME = {
-    .panel_face = UI_RGB(0x131C2E),
-    .accent_face = UI_RGB(0xE0A63C),
+static const ui_theme_t THEME = {
+    .panel_face = 0x131C2E,
+    .accent_face = 0xE0A63C,
     /* ... */
     .text_scale = 2,
     .icon_side = 24,
 };
 ```
 
-`UI_RGB()` builds a colour as an initializer, so a theme can be `const`
-data; `ui_rgb()` does the same in an expression.
-
 | Control | Returns | Notes |
 |---|---|---|
-| `ui_icon_button()` | whether this frame's tap landed on it | icon at the left, label centred in the rest |
-| `ui_tile_button()` | the same | icon above the label; `ui_mu_tile_icon_rect()` gives the icon's square, where a caller may draw its own picture instead |
-| `ui_theme_slider_int()` | whether the value changed | fill on `accent_face`, knob in `text` |
-| `ui_mu_dropdown()` | the index picked this frame, or -1 | see below |
+| `ui_button_icon()` | true on the frame a tap is released on it | icon at the left, label centred in the rest; a `NULL` icon is `ui_button()` |
+| `ui_tile_icon()` | the same | icon above the label, `selected` drawn on `accent_face`; `ui_tile_icon_rect()` gives the icon's square, where a caller may draw its own picture instead |
+| `ui_slider()` | whether the value changed | fill on `accent_face`, knob in `text` |
+| `ui_toggle()` | whether the value changed | a box with a check, label beside it |
+| `ui_dropdown()` | whether the pick changed the index | see below |
 
-A button is `ui_widget_button_t`: `icon` (or `NULL`), `label`, `enabled` (a
-disabled one is drawn in `muted` and takes no tap) and `selected` (drawn on
-`accent_face`). A themed control looks pressed only when a press has landed
-on it, never while a drag merely slides across it. `ui_icon_button_label_width()`
-and `ui_dropdown_label_width()` say how wide a label may be inside a given
-width, so a layout test can prove that every string fits.
+Wrap controls in `ui_disabled_begin(true)` / `ui_disabled_end()` to draw
+them in `muted` and take no tap, and in `ui_color_begin(UI_COLOR_FACE, rgb)` or `UI_COLOR_TEXT` to recolour a
+few (the gallery's ON button is `accent_face` with `on_accent` ink). Every
+`_begin` pairs with its `_end`, at most `UI_FACE_SCOPE_DEPTH` deep, and a
+disabled scope cannot be re-enabled by a nested one. A control
+looks pressed only when a press has landed on it, never while a drag merely
+slides across it.
 
 ### Dropdown
 
@@ -181,24 +166,22 @@ list over the screen:
 
 | | |
 |---|---|
-| Placement | below the dropdown when every row fits there, above when they fit there, otherwise the side with more room. It never covers the dropdown. `ui_dropdown_list_rect()` is the rule on its own. |
-| Scrolling | a list taller than its room scrolls, and opens with the current item centred (`ui_dropdown_list_scroll()`). |
+| Placement | below the dropdown when every row fits there, above when they fit there, otherwise over the canvas between its margins, covering the dropdown. |
+| Scrolling | a list taller than its room scrolls, and opens with the current item centred. |
 | Closing | a pick stays on screen `UI_DROPDOWN_CLOSE_FRAMES` frames after the finger lifts, so the choice is seen landing. A tap outside the list closes it. |
-| Identity | `id` is unique per dropdown, and the list's window is named after it. `ui_dropdown_is_open()` asks from inside the same window. |
+| Identity | give each dropdown its own label or `###key`. |
 
-The list takes a `names` array and an optional parallel `icons` array
-(`NULL` for no icons). It needs at least one item.
+`ui_dropdown()` takes a `names` array; `ui_dropdown_icons()` adds a
+parallel `icons` array. It needs at least one item.
 
-## microui's own controls
+## Plain controls
 
-![microui's own controls in portrait: a flat button, a bezel button, a checkbox, an integer slider, and text at scales 1, 2 and 3](images/ui/microui.png) ![The same controls in landscape, in two columns](images/ui/microui-landscape.png)
+![The plain controls in portrait: a flat button, a bezel button, a toggle, an integer slider, and text at scales 1, 2 and 3](images/ui/controls.png) ![The same controls in landscape, in two columns](images/ui/controls-landscape.png)
 
-`mu_button()`, `mu_checkbox()`, `mu_label()` and the rest of `microui.h`
-work unchanged, in the colours `ui_init()` sets. `ui_slider_int()` replaces
-`mu_slider()`: it holds a whole number, where microui's slider holds a float
-with a `"%.2f"` thumb. Its geometry is the pure `ui/controls/ui_slider.h`, the
-track, fill and knob for a value and the value under a finger, quantized and
-clamped.
+With no `ui_theme()` call these draw in the colours `ui_init()` sets. The
+slider holds a whole number. Its geometry is the pure
+`ui/controls/ui_slider.h`: the track, fill and knob for a value, and the
+value under a finger, quantized and clamped.
 
 ### Button styles
 
@@ -206,7 +189,7 @@ clamped.
 
 | | |
 |---|---|
-| `UI_BUTTON_FLAT` | microui's own: a flat fill plus a one-pixel border. The default. |
+| `UI_BUTTON_FLAT` | a flat fill plus a one-pixel border. The default. |
 | `UI_BUTTON_BEZEL` | lit from the top left, and sunk while a finger is on it. |
 
 ```c
@@ -215,15 +198,13 @@ ui_set_button_style(UI_BUTTON_BEZEL);   /* every frame */
 ```
 
 - **Stated every frame.** `ui_begin()` resets the style, because the whole
-  shell shares one `mu_Context`: a style one screen chose would otherwise
+  shell shares one UI context: a style one screen chose would otherwise
   leak into the next app's buttons. It can change mid-frame, so one screen
   can mix both.
-- **Buttons only.** Checkboxes, sliders and text boxes frame themselves and
+- **Buttons only.** Toggles and sliders frame themselves and
   are left alone.
-- **The hook is microui's.** Every frame microui draws goes through
-  `mu_Context`'s `draw_frame` pointer. `ui_init()` puts its own in front,
-  so `UI_BUTTON_FLAT` and every non-button frame are still upstream's code,
-  and nothing in `components/microui/` is edited.
+- **The default is unchanged.** `UI_BUTTON_FLAT` and every non-button
+  frame draw as the backend does with no style set.
 - **Sunk on hover as well as focus.** On a touchscreen there is no pointer
   until a finger is on the glass, so hover is contact. The one synthesized
   frame before the press lands has hover but not focus yet, and keying on
@@ -231,22 +212,21 @@ ui_set_button_style(UI_BUTTON_BEZEL);   /* every frame */
   late.
 - **Pure geometry.** `ui_bezel_spans()` and `ui_panel_spans()` return where
   the rectangles go and nothing else, so `test/suites/suite_ui_style.c`
-  checks the shape without linking `draw.c` or microui.
+  checks the shape without linking `draw.c`.
 
 ## Drawing helpers
 
 | Helper | Draws |
 |---|---|
-| `ui_mu_panel()` | a face with a plain border, grouping controls without inviting a press |
-| `ui_header_bar()` | a full-width bar with an edge along its bottom and a centred title |
-| `ui_text_in()` | a string clipped to a rect, centred vertically, aligned `UI_ALIGN_LEFT`, `UI_ALIGN_CENTRE` or `UI_ALIGN_RIGHT` |
-| `ui_swatch_grid()` | colours as a `cols` x `rows` grid of equal cells filling a rect |
-| `ui_draw_icon()` | an icon (a one-bit `draw_image_t` from a pack) filling a rect, in one colour, or a short text when there is no icon |
+| `ui_panel()` | a face with a plain border, grouping controls without inviting a press |
+| `ui_header()` | a full-width bar with an edge along its bottom and a centred title |
+| `ui_text()`, `ui_text_right()`, `ui_text_centre()` | a string clipped to a rect, centred vertically, aligned left, right or centre; `ui_caption()` in the caption colour |
+| `ui_swatches()` | colours as a `cols` x `rows` grid of equal cells filling a rect |
+| `ui_icon()` | an icon (a one-bit `draw_image_t` from a pack) filling a rect, in one colour, or a short text when there is no icon |
+| `ui_fill()`, `ui_outline()`, `ui_bevel()`, `ui_check()` | the marks the controls are built from, for a screen drawing its own |
 
-`ui_draw_icon()` turns an icon's rows into one `mu_draw_rect()` per run,
-through `icon_walk_blocks()` (`draw/icon.h`), so an icon costs no new
-`MU_ICON_*` id and no patch to microui. The system icons come from the
-engine pack through `ui_icon_image()` (`ui/controls/ui_icons.h`), loaded by `ui_init()`;
+The system icons come from the engine pack through `ui_icon_image()`
+(`ui/controls/ui_icons.h`), loaded by `ui_init()`;
 an app's icons are a `ui_icon_set_t` in the app's own pack, which the app
 loads with `ui_icon_set_load()` and releases with `ui_icon_set_release()`, so
 deleting the app deletes them. Without a pack a control shows its label alone, and an
@@ -275,33 +255,18 @@ here. 56 px is about 4.4 mm.
   `ui_anchor_rect()` places one against a parent's edge, corner or centre
   (`UI_ANCHOR_*`) with a pivot and offset, and `ui_rect_inset()` makes a
   safe area.
-- **Rows that may overflow.** Open the window with `ui_scroll_view_begin()`
-  instead of `ui_begin_screen()`, close it with `ui_scroll_view_end()`, and
-  place rows with a `ui_flow_t` cursor. Only a row placed this way can be
-  reached once the stack overflows and scrolls.
+- **Rows that may overflow.** Open the window with
+  `ui_scroll_window(r)` and place rows with `ui_row()` and `ui_next()`.
+  The window scrolls vertically once the rows overflow `r`; a horizontal
+  drag is refused.
 
 ```c
-if (ui_scroll_view_begin(ctx, "My Screen", opt, ui_scroll_view_default(), dt_ms)) {
-    ui_flow_t flow = ui_flow_start(ui_width(), top, gap);
-    for (int i = 0; i < count; i++) {
-        ui_flow_row(ctx, &flow, row_w, row_h);
-        if (mu_button(ctx, labels[i])) { chosen = i; }
-    }
-    ui_scroll_view_end(ctx);
+ui_scroll_window((recti_t){0, 0, ui_width(), ui_height()});
+for (int i = 0; i < count; i++) {
+    ui_row(UI_ROW_HEIGHT);
+    if (ui_button(ui_next(), labels[i])) { chosen = i; }
 }
 ```
-
-`ui_flow_top(canvas_h, count, row_h, gap, margin)` gives the `top` that
-centres a short stack and pins a long one to `margin`.
-`ui_scroll_view_config_t` sets what a plain window cannot:
-
-| Field | Default | |
-|---|---|---|
-| `axis` | `UI_SCROLL_AXIS_VERTICAL` | which way a drag or scrollbar may move: `NONE`, `VERTICAL`, `HORIZONTAL` or `BOTH` |
-| `hide_scrollbar` | false | draw no scrollbar; dragging still scrolls |
-| `momentum_tau_ms` | 0 | above 0, a released drag coasts and decays with that time constant, the same distance at any frame rate |
-
-`dt_ms` is required even with momentum off.
 
 ## Text
 
@@ -339,8 +304,8 @@ How a panel over a paused app and a drawn backdrop use these is in
 
 ## What a screen costs
 
-`MU_COMMANDLIST_SIZE` in `components/microui/include/microui.h` defaults to
-8 KiB on the device, and everything drawn spends it. An open dropdown list
+The frame's command list is 8 KiB on the device (`MU_COMMANDLIST_SIZE`,
+set in the vendored backend's header), and everything drawn spends it. An open dropdown list
 adds its rows on top of the screen beneath it. The gallery's widgets page
 with its list open exceeds 8 KiB on a 64-bit host, whose larger commands
 need a 9 KiB limit in host tests and the render harness. The screen budget
@@ -351,10 +316,10 @@ the device limit. A development build logs the high-water mark from
 ## Adding to the toolkit
 
 A control belongs in `ui/`, as a face verb in `ui/ui.h` over a helper in
-`ui/ui_internal.h`, not in a private copy in one app's screen, once a second
-screen could use it. It must:
+`ui/controls/` (private to `ui/`), not in a private copy in one app's
+screen, once a second screen could use it. It must:
 
-- take a `ui_mu_theme_t` rather than colours of its own
+- take the screen's `ui_theme_t` rather than colours of its own
 - use no app's vocabulary: say what shape of caller needs it
 - emit commands, never pixels
 - respect `UI_TAP_MIN`
@@ -364,10 +329,10 @@ screen could use it. It must:
   `launcher/tools/render/scenes/ui_widgets_render_host.c`) and in this document
 
 A control that shows everything at once sits inline, like
-`ui_swatch_grid()` or a row of tiles. One that must show more than its own
-rect has room for opens over the screen the way `ui_mu_dropdown()` does: its own
+`ui_swatches()` or a row of tiles. One that must show more than its own
+rect has room for opens over the screen the way `ui_dropdown()` does: its own
 window, one open at a time, closed when a tap lands outside it. When a
-control needs a colour no theme field means, add a field to `ui_mu_theme_t` and
+control needs a colour no theme field means, add a field to `ui_theme_t` and
 give it a value in every theme that exists, rather than reusing a field for
 something else.
 

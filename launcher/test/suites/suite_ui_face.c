@@ -11,7 +11,6 @@
 #include "suites.h"
 #include "test_cleanup.h"
 #include "timing.h"
-#include "ui/layout/ui_scroll.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
@@ -419,19 +418,20 @@ draw_overflowing_rows(void) {
     }
 }
 
-/* A face scroll window builds what ui_scroll_view_begin() with the default
- * configuration builds. */
+/* A face scroll window builds what a full-screen window with its horizontal
+ * scroll locked builds. */
 static void
 test_ui_scroll_window_commands(void) {
     fixture();
     ui_begin(NULL);
-    TEST_ASSERT_TRUE(ui_scroll_view_begin(ui_context(), "Reference", WINDOW_FLAGS, ui_scroll_view_default(), 0));
+    TEST_ASSERT_TRUE(ui_begin_screen(ui_context(), "Reference", WINDOW_FLAGS));
+    mu_get_current_container(ui_context())->scroll.x = 0;
     for (int i = 0; i < OVERFLOW_ROWS; i++) {
         const int widths[] = {-1};
         mu_layout_row(ui_context(), 1, widths, UI_ROW_HEIGHT);
         mu_draw_rect(ui_context(), mu_layout_next(ui_context()), ui_rgb(FACE_RGB));
     }
-    ui_scroll_view_end(ui_context());
+    mu_end_window(ui_context());
     mu_end(ui_context());
     ui_end_pointer_frame();
     save_commands();

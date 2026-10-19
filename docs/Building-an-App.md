@@ -325,7 +325,7 @@ An app's `IRAM_ATTR` function needs the comment directly above it to give a reas
 
 ## Related
 
-- [`Building-a-Screen.md`](Building-a-Screen.md): microui screens inside an app
+- [`Building-a-Screen.md`](Building-a-Screen.md): screens built on the `ui/ui.h` face inside an app
 - [`Gfx-and-Presentation.md`](Gfx-and-Presentation.md): draw targets, dirty tracking, the present path, heal
 - [`Firmware-Architecture.md`](Firmware-Architecture.md): why one framebuffer and one frame loop
 - [`Testing-Guide.md`](Testing-Guide.md): suites and runners

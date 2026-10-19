@@ -197,7 +197,6 @@ readability-math-missing-parentheses	main/gfx/present/gfx_present.c	10
 readability-math-missing-parentheses	main/input/tilt.c	10
 readability-math-missing-parentheses	main/input/touch_calib.c	10
 readability-math-missing-parentheses	main/ui/ui.c	2
-readability-math-missing-parentheses	main/ui/layout/ui_scroll.c	3
 readability-math-missing-parentheses	main/ui/controls/ui_widgets.c	15
 readability-uppercase-literal-suffix	main/apps/input_lab/tests/suite_touch_probe.c	10
 readability-uppercase-literal-suffix	main/apps/input_lab/touch_probe.c	4
@@ -254,4 +253,3 @@ readability-uppercase-literal-suffix	main/gfx/present/gfx_present.c	5
 readability-uppercase-literal-suffix	main/input/buttons.c	2
 readability-uppercase-literal-suffix	main/input/touch.c	8
 readability-uppercase-literal-suffix	main/ui/ui.c	4
-readability-uppercase-literal-suffix	main/ui/layout/ui_scroll.c	1

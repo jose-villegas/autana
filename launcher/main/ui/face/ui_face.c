@@ -1,7 +1,6 @@
 /* Plain-value UI verbs share the microui control and command builders. */
 #include "core/memory.h"
 #include "draw/draw.h"
-#include "ui/layout/ui_scroll.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
 
@@ -203,15 +202,14 @@ ui_window(recti_t r) {
     UI_FACE_COST_END(face_from, "ui.face");
 }
 
-/* Momentum needs a frame time the face does not take, so a face scroll
- * window keeps ui_scroll_view_default()'s none. */
+/* A scroll window moves vertically only: a horizontal drag is refused. */
 void
 ui_scroll_window(recti_t r) {
     UI_FACE_COST_BEGIN(face_from);
     open_window(r);
     UI_FACE_COST_BEGIN(backend_from);
     if (window_open) {
-        ui_scroll_view_step(ui_context(), ui_scroll_view_default(), 0);
+        mu_get_current_container(ui_context())->scroll.x = 0;
     }
     UI_FACE_COST_END(backend_from, "ui.backend");
     UI_FACE_COST_END(face_from, "ui.face");
