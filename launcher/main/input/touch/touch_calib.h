@@ -10,6 +10,7 @@
  */
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
 /* How the panel reports a tap aimed at (x, y), as a fit prints it:
@@ -29,3 +30,8 @@ touch_calib_t touch_calib_from_fit(touch_calib_fit_t fit);
 
 /* Corrects one raw point in place, kept inside a `w` x `h` panel. */
 void touch_calib_apply(const touch_calib_t* calib, int w, int h, int* x, int* y);
+
+/* Corrects a sampled controller point when `calibrate` is on. An injected
+ * point, already in screen space, and a lift pass through untouched. */
+void touch_calib_prepare_point(bool injected, bool have_point, int* x, int* y, bool calibrate,
+                               const touch_calib_t* calib, int w, int h);

@@ -1,4 +1,4 @@
-#include "input/gravity.h"
+#include "input/motion/gravity.h"
 
 #include <float.h>
 #include <math.h>

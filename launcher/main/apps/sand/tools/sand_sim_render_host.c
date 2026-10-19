@@ -9,7 +9,7 @@
 #include <stdlib.h>
 
 #include "gfx/gfx.h"
-#include "input/tilt.h"
+#include "input/motion/tilt.h"
 #include "math/scalar/math_const.h"
 #include "render_host.h"
 

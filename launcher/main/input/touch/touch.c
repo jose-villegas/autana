@@ -1,8 +1,7 @@
-#include "input/touch.h"
-#include "input/touch_calib.h"
-#include "input/touch_fsm.h"
-#include "input/touch_inject_fsm.h"
-#include "input/touch_point.h"
+#include "input/touch/touch.h"
+#include "input/touch/touch_calib.h"
+#include "input/touch/touch_fsm.h"
+#include "input/touch/touch_inject_fsm.h"
 
 #include "build/build_variant.h"
 #include "core/memory.h"
@@ -83,9 +82,9 @@ on_touch_int(esp_lcd_touch_handle_t tp) {
 static bool injected_down;
 static bool injected_release;
 static int injected_x, injected_y;
-static touch_inject_t injected_gesture;
-static touch_gesture_completion_t gesture_completion;
-static touch_gesture_completion_t completed_gesture;
+static touch_inject_t injected_contact;
+static touch_inject_completion_t inject_completion;
+static touch_inject_completion_t completed_inject;
 
 /* Returns true when injection supplied this poll's result, including its
  * final no-contact sample. That lets touch_fsm see the lift before the panel
@@ -106,10 +105,10 @@ poll_injected(int64_t now_us, bool* have_point, int* x, int* y) {
         portEXIT_CRITICAL(&lock);
         return true;
     }
-    if (injected_gesture.active) {
-        *have_point = touch_inject_step(&injected_gesture, now_us, x, y);
+    if (injected_contact.active) {
+        *have_point = touch_inject_step(&injected_contact, now_us, x, y);
         if (!*have_point) {
-            completed_gesture = gesture_completion;
+            completed_inject = inject_completion;
         }
         portEXIT_CRITICAL(&lock);
         return true;
@@ -126,7 +125,7 @@ poll_injected(int64_t now_us, bool* have_point, int* x, int* y) {
 void
 touch_inject(bool down, vec2i_t point) {
     portENTER_CRITICAL(&lock);
-    injected_gesture.active = false;
+    injected_contact.active = false;
     injected_down = down;
     injected_x = point.x;
     injected_y = point.y;
@@ -135,24 +134,24 @@ touch_inject(bool down, vec2i_t point) {
 }
 
 void
-touch_gesture_start(int x0, int y0, int x1, int y1, uint32_t ms, touch_gesture_completion_t completion) {
+touch_inject_start(int x0, int y0, int x1, int y1, uint32_t ms, touch_inject_completion_t completion) {
     portENTER_CRITICAL(&lock);
     injected_down = false;
     injected_release = false;
-    touch_inject_init(&injected_gesture, x0, y0, x1, y1, ms);
-    gesture_completion = completion;
+    touch_inject_init(&injected_contact, x0, y0, x1, y1, ms);
+    inject_completion = completion;
     portEXIT_CRITICAL(&lock);
 }
 
 bool
-touch_gesture_take_completion(touch_gesture_completion_t* completion) {
+touch_inject_take_completion(touch_inject_completion_t* completion) {
     portENTER_CRITICAL(&lock);
-    if (completed_gesture == TOUCH_GESTURE_NONE) {
+    if (completed_inject == TOUCH_INJECT_NONE) {
         portEXIT_CRITICAL(&lock);
         return false;
     }
-    *completion = completed_gesture;
-    completed_gesture = TOUCH_GESTURE_NONE;
+    *completion = completed_inject;
+    completed_inject = TOUCH_INJECT_NONE;
     portEXIT_CRITICAL(&lock);
     return true;
 }
@@ -194,9 +193,9 @@ poll_once(void) {
     poll_controller(&have_point, &x, &y);
 #endif
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    touch_point_prepare(injected, have_point, &x, &y, calibrate, &calib, BSP_LCD_H_RES, BSP_LCD_V_RES);
+    touch_calib_prepare_point(injected, have_point, &x, &y, calibrate, &calib, BSP_LCD_H_RES, BSP_LCD_V_RES);
 #else
-    touch_point_prepare(false, have_point, &x, &y, calibrate, &calib, BSP_LCD_H_RES, BSP_LCD_V_RES);
+    touch_calib_prepare_point(false, have_point, &x, &y, calibrate, &calib, BSP_LCD_H_RES, BSP_LCD_V_RES);
 #endif
 
     portENTER_CRITICAL(&lock);

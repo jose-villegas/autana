@@ -30,7 +30,7 @@ class ProblemsTest(unittest.TestCase):
 
     def test_this_firmwares_own_driver_headers_and_calls_are_not_vendor_code(self):
         self.assertEqual(self.problems(
-            '#include "input/touch.h"\n#include "input/imu.h"\n#include "input/buttons.h"\n'
+            '#include "input/touch/touch.h"\n#include "input/motion/imu.h"\n#include "input/buttons/buttons.h"\n'
             "void f(imu_sample_t* s) { touch_start(); imu_read(s); buttons_start(); }\n"), [])
 
     def test_each_vendor_include_fails(self):

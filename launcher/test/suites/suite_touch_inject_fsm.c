@@ -1,6 +1,6 @@
 /* touch_inject_fsm: scripted contacts driven with a supplied clock. */
 
-#include "input/touch_inject_fsm.h"
+#include "input/touch/touch_inject_fsm.h"
 #include "suites.h"
 #include "unity.h"
 
