@@ -19,10 +19,15 @@
 #define AXP2101_VBAT_HIGH_MASK   0x3fu
 #define AXP2101_VBAT_HIGH_SHIFT  8
 #define AXP2101_PERCENT_MAX      100u
+/* INTEN2/INTSTS2 hold power-key events: bit 0 rising, 1 falling, 2 long, 3 short.
+ * Only short/long are enabled (no down level; see input/buttons.h).
+ * A status bit clears by writing a ONE back. */
 #define AXP2101_REG_INTEN2       0x41
 #define AXP2101_REG_INTSTS2      0x49
 #define AXP2101_PKEY_SHORT       0x08u
 #define AXP2101_PKEY_LONG        0x04u
+/* Long press fires at IRQLEVEL (0x27[5:4]), independently of the PMU power-off
+ * OFFLEVEL (0x27[3:2]) gated by 0x22[1]; one hold can fire both. */
 #define AXP2101_REG_LEVELS       0x27
 #define AXP2101_REG_PWROFF       0x22
 #define AXP2101_LEVEL_MASK       3u
