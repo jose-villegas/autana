@@ -165,6 +165,8 @@ report_total(const boot_anim_motion_t* motion, uint32_t now_ms, bool zero_ink) {
     const uint8_t reveal = boot_anim_photo_reveal(now_ms);
     const int64_t start = timing_now_us();
     for (int rep = 0; rep < FLOOR_TIMING_REPS; rep++) {
+        /* As after the frame's clear: lines mark nothing more. */
+        gfx_mark_all_dirty();
         draw_floor(now_ms, ink, reveal, &view);
     }
     const int64_t elapsed = timing_now_us() - start;
@@ -195,6 +197,7 @@ static void
 report_line_cost(int length) {
     const int64_t start = timing_now_us();
     for (int rep = 0; rep < FLOOR_LINE_REPS; rep++) {
+        gfx_mark_all_dirty();
         draw_line_ex(FLOOR_LINE_X, FLOOR_LINE_Y, FLOOR_LINE_X + length - 1, FLOOR_LINE_Y, FLOOR_LINE_COLOR, 0);
     }
     const int64_t elapsed = timing_now_us() - start;
