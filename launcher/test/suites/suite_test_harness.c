@@ -2,7 +2,7 @@
  * On the board: the audit RUN_TEST wraps around every test on the board (the
  * leak check and the frame watch) holds for a test that ends in
  * TEST_PASS(), which leaves by longjmp, and does not count a task the test
- * ended as a leak. On the host: the deferred cleanups a fixture registers
+ * ended as a leak, and a test gfx refused a layout fails. On the host: the deferred cleanups a fixture registers
  * run in reverse, once each, even when the test bailed.
  */
 
@@ -18,6 +18,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "test_harness.h"
 #include "unity.h"
@@ -70,6 +71,14 @@ allocate_every_present_then_pass(void) {
         gfx_present();
     }
     TEST_PASS();
+}
+
+/* An index image with no cells has no storage to allocate, so gfx refuses
+ * it the way it refuses one the heap has no room for. */
+static void
+ask_for_a_layout_gfx_refuses(void) {
+    const gfx_mode_t* granted = gfx_mode_enter(&(gfx_mode_request_t){.layout = GFX_LAYOUT_INDEXED});
+    TEST_ASSERT_EQUAL_INT(GFX_LAYOUT_FULL_FB, granted->layout);
 }
 
 static void
@@ -152,9 +161,18 @@ test_a_task_the_test_ended_is_not_a_leak(void) {
 }
 
 static void
+test_a_layout_gfx_refuses_is_caught(void) {
+    fixture();
+    run_trapped(ask_for_a_layout_gfx_refuses);
+    TEST_ASSERT_FALSE(escaped);
+    TEST_ASSERT_EQUAL_UINT32(1, verdict.layouts_denied);
+}
+
+static void
 suite_test_harness(void) {
     RUN_TEST(test_a_leak_in_a_test_that_ends_in_test_pass_is_caught);
     RUN_TEST(test_a_repeat_in_a_test_that_ends_in_test_pass_is_caught);
+    RUN_TEST(test_a_layout_gfx_refuses_is_caught);
     RUN_TEST(test_a_task_the_test_ended_is_not_a_leak);
 }
 

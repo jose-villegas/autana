@@ -2,6 +2,7 @@
 
 #include "core/memory.h"
 
+#include "esp_memory_utils.h"
 #include "esp_psram.h"
 
 size_t
@@ -27,6 +28,11 @@ memory_total_bytes(memory_kind_t kind) {
 size_t
 memory_psram_bytes(void) {
     return esp_psram_get_size();
+}
+
+bool
+memory_in_psram(const void* p) {
+    return esp_ptr_external_ram(p);
 }
 
 void

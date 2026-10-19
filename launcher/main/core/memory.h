@@ -17,6 +17,7 @@
  */
 #pragma once
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -52,6 +53,10 @@ size_t memory_total_bytes(memory_kind_t kind);
 /* The external RAM chip's whole size, the part the board reserves ahead of
  * the heap included; 0 when the board has none. */
 size_t memory_psram_bytes(void);
+
+/* Whether `p` points into external RAM, where an allocation that asked for
+ * no kind lands once internal RAM runs short. */
+bool memory_in_psram(const void* p);
 
 /* Prints every region of this kind and its blocks to the console. */
 void memory_dump(memory_kind_t kind);

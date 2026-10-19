@@ -1,6 +1,7 @@
 #include "gfx/present/gfx_mode.h"
 #include "core/memory.h"
 #include "core/timing.h"
+#include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_fb_guard.h"
 #include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_present.h"
@@ -445,6 +446,18 @@ gfx_reset_for_test(void) {
 }
 #endif
 
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+static unsigned denials;
+
+static void
+note_denial(void) {
+    denials++;
+}
+#else
+static inline void
+note_denial(void) {}
+#endif
+
 const gfx_mode_t*
 gfx_mode_enter(const gfx_mode_request_t* request) {
     GFX_PRESENT_GUARD();
@@ -456,6 +469,7 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
     if (granted.layout == GFX_LAYOUT_DOUBLE_FB) {
         gfx_color_t* back = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
         if (back == NULL) {
+            note_denial();
             return &current_mode;
         }
         fb = back;
@@ -465,6 +479,7 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
         if (granted.index_grid_w <= 0 || granted.index_grid_h <= 0 || granted.cell_size <= 0
             || !alloc_indexed_image(granted.index_grid_w, granted.index_grid_h)) {
             free_indexed_image();
+            note_denial();
             return &current_mode; /* stays GFX_LAYOUT_FULL_FB */
         }
         free_full_framebuffer();
@@ -477,6 +492,7 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
     } else if (granted.layout == GFX_LAYOUT_BANDS) {
         if (!alloc_band_buffers(granted.band_height)) {
             free_band_buffers();
+            note_denial();
             return &current_mode; /* stays GFX_LAYOUT_FULL_FB */
         }
         free_full_framebuffer();
@@ -545,6 +561,13 @@ const gfx_mode_t*
 gfx_mode_current(void) {
     return &current_mode;
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+unsigned
+gfx_mode_denials(void) {
+    return denials;
+}
+#endif
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* Bands whose last submit carried overlay borders, and whether the band in

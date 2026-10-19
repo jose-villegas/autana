@@ -35,7 +35,7 @@ test_each_kinds_block_lands_in_the_memory_it_names(void) {
         unsigned char* block = memory_alloc(64, PLACEMENT[i].kind);
         TEST_ASSERT_NOT_NULL_MESSAGE(block, PLACEMENT[i].name);
         block[63] = 0xA5;
-        TEST_ASSERT_EQUAL_MESSAGE(PLACEMENT[i].external, esp_ptr_external_ram(block), PLACEMENT[i].name);
+        TEST_ASSERT_EQUAL_MESSAGE(PLACEMENT[i].external, memory_in_psram(block), PLACEMENT[i].name);
         TEST_ASSERT_EQUAL_MESSAGE(!PLACEMENT[i].external, esp_ptr_internal(block), PLACEMENT[i].name);
         if (PLACEMENT[i].dma) {
             TEST_ASSERT_TRUE_MESSAGE(esp_ptr_dma_capable(block), PLACEMENT[i].name);
@@ -91,6 +91,17 @@ test_a_small_block_of_every_kind_is_writable_and_comes_back(void) {
 
         memory_free(block);
         TEST_ASSERT_EQUAL_size_t_MESSAGE(free_before, memory_free_bytes(c->kind), c->name);
+    }
+}
+
+static void
+test_only_a_psram_block_reads_as_in_psram(void) {
+    for (size_t i = 0; i < sizeof SEPARATE_POOLS / sizeof SEPARATE_POOLS[0]; i++) {
+        void* block = memory_alloc(SMALL_BYTES, SEPARATE_POOLS[i].kind);
+        TEST_ASSERT_NOT_NULL_MESSAGE(block, SEPARATE_POOLS[i].name);
+        TEST_ASSERT_EQUAL_MESSAGE(SEPARATE_POOLS[i].kind == MEMORY_PSRAM, memory_in_psram(block),
+                                  SEPARATE_POOLS[i].name);
+        memory_free(block);
     }
 }
 
@@ -234,6 +245,7 @@ suite_memory(void) {
     RUN_TEST(test_a_small_block_of_every_kind_is_writable_and_comes_back);
     RUN_TEST(test_the_lowest_free_space_remembers_a_block_freed_again);
     RUN_TEST(test_the_largest_block_is_less_than_free_space_once_a_pool_has_a_hole);
+    RUN_TEST(test_only_a_psram_block_reads_as_in_psram);
     RUN_TEST(test_a_request_past_its_kinds_budget_fails_and_spares_the_other_pool);
     RUN_TEST(test_a_block_of_one_kind_leaves_the_other_pools_budget_alone);
     RUN_TEST(test_every_kind_reports_a_total_no_smaller_than_its_free_space_or_largest_block);

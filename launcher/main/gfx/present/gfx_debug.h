@@ -67,4 +67,9 @@ int64_t gfx_get_heal_bytes_sent(void);
  * every dirty-tracking decision gfx_present() makes, the bus-time side of
  * a full present. */
 void gfx_present_raw_full_frame_for_test(void);
+
+/* How many gfx_mode_enter() calls since boot were refused the layout they
+ * asked for and stayed GFX_LAYOUT_FULL_FB, for a test to judge its own
+ * share of. */
+unsigned gfx_mode_denials(void);
 #endif

@@ -43,6 +43,7 @@
 #include "app/app_arena.h"
 
 #include "stubs/esp_heap_caps.h"
+#include "stubs/esp_memory_utils.h"
 #include "stubs/esp_psram.h"
 
 #include <stdio.h>
@@ -676,6 +677,12 @@ size_t
 esp_psram_get_size(void) {
     arena_pool_init_once(&s_psram);
     return s_psram.cap + s_psram.reserved;
+}
+
+/* External RAM is the PSRAM pool's storage. */
+bool
+esp_ptr_external_ram(const void* p) {
+    return ptr_in_pool(&s_psram, p);
 }
 
 size_t
