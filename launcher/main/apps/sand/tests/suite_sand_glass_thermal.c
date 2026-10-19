@@ -294,7 +294,7 @@ test_chilling_hot_glass_also_transforms_the_chilling_snow_cell(void) {
     sand_t* g = malloc(sizeof *g);
     TEST_ASSERT_NOT_NULL_MESSAGE(g, "glass-chill trial sand_t must fit in what the framebuffer leaves");
 
-    sand_init(g, chill_cells, w, 2, 9u);
+    sand_init(g, chill_cells, w, 2, 9U);
     sand_clear(g);
     for (int i = 0; i < GLASS_CHILL_TRIALS; i++) {
         const int base = i * 3;
@@ -306,7 +306,8 @@ test_chilling_hot_glass_also_transforms_the_chilling_snow_cell(void) {
 
     sand_step(g, 0, 1000, 0);
 
-    int cracked = 0, melted = 0;
+    int cracked = 0;
+    int melted = 0;
     for (int i = 0; i < GLASS_CHILL_TRIALS; i++) {
         const int base = i * 3;
         if (CELL_MATERIAL(sand_at(g, base + 1, 0)) != MAT_GLASS) {
@@ -377,8 +378,8 @@ test_glass_looks_different_at_the_shock_threshold(void) {
 
     int gap[MATERIAL_VARIANTS] = {0};
     for (int v = 1; v < MATERIAL_VARIANTS; v++) {
-        const gfx_color_t a = pal[MAT_GLASS * MATERIAL_VARIANTS + v - 1];
-        const gfx_color_t b = pal[MAT_GLASS * MATERIAL_VARIANTS + v];
+        const gfx_color_t a = pal[(MAT_GLASS * MATERIAL_VARIANTS) + v - 1];
+        const gfx_color_t b = pal[(MAT_GLASS * MATERIAL_VARIANTS) + v];
         gap[v] = colour_gap(a, b);
     }
 
@@ -429,8 +430,8 @@ test_snow_frosts_a_resting_pane(void) {
     /* And the palette has to disagree about the two, or the number moving
      * is still invisible. */
     const gfx_color_t* pal = material_palette();
-    TEST_ASSERT_NOT_EQUAL_MESSAGE(pal[MAT_GLASS * MATERIAL_VARIANTS + SAND_AMBIENT_HEAT],
-                                  pal[MAT_GLASS * MATERIAL_VARIANTS + coldest],
+    TEST_ASSERT_NOT_EQUAL_MESSAGE(pal[(MAT_GLASS * MATERIAL_VARIANTS) + SAND_AMBIENT_HEAT],
+                                  pal[(MAT_GLASS * MATERIAL_VARIANTS) + coldest],
                                   "and a frosted pane must not be drawn in the same colour as a "
                                   "resting one");
 }
@@ -452,7 +453,8 @@ test_frost_spreads_beyond_the_snow_touching_it(void) {
         sand_set(&s, x, H - 2, GLASS);
     }
     /* Snow on the middle two cells only. */
-    const int lo = W / 2 - 1, hi = W / 2;
+    const int lo = (W / 2) - 1;
+    const int hi = W / 2;
     for (int x = lo; x <= hi; x++) {
         sand_set(&s, x, H - 3, SNOW);
     }

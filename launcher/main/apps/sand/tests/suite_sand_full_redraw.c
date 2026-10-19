@@ -80,7 +80,9 @@ test_full_redraw_repaints_a_stale_rect_and_sends_every_strip(void) {
     app_sand.frame(0, &idle);
     gfx_present();
 
-    int full_bands = 0, gathered = 0, partial_bands = 0;
+    int full_bands = 0;
+    int gathered = 0;
+    int partial_bands = 0;
     gfx_get_strip_send_counts(&full_bands, &gathered, &partial_bands);
     ESP_LOGI(TAG, "strips sent: full=%d gathered=%d partial=%d", full_bands, gathered, partial_bands);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, gathered, "a full redraw must send whole strips, not gathered runs");

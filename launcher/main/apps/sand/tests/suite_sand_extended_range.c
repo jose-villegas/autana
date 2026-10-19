@@ -138,14 +138,16 @@ test_a_powder_lands_on_a_powder_but_sinks_in_a_liquid(void) {
     };
 
     for (unsigned k = 0; k < sizeof cases / sizeof cases[0]; k++) {
-        const uint8_t bed = cases[k].bed, dropped = cases[k].dropped;
+        const uint8_t bed = cases[k].bed;
+        const uint8_t dropped = cases[k].dropped;
         fixture();
         sand_clear(&s);
         build_powder_sink_scene(bed, dropped);
 
         run_steps(&s, 300, 0, 1000);
 
-        int lowest, highest_bed;
+        int lowest;
+        int highest_bed;
         find_dropped_and_bed_extents(dropped, bed, &lowest, &highest_bed);
 
         char why[160];
