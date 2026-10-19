@@ -263,6 +263,11 @@ class StyleAuditTest(unittest.TestCase):
         self.assertEqual(sorted((f.path, f.line) for f in findings),
                          [("launcher/main/boot/boot_anim.c", 1), ("launcher/main/selftest/post.c", 1)])
 
+    APP_C = "launcher/main/apps/x/x.c"
+    APP_SUITE = "launcher/main/apps/x/tests/suite_x.c"
+    SHELL_C = "launcher/main/shell/x.c"
+    EDITOR_CPP = "editor/src/x.cpp"
+
     def assert_include_cases(self, rule_id, tree, cases):
         """Each (source, include, expected): `source` holding only that
         include, over `tree`, draws `expected` findings of `rule_id`. An
@@ -277,16 +282,16 @@ class StyleAuditTest(unittest.TestCase):
         targets = ("shell/shell.h", "console/console_verbs.h", "selftest/post.h", "boot/boot_anim.h",
                    "app/app.h", "ui/ui.h")
         self.assert_include_cases("SYSTEM-BAND", {"launcher/main/" + t: "#pragma once\n" for t in targets}, (
-            ("launcher/main/apps/x/x.c", "shell/shell.h", 1),
-            ("launcher/main/apps/x/x.c", "console/console_verbs.h", 1),
+            (self.APP_C, "shell/shell.h", 1),
+            (self.APP_C, "console/console_verbs.h", 1),
             ("launcher/main/apps/x/x.h", "boot/boot_anim.h", 1),
-            ("launcher/main/apps/x/tests/suite_x.c", "selftest/post.h", 1),
-            ("launcher/main/apps/x/x.c", "<console/console_verbs.h>", 1),
-            ("editor/src/x.cpp", "shell/shell.h", 1),
-            ("editor/src/x.cpp", "<selftest/post.h>", 1),
-            ("launcher/main/apps/x/x.c", "app/app.h", 0),
-            ("launcher/main/apps/x/x.c", "ui/ui.h", 0),
-            ("editor/src/x.cpp", "ui/ui.h", 0),
+            (self.APP_SUITE, "selftest/post.h", 1),
+            (self.APP_C, "<console/console_verbs.h>", 1),
+            (self.EDITOR_CPP, "shell/shell.h", 1),
+            (self.EDITOR_CPP, "<selftest/post.h>", 1),
+            (self.APP_C, "app/app.h", 0),
+            (self.APP_C, "ui/ui.h", 0),
+            (self.EDITOR_CPP, "ui/ui.h", 0),
             ("launcher/main/shell/apps/x/x.c", "selftest/post.h", 0),
         ))
 
@@ -308,15 +313,15 @@ class StyleAuditTest(unittest.TestCase):
             "launcher/main/ui/relative.h": '#include "../../components/microui/include/microui.h"\n',
             "launcher/test/probe.h": '#include "ui/ui_internal.h"\n',
         }, (
-            ("launcher/main/apps/x/x.c", "microui.h", 1),
-            ("launcher/main/apps/x/x.c", "<microui.h>", 1),
-            ("launcher/main/shell/x.c", "../../components/microui/include/microui.h", 1),
-            ("launcher/main/shell/x.c", "ui/relative.h", 1),
-            ("launcher/main/shell/x.c", "ui/ui_internal.h", 1),
-            ("launcher/main/shell/x.c", "ui/deeper.h", 1),
-            ("editor/src/x.cpp", "ui/ui_internal.h", 1),
-            ("launcher/main/apps/x/tests/suite_x.c", "probe.h", 1),
-            ("launcher/main/apps/x/x.c", "ui/ui.h", 0),
+            (self.APP_C, "microui.h", 1),
+            (self.APP_C, "<microui.h>", 1),
+            (self.SHELL_C, "../../components/microui/include/microui.h", 1),
+            (self.SHELL_C, "ui/relative.h", 1),
+            (self.SHELL_C, "ui/ui_internal.h", 1),
+            (self.SHELL_C, "ui/deeper.h", 1),
+            (self.EDITOR_CPP, "ui/ui_internal.h", 1),
+            (self.APP_SUITE, "probe.h", 1),
+            (self.APP_C, "ui/ui.h", 0),
             ("launcher/main/ui/ui.c", "ui/ui_internal.h", 0),
             ("launcher/test/suites/suite_x.c", "ui/ui_internal.h", 0),
             ("launcher/tools/render/x.c", "ui/ui_internal.h", 0),
