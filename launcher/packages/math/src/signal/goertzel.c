@@ -11,12 +11,13 @@
 void
 goertzel_init(goertzel_t* state, float hz, float sample_rate_hz) {
     /* Q15 table coefficients detune long records; cosf preserves the requested bin. */
-    *state = (goertzel_t){.coefficient = GOERTZEL_SINE_COMPONENTS * cosf(MATH_TAU * hz / sample_rate_hz)};
+    const float omega = MATH_TAU * hz / sample_rate_hz;
+    *state = (goertzel_t){.coefficient = GOERTZEL_SINE_COMPONENTS * cosf(omega), .omega = omega};
 }
 
 void
 goertzel_reset(goertzel_t* state) {
-    *state = (goertzel_t){.coefficient = state->coefficient};
+    *state = (goertzel_t){.coefficient = state->coefficient, .omega = state->omega};
 }
 
 static void
@@ -61,4 +62,16 @@ goertzel_level_db(const goertzel_t* state, float full_scale) {
     }
     const float scale = (float)state->samples * full_scale / GOERTZEL_SINE_COMPONENTS;
     return fmaxf(GOERTZEL_LEVEL_FLOOR_DB, GOERTZEL_POWER_DB_SCALE * log10f(power / (scale * scale)));
+}
+
+float
+goertzel_phase(const goertzel_t* state) {
+    if (!state->samples) {
+        return 0.0F;
+    }
+    const float real = state->previous - cosf(state->omega) * state->previous2;
+    const float imaginary = sinf(state->omega) * state->previous2;
+    const float rotation = (float)remainder((double)state->omega * (double)(state->samples - 1), (double)MATH_TAU);
+    const float phase = remainderf(atan2f(imaginary, real) - rotation, MATH_TAU);
+    return phase <= -MATH_PI ? MATH_PI : phase;
 }

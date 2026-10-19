@@ -12,6 +12,7 @@ The caller supplies frequency and sample rate in Hz, with $`0 < hz < sample\_rat
 | `goertzel_reset` | Clear the stream, retaining the coefficient |
 | `goertzel_feed_s` | Feed signed 16-bit samples |
 | `goertzel_feed_f` | Feed float samples with the same recurrence |
+| `goertzel_phase` | DFT phase in radians, sign $`e^{-j\omega n}`$, referenced to the first sample since init/reset; $`(-\pi, \pi]`$, zero for an empty stream |
 | `goertzel_power` | Squared unnormalized DFT magnitude, clamped to zero |
 | `goertzel_amplitude` | Sine amplitude $`2\sqrt{P}/N`$; zero before any sample |
 | `goertzel_level_db` | Sine level relative to full scale; floored at `GOERTZEL_LEVEL_FLOOR_DB` |

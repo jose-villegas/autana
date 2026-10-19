@@ -237,9 +237,54 @@ test_goertzel_amplitude_and_scale(void) {
     TEST_ASSERT_EQUAL_FLOAT(GOERTZEL_LEVEL_FLOOR_DB, goertzel_level_db(&state, TEST_TINY_FULL_SCALE));
 }
 
+#define TEST_PHASE_SAMPLES        441u
+#define TEST_PHASE_TOLERANCE      0.001F
+#define TEST_SINE_PHASE_TOLERANCE 0.02F
+
+static void
+test_goertzel_phase(void) {
+    static const float phases[] = {-2.0F, 0.0F, 1.2F};
+    static const float bins[] = {TEST_TARGET_HZ, TEST_TARGET_HZ + 3.7F};
+    const size_t count = TEST_PHASE_SAMPLES;
+    int16_t* samples = fixture();
+    for (size_t b = 0; b < sizeof bins / sizeof bins[0]; b++) {
+        for (size_t p = 0; p < sizeof phases / sizeof phases[0]; p++) {
+            goertzel_t state, split;
+            goertzel_init(&state, bins[b], TEST_SAMPLE_RATE_HZ);
+            goertzel_init(&split, bins[b], TEST_SAMPLE_RATE_HZ);
+            TEST_ASSERT_EQUAL_FLOAT(0, goertzel_phase(&state));
+            double re = 0, im = 0;
+            for (size_t i = 0; i < count; i++) {
+                const double angle = (double)MATH_TAU * TEST_TARGET_HZ * i / TEST_SAMPLE_RATE_HZ;
+                samples[i] = (int16_t)lround(TRIG_SIN_MAX * cos(angle + phases[p]));
+                const double bin_angle = (double)MATH_TAU * bins[b] * i / TEST_SAMPLE_RATE_HZ;
+                re += samples[i] * cos(bin_angle);
+                im -= samples[i] * sin(bin_angle);
+            }
+            goertzel_feed_s(&state, samples, count);
+            goertzel_feed_s(&split, samples, TEST_ODD_BLOCK);
+            goertzel_feed_s(&split, samples + TEST_ODD_BLOCK, count - TEST_ODD_BLOCK);
+            TEST_ASSERT_FLOAT_WITHIN(TEST_PHASE_TOLERANCE, (float)atan2(im, re), goertzel_phase(&state));
+            TEST_ASSERT_EQUAL_FLOAT(goertzel_phase(&state), goertzel_phase(&split));
+            if (b == 0) {
+                TEST_ASSERT_FLOAT_WITHIN(TEST_PHASE_TOLERANCE, phases[p], goertzel_phase(&state));
+            }
+            for (size_t i = 0; i < count; i++) {
+                samples[i] = (int16_t)lround(TRIG_SIN_MAX
+                                             * sin((double)MATH_TAU * bins[b] * i / TEST_SAMPLE_RATE_HZ + phases[p]));
+            }
+            goertzel_reset(&state);
+            goertzel_feed_s(&state, samples, count);
+            TEST_ASSERT_FLOAT_WITHIN(TEST_SINE_PHASE_TOLERANCE, 0,
+                                     remainderf(goertzel_phase(&state) - phases[p] + MATH_PI / 2, MATH_TAU));
+        }
+    }
+}
+
 void
 run_goertzel_suite(void) {
 #ifndef DEVICE_BUILD
+    RUN_TEST(test_goertzel_phase);
     RUN_TEST(test_goertzel_reference);
     RUN_TEST(test_goertzel_noninteger_bins);
     RUN_TEST(test_goertzel_max_record);
