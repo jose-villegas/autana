@@ -652,13 +652,13 @@ draw_imu_round(void) {
     if (imu_round.step == IMU_PROBE_POSES) {
         char label[IMU_PROBE_LABEL_SIZE];
         imu_probe_pose_label(imu_round.pose, label, sizeof label);
-        snprintf(line, sizeof line, "%s  POSE %d/%d", label, imu_round.pose + 1, IMU_PROBE_POSE_COUNT);
+        (void)snprintf(line, sizeof line, "%s  POSE %d/%d", label, imu_round.pose + 1, IMU_PROBE_POSE_COUNT);
         hud_line(0, line);
         if (imu_round.settle_ms < IMU_PROBE_SETTLE_MS) {
             hud_line(1, "HOLD STILL");
         } else {
-            snprintf(line, sizeof line, "MEASURING %u%%",
-                     (unsigned)(imu_round.window_ms * IMU_PROBE_PERCENT / IMU_PROBE_WINDOW_MS));
+            (void)snprintf(line, sizeof line, "MEASURING %u%%",
+                           (unsigned)(imu_round.window_ms * IMU_PROBE_PERCENT / IMU_PROBE_WINDOW_MS));
             hud_line(1, line);
         }
         hud_line(3, "BOOT TO LEAVE ROUND");
@@ -671,8 +671,8 @@ draw_imu_round(void) {
     const int gyro[] = {f.gyro_mdps.x, f.gyro_mdps.y, f.gyro_mdps.z};
     static const char* const axes[] = {"X", "Y", "Z"};
     for (int axis = 0; axis < 3; axis++) {
-        snprintf(line, sizeof line, "%s RESID %dMG SCALE %dPPM GYRO %dMDPS", axes[axis], off[axis], scale[axis],
-                 gyro[axis]);
+        (void)snprintf(line, sizeof line, "%s RESID %dMG SCALE %dPPM GYRO %dMDPS", axes[axis], off[axis], scale[axis],
+                       gyro[axis]);
         hud_line(axis, line);
     }
     const int top = HUD_TOP + (MOTION_HUD_ROWS * HUD_LINE_H) + MOTION_MARGIN;
@@ -788,7 +788,7 @@ draw_motion(void) {
     draw_gravity_line(MOTION_HUD_ROWS - 1);
 
     const vec3i_t offset = input_accel_offset();
-    snprintf(line, sizeof line, "OFFSET %d %d %d Q12", (int)offset.x, (int)offset.y, (int)offset.z);
+    (void)snprintf(line, sizeof line, "OFFSET %d %d %d Q12", (int)offset.x, (int)offset.y, (int)offset.z);
     hud_line(MOTION_HUD_ROWS, line);
     const int top = HUD_TOP + ((MOTION_HUD_ROWS + 1) * HUD_LINE_H) + MOTION_MARGIN;
     const int bottom = screen_h - (2 * MOTION_MARGIN) - (2 * HUD_LINE_H);

@@ -94,7 +94,7 @@ end_capture(void) {
 static void
 refuse(const char* reason) {
     ESP_LOGW(TAG, "screenshot refused - %s", reason);
-    fflush(stdout);
+    (void)fflush(stdout);
     console_emit_line("SCREENSHOT_REFUSED:", reason);
     end_capture();
 }
@@ -134,8 +134,8 @@ alloc_row_buffers(size_t pixels_bytes, size_t row_bytes, size_t row_b64_bytes) {
         return true;
     }
     char reason[96];
-    snprintf(reason, sizeof reason, "could not allocate %u bytes of row buffers; largest free block is %u",
-             (unsigned)(pixels_bytes + row_bytes + row_b64_bytes), (unsigned)memory_largest_block(MEMORY_8BIT));
+    (void)snprintf(reason, sizeof reason, "could not allocate %u bytes of row buffers; largest free block is %u",
+                   (unsigned)(pixels_bytes + row_bytes + row_b64_bytes), (unsigned)memory_largest_block(MEMORY_8BIT));
     refuse(reason);
     return false;
 }
@@ -147,8 +147,8 @@ alloc_row_buffers(size_t pixels_bytes, size_t row_bytes, size_t row_b64_bytes) {
 static void
 emit_begin_and_header(uint32_t total_bytes) {
     char begin[32];
-    snprintf(begin, sizeof begin, "SCREENSHOT_BEGIN size=%lu", (unsigned long)total_bytes);
-    fflush(stdout);
+    (void)snprintf(begin, sizeof begin, "SCREENSHOT_BEGIN size=%lu", (unsigned long)total_bytes);
+    (void)fflush(stdout);
     console_emit_line(begin, "");
 
     uint8_t header[SCREENSHOT_BMP_HEADER_SIZE];
@@ -173,7 +173,7 @@ emit_rows(size_t row_bytes, size_t row_b64_bytes) {
             row[(x * 3) + 1] = (uint8_t)(rgb >> 8);
             row[(x * 3) + 2] = (uint8_t)(rgb >> 16);
         }
-        screenshot_base64_encode(row, row_bytes, row_b64);
+        screenshot_base64_encode(row, (int32_t)row_bytes, row_b64);
         row_b64[row_b64_bytes - 1] = '\0';
         console_emit_line("SCREENSHOT_DATA:", row_b64);
     }

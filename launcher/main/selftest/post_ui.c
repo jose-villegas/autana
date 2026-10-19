@@ -211,7 +211,7 @@ post_ui_draw_report(const post_ui_report_t* report) {
                  title_colour);
 
     char summary[48];
-    snprintf(summary, sizeof(summary), "%d checks, %d failed", post_result_count(), failures);
+    (void)snprintf(summary, sizeof(summary), "%d checks, %d failed", post_result_count(), failures);
     const int summary_w = text_width(summary, POST_LAYOUT_REPORT_SCALE);
     draw_centred(&pen, post_layout_summary_text(&pen.layout, summary_w), summary, POST_LAYOUT_REPORT_SCALE,
                  failures ? gfx_rgb(FAIL_RGB) : gfx_rgb(OK_RGB));

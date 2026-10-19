@@ -259,7 +259,9 @@ find_list(mu_Context* ctx, const char* list_id) {
 
 static void
 list_name(const char* id, char* out, size_t len) {
-    snprintf(out, len, "%s list", id);
+    const int written = snprintf(out, len, "%s list", id);
+    assert(written >= 0 && (size_t)written < len); /* a clipped name would address another list */
+    (void)written;
 }
 
 /* The one list that can be open at a time: a microui popup closes on any
@@ -315,7 +317,7 @@ draw_dropdown_list(mu_Context* ctx, const char* id, mu_Rect anchor, const char* 
     int picked = -1;
     for (int i = 0; i < count; i++) {
         char row_id[24];
-        snprintf(row_id, sizeof row_id, "item %d", i);
+        (void)snprintf(row_id, sizeof row_id, "item %d", i);
         const ui_widget_button_t row = {
             .icon = icons ? icons[i] : NULL,
             .label = names[i],

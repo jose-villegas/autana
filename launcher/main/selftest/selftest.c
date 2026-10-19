@@ -79,7 +79,7 @@ selftest_run(void) {
     /* A sentinel on its own line, so an automated harness can tell a finished
      * run from a board that went quiet mid-test. */
     printf("\nSELFTEST_COMPLETE failures=%d elapsed_ms=%lld\n", failures, (long long)elapsed_ms);
-    fflush(stdout);
+    (void)fflush(stdout);
 
     if (failures > 0) {
         ESP_LOGE(TAG, "%d test(s) FAILED", failures);
