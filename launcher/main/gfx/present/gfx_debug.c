@@ -79,11 +79,11 @@ void
 mark_rect_border(gfx_color_t* buf, int stride, int w, int h, gfx_color_t colour) {
     for (int col = 0; col < w; col++) {
         buf[col] = colour;
-        buf[(size_t)(h - 1) * stride + col] = colour;
+        buf[((size_t)(h - 1) * stride) + col] = colour;
     }
     for (int row = 0; row < h; row++) {
         buf[(size_t)row * stride] = colour;
-        buf[(size_t)row * stride + (w - 1)] = colour;
+        buf[((size_t)row * stride) + (w - 1)] = colour;
     }
 }
 
@@ -98,11 +98,11 @@ save_border(const gfx_color_t* buf, int stride, int w, int h, gfx_color_t* out) 
     int i = 0;
     for (int col = 0; col < w; col++) {
         out[i++] = buf[col];
-        out[i++] = buf[(size_t)(h - 1) * stride + col];
+        out[i++] = buf[((size_t)(h - 1) * stride) + col];
     }
     for (int row = 0; row < h; row++) {
         out[i++] = buf[(size_t)row * stride];
-        out[i++] = buf[(size_t)row * stride + (w - 1)];
+        out[i++] = buf[((size_t)row * stride) + (w - 1)];
     }
 }
 
@@ -111,11 +111,11 @@ restore_border(gfx_color_t* buf, int stride, int w, int h, const gfx_color_t* sa
     int i = 0;
     for (int col = 0; col < w; col++) {
         buf[col] = saved[i++];
-        buf[(size_t)(h - 1) * stride + col] = saved[i++];
+        buf[((size_t)(h - 1) * stride) + col] = saved[i++];
     }
     for (int row = 0; row < h; row++) {
         buf[(size_t)row * stride] = saved[i++];
-        buf[(size_t)row * stride + (w - 1)] = saved[i++];
+        buf[((size_t)row * stride) + (w - 1)] = saved[i++];
     }
 }
 
@@ -237,12 +237,12 @@ send_audit_capture(int x0, int y0, int w, int h, const gfx_color_t* buf) {
         return;
     }
     for (int r = 0; r < h; r++) {
-        const gfx_color_t* src = buf + (size_t)r * w;
-        const gfx_color_t* fb_row = present_fb + (size_t)(y0 + r) * GFX_WIDTH + x0;
+        const gfx_color_t* src = buf + ((size_t)r * w);
+        const gfx_color_t* fb_row = present_fb + ((size_t)(y0 + r) * GFX_WIDTH) + x0;
         if (memcmp(src, fb_row, (size_t)w * sizeof(gfx_color_t)) != 0) {
             send_audit_copy_fault_px += count_differing_px(src, fb_row, w);
         }
-        memcpy(send_shadow + (size_t)(y0 + r) * GFX_WIDTH + x0, src, (size_t)w * sizeof(gfx_color_t));
+        memcpy(send_shadow + ((size_t)(y0 + r) * GFX_WIDTH) + x0, src, (size_t)w * sizeof(gfx_color_t));
     }
 }
 
@@ -253,8 +253,8 @@ send_audit_capture(int x0, int y0, int w, int h, const gfx_color_t* buf) {
  * the next present resends it. */
 static void
 send_audit_scan_row(int y) {
-    const gfx_color_t* fb_row = present_fb + (size_t)y * GFX_WIDTH;
-    const gfx_color_t* shadow_row = send_shadow + (size_t)y * GFX_WIDTH;
+    const gfx_color_t* fb_row = present_fb + ((size_t)y * GFX_WIDTH);
+    const gfx_color_t* shadow_row = send_shadow + ((size_t)y * GFX_WIDTH);
     if (memcmp(fb_row, shadow_row, (size_t)GFX_WIDTH * sizeof(gfx_color_t)) == 0) {
         return;
     }
@@ -321,7 +321,7 @@ mark_strip_overlay(gfx_color_t* slot, int row) {
     const int y = row * STRIP_HEIGHT;
     if (debug_overlay_on) {
         for (int col = 0; col < GRID_COLS; col++) {
-            mark_rect_border(slot + col * COL_WIDTH, GFX_WIDTH, COL_WIDTH, STRIP_HEIGHT, gfx_rgb(0x00FFFF));
+            mark_rect_border(slot + (col * COL_WIDTH), GFX_WIDTH, COL_WIDTH, STRIP_HEIGHT, gfx_rgb(0x00FFFF));
         }
     }
     if (leaf_overlay_on) {
@@ -329,7 +329,7 @@ mark_strip_overlay(gfx_color_t* slot, int row) {
                                        LEAF_RECTS_PER_ROW_MAX);
         for (int i = 0; i < n; i++) {
             const recti_t* r = &leaf_rect_scratch[i];
-            gfx_color_t* at = slot + (size_t)(r->y - y) * GFX_WIDTH + r->x;
+            gfx_color_t* at = slot + ((size_t)(r->y - y) * GFX_WIDTH) + r->x;
             mark_rect_border(at, GFX_WIDTH, r->w, r->h, gfx_rgb(0x00FF00));
         }
     }
@@ -339,13 +339,13 @@ static void
 save_overlay_borders(int y, int leaf_n) {
     if (debug_overlay_on) {
         for (int col = 0; col < GRID_COLS; col++) {
-            gfx_color_t* cell = present_fb + (size_t)y * GFX_WIDTH + col * COL_WIDTH;
+            gfx_color_t* cell = present_fb + ((size_t)y * GFX_WIDTH) + (col * COL_WIDTH);
             save_border(cell, GFX_WIDTH, COL_WIDTH, STRIP_HEIGHT, overlay_cell_save()[col]);
         }
     }
     for (int i = 0; i < leaf_n; i++) {
         const recti_t* r = &leaf_rect_scratch[i];
-        gfx_color_t* at = present_fb + (size_t)r->y * GFX_WIDTH + r->x;
+        gfx_color_t* at = present_fb + ((size_t)r->y * GFX_WIDTH) + r->x;
         save_border(at, GFX_WIDTH, r->w, r->h, overlay_leaf_save()[i]);
     }
 }
@@ -354,13 +354,13 @@ static void
 draw_overlay_borders(int y, int leaf_n) {
     if (debug_overlay_on) {
         for (int col = 0; col < GRID_COLS; col++) {
-            gfx_color_t* cell = present_fb + (size_t)y * GFX_WIDTH + col * COL_WIDTH;
+            gfx_color_t* cell = present_fb + ((size_t)y * GFX_WIDTH) + (col * COL_WIDTH);
             mark_rect_border(cell, GFX_WIDTH, COL_WIDTH, STRIP_HEIGHT, gfx_rgb(0x00FFFF));
         }
     }
     for (int i = 0; i < leaf_n; i++) {
         const recti_t* r = &leaf_rect_scratch[i];
-        gfx_color_t* at = present_fb + (size_t)r->y * GFX_WIDTH + r->x;
+        gfx_color_t* at = present_fb + ((size_t)r->y * GFX_WIDTH) + r->x;
         mark_rect_border(at, GFX_WIDTH, r->w, r->h, gfx_rgb(0x00FF00));
     }
 }
@@ -370,12 +370,12 @@ static void
 restore_overlay_borders(int y, int leaf_n) {
     for (int i = leaf_n - 1; i >= 0; i--) {
         const recti_t* r = &leaf_rect_scratch[i];
-        gfx_color_t* at = present_fb + (size_t)r->y * GFX_WIDTH + r->x;
+        gfx_color_t* at = present_fb + ((size_t)r->y * GFX_WIDTH) + r->x;
         restore_border(at, GFX_WIDTH, r->w, r->h, overlay_leaf_save()[i]);
     }
     if (debug_overlay_on) {
         for (int col = GRID_COLS - 1; col >= 0; col--) {
-            gfx_color_t* cell = present_fb + (size_t)y * GFX_WIDTH + col * COL_WIDTH;
+            gfx_color_t* cell = present_fb + ((size_t)y * GFX_WIDTH) + (col * COL_WIDTH);
             restore_border(cell, GFX_WIDTH, COL_WIDTH, STRIP_HEIGHT, overlay_cell_save()[col]);
         }
     }
@@ -440,7 +440,7 @@ mark_band_overlay(gfx_color_t* buf, int row0, int height) {
                                            LEAF_RECTS_PER_ROW_MAX);
             for (int i = 0; i < n; i++) {
                 const recti_t* r = &leaf_rect_scratch[i];
-                gfx_color_t* at = buf + (size_t)(r->y - row0) * GFX_WIDTH + r->x;
+                gfx_color_t* at = buf + ((size_t)(r->y - row0) * GFX_WIDTH) + r->x;
                 mark_rect_border(at, GFX_WIDTH, r->w, r->h, gfx_rgb(0x00FF00));
             }
         }

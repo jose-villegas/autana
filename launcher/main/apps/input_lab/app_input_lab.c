@@ -444,7 +444,7 @@ static void
 draw_target(void) {
     if (have_last_tap) {
         const uint32_t mark = last_hit ? COL_HIT : COL_MISS;
-        ui_fill((recti_t){last_x - MARK_SIDE / 2, last_y - MARK_SIDE / 2, MARK_SIDE, MARK_SIDE}, mark);
+        ui_fill((recti_t){last_x - (MARK_SIDE / 2), last_y - (MARK_SIDE / 2), MARK_SIDE, MARK_SIDE}, mark);
     }
     ui_fill((recti_t){target.x, target.y, target.side, target.side}, COL_TARGET);
 }
@@ -667,7 +667,7 @@ draw_imu_round(void) {
     const int top = HUD_TOP + (MOTION_HUD_ROWS * HUD_LINE_H) + MOTION_MARGIN;
     const int width = (screen_w - 3 * MOTION_MARGIN) / 2;
     const bool saving = ui_button((recti_t){MOTION_MARGIN, top, width, 2 * HUD_LINE_H}, "SAVE");
-    const bool clearing = ui_button((recti_t){2 * MOTION_MARGIN + width, top, width, 2 * HUD_LINE_H}, "CLEAR");
+    const bool clearing = ui_button((recti_t){(2 * MOTION_MARGIN) + width, top, width, 2 * HUD_LINE_H}, "CLEAR");
     hud_line(3, "BOOT TO LEAVE RESULTS");
     return clearing ? IMU_ACTION_CLEAR : saving ? IMU_ACTION_SAVE : IMU_ACTION_NONE;
 }

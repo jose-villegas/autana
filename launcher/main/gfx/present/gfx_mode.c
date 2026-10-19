@@ -710,7 +710,7 @@ gfx_band_submit(void) {
 #endif
 
     if (band_snapshot_filling || band_snapshot_complete) {
-        memcpy(band_snapshot + (size_t)band_render_row0 * GFX_WIDTH, band_buf[band_current_slot],
+        memcpy(band_snapshot + ((size_t)band_render_row0 * GFX_WIDTH), band_buf[band_current_slot],
                (size_t)band_render_height * GFX_WIDTH * sizeof(gfx_color_t));
     }
     if (band_snapshot_filling) {
@@ -800,13 +800,13 @@ gfx_read_panel_row(int y, gfx_color_t out_row[GFX_WIDTH]) {
     if (frame_expanded) {
         expand_rows(y, y + 1, out_row);
     } else if (gfx_mode_has_framebuffer(&current_mode)) {
-        memcpy(out_row, present_fb + (size_t)y * GFX_WIDTH, GFX_WIDTH * sizeof(gfx_color_t));
+        memcpy(out_row, present_fb + ((size_t)y * GFX_WIDTH), GFX_WIDTH * sizeof(gfx_color_t));
     } else if (current_mode.layout == GFX_LAYOUT_INDEXED) {
         const gfx_indexed_frame_t frame = indexed_frame();
         gfx_indexed_expand_panel_row(&frame, y, out_row, GFX_WIDTH);
     } else {
         assert(band_snapshot_complete);
-        memcpy(out_row, band_snapshot + (size_t)y * GFX_WIDTH, GFX_WIDTH * sizeof(gfx_color_t));
+        memcpy(out_row, band_snapshot + ((size_t)y * GFX_WIDTH), GFX_WIDTH * sizeof(gfx_color_t));
     }
 }
 

@@ -345,7 +345,7 @@ draw_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_str
         }
 
         gfx_color_t* dst = gfx_target_row(state.target, row);
-        const gfx_color_t* s = src + (size_t)(row - y) * (size_t)src_stride + (rect.x - x);
+        const gfx_color_t* s = src + ((size_t)(row - y) * (size_t)src_stride) + (rect.x - x);
 
         if (p[0] && p[1] && p[2] && p[3]) {
             memcpy(dst + rect.x, s, (size_t)rect.w * sizeof *dst);
@@ -488,7 +488,7 @@ rotated_font_pixel_dither(const gfx_surface_t* state, const draw_font_t* font, i
             py = row;
             break;
     }
-    fill_rect_alpha(state, x + px * scale, y + py * scale, scale, scale, color, alpha, false);
+    fill_rect_alpha(state, x + (px * scale), y + (py * scale), scale, scale, color, alpha, false);
 }
 
 static void
@@ -498,7 +498,7 @@ glyph_font_dither(const gfx_surface_t* state, const draw_font_t* font, int x, in
         return;
     }
 
-    const uint8_t* glyph = font->atlas + (size_t)(ch - font->first) * font->cell_h;
+    const uint8_t* glyph = font->atlas + ((size_t)(ch - font->first) * font->cell_h);
 
     for (int row = 0; row < font->cell_h; row++) {
         const uint8_t bits = glyph[row];

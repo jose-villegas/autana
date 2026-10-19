@@ -220,7 +220,7 @@ draw_command(const mu_Command* cmd) {
                 ui_transform_icon_blocks(t, check, ui_recti_from_mu(cmd->icon.rect), icon_fill_emit, &fc);
             } else {
                 const mu_Rect r = ui_transform_mu_rect(t, cmd->icon.rect);
-                draw_rect(r.x + r.w / 3, r.y + r.h / 3, r.w / 3, r.h / 3, color);
+                draw_rect(r.x + (r.w / 3), r.y + (r.h / 3), r.w / 3, r.h / 3, color);
             }
             break;
         }

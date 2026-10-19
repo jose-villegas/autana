@@ -78,8 +78,8 @@ touch_probe_spread_dy(const touch_probe_stats_t* stats) {
 
 touch_probe_target_t
 touch_probe_grid(int index, int cols, int rows, int screen_w, int screen_h, int side, int margin) {
-    const int span_x = screen_w - 2 * margin - side;
-    const int span_y = screen_h - 2 * margin - side;
+    const int span_x = screen_w - (2 * margin) - side;
+    const int span_y = screen_h - (2 * margin) - side;
     const int col = index % cols;
     const int row = index / cols;
     const touch_probe_target_t t = {

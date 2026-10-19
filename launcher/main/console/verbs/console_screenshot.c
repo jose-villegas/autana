@@ -169,9 +169,9 @@ emit_rows(size_t row_bytes, size_t row_b64_bytes) {
         gfx_read_panel_row(y, pixels);
         for (int32_t x = 0; x < GFX_WIDTH; x++) {
             const uint32_t rgb = gfx_color_rgb888(pixels[x]);
-            row[x * 3 + 0] = (uint8_t)(rgb);
-            row[x * 3 + 1] = (uint8_t)(rgb >> 8);
-            row[x * 3 + 2] = (uint8_t)(rgb >> 16);
+            row[(x * 3) + 0] = (uint8_t)(rgb);
+            row[(x * 3) + 1] = (uint8_t)(rgb >> 8);
+            row[(x * 3) + 2] = (uint8_t)(rgb >> 16);
         }
         screenshot_base64_encode(row, row_bytes, row_b64);
         row_b64[row_b64_bytes - 1] = '\0';
@@ -191,7 +191,7 @@ console_screenshot_dump(const input_t* input, const app_t* current_app) {
 
     const size_t pixels_bytes = (size_t)GFX_WIDTH * sizeof(gfx_color_t);
     const size_t row_bytes = (size_t)GFX_WIDTH * 3;
-    const size_t row_b64_bytes = (size_t)GFX_WIDTH * 4 + 1;
+    const size_t row_b64_bytes = ((size_t)GFX_WIDTH * 4) + 1;
 
     if (!alloc_row_buffers(pixels_bytes, row_bytes, row_b64_bytes)) {
         return;

@@ -470,7 +470,8 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
     gfx_color_t* const slot = strip_bounce[strip_bounce_next];
     strip_bounce_next = (strip_bounce_next + 1) % STRIP_BOUNCE_SLOTS;
     for (int r = 0; r < h; r++) {
-        memcpy(slot + (size_t)r * w, present_fb + (size_t)(y0 + r) * GFX_WIDTH + x0, (size_t)w * sizeof(gfx_color_t));
+        memcpy(slot + ((size_t)r * w), present_fb + ((size_t)(y0 + r) * GFX_WIDTH) + x0,
+               (size_t)w * sizeof(gfx_color_t));
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
     send_audit_capture(x0, y0, w, h, slot);
@@ -479,8 +480,8 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
         mark_rect_border(slot, w, w, h, border);
     } else if (debug_overlay_on) {
         for (int col = run_start; col < run_end; col++) {
-            const int idx = row * GRID_COLS + col;
-            gfx_color_t* at = slot + (size_t)(cell_y0[idx] - y0) * w + (cell_x0[idx] - x0);
+            const int idx = (row * GRID_COLS) + col;
+            gfx_color_t* at = slot + ((size_t)(cell_y0[idx] - y0) * w) + (cell_x0[idx] - x0);
             mark_rect_border(at, w, cell_x1[idx] - cell_x0[idx], cell_y1[idx] - cell_y0[idx], border);
         }
     }
@@ -489,7 +490,7 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
             dirty_leaf_rects(row, recti_from_edges(x0, y0, x1, y1), leaf_rect_scratch, LEAF_RECTS_PER_ROW_MAX);
         for (int i = 0; i < n; i++) {
             const recti_t* r = &leaf_rect_scratch[i];
-            gfx_color_t* at = slot + (size_t)(r->y - y0) * w + (r->x - x0);
+            gfx_color_t* at = slot + ((size_t)(r->y - y0) * w) + (r->x - x0);
             mark_rect_border(at, w, r->w, r->h, gfx_rgb(0x00FF00));
         }
     }
@@ -518,7 +519,7 @@ bool GFX_PRESENT_IRAM_ATTR
 send_fb_rows(int y0, int y1) {
     gfx_color_t* const slot = strip_bounce[strip_bounce_next];
     strip_bounce_next = (strip_bounce_next + 1) % STRIP_BOUNCE_SLOTS;
-    memcpy(slot, present_fb + (size_t)y0 * GFX_WIDTH, (size_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t));
+    memcpy(slot, present_fb + ((size_t)y0 * GFX_WIDTH), (size_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t));
 #if CONFIG_LAUNCHER_DEVELOPMENT
     send_audit_capture(0, y0, GFX_WIDTH, y1 - y0, slot);
     dev_bytes_sent += (int64_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t);
@@ -550,7 +551,7 @@ send_picture_rows(int y0, int y1) {
     } else {
         const gfx_indexed_frame_t frame = indexed_frame();
         for (int y = y0; y < y1; y++) {
-            gfx_indexed_expand_panel_row(&frame, y, slot + (size_t)(y - y0) * GFX_WIDTH, GFX_WIDTH);
+            gfx_indexed_expand_panel_row(&frame, y, slot + ((size_t)(y - y0) * GFX_WIDTH), GFX_WIDTH);
         }
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
