@@ -301,7 +301,7 @@ apply_tuning(uint32_t* generation) {
         return;
     }
     const uint32_t frames = (uint32_t)((uint64_t)declick_us * AUDIO_OUT_SAMPLE_RATE_HZ / MATH_US_PER_S);
-    mixer.declick_frames = declick_us && !frames ? 1 : frames;
+    mixer.declick_frames = declick_us != 0 && !frames ? 1 : frames;
     if (!mixer.declick_frames) {
         mixer.residual = 0;
     }
