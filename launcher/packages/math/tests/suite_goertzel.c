@@ -256,8 +256,8 @@ test_goertzel_phase(void) {
             double re = 0, im = 0;
             for (size_t i = 0; i < count; i++) {
                 const double angle = (double)MATH_TAU * TEST_TARGET_HZ * i / TEST_SAMPLE_RATE_HZ;
-                samples[i] = (int16_t)lround(TRIG_SIN_MAX * cos(angle + phases[p]));
-                const double bin_angle = (double)MATH_TAU * bins[b] * i / TEST_SAMPLE_RATE_HZ;
+                samples[i] = (int16_t)lround(TRIG_SIN_MAX * cos(angle + (double)phases[p]));
+                const double bin_angle = (double)MATH_TAU * (double)bins[b] * i / TEST_SAMPLE_RATE_HZ;
                 re += samples[i] * cos(bin_angle);
                 im -= samples[i] * sin(bin_angle);
             }
@@ -270,8 +270,9 @@ test_goertzel_phase(void) {
                 TEST_ASSERT_FLOAT_WITHIN(TEST_PHASE_TOLERANCE, phases[p], goertzel_phase(&state));
             }
             for (size_t i = 0; i < count; i++) {
-                samples[i] = (int16_t)lround(TRIG_SIN_MAX
-                                             * sin((double)MATH_TAU * bins[b] * i / TEST_SAMPLE_RATE_HZ + phases[p]));
+                samples[i] = (int16_t)lround(
+                    TRIG_SIN_MAX
+                    * sin((double)MATH_TAU * (double)bins[b] * i / TEST_SAMPLE_RATE_HZ + (double)phases[p]));
             }
             goertzel_reset(&state);
             goertzel_feed_s(&state, samples, count);

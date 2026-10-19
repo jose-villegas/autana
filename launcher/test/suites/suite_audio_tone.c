@@ -122,6 +122,28 @@ test_loopback_frequency_short(void) {
 }
 
 static void
+assert_frequency_estimate(int16_t* samples, size_t n, uint16_t hz, float offset, unsigned seed) {
+    rng_t random;
+    rng_seed(&random, seed);
+    const float actual = hz + offset;
+    for (size_t i = 0; i < n; i++) {
+        const float noise = seed == 1 ? 0
+                                      : TEST_ESTIMATE_NOISE * TEST_NOISE_RMS_MATCH_SCALE
+                                            * ((float)rng_next(&random) / (float)UINT32_MAX - 0.5F);
+        samples[i] =
+            (int16_t)lroundf(TEST_ESTIMATE_AMPLITUDE
+                             * (sinf(MATH_TAU * actual * (float)i / AUDIO_OUT_SAMPLE_RATE_HZ + (float)seed) + noise));
+    }
+    audio_loopback_frequency_t state;
+    audio_loopback_frequency_init(&state, hz);
+    for (size_t i = 0; i < n; i++) {
+        audio_loopback_frequency_feed(&state, samples + i, 1);
+    }
+    TEST_ASSERT_FLOAT_WITHIN(seed == 1 ? TEST_ESTIMATE_TOLERANCE_HZ : TEST_ESTIMATE_NOISE_TOLERANCE_HZ, actual,
+                             audio_loopback_frequency_hz(&state));
+}
+
+static void
 test_loopback_frequency_estimate(void) {
     static const float offsets[] = {0.0F, 3.7F, -11.0F};
     static const uint16_t bins[] = {250, 300, 500, TEST_HZ, 2000, 3000, 4000, 8000};
@@ -130,24 +152,7 @@ test_loopback_frequency_estimate(void) {
     for (size_t b = 0; b < sizeof bins / sizeof bins[0]; b++) {
         for (size_t o = 0; o < sizeof offsets / sizeof offsets[0]; o++) {
             for (unsigned seed = 1; seed <= 4; seed++) {
-                rng_t random;
-                rng_seed(&random, seed);
-                const float actual = bins[b] + offsets[o];
-                for (size_t i = 0; i < n; i++) {
-                    const float noise = seed == 1 ? 0
-                                                  : TEST_ESTIMATE_NOISE * TEST_NOISE_RMS_MATCH_SCALE
-                                                        * ((float)rng_next(&random) / UINT32_MAX - 0.5F);
-                    samples[i] = (int16_t)lroundf(
-                        TEST_ESTIMATE_AMPLITUDE
-                        * (sinf(MATH_TAU * actual * (float)i / AUDIO_OUT_SAMPLE_RATE_HZ + (float)seed) + noise));
-                }
-                audio_loopback_frequency_t state;
-                audio_loopback_frequency_init(&state, bins[b]);
-                for (size_t i = 0; i < n; i++) {
-                    audio_loopback_frequency_feed(&state, samples + i, 1);
-                }
-                TEST_ASSERT_FLOAT_WITHIN(seed == 1 ? TEST_ESTIMATE_TOLERANCE_HZ : TEST_ESTIMATE_NOISE_TOLERANCE_HZ,
-                                         actual, audio_loopback_frequency_hz(&state));
+                assert_frequency_estimate(samples, n, bins[b], offsets[o], seed);
             }
         }
     }
