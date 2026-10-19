@@ -298,21 +298,27 @@ class CloneTests(unittest.TestCase):
         self.assertEqual(sizes(self.scan(files, 80)), sizes(self.scan({**files, "launcher/main/a.c": split}, 80)))
         self.declaration_commit_check(files, {"launcher/main/a.c": split}, 0, "PASS: no growing clone file pairs")
         pointers = "void\nsetup(void) {\n    unsigned char *left = 0, *right = 0;\n}\n"
-        self.assertEqual(gate.collapse_declarations(pointers).count(";"), 2)
+        self.assertIn("; unsigned char *right = 0;", gate.split_declarations(pointers))
+        self.assertEqual(gate.split_declarations(pointers).count("\n"), pointers.count("\n"))
 
     def test_a_copied_function_with_declarations_still_counts(self):
         body = "int\nscale(int input) {\n    const int low = input / 2, high = input * 2;\n" + BLOCK.split("{", 1)[1]
         self.declaration_commit_check({"launcher/main/a.c": body}, {"launcher/main/b.c": body}, 1,
                                       "FAIL: 1 new or growing clone file pairs")
 
-    def test_declaration_collapsing_leaves_other_statements_and_lines_alone(self):
+    def test_a_copy_just_above_the_limit_is_still_found(self):
+        body = "void\nsetup(int input) {\n" + "".join(f"    const unsigned value_{i} = input + {i} * 3;\n" for i in range(8)) + "}\n"
+        self.assertTrue(self.scan({"launcher/main/a.c": body, "launcher/main/b.c": body}, 80))
+
+    def test_declaration_splitting_leaves_other_statements_and_lines_alone(self):
         text = ("void\nf(int a) {\n    return a;\n    for (int i = 0, n = 2; i < n; i++) {\n    }\n"
                 "    a = g(a, 1), a = 2;\n    char *s = \"a, b;\"; /* int q, r; */\n}\n")
-        collapsed = gate.collapse_declarations(text)
-        self.assertEqual(collapsed.count("\n"), text.count("\n"))
+        split = gate.split_declarations(text)
+        self.assertEqual(split.count("\n"), text.count("\n"))
         for kept in ("return a;", "for (int i = 0, n = 2;", "a = g(a, 1), a = 2;", "\"a, b;\"", "/* int q, r; */"):
-            self.assertIn(kept, collapsed)
-        self.assertNotIn("char", collapsed)
+            self.assertIn(kept, split)
+        cpp = "void f() {\n    delete p;\n    throw err;\n}\n"
+        self.assertEqual(gate.split_declarations(cpp), cpp)
 
     def test_adding_grouping_parentheses_never_grows_a_pair(self):
         plain = BLOCK.replace("result += index * 2;", "result += index * 2 + input;")
