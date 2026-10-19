@@ -8,36 +8,34 @@ is the caller's, drawn on the theme's `accent_face`.
 
 <!-- generated: ui-tile-example check: python launcher/tools/render/ui_examples_doc.py --check -->
 ```c
-/* A row of tiles, one choice of three: the caller says which is selected. */
+/* Two tiles side by side, one choice of two: the caller says which is selected. */
 #include "ui/ui.h"
 
 typedef struct {
-    int speed;
+    bool hard;
 } tile_example_t;
-
-static const char* const SPEEDS[] = {"SLOW", "FAST", "WILD"};
 
 bool
 tile_example(tile_example_t* s) {
     ui_row(UI_ROW_HEIGHT);
     const recti_t row = ui_next();
-    const int w = (row.w - 2 * UI_ROW_GAP) / 3;
-    bool picked = false;
-    for (int i = 0; i < 3; i++) {
-        const recti_t r = {row.x + i * (w + UI_ROW_GAP), row.y, w, row.h};
-        if (ui_tile(r, SPEEDS[i], s->speed == i)) {
-            s->speed = i;
-            picked = true;
-        }
+    const int w = (row.w - UI_ROW_GAP) / 2;
+    if (ui_tile((recti_t){row.x, row.y, w, row.h}, "EASY", !s->hard)) {
+        s->hard = false;
+        return true;
     }
-    return picked;
+    if (ui_tile((recti_t){row.x + w + UI_ROW_GAP, row.y, w, row.h}, "HARD", s->hard)) {
+        s->hard = true;
+        return true;
+    }
+    return false;
 }
 ```
 <!-- /generated: ui-tile-example -->
 
 ## Renders
 
-![Three tiles, SLOW selected, portrait](../images/ui/tile.png) ![The same, landscape](../images/ui/tile-landscape.png)
+![Two tiles, EASY selected, portrait](../images/ui/tile.png) ![The same, landscape](../images/ui/tile-landscape.png)
 
 ## States
 
@@ -45,14 +43,14 @@ Each row is the example above, unchanged, in one of the
 [states](../UI-Toolkit.md#states). Fires says when a tap there made it
 return true.
 
-<!-- generated: ui-tile-states sha256=98219f420cf217a32928cf37b1a8341e4e6e9ce21fb41623e62ace53dbe49e0d -->
+<!-- generated: ui-tile-states sha256=38b4cd97c5053c25405387107c26ff4504dc4e7df632c9edb04ce9dcb94f6c89 -->
 | State | Render | Fires |
 |---|---|---|
-| rest | ![tile, rest](../images/ui/tile.png) | on release |
-| pressed | ![tile, pressed](../images/ui/tile-pressed.png) | on release |
-| tapped | ![tile, tapped](../images/ui/tile-tapped.png) | on release |
+| rest | ![tile, rest](../images/ui/tile.png) | no |
+| pressed | ![tile, pressed](../images/ui/tile-pressed.png) | no |
+| tapped | looks like rest | no |
 | disabled | ![tile, disabled](../images/ui/tile-disabled.png) | no |
-| no-pack | looks like rest | on release |
+| no-pack | looks like rest | no |
 <!-- /generated: ui-tile-states -->
 
 ## Interactions

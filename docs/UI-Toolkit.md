@@ -160,7 +160,7 @@ frame; `NULL` restores the shell look the pictures here use. `ui_theme_t`:
 
 Those are all of its fields; colours are `0xRRGGBB`.
 
-![A screen in warm colours: a NEW GAME title bar, a level slider, a HARD toggle and a START button](images/ui/themed.png) ![The same screen in landscape](images/ui/themed-landscape.png)
+![A screen in warm colours: a NEW GAME title bar, a DIFFICULTY dropdown and a START button](images/ui/themed.png) ![The same screen in landscape](images/ui/themed-landscape.png)
 
 <!-- generated: ui-themed-example check: python launcher/tools/render/ui_examples_doc.py --check -->
 ```c
@@ -168,8 +168,8 @@ Those are all of its fields; colours are `0xRRGGBB`.
 #include "ui/ui.h"
 
 typedef struct {
-    int level;
-    bool hard;
+    int difficulty;
+    bool started;
 } themed_example_t;
 
 static const ui_theme_t THEME = {
@@ -186,19 +186,22 @@ static const ui_theme_t THEME = {
     .icon_side = 24,
 };
 
+static const char* const DIFFICULTIES[] = {"EASY", "NORMAL", "HARD"};
+
 bool
 themed_example(themed_example_t* s) {
     ui_theme(&THEME);
     ui_header((recti_t){0, 0, ui_width(), UI_TITLE_HEIGHT}, "NEW GAME");
     ui_window((recti_t){0, UI_TITLE_HEIGHT, ui_width(), ui_height() - UI_TITLE_HEIGHT});
-    bool changed = false;
+    ui_row(ui_text_height() + UI_TEXT_PAD);
+    ui_caption(ui_next(), "DIFFICULTY");
     ui_row(UI_ROW_HEIGHT);
-    changed |= ui_slider(ui_next(), "level", &s->level, 0, 9);
-    ui_row(UI_ROW_HEIGHT);
-    changed |= ui_toggle(ui_next(), "HARD", &s->hard);
-    ui_row(UI_ROW_HEIGHT);
-    changed |= ui_button(ui_next(), "START");
-    return changed;
+    const bool picked = ui_dropdown(ui_next(), "difficulty", &s->difficulty, DIFFICULTIES, 3);
+    ui_row_centre(ui_width() / 2, UI_ROW_HEIGHT);
+    if (ui_button(ui_next(), "START")) {
+        s->started = true;
+    }
+    return picked;
 }
 ```
 <!-- /generated: ui-themed-example -->
