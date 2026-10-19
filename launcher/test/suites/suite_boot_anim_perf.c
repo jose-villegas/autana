@@ -50,7 +50,7 @@ extern void boot_anim_clear_frame(void);
 extern void boot_anim_clear_on_send(bool on);
 extern void draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view);
 extern void draw_axes(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view);
-extern int32_t draw_curve(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view);
+extern int32_t draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view);
 extern void draw_zeros(int32_t pen_t_q8, uint8_t ink, const boot_anim_view_t* view);
 extern void draw_image(const draw_image_t* photo, uint8_t ink, uint8_t reveal);
 extern void draw_title(uint32_t now_ms, uint8_t ink);
@@ -211,7 +211,7 @@ time_frames(const checkpoint_frame_t* f, bool contend, bool clear_on_send) {
             s->values[FIELD_AXES] = (int32_t)(t1 - t0);
 
             t0 = timing_now_us();
-            const int32_t reached = draw_curve(f->now_ms, f->ink, f->reveal, &f->view);
+            const int32_t reached = draw_curve(f->now_ms, f->ink, &f->view);
             t1 = timing_now_us();
             s->values[FIELD_CURVE] = (int32_t)(t1 - t0);
 

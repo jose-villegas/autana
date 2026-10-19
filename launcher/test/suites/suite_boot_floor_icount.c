@@ -30,6 +30,7 @@
 #define FLOOR_LINE_LENGTH  64
 #define FLOOR_LINE_X       100
 #define FLOOR_ROW_PREFIX   "boot_floor_"
+#define CURVE_ROW_PREFIX   "boot_curve_"
 #define FLOOR_TOTAL_ROW    "total"
 #define FLOOR_REJECT_ROW   "ink0"
 #define FLOOR_POINT_ROW    "line_point"
@@ -37,6 +38,7 @@
 #define FLOOR_LINE_Y       100
 
 extern void draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view);
+extern int32_t draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view);
 
 #ifndef DEVICE_BUILD
 #define FLOOR_COUNT_PREFIX "FLOOR_COUNTS"
@@ -174,6 +176,23 @@ report_total(const boot_anim_motion_t* motion, uint32_t now_ms, bool zero_ink) {
     perf_icount_report(name, elapsed, FLOOR_TIMING_REPS, 1);
 }
 
+/* The curve over the same frames, after the frame's clear has marked
+ * everything dirty, as boot draws it. */
+static void
+report_curve(const boot_anim_motion_t* motion, uint32_t now_ms) {
+    const boot_anim_view_t view = boot_anim_view(motion, GFX_WIDTH, GFX_HEIGHT, now_ms);
+    const uint8_t ink = boot_anim_ink(now_ms);
+    const int64_t start = timing_now_us();
+    for (int rep = 0; rep < FLOOR_TIMING_REPS; rep++) {
+        gfx_mark_all_dirty();
+        (void)draw_curve(now_ms, ink, &view);
+    }
+    const int64_t elapsed = timing_now_us() - start;
+    char name[64];
+    (void)snprintf(name, sizeof name, CURVE_ROW_PREFIX "%" PRIu32, now_ms);
+    perf_icount_report(name, elapsed, FLOOR_TIMING_REPS, 1);
+}
+
 static void
 report_line_cost(int length) {
     const int64_t start = timing_now_us();
@@ -195,6 +214,7 @@ test_floor_instruction_rows(void) {
     for (unsigned frame = 0; frame < sizeof frames_ms / sizeof frames_ms[0]; frame++) {
         report_total(&motion, frames_ms[frame], false);
         report_total(&motion, frames_ms[frame], true);
+        report_curve(&motion, frames_ms[frame]);
     }
     boot_anim_motion_release(&motion);
     report_line_cost(1);

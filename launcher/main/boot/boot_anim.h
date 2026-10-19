@@ -327,16 +327,9 @@ boot_anim_crest_sample(int i, int j, int drawn) {
     return sample;
 }
 
-/* Spline interpolation keeps the curve's tight turns smooth without a larger
- * generated table. */
-#define BOOT_ANIM_SPLINE_STEPS          4
-
-#define BOOT_ANIM_LOD_CHORD_PX          3
-
 #define BOOT_ANIM_LOD_STRIDE2_PX        192
 #define BOOT_ANIM_LOD_STRIDE4_PX        96
 
-#define BOOT_ANIM_DISSOLVE_HALF_LEVEL   4
 #define BOOT_ANIM_DISSOLVE_COARSE_LEVEL 8
 
 typedef struct {
@@ -387,25 +380,6 @@ boot_anim_spline_cs(vec3x_t c0, vec3x_t c1, vec3x_t c2, int32_t t_q12) {
         (int32_t)((((int64_t)w0 * c0.y) + ((int64_t)w1 * c1.y) + ((int64_t)w2 * c2.y)) >> (BOOT_ANIM_Q + 1)),
         (int32_t)((((int64_t)w0 * c0.z) + ((int64_t)w1 * c1.z) + ((int64_t)w2 * c2.z)) >> (BOOT_ANIM_Q + 1)),
     };
-}
-
-/* The chord's screen extent against `px`: the Manhattan length m of the two
- * points, scaled as the projection scales it, compared without a divide. */
-static inline bool
-boot_anim_screen_chord_lt(vec3x_t a, vec3x_t c, const boot_anim_view_t* view, int32_t px) {
-    if (a.z <= view->near_z || c.z <= view->near_z) {
-        return false;
-    }
-    const int64_t m = (int64_t)mathi_abs(a.x - c.x) + mathi_abs(a.y - c.y);
-    const int32_t zmin = a.z < c.z ? a.z : c.z;
-    return m * view->pixels_per_unit < (int64_t)px * zmin;
-}
-
-/* Do NOT subdivide if span ends within BOOT_ANIM_LOD_CHORD_PX. Uses
- * boot_anim_screen_chord_lt(). */
-static inline int
-boot_anim_curve_lod_steps(vec3x_t a, vec3x_t c, const boot_anim_view_t* view) {
-    return boot_anim_screen_chord_lt(a, c, view, BOOT_ANIM_LOD_CHORD_PX) ? 1 : BOOT_ANIM_SPLINE_STEPS;
 }
 
 /* Clamping pins spline to ends. Repeated first control point starts first
