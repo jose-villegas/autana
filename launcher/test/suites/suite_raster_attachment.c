@@ -544,12 +544,11 @@ test_split_feedback_preserves_pixels_and_null_uses_even_rows(void) {
     raster_rig_t* r = rig_open(attached, 2);
     draw(r);
     TEST_ASSERT_EQUAL_INT(rows.even, rows.top);
-    uint16_t* expected = calloc(1, (sizeof(*expected) * W * H * 3) + W * H);
+    const gfx_render_target_t picture = r3d_pipeline_carve(&r->raster).picture;
+    const size_t bytes = gfx_render_target_bytes(&picture);
+    void* expected = malloc(bytes);
     TEST_ASSERT_NOT_NULL(expected);
-    memcpy(expected, raster_color(&r->raster), sizeof(*expected) * W * H);
-    memcpy(expected + W * H, raster_depth(&r->raster), sizeof(*expected) * W * H);
-    memcpy(expected + W * H * 2, raster_rig_attachment(r, 1), sizeof(*expected) * W * H);
-    const uint8_t* expected_rows = (const uint8_t*)(expected + W * H * 3);
+    memcpy(expected, picture.attachment[GFX_ATTACHMENT_COLOR].pixels, bytes);
     raster_split_t split = {0};
     r->raster.split = &split;
     draw(r);
@@ -562,10 +561,7 @@ test_split_feedback_preserves_pixels_and_null_uses_even_rows(void) {
         TEST_ASSERT_TRUE(share < RASTER_SPLIT_EVEN    ? rows.top < rows.even
                          : share == RASTER_SPLIT_EVEN ? rows.top == rows.even
                                                       : rows.top > rows.even);
-        TEST_ASSERT_EQUAL_MEMORY(expected, raster_color(&r->raster), sizeof(*expected) * W * H);
-        TEST_ASSERT_EQUAL_MEMORY(expected + W * H, raster_depth(&r->raster), sizeof(*expected) * W * H);
-        TEST_ASSERT_EQUAL_MEMORY(expected + W * H * 2, raster_rig_attachment(r, 1), sizeof(*expected) * W * H);
-        TEST_ASSERT_EQUAL_MEMORY(expected_rows, raster_rig_attachment(r, 0), W * H);
+        TEST_ASSERT_EQUAL_MEMORY(expected, picture.attachment[GFX_ATTACHMENT_COLOR].pixels, bytes);
     }
     free(expected);
 }
