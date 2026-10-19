@@ -944,11 +944,14 @@ class AppearanceFitTests(unittest.TestCase):
             for actual, expected in zip(result, results[0]):
                 self.assertTrue(torch.equal(actual, expected))
 
-    def test_optimise_with_surface_is_bitwise_repeatable(self):
-        from r3d.appearance_simplify import Renderer, optimise, SURFACE_QUERY_EVERY
+    def test_optimise_with_surface_and_seams_is_bitwise_repeatable(self):
+        from r3d.appearance_simplify import Renderer, optimise, seam_holds, vertex_scale, SEAM_MARGIN, SURFACE_QUERY_EVERY
 
-        points, rgb, tris = grid(2)
-        mesh = FitMesh(points, rgb / 255, tris, np.ones(len(tris)), 64, np.arange(len(points)))
+        plane = np.array([[-1, -1, 0], [1, -1, 0], [0, 1, 0]], dtype=float)
+        points = np.vstack([plane * 0.5 + [0, 0, 0.1], plane])
+        tris = np.array([[0, 1, 2], [3, 4, 5]])
+        rgb = np.tile([[0.8, 0.2, 0.1], [0.1, 0.4, 0.8]], (len(plane), 1))
+        mesh = FitMesh(points, rgb, tris, np.ones(len(tris)), 64, np.arange(len(points)))
         size = (32, 24)
         render = Renderer(tris, mesh.double, mesh.vertex_point, size, "cuda")
         matrices = [projection([x, 0, 3], [0, 0, -1], *size, 0.62, 0.5) for x in (-0.2, 0.2)]
@@ -957,13 +960,22 @@ class AppearanceFitTests(unittest.TestCase):
                  for matrix, x in zip(matrices, (-0.2, 0.2))]
         moved = mesh._replace(points=points * [0.8, 1, 1])
         options = dict(steps=SURFACE_QUERY_EVERY + 1, batch=2, lr_position=0.001, lr_colour=0.01, laplacian=0.1, report=0,
-                       surface_weight=10, surface_margin=0.25, source=SimpleNamespace(p=points, tri_v=tris), seam_margin=0)
+                       surface_weight=10, surface_margin=0.25, source=SimpleNamespace(p=points, tri_v=tris))
+        scale = vertex_scale(cuda(moved.points), torch.as_tensor(point_edges(tris, mesh.vertex_point), device="cuda"))
+        holds = seam_holds(moved, SEAM_MARGIN * scale.cpu().numpy()[:, 0])
+        self.assertGreaterEqual(len(holds.points), len(plane))
         for normal_weight in (0, 1):
-            with self.subTest(normal_weight=normal_weight):
-                first = optimise(moved, views, size, normal_weight=normal_weight, **options)
-                second = optimise(moved, views, size, normal_weight=normal_weight, **options)
-                for actual, expected in zip(first, second):
-                    self.assertEqual(np.asarray(actual).tobytes(), np.asarray(expected).tobytes())
+            for seam_margin in (0, SEAM_MARGIN):
+                with self.subTest(normal_weight=normal_weight, seam_margin=seam_margin):
+                    first = optimise(moved, views, size, normal_weight=normal_weight, seam_margin=seam_margin, **options)
+                    second = optimise(moved, views, size, normal_weight=normal_weight, seam_margin=seam_margin, **options)
+                    for actual, expected in zip(first, second):
+                        self.assertEqual(np.asarray(actual).tobytes(), np.asarray(expected).tobytes())
+                    with tempfile.TemporaryDirectory() as directory:
+                        outputs = [pathlib.Path(directory) / name for name in ("first", "second")]
+                        for output, (positions, colours, _history) in zip(outputs, (first, second)):
+                            write_mesh(output, "card", mesh._replace(points=positions, rgb=colours))
+                        self.assertEqual((outputs[0] / "card.mesh").read_bytes(), (outputs[1] / "card.mesh").read_bytes())
 
     def test_image_error_falls(self):
         from r3d.appearance_simplify import Renderer, optimise
