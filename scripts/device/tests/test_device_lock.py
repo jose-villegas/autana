@@ -18,6 +18,28 @@ import device_lock
 import device_hook
 import lock_scope
 
+class JsonWriterTests(unittest.TestCase):
+    def test_shared_writer_retries_replace_with_unique_temporary_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "record.json"
+            original = os.replace
+            temporary = []
+            def replace(source, target):
+                temporary.append(source)
+                if len(temporary) == 1:
+                    raise PermissionError("reader holds file")
+                original(source, target)
+            with mock.patch.object(device_lock.os, "replace", side_effect=replace), \
+                    mock.patch.object(device_lock.time, "sleep") as sleep:
+                device_lock.write_json(path, {"first": 1}, indent=2)
+                device_lock.write_json(path, {"second": 2})
+            self.assertEqual(temporary[0], temporary[1])
+            self.assertNotEqual(temporary[1], temporary[2])
+            self.assertEqual(json.loads(path.read_text()), {"second": 2})
+            self.assertEqual(list(Path(directory).glob("*.tmp")), [])
+            sleep.assert_called_once()
+
+
 class Clock:
     def __init__(self):
         self.value = 1000.0
@@ -491,7 +513,7 @@ class LockTests(ClockStoreTests):
 
     def test_dead_lock_holder_on_other_host_is_not_reclaimed_by_pid(self):
         ticket = self.lock.enqueue("COM5", "remote", "flash", pid=1)
-        self.lock.write_json(self.lock.lock_path("COM5"), {
+        device_lock.write_json(self.lock.lock_path("COM5"), {
             "acquired_at": 1000, "heartbeat_at": 1000,
             "expected_build_id": "", "host": "another-host",
             "owner": "remote", "pid": 99, "port": "COM5", "purpose": "flash",
@@ -500,7 +522,7 @@ class LockTests(ClockStoreTests):
         self.assertIsNone(self.lock.claim("COM5", ticket, stale_seconds=600))
 
     def write_holder(self, pid, host=None):
-        self.lock.write_json(self.lock.lock_path("COM5"), {
+        device_lock.write_json(self.lock.lock_path("COM5"), {
             "acquired_at": 1000, "heartbeat_at": 1000,
             "expected_build_id": "",
             "host": host or device_lock.socket.gethostname(),
@@ -683,7 +705,7 @@ class HumanReservationExpiryTests(ClockStoreTests):
         ])
 
     def test_a_record_from_before_reservations_expired_lapses_an_hour_after_it_began(self):
-        self.lock.write_json(self.lock.lock_path("COM5"), {
+        device_lock.write_json(self.lock.lock_path("COM5"), {
             "board": "COM5", "token": "old", "purpose": "bench", "owner": "maintainer",
             "kind": "human", "acquired_at": 1000.0, "expires_at": 1000.0 + self.HOUR, "protocol": 3})
         self.clock.advance(self.HOUR - 1)
@@ -749,13 +771,13 @@ class BusyTextTests(unittest.TestCase):
         self.assertIn("board held by alice@bench:9 for autana flash since", self.busy())
 
     def test_a_record_without_an_expiry_or_start_names_no_time_left(self):
-        self.lock.write_json(self.lock.lock_path("COM5"), {
+        device_lock.write_json(self.lock.lock_path("COM5"), {
             "board": "COM5", "token": "x", "purpose": "bench", "kind": "human", "owner": "maintainer"})
         self.assertEqual(self.busy(), "board reserved by maintainer: bench "
                                       "(`autana lock take-back` ends it)")
 
     def test_a_record_from_before_expiry_shows_its_hour_not_zero(self):
-        self.lock.write_json(self.lock.lock_path("COM5"), {
+        device_lock.write_json(self.lock.lock_path("COM5"), {
             "board": "COM5", "token": "x", "purpose": "bench", "kind": "human", "owner": "maintainer",
             "acquired_at": self.clock.now(), "expires_at": self.clock.now() + device_lock.HUMAN_RESERVATION_SECONDS})
         self.assertIn("(1h left;", self.busy())
@@ -828,7 +850,7 @@ class PreviousHolderTests(unittest.TestCase):
     def point_record_at(self, pid):
         record = self.lock.read_json(self.lock.last_path(self.BOARD))
         record["pid"] = pid
-        self.lock.write_json(self.lock.last_path(self.BOARD), record)
+        device_lock.write_json(self.lock.last_path(self.BOARD), record)
 
     def test_it_names_the_previous_owner_and_its_live_process_and_leaves_it_running(self):
         held = self.previous_holder(pid=os.getpid())
@@ -889,7 +911,7 @@ class PreviousHolderTests(unittest.TestCase):
         self.previous_holder(pid=os.getpid())
         record = self.lock.read_json(self.lock.last_path(self.BOARD))
         record["host"] = "some-other-machine"
-        self.lock.write_json(self.lock.last_path(self.BOARD), record)
+        device_lock.write_json(self.lock.last_path(self.BOARD), record)
         scope = FakeScope(extra=[1])
         text = device_lock.previous_holder_text(self.lock, self.BOARD, scope)
         self.assertEqual(scope.asked, [])
@@ -907,7 +929,7 @@ class PreviousHolderTests(unittest.TestCase):
         self.previous_holder(pid=os.getpid())
         record = self.lock.read_json(self.lock.last_path(self.BOARD))
         record.update(pid=1, acquired_at=None)
-        self.lock.write_json(self.lock.last_path(self.BOARD), record)
+        device_lock.write_json(self.lock.last_path(self.BOARD), record)
         store = device_lock.LockStore(Path(self.temp.name), self.clock.now, lambda pid: pid == 1)
         text = device_lock.previous_holder_text(store, self.BOARD, FakeScope(start=time.time() + 999))
         self.assertIn("Still running from it: 1", text)
@@ -933,7 +955,7 @@ class ProtocolTests(ClockStoreTests):
             record["autana_version"] = autana_version
         if protocol is not None:
             record["protocol"] = protocol
-        self.lock.write_json(self.lock.lock_path("COM5"), record)
+        device_lock.write_json(self.lock.lock_path("COM5"), record)
 
     def test_a_live_holder_of_a_different_protocol_is_just_waited_for(self):
         """No exception, no refusal; a claim behind a live foreign-protocol
@@ -1046,7 +1068,7 @@ class RecordLabelTests(unittest.TestCase):
     def test_the_reclaim_line_comes_back_from_acquire_not_from_the_record(self):
         self.lock.acquire("COM5", "gone", "listen")
         record = self.lock.read_json(self.lock.lock_path("COM5"))
-        self.lock.write_json(self.lock.lock_path("COM5"), dict(record, host="elsewhere",
+        device_lock.write_json(self.lock.lock_path("COM5"), dict(record, host="elsewhere",
                                                                heartbeat_at=1))
         held = self.lock.acquire("COM5", "next", "flash")
         self.assertIn("reclaimed lock from gone for autana listen (heartbeat expiry)", held.log)

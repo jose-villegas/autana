@@ -80,9 +80,7 @@
 #include "sand_palette256.h"
 #include "sand_swatch.h"
 #include "sand_ui.h"
-#include "ui/layout/ui_anchor.h"
 #include "ui/ui.h"
-#include "ui/ui_mu.h"
 
 static const char* TAG = "sand";
 
@@ -172,7 +170,7 @@ static bool overlays_skipped_reason_logged;
 /* The START button's own tap, deferred out of draw_menu()'s UI build:
  * start_sim() can free the framebuffer (SAND_GFX_ENTER_INDEXED), and
  * draw_menu()'s own ui_end() - still to come, same call - draws through it
- * once mu_button() returns. sand_frame() applies it at the top of its next
+ * once the button returns. sand_frame() applies it at the top of its next
  * pass instead, a full UI build later. */
 static bool pending_start;
 
@@ -659,7 +657,7 @@ start_sim(void) {
 /* Test-only: starts the simulation and pours one brush's worth of sand at
  * the grid's centre, bypassing the menu's START button and a real touch
  * drag - a device suite exercising sand_frame()'s own dirty tracking has
- * no way to reach either through microui. Forces FULL regardless of
+ * no way to reach either through the UI. Forces FULL regardless of
  * whatever a colour-mode test left color_mode at - a caller wanting the
  * real framebuffer to draw into (suite_sand_full_redraw.c, say) must not
  * silently start indexed instead. Returns the mode to restore afterward. */
@@ -982,9 +980,9 @@ gravity_quarter_turn(int gx, int gy) {
 }
 
 /* Computes its own turn (gravity_quarter_turn()) rather than inheriting the
- * shell's, unlike draw_palette(): that one goes through microui, which the
+ * shell's, unlike draw_palette(): that one goes through the UI, which the
  * shell's transform reaches; this one calls draw_text_turned() straight onto
- * the canvas, bypassing microui entirely, the same way the sand grid itself
+ * the canvas, bypassing the UI entirely, the same way the sand grid itself
  * is painted. Canvas draws don't get the shell's transform for free - only
  * chrome does. */
 static void
@@ -1008,10 +1006,9 @@ draw_mode_label(int gx, int gy) {
     const int turn = gravity_quarter_turn(gx, gy);
 
     const int upright_w = (turn % 2 == 0) ? GFX_WIDTH : GFX_HEIGHT;
-    const int upright_h = (turn % 2 == 0) ? GFX_HEIGHT : GFX_WIDTH;
-    const mu_Rect upright = ui_anchor_rect((mu_Rect){0, 0, upright_w, upright_h}, UI_ANCHOR_TOP, UI_ANCHOR_TOP, 0,
-                                           LABEL_MARGIN, span, tall);
-    const mu_Rect box = ui_transform_rect(ui_transform_quarter_turn(turn, GFX_WIDTH, GFX_HEIGHT), upright);
+    const recti_t upright = ui_centered_rect(upright_w, span, tall, LABEL_MARGIN);
+    const affine2x_t t = ui_transform_quarter_turn(turn, GFX_WIDTH, GFX_HEIGHT);
+    const recti_t box = affine2x_map_recti(&t, upright);
     int x = 0;
     int y = 0;
     ui_text_glyph0_origin(draw_font_ui(), box, turn, LABEL_SCALE, &x, &y);
@@ -1044,17 +1041,15 @@ dim_backdrop(void) {
 
 static void
 draw_palette(const input_t* input) {
-    mu_Context* ctx = ui_context();
     ui_begin(input);
-    palette_screen_draw(ctx, &ui);
+    palette_screen_draw(&ui);
     ui_end(UI_NO_BACKGROUND);
 }
 
 static void
 draw_brush_screen(const input_t* input) {
-    mu_Context* ctx = ui_context();
     ui_begin(input);
-    brush_screen_draw(ctx, &ui);
+    brush_screen_draw(&ui);
     ui_end(UI_NO_BACKGROUND);
 }
 
@@ -1303,7 +1298,7 @@ adopt_options(const sand_options_t* options) {
 }
 
 static void
-draw_options(mu_Context* ctx) {
+draw_options(void) {
     if (!mode_swatches_ready) {
         sand_mode_swatches(sand_dither_none_lut, sand_palette256_lut, GFX_INDEXED_PALETTE_SIZE, SAND_PALETTE_UI_ENTRIES,
                            mode_swatches);
@@ -1321,7 +1316,7 @@ draw_options(mu_Context* ctx) {
         .mode_swatches = mode_swatches,
     };
     const sand_options_t committed = current_options();
-    const sand_options_hits_t hits = options_screen_draw(ctx, &menu, committed, &labels);
+    const sand_options_hits_t hits = options_screen_draw(&menu, committed, &labels);
     if (sand_menu_options_step(&menu, committed, hits)) {
         /* Not applied to a running sim - the next start_sim() reads them. */
         adopt_options(&menu.draft);
@@ -1329,8 +1324,8 @@ draw_options(mu_Context* ctx) {
 }
 
 static void
-draw_title(mu_Context* ctx) {
-    switch (sand_menu_title_clicked(&menu, title_screen_draw(ctx), current_options())) {
+draw_title(void) {
+    switch (sand_menu_title_clicked(&menu, title_screen_draw(), current_options())) {
         case SAND_MENU_START:
             /* Not called here, see pending_start's own comment. */
             pending_start = true;
@@ -1342,13 +1337,11 @@ draw_title(mu_Context* ctx) {
 
 static void
 draw_menu(const input_t* input) {
-    mu_Context* ctx = ui_context();
-
     ui_begin(input);
     if (menu.screen == SAND_MENU_OPTIONS) {
-        draw_options(ctx);
+        draw_options();
     } else {
-        draw_title(ctx);
+        draw_title();
     }
     ui_end(COL_BACKGROUND);
 }
@@ -1633,7 +1626,7 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
 
 #if CONFIG_LAUNCHER_SELFTEST
 static void
-sand_app_test_tap_menu_rect(mu_Rect r) {
+sand_app_test_tap_menu_rect(recti_t r) {
     const int x = r.x + r.w / 2;
     const int y = r.y + r.h / 2;
     const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
@@ -1689,7 +1682,7 @@ static __attribute__((noinline)) input_t
 sand_app_test_start_button_touch(void) {
     title_screen_layout_t title;
     title_screen_layout(ui_width(), ui_height(), &title);
-    const mu_Rect start_rect = title.buttons[SAND_TITLE_START];
+    const recti_t start_rect = title.buttons[SAND_TITLE_START];
     const input_t touch = {.x = start_rect.x + start_rect.w / 2, .y = start_rect.y + start_rect.h / 2};
     ESP_LOGI(TAG, "START tap test: tapping (%d, %d), START rect (%d, %d, %d, %d)", touch.x, touch.y, start_rect.x,
              start_rect.y, start_rect.w, start_rect.h);
@@ -1698,8 +1691,8 @@ sand_app_test_start_button_touch(void) {
 
 /* Unlike sand_app_test_survives_indexed_then_menu() above, this runs the
  * START button itself, through a finger's frames: title built, press
- * (hover only), DOWN (the click). The lift lands on a frame with no UI, so
- * the pointer's idle-frame release leaves no button held. */
+ * (hover only), DOWN (the press lands on START), lift (the tap). The start
+ * the tap queues applies on the next pass, before any UI is built. */
 bool
 sand_app_test_start_button_survives_the_ui_build(int mode) {
     const int previous_mode = color_mode;
@@ -1715,13 +1708,13 @@ sand_app_test_start_button_survives_the_ui_build(int mode) {
     sand_frame(16, &in); /* hover granted on the frame the finger lands */
 
     in = (input_t){.x = touch.x, .y = touch.y};
-    sand_frame(16, &in); /* the DOWN: the click */
+    sand_frame(16, &in); /* the DOWN: the press lands on START */
 
     in = (input_t){.released = true, .x = touch.x, .y = touch.y};
-    sand_frame(16, &in); /* pending_start applies before this frame's UI: no UI is built */
+    sand_frame(16, &in); /* the lift: the tap, queued as pending_start */
 
     in = (input_t){0};
-    sand_frame(16, &in);
+    sand_frame(16, &in); /* pending_start applies before this frame's UI: no UI is built */
 
     const bool ok = sand_colour_indexed_active(&colour_state) && ui.screen == SAND_UI_RUNNING;
     ESP_LOGI(TAG, "START tap test: indexed_active=%d screen=%d -> %s", sand_colour_indexed_active(&colour_state),

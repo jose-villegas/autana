@@ -1,5 +1,6 @@
 """Seeded capture acquisition and variance estimates shared by performance tools."""
 import json
+import os
 import math
 import re
 import shlex
@@ -22,6 +23,8 @@ from device_capture import RESULT_RE, BUILD_ID_RE as BUILD_LINE  # noqa: E402
 
 MEAN_RE = re.compile(r"\b(?P<name>\S+) (?:(?:both cores|one core): )?mean\s+(?P<value>\d+)us\b")
 NUMBER_RE = re.compile(r"^[+-]?\d+$")
+
+
 def cell(text):
     return text.strip().strip("`").replace("**", "")
 
@@ -285,12 +288,19 @@ def status_snapshot(out, stem, phase, runner, override=None, identity=False, wai
     return build_id
 
 
+def latest_build(project) -> Path:
+    return max(Path(project).glob("launcher/build*/build_id.txt"),
+               key=lambda path: path.stat().st_mtime).parent
+
+
 def booted_build_id(project, lines):
     """Require the booted identity to match the project's latest built image."""
     ids = [match.group(1) for _, line in lines
            if (match := BUILD_LINE.search(line)) and "booted" in line]
-    builds = list(Path(project).glob("launcher/build*/build_id.txt"))
-    expected = max(builds, key=lambda path: path.stat().st_mtime).read_text().strip() if builds else None
+    try:
+        expected = (latest_build(project) / "build_id.txt").read_text().strip()
+    except ValueError:
+        expected = None
     if not ids or not expected or ids[-1] != expected:
         raise RuntimeError(f"booted build {ids} does not match seeded build {expected}")
     return ids[-1]
@@ -319,6 +329,8 @@ def run_flash(args, seed, runner=None):
                                          "--project", str(project), "suite", name,
                                          str(getattr(args, "timeout", 1800)), "--runs", str(args.runs),
                                          override=override)
+                for line in getattr(args, "send", None) or []:
+                    command += ["--send", line]
                 if tests != "-":
                     command += ["--test", tests]
                 if index == 0:

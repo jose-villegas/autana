@@ -25,8 +25,7 @@ typedef enum {
     SAND_ICON_COUNT = SAND_ICON_DITHER_FIRST + GFX_DITHER_MODE_COUNT
 } sand_icon_id_t;
 
-/* The app's icon set, for ui_icon_set_load(), ui_icon_set_release() and
- * ui_icon_set_draw(). */
+/* The app's icon set, for ui_icon_set_load() and ui_icon_set_release(). */
 extern ui_icon_set_t sand_icon_set;
 
 /* Icon `id`, or NULL without the pack. */

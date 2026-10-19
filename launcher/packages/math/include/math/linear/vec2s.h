@@ -1,6 +1,6 @@
 /*
  * vec2s: a 2-component vector of an int16. The operations are
- * vec2_template.h's; docs/math/README.md says how they are made.
+ * vec2_template.h's; docs/math/Linear.md says how they are made.
  */
 #pragma once
 

@@ -5,7 +5,7 @@ root test_options_band_frame_cost test
 root test_menu_band_frame_cost test
 indirect gfx_band_run : paint_menu_band paint_options_band
 indirect ui_draw_icon : measure_text_width measure_text_height
-indirect text_in : measure_text_width
+indirect text_in_clip : measure_text_width
 root test_the_two_core_frame_matches_one_full_draw test
 root test_a_triangle_cut_by_the_near_plane_draws_the_whole_quad_left_in_front test
 root test_a_triangle_over_any_side_of_the_screen_is_drawn test
@@ -27,7 +27,7 @@ indirect send_overlay_bordered_rows_clean : send_fb_rows send_picture_rows
 indirect ui_end_over : ui_ridge_paint
 indirect icon_walk_blocks : ui_draw_icon_emit ui_transform_icon_emit
 indirect ui_transform_icon_emit : ui.c:icon_fill_emit
-indirect tune.c:change tune_registry_handle_line : suite_r3d_lit.c:cull_reply
+indirect tune_registry_handle_line : suite_r3d_lit.c:cull_reply
 indirect scene_skin_range : r3d_skin_clusters_lit r3d_skin_clusters_renormalised r3d_skin_clusters_table
 
 indirect ui_draw_icon : measure_text_width measure_text_height

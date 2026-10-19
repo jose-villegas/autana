@@ -5,7 +5,6 @@
 #include <string.h>
 
 #include "ui/ui.h"
-#include "ui/ui_mu.h"
 
 #include "apps/sand/ui/sand_icons.h"
 #include "math/scalar/mathi.h"
@@ -38,8 +37,6 @@ static const sand_colour_mode_t TILE_COLOURS[OPTIONS_SCREEN_TILE_COUNT] = {
 
 static const char* const TILE_LABELS[OPTIONS_SCREEN_TILE_COUNT] = {"16", "256", "FULL"};
 
-static const char* const TILE_IDS[OPTIONS_SCREEN_TILE_COUNT] = {"tile 16", "tile 256", "tile full"};
-
 sand_colour_mode_t
 options_screen_tile_colour(int tile) {
     return TILE_COLOURS[tile];
@@ -71,25 +68,25 @@ options_screen_quality_from_slider(int slider, int quality_count) {
 
 static int
 layout_quality(int x, int w, int y, options_screen_layout_t* out) {
-    out->quality_panel = mu_rect(x, y, w, QUALITY_PANEL_H);
+    out->quality_panel = (recti_t){x, y, w, QUALITY_PANEL_H};
     const int inner_x = x + PANEL_PAD;
     const int inner_w = w - 2 * PANEL_PAD;
     const int half = inner_w / 2;
-    out->quality_caption = mu_rect(inner_x, y + PANEL_PAD, half, CAPTION_H);
-    out->quality_value = mu_rect(inner_x + half, y + PANEL_PAD, inner_w - half, CAPTION_H);
-    out->quality_slider = mu_rect(inner_x, y + QUALITY_PANEL_H - PANEL_PAD - SLIDER_H, inner_w, SLIDER_H);
+    out->quality_caption = (recti_t){inner_x, y + PANEL_PAD, half, CAPTION_H};
+    out->quality_value = (recti_t){inner_x + half, y + PANEL_PAD, inner_w - half, CAPTION_H};
+    out->quality_slider = (recti_t){inner_x, y + QUALITY_PANEL_H - PANEL_PAD - SLIDER_H, inner_w, SLIDER_H};
     return y + QUALITY_PANEL_H + SECTION_GAP;
 }
 
 static int
 layout_tiles(int x, int w, int y, options_screen_layout_t* out) {
-    out->color_caption = mu_rect(x, y, w, CAPTION_H);
+    out->color_caption = (recti_t){x, y, w, CAPTION_H};
     y += CAPTION_H + CAPTION_GAP;
     const int n = OPTIONS_SCREEN_TILE_COUNT;
     const int tile_w = (w - (n - 1) * TILE_GAP) / n;
     const int start_x = x + (w - (n * tile_w + (n - 1) * TILE_GAP)) / 2;
     for (int i = 0; i < n; i++) {
-        out->tiles[i] = mu_rect(start_x + i * (tile_w + TILE_GAP), y, tile_w, TILE_H);
+        out->tiles[i] = (recti_t){start_x + i * (tile_w + TILE_GAP), y, tile_w, TILE_H};
     }
     return y + TILE_H + SECTION_GAP;
 }
@@ -102,64 +99,55 @@ options_screen_layout(int screen_w, int screen_h, options_screen_layout_t* out) 
     /* The header is the one row a short canvas can spare: every other row is
      * a control, and none may shrink below UI_TAP_MIN. */
     const int header_h = screen_h >= HEADER_H + BODY_H ? HEADER_H : 0;
-    out->header = mu_rect(0, 0, screen_w, header_h);
+    out->header = (recti_t){0, 0, screen_w, header_h};
     int y = layout_quality(x, w, header_h + SECTION_GAP, out);
     y = layout_tiles(x, w, y, out);
-    out->dither_caption = mu_rect(x, y, w, CAPTION_H);
-    out->dither = mu_rect(x, y + CAPTION_H + CAPTION_GAP, w, DROPDOWN_H);
+    out->dither_caption = (recti_t){x, y, w, CAPTION_H};
+    out->dither = (recti_t){x, y + CAPTION_H + CAPTION_GAP, w, DROPDOWN_H};
 
     const int button_w = (w - FOOTER_GAP) / 2;
     const int footer_y = screen_h - BOTTOM_MARGIN - FOOTER_H;
-    out->apply = mu_rect(x, footer_y, button_w, FOOTER_H);
-    out->cancel = mu_rect(x + w - button_w, footer_y, button_w, FOOTER_H);
+    out->apply = (recti_t){x, footer_y, button_w, FOOTER_H};
+    out->cancel = (recti_t){x + w - button_w, footer_y, button_w, FOOTER_H};
 }
 
 static void
-draw_quality(mu_Context* ctx, const options_screen_layout_t* lay, const sand_menu_t* menu,
-             const options_screen_labels_t* labels, sand_options_hits_t* hits) {
-    const ui_mu_theme_t* theme = &sand_ui_theme;
-    ui_mu_panel(ctx, lay->quality_panel, theme);
-    ui_text_in(ctx, lay->quality_caption, OPTIONS_SCREEN_QUALITY, theme->caption, theme->text_scale, UI_ALIGN_LEFT);
-    ui_text_in(ctx, lay->quality_value, labels->quality_names[menu->draft.quality], theme->text, theme->text_scale,
-               UI_ALIGN_RIGHT);
+draw_quality(const options_screen_layout_t* lay, const sand_menu_t* menu, const options_screen_labels_t* labels,
+             sand_options_hits_t* hits) {
+    ui_panel(lay->quality_panel);
+    ui_caption(lay->quality_caption, OPTIONS_SCREEN_QUALITY);
+    ui_text_right(lay->quality_value, labels->quality_names[menu->draft.quality]);
 
     const int count = labels->quality_count;
     int slider = options_screen_slider_from_quality(menu->draft.quality, count);
-    if (ui_theme_slider_int(ctx, lay->quality_slider, &slider, 0, count - 1, 1, theme)) {
+    if (ui_slider(lay->quality_slider, OPTIONS_SCREEN_QUALITY, &slider, 0, count - 1)) {
         hits->quality = options_screen_quality_from_slider(slider, count);
     }
 }
 
 static void
-draw_mode_swatch(mu_Context* ctx, mu_Rect tile, const sand_mode_swatch_t* swatch) {
-    const mu_Rect icon = ui_tile_icon_rect(tile, &sand_ui_theme);
-    const mu_Rect strip = {tile.x + SWATCH_INSET, icon.y, tile.w - 2 * SWATCH_INSET, icon.h};
-    ui_swatch_grid(ctx, strip, swatch->rgb, swatch->cols, swatch->rows);
+draw_mode_swatch(recti_t tile, const sand_mode_swatch_t* swatch) {
+    const recti_t icon = ui_tile_icon_rect(tile);
+    const recti_t strip = {tile.x + SWATCH_INSET, icon.y, tile.w - 2 * SWATCH_INSET, icon.h};
+    ui_swatches(strip, swatch->rgb, swatch->cols, swatch->rows);
 }
 
 static void
-draw_colour(mu_Context* ctx, const options_screen_layout_t* lay, const sand_menu_t* menu,
-            const options_screen_labels_t* labels, sand_options_hits_t* hits) {
-    const ui_mu_theme_t* theme = &sand_ui_theme;
-    ui_text_in(ctx, lay->color_caption, OPTIONS_SCREEN_COLOR_MODE, theme->caption, theme->text_scale, UI_ALIGN_CENTRE);
+draw_colour(const options_screen_layout_t* lay, const sand_menu_t* menu, const options_screen_labels_t* labels,
+            sand_options_hits_t* hits) {
+    ui_caption_centre(lay->color_caption, OPTIONS_SCREEN_COLOR_MODE);
     for (int i = 0; i < OPTIONS_SCREEN_TILE_COUNT; i++) {
-        const ui_widget_button_t tile = {
-            .label = TILE_LABELS[i],
-            .enabled = true,
-            .selected = menu->draft.color == TILE_COLOURS[i],
-        };
-        if (ui_tile_button(ctx, TILE_IDS[i], lay->tiles[i], &tile, theme)) {
+        if (ui_tile(lay->tiles[i], TILE_LABELS[i], menu->draft.color == TILE_COLOURS[i])) {
             hits->color = (int)TILE_COLOURS[i];
         }
-        draw_mode_swatch(ctx, lay->tiles[i], &labels->mode_swatches[TILE_COLOURS[i]]);
+        draw_mode_swatch(lay->tiles[i], &labels->mode_swatches[TILE_COLOURS[i]]);
     }
 }
 
 static void
-draw_dither(mu_Context* ctx, const options_screen_layout_t* lay, const sand_menu_t* menu,
-            const options_screen_labels_t* labels, sand_options_hits_t* hits) {
-    const ui_mu_theme_t* theme = &sand_ui_theme;
-    ui_text_in(ctx, lay->dither_caption, OPTIONS_SCREEN_DITHER, theme->caption, theme->text_scale, UI_ALIGN_CENTRE);
+draw_dither(const options_screen_layout_t* lay, const sand_menu_t* menu, const options_screen_labels_t* labels,
+            sand_options_hits_t* hits) {
+    ui_caption_centre(lay->dither_caption, OPTIONS_SCREEN_DITHER);
 
     assert(labels->dither_count <= GFX_DITHER_MODE_COUNT);
     const draw_image_t* icons[GFX_DITHER_MODE_COUNT];
@@ -167,51 +155,43 @@ draw_dither(mu_Context* ctx, const options_screen_layout_t* lay, const sand_menu
     for (int i = 0; i < count; i++) {
         icons[i] = sand_dither_icon((gfx_dither_mode_t)i);
     }
-    const int picked =
-        ui_mu_dropdown(ctx, "dither", lay->dither, labels->dither_names, icons, count, menu->draft.dither, theme);
-    if (picked >= 0) {
-        hits->dither = picked;
+    int dither = menu->draft.dither;
+    if (ui_dropdown_icons(lay->dither, OPTIONS_SCREEN_DITHER, &dither, labels->dither_names, icons, count)) {
+        hits->dither = dither;
     }
 }
 
 static void
-draw_footer(mu_Context* ctx, const options_screen_layout_t* lay, const sand_menu_t* menu, sand_options_t committed,
+draw_footer(const options_screen_layout_t* lay, const sand_menu_t* menu, sand_options_t committed,
             sand_options_hits_t* hits) {
-    const ui_mu_theme_t* theme = &sand_ui_theme;
     const int pending = sand_menu_pending_changes(menu, committed);
     char apply_label[24];
     options_screen_apply_label(pending, apply_label, (int)sizeof apply_label);
 
-    const ui_widget_button_t apply = {.label = apply_label, .enabled = pending > 0};
-    hits->apply = ui_icon_button(ctx, "options apply", lay->apply, &apply, theme);
-
-    const ui_widget_button_t cancel = {.label = OPTIONS_SCREEN_CANCEL, .enabled = true};
-    hits->cancel = ui_icon_button(ctx, "options cancel", lay->cancel, &cancel, theme);
+    ui_disabled_begin(pending == 0);
+    hits->apply = ui_button(lay->apply, apply_label);
+    ui_disabled_end();
+    hits->cancel = ui_button(lay->cancel, OPTIONS_SCREEN_CANCEL);
 }
 
 sand_options_hits_t
-options_screen_draw(mu_Context* ctx, const sand_menu_t* menu, sand_options_t committed,
-                    const options_screen_labels_t* labels) {
+options_screen_draw(const sand_menu_t* menu, sand_options_t committed, const options_screen_labels_t* labels) {
     sand_options_hits_t hits = SAND_OPTIONS_NO_HITS;
     ui_set_text_style(UI_TEXT_PLAIN);
 
     options_screen_layout_t lay;
     options_screen_layout(ui_width(), ui_height(), &lay);
 
-    if (!ui_begin_screen(ctx, "Sand Options", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
-        return hits;
-    }
-
+    ui_screen();
+    ui_theme(&sand_ui_theme);
     if (lay.header.h > 0) {
-        ui_header_bar(ctx, lay.header, OPTIONS_SCREEN_TITLE, sand_ui_theme.text_scale, &sand_ui_theme);
+        ui_header(lay.header, OPTIONS_SCREEN_TITLE);
     }
-    draw_quality(ctx, &lay, menu, labels, &hits);
-    draw_colour(ctx, &lay, menu, labels, &hits);
-    draw_footer(ctx, &lay, menu, committed, &hits);
+    draw_quality(&lay, menu, labels, &hits);
+    draw_colour(&lay, menu, labels, &hits);
+    draw_footer(&lay, menu, committed, &hits);
     if (sand_menu_dither_applies(menu->draft.color)) {
-        draw_dither(ctx, &lay, menu, labels, &hits);
+        draw_dither(&lay, menu, labels, &hits);
     }
-
-    mu_end_window(ctx);
     return hits;
 }

@@ -1,5 +1,5 @@
 /*
- * plane_template: oriented planes for one number type; see docs/math/README.md
+ * plane_template: oriented planes for one number type; see docs/math/Conventions.md#templates
  * for macro arguments. Inside means dot(normal, point) + d >= 0.
  * Frustum extraction follows Gribb and Hartmann 2001:
  * z supplies the w row, and the screen rectangle sets the sides. The map is affine.

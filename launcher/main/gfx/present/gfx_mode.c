@@ -28,6 +28,7 @@ unsigned gfx_fb_guard_trips;
 #endif
 
 gfx_color_t* fb;
+gfx_color_t* present_fb;
 static gfx_color_t* half_image;
 static bool frame_expanded;
 static gfx_band_overlay_fn frame_overlay;
@@ -172,6 +173,7 @@ bool
 alloc_full_framebuffer(void) {
     const size_t bytes = GFX_FRAMEBUFFER_BYTES;
     fb = memory_alloc(bytes, MEMORY_PSRAM);
+    present_fb = fb;
 #ifdef ESP_PLATFORM
     if (fb == NULL) {
         ESP_LOGE(TAG, "Could not allocate %u byte framebuffer (largest free PSRAM block is %u bytes)", (unsigned)bytes,
@@ -185,6 +187,7 @@ static void
 free_full_framebuffer(void) {
     memory_free(fb);
     fb = NULL;
+    present_fb = NULL;
 }
 
 #ifdef ESP_PLATFORM
@@ -370,7 +373,7 @@ gfx_set_frame_overlay(gfx_band_overlay_fn overlay) {
 void
 clear_expanded_frame(bool free_picture) {
     frame_expanded = false;
-    gfx_fb_guard_set_available(current_mode.layout == GFX_LAYOUT_FULL_FB && fb != NULL);
+    gfx_fb_guard_set_available(gfx_mode_has_framebuffer(&current_mode) && fb != NULL);
     if (free_picture) {
         memory_free(half_image);
         half_image = NULL;
@@ -408,6 +411,9 @@ gfx_fb_guard_trips_for_test(void) {
 
 void
 gfx_reset_for_test(void) {
+    if (current_mode.layout == GFX_LAYOUT_DOUBLE_FB) {
+        gfx_mode_exit();
+    }
     clear_expanded_frame(true);
     frame_overlay = NULL;
     band_render_active = false;
@@ -445,7 +451,14 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
     clear_expanded_frame(true);
     const gfx_mode_t granted = gfx_mode_resolve(request, GFX_WIDTH, GFX_HEIGHT, GFX_BAND_HEIGHT);
 
-    if (granted.layout == GFX_LAYOUT_INDEXED) {
+    if (granted.layout == GFX_LAYOUT_DOUBLE_FB) {
+        gfx_color_t* back = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
+        if (back == NULL) {
+            return &current_mode;
+        }
+        fb = back;
+        dirty_mark_all();
+    } else if (granted.layout == GFX_LAYOUT_INDEXED) {
         if (granted.index_grid_w <= 0 || granted.index_grid_h <= 0 || granted.cell_size <= 0
             || !alloc_indexed_image(granted.index_grid_w, granted.index_grid_h)) {
             free_indexed_image();
@@ -478,7 +491,15 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
 
 void
 gfx_mode_exit(void) {
+    gfx_present_drain();
     GFX_PRESENT_GUARD();
+    if (current_mode.layout == GFX_LAYOUT_DOUBLE_FB) {
+        memory_free(fb);
+        fb = present_fb;
+        reset_mode_to_full_fb();
+        gfx_clip_restore(GFX_SCREEN_RECT);
+        gfx_mark_all_dirty();
+    }
     clear_expanded_frame(true);
     if (current_mode.layout == GFX_LAYOUT_INDEXED) {
         free_indexed_image();
@@ -734,6 +755,7 @@ gfx_indexed_image(void) {
 
 gfx_readback_t
 gfx_readback_begin(void) {
+    gfx_present_drain();
     GFX_PRESENT_GUARD();
     if (!band_is_transient()) {
         return GFX_READBACK_READY;
@@ -753,8 +775,8 @@ gfx_read_panel_row(int y, gfx_color_t out_row[GFX_WIDTH]) {
     GFX_PRESENT_GUARD();
     if (frame_expanded) {
         expand_rows(y, y + 1, out_row);
-    } else if (current_mode.layout == GFX_LAYOUT_FULL_FB) {
-        memcpy(out_row, fb + (size_t)y * GFX_WIDTH, GFX_WIDTH * sizeof(gfx_color_t));
+    } else if (gfx_mode_has_framebuffer(&current_mode)) {
+        memcpy(out_row, present_fb + (size_t)y * GFX_WIDTH, GFX_WIDTH * sizeof(gfx_color_t));
     } else if (current_mode.layout == GFX_LAYOUT_INDEXED) {
         const gfx_indexed_frame_t frame = indexed_frame();
         gfx_indexed_expand_panel_row(&frame, y, out_row, GFX_WIDTH);

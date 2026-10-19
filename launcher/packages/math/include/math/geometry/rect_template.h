@@ -1,6 +1,6 @@
 /*
  * rect_template: the half-open rectangle for one number type; see
- * docs/math/README.md for the macro arguments. Coordinates and extents use
+ * docs/math/Conventions.md#templates for the macro arguments. Coordinates and extents use
  * plain arithmetic; callers keep intermediate sums and differences in range.
  */
 #pragma once

@@ -19,9 +19,8 @@
 #include "apps/sand/ui/brush_screen.h"
 #include "draw/draw_font_roles.h"
 #include "input/input.h"
-#include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
-#include "ui/ui_mu.h"
+#include "ui_probe.h"
 
 #define PORTRAIT_W  368
 #define PORTRAIT_H  448
@@ -36,17 +35,17 @@ fixture(int screen_w, int screen_h) {
 }
 
 static bool
-inside_canvas(mu_Rect r, int screen_w, int screen_h) {
+inside_canvas(recti_t r, int screen_w, int screen_h) {
     return r.x >= 0 && r.y >= 0 && r.w > 0 && r.h > 0 && r.x + r.w <= screen_w && r.y + r.h <= screen_h;
 }
 
 static bool
-rects_overlap(mu_Rect a, mu_Rect b) {
+rects_overlap(recti_t a, recti_t b) {
     return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
 
 static int
-min_dim(mu_Rect r) {
+min_dim(recti_t r) {
     return (r.w < r.h) ? r.w : r.h;
 }
 
@@ -218,7 +217,7 @@ assert_captions_fit(int screen_w, int screen_h) {
 
     struct {
         const char* str;
-        mu_Rect r;
+        recti_t r;
     } fixed[] = {
         {BRUSH_SCREEN_MATERIAL_CAPTION, l.material_caption},
         {BRUSH_SCREEN_MODE_CAPTION, l.mode_caption},
@@ -276,25 +275,30 @@ ui_fixture(void) {
 static void
 brush_frame(sand_ui_t* ui, const input_t* in) {
     ui_begin(in);
-    brush_screen_draw(ui_context(), ui);
-    mu_end(ui_context());
+    brush_screen_draw(ui);
+    ui_end_commands();
 }
 
+#define TOUCH_HOLD_FRAMES 4
+
+/* A tap on a segment, asserting it fires on the frame the touch is
+ * released, never on the press or while it is held. */
 static void
-tap_segment(sand_ui_t* ui, mu_Rect r) {
+tap_segment(sand_ui_t* ui, recti_t r) {
     const int x = r.x + r.w / 2;
     const int y = r.y + r.h / 2;
     const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
     const input_t hold = {.down = true, .x = x, .y = y};
     const input_t release = {.released = true, .x = x, .y = y};
-    const input_t idle = {0};
+    const sand_mode_t before = ui->mode;
 
     brush_frame(ui, &press);
-    for (int i = 0; i < 4; i++) {
+    TEST_ASSERT_EQUAL_INT_MESSAGE(before, ui->mode, "fired on the press");
+    for (int i = 0; i < TOUCH_HOLD_FRAMES; i++) {
         brush_frame(ui, &hold);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(before, ui->mode, "fired while held");
     }
     brush_frame(ui, &release);
-    brush_frame(ui, &idle);
 }
 
 static void
@@ -310,7 +314,7 @@ test_a_tap_on_a_mode_segment_changes_sand_ui_mode(void) {
     const brush_screen_layout_t lay = fixture(PORTRAIT_W, PORTRAIT_H);
     tap_segment(&ui, lay.segments[BRUSH_SCREEN_SEG_ERASE]);
     TEST_ASSERT_EQUAL_INT_MESSAGE(SAND_MODE_ERASE, ui.mode,
-                                  "a tap on the ERASE segment must reach sand_ui_mode_clicked() and switch the mode");
+                                  "a tap on the ERASE segment must reach sand_ui_mode_clicked() on its release");
 }
 
 void

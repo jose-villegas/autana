@@ -110,14 +110,14 @@ class MotionFitTest(unittest.TestCase):
         source = (Path(__file__).parents[1] / "app_input_lab.c").read_text()
         source = re.sub(r'"\s*"', "", source)
         for prefix, regex, values, expected in (
-            ("motion", motion_fit.MOTION, tuple(range(1, 21)), ("1", "2", "3", "4", "5", "10", "11", "12", "13", "14")),
+            ("motion", motion_fit.MOTION, tuple(range(1, 24)), ("1", "2", "3", "4", "5", "10", "11", "12", "13", "14")),
             ("pose", motion_fit.POSE, ("face_up", 1, -2, 3, -4, 5, -6, 7), ("face_up", "1 -2 3 -4 5 -6 7")),
             ("calib", motion_fit.CALIB, tuple(range(1, 10)), tuple(map(str, range(1, 10)))),
             ("GRAV", re.compile(r"GRAV (\w+) down (-?\d+\.\d{6}) (-?\d+\.\d{6}) (-?\d+\.\d{6}) bias_dps (-?\d+\.\d{6}) (-?\d+\.\d{6}) (-?\d+\.\d{6})"),
              ("face_up", 6, 0., 6, 0., 6, -1., 6, 0., 6, 0., 6, 0.),
              ("face_up", "0.000000", "0.000000", "-1.000000", "0.000000", "0.000000", "0.000000")),
             ("turn", motion_fit.TURN,
-             (0, 6, 0., 6, 1., 6, 0., 6, 1., 6, 0., 6, 0.),
+             (0, 6, 0., 6, 1., 6, 0., 6, 1., 6, 0., 6, 0., 90.0),
              ("0", "0.000000", "1.000000", "0.000000", "1.000000", "0.000000", "0.000000")),
         ):
             with self.subTest(prefix=prefix):
@@ -125,7 +125,8 @@ class MotionFitTest(unittest.TestCase):
                 if prefix == "GRAV":
                     formats = [fmt for fmt in formats if " bias_dps " in fmt]
                 self.assertEqual(1, len(formats))
-                line = formats[0] % values
+                # C length modifiers (%lld) have no Python equivalent; the width is irrelevant here.
+                line = re.sub(r"%l+d", "%d", formats[0]) % values
                 match = regex.fullmatch(line)
                 self.assertIsNotNone(match, line)
                 self.assertEqual(expected, match.groups())

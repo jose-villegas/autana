@@ -2,7 +2,6 @@
 
 #include "draw/draw_font_roles.h"
 #include "ui/ui.h"
-#include "ui/ui_mu.h"
 
 #include "apps/sand/ui/sand_icons.h"
 #include "math/scalar/mathi.h"
@@ -28,11 +27,6 @@ static const char* const LABELS[SAND_TITLE_BUTTON_COUNT] = {
 static const sand_icon_id_t ICONS[SAND_TITLE_BUTTON_COUNT] = {
     [SAND_TITLE_START] = SAND_ICON_START, [SAND_TITLE_LOAD] = SAND_ICON_LOAD, [SAND_TITLE_OPTIONS] = SAND_ICON_OPTIONS,
     [SAND_TITLE_GUIDE] = SAND_ICON_GUIDE, [SAND_TITLE_EXIT] = SAND_ICON_EXIT,
-};
-
-static const char* const IDS[SAND_TITLE_BUTTON_COUNT] = {
-    [SAND_TITLE_START] = "title start", [SAND_TITLE_LOAD] = "title load", [SAND_TITLE_OPTIONS] = "title options",
-    [SAND_TITLE_GUIDE] = "title guide", [SAND_TITLE_EXIT] = "title exit",
 };
 
 const char*
@@ -62,15 +56,15 @@ layout_footer(int screen_w, int screen_h, title_screen_layout_t* out) {
     const int button_w = (w - 3 * FOOTER_PAD) / 2;
     const int y = out->footer.y + FOOTER_PAD;
     const int h = FOOTER_H - 2 * FOOTER_PAD;
-    out->buttons[SAND_TITLE_GUIDE] = mu_rect(out->footer.x + FOOTER_PAD, y, button_w, h);
-    out->buttons[SAND_TITLE_EXIT] = mu_rect(out->footer.x + out->footer.w - FOOTER_PAD - button_w, y, button_w, h);
+    out->buttons[SAND_TITLE_GUIDE] = (recti_t){out->footer.x + FOOTER_PAD, y, button_w, h};
+    out->buttons[SAND_TITLE_EXIT] = (recti_t){out->footer.x + out->footer.w - FOOTER_PAD - button_w, y, button_w, h};
 }
 
 void
 title_screen_layout(int screen_w, int screen_h, title_screen_layout_t* out) {
-    out->header = mu_rect(0, 0, screen_w, HEADER_H);
+    out->header = (recti_t){0, 0, screen_w, HEADER_H};
     out->title_scale = largest_title_scale(screen_w - 2 * UI_MARGIN);
-    out->subtitle = mu_rect(UI_MARGIN, HEADER_H + SUBTITLE_GAP, screen_w - 2 * UI_MARGIN, SUBTITLE_H);
+    out->subtitle = (recti_t){UI_MARGIN, HEADER_H + SUBTITLE_GAP, screen_w - 2 * UI_MARGIN, SUBTITLE_H};
     layout_footer(screen_w, screen_h, out);
 
     const int stack_h = MAIN_COUNT * MAIN_H + (MAIN_COUNT - 1) * MAIN_GAP;
@@ -83,33 +77,29 @@ title_screen_layout(int screen_w, int screen_h, title_screen_layout_t* out) {
 }
 
 sand_title_button_t
-title_screen_draw(mu_Context* ctx) {
+title_screen_draw(void) {
     ui_set_text_style(UI_TEXT_PLAIN);
 
     title_screen_layout_t lay;
     title_screen_layout(ui_width(), ui_height(), &lay);
 
-    if (!ui_begin_screen(ctx, "Sand Title", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
-        return SAND_TITLE_NONE;
-    }
-
-    const ui_mu_theme_t* theme = &sand_ui_theme;
-    ui_header_bar(ctx, lay.header, TITLE_SCREEN_TITLE, lay.title_scale, theme);
-    ui_text_in(ctx, lay.subtitle, TITLE_SCREEN_SUBTITLE, theme->accent, theme->text_scale, UI_ALIGN_CENTRE);
-    ui_mu_panel(ctx, lay.footer, theme);
+    ui_screen();
+    ui_theme(&sand_ui_theme);
+    ui_scale_begin(lay.title_scale);
+    ui_header(lay.header, TITLE_SCREEN_TITLE);
+    ui_scale_end();
+    ui_color_begin(UI_COLOR_TEXT, SAND_THEME_SELECTED_COLOR);
+    ui_text_centre(lay.subtitle, TITLE_SCREEN_SUBTITLE);
+    ui_color_end();
+    ui_panel(lay.footer);
 
     sand_title_button_t hit = SAND_TITLE_NONE;
     for (int i = 0; i < SAND_TITLE_BUTTON_COUNT; i++) {
-        const ui_widget_button_t button = {
-            .icon = sand_icon(ICONS[i]),
-            .label = LABELS[i],
-            .enabled = title_screen_button_enabled((sand_title_button_t)i),
-        };
-        if (ui_icon_button(ctx, IDS[i], lay.buttons[i], &button, theme)) {
+        ui_disabled_begin(!title_screen_button_enabled((sand_title_button_t)i));
+        if (ui_button_icon(lay.buttons[i], LABELS[i], sand_icon(ICONS[i]))) {
             hit = (sand_title_button_t)i;
         }
+        ui_disabled_end();
     }
-
-    mu_end_window(ctx);
     return hit;
 }
