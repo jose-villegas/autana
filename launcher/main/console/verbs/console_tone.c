@@ -1,13 +1,18 @@
-/* Development-only acoustic tone check on the console task. */
+/* Development-only tone check on the console task. */
+#include <math.h>
 #include <stdio.h>
 
+#include "audio/audio_codec.h"
 #include "audio/audio_loopback.h"
 #include "audio/audio_out.h"
+#include "audio/audio_out_device.h"
 #include "console/console_verbs.h"
 #include "console/verbs/console_tone_parse.h"
 #include "core/memory.h"
 #include "core/timing.h"
 #include "sound/sound_engine.h"
+
+#define TONE_MEASURED_TEXT_BYTES 32u
 
 static void
 stop_tone(sound_voice_t* voice) {
@@ -33,7 +38,7 @@ static void
 console_verb_tone(const char* args, console_reply_fn reply) {
     console_tone_args_t parsed;
     if (!console_tone_parse(args, &parsed)) {
-        reply("TONE usage: tone <hz> <ms> [volume]");
+        reply("TONE usage: tone <hz> <ms> [volume] [internal]");
         return;
     }
     const size_t dma_before = memory_free_bytes(MEMORY_DMA);
@@ -45,10 +50,12 @@ console_verb_tone(const char* args, console_reply_fn reply) {
     const size_t dma_open = dma_before - memory_free_bytes(MEMORY_DMA);
     float silence_db = 0;
     float tone_db = 0;
+    float measured_hz = parsed.hz;
     sound_voice_t voice = SOUND_VOICE_NULL;
-    const bool ok = audio_loopback_measure(parsed.hz, parsed.ms, &silence_db)
+    const bool ok = (!parsed.internal || (audio_out_amp_hold(true) && audio_codec_dac_feedback(true)))
+                    && audio_loopback_measure(parsed.hz, parsed.ms, &silence_db, NULL)
                     && start_tone(&voice, parsed.hz, parsed.volume_pct)
-                    && audio_loopback_measure(parsed.hz, parsed.ms, &tone_db);
+                    && audio_loopback_measure(parsed.hz, parsed.ms, &tone_db, &measured_hz);
     stop_tone(&voice);
     const bool heard = tone_db - silence_db >= AUDIO_LOOPBACK_HEARD_MARGIN_DB;
     const bool closed = sound_capture_close();
@@ -56,8 +63,15 @@ console_verb_tone(const char* args, console_reply_fn reply) {
         reply("TONE error: loopback failed");
         return;
     }
-    (void)printf("TONE %s %u Hz: %.1f dB (silence %.1f dB), open %zu B DMA\n", heard ? "heard" : "not heard",
-                 (unsigned)parsed.hz, (double)tone_db, (double)silence_db, dma_open);
+    char measured[TONE_MEASURED_TEXT_BYTES];
+    if (isfinite(measured_hz)) {
+        (void)snprintf(measured, sizeof measured, "%.2f Hz", (double)measured_hz);
+    } else {
+        (void)snprintf(measured, sizeof measured, "n/a");
+    }
+    (void)printf("TONE %s %u Hz: %.1f dB (silence %.1f dB), path %s, measured %s, open %zu B DMA\n",
+                 heard ? "heard" : "not heard", (unsigned)parsed.hz, (double)tone_db, (double)silence_db,
+                 parsed.internal ? "internal" : "acoustic", measured, dma_open);
     (void)fflush(stdout);
 }
 CONSOLE_VERB(tone, 0, console_verb_tone)

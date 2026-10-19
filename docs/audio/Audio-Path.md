@@ -47,25 +47,50 @@ startup keeps short tones at the same level as long tones.
 
 ## Development check
 
-Run `autana tone <hz> <ms> [volume]`, or the console verb
-`tone <hz> <ms> [volume]`. `console_verb_tone()` requests capture open,
-measures its DMA-capable heap cost, runs the check, and requests capture close
+Run `autana tone <hz> <ms> [volume] [--internal] [--json]`, or the console verb
+`tone <hz> <ms> [volume] [internal]`.
+
+`console_verb_tone()` opens capture, measures its DMA-capable heap cost, runs
+the check, and closes capture
 (`launcher/main/console/verbs/console_tone.c`).
 
 The console uses `audio_loopback_measure()` for a baseline, starts a SYSTEM-bus
 tone through the mixer, measures again, then stops the voice. It waits for
 amplifier warm-up before measuring. A Goertzel filter measures the requested frequency.<sup>[[72]](../Citations.md#72)</sup>
 
+`--internal` routes DAC data to both ADCDAT slots inside the ES8311. It holds
+the speaker amplifier off for the whole check. Capture close restores the exact
+register read-back and releases the hold, including when a check fails.
+
+```mermaid
+flowchart LR
+    Tx["I2S TX"] --> Dac["ES8311 DAC"] --> Dat["ES8311 ADCDAT<br/>both slots"] --> Rx["I2S RX"]
+    Dac -.-> Amp["amplifier held off"]
+```
+
+`goertzel_phase()` references each window's first sample. Consecutive windows
+of `AUDIO_LOOPBACK_WINDOW_SAMPLES` give phase advances; the wrapped difference
+from the nominal advance estimates the frequency offset.<sup>[[82]](../Citations.md#82)</sup>
+
+The unambiguous offset range is ±sample rate / (2 × window samples). The reply
+reports `path` and `measured_hz`; JSON adds `hz_error` in Hz, measured minus
+requested. Phase estimates require a stable tone near the requested frequency.
+
+Below `AUDIO_LOOPBACK_MIN_FREQUENCY_SAMPLES`, the reply says `measured n/a`
+and both JSON frequency fields are null.
+
 The detector discards `AUDIO_LOOPBACK_SETTLE_MS` of capture before measuring.
 Heard means tone minus silence is at least `AUDIO_LOOPBACK_HEARD_MARGIN_DB`
 (`launcher/main/audio/audio_loopback.h`). Playback and capture buffers have
 block size, independent of tone duration.
 
-A heard result checks I2S in both directions, codec DAC and ADC, amplifier,
-speaker and microphone end to end. `open_dma_bytes` reports the DMA-capable
-heap consumed by capture while persistent TX is open. Capture calls block on
-the console task, away from the frame loop. Other voices remain audible during
-the check, so stop them when measuring the speaker alone.
+An acoustic heard result checks I2S in both directions, codec DAC and ADC,
+amplifier, speaker and microphone. Internal feedback checks digital playback
+and capture inside the codec.
+
+`open_dma_bytes` reports the DMA-capable heap consumed by capture while TX
+is open. Capture blocks the console task, away from the frame loop. Stop
+other voices when measuring the speaker alone.
 
 ## Captured measurements
 

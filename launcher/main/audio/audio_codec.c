@@ -10,7 +10,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "audio/audio_codec_feedback.h"
 #include "audio/audio_out.h"
+#include "audio/audio_out_device.h"
 #include "board/board.h"
 #include "profile/frame_watch.h"
 
@@ -30,6 +32,29 @@ static const audio_codec_if_t* codec;
 static esp_codec_dev_handle_t input_device;
 static unsigned references;
 static const char* failed_step;
+static audio_codec_feedback_t feedback;
+
+static int
+feedback_get(void* context, int reg, int* value) {
+    (void)context;
+    return codec->get_reg(codec, reg, value);
+}
+
+static int
+feedback_set(void* context, int reg, int value) {
+    (void)context;
+    return codec->set_reg(codec, reg, value);
+}
+
+bool
+audio_codec_dac_feedback(bool on) {
+    if (!codec || (on && !input_device)) {
+        return false;
+    }
+    return audio_codec_check("DAC feedback", audio_codec_feedback_set(&feedback, NULL, feedback_get, feedback_set, on)
+                                                 ? ESP_CODEC_DEV_OK
+                                                 : ESP_CODEC_DEV_DRV_ERR);
+}
 
 const char*
 audio_codec_failure(void) {
@@ -250,6 +275,8 @@ audio_codec_device_close(esp_codec_dev_handle_t device) {
     }
     const bool capture = device == input_device;
     if (capture) {
+        (void)audio_codec_dac_feedback(false);
+        (void)audio_out_amp_hold(false);
         /* The S3 codec adapter defers RX shutdown while TX runs. This dev-capture gap is owned by the mixer. */
         (void)audio_codec_check("pause TX for capture close",
                                 output_data->enable(output_data, ESP_CODEC_DEV_TYPE_OUT, false));

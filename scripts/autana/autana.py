@@ -450,16 +450,20 @@ TONE_MS_PER_SECOND = 1000
 
 
 def tone(args):
-    usage = "usage: autana tone <hz> <ms> [volume] [--json]"
+    usage = "usage: autana tone <hz> <ms> [volume] [--internal] [--json]"
     rest = list(args)
-    json_output = read_json_flag(rest[-1:] if rest and rest[-1] == "--json" else [], usage)
-    if json_output:
-        rest.pop()
+    flags = []
+    while rest and rest[-1].startswith("--"):
+        flags.append(rest.pop())
+    if len(flags) != len(set(flags)) or any(flag not in ("--json", "--internal") for flag in flags):
+        sys.exit(usage)
+    json_output = "--json" in flags
+    internal = "--internal" in flags
     if len(rest) not in (2, 3) or any(not re.fullmatch(r"[0-9]+", arg) for arg in rest):
         sys.exit(usage)
     ms = int(rest[1])
     seconds = TONE_MARGIN_SECONDS + TONE_CAPTURE_COUNT * ms / TONE_MS_PER_SECOND
-    code, replies = send("TONE " + " ".join(rest), reply="TONE", seconds=seconds)
+    code, replies = send("TONE " + " ".join(rest) + (" internal" if internal else ""), reply="TONE", seconds=seconds)
     if code != 0 or not replies:
         return code or 1
     if replies[-1].startswith(("TONE usage:", "TONE error:")):
@@ -490,12 +494,16 @@ def sound(args):
 def parse_tone(reply):
     match = re.fullmatch(
         r"TONE (heard|not heard) ([0-9]+) Hz: (-?[0-9]+\.[0-9]+) dB "
-        r"\(silence (-?[0-9]+\.[0-9]+) dB\), open ([0-9]+) B DMA", reply)
+        r"\(silence (-?[0-9]+\.[0-9]+) dB\), path (internal|acoustic), "
+        r"measured (-?[0-9]+\.[0-9]+ Hz|n/a), open ([0-9]+) B DMA", reply)
     if not match:
         raise ValueError(f"invalid TONE reply: {reply}")
-    heard, hz, tone_db, silence_db, dma = match.groups()
+    heard, hz, tone_db, silence_db, path, measured_hz, dma = match.groups()
+    measured_hz = None if measured_hz == "n/a" else float(measured_hz.removesuffix(" Hz"))
+    # hz_error is Hz: measured minus requested.
     return {"hz": int(hz), "tone_db": float(tone_db), "silence_db": float(silence_db),
-            "heard": heard == "heard", "open_dma_bytes": int(dma)}
+            "heard": heard == "heard", "open_dma_bytes": int(dma), "path": path,
+            "measured_hz": measured_hz, "hz_error": None if measured_hz is None else measured_hz - int(hz)}
 
 
 def parse_heap(reply):
@@ -1621,8 +1629,8 @@ COMMAND_GROUPS = (
             ("suite list [text] [--json]", "the suites this project registers"))),
         one("selftest", selftest, "selftest [seconds] [--verbose]",
             "build diagnostics+autorun, run every suite on the board"),
-        one("tone", tone, "tone <hz> <ms> [volume] [--json]",
-            "play a tone on the speaker and hear it on the mic; development builds"),
+        one("tone", tone, "tone <hz> <ms> [volume] [--internal] [--json]",
+            "check a tone through the mic or silent codec feedback; hz_error is measured minus requested Hz; fewer than two analysis windows gives measured n/a (JSON null); development builds"),
     )),
     ("watch", "Watch the board", (
         one("monitor", monitor, "monitor [seconds] [--follow] [--stream] [--elf PATH]",

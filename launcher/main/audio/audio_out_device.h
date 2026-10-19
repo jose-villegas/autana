@@ -11,3 +11,4 @@ bool audio_out_write(const int16_t* samples, size_t count);
 
 /* Enabling returns immediately; callers write silence throughout startup. */
 bool audio_out_amp_enable(bool enabled);
+bool audio_out_amp_hold(bool held);
