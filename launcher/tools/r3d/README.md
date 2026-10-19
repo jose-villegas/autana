@@ -292,8 +292,9 @@ samples the camera's path every
 with their normals in portrait and landscape so the fit holds the panel either
 way up at `fit.poses.size`. `fit` fits with
 `fit.optimise.steps`, `fit.optimise.batch`, `fit.optimise.laplacian`,
-`fit.optimise.normal_weight`, `fit.optimise.surface_weight` and
-`fit.optimise.surface_margin`. `fit` prunes the
+`fit.optimise.normal_weight`, `fit.optimise.surface_weight`,
+`fit.optimise.surface_margin` and `fit.optimise.seam_margin`. The seam margin
+holds nearby borders to other parts in local start edge scales. `fit` prunes the
 fitted geometry to `fit.prune.budget`
 and writes the renderer's mesh into the work folder. The fit uses deterministic
 reductions and seeded sampling; the lock pins the bytes a fit made.

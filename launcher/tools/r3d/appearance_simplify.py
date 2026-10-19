@@ -6,7 +6,7 @@ vertex, a flat one a colour per triangle.
 
     python launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.mesh \\
         --poses POSES.txt --reference DIR [--poses ... --reference ...] --out DIR [--per-shot] \\
-        [--object NAME --surface-weight W --surface-margin E] [--coverage-poses POSES.txt]
+        [--object NAME --surface-weight W --surface-margin E --seam-margin E] [--coverage-poses POSES.txt]
 
 --start is a baked smooth or flat mesh, usually the simplifier's output at the
 triangle budget. Each --poses file (tools/anim/track_host.py) pairs with
@@ -36,7 +36,7 @@ from scipy.sparse.csgraph import connected_components
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import log  # noqa: E402
-from r3d.geometry import triangle_areas  # noqa: E402
+from r3d.geometry import closest_point_on_triangles, triangle_areas  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
 from r3d.lit_mesh import finest_triangles, read_lit_mesh  # noqa: E402
 from r3d.cost_model import load as load_cost  # noqa: E402
@@ -133,12 +133,18 @@ def start_mesh(path):
                    vertex_point.reshape(-1), flat)
 
 
-def point_edges(tris, vertex_point):
-    """The unique undirected edges between welded positions."""
+def point_edges(tris, vertex_point, return_counts=False):
+    """The unique undirected edges between welded positions, optionally with triangle-use counts."""
     corners = vertex_point[tris]
     edges = np.concatenate([corners[:, [0, 1]], corners[:, [1, 2]], corners[:, [2, 0]]])
-    edges = np.sort(edges[edges[:, 0] != edges[:, 1]], axis=1)
-    return np.unique(edges, axis=0)
+    valid = edges[:, 0] != edges[:, 1]
+    edges = np.sort(edges, axis=1)
+    if return_counts:
+        uses = np.column_stack([edges, np.tile(np.arange(len(tris)), 3)])
+        edges = np.unique(uses[valid], axis=0)[:, :2]
+    else:
+        edges = edges[valid]
+    return np.unique(edges, axis=0, return_counts=return_counts)
 
 
 def start_parts(mesh) -> np.ndarray:
@@ -148,6 +154,63 @@ def start_parts(mesh) -> np.ndarray:
                        shape=(len(mesh.points), len(mesh.points)))
     _, labels = connected_components(graph, directed=False)
     return labels
+
+
+class SeamHolds(NamedTuple):
+    """Border points tied to another start part's triangle at fixed barycentrics."""
+    points: np.ndarray
+    corners: np.ndarray
+    barycentric: np.ndarray
+
+
+def seam_holds(mesh: FitMesh, tolerance: np.ndarray) -> SeamHolds:
+    """Choose nearest cross-part border contacts without dependencies between holds."""
+    from scipy.spatial import cKDTree
+
+    edges, counts = point_edges(mesh.tris, mesh.vertex_point, return_counts=True)
+    border = np.unique(edges[counts == 1])
+    corners = mesh.vertex_point[mesh.tris]
+    candidates = []
+    if len(corners):
+        labels = start_parts(mesh)
+        triangles = mesh.points[corners]
+        centroids = triangles.mean(axis=1)
+        radius = np.linalg.norm(triangles - centroids[:, None], axis=2).max()
+        tree = cKDTree(centroids)
+        for point in border:
+            nearby = np.array(sorted(tree.query_ball_point(mesh.points[point], radius + tolerance[point])), dtype=np.int64)
+            nearby = nearby[labels[corners[nearby, 0]] != labels[point]]
+            if not len(nearby):
+                continue
+            a, b, c = triangles[nearby].transpose(1, 0, 2)
+            barycentric, distance = closest_point_on_triangles(np.broadcast_to(mesh.points[point], a.shape), a, b, c)
+            nearest = np.argmin(distance)
+            if distance[nearest] <= tolerance[point]:
+                ratio = distance[nearest] / tolerance[point] if tolerance[point] > 0 else 0.0
+                candidates.append((ratio, int(point), int(nearby[nearest]), barycentric[nearest]))
+    held, targets, weights = [], [], []
+    held_points, target_points = set(), set()
+    for _ratio, point, triangle, barycentric in sorted(candidates, key=lambda item: item[:2]):
+        target = corners[triangle]
+        if point in target_points or any(int(corner) in held_points for corner in target):
+            continue
+        held.append(point)
+        targets.append(target)
+        weights.append(barycentric)
+        held_points.add(point)
+        target_points.update(map(int, target))
+    return SeamHolds(np.asarray(held, dtype=np.int64), np.asarray(targets, dtype=np.int64).reshape(-1, 3),
+                     np.asarray(weights, dtype=float).reshape(-1, 3))
+
+
+def hold_seams(points: "torch.Tensor", holds: SeamHolds) -> "torch.Tensor":
+    """Apply independent seam holds out of place, with gradients into target corners."""
+    import torch
+
+    held = torch.as_tensor(holds.points, device=points.device)
+    corners = torch.as_tensor(holds.corners, device=points.device)
+    barycentric = torch.as_tensor(holds.barycentric, dtype=points.dtype, device=points.device)
+    return points.index_put((held,), (points[corners] * barycentric[..., None]).sum(dim=1))
 
 
 def triangle_edges(points, tris, vertex_point):
@@ -653,7 +716,7 @@ def surface_loss(samples, centres, normals, scale, margin):
 @deterministic_fit()
 def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian, seed=1, device="cuda", report=100,
              clear=(0.0, 0.0, 0.0), cost=None, cost_weight=0.0, scale=1, normal_weight=0.0, surface_weight=0.0,
-             surface_margin=0.0, source=None):
+             surface_margin=0.0, source=None, seam_margin=0.0):
     """Fit fixed triangles; return positions, colours and colour-only error history.
     Position steps use bounding diagonals and each vertex's capped local start scale.
     Laplacian drift and the source envelope use capped local start edge scales,
@@ -682,6 +745,10 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
     colours = torch.as_tensor(rgb0, dtype=torch.float32, device=device).requires_grad_(True)
     rest = uniform_laplacian(start, edges)
     point_scale = vertex_scale(start, edges)
+    holds = None
+    if seam_margin > 0:
+        holds = seam_holds(mesh, seam_margin * point_scale.detach().cpu().numpy()[:, 0])
+        log(f"seam holds: {len(holds.points)} points")
     step_scale = point_scale / point_scale.max()
     matrices = [torch.as_tensor(view[0], dtype=torch.float32, device=device) for view in views]
     targets = [torch.as_tensor(view[1], device=device) for view in views]
@@ -713,6 +780,8 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
         chosen = rng.choice(len(views), size=min(batch, len(views)), replace=False)
         adam.zero_grad()
         points = start + step_scale * delta
+        if holds is not None:
+            points = hold_seams(points, holds)
         error, predicted, colour_error, surface = 0.0, 0.0, 0.0, 0.0
         if normal_weight:
             render = renderer_for(chosen[0])
@@ -761,6 +830,8 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
             log(f"step {step}: mean dE76 {float(history[step]):.3f}, predicted {float(predicted):.2f} ms, drift {float(drift):.3e}, "
                 f"surface {float(surface):.6f}, {time.time() - started:.1f} s")
     points = start + step_scale * delta
+    if holds is not None:
+        points = hold_seams(points, holds)
     return points.detach().cpu().numpy().astype(np.float64), colours.detach().cpu().numpy().astype(np.float64), history.cpu().tolist()
 
 
@@ -812,6 +883,7 @@ def main(argv=None):
     parser.add_argument("--object", help="the scene object whose source anchors the fit")
     parser.add_argument("--surface-weight", type=float, default=0.0, help="weight of the source-surface envelope")
     parser.add_argument("--surface-margin", type=float, default=0.0, help="source envelope margin in local start edge scales")
+    parser.add_argument("--seam-margin", type=float, default=0.0, help="seam contact margin in local start edge scales")
     parser.add_argument("--normal-weight", type=float, default=0.0, help="weight of the L1 normal term")
     parser.add_argument("--refine-to", type=int, help="first split the start's worst triangles up to this many")
     parser.add_argument("--score", action="store_true", help="fit nothing: print the start's mean normal error on the poses")
@@ -819,8 +891,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if len(args.poses) != len(args.reference):
         parser.error("give one --reference per --poses")
-    if any(not np.isfinite(value) or value < 0 for value in (args.surface_weight, args.surface_margin)):
-        parser.error("surface weight and margin must be finite and nonnegative")
+    if any(not np.isfinite(value) or value < 0 for value in (args.surface_weight, args.surface_margin, args.seam_margin)):
+        parser.error("surface weight, surface margin and seam margin must be finite and nonnegative")
     if args.surface_weight and not args.score and not args.object:
         parser.error("a surface term needs --object, the scene object whose source anchors the fit")
     coverage_views, coverage_size = pose_views(args.coverage_poses, args.scale) if args.coverage_poses else (None, None)
@@ -858,7 +930,8 @@ def main(argv=None):
         points, rgb, history = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,
                                         args.laplacian, clear=clear, cost=cost, cost_weight=args.cost_weight,
                                         scale=args.scale, normal_weight=args.normal_weight, source=source,
-                                        surface_weight=args.surface_weight, surface_margin=args.surface_margin)
+                                        surface_weight=args.surface_weight, surface_margin=args.surface_margin,
+                                        seam_margin=args.seam_margin)
         fitted = fitted._replace(points=points, rgb=rgb)
         kept = np.arange(len(fit_start.tris))
         if args.budget is not None:
