@@ -87,7 +87,7 @@ mark_rect_border(gfx_color_t* buf, int stride, int w, int h, gfx_color_t colour)
     }
 }
 
-/* Used for full-width send border. No scratch copy: direct to fb. Inverse
+/* Used for full-width send border. No scratch copy: direct to present_fb. Inverse
  * save/restore. */
 #define BORDER_PIXELS      (2 * (COL_WIDTH + STRIP_HEIGHT))
 
