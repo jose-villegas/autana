@@ -851,9 +851,10 @@ present_reference_band(gfx_color_t colour) {
 #define NARROW_STRIP_WIDTH      20
 #define NARROW_STRIP_ROWS       64
 
-/* Worst of a 5-run capture per board + 1%, rounded up to 10 us: A308 243,
- * 20E8 259, 2124 244 us; the 241 before sat on the noise edge. */
-#define NARROW_STRIP_CEILING_US 270
+/* Worst of a 5-run capture on each of A308, 20E8 and 2124 (243, 259, 244 us),
+ * + 1%: 259 * 1.01 = 261.6, up to 262. The suite keeps no per-board ceilings,
+ * so the worst board sets the one; the 241 before sat on the noise edge. */
+#define NARROW_STRIP_CEILING_US 262
 
 /* Measures the gather-copy path in gfx_present(): a strip whose
  * real dirty width is only a fraction of the band, written directly (not
