@@ -848,8 +848,12 @@ present_reference_band(gfx_color_t colour) {
  * valid. */
 
 /* The narrow strip: a fraction of a band's width, a band's rows. */
-#define NARROW_STRIP_WIDTH 20
-#define NARROW_STRIP_ROWS  64
+#define NARROW_STRIP_WIDTH      20
+#define NARROW_STRIP_ROWS       64
+
+/* Worst of a 5-run capture per board + 1%, rounded up to 10 us: A308 243,
+ * 20E8 259, 2124 244 us; the 241 before sat on the noise edge. */
+#define NARROW_STRIP_CEILING_US 270
 
 /* Measures the gather-copy path in gfx_present(): a strip whose
  * real dirty width is only a fraction of the band, written directly (not
@@ -878,7 +882,7 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
      * a strip that costs more again likely runs from flash once more. */
     perf_guard("the gathered narrow strip cost more than its observed price - the "
                "gather-copy path may have regressed, or a present's code left IRAM",
-               narrow, 241);
+               narrow, NARROW_STRIP_CEILING_US);
 }
 
 /* An instrument, not a gate: the narrow strip's present, counted alone,
