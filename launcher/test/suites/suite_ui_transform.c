@@ -96,8 +96,8 @@ test_unmap_pixel_leaves_the_pixel_when_the_transform_is_singular(void) {
 /* A rect stays axis-aligned and inside the viewport after any quarter turn */
 
 static void
-assert_rect_fits(affine2x_t t, mu_Rect r, const char* msg) {
-    const mu_Rect out = ui_transform_rect(t, r);
+assert_rect_fits(affine2x_t t, recti_t r, const char* msg) {
+    const recti_t out = ui_transform_rect(t, r);
 
     TEST_ASSERT_TRUE_MESSAGE(out.w > 0 && out.h > 0, msg);
     TEST_ASSERT_TRUE_MESSAGE(out.x >= 0 && out.y >= 0, msg);
@@ -107,8 +107,8 @@ assert_rect_fits(affine2x_t t, mu_Rect r, const char* msg) {
 
 static void
 test_a_mapped_rect_stays_axis_aligned_and_inside_the_viewport(void) {
-    const mu_Rect even_domain_rect = {16, 80, 100, 64};
-    const mu_Rect odd_domain_rect = {16, 80, 100, 64}; /* fits both domains */
+    const recti_t even_domain_rect = {16, 80, 100, 64};
+    const recti_t odd_domain_rect = {16, 80, 100, 64}; /* fits both domains */
 
     assert_rect_fits(ui_transform_quarter_turn(0, VIEW_W, VIEW_H), even_domain_rect,
                      "turn 0 rect must land inside the viewport");
@@ -122,9 +122,9 @@ test_a_mapped_rect_stays_axis_aligned_and_inside_the_viewport(void) {
 
 static void
 test_a_mapped_rect_swaps_width_and_height_on_an_odd_turn(void) {
-    const mu_Rect r = {16, 80, 100, 64};
-    const mu_Rect t1 = ui_transform_rect(ui_transform_quarter_turn(1, VIEW_W, VIEW_H), r);
-    const mu_Rect t3 = ui_transform_rect(ui_transform_quarter_turn(3, VIEW_W, VIEW_H), r);
+    const recti_t r = {16, 80, 100, 64};
+    const recti_t t1 = ui_transform_rect(ui_transform_quarter_turn(1, VIEW_W, VIEW_H), r);
+    const recti_t t3 = ui_transform_rect(ui_transform_quarter_turn(3, VIEW_W, VIEW_H), r);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(r.h, t1.w,
                                   "a quarter turn is a pure rotation - it must swap w and h, not scale them");
@@ -162,7 +162,7 @@ static const draw_image_t icon_l = {
 static void
 assert_icon_blocks_at_quarter(int quarter, const recti_t* expected, const char* msg) {
     const affine2x_t t = ui_transform_quarter_turn(quarter, VIEW_W, VIEW_H);
-    const mu_Rect box = {10, 20, 4, 4};
+    const recti_t box = {10, 20, 4, 4};
     recti_t runs[4];
     icon_test_collect_t ic = {.blocks = runs, .count = 0, .cap = 4};
 
@@ -229,7 +229,7 @@ test_icon_blocks_at_turn_3_rotate_three_steps_clockwise(void) {
  * trusts) must equal what ui_transform_icon_blocks() produced for it. */
 static void
 test_icon_blocks_match_ui_transform_rect_run_by_run(void) {
-    const mu_Rect box = {10, 20, 4, 4};
+    const recti_t box = {10, 20, 4, 4};
     const recti_t local[4] = {
         {0, 0, 1, 1},
         {0, 1, 1, 1},
@@ -245,8 +245,8 @@ test_icon_blocks_match_ui_transform_rect_run_by_run(void) {
 
         TEST_ASSERT_EQUAL_INT(4, ic.count);
         for (int i = 0; i < 4; i++) {
-            const mu_Rect truth =
-                ui_transform_rect(t, (mu_Rect){box.x + local[i].x, box.y + local[i].y, local[i].w, local[i].h});
+            const recti_t truth =
+                ui_transform_rect(t, (recti_t){box.x + local[i].x, box.y + local[i].y, local[i].w, local[i].h});
             TEST_ASSERT_EQUAL_INT(truth.x, ic.blocks[i].x);
             TEST_ASSERT_EQUAL_INT(truth.y, ic.blocks[i].y);
             TEST_ASSERT_EQUAL_INT(truth.w, ic.blocks[i].w);
@@ -285,12 +285,12 @@ assert_glyph0_matches_ground_truth(int logical_x, int logical_y, const char* tex
     const affine2x_t t = ui_transform_quarter_turn(quarter, VIEW_W, VIEW_H);
     const int tw = draw_font_text_width(&glyph0_font, text, -1, 1);
     const int th = draw_font_height(&glyph0_font, 1);
-    const mu_Rect box = ui_transform_rect(t, (mu_Rect){logical_x, logical_y, tw, th});
+    const recti_t box = ui_transform_rect(t, (recti_t){logical_x, logical_y, tw, th});
 
     int mx, my;
-    ui_text_glyph0_origin(&glyph0_font, ui_recti_from_mu(box), quarter, 1, &mx, &my);
+    ui_text_glyph0_origin(&glyph0_font, box, quarter, 1, &mx, &my);
 
-    const mu_Rect truth = ui_transform_rect(t, (mu_Rect){logical_x, logical_y, glyph0_font.cell_w, glyph0_font.cell_h});
+    const recti_t truth = ui_transform_rect(t, (recti_t){logical_x, logical_y, glyph0_font.cell_w, glyph0_font.cell_h});
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(truth.x, mx, msg);
     TEST_ASSERT_EQUAL_INT_MESSAGE(truth.y, my, msg);
@@ -323,14 +323,14 @@ test_glyph0_origin_matches_ground_truth_at_every_quarter(void) {
  * plainest possible terms. */
 static void
 test_glyph0_origin_needs_no_correction_at_turn_0_or_1(void) {
-    const mu_Rect box = {50, 60, 30, 12};
+    const recti_t box = {50, 60, 30, 12};
     int mx, my;
 
-    ui_text_glyph0_origin(&glyph0_font, ui_recti_from_mu(box), 0, 1, &mx, &my);
+    ui_text_glyph0_origin(&glyph0_font, box, 0, 1, &mx, &my);
     TEST_ASSERT_EQUAL_INT_MESSAGE(box.x, mx, "turn 0: origin is box.x");
     TEST_ASSERT_EQUAL_INT_MESSAGE(box.y, my, "turn 0: origin is box.y");
 
-    ui_text_glyph0_origin(&glyph0_font, ui_recti_from_mu(box), 1, 1, &mx, &my);
+    ui_text_glyph0_origin(&glyph0_font, box, 1, 1, &mx, &my);
     TEST_ASSERT_EQUAL_INT_MESSAGE(box.x, mx, "turn 1: origin is box.x");
     TEST_ASSERT_EQUAL_INT_MESSAGE(box.y, my, "turn 1: origin is box.y");
 }
@@ -345,10 +345,10 @@ test_glyph0_origin_at_turn_3_is_not_the_cell_h_mistake(void) {
     const affine2x_t t = ui_transform_quarter_turn(quarter, VIEW_W, VIEW_H);
     const int tw = draw_font_text_width(&glyph0_font, "ABCD", -1, 1);
     const int th = draw_font_height(&glyph0_font, 1);
-    const mu_Rect box = ui_transform_rect(t, (mu_Rect){20, 30, tw, th});
+    const recti_t box = ui_transform_rect(t, (recti_t){20, 30, tw, th});
 
     int mx, my;
-    ui_text_glyph0_origin(&glyph0_font, ui_recti_from_mu(box), quarter, 1, &mx, &my);
+    ui_text_glyph0_origin(&glyph0_font, box, quarter, 1, &mx, &my);
 
     const int wrong_my_using_cell_h = box.y + box.h - glyph0_font.cell_h;
     TEST_ASSERT_NOT_EQUAL_MESSAGE(wrong_my_using_cell_h, my,
@@ -439,13 +439,6 @@ test_rect_conversions_preserve_signed_coordinates_and_sizes(void) {
     TEST_ASSERT_EQUAL_INT(INT16_MAX, rect.y);
     TEST_ASSERT_EQUAL_INT(INT16_MAX, rect.w);
     TEST_ASSERT_EQUAL_INT(0, rect.h);
-    const mu_Rect mu = ui_mu_from_recti(rect);
-    TEST_ASSERT_EQUAL_INT(rect.x, mu.x);
-    TEST_ASSERT_EQUAL_INT(rect.y, mu.y);
-    TEST_ASSERT_EQUAL_INT(rect.w, mu.w);
-    TEST_ASSERT_EQUAL_INT(rect.h, mu.h);
-    const recti_t back = ui_recti_from_mu(mu);
-    TEST_ASSERT_EQUAL_MEMORY(&rect, &back, sizeof rect);
 }
 
 void

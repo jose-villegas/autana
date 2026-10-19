@@ -6,6 +6,7 @@ small synthetic scene the image error falls. What draws on the GPU needs
 CUDA, PyTorch and nvdiffrast and is skipped without them; the rest needs the
 pinned r3d environment (tools/r3d/requirements.txt)."""
 
+import json
 import pathlib
 import sys
 import tempfile
@@ -94,6 +95,113 @@ def write_flat_start(directory, count=4):
     face = np.where(left[:, None], [[200.0, 60.0, 40.0]], [[40.0, 90.0, 200.0]])
     write_lit_mesh(directory, "flat", positions, None, tris, np.zeros(len(tris), dtype=int), position_scale=64, face_rgb=face)
     return pathlib.Path(directory) / "flat.mesh"
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class StretchTests(unittest.TestCase):
+    def test_small_part_stretch_is_reported_separately(self):
+        from r3d.appearance_simplify import STRETCH_RATIO, stretch_report
+
+        points = np.array([[0., 0., 0.], [1., 0., 0.], [0., 1., 0.],
+                           [10., 0., 0.], [20., 0., 0.], [10., 10., 0.]])
+        tris = np.array([[0, 1, 2], [3, 4, 5]])
+        mesh = FitMesh(points, np.ones_like(points), tris, np.zeros(len(tris)), 1, np.arange(len(points)))
+        for ratio, expected in ((STRETCH_RATIO - 0.5, 0.0), (STRETCH_RATIO, 0.0), (STRETCH_RATIO + 1, 100.0)):
+            with self.subTest(ratio=ratio):
+                fitted = points * ratio
+                fitted[3:] = points[3:]
+                report = stretch_report(mesh, mesh._replace(points=fitted), np.arange(len(tris)))
+                self.assertEqual(len(report["parts"]), 2)
+                self.assertEqual(report["parts"][0]["stretch"], expected)
+                self.assertEqual(report["parts"][1]["stretch"], 0)
+                self.assertEqual(report["small"]["triangles"], 1)
+                self.assertEqual(report["small"]["stretch"], expected)
+                self.assertEqual(report["rest"]["stretch"], 0)
+                self.assertEqual(report["worst"]["stretch"][0]["part"], report["parts"][0]["part"])
+                self.assertAlmostEqual(report["parts"][0]["mean_start_edge"], (2 + np.sqrt(2)) / 3)
+        report = stretch_report(mesh, mesh._replace(points=fitted, tris=tris[1:]), np.array([1]))
+        self.assertEqual(len(report["parts"]), 1)
+        self.assertEqual(report["parts"][0]["triangles"], 1)
+        self.assertEqual(report["parts"][0]["part"], 1)
+        self.assertEqual(report["small"]["triangles"], 0)
+        self.assertEqual(report["rest"], dict(triangles=1, stretch=0.0, area_growth=0.0, moved=0.0))
+
+    def test_part_size_uses_unique_edges_before_pruning(self):
+        from r3d.appearance_simplify import stretch_report
+
+        points = np.array([[0., 0., 0.], [1., 0., 0.], [0., 1., 0.], [4., 0., 0.],
+                           [10., 0., 0.], [13., 0., 0.], [10., 3., 0.]])
+        tris = np.array([[0, 1, 2], [1, 3, 2], [4, 5, 6]])
+        mesh = FitMesh(points, np.ones_like(points), tris, np.zeros(len(tris)), 1, np.arange(len(points)))
+        expected = (1 + 1 + np.sqrt(2) + 3 + np.sqrt(17)) / 5
+        for kept in (np.arange(len(tris)), np.array([1, 2])):
+            with self.subTest(kept=kept):
+                report = stretch_report(mesh, mesh._replace(tris=tris[kept]), kept)
+                self.assertAlmostEqual(report["parts"][0]["mean_start_edge"], expected)
+                self.assertEqual(report["small"], dict(triangles=len(kept) - 1, stretch=0.0, area_growth=0.0, moved=0.0))
+
+    def test_collapsed_start_triangle_counts_as_stretched(self):
+        from r3d.appearance_simplify import stretch_report, triangle_stretch
+
+        points = np.zeros((2, 3))
+        tris = np.array([[0, 0, 1]])
+        mesh = FitMesh(points, np.ones_like(points), tris, np.zeros(len(tris)), 1, np.arange(len(points)))
+        fitted = points.copy()
+        fitted[1, 0] = 1
+        fitted_mesh = mesh._replace(points=fitted)
+        self.assertTrue(np.isinf(triangle_stretch(points, fitted, mesh)[0]))
+        report = stretch_report(mesh, fitted_mesh, np.array([0]))
+        self.assertEqual(report["parts"][0]["stretch"], 100.0)
+        self.assertEqual(report["rest"], dict(triangles=1, stretch=100.0, area_growth=0.0, moved=100.0))
+
+    def test_area_growth_detects_opening_without_long_edge_stretch(self):
+        from r3d.appearance_simplify import AREA_GROWTH_RATIO, STRETCH_RATIO, stretch_report, triangle_area_growth, triangle_stretch
+
+        points = np.array([[0., 0., 0.], [1., 0., 0.], [0., 1 / (AREA_GROWTH_RATIO * STRETCH_RATIO), 0.]])
+        tris = np.array([[2, 0, 1]])
+        mesh = FitMesh(points, np.ones_like(points), tris, np.zeros(len(tris)), 1, np.array([1, 2, 0]))
+        for ratio, expected in ((AREA_GROWTH_RATIO * 0.99, 0.0), (AREA_GROWTH_RATIO, 0.0),
+                                (AREA_GROWTH_RATIO * 1.01, 100.0)):
+            with self.subTest(ratio=ratio):
+                fitted = points.copy()
+                fitted[2, 1] *= ratio
+                self.assertAlmostEqual(triangle_area_growth(points, fitted, mesh)[0], ratio)
+                self.assertLess(triangle_stretch(points, fitted, mesh)[0], STRETCH_RATIO)
+                report = stretch_report(mesh, mesh._replace(points=fitted), np.array([0]))
+                self.assertEqual(report["rest"]["area_growth"], expected)
+                self.assertEqual(report["parts"][0]["area_growth"], expected)
+                self.assertEqual(report["worst"]["area_growth"][0]["area_growth"], expected)
+                self.assertEqual(report["rest"]["stretch"], 0.0)
+
+    def test_translation_counts_corner_moves_in_mean_start_edges(self):
+        from r3d.appearance_simplify import MOVED_EDGES, stretch_report, triangle_edges, triangle_moved
+
+        points = np.array([[0., 0., 0.], [0.003, 0., 0.], [0., 0.004, 0.]])
+        tris = np.array([[0, 1, 2]])
+        mesh = FitMesh(points, np.ones_like(points), tris, np.zeros(len(tris)), 1, np.arange(len(points)))
+        mean_edge = triangle_edges(points, tris, mesh.vertex_point).mean()
+        for ratio, expected in ((MOVED_EDGES * 0.99, 0.0), (MOVED_EDGES, 0.0), (MOVED_EDGES * 1.01, 100.0)):
+            with self.subTest(ratio=ratio):
+                fitted = points + [0., 0., ratio * mean_edge]
+                self.assertAlmostEqual(triangle_moved(points, fitted, mesh)[0], ratio)
+                report = stretch_report(mesh, mesh._replace(points=fitted), np.array([0]))
+                self.assertEqual(report["rest"], dict(triangles=1, stretch=0.0, area_growth=0.0, moved=expected))
+                self.assertEqual(report["parts"][0]["moved"], expected)
+                self.assertEqual(report["worst"]["moved"][0]["moved"], expected)
+
+    def test_zero_area_start_triangle_that_opens_counts_as_grown(self):
+        from r3d.appearance_simplify import stretch_report, triangle_area_growth, triangle_moved
+
+        points = np.zeros((3, 3))
+        tris = np.array([[0, 1, 2]])
+        mesh = FitMesh(points, np.ones_like(points), tris, np.zeros(len(tris)), 1, np.arange(len(points)))
+        fitted = np.eye(3)
+        self.assertTrue(np.isinf(triangle_area_growth(points, fitted, mesh)[0]))
+        self.assertTrue(np.isinf(triangle_moved(points, fitted, mesh)[0]))
+        report = stretch_report(mesh, mesh._replace(points=fitted), np.array([0]))
+        self.assertEqual(report["rest"]["area_growth"], 100.0)
+        unchanged = stretch_report(mesh, mesh, np.array([0]))
+        self.assertEqual(unchanged["rest"], dict(triangles=1, stretch=0.0, area_growth=0.0, moved=0.0))
 
 
 @unittest.skipIf(torch is None, "needs PyTorch")
@@ -261,6 +369,40 @@ class AppearanceMeshTests(unittest.TestCase):
                     np.testing.assert_array_less(final, max_stretch * lengths)
 
     @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_position_step_uses_capped_local_start_scale(self):
+        from r3d import appearance_simplify as appearance
+
+        large_size = 1.0
+        separation = 2 * large_size
+        triangle = np.array([[0.0, 0, 0], [1.0, 0, 0], [0.0, 1.0, 0]])
+        tiny_count = len(triangle)
+        lr_position = 0.001
+        # The image term pulls only z, so Adam's first step is its per-component bound.
+        render = mock.Mock(side_effect=lambda points, colours, *args: (0.5 + points[:, 2:3]).expand(-1, 3)[None])
+        for tiny_size in (0.01, 0.1):
+            with self.subTest(tiny_size=tiny_size):
+                points = np.concatenate([tiny_size * triangle, large_size * triangle + [separation, 0, 0]])
+                tris = np.arange(len(points)).reshape(-1, 3)
+                mesh = FitMesh(points, np.full_like(points, 0.5), tris, np.ones(len(tris)), 64, np.arange(len(points)))
+                views = [(np.eye(4), np.full((1, len(points), 3), 0.75, dtype=np.float32))]
+                start = torch.as_tensor(points, dtype=torch.float32)
+                scale = appearance.vertex_scale(start, torch.as_tensor(point_edges(tris, mesh.vertex_point))).numpy()
+                step_scale = scale[:, 0] / scale.max()
+                diagonal = np.linalg.norm(points.max(axis=0) - points.min(axis=0))
+                bound = lr_position * diagonal * step_scale
+                tolerance = np.finfo(np.float32).eps * diagonal
+                np.testing.assert_allclose(step_scale[tiny_count:], 1)
+                with mock.patch.object(appearance, "Renderer", return_value=render):
+                    fitted, _, _ = appearance.optimise(
+                        mesh, views, (len(points), 1), steps=1, batch=1, lr_position=lr_position,
+                        lr_colour=0, laplacian=0, report=0, device="cpu")
+                displacement = np.linalg.norm(fitted - points, axis=1)
+                np.testing.assert_array_less(displacement, bound + tolerance)
+                np.testing.assert_array_less(displacement[:tiny_count], bound[tiny_count:])
+                self.assertTrue(np.all(displacement > 0))
+                np.testing.assert_allclose(displacement[tiny_count:], bound[tiny_count:], atol=tolerance)
+
+    @unittest.skipIf(torch is None, "needs PyTorch")
     def test_surface_envelope_and_tangential_pull(self):
         from r3d.appearance_simplify import SURFACE_TANGENTIAL_WEIGHT, surface_loss
 
@@ -389,7 +531,7 @@ class PruneAndCostTests(unittest.TestCase):
                         mesh = mesh._replace(rgb=np.full((len(mesh.tris), 3), 0.5))
                     points, rgb = mesh.points + 1, mesh.rgb / 2
                     fitted = mesh._replace(points=points, rgb=rgb)
-                    pruned = prune(fitted, np.ones(len(mesh.tris)), len(mesh.tris) - 1)
+                    pruned, _kept = prune(fitted, np.ones(len(mesh.tris)), len(mesh.tris) - 1)
                     calls = mock.Mock()
                     with mock.patch.multiple(appearance,
                             load_scene=mock.Mock(return_value=SimpleNamespace(camera=SimpleNamespace(
@@ -401,7 +543,7 @@ class PruneAndCostTests(unittest.TestCase):
                             write_mesh=calls.write_mesh):
                         calls.optimise.return_value = (points, rgb, [1.0])
                         calls.coverage.return_value = np.ones(len(mesh.tris))
-                        calls.prune.return_value = pruned
+                        calls.prune.return_value = (pruned, np.arange(len(pruned.tris)))
                         calls.write_mesh.return_value = len(pruned.tris)
                         appearance.main(["--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
                                          "--reference", "reference", "--coverage-poses", "coverage.txt",
@@ -419,6 +561,9 @@ class PruneAndCostTests(unittest.TestCase):
                     self.assertIs(pruned_mesh, covered)
                     self.assertIs(shown, calls.coverage.return_value)
                     self.assertEqual(budget, len(pruned.tris))
+                    report = json.loads((pathlib.Path(directory) / "stretch.json").read_text())
+                    self.assertEqual(sum(row["triangles"] for row in report["parts"]), len(pruned.tris))
+                    self.assertEqual(report["rest"]["stretch"], 0)
 
     def test_invalid_surface_flags_fail_before_loading_a_scene(self):
         from r3d import appearance_simplify as appearance
@@ -464,21 +609,23 @@ class PruneAndCostTests(unittest.TestCase):
             self.assertEqual(len(written), 3)
             np.testing.assert_array_equal(written[2].points, points)
             np.testing.assert_array_equal(written[2].rgb, rgb)
+            report = json.loads((pathlib.Path(directory) / "stretch.json").read_text())
+            self.assertEqual(sum(row["triangles"] for row in report["parts"]), len(mesh.tris))
 
     def test_pruning_keeps_the_budget_and_what_shows_most(self):
         mesh = FitMesh(np.zeros((9, 3)), np.zeros((9, 3)), np.arange(18).reshape(6, 3) % 9, np.zeros(6), 8, np.arange(9))
         shown = np.array([0, 50, 3, 0, 900, 7])
-        pruned = prune(mesh, shown, 3)
+        pruned, _kept = prune(mesh, shown, 3)
         self.assertEqual(len(pruned[2]), 3)
         kept = {tuple(t) for t in pruned[2]}
         for index in (4, 1, 5):
             self.assertIn(tuple(mesh[2][index]), kept)
-        self.assertEqual(len(prune(mesh, shown, 6)[2]), 4, "a triangle no view shows was kept")
+        self.assertEqual(len(prune(mesh, shown, 6)[0].tris), 4, "a triangle no view shows was kept")
 
     def test_a_flat_mesh_keeps_each_colour_with_its_triangle(self):
         colours = np.arange(18, dtype=float).reshape(6, 3) / 17.0
         mesh = FitMesh(np.zeros((9, 3)), colours, np.arange(18).reshape(6, 3) % 9, np.zeros(6), 8, np.arange(9), True)
-        pruned = prune(mesh, np.array([0, 50, 3, 0, 900, 7]), 3)
+        pruned, _kept = prune(mesh, np.array([0, 50, 3, 0, 900, 7]), 3)
         self.assertEqual(pruned.rgb.tolist(), colours[[1, 4, 5]].tolist())
 
     def terms(self, positions, tris):
@@ -821,7 +968,7 @@ class AppearanceFitTests(unittest.TestCase):
             mesh = start_mesh(pathlib.Path(directory) / "pair.mesh")
         matrix = projection([0.0, 0.0, 3.0], [0.0, 0.0, -1.0], 24, 20, 0.62, 0.5)
         shown = coverage(mesh, [(matrix, None)], (48, 40))
-        pruned = prune(mesh, shown, len(front_tris))
+        pruned, _kept = prune(mesh, shown, len(front_tris))
         z = mesh[0][mesh[5]][pruned[2]][..., 2]
         self.assertEqual(len(pruned[2]), len(front_tris))
         self.assertTrue(np.all(np.abs(z) < 1e-6), "a hidden triangle outlived a visible one")

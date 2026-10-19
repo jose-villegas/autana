@@ -5,8 +5,8 @@
 #include "asset/asset_store.h"
 #include "draw/draw_image_format.h"
 #include "esp_log.h"
+#include "ui/controls/ui_widgets.h"
 #include "ui/ui.h"
-#include "ui/ui_mu.h"
 
 static const char* TAG = "ui_icons";
 
@@ -73,11 +73,6 @@ ui_icon_set_get(const ui_icon_set_t* set, int i) {
 }
 
 void
-ui_icon_set_draw(mu_Context* ctx, mu_Rect r, const ui_icon_set_t* set, int i, mu_Color color) {
-    ui_draw_icon(ctx, r, ui_icon_set_get(set, i), set->names[i].text, color);
-}
-
-void
 ui_icons_init(void) {
     (void)ui_icon_set_load(&system_set);
 }
@@ -89,5 +84,5 @@ ui_icon_image(ui_icon_id_t id) {
 
 void
 ui_draw_system_icon(mu_Context* ctx, mu_Rect r, ui_icon_id_t id, mu_Color color) {
-    ui_icon_set_draw(ctx, r, &system_set, (int)id, color);
+    ui_draw_icon(ctx, r, ui_icon_image(id), SYSTEM_NAMES[id].text, color);
 }

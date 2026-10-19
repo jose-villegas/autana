@@ -10,10 +10,12 @@ list of drawing commands. This is the catalog. How to put a screen together,
 and the house rules it must follow, are in
 [`Building-a-Screen.md`](Building-a-Screen.md).
 
-The plain-value face in `ui/ui.h` places controls by rectangle with
-`ui_screen`, `ui_button`, `ui_toggle`, `ui_slider`, and `ui_dropdown`.
-The `ui_mu_*` widgets and other helpers below are the microui-level API in
-`ui/ui_mu.h` that the face is built on.
+A screen uses only the plain-value face in `ui/ui.h`, taught in
+[`Building-a-Screen.md`](Building-a-Screen.md). The controls and helpers
+below are the layer the face verbs are built from, in `ui/ui_internal.h`
+and the `ui/` headers that include microui, private to `ui/`: the include
+gate refuses them anywhere else. They are catalogued here for whoever adds
+a face verb.
 
 The board is held either way up, so a screen must work in both
 orientations, and every picture below shows both. Each comes from the real
@@ -23,18 +25,18 @@ code, drawn on a host by the gallery scene,
 
 ## At a glance
 
-| A screen needs | Call | Header |
+| A face verb needs | Call | Header |
 |---|---|---|
-| a frame to draw in | `ui_begin()`, `ui_begin_screen()`, `ui_end()` | `ui/ui.h`, `ui/ui_mu.h` |
-| a button with an icon beside its label | `ui_icon_button()` | `ui/ui_mu.h` |
-| one of a row of choices, icon above label | `ui_tile_button()` | `ui/ui_mu.h` |
-| a whole-number setting | `ui_theme_slider_int()`, `ui_slider_int()` | `ui/ui_mu.h`, `ui/ui.h` |
-| a pick from a list, without a scroll view | `ui_mu_dropdown()` | `ui/ui_mu.h` |
+| a frame to draw in | `ui_begin()`, `ui_begin_screen()`, `ui_end()` | `ui/ui.h`, `ui/ui_internal.h` |
+| a button with an icon beside its label | `ui_icon_button()` | `ui/ui_internal.h` |
+| one of a row of choices, icon above label | `ui_tile_button()` | `ui/ui_internal.h` |
+| a whole-number setting | `ui_theme_slider_int()`, `ui_slider_int()` | `ui/ui_internal.h`, `ui/ui.h` |
+| a pick from a list, without a scroll view | `ui_mu_dropdown()` | `ui/ui_internal.h` |
 | a plain button, checkbox or label | `mu_button()`, `mu_checkbox()`, `mu_label()` | `microui.h` |
-| a captioned section, a title bar | `ui_mu_panel()`, `ui_header_bar()` | `ui/ui_mu.h` |
-| text aligned in a rect | `ui_text_in()` | `ui/ui_mu.h` |
-| a grid of colours | `ui_swatch_grid()` | `ui/ui_mu.h` |
-| an icon | `ui_draw_icon()` | `ui/ui_mu.h` |
+| a captioned section, a title bar | `ui_mu_panel()`, `ui_header_bar()` | `ui/ui_internal.h` |
+| text aligned in a rect | `ui_text_in()` | `ui/ui_internal.h` |
+| a grid of colours | `ui_swatch_grid()` | `ui/ui_internal.h` |
+| an icon | `ui_draw_icon()` | `ui/ui_internal.h` |
 | rows that may overflow and scroll | `ui_scroll_view_begin()`, `ui_flow_row()` | `ui/layout/ui_scroll.h` |
 | a rect placed against an edge or centre | `ui_anchor_rect()`, `ui_rect_inset()`, `ui_centered_rect()` | `ui/layout/ui_anchor.h`, `ui/ui.h` |
 | another text size | `ui_set_font_scaled()`, `ui_measure_text()` | `ui/ui.h` |
@@ -127,7 +129,7 @@ settings_frame(const input_t* input) {
 
 ![The themed widgets in portrait: a panel holding a slider, two icon buttons, three tiles, a swatch grid and a closed dropdown](images/ui/widgets.png) ![The same widgets in landscape, re-flowed into rows and two columns](images/ui/widgets-landscape.png)
 
-`ui/ui_mu.h`. Each control takes a `ui_mu_theme_t`, so a screen states its
+`ui/ui_internal.h`. Each control takes a `ui_mu_theme_t`, so a screen states its
 colours once:
 
 | Field | Used for |
@@ -348,8 +350,9 @@ the device limit. A development build logs the high-water mark from
 
 ## Adding to the toolkit
 
-A control belongs in `ui/ui_mu.h`, not in a private copy in one app's
-screen, once a second screen could use it. It must:
+A control belongs in `ui/`, as a face verb in `ui/ui.h` over a helper in
+`ui/ui_internal.h`, not in a private copy in one app's screen, once a second
+screen could use it. It must:
 
 - take a `ui_mu_theme_t` rather than colours of its own
 - use no app's vocabulary: say what shape of caller needs it

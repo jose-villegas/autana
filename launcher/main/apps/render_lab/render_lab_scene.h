@@ -3,8 +3,8 @@
 
 #include <stdint.h>
 
+#include "app/app_console.h"
 #include "apps/render_lab/ui/render_lab_menu_screen.h"
-#include "console/console_verbs.h"
 #include "input/input.h"
 
 typedef struct {

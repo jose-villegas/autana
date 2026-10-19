@@ -16,17 +16,14 @@
 #include "profile/frame_cost.h"
 #include "shell/ui/ui_ridge.h"
 #include "ui/ui.h"
-#include "ui/ui_mu.h"
 
 const app_t*
 ui_launcher_frame(const input_t* input, uint32_t dt_ms) {
-    mu_Context* ctx = ui_context();
-
     ui_launcher_heal_opt_in();
 
     FRAME_COST_BEGIN(built_from);
     ui_begin(input);
-    const app_t* chosen = ui_launcher_draw(ctx, dt_ms);
+    const app_t* chosen = ui_launcher_draw();
     FRAME_COST_END(built_from, "ui.build");
     const input_t idle = {0};
     ui_ridge_step(input != NULL ? input : &idle, dt_ms);

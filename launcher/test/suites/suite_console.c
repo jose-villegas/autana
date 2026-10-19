@@ -452,6 +452,18 @@ test_word_match_folds_case(void) {
     TEST_ASSERT_EQUAL_STRING("status", args);
 }
 
+/* console_name_cmp() orders names as strcmp() does with ASCII case folded:
+ * the registry's sort and the clash check both rest on it. */
+static void
+test_name_cmp_folds_case_and_orders_unsigned(void) {
+    TEST_ASSERT_EQUAL_INT(0, console_name_cmp("Screenshot", "SCREENSHOT"));
+    TEST_ASSERT_LESS_THAN_INT(0, console_name_cmp("set", "SETX"));
+    TEST_ASSERT_GREATER_THAN_INT(0, console_name_cmp("SETX", "set"));
+    TEST_ASSERT_LESS_THAN_INT(0, console_name_cmp("a", "B"));
+    /* A byte past ASCII sorts after every letter, as an unsigned char does. */
+    TEST_ASSERT_GREATER_THAN_INT(0, console_name_cmp("\xE9", "z"));
+}
+
 /* console_find_clash() is the boot-time clash check's own primitive
  * (shell/shell.c): a verb's name and an app's prefix, or two apps' own prefixes,
  * must never fold to the same word; a prefix must carry no space of its
@@ -957,6 +969,7 @@ suite_console(void) {
     RUN_TEST(test_a_take_never_sees_a_post_half_written);
     RUN_TEST(test_word_match_carries_what_follows_the_name);
     RUN_TEST(test_word_match_folds_case);
+    RUN_TEST(test_name_cmp_folds_case_and_orders_unsigned);
     RUN_TEST(test_find_clash_finds_an_app_prefix_that_folds_to_a_registered_verb);
     RUN_TEST(test_find_clash_finds_two_app_prefixes_that_fold_together);
     RUN_TEST(test_find_clash_is_none_over_a_clean_set);

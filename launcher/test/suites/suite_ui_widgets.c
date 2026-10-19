@@ -33,7 +33,6 @@
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
-#include "ui/ui_mu.h"
 
 static const ui_mu_theme_t THEME = {
     .panel_face = UI_RGB(0x202020),
@@ -806,7 +805,7 @@ static void
 assert_menu_list_on_top(void) {
     const mu_Rect logical =
         ui_dropdown_list_rect(MENU_ANCHOR, MENU_ITEM_COUNT, MENU_ROW_HEIGHT, ui_height(), UI_MARGIN);
-    const mu_Rect list = ui_transform_rect(ui_effective_transform(), logical);
+    const mu_Rect list = ui_transform_mu_rect(ui_effective_transform(), logical);
     mu_Context* ctx = ui_context();
     TEST_ASSERT_TRUE(dropdown_open);
     TEST_ASSERT_EQUAL_INT(2, ctx->root_list.idx);

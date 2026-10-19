@@ -275,7 +275,7 @@ flowchart LR
 | S0, done | the bake key stops hashing docstrings (`code_tokens()` in `launcher/tools/bake/bake.py`) | mesh, reference and fit re-key once; S0 rides the same Sponza refit as [#835](https://github.com/jose-villegas/autana/pull/835), so one GPU run rebakes both `[M]` |
 | S1, done | gfx untangle above; `r3d.h` gone; scene camera component; apps read motion through `input/` | suites green, boot pixels byte-identical |
 | S2, done | every move above, CMake, the tier table, the editor's CMake, doc paths, UI-Editor-Plan.md rewrite `[M]` | all variants build, host suites, boot pixels byte-identical, `bake.py check` keys unchanged, perf same |
-| S3 | the face rule and "apps never include the system band" over app sources `[M]`; app tests on the board follow | the gate fails a scratch copy that breaks it |
+| S3, done | the face rule and "apps never include the system band" over app sources `[M]` (UI-BACKEND, SYSTEM-BAND); app tests on the board follow | the gate fails a scratch copy that breaks it |
 | S4 | the section 2 gaps | per system |
 
 ### The bake closure

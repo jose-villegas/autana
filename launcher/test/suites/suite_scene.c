@@ -51,7 +51,7 @@
 #include "asset/asset_file.h"
 #include "render/r3d_skin_format.h"
 #include "test_asset_dir.h"
-#include "ui/ui_mu.h"
+#include "ui/ui_internal.h"
 #endif
 
 #define SIZE               64

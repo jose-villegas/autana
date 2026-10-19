@@ -9,7 +9,7 @@
 #include "render_host.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
-#include "ui/ui_mu.h"
+#include "ui/ui_internal.h"
 
 #define BACKGROUND 0x0A0C14
 #define ITEM_COUNT 12
