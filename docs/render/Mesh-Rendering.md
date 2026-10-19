@@ -316,15 +316,13 @@ holds:
 | Bounding box holds | What the draw does |
 |---|---|
 | no centre | nothing: dropped before its colours are read |
-| at most the small-fill side (default 4 × 4 centres) | tests each centre against its three edges, one depth and colour for all |
+| inside the camera ceiling and colour gate | tests each centre against its three edges, using the selected style |
 | more | walks its rows, each edge's column found exactly by an integer step |
 
 Both paths apply the same rule to the same integers, so a small triangle
 and a walked one sharing an edge still meet without a gap or an overlap.
-The per-centre path skips the walk's setup but loses the triangle's
-gradient: at this size that does not show, and larger it shows as facets
-on the walls, so the default bound is where cost and look meet (`SMALL_MAX_SIDE`, `r3d_span.c`);
-[Small-fill levers](#small-fill-levers) moves it.
+The per-centre path skips the walk's setup but loses the triangle's gradient.
+[Small fill](#small-fill) controls that cost and look tradeoff.
 `suite_r3d_lit.c` holds every triangle to a reference implementation of the
 rule, and a mesh of mixed sizes to one fill per pixel.
 
@@ -339,111 +337,105 @@ vertex range, so each span clamps its ends. A kept triangle whose planes
 stay inside their ranges at every centre of its bounding box, most of them,
 fills its spans without those clamps, which would change nothing there.
 
-### Small-fill levers
+### Small fill
 
-Defaults keep the standard look. The flat bake uses one face colour per triangle,
-the fully flat end of this range.
-Set them with `--set` ([Render-Harness](../tools/Render-Harness.md)).
+Small triangles skip plane setup and use one depth and a flat colour.
+The camera owns the bounding-box ceiling, colour gate and style;
+`render_view_t.small_fill` carries them to the frame's row workers.
 
-<!-- generated: small-fill-levers sha256=d8f38f6b475f7cc9267c3d3dfccd13ad03859aa5ecb06dc61b27ba09d487a20a -->
-| Axis | Tunable | Range | Default | Effect |
-|---|---|---|---|---|
-| dither | `r3d_span.small_dither` | 0..8 | 0 | Ordered edge coverage in eighths above side 4; 0 disables it |
-| dither | `r3d_span.small_dither_cell_bits` | 1..2 | 2 | Log2 of the ordered pattern side in pixels |
-| dither | `r3d_span.small_dither_ramp` | 0..1 | 0 | Ramp coverage from 0 at side 4 to the chosen coverage |
-| gate | `r3d_span.small_flat_spread_far` | 0..64 | 64 | Far gate: maximum RGB565 channel spread at the size limit; 64 is off |
-| gate | `r3d_span.small_flat_spread_near` | 0..64 | 64 | Near gate: spread limit from side 5; interpolated to the far gate; 64 is off |
-| grain | `r3d_span.small_grain` | 0..2 | 0 | XOR low RGB565 channel bits in a 2x2 pattern; 0 disables it |
-| grain | `r3d_span.small_grain_ramp` | 0..1 | 0 | Ramp amplitude from 0 at side 4 to full at the size limit |
-| size | `r3d_span.small_max_side` | 0..16 | 4 | Bounding-box centres per side eligible for flat fill; 0 disables it |
+<!-- generated: small-fill-levers sha256=2144b93939ba49b1ccbbd0e25826f8c0ec7bed0791c80c3fcaa2f1f01bfc96fa -->
+| Camera field | Range | Default | Effect |
+|---|---|---|---|
+| `ceiling` | 0..255 | 12 | Largest bounding-box side in pixel centres; 0 disables small fill |
+| `gate` | 0..255 | 16 | Vertex RGB565 spread limit at the ceiling; 0 disables the colour gate |
+| `style` | 0..2 | 0 | FLAT (0), GRAIN (1), DITHER (2) |
 <!-- /generated: small-fill-levers -->
 
-Live small-fill limits resolve before row workers run. Small dither triangles
-test coverage and choose vertex colours in one pixel loop.
-Optional grain XORs the flat colour with screen-anchored 2x2 masks.
-Amplitude 1 toggles each RGB565 channel's low bit; amplitude 2 distributes
-both low bits over the pattern ranks. Masks use the panel's stored byte order.
+Camera defaults are `SMALL_FILL_DEFAULT`, defined in `render_view.h`.
+Change any axis with the [scene camera API](Scene-Manager.md#what-an-app-calls):
 
-The gate measures the largest RGB565 channel spread across the vertices.
-For sides above side 4, its limit interpolates from the near gate at side 5
-to the far gate at the size limit.
-The gate and dither share the triangle's packed vertex colours.
+```c
+small_fill_t fill = SMALL_FILL_DEFAULT;
+fill.style = SMALL_FILL_GRAIN;
+scene_camera_set_small_fill(scene, camera, fill);
+```
 
-The RGB565 gate's quantization is visible against a floating-channel reference.
-This frame uses size limit 8, near gate off and far gate 4.
+The gate compares packed RGB565 channel spreads. Above side 4, its limit
+starts at 64 and tightens linearly to `gate` at the ceiling.
+A ceiling of 5 uses `gate` directly. Face colours and sides up to 4 bypass the gate and use FLAT.
 
-[![RGB565 gate and floating-channel reference](../images/render/sponza-small-fill-integer-gate.png)](../images/render/sponza-small-fill-integer-gate.crops.png)
+FLAT writes the averaged colour. DITHER uses screen-anchored ordered picks
+of the vertex colours. GRAIN alternates flat and one shade in a 2×2 checker,
+moving R/B by one step and G by two in the same direction.
+
+GRAIN lightens the darker half and darkens the brighter half. If that would
+overflow, it tries the opposite direction. When neither is safe, the shade
+equals flat. Channels never clamp independently.
 
 <table>
-<tr><th width="50%">Technique</th><th width="50%">Diff</th></tr>
-<tr><th colspan="2">Today (defaults)</th></tr>
-<tr><td width="50%"><img src="../images/render/sponza-small-fill-defaults.gif" width="100%" alt="Defaults"></td><td width="50%"></td></tr>
-<tr><th colspan="2">Flat ≤8</th></tr>
-<tr><td width="50%"><img src="../images/render/sponza-small-fill-flat8.gif" width="100%" alt="Flat ≤8"></td><td width="50%"><img src="../images/render/sponza-small-fill-flat8-diff.gif" width="100%" alt="Flat ≤8 vs defaults, difference x8"></td></tr>
-<tr><th colspan="2">Flat ≤8 gate ramp</th></tr>
-<tr><td width="50%"><img src="../images/render/sponza-small-fill-gate.gif" width="100%" alt="Gate ramp"></td><td width="50%"><img src="../images/render/sponza-small-fill-gate-diff.gif" width="100%" alt="Gate ramp vs defaults, difference x8"></td></tr>
-<tr><th colspan="2">Flat ≤8 + dither 4 ramp 1</th></tr>
-<tr><td width="50%"><img src="../images/render/sponza-small-fill-dither.gif" width="100%" alt="Ramped dither"></td><td width="50%"><img src="../images/render/sponza-small-fill-dither-diff.gif" width="100%" alt="Dither 4 ramp 1 vs defaults, difference x8"></td></tr>
-<tr><th colspan="2">Flat bake (fitted)</th></tr>
-<tr><td width="50%"><img src="../images/render/sponza-small-fill-bake.gif" width="100%" alt="Flat bake"></td><td width="50%"><img src="../images/render/sponza-small-fill-bake-diff.gif" width="100%" alt="Flat bake vs defaults, difference x8"></td></tr>
+<tr><th>Look</th><th>Picture</th><th>Difference from Today ×8</th></tr>
+<tr><td>Today: {4, 0, FLAT}</td><td><img src="../images/render/sponza-small-fill-today.gif" width="100%" alt="Today"></td><td></td></tr>
+<tr><td>Default</td><td><img src="../images/render/sponza-small-fill-default.gif" width="100%" alt="Default flat fill"></td><td><img src="../images/render/sponza-small-fill-default-diff.gif" width="100%" alt="Default difference"></td></tr>
+<tr><td>Grain</td><td><img src="../images/render/sponza-small-fill-grain.gif" width="100%" alt="Hue-safe grain"></td><td><img src="../images/render/sponza-small-fill-grain-diff.gif" width="100%" alt="Grain difference"></td></tr>
+<tr><td>Dither</td><td><img src="../images/render/sponza-small-fill-dither.gif" width="100%" alt="Ordered vertex colours"></td><td><img src="../images/render/sponza-small-fill-dither-diff.gif" width="100%" alt="Dither difference"></td></tr>
 </table>
 
-Clips show full renderer frames for 5.5 seconds from source frame 1 at 6 fps,
-with a per-GIF full palette and no dithering or scaling.
+Clips show the same full renderer frames and camera window, one look per GIF.
+The [temporal method](../tools/Render-Harness.md#temporal-video-columns)
+measures triangle-scale pops; the difference clips also show spatial noise.
 
-Unspecified tunables keep their defaults. The gate ramp uses the near gate off,
-far 4, and size limit 8. Dither uses coverage 4, ramp 1, and the same size limit.
-
-Each heatmap shows absolute RGB difference x8 from defaults over the same full frames
-and window. The [temporal method](../tools/Render-Harness.md#temporal-video-columns) measures
-triangle-scale pops; judge dither by eye because it reads as noise here.
-
-<!-- generated: small-fill-temporal sha256=5903d6c98c81ff8bd3e21502700e09a9b8c10474e4eed07458965a25350bd9a4 -->
-| Look vs defaults | Extra frame-to-frame change (levels of 255) | Blocks popping (>8/255) |
+<!-- generated: small-fill-temporal sha256=3c48cbaa386c4516d72573e8607da63c4e84595b70e868863358cefe38bc3929 -->
+| Look vs Today | Extra frame-to-frame change (levels of 255) | Blocks popping (>8/255) |
 |---|---|---|
-| Defaults | 0.000 | 0.0000% |
-| Flat <=8 | 0.510 | 1.0178% |
-| Gate ramp | 0.382 | 0.6262% |
-| Dither 4, ramp 1 | 0.597 | 1.4627% |
-| Flat bake | 3.447 | 10.5584% |
+| Today | 0.000 | 0.0000% |
+| Default | 0.799 | 1.6689% |
+| Grain | 0.904 | 1.8737% |
+| Dither | 1.052 | 3.0096% |
 <!-- /generated: small-fill-temporal -->
 
 #### Board frame cost
 
-The table covers the fitted-full raster frame in the Sponza bake suite.
-It is generated from the committed [size sweep](data/small-fill/sweep48-sweep.json)
-and [look sweep](data/small-fill/s2-sweep.json), with their adjacent plans.
+The committed [ceiling-by-gate sweep](data/small-fill/p5a-sweep.json)
+measures FLAT on board A308. Its [plan](data/small-fill/p5a-plan.json)
+records build IDs, captures and layout seeds.
 
-Both use hot-tunable diagnostics builds: the look sweep at `77e546125` and
-the size sweep on the main build; the plans record their build ids.
-The look-sweep board rows use that commit's tunable names:
-`small_flat_spread` and `small_flat_spread_near`.
-Measurement with the current names is follow-up work.
+Times are seed means in landscape: the fitted-full mesh frame and the
+animated skinned render. Each sweep's percentages compare with its first row.
+Style timings require a committed camera-style sweep.
 
-<!-- generated: small-fill-board sha256=35796e7f5d24f9c3a271155a33d9bc14ef676375960bd53de16171c1c36b1dbf -->
-| Look (size 8 unless defaults) | Local measured frame ms | Capture | Frame vs defaults |
-|---|---|---|---|
-| Defaults | 48.320 | sweep48, point 0 | +0.00% |
-| Flat <=8 | 45.311 | sweep48, point 1 | -6.23% |
-| Dither 4, ramp 1 | 48.247 | s2, point 1 | -1.32% |
-| Gate 4, near 255 | 46.445 | s2, point 2 | -5.01% |
-| Gate + dither 4, ramp 1 | 48.438 | s2, point 3 | -0.93% |
+<!-- generated: small-fill-board sha256=358e5804bd0ab54f8e034f3f2ddd8771f553b22c57501d75837d73f46b084ae8 -->
+| Ceiling | Gate | Style | Mesh frame ms | vs first row | Skinned render ms | vs first row | Capture |
+|---|---|---|---|---|---|---|---|
+| 4 | 0 | FLAT | 41.103 | +0.00% | 8.743 | +0.00% | p5a, point 0 |
+| 4 | 8 | FLAT | 41.114 | +0.03% | 8.745 | +0.02% | p5a, point 1 |
+| 4 | 16 | FLAT | 41.108 | +0.01% | 8.742 | -0.01% | p5a, point 2 |
+| 4 | 24 | FLAT | 41.109 | +0.01% | 8.739 | -0.05% | p5a, point 3 |
+| 12 | 0 | FLAT | 36.356 | -11.55% | 8.014 | -8.34% | p5a, point 4 |
+| 12 | 8 | FLAT | 37.569 | -8.60% | 8.136 | -6.95% | p5a, point 5 |
+| 12 | 16 | FLAT | 37.355 | -9.12% | 8.115 | -7.19% | p5a, point 6 |
+| 12 | 24 | FLAT | 37.261 | -9.35% | 8.113 | -7.21% | p5a, point 7 |
+| 14 | 0 | FLAT | 35.556 | -13.50% | 7.914 | -9.48% | p5a, point 8 |
+| 14 | 8 | FLAT | 36.866 | -10.31% | 8.034 | -8.10% | p5a, point 9 |
+| 14 | 16 | FLAT | 36.711 | -10.69% | 8.024 | -8.22% | p5a, point 10 |
+| 14 | 24 | FLAT | 36.610 | -10.93% | 8.017 | -8.30% | p5a, point 11 |
+| 16 | 0 | FLAT | 35.043 | -14.74% | 7.856 | -10.14% | p5a, point 12 |
+| 16 | 8 | FLAT | 36.457 | -11.30% | 7.960 | -8.96% | p5a, point 13 |
+| 16 | 16 | FLAT | 36.285 | -11.72% | 7.965 | -8.90% | p5a, point 14 |
+| 16 | 24 | FLAT | 36.159 | -12.03% | 7.961 | -8.95% | p5a, point 15 |
 <!-- /generated: small-fill-board -->
-
-- Local frame times are measured on the builds recorded in each plan.
-- Chained percentages estimate across builds: look-sweep ratios against flat <=8
-  multiply the size sweep's flat <=8/default ratio.
 
 ## Memory
 
-The layer allocates nothing, and nothing a frame needs lives at file
-scope. A frame's per-vertex and per-cluster buffers, census list, picture
-attachments and upscale maps are one block. The list follows the vertex and
-cluster buffers, before the picture, at an offset independent of render size.
-Its storage is padded to the picture attachments' alignment:
-`raster_scratch_bytes()` sizes it, the caller obtains it once and sets
-`scratch`, and each call carves it. The caller decides where it lives,
-so none of it has to take internal RAM.
+The layer allocates nothing. The span filler caches camera settings and a
+per-side spread table before row workers start.
+
+Per-vertex and per-cluster buffers, the census list, picture attachments and
+upscale maps share one block. The list follows geometry at an offset
+independent of render size; storage is padded for picture attachments.
+
+`raster_scratch_bytes()` sizes the block. The caller obtains it once and sets
+`scratch`; each call carves it. The caller decides where it lives,
+so it need not consume internal RAM.
 
 ## Rules the layer keeps
 

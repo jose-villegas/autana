@@ -110,6 +110,36 @@ class DocImageFailureTest(unittest.TestCase):
                              {f"gallery-{suffix}.md" for suffix in
                               ("fidelity", "flat-smooth", "flat-sampling", "indirect", "indirect-look")})
 
+    def test_camera_board_table_reads_flat_and_style_sweeps(self):
+        import json
+        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+        import doc_tables
+        mesh = "run_gallery_perf_suite/painting_fitted_full quarter=landscape"
+        skin = "run_character_perf_suite/render paused=0 joints=7 quarter=landscape"
+        with tempfile.TemporaryDirectory() as directory:
+            data = pathlib.Path(directory)
+            points = [{"r3d_span.small_max_side": side, "r3d_span.small_flat_spread_far": 16,
+                       "r3d_span.small_flat_spread_near": 64} for side in (4, 12)]
+            def write_sweep(name, points):
+                (data / f"{name}-plan.json").write_text(json.dumps({
+                    "points": points, "captures": [{"board": "test-board"}]}))
+                rows = [{"build": "test", "point": index, "knobs": knobs,
+                         "metrics": {metric: {"mean": value, "observations": [value]}
+                                     for metric in (mesh, skin)}}
+                        for index, (knobs, value) in enumerate(zip(points, (1000, 900)))]
+                (data / f"{name}-sweep.json").write_text(json.dumps({"rows": rows}))
+            write_sweep("p5a", points)
+            flat = doc_tables.small_fill_board(data, "gallery", "painting")
+            self.assertIn("-10.00%", flat)
+            self.assertNotIn("GRAIN", flat)
+            points = [{"render_lab.small_fill_ceiling": 12, "render_lab.small_fill_gate": 16,
+                       "render_lab.small_fill_style": style} for style in (0, 1)]
+            write_sweep("p7", points)
+            styles = doc_tables.small_fill_board(data, "gallery", "painting")
+            self.assertIn("| 12 | 16 | GRAIN | 0.900 | -10.00% |", styles)
+            self.assertEqual(styles.count("| Ceiling |"), 2)
+            self.assertNotIn("render_lab", styles)
+
     def test_driver_supplies_all_four_demo_arguments(self):
         source = (ROOT / "launcher/tools/render/render_doc_images.sh").read_text()
         assignments = [line for line in source.splitlines() if line.startswith(("DEMO_SCENE=", "DEMO_OBJECT="))]
@@ -144,8 +174,8 @@ class DocImageFailureTest(unittest.TestCase):
             images = root / "docs/images/render"
             images.mkdir(parents=True)
             for stem in ("gallery-full", "gallery-missing", "unknown-full",
-                         "gallery-small-fill-flat8-diff", "gallery-small-fill-gate-diff",
-                         "gallery-small-fill-dither-diff", "gallery-small-fill-bake-diff"):
+                         "gallery-small-fill-today", "gallery-small-fill-default-diff",
+                         "gallery-small-fill-dither-diff", "gallery-small-fill-grain-diff"):
                 (images / f"{stem}.gif").touch()
             done = subprocess.run(["sh", str(tools / "render_doc_images.sh"), "--orphans"],
                                   cwd=images, capture_output=True, text=True)
