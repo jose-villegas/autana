@@ -105,6 +105,15 @@ r3d_to_camera_space_units(const r3d_line_view_x_t* view, int32_t a, int32_t b, i
     };
 }
 
+/* How far r3d_camera_to_screen_x() can land from the exact
+ * center + x * pixels_per_unit / z, in whole pixels: each of its two
+ * truncating divides moves the result by under one unit of what it
+ * divides, the first by a pixels_per_unit / R3D_X_UNIT_ONE share of one. */
+static inline int
+r3d_x_screen_rounding_px(const r3d_line_view_x_t* view) {
+    return 1 + ((view->pixels_per_unit + R3D_X_UNIT_ONE - 1) / R3D_X_UNIT_ONE);
+}
+
 /* Does not check z: a point at or behind the camera gives a defined pixel,
  * not a meaningful one. */
 static inline void
@@ -116,15 +125,6 @@ r3d_camera_to_screen_x(vec3x_t p, const r3d_line_view_x_t* view, int* screen_x, 
      * overflow a 32-bit product with pixels_per_unit. */
     *screen_x = (int)(view->center_x + (((int64_t)x * view->pixels_per_unit) / R3D_X_UNIT_ONE));
     *screen_y = (int)(view->center_y - (((int64_t)y * view->pixels_per_unit) / R3D_X_UNIT_ONE));
-}
-
-/* How far r3d_camera_to_screen_x() can land from the exact
- * center + x * pixels_per_unit / z, in whole pixels: each of its two
- * truncating divides moves the result by under one unit of what it
- * divides, the first by a pixels_per_unit / R3D_X_UNIT_ONE share of one. */
-static inline int
-r3d_x_screen_rounding_px(const r3d_line_view_x_t* view) {
-    return 1 + ((view->pixels_per_unit + R3D_X_UNIT_ONE - 1) / R3D_X_UNIT_ONE);
 }
 
 static inline bool
