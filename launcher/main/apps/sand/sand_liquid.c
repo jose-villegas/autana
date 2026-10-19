@@ -87,14 +87,14 @@ find_shallowest(const sand_t* s, int x, int y, int px, int py, int sight, uint8_
     int k_at = 0;
 
     for (int k = 1; k <= sight; k++) {
-        const int sx = x + px * k;
-        const int sy = y + py * k;
+        const int sx = x + (px * k);
+        const int sy = y + (py * k);
 
         if ((unsigned)sx >= (unsigned)s->w || (unsigned)sy >= (unsigned)s->h) {
             break;
         }
         work->probes++;
-        const cell_t o = s->cells[(size_t)sy * (size_t)s->w + (size_t)sx];
+        const cell_t o = s->cells[((size_t)sy * (size_t)s->w) + (size_t)sx];
         int there;
 
         if (CELL_IS_EMPTY(o)) {
@@ -173,10 +173,10 @@ equalise_one_cell(sand_t* s, uint8_t* row, int x, int y, const uint8_t* below_ro
         return false;
     }
 
-    const int tx = x + px * at;
-    const int ty = y + py * at;
+    const int tx = x + (px * at);
+    const int ty = y + (py * at);
 
-    const bool was_empty = pour_into(&s->cells[(size_t)ty * (size_t)w + (size_t)tx], id, give);
+    const bool was_empty = pour_into(&s->cells[((size_t)ty * (size_t)w) + (size_t)tx], id, give);
     row[x] = (mass - give > 0) ? CELL_MAKE(id, mass - give) : CELL_EMPTY;
     if (was_empty) {
         mark_depth_band(s, tx, ty);
@@ -362,7 +362,7 @@ equalise_row_block(sand_t* s, uint8_t* row, int y, int lo, int hi, int x_step, c
 static bool
 equalise_one_row(sand_t* s, int y, int x0, int x1, int w, int x_step, const xflow_t* r, int dx, int dy, int sight,
                  uint16_t is_liquid, liquid_work_t* work) {
-    uint8_t* row = s->cells + (size_t)y * (size_t)w;
+    uint8_t* row = s->cells + ((size_t)y * (size_t)w);
 
     const uint8_t* const ax_row = dest_row(s, y + r->ax[1]);
     const uint8_t* const dg_row = diagonal_row(s, y, r, ax_row);
@@ -374,7 +374,8 @@ equalise_one_row(sand_t* s, int y, int x0, int x1, int w, int x_step, const xflo
     int touched_x1 = 0;
 
     const uint8_t* blocks = work->block_read != NULL ? work->block_read : s->block_state;
-    const uint8_t* brow = blocks != NULL ? blocks + (size_t)((unsigned)y / SAND_BLOCK_H) * (size_t)s->block_cols : NULL;
+    const uint8_t* brow =
+        blocks != NULL ? blocks + ((size_t)((unsigned)y / SAND_BLOCK_H) * (size_t)s->block_cols) : NULL;
     const int bx_lo = x0 / SAND_BLOCK_W;
     const int bx_hi = (x1 + SAND_BLOCK_W - 1) / SAND_BLOCK_W;
     const int bx_from = (x_step > 0) ? bx_lo : bx_hi - 1;
@@ -385,7 +386,7 @@ equalise_one_row(sand_t* s, int y, int x0, int x1, int w, int x_step, const xflo
             continue;
         }
         const int lo = mathi_max(bx * SAND_BLOCK_W, x0);
-        const int hi = mathi_min(bx * SAND_BLOCK_W + SAND_BLOCK_W, x1);
+        const int hi = mathi_min((bx * SAND_BLOCK_W) + SAND_BLOCK_W, x1);
         if (equalise_row_block(s, row, y, lo, hi, x_step, brow, bx, ax_row, dg_row, below_row, w, r, dx, sight,
                                is_liquid, &touched, &touched_x0, &touched_x1, work)) {
             any_liquid = true;
@@ -414,7 +415,7 @@ SAND_FACT_WRITER static void
 mark_liquid_neighbourhoods_range(sand_t* s, int by_from, int by_to) {
     for (int by = by_from; by < by_to; by++) {
         for (int bx = 0; bx < s->block_cols; bx++) {
-            uint8_t* slot = &s->block_state[by * s->block_cols + bx];
+            uint8_t* slot = &s->block_state[(by * s->block_cols) + bx];
             *slot = block_neighbourhood_has(s, bx, by, BLOCK_HAS_LIQUID, true) ? (uint8_t)(*slot | BLOCK_LIQUID_NEAR)
                                                                                : (uint8_t)(*slot & ~BLOCK_LIQUID_NEAR);
         }
@@ -714,7 +715,7 @@ float_liquid_row(const liquid_sort_t* sort, int y) {
 
     uint8_t* const row = &cells[(size_t)y * (size_t)w];
     uint8_t* const urow = &cells[(size_t)uy * (size_t)w];
-    const int first_x = x0 + xi_first * xstep;
+    const int first_x = x0 + (xi_first * xstep);
     const int first_ray = liquid_sort_ray(s, first_x, y, dx, dy);
     int xi_lo;
     int xi_hi;
@@ -722,8 +723,8 @@ float_liquid_row(const liquid_sort_t* sort, int y) {
 
     bool moved = false;
 
-    for (int xi = xi_lo, ray = first_ray + (xi_lo - xi_first) * ray_step; xi < xi_hi; xi++, ray += ray_step) {
-        const int x = x0 + xi * xstep;
+    for (int xi = xi_lo, ray = first_ray + ((xi_lo - xi_first) * ray_step); xi < xi_hi; xi++, ray += ray_step) {
+        const int x = x0 + (xi * xstep);
         const int ux = x - dx;
         if (((swapped[(ray - ray_base) >> 3] >> ((ray - ray_base) & 7)) & 1U) != 0U) {
             continue;
@@ -768,7 +769,7 @@ float_lighter_liquids(sand_t* s, int dx, int dy) {
         sort.ray_base = ray_base;
         memset(swapped, 0, sizeof swapped);
         for (int yi = sort.yi_first; yi < h; yi++) {
-            const int y = sort.y0 + yi * sort.ystep;
+            const int y = sort.y0 + (yi * sort.ystep);
             if (float_liquid_row(&sort, y)) {
                 moved = true;
             }

@@ -50,7 +50,7 @@ disc_count_walk(int radius) {
         while (x > 0 && (x * x) + (dy * dy) > r2) {
             x--;
         }
-        const int row = 2 * x + 1;
+        const int row = (2 * x) + 1;
         count += (dy == 0) ? row : 2 * row; /* +dy and -dy are symmetric */
     }
     return count;
@@ -219,7 +219,7 @@ queue_flying_grain(sand_t* s, int x, int y, int dir, int speed, bool allow_dislo
         return;
     }
 
-    const size_t at = (size_t)y * (size_t)s->w + (size_t)x;
+    const size_t at = ((size_t)y * (size_t)s->w) + (size_t)x;
     const cell_t cell = s->cells[at];
     if (CELL_IS_EMPTY(cell)) {
         return; /* nothing there to throw */
@@ -347,7 +347,7 @@ ignite_core_cell(sand_t* s, int fx, int fy, int d2, int core_r2) {
     if (fx < 0 || fx >= s->w || fy < 0 || fy >= s->h) {
         return;
     }
-    const size_t fat = (size_t)fy * (size_t)s->w + (size_t)fx;
+    const size_t fat = ((size_t)fy * (size_t)s->w) + (size_t)fx;
     /* Life is floored at 1, variant 0 indicates an expired fire. */
     int life = MATERIAL_VARIANTS - 1;
     if (core_r2 > 0) {
@@ -382,7 +382,7 @@ sand_explode(sand_t* s, int cx, int cy, int radius) {
     const int core_r2 = core_radius * core_radius;
     for (int fdy = -core_radius; fdy <= core_radius; fdy++) {
         for (int fdx = -core_radius; fdx <= core_radius; fdx++) {
-            const int d2 = fdx * fdx + fdy * fdy;
+            const int d2 = (fdx * fdx) + (fdy * fdy);
             if (d2 > core_r2) {
                 continue;
             }
@@ -612,7 +612,7 @@ reacquire_fallen_grain(const sand_t* s, impulse_t* entry, int ox, int oy, int dx
         if ((unsigned)cx >= (unsigned)w || (unsigned)cy >= (unsigned)h) {
             continue;
         }
-        const size_t cat = (size_t)cy * (size_t)w + (size_t)cx;
+        const size_t cat = ((size_t)cy * (size_t)w) + (size_t)cx;
         if (s->cells[cat] == entry->cell) {
             entry->index = (uint16_t)cat;
             return true;
@@ -645,7 +645,7 @@ reacquire_liquid_by_material(const sand_t* s, impulse_t* entry, uint8_t lost_mat
         if ((unsigned)cx >= (unsigned)w || (unsigned)cy >= (unsigned)h) {
             continue;
         }
-        const size_t cat = (size_t)cy * (size_t)w + (size_t)cx;
+        const size_t cat = ((size_t)cy * (size_t)w) + (size_t)cx;
         const cell_t found = s->cells[cat];
         if (!CELL_IS_EMPTY(found) && CELL_MATERIAL(found) == lost_mat) {
             entry->index = (uint16_t)cat;
@@ -720,7 +720,7 @@ static_chunk_gravity_drift(sand_t* s, impulse_t* entry, int dx, int dy, impulse_
          * handles silent tunnelling: slow chunks paid nothing, threw
          * nothing. It manages swap/latch/mark/index-update, not just
          * charge. */
-        const size_t gnat = (size_t)cy * (size_t)w + (size_t)cx;
+        const size_t gnat = ((size_t)cy * (size_t)w) + (size_t)cx;
         impulse_charge_displacement(s, entry, gnat, gcand_dir[c], deferred, deferred_transfer_count);
         return;
     }
@@ -750,11 +750,11 @@ static_chunk_stays_airborne(const sand_t* s, const impulse_t* entry, int kept, i
     if ((unsigned)bx >= (unsigned)w || (unsigned)by >= (unsigned)h) {
         return false;
     }
-    const cell_t blocker = s->cells[(size_t)by * (size_t)w + (size_t)bx];
+    const cell_t blocker = s->cells[((size_t)by * (size_t)w) + (size_t)bx];
     if (CELL_IS_EMPTY(blocker) || material_of(blocker)->kind != KIND_STATIC) {
         return false;
     }
-    const uint16_t block_index = (uint16_t)((size_t)by * (size_t)w + (size_t)bx);
+    const uint16_t block_index = (uint16_t)(((size_t)by * (size_t)w) + (size_t)bx);
     return impulse_index_still_tracked(s, kept, self_i, block_index);
 }
 
@@ -842,7 +842,7 @@ impulse_hop(sand_t* s, impulse_t* entry, uint8_t mat_id, int hop, impulse_t* def
         impulse_decay(entry, mat_id, 1);
     }
 
-    const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
+    const size_t nat = ((size_t)ny * (size_t)w) + (size_t)nx;
     impulse_charge_displacement(s, entry, nat, entry->dir, deferred, deferred_transfer_count);
     return true;
 }
@@ -858,7 +858,7 @@ impulse_hop(sand_t* s, impulse_t* entry, uint8_t mat_id, int hop, impulse_t* def
  * from exceeding divisor. */
 static int
 impulse_push(sand_t* s, impulse_t* entry, uint8_t mat_id, impulse_t* deferred, int* deferred_transfer_count) {
-    const int push_count = 1 + (int)entry->speed / SAND_IMPULSE_CELLS_PER_STEP_DIVISOR;
+    const int push_count = 1 + ((int)entry->speed / SAND_IMPULSE_CELLS_PER_STEP_DIVISOR);
     int moved = 0;
 
     for (int hop = 0; hop < push_count; hop++) {
@@ -897,7 +897,7 @@ queue_cascade_relay(const sand_t* s, const impulse_t* entry, uint8_t mat_id, int
     if ((unsigned)rx >= (unsigned)w || (unsigned)ry >= (unsigned)s->h) {
         return;
     }
-    const cell_t relay_target = s->cells[(size_t)ry * (size_t)w + (size_t)rx];
+    const cell_t relay_target = s->cells[((size_t)ry * (size_t)w) + (size_t)rx];
     if (CELL_IS_EMPTY(relay_target) || CELL_MATERIAL(relay_target) != mat_id) {
         return;
     }
@@ -909,7 +909,7 @@ queue_cascade_relay(const sand_t* s, const impulse_t* entry, uint8_t mat_id, int
     const int relay_slot = SAND_CASCADE_MAX_PER_STEP - 1 - *deferred_cascade_count;
     (*deferred_cascade_count)++;
     impulse_t* c = &deferred[relay_slot];
-    c->index = (uint16_t)((size_t)ry * (size_t)w + (size_t)rx);
+    c->index = (uint16_t)(((size_t)ry * (size_t)w) + (size_t)rx);
     c->cell = relay_target;
     c->dir = entry->dir;
     c->speed = (uint8_t)(entry->speed / SAND_CASCADE_SPEED_DIVISOR);

@@ -90,7 +90,7 @@ shade_frame(const uint8_t* grid, uint8_t* idx256) {
     for (int cy = 0; cy < GRID_H; cy++) {
         unsigned water_depth = 0;
         for (int cx = 0; cx < GRID_W; cx++) {
-            const cell_t c = grid[cy * GRID_W + cx];
+            const cell_t c = grid[(cy * GRID_W) + cx];
             const unsigned hash = material_grain_hash(cx, cy);
             unsigned depth = 0;
             if (CELL_MATERIAL(c) == MAT_WATER) {
@@ -101,7 +101,7 @@ shade_frame(const uint8_t* grid, uint8_t* idx256) {
             }
             gfx_color_t col[3];
             material_colours(&f, c, hash, 0U, depth, col);
-            idx256[cy * GRID_W + cx] = (uint8_t)material_palette256_index(col[0]);
+            idx256[(cy * GRID_W) + cx] = (uint8_t)material_palette256_index(col[0]);
         }
     }
 }
@@ -116,17 +116,19 @@ represent_frame(const uint8_t* idx256, gfx_dither_mode_t mode, const uint8_t dit
                 const uint8_t checker2_class[256], uint16_t* out) {
     for (int cy = 0; cy < GRID_H; cy++) {
         for (int cx = 0; cx < GRID_W; cx++) {
-            const uint8_t idx = idx256[cy * GRID_W + cx];
+            const uint8_t idx = idx256[(cy * GRID_W) + cx];
             uint16_t repr;
             switch (mode) {
                 case GFX_DITHER_NONE: repr = sand_dither_none_lut[idx]; break;
-                case GFX_DITHER_CELL_CHECKER: repr = sand_dither_cell_checker[idx * 2 + ((cx + cy) & 1)]; break;
-                case GFX_DITHER_CELL_BAYER2: repr = sand_dither_cell_bayer2[idx * 4 + (cy & 1) * 2 + (cx & 1)]; break;
+                case GFX_DITHER_CELL_CHECKER: repr = sand_dither_cell_checker[(idx * 2) + ((cx + cy) & 1)]; break;
+                case GFX_DITHER_CELL_BAYER2:
+                    repr = sand_dither_cell_bayer2[(idx * 4) + ((cy & 1) * 2) + (cx & 1)];
+                    break;
                 case GFX_DITHER_PIXEL_CHECKER2: repr = checker2_class[idx]; break;
                 case GFX_DITHER_PIXEL_BAYER4:
                 default: repr = dither16_class[idx]; break;
             }
-            out[cy * GRID_W + cx] = repr;
+            out[(cy * GRID_W) + cx] = repr;
         }
     }
 }
@@ -143,7 +145,7 @@ changed_span_cells(const uint16_t* cur, const uint16_t* prev) {
         int x0 = GRID_W;
         int x1 = 0;
         for (int cx = 0; cx < GRID_W; cx++) {
-            const int i = cy * GRID_W + cx;
+            const int i = (cy * GRID_W) + cx;
             if (cur[i] == prev[i]) {
                 continue;
             }
@@ -184,7 +186,7 @@ before_row_span(const uint8_t* grid, const uint8_t* prev_grid) {
         int x0 = GRID_W;
         int x1 = 0;
         for (int cx = 0; cx < GRID_W; cx++) {
-            const int idx = cy * GRID_W + cx;
+            const int idx = (cy * GRID_W) + cx;
             if (grid[idx] == prev_grid[idx]) {
                 continue;
             }

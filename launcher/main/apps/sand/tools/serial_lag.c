@@ -65,7 +65,7 @@ fill_rect(sand_t* s, int x0, int y0, int x1, int y1, cell_t c) {
  * maintainer sees break up on the device. */
 static void
 scene_water_column(sand_t* s) {
-    fill_rect(s, LAG_W / 2 - 6, 0, LAG_W / 2 + 6, LAG_H / 2, CELL_MAKE(MAT_WATER, MASS_MAX));
+    fill_rect(s, (LAG_W / 2) - 6, 0, (LAG_W / 2) + 6, LAG_H / 2, CELL_MAKE(MAT_WATER, MASS_MAX));
 }
 
 /* A pool deep enough that cross-flow runs every step, straddling boundaries. */
@@ -155,7 +155,7 @@ compare_step(const sand_t* split, const sand_t* serial) {
         for (int x = 0; x < LAG_W; x++) {
             const cell_t a = sand_at(split, x, y);
             const cell_t b = sand_at(serial, x, y);
-            const cell_t was = cells_before[(size_t)y * (size_t)LAG_W + (size_t)x];
+            const cell_t was = cells_before[((size_t)y * (size_t)LAG_W) + (size_t)x];
             if (a != b) {
                 d.cells++;
             }

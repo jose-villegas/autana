@@ -35,7 +35,7 @@ sand_chunk_plan(sand_chunk_plan_t* p, int w, int h, int side_x, int side_y, int 
 
 static void
 chunk_span(int c, int side, int off, int extent, int* a, int* b) {
-    int lo = c * side - off;
+    int lo = (c * side) - off;
     int hi = lo + side;
 
     if (lo < 0) {
@@ -62,7 +62,7 @@ from_downstream(int i, int n, int t) {
 
 static void
 order_push(sand_chunk_order_t* o, int cols, int cx, int cy) {
-    const uint8_t idx = (uint8_t)(cy * cols + cx);
+    const uint8_t idx = (uint8_t)((cy * cols) + cx);
 
     o->rank[idx] = o->count;
     o->at[o->count] = idx;
@@ -156,7 +156,7 @@ sand_chunk_ready(const sand_chunk_sched_t* k, int pos) {
         if ((unsigned)nx >= (unsigned)k->cols || (unsigned)ny >= (unsigned)k->rows) {
             continue;
         }
-        const int nidx = ny * k->cols + nx;
+        const int nidx = (ny * k->cols) + nx;
         if (k->order.rank[nidx] < pos && !k->done[nidx]) {
             return false;
         }
@@ -214,7 +214,7 @@ sand_chunk_makespan(const sand_chunk_order_t* o, int cols, int rows, const uint1
             if ((unsigned)nx >= (unsigned)cols || (unsigned)ny >= (unsigned)rows) {
                 continue;
             }
-            const int r = o->rank[ny * cols + nx];
+            const int r = o->rank[(ny * cols) + nx];
             if (r < pos && finish[r] > start) {
                 start = finish[r];
             }

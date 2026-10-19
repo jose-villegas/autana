@@ -591,7 +591,7 @@ find_nearest_empty(const sand_t* s, int x, int y, int px, int py, int sight, uin
         if ((unsigned)sx >= (unsigned)s->w || (unsigned)sy >= (unsigned)s->h) {
             return 0;
         }
-        const cell_t o = s->cells[(size_t)sy * (size_t)s->w + (size_t)sx];
+        const cell_t o = s->cells[((size_t)sy * (size_t)s->w) + (size_t)sx];
         if (CELL_IS_EMPTY(o)) {
             return k;
         }
@@ -610,7 +610,7 @@ find_nearest_empty_in_line(const uint8_t* line, int at, int dir, int n, int stri
                            int* run_len_out) {
 #pragma GCC unroll 4
     for (int k = 1; k <= sight; k++) {
-        const int sa = at + dir * k;
+        const int sa = at + (dir * k);
         if ((unsigned)sa >= (unsigned)n) {
             return 0;
         }
@@ -718,8 +718,8 @@ equalise_gas_one_cell(sand_t* s, uint8_t* row, const uint8_t* arow, const uint8_
         at = gas_gap_ahead(s, row, x, y, px, py, sight, gas_id, carry_ok, run);
 
         if (at != 0) {
-            tx = x + px * at;
-            ty = y + py * at;
+            tx = x + (px * at);
+            ty = y + (py * at);
             moved = true;
         }
     }
@@ -745,7 +745,7 @@ equalise_gas_one_cell(sand_t* s, uint8_t* row, const uint8_t* arow, const uint8_
 
     const int w = s->w;
 
-    s->cells[(size_t)ty * (size_t)w + (size_t)tx] = grain;
+    s->cells[((size_t)ty * (size_t)w) + (size_t)tx] = grain;
     row[x] = CELL_EMPTY;
     note_gas_late_arrival(late, x, y, tx, ty);
 
@@ -862,7 +862,7 @@ equalise_gas_row_cells(sand_t* s, uint8_t* row, const uint8_t* arow, const uint8
 static bool
 equalise_gas_one_row(sand_t* s, int y, int w, int x_from, int x_to, int x_step, int px, int py, int rdx, int rdy,
                      uint16_t is_gas, int* clean_run, unsigned* late) {
-    uint8_t* row = s->cells + (size_t)y * (size_t)w;
+    uint8_t* row = s->cells + ((size_t)y * (size_t)w);
     /* Both fixed for the whole row - see has_room_above()'s comment. */
     const uint8_t* const arow = dest_row(s, y + rdy);
     const uint8_t* const nrow = dest_row(s, y + py);
@@ -1019,7 +1019,7 @@ gas_row_audit(const sand_t* s) {
             continue;
         }
         sand_gas_row_audit_skippable++;
-        const uint8_t* row = s->cells + (size_t)y * (size_t)s->w;
+        const uint8_t* row = s->cells + ((size_t)y * (size_t)s->w);
         for (int x = 0; x < s->w; x++) {
             const cell_t c = row[x];
             if (!CELL_IS_EMPTY(c) && ((gas_kind_mask >> (c >> 3)) & 1U) != 0U) {

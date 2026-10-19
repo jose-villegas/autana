@@ -32,7 +32,7 @@ draw_palette_badge(sand_ui_t* ui, int i, recti_t tile) {
     };
     ui_fill(badge, PALETTE_BADGE_BORDER_COLOR);
     ui_fill((recti_t){badge.x + PALETTE_BADGE_INSET, badge.y + PALETTE_BADGE_INSET,
-                      PALETTE_BADGE_SIZE - 2 * PALETTE_BADGE_INSET, PALETTE_BADGE_SIZE - 2 * PALETTE_BADGE_INSET},
+                      PALETTE_BADGE_SIZE - (2 * PALETTE_BADGE_INSET), PALETTE_BADGE_SIZE - (2 * PALETTE_BADGE_INSET)},
             PALETTE_BADGE_FILL_COLOR);
 
     if (ui->modes[i] == BRUSH_SPAWN) {
@@ -49,7 +49,7 @@ draw_palette_tile(sand_ui_t* ui, int i, int cols) {
     int w;
     int h;
     palette_tile_rect(i, ui->brush_count, cols, ui_width(), ui_height(), &x, &y, &w, &h);
-    const recti_t tile = {x + PALETTE_GROUT, y + PALETTE_GROUT, w - 2 * PALETTE_GROUT, h - 2 * PALETTE_GROUT};
+    const recti_t tile = {x + PALETTE_GROUT, y + PALETTE_GROUT, w - (2 * PALETTE_GROUT), h - (2 * PALETTE_GROUT)};
 
     const uint32_t face = gfx_color_rgb888(material_brush_color(ui->brushes[i].cell));
     ui_color_begin(UI_COLOR_FACE, face);

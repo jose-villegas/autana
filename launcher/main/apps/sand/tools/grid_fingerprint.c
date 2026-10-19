@@ -196,7 +196,7 @@ scene_sealed_lava(sand_t* s) {
      * of which way is down, so the scene proves the conversion actually
      * fires rather than merely COULD fire. */
     for (int k = 0; k < 3; k++) {
-        const int cx = 12 + k * 20;
+        const int cx = 12 + (k * 20);
         const int lava_y = FP_H - 3;
 
         for (int dy = -1; dy <= 1; dy++) {

@@ -322,16 +322,16 @@ sand_lanes(sand_t* s) {
     const size_t rows = (size_t)s->h;
     const size_t blocks = (size_t)s->block_cols * (size_t)s->block_rows;
     uint16_t* const spans = s->lane_scratch;
-    uint8_t* const bytes = (uint8_t*)(spans + (size_t)(2 * SAND_LANE_COUNT) * rows);
+    uint8_t* const bytes = (uint8_t*)(spans + ((size_t)(2 * SAND_LANE_COUNT) * rows));
 
-    uint8_t* const defer = bytes + (size_t)SAND_LANE_COUNT * (blocks + rows);
+    uint8_t* const defer = bytes + ((size_t)SAND_LANE_COUNT * (blocks + rows));
 
     for (int i = 0; i < SAND_LANE_COUNT; i++) {
-        sand_lane_pair[i].x0 = spans + (size_t)(2 * i) * rows;
+        sand_lane_pair[i].x0 = spans + ((size_t)(2 * i) * rows);
         sand_lane_pair[i].x1 = sand_lane_pair[i].x0 + rows;
-        sand_lane_pair[i].blocks = bytes + (size_t)i * (blocks + rows);
+        sand_lane_pair[i].blocks = bytes + ((size_t)i * (blocks + rows));
         sand_lane_pair[i].dirty = sand_lane_pair[i].blocks + blocks;
-        sand_lane_pair[i].defer = defer + (size_t)i * SAND_LANE_DEFER_BYTES;
+        sand_lane_pair[i].defer = defer + ((size_t)i * SAND_LANE_DEFER_BYTES);
     }
     return sand_lane_pair;
 }
@@ -417,7 +417,7 @@ sand_block_settled(const sand_t* s, int bx, int by) {
     if (s->block_state == NULL) {
         return false;
     }
-    return (s->block_state[by * s->block_cols + bx] & (BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER)) != 0;
+    return (s->block_state[(by * s->block_cols) + bx] & (BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER)) != 0;
 }
 
 void
@@ -477,7 +477,7 @@ sand_at(const sand_t* s, int x, int y) {
          * way through the floor. */
         return CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT);
     }
-    return s->cells[y * s->w + x];
+    return s->cells[(y * s->w) + x];
 }
 
 void
@@ -485,7 +485,7 @@ sand_set(sand_t* s, int x, int y, cell_t cell) {
     if (x < 0 || x >= s->w || y < 0 || y >= s->h) {
         return;
     }
-    s->cells[y * s->w + x] = cell;
+    s->cells[(y * s->w) + x] = cell;
     latch_content_flags(s, cell);
     mark_move(s, x, y, x, y);
 }
@@ -516,7 +516,7 @@ try_spawn_one(sand_t* s, int x, int y, cell_t spec, int band) {
     if (x < 0 || x >= s->w || y < 0 || y >= s->h) {
         return false;
     }
-    if (s->cells[y * s->w + x] != SAND_EMPTY) {
+    if (s->cells[(y * s->w) + x] != SAND_EMPTY) {
         return false; /* never overwrite, so the count cannot drift */
     }
     /* Latched from the finished cell due to variant-dependent flags using
@@ -525,7 +525,7 @@ try_spawn_one(sand_t* s, int x, int y, cell_t spec, int band) {
     const cell_t cell = cell_is_extended(spec)    ? spec
                         : cell_is_gunpowder(spec) ? random_gunpowder(s, band)
                                                   : random_cell(s, (material_id_t)CELL_MATERIAL(spec), band);
-    s->cells[y * s->w + x] = cell;
+    s->cells[(y * s->w) + x] = cell;
     latch_content_flags(s, cell);
     mark_move(s, x, y, x, y);
     return true;
@@ -558,7 +558,7 @@ sand_spawn_cell_share(sand_t* s, int cx, int cy, int radius, cell_t spec, int sh
 
     for (int dy = -radius; dy <= radius; dy++) {
         for (int dx = -radius; dx <= radius; dx++) {
-            if ((dx * dx) + dy * dy > r2) {
+            if ((dx * dx) + (dy * dy) > r2) {
                 continue;
             }
             const int x = cx + dx;
@@ -584,7 +584,7 @@ sand_erase(sand_t* s, int cx, int cy, int radius) {
 
     for (int dy = -radius; dy <= radius; dy++) {
         for (int dx = -radius; dx <= radius; dx++) {
-            if (dx * dx + dy * dy > r2) {
+            if ((dx * dx) + (dy * dy) > r2) {
                 continue;
             }
             const int x = cx + dx;
@@ -592,10 +592,10 @@ sand_erase(sand_t* s, int cx, int cy, int radius) {
             if (x < 0 || x >= s->w || y < 0 || y >= s->h) {
                 continue;
             }
-            if (s->cells[y * s->w + x] == SAND_EMPTY) {
+            if (s->cells[(y * s->w) + x] == SAND_EMPTY) {
                 continue; /* already empty, so nothing changed here */
             }
-            s->cells[y * s->w + x] = SAND_EMPTY;
+            s->cells[(y * s->w) + x] = SAND_EMPTY;
             mark_move(s, x, y, x, y);
             removed++;
         }
@@ -654,7 +654,7 @@ sand_remove_emitters(sand_t* s, int cx, int cy, int radius) {
     for (int i = 0; i < s->emitter_count; i++) {
         const int dx = s->emitters[i].x - cx;
         const int dy = s->emitters[i].y - cy;
-        if (dx * dx + dy * dy <= r2) {
+        if ((dx * dx) + (dy * dy) <= r2) {
             removed++;
             continue;
         }
@@ -751,7 +751,7 @@ sand_load_above(const sand_t* s, int x, int y, int dx, int dy) {
         if (cx < 0 || cx >= s->w || cy < 0 || cy >= s->h) {
             break;
         }
-        if (s->cells[cy * s->w + cx] == SAND_EMPTY) {
+        if (s->cells[(cy * s->w) + cx] == SAND_EMPTY) {
             break;
         }
         n++;
@@ -1228,7 +1228,7 @@ typedef struct {
 SAND_FACT_WRITER static void
 step_one_block(const sweep_ctx_t* ctx, int bx) {
     const int lo = mathi_max(bx * SAND_BLOCK_W, ctx->x0);
-    const int hi = mathi_min(bx * SAND_BLOCK_W + SAND_BLOCK_W, ctx->x1);
+    const int hi = mathi_min((bx * SAND_BLOCK_W) + SAND_BLOCK_W, ctx->x1);
 
     if (span_is_empty(ctx->row, lo, hi)) {
         return;
@@ -1265,7 +1265,7 @@ step_one_block(const sweep_ctx_t* ctx, int bx) {
     }
 
     if ((moved_here || saw_liquid) && ctx->s->block_state != NULL) {
-        ctx->s->block_state[ctx->by * ctx->s->block_cols + bx] |=
+        ctx->s->block_state[(ctx->by * ctx->s->block_cols) + bx] |=
             (uint8_t)((moved_here ? BLOCK_ACTIVE : 0) | (saw_liquid ? BLOCK_HAS_LIQUID : 0));
     }
 }
@@ -1279,7 +1279,7 @@ step_one_row(const sweep_ctx_t* ctx) {
         SAND_FORCED_STATE(ctx->s);
         if (SAND_SKIP_IF(
                 SAND_FORCED_IF(ctx->settled_bit != 0
-                               && (ctx->s->block_state[ctx->by * ctx->s->block_cols + bx] & ctx->settled_bit)))) {
+                               && (ctx->s->block_state[(ctx->by * ctx->s->block_cols) + bx] & ctx->settled_bit)))) {
             continue;
         }
         step_one_block(ctx, bx);
@@ -1299,7 +1299,7 @@ SAND_FACT_WRITER static void
 finalize_settling_range(sand_t* s, uint8_t settled_bit, int by_from, int by_to) {
     for (int by = by_from; by < by_to; by++) {
         for (int bx = 0; bx < s->block_cols; bx++) {
-            const int i = by * s->block_cols + bx;
+            const int i = (by * s->block_cols) + bx;
             if (s->block_state[i] & BLOCK_ACTIVE) {
                 continue;
             }
@@ -1398,8 +1398,8 @@ build_xflow(xflow_t* f, int gx, int gy) {
      * agree regardless of which ray got each cell there. */
     const int bx = (MASS_MAX * 256 * gx) / len;
     const int by = (MASS_MAX * 256 * gy) / len;
-    f->bias_ax_q8 = bx * f->ax[0] + by * f->ax[1];
-    f->bias_dg_q8 = bx * f->dg[0] + by * f->dg[1];
+    f->bias_ax_q8 = (bx * f->ax[0]) + (by * f->ax[1]);
+    f->bias_dg_q8 = (bx * f->dg[0]) + (by * f->dg[1]);
 }
 
 /* A mobility of 0 or 255 always admits the move; only a value between them
@@ -1557,7 +1557,7 @@ void
 sand_chunk_pass_cells(int cx, int cy, int* x0, int* x1, int* y0, int* y1) {
     sand_chunk_cells(&chunk_plan, cx, cy, x0, x1, y0, y1);
     if (chunk_work_on) {
-        sand_chunk_work_at = cy * chunk_plan.cols + cx;
+        sand_chunk_work_at = (cy * chunk_plan.cols) + cx;
     }
 }
 
@@ -1701,7 +1701,7 @@ chunk_awake_costs(const sand_t* s, const sand_chunk_plan_t* p, uint16_t* cost) {
 
             sand_chunk_cells(p, cx, cy, &x0, &x1, &y0, &y1);
             const int awake = blocks_settled_over(s, x0, x1, y0, y1, s->settled_bit) ? 0 : (x1 - x0) * (y1 - y0);
-            cost[cy * p->cols + cx] = (uint16_t)awake;
+            cost[(cy * p->cols) + cx] = (uint16_t)awake;
             total += awake;
         }
     }
@@ -1790,8 +1790,8 @@ bool
 sand_chunk_pass_ranks_later(int x0, int y0, int x1, int y1) {
     const int sx = chunk_plan.side_x;
     const int sy = chunk_plan.side_y;
-    const int from = ((y0 + chunk_plan.off_y) / sy) * chunk_plan.cols + (x0 + chunk_plan.off_x) / sx;
-    const int to = ((y1 + chunk_plan.off_y) / sy) * chunk_plan.cols + (x1 + chunk_plan.off_x) / sx;
+    const int from = (((y0 + chunk_plan.off_y) / sy) * chunk_plan.cols) + ((x0 + chunk_plan.off_x) / sx);
+    const int to = (((y1 + chunk_plan.off_y) / sy) * chunk_plan.cols) + ((x1 + chunk_plan.off_x) / sx);
 
     return chunk_sched.order.rank[to] > chunk_sched.order.rank[from];
 }

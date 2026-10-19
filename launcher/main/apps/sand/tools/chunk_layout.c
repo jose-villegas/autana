@@ -233,7 +233,7 @@ axis_sides(int extent, const int* keep, int n_keep, int* out) {
         return n;
     }
     for (int i = 0; i < AXIS_SAMPLES; i++) {
-        n = insert_side(out, n, SAND_CHUNK_SIDE_MIN + ((hi - SAND_CHUNK_SIDE_MIN) * i) / (AXIS_SAMPLES - 1));
+        n = insert_side(out, n, SAND_CHUNK_SIDE_MIN + (((hi - SAND_CHUNK_SIDE_MIN) * i) / (AXIS_SAMPLES - 1)));
     }
     for (int i = 0; i < n_keep; i++) {
         if (keep[i] <= hi && keep[i] >= SAND_CHUNK_SIDE_MIN) {
@@ -256,7 +256,7 @@ typedef struct {
  * layout that only divides well there is not a layout anyone wants. */
 static double
 rank_of(const layout_t* l) {
-    return 2.0 * l->landscape + l->balance;
+    return (2.0 * l->landscape) + l->balance;
 }
 
 static int

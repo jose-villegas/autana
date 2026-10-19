@@ -765,7 +765,7 @@ static int
 draw_one_row(gfx_color_t* fb, uint8_t* index_image, int cy, uint16_t* cur_x0, uint16_t* cur_x1, int wx0, int wx1,
              bool force_full) {
     const uint8_t* row = &buffers.grid[cy * grid_w];
-    uint8_t* index_row = index_image != NULL ? index_image + cy * grid_w : NULL;
+    uint8_t* index_row = index_image != NULL ? index_image + (cy * grid_w) : NULL;
 
     paint_row(fb, index_row, cy, row, wx0, wx1, force_full);
     return row_runs_find_or_span(row, grid_w, SAND_EMPTY, cur_x0, cur_x1);
@@ -964,10 +964,10 @@ draw_emitter_markers(void) {
         }
         (void)ecell; /* the marker's colour is fixed, not the material's */
 
-        const int mid_x = ex * cell + cell / 2;
-        const int mid_y = ey * cell + cell / 2;
-        const int px = mid_x - EMITTER_MARKER_PX / 2;
-        const int py = mid_y - EMITTER_MARKER_PX / 2;
+        const int mid_x = (ex * cell) + (cell / 2);
+        const int mid_y = (ey * cell) + (cell / 2);
+        const int px = mid_x - (EMITTER_MARKER_PX / 2);
+        const int py = mid_y - (EMITTER_MARKER_PX / 2);
         draw_rect(px, py, EMITTER_MARKER_PX, EMITTER_MARKER_PX, marker);
         gfx_mark_dirty(px, py, EMITTER_MARKER_PX, EMITTER_MARKER_PX);
     }
@@ -1638,8 +1638,8 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
 #if CONFIG_LAUNCHER_SELFTEST
 static void
 sand_app_test_tap_menu_rect(recti_t r) {
-    const int x = r.x + r.w / 2;
-    const int y = r.y + r.h / 2;
+    const int x = r.x + (r.w / 2);
+    const int y = r.y + (r.h / 2);
     const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
     const input_t hold = {.down = true, .x = x, .y = y};
     const input_t release = {.released = true, .x = x, .y = y};
@@ -1694,7 +1694,7 @@ sand_app_test_start_button_touch(void) {
     title_screen_layout_t title;
     title_screen_layout(ui_width(), ui_height(), &title);
     const recti_t start_rect = title.buttons[SAND_TITLE_START];
-    const input_t touch = {.x = start_rect.x + start_rect.w / 2, .y = start_rect.y + start_rect.h / 2};
+    const input_t touch = {.x = start_rect.x + (start_rect.w / 2), .y = start_rect.y + (start_rect.h / 2)};
     ESP_LOGI(TAG, "START tap test: tapping (%d, %d), START rect (%d, %d, %d, %d)", touch.x, touch.y, start_rect.x,
              start_rect.y, start_rect.w, start_rect.h);
     return touch;

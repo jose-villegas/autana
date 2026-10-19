@@ -138,7 +138,7 @@ joint_chi_square(uint32_t seed, int decimate, int shift_a, int shift_b) {
         }
         const uint32_t a = ((prev >> shift_a) & 0xFFU) >> 4;
         const uint32_t b = ((cur >> shift_b) & 0xFFU) >> 4;
-        joint[a * 16U + b]++;
+        joint[(a * 16U) + b]++;
         pairs++;
         prev = cur;
     }
@@ -187,7 +187,7 @@ hashed_histograms(uint32_t seed, uint32_t cell, uint32_t slot, uint32_t* low, ui
     for (uint32_t phase = 1; phase <= 0xFFFFU; phase++) {
         const uint32_t cur = rng_hash(seed, phase, cell, slot) & 0xFFU;
         low[cur]++;
-        joint[(prev >> 4) * 16U + (cur >> 4)]++;
+        joint[((prev >> 4) * 16U) + (cur >> 4)]++;
         prev = cur;
     }
 }
@@ -453,7 +453,7 @@ static void
 print_hashed_section(void) {
     static uint32_t hashed_low[256];
     static uint32_t hashed_joint[256];
-    const uint32_t cell = (uint32_t)(POCKET_GAS_Y * POCKET_W + POCKET_GAS_X);
+    const uint32_t cell = (uint32_t)((POCKET_GAS_Y * POCKET_W) + POCKET_GAS_X);
 
     printf("== the hashed draw, cell (%d,%d), step counter 0..65535 ==\n", POCKET_GAS_X, POCKET_GAS_Y);
     printf("%4s  %10s %10s %10s %16s\n", "seed", "low-min", "low-max", "low-chi2", "joint-chi2");

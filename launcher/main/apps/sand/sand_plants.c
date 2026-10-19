@@ -96,7 +96,7 @@ support_visit(sand_t* s, support_t* sp, int at, int w, int h, int down, cell_t s
         if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
             continue;
         }
-        const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
+        const size_t nat = ((size_t)ny * (size_t)w) + (size_t)nx;
         const cell_t c = s->cells[nat];
         if (CELL_IS_EMPTY(c) || !is_kin(c, self, r)) {
             continue;
@@ -120,7 +120,7 @@ anchored(sand_t* s, int x, int y, int w, int h, cell_t self, const reaction_t* r
     sp.n = 0;
     int head = 0;
 
-    const uint16_t seed = (uint16_t)((size_t)y * (size_t)w + (size_t)x);
+    const uint16_t seed = (uint16_t)(((size_t)y * (size_t)w) + (size_t)x);
     sp.slot[support_slot(seed)] = seed;
     sp.filled |= (uint64_t)1U << support_slot(seed);
     sp.body[sp.n++] = seed;
@@ -148,8 +148,8 @@ faller_can_move(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
     if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
         return false;
     }
-    const size_t at = (size_t)y * (size_t)w + (size_t)x;
-    const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
+    const size_t at = ((size_t)y * (size_t)w) + (size_t)x;
+    const size_t nat = ((size_t)ny * (size_t)w) + (size_t)nx;
     if (!CELL_IS_EMPTY(s->cells[nat])) {
         return false; /* landed */
     }
@@ -163,8 +163,8 @@ step_one_falling_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
     }
     const int nx = x + s->last_load_dx;
     const int ny = y + s->last_load_dy;
-    const size_t at = (size_t)y * (size_t)w + (size_t)x;
-    const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
+    const size_t at = ((size_t)y * (size_t)w) + (size_t)x;
+    const size_t nat = ((size_t)ny * (size_t)w) + (size_t)nx;
     if ((int)(rng_next(&s->rng) & 0xFF) >= r->falls) {
         return true; /* still falling, just not now */
     }
@@ -213,7 +213,7 @@ root_lookahead(sand_t* s, int cx, int cy, int w, int h, const reaction_t* r, int
     const int tx = cx + fd[0];
     const int ty = cy + fd[1];
     if ((unsigned)tx >= (unsigned)w || (unsigned)ty >= (unsigned)h
-        || s->cells[(size_t)ty * (size_t)w + (size_t)tx] != (cell_t)r->roots_to) {
+        || s->cells[((size_t)ty * (size_t)w) + (size_t)tx] != (cell_t)r->roots_to) {
         return false;
     }
     const int ax = tx + s->last_load_dx;
@@ -221,7 +221,7 @@ root_lookahead(sand_t* s, int cx, int cy, int w, int h, const reaction_t* r, int
     if ((unsigned)ax >= (unsigned)w || (unsigned)ay >= (unsigned)h) {
         return false;
     }
-    const cell_t under = s->cells[(size_t)ay * (size_t)w + (size_t)ax];
+    const cell_t under = s->cells[((size_t)ay * (size_t)w) + (size_t)ax];
     if (CELL_IS_EMPTY(under) || (reaction_of(under)->soil == 0 && under != (cell_t)r->roots_to)) {
         return false;
     }
@@ -243,7 +243,7 @@ scan_below(sand_t* s, int cx, int cy, int w, int h, const reaction_t* r, cell_t 
         if ((unsigned)tx >= (unsigned)w || (unsigned)ty >= (unsigned)h) {
             continue;
         }
-        const cell_t c = s->cells[(size_t)ty * (size_t)w + (size_t)tx];
+        const cell_t c = s->cells[((size_t)ty * (size_t)w) + (size_t)tx];
         if (CELL_IS_EMPTY(c)) {
             continue;
         }
@@ -290,7 +290,7 @@ drink_below_collar(sand_t* s, int cx, int cy, int w, int h, const reaction_t* r,
         if ((unsigned)cx >= (unsigned)w || (unsigned)cy >= (unsigned)h) {
             return -1;
         }
-        const size_t at = (size_t)cy * (size_t)w + (size_t)cx;
+        const size_t at = ((size_t)cy * (size_t)w) + (size_t)cx;
         const cell_t c = s->cells[at];
         /* Root must be TRANSPARENT to avoid cutting off water. */
         if (r->roots_to != 0 && c == (cell_t)r->roots_to) {
@@ -343,7 +343,7 @@ find_water(sand_t* s, int x, int y, int w, int h, const reaction_t* r, cell_t se
         cy = st.y;
         if (st.on_soil) {
             /* Into the soil. This is the collar. */
-            *contact_at = (int)((size_t)cy * (size_t)w + (size_t)cx);
+            *contact_at = (int)(((size_t)cy * (size_t)w) + (size_t)cx);
             return drink_below_collar(s, cx, cy, w, h, r, wants_room);
         }
         if (st.via_root) {
@@ -445,7 +445,7 @@ step_one_conducting_cell(sand_t* s, int x, int y, int w, int h, const reaction_t
         if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
             continue;
         }
-        const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
+        const size_t nat = ((size_t)ny * (size_t)w) + (size_t)nx;
         conduit_weigh(s->cells[nat], k, nat, nx, ny, &src, &dst);
     }
     if (src.at < 0 || dst.at < 0) {
@@ -471,7 +471,7 @@ count_root_neighbors(sand_t* s, int x, int y, int w, int h, const reaction_t* r)
         if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
             continue;
         }
-        if (s->cells[(size_t)ny * (size_t)w + (size_t)nx] == (cell_t)r->roots_to) {
+        if (s->cells[((size_t)ny * (size_t)w) + (size_t)nx] == (cell_t)r->roots_to) {
             root_neighbors++;
         }
     }
@@ -488,7 +488,7 @@ away_from_parent(sand_t* s, int x, int y, int w, int h, const reaction_t* r, int
         if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
             continue;
         }
-        const cell_t c = s->cells[(size_t)ny * (size_t)w + (size_t)nx];
+        const cell_t c = s->cells[((size_t)ny * (size_t)w) + (size_t)nx];
         if (c == (cell_t)r->roots_to || (!CELL_IS_EMPTY(c) && CELL_MATERIAL(c) == r->clings_to)) {
             *away_x -= nd[0];
             *away_y -= nd[1];
@@ -525,7 +525,7 @@ gather_root_cands(sand_t* s, int x, int y, int w, int h, int away_x, int away_y,
         if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
             continue;
         }
-        const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
+        const size_t nat = ((size_t)ny * (size_t)w) + (size_t)nx;
         const cell_t n = s->cells[nat];
         if (CELL_IS_EMPTY(n) || reaction_of(n)->soil == 0 || moisture_of(n, reaction_of(n)) == 0) {
             continue;
@@ -671,7 +671,7 @@ is_crowned(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
         if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
             continue;
         }
-        crowned = (s->cells[(size_t)ny * (size_t)w + (size_t)nx] == (cell_t)r->sprouts_to);
+        crowned = (s->cells[((size_t)ny * (size_t)w) + (size_t)nx] == (cell_t)r->sprouts_to);
     }
     return crowned;
 }
@@ -688,7 +688,7 @@ find_bud_site(sand_t* s, int x, int y, int w, int h, int* bx, int* by) {
         if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
             continue;
         }
-        const size_t nat = (size_t)ny * (size_t)w + (size_t)nx;
+        const size_t nat = ((size_t)ny * (size_t)w) + (size_t)nx;
         if (CELL_IS_EMPTY(s->cells[nat])) {
             *bx = nx;
             *by = ny;
@@ -700,7 +700,7 @@ find_bud_site(sand_t* s, int x, int y, int w, int h, int* bx, int* by) {
 
 bool
 step_one_budding_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
-    const cell_t self = s->cells[(size_t)y * (size_t)w + (size_t)x];
+    const cell_t self = s->cells[((size_t)y * (size_t)w) + (size_t)x];
 
     if (!is_crowned(s, x, y, w, h, r)) {
         return false;
@@ -708,7 +708,7 @@ step_one_budding_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r
     const int ax = x - s->last_load_dx;
     const int ay = y - s->last_load_dy;
     if ((unsigned)ax < (unsigned)w && (unsigned)ay < (unsigned)h
-        && s->cells[(size_t)ay * (size_t)w + (size_t)ax] == self) {
+        && s->cells[((size_t)ay * (size_t)w) + (size_t)ax] == self) {
         return false;
     }
 
@@ -752,7 +752,7 @@ stem_next(sand_t* s, int x, int y, int ux, int uy, int w, int h, cell_t self, in
         if ((unsigned)nx >= (unsigned)w || (unsigned)ny >= (unsigned)h) {
             continue;
         }
-        if (s->cells[(size_t)ny * (size_t)w + (size_t)nx] == self) {
+        if (s->cells[((size_t)ny * (size_t)w) + (size_t)nx] == self) {
             *ox = nx;
             *oy = ny;
             return true;
@@ -776,7 +776,7 @@ shove_aside(sand_t* s, int gx, int gy, int dx, int dy, int w, int h) {
         if ((unsigned)ex >= (unsigned)w || (unsigned)ey >= (unsigned)h) {
             return false; /* shoved into the wall */
         }
-        const cell_t c = s->cells[(size_t)ey * (size_t)w + (size_t)ex];
+        const cell_t c = s->cells[((size_t)ey * (size_t)w) + (size_t)ex];
         if (CELL_IS_EMPTY(c)) {
             break; /* somewhere to put it all */
         }
@@ -800,11 +800,11 @@ shove_aside(sand_t* s, int gx, int gy, int dx, int dy, int w, int h) {
         const int ty = ey;
         ex -= dx;
         ey -= dy;
-        s->cells[(size_t)ty * (size_t)w + (size_t)tx] = s->cells[(size_t)ey * (size_t)w + (size_t)ex];
+        s->cells[((size_t)ty * (size_t)w) + (size_t)tx] = s->cells[((size_t)ey * (size_t)w) + (size_t)ex];
         mark_rows(s, tx, ty, ty);
         wake_block_and_neighbors(s, tx, ty);
     }
-    s->cells[(size_t)gy * (size_t)w + (size_t)gx] = SAND_EMPTY;
+    s->cells[((size_t)gy * (size_t)w) + (size_t)gx] = SAND_EMPTY;
     mark_rows(s, gx, gy, gy);
     wake_block_and_neighbors(s, gx, gy);
     return true;
@@ -841,7 +841,7 @@ count_packed(sand_t* s, int x, int y, int w, int h, cell_t self, const reaction_
             packed++;
             continue;
         }
-        if (is_kin(s->cells[(size_t)ny * (size_t)w + (size_t)nx], self, r)) {
+        if (is_kin(s->cells[((size_t)ny * (size_t)w) + (size_t)nx], self, r)) {
             packed++;
         }
     }
@@ -902,18 +902,18 @@ grow_heading(sand_t* s, int sx, int sy, int ux, int uy, int w, int h, cell_t sel
  * (sx, sy) should not widen any further along (dx, dy). */
 static bool
 thick_enough(sand_t* s, int sx, int sy, int dx, int dy, int w, int h, cell_t self, const reaction_t* r, int height) {
-    const int allowed = TRUNK_WIDTH - height / 3;
+    const int allowed = TRUNK_WIDTH - (height / 3);
     if (allowed < 2) {
         return true; /* too high up to be thickening */
     }
     int wide = 0;
     for (int i = 1; i < allowed; i++) {
-        const int wx = sx + dx * i;
-        const int wy = sy + dy * i;
+        const int wx = sx + (dx * i);
+        const int wy = sy + (dy * i);
         if ((unsigned)wx >= (unsigned)w || (unsigned)wy >= (unsigned)h) {
             break;
         }
-        if (!is_kin(s->cells[(size_t)wy * (size_t)w + (size_t)wx], self, r)) {
+        if (!is_kin(s->cells[((size_t)wy * (size_t)w) + (size_t)wx], self, r)) {
             break;
         }
         wide++;
@@ -927,7 +927,7 @@ grow_into(sand_t* s, int gx, int gy, int dx, int dy, int w, int h, cell_t self, 
     if ((unsigned)gx >= (unsigned)w || (unsigned)gy >= (unsigned)h) {
         return false;
     }
-    const size_t gat = (size_t)gy * (size_t)w + (size_t)gx;
+    const size_t gat = ((size_t)gy * (size_t)w) + (size_t)gx;
     if (!CELL_IS_EMPTY(s->cells[gat]) && !(shoot && shove_aside(s, gx, gy, dx, dy, w, h))) {
         return false; /* in the way, and will not move */
     }
@@ -945,12 +945,12 @@ widen_wood(sand_t* s, int cx, int cy, int up_i, int extra, int w, int h, const r
     for (int g = 1; g <= extra; g++) {
         const int sidei = (g & 1) ? 2 : 6; /* square on, both ways */
         const int* gd = ring_dir(up_i + sidei);
-        const int gx = cx + gd[0] * ((g + 1) / 2);
-        const int gy = cy + gd[1] * ((g + 1) / 2);
+        const int gx = cx + (gd[0] * ((g + 1) / 2));
+        const int gy = cy + (gd[1] * ((g + 1) / 2));
         if ((unsigned)gx >= (unsigned)w || (unsigned)gy >= (unsigned)h) {
             continue;
         }
-        const size_t gat = (size_t)gy * (size_t)w + (size_t)gx;
+        const size_t gat = ((size_t)gy * (size_t)w) + (size_t)gx;
         if (!CELL_IS_EMPTY(s->cells[gat])) {
             continue;
         }
@@ -991,7 +991,7 @@ hang_canopy(sand_t* s, const crown_t* t, int up_i, int w, int h, const reaction_
             if ((unsigned)lx >= (unsigned)w || (unsigned)ly >= (unsigned)h) {
                 continue;
             }
-            const size_t lat = (size_t)ly * (size_t)w + (size_t)lx;
+            const size_t lat = ((size_t)ly * (size_t)w) + (size_t)lx;
             if (!CELL_IS_EMPTY(s->cells[lat])) {
                 continue;
             }
@@ -1018,7 +1018,7 @@ shape_tree(sand_t* s, int fx, int fy, int ux, int uy, int w, int h, cell_t self,
         int nx = 0;
         int ny = 0;
         const bool more = stem_next(s, cx, cy, ux, uy, w, h, self, &nx, &ny);
-        place_cell(s, cx, cy, (size_t)cy * (size_t)w + (size_t)cx, CELL_MAKE(r->hardens_to, 0));
+        place_cell(s, cx, cy, ((size_t)cy * (size_t)w) + (size_t)cx, CELL_MAKE(r->hardens_to, 0));
 
         /* Taper linear by LENGTH. Step is taper. Twelve hardenings merge
          * trees; 6-7 preferred. */
@@ -1065,7 +1065,7 @@ harden_stem(sand_t* s, int x, int y, int ux, int uy, int w, int h, cell_t self, 
 
 bool
 step_one_growing_cell(sand_t* s, int x, int y, int w, int h, const reaction_t* r) {
-    const cell_t self = s->cells[(size_t)y * (size_t)w + (size_t)x];
+    const cell_t self = s->cells[((size_t)y * (size_t)w) + (size_t)x];
 
     /* Prevent rigid stems using dithered sweep. */
     const int ux = -s->last_step_dx;

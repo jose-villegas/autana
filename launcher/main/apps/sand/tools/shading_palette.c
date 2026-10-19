@@ -392,9 +392,9 @@ plant_canopy(sand_t* s, int cx, int top, int ground) {
 static void
 plant_roots(sand_t* s, int cx, int ground, int lean) {
     for (int r = 0; r < 18; r++) {
-        set_v(s, cx + (r * lean) / 3, ground + r, MATX(MATX_ROOT));
-        set_v(s, cx + (r * lean) / 3 + 1, ground + r, MATX(MATX_ROOT));
-        set_v(s, cx - r / 2, ground + r / 2 + 2, MATX(MATX_ROOT));
+        set_v(s, cx + ((r * lean) / 3), ground + r, MATX(MATX_ROOT));
+        set_v(s, cx + ((r * lean) / 3) + 1, ground + r, MATX(MATX_ROOT));
+        set_v(s, cx - (r / 2), ground + (r / 2) + 2, MATX(MATX_ROOT));
     }
 }
 
@@ -413,7 +413,7 @@ scene_plants(sand_t* s) {
     rect_v(s, 0, ground, VIEW_W / CELL_PX, GRID_W, CELL_SOIL(MAT_DIRT, 1, 0));
     rect_v(s, 0, ground + 14, VIEW_W / CELL_PX, GRID_W, CELL_WITH_MOISTURE(CELL_MAKE(MAT_DIRT, 0), 4));
     for (int t = 0; t < 3; t++) {
-        const int cx = 40 + t * 72;
+        const int cx = 40 + (t * 72);
         plant_canopy(s, cx, ground - 80, ground);
         plant_roots(s, cx, ground, t - 1);
     }
@@ -428,8 +428,8 @@ scene_mixed(sand_t* s) {
     rect_v(s, 160, 130, 200, 176, MATX(MATX_ICE));
     spawn_v(s, 110, 170, 22, MAT_STONE);
     for (int i = 0; i < 250; i++) {
-        spawn_cell_v(s, 70 + (i * 3) % 30, 4, 2, CELL_MAKE(MAT_WATER, 0));
-        spawn_cell_v(s, 205 + (i * 3) % 14, 4, 2, CELL_MAKE(MAT_ACID, 0));
+        spawn_cell_v(s, 70 + ((i * 3) % 30), 4, 2, CELL_MAKE(MAT_WATER, 0));
+        spawn_cell_v(s, 205 + ((i * 3) % 14), 4, 2, CELL_MAKE(MAT_ACID, 0));
         if (i > 120) {
             spawn_cell_v(s, 80, 4, 2, CELL_MAKE(MAT_OIL, 0));
         }
@@ -507,8 +507,8 @@ paint_begin(material_frame_t* mf, uint32_t time_ms) {
 
 static void
 put_px(gfx_color_t* fb, uint8_t* grp, int px, int py, gfx_color_t c, group_t g) {
-    fb[py * PANEL_W + px] = c;
-    grp[py * PANEL_W + px] = (uint8_t)g;
+    fb[(py * PANEL_W) + px] = c;
+    grp[(py * PANEL_W) + px] = (uint8_t)g;
 }
 
 /* row is always non-NULL; above/below are NULL past the grid's top/bottom
@@ -632,10 +632,10 @@ paint_cell_block(gfx_color_t* fb, uint8_t* grp, int px0, int py0, const gfx_colo
         }
         return;
     }
-    const int shine_base_q8 = px0 * shine_ux_q8 + py0 * shine_uy_q8;
+    const int shine_base_q8 = (px0 * shine_ux_q8) + (py0 * shine_uy_q8);
     for (int dy = 0; dy < CELL_PX; dy++) {
         for (int dx = 0; dx < CELL_PX; dx++) {
-            const int shine_q8 = shine_base_q8 + dx * shine_ux_q8 + dy * shine_uy_q8;
+            const int shine_q8 = shine_base_q8 + (dx * shine_ux_q8) + (dy * shine_uy_q8);
             const int along = (shine_q8 >> 8) & (SAND_PAINT_SHINE_PERIOD - 1);
             put_px(fb, grp, px0 + dx, py0 + dy, along < CELL_PX ? col[2] : col[0], g);
         }
@@ -736,7 +736,7 @@ paint_row(material_frame_t* mf, const uint8_t* grid, int cy, gfx_color_t* fb, ui
     int herr = 0;
 
     for (int cx_i = 0; cx_i < ctx.w; cx_i++) {
-        paint_column(mf, &ctx, cy, cx_first + cx_i * cx_step, &herr, fb, grp);
+        paint_column(mf, &ctx, cy, cx_first + (cx_i * cx_step), &herr, fb, grp);
     }
 
     uint8_t* tmp = depth_cur_row;
@@ -762,7 +762,7 @@ paint_frame(const uint8_t* grid, gfx_color_t* fb, uint8_t* grp, uint32_t time_ms
 static double
 linear_to_srgb(double c) {
     c = c < 0.0 ? 0.0 : (c > 1.0 ? 1.0 : c);
-    return c <= 0.0031308 ? c * 12.92 : 1.055 * pow(c, 1.0 / 2.4) - 0.055;
+    return c <= 0.0031308 ? c * 12.92 : (1.055 * pow(c, 1.0 / 2.4)) - 0.055;
 }
 
 static uint16_t
@@ -770,15 +770,15 @@ lab_to_key(gfx_lab_t p) {
     const double L = p.l / 100.0;
     const double A = p.a / 100.0;
     const double B = p.b / 100.0;
-    double l = L + 0.3963377774 * A + 0.2158037573 * B;
-    double m = L - 0.1055613458 * A - 0.0638541728 * B;
-    double s = L - 0.0894841775 * A - 1.2914855480 * B;
+    double l = L + (0.3963377774 * A) + (0.2158037573 * B);
+    double m = L - (0.1055613458 * A) - (0.0638541728 * B);
+    double s = L - (0.0894841775 * A) - (1.2914855480 * B);
     l = l * l * l;
     m = m * m * m;
     s = s * s * s;
-    const double r = linear_to_srgb(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s);
-    const double g = linear_to_srgb(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s);
-    const double b = linear_to_srgb(-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s);
+    const double r = linear_to_srgb((4.0767416621 * l) - (3.3077115913 * m) + (0.2309699292 * s));
+    const double g = linear_to_srgb((-1.2684380046 * l) + (2.6097574011 * m) - (0.3413193965 * s));
+    const double b = linear_to_srgb((-0.0041960863 * l) - (0.7034186147 * m) + (1.7076147010 * s));
     const unsigned r5 = (unsigned)lround(r * 31.0);
     const unsigned g6 = (unsigned)lround(g * 63.0);
     const unsigned b5 = (unsigned)lround(b * 31.0);
@@ -989,9 +989,9 @@ quant_group_totals(uint64_t* total_used, int* active) {
 static void
 quant_populate_group(gq_t* q, group_t g, uint64_t total_used, int active) {
     q->n = g == G_SPARE ? 0 : count_seen(g, PIN_NONE);
-    q->key = malloc((size_t)q->n * sizeof *q->key + 1);
-    q->p = malloc((size_t)q->n * sizeof *q->p + 1);
-    q->w = malloc((size_t)q->n * sizeof *q->w + 1);
+    q->key = malloc(((size_t)q->n * sizeof *q->key) + 1);
+    q->p = malloc(((size_t)q->n * sizeof *q->p) + 1);
+    q->w = malloc(((size_t)q->n * sizeof *q->w) + 1);
     q->c = malloc((size_t)(q->n + 1) * sizeof *q->c);
     q->next_c = malloc((size_t)(q->n + 1) * sizeof *q->next_c);
     int i = 0;
@@ -1001,8 +1001,8 @@ quant_populate_group(gq_t* q, group_t g, uint64_t total_used, int active) {
         }
         q->key[i] = (uint16_t)k;
         q->p[i] = key_lab[k];
-        q->w[i] =
-            0.5 * (double)used[g][k] / (double)(total_used ? total_used : 1) + 0.5 / ((double)active * (double)q->n);
+        q->w[i] = (0.5 * (double)used[g][k] / (double)(total_used ? total_used : 1))
+                  + (0.5 / ((double)active * (double)q->n));
         i++;
     }
     q->fixed = 0;
@@ -1525,14 +1525,14 @@ write_png(const char* path, const uint8_t* rgb, int w, int h) {
                               0};
     png_chunk(f, "IHDR", ihdr, sizeof ihdr);
 
-    const size_t raw_len = (size_t)h * (size_t)(w * 3 + 1);
+    const size_t raw_len = (size_t)h * (size_t)((w * 3) + 1);
     uint8_t* raw = malloc(raw_len);
     for (int y = 0; y < h; y++) {
-        raw[(size_t)y * (size_t)(w * 3 + 1)] = 0;
-        memcpy(raw + (size_t)y * (size_t)(w * 3 + 1) + 1, rgb + (size_t)y * (size_t)w * 3, (size_t)w * 3);
+        raw[(size_t)y * (size_t)((w * 3) + 1)] = 0;
+        memcpy(raw + ((size_t)y * (size_t)((w * 3) + 1)) + 1, rgb + ((size_t)y * (size_t)w * 3), (size_t)w * 3);
     }
-    const size_t blocks = raw_len / 65535 + 1;
-    const size_t z_len = 2 + raw_len + blocks * 5 + 4;
+    const size_t blocks = (raw_len / 65535) + 1;
+    const size_t z_len = 2 + raw_len + (blocks * 5) + 4;
     uint8_t* z = malloc(z_len);
     size_t o = 0;
     z[o++] = 0x78;
@@ -1602,7 +1602,7 @@ draw_glyph(uint8_t* rgb, int w, int x, int y, uint16_t glyph, int scale, uint32_
             }
             for (int sy = 0; sy < scale; sy++) {
                 for (int sx = 0; sx < scale; sx++) {
-                    uint8_t* p = rgb + ((y + gy * scale + sy) * w + x + gx * scale + sx) * 3;
+                    uint8_t* p = rgb + (((y + gy * scale + sy) * w + x + gx * scale + sx) * 3);
                     p[0] = (uint8_t)(colour >> 16);
                     p[1] = (uint8_t)(colour >> 8);
                     p[2] = (uint8_t)colour;
@@ -1627,7 +1627,7 @@ static void
 fill(uint8_t* rgb, int w, int x0, int y0, int x1, int y1, uint32_t colour) {
     for (int y = y0; y < y1; y++) {
         for (int x = x0; x < x1; x++) {
-            uint8_t* p = rgb + (y * w + x) * 3;
+            uint8_t* p = rgb + ((y * w + x) * 3);
             p[0] = (uint8_t)(colour >> 16);
             p[1] = (uint8_t)(colour >> 8);
             p[2] = (uint8_t)colour;
@@ -1720,7 +1720,7 @@ static void
 ega_try_pair(const ega_palette_t* pal, gfx_lin_t c, gfx_lab_t target, int i, int j, double* best_cost,
              ega_choice_t* best) {
     const gfx_lin_t d = {pal->lin[j].r - pal->lin[i].r, pal->lin[j].g - pal->lin[i].g, pal->lin[j].b - pal->lin[i].b};
-    const double den = d.r * d.r + d.g * d.g + d.b * d.b;
+    const double den = (d.r * d.r) + (d.g * d.g) + (d.b * d.b);
     if (den <= 0.0) {
         return;
     }
@@ -1732,9 +1732,9 @@ ega_try_pair(const ega_palette_t* pal, gfx_lin_t c, gfx_lab_t target, int i, int
             continue;
         }
         const double f = (double)level / EGA_LEVELS;
-        const gfx_lin_t mix = {pal->lin[i].r + d.r * f, pal->lin[i].g + d.g * f, pal->lin[i].b + d.b * f};
+        const gfx_lin_t mix = {pal->lin[i].r + (d.r * f), pal->lin[i].g + (d.g * f), pal->lin[i].b + (d.b * f)};
         const double e = sqrt(gfx_lab_dist2(target, gfx_lin_to_lab(mix)));
-        const double cost = e + EGA_GRAIN_CHARGE * grain;
+        const double cost = e + (EGA_GRAIN_CHARGE * grain);
         if (cost < *best_cost) {
             *best_cost = cost;
             *best = (ega_choice_t){(uint8_t)i, (uint8_t)j, (uint8_t)level, e, grain};
@@ -1905,7 +1905,7 @@ ega_points(ega_points_t* pts, uint32_t (*counts)[KEYS]) {
         }
         for (int k = 0; k < KEYS; k++) {
             if (counts[g][k] != 0) {
-                w[k] += 0.5 * (double)counts[g][k] / (double)total + 0.5 / ((double)groups * (double)distinct);
+                w[k] += (0.5 * (double)counts[g][k] / (double)total) + (0.5 / ((double)groups * (double)distinct));
             }
         }
     }
@@ -1937,7 +1937,7 @@ static void
 view_put(uint8_t* rgb, int w, int ox, int oy, int px, int py, uint32_t colour) {
     const int vx = PANEL_H - 1 - py;
     const int vy = px;
-    uint8_t* p = rgb + ((oy + vy) * w + ox + vx) * 3;
+    uint8_t* p = rgb + (((oy + vy) * w + ox + vx) * 3);
     p[0] = (uint8_t)(colour >> 16);
     p[1] = (uint8_t)(colour >> 8);
     p[2] = (uint8_t)colour;
@@ -1954,7 +1954,7 @@ panel_labels(uint8_t* rgb, int w, const char* a, const char* b, const char* c) {
     fill(rgb, w, 0, 0, w, h, 0x101010);
     draw_text(rgb, w, 6, 5, a, 3, 0xFFFFFF);
     draw_text(rgb, w, VIEW_W + PANEL_GAP + 6, 5, b, 3, 0xFFFFFF);
-    draw_text(rgb, w, 2 * (VIEW_W + PANEL_GAP) + 6, 5, c, 3, 0xFFFFFF);
+    draw_text(rgb, w, (2 * (VIEW_W + PANEL_GAP)) + 6, 5, c, 3, 0xFFFFFF);
 }
 
 static uint64_t
@@ -1988,8 +1988,8 @@ typedef struct {
 static void
 scene_plot_pixel(int si, int px, int py, gfx_color_t* fb, uint8_t* grp, const ega_choice_t* choice_global,
                  const ega_choice_t* choice_local, uint8_t* rgb, uint8_t* rgb_local, int w, scene_error_stats_t* st) {
-    const group_t g = (group_t)grp[py * PANEL_W + px];
-    const uint16_t key = gfx_color_swap(fb[py * PANEL_W + px]);
+    const group_t g = (group_t)grp[(py * PANEL_W) + px];
+    const uint16_t key = gfx_color_swap(fb[(py * PANEL_W) + px]);
     const int idx = map_index[g][key];
     const double e = map_error(g, key);
     st->sum += e;
@@ -2051,7 +2051,7 @@ render_scene(const char* dir, int si, FILE* f, gfx_color_t* fb, uint8_t* grp) {
     static ega_choice_t choice_local[KEYS];
     scene_build_choices(si, choice_global, choice_local);
 
-    const int w = VIEW_W * 3 + PANEL_GAP * 2;
+    const int w = (VIEW_W * 3) + (PANEL_GAP * 2);
     const int h = VIEW_H + LABEL_H;
     uint8_t* rgb = calloc((size_t)w * (size_t)h, 3);
     uint8_t* rgb_local = calloc((size_t)w * (size_t)h, 3);
@@ -2349,7 +2349,7 @@ common_setup(void) {
     /* Usage feeds the palette's weights, so scenes are painted once before it
      * is built and again, for the images, after. */
     for (int si = 0; si < SCENE_COUNT; si++) {
-        paint_frame(grids[si], common_fb, common_grp, 1234U + 97U * (uint32_t)si);
+        paint_frame(grids[si], common_fb, common_grp, 1234U + (97U * (uint32_t)si));
         for (int i = 0; i < PANEL_W * PANEL_H; i++) {
             used[common_grp[i]][gfx_color_swap(common_fb[i])]++;
         }
@@ -2466,8 +2466,8 @@ dp_coarsen_cells(gfx_color_t* fb, uint8_t* grp, int cell, int qgw, int qgh, uint
         for (int qx = 0; qx < qgw; qx++) {
             const int px = qx * cell;
             const int py = qy * cell;
-            cell_key[qy * qgw + qx] = gfx_color_swap(fb[py * PANEL_W + px]);
-            cell_grp[qy * qgw + qx] = grp[py * PANEL_W + px];
+            cell_key[(qy * qgw) + qx] = gfx_color_swap(fb[(py * PANEL_W) + px]);
+            cell_grp[(qy * qgw) + qx] = grp[(py * PANEL_W) + px];
         }
     }
 }
@@ -2486,7 +2486,7 @@ dp_draw_labels(uint8_t* rgb, int w) {
     draw_text(rgb, w, 6, 5, "ORIGINAL", 3, 0xFFFFFF);
     draw_text(rgb, w, VIEW_W + PANEL_GAP + 6, 5, "256", 3, 0xFFFFFF);
     for (int v = 0; v < DP_VARIANT_COUNT; v++) {
-        draw_text(rgb, w, (2 + v) * (VIEW_W + PANEL_GAP) + 6, 5, dp_names[v], 2, 0xFFFFFF);
+        draw_text(rgb, w, ((2 + v) * (VIEW_W + PANEL_GAP)) + 6, 5, dp_names[v], 2, 0xFFFFFF);
     }
 }
 
@@ -2495,7 +2495,7 @@ dp_plot_pixel(int px, int py, int cell, int qgw, uint8_t* rgb, int w, const uint
               const ega_choice_t* cell_choice, const ega_choice_t* cell_nearest, double* sum_e, double* max_e) {
     const int cx = px / cell;
     const int cy = py / cell;
-    const int c = cy * qgw + cx;
+    const int c = (cy * qgw) + cx;
     const uint16_t key = cell_key[c];
     const int idx = map_index[cell_grp[c]][key];
 
@@ -2532,7 +2532,7 @@ dp_write_stats(FILE* stats, int si, const dp_quality_t* q, const double* sum_e, 
 
 static void
 run_one_dp_case(const char* out_dir, int si, const dp_quality_t* q, FILE* stats) {
-    paint_frame(grids[si], common_fb, common_grp, 1234U + 97U * (uint32_t)si);
+    paint_frame(grids[si], common_fb, common_grp, 1234U + (97U * (uint32_t)si));
 
     const int cell = q->cell;
     const int qgw = PANEL_W / cell;
@@ -2546,7 +2546,7 @@ run_one_dp_case(const char* out_dir, int si, const dp_quality_t* q, FILE* stats)
     dp_choose_cells(qgw * qgh, cell_key, cell_choice, cell_nearest);
 
     const int panels = 2 + DP_VARIANT_COUNT;
-    const int w = VIEW_W * panels + PANEL_GAP * (panels - 1);
+    const int w = (VIEW_W * panels) + (PANEL_GAP * (panels - 1));
     const int h = VIEW_H + LABEL_H;
     uint8_t* rgb = calloc((size_t)w * (size_t)h, 3);
     dp_draw_labels(rgb, w);
@@ -2653,7 +2653,7 @@ report_scenes(const char* dir, FILE* f, gfx_color_t* fb, uint8_t* grp) {
     memset(used, 0, sizeof used);
     for (int si = 0; si < SCENE_COUNT; si++) {
         fprintf(stderr, "rendering %s...\n", scenes[si].name);
-        paint_frame(grids[si], fb, grp, 1234U + 97U * (uint32_t)si);
+        paint_frame(grids[si], fb, grp, 1234U + (97U * (uint32_t)si));
         render_scene(dir, si, f, fb, grp);
     }
     write_swatches(dir);
