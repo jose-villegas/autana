@@ -156,9 +156,12 @@ sound_capture_open(void) {
 bool
 sound_capture_close(void) {
     device.closes++;
+    if (device.failure == TEST_TONE_CLOSE_FAIL) {
+        return false;
+    }
     const bool restored = audio_codec_dac_feedback(false);
     (void)audio_out_amp_hold(false);
-    return restored && device.failure != TEST_TONE_CLOSE_FAIL;
+    return restored;
 }
 
 sound_voice_t

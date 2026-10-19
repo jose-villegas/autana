@@ -59,6 +59,10 @@ console_verb_tone(const char* args, console_reply_fn reply) {
     stop_tone(&voice);
     const bool heard = tone_db - silence_db >= AUDIO_LOOPBACK_HEARD_MARGIN_DB;
     const bool closed = sound_capture_close();
+    if (parsed.internal && !closed) {
+        (void)audio_codec_dac_feedback(false);
+        (void)audio_out_amp_hold(false);
+    }
     if (!ok || !closed) {
         reply("TONE error: loopback failed");
         return;
