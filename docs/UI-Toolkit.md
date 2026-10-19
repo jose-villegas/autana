@@ -24,7 +24,7 @@ code, drawn on a host by the gallery scene,
 | one of a row of choices, icon above label | `ui_tile()`, `ui_tile_icon()` | `ui/ui.h` |
 | a whole-number setting | `ui_slider()` | `ui/ui.h` |
 | on or off | `ui_toggle()` | `ui/ui.h` |
-| a pick from a list, without a scroll view | `ui_dropdown()`, `ui_dropdown_icons()` | `ui/ui.h` |
+| a pick from a list, without scrolling the screen | `ui_dropdown()`, `ui_dropdown_icons()` | `ui/ui.h` |
 | a captioned section, a title bar | `ui_panel()`, `ui_header()` | `ui/ui.h` |
 | text aligned in a rect | `ui_text()`, `ui_text_right()`, `ui_text_centre()`, `ui_caption()` | `ui/ui.h` |
 | a grid of colours | `ui_swatches()` | `ui/ui.h` |
@@ -60,9 +60,9 @@ replays them over each strip it sends.
 
 ## A whole screen
 
-![A settings screen in portrait: a title bar, a volume slider, a MUTE checkbox and an output dropdown](images/ui/settings.png) ![The same settings screen in landscape](images/ui/settings-landscape.png)
+![A settings screen in portrait: a title bar, a volume slider, a MUTE toggle and an output dropdown](images/ui/settings.png) ![The same settings screen in landscape](images/ui/settings-landscape.png)
 
-This is the gallery's settings view, drawn by exactly this code. The same
+This is the gallery's settings view, drawn by this code under the gallery's theme. The same
 code draws both orientations, because it measures against `ui_width()`
 rather than a fixed width:
 
@@ -77,6 +77,7 @@ static void
 settings_frame(const input_t* input) {
     const int row_w = ui_width() - 2 * UI_MARGIN;
     ui_begin(input);
+    ui_theme(&THEME);
     ui_screen();
     ui_header((recti_t){0, 0, ui_width(), UI_TITLE_HEIGHT}, "SETTINGS");
     ui_slider((recti_t){UI_MARGIN, 72, row_w, UI_TAP_MIN}, "volume", &volume, 0, 10);
@@ -89,11 +90,12 @@ settings_frame(const input_t* input) {
 - **The caller owns every value.** `volume`, `muted` and `output` live in
   the screen, and each call is handed the current value. A slider, toggle
   or dropdown writes through the pointer and returns true on the frame it
-  changed. The only thing the toolkit remembers between frames is whether a
-  dropdown's list is open and how far it is scrolled.
-- **Labels are ids.** A control's identity is its label, so two controls in
-  one window need different ones; `"Text###key"` shows `Text` and keys on
-  `key` alone.
+  changed. Between frames the toolkit remembers only the pressed control and
+  whether a dropdown's list is open and how far it is scrolled.
+- **Labels are ids.** A control's identity is its label, so two controls with
+  the same label are told apart by call order, which breaks if a screen
+  skips one some frames; `"Text###key"` shows `Text` and keys on `key`
+  alone.
 - **One file here, three in a real screen.** A shipped screen splits this
   into layout, state and drawing, each tested on a host, as
   [`Building-a-Screen.md`](Building-a-Screen.md) describes: the screen in
@@ -148,8 +150,10 @@ static const ui_theme_t THEME = {
 | `ui_dropdown()` | whether the pick changed the index | see below |
 
 Wrap controls in `ui_disabled_begin(true)` / `ui_disabled_end()` to draw
-them in `muted` and take no tap, and in `ui_color_begin()` to recolour a few
-(the gallery's ON button is `accent_face` with `on_accent` ink). A control
+them in `muted` and take no tap, and in `ui_color_begin(UI_COLOR_FACE, rgb)` or `UI_COLOR_TEXT` to recolour a
+few (the gallery's ON button is `accent_face` with `on_accent` ink). Every
+`_begin` pairs with its `_end`, at most `UI_FACE_SCOPE_DEPTH` deep, and a
+disabled scope cannot be re-enabled by a nested one. A control
 looks pressed only when a press has landed on it, never while a drag merely
 slides across it.
 
@@ -162,10 +166,10 @@ list over the screen:
 
 | | |
 |---|---|
-| Placement | below the dropdown when every row fits there, above when they fit there, otherwise the side with more room. It never covers the dropdown. |
+| Placement | below the dropdown when every row fits there, above when they fit there, otherwise over the canvas between its margins, covering the dropdown. |
 | Scrolling | a list taller than its room scrolls, and opens with the current item centred. |
 | Closing | a pick stays on screen `UI_DROPDOWN_CLOSE_FRAMES` frames after the finger lifts, so the choice is seen landing. A tap outside the list closes it. |
-| Identity | the label is unique per dropdown. |
+| Identity | give each dropdown its own label or `###key`. |
 
 `ui_dropdown()` takes a `names` array; `ui_dropdown_icons()` adds a
 parallel `icons` array. It needs at least one item.
@@ -197,7 +201,7 @@ ui_set_button_style(UI_BUTTON_BEZEL);   /* every frame */
   shell shares one UI context: a style one screen chose would otherwise
   leak into the next app's buttons. It can change mid-frame, so one screen
   can mix both.
-- **Buttons only.** Checkboxes, sliders and text boxes frame themselves and
+- **Buttons only.** Toggles and sliders frame themselves and
   are left alone.
 - **The default is unchanged.** `UI_BUTTON_FLAT` and every non-button
   frame draw as the backend does with no style set.
@@ -312,7 +316,7 @@ the device limit. A development build logs the high-water mark from
 ## Adding to the toolkit
 
 A control belongs in `ui/`, as a face verb in `ui/ui.h` over a helper in
-`ui/ui_internal.h` (private to `ui/`), not in a private copy in one app's
+`ui/controls/` (private to `ui/`), not in a private copy in one app's
 screen, once a second screen could use it. It must:
 
 - take the screen's `ui_theme_t` rather than colours of its own

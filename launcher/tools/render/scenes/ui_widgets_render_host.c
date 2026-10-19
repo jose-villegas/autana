@@ -171,14 +171,15 @@ open_view_dropdown(void) {
 
 static void
 draw_text_scales(int x, int y, int w) {
-    for (int scale = 1; scale <= 3; scale++) {
-        char label[] = "SCALE 0";
-        label[sizeof label - 2] = (char)('0' + scale);
-        ui_scale_begin(scale);
-        ui_text(rect(x, y, w, 16 + 8 * (scale - 1)), label);
-        ui_scale_end();
-        y += 20 + 8 * (scale - 1);
-    }
+    ui_scale_begin(1);
+    ui_text(rect(x, y, w, 16), "SCALE 1");
+    ui_scale_end();
+    ui_scale_begin(2);
+    ui_text(rect(x, y + 20, w, 24), "SCALE 2");
+    ui_scale_end();
+    ui_scale_begin(3);
+    ui_text(rect(x, y + 48, w, 32), "SCALE 3");
+    ui_scale_end();
 }
 
 static void
