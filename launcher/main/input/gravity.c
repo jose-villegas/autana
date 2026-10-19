@@ -44,39 +44,34 @@ trust_weight(float error) {
 }
 
 static void
-accept_sample(gravity_t* g, uint32_t dt_us) {
-    /* x-io Fusion, FusionAhrs.c: at fixed rate this equals its -9/+1 counter,
-     * with sample limit = rate * GRAVITY_RECOVER_US / MATH_US_PER_S.
-     * Time weighting preserves that ratio with variable frame intervals. */
-    const uint32_t drain = GRAVITY_RECOVER_ACCEPT_WEIGHT * dt_us;
-    g->distrust_us = g->distrust_us > drain ? g->distrust_us - drain : 0;
-    g->recovering = false;
-    g->still_us = 0;
-}
-
-static void
-reject_sample(gravity_t* g, bool still, uint32_t dt_us) {
+track_trust(gravity_t* g, bool accepted, bool still, uint32_t dt_us) {
+    if (accepted) {
+        /* x-io Fusion, FusionAhrs.c: at fixed rate this equals its -9/+1 counter,
+         * with sample limit = rate * GRAVITY_RECOVER_US / MATH_US_PER_S.
+         * Time weighting preserves that ratio with variable frame intervals. */
+        const uint32_t drain = GRAVITY_RECOVER_ACCEPT_WEIGHT * dt_us;
+        g->distrust_us = g->distrust_us > drain ? g->distrust_us - drain : 0;
+        g->recovering = false;
+        g->still_us = 0;
+        return;
+    }
     const uint32_t debt = g->distrust_us + dt_us;
-    if (debt > GRAVITY_RECOVER_US) {
-        g->recovering = true;
-    }
+    g->recovering |= debt > GRAVITY_RECOVER_US;
     g->distrust_us = debt < GRAVITY_RECOVER_US ? debt : GRAVITY_RECOVER_US;
-    if (still) {
-        g->still_us += dt_us;
-    }
+    g->still_us += still ? dt_us : 0;
 }
 
-static bool
-adopt_if_ready(gravity_t* g, vec3f_t direction) {
-    if (g->primed && g->still_us <= GRAVITY_STILL_RECOVER_US) {
-        return false;
+typedef enum { CORRECT_NONE, CORRECT_ADOPT, CORRECT_FULL_GAIN, CORRECT_BIAS_PULL } correction_mode_t;
+
+static correction_mode_t
+select_correction(const gravity_t* g, bool accepted, bool was_recovering) {
+    if (!g->primed || g->still_us > GRAVITY_STILL_RECOVER_US) {
+        return CORRECT_ADOPT;
     }
-    g->down = direction;
-    g->primed = true;
-    g->recovering = false;
-    g->distrust_us = 0;
-    g->still_us = 0;
-    return true;
+    if (accepted && !was_recovering) {
+        return CORRECT_BIAS_PULL;
+    }
+    return g->recovering || was_recovering ? CORRECT_FULL_GAIN : CORRECT_NONE;
 }
 
 static void
@@ -109,19 +104,18 @@ correct_acceleration(gravity_t* g, vec3f_t a, vec3f_t rate, uint32_t dt_us, floa
     const float weight = trust_weight(error);
     const bool accepted = weight > 0.0F && vec3f_dot(direction, g->down) >= GRAVITY_REJECT_COS;
     const bool was_recovering = g->recovering;
-    if (accepted) {
-        accept_sample(g, dt_us);
-    } else {
-        reject_sample(g, still, dt_us);
-    }
-    if (adopt_if_ready(g, direction)) {
-        return;
-    }
-    if (accepted && !was_recovering) {
+    track_trust(g, accepted, still, dt_us);
+    const correction_mode_t mode = select_correction(g, accepted, was_recovering);
+    if (mode == CORRECT_ADOPT) {
+        g->down = direction;
+        g->primed = true;
+        g->recovering = false;
+        g->distrust_us = 0;
+        g->still_us = 0;
+    } else if (mode == CORRECT_BIAS_PULL) {
         correct_accepted(g, direction, weight, dt);
-    } else if (g->recovering || was_recovering) {
-        const float alpha = dt / (GRAVITY_TAU_S + dt);
-        g->down = vec3f_normalize(vec3f_lerp(g->down, direction, alpha));
+    } else if (mode == CORRECT_FULL_GAIN) {
+        g->down = vec3f_normalize(vec3f_lerp(g->down, direction, dt / (GRAVITY_TAU_S + dt)));
     }
 }
 
