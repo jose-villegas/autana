@@ -30,9 +30,16 @@ void gfx_clip_restore(recti_t clip);
 /* gfx_mode.c: the framebuffer and the mode it is held in. */
 extern gfx_color_t* fb;
 extern gfx_color_t* present_fb;
+/* Whether fb holds only fb_fill_colour, as a send that cleared it left it. */
+extern bool fb_filled;
+extern gfx_color_t fb_fill_colour;
 
 /* Waits for the send task before changing its source or reading back. */
 int32_t gfx_present_drain(void);
+/* Whether the last send filled present_fb after sending it (gfx_set_clear_on_send()). */
+bool gfx_present_sent_frame_filled(void);
+/* At mode exit, once drained: the next send fills nothing. */
+void gfx_present_forget_fill(void);
 extern gfx_mode_t current_mode;
 
 bool alloc_full_framebuffer(void);

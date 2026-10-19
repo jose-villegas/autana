@@ -122,7 +122,7 @@ uint8_t* gfx_indexed_image(void);
 typedef enum {
     GFX_READBACK_READY,
     GFX_READBACK_PENDING,
-    GFX_READBACK_UNAVAILABLE, /* band mode, and no room for its snapshot */
+    GFX_READBACK_UNAVAILABLE, /* band mode with no room for its snapshot, or a shown frame cleared on send */
 } gfx_readback_t;
 
 gfx_readback_t gfx_readback_begin(void);

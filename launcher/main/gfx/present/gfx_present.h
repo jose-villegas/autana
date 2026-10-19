@@ -71,6 +71,12 @@ void gfx_present(void);
 void gfx_present_begin(void);
 void gfx_present_wait(void);
 
+/* GFX_LAYOUT_DOUBLE_FB only: once a frame is sent, core 1 fills it with
+ * `colour`, so the frame after next starts out filled and draw_clear(colour)
+ * costs core 0 nothing (gfx_framebuffer_holds(), gfx.h). Off again at mode
+ * exit, and ignored in any other layout. */
+void gfx_set_clear_on_send(bool on, gfx_color_t colour);
+
 void gfx_set_present_async(bool on);
 bool gfx_present_async_enabled(void);
 

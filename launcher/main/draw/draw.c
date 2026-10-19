@@ -45,17 +45,15 @@ draw_clear_clip(void) {
  * band every frame, so dirty tracking applies only to the framebuffer. */
 void
 draw_clear(gfx_color_t color) {
+    /* A framebuffer the last send filled already holds it. */
+    if (gfx_framebuffer_holds(color)) {
+        return;
+    }
     gfx_surface_t state;
     if (!gfx_draw_begin(&state)) {
         return;
     }
-    const uint32_t pair = ((uint32_t)color << 16) | color;
-    uint32_t* words = (uint32_t*)state.target.buf;
-    const int count = (state.target.stride * state.target.height) / 2;
-
-    for (int i = 0; i < count; i++) {
-        words[i] = pair;
-    }
+    gfx_target_fill(state.target, color);
 
     if (state.marks) {
         gfx_mark_all_dirty();

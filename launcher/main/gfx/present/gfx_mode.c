@@ -28,6 +28,8 @@ unsigned gfx_fb_guard_trips;
 
 gfx_color_t* fb;
 gfx_color_t* present_fb;
+bool fb_filled;
+gfx_color_t fb_fill_colour;
 static gfx_color_t* half_image;
 static bool frame_expanded;
 static gfx_band_overlay_fn frame_overlay;
@@ -89,6 +91,7 @@ gfx_draw_begin(gfx_surface_t* out) {
     if (!GFX_REQUIRE_FRAMEBUFFER()) {
         return false;
     }
+    fb_filled = false;
     out->target = band_render_active ? strip_target : (gfx_target_t){fb, 0, GFX_HEIGHT, GFX_WIDTH};
     out->clip = clip;
     out->marks = !band_render_active;
@@ -326,11 +329,17 @@ gfx_init(void) {
     return true;
 }
 
+bool
+gfx_framebuffer_holds(gfx_color_t colour) {
+    return fb_filled && fb_fill_colour == colour && !band_render_active;
+}
+
 gfx_color_t*
 gfx_framebuffer(void) {
     /* gfx can't guess intent. "Everything" wastes resources. Raw writers use
      * gfx_mark_dirty(). Be cautious. */
     GFX_PRESENT_GUARD();
+    fb_filled = false;
     /* fb is already NULL in band mode, the right answer for a caller that
      * checks. This call is only the loud dev-time signal that one reached
      * for the framebuffer at all while it does not exist. */
@@ -479,6 +488,9 @@ gfx_mode_exit(void) {
     gfx_present_drain();
     GFX_PRESENT_GUARD();
     if (current_mode.layout == GFX_LAYOUT_DOUBLE_FB) {
+        gfx_set_clear_on_send(false, 0);
+        gfx_present_forget_fill();
+        fb_filled = false;
         memory_free(fb);
         fb = present_fb;
         reset_mode_to_full_fb();
@@ -735,6 +747,9 @@ gfx_readback_t
 gfx_readback_begin(void) {
     gfx_present_drain();
     GFX_PRESENT_GUARD();
+    if (gfx_present_sent_frame_filled()) {
+        return GFX_READBACK_UNAVAILABLE; /* the shown frame is already cleared away */
+    }
     if (!band_is_transient()) {
         return GFX_READBACK_READY;
     }
