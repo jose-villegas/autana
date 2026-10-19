@@ -7,6 +7,7 @@
 
 #include "asset/asset_store.h"
 #include "audio/audio_in.h"
+#include "audio/audio_loopback.h"
 #include "audio/audio_out_device.h"
 #include "console/console_verbs.h"
 #include "console/verbs/console_sound_parse.h"
@@ -231,7 +232,7 @@ sound_onset(const console_sound_args_t* args, console_reply_fn reply) {
     }
     onset_peak_t peak = {0};
     float pre_db = 0;
-    const bool measured = onset_measure(args, &peak, &pre_db);
+    const bool measured = onset_window(&peak, AUDIO_LOOPBACK_SETTLE_MS) && onset_measure(args, &peak, &pre_db);
     stop_all();
     const bool closed = sound_capture_close();
     if (!measured || !closed) {

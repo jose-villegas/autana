@@ -18,9 +18,7 @@
 #include "services/tune.h"
 
 TUNE_OWNER(sound);
-TUNE_HOT(sound, declick_us, 0, 0, MATH_US_PER_S);
-TUNE_HOT(sound, amp_mute, 0, 0, 1);
-TUNE_HOT(sound, dac_ramp, 0, 0, AUDIO_OUT_DAC_RAMP_MAX);
+TUNE_HOT(sound, declick_us, SOUND_DECLICK_US, 0, MATH_US_PER_S);
 
 static const char* TAG = "sound";
 /* Covers handle reservation only. A nonblocking producer flag serializes zero-wait queue sends
@@ -297,21 +295,17 @@ publish_render_snapshot(size_t stack_free) {
 }
 #endif
 
-static bool
+static void
 apply_tuning(uint32_t* generation) {
-    if (!(declick_us || amp_mute || dac_ramp || TUNE_GENERATION(sound)) || *generation == TUNE_GENERATION(sound)) {
-        return true;
+    if (*generation == TUNE_GENERATION(sound)) {
+        return;
     }
     const uint32_t frames = (uint32_t)((uint64_t)declick_us * AUDIO_OUT_SAMPLE_RATE_HZ / MATH_US_PER_S);
     mixer.declick_frames = declick_us && !frames ? 1 : frames;
     if (!mixer.declick_frames) {
         mixer.residual = 0;
     }
-    if (!audio_out_amp_configure(amp_mute != 0, (uint8_t)dac_ramp)) {
-        return false;
-    }
     *generation = TUNE_GENERATION(sound);
-    return true;
 }
 
 static bool
@@ -321,9 +315,6 @@ update_amp(sound_amp_state_t* previous) {
     }
     if ((mixer.amp == SOUND_AMP_OFF || *previous == SOUND_AMP_OFF)
         && !audio_out_amp_enable(mixer.amp != SOUND_AMP_OFF)) {
-        return false;
-    }
-    if (mixer.amp == SOUND_AMP_ON && !audio_out_amp_ready()) {
         return false;
     }
     *previous = mixer.amp;
@@ -338,10 +329,7 @@ mixer_task(void* unused) {
     sound_amp_state_t previous_amp = SOUND_AMP_OFF;
     uint32_t tuning_generation = UINT32_MAX;
     for (;;) {
-        if (!apply_tuning(&tuning_generation)) {
-            fail("amplifier tuning");
-            break;
-        }
+        apply_tuning(&tuning_generation);
         portENTER_CRITICAL(&control_lock);
         if (control.reset_gains) {
             const sound_command_t command = {.kind = SOUND_COMMAND_APP_EXIT};

@@ -12,6 +12,8 @@
 #define SOUND_APP_GENERATION_NONE   0u
 #define SOUND_APP_GENERATION_ENGINE 1u
 #define SOUND_APP_GENERATION_FIRST  (SOUND_APP_GENERATION_ENGINE + 1u)
+/* Shortest decay that removed stop/steal clicks on the reference board. */
+#define SOUND_DECLICK_US            2000
 #define SOUND_AMP_IDLE_MS           2000
 #define SOUND_VOICE_GENERATIONS     (UINT32_MAX / SOUND_VOICE_COUNT)
 #define SOUND_GAIN_SHIFT            15

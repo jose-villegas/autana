@@ -1,13 +1,14 @@
 """Capture onset arms inside one caller-held autana lock on a hot-tunable image.
 
---set sound.declick_us=5000 --set sound.amp_mute=1 --set sound.dac_ramp=4
-measures baseline, each setting separately, and their combination. All settings
-return to zero at the end. The board argument identifies the held board.
+Pass each arm explicitly: --arm baseline:sound.declick_us=0
+--arm declick:sound.declick_us=2000. The tunable returns to its firmware
+default at the end. The board argument identifies the held board.
 """
 import argparse
 from datetime import date
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -16,25 +17,32 @@ import sys
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "scripts/lib"))
 from console_protocol import reply_prefix
+sys.path.insert(0, str(ROOT / "launcher/tools/build"))
+from c_header import read_define
+sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
+from frame_cost import US_PER_SECOND
 
 SOUND_PREFIX, SOUND_UNTIL = reply_prefix("sound")
 
 EVENTS = ('amp-on', 'start', 'stop', 'steal', 'amp-off')
-DEFAULTS = {'sound.declick_us': 0, 'sound.amp_mute': 0, 'sound.dac_ramp': 0}
+DECLICK_US = read_define(ROOT / "launcher/main/sound/sound_mixer.h", "SOUND_DECLICK_US")
+DEFAULTS = {'sound.declick_us': DECLICK_US}
+ONSET_ATTEMPTS = 2
 
 
 def arms(settings):
-    selected = {}
+    result = {}
     for setting in settings:
-        name, value = setting.split('=', 1)
-        if name not in DEFAULTS or name in selected:
-            raise ValueError(f'unknown or repeated setting: {name}')
-        selected[name] = int(value)
-    result = {'baseline': DEFAULTS.copy()}
-    for name, value in selected.items():
-        result[name] = dict(DEFAULTS, **{name: value})
-    if len(selected) > 1:
-        result['combined'] = dict(DEFAULTS, **selected)
+        arm, assignment = setting.split(':', 1)
+        name, value = assignment.split('=', 1)
+        if not re.fullmatch(r'[A-Za-z0-9_-]+', arm) or arm == 'meta' or arm in result or name not in DEFAULTS:
+            raise ValueError(f'unknown setting or invalid/repeated arm: {setting}')
+        value = int(value)
+        if not 0 <= value <= US_PER_SECOND:
+            raise ValueError(f'de-click length out of range: {value}')
+        result[arm] = {name: value}
+    if not result:
+        raise ValueError('at least one --arm is required')
     return result
 
 
@@ -43,12 +51,12 @@ def capture(args):
         raise ValueError('run inside autana lock run; one hold covers every arm')
     if args.runs <= 0:
         raise ValueError('runs must be positive')
-    settings = arms(args.set)
+    settings = arms(args.arm)
     executable = shutil.which(args.autana) or args.autana
 
     def run(*command):
         return subprocess.run([executable, "--board", args.board, *map(str, command)], check=True,
-                              capture_output=True, text=True).stdout.strip()
+                              capture_output=True, text=True)
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open('w', encoding='utf-8', newline='\n') as output:
@@ -58,14 +66,14 @@ def capture(args):
 
         output.write(f'# autana sound-onset capture on {args.board}, {date.today()}, '
                      'one record per line: <arm>\t<command>\t<reply>\n')
-        record('meta', 'status', json.dumps(json.loads(run('status', '--json'))))
-        before = json.loads(run('buildid', '--json'))
+        record('meta', 'status', json.dumps(json.loads(run('status', '--json').stdout)))
+        before = json.loads(run('buildid', '--json').stdout)
         record('meta', 'buildid', json.dumps(before))
         record('meta', 'runs', str(args.runs))
         try:
             for arm, values in settings.items():
                 for name, value in values.items():
-                    reply = run('tune', name, value)
+                    reply = run('tune', name, value).stdout.strip()
                     record(arm, f'tune {name} {value}', reply.replace('\n', ' '))
                     if f'{name}={value}' not in reply or 'TUNE_ERR' in reply:
                         raise ValueError(f'tunable not applied: {name}; use --hot-tunables')
@@ -73,7 +81,20 @@ def capture(args):
                 for event in EVENTS:
                     command = f'sound onset {event}'
                     for _ in range(args.runs):
-                        reply = run(*command.split())
+                        for attempt in range(ONSET_ATTEMPTS):
+                            try:
+                                completed = run(*command.split())
+                            except subprocess.CalledProcessError as error:
+                                record(arm, f'failure {command}', json.dumps(
+                                    {'attempt': attempt + 1, 'returncode': error.returncode,
+                                     'stdout': error.stdout, 'stderr': error.stderr}))
+                            else:
+                                break
+                        else:
+                            continue
+                        if completed.stderr:
+                            record(arm, f'stderr {command}', json.dumps(completed.stderr))
+                        reply = completed.stdout.strip()
                         lines = reply.splitlines()
                         if len(lines) != 2 or lines[-1] != SOUND_UNTIL[0] or not lines[0].startswith(SOUND_PREFIX + ' onset '):
                             raise ValueError(f'invalid onset reply: {reply}')
@@ -81,8 +102,8 @@ def capture(args):
         finally:
             for name, value in DEFAULTS.items():
                 run('tune', name, value)
-            record('meta', 'status', json.dumps(json.loads(run('status', '--json'))))
-            after = json.loads(run('buildid', '--json'))
+            record('meta', 'status', json.dumps(json.loads(run('status', '--json').stdout)))
+            after = json.loads(run('buildid', '--json').stdout)
             record('meta', 'buildid', json.dumps(after))
         if before['build_id'] != after['build_id']:
             raise ValueError('build changed during capture')
@@ -93,7 +114,7 @@ def main():
     parser.add_argument('--board', required=True)
     parser.add_argument('--runs', type=int, required=True)
     parser.add_argument('--out', type=Path, required=True)
-    parser.add_argument('--set', action='append', default=[])
+    parser.add_argument('--arm', action='append', required=True)
     parser.add_argument('--autana', default='autana')
     args = parser.parse_args()
     try:

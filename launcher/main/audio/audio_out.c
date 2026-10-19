@@ -9,53 +9,9 @@
 
 #define AUDIO_OUT_CODEC_VOLUME 30
 static esp_codec_dev_handle_t output;
-#define AUDIO_OUT_DAC_RAMP_REGISTER 0x37
-#define AUDIO_OUT_DAC_RAMP_SHIFT    4u
-#define AUDIO_OUT_DAC_RAMP_MASK     (AUDIO_OUT_DAC_RAMP_MAX << AUDIO_OUT_DAC_RAMP_SHIFT)
-static bool amp_mute_enabled;
-static bool amp_ready;
-static uint8_t dac_ramp_rate;
-
-bool
-audio_out_amp_configure(bool mute, uint8_t ramp) {
-    if (!output || ramp > AUDIO_OUT_DAC_RAMP_MAX) {
-        return false;
-    }
-    if (ramp != dac_ramp_rate) {
-        int value;
-        if (!audio_codec_check("DAC ramp read", esp_codec_dev_read_reg(output, AUDIO_OUT_DAC_RAMP_REGISTER, &value))
-            || !audio_codec_check("DAC ramp write",
-                                  esp_codec_dev_write_reg(output, AUDIO_OUT_DAC_RAMP_REGISTER,
-                                                          (value & ~(int)AUDIO_OUT_DAC_RAMP_MASK)
-                                                              | (ramp << AUDIO_OUT_DAC_RAMP_SHIFT)))) {
-            return false;
-        }
-        dac_ramp_rate = ramp;
-    }
-    if (mute != amp_mute_enabled) {
-        if (!audio_codec_check("DAC mute", esp_codec_dev_set_out_mute(output, mute && !amp_ready))) {
-            return false;
-        }
-        amp_mute_enabled = mute;
-    }
-    return true;
-}
-
-bool
-audio_out_amp_ready(void) {
-    if (amp_mute_enabled && !audio_codec_check("DAC unmute", esp_codec_dev_set_out_mute(output, false))) {
-        return false;
-    }
-    amp_ready = true;
-    return true;
-}
 
 bool
 audio_out_amp_enable(bool enabled) {
-    if (amp_mute_enabled && !audio_codec_check("DAC mute", esp_codec_dev_set_out_mute(output, true))) {
-        return false;
-    }
-    amp_ready = false;
     return audio_codec_check("amplifier", board_audio_amp_enable(enabled));
 }
 
@@ -88,7 +44,4 @@ void
 audio_out_close(void) {
     audio_codec_device_close(output);
     output = NULL;
-    amp_mute_enabled = false;
-    amp_ready = false;
-    dac_ramp_rate = 0;
 }
