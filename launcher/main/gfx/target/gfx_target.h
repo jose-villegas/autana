@@ -56,6 +56,13 @@ gfx_target_row_range_overlaps(gfx_target_t target, int y0, int y1) {
     return y0 < target.y0 + target.height && y1 > target.y0;
 }
 
+/* True if the target holds every row of [y0, y1), so a shape drawn there
+ * needs no per-row check. */
+static inline bool
+gfx_target_holds_rows(gfx_target_t target, int y0, int y1) {
+    return y0 >= target.y0 && y1 <= target.y0 + target.height;
+}
+
 /* Fills a screen-space shape and returns its clipped dirty rectangle.
  * Writes land in the target's local rows. */
 static inline recti_t

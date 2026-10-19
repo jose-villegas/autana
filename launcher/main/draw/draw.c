@@ -4,6 +4,7 @@
 #include "math/scalar/mathi.h"
 #include "services/tune.h"
 
+#include <stddef.h>
 #include <string.h>
 
 TUNE_OWNER(draw);
@@ -75,18 +76,6 @@ draw_pixel(int x, int y, gfx_color_t color) {
     }
 }
 
-/* One pixel of a line already clipped to the surface's clip; only the
- * target's own rows remain to check. */
-static void
-plot(const gfx_surface_t* state, int x, int y, gfx_color_t color, unsigned flags) {
-    if (!gfx_target_row_range_overlaps(state->target, y, y + 1)) {
-        return;
-    }
-    gfx_color_t* const dst = &gfx_target_row(state->target, y)[x];
-
-    *dst = (flags & DRAW_LINE_ADD) ? gfx_color_add(*dst, color) : color;
-}
-
 typedef struct {
     unsigned on, period, phase;
 } line_dash_t;
@@ -108,36 +97,80 @@ line_dash_step(line_dash_t* dash) {
     return visible;
 }
 
-/* Bresenham, treats both axes alike, no case analysis. */
+/* One pixel of a line, already inside the surface's clip: `dst` when the
+ * target holds the line's rows, else (x, y) if the target holds that row. */
+static inline __attribute__((always_inline)) void
+put(gfx_target_t target, gfx_color_t* dst, int x, int y, gfx_color_t color, bool add, bool rows_held) {
+    if (!rows_held) {
+        if (!gfx_target_holds_rows(target, y, y + 1)) {
+            return;
+        }
+        dst = &gfx_target_row(target, y)[x];
+    }
+    *dst = add ? gfx_color_add(*dst, color) : color;
+}
+
+/* Where a line's walk stands: the pixel, its Bresenham error, and (when the
+ * target holds the line's rows) its place in the target. */
+typedef struct {
+    int x, y, err;
+    gfx_color_t* dst;
+} line_cursor_t;
+
+/* One Bresenham step, treating both axes alike, no case analysis. */
+static inline __attribute__((always_inline)) void
+line_advance(line_cursor_t* c, int dx, int dy, int sx, int sy, ptrdiff_t row_step, bool rows_held) {
+    const int e2 = 2 * c->err;
+    if (e2 >= dy) {
+        c->err += dy;
+        c->x += sx;
+        if (rows_held) {
+            c->dst += sx;
+        }
+    }
+    if (e2 <= dx) {
+        c->err += dx;
+        c->y += sy;
+        if (rows_held) {
+            c->dst += row_step;
+        }
+    }
+}
+
+/* One body, specialised by the constant `rows_held`. A line whose rows the
+ * target holds whole, as every line of a full framebuffer does, steps a
+ * pointer; otherwise each pixel's row is checked, so a band draws only the
+ * rows it holds. */
+static inline __attribute__((always_inline)) void
+walk_steps(gfx_target_t target, int x, int y, int x1, int y1, gfx_color_t color, unsigned flags, line_dash_t dash,
+           bool rows_held) {
+    const int dx = mathi_abs(x1 - x);
+    const int dy = -mathi_abs(y1 - y);
+    const int sx = x < x1 ? 1 : -1;
+    const int sy = y < y1 ? 1 : -1;
+    const bool add = (flags & DRAW_LINE_ADD) != 0;
+    const ptrdiff_t row_step = (ptrdiff_t)sy * target.stride;
+    line_cursor_t c = {x, y, dx + dy, rows_held ? &gfx_target_row(target, y)[x] : NULL};
+
+    /* The first pixel of an open line keeps its place in the dash. */
+    if (line_dash_step(&dash) && !(flags & DRAW_LINE_OPEN)) {
+        put(target, c.dst, c.x, c.y, color, add, rows_held);
+    }
+    for (int remaining = mathi_max(dx, -dy); remaining > 0; remaining--) {
+        line_advance(&c, dx, dy, sx, sy, row_step, rows_held);
+        if (line_dash_step(&dash)) {
+            put(target, c.dst, c.x, c.y, color, add, rows_held);
+        }
+    }
+}
+
 static void
 walk(const gfx_surface_t* state, int x0, int y0, int x1, int y1, gfx_color_t color, unsigned flags, unsigned offset) {
-    const int dx = mathi_abs(x1 - x0);
-    const int dy = -mathi_abs(y1 - y0);
-    const int sx = x0 < x1 ? 1 : -1;
-    const int sy = y0 < y1 ? 1 : -1;
-    int err = dx + dy;
-    bool first = true;
-    line_dash_t dash = line_dash(flags, offset);
-
-    for (;;) {
-        const bool visible = line_dash_step(&dash);
-        if (visible && !(first && (flags & DRAW_LINE_OPEN))) {
-            plot(state, x0, y0, color, flags);
-        }
-        first = false;
-
-        if (x0 == x1 && y0 == y1) {
-            break;
-        }
-        const int e2 = 2 * err;
-        if (e2 >= dy) {
-            err += dy;
-            x0 += sx;
-        }
-        if (e2 <= dx) {
-            err += dx;
-            y0 += sy;
-        }
+    const line_dash_t dash = line_dash(flags, offset);
+    if (gfx_target_holds_rows(state->target, mathi_min(y0, y1), mathi_max(y0, y1) + 1)) {
+        walk_steps(state->target, x0, y0, x1, y1, color, flags, dash, true);
+    } else {
+        walk_steps(state->target, x0, y0, x1, y1, color, flags, dash, false);
     }
 }
 
@@ -242,7 +275,15 @@ draw_rect_blend(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha) {
     fill_rect_alpha(&state, x, y, w, h, color, alpha, true);
 }
 
-/* `dp`/`sp` start at column `x0`; only the columns `p` passes are copied. */
+/* A 32-bit mask over two adjacent pixels: the low half is the first. */
+static inline uint32_t
+pixel_pair_mask(bool first, bool second) {
+    return (first ? 0x0000FFFFU : 0U) | (second ? 0xFFFF0000U : 0U);
+}
+
+/* `dp`/`sp` start at column `x0`; only the columns `p` passes are copied.
+ * A word-aligned run takes two pixels a store, merged under the pattern's
+ * mask: the same pixels as one store each, without a test apiece. */
 static inline __attribute__((always_inline)) void
 blit_dither_row(gfx_color_t* dp, const gfx_color_t* sp, int x0, int x1, const bool p[4]) {
     int col = x0;
@@ -251,12 +292,17 @@ blit_dither_row(gfx_color_t* dp, const gfx_color_t* sp, int x0, int x1, const bo
             *dp = *sp;
         }
     }
-    for (; col + 4 <= x1; col += 4, dp += 4, sp += 4) {
-        for (int k = 0; k < 4; k++) {
-            if (p[k]) {
-                dp[k] = sp[k];
-            }
+    if (((uintptr_t)dp & 3U) == 0) {
+        const uint32_t m0 = pixel_pair_mask(p[0], p[1]);
+        const uint32_t m1 = pixel_pair_mask(p[2], p[3]);
+        uint32_t* dw = (uint32_t*)dp;
+        for (; col + 4 <= x1; col += 4, dw += 2, sp += 4) {
+            const uint32_t s0 = (uint32_t)sp[0] | ((uint32_t)sp[1] << 16);
+            const uint32_t s1 = (uint32_t)sp[2] | ((uint32_t)sp[3] << 16);
+            dw[0] = (dw[0] & ~m0) | (s0 & m0);
+            dw[1] = (dw[1] & ~m1) | (s1 & m1);
         }
+        dp = (gfx_color_t*)dw;
     }
     for (; col < x1; col++, dp++, sp++) {
         if (p[col & 3]) {
