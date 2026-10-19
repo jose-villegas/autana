@@ -41,13 +41,13 @@ cleanup(void) {
 }
 
 static void
-test_constant_dither_packs_and_carries_vertex_colours(void) {
+test_constant_dither_matches_pipeline_colours(void) {
     pixels = calloc(TEST_PIXELS * 4, sizeof(*pixels));
     suite_set_test_cleanup(cleanup);
     TEST_ASSERT_NOT_NULL(pixels);
     work = malloc(r3d_pipeline_work_bytes());
     TEST_ASSERT_NOT_NULL(work);
-    TEST_ASSERT_TRUE(r3d_span_vertex_colors());
+    TEST_ASSERT_EQUAL_UINT(8, sizeof(r3d_pipeline_vertex_t));
     const int16_t positions[3][3] = {{0, 0, 2}, {1, 0, 2}, {0, 1, 2}};
     uint8_t colours[3][3] = {{255, 0, 0}, {0, 255, 0}, {0, 0, 255}};
     const uint16_t triangle[3] = {0, 1, 2};
@@ -62,28 +62,16 @@ test_constant_dither_packs_and_carries_vertex_colours(void) {
     (void)transform_cluster(&mesh, &lens, &cluster, transformed);
     r3d_span_vertex_t reference[3];
     for (int k = 0; k < 3; k++) {
-        const uint32_t packed = R3D_SPAN_COLOR_VALID | r3d_span_pack_rgb(colours[k][0], colours[k][1], colours[k][2]);
-        TEST_ASSERT_EQUAL_HEX32(packed, transformed[k].packed_color);
         transformed[k].sx = k == 1 ? TEST_SIDE * R3D_SUBPIXEL : 0;
         transformed[k].sy = k == 2 ? TEST_SIDE * R3D_SUBPIXEL : 0;
-        reference[k] = (r3d_span_vertex_t){
-            transformed[k].sx, transformed[k].sy, transformed[k].iz, colours[k][0], colours[k][1], colours[k][2], 0};
+        reference[k] = (r3d_span_vertex_t){transformed[k].sx, transformed[k].sy, transformed[k].iz,
+                                           colours[k][0],     colours[k][1],     colours[k][2]};
     }
     const r3d_span_target_t expected = r3d_span_target(pixels, pixels + TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
     const r3d_span_target_t actual =
         r3d_span_target(pixels + TEST_PIXELS * 2, pixels + TEST_PIXELS * 3, TEST_SIDE, 0, TEST_SIDE);
     r3d_span_triangle(&expected, reference, reference + 1, reference + 2);
     const r3d_pipeline_vertex_t* vertices[3] = {transformed, transformed + 1, transformed + 2};
-    draw_in_front(&mesh, vertices, triangle, NULL, true, &actual, false, work);
-    TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
-    memset(pixels + TEST_PIXELS * 2, 0, TEST_PIXELS * 2 * sizeof(*pixels));
-    for (int k = 0; k < 3; k++) {
-        reference[k].packed_color = transformed[k].packed_color;
-        colours[k][0] = colours[k][1] = colours[k][2] = 0;
-        reference[k].r = reference[k].g = reference[k].b = 0;
-    }
-    memset(pixels, 0, TEST_PIXELS * 2 * sizeof(*pixels));
-    r3d_span_triangle(&expected, reference, reference + 1, reference + 2);
     draw_in_front(&mesh, vertices, triangle, NULL, true, &actual, false, work);
     TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
     int coloured = 0;
@@ -95,7 +83,7 @@ test_constant_dither_packs_and_carries_vertex_colours(void) {
 
 void
 run_r3d_constant_dither_suite(void) {
-    RUN_TEST(test_constant_dither_packs_and_carries_vertex_colours);
+    RUN_TEST(test_constant_dither_matches_pipeline_colours);
 }
 
 SUITE_REGISTER(run_r3d_constant_dither_suite);

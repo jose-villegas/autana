@@ -208,9 +208,6 @@ static inline r3d_pipeline_rows_t
 transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_cluster_t* c,
                   r3d_pipeline_vertex_t* cs) {
     const int end = c->vertex_first + c->vertex_count;
-#if R3D_SPAN_VERTEX_COLORS
-    const bool pack_colors = r3d_span_vertex_colors() && mesh->colors != NULL;
-#endif
     int y0 = INT16_MAX;
     int y1 = INT16_MIN;
     bool unbounded = false;
@@ -233,16 +230,6 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
         out->sx = (int16_t)r3d_span_unbias(b.x);
         out->sy = (int16_t)r3d_span_unbias(b.y);
         out->iz = lens->near_subpixels * inv;
-#if R3D_SPAN_VERTEX_COLORS
-        out->packed_color = 0;
-        if (pack_colors) {
-            const uint8_t* rgb = mesh->colors[v];
-            out->packed_color = R3D_SPAN_COLOR_VALID
-                                | r3d_span_pack((int32_t)rgb[0] * (int32_t)R3D_SPAN_COLOR_SCALE,
-                                                (int32_t)rgb[1] * (int32_t)R3D_SPAN_COLOR_SCALE,
-                                                (int32_t)rgb[2] * (int32_t)R3D_SPAN_COLOR_SCALE);
-        }
-#endif
         y0 = out->sy < y0 ? out->sy : y0;
         y1 = out->sy > y1 ? out->sy : y1;
     }
@@ -329,14 +316,8 @@ static r3d_span_vertex_t
 project(const r3d_lens_t* lens, const clip_vertex_t* v) {
     const float inv = (float)R3D_SUBPIXEL * mathf_recip(v->z);
     const biased_t b = biased_screen(lens, v->x, v->y, inv);
-    return (r3d_span_vertex_t){r3d_span_unbias(b.x),
-                               r3d_span_unbias(b.y),
-                               lens->near_subpixels * inv,
-                               v->r,
-                               v->g,
-                               v->b,
-                               r3d_span_vertex_colors() ? R3D_SPAN_COLOR_VALID | r3d_span_pack_rgb(v->r, v->g, v->b)
-                                                        : 0};
+    return (r3d_span_vertex_t){
+        r3d_span_unbias(b.x), r3d_span_unbias(b.y), lens->near_subpixels * inv, v->r, v->g, v->b};
 }
 
 /* Front faces wind negative on screen: counter-clockwise in a y-up world
@@ -482,10 +463,7 @@ draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3
     r3d_span_vertex_t* s = work->clip.projected;
     for (int k = 0; k < 3; k++) {
         const uint8_t* rgb = face_color == NULL ? mesh->colors[tri[k]] : (const uint8_t[3]){0, 0, 0};
-        s[k] = (r3d_span_vertex_t){v[k]->sx, v[k]->sy, v[k]->iz, rgb[0], rgb[1], rgb[2], 0};
-#if R3D_SPAN_VERTEX_COLORS
-        s[k].packed_color = v[k]->packed_color;
-#endif
+        s[k] = (r3d_span_vertex_t){v[k]->sx, v[k]->sy, v[k]->iz, rgb[0], rgb[1], rgb[2]};
     }
     fill_triangle(target, &s[0], &s[1], &s[2], face_color, writes);
 }

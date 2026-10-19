@@ -546,7 +546,6 @@ static small_limits_t small_limits[SMALL_MAX_SIDE_TUNE + 1];
 static uint32_t small_generation = UINT32_MAX;
 static int small_side_limit = SMALL_MAX_SIDE;
 static int small_cell_bits = SMALL_DITHER_PATTERN_BITS_MAX;
-static bool small_colors_needed;
 
 void
 r3d_span_begin(void) {
@@ -556,16 +555,10 @@ r3d_span_begin(void) {
     }
     small_side_limit = small_max_side;
     small_cell_bits = small_dither_cell_bits;
-    small_colors_needed = small_side_limit > SMALL_MAX_SIDE && small_dither != 0;
     for (int side = SMALL_MAX_SIDE + 1; side <= small_side_limit; side++) {
         small_limits[side] = small_limits_for_side(side);
     }
     small_generation = generation;
-}
-
-bool
-r3d_span_vertex_colors(void) {
-    return small_colors_needed;
 }
 #else
 #define small_side_limit small_max_side
@@ -641,14 +634,8 @@ typedef struct {
     uint16_t color[TRIANGLE_VERTICES];
     int32_t total;
     int32_t coverage_limit;
-    int32_t low_step, high_step;
     int phase_mask, rank_shift, level_shift;
 } small_dither_t;
-
-static inline uint16_t
-pack_vertex(const r3d_span_vertex_t* v) {
-    return v->packed_color & R3D_SPAN_COLOR_VALID ? (uint16_t)v->packed_color : r3d_span_pack_rgb(v->r, v->g, v->b);
-}
 
 /* This tree's barycentric ordered-dither pick has no source paper; it reuses
  * gfx_dither4x4 to distribute vertex colours at the edges. */
@@ -657,9 +644,12 @@ prepare_small_dither(small_dither_t* d, const r3d_span_vertex_t* a, const r3d_sp
                      const r3d_span_vertex_t* c, bool positive, int coverage) {
     const r3d_span_vertex_t* p = positive ? b : c;
     const r3d_span_vertex_t* q = positive ? c : b;
-    d->color[0] = pack_vertex(q);
-    d->color[1] = pack_vertex(a);
-    d->color[2] = pack_vertex(p);
+    d->color[0] = r3d_span_pack_rgb(q->r, q->g, q->b);
+    d->color[1] = r3d_span_pack_rgb(a->r, a->g, a->b);
+    d->color[2] = r3d_span_pack_rgb(p->r, p->g, p->b);
+    if (d->color[0] == d->color[1] && d->color[0] == d->color[2]) {
+        return false;
+    }
     d->edge[0] = small_edge(a, p);
     d->edge[1] = small_edge(p, q);
     d->edge[2] = small_edge(q, a);
@@ -672,144 +662,43 @@ prepare_small_dither(small_dither_t* d, const r3d_span_vertex_t* a, const r3d_sp
     d->rank_shift = 2 * (SMALL_DITHER_PATTERN_BITS_MAX - cell_bits);
     d->level_shift = 1 + (2 * cell_bits);
     d->total = total;
-    d->low_step = (gfx_dither4x4[0][1] >> d->rank_shift) * total * 2;
-    d->high_step = d->phase_mask > 1 ? gfx_dither4x4[0][2] * total * 2 : 0;
-    return d->color[0] != d->color[1] || d->color[0] != d->color[2];
+    return true;
 }
 
 static inline uint16_t
-small_dither_pick(const small_dither_t* d, int32_t threshold, int32_t s0, int32_t s1) {
+small_dither_pick(const small_dither_t* d, int x, int y, int32_t s0, int32_t s1, int32_t s2, uint16_t flat) {
+    if (r3d_span_min3(s0, s1, s2) >= d->coverage_limit) {
+        return flat;
+    }
+    const int rank = gfx_dither4x4[y & d->phase_mask][x & d->phase_mask] >> d->rank_shift;
+    const int32_t threshold = (d->total * (2 * rank + 1)) >> d->level_shift;
     return d->color[threshold < s0 ? 0 : threshold < s0 + s1 ? 1 : 2];
-}
-
-typedef struct {
-    edge_t covered, interior;
-    int32_t row_value, row_step;
-    bool lower;
-} small_band_edge_t;
-
-/* The two parallel boundaries share a rational row step. Top-left bias is
- * already in row_value, so their integer bounds need no pixel correction. */
-static small_band_edge_t
-small_band_edge(const small_edge_t* edge, recti_t box, int32_t limit) {
-    small_band_edge_t band = {
-        .row_value = small_side(edge, (box.x * R3D_SUBPIXEL) + HALF_PIXEL, (box.y * R3D_SUBPIXEL) + HALF_PIXEL),
-        .row_step = edge->dx * R3D_SUBPIXEL,
-        .lower = edge->dy < 0};
-    if (edge->dy == 0) {
-        return band;
-    }
-    const int32_t d = (edge->dy < 0 ? -edge->dy : edge->dy) * R3D_SUBPIXEL;
-    const int32_t numerator = band.lower ? -band.row_value + d - 1 : band.row_value;
-    const int32_t inner = numerator + (band.lower ? limit : -limit);
-    band.covered.d = band.interior.d = d;
-    floor_div(numerator, d, &band.covered.q, &band.covered.r);
-    floor_div(inner, d, &band.interior.q, &band.interior.r);
-    floor_div(band.lower ? -band.row_step : band.row_step, d, &band.covered.qs, &band.covered.rs);
-    band.interior.qs = band.covered.qs;
-    band.interior.rs = band.covered.rs;
-    band.covered.q += box.x + !band.lower;
-    band.interior.q += box.x + !band.lower;
-    return band;
-}
-
-static __attribute__((noinline)) void
-fill_small_band(const small_dither_t* d, const small_row_t* row, int y, int first, int last, uint16_t z) {
-    if (first >= last) {
-        return;
-    }
-    const int rank = gfx_dither4x4[y & d->phase_mask][first & d->phase_mask] >> d->rank_shift;
-    int32_t numerator = d->total * (2 * rank + 1);
-    const int32_t low_step = y & 1 ? -d->low_step : d->low_step;
-    const int32_t high_step = y & 2 ? -d->high_step : d->high_step;
-    const int32_t cx = (first * R3D_SUBPIXEL) + HALF_PIXEL;
-    int32_t s0 = small_side(&d->edge[0], cx, row->centre);
-    int32_t s1 = small_side(&d->edge[1], cx, row->centre);
-    const int32_t dx0 = -d->edge[0].dy * R3D_SUBPIXEL;
-    const int32_t dx1 = -d->edge[1].dy * R3D_SUBPIXEL;
-    for (int x = first; x < last; x++) {
-        if (z > row->depth[x]) {
-            row->depth[x] = z;
-            row->color[x] = small_dither_pick(d, numerator >> d->level_shift, s0, s1);
-        }
-        s0 += dx0;
-        s1 += dx1;
-        if (x & 1) {
-            numerator -= low_step;
-            numerator += (x & 2) ? -high_step : high_step;
-        } else {
-            numerator += low_step;
-        }
-    }
-}
-
-typedef struct {
-    int first, last, inner_first, inner_last;
-} small_band_bounds_t;
-
-static inline __attribute__((always_inline)) small_band_bounds_t
-step_small_bounds(small_band_edge_t edges[TRIANGLE_VERTICES], recti_t box, int32_t coverage_limit) {
-    small_band_bounds_t bounds = {box.x, recti_right(box), box.x, recti_right(box)};
-    for (int k = 0; k < TRIANGLE_VERTICES; k++) {
-        small_band_edge_t* edge = &edges[k];
-        if (edge->covered.d == 0) {
-            if (edge->row_value < 0) {
-                bounds.last = box.x;
-            }
-            if (edge->row_value < coverage_limit) {
-                bounds.inner_last = box.x;
-            }
-            edge->row_value += edge->row_step;
-        } else {
-            if (edge->lower) {
-                bounds.first = mathi_max(bounds.first, edge->covered.q);
-                bounds.inner_first = mathi_max(bounds.inner_first, edge->interior.q);
-            } else {
-                bounds.last = mathi_min(bounds.last, edge->covered.q);
-                bounds.inner_last = mathi_min(bounds.inner_last, edge->interior.q);
-            }
-            (void)step_edge(&edge->covered);
-            (void)step_edge(&edge->interior);
-        }
-    }
-    return bounds;
 }
 
 static __attribute__((noinline)) void
 fill_small_dither(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                   const r3d_span_vertex_t* c, bool positive, recti_t box, int coverage) {
+    small_dither_t d;
+    if (!prepare_small_dither(&d, a, b, c, positive, coverage)) {
+        fill_small(target, a, b, c, positive, box, NULL);
+        return;
+    }
     fill_t f;
     set_flat(&f, a, b, c);
     if (r3d_span_stop_after != 0) {
         return;
     }
-    small_dither_t d;
-    if (!prepare_small_dither(&d, a, b, c, positive, coverage)) {
-        d.coverage_limit = 0;
-    }
-    small_band_edge_t edges[TRIANGLE_VERTICES];
-    for (int k = 0; k < TRIANGLE_VERTICES; k++) {
-        edges[k] = small_band_edge(&d.edge[k], box, d.coverage_limit);
-    }
     for (int y = box.y; y < recti_bottom(box); y++) {
-        const small_band_bounds_t bounds = step_small_bounds(edges, box, d.coverage_limit);
-        const int first = bounds.first;
-        const int last = bounds.last;
-        int inner_first = bounds.inner_first;
-        int inner_last = bounds.inner_last;
-        if (first >= last) {
-            continue;
-        }
         const small_row_t row = small_row(target, y);
-        inner_first = mathi_max(first, inner_first);
-        inner_last = mathi_min(last, inner_last);
-        if (inner_first >= inner_last) {
-            fill_small_band(&d, &row, y, first, last, f.flat_z);
-        } else {
-            fill_small_band(&d, &row, y, first, inner_first, f.flat_z);
-            fill_flat(row.depth + inner_first, row.color + inner_first, inner_last - inner_first, f.flat_z,
-                      f.flat_color);
-            fill_small_band(&d, &row, y, inner_last, last, f.flat_z);
+        for (int x = box.x, end = recti_right(box); x < end; x++) {
+            const int32_t cx = (x << R3D_SUBPIXEL_SHIFT) + HALF_PIXEL;
+            const int32_t s0 = small_side(&d.edge[0], cx, row.centre);
+            const int32_t s1 = small_side(&d.edge[1], cx, row.centre);
+            const int32_t s2 = small_side(&d.edge[2], cx, row.centre);
+            if ((s0 | s1 | s2) >= 0 && f.flat_z > row.depth[x]) {
+                row.depth[x] = f.flat_z;
+                row.color[x] = small_dither_pick(&d, x, y, s0, s1, s2, f.flat_color);
+            }
         }
     }
 }

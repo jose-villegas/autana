@@ -154,7 +154,7 @@ test_distance_moves_triangles_between_the_bins(void) {
 
 static r3d_span_vertex_t
 at(float x, float y) {
-    return (r3d_span_vertex_t){(int32_t)(x * R3D_SUBPIXEL), (int32_t)(y * R3D_SUBPIXEL), 0.5f, 10, 20, 30, 0};
+    return (r3d_span_vertex_t){(int32_t)(x * R3D_SUBPIXEL), (int32_t)(y * R3D_SUBPIXEL), 0.5f, 10, 20, 30};
 }
 
 /* A triangle lands in its mode's bin by the centres its box holds, whole,
