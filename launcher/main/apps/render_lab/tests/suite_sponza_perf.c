@@ -60,6 +60,8 @@ typedef struct {
     void* scratch;
     gfx_color_t* panel;
     raster_t raster;
+    r3d_lens_t lens;
+    r3d_pipeline_buffers_t buffers;
 } bench_t;
 
 static void
@@ -245,11 +247,13 @@ test_sponza_draw_stage_breakdown(void) {
     TEST_ASSERT_NOT_NULL(b);
     const r3d_instance_t atrium = {&meshes[SPONZA_BAKE_FULL], NULL};
     bench_open(b, &atrium, NULL);
-    const r3d_lens_t lens = view_at(atrium.mesh, 0);
-    const r3d_pipeline_buffers_t parts = r3d_pipeline_carve(&b->raster);
-    const int visible = r3d_pipeline_cull(atrium.mesh, &lens, parts.culled + 1, parts.work[0]);
+    b->lens = view_at(atrium.mesh, 0);
+    b->buffers = r3d_pipeline_carve(&b->raster);
+    const r3d_lens_t* lens = &b->lens;
+    const r3d_pipeline_buffers_t* parts = &b->buffers;
+    const int visible = r3d_pipeline_cull(atrium.mesh, lens, parts->culled + 1, parts->work[0]);
     int64_t start = timing_now_us();
-    r3d_pipeline_transform(atrium.mesh, &lens, parts.culled + 1, visible, parts.cs, parts.rows);
+    r3d_pipeline_transform(atrium.mesh, lens, parts->culled + 1, visible, parts->cs, parts->rows);
     ESP_LOGI(TAG, "stage, one core: %-22s %7lldus" R3D_PERF_QUARTER_FORMAT, "transform",
              (long long)(timing_now_us() - start), perf_quarter->name);
 
@@ -258,12 +262,12 @@ test_sponza_draw_stage_breakdown(void) {
     for (int stop = 0; stop <= 3; stop++) {
         r3d_span_stop_after = stop;
         start = timing_now_us();
-        clear_and_draw(&b->raster, &lens, visible);
+        clear_and_draw(&b->raster, lens, visible);
         ESP_LOGI(TAG, "stage, one core: %-22s %7lldus" R3D_PERF_QUARTER_FORMAT, names[stop],
                  (long long)(timing_now_us() - start), perf_quarter->name);
     }
     r3d_span_stop_after = 0;
-    report_core_contention(&b->raster, &lens, visible);
+    report_core_contention(&b->raster, lens, visible);
 
     /* A view of nothing but sky: what a frame costs before any geometry. */
     const transformf_t sky_pose =
