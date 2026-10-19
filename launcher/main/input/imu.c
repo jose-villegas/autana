@@ -23,6 +23,8 @@
 
 static const char* TAG = "imu";
 
+/* The QMI8658A's I2C rating (Rev A, Table 43). Faster was measured on A308 and
+ * rejected: docs/input/Gravity.md, Limits. */
 #define QMI8658_I2C_HZ          400000
 #define QMI8658_TIMEOUT_MS      100
 
