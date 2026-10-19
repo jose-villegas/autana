@@ -58,7 +58,7 @@ render_lab_hud_screen_draw(const render_lab_hud_screen_state_t* state) {
     ui_screen();
 
     char fps_line[16];
-    snprintf(fps_line, sizeof fps_line, "%5.1f fps", (double)state->fps_value);
+    (void)snprintf(fps_line, sizeof fps_line, "%5.1f fps", (double)state->fps_value);
 
     const int x = HUD_INSET_PX;
     const recti_t fps_box = draw_text_box(fps_line, x, HUD_INSET_PX);

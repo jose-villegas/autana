@@ -101,7 +101,10 @@ home_hint_rect(gesture_edge_t edge, int* x, int* y, int* w, int* h) {
 
 static void
 draw_home_hint(gesture_edge_t edge) {
-    int x, y, w, h;
+    int x;
+    int y;
+    int w;
+    int h;
     home_hint_rect(edge, &x, &y, &w, &h);
 
     if (!gfx_region_dirty(x, y, w, h)) {
@@ -115,7 +118,10 @@ draw_home_hint(gesture_edge_t edge) {
  * list before frame() bins it. */
 static void
 queue_home_hint(gesture_edge_t edge) {
-    int x, y, w, h;
+    int x;
+    int y;
+    int w;
+    int h;
     home_hint_rect(edge, &x, &y, &w, &h);
     ui_queue_band_overlay_rect(x, y, w, h, HOME_HINT_RGB);
 }

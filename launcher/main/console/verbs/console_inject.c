@@ -28,7 +28,8 @@ static void
 console_verb_touch(const char* args, console_reply_fn reply) {
     (void)reply;
     bool down = false;
-    int x = 0, y = 0;
+    int x = 0;
+    int y = 0;
     if (console_touch_parse(args, &down, &x, &y)) {
         touch_inject(down, (vec2i_t){x, y});
     } else {
@@ -39,7 +40,9 @@ console_verb_touch(const char* args, console_reply_fn reply) {
 static void
 console_verb_imu(const char* args, console_reply_fn reply) {
     imu_sample_t sample;
-    int ax = 0, ay = 0, az = 0;
+    int ax = 0;
+    int ay = 0;
+    int az = 0;
     int quarter;
     if (strcmp(args, "release") == 0) {
         imu_inject_release();
