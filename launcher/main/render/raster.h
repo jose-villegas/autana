@@ -17,6 +17,7 @@
 #include "render/resolution/resolution.h"
 #include "render/upscale.h"
 
+/* Bounds the split state size; instances past this cap draw with an even share. */
 #define RASTER_SPLIT_INSTANCES 16
 #define RASTER_SPLIT_PERMILLE  1000
 #define RASTER_SPLIT_EVEN      (RASTER_SPLIT_PERMILLE / 2)

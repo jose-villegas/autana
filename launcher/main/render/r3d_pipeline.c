@@ -299,7 +299,7 @@ draw_split_row(const int* weight, int height, int top_permille) {
         current += weight[bucket];
         if (current > 0 && (int64_t)(prefix + current) * RASTER_SPLIT_PERMILLE >= target) {
             const int64_t bucket_weight = (int64_t)current * RASTER_SPLIT_PERMILLE;
-            const int64_t position = bucket * bucket_weight + target - (int64_t)prefix * RASTER_SPLIT_PERMILLE;
+            const int64_t position = ((bucket * bucket_weight) + target) - ((int64_t)prefix * RASTER_SPLIT_PERMILLE);
             return mathi_clamp((int)(position * height / (bucket_weight * DRAW_SPLIT_BUCKETS)), 1, height - 1);
         }
         prefix += current;
