@@ -227,6 +227,7 @@ sequenceDiagram
 | `gfx_present_begin()` | hands the target to core 1, returns at once. A no-op in band-ring mode. In double mode it first drains the previous send and swaps front and back. Each call also ends a frame for the frame watch (`profile/frame_watch.h`). |
 | `gfx_present_wait()` | blocks until everything queued has landed. Double mode: returns at once. |
 | `gfx_set_present_async()` | `false` sends on the caller's core instead, for A/B timing |
+| `gfx_set_clear_on_send()` | double mode only: core 1 fills each frame with a colour once it is sent, so `draw_clear()` of that colour on it is skipped (`gfx_framebuffer_holds()`). Readback is unavailable until a send that keeps its frame. |
 
 Outside double mode the wait is mandatory: DMA is still reading the buffer until it returns.
 
@@ -243,6 +244,7 @@ sequenceDiagram
         Core0->>Core0: draw frame N+1 into back
     and
         Core1->>Core1: copy strips, QSPI to panel
+        Core1->>Core1: clear on send: fill the front
     end
 ```
 
@@ -262,6 +264,8 @@ waits for that read to finish. A catch-up copy between PSRAM framebuffers
 costs 6–15 ms per frame. Single-buffer layouts retain their contents;
 `GFX_LAYOUT_DOUBLE_FB` requires a full redraw and makes no catch-up copy;
 its draw runs slower while the front is sent, both use PSRAM.
+Clear on send moves the full-frame fill from core 0 to core 1: the same
+bytes, now sharing the bus with the draw.
 The mesh raster is a measured exception: its colour and depth targets and upscaled framebuffer are written in PSRAM.
 See [Board and Memory](notes/Board-and-Memory.md#psram-throughput) for
 memory throughput and placement.
