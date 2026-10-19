@@ -345,7 +345,7 @@ Defaults keep the standard look. The flat bake uses one face colour per triangle
 the fully flat end of this range.
 Set them with `--set` ([Render-Harness](../tools/Render-Harness.md)).
 
-<!-- generated: small-fill-levers sha256=3f7be8321d1a62059909d0fcb8b4c7ff8b0d0bef6decd781e6d92f80630eabc9 -->
+<!-- generated: small-fill-levers sha256=e1efa8ec83cbf53a0df1c6722a44f02a837eef1a4c831747123aff7b762b234e -->
 | Axis | Tunable | Range | Default | Effect |
 |---|---|---|---|---|
 | dither | `r3d_span.small_dither` | 0..8 | 0 | Ordered edge coverage in eighths above side 4; 0 disables it |
@@ -353,15 +353,14 @@ Set them with `--set` ([Render-Harness](../tools/Render-Harness.md)).
 | dither | `r3d_span.small_dither_ramp` | 0..1 | 0 | Ramp coverage from 0 at side 4 to the chosen coverage |
 | gate | `r3d_span.small_flat_spread_far` | 0..64 | 64 | Far gate: maximum RGB565 channel spread at the size limit; 64 is off |
 | gate | `r3d_span.small_flat_spread_near` | 0..64 | 64 | Near gate: spread limit from side 5; interpolated to the far gate; 64 is off |
-| grain | `r3d_span.small_grain` | 0..4 | 0 | Ordered flat-colour amplitude in RGB565 steps; 0 disables it |
-| grain | `r3d_span.small_grain_cell_bits` | 1..2 | 1 | Log2 of the grain pattern side in pixels |
+| grain | `r3d_span.small_grain` | 0..4 | 0 | Ordered flat-colour amplitude in green 6-bit steps; 0 disables it |
 | grain | `r3d_span.small_grain_ramp` | 0..1 | 0 | Ramp amplitude from 0 at side 4 to full at the size limit |
 | size | `r3d_span.small_max_side` | 0..16 | 4 | Bounding-box centres per side eligible for flat fill; 0 disables it |
 <!-- /generated: small-fill-levers -->
 
 Live small-fill limits resolve before row workers run. Small dither triangles
 test coverage and choose vertex colours in one pixel loop.
-Optional ordered grain selects four clamped RGB565 shades of the flat colour in a screen-anchored cell.
+Optional ordered grain selects four clamped RGB565 shades of the flat colour in a screen-anchored 2x2 pattern.
 
 The gate measures the largest RGB565 channel spread across the vertices.
 For sides above side 4, its limit interpolates from the near gate at side 5

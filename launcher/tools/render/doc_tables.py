@@ -84,8 +84,7 @@ def lever_description(name, high):
         "small_dither": ("dither", "Ordered edge coverage in eighths above side 4; 0 disables it"),
         "small_dither_ramp": ("dither", "Ramp coverage from 0 at side 4 to the chosen coverage"),
         "small_dither_cell_bits": ("dither", "Log2 of the ordered pattern side in pixels"),
-        "small_grain": ("grain", "Ordered flat-colour amplitude in RGB565 steps; 0 disables it"),
-        "small_grain_cell_bits": ("grain", "Log2 of the grain pattern side in pixels"),
+        "small_grain": ("grain", "Ordered flat-colour amplitude in green 6-bit steps; 0 disables it"),
         "small_grain_ramp": ("grain", "Ramp amplitude from 0 at side 4 to full at the size limit"),
     }
     return descriptions[name]

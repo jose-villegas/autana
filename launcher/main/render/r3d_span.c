@@ -6,6 +6,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "math/scalar/fixed.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
 #include "render/code_layout.h"
@@ -36,7 +37,11 @@ static const int32_t value_max[ATTRIBUTES] = {DEPTH_MAX, 65280, 65280, 65280};
 #define SMALL_DITHER_PATTERN_BITS_MAX   (__builtin_ctz((unsigned)SMALL_DITHER_PATTERN_SIDE))
 #define SMALL_DITHER_PATTERN_BITS_MIN   1
 #define SMALL_DITHER_PRECOMPUTED_LEVELS (1 << (2 * SMALL_DITHER_PATTERN_BITS_MIN))
-#define SMALL_GRAIN_LEVELS              4
+#define SMALL_GRAIN_PATTERN_SIDE        2
+#define SMALL_GRAIN_PATTERN_MASK        (SMALL_GRAIN_PATTERN_SIDE - 1)
+#define SMALL_GRAIN_HALF_SHIFT          1
+#define SMALL_GRAIN_RB_SHIFT            1
+#define SMALL_GRAIN_LEVELS              (SMALL_GRAIN_PATTERN_SIDE * SMALL_GRAIN_PATTERN_SIDE)
 #define SMALL_GRAIN_AMPLITUDE_MAX       4
 #define SMALL_FILL_WALK                 (-1)
 #define TRIANGLE_VERTICES               3
@@ -53,8 +58,6 @@ TUNE_HOT(r3d_span, small_dither_cell_bits, SMALL_DITHER_PATTERN_BITS_MAX, SMALL_
          SMALL_DITHER_PATTERN_BITS_MAX);
 TUNE_HOT(r3d_span, small_dither_ramp, 0, 0, 1);
 TUNE_HOT(r3d_span, small_grain, 0, 0, SMALL_GRAIN_AMPLITUDE_MAX);
-TUNE_HOT(r3d_span, small_grain_cell_bits, SMALL_DITHER_PATTERN_BITS_MIN, SMALL_DITHER_PATTERN_BITS_MIN,
-         SMALL_DITHER_PATTERN_BITS_MAX);
 TUNE_HOT(r3d_span, small_grain_ramp, 0, 0, 1);
 TUNE_HOT(r3d_span, flat_max_rows, R3D_SPAN_FLAT_MAX_ROWS, 0, 8);
 TUNE_HOT(r3d_span, flat_max_width, R3D_SPAN_FLAT_MAX_WIDTH, 0, 8 * R3D_SUBPIXEL);
@@ -553,11 +556,9 @@ small_limits_for_side(int side) {
     return (small_limits_t){(uint8_t)spread, (uint8_t)coverage, (uint8_t)grain};
 }
 
-static uint8_t small_grain_pattern[SMALL_DITHER_PATTERN_SIDE][SMALL_DITHER_PATTERN_SIDE];
+static const uint8_t small_grain_pattern[SMALL_GRAIN_PATTERN_SIDE][SMALL_GRAIN_PATTERN_SIDE] = {{0, 2}, {3, 1}};
 
 #if TUNE_HOT_LIVE
-#define SMALL_GRAIN_RANK_SHIFT (2 * SMALL_DITHER_PATTERN_BITS_MAX - 2)
-static int small_grain_mask;
 static small_limits_t small_limits[SMALL_MAX_SIDE_TUNE + 1];
 static uint32_t small_generation = UINT32_MAX;
 static int small_side_limit = SMALL_MAX_SIDE;
@@ -571,12 +572,6 @@ r3d_span_begin(void) {
     }
     small_side_limit = small_max_side;
     small_cell_bits = small_dither_cell_bits;
-    small_grain_mask = (1 << small_grain_cell_bits) - 1;
-    for (int y = 0; y < (int)SMALL_DITHER_PATTERN_SIDE; y++) {
-        for (int x = 0; x < (int)SMALL_DITHER_PATTERN_SIDE; x++) {
-            small_grain_pattern[y][x] = gfx_dither4x4[y][x] >> SMALL_GRAIN_RANK_SHIFT;
-        }
-    }
     for (int side = SMALL_MAX_SIDE + 1; side <= small_side_limit; side++) {
         small_limits[side] = small_limits_for_side(side);
     }
@@ -585,7 +580,6 @@ r3d_span_begin(void) {
 #else
 #define small_side_limit small_max_side
 #define small_cell_bits  small_dither_cell_bits
-#define small_grain_mask ((1 << small_grain_cell_bits) - 1)
 #endif
 
 /* Negative selects the walk; otherwise the result is dither coverage, with zero selecting flat. */
@@ -649,11 +643,11 @@ prepare_small_grain(uint16_t shades[SMALL_GRAIN_LEVELS], uint16_t color, int amp
     const int blue = (int)gfx_rgb565_b5(native);
     for (int level = 0; level < SMALL_GRAIN_LEVELS; level++) {
         const int numerator = amplitude * (2 * level + 1 - SMALL_GRAIN_LEVELS);
-        const int magnitude = ((numerator < 0 ? -numerator : numerator) + SMALL_GRAIN_LEVELS / 2) / SMALL_GRAIN_LEVELS;
-        const int offset = numerator < 0 ? -magnitude : magnitude;
-        shades[level] = gfx_color_rgb565((uint8_t)mathi_clamp(red + offset, 0, (int)gfx_rgb565_r5(UINT16_MAX)),
-                                         (uint8_t)mathi_clamp(green + offset, 0, (int)GFX_RGB565_G6_MAX),
-                                         (uint8_t)mathi_clamp(blue + offset, 0, (int)gfx_rgb565_b5(UINT16_MAX)));
+        const int green_offset = fx_round_shift32(numerator, SMALL_GRAIN_HALF_SHIFT);
+        const int rb_offset = fx_round_shift32(green_offset, SMALL_GRAIN_RB_SHIFT);
+        shades[level] = gfx_color_rgb565((uint8_t)mathi_clamp(red + rb_offset, 0, (int)gfx_rgb565_r5(UINT16_MAX)),
+                                         (uint8_t)mathi_clamp(green + green_offset, 0, (int)GFX_RGB565_G6_MAX),
+                                         (uint8_t)mathi_clamp(blue + rb_offset, 0, (int)gfx_rgb565_b5(UINT16_MAX)));
     }
 }
 
@@ -700,14 +694,13 @@ fill_small_grain(const r3d_span_target_t* target, const r3d_span_vertex_t* a, co
     const small_edge_t edges[TRIANGLE_VERTICES] = {small_edge(a, positive ? b : c),
                                                    small_edge(positive ? b : c, positive ? c : b),
                                                    small_edge(positive ? c : b, a)};
-    const int mask = small_grain_mask;
     for (int y = box.y; y < recti_bottom(box); y++) {
-        const uint8_t* row_pattern = small_grain_pattern[y & mask];
+        const uint8_t* row_pattern = small_grain_pattern[y & SMALL_GRAIN_PATTERN_MASK];
         const small_row_t row = small_row(target, y);
         for (int x = box.x, end = recti_right(box); x < end; x++) {
             if (small_visible(edges, &row, x, f.flat_z)) {
                 row.depth[x] = f.flat_z;
-                row.color[x] = shades[row_pattern[x & mask]];
+                row.color[x] = shades[row_pattern[x & SMALL_GRAIN_PATTERN_MASK]];
             }
         }
     }
@@ -767,10 +760,9 @@ small_dither_pick(const small_dither_t* d, const uint8_t* pattern, const int32_t
 static inline __attribute__((always_inline)) void
 fill_small_dither_rows(const r3d_span_target_t* target, const small_dither_t* d, const fill_t* f, recti_t box,
                        int cell_bits, const int32_t* thresholds, const uint16_t* shades, bool grained) {
-    const int grain_mask = small_grain_mask;
     for (int y = box.y; y < recti_bottom(box); y++) {
         const small_row_t row = small_row(target, y);
-        const uint8_t* grain_pattern = small_grain_pattern[y & grain_mask];
+        const uint8_t* grain_pattern = small_grain_pattern[y & SMALL_GRAIN_PATTERN_MASK];
         const uint8_t* pattern = gfx_dither4x4[y & d->phase_mask];
         const int32_t* row_thresholds =
             cell_bits == SMALL_DITHER_PATTERN_BITS_MIN ? thresholds + ((y & d->phase_mask) << cell_bits) : NULL;
@@ -781,7 +773,7 @@ fill_small_dither_rows(const r3d_span_target_t* target, const small_dither_t* d,
             const int32_t s2 = small_side(&d->edge[2], cx, row.centre);
             if ((s0 | s1 | s2) >= 0 && f->flat_z > row.depth[x]) {
                 row.depth[x] = f->flat_z;
-                const uint16_t flat = grained ? shades[grain_pattern[x & grain_mask]] : f->flat_color;
+                const uint16_t flat = grained ? shades[grain_pattern[x & SMALL_GRAIN_PATTERN_MASK]] : f->flat_color;
                 row.color[x] = small_dither_pick(d, pattern, row_thresholds, x, s0, s1, s2, flat);
             }
         }
