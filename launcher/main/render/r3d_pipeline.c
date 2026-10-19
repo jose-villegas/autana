@@ -500,22 +500,34 @@ draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
     }
 }
 
-/* Chooses once per draw whether the target's writers follow each fill. */
-RENDER_IRAM_ATTR void
-r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
-                  const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
-                  r3d_pipeline_work_t* work) {
-    /* Guard planes depend only on the lens, so build them once per draw. */
+/* Keep once-per-draw plane setup in flash to preserve the hot-path IRAM budget. */
+static __attribute__((noinline)) void
+build_guard_planes(const r3d_lens_t* lens, r3d_pipeline_work_t* work) {
     const float g = (float)GUARD_PIXELS;
     planef_frustum(&LENS_SPACE, &lens->project, rectf_from_edges(-g, -g, g, g), work->clip.planes);
-    if (target->writer_count != 0) {
-        draw_writing(mesh, lens, clusters, count, cs, rows, target, work);
-        return;
-    }
+}
+
+static RENDER_IRAM_ATTR __attribute__((noinline)) void
+draw_reading(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
+             const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
+             r3d_pipeline_work_t* work) {
     for (int i = 0; i < count; i++) {
         if (rows != NULL && rows_miss_target(&rows[clusters[i]], target)) {
             continue;
         }
         draw_cluster(mesh, lens, &mesh->clusters[clusters[i]], cs, target, false, work);
     }
+}
+
+/* Chooses once per draw whether the target's writers follow each fill. */
+void
+r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
+                  const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
+                  r3d_pipeline_work_t* work) {
+    build_guard_planes(lens, work);
+    if (target->writer_count != 0) {
+        draw_writing(mesh, lens, clusters, count, cs, rows, target, work);
+        return;
+    }
+    draw_reading(mesh, lens, clusters, count, cs, rows, target, work);
 }
