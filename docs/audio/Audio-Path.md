@@ -82,6 +82,8 @@ requested.
 The estimate is valid only while the tone stays within the unambiguous range
 above; a drifting or modulated tone gives a wrong value.
 
+The nominal frequency must be at least `AUDIO_FREQUENCY_MIN_CYCLES` cycles per window from DC and Nyquist.
+
 Below `AUDIO_FREQUENCY_MIN_SAMPLES`, the reply says `measured n/a`
 and both JSON frequency fields are null.
 

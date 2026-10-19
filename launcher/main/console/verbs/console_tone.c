@@ -13,10 +13,16 @@
 #include "core/timing.h"
 #include "sound/sound_engine.h"
 
-static void
+static bool
 stop_tone(sound_voice_t* voice) {
-    sound_stop(*voice);
+    const int64_t deadline = timing_now_us() + ((int64_t)SOUND_CAPTURE_TIMEOUT_MS * MATH_US_PER_MS);
+    while (sound_is_playing(*voice) && timing_now_us() < deadline) {
+        sound_stop(*voice);
+        timing_sleep_ms(SOUND_CONTROL_POLL_MS);
+    }
+    const bool stopped = !sound_is_playing(*voice);
     *voice = SOUND_VOICE_NULL;
+    return stopped;
 }
 
 static bool
@@ -47,12 +53,16 @@ console_verb_tone(const char* args, console_reply_fn reply) {
     float tone_db = 0;
     float measured_hz = parsed.hz;
     sound_voice_t voice = SOUND_VOICE_NULL;
+    bool held = false;
     bool ok = opened && audio_codec_dac_feedback(false)
-              && (!parsed.internal || (audio_out_amp_hold(true) && audio_codec_dac_feedback(true)))
+              && (!parsed.internal || ((held = audio_out_amp_hold(true)) && audio_codec_dac_feedback(true)))
               && audio_loopback_measure(parsed.hz, parsed.ms, &silence_db, NULL)
               && start_tone(&voice, parsed.hz, parsed.volume_pct)
               && audio_loopback_measure(parsed.hz, parsed.ms, &tone_db, &measured_hz);
-    stop_tone(&voice);
+    ok = stop_tone(&voice) && ok;
+    if (held) {
+        timing_sleep_ms(AUDIO_OUT_DMA_DRAIN_MS);
+    }
     const bool heard = tone_db - silence_db >= AUDIO_LOOPBACK_HEARD_MARGIN_DB;
     ok = audio_codec_dac_feedback(false) && ok;
     ok = audio_out_amp_hold(false) && ok;

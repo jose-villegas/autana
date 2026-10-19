@@ -35,7 +35,8 @@ audio_frequency_feed(audio_frequency_t* state, const int16_t* samples, size_t co
 
 float
 audio_frequency_hz(const audio_frequency_t* state) {
-    if (!state->advances) {
+    if (!state->advances || state->nominal_hz < AUDIO_FREQUENCY_EDGE_HZ
+        || state->nominal_hz > (float)AUDIO_OUT_SAMPLE_RATE_HZ / 2 - AUDIO_FREQUENCY_EDGE_HZ) {
         return NAN;
     }
     return state->nominal_hz

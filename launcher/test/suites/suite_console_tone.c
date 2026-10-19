@@ -107,7 +107,9 @@ typedef enum {
     TEST_TONE_MEASURE_FAIL,
     TEST_TONE_CLOSE_FAIL,
     TEST_TONE_RESTORE_FAIL,
-    TEST_TONE_RELEASE_FAIL
+    TEST_TONE_RELEASE_FAIL,
+    TEST_TONE_STOP_DROPPED,
+    TEST_TONE_STOP_STUCK
 } tone_failure_t;
 
 static struct {
@@ -117,6 +119,10 @@ static struct {
     int reg;
     unsigned measures;
     unsigned closes;
+    unsigned stops;
+    unsigned drain_ms;
+    int64_t stop_started;
+    bool stop_pending;
     bool playing;
     bool audible;
     bool internal;
@@ -156,6 +162,15 @@ audio_codec_dac_feedback(bool on) {
 
 bool
 audio_out_amp_hold(bool held) {
+    if (!held && device.internal && device.stops) {
+        TEST_ASSERT_TRUE(!device.playing || device.failure == TEST_TONE_STOP_STUCK);
+        TEST_ASSERT_EQUAL_UINT(AUDIO_OUT_DMA_DRAIN_MS, device.drain_ms);
+        if (device.failure == TEST_TONE_STOP_STUCK) {
+            TEST_ASSERT_GREATER_OR_EQUAL_INT64((int64_t)(SOUND_CAPTURE_TIMEOUT_MS - SOUND_CONTROL_POLL_MS)
+                                                   * MATH_US_PER_MS,
+                                               timing_now_us() - device.stop_started);
+        }
+    }
     (void)audio_out_amp_update(&device.amp, true, held);
     return !(held && device.failure == TEST_TONE_HOLD_FAIL) && !(!held && device.failure == TEST_TONE_RELEASE_FAIL);
 }
@@ -195,9 +210,16 @@ sound_voice_audible(sound_voice_t voice) {
 
 void
 timing_sleep_ms(uint32_t ms) {
-    TEST_ASSERT_EQUAL_UINT(SOUND_CONTROL_POLL_MS, ms);
+    if (ms != SOUND_CONTROL_POLL_MS) {
+        TEST_ASSERT_FALSE(device.playing && device.failure != TEST_TONE_STOP_STUCK);
+        device.drain_ms += ms;
+    }
     if (device.internal) {
         TEST_ASSERT_TRUE(device.amp.held);
+    }
+    if (device.stop_pending) {
+        device.playing = false;
+        device.stop_pending = false;
     }
     device.audible = true;
 }
@@ -205,7 +227,13 @@ timing_sleep_ms(uint32_t ms) {
 void
 sound_stop(sound_voice_t voice) {
     (void)voice;
-    device.playing = false;
+    if (!device.stops) {
+        device.stop_started = timing_now_us();
+    }
+    device.stops++;
+    if (device.failure != TEST_TONE_STOP_STUCK && !(device.failure == TEST_TONE_STOP_DROPPED && device.stops == 1)) {
+        device.stop_pending = true;
+    }
 }
 
 bool
@@ -232,7 +260,7 @@ tone_collect(const char* reply) {
 
 static void
 test_tone_capture_restores_every_exit(void) {
-    for (tone_failure_t failure = TEST_TONE_OK; failure <= TEST_TONE_RELEASE_FAIL; failure++) {
+    for (tone_failure_t failure = TEST_TONE_OK; failure <= TEST_TONE_STOP_STUCK; failure++) {
         memset(&device, 0, sizeof device);
         device.failure = failure;
         device.internal = true;
@@ -250,8 +278,11 @@ test_tone_capture_restores_every_exit(void) {
         TEST_ASSERT_FALSE(device.feedback.restore_pending);
         TEST_ASSERT_FALSE(device.amp.held);
         TEST_ASSERT_TRUE(device.amp.requested);
-        TEST_ASSERT_FALSE(device.playing);
-        if (failure == TEST_TONE_OK) {
+        TEST_ASSERT_EQUAL(failure == TEST_TONE_STOP_STUCK, device.playing);
+        if (failure == TEST_TONE_STOP_DROPPED) {
+            TEST_ASSERT_GREATER_OR_EQUAL_UINT(2, device.stops);
+        }
+        if (failure == TEST_TONE_OK || failure == TEST_TONE_STOP_DROPPED) {
             TEST_ASSERT_NULL(device.reply);
         } else {
             TEST_ASSERT_NOT_NULL(device.reply);

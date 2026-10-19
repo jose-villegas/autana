@@ -11,6 +11,10 @@
 /* Consecutive windows resolve nominal frequency +/- sample_rate / (2 * window_samples). */
 #define AUDIO_FREQUENCY_WINDOW_SAMPLES (2u * AUDIO_CODEC_BLOCK_SAMPLES)
 #define AUDIO_FREQUENCY_MIN_SAMPLES    (2u * AUDIO_FREQUENCY_WINDOW_SAMPLES)
+#define AUDIO_FREQUENCY_MIN_CYCLES     4u
+/* A window spans N/Fs seconds, so C cycles require f >= C*Fs/N and f <= Fs/2 - C*Fs/N. */
+#define AUDIO_FREQUENCY_EDGE_HZ                                                                                        \
+    ((float)(AUDIO_FREQUENCY_MIN_CYCLES * AUDIO_OUT_SAMPLE_RATE_HZ) / AUDIO_FREQUENCY_WINDOW_SAMPLES)
 
 typedef struct {
     goertzel_t bin;
