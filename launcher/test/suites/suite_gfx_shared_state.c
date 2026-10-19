@@ -101,7 +101,7 @@ test_draw_is_refused_while_a_mode_has_freed_the_framebuffer(void) {
 }
 
 /* Every gfx_mode_enter() that stays FULL for want of storage counts once, in
- * either layout; a grant counts nothing. */
+ * any layout; a grant counts nothing. */
 static void
 test_a_refused_layout_counts_once_and_a_granted_one_not_at_all(void) {
 
@@ -141,6 +141,21 @@ test_a_refused_layout_counts_once_and_a_granted_one_not_at_all(void) {
     }
     TEST_ASSERT_EQUAL_INT_MESSAGE(GFX_LAYOUT_FULL_FB, granted, "bands with internal RAM held");
     TEST_ASSERT_EQUAL_UINT(before + 3, gfx_mode_denials());
+
+    /* The back buffer comes from PSRAM: hold framebuffer-sized blocks there. */
+    while ((block = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM)) != NULL) {
+        *(void**)block = held;
+        held = block;
+    }
+    const gfx_mode_request_t double_fb = {.layout = GFX_LAYOUT_DOUBLE_FB};
+    const gfx_layout_t double_granted = gfx_mode_enter(&double_fb)->layout;
+    while (held != NULL) {
+        void* const next = *(void**)held;
+        memory_free(held);
+        held = next;
+    }
+    TEST_ASSERT_EQUAL_INT_MESSAGE(GFX_LAYOUT_FULL_FB, double_granted, "double framebuffer with PSRAM held");
+    TEST_ASSERT_EQUAL_UINT(before + 4, gfx_mode_denials());
 }
 
 static void

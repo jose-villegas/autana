@@ -469,6 +469,7 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
     if (granted.layout == GFX_LAYOUT_DOUBLE_FB) {
         gfx_color_t* back = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
         if (back == NULL) {
+            note_denial();
             return &current_mode;
         }
         fb = back;
