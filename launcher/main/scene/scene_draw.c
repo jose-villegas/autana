@@ -40,6 +40,7 @@ scene_activate(scene_t* scene, const char* camera) {
         return false;
     }
     active = (active_t){scene, index};
+    render_context_forget(render_context_main());
     rendered = false;
     stepped = false;
     expanded = false;
@@ -66,6 +67,13 @@ scene_draw_release(void) {
     scene_deactivate();
     render_context_release(render_context_main());
     paused = false;
+}
+
+void
+scene_draw_camera_cut(const scene_t* scene, scene_entity_t entity) {
+    if (active.scene == scene && scene->cameras[active.camera].entity == entity) {
+        render_context_forget(render_context_main());
+    }
 }
 
 static scene_camera_t*

@@ -173,10 +173,11 @@ sequenceDiagram
     C0->>J: transform the clusters past the midpoint of the vertex work
     Note over C0: transform the clusters before it
     J-->>C0: job_wait()
-    Note over C0: pick the row that halves the estimated draw cost
+    Note over C0: pick the row at the instance's top share
     C0->>J: clear depth and draw the rows above it
     Note over C0: clear depth and draw the rows below it
     J-->>C0: job_wait()
+    Note over C0: raster_split_update() uses both slice times
     C0->>P: gfx_present_wait()
     Note over C0: frame()
     C0->>J: upscale the top half into the framebuffer
@@ -184,6 +185,8 @@ sequenceDiagram
     J-->>C0: job_wait()
     Note over C0,P: frame N is presented on the next pass
 ```
+
+`raster_split_t` is caller-owned, NULL = even, forget after a cut.
 
 ### View modes
 
