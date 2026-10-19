@@ -4,7 +4,7 @@
 
 static int
 luma(uint32_t rgb) {
-    return (int)(((rgb >> 16) & 0xFF) * 299 + ((rgb >> 8) & 0xFF) * 587 + (rgb & 0xFF) * 114);
+    return (int)((((rgb >> 16) & 0xFF) * 299) + (((rgb >> 8) & 0xFF) * 587) + ((rgb & 0xFF) * 114));
 }
 
 static bool
@@ -54,7 +54,7 @@ build_256(const gfx_color_t* lut256, int lut_size, int ui_entries, sand_mode_swa
     const int want = SAND_SWATCH_256_COLS * SAND_SWATCH_ROWS;
     const int span = lut_size - ui_entries;
     for (int i = 0; i < want; i++) {
-        out->rgb[i] = gfx_color_rgb888(lut256[ui_entries + i * span / want]);
+        out->rgb[i] = gfx_color_rgb888(lut256[ui_entries + (i * span / want)]);
     }
     out->cols = SAND_SWATCH_256_COLS;
     out->rows = SAND_SWATCH_ROWS;
