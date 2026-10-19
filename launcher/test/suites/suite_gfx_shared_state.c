@@ -100,11 +100,30 @@ test_draw_is_refused_while_a_mode_has_freed_the_framebuffer(void) {
     TEST_ASSERT_EQUAL_HEX16(0x4321, gfx_framebuffer()[DRAWN_Y * GFX_WIDTH + DRAWN_X]);
 }
 
+/* Enters `request` while `kind` holds no free block of `block_bytes`: holds
+ * such blocks until no more fit, each keeping the one before it, then gives
+ * them all back. Returns the layout granted. */
+static gfx_layout_t
+enter_with_memory_held(const gfx_mode_request_t* request, size_t block_bytes, memory_kind_t kind) {
+    void* held = NULL;
+    void* block;
+    while ((block = memory_alloc(block_bytes, kind)) != NULL) {
+        *(void**)block = held;
+        held = block;
+    }
+    const gfx_layout_t granted = gfx_mode_enter(request)->layout;
+    while (held != NULL) {
+        void* const next = *(void**)held;
+        memory_free(held);
+        held = next;
+    }
+    return granted;
+}
+
 /* Every gfx_mode_enter() that stays FULL for want of storage counts once, in
  * any layout; a grant counts nothing. */
 static void
 test_a_refused_layout_counts_once_and_a_granted_one_not_at_all(void) {
-
     fixture();
     const unsigned before = gfx_mode_denials();
 
@@ -123,38 +142,16 @@ test_a_refused_layout_counts_once_and_a_granted_one_not_at_all(void) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(GFX_LAYOUT_FULL_FB, gfx_mode_enter(&past_the_pool)->layout, "past the pool");
     TEST_ASSERT_EQUAL_UINT(before + 2, gfx_mode_denials());
 
-    /* Band buffers come from plain malloc: hold band-sized blocks until no
-     * more fit, each keeping the one before it. */
-    void* held = NULL;
-    void* block;
-    const size_t band_bytes = (size_t)GFX_WIDTH * GFX_BAND_HEIGHT * sizeof(gfx_color_t);
-    while ((block = malloc(band_bytes)) != NULL) {
-        *(void**)block = held;
-        held = block;
-    }
     const gfx_mode_request_t bands = {.layout = GFX_LAYOUT_BANDS};
-    const gfx_layout_t granted = gfx_mode_enter(&bands)->layout;
-    while (held != NULL) {
-        void* const next = *(void**)held;
-        free(held);
-        held = next;
-    }
-    TEST_ASSERT_EQUAL_INT_MESSAGE(GFX_LAYOUT_FULL_FB, granted, "bands with internal RAM held");
+    const size_t band_bytes = (size_t)GFX_WIDTH * GFX_BAND_HEIGHT * sizeof(gfx_color_t);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(GFX_LAYOUT_FULL_FB, enter_with_memory_held(&bands, band_bytes, MEMORY_INTERNAL),
+                                  "bands with internal RAM held");
     TEST_ASSERT_EQUAL_UINT(before + 3, gfx_mode_denials());
 
-    /* The back buffer comes from PSRAM: hold framebuffer-sized blocks there. */
-    while ((block = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM)) != NULL) {
-        *(void**)block = held;
-        held = block;
-    }
     const gfx_mode_request_t double_fb = {.layout = GFX_LAYOUT_DOUBLE_FB};
-    const gfx_layout_t double_granted = gfx_mode_enter(&double_fb)->layout;
-    while (held != NULL) {
-        void* const next = *(void**)held;
-        memory_free(held);
-        held = next;
-    }
-    TEST_ASSERT_EQUAL_INT_MESSAGE(GFX_LAYOUT_FULL_FB, double_granted, "double framebuffer with PSRAM held");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(GFX_LAYOUT_FULL_FB,
+                                  enter_with_memory_held(&double_fb, GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM),
+                                  "double framebuffer with PSRAM held");
     TEST_ASSERT_EQUAL_UINT(before + 4, gfx_mode_denials());
 }
 
