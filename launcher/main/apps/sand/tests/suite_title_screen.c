@@ -86,7 +86,7 @@ assert_strings_fit(bool landscape) {
     title_screen_layout_t lay;
     layout_for(landscape, &lay);
 
-    TEST_ASSERT_LESS_OR_EQUAL_INT(lay.header.w - 2 * UI_MARGIN,
+    TEST_ASSERT_LESS_OR_EQUAL_INT(lay.header.w - (2 * UI_MARGIN),
                                   draw_font_text_width(draw_font_ui(), TITLE_SCREEN_TITLE, -1, lay.title_scale));
     TEST_ASSERT_LESS_OR_EQUAL_INT(
         lay.subtitle.w, draw_font_text_width(draw_font_ui(), TITLE_SCREEN_SUBTITLE, -1, sand_ui_theme.text_scale));
