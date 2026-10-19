@@ -247,7 +247,7 @@ draw_rect_blend(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha) {
 /* A 32-bit mask over two adjacent pixels: the low half is the first. */
 static inline uint32_t
 pixel_pair_mask(bool first, bool second) {
-    return (first ? 0x0000FFFFu : 0u) | (second ? 0xFFFF0000u : 0u);
+    return (first ? 0x0000FFFFU : 0U) | (second ? 0xFFFF0000U : 0U);
 }
 
 /* `dp`/`sp` start at column `x0`; only the columns `p` passes are copied.
@@ -261,7 +261,7 @@ blit_dither_row(gfx_color_t* dp, const gfx_color_t* sp, int x0, int x1, const bo
             *dp = *sp;
         }
     }
-    if (((uintptr_t)dp & 3u) == 0) {
+    if (((uintptr_t)dp & 3U) == 0) {
         const uint32_t m0 = pixel_pair_mask(p[0], p[1]);
         const uint32_t m1 = pixel_pair_mask(p[2], p[3]);
         uint32_t* dw = (uint32_t*)dp;
