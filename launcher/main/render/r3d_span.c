@@ -564,6 +564,9 @@ select_small(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_s
         const uint16_t cb = r3d_span_pack_rgb(b->r, b->g, b->b);
         const uint16_t cc = r3d_span_pack_rgb(c->r, c->g, c->b);
         if (colors != NULL && small_fill->style == SMALL_FILL_DITHER) {
+            if (ca == cb && cb == cc) {
+                return SMALL_FILL_FLAT;
+            }
             colors[0] = ca;
             colors[1] = cb;
             colors[2] = cc;
@@ -692,10 +695,6 @@ small_dither_pick(const uint16_t colors[TRIANGLE_VERTICES], uint16_t flat, int32
 static __attribute__((noinline)) void
 fill_small_dither(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                   const r3d_span_vertex_t* c, bool positive, recti_t box, const uint16_t* colors) {
-    if (colors[0] == colors[1] && colors[0] == colors[2]) {
-        fill_small(target, a, b, c, positive, box, NULL);
-        return;
-    }
     const r3d_span_vertex_t* p = positive ? b : c;
     const r3d_span_vertex_t* q = positive ? c : b;
     const small_edge_t edges[TRIANGLE_VERTICES] = {small_edge(a, p), small_edge(p, q), small_edge(q, a)};

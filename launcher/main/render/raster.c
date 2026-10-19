@@ -365,7 +365,6 @@ raster_census(const raster_t* raster, const render_view_t* view) {
     raster_stats_t stats = {0, 0};
     FRAME_COST_BEGIN(counted_from);
     draw_work_t* work = scratch_draw(raster);
-    r3d_span_small_fill_resolve(&work->small_fill, view->small_fill);
     uint16_t* culled = work->buffers.culled;
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
