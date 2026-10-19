@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Turn a device capture into a Markdown report of checkpoint frame costs.
 
-Only Total/Image/Present carry a full min/max/avg/med/p95 breakdown;
+Total/Image/Present/Draw/Wait/Send carry a full min/max/avg/med/p95 breakdown;
 Clear/Floor/Axes/Curve/Zeros/Title are logged as averages.
 A DEVICE_BUILD suite has no mounted filesystem, so the host generates
 this report from a captured serial log.
@@ -29,12 +29,12 @@ from phase_report import phase_stats, write_phase_report  # noqa: E402
 # "I (2795) boot_anim_perf: === BOOT_ANIM PERF curve_climbing (now_ms=1510, 60 samples) ==="
 HEADER_RE = re.compile(
     r"boot_anim_perf:\s*===\s*BOOT_ANIM PERF\s+(?P<label>\S+)\s+"
-    r"\(now_ms=(?P<now_ms>\d+),\s+(?P<samples>\d+)\s+samples\)\s*==="
+    r"\(now_ms=(?P<now_ms>\d+),\s+(?P<samples>\d+)\s+samples(?:,\s+mode=(?P<mode>\w+))?\)\s*==="
 )
 
 # "I (...) boot_anim_perf: Total:   min=29997us max=30607us avg=30009us med=29999us p95=29999us (33.3/33.3/33.3 fps)"
 FULL_PHASE_RE = re.compile(
-    r"boot_anim_perf:\s*(?P<phase>Total|Image|Present):\s*"
+    r"boot_anim_perf:\s*(?P<phase>Total|Image|Present|Draw|Wait|Send):\s*"
     r"min=(?P<min>\d+)us\s+max=(?P<max>\d+)us\s+avg=(?P<avg>\d+)us\s+"
     r"med=(?P<med>\d+)us\s+p95=(?P<p95>\d+)us"
 )
@@ -45,7 +45,8 @@ AVG_PHASE_RE = re.compile(
     r"avg=(?P<avg>\d+)us"
 )
 
-PHASE_ORDER = ["Total", "Clear", "Floor", "Axes", "Curve", "Zeros", "Image", "Title", "Present"]
+PHASE_ORDER = ["Total", "Clear", "Floor", "Axes", "Curve", "Zeros", "Image", "Title", "Present", "Draw", "Wait", "Send"]
+LAYOUT_PHASES = {"Draw", "Wait", "Send"}
 
 
 def parse_capture(capture_path: str):
@@ -60,7 +61,9 @@ def parse_capture(capture_path: str):
     for line in lines:
         hm = HEADER_RE.search(line)
         if hm:
-            current_label = hm.group("label")
+            mode = hm.group("mode")
+            label = hm.group("label")
+            current_label = f"{label}/{mode}" if mode else label
             if current_label not in runs:
                 order.append(current_label)
             else:
@@ -76,6 +79,8 @@ def parse_capture(capture_path: str):
                 # but every overwrite is now surfaced instead of silent.
                 duplicates.append(current_label)
             runs[current_label] = {
+                "label": label,
+                "mode": mode,
                 "now_ms": int(hm.group("now_ms")),
                 "samples": int(hm.group("samples")),
                 "phases": {},
@@ -106,7 +111,8 @@ def incomplete_labels(runs, order):
     missing = []
     for label in order:
         have = set(runs[label]["phases"].keys())
-        gap = [p for p in PHASE_ORDER if p not in have]
+        required = PHASE_ORDER if runs[label]["mode"] else [p for p in PHASE_ORDER if p not in LAYOUT_PHASES]
+        gap = [p for p in required if p not in have]
         if gap:
             missing.append((label, gap))
     return missing
@@ -162,13 +168,26 @@ def main() -> int:
         lines.append(f"| `{label}` | {run['now_ms']} | {run['samples']} |")
     lines.append("")
 
+    lines.extend(["## PSRAM contention", "", "Draw while sending minus FULL_FB draw with panel idle.", "",
+                  "| Checkpoint | Average draw difference (us) |", "|---|---:|"])
+    for key in order:
+        run = runs[key]
+        if run["mode"] != "DOUBLE_FB_CONTENDED":
+            continue
+        idle = runs.get(f"{run['label']}/FULL_FB", {})
+        idle_draw = idle.get("phases", {}).get("Draw", {}).get("avg")
+        contended_draw = run["phases"].get("Draw", {}).get("avg")
+        if idle_draw is not None and contended_draw is not None:
+            lines.append(f"| `{run['label']}` | {contended_draw - idle_draw} |")
+    lines.append("")
+
     write_phase_report(args.out_path, lines, runs, order, PHASE_ORDER,
                        lambda label, run: f"## `{label}` (now_ms={run['now_ms']}, {run['samples']} samples)")
 
     warning_count = len(gaps) + len(duplicates)
     suffix = f" ({warning_count} warning(s) - see stderr)" if warning_count else ""
     print(f"{len(runs)} checkpoint(s) -> {args.out_path}{suffix}")
-    return 0
+    return 1 if gaps else 0
 
 
 if __name__ == "__main__":
