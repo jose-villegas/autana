@@ -197,7 +197,8 @@ def fit(scene_path, scene, job, work, budget=None, cost_weight=0.0, smoke=False,
               str(inputs / "reference_landscape"), "--out", str(out), "--budget", str(recipe.budget if budget is None else budget),
               "--coverage-poses", str(inputs / "coverage.txt"), "--steps", str(steps), "--batch", str(recipe.batch), "--laplacian",
               str(recipe.laplacian), "--normal-weight", str(recipe.normal_weight), "--object", job.object.name,
-              "--surface-weight", str(recipe.surface_weight), "--surface-margin", str(recipe.surface_margin)]
+              "--surface-weight", str(recipe.surface_weight), "--surface-margin", str(recipe.surface_margin),
+              "--seam-margin", str(recipe.seam_margin)]
     if cost_weight:
         command += ["--cost-model", str(pathlib.Path(__file__).with_name("board_cost_weights.txt")), "--cost-weight", str(cost_weight)]
     fit_main(command)

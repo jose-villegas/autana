@@ -98,6 +98,95 @@ def write_flat_start(directory, count=4):
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
+class SeamHoldTests(unittest.TestCase):
+    def mesh(self):
+        points = np.array([[0.5, 0.5, 0.1], [4, 0, 1], [0, 4, 1],
+                           [0, 0, 0], [2, 0, 0], [0, 2, 0]], dtype=float)
+        return FitMesh(points, np.ones_like(points), np.array([[0, 1, 2], [3, 4, 5]]),
+                       np.zeros(2), 1, np.arange(len(points)))
+
+    def test_border_point_held_at_start_barycentrics(self):
+        from r3d.appearance_simplify import seam_holds
+
+        mesh = self.mesh()
+        tolerance = np.zeros(len(mesh.points))
+        tolerance[0] = 0.1
+        holds = seam_holds(mesh, tolerance)
+        np.testing.assert_array_equal(holds.points, [0])
+        np.testing.assert_array_equal(holds.corners, [[3, 4, 5]])
+        np.testing.assert_allclose(holds.barycentric, [[0.5, 0.25, 0.25]])
+
+    def test_outside_tolerance_and_same_part_are_not_held(self):
+        from r3d.appearance_simplify import seam_holds
+
+        mesh = self.mesh()
+        connected = mesh._replace(tris=np.vstack([mesh.tris, [1, 2, 3]]))
+        for candidate, tolerance in ((mesh, 0.05), (connected, 0.25)):
+            with self.subTest(connected=candidate is connected):
+                holds = seam_holds(candidate, np.full(len(mesh.points), tolerance))
+                self.assertEqual(holds.points.shape, (0,))
+                self.assertEqual(holds.corners.shape, (0, 3))
+                self.assertEqual(holds.barycentric.shape, (0, 3))
+
+    def test_greedy_holds_have_no_chains(self):
+        from r3d.appearance_simplify import seam_holds
+
+        mesh = self.mesh()
+        plane = np.array([[0, 0, 0], [2, 0, 0], [0, 2, 0]], dtype=float)
+        mesh = mesh._replace(points=np.vstack([plane + [0, 0, 0.1], plane]))
+        holds = seam_holds(mesh, np.full(len(mesh.points), 0.25))
+        np.testing.assert_array_equal(holds.points, [0, 1, 2])
+        self.assertFalse(set(holds.points) & set(holds.corners.ravel()))
+        repeated = seam_holds(mesh, np.full(len(mesh.points), 0.25))
+        for first, second in zip(holds, repeated):
+            np.testing.assert_array_equal(first, second)
+        tolerance = np.full(len(mesh.points), 0.25)
+        tolerance[3:] *= 2
+        reverse = seam_holds(mesh, tolerance)
+        np.testing.assert_array_equal(reverse.points, [3, 4, 5])
+
+    def test_target_with_a_held_corner_is_skipped(self):
+        from r3d.appearance_simplify import seam_holds
+
+        mesh = self.mesh()
+        plane = mesh.points[3:]
+        points = np.vstack([plane + [0, 0, 0.1], plane, plane + [0, 0, 0.25]])
+        mesh = mesh._replace(points=points, tris=np.vstack([mesh.tris, [6, 7, 8]]),
+                             vertex_point=np.arange(len(points)))
+        tolerance = np.repeat([0.5, 0, 0.25], 3)
+        holds = seam_holds(mesh, tolerance)
+        np.testing.assert_array_equal(holds.points, [0, 1, 2])
+        self.assertFalse(set(holds.points) & set(holds.corners.ravel()))
+
+    def test_welded_interior_point_is_not_a_border(self):
+        from r3d.appearance_simplify import seam_holds
+
+        mesh = self.mesh()
+        points = np.vstack([mesh.points[0], [[-1, -1, 0.1], [2, -1, 0.1],
+                                           [2, 2, 0.1], [-1, 2, 0.1]], mesh.points[3:]])
+        tris = np.array([[0, 1, 2], [8, 2, 3], [0, 3, 4], [8, 4, 1], [5, 6, 7]])
+        mesh = mesh._replace(points=points, tris=tris, vertex_point=np.r_[np.arange(len(points)), 0])
+        tolerance = np.zeros(len(points))
+        tolerance[0] = 0.25
+        holds = seam_holds(mesh, tolerance)
+        self.assertEqual(len(holds.points), 0)
+
+    @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_hold_seams_is_exact_out_of_place_and_differentiable(self):
+        from r3d.appearance_simplify import hold_seams, seam_holds
+
+        mesh = self.mesh()
+        holds = seam_holds(mesh, np.array([0.25, 0, 0, 0, 0, 0]))
+        points = torch.tensor(mesh.points, requires_grad=True)
+        result = hold_seams(points, holds)
+        np.testing.assert_array_equal(result.detach()[0], [0.5, 0.5, 0])
+        np.testing.assert_array_equal(points.detach(), mesh.points)
+        result[0].sum().backward()
+        np.testing.assert_array_equal(points.grad[:3], np.zeros((3, 3)))
+        np.testing.assert_array_equal(points.grad[3:], np.repeat(holds.barycentric.T, 3, axis=1))
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
 class StretchTests(unittest.TestCase):
     def test_small_part_stretch_is_reported_separately(self):
         from r3d.appearance_simplify import STRETCH_RATIO, stretch_report
@@ -294,8 +383,8 @@ class AppearanceMeshTests(unittest.TestCase):
         recipe = dict(prune=dict(budget=1, coverage_every_ms=1),
                       poses=dict(size=[2, 2], train_every_ms=1, held_out_every_ms=2),
                       optimise=dict(steps=1, batch=1, laplacian=1, normal_weight=0,
-                                    surface_weight=10.0, surface_margin=0.25))
-        for key in ("surface_weight", "surface_margin"):
+                                    surface_weight=10.0, surface_margin=0.25, seam_margin=0.25))
+        for key in ("surface_weight", "surface_margin", "seam_margin"):
             for value in (None, -1, float("nan"), float("inf"), "bad", True):
                 with self.subTest(key=key, value=value):
                     options = {group: dict(table) for group, table in recipe.items()}
@@ -306,7 +395,7 @@ class AppearanceMeshTests(unittest.TestCase):
                     with self.assertRaises(SettingsError):
                         load_fit(options, SimpleNamespace(triangles=1), "fit")
         fit = load_fit(recipe, SimpleNamespace(triangles=1), "fit")
-        self.assertEqual((fit.surface_weight, fit.surface_margin), (10.0, 0.25))
+        self.assertEqual((fit.surface_weight, fit.surface_margin, fit.seam_margin), (10.0, 0.25, 0.25))
 
     @unittest.skipIf(torch is None, "needs PyTorch")
     def test_surface_optimise_pulls_to_plane_refreshes_and_repeats(self):
@@ -569,7 +658,8 @@ class PruneAndCostTests(unittest.TestCase):
         from r3d import appearance_simplify as appearance
 
         for flags in (["--object", "card", "--surface-weight", "-1"], ["--object", "card", "--surface-weight", "nan"],
-                      ["--object", "card", "--surface-margin", "-1"], ["--surface-weight", "1"]):
+                      ["--object", "card", "--surface-margin", "-1"], ["--surface-weight", "1"],
+                      *(["--seam-margin", value] for value in ("-1", "nan", "inf"))):
             with self.subTest(flags=flags), mock.patch.object(appearance, "load_scene") as scene:
                 with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
                     appearance.main(["--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
@@ -596,12 +686,14 @@ class PruneAndCostTests(unittest.TestCase):
                 calls["write_mesh"].return_value = len(mesh.tris)
                 appearance.main(["--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
                                  "--reference", "reference", "--out", directory,
-                                 "--object", "card", "--surface-weight", "10", "--surface-margin", "0.25"])
+                                 "--object", "card", "--surface-weight", "10", "--surface-margin", "0.25",
+                                 "--seam-margin", "0.25"])
             calls["optimise"].assert_called_once()
             self.assertEqual(source_for.call_args.args[1], "card")
             self.assertEqual(source_for.call_args.kwargs, {"lit": False})
             options = calls["optimise"].call_args.kwargs
             self.assertIs(options["source"], source)
+            self.assertEqual(options["seam_margin"], 0.25)
             self.assertEqual((options["surface_weight"], options["surface_margin"]), (10, 0.25))
             calls["coverage"].assert_not_called()
             calls["prune"].assert_not_called()

@@ -99,6 +99,7 @@ batch = 8
 laplacian = 10.0
 surface_weight = 10.0
 surface_margin = 0.25
+seam_margin = 0.25
 normal_weight = 1.0
 
 
@@ -126,6 +127,7 @@ batch = 8
 laplacian = 10.0
 surface_weight = 10.0
 surface_margin = 0.25
+seam_margin = 0.25
 normal_weight = 1.0
 
 
@@ -154,5 +156,6 @@ batch = 8
 laplacian = 10.0
 surface_weight = 10.0
 surface_margin = 0.25
+seam_margin = 0.25
 normal_weight = 1.0
 

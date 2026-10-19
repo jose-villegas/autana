@@ -224,6 +224,7 @@ batch = 8
 laplacian = 10.0
 surface_weight = 10.0
 surface_margin = 0.25
+seam_margin = 0.25
 normal_weight = 1.0
 ```
 
@@ -237,7 +238,7 @@ normal_weight = 1.0
 | `shading: flat` | `flat = { fixed = N }` / `flat = { auto = { min, max, area } }` | Stores one averaged RGB565 colour per face. | Off. | [shading: flat](#shading-flat) |
 | `fit.prune` | `budget`, `coverage_every_ms` | Prunes the fitted mesh to the triangle budget. | Required in `fit`; the cost weight is `fitted_variant.py sweep --cost-weights`, not a scene key. | [fit.prune](#fitprune) |
 | `fit.poses` | `size`, `train_every_ms`, `held_out_every_ms` | Selects training and held-out camera-path poses. | Required in `fit`. | [fit.poses](#fitposes) |
-| `fit.optimise` | `steps`, `batch`, `laplacian`, `normal_weight`, `surface_weight`, `surface_margin` | Sets optimiser steps, batch size and loss weights. | Required in `fit`. | [fit.optimise](#fitoptimise) |
+| `fit.optimise` | `steps`, `batch`, `laplacian`, `normal_weight`, `surface_weight`, `surface_margin`, `seam_margin` | Sets optimiser steps, batch size, loss weights and seam contact margin. | Required in `fit`. | [fit.optimise](#fitoptimise) |
 | `indirect: off` | `indirect = false` | Bakes this renderer without bounce light. | Bounce light on when the scene recipe is present. | [indirect: off](#indirect-off) |
 
 #### bake renderer
@@ -470,6 +471,10 @@ $`w\,\mathrm{mean}(\max(0,|n\cdot d|-\epsilon)^2+t\lVert d\rVert^2)`$,
 where $`w`$ is `surface_weight`, $`\epsilon`$ is `surface_margin`, and $`t`$
 is `SURFACE_TANGENTIAL_WEIGHT`. Both distances are measured in $`e_x`$.
 The plane envelope is zero inside the margin; the small pull remains active there.
+
+`seam_margin` holds nearby border points to another part's moving triangles at
+fixed start barycentrics, within each point's capped local start edge scale.
+Held points cannot anchor other holds; zero disables them.
 
 Colour history, `loss.txt` and the printed mean ΔE76 exclude surface, normal,
 Laplacian and cost penalties. The surface loss is reported beside drift.
