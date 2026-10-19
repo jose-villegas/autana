@@ -901,8 +901,125 @@ test_sound_capture_timeout_after_park_releases_mixer(void) {
     TEST_ASSERT_FALSE(sound_capture_is_parked(&capture, 0));
 }
 
+#define TEST_DECLICK_FRAMES 8u
+#define TEST_DECLICK_BOUND  (TEST_DECLICK_FRAMES * (SOUND_GAIN_SHIFT + 1u))
+
+static void
+test_sound_declick_start_stop_and_tail(void) {
+    fixture_t* f = fixture();
+    f->mixer.declick_frames = TEST_DECLICK_FRAMES;
+    const sound_play_opts_t opts = {.bus = SOUND_BUS_SFX, .gain_pct = SOUND_GAIN_MAX_PCT, .loop = true};
+    const sound_voice_t voice = play(f, &opts);
+    render(f, 0, TEST_FRAMES);
+    render(f, TEST_STARTUP_MS, TEST_FRAMES);
+    TEST_ASSERT_EQUAL_INT16(0, f->out[0]);
+    const int16_t last = f->out[TEST_FRAMES - 1];
+    sound_command_t command;
+    TEST_ASSERT_TRUE(sound_control_voice_command(&f->control, voice, SOUND_COMMAND_STOP, 0, &command));
+    sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
+    render(f, TEST_STARTUP_MS + 1, TEST_FRAMES);
+    TEST_ASSERT_INT_WITHIN(TEST_SAMPLE / TEST_DECLICK_FRAMES + 1, last, f->out[0]);
+    TEST_ASSERT_GREATER_THAN(0, f->out[0]);
+    for (unsigned i = 0; i < TEST_DECLICK_BOUND; i++) {
+        render(f, TEST_STARTUP_MS + 1, 1);
+    }
+    TEST_ASSERT_EQUAL_INT32(0, f->mixer.residual);
+    TEST_ASSERT_EQUAL_INT16(0, f->out[0]);
+}
+
+static void
+test_sound_declick_midblock_end(void) {
+    fixture_t* f = fixture();
+    f->mixer.declick_frames = TEST_DECLICK_FRAMES;
+    f->sound.frames = TEST_FRAMES / 2;
+    (void)play(f, NULL);
+    render(f, 0, TEST_FRAMES);
+    render(f, TEST_STARTUP_MS, TEST_FRAMES);
+    TEST_ASSERT_EQUAL_INT16(0, f->out[0]);
+    TEST_ASSERT_GREATER_THAN(0, f->out[f->sound.frames]);
+    for (int i = 1; i < TEST_FRAMES; i++) {
+        TEST_ASSERT_INT_WITHIN(TEST_SAMPLE / TEST_DECLICK_FRAMES + 1, f->out[i - 1], f->out[i]);
+    }
+}
+
+static void
+test_sound_declick_cuts_preserve_continuity(void) {
+    fixture_t* f = fixture();
+    const sound_play_opts_t opts = {.bus = SOUND_BUS_SFX, .gain_pct = SOUND_GAIN_MAX_PCT, .loop = true};
+    const sound_command_kind_t cuts[] = {SOUND_COMMAND_PLAY, SOUND_COMMAND_BUS_DESTROY, SOUND_COMMAND_APP_EXIT,
+                                         SOUND_COMMAND_STOP};
+    for (size_t cut = 0; cut < sizeof cuts / sizeof cuts[0]; cut++) {
+        sound_control_init(&f->control, true);
+        sound_control_begin_app(&f->control);
+        sound_mixer_init(&f->mixer);
+        f->mixer.declick_frames = TEST_DECLICK_FRAMES;
+        const sound_voice_t voice = play(f, &opts);
+        render(f, 0, TEST_FRAMES);
+        for (unsigned i = 0; i < TEST_DECLICK_BOUND; i++) {
+            render(f, TEST_STARTUP_MS, 1);
+        }
+        const int16_t last = f->out[0];
+        sound_command_t command = {.kind = SOUND_COMMAND_PLAY,
+                                   .voice = voice,
+                                   .app_generation = f->control.app_generation,
+                                   .bus = SOUND_BUS_SFX,
+                                   .gain_pct = 0,
+                                   .sound = &f->sound,
+                                   .loop = true};
+        if (cuts[cut] == SOUND_COMMAND_PLAY) {
+            sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
+        } else if (cuts[cut] == SOUND_COMMAND_BUS_DESTROY) {
+            command.kind = SOUND_COMMAND_BUS_DESTROY;
+            sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
+        } else if (cuts[cut] == SOUND_COMMAND_APP_EXIT) {
+            sound_control_exit(&f->control);
+            sound_mixer_sync(&f->mixer, &f->control);
+        } else {
+            command.kind = SOUND_COMMAND_STOP;
+            sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
+        }
+        sound_mixer_render(&f->mixer, f->out, f->accumulator, f->scratch, TEST_FRAMES, TEST_STARTUP_MS,
+                           TEST_STARTUP_MS);
+        TEST_ASSERT_EQUAL_INT16(last, f->out[0]);
+        for (int i = 1; i < TEST_FRAMES; i++) {
+            TEST_ASSERT_INT_WITHIN(TEST_SAMPLE / TEST_DECLICK_FRAMES + 1, f->out[i - 1], f->out[i]);
+        }
+    }
+}
+
+static void
+test_sound_declick_zero_signal_and_loop_seam(void) {
+    fixture_t* f = fixture();
+    f->mixer.declick_frames = TEST_DECLICK_FRAMES;
+    const sound_play_opts_t opts = {.bus = SOUND_BUS_SFX, .gain_pct = 0, .loop = true};
+    const sound_voice_t voice = play(f, &opts);
+    render(f, 0, TEST_FRAMES);
+    render(f, TEST_STARTUP_MS, TEST_FRAMES);
+    TEST_ASSERT_EQUAL_INT32(0, f->mixer.residual);
+    for (int i = 0; i < TEST_FRAMES; i++) {
+        TEST_ASSERT_EQUAL_INT16(0, f->out[i]);
+    }
+    sound_command_t command;
+    TEST_ASSERT_TRUE(sound_control_voice_command(&f->control, voice, SOUND_COMMAND_GAIN, SOUND_GAIN_MAX_PCT, &command));
+    sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
+    f->sound.loop_start = 0;
+    f->sound.loop_end = TEST_FRAMES / 2;
+    for (int i = 0; i < TEST_FRAMES; i++) {
+        const int16_t sample = i < TEST_FRAMES / 4 ? TEST_SAMPLE : -TEST_SAMPLE;
+        f->pcm[i * SOUND_PCM_BYTES] = (uint8_t)sample;
+        f->pcm[i * SOUND_PCM_BYTES + 1] = (uint8_t)((uint16_t)sample >> CHAR_BIT);
+    }
+    render(f, TEST_STARTUP_MS, TEST_FRAMES);
+    const unsigned seam = f->sound.loop_end;
+    TEST_ASSERT_INT_WITHIN(TEST_SAMPLE / TEST_DECLICK_FRAMES + 1, f->out[seam - 1], f->out[seam]);
+}
+
 void
 run_sound_mixer_suite(void) {
+    RUN_TEST(test_sound_declick_cuts_preserve_continuity);
+    RUN_TEST(test_sound_declick_zero_signal_and_loop_seam);
+    RUN_TEST(test_sound_declick_start_stop_and_tail);
+    RUN_TEST(test_sound_declick_midblock_end);
     RUN_TEST(test_sound_capture_sequence_wrap_and_results);
     RUN_TEST(test_sound_capture_park_resume_holds_voice_position);
     RUN_TEST(test_sound_capture_timeout_before_park_rejects_late_command);

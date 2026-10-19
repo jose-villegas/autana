@@ -1607,6 +1607,19 @@ class ConsoleRoutingTests(unittest.TestCase):
         fake.assert_not_called()
 
 
+class SoundOnsetCommandTests(unittest.TestCase):
+    def test_onset_has_long_reply_timeout(self):
+        with sent_reply((0, ["SOUND onset event=amp-off", "SOUND_END"])) as sent:
+            self.assertEqual(autana.sound(["onset", "amp-off"]), 0)
+        self.assertEqual(sent.call_args.kwargs["seconds"], autana.SOUND_ONSET_SECONDS)
+        self.assertEqual(sent.call_args.kwargs["until"], ["SOUND_END", "SOUND_ERR"])
+
+    def test_other_sound_commands_keep_the_default_timeout(self):
+        with sent_reply((0, ["SOUND_END"])) as sent:
+            self.assertEqual(autana.sound(["stats"]), 0)
+        self.assertNotIn("seconds", sent.call_args.kwargs)
+
+
 class VersionCommandTests(unittest.TestCase):
     def run_main(self, argv):
         with mock.patch.object(autana.sys, "argv", ["autana", *argv]):

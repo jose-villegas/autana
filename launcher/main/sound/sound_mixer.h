@@ -117,6 +117,8 @@ typedef struct {
     bool loop;
     bool tone_source;
     bool playing;
+    bool first_render;
+    int32_t last_sample;
 } sound_mix_voice_t;
 
 typedef enum { SOUND_AMP_OFF, SOUND_AMP_WARMING, SOUND_AMP_ON } sound_amp_state_t;
@@ -128,6 +130,8 @@ typedef struct {
     sound_amp_state_t amp;
     uint64_t amp_changed_ms;
     uint64_t last_active_ms;
+    uint32_t declick_frames;
+    int32_t residual;
 } sound_mixer_t;
 
 void sound_control_init(sound_control_t* control, bool ready);

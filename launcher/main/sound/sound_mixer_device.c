@@ -15,6 +15,12 @@
 #include "audio/audio_out_device.h"
 #include "core/timing.h"
 #include "profile/frame_cost.h"
+#include "services/tune.h"
+
+TUNE_OWNER(sound);
+TUNE_HOT(sound, declick_us, 0, 0, MATH_US_PER_S);
+TUNE_HOT(sound, amp_mute, 0, 0, 1);
+TUNE_HOT(sound, dac_ramp, 0, 0, AUDIO_OUT_DAC_RAMP_MAX);
 
 static const char* TAG = "sound";
 /* Covers handle reservation only. A nonblocking producer flag serializes zero-wait queue sends
@@ -291,13 +297,51 @@ publish_render_snapshot(size_t stack_free) {
 }
 #endif
 
+static bool
+apply_tuning(uint32_t* generation) {
+    if (!(declick_us || amp_mute || dac_ramp || TUNE_GENERATION(sound)) || *generation == TUNE_GENERATION(sound)) {
+        return true;
+    }
+    const uint32_t frames = (uint32_t)((uint64_t)declick_us * AUDIO_OUT_SAMPLE_RATE_HZ / MATH_US_PER_S);
+    mixer.declick_frames = declick_us && !frames ? 1 : frames;
+    if (!mixer.declick_frames) {
+        mixer.residual = 0;
+    }
+    if (!audio_out_amp_configure(amp_mute != 0, (uint8_t)dac_ramp)) {
+        return false;
+    }
+    *generation = TUNE_GENERATION(sound);
+    return true;
+}
+
+static bool
+update_amp(sound_amp_state_t* previous) {
+    if (mixer.amp == *previous) {
+        return true;
+    }
+    if ((mixer.amp == SOUND_AMP_OFF || *previous == SOUND_AMP_OFF)
+        && !audio_out_amp_enable(mixer.amp != SOUND_AMP_OFF)) {
+        return false;
+    }
+    if (mixer.amp == SOUND_AMP_ON && !audio_out_amp_ready()) {
+        return false;
+    }
+    *previous = mixer.amp;
+    return true;
+}
+
 static void
 mixer_task(void* unused) {
     int16_t out[SOUND_MIXER_BLOCK_FRAMES];
     int16_t scratch[SOUND_MIXER_BLOCK_FRAMES];
     int32_t accumulator[SOUND_MIXER_BLOCK_FRAMES];
     sound_amp_state_t previous_amp = SOUND_AMP_OFF;
+    uint32_t tuning_generation = UINT32_MAX;
     for (;;) {
+        if (!apply_tuning(&tuning_generation)) {
+            fail("amplifier tuning");
+            break;
+        }
         portENTER_CRITICAL(&control_lock);
         if (control.reset_gains) {
             const sound_command_t command = {.kind = SOUND_COMMAND_APP_EXIT};
@@ -322,13 +366,9 @@ mixer_task(void* unused) {
         _Static_assert(sizeof(SOUND_MIXER_FRAME_COST_NAME) - 1 <= FRAME_COST_NAME_MAX,
                        "mixer frame-cost name exceeds report capacity");
         FRAME_COST_EXTERNAL(SOUND_MIXER_FRAME_COST_NAME, mix_us);
-        if (mixer.amp != previous_amp) {
-            if ((mixer.amp == SOUND_AMP_OFF || previous_amp == SOUND_AMP_OFF)
-                && !audio_out_amp_enable(mixer.amp != SOUND_AMP_OFF)) {
-                fail("amplifier");
-                break;
-            }
-            previous_amp = mixer.amp;
+        if (!update_amp(&previous_amp)) {
+            fail("amplifier");
+            break;
         }
 #if CONFIG_LAUNCHER_DEVELOPMENT
         const size_t stack_free = uxTaskGetStackHighWaterMark(NULL);

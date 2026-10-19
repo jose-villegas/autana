@@ -196,9 +196,9 @@ report separately instead of bracketing it like a frame stage.
 |---|---|---|
 | Task stack (`stack`) | 2,560 | `SOUND_MIXER_TASK_STACK`; holds the block's mix, decode and output buffers |
 | TX sample buffers (`tx_samples`) | 1,024 | `AUDIO_CODEC_DMA_BLOCKS` x `AUDIO_CODEC_BLOCK_SAMPLES` x 16-bit, allocated once at boot |
-| Mixer and control state (`mixer`) | 788 | voice table, bus table and development stats |
+| Mixer and control state (`mixer`) | 828 | voice table, bus table and development stats |
 | Command queue (`queue`) | 340 | `SOUND_MIXER_QUEUE_DEPTH` 16-byte entries plus the queue's own control block |
-| Total | 4,712 | |
+| Total | 4,752 | |
 
 The other 1.6 KB of the heap cost is ESP-IDF's: the I2S channel, DMA
 descriptors, codec handles, the task control block and allocation headers.
@@ -251,7 +251,7 @@ are never destroyed.
 
 - A sound with loop points loops inside them by itself (`sound_read()` wraps).
 - `opts.loop` on a sound without loop points restarts it from frame 0.
-- A sound with loop points played without `opts.loop` stops at `loop_end`; it cuts off there, with no release tail yet.
+- A sound with loop points played without `opts.loop` stops at `loop_end`; with de-click disabled it cuts off without a release tail.
 
 ## Development console
 
@@ -271,6 +271,75 @@ sounds in PSRAM so playback outlives its command.
 
 The `tone` verb plays an engine tone on the SYSTEM bus through the mixer.
 See its [capture and detection](Audio-Path.md#development-check) output.
+
+## Clicks at start, stop and amplifier changes
+
+`autana sound onset <event> [hz] [gain]` streams microphone blocks on the
+console task. It reports second-difference peak levels before and after
+the trigger, their difference (`excess_db`), and the post-trigger peak's `at_ms`.
+
+| Event | Pre-trigger state | Trigger and capture |
+|---|---|---|
+| `amp-on` | All voices stopped, amplifier OFF | Start a silent holder; cover startup and margin |
+| `start` | Silent holder, amplifier ON | Start the probe; short window |
+| `stop` | Steady probe and silent holder, amplifier ON | Stop the probe; short window |
+| `steal` | Oldest probe and silent holders fill the voice table | Add a holder; short window |
+| `amp-off` | All voices stopped, amplifier ON | Observe the idle deadline and margin |
+
+Defaults are `CONSOLE_SOUND_ONSET_HZ` and `CONSOLE_SOUND_ONSET_GAIN` in
+`console_sound_parse.h`. The second difference suppresses a steady low tone;
+its peak is normalized to PCM full scale, so a sharp transient can exceed 0 dBFS.
+
+Windows derive from the amplifier's startup/idle times and mixer block
+period. `at_ms` starts at the end of the pre-window; for `amp-off` the idle
+clock includes that pre-window. Queue and RX DMA latency remain in the reading.
+
+| Hot tunable | Effect |
+|---|---|
+| `sound.declick_us` | Mixer residual decay time in microseconds; zero disables it |
+| `sound.amp_mute` | Mute DAC before amplifier switches; unmute at ON |
+| `sound.dac_ramp` | ES8311 DAC_RAMPRATE field; zero disables soft ramp |
+
+All arms default to zero. Live changes require a development image built
+with `--hot-tunables`. The application playback API has no fade control.
+The voice table is 256 bytes on the target; `sound stats` reports its size.
+
+The residual continues after voices stop while the amplifier is ON.
+Decay rounds toward zero by at least one PCM unit per sample, ensuring a
+finite tail. Mid-block cuts contribute tails at their exact sample offset.
+
+Build outside the board hold, then run the capture inside it:
+
+```sh
+autana build dev --hot-tunables
+autana --wait 3600 lock run -- python launcher/tools/audio/sound_onset_capture.py --board ID --runs 5 --out docs/audio/data/sound_onset_capture.txt --set sound.declick_us=5000 --set sound.amp_mute=1 --set sound.dac_ramp=4
+```
+
+The tool records status and matching build IDs at both ends. It measures
+baseline, each setting separately and their combination, then resets settings
+to zero. Each capture record is `<arm>\t<command>\t<reply>`.
+
+`audio_doc_tables.py --onset-capture PATH --write` requires a `sound-onset`
+generated block in this section. It fills the block with median/worst excess
+and median peak time per event and arm; `--check` rejects stale or invalid data.
+
+### Removal
+
+| File | Experiment additions to remove |
+|---|---|
+| `sound/sound_mixer.h` | `sound_mix_voice_t.first_render`, `.last_sample`; `sound_mixer_t.declick_frames`, `.residual` |
+| `sound/sound_mixer.c` | `cut_voice`, `add_tail`, `voice_run_limit`, `voice_at_cut`, `mix_voice_run`, `mix_voice`; de-click branches in apply/sync, amp readiness and render; first-render initialization |
+| `sound/sound_mixer_device.c` | `TUNE_OWNER(sound)`, `declick_us`, `amp_mute`, `dac_ramp`, `tuning_generation`, `apply_tuning`, `update_amp`; tuning application and amplifier-ready call |
+| `audio/audio_out_device.h` | `AUDIO_OUT_DAC_RAMP_MAX`, `audio_out_amp_configure`, `audio_out_amp_ready` |
+| `audio/audio_out.c` | `AUDIO_OUT_DAC_RAMP_*`, `amp_mute_enabled`, `amp_ready`, `dac_ramp_rate`; configure/ready functions, mute branch and close resets |
+| `console/verbs/console_sound_parse.h` | `CONSOLE_SOUND_ONSET_*`, `console_sound_event_t`, `console_sound_events`, `CONSOLE_SOUND_ONSET`, parsed `hz`/`event`, onset parsing branch |
+| `console/verbs/console_sound.c` | `ONSET_*`, `onset_peak_t`, `onset_window`, `onset_db`, `stop_all`, `onset_wait`, `onset_prepare`, `onset_trigger`, `onset_measure`, `sound_onset`, onset dispatch and added includes |
+| `scripts/autana/autana.py` | `SOUND_ONSET_SECONDS`, onset reply timeout; `SoundOnsetCommandTests` in `scripts/autana/tests/test_autana.py` |
+| `launcher/tools/audio/sound_onset_capture.py` | Entire capture tool |
+| `launcher/tools/audio/audio_doc_tables.py` | `ONSET_*`, `render_onset`, `update_onset`, onset CLI option and dispatch, math/statistics imports |
+| Tests | `test_sound_declick_*`, `TEST_DECLICK_*` in `suite_sound_mixer.c`; onset assertions in `suite_console.c`; `tests/test_sound_onset_tables.py`, `tests/test_sound_onset_capture.py`, `tests/fixtures/onset.txt` |
+| docs/Shared-Helpers.md | Regenerate after removing the experiment declarations |
+| This document | This section, RAM table adjustment; generated `sound-onset` block added with the capture |
 
 ## Task and queue
 

@@ -11,3 +11,6 @@ bool audio_out_write(const int16_t* samples, size_t count);
 
 /* Enabling returns immediately; callers write silence throughout startup. */
 bool audio_out_amp_enable(bool enabled);
+#define AUDIO_OUT_DAC_RAMP_MAX 15u
+bool audio_out_amp_configure(bool mute, uint8_t ramp);
+bool audio_out_amp_ready(void);
