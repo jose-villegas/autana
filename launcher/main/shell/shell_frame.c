@@ -64,7 +64,7 @@ shell_frame_overlay(int row0, int row1) {
 void
 shell_frame_extras(void) {
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    if (gfx_mode_current()->layout == GFX_LAYOUT_FULL_FB && !gfx_frame_expanded()) {
+    if (gfx_mode_has_framebuffer(gfx_mode_current()) && !gfx_frame_expanded()) {
         draw_build_mark();
     }
 #endif

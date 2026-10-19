@@ -52,19 +52,21 @@ void gfx_full_redraw_clear_pending(void);
  * leaf-sized regions for precise marks and full cells for band marks. */
 bool gfx_region_dirty(int x, int y, int w, int h);
 
-/* Send the changed bands to the panel and wait for the transfers to land.
- * The wait is mandatory; see the notes on asynchronous DMA in the docs.
- * Exactly gfx_present_begin() followed by gfx_present_wait(); every existing
- * caller keeps working unchanged under the core-1 present task below. */
+/* Exactly gfx_present_begin() followed by gfx_present_wait(). In
+ * GFX_LAYOUT_DOUBLE_FB this drains the previous send, swaps front and back,
+ * and dispatches every strip; wait returns immediately so drawing can
+ * overlap the send. Every frame must redraw every pixel. Mode exit and
+ * readback drain the last send. Other layouts wait for their transfers. */
 void gfx_present(void);
 
 /*
  * Split present: gfx_present_begin() hands the framebuffer to the core-1
- * present task and returns at once; gfx_present_wait() blocks until sent.
- * Between the two, no gfx_* call that touches drawing state or the
- * framebuffer may run: app.h's update() contract, asserted in development
- * builds (gfx_present_guard.h). gfx_set_present_async(false) sends
- * synchronously on the caller instead, for A/B measurement.
+ * present task and returns at once; in double mode it first drains the
+ * previous send. gfx_present_wait() blocks until sent, except in double mode.
+ * Outside double mode, no gfx_* call that touches drawing state or the
+ * framebuffer may run between begin and wait: the update() contract,
+ * asserted in development builds (gfx_present_guard.h).
+ * gfx_set_present_async(false) sends synchronously on the caller for A/B measurement.
  */
 void gfx_present_begin(void);
 void gfx_present_wait(void);

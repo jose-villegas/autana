@@ -15,7 +15,7 @@ scene_shell_compose(uint32_t dt_ms) {
     if (!scene_has_active_camera()) {
         return;
     }
-    gfx_color_t* full = gfx_mode_current()->layout == GFX_LAYOUT_FULL_FB ? gfx_framebuffer() : NULL;
+    gfx_color_t* full = gfx_mode_has_framebuffer(gfx_mode_current()) ? gfx_framebuffer() : NULL;
     const scene_target_t target = {full, GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
     if (scene_compose(dt_ms, display_quarter_now(), &target)) {
         gfx_expand_frame();
