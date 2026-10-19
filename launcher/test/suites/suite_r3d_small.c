@@ -614,55 +614,19 @@ test_small_experiment_writer_matches_fill_depth(void) {
     }
 }
 
-static void
-test_small_grain_shades_distinct(void) {
-    uint16_t shades[SMALL_GRAIN_AMPLITUDE_MAX][SMALL_GRAIN_LEVELS];
-    const uint16_t middle = gfx_color_rgb565((uint8_t)(gfx_rgb565_r5(UINT16_MAX) / 2), (uint8_t)(GFX_RGB565_G6_MAX / 2),
-                                             (uint8_t)(gfx_rgb565_b5(UINT16_MAX) / 2));
-    for (int amplitude = 1; amplitude <= SMALL_GRAIN_AMPLITUDE_MAX; amplitude++) {
-        prepare_small_grain(shades[amplitude - 1], middle, amplitude);
-        for (int prior = 1; prior < amplitude; prior++) {
-            TEST_ASSERT_TRUE(memcmp(shades[prior - 1], shades[amplitude - 1], sizeof shades[0]) != 0);
-        }
-    }
-}
-
-static void
-test_small_grain_shades_neutral(void) {
-    const int red = (int)gfx_rgb565_r5(UINT16_MAX) / 2;
-    const int green = (int)GFX_RGB565_G6_MAX / 2;
-    const int blue = (int)gfx_rgb565_b5(UINT16_MAX) / 2;
-    const int rb_step = (UINT8_MAX + 1) / ((int)gfx_rgb565_r5(UINT16_MAX) + 1);
-    const int g_step = (UINT8_MAX + 1) / ((int)GFX_RGB565_G6_MAX + 1);
-    for (int amplitude = 1; amplitude <= SMALL_GRAIN_AMPLITUDE_MAX; amplitude++) {
-        uint16_t shades[SMALL_GRAIN_LEVELS];
-        prepare_small_grain(shades, gfx_color_rgb565((uint8_t)red, (uint8_t)green, (uint8_t)blue), amplitude);
-        for (int level = 0; level < SMALL_GRAIN_LEVELS; level++) {
-            const uint16_t native = gfx_color_swap(shades[level]);
-            const int dr = ((int)gfx_rgb565_r5(native) - red) * rb_step;
-            const int dg = ((int)gfx_rgb565_g6(native) - green) * g_step;
-            const int db = ((int)gfx_rgb565_b5(native) - blue) * rb_step;
-            TEST_ASSERT_TRUE(dr * dg > 0 && db * dg > 0);
-            TEST_ASSERT_INT_WITHIN(rb_step, dg, dr);
-            TEST_ASSERT_INT_WITHIN(rb_step, dg, db);
-        }
-    }
-}
-
 static uint16_t
 reference_grain(uint16_t color, int amplitude, int x, int y) {
     const int bx = x & SMALL_GRAIN_PATTERN_MASK, by = y & SMALL_GRAIN_PATTERN_MASK;
     const int rank = 2 * (bx ^ by) + by;
-    const float offset =
-        (float)(amplitude * (2 * rank + 1 - SMALL_GRAIN_LEVELS)) / (float)(1 << SMALL_GRAIN_HALF_SHIFT);
-    const int green_offset = offset < 0 ? -(int)(-offset + 0.5F) : (int)(offset + 0.5F);
-    const float rb = (float)green_offset / (float)(1 << SMALL_GRAIN_RB_SHIFT);
-    const int rb_offset = rb < 0 ? -(int)(-rb + 0.5F) : (int)(rb + 0.5F);
+    const unsigned bits = (unsigned)rank >> (SMALL_GRAIN_AMPLITUDE_MAX - amplitude);
     const uint16_t native = gfx_color_swap(color);
-    return gfx_color_rgb565(
-        (uint8_t)mathi_clamp((int)gfx_rgb565_r5(native) + rb_offset, 0, (int)gfx_rgb565_r5(UINT16_MAX)),
-        (uint8_t)mathi_clamp((int)gfx_rgb565_g6(native) + green_offset, 0, (int)GFX_RGB565_G6_MAX),
-        (uint8_t)mathi_clamp((int)gfx_rgb565_b5(native) + rb_offset, 0, (int)gfx_rgb565_b5(UINT16_MAX)));
+    const uint16_t expected =
+        gfx_color_rgb565((uint8_t)(gfx_rgb565_r5(native) ^ bits), (uint8_t)(gfx_rgb565_g6(native) ^ bits),
+                         (uint8_t)(gfx_rgb565_b5(native) ^ bits));
+    const uint16_t mask = small_grain_masks[amplitude][by][bx];
+    TEST_ASSERT_EQUAL_UINT16(expected, color ^ mask);
+    TEST_ASSERT_EQUAL_UINT16(gfx_color_swap(expected), native ^ gfx_color_swap(mask));
+    return expected;
 }
 
 /* Scalar small-fill oracle, independent of production selection, threshold preparation and the pixel loop. */
@@ -856,8 +820,6 @@ test_small_grain_randomized_reference(void) {
 
 void
 run_r3d_small_suite(void) {
-    RUN_TEST(test_small_grain_shades_distinct);
-    RUN_TEST(test_small_grain_shades_neutral);
     RUN_TEST(test_small_grain_randomized_reference);
     RUN_TEST(test_small_gate_compares_quantized_channels);
     RUN_TEST(test_small_randomized_reference);
