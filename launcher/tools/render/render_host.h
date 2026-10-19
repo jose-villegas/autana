@@ -21,8 +21,9 @@ typedef struct {
     uint32_t elapsed_ms;
     input_t input;
     /* With --crop, the last frame's drawn box: its pixels unlike the colour
-     * most of its border shares, in output coordinates. Empty otherwise,
-     * before the first frame and for a blank one. */
+     * most of its border shares, in canvas coordinates (the UI's own, even
+     * under --panel). Empty otherwise, before the first frame and for a
+     * blank one. */
     recti_t drawn;
 } render_frame_t;
 

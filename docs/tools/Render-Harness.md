@@ -321,7 +321,7 @@ scene's `crop_margin` (`render_host.h`), telling the background by the colour mo
 the frame's border shares. The declared size is checked against
 what the binary reports it wrote, and a cropped render must fit inside it. That
 is what makes the sweep a check rather than a picture nobody looks at
-twice. What a render prints is also kept beside its image as `<label>.out`,
+twice. What a render wrote to stderr is also kept beside its image as `<label>.log`,
 for a scene that reports a measurement, as the UI examples' tap does.
 
 ## Frames, input and orientation

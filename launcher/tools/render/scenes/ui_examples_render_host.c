@@ -138,7 +138,7 @@ draw(const render_frame_t* frame) {
         fired_released |= fired;
     } else if (frame->index > release_frame + RELEASE_FRAMES && !reported) {
         reported = true;
-        printf("fires %s\n", fired_held ? "while held" : fired_released ? "on release" : "no");
+        fprintf(stderr, "fires %s\n", fired_held ? "while held" : fired_released ? "on release" : "no");
     }
 }
 

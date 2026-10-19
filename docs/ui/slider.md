@@ -50,8 +50,8 @@ return true.
   it changes while held.
 - Inside a `ui_scroll_window()` a sideways drag moves it and a vertical one
   scrolls ([scrolling](scrolling.md)).
-- Inside `ui_disabled_begin(true)` it draws in the theme's `muted` ink and
-  never fires ([scopes](scopes.md)).
+- Inside `ui_disabled_begin(true)` it looks as at rest and takes no input
+  ([scopes](scopes.md)).
 - Its label is its identity: two with one label in a window are told apart
   by call order ([input](input.md#identity)).
 

@@ -31,9 +31,9 @@
 #                   not a declaration) also writes each render's frames to
 #                   <label>.avi beside its .bmp; it never touches the pinned
 #                   hash, which is taken from the .bmp alone.
-#                   What the binary prints goes to <label>.out beside the
-#                   .bmp as well as to the terminal, for a scene that
-#                   reports a measurement with its image.
+#                   What the binary wrote to stderr stays in <label>.log
+#                   beside the .bmp, for a scene that reports a
+#                   measurement with its image.
 #                   --build-only compiles the renderer, prints `built <path>`
 #                   and renders nothing; tools/render/render_compare.sh uses it.
 #                   --deps compiles nothing: it prints `flags` and the compile
@@ -299,12 +299,12 @@ render_scene_render() {
             if ! (
                 [ -z "$_rs_no_packs" ] || export AUTANA_ASSET_DIR="$_rs_no_packs"
                 exec "$_rs_bin" $_rs_args $_rs_crop -o "$_rs_path" $_rs_video_args
-            ) > "$scene_out_dir/$_rs_label.out" 2> "$_rs_log"; then
-                cat "$scene_out_dir/$_rs_label.out" "$_rs_log" >&2
+            ) 2> "$_rs_log"; then
+                cat "$_rs_log" >&2
                 echo "FAIL $scene_name/$_rs_label: the renderer exited non-zero" >&2
                 exit 1
             fi
-            cat "$scene_out_dir/$_rs_label.out"
+            cp "$_rs_log" "$scene_out_dir/$_rs_label.log"
             _rs_said=$(sed -n 's/^RENDER [^ ]* \([0-9]*x[0-9]*\).*/\1/p' "$_rs_log")
             if [ -n "$_rs_crop" ] && [ -n "$_rs_said" ] &&
                 [ "${_rs_said%x*}" -le "${_rs_want%x*}" ] && [ "${_rs_said#*x}" -le "${_rs_want#*x}" ]; then

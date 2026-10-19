@@ -7,7 +7,7 @@ kind, and a development build asserts on an unbalanced frame.
 
 | Scope | Inside it |
 |---|---|
-| `ui_disabled_begin(bool disabled)` | with `true`, controls draw in the theme's `muted` ink and never fire; a nested `false` cannot re-enable them |
+| `ui_disabled_begin(bool disabled)` | with `true`, controls never fire and their labels draw in the theme's `muted` ink (a slider has none, so looks unchanged); a nested `false` cannot re-enable them |
 | `ui_color_begin(UI_COLOR_FACE, rgb)` | buttons, tiles and toggles draw their face in `rgb` |
 | `ui_color_begin(UI_COLOR_TEXT, rgb)` | text, captions and labels draw in `rgb` |
 | `ui_scale_begin(int scale)` | text and labels draw at glyph scale `scale` |

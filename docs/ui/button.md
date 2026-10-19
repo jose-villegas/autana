@@ -52,8 +52,8 @@ return true.
 - Sinks while a press holds it.
 - Fires when the finger lifts over it; sliding off first cancels
   ([input](input.md#a-tap)).
-- A tap just outside lands on the nearest control within reach
-  ([input](input.md#a-tap-that-misses)).
+- A press just outside draws the nearest control within reach pressed, but
+  only a lift inside fires it ([input](input.md#a-tap-that-misses)).
 - In a `ui_scroll_window()` a vertical drag scrolls the rows and presses
   nothing ([scrolling](scrolling.md)).
 - Inside `ui_disabled_begin(true)` it draws in the theme's `muted` ink and

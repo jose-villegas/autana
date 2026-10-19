@@ -364,6 +364,11 @@ main(int argc, char** argv) {
     }
 
     render_frame_t frame = {.count = frames, .quarter = quarter, .dt_ms = dt_ms};
+    /* The drawn box in output coordinates, and the map that turns a
+     * --panel output's box back into the canvas a scene lays out in. */
+    recti_t drawn = {0, 0, 0, 0};
+    affine2x_t canvas_from_panel = affine2x_identity();
+    (void)affine2x_invert(t, &canvas_from_panel);
     bool video_ok = true;
     for (int i = 0; i < frames; i++) {
         frame.index = i;
@@ -376,7 +381,8 @@ main(int argc, char** argv) {
 
         convert_frame(t, panel, out_w, out_h, stride, frame_buf);
         if (crop) {
-            frame.drawn = drawn_box(frame_buf, stride, out_w, out_h);
+            drawn = drawn_box(frame_buf, stride, out_w, out_h);
+            frame.drawn = panel ? ui_transform_rect(canvas_from_panel, drawn) : drawn;
         }
         gfx_present();
         if (video_path != NULL && video_ok) {
@@ -424,7 +430,7 @@ main(int argc, char** argv) {
     render_size_t size = {0};
     recti_t box = {0, 0, out_w, out_h};
     if (crop) {
-        box = crop_box(frame.drawn, scene->crop_margin, out_w, out_h);
+        box = crop_box(drawn, scene->crop_margin, out_w, out_h);
     }
     const bool ok = write_bmp(out, frame_buf, out_w, out_h, box, &size);
     free(frame_buf);

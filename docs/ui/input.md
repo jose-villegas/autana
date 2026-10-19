@@ -32,10 +32,12 @@ control's page has a States table that measures when it fires.
 
 ## A tap that misses
 
-A tap that lands outside every control is aimed at the nearest control edge
-within reach, the tunable `snap.reach` (40 px by default), so a finger a few
-pixels short of a small target still hits it. A tap farther from every
-control than that presses nothing.
+A press that lands outside every control is aimed at the nearest control
+edge within reach, the tunable `snap.reach` (40 px by default), so that
+control draws pressed. The release is not aimed: a button, tile or toggle
+fires only when the finger lifts inside it, so a tap in the gap between two
+tiles picks neither. A press farther from every control than the reach
+presses nothing.
 
 ## Identity
 

@@ -59,10 +59,11 @@ def states(name):
 
 
 def fires(renders, label):
-    said = (renders / f"{label}.out").read_text(encoding="utf-8").strip()
-    if not said.startswith("fires "):
-        raise ValueError(f"{label}.out reports no tap: {said!r}")
-    return said[len("fires "):]
+    log = (renders / f"{label}.log").read_text(encoding="utf-8").splitlines()
+    said = [line[len("fires "):] for line in log if line.startswith("fires ")]
+    if len(said) != 1:
+        raise ValueError(f"{label}.log reports {len(said)} taps, not one")
+    return said[0]
 
 
 def write_renders(renders, out):
