@@ -322,7 +322,7 @@ run_checkpoint(const boot_anim_motion_t* motion, const draw_image_t* photo, cons
     sample_checkpoint(motion, photo, cp->now_ms, &frame);
     boot_anim_draw_frame(motion, photo, cp->now_ms);
     gfx_present();
-    TEST_ASSERT_EQUAL_INT(GFX_READBACK_READY, gfx_readback_begin());
+    TEST_ASSERT_EQUAL_INT(clear_on_send ? GFX_READBACK_UNAVAILABLE : GFX_READBACK_READY, gfx_readback_begin());
     gfx_readback_end();
     time_frames(&frame, contend, clear_on_send);
     report_checkpoint(cp, mode);
