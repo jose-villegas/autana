@@ -1,0 +1,32 @@
+/* Private register encodings for the PMU. */
+#pragma once
+#define AXP2101_I2C_HZ           400000
+#define AXP2101_TIMEOUT_MS       100
+#define AXP2101_REG_STATUS       0x00
+#define AXP2101_REG_CHARGE       0x01
+#define AXP2101_REG_GAUGE_ENABLE 0x18
+#define AXP2101_GAUGE_ENABLE     0x08u
+#define AXP2101_REG_ADC_ENABLE   0x30
+#define AXP2101_ADC_VBAT_ENABLE  0x01u
+#define AXP2101_REG_VBAT_HIGH    0x34
+#define AXP2101_REG_VBAT_LOW     0x35
+#define AXP2101_REG_PERCENT      0xa4
+#define AXP2101_USB_GOOD         0x20u
+#define AXP2101_BATTERY_PRESENT  0x08u
+#define AXP2101_FLOW_SHIFT       5
+#define AXP2101_FLOW_MASK        3u
+#define AXP2101_CHARGE_MASK      7u
+#define AXP2101_VBAT_HIGH_MASK   0x3fu
+#define AXP2101_VBAT_HIGH_SHIFT  8
+#define AXP2101_PERCENT_MAX      100u
+#define AXP2101_REG_INTEN2       0x41
+#define AXP2101_REG_INTSTS2      0x49
+#define AXP2101_PKEY_SHORT       0x08u
+#define AXP2101_PKEY_LONG        0x04u
+#define AXP2101_REG_LEVELS       0x27
+#define AXP2101_REG_PWROFF       0x22
+#define AXP2101_LEVEL_MASK       3u
+#define AXP2101_IRQ_LEVEL_SHIFT  4
+#define AXP2101_OFF_LEVEL_SHIFT  2
+#define AXP2101_PWROFF_ENABLE    0x02u
+#define AXP2101_PWROFF_RESTART   0x01u

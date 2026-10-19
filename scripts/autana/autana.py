@@ -419,6 +419,39 @@ def buildid(args):
     return 0
 
 
+BATTERY_PERCENT_MAX = 100
+BATTERY_VOLTAGE_MAX_MV = 0x3fff
+
+
+def battery(args):
+    reject_unknown("battery", args, ("--json",))
+    json_output = read_json_flag(args, "usage: autana battery [--json]")
+    code, replies = send("BATTERY", reply="BATTERY")
+    if code or not replies:
+        return code or 1
+    try:
+        result = parse_battery(replies[-1])
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 1
+    print(json.dumps(result) if json_output else replies[-1])
+    return 0
+
+
+def parse_battery(reply):
+    match = re.fullmatch(
+        r"BATTERY valid=([01]) usb=([01]) battery=([01]) mv=([0-9]+) percent=([0-9]+) "
+        r"charge=(unknown|trickle|pre|cc|cv|done|idle) "
+        r"flow=(unknown|standby|charging|discharging) reg00=0x([0-9a-fA-F]{2}) reg01=0x([0-9a-fA-F]{2})", reply)
+    if not match:
+        raise ValueError(f"invalid BATTERY reply: {reply}")
+    valid, usb, present, mv, percent, charge, flow, reg00, reg01 = match.groups()
+    if int(percent) > BATTERY_PERCENT_MAX or int(mv) > BATTERY_VOLTAGE_MAX_MV:
+        raise ValueError(f"invalid BATTERY reply: {reply}")
+    return dict(valid=valid == "1", usb=usb == "1", battery=present == "1", mv=int(mv),
+                percent=int(percent), charge=charge, flow=flow, reg00=int(reg00, 16), reg01=int(reg01, 16))
+
+
 def framewatch(args):
     """The frame watch's counts for the last frame and the sites repeating
     now, as the board's own JSON, a development build only."""
@@ -1634,6 +1667,7 @@ COMMAND_GROUPS = (
         Command("screenshot", screenshot, (
             ("screenshot [--as-shown|--framebuffer] [-o PATH]", "the panel as PATH.png plus PATH.json"),
             ("screenshot --frames N -o PATH", "N consecutive frames, PATH-00 on, stepped while frozen"),)),
+        one("battery", battery, "battery [--json]", "fresh battery and USB status; development builds"),
         one("heap", heap, "heap [--json]", "free internal heap and largest block (development builds)"),
         Command("perf", perf, (
             ("perf", "the frame_cost names seen and the counter events"),

@@ -26,6 +26,19 @@ class StyleAuditTest(unittest.TestCase):
             gate_tree.commit(root, *sorted({name.split("/")[0] for name in files}))
             return self.rule_hits(root, rule_id, file_filter)
 
+    def test_pmu_owner(self):
+        files = {
+            "launcher/main/rogue.c": "int x = AXP2101_ROOT;\n",
+            "launcher/main/input/rogue.c": "int x = BOARD_PMU_I2C_ADDR;\n",
+            "launcher/main/selftest/rogue.h": "#define AXP2101_ROGUE 1\n",
+            "launcher/main/power/owner.c": "int x = BOARD_PMU_I2C_ADDR;\n",
+            "launcher/main/board/board.h": "#define BOARD_PMU_I2C_ADDR 0x34\n",
+            "launcher/test/example.c": "int x = AXP2101_TEST;\n",
+        }
+        hits = self.audit("PMU-OWNER", files)
+        self.assertEqual({hit.path for hit in hits}, {
+            "launcher/main/rogue.c", "launcher/main/input/rogue.c", "launcher/main/selftest/rogue.h"})
+
     def test_undef_requires_analysis_scan_ifdef(self):
         hits = self.audit("UNDEF-PLACEMENT", {
             "launcher/main/gfx/defines.c": "#ifdef ANALYSIS_SCAN\n#undef A\n#ifdef INNER\n#undef B\n#endif\n"

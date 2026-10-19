@@ -24,6 +24,28 @@ class JsonReadTests(unittest.TestCase):
             self.assertEqual(command(args), 0)
         return json.loads(stream.getvalue())
 
+    def test_battery_reply(self):
+        reply = "BATTERY valid=1 usb=1 battery=1 mv=3987 percent=82 charge=cc flow=charging reg00=0x2a reg01=0x22"
+        expected = dict(valid=True, usb=True, battery=True, mv=3987, percent=82,
+                        charge="cc", flow="charging", reg00=42, reg01=34)
+        self.assertEqual(autana.parse_battery(reply), expected)
+        with mock.patch.object(autana, "send", return_value=(0, [reply])) as send:
+            self.assertEqual(self.output(autana.COMMANDS["battery"], ["--json"]), expected)
+            send.assert_called_once_with("BATTERY", reply="BATTERY")
+        for bad in (reply + " trailing", reply.replace("percent=82", f"percent={autana.BATTERY_PERCENT_MAX + 1}"),
+                    reply.replace("charge=cc", "charge=bogus"), "BATTERY error"):
+            with self.assertRaises(ValueError):
+                autana.parse_battery(bad)
+        for args in (["extra"], ["--json", "--json"], ["--unknown"]):
+            with self.assertRaises(SystemExit):
+                autana.battery(args)
+        for result, code in (((0, []), 1), ((7, []), 7)):
+            with mock.patch.object(autana, "send", return_value=result):
+                self.assertEqual(autana.battery([]), code)
+        with mock.patch.object(autana, "send", return_value=(0, [reply])), contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(autana.battery([]), 0)
+        self.assertEqual(out.getvalue(), reply + "\n")
+
     def test_heap_reply_and_failure(self):
         reply = "HEAP free=123456 largest=54321 total=200000"
         self.assertEqual(autana.parse_heap(reply), {"free": 123456, "largest": 54321, "total": 200000})
