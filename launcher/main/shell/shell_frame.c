@@ -35,7 +35,7 @@ draw_build_mark(void) {
     if (gfx_region_dirty(box.x, box.y, box.w, box.h)) {
         int x = 0;
         int y = 0;
-        ui_text_glyph0_origin(draw_font_ui(), box, quarter, 1, &x, &y);
+        ui_text_glyph0_origin(draw_font_ui(), ui_recti_from_mu(box), quarter, 1, &x, &y);
         draw_text_turned(x, y, build_mark_text, gfx_rgb(BUILD_MARK_RGB), 1, quarter);
     }
 }

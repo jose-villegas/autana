@@ -22,7 +22,6 @@
 #include "apps/sand/ui/options_screen.h"
 #include "apps/sand/ui/sand_icons.h"
 #include "apps/sand/ui/title_screen.h"
-#include "ui/ui_mu.h"
 
 #define BACKGROUND 0x0A0C14
 
@@ -114,9 +113,9 @@ draw(const render_frame_t* frame) {
     const input_t input = open_dither ? dither_tap(frame->index) : frame->input;
     ui_begin(&input);
     if (menu.screen == SAND_MENU_OPTIONS) {
-        options_screen_draw(ui_context(), &menu, committed, &LABELS);
+        options_screen_draw(&menu, committed, &LABELS);
     } else {
-        title_screen_draw(ui_context());
+        title_screen_draw();
     }
     ui_end(BACKGROUND);
 }

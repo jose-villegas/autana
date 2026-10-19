@@ -27,6 +27,12 @@ typedef enum {
 #define UI_RGB(rgb)                                                                                                    \
     {(unsigned char)(((rgb) >> 16) & 0xFF), (unsigned char)(((rgb) >> 8) & 0xFF), (unsigned char)((rgb) & 0xFF), 255}
 
+/* UI_RGB()'s inverse: a colour's 0xRRGGBB, alpha dropped. */
+static inline uint32_t
+ui_rgb_value(mu_Color c) {
+    return ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b;
+}
+
 /* One flat rectangle of a styled frame, in paint order: later spans draw
  * over earlier ones, which is what decides how the corners meet. */
 typedef struct {

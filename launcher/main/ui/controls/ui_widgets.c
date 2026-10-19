@@ -49,8 +49,10 @@ ui_header_bar(mu_Context* ctx, mu_Rect r, const char* title, int scale, const ui
     ui_text_in(ctx, r, title, theme->accent, scale, UI_ALIGN_CENTRE);
 }
 
+/* `str` aligned in `r` and clipped to `clip`. */
 static void
-text_in(mu_Context* ctx, mu_Rect r, const char* str, int len, mu_Color color, int scale, ui_align_t align) {
+text_in_clip(mu_Context* ctx, mu_Rect r, mu_Rect clip, const char* str, int len, mu_Color color, int scale,
+             ui_align_t align) {
     if (len == 0) {
         return;
     }
@@ -64,9 +66,23 @@ text_in(mu_Context* ctx, mu_Rect r, const char* str, int len, mu_Color color, in
         x = r.x + r.w - tw;
     }
 
-    mu_push_clip_rect(ctx, r);
+    mu_push_clip_rect(ctx, clip);
     mu_draw_text(ctx, ctx->style->font, str, len, mu_vec2(x, r.y + (r.h - th) / 2), color);
     mu_pop_clip_rect(ctx);
+}
+
+static void
+text_in(mu_Context* ctx, mu_Rect r, const char* str, int len, mu_Color color, int scale, ui_align_t align) {
+    text_in_clip(ctx, r, r, str, len, color, scale, align);
+}
+
+/* A label centred in its slot, clipped `pad_left`/`pad_right` beyond it: a
+ * label too wide for its slot shows into the control's padding. */
+static void
+control_label(mu_Context* ctx, mu_Rect slot, int pad_left, int pad_right, const char* str, int len, mu_Color color,
+              int scale) {
+    const mu_Rect clip = {slot.x - pad_left, slot.y, slot.w + pad_left + pad_right, slot.h};
+    text_in_clip(ctx, slot, clip, str, len, color, scale, UI_ALIGN_CENTRE);
 }
 
 void
@@ -119,7 +135,8 @@ draw_icon_and_label(mu_Context* ctx, mu_Rect r, const draw_image_t* icon, const 
         ui_draw_icon(ctx, mu_rect(r.x + BUTTON_PAD, r.y + (r.h - side) / 2, side, side), icon, NULL, ink);
     }
     const int label_x = r.x + BUTTON_PAD + (icon != NULL ? theme->icon_side + BUTTON_ICON_GAP : 0);
-    text_in(ctx, mu_rect(label_x, r.y, label_w, r.h), label, label_len, ink, theme->text_scale, UI_ALIGN_CENTRE);
+    control_label(ctx, mu_rect(label_x, r.y, label_w, r.h), icon != NULL ? 0 : BUTTON_PAD, BUTTON_PAD, label, label_len,
+                  ink, theme->text_scale);
 }
 
 bool
@@ -387,7 +404,7 @@ ui_dropdown_id(mu_Context* ctx, mu_Id mid, const char* id, mu_Rect r, const char
 }
 
 mu_Rect
-ui_tile_icon_rect(mu_Rect r, const ui_mu_theme_t* theme) {
+ui_mu_tile_icon_rect(mu_Rect r, const ui_mu_theme_t* theme) {
     const int label_h = draw_font_height(draw_font_ui(), theme->text_scale);
     int side = r.h - 2 * TILE_PAD - label_h - TILE_LABEL_GAP;
     if (side > r.w - (2 * TILE_PAD)) {
@@ -420,12 +437,12 @@ ui_tile_button_id(mu_Context* ctx, mu_Id id, mu_Rect r, const ui_widget_button_t
                   const ui_mu_theme_t* theme) {
     const control_t c = begin_control(ctx, id, r, button->enabled, button->selected, theme);
 
-    const mu_Rect icon = ui_tile_icon_rect(r, theme);
+    const mu_Rect icon = ui_mu_tile_icon_rect(r, theme);
     if (button->icon != NULL) {
         ui_draw_icon(ctx, icon, button->icon, NULL, c.ink);
     }
     const int label_h = draw_font_height(draw_font_ui(), theme->text_scale);
     const mu_Rect label = {r.x + TILE_PAD, icon.y + icon.h + TILE_LABEL_GAP, r.w - 2 * TILE_PAD, label_h};
-    text_in(ctx, label, button->label, label_len, c.ink, theme->text_scale, UI_ALIGN_CENTRE);
+    control_label(ctx, label, TILE_PAD, TILE_PAD, button->label, label_len, c.ink, theme->text_scale);
     return c.clicked;
 }

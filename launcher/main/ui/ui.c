@@ -114,7 +114,7 @@ icon_fill_emit(void* ctx_, recti_t rect) {
  * place a command's colour crosses into gfx's. */
 static gfx_color_t
 mu_color_to_gfx(mu_Color c) {
-    return gfx_rgb(((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b);
+    return gfx_rgb(ui_rgb_value(c));
 }
 
 static void
@@ -147,7 +147,7 @@ draw_text_command(const mu_Command* cmd, affine2x_t t) {
      * directly because ui/ sits below apps/, so reaching into an
      * app's source would be a backwards layering dependency. */
     int mx, my;
-    ui_text_glyph0_origin(font, box, quarter, scale, &mx, &my);
+    ui_text_glyph0_origin(font, ui_recti_from_mu(box), quarter, scale, &mx, &my);
 
     /* A text colour's alpha is dithered coverage. No halo has a
      * dithered form, so a fading string is drawn as ink alone. */

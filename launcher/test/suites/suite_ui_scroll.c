@@ -184,7 +184,7 @@ test_a_tap_still_presses_exactly_one_row(void) {
     fixture();
     idle_frames(2);
 
-    const mu_Rect first = ui_centered_rect(ui_width(), ROW_W, ROW_H, 0);
+    const recti_t first = ui_centered_rect(ui_width(), ROW_W, ROW_H, 0);
     TEST_ASSERT_EQUAL_INT(0, tap(first.x + first.w / 2, first.y + first.h / 2));
 }
 

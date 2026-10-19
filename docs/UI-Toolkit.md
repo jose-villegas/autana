@@ -36,7 +36,7 @@ code, drawn on a host by the gallery scene,
 | a grid of colours | `ui_swatch_grid()` | `ui/ui_mu.h` |
 | an icon | `ui_draw_icon()` | `ui/ui_mu.h` |
 | rows that may overflow and scroll | `ui_scroll_view_begin()`, `ui_flow_row()` | `ui/layout/ui_scroll.h` |
-| a rect placed against an edge or centre | `ui_anchor_rect()`, `ui_rect_inset()`, `ui_centered_rect()` | `ui/layout/ui_anchor.h`, `ui/ui_mu.h` |
+| a rect placed against an edge or centre | `ui_anchor_rect()`, `ui_rect_inset()`, `ui_centered_rect()` | `ui/layout/ui_anchor.h`, `ui/ui.h` |
 | another text size | `ui_set_font_scaled()`, `ui_measure_text()` | `ui/ui.h` |
 | raised buttons | `ui_set_button_style(UI_BUTTON_BEZEL)` | `ui/ui.h`, `ui/controls/ui_style.h` |
 | the UI turned with the board | `ui_set_transform()`, `ui_width()`, `ui_height()` | `ui/ui.h`, `ui/layout/ui_transform.h` |
@@ -159,7 +159,7 @@ data; `ui_rgb()` does the same in an expression.
 | Control | Returns | Notes |
 |---|---|---|
 | `ui_icon_button()` | whether this frame's tap landed on it | icon at the left, label centred in the rest |
-| `ui_tile_button()` | the same | icon above the label; `ui_tile_icon_rect()` gives the icon's square, where a caller may draw its own picture instead |
+| `ui_tile_button()` | the same | icon above the label; `ui_mu_tile_icon_rect()` gives the icon's square, where a caller may draw its own picture instead |
 | `ui_theme_slider_int()` | whether the value changed | fill on `accent_face`, knob in `text` |
 | `ui_mu_dropdown()` | the index picked this frame, or -1 | see below |
 
