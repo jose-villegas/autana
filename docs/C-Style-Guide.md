@@ -132,7 +132,11 @@ headroom. Renames map to the base names; line shifts do not change a budget.
 Code moved out of a file the change deletes keeps the fragments it held there,
 and a block of `#include` or `RUN_TEST` lines is not a clone. Literal-only
 object-like `#define`s are blanked on both sides before matching, preserving
-line numbers. Removing another file pair gives no headroom.
+line numbers. A declaration statement is written one declarator per statement,
+and parentheses after no name, `)` or `]` (a grouping or a cast) are blanked,
+so splitting a declaration or adding a grouping is not a new clone; a copy
+holding groupings counts fewer tokens. Removing another file pair gives no
+headroom.
 
 Use `--report` to list every pair with file and line ranges, including both
 sides of each new pair. `--min-tokens N` reports a different threshold without
