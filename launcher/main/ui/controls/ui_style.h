@@ -28,6 +28,8 @@
 #define UI_SHELL_PANEL_FACE   0x10141F
 #define UI_SHELL_CAPTION      0x8C96AA
 #define UI_SHELL_MUTED        0x4B5266
+/* An icon beside a label, in pixels: half again the label's line. */
+#define UI_SHELL_ICON_SIDE    24
 
 /* Where red and green sit in an 0xRRGGBB value; blue is the low byte. */
 #define UI_RGB_RED_SHIFT      (2 * CHAR_BIT)

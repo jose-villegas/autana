@@ -1494,6 +1494,49 @@ test_the_shell_look_draws_every_text_visibly(void) {
     TEST_ASSERT_EQUAL_INT(UINT8_MAX, ui_probe_text_alpha("Title"));
 }
 
+/* With no ui_theme() call, an icon button's icon is the shell's icon side,
+ * inset from the button's edge by the same padding its label keeps. */
+static void
+test_the_shell_look_insets_a_button_icon(void) {
+    fixture();
+    begin_face();
+    (void)ui_button_icon(BOX, "Go", &ICON);
+    end_face();
+    const ui_theme_t any = {0};
+    const int pad = (BOX.w - ui_probe_button_label_width(BOX.w, false, &any)) / 2;
+    const mu_Color ink = ui_rgb(UI_SHELL_TEXT);
+    recti_t icon = {0, 0, 0, 0};
+    mu_Command* cmd = NULL;
+    while (mu_next_command(ui_context(), &cmd)) {
+        if (cmd->type == MU_COMMAND_RECT && memcmp(&cmd->rect.color, &ink, sizeof ink) == 0) {
+            icon = recti_union(icon, ui_recti_from_mu(cmd->rect.rect));
+        }
+    }
+    const recti_t square = {BOX.x + pad, BOX.y + (BOX.h - UI_SHELL_ICON_SIDE) / 2, UI_SHELL_ICON_SIDE,
+                            UI_SHELL_ICON_SIDE};
+    TEST_ASSERT_FALSE(recti_is_empty(icon));
+    TEST_ASSERT_TRUE(recti_contains(square, icon.x, icon.y));
+    TEST_ASSERT_TRUE(recti_contains(square, recti_right(icon) - 1, recti_bottom(icon) - 1));
+}
+
+/* A dropdown without icons keeps no icon's room: its label is centred in the
+ * slot between the padding and the chevron, at any theme's icon side. */
+static void
+test_a_dropdown_without_icons_centres_its_label_past_no_icon(void) {
+    static const char* const NAMES[] = {"One"};
+    int index = 0;
+    fixture();
+    begin_face();
+    (void)ui_dropdown(BOX, "pick", &index, NAMES, 1);
+    end_face();
+    const ui_theme_t shell = {.icon_side = UI_SHELL_ICON_SIDE};
+    const int pad = (BOX.w - ui_probe_button_label_width(BOX.w, false, &shell)) / 2;
+    const int slot = ui_probe_dropdown_label_width(BOX.w, false, &shell);
+    recti_t text;
+    TEST_ASSERT_TRUE(ui_probe_text("One", &text));
+    TEST_ASSERT_INT_WITHIN(1, BOX.x + pad + slot / 2, text.x + text.w / 2);
+}
+
 static void
 test_ui_screen_twice_closes_first(void) {
     fixture();
@@ -1601,6 +1644,8 @@ run_ui_face_suite(void) {
     RUN_TEST(test_toggle_theme_scopes);
     RUN_TEST(test_ui_theme_custom_and_reset);
     RUN_TEST(test_the_shell_look_draws_every_text_visibly);
+    RUN_TEST(test_the_shell_look_insets_a_button_icon);
+    RUN_TEST(test_a_dropdown_without_icons_centres_its_label_past_no_icon);
     RUN_TEST(test_ui_screen_twice_closes_first);
 }
 
