@@ -48,6 +48,7 @@ typedef struct {
 #define RENDER_DEBUG_VIEW_COUNT   4 /* table rows; views run 0 to this */
 
 typedef struct {
+    raster_split_t split;
     raster_t raster; /* keeps its upscale maps from frame to frame */
     void* scratch;
     size_t scratch_bytes;

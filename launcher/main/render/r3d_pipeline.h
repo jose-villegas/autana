@@ -93,10 +93,12 @@ void r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const
  * their vertices; 0 when there are none. */
 int r3d_pipeline_transform_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, int count);
 
-/* A row between 1 and height - 1 that divides a cheap estimate of raster
- * work: each visible cluster's triangle count across the buckets it spans. */
+/* A row between 1 and height - 1 assigning top_permille / RASTER_SPLIT_PERMILLE
+ * of estimated draw weight to the top slice, interpolated within its bucket.
+ * Weight is each visible cluster's triangle count across the buckets it spans.
+ * With no weight, returns the middle row. */
 int r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, const r3d_pipeline_rows_t* rows,
-                            int count, int height);
+                            int count, int height, int top_permille);
 
 /* One way of the data cache: addresses this far apart share a cache set. */
 #if defined(ESP_PLATFORM)

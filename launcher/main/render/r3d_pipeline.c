@@ -282,7 +282,7 @@ draw_split_histogram(int* weight, const r3d_lit_mesh_t* mesh, const uint16_t* cl
 }
 
 static int
-draw_split_row(const int* weight, int height) {
+draw_split_row(const int* weight, int height, int top_permille) {
     int total = 0;
     int current = 0;
     for (int bucket = 0; bucket < DRAW_SPLIT_BUCKETS; bucket++) {
@@ -292,24 +292,28 @@ draw_split_row(const int* weight, int height) {
     if (total == 0) {
         return height / 2;
     }
+    const int64_t target = (int64_t)total * top_permille;
     current = 0;
     int prefix = 0;
     for (int bucket = 0; bucket < DRAW_SPLIT_BUCKETS; bucket++) {
         current += weight[bucket];
-        prefix += current;
-        if (2 * prefix >= total) {
-            return mathi_clamp((2 * bucket + 1) * height / (2 * DRAW_SPLIT_BUCKETS), 1, height - 1);
+        if (current > 0 && (int64_t)(prefix + current) * RASTER_SPLIT_PERMILLE >= target) {
+            const int64_t bucket_weight = (int64_t)current * RASTER_SPLIT_PERMILLE;
+            const int64_t position = bucket * bucket_weight + target - (int64_t)prefix * RASTER_SPLIT_PERMILLE;
+            return mathi_clamp((int)(position * height / (bucket_weight * DRAW_SPLIT_BUCKETS)), 1, height - 1);
         }
+        prefix += current;
     }
     return height / 2;
 }
 
 int
 r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, const r3d_pipeline_rows_t* rows,
-                        int count, int height) {
+                        int count, int height, int top_permille) {
+    assert(top_permille >= 0 && top_permille <= RASTER_SPLIT_PERMILLE);
     int weight[DRAW_SPLIT_BUCKETS + 1] = {0};
     draw_split_histogram(weight, mesh, clusters, rows, count, height);
-    return draw_split_row(weight, height);
+    return draw_split_row(weight, height, top_permille);
 }
 
 static r3d_span_vertex_t

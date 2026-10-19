@@ -11,6 +11,7 @@
 
 #include "math/linear/mat4f.h"
 #include "render/r3d_instance.h"
+#include "render/raster.h"
 #include "render/raster_attachment.h"
 #include "render/render_view.h"
 
@@ -24,7 +25,7 @@ typedef struct {
 
 #define RASTER_MOTION_UNKNOWN       INT8_MIN
 /* The most instances a raster with motion attached may draw. */
-#define RASTER_MOTION_INSTANCES_MAX 16
+#define RASTER_MOTION_INSTANCES_MAX RASTER_SPLIT_INSTANCES
 
 /* What a previous picture left, and this picture's maps; the caller owns
  * it, zeroed, for as long as the attachment is attached. */

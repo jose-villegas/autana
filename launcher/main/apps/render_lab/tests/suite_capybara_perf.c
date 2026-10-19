@@ -13,6 +13,7 @@
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "perf_stats.h"
+#include "render/context/render_context.h"
 #include "render/r3d_span_internal.h"
 #include "scene/scene_internal.h"
 #include "test_cleanup.h"
@@ -237,6 +238,7 @@ test_animation_and_frame_cost(void) {
     char command[ASSET_NAME_MAX];
     TEST_ASSERT_TRUE(snprintf(command, sizeof command, CLIP_COMMAND, CLIP_CUT_MS) >= 0);
     TEST_ASSERT_TRUE(app_render_lab.console->handle(command));
+    raster_split_forget(&render_context_main()->split);
     assert_skin_changes(f);
     heap_report(SKIN_PERF_PHASE_PLAYING);
     const int clusters = scene_entity_mesh(f->scene, f->subject)->cluster_count;

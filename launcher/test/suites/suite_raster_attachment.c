@@ -480,8 +480,78 @@ test_meshlet_writer_accepts_the_last_uint16_id(void) {
     TEST_ASSERT_EQUAL_UINT32((uint32_t)UINT16_MAX + 1, state.next);
 }
 
+static void
+test_split_feedback_converges_clamps_and_forgets(void) {
+    int share = RASTER_SPLIT_EVEN;
+    const int balanced = RASTER_SPLIT_PERMILLE * 3 / 4;
+    for (int i = 0; i < 12; i++) {
+        const int next = raster_split_update(share, share, 3 * (RASTER_SPLIT_PERMILLE - share));
+        TEST_ASSERT_TRUE(next >= share && next <= balanced);
+        share = next;
+    }
+    TEST_ASSERT_INT_WITHIN(2, balanced, share);
+    TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_MIN, raster_split_update(RASTER_SPLIT_MIN, 1000000, 1));
+    TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_MAX, raster_split_update(RASTER_SPLIT_MAX, 1, 1000000));
+    TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_EVEN, raster_split_update(0, 1, 1));
+    TEST_ASSERT_EQUAL_INT(share, raster_split_update(share, 0, 1));
+    TEST_ASSERT_EQUAL_INT(share, raster_split_update(share, 1, -1));
+    raster_split_t split;
+    for (int i = 0; i < RASTER_SPLIT_INSTANCES; i++) {
+        split.top_permille[i] = RASTER_SPLIT_MIN;
+    }
+    raster_split_forget(&split);
+    for (int i = 0; i < RASTER_SPLIT_INSTANCES; i++) {
+        TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_EVEN, split.top_permille[i]);
+    }
+}
+
+typedef struct {
+    int top, even;
+} split_rows_t;
+
+static void
+split_clear(const raster_attachment_t* self, const raster_t* raster, void* pixels, size_t count) {
+    const r3d_pipeline_buffers_t buffers = r3d_pipeline_carve(raster);
+    if (pixels == gfx_render_target_row(&buffers.picture, GFX_ATTACHMENT_FURTHER, 0)) {
+        split_rows_t* rows = self->state;
+        rows->top = (int)count / raster->width;
+        rows->even = r3d_pipeline_draw_split(raster->instances[0].mesh, buffers.culled + 1, buffers.rows,
+                                             buffers.culled[0], raster->height, RASTER_SPLIT_EVEN);
+    }
+}
+
+static void
+test_split_feedback_preserves_pixels_and_null_uses_even_rows(void) {
+    split_rows_t rows = {0};
+    const raster_attachment_t attachment = {.bytes_per_pixel = 1, .clear = split_clear, .state = &rows};
+    const raster_attachment_t* attached[] = {&attachment};
+    raster_rig_t* r = rig_open(attached, 1);
+    draw(r);
+    TEST_ASSERT_EQUAL_INT(rows.even, rows.top);
+    uint16_t* expected = malloc(sizeof(*expected) * W * H * 2);
+    TEST_ASSERT_NOT_NULL(expected);
+    memcpy(expected, raster_color(&r->raster), sizeof(*expected) * W * H);
+    memcpy(expected + W * H, raster_depth(&r->raster), sizeof(*expected) * W * H);
+    raster_split_t split = {0};
+    r->raster.split = &split;
+    draw(r);
+    TEST_ASSERT_EQUAL_INT(rows.even, rows.top);
+    for (int share = RASTER_SPLIT_MIN; share <= RASTER_SPLIT_MAX; share += RASTER_SPLIT_MAX - RASTER_SPLIT_MIN) {
+        for (int i = 0; i < r->raster.instance_count; i++) {
+            split.top_permille[i] = (int16_t)share;
+        }
+        draw(r);
+        TEST_ASSERT_TRUE(share < RASTER_SPLIT_EVEN ? rows.top < rows.even : rows.top > rows.even);
+        TEST_ASSERT_EQUAL_MEMORY(expected, raster_color(&r->raster), sizeof(*expected) * W * H);
+        TEST_ASSERT_EQUAL_MEMORY(expected + W * H, raster_depth(&r->raster), sizeof(*expected) * W * H);
+    }
+    free(expected);
+}
+
 void
 run_raster_attachment_suite(void) {
+    RUN_TEST(test_split_feedback_converges_clamps_and_forgets);
+    RUN_TEST(test_split_feedback_preserves_pixels_and_null_uses_even_rows);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_printed_views_match_the_declared_names);
 #endif

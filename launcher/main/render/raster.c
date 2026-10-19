@@ -5,10 +5,31 @@
 #include <string.h>
 
 #include "core/job.h"
+#include "core/timing.h"
 #include "profile/frame_cost.h"
 #include "render/r3d_pipeline.h"
 #include "render/upscale.h"
 #include "services/tune.h"
+
+void
+raster_split_forget(raster_split_t* split) {
+    for (int i = 0; i < RASTER_SPLIT_INSTANCES; i++) {
+        split->top_permille[i] = RASTER_SPLIT_EVEN;
+    }
+}
+
+int
+raster_split_update(int top_permille, int64_t top_us, int64_t bottom_us) {
+    const int share = top_permille == 0 ? RASTER_SPLIT_EVEN : top_permille;
+    assert(share >= RASTER_SPLIT_MIN && share <= RASTER_SPLIT_MAX);
+    if (top_us <= 0 || bottom_us <= 0) {
+        return share;
+    }
+    const float rate_top = (float)top_us / (float)share;
+    const float rate_bottom = (float)bottom_us / (float)(RASTER_SPLIT_PERMILLE - share);
+    const float balanced = (float)RASTER_SPLIT_PERMILLE * rate_bottom / (rate_top + rate_bottom);
+    return mathi_clamp((int)(((float)share + balanced) / 2.0F), RASTER_SPLIT_MIN, RASTER_SPLIT_MAX);
+}
 
 TUNE_OWNER(render);
 /* The generated meshlet-size table measures both culling settings. */
@@ -28,6 +49,7 @@ typedef struct {
     int work_index;
     const r3d_pipeline_buffers_t* buffers;
     r3d_span_target_t* target;
+    int32_t* elapsed_us;
 } slice_t;
 
 typedef struct {
@@ -36,6 +58,7 @@ typedef struct {
     slice_t mine, other;
     r3d_pipeline_buffers_t buffers;
     r3d_span_target_t targets[2];
+    int32_t mine_us, other_us;
 } draw_work_t;
 
 _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
@@ -118,6 +141,7 @@ raster_depth(const raster_t* raster) {
 
 static void
 draw_slice(void* ctx) {
+    const int64_t began_us = timing_now_us();
     const slice_t* s = ctx;
     const raster_t* r = s->raster;
     const r3d_pipeline_buffers_t* b = s->buffers;
@@ -135,6 +159,8 @@ draw_slice(void* ctx) {
         }
     }
     r3d_pipeline_draw(s->mesh, s->lens, s->visible, s->visible_count, b->cs, b->rows, target, b->work[s->work_index]);
+    const int64_t elapsed_us = timing_now_us() - began_us;
+    *s->elapsed_us = elapsed_us > 0 && elapsed_us <= INT32_MAX ? (int32_t)elapsed_us : 0;
 }
 
 static void
@@ -270,7 +296,7 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     const int half = r3d_pipeline_transform_split(mesh, visible, count);
     slice_t* mine = &work->mine;
     slice_t* other = &work->other;
-    *mine = (slice_t){raster, mesh, lens, visible, count, 0, half, clear, NULL, 0, NULL, 0, &work->buffers, NULL};
+    *mine = (slice_t){raster, mesh, lens, visible, count, 0, half, clear, NULL, 0, NULL, 0, &work->buffers, NULL, NULL};
     *other = *mine;
     other->first = half;
     other->count = count - half;
@@ -278,7 +304,12 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     FRAME_COST_END(transformed_from, "r3d.transform");
 
     FRAME_COST_BEGIN(drawn_from);
-    const int mid = r3d_pipeline_draw_split(mesh, visible, work->buffers.rows, count, raster->height);
+    int16_t* retained =
+        raster->split != NULL && index < RASTER_SPLIT_INSTANCES ? &raster->split->top_permille[index] : NULL;
+    const int share = retained == NULL || *retained == 0 ? RASTER_SPLIT_EVEN : *retained;
+    const int mid = r3d_pipeline_draw_split(mesh, visible, work->buffers.rows, count, raster->height, share);
+    mine->elapsed_us = &work->mine_us;
+    other->elapsed_us = &work->other_us;
     mine->writers = other->writers = work->writers;
     mine->writer_count = other->writer_count = writer_count;
     mine->work_index = 1;
@@ -290,6 +321,9 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     other->first = 0;
     other->count = mid;
     job_run_split(draw_slice, mine, other, sizeof *mine);
+    if (retained != NULL && work->other_us > 0 && work->mine_us > 0) {
+        *retained = (int16_t)raster_split_update(share, work->other_us, work->mine_us);
+    }
     FRAME_COST_END(drawn_from, "r3d.draw");
 }
 
@@ -332,9 +366,9 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     if (resolves) {
         FRAME_COST_BEGIN(resolved_from);
         const int mid = raster->height / 2;
-        work->mine =
-            (slice_t){raster, NULL, NULL, NULL, 0, mid, raster->height - mid, false, NULL, 0, NULL, 0, NULL, NULL};
-        work->other = (slice_t){raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0, NULL, 0, NULL, NULL};
+        work->mine = (slice_t){raster, NULL, NULL, NULL, 0,    mid, raster->height - mid, false, NULL,
+                               0,      NULL, 0,    NULL, NULL, NULL};
+        work->other = (slice_t){raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0, NULL, 0, NULL, NULL, NULL};
         job_run_split(resolve_slice, &work->mine, &work->other, sizeof work->mine);
         FRAME_COST_END(resolved_from, "r3d.resolve");
     }
@@ -424,8 +458,8 @@ raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
         assert(initialized);
     }
     const int mid = height / 2;
-    slice_t mine = {raster, NULL, NULL, NULL, 0, mid, height - mid, false, NULL, 0, destination, 0, NULL, NULL};
-    const slice_t other = {raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0, destination, 0, NULL, NULL};
+    slice_t mine = {raster, NULL, NULL, NULL, 0, mid, height - mid, false, NULL, 0, destination, 0, NULL, NULL, NULL};
+    const slice_t other = {raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0, destination, 0, NULL, NULL, NULL};
     job_run_split(upscale_slice, &mine, &other, sizeof mine);
     FRAME_COST_END(upscaled_from, "r3d.upscale");
 }

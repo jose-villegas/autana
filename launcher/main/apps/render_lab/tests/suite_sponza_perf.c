@@ -60,13 +60,16 @@ typedef struct {
     void* scratch;
     gfx_color_t* panel;
     raster_t raster;
+    raster_split_t split;
 } bench_t;
 
 static void
 bench_open(bench_t* b, const r3d_instance_t* instance, const raster_attachment_t* const* attachments) {
     b->panel = memory_alloc(sizeof(gfx_color_t) * PANEL_PIXELS, MEMORY_PSRAM);
     const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
+    raster_split_forget(&b->split);
     b->raster = (raster_t){
+        .split = &b->split,
         .instances = instance,
         .instance_count = 1,
         .width = size.width,
@@ -323,6 +326,7 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
                                     (vec3f_t){(t_ms / SPONZA_POSE_EVERY_MS) % 2 == 0 ? 0.0F : 0.01F, 0.0F, 0.0F});
             *model = transformf_compute_matrix(moving);
         }
+        raster_split_forget(&b->split);
         const int64_t start = timing_now_us();
         const raster_stats_t stats = raster_draw(&b->raster, &view);
         const resolution_step_t composed = raster_compose_size(&b->raster);

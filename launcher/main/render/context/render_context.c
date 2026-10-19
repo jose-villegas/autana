@@ -74,6 +74,7 @@ render_context_release(render_context_t* c) {
         .scale_percent = RENDER_CONTEXT_DEFAULT_SCALE_PERCENT,
         .frame = {.step = -1},
     };
+    raster_split_forget(&c->split);
 }
 
 void
@@ -169,6 +170,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     c->frame.predicted_us = 0;
     const int step = current_step(c);
     raster_t* r = &c->raster;
+    r->split = &c->split;
     r->instances = instances;
     r->instance_count = count;
     r->width = step < 0 ? view->viewport.width * c->scale_percent / 100 : c->ladder.steps[step].width;
