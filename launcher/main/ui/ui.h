@@ -37,8 +37,7 @@
 #include "draw/draw_font.h"
 #include "draw/icon.h"
 #include "input/input.h"
-#include "microui.h"
-#include "ui/controls/ui_style.h"
+#include "math/geometry/recti.h"
 #include "ui/layout/ui_transform.h"
 
 /* Shared metrics, so the shell and any app UI look like one product. */
@@ -48,6 +47,8 @@
 /* Space above and below a line of text in its row: ui_row(ui_text_height() + UI_TEXT_PAD). */
 #define UI_TEXT_PAD        4
 #define UI_MARGIN          16
+/* A window's inset from its edge to its first row. */
+#define UI_PADDING         12
 
 /* Tap targets, in the smaller dimension. The panel is ~322 px per inch
  * (368x448 on a 1.8" diagonal), so a phone's 44 is only 3.5 mm here: 56 is
@@ -71,6 +72,27 @@
 /* Pass as ui_end()'s background to draw without clearing first, for a UI laid
  * over an app's own output rather than replacing it. */
 #define UI_NO_BACKGROUND   0xFFFFFFFFu
+
+/* How button frames are drawn for the rest of this UI frame.
+ *
+ * Buttons only. Checkboxes, sliders and text boxes frame themselves from
+ * MU_COLOR_BASE and are left alone; a 3px bezel around a 64px checkbox reads
+ * as a mistake, not as a style. */
+typedef enum {
+    /* microui's own: a flat fill plus a one-pixel MU_COLOR_BORDER box. */
+    UI_BUTTON_FLAT = 0,
+
+    /* Lit from the top left, and inverted while a finger is on it, so a
+     * press physically pushes the button in. */
+    UI_BUTTON_BEZEL,
+} ui_button_style_t;
+
+/* How text is drawn: one pass, or a halo behind the ink. */
+typedef enum {
+    UI_TEXT_PLAIN = 0, /* one pass, exactly as today */
+    UI_TEXT_OUTLINED,  /* a halo at all eight neighbouring offsets */
+    UI_TEXT_SHADOWED,  /* a single offset halo, down-right */
+} ui_text_style_t;
 
 void ui_init(void);
 
@@ -201,12 +223,9 @@ uint32_t ui_band_fallback_count(void);
  * does not otherwise depend on gfx.h. */
 void ui_queue_band_overlay_rect(int x, int y, int w, int h, uint32_t rgb);
 
-#include "math/geometry/recti.h"
-
 #define UI_FACE_SCOPE_DEPTH 4
 
-/* Colours are 0xRRGGBB. ui_mu_theme_t in ui_mu.h holds the same roles as
- * mu_Color values. */
+/* Colours are 0xRRGGBB. */
 typedef struct {
     uint32_t panel_face, panel_edge, button_face;
     uint32_t accent, accent_face, on_accent;
@@ -257,6 +276,9 @@ recti_t ui_tile_icon_rect(recti_t r);
 bool ui_toggle(recti_t r, const char* label, bool* on);
 bool ui_slider(recti_t r, const char* label, int* value, int lo, int hi);
 bool ui_dropdown(recti_t r, const char* label, int* index, const char* const* names, int count);
+/* How many frames a dropdown's list stays up after its pick, once the
+ * finger lifts. */
+#define UI_DROPDOWN_CLOSE_FRAMES 4
 bool ui_dropdown_icons(recti_t r, const char* label, int* index, const char* const* names,
                        const draw_image_t* const* icons, int count);
 

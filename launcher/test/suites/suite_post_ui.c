@@ -44,13 +44,13 @@ landscape(void) {
 }
 
 static bool
-contains(mu_Rect outer, mu_Rect inner) {
+contains(recti_t outer, recti_t inner) {
     return inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.w <= outer.x + outer.w
            && inner.y + inner.h <= outer.y + outer.h;
 }
 
 static bool
-overlaps(mu_Rect a, mu_Rect b) {
+overlaps(recti_t a, recti_t b) {
     return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
 
@@ -75,7 +75,7 @@ assert_every_line_inside_the_readable_area(post_layout_t l) {
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, lines, "a report with no room for a line is not a layout");
 
     for (int i = 0; i < lines; i++) {
-        const mu_Rect line = post_layout_line(&l, i);
+        const recti_t line = post_layout_line(&l, i);
         TEST_ASSERT_GREATER_THAN_INT(0, line.w);
         TEST_ASSERT_TRUE_MESSAGE(contains(l.safe, line), "a report line escaped the panel's readable inset");
         TEST_ASSERT_TRUE_MESSAGE(contains(l.body, line), "a report line escaped the column band");
@@ -96,7 +96,7 @@ assert_no_two_lines_overlap(post_layout_t l) {
     TEST_ASSERT_GREATER_THAN_INT(0, lines);
 
     for (int i = 0; i < lines; i++) {
-        const mu_Rect a = post_layout_line(&l, i);
+        const recti_t a = post_layout_line(&l, i);
         for (int j = i + 1; j < lines; j++) {
             TEST_ASSERT_FALSE_MESSAGE(overlaps(a, post_layout_line(&l, j)), "two report lines share pixels");
         }
@@ -133,7 +133,7 @@ test_the_bands_stack_without_touching_in_both_orientations(void) {
 }
 
 static void
-assert_centred_horizontally(mu_Rect band, mu_Rect text) {
+assert_centred_horizontally(recti_t band, recti_t text) {
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, text.w, "centred text was given no width to centre");
 
     const int left = text.x - band.x;
@@ -169,7 +169,7 @@ assert_widest_line_fits_a_column(post_layout_t l) {
                                              "a line holds fewer characters than the widest report line");
 
     for (int c = 0; c < l.columns; c++) {
-        const mu_Rect column = post_layout_column(&l, c);
+        const recti_t column = post_layout_column(&l, c);
         TEST_ASSERT_EQUAL_INT(l.column_w, column.w);
         TEST_ASSERT_TRUE_MESSAGE(contains(l.body, column), "a column escaped the band it divides");
     }
@@ -191,7 +191,7 @@ typedef struct {
 } placement_t;
 
 static int
-column_of(const post_layout_t* l, mu_Rect line) {
+column_of(const post_layout_t* l, recti_t line) {
     return (line.x - l->body.x) / (l->column_w + l->column_gap);
 }
 
@@ -206,7 +206,7 @@ place_report(post_layout_t l, int checks, int lines_each) {
     for (int check = 0; check < checks; check++) {
         post_layout_reserve(&l, &lines, lines_each);
         for (int i = 0; i < lines_each; i++) {
-            const mu_Rect line = post_layout_take_line(&l, &lines);
+            const recti_t line = post_layout_take_line(&l, &lines);
             if (line.w <= 0) {
                 return p;
             }
@@ -266,7 +266,7 @@ assert_a_check_ending_on_the_last_row_costs_nothing(post_layout_t l) {
     }
     post_layout_gap(&l, &lines);
 
-    const mu_Rect first = post_layout_take_line(&l, &lines);
+    const recti_t first = post_layout_take_line(&l, &lines);
     TEST_ASSERT_GREATER_THAN_INT(0, first.w);
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, column_of(&l, first), "the pass should have moved on to the second column");
     TEST_ASSERT_EQUAL_INT_MESSAGE(l.body.y, first.y,
@@ -319,8 +319,8 @@ test_the_pass_places_exactly_the_capacity_in_either_orientation(void) {
 /* One check placed the way the drawer places one: its height reserved, then
  * its lines taken. */
 typedef struct {
-    mu_Rect first;
-    mu_Rect last;
+    recti_t first;
+    recti_t last;
     int placed;
 } entry_placement_t;
 
@@ -330,7 +330,7 @@ place_entry(const post_layout_t* l, post_lines_t* lines, int height) {
 
     post_layout_reserve(l, lines, height);
     for (int i = 0; i < height; i++) {
-        const mu_Rect line = post_layout_take_line(l, lines);
+        const recti_t line = post_layout_take_line(l, lines);
         if (line.w <= 0) {
             break;
         }
@@ -577,7 +577,7 @@ typedef struct {
 /* One check's lines, taken the way the drawer takes them. `placed` short of
  * the height asked for means the columns ran out mid-check. */
 typedef struct {
-    mu_Rect first;
+    recti_t first;
     int placed;
 } taken_entry_t;
 
@@ -586,7 +586,7 @@ take_entry(const post_layout_t* l, post_lines_t* lines, int height) {
     taken_entry_t e = {{0, 0, 0, 0}, 0};
 
     for (int line = 0; line < height; line++) {
-        const mu_Rect row = post_layout_take_line(l, lines);
+        const recti_t row = post_layout_take_line(l, lines);
         if (row.w <= 0) {
             break;
         }
@@ -705,7 +705,7 @@ assert_every_placed_line_ends_inside_the_body(const post_layout_t* l, const post
         const int height = post_layout_entry_height(l, entries->detail(entries->ctx, i));
         post_layout_reserve(l, &lines, height);
         for (int line = 0; line < height; line++) {
-            const mu_Rect row = post_layout_take_line(l, &lines);
+            const recti_t row = post_layout_take_line(l, &lines);
             if (row.w <= 0) {
                 break;
             }

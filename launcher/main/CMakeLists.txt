@@ -8,6 +8,7 @@ set(app_srcs
     "audio/audio_in.c"
     "audio/audio_tone.c"
     "app/app_arena.c"
+    "app/app_console.c"
     "app/app_registry.c"
     "boot/boot_anim.c"
     "boot/boot_anim_motion.c"
@@ -287,6 +288,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/suites.c"
         "../test/timing.c"
         "../test/test_cleanup.c"
+        "../test/ui_probe.c"
         ${suite_srcs}
         ${app_suites}
     )

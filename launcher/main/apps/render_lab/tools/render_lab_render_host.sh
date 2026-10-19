@@ -21,6 +21,7 @@ scene_name=render_lab
 scene_ui=1
 scene_sources="
 main/app/app_arena.c
+main/app/app_console.c
 main/app/app_registry.c
 main/services/tune.c
 main/core/job.c

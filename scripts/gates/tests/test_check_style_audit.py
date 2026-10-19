@@ -263,6 +263,59 @@ class StyleAuditTest(unittest.TestCase):
         self.assertEqual(sorted((f.path, f.line) for f in findings),
                          [("launcher/main/boot/boot_anim.c", 1), ("launcher/main/selftest/post.c", 1)])
 
+    def test_an_app_or_the_editor_including_the_system_band_is_flagged_but_not_the_app_contract(self):
+        cases = (
+            ("launcher/main/apps/x/x.c", "shell/shell.h", 1),
+            ("launcher/main/apps/x/x.c", "console/console_verbs.h", 1),
+            ("launcher/main/apps/x/tests/suite_x.c", "selftest/post.h", 1),
+            ("editor/src/x.cpp", "shell/shell.h", 1),
+            ("launcher/main/apps/x/x.c", "app/app.h", 0),
+            ("launcher/main/apps/x/x.c", "ui/ui.h", 0),
+            ("editor/src/x.cpp", "ui/ui.h", 0),
+            ("launcher/main/shell/apps/x/x.c", "selftest/post.h", 0),
+        )
+        for source, target, expected in cases:
+            with self.subTest(source=source, target=target):
+                findings = self.audit("SYSTEM-BAND", {
+                    source: f'#include "{target}"\n',
+                    "launcher/main/" + target: "#pragma once\n",
+                })
+                self.assertEqual(len(findings), expected)
+
+    BACKEND = {"launcher/components/microui/include/microui.h": "#pragma once\n"}
+
+    def test_the_ui_backend_is_refused_outside_ui(self):
+        cases = (
+            ("launcher/main/apps/x/x.c", '#include "microui.h"\n', 1),
+            ("launcher/main/shell/x.c", '#include "ui/ui_internal.h"\n', 1),
+            ("launcher/main/shell/x.c", '#include "ui/deep.h"\n', 1),
+            ("editor/src/x.cpp", '#include "ui/ui_internal.h"\n', 1),
+            ("launcher/main/apps/x/tests/suite_x.c", '#include "probe.h"\n', 1),
+            ("launcher/main/apps/x/x.c", '#include "ui/ui.h"\n', 0),
+            ("launcher/main/ui/ui.c", '#include "ui/ui_internal.h"\n', 0),
+            ("launcher/test/suites/suite_x.c", '#include "ui/ui_internal.h"\n', 0),
+        )
+        for source, text, expected in cases:
+            with self.subTest(source=source, text=text):
+                findings = self.audit("UI-BACKEND", {
+                    **self.BACKEND,
+                    "launcher/main/ui/ui.h": "#pragma once\n",
+                    "launcher/main/ui/ui_internal.h": '#include "microui.h"\n',
+                    "launcher/main/ui/deep.h": '#include "ui/ui_internal.h"\n',
+                    "launcher/test/probe.h": '#include "ui/ui_internal.h"\n',
+                    source: text,
+                })
+                self.assertEqual(len(findings), expected)
+
+    def test_a_leaking_header_outside_ui_is_reported_once_at_its_own_include(self):
+        findings = self.audit("UI-BACKEND", {
+            **self.BACKEND,
+            "launcher/main/ui/ui_internal.h": '#include "microui.h"\n',
+            "launcher/main/apps/x/leak.h": '#include "ui/ui_internal.h"\n',
+            "launcher/main/apps/x/x.c": '#include "apps/x/leak.h"\n',
+        })
+        self.assertEqual([f.path for f in findings], ["launcher/main/apps/x/leak.h"])
+
     PACKAGE = "launcher/packages/math"
 
     def test_a_package_including_anything_outside_itself_is_flagged(self):

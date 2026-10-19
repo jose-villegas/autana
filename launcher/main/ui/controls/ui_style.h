@@ -7,20 +7,7 @@
 #include <stdint.h>
 
 #include "microui.h"
-
-/* How button frames are drawn for the rest of this UI frame.
- *
- * Buttons only. Checkboxes, sliders and text boxes frame themselves from
- * MU_COLOR_BASE and are left alone; a 3px bezel around a 64px checkbox reads
- * as a mistake, not as a style. */
-typedef enum {
-    /* microui's own: a flat fill plus a one-pixel MU_COLOR_BORDER box. */
-    UI_BUTTON_FLAT = 0,
-
-    /* Lit from the top left, and inverted while a finger is on it, so a
-     * press physically pushes the button in. */
-    UI_BUTTON_BEZEL,
-} ui_button_style_t;
+#include "ui/ui.h"
 
 /* 0xRRGGBB, opaque: UI_RGB() as an initializer, so a theme can be const
  * data, and ui_rgb() in an expression. */
@@ -128,12 +115,6 @@ ui_bezel_spans(mu_Rect r, mu_Color face, bool sunken, ui_span_t* out, int max) {
  * that should not require touching a call site. See suite_ui_style.c for the
  * geometry checks.
  */
-
-typedef enum {
-    UI_TEXT_PLAIN = 0, /* one pass, exactly as today */
-    UI_TEXT_OUTLINED,  /* a halo at all eight neighbouring offsets */
-    UI_TEXT_SHADOWED,  /* a single offset halo, down-right */
-} ui_text_style_t;
 
 /* One drawing pass of a styled string, in paint order. */
 typedef struct {

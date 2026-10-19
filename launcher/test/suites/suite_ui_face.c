@@ -15,7 +15,6 @@
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
-#include "ui/ui_mu.h"
 #include "ui_probe.h"
 #include "unity.h"
 
@@ -46,6 +45,18 @@ static int reports;
 #ifndef ESP_PLATFORM
 static bool scope_gfx;
 #endif
+
+/* The last built frame's text command drawing `s`, or NULL. */
+static const mu_TextCommand*
+text_command(const char* s) {
+    mu_Command* cmd = NULL;
+    while (mu_next_command(ui_context(), &cmd)) {
+        if (cmd->type == MU_COMMAND_TEXT && strcmp(cmd->text.str, s) == 0) {
+            return &cmd->text;
+        }
+    }
+    return NULL;
+}
 
 static void
 cleanup(void) {
@@ -293,7 +304,7 @@ test_verb_commands(void) {
 
 static void
 assert_ink(const char* label, uint32_t rgb) {
-    const mu_TextCommand* text = ui_probe_text_command(label);
+    const mu_TextCommand* text = text_command(label);
     TEST_ASSERT_NOT_NULL(text);
     const mu_Color color = ui_rgb(rgb);
     TEST_ASSERT_EQUAL_MEMORY(&color, &text->color, sizeof color);
@@ -870,7 +881,7 @@ test_text_height_follows_scale(void) {
     ui_text(BOX, "Text");
     ui_scale_end();
     end_face();
-    const mu_TextCommand* text = ui_probe_text_command("Text");
+    const mu_TextCommand* text = text_command("Text");
     TEST_ASSERT_NOT_NULL(text);
     TEST_ASSERT_EQUAL_INT(ui_context()->text_height(text->font), scoped_height);
     TEST_ASSERT_EQUAL_INT(draw_font_height(draw_font_ui(), THEME.text_scale), theme_height);
@@ -887,21 +898,21 @@ test_scale_scope(void) {
     ui_scale_end();
     ui_text(BOX, "Rest");
     end_face();
-    const mu_TextCommand* text = ui_probe_text_command("Text");
+    const mu_TextCommand* text = text_command("Text");
     TEST_ASSERT_NOT_NULL(text);
     const int height = ui_context()->text_height(text->font);
-    text = ui_probe_text_command("Label");
+    text = text_command("Label");
     TEST_ASSERT_NOT_NULL(text);
     TEST_ASSERT_EQUAL_INT(height, ui_context()->text_height(text->font));
     TEST_ASSERT_EQUAL_INT(draw_font_height(draw_font_ui(), SCOPE_SCALE), height);
-    text = ui_probe_text_command("Rest");
+    text = text_command("Rest");
     TEST_ASSERT_NOT_NULL(text);
     TEST_ASSERT_EQUAL_INT(draw_font_height(draw_font_ui(), THEME.text_scale), ui_context()->text_height(text->font));
 }
 
 static void
 assert_alpha(const char* label, unsigned char alpha) {
-    const mu_TextCommand* text = ui_probe_text_command(label);
+    const mu_TextCommand* text = text_command(label);
     TEST_ASSERT_NOT_NULL(text);
     TEST_ASSERT_EQUAL_UINT8(alpha, text->color.a);
 }
@@ -945,7 +956,7 @@ test_alpha_scales_ink_coverage(void) {
     ui_caption(BOX, "Clear");
     ui_alpha_end();
     end_face();
-    const mu_TextCommand* text = ui_probe_text_command("Clear");
+    const mu_TextCommand* text = text_command("Clear");
     TEST_ASSERT_NOT_NULL(text);
     TEST_ASSERT_EQUAL_UINT8(ui_theme_from_style(ui_context()->style).caption.a * FADE_ALPHA / UINT8_MAX, text->color.a);
 }
@@ -966,7 +977,7 @@ scope_fixture(void) {
 
 static void
 assert_scale(const char* label, int scale) {
-    const mu_TextCommand* text = ui_probe_text_command(label);
+    const mu_TextCommand* text = text_command(label);
     TEST_ASSERT_NOT_NULL(text);
     TEST_ASSERT_EQUAL_INT(draw_font_height(draw_font_ui(), scale), ui_context()->text_height(text->font));
 }
@@ -1206,7 +1217,7 @@ test_frame_state_reset(void) {
             end_face();
         }
         TEST_ASSERT_EQUAL_UINT(1, hits);
-        const mu_TextCommand* text = ui_probe_text_command("Reset");
+        const mu_TextCommand* text = text_command("Reset");
         TEST_ASSERT_NOT_NULL(text);
         TEST_ASSERT_EQUAL_MEMORY(&base.text, &text->color, sizeof base.text);
         assert_scale("Reset", base.text_scale);
@@ -1387,7 +1398,7 @@ test_balanced_nested_scopes(void) {
     ui_disabled_end();
     (void)ui_end(UI_NO_BACKGROUND);
     TEST_ASSERT_EQUAL_INT(0, reports);
-    TEST_ASSERT_NOT_NULL(ui_probe_text_command("Balanced"));
+    TEST_ASSERT_NOT_NULL(text_command("Balanced"));
 }
 
 static void
@@ -1456,7 +1467,7 @@ test_toggle_theme_scopes(void) {
     assert_ink("Custom", THEME.text);
     assert_ink("Ink", FACE_RGB);
     assert_ink("Scoped", THEME.muted);
-    const mu_TextCommand* text = ui_probe_text_command("Scoped");
+    const mu_TextCommand* text = text_command("Scoped");
     TEST_ASSERT_NOT_NULL(text);
     TEST_ASSERT_EQUAL_INT(draw_font_height(draw_font_ui(), SCOPE_SCALE), ui_context()->text_height(text->font));
     TEST_ASSERT_TRUE(has_face(THEME.button_face));
@@ -1495,8 +1506,8 @@ test_ui_screen_twice_closes_first(void) {
     end_face();
     TEST_ASSERT_EQUAL_INT(2, ui_context()->root_list.idx);
     TEST_ASSERT_EQUAL_INT(0, ui_context()->container_stack.idx);
-    TEST_ASSERT_NOT_NULL(ui_probe_text_command("First"));
-    TEST_ASSERT_NOT_NULL(ui_probe_text_command("Second"));
+    TEST_ASSERT_NOT_NULL(text_command("First"));
+    TEST_ASSERT_NOT_NULL(text_command("Second"));
 }
 
 void

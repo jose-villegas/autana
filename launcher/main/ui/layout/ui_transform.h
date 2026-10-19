@@ -1,6 +1,6 @@
 /*
- * ui_transform: viewport quarter turns, renderer axis checks, and microui,
- * text and icon adapters over math/linear/affine2x.h.
+ * ui_transform: viewport quarter turns, renderer axis checks, and rect, text
+ * and icon adapters over math/linear/affine2x.h.
  */
 #pragma once
 
@@ -10,17 +10,6 @@
 #include "draw/draw_font.h"
 #include "draw/icon.h"
 #include "math/linear/affine2x.h"
-#include "microui.h"
-
-static inline recti_t
-ui_recti_from_mu(mu_Rect r) {
-    return (recti_t){r.x, r.y, r.w, r.h};
-}
-
-static inline mu_Rect
-ui_mu_from_recti(recti_t r) {
-    return (mu_Rect){r.x, r.y, r.w, r.h};
-}
 
 /* Rotation by `turn` quarter turns (mod 4, negative allowed), about a
  * viewport `viewport_w` x `viewport_h` wide: the PHYSICAL panel,
@@ -65,9 +54,9 @@ ui_transform_unmap_pixel(affine2x_t t, vec2i_t p) {
     return affine2x_invert(t, &inverse) ? affine2x_map_pixel(&inverse, p) : p;
 }
 
-static inline mu_Rect
-ui_transform_rect(affine2x_t t, mu_Rect r) {
-    return ui_mu_from_recti(affine2x_map_recti(&t, ui_recti_from_mu(r)));
+static inline recti_t
+ui_transform_rect(affine2x_t t, recti_t r) {
+    return affine2x_map_recti(&t, r);
 }
 
 /* icon_walk_blocks()'s callback context, adapted to transform each run
@@ -85,15 +74,13 @@ ui_transform_icon_emit(void* ctx, recti_t rect) {
     const ui_transform_icon_ctx_t* ic = ctx;
     rect.x += ic->box_x;
     rect.y += ic->box_y;
-    const mu_Rect local = ui_mu_from_recti(rect);
-    const mu_Rect dst = ui_transform_rect(ic->t, local);
-    ic->emit(ic->ctx, ui_recti_from_mu(dst));
+    ic->emit(ic->ctx, ui_transform_rect(ic->t, rect));
 }
 
 /* Every icon run must turn with its logical box; turning only the box
  * places the icon correctly but leaves the glyph upright. */
 static inline void
-ui_transform_icon_blocks(affine2x_t t, const draw_image_t* icon, mu_Rect box, icon_emit_fn emit, void* ctx) {
+ui_transform_icon_blocks(affine2x_t t, const draw_image_t* icon, recti_t box, icon_emit_fn emit, void* ctx) {
     ui_transform_icon_ctx_t ic = {.t = t, .box_x = box.x, .box_y = box.y, .emit = emit, .ctx = ctx};
     icon_walk_blocks(icon, box.w, box.h, ui_transform_icon_emit, &ic);
 }

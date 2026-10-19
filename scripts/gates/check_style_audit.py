@@ -320,14 +320,12 @@ def _fix_include_layer(root, path, text):
 # as "driver/temperature_sensor.h" never resolves to a layer, and a package
 # (launcher/packages/) sits under every row: PACKAGE-INCLUDE keeps it there.
 
-LAYER_ROWS = (
-    # System
-    "apps", "shell", "boot selftest console", "app",
-    # Engine
-    "ui scene", "render", "draw anim sound", "asset",
-    # Platform
-    "input audio", "display", "gfx", "services", "profile", "core", "board", "build",
+LAYER_BANDS = (
+    ("system", ("apps", "shell", "boot selftest console", "app")),
+    ("engine", ("ui scene", "render", "draw anim sound", "asset")),
+    ("platform", ("input audio", "display", "gfx", "services", "profile", "core", "board", "build")),
 )
+LAYER_ROWS = tuple(row for _band, rows in LAYER_BANDS for row in rows)
 LAYER_TIER = {layer: tier for tier, row in enumerate(LAYER_ROWS) for layer in row.split()}
 LAYER_DIRS = tuple(layer for layer in LAYER_TIER if layer != "apps")
 
@@ -397,6 +395,129 @@ def rule_include_direction(root, path, text):
         yield number, (f'"{inc}" reaches from {source_layer}/ (tier {source_tier}) into {target_layer}/ '
                        f"(tier {LAYER_TIER[target_layer]}) - move the shared piece down a tier, or add an "
                        "INCLUDE_DIRECTION_EXCEPTIONS entry citing the doc section that draws it")
+
+
+# RULE: an app (a folder of the top row, launcher/main/apps/) and the
+# editor use the engine, the platform and the app contract, and never the
+# rest of the system band: docs/plans/Engine-Layer-Design-Sketch.md's tier
+# rule. The app contract is the system band's lowest row, so the rule names
+# no folder. A shell app (shell/apps/) is part of the shell and may reach
+# further. Both include rules below read C and C++ sources alike.
+
+INCLUDE_RULE_SUFFIXES = (".c", ".h", ".cpp")
+
+SYSTEM_ROWS = dict(LAYER_BANDS)["system"]
+APP_ROW = SYSTEM_ROWS[0].split()
+SYSTEM_BAND_REFUSED = {layer for row in SYSTEM_ROWS[1:-1] for layer in row.split()}
+
+
+@text_rule("SYSTEM-BAND")
+def rule_system_band(root, path, text):
+    root_path = pathlib.Path(root).resolve()
+    main_dir = root_path / "launcher/main"
+    resolved_path = path.resolve()
+    if path.suffix not in INCLUDE_RULE_SUFFIXES or not resolved_path.is_relative_to(root_path):
+        return
+    parts = resolved_path.relative_to(main_dir).parts if resolved_path.is_relative_to(main_dir) else ()
+    if not (parts[:1] and parts[0] in APP_ROW) and not resolved_path.is_relative_to(root_path / "editor"):
+        return
+    for number, line in enumerate(text.splitlines(), 1):
+        m = INCLUDE.match(line)
+        if not m:
+            continue
+        resolved = resolve_include(root, path, m.group(1))
+        if resolved is None:
+            continue
+        try:
+            top = resolved.relative_to(main_dir).parts[0]
+        except ValueError:
+            continue
+        if top in SYSTEM_BAND_REFUSED:
+            yield number, (f'"{m.group(1)}" reaches into {top}/, the system band - an app or the editor uses '
+                           "the engine, the platform and the app contract (app/)")
+
+
+# RULE: the UI backend stays behind ui/'s face. A header is the backend's
+# when it is one of the vendored backend component's own headers, or
+# includes one, directly or through another header. Outside launcher/main/ui/
+# no firmware source (apps, shell, their tests and tools) and no editor
+# source includes the backend or a header of ui/ or of the harness that is
+# the backend's, so swapping the backend touches ui/ only. A header inside
+# the rule's reach that leaks is reported at its own include, not again at
+# every file including it.
+# launcher/test/ and launcher/tools/ are the engine's own harness and test
+# the seam itself, so they are outside the rule.
+
+UI_BACKEND_COMPONENT = "launcher/components/microui"
+UI_FACE_SCOPES = ("launcher/main", "editor")
+# Where an app's suite finds the harness's own headers (run_tests.sh's -I).
+UI_HARNESS_INCLUDE = "launcher/test"
+
+
+def _resolve_with_harness(root, path, inc):
+    resolved = resolve_include(root, path, inc)
+    harness = pathlib.Path(root) / UI_HARNESS_INCLUDE / inc
+    return resolved if resolved is not None or not harness.is_file() else harness
+
+
+def _backend_headers(root):
+    return {p.name for p in (pathlib.Path(root) / UI_BACKEND_COMPONENT).rglob("*.h")}
+
+
+def _reaches_backend(root, header, backend, seen):
+    """True if `header` (a resolved path) includes a backend header, at any depth."""
+    key = header.resolve()
+    if key in seen:
+        return seen[key]
+    seen[key] = False
+    try:
+        text = key.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    for line in text.splitlines():
+        m = ANY_INCLUDE.match(line)
+        if not m:
+            continue
+        inc = m.group(1)
+        resolved = _resolve_with_harness(root, key, inc)
+        if (resolved is None and pathlib.PurePosixPath(inc).name in backend) or (
+                resolved is not None and _reaches_backend(root, resolved, backend, seen)):
+            seen[key] = True
+            return True
+    return False
+
+
+def _in_face_scope(root_path, path):
+    rel = path.resolve().relative_to(root_path).as_posix()
+    return any(rel.startswith(scope + "/") for scope in UI_FACE_SCOPES) and not rel.startswith("launcher/main/ui/")
+
+
+def _ui_backend_violations(root, path, text):
+    root_path = pathlib.Path(root).resolve()
+    if not path.resolve().is_relative_to(root_path) or not _in_face_scope(root_path, path):
+        return
+    backend = _backend_headers(root)
+    ui_dir = root_path / "launcher/main/ui"
+    seen = {}
+    for number, line in enumerate(text.splitlines(), 1):
+        m = ANY_INCLUDE.match(line)
+        if not m:
+            continue
+        inc = m.group(1)
+        resolved = _resolve_with_harness(root, path, inc)
+        if resolved is None:
+            if pathlib.PurePosixPath(inc).name in backend:
+                yield number, f'"{inc}" is the UI backend - use ui/ui.h, the face'
+        elif (resolved.is_relative_to(ui_dir) or not _in_face_scope(root_path, resolved)) and _reaches_backend(
+                root, resolved, backend, seen):
+            yield number, (f'"{inc}" exposes the UI backend ({relpath(root, resolved)} reaches '
+                           f"{UI_BACKEND_COMPONENT}) - use ui/ui.h, the face")
+
+
+@text_rule("UI-BACKEND")
+def rule_ui_backend(root, path, text):
+    if path.suffix in INCLUDE_RULE_SUFFIXES:
+        yield from _ui_backend_violations(root, path, text)
 
 
 # RULE: a package (launcher/packages/<name>/) sits under every layer, so it
