@@ -428,32 +428,36 @@ scene_camera_lens(const scene_t* scene, const char* camera) {
     return index < 0 ? NULL : &scene->cameras[index].lens;
 }
 
-bool
-scene_camera_set_present(scene_t* scene, scene_entity_t camera, camera_present_t present) {
-    if (scene == NULL || present < CAMERA_PRESENT_NEAREST || present > CAMERA_PRESENT_DOUBLE) {
-        return false;
-    }
-    for (int i = 0; i < scene->asset.camera_count; i++) {
-        if (scene->cameras[i].entity == camera) {
-            scene->cameras[i].lens.present = present;
-            return true;
+static camera_t*
+camera_by_entity(scene_t* scene, scene_entity_t entity) {
+    if (scene != NULL) {
+        for (int i = 0; i < scene->asset.camera_count; i++) {
+            if (scene->cameras[i].entity == entity) {
+                return &scene->cameras[i].lens;
+            }
         }
     }
-    return false;
+    return NULL;
+}
+
+bool
+scene_camera_set_present(scene_t* scene, scene_entity_t camera, camera_present_t present) {
+    camera_t* found = camera_by_entity(scene, camera);
+    if (found == NULL || present < CAMERA_PRESENT_NEAREST || present > CAMERA_PRESENT_DOUBLE) {
+        return false;
+    }
+    found->present = present;
+    return true;
 }
 
 bool
 scene_camera_set_small_fill(scene_t* scene, scene_entity_t camera, small_fill_t fill) {
-    if (scene == NULL || fill.style < SMALL_FILL_FLAT || fill.style > SMALL_FILL_DITHER) {
+    camera_t* found = camera_by_entity(scene, camera);
+    if (found == NULL || fill.style < SMALL_FILL_FLAT || fill.style >= SMALL_FILL_STYLE_COUNT) {
         return false;
     }
-    for (int i = 0; i < scene->asset.camera_count; i++) {
-        if (scene->cameras[i].entity == camera) {
-            scene->cameras[i].lens.small_fill = fill;
-            return true;
-        }
-    }
-    return false;
+    found->small_fill = fill;
+    return true;
 }
 
 const scene_transform_t*

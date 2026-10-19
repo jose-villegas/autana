@@ -36,6 +36,7 @@ typedef struct {
     slice_t mine, other;
     r3d_pipeline_buffers_t buffers;
     r3d_span_target_t targets[2];
+    r3d_span_small_fill_t small_fill;
 } draw_work_t;
 
 _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
@@ -123,7 +124,7 @@ draw_slice(void* ctx) {
     const r3d_pipeline_buffers_t* b = s->buffers;
     r3d_span_target_t* target = s->target;
     *target = (r3d_span_target_t){gfx_render_target_window(&b->picture, s->first, s->first + s->count), s->writers,
-                                  s->writer_count};
+                                  s->writer_count, &((const draw_work_t*)b->draw)->small_fill};
 
     if (s->clear) {
         const size_t pixels = (size_t)s->count * (size_t)r->width;
@@ -307,7 +308,6 @@ static inline __attribute__((always_inline)) void
 draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t* stats) {
     assert(raster->instance_count > 0);
     assert_view_size(raster, view);
-    r3d_span_begin(view->small_fill);
     bool resolves = false;
     for (int i = 0; i < raster->attachment_count; i++) {
         const raster_attachment_t* a = raster->attachments[i];
@@ -317,6 +317,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
         resolves = resolves || a->resolve != NULL;
     }
     draw_work_t* work = scratch_draw(raster);
+    r3d_span_small_fill_resolve(&work->small_fill, view->small_fill);
     uint16_t* culled = work->buffers.culled;
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
@@ -361,10 +362,10 @@ raster_stats_t
 raster_census(const raster_t* raster, const render_view_t* view) {
     assert(raster->instance_count > 0);
     assert_view_size(raster, view);
-    r3d_span_begin(view->small_fill);
     raster_stats_t stats = {0, 0};
     FRAME_COST_BEGIN(counted_from);
     draw_work_t* work = scratch_draw(raster);
+    r3d_span_small_fill_resolve(&work->small_fill, view->small_fill);
     uint16_t* culled = work->buffers.culled;
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];

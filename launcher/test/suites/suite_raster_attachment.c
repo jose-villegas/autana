@@ -221,7 +221,7 @@ test_cluster_values_and_constant_writers(void) {
         TEST_ASSERT_TRUE(both[k]->writer(both[k], 0, &writers[k]));
         writers[k].attachment = GFX_ATTACHMENT_FURTHER + k;
     }
-    const r3d_span_target_t target = {buffers.picture, writers, 2};
+    const r3d_span_target_t target = {buffers.picture, writers, 2, &r3d_span_small_fill_default};
     raster_lens(&r->raster, &r->view, 1, &r->lens);
     const uint16_t visible = 1;
     r3d_pipeline_transform(&r->quad[0].mesh, &r->lens, &visible, 1, buffers.cs, buffers.rows);
@@ -479,8 +479,59 @@ test_meshlet_writer_accepts_the_last_uint16_id(void) {
     TEST_ASSERT_EQUAL_UINT32((uint32_t)UINT16_MAX + 1, state.next);
 }
 
+static void
+test_view_small_fill_styles_and_frame_isolation(void) {
+    static const int16_t corners[4][3] = {{-1, -1, 0}, {1, -1, 0}, {1, 1, 0}, {-1, 1, 0}};
+    static const int16_t (*const positions[])[3] = {corners};
+    static const uint8_t colors[4][3] = {{32, 80, 96}, {128, 112, 48}, {224, 160, 144}, {48, 96, 80}};
+    static const fixture_camera_t close = {{0, 0, -8}, {0, 0, 1}, 1, 1};
+    raster_rig_t* r = raster_rig_open(positions, 1, 0, W, H, W * H * sizeof(uint16_t) * SMALL_FILL_STYLE_COUNT);
+    r->quad[0].mesh.colors = colors;
+    r->view = render_view_fixture(&close, &r->raster, 0);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_DEFAULT, r->view.small_fill.ceiling);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_GATE_DEFAULT, r->view.small_fill.gate);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_STYLE_DEFAULT, r->view.small_fill.style);
+    uint16_t* frames = (uint16_t*)r->own;
+    const size_t bytes = W * H * sizeof(*frames);
+    for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
+        r->view.small_fill = (small_fill_t){SMALL_FILL_CEILING_DEFAULT, 0, style};
+        raster_draw(&r->raster, &r->view);
+        memcpy(frames + style * W * H, raster_color(&r->raster), bytes);
+        for (int previous = SMALL_FILL_FLAT; previous < (int)style; previous++) {
+            TEST_ASSERT_NOT_EQUAL(0, memcmp(frames + previous * W * H, frames + style * W * H, bytes));
+        }
+    }
+    static const uint8_t ceilings[] = {0, R3D_SPAN_SMALL_MAX_SIDE, R3D_SPAN_SMALL_MAX_SIDE + 1, UINT8_MAX};
+    static const uint8_t gates[] = {0, SMALL_FILL_GATE_DEFAULT, UINT8_MAX};
+    for (size_t ceiling = 0; ceiling < sizeof ceilings / sizeof ceilings[0]; ceiling++) {
+        for (size_t gate = 0; gate < sizeof gates / sizeof gates[0]; gate++) {
+            for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
+                render_view_t a = r->view;
+                a.small_fill = (small_fill_t){ceilings[ceiling], gates[gate], style};
+                raster_draw(&r->raster, &a);
+                memcpy(frames, raster_color(&r->raster), bytes);
+                for (int axis = 0; axis < 2; axis++) {
+                    render_view_t b = a;
+                    if (axis == 0) {
+                        b.small_fill.gate = gate == 0 ? UINT8_MAX : 0;
+                    } else {
+                        b.small_fill.style = (style + 1) % SMALL_FILL_STYLE_COUNT;
+                    }
+                    raster_draw(&r->raster, &b);
+                    raster_census(&r->raster, &a);
+                    raster_draw_culled(&r->raster, &a);
+                    TEST_ASSERT_EQUAL_MEMORY(frames, raster_color(&r->raster), bytes);
+                    raster_draw(&r->raster, &a);
+                    TEST_ASSERT_EQUAL_MEMORY(frames, raster_color(&r->raster), bytes);
+                }
+            }
+        }
+    }
+}
+
 void
 run_raster_attachment_suite(void) {
+    RUN_TEST(test_view_small_fill_styles_and_frame_isolation);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_printed_views_match_the_declared_names);
 #endif

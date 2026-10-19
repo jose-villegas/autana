@@ -518,15 +518,24 @@ colours_within_spread(uint16_t a, uint16_t b, uint16_t c, int limit) {
                                     limit);
 }
 
-static small_fill_t small_fill = {SMALL_MAX_SIDE, 0, SMALL_FILL_FLAT};
-static uint8_t small_spread[UINT8_MAX + 1];
+#define DEFAULT_SPREAD(side)                                                                                           \
+    [side] = SMALL_SPREAD_OFF                                                                                          \
+             + (((SMALL_FILL_GATE_DEFAULT - SMALL_SPREAD_OFF) * ((side) - SMALL_MAX_SIDE - 1))                         \
+                / (SMALL_FILL_CEILING_DEFAULT - SMALL_MAX_SIDE - 1))
+const r3d_span_small_fill_t r3d_span_small_fill_default = {
+    .ceiling = SMALL_FILL_CEILING_DEFAULT,
+    .style = SMALL_FILL_STYLE_DEFAULT,
+    .spread = {DEFAULT_SPREAD(SMALL_MAX_SIDE + 1), DEFAULT_SPREAD(SMALL_MAX_SIDE + 2),
+               DEFAULT_SPREAD(SMALL_MAX_SIDE + 3), DEFAULT_SPREAD(SMALL_MAX_SIDE + 4),
+               DEFAULT_SPREAD(SMALL_MAX_SIDE + 5), DEFAULT_SPREAD(SMALL_MAX_SIDE + 6),
+               DEFAULT_SPREAD(SMALL_MAX_SIDE + 7), DEFAULT_SPREAD(SMALL_MAX_SIDE + 8)},
+};
+_Static_assert(SMALL_FILL_CEILING_DEFAULT == SMALL_MAX_SIDE + 8, "default spread table covers the ceiling");
 
 void
-r3d_span_begin(small_fill_t fill) {
-    if (fill.ceiling == small_fill.ceiling && fill.gate == small_fill.gate && fill.style == small_fill.style) {
-        return;
-    }
-    small_fill = fill;
+r3d_span_small_fill_resolve(r3d_span_small_fill_t* resolved, small_fill_t fill) {
+    resolved->ceiling = fill.ceiling;
+    resolved->style = fill.style;
     const int intervals = fill.ceiling - (SMALL_MAX_SIDE + 1);
     for (int side = SMALL_MAX_SIDE + 1; side <= fill.ceiling; side++) {
         const int offset = side - (SMALL_MAX_SIDE + 1);
@@ -534,27 +543,27 @@ r3d_span_begin(small_fill_t fill) {
                            : intervals == 0
                                ? fill.gate
                                : SMALL_SPREAD_OFF + ((((int)fill.gate - SMALL_SPREAD_OFF) * offset) / intervals);
-        small_spread[side] = (uint8_t)spread;
+        resolved->spread[side] = (uint8_t)spread;
     }
 }
 
 /* Negative selects plane shading; otherwise the result names a style kernel. */
 static inline __attribute__((always_inline)) int
 select_small(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, recti_t centres,
-             bool solid, uint16_t* colors) {
+             bool solid, uint16_t* colors, const r3d_span_small_fill_t* small_fill) {
     const int side = mathi_max(centres.w, centres.h);
-    if (side > small_fill.ceiling) {
+    if (side > small_fill->ceiling) {
         return SMALL_FILL_WALK;
     }
     if (solid || side <= SMALL_MAX_SIDE) {
         return SMALL_FILL_FLAT;
     }
-    const int spread = small_spread[side];
-    if (spread != SMALL_SPREAD_OFF || (colors != NULL && small_fill.style == SMALL_FILL_DITHER)) {
+    const int spread = small_fill->spread[side];
+    if (spread != SMALL_SPREAD_OFF || (colors != NULL && small_fill->style == SMALL_FILL_DITHER)) {
         const uint16_t ca = r3d_span_pack_rgb(a->r, a->g, a->b);
         const uint16_t cb = r3d_span_pack_rgb(b->r, b->g, b->b);
         const uint16_t cc = r3d_span_pack_rgb(c->r, c->g, c->b);
-        if (colors != NULL) {
+        if (colors != NULL && small_fill->style == SMALL_FILL_DITHER) {
             colors[0] = ca;
             colors[1] = cb;
             colors[2] = cc;
@@ -563,7 +572,7 @@ select_small(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_s
             return SMALL_FILL_WALK;
         }
     }
-    return small_fill.style;
+    return small_fill->style;
 }
 
 typedef struct {
@@ -587,7 +596,8 @@ small_visible(const small_edge_t edges[TRIANGLE_VERTICES], const small_row_t* ro
            && depth > row->depth[x];
 }
 
-/* Keep small-triangle temporaries off the row-walk call chain. */
+/* Pineda 1988 [32]: test pixel centres against three edge functions.
+ * Keep small-triangle temporaries off the row-walk call chain. */
 static __attribute__((noinline)) void
 fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
            const r3d_span_vertex_t* c, bool positive, recti_t box, const uint16_t* face) {
@@ -816,7 +826,7 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
         return;
     }
     uint16_t colors[TRIANGLE_VERTICES];
-    const int style = select_small(a, b, c, e.centres, face != NULL, colors);
+    const int style = select_small(a, b, c, e.centres, face != NULL, colors, target->small_fill);
     if (style != SMALL_FILL_WALK) {
         if (style == SMALL_FILL_GRAIN) {
             fill_small_grain(target, a, b, c, area2 > 0, box);
@@ -873,7 +883,7 @@ r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t
     }
     /* FILL_FACE selects a depth carry here; writers do not read face colour. */
     fill_t f = {e.flat ? FILL_FLAT : FILL_FACE, NULL, 0, 0, NULL};
-    if (select_small(a, b, c, e.centres, solid, NULL) != SMALL_FILL_WALK) {
+    if (select_small(a, b, c, e.centres, solid, NULL, target->small_fill) != SMALL_FILL_WALK) {
         set_flat(&f, a, b, c);
         for (int y = box.y; y < recti_bottom(box); y++) {
             write_span(target, y, box.x, recti_right(box) - 1, (int32_t)f.flat_z << R3D_DEPTH_SHIFT, 0);

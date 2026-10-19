@@ -13,9 +13,18 @@
 #include "gfx/target/gfx_render_target.h"
 #include "render/render_view.h"
 
+/* Largest bounding-box side, in pixel centres, always filled flat; the camera gate and style apply only above it. */
 #define R3D_SPAN_SMALL_MAX_SIDE 4
-/* Resolve the camera's settings before dispatching the frame's row workers. */
-void r3d_span_begin(small_fill_t fill);
+
+/* Resolved once per frame and shared read-only by row workers. */
+typedef struct {
+    uint8_t ceiling;
+    small_fill_style_t style;
+    uint8_t spread[UINT8_MAX + 1];
+} r3d_span_small_fill_t;
+
+extern const r3d_span_small_fill_t r3d_span_small_fill_default;
+void r3d_span_small_fill_resolve(r3d_span_small_fill_t* resolved, small_fill_t fill);
 
 typedef struct r3d_span_writer r3d_span_writer_t;
 
@@ -27,14 +36,17 @@ typedef struct {
     gfx_render_target_t rows;
     const r3d_span_writer_t* writers; /* writer_count of them; none: colour and depth only */
     int writer_count;
+    const r3d_span_small_fill_t* small_fill;
 } r3d_span_target_t;
 
 /* Colour and depth alone, rows [row0, row1) `width` wide, each buffer
  * starting at row0. */
 static inline r3d_span_target_t
 r3d_span_target(gfx_color_t* color, uint16_t* depth, int width, int row0, int row1) {
-    return (r3d_span_target_t){
-        {width, row0, row1, 2, {{color, sizeof(gfx_color_t)}, {depth, sizeof(uint16_t)}}}, NULL, 0};
+    return (r3d_span_target_t){{width, row0, row1, 2, {{color, sizeof(gfx_color_t)}, {depth, sizeof(uint16_t)}}},
+                               NULL,
+                               0,
+                               &r3d_span_small_fill_default};
 }
 
 /* A further attachment's part in a fill, chosen once per draw: after each

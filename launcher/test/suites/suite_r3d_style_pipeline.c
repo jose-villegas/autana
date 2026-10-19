@@ -1,5 +1,6 @@
 #ifndef DEVICE_BUILD
-#define r3d_span_begin               constant_r3d_span_begin
+#define r3d_span_small_fill_resolve  constant_resolve
+#define r3d_span_small_fill_default  constant_default
 #define r3d_span_triangle            constant_r3d_span_triangle
 #define r3d_span_triangle_solid      constant_r3d_span_triangle_solid
 #define r3d_span_triangle_write      constant_r3d_span_triangle_write
@@ -19,6 +20,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include "asset/asset_pack.h"
 #include "render/r3d_pipeline.c"
 #include "render/r3d_span.c"
 #include "suites.h"
@@ -30,8 +32,18 @@
 static uint16_t* pixels;
 static r3d_pipeline_work_t* work;
 
+typedef struct {
+    r3d_span_small_fill_t resolved;
+    r3d_pipeline_vertex_t transformed[6];
+    r3d_span_vertex_t projected[4], front[3];
+} clipped_fixture_t;
+
+static clipped_fixture_t* clipped;
+
 static void
 cleanup(void) {
+    free(clipped);
+    clipped = NULL;
     free(work);
     work = NULL;
     free(pixels);
@@ -65,12 +77,14 @@ test_styles_match_pipeline_colours(void) {
         reference[k] = (r3d_span_vertex_t){transformed[k].sx, transformed[k].sy, transformed[k].iz,
                                            colours[k][0],     colours[k][1],     colours[k][2]};
     }
-    const r3d_span_target_t expected = r3d_span_target(pixels, pixels + TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
-    const r3d_span_target_t actual =
+    r3d_span_target_t expected = r3d_span_target(pixels, pixels + TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
+    r3d_span_target_t actual =
         r3d_span_target(pixels + TEST_PIXELS * 2, pixels + TEST_PIXELS * 3, TEST_SIDE, 0, TEST_SIDE);
     const r3d_pipeline_vertex_t* vertices[3] = {transformed, transformed + 1, transformed + 2};
-    for (small_fill_style_t style = SMALL_FILL_FLAT; style <= SMALL_FILL_DITHER; style++) {
-        r3d_span_begin((small_fill_t){TEST_SIDE, 0, style});
+    for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
+        r3d_span_small_fill_t resolved;
+        r3d_span_small_fill_resolve(&resolved, (small_fill_t){TEST_SIDE, 0, style});
+        expected.small_fill = actual.small_fill = &resolved;
         memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));
         r3d_span_triangle(&expected, reference, reference + 1, reference + 2);
         draw_in_front(&mesh, vertices, triangle, NULL, true, &actual, false, work);
@@ -83,8 +97,78 @@ test_styles_match_pipeline_colours(void) {
     }
 }
 
+static void
+test_clipped_and_mixed_clusters_keep_the_target_style(void) {
+    pixels = calloc(TEST_PIXELS * 4, sizeof(*pixels));
+    suite_set_test_cleanup(cleanup);
+    TEST_ASSERT_NOT_NULL(pixels);
+    work = malloc(r3d_pipeline_work_bytes());
+    TEST_ASSERT_NOT_NULL(work);
+    static const int16_t positions[6][3] = {{1, 1, 0}, {32, 0, 4}, {0, 32, 4}, {0, 0, 4}, {24, 0, 4}, {0, 24, 4}};
+    static const uint8_t colors[6][3] = {{255, 0, 0},  {0, 255, 0},    {0, 0, 255},
+                                         {32, 80, 96}, {128, 112, 48}, {224, 160, 144}};
+    static const uint16_t triangles[2][3] = {{0, 1, 2}, {3, 4, 5}};
+    const r3d_lit_cluster_t cluster = {.vertex_count = 6, .triangle_count = 2, .double_sided = true};
+    const r3d_lit_mesh_t mesh = {
+        .positions = positions, .colors = colors, .triangles = triangles, .clusters = &cluster};
+    const r3d_lens_t lens = {.m = MAT4F_IDENTITY,
+                             .near_z = 1,
+                             .near_subpixels = 1.0F / R3D_SUBPIXEL,
+                             .snap_cx = R3D_SNAP_BIAS,
+                             .snap_cy = R3D_SNAP_BIAS};
+    clipped = malloc(sizeof(*clipped));
+    TEST_ASSERT_NOT_NULL(clipped);
+    r3d_pipeline_vertex_t* transformed = clipped->transformed;
+    (void)transform_cluster(&mesh, &lens, &cluster, transformed);
+    r3d_span_target_t expected = r3d_span_target(pixels, pixels + TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
+    r3d_span_target_t actual =
+        r3d_span_target(pixels + TEST_PIXELS * 2, pixels + TEST_PIXELS * 3, TEST_SIDE, 0, TEST_SIDE);
+    const clip_vertex_t polygon[4] = {{8.75F, 0.75F, 1, 191.25F, 63.75F, 0},
+                                      {32, 0, 4, 0, 255, 0},
+                                      {0, 32, 4, 0, 0, 255},
+                                      {0.75F, 8.75F, 1, 191.25F, 0, 63.75F}};
+    uint32_t checksums[SMALL_FILL_STYLE_COUNT];
+    for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
+        r3d_span_small_fill_t* resolved = &clipped->resolved;
+        r3d_span_small_fill_resolve(resolved, (small_fill_t){SMALL_FILL_CEILING_DEFAULT, 0, style});
+        expected.small_fill = actual.small_fill = resolved;
+        for (int mixed = 0; mixed < 2; mixed++) {
+            memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));
+            r3d_span_vertex_t* projected = clipped->projected;
+            for (int k = 0; k < 4; k++) {
+                projected[k] = project(&lens, &polygon[k]);
+            }
+            r3d_span_triangle(&expected, projected, projected + 1, projected + 2);
+            r3d_span_triangle(&expected, projected, projected + 2, projected + 3);
+            if (mixed) {
+                r3d_span_vertex_t* front = clipped->front;
+                for (int k = 0; k < 3; k++) {
+                    const r3d_pipeline_vertex_t* v = transformed + k + 3;
+                    front[k] =
+                        (r3d_span_vertex_t){v->sx, v->sy, v->iz, colors[k + 3][0], colors[k + 3][1], colors[k + 3][2]};
+                }
+                r3d_span_triangle(&expected, front, front + 1, front + 2);
+            }
+            r3d_lit_cluster_t selected = cluster;
+            selected.triangle_count = mixed ? 2 : 1;
+            draw_cluster(&mesh, &lens, &selected, transformed, &actual, false, work);
+            TEST_ASSERT_EQUAL_MEMORY(pixels, pixels + TEST_PIXELS * 2, TEST_PIXELS * 2 * sizeof(*pixels));
+            int covered = 0;
+            for (int i = 0; i < TEST_PIXELS; i++) {
+                covered += pixels[TEST_PIXELS + i] != R3D_DEPTH_EMPTY;
+            }
+            TEST_ASSERT_GREATER_THAN(0, covered);
+        }
+        checksums[style] = asset_crc32(pixels, TEST_PIXELS * sizeof(*pixels));
+        for (int previous = SMALL_FILL_FLAT; previous < (int)style; previous++) {
+            TEST_ASSERT_NOT_EQUAL(checksums[previous], checksums[style]);
+        }
+    }
+}
+
 void
 run_r3d_style_pipeline_suite(void) {
+    RUN_TEST(test_clipped_and_mixed_clusters_keep_the_target_style);
     RUN_TEST(test_styles_match_pipeline_colours);
 }
 

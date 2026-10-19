@@ -13,7 +13,7 @@
 
 typedef enum { CAMERA_PRESENT_NEAREST, CAMERA_PRESENT_SCANLINE, CAMERA_PRESENT_DOUBLE } camera_present_t;
 
-typedef enum { SMALL_FILL_FLAT, SMALL_FILL_GRAIN, SMALL_FILL_DITHER } small_fill_style_t;
+typedef enum { SMALL_FILL_FLAT, SMALL_FILL_GRAIN, SMALL_FILL_DITHER, SMALL_FILL_STYLE_COUNT } small_fill_style_t;
 
 #define SMALL_FILL_CEILING_DEFAULT 12
 #define SMALL_FILL_GATE_DEFAULT    16
@@ -22,9 +22,9 @@ typedef enum { SMALL_FILL_FLAT, SMALL_FILL_GRAIN, SMALL_FILL_DITHER } small_fill
     ((small_fill_t){SMALL_FILL_CEILING_DEFAULT, SMALL_FILL_GATE_DEFAULT, SMALL_FILL_STYLE_DEFAULT})
 
 typedef struct {
-    uint8_t ceiling;
-    uint8_t gate;
-    small_fill_style_t style;
+    uint8_t ceiling;          /* largest bounding-box side in pixel centres; 0 disables small fill */
+    uint8_t gate;             /* RGB565 per-channel spread at the ceiling, in packed channel units; 0 disables gating */
+    small_fill_style_t style; /* colour kernel above the always-flat side limit */
 } small_fill_t;
 
 typedef struct {

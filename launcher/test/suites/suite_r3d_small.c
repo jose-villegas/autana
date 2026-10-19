@@ -1,5 +1,6 @@
 #ifndef DEVICE_BUILD
-#define r3d_span_begin hot_begin
+#define r3d_span_small_fill_resolve hot_resolve
+#define r3d_span_small_fill_default hot_default
 #include "render/r3d_span.h"
 
 /* A private copy exposes selection and kernel invariants without a public test API. */
@@ -18,28 +19,38 @@
 #include <string.h>
 #include "asset/asset_pack.h"
 #include "math/scalar/rng.h"
+#include "render/raster.h"
 #include "suites.h"
 #include "unity.h"
 
-#define TEST_SIDE              24
-#define TEST_PIXELS            (TEST_SIDE * TEST_SIDE)
+#define TEST_SIDE                  24
+#define TEST_PIXELS                (TEST_SIDE * TEST_SIDE)
 
-#define ORACLE_SEED            937U
-#define ORACLE_SAMPLES         32
-#define ORACLE_MAX_SIDE        16
-#define LEGACY_FLAT_CHECKSUM   0x57208113U
-#define LEGACY_DITHER_CHECKSUM 0xDA4716C8U
-#define TEST_SOLID_COLOR       GFX_RGB(0x123456)
-#define TEST_CHANNELS          3
-#define TEST_RB_MAX            ((int)GFX_RGB565_G6_MAX >> 1)
-#define TEST_GREEN_STEP        2
-#define TEST_GREEN_SCALE       ((UINT8_MAX + 1) / (GFX_RGB565_G6_MAX + 1))
+#define ORACLE_SEED                937U
+#define ORACLE_SAMPLES             32
+#define ORACLE_MAX_SIDE            16
+#define CEILING_FOUR_FLAT_CHECKSUM 0x57208113U
+#define VERTEX_DITHER_CHECKSUM     0xDA4716C8U
+#define TEST_SOLID_COLOR           GFX_RGB(0x123456)
+#define TEST_CHANNELS              3
+#define TEST_RB_MAX                ((int)GFX_RGB565_G6_MAX >> 1)
+#define TEST_GREEN_STEP            2
+#define TEST_GREEN_SCALE           ((UINT8_MAX + 1) / (GFX_RGB565_G6_MAX + 1))
 
 static uint16_t* pixels;
+static r3d_span_small_fill_t* resolved;
+static small_fill_t settings;
+
+static void
+resolve_fill(small_fill_t fill) {
+    settings = fill;
+    r3d_span_small_fill_resolve(resolved, fill);
+}
 
 static void
 cleanup(void) {
-    hot_begin(SMALL_FILL_DEFAULT);
+    free(resolved);
+    resolved = NULL;
     free(pixels);
     pixels = NULL;
 }
@@ -50,7 +61,12 @@ fixture(void) {
     suite_set_test_cleanup(cleanup);
     TEST_ASSERT_NOT_NULL(pixels);
     memset(pixels, 0, sizeof(*pixels) * TEST_PIXELS * 4);
-    return r3d_span_target(pixels, pixels + TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
+    resolved = malloc(sizeof(*resolved));
+    TEST_ASSERT_NOT_NULL(resolved);
+    resolve_fill(SMALL_FILL_DEFAULT);
+    r3d_span_target_t target = r3d_span_target(pixels, pixels + TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
+    target.small_fill = resolved;
+    return target;
 }
 
 static void
@@ -78,10 +94,10 @@ draw_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t v[TRIANGL
 
 /* Checksums pin colour and depth from the source revision recorded by record_span_oracle.sh. */
 static uint32_t
-legacy_checksum(bool dither) {
+span_checksum(bool dither) {
     const r3d_span_target_t target = fixture();
-    hot_begin((small_fill_t){dither ? ORACLE_MAX_SIDE : R3D_SPAN_SMALL_MAX_SIDE, 0,
-                             dither ? SMALL_FILL_DITHER : SMALL_FILL_FLAT});
+    resolve_fill((small_fill_t){dither ? ORACLE_MAX_SIDE : R3D_SPAN_SMALL_MAX_SIDE, 0,
+                                dither ? SMALL_FILL_DITHER : SMALL_FILL_FLAT});
     uint32_t checksum = ORACLE_SEED;
     for (int side = 1; side <= ORACLE_MAX_SIDE; side++) {
         for (int sample = 0; sample < ORACLE_SAMPLES; sample++) {
@@ -106,13 +122,13 @@ legacy_checksum(bool dither) {
 }
 
 static void
-test_old_look_flat_is_bit_identical(void) {
-    TEST_ASSERT_EQUAL_HEX32(LEGACY_FLAT_CHECKSUM, legacy_checksum(false));
+test_ceiling_four_flat_is_bit_identical(void) {
+    TEST_ASSERT_EQUAL_HEX32(CEILING_FOUR_FLAT_CHECKSUM, span_checksum(false));
 }
 
 static void
 test_whole_triangle_dither_is_bit_identical(void) {
-    TEST_ASSERT_EQUAL_HEX32(LEGACY_DITHER_CHECKSUM, legacy_checksum(true));
+    TEST_ASSERT_EQUAL_HEX32(VERTEX_DITHER_CHECKSUM, span_checksum(true));
 }
 
 static int
@@ -153,9 +169,9 @@ test_selector_random_triangles_and_gate_boundaries(void) {
     rng_seed(&random, ORACLE_SEED);
     for (int ceiling = 0; ceiling <= ORACLE_MAX_SIDE; ceiling++) {
         for (size_t gate = 0; gate < sizeof gates / sizeof gates[0]; gate++) {
-            for (small_fill_style_t style = SMALL_FILL_FLAT; style <= SMALL_FILL_DITHER; style++) {
+            for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
                 const small_fill_t fill = {(uint8_t)ceiling, gates[gate], style};
-                hot_begin(fill);
+                resolve_fill(fill);
                 for (int side = 1; side <= ORACLE_MAX_SIDE + 1; side++) {
                     for (int sample = 0; sample < ORACLE_SAMPLES; sample++) {
                         r3d_span_vertex_t v[TRIANGLE_VERTICES];
@@ -164,7 +180,7 @@ test_selector_random_triangles_and_gate_boundaries(void) {
                             const r3d_span_extent_t e = r3d_span_extent(v, v + 1, v + 2);
                             const int box_side = mathi_max(e.centres.w, e.centres.h);
                             TEST_ASSERT_EQUAL_INT(reference_selector(v, box_side, solid != 0, fill),
-                                                  select_small(v, v + 1, v + 2, e.centres, solid != 0, NULL));
+                                                  select_small(v, v + 1, v + 2, e.centres, solid != 0, NULL, resolved));
                         }
                     }
                     /* Exercise both sides of every representable green-channel limit. */
@@ -173,18 +189,18 @@ test_selector_random_triangles_and_gate_boundaries(void) {
                         v[1].g = (float)(spread * TEST_GREEN_SCALE);
                         const recti_t centres = {0, 0, side, side};
                         TEST_ASSERT_EQUAL_INT(reference_selector(v, side, false, fill),
-                                              select_small(v, v + 1, v + 2, centres, false, NULL));
+                                              select_small(v, v + 1, v + 2, centres, false, NULL, resolved));
                     }
                 }
             }
         }
     }
-    hot_begin((small_fill_t){UINT8_MAX, SMALL_FILL_GATE_DEFAULT, SMALL_FILL_GRAIN});
+    resolve_fill((small_fill_t){UINT8_MAX, SMALL_FILL_GATE_DEFAULT, SMALL_FILL_GRAIN});
     const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {{0}};
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_GRAIN,
-                          select_small(v, v + 1, v + 2, (recti_t){0, 0, UINT8_MAX, UINT8_MAX}, false, NULL));
-    TEST_ASSERT_EQUAL_INT(SMALL_FILL_WALK,
-                          select_small(v, v + 1, v + 2, (recti_t){0, 0, UINT8_MAX + 1, UINT8_MAX}, false, NULL));
+                          select_small(v, v + 1, v + 2, (recti_t){0, 0, UINT8_MAX, UINT8_MAX}, false, NULL, resolved));
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_WALK, select_small(v, v + 1, v + 2, (recti_t){0, 0, UINT8_MAX + 1, UINT8_MAX},
+                                                        false, NULL, resolved));
 }
 
 static uint16_t
@@ -231,15 +247,15 @@ test_grain_shade_preserves_channel_direction_without_overflow(void) {
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xff0000), small_grain_shade(GFX_RGB(0xff0000)));
 }
 
-static void
+static __attribute__((noinline)) void
 reference_small(const r3d_span_target_t* target, const r3d_span_vertex_t v[TRIANGLE_VERTICES], bool solid) {
     const r3d_span_extent_t extent = r3d_span_extent(v, v + 1, v + 2);
-    const int style = reference_selector(v, mathi_max(extent.centres.w, extent.centres.h), solid, small_fill);
+    const int style = reference_selector(v, mathi_max(extent.centres.w, extent.centres.h), solid, settings);
     if (style == SMALL_FILL_WALK) {
-        const small_fill_t settings = small_fill;
-        hot_begin((small_fill_t){0, 0, SMALL_FILL_FLAT});
-        draw_triangle(target, v, solid);
-        hot_begin(settings);
+        const r3d_span_small_fill_t walked = {0};
+        r3d_span_target_t walk_target = *target;
+        walk_target.small_fill = &walked;
+        draw_triangle(&walk_target, v, solid);
         return;
     }
     const int32_t area = r3d_span_area2(v, v + 1, v + 2);
@@ -295,12 +311,13 @@ reference_small(const r3d_span_target_t* target, const r3d_span_vertex_t v[TRIAN
 static void
 test_style_kernels_randomized_reference(void) {
     const r3d_span_target_t actual = fixture();
-    const r3d_span_target_t expected =
+    r3d_span_target_t expected =
         r3d_span_target(pixels + 2 * TEST_PIXELS, pixels + 3 * TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
+    expected.small_fill = resolved;
     static const uint8_t gates[] = {0, SMALL_FILL_GATE_DEFAULT, 1};
-    for (small_fill_style_t style = SMALL_FILL_FLAT; style <= SMALL_FILL_DITHER; style++) {
+    for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
         for (size_t gate = 0; gate < sizeof gates / sizeof gates[0]; gate++) {
-            hot_begin((small_fill_t){ORACLE_MAX_SIDE, gates[gate], style});
+            resolve_fill((small_fill_t){ORACLE_MAX_SIDE, gates[gate], style});
             for (int side = 1; side <= ORACLE_MAX_SIDE + 1; side++) {
                 for (int sample = 0; sample < ORACLE_SAMPLES; sample++) {
                     rng_t random;
@@ -330,9 +347,88 @@ test_style_kernels_randomized_reference(void) {
     }
 }
 
+static void
+test_grain_screen_phase_with_odd_window_and_known_shades(void) {
+    r3d_span_target_t actual = fixture();
+    actual.rows.row0 = 1;
+    actual.rows.attachment[GFX_ATTACHMENT_COLOR].pixels = pixels + TEST_SIDE;
+    actual.rows.attachment[GFX_ATTACHMENT_DEPTH].pixels = pixels + TEST_PIXELS + TEST_SIDE;
+    resolve_fill((small_fill_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_GRAIN});
+    const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {
+        {-R3D_SUBPIXEL, -R3D_SUBPIXEL, 0.5F, 0, 0, 0},
+        {(ORACLE_MAX_SIDE - 1) * R3D_SUBPIXEL, -R3D_SUBPIXEL, 0.5F, 0, 0, 0},
+        {-R3D_SUBPIXEL, (ORACLE_MAX_SIDE - 1) * R3D_SUBPIXEL, 0.5F, 0, 0, 0}};
+    draw_triangle(&actual, v, false);
+    TEST_ASSERT_EQUAL_HEX16(gfx_color_rgb565(1, TEST_GREEN_STEP, 1), pixels[TEST_SIDE]);
+    TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x000000), pixels[TEST_SIDE + 1]);
+    r3d_span_target_t expected = actual;
+    expected.rows.attachment[GFX_ATTACHMENT_COLOR].pixels = pixels + TEST_PIXELS * 2 + TEST_SIDE;
+    expected.rows.attachment[GFX_ATTACHMENT_DEPTH].pixels = pixels + TEST_PIXELS * 3 + TEST_SIDE;
+    reference_small(&expected, v, false);
+    TEST_ASSERT_EQUAL_MEMORY(pixels + TEST_PIXELS * 2, pixels, TEST_PIXELS * 2 * sizeof(*pixels));
+}
+
+static void
+test_dither_equal_packed_colours_and_equal_edges_use_flat(void) {
+    r3d_span_target_t actual = fixture();
+    r3d_span_vertex_t v[TRIANGLE_VERTICES] = {{0, 0, 0.5F, 80, 80, 80},
+                                              {ORACLE_MAX_SIDE * R3D_SUBPIXEL, 0, 0.5F, 81, 81, 81},
+                                              {0, ORACLE_MAX_SIDE * R3D_SUBPIXEL, 0.5F, 82, 82, 82}};
+    resolve_fill((small_fill_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_DITHER});
+    draw_triangle(&actual, v, false);
+    r3d_span_target_t expected =
+        r3d_span_target(pixels + TEST_PIXELS * 2, pixels + TEST_PIXELS * 3, TEST_SIDE, 0, TEST_SIDE);
+    expected.small_fill = resolved;
+    resolve_fill((small_fill_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_FLAT});
+    draw_triangle(&expected, v, false);
+    TEST_ASSERT_EQUAL_MEMORY(pixels + TEST_PIXELS * 2, pixels, TEST_PIXELS * 2 * sizeof(*pixels));
+    const uint16_t colors[TRIANGLE_VERTICES] = {GFX_RGB(0xff0000), GFX_RGB(0x00ff00), GFX_RGB(0x0000ff)};
+    const uint16_t flat = GFX_RGB(0x555555);
+    for (int rank = 0; rank < SMALL_SPREAD_OFF; rank++) {
+        TEST_ASSERT_EQUAL_HEX16(
+            flat, small_dither_pick(colors, flat, rank, ORACLE_MAX_SIDE, ORACLE_MAX_SIDE, ORACLE_MAX_SIDE));
+    }
+}
+
+static void
+test_writer_and_draw_select_the_same_depth_under_every_style(void) {
+    r3d_span_target_t target = fixture();
+    const r3d_span_writer_t writer = {
+        .span = raster_attachment_tag, .attachment = GFX_ATTACHMENT_FURTHER, .value = ORACLE_SEED};
+    target.writers = &writer;
+    target.writer_count = 1;
+    target.rows.attachment[GFX_ATTACHMENT_FURTHER] = (gfx_attachment_t){pixels + TEST_PIXELS * 2, sizeof(*pixels)};
+    target.rows.count = GFX_ATTACHMENT_FURTHER + 1;
+    static const uint8_t gates[] = {0, SMALL_FILL_GATE_DEFAULT, UINT8_MAX};
+    for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
+        for (size_t gate = 0; gate < sizeof gates / sizeof gates[0]; gate++) {
+            resolve_fill((small_fill_t){ORACLE_MAX_SIDE, gates[gate], style});
+            for (int spread = SMALL_FILL_GATE_DEFAULT - 1; spread <= SMALL_FILL_GATE_DEFAULT + 1; spread++) {
+                memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));
+                const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {
+                    {0, 0, 0.25F, 80, 0, 80},
+                    {ORACLE_MAX_SIDE * R3D_SUBPIXEL, 0, 0.5F, 80, spread * TEST_GREEN_SCALE, 80},
+                    {0, ORACLE_MAX_SIDE * R3D_SUBPIXEL, 0.75F, 80, 0, 80}};
+                draw_triangle(&target, v, false);
+                hot_triangle_write(&target, v, v + 1, v + 2, false);
+                int covered = 0;
+                for (int i = 0; i < TEST_PIXELS; i++) {
+                    const bool drawn = pixels[TEST_PIXELS + i] != R3D_DEPTH_EMPTY;
+                    TEST_ASSERT_EQUAL_UINT16(drawn ? ORACLE_SEED : 0, pixels[TEST_PIXELS * 2 + i]);
+                    covered += drawn;
+                }
+                TEST_ASSERT_GREATER_THAN(0, covered);
+            }
+        }
+    }
+}
+
 void
 run_r3d_small_suite(void) {
-    RUN_TEST(test_old_look_flat_is_bit_identical);
+    RUN_TEST(test_grain_screen_phase_with_odd_window_and_known_shades);
+    RUN_TEST(test_dither_equal_packed_colours_and_equal_edges_use_flat);
+    RUN_TEST(test_writer_and_draw_select_the_same_depth_under_every_style);
+    RUN_TEST(test_ceiling_four_flat_is_bit_identical);
     RUN_TEST(test_whole_triangle_dither_is_bit_identical);
     RUN_TEST(test_selector_random_triangles_and_gate_boundaries);
     RUN_TEST(test_grain_shade_preserves_channel_direction_without_overflow);
