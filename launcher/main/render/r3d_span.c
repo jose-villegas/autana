@@ -825,13 +825,19 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     if (area2 == 0) {
         return;
     }
-    uint16_t colors[TRIANGLE_VERTICES];
-    const int style = select_small(a, b, c, e.centres, face != NULL, colors, target->small_fill);
+
+    /* Small-fill colours and walked gradients are never live together. */
+    union {
+        uint16_t colors[TRIANGLE_VERTICES];
+        gradients_t gradients;
+    } work;
+
+    const int style = select_small(a, b, c, e.centres, face != NULL, work.colors, target->small_fill);
     if (style != SMALL_FILL_WALK) {
         if (style == SMALL_FILL_GRAIN) {
             fill_small_grain(target, a, b, c, area2 > 0, box);
         } else if (style == SMALL_FILL_DITHER) {
-            fill_small_dither(target, a, b, c, area2 > 0, box, colors);
+            fill_small_dither(target, a, b, c, area2 > 0, box, work.colors);
         } else {
             fill_small(target, a, b, c, area2 > 0, box, face);
         }
@@ -842,9 +848,10 @@ r3d_span_triangle_impl(const r3d_span_target_t* target, const r3d_span_vertex_t*
     /* Attributes anchor at the triangle's first row, or at screen row 0 for
      * one starting above the screen: never at a window's own edge. */
     const int y_anchor = mathi_clamp(e.centres.y, -1, target->rows.row1 + 1);
-    gradients_t g = {0};
-    f.g = &g;
-    if (!set_up_fill(target, (const r3d_span_vertex_t* const[TRIANGLE_VERTICES]){a, b, c}, box, y_anchor, &f, &g)) {
+    gradients_t* g = &work.gradients;
+    *g = (gradients_t){0};
+    f.g = g;
+    if (!set_up_fill(target, (const r3d_span_vertex_t* const[TRIANGLE_VERTICES]){a, b, c}, box, y_anchor, &f, g)) {
         return;
     }
     if (r3d_span_stop_after == 1) {

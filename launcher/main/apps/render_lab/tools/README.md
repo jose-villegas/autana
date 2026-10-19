@@ -37,8 +37,7 @@ sh launcher/tools/render/scene_viewer.sh launcher/demo/sponza/sponza.scene.toml 
     --object atrium_fitted_full --small-fill 12,16,1 -o grain.bmp
 ```
 
-The app host accepts each axis with `--set` and
-`--tune` before entry or `--live-tune` after entry.
+The app host accepts `--tune` before entry or `--live-tune` after entry.
 
 ### Menu renders
 
