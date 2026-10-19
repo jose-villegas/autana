@@ -519,9 +519,9 @@ colours_within_spread(uint16_t a, uint16_t b, uint16_t c, int limit) {
 }
 
 #define DEFAULT_SPREAD(side)                                                                                           \
-    [side] = SMALL_SPREAD_OFF                                                                                          \
-             + (((SMALL_FILL_GATE_DEFAULT - SMALL_SPREAD_OFF) * ((side) - SMALL_MAX_SIDE - 1))                         \
-                / (SMALL_FILL_CEILING_DEFAULT - SMALL_MAX_SIDE - 1))
+    [(side)] = (SMALL_SPREAD_OFF                                                                                       \
+                + (((SMALL_FILL_GATE_DEFAULT - SMALL_SPREAD_OFF) * ((side) - SMALL_MAX_SIDE - 1))                      \
+                   / (SMALL_FILL_CEILING_DEFAULT - SMALL_MAX_SIDE - 1)))
 const r3d_span_small_fill_t r3d_span_small_fill_default = {
     .ceiling = SMALL_FILL_CEILING_DEFAULT,
     .style = SMALL_FILL_STYLE_DEFAULT,
@@ -559,11 +559,12 @@ select_small(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d_s
         return SMALL_FILL_FLAT;
     }
     const int spread = small_fill->spread[side];
-    if (spread != SMALL_SPREAD_OFF || (colors != NULL && small_fill->style == SMALL_FILL_DITHER)) {
+    const bool needs_colors = colors != NULL && small_fill->style == SMALL_FILL_DITHER;
+    if (spread != SMALL_SPREAD_OFF || needs_colors) {
         const uint16_t ca = r3d_span_pack_rgb(a->r, a->g, a->b);
         const uint16_t cb = r3d_span_pack_rgb(b->r, b->g, b->b);
         const uint16_t cc = r3d_span_pack_rgb(c->r, c->g, c->b);
-        if (colors != NULL && small_fill->style == SMALL_FILL_DITHER) {
+        if (needs_colors) {
             if (ca == cb && cb == cc) {
                 return SMALL_FILL_FLAT;
             }

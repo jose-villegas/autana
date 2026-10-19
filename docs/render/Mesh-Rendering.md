@@ -369,16 +369,15 @@ If only one side is eligible, it uses `gate` directly. Face colours and sides
 through `R3D_SPAN_SMALL_MAX_SIDE` bypass the gate and use FLAT.
 
 FLAT writes the averaged colour. DITHER uses screen-anchored ordered picks
-of the vertex colours. GRAIN alternates flat and one shade in a 2×2 checker,
+of the vertex colours. GRAIN alternates flat and one shade in a screen-anchored checker,
 moving R/B by one step and G by two in the same direction.
 
-GRAIN splits the colour range: a colour in its dark half gets the lighter
-shade; a colour in its bright half gets the darker shade. If that step
-overflows, it tries the other direction. If neither fits, the shade is flat.
-Channels never clamp independently.
+GRAIN splits the colour range. A colour in its dark half gets the lighter
+shade; one in its bright half gets the darker shade. On overflow, try the
+other direction. If neither fits, use flat; channels never clamp independently.
 
 <table>
-<tr><th>Look</th><th>Picture</th><th>Difference from Ceiling 4, no gate ×8</th></tr>
+<tr><th>Look</th><th>Picture</th><th>Amplified difference from Ceiling 4, no gate</th></tr>
 <tr><td>Ceiling 4, no gate</td><td><img src="../images/render/sponza-small-fill-ceiling-4-no-gate.gif" width="100%" alt="Ceiling 4, no gate"></td><td></td></tr>
 <tr><td>Default</td><td><img src="../images/render/sponza-small-fill-default.gif" width="100%" alt="Default flat fill"></td><td><img src="../images/render/sponza-small-fill-default-diff.gif" width="100%" alt="Default difference"></td></tr>
 <tr><td>Grain</td><td><img src="../images/render/sponza-small-fill-grain.gif" width="100%" alt="Hue-safe grain"></td><td><img src="../images/render/sponza-small-fill-grain-diff.gif" width="100%" alt="Grain difference"></td></tr>
