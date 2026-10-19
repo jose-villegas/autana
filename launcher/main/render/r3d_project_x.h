@@ -118,6 +118,15 @@ r3d_camera_to_screen_x(vec3x_t p, const r3d_line_view_x_t* view, int* screen_x, 
     *screen_y = (int)(view->center_y - (((int64_t)y * view->pixels_per_unit) / R3D_X_UNIT_ONE));
 }
 
+/* How far r3d_camera_to_screen_x() can land from the exact
+ * center + x * pixels_per_unit / z, in whole pixels: each of its two
+ * truncating divides moves the result by under one unit of what it
+ * divides, the first by a pixels_per_unit / R3D_X_UNIT_ONE share of one. */
+static inline int
+r3d_x_screen_rounding_px(const r3d_line_view_x_t* view) {
+    return 1 + ((view->pixels_per_unit + R3D_X_UNIT_ONE - 1) / R3D_X_UNIT_ONE);
+}
+
 static inline bool
 r3d_project_point_cs_x(vec3x_t p, const r3d_line_view_x_t* view, int* screen_x, int* screen_y) {
     if (p.z <= view->near_z) {
