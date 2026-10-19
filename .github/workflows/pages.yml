@@ -69,6 +69,7 @@ jobs:
       # from each variant's compile database. Configuring a variant writes
       # it without compiling; the explorer asks the variant's own compiler
       # which headers each source reaches, so it runs in the same image.
+      # Release is built in full: its linker map tells which code sits in IRAM.
       - name: Architecture model
         uses: ./.github/actions/idf-build
         env:
@@ -76,7 +77,7 @@ jobs:
         with:
           cache-name: architecture
           command: >-
-            tools/build/build.sh --configure
+            tools/build/build.sh
             && tools/build/build.sh --configure --dev
             && tools/build/build.sh --configure --diag
             && cd ..
