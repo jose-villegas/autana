@@ -39,10 +39,7 @@ static const int32_t value_max[ATTRIBUTES] = {DEPTH_MAX, 65280, 65280, 65280};
 #define SMALL_DITHER_PRECOMPUTED_LEVELS (1 << (2 * SMALL_DITHER_PATTERN_BITS_MIN))
 #define SMALL_GRAIN_PATTERN_SIDE        2
 #define SMALL_GRAIN_PATTERN_MASK        (SMALL_GRAIN_PATTERN_SIDE - 1)
-#define SMALL_GRAIN_HALF_SHIFT          1
-#define SMALL_GRAIN_RB_SHIFT            1
-#define SMALL_GRAIN_LEVELS              (SMALL_GRAIN_PATTERN_SIDE * SMALL_GRAIN_PATTERN_SIDE)
-#define SMALL_GRAIN_AMPLITUDE_MAX       4
+#define SMALL_GRAIN_AMPLITUDE_MAX       2
 #define SMALL_FILL_WALK                 (-1)
 #define TRIANGLE_VERTICES               3
 
@@ -556,7 +553,15 @@ small_limits_for_side(int side) {
     return (small_limits_t){(uint8_t)spread, (uint8_t)coverage, (uint8_t)grain};
 }
 
-static const uint8_t small_grain_pattern[SMALL_GRAIN_PATTERN_SIDE][SMALL_GRAIN_PATTERN_SIDE] = {{0, 2}, {3, 1}};
+#define SMALL_GRAIN_CHANNEL_LSB_RGB 0x080408u
+#define SMALL_GRAIN_MASK(bits)      GFX_RGB(SMALL_GRAIN_CHANNEL_LSB_RGB*(bits))
+
+static const uint16_t
+    small_grain_masks[SMALL_GRAIN_AMPLITUDE_MAX + 1][SMALL_GRAIN_PATTERN_SIDE][SMALL_GRAIN_PATTERN_SIDE] = {
+        {{0, 0}, {0, 0}},
+        {{SMALL_GRAIN_MASK(0), SMALL_GRAIN_MASK(1)}, {SMALL_GRAIN_MASK(1), SMALL_GRAIN_MASK(0)}},
+        {{SMALL_GRAIN_MASK(0), SMALL_GRAIN_MASK(2)}, {SMALL_GRAIN_MASK(3), SMALL_GRAIN_MASK(1)}},
+};
 
 #if TUNE_HOT_LIVE
 static small_limits_t small_limits[SMALL_MAX_SIDE_TUNE + 1];
@@ -635,22 +640,6 @@ small_visible(const small_edge_t edges[TRIANGLE_VERTICES], const small_row_t* ro
            && depth > row->depth[x];
 }
 
-static __attribute__((noinline)) void
-prepare_small_grain(uint16_t shades[SMALL_GRAIN_LEVELS], uint16_t color, int amplitude) {
-    const uint16_t native = gfx_color_swap(color);
-    const int red = (int)gfx_rgb565_r5(native);
-    const int green = (int)gfx_rgb565_g6(native);
-    const int blue = (int)gfx_rgb565_b5(native);
-    for (int level = 0; level < SMALL_GRAIN_LEVELS; level++) {
-        const int numerator = amplitude * (2 * level + 1 - SMALL_GRAIN_LEVELS);
-        const int green_offset = fx_round_shift32(numerator, SMALL_GRAIN_HALF_SHIFT);
-        const int rb_offset = fx_round_shift32(green_offset, SMALL_GRAIN_RB_SHIFT);
-        shades[level] = gfx_color_rgb565((uint8_t)mathi_clamp(red + rb_offset, 0, (int)gfx_rgb565_r5(UINT16_MAX)),
-                                         (uint8_t)mathi_clamp(green + green_offset, 0, (int)GFX_RGB565_G6_MAX),
-                                         (uint8_t)mathi_clamp(blue + rb_offset, 0, (int)gfx_rgb565_b5(UINT16_MAX)));
-    }
-}
-
 /* Keep small-triangle temporaries off the row-walk call chain. */
 static __attribute__((noinline)) void
 fill_small(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
@@ -689,18 +678,16 @@ fill_small_grain(const r3d_span_target_t* target, const r3d_span_vertex_t* a, co
     if (r3d_span_stop_after != 0) {
         return;
     }
-    uint16_t shades[SMALL_GRAIN_LEVELS];
-    prepare_small_grain(shades, f.flat_color, amplitude);
     const small_edge_t edges[TRIANGLE_VERTICES] = {small_edge(a, positive ? b : c),
                                                    small_edge(positive ? b : c, positive ? c : b),
                                                    small_edge(positive ? c : b, a)};
     for (int y = box.y; y < recti_bottom(box); y++) {
-        const uint8_t* row_pattern = small_grain_pattern[y & SMALL_GRAIN_PATTERN_MASK];
+        const uint16_t* masks = small_grain_masks[amplitude][y & SMALL_GRAIN_PATTERN_MASK];
         const small_row_t row = small_row(target, y);
         for (int x = box.x, end = recti_right(box); x < end; x++) {
             if (small_visible(edges, &row, x, f.flat_z)) {
                 row.depth[x] = f.flat_z;
-                row.color[x] = shades[row_pattern[x & SMALL_GRAIN_PATTERN_MASK]];
+                row.color[x] = f.flat_color ^ masks[x & SMALL_GRAIN_PATTERN_MASK];
             }
         }
     }
@@ -759,10 +746,10 @@ small_dither_pick(const small_dither_t* d, const uint8_t* pattern, const int32_t
 
 static inline __attribute__((always_inline)) void
 fill_small_dither_rows(const r3d_span_target_t* target, const small_dither_t* d, const fill_t* f, recti_t box,
-                       int cell_bits, const int32_t* thresholds, const uint16_t* shades, bool grained) {
+                       int cell_bits, const int32_t* thresholds, int grain, bool grained) {
     for (int y = box.y; y < recti_bottom(box); y++) {
         const small_row_t row = small_row(target, y);
-        const uint8_t* grain_pattern = small_grain_pattern[y & SMALL_GRAIN_PATTERN_MASK];
+        const uint16_t* masks = small_grain_masks[grain][y & SMALL_GRAIN_PATTERN_MASK];
         const uint8_t* pattern = gfx_dither4x4[y & d->phase_mask];
         const int32_t* row_thresholds =
             cell_bits == SMALL_DITHER_PATTERN_BITS_MIN ? thresholds + ((y & d->phase_mask) << cell_bits) : NULL;
@@ -773,7 +760,7 @@ fill_small_dither_rows(const r3d_span_target_t* target, const small_dither_t* d,
             const int32_t s2 = small_side(&d->edge[2], cx, row.centre);
             if ((s0 | s1 | s2) >= 0 && f->flat_z > row.depth[x]) {
                 row.depth[x] = f->flat_z;
-                const uint16_t flat = grained ? shades[grain_pattern[x & SMALL_GRAIN_PATTERN_MASK]] : f->flat_color;
+                const uint16_t flat = grained ? f->flat_color ^ masks[x & SMALL_GRAIN_PATTERN_MASK] : f->flat_color;
                 row.color[x] = small_dither_pick(d, pattern, row_thresholds, x, s0, s1, s2, flat);
             }
         }
@@ -803,11 +790,7 @@ fill_small_dither_cell(const r3d_span_target_t* target, const r3d_span_vertex_t*
     if (r3d_span_stop_after != 0) {
         return;
     }
-    uint16_t shades[SMALL_GRAIN_LEVELS];
-    if (grained) {
-        prepare_small_grain(shades, f.flat_color, grain);
-    }
-    fill_small_dither_rows(target, &d, &f, box, cell_bits, thresholds, shades, grained);
+    fill_small_dither_rows(target, &d, &f, box, cell_bits, thresholds, grain, grained);
 }
 
 static __attribute__((noinline)) void
