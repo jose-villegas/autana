@@ -145,6 +145,19 @@ agrees with the datasheet ODR multiplied by time outside FIFO read mode.
 | Every frame | 197.8 Hz | 10.8% | 200.0 Hz |
 | Every 500 ms | 210.4 Hz | 6.1% | 210.5 Hz |
 
+A faster SCL shortens read mode, but SCL stays at 400 kHz, the QMI8658A's I2C rating.<sup>[[79]](../Citations.md#79)</sup>
+No other part on the bus states more than 400 kHz, and the ESP32-S3 stops at 800 kbit/s.<sup>[[66]](../Citations.md#66)</sup>
+Board A308, drain every frame, 45 s per speed:
+
+| QMI8658 SCL | Delivered | Lost | Drain per frame | Launcher `frame.rest` |
+|---|---|---|---|---|
+| 400 kHz | 202.6 Hz | 9.1% | 2.36 ms | 1.40 ms |
+| 800 kHz | 212.6 Hz | 5.5% | 1.42 ms | 1.20 ms |
+| 1 MHz | 212.0 Hz | 5.2% | 1.31 ms | - |
+
+800 kHz ran a clean 10 min soak, but that cannot show the slower parts never misread its
+shorter clock, and the QMI8658A has no CRC.
+
 The count precedes `CTRL9_REQ_FIFO` (section 8.8). CTRL9 status uses consecutive I2C
 reads, with no minimum polling delay (section 5.10.1). Every drain attempts to
 leave read mode, including error paths.<sup>[[79]](../Citations.md#79)</sup>

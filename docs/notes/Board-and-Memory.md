@@ -25,6 +25,8 @@ The display, SD card and external memory use separate buses. CPU work and
 internal-memory traffic can still contend; separate buses do not guarantee
 independent throughput.
 
+I2C0 has 2.2 kΩ pull-ups to 3.3 V.<sup>[[81]](../Citations.md#81)</sup> Each device sets its own SCL; all run at 400 kHz.
+
 | Peripheral | Part | POST | Notes |
 |---|---|---|---|
 | Display | SH8601 (V1) / CO5300 (V2) | ✓ | 368×448 RGB565 |
