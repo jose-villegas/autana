@@ -162,14 +162,14 @@ named by `launcher/demo/sponza/flythrough.anim.toml`. Its poses for
 [`report_triangle_sizes.sh`](../../../../tools/r3d/README.md#triangle-sizes)
 come from [`tools/anim/track_host.py`](../../../../tools/anim/README.md),
 which runs the device's track sampler over the clip, at the poses
-`suite_sponza_perf.c` times (every `SPONZA_POSE_EVERY_MS`) and the size
+`suite_sponza_perf.c` times (every `SPONZA_PERF_POSE_EVERY_MS`) and the size
 `sponza_content.h` names and the lens of the scene's camera object
 (`launcher/demo/sponza/sponza.scene.toml`):
 
 ```sh
 python launcher/tools/anim/track_host.py \
     launcher/demo/sponza/flythrough.anim.toml \
-    --every 5000 --poses camera 184 224 0.62 6 |
+    --every 500 --poses camera 184 224 0.62 6 |
     ./launcher/tools/r3d/report_triangle_sizes.sh \
         --mesh sponza.atrium -
 ```
@@ -252,3 +252,26 @@ axes; the camera viewport applies the quarter turn.
 budget is `SKIN_PERF_BUDGET_NS_PER_VERTEX` in `tests/skin_perf_log.h`.
 Meshlet and reference-quality report readers select portrait for their
 matching reference views.
+
+## Frame timing profiles
+
+`run_sponza_perf_suite` measures fixed camera poses at the spacing in
+`SPONZA_PERF_POSE_EVERY_MS`. Each frame-cost row reports mean, worst,
+median and p95 before presentation. Stage splits and pixel checks use
+`SPONZA_POSE_EVERY_MS`.
+
+`run_render_lab_frame_profile_suite` plays each Sponza scene's camera clip
+and the capybara gallop for one clip period in each perf quarter. It times
+update, render, compose and present with the HUD hidden.
+
+An untimed warm-up starts at clip time zero. Each timed frame advances by
+the previous frame's wall time, carrying fractional milliseconds. The loop
+stops when those advances reach the clip duration.
+
+`frame_profile:` rows report frame count and mean, median, p95, worst and
+best wall times. FPS mean uses the exact total time; low FPS uses p95 and
+worst FPS uses the slowest frame. `quarter=` identifies the orientation.
+
+Each suite owns a table of mean goals and p95 ceilings per row and quarter.
+Zero means unpegged: it logs without enforcing a budget. Board ceilings
+are reported without enforcement under QEMU.

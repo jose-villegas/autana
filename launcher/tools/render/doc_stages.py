@@ -284,9 +284,19 @@ def board_frames(captures, expected, id, object_name):
     values = {}
     for capture in captures:
         from capture import select_quarter
-        found = re.findall(pattern, select_quarter(capture.read_text(encoding="utf-8", errors="replace")))
-        parsed = [({object_name: id, object_name + "_lite": "lite"}.get(name, name), int(time), int(value) / 1000)
-                  for name, time, value in found]
+        text = select_quarter(capture.read_text(encoding="utf-8", errors="replace"))
+        intervals = set(map(int, re.findall(r"pose_every_ms=(\d+)", text)))
+        if len(intervals) > 1 or (intervals and min(intervals) <= 0):
+            raise ValueError(f"{capture}: needs a common positive pose interval")
+        every_ms = next(iter(intervals), None)
+        parsed, counts = [], {}
+        for name, time, value in re.findall(pattern, text):
+            name = {object_name: id, object_name + "_lite": "lite"}.get(name, name)
+            time_ms = counts.get(name, 0) * every_ms if every_ms else int(time) * 1000
+            if int(time) != time_ms // 1000:
+                raise ValueError(f"{capture}: needs each full/lite pose exactly once")
+            counts[name] = counts.get(name, 0) + 1
+            parsed.append((name, time_ms, int(value) / 1000))
         keys = [(name, time) for name, time, _ in parsed]
         if len(keys) != len(expected) or set(keys) != set(expected):
             raise ValueError(f"{capture}: needs each full/lite pose exactly once")
@@ -323,11 +333,15 @@ def board(args, out, work):
         [(name, f"{means[name]:.3f}") for name in (id, *VARIANTS)]), encoding="utf-8")
     scene = load_scene(scene_path)
     job = placed_variant(scene, args.object + "_fitted")
-    every_ms = job.renderer.fit.held_out_every_ms
+    intervals = {int(value) for capture in args.capture for value in
+                 re.findall(r"pose_every_ms=(\d+)", capture.read_text(encoding="utf-8"))}
+    if len(intervals) != 1 or min(intervals) <= 0:
+        raise ValueError("board captures need a common positive pose interval")
+    every_ms = intervals.pop()
     poses = camera_path_poses(scene, job.renderer.fit, every_ms, either_way_up=False)
     for capture in args.capture:
         capture_viewport(capture, poses[:2])
-    frame_values = board_frames(args.capture, [(name, index * every_ms // 1000) for name in (id, "lite")
+    frame_values = board_frames(args.capture, [(name, index * every_ms) for name in (id, "lite")
                                              for index in range(len(poses[-1]))], id, args.object)
     (work / "board-poses.txt").write_text(poses_text(*poses))
     rows, times, records = [], [], []
@@ -335,7 +349,7 @@ def board(args, out, work):
         mesh = next(item.asset_path for item in scene.renderers if item.object.name == asset)
         features = mesh_rows(mesh, work / "board-poses.txt")
         for index, row in enumerate(features):
-            ms = frame_values[(name, index * every_ms // 1000)]
+            ms = frame_values[(name, index * every_ms)]
             rows.append(row)
             times.append(ms)
             records.append((name, index, ms, row))

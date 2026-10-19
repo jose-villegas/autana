@@ -66,11 +66,12 @@ def capture_means(directory, object_name, expected_packs=None, expected_poses=No
             if expected_packs is not None and pack != expected_packs[row]:
                 raise ValueError(f"{path}: pack hash differs from the row bake")
             every, period = int(every), int(period)
-            if every <= 0 or period <= 0 or every % 1000:
+            if every <= 0 or period <= 0:
                 raise ValueError(f"{path}: invalid suite pose interval")
             frames = re.findall(rf"{re.escape(label)} t=\s*(\d+)s .*?both cores: frame\s+(\d+)us", block)
-            times = [int(time) * 1000 for time, _ in frames]
-            if times != list(range(0, period, every)) or (poses is not None and times != poses):
+            times = list(range(0, period, every))
+            if ([int(time) for time, _ in frames] != [time // 1000 for time in times]
+                    or (poses is not None and times != poses)):
                 raise ValueError(f"{path}: needs the shared suite poses exactly once")
             if expected_poses is not None and times != list(expected_poses):
                 raise ValueError(f"{path}: suite poses differ from the host camera samples")
@@ -119,7 +120,11 @@ def table(scene_path, captures, bakes, object_name=None):
     from doc_stages import capture_viewport, markdown
     for row in ROWS:
         capture_viewport(captures / f"meshlets-{row}-board.log", (width, height))
-    poses = sample_camera_path(camera.path.animation, camera.path.node, 5000, width, height,
+    identity = IDENTITY.search((captures / f"meshlets-{ROWS[0]}-board.log").read_text(encoding="utf-8"))
+    if identity is None:
+        raise ValueError("capture needs a suite pose interval")
+    every_ms = int(identity[7])
+    poses = sample_camera_path(camera.path.animation, camera.path.node, every_ms, width, height,
                                camera.half_fov_short_tan, camera.near_z)
     from r3d.build_pack import pack_bytes
     from r3d.scene_name import scene_id
@@ -139,7 +144,7 @@ def table(scene_path, captures, bakes, object_name=None):
             geometry[str(size)] = host[str(size)][0]
             if size == 32:
                 host["cull-off"] = host_columns(paths, poses_path, cull=False)
-    means = capture_means(captures, jobs[0].object.name, packs, range(0, len(poses[-1]) * 5000, 5000), geometry)
+    means = capture_means(captures, jobs[0].object.name, packs, range(0, len(poses[-1]) * every_ms, every_ms), geometry)
     rows = []
     for row in ("cull-off", *ROWS):
         (triangles, vertices, clusters), submitted = host[row]

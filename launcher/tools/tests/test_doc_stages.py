@@ -56,6 +56,9 @@ class DocStagesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "tables").mkdir()
+            capture = root / "capture.txt"
+            capture.write_text("CAPTURE pose_every_ms=2000\nFRAME COST rendered 8x6\n")
+            args.capture = [capture]
             with mock.patch.object(import_settings, "load_scene", return_value=scene), \
                     mock.patch.object(fitted_variant, "placed_variant", return_value=job), \
                     mock.patch.object(mesh_import, "camera_path_poses", return_value=poses) as sample, \
@@ -119,7 +122,7 @@ class DocStagesTests(unittest.TestCase):
         scene = NS(renderers=[NS(object=NS(name=name), asset_path=Path(name + ".mesh"))
                               for name in ("painting", "painting_lite")])
         capture = self.tmp / "capture.txt"
-        capture.write_text("abcdef123456-diag\nFRAME COST rendered 8x6\n" +
+        capture.write_text("abcdef123456-diag\nFRAME COST rendered 8x6\nCAPTURE pose_every_ms=1000\n" +
             "".join(f"{name} both cores: mean {value}us\n" for name, value in
                     (("painting", 51000), ("painting_lite", 42000), ("painting_flat", 43000),
                      ("painting_fitted", 44000), ("painting_fitted_full", 45000), ("painting_flat_fitted", 46000))) +
@@ -242,6 +245,18 @@ with mock.patch.object(stages, "ROOT", Path(sys.argv[2])), mock.patch.object(
         capture.write_text("\n".join(["abcdef123456-diag", *lines]) + "\n")
         with self.assertRaisesRegex(ValueError, "flat-fitted"):
             stages.board_means([capture], "abcdef123456", "gallery", "painting")
+
+    def test_board_half_second_pose_rows(self):
+        capture = self.tmp / "capture.txt"
+        capture.write_text('CAPTURE period_ms=1000 pose_every_ms=500\n'
+                           'atrium t=    0s clusters=4 tris=5 | both cores: frame 51000us\n'
+                           'atrium t=    0s clusters=4 tris=5 | both cores: frame 52000us\n'
+                           'atrium_lite t=    0s clusters=4 tris=5 | both cores: frame 42000us\n'
+                           'atrium_lite t=    0s clusters=4 tris=5 | both cores: frame 43000us\n')
+        expected = [(name, time) for name in ('sponza', 'lite') for time in (0, 500)]
+        self.assertEqual(stages.board_frames([capture], expected, 'sponza', 'atrium'),
+                         {('sponza', 0): 51.0, ('sponza', 500): 52.0,
+                          ('lite', 0): 42.0, ('lite', 500): 43.0})
 
     def test_board_pose_rows_require_complete_unique_samples(self):
         capture = self.tmp / "capture.txt"

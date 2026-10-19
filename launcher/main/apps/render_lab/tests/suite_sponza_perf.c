@@ -16,6 +16,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "perf_budget.h"
+#include "perf_stats.h"
 #include "test_cleanup.h"
 #include "unity.h"
 
@@ -44,6 +46,24 @@
 #include "sponza_suite.h"
 
 static const r3d_perf_quarter_t* perf_quarter;
+
+typedef struct {
+    const char* row;
+    perf_budget_t quarters[R3D_PERF_QUARTER_COUNT];
+} frame_budget_t;
+
+static const frame_budget_t frame_budgets[] = {
+    {"atrium", {{0}}},
+    {"atrium_flat", {{0}}},
+    {"atrium_lite", {{0}}},
+    {"atrium_fitted", {{0}}},
+    {"atrium_fitted_full", {{0}}},
+    {"atrium_flat_fitted", {{0}}},
+    {"cull_off", {{0}}},
+    {"motion", {{0}}},
+    {"motion_moving", {{0}}},
+    {"placed", {{0}}},
+};
 
 static const char* TAG = "sponza_perf";
 
@@ -306,21 +326,24 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
              "CAPTURE build_id=%s pack_crc32=%08x object=%s size=%d cull=%ld period_ms=%u "
              "pose_every_ms=%u raster=%dx%d present=%d" R3D_PERF_QUARTER_FORMAT,
              build_id(), (unsigned)asset_crc32(pack->base, pack->size), object_name, size, (long)*culling->value,
-             (unsigned)period, (unsigned)SPONZA_POSE_EVERY_MS, b->raster.width, b->raster.height, render_lab_present(),
-             perf_quarter->name);
+             (unsigned)period, (unsigned)SPONZA_PERF_POSE_EVERY_MS, b->raster.width, b->raster.height,
+             render_lab_present(), perf_quarter->name);
     char* report = memory_alloc(FRAME_COST_REPORT_MAX, MEMORY_INTERNAL);
     TEST_ASSERT_NOT_NULL(report);
     (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX);
+    const int capacity = (period + SPONZA_PERF_POSE_EVERY_MS - 1) / SPONZA_PERF_POSE_EVERY_MS;
+    TEST_ASSERT_GREATER_THAN_INT(0, capacity);
+    int32_t* frame_us = memory_alloc((size_t)capacity * sizeof *frame_us, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(frame_us);
     int64_t frame_sum = 0;
-    int64_t worst = 0;
     int samples = 0;
-    for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_POSE_EVERY_MS) {
+    for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_PERF_POSE_EVERY_MS) {
         (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
         const render_view_t view = camera_view(flythrough, scene_entity_transform(sponza, camera_entity),
                                                (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
         if (moving != NULL) {
             transformf_set_position(moving,
-                                    (vec3f_t){(t_ms / SPONZA_POSE_EVERY_MS) % 2 == 0 ? 0.0F : 0.01F, 0.0F, 0.0F});
+                                    (vec3f_t){(t_ms / SPONZA_PERF_POSE_EVERY_MS) % 2 == 0 ? 0.0F : 0.01F, 0.0F, 0.0F});
             *model = transformf_compute_matrix(moving);
         }
         const int64_t start = timing_now_us();
@@ -333,11 +356,28 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
         (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX);
         ESP_LOGI(TAG, "ms/frame avg/worst: %s" R3D_PERF_QUARTER_FORMAT, report, perf_quarter->name);
         frame_sum += us;
-        worst = us > worst ? us : worst;
+        TEST_ASSERT_LESS_OR_EQUAL_INT64(INT32_MAX, us);
+        frame_us[samples] = (int32_t)us;
         samples++;
     }
-    ESP_LOGI(TAG, "%s both cores: mean %lldus (%.1f fps before present), worst %lldus" R3D_PERF_QUARTER_FORMAT, label,
-             (long long)(frame_sum / samples), 1e6 * samples / (double)frame_sum, (long long)worst, perf_quarter->name);
+    const perf_stats_t stats = perf_stats_compute(frame_us, samples);
+    memory_free(frame_us);
+    ESP_LOGI(TAG,
+             "%s both cores: mean %lldus (%.1f fps before present), worst %lldus, med %lldus, p95 "
+             "%lldus" R3D_PERF_QUARTER_FORMAT,
+             label, (long long)stats.avg, 1e6 * samples / (double)frame_sum, (long long)stats.max, (long long)stats.med,
+             (long long)stats.p95, perf_quarter->name);
+    const size_t q = (size_t)(perf_quarter - r3d_perf_quarters);
+    bool budget_found = false;
+    for (size_t i = 0; i < sizeof frame_budgets / sizeof frame_budgets[0]; i++) {
+        if (strcmp(frame_budgets[i].row, label) == 0) {
+            const perf_budget_t* budget = &frame_budgets[i].quarters[q];
+            (void)perf_goal(label, stats.avg, budget->mean_goal_us);
+            perf_guard(label, stats.p95, budget->p95_ceiling_us);
+            budget_found = true;
+        }
+    }
+    TEST_ASSERT_TRUE_MESSAGE(budget_found, "frame row needs a budget entry");
     memory_free(report);
     bench_close(b);
     memory_free(b);

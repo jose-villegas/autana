@@ -30,6 +30,7 @@ env:
   NIGHTLY_SUITES: |
     run_sand_perf_suite|-|python3 launcher/main/apps/sand/tools/report_performance.py @CAPTURE@ @TABLE@ --source @PROJECT@/launcher/main/apps/sand/tests/suite_sand_perf.c
     run_sponza_perf_suite|-|-
+    run_render_lab_frame_profile_suite|-|-
     run_capybara_perf_suite|-|python3 launcher/main/apps/render_lab/tools/report_performance.py @CAPTURE@ @TABLE@ --table
   SELFTEST_BOARD: '2124'
   SELFTEST_AT: ${{ inputs.selftest_at || '01:00' }}

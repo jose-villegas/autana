@@ -188,6 +188,22 @@ int main(void) {
             path = self.capture(root, row, pack=pack)
         return path
 
+    def test_half_second_pose_spacing_and_extended_summary(self):
+        import meshlet_sizes
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            self.capture_rows(root)
+            for path in root.glob("*.log"):
+                path.write_text(path.read_text().replace("period_ms=10000 pose_every_ms=5000",
+                                                        "period_ms=1000 pose_every_ms=500")
+                                .replace("t=    5s", "t=    0s")
+                                .replace("worst 9000us", "worst 9000us, med 9000us, p95 9000us"))
+            self.assertEqual(meshlet_sizes.capture_means(root, "atrium")["32"], [1, 2, 3, 8])
+            path = root / "meshlets-64-board.log"
+            path.write_text(path.read_text().replace("atrium t=    0s clusters=1 tris=1 | both cores: frame 9000us\n", ""))
+            with self.assertRaisesRegex(ValueError, "poses"):
+                meshlet_sizes.capture_means(root, "atrium")
+
     def test_both_quarter_capture_uses_portrait_stage_means(self):
         import meshlet_sizes
         with tempfile.TemporaryDirectory() as directory:

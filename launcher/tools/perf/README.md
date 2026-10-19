@@ -55,7 +55,7 @@ sequenceDiagram
 Each `--suite NAME TESTS TABLE` takes a registered suite name, comma-separated
 test patterns (`-` for all), and a table command (`-` reads the capture's
 `<row> both cores: mean <N>us`, `<row> one core: mean <N>us`, or
-`<row> mean <N>us` lines). Pattern width and count limits come
+`<row> mean <N>us` lines, or `frame_profile:` rows). Pattern width and count limits come
 from each project's `launcher/test/suites.h`; a pattern over the width is
 refused before any flash, and patterns over the count run as several requests
 on the same flash. Each test must match patterns in one request only; a row
@@ -353,3 +353,18 @@ ends first, inside the same hold.
 
 Partial manifests are written after every step. Raw captures and result
 directories are uploaded even when a lane fails.
+
+## Real-time playback
+
+`run_render_lab_frame_profile_suite` reports whole app frame wall times
+for clip playback. Unlike fixed-pose frame costs, scenario time follows the
+previous frame's wall time, including fractional milliseconds.
+
+The `frame_profile:` line includes frame count, mean, median, p95, worst
+and best times, then FPS mean, low and worst. Mean FPS uses total timed
+frames divided by total wall time; low and worst use p95 and maximum time.
+The warm-up frame is excluded. `quarter=` distinguishes orientations.
+
+Use `--suite run_render_lab_frame_profile_suite - -` for capture comparisons.
+The capture parser compares mean microseconds for each scenario and quarter.
+The log tokens are defined in `launcher/test/frame_profile.h`.

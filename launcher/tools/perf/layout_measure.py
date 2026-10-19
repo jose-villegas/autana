@@ -13,6 +13,7 @@ from statistics import mean, stdev
 
 from capture import capture_board, require_same_board, quarter_row
 from seed_statistics import t_quantile
+from build.c_header import read_define
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "scripts/lib"))
@@ -21,6 +22,10 @@ from doc_tables import table_rows  # noqa: E402
 from process_tree import stop_process_tree, launch_process_tree, close_process_tree  # noqa: E402
 from device_capture import RESULT_RE, BUILD_ID_RE as BUILD_LINE  # noqa: E402
 
+PROFILE_HEADER = REPO / "launcher/test/frame_profile.h"
+PROFILE_PREFIX, PROFILE_FRAMES, PROFILE_MEAN = (
+    re.escape(read_define(PROFILE_HEADER, "FRAME_PROFILE_" + name)) for name in ("PREFIX", "FRAMES", "MEAN"))
+PROFILE_RE = re.compile(rf"{PROFILE_PREFIX} (\S+) {PROFILE_FRAMES}\d+ {PROFILE_MEAN} (\d+)us")
 MEAN_RE = re.compile(r"\b(?P<name>\S+) (?:(?:both cores|one core): )?mean\s+(?P<value>\d+)us\b")
 NUMBER_RE = re.compile(r"^[+-]?\d+$")
 
@@ -53,7 +58,9 @@ def parse_timings(text):
     """Quarter is part of each rendered row's identity, including structured rows."""
     rows = {}
     for line in text.splitlines():
-        if match := MEAN_RE.search(line):
+        if match := PROFILE_RE.search(line):
+            rows[quarter_row(match[1], line)] = int(match[2])
+        elif match := MEAN_RE.search(line):
             rows[quarter_row(match["name"], line)] = int(match["value"])
         elif "stage=" in line and "mean_us=" in line:
             fields = dict(re.findall(r"(\w+)=([^\s]+)", line))

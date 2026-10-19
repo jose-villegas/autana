@@ -30,6 +30,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
+#include "perf_budget.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -399,28 +400,9 @@ feed_snowfall_drift(sand_t* real, int i) {
 static int perf_unmet_targets;
 static bool gas_ab_reporting;
 
-/* The ceiling of a row is its goal x 1.15, rounded up to 10 us; the
- * present-cost ceilings follow the same rule with the panel clock pinned. */
-
-static void
-perf_guard(const char* name, int64_t measured_us, int64_t ceiling_us) {
-#if CONFIG_LAUNCHER_QEMU
-    /* A ceiling pegged on the board prices the board's clock, not an
-     * emulator's, so there it is reported and not enforced. */
-    ESP_LOGI("device_tests", "%s: %lld us, board ceiling %lld us not enforced", name, (long long)measured_us,
-             (long long)ceiling_us);
-    return;
-#endif
-    TEST_ASSERT_LESS_THAN_MESSAGE((int)ceiling_us, (int)measured_us, name);
-}
-
 static void
 perf_target(const char* name, int64_t measured_us, int64_t goal_us, int64_t ceiling_us) {
-    const int64_t distance_percent = ((measured_us - goal_us) * 100) / goal_us;
-
-    ESP_LOGI("device_tests", "PERF TARGET %s: measured %lld us, goal %lld us, distance %+lld%%", name,
-             (long long)measured_us, (long long)goal_us, (long long)distance_percent);
-    if (measured_us > goal_us) {
+    if (perf_goal(name, measured_us, goal_us)) {
         perf_unmet_targets++;
     }
     if (!gas_ab_reporting) {
