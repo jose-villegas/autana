@@ -238,10 +238,10 @@ render_scene_build() {
     fi
 
     # -lm LAST, after the sources, because GNU ld resolves left to right and
-    # would otherwise discard libm before seeing who needed it. The scroll
-    # view's momentum reaches expf() and lroundf(); the Windows toolchains
-    # this repo also builds on fold those into libc and link clean without
-    # it, which is how a scene that needs them reached CI unlinked. Harmless
+    # would otherwise discard libm before seeing who needed it. A scene
+    # that reaches expf() or lroundf() links clean on the Windows toolchains
+    # this repo also builds on, which fold those into libc, and fails only on
+    # Linux without it. Harmless
     # where libm is already part of libc; run_tests.sh ends its own link
     # line the same way. The --wrap pairs hand every scene allocation to
     # render_watch.c.

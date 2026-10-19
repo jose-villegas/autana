@@ -53,7 +53,7 @@ gas_mask(void) {
     uint16_t mask = 0;
     for (int m = 0; m < MATERIAL_MAX; m++) {
         if (material_by_id((material_id_t)m)->kind == KIND_GAS) {
-            mask |= (uint16_t)(1u << m);
+            mask |= (uint16_t)(1U << m);
         }
     }
     return mask;
@@ -89,7 +89,7 @@ static bool gas_row_map_live;
 static inline void
 gas_row_arm(int y) {
     if (gas_row_map_live && (unsigned)y < (unsigned)GAS_ROW_MAX) {
-        gas_row_map.w[(unsigned)y >> 5] |= 1u << ((unsigned)y & 31u);
+        gas_row_map.w[(unsigned)y >> 5] |= 1U << ((unsigned)y & 31U);
     }
 }
 
@@ -98,7 +98,7 @@ gas_row_may_hold(int y) {
     if (!gas_row_map_live) {
         return true;
     }
-    return ((gas_row_map.w[(unsigned)y >> 5] >> ((unsigned)y & 31u)) & 1u) != 0u;
+    return ((gas_row_map.w[(unsigned)y >> 5] >> ((unsigned)y & 31U)) & 1U) != 0U;
 }
 
 /*
@@ -216,7 +216,7 @@ build_gas_tables(void) {
     }
     for (int r = 0; r < MATERIAL_ROWS; r++) {
         if (materials[r].kind == KIND_GAS) {
-            gas_kind_mask |= 1u << r;
+            gas_kind_mask |= 1U << r;
         }
     }
     for (int m = 0; m < MATERIAL_MAX; m++) {
@@ -420,7 +420,7 @@ step_one_gas_row(sand_t* s, const gas_row_t* r, const gas_pass_t* c) {
     bool any = false;
     for (int x = x_from; x != x_to; x += rx_step) {
         const cell_t cell = row[x];
-        if (CELL_IS_EMPTY(cell) || ((gas_kind_mask >> (cell >> 3)) & 1u) == 0u) {
+        if (CELL_IS_EMPTY(cell) || ((gas_kind_mask >> (cell >> 3)) & 1U) == 0U) {
             continue;
         }
         /* Presence, not movement: a gas cell that neither moves nor decays
@@ -488,7 +488,10 @@ static void
 step_one_gas_chunk(void* pass, int lane, int cx, int cy) {
     gas_pass_t* const c = pass;
     sand_t* const s = &c->lanes[lane].local;
-    int x0, x1, y0, y1;
+    int x0;
+    int x1;
+    int y0;
+    int y1;
 
     sand_chunk_pass_cells(cx, cy, &x0, &x1, &y0, &y1);
     const int from = (c->y_step > 0) ? y0 : y1 - 1;
@@ -588,7 +591,7 @@ find_nearest_empty(const sand_t* s, int x, int y, int px, int py, int sight, uin
         if ((unsigned)sx >= (unsigned)s->w || (unsigned)sy >= (unsigned)s->h) {
             return 0;
         }
-        const cell_t o = s->cells[(size_t)sy * (size_t)s->w + (size_t)sx];
+        const cell_t o = s->cells[((size_t)sy * (size_t)s->w) + (size_t)sx];
         if (CELL_IS_EMPTY(o)) {
             return k;
         }
@@ -607,7 +610,7 @@ find_nearest_empty_in_line(const uint8_t* line, int at, int dir, int n, int stri
                            int* run_len_out) {
 #pragma GCC unroll 4
     for (int k = 1; k <= sight; k++) {
-        const int sa = at + dir * k;
+        const int sa = at + (dir * k);
         if ((unsigned)sa >= (unsigned)n) {
             return 0;
         }
@@ -706,7 +709,8 @@ equalise_gas_one_cell(sand_t* s, uint8_t* row, const uint8_t* arow, const uint8_
                       int rdx, int rdy, int sight, uint8_t gas_id, cell_t grain, bool* stayed_in_row, int* touched_x,
                       bool carry_ok, gas_run_t* run, unsigned* late) {
     bool moved = false;
-    int tx = 0, ty = 0;
+    int tx = 0;
+    int ty = 0;
 
     if (!has_room_above(arow, x, rdx, s->w) && neighbour_is_open(nrow, x, px, s->w, gas_id)) {
         int at;
@@ -714,8 +718,8 @@ equalise_gas_one_cell(sand_t* s, uint8_t* row, const uint8_t* arow, const uint8_
         at = gas_gap_ahead(s, row, x, y, px, py, sight, gas_id, carry_ok, run);
 
         if (at != 0) {
-            tx = x + px * at;
-            ty = y + py * at;
+            tx = x + (px * at);
+            ty = y + (py * at);
             moved = true;
         }
     }
@@ -741,7 +745,7 @@ equalise_gas_one_cell(sand_t* s, uint8_t* row, const uint8_t* arow, const uint8_
 
     const int w = s->w;
 
-    s->cells[(size_t)ty * (size_t)w + (size_t)tx] = grain;
+    s->cells[((size_t)ty * (size_t)w) + (size_t)tx] = grain;
     row[x] = CELL_EMPTY;
     note_gas_late_arrival(late, x, y, tx, ty);
 
@@ -781,7 +785,7 @@ equalise_gas_one_row_cell(sand_t* s, uint8_t* row, const uint8_t* arow, const ui
         return false;
     }
     const uint8_t id = CELL_MATERIAL(c);
-    if (((is_gas >> id) & 1u) == 0) {
+    if (((is_gas >> id) & 1U) == 0) {
         /* Same reasoning as the empty case just above: whatever this cell
          * holds, it is not gas, so it cannot extend a gas run either. */
         run->id = -1;
@@ -821,7 +825,7 @@ row_is_packed(const uint8_t* row, int w, uint16_t is_gas, bool* any_gas, int* ma
         if (CELL_IS_EMPTY(c)) {
             return false;
         }
-        if (((is_gas >> CELL_MATERIAL(c)) & 1u) != 0) {
+        if (((is_gas >> CELL_MATERIAL(c)) & 1U) != 0) {
             gas = true;
             const int cur = material_of(c)->sight;
             if (cur > sight) {
@@ -858,13 +862,14 @@ equalise_gas_row_cells(sand_t* s, uint8_t* row, const uint8_t* arow, const uint8
 static bool
 equalise_gas_one_row(sand_t* s, int y, int w, int x_from, int x_to, int x_step, int px, int py, int rdx, int rdy,
                      uint16_t is_gas, int* clean_run, unsigned* late) {
-    uint8_t* row = s->cells + (size_t)y * (size_t)w;
+    uint8_t* row = s->cells + ((size_t)y * (size_t)w);
     /* Both fixed for the whole row - see has_room_above()'s comment. */
     const uint8_t* const arow = dest_row(s, y + rdy);
     const uint8_t* const nrow = dest_row(s, y + py);
     bool any_gas = false;
     bool touched = false;
-    int touched_x0 = 0, touched_x1 = 0;
+    int touched_x0 = 0;
+    int touched_x1 = 0;
 
     const bool along_col = px == 0 && py != 0 && gas_line_fast_on && w <= GAS_COL_MAX;
 
@@ -932,7 +937,10 @@ static void
 equalise_gas_one_chunk(void* pass, int lane, int cx, int cy) {
     gas_equalise_pass_t* const c = pass;
     sand_t* const s = &c->lanes[lane].local;
-    int x0, x1, y0, y1;
+    int x0;
+    int x1;
+    int y0;
+    int y1;
 
     sand_chunk_pass_cells(cx, cy, &x0, &x1, &y0, &y1);
     const int x_from = (c->x_step > 0) ? x0 : x1 - 1;
@@ -1011,10 +1019,10 @@ gas_row_audit(const sand_t* s) {
             continue;
         }
         sand_gas_row_audit_skippable++;
-        const uint8_t* row = s->cells + (size_t)y * (size_t)s->w;
+        const uint8_t* row = s->cells + ((size_t)y * (size_t)s->w);
         for (int x = 0; x < s->w; x++) {
             const cell_t c = row[x];
-            if (!CELL_IS_EMPTY(c) && ((gas_kind_mask >> (c >> 3)) & 1u) != 0u) {
+            if (!CELL_IS_EMPTY(c) && ((gas_kind_mask >> (c >> 3)) & 1U) != 0U) {
                 sand_gas_row_audit_failures++;
                 return;
             }
@@ -1091,15 +1099,19 @@ sand_step_gas(sand_t* s, int gx, int gy, int dx, int dy, const int* slide_a, con
     }
     build_gas_tables();
 
-    const int rdx = -dx, rdy = -dy;
+    const int rdx = -dx;
+    const int rdy = -dy;
     const int rslide_a[2] = {-slide_a[0], -slide_a[1]};
     const int rslide_b[2] = {-slide_b[0], -slide_b[1]};
-    const int rload_dx = -load_dx, rload_dy = -load_dy;
+    const int rload_dx = -load_dx;
+    const int rload_dy = -load_dy;
     const int rx_step = -x_step;
 
     const int* sweep_slide_a = rslide_a;
     const int* sweep_slide_b = rslide_b;
-    int y_from, y_to, y_step;
+    int y_from;
+    int y_to;
+    int y_step;
     sand_choose_sweep_order(s, rdy, !s->gas_walk, &sweep_slide_a, &sweep_slide_b, &y_from, &y_to, &y_step);
 
     /* driven_by_gravity()'s descent = m . g dot product is against real

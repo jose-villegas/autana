@@ -50,6 +50,7 @@ EOF
     small_fill_fps=6
     small_fill_window="trim=start_frame=$small_fill_first:end_frame=$small_fill_end,setpts=PTS-STARTPTS,fps=$small_fill_fps"
     small_fill_palette="max_colors=256:reserve_transparent=0:stats_mode=full"
+    # The table comes in on fd 3: the renderer and ffmpeg inherit stdin and may read it.
     while IFS='|' read -r look label object settings gif diff <&3; do
         # Settings are whitespace-separated command arguments from the table above.
         set -- $settings

@@ -29,7 +29,6 @@
 #include "gfx/present/gfx_test.h"
 #include "input/input.h"
 #include "ui/input/ui_bridge.h"
-#include "ui/layout/ui_scroll.h"
 #include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
 #include "ui/ui_internal.h"
@@ -649,8 +648,7 @@ static void
 build_menu_frame(const input_t* in, int revision, int commands, bool scrollable) {
     ui_begin(in);
     mu_Context* ctx = ui_context();
-    if (ui_scroll_view_begin(ctx, "Menu", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME,
-                             ui_scroll_view_default(), 16)) {
+    if (ui_begin_screen(ctx, "Menu", MU_OPT_NOTITLE | MU_OPT_NORESIZE | MU_OPT_NOCLOSE | MU_OPT_NOFRAME)) {
         menu_pick = ui_mu_dropdown(ctx, "pick", MENU_ANCHOR, MENU_ITEMS, NULL, MENU_ITEM_COUNT, 0, &THEME);
         dropdown_open = ui_dropdown_is_open(ctx, "pick");
         const mu_Color saved_text = ctx->style->colors[MU_COLOR_TEXT];
@@ -666,7 +664,7 @@ build_menu_frame(const input_t* in, int revision, int commands, bool scrollable)
             mu_draw_rect(ctx, (mu_Rect){60 + i, 212 + revision, 1, 100}, ui_rgb(MENU_INK));
         }
         ctx->style->colors[MU_COLOR_TEXT] = saved_text;
-        ui_scroll_view_end(ctx);
+        mu_end_window(ctx);
     }
 }
 
