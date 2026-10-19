@@ -718,15 +718,15 @@ def surface_loss(samples, centres, normals, scale, margin):
 @deterministic_fit()
 def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian, seed=1, device="cuda", report=100,
              clear=(0.0, 0.0, 0.0), cost=None, cost_weight=0.0, scale=1, normal_weight=0.0, surface_weight=0.0,
-             surface_margin=0.0, source=None, seam_margin=0.0):
+             surface_margin=0.0, source=None, seam_margin=SEAM_MARGIN):
     """Fit fixed triangles; return positions, colours and colour-only error history.
     Position steps use bounding diagonals and each vertex's capped local start scale.
     Laplacian drift and the source envelope use capped local start edge scales,
     averaged per triangle for the envelope; normals and predicted cost add their
     weighted penalties.
     Both learning rates decay tenfold over the run.
-    A positive `seam_margin` also pins border points that start near another part
-    to that part's moving triangles."""
+    Seam holds pin border points that start near another part to its moving
+    triangles by default; `seam_margin=0` turns them off."""
     import torch
 
     points0, rgb0, tris, double, _scale, vertex_point, flat = mesh
