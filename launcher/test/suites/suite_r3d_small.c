@@ -19,7 +19,7 @@
 #include <string.h>
 #include "asset/asset_pack.h"
 #include "math/scalar/rng.h"
-#include "render/raster.h"
+#include "render/raster_attachment.h"
 #include "suites.h"
 #include "unity.h"
 
