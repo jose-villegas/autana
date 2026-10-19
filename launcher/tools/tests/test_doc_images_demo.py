@@ -138,7 +138,7 @@ class DocImageFailureTest(unittest.TestCase):
             styles = doc_tables.small_fill_board(data, "gallery", "painting")
             self.assertIn("| 12 | 16 | GRAIN | 0.900 | -10.00% |", styles)
             self.assertEqual(styles.count("| Ceiling |"), 2)
-            self.assertNotIn("render_lab", styles)
+            self.assertNotIn(next(iter(points[0])).split(".")[0], styles)
 
     def test_driver_supplies_all_four_demo_arguments(self):
         source = (ROOT / "launcher/tools/render/render_doc_images.sh").read_text()

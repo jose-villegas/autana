@@ -527,13 +527,13 @@ r3d_span_begin(small_fill_t fill) {
         return;
     }
     small_fill = fill;
-    const int extra_sides = fill.ceiling - SMALL_MAX_SIDE;
+    const int intervals = fill.ceiling - (SMALL_MAX_SIDE + 1);
     for (int side = SMALL_MAX_SIDE + 1; side <= fill.ceiling; side++) {
-        const int spread = fill.gate == 0     ? SMALL_SPREAD_OFF
-                           : extra_sides == 1 ? fill.gate
-                                              : SMALL_SPREAD_OFF
-                                                    + ((int)fill.gate - SMALL_SPREAD_OFF) * (side - SMALL_MAX_SIDE - 1)
-                                                          / (extra_sides - 1);
+        const int offset = side - (SMALL_MAX_SIDE + 1);
+        const int spread = fill.gate == 0 ? SMALL_SPREAD_OFF
+                           : intervals == 0
+                               ? fill.gate
+                               : SMALL_SPREAD_OFF + ((((int)fill.gate - SMALL_SPREAD_OFF) * offset) / intervals);
         small_spread[side] = (uint8_t)spread;
     }
 }
@@ -669,6 +669,15 @@ fill_small_grain(const r3d_span_target_t* target, const r3d_span_vertex_t* a, co
     }
 }
 
+static inline __attribute__((always_inline)) uint16_t
+small_dither_pick(const uint16_t colors[TRIANGLE_VERTICES], uint16_t flat, int32_t threshold, int32_t s0, int32_t s1,
+                  int32_t s2) {
+    if (s0 == s1 && s1 == s2) {
+        return flat;
+    }
+    return colors[threshold < s0 ? 0 : threshold < s0 + s1 ? 1 : 2];
+}
+
 /* Barycentric ordered picks share the screen-anchored graphics pattern. */
 static __attribute__((noinline)) void
 fill_small_dither(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
@@ -699,10 +708,7 @@ fill_small_dither(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
             if ((s0 | s1 | s2) >= 0 && f.flat_z > row.depth[x]) {
                 const int32_t threshold = (total * (2 * pattern[x & SMALL_DITHER_MASK] + 1)) >> SMALL_DITHER_SHIFT;
                 row.depth[x] = f.flat_z;
-                row.color[x] = s0 == s1 && s1 == s2 ? f.flat_color
-                                                    : picks[threshold < s0        ? 0
-                                                            : threshold < s0 + s1 ? 1
-                                                                                  : 2];
+                row.color[x] = small_dither_pick(picks, f.flat_color, threshold, s0, s1, s2);
             }
         }
     }
