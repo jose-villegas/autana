@@ -1,6 +1,6 @@
 /* render_lab_clips: scene playback choices shared by menu and console. */
 #pragma once
-#include "console/console_verbs.h"
+#include "app/app_console.h"
 #include "scene/scene.h"
 
 #define RENDER_LAB_BLEND_DEFAULT_MS             250

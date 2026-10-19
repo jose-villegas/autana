@@ -7,7 +7,6 @@
 #include "suites.h"
 #include "ui/layout/ui_scroll.h"
 #include "ui/ui_internal.h"
-#include "ui/ui_mu.h"
 #include "unity.h"
 
 #define UI_ICOUNT_REPS        4096

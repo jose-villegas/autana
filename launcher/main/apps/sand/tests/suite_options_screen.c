@@ -199,7 +199,7 @@ options_frame(bool down, bool pressed, bool released, int x, int y) {
     input_t in = {.down = down, .pressed = pressed, .released = released, .x = x, .y = y};
     ui_begin(&in);
     const sand_options_hits_t hits = options_screen_draw(&menu, committed, &LABELS);
-    ui_end_commands();
+    ui_probe_end_frame();
     return hits;
 }
 
@@ -357,7 +357,7 @@ assert_repicking_the_current_dither_reports_no_hit(bool landscape) {
 
     const recti_t list = ui_probe_dropdown_list_rect(dither, DITHER_COUNT, dither.h, canvas_h(landscape));
     const int current = menu.draft.dither;
-    const int scroll = ui_dropdown_list_scroll(current, DITHER_COUNT, dither.h, list.h);
+    const int scroll = ui_probe_dropdown_list_scroll(current, DITHER_COUNT, dither.h, list.h);
     const sand_options_hits_t hits =
         tap_at(list.x + (list.w / 2), list.y + (current * dither.h) - scroll + (dither.h / 2));
     TEST_ASSERT_LESS_THAN_INT_MESSAGE(0, hits.dither, "the row already picked is no new pick");
@@ -456,7 +456,7 @@ test_a_landscape_tap_picks_the_open_dither_list_row(void) {
     TEST_ASSERT_FALSE(any_hit(tap(dither)));
     const recti_t list = ui_probe_dropdown_list_rect(dither, DITHER_COUNT, dither.h, canvas_h(true));
     const int row = menu.draft.dither + 1;
-    const int scroll = ui_dropdown_list_scroll(menu.draft.dither, DITHER_COUNT, dither.h, list.h);
+    const int scroll = ui_probe_dropdown_list_scroll(menu.draft.dither, DITHER_COUNT, dither.h, list.h);
     const sand_options_hits_t hits = tap_at(list.x + (list.w / 2), list.y + (row * dither.h) - scroll + (dither.h / 2));
     TEST_ASSERT_EQUAL_INT(row, hits.dither);
     TEST_ASSERT_FALSE(hits.color >= 0);

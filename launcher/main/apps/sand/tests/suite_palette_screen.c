@@ -66,7 +66,7 @@ palette_frame(sand_ui_t* ui, bool landscape, bool down, bool pressed, bool relea
     const input_t in = {.down = down, .pressed = pressed, .released = released, .x = pixel.x, .y = pixel.y};
     ui_begin(&in);
     palette_screen_draw(ui);
-    ui_end_commands();
+    ui_probe_end_frame();
 }
 
 static void
@@ -140,7 +140,7 @@ app_frame(sand_ui_t* ui, input_t in) {
     if (ui->screen == SAND_UI_PALETTE) {
         ui_begin(&in);
         palette_screen_draw(ui);
-        ui_end_commands();
+        ui_probe_end_frame();
     }
 }
 

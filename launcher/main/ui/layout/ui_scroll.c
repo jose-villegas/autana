@@ -5,7 +5,7 @@
 
 #include "math/scalar/mathi.h"
 #include "ui/ui.h"
-#include "ui/ui_mu.h"
+#include "ui/ui_internal.h"
 
 ui_scroll_view_config_t
 ui_scroll_view_default(void) {

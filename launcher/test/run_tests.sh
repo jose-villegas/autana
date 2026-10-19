@@ -114,6 +114,7 @@ $TEST_DIR/host_main.c
 $TEST_DIR/suites.c
 $TEST_DIR/timing.c
 $TEST_DIR/test_cleanup.c
+$TEST_DIR/ui_probe.c
 $TEST_DIR/heap_arena.c
 $TEST_DIR/pack_reads.c
 $TEST_DIR/job_calls.c
@@ -122,6 +123,7 @@ $TEST_DIR/test_fence.c
 $MAIN_DIR/sound/sound_mixer.c
 $MAIN_DIR/audio/audio_tone.c
 $MAIN_DIR/app/app_arena.c
+$MAIN_DIR/app/app_console.c
 $MAIN_DIR/app/app_registry.c
 $MAIN_DIR/shell/shell_system.c
 $MAIN_DIR/shell/shell_home_edge.c

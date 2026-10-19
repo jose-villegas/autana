@@ -10,7 +10,6 @@
 #include <stdbool.h>
 
 #include "draw/draw_image.h"
-#include "microui.h"
 
 /* One icon: its entry's name in the pack, and what an icon-only control
  * shows in its place without one. */
@@ -40,9 +39,6 @@ void ui_icon_set_release(ui_icon_set_t* set);
 /* Icon `i`, or NULL unless the set is loaded. */
 const draw_image_t* ui_icon_set_get(const ui_icon_set_t* set, int i);
 
-/* Icon `i` filling `r`, or its text when the set is not loaded. */
-void ui_icon_set_draw(mu_Context* ctx, mu_Rect r, const ui_icon_set_t* set, int i, mu_Color color);
-
 typedef enum {
     UI_ICON_CHECK,
     UI_ICON_CLOSE,
@@ -65,6 +61,3 @@ void ui_icons_init(void);
 
 /* System icon `id`, or NULL when the engine pack does not hold it. */
 const draw_image_t* ui_icon_image(ui_icon_id_t id);
-
-/* System icon `id` filling `r`, or its short text when there is no pack. */
-void ui_draw_system_icon(mu_Context* ctx, mu_Rect r, ui_icon_id_t id, mu_Color color);

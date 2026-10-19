@@ -27,15 +27,15 @@ draw_build_mark(void) {
     const int quarter = display_quarter_now();
     const int screen_w = (quarter % 2 == 0) ? GFX_WIDTH : GFX_HEIGHT;
     const int screen_h = (quarter % 2 == 0) ? GFX_HEIGHT : GFX_WIDTH;
-    const mu_Rect upright =
-        ui_anchor_rect((mu_Rect){0, 0, screen_w, screen_h}, UI_ANCHOR_BOTTOM_RIGHT, UI_ANCHOR_BOTTOM_RIGHT,
+    const recti_t upright =
+        ui_anchor_rect((recti_t){0, 0, screen_w, screen_h}, UI_ANCHOR_BOTTOM_RIGHT, UI_ANCHOR_BOTTOM_RIGHT,
                        -UI_MARGIN - BUILD_MARK_CORNER_SHIFT, -UI_MARGIN, BUILD_MARK_SIZE, BUILD_MARK_GLYPH);
-    const mu_Rect box = ui_transform_rect(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT), upright);
+    const recti_t box = ui_transform_rect(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT), upright);
 
     if (gfx_region_dirty(box.x, box.y, box.w, box.h)) {
         int x = 0;
         int y = 0;
-        ui_text_glyph0_origin(draw_font_ui(), ui_recti_from_mu(box), quarter, 1, &x, &y);
+        ui_text_glyph0_origin(draw_font_ui(), box, quarter, 1, &x, &y);
         draw_text_turned(x, y, build_mark_text, gfx_rgb(BUILD_MARK_RGB), 1, quarter);
     }
 }

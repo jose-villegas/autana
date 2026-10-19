@@ -121,7 +121,8 @@ test_boot_clip_opening_touch_does_not_select_overlay_row(void) {
     for (int motion = 0; motion <= MOTION_PIXELS; motion += MOTION_PIXELS) {
         enter(f, "capybara");
         /* The fixture resets the transform; the shell supplies landscape on the board. */
-        ui_set_transform(ui_transform_quarter_turn(DISPLAY_LANDSCAPE, GFX_WIDTH, GFX_HEIGHT));
+        const affine2x_t transform = ui_transform_quarter_turn(DISPLAY_LANDSCAPE, GFX_WIDTH, GFX_HEIGHT);
+        ui_set_transform(transform);
         TEST_ASSERT_EQUAL_INT(GFX_HEIGHT, ui_width());
         TEST_ASSERT_EQUAL_INT(GFX_WIDTH, ui_height());
         render_lab_test_frame(false, NULL);
@@ -131,7 +132,6 @@ test_boot_clip_opening_touch_does_not_select_overlay_row(void) {
         input_t touch = {.down = true, .pressed = true};
         recti_t idle;
         TEST_ASSERT_TRUE(ui_probe_text("idle", &idle));
-        const affine2x_t transform = ui_effective_transform();
         const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){idle.x, idle.y});
         touch.x = mapped_pixel.x;
         touch.y = mapped_pixel.y;

@@ -23,6 +23,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "app/app_console.h"
 #include "services/tune.h"
 
 /* The longest line any registered verb needs today: "SET " (4) + a
@@ -86,11 +87,6 @@ console_copy_text(char* into, size_t into_size, const char* from) {
     into[length] = '\0';
 }
 
-typedef void (*console_reply_fn)(const char* line);
-
-/* printf()+fflush() for a one-line reply; a long stream such as SCREENSHOT's uses console_emit_line(). */
-void console_reply_stdio(const char* line);
-
 /* `args` is what follows the verb and one space, or "" for a bare verb with
  * nothing after it. */
 typedef void (*console_verb_fn)(const char* args, console_reply_fn reply);
@@ -108,12 +104,6 @@ typedef struct {
 /* ASCII case-folded name order makes dispatch independent of link order.
  * A different verb with the same name returns false; re-registering the same object returns true. */
 bool console_register(console_registry_t* registry, console_verb_t* verb);
-
-/* True if `line` is `name`, or `name` plus one space and more (never a
- * longer word starting the same way), folded like console_register()'s own
- * clash check. `*args` gets what follows: "" for a bare match. Shared by a
- * verb's dispatch below and an app's console prefix (app.h). */
-bool console_word_match(const char* line, const char* name, const char** args);
 
 /* True if `line` matched a registered verb, whatever its handler then did.
  * False, with no handler called, if nothing matched. */
