@@ -304,9 +304,9 @@ All arms default to zero. Live changes require a development image built
 with `--hot-tunables`. The application playback API has no fade control.
 The voice table is 256 bytes on the target; `sound stats` reports its size.
 
-The residual continues after voices stop while the amplifier is ON.
-Decay rounds toward zero by at least one PCM unit per sample, ensuring a
-finite tail. Mid-block cuts contribute tails at their exact sample offset.
+The residual plays while the amplifier is ON; OFF clears it.
+Decay rounds toward zero by at least one PCM unit per sample.
+Mid-block cuts start tails at their exact sample offset.
 
 Build outside the board hold, then run the capture inside it:
 

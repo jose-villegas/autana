@@ -433,6 +433,7 @@ amp_ready(sound_mixer_t* mixer, uint64_t now_ms, uint32_t startup_ms) {
         }
     } else if (mixer->amp != SOUND_AMP_OFF && now_ms - mixer->last_active_ms >= SOUND_AMP_IDLE_MS) {
         mixer->amp = SOUND_AMP_OFF;
+        mixer->residual = 0;
     }
     if (mixer->amp == SOUND_AMP_WARMING && now_ms - mixer->amp_changed_ms >= startup_ms) {
         mixer->amp = SOUND_AMP_ON;

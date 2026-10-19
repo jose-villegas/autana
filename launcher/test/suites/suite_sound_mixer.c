@@ -1014,8 +1014,26 @@ test_sound_declick_zero_signal_and_loop_seam(void) {
     TEST_ASSERT_INT_WITHIN(TEST_SAMPLE / TEST_DECLICK_FRAMES + 1, f->out[seam - 1], f->out[seam]);
 }
 
+static void
+test_sound_declick_amp_off_discards_tail(void) {
+    fixture_t* f = fixture();
+    f->mixer.declick_frames = SOUND_GAIN_ONE;
+    const sound_play_opts_t opts = {.bus = SOUND_BUS_SFX, .gain_pct = SOUND_GAIN_MAX_PCT, .loop = true};
+    const sound_voice_t voice = play(f, &opts);
+    render(f, 0, TEST_FRAMES);
+    render(f, TEST_STARTUP_MS, TEST_FRAMES);
+    sound_command_t command;
+    TEST_ASSERT_TRUE(sound_control_voice_command(&f->control, voice, SOUND_COMMAND_STOP, 0, &command));
+    sound_mixer_apply(&f->mixer, &command, f->control.app_generation);
+    TEST_ASSERT_NOT_EQUAL(0, f->mixer.residual);
+    render(f, TEST_STARTUP_MS + SOUND_AMP_IDLE_MS, TEST_FRAMES);
+    TEST_ASSERT_EQUAL_INT(SOUND_AMP_OFF, f->mixer.amp);
+    TEST_ASSERT_EQUAL_INT32(0, f->mixer.residual);
+}
+
 void
 run_sound_mixer_suite(void) {
+    RUN_TEST(test_sound_declick_amp_off_discards_tail);
     RUN_TEST(test_sound_declick_cuts_preserve_continuity);
     RUN_TEST(test_sound_declick_zero_signal_and_loop_seam);
     RUN_TEST(test_sound_declick_start_stop_and_tail);
