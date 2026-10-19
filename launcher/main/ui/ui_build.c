@@ -39,7 +39,6 @@ static const char* TAG = "ui";
 #include "ui/input/ui_pointer.h"
 #include "ui/input/ui_snap.h"
 #include "ui/ui_internal.h"
-#include "ui/ui_mu.h"
 
 /* Definitions for the externs ui_internal.h declares; see that header for
  * what each one is shared for. */
@@ -248,7 +247,7 @@ use_transform(affine2x_t t) {
     if (!affine2x_invert(ui_effective_transform(), &inverse)) {
         inverse = affine2x_identity();
     }
-    logical_canvas = ui_transform_rect(inverse, (mu_Rect){0, 0, GFX_WIDTH, GFX_HEIGHT});
+    logical_canvas = ui_transform_mu_rect(inverse, (mu_Rect){0, 0, GFX_WIDTH, GFX_HEIGHT});
 }
 
 /* See ui.h for why a transform change must call ui_invalidate(). WHY AN
@@ -334,7 +333,7 @@ ui_init(void) {
     ui_ctx.style->colors[MU_COLOR_BUTTON] = (mu_Color){0x16, 0x1A, 0x28, 255};
     ui_ctx.style->colors[MU_COLOR_BUTTONHOVER] = (mu_Color){0x23, 0x2A, 0x40, 255};
     ui_ctx.style->colors[MU_COLOR_BUTTONFOCUS] = (mu_Color){0x3D, 0xDC, 0x97, 255};
-    ui_ctx.style->padding = 12;
+    ui_ctx.style->padding = UI_PADDING;
     ui_ctx.style->spacing = UI_ROW_GAP;
     ui_ctx.style->indent = 0;
     ui_ctx.style->title_height = UI_TITLE_HEIGHT;

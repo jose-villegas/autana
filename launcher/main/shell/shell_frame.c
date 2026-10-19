@@ -27,10 +27,10 @@ draw_build_mark(void) {
     const int quarter = display_quarter_now();
     const int screen_w = (quarter % 2 == 0) ? GFX_WIDTH : GFX_HEIGHT;
     const int screen_h = (quarter % 2 == 0) ? GFX_HEIGHT : GFX_WIDTH;
-    const mu_Rect upright =
-        ui_anchor_rect((mu_Rect){0, 0, screen_w, screen_h}, UI_ANCHOR_BOTTOM_RIGHT, UI_ANCHOR_BOTTOM_RIGHT,
+    const recti_t upright =
+        ui_anchor_rect((recti_t){0, 0, screen_w, screen_h}, UI_ANCHOR_BOTTOM_RIGHT, UI_ANCHOR_BOTTOM_RIGHT,
                        -UI_MARGIN - BUILD_MARK_CORNER_SHIFT, -UI_MARGIN, BUILD_MARK_SIZE, BUILD_MARK_GLYPH);
-    const mu_Rect box = ui_transform_rect(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT), upright);
+    const recti_t box = ui_transform_rect(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT), upright);
 
     if (gfx_region_dirty(box.x, box.y, box.w, box.h)) {
         int x = 0;
@@ -64,7 +64,7 @@ shell_frame_overlay(int row0, int row1) {
 void
 shell_frame_extras(void) {
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    if (gfx_mode_current()->layout == GFX_LAYOUT_FULL_FB && !gfx_frame_expanded()) {
+    if (gfx_mode_has_framebuffer(gfx_mode_current()) && !gfx_frame_expanded()) {
         draw_build_mark();
     }
 #endif

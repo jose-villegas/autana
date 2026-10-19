@@ -55,6 +55,11 @@ void gfx_get_strip_send_counts(int* full_bands, int* gathered, int* partial_band
  * against ones that do. */
 int64_t gfx_get_bytes_sent(void);
 
+/* Last dispatch through final strip completion; read after draining the send. */
+int32_t gfx_get_present_send_us(void);
+/* Core-0 blocked time in the last begin (double) or wait (other layouts). */
+int32_t gfx_get_present_wait_us(void);
+
 /* The part of gfx_get_bytes_sent() that heal strips added. */
 int64_t gfx_get_heal_bytes_sent(void);
 
@@ -62,4 +67,9 @@ int64_t gfx_get_heal_bytes_sent(void);
  * every dirty-tracking decision gfx_present() makes, the bus-time side of
  * a full present. */
 void gfx_present_raw_full_frame_for_test(void);
+
+/* How many gfx_mode_enter() calls since boot were refused the layout they
+ * asked for and stayed GFX_LAYOUT_FULL_FB, for a test to judge its own
+ * share of. */
+unsigned gfx_mode_denials(void);
 #endif

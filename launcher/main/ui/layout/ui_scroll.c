@@ -5,7 +5,7 @@
 
 #include "math/scalar/mathi.h"
 #include "ui/ui.h"
-#include "ui/ui_mu.h"
+#include "ui/ui_internal.h"
 
 ui_scroll_view_config_t
 ui_scroll_view_default(void) {
@@ -127,7 +127,7 @@ ui_flow_top(int canvas_h, int count, int row_h, int gap, int margin) {
 
 mu_Rect
 ui_flow_row(mu_Context* ctx, ui_flow_t* flow, int w, int h) {
-    const mu_Rect rest = ui_centered_rect(flow->canvas_w, w, h, flow->y);
+    const mu_Rect rest = ui_mu_from_recti(ui_centered_rect(flow->canvas_w, w, h, flow->y));
     flow->y += h + flow->gap;
 
     const int p = ctx->style->padding;

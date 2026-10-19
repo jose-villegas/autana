@@ -6,6 +6,7 @@ import collections
 import contextlib
 import errno
 import gzip
+from functools import partial
 import json
 import math
 import os
@@ -29,7 +30,7 @@ import lock_scope
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
 import board_serial
-from console_protocol import replies_to, require_development
+from console_protocol import replies_to, require_development, reply_prefix
 from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, BUILD_ID_REQUEST,
                             crash_signs, suite_failure_signs)
 
@@ -392,7 +393,7 @@ def append_manifest(entry, root=None):
 
 def record_capture(path, managed, *, started_at, board, owner, purpose, command, commit,
                     suite=None, build_id=None, worktree=None, reason=None, error=None, root=None,
-                    acquired_at=None, test_filter=None):
+                    acquired_at=None, test_filter=None, console_send=None):
     """The permanent trail: written for every flash/run-suite/listen call, so
     even a capture left behind in a doomed worktree still has metadata here."""
     path = Path(path)
@@ -420,6 +421,8 @@ def record_capture(path, managed, *, started_at, board, owner, purpose, command,
     }
     if test_filter:
         entry["test_filter"] = test_filter
+    if console_send:
+        entry["console_send"] = console_send
     append_manifest(entry, root)
     return path
 
@@ -612,7 +615,7 @@ class HeldLock:
 
     HEARTBEAT_SECONDS = 5
 
-    def __init__(self, store, board, owner, kind, wait, announce_waiters=False):
+    def __init__(self, store, board, owner, kind, wait, announce_waiters=False, estimate=None):
         self.store = store
         self.announce_waiters = announce_waiters
         self.board = board
@@ -627,7 +630,7 @@ class HeldLock:
             self.held = device_lock.Held(record, "")
         else:
             self.held = store.acquire(board, owner, kind, wait=wait, on_wait=self.wait_notice,
-                                      purpose=command_label(kind))
+                                      purpose=command_label(kind), estimate=estimate)
         if not self.held:
             raise LockBusy("device lock was not acquired: "
                            + device_lock.busy_text(store.status(board), store.now()))
@@ -822,11 +825,20 @@ def reset(after="hard_reset"):
 
 def reset_and_capture(output, seconds, idle_seconds, expected_build_id=None,
                       complete=tests_done):
-    """A board that says nothing at all after the RTS reset is taken for a chip
-    in download mode, the one case RTS cannot start, and gets the watchdog. One
-    that spoke, even without a BUILD_ID, is left alone."""
+    """The console after an RTS reset, with the download-mode fallback of
+    capture_with_watchdog_fallback."""
+    return capture_with_watchdog_fallback(output, seconds, idle_seconds, expected_build_id,
+                                          complete, connection=reset())
+
+
+def capture_with_watchdog_fallback(output, seconds, idle_seconds, expected_build_id=None,
+                                   complete=tests_done, *, connection):
+    """The console after a reset whose port `connection` is. A board that says
+    nothing at all is taken for a chip in download mode, the one case RTS
+    cannot start, and gets the watchdog. One that spoke, even without a
+    BUILD_ID, is left alone."""
     data, reason = capture_after_reset(output, seconds, idle_seconds, expected_build_id,
-                                       complete, connection=reset())
+                                       complete, connection=connection)
     if reason != "silent":
         return data, reason
     print("board silent after an RTS reset, as from download mode; "
@@ -893,8 +905,8 @@ def await_console(args, board, build_id, acquired_at, connection):
         raise
     data, reason = b"", None
     try:
-        data, reason = capture_after_reset(output, BOOT_WAIT_SECONDS, None, build_id,
-                                           console_up(build_id), connection=connection)
+        data, reason = capture_with_watchdog_fallback(output, BOOT_WAIT_SECONDS, None, build_id,
+                                                      console_up(build_id), connection=connection)
     finally:
         path = record_capture(output, managed, started_at=started_at, board=board,
                               owner=args.owner, purpose=args.purpose, command="boot",
@@ -1161,13 +1173,13 @@ def try_lock_file(handle):
 
 
 @contextlib.contextmanager
-def build_directory_lock(build_dir):
-    """Holds `build_dir` for one build and its snapshot, so two builds of one
-    worktree's variant never interleave in one directory. An OS file lock:
-    the system drops it with the process that held it. Yields the folder
-    build_paths.py prepared, to pass to build.sh as --prepared-build, or None
-    for a project older than build_paths.py, whose build.sh has no such option
-    (autana is one tool for every checkout, perf_compare's old revisions too)."""
+def build_directory_lock(build_dir, timeout=None):
+    """Lock one build directory through its snapshot; yield its prepared path,
+    or None when the checkout has no --prepared-build support."""
+    latest = os.environ.get(autana_config.BUILD_LATEST_START_ENV)
+    if timeout is None and latest:
+        timeout = max(0, float(latest) - time.time())
+    expires = time.monotonic() + timeout if timeout is not None else None
     build_dir = Path(build_dir)
     prepared = None
     if (build_dir.parent / "tools/build/build_paths.py").is_file():
@@ -1178,7 +1190,10 @@ def build_directory_lock(build_dir):
         if not try_lock_file(handle):
             print("waiting for another build in " + str(build_dir), file=sys.stderr)
             while not try_lock_file(handle):
-                time.sleep(BUILD_LOCK_POLL_SECONDS)
+                if expires is not None and time.monotonic() >= expires:
+                    raise TimeoutError("build lock wait exceeded its window")
+                time.sleep(min(BUILD_LOCK_POLL_SECONDS, max(0, expires - time.monotonic()))
+                           if expires is not None else BUILD_LOCK_POLL_SECONDS)
         yield prepared
 
 
@@ -1240,26 +1255,47 @@ def remove_image_directory(image):
     shutil.rmtree(image, ignore_errors=True)
 
 
-def build_snapshot(build, build_dir, image_dir, **popen):
-    """Runs `build` and snapshots its image, holding the build directory
-    throughout and no board lock at all. Returns the build id."""
+BUILD_NICE_INCREMENT = 5
+
+
+@contextlib.contextmanager
+def build_policy(environment):
+    """Private process-tree policy limits compilation, never board captures."""
+    latest = environment.get(autana_config.BUILD_LATEST_START_ENV)
+    latest = float(latest) if latest else None
+    serial = environment.get(autana_config.BUILD_SERIAL_ENV)
+    options = {}
+    if environment.get(autana_config.BUILD_PRIORITY_ENV) == autana_config.BUILD_PRIORITY_BELOW_NORMAL:
+        if os.name == "nt":
+            options["creationflags"] = subprocess.BELOW_NORMAL_PRIORITY_CLASS
+        else:
+            options["preexec_fn"] = partial(os.nice, BUILD_NICE_INCREMENT)
+    with build_directory_lock(serial, timeout=max(0, latest - time.time()) if latest else None) if serial else contextlib.nullcontext():
+        if latest is not None and time.time() > latest:
+            raise TimeoutError("build cannot start inside its window")
+        yield options
+
+
+def build_snapshot(build, build_dir, image_dir=None, **popen):
+    """Compile under the process policy and directory lock; optionally snapshot."""
     with build_directory_lock(build_dir) as prepared:
-        run_to_end(build + (["--prepared-build", prepared.as_posix()] if prepared else []), None, **dict(popen, env=script_environment(popen.get("env"))))
-        return snapshot_image(prepared or build_dir, image_dir)
+        environment = script_environment(popen.pop("env", None))
+        with build_policy(environment) as priority:
+            run_to_end(build + (["--prepared-build", prepared.as_posix()] if prepared else []), None,
+                       **dict(popen, env=environment, **priority))
+        return snapshot_image(prepared or build_dir, image_dir) if image_dir else None
 
 
 def build_worktree(worktree, variant, build_flags=()):
-    """The build half of a flash on its own, for `autana build`: no board and
-    no lock but the build directory's. The build's output goes to this
-    process's; returns its exit status."""
+    """Build one worktree without acquiring a board; return the build's exit status."""
     worktree = Path(worktree).resolve()
     if not (worktree / BUILD_SCRIPT).is_file():
         raise RuntimeError("build tool not found: " + str(worktree / BUILD_SCRIPT))
     build, _ = flash_commands(git_bash(), worktree, variant, build_flags)
     try:
-        with build_directory_lock(build_directory(worktree, variant)) as prepared:
-            run_to_end(build + (["--prepared-build", prepared.as_posix()] if prepared else []), None, cwd=worktree, stdin=subprocess.DEVNULL,
-                       env=script_environment())
+        build_snapshot(build, build_directory(worktree, variant), cwd=worktree, stdin=subprocess.DEVNULL)
+    except TimeoutError:
+        return autana_config.EXIT_BUSY
     except subprocess.CalledProcessError as failed:
         return failed.returncode
     return 0
@@ -1462,6 +1498,7 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
         with holding(store, board, args, held_lock, "run-suite") as held:
             with open_when_free() as connection:
                 apply_tunables(connection, getattr(args, "tune_set", None) or [])
+                apply_console_lines(connection, getattr(args, "console_send", None) or [])
                 connection.write(suite_request(args.suite, patterns))
                 data, reason = capture(connection, output, args.max_seconds, args.idle_seconds,
                                        args.expect_build_id, args.suite)
@@ -1476,7 +1513,8 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
             worktree=worktree if worktree is not None else str(Path.cwd()),
             commit=commit if commit is not None else git_commit(), reason=reason, error=error,
             acquired_at=held.held["acquired_at"] if held else None,
-            test_filter=patterns or None)
+            test_filter=patterns or None,
+            console_send=getattr(args, "console_send", None))
         try:
             report_path = device_report.write_report_for_capture(
                 final_path, records_root() / "index.jsonl")
@@ -1708,12 +1746,28 @@ def exchange(connection, line, reply, until, seconds):
 
 
 TUNE_REPLY_ENDS = ("TUNE_OK", "TUNE_ERR", "TUNE_END")
-TUNE_SET_SECONDS = 3.0
-TUNE_SET_ATTEMPTS = 3
+EXCHANGE_SECONDS = 3.0
+EXCHANGE_ATTEMPTS = 3
 
 
 class TuneRefused(BatchEnding):
     """A --set the board refused or did not echo."""
+
+
+def exchange_retrying(connection, requests):
+    """Retry an idempotent sequence only on silence; partial replies stop it."""
+    for _ in range(EXCHANGE_ATTEMPTS):
+        replies = []
+        for line, prefix, endings in requests:
+            found, complete = exchange(connection, line, prefix, endings, EXCHANGE_SECONDS)
+            if not found:
+                break
+            replies.extend(found)
+            if not complete or found[-1].startswith(endings[1]):
+                return line, replies, False
+        else:
+            return line, replies, True
+    return line, found, False
 
 
 def apply_tunables(connection, settings):
@@ -1722,18 +1776,37 @@ def apply_tunables(connection, settings):
     echoes each value back."""
     for setting in settings:
         name, _, value = setting.partition("=")
-        # A board still winding down the last suite can drop a line; SET is
-        # idempotent, so silence is asked again before it counts as refusal.
-        for _ in range(TUNE_SET_ATTEMPTS):
-            found, complete = exchange(connection, f"SET {name} {value}", "TUNE", TUNE_REPLY_ENDS,
-                                       TUNE_SET_SECONDS)
-            if complete:
-                break
-        if not found or not found[-1].startswith("TUNE_OK " + name + "="):
+        _, found, complete = exchange_retrying(
+            connection, [(f"SET {name} {value}", "TUNE", TUNE_REPLY_ENDS)])
+        if not complete or not found or not found[-1].startswith("TUNE_OK " + name + "="):
             raise TuneRefused(f"SET {name} {value}: {found[-1] if found else 'no reply'}")
         if found[-1].split("=", 1)[1] != str(int(value, 0)):
             raise TuneRefused(f"SET {name} {value}: board holds {found[-1]}")
         print(found[-1], flush=True)
+
+
+class ConsoleRefused(BatchEnding):
+    """A setup line failed or did not complete its reply."""
+
+
+def apply_console_lines(connection, lines):
+    """Apply an idempotent setup sequence; silence retries it from the start.
+
+    A partial reply or an error refuses the sequence without resending a line.
+    """
+    requests = []
+    for line in lines:
+        try:
+            prefix, endings = reply_prefix(line)
+        except ValueError as error:
+            raise ConsoleRefused(f"{line!r}: {error}") from error
+        requests.append((line, prefix, endings))
+    if not requests:
+        return
+    line, found, complete = exchange_retrying(connection, requests)
+    if not complete:
+        raise ConsoleRefused(f"{line!r}: " + ("\n".join(found) or "no reply"))
+    print("\n".join(found), flush=True)
 
 
 def send(args, store, board):
@@ -1886,7 +1959,8 @@ def batch(args, store, board):
                     owner=args.owner, wait=args.wait, suite=suite_name, out=out, purpose=purpose,
                     max_seconds=args.max_seconds, idle_seconds=args.idle_seconds,
                     expect_build_id=build_id, verbose=getattr(args, "verbose", False),
-                    test_filter=patterns, tune_set=getattr(args, "tune_set", None))
+                    test_filter=patterns, tune_set=getattr(args, "tune_set", None),
+                    console_send=getattr(args, "console_send", None))
                 print(f"batch: {suite_name} run {run}/{args.runs}", flush=True)
                 # A suite FAIL is a result, not a broken run: a perf capture always
                 # carries its budget targets' FAILs, and its duration still counts.
@@ -1928,9 +2002,13 @@ def batch(args, store, board):
     return 1 if any(e["error"] or e["failed"] for e in entries) else 0
 
 
+WAIT_UNIT_SECONDS = {"s": 1, "m": 60, "h": 60 * 60}
+
+
 def human_wait_seconds(value):
     try:
-        seconds = float(value)
+        unit = value[-1:]
+        seconds = float(value[:-1] if unit in WAIT_UNIT_SECONDS else value) * WAIT_UNIT_SECONDS.get(unit, 1)
     except ValueError as error:
         raise argparse.ArgumentTypeError("wait must be a nonnegative number") from error
     if not math.isfinite(seconds) or seconds < 0:
@@ -2059,6 +2137,7 @@ def main(argv=None):
     run = subparsers.add_parser("run")
     run.set_defaults(auto_pick=True)
     run.add_argument("--keep-on-failure", type=hold_seconds)
+    run.add_argument("--estimate", type=human_wait_seconds)
     run.add_argument("child", nargs=argparse.REMAINDER)
     wait_parser = subparsers.add_parser("wait-free")
     wait_parser.add_argument("--cap", type=human_wait_seconds)
@@ -2087,6 +2166,8 @@ def main(argv=None):
     suite.add_argument("--idle-seconds", type=float, default=300)
     suite.add_argument("--expect-build-id")
     suite.add_argument("--verbose", action="store_true")
+    suite.add_argument("--send", dest="console_send", action="append", metavar="LINE",
+                       help="send before every capture; repeatable, sequence should be idempotent")
     suite.add_argument("--set", dest="tune_set", action="append", metavar="NAME=VALUE",
                        help="SET a tunable under the capture's lock first; repeatable")
     listen_parser = subparsers.add_parser("listen")
@@ -2164,6 +2245,8 @@ def main(argv=None):
     batch_parser.add_argument("--layout-seed", type=int, default=0,
                               help="pad the layout by this seed (needs --flash, the default)")
     batch_parser.add_argument("--max-seconds", type=float, default=1800)
+    batch_parser.add_argument("--send", dest="console_send", action="append", metavar="LINE",
+                              help="send before every capture; repeatable, sequence should be idempotent")
     batch_parser.add_argument("--set", dest="tune_set", action="append", metavar="NAME=VALUE",
                               help="SET a tunable under each capture's lock first; repeatable")
     batch_parser.add_argument("--test", dest="test_filter", action="append", metavar="PATTERN",
@@ -2291,7 +2374,7 @@ def main(argv=None):
             child = args.child[1:] if args.child[:1] == ["--"] else args.child
             if not child:
                 parser.error("run needs -- <command...>")
-            with HeldLock(store, board, args.owner, "run", args.wait) as held:
+            with HeldLock(store, board, args.owner, "run", args.wait, estimate=args.estimate) as held:
                 try:
                     run_to_end(child, held.lost)
                     result = 0

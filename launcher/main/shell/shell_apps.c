@@ -91,8 +91,8 @@ home_hint_rect(gesture_edge_t edge, int* x, int* y, int* w, int* h) {
             break;
     }
 
-    const mu_Rect rect =
-        ui_anchor_rect((mu_Rect){0, 0, GFX_WIDTH, GFX_HEIGHT}, anchor, anchor, offset_x, offset_y, width, height);
+    const recti_t rect =
+        ui_anchor_rect((recti_t){0, 0, GFX_WIDTH, GFX_HEIGHT}, anchor, anchor, offset_x, offset_y, width, height);
     *x = rect.x;
     *y = rect.y;
     *w = rect.w;
@@ -326,7 +326,7 @@ shell_step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
     apply_pending_full_redraw(*current);
     step_running_app(*current, input, dt_ms);
 
-    if ((*current)->home_gesture && gfx_mode_current()->layout == GFX_LAYOUT_FULL_FB && !gfx_frame_expanded()) {
+    if ((*current)->home_gesture && gfx_mode_has_framebuffer(gfx_mode_current()) && !gfx_frame_expanded()) {
         draw_home_hint(exit_edge);
     }
 }

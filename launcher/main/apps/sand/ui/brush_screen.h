@@ -26,8 +26,6 @@
  */
 #pragma once
 
-#include "microui.h"
-
 #include "apps/sand/sand_ui.h"
 #include "apps/sand/ui/sand_theme.h"
 
@@ -46,26 +44,26 @@ typedef enum {
 /* Every rect the drawing code (Phase 5b) needs, and nothing else. Filled by
  * brush_screen_layout() below; no field is meaningful before that call. */
 typedef struct {
-    mu_Rect header_panel;
-    mu_Rect mode_panel;
-    mu_Rect size_panel;
+    recti_t header_panel;
+    recti_t mode_panel;
+    recti_t size_panel;
 
     /* Header: swatch on the left, caption above name to its right, info
      * button at the far right edge. */
-    mu_Rect swatch;
-    mu_Rect material_caption; /* "MATERIAL" */
-    mu_Rect material_name;    /* the large material name */
-    mu_Rect info_button;
+    recti_t swatch;
+    recti_t material_caption; /* "MATERIAL" */
+    recti_t material_name;    /* the large material name */
+    recti_t info_button;
 
     /* Brush mode: caption above three equal-width, equal-gap segments. */
-    mu_Rect mode_caption; /* "BRUSH MODE" */
-    mu_Rect segments[BRUSH_SCREEN_SEGMENT_COUNT];
+    recti_t mode_caption; /* "BRUSH MODE" */
+    recti_t segments[BRUSH_SCREEN_SEGMENT_COUNT];
 
     /* Brush size: caption and right-aligned value share a row, above the
      * slider track. */
-    mu_Rect size_caption; /* e.g. "POUR BRUSH SIZE" */
-    mu_Rect size_value;   /* e.g. "06 PX" */
-    mu_Rect slider_track;
+    recti_t size_caption; /* e.g. "POUR BRUSH SIZE" */
+    recti_t size_value;   /* e.g. "06 PX" */
+    recti_t slider_track;
 } brush_screen_layout_t;
 
 /* The scale every caption and segment label on this screen is drawn at.
@@ -73,13 +71,15 @@ typedef struct {
  * the two only mean anything together: suite_brush_screen.c measures the
  * strings below against their own rects at this scale, which is what caught
  * "POUR BRUSH SIZE" overflowing its row in portrait. */
-#define BRUSH_SCREEN_CAPTION_SCALE    2
+#define BRUSH_SCREEN_CAPTION_SCALE    SAND_THEME_TEXT_SCALE
 
 /* The screen's fixed strings. Here rather than at the drawing call site so
  * the fit check above can reach them - a caption the layout has never seen
  * is a caption nothing can prove fits. */
 #define BRUSH_SCREEN_MATERIAL_CAPTION "MATERIAL"
 #define BRUSH_SCREEN_MODE_CAPTION     "BRUSH MODE"
+/* The size slider's identity; its caption is drawn separately. */
+#define BRUSH_SCREEN_SIZE_SLIDER      "BRUSH SIZE"
 
 /* The segment's own label, and the size row's caption naming whichever mode
  * is selected - "POUR SIZE" rather than the design's "POUR BRUSH SIZE",
@@ -97,5 +97,5 @@ void brush_screen_layout(int screen_w, int screen_h, brush_screen_layout_t* out)
 /* Draws the whole screen - header, mode segments, size slider - and applies
  * a segment tap to `ui` before returning. Caller brackets this with
  * ui_begin()/ui_end(UI_NO_BACKGROUND): input and presentation are the app's
- * job, this is only the microui build - see docs/Building-a-Screen.md. */
-void brush_screen_draw(mu_Context* ctx, sand_ui_t* ui);
+ * job, this is only the UI build - see docs/Building-a-Screen.md. */
+void brush_screen_draw(sand_ui_t* ui);

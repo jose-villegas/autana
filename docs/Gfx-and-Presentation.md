@@ -39,6 +39,8 @@ flowchart TB
     SEL -->|"GFX_LAYOUT_BANDS"| BR["2-slot band ring<br/>internal DMA RAM"]
     SEL -->|"GFX_LAYOUT_INDEXED"| IX["index image<br/>internal RAM"]
     DRAW -.->|"marks"| DT["gfx_dirty.h<br/>7 x 4 cell grid + leaves"]
+    SEL -->|"GFX_LAYOUT_DOUBLE_FB"| DB["back + front<br/>2 x PSRAM framebuffers"]
+    DB -->|"front"| PT
     FB --> PT["present task, core 1"]
     IX -->|"LUT expand"| PT
     DT --> PT
@@ -54,8 +56,8 @@ strip, packed row by row into a bounce slot and sent as one transfer. A
 contiguous framebuffer rows it covers. A **bounce slot** is one of two
 strip-sized buffers in internal DMA RAM that every send is copied through.
 
-Exactly one target is live at a time. Entering a band or indexed mode **frees
-the PSRAM framebuffer**; `gfx_mode_exit()` allocates it again.
+Entering a band or indexed mode frees the PSRAM framebuffer and
+`gfx_mode_exit()` allocates it again. Double mode adds a second one and frees it on exit.
 
 ## Render targets
 
@@ -82,16 +84,23 @@ Requested with `gfx_mode_enter()` from an app's `enter()`, released with
 `gfx_mode_exit()` from its `exit()`. `gfx_mode_resolve()` (`gfx_mode.h`) turns
 the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 
-| | Full framebuffer | Band ring | Indexed |
-|---|---|---|---|
-| Request | the default | `GFX_LAYOUT_BANDS` | `GFX_LAYOUT_INDEXED` |
-| App writes | pixels, anywhere | pixels, one band at a time | palette indices, `gfx_indexed_image()` |
-| Buffer | 322 KiB, PSRAM | 2 x `GFX_BAND_HEIGHT` rows, DMA RAM | grid_w x grid_h bytes, internal RAM |
-| Who sends | present task | gfx, from the shell's frame loop | present task |
-| Sends | dirty cells, runs or strips | dirty bands, whole | dirty strips, whole |
-| Content kept between frames | yes | **no**: a band is gone once sent | yes |
-| For | anything that redraws part of a frame | a full-redraw renderer | a cell grid with a palette |
-| Used by | the launcher, any microui screen | engine self-tests | a frame that is a grid of palette indices |
+| | Full framebuffer | Band ring | Indexed | Double framebuffer |
+|---|---|---|---|---|
+| Request | the default | `GFX_LAYOUT_BANDS` | `GFX_LAYOUT_INDEXED` | `GFX_LAYOUT_DOUBLE_FB` |
+| App writes | pixels, anywhere | pixels, one band at a time | palette indices, `gfx_indexed_image()` | pixels, whole frame |
+| Buffer | 322 KiB, PSRAM | 2 x `GFX_BAND_HEIGHT` rows, DMA RAM | grid_w x grid_h bytes, internal RAM | 2 x `GFX_FRAMEBUFFER_BYTES`, PSRAM |
+| Who sends | present task | gfx, from the shell's frame loop | present task | present task |
+| Sends | dirty cells, runs or strips | dirty bands, whole | dirty strips, whole | every strip, whole |
+| Content kept between frames | yes | **no**: a band is gone once sent | yes | front only; redraw every back pixel |
+| For | anything that redraws part of a frame | a full-redraw renderer | a cell grid with a palette | a full-redraw renderer |
+| Used by | the launcher, any microui screen | engine self-tests | a frame that is a grid of palette indices | full-frame pixel rendering |
+
+Double mode draws into the back buffer while the front is sent. `gfx_present_begin()`
+drains the preceding send and swaps them; `gfx_present_wait()` returns at once.
+Dirty tracking, interlace, healing and half-picture expansion are disabled.
+
+Mode exit drains the send, keeps the last presented frame as the single
+framebuffer, and frees the other. Readback also drains before reading the front.
 
 - `gfx_mode_enter()` asserts the mode is `GFX_LAYOUT_FULL_FB`: modes do not nest.
 - A failed allocation grants nothing: the returned mode is still
@@ -110,7 +119,7 @@ An expanded frame holds an exact-half picture in `gfx_half_picture()`;
 `gfx_expand_frame()`. A paused or undrawn scene keeps its last expanded
 picture. Presentation doubles it into send strips until
 `gfx_present_wait()` completes. Raw framebuffer drawing is guarded during
-that interval.
+that interval, except in double mode, which has no expanded frames.
 
 `ui_end()` bins commands instead of drawing into an expanded frame. The
 shell queues its home hint before the app builds the UI, then its frame
@@ -215,15 +224,35 @@ sequenceDiagram
 | Call | Does |
 |---|---|
 | `gfx_present()` | `gfx_present_begin()` then `gfx_present_wait()` |
-| `gfx_present_begin()` | hands the target to core 1, returns at once. A no-op in band-ring mode. Each call also ends a frame for the frame watch (`profile/frame_watch.h`). |
-| `gfx_present_wait()` | blocks until everything queued has landed |
+| `gfx_present_begin()` | hands the target to core 1, returns at once. A no-op in band-ring mode. In double mode it first drains the previous send and swaps front and back. Each call also ends a frame for the frame watch (`profile/frame_watch.h`). |
+| `gfx_present_wait()` | blocks until everything queued has landed. Double mode: returns at once. |
 | `gfx_set_present_async()` | `false` sends on the caller's core instead, for A/B timing |
+| `gfx_set_clear_on_send()` | double mode only: core 1 fills each frame with a colour once it is sent, so `draw_clear()` of that colour on it is skipped (`gfx_framebuffer_holds()`). Readback is unavailable until a send that keeps its frame. |
 
-The wait is mandatory: DMA is still reading the buffer until it returns.
+Outside double mode the wait is mandatory: DMA is still reading the buffer until it returns.
 
-A present's own code, from `gfx_present()` down to the SPI queue, runs from
-IRAM (`main/linker.lf`, `CONFIG_SPI_MASTER_IN_IRAM`): from flash its cost
-moved with whatever else the image linked. suite_gfx
+```mermaid
+sequenceDiagram
+    participant Core0 as Core 0 draw
+    participant Gfx as gfx_present
+    participant Core1 as Core 1 send
+    Core0->>Gfx: frame N drawn into back
+    Gfx->>Gfx: wait for send N-1, swap
+    Gfx->>Core1: send front, frame N
+    Gfx-->>Core0: returns at once
+    par overlap
+        Core0->>Core0: draw frame N+1 into back
+    and
+        Core1->>Core1: copy strips, QSPI to panel
+        Core1->>Core1: clear on send: fill the front
+    end
+```
+
+Single-buffer presentation runs from IRAM (`main/linker.lf`,
+`CONFIG_SPI_MASTER_IN_IRAM`) to avoid instruction-cache misses.
+Double-mode setup and the raw full-frame loop run from flash.
+
+suite_gfx
 `test_narrow_present_counters` measures it warm, with the instruction cache
 cold, and sent from the caller's core.
 
@@ -232,7 +261,11 @@ cold, and sent from the caller's core.
 Prefer reading PSRAM to writing it in bulk. A retained framebuffer is read
 by core 1 into internal DMA buffers while core 0 updates app state; drawing
 waits for that read to finish. A catch-up copy between PSRAM framebuffers
-costs 6–15 ms per frame, so presentation uses one retained framebuffer.
+costs 6–15 ms per frame. Single-buffer layouts retain their contents;
+`GFX_LAYOUT_DOUBLE_FB` requires a full redraw and makes no catch-up copy;
+its draw runs slower while the front is sent, both use PSRAM.
+Clear on send moves the full-frame fill from core 0 to core 1: the same
+bytes, now sharing the bus with the draw.
 The mesh raster is a measured exception: its colour and depth targets and upscaled framebuffer are written in PSRAM.
 See [Board and Memory](notes/Board-and-Memory.md#psram-throughput) for
 memory throughput and placement.
@@ -353,7 +386,7 @@ Both are pure headers, loud on development and host builds, silent on release.
 
 | Guard | Catches | On release |
 |---|---|---|
-| `gfx_present_guard.h` | a `gfx_*` call between `gfx_present_begin()` and `gfx_present_wait()` | compiled out |
+| `gfx_present_guard.h` | a `gfx_*` call between `gfx_present_begin()` and `gfx_present_wait()` outside double mode | compiled out |
 | `gfx_fb_guard.h` | a draw with no live target: band mode between bands, or after the framebuffer was freed | the draw is a no-op, never a NULL write |
 
 ## Readback

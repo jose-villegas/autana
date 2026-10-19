@@ -188,6 +188,7 @@ typedef struct {
     uint16_t swell;
     bool calm;
     uint16_t phase[BOOT_ANIM_SWELL_COUNT];
+    int32_t far_reach; /* Q12: how far out the floor reaches */
 } boot_anim_floor_state_t;
 
 /* Time samples interpolate across phase wrap; spatial tables are nearest samples. */
@@ -207,6 +208,7 @@ boot_anim_floor_state(uint32_t now_ms) {
                                    + mathi_lerp(0, (int16_t)(b->ripple_phase - a->ripple_phase), fraction,
                                                 BOOT_ANIM_FLOOR_TIME_STEP_MS)),
         .swell = mathi_lerp(a->swell, b->swell, fraction, BOOT_ANIM_FLOOR_TIME_STEP_MS),
+        .far_reach = mathi_lerp(a->far_reach, b->far_reach, fraction, BOOT_ANIM_FLOOR_TIME_STEP_MS),
         .calm = ms > BOOT_ANIM_RIPPLE_IMPACT_MS + BOOT_ANIM_RIPPLE_CALM_AFTER_MS,
     };
     if (now_ms <= BOOT_ANIM_RIPPLE_IMPACT_MS) {
@@ -230,8 +232,7 @@ boot_anim_floor_node(int i, int j) {
 
 /* Heights are Q12 metres; only the impact contributes to crest colour. */
 static inline int32_t
-boot_anim_floor_ripple(int i, int j, const boot_anim_floor_state_t* state) {
-    const boot_anim_floor_node_t* node = boot_anim_floor_node(i, j);
+boot_anim_ripple_at(const boot_anim_floor_node_t* node, const boot_anim_floor_state_t* state) {
     const int x = ((uint32_t)mathi_abs(node->radius - state->radius) * state->inv_width) >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
     if (x > BOOT_ANIM_RIPPLE_GAUSSIAN_EXTENT) {
         return 0;
@@ -248,17 +249,44 @@ boot_anim_floor_ripple(int i, int j, const boot_anim_floor_state_t* state) {
 }
 
 static inline int32_t
-boot_anim_floor_swell(int i, int j, const boot_anim_floor_state_t* state) {
+boot_anim_floor_ripple(int i, int j, const boot_anim_floor_state_t* state) {
+    return boot_anim_ripple_at(boot_anim_floor_node(i, j), state);
+}
+
+/* The swell at a place whose spatial phases are `place`. */
+static inline int32_t
+boot_anim_swell_at(const uint16_t place[BOOT_ANIM_SWELL_COUNT], const boot_anim_floor_state_t* state) {
     if (state->swell == 0) {
         return 0;
     }
     int32_t swell = 0;
     for (int k = 0; k < BOOT_ANIM_SWELL_COUNT; k++) {
-        const uint16_t phase = (uint16_t)(boot_anim_swell_re[i + (BOOT_ANIM_MESH_CELLS / 2)][k]
-                                          + boot_anim_swell_im[j + (BOOT_ANIM_MESH_CELLS / 2)][k] + state->phase[k]);
+        const uint16_t phase = (uint16_t)(place[k] + state->phase[k]);
         swell += (boot_anim_swell_weights[k] * trig_sin(phase)) >> TRIG_SIN_SHIFT;
     }
     return (swell * state->swell) >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
+}
+
+static inline int32_t
+boot_anim_floor_swell(int i, int j, const boot_anim_floor_state_t* state) {
+    uint16_t place[BOOT_ANIM_SWELL_COUNT];
+    for (int k = 0; k < BOOT_ANIM_SWELL_COUNT; k++) {
+        place[k] = (uint16_t)(boot_anim_swell_re[i + (BOOT_ANIM_MESH_CELLS / 2)][k]
+                              + boot_anim_swell_im[j + (BOOT_ANIM_MESH_CELLS / 2)][k]);
+    }
+    return boot_anim_swell_at(place, state);
+}
+
+/* The height of axis sample `n` out along (dir_re, dir_im), one of the four
+ * unit directions: past the mesh only the lines on the axes go on. */
+static inline int32_t
+boot_anim_axis_far_height(int n, int dir_re, int dir_im, const boot_anim_floor_state_t* state) {
+    const boot_anim_axis_far_t* sample = &boot_anim_axis_far[n];
+    uint16_t place[BOOT_ANIM_SWELL_COUNT];
+    for (int k = 0; k < BOOT_ANIM_SWELL_COUNT; k++) {
+        place[k] = (uint16_t)((dir_re * sample->swell_re[k]) + (dir_im * sample->swell_im[k]));
+    }
+    return boot_anim_ripple_at(&sample->node, state) + boot_anim_swell_at(place, state);
 }
 
 static inline int32_t
@@ -266,23 +294,42 @@ boot_anim_floor_height(int i, int j, const boot_anim_floor_state_t* state) {
     return boot_anim_floor_ripple(i, j, state) + boot_anim_floor_swell(i, j, state);
 }
 
-static inline gfx_color_t
-boot_anim_floor_color(int32_t ripple) {
-    const int32_t crest = (mathi_clamp(ripple, 0, BOOT_ANIM_WHITE_HEIGHT_Q12) * 255) / BOOT_ANIM_WHITE_HEIGHT_Q12;
-    const uint8_t whiten = (uint8_t)((crest * crest) / 255);
-    return gfx_color_mix(gfx_rgb(BOOT_ANIM_FLOOR_GREY), GFX_RGB(0xFFFFFF), whiten);
+/* How far a crest of `ripple` has turned from the floor's grey, 0..255:
+ * squared, so only the tops take colour. */
+static inline uint8_t
+boot_anim_crest_amount(int32_t ripple) {
+    const int32_t crest = (mathi_clamp(ripple, 0, BOOT_ANIM_CREST_HEIGHT_Q12) * 255) / BOOT_ANIM_CREST_HEIGHT_Q12;
+    return (uint8_t)((crest * crest) / 255);
 }
 
-/* Spline interpolation keeps the curve's tight turns smooth without a larger
- * generated table. */
-#define BOOT_ANIM_SPLINE_STEPS          4
+static inline gfx_color_t
+boot_anim_floor_color(int32_t ripple, uint32_t crest_rgb) {
+    return gfx_color_mix(gfx_rgb(BOOT_ANIM_FLOOR_GREY), gfx_rgb(crest_rgb), boot_anim_crest_amount(ripple));
+}
 
-#define BOOT_ANIM_LOD_CHORD_PX          3
+/* The curve sample nearest mesh node (i, j) in the floor plane among the
+ * first `drawn` + 1, from the baked runs of every BOOT_ANIM_CREST_STRIDE-th
+ * node: inside a run the pen's own sample is the nearest, between runs the
+ * last one holds. */
+static inline int
+boot_anim_crest_sample(int i, int j, int drawn) {
+    const int half = BOOT_ANIM_MESH_CELLS / 2;
+    const int ci = (i + half + (BOOT_ANIM_CREST_STRIDE / 2)) / BOOT_ANIM_CREST_STRIDE;
+    const int cj = (j + half + (BOOT_ANIM_CREST_STRIDE / 2)) / BOOT_ANIM_CREST_STRIDE;
+    const int node = (cj * BOOT_ANIM_CREST_SIDE) + ci;
+    int sample = 0;
+    for (int r = boot_anim_crest_run_start[node]; r < boot_anim_crest_run_start[node + 1]; r++) {
+        if (boot_anim_crest_runs[r][0] > drawn) {
+            break;
+        }
+        sample = mathi_min(drawn, boot_anim_crest_runs[r][1]);
+    }
+    return sample;
+}
 
 #define BOOT_ANIM_LOD_STRIDE2_PX        192
 #define BOOT_ANIM_LOD_STRIDE4_PX        96
 
-#define BOOT_ANIM_DISSOLVE_HALF_LEVEL   4
 #define BOOT_ANIM_DISSOLVE_COARSE_LEVEL 8
 
 typedef struct {
@@ -333,25 +380,6 @@ boot_anim_spline_cs(vec3x_t c0, vec3x_t c1, vec3x_t c2, int32_t t_q12) {
         (int32_t)((((int64_t)w0 * c0.y) + ((int64_t)w1 * c1.y) + ((int64_t)w2 * c2.y)) >> (BOOT_ANIM_Q + 1)),
         (int32_t)((((int64_t)w0 * c0.z) + ((int64_t)w1 * c1.z) + ((int64_t)w2 * c2.z)) >> (BOOT_ANIM_Q + 1)),
     };
-}
-
-/* The chord's screen extent against `px`: the Manhattan length m of the two
- * points, scaled as the projection scales it, compared without a divide. */
-static inline bool
-boot_anim_screen_chord_lt(vec3x_t a, vec3x_t c, const boot_anim_view_t* view, int32_t px) {
-    if (a.z <= view->near_z || c.z <= view->near_z) {
-        return false;
-    }
-    const int64_t m = (int64_t)mathi_abs(a.x - c.x) + mathi_abs(a.y - c.y);
-    const int32_t zmin = a.z < c.z ? a.z : c.z;
-    return m * view->pixels_per_unit < (int64_t)px * zmin;
-}
-
-/* Do NOT subdivide if span ends within BOOT_ANIM_LOD_CHORD_PX. Uses
- * boot_anim_screen_chord_lt(). */
-static inline int
-boot_anim_curve_lod_steps(vec3x_t a, vec3x_t c, const boot_anim_view_t* view) {
-    return boot_anim_screen_chord_lt(a, c, view, BOOT_ANIM_LOD_CHORD_PX) ? 1 : BOOT_ANIM_SPLINE_STEPS;
 }
 
 /* Clamping pins spline to ends. Repeated first control point starts first
@@ -433,50 +461,30 @@ boot_anim_axis_reach(uint32_t now_ms) {
     return tween_ease_out(tween_ramp(now_ms, 0, BOOT_ANIM_AXES_MS));
 }
 
+/* Band by band, outward: how far band `band` has faded in. */
+static inline uint8_t
+boot_anim_grid_arrival(uint32_t now_ms, int band) {
+    const uint32_t start = BOOT_ANIM_GRID_START_MS + ((uint32_t)band * BOOT_ANIM_GRID_BAND_MS);
+    return tween_ramp(now_ms, start, BOOT_ANIM_GRID_FADE_MS);
+}
+
 static inline uint8_t
 boot_anim_grid_alpha(uint32_t now_ms, int band) {
     if (band >= BOOT_ANIM_GRID_FADE) {
         return 0;
     }
-    const uint32_t start = BOOT_ANIM_GRID_START_MS + ((uint32_t)band * BOOT_ANIM_GRID_BAND_MS);
-    const uint32_t arrived = tween_ramp(now_ms, start, BOOT_ANIM_GRID_FADE_MS);
+    const uint32_t arrived = boot_anim_grid_arrival(now_ms, band);
     const uint32_t left = (uint32_t)(BOOT_ANIM_GRID_FADE - band);
     const uint32_t ramp = BOOT_ANIM_GRID_FADE - BOOT_ANIM_GRID_EDGE_FADE_BAND;
     return (uint8_t)(arrived * mathi_min(left, ramp) / ramp);
 }
 
-static inline uint8_t
-boot_anim_grid_spoke_reach(uint32_t now_ms) {
-    return tween_ramp(now_ms, BOOT_ANIM_GRID_SPOKE_START_MS, BOOT_ANIM_GRID_SPOKE_DRAW_MS);
-}
-
-/* NOT linear in `reach`: a point projects to roughly 1/r on screen, so
- * linear-in-radius puts almost all screen-space growth in the first few
- * percent of the reveal. Interpolating 1/target keeps growth roughly
- * even instead. Below `near`, stays linear-in-radius: 1/target needs a
- * positive radius to anchor to, and 1/0 does not exist. Algebraically:
- * target = (near*far) / (far - (far-near)*frac). Plain math (not
- * boot_anim.c) so it is host-testable; see suite_boot_anim.c. */
+/* Half the chord the circle of radius `r` cuts on the line `c` from its
+ * centre, rounded down; 0 when the line misses it. */
 static inline int32_t
-boot_anim_spoke_reveal_target(int32_t near, int32_t far, uint8_t reach) {
-    if (reach == 0) {
-        return 0;
-    }
-    if (reach >= 255 || far <= 0) {
-        return far;
-    }
-
-    const int32_t r0 = (int32_t)(((int64_t)near * 255) / far);
-    if (reach <= r0 || r0 <= 0) {
-        return (int32_t)(((int64_t)far * reach) / 255);
-    }
-
-    const int32_t frac_q8 = (int32_t)(((int64_t)(reach - r0) << 8) / (255 - r0));
-    const int64_t denom_q8 = ((int64_t)far << 8) - ((int64_t)(far - near) * frac_q8);
-    if (denom_q8 <= 0) {
-        return far; /* degenerate: clamp rather than divide by <=0 */
-    }
-    return (int32_t)((((int64_t)near * far) << 8) / denom_q8);
+boot_anim_far_chord(int32_t r, int32_t c) {
+    const int64_t h = ((int64_t)r * r) - ((int64_t)c * c);
+    return h > 0 ? (int32_t)mathi_isqrt64((uint64_t)h) : 0;
 }
 
 /* The title is laid out in the viewer's frame because the board is held one
@@ -676,6 +684,15 @@ boot_anim_stroke(int32_t along_q12, int32_t pen_q12) {
     return s;
 }
 
+/* The colour curve sample `sample` is drawn in at colour progress
+ * `colour_pen`, without bloom or glow: what a crest under it turns toward. */
+static inline uint32_t
+boot_anim_crest_rgb(int sample, int32_t colour_pen) {
+    const int32_t phase1_span = (int32_t)(BOOT_ANIM_CURVE_PHASE1_POINTS - 1);
+    const int32_t along = ((sample * BOOT_ANIM_ONE) + (phase1_span / 2)) / phase1_span;
+    return gfx_hue_rgb(boot_anim_stroke(along, colour_pen).hue);
+}
+
 /* Axes reach their full extent over the fade interval, so the scene has one
  * ending. */
 static inline uint8_t
@@ -683,9 +700,7 @@ boot_anim_finale_reach(uint32_t now_ms) {
     return tween_ease_out(tween_ramp(now_ms, BOOT_ANIM_FADE_START_MS, BOOT_ANIM_MS - BOOT_ANIM_FADE_START_MS));
 }
 
-/* Axes run past the panel and rely on clipping. Equal to
- * BOOT_ANIM_GRID_SPOKE_FAR_UNITS but deliberately not shared: both need only
- * clear the panel. */
+/* Axes run past the panel and rely on clipping. */
 #define BOOT_ANIM_AXIS_FAR_UNITS 500
 
 /* Host render tests call this directly and read the firmware framebuffer.

@@ -26,6 +26,18 @@ gfx_target_clip_rect(gfx_target_t target, recti_t clip, recti_t rect) {
                             mathi_min(mathi_min(recti_bottom(rect), recti_bottom(clip)), target.y0 + target.height));
 }
 
+/* Every pixel of the target set to `colour`, two pixels a store: a target's
+ * rows are whole and its buffer word-aligned. */
+static inline void
+gfx_target_fill(gfx_target_t target, gfx_color_t colour) {
+    const uint32_t pair = ((uint32_t)colour << 16) | colour;
+    uint32_t* words = (uint32_t*)target.buf;
+    const size_t count = ((size_t)target.stride * (size_t)target.height) / 2;
+    for (size_t i = 0; i < count; i++) {
+        words[i] = pair;
+    }
+}
+
 /* The row pointer for absolute row `y`, once it is known to lie inside
  * [target.y0, target.y0 + target.height): gfx_target_clip_rect() is
  * what a caller uses to know that. */
@@ -42,6 +54,13 @@ gfx_target_row(gfx_target_t target, int y) {
 static inline bool
 gfx_target_row_range_overlaps(gfx_target_t target, int y0, int y1) {
     return y0 < target.y0 + target.height && y1 > target.y0;
+}
+
+/* True if the target holds every row of [y0, y1), so a shape drawn there
+ * needs no per-row check. */
+static inline bool
+gfx_target_holds_rows(gfx_target_t target, int y0, int y1) {
+    return y0 >= target.y0 && y1 <= target.y0 + target.height;
 }
 
 /* Fills a screen-space shape and returns its clipped dirty rectangle.

@@ -344,7 +344,7 @@ Before a run starts the app shows its menu (`ui.screen` is `SAND_UI_MENU`),
 two screens with the same three-way split:
 `ui/title_screen.c/.h` (START GAME, LOAD SAVES, OPTIONS, and a GUIDE / EXIT
 footer) and `ui/options_screen.c/.h` (QUALITY, COLOR MODE, DITHER, APPLY / CANCEL), both built from the
-shell's `ui/ui_mu.h` in the one theme `ui/sand_theme.c/.h` holds, which the brush screen draws in too. Their state is `sand_menu.c/.h`: which of the two is
+shell's `ui/ui.h` face in the one theme `ui/sand_theme.c/.h` holds, which the brush screen draws in too. Their state is `sand_menu.c/.h`: which of the two is
 up, what a tap means, and the launch options as a draft the options screen
 edits and APPLY commits, so an unapplied choice never reaches the next
 START. LOAD SAVES and GUIDE are drawn muted and take no tap until they have

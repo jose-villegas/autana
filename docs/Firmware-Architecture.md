@@ -66,7 +66,7 @@ flowchart TB
     end
     subgraph Engine["engine"]
         subgraph R5["UI and scenes"]
-            Ui["ui/<br/><i>the microui toolkit</i>"]
+            Ui["ui/<br/><i>the UI toolkit, microui behind its face</i>"]
             Scene["scene/<br/><i>entities, components, the active camera</i>"]
         end
         subgraph R6["rendering"]
@@ -123,6 +123,12 @@ as well as stored sounds and sample cursors.
 - **Includes are layer-qualified**: `"gfx/gfx.h"`, not `"gfx.h"`, even
   between two files in the same folder, so an app reaching past `ui` into
   `gfx` is visible at the line that does it.
+- **Apps use the engine, the platform and the app contract.** An app under
+  `apps/` includes nothing else of the system band: the style audit's
+  SYSTEM-BAND rule. A system app under `shell/apps/` is part of the shell.
+- **The UI backend stays inside `ui/`.** Outside it, no firmware or editor
+  source includes microui or a header that reaches it (UI-BACKEND), so a
+  screen sees only `ui/ui.h` and a backend swap touches `ui/` alone.
 - **core/, build/ and the packages are the base.** Every layer above
   `core/` builds on `core/`: `core/job.h` hands one copied job at a time to
   core 1, and runs it inline when core 1 is busy or on a host;
@@ -183,16 +189,16 @@ as well as stored sounds and sample cursors.
 
 ## Three rules that shape everything
 
-### 1. There is exactly one framebuffer
+### 1. There is exactly one framebuffer by default
 
 368 × 448 × 2 bytes = **322 KiB**, allocated in PSRAM
 (`MEMORY_PSRAM` in `core/memory.h`), so it does not count against the
-internal heap (see [Board-and-Memory.md](notes/Board-and-Memory.md)). There
-is room in PSRAM for a second one; the
-[presentation memory policy](Gfx-and-Presentation.md#presentation-memory-policy)
-explains the copy cost that keeps presentation on one retained framebuffer.
-See [transfer payload](notes/Display-and-Rendering.md#transfer-payload) for
-the QSPI bus budget.
+internal heap (see [Board-and-Memory.md](notes/Board-and-Memory.md)).
+
+`GFX_LAYOUT_DOUBLE_FB` adds a second, back framebuffer while it is on, so a
+front is sent while a back is drawn.
+See the [presentation memory policy](Gfx-and-Presentation.md#presentation-memory-policy)
+and [transfer payload](notes/Display-and-Rendering.md#transfer-payload).
 
 "One framebuffer" is really "one destination at a time": an app may ask at
 `enter()` for a band ring (a few strips of rows, sent as each fills) or an

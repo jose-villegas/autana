@@ -1,6 +1,6 @@
 /*
  * Portable suite: title_screen - its geometry at both orientations, every
- * fixed string against its own rect, and a real tap through microui.
+ * fixed string against its own rect, and a real tap through the face.
  */
 
 #include <stdio.h>
@@ -12,12 +12,11 @@
 #include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
 #include "input/input.h"
-#include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
+#include "ui_probe.h"
 
 #include "apps/sand/ui/sand_theme.h"
 #include "apps/sand/ui/title_screen.h"
-#include "ui/ui_mu.h"
 
 static void
 layout_for(bool landscape, title_screen_layout_t* lay) {
@@ -27,17 +26,17 @@ layout_for(bool landscape, title_screen_layout_t* lay) {
 }
 
 static bool
-inside(mu_Rect r, int w, int h) {
+inside(recti_t r, int w, int h) {
     return r.x >= 0 && r.y >= 0 && r.x + r.w <= w && r.y + r.h <= h;
 }
 
 static bool
-overlaps(mu_Rect a, mu_Rect b) {
+overlaps(recti_t a, recti_t b) {
     return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
 
 static bool
-contains(mu_Rect outer, mu_Rect inner) {
+contains(recti_t outer, recti_t inner) {
     return inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.w <= outer.x + outer.w
            && inner.y + inner.h <= outer.y + outer.h;
 }
@@ -55,7 +54,7 @@ assert_layout(bool landscape) {
     TEST_ASSERT_FALSE(overlaps(lay.header, lay.subtitle));
 
     for (int i = 0; i < SAND_TITLE_BUTTON_COUNT; i++) {
-        const mu_Rect b = lay.buttons[i];
+        const recti_t b = lay.buttons[i];
         TEST_ASSERT_TRUE_MESSAGE(inside(b, w, h), title_screen_label((sand_title_button_t)i));
         TEST_ASSERT_GREATER_OR_EQUAL_INT(UI_TAP_MIN, b.w < b.h ? b.w : b.h);
         TEST_ASSERT_FALSE(overlaps(b, lay.header));
@@ -93,7 +92,7 @@ assert_strings_fit(bool landscape) {
         lay.subtitle.w, draw_font_text_width(draw_font_ui(), TITLE_SCREEN_SUBTITLE, -1, sand_ui_theme.text_scale));
     for (int i = 0; i < SAND_TITLE_BUTTON_COUNT; i++) {
         const char* label = title_screen_label((sand_title_button_t)i);
-        TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(ui_icon_button_label_width(lay.buttons[i].w, true, &sand_ui_theme),
+        TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(ui_probe_button_label_width(lay.buttons[i].w, true, &sand_ui_theme),
                                               draw_font_text_width(draw_font_ui(), label, -1, sand_ui_theme.text_scale),
                                               label);
     }
@@ -111,7 +110,8 @@ test_every_string_fits_its_rect_landscape(void) {
 
 static void
 test_the_title_grows_where_the_canvas_is_wide_enough(void) {
-    title_screen_layout_t portrait, landscape;
+    title_screen_layout_t portrait;
+    title_screen_layout_t landscape;
     layout_for(false, &portrait);
     layout_for(true, &landscape);
     TEST_ASSERT_GREATER_THAN_INT(portrait.title_scale, landscape.title_scale);
@@ -123,15 +123,15 @@ static sand_title_button_t
 title_frame(bool down, bool pressed, bool released, int x, int y) {
     input_t in = {.down = down, .pressed = pressed, .released = released, .x = x, .y = y};
     ui_begin(&in);
-    const sand_title_button_t hit = title_screen_draw(ui_context());
-    mu_end(ui_context());
+    const sand_title_button_t hit = title_screen_draw();
+    ui_probe_end_frame();
     return hit;
 }
 
 static sand_title_button_t
-tap(mu_Rect r) {
-    const int x = r.x + r.w / 2;
-    const int y = r.y + r.h / 2;
+tap(recti_t r) {
+    const int x = r.x + (r.w / 2);
+    const int y = r.y + (r.h / 2);
     const affine2x_t transform = ui_transform_quarter_turn(ui_width() == GFX_HEIGHT ? 1 : 0, GFX_WIDTH, GFX_HEIGHT);
     const vec2i_t mapped_pixel = affine2x_map_pixel(&transform, (vec2i_t){x, y});
     sand_title_button_t hit = SAND_TITLE_NONE;
@@ -170,6 +170,28 @@ test_a_tap_reports_the_button_under_it(void) {
     }
 }
 
+#define TOUCH_HOLD_FRAMES 4
+
+/* A tap fires on the frame the touch is released, never on the press or
+ * while it is held. */
+static void
+test_a_title_button_fires_on_release_only(void) {
+    title_screen_layout_t lay;
+    layout_for(false, &lay);
+    const sand_title_button_t live[] = {SAND_TITLE_START, SAND_TITLE_OPTIONS, SAND_TITLE_EXIT};
+    for (size_t i = 0; i < sizeof live / sizeof live[0]; i++) {
+        tap_fixture(false);
+        const recti_t r = lay.buttons[live[i]];
+        const int x = r.x + (r.w / 2);
+        const int y = r.y + (r.h / 2);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(SAND_TITLE_NONE, title_frame(true, true, false, x, y), "fired on the press");
+        for (int hold = 0; hold < TOUCH_HOLD_FRAMES; hold++) {
+            TEST_ASSERT_EQUAL_INT_MESSAGE(SAND_TITLE_NONE, title_frame(true, false, false, x, y), "fired while held");
+        }
+        TEST_ASSERT_EQUAL_INT_MESSAGE(live[i], title_frame(false, false, true, x, y), title_screen_label(live[i]));
+    }
+}
+
 static void
 test_a_landscape_tap_reports_the_button_under_it(void) {
     title_screen_layout_t lay;
@@ -178,43 +200,23 @@ test_a_landscape_tap_reports_the_button_under_it(void) {
     TEST_ASSERT_EQUAL_INT(SAND_TITLE_START, tap(lay.buttons[SAND_TITLE_START]));
 }
 
-static bool
-color_matches(mu_Color a, mu_Color b) {
-    return a.r == b.r && a.g == b.g && a.b == b.b;
-}
-
 /* LOAD SAVES and GUIDE have no screen behind them yet, drawn disabled -
- * begin_control() inks a disabled button with theme->muted, so this pins
+ * a disabled button is inked with the theme's muted colour, so this pins
  * that these two specific labels really do, and the three live ones don't. */
 static void
 test_disabled_buttons_are_inked_muted(void) {
     tap_fixture(false);
     title_frame(false, false, false, 0, 0);
 
-    mu_Color ink[SAND_TITLE_BUTTON_COUNT];
-    bool found[SAND_TITLE_BUTTON_COUNT] = {false};
-    mu_Command* cmd = NULL;
-    while (mu_next_command(ui_context(), &cmd)) {
-        if (cmd->type != MU_COMMAND_TEXT) {
-            continue;
-        }
-        for (int i = 0; i < SAND_TITLE_BUTTON_COUNT; i++) {
-            if (strcmp(cmd->text.str, title_screen_label((sand_title_button_t)i)) == 0) {
-                found[i] = true;
-                ink[i] = cmd->text.color;
-            }
-        }
-    }
     for (int i = 0; i < SAND_TITLE_BUTTON_COUNT; i++) {
-        TEST_ASSERT_TRUE_MESSAGE(found[i], title_screen_label((sand_title_button_t)i));
+        const char* label = title_screen_label((sand_title_button_t)i);
+        uint32_t ink = 0;
+        TEST_ASSERT_TRUE_MESSAGE(ui_probe_text_rgb(label, &ink), label);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(!title_screen_button_enabled((sand_title_button_t)i), ink == sand_ui_theme.muted,
+                                      label);
     }
-
-    TEST_ASSERT_TRUE_MESSAGE(color_matches(ink[SAND_TITLE_LOAD], sand_ui_theme.muted), "LOAD SAVES must be muted");
-    TEST_ASSERT_TRUE_MESSAGE(color_matches(ink[SAND_TITLE_GUIDE], sand_ui_theme.muted), "GUIDE must be muted");
-    TEST_ASSERT_FALSE_MESSAGE(color_matches(ink[SAND_TITLE_START], sand_ui_theme.muted),
-                              "START GAME must not be muted");
-    TEST_ASSERT_FALSE_MESSAGE(color_matches(ink[SAND_TITLE_OPTIONS], sand_ui_theme.muted), "OPTIONS must not be muted");
-    TEST_ASSERT_FALSE_MESSAGE(color_matches(ink[SAND_TITLE_EXIT], sand_ui_theme.muted), "EXIT must not be muted");
+    TEST_ASSERT_FALSE(title_screen_button_enabled(SAND_TITLE_LOAD));
+    TEST_ASSERT_FALSE(title_screen_button_enabled(SAND_TITLE_GUIDE));
 }
 
 static void
@@ -236,6 +238,7 @@ run_title_screen_suite(void) {
     RUN_TEST(test_every_string_fits_its_rect_landscape);
     RUN_TEST(test_the_title_grows_where_the_canvas_is_wide_enough);
     RUN_TEST(test_a_tap_reports_the_button_under_it);
+    RUN_TEST(test_a_title_button_fires_on_release_only);
     RUN_TEST(test_a_landscape_tap_reports_the_button_under_it);
     RUN_TEST(test_disabled_buttons_are_inked_muted);
     RUN_TEST(test_a_disabled_button_blocks_a_nearby_live_target);

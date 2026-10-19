@@ -72,8 +72,8 @@ autana repeatedly. Ctrl+C ends the child and releases the lock. A failed child
 also releases it unless `--keep-on-failure <seconds>` leaves a timed hold; the
 token and an early release command then print on stderr.
 
-`lock take` names the job with trailing note words and accepts
-`--estimate SECONDS` for its expected duration.
+`lock take` names the job with trailing note words, and both `lock take` and
+`lock run` accept `--estimate SECONDS` for its expected duration.
 
 An estimate sets the record's optional `estimated_end` (epoch seconds).
 `status` shows it as `estimated_free` and uses it for queued starts. It never

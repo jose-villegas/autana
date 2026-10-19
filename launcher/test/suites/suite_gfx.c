@@ -43,6 +43,7 @@
 #include "gfx/present/modes/band/gfx_band_run.h"
 #include "input/touch.h"
 #include "input/touch_fsm.h"
+#include "math/scalar/mathi.h"
 #include "panel_clock_pin.h"
 #include "profile/frame_cost.h"
 
@@ -359,28 +360,27 @@ test_blit_dither_at_alpha_255_matches_the_source_exactly(void) {
     free(src);
 }
 
-/* The primitive's whole correctness claim (see its comment in draw.c): the
- * row-pattern walk, fringes and memcpy shortcuts included, is bit-identical
- * to asking gfx_dither_covers() at every pixel. Checked at a deliberately
- * UNALIGNED rect (x = 13, so the prologue and epilogue of
- * blit_dither_row()'s 4-pixel group loop both run) across alphas that
- * exercise a sparse, a half, and a dense pattern. */
+/* draw_blit_dither() must equal gfx_dither_covers() at every pixel, at
+ * every dither level. x = 13 runs both fringe loops and puts the source
+ * two bytes off the destination's word; the background is not black, so
+ * a pixel-pair merge that zeroes an uncovered pixel shows. */
 void
 test_blit_dither_matches_per_pixel_covers_reference(void) {
     fixture();
-    const gfx_color_t bg = gfx_rgb(0x000000);
+    const gfx_color_t bg = gfx_rgb(0x203040);
     gfx_color_t* src = make_blit_src();
     const int x = 13, y = 10, w = 61, h = BLIT_SRC_ROWS;
-    const uint8_t alphas[3] = {32, 128, 200};
+    const int levels = 16; /* gfx_dither_level()'s steps between nothing and solid */
 
-    for (int a = 0; a < 3; a++) {
+    for (int a = 0; a <= levels; a++) {
+        const uint8_t alpha = (uint8_t)mathi_min(a * ((UINT8_MAX + 1) / levels), UINT8_MAX);
         draw_clear(bg);
-        draw_blit_dither(x, y, w, h, src, BLIT_SRC_STRIDE, alphas[a]);
+        draw_blit_dither(x, y, w, h, src, BLIT_SRC_STRIDE, alpha);
 
         for (int row = 0; row < h; row++) {
             for (int col = 0; col < w; col++) {
                 const gfx_color_t want =
-                    gfx_dither_covers(x + col, y + row, alphas[a]) ? blit_src_pixel(row * BLIT_SRC_STRIDE + col) : bg;
+                    gfx_dither_covers(x + col, y + row, alpha) ? blit_src_pixel(row * BLIT_SRC_STRIDE + col) : bg;
                 TEST_ASSERT_EQUAL_HEX16_MESSAGE(want, pixel_at(x + col, y + row),
                                                 "draw_blit_dither() must agree with gfx_dither_covers() "
                                                 "at every pixel - fringes and full-row shortcuts "
@@ -848,8 +848,13 @@ present_reference_band(gfx_color_t colour) {
  * valid. */
 
 /* The narrow strip: a fraction of a band's width, a band's rows. */
-#define NARROW_STRIP_WIDTH 20
-#define NARROW_STRIP_ROWS  64
+#define NARROW_STRIP_WIDTH      20
+#define NARROW_STRIP_ROWS       64
+
+/* Worst of a 5-run capture on each of A308, 20E8 and 2124 (243, 259, 244 us),
+ * + 1%: 259 * 1.01 = 261.6, up to 262. The suite keeps no per-board ceilings,
+ * so the worst board sets the one; the 241 before sat on the noise edge. */
+#define NARROW_STRIP_CEILING_US 262
 
 /* Measures the gather-copy path in gfx_present(): a strip whose
  * real dirty width is only a fraction of the band, written directly (not
@@ -878,7 +883,7 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
      * a strip that costs more again likely runs from flash once more. */
     perf_guard("the gathered narrow strip cost more than its observed price - the "
                "gather-copy path may have regressed, or a present's code left IRAM",
-               narrow, 241);
+               narrow, NARROW_STRIP_CEILING_US);
 }
 
 /* An instrument, not a gate: the narrow strip's present, counted alone,

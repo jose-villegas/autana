@@ -7,7 +7,6 @@
 #include "suites.h"
 #include "ui/layout/ui_scroll.h"
 #include "ui/ui_internal.h"
-#include "ui/ui_mu.h"
 #include "unity.h"
 
 #define UI_ICOUNT_REPS        4096
@@ -97,7 +96,7 @@ UI_ICOUNT_PAIR(header, ui_header(box, UI_ICOUNT_LABEL),
 UI_ICOUNT_PAIR(panel, ui_panel(box), ui_mu_panel(ctx, r, &state->theme))
 UI_ICOUNT_PAIR(fill, ui_fill(box, UI_ICOUNT_RGB), mu_draw_rect(ctx, r, ui_rgb(UI_ICOUNT_RGB)))
 UI_ICOUNT_PAIR(outline, ui_outline(box, UI_ICOUNT_RGB), mu_draw_box(ctx, r, ui_rgb(UI_ICOUNT_RGB)))
-UI_ICOUNT_PAIR(icon, ui_icon(box, &icon), ui_draw_icon(ctx, r, &icon, NULL, state->theme.text))
+UI_ICOUNT_PAIR(icon, ui_icon(box, &icon, NULL), ui_draw_icon(ctx, r, &icon, NULL, state->theme.text))
 UI_ICOUNT_PAIR(swatches, ui_swatches(box, swatches, UI_ICOUNT_COLUMNS, UI_ICOUNT_ROWS),
                ui_swatch_grid(ctx, r, swatches, UI_ICOUNT_COLUMNS, UI_ICOUNT_ROWS))
 UI_ICOUNT_EMIT(face, text_height, ui_text_height())

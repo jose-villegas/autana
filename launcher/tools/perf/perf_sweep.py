@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Sweep console tunables on seeded images; run acquires, report rebuilds the table."""
 import argparse
+from functools import partial
 import itertools
 import json
 from pathlib import Path
@@ -12,6 +13,9 @@ import sys
 from layout_measure import (REPO, autana_command, booted_build_id,
                             capture_metadata, captured_runs, make_table, parse_markdown, timing_samples,
                             run_stamped, split_filters, filter_limits, status_snapshot)
+import device_lock
+
+write_json = partial(device_lock.write_json, indent=2)
 from perf_compare import DEFAULT_ALPHA, DEFAULT_THRESHOLD
 from capture import capture_board, require_same_board, quarter_row
 from seed_statistics import compare
@@ -161,10 +165,6 @@ def capture_metrics(item):
     prefix = item["suite"] + "/"
     return ({prefix + key: value for key, value in rows.items()},
             {prefix + key: value for key, value in units.items()})
-
-
-def write_json(path, payload):
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
 def run(args, runner=None):

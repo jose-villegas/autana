@@ -3,8 +3,8 @@
  */
 #pragma once
 
+#include "math/geometry/recti.h"
 #include "math/scalar/mathx.h"
-#include "ui/layout/ui_transform.h"
 
 typedef struct {
     int32_t x, y;
@@ -20,14 +20,14 @@ typedef struct {
 #define UI_ANCHOR_BOTTOM       ((ui_anchor_t){MATHX_ONE / 2, MATHX_ONE})
 #define UI_ANCHOR_BOTTOM_RIGHT ((ui_anchor_t){MATHX_ONE, MATHX_ONE})
 
-static inline mu_Rect
-ui_anchor_rect(mu_Rect parent, ui_anchor_t anchor, ui_anchor_t pivot, int offset_x, int offset_y, int w, int h) {
+static inline recti_t
+ui_anchor_rect(recti_t parent, ui_anchor_t anchor, ui_anchor_t pivot, int offset_x, int offset_y, int w, int h) {
     const int x = parent.x + (int)(((int64_t)parent.w * anchor.x - (int64_t)w * pivot.x) / MATHX_ONE) + offset_x;
     const int y = parent.y + (int)(((int64_t)parent.h * anchor.y - (int64_t)h * pivot.y) / MATHX_ONE) + offset_y;
-    return (mu_Rect){x, y, w, h};
+    return (recti_t){x, y, w, h};
 }
 
-static inline mu_Rect
-ui_rect_inset(mu_Rect rect, int left, int top, int right, int bottom) {
-    return (mu_Rect){rect.x + left, rect.y + top, rect.w - left - right, rect.h - top - bottom};
+static inline recti_t
+ui_rect_inset(recti_t rect, int left, int top, int right, int bottom) {
+    return (recti_t){rect.x + left, rect.y + top, rect.w - left - right, rect.h - top - bottom};
 }

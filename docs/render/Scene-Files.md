@@ -533,12 +533,14 @@ and a learning rate decaying geometrically. It changes the rest:
 | Fitted | positions, textures, normal maps, material parameters | welded positions and vertex or face colours, which are the lighting bake |
 | Forward model | deferred physically based shading | the device's Gouraud or flat colours, no shading |
 | Image term | L1 on log-tonemapped sRGB | mean CIE 1976 $`\Delta E^*_{ab}`$<sup>[[4]](../Citations.md#4)</sup> |
+| Position step | plain Adam on positions<sup>[[3]](../Citations.md#3)</sup> | Adam on an offset scaled per vertex by its capped local start scale, so small parts step in proportion to their size |
 | Laplacian weight | decays during the fit | constant $`\lambda`$; each vertex's drift uses its own mean start edge length, capped at the start's mean edge length |
 | Further terms | none | a point-to-plane band, of half-width `surface_margin`, from the fit to the source surface and a small tangential pull, both in the mean of that capped scale over each sample's triangle; $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../Citations.md#6)</sup> |
 | Triangle budget | set by the start | the fitted mesh's, pruned to `budget` by coverage after fitting; a refined fitted mesh can be the start |
 
 A global unit gives small parts a fraction of the hold, so the image term
 stretches them; local edge scales keep the hold even<sup>[[78]](../Citations.md#78)</sup>.
+Adam's step length does not depend on gradient size, so the position offset is scaled by the same local scale.
 
 Section 5.3 of the paper has no distance-to-reference term<sup>[[1]](../Citations.md#1)</sup>.
 Here the start is already a decimation of the reference surface, so the fit can

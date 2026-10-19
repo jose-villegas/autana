@@ -44,8 +44,8 @@ text_width(const char* text, int scale) {
 static void
 report_text(const report_pen_t* pen, int x, int y, const char* text, int scale, gfx_color_t colour) {
     const draw_font_t* font = draw_font_ui();
-    const mu_Rect box =
-        ui_transform_rect(pen->transform, (mu_Rect){x, y, text_width(text, scale), draw_font_height(font, scale)});
+    const recti_t box =
+        ui_transform_rect(pen->transform, (recti_t){x, y, text_width(text, scale), draw_font_height(font, scale)});
 
     int gx, gy;
     ui_text_glyph0_origin(font, box, pen->quarter, scale, &gx, &gy);
@@ -53,13 +53,13 @@ report_text(const report_pen_t* pen, int x, int y, const char* text, int scale, 
 }
 
 static void
-draw_centred(const report_pen_t* pen, mu_Rect where, const char* text, int scale, gfx_color_t colour) {
+draw_centred(const report_pen_t* pen, recti_t where, const char* text, int scale, gfx_color_t colour) {
     report_text(pen, where.x, where.y, text, scale, colour);
 }
 
 static bool
-take_line(report_pen_t* pen, mu_Rect* out) {
-    const mu_Rect line = post_layout_take_line(&pen->layout, &pen->lines);
+take_line(report_pen_t* pen, recti_t* out) {
+    const recti_t line = post_layout_take_line(&pen->layout, &pen->lines);
     if (line.w <= 0) {
         return false;
     }
@@ -82,7 +82,7 @@ draw_wrapped(report_pen_t* pen, int indent, const char* text, gfx_color_t colour
             return true;
         }
 
-        mu_Rect row;
+        recti_t row;
         if (!take_line(pen, &row)) {
             return false;
         }
@@ -108,7 +108,7 @@ draw_entry(report_pen_t* pen, const post_result_t* r, bool failed) {
         mark_colour = gfx_rgb(FAIL_RGB);
     }
 
-    mu_Rect row;
+    recti_t row;
     if (!take_line(pen, &row)) {
         return false;
     }
