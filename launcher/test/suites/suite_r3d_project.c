@@ -4,11 +4,14 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 
+#include "gfx/target/gfx_segment_clip.h"
 #include "math/scalar/math_const.h"
 #include "suites.h"
 #include "unity.h"
 
+#include "render/r3d_grid_cull_x.h"
 #include "render/r3d_pipeline.h"
 #include "render/r3d_project.h"
 #include "render/r3d_project_x.h"
@@ -391,6 +394,160 @@ test_narrow_transform_at_the_sum_bound_matches_the_wide_one(void) {
     }
 }
 
+/* The grid cull */
+
+#define CULL_ROW_HALF 24
+#define CULL_K_MAX    (2 * CULL_ROW_HALF)
+#define CULL_ROWS     (CULL_K_MAX + 1)
+#define CULL_INPUT_Q  4096 /* raw inputs per meter on the row's floor axes */
+#define CULL_STEP     (CULL_INPUT_Q / 2)
+#define CULL_LIFT_MAX 600
+#define CULL_LIFTS    9 /* lifts tried per point, spread over +-CULL_LIFT_MAX */
+#define CULL_YAWS     8
+#define CULL_PITCHES  3
+
+static int32_t
+cull_lift(int n) {
+    return -CULL_LIFT_MAX + ((2 * CULL_LIFT_MAX * n) / (CULL_LIFTS - 1));
+}
+
+/* The narrow transform's sum before its shift, which must fit an int32. */
+static int32_t
+cull_sum(const r3d_line_view_x_t* view, int row, int32_t a, int32_t b, int32_t c) {
+    const int64_t sum = ((int64_t)view->units[row][0] * a) + ((int64_t)view->units[row][1] * b)
+                        + ((int64_t)view->units[row][2] * c) + view->units[row][3];
+    TEST_ASSERT_TRUE(sum >= INT32_MIN && sum <= INT32_MAX);
+    return (int32_t)sum;
+}
+
+static vec3x_t
+cull_point(const r3d_line_view_x_t* view, int32_t a, int32_t b, int32_t c) {
+    return (vec3x_t){cull_sum(view, 0, a, b, c), cull_sum(view, 1, a, b, c), cull_sum(view, 2, a, b, c)};
+}
+
+/* Grid point (k, row) at `lift`: its outcode, or -1 at or behind the near plane. */
+static int
+cull_outcode(const r3d_line_view_x_t* view, const recti_t* clip, int k, int row, int32_t lift) {
+    const vec3x_t p =
+        r3d_to_camera_space_units(view, (k - CULL_ROW_HALF) * CULL_STEP, lift, (row - CULL_ROW_HALF) * CULL_STEP);
+    int sx = 0;
+    int sy = 0;
+    return r3d_project_point_cs_x(p, view, &sx, &sy) ? gfx_clip_outcode(clip, sx, sy) : -1;
+}
+
+/* Every row's keep span, the grid's first point at -CULL_ROW_HALF steps on both axes. */
+static __attribute__((noinline)) void
+cull_spans(const r3d_line_view_x_t* view, const recti_t* clip, int8_t keep[][2]) {
+    const vec3x_t base = cull_point(view, -CULL_ROW_HALF * CULL_STEP, 0, -CULL_ROW_HALF * CULL_STEP);
+    const vec3x_t ahead = cull_point(view, (1 - CULL_ROW_HALF) * CULL_STEP, 0, -CULL_ROW_HALF * CULL_STEP);
+    const vec3x_t below = cull_point(view, -CULL_ROW_HALF * CULL_STEP, 0, (1 - CULL_ROW_HALF) * CULL_STEP);
+    const r3d_x_grid_t grid = {
+        .base = base,
+        .step = {ahead.x - base.x, ahead.y - base.y, ahead.z - base.z},
+        .row = {below.x - base.x, below.y - base.y, below.z - base.z},
+        .rise = {view->units[0][1], view->units[1][1], view->units[2][1]},
+        .h_max = CULL_LIFT_MAX,
+        .k_max = CULL_K_MAX,
+        .r_max = CULL_K_MAX,
+    };
+    r3d_x_grid_cull_spans(view, clip, &grid, keep);
+}
+
+/* The edge between two points stays hidden at every pair of end lifts. */
+static void
+check_edge_hidden(const r3d_line_view_x_t* view, const recti_t* clip, int ka, int ra, int kb, int rb) {
+    for (int na = 0; na < CULL_LIFTS; na += CULL_LIFTS - 1) {
+        for (int nb = 0; nb < CULL_LIFTS; nb += CULL_LIFTS - 1) {
+            const int a = cull_outcode(view, clip, ka, ra, cull_lift(na));
+            const int b = cull_outcode(view, clip, kb, rb, cull_lift(nb));
+            TEST_ASSERT_TRUE((a < 0 && b < 0) || (a > 0 && b > 0 && (a & b) != 0));
+        }
+    }
+}
+
+/* Whether a point misses the clip at every lift tried. */
+static bool
+cull_misses(const r3d_line_view_x_t* view, const recti_t* clip, int k, int r) {
+    for (int n = 0; n < CULL_LIFTS; n++) {
+        if (cull_outcode(view, clip, k, r, cull_lift(n)) == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* Every point outside its row's keep span has only hidden edges; returns
+ * how many points the spans drop, and adds how many miss the clip at every
+ * lift tried to *missed. */
+static __attribute__((noinline)) unsigned
+check_cull_spans(const r3d_line_view_x_t* view, const recti_t* clip, int8_t keep[][2], unsigned* missed) {
+    static const int steps[4][2] = {{-1, 0}, {1, 0}, {0, -1}, {0, 1}};
+    cull_spans(view, clip, keep);
+    unsigned dropped = 0;
+    for (int r = 0; r < CULL_ROWS; r++) {
+        for (int k = 0; k <= CULL_K_MAX; k++) {
+            *missed += cull_misses(view, clip, k, r);
+            if (k >= keep[r][0] && k <= keep[r][1]) {
+                continue;
+            }
+            dropped++;
+            for (int s = 0; s < 4; s++) {
+                const int kn = k + steps[s][0];
+                const int rn = r + steps[s][1];
+                if (kn >= 0 && kn <= CULL_K_MAX && rn >= 0 && rn < CULL_ROWS) {
+                    check_edge_hidden(view, clip, k, r, kn, rn);
+                }
+            }
+        }
+    }
+    return dropped;
+}
+
+/* A camera over a floor, turned by `yaw` eighths and looking down by
+ * `pitch` 24ths, so rows leave the screen through each edge and pass behind
+ * the camera. This and the checks are outlined: inline, together they are
+ * too large for the device's test stack. */
+static __attribute__((noinline)) r3d_line_view_x_t
+cull_view(int yaw, int pitch) {
+    const float meters_per_unit[] = {1.0F / CULL_INPUT_Q, 1.0F / (float)(1 << R3D_X_INPUT_SHIFT), 1.0F / CULL_INPUT_Q};
+    const transformf_t model = TRANSFORMF_IDENTITY;
+    transformf_t pose = TRANSFORMF_IDENTITY;
+    const float turn = MATH_TAU * (float)yaw / CULL_YAWS;
+    transformf_set_position(&pose, (vec3f_t){3.0F * sinf(turn), 1.5F * (float)pitch, -3.0F * cosf(turn)});
+    transformf_set_rotation(&pose, quatf_from_euler((vec3f_t){MATH_TAU * (float)pitch / 24.0F, -turn, 0.0F}));
+    const render_view_t view = render_view_make(&pose, 0.7F, R3D_LINE_NEAR_Z, (viewport_t){368, 448, 0});
+    return r3d_line_view_x_make(&view, &model, meters_per_unit);
+}
+
+/* Every pose against the whole screen and an inset clip: adds the points
+ * missing the clip and those the spans drop. */
+static __attribute__((noinline)) void
+check_cull_poses(int8_t keep[][2], unsigned* missed, unsigned* dropped) {
+    const recti_t clips[] = {{0, 0, 368, 448}, {40, 60, 200, 250}};
+    for (int yaw = 0; yaw < CULL_YAWS; yaw++) {
+        for (int pitch = 1; pitch <= CULL_PITCHES; pitch++) {
+            const r3d_line_view_x_t view = cull_view(yaw, pitch);
+            TEST_ASSERT_TRUE(view.units_ok);
+            for (unsigned c = 0; c < sizeof clips / sizeof clips[0]; c++) {
+                *dropped += check_cull_spans(&view, &clips[c], keep, missed);
+            }
+        }
+    }
+}
+
+static void
+test_the_grid_cull_drops_only_points_whose_edges_all_project_hidden(void) {
+    int8_t (*keep)[2] = malloc(sizeof(*keep) * CULL_ROWS);
+    TEST_ASSERT_NOT_NULL(keep);
+    unsigned missed = 0;
+    unsigned dropped = 0;
+    check_cull_poses(keep, &missed, &dropped);
+    free(keep);
+    /* The lifts, the rounding and the edges along the screen keep a margin,
+     * but three in four points that miss are dropped. */
+    TEST_ASSERT_GREATER_OR_EQUAL((missed * 3) / 4, dropped);
+}
+
 void
 run_r3d_project_suite(void) {
     RUN_TEST(test_view_matrix_matches_the_hand_built_one_for_two_unrelated_poses);
@@ -411,6 +568,8 @@ run_r3d_project_suite(void) {
     RUN_TEST(test_segment_with_both_ends_behind_returns_false);
     RUN_TEST(test_one_end_behind_clips_to_the_near_plane_crossing);
     RUN_TEST(test_both_ends_in_front_matches_projecting_each_point);
+
+    RUN_TEST(test_the_grid_cull_drops_only_points_whose_edges_all_project_hidden);
 }
 
 SUITE_REGISTER(run_r3d_project_suite);

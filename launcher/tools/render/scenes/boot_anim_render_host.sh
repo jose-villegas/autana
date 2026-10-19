@@ -30,6 +30,7 @@ main/anim/playback/anim_playhead.c
 main/boot/boot_anim.c
 main/boot/boot_anim_motion.c
 main/boot/boot_anim_photo.c
+main/render/r3d_grid_cull_x.c
 tools/render/scenes/boot_anim_render_host.c
 "
 scene_defines="$launcher_home_defines"
