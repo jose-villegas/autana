@@ -348,7 +348,7 @@ test_wet_dirt_can_spoil_into_sand_instead_of_smelting(void) {
  * real regression, not bad luck. */
 #define FLAW_TEST_PODS    400
 #define FLAW_TEST_SPACING 4
-#define FLAW_TEST_W       (2 + (FLAW_TEST_SPACING * FLAW_TEST_PODS) + 2)
+#define FLAW_TEST_W       (2 + 2 + (FLAW_TEST_SPACING * FLAW_TEST_PODS))
 #define FLAW_TEST_H       6
 
 static void
