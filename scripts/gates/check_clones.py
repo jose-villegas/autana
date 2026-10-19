@@ -11,7 +11,9 @@ checking new pairs. MIN_TOKENS is 80: longer copied helpers and test setup
 are detected, including renamed identifiers and changed literal values;
 short helpers are missed. Literal-only fragments and exact self-matches
 are excluded. Literal-only object-like #defines are blanked on both sides
-before matching, preserving line numbers. The pinned engine ignores comments
+before matching, preserving line numbers; a declaration statement loses its type
+words and splits at commas, and parentheses that only group an expression are
+blanked, so neither a split nor an added grouping counts as copying. The pinned engine ignores comments
 and whitespace.
 """
 import argparse
@@ -91,6 +93,75 @@ def literal_declaration(match):
     return "\n" * match[0].count("\n") if LITERAL_BODY.fullmatch(body) else match[0]
 
 
+# One declaration statement is the same code as several: `int a = x, b = y;` and
+# `int a = x; int b = y;` differ only in the type words and separators the split
+# repeats, so a mechanical split would count as a new clone. Before matching, each
+# declaration loses its type words and its declarators become statements.
+MASKED = re.compile(r"""//[^\n]*|/\*.*?\*/|(?:u8|[LuU])?(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')"""
+                    r"""|(?m:^[ \t]*#(?:[^\n]*\\\n)*[^\n]*)""", re.DOTALL)
+STATEMENT_START = re.compile(r"(?:\A|[;{}])\s*")
+DECLARATION = re.compile(r"((?:[A-Za-z_]\w*[\s*]+)+)([A-Za-z_]\w*)\s*(?=[=;,\[])")
+DECLARATOR_PREFIX = re.compile(r"[\s*]*")
+NOT_A_TYPE = {"return", "goto", "else", "do", "case", "default", "sizeof", "typeof", "break", "continue"}
+
+
+def blank(text):
+    """The same text with newlines kept and everything else a space."""
+    return re.sub(r"[^\n]", " ", text)
+
+
+def collapse_declarations(text):
+    """Strip type words from each C declaration statement and end each of its
+    declarators with `;`, keeping every line where it was."""
+    masked = MASKED.sub(lambda match: blank(match[0]), text)
+    edits = []
+    for start in STATEMENT_START.finditer(masked):
+        found = DECLARATION.match(masked, start.end())
+        if not found or found[1].split("*")[0].split()[0] in NOT_A_TYPE:
+            continue
+        edits.append((found.start(1), found.end(1), blank(found[1])))
+        depth = 0
+        for index in range(found.start(2), len(masked)):
+            char = masked[index]
+            if char in "([{":
+                depth += 1
+            elif char in ")]}":
+                depth -= 1
+            elif depth == 0 and char == ";":
+                break
+            elif depth == 0 and char == ",":
+                after = DECLARATOR_PREFIX.match(masked, index + 1).end()
+                edits.append((index, after, ";" + blank(masked[index + 1:after])))
+            if depth < 0:
+                break
+    for begin, end, replacement in reversed(edits):
+        text = text[:begin] + replacement + text[end:]
+    return text
+
+
+def drop_grouping_parentheses(text):
+    """Blank the parentheses that only group an expression, `(a * b) + c`, and
+    keep those of calls, conditions and declarators: adding or removing a
+    grouping changes no behaviour, so it is not a different token stream."""
+    masked = MASKED.sub(lambda match: blank(match[0]), text)
+    blanked = []
+    stack = []
+    for index, char in enumerate(masked):
+        if char == "(":
+            before = masked[:index].rstrip()
+            word = re.search(r"\w+$", before)
+            grouping = (word[0] == "return") if word else not before.endswith((")", "]"))
+            stack.append(grouping)
+            if grouping:
+                blanked.append(index)
+        elif char == ")" and stack and stack.pop():
+            blanked.append(index)
+    chars = list(text)
+    for index in blanked:
+        chars[index] = " "
+    return "".join(chars)
+
+
 def registration_only(pair):
     if pair["format"] == "python":
         return False
@@ -140,6 +211,8 @@ def scan(root, minimum, names=None, revision="HEAD", renames=None):
                 content = OBJECT_DEFINE.sub(literal_declaration, content.decode("utf-8")).encode("utf-8")
                 content = INCLUDE_DIRECTIVE.sub(lambda match: "\n" * match[0].count("\n"),
                                                 content.decode("utf-8")).encode("utf-8")
+                content = collapse_declarations(content.decode("utf-8")).encode("utf-8")
+                content = drop_grouping_parentheses(content.decode("utf-8")).encode("utf-8")
             target.write_bytes(content)
         config = scratch / "config.json"
         config.write_text(json.dumps({"minTokens": minimum, "minLines": 0,
