@@ -277,7 +277,15 @@ draw_rect_blend(int x, int y, int w, int h, gfx_color_t color, uint8_t alpha) {
     fill_rect_alpha(&state, x, y, w, h, color, alpha, true);
 }
 
-/* `dp`/`sp` start at column `x0`; only the columns `p` passes are copied. */
+/* A 32-bit mask over two adjacent pixels: the low half is the first. */
+static inline uint32_t
+pixel_pair_mask(bool first, bool second) {
+    return (first ? 0x0000FFFFU : 0U) | (second ? 0xFFFF0000U : 0U);
+}
+
+/* `dp`/`sp` start at column `x0`; only the columns `p` passes are copied.
+ * A word-aligned run takes two pixels a store, merged under the pattern's
+ * mask: the same pixels as one store each, without a test apiece. */
 static inline __attribute__((always_inline)) void
 blit_dither_row(gfx_color_t* dp, const gfx_color_t* sp, int x0, int x1, const bool p[4]) {
     int col = x0;
@@ -286,12 +294,17 @@ blit_dither_row(gfx_color_t* dp, const gfx_color_t* sp, int x0, int x1, const bo
             *dp = *sp;
         }
     }
-    for (; col + 4 <= x1; col += 4, dp += 4, sp += 4) {
-        for (int k = 0; k < 4; k++) {
-            if (p[k]) {
-                dp[k] = sp[k];
-            }
+    if (((uintptr_t)dp & 3U) == 0) {
+        const uint32_t m0 = pixel_pair_mask(p[0], p[1]);
+        const uint32_t m1 = pixel_pair_mask(p[2], p[3]);
+        uint32_t* dw = (uint32_t*)dp;
+        for (; col + 4 <= x1; col += 4, dw += 2, sp += 4) {
+            const uint32_t s0 = (uint32_t)sp[0] | ((uint32_t)sp[1] << 16);
+            const uint32_t s1 = (uint32_t)sp[2] | ((uint32_t)sp[3] << 16);
+            dw[0] = (dw[0] & ~m0) | (s0 & m0);
+            dw[1] = (dw[1] & ~m1) | (s1 & m1);
         }
+        dp = (gfx_color_t*)dw;
     }
     for (; col < x1; col++, dp++, sp++) {
         if (p[col & 3]) {
