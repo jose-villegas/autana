@@ -180,7 +180,7 @@ test_selector_random_triangles_and_gate_boundaries(void) {
                             const r3d_span_extent_t e = r3d_span_extent(v, v + 1, v + 2);
                             const int box_side = mathi_max(e.centres.w, e.centres.h);
                             TEST_ASSERT_EQUAL_INT(reference_selector(v, box_side, solid != 0, fill),
-                                                  select_small(v, v + 1, v + 2, e.centres, solid != 0, NULL, resolved));
+                                                  select_small(v, v + 1, v + 2, e.centres, solid != 0, resolved));
                         }
                     }
                     /* Exercise both sides of every representable green-channel limit. */
@@ -189,7 +189,7 @@ test_selector_random_triangles_and_gate_boundaries(void) {
                         v[1].g = (float)(spread * TEST_GREEN_SCALE);
                         const recti_t centres = {0, 0, side, side};
                         TEST_ASSERT_EQUAL_INT(reference_selector(v, side, false, fill),
-                                              select_small(v, v + 1, v + 2, centres, false, NULL, resolved));
+                                              select_small(v, v + 1, v + 2, centres, false, resolved));
                     }
                 }
             }
@@ -200,9 +200,9 @@ test_selector_random_triangles_and_gate_boundaries(void) {
     const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {{0}};
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_GRAIN,
                           select_small(v, v + 1, v + 2, (recti_t){0, 0, SMALL_FILL_CEILING_MAX, SMALL_FILL_CEILING_MAX},
-                                       false, NULL, resolved));
-    TEST_ASSERT_EQUAL_INT(SMALL_FILL_WALK, select_small(v, v + 1, v + 2, (recti_t){0, 0, UINT8_MAX + 1, UINT8_MAX},
-                                                        false, NULL, resolved));
+                                       false, resolved));
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_WALK,
+                          select_small(v, v + 1, v + 2, (recti_t){0, 0, UINT8_MAX + 1, UINT8_MAX}, false, resolved));
 }
 
 static uint16_t
