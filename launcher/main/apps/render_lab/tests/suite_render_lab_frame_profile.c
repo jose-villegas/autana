@@ -13,6 +13,8 @@
 #include "test_cleanup.h"
 #include "unity.h"
 
+#define PERF_ROW_NAME_SIZE 96
+
 typedef struct {
     const render_lab_scene_t* scene;
     const char* pack;
@@ -81,8 +83,11 @@ test_real_time_frame_profiles(void) {
             const frame_profile_t p = frame_profile_play(&playback, whole_frame, &remainder_us);
             frame_profile_log("render_lab_profile", scenario->scene->key, &p, r3d_perf_quarters[q].name);
             TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, p.frames, "frame profile failed");
-            (void)perf_goal(scenario->scene->key, p.frame_us.avg, scenario->quarters[q].mean_goal_us);
-            perf_guard(scenario->scene->key, p.frame_us.p95, scenario->quarters[q].p95_ceiling_us);
+            char name[PERF_ROW_NAME_SIZE];
+            const int length = snprintf(name, sizeof name, "%s %s", scenario->scene->key, r3d_perf_quarters[q].name);
+            TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof name);
+            (void)perf_goal(name, p.frame_us.avg, scenario->quarters[q].mean_goal_us);
+            perf_guard(name, p.frame_us.p95, scenario->quarters[q].p95_ceiling_us);
             release_fixture();
             suite_clear_test_cleanup();
         }

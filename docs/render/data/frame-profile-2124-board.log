@@ -1,0 +1,73 @@
+4/3.0 | total 29.31 || sound_mix 0.003/0.011 ms/block n=263
+I (98674) console: RUNSUITE run_render_lab_frame_profile_suite
+I (98760) asset: pack sponza: 9 entries, 1326240 bytes
+I (135164) render_lab_profile: frame_profile: sponza frames=751 mean 48345us med 48827us p95 58570us worst 59881us best 32665us | fps mean 20.68 low 17.07 worst 16.70 quarter=portrait
+I (135166) device_tests: PERF TARGET sponza: measured 48345 us, goal not yet pegged
+I (135167) device_tests: sponza: ceiling not yet pegged (measured_us=58570)
+I (135254) asset: pack sponza: 9 entries, 1326240 bytes
+I (171698) render_lab_profile: frame_profile: sponza frames=779 mean 46664us med 46831us p95 55643us worst 57443us best 30936us | fps mean 21.43 low 17.97 worst 17.41 quarter=landscape
+I (171700) device_tests: PERF TARGET sponza: measured 46664 us, goal not yet pegged
+I (171700) device_tests: sponza: ceiling not yet pegged (measured_us=55643)
+I (171787) asset: pack sponza: 9 entries, 1326240 bytes
+I (208187) render_lab_profile: frame_profile: sponza-lite frames=876 mean 41457us med 42097us p95 47348us worst 48354us best 30865us | fps mean 24.12 low 21.12 worst 20.68 quarter=portrait
+I (208188) device_tests: PERF TARGET sponza-lite: measured 41457 us, goal not yet pegged
+I (208189) device_tests: sponza-lite: ceiling not yet pegged (measured_us=47348)
+I (208276) asset: pack sponza: 9 entries, 1326240 bytes
+I (244676) render_lab_profile: frame_profile: sponza-lite frames=902 mean 40263us med 40693us p95 45591us worst 46300us best 29080us | fps mean 24.84 low 21.93 worst 21.60 quarter=landscape
+I (244678) device_tests: PERF TARGET sponza-lite: measured 40263 us, goal not yet pegged
+I (244678) device_tests: sponza-lite: ceiling not yet pegged (measured_us=45591)
+I (244765) asset: pack sponza: 9 entries, 1326240 bytes
+I (281153) render_lab_profile: frame_profile: sponza-flat frames=899 mean 40379us med 40442us p95 49152us worst 50212us best 27343us | fps mean 24.77 low 20.35 worst 19.92 quarter=portrait
+I (281155) device_tests: PERF TARGET sponza-flat: measured 40379 us, goal not yet pegged
+I (281155) device_tests: sponza-flat: ceiling not yet pegged (measured_us=49152)
+I (281242) asset: pack sponza: 9 entries, 1326240 bytes
+I (317669) render_lab_profile: frame_profile: sponza-flat frames=915 mean 39718us med 39941us p95 47766us worst 48460us best 26088us | fps mean 25.18 low 20.94 worst 20.64 quarter=landscape
+I (317671) device_tests: PERF TARGET sponza-flat: measured 39718 us, goal not yet pegged
+I (317671) device_tests: sponza-flat: ceiling not yet pegged (measured_us=47766)
+I (317758) asset: pack sponza: 9 entries, 1326240 bytes
+I (354161) render_lab_profile: frame_profile: sponza-fitted frames=889 mean 40852us med 41724us p95 49005us worst 50068us best 27244us | fps mean 24.48 low 20.41 worst 19.97 quarter=portrait
+I (354163) device_tests: PERF TARGET sponza-fitted: measured 40852 us, goal not yet pegged
+I (354164) device_tests: sponza-fitted: ceiling not yet pegged (measured_us=49005)
+I (354251) asset: pack sponza: 9 entries, 1326240 bytes
+I (390641) render_lab_profile: frame_profile: sponza-fitted frames=925 mean 39251us med 40088us p95 46081us worst 46680us best 28160us | fps mean 25.48 low 21.70 worst 21.42 quarter=landscape
+I (390643) device_tests: PERF TARGET sponza-fitted: measured 39251 us, goal not yet pegged
+I (390644) device_tests: sponza-fitted: ceiling not yet pegged (measured_us=46081)
+I (390730) asset: pack sponza: 9 entries, 1326240 bytes
+I (427152) render_lab_profile: frame_profile: sponza-fitted-full frames=742 mean 48954us med 50078us p95 61409us worst 62258us best 30160us | fps mean 20.43 low 16.28 worst 16.06 quarter=portrait
+I (427154) device_tests: PERF TARGET sponza-fitted-full: measured 48954 us, goal not yet pegged
+I (427155) device_tests: sponza-fitted-full: ceiling not yet pegged (measured_us=61409)
+I (427242) asset: pack sponza: 9 entries, 1326240 bytes
+I (463654) render_lab_profile: frame_profile: sponza-fitted-full frames=776 mean 46802us med 47969us p95 57347us worst 59554us best 32018us | fps mean 21.37 low 17.44 worst 16.79 quarter=landscape
+I (463656) device_tests: PERF TARGET sponza-fitted-full: measured 46802 us, goal not yet pegged
+I (463657) device_tests: sponza-fitted-full: ceiling not yet pegged (measured_us=57347)
+I (463744) asset: pack sponza: 9 entries, 1326240 bytes
+I (500148) render_lab_profile: frame_profile: sponza-flat-fitted frames=913 mean 39776us med 40276us p95 49721us worst 50981us best 27285us | fps mean 25.14 low 20.11 worst 19.62 quarter=portrait
+I (500150) device_tests: PERF TARGET sponza-flat-fitted: measured 39776 us, goal not yet pegged
+I (500151) device_tests: sponza-flat-fitted: ceiling not yet pegged (measured_us=49721)
+I (500238) asset: pack sponza: 9 entries, 1326240 bytes
+I (536643) render_lab_profile: frame_profile: sponza-flat-fitted frames=942 mean 38556us med 39226us p95 47571us worst 48788us best 26284us | fps mean 25.94 low 21.02 worst 20.50 quarter=landscape
+I (536645) device_tests: PERF TARGET sponza-flat-fitted: measured 38556 us, goal not yet pegged
+I (536646) device_tests: sponza-flat-fitted: ceiling not yet pegged (measured_us=47571)
+I (536671) asset: pack capybara: 10 entries, 309140 bytes
+RENDER clip=gallop blend_ms=0
+RENDER_END
+I (537524) render_lab_profile: frame_profile: capybara frames=39 mean 20643us med 20620us p95 20853us worst 21569us best 20495us | fps mean 48.44 low 47.95 worst 46.36 quarter=portrait
+I (537526) device_tests: PERF TARGET capybara: measured 20643 us, goal not yet pegged
+I (537526) device_tests: capybara: ceiling not yet pegged (measured_us=20853)
+I (537551) asset: pack capybara: 10 entries, 309140 bytes
+RENDER clip=gallop blend_ms=0
+RENDER_END
+I (538405) render_lab_profile: frame_profile: capybara frames=38 mean 21203us med 21187us p95 21384us worst 21386us best 21014us | fps mean 47.16 low 46.76 worst 46.76 quarter=landscape
+I (538407) device_tests: PERF TARGET capybara: measured 21203 us, goal not yet pegged
+I (538408) device_tests: capybara: ceiling not yet pegged (measured_us=21384)
+./main/shell/shell.c:94:test_real_time_frame_profiles:PASS
+TEST_TIME name=test_real_time_frame_profiles elapsed_ms=439735 stack_free_bytes=1120
+FRAME_WATCH judged 1 of 1 tests
+
+-----------------------
+1 Tests 0 Failures 0 Ignored 
+OK
+
+RUNSUITE_COMPLETE name=run_render_lab_frame_profile_suite found=1 selected=1 unmatched=0
+I (538503) shell: 0.0 fps, 0.0 drawn/s, touch 0.0 points/s 0.0 moved/s
+I (538504) shell: ms/frame avg/worst: r3d.cull 2792.96/0.8  r3d.transform 12836.68/9.5  r3d.draw 138232.82/43.4  r3d.upscale 13518.60/3.0  ui.backend 0.24/0.0  ui.face 0.12/0.0  ui.build 0.07/0.0  ridge.layers 2.30/2.3  ridge.paint 26.32/22.2  ui.paint 3.08/3.0  present 10.76/10.7  frame.rest 52489.13/104978.2 | total 219913.13 || sound_mix 0.002/0.023 ms/block n=75768
