@@ -10,6 +10,7 @@ TUNE(render_lab, small_fill_ceiling, SMALL_FILL_CEILING_SMOOTH, 0, SMALL_FILL_CE
 TUNE(render_lab, small_fill_gate, SMALL_FILL_GATE_SMOOTH, 0, UINT8_MAX);
 TUNE(render_lab, small_fill_style, SMALL_FILL_FLAT, SMALL_FILL_FLAT, SMALL_FILL_STYLE_COUNT - 1);
 TUNE(render_lab, budget, 0, 0, 200);
+TUNE(render_lab, layout, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_COUNT - 1);
 TUNE(render_lab, orbit_ms, 0, 0, RENDER_LAB_ORBIT_MAX_MS);
 
 int
@@ -25,6 +26,11 @@ render_lab_scale(void) {
 camera_present_t
 render_lab_present(void) {
     return (camera_present_t)present;
+}
+
+render_lab_layout_t
+render_lab_layout(void) {
+    return (render_lab_layout_t)layout;
 }
 
 small_fill_t
