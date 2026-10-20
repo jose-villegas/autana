@@ -1756,7 +1756,7 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
 /* A band picture draws the frame a few rows at a time, each band drawn and
  * upscaled on its own, and composes what one full draw does: for bands
  * smaller than a source row's run, ones that split one, and taller ones. */
-static void
+static __attribute__((noinline)) void
 expect_bands_draw_the_frame(raster_t* banded, const render_view_t* view, const gfx_color_t* want, gfx_color_t* got) {
     static const int band_heights[] = {2, 6, 16};
     (void)raster_prepare(banded, view);
