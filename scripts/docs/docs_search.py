@@ -6,7 +6,8 @@
     python scripts/docs/docs_search.py --section 'PATH#heading words'
     python scripts/docs/docs_search.py --outline PATH       a document's headings
     python scripts/docs/docs_search.py --ask <question...>  a written answer, with sources
-    python scripts/docs/docs_search.py --eval               retrieval score
+    python scripts/docs/docs_search.py --eval               retrieval score, kept as history
+    python scripts/docs/docs_search.py --usage [--days N]   what has been asked, and missed
 
 Options: --top N (3), --more N (5), --budget CHARS (1800), --json, --lexical.
 
@@ -17,8 +18,8 @@ launcher/components/), plus any Markdown files or folders the project's
 `docs_extra` setting names (each relative to the checkout unless absolute,
 read in full; no ignore file is consulted), plus the header of
 every script under the tool folders, so "how do I run X" finds the script
-that documents itself. A directory named `.something`, `managed_components`
-or `results`, one that contains `CMakeCache.txt` (a real build tree,
+that documents itself. A directory named `.something`, `managed_components`,
+`node_modules` or `results`, one that contains `CMakeCache.txt` (a real build tree,
 wherever it lands), or one that contains its own `.git` (a fetched clone,
 such as a tool pulled straight from GitHub) is never walked. Each result
 prints the paragraphs that carry the question, the section's path:line
@@ -29,7 +30,8 @@ Two rankings are fused by reciprocal rank (Cormack, Clarke and Buttcher 2009): B
 the body, and embedding similarity from docs_llama.py's local model when it is
 set up. Without the model, search is the first alone and says so. The index is
 rebuilt on every run, in about a second, so it is never stale; only the
-vectors are cached. docs/tools/Docs-Search.md has the setup.
+vectors are cached. Every question is logged locally (query_log.py).
+docs/tools/Docs-Search.md has the setup.
 """
 import argparse
 import json
@@ -37,10 +39,12 @@ import math
 import os
 import re
 import sys
+import time
 from collections import Counter, namedtuple
 from pathlib import Path
 
 import docs_llama
+import query_log
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
@@ -52,6 +56,8 @@ SKIPPED_PREFIXES = ("third_party/", "launcher/components/")
 # Scripts document themselves from under these; fixed, not read off a VCS index.
 SCRIPT_ROOTS = ("scripts/", "launcher/tools/", "launcher/test/", "launcher/main/apps/")
 SCRIPT_SUFFIXES = (".py", ".sh", ".mjs")
+# Fetched packages and run output: neither is documentation, wherever it lands.
+PRUNED_NAMES = ("managed_components", "node_modules", "results")
 # A plan describes code that does not exist yet, and a document from outside
 # the tracked tree is someone's own notes; both answer fewer questions than
 # the documents of record.
@@ -113,15 +119,15 @@ def tokens(text):
 
 def pruned(dirpath, root):
     """Directories a walk never enters: a dotfile/dotdir by name, one of
-    SKIPPED_PREFIXES, `managed_components`/`results` by name (both can nest
-    at any depth, launcher/managed_components, an app's own tools/results),
+    SKIPPED_PREFIXES, a name in PRUNED_NAMES (each can nest at any depth:
+    launcher/managed_components, an app's own tools/results, a tool's node_modules),
     a real build tree (marked by CMakeCache.txt, at whatever depth ESP-IDF or
     the editor happened to put it), or a fetched clone with its own `.git`
     (a submodule checkout, or a tool like emsdk pulled straight from GitHub),
     detected by what the directory itself contains, not by a name that might
     collide with a real source folder (`launcher/tools/build/`, say)."""
     name = dirpath.name
-    if name.startswith(".") or name in ("managed_components", "results"):
+    if name.startswith(".") or name in PRUNED_NAMES:
         return True
     if (dirpath.relative_to(root).as_posix() + "/").startswith(SKIPPED_PREFIXES):
         return True
@@ -159,12 +165,12 @@ def label_of(root, file):
 
 
 def extra_files(root):
-    """(label, file) for the Markdown `docs_extra` names; read in full, no ignore
-    file consulted, since a caller names this folder precisely because it wants it read."""
+    """(label, file) for the Markdown `docs_extra` names; a named folder is walked
+    under the same pruning as the checkout, and no ignore file is consulted."""
     files = []
     for entry in extra_entries(root):
         if entry.is_dir():
-            files += sorted(entry.rglob("*.md"))
+            files += [entry / p for p in walk_tree(entry, ".md")]
         elif entry.suffix == ".md" and entry.is_file():
             files.append(entry)
     return [(label_of(root, f), f) for f in files]
@@ -505,6 +511,7 @@ def answer(index, question, top=3, more=5, budget=1800):
     weak = not best or (best.coverage < 0.5
                         and (best.similarity is None or best.similarity < WEAK_SIMILARITY))
     return {"question": question, "terms": terms, "unknown": unknown, "weak": weak,
+            "similarity": None if not best or best.similarity is None else round(best.similarity, 3),
             "semantic": bool(index.vectors), "results": results,
             "more": [{"location": location(h.section), "heading": breadcrumb(h.section)}
                      for h in hits[top:]]}
@@ -600,7 +607,7 @@ def load_eval(root=None):
     return rows
 
 
-def evaluate(index, depth=3):
+def evaluate(index, depth=10):
     """(question, rank or None) per row whose document is present; a hit is the section or one inside it."""
     present = {s.path for s in index.sections}
     ranks = []
@@ -615,9 +622,57 @@ def evaluate(index, depth=3):
     return ranks
 
 
+def scores(ranks):
+    """Mean reciprocal rank over the rows, and the share found first and in the top three."""
+    count = max(len(ranks), 1)
+    return {"rows": len(ranks),
+            "mrr": round(sum(1 / r for _, r in ranks if r) / count, 3),
+            "top1": round(sum(1 for _, r in ranks if r == 1) / count, 3),
+            "top3": round(sum(1 for _, r in ranks if r and r <= 3) / count, 3)}
+
+
+EVAL_HISTORY = "eval/history.jsonl"
+
+
+def eval_history():
+    return query_log.log_dir() / EVAL_HISTORY
+
+
+def run_eval(index):
+    started = time.perf_counter()
+    ranks = evaluate(index)
+    for question, rank in ranks:
+        print(f"{rank or '-':>2}  {question}")
+    result = {"time": query_log.iso(), "suite": "docs", "mode": "hybrid" if index.vectors else "lexical",
+              "sections": len(index.sections), **scores(ranks),
+              "seconds": round(time.perf_counter() - started, 1)}
+    history = eval_history()
+    try:
+        earlier = [json.loads(line) for line in history.read_text(encoding="utf-8").splitlines()]
+    except (OSError, ValueError):
+        earlier = []
+    print(f"{result['mode']}: MRR {result['mrr']:.3f}, top-1 {result['top1']:.0%}, "
+          f"top-3 {result['top3']:.0%} of {result['rows']} questions in {result['seconds']} s")
+    # Every checkout shares the history; only a run over the same set compares.
+    previous = next((e for e in reversed(earlier) if e.get("suite") == "docs"
+                     and e.get("mode") == result["mode"] and e.get("rows") == result["rows"]), None)
+    if previous:
+        print(f"last {previous['time'][:10]}: MRR {previous['mrr']:.3f}, top-3 {previous['top3']:.0%}"
+              f" of {previous['rows']}")
+    query_log.append(EVAL_HISTORY, result)
+    return result
+
+
 def repo_root():
     """This script's own checkout root; scripts/docs/docs_search.py is always two levels down."""
     return Path(__file__).resolve().parents[2]
+
+
+def log_reply(kind, reply, started):
+    query_log.record("docs", kind, reply["question"], started=started,
+                     hits=[(r["location"], r["score"]) for r in reply["results"]],
+                     similarity=reply["similarity"], semantic=reply["semantic"],
+                     weak=reply["weak"], unknown=reply["unknown"])
 
 
 def main(argv=None, root=None):
@@ -635,27 +690,29 @@ def main(argv=None, root=None):
     parser.add_argument("--budget", type=int, default=1800)
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--lexical", action="store_true")
+    parser.add_argument("--usage", action="store_true")
+    parser.add_argument("--days", type=int, default=0)
     args = parser.parse_args(argv)
+    if args.usage:
+        return query_log.main(["--days", str(args.days)])
     try:
         autana_config.load(root or repo_root())
     except autana_config.ConfigError as error:
         print(f"docs_search: {error}", file=sys.stderr)
         return 1
+    started = time.perf_counter()
     index = Index(root or repo_root(), semantic=not args.lexical)
     if args.eval:
-        ranks = evaluate(index)
-        for question, rank in ranks:
-            print(f"{rank or '-':>2}  {question}")
-        found = sum(1 for _, r in ranks if r)
-        print("hybrid" if index.vectors else "lexical", end=": ")
-        print(f"top-3 recall {found}/{len(ranks)}, top-1 {sum(1 for _, r in ranks if r == 1)}")
+        run_eval(index)
         return 0
     if args.outline:
         text = format_outline(index, args.outline)
+        query_log.record("docs", "outline", args.outline, started=started, weak=not text)
         print(text or f"no document {args.outline}")
         return 0 if text else 1
     if args.section:
         section = index.find_section(args.section)
+        query_log.record("docs", "section", args.section, started=started, weak=not section)
         if not section:
             print(f"no section {args.section}; --outline PATH lists them")
             return 1
@@ -670,11 +727,13 @@ def main(argv=None, root=None):
             return 1
         text, reply = ask(index, " ".join(args.question),
                           stream=lambda piece: print(piece, end="", flush=True))
+        log_reply("ask", reply, started)
         print("\n\nsources:")
         print("\n".join(f"  [{n}] {r['location']}  {r['heading']}"
                         for n, r in enumerate(reply["results"], 1)))
         return 0
     reply = answer(index, " ".join(args.question), args.top, args.more, args.budget)
+    log_reply("search", reply, started)
     print(json.dumps(reply, indent=1) if args.json else format_answer(reply))
     return 0
 
