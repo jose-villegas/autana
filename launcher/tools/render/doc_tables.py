@@ -11,13 +11,16 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 VIEW_HEADER = pathlib.Path(__file__).resolve().parents[2] / "main/render/render_view.h"
-SMALL_FILL_STYLES = re.findall(r"SMALL_FILL_([A-Z]+)(?=\s*[,}])", re.search(
-    r"typedef enum \{([^}]+)\} small_fill_style_t;", VIEW_HEADER.read_text()).group(1) + "}")
 SWEEP_GATE_OFF = 64
 MICROSECONDS_PER_MILLISECOND = 1000
 
 SCORE = re.compile(r"^(.+): mean DeltaE76 ([\d.]+), p95 DeltaE76 ([\d.]+), luma SSIM (-?[\d.]+), "
                    r"edge DeltaE76 ([\d.]+), interior DeltaE76 ([\d.]+)", re.M)
+
+
+def small_fill_styles():
+    return re.findall(r"SMALL_FILL_([A-Z]+)(?=\s*[,}])", re.search(
+        r"typedef enum \{([^}]+)\} small_fill_style_t;", VIEW_HEADER.read_text()).group(1) + "}")
 
 
 def markdown(headers, rows):
@@ -103,6 +106,7 @@ def sweep_rows(data, name):
 
 def small_fill_board(data, scene_id, object_name):
     """Flat camera settings plus optional camera-style measurements in p7."""
+    styles = small_fill_styles()
     mesh = f"run_{scene_id}_perf_suite/{object_name}_fitted_full quarter=landscape"
     tables = []
     for name in ("p5a", "p7"):
@@ -121,11 +125,11 @@ def small_fill_board(data, scene_id, object_name):
                 ceiling = knobs["r3d_span.small_max_side"]
                 gate = knobs["r3d_span.small_flat_spread_far"]
                 gate = 0 if gate == SWEEP_GATE_OFF else gate
-                style = SMALL_FILL_STYLES[0]
+                style = styles[0]
             else:
                 ceiling = knobs["render_lab.small_fill_ceiling"]
                 gate = knobs["render_lab.small_fill_gate"]
-                style = SMALL_FILL_STYLES[knobs["render_lab.small_fill_style"]]
+                style = styles[knobs["render_lab.small_fill_style"]]
             values = []
             for metric in (mesh, skin[0]):
                 value = row["metrics"][metric]["mean"]
@@ -140,17 +144,18 @@ def write_small_fill(work, out, scene_id, object_name, data):
     """Camera axes from render_view.h, temporal CSVs and recorded board sweeps."""
     out.mkdir(parents=True, exist_ok=True)
     from ctypes import c_uint8
+    styles = small_fill_styles()
     header = VIEW_HEADER.read_text()
     defaults = dict(re.findall(r"#define SMALL_FILL_(CEILING|GATE)_DEFAULT\s+(\d+)", header))
     style = re.search(r"#define SMALL_FILL_STYLE_DEFAULT\s+SMALL_FILL_(\w+)", header).group(1)
     maxima = dict(re.findall(r"#define SMALL_FILL_(CEILING|GATE)_MAX\s+(\d+)", header))
     catalog = {name.lower(): (int(default), 0, int(maxima.get(name, c_uint8(-1).value)))
                for name, default in defaults.items()}
-    catalog["style"] = (SMALL_FILL_STYLES.index(style), 0, len(SMALL_FILL_STYLES) - 1)
+    catalog["style"] = (styles.index(style), 0, len(styles) - 1)
     effects = {
         "ceiling": "Largest bounding-box side in pixel centres; 0 disables small fill",
         "gate": "Vertex RGB565 spread limit at the ceiling; 0 disables the colour gate",
-        "style": ", ".join(f"{name} ({index})" for index, name in enumerate(SMALL_FILL_STYLES)),
+        "style": ", ".join(f"{name} ({index})" for index, name in enumerate(styles)),
     }
     if set(catalog) != set(effects):
         raise ValueError("small fill needs the camera's three axes")
