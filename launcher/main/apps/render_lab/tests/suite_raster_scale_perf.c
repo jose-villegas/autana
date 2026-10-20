@@ -98,7 +98,7 @@ one_core_draw_us(const raster_t* raster, const r3d_pipeline_buffers_t* b, const 
     memset(gfx_render_target_depth(&b->picture, 0), 0, pixels * sizeof(uint16_t));
     r3d_span_stop_after = stop;
     const int64_t start = timing_now_us();
-    const r3d_span_target_t target = {b->picture, NULL, 0};
+    const r3d_span_target_t target = {b->picture, NULL, 0, &r3d_span_small_fill_default};
     r3d_pipeline_draw(raster->instances[0].mesh, lens, b->culled + 1, visible, b->cs, b->rows, &target, b->work[0]);
     const int64_t us = timing_now_us() - start;
     r3d_span_stop_after = 0;
@@ -107,6 +107,8 @@ one_core_draw_us(const raster_t* raster, const r3d_pipeline_buffers_t* b, const 
 
 typedef struct {
     int64_t setup, edges, carry, fill, clear;
+    r3d_lens_t lens;
+    r3d_pipeline_buffers_t buffers;
 } span_split_t;
 
 /* One core, one pose: each stage as the difference of two stopped draws;
@@ -114,25 +116,25 @@ typedef struct {
 static __attribute__((noinline)) void
 add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
     (void)scene_animator_seek(scene, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-    r3d_lens_t draw_lens;
-    /* Scoped to keep this frame under the stack-chain gate. */
+    r3d_lens_t* draw_lens = &sum->lens;
     {
         const render_view_t view = camera_view(lens, scene_entity_transform(scene, camera_entity),
                                                (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
-        r3d_lens_init(&draw_lens, &view, mesh.position_scale);
+        r3d_lens_init(draw_lens, &view, mesh.position_scale);
     }
-    r3d_lens_fit(&draw_lens, raster->width, raster->height);
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
-    const int visible = r3d_pipeline_cull(&mesh, &draw_lens, b.culled + 1, b.work[0]);
-    r3d_pipeline_transform(&mesh, &draw_lens, b.culled + 1, visible, b.cs, b.rows);
+    r3d_lens_fit(draw_lens, raster->width, raster->height);
+    sum->buffers = r3d_pipeline_carve(raster);
+    const r3d_pipeline_buffers_t* b = &sum->buffers;
+    const int visible = r3d_pipeline_cull(&mesh, draw_lens, b->culled + 1, b->work[0]);
+    r3d_pipeline_transform(&mesh, draw_lens, b->culled + 1, visible, b->cs, b->rows);
     const size_t pixels = (size_t)raster->width * (size_t)raster->height;
     const int64_t clear_from = timing_now_us();
-    memset(gfx_render_target_depth(&b.picture, 0), 0, pixels * sizeof(uint16_t));
+    memset(gfx_render_target_depth(&b->picture, 0), 0, pixels * sizeof(uint16_t));
     sum->clear += timing_now_us() - clear_from;
-    const int64_t setup = one_core_draw_us(raster, &b, &draw_lens, visible, 1);
-    const int64_t edges = one_core_draw_us(raster, &b, &draw_lens, visible, 2);
-    const int64_t carry = one_core_draw_us(raster, &b, &draw_lens, visible, 3);
-    const int64_t whole = one_core_draw_us(raster, &b, &draw_lens, visible, 0);
+    const int64_t setup = one_core_draw_us(raster, b, draw_lens, visible, 1);
+    const int64_t edges = one_core_draw_us(raster, b, draw_lens, visible, 2);
+    const int64_t carry = one_core_draw_us(raster, b, draw_lens, visible, 3);
+    const int64_t whole = one_core_draw_us(raster, b, draw_lens, visible, 0);
     sum->setup += setup;
     sum->edges += edges - setup;
     sum->carry += carry - edges;
@@ -162,9 +164,11 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
     }
     (void)frame_cost_take_report((uint32_t)poses, report, FRAME_COST_REPORT_MAX);
 
-    span_split_t spans = {0};
+    span_split_t* spans = memory_alloc(sizeof(*spans), MEMORY_INTERNAL);
+    TEST_ASSERT_NOT_NULL(spans);
+    *spans = (span_split_t){0};
     for (uint32_t t_ms = 0; t_ms < period && t_ms / POSE_EVERY_MS < POSES_MAX; t_ms += POSE_EVERY_MS) {
-        add_span_split(raster, t_ms, &spans);
+        add_span_split(raster, t_ms, spans);
     }
 
     int64_t sum = 0;
@@ -179,9 +183,10 @@ measure_size(raster_t* raster, gfx_color_t* destination, resolution_step_t size,
     ESP_LOGI(TAG,
              "scale_spans: %dx%d one core us/pose setup %lld edges %lld carry %lld fill %lld clear "
              "%lld" R3D_PERF_QUARTER_FORMAT,
-             size.width, size.height, (long long)(spans.setup / poses), (long long)(spans.edges / poses),
-             (long long)(spans.carry / poses), (long long)(spans.fill / poses), (long long)(spans.clear / poses),
+             size.width, size.height, (long long)(spans->setup / poses), (long long)(spans->edges / poses),
+             (long long)(spans->carry / poses), (long long)(spans->fill / poses), (long long)(spans->clear / poses),
              perf_quarter->name);
+    memory_free(spans);
     return sum / poses;
 }
 
@@ -421,7 +426,7 @@ fly(const char* camera, const char* policy, const ladder_t* ladder, const resolu
         scene_entity_set_enabled(flown, scene_find(flown, sponza_bakes[i]), i == (int)SPONZA_BAKE_FULL);
     }
     TEST_ASSERT_TRUE(scene_activate(flown, camera));
-    TEST_ASSERT_TRUE(scene_camera_set_present(flown, scene_find(flown, camera), render_lab_present()));
+    TEST_ASSERT_TRUE(render_lab_apply_camera_settings(flown, scene_find(flown, camera)));
     TEST_ASSERT_NOT_NULL(scene_camera_lens(flown, camera));
     const uint32_t period = scene_animator_clip_duration_ms(flown, scene_find(flown, camera), 0);
     const int frames = (int)((period + FRAME_DT_MS - 1) / FRAME_DT_MS);
@@ -558,7 +563,7 @@ run_raster_scale_perf_suite(void) {
     pack = loaded.pack;
     lens = loaded.lens;
     camera_entity = scene == NULL ? SCENE_ENTITY_NONE : scene_find(scene, sponza_cameras[0]);
-    (void)scene_camera_set_present(scene, camera_entity, render_lab_present());
+    (void)render_lab_apply_camera_settings(scene, camera_entity);
     if (scene != NULL) {
         const scene_entity_t full = scene_find(scene, sponza_bakes[SPONZA_BAKE_FULL]);
         const char* id = full == SCENE_ENTITY_NONE ? NULL : scene_entity_mesh_id(scene, full);
