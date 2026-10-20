@@ -64,3 +64,22 @@ def save_gif(fig, draw_frame, frames, path, fps, colors=GIF_COLORS):
                           palette=palette.getpalette()[:colors * 3])
     finally:
         plt.close(fig)
+
+
+GIF_FRAMES = 60
+GIF_FPS = 10
+ORBIT_GIF_COLORS = 64
+WIRE_SAMPLES = 49
+WIRE_STRIDE = 8
+WIRE_ALPHA = 0.45
+WIRE_WIDTH = 0.6
+
+
+def wire_sphere(axis, center, radius, color=FAINT):
+    yaw = np.linspace(0, 2 * np.pi, WIRE_SAMPLES)
+    pitch = np.linspace(-np.pi / 2, np.pi / 2, WIRE_SAMPLES)
+    x = center[0] + radius * np.outer(np.cos(yaw), np.cos(pitch))
+    y = center[1] + radius * np.outer(np.ones_like(yaw), np.sin(pitch))
+    z = center[2] + radius * np.outer(np.sin(yaw), np.cos(pitch))
+    axis.plot_wireframe(x, y, z, rstride=WIRE_STRIDE, cstride=WIRE_STRIDE,
+                        color=color, alpha=WIRE_ALPHA, linewidth=WIRE_WIDTH)

@@ -222,9 +222,14 @@ cc=$(find_cc) || exit 2
 run mkdir -p "$OUT/math"
 run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math/trs-order.png" \
     --pixel "$OUT/math/camera-to-pixel.png" > "$WORK/math_figures.log"
-run "$PYTHON" launcher/tools/math/geometry_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/geometry_figures.log"
-# --orphans scans this runner: rect-queries.png, plane-distance.png, plane-from-points.png, plane-from-rows.png, frustum.png, box3-frustum.png,
-# box3-sphere-queries.png
+run "$PYTHON" launcher/tools/math/geometry_figures.py --cc "$cc" --out "$OUT/math" --stills "$OUT/math" > "$WORK/geometry_figures.log"
+# --orphans scans this runner: rect-queries.png, plane-distance.png, plane-from-points.png, plane-from-rows.png
+
+# --orphans scans this runner: frustum.gif, frustum-f0.png, frustum-f1.png, frustum-f2.png, frustum-f3.png
+
+# --orphans scans this runner: box3-frustum.gif, box3-frustum-f0.png, box3-frustum-f1.png, box3-frustum-f2.png, box3-frustum-f3.png
+
+# --orphans scans this runner: box3-sphere-queries.gif, box3-sphere-queries-f0.png, box3-sphere-queries-f1.png, box3-sphere-queries-f2.png, box3-sphere-queries-f3.png
 run "$PYTHON" launcher/tools/math/motion_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/motion_figures.log"
 # --orphans scans this runner: orbit-fling.gif, orbit-fling-decay.png, orbit-reset-spring.png, orbit-fit-distance.png, spring-line-wave.gif, spring-line-spacetime.png
 run "$PYTHON" launcher/tools/math/signal_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/signal_figures.log"
