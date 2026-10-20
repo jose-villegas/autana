@@ -34,7 +34,7 @@
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_present.h"
-#include "input/imu.h"
+#include "input/motion/imu.h"
 #include "selftest/post_layout.h"
 #include "selftest/post_ui.h"
 #if CONFIG_LAUNCHER_SELFTEST

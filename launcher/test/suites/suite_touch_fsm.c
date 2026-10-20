@@ -11,7 +11,7 @@
  * made a held finger flicker between pressed and released.
  */
 
-#include "input/touch_fsm.h"
+#include "input/touch/touch_fsm.h"
 #include "suites.h"
 #include "unity.h"
 

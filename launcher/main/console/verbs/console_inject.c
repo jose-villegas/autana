@@ -14,9 +14,9 @@
 #include "console/verbs/console_inject_parse.h"
 
 #include "display/display_shell.h"
-#include "input/buttons.h"
-#include "input/imu.h"
-#include "input/touch.h"
+#include "input/buttons/buttons.h"
+#include "input/motion/imu.h"
+#include "input/touch/touch.h"
 
 #include "esp_log.h"
 
@@ -66,10 +66,10 @@ console_verb_imu(const char* args, console_reply_fn reply) {
 
 static void
 start_gesture(const char* args, bool (*parse)(const char* args, console_touch_gesture_t* out),
-              touch_gesture_completion_t kind, const char* usage) {
+              touch_inject_completion_t kind, const char* usage) {
     console_touch_gesture_t gesture;
     if (parse(args, &gesture)) {
-        touch_gesture_start(gesture.x0, gesture.y0, gesture.x1, gesture.y1, gesture.ms, kind);
+        touch_inject_start(gesture.x0, gesture.y0, gesture.x1, gesture.y1, gesture.ms, kind);
     } else {
         ESP_LOGW(TAG, "%s: '%s'", usage, args);
     }
@@ -78,19 +78,19 @@ start_gesture(const char* args, bool (*parse)(const char* args, console_touch_ge
 static void
 console_verb_tap(const char* args, console_reply_fn reply) {
     (void)reply;
-    start_gesture(args, console_tap_parse, TOUCH_GESTURE_TAP, "TAP wants <x> <y>");
+    start_gesture(args, console_tap_parse, TOUCH_INJECT_TAP, "TAP wants <x> <y>");
 }
 
 static void
 console_verb_press(const char* args, console_reply_fn reply) {
     (void)reply;
-    start_gesture(args, console_press_parse, TOUCH_GESTURE_PRESS, "PRESS wants <x> <y> [ms]");
+    start_gesture(args, console_press_parse, TOUCH_INJECT_PRESS, "PRESS wants <x> <y> [ms]");
 }
 
 static void
 console_verb_drag(const char* args, console_reply_fn reply) {
     (void)reply;
-    start_gesture(args, console_drag_parse, TOUCH_GESTURE_DRAG, "DRAG wants <x0> <y0> <x1> <y1> <ms>");
+    start_gesture(args, console_drag_parse, TOUCH_INJECT_DRAG, "DRAG wants <x0> <y0> <x1> <y1> <ms>");
 }
 
 static void

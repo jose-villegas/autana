@@ -20,10 +20,10 @@
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
-#include "input/gesture.h"
 #include "input/input.h"
 #include "input/input_shell.h"
-#include "input/touch.h"
+#include "input/touch/gesture.h"
+#include "input/touch/touch.h"
 #include "profile/frame_cost.h"
 #include "profile/frame_watch.h"
 #include "services/build_id.h"
@@ -322,11 +322,11 @@ run_console_navigation(const app_t** current, input_t* input, uint32_t dt_ms, co
 
 static void
 report_gesture_completion(void) {
-    touch_gesture_completion_t completion;
-    if (!touch_gesture_take_completion(&completion)) {
+    touch_inject_completion_t completion;
+    if (!touch_inject_take_completion(&completion)) {
         return;
     }
-    printf("%s_OK\n", touch_gesture_name(completion));
+    printf("%s_OK\n", touch_inject_completion_name(completion));
     (void)fflush(stdout);
 }
 

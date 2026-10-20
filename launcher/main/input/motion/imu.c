@@ -7,7 +7,7 @@
  * and a rotation range wide enough to survive a deliberate shake.
  */
 
-#include "input/imu.h"
+#include "input/motion/imu.h"
 
 #include <string.h>
 

@@ -59,7 +59,7 @@
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "input/input.h"
-#include "input/tilt.h"
+#include "input/motion/tilt.h"
 #include "material_palette.h"
 #include "math/scalar/fixed.h"
 #include "palette.h"

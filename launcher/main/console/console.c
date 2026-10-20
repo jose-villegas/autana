@@ -228,8 +228,8 @@ console_start(void) {
         return;
     }
 
-    /* Runs at a low priority (below touch/buttons; see input/touch.c,
-     * input/buttons.c for their own 6/5) since it spends essentially all
+    /* Runs at a low priority (below touch/buttons; see input/touch/touch.c,
+     * input/buttons/buttons.c for their own 6/5) since it spends essentially all
      * its time blocked waiting on bytes nobody is usually sending; when a
      * line does arrive there is nothing time-critical about noticing it a
      * frame or two later. */

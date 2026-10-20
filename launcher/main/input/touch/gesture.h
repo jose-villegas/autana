@@ -1,5 +1,5 @@
 /*
- * gesture: recognising touch gestures from input state.
+ * gesture: the home-edge zone and swipe, read from input state.
  *
  * Pure logic, testable on the host: screen size and the edge carrying the
  * home gesture are parameters. Which edge that is, given the board's
