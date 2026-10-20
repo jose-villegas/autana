@@ -9,7 +9,7 @@
 #include <stdlib.h>
 
 #include "gfx/gfx.h"
-#include "input/orbit_motion_touch.h"
+#include "input/mapping/orbit_motion_touch.h"
 #include "suites.h"
 #include "unity.h"
 

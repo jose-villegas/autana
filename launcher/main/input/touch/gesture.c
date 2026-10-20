@@ -1,4 +1,4 @@
-#include "input/gesture.h"
+#include "input/touch/gesture.h"
 
 bool
 gesture_in_edge_zone(int x, int y, gesture_edge_t edge, int screen_w, int screen_h) {

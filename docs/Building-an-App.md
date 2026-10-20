@@ -194,7 +194,7 @@ simulation in `update()` and draws the result in `frame()`.
 ## Input
 
 `input_t` arrives in `frame()` and `update()`; an app polls nothing. The
-button fields are `button_t`, from `input/buttons.h`.
+button fields are `button_t`, from `input/buttons/buttons.h`.
 
 | Field | Meaning |
 |---|---|

@@ -33,7 +33,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "input/tilt.h" /* TILT_TAU_*_MS - the turn below follows the real
+#include "input/motion/tilt.h" /* TILT_TAU_*_MS - the turn below follows the real
                        * filter shape rather than a straight line */
 #include "apps/sand/material_palette.h"
 #include "apps/sand/row_runs.h"
