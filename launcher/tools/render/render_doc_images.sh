@@ -59,6 +59,8 @@ DEMO_OBJECT=atrium
 # The skinned mesh the skeleton and skin figures draw, a cached bake, and its clip.
 SKIN_BAKE=capybara.glb
 SKIN_CLIP=gallop
+# Three of its clips the playback figures blend: first to second to third, then back to the first.
+PLAYBACK_CLIPS="walk gallop idle"
 
 if [ "${1:-}" = --stage ]; then
     if [ "${2:-}" = gpu ] && [ "${3:-}" != --inputs ]; then
@@ -224,6 +226,10 @@ run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math/tr
     --pixel "$OUT/math/camera-to-pixel.png" > "$WORK/math_figures.log"
 run "$PYTHON" launcher/tools/math/geometry_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/geometry_figures.log"
 # --orphans scans this runner: rect-queries.png, plane-distance.png, plane-from-points.png, plane-from-rows.png, frustum.png
+run "$PYTHON" launcher/tools/math/motion_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/motion_figures.log"
+# --orphans scans this runner: orbit-fling.gif, orbit-fling-decay.png, orbit-reset-spring.png, orbit-fit-distance.png, spring-line-wave.gif, spring-line-spacetime.png
+run "$PYTHON" launcher/tools/math/signal_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/signal_figures.log"
+# --orphans scans this runner: goertzel-response.png, goertzel-sweep.gif, pitch-curve.png
 
 # The skeleton and skin figures: the demo rig over one clip, and a limb through the skinning kernel.
 run mkdir -p "$OUT/render" "$OUT/tables"
@@ -233,6 +239,13 @@ run "$PYTHON" launcher/tools/r3d/skin/skin_sheet.py "$skin_asset" "$OUT/render" 
 run "$PYTHON" launcher/tools/r3d/skin/skin_figures.py --cc "$cc" --out "$OUT/render/skin-limb.png" \
     > "$WORK/skin_figures.log"
 # --orphans scans this runner: skin-skeleton.gif, skin-weights.gif, skin-influences.png, skin-limb.png
+
+# The scene playback figures: those clips through the animation layer's playheads and blends.
+run mkdir -p "$OUT/anim"
+# shellcheck disable=SC2086 # PLAYBACK_CLIPS is three words
+run "$PYTHON" launcher/tools/anim/playback/playback_figures.py "$skin_asset" $PLAYBACK_CLIPS --cc "$cc" \
+    --out "$OUT/anim" > "$WORK/playback_figures.log"
+# --orphans scans this runner: anim-playhead.png, anim-blend.png, anim-nlerp.png, anim-blend.gif
 
 # Dynamic resolution's tables and chart, from the board capture and the
 # reference scores kept beside its page.

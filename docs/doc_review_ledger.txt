@@ -64,3 +64,6 @@ docs/render/Camera.md	2026-10-20	new; checked against the cited sources
 docs/testing/Test-State-Reset.md	2026-10-20	new; checked against the cited sources
 docs/tools/Console-Framing.md	2026-10-20	new; checked against the cited sources
 docs/tools/Process-Trees.md	2026-10-20	new; checked against the cited sources
+docs/render/Baked-Mesh.md	2026-10-20	split out of Mesh-Import.md: moved text, LMSH layout unchanged
+docs/render/Bake-Method.md	2026-10-20	split out of Mesh-Import.md: moved text
+docs/Animation-Tracks.md	2026-10-20	scene playback pictures first: reviewed against anim_layer.c, anim_playhead.c and scene_animation.c, accurate

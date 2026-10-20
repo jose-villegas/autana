@@ -296,7 +296,7 @@ board, against submitting every cluster:
 | meshlets of 64 | 286 | 0.851 | 10858.9 | 0.48 | 3.18 | 46.27 | 55.89 |
 <!-- /generated: meshlet-sizes -->
 
-Reference: [Mesh-Import.md](Mesh-Import.md#meshlets).
+Reference: [Baked-Mesh.md](Baked-Mesh.md#meshlets).
 
 #### Asset pack
 

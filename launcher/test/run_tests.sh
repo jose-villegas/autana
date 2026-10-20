@@ -114,6 +114,7 @@ $TEST_DIR/host_main.c
 $TEST_DIR/suites.c
 $TEST_DIR/timing.c
 $TEST_DIR/test_cleanup.c
+$TEST_DIR/frame_profile.c
 $TEST_DIR/ui_probe.c
 $TEST_DIR/heap_arena.c
 $TEST_DIR/pack_reads.c

@@ -294,6 +294,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/suites.c"
         "../test/timing.c"
         "../test/test_cleanup.c"
+        "../test/frame_profile.c"
         "../test/ui_probe.c"
         ${suite_srcs}
         ${app_suites}

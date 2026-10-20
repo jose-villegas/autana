@@ -119,6 +119,15 @@ class SeedInferenceTest(unittest.TestCase):
                 select_quarter('mesh mean 10us', 'landscape')
             self.assertNotIn('20us', select_quarter(capture.read_text(), 'portrait'))
 
+    def test_dense_pose_summary_and_frame_profile(self):
+        from layout_measure import parse_timings
+        text = ('atrium both cores: mean 800us (1250.0 fps before present), worst 1000us, '
+                'med 750us, p95 990us quarter=portrait\n'
+                'frame_profile: sponza frames=20 mean 900us med 880us p95 1000us worst 1100us '
+                'best 700us | fps mean 1111.11 low 1000.00 worst 909.09 quarter=landscape\n')
+        self.assertEqual(parse_timings(text), {'atrium quarter=portrait': 800,
+                                              'sponza quarter=landscape': 900})
+
     def test_parsers_pool_tables_and_ignore_capture_worst(self):
         self.assertEqual(parse_report(FIXTURES/'sponza_capture.txt')['sponza quarter=portrait'], 51000)
         self.assertIn('hot', parse_report(FIXTURES/'sand_a.md'))
