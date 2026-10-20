@@ -1,7 +1,7 @@
 """The scene playback figures of docs/Animation-Tracks.md: clip time against app time as wrap, speed and pause
 change it; a transition blend and an interrupted one, as weight and as one joint's turn; nlerp beside slerp;
 and the skeleton itself through those blends, animated. The numbers come from playback_figures_probe.c, which
-plays a skinned glTF's clips, baked by the pack's own writers, through anim_layer_t.
+plays a skinned glTF's clips, baked by the pack's own writers, on a scene entity through the scene's own calls.
 
     python launcher/tools/anim/playback/playback_figures.py MODEL.glb FIRST SECOND THIRD --cc CC --out DIR
 
@@ -11,51 +11,51 @@ launcher/tools/render/render_doc_images.sh runs it.
 """
 
 import argparse
-import io
 import math
 import pathlib
 import sys
 import tempfile
 
-from PIL import Image
-
 TOOLS = pathlib.Path(__file__).resolve().parents[2]
-MAIN = TOOLS.parent / "main"
 sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS / "math"))
-from math_figures import run_probe  # noqa: E402
+from math_figures import build_probe, probe_json  # noqa: E402
 from anim import skeleton_asset, tracks_asset  # noqa: E402
 from asset.asset_pack import build_pack  # noqa: E402
-from docs.plot_style import FAINT, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE, figure as new_figure, save, subplots  # noqa: E402
+from docs.plot_style import (FAINT, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE, style_axes, figure as new_figure,  # noqa: E402
+                             save, save_gif, subplots)
 from gltf import gltf_read  # noqa: E402
-import matplotlib.pyplot as plt  # noqa: E402  (after plot_style, which picks the headless backend)
 from matplotlib.lines import Line2D  # noqa: E402
+from scene import scene_host  # noqa: E402
 
-PROBE = pathlib.Path(__file__).with_name("playback_figures_probe.c")
-PROBE_SOURCES = (PROBE, *[MAIN / name for name in (
-    "anim/anim_track.c", "anim/anim_tracks.c", "anim/anim_binding.c", "anim/anim_skeleton.c",
-    "anim/pose/anim_pose.c", "anim/playback/anim_playhead.c", "anim/playback/anim_layer.c",
-    "asset/asset_pack.c", "asset/asset_file.c")])
+PROBE_SOURCES = (pathlib.Path(__file__).with_name("playback_figures_probe.c"), *scene_host.SOURCES)
 
 # The scripts' clip indices, into the three clips named on the command line.
 FIRST, SECOND, THIRD = range(3)
+CURRENT_SLOT = 0  # scene_animator_slot_t's SCENE_ANIMATOR_CURRENT
+LOOP, CLAMP = 0, 1  # the probe's wrap line
 FRAME_MS = 20
 BLEND_MS = 400
-# Wrap, speed and pause, on the second clip: (time ms, event) lines of the probe's script.
+# Wrap, speed and pause, on the second clip: the wrap, then (time ms, call) lines of the probe's script.
 PLAYHEAD_END_MS = 3000
 PLAYHEAD_RUNS = {
-    "loop": [(0, f"play {SECOND} 0")],
-    "clamp": [(0, "wrap 1"), (0, f"play {SECOND} 0")],
-    "speed": [(0, f"play {SECOND} 0"), (1000, "speed 0 0.5"), (1800, "pause 0 1"), (2200, "pause 0 0"),
-              (2200, "speed 0 2")],
+    "loop": (LOOP, [(0, f"play {SECOND} 0")]),
+    "clamp": (CLAMP, [(0, f"play {SECOND} 0")]),
+    "speed": (LOOP, [(0, f"play {SECOND} 0"), (1000, f"speed {CURRENT_SLOT} 0.5"), (1800, f"pause {CURRENT_SLOT} 1"),
+                     (2200, f"pause {CURRENT_SLOT} 0"), (2200, f"speed {CURRENT_SLOT} 2")]),
 }
 # A blend from the first clip to the second, then to the third, interrupted half way by one back to the first.
 INTERRUPT_AT = 2000
 BLEND_END_MS = 3200
 BLEND_SCRIPT = [(0, f"play {FIRST} 0"), (800, f"play {SECOND} {BLEND_MS}"), (1800, f"play {THIRD} {BLEND_MS}"),
                 (INTERRUPT_AT, f"play {FIRST} {BLEND_MS}")]
-# Room above weight 1 for the play labels.
+# Room above weight 1 for the play labels, staggered by LABEL_STEP of it so neighbours do not overlap.
 WEIGHT_TOP = 1.45
+LABEL_HIGH, LABEL_STEP = 0.93, 0.08
+# Headroom over the clip's duration and the turn's angle, as a share of them.
+HEADROOM = 1.1
+FROZEN_ALPHA = 0.4
+PREVIOUS_DOT = 3  # points
 NLERP_DEGREES = 150
 NLERP_STEPS = 60
 PANEL = (4.2, 2.6)  # inches per panel
@@ -64,6 +64,7 @@ SHOWN, CURRENT, PREVIOUS = SLOTS[0], SLOTS[1], SLOTS[2]
 GIF_STEP = 2
 GIF_SIZE = (4.4, 3.6)
 GIF_DPI = 80
+GHOST_WIDTH, SHOWN_WIDTH = 1.0, 2.0
 ORBIT_DEGREES = 40
 GIF_ZOOM = 1.5  # the 3D box fills more of the frame with its axes hidden
 VIEW_ELEVATION, VIEW_AZIMUTH = 15, -70
@@ -79,30 +80,24 @@ def model_pack(model, clips, directory):
         tracks, duration, root = tracks_asset.clip_tracks(document, binary,
                                                            tracks_asset.find_animation(document, name, model))
         entries.append((name, b"TRCK", tracks_asset.encode(tracks, duration, root)))
+    entries.append((scene_host.SCENE_ID, b"SCNE", scene_host.one_entity_scene()))
     pack = directory / "clips.pack"
     pack.write_bytes(build_pack(entries))
     return pack, skeleton
 
 
-def play(cc, pack, skeleton, clips, events, end_ms, directory):
+def play(probe, pack, skeleton, clips, wrap, events, end_ms, directory):
     script = directory / "script.txt"
-    lines = [f"clips {len(clips)} " + " ".join(clips), f"frame {FRAME_MS} {end_ms}"]
+    lines = [f"clips {len(clips)} " + " ".join(clips), f"wrap {wrap}", f"frame {FRAME_MS} {end_ms}"]
     lines += [f"{at} {event}" for at, event in events]
     script.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    return run_probe(cc, PROBE_SOURCES, pack, skeleton, script)
+    return probe_json(probe, pack, scene_host.SCENE_ID, scene_host.ENTITY_NAME, skeleton, script)
 
 
 def turn_degrees(q, rest):
     """How far rotation q is from rest, in degrees, the short way."""
     dot = abs(sum(a * b for a, b in zip(q, rest)))
     return math.degrees(2 * math.acos(min(dot, 1.0)))
-
-
-def plain_axes(axis, title):
-    axis.set_title(title, fontsize=TITLE_SIZE, color=INK)
-    axis.tick_params(labelsize=LABEL_SIZE, colors=MUTED)
-    for spine in axis.spines.values():
-        spine.set_color(FAINT)
 
 
 def clip_name(run, index):
@@ -117,25 +112,25 @@ def mark_events(axis, run, events, top):
             continue
         axis.axvline(at, color=FAINT, linestyle="--", linewidth=1)
         blend = f", {words[2]} ms" if words[2] != "0" else ""
-        axis.text(at + FRAME_MS, top * (0.93 - 0.08 * (index % 2)), f"play {clip_name(run, int(words[1]))}{blend}",
+        axis.text(at + FRAME_MS, top * (LABEL_HIGH - LABEL_STEP * (index % 2)), f"play {clip_name(run, int(words[1]))}{blend}",
                   fontsize=LABEL_SIZE, color=MUTED)
 
 
 def playhead_figure(runs, output):
     fig, (wrap_axis, speed_axis) = subplots(1, 2, (2 * PANEL[0], PANEL[1]))
     duration = runs["loop"]["clips"][SECOND]["duration_ms"]
-    plain_axes(wrap_axis, f"{clip_name(runs['loop'], SECOND)}, {duration} ms long: loop and clamp")
+    style_axes(wrap_axis, f"{clip_name(runs['loop'], SECOND)}, {duration} ms long, {FRAME_MS} ms frames: loop and clamp")
     for name, colour in (("loop", SHOWN), ("clamp", CURRENT)):
         frames = runs[name]["frames"]
         wrap_axis.plot([f["ms"] for f in frames], [f["current"][1] for f in frames], color=colour, label=name)
-    plain_axes(speed_axis, "speed 1, then 0.5, paused, then 2")
+    style_axes(speed_axis, "speed 1, then 0.5, paused, then 2")
     frames = runs["speed"]["frames"]
     speed_axis.plot([f["ms"] for f in frames], [f["current"][1] for f in frames], color=SHOWN)
-    for at, event in PLAYHEAD_RUNS["speed"][1:]:
+    for at, _ in PLAYHEAD_RUNS["speed"][1][1:]:
         speed_axis.axvline(at, color=FAINT, linestyle="--", linewidth=1)
     for axis in (wrap_axis, speed_axis):
         axis.axhline(duration, color=FAINT, linewidth=1)
-        axis.set_ylim(0, duration * 1.1)
+        axis.set_ylim(0, duration * HEADROOM)
         axis.set_xlim(0, PLAYHEAD_END_MS)
         axis.set_xlabel("app time, ms", fontsize=LABEL_SIZE)
         axis.set_ylabel("clip time, ms", fontsize=LABEL_SIZE)
@@ -159,22 +154,22 @@ def blend_figure(run, output):
     reference = frames[0]["shown"][joint]
     ms = [f["ms"] for f in frames]
     fig, (weight_axis, turn_axis) = subplots(2, 1, (2 * PANEL[0], 2 * PANEL[1]), sharex=True)
-    plain_axes(weight_axis, "blend weight toward the current clip")
+    style_axes(weight_axis, "blend weight toward the current clip")
     weight_axis.plot(ms, [f["weight"] for f in frames], color=SHOWN)
     frozen = [f["ms"] for f in frames if f["frozen"]]
     if frozen:
-        weight_axis.axvspan(frozen[0], frozen[-1], color=FAINT, alpha=0.4, label="previous pose frozen")
+        weight_axis.axvspan(frozen[0], frozen[-1], color=FAINT, alpha=FROZEN_ALPHA, label="previous pose frozen")
         weight_axis.legend(fontsize=LABEL_SIZE, loc="lower left")
     weight_axis.set_ylim(0, WEIGHT_TOP)
     mark_events(weight_axis, run, BLEND_SCRIPT, WEIGHT_TOP)
 
     name = run["paths"][joint].rsplit("/", 1)[-1]
-    plain_axes(turn_axis, f"joint {name}: turn from its first pose")
+    style_axes(turn_axis, f"joint {name}: turn from its first pose")
     turn_axis.plot(ms, [turn_degrees(f["current_alone"][joint], reference) for f in frames], color=CURRENT,
                    linestyle="--", label="current clip alone")
     previous = [(f["ms"], turn_degrees(f["previous_pose"][joint], reference)) for f in frames if f["previous_pose"]]
     turn_axis.plot([p[0] for p in previous], [p[1] for p in previous], color=PREVIOUS, linestyle="",
-                   marker=".", markersize=3, label="previous slot")
+                   marker=".", markersize=PREVIOUS_DOT, label="previous slot")
     turn_axis.plot(ms, [turn_degrees(f["shown"][joint], reference) for f in frames], color=SHOWN, label="shown")
     turn_axis.set_ylim(0, None)
     turn_axis.set_xlim(0, BLEND_END_MS)
@@ -193,10 +188,10 @@ def nlerp_figure(data, output):
         angle_axis.plot(t, angles, color=colour, label=key)
         rates = [(b - a) / (t1 - t0) for a, b, t0, t1 in zip(angles, angles[1:], t, t[1:])]
         rate_axis.plot([(a + b) / 2 for a, b in zip(t, t[1:])], rates, color=colour, label=key)
-    plain_axes(angle_axis, f"a {data['degrees']:g} degree turn: angle reached")
-    angle_axis.set_ylim(0, data["degrees"] * 1.05)
+    style_axes(angle_axis, f"a {data['degrees']:g} degree turn: angle reached")
+    angle_axis.set_ylim(0, data["degrees"] * HEADROOM)
     angle_axis.set_ylabel("degrees", fontsize=LABEL_SIZE)
-    plain_axes(rate_axis, "angular speed")
+    style_axes(rate_axis, "angular speed")
     rate_axis.set_ylim(0, None)
     rate_axis.set_ylabel("degrees per unit weight", fontsize=LABEL_SIZE)
     for axis in (angle_axis, rate_axis):
@@ -220,27 +215,27 @@ def describe(run, frame):
     return current
 
 
-KEY = [Line2D([], [], color=INK, linewidth=2, label="shown"), Line2D([], [], color=CURRENT, label="current clip alone"),
+KEY = [Line2D([], [], color=INK, linewidth=SHOWN_WIDTH, label="shown"), Line2D([], [], color=CURRENT, label="current clip alone"),
        Line2D([], [], color=PREVIOUS, label="previous slot")]
 
 
-def blend_gif(run, output):
+def blend_frames(run):
+    """One figure per GIF frame, made as the GIF writer asks for it."""
     frames = run["frames"][::GIF_STEP]
     points = [up(p) for f in frames for key in ("joints", "current_joints") for p in f[key]]
     low = [min(p[a] for p in points) for a in range(3)]
     high = [max(p[a] for p in points) for a in range(3)]
     half = max(h - l for l, h in zip(low, high)) / 2
     centre = [(l + h) / 2 for l, h in zip(low, high)]
-    images = []
     for index, frame in enumerate(frames):
         fig = new_figure(GIF_SIZE)
         axis = fig.add_subplot(projection="3d")
         axis.set_title(f"{frame['ms']} ms: {describe(run, frame)}", fontsize=TITLE_SIZE, color=INK)
         fig.legend(handles=KEY, fontsize=LABEL_SIZE, loc="lower center", ncols=len(KEY), frameon=False)
-        ghosts = [("current_joints", CURRENT, 1.0)]
+        ghosts = [("current_joints", CURRENT, GHOST_WIDTH)]
         if frame["previous_joints"] is not None:
-            ghosts.append(("previous_joints", PREVIOUS, 1.0))
-        for key, colour, width in ghosts + [("joints", INK, 2.0)]:
+            ghosts.append(("previous_joints", PREVIOUS, GHOST_WIDTH))
+        for key, colour, width in ghosts + [("joints", INK, SHOWN_WIDTH)]:
             joints = [up(p) for p in frame[key]]
             for j, parent in enumerate(run["parents"]):
                 if parent >= 0:
@@ -250,12 +245,7 @@ def blend_gif(run, output):
         axis.set_axis_off()
         axis.set_box_aspect((1, 1, 1), zoom=GIF_ZOOM)
         axis.view_init(elev=VIEW_ELEVATION, azim=VIEW_AZIMUTH + ORBIT_DEGREES * index / max(len(frames) - 1, 1))
-        buffer = io.BytesIO()
-        fig.savefig(buffer, dpi=GIF_DPI, format="png")
-        plt.close(fig)
-        images.append(Image.open(buffer).convert("RGB").quantize(colors=64))
-    images[0].save(output, save_all=True, append_images=images[1:], duration=FRAME_MS * GIF_STEP, loop=0,
-                   optimize=True)
+        yield fig
 
 
 def main():
@@ -269,14 +259,15 @@ def main():
     with tempfile.TemporaryDirectory() as work:
         directory = pathlib.Path(work)
         pack, skeleton = model_pack(args.model, args.clips, directory)
-        runs = {name: play(args.cc, pack, skeleton, args.clips, events, PLAYHEAD_END_MS, directory)
-                for name, events in PLAYHEAD_RUNS.items()}
-        blend = play(args.cc, pack, skeleton, args.clips, BLEND_SCRIPT, BLEND_END_MS, directory)
-        nlerp = run_probe(args.cc, PROBE_SOURCES, "--nlerp", NLERP_DEGREES, NLERP_STEPS)
+        probe = build_probe(args.cc, PROBE_SOURCES, directory)
+        runs = {name: play(probe, pack, skeleton, args.clips, wrap, events, PLAYHEAD_END_MS, directory)
+                for name, (wrap, events) in PLAYHEAD_RUNS.items()}
+        blend = play(probe, pack, skeleton, args.clips, LOOP, BLEND_SCRIPT, BLEND_END_MS, directory)
+        nlerp = probe_json(probe, "--nlerp", NLERP_DEGREES, NLERP_STEPS)
     playhead_figure(runs, args.out / "anim-playhead.png")
     blend_figure(blend, args.out / "anim-blend.png")
     nlerp_figure(nlerp, args.out / "anim-nlerp.png")
-    blend_gif(blend, args.out / "anim-blend.gif")
+    save_gif(blend_frames(blend), args.out / "anim-blend.gif", FRAME_MS * GIF_STEP, dpi=GIF_DPI)
     return 0
 
 

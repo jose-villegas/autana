@@ -239,7 +239,8 @@ run "$PYTHON" launcher/tools/r3d/skin/skin_figures.py --cc "$cc" --out "$OUT/ren
 # The scene playback figures: those clips through the animation layer's playheads and blends.
 run mkdir -p "$OUT/anim"
 # shellcheck disable=SC2086 # PLAYBACK_CLIPS is three words
-run "$PYTHON" launcher/tools/anim/playback/playback_figures.py "$skin_asset" $PLAYBACK_CLIPS --cc "$cc"     --out "$OUT/anim" > "$WORK/playback_figures.log"
+run "$PYTHON" launcher/tools/anim/playback/playback_figures.py "$skin_asset" $PLAYBACK_CLIPS --cc "$cc" \
+    --out "$OUT/anim" > "$WORK/playback_figures.log"
 # --orphans scans this runner: anim-playhead.png, anim-blend.png, anim-nlerp.png, anim-blend.gif
 
 # Dynamic resolution's tables and chart, from the board capture and the

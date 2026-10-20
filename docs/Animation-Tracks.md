@@ -199,7 +199,7 @@ anim_track_sample(&move, anim_playhead_seconds(&playhead), out);
 
 `anim_playhead_t` (`anim/playback/anim_playhead.h`) owns clip time in
 integer milliseconds; `anim_playhead_advance()` moves it by each frame's
-`dt_ms`. Below, a real clip played through it at 20 ms frames:
+`dt_ms`. Below, a real clip played through the scene's calls:
 
 ![Clip time against app time: a loop wraps at the clip's duration and a clamp holds there; speed 0.5 halves the slope, a pause holds it flat and speed 2 doubles it](images/anim/anim-playhead.png)
 
@@ -368,7 +368,9 @@ skeleton animator on a skinned entity. Both kinds keep a playhead per slot.
 
 ```mermaid
 flowchart LR
-    Advance["advance<br/><i>each slot's playhead</i>"] --> Current["sample the current clip<br/><i>onto the rest pose</i>"]
+    Advance["advance<br/><i>each slot's playhead</i>"] --> Changed{"anything moved?"}
+    Changed -- no --> Kept["pose kept<br/><i>nothing sampled</i>"]
+    Changed -- yes --> Current["sample the current clip<br/><i>onto the rest pose</i>"]
     Current --> Blending{"blending?"}
     Blending -- no --> Shown["shown pose<br/><i>model matrices, skin palette</i>"]
     Blending -- yes --> Previous["the previous slot<br/><i>sampled, or the frozen pose</i>"]
@@ -382,6 +384,7 @@ flowchart LR
 stateDiagram-v2
     direction LR
     [*] --> Playing: play
+    Playing --> Playing: play with 0 ms
     Playing --> Blending: play with blend_ms
     Blending --> Playing: weight reaches 1
     Blending --> Frozen: play with blend_ms
