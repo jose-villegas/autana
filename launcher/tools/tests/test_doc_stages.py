@@ -21,6 +21,27 @@ POWERSHELL = Path("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
 
 
 class DocStagesTests(unittest.TestCase):
+    def test_capture_intervals_are_required_positive_and_common(self):
+        first, second = self.tmp / "a.log", self.tmp / "b.log"
+        for text in ("", "pose_every_ms=0", "pose_every_ms=500\npose_every_ms=1000"):
+            with self.subTest(text=text):
+                first.write_text(text)
+                with self.assertRaisesRegex(ValueError, "pose interval"):
+                    stages.capture_pose_every_ms([first])
+        first.write_text("pose_every_ms=500")
+        second.write_text("pose_every_ms=1000")
+        with self.assertRaisesRegex(ValueError, "pose interval"):
+            stages.capture_pose_every_ms([first, second])
+
+    def test_swapped_pose_rows_keep_their_logged_times(self):
+        capture = self.tmp / "capture.txt"
+        capture.write_text("CAPTURE pose_every_ms=500\n"
+                           "atrium t=500ms clusters=4 | both cores: frame 52000us\n"
+                           "atrium t=0ms clusters=4 | both cores: frame 51000us\n")
+        expected = [("sponza", 0), ("sponza", 500)]
+        self.assertEqual(stages.board_frames([capture], expected, "sponza", "atrium", 500),
+                         {("sponza", 0): 51.0, ("sponza", 500): 52.0})
+
     def test_path_cull_has_its_own_sampling_for_region_visibility(self):
         from types import SimpleNamespace as NS
         import numpy as np
@@ -56,6 +77,9 @@ class DocStagesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "tables").mkdir()
+            capture = root / "capture.txt"
+            capture.write_text("CAPTURE pose_every_ms=2000\nFRAME COST rendered 8x6\n")
+            args.capture = [capture]
             with mock.patch.object(import_settings, "load_scene", return_value=scene), \
                     mock.patch.object(fitted_variant, "placed_variant", return_value=job), \
                     mock.patch.object(mesh_import, "camera_path_poses", return_value=poses) as sample, \
@@ -119,7 +143,7 @@ class DocStagesTests(unittest.TestCase):
         scene = NS(renderers=[NS(object=NS(name=name), asset_path=Path(name + ".mesh"))
                               for name in ("painting", "painting_lite")])
         capture = self.tmp / "capture.txt"
-        capture.write_text("abcdef123456-diag\nFRAME COST rendered 8x6\n" +
+        capture.write_text("abcdef123456-diag\nFRAME COST rendered 8x6\nCAPTURE pose_every_ms=1000\n" +
             "".join(f"{name} both cores: mean {value}us\n" for name, value in
                     (("painting", 51000), ("painting_lite", 42000), ("painting_flat", 43000),
                      ("painting_fitted", 44000), ("painting_fitted_full", 45000), ("painting_flat_fitted", 46000))) +
@@ -243,17 +267,29 @@ with mock.patch.object(stages, "ROOT", Path(sys.argv[2])), mock.patch.object(
         with self.assertRaisesRegex(ValueError, "flat-fitted"):
             stages.board_means([capture], "abcdef123456", "gallery", "painting")
 
+    def test_board_half_second_pose_rows(self):
+        capture = self.tmp / "capture.txt"
+        capture.write_text('CAPTURE period_ms=1000 pose_every_ms=500\n'
+                           'atrium t=    0s clusters=4 tris=5 | both cores: frame 51000us\n'
+                           'atrium t=  500ms clusters=4 tris=5 | both cores: frame 52000us\n'
+                           'atrium_lite t=    0s clusters=4 tris=5 | both cores: frame 42000us\n'
+                           'atrium_lite t=  500ms clusters=4 tris=5 | both cores: frame 43000us\n')
+        expected = [(name, time) for name in ('sponza', 'lite') for time in (0, 500)]
+        self.assertEqual(stages.board_frames([capture], expected, 'sponza', 'atrium', 500),
+                         {('sponza', 0): 51.0, ('sponza', 500): 52.0,
+                          ('lite', 0): 42.0, ('lite', 500): 43.0})
+
     def test_board_pose_rows_require_complete_unique_samples(self):
         capture = self.tmp / "capture.txt"
         capture.write_text("atrium t=    0s clusters= 4 tris=5 | both cores: frame 51000us\n"
                            "atrium_lite t=    0s clusters= 4 tris=5 | both cores: frame 42000us\n")
         expected = [("sponza", 0), ("lite", 0)]
-        self.assertEqual(stages.board_frames([capture], expected, "sponza", "atrium"), {("sponza", 0): 51.0, ("lite", 0): 42.0})
+        self.assertEqual(stages.board_frames([capture], expected, "sponza", "atrium", 500), {("sponza", 0): 51.0, ("lite", 0): 42.0})
         with self.assertRaisesRegex(ValueError, "exactly once"):
-            stages.board_frames([capture], [*expected, ("sponza", 5)], "sponza", "atrium")
+            stages.board_frames([capture], [*expected, ("sponza", 5)], "sponza", "atrium", 500)
         capture.write_text(capture.read_text() + capture.read_text().splitlines()[0] + "\n")
         with self.assertRaisesRegex(ValueError, "exactly once"):
-            stages.board_frames([capture], expected, "sponza", "atrium")
+            stages.board_frames([capture], expected, "sponza", "atrium", 500)
 
     def test_gpu_check_requires_saved_full_run(self):
         with self.assertRaisesRegex(ValueError, "no full run"):

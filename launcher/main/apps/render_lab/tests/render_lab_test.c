@@ -57,26 +57,26 @@ render_lab_test_exit(const render_lab_test_t* saved) {
 }
 
 int64_t
-render_lab_test_frame(bool switching, const input_t* input) {
+render_lab_test_frame_dt(uint32_t dt_ms, bool switching, const input_t* input) {
     TEST_ASSERT_TRUE_MESSAGE(display_quarter_held(), "a test frame needs a held quarter");
     const input_t idle = {0};
     if (input == NULL) {
         input = &idle;
     }
     gfx_present_begin();
-    app_render_lab.update(RENDER_LAB_TEST_FRAME_MS, input);
+    app_render_lab.update(dt_ms, input);
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
     render_lab_apply_raster_settings();
     const int64_t render_start = timing_now_us();
-    scene_shell_render(RENDER_LAB_TEST_FRAME_MS);
+    scene_shell_render(dt_ms);
     const int64_t render_us = timing_now_us() - render_start;
     gfx_present_wait();
     ui_clear_band_overlay();
-    scene_shell_compose(RENDER_LAB_TEST_FRAME_MS);
+    scene_shell_compose(dt_ms);
     if (switching) {
         TEST_ASSERT_TRUE_MESSAGE(gfx_frame_expanded(), "the switch must encounter an expanded picture");
     }
-    app_render_lab.frame(RENDER_LAB_TEST_FRAME_MS, input);
+    app_render_lab.frame(dt_ms, input);
     if (switching) {
         TEST_ASSERT_FALSE_MESSAGE(gfx_frame_expanded(), "the new scene must discard the expanded picture");
         TEST_ASSERT_TRUE_MESSAGE(gfx_fb_guard_available, "the new scene must allow full-framebuffer writes");

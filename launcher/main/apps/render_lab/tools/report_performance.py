@@ -21,7 +21,7 @@ NANOSECONDS_PER_MICROSECOND = read_define(LOG_HEADER, "SKIN_PERF_NS_PER_US")
 CORES_ONE = read_define(LOG_HEADER, "SKIN_PERF_CORES_ONE")
 CORES_TWO = read_define(LOG_HEADER, "SKIN_PERF_CORES_TWO")
 CORES_UNKNOWN = read_define(LOG_HEADER, "SKIN_PERF_CORES_UNKNOWN")
-PERCENT_SCALE = read_define(LOG_HEADER, "SKIN_PERF_PERCENT_SCALE")
+PERCENT_SCALE = read_define(LOG_HEADER.parents[4] / "test/perf_budget.h", "PERF_BUDGET_PERCENT")
 SKIN_HEADER = LOG_HEADER.parents[3] / "render/r3d_skin_format.h"
 LIGHTING_MODES = {read_define(SKIN_HEADER, "R3D_SKIN_LIGHT_" + mode.upper()): mode
                   for mode in ("direct", "renormalised", "table")}

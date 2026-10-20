@@ -23,6 +23,9 @@
 /* The loop is measured at a pose this often, from its start. */
 #define SPONZA_POSE_EVERY_MS        5000
 
+/* The frame-cost rows' pose spacing. */
+#define SPONZA_PERF_POSE_EVERY_MS   500
+
 typedef enum {
     SPONZA_BAKE_FULL,
     SPONZA_BAKE_FLAT,

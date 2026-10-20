@@ -38,6 +38,14 @@ typedef struct {
     bool (*console)(const char* args, console_reply_fn reply);
 } render_lab_scene_t;
 
+extern const render_lab_scene_t scene_sponza;
+extern const render_lab_scene_t scene_capybara;
+extern const render_lab_scene_t scene_sponza_lite;
+extern const render_lab_scene_t scene_sponza_flat;
+extern const render_lab_scene_t scene_sponza_fitted;
+extern const render_lab_scene_t scene_sponza_fitted_full;
+extern const render_lab_scene_t scene_sponza_flat_fitted;
+
 /* A scene's `.console`: the hook in a development or host build, NULL otherwise,
  * as APP_CONSOLE_PTR() does, so a release links none of the console; a host
  * render drives it through render_lab_console(). Declare the hook static
