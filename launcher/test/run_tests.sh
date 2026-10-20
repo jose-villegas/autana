@@ -121,6 +121,8 @@ $TEST_DIR/job_calls.c
 $TEST_DIR/test_asset_dir.c
 $TEST_DIR/test_fence.c
 $MAIN_DIR/sound/sound_mixer.c
+$MAIN_DIR/power/power_decode.c
+$MAIN_DIR/power/power_cache.c
 $MAIN_DIR/audio/audio_tone.c
 $MAIN_DIR/audio/audio_frequency.c
 $MAIN_DIR/app/app_arena.c
@@ -318,6 +320,7 @@ fi
 if [ "$BUILD_ONLY" != 1 ]; then
     "$TEST_DIR/check_app_sources.sh"
     "$TEST_DIR/check_packages_alone.sh"
+    "$TEST_DIR/check_tool_probes.sh"
     "$TEST_DIR/check_inline_owners.sh"
 
     # The bootloader hook lives outside SOURCES too: a separate header world
