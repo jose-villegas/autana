@@ -65,7 +65,7 @@ fill_rect(sand_t* s, int x0, int y0, int x1, int y1, cell_t c) {
  * maintainer sees break up on the device. */
 static void
 scene_water_column(sand_t* s) {
-    fill_rect(s, LAG_W / 2 - 6, 0, LAG_W / 2 + 6, LAG_H / 2, CELL_MAKE(MAT_WATER, MASS_MAX));
+    fill_rect(s, (LAG_W / 2) - 6, 0, (LAG_W / 2) + 6, LAG_H / 2, CELL_MAKE(MAT_WATER, MASS_MAX));
 }
 
 /* A pool deep enough that cross-flow runs every step, straddling boundaries. */
@@ -125,7 +125,7 @@ cell_mass(cell_t c) {
     if (CELL_IS_EMPTY(c)) {
         return 0;
     }
-    return ((liquid_mask() >> CELL_MATERIAL(c)) & 1u) != 0 ? CELL_VARIANT(c) : 1;
+    return ((liquid_mask() >> CELL_MATERIAL(c)) & 1U) != 0 ? CELL_VARIANT(c) : 1;
 }
 
 typedef struct {
@@ -150,11 +150,12 @@ compare_step(const sand_t* split, const sand_t* serial) {
     lag_step_t d = {0, 0, 0, 0};
 
     for (int y = 0; y < LAG_H; y++) {
-        int mass_split = 0, mass_serial = 0;
+        int mass_split = 0;
+        int mass_serial = 0;
         for (int x = 0; x < LAG_W; x++) {
             const cell_t a = sand_at(split, x, y);
             const cell_t b = sand_at(serial, x, y);
-            const cell_t was = cells_before[(size_t)y * (size_t)LAG_W + (size_t)x];
+            const cell_t was = cells_before[((size_t)y * (size_t)LAG_W) + (size_t)x];
             if (a != b) {
                 d.cells++;
             }
@@ -198,9 +199,10 @@ keep_worst(lag_result_t* out, lag_step_t d, int step) {
 
 static lag_result_t
 measure(const lag_case_t* c) {
-    sand_t split, serial;
-    sand_init(&split, cells_split, LAG_W, LAG_H, 7u);
-    sand_init(&serial, cells_serial, LAG_W, LAG_H, 7u);
+    sand_t split;
+    sand_t serial;
+    sand_init(&split, cells_split, LAG_W, LAG_H, 7U);
+    sand_init(&serial, cells_serial, LAG_W, LAG_H, 7U);
     sand_enable_sleeping(&split, blocks_split);
     sand_enable_sleeping(&serial, blocks_serial);
     sand_enable_step_stamps(&split, stamps_split);
