@@ -104,10 +104,11 @@ def render(path, internal_required=False):
             point = args if len(args) == 3 else (*args, DEFAULT_VOLUME)
             if point[1:] in settings:
                 acoustic.setdefault(point, reply)
-        if set(internal) != set(acoustic):
+        if not internal.keys() <= acoustic.keys():
             raise ValueError("internal and acoustic frequency points must be paired")
         rows = []
-        for args, outside in sorted(acoustic.items()):
+        for args in sorted(internal):
+            outside = acoustic[args]
             inside = internal[args]
             if any("hz_error" not in reply or "measured_hz" not in reply for reply in (outside, inside)):
                 raise ValueError("paired loopback records need measured_hz and hz_error")
