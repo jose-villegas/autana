@@ -116,10 +116,10 @@ def render(path, internal_required=False):
                          "n/a" if outside['hz_error'] is None else f"{outside['hz_error']:+.2f}",
                          "n/a" if inside['hz_error'] is None else f"{inside['hz_error']:+.2f}"))
         duration_ms, volume_pct = next(iter(settings))
-        context = f"Internal vs acoustic loopback. Duration {duration_ms} ms; volume {volume_pct}%.\n\n"
+        context = f"Duration {duration_ms} ms; volume {volume_pct}%.\n\n"
         tables["audio-loopback"] = prefix + context + markdown(
-            ["Frequency (Hz)", "Acoustic level (dB)", "Internal level (dB)",
-             "Acoustic Hz error", "Internal Hz error"], rows)
+            ["Frequency (Hz)", "Acoustic level (dBFS)", "Internal level (dBFS)",
+             "Acoustic error (Hz)", "Internal error (Hz)"], rows)
     return tables
 
 

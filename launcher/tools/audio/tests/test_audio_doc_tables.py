@@ -38,7 +38,10 @@ class AudioDocTablesTest(unittest.TestCase):
     def test_comparison_and_regeneration(self):
         rendered = tables.render(self.capture)
         comparison = rendered["audio-loopback"]
-        self.assertIn("Internal vs acoustic loopback", comparison)
+        self.assertIn("Duration 500 ms; volume 30%.", comparison)
+        self.assertNotIn("Internal vs acoustic loopback", comparison)
+        self.assertIn("| Frequency (Hz) | Acoustic level (dBFS) | Internal level (dBFS) | "
+                      "Acoustic error (Hz) | Internal error (Hz) |", comparison)
         self.assertIn("| 300 | -21.5 | -12.3 | -0.03 | +0.02 |", comparison)
         self.assertIn("| 1000 | -21.5 | -12.3 | -0.03 | +0.02 |", comparison)
         self.document.write_bytes("\r\n".join(f"<!-- generated: {name} -->\r\n<!-- /generated: {name} -->"
