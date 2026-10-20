@@ -8,7 +8,7 @@
 
 typedef struct {
     goertzel_t fundamental;
-    goertzel_t harmonics[AUDIO_LOOPBACK_HARMONICS - AUDIO_LOOPBACK_FIRST_HARMONIC + 1u];
+    goertzel_t harmonics[AUDIO_LOOPBACK_HARMONICS - AUDIO_LOOPBACK_FIRST_HARMONIC + 1U];
     audio_frequency_t frequency;
     size_t harmonic_count;
     int peak;

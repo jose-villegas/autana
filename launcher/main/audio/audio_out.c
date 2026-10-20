@@ -43,7 +43,7 @@ apply(void) {
     bool write_drc = config.on;
 #if CONFIG_LAUNCHER_DEVELOPMENT
     write_drc = write_drc || drc_applied;
-    /* A failed transaction may enable DRC before another register write fails. */
+    /* Failed register transactions can leave the limiter enabled. */
     drc_applied = write_drc;
 #endif
     if (write_drc && !audio_codec_drc_set(&config)) {
