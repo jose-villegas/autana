@@ -202,6 +202,20 @@ scene_shell_compose(uint32_t dt_ms) {
     (void)dt_ms;
 }
 
+/* And its band, and a UI's replay, where a scene linked neither. */
+__attribute__((weak)) void
+scene_shell_compose_band(int row0, int row1, gfx_color_t* target) {
+    (void)row0;
+    (void)row1;
+    (void)target;
+}
+
+__attribute__((weak)) void
+ui_replay_band(int row0, int row1) {
+    (void)row0;
+    (void)row1;
+}
+
 /* The declared steps turned into one frame's input_t. `down` holds from
  * the step that set it, so edges come out of the change rather than out of
  * a second declaration of the same tap. */
