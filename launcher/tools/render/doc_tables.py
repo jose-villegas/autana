@@ -12,6 +12,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 VIEW_HEADER = pathlib.Path(__file__).resolve().parents[2] / "main/render/render_view.h"
 SWEEP_GATE_OFF = 64
+# A fidelity table's score columns after Variant, as r3d/bake_fidelity.py's table() writes them too; the doc
+# charts read them back by these names.
+SCORE_COLUMNS = ("Mean dE76", "p95 dE76", "Luma SSIM", "Edge dE76", "Interior dE76")
 # The indirect-look table's columns after Look; the doc charts read them back by these names.
 LOOK_COLUMNS = ("Mean dE76, physical", "Mean dE76, own", "p95, physical", "SSIM, physical")
 MICROSECONDS_PER_MILLISECOND = 1000
@@ -179,7 +182,33 @@ def write_small_fill(work, out, scene_id, object_name, data):
     (out / "small-fill-board.md").write_text(small_fill_board(data, scene_id, object_name), encoding="utf-8")
 
 
-def write_tables(work, out, scene_id, object_name):
+def variants(scene_path, object_name):
+    """(object, fitted) of every renderer the scene places for `object_name`: the object itself and each
+    `<object_name>_<variant>`. A variant is fitted when its recipe has a fit."""
+    from r3d.import_settings import load_scene
+    return [(job.object.name, job.renderer.fit is not None) for job in load_scene(scene_path).renderers
+            if job.object.name == object_name or job.object.name.startswith(object_name + "_")]
+
+
+def variant_label(name, object_name):
+    """`atrium_fitted_full` of `atrium` reads "fitted full"; the object itself is "full"."""
+    return name[len(object_name) + 1:].replace("_", " ") or "full"
+
+
+def ranked(found, score):
+    """`found`'s (object, fitted) pairs best first: fitted before unfitted, then by mean ΔE."""
+    return sorted(found, key=lambda item: (not item[1], score(item[0])[0]))
+
+
+def score_table(rows):
+    """A fidelity table of (label, scores) rows in the order given."""
+    lines = ["| Variant | " + " | ".join(SCORE_COLUMNS) + " |", "|---|" + "---:|" * len(SCORE_COLUMNS)]
+    lines += [f"| {label} | {v[0]:.3f} | {v[1]:.3f} | {v[2]:.4f} | {v[3]:.3f} | {v[4]:.3f} |" for label, v in rows]
+    return "\n".join(lines) + "\n"
+
+
+def write_tables(work, out, scene_id, object_name, found):
+    """The CPU fidelity tables of `found`, the (object, fitted) variants `variants` lists."""
     from PIL import Image
     from render_compare import read_video, reference_video
     from r3d.bake_fidelity import table
@@ -187,11 +216,15 @@ def write_tables(work, out, scene_id, object_name):
     out.mkdir(parents=True, exist_ok=True)
     indirect = scores(work / "indirect-compare.log")
     smooth = indirect["two bounces"]
-    full = scores(work / "committed-smooth-compare.log")["frames mean"]
-    lite = scores(work / f"{object_name}_lite-compare.log")["frames mean"]
-    flat = scores(work / "fidelity-compare.log")["frames mean"]
-    (out / f"{scene_id}-fidelity.md").write_text(table([
-        ("Full smooth", full), ("Lite smooth", lite), ("Flat, committed", flat)]) + "\n", encoding="utf-8")
+    score = lambda name: scores(work / f"variant-{name}-compare.log")["frames mean"]  # noqa: E731
+    order = ranked(found, score)
+    label = lambda name: variant_label(name, object_name)  # noqa: E731
+    (out / f"{scene_id}-fidelity.md").write_text(score_table([(label(name), score(name)) for name, _ in order]),
+                                                 encoding="utf-8")
+    flythrough = [(f"![{label(name)} flythrough](../images/render/{scene_id}-{label(name).replace(' ', '-')}.gif)",
+                   f"**{label(name)}**", f"`{scene_id}.{name}`", "yes" if fitted else "no") for name, fitted in order]
+    (out / f"{scene_id}-variants.md").write_text(
+        markdown(["Flythrough", "Variant", "Mesh entry", "Fitted"], flythrough), encoding="utf-8")
     smooth_frames = work / "smooth-reference"
     smooth_frames.mkdir(exist_ok=True)
     _, frames = read_video(work / "committed-smooth.avi")
@@ -202,12 +235,15 @@ def write_tables(work, out, scene_id, object_name):
         ("Flat against smooth, fidelity poses", (pair.mean_delta_e, pair.p95_delta_e, pair.ssim_luma,
                                                 pair.edge_delta_e, pair.interior_delta_e))]) + "\n", encoding="utf-8")
     (out / f"{scene_id}-flat-sampling.md").write_bytes((work / "sampling/table.md").read_bytes())
-    (out / f"{scene_id}-indirect.md").write_text(table([
-        ("Full smooth, direct light", indirect["direct light only"]), ("Full smooth, indirect light", smooth),
-        ("Lite smooth, direct light", scores(work / "direct-lite-compare.log")["frames mean"]),
-        ("Lite smooth, indirect light", scores(work / "smooth-lite-compare.log")["frames mean"]),
-        ("Flat, direct light", scores(work / "direct-flat-compare.log")["frames mean"]),
-        ("Flat, indirect light", scores(work / "smooth-flat-compare.log")["frames mean"])]) + "\n", encoding="utf-8")
+    # The meshes the light study re-bakes, in the fidelity table's order.
+    light = {object_name: (indirect["direct light only"], smooth)}
+    for mesh in ("lite", "flat"):
+        light[f"{object_name}_{mesh}"] = tuple(scores(work / f"{kind}-{mesh}-compare.log")["frames mean"]
+                                              for kind in ("direct", "smooth"))
+    (out / f"{scene_id}-indirect.md").write_text(score_table(
+        [(f"{label(name)}, {kind} light", light[name][index])
+         for name, _ in order if name in light for index, kind in enumerate(("direct", "indirect"))]),
+        encoding="utf-8")
     look = scores(work / "indirect-look.log")
     lines = ["| Look | " + " | ".join(LOOK_COLUMNS) + " |", "|---|" + "---:|" * len(LOOK_COLUMNS)]
     direct = indirect["direct light only"]
@@ -219,14 +255,19 @@ def write_tables(work, out, scene_id, object_name):
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--variants"]:
+        # doc_images_demo.sh renders and scores each of these before the tables.
+        print(" ".join(name for name, _ in variants(pathlib.Path(sys.argv[2]), sys.argv[3])))
+        sys.exit(0)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("work", type=pathlib.Path)
     parser.add_argument("out", type=pathlib.Path)
     parser.add_argument("scene_id")
     parser.add_argument("object_name")
     parser.add_argument("--small-fill-data", type=pathlib.Path)
+    parser.add_argument("--scene", type=pathlib.Path, help="the scene file whose variants the fidelity tables rank")
     args = parser.parse_args()
     if args.small_fill_data:
         write_small_fill(args.work, args.out, args.scene_id, args.object_name, args.small_fill_data)
     else:
-        write_tables(args.work, args.out, args.scene_id, args.object_name)
+        write_tables(args.work, args.out, args.scene_id, args.object_name, variants(args.scene, args.object_name))

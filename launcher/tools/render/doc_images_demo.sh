@@ -203,6 +203,14 @@ run "$HOST" --quarter 0 --scene "$ID" --object "$FULL" --frames "$FIDELITY_FRAME
     -o "$W/committed-smooth.bmp" --video "$W/committed-smooth.avi" 2> "$W/committed-smooth.log"
 run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/committed-smooth-unused.png" \
     --reference-video "$W/committed-smooth.avi" "$REFERENCE" --reference-scale 2 > "$W/committed-smooth-compare.log"
+# Every variant of OBJECT the scene places, scored the same way: the fidelity
+# table, its chart and the flythrough table rank them by these scores.
+for object in $(run "$PYTHON" launcher/tools/render/doc_tables.py --variants "$SCENE" "$FULL"); do
+    run "$HOST" --quarter 0 --scene "$ID" --object "$object" --frames "$FIDELITY_FRAMES" --dt "$FIDELITY_DT" \
+        -o "$W/variant-$object.bmp" --video "$W/variant-$object.avi" 2> "$W/variant-$object.log"
+    run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/variant-$object-unused.png" \
+        --reference-video "$W/variant-$object.avi" "$REFERENCE" --reference-scale 2 > "$W/variant-$object-compare.log"
+done
 # bake_and_render DIR MESH OBJECT: bake the scene file in DIR, which keeps its
 # import beside a link to the mesh source, pack MESH in place of the committed
 # one and render the fidelity poses to DIR.avi.
@@ -378,7 +386,7 @@ sweep_start=$(date +%s)
 sweep_seconds=$(($(date +%s) - sweep_start))
 echo "CPU flat sampling sweep: $sweep_seconds seconds"
 echo "$sweep_seconds" > "$W/sweep-seconds.txt"
-"$R3D_PYTHON" "launcher/tools/render/doc_tables.py" "$W" "$TABLES" "$ID" "$FULL"
+"$R3D_PYTHON" "launcher/tools/render/doc_tables.py" "$W" "$TABLES" "$ID" "$FULL" --scene "$SCENE"
 # The same numbers as charts: ${ID}-fidelity.png, ${ID}-indirect.png, ${ID}-flat-sampling.png, ${ID}-indirect-look.png.
 "$R3D_PYTHON" launcher/tools/render/bake_charts.py "$TABLES" "$RENDER" "$ID"
 tables_seconds=$(($(date +%s) - tables_start))

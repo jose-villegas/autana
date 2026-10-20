@@ -8,16 +8,21 @@ Every image, chart and table here is regenerated from the source
 
 ## The Sponza variants
 
-Every row plays the same stretch of the flythrough, so the rows compare.
+Every row plays the same stretch of the flythrough, so the rows compare. The
+rows are ranked best first: fitted variants, then the rest, each by mean ΔE in
+[Fidelity against the source](#fidelity-against-the-source).
 
-| Variant | What it is | Mesh entry |
-|---|---|---|
-| ![Sponza flythrough, smooth](../images/render/sponza-full.gif) | **Full**: smooth, one colour per vertex, lit and interpolated | `sponza.atrium` |
-| ![Sponza flythrough, lite](../images/render/sponza-lite.gif) | **Lite**: the same bake simplified to a smaller budget | `sponza.atrium_lite` |
-| ![Sponza flythrough, flat](../images/render/sponza-flat.gif) | **Flat**: the full mesh's triangles, one colour per face, no gradients | `sponza.atrium_flat` |
-| ![Sponza flythrough, fitted](../images/render/sponza-fitted.gif) | **Fitted**: lite's budget spent on what the flythrough draws, its vertices and colours fitted to the reference | `sponza.atrium_fitted` |
-| ![Sponza flythrough, fitted full](../images/render/sponza-fitted-full.gif) | **Fitted full**: the same recipe at full's budget | `sponza.atrium_fitted_full` |
-| ![Sponza flythrough, flat fitted](../images/render/sponza-flat-fitted.gif) | **Flat fitted**: flat's budget, one colour per face, its vertices and face colours fitted together | `sponza.atrium_flat_fitted` |
+<!-- generated: sponza-variants -->
+<!-- /generated: sponza-variants -->
+
+| Variant | What it is |
+|---|---|
+| Full | Smooth: one colour per vertex, lit and interpolated |
+| Lite | The same bake simplified to a smaller budget |
+| Flat | The full mesh's triangles, one colour per face, no gradients |
+| Fitted | Lite's budget spent on what the flythrough draws, its vertices and colours fitted to the reference |
+| Fitted full | The same recipe at full's budget |
+| Flat fitted | Flat's budget, one colour per face, its vertices and face colours fitted together |
 
 Where the variants differ, at the pose the GIFs end on: each sheet is the two
 renders and their amplified difference, and the crops below it enlarge the
@@ -85,7 +90,7 @@ runtime work.
 
 | Label | Changes |
 |---|---|
-| `declared` | The committed flat bake's own settings, the "Flat, committed" row above |
+| `declared` | The committed flat bake's own settings, the "flat" row above |
 | `fixedN` | N samples on every face |
 | `minN`, `maxN` | The automatic count's lower or upper bound |
 | `areaX` | The automatic count's area per sample, times the median face area |

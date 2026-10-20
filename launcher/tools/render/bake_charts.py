@@ -17,11 +17,9 @@ from matplotlib.lines import Line2D
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from doc_tables import LOOK_COLUMNS, parse_table  # noqa: E402
+from doc_tables import LOOK_COLUMNS, SCORE_COLUMNS, parse_table  # noqa: E402
 from docs.plot_style import LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE, save, subplots  # noqa: E402
 
-# A fidelity table's score columns, as r3d/bake_fidelity.py's table() writes them (tests check they agree).
-SCORE_COLUMNS = ("Mean dE76", "p95 dE76", "Luma SSIM", "Edge dE76", "Interior dE76")
 MEAN, P95, SSIM, EDGE, INTERIOR = SCORE_COLUMNS
 DELTA_E = (MEAN, P95, EDGE, INTERIOR)
 PANEL = (3.6, 2.8)  # inches per panel

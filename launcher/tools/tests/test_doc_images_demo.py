@@ -18,6 +18,8 @@ sys.path.insert(0, str(ROOT / "launcher/tools"))
 DEMO_SCENE = ROOT / "launcher/demo/sponza/sponza.scene.toml"
 DEMO_IMPORT = ROOT / "launcher/demo/sponza/sponza.import.toml"
 APP_SCRIPT = ROOT / "launcher/tools/render/doc_images_demo.sh"
+# The variants a scene places for "painting", as doc_tables.variants lists them.
+VARIANTS = [("painting", False), ("painting_lite", False), ("painting_flat", False), ("painting_fitted", True)]
 
 
 @unittest.skipUnless(shutil.which("sh"), "needs sh")
@@ -92,7 +94,7 @@ class DocImageFailureTest(unittest.TestCase):
         def scores(path):
             self.assertNotIn("atrium", path.name)
             if path.name.endswith("_lite-compare.log"):
-                self.assertEqual(path.name, "painting_lite-compare.log")
+                self.assertEqual(path.name, "variant-painting_lite-compare.log")
             return {name: values for name in ("frames mean", "two bounces", "direct light only",
                     "intensity 1", "intensity 2", "intensity 3", "albedo boost 2",
                     "intensity 1 (own reference)", "intensity 2 (own reference)",
@@ -106,11 +108,33 @@ class DocImageFailureTest(unittest.TestCase):
             with mock.patch.object(doc_tables, "scores", side_effect=scores) as read, \
                     mock.patch.object(render_compare, "read_video", return_value=(None, [np.zeros((2, 2, 3), dtype=np.uint8)])), \
                     mock.patch.object(render_compare, "reference_video", return_value=(None, pair)):
-                doc_tables.write_tables(work, work / "tables", "gallery", "painting")
-            self.assertIn(mock.call(work / "painting_lite-compare.log"), read.call_args_list)
+                doc_tables.write_tables(work, work / "tables", "gallery", "painting", VARIANTS)
+            self.assertIn(mock.call(work / "variant-painting_lite-compare.log"), read.call_args_list)
             self.assertEqual({path.name for path in (work / "tables").iterdir()},
                              {f"gallery-{suffix}.md" for suffix in
-                              ("fidelity", "flat-smooth", "flat-sampling", "indirect", "indirect-look")})
+                              ("fidelity", "flat-smooth", "flat-sampling", "indirect", "indirect-look", "variants")})
+
+    def test_variants_rank_fitted_first_then_by_mean_error(self):
+        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+        import doc_tables
+        # The unfitted full mesh scores best here, and still follows both fitted ones.
+        means = {"painting": 1.0, "painting_lite": 4.0, "painting_fitted": 3.0, "painting_fitted_full": 2.0}
+        found = [(name, "fitted" in name) for name in means]
+        order = [name for name, _ in doc_tables.ranked(found, lambda name: (means[name],))]
+        self.assertEqual(order, ["painting_fitted_full", "painting_fitted", "painting", "painting_lite"])
+
+    def test_the_demo_scene_lists_every_variant_and_reads_fitted_from_its_recipes(self):
+        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+        import doc_tables
+        found = dict(doc_tables.variants(DEMO_SCENE, "atrium"))
+        self.assertEqual(found, {"atrium": False, "atrium_flat": False, "atrium_lite": False,
+                                 "atrium_fitted": True, "atrium_fitted_full": True, "atrium_flat_fitted": True})
+
+    def test_score_columns_are_the_sampling_tables(self):
+        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+        import doc_tables
+        from r3d import bake_fidelity
+        self.assertEqual(bake_fidelity.table([]).splitlines()[0], doc_tables.score_table([]).splitlines()[0])
 
     def test_charts_read_the_tables_as_written_and_refuse_a_renamed_column(self):
         sys.path.insert(0, str(ROOT / "launcher/tools/render"))
@@ -130,7 +154,7 @@ class DocImageFailureTest(unittest.TestCase):
             with mock.patch.object(doc_tables, "scores", return_value=collections.defaultdict(lambda: values)), \
                     mock.patch.object(render_compare, "read_video", return_value=(None, [np.zeros((2, 2, 3), dtype=np.uint8)])), \
                     mock.patch.object(render_compare, "reference_video", return_value=(None, pair)):
-                doc_tables.write_tables(work, work / "tables", "gallery", "painting")
+                doc_tables.write_tables(work, work / "tables", "gallery", "painting", VARIANTS)
             bake_charts.write_charts(work / "tables", work / "render", "gallery")
             self.assertEqual({path.name for path in (work / "render").iterdir()},
                              {f"gallery-{name}.png" for name in ("fidelity", "indirect", "flat-sampling", "indirect-look")})
