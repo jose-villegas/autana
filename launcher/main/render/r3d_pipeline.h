@@ -105,8 +105,9 @@ int r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters
 #define R3D_PIPELINE_CACHE_WAY 8192 /* the board's 64 KB in 8 ways */
 #endif
 
-/* Slice timings and pointer-bearing state share this carve. */
-#define R3D_PIPELINE_WORK_ALIGNMENT _Alignof(int64_t)
+/* Pointer-bearing state needs host alignment without widening the board's
+ * four-byte carve. */
+#define R3D_PIPELINE_WORK_ALIGNMENT _Alignof(r3d_span_target_t)
 
 /* A raster's scratch block as its parts: the one layout
  * raster_scratch_bytes() sizes. The census list comes first, so it stays put
