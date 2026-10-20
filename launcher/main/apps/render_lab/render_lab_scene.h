@@ -32,10 +32,11 @@ typedef struct {
     bool (*console)(const char* args, console_reply_fn reply);
 } render_lab_scene_t;
 
-/* A scene's `.console`: the hook in a development build, NULL otherwise, as
- * APP_CONSOLE_PTR() does, so a release links none of the console. Declare
- * the hook static inline so a release draws no unused-function warning. */
-#if CONFIG_LAUNCHER_DEVELOPMENT
+/* A scene's `.console`: the hook in a development or host build, NULL otherwise,
+ * as APP_CONSOLE_PTR() does, so a release links none of the console; a host
+ * render drives it through render_lab_console(). Declare the hook static
+ * inline so a release draws no unused-function warning. */
+#if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
 #define RENDER_LAB_SCENE_CONSOLE(hook) (hook)
 #else
 #define RENDER_LAB_SCENE_CONSOLE(hook) NULL

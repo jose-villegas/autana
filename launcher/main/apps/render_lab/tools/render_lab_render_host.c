@@ -38,6 +38,18 @@ static render_input_step_t touch[] = {
     {TAP_FRAME + 1, false, 0, 0},
 };
 
+/* --console FRAME:WORDS, repeatable: the board's `render WORDS` command,
+ * such as "clip walk 400", run before frame FRAME draws. */
+#define CONSOLE_STEPS_MAX 16
+
+typedef struct {
+    int frame;
+    const char* words;
+} console_step_t;
+
+static console_step_t console_steps[CONSOLE_STEPS_MAX];
+static int console_step_count;
+
 /* --size WxH: the scene drawn at that render size, either axis on its own,
  * as one dynamic-resolution step; 0 keeps the scene's own scale. */
 static int size_width, size_height;
@@ -113,6 +125,26 @@ tune_options(int argc, char** argv, const char* option) {
     return true;
 }
 
+static bool
+console_options(int argc, char** argv) {
+    for (int i = 0; i < argc; i++) {
+        if (strcmp(argv[i], "--console") != 0) {
+            continue;
+        }
+        const char* step = i + 1 < argc ? argv[++i] : "";
+        const char* words = strchr(step, ':');
+        int frame;
+        if (words == NULL || sscanf(step, "%d:", &frame) != 1 || frame < 0 || words[1] == '\0'
+            || console_step_count == CONSOLE_STEPS_MAX) {
+            (void)fprintf(stderr, "render_lab_render_host: --console is FRAME:WORDS, at most %d of them, not %s\n",
+                          CONSOLE_STEPS_MAX, step);
+            return false;
+        }
+        console_steps[console_step_count++] = (console_step_t){frame, words + 1};
+    }
+    return true;
+}
+
 static void
 apply_flags(int argc, char** argv) {
     for (int i = 0; i < argc; i++) {
@@ -165,7 +197,7 @@ options(int argc, char** argv) {
     option_args = argv;
     apply_flags(argc, argv);
     render_lab_start_scene_key = scene;
-    return (view == NULL || view_from_name(view))
+    return console_options(argc, argv) && (view == NULL || view_from_name(view))
            && (scale == NULL || render_host_set_tunable("render_lab.scale", atoi(scale)))
            && tune_options(argc, argv, "--tune");
 }
@@ -210,6 +242,11 @@ draw(const render_frame_t* frame) {
     ui_clear_band_overlay();
     input_t in = tap ? frame->input : (input_t){0};
     in.boot.pressed = menu && frame->index == 0;
+    for (int i = 0; i < console_step_count; i++) {
+        if (console_steps[i].frame == frame->index) {
+            (void)render_lab_console(console_steps[i].words);
+        }
+    }
     app_list()->frame(frame->dt_ms, &in);
 }
 
