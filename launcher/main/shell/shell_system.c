@@ -44,6 +44,15 @@ shell_systems_compose(uint32_t dt_ms) {
 }
 
 void
+shell_systems_compose_band(int row0, int row1, gfx_color_t* target) {
+    for (const shell_system_t* system = systems_head; system != NULL; system = system->next) {
+        if (system->compose_band != NULL) {
+            system->compose_band(row0, row1, target);
+        }
+    }
+}
+
+void
 shell_systems_app_exit(void) {
     for (const shell_system_t* system = systems_head; system != NULL; system = system->next) {
         if (system->app_exit != NULL) {

@@ -188,30 +188,11 @@ split_quad(raster_rig_t* rig, r3d_lit_cluster_t clusters[2]) {
     quad->node.count = 2;
 }
 
-static void
-test_cluster_values_and_constant_writers(void) {
-    uint32_t base = 17;
-    const raster_attachment_t per = {sizeof(uint16_t), id_clear, NULL, cluster_writer, NULL, NULL, &base};
-    const raster_attachment_t constant = {sizeof(uint16_t), id_clear, NULL, id_writer, NULL, NULL, &base};
-    const raster_attachment_t* both[] = {&per, &constant};
-    raster_rig_t* r = rig_open(both, 2);
-    r->raster.instance_count = 1;
-    r3d_lit_cluster_t* clusters = calloc(2, sizeof(*clusters));
-    TEST_ASSERT_NOT_NULL(clusters);
-    split_quad(r, clusters);
-    raster_rig_attach(r, both, 2);
-    draw(r);
-    const uint16_t* ids = raster_rig_attachment(r, 0);
-    const uint16_t* fixed = raster_rig_attachment(r, 1);
-    int seen[2] = {0};
-    for (int p = 0; p < W * H; p++) {
-        TEST_ASSERT_EQUAL_UINT16(17, fixed[p]);
-        TEST_ASSERT_TRUE(ids[p] == 17 || ids[p] == 18);
-        seen[ids[p] - 17]++;
-    }
-    TEST_ASSERT_TRUE(seen[0] > 0 && seen[1] > 0);
-    TEST_ASSERT_EQUAL_UINT32(17, base);
-
+/* Drawn straight through the pipeline, both writers take the one cluster's
+ * value. Its own frame keeps the carve off the test's. */
+static __attribute__((noinline)) void
+check_direct_draw_writes_one_value(raster_rig_t* r, const raster_attachment_t* const* both, const uint16_t* ids,
+                                   const uint16_t* fixed) {
     const r3d_pipeline_buffers_t buffers = r3d_pipeline_carve(&r->raster);
     memset(raster_depth(&r->raster), 0, sizeof(uint16_t) * W * H);
     for (int k = 0; k < 2; k++) {
@@ -238,6 +219,32 @@ test_cluster_values_and_constant_writers(void) {
     TEST_ASSERT_TRUE(drawn > 0);
     TEST_ASSERT_EQUAL_UINT32(17, writers[0].value);
     TEST_ASSERT_EQUAL_UINT32(17, writers[1].value);
+}
+
+static void
+test_cluster_values_and_constant_writers(void) {
+    uint32_t base = 17;
+    const raster_attachment_t per = {sizeof(uint16_t), id_clear, NULL, cluster_writer, NULL, NULL, &base};
+    const raster_attachment_t constant = {sizeof(uint16_t), id_clear, NULL, id_writer, NULL, NULL, &base};
+    const raster_attachment_t* both[] = {&per, &constant};
+    raster_rig_t* r = rig_open(both, 2);
+    r->raster.instance_count = 1;
+    r3d_lit_cluster_t* clusters = calloc(2, sizeof(*clusters));
+    TEST_ASSERT_NOT_NULL(clusters);
+    split_quad(r, clusters);
+    raster_rig_attach(r, both, 2);
+    draw(r);
+    const uint16_t* ids = raster_rig_attachment(r, 0);
+    const uint16_t* fixed = raster_rig_attachment(r, 1);
+    int seen[2] = {0};
+    for (int p = 0; p < W * H; p++) {
+        TEST_ASSERT_EQUAL_UINT16(17, fixed[p]);
+        TEST_ASSERT_TRUE(ids[p] == 17 || ids[p] == 18);
+        seen[ids[p] - 17]++;
+    }
+    TEST_ASSERT_TRUE(seen[0] > 0 && seen[1] > 0);
+    TEST_ASSERT_EQUAL_UINT32(17, base);
+    check_direct_draw_writes_one_value(r, both, ids, fixed);
     free(clusters);
 }
 
@@ -537,7 +544,7 @@ split_clear(const raster_attachment_t* self, const raster_t* raster, void* pixel
         split_rows_t* rows = self->state;
         rows->top = (int)count / raster->width;
         rows->even = r3d_pipeline_draw_split(raster->instances[0].mesh, buffers.culled + 1, buffers.rows,
-                                             buffers.culled[0], raster->height, RASTER_SPLIT_EVEN);
+                                             buffers.culled[0], 0, raster->height, RASTER_SPLIT_EVEN);
     }
 }
 
@@ -622,11 +629,11 @@ test_draw_retains_only_the_drawn_instance_and_bounds_state(void) {
     }
     draw(r);
     const r3d_pipeline_buffers_t buffers = r3d_pipeline_carve(&r->raster);
-    const int even = r3d_pipeline_draw_split(instances[0].mesh, buffers.culled + 1, buffers.rows, buffers.culled[0], H,
-                                             RASTER_SPLIT_EVEN);
+    const int even = r3d_pipeline_draw_split(instances[0].mesh, buffers.culled + 1, buffers.rows, buffers.culled[0], 0,
+                                             H, RASTER_SPLIT_EVEN);
     TEST_ASSERT_EQUAL_INT(even, observed_top[RASTER_SPLIT_INSTANCES]);
     const int retained = r3d_pipeline_draw_split(instances[0].mesh, buffers.culled + 1, buffers.rows, buffers.culled[0],
-                                                 H, RASTER_SPLIT_MIN);
+                                                 0, H, RASTER_SPLIT_MIN);
     TEST_ASSERT_EQUAL_INT(retained, observed_top[RASTER_SPLIT_INSTANCES - 1]);
     TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_MIN, state.sentinel);
 

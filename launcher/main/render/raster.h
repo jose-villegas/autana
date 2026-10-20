@@ -11,6 +11,7 @@
 #include <stdint.h>
 
 #include "gfx/target/gfx_render_target.h"
+#include "gfx/target/gfx_target.h"
 #include "render/r3d_instance.h"
 #include "render/raster_attachment.h"
 #include "render/raster_split.h"
@@ -39,6 +40,12 @@ struct raster {
     /* Drawn beside colour and depth, at most GFX_ATTACHMENTS_MAX - GFX_ATTACHMENT_FURTHER. */
     const raster_attachment_t* const* attachments;
     int attachment_count;
+    /* 0: the picture holds every row, in `scratch`. Otherwise it holds at
+     * most this many rows at a time, in `band_scratch` (raster_band_bytes()
+     * of it, from any memory), and raster_draw_rows() fills it a window at a
+     * time. */
+    int band_rows;
+    void* band_scratch;
 };
 
 /* The viewport a view frames: destination size when upscaled, otherwise drawn size. */
@@ -52,14 +59,18 @@ typedef struct {
     int clusters, triangles; /* what survived culling */
 } raster_stats_t;
 
-/* The most vertices and clusters any mesh the raster draws has: what its
- * scratch block holds room for. */
+/* Every instance's vertices and clusters together: what its scratch block
+ * holds room for. */
 int raster_vertex_capacity(const raster_t* raster);
 int raster_cluster_capacity(const raster_t* raster);
 
 /* The picture's attachments, colour and depth then `attachments`, over
- * every row, not yet carved. */
+ * every row (or band_rows of them), not yet carved. */
 gfx_render_target_t raster_picture(const raster_t* raster);
+
+/* Rows [row0, row1) of the picture, carved: a window of a full picture, or
+ * the band picture holding them, at most band_rows. */
+gfx_render_target_t raster_rows(const raster_t* raster, int row0, int row1);
 
 /* The picture's colour and depth from its first row, as raster_draw() left
  * them: its first two attachments. */
@@ -72,7 +83,19 @@ uint16_t* raster_depth(const raster_t* raster);
  * so none of it has to live in internal RAM. */
 size_t raster_scratch_bytes(const raster_t* raster);
 
-/* Draws every instance through the picture basis and fit in `view`. */
+/* The band picture's block: band_rows of every attachment. */
+size_t raster_band_bytes(const raster_t* raster);
+
+/* Culls and transforms every instance through `view`, so any rows can be
+ * drawn after. */
+raster_stats_t raster_prepare(const raster_t* raster, const render_view_t* view);
+
+/* Clears rows [row0, row1) and draws every prepared instance over them on
+ * both cores, then resolves them. */
+void raster_draw_rows(const raster_t* raster, int row0, int row1);
+
+/* Draws every instance through the picture basis and fit in `view`: prepare,
+ * then every row. */
 raster_stats_t raster_draw(const raster_t* raster, const render_view_t* view);
 
 /* The census list lets a caller price sizes before drawing. It stays valid
@@ -81,6 +104,7 @@ raster_stats_t raster_draw(const raster_t* raster, const render_view_t* view);
  * rasters must keep the census size. */
 size_t raster_culled_length(const raster_t* raster);
 raster_stats_t raster_census(const raster_t* raster, const render_view_t* view);
+void raster_prepare_culled(const raster_t* raster, const render_view_t* view);
 void raster_draw_culled(const raster_t* raster, const render_view_t* view);
 
 /* The half picture can hold the width and whole repeats of every drawn row. */
@@ -92,3 +116,12 @@ resolution_step_t raster_compose_size(const raster_t* raster);
 /* Fills `destination` from what was last drawn, both cores taking
  * half the destination rows. The destination is at least the drawn size. */
 void raster_upscale(raster_t* raster, uint16_t* destination, int width, int height);
+
+/* The source rows [*row0, *row1) that destination rows [first, end) of a
+ * `width` by `height` destination are filled from. */
+void raster_upscale_source(raster_t* raster, int width, int height, int first, int end, int* row0, int* row1);
+
+/* Fills `destination`, rows [y0, y0 + height) of a `width` by
+ * `destination_height` picture, from source rows raster_upscale_source()
+ * named and raster_draw_rows() drew. */
+void raster_upscale_rows(raster_t* raster, gfx_target_t destination, int width, int destination_height);

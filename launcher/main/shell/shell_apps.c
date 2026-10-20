@@ -146,9 +146,20 @@ shell_request_exit(void) {
 }
 
 static bool
-app_band_active(const app_t* app) {
-    const gfx_mode_t* mode = gfx_mode_current();
-    return app->draw_band != NULL && mode->layout == GFX_LAYOUT_BANDS;
+app_band_active(void) {
+    return gfx_mode_current()->layout == GFX_LAYOUT_BANDS;
+}
+
+/* The app whose bands gfx_band_run() is drawing. */
+static const app_t* band_app;
+
+/* One band as a frame is built: the systems' rows, then the app's over them. */
+static void
+draw_band_layers(int row0, int row1, gfx_color_t* target) {
+    shell_systems_compose_band(row0, row1, target);
+    if (band_app->draw_band != NULL) {
+        band_app->draw_band(row0, row1, target);
+    }
 }
 
 /* The app half of gfx_request_full_redraw() (gfx_present.h): an app's own cache
@@ -286,11 +297,12 @@ step_running_app(const app_t* current, input_t* input, uint32_t dt_ms) {
     if (overlap) {
         shell_systems_compose(dt_ms);
     }
-    if (current->home_gesture && (app_band_active(current) || gfx_frame_expanded())) {
+    if (current->home_gesture && (app_band_active() || gfx_frame_expanded())) {
         queue_home_hint(shell_exit_edge_for_quarter(display_quarter_now()));
     }
     current->frame(dt_ms, input);
-    gfx_band_run(current->draw_band, ui_replay_band);
+    band_app = current;
+    gfx_band_run(draw_band_layers, ui_replay_band);
     if (overlap) {
         frame_ready = true;
     }

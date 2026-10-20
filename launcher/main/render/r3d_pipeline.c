@@ -266,11 +266,15 @@ r3d_pipeline_transform_split(const r3d_lit_mesh_t* mesh, const uint16_t* cluster
 
 static void
 draw_split_histogram(int* weight, const r3d_lit_mesh_t* mesh, const uint16_t* clusters, const r3d_pipeline_rows_t* rows,
-                     int count, int height) {
+                     int count, int row0, int row1) {
+    const int height = row1 - row0;
     for (int i = 0; i < count; i++) {
         const r3d_pipeline_rows_t* r = &rows[clusters[i]];
-        const int first = mathi_clamp(r->unbounded ? 0 : (int)r->y0, 0, height - 1);
-        const int last = mathi_clamp(r->unbounded ? height - 1 : (int)r->y1, 0, height - 1);
+        if (!r->unbounded && (r->y1 < (float)row0 || r->y0 > (float)row1)) {
+            continue;
+        }
+        const int first = mathi_clamp(r->unbounded ? 0 : (int)r->y0 - row0, 0, height - 1);
+        const int last = mathi_clamp(r->unbounded ? height - 1 : (int)r->y1 - row0, 0, height - 1);
         const int cost = mesh->clusters[clusters[i]].triangle_count;
         const int bucket_first = first * DRAW_SPLIT_BUCKETS / height;
         const int bucket_last = last * DRAW_SPLIT_BUCKETS / height;
@@ -307,11 +311,12 @@ draw_split_row(const int* weight, int height, int top_permille) {
 
 int
 r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, const r3d_pipeline_rows_t* rows,
-                        int count, int height, int top_permille) {
+                        int count, int row0, int row1, int top_permille) {
     assert(top_permille >= 0 && top_permille <= RASTER_SPLIT_PERMILLE);
+    assert(row1 - row0 >= 2);
     int weight[DRAW_SPLIT_BUCKETS + 1] = {0};
-    draw_split_histogram(weight, mesh, clusters, rows, count, height);
-    return draw_split_row(weight, height, top_permille);
+    draw_split_histogram(weight, mesh, clusters, rows, count, row0, row1);
+    return row0 + draw_split_row(weight, row1 - row0, top_permille);
 }
 
 static r3d_span_vertex_t

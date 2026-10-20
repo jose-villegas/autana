@@ -1839,6 +1839,42 @@ test_camera_present_scanline_and_double_compose_both_quarters(void) {
     }
 }
 
+/* Band rows draw the picture a band at a time into a small block, and
+ * compose the same pixels, byte for byte, as a picture of every row: at
+ * each present, at sizes taking every upscale path, in both quarters. */
+static void
+test_band_rows_compose_the_full_picture_byte_for_byte(void) {
+    expanded_fixture();
+    render_context_t* c = render_context_main();
+    scene_t* scene = scene_loaded_at(0);
+    const scene_entity_t camera = scene_find(scene, "camera");
+    const int scales[] = {RENDER_CONTEXT_DEFAULT_SCALE_PERCENT, 100, 37, 25}; /* doubled, kept, mapped, blocks */
+    const size_t band_bytes = sizeof(gfx_color_t) * GFX_BAND_HEIGHT * GFX_WIDTH;
+    gfx_color_t* band = malloc(band_bytes);
+    TEST_ASSERT_NOT_NULL(band);
+    for (int quarter = 0; quarter <= 1; quarter++) {
+        for (camera_present_t present = CAMERA_PRESENT_NEAREST; present <= CAMERA_PRESENT_DOUBLE; present++) {
+            TEST_ASSERT_TRUE(scene_camera_set_present(scene, camera, present));
+            for (size_t s = 0; s < sizeof scales / sizeof scales[0]; s++) {
+                render_context_set_scale(c, scales[s]);
+                render_context_set_band_rows(c, 0);
+                scene_render(0, quarter, GFX_WIDTH, GFX_HEIGHT);
+                (void)render_context_compose(c, fx.held, NULL);
+                render_context_set_band_rows(c, GFX_BAND_HEIGHT);
+                scene_render(0, quarter, GFX_WIDTH, GFX_HEIGHT);
+                TEST_ASSERT_TRUE(c->raster.band_rows < c->raster.height);
+                for (int row0 = 0; row0 < GFX_HEIGHT; row0 += GFX_BAND_HEIGHT) {
+                    memset(band, 0xA5, band_bytes);
+                    TEST_ASSERT_TRUE(scene_compose_rows((gfx_target_t){band, row0, GFX_BAND_HEIGHT, GFX_WIDTH}));
+                    memcpy(fx.pixels + ((size_t)row0 * GFX_WIDTH), band, band_bytes);
+                }
+                TEST_ASSERT_EQUAL_HEX16_ARRAY(fx.held, fx.pixels, GFX_WIDTH * GFX_HEIGHT);
+            }
+        }
+    }
+    free(band);
+}
+
 static void
 test_camera_present_default_setter_and_dynamic_size(void) {
     expanded_fixture();
@@ -3308,6 +3344,7 @@ run_scene_suite(void) {
     RUN_TEST(test_ui_replay_over_expanded_scene_matches_full_frame);
     RUN_TEST(test_camera_present_composes_half_picture_and_uneven_fallback);
     RUN_TEST(test_camera_present_scanline_and_double_compose_both_quarters);
+    RUN_TEST(test_band_rows_compose_the_full_picture_byte_for_byte);
     RUN_TEST(test_camera_present_default_setter_and_dynamic_size);
     RUN_TEST(test_non_half_compose_upscales_to_the_full_destination);
     RUN_TEST(test_failed_half_allocation_keeps_full_upscale_unexpanded);

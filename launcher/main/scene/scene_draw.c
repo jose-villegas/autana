@@ -20,6 +20,7 @@ static bool paused;
 static bool expanded;
 static bool stepped;  /* scene_render() ran, and scene_compose() has not yet */
 static bool rendered; /* it drew, and scene_compose() has not upscaled it */
+static bool prepared; /* the render context holds a frame scene_compose_rows() can redraw */
 
 bool
 scene_has_active_camera(void) {
@@ -42,6 +43,7 @@ scene_activate(scene_t* scene, const char* camera) {
     active = (active_t){scene, index};
     render_context_forget(render_context_main());
     rendered = false;
+    prepared = false;
     stepped = false;
     expanded = false;
     return true;
@@ -51,6 +53,7 @@ void
 scene_deactivate(void) {
     active = (active_t){NULL, 0};
     rendered = false;
+    prepared = false;
     stepped = false;
     expanded = false;
 }
@@ -121,6 +124,7 @@ draw_active(int quarter, int width, int height) {
     const render_view_t view =
         camera_view(&camera->lens, &scene->locals[camera->entity], (viewport_t){width, height, quarter});
     rendered = render_context_draw(render_context_main(), scene->instances, count, &view, camera->clear);
+    prepared = rendered;
 }
 
 void
@@ -155,4 +159,13 @@ scene_compose(uint32_t dt_ms, int quarter, const scene_target_t* target) {
     rendered = false;
     stepped = false;
     return expanded;
+}
+
+bool
+scene_compose_rows(gfx_target_t target) {
+    if (!prepared) {
+        return false;
+    }
+    render_context_compose_rows(render_context_main(), target);
+    return true;
 }
