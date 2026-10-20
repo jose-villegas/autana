@@ -223,8 +223,32 @@ test_box3_real_fixed_scalar_ops(void) {
     TEST_ASSERT_EQUAL_UINT(PLANE_BIT, mask);
 }
 
+static void
+test_box3_empty_operands_never_overlap(void) {
+    static const box3s_t crossed[] = {
+        {{1, -1, -1}, {-1, 1, 1}},
+        {{-1, 1, -1}, {1, -1, 1}},
+        {{-1, -1, 1}, {1, 1, -1}},
+    };
+    const box3f_t b = box3f_from_box3s(BOX_TICKS, BOX_SCALE);
+    TEST_ASSERT_FALSE(box3s_overlaps(box3s_empty(), BOX_TICKS));
+    TEST_ASSERT_FALSE(box3s_overlaps(BOX_TICKS, box3s_empty()));
+    TEST_ASSERT_FALSE(box3f_overlaps(box3f_empty(), b));
+    TEST_ASSERT_FALSE(box3f_overlaps(b, box3f_empty()));
+    for (unsigned i = 0; i < sizeof crossed / sizeof crossed[0]; i++) {
+        const box3f_t empty = box3f_from_box3s(crossed[i], BOX_SCALE);
+        TEST_ASSERT_FALSE(box3s_overlaps(crossed[i], BOX_TICKS));
+        TEST_ASSERT_FALSE(box3s_overlaps(BOX_TICKS, crossed[i]));
+        TEST_ASSERT_FALSE(box3s_overlaps(crossed[i], crossed[i]));
+        TEST_ASSERT_FALSE(box3f_overlaps(empty, b));
+        TEST_ASSERT_FALSE(box3f_overlaps(b, empty));
+        TEST_ASSERT_FALSE(box3f_overlaps(empty, empty));
+    }
+}
+
 void
 suite_box3(void) {
+    RUN_TEST(test_box3_empty_operands_never_overlap);
     RUN_TEST(test_box3_real_fixed_scalar_ops);
     RUN_TEST(test_box3_segment_direction_and_finite_interval);
     RUN_TEST(test_box3_plane_oblique_touch_and_late_rejection);

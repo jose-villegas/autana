@@ -79,8 +79,33 @@ test_sphere_from_box_unequal_extents(void) {
     TEST_ASSERT_FLOAT_WITHIN(SPHERE_TOLERANCE, want.radius, got.radius);
 }
 
+static void
+test_sphere_long_segment_misses(void) {
+    static const float half_length = 10000.0F;
+    float t = -mathf_one();
+    const float outside = mathf_two() * SPHERE_UNIT.radius;
+    TEST_ASSERT_FALSE(
+        spheref_segment_hit(SPHERE_UNIT, (vec3f_t){-half_length, outside, 0}, (vec3f_t){half_length, outside, 0}, &t));
+    TEST_ASSERT_EQUAL_FLOAT(-mathf_one(), t);
+}
+
+static void
+test_sphere_long_segment_entry(void) {
+    static const float half_length = 10000.0F;
+    static const float offset = 0.6F;
+    static const float half_chord = 0.8F;
+    static const float entry_tolerance = 0.0000001F;
+    float t = -mathf_one();
+    const float entry = (half_length - half_chord) / (mathf_two() * half_length);
+    TEST_ASSERT_TRUE(
+        spheref_segment_hit(SPHERE_UNIT, (vec3f_t){-half_length, offset, 0}, (vec3f_t){half_length, offset, 0}, &t));
+    TEST_ASSERT_FLOAT_WITHIN(entry_tolerance, entry, t);
+}
+
 void
 suite_sphere(void) {
+    RUN_TEST(test_sphere_long_segment_misses);
+    RUN_TEST(test_sphere_long_segment_entry);
     RUN_TEST(test_sphere_box_corner_distance);
     RUN_TEST(test_sphere_segment_closed_surface_and_short_segment);
     RUN_TEST(test_sphere_from_box_unequal_extents);

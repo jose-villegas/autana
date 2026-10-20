@@ -43,11 +43,8 @@
                && inner.hi.x <= outer.hi.x && inner.hi.y <= outer.hi.y && inner.hi.z <= outer.hi.z;                    \
     }                                                                                                                  \
                                                                                                                        \
-    /* overlaps = all a.lo_k <= b.hi_k and b.lo_k <= a.hi_k, including shared faces. */                                \
-    static inline bool P##_overlaps(P##_t a, P##_t b) {                                                                \
-        return a.lo.x <= b.hi.x && b.lo.x <= a.hi.x && a.lo.y <= b.hi.y && b.lo.y <= a.hi.y && a.lo.z <= b.hi.z        \
-               && b.lo.z <= a.hi.z;                                                                                    \
-    }                                                                                                                  \
+    /* overlaps = nonempty intersection, including shared faces. */                                                    \
+    static inline bool P##_overlaps(P##_t a, P##_t b) { return !P##_is_empty(P##_intersect(a, b)); }                   \
                                                                                                                        \
     /* closest_point = clamp(p, lo, hi); requires a nonempty box. */                                                   \
     static inline V##_t P##_closest_point(P##_t b, V##_t p) { return V##_clamp(p, b.lo, b.hi); }
@@ -60,7 +57,7 @@
     /* half_extent = 0.5 * (hi - lo). */                                                                               \
     static inline V##_t P##_half_extent(P##_t b) { return V##_scale(V##_sub(b.hi, b.lo), OPS##_half()); }              \
                                                                                                                        \
-    /* Slabs intersect [0,1] with [(lo_k-a_k)/v_k, (hi_k-a_k)/v_k]; inside starts at t = 0. */                         \
+    /* Finite endpoints and box values required; slabs give entry in [0,1], with inside starts at t = 0. */            \
     static inline bool P##_segment_hit(P##_t b, V##_t a, V##_t c, T* t) {                                              \
         if (P##_is_empty(b)) {                                                                                         \
             return false;                                                                                              \
