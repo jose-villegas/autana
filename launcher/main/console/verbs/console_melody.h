@@ -41,6 +41,7 @@ typedef struct {
 /* Each note is captured for at least two frequency windows; 200 ms leaves several, so the phase estimate is averaged. */
 #define CONSOLE_MELODY_CHECK_MS    200u
 #define MELODY_PHRASE_NOTES        13u
+/* The host table test enforces the phrase duration limit. */
 #define CONSOLE_MELODY_PLAY_MAX_MS 5000u
 
 extern const melody_note_t melody_notes[];

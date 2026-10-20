@@ -19,12 +19,14 @@ test_melody_phrase_names_and_rhythm(void) {
                                            "E4", "B4", "A4",  "C#4", "E4",  "A4"};
     TEST_ASSERT_EQUAL_UINT(sizeof expected / sizeof expected[0], MELODY_PHRASE_NOTES);
     unsigned steps = 0;
+    unsigned duration_ms = 0;
     for (size_t i = 0; i < MELODY_PHRASE_NOTES; i++) {
         const melody_note_t note = fixture(i);
         char name[MELODY_NAME_BYTES];
         melody_note_name(note, name);
         TEST_ASSERT_EQUAL_STRING(expected[i], name);
         steps += note.steps;
+        duration_ms += note.steps * MELODY_STEP_MS;
         TEST_ASSERT_TRUE(
             audio_out_args_valid(melody_note_hz(note), CONSOLE_MELODY_CHECK_MS, CONSOLE_TONE_DEFAULT_VOLUME_PCT));
         const float cents =
@@ -32,6 +34,7 @@ test_melody_phrase_names_and_rhythm(void) {
         TEST_ASSERT_LESS_THAN_FLOAT(TEST_MELODY_MAX_CENTS, fabsf(cents));
         TEST_ASSERT_GREATER_THAN_UINT(MELODY_GAP_MS, note.steps * MELODY_STEP_MS);
     }
+    TEST_ASSERT_LESS_THAN_UINT(CONSOLE_MELODY_PLAY_MAX_MS, duration_ms);
     TEST_ASSERT_EQUAL_UINT(TEST_MELODY_BARS * TEST_MELODY_QUARTERS_PER_BAR * MELODY_STEPS_PER_QUARTER, steps);
 }
 

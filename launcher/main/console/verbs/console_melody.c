@@ -8,29 +8,23 @@
 #include "console/verbs/console_tone.h"
 #include "core/timing.h"
 
-#define MELODY_BAR_SSLL(NOTE, first, first_octave, second, second_octave, third, third_octave, fourth, fourth_octave,  \
-                        ...)                                                                                           \
-    NOTE(first, first_octave, MELODY_SHORT) __VA_ARGS__ NOTE(second, second_octave, MELODY_SHORT)                      \
-    __VA_ARGS__                                                                                                        \
-    NOTE(third, third_octave, MELODY_LONG) __VA_ARGS__ NOTE(fourth, fourth_octave, MELODY_LONG)
-#define MELODY_PHRASE(NOTE, ...)                                                                                       \
-    MELODY_BAR_SSLL(NOTE, E, 5, D, 5, FS, 4, GS, 4, __VA_ARGS__)                                                       \
-    __VA_ARGS__ MELODY_BAR_SSLL(NOTE, CS, 5, B, 4, D, 4, E, 4, __VA_ARGS__)                                            \
-    __VA_ARGS__                                                                                                        \
-    MELODY_BAR_SSLL(NOTE, B, 4, A, 4, CS, 4, E, 4, __VA_ARGS__) __VA_ARGS__ NOTE(A, 4, MELODY_FINAL)
+#define MELODY_BAR_SSLL(first, first_octave, second, second_octave, third, third_octave, fourth, fourth_octave)        \
+    MELODY_NOTE(first, first_octave, MELODY_SHORT), MELODY_NOTE(second, second_octave, MELODY_SHORT),                  \
+        MELODY_NOTE(third, third_octave, MELODY_LONG), MELODY_NOTE(fourth, fourth_octave, MELODY_LONG)
 
 #define MELODY_NOTE(cls, octave, length)                                                                               \
     {.semitones = (((octave) - MELODY_REFERENCE_OCTAVE) * PITCH_SEMITONES_PER_OCTAVE) + MELODY_CLASS_##cls             \
                   - MELODY_REFERENCE_CLASS,                                                                            \
      .steps = (length)}
-#define MELODY_NOTE_STEPS(cls, octave, length) (length)
-#define MELODY_COMMA()                         ,
 
 /* Gran Vals, Francisco Tarrega, 1902; public domain. */
-const melody_note_t melody_notes[] = {MELODY_PHRASE(MELODY_NOTE, MELODY_COMMA())};
+const melody_note_t melody_notes[] = {
+    MELODY_BAR_SSLL(E, 5, D, 5, FS, 4, GS, 4),
+    MELODY_BAR_SSLL(CS, 5, B, 4, D, 4, E, 4),
+    MELODY_BAR_SSLL(B, 4, A, 4, CS, 4, E, 4),
+    MELODY_NOTE(A, 4, MELODY_FINAL),
+};
 _Static_assert(sizeof melody_notes / sizeof melody_notes[0] == MELODY_PHRASE_NOTES, "phrase note count");
-_Static_assert((MELODY_PHRASE(MELODY_NOTE_STEPS, +)) * MELODY_STEP_MS < CONSOLE_MELODY_PLAY_MAX_MS,
-               "phrase fits play timeout");
 
 #define MELODY_CHECK_TOKEN "check"
 #define MELODY_REPLY_BYTES (CONSOLE_TONE_REPLY_BYTES + MELODY_NAME_BYTES + CONSOLE_LINE_MAX)
