@@ -94,8 +94,13 @@ test_tone_parse_invalid(void) {
 #include "core/timing.h"
 #include "sound/sound_engine.h"
 
-#define TEST_TONE_REGISTER_OLD 0x58u
-#define TEST_TONE_IO_ERROR     (-1)
+#define TEST_TONE_REGISTER_OLD        0x58u
+#define TEST_TONE_IO_ERROR            (-1)
+#define TEST_NS_PER_US                1000u
+#define TEST_MELODY_FAIL_NOTE         2u
+#define TEST_MELODY_MEASURES_PER_NOTE 2u
+#define TEST_MELODY_START_MS          3u
+#define TEST_MELODY_STOP_MS           2u
 
 typedef enum {
     TEST_TONE_OK,
@@ -133,12 +138,41 @@ static struct {
     bool melody_error;
     size_t melody_starts;
     size_t melody_results;
-    unsigned melody_sleep_ms;
+    int64_t clock_us;
+    int64_t boundary_us;
+    unsigned melody_elapsed_ms;
+    size_t fail_start;
+    unsigned fail_measure;
     bool replied;
     bool tone_error;
 } device;
 
 static console_registry_t registry;
+
+#ifdef _WIN32
+#define TEST_CLOCK_REAL __real__timespec64_get
+#define TEST_CLOCK_WRAP __wrap__timespec64_get
+#else
+#define TEST_CLOCK_REAL __real_timespec_get
+#define TEST_CLOCK_WRAP __wrap_timespec_get
+#endif
+
+int TEST_CLOCK_REAL(struct timespec* ts, int base);
+
+int
+TEST_CLOCK_WRAP(struct timespec* ts, int base) {
+    if (!device.melody_play) {
+        return TEST_CLOCK_REAL(ts, base);
+    }
+    ts->tv_sec = device.clock_us / MATH_US_PER_S;
+    ts->tv_nsec = (device.clock_us % MATH_US_PER_S) * TEST_NS_PER_US;
+    return base;
+}
+
+static void
+reset_device(void) {
+    memset(&device, 0, sizeof device);
+}
 
 console_registry_t*
 console_shared(void) {
@@ -206,7 +240,15 @@ sound_play_tone(uint16_t hz, uint8_t gain_pct) {
         TEST_ASSERT_TRUE(device.amp.held);
         TEST_ASSERT_TRUE(device.feedback.enabled);
     }
+    if (device.melody_play) {
+        TEST_ASSERT_EQUAL_INT64(device.boundary_us, device.clock_us);
+        device.boundary_us += (int64_t)melody_notes[device.melody_starts - 1].steps * MELODY_STEP_MS * MATH_US_PER_MS;
+        device.clock_us += TEST_MELODY_START_MS * MATH_US_PER_MS;
+    }
     device.playing = device.failure != TEST_TONE_START_FAIL;
+    if (device.fail_start && device.melody_starts == device.fail_start) {
+        device.audible = false;
+    }
     return device.playing ? (sound_voice_t){.id = 1} : SOUND_VOICE_NULL;
 }
 
@@ -217,17 +259,14 @@ sound_is_playing(sound_voice_t voice) {
 
 bool
 sound_voice_audible(sound_voice_t voice) {
-    return sound_is_playing(voice) && device.audible;
+    return sound_is_playing(voice) && device.audible
+           && !(device.fail_start && device.melody_starts == device.fail_start);
 }
 
 void
 timing_sleep_ms(uint32_t ms) {
-    if (device.melody_play && ms != SOUND_CONTROL_POLL_MS) {
-        TEST_ASSERT_EQUAL_UINT(device.playing
-                                   ? melody_notes[device.melody_starts - 1].steps * MELODY_STEP_MS - MELODY_GAP_MS
-                                   : MELODY_GAP_MS,
-                               ms);
-        device.melody_sleep_ms += ms;
+    if (device.melody_play) {
+        device.clock_us += (int64_t)ms * MATH_US_PER_MS;
     } else if (ms != SOUND_CONTROL_POLL_MS) {
         TEST_ASSERT_FALSE(device.playing && device.failure != TEST_TONE_STOP_STUCK);
         device.drain_ms += ms;
@@ -249,6 +288,12 @@ sound_stop(sound_voice_t voice) {
         device.stop_started = timing_now_us();
     }
     device.stops++;
+    if (device.melody_play) {
+        if (device.failure == TEST_TONE_OK && !device.fail_start) {
+            TEST_ASSERT_EQUAL_INT64(device.boundary_us - (int64_t)MELODY_GAP_MS * MATH_US_PER_MS, device.clock_us);
+        }
+        device.clock_us += TEST_MELODY_STOP_MS * MATH_US_PER_MS;
+    }
     if (device.failure != TEST_TONE_STOP_STUCK && !(device.failure == TEST_TONE_STOP_DROPPED && device.stops == 1)) {
         device.stop_pending = true;
     }
@@ -267,8 +312,9 @@ audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, float* measured_hz) 
     if (measured_hz) {
         *measured_hz = hz;
     }
-    return !((device.measures == 1 && device.failure == TEST_TONE_BASELINE_FAIL)
-             || (device.measures == 2 && device.failure == TEST_TONE_MEASURE_FAIL));
+    return device.measures != device.fail_measure
+           && !((device.measures == 1 && device.failure == TEST_TONE_BASELINE_FAIL)
+                || (device.measures == 2 && device.failure == TEST_TONE_MEASURE_FAIL));
 }
 
 static void
@@ -289,6 +335,9 @@ melody_collect(const char* line) {
         size_t count = 0;
         TEST_ASSERT_EQUAL_INT(1, sscanf(line, "MELODY_END notes=%zu", &count));
         TEST_ASSERT_EQUAL_UINT(MELODY_PHRASE_NOTES, count);
+        if (device.melody_play) {
+            TEST_ASSERT_EQUAL_INT(2, sscanf(line, "MELODY_END notes=%zu ms=%u", &count, &device.melody_elapsed_ms));
+        }
         device.melody_ended = true;
     } else {
         TEST_ASSERT_NOT_NULL(strstr(line, "MELODY_ERR "));
@@ -298,6 +347,7 @@ melody_collect(const char* line) {
 
 static void
 test_melody_console_play_and_check(void) {
+    suite_add_test_cleanup(reset_device);
     static const char* const commands[] = {"melody", "melody check", "melody check internal"};
     for (size_t mode = 0; mode < sizeof commands / sizeof commands[0]; mode++) {
         memset(&device, 0, sizeof device);
@@ -317,7 +367,7 @@ test_melody_console_play_and_check(void) {
             for (size_t i = 0; i < MELODY_PHRASE_NOTES; i++) {
                 expected_ms += melody_notes[i].steps * MELODY_STEP_MS;
             }
-            TEST_ASSERT_EQUAL_UINT(expected_ms, device.melody_sleep_ms);
+            TEST_ASSERT_EQUAL_UINT(expected_ms, device.melody_elapsed_ms);
         } else {
             TEST_ASSERT_EQUAL_UINT(MELODY_PHRASE_NOTES, device.melody_results);
             TEST_ASSERT_EQUAL_UINT(MELODY_PHRASE_NOTES, device.closes);
@@ -336,6 +386,40 @@ test_melody_console_failure_and_usage(void) {
         TEST_ASSERT_TRUE(device.melody_error);
         TEST_ASSERT_FALSE(device.melody_ended);
         TEST_ASSERT_EQUAL_UINT(0, device.melody_starts);
+    }
+}
+
+static void
+test_melody_console_later_failures(void) {
+    suite_add_test_cleanup(reset_device);
+    static const tone_failure_t failures[] = {TEST_TONE_START_FAIL, TEST_TONE_STOP_STUCK, TEST_TONE_MEASURE_FAIL};
+    for (size_t i = 0; i < sizeof failures / sizeof failures[0]; i++) {
+        const tone_failure_t failure = failures[i];
+        reset_device();
+        device.melody = true;
+        device.melody_play = failure != TEST_TONE_MEASURE_FAIL;
+        device.reg = TEST_TONE_REGISTER_OLD;
+        if (failure == TEST_TONE_START_FAIL) {
+            device.fail_start = TEST_MELODY_FAIL_NOTE;
+        } else if (failure == TEST_TONE_STOP_STUCK) {
+            device.failure = failure;
+        } else {
+            device.fail_measure = TEST_MELODY_FAIL_NOTE * TEST_MELODY_MEASURES_PER_NOTE;
+        }
+        TEST_ASSERT_TRUE(console_registry_handle_line(
+            &registry, failure == TEST_TONE_MEASURE_FAIL ? "melody check" : "melody", melody_collect));
+        TEST_ASSERT_TRUE(device.melody_error);
+        TEST_ASSERT_FALSE(device.melody_ended);
+        if (failure == TEST_TONE_STOP_STUCK) {
+            TEST_ASSERT_GREATER_THAN_UINT(0, device.stops);
+        } else {
+            TEST_ASSERT_FALSE(device.playing);
+            TEST_ASSERT_EQUAL_UINT(TEST_MELODY_FAIL_NOTE, device.melody_starts);
+        }
+        if (failure == TEST_TONE_MEASURE_FAIL) {
+            TEST_ASSERT_EQUAL_UINT(1, device.melody_results);
+            TEST_ASSERT_EQUAL_UINT(TEST_MELODY_FAIL_NOTE, device.closes);
+        }
     }
 }
 
@@ -433,6 +517,7 @@ run_console_tone_suite(void) {
 #ifndef ESP_PLATFORM
     RUN_TEST(test_melody_console_play_and_check);
     RUN_TEST(test_melody_console_failure_and_usage);
+    RUN_TEST(test_melody_console_later_failures);
     RUN_TEST(test_tone_capture_restores_every_exit);
     RUN_TEST(test_tone_pending_restore_blocks_both_modes);
     RUN_TEST(test_tone_acoustic_has_no_feedback);

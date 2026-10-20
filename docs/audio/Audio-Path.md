@@ -51,7 +51,7 @@ Run `autana tone <hz> <ms> [volume] [--internal] [--json]`, or the console verb
 `tone <hz> <ms> [volume] [internal]`.
 
 `console_tone_check()` opens capture, measures its DMA-capable heap cost,
-runs the check, and closes capture. Both development verbs use this path
+runs the check, and closes capture. `melody check` uses the same function
 (`launcher/main/console/verbs/console_tone.c`).
 
 The console uses `audio_loopback_measure()` for a baseline, starts a SYSTEM-bus
@@ -227,13 +227,12 @@ mixer running.
 
 ### Melody
 
-`autana melody [volume]` plays the Gran Vals phrase in rhythm.
+`autana melody [volume]` plays the built-in phrase in rhythm.
 `autana melody [volume] --check [--internal]` checks each note out of rhythm
 through the same loopback path as `tone`. Volume defaults to the tone default.
 
 The console forms are `melody [volume]` and
 `melody check [volume] [internal]`. They block the console task.
-`console_melody.h` owns the phrase, reference pitch, rhythm and check duration.
 
 Play mode returns `MELODY_END notes=<count> ms=<elapsed>`.
 With `--json`, the host prints `{"notes": <count>, "ms": <elapsed>}`.

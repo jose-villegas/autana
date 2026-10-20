@@ -7,18 +7,18 @@
 #include "math/signal/pitch.h"
 
 typedef enum {
-    PITCH_CLASS_C,
-    PITCH_CLASS_CS,
-    PITCH_CLASS_D,
-    PITCH_CLASS_DS,
-    PITCH_CLASS_E,
-    PITCH_CLASS_F,
-    PITCH_CLASS_FS,
-    PITCH_CLASS_G,
-    PITCH_CLASS_GS,
-    PITCH_CLASS_A,
-    PITCH_CLASS_AS,
-    PITCH_CLASS_B
+    MELODY_CLASS_C,
+    MELODY_CLASS_CS,
+    MELODY_CLASS_D,
+    MELODY_CLASS_DS,
+    MELODY_CLASS_E,
+    MELODY_CLASS_F,
+    MELODY_CLASS_FS,
+    MELODY_CLASS_G,
+    MELODY_CLASS_GS,
+    MELODY_CLASS_A,
+    MELODY_CLASS_AS,
+    MELODY_CLASS_B
 } melody_pitch_class_t;
 
 typedef struct {
@@ -26,38 +26,24 @@ typedef struct {
     uint8_t steps;
 } melody_note_t;
 
-#define MELODY_REFERENCE_HZ      440.0F
-#define MELODY_REFERENCE_CLASS   PITCH_CLASS_A
-#define MELODY_REFERENCE_OCTAVE  4
-#define MELODY_SHORT             1u
-#define MELODY_LONG              2u
-#define MELODY_FINAL             6u
-#define MELODY_TEMPO_QPM         180u
-#define MELODY_STEPS_PER_QUARTER 2u
-#define MELODY_STEP_MS           (MATH_MS_PER_MIN / (MELODY_TEMPO_QPM * MELODY_STEPS_PER_QUARTER))
-#define MELODY_GAP_MS            20u
-#define MELODY_NAME_BYTES        8u
-/* Two frequency windows are needed; this capture leaves several windows for phase averaging. */
-#define CONSOLE_MELODY_CHECK_MS  200u
-#define MELODY_NOTE(cls, octave, length)                                                                               \
-    {.semitones = ((octave) - MELODY_REFERENCE_OCTAVE) * PITCH_SEMITONES_PER_OCTAVE + PITCH_CLASS_##cls                \
-                  - MELODY_REFERENCE_CLASS,                                                                            \
-     .steps = (length)}
+#define MELODY_REFERENCE_HZ        440.0F
+#define MELODY_REFERENCE_CLASS     MELODY_CLASS_A
+#define MELODY_REFERENCE_OCTAVE    4
+/* Note lengths in steps of MELODY_STEP_MS. */
+#define MELODY_SHORT               1u
+#define MELODY_LONG                2u
+#define MELODY_FINAL               6u
+#define MELODY_TEMPO_QPM           180u
+#define MELODY_STEPS_PER_QUARTER   2u
+#define MELODY_STEP_MS             (MATH_MS_PER_MIN / (MELODY_TEMPO_QPM * MELODY_STEPS_PER_QUARTER))
+#define MELODY_GAP_MS              20u
+#define MELODY_NAME_BYTES          8u
+/* Each note is captured for at least two frequency windows; 200 ms leaves several, so the phase estimate is averaged. */
+#define CONSOLE_MELODY_CHECK_MS    200u
+#define MELODY_PHRASE_NOTES        13u
+#define CONSOLE_MELODY_PLAY_MAX_MS 5000u
 
-#define MELODY_PHRASE_NOTES 13u
-/* The phrase's short-short-long-long bar. */
-#define MELODY_BAR_SSLL(first, first_octave, second, second_octave, third, third_octave, fourth, fourth_octave)        \
-    MELODY_NOTE(first, first_octave, MELODY_SHORT), MELODY_NOTE(second, second_octave, MELODY_SHORT),                  \
-        MELODY_NOTE(third, third_octave, MELODY_LONG), MELODY_NOTE(fourth, fourth_octave, MELODY_LONG)
-
-/* Gran Vals, Francisco Tarrega, 1902; public domain. */
-static const melody_note_t melody_notes[] = {
-    MELODY_BAR_SSLL(E, 5, D, 5, FS, 4, GS, 4),
-    MELODY_BAR_SSLL(CS, 5, B, 4, D, 4, E, 4),
-    MELODY_BAR_SSLL(B, 4, A, 4, CS, 4, E, 4),
-    MELODY_NOTE(A, 4, MELODY_FINAL),
-};
-_Static_assert(sizeof melody_notes / sizeof melody_notes[0] == MELODY_PHRASE_NOTES, "phrase note count");
+extern const melody_note_t melody_notes[];
 
 static inline uint16_t
 melody_note_hz(melody_note_t note) {

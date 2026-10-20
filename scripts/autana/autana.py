@@ -519,18 +519,19 @@ def tone(args):
 
 _MELODY_HEADER = Path(__file__).resolve().parents[2] / "launcher/main/console/verbs/console_melody.h"
 _PITCH_HEADER = Path(__file__).resolve().parents[2] / "launcher/packages/math/include/math/signal/pitch.h"
-_UNITS_HEADER = Path(__file__).resolve().parents[2] / "launcher/packages/math/include/math/scalar/units.h"
-MELODY_CHECK_MS = read_define(_MELODY_HEADER, "CONSOLE_MELODY_CHECK_MS")
-MELODY_PHRASE_NOTES = read_define(_MELODY_HEADER, "MELODY_PHRASE_NOTES")
-MELODY_CENTS_PER_OCTAVE = (read_define(_PITCH_HEADER, "PITCH_CENTS_PER_SEMITONE")
-                          * read_define(_PITCH_HEADER, "PITCH_SEMITONES_PER_OCTAVE"))
-MELODY_MAX_NOTE_MS = (read_define(_MELODY_HEADER, "MELODY_FINAL") * read_define(_UNITS_HEADER, "MATH_S_PER_MIN")
-                      * read_define(_UNITS_HEADER, "MATH_MS_PER_S")
-                      / (read_define(_MELODY_HEADER, "MELODY_TEMPO_QPM")
-                         * read_define(_MELODY_HEADER, "MELODY_STEPS_PER_QUARTER")))
 
 
-def parse_melody_note(reply):
+def melody_constants():
+    return {
+        "check_ms": read_define(_MELODY_HEADER, "CONSOLE_MELODY_CHECK_MS"),
+        "notes": read_define(_MELODY_HEADER, "MELODY_PHRASE_NOTES"),
+        "play_max_ms": read_define(_MELODY_HEADER, "CONSOLE_MELODY_PLAY_MAX_MS"),
+        "cents_per_octave": (read_define(_PITCH_HEADER, "PITCH_CENTS_PER_SEMITONE")
+                             * read_define(_PITCH_HEADER, "PITCH_SEMITONES_PER_OCTAVE")),
+    }
+
+
+def parse_melody_note(reply, cents_per_octave=None):
     match = re.fullmatch(r"MELODY note=([A-G]#?[0-9]+) (TONE .+)", reply)
     if not match:
         raise ValueError(f"invalid MELODY note reply: {reply}")
@@ -539,8 +540,10 @@ def parse_melody_note(reply):
     measured = result["measured_hz"]
     if measured is not None and (measured <= 0 or result["hz"] <= 0):
         raise ValueError(f"invalid MELODY frequency: {reply}")
+    if cents_per_octave is None:
+        cents_per_octave = melody_constants()["cents_per_octave"]
     return dict(result, note=note, cents_error=None if measured is None else
-                MELODY_CENTS_PER_OCTAVE * math.log2(measured / result["hz"]))
+                cents_per_octave * math.log2(measured / result["hz"]))
 
 
 def melody(args):
@@ -550,8 +553,9 @@ def melody(args):
         sys.exit(usage)
     check = "--check" in flags
     words = ["MELODY"] + (["check"] if check else []) + rest + (["internal"] if "--internal" in flags else [])
-    note_seconds = (TONE_CAPTURE_COUNT * MELODY_CHECK_MS if check else MELODY_MAX_NOTE_MS) / TONE_MS_PER_SECOND
-    seconds = MELODY_PHRASE_NOTES * (TONE_MARGIN_SECONDS + note_seconds)
+    constants = melody_constants()
+    seconds = (constants["notes"] * (TONE_MARGIN_SECONDS + TONE_CAPTURE_COUNT * constants["check_ms"] / TONE_MS_PER_SECOND)
+               if check else constants["play_max_ms"] / TONE_MS_PER_SECOND)
     code, replies = send(" ".join(words), reply="MELODY", until=["MELODY_END", "MELODY_ERR"], seconds=seconds)
     if code or not replies:
         return code or 1
@@ -559,10 +563,10 @@ def melody(args):
         if replies[-1].startswith("MELODY_ERR"):
             raise ValueError(replies[-1])
         end = re.fullmatch(r"MELODY_END notes=([0-9]+)" + ("" if check else r" ms=([0-9]+)"), replies[-1])
-        if not end or int(end[1]) != MELODY_PHRASE_NOTES:
+        if not end or int(end[1]) != constants["notes"]:
             raise ValueError(f"invalid MELODY end reply: {replies[-1]}")
         if check:
-            result = [parse_melody_note(line) for line in replies[:-1]]
+            result = [parse_melody_note(line, constants["cents_per_octave"]) for line in replies[:-1]]
             if len(result) != int(end[1]):
                 raise ValueError("incomplete MELODY check")
         else:

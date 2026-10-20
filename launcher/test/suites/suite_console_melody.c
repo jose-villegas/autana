@@ -1,5 +1,6 @@
 #include <math.h>
 #include "console/verbs/console_melody.h"
+#include "console/verbs/console_tone_parse.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -24,6 +25,8 @@ test_melody_phrase_names_and_rhythm(void) {
         melody_note_name(note, name);
         TEST_ASSERT_EQUAL_STRING(expected[i], name);
         steps += note.steps;
+        TEST_ASSERT_TRUE(
+            audio_out_args_valid(melody_note_hz(note), CONSOLE_MELODY_CHECK_MS, CONSOLE_TONE_DEFAULT_VOLUME_PCT));
         const float cents =
             PITCH_CENTS_PER_SEMITONE * (pitch_hz_semitones(MELODY_REFERENCE_HZ, melody_note_hz(note)) - note.semitones);
         TEST_ASSERT_LESS_THAN_FLOAT(TEST_MELODY_MAX_CENTS, fabsf(cents));
