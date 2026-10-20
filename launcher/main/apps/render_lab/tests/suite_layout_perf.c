@@ -136,11 +136,16 @@ pass(fixture_t* f) {
     return took;
 }
 
-/* The last pass's frame as the panel gets it. Double holds it in the back
- * buffer until the next begin, so only double sends it first, with
+/* One more pass's frame as the panel gets it, the same pose in every layout.
+ * Band mode copies only bands sent after a readback begins, so one begins
+ * before that pass, outside the timed samples. Double holds the frame in the
+ * back buffer until the next begin, so only double sends it first, with
  * clear-on-send off so the readback can keep it; the others read it as is. */
 static uint32_t
 sent_frame_crc(fixture_t* f) {
+    (void)gfx_readback_begin();
+    gfx_readback_end();
+    (void)pass(f);
     if (gfx_mode_current()->layout == GFX_LAYOUT_DOUBLE_FB) {
         (void)gfx_set_clear_on_send(false, 0);
         gfx_present_begin();

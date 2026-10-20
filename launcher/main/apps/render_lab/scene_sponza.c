@@ -14,7 +14,6 @@
 
 #include "esp_log.h"
 
-#include "draw/draw.h"
 #include "gfx/present/gfx_present.h"
 #include "render/context/render_context.h"
 #include "render_lab.h"
@@ -73,7 +72,6 @@ record_failure(const scene_failure_t* why) {
 /* Loads the scene and shows sponza_bakes[shown]. */
 static void
 enter_with(sponza_bake_t shown) {
-    draw_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
     failure[0] = '\0';
     scene_failure_t why;
     sponza = scene_load(SPONZA_SCENE, &why);

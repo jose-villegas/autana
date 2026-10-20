@@ -15,7 +15,6 @@
 #include "app/app.h"
 #include "apps/render_lab/render_lab_clips.h"
 #include "display/display.h"
-#include "draw/draw.h"
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
@@ -105,7 +104,6 @@ frame_subject(void) {
 
 static void
 scene_capybara_enter(void) {
-    draw_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
     failure[0] = '\0';
     scene_failure_t why;
     capybara = scene_load(CAPYBARA_SCENE, &why);
