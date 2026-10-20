@@ -280,7 +280,7 @@ tone_collect(const char* reply) {
 static void
 melody_collect(const char* line) {
     if (strncmp(line, "MELODY note=", strlen("MELODY note=")) == 0) {
-        TEST_ASSERT_LESS_THAN_UINT(MELODY_NOTE_COUNT, device.melody_results);
+        TEST_ASSERT_LESS_THAN_UINT(MELODY_PHRASE_NOTES, device.melody_results);
         char name[MELODY_NAME_BYTES];
         melody_note_name(melody_notes[device.melody_results++], name);
         TEST_ASSERT_EQUAL_MEMORY(name, line + strlen("MELODY note="), strlen(name));
@@ -288,7 +288,7 @@ melody_collect(const char* line) {
     } else if (strncmp(line, "MELODY_END", strlen("MELODY_END")) == 0) {
         size_t count = 0;
         TEST_ASSERT_EQUAL_INT(1, sscanf(line, "MELODY_END notes=%zu", &count));
-        TEST_ASSERT_EQUAL_UINT(MELODY_NOTE_COUNT, count);
+        TEST_ASSERT_EQUAL_UINT(MELODY_PHRASE_NOTES, count);
         device.melody_ended = true;
     } else {
         TEST_ASSERT_NOT_NULL(strstr(line, "MELODY_ERR "));
@@ -308,19 +308,19 @@ test_melody_console_play_and_check(void) {
         TEST_ASSERT_TRUE(console_registry_handle_line(&registry, commands[mode], melody_collect));
         TEST_ASSERT_TRUE(device.melody_ended);
         TEST_ASSERT_FALSE(device.melody_error);
-        TEST_ASSERT_EQUAL_UINT(MELODY_NOTE_COUNT, device.melody_starts);
+        TEST_ASSERT_EQUAL_UINT(MELODY_PHRASE_NOTES, device.melody_starts);
         TEST_ASSERT_FALSE(device.playing);
         TEST_ASSERT_FALSE(device.amp.held);
         TEST_ASSERT_FALSE(device.feedback.enabled);
         if (device.melody_play) {
             unsigned expected_ms = 0;
-            for (size_t i = 0; i < MELODY_NOTE_COUNT; i++) {
+            for (size_t i = 0; i < MELODY_PHRASE_NOTES; i++) {
                 expected_ms += melody_notes[i].steps * MELODY_STEP_MS;
             }
             TEST_ASSERT_EQUAL_UINT(expected_ms, device.melody_sleep_ms);
         } else {
-            TEST_ASSERT_EQUAL_UINT(MELODY_NOTE_COUNT, device.melody_results);
-            TEST_ASSERT_EQUAL_UINT(MELODY_NOTE_COUNT, device.closes);
+            TEST_ASSERT_EQUAL_UINT(MELODY_PHRASE_NOTES, device.melody_results);
+            TEST_ASSERT_EQUAL_UINT(MELODY_PHRASE_NOTES, device.closes);
         }
     }
 }

@@ -44,17 +44,20 @@ typedef struct {
                   - MELODY_REFERENCE_CLASS,                                                                            \
      .steps = (length)}
 
-#define MELODY_NOTES_PER_PAIR 2u
-#define MELODY_PAIR(first, first_octave, second, second_octave, length)                                                \
-    MELODY_NOTE(first, first_octave, length), MELODY_NOTE(second, second_octave, length)
+#define MELODY_PHRASE_NOTES 13u
+/* The phrase's short-short-long-long bar. */
+#define MELODY_BAR_SSLL(first, first_octave, second, second_octave, third, third_octave, fourth, fourth_octave)        \
+    MELODY_NOTE(first, first_octave, MELODY_SHORT), MELODY_NOTE(second, second_octave, MELODY_SHORT),                  \
+        MELODY_NOTE(third, third_octave, MELODY_LONG), MELODY_NOTE(fourth, fourth_octave, MELODY_LONG)
 
 /* Gran Vals, Francisco Tarrega, 1902; public domain. */
 static const melody_note_t melody_notes[] = {
-    MELODY_PAIR(E, 5, D, 5, MELODY_SHORT),  MELODY_PAIR(FS, 4, GS, 4, MELODY_LONG),
-    MELODY_PAIR(CS, 5, B, 4, MELODY_SHORT), MELODY_PAIR(D, 4, E, 4, MELODY_LONG),
-    MELODY_PAIR(B, 4, A, 4, MELODY_SHORT),  MELODY_PAIR(CS, 4, E, 4, MELODY_LONG),
-    MELODY_NOTE(A, 4, MELODY_FINAL)};
-#define MELODY_NOTE_COUNT (sizeof melody_notes / sizeof melody_notes[0])
+    MELODY_BAR_SSLL(E, 5, D, 5, FS, 4, GS, 4),
+    MELODY_BAR_SSLL(CS, 5, B, 4, D, 4, E, 4),
+    MELODY_BAR_SSLL(B, 4, A, 4, CS, 4, E, 4),
+    MELODY_NOTE(A, 4, MELODY_FINAL),
+};
+_Static_assert(sizeof melody_notes / sizeof melody_notes[0] == MELODY_PHRASE_NOTES, "phrase note count");
 
 static inline uint16_t
 melody_note_hz(melody_note_t note) {

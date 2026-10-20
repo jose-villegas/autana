@@ -521,9 +521,7 @@ _MELODY_HEADER = Path(__file__).resolve().parents[2] / "launcher/main/console/ve
 _PITCH_HEADER = Path(__file__).resolve().parents[2] / "launcher/packages/math/include/math/signal/pitch.h"
 _UNITS_HEADER = Path(__file__).resolve().parents[2] / "launcher/packages/math/include/math/scalar/units.h"
 MELODY_CHECK_MS = read_define(_MELODY_HEADER, "CONSOLE_MELODY_CHECK_MS")
-_MELODY_TABLE = _MELODY_HEADER.read_text(encoding="utf-8").split("melody_notes[] = {", 1)[1].split("};", 1)[0]
-MELODY_NOTE_COUNT = (_MELODY_TABLE.count("MELODY_NOTE(") + _MELODY_TABLE.count("MELODY_PAIR(")
-                     * read_define(_MELODY_HEADER, "MELODY_NOTES_PER_PAIR"))
+MELODY_PHRASE_NOTES = read_define(_MELODY_HEADER, "MELODY_PHRASE_NOTES")
 MELODY_CENTS_PER_OCTAVE = (read_define(_PITCH_HEADER, "PITCH_CENTS_PER_SEMITONE")
                           * read_define(_PITCH_HEADER, "PITCH_SEMITONES_PER_OCTAVE"))
 MELODY_MAX_NOTE_MS = (read_define(_MELODY_HEADER, "MELODY_FINAL") * read_define(_UNITS_HEADER, "MATH_S_PER_MIN")
@@ -553,7 +551,7 @@ def melody(args):
     check = "--check" in flags
     words = ["MELODY"] + (["check"] if check else []) + rest + (["internal"] if "--internal" in flags else [])
     note_seconds = (TONE_CAPTURE_COUNT * MELODY_CHECK_MS if check else MELODY_MAX_NOTE_MS) / TONE_MS_PER_SECOND
-    seconds = MELODY_NOTE_COUNT * (TONE_MARGIN_SECONDS + note_seconds)
+    seconds = MELODY_PHRASE_NOTES * (TONE_MARGIN_SECONDS + note_seconds)
     code, replies = send(" ".join(words), reply="MELODY", until=["MELODY_END", "MELODY_ERR"], seconds=seconds)
     if code or not replies:
         return code or 1
@@ -561,11 +559,11 @@ def melody(args):
         if replies[-1].startswith("MELODY_ERR"):
             raise ValueError(replies[-1])
         end = re.fullmatch(r"MELODY_END notes=([0-9]+)" + ("" if check else r" ms=([0-9]+)"), replies[-1])
-        if not end or int(end[1]) != MELODY_NOTE_COUNT:
+        if not end or int(end[1]) != MELODY_PHRASE_NOTES:
             raise ValueError(f"invalid MELODY end reply: {replies[-1]}")
         if check:
             result = [parse_melody_note(line) for line in replies[:-1]]
-            if len(result) != MELODY_NOTE_COUNT:
+            if len(result) != int(end[1]):
                 raise ValueError("incomplete MELODY check")
         else:
             if len(replies) != 1:

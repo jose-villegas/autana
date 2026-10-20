@@ -16,9 +16,9 @@ static void
 test_melody_phrase_names_and_rhythm(void) {
     static const char* const expected[] = {"E5", "D5", "F#4", "G#4", "C#5", "B4", "D4",
                                            "E4", "B4", "A4",  "C#4", "E4",  "A4"};
-    TEST_ASSERT_EQUAL_UINT(sizeof expected / sizeof expected[0], MELODY_NOTE_COUNT);
+    TEST_ASSERT_EQUAL_UINT(sizeof expected / sizeof expected[0], MELODY_PHRASE_NOTES);
     unsigned steps = 0;
-    for (size_t i = 0; i < MELODY_NOTE_COUNT; i++) {
+    for (size_t i = 0; i < MELODY_PHRASE_NOTES; i++) {
         const melody_note_t note = fixture(i);
         char name[MELODY_NAME_BYTES];
         melody_note_name(note, name);

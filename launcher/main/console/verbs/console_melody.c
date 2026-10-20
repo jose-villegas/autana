@@ -68,7 +68,7 @@ console_verb_melody(const char* args, console_reply_fn reply) {
     }
     char line[MELODY_REPLY_BYTES];
     const int64_t started = timing_now_us();
-    for (size_t i = 0; i < MELODY_NOTE_COUNT; i++) {
+    for (size_t i = 0; i < MELODY_PHRASE_NOTES; i++) {
         const melody_note_t note = melody_notes[i];
         parsed.hz = melody_note_hz(note);
         const char* error = check ? check_note(note, &parsed, reply) : play_note(note, parsed.volume_pct);
@@ -79,9 +79,9 @@ console_verb_melody(const char* args, console_reply_fn reply) {
         }
     }
     if (check) {
-        (void)snprintf(line, sizeof line, "MELODY_END notes=%zu", MELODY_NOTE_COUNT);
+        (void)snprintf(line, sizeof line, "MELODY_END notes=%u", MELODY_PHRASE_NOTES);
     } else {
-        (void)snprintf(line, sizeof line, "MELODY_END notes=%zu ms=%" PRId64, MELODY_NOTE_COUNT,
+        (void)snprintf(line, sizeof line, "MELODY_END notes=%u ms=%" PRId64, MELODY_PHRASE_NOTES,
                        (timing_now_us() - started) / MATH_US_PER_MS);
     }
     reply(line);
