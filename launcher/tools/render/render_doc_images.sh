@@ -225,6 +225,10 @@ run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math/tr
 run "$PYTHON" launcher/tools/math/geometry_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/geometry_figures.log"
 # --orphans scans this runner: rect-queries.png, plane-distance.png, plane-from-points.png, plane-from-rows.png, frustum.png, box3-frustum.png,
 # box3-sphere-queries.png
+run "$PYTHON" launcher/tools/math/motion_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/motion_figures.log"
+# --orphans scans this runner: orbit-fling.gif, orbit-fling-decay.png, orbit-reset-spring.png, orbit-fit-distance.png, spring-line-wave.gif, spring-line-spacetime.png
+run "$PYTHON" launcher/tools/math/signal_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/signal_figures.log"
+# --orphans scans this runner: goertzel-response.png, goertzel-sweep.gif, pitch-curve.png
 
 # The skeleton and skin figures: the demo rig over one clip, and a limb through the skinning kernel.
 run mkdir -p "$OUT/render" "$OUT/tables"
