@@ -185,7 +185,7 @@ static bool
 setup(int quarter) {
     const app_t* registered = app_list();
     if (registered == NULL || registered->enter == NULL || registered->frame == NULL) {
-        fprintf(stderr, "no app registered itself\n");
+        (void)fprintf(stderr, "no app registered itself\n");
         return false;
     }
     shell_quarter = quarter;

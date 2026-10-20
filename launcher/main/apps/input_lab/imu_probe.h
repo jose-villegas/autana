@@ -3,8 +3,8 @@
 
 #include <stddef.h>
 
-#include "input/imu_calib.h"
 #include "input/input.h"
+#include "input/motion/imu_calib.h"
 #include "math/linear/vec3f.h"
 
 #define IMU_PROBE_LABEL_SIZE      16

@@ -18,8 +18,8 @@
 
 #include "app/app_console.h"
 #include "gfx/present/modes/band/gfx_band_run.h"
-#include "input/gesture.h"
 #include "input/input.h"
+#include "input/touch/gesture.h"
 
 typedef struct app {
     const char* name;

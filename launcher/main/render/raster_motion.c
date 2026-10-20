@@ -80,9 +80,7 @@ begin(const raster_attachment_t* self, const raster_t* raster, const render_view
     assert(raster->instance_count <= RASTER_MOTION_INSTANCES_MAX);
     r3d_lens_t now;
     lens_map(view, raster, NULL, &now);
-    m->center_x = now.center_x;
-    m->center_y = now.center_y;
-    m->near_z = now.near_z;
+    m->project = now.project;
     m->known = m->has_previous;
     m->first_moved = -1;
     memset(m->moved, 0, sizeof(m->moved));
@@ -162,12 +160,12 @@ moved(const row_map_t* r, float u, float v, float w) {
 static void
 resolve_row(const raster_motion_t* m, const uint16_t* depth, raster_motion_px_t* out, int width, float v) {
     const tag_t* tag = (const tag_t*)out;
-    const float to_w = DEPTH_SCALE / m->near_z;
+    const float to_w = DEPTH_SCALE / m->project.near_z;
     row_map_t still;
     row_map_t own;
     tag_t own_tag = 0;
     row_map(&m->map[0], v, &still);
-    float u = 0.5F - m->center_x;
+    float u = 0.5F - m->project.cx;
     for (int x = 0; x < width; x++, u += 1.0F) {
         const tag_t t = tag[x];
         if (depth[x] == 0 || t > RASTER_MOTION_INSTANCES_MAX) {
@@ -194,7 +192,7 @@ resolve(const raster_attachment_t* self, const raster_t* raster, const gfx_rende
             }
             continue;
         }
-        resolve_row(m, gfx_render_target_depth(rows, y), out, rows->width, (float)y + 0.5F - m->center_y);
+        resolve_row(m, gfx_render_target_depth(rows, y), out, rows->width, (float)y + 0.5F - m->project.cy);
     }
 }
 

@@ -695,21 +695,21 @@ burst_board_from_frame(uint8_t fill) {
 
     sand_t s;
     memset(&s, fill, sizeof s);
-    sand_init(&s, cells, BW, BH, 29u);
+    sand_init(&s, cells, BW, BH, 29U);
     sand_set_mobility(&s, 0);
     impulse_t* impulses = impulses_open(&s, BW * BH);
     for (int i = 0; i < 6; i++) {
-        build_confined_gas_pocket(&s, 10 + i * 40);
+        build_confined_gas_pocket(&s, 10 + (i * 40));
     }
     for (int i = 0; i < BURST_STEPS; i++) {
         s.step_phase = (uint16_t)i;
         sand_step_reactions(&s);
     }
 
-    uint32_t hash = 2166136261u;
+    uint32_t hash = 2166136261U;
     for (int i = 0; i < BW * BH; i++) {
         hash ^= cells[i];
-        hash *= 16777619u;
+        hash *= 16777619U;
     }
     free(impulses);
     free(cells);
@@ -726,9 +726,9 @@ test_a_reaction_driven_board_does_not_read_the_callers_frame(void) {
                                     "the pockets burst differently on a dirty frame than on a clean one");
 
     memset(&s, 0xA5, sizeof s);
-    sand_init(&s, cells, 16, 16, 1u);
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, s.explosions_this_step, "sand_init() left the explosion count unset");
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, s.confined_blasts_this_step, "sand_init() left the blast cap unset");
+    sand_init(&s, cells, 16, 16, 1U);
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0U, s.explosions_this_step, "sand_init() left the explosion count unset");
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0U, s.confined_blasts_this_step, "sand_init() left the blast cap unset");
     free(cells);
 }
 
@@ -740,12 +740,12 @@ test_confined_gas_blasts_chain_without_losing_a_pocket(void) {
     TEST_ASSERT_NOT_NULL(cells);
 
     sand_t chain;
-    sand_init(&chain, cells, CW, CH, 29u);
+    sand_init(&chain, cells, CW, CH, 29U);
     sand_set_mobility(&chain, 0);
     impulse_t* impulses = impulses_open(&chain, CW * CH);
 
     for (int i = 0; i < CELL_COUNT; i++) {
-        build_confined_gas_pocket(&chain, 10 + i * CELL_SPACING);
+        build_confined_gas_pocket(&chain, 10 + (i * CELL_SPACING));
     }
 
     int completed_step = 0;
@@ -1108,13 +1108,14 @@ scan_slab_chill(const sand_t* g, int w2, int h2, int slab_top) {
 
 static void
 test_cold_conducts_deep_into_a_slab(void) {
-    const int W2 = 40, H2 = 60;
+    const int W2 = 40;
+    const int H2 = 60;
     const int slab_top = 10;
     uint8_t* cells = calloc(W2 * H2, 1);
     TEST_ASSERT_NOT_NULL(cells);
 
     sand_t g;
-    sand_init(&g, cells, W2, H2, 7u);
+    sand_init(&g, cells, W2, H2, 7U);
     sand_fill_box(&g, 0, slab_top, W2, H2, CELL_MAKE(MAT_GLASS, SAND_AMBIENT_HEAT));
     sand_fill_box(&g, 0, 6, W2, slab_top, SNOW);
 
@@ -1237,7 +1238,7 @@ test_a_32_cell_snow_cover_turns_to_ice_in_about_five_minutes(void) {
 
     sand_t g;
     memset(&g, 0, sizeof g);
-    sand_init(&g, cells, GW, GH, 71u);
+    sand_init(&g, cells, GW, GH, 71U);
     sand_enable_sleeping(&g, blocks);
 
     sand_fill_box(&g, 0, GH - 1, GW, GH, STONE);
@@ -1338,7 +1339,7 @@ test_snow_does_not_crust_against_open_air(void) {
 
     sand_t g;
     memset(&g, 0, sizeof g);
-    sand_init(&g, cells, GW, GH, 71u);
+    sand_init(&g, cells, GW, GH, 71U);
     sand_enable_sleeping(&g, blocks);
     sand_set_crust(&g, 4); /* 4 in CRUST_ROLL_MAX, as 256 in 65536 was */
 
@@ -1433,7 +1434,7 @@ test_a_snowbank_crusts_on_its_faces_and_thickens_slowly_inward(void) {
 
     sand_t g;
     memset(&g, 0, sizeof g);
-    sand_init(&g, cells, GW, GH, 71u);
+    sand_init(&g, cells, GW, GH, 71U);
     sand_enable_sleeping(&g, blocks);
     sand_set_crust(&g, 4); /* the shipped rate is minutes, not frames */
 
@@ -1491,7 +1492,7 @@ test_a_settled_snowbank_crusts_to_ice(void) {
     TEST_ASSERT_NOT_NULL(blocks);
 
     sand_t snow_sim;
-    sand_init(&snow_sim, cells, W, H, 41u);
+    sand_init(&snow_sim, cells, W, H, 41U);
     sand_enable_sleeping(&snow_sim, blocks);
     sand_set_crust(&snow_sim, CRUST_ROLL_MAX); /* every settled snow cell, every step */
 
@@ -1519,7 +1520,7 @@ test_a_settled_snowbank_crusts_to_ice(void) {
      * flight is in. Without this the test passes just as well on a rule that
      * ignores rest entirely and crusts everything it sees. */
     memset(cells, 0, W * H);
-    sand_init(&snow_sim, cells, W, H, 41u);
+    sand_init(&snow_sim, cells, W, H, 41U);
     sand_enable_sleeping(&snow_sim, blocks);
     sand_set_crust(&snow_sim, CRUST_ROLL_MAX);
 
@@ -1587,7 +1588,7 @@ test_a_resting_snowbank_stays_settled_over_a_floor_it_chills(void) {
 
     sand_t g;
     memset(&g, 0, sizeof g);
-    sand_init(&g, cells, GW, GH, 71u);
+    sand_init(&g, cells, GW, GH, 71U);
     sand_enable_sleeping(&g, blocks);
 
     sand_fill_box(&g, 0, GH - 1, GW, GH, STONE);
@@ -1596,7 +1597,8 @@ test_a_resting_snowbank_stays_settled_over_a_floor_it_chills(void) {
         sand_step(&g, 0, 1000, 0); /* land, and be marked settled */
     }
 
-    int first_loose = -1, loose_steps = 0;
+    int first_loose = -1;
+    int loose_steps = 0;
     for (int i = 1; i <= WATCH; i++) {
         sand_step(&g, 0, 1000, 0);
         if (count_loose_snow(&g, GW, GH) != 0) {
@@ -1696,7 +1698,7 @@ test_a_material_created_during_the_pass_stays_in_the_mask(void) {
         sand_step(&s, 0, 1000, 0);
         if (count_cells_of(MAT_OIL) > 0) {
             turned = true;
-            TEST_ASSERT_TRUE_MESSAGE((s.may_have_materials & (1u << MAT_OIL)) != 0,
+            TEST_ASSERT_TRUE_MESSAGE((s.may_have_materials & (1U << MAT_OIL)) != 0,
                                      "oil is on the board, so may_have_materials must say so - the "
                                      "cell that became oil was converted at the reactions walk's "
                                      "own coordinates, which it had already counted as gunpowder "
@@ -1901,7 +1903,7 @@ test_quenching_costs_the_water_a_unit_of_mass(void) {
  * memory budget. */
 static void
 acid_quench_fixture(uint8_t* cells) {
-    sand_init(&fx.quench_sim, cells, QUENCH_W, 2, 11u);
+    sand_init(&fx.quench_sim, cells, QUENCH_W, 2, 11U);
     sand_set_mobility(&fx.quench_sim, 0); /* keep fire from rising away
                                           * before reactions quenches it
                                           * this same step - same

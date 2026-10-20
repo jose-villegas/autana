@@ -3,6 +3,7 @@ reading of `autana suite` output that feeds them.
 
     python -m unittest discover -s launcher/tools/perf/tests
 """
+import gzip
 import json
 import math
 import pathlib
@@ -14,6 +15,7 @@ PERF = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PERF))
 
 from seed_statistics import t_quantile
+import layout_measure  # noqa: E402
 import layout_pilot as pilot  # noqa: E402
 
 
@@ -80,6 +82,18 @@ class LayoutPilotTest(unittest.TestCase):
         self.assertEqual([c.name for c in captures], ["a.log", "b.log"])
         self.assertEqual(first, 2.0)
         self.assertEqual(seconds, [50.0, 58.0])
+
+    def test_a_gzipped_capture_is_found_and_read(self):
+        with tempfile.TemporaryDirectory() as temp:
+            report = pathlib.Path(temp) / "a.md"
+            report.write_text("- Ended: complete" + chr(10))
+            with gzip.open(pathlib.Path(temp) / "a.log.gz", "wt", encoding="utf-8") as stream:
+                stream.write(chr(10).join(["row both cores: mean 42us", ":1:test_row:PASS", ""]))
+            lines = [(2.0, "batch: run_x run 1/1"), (50.0, f"report: {report}")]
+            captures, _, _ = pilot.captured_runs(lines, "run_x", 1)
+            self.assertEqual(captures, [pathlib.Path(temp) / "a.log.gz"])
+            self.assertEqual(layout_measure.parse_report(captures[0]), {"row": 42})
+            self.assertEqual(layout_measure.capture_tests(captures[0]), ["test_row"])
 
     def test_a_missing_run_is_an_error_rather_than_a_short_sample(self):
         lines = [(2.0, "batch: run_x run 1/2"), (50.0, "report: /r/a.md")]

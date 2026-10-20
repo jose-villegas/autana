@@ -146,8 +146,8 @@ test_options_screen_with_its_dither_list_open_fits_budget(void) {
 
     options_screen_layout_t lay;
     options_screen_layout(ui_width(), ui_height(), &lay);
-    const int x = lay.dither.x + lay.dither.w / 2;
-    const int y = lay.dither.y + lay.dither.h / 2;
+    const int x = lay.dither.x + (lay.dither.w / 2);
+    const int y = lay.dither.y + (lay.dither.h / 2);
     const input_t steps[] = {
         {0},
         {0},

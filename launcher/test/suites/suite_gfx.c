@@ -14,7 +14,7 @@
  *   - resource limits: does the framebuffer actually fit?
  *
  * Anything that is pure logic belongs in the host suite instead. See
- * docs/Testing-Guide.md.
+ * docs/testing/Writing-a-Test.md.
  */
 
 #include "suites.h"
@@ -41,8 +41,8 @@
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_test.h"
 #include "gfx/present/modes/band/gfx_band_run.h"
-#include "input/touch.h"
-#include "input/touch_fsm.h"
+#include "input/touch/touch.h"
+#include "input/touch/touch_fsm.h"
 #include "math/scalar/mathi.h"
 #include "panel_clock_pin.h"
 #include "profile/frame_cost.h"

@@ -21,7 +21,7 @@ void ui_ridge_load(void);
 /* The loaded row, or NULL when the ridge is level. */
 const int16_t* ui_ridge_curve(void);
 
-/* Which way is down in the screen plane, as input/tilt.h reports it: `gx`
+/* Which way is down in the screen plane, as input/motion/tilt.h reports it: `gx`
  * and `gy` in the panel's own axes, `strength` 0-256 and `shake` 0-255. The
  * line eases toward level with it; never called, the line keeps boot's
  * landscape pose. */

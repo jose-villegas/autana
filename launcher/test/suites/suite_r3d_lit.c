@@ -1030,9 +1030,7 @@ static r3d_lens_t
 subpixel_view(void) {
     const float s = 1.0f / (float)R3D_SUBPIXEL;
     return (r3d_lens_t){{{{s, 0, 0, 0}, {0, s, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}},
-                        0.0f,
-                        0.0f,
-                        0.5f,
+                        {1.0F, -1.0F, 0.0F, 0.0F, 0.5F},
                         W,
                         H,
                         R3D_SNAP_BIAS,
@@ -1385,10 +1383,9 @@ test_a_point_up_and_right_lands_up_and_right_in_every_quarter(void) {
         const render_view_t frame_view =
             render_view_fixture_at(&(fixture_camera_t){{0, 0, 0}, {0, 0, 1}, 0.5f, 1.0f}, viewport);
         r3d_lens_init(&lens, &frame_view, 1);
-        const vec3f_t p = mat4f_apply(&lens.m, (vec3f_t){30.0F, 20.0F, 100.0F});
+        const vec2f_t screen = projectf_screen(&lens.project, mat4f_apply(&lens.m, (vec3f_t){30.0F, 20.0F, 100.0F}));
         int ux, uy;
-        viewport_physical_to_upright(viewport, (int)floorf(lens.center_x + p.x / p.z),
-                                     (int)floorf(lens.center_y + p.y / p.z), &ux, &uy);
+        viewport_physical_to_upright(viewport, (int)floorf(screen.x), (int)floorf(screen.y), &ux, &uy);
 
         /* The lens fits the shorter upright axis: tan = 0.5 spans half of it. */
         const int upright_width = (quarter & 1) ? H : W, upright_height = (quarter & 1) ? W : H;
@@ -2397,8 +2394,8 @@ test_the_draw_split_of_no_work_is_the_middle_row(void) {
     const r3d_lit_mesh_t mesh = {.clusters = clusters};
     const uint16_t visible[] = {0};
     const r3d_pipeline_rows_t rows[] = {{0, 99, false}};
-    TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 1, 100));
-    TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 0, 100));
+    TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 1, 100, RASTER_SPLIT_EVEN));
+    TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 0, 100, RASTER_SPLIT_EVEN));
 }
 
 static void
@@ -2407,15 +2404,43 @@ test_the_draw_split_falls_inside_the_rows_the_work_covers(void) {
     const r3d_lit_mesh_t mesh = {.clusters = clusters};
     const uint16_t visible[] = {0};
     const r3d_pipeline_rows_t top[] = {{0, 9, false}};
-    const int split = r3d_pipeline_draw_split(&mesh, visible, top, 1, 100);
+    const int split = r3d_pipeline_draw_split(&mesh, visible, top, 1, 100, RASTER_SPLIT_EVEN);
     TEST_ASSERT_TRUE(split >= 1 && split <= 9);
 
     const r3d_pipeline_rows_t beyond[] = {{-50, 500, false}};
-    const int middle = r3d_pipeline_draw_split(&mesh, visible, beyond, 1, 100);
+    const int middle = r3d_pipeline_draw_split(&mesh, visible, beyond, 1, 100, RASTER_SPLIT_EVEN);
     TEST_ASSERT_TRUE(middle >= 48 && middle <= 52);
 
     const r3d_pipeline_rows_t unbounded[] = {{0, 0, true}};
-    TEST_ASSERT_EQUAL_INT(middle, r3d_pipeline_draw_split(&mesh, visible, unbounded, 1, 100));
+    TEST_ASSERT_EQUAL_INT(middle, r3d_pipeline_draw_split(&mesh, visible, unbounded, 1, 100, RASTER_SPLIT_EVEN));
+}
+
+static void
+test_draw_split_accumulates_bounded_uneven_buckets(void) {
+    const r3d_lit_cluster_t clusters[] = {{.triangle_count = 1}, {.triangle_count = 3}};
+    const r3d_lit_mesh_t mesh = {.clusters = clusters};
+    const uint16_t visible[] = {0, 1};
+    const r3d_pipeline_rows_t rows[] = {{0, 9, false}, {40, 49, false}};
+    const int height = 640;
+    TEST_ASSERT_EQUAL_INT(10, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, RASTER_SPLIT_PERMILLE / 4));
+    TEST_ASSERT_EQUAL_INT(43, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, RASTER_SPLIT_EVEN));
+    TEST_ASSERT_EQUAL_INT(46, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, RASTER_SPLIT_PERMILLE * 3 / 4));
+}
+
+static void
+test_draw_split_interpolates_the_requested_share_and_clamps_rows(void) {
+    const r3d_lit_cluster_t clusters[] = {{.triangle_count = 10}};
+    const r3d_lit_mesh_t mesh = {.clusters = clusters};
+    const uint16_t visible[] = {0};
+    const r3d_pipeline_rows_t rows[] = {{0, 0, true}};
+    const int height = 640;
+    TEST_ASSERT_EQUAL_INT(height / 4,
+                          r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, RASTER_SPLIT_PERMILLE / 4));
+    TEST_ASSERT_EQUAL_INT(height / 2, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, RASTER_SPLIT_EVEN));
+    TEST_ASSERT_EQUAL_INT(height / 3,
+                          r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, RASTER_SPLIT_PERMILLE / 3));
+    TEST_ASSERT_EQUAL_INT(1, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, 0));
+    TEST_ASSERT_EQUAL_INT(height - 1, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, RASTER_SPLIT_PERMILLE));
 }
 
 #undef RUN_TEST
@@ -2427,6 +2452,8 @@ test_the_draw_split_falls_inside_the_rows_the_work_covers(void) {
 
 static void
 run_r3d_lit_suite(void) {
+    RUN_TEST(test_draw_split_accumulates_bounded_uneven_buckets);
+    RUN_TEST(test_draw_split_interpolates_the_requested_share_and_clamps_rows);
     RUN_TEST(test_two_triangles_sharing_an_edge_cover_a_square_exactly_once);
     RUN_TEST(test_tiny_and_large_triangles_tile_without_gaps_or_overlap);
     RUN_TEST(test_the_nearer_triangle_wins_in_either_order);
