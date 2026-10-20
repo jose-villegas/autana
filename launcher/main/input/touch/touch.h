@@ -15,7 +15,6 @@
 
 #include "build/build_variant.h"
 #include "input/input.h"
-#include "input/touch/touch_inject_fsm.h"
 
 /* Fast enough that a brief tap is sampled several times, cheap enough to be
  * irrelevant next to rendering (one small I2C read per poll, and only when
@@ -27,6 +26,8 @@
 void touch_start(void);
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
+#include "input/touch/touch_inject_fsm.h"
+
 /* What is injected outranks the controller: a level until an up reaches the
  * polling task, a gesture until its `ms` has elapsed. */
 void touch_inject(bool down, vec2i_t point);
