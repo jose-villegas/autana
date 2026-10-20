@@ -113,6 +113,8 @@ cluster a flat hue, with disjoint IDs across instances.
 
 A pose of a camera path is `--frames` times `--dt`. `--camera NAME`
 selects a scene camera; omitted, it draws the first camera.
+`--console FRAME:WORDS` runs the board's `render WORDS` command, such as
+`clip walk 400`, before frame FRAME draws; repeat it for a sequence.
 
 `dynres_quality.sh WORK OUT.csv CAMERA WxH [WxH ...]` scores each size
 against the reference along that camera's clip, at intervals taken from
@@ -161,6 +163,7 @@ be checked to have measured the same thing.
 |---|---|
 | `render-lab-sponza.gif` | the start of the Sponza flythrough, on the fitted full mesh |
 | `render-lab-sponza-flat.gif` | the flythrough with the fitted flat-shaded bake |
+| `render-lab-capybara.gif` | the capybara's idle, walk, walk_fast and gallop clips in turn, each blended into the next |
 
 Run the app shots from the repository root with Python, Pillow, numpy and ffmpeg:
 
