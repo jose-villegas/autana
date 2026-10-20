@@ -64,15 +64,33 @@ class JsonReadTests(unittest.TestCase):
     def test_tone_reply(self):
         for heard in (True, False):
             with self.subTest(heard=heard):
-                reply = f"TONE {'heard' if heard else 'not heard'} 440 Hz: -21.5 dB (silence -63.0 dB), open 8192 B DMA"
+                reply = f"TONE {'heard' if heard else 'not heard'} 440 Hz: -21.5 dB (silence -63.0 dB), path acoustic, measured 440.02 Hz, open 8192 B DMA"
                 expected = {"hz": 440, "tone_db": -21.5, "silence_db": -63.0,
-                            "heard": heard, "open_dma_bytes": 8192}
+                            "heard": heard, "open_dma_bytes": 8192, "path": "acoustic",
+                            "measured_hz": 440.02, "hz_error": 440.02 - 440}
                 self.assertEqual(autana.parse_tone(reply), expected)
                 with mock.patch.object(autana, "send", return_value=(0, [reply])) as send:
                     self.assertEqual(self.output(autana.COMMANDS["tone"], ["440", "200", "--json"]), expected)
                 send.assert_called_once_with(
                     "TONE 440 200", reply="TONE",
                     seconds=autana.TONE_MARGIN_SECONDS + autana.TONE_CAPTURE_COUNT * 200 / autana.TONE_MS_PER_SECOND)
+
+    def test_tone_short_capture_has_no_frequency(self):
+        reply = "TONE heard 440 Hz: -21.5 dB (silence -63.0 dB), path internal, measured n/a, open 8192 B DMA"
+        with mock.patch.object(autana, "send", return_value=(0, [reply])):
+            result = self.output(autana.tone, ["440", "1", "--internal", "--json"])
+        self.assertIsNone(result["measured_hz"])
+        self.assertIsNone(result["hz_error"])
+
+    def test_tone_internal_flags(self):
+        reply = "TONE heard 440 Hz: -21.5 dB (silence -63.0 dB), path internal, measured 443.70 Hz, open 8192 B DMA"
+        for numbers in (["440", "200"], ["440", "200", "30"]):
+            for flags in (["--internal", "--json"], ["--json", "--internal"]):
+                with mock.patch.object(autana, "send", return_value=(0, [reply])) as send:
+                    result = self.output(autana.tone, numbers + flags)
+                self.assertEqual(send.call_args.args, ("TONE " + " ".join(numbers) + " internal",))
+                self.assertEqual(result["path"], "internal")
+                self.assertAlmostEqual(result["hz_error"], 3.7)
 
     def test_tone_malformed_and_error(self):
         for reply in ("TONE usage: tone <hz> <ms> [volume]", "TONE error: codec open failed",
@@ -93,7 +111,7 @@ class JsonReadTests(unittest.TestCase):
                 self.assertEqual(autana.COMMANDS["tone"](["440", "200"]), expected)
 
     def test_tone_forwards_decimal_args_and_plain_output(self):
-        reply = "TONE not heard 1 Hz: -63.0 dB (silence -63.0 dB), open 8192 B DMA"
+        reply = "TONE not heard 1 Hz: -63.0 dB (silence -63.0 dB), path acoustic, measured 1.00 Hz, open 8192 B DMA"
         for args in (("0", "0"), ("999999", "999999", "999999"), ("00440", "00200", "030")):
             ms = int(args[1])
             stream = io.StringIO()
@@ -107,10 +125,10 @@ class JsonReadTests(unittest.TestCase):
 
     def test_tone_rejects_invalid_args_before_send(self):
         for args in ([], ["440"], ["440", "200", "30", "extra"], ["440", ""],
-                     ["440", "200", "--json", "30"],
+                     ["440", "200", "--json", "30"], ["440", "200", "--internal", "30"],
                      ["-1", "200"], ["+440", "200"], ["440.0", "200"],
                      ["\u0664\u0664\u0660", "200"], ["440", "200", "-1"], ["440", "200", "oops"],
-                     ["440", "200", "--unknown"], ["440", "200", "--json", "--json"]):
+                     ["440", "200", "--unknown"], ["440", "200", "--json", "--json"], ["440", "200", "--internal", "--internal"]):
             with self.subTest(args=args), mock.patch.object(autana, "send") as send:
                 with self.assertRaises(SystemExit):
                     autana.COMMANDS["tone"]([*args])
