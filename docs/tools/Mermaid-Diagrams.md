@@ -17,7 +17,7 @@ The check renders with that mermaid version, pinned through `overrides` in
 shows. `check-mermaid.mjs --github-version` reads the version GitHub runs today:
 
 - exit 0 when it matches the pin
-- exit 1 when GitHub moved: bump the override
+- exit 1 when GitHub moved: bump the override (`--write` does it and exits 0)
 - exit 2 when the version cannot be read: a network failure, or the page or bundle changed shape
 
 ## Tall diagrams
@@ -73,8 +73,10 @@ changes under any `.md` file or the validator itself, unlike this repo's
 other workflows, because installing Chrome is real per-run cost that
 nothing else here can affect.
 
-A weekly scheduled run (or a manual one) runs only `--github-version`, so a
-GitHub upgrade turns it red without waiting for a `.md` change.
+A weekly scheduled run (or a manual one) runs `--github-version --write`: when GitHub
+moved, it rewrites the override and lockfile and opens the `feature/mermaid-pin` pull
+request, so the pin follows GitHub without waiting for a `.md` change. A version it cannot
+read turns the run red.
 
 ## Tests
 
