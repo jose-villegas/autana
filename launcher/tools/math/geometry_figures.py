@@ -9,10 +9,10 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from math_figures import (PANEL_SIZE, PANEL_TITLE_ROOM, PIXEL_FILL, POINT, POINT_SIZE, SHAPE_ALPHA, SHAPE_FILL,
-                          run_probe, square_axes, VIEW_ELEVATION, prism_faces)
+                          run_probe, VIEW_ELEVATION, prism_faces)
 from docs.plot_style import (FAINT, INK, LABEL_SIZE, MUTED, TITLE_SIZE, SLOTS,
                              GIF_FRAMES, GIF_FPS, ORBIT_GIF_COLORS, wire_sphere,
-                             figure as new_figure, save, save_gif)
+                             figure as new_figure, save, save_gif, style_axes)
 import numpy as np
 from matplotlib.patches import Patch, Rectangle
 from matplotlib.lines import Line2D
@@ -65,7 +65,7 @@ def panels(projection=None):
 
 def rect_figure(data, output):
     figure, (axis, empty_axis) = panels()
-    square_axes(axis, "Half-open pixel rectangles")
+    style_axes(axis, "Half-open pixel rectangles", square=True)
     for key, color, fill, style in (("a", SHAPE_FILL, False, "-"), ("b", POINT, False, "-"),
                                      ("intersect", PIXEL_FILL, True, "-"), ("union", MUTED, False, "--")):
         x, y, w, h = data[key]
@@ -84,7 +84,7 @@ def rect_figure(data, output):
     axis.set_ylim(y + h + 1, y - 1)
     axis.grid(color=FAINT, linewidth=0.5)
     axis.legend(fontsize=LABEL_SIZE, loc="upper left", bbox_to_anchor=(0, -0.13), ncol=2)
-    square_axes(empty_axis, "Crossed edges")
+    style_axes(empty_axis, "Crossed edges", square=True)
     left, top, right, bottom = data["edges"]
     empty_axis.plot([left, right], [top, bottom], "--", color=MUTED)
     empty_axis.scatter([left, right], [top, bottom], color=POINT)

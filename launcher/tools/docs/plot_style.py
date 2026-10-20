@@ -38,6 +38,16 @@ def save(fig, path, dpi=DPI):
     plt.close(fig)
 
 
+def style_axes(axis, title, *, square=False):
+    """A panel's title, ticks and spines in the palette; square keeps one unit the same length on both axes."""
+    axis.set_title(title, fontsize=TITLE_SIZE, color=INK)
+    if square:
+        axis.set_aspect("equal")
+    axis.tick_params(labelsize=LABEL_SIZE, colors=MUTED)
+    for spine in axis.spines.values():
+        spine.set_color(FAINT)
+
+
 GIF_COLORS = 32
 GIF_FRAMES = 60
 GIF_FPS = 10

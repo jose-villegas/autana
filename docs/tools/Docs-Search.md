@@ -93,6 +93,11 @@ time, the question, the best results with their scores, how long it took,
 whether meaning was used, and whether the answer was weak. It stays on the
 machine; deleting the folder loses only the history.
 
+To group lookups by session, run the commands with `AUTANA_SESSION=<label>`
+in their environment (per process, nothing is stored); each row then carries
+it, and `autana docs --usage` counts the sessions. `python
+scripts/docs/query_log.py --session <label>` shows one session.
+
 `autana docs --usage` summarises every `*.jsonl` in that folder. Another
 tool that writes rows in the format `scripts/docs/query_log.py` documents is
 summarised too:
