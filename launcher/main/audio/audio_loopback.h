@@ -1,4 +1,4 @@
-/* Tone detection and phase-difference frequency measurement. */
+/* Tone detection, phase-difference frequency, and THD over harmonics 2..5 below Nyquist. */
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>

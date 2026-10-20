@@ -102,8 +102,9 @@ audio_out_write(const int16_t* samples, size_t count) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     if (applied_generation != TUNE_GENERATION(audio)) {
         const uint32_t generation = TUNE_GENERATION(audio);
-        (void)audio_codec_check("re-apply", apply() ? ESP_CODEC_DEV_OK : ESP_CODEC_DEV_DRV_ERR);
-        applied_generation = generation;
+        if (audio_codec_check("re-apply", apply() ? ESP_CODEC_DEV_OK : ESP_CODEC_DEV_DRV_ERR)) {
+            applied_generation = generation;
+        }
     }
 #endif
     return audio_codec_check("write", esp_codec_dev_write(output, (void*)samples, (int)(count * sizeof *samples)));

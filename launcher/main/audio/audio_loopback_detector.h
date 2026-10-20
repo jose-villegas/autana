@@ -1,4 +1,4 @@
-/* Streaming loopback metrics, independent of capture hardware. */
+/* Streaming loopback metrics; THD excludes noise between harmonic bins. */
 #pragma once
 #include "audio/audio_frequency.h"
 #include "audio/audio_loopback.h"

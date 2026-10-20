@@ -25,7 +25,6 @@ from audio_drc_sweep import DRC_LEVEL_DB, TUNABLES, VOLUME_MAX
 
 DRC_CAPTURE = Path("docs/audio/data/audio_drc_capture.txt")
 DRC_CLIPPED_DBFS = -0.5
-DRC_LEVEL_VOLUMES = (10, 30, 100)
 
 CAPTURE = Path("docs/audio/data/audio_capture.txt")
 DOCUMENT = Path("docs/audio/Audio-Path.md")
@@ -137,7 +136,6 @@ def render(path, internal_required=False):
     return tables
 
 
-
 MIX_CAPTURES = Path("docs/audio/data")
 MIX_DOCUMENT = Path("docs/audio/Sound-Mixer.md")
 PERCENT = 100
@@ -224,7 +222,6 @@ def render_mix(path):
         rows) + "\nHighest-point memory (bytes):\n\n" + markdown(fields, [[stats[field] for field in fields]])
 
 
-
 def render_drc(path):
     header, records, builds = read_capture(path)
     if not records or records[0][0] != ["buildid"]:
@@ -257,6 +254,7 @@ def render_drc(path):
                 if not isinstance(reply[name], (int, float)) or not math.isfinite(reply[name]):
                     raise ValueError("invalid DRC measurement")
             groups.setdefault(key, []).append((hz, ms, volume, reply))
+    volumes = sorted({volume for samples in groups.values() for hz, _, volume, _ in samples if hz == primary_hz})
     rows = []
     for key, samples in groups.items():
         codec, on, maximum, minimum, _, _ = key
@@ -264,13 +262,13 @@ def render_drc(path):
         if len({ms for _, ms, _, _ in samples}) != 1:
             raise ValueError("DRC duration must be constant per configuration")
         levels = []
-        for volume in DRC_LEVEL_VOLUMES:
+        for volume in volumes:
             values = [reply["tone_db"] for gain, reply in primary if gain == volume]
             if not values:
                 raise ValueError("missing DRC tone volume")
             levels.append(f"{median(values):.1f}")
         thd = [reply["thd_db"] for volume, reply in primary
-               if volume == DRC_LEVEL_VOLUMES[-1] and reply["thd_db"] is not None]
+               if volume == volumes[-1] and reply["thd_db"] is not None]
         peak = max(reply["peak_dbfs"] for _, _, _, reply in samples)
         label = f"max {DRC_LEVEL_DB[maximum]:.1f} / min {DRC_LEVEL_DB[minimum]:.1f}" if on else "off"
         rows.append((codec, label, *levels, f"{median(thd):.1f}" if thd else "n/a", f"{peak:.1f}",
@@ -281,8 +279,8 @@ def render_drc(path):
             f"Board **{header[1]}**, build **{next(iter(builds))}** "
             f"([raw replies](data/{path.name})).\n\n"
             f"Levels and THD: {primary_hz} Hz; worst peak includes every frequency.\n\n"
-            + markdown(["Codec (%)", "DRC max/min (dB)", "Level 10% (dBFS)", "Level 30% (dBFS)",
-                        "Level 100% (dBFS)", "THD 100% (dB)", "Worst peak (dBFS)", "Mic clipped"], rows))
+            + markdown(["Codec (%)", "DRC max/min (dB)", *[f"Level {volume}% (dBFS)" for volume in volumes],
+                        f"THD {volumes[-1]}% (dB)", "Worst peak (dBFS)", "Mic clipped"], rows))
 
 
 def update_drc(capture, document, check=False):

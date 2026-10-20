@@ -242,9 +242,8 @@ The sweep resets every audio tunable at exit. Its arguments select codec gains,
 limiter fields, tone points, duration, and repeats. The generated table appears
 from `docs/audio/data/audio_drc_capture.txt`.
 
-The metric is THD+N over harmonics 2..5 below Nyquist with a rectangular
-window. Clean 500 ms host sines, including noninteger frequencies, measure
-below `AUDIO_LOOPBACK_THD_FLOOR_DB` (-60 dB).
+THD sums harmonics 2..5 below Nyquist using a rectangular window; noise between bins is excluded.
+Clean 500 ms host sines, including noninteger Hz, fall below `AUDIO_LOOPBACK_THD_FLOOR_DB` (-60 dB).
 
 <!-- generated: audio-drc sha256=a93006c90ebb47c04a5a941a4f16d5cd1d65ec2d7326a2c3e4506015b15e8a1c -->
 No capture yet.
