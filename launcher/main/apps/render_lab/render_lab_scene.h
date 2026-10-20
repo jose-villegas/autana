@@ -8,8 +8,13 @@
 #include "input/input.h"
 
 typedef struct {
-    const char* name;
+    const char* name; /* the HUD title */
     const char* key;
+    /* The Scene dropdown's entry; scenes of one family are listed together.
+     * variant names this scene in the family's own dropdown, NULL if it is
+     * the family's only one. A scene's `controls` draws that dropdown. */
+    const char* family;
+    const char* variant;
     void (*enter)(void);
     void (*frame)(uint32_t dt_ms);
     void (*exit)(void);
@@ -24,7 +29,7 @@ typedef struct {
     /* Optional. The frame's touch, just before update() and under the same
      * rules: for a scene the finger steers. Not called while the menu is open. */
     void (*steer)(uint32_t dt_ms, const input_t* input);
-    /* Optional. Drawn in the BOOT menu below NEXT SCENE while the scene is
+    /* Optional. Drawn in the BOOT menu below the Scene row while the scene is
      * paused; may call public scene_* calls only. */
     render_lab_controls_fn controls;
     /* Optional. Handles `render <args>` that Render Lab's scene commands did not;

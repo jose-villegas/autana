@@ -1,4 +1,4 @@
-/* render_lab_menu_screen: the BOOT-opened scene picker. */
+/* render_lab_menu_screen: the BOOT-opened scene menu. */
 #pragma once
 
 #include <stdbool.h>
@@ -9,11 +9,13 @@ typedef void (*render_lab_controls_fn)(int width);
 
 typedef struct {
     render_lab_controls_fn controls;
-    const char* scene_name; /* shown on the cycle-scene button */
+    const char* const* families; /* the Scene dropdown's entries; none = no Scene row */
+    int family_count;
+    int family; /* index of the showing one */
 } render_lab_menu_screen_state_t;
 
 typedef struct {
-    bool next_scene_clicked;
+    int family_picked; /* a family the user chose this frame, else -1 */
 } render_lab_menu_screen_result_t;
 
 /* A caption row, `width` wide and centred, above a widget. */

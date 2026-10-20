@@ -1,7 +1,5 @@
 #include "render_lab_menu_screen.h"
 
-#include <stdio.h>
-
 #include "apps/render_lab/render_lab_view.h"
 #include "services/tune.h"
 #include "ui/ui.h"
@@ -35,14 +33,19 @@ render_lab_menu_screen_draw(const render_lab_menu_screen_state_t* state) {
 
     ui_scroll_window((recti_t){0, 0, ui_width(), footer_top()});
 
-    /* The scene name is shown, not part of the identity. */
-    char label[48];
-    (void)snprintf(label, sizeof label, "NEXT: %s###next scene", state->scene_name);
-    ui_row_centre(MENU_BTN_W, UI_ROW_HEIGHT);
-    if (ui_button(ui_next(), label)) {
-        result.next_scene_clicked = true;
+    result.family_picked = -1;
+    if (state->family_count > 0) {
+        int family = state->family;
+        render_lab_menu_caption(MENU_BTN_W, "SCENE");
+        ui_row_centre(MENU_BTN_W, UI_ROW_HEIGHT);
+        if (ui_dropdown(ui_next(), "SCENE", &family, state->families, state->family_count)) {
+            result.family_picked = family;
+        }
     }
 
+    if (state->controls != NULL) {
+        state->controls(MENU_BTN_W);
+    }
 #if TUNE_ENABLED
     int count = 0;
     const char* const* names = render_lab_small_fill_names(&count);
@@ -54,9 +57,6 @@ render_lab_menu_screen_draw(const render_lab_menu_screen_state_t* state) {
     }
 #endif
 
-    if (state->controls != NULL) {
-        state->controls(MENU_BTN_W);
-    }
     draw_hint();
 
     return result;
