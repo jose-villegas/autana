@@ -176,7 +176,7 @@ sponza_status(void) {
 }
 
 /* A bake's scene: titled "Sponza <variant>", with the family's shared hooks. */
-#define SPONZA_SCENE(ident, key_, variant_, enter_)                                                                    \
+#define SPONZA_BAKE_SCENE(ident, key_, variant_, enter_)                                                               \
     const render_lab_scene_t ident = {.name = "Sponza " variant_,                                                      \
                                       .key = key_,                                                                     \
                                       .family = "Sponza",                                                              \
@@ -186,9 +186,9 @@ sponza_status(void) {
                                       .exit = scene_sponza_exit,                                                       \
                                       .status = sponza_status}
 
-SPONZA_SCENE(scene_sponza, "sponza", "Full", scene_sponza_enter);
-SPONZA_SCENE(scene_sponza_lite, "sponza-lite", "Lite", scene_sponza_lite_enter);
-SPONZA_SCENE(scene_sponza_flat, "sponza-flat", "Flat", scene_sponza_flat_enter);
-SPONZA_SCENE(scene_sponza_fitted, "sponza-fitted", "Fitted", scene_sponza_fitted_enter);
-SPONZA_SCENE(scene_sponza_fitted_full, "sponza-fitted-full", "Fitted Full", scene_sponza_fitted_full_enter);
-SPONZA_SCENE(scene_sponza_flat_fitted, "sponza-flat-fitted", "Flat Fitted", scene_sponza_flat_fitted_enter);
+SPONZA_BAKE_SCENE(scene_sponza, "sponza", "Full", scene_sponza_enter);
+SPONZA_BAKE_SCENE(scene_sponza_lite, "sponza-lite", "Lite", scene_sponza_lite_enter);
+SPONZA_BAKE_SCENE(scene_sponza_flat, "sponza-flat", "Flat", scene_sponza_flat_enter);
+SPONZA_BAKE_SCENE(scene_sponza_fitted, "sponza-fitted", "Fitted", scene_sponza_fitted_enter);
+SPONZA_BAKE_SCENE(scene_sponza_fitted_full, "sponza-fitted-full", "Fitted Full", scene_sponza_fitted_full_enter);
+SPONZA_BAKE_SCENE(scene_sponza_flat_fitted, "sponza-flat-fitted", "Flat Fitted", scene_sponza_flat_fitted_enter);
