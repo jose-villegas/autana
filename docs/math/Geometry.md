@@ -62,7 +62,7 @@ planes are not normalized.
 
 ![Orbiting 3D camera frustum with translucent near and side faces, inward normals, inside and outside samples, and a dashed drawing-depth cap](../images/math/frustum.gif)
 
-The shown depth bounds the drawing; the frustum has no far plane, and every plane must accept a point.
+A point is inside when every plane accepts it; the drawn depth only bounds the picture.
 
 `box3f_outside_planes` tests these planes against a box centre $`c`$ and
 half extent $`e`$. For each plane it forms:
@@ -72,7 +72,8 @@ d = n \cdot c + d_{plane}, \qquad r = \sum_k \lvert n_k\rvert e_k
 ```
 
 It rejects the box when $`d+r<0`$ and clears the plane's mask bit when
-$`d-r\ge0`$. Remaining bits identify planes still crossed by the box.
+$`d-r\ge0`$. When it returns false, the bits of planes the box crosses
+stay set; a box in a loose corner is not rejected.
 
 ![Orbiting 3D boxes inside, crossing and outside the camera frustum, with numbered callouts and a loose corner box](../images/math/box3-frustum.gif)
 
@@ -101,15 +102,12 @@ and union; any crossed axis is empty.
 | `P_centre(b)` | midpoint (`f`) | $`c = 0.5(lo+hi)`$ |
 | `P_half_extent(b)` | half size (`f`) | $`e = 0.5(hi-lo)`$ |
 | `P_segment_hit(b, a, c, &t)` | slab entry in `[0,1]` (`f`); inside starts at zero | $`v=c-a`$; intersect $`[0,1]`$ with each axis's $`[(lo_k-a_k)/v_k,(hi_k-a_k)/v_k]`$, sorted |
-| `P_outside_planes(b, planes, count, &mask)` | reject outside; clear wholly inside bits (`f`) | $`d=n\cdot c+d_{plane},\ r=\sum_k \lvert n_k\rvert e_k`$<br>outside: $`d+r<0`$; clear bit: $`d-r\ge0`$ |
+| `P_outside_planes(b, planes, count, &mask)` | reject outside; clear wholly inside bits (`f`) | See [frustum](#frustum) |
 | `box3f_from_box3s(b, scale)` | convert position ticks to float units | $`(lo\,scale,hi\,scale)`$ |
 
 Real queries use finite, nonempty bounds, except that `P_segment_hit`
 rejects empty boxes. Segment endpoints and box values must be finite.
 Plane bits index the input array; `count` must fit an unsigned mask.
-
-When `P_outside_planes` returns false, the bits of planes the box crosses
-stay set in the mask; a box in a loose corner is not rejected.
 
 ## sphere (`f`)
 
