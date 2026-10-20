@@ -24,36 +24,17 @@ TUNE(audio, drc_ramp, 0, 0, AUDIO_CODEC_DRC_FIELD_MAX);
 static esp_codec_dev_handle_t output;
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static uint32_t applied_generation;
-static bool drc_applied;
 #endif
 
 static bool
 apply(void) {
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    const uint32_t generation = TUNE_GENERATION(audio);
-#endif
-    if (!audio_codec_check("volume", esp_codec_dev_set_out_vol(output, codec_volume))) {
-        return false;
-    }
     const audio_codec_drc_t config = {.on = drc,
                                       .winsize = (uint8_t)drc_win,
                                       .max_level = (uint8_t)drc_max,
                                       .min_level = (uint8_t)drc_min,
                                       .ramp = (uint8_t)drc_ramp};
-    bool write_drc = config.on;
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    write_drc = write_drc || drc_applied;
-    /* Failed register transactions can leave the limiter enabled. */
-    drc_applied = write_drc;
-#endif
-    if (write_drc && !audio_codec_drc_set(&config)) {
-        return false;
-    }
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    drc_applied = config.on;
-    applied_generation = generation;
-#endif
-    return true;
+    return audio_codec_check("volume", esp_codec_dev_set_out_vol(output, codec_volume))
+           && (!(drc || TUNE_ENABLED) || audio_codec_drc_set(&config));
 }
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static audio_out_amp_t amp;
@@ -119,8 +100,10 @@ audio_out_write(const int16_t* samples, size_t count) {
         return false;
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
-    if (applied_generation != TUNE_GENERATION(audio) && !apply()) {
-        return false;
+    if (applied_generation != TUNE_GENERATION(audio)) {
+        const uint32_t generation = TUNE_GENERATION(audio);
+        (void)audio_codec_check("re-apply", apply() ? ESP_CODEC_DEV_OK : ESP_CODEC_DEV_DRV_ERR);
+        applied_generation = generation;
     }
 #endif
     return audio_codec_check("write", esp_codec_dev_write(output, (void*)samples, (int)(count * sizeof *samples)));

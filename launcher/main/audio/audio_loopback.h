@@ -5,11 +5,9 @@
 
 #include "audio/audio_out.h"
 
-/* Trim the first captured samples after audio starts. */
-#define AUDIO_LOOPBACK_HARMONICS          5u
-#define AUDIO_LOOPBACK_FIRST_HARMONIC     2u
-#define AUDIO_LOOPBACK_POWER_DB_SCALE     10.0F
-#define AUDIO_LOOPBACK_AMPLITUDE_DB_SCALE (2.0F * AUDIO_LOOPBACK_POWER_DB_SCALE)
+#define AUDIO_LOOPBACK_THD_FLOOR_DB   (-60.0F)
+#define AUDIO_LOOPBACK_HARMONICS      5u
+#define AUDIO_LOOPBACK_FIRST_HARMONIC 2u
 
 typedef struct {
     float measured_hz;
@@ -17,6 +15,7 @@ typedef struct {
     float peak_dbfs;
 } audio_loopback_result_t;
 
+/* Trim the first captured samples after audio starts. */
 #define AUDIO_LOOPBACK_SETTLE_MS       100u
 #define AUDIO_LOOPBACK_HEARD_MARGIN_DB 20.0F
 

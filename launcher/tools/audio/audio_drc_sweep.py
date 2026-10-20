@@ -1,5 +1,7 @@
 """Capture the DAC limiter sweep on a flashed development image.
 
+The first tone record's Hz is the primary frequency for the generated table.
+
 Run the entire capture inside one autana lock run:
 autana --wait 3600 lock run -- python launcher/tools/audio/audio_drc_sweep.py --board A308
 """
@@ -8,16 +10,25 @@ from datetime import date
 import itertools
 import json
 from pathlib import Path
-import shlex
-import shutil
+import math
+import sys
 import subprocess
 
 ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT / "launcher/tools"))
+from build.c_header import read_define
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from autana_runner import autana_run, record_line
+
+AUDIO = ROOT / "launcher/main/audio"
+VOLUME_MAX = read_define(AUDIO / "audio_out.h", "AUDIO_OUT_VOLUME_MAX_PCT")
+MAX_MS = read_define(AUDIO / "audio_out.h", "AUDIO_OUT_MAX_MS")
+NYQUIST_HZ = read_define(AUDIO / "audio_out.h", "AUDIO_OUT_SAMPLE_RATE_HZ") // 2
+DRC_FIELD_MAX = read_define(AUDIO / "audio_codec_drc.h", "AUDIO_CODEC_DRC_FIELD_MAX")
+DB_AMPLITUDE_SCALE = read_define(ROOT / "launcher/packages/math/include/math/scalar/math_db.h", "MATH_DB_AMPLITUDE_SCALE")
+DRC_LEVEL_DENOMINATOR = 2 * (DRC_FIELD_MAX + 1)
+DRC_LEVEL_DB = tuple(DB_AMPLITUDE_SCALE * math.log10((n + 1) / DRC_LEVEL_DENOMINATOR) for n in range(DRC_FIELD_MAX + 1))
 CAPTURE = ROOT / "docs/audio/data/audio_drc_capture.txt"
-DRC_LEVEL_DB = (-30.1, -24.1, -20.6, -18.1, -16.1, -14.5, -13.2, -12.0,
-                -11.0, -10.1, -9.3, -8.5, -7.8, -7.2, -6.6, -6.0)
-DRC_FIELD_MAX = len(DRC_LEVEL_DB) - 1
-VOLUME_MAX = 100
 PRIMARY_HZ = 1000
 TUNABLES = ("codec_volume", "drc", "drc_max", "drc_min", "drc_win", "drc_ramp")
 
@@ -65,22 +76,16 @@ def tones(args):
 def capture(args):
     configs = list(configurations(args))
     points = list(tones(args))
-    if args.runs <= 0 or args.ms <= 0 or not points or any(hz <= 0 for hz, _ in points):
+    if args.runs <= 0 or not 0 < args.ms <= MAX_MS or not points or any(not 0 < hz < NYQUIST_HZ for hz, _ in points):
         raise ValueError("positive runs, duration and tone frequencies are required")
-    command = shlex.split(args.autana)
-    if not command:
-        raise ValueError("empty autana command")
-    command[0] = shutil.which(command[0]) or command[0]
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("w", encoding="utf-8", newline="\n") as output:
         output.write(f"# autana --json replies on {args.board}, {date.today()}, DRC sweep\n")
         def record(*words):
-            reply = subprocess.run([*command, *map(str, words)], check=True,
-                                   capture_output=True, text=True).stdout.strip()
+            reply = autana_run(args.autana, *words).strip()
             payload = json.loads(reply) if words[0] in ("tone", "buildid") else reply
-            output.write(" ".join(map(str, words)).removesuffix(" --json")
-                         + "\t" + json.dumps(payload, allow_nan=False) + "\n")
-            output.flush()
+            record_line(output, " ".join(map(str, words)).removesuffix(" --json"),
+                        json.dumps(payload, allow_nan=False))
         record("buildid", "--json")
         try:
             for config in configs:

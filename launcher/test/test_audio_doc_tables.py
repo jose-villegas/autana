@@ -416,9 +416,29 @@ class SoundMixToolsTest(unittest.TestCase):
 
 
 sweep = load_tool("audio_drc_sweep")
+import autana_runner as runner
 
 
 class DrcSweepTest(unittest.TestCase):
+    def test_datasheet_and_tunable_contract(self):
+        self.assertAlmostEqual(sweep.DRC_LEVEL_DB[0], -30.1, places=1)
+        self.assertAlmostEqual(sweep.DRC_LEVEL_DB[-1], -6.0, places=1)
+        import re
+        source = (ROOT / "launcher/main/audio/audio_out.c").read_text()
+        self.assertEqual(set(sweep.TUNABLES), set(re.findall(r"TUNE\(audio,\s*(\w+),", source)))
+
+    def test_out_of_range_and_zero_max(self):
+        for option, value in (("--baseline", "101"), ("--max-levels", "16"),
+                              ("--hz", "22050"), ("--ms", "65536")):
+            with self.subTest(option=option), tempfile.TemporaryDirectory() as directory:
+                args = sweep.parser().parse_args(["--board", "TEST", "--out", str(Path(directory) / "out"),
+                                                  option, value])
+                with mock.patch.object(sweep, "autana_run", side_effect=AssertionError("must reject before commands")), self.assertRaises(ValueError):
+                    sweep.capture(args)
+        args = sweep.parser().parse_args(["--board", "TEST", "--max-levels", "0"])
+        configs = list(sweep.configurations(args))
+        self.assertEqual(len(configs), len({tuple(config.items()) for config in configs}))
+
     def test_default_plan(self):
         args = sweep.parser().parse_args(["--board", "TEST"])
         configs = list(sweep.configurations(args))
@@ -438,7 +458,7 @@ class DrcSweepTest(unittest.TestCase):
                 calls = []
                 def run(command, **kwargs):
                     calls.append(command)
-                    self.assertEqual(command[:2], [sweep.shutil.which("python") or "python", "path with spaces/autana.py"])
+                    self.assertEqual(command[:2], [runner.shutil.which("python") or "python", "path with spaces/autana.py"])
                     if command[2] == "tone":
                         if fail:
                             raise RuntimeError("tone failed")
@@ -448,14 +468,14 @@ class DrcSweepTest(unittest.TestCase):
                     else:
                         return mock.Mock(stdout="audio.test=0\n")
                     return mock.Mock(stdout=json.dumps(payload))
-                with mock.patch.object(sweep.subprocess, "run", side_effect=run):
+                with mock.patch.object(runner.subprocess, "run", side_effect=run):
                     if fail:
                         with self.assertRaisesRegex(RuntimeError, "tone failed"):
                             sweep.capture(args)
                     else:
                         sweep.capture(args)
                 self.assertEqual(calls[-len(sweep.TUNABLES):],
-                    [[sweep.shutil.which("python") or "python", "path with spaces/autana.py", "tune", "reset", "audio." + name] for name in sweep.TUNABLES])
+                    [[runner.shutil.which("python") or "python", "path with spaces/autana.py", "tune", "reset", "audio." + name] for name in sweep.TUNABLES])
                 records = out.read_text().splitlines()
                 self.assertTrue(records[0].startswith("# autana --json replies on TEST,"))
                 self.assertTrue(records[1].startswith("buildid\t"))
@@ -475,17 +495,70 @@ class DrcSweepTest(unittest.TestCase):
             capture.write_text(fixture.read_text().replace("1000", "1500"))
             self.assertIn("1500 Hz", audio.render_drc(capture))
 
-    def test_absent_capture_and_block_creation(self):
+    def test_capture_markers(self):
         with tempfile.TemporaryDirectory() as directory:
             doc = Path(directory) / "Audio.md"
-            doc.write_bytes(b"# Audio\r\n\r\n## Output limiter (DRC)\r\n\r\n## Next\r\n")
             missing = Path(directory) / "missing.txt"
+            doc.write_bytes(b"# Audio\r\n\r\n<!-- generated: audio-drc -->\r\n<!-- /generated: audio-drc -->\r\n")
+            self.assertTrue(audio.update_drc(missing, doc))
+            self.assertIn("No capture yet.", doc.read_text())
             self.assertFalse(audio.update_drc(missing, doc, check=True))
             fixture = ROOT / "launcher/test/fixtures/audio_drc_capture.txt"
-            self.assertTrue(audio.update_drc(fixture, doc, check=True))
             self.assertTrue(audio.update_drc(fixture, doc))
             self.assertFalse(audio.update_drc(fixture, doc, check=True))
             self.assertNotIn(b"\n", doc.read_bytes().replace(b"\r\n", b""))
+            doc.write_text("# Audio\n")
+            with self.assertRaises((ValueError, RuntimeError)):
+                audio.update_drc(fixture, doc)
+
+    def test_measurement_selection_and_rejections(self):
+        fixture = (ROOT / "launcher/test/fixtures/audio_drc_capture.txt").read_text()
+        with tempfile.TemporaryDirectory() as directory:
+            capture = Path(directory) / "capture.txt"
+            records = []
+            for line in fixture.splitlines():
+                if not line.startswith("tone"):
+                    records.append(line)
+                    continue
+                command, payload = line.split("\t")
+                reply = json.loads(payload)
+                hz, _, volume = map(int, command.split()[1:])
+                reply["thd_db"] = -42.0 if hz == 1000 and volume == 100 else -12.0
+                reply["peak_dbfs"] = audio.DRC_CLIPPED_DBFS - 1
+                records.append(command + "\t" + json.dumps(reply))
+            capture.write_text("\n".join(records))
+            body = audio.render_drc(capture)
+            self.assertIn("-42.0 | -1.5 | no", body)
+            command, payload = next(line.split("\t") for line in records if line.startswith("tone 1000 "))
+            reply = json.loads(payload)
+            reply.update(hz=500, thd_db=-12.0, peak_dbfs=audio.DRC_CLIPPED_DBFS)
+            records.append("tone 500 500 100\t" + json.dumps(reply))
+            capture.write_text("\n".join(records))
+            self.assertIn("-42.0 | -0.5 | yes", audio.render_drc(capture))
+            capture.write_text("\n".join(records).replace('"thd_db": -42.0', '"thd_db": null')
+                               .replace('"thd_db": -12.0', '"thd_db": null'))
+            self.assertIn("| n/a |", audio.render_drc(capture))
+            for source, replacement, error in (("audio.drc_max", "audio.unknown", "unknown"),
+                                                ('"hz": 1000', '"hz": 999', "disagree")):
+                capture.write_text(fixture.replace(source, replacement))
+                with self.assertRaisesRegex(ValueError, error):
+                    audio.render_drc(capture)
+
+    def test_failed_reset_attempts_remaining_tunables(self):
+        with tempfile.TemporaryDirectory() as directory:
+            args = sweep.parser().parse_args(["--board", "TEST", "--out", str(Path(directory) / "out")])
+            calls = []
+            def run(command, *words):
+                calls.append(words)
+                if words[0] == "buildid":
+                    return '{"build_id": "test-dev"}'
+                if words[:2] == ("tune", "reset") and words[2] != "audio." + sweep.TUNABLES[0]:
+                    return "reset"
+                raise OSError("failed command")
+            with mock.patch.object(sweep, "autana_run", side_effect=run), self.assertRaisesRegex(RuntimeError, "reset"):
+                sweep.capture(args)
+            self.assertEqual(calls[-len(sweep.TUNABLES):],
+                             [("tune", "reset", "audio." + name) for name in sweep.TUNABLES])
 
 
 if __name__ == "__main__":

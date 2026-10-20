@@ -225,8 +225,10 @@ The ES8311 DAC limiter is controlled by `audio.drc`, `audio.drc_max`,
 `audio.drc_min`, `audio.drc_win`, and `audio.drc_ramp`.
 Level fields are datasheet indices; window and ramp fields are nibbles.
 
-`audio.codec_volume` sets codec output gain and the limiter's maximum gain.
-Defaults keep DRC off and codec volume at 30; release applies constants at open.
+`audio.codec_volume` sets codec output gain. The datasheet describes it as
+the limiter's maximum gain; the capture table shows its measured effect.
+Defaults keep DRC off and codec volume at `AUDIO_OUT_CODEC_VOLUME`.
+Release applies constants at open.
 Development builds apply changed tunables on the next PCM write.
 
 Capture on a development image inside one board lock:
@@ -238,7 +240,15 @@ python launcher/tools/audio/audio_doc_tables.py --write
 
 The sweep resets every audio tunable at exit. Its arguments select codec gains,
 limiter fields, tone points, duration, and repeats. The generated table appears
-when `docs/audio/data/audio_drc_capture.txt` exists.
+from `docs/audio/data/audio_drc_capture.txt`.
+
+The metric is THD+N over harmonics 2..5 below Nyquist with a rectangular
+window. Clean 500 ms host sines, including noninteger frequencies, measure
+below `AUDIO_LOOPBACK_THD_FLOOR_DB` (-60 dB).
+
+<!-- generated: audio-drc sha256=a93006c90ebb47c04a5a941a4f16d5cd1d65ec2d7326a2c3e4506015b15e8a1c -->
+No capture yet.
+<!-- /generated: audio-drc -->
 
 ## Constraint for held-open audio
 

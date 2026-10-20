@@ -528,8 +528,8 @@ def parse_tone(reply):
     match = re.fullmatch(
         r"TONE (heard|not heard) ([0-9]+) Hz: (-?[0-9]+\.[0-9]+) dB "
         r"\(silence (-?[0-9]+\.[0-9]+) dB\), path (internal|acoustic), "
-        r"measured (-?[0-9]+\.[0-9]+ Hz|n/a), open ([0-9]+) B DMA, "
-        r"thd (-?[0-9]+\.[0-9]+|n/a) dB, peak (-?[0-9]+\.[0-9]+) dBFS", reply)
+        r"measured (-?[0-9]+\.[0-9]+ Hz|n/a), open ([0-9]+) B DMA"
+        r"(?:, thd (-?[0-9]+\.[0-9]+|n/a) dB, peak (-?[0-9]+\.[0-9]+) dBFS)?", reply)
     if not match:
         raise ValueError(f"invalid TONE reply: {reply}")
     heard, hz, tone_db, silence_db, path, measured_hz, dma, thd_db, peak_dbfs = match.groups()
@@ -537,7 +537,7 @@ def parse_tone(reply):
     # hz_error is Hz: measured minus requested.
     return {"hz": int(hz), "tone_db": float(tone_db), "silence_db": float(silence_db),
             "heard": heard == "heard", "open_dma_bytes": int(dma), "path": path,
-            "thd_db": None if thd_db == "n/a" else float(thd_db), "peak_dbfs": float(peak_dbfs),
+            "thd_db": None if thd_db in (None, "n/a") else float(thd_db), "peak_dbfs": None if peak_dbfs is None else float(peak_dbfs),
             "measured_hz": measured_hz, "hz_error": None if measured_hz is None else measured_hz - int(hz)}
 
 

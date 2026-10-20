@@ -135,6 +135,13 @@ class JsonReadTests(unittest.TestCase):
         self.assertIsNone(result["measured_hz"])
         self.assertIsNone(result["hz_error"])
 
+    def test_main_tone_reply(self):
+        reply = "TONE heard 440 Hz: -21.5 dB (silence -63.0 dB), path acoustic, measured 440.02 Hz, open 8192 B DMA"
+        result = autana.parse_tone(reply)
+        self.assertIsNone(result["thd_db"])
+        self.assertIsNone(result["peak_dbfs"])
+        self.assertEqual(result["hz"], 440)
+
     def test_tone_unavailable_thd(self):
         reply = "TONE heard 8000 Hz: -21.5 dB (silence -63.0 dB), path acoustic, measured n/a, open 8192 B DMA, thd n/a dB, peak -0.1 dBFS"
         result = autana.parse_tone(reply)

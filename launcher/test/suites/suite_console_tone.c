@@ -1,7 +1,9 @@
 /* Tone command accepts complete decimal arguments within audio limits. */
 #include <stdio.h>
+#include <string.h>
 #include "console/verbs/console_tone_parse.h"
 #include "console/verbs/console_tone_reply.h"
+#include "math/scalar/math_db.h"
 #include "suites.h"
 #include "unity.h"
 #define TEST_TARGET_HZ   1000u
@@ -11,6 +13,19 @@ static console_tone_args_t
 fixture(void) {
     return (console_tone_args_t){
         .hz = TEST_TARGET_HZ, .ms = TEST_DURATION_MS, .volume_pct = CONSOLE_TONE_DEFAULT_VOLUME_PCT};
+}
+
+static void
+test_tone_reply_capacity(void) {
+    console_tone_args_t args = fixture();
+    args.hz = AUDIO_OUT_NYQUIST_HZ - 1;
+    args.internal = false;
+    const audio_loopback_result_t result = {
+        .measured_hz = AUDIO_OUT_NYQUIST_HZ, .thd_db = MATH_DB_FLOOR, .peak_dbfs = MATH_DB_FLOOR};
+    char line[CONSOLE_TONE_REPLY_BYTES];
+    TEST_ASSERT_TRUE(
+        console_tone_reply(line, sizeof line, &args, false, MATH_DB_FLOOR, MATH_DB_FLOOR, &result, SIZE_MAX));
+    TEST_ASSERT_LESS_THAN_UINT(CONSOLE_TONE_REPLY_BYTES, strlen(line) + 1);
 }
 
 static void
@@ -361,6 +376,7 @@ run_console_tone_suite(void) {
     RUN_TEST(test_tone_acoustic_has_no_feedback);
 #endif
     RUN_TEST(test_tone_reply_frequency);
+    RUN_TEST(test_tone_reply_capacity);
     RUN_TEST(test_tone_parse_valid);
     RUN_TEST(test_tone_parse_invalid);
 }

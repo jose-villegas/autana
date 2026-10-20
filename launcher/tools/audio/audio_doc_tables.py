@@ -21,7 +21,7 @@ sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 from frame_cost import frame_cost_window, US_PER_MS
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from audio_drc_sweep import DRC_LEVEL_DB, TUNABLES
+from audio_drc_sweep import DRC_LEVEL_DB, TUNABLES, VOLUME_MAX
 
 DRC_CAPTURE = Path("docs/audio/data/audio_drc_capture.txt")
 DRC_CLIPPED_DBFS = -0.5
@@ -231,6 +231,7 @@ def render_drc(path):
         raise ValueError("DRC capture must start with buildid")
     state = {}
     groups = {}
+    primary_hz = next((int(command[1]) for command, _ in records if command[:1] == ["tone"]), None)
     for command, reply in records:
         if command[:1] == ["tune"]:
             if command[1] == "reset":
@@ -244,7 +245,7 @@ def render_drc(path):
             if state.keys() != set(TUNABLES):
                 raise ValueError("incomplete DRC configuration")
             key = tuple(state[name] for name in TUNABLES)
-            if (state["drc"] not in (0, 1) or not 0 <= state["codec_volume"] <= PERCENT
+            if (state["drc"] not in (0, 1) or not 0 <= state["codec_volume"] <= VOLUME_MAX
                     or any(not 0 <= state[name] < len(DRC_LEVEL_DB) for name in TUNABLES[2:])):
                 raise ValueError("invalid DRC configuration")
             hz, ms, volume = map(int, command[1:4])
@@ -257,14 +258,8 @@ def render_drc(path):
                     raise ValueError("invalid DRC measurement")
             groups.setdefault(key, []).append((hz, ms, volume, reply))
     rows = []
-    primary_hz = None
     for key, samples in groups.items():
         codec, on, maximum, minimum, _, _ = key
-        candidates = [hz for hz in {hz for hz, _, _, _ in samples}
-                      if set(DRC_LEVEL_VOLUMES) <= {volume for frequency, _, volume, _ in samples if frequency == hz}]
-        if len(candidates) != 1 or primary_hz is not None and candidates[0] != primary_hz:
-            raise ValueError("DRC capture needs one consistent frequency with every tone volume")
-        primary_hz = candidates[0]
         primary = [(volume, reply) for hz, _, volume, reply in samples if hz == primary_hz]
         if len({ms for _, ms, _, _ in samples}) != 1:
             raise ValueError("DRC duration must be constant per configuration")
@@ -291,22 +286,7 @@ def render_drc(path):
 
 
 def update_drc(capture, document, check=False):
-    if not capture.exists():
-        return False
-    body = render_drc(capture)
-    raw = document.read_bytes()
-    newline = "\r\n" if b"\r\n" in raw else "\n"
-    text = raw.decode("utf-8").replace("\r\n", "\n")
-    if "audio-drc" not in blocks(text):
-        heading = "## Output limiter (DRC)\n"
-        start = text.index(heading) + len(heading)
-        end = text.find("\n## ", start)
-        end = len(text) if end < 0 else end
-        if check:
-            return True
-        text = (text[:end].rstrip() + "\n\n<!-- generated: audio-drc -->\n<!-- /generated: audio-drc -->\n\n"
-                + text[end:].lstrip("\n"))
-        document.write_bytes(text.replace("\n", newline).encode("utf-8"))
+    body = render_drc(capture) if capture.exists() else "No capture yet.\n"
     return replace_block(document, "audio-drc", body, check=check)
 
 
