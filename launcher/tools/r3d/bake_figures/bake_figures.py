@@ -25,7 +25,7 @@ from PIL import Image, ImageFilter
 TOOLS = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS / "render"))
-from docs.plot_style import FAINT, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE, figure, save, save_gif, subplots  # noqa: E402
+from docs.plot_style import FAINT, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE, figure, save, subplots  # noqa: E402
 from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection  # noqa: E402
 from r3d import path_bake  # noqa: E402
 from r3d.light import LIGHT_GAMMA, light, local_occlusion, sky_directions, tangent_frame  # noqa: E402
@@ -53,19 +53,15 @@ SWEEP_RAYS = 256
 NOISE_RAYS = (4, 8, 16, 32, 64, 128, 256, 512)
 NOISE_REFERENCE_RAYS = 4096
 NOISE_POINTS = np.linspace(0.5, 8.0, 16)
-# The 3D views: an orbit of ORBIT_FRAMES frames at ORBIT_FPS, from VIEW_ELEVATION degrees up.
-ORBIT_FRAMES = 36
-ORBIT_FPS = 12
-FULL_TURN = 360
-VIEW_ELEVATION = 22
-VIEW_AZIMUTH = -60
+# The 3D views: from VIEW_ELEVATION degrees up, turned so the wall stands nearly edge-on at the left and each ray's
+# length to it shows.
+VIEW_ELEVATION = 14
+VIEW_AZIMUTH = -20
 BOX = 8.0
 BOX_ZOOM = 1.15
 SUN_ARROW = 3.0
 WEIGHT_MAP = "plasma_r"
 PANEL = (3.4, 3.0)  # inches per panel
-GIF_COLORS = 64
-GIF_DPI = 80
 # The score figure: a test picture of SCORE_SIZE pixels, and the changes scored against it.
 SCORE_SIZE = 96
 BRIGHTNESS_STEP = 18
@@ -159,17 +155,13 @@ def draw_rays(axis, origin, directions, reach, colours, shown):
     axis.scatter(*origin, color=INK, s=24, depthshade=False)
 
 
-def orbit(fig, axis, path, title):
-    def draw(frame):
-        axis.view_init(elev=VIEW_ELEVATION, azim=VIEW_AZIMUTH + FULL_TURN * frame / ORBIT_FRAMES, vertical_axis="y")
-        axis.set_title(title, fontsize=TITLE_SIZE)
-
-    draw(0)
-    fig.set_dpi(GIF_DPI)
-    save_gif(fig, draw, ORBIT_FRAMES, path, ORBIT_FPS, colors=GIF_COLORS)
+def still(fig, axis, path, title):
+    axis.view_init(elev=VIEW_ELEVATION, azim=VIEW_AZIMUTH, vertical_axis="y")
+    axis.set_title(title, fontsize=TITLE_SIZE)
+    save(fig, path)
 
 
-def occlusion_rays_gif(data, path):
+def occlusion_rays_figure(data, path):
     fig = figure((PANEL[0] * 1.3, PANEL[1] * 1.4))
     axis = fig.add_subplot(projection="3d")
     draw_corridor(axis)
@@ -181,7 +173,7 @@ def occlusion_rays_gif(data, path):
     bar.set_label("hit weight w = 1 - t / D (dotted: no hit within D)", fontsize=LABEL_SIZE)
     bar.ax.tick_params(labelsize=LABEL_SIZE)
     title = f"{len(data.directions)} rays, reach D = {AO_DISTANCE:g}: f = {data.factor:.2f}"
-    orbit(fig, axis, path, title)
+    still(fig, axis, path, title)
 
 
 def occlusion_falloff(data, path):
@@ -241,7 +233,7 @@ def bounce_data():
                            xs=xs, direct=direct, sweep=sweep, noise=noise)
 
 
-def bounce_rays_gif(data, path):
+def bounce_rays_figure(data, path):
     fig = figure((PANEL[0] * 1.3, PANEL[1] * 1.3))
     axis = fig.add_subplot(projection="3d")
     draw_corridor(axis)
@@ -255,7 +247,7 @@ def bounce_rays_gif(data, path):
     mean = data.per_ray.mean(axis=0)
     title = (f"{len(data.directions)} rays, each coloured by the light its path gathers\n"
              f"(dotted: nothing). Mean r, g, b = {mean[0]:.2f}, {mean[1]:.2f}, {mean[2]:.2f}")
-    orbit(fig, axis, path, title)
+    still(fig, axis, path, title)
 
 
 def bounce_figure(data, path):
@@ -343,11 +335,11 @@ def main():
     parser.add_argument("--out", type=pathlib.Path, required=True, help="the folder the figures go to")
     args = parser.parse_args()
     occlusion = occlusion_data(SHOWN_RAYS)
-    occlusion_rays_gif(occlusion, args.out / "bake-ao-rays.gif")
+    occlusion_rays_figure(occlusion, args.out / "bake-ao-rays.png")
     occlusion_falloff(occlusion, args.out / "bake-ao-falloff.png")
     directions_figure(args.out / "bake-directions.png")
     bounce = bounce_data()
-    bounce_rays_gif(bounce, args.out / "bake-bounce-rays.gif")
+    bounce_rays_figure(bounce, args.out / "bake-bounce-rays.png")
     bounce_figure(bounce, args.out / "bake-bounce-sweep.png")
     scores_figure(args.out / "bake-scores.png")
 

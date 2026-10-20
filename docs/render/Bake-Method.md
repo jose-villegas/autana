@@ -30,7 +30,7 @@ close around it: a distance-limited obscurance<sup>[[14]](../Citations.md#14)</s
 The point casts $R$ rays. A ray that hits a surface at distance $`t_i`$ within
 the reach $D$ counts $`w_i = 1 - t_i/D`$; any other ray counts nothing.
 
-![A floor point beside a wall, its rays coloured by their hit weight](../images/render/bake-ao-rays.gif)
+![A floor point beside a wall, its rays coloured by their hit weight](../images/render/bake-ao-rays.png)
 
 With strength $s$ the factor is
 
@@ -59,7 +59,7 @@ Each ray from a point is a path<sup>[[16]](../Citations.md#16)</sup>: Mitsuba
 follows it for up to $K$ bounces, with a shadow ray toward the lights at every
 hit. What comes back holds the hit's own shadow, albedo and further bounces.
 
-![A floor point's rays, each coloured by the light its path gathers off the sunlit wall](../images/render/bake-bounce-rays.gif)
+![A floor point's rays, each coloured by the light its path gathers off the sunlit wall](../images/render/bake-bounce-rays.png)
 
 The mean of the $R$ rays is the bounced light (irradiance over $\pi$). It adds
 to the direct light before the albedo, as in the diagram above:

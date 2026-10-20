@@ -241,7 +241,7 @@ run "$PYTHON" launcher/tools/r3d/skin/skin_figures.py --cc "$cc" --out "$OUT/ren
 # The bake method's figures: local occlusion and bounced light on a floor beside a wall, and the scores.
 R3D_PYTHON=$(run find_r3d_python "$PWD")
 run "$R3D_PYTHON" launcher/tools/r3d/bake_figures/bake_figures.py --out "$OUT/render" > "$WORK/bake_figures.log" 2>&1
-# --orphans scans this runner: bake-ao-rays.gif, bake-ao-falloff.png, bake-directions.png, bake-bounce-rays.gif, bake-bounce-sweep.png, bake-scores.png
+# --orphans scans this runner: bake-ao-rays.png, bake-ao-falloff.png, bake-directions.png, bake-bounce-rays.png, bake-bounce-sweep.png, bake-scores.png
 
 # Dynamic resolution's tables and chart, from the board capture and the
 # reference scores kept beside its page.
