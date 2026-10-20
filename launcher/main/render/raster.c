@@ -29,7 +29,7 @@ typedef struct {
     int work_index;
     const r3d_pipeline_buffers_t* buffers;
     r3d_span_target_t* target;
-    int64_t* elapsed_us;
+    int32_t* elapsed_us;
 } slice_t;
 
 typedef struct {
@@ -38,7 +38,7 @@ typedef struct {
     slice_t mine, other;
     r3d_pipeline_buffers_t buffers;
     r3d_span_target_t targets[2];
-    int64_t mine_us, other_us;
+    int32_t mine_us, other_us; /* Draw slices stay far below the int32 microsecond limit of 35 minutes. */
 } draw_work_t;
 
 _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
@@ -140,7 +140,7 @@ draw_slice(void* ctx) {
     }
     r3d_pipeline_draw(s->mesh, s->lens, s->visible, s->visible_count, b->cs, b->rows, target, b->work[s->work_index]);
     const int64_t elapsed_us = timing_now_us() - began_us;
-    *s->elapsed_us = elapsed_us;
+    *s->elapsed_us = (int32_t)elapsed_us;
 }
 
 static void
@@ -309,7 +309,8 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     other->count = mid;
     job_run_split(draw_slice, mine, other, sizeof *mine);
     if (retained != NULL) {
-        *retained = (int16_t)(raster_split_update(share, work->other_us, work->mine_us) - RASTER_SPLIT_EVEN);
+        *retained =
+            (int16_t)(raster_split_update(share, (int64_t)work->other_us, (int64_t)work->mine_us) - RASTER_SPLIT_EVEN);
     }
     FRAME_COST_END(drawn_from, "r3d.draw");
 }
