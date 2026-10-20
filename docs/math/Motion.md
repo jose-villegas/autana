@@ -29,7 +29,8 @@ A transform orbits a target, with direct steering, a decaying fling and a critic
 ### Steering and fling
 
 Held steering applies the frame's turn $`\Delta`$ directly. Its smoothed speed
-follows that turn over the frame time $`\Delta t`$, with half-life $`h_d`$:
+follows that turn over the frame time $`\Delta t`$, with half-life $`h_d`$
+(`ORBIT_MOTION_DRAG_VELOCITY_HALF_LIFE_S`):
 
 ```math
 v \gets v + (\Delta/\Delta t-v)(1-2^{-\Delta t/h_d})
@@ -37,8 +38,9 @@ v \gets v + (\Delta/\Delta t-v)(1-2^{-\Delta t/h_d})
 
 ![Top view of held orbit steering followed by a slowing fling, with a moving speed cursor and half-life marks](../images/math/orbit-fling.gif)
 
-After release, speed halves every $`h`$ seconds. The exact integral gives the
-angle covered; the same elapsed time gives the same result at either frame step.
+After release, speed halves every $`h`$ seconds (`ORBIT_MOTION_FLING_HALF_LIFE_S`).
+The exact integral gives the angle covered; the same elapsed time gives the same
+result at either frame step.
 
 ```math
 v(t)=v_0 2^{-t/h}, \qquad x(t)=\frac{v_0 h}{\ln 2}(1-2^{-t/h})
@@ -62,9 +64,8 @@ Critical damping prevents oscillation; it does not guarantee no crossing for
 arbitrary initial velocity. For $`e_0>0`$, a velocity $`v_0<-e_0/\tau`$ crosses
 home.
 
-Reset snaps home when all angle offsets (rad), log-distance offsets and speeds
-(per second) fall below `ORBIT_MOTION_RESET_SETTLED` ($`10^{-4}`$). This strict
-threshold explains why the dotted settle times follow visibly flat curves.
+Reset snaps home once every yaw, pitch and log-distance offset and its speed is
+below `ORBIT_MOTION_RESET_SETTLED`. The dotted lines mark that moment.
 
 ![Reset from rest, moving away, and moving quickly toward home; the last crosses home, with dotted settle times](../images/math/orbit-reset-spring.png)
 
@@ -106,7 +107,6 @@ A row of points on springs carries a wave along caller-owned Q16 pixel offsets a
 | `SPRING_LINE_REST_OFFSET`, `SPRING_LINE_REST_VELOCITY` | Thresholds for putting the line to rest |
 | `SPRING_LINE_MAX_OFFSET` | Maximum offset magnitude |
 | `SPRING_LINE_OUT_SHIFT`, `SPRING_LINE_OUT_ONE` | Fractional bits and units per output pixel |
-
 
 ### Wave tick and bump
 

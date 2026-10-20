@@ -30,7 +30,7 @@ FLING_HALF_LIVES = 4
 TRAIL_SAMPLES = 5
 ORBIT_MARGIN = 1.1
 ANIMATION_DPI = 80
-DECAY_LABEL_PADDING = 0.15
+PANEL_LABEL_PADDING = 0.15
 WAVE_COLOR_PERCENTILE = 98
 WAVE_PUSH_TICKS = 5
 
@@ -76,7 +76,7 @@ def orbit_animation(data, output):
 
 def decay_figure(data, output):
     fig, axes = subplots(1, PANELS, (PANEL_SIZE * PANELS, PANEL_SIZE + PANEL_TITLE_ROOM))
-    fig.get_layout_engine().set(w_pad=DECAY_LABEL_PADDING)
+    fig.get_layout_engine().set(w_pad=PANEL_LABEL_PADDING)
     for index, (run, color) in enumerate(zip(data, SLOTS)):
         samples = np.array(run["samples"])
         for axis, column in zip(axes, (1, 2)):
@@ -146,6 +146,7 @@ def wave_figures(data, output):
 
     save_gif(fig, draw, GIF_FRAMES, output / "spring-line-wave.gif", GIF_FPS)
     fig, (heat, bump) = subplots(1, PANELS, (PANEL_SIZE * PANELS, PANEL_SIZE + PANEL_TITLE_ROOM))
+    fig.get_layout_engine().set(w_pad=PANEL_LABEL_PADDING)
     bound = np.percentile(abs(offsets[WAVE_PUSH_TICKS:]), WAVE_COLOR_PERCENTILE)
     image = heat.imshow(offsets, aspect="auto", origin="upper", cmap=OFFSET_COLORMAP, vmin=-bound, vmax=bound,
                         extent=(-COLUMN_EDGE, offsets.shape[1] - COLUMN_EDGE, len(runs) - COLUMN_EDGE, -COLUMN_EDGE))
