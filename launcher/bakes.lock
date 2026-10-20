@@ -115,15 +115,15 @@ host = "Linux x86_64"
 # and sampler code. bake.py lock writes them; bake.py check samples them again.
 
 [[poses]]
-key = "2df62d142c1254313886d9115947d91323f64a0adf98895426d7f4e96715d587"
-poses = "bc608ce3264275d892202b270ad05e255c7878431cbea66d907ba0e927ecf8da"
-count = 37
+key = "dfc31892e1bdc3630deb56e2cca775e438cbfc152e05cb18f0ca96bed6d2f36a"
+poses = "7f5a1e528b63cc2ebea4ea3c6795518dc30bb47befc15345be563a2d9a4ddd10"
+count = 1816
 clip = "launcher/demo/sponza/flythrough.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "772342c15853fdd1d7b595fb367cc9cede7eb7571d9c232ea5b6113661b9de3b"
-poses = "7f5a1e528b63cc2ebea4ea3c6795518dc30bb47befc15345be563a2d9a4ddd10"
-count = 1816
+key = "f119864ea7963d953dc77b95e27d5baf9db59e600e66b326a9395c713570464b"
+poses = "bc608ce3264275d892202b270ad05e255c7878431cbea66d907ba0e927ecf8da"
+count = 37
 clip = "launcher/demo/sponza/flythrough.anim.toml"
 host = "Windows AMD64"
