@@ -12,7 +12,7 @@ from math_figures import (PANEL_SIZE, PANEL_TITLE_ROOM, PIXEL_FILL, POINT, POINT
                           run_probe, square_axes)
 from docs.plot_style import FAINT, INK, LABEL_SIZE, MUTED, TITLE_SIZE, figure as new_figure, save
 import numpy as np
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Circle, Patch, Rectangle
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 PROBE = pathlib.Path(__file__).with_name("geometry_figures_probe.c")
@@ -199,6 +199,114 @@ def frustum_figure(data, output):
     save(figure, output)
 
 
+BOX_COLORS = ("#55a868", "#e2a43a", "#aaaaaa")
+BOX_X_LIMITS = (-4, 6)
+BOX_Z_LIMITS = (-1, 6)
+BOX_FIGURE_SCALE = (1.8, 1.4)
+CORNER_INSET = (0.65, 0.65, 0.31, 0.25)
+CORNER_X_LIMITS = (2.4, 3.1)
+CORNER_Z_LIMITS = (0.55, 0.85)
+FRUSTUM_GRID_SAMPLES = 401
+FRUSTUM_SHADE_ALPHA = 0.08
+BOX_CORNER_NUMBER_OFFSET = (0, 10)
+BOX_NUMBER_BACKGROUND = dict(facecolor="white", edgecolor="none", alpha=0.85, pad=0.5)
+QUERY_FIGURE_SCALE = (1.4, 1.7)
+QUERY_SEGMENT_LABELS = ((-3, -2), (0.6, -3.1), (2.5, -2), (-2.8, 3.1))
+QUERY_LEFT_X_LIMITS = (-1.8, 4.6)
+QUERY_LEFT_Z_LIMITS = (-3, 3.4)
+QUERY_RIGHT_X_LIMITS = (-3.5, 5.5)
+QUERY_RIGHT_Z_LIMITS = (-4.5, 4.5)
+
+
+def draw_box(axis, bounds, color=SHAPE_FILL, label=None):
+    lo, hi = np.array(bounds)[:, [0, 2]]
+    axis.add_patch(Rectangle(lo, *(hi - lo), facecolor=color, edgecolor=color,
+                             alpha=SHAPE_ALPHA, label=label))
+
+
+def box_frustum_figure(data, output):
+    figure, axis = plt.subplots(figsize=tuple(PANEL_SIZE * scale for scale in BOX_FIGURE_SCALE), layout="constrained")
+    square_axes(axis, "Closed boxes against frustum planes (y = 0)")
+    axis.set_xlim(*BOX_X_LIMITS)
+    axis.set_ylim(*BOX_Z_LIMITS)
+    x, z = np.meshgrid(np.linspace(*BOX_X_LIMITS, FRUSTUM_GRID_SAMPLES),
+                       np.linspace(*BOX_Z_LIMITS, FRUSTUM_GRID_SAMPLES))
+    inside_distance = np.minimum.reduce([a * x + c * z + d for a, _, c, d in data["planes"][:3]])
+    axis.contourf(x, z, inside_distance, levels=[0, inside_distance.max()],
+                  colors=[SHAPE_FILL], alpha=FRUSTUM_SHADE_ALPHA)
+    for plane, name, color in zip(data["planes"][:3], PLANE_NAMES[:3], PLANE_COLORS[:3]):
+        zero_line(axis, plane, 0, color, name)
+    for index, (bounds, outside, mask) in enumerate(data["boxes"]):
+        color = BOX_COLORS[2 if outside else (1 if mask else 0)]
+        draw_box(axis, bounds, color)
+        lo, hi = np.array(bounds)[:, [0, 2]]
+        middle = (lo + hi) / 2
+        axis.annotate(str(index + 1), middle, xytext=BOX_CORNER_NUMBER_OFFSET if index == len(data["boxes"]) - 1 else (0, 0),
+                      textcoords="offset points", ha="center", va="center", fontsize=LABEL_SIZE,
+                      bbox=BOX_NUMBER_BACKGROUND, zorder=4)
+    axis.annotate("near only", (0, 1), xytext=(-1.9, 0.1), fontsize=LABEL_SIZE,
+                  arrowprops=dict(arrowstyle="->", color=INK))
+    axis.annotate("corner looseness", (2.75, 0.66), xytext=(2.4, -0.7), fontsize=LABEL_SIZE,
+                  arrowprops=dict(arrowstyle="->", color=INK))
+    inset = axis.inset_axes(CORNER_INSET)
+    inset.set_xlim(*CORNER_X_LIMITS)
+    inset.set_ylim(*CORNER_Z_LIMITS)
+    inset.set_title("Corner 8 (enlarged)", fontsize=LABEL_SIZE)
+    inset.tick_params(labelsize=LABEL_SIZE)
+    draw_box(inset, data["boxes"][-1][0], BOX_COLORS[1])
+    for plane, color in zip(data["planes"][:3], PLANE_COLORS[:3]):
+        zero_line(inset, plane, 0, color)
+    handles, _ = axis.get_legend_handles_labels()
+    handles.extend(Patch(facecolor=color, label=label) for color, label in
+                   zip(BOX_COLORS, ("inside (mask = 0)", "crossing", "outside")))
+    axis.legend(handles=handles, fontsize=LABEL_SIZE, loc="upper left", bbox_to_anchor=(1.02, 1))
+    axis.set_xlabel("x", fontsize=LABEL_SIZE)
+    axis.set_ylabel("z", fontsize=LABEL_SIZE)
+    save(figure, output)
+
+
+def sphere_queries_figure(data, output):
+    figure, (left, right) = panels()
+    figure.set_size_inches(PANEL_SIZE * PANELS * QUERY_FIGURE_SCALE[0], PANEL_SIZE * QUERY_FIGURE_SCALE[1])
+    for axis, title in ((left, "Sphere / box closest points"), (right, "Segment entry parameters")):
+        square_axes(axis, title)
+        draw_box(axis, data["box"], label="box")
+        axis.set_xlabel("x", fontsize=LABEL_SIZE)
+        axis.set_ylabel("z", fontsize=LABEL_SIZE)
+    for (sphere, closest, hit), label, color in zip(data["spheres"], ("overlap", "touch", "miss"),
+                                                  (BOX_COLORS[0], BOX_COLORS[1], BOX_COLORS[2])):
+        centre, radius = sphere
+        centre, closest = np.array(centre)[[0, 2]], np.array(closest)[[0, 2]]
+        left.add_patch(Circle(centre, radius, fill=False, edgecolor=color, label=f"{label}: {hit}"))
+        left.plot(*np.array([centre, closest]).T, "--", color=color)
+        left.scatter(*closest, color=color, s=POINT_SIZE)
+    centre, radius = data["segment_sphere"]
+    right.add_patch(Circle(np.array(centre)[[0, 2]], radius, fill=False, edgecolor=POINT, label="sphere"))
+    for (a, c, results), label_position in zip(data["segments"], QUERY_SEGMENT_LABELS):
+        line = np.array([a, c])[:, [0, 2]]
+        right.plot(*line.T, color=MUTED, linestyle="--" if not any(r[0] for r in results) else "-")
+        for target, (hit, t, point) in enumerate(results):
+            if hit:
+                point = np.array(point)[[0, 2]]
+                color = SHAPE_FILL if target == 0 else POINT
+                right.scatter(*point, color=color, s=POINT_SIZE, zorder=3)
+                label = "inside start" if t == 0 else "hit"
+                right.annotate(f"{label}: t = {t:.3g}", point, xytext=label_position,
+                               fontsize=LABEL_SIZE, color=color,
+                               arrowprops=dict(arrowstyle="->", color=color))
+        if not any(result[0] for result in results):
+            right.annotate("miss", line.mean(axis=0), xytext=label_position, fontsize=LABEL_SIZE,
+                           color=MUTED, arrowprops=dict(arrowstyle="->", color=MUTED))
+    left.set_xlim(*QUERY_LEFT_X_LIMITS)
+    left.set_ylim(*QUERY_LEFT_Z_LIMITS)
+    right.set_xlim(*QUERY_RIGHT_X_LIMITS)
+    right.set_ylim(*QUERY_RIGHT_Z_LIMITS)
+    for axis in (left, right):
+        axis.set_box_aspect(1)
+        axis.legend(fontsize=LABEL_SIZE, loc="upper center", bbox_to_anchor=(0.5, -0.13), ncol=2)
+    save(figure, output)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cc", required=True)
@@ -210,7 +318,9 @@ def main():
                             ("plane-distance", "distance", distance_figure),
                             ("plane-from-points", "triangle", points_figure),
                             ("plane-from-rows", "rows", rows_figure),
-                            ("frustum", "frustum", frustum_figure)):
+                            ("frustum", "frustum", frustum_figure),
+                            ("box3-frustum", "box_frustum", box_frustum_figure),
+                            ("box3-sphere-queries", "queries", sphere_queries_figure)):
         plot(data[key], args.out / (name + ".png"))
     return 0
 
