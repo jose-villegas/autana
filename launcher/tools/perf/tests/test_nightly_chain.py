@@ -593,7 +593,10 @@ class NightlyTests(unittest.TestCase):
         args = SimpleNamespace(repo=self.repo, tip="HEAD", boards=None, data=self.args.data,
                                out=self.root / "plan.json", queue_at=None, from_sha=None, max_steps=None,
                                selftest_board=None)
-        with patch.object(chain.subprocess, "check_output", return_value=json.dumps(listing)), \
+        real = chain.subprocess.check_output
+        def devices(command, **kwargs):
+            return json.dumps(listing) if "devices" in command else real(command, **kwargs)
+        with patch.object(chain.subprocess, "check_output", side_effect=devices), \
                 patch.object(chain, "read_last_night", return_value=None), \
                 patch("sys.stdout", new_callable=io.StringIO) as output:
             chain.plan(args, self.clock)
@@ -603,7 +606,7 @@ class NightlyTests(unittest.TestCase):
         self.assertEqual(output.getvalue().splitlines(), ["SCOPED_BOARDS=20E8 A308", "SELFTEST_BOARD=20E8"])
         listing["boards"] = [dict(board, port=None) for board in listing["boards"]]
         args.boards = None
-        with patch.object(chain.subprocess, "check_output", return_value=json.dumps(listing)), \
+        with patch.object(chain.subprocess, "check_output", side_effect=devices), \
                 self.assertRaises(SystemExit):
             chain.plan(args, self.clock)
 
