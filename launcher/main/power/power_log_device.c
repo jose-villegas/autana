@@ -15,6 +15,7 @@ static power_battery_t previous;
 static bool have_previous;
 static int64_t last_log_us;
 static bool failure_reported;
+static power_log_warning_t warning;
 
 static void
 read_slots(power_log_slot_t slots[POWER_LOG_SLOTS], int64_t* packed) {
@@ -49,7 +50,8 @@ append(const power_battery_t* battery, int64_t now_us, power_log_reason_t reason
 }
 
 void
-power_log_start(const power_battery_t* battery, int64_t now_us) {
+power_log_start(const power_battery_t* battery, int64_t now_us, power_log_warning_t thresholds) {
+    warning = thresholds;
     log_mutex = xSemaphoreCreateMutexStatic(&log_mutex_storage);
     power_log_slot_t* slots = calloc(POWER_LOG_SLOTS, sizeof *slots);
     if (slots == NULL) {
@@ -72,7 +74,8 @@ power_log_poll(const power_battery_t* battery, int64_t now_us) {
         return;
     }
     xSemaphoreTake(log_mutex, portMAX_DELAY);
-    const power_log_reason_t reason = power_log_decide(have_previous ? &previous : NULL, battery, now_us, last_log_us);
+    const power_log_reason_t reason =
+        power_log_decide(have_previous ? &previous : NULL, battery, now_us, last_log_us, &warning);
     if (reason != POWER_LOG_NONE) {
         append(battery, now_us, reason);
     }

@@ -158,7 +158,7 @@ Only reads the board, so running a command twice changes nothing.
 | `autana screenshot [--as-shown\|--framebuffer] [-o PATH]` | `PATH.png` plus a `PATH.json` state snapshot. Landscape by default. |
 | `autana screenshot --frames N -o PATH` | `N` frames as `PATH-00` on: the loop is frozen and stepped a frame between captures, then resumed. |
 | `autana battery [--json]` | Fresh battery voltage, percentage, USB, charge phase and flow, plus raw PMU status bytes; development builds. |
-| `autana battery --log [--json]` | Persistent battery records oldest first; JSON is an array. Development builds. |
+| `autana battery --log [--json]` | Persistent battery records oldest first; JSON is an array. Reasons: `periodic`, `transition`, `boot`, `shutdown-warning`. Development builds. |
 | `autana battery --log --clear` | Erase the battery history namespace. |
 | `autana heap [--json]` | Free bytes and largest block in the internal DMA pool (`MEMORY_DMA`). |
 | `autana framewatch` | The frame watch as JSON: allocations, frees and log lines repeating frame after frame ([the frame watch](../Firmware-Architecture.md#the-frame-watch-no-allocating-or-logging-in-steady-state)). |

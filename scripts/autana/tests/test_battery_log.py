@@ -30,6 +30,10 @@ class BatteryLogTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 autana.parse_battery_log(lines)
 
+    def test_shutdown_warning(self):
+        row = self.row.replace('reason=boot', 'reason=shutdown-warning')
+        self.assertEqual(autana.parse_battery_log([row, 'BATLOG end count=1'])[0]['reason'], 'shutdown-warning')
+
     def test_log_command(self):
         with mock.patch.object(autana, 'send', return_value=(0, [self.row, 'BATLOG end count=1'])) as send:
             output = io.StringIO()

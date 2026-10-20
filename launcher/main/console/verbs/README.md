@@ -13,4 +13,5 @@ status bytes; formatting is in `console_battery_reply.h`.
 
 Log rows carry `seq`, `up_min`, `mv`, `percent`, `usb`, `battery`, `charge`,
 `flow` and `reason`. Parsing and formatting share `console_battery_reply.h`.
+Reasons are `periodic`, `transition`, `boot` and `shutdown-warning`.
 Storage failures reply `BATLOG error read` or `BATLOG error clear`.

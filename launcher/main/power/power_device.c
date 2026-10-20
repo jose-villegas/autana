@@ -97,10 +97,20 @@ power_start(void) {
     } else {
         ESP_LOGW(TAG, "Could not read AXP2101 gauge/ADC enables");
     }
+    uint8_t battery_levels = 0;
+    power_log_warning_t warning = {0};
+    if (pmu_read(AXP2101_REG_BATTERY_LEVELS, &battery_levels)) {
+        warning.valid = true;
+        warning.warning_percent =
+            ((battery_levels >> AXP2101_WARNING_SHIFT) & AXP2101_WARNING_MASK) + AXP2101_WARNING_BASE_PERCENT;
+        warning.shutdown_percent = (battery_levels >> AXP2101_SHUTDOWN_SHIFT) & AXP2101_SHUTDOWN_MASK;
+    } else {
+        ESP_LOGW(TAG, "Could not read AXP2101 battery warning thresholds");
+    }
     power_battery_t first;
     (void)power_read_battery_now(&first, NULL);
     last_battery_us = timing_now_us();
-    power_log_start(&first, last_battery_us);
+    power_log_start(&first, last_battery_us, warning);
 
     /* 0x22/0x27 default from EFUSE/POR: ask this board once, log, never write. */
     uint8_t levels = 0;

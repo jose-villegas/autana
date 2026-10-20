@@ -87,9 +87,21 @@ power_log_order(const power_log_slot_t slots[POWER_LOG_SLOTS], unsigned order[PO
 }
 
 power_log_reason_t
-power_log_decide(const power_battery_t* previous, const power_battery_t* current, int64_t now_us, int64_t last_us) {
+power_log_decide(const power_battery_t* previous, const power_battery_t* current, int64_t now_us, int64_t last_us,
+                 power_log_warning_t* warning) {
     if (!current->valid) {
         return POWER_LOG_NONE;
+    }
+    bool shutdown_warning = false;
+    if (warning != NULL && warning->valid) {
+        const bool at_warning = !current->usb_present && current->percent <= warning->warning_percent;
+        const bool at_shutdown = !current->usb_present && current->percent <= warning->shutdown_percent;
+        shutdown_warning = (at_warning && !warning->warning_logged) || (at_shutdown && !warning->shutdown_logged);
+        warning->warning_logged = at_warning;
+        warning->shutdown_logged = at_shutdown;
+    }
+    if (shutdown_warning) {
+        return POWER_LOG_SHUTDOWN_WARNING;
     }
     if (previous == NULL) {
         return POWER_LOG_BOOT;
@@ -110,6 +122,7 @@ power_log_reason_name(power_log_reason_t reason) {
         case POWER_LOG_PERIODIC: return "periodic";
         case POWER_LOG_TRANSITION: return "transition";
         case POWER_LOG_BOOT: return "boot";
+        case POWER_LOG_SHUTDOWN_WARNING: return "shutdown-warning";
         default: return "unknown";
     }
 }

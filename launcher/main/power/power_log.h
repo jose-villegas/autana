@@ -2,9 +2,9 @@
 #pragma once
 #include <stddef.h>
 #include "power/power.h"
-#define POWER_LOG_PERIOD_US     INT64_C(60000000)
+#define POWER_LOG_PERIOD_US     INT64_C(120000000)
 #define POWER_LOG_MINUTE_US     INT64_C(60000000)
-#define POWER_LOG_SLOTS         240
+#define POWER_LOG_SLOTS         360
 #define POWER_LOG_SPACE         "power_log"
 #define POWER_LOG_KEY_SIZE      5
 #define POWER_LOG_KEY_FORMAT    "r%03u"
@@ -37,7 +37,21 @@
 #define POWER_LOG_REASON_SHIFT  62
 #define POWER_LOG_REASON_MAX    POWER_LOG_MASK(REASON)
 
-typedef enum { POWER_LOG_PERIODIC, POWER_LOG_TRANSITION, POWER_LOG_BOOT, POWER_LOG_NONE } power_log_reason_t;
+typedef enum {
+    POWER_LOG_PERIODIC,
+    POWER_LOG_TRANSITION,
+    POWER_LOG_BOOT,
+    POWER_LOG_SHUTDOWN_WARNING,
+    POWER_LOG_NONE
+} power_log_reason_t;
+
+typedef struct {
+    bool valid;
+    uint8_t warning_percent;
+    uint8_t shutdown_percent;
+    bool warning_logged;
+    bool shutdown_logged;
+} power_log_warning_t;
 
 typedef struct {
     uint32_t seq;
@@ -58,9 +72,9 @@ void power_log_key(char key[POWER_LOG_KEY_SIZE], unsigned slot);
 int power_log_newest(const power_log_slot_t slots[POWER_LOG_SLOTS]);
 size_t power_log_order(const power_log_slot_t slots[POWER_LOG_SLOTS], unsigned order[POWER_LOG_SLOTS]);
 power_log_reason_t power_log_decide(const power_battery_t* previous, const power_battery_t* current, int64_t now_us,
-                                    int64_t last_us);
+                                    int64_t last_us, power_log_warning_t* warning);
 const char* power_log_reason_name(power_log_reason_t reason);
-void power_log_start(const power_battery_t* battery, int64_t now_us);
+void power_log_start(const power_battery_t* battery, int64_t now_us, power_log_warning_t warning);
 void power_log_poll(const power_battery_t* battery, int64_t now_us);
 bool power_log_clear(void);
 int power_log_dump(void (*emit)(const power_log_record_t*, void*), void* context);

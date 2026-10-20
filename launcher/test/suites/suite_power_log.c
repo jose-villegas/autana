@@ -38,7 +38,7 @@ test_log_pack(void) {
     power_log_key(key, 0);
     TEST_ASSERT_EQUAL_STRING("r000", key);
     power_log_key(key, POWER_LOG_SLOTS - 1);
-    TEST_ASSERT_EQUAL_STRING("r239", key);
+    TEST_ASSERT_EQUAL_STRING("r359", key);
 }
 
 static void
@@ -84,26 +84,69 @@ static void
 test_log_policy(void) {
     power_battery_t before = {.valid = true, .battery_present = true};
     power_battery_t current = before;
-    TEST_ASSERT_EQUAL_INT(POWER_LOG_BOOT, power_log_decide(NULL, &current, 0, 0));
-    TEST_ASSERT_EQUAL_INT(POWER_LOG_NONE, power_log_decide(&before, &current, POWER_LOG_PERIOD_US - 1, 0));
-    TEST_ASSERT_EQUAL_INT(POWER_LOG_PERIODIC, power_log_decide(&before, &current, POWER_LOG_PERIOD_US, 0));
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_BOOT, power_log_decide(NULL, &current, 0, 0, NULL));
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_NONE, power_log_decide(&before, &current, POWER_LOG_PERIOD_US - 1, 0, NULL));
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_PERIODIC, power_log_decide(&before, &current, POWER_LOG_PERIOD_US, 0, NULL));
     current.usb_present = true;
-    TEST_ASSERT_EQUAL_INT(POWER_LOG_TRANSITION, power_log_decide(&before, &current, 1, 0));
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_TRANSITION, power_log_decide(&before, &current, 1, 0, NULL));
     before = current;
-    TEST_ASSERT_EQUAL_INT(POWER_LOG_NONE, power_log_decide(&before, &current, POWER_LOG_PERIOD_US, 0));
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_NONE, power_log_decide(&before, &current, POWER_LOG_PERIOD_US, 0, NULL));
     current.battery_present = false;
-    TEST_ASSERT_EQUAL_INT(POWER_LOG_TRANSITION, power_log_decide(&before, &current, 1, 0));
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_TRANSITION, power_log_decide(&before, &current, 1, 0, NULL));
     before = current;
     current.charge = POWER_CHARGE_CC;
-    TEST_ASSERT_EQUAL_INT(POWER_LOG_TRANSITION, power_log_decide(&before, &current, 1, 0));
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_TRANSITION, power_log_decide(&before, &current, 1, 0, NULL));
     current.usb_present = false;
     before = current;
     const int64_t transition_us = POWER_LOG_PERIOD_US;
-    TEST_ASSERT_EQUAL_INT(POWER_LOG_NONE, power_log_decide(&before, &current, transition_us + 1, transition_us));
-    TEST_ASSERT_EQUAL_INT(POWER_LOG_PERIODIC,
-                          power_log_decide(&before, &current, transition_us + POWER_LOG_PERIOD_US, transition_us));
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_NONE, power_log_decide(&before, &current, transition_us + 1, transition_us, NULL));
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_PERIODIC, power_log_decide(&before, &current, transition_us + POWER_LOG_PERIOD_US,
+                                                               transition_us, NULL));
     current.valid = false;
-    TEST_ASSERT_EQUAL_INT(POWER_LOG_NONE, power_log_decide(NULL, &current, 0, 0));
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_NONE, power_log_decide(NULL, &current, 0, 0, NULL));
+}
+
+static void
+test_log_warning_crossings(void) {
+    power_log_warning_t warning = {.valid = true, .warning_percent = 15, .shutdown_percent = 1};
+    power_battery_t battery = {.valid = true, .battery_present = true, .percent = warning.warning_percent + 1};
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_NONE, power_log_decide(&battery, &battery, 1, 0, &warning));
+    battery.percent = warning.warning_percent;
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_SHUTDOWN_WARNING, power_log_decide(&battery, &battery, 1, 0, &warning));
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_NONE, power_log_decide(&battery, &battery, 1, 0, &warning));
+    battery.percent--;
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_NONE, power_log_decide(&battery, &battery, 1, 0, &warning));
+    battery.percent = warning.shutdown_percent;
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_SHUTDOWN_WARNING, power_log_decide(&battery, &battery, 1, 0, &warning));
+    battery.percent = 0;
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_NONE, power_log_decide(&battery, &battery, 1, 0, &warning));
+}
+
+static void
+test_log_warning_rearm(void) {
+    power_log_warning_t warning = {
+        .valid = true, .warning_percent = 15, .shutdown_percent = 1, .warning_logged = true, .shutdown_logged = true};
+    power_battery_t battery = {.valid = true, .battery_present = true, .percent = warning.shutdown_percent + 1};
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_NONE, power_log_decide(&battery, &battery, 1, 0, &warning));
+    battery.percent = warning.shutdown_percent;
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_SHUTDOWN_WARNING, power_log_decide(&battery, &battery, 1, 0, &warning));
+    battery.percent = warning.warning_percent + 1;
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_NONE, power_log_decide(&battery, &battery, 1, 0, &warning));
+    battery.percent = warning.warning_percent;
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_SHUTDOWN_WARNING, power_log_decide(&battery, &battery, 1, 0, &warning));
+}
+
+static void
+test_log_warning_usb(void) {
+    power_log_warning_t warning = {
+        .valid = true, .warning_percent = 15, .shutdown_percent = 1, .warning_logged = true, .shutdown_logged = true};
+    power_battery_t battery = {.valid = true, .battery_present = true, .usb_present = true};
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_NONE, power_log_decide(&battery, &battery, POWER_LOG_PERIOD_US, 0, &warning));
+    TEST_ASSERT_FALSE(warning.warning_logged);
+    TEST_ASSERT_FALSE(warning.shutdown_logged);
+    battery.usb_present = false;
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_SHUTDOWN_WARNING, power_log_decide(&battery, &battery, 1, 0, &warning));
+    TEST_ASSERT_EQUAL_INT(POWER_LOG_NONE, power_log_decide(&battery, &battery, 1, 0, &warning));
 }
 
 static void
@@ -138,6 +181,9 @@ run_power_log_suite(void) {
     RUN_TEST(test_log_pack);
     RUN_TEST(test_log_ring);
     RUN_TEST(test_log_policy);
+    RUN_TEST(test_log_warning_crossings);
+    RUN_TEST(test_log_warning_rearm);
+    RUN_TEST(test_log_warning_usb);
 }
 
 SUITE_REGISTER(run_power_log_suite);

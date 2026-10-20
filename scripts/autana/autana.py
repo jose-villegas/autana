@@ -443,7 +443,7 @@ def battery(args):
     return 0
 
 
-BATTERY_LOG_SLOTS = 240
+BATTERY_LOG_SLOTS = 360
 BATTERY_LOG_LIMITS = dict(seq=(1 << 24) - 1, up_min=(1 << 10) - 1,
                           mv=BATTERY_VOLTAGE_MAX_MV, percent=(1 << 7) - 1)
 
@@ -459,7 +459,7 @@ def parse_battery_log(replies):
         match = re.fullmatch(
             r"BATLOG seq=([0-9]+) up_min=([0-9]+) mv=([0-9]+) percent=([0-9]+) "
             r"usb=([01]) battery=([01]) charge=(unknown|trickle|pre|cc|cv|done|idle) "
-            r"flow=(unknown|standby|charging|discharging) reason=(periodic|transition|boot)", line)
+            r"flow=(unknown|standby|charging|discharging) reason=(periodic|transition|boot|shutdown-warning)", line)
         if not match:
             raise ValueError(f"invalid BATLOG reply: {line}")
         seq, up_min, mv, percent, usb, present, charge, flow, reason = match.groups()
