@@ -468,6 +468,13 @@ class DrcSweepTest(unittest.TestCase):
         self.assertIn("| 30 | off | -40.0 | -30.0 | -20.0 | -45.0 | -0.4 | yes |", body)
         self.assertIn("max -6.0 / min -30.1", body)
 
+    def test_primary_frequency_from_capture(self):
+        with tempfile.TemporaryDirectory() as directory:
+            capture = Path(directory) / "capture.txt"
+            fixture = ROOT / "launcher/test/fixtures/audio_drc_capture.txt"
+            capture.write_text(fixture.read_text().replace("1000", "1500"))
+            self.assertIn("1500 Hz", audio.render_drc(capture))
+
     def test_absent_capture_and_block_creation(self):
         with tempfile.TemporaryDirectory() as directory:
             doc = Path(directory) / "Audio.md"
