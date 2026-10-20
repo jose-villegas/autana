@@ -33,13 +33,14 @@ gif_from_avi "$W/sponza-flat-motion.avi" "$OUT/render-lab-sponza-flat.gif" "fps=
 
 # The capybara's clips in turn - idle, walk, walk_fast, gallop - each blended
 # into the next as the BLEND slider does, then back to idle so the loop
-# restarts where it began. CLIP_MS holds whole walk and gallop loops.
+# restarts where it began, as the camera turns once around it. CLIP_MS holds
+# whole walk and gallop loops.
 CLIP_DT=40
 CLIP_MS=3200
 CLIP_BLEND_MS=500
 clip_frame() { echo $(($1 / CLIP_DT)); }
 run "$W/render_lab_render" --quarter 1 --no-hud --scene capybara --dt "$CLIP_DT" \
-    --frames "$(clip_frame $((CLIP_MS * 4)))" \
+    --frames "$(clip_frame $((CLIP_MS * 4)))" --set render_lab.orbit_ms=$((CLIP_MS * 4)) \
     --console "$(clip_frame $((CLIP_MS / 2))):clip walk $CLIP_BLEND_MS" \
     --console "$(clip_frame $((CLIP_MS * 3 / 2))):clip walk_fast $CLIP_BLEND_MS" \
     --console "$(clip_frame $((CLIP_MS * 5 / 2))):clip gallop $CLIP_BLEND_MS" \
