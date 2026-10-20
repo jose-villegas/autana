@@ -106,7 +106,7 @@ Pose blending is in [Animation tracks](../Animation-Tracks.md#scene-playback).
 CPU skinning uses linear blend skinning<sup>[[57]](../Citations.md#57)</sup>,
 separate influence-count kernels and cluster ranges.
 
-The frame order is in [Skeleton and skin](../render/Skeleton-and-Skin.md#runtime-pose-and-skinning).
+The frame order is in [Skeleton and skin](../render/Skeleton-and-Skin.md#runtime).
 
 **Scene side**: a `skinned_renderer` component (mesh, skin, skeleton) and
 an `animator` component (clip ids, one layer). Runtime asset-id
