@@ -25,7 +25,7 @@ The queries use half-open edges; crossed edges produce an empty rectangle.
 ## plane (`f x`)
 
 `planef_t` and `planex_t` hold a vec3 `normal` and a scalar `d`; inside is
-`dot(normal, point) + d >= 0`. Distances are scaled by the normal's length
+$`n \cdot p + d \ge 0`$. Distances are scaled by the normal's length
 until the plane is normalized.
 
 | Function | Purpose | Formula |
@@ -35,21 +35,23 @@ until the plane is normalized.
 | `P_distance(p, q)` | signed plane value | $`p_n \cdot q + p_d`$ |
 | `P_normalize(p)` | unit normal; normal must be nonzero; `x` range and error as [vec3 `P_normalize_divide`](Linear.md#vec3-f-i-s-x) | $`(p_n, p_d)/\lVert p_n\rVert`$ |
 | `P_from_rows(&m, a, b, c, e)` | the plane $`a x + b y + c z + e \ge 0`$ of affine m's target, in m's source space | $`n_j = a m_{0j} + b m_{1j} + c m_{2j},\ d = a m_{03} + b m_{13} + c m_{23} + e`$ |
-| `P_frustum(&m, &lens, screen, out)` | near and screen side planes in affine m's source space | `P_from_rows` of each lens-space plane below |
+| `P_frustum(&m, &lens, screen, out)` | near and screen side planes in affine m's source space | See [frustum](#frustum) |
 
-![Signed plane-value bands before and after normalizing a non-unit normal, sharing the same zero line](../images/math/plane-distance.png)
+![Orbiting 3D views of a tilted plane sheet and signed sample points before and after normalization, with the same zero set](../images/math/plane-distance.gif)
 
-![Triangle winding in two panels with opposite normals and green shading on opposite inside sides](../images/math/plane-from-points.png)
+![Orbiting 3D triangles with opposite winding arrows and opposite normals](../images/math/plane-from-points.gif)
 
-![A left plane and sample point in lens space beside the transformed world-space plane and sample, with equal signed values](../images/math/plane-from-rows.png)
+![Orbiting 3D lens-space plane and sample beside their world-space transforms, with equal signed values](../images/math/plane-from-rows.gif)
+
+## frustum
 
 `P_frustum` reads rows as in Gribb and Hartmann<sup>[[77]](../Citations.md#77)</sup>,
-with picture coordinates `cx + fx*x/z`, `cy - fy*y/z` and z supplying w.
+with picture coordinates $`c_x + f_x x/z`$, $`c_y - f_y y/z`$ and $`z`$ supplying $`w`$.
 Each output is `P_from_rows` of a lens-space plane, in this order:
 
 | Index | Plane | $`(a, b, c, e)`$ |
 |---|---|---|
-| `PLANE_FRUSTUM_NEAR` | `z >= near_z` | $`(0, 0, 1, -\mathit{near\_z})`$ |
+| `PLANE_FRUSTUM_NEAR` | $`z \ge \mathit{near\_z}`$ | $`(0, 0, 1, -\mathit{near\_z})`$ |
 | `PLANE_FRUSTUM_LEFT` | screen x at or right of `left` | $`(f_x, 0, c_x - \text{left}, 0)`$ |
 | `PLANE_FRUSTUM_RIGHT` | screen x at or left of `right` | $`(-f_x, 0, \text{right} - c_x, 0)`$ |
 | `PLANE_FRUSTUM_TOP` | screen y at or below `top` | $`(0, -f_y, c_y - \text{top}, 0)`$ |
@@ -58,9 +60,25 @@ Each output is `P_from_rows` of a lens-space plane, in this order:
 `PLANE_FRUSTUM_COUNT` sizes the output. There is no far plane, and the
 planes are not normalized.
 
-![Camera frustum clipped to its axes box beside a ground-plane slice with named zero lines and arrows pointing inside; grid points passing every plane are green](../images/math/frustum.png)
+![Orbiting 3D camera frustum with translucent near and side faces, inward normals, inside and outside samples, and a dashed drawing-depth cap](../images/math/frustum.gif)
 
 The shown depth bounds the drawing; the frustum has no far plane, and every plane must accept a point.
+
+`box3f_outside_planes` tests these planes against a box centre $`c`$ and
+half extent $`e`$. For each plane it forms:
+
+```math
+d = n \cdot c + d_{plane}, \qquad r = \sum_k \lvert n_k\rvert e_k
+```
+
+It rejects the box when $`d+r<0`$ and clears the plane's mask bit when
+$`d-r\ge0`$. Remaining bits identify planes still crossed by the box.
+
+![Orbiting 3D boxes inside, crossing and outside the camera frustum, with numbered callouts and a loose corner box](../images/math/box3-frustum.gif)
+
+The near plane alone rejects one box. Box 8 passes each plane test but
+contains no point inside the frustum: a conservative result of testing
+planes separately.
 
 ## box3 (`f s`)
 
@@ -93,12 +111,6 @@ Plane bits index the input array; `count` must fit an unsigned mask.
 When `P_outside_planes` returns false, the bits of planes the box crosses
 stay set in the mask; a box in a loose corner is not rejected.
 
-![Top-down frustum box classifications](../images/math/box3-frustum.png)
-
-The near plane alone rejects one box. Box 8 crosses each plane separately
-but contains no point inside the frustum: a known conservative result of
-the per-plane test.
-
 ## sphere (`f`)
 
 `P` is `spheref`. A sphere stores vec3 `centre` and nonnegative `radius`.
@@ -124,6 +136,6 @@ cancellation in the hit decision.
 Segment queries write `t` only on a hit. Zero-length segments hit when
 the point is inside. A tangent counts as a hit.
 
-![Box-sphere overlap, touch and miss with closest points beside segment entry points on a box and sphere, an inside start and a miss](../images/math/box3-sphere-queries.png)
+![Orbiting 3D spheres overlapping, touching and missing a box, with closest points; beside them, segments mark box and sphere entries, an inside start and a miss](../images/math/box3-sphere-queries.gif)
 
-Closest points decide sphere overlap; marked segment entries include a start inside the sphere at t = 0.
+Closest points decide sphere overlap; marked segment entries include a start inside the sphere at $`t = 0`$.
