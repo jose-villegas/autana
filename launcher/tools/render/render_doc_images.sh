@@ -59,6 +59,8 @@ DEMO_OBJECT=atrium
 # The skinned mesh the skeleton and skin figures draw, a cached bake, and its clip.
 SKIN_BAKE=capybara.glb
 SKIN_CLIP=gallop
+# Three of its clips the playback figures blend: first to second to third, then back to the first.
+PLAYBACK_CLIPS="walk gallop idle"
 
 if [ "${1:-}" = --stage ]; then
     if [ "${2:-}" = gpu ] && [ "${3:-}" != --inputs ]; then
@@ -237,6 +239,13 @@ run "$PYTHON" launcher/tools/r3d/skin/skin_sheet.py "$skin_asset" "$OUT/render" 
 run "$PYTHON" launcher/tools/r3d/skin/skin_figures.py --cc "$cc" --out "$OUT/render/skin-limb.png" \
     > "$WORK/skin_figures.log"
 # --orphans scans this runner: skin-skeleton.gif, skin-weights.gif, skin-influences.png, skin-limb.png
+
+# The scene playback figures: those clips through the animation layer's playheads and blends.
+run mkdir -p "$OUT/anim"
+# shellcheck disable=SC2086 # PLAYBACK_CLIPS is three words
+run "$PYTHON" launcher/tools/anim/playback/playback_figures.py "$skin_asset" $PLAYBACK_CLIPS --cc "$cc" \
+    --out "$OUT/anim" > "$WORK/playback_figures.log"
+# --orphans scans this runner: anim-playhead.png, anim-blend.png, anim-nlerp.png, anim-blend.gif
 
 # The bake method's figures: local occlusion and bounced light on a floor beside a wall, and the scores.
 R3D_PYTHON=$(run find_r3d_python "$PWD")

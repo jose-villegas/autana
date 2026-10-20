@@ -20,7 +20,8 @@ from anim import skeleton_asset, track_host, tracks_asset
 from asset.asset_pack import build_pack
 from build import packages
 from gltf import gltf_read
-from r3d import gltf_preview, gltf_skin, lit_mesh, skin_asset, scene_asset
+from r3d import gltf_preview, gltf_skin, lit_mesh, skin_asset
+from scene import scene_host
 sys.path.insert(0, str(TOOLS / "render"))
 import render_compare
 
@@ -33,13 +34,7 @@ INFLUENCES = (2, 4)
 MESH_ID = "mesh"
 SKIN_ID = "skin"
 CLIP_ID = "clip"
-MAIN = TOOLS.parent / "main"
-SOURCES = [pathlib.Path(__file__).with_name("skin_host.c"), *[MAIN / name for name in (
-    "anim/anim_track.c", "anim/anim_tracks.c", "anim/anim_binding.c", "anim/anim_skeleton.c",
-    "anim/pose/anim_pose.c", "anim/playback/anim_playhead.c", "render/r3d_skin.c",
-    "render/skin/r3d_skinning.c", "render/skin/r3d_skin_light.c", "render/r3d_lit_mesh.c", "asset/asset_pack.c",
-    "asset/asset_file.c", "core/job.c", "scene/scene.c", "scene/scene_animation.c", "scene/scene_light.c", "scene/scene_asset.c",
-    "anim/playback/anim_layer.c", "scene/camera/camera.c", "render/render_view.c", "asset/asset_store.c", "asset/asset_store_file.c")]]
+SOURCES = [pathlib.Path(__file__).with_name("skin_host.c"), *scene_host.SOURCES]
 
 
 def program(directory):
@@ -54,7 +49,8 @@ def program(directory):
 def run_pose(target, directory, entries, skeleton, clip, ms):
     pack = directory / "pose.pack"
     pack.write_bytes(build_pack(entries))
-    result = subprocess.run([str(target), str(pack), skeleton, SKIN_ID, MESH_ID, CLIP_ID, str(ms)],
+    result = subprocess.run([str(target), str(pack), scene_host.SCENE_ID, scene_host.ENTITY_NAME, skeleton, SKIN_ID,
+                             MESH_ID, CLIP_ID, str(ms)],
                             text=True, capture_output=True, check=True)
     return [tuple(int(v) for v in line.split()) for line in result.stdout.splitlines()]
 
@@ -74,10 +70,7 @@ class EngineSkin:
         self.mesh = lit_mesh.bake_lit_mesh(self.asset.positions, self.colors, self.asset.triangles,
                                            [True] * len(self.asset.triangles), position_scale=scale)
         self.mesh_bytes = lit_mesh.mesh_blob(self.mesh)
-        subject = SimpleNamespace(name="subject", kind="mesh_renderer", position=(0, 0, 0),
-                                  matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)))
-        self.scene_bytes = scene_asset.encode(SimpleNamespace(objects=[subject], renderers=[
-            SimpleNamespace(object=subject, asset_name=MESH_ID)]))
+        self.scene_bytes = scene_host.one_entity_scene(MESH_ID)
         self.variants = {n: skin_asset.bake(self.document, self.binary, self.mesh_node, self.mesh_bytes, n)
                          for n in INFLUENCES}
         self.rendered = SimpleNamespace(triangles=self.mesh.tris.tolist())
@@ -99,7 +92,7 @@ class EngineSkin:
             self._clips[clip] = tracks_asset.encode(tracks, duration, root)
         _, skeleton, skin = self.variants[influences]
         entries = [(MESH_ID, b"LMSH", self.mesh_bytes), (self.skeleton_name, b"SKEL", skeleton),
-                   (SKIN_ID, b"SKIN", skin), (CLIP_ID, b"TRCK", self._clips[clip]), ("scene", b"SCNE", self.scene_bytes)]
+                   (SKIN_ID, b"SKIN", skin), (CLIP_ID, b"TRCK", self._clips[clip]), (scene_host.SCENE_ID, b"SCNE", self.scene_bytes)]
         ticks = run_pose(self.target, self.directory, entries, self.skeleton_name, clip, ms)
         world = self.asset.world_matrices(self.asset.sample(clip, ms / 1000))[self.mesh_node]
         return [gltf_skin.transform_point(world, tuple(v / self.scale for v in p)) for p in ticks]
