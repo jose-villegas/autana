@@ -2,7 +2,7 @@
 #
 # Measure skinned-mesh lighting on the host and regenerate its document: the
 # cost, table-build and quality tables in docs/render/Skinned-Lighting.md and
-# the sheet beside it.
+# the figures beside it.
 #
 # Usage:
 #   launcher/tools/r3d/skin_light/report_skin_light.sh ASSET.glb [CLIP[:PHASE]]
@@ -31,7 +31,7 @@ sheet=${2:-}
 CC_BIN=$(find_cc) || { echo "No C compiler found." >&2; exit 1; }
 # shellcheck source=../../../../scripts/lib/python.sh
 . "$ROOT_DIR/scripts/lib/python.sh"
-PYTHON=$(find_python PIL) || exit 1
+PYTHON=$(find_python PIL matplotlib) || exit 1
 
 BUILD_DIR="$SCRIPT_DIR/build"
 mkdir -p "$BUILD_DIR/tables"
@@ -47,5 +47,6 @@ cd "$LAUNCHER_DIR"
 # The tables directory holds only the generated tables generated_blocks.py splices.
 mv "$BUILD_DIR"/skin-light-*.md "$BUILD_DIR/tables/"
 "$PYTHON" tools/r3d/skin_light/skin_light_sheet.py "$asset" "$BUILD_DIR" \
-    "$ROOT_DIR/docs/render/images/skin-light-sheet.png" ${sheet:+--sheet "$sheet"}
+    "$ROOT_DIR/docs/render/images" ${sheet:+--sheet "$sheet"}
+"$PYTHON" tools/r3d/skin_light/skin_light_figures.py --cc "$CC_BIN" --out "$ROOT_DIR/docs/render/images/skin-light-angle.png"
 "$PYTHON" tools/render/generated_blocks.py --root "$ROOT_DIR" --tables "$BUILD_DIR/tables"

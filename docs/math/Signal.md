@@ -1,4 +1,4 @@
-# Signal: goertzel.h
+# Signal: goertzel.h and pitch.h
 
 Single-bin detection on sample blocks; unlike the other legs it is compiled C, not header-only. [Math index](README.md).
 
@@ -40,3 +40,14 @@ L = \max(\mathrm{GOERTZEL\_LEVEL\_FLOOR\_DB}, 10\log_{10}(P/S^2))
 An empty stream or zero power returns the level floor. A sine of amplitude
 $`F`$ reads 0 dB; doubling the reference full scale lowers its level by
 $`20\log_{10}(2)`$ dB.
+
+## Equal-temperament pitch
+
+`pitch.h` converts offsets relative to a caller-supplied reference frequency.
+`PITCH_SEMITONES_PER_OCTAVE` is the octave scale; `PITCH_CENTS_PER_SEMITONE`
+converts semitone errors to cents.
+
+| Function | Result |
+|---|---|
+| `pitch_semitone_hz(reference_hz, semitones)` | `reference_hz * exp2f(semitones / PITCH_SEMITONES_PER_OCTAVE)` |
+| `pitch_hz_semitones(reference_hz, hz)` | `PITCH_SEMITONES_PER_OCTAVE * log2f(hz / reference_hz)`; `NAN` if either frequency is nonpositive |
