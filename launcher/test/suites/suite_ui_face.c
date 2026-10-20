@@ -1117,6 +1117,25 @@ test_a_tap_just_outside_fires_the_nearest_control(void) {
 }
 
 static void
+test_a_press_that_slides_off_cancels_only_beyond_the_reach(void) {
+    fixture();
+    int value = INITIAL_VALUE;
+    bool on = false;
+    const input_t idle = {0};
+    const recti_t lifts[] = {left_of_box(SNAP_NEAR), left_of_box(SNAP_FAR)};
+    for (size_t i = 0; i < 2; i++) {
+        fixture();
+        const input_t press = touch_sample(BOX, true, true);
+        const input_t release = touch_sample(lifts[i], false, true);
+        (void)widget_frame(VERB_BUTTON, &idle, &value, &on, false, false);
+        (void)widget_frame(VERB_BUTTON, &idle, &value, &on, false, false);
+        (void)widget_frame(VERB_BUTTON, &press, &value, &on, false, false);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(i == 0, widget_frame(VERB_BUTTON, &release, &value, &on, false, false),
+                                      "a lift within reach fires, one beyond it cancels");
+    }
+}
+
+static void
 test_unchanged_picks_return_false(void) {
     fixture();
     int value = 0;
@@ -1654,6 +1673,7 @@ run_ui_face_suite(void) {
     RUN_TEST(test_disabled_every_widget);
     RUN_TEST(test_tap_release_contract);
     RUN_TEST(test_a_tap_just_outside_fires_the_nearest_control);
+    RUN_TEST(test_a_press_that_slides_off_cancels_only_beyond_the_reach);
     RUN_TEST(test_unchanged_picks_return_false);
     RUN_TEST(test_duplicate_toggle_identity);
     RUN_TEST(test_duplicate_dropdown_identity);
