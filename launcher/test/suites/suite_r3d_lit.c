@@ -1753,9 +1753,28 @@ test_the_frame_carves_its_scratch_without_overlap(void) {
     free(scratch);
 }
 
+/* A band picture draws the frame a few rows at a time, each band drawn and
+ * upscaled on its own, and composes what one full draw does: for bands
+ * smaller than a source row's run, ones that split one, and taller ones. */
+static void
+expect_bands_draw_the_frame(raster_t* banded, const render_view_t* view, const gfx_color_t* want, gfx_color_t* got) {
+    static const int band_heights[] = {2, 6, 16};
+    (void)raster_prepare(banded, view);
+    for (size_t b = 0; b < sizeof band_heights / sizeof band_heights[0]; b++) {
+        memset(got, 0xA5, sizeof(gfx_color_t) * 4 * W * H);
+        for (int y0 = 0; y0 < 2 * H; y0 += band_heights[b]) {
+            const int rows = band_heights[b] < 2 * H - y0 ? band_heights[b] : 2 * H - y0;
+            const gfx_target_t band = {got + ((size_t)y0 * 2 * W), y0, rows, 2 * W};
+            (void)raster_compose_rows(banded, band, 2 * W, 2 * H);
+        }
+        TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(want, got, 4 * W * H,
+                                              "a frame drawn in bands differs from one full draw");
+    }
+}
+
 /* Split between the cores at whatever row balances them, then upscaled: the
  * same picture as one full draw upscaled, over a colour target left full of
- * stale pixels. */
+ * stale pixels. Drawn in bands, the same again. */
 static void
 test_the_two_core_frame_matches_one_full_draw(void) {
     parts_t* const p = parts_buffer(&shared_parts);
@@ -1771,6 +1790,14 @@ test_the_two_core_frame_matches_one_full_draw(void) {
         ONE_MESH(&p->mesh),         .width = W, .height = H, .clear = SKY, .upscaled = true, .destination_width = 2 * W,
         .destination_height = 2 * H};
     raster.scratch = scratch;
+    raster_t* banded = malloc(sizeof *banded);
+    TEST_ASSERT_NOT_NULL(banded);
+    *banded = raster;
+    banded->band_rows = raster_band_source_rows(banded, 16);
+    banded->scratch = malloc(raster_scratch_bytes(banded));
+    banded->band_scratch = malloc(raster_band_bytes(banded));
+    TEST_ASSERT_NOT_NULL(banded->scratch);
+    TEST_ASSERT_NOT_NULL(banded->band_scratch);
 
     static const float eye_heights[] = {-100.0f, 0.0f, 150.0f, 230.0f, 300.0f};
     for (int e = 0; e < (int)(sizeof eye_heights / sizeof eye_heights[0]); e++) {
@@ -1785,7 +1812,11 @@ test_the_two_core_frame_matches_one_full_draw(void) {
         reference_frame(p, &lens, want);
         TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(want, upscaled, 4 * W * H,
                                               "the upscaled frame differs from one full draw");
+        expect_bands_draw_the_frame(banded, &frame_view, want, upscaled);
     }
+    free(banded->band_scratch);
+    free(banded->scratch);
+    free(banded);
 
     /* With nothing to upscale into, the raster clears its own colour target. */
     raster.upscaled = false;
@@ -1919,53 +1950,6 @@ census_moved(void) {
 /* Culled once at one size and drawn at another, two instances (the second
  * moved, so each keeps its own list): the same picture, depth and survivors
  * as raster_draw() at the drawn size, from eyes that cull different parts. */
-/* A band picture draws the frame a few rows at a time, each band drawn and
- * upscaled on its own, and composes what one full draw does: for bands
- * smaller than a pixel's run, ones that split one, and taller ones. */
-static void
-test_band_rows_draw_what_one_full_draw_does(void) {
-    parts_t* const p = parts_buffer(&shared_parts);
-    build_wall_and_stack(p);
-    const int band_heights[] = {2, 6, 16};
-    gfx_color_t* upscaled = malloc(sizeof(gfx_color_t) * 4 * W * H);
-    gfx_color_t* want = malloc(sizeof(gfx_color_t) * 4 * W * H);
-    raster_t raster = {
-        ONE_MESH(&p->mesh),         .width = W, .height = H, .clear = SKY, .upscaled = true, .destination_width = 2 * W,
-        .destination_height = 2 * H};
-    raster.band_rows = raster_band_source_rows(&raster, band_heights[sizeof band_heights / sizeof band_heights[0] - 1]);
-    char* scratch = malloc(raster_scratch_bytes(&raster));
-    void* band_scratch = malloc(raster_band_bytes(&raster));
-    TEST_ASSERT_NOT_NULL(upscaled);
-    TEST_ASSERT_NOT_NULL(want);
-    TEST_ASSERT_NOT_NULL(scratch);
-    TEST_ASSERT_NOT_NULL(band_scratch);
-    raster.scratch = scratch;
-    raster.band_scratch = band_scratch;
-
-    static const float eye_heights[] = {-100.0f, 0.0f, 150.0f, 230.0f, 300.0f};
-    for (int e = 0; e < (int)(sizeof eye_heights / sizeof eye_heights[0]); e++) {
-        const fixture_camera_t camera = camera_down_plus_z(eye_heights[e], -400, 1.0f);
-        const r3d_lens_t lens = look_down_plus_z(eye_heights[e], -400, 1.0f);
-        reference_frame(p, &lens, want);
-        const render_view_t frame_view = render_view_fixture(&camera, &raster, 0);
-        (void)raster_prepare(&raster, &frame_view);
-        for (size_t b = 0; b < sizeof band_heights / sizeof band_heights[0]; b++) {
-            memset(upscaled, 0xA5, sizeof(gfx_color_t) * 4 * W * H);
-            for (int y0 = 0; y0 < 2 * H; y0 += band_heights[b]) {
-                const int rows = band_heights[b] < 2 * H - y0 ? band_heights[b] : 2 * H - y0;
-                const gfx_target_t band = {upscaled + ((size_t)y0 * 2 * W), y0, rows, 2 * W};
-                (void)raster_compose_rows(&raster, band, 2 * W, 2 * H);
-            }
-            TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(want, upscaled, 4 * W * H,
-                                                  "a frame drawn in bands differs from one full draw");
-        }
-    }
-    free(band_scratch);
-    free(scratch);
-    free(want);
-    free(upscaled);
-}
-
 /* The buffers the two-instance band tests work in, freed by the cleanup. */
 static struct {
     void* full_scratch;
@@ -2742,7 +2726,6 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_the_two_core_frame_matches_one_full_draw);
     RUN_TEST(test_cull_off_keeps_every_cluster);
     RUN_TEST(test_a_census_list_draws_what_raster_draw_draws_at_any_size);
-    RUN_TEST(test_band_rows_draw_what_one_full_draw_does);
     RUN_TEST(test_two_overlapping_instances_drawn_a_band_at_a_time_match_one_full_draw);
     RUN_TEST(test_two_overlapping_instances_from_a_census_list_draw_the_same_bands);
     RUN_TEST(test_a_census_list_steps_by_each_instances_own_mesh);

@@ -263,36 +263,42 @@ expect_band_calls(const char* what, const char* const* names, int count) {
     }
 }
 
-static void
-test_the_band_phase_hands_every_system_the_same_rows_and_picture_by_order(void) {
+/* Registers `these` and runs the band phase over a fresh picture; returns
+ * its first pixel. */
+static gfx_color_t
+band_phase_over(const shell_system_t these[SYSTEMS_MAX]) {
     fixture();
-    systems[0] = (shell_system_t){.name = "c", .order = 10, .compose_band = c_compose_band};
-    systems[1] = (shell_system_t){.name = "a", .order = 30, .compose_band = a_compose_band};
-    systems[2] = (shell_system_t){.name = "b", .order = 20, .compose_band = b_compose_band};
     for (int i = 0; i < SYSTEMS_MAX; i++) {
+        systems[i] = these[i];
         shell_system_register(&systems[i]);
     }
     gfx_color_t picture[2] = {0, 0};
     shell_systems_compose_band(BAND_ROW0, BAND_ROW1, picture);
+    return picture[0];
+}
+
+static void
+test_the_band_phase_hands_every_system_the_same_rows_and_picture_by_order(void) {
+    const gfx_color_t first = band_phase_over((const shell_system_t[SYSTEMS_MAX]){
+        {.name = "c", .order = 10, .compose_band = c_compose_band},
+        {.name = "a", .order = 30, .compose_band = a_compose_band},
+        {.name = "b", .order = 20, .compose_band = b_compose_band},
+    });
     static const char* const by_order[] = {"c", "b", "a"};
     expect_band_calls("band phase", by_order, 3);
-    TEST_ASSERT_EQUAL_UINT16_MESSAGE(321, picture[0], "each system drew over what the one before left");
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(321, first, "each system drew over what the one before left");
 }
 
 static void
 test_a_system_without_a_band_phase_is_skipped_by_the_band_phase(void) {
-    fixture();
-    systems[0] = (shell_system_t){.name = "a", .order = 10, .update = a_update, .compose = a_compose};
-    systems[1] = (shell_system_t){.name = "b", .order = 20, .compose_band = b_compose_band};
-    systems[2] = (shell_system_t){.name = "c", .order = 30, .app_exit = c_app_exit};
-    for (int i = 0; i < SYSTEMS_MAX; i++) {
-        shell_system_register(&systems[i]);
-    }
-    gfx_color_t picture[2] = {0, 0};
-    shell_systems_compose_band(BAND_ROW0, BAND_ROW1, picture);
+    const gfx_color_t first = band_phase_over((const shell_system_t[SYSTEMS_MAX]){
+        {.name = "a", .order = 10, .update = a_update, .compose = a_compose},
+        {.name = "b", .order = 20, .compose_band = b_compose_band},
+        {.name = "c", .order = 30, .app_exit = c_app_exit},
+    });
     static const char* const only_b[] = {"b"};
     expect_band_calls("band phase", only_b, 1);
-    TEST_ASSERT_EQUAL_UINT16(2, picture[0]);
+    TEST_ASSERT_EQUAL_UINT16(2, first);
 }
 
 void
