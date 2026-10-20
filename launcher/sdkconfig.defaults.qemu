@@ -1,6 +1,6 @@
 # Layered last, over sdkconfig.defaults.diag and .diag_autorun (and
 # .diag_perf for the perf scope), to build an image Espressif's QEMU can run
-# with no board: qemu-system-xtensa -M esp32s3. See docs/Testing-Guide.md.
+# with no board: qemu-system-xtensa -M esp32s3. See docs/testing/QEMU.md.
 
 # QEMU models a plain quad flash: no high-performance mode, no
 # dummy-cycle-aware bootloader, no 120 MHz timing. An image built with those
@@ -24,3 +24,6 @@ CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
 
 # No panel answers, so graphics presents to a null panel.
 CONFIG_LAUNCHER_QEMU=y
+
+# QEMU lacks the FPU reciprocal and reciprocal-square-root seed instructions.
+CONFIG_MATH_FPU_RECIP=n

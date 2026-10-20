@@ -19,11 +19,11 @@
 #include "apps/render_lab/sponza_content.h"
 #include "asset/asset_store.h"
 #include "core/memory.h"
+#include "display/viewport.h"
 #include "r3d_lit_mesh_expect.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_pipeline.h"
 #include "render/raster.h"
-#include "render/viewport.h"
 #include "scene/scene.h"
 #include "sponza_suite.h"
 
@@ -68,7 +68,7 @@ open_the_meshes(void) {
     open_the_mesh(mesh_of(SPONZA_BAKE_FLAT), &mesh_flat);
 }
 
-/* The flat reference: every cluster's eight corners against each plane. */
+/* Hand-written planes keep this an independent check of the cull. */
 static bool
 cluster_in_view(const r3d_lit_cluster_t* c, const r3d_lens_t* lens) {
     int beyond[5] = {0};
@@ -77,11 +77,11 @@ cluster_in_view(const r3d_lit_cluster_t* c, const r3d_lens_t* lens) {
         const float y = (float)(i & 2 ? c->hi[1] : c->lo[1]);
         const float z = (float)(i & 4 ? c->hi[2] : c->lo[2]);
         const vec3f_t l = mat4f_apply(&lens->m, (vec3f_t){x, y, z});
-        beyond[0] += l.z < lens->near_z;
-        beyond[1] += l.x < -lens->center_x * l.z;
-        beyond[2] += l.x > ((float)lens->width - lens->center_x) * l.z;
-        beyond[3] += l.y < -lens->center_y * l.z;
-        beyond[4] += l.y > ((float)lens->height - lens->center_y) * l.z;
+        beyond[0] += l.z < lens->project.near_z;
+        beyond[1] += l.x < -lens->project.cx * l.z;
+        beyond[2] += l.x > ((float)lens->width - lens->project.cx) * l.z;
+        beyond[3] += l.y < -lens->project.cy * l.z;
+        beyond[4] += l.y > ((float)lens->height - lens->project.cy) * l.z;
     }
     for (int p = 0; p < 5; p++) {
         if (beyond[p] == 8) {
@@ -145,7 +145,7 @@ add_scaled(v3 a, v3 d, float s) {
     return (v3){a.x + (d.x * s), a.y + (d.y * s), a.z + (d.z * s)};
 }
 
-/* Ericson, Real-Time Collision Detection 5.1.5 (docs/Citations.md#23). */
+/* Ericson, Real-Time Collision Detection 5.1.5. */
 static float
 point_triangle_distance(v3 p, v3 a, v3 b, v3 c) {
     const v3 ab = sub(b, a);

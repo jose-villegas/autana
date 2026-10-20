@@ -1,12 +1,15 @@
 # Written by launcher/tools/bake/bake.py: the bytes made for each bake's key. Do not edit.
 
+# mesh_cpu_vendor: the CPU vendor the meshes were made on; a mesh bake's bytes differ between vendors.
+mesh_cpu_vendor = "AuthenticAMD"
+
 [[bake]]
 output = "capybara.capybara.mesh"
 source = "launcher/demo/capybara/capybara.scene.toml"
-key = "61d1b8e84648141d93b542f020107599967a14d392d97ca476dbccf7287f2192"
+key = "9abb21ab3ab4de9e565e780766036f3beaadc18e855fe7251488c8b972d284d6"
 sha256 = "ceb2adc0e2c41e927d4f0acd241b52f13b0a964aaf1b0d6068aa33e8f041ae89"
 size = 14056
-run = 38206433387
+run = 39135787070
 host = "Linux x86_64"
 
 [[bake]]
@@ -21,106 +24,106 @@ host = "Linux x86_64"
 [[bake]]
 output = "capybara.meadow.mesh"
 source = "launcher/demo/capybara/capybara.scene.toml"
-key = "3648e6e81ac022a95d6d8d1f68c14b4d9afbd6e879cc1faa2ed4bfe2c46dfac7"
+key = "dee7023db0a09b2192ef898d69db3b513642c502b2b8c3fe4855d8017c984120"
 sha256 = "0c85de53dc72593a9f3aceedc7c6bbf26a54618c2ac4bcfeaebafac119f701a7"
 size = 132
-run = 38206433387
+run = 39135787070
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "724e2b1aaf2a9f72ec369e7e904c369642e297b197ab38ec768420c93f0abaee"
+key = "faba70a23a89356d29f12db45e8117fba82bebd11cab8a562a49b93e0cee3098"
 sha256 = "649d221759b9424a8f52260088ec7ceb25e3b6a808ff2fd15a041e396311b0ef"
 size = 264924
-run = 38206433387
+run = 39135787070
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_fitted.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "ff6ab1f0222a9f1eef4a99775b4ba3353926043ddae149e9278500c0340db084"
-sha256 = "3820aa010134bec4eba26df37cc44363ebc16a38cf985835eba9bc00fa8587a4"
-size = 143648
-run = 38491888315
+key = "25dda621774b05905af5e995dbb91bb01eec8cd01e9f707fa445152a28d3db17"
+sha256 = "3adf2212ba8ced3944be402c029f08c7d9c800af810756a582cfdd62fd718306"
+size = 140376
+run = 39224842317
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_fitted.start.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "1eb3168d7058938b04d330df199994c8b1cc6aa121e26551f234f989cdfbbf1a"
-sha256 = "d41c3138102796c8b32209b4c4a5cd3a700decfdc89215bfff448e0077c3c133"
-size = 160408
-run = 38206433387
+key = "0e62c2a957bf11f1b0bac3523c57735ad71bfd16349b2cc6a1fd45e38649fdcd"
+sha256 = "e1aac41fd65ea12c10c3461c0c7ac9be42a6c5dcbdca7592a43de81e2a7c4b07"
+size = 205548
+run = 39135787070
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_fitted_full.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "ebf644d8934583fc3f0eddcb492c9b364c9f0c137d6e995570792ea10b643129"
-sha256 = "bc5eddd456e930727a4791ba9f3285990feb5fdfda0fdc7234df917488eb4cc0"
-size = 278592
-run = 38491888315
+key = "8c8df414f7e8968754a83d5756d9ddd5e3d22bbe1ccfab1f2cbcd7813f8e7917"
+sha256 = "bf4fb486dd15582bddbe48f737ffd32e9b12682d30b62b747d8808fd26af8497"
+size = 283412
+run = 39224842317
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_fitted_full.start.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "58bd618df1402bb486460a7a436d6bb38028c92f0d1ca04f580e23f9fdd54ea2"
-sha256 = "e72b3f8f92aae6d49dfd93e49ef98c15b3e7d947f5edb886fb894e009ff551e6"
-size = 312704
-run = 38206433387
+key = "62615468558c6d7603a402c65746ced38d4bbece8a5cf421cd0ba613ae9e635e"
+sha256 = "1cefaf248e60774aed32dcfeaec3a090e265b65f0006023af18dc4da40108fdf"
+size = 461556
+run = 39135787070
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_flat.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "23aa734cdb667abffa95533332b169d7c4b5b2d0b211843e92070e5f9f161a2f"
+key = "5101015eb57f7e9f56f174b86c8f32dfad8a512f06097facd0b7b6cbd94f2a7e"
 sha256 = "029bd72c6a4c9c41ae562540fa098303e81dc1e6d28230b197cfd035cd1b10f8"
 size = 243452
-run = 38206433387
+run = 39135787070
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_flat_fitted.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "202ac331b6795492477a6fd5d5629d1388e31f75487024ce7b81ef485e708d22"
-sha256 = "bae90f0bfdf1e258b0531199ee51d5e77f51bdd364576548a016214f6159b5fc"
-size = 250736
-run = 38491888315
+key = "521d7710b70825b901bd1d3805766b096de9c55b8ead296f2efc770deb089bc5"
+sha256 = "fc1a177df4743d049ec7329a8429539ac56cf1dedeea97ce3dd9720284d2495b"
+size = 255492
+run = 39224842317
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_flat_fitted.start.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "d634f12909322454dace689464a302bb2d3545b51b9e74c1cd523bee6259ebef"
-sha256 = "9c7ac61ce87ea700bd199d8e1f87e96cf0f6a17835335261e5080c0714065955"
-size = 285732
-run = 38206433387
+key = "c963005072049951e0e164e365e63cbb96a73ac544c959713e20c7683bb36695"
+sha256 = "42ccb91f439bbe6160a5df5b50499236384041c90a91926706b8a3708d3af2f8"
+size = 422148
+run = 39135787070
 host = "Linux x86_64"
 
 [[bake]]
 output = "sponza.atrium_lite.mesh"
 source = "launcher/demo/sponza/sponza.scene.toml"
-key = "bc51d2dc94208dc1bbe36395143f0bf56dcbaabe91b80ebaefc4c65ee644b218"
+key = "f149645aa034249adff8a9cc93048b3f7119c984681e685302c9d45bc5958f04"
 sha256 = "39b51af4e1a6e241d1b5d9518132497f63dde80f14530c7fbf8c7e825bf5b7e5"
 size = 130140
-run = 38206433387
+run = 39135787070
 host = "Linux x86_64"
 
 # [[poses]]: the digest of each camera-path sampling, keyed on its clip bytes, sampling arguments
 # and sampler code. bake.py lock writes them; bake.py check samples them again.
 
 [[poses]]
-key = "23f588142efb921ac5935874e6945956d9919fa78d81012d7205df4c37ceba68"
-poses = "b6acfc414c2402cacdcd7dcf258cec6d9919473936dddab517719c46d029d430"
+key = "2df62d142c1254313886d9115947d91323f64a0adf98895426d7f4e96715d587"
+poses = "bc608ce3264275d892202b270ad05e255c7878431cbea66d907ba0e927ecf8da"
 count = 37
 clip = "launcher/demo/sponza/flythrough.anim.toml"
 host = "Windows AMD64"
 
 [[poses]]
-key = "c8ee10bf033bf40e4aa38762d6886136dd5fdc70acf8a8f16350571550e1b683"
-poses = "85b37cc70bf0ef7b0266dc4544245f8e3cda49285612042ec2d4bd539b3fe768"
-count = 364
+key = "772342c15853fdd1d7b595fb367cc9cede7eb7571d9c232ea5b6113661b9de3b"
+poses = "7f5a1e528b63cc2ebea4ea3c6795518dc30bb47befc15345be563a2d9a4ddd10"
+count = 1816
 clip = "launcher/demo/sponza/flythrough.anim.toml"
 host = "Windows AMD64"

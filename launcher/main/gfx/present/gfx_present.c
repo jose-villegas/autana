@@ -1,11 +1,12 @@
 #include "gfx/present/gfx_present.h"
 #include "build/build_variant.h"
 #include "core/memory.h"
-#include "gfx/draw/gfx_color.h"
-#include "gfx/gfx_internal.h"
+#include "core/timing.h"
 #include "gfx/present/gfx_debug.h"
-#include "gfx/present/gfx_full_redraw.h"
+#include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_present_guard.h"
+#include "gfx/present/send/gfx_full_redraw.h"
+#include "gfx/target/gfx_color.h"
 #include "math/scalar/mathi.h"
 #include "profile/frame_watch.h"
 
@@ -20,7 +21,7 @@
 #include "esp_log.h"
 #include "freertos/task.h"
 #if CONFIG_LAUNCHER_QEMU
-#include "gfx/present/gfx_null_panel.h"
+#include "gfx/present/panel/gfx_null_panel.h"
 #endif
 
 _Static_assert(GFX_WIDTH == BSP_LCD_H_RES && GFX_HEIGHT == BSP_LCD_V_RES, "gfx.h's panel size must be the board's");
@@ -28,12 +29,12 @@ _Static_assert(GFX_WIDTH == BSP_LCD_H_RES && GFX_HEIGHT == BSP_LCD_V_RES, "gfx.h
 _Static_assert(GFX_HEAL_STRIP_ROWS <= STRIP_HEIGHT, "a heal strip must fit one strip bounce slot");
 
 #ifdef ESP_PLATFORM
-/* Present code runs from IRAM so a present after a cold instruction cache
+/* The send hot path runs from IRAM so a present after a cold instruction cache
  * does not wait on flash fetches. An attribute, not a linker.lf entry,
  * places it: the compiler's clones of a function inherit the attribute, and
- * a mapping entry names only the original. Development overlays, send
- * auditing and raw-full dispatch make dev and diag larger.
- * IRAM budget: release 2900 B, dev 3932 B, diag 3932 B */
+ * a mapping entry names only the original. Development overlays and send
+ * auditing make dev and diag larger.
+ * IRAM budget: release 2863 B, dev 3896 B, diag 3896 B */
 #define GFX_PRESENT_IRAM_ATTR IRAM_ATTR
 static const char* TAG = "gfx";
 #else
@@ -58,6 +59,41 @@ unsigned gfx_present_guard_trips;
 #endif
 
 static bool present_async_on = true;
+
+/* gfx_set_clear_on_send()'s choice, and what the send in flight does with
+ * present_fb once it has copied it out: core 1 reads the second pair, which
+ * core 0 sets only while no send runs. */
+static bool clear_on_send;
+static gfx_color_t clear_on_send_colour;
+static bool send_clears;
+static gfx_color_t send_clear_colour;
+
+/* The sent frame, filled for its next turn as the back buffer. */
+static void
+fill_sent_frame(void) {
+    gfx_target_fill((gfx_target_t){present_fb, 0, GFX_HEIGHT, GFX_WIDTH}, send_clear_colour);
+}
+#ifdef ESP_PLATFORM
+static bool present_pending;
+#endif
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+static int32_t dev_present_send_us;
+static int32_t dev_present_wait_us;
+#ifdef ESP_PLATFORM
+static int64_t present_dispatched_us;
+static int32_t present_completed_send_us;
+#endif
+
+int32_t
+gfx_get_present_send_us(void) {
+    return dev_present_send_us;
+}
+
+int32_t
+gfx_get_present_wait_us(void) {
+    return dev_present_wait_us;
+}
+#endif
 
 /* The panel clock choice, written by gfx_set_panel_clock_hz() from any task.
  * The send side reopens the link at this rate before a present's first send,
@@ -133,7 +169,7 @@ _Static_assert(GFX_BAND_SLOTS == STRIP_BOUNCE_SLOTS, "band_buf[] aliasing strip_
  */
 
 /* The panel bus uses interrupt flags 0, so this callback need not survive cache-off
- * (docs/Citations.md#59); IRAM only spares it cache misses. IRAM budget: 36 B */
+ * (ESP-IDF v5.5 SPI Master Driver guide); IRAM only spares it cache misses. IRAM budget: 36 B */
 static bool IRAM_ATTR
 on_strip_sent(esp_lcd_panel_io_handle_t io, esp_lcd_panel_io_event_data_t* event, void* user_context) {
     BaseType_t woken = pdFALSE;
@@ -205,10 +241,7 @@ display_bring_up(int hz) {
 
 /* Defined far below, alongside every other send-path function; the task
  * loop only needs to call them. */
-static void run_present_normal(void);
-#if CONFIG_LAUNCHER_DEVELOPMENT
-static void run_present_raw_full(void);
-#endif
+static void run_present(void);
 
 /* Runs entirely on core 1. Bring-up happens here, once, so the strip-sent
  * interrupt esp_lcd installs lands on this core; see board_panel_bring_up().
@@ -220,7 +253,7 @@ present_task_fn(void* arg) {
 
     /* Sized for STRIP_COUNT * GRID_COLS: see send_one_row(). Undersizing
      * blocks this task's own send loop forever. */
-    strip_sent = xSemaphoreCreateCounting(STRIP_COUNT * GRID_COLS + 2, 0);
+    strip_sent = xSemaphoreCreateCounting((STRIP_COUNT * GRID_COLS) + 2, 0);
     if (strip_sent == NULL) {
         ESP_LOGE(TAG, "Could not create the strip-transfer semaphore");
         present_bringup_ok = false;
@@ -242,14 +275,7 @@ present_task_fn(void* arg) {
 
     for (;;) {
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-#if CONFIG_LAUNCHER_DEVELOPMENT
-        if (present_task_mode == PRESENT_TASK_RAW_FULL) {
-            run_present_raw_full();
-            xSemaphoreGive(present_done_sem);
-            continue;
-        }
-#endif
-        run_present_normal();
+        run_present();
         xSemaphoreGive(present_done_sem);
     }
 }
@@ -386,6 +412,11 @@ gfx_mark_dirty(int x, int y, int w, int h) {
     dirty_mark(x, y, w, h);
 }
 
+void
+gfx_mark_drawn(int x, int y, int w, int h) {
+    dirty_mark(x, y, w, h);
+}
+
 bool
 gfx_region_dirty(int x, int y, int w, int h) {
     GFX_PRESENT_GUARD();
@@ -439,7 +470,8 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
     gfx_color_t* const slot = strip_bounce[strip_bounce_next];
     strip_bounce_next = (strip_bounce_next + 1) % STRIP_BOUNCE_SLOTS;
     for (int r = 0; r < h; r++) {
-        memcpy(slot + (size_t)r * w, fb + (size_t)(y0 + r) * GFX_WIDTH + x0, (size_t)w * sizeof(gfx_color_t));
+        memcpy(slot + ((size_t)r * w), present_fb + ((size_t)(y0 + r) * GFX_WIDTH) + x0,
+               (size_t)w * sizeof(gfx_color_t));
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
     send_audit_capture(x0, y0, w, h, slot);
@@ -448,17 +480,18 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
         mark_rect_border(slot, w, w, h, border);
     } else if (debug_overlay_on) {
         for (int col = run_start; col < run_end; col++) {
-            const int idx = row * GRID_COLS + col;
-            gfx_color_t* at = slot + (size_t)(cell_y0[idx] - y0) * w + (cell_x0[idx] - x0);
+            const int idx = (row * GRID_COLS) + col;
+            gfx_color_t* at = slot + ((size_t)(cell_y0[idx] - y0) * w) + (cell_x0[idx] - x0);
             mark_rect_border(at, w, cell_x1[idx] - cell_x0[idx], cell_y1[idx] - cell_y0[idx], border);
         }
     }
     if (leaf_overlay_on) {
-        const int n = dirty_leaf_rects(row, x0, y0, x1, y1, leaf_rect_scratch, LEAF_RECTS_PER_ROW_MAX);
+        const int n =
+            dirty_leaf_rects(row, recti_from_edges(x0, y0, x1, y1), leaf_rect_scratch, LEAF_RECTS_PER_ROW_MAX);
         for (int i = 0; i < n; i++) {
-            const dirty_leaf_rect_t* r = &leaf_rect_scratch[i];
-            gfx_color_t* at = slot + (size_t)(r->y0 - y0) * w + (r->x0 - x0);
-            mark_rect_border(at, w, r->x1 - r->x0, r->y1 - r->y0, gfx_rgb(0x00FF00));
+            const recti_t* r = &leaf_rect_scratch[i];
+            gfx_color_t* at = slot + ((size_t)(r->y - y0) * w) + (r->x - x0);
+            mark_rect_border(at, w, r->w, r->h, gfx_rgb(0x00FF00));
         }
     }
 #else
@@ -486,7 +519,7 @@ bool GFX_PRESENT_IRAM_ATTR
 send_fb_rows(int y0, int y1) {
     gfx_color_t* const slot = strip_bounce[strip_bounce_next];
     strip_bounce_next = (strip_bounce_next + 1) % STRIP_BOUNCE_SLOTS;
-    memcpy(slot, fb + (size_t)y0 * GFX_WIDTH, (size_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t));
+    memcpy(slot, present_fb + ((size_t)y0 * GFX_WIDTH), (size_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t));
 #if CONFIG_LAUNCHER_DEVELOPMENT
     send_audit_capture(0, y0, GFX_WIDTH, y1 - y0, slot);
     dev_bytes_sent += (int64_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t);
@@ -518,7 +551,7 @@ send_picture_rows(int y0, int y1) {
     } else {
         const gfx_indexed_frame_t frame = indexed_frame();
         for (int y = y0; y < y1; y++) {
-            gfx_indexed_expand_panel_row(&frame, y, slot + (size_t)(y - y0) * GFX_WIDTH, GFX_WIDTH);
+            gfx_indexed_expand_panel_row(&frame, y, slot + ((size_t)(y - y0) * GFX_WIDTH), GFX_WIDTH);
         }
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -551,7 +584,7 @@ send_full_row(int row, int* queued) {
 }
 
 /* Third, cheapest send path: a full-width box is already contiguous in
- * `fb`, so it sends exactly the panel's bytes with no packing. Needs the
+ * `present_fb`, so it sends exactly the panel's bytes with no packing. Needs the
  * box's real sub-strip Y extent (cell_y0/cell_y1, gfx_dirty.h), not the
  * coarse strip grid. Measured ~10% fewer pixels per frame on scenes that
  * dirty many short spans, 0% where strips are genuinely full-height.
@@ -593,9 +626,12 @@ send_run(int row, int run_start, int run_end, int box_x0, int box_x1, int box_y0
  * large parts. */
 static void
 send_one_row(int row, int* queued) {
-    int run_start[GRID_COLS], run_end[GRID_COLS];
-    int box_x0[GRID_COLS], box_x1[GRID_COLS];
-    int box_y0[GRID_COLS], box_y1[GRID_COLS];
+    int run_start[GRID_COLS];
+    int run_end[GRID_COLS];
+    int box_x0[GRID_COLS];
+    int box_x1[GRID_COLS];
+    int box_y0[GRID_COLS];
+    int box_y1[GRID_COLS];
     int split_n[GRID_COLS];
     int split_x0[GRID_COLS][LEAF_REFINE_MAX_RUNS];
     int split_x1[GRID_COLS][LEAF_REFINE_MAX_RUNS];
@@ -669,7 +705,7 @@ run_present_strips(bool (*send_rows)(int y0, int y1)) {
      * quiet need the clean resend. */
     for (int row = 0; row < STRIP_COUNT; row++) {
         if (dirty_row_is_dirty(row)) {
-            overlay_bordered_rows &= ~(1u << row);
+            overlay_bordered_rows &= ~(1U << row);
         }
     }
     send_overlay_bordered_rows_clean(send_rows, &queued);
@@ -680,7 +716,7 @@ run_present_strips(bool (*send_rows)(int y0, int y1)) {
         }
 #if CONFIG_LAUNCHER_DEVELOPMENT
         if (overlay_any_on()) {
-            overlay_bordered_rows |= 1u << row;
+            overlay_bordered_rows |= 1U << row;
             strip_overlay_row = row;
         }
 #endif
@@ -702,9 +738,9 @@ run_present_strips(bool (*send_rows)(int y0, int y1)) {
     }
 }
 
-/* Sends every dirty strip row this present owns. Returns the cells of the
- * rows interlace left for the next present, still dirty. */
-static uint32_t
+/* Interlace leaves skipped rows dirty. Keep run-planning scratch off the stack
+ * when heal strips replay overlays. */
+static __attribute__((noinline)) uint32_t GFX_PRESENT_IRAM_ATTR
 send_dirty_rows(int* queued) {
     uint32_t remaining_cell_dirty = 0;
 
@@ -714,13 +750,13 @@ send_dirty_rows(int* queued) {
         }
 
         if (interlace_on && (row % 2) != frame_parity) {
-            remaining_cell_dirty |= cell_dirty & (((1u << GRID_COLS) - 1u) << (row * GRID_COLS));
+            remaining_cell_dirty |= cell_dirty & (((1U << GRID_COLS) - 1U) << (row * GRID_COLS));
             continue;
         }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
         if (overlay_any_on()) {
-            overlay_bordered_rows |= 1u << row;
+            overlay_bordered_rows |= 1U << row;
         }
 #endif
         send_one_row(row, queued);
@@ -730,10 +766,7 @@ send_dirty_rows(int* queued) {
     return remaining_cell_dirty;
 }
 
-/* The real send, run on the present task (async) or on the caller
- * (gfx_set_present_async(false)), either way, on whichever core called it,
- * since strip_sent is an ordinary FreeRTOS semaphore and the panel's own
- * strip-sent interrupt is core-agnostic about who it wakes. */
+/* The send may run on either core: strip_sent wakes whichever caller waits. */
 static void GFX_PRESENT_IRAM_ATTR
 run_present_normal(void) {
     panel_clock_apply();
@@ -773,10 +806,9 @@ run_present_normal(void) {
     }
 }
 
-#if CONFIG_LAUNCHER_DEVELOPMENT
 /* Bypasses gfx_present()'s dirty tracking: every strip through the same
  * bounce copy and queue a full-band send takes, one strip_sent per strip. */
-static void
+static __attribute__((noinline)) void
 run_present_raw_full(void) {
     panel_clock_apply();
     int queued = 0;
@@ -788,14 +820,38 @@ run_present_raw_full(void) {
     for (int i = 0; i < queued; i++) {
         xSemaphoreTake(strip_sent, portMAX_DELAY);
     }
-}
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    send_audit_check();
 #endif
+    if (send_clears) {
+        fill_sent_frame();
+    }
+}
+
+static void GFX_PRESENT_IRAM_ATTR
+run_present(void) {
+    if (present_task_mode == PRESENT_TASK_RAW_FULL) {
+        run_present_raw_full();
+    } else {
+        run_present_normal();
+    }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    present_completed_send_us = (int32_t)(timing_now_us() - present_dispatched_us);
+    if (!present_async_on) {
+        dev_present_send_us = present_completed_send_us;
+    }
+#endif
+}
 
 /* Dispatches to the present task when async, runs directly otherwise; see
  * gfx_set_present_async(). Shared by gfx_present_begin() and the raw-full
  * test helper below, which only differ in present_task_mode. */
-static void
+static inline void
 dispatch_present(void) {
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    present_dispatched_us = timing_now_us();
+#endif
+    present_pending = present_async_on;
     if (present_async_on) {
         xTaskNotifyGive(present_task_handle);
         return;
@@ -803,56 +859,100 @@ dispatch_present(void) {
     /* Synchronous: the send happens now, on the caller's own core, before
      * gfx_present_begin() returns; gfx_present_wait() then has nothing
      * left to wait for. */
-#if CONFIG_LAUNCHER_DEVELOPMENT
-    if (present_task_mode == PRESENT_TASK_RAW_FULL) {
-        run_present_raw_full();
-        return;
-    }
-#endif
-    run_present_normal();
-}
-
-void GFX_PRESENT_IRAM_ATTR
-gfx_present_begin(void) {
-    frame_watch_presented();
-    gfx_present_guard_begin();
-    if (band_is_transient()) {
-        return; /* gfx_band_run() sends and waits after frame() returns */
-    }
-    present_task_mode = PRESENT_TASK_NORMAL;
-    dispatch_present();
-}
-
-void GFX_PRESENT_IRAM_ATTR
-gfx_present_wait(void) {
-    if (!band_is_transient() && present_async_on) {
-        xSemaphoreTake(present_done_sem, portMAX_DELAY);
-    }
-    gfx_present_guard_end();
-    clear_expanded_frame(false);
-}
-
-#else /* !ESP_PLATFORM */
-
-void
-gfx_present_begin(void) {
-    gfx_present_guard_begin();
-}
-
-void
-gfx_present_wait(void) {
-    /* No panel on a host build; draining the dirty tracker here is what
-     * lets a host test assert the same "sequencing leaves it clean"
-     * property a real present provides; see suite_gfx_present_guard.c.
-     * A transient band frame drains its dirty tracker in gfx_band_run(). */
-    if (!band_is_transient()) {
-        dirty_frame_sent();
-    }
-    gfx_present_guard_end();
-    clear_expanded_frame(false);
+    run_present();
 }
 
 #endif /* ESP_PLATFORM: the presentation pipeline */
+
+int32_t
+gfx_present_drain(void) {
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    const int64_t wait_start = timing_now_us();
+#endif
+#ifdef ESP_PLATFORM
+    if (present_pending) {
+        xSemaphoreTake(present_done_sem, portMAX_DELAY);
+        present_pending = false;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+        dev_present_send_us = present_completed_send_us;
+#endif
+    }
+#endif
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    return (int32_t)(timing_now_us() - wait_start);
+#else
+    return 0;
+#endif
+}
+
+static void
+drain_present(void) {
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+    dev_present_wait_us = gfx_present_drain();
+#else
+    gfx_present_drain();
+#endif
+}
+
+/* Double-mode setup can wait behind QSPI without spending the hot path's IRAM. */
+static __attribute__((noinline)) void
+begin_double_frame(void) {
+    drain_present();
+    gfx_color_t* drawn = fb;
+    fb = present_fb;
+    present_fb = drawn;
+    /* The buffer coming back was filled by its own send, if that one cleared. */
+    fb_filled = send_clears;
+    fb_fill_colour = send_clear_colour;
+    send_clears = clear_on_send;
+    send_clear_colour = clear_on_send_colour;
+#ifdef ESP_PLATFORM
+    frame_watch_presented();
+    present_task_mode = PRESENT_TASK_RAW_FULL;
+    dispatch_present();
+#else
+    /* No send on a host: the frame is filled at once. */
+    if (send_clears) {
+        fill_sent_frame();
+    }
+#endif
+}
+
+/* Split entrypoints stay out of their wrapper so control flow occupies IRAM once. */
+__attribute__((noinline)) void GFX_PRESENT_IRAM_ATTR
+gfx_present_begin(void) {
+    if (current_mode.layout == GFX_LAYOUT_DOUBLE_FB) {
+        begin_double_frame();
+        return;
+    }
+#ifdef ESP_PLATFORM
+    frame_watch_presented();
+#endif
+    send_clears = false; /* this send keeps its frame */
+    gfx_present_guard_begin();
+#ifdef ESP_PLATFORM
+    if (band_is_transient()) {
+        return;
+    }
+    present_task_mode = PRESENT_TASK_NORMAL;
+    dispatch_present();
+#endif
+}
+
+__attribute__((noinline)) void GFX_PRESENT_IRAM_ATTR
+gfx_present_wait(void) {
+    if (current_mode.layout == GFX_LAYOUT_DOUBLE_FB) {
+        return;
+    }
+    drain_present();
+#ifndef ESP_PLATFORM
+    if (!band_is_transient()) {
+        dirty_frame_sent();
+    }
+#endif
+    gfx_present_guard_end();
+    clear_expanded_frame(false);
+}
 
 void GFX_PRESENT_IRAM_ATTR
 gfx_present(void) {
@@ -892,7 +992,7 @@ gfx_heal_restore_defaults(void) {
 
 bool
 gfx_heal_active(void) {
-    return panel_clock_requested_hz == GFX_PANEL_CLOCK_FAST_HZ;
+    return current_mode.layout != GFX_LAYOUT_DOUBLE_FB && panel_clock_requested_hz == GFX_PANEL_CLOCK_FAST_HZ;
 }
 
 bool
@@ -907,6 +1007,25 @@ gfx_set_panel_clock_hz(int hz) {
 int
 gfx_panel_clock_hz(void) {
     return panel_clock_requested_hz;
+}
+
+bool
+gfx_present_sent_frame_filled(void) {
+    return send_clears;
+}
+
+#ifndef ESP_PLATFORM
+void
+gfx_present_fill_reset_for_test(void) {
+    send_clears = false;
+}
+#endif
+
+bool
+gfx_set_clear_on_send(bool on, gfx_color_t colour) {
+    clear_on_send = on && current_mode.layout == GFX_LAYOUT_DOUBLE_FB;
+    clear_on_send_colour = colour;
+    return clear_on_send == on;
 }
 
 void
@@ -931,10 +1050,15 @@ gfx_present_raw_full_frame_for_test(void) {
     gfx_present_guard_begin();
     present_task_mode = PRESENT_TASK_RAW_FULL;
     dispatch_present();
-    if (present_async_on) {
-        xSemaphoreTake(present_done_sem, portMAX_DELAY);
-    }
+    gfx_present_drain();
     gfx_present_guard_end();
 }
 #endif /* ESP_PLATFORM */
 #endif
+
+void
+gfx_mark_rows_dirty(int y0, int y1) {
+    GFX_PRESENT_GUARD();
+    /* mark_band() trusts clipped rows; a public caller's need not be. */
+    mark_band(mathi_max(y0, 0), mathi_min(y1, GFX_HEIGHT));
+}

@@ -72,6 +72,13 @@ autana repeatedly. Ctrl+C ends the child and releases the lock. A failed child
 also releases it unless `--keep-on-failure <seconds>` leaves a timed hold; the
 token and an early release command then print on stderr.
 
+`lock take` names the job with trailing note words, and both `lock take` and
+`lock run` accept `--estimate SECONDS` for its expected duration.
+
+An estimate sets the record's optional `estimated_end` (epoch seconds).
+`status` shows it as `estimated_free` and uses it for queued starts. It never
+expires or reclaims a hold; a passed estimate shows the current time.
+
 Build outside the board lock, then hold it across the board commands:
 
 | Linux | Windows PowerShell |
@@ -277,7 +284,7 @@ cannot help: an older install never looks in the new folder). Per board, with
 
 | File | What it is |
 |---|---|
-| `<serial>.json` | The lock: `owner`, `board`, `kind`, `purpose`, `acquired_at`, `heartbeat_at`, `pid`, `host`, `token`, `protocol`, `autana_version`; a timed hold or person's reservation has `expires_at` and `pid: 0`, and an until-released hold has `until_released: true` and the owner process id. `heartbeat_at` is when a hold was written. `purpose` is what `status` shows. The `token` names this lock; `lock take` prints it, and a holder's child processes inherit it for `lock release` without an argument. `status` never prints it. |
+| `<serial>.json` | The lock: `owner`, `board`, `kind`, `purpose`, `acquired_at`, `heartbeat_at`, `pid`, `host`, `token`, `protocol`, `autana_version`; a timed hold or person's reservation has `expires_at` and `pid: 0`, and an until-released hold has `until_released: true` and the owner process id. `heartbeat_at` is when a hold was written. `purpose` is what `status` shows. Optional `estimated_end` supplies the informational end time without changing liveness. The `token` names this lock; `lock take` prints it, and a holder's child processes inherit it for `lock release` without an argument. `status` never prints it. |
 | `<serial>.queue/` | One ticket per waiting command, in FIFO order; a dead waiter's is discarded. |
 | `<serial>.last.json` | The previous holder, one only: overwritten each time a lock ends, for the message in step 5. |
 | `<serial>.seen.json` | Names a board once found on USB, so `lock hand` and `lock take-back` can still reach it when it has since dropped off. Delete it to make this machine forget the board. |
@@ -290,8 +297,19 @@ A board is named by its USB serial number (the ESP32-S3's MAC address,
 brings it back on another COM number. A command acts on the board `--board`
 names (or the one Espressif board plugged in, else the one board a lock,
 reservation or waiter names, so it can queue while a holder's reset has the
-board off USB). With several candidates and none named it fails and lists
-them; each board has its own lock and queue. `lock hand` and `lock take-back`
+board off USB). Full serials and the last four hex digits (short ids) are accepted
+case-insensitively by `--board`, its alias `-b`, and console `use`. Short ids
+resolve against USB, known and seen boards; collisions require a full serial.
+`autana devices` lists compact availability; `devices --json` and
+`status --json` share the same data.
+
+With several boards plugged in and none selected, commands that flash
+(`flash`, `suite --flash`, `selftest`, `batch`) and whole-job holds
+(`lock run`, `lock take`) choose a free board with nobody queued, else the
+earliest estimated start after queued work, else the shortest queue.
+Human reservations are avoided when another board is available. The job and its children keep
+the selected serial. Other board commands fail and list the choices, pointing
+at `--board`, `-b` and console `use`. Each board has its own lock and queue. `lock hand` and `lock take-back`
 alone fall back once more to the only board this machine has ever seen.
 
 ### Exit codes and JSON status
@@ -314,7 +332,8 @@ Times are epoch seconds; an age or a time left is the difference from now. An es
 | `state` | `unlocked`, `held`, or `human` (a person's reservation) |
 | `holder` | `{"owner", "purpose"}`, the command or hold note; `null` when unlocked. A held lock also carries `protocol` and `autana_version`; a timed or until-released hold carries `kind: "hold"`. |
 | `since` | when the holder took the board |
-| `estimated_free` | when the holder should be done |
+| `estimated_free` | when the holder should be done; a hold can supply this with `--estimate` |
+| `estimated_start` | when a new request would start after the holder and all queued work |
 | `expires_at` | when a timed hold or person's reservation lapses; else `null` |
 | `lapsed` | `{"owner", "purpose", "reason", "at"}` of a lock or reservation that lapsed but is still on disk, else `null`. `reason` is `dead process`, `heartbeat expiry`, or `hold lapsed` for a lock the next waiter reclaims (`at` is `null`), or `reservation expired` for a person's reservation (`at` is when it lapsed). |
 | `waiting` | `[{"owner", "purpose", "estimated_start"}]` in queue order |
@@ -409,6 +428,10 @@ seconds. `release --token <t>`, `take`, `run`, `hand-to-human --note <n>`,
 `take-back` and `wait-free` are what `autana lock` calls;
 `check-token --token <t>` exits 0 when the token is the board's live lock,
 which `flash_image.sh` asks before it opens the port.
+
+## Duration estimates
+
+See [Wait estimates](Flash-and-Captures.md#wait-estimates) for duration history and per-board estimates.
 
 ## How it works
 

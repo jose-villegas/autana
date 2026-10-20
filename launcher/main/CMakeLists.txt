@@ -1,6 +1,12 @@
 # The shell and the board drivers. Apps are NOT listed here; see below.
 set(app_srcs
     "main.c"
+    "sound/sound_mixer.c"
+    "sound/sound_mixer_device.c"
+    "audio/audio_codec.c"
+    "audio/audio_out.c"
+    "audio/audio_in.c"
+    "audio/audio_tone.c"
     "app/app_arena.c"
     "app/app_registry.c"
     "boot/boot_anim.c"
@@ -13,40 +19,43 @@ set(app_srcs
     "display/display.c"
     "display/display_device.c"
     "display/panel_clock.c"
-    "gfx/draw/gfx_draw.c"
-    "gfx/image/gfx_image.c"
-    "gfx/draw/icon.c"
+    "draw/draw.c"
+    "draw/draw_image.c"
+    "draw/icon.c"
     "gfx/present/gfx_debug.c"
     "gfx/present/gfx_mode.c"
     "gfx/present/gfx_present.c"
-    "input/touch.c"
-    "input/touch_calib.c"
-    "input/touch_point.c"
-    "input/touch_fsm.c"
-    "input/button_fsm.c"
-    "input/buttons.c"
-    "input/gesture.c"
-    "input/imu.c"
+    "input/touch/touch.c"
+    "input/motion/imu_calib.c"
+    "input/touch/touch_calib.c"
+    "input/touch/touch_fsm.c"
+    "input/buttons/button_fsm.c"
+    "input/buttons/buttons.c"
+    "input/touch/gesture.c"
+    "input/motion/imu.c"
     "input/input_device.c"
-    "input/tilt.c"
+    "input/motion/tilt.c"
+    "input/motion/gravity.c"
     "ui/ui.c"
-    "ui/ui_bridge.c"
+    "ui/input/ui_bridge.c"
     "ui/ui_build.c"
+    "ui/face/ui_face.c"
     "ui/ui_canvas_marks.c"
-    "ui/ui_icons.c"
-    "ui/ui_launcher.c"
-    "ui/ui_launcher_draw.c"
-    "ui/ui_pointer.c"
-    "ui/ui_snap.c"
-    "ui/ui_ridge.c"
-    "ui/ui_scroll.c"
-    "ui/ui_widgets.c"
+    "ui/controls/ui_icons.c"
+    "shell/ui/ui_launcher.c"
+    "shell/ui/ui_launcher_draw.c"
+    "ui/input/ui_pointer.c"
+    "ui/input/ui_snap.c"
+    "shell/ui/ui_ridge.c"
+    "ui/controls/ui_widgets.c"
     "anim/anim_track.c"
     "anim/anim_tracks.c"
     "anim/anim_skeleton.c"
     "anim/pose/anim_pose.c"
     "anim/playback/anim_playhead.c"
     "anim/playback/anim_layer.c"
+    "sound/sound.c"
+    "audio/audio_adpcm.c"
     "render/r3d_skin.c"
     "render/skin/r3d_skinning.c"
     "render/skin/r3d_skin_light.c"
@@ -58,6 +67,7 @@ set(app_srcs
     "asset/asset_store_flash.c"
     "render/render_view.c"
     "render/raster.c"
+    "render/raster_split.c"
     "render/r3d_lit_mesh.c"
     "render/r3d_pipeline.c"
     "render/upscale.c"
@@ -71,7 +81,7 @@ set(app_srcs
     "scene/scene_asset.c"
     "scene/scene_draw.c"
     "scene/scene_shell.c"
-    "input/orbit_motion_touch.c"
+    "input/mapping/orbit_motion_touch.c"
     "shell/scene_system.c"
     "shell/shell.c"
     "shell/shell_apps.c"
@@ -99,7 +109,7 @@ function(launcher_glob output)
 endfunction()
 
 if(CONFIG_LAUNCHER_QEMU)
-    list(APPEND app_srcs "gfx/present/gfx_null_panel_device.c")
+    list(APPEND app_srcs "gfx/present/panel/gfx_null_panel_device.c")
 endif()
 
 # The frame's view modes: a development tool, with nothing calling them in a
@@ -115,10 +125,13 @@ endif()
 # each actually answers on.
 if(CONFIG_LAUNCHER_DEVELOPMENT)
     list(APPEND app_srcs
+        "app/app_console.c"
         "console/console_verbs.c"
         "console/console.c"
         "console/verbs/console_buildid.c"
         "console/verbs/console_heap.c"
+        "console/verbs/console_tone.c"
+        "console/verbs/console_sound.c"
         "console/verbs/console_freeze.c"
         "console/console_frame_request.c"
         "console/verbs/console_frame_watch.c"
@@ -128,6 +141,10 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/verbs/console_screenshot.c"
         "console/capture/device_state.c"
     )
+    # Acoustic detection belongs to the development console.
+    list(APPEND app_srcs
+        "audio/audio_loopback.c"
+    )
 endif()
 if(CONFIG_LAUNCHER_SELFTEST)
     list(APPEND app_srcs "console/verbs/console_runsuite.c")
@@ -135,13 +152,17 @@ endif()
 if(CONFIG_LAUNCHER_DEVELOPMENT)
     list(APPEND app_srcs
         "console/verbs/console_inject.c"
-        "input/touch_inject_fsm.c"
-        "input/touch_gesture.c"
+        "input/touch/touch_inject_fsm.c"
     )
 endif()
 
 # board/board.h binds this target's hardware facts to board_esp32s3.c.
 list(APPEND app_srcs "board/board_esp32s3.c" "board/board_panel.c")
+# At 120 MHz, PSRAM tuning runs with the USB port off the bus; the wrap that
+# routes it through board_usb.c is added after idf_component_register below.
+if(CONFIG_SPIRAM_SPEED_120M)
+    list(APPEND app_srcs "board/board_usb.c")
+endif()
 
 # Apps are discovered, not listed.
 #
@@ -159,7 +180,12 @@ list(APPEND app_srcs "board/board_esp32s3.c" "board/board_panel.c")
 # The script pass only cares about REQUIRES, so plain globbing is fine there.
 # (This is the same early pass that makes a Kconfig-gated REQUIRES silently
 # fail; see the note on unity below.)
-launcher_glob(discovered_apps "${CMAKE_CURRENT_LIST_DIR}/apps/*.c")
+set(app_roots "${CMAKE_CURRENT_LIST_DIR}/apps" "${CMAKE_CURRENT_LIST_DIR}/shell/apps")
+set(discovered_apps "")
+foreach(app_root IN LISTS app_roots)
+    launcher_glob(root_apps "${app_root}/*.c")
+    list(APPEND discovered_apps ${root_apps})
+endforeach()
 
 # apps/<name>/tools/ is an app's host-side tooling, not firmware. The glob
 # above is recursive and WHOLE_ARCHIVE force-links whatever it finds, so a
@@ -179,8 +205,11 @@ list(FILTER discovered_apps EXCLUDE REGEX "/suite_[^/]*\\.c$")
 # DEVELOPMENT) and never in release. The app declares it from its own folder,
 # so deleting the folder deletes the declaration.
 if(NOT CONFIG_LAUNCHER_DEVELOPMENT)
-    launcher_glob(development_only_markers
-        "${CMAKE_CURRENT_LIST_DIR}/apps/*/development_only.cmake")
+    set(development_only_markers "")
+    foreach(app_root IN LISTS app_roots)
+        launcher_glob(root_markers "${app_root}/*/development_only.cmake")
+        list(APPEND development_only_markers ${root_markers})
+    endforeach()
     list(FILTER development_only_markers INCLUDE REGEX
         "/apps/[^/]+/development_only\\.cmake$")
     foreach(marker IN LISTS development_only_markers)
@@ -202,7 +231,7 @@ list(APPEND app_srcs ${discovered_apps})
 # esp_lcd_co5300 brings up the V2 (CO5300 panel) revision; see board/board_panel.c. It is
 # a PRIVATE dependency of the BSP's own idf_component.yml, so main needs its
 # own declaration (main/idf_component.yml) to see its headers.
-set(app_reqs math microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
+set(app_reqs esp_codec_dev esp_driver_i2s math microui esp32_s3_touch_amoled_1_8 esp_lcd heap esp_timer
              esp_driver_i2c esp_driver_tsens esp_hw_support esp_psram spi_flash esp_partition
              fatfs esp_driver_sdmmc sdmmc
              esp_driver_usb_serial_jtag esp_driver_uart vfs nvs_flash esp_app_format espcoredump
@@ -229,9 +258,11 @@ if(CONFIG_LAUNCHER_SELFTEST)
     # for by name (CONFIG_LAUNCHER_SELFTEST_SCOPE_*, Kconfig.projbuild). The
     # perf scope includes only what engine and app manifests declare.
     if(CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF)
-        launcher_glob(perf_scope_files
-            "${CMAKE_CURRENT_LIST_DIR}/apps/*/scope_perf.cmake"
-            "${CMAKE_CURRENT_LIST_DIR}/../test/scope_perf.cmake")
+        launcher_glob(perf_scope_files "${CMAKE_CURRENT_LIST_DIR}/../test/scope_perf.cmake")
+        foreach(app_root IN LISTS app_roots)
+            launcher_glob(root_scope_files "${app_root}/*/scope_perf.cmake")
+            list(APPEND perf_scope_files ${root_scope_files})
+        endforeach()
         set(perf_scope_srcs "")
         foreach(perf_scope_file IN LISTS perf_scope_files)
             include("${perf_scope_file}")
@@ -255,6 +286,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/suites.c"
         "../test/timing.c"
         "../test/test_cleanup.c"
+        "../test/ui_probe.c"
         ${suite_srcs}
         ${app_suites}
     )
@@ -270,8 +302,8 @@ if(CONFIG_LAUNCHER_SELFTEST)
         COMPILE_OPTIONS "-include;${CMAKE_CURRENT_LIST_DIR}/../test/timing.h")
 endif()
 
-# The software rasteriser's per-pixel loops run from flash through the
-# instruction cache, so where each function starts inside a cache line moves
+# Render code outside IRAM runs from flash through the instruction cache,
+# so where each function starts inside a cache line moves
 # the frame time by a fraction of a percent whenever unrelated code ahead of
 # it in the link grows or shrinks. Starting every render function on a cache
 # line makes its timing independent of link order.
@@ -379,6 +411,13 @@ if(NOT CMAKE_SCRIPT_MODE_FILE)
     esptool_py_flash_target(assets-flash "${flash_main_args}" "${flash_sub_args}")
     esptool_py_flash_target_image(assets-flash assets "${asset_offset}" "${asset_image}")
     add_dependencies(assets-flash asset_pack_image)
+endif()
+
+if(CONFIG_SPIRAM_SPEED_120M)
+    # Routes ESP-IDF's PSRAM tuning through board/board_usb.c, so the USB port
+    # is off the bus for it. tools/build/check_psram_tuning_wrap.py checks the
+    # linked image.
+    target_link_options(${COMPONENT_LIB} INTERFACE "-Wl,--wrap=mspi_timing_psram_tuning")
 endif()
 
 if(CONFIG_LAUNCHER_SELFTEST)

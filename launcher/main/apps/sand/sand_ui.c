@@ -35,14 +35,16 @@ close_panel(sand_ui_t* ui, unsigned closed) {
 
 /* While a panel is open: `close` is its closing edge, never the opening
  * one, as sand_ui_step() reads the screen once. Taps are decided elsewhere
- * (sand_ui.h); this disarms `swallow_release` once the finger is up. */
+ * (sand_ui.h); this disarms `swallow_release` once the finger is up and
+ * its release frame has passed, since the UI delivers a tap on that frame,
+ * after this step. */
 static unsigned
 handle_panel_input(sand_ui_t* ui, const input_t* input, bool close, unsigned closed) {
     if (close) {
         return close_panel(ui, closed);
     }
 
-    if (ui->swallow_release && !input->down) {
+    if (ui->swallow_release && !input->down && !input->released) {
         ui->swallow_release = false;
     }
 
@@ -52,10 +54,10 @@ handle_panel_input(sand_ui_t* ui, const input_t* input, bool close, unsigned clo
 /* What a click on palette tile `index` means, see this function's own
  * doc comment in sand_ui.h for the full contract, and the "WHO
  * HIT-TESTS AND WHO DECIDES" note there for why the hit-test producing
- * `index` belongs to microui, not this module. draw_palette() in
- * app_sand.c is the only caller, from inside its own per-tile mu_button()
- * loop, so there is no "index hits nothing" branch here: an index this
- * function is ever handed already named a real tile. */
+ * `index` belongs to the UI, not this module. palette_screen.c is the
+ * only caller, from inside its own per-tile ui_button() loop, so there is
+ * no "index hits nothing" branch here: an index this function is ever
+ * handed already named a real tile. */
 unsigned
 sand_ui_tile_clicked(sand_ui_t* ui, int index) {
     /* Swallow the first click after opening with a finger already down;

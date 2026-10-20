@@ -1,6 +1,6 @@
 /*
  * vec3_template: the three-component vector for one number type; see
- * docs/math/README.md for the macro arguments. normalize needs a square root and
+ * docs/math/Conventions.md#templates for the macro arguments. normalize needs a square root and
  * a divide, so it is a macro of its own, for the types that have them. Its
  * swizzles are vec_swizzle_template.h's.
  */

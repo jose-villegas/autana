@@ -1,15 +1,13 @@
 """Seed inference and foreground acquisition exercised without hardware."""
 import contextlib
 import io
-import inspect
 import math
 import pathlib
 import random
 import sys
 import tempfile
-import subprocess
-import os
 import unittest
+from shell_job import ShellJobTests
 from unittest.mock import patch
 from types import SimpleNamespace
 
@@ -104,8 +102,25 @@ class SeedInferenceTest(unittest.TestCase):
             owners, _ = capture_metadata(capture, rows)
             self.assertEqual(owners, {row: 'test_timing' for row in rows})
 
+    def test_quarters_keep_separate_values_and_test_ownership(self):
+        with tempfile.TemporaryDirectory() as root:
+            capture = pathlib.Path(root) / 'capture.log'
+            capture.write_text('mesh both cores: mean 10us quarter=portrait\n'
+                               ':1:test_portrait:PASS\n'
+                               'mesh both cores: mean 20us quarter=landscape\n'
+                               ':1:test_landscape:PASS\n')
+            expected = {'mesh quarter=portrait': 10, 'mesh quarter=landscape': 20}
+            self.assertEqual(parse_report(capture), expected)
+            owners, _ = capture_metadata(capture, expected)
+            self.assertEqual(owners, {'mesh quarter=portrait': 'test_portrait',
+                                      'mesh quarter=landscape': 'test_landscape'})
+            from capture import select_quarter
+            with self.assertRaisesRegex(ValueError, 'landscape'):
+                select_quarter('mesh mean 10us', 'landscape')
+            self.assertNotIn('20us', select_quarter(capture.read_text(), 'portrait'))
+
     def test_parsers_pool_tables_and_ignore_capture_worst(self):
-        self.assertEqual(parse_report(FIXTURES/'sponza_capture.txt')['sponza'], 51000)
+        self.assertEqual(parse_report(FIXTURES/'sponza_capture.txt')['sponza quarter=portrait'], 51000)
         self.assertIn('hot', parse_report(FIXTURES/'sand_a.md'))
 
     def test_student_distribution_and_holm(self):
@@ -154,11 +169,44 @@ class SeedInferenceTest(unittest.TestCase):
         self.assertEqual(stats.compare(rows, rows)['row']['verdict'], 'inconclusive')
 
 
-class AcquisitionTest(unittest.TestCase):
+class AcquisitionTest(ShellJobTests, unittest.TestCase):
+    job_kind = "compare"
+
     def measure(self, root, fake, cap=16):
         with contextlib.redirect_stdout(io.StringIO()) as output:
             payload = tool.measure(arguments(root, cap), fake)
         return payload, output.getvalue()
+
+    def test_quarter_identity_through_acquisition_and_comparison(self):
+        for baseline in ("legacy", "portrait", "both"):
+            with self.subTest(baseline=baseline), tempfile.TemporaryDirectory() as root:
+                fake = FakeAutana(root)
+                def runner(command, log, timeout):
+                    result = fake(command, log, timeout)
+                    if "suite" not in command:
+                        return result
+                    candidate = pathlib.Path(command[command.index('--project') + 1]).name == 'b'
+                    for _, line in result[1]:
+                        if not line.startswith('report: '):
+                            continue
+                        path = pathlib.Path(line.removeprefix('report: ')).with_suffix('.log')
+                        suffix = ' quarter=portrait' if candidate or baseline != 'legacy' else ''
+                        text = f'mesh both cores: mean 10000us{suffix}\n'
+                        if candidate or baseline == 'both':
+                            text += 'mesh both cores: mean 20000us quarter=landscape\n'
+                        path.write_text(text + ':1:test_quiet:PASS\n')
+                    return result
+                payload, _ = self.measure(root, runner, cap=4)
+                rows = payload['rows']
+                self.assertEqual(rows['suite/mesh quarter=landscape']['b'], 20000)
+                self.assertEqual(rows['suite/mesh quarter=landscape']['verdict'],
+                                 'no change' if baseline == 'both' else 'added')
+                if baseline != 'legacy':
+                    self.assertEqual(rows['suite/mesh quarter=portrait']['verdict'], 'no change')
+                    self.assertEqual(rows['suite/mesh quarter=portrait']['ratio'], 1)
+                else:
+                    self.assertEqual(rows['suite/mesh']['verdict'], 'removed')
+                    self.assertEqual(rows['suite/mesh quarter=portrait']['verdict'], 'added')
 
     def test_ab_and_aa_replay_interleaved_distinct_seed_sets(self):
         for shift in (False, True):
@@ -182,28 +230,35 @@ class AcquisitionTest(unittest.TestCase):
                         aa = tool.measure(args, FakeAutana(root))
                     self.assertEqual([item['seed'] for item in aa['plan']], seeds)
 
-    def test_shell_wrapper_runs_ab_and_aa_with_fake_autana(self):
+    def test_compare_estimate_covers_first_pass(self):
         with tempfile.TemporaryDirectory() as root:
-            root = pathlib.Path(root)
-            fake = root/'fake.py'
-            fake.write_text("import pathlib,sys\n" + inspect.getsource(FakeAutana) + "\n" +
-                            f"fake = FakeAutana({str(root)!r}, shifted=True)\n"
-                            "code, lines, wall = fake(sys.argv[1:], None, 1800)\n"
-                            "for at, line in lines: print(line, flush=True)\n"
-                            "sys.exit(code)\n")
-            for name in ('a', 'b'):
-                (root/name/'launcher/test').mkdir(parents=True)
-                (root/name/'launcher/test/suites.h').write_bytes((PERF.parents[2]/'launcher/test/suites.h').read_bytes())
-            def shell_path(path):
-                return pathlib.Path(path).as_posix()
-            for side in ('a', 'b'):
-                destination = root/f'out_{side}'
-                command = ['sh', shell_path(PERF/'perf_compare.sh'), shell_path(root/'a'), shell_path(root/side),
-                           '--no-restore', '-o', shell_path(destination), '--max-seeds', '8', '--suite', 'suite', '-', '-',
-                           '--autana', f'"{shell_path(sys.executable)}" "{shell_path(fake)}"']
-                done = subprocess.run(command, capture_output=True, text=True, timeout=60)
-                self.assertEqual(done.returncode, 0, done.stderr)
-                self.assertIn('no change' if side == 'a' else 'regressed', done.stdout)
+            args = arguments(root, cap=8)
+            with patch("perf_job.job_estimate", return_value=1) as estimate, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                tool.main(["--estimate-plan", "--max-seeds", str(args.max_seeds),
+                           "--project-a", str(args.project_a), "--project-b", str(args.project_b),
+                           "--suite", "suite", "-", "-",
+                           "--send-a", "sound stop all", "--send-b", "sound play tap loop"])
+            # Two sides: 2 * 4 = 8 flashes; 2 * (4 + 2 repeats) = 12 captures.
+            estimate.assert_called_once_with(8, 12, 1800, True)
+
+    def test_job_estimate_uses_history_and_fallbacks(self):
+        from perf_job import DEFAULT_FLASH_SECONDS, job_estimate
+        with patch("perf_job.duration_history", return_value={"flash": 10, "run-suite": 20}):
+            self.assertEqual(job_estimate(2, 3, 900), 90)
+        with patch("perf_job.duration_history", return_value={}):
+            self.assertEqual(job_estimate(2, 3, 900, restore=False),
+                             2 * DEFAULT_FLASH_SECONDS + 3 * 900)
+
+    def test_shell_validation_takes_no_hold(self):
+        from shell_job import replay
+        for options in (("--validate-plan",),
+                        ("--validate-plan", "--send-a", "sound stop all",
+                         "--send-b", "sound stop all", "--send-b", "sound play tap loop"),
+                        ("--bad-option",), ("--help",)):
+            result, calls = replay(self, "compare", extra=options)
+            self.assertEqual(calls, [])
+            self.assertEqual(result.returncode == 0, options != ("--bad-option",), result.stderr)
 
     def test_extra_seeds_only_remeasure_inconclusive_rows_and_stop_at_cap(self):
         with tempfile.TemporaryDirectory() as root:

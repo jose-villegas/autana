@@ -1,7 +1,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "ui/ui_snap.h"
+#include "ui/input/ui_snap.h"
 
 static void
 assert_snaps_to(const ui_snap_rect_t* rects, int count, int x, int y, int reach, int expected_x, int expected_y) {

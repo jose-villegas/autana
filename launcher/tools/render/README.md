@@ -7,12 +7,13 @@
 | [render_scene.sh](render_scene.sh) | Compiles, runs, and checks one host render scene. |
 | [render_all_scenes.sh](render_all_scenes.sh) | Discovers and checks all host render scenes. |
 | [scene_viewer.sh](scene_viewer.sh) | Builds and renders a scene file, selecting renderers with `--object NAME`; `--build-only -o DIR` returns the host path; `--deps` lists what it is compiled from. |
-| [doc_images_demo.sh](doc_images_demo.sh) | Makes the demo's bake, fidelity and import images and measured CPU tables through the scene viewer. |
-| [doc_tables.py](doc_tables.py) | Writes the CPU tables from comparison logs, with scene and object names supplied as arguments. |
+| [doc_images_demo.sh](doc_images_demo.sh) | Makes the demo's bake, fidelity, import and small-fill images and measured CPU tables through the scene viewer; `--small-fill-only` selects the small-fill outputs. |
+| [doc_tables.py](doc_tables.py) | Writes CPU tables from comparison logs, tunable listings and sweep captures, with scene and object names supplied as arguments. |
 | [doc_import_examples.py](doc_import_examples.py) | Renders albedo and face-sampling examples from a supplied scene and renderer. |
 | [physical_scene.py](physical_scene.py) | Copies a scene without its indirect look and occlusion settings for isolated bake studies. |
 | [render_diff.py](render_diff.py) | Compares rendered and captured images. |
 | [render_diff.sh](render_diff.sh) | Shell entry point for image comparisons. |
+| [render_temporal.py](render_temporal.py) | Adds triangle-scale temporal metrics to video CSVs and composes labelled look-range videos. |
 | [render_compare.py](render_compare.py) | Builds the A, B and difference sheet, the side-by-side video, the zoomed crops and the change numbers; every panel is labelled by `--label-a` and `--label-b`, which stills require. |
 | [render_compare.sh](render_compare.sh) | Runs a scene at two revisions and compares the images: `--script S [--clear RRGGBB] [--video [--fps N]] [--crops N] A B [--render LABEL "ARGS"]`; `--reference SCENE --poses FILE` scores one render's whole path against the source model. |
 | [render_png.py](render_png.py) | Converts host BMP frames to PNG. |
@@ -22,32 +23,34 @@
 | [render_watch.c](render_watch.c) | Fails a scene whose frames keep allocating or printing. |
 | [render_watch.h](render_watch.h) | Frame watch declarations for the host renderer. |
 | [render_masks.json](render_masks.json) | Named masks for image comparisons. |
-| [code_layout.py](code_layout.py) | Reports, writes, and checks each `RENDER_ENTRY_OFFSET` function and its machine loops within an instruction-cache line. |
+| [code_layout.py](code_layout.py) | Reports, writes, and checks each measured function and its machine loops within an instruction-cache line. |
 | [check_avi.py](check_avi.py) | Validates AVI structure and frame metadata. |
+| [colour_maths.py](colour_maths.py) | CIELAB and RGB565 expansion, shared by the comparison tool and the r3d fit. |
 | [scenes/](scenes/) | Engine render scenes and their pinned baselines. |
 | [tests/](tests/) | The harness checking its own frame watch against a fixture scene, and code_layout.py's own tests. |
 
 ## Pinned code layout
 
-`code_layout.py` reads the Xtensa tools and instruction-cache line size from a
-firmware build. The build gates check address-independent rows in each source folder's
-`code_layout.txt`. The checker discovers these files under `launcher/main/`:
+`code_layout.py` reads Xtensa tools and the build's cache-line size. Each
+`code_layout.txt` under `launcher/main/` pins function entries and the loops
+inside them no longer than `SMALL_LOOP_MAX_LINES` cache lines; a back-edge must
+target its own function. A loop row is keyed by its kind (`loop`, `loopnez`,
+`loopgtz`, or a branch mnemonic plus `-back`) and its branch's source line
+relative to the function's first line: a codegen change elsewhere keeps the
+keys, a source edit inside the function re-keys the rows below it.
 
 ```sh
-python launcher/tools/render/code_layout.py --check launcher/build.diag
-python launcher/tools/render/code_layout.py --write --baseline launcher/main/render/code_layout.txt launcher/build.diag
+python launcher/tools/render/code_layout.py --check launcher/build
+python launcher/tools/render/code_layout.py --write --baseline launcher/main/apps/sand/code_layout.txt launcher/build
 ```
 
-A baseline uses source entry markers unless it carries `# Functions: baseline`,
-which selects the functions recorded in its table without adding entry padding.
+A baseline checks the functions its folder pins with `CODE_ENTRY_OFFSET`.
 `# Config: CONFIG_NAME` selects the build whose sdkconfig enables that option;
 without it, the baseline applies to `CONFIG_LAUNCHER_SELFTEST` builds. `--write`
 preserves these headers. `--baseline PATH` selects one owner for reporting,
 checking or writing. Missing symbols and changed sizes, loop offsets or
-cache-line spans fail the check.
-
-For a changed baseline, the checker prints the measurement and re-recording
-instruction.
+cache-line spans fail the check, which prints the measurement and
+re-recording instruction.
 
 ## Meshlet size captures
 
@@ -91,3 +94,9 @@ default render size as the suite. Each row averages its own capture's per-pose
 stage reports and draw plus upscale wall times, without panel transfer. Missing
 PASS or completion verdicts, mismatched poses, build IDs, pack hashes, renderer
 geometry or render sizes fail. Monitor logs cannot supply this table.
+
+## Pinhole rays
+
+`python launcher/tools/render/pinhole_rays.py rays SCENE.scene.toml --mesh DRAWN.mesh --video FRAMES.avi --dt MS` traces enclosed sky in a HUD-free host video made with `--quarter 1`. It reports raster misses, geometry holes and random-pixel projection agreement (which should approach one). `--frames 0,1,2` selects zero-based video frames; `--against OTHER.mesh ...` compares each hole with other geometry at neighbouring drawn depth. Mitsuba's scalar CPU variant needs no LLVM runtime.
+
+`python launcher/tools/render/pinhole_rays.py shown SCENE.scene.toml --object OBJECT START.mesh ...` estimates visible triangles for each fitted start using the selected object's fit coverage spacing and square coverage view at its pose size. First-hit front-face rays use Mitsuba's LLVM CPU variant and require libLLVM. The count estimates post-fit pruning coverage; it is not the GPU raster count.

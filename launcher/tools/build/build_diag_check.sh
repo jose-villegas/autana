@@ -22,9 +22,10 @@
 #
 # The ratchet reads launcher/build.diag/compile_commands.json, which this
 # build writes, so it can only run first once a build.diag exists, with no
-# database on disk it runs after the build instead. That database is also
-# the previous build's: a .c file added since then is unknown to it and the
-# ratchet fails naming that file as unmeasured, which a build clears.
+# database on disk it runs after the build instead. A database older than a
+# first-party .c file or a build-definition file is the previous build's: it
+# cannot know a file added since, so the ratchet would name it unmeasured, and
+# it runs after the build too.
 #
 # COMPLEXITY_GATE_BASE overrides the ref the ratchet diffs against
 # (default origin/main, the same ref docs/tools/Complexity-Gate.md names
@@ -91,9 +92,9 @@ soft_double_gate() {
     "$PYTHON" "$DIR/check_no_soft_double.py" "$DIR/../../build.diag"
 }
 
-render_layout_gate() {
-    echo "=== Pinned render code layout ==="
-    "$PYTHON" "$DIR/../render/code_layout.py" --check "$DIR/../../build.diag"
+psram_tuning_wrap_gate() {
+    echo "=== PSRAM tuning off the USB bus ==="
+    "$PYTHON" "$DIR/check_psram_tuning_wrap.py" "$DIR/../../build.diag"
 }
 
 iram_budget_gate() {
@@ -101,22 +102,34 @@ iram_budget_gate() {
     "$PYTHON" "$DIR/memory_map.py" --check "$DIR/../../build.diag"
 }
 
-if [ -f "$COMPILE_DB" ]; then
+# True when the database predates a file that decides what the build compiles.
+compile_db_stale() {
+    local newer
+    newer=$(find "$DIR/../../main" "$DIR/../../packages" \
+        \( -name '*.c' -o -name CMakeLists.txt -o -name '*.cmake' \) \
+        -newer "$COMPILE_DB" -print -quit)
+    [ -n "$newer" ] && return 0
+    newer=$(find "$DIR/../.." -maxdepth 1 -name 'sdkconfig.defaults*' \
+        -newer "$COMPILE_DB" -print -quit)
+    [ -n "$newer" ]
+}
+
+if [ -f "$COMPILE_DB" ] && ! compile_db_stale; then
     complexity_gate
     build_diag
     suite_static_data_gate
     stack_chain_gate
     soft_double_gate
-    render_layout_gate
+    psram_tuning_wrap_gate
     iram_budget_gate
     exit 0
 fi
 
-echo "=== No build.diag compile database yet - ratchet runs after the build ==="
+echo "=== No current build.diag compile database - ratchet runs after the build ==="
 build_diag
 complexity_gate
 suite_static_data_gate
 stack_chain_gate
 soft_double_gate
-render_layout_gate
+psram_tuning_wrap_gate
 iram_budget_gate

@@ -3,6 +3,7 @@
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 scene_name=scene_viewer
+scene_defines="-DTUNE_HOT_LIVE=1"
 scene_sources="
 main/services/tune.c
 main/core/job.c
@@ -10,6 +11,7 @@ main/render/render_view.c
 main/render/raster.c
 main/render/raster_show.c
 main/render/raster_motion.c
+main/render/raster_split.c
 main/render/raster_meshlets.c
 main/render/r3d_pipeline.c
 main/render/upscale.c

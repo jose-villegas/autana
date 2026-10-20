@@ -29,6 +29,14 @@ the sand suites are the ones registered in files under
 file). This is the loop while working on a material or a perf change:
 `autana suite` the suite for the area touched, and reserve a full capture for a merge decision.
 
+For a scoped A/B with several steps, put both flashes and captures inside
+one `autana lock run` so nobody flashes between them.
+A and B are project directories, each built beforehand (`autana build`).
+
+| Linux | Windows PowerShell |
+|---|---|
+| `autana lock run -- sh -c 'autana --project A suite run_sand_perf_suite --flash --runs 3 --test fire,gas && autana --project B suite run_sand_perf_suite --flash --runs 3 --test fire,gas'` | `autana lock run -- powershell -NoProfile -Command 'autana --project A suite run_sand_perf_suite --flash --runs 3 --test fire,gas; if ($LASTEXITCODE) { exit $LASTEXITCODE }; autana --project B suite run_sand_perf_suite --flash --runs 3 --test fire,gas; exit $LASTEXITCODE'` |
+
 ## Capturing a frame-budget report
 
 `report_performance.sh` (`launcher/main/apps/sand/tools/`) builds and
@@ -124,7 +132,7 @@ work. That produces a shortlist of side pairs per quality and nothing else:
 no time of any kind.
 
 **QEMU.** One perf-scope image
-([`run_qemu_tests.sh`](../Testing-Guide.md#qemu-the-device-image-with-no-board)):
+([`run_qemu_tests.sh`](../testing/QEMU.md)):
 one instance runs all five with `--suite` repeated, or split them across
 instances run at once:
 
@@ -135,7 +143,7 @@ instances run at once:
 It prices the chunking itself, through the one-thread arm. The two-lane arm
 is readable there only for its abort count, because an instruction count
 sums both cores, see
-[`../Testing-Guide.md`](../Testing-Guide.md#qemu-the-device-image-with-no-board)
+[`../testing/QEMU.md`](../testing/QEMU.md)
 for why, and for what several instances at once cost each other.
 
 **The board.** The only stage that says whether the second core wins. Five

@@ -65,7 +65,7 @@ int main(void) {
 }
 ''')
             binary = work / "probe.exe"
-            sources = ["render/render_view.c", "render/raster.c", "render/raster_show.c", "render/r3d_pipeline.c", "render/r3d_span.c",
+            sources = ["render/render_view.c", "render/raster.c", "render/raster_split.c", "render/raster_show.c", "render/r3d_pipeline.c", "render/r3d_span.c",
                        "render/r3d_lit_mesh.c", "render/upscale.c", "core/job.c", "services/tune.c", "asset/asset_pack.c"]
             command = ["gcc", "-std=gnu11", "-ffunction-sections", "-fdata-sections",
                        "-I", str(work), *(arg for root in packages.include_roots() for arg in ("-I", str(root))),

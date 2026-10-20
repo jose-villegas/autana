@@ -5,20 +5,21 @@ tracker, and the present path. A caller includes the header for what it does:
 
 | Header | What it declares |
 | --- | --- |
-| [`gfx/gfx.h`](../launcher/main/gfx/gfx.h) | the framebuffer: its size, `gfx_init()`, `gfx_framebuffer()` |
-| [`gfx/draw/gfx_draw.h`](../launcher/main/gfx/draw/gfx_draw.h) | primitives, text and clipping |
-| [`gfx/present/gfx_present.h`](../launcher/main/gfx/present/gfx_present.h) | draw's target and clip, dirty marking, present, the panel clock, heal |
+| [`gfx/gfx.h`](../launcher/main/gfx/gfx.h) | the framebuffer: its size, `gfx_init()`, `gfx_framebuffer()`; draw's surface (`gfx_draw_begin()`, `gfx_set_clip()`) and dirty marking |
+| [`draw/draw.h`](../launcher/main/draw/draw.h) | primitives, text and clipping |
+| [`gfx/present/gfx_present.h`](../launcher/main/gfx/present/gfx_present.h) | present, the panel clock, heal |
 | [`gfx/present/gfx_mode.h`](../launcher/main/gfx/present/gfx_mode.h) | modes, readback, the indexed image and its LUTs |
 | [`gfx/present/gfx_debug.h`](../launcher/main/gfx/present/gfx_debug.h) | development-build overlays and send counts |
-| [`gfx/image/gfx_image.h`](../launcher/main/gfx/image/gfx_image.h) | a picture read in place from its pack entry |
+| [`draw/draw_image.h`](../launcher/main/draw/draw_image.h) | a picture read in place from its pack entry |
 
-The code splits the same way: `draw/` holds `gfx_draw.c` and the pure headers
-it draws with; `present/` holds `gfx_present.c` (the present task and send
-paths), `gfx_mode.c` (modes and buffers), `gfx_debug.c` and the pure headers
-they send with; `image/` holds `gfx_image.c`, the reader of a picture's pack
-entry ([the image entry](assets/README.md#the-image-entry)); `gfx/gfx_internal.h`
-holds the state shared only by `present/`. Draw reads its target and clip
-through `gfx_present.h`. The panel link itself, QSPI and each revision's init
+`draw/` owns primitives, images, icons, fonts, palettes and dithering.
+`gfx/target/` holds pixel colour, boxes, draw targets and render-target
+attachments. `gfx/present/` owns the framebuffer and presentation, with
+layout values under `modes/`, send policy under `send/` and emulated panel
+backends under `panel/`. `gfx_internal.h` holds state shared only by
+presentation. Draw reaches presentation only
+through `gfx.h`: `gfx_draw_begin()` hands it the target, clip and whether to
+mark, and the `gfx_mark_*` calls record what it wrote. The panel link itself, QSPI and each revision's init
 sequence, is `board/board_panel.c`. For what an app owes the shell see
 [`Building-an-App.md`](Building-an-App.md); for the panel constraints these choices obey see
 [`notes/Display-and-Rendering.md`](notes/Display-and-Rendering.md).
@@ -32,12 +33,14 @@ changed.
 
 ```mermaid
 flowchart TB
-    DRAW["gfx_* draw calls<br/>or direct writes"] --> TGT["gfx_target.h<br/>clip + translate"]
+    DRAW["draw_* calls<br/>or direct writes"] --> TGT["gfx_target.h<br/>clip + translate"]
     TGT --> SEL{"gfx_mode_current()"}
     SEL -->|"GFX_LAYOUT_FULL_FB"| FB["framebuffer<br/>368 x 448 RGB565, PSRAM"]
     SEL -->|"GFX_LAYOUT_BANDS"| BR["2-slot band ring<br/>internal DMA RAM"]
     SEL -->|"GFX_LAYOUT_INDEXED"| IX["index image<br/>internal RAM"]
     DRAW -.->|"marks"| DT["gfx_dirty.h<br/>7 x 4 cell grid + leaves"]
+    SEL -->|"GFX_LAYOUT_DOUBLE_FB"| DB["back + front<br/>2 x PSRAM framebuffers"]
+    DB -->|"front"| PT
     FB --> PT["present task, core 1"]
     IX -->|"LUT expand"| PT
     DT --> PT
@@ -53,8 +56,8 @@ strip, packed row by row into a bounce slot and sent as one transfer. A
 contiguous framebuffer rows it covers. A **bounce slot** is one of two
 strip-sized buffers in internal DMA RAM that every send is copied through.
 
-Exactly one target is live at a time. Entering a band or indexed mode **frees
-the PSRAM framebuffer**; `gfx_mode_exit()` allocates it again.
+Entering a band or indexed mode frees the PSRAM framebuffer and
+`gfx_mode_exit()` allocates it again. Double mode adds a second one and frees it on exit.
 
 ## Render targets
 
@@ -81,16 +84,23 @@ Requested with `gfx_mode_enter()` from an app's `enter()`, released with
 `gfx_mode_exit()` from its `exit()`. `gfx_mode_resolve()` (`gfx_mode.h`) turns
 the request into a grant and is pure; `gfx_mode_enter()` also allocates.
 
-| | Full framebuffer | Band ring | Indexed |
-|---|---|---|---|
-| Request | the default | `GFX_LAYOUT_BANDS` | `GFX_LAYOUT_INDEXED` |
-| App writes | pixels, anywhere | pixels, one band at a time | palette indices, `gfx_indexed_image()` |
-| Buffer | 322 KiB, PSRAM | 2 x `GFX_BAND_HEIGHT` rows, DMA RAM | grid_w x grid_h bytes, internal RAM |
-| Who sends | present task | gfx, from the shell's frame loop | present task |
-| Sends | dirty cells, runs or strips | dirty bands, whole | dirty strips, whole |
-| Content kept between frames | yes | **no**: a band is gone once sent | yes |
-| For | anything that redraws part of a frame | a full-redraw renderer | a cell grid with a palette |
-| Used by | the launcher, any microui screen | engine self-tests | a frame that is a grid of palette indices |
+| | Full framebuffer | Band ring | Indexed | Double framebuffer |
+|---|---|---|---|---|
+| Request | the default | `GFX_LAYOUT_BANDS` | `GFX_LAYOUT_INDEXED` | `GFX_LAYOUT_DOUBLE_FB` |
+| App writes | pixels, anywhere | pixels, one band at a time | palette indices, `gfx_indexed_image()` | pixels, whole frame |
+| Buffer | 322 KiB, PSRAM | 2 x `GFX_BAND_HEIGHT` rows, DMA RAM | grid_w x grid_h bytes, internal RAM | 2 x `GFX_FRAMEBUFFER_BYTES`, PSRAM |
+| Who sends | present task | gfx, from the shell's frame loop | present task | present task |
+| Sends | dirty cells, runs or strips | dirty bands, whole | dirty strips, whole | every strip, whole |
+| Content kept between frames | yes | **no**: a band is gone once sent | yes | front only; redraw every back pixel |
+| For | anything that redraws part of a frame | a full-redraw renderer | a cell grid with a palette | a full-redraw renderer |
+| Used by | the launcher, any microui screen | engine self-tests | a frame that is a grid of palette indices | full-frame pixel rendering |
+
+Double mode draws into the back buffer while the front is sent. `gfx_present_begin()`
+drains the preceding send and swaps them; `gfx_present_wait()` returns at once.
+Dirty tracking, interlace, healing and half-picture expansion are disabled.
+
+Mode exit drains the send, keeps the last presented frame as the single
+framebuffer, and frees the other. Readback also drains before reading the front.
 
 - `gfx_mode_enter()` asserts the mode is `GFX_LAYOUT_FULL_FB`: modes do not nest.
 - A failed allocation grants nothing: the returned mode is still
@@ -109,7 +119,7 @@ An expanded frame holds an exact-half picture in `gfx_half_picture()`;
 `gfx_expand_frame()`. A paused or undrawn scene keeps its last expanded
 picture. Presentation doubles it into send strips until
 `gfx_present_wait()` completes. Raw framebuffer drawing is guarded during
-that interval.
+that interval, except in double mode, which has no expanded frames.
 
 `ui_end()` bins commands instead of drawing into an expanded frame. The
 shell queues its home hint before the app builds the UI, then its frame
@@ -121,13 +131,13 @@ full-framebuffer app runs.
 
 ## Dirty tracking
 
-`gfx_dirty.h`: inline functions over one tracker defined in `gfx_present.c`,
-so marking inlines into the fill and pixel hot paths. One tracker serves all three modes.
+`gfx_dirty.h`: inline functions over one tracker defined in `gfx_present.c`;
+draw reaches them through `gfx_mark_dirty()` and `gfx_mark_rows_dirty()`. One tracker serves all three modes.
 
 Two ways in. `dirty_mark()` takes a real box and may narrow a cell; the
 rect and blit primitives use it, so a glyph dirties the glyph. `mark_band()`
 takes rows only and has to claim every column at full width: what
-`gfx_pixel()` is left with it; `gfx_clear()` marks the whole grid.
+`draw_pixel()` is left with it; `draw_clear()` marks the whole grid.
 
 ```
          92 px (COL_WIDTH)
@@ -151,7 +161,7 @@ takes rows only and has to claim every column at full width: what
 | Caller | What it must do |
 |---|---|
 | any `gfx_*` draw call | nothing: it marks what it touched |
-| `gfx_clear()` | nothing: marks the whole screen |
+| `draw_clear()` | nothing: marks the whole screen |
 | writes through `gfx_framebuffer()` or `gfx_indexed_image()` | **`gfx_mark_dirty()` the rectangle**: a miss looks like a frozen region, not a crash |
 | static overlay content | ask `gfx_region_dirty()`; if false, skip the draw and the send |
 
@@ -214,15 +224,35 @@ sequenceDiagram
 | Call | Does |
 |---|---|
 | `gfx_present()` | `gfx_present_begin()` then `gfx_present_wait()` |
-| `gfx_present_begin()` | hands the target to core 1, returns at once. A no-op in band-ring mode. Each call also ends a frame for the frame watch (`profile/frame_watch.h`). |
-| `gfx_present_wait()` | blocks until everything queued has landed |
+| `gfx_present_begin()` | hands the target to core 1, returns at once. A no-op in band-ring mode. In double mode it first drains the previous send and swaps front and back. Each call also ends a frame for the frame watch (`profile/frame_watch.h`). |
+| `gfx_present_wait()` | blocks until everything queued has landed. Double mode: returns at once. |
 | `gfx_set_present_async()` | `false` sends on the caller's core instead, for A/B timing |
+| `gfx_set_clear_on_send()` | double mode only: core 1 fills each frame with a colour once it is sent, so `draw_clear()` of that colour on it is skipped (`gfx_framebuffer_holds()`). Readback is unavailable until a send that keeps its frame. |
 
-The wait is mandatory: DMA is still reading the buffer until it returns.
+Outside double mode the wait is mandatory: DMA is still reading the buffer until it returns.
 
-A present's own code, from `gfx_present()` down to the SPI queue, runs from
-IRAM (`main/linker.lf`, `CONFIG_SPI_MASTER_IN_IRAM`): from flash its cost
-moved with whatever else the image linked. suite_gfx
+```mermaid
+sequenceDiagram
+    participant Core0 as Core 0 draw
+    participant Gfx as gfx_present
+    participant Core1 as Core 1 send
+    Core0->>Gfx: frame N drawn into back
+    Gfx->>Gfx: wait for send N-1, swap
+    Gfx->>Core1: send front, frame N
+    Gfx-->>Core0: returns at once
+    par overlap
+        Core0->>Core0: draw frame N+1 into back
+    and
+        Core1->>Core1: copy strips, QSPI to panel
+        Core1->>Core1: clear on send: fill the front
+    end
+```
+
+Single-buffer presentation runs from IRAM (`main/linker.lf`,
+`CONFIG_SPI_MASTER_IN_IRAM`) to avoid instruction-cache misses.
+Double-mode setup and the raw full-frame loop run from flash.
+
+suite_gfx
 `test_narrow_present_counters` measures it warm, with the instruction cache
 cold, and sent from the caller's core.
 
@@ -231,7 +261,11 @@ cold, and sent from the caller's core.
 Prefer reading PSRAM to writing it in bulk. A retained framebuffer is read
 by core 1 into internal DMA buffers while core 0 updates app state; drawing
 waits for that read to finish. A catch-up copy between PSRAM framebuffers
-costs 6–15 ms per frame, so presentation uses one retained framebuffer.
+costs 6–15 ms per frame. Single-buffer layouts retain their contents;
+`GFX_LAYOUT_DOUBLE_FB` requires a full redraw and makes no catch-up copy;
+its draw runs slower while the front is sent, both use PSRAM.
+Clear on send moves the full-frame fill from core 0 to core 1: the same
+bytes, now sharing the bus with the draw.
 The mesh raster is a measured exception: its colour and depth targets and upscaled framebuffer are written in PSRAM.
 See [Board and Memory](notes/Board-and-Memory.md#psram-throughput) for
 memory throughput and placement.
@@ -303,11 +337,11 @@ the same `gfx_present_begin()` / `gfx_present_wait()` as the default mode.
 | `gfx_indexed_set_dither()` | the spatial dither pattern for 16-colour mode |
 
 All four are safe only between frames. Palettes are a gfx type
-(`gfx/draw/gfx_palette.h`, entries 0-15 reserved by `GFX_PALETTE_UI_ENTRIES`);
-curated ones ship in `gfx/draw/gfx_palette_standard.h`, chosen at runtime by name.
+(`draw/draw_palette.h`, entries 0-15 reserved by `DRAW_PALETTE_UI_ENTRIES`);
+curated ones ship in `draw/draw_palette_standard.h`, chosen at runtime by name.
 Building one is the app's work. The two steps every palette then needs,
 the colour -> index map and the dither table, are
-`tools/gen/gfx_palette_gen.h`: host-only, in OKLab<sup>[[35]](Citations.md#35)</sup>, never in the firmware
+`tools/gen/draw_palette_gen.h`: host-only, in OKLab<sup>[[35]](Citations.md#35)</sup>, never in the firmware
 image.
 
 ## Panel clock and heal
@@ -352,7 +386,7 @@ Both are pure headers, loud on development and host builds, silent on release.
 
 | Guard | Catches | On release |
 |---|---|---|
-| `gfx_present_guard.h` | a `gfx_*` call between `gfx_present_begin()` and `gfx_present_wait()` | compiled out |
+| `gfx_present_guard.h` | a `gfx_*` call between `gfx_present_begin()` and `gfx_present_wait()` outside double mode | compiled out |
 | `gfx_fb_guard.h` | a draw with no live target: band mode between bands, or after the framebuffer was freed | the draw is a no-op, never a NULL write |
 
 ## Readback

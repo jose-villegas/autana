@@ -50,13 +50,22 @@ the cable first, then the PWR button: this board's power is managed by an
 
 ### Warm resets at 120 MHz
 
-At 120 MHz PSRAM and flash, a warm reset (esptool's RTS reset, a watchdog, a
-panic, a restart) hangs in the app's PSRAM timing tuning, and repeated, it
-leaves the chip deaf to esptool until a power cycle; a power-on reset boots.
-The bootloader component `launcher/bootloader_components/pmic_cold_boot/`
-requests an AXP2101 power cycle whenever the reset was not a power-on.
-The cause is not established: flash high-performance mode surviving the
-reset is as likely as PSRAM state. The cold restart is a workaround.
+At 120 MHz, ESP-IDF's PSRAM timing tuning sweeps the BBPLL, which also clocks
+the USB PHY. A host that is talking to the USB Serial/JTAG port during the
+sweep is left with a link that still takes RTS resets but carries no data:
+the console goes silent and esptool cannot sync until the port is replugged
+or power-cycled. After a warm reset the host is always on the port; after a
+power cycle it depends on how soon the host enumerates the port again.
+[board_usb.c](../../launcher/main/board/board_usb.c) wraps the tuning
+(`--wrap=mspi_timing_psram_tuning` in `launcher/main/CMakeLists.txt`) and turns
+the D+ pull-up off for it, so the host sees a short unplug instead. A debugger
+attached over USB-JTAG loses the port for that unplug on every boot.
+`launcher/tools/build/check_psram_tuning_wrap.py` fails a linked image whose
+tuning is not reached through the wrap.
+
+Independently of the wrap, the bootloader component
+`launcher/bootloader_components/pmic_cold_boot/` requests an AXP2101 power
+cycle whenever the reset was not a power-on.
 
 ```mermaid
 sequenceDiagram
@@ -69,6 +78,7 @@ sequenceDiagram
     PMIC->>Boot: VCC3V3 off and on, PWROK low on CHIP_PU
     Note over Host,Boot: USB drops, the port goes away
     Boot->>App: power-on reset this time, so the app loads
+    Note over Host,App: D+ pull-up off while the app tunes PSRAM
     App->>Host: first BUILD_ID, before the port is back
     Note over Host,App: USB enumerates again
     App->>Host: BUILD_ID again, after shell Ready
@@ -94,7 +104,7 @@ continues if the PMIC does not acknowledge or the restart does not occur.
 - **ESP-IDF v6.1+ is required.** `launcher/main/idf_component.yml` declares
   `idf: ">=6.1"`; CI builds on the exact commit `launcher/idf-pin.json` names
   ([Framework-Versions.md](../tools/Framework-Versions.md)). Several versions
-  can coexist; [Which ESP-IDF](../tools/Autana-CLI.md#which-esp-idf)
+  can coexist; [Which ESP-IDF](../tools/Build-Environment.md#which-esp-idf)
   describes pin selection and one-command `IDF_PATH` overrides.
 - On another ESP-IDF commit the IRAM budget check reports a mismatch as a
   drift note instead of failing, and `memory_map.py --update-budgets` refuses
@@ -145,19 +155,19 @@ The direct C sources in `launcher/main/render/` receive
 `launcher/main/CMakeLists.txt`. Function placement within an instruction-cache
 line stays fixed when unrelated code ahead of it grows or shrinks. Alignment
 stabilizes timing; it does not select the fastest loop offsets. Explicit function
-alignment attributes take precedence and their offsets are baseline-checked. Hot functions
-in `launcher/main/render/` also carry `RENDER_ENTRY_OFFSET` from
-`launcher/main/render/code_layout.h`:
-never-executed `nop.n` padding ahead of the entry places their loops at the
-offsets measured fastest on the board. The diagnostics build gate in
-`launcher/tools/build/build_diag_check.sh` runs
+alignment attributes take precedence and their offsets are baseline-checked. The draw
+path's entry functions carry `RENDER_IRAM_ATTR` from
+`launcher/main/render/code_layout.h` and run from IRAM, where no cache line
+applies. A hot flash function can carry `CODE_ENTRY_OFFSET` from the same header: it
+starts the function on a cache line, whatever code links ahead of it, and
+never-executed `nop.n` padding ahead of the entry places its loops at the
+offsets measured fastest on the board. The release build workflow runs
 `launcher/tools/render/code_layout.py --check` against
-source-local `code_layout.txt` baselines for the selected build configuration,
-including `launcher/main/render/code_layout.txt`, checking function and machine-loop
-offsets, sizes and cache-line spans. When a row changes, compare revisions
-with the Sponza performance suite through `launcher/tools/perf/perf_compare.sh`.
-If the layout is slower, retune `RENDER_ENTRY_OFFSET`, then regenerate the
-table with `python launcher/tools/render/code_layout.py --write --baseline launcher/main/render/code_layout.txt launcher/build.diag`.
+source-local `code_layout.txt` baselines for the selected build configuration.
+Rows cover function entries and the small loops inside them; the checker
+compares offsets, sizes and cache-line spans. When a row changes, compare revisions
+with the performance suite that owns the function through `launcher/tools/perf/perf_compare.sh`,
+then re-record the baseline with `--write --baseline`.
 See [Pinned code layout](../../launcher/tools/render/README.md#pinned-code-layout).
 
 Do not use `-falign-loops` for this on Xtensa. GCC aligns the label after a
@@ -172,7 +182,8 @@ Check widening inside fixed-point helpers, prove operand bounds before
 narrowing, and inspect disassembly rather than assigning a source-level
 divide a fixed cycle cost. `r3d_project_point_cs_x()` in
 `launcher/main/render/r3d_project_x.h` keeps the per-point divide 32-bit
-and widens only the pixels-per-unit multiply. Near-plane clipping uses a 64-bit divide.
+and widens only the pixels-per-unit multiply. Near-plane clipping in
+`math/linear/projectx.h` uses a 64-bit divide for its Q16.16 crossing ratio.
 
 `ceilf()` is a libm call, too costly per row; use `(int)x` plus one when it
 falls short. Float division (`__divsf3`) is the FPU's exact

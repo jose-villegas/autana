@@ -1,8 +1,8 @@
 /*
  * Portable suite: gfx_target.h, the clip-and-translate arithmetic every
- * pixel-writing gfx_* primitive goes through, driven directly since the
+ * pixel-writing draw_* primitive goes through, driven directly since the
  * header carries no ESP-IDF dependency. gfx_target_fill_rect() is
- * gfx_fill_rect()'s own body; text ultimately reduces to the same
+ * draw_rect()'s own body; text ultimately reduces to the same
  * primitive, so a rect straddling a band edge is the
  * faithful stand-in for a glyph straddling one.
  */
@@ -10,7 +10,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "gfx/draw/gfx_target.h"
+#include "gfx/target/gfx_target.h"
 
 #include <string.h>
 
@@ -34,13 +34,14 @@ fixture(void) {
 static void
 test_a_rect_entirely_inside_the_target_is_untouched_by_clipping(void) {
     fixture();
-    int x0, y0, x1, y1;
-    gfx_target_fill_rect(full_target(), 0, 0, WIDTH, HEIGHT, 2, 2, 3, 3, (gfx_color_t)0xFFFF, &x0, &y0, &x1, &y1);
 
-    TEST_ASSERT_EQUAL_INT(2, x0);
-    TEST_ASSERT_EQUAL_INT(2, y0);
-    TEST_ASSERT_EQUAL_INT(5, x1);
-    TEST_ASSERT_EQUAL_INT(5, y1);
+    const recti_t painted =
+        gfx_target_fill_rect(full_target(), (recti_t){0, 0, WIDTH, HEIGHT}, (recti_t){2, 2, 3, 3}, (gfx_color_t)0xFFFF);
+
+    TEST_ASSERT_EQUAL_INT(2, painted.x);
+    TEST_ASSERT_EQUAL_INT(2, painted.y);
+    TEST_ASSERT_EQUAL_INT(5, recti_right(painted));
+    TEST_ASSERT_EQUAL_INT(5, recti_bottom(painted));
     for (int y = 2; y < 5; y++) {
         for (int x = 2; x < 5; x++) {
             TEST_ASSERT_EQUAL_HEX16(0xFFFF, full_buf[y * WIDTH + x]);
@@ -56,10 +57,10 @@ static void
 test_the_targets_own_row_range_narrows_a_wider_clip(void) {
     const gfx_target_t band = {full_buf, 2, 3, WIDTH}; /* rows [2, 5) only */
 
-    const gfx_box_t rect = gfx_target_clip_rect(band, (gfx_box_t){0, 0, WIDTH, HEIGHT}, (gfx_box_t){0, 0, WIDTH, 8});
+    const recti_t rect = gfx_target_clip_rect(band, (recti_t){0, 0, WIDTH, HEIGHT}, (recti_t){0, 0, WIDTH, 8});
 
-    TEST_ASSERT_EQUAL_INT(2, rect.y0);
-    TEST_ASSERT_EQUAL_INT(5, rect.y1);
+    TEST_ASSERT_EQUAL_INT(2, rect.y);
+    TEST_ASSERT_EQUAL_INT(5, recti_bottom(rect));
 }
 
 /* The app's own clip rect must win when it is narrower than the target. */
@@ -67,10 +68,10 @@ static void
 test_the_apps_clip_narrows_a_wider_target(void) {
     const gfx_target_t full = full_target();
 
-    const gfx_box_t rect = gfx_target_clip_rect(full, (gfx_box_t){0, 3, WIDTH, 6}, (gfx_box_t){0, 0, WIDTH, 8});
+    const recti_t rect = gfx_target_clip_rect(full, (recti_t){0, 3, WIDTH, 3}, (recti_t){0, 0, WIDTH, 8});
 
-    TEST_ASSERT_EQUAL_INT(3, rect.y0);
-    TEST_ASSERT_EQUAL_INT(6, rect.y1);
+    TEST_ASSERT_EQUAL_INT(3, rect.y);
+    TEST_ASSERT_EQUAL_INT(6, recti_bottom(rect));
 }
 
 /* gfx_target_row() must translate an absolute row into the target's own
@@ -100,14 +101,16 @@ test_a_rect_straddling_a_band_edge_splits_correctly(void) {
     const gfx_target_t b = {band_b, 4, 4, WIDTH};
 
     /* A column at x=3, rows [2, 6), straddles the row-4 band edge. */
-    int ax0, ay0, ax1, ay1, bx0, by0, bx1, by1;
-    gfx_target_fill_rect(a, 0, 0, WIDTH, HEIGHT, 3, 2, 1, 4, (gfx_color_t)0x1111, &ax0, &ay0, &ax1, &ay1);
-    gfx_target_fill_rect(b, 0, 0, WIDTH, HEIGHT, 3, 2, 1, 4, (gfx_color_t)0x1111, &bx0, &by0, &bx1, &by1);
 
-    TEST_ASSERT_EQUAL_INT(2, ay0);
-    TEST_ASSERT_EQUAL_INT(4, ay1); /* band a only got its own two rows */
-    TEST_ASSERT_EQUAL_INT(4, by0);
-    TEST_ASSERT_EQUAL_INT(6, by1); /* band b got the other two */
+    const recti_t apainted =
+        gfx_target_fill_rect(a, (recti_t){0, 0, WIDTH, HEIGHT}, (recti_t){3, 2, 1, 4}, (gfx_color_t)0x1111);
+    const recti_t bpainted =
+        gfx_target_fill_rect(b, (recti_t){0, 0, WIDTH, HEIGHT}, (recti_t){3, 2, 1, 4}, (gfx_color_t)0x1111);
+
+    TEST_ASSERT_EQUAL_INT(2, apainted.y);
+    TEST_ASSERT_EQUAL_INT(4, recti_bottom(apainted)); /* band a only got its own two rows */
+    TEST_ASSERT_EQUAL_INT(4, bpainted.y);
+    TEST_ASSERT_EQUAL_INT(6, recti_bottom(bpainted)); /* band b got the other two */
 
     TEST_ASSERT_EQUAL_HEX16(0x1111, band_a[2 * WIDTH + 3]);
     TEST_ASSERT_EQUAL_HEX16(0x1111, band_a[3 * WIDTH + 3]);
@@ -139,9 +142,8 @@ test_the_union_of_all_bands_equals_the_full_target_render(void) {
     const int shape_count = (int)(sizeof shapes / sizeof shapes[0]);
 
     for (int i = 0; i < shape_count; i++) {
-        int x0, y0, x1, y1;
-        gfx_target_fill_rect(full_target(), 0, 0, WIDTH, HEIGHT, shapes[i].x, shapes[i].y, shapes[i].w, shapes[i].h,
-                             shapes[i].color, &x0, &y0, &x1, &y1);
+        (void)gfx_target_fill_rect(full_target(), (recti_t){0, 0, WIDTH, HEIGHT},
+                                   (recti_t){shapes[i].x, shapes[i].y, shapes[i].w, shapes[i].h}, shapes[i].color);
     }
 
     gfx_color_t band_buf[4][WIDTH * 2] = {0}; /* 4 bands of 2 rows each = 8 rows */
@@ -151,9 +153,9 @@ test_the_union_of_all_bands_equals_the_full_target_render(void) {
             if (!gfx_target_row_range_overlaps(target, shapes[i].y, shapes[i].y + shapes[i].h)) {
                 continue; /* the per-band skip every replay path relies on */
             }
-            int x0, y0, x1, y1;
-            gfx_target_fill_rect(target, 0, 0, WIDTH, HEIGHT, shapes[i].x, shapes[i].y, shapes[i].w, shapes[i].h,
-                                 shapes[i].color, &x0, &y0, &x1, &y1);
+
+            (void)gfx_target_fill_rect(target, (recti_t){0, 0, WIDTH, HEIGHT},
+                                       (recti_t){shapes[i].x, shapes[i].y, shapes[i].w, shapes[i].h}, shapes[i].color);
         }
     }
 

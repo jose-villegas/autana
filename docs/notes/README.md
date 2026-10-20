@@ -9,7 +9,9 @@ owners of settings; device tools provide measurements for the running image.
 | [../memory/Internal-Memory-Map.md](../memory/Internal-Memory-Map.md) | internal pool, IRAM placement budgets, variant differences and isolated experiments |
 | [Board-and-Memory.md](Board-and-Memory.md) | hardware inventory, memory placement, caches, static and heap budgets, storage |
 | [Display-and-Rendering.md](Display-and-Rendering.md) | panel initialization, DMA lifetime, clocks, dirty sends, screenshots and tearing |
+| [../audio/README.md](../audio/README.md) | audio path, sound assets and captured loopback measurements; the board's audio wiring is in [Board-and-Memory.md](Board-and-Memory.md#audio) |
 | [Input-and-Sensors.md](Input-and-Sensors.md) | touch reports and calibration, sensor axes, PMU and GPIO buttons, tilt filtering |
+| [Gravity.md](../input/Gravity.md) | gyro prediction, acceleration trust and rejection, recovery and gyro bias learning |
 | [Flashing-and-Toolchain.md](Flashing-and-Toolchain.md) | recovery, warm-reset handling, build configuration and compiler decisions |
 | [Debugging.md](Debugging.md) | choosing tests, logs, captures, overlays and device measurements |
 

@@ -31,12 +31,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
-from process_tree import launch_process_tree, close_process_tree  # noqa: E402
+from suite_registry import registered_suites  # noqa: E402
+from process_tree import launch_process_tree, close_process_tree, install_console_interrupt_handler  # noqa: E402
+from console_protocol import reply_prefix
 import device_lock  # noqa: E402  (path must be set up first)
 import autana_config  # noqa: E402  (path must be set up first)
 from espressif import idf_python, idf_note_lines, require_idf  # noqa: E402
 from version import __version__  # noqa: E402
-from device_capture import BUILD_ID_REQUEST, PERF_SEGMENT  # noqa: E402
+from device_capture import BUILD_ID_REQUEST, PERF_SEGMENT, parse_apps  # noqa: E402
 
 # The launcher hint belongs to this invocation; children resolve their own caller.
 CALLER_PID = os.environ.pop(device_lock.CALLER_PID_ENV, None)
@@ -289,17 +291,18 @@ def follow(log, finished):
 def run_streaming_its_log(command):
     finished = threading.Event()
     follower = None
-    with device_process(command, stdout=subprocess.PIPE, text=True, bufsize=1) as process:
-        for line in process.stdout:
-            print(line, end="", flush=True)
-            if follower is None and line.startswith("flash log: "):
-                follower = threading.Thread(target=follow, args=(line[len("flash log: "):].strip(), finished))
-                follower.start()
-        code = process.wait()
+    try:
+        with device_process(command, stdout=subprocess.PIPE, text=True, bufsize=1) as process:
+            for line in process.stdout:
+                print(line, end="", flush=True)
+                if follower is None and line.startswith("flash log: "):
+                    follower = threading.Thread(target=follow, args=(line[len("flash log: "):].strip(), finished))
+                    follower.start()
+            return process.wait()
+    finally:
         finished.set()
         if follower is not None:
             follower.join()
-        return code
 
 
 def variant_request(verb, args, flags, project):
@@ -440,6 +443,61 @@ def heap(args):
     return 0
 
 
+# Covers codec open, amplifier startup, capture settling and transport overhead.
+TONE_MARGIN_SECONDS = 10
+TONE_CAPTURE_COUNT = 2
+TONE_MS_PER_SECOND = 1000
+
+
+def tone(args):
+    usage = "usage: autana tone <hz> <ms> [volume] [--json]"
+    rest = list(args)
+    json_output = read_json_flag(rest[-1:] if rest and rest[-1] == "--json" else [], usage)
+    if json_output:
+        rest.pop()
+    if len(rest) not in (2, 3) or any(not re.fullmatch(r"[0-9]+", arg) for arg in rest):
+        sys.exit(usage)
+    ms = int(rest[1])
+    seconds = TONE_MARGIN_SECONDS + TONE_CAPTURE_COUNT * ms / TONE_MS_PER_SECOND
+    code, replies = send("TONE " + " ".join(rest), reply="TONE", seconds=seconds)
+    if code != 0 or not replies:
+        return code or 1
+    if replies[-1].startswith(("TONE usage:", "TONE error:")):
+        print(replies[-1], file=sys.stderr)
+        return 1
+    try:
+        result = parse_tone(replies[-1])
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 1
+    print(json.dumps(result) if json_output else replies[-1])
+    return 0
+
+
+def sound(args):
+    prefix = "SOUND"
+    code, replies = send(prefix + " " + " ".join(args), reply=prefix,
+                         until=[prefix + "_END", prefix + "_ERR"])
+    if code or not replies:
+        return code or 1
+    if replies[-1].startswith("SOUND_ERR"):
+        print(replies[-1], file=sys.stderr)
+        return 1
+    print("\n".join(replies))
+    return 0
+
+
+def parse_tone(reply):
+    match = re.fullmatch(
+        r"TONE (heard|not heard) ([0-9]+) Hz: (-?[0-9]+\.[0-9]+) dB "
+        r"\(silence (-?[0-9]+\.[0-9]+) dB\), open ([0-9]+) B DMA", reply)
+    if not match:
+        raise ValueError(f"invalid TONE reply: {reply}")
+    heard, hz, tone_db, silence_db, dma = match.groups()
+    return {"hz": int(hz), "tone_db": float(tone_db), "silence_db": float(silence_db),
+            "heard": heard == "heard", "open_dma_bytes": int(dma)}
+
+
 def parse_heap(reply):
     match = re.fullmatch(r"HEAP free=(\d+) largest=(\d+) total=(\d+)", reply)
     if not match:
@@ -540,19 +598,23 @@ def reset(args):
 
 
 def coredump(args):
-    """The last panic's core dump from flash, decoded; --erase clears it."""
+    """The last panic's core dump from flash, saved and decoded; --core
+    decodes a saved one with no board; --erase clears it."""
     elf, rest = pop_value(list(args), "--elf")
+    core, rest = pop_value(rest, "--core")
     erase = "--erase" in rest
     if erase:
         rest.remove("--erase")
     reject_unknown("coredump", rest)
-    if rest or (erase and elf):
-        sys.exit("usage: autana coredump [--elf PATH] | autana coredump --erase")
+    if rest or (erase and (elf or core)):
+        sys.exit("usage: autana coredump [--core FILE] [--elf PATH] | autana coredump --erase")
     command = device_command("coredump")
     if erase:
         command.append("--erase")
     if elf:
         command += ["--elf", elf]
+    if core:
+        command += ["--core", core]
     return call_device(command)
 
 
@@ -618,6 +680,12 @@ def status(args):
     return call_device(device_command("status"))
 
 
+def devices(args):
+    reject_unknown("devices", args, ("--json",))
+    read_json_flag(args, "usage: autana devices [--json]")
+    return call_device(device_command("devices", *args))
+
+
 def release(args):
     """Release a lock this session holds, before its own command would have.
     The token is in TOKEN_ENV in every process that command started, which
@@ -645,7 +713,7 @@ def lock_wait(args):
 
 def lock_run(args):
     if "--" not in args:
-        sys.exit("usage: autana lock run [--keep-on-failure <seconds>] -- <command...>")
+        sys.exit("usage: autana lock run [--keep-on-failure <seconds>] [--estimate <seconds>] -- <command...>")
     return call_device(device_command("run", *args))
 
 
@@ -683,9 +751,6 @@ def take_back(args):
     return call_device(device_command("take-back"))
 
 
-SUITE_REGISTRATION = re.compile(r"SUITE_REGISTER(_ON_REQUEST)?\(\s*([A-Za-z_]\w*)\s*\)")
-
-
 def suite_list(args):
     """What this project registers, read from its sources: a suite names
     itself where it is defined and the board serves no listing verb, so there
@@ -698,15 +763,7 @@ def suite_list(args):
     wanted = args[0].lower() if args else ""
     project = Path(resolve_project())
 
-    found = {}
-    for source in project.glob("launcher/**/*.c"):
-        # A build directory (launcher/build*) holds generated copies of the same sources.
-        if source.relative_to(project).parts[1].startswith("build"):
-            continue
-        text = source.read_text(encoding="utf-8", errors="replace")
-        for on_request, name in SUITE_REGISTRATION.findall(text):
-            found[name] = (source.relative_to(project).as_posix(), bool(on_request),
-                           "#ifdef DEVICE_BUILD" in text)
+    found = registered_suites(project)
 
     shown = [{"name": name, "source": found[name][0], "on_request": found[name][1],
               "device_only": found[name][2]} for name in sorted(found) if wanted in name.lower()]
@@ -726,7 +783,7 @@ def suite_list(args):
 
 
 SUITE_USAGE = ("usage: autana suite <name> [<name> ...] [seconds] [--runs N] [--test PATTERN] "
-              "[--flash] [--perf-scope] [--layout-seed N] [--hot-tunables] [--set NAME=VALUE] [--verbose] [--out PATH] "
+              "[--flash] [--perf-scope] [--layout-seed N] [--hot-tunables] [--set NAME=VALUE] [--send LINE] [--verbose] [--out PATH] "
               "[--expect-build-id ID] | "
               "autana suite list [text]")
 
@@ -740,7 +797,8 @@ def suite(args):
     list) narrows the run, on the device, to the tests whose name contains
     a pattern. `--set NAME=VALUE` (repeatable) sets a tunable under each
     capture's own lock, just before it runs, and stops the batch unless the
-    board echoes the value."""
+    board echoes the value. `--send LINE` repeats console lines before every
+    capture; the sequence should be idempotent."""
     if not args:
         sys.exit(SUITE_USAGE)
     if args[0] == "list":
@@ -792,6 +850,10 @@ def suite(args):
         if not name or not equals:
             sys.exit(f"usage: --set NAME=VALUE with a whole number, decimal or 0x hex, not {value}")
         settings.append(value)
+    console_lines = []
+    while "--send" in rest:
+        value, rest = pop_value(rest, "--send")
+        console_lines.append(value)
     reject_unknown("suite", rest)
     if rest:
         sys.exit(SUITE_USAGE)
@@ -813,6 +875,8 @@ def suite(args):
         command += ["--test", value]
     for value in settings:
         command += ["--set", value]
+    for line in console_lines:
+        command += ["--send", line]
     if not flash:
         command.append("--no-flash")
     for name in names:
@@ -1022,8 +1086,12 @@ def imu(args):
         code, replies = send("IMU release", reply="IMU", optional=True, seconds=0.5)
         print("\n".join(replies) if replies else "sent")
         return code
+    if len(args) == 2 and args[0] == "quarter" and is_int(args[1]):
+        code, replies = send("IMU " + " ".join(args), reply="IMU", until=["IMU_OK", "IMU_ERR"])
+        print("\n".join(replies))
+        return code
     if len(args) != 3 or not all(is_int(value) for value in args):
-        sys.exit("usage: autana imu <ax> <ay> <az> | autana imu release")
+        sys.exit("usage: autana debug imu <ax> <ay> <az> | quarter <q> | release")
     code, replies = send("IMU " + " ".join(args), reply="IMU",
                          optional=True, seconds=0.5)
     print("\n".join(replies) if replies else "sent")
@@ -1090,17 +1158,12 @@ def apps(args):
     if not json_output:
         print("\n".join(reply for reply in replies if reply.startswith("APPS ")))
     elif code == 0:
-        print(json.dumps({"apps": parse_apps(replies)}))
+        try:
+            print(json.dumps({"apps": parse_apps(replies)}))
+        except ValueError as error:
+            print(str(error), file=sys.stderr)
+            return 1
     return code
-
-
-def parse_apps(replies):
-    rows = []
-    for reply in replies:
-        match = re.fullmatch(r"APPS name=(.*) running=([01])", reply)
-        if match:
-            rows.append({"name": match[1], "running": match[2] == "1"})
-    return rows
 
 
 def open_app(args):
@@ -1419,9 +1482,9 @@ def forward(line, verb):
     that window, since nothing then completes early."""
     if verb.startswith("-"):
         sys.exit(f"autana: unknown option {verb.split('=', 1)[0]}; 'autana help' lists the commands")
-    reply = verb.upper()
+    reply, endings = reply_prefix(line)
     with command_named(f"console {verb}"):
-        _, replies = send(line, reply=reply, until=[reply + "_END", reply + "_ERR"], optional=True)
+        _, replies = send(line, reply=reply, until=list(endings), optional=True)
     return replies
 
 
@@ -1435,7 +1498,9 @@ def console(_args=None):
     print("autana console - 'help' for the commands, 'quit' to leave")
     while True:
         try:
-            line = input("autana> ").strip()
+            pinned = session_flags.get("--board")
+            prompt = f"autana@{device_module().short_id(pinned)}> " if pinned else "autana> "
+            line = input(prompt).strip()
         except (EOFError, KeyboardInterrupt):
             print()
             return 0
@@ -1452,7 +1517,16 @@ def console(_args=None):
         if verb in ("quit", "exit", "q"):
             return 0
         try:
-            if verb == "help":
+            if verb == "use":
+                if not rest:
+                    print(session_flags.get("--board", "no board pinned"))
+                elif rest == ["-"]:
+                    session_flags.pop("--board", None)
+                elif len(rest) == 1:
+                    session_flags["--board"] = checked_global("--board", rest[0])
+                else:
+                    print("usage: use [<board>|-]")
+            elif verb == "help":
                 print(help_text(rest, prefix=""))
             elif verb in COMMANDS and verb != "console":
                 run_command(COMMANDS[verb], rest, command_words([verb, *rest]), flags)
@@ -1469,6 +1543,10 @@ def console(_args=None):
 Command = namedtuple("Command", "name handler usages")
 
 
+def one(name, handler, usage, what):
+    return Command(name, handler, ((usage, what),))
+
+
 def alias(old, new, handler):
     """`old` still works: one migration line to stderr, then straight into
     `handler`, so a script built on a spelling `new` replaced does not
@@ -1480,8 +1558,8 @@ def alias(old, new, handler):
 
 
 LOCK_VERBS = {"wait": lock_wait, "take": take, "run": lock_run, "release": release, "hand": hand, "take-back": take_back}
-DEBUG_VERBS = {"freeze": freeze, "resume": resume, "step": step, "touch": touch, "imu": imu,
-              "framewatch": framewatch}
+DEBUG_VERBS = {"freeze": freeze, "resume": resume, "step": step, "touch": touch, "imu": imu}
+DEBUG_ALIASES = {"framewatch": alias("debug framewatch", "framewatch", framewatch)}
 
 
 def lock(args):
@@ -1495,18 +1573,16 @@ def lock(args):
 
 
 def debug(args):
-    """`autana debug <verb>`: freeze/resume/step/touch/imu/framewatch, kept
-    out of the top-level help (`autana help debug` still lists them) since a
-    session rarely needs them."""
-    if not args or args[0] not in DEBUG_VERBS:
+    """Frame-loop intervention and raw sensor overrides, hidden from bare help."""
+    if not args or args[0] not in DEBUG_VERBS | DEBUG_ALIASES:
         sys.exit("usage: autana debug <" + "|".join(DEBUG_VERBS) + "> ...")
     verb, rest = args[0], args[1:]
-    return DEBUG_VERBS[verb](rest)
+    return (DEBUG_VERBS | DEBUG_ALIASES)[verb](rest)
 
 
 LOCK_USAGES = (
-    ("lock run [--keep-on-failure <seconds>] -- <command...>", "hold the board while a command runs"),
-    ("lock take [--for <seconds> | --until-released [--pid <pid>]] <note...>", "hold the board across commands; print its token"),
+    ("lock run [--keep-on-failure <seconds>] [--estimate <seconds>] -- <command...>", "hold the board while a command runs"),
+    ("lock take [--for <seconds> | --until-released [--pid <pid>]] [--estimate <seconds>] <note...>", "hold the board across commands; print its token"),
     ("lock wait", "wait until free without taking the board; --wait caps it"),
     ("lock release [<token>]", "release a lock this session holds, given its token"),
     ("lock hand [--until-back <seconds>] <note...>",
@@ -1515,22 +1591,21 @@ LOCK_USAGES = (
 )
 
 
-# (key, title, commands). `autana help <key>` shows one group; each usage is
-# (synopsis without "autana ", one line of what it does). "debug" is left
-# out of the bare `autana help` listing, see HIDDEN_GROUPS.
+# Section rules: docs/tools/Autana-CLI.md.
 COMMAND_GROUPS = (
+    ("lock", "Sharing the board", (
+        Command("devices", devices, (("devices [--json]", "compact board list: ids, ports and availability"),)),
+        Command("status", status, (("status [--json]", "who holds the board, and who waits"),)),
+        Command("lock", lock, LOCK_USAGES),
+    )),
     ("build", "Build and flash", (
         Command("build", build, (
             ("build [rel|dev|diag] [--perf-scope] [--layout-seed N] [--hot-tunables] [--configure]",
              "build this project, no board; dev when omitted; a seed N > 0 pads the layout, 0 is the plain build; --configure only writes sdkconfig and compile_commands.json"),
             ("build diag --check", "the diagnostics build plus the complexity ratchet, no board"))),
-        Command("flash", flash, (
-            ("flash [rel|dev|diag] [--quiet] [--perf-scope] [--layout-seed N] [--hot-tunables]",
-             "build and flash this project; dev when omitted"),)),
-        Command("buildid", buildid, (
-            ("buildid [--json]", "the BUILD_ID the board is running"),)),
-        Command("heap", heap, (
-            ("heap [--json]", "free internal heap and largest block (development builds)"),)),
+        one("flash", flash, "flash [rel|dev|diag] [--quiet] [--perf-scope] [--layout-seed N] [--hot-tunables]",
+            "build and flash this project; dev when omitted"),
+        one("buildid", buildid, "buildid [--json]", "the BUILD_ID the board is running"),
     )),
     ("tests", "Tests", (
         Command("suite", suite, (
@@ -1539,52 +1614,59 @@ COMMAND_GROUPS = (
              "capture (1800 when omitted)"),
             ("suite <name> --test PATTERN[,PATTERN]",
              "only the tests whose name contains a pattern; --test repeats"),
+            ("suite <name> --send LINE",
+             "send before every capture; repeatable, sequence should be idempotent"),
             ("suite <name> --set NAME=VALUE",
              "set a tunable under each capture's lock first; --set repeats"),
             ("suite list [text] [--json]", "the suites this project registers"))),
-        Command("selftest", selftest, (
-            ("selftest [seconds] [--verbose]",
-             "build diagnostics+autorun, run every suite on the board"),)),
+        one("selftest", selftest, "selftest [seconds] [--verbose]",
+            "build diagnostics+autorun, run every suite on the board"),
+        one("tone", tone, "tone <hz> <ms> [volume] [--json]",
+            "play a tone on the speaker and hear it on the mic; development builds"),
     )),
     ("watch", "Watch the board", (
-        Command("monitor", monitor, (
-            ("monitor [seconds] [--follow] [--stream] [--elf PATH]",
-             "the console live until Ctrl+C, or for N s"),)),
-        Command("reset", reset, (
-            ("reset [--capture [seconds]] [--verbose]", "reboot the board; --capture records the boot"),)),
+        one("monitor", monitor, "monitor [seconds] [--follow] [--stream] [--elf PATH]",
+            "the console live until Ctrl+C, or for N s"),
         Command("coredump", coredump, (
-            ("coredump [--elf PATH]", "the last panic's core dump from flash, decoded against the running build"),
+            ("coredump [--elf PATH]", "the last panic's core dump from flash, saved, decoded against the build that crashed"),
+            ("coredump --core FILE [--elf PATH]", "decode a saved dump; no board"),
             ("coredump --erase", "clear it, so the next crash's dump is told from this one"),)),
         Command("screenshot", screenshot, (
             ("screenshot [--as-shown|--framebuffer] [-o PATH]", "the panel as PATH.png plus PATH.json"),
             ("screenshot --frames N -o PATH", "N consecutive frames, PATH-00 on, stepped while frozen"),)),
+        one("heap", heap, "heap [--json]", "free internal heap and largest block (development builds)"),
         Command("perf", perf, (
             ("perf", "the frame_cost names seen and the counter events"),
             ("perf <name> [event] [seconds]",
              "cycles and one event over one bracket for `seconds` s (10 when omitted), then off"),
             ("perf off", "disarm the counters"))),
+        one("framewatch", framewatch, "framewatch", "allocations and log lines repeating frame after frame, as JSON"),
     )),
-    ("input", "Drive input", (
-        Command("tap", tap, (("tap <x> <y>", "tap a point, in pixels of the default screenshot"),)),
-        Command("press", press, (("press <x> <y> [ms]", "hold a point, as tap reads it; 1000 ms when omitted"),)),
-        Command("drag", drag, (("drag <x0> <y0> <x1> <y1> <ms>", "drag between two points, as tap reads them"),)),
-        Command("button", button, (("button <boot|power> [short|long]", "press a board button"),)),
+    ("drive", "Drive", (
+        Command("sound", sound, (
+            ("sound play <name> [loop] [gain]", "play an engine-pack sound; development builds"),
+            ("sound stop [voice|all]", "stop a voice or all voices; all when omitted"),
+            ("sound stats", "voice states, dropped commands, amplifier state and RAM sizes"))),
+        one("tap", tap, "tap <x> <y>", "tap a point, in pixels of the default screenshot"),
+        one("press", press, "press <x> <y> [ms]", "hold a point, as tap reads it; 1000 ms when omitted"),
+        one("drag", drag, "drag <x0> <y0> <x1> <y1> <ms>", "drag between two points, as tap reads them"),
+        Command("button", button, (
+            ("button <boot|power> [short]", "press a board button; short when omitted"),
+            ("button <boot|power> long", "hold it"))),
+        one("reset", reset, "reset [--capture [seconds]] [--verbose]",
+            "reboot the board; --capture records the boot"),
+        Command("apps", apps, (
+            ("apps", "the registered apps, and which is running"),
+            ("apps --json", "the same, as JSON"))),
+        one("open", open_app, "open <name>", "enter an app; case-insensitive prefix"),
+        one("home", home, "home", "back to the launcher"),
     )),
-    ("apps", "Apps", (
-        Command("apps", apps, (("apps [--json]", "the registered apps, and which is running"),)),
-        Command("open", open_app, (("open <name>", "enter an app; case-insensitive prefix"),)),
-        Command("home", home, (("home", "back to the launcher"),)),
-    )),
-    ("tune", "Tunables", (
+    ("tune", "Tune", (
         Command("tune", tune, (
             ("tune [text] [--json]", "list the tunables, names containing text"),
             ("tune <name> [value]", "show one, or set it on the board"),
             ("tune reset <name>", "back to the value the source declares"),
             ("tune save", "write the board's values into this project's TUNE() lines"))),
-    )),
-    ("lock", "Sharing the board", (
-        Command("status", status, (("status [--json]", "who holds the board, and who waits"),)),
-        Command("lock", lock, LOCK_USAGES),
     )),
     ("debug", "Debug", (
         Command("debug", debug, (
@@ -1592,10 +1674,9 @@ COMMAND_GROUPS = (
             ("debug resume", "run it again"),
             ("debug step [N]", "advance N frames while frozen; 1 when omitted"),
             ("debug touch <down|up> <x> <y>", "one raw touch level; up hands back"),
-            ("debug imu <ax> <ay> <az>", "raw accelerometer counts; imu release hands back"),
-            ("debug framewatch", "allocations and log lines repeating frame after frame, as JSON"))),
+            ("debug imu <ax> <ay> <az>", "raw accelerometer counts; imu release hands back"))),
     )),
-    ("docs", "No board needed", (
+    ("docs", "Docs", (
         Command("docs", docs, (
             ("docs <question...>", "the sections that answer it, and where to read on"),
             ("docs --section <path:line>", "one section whole; --deep adds its subsections"),
@@ -1610,11 +1691,10 @@ HIDDEN_GROUPS = {"debug"}
 
 # Old spellings kept working, see alias()'s own docstring. "batch" moved
 # to suite() itself (its translation is not a plain forward) so it is not
-# here; every other renamed verb is a bare forward into its new group.
+# here; the remaining aliases forward directly to their handler.
 RENAMED_VERBS = {
     "freeze": ("debug freeze", freeze), "resume": ("debug resume", resume),
     "step": ("debug step", step), "touch": ("debug touch", touch), "imu": ("debug imu", imu),
-    "framewatch": ("debug framewatch", framewatch),
 }
 
 COMMANDS = {command.name: command.handler
@@ -1635,7 +1715,7 @@ BOARD_FLAGS = (
      "every board command"),
     ("--owner NAME", "the lock owner's label",
      "every board command"),
-    ("--board SERIAL", "the board's USB serial number",
+    ("--board SERIAL", "USB serial or short id; -b is an alias",
      "every board command"),
     ("--out PATH", "write the one capture here instead of the default path",
      "selftest, suite, monitor"),
@@ -1650,7 +1730,7 @@ BOARD_FLAGS = (
 
 def board_flags_text(prefix=""):
     width = max(len(flag) for flag, _, _ in BOARD_FLAGS)
-    lines = ["--wait, --owner, --board and --project are global: they go anywhere on the "
+    lines = ["--wait, --owner, --board (-b) and --project are global: they go anywhere on the "
              "line, and docs/tools/Autana-CLI.md#settings has their defaults.",
              "",
              "Flags (on top of each command's own usage above)"]
@@ -1713,6 +1793,8 @@ def help_text(args, prefix="autana "):
         return f"no command or group '{topic}'; groups: " + ", ".join(
             key for key, _, _ in COMMAND_GROUPS)
     if topic is None:
+        if not prefix:
+            lines.append("use [<board>|-]  show, pin or clear the session board")
         lines.append(f"{prefix}--wait SECONDS <command>  how long to wait for the board; 0 fails "
                      "at once")
         lines.append(f"{prefix}--owner NAME <command>    label this run in the lock")
@@ -1728,7 +1810,7 @@ def help_text(args, prefix="autana "):
 def completion_candidates(line, prefix):
     """Return command or static argument matches for the current word."""
     if not any(character.isspace() for character in line):
-        words = (set(COMMANDS) - {"console"}) | {"help", "quit"}
+        words = (set(COMMANDS) - {"console"}) | {"help", "quit", "use"}
     else:
         parts = line.split()
         if line and line[-1].isspace():
@@ -1766,7 +1848,7 @@ def install_completion():
     readline.parse_and_bind("tab: complete")
 
 
-GLOBALS = ("--wait", "--owner", "--board", "--project", "--lock-token")
+GLOBALS = ("--wait", "--owner", "--board", "-b", "--project", "--lock-token")
 _GLOBAL_ENV = {"--wait": WAIT_ENV, "--owner": OWNER_ENV, "--board": BOARD_ENV,
                "--project": PROJECT_ENV, "--lock-token": TOKEN_ENV}
 
@@ -1781,9 +1863,9 @@ def project_of(value):
 
 
 # One validator per flag: what it needs, an example, and a check returning
-# the value to store or None. A board's serial is the six-pair form the lock
-# files key on (device_lock.normalise_board); an owner is a label the lock
-# appends `:pid` to and prints, so it holds no whitespace.
+# the value to store or None. Device subprocesses resolve board selectors;
+# an owner is a label the lock appends `:pid` to and prints,
+# so it holds no whitespace.
 GLOBAL_CHECKS = {
     "--lock-token": ("a non-empty token without whitespace", "autana --lock-token TOKEN screenshot",
                      lambda v: v if v and not re.search(r"\s", v) else None),
@@ -1791,9 +1873,9 @@ GLOBAL_CHECKS = {
                lambda v: v if v.isascii() and v.isdigit() else None),
     "--owner": ("a name without whitespace", "autana --owner ci-7 flash",
                 lambda v: v if v and not re.search(r"\s", v) else None),
-    "--board": ("a board's USB serial number, six hex pairs",
+    "--board": ("a board's USB serial number or four-digit short id",
                 "autana --board 90:70:69:FE:A3:08 monitor 5",
-                lambda v: v if re.fullmatch(r"(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}", v) else None),
+                lambda v: device_module().board_selector(v)),
     "--project": ("a path to an autana project", "autana flash --project PATH", project_of),
 }
 
@@ -1821,6 +1903,8 @@ def pop_globals(words):
             rest.extend([word, *queue])
             break
         flag, equals, value = word.partition("=")
+        if flag == "-b":
+            flag = "--board"
         if flag not in GLOBALS:
             rest.append(word)
             continue
@@ -1848,8 +1932,9 @@ def applied(flags):
 
 
 def main():
+    install_console_interrupt_handler()
     flags, argv = pop_globals(sys.argv[1:])
-    if not argv:
+    if not argv or argv[0] == "console":
         session_flags.update(flags)
         sys.exit(console())
     if argv[0] in ("--version", "-V"):
@@ -1867,4 +1952,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(EXIT_INTERRUPTED)

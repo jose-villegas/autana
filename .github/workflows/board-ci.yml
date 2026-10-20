@@ -1,0 +1,101 @@
+name: Board CI
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: board-ci
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  board:
+    runs-on: [self-hosted, windows, board]
+    timeout-minutes: 120
+    defaults:
+      run:
+        # An absolute Git for Windows path cannot resolve to WSL's bash.exe through PATH. The runner
+        # rejects a quoted executable in a custom shell, so the path is the space-free 8.3 form.
+        shell: 'C:\PROGRA~1\Git\bin\bash.exe --noprofile --norc -eo pipefail {0}'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        # Process-scoped overrides disable the global LFS hook and filters without writing machine Git config.
+        env:
+          GIT_CONFIG_COUNT: '4'
+          GIT_CONFIG_KEY_0: core.hooksPath
+          GIT_CONFIG_VALUE_0: /dev/null
+          GIT_CONFIG_KEY_1: filter.lfs.process
+          GIT_CONFIG_VALUE_1: ''
+          GIT_CONFIG_KEY_2: filter.lfs.smudge
+          GIT_CONFIG_VALUE_2: ''
+          GIT_CONFIG_KEY_3: filter.lfs.required
+          GIT_CONFIG_VALUE_3: 'false'
+        with:
+          lfs: false
+          persist-credentials: false
+          set-safe-directory: false
+
+      - name: Warn about concurrent GPU work
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          PY=$(. scripts/lib/python.sh && find_python)
+          for workflow in bakes-gpu.yml doc-images-gpu.yml; do
+            if ! count=$(curl --fail --silent --show-error \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/$workflow/runs?status=in_progress&per_page=1" \
+              | "$PY" -c 'import json, sys; print(int(json.load(sys.stdin)["total_count"]))'); then
+              echo "::warning::Could not check $workflow activity"
+            elif [ "$count" -gt 0 ]; then
+              echo "::warning::$workflow is in progress; Board CI continues"
+            fi
+          done
+
+      - name: Prepare the shell image and console tests
+        run: |
+          export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
+          bash scripts/ci/board-prepare.sh
+          autana build diag
+
+      - name: Self-test and console tests under one board lock
+        id: device
+        run: |
+          rm -f "$RUNNER_TEMP/board-ci-selftest.log"
+          export PATH="$(cygpath -u "$GITHUB_WORKSPACE")/tools:$PATH"
+          if autana --wait 1800 lock run -- "$(cygpath -w "$BASH")" scripts/ci/board-steps.sh; then
+            exit 0
+          else
+            status=$?
+          fi
+          if [ "$status" -eq 75 ]; then
+            echo '::notice::skipped: boards busy'
+            echo 'skipped=true' >> "$GITHUB_OUTPUT"
+            echo 'Board CI skipped: boards busy' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          exit "$status"
+
+      - name: Summarize the device capture
+        if: always() && steps.device.outcome != 'skipped' && steps.device.outputs.skipped != 'true'
+        run: |
+          for log in selftest; do
+            capture="$RUNNER_TEMP/board-ci-$log.log"
+            if [ -f "$capture" ] && grep -q '^report: ' "$capture"; then
+              sed -n 's/^report: //p' "$capture" | tr -d '\r' |
+                while IFS= read -r report; do
+                  cat "$report" >> "$GITHUB_STEP_SUMMARY"
+                done
+            else
+              echo "Board CI: no $log capture available; see the failed step." >> "$GITHUB_STEP_SUMMARY"
+            fi
+          done
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: board-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          path: .records/device
+          include-hidden-files: true
+          if-no-files-found: ignore

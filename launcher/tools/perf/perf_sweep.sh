@@ -26,7 +26,10 @@ REPO_DIR=$(CDPATH='' cd -- "$TOOLS_DIR/../../.." && pwd)
 work=$(mktemp -d)
 revision_worktree_setup "$REPO_DIR" "$work"
 restore=1
-started=0
+estimate_restore=""
+perf_job_token=""
+restore_tree=""
+. "$TOOLS_DIR/perf_job.sh"
 dry_run=0
 autana=autana
 wait=3600
@@ -34,15 +37,13 @@ out=""
 build_count=0
 cleanup() {
     result=$?
-    trap - EXIT INT TERM
-    if [ "$restore" -eq 1 ] && [ "$started" -eq 1 ] && [ "$dry_run" -eq 0 ]; then
-        if restore_tree=$(revision_worktree_checkout origin/main restore); then
-            "$PYTHON" "$TOOLS_DIR/perf_compare.py" --restore-project "$restore_tree" \
-                --autana "$autana" --wait "$wait" < /dev/null || result=$?
-        else
-            result=1
-        fi
+    trap - EXIT
+    trap '' INT TERM
+    if [ -n "$restore_tree" ]; then
+        "$PYTHON" "$TOOLS_DIR/perf_compare.py" --restore-project "$restore_tree" \
+            --autana "$autana" --wait "$wait" < /dev/null || result=$?
     fi
+    perf_job_release || result=$?
     revision_worktree_cleanup
     rm -rf "$work"
     exit "$result"
@@ -97,7 +98,13 @@ done
 mkdir -p "$out"
 out=$(CDPATH='' cd -- "$out" && pwd)
 "$PYTHON" "$TOOLS_DIR/perf_sweep.py" run --out "$out" --dry-run "$@" > "$work/plan.json"
-started=1
+if [ "$dry_run" -eq 0 ]; then
+    if [ "$restore" -eq 1 ]; then restore_project=$(revision_worktree_checkout origin/main restore); fi
+    [ "$restore" -eq 1 ] || estimate_restore=--no-restore
+    estimate=$("$PYTHON" "$TOOLS_DIR/perf_sweep.py" run --out "$out" --estimate-plan $estimate_restore "$@")
+    perf_job_take "$estimate" "perf_sweep"
+    if [ "$restore" -eq 1 ]; then restore_tree=$restore_project; fi
+fi
 status=0
 "$PYTHON" "$TOOLS_DIR/perf_sweep.py" run --out "$out" "$@" || status=$?
 if [ "$dry_run" -eq 0 ]; then echo "table $out/sweep.md"; fi

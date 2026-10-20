@@ -1,0 +1,84 @@
+name: QEMU Ratchet and Console Tests
+
+# Pins named serial simulation steps and raster span kernels to instruction
+# budgets. Scope, tolerance and local captures: docs/testing/Performance-and-Budgets.md.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'launcher/**'
+      - 'scripts/lib/console_protocol.py'
+      - 'scripts/lib/device_capture.py'
+      - '.github/workflows/icount-ratchet.yml'
+      - '.github/actions/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  icount-ratchet:
+    name: Instruction budgets
+    runs-on: ubuntu-24.04
+    # Headroom for a cold emulator build.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/patched-qemu
+        with:
+          # Capture ceiling.
+          command: >-
+            sh test/run_qemu_tests.sh --icount-ratchet --timeout 900
+            && python3 tools/quality/icount_gate.py build.qemu.shell/qemu_serial.log
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: qemu-serial-logs
+          path: |
+            launcher/build.qemu.shell/qemu_serial.log
+          if-no-files-found: ignore
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: qemu-shell-image
+          path: |
+            launcher/build.qemu.shell/launcher.elf
+            launcher/build.qemu.shell/*.bin
+            !launcher/build.qemu.shell/qemu_*.bin
+            launcher/build.qemu.shell/bootloader/bootloader.bin
+            launcher/build.qemu.shell/partition_table/partition-table.bin
+            launcher/build.qemu.shell/flasher_args.json
+            launcher/build.qemu.shell/config/sdkconfig.json
+          if-no-files-found: error
+
+  console-tests:
+    name: Console suite, YAML recipe and lifecycle model
+    needs: icount-ratchet
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: qemu-shell-image
+          path: launcher/build.qemu.shell
+      - uses: ./.github/actions/patched-qemu
+        with:
+          compile: 'false'
+          command: >-
+            cd .. && python3 -m venv /tmp/console-pytest
+            && /tmp/console-pytest/bin/pip install -r launcher/test/device/requirements.txt
+            && /tmp/console-pytest/bin/pytest launcher/test/device
+            --junitxml=launcher/build.qemu.shell/pytest-logs/results.xml
+      - if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: pytest-console-logs-and-model
+          path: launcher/build.qemu.shell/pytest-logs/
+          if-no-files-found: error

@@ -262,17 +262,130 @@ class CloneTests(unittest.TestCase):
                            "launcher/main/b.c": rows}, 80)
         self.assertEqual(pairs, [])
 
+    def assert_ignored_declaration(self, declaration):
+        self.assertEqual(gate.filter_pairs([self.pair(fragment=declaration)]), [])
+        copied = self.pair(fragment=BLOCK + declaration)
+        self.assertEqual(gate.filter_pairs([copied]), [copied])
+
+    def declaration_commit_check(self, base_files, head_files, expected, message):
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            git, commit = repository_commands(root)
+            init_repository(git)
+            for name, text in base_files.items():
+                (root / name).parent.mkdir(parents=True, exist_ok=True)
+                (root / name).write_text(text, encoding="utf-8")
+            commit()
+            git("update-ref", "refs/remotes/origin/main", "HEAD")
+            git("checkout", "-b", "feature/test")
+            for name, text in head_files.items():
+                (root / name).write_text(text, encoding="utf-8")
+            commit()
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                result = gate.main([], root=root)
+            self.assertEqual(result, expected, output.getvalue())
+            self.assertIn(message, output.getvalue())
+
+    def test_splitting_a_declaration_never_grows_a_pair(self):
+        names = [f"value_{index}" for index in range(24)]
+        combined = "void\nsetup(void) {\n    int " + ", ".join(f"{name} = {index}" for index, name in enumerate(names)) + ";\n}\n"
+        split = "void\nsetup(void) {\n" + "".join(f"    int {name} = {index};\n" for index, name in enumerate(names)) + "}\n"
+        other = split.replace("setup", "prepare")
+        files = {"launcher/main/a.c": combined, "launcher/main/b.c": other}
+        def sizes(pairs):
+            return sorted((gate.pair_key(pair), pair["tokens"]) for pair in pairs)
+        self.assertEqual(sizes(self.scan(files, 80)), sizes(self.scan({**files, "launcher/main/a.c": split}, 80)))
+        self.declaration_commit_check(files, {"launcher/main/a.c": split}, 0, "PASS: no growing clone file pairs")
+        pointers = "void\nsetup(void) {\n    unsigned char *left = 0, *right = 0;\n}\n"
+        self.assertIn("; unsigned char *right = 0;", gate.split_declarations(pointers))
+        self.assertEqual(gate.split_declarations(pointers).count("\n"), pointers.count("\n"))
+
+    def test_a_copied_function_with_declarations_still_counts(self):
+        body = "int\nscale(int input) {\n    const int low = input / 2, high = input * 2;\n" + BLOCK.split("{", 1)[1]
+        self.declaration_commit_check({"launcher/main/a.c": body}, {"launcher/main/b.c": body}, 1,
+                                      "FAIL: 1 new or growing clone file pairs")
+
+    def test_a_copy_just_above_the_limit_is_still_found(self):
+        body = "void\nsetup(int input) {\n" + "".join(f"    const unsigned value_{i} = input + {i} * 3;\n" for i in range(8)) + "}\n"
+        self.assertTrue(self.scan({"launcher/main/a.c": body, "launcher/main/b.c": body}, 80))
+
+    def test_declaration_splitting_leaves_other_statements_and_lines_alone(self):
+        text = ("void\nf(int a) {\n    return a;\n    for (int i = 0, n = 2; i < n; i++) {\n    }\n"
+                "    a = g(a, 1), a = 2;\n    char *s = \"a, b;\"; /* int q, r; */\n}\n")
+        split = gate.split_declarations(text)
+        self.assertEqual(split.count("\n"), text.count("\n"))
+        for kept in ("return a;", "for (int i = 0, n = 2;", "a = g(a, 1), a = 2;", "\"a, b;\"", "/* int q, r; */"):
+            self.assertIn(kept, split)
+        cpp = "void f() {\n    delete p;\n    throw err;\n}\n"
+        self.assertEqual(gate.split_declarations(cpp), cpp)
+
+    def test_adding_grouping_parentheses_never_grows_a_pair(self):
+        plain = BLOCK.replace("result += index * 2;", "result += index * 2 + input;")
+        grouped = plain.replace("index * 2 + input", "(index * 2) + input")
+        files = {"launcher/main/a.c": plain, "launcher/main/b.c": grouped.replace("alpha", "beta")}
+        self.declaration_commit_check({**files, "launcher/main/a.c": plain.replace("index * 2 + input", "index * (2 + input)")},
+                                      {"launcher/main/a.c": plain}, 0, "PASS: no growing clone file pairs")
+        self.assertEqual(len(self.scan(files, 80)), len(self.scan({**files, "launcher/main/b.c": plain.replace("alpha", "beta")}, 80)))
+
+    def test_call_and_condition_parentheses_are_kept(self):
+        text = "void\nf(int a) {\n    if (a) {\n        g((a * 2) + 1, (a));\n    }\n}\n"
+        self.assertEqual(gate.drop_grouping_parentheses(text), text.replace("(a * 2)", " a * 2 ").replace(", (a)", ",  a "))
+
     def test_a_run_test_list_is_ignored_but_a_copy_beside_it_is_not(self):
         listing = "}\n\nvoid\nsuite_a(void) {\n" + "".join(f"    RUN_TEST(test_{i});\n" for i in range(24)) + "}\n"
-        self.assertEqual(gate.filter_pairs([self.pair(fragment=listing)]), [])
-        copied = self.pair(fragment=BLOCK + listing)
-        self.assertEqual(gate.filter_pairs([copied]), [copied])
+        self.assert_ignored_declaration(listing)
+
+    def test_literal_defines_are_ignored_but_code_and_function_macros_are_not(self):
+        listing = "".join(f"#define FIELD_{i} {i}U\n" for i in range(24))
+        listing += '#define SCALE 0.5F\n#define MASK 0xFFUL\n#define LABEL "value"\n'
+        self.assertEqual(self.scan(dict.fromkeys(("launcher/main/a.c", "launcher/main/b.c"), listing), 80), [])
+        functions = "".join(f"#define APPLY_{i}(x) ((x) + {i})\n" for i in range(24))
+        self.assertEqual(len(gate.filter_pairs([self.pair(fragment=functions)])), 1)
+        expressions = "".join(f"#define VALUE_{i} (input + {i})\n" for i in range(24))
+        self.assertEqual(len(gate.filter_pairs([self.pair(fragment=expressions)])), 1)
+
+    def test_literal_vector_defines_are_ignored_but_calls_and_identifiers_are_not(self):
+        listing = "".join(f"#define ROW_{i} {{{i}, -1, 0xFFU, 1.5F}}\n" for i in range(24))
+        listing += '#define CONTINUED {1, \\\n    -2, 3}\n'
+        self.assertEqual(self.scan(dict.fromkeys(("launcher/main/a.c", "launcher/main/b.c"), listing), 80), [])
+        values = ", ".join(str(i) for i in range(100))
+        pairs = self.scan({"launcher/main/a.c": f"static const int values[] = {{{values}}};",
+                           "launcher/main/b.h": f"#define VALUES {{{values}}}\n"}, 80)
+        self.assertFalse([pair for pair in pairs if pair["firstFile"]["name"] != pair["secondFile"]["name"]])
+        for body in ("{value, 1}", "{call(1), 2}", "{1 + 2, 3}"):
+            code = "".join(f"#define ROW_{i} {body}\n" for i in range(24))
+            self.assertEqual(len(gate.filter_pairs([self.pair(fragment=code)])), 1)
+
+    def test_define_stripping_keeps_clone_line_numbers(self):
+        prefix = '#define X 1 // note\n#define ROW {1, \\\n 2, 3}\n'
+        plain = self.scan(dict.fromkeys(("launcher/main/a.c", "launcher/main/b.c"), BLOCK), 80)
+        stripped = self.scan(dict.fromkeys(("launcher/main/a.c", "launcher/main/b.c"), prefix + BLOCK), 80)
+        self.assertEqual(len(stripped), len(plain))
+        for original, shifted in zip(plain, stripped):
+            for side in ("firstFile", "secondFile"):
+                self.assertEqual(shifted[side]["start"], original[side]["start"] + prefix.count("\n"))
+                self.assertEqual(shifted[side]["end"], original[side]["end"] + prefix.count("\n"))
+
+    def test_crlf_defines_keep_clone_line_numbers(self):
+        prefix = '#define X 1\n#define ROW {1, \\\n 2, 3}\n'
+        files = dict.fromkeys(("launcher/main/a.c", "launcher/main/b.c"), prefix + BLOCK)
+        contents = [(name, text.replace("\n", "\r\n").encode("utf-8")) for name, text in files.items()]
+        with mock.patch.object(gate, "revision_contents", return_value=contents):
+            pairs = self.scan(files, 80)
+        self.assertTrue(pairs)
+        for pair in pairs:
+            for side in ("firstFile", "secondFile"):
+                self.assertEqual(pair[side]["start"], prefix.count("\n") + 1)
+                self.assertEqual(pair[side]["end"], (prefix + BLOCK).count("\n"))
+
+    def test_literal_define_with_line_comment_is_stripped(self):
+        listing = "".join(f"#define X_{i} 1 // note\n" for i in range(100))
+        self.assertEqual(self.scan(dict.fromkeys(("launcher/main/a.c", "launcher/main/b.c"), listing), 80), [])
 
     def test_initializer_table_rows_are_ignored_but_statements_are_not(self):
         rows = "".join(f'    {{"row_{i}", build_{i}, {i}u, 0, 1000, 0}},\n' for i in range(16))
-        self.assertEqual(gate.filter_pairs([self.pair(fragment=rows)]), [])
-        copied = self.pair(fragment=BLOCK + rows)
-        self.assertEqual(gate.filter_pairs([copied]), [copied])
+        self.assert_ignored_declaration(rows)
         loops = "".join(f"    for (int y = {i}; y < 9; y++) {{ set(s, x, y, CELL); }}\n" for i in range(16))
         self.assertEqual(len(gate.filter_pairs([self.pair(fragment=loops)])), 1)
 

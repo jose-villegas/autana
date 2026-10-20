@@ -38,7 +38,7 @@ class HoldGuardTests(Store):
 
     def main(self, *words):
         with mock.patch.object(device.device_lock, "LockStore", return_value=self.store), \
-                mock.patch.object(device, "board_for_lock", return_value=BOARD_A):
+                mock.patch.object(device, "board_for_lock", return_value=(BOARD_A, None)):
             return device.main(["--board", BOARD_A, "--wait", "0", *words])
 
     def assert_token_refused(self, words, message):
@@ -120,6 +120,42 @@ class HoldGuardTests(Store):
                 self.store.release(BOARD_A, token)
                 os.environ[device.TOKEN_ENV] = ""
 
+    def test_estimate_and_note_for_take(self):
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(self.main("take", "--until-released", "--pid", str(os.getpid()),
+                                       "--estimate", "30", "perf", "job"), 0)
+        self.assert_estimated_hold()
+
+    def test_estimate_for_run_is_visible_during_child_and_released(self):
+        def child(*args, **kwargs):
+            entry = device_lock.status_entry(self.store, BOARD_A, durations={})
+            self.assertEqual(entry["estimated_free"], self.clock.now() + 30)
+            self.assertEqual(entry["holder"]["purpose"], device.command_label("run"))
+            record = self.store.status(BOARD_A)["lock"]
+            self.assertEqual(record["kind"], "run")
+            self.assertNotIn("until_released", record)
+            self.assertTrue(self.store.check_token(BOARD_A, os.environ[device.TOKEN_ENV]))
+
+        with self.scope(), mock.patch.object(device, "run_to_end", side_effect=child):
+            self.assertEqual(self.main("run", "--estimate", "30", "--", "child"), 0)
+        self.assertIsNone(self.store.status(BOARD_A)["lock"])
+
+    def assert_estimated_hold(self):
+        ticket = self.store.enqueue(BOARD_A, "waiter", "flash")
+        second = self.store.enqueue(BOARD_A, "second", "flash")
+        entry = device_lock.status_entry(self.store, BOARD_A, durations={"flash": 5})
+        self.assertEqual(entry["holder"]["purpose"], "perf job")
+        self.assertEqual(entry["estimated_free"], self.clock.now() + 30)
+        self.assertEqual([waiter["estimated_start"] for waiter in entry["waiting"]],
+                         [entry["estimated_free"], entry["estimated_free"] + 5])
+        self.assertIn("perf job", "\n".join(device_lock.status_lines(entry, self.clock.now())))
+        self.clock.advance(31)
+        self.assertIsNotNone(self.store.status(BOARD_A)["lock"])
+        self.assertIsNone(self.store.status(BOARD_A)["reclaimable"])
+        self.assertEqual(device_lock.status_entry(self.store, BOARD_A)["estimated_free"], self.clock.now())
+        self.store.cancel(BOARD_A, ticket)
+        self.store.cancel(BOARD_A, second)
+
     def test_until_released_reclaims_reused_pid_only_on_this_host(self):
         token = self.take(pid=123)
         with mock.patch.object(device_lock, "process_start",
@@ -127,7 +163,7 @@ class HoldGuardTests(Store):
             self.assertEqual(self.store.status(BOARD_A)["reclaimable"]["reason"], "dead process")
             record = self.store.read_json(self.store.lock_path(BOARD_A))
             record["host"] = socket.gethostname() + "-remote"
-            self.store.write_json(self.store.lock_path(BOARD_A), record)
+            device_lock.write_json(self.store.lock_path(BOARD_A), record)
             self.assertTrue(self.store.check_token(BOARD_A, token))
 
     def test_take_and_hand_inside_hold_refuse_without_queueing(self):
@@ -173,6 +209,32 @@ class HoldGuardTests(Store):
             with self.subTest(words=words), self.assertRaises(SystemExit) as error:
                 self.main(*words)
             self.assertEqual(error.exception.code, 2)
+
+    def test_estimate_never_controls_hold_liveness(self):
+        token = self.take(pid=os.getpid(), estimate=1)
+        self.clock.advance(2)
+        self.assertTrue(self.store.check_token(BOARD_A, token))
+        entry = device_lock.status_entry(self.store, BOARD_A, durations={})
+        self.assertEqual(entry["state"], "held")
+        self.assertEqual(entry["estimated_free"], self.clock.now())
+        self.store.is_alive = lambda pid: False
+        status = self.store.status(BOARD_A)
+        self.assertIsNone(status["lock"])
+        self.assertEqual(status["reclaimable"]["reason"], "dead process")
+        replacement = self.store.acquire(BOARD_A, "next", "flash", wait=0)
+        self.assertIsNotNone(replacement)
+        self.assertNotEqual(replacement["token"], token)
+
+    def test_record_without_estimate_projects_acquired_plus_duration(self):
+        held = self.store.acquire(BOARD_A, "holder", "flash")
+        self.clock.advance(2)
+        durations = {"flash": 10}
+        expected = held["acquired_at"] + durations["flash"]
+        entry = device_lock.status_entry(self.store, BOARD_A, durations=durations)
+        self.assertEqual(entry["estimated_free"], expected)
+        ticket = self.store.enqueue(BOARD_A, "waiter", "flash")
+        estimates = device_lock.queue_estimates(self.store.status(BOARD_A), self.clock.now(), durations)
+        self.assertEqual(estimates[ticket], expected)
 
     def test_hold_has_no_duration_estimate(self):
         self.take(seconds=30)

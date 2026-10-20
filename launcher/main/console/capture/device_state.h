@@ -8,8 +8,8 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "input/imu.h"
 #include "input/input.h"
+#include "input/motion/imu.h"
 
 typedef struct {
     int64_t uptime_us; /* timing_now_us() */

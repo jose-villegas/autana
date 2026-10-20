@@ -204,7 +204,7 @@ class BoardHolderTests(unittest.TestCase):
     def status_output(self, holder_pid, owner="killed@0pac", port="COM3"):
         with tempfile.TemporaryDirectory() as root:
             store = device_lock.LockStore(root, is_alive=lambda pid: pid == 1)
-            store.write_json(store.lock_path(self.BOARD), {
+            device_lock.write_json(store.lock_path(self.BOARD), {
                 "acquired_at": store.now(), "board": self.BOARD, "heartbeat_at": store.now(),
                 "expected_build_id": "", "host": socket.gethostname(), "kind": "screenshot",
                 "owner": owner, "pid": holder_pid, "purpose": "autana screenshot",
@@ -1099,6 +1099,11 @@ class SuiteCommandTests(unittest.TestCase):
         command = forwarded_command(autana.suite, ["run_gfx_suite", "--expect-build-id", "abc123-diag"])
         self.assertEqual(value_after(command, "--expect-build-id"), "abc123-diag")
 
+    def test_each_send_is_forwarded(self):
+        lines = ["sound stop all", "sound play tap loop"]
+        command = forwarded_command(autana.suite, ["sand", "--send", lines[0], "--send", lines[1]])
+        self.assertEqual([command[i + 1] for i, part in enumerate(command) if part == "--send"], lines)
+
     def test_each_set_is_forwarded(self):
         command = forwarded_command(
             autana.suite, ["run_gfx_suite", "--set", "r3d_span.small_max_side=3", "--set", "a.b=0x10"])
@@ -1832,7 +1837,8 @@ class GlobalFlagValueTests(unittest.TestCase):
         for flag, values in self.GOOD.items():
             for value in values:
                 with self.subTest(flag=flag, value=value):
-                    self.assertEqual(autana.pop_globals([flag, value, "x"]), ({flag: value}, ["x"]))
+                    expected = value.upper() if flag == "--board" else value
+                    self.assertEqual(autana.pop_globals([flag, value, "x"]), ({flag: expected}, ["x"]))
 
     def test_bad_values_are_refused_naming_flag_value_and_example(self):
         for flag, values in self.BAD.items():
@@ -2136,7 +2142,7 @@ class RemovedLockSpellingTests(unittest.TestCase):
 
 
 class RenamedVerbAliasTests(unittest.TestCase):
-    """Every bare old spelling in RENAMED_VERBS still works, printing the new
+    """Every old spelling in RENAMED_VERBS still works, printing the new
     one to stderr before calling straight through to the same handler."""
 
     def test_every_alias_forwards_and_announces_the_new_spelling(self):
@@ -2152,9 +2158,15 @@ class RenamedVerbAliasTests(unittest.TestCase):
 
     def test_the_real_handlers_are_wired_up(self):
         expected = {"freeze": autana.freeze, "resume": autana.resume, "step": autana.step, "touch": autana.touch,
-                   "imu": autana.imu, "framewatch": autana.framewatch}
+                   "imu": autana.imu}
         self.assertEqual({old: handler for old, (_, handler) in autana.RENAMED_VERBS.items()},
                          expected)
+
+    def test_debug_framewatch_announces_the_top_level_spelling(self):
+        stream = io.StringIO()
+        with mock.patch.object(autana, "send", return_value=(0, ['{"allocs": 0}'])),                 contextlib.redirect_stderr(stream), contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(autana.debug(["framewatch"]), 0)
+        self.assertIn("autana debug framewatch: use `autana framewatch`", stream.getvalue())
 
 
 class BoardOnlyCommandsTests(unittest.TestCase):

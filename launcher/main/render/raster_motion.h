@@ -1,6 +1,6 @@
 /*
  * raster_motion: previous-position offsets from view depth and previous
- * instance placements, in current-picture pixels so resolution changes
+ * instance models, in current-picture pixels so resolution changes
  * need no conversion.
  * This experiment is removable as its files plus its view table row.
  */
@@ -10,6 +10,7 @@
 #include <stdint.h>
 
 #include "math/linear/mat4f.h"
+#include "math/linear/projectf.h"
 #include "render/r3d_instance.h"
 #include "render/raster_attachment.h"
 #include "render/render_view.h"
@@ -32,8 +33,8 @@ typedef struct {
     bool has_previous;
     render_view_t previous;
     int seen_count;
-    const r3d_placement_t* seen_key[RASTER_MOTION_INSTANCES_MAX];
-    r3d_placement_t seen[RASTER_MOTION_INSTANCES_MAX];
+    const mat4f_t* seen_key[RASTER_MOTION_INSTANCES_MAX];
+    mat4f_t seen[RASTER_MOTION_INSTANCES_MAX];
     /* This picture's: map[0] carries a point of this picture's lens space
      * into the previous one's for anything that did not move, map[i + 1]
      * for instance i that did, when moved[i]. */
@@ -41,7 +42,7 @@ typedef struct {
     int first_moved; /* the first instance that moved, or -1 */
     bool moved[RASTER_MOTION_INSTANCES_MAX];
     mat4f_t map[RASTER_MOTION_INSTANCES_MAX + 1];
-    float center_x, center_y, near_z;
+    projectf_t project;
 } raster_motion_t;
 
 /* The attachment, storing its state in `state`. */

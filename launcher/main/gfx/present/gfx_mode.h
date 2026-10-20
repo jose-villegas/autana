@@ -11,13 +11,14 @@
 #include <stdint.h>
 
 #include "gfx/gfx.h"
-#include "gfx/present/gfx_band_run.h"
-#include "gfx/present/gfx_indexed.h"
+#include "gfx/present/modes/band/gfx_band_run.h"
+#include "gfx/present/modes/indexed/gfx_indexed.h"
 
 typedef enum {
-    GFX_LAYOUT_FULL_FB, /* one PSRAM framebuffer; core-1 present reads it */
-    GFX_LAYOUT_BANDS,   /* a 2-band ring in internal SRAM; no PSRAM framebuffer */
-    GFX_LAYOUT_INDEXED, /* a persistent index image in internal RAM; core-1 expands it */
+    GFX_LAYOUT_FULL_FB,   /* one PSRAM framebuffer; core-1 present reads it */
+    GFX_LAYOUT_BANDS,     /* a 2-band ring in internal SRAM; no PSRAM framebuffer */
+    GFX_LAYOUT_INDEXED,   /* a persistent index image in internal RAM; core-1 expands it */
+    GFX_LAYOUT_DOUBLE_FB, /* two PSRAM framebuffers; redraw every pixel every frame */
 } gfx_layout_t;
 
 typedef struct {
@@ -41,6 +42,11 @@ typedef struct {
     int cell_size;
 } gfx_mode_t;
 
+static inline bool
+gfx_mode_has_framebuffer(const gfx_mode_t* mode) {
+    return mode->layout == GFX_LAYOUT_FULL_FB || mode->layout == GFX_LAYOUT_DOUBLE_FB;
+}
+
 /* Panel and band geometry are passed in so host suites can grant modes
  * without device macros. Layout and interlace requests pass through. */
 static inline gfx_mode_t
@@ -61,7 +67,7 @@ gfx_mode_resolve(const gfx_mode_request_t* request, int full_width, int full_hei
     return granted;
 }
 
-/* Band and indexed layouts need their own storage. Interlace grants describe
+/* Double, band and indexed layouts need their own storage. Interlace grants describe
  * the request; gfx_set_interlace() controls the strip sends. */
 
 /* Grants `request`, allocates whatever the granted layout needs, and
@@ -69,7 +75,9 @@ gfx_mode_resolve(const gfx_mode_request_t* request, int full_width, int full_hei
  * nesting one app's mode inside another's is not supported. */
 const gfx_mode_t* gfx_mode_enter(const gfx_mode_request_t* request);
 
-/* Frees whatever the current mode allocated and restores GFX_LAYOUT_FULL_FB
+/* Double mode drains its send and keeps the front: the last presented frame,
+ * or its clear colour if gfx_set_clear_on_send() was on.
+ * Frees whatever the current mode allocated and restores GFX_LAYOUT_FULL_FB
  * at full resolution, no interlace, the mode every app but the one just
  * exiting assumes is already in force. */
 void gfx_mode_exit(void);
@@ -105,7 +113,8 @@ uint8_t* gfx_indexed_image(void);
 
 /*
  * Readback: the frame on the panel, row by row, for a capture. A
- * framebuffer or index image is readable at once. In GFX_LAYOUT_BANDS the
+ * double framebuffer drains its send first. Other framebuffers and index
+ * images are readable at once. In GFX_LAYOUT_BANDS the
  * first gfx_readback_begin() is PENDING until a frame has redrawn every
  * band into a PSRAM copy; every band sent after that updates the copy
  * until the mode exits, so later calls are READY at once, frozen loop
@@ -114,7 +123,7 @@ uint8_t* gfx_indexed_image(void);
 typedef enum {
     GFX_READBACK_READY,
     GFX_READBACK_PENDING,
-    GFX_READBACK_UNAVAILABLE, /* band mode, and no room for its snapshot */
+    GFX_READBACK_UNAVAILABLE, /* band mode with no room for its snapshot, or a shown frame cleared on send */
 } gfx_readback_t;
 
 gfx_readback_t gfx_readback_begin(void);

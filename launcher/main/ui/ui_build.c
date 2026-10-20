@@ -27,17 +27,18 @@
 static const char* TAG = "ui";
 #endif
 
-#include "gfx/draw/gfx_draw.h"
-#include "gfx/draw/gfx_font_roles.h"
+#include "draw/draw.h"
+#include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
+#include "profile/frame_cost.h"
 #include "services/tune.h"
-#include "ui/ui_bridge.h"
-#include "ui/ui_icons.h"
+#include "ui/controls/ui_icons.h"
+#include "ui/controls/ui_slider.h"
+#include "ui/controls/ui_widgets.h"
+#include "ui/input/ui_bridge.h"
+#include "ui/input/ui_pointer.h"
+#include "ui/input/ui_snap.h"
 #include "ui/ui_internal.h"
-#include "ui/ui_pointer.h"
-#include "ui/ui_slider.h"
-#include "ui/ui_snap.h"
-#include "ui/ui_widgets.h"
 
 /* Definitions for the externs ui_internal.h declares; see that header for
  * what each one is shared for. */
@@ -89,8 +90,14 @@ static void (*base_draw_frame)(mu_Context*, mu_Rect, int);
 /* The transform every command is mapped through before it is drawn, and
  * whether it is one draw_command() may actually use; see ui_set_transform()
  * below for why an invalid one is remembered rather than rejected outright. */
-static ui_transform_t transform;
+static affine2x_t transform;
 static bool transform_valid;
+
+/* The effective transform's inverse and the logical canvas it maps the panel
+ * to, refreshed by use_transform() whenever the transform changes: touch and
+ * ui_width()/ui_height() read them every frame. */
+static affine2x_t inverse;
+static mu_Rect logical_canvas;
 
 /* See ui.h's own comment above ui_layout_generation() for what this counts
  * and, more importantly, what it is not. Bumped in the same branch of
@@ -112,7 +119,7 @@ static int font_scaled_count;
  * same way it already does for a font change; see ui_set_font()'s
  * comment. */
 static const ui_font_scaled_t*
-intern_font_scaled(const gfx_font_t* font, int scale) {
+intern_font_scaled(const draw_font_t* font, int scale) {
     for (int i = 0; i < font_scaled_count; i++) {
         if (font_scaled_table[i].font == font && font_scaled_table[i].scale == scale) {
             return &font_scaled_table[i];
@@ -142,7 +149,7 @@ ui_resolve_font_scaled(mu_Font font) {
     if (font) {
         return *(const ui_font_scaled_t*)font;
     }
-    return (ui_font_scaled_t){gfx_font_ui(), GFX_GLYPH_SCALE};
+    return (ui_font_scaled_t){draw_font_ui(), DRAW_GLYPH_SCALE};
 }
 
 /* microui asks us for text metrics rather than measuring anything itself.
@@ -153,13 +160,13 @@ ui_resolve_font_scaled(mu_Font font) {
 static int
 measure_text_width(mu_Font font, const char* str, int len) {
     const ui_font_scaled_t fs = ui_resolve_font_scaled(font);
-    return gfx_font_text_width(fs.font, str, len, fs.scale);
+    return draw_font_text_width(fs.font, str, len, fs.scale);
 }
 
 static int
 measure_text_height(mu_Font font) {
     const ui_font_scaled_t fs = ui_resolve_font_scaled(font);
-    return gfx_font_height(fs.font, fs.scale);
+    return draw_font_height(fs.font, fs.scale);
 }
 
 /*
@@ -218,35 +225,42 @@ ui_set_text_style(ui_text_style_t style) {
  * a global would need invalidating on every size change, which a two-size
  * screen hits every frame, permanently defeating the repaint skip. */
 void
-ui_set_font_scaled(const gfx_font_t* font, int scale) {
+ui_set_font_scaled(const draw_font_t* font, int scale) {
     if (scale < 1) {
         scale = 1;
     }
-    ui_ctx.style->font = (mu_Font)intern_font_scaled(font ? font : gfx_font_ui(), scale);
+    ui_ctx.style->font = (mu_Font)intern_font_scaled(font ? font : draw_font_ui(), scale);
 }
 
 void
-ui_set_font(const gfx_font_t* font) {
-    ui_set_font_scaled(font, GFX_GLYPH_SCALE);
+ui_set_font(const draw_font_t* font) {
+    ui_set_font_scaled(font, DRAW_GLYPH_SCALE);
 }
 
-static bool
-transforms_equal(ui_transform_t a, ui_transform_t b) {
-    return a.a == b.a && a.b == b.b && a.c == b.c && a.d == b.d && a.tx == b.tx && a.ty == b.ty;
+/* ui_effective_transform() is identity or passed
+ * ui_transform_is_axis_preserving(), so it always has an inverse; identity
+ * stands in only if that invariant ever breaks. */
+static void
+use_transform(affine2x_t t) {
+    transform = t;
+    transform_valid = ui_transform_is_axis_preserving(t);
+    if (!affine2x_invert(ui_effective_transform(), &inverse)) {
+        inverse = affine2x_identity();
+    }
+    logical_canvas = ui_transform_mu_rect(inverse, (mu_Rect){0, 0, GFX_WIDTH, GFX_HEIGHT});
 }
 
 /* See ui.h for why a transform change must call ui_invalidate(). WHY AN
- * INVALID TRANSFORM IS REMEMBERED RATHER THAN REJECTED. ui_transform_t can
+ * INVALID TRANSFORM IS REMEMBERED RATHER THAN REJECTED. affine2x_t can
  * express more than this renderer can draw; see ui_transform.h. Logging at
  * set time, not render time, keeps this to one log line, not one per frame. */
 void
-ui_set_transform(ui_transform_t t) {
-    if (transforms_equal(t, transform)) {
+ui_set_transform(affine2x_t t) {
+    if (affine2x_equal(t, transform)) {
         return;
     }
-    transform = t;
-    transform_valid = ui_transform_is_axis_preserving(t);
-    /* Past transforms_equal()'s early return, so this IS a genuine change;
+    use_transform(t);
+    /* Past affine2x_equal()'s early return, so this IS a genuine change;
      * see ui_layout_generation()'s comment in ui.h for what counts as one
      * and why this is the only place that gets to bump it. */
     layout_generation++;
@@ -264,9 +278,9 @@ ui_set_transform(ui_transform_t t) {
 /* What draw_command() (ui.c), feed_input() and ui_width()/ui_height() below
  * actually use: the transform in force, or identity for as long as it fails
  * ui_transform_is_axis_preserving(); see ui_set_transform() above. */
-ui_transform_t
+affine2x_t
 ui_effective_transform(void) {
-    return transform_valid ? transform : ui_transform_identity();
+    return transform_valid ? transform : affine2x_identity();
 }
 
 mu_Context*
@@ -288,19 +302,19 @@ ui_invalidate(void) {
 void
 ui_init(void) {
     ui_band_init();
+    ui_face_init();
     mu_init(&ui_ctx);
     ui_ctx.text_width = measure_text_width;
     ui_ctx.text_height = measure_text_height;
     ui_ctx.on_control = record_snap_rect;
     font_scaled_count = 0;
-    ui_set_font(gfx_font_ui());
+    ui_set_font(draw_font_ui());
 
     base_draw_frame = ui_ctx.draw_frame;
     ui_ctx.draw_frame = styled_draw_frame;
     button_style = UI_BUTTON_FLAT;
     ui_text_style = UI_TEXT_PLAIN;
-    transform = ui_transform_identity();
-    transform_valid = true;
+    use_transform(affine2x_identity());
     /* Before an app can hold store slots: the engine pack keeps one. */
     ui_icons_init();
     ui_pointer_state = (ui_pointer_t){0};
@@ -319,7 +333,7 @@ ui_init(void) {
     ui_ctx.style->colors[MU_COLOR_BUTTON] = (mu_Color){0x16, 0x1A, 0x28, 255};
     ui_ctx.style->colors[MU_COLOR_BUTTONHOVER] = (mu_Color){0x23, 0x2A, 0x40, 255};
     ui_ctx.style->colors[MU_COLOR_BUTTONFOCUS] = (mu_Color){0x3D, 0xDC, 0x97, 255};
-    ui_ctx.style->padding = 12;
+    ui_ctx.style->padding = UI_PADDING;
     ui_ctx.style->spacing = UI_ROW_GAP;
     ui_ctx.style->indent = 0;
     ui_ctx.style->title_height = UI_TITLE_HEIGHT;
@@ -343,18 +357,9 @@ ui_init(void) {
 
 void
 ui_to_logical(int x, int y, int* lx, int* ly) {
-    ui_transform_t inv;
-    if (!ui_transform_invert(ui_effective_transform(), &inv)) {
-        /* Unreachable in practice: ui_effective_transform() is always
-         * identity or something ui_transform_is_axis_preserving() accepted,
-         * and every transform that passes that check has a nonzero
-         * determinant, hence an inverse. Fall back to an unmapped point
-         * rather than garbage if that invariant is ever broken. */
-        *lx = x;
-        *ly = y;
-        return;
-    }
-    ui_transform_point(inv, x, y, lx, ly);
+    const vec2i_t logical = affine2x_map_pixel(&inverse, (vec2i_t){x, y});
+    *lx = logical.x;
+    *ly = logical.y;
 }
 
 /* Mapped before ui_pointer_step() rather than after, so that its "vertical
@@ -375,13 +380,16 @@ void
 ui_begin(const input_t* input) {
     /* Reset before the caller can state its own; see ui.h on why style does
      * not persist across frames. */
+    ui_face_begin(input);
     button_style = UI_BUTTON_FLAT;
+    UI_FACE_COST_BEGIN(backend_from);
     paint_only = input == NULL;
     if (!paint_only) {
         feed_input(input);
     }
     snap_rect_count = 0;
     mu_begin(&ui_ctx);
+    UI_FACE_COST_END(backend_from, "ui.backend");
 }
 
 void
@@ -391,37 +399,20 @@ ui_end_pointer_frame(void) {
     }
 }
 
-/* See ui.h: the physical viewport mapped through the inverse transform. Both
- * go through one shared computation since a rect's width and height are just
- * as entangled by a quarter turn as its x and y are; deriving them
- * separately would mean inverting the transform twice for one answer. */
-static mu_Rect
-logical_viewport(void) {
-    ui_transform_t inv;
-    if (!ui_transform_invert(ui_effective_transform(), &inv)) {
-        /* See ui_to_logical()'s identical fallback above: unreachable while
-         * ui_effective_transform() only ever returns identity or a
-         * transform that already passed ui_transform_is_axis_preserving(),
-         * both of which are invertible by construction. */
-        return (mu_Rect){0, 0, GFX_WIDTH, GFX_HEIGHT};
-    }
-    return ui_transform_rect(inv, (mu_Rect){0, 0, GFX_WIDTH, GFX_HEIGHT});
-}
-
 int
 ui_width(void) {
-    return logical_viewport().w;
+    return logical_canvas.w;
 }
 
 int
 ui_height(void) {
-    return logical_viewport().h;
+    return logical_canvas.h;
 }
 
 int
 ui_measure_text(const char* str) {
     const ui_font_scaled_t fs = ui_resolve_font_scaled(ui_ctx.style->font);
-    return gfx_font_text_width(fs.font, str, -1, fs.scale);
+    return draw_font_text_width(fs.font, str, -1, fs.scale);
 }
 
 /* icon_walk_blocks()'s callback context: everything one emitted run needs to
@@ -434,13 +425,15 @@ typedef struct {
 } ui_draw_icon_ctx_t;
 
 static void
-ui_draw_icon_emit(void* ctx_, int x, int y, int w, int h) {
+ui_draw_icon_emit(void* ctx_, recti_t rect) {
     const ui_draw_icon_ctx_t* dc = ctx_;
-    mu_draw_rect(dc->c, mu_rect(dc->r.x + x, dc->r.y + y, w, h), dc->color);
+    rect.x += dc->r.x;
+    rect.y += dc->r.y;
+    mu_draw_rect(dc->c, ui_mu_from_recti(rect), dc->color);
 }
 
 void
-ui_draw_icon(mu_Context* c, mu_Rect r, const gfx_image_t* icon, const char* text, mu_Color color) {
+ui_draw_icon(mu_Context* c, mu_Rect r, const draw_image_t* icon, const char* text, mu_Color color) {
     if (icon != NULL) {
         ui_draw_icon_ctx_t dc = {.c = c, .r = r, .color = color};
         icon_walk_blocks(icon, r.w, r.h, ui_draw_icon_emit, &dc);
@@ -456,12 +449,16 @@ ui_draw_icon(mu_Context* c, mu_Rect r, const gfx_image_t* icon, const char* text
  * needed. MU_OPT_HOLDFOCUS keeps a drag updating once it leaves the knob. */
 bool
 ui_slider_int(mu_Context* c, int* value, int lo, int hi, int step) {
-    const mu_Id id = mu_get_id(c, &value, sizeof(value));
+    return ui_slider_int_id(c, mu_get_id(c, &value, sizeof value), value, lo, hi, step, true);
+}
+
+bool
+ui_slider_int_id(mu_Context* c, mu_Id id, int* value, int lo, int hi, int step, bool enabled) {
     const mu_Rect track = mu_layout_next(c);
-    mu_update_control(c, id, track, MU_OPT_HOLDFOCUS);
+    mu_update_control(c, id, track, MU_OPT_HOLDFOCUS | (enabled ? 0 : MU_OPT_NOINTERACT));
 
     int v = *value;
-    if (c->focus == id && (c->mouse_down | c->mouse_pressed) == MU_MOUSE_LEFT) {
+    if (enabled && c->focus == id && (c->mouse_down | c->mouse_pressed) == MU_MOUSE_LEFT) {
         v = ui_slider_value_at_x(track, lo, hi, UI_SLIDER_KNOB_W, step, c->mouse_pos.x);
     }
     v = mu_clamp(v, lo, hi);

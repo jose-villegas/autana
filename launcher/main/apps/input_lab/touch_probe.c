@@ -25,7 +25,8 @@ touch_probe_offset(touch_probe_target_t target, int x, int y, int* dx, int* dy) 
 
 bool
 touch_probe_record(touch_probe_stats_t* stats, touch_probe_target_t target, int x, int y) {
-    int dx, dy;
+    int dx;
+    int dy;
     touch_probe_offset(target, x, y, &dx, &dy);
     const bool hit = x >= target.x && x < target.x + target.side && y >= target.y && y < target.y + target.side;
 
@@ -43,17 +44,17 @@ touch_probe_record(touch_probe_stats_t* stats, touch_probe_target_t target, int 
 
 static float
 mean(int64_t sum, int n) {
-    return n > 0 ? (float)sum / (float)n : 0.0f;
+    return n > 0 ? (float)sum / (float)n : 0.0F;
 }
 
 static float
 spread(int64_t sum, int64_t sum2, int n) {
     if (n < 2) {
-        return 0.0f;
+        return 0.0F;
     }
     const float m = (float)sum / (float)n;
     const float variance = ((float)sum2 - (float)n * m * m) / (float)(n - 1);
-    return variance > 0.0f ? sqrtf(variance) : 0.0f;
+    return variance > 0.0F ? sqrtf(variance) : 0.0F;
 }
 
 float
@@ -78,8 +79,8 @@ touch_probe_spread_dy(const touch_probe_stats_t* stats) {
 
 touch_probe_target_t
 touch_probe_grid(int index, int cols, int rows, int screen_w, int screen_h, int side, int margin) {
-    const int span_x = screen_w - 2 * margin - side;
-    const int span_y = screen_h - 2 * margin - side;
+    const int span_x = screen_w - (2 * margin) - side;
+    const int span_y = screen_h - (2 * margin) - side;
     const int col = index % cols;
     const int row = index / cols;
     const touch_probe_target_t t = {
@@ -121,7 +122,8 @@ median(int* v, int n) {
 
 void
 touch_probe_settled(const touch_probe_sample_t* samples, int n, int from_ms, int to_ms, int* x, int* y) {
-    int xs[SETTLE_MAX], ys[SETTLE_MAX];
+    int xs[SETTLE_MAX];
+    int ys[SETTLE_MAX];
     int count = 0;
     int last = 0;
     for (int i = 0; i < n; i++) {

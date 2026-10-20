@@ -17,8 +17,8 @@
 #include "gfx/present/gfx_present.h"
 #include "ridge_arms.h"
 #include "services/tune.h"
-#include "ui/ui_launcher.h"
-#include "ui/ui_ridge.h"
+#include "shell/ui/ui_launcher.h"
+#include "shell/ui/ui_ridge.h"
 
 static const char* TAG = "ridge_perf";
 

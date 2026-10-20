@@ -11,13 +11,14 @@
 
 #include "core/memory.h"
 #include "gfx/gfx.h"
-#include "gfx/gfx_test.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
+#include "gfx/present/gfx_test.h"
+#include "gfx/present/send/gfx_dirty.h"
 #include "ridge_arms.h"
 #include "services/tune.h"
-#include "ui/ui_launcher.h"
-#include "ui/ui_ridge.h"
+#include "shell/ui/ui_launcher.h"
+#include "shell/ui/ui_ridge.h"
 
 #define FB_PIXELS ((size_t)GFX_WIDTH * GFX_HEIGHT)
 #define FB_BYTES  (FB_PIXELS * sizeof(gfx_color_t))
@@ -289,6 +290,101 @@ test_the_gradient_catches_up_once_the_tilt_stops(void) {
     assert_audit("settling", &audit);
 }
 
+/* The tracker only narrows a cell's box back after a send, so each frame
+ * starts from an empty tracker: its boxes then hold this step's marks alone. */
+static void
+clear_dirty_boxes(void) {
+    for (int row = 0; row < STRIP_COUNT; row++) {
+        dirty_row_sent(row);
+    }
+    dirty_frame_sent();
+}
+
+/* The bounding box of the pixels changed within `area`. */
+static recti_t
+changed_box(const gfx_color_t* before, recti_t area) {
+    const gfx_color_t* const now = gfx_framebuffer();
+    recti_t box = {0};
+    for (int y = area.y; y < recti_bottom(area); y++) {
+        for (int x = area.x; x < recti_right(area); x++) {
+            if (now[(y * GFX_WIDTH) + x] != before[(y * GFX_WIDTH) + x]) {
+                box = recti_union(box, (recti_t){x, y, 1, 1});
+            }
+        }
+    }
+    return box;
+}
+
+static recti_t
+cell_rect(int row, int col) {
+    return (recti_t){col * COL_WIDTH, row * STRIP_HEIGHT, COL_WIDTH, STRIP_HEIGHT};
+}
+
+/* The most a cell's box may hold: each column group's changed box, as far
+ * as it reaches into the cell, and each row's span from its first changed
+ * pixel to its last (the gradient's marks, which cross unchanged groups). */
+static recti_t
+marks_bounds_in_cell(const gfx_color_t* before, int row, int col) {
+    recti_t bounds = {0};
+    for (int y = row * STRIP_HEIGHT; y < (row + 1) * STRIP_HEIGHT; y++) {
+        const recti_t span = changed_box(before, (recti_t){0, y, GFX_WIDTH, 1});
+        bounds = recti_union(bounds, recti_intersect(span, cell_rect(row, col)));
+    }
+    for (int x0 = 0; x0 < GFX_WIDTH; x0 += RIDGE_COLUMN_GROUP) {
+        const recti_t group =
+            changed_box(before, (recti_t){x0, 0, mathi_min(RIDGE_COLUMN_GROUP, GFX_WIDTH - x0), GFX_HEIGHT});
+        bounds = recti_union(bounds, recti_intersect(group, cell_rect(row, col)));
+    }
+    return bounds;
+}
+
+static bool
+holds(recti_t outer, recti_t inner) {
+    return recti_is_empty(inner)
+           || recti_intersect(outer, inner).w * recti_intersect(outer, inner).h == inner.w * inner.h;
+}
+
+/* A column group's mark must reach every changed pixel and stop at their
+ * bounding box: the audit above passes a box that is too big. Each cell's
+ * box is held between the box of its changed pixels and the most the marks
+ * may reach (marks_bounds_in_cell). Blind to: a box too big but inside that. */
+static void
+test_a_column_groups_dirty_box_covers_what_changed_and_no_more(void) {
+    fixture();
+    start_arm(ARM_AMBIENT_PORTRAIT);
+    rig_t rig;
+    rig_open(&rig);
+    int checked = 0;
+    int loose = 0;
+    int short_of = 0;
+    for (int frame = 0; frame < 300; frame++) {
+        input_t input;
+        ridge_arm_drive(ARM_AMBIENT_PORTRAIT, frame, &input);
+        clear_dirty_boxes();
+        ui_ridge_step(&input, RIDGE_ARM_FRAME_DT_MS);
+        for (int row = 0; row < STRIP_COUNT && !all_dirty; row++) {
+            for (int col = 0; col < GRID_COLS; col++) {
+                const int idx = (row * GRID_COLS) + col;
+                const recti_t cell = cell_rect(row, col);
+                const recti_t marked = (cell_dirty & (1u << idx)) != 0
+                                           ? recti_from_edges(cell_x0[idx], cell_y0[idx], cell_x1[idx], cell_y1[idx])
+                                           : (recti_t){0};
+                const recti_t changed = changed_box(rig.before, cell);
+                const recti_t most = marks_bounds_in_cell(rig.before, row, col);
+                checked += !recti_is_empty(marked);
+                short_of += !holds(marked, changed);
+                loose += !holds(most, marked);
+            }
+        }
+        gfx_present();
+        memcpy(rig.before, gfx_framebuffer(), FB_BYTES);
+    }
+    rig_close(&rig);
+    TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, checked, "no cell was marked");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, short_of, "cells whose box misses a changed pixel");
+    TEST_ASSERT_EQUAL_INT_MESSAGE(0, loose, "cells whose box reaches past their groups' changed pixels");
+}
+
 void
 suite_ridge_repaint(void) {
     /* The ridge allocates its state once and keeps it: do that here, so no
@@ -304,6 +400,7 @@ suite_ridge_repaint(void) {
     RUN_TEST(test_a_dissolved_strip_switch_is_sent_and_ends_on_a_full_paint);
     RUN_TEST(test_a_strip_switch_inside_a_running_dissolve_is_sent_and_ends_on_a_full_paint);
     RUN_TEST(test_the_gradient_catches_up_once_the_tilt_stops);
+    RUN_TEST(test_a_column_groups_dirty_box_covers_what_changed_and_no_more);
 }
 
 #else

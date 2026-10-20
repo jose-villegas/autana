@@ -15,6 +15,7 @@
 #include "core/memory.h"
 #include "core/timing.h"
 #include "gfx/gfx.h"
+#include "sound/sound_status.h"
 
 static const char* TAG = "post";
 
@@ -28,10 +29,6 @@ static const char* TAG = "post";
 #define MIN_LARGEST_DMA_BLOCK (32 * 1024)
 
 #define EXPECTED_FLASH_BYTES  (16 * 1024 * 1024)
-
-/* The ES8311's datasheet address is 0x30 in 8-bit form; I2C wants the 7-bit
- * value. Getting this wrong reports a working codec as missing. */
-#define ES8311_I2C_7BIT_ADDR  0x18
 
 /* Results are retained rather than only logged. A board in the field may have
  * nothing attached to its serial port, so they have to be showable on screen. */
@@ -56,7 +53,7 @@ report(const char* name, bool ok, post_severity_t severity, const char* detail) 
         r->name = name;
         r->ok = ok;
         r->severity = severity;
-        snprintf(r->detail, sizeof(r->detail), "%s", detail ? detail : "");
+        (void)snprintf(r->detail, sizeof(r->detail), "%s", detail ? detail : "");
     }
     checks_run++;
 
@@ -93,8 +90,8 @@ post_run_before_display(void) {
         const uint64_t bytes = (uint64_t)bsp_sdcard->csd.capacity * bsp_sdcard->csd.sector_size;
 
         char detail[96];
-        snprintf(detail, sizeof(detail), "%s, %llu MB, mounted and released", bsp_sdcard->cid.name,
-                 (unsigned long long)(bytes >> 20));
+        (void)snprintf(detail, sizeof(detail), "%s, %llu MB, mounted and released", bsp_sdcard->cid.name,
+                       (unsigned long long)(bytes >> 20));
         report("sd card", true, POST_OPTIONAL, detail);
 
         /* Release it again: this was only a mount test, not a hold the
@@ -118,7 +115,7 @@ check_sdcard_live(void) {
     char card[40] = "no card";
     if (err == ESP_OK && bsp_sdcard != NULL) {
         const uint64_t bytes = (uint64_t)bsp_sdcard->csd.capacity * bsp_sdcard->csd.sector_size;
-        snprintf(card, sizeof(card), "%s, %llu MB", bsp_sdcard->cid.name, (unsigned long long)(bytes >> 20));
+        (void)snprintf(card, sizeof(card), "%s, %llu MB", bsp_sdcard->cid.name, (unsigned long long)(bytes >> 20));
         bsp_sdcard_unmount();
     }
 
@@ -130,7 +127,7 @@ check_sdcard_live(void) {
     /* Matches post_result_t::detail's size exactly, like every other check in
      * this file; report()'s copy into it can never truncate what fit here. */
     char detail[96];
-    snprintf(detail, sizeof(detail), "%s (live, %lld ms round trip)", card, (long long)((t_end - t0) / 1000));
+    (void)snprintf(detail, sizeof(detail), "%s (live, %lld ms round trip)", card, (long long)((t_end - t0) / 1000));
 
     report("sd card", err == ESP_OK, POST_OPTIONAL, detail);
 }
@@ -141,9 +138,10 @@ check_soc(void) {
     esp_chip_info(&info);
 
     char detail[96];
-    snprintf(detail, sizeof(detail), "rev %d, %d core, %s%s%s", info.revision, info.cores,
-             (info.features & CHIP_FEATURE_WIFI_BGN) ? "wifi " : "", (info.features & CHIP_FEATURE_BLE) ? "ble " : "",
-             (info.features & CHIP_FEATURE_IEEE802154) ? "802.15.4" : "");
+    (void)snprintf(detail, sizeof(detail), "rev %d, %d core, %s%s%s", info.revision, info.cores,
+                   (info.features & CHIP_FEATURE_WIFI_BGN) ? "wifi " : "",
+                   (info.features & CHIP_FEATURE_BLE) ? "ble " : "",
+                   (info.features & CHIP_FEATURE_IEEE802154) ? "802.15.4" : "");
     report("soc", true, POST_REQUIRED, detail);
 }
 
@@ -153,8 +151,8 @@ check_flash(void) {
     const bool ok = esp_flash_get_size(NULL, &size) == ESP_OK;
 
     char detail[96];
-    snprintf(detail, sizeof(detail), "%" PRIu32 " MB%s", size / (1024 * 1024),
-             (ok && size != EXPECTED_FLASH_BYTES) ? " (expected 16)" : "");
+    (void)snprintf(detail, sizeof(detail), "%" PRIu32 " MB%s", size / (1024 * 1024),
+                   (ok && size != EXPECTED_FLASH_BYTES) ? " (expected 16)" : "");
 
     report("flash", ok && size == EXPECTED_FLASH_BYTES, POST_REQUIRED, detail);
 }
@@ -172,8 +170,8 @@ check_memory(void) {
     const size_t largest_dma = memory_largest_block(MEMORY_DMA);
 
     char detail[96];
-    snprintf(detail, sizeof(detail), "%u KiB free, DMA block %u KiB", (unsigned)(free_dma / 1024),
-             (unsigned)(largest_dma / 1024));
+    (void)snprintf(detail, sizeof(detail), "%u KiB free, DMA block %u KiB", (unsigned)(free_dma / 1024),
+                   (unsigned)(largest_dma / 1024));
     /* Gated on the largest block, not total free: "can this board still
      * allocate the things it needs" (an app's largest single buffer
      * is 41,216 bytes and must be contiguous) is a contiguity question, not a total-bytes one. */
@@ -186,9 +184,9 @@ check_memory(void) {
 
     char psram_detail[64];
     if (psram != 0) {
-        snprintf(psram_detail, sizeof(psram_detail), "%u MiB present", (unsigned)(psram / (1024 * 1024)));
+        (void)snprintf(psram_detail, sizeof(psram_detail), "%u MiB present", (unsigned)(psram / (1024 * 1024)));
     } else {
-        snprintf(psram_detail, sizeof(psram_detail), "absent - unexpected");
+        (void)snprintf(psram_detail, sizeof(psram_detail), "absent - unexpected");
     }
     report("psram", psram != 0, POST_REQUIRED, psram_detail);
 }
@@ -199,7 +197,8 @@ check_mac(void) {
     const bool ok = esp_read_mac(mac, ESP_MAC_WIFI_STA) == ESP_OK;
 
     char detail[96];
-    snprintf(detail, sizeof(detail), "%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    (void)snprintf(detail, sizeof(detail), "%02x:%02x:%02x:%02x:%02x:%02x", mac[0], mac[1], mac[2], mac[3], mac[4],
+                   mac[5]);
 
     /* An all-zero MAC means eFuse was never programmed or cannot be read,
      * which breaks every radio before it starts. */
@@ -209,18 +208,18 @@ check_mac(void) {
 
 static void
 check_temperature(void) {
-    float celsius = 0.0f;
+    float celsius = 0.0F;
     const board_temp_sensor_status_t status = board_temp_sensor_read_celsius(&celsius);
 
     char detail[96];
     switch (status) {
-        case BOARD_TEMP_SENSOR_INSTALL_FAILED: snprintf(detail, sizeof(detail), "install failed"); break;
-        case BOARD_TEMP_SENSOR_READ_FAILED: snprintf(detail, sizeof(detail), "read failed"); break;
-        case BOARD_TEMP_SENSOR_OK: snprintf(detail, sizeof(detail), "%.1f C", (double)celsius); break;
+        case BOARD_TEMP_SENSOR_INSTALL_FAILED: (void)snprintf(detail, sizeof(detail), "install failed"); break;
+        case BOARD_TEMP_SENSOR_READ_FAILED: (void)snprintf(detail, sizeof(detail), "read failed"); break;
+        case BOARD_TEMP_SENSOR_OK: (void)snprintf(detail, sizeof(detail), "%.1f C", (double)celsius); break;
     }
 
     /* A plausible reading also rules out a sensor stuck at a fixed value. */
-    const bool valid = status == BOARD_TEMP_SENSOR_OK && celsius > -40.0f && celsius < 125.0f;
+    const bool valid = status == BOARD_TEMP_SENSOR_OK && celsius > -40.0F && celsius < 125.0F;
     report("temp sensor", valid, POST_REQUIRED, detail);
 }
 
@@ -252,7 +251,7 @@ check_i2c_devices(void) {
         const bool present = i2c_master_probe(bus, devices[i].address, 100) == ESP_OK;
 
         char detail[96];
-        snprintf(detail, sizeof(detail), "0x%02x  %s", devices[i].address, devices[i].what);
+        (void)snprintf(detail, sizeof(detail), "0x%02x  %s", devices[i].address, devices[i].what);
         report(devices[i].name, present, devices[i].severity, detail);
     }
 
@@ -263,44 +262,33 @@ check_i2c_devices(void) {
 
     char touch_detail[40];
     if (ft) {
-        snprintf(touch_detail, sizeof(touch_detail), "0x%02x  %s (V1)", BOARD_TOUCH_FT_I2C_ADDR, BOARD_TOUCH_FT_NAME);
+        (void)snprintf(touch_detail, sizeof(touch_detail), "0x%02x  %s (V1)", BOARD_TOUCH_FT_I2C_ADDR,
+                       BOARD_TOUCH_FT_NAME);
     } else if (cst) {
-        snprintf(touch_detail, sizeof(touch_detail), "0x%02x  CST820 (V2)", BOARD_TOUCH_CST_I2C_ADDR);
+        (void)snprintf(touch_detail, sizeof(touch_detail), "0x%02x  CST820 (V2)", BOARD_TOUCH_CST_I2C_ADDR);
     } else {
-        snprintf(touch_detail, sizeof(touch_detail), "no controller answered");
+        (void)snprintf(touch_detail, sizeof(touch_detail), "no controller answered");
     }
     report("touch", ft || cst, POST_REQUIRED, touch_detail);
 }
 
 static void
 check_audio_codec(void) {
-    i2c_master_bus_handle_t bus = bsp_i2c_get_handle();
-    if (bus == NULL) {
-        report("audio codec", false, POST_REQUIRED, "no i2c bus");
-        return;
-    }
-
-    /* The codec sits behind the amplifier enable board_audio_amp_enable()
-     * controls, so bring that up before probing or an alive codec reports
-     * as missing. This only powers the rail; it makes no sound and
-     * configures nothing. */
-    const bool powered = board_audio_amp_enable(true) == ESP_OK;
-    timing_sleep_ms(10); /* let the rail settle before probing */
-
-    const bool present = i2c_master_probe(bus, ES8311_I2C_7BIT_ADDR, 100) == ESP_OK;
-
-    /* Leave it off again: POST must not change the state the shell inherits. */
-    board_audio_amp_enable(false);
-
+    const char* step = sound_init_failure();
     char detail[96];
-    snprintf(detail, sizeof(detail), "0x%02x  ES8311%s", ES8311_I2C_7BIT_ADDR, powered ? "" : " (amp enable failed)");
-    report("audio codec", present, POST_REQUIRED, detail);
+    int length;
+    if (step) {
+        length = snprintf(detail, sizeof detail, "audio: init failed (%s)", step);
+    } else {
+        length = snprintf(detail, sizeof detail, "0x%02x  ES8311", BOARD_AUDIO_CODEC_I2C_ADDR);
+    }
+    report("audio codec", step == NULL && length >= 0, POST_REQUIRED, length >= 0 ? detail : step);
 }
 
 static void
 check_display(void) {
     char detail[96];
-    snprintf(detail, sizeof(detail), "%dx%d %s", GFX_WIDTH, GFX_HEIGHT, board_variant_name(board_variant()));
+    (void)snprintf(detail, sizeof(detail), "%dx%d %s", GFX_WIDTH, GFX_HEIGHT, board_variant_name(board_variant()));
     report("display", gfx_framebuffer() != NULL, POST_REQUIRED, detail);
 }
 
@@ -339,7 +327,7 @@ post_run_after_display(void) {
     /* A machine-readable line, so a production rig can grep one string rather
      * than parse the table above. */
     printf("POST_COMPLETE checks=%d failures=%d\n", checks_run, checks_failed);
-    fflush(stdout);
+    (void)fflush(stdout);
 
     return checks_failed == 0;
 }

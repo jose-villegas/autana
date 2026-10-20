@@ -1,23 +1,14 @@
 #!/bin/sh
 #
-# ui_dropdown() on a host, opened, scrolled and picked from by a scripted
+# ui_mu_dropdown() on a host, opened, scrolled and picked from by a scripted
 # finger, see ui_dropdown_render_host.c and docs/tools/Render-Harness.md.
 set -eu
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 scene_name=ui_dropdown
+scene_ui=1
 scene_sources="
 main/services/tune.c
-main/ui/ui.c
-main/ui/ui_bridge.c
-main/ui/ui_build.c
-main/ui/ui_canvas_marks.c
-main/ui/ui_icons.c
-main/ui/ui_pointer.c
-main/ui/ui_snap.c
-main/ui/ui_scroll.c
-main/ui/ui_widgets.c
-components/microui/src/microui.c
 tools/render/scenes/ui_dropdown_render_host.c
 "
 scene_assets="main/engine"

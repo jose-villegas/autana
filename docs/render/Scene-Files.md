@@ -214,6 +214,7 @@ budget = 8672
 coverage_every_ms = 100
 
 [objects.mesh_renderer.fit.poses]
+size = [184, 224]
 train_every_ms = 1000
 held_out_every_ms = 5000
 
@@ -221,6 +222,8 @@ held_out_every_ms = 5000
 steps = 2000
 batch = 8
 laplacian = 10.0
+surface_weight = 10.0
+surface_margin = 0.25
 normal_weight = 1.0
 ```
 
@@ -232,9 +235,9 @@ normal_weight = 1.0
 | `visibility: camera_path` | `source = "camera_path"`, `every_ms`, `size`; `samples`, `margin` | Keeps triangles first seen from sampled camera-path views. | Off. | [visibility: camera_path](#visibility-camera_path) |
 | `shading: smooth` | `"smooth"` | Stores baked colour at vertices. | `"smooth"`. | [shading: smooth](#shading-smooth) |
 | `shading: flat` | `flat = { fixed = N }` / `flat = { auto = { min, max, area } }` | Stores one averaged RGB565 colour per face. | Off. | [shading: flat](#shading-flat) |
-| `fit.prune` | `budget`, `coverage_every_ms` | Prunes visible geometry to the triangle budget. | Required in `fit`; the cost weight is `fitted_variant.py sweep --cost-weights`, not a scene key. | [fit.prune](#fitprune) |
-| `fit.poses` | `train_every_ms`, `held_out_every_ms` | Selects training and held-out camera-path poses. | Required in `fit`. | [fit.poses](#fitposes) |
-| `fit.optimise` | `steps`, `batch`, `laplacian`, `normal_weight` | Sets optimiser steps, batch size and loss weights. | Required in `fit`. | [fit.optimise](#fitoptimise) |
+| `fit.prune` | `budget`, `coverage_every_ms` | Prunes the fitted mesh to the triangle budget. | Required in `fit`; the cost weight is `fitted_variant.py sweep --cost-weights`, not a scene key. | [fit.prune](#fitprune) |
+| `fit.poses` | `size`, `train_every_ms`, `held_out_every_ms` | Selects training and held-out camera-path poses. | Required in `fit`. | [fit.poses](#fitposes) |
+| `fit.optimise` | `steps`, `batch`, `laplacian`, `normal_weight`, `surface_weight`, `surface_margin` | Sets optimiser steps, batch size and loss weights. | Required in `fit`. | [fit.optimise](#fitoptimise) |
 | `indirect: off` | `indirect = false` | Bakes this renderer without bounce light. | Bounce light on when the scene recipe is present. | [indirect: off](#indirect-off) |
 
 #### bake renderer
@@ -316,27 +319,31 @@ nothing tracked changes.
 #### fit.prune
 
 `budget` is the triangle count the fit keeps, at most the variant's `triangles`;
-`coverage_every_ms` samples the camera path for the dense pose set pruning
-counts pixels over.
+`coverage_every_ms` samples the camera path for the dense pose set that pruning
+counts pixels over, at the coverage file's own size.
 
-The stages are path visibility, simplify above the target, prune to budget,
-optional warm start, then fitting:
+Source visibility is the renderer's [`visibility`](#visibility-camera_region)
+(region by default). A region source keeps the backing surfaces that
+simplification and fitting would otherwise expose. The stages are source
+visibility, simplify above the target, optional warm start, fitting, then
+coverage pruning to budget:
 
 ```mermaid
 flowchart LR
-    V[path visibility<br/>on the source] --> S[simplify to more<br/>than the budget]
-    S --> P[prune to the budget]
-    P --> R[refine a coarse fit<br/>optional]
+    V[visibility<br/>on the source] --> S[simplify to more<br/>than the budget]
+    S --> R[refine a coarse fit<br/>optional]
     R --> F[fit: ΔE, Laplacian,<br/>normals, cost]
-    F --> W[write_lit_mesh]
+    F --> P[prune the fitted mesh<br/>to the budget]
+    P --> W[write_lit_mesh]
 ```
 
-[Path visibility](#visibility-camera_path) spends budget only on surfaces the
-path draws. Each pose of a dense set counts the pixels $`a_t`$ each triangle
+Each pose of a dense set counts the pixels $`a_t`$ each fitted triangle
 shows; pruning removes zero-coverage triangles first, then the least-covered,
-to the budget. A warm start splits the worst fitted triangles along their
-longest edge, grows the mesh to a larger budget, and fits it again. Generated
-tables compare the current budget and cost settings.
+to the budget. Coverage uses fitted positions and fitted per-face colours for
+flat meshes, so visibility is judged on the geometry that is drawn. A warm
+start splits the worst fitted triangles along their longest edge, grows the
+mesh to a larger budget, and fits it again. Generated tables compare the
+current budget and cost settings.
 
 The cost model predicts pose time $`\hat t_v`$ from a non-negative least-squares
 fit<sup>[[6]](../Citations.md#6)</sup> to board frame times: a constant; clusters in view $`N_{s,v}`$; drawn
@@ -356,6 +363,9 @@ README.
 
 #### fit.poses
 
+`size = [width, height]` is required: two positive integers setting the pose
+resolution for training, held-out references and coverage. Coverage widens
+this view to cover both panel orientations.
 `train_every_ms` samples the camera path for fitting; of those samples, poses
 at multiples of `held_out_every_ms` (time 0 aside) are held out of training and
 used only for scoring.
@@ -382,17 +392,19 @@ The fit draws welded positions $`P`$ and vertex colours $`C`$ with a
 differentiable rasterizer $`\mathcal{R}`$, nvdiffrast<sup>[[2]](../Citations.md#2)</sup>, over a random batch $`B`$ of training
 poses. $`\Omega`$ is the frame pixels, $`P^0`$ the start positions, $`N(i)`$
 the positions sharing an edge with $`i`$, $`\bar e`$ the start mean edge
-length, $`\hat n`$ the fitted normal, $`n^{\rm ref}`$ the reference normal, and
+length, $`e_i`$ each vertex's mean start edge length capped at $`\bar e`$,
+$`\hat n`$ the fitted normal, $`n^{\rm ref}`$ the reference normal, and
 $`\hat t_v`$ the predicted frame time for pose $`v`$. It minimises the colour
 term $`\mathcal{E}_{\Delta E}`$, the Laplacian term
-$`\mathcal{E}_{\mathcal{L}}`$, the normal term $`\mathcal{E}_n`$, and the cost
-term $`\mathcal{E}_c`$:
+$`\mathcal{E}_{\mathcal{L}}`$, the normal term $`\mathcal{E}_n`$, the cost
+term $`\mathcal{E}_c`$, and the surface term $`\mathcal{E}_s`$:
 
 ```math
 \min_{P,\,C}\; \mathcal{E}_{\Delta E}(P, C)
 + \lambda\,\mathcal{E}_{\mathcal{L}}(P)
 + \lambda_n\,\mathcal{E}_n(P)
 + \kappa\,\mathcal{E}_c(P)
++ w\,\mathcal{E}_s(P)
 ```
 
 `steps` is $`K`$, `batch` is $`|B|`$, `laplacian` is $`\lambda`$ and
@@ -418,7 +430,7 @@ $`\lambda_n`$, and $`\kappa`$ weigh the Laplacian, normal, and cost terms:
 ```math
 \mathcal{E}_{\mathcal{L}}(P) =
 \frac{1}{|V|}\sum_{i \in V}
-\left\lVert \frac{\mathcal{L}(P)_i - \mathcal{L}(P^0)_i}{\bar e} \right\rVert^2
+\left\lVert \frac{\mathcal{L}(P)_i - \mathcal{L}(P^0)_i}{e_i} \right\rVert^2
 ```
 
 $`\mathcal{E}_n`$ is the mean L1 difference between $`\hat n_v(P)_p`$ and
@@ -444,15 +456,25 @@ any other bake; generated results live in the scene tools README. One mesh can
 fit the whole path, or meshes can fit path segments and swap as the camera
 moves; segment fits see fewer training poses.
 
-```mermaid
-flowchart LR
-    S[simplified bake, smooth or flat] --> F[fit positions and colours]
-    P[camera path poses] --> R[reference renders]
-    R --> F
-    F --> W[write_lit_mesh]
-    W --> H[host render, held-out poses]
-    H --> C[render_compare.py score, sheets, heatmaps]
-```
+The surface term anchors fixed barycentric samples of the fitted triangles to
+area-weighted samples of the alpha-masked source used for the reference renders.
+A seeded RNG fixes both sample sets; CPU nearest-neighbour queries refresh the
+source correspondences at `SURFACE_QUERY_EVERY` steps. Sampling counts and the
+small distance-pull weight live beside it in `appearance_simplify.py`.
+`surface_weight` weighs the mean squared point-to-plane distance beyond
+`surface_margin`, plus a small squared distance pull to the matched sample.
+For a fitted sample $`x`$, its nearest source sample $`c`$ and that source
+face's normal $`n`$, write $`d=(x-c)/e_x`$, where $`e_x`$ is the mean $`e_i`$ over the corners
+of the triangle holding $`x`$. The surface contribution is
+$`w\,\mathrm{mean}(\max(0,|n\cdot d|-\epsilon)^2+t\lVert d\rVert^2)`$,
+where $`w`$ is `surface_weight`, $`\epsilon`$ is `surface_margin`, and $`t`$
+is `SURFACE_TANGENTIAL_WEIGHT`. Both distances are measured in $`e_x`$.
+The plane envelope is zero inside the margin; the small pull remains active there.
+
+Colour history, `loss.txt` and the printed mean ΔE76 exclude surface, normal,
+Laplacian and cost penalties. The surface loss is reported beside drift.
+Pruning counts shown pixels at the recipe's coverage spacing; this sampling is
+part of the reference cache key.
 
 Colour alone permits geometry that matches one view but differs from another.
 `normal_weight` weighs $`\mathcal{E}_n`$: mean
@@ -511,9 +533,21 @@ and a learning rate decaying geometrically. It changes the rest:
 | Fitted | positions, textures, normal maps, material parameters | welded positions and vertex or face colours, which are the lighting bake |
 | Forward model | deferred physically based shading | the device's Gouraud or flat colours, no shading |
 | Image term | L1 on log-tonemapped sRGB | mean CIE 1976 $`\Delta E^*_{ab}`$<sup>[[4]](../Citations.md#4)</sup> |
-| Laplacian weight | decays during the fit | constant $`\lambda`$; the drift is measured in start mean edge lengths |
-| Further terms | none | $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../Citations.md#6)</sup> |
-| Triangle budget | set by the start | the start's, pruned to `budget` by coverage before the fit; a refined fitted mesh can be the start |
+| Position step | plain Adam on positions<sup>[[3]](../Citations.md#3)</sup> | Adam on an offset scaled per vertex by its capped local start scale, so small parts step in proportion to their size |
+| Laplacian weight | decays during the fit | constant $`\lambda`$; each vertex's drift uses its own mean start edge length, capped at the start's mean edge length |
+| Further terms | none | a point-to-plane band, of half-width `surface_margin`, from the fit to the source surface and a small tangential pull, both in the mean of that capped scale over each sample's triangle; $`\mathcal{E}_n`$ against reference normals; $`\mathcal{E}_c`$, predicted frame time<sup>[[6]](../Citations.md#6)</sup> |
+| Triangle budget | set by the start | the fitted mesh's, pruned to `budget` by coverage after fitting; a refined fitted mesh can be the start |
+
+A global unit gives small parts a fraction of the hold, so the image term
+stretches them; local edge scales keep the hold even<sup>[[78]](../Citations.md#78)</sup>.
+Adam's step length does not depend on gradient size, so the position offset is scaled by the same local scale.
+
+Section 5.3 of the paper has no distance-to-reference term<sup>[[1]](../Citations.md#1)</sup>.
+Here the start is already a decimation of the reference surface, so the fit can
+be held to that surface. The relative Laplacian alone is blind to smooth drift;
+the band limits movement away from the source while its margin
+allows local fitting and the small tangential pull holds samples near their
+matches.
 
 #### indirect: off
 
@@ -594,7 +628,7 @@ this order:
 |---|---|
 | header, 56 bytes | `u16 version=2`, nine `u16` part counts, nine `u32` part offsets |
 | names | `char name[32]` per entity, NUL padded |
-| transforms | `f32 m[3][3]`, `f32 position[3]` per entity; count equals names |
+| transforms | `scene_asset_transform_t`: `f32 linear[3][3]`, `f32 position[3]` per entity; count equals names |
 | renderers | `u16 entity`, `u16 zero`, `char mesh_id[32]` |
 | cameras | `u16 entity`, `u16 zero`, `f32 half_fov_short_tan`, `f32 near_z`, `u32 clear_rgb` |
 | lights | `u16 entity`, `u8 kind`, `u8 zero`, `f32 colour[3]` (linear), `f32 intensity` (unscaled) |
@@ -614,4 +648,4 @@ nonpositive or nonfinite lenses, invalid clear colours, duplicate light,
 animator or skinned-renderer entities, unknown kind or wrap, invalid clip
 ranges or defaults, colours outside 0..1, and negative or nonfinite lighting
 settings. `default_clip=SCENE_ASSET_DEFAULT_CLIP_NONE` means no playback. Light-kind codes belong to
-`scene_internal.h`; wrap codes belong to `anim_track.h`.
+`scene_format.h`; wrap codes belong to `anim_track.h`.

@@ -2,7 +2,6 @@
 import contextlib
 import importlib.util
 import io
-import inspect
 import json
 import math
 import pathlib
@@ -352,61 +351,17 @@ class RevisionTests(unittest.TestCase):
                 self.measure(root, ExitTwo(root))
 
     def test_shell_restore_uses_injected_autana(self):
-        with tempfile.TemporaryDirectory() as root:
-            root = pathlib.Path(root)
-            perf = root/"launcher/tools/perf"
-            perf.mkdir(parents=True)
-            source = pathlib.Path(tool.__file__).parent
-            for name in ("perf_compare.sh", "perf_compare.py", "layout_measure.py", "seed_statistics.py"):
-                (perf/name).write_bytes((source/name).read_bytes())
-            (root/"launcher/tools/render").mkdir(parents=True)
-            (root/"launcher/tools/render/doc_tables.py").write_bytes((source.parent/"render/doc_tables.py").read_bytes())
-            (root/"scripts/lib").mkdir(parents=True)
-            (root/"scripts/lib/python.sh").write_bytes((source.parents[2]/"scripts/lib/python.sh").read_bytes())
-            (root/"scripts/lib/process_tree.py").write_bytes((source.parents[2]/"scripts/lib/process_tree.py").read_bytes())
-            (root/"scripts/lib/device_capture.py").write_bytes((source.parents[2]/"scripts/lib/device_capture.py").read_bytes())
-            helper = root/"launcher/tools/revision_worktree.sh"
-            helper.write_text("revision_worktree_setup() { :; }\n"
-                              "revision_worktree_cleanup() { :; }\n"
-                              "revision_worktree_checkout() {\n"
-                              "  if [ -d \"$1\" ]; then printf '%s\\n' \"$1\";\n"
-                              "  else printf '%s\\n' \"$RESTORE_TREE\"; fi\n}\n")
-            calls = root/"calls.jsonl"
-            fake = root/"fake.py"
-            fake.write_text("import json,pathlib,sys\n" + inspect.getsource(FakeAutana) + "\n" +
-                            f"with open({str(calls)!r}, 'a') as file: file.write(json.dumps(sys.argv[1:])+'\\n')\n"
-                            "if 'flash' in sys.argv: sys.exit(0)\n"
-                            f"code,lines,wall = FakeAutana({str(root)!r})(sys.argv[1:], None, 60)\n"
-                            "for at,line in lines: print(line, flush=True)\nsys.exit(code)\n")
-            for name in ("a", "restore"):
-                (root/name/"launcher/test").mkdir(parents=True)
-                (root/name/"launcher/test/suites.h").write_bytes((source.parents[2]/"launcher/test/suites.h").read_bytes())
-            env = dict(__import__("os").environ, RESTORE_TREE=(root/"restore").as_posix())
-            done = subprocess.run(["sh", (perf/"perf_compare.sh").as_posix(),
-                                   (root/"a").as_posix(), (root/"a").as_posix(),
-                                   "--suite", "suite", "-", "-", "--max-seeds", "4",
-                                   "--autana", f'"{pathlib.Path(sys.executable).as_posix()}" "{fake.as_posix()}"', "-o", (root/"out").as_posix()],
-                                  env=env, capture_output=True, text=True, timeout=60)
-            self.assertEqual(done.returncode, 0, done.stderr)
-            recorded = [json.loads(line) for line in calls.read_text().splitlines()]
-            self.assertEqual(sum("flash" in command for command in recorded), 1)
-            self.assertTrue(any("status" in command for command in recorded))
-            self.assertTrue(any("suite" in command for command in recorded))
-            calls.unlink()
-            done = subprocess.run(["sh", (perf/"perf_compare.sh").as_posix(),
-                                   (root/"a").as_posix(), (root/"a").as_posix(),
-                                   "--suite", "suite", "-", "-", "--alpha", "1e-8",
-                                   "--autana", f'"{pathlib.Path(sys.executable).as_posix()}" "{fake.as_posix()}"'],
-                                  env=env, capture_output=True, text=True, timeout=60)
+        from shell_job import replay
+        done, calls = replay(self, "compare", same=True)
+        self.assertEqual(done.returncode, 0, done.stderr)
+        self.assertIn("no change", done.stdout)
+        self.assertEqual(sum("flash" in call["words"] for call in calls), 1)
+        self.assertTrue(any("status" in call["words"] for call in calls))
+        self.assertTrue(any("suite" in call["words"] for call in calls))
+        for options in (("--alpha", "1e-8"), ("--suite", "suite", "x" * 24, "-")):
+            done, calls = replay(self, "compare", extra=options)
             self.assertNotEqual(done.returncode, 0)
-            self.assertFalse(calls.exists(), "invalid settings must not reach capture or restore")
-            done = subprocess.run(["sh", (perf/"perf_compare.sh").as_posix(),
-                                   (root/"a").as_posix(), (root/"a").as_posix(),
-                                   "--suite", "suite", "x" * 24, "-", "--max-seeds", "4",
-                                   "--autana", f'"{pathlib.Path(sys.executable).as_posix()}" "{fake.as_posix()}"'],
-                                  env=env, capture_output=True, text=True, timeout=60)
-            self.assertNotEqual(done.returncode, 0)
-            self.assertFalse(calls.exists(), "invalid filters must not reach capture or restore")
+            self.assertEqual(calls, [], "invalid settings must not reach the board")
 
     def test_shell_help_and_missing_arguments_are_messages(self):
         wrapper = pathlib.Path(tool.__file__).with_suffix(".sh")

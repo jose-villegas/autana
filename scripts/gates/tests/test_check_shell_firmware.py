@@ -30,7 +30,7 @@ class ProblemsTest(unittest.TestCase):
 
     def test_this_firmwares_own_driver_headers_and_calls_are_not_vendor_code(self):
         self.assertEqual(self.problems(
-            '#include "input/touch.h"\n#include "input/imu.h"\n#include "input/buttons.h"\n'
+            '#include "input/touch/touch.h"\n#include "input/motion/imu.h"\n#include "input/buttons/buttons.h"\n'
             "void f(imu_sample_t* s) { touch_start(); imu_read(s); buttons_start(); }\n"), [])
 
     def test_each_vendor_include_fails(self):
@@ -64,6 +64,9 @@ class ProblemsTest(unittest.TestCase):
 
     def test_this_firmwares_own_names_that_resemble_vendor_ones_pass(self):
         self.assertEqual(self.problems("int x = vec_len(a) + value_of(b) + extent + pdf_pages + config_load();\n"), [])
+
+    def test_a_hex_literal_is_not_a_name(self):
+        self.assertEqual(self.problems("unsigned m = 0xFU | 0xAbCd;\n"), [])
 
     def test_a_comment_or_string_naming_vendor_code_is_not_code(self):
         self.assertEqual(self.problems(
@@ -179,7 +182,7 @@ class OwnerProblemsTest(unittest.TestCase):
             ("launcher/main/core/timing_wheel.h", CLOCK_READ),
             ("launcher/main/core/memory.c", HEAP_CALL),
             ("launcher/main/core/memory_extra.c", HEAP_CALL),
-            ("launcher/main/gfx/present/gfx_null_panel_device.c", CLOCK_READ + HEAP_CALL),
+            ("launcher/main/gfx/present/panel/gfx_null_panel_device.c", CLOCK_READ + HEAP_CALL),
             ("launcher/main/input/input_device.c", CLOCK_READ),
             ("launcher/main/board/board.h", "#define FB_CAPS (MALLOC_CAP_SPIRAM)\n"),
         )
@@ -209,7 +212,7 @@ class OwnerProblemsTest(unittest.TestCase):
             ("launcher/main/core/memory/memory.c", HEAP_CALL, heap),
             ("launcher/main/services/memory.c", HEAP_CALL, heap),
             ("launcher/main/services/timing.h", CLOCK_READ, clock),
-            ("launcher/main/input/touch_device.h", CLOCK_READ, clock),
+            ("launcher/main/input/touch/touch_device.h", CLOCK_READ, clock),
         )
         for rel, text, reasons in cases:
             with self.subTest(rel=rel):

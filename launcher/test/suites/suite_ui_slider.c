@@ -13,7 +13,8 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "ui/ui_slider.h"
+#include "ui/controls/ui_slider.h"
+#include "ui/ui_internal.h"
 
 typedef struct {
     mu_Rect track;

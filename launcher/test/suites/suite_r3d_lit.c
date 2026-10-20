@@ -16,14 +16,15 @@
 #include "unity.h"
 
 #include "core/memory.h"
-#include "gfx/draw/gfx_color.h"
+#include "display/viewport.h"
 #include "gfx/gfx.h"
+#include "gfx/target/gfx_color.h"
+#include "math/linear/transformf.h"
 #include "render/r3d_lit_mesh.h"
 #include "render/r3d_pipeline.h"
 #include "render/r3d_span_internal.h"
 #include "render/raster.h"
 #include "render/raster_show.h"
-#include "render/viewport.h"
 #include "services/tune.h"
 
 #define W 64
@@ -914,7 +915,7 @@ test_a_plane_behind_a_wall_is_hidden_and_one_reaching_past_it_is_not(void) {
     draw_wall(c, 0.9f);
     const int32_t wall = c->depth[0];
     const r3d_span_target_t t = r3d_span_target(c->color, c->depth, c->w, 0, c->h);
-    const r3d_span_box_t box = {5, 15, 3, 9};
+    const recti_t box = {5, 3, 10, 6};
     const int32_t step = 1 << R3D_DEPTH_SHIFT;
     TEST_ASSERT_EQUAL_INT32(wall - 1, r3d_span_plane_bound((wall - 10) * step, step, 0, box));
     TEST_ASSERT_TRUE(r3d_span_hidden(&t, r3d_span_plane_bound((wall - 10) * step, step, 0, box), box));
@@ -924,14 +925,14 @@ test_a_plane_behind_a_wall_is_hidden_and_one_reaching_past_it_is_not(void) {
     TEST_ASSERT_FALSE(r3d_span_hidden(&t, r3d_span_plane_bound((wall - 5) * step, step, 0, box), box));
     TEST_ASSERT_FALSE(r3d_span_hidden(&t, wall + 1, box));
     /* One pixel of the box farther than the bound is enough. */
-    c->depth[(box.y1 - 1) * c->w + (box.x1 - 1)] = (uint16_t)(wall - 2);
+    c->depth[(recti_bottom(box) - 1) * c->w + (recti_right(box) - 1)] = (uint16_t)(wall - 2);
     TEST_ASSERT_FALSE(r3d_span_hidden(&t, wall - 1, box));
 }
 
 /* A start clamped up from below zero lifts its span by the shortfall. */
 static void
 test_a_plane_below_zero_at_a_corner_is_bounded_by_its_lift(void) {
-    const r3d_span_box_t box = {0, 11, 0, 1};
+    const recti_t box = {0, 0, 11, 1};
     const int32_t step = 1 << R3D_DEPTH_SHIFT;
     TEST_ASSERT_EQUAL_INT32(10, r3d_span_plane_bound(-3 * step, step, 0, box));
     TEST_ASSERT_EQUAL_INT32(R3D_DEPTH_NEAREST, r3d_span_plane_bound(INT32_MAX, INT32_MAX, INT32_MAX, box));
@@ -947,15 +948,14 @@ test_a_plane_is_in_range_exactly_when_every_centre_of_its_box_is(void) {
     int outside = 0;
     for (int i = 0; i < 20000; i++) {
         const int x0 = (int)(next_random(&state) % 20u), y0 = (int)(next_random(&state) % 20u);
-        const r3d_span_box_t box = {x0, x0 + 1 + (int)(next_random(&state) % 12u), y0,
-                                    y0 + 1 + (int)(next_random(&state) % 12u)};
+        const recti_t box = {x0, y0, 1 + (int)(next_random(&state) % 12u), 1 + (int)(next_random(&state) % 12u)};
         const int32_t top = (int32_t)(next_random(&state) % 320u) - 32;
         const int32_t dx = (int32_t)(next_random(&state) % 41u) - 20;
         const int32_t dy = (int32_t)(next_random(&state) % 41u) - 20;
         bool every = true;
-        for (int y = box.y0; y < box.y1; y++) {
-            for (int x = box.x0; x < box.x1; x++) {
-                const int32_t v = top + (dx * (x - box.x0)) + (dy * (y - box.y0));
+        for (int y = box.y; y < recti_bottom(box); y++) {
+            for (int x = box.x; x < recti_right(box); x++) {
+                const int32_t v = top + (dx * (x - box.x)) + (dy * (y - box.y));
                 every = every && v >= 0 && v <= 255;
             }
         }
@@ -967,7 +967,7 @@ test_a_plane_is_in_range_exactly_when_every_centre_of_its_box_is(void) {
     TEST_ASSERT_GREATER_THAN_INT(1000, inside);
     TEST_ASSERT_GREATER_THAN_INT(1000, outside);
     /* Past any 32-bit sum at the far corner. */
-    const r3d_span_box_t wide = {0, 1000, 0, 1000};
+    const recti_t wide = {0, 0, 1000, 1000};
     TEST_ASSERT_FALSE(r3d_span_plane_in_range(0, INT32_MAX / 2, INT32_MAX / 2, INT32_MAX, wide));
 }
 
@@ -1030,9 +1030,7 @@ static r3d_lens_t
 subpixel_view(void) {
     const float s = 1.0f / (float)R3D_SUBPIXEL;
     return (r3d_lens_t){{{{s, 0, 0, 0}, {0, s, 0, 0}, {0, 0, 1, 0}, {0, 0, 0, 1}}},
-                        0.0f,
-                        0.0f,
-                        0.5f,
+                        {1.0F, -1.0F, 0.0F, 0.0F, 0.5F},
                         W,
                         H,
                         R3D_SNAP_BIAS,
@@ -1385,10 +1383,9 @@ test_a_point_up_and_right_lands_up_and_right_in_every_quarter(void) {
         const render_view_t frame_view =
             render_view_fixture_at(&(fixture_camera_t){{0, 0, 0}, {0, 0, 1}, 0.5f, 1.0f}, viewport);
         r3d_lens_init(&lens, &frame_view, 1);
-        const vec3f_t p = mat4f_apply(&lens.m, (vec3f_t){30.0F, 20.0F, 100.0F});
+        const vec2f_t screen = projectf_screen(&lens.project, mat4f_apply(&lens.m, (vec3f_t){30.0F, 20.0F, 100.0F}));
         int ux, uy;
-        viewport_physical_to_upright(viewport, (int)floorf(lens.center_x + p.x / p.z),
-                                     (int)floorf(lens.center_y + p.y / p.z), &ux, &uy);
+        viewport_physical_to_upright(viewport, (int)floorf(screen.x), (int)floorf(screen.y), &ux, &uy);
 
         /* The lens fits the shorter upright axis: tan = 0.5 spans half of it. */
         const int upright_width = (quarter & 1) ? H : W, upright_height = (quarter & 1) ? W : H;
@@ -1906,6 +1903,19 @@ expect_census_draws_match_at_any_size(raster_t* raster) {
     }
 }
 
+/* The census tests' second instance of a mesh, moved so it keeps its own
+ * list; the caller frees it. On the heap so the deepest draw chain does not
+ * carry it on the stack. */
+static mat4f_t*
+census_moved(void) {
+    transformf_t pose = TRANSFORMF_IDENTITY;
+    transformf_set_position(&pose, (vec3f_t){-120.0F, 40.0F, 0.0F});
+    mat4f_t* model = malloc(sizeof(*model));
+    TEST_ASSERT_NOT_NULL(model);
+    *model = transformf_compute_matrix(&pose);
+    return model;
+}
+
 /* Culled once at one size and drawn at another, two instances (the second
  * moved, so each keeps its own list): the same picture, depth and survivors
  * as raster_draw() at the drawn size, from eyes that cull different parts. */
@@ -1913,10 +1923,11 @@ static void
 test_a_census_list_draws_what_raster_draw_draws_at_any_size(void) {
     parts_t* const p = parts_buffer(&shared_parts);
     build_wall_and_stack(p);
-    const r3d_placement_t moved = {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {-120.0f, 40.0f, 0.0f}};
-    const r3d_instance_t instances[] = {{&p->mesh, NULL}, {&p->mesh, &moved}};
+    mat4f_t* const moved = census_moved();
+    const r3d_instance_t instances[] = {{&p->mesh, NULL}, {&p->mesh, moved}};
     raster_t raster = census_raster(instances, 2);
     expect_census_draws_match_at_any_size(&raster);
+    free(moved);
 }
 
 /* Each instance's list is as long as its own mesh's clusters: three
@@ -1929,12 +1940,13 @@ test_a_census_list_steps_by_each_instances_own_mesh(void) {
     parts_t* const floor = parts_buffer(&other_parts);
     build_floor_and_rects(floor);
     TEST_ASSERT_TRUE(wall->mesh.cluster_count != floor->mesh.cluster_count);
-    const r3d_placement_t moved = {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {-120.0f, 40.0f, 0.0f}};
-    const r3d_instance_t instances[] = {{&floor->mesh, NULL}, {&wall->mesh, NULL}, {&wall->mesh, &moved}};
+    mat4f_t* const moved = census_moved();
+    const r3d_instance_t instances[] = {{&floor->mesh, NULL}, {&wall->mesh, NULL}, {&wall->mesh, moved}};
     raster_t raster = census_raster(instances, 3);
     TEST_ASSERT_EQUAL_UINT32(3 + floor->mesh.cluster_count + (2 * wall->mesh.cluster_count),
                              (uint32_t)raster_culled_length(&raster));
     expect_census_draws_match_at_any_size(&raster);
+    free(moved);
 }
 
 /* A destination the raster's own size is a copy of it, taking
@@ -2382,8 +2394,8 @@ test_the_draw_split_of_no_work_is_the_middle_row(void) {
     const r3d_lit_mesh_t mesh = {.clusters = clusters};
     const uint16_t visible[] = {0};
     const r3d_pipeline_rows_t rows[] = {{0, 99, false}};
-    TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 1, 100));
-    TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 0, 100));
+    TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 1, 100, RASTER_SPLIT_EVEN));
+    TEST_ASSERT_EQUAL_INT(50, r3d_pipeline_draw_split(&mesh, visible, rows, 0, 100, RASTER_SPLIT_EVEN));
 }
 
 static void
@@ -2392,15 +2404,43 @@ test_the_draw_split_falls_inside_the_rows_the_work_covers(void) {
     const r3d_lit_mesh_t mesh = {.clusters = clusters};
     const uint16_t visible[] = {0};
     const r3d_pipeline_rows_t top[] = {{0, 9, false}};
-    const int split = r3d_pipeline_draw_split(&mesh, visible, top, 1, 100);
+    const int split = r3d_pipeline_draw_split(&mesh, visible, top, 1, 100, RASTER_SPLIT_EVEN);
     TEST_ASSERT_TRUE(split >= 1 && split <= 9);
 
     const r3d_pipeline_rows_t beyond[] = {{-50, 500, false}};
-    const int middle = r3d_pipeline_draw_split(&mesh, visible, beyond, 1, 100);
+    const int middle = r3d_pipeline_draw_split(&mesh, visible, beyond, 1, 100, RASTER_SPLIT_EVEN);
     TEST_ASSERT_TRUE(middle >= 48 && middle <= 52);
 
     const r3d_pipeline_rows_t unbounded[] = {{0, 0, true}};
-    TEST_ASSERT_EQUAL_INT(middle, r3d_pipeline_draw_split(&mesh, visible, unbounded, 1, 100));
+    TEST_ASSERT_EQUAL_INT(middle, r3d_pipeline_draw_split(&mesh, visible, unbounded, 1, 100, RASTER_SPLIT_EVEN));
+}
+
+static void
+test_draw_split_accumulates_bounded_uneven_buckets(void) {
+    const r3d_lit_cluster_t clusters[] = {{.triangle_count = 1}, {.triangle_count = 3}};
+    const r3d_lit_mesh_t mesh = {.clusters = clusters};
+    const uint16_t visible[] = {0, 1};
+    const r3d_pipeline_rows_t rows[] = {{0, 9, false}, {40, 49, false}};
+    const int height = 640;
+    TEST_ASSERT_EQUAL_INT(10, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, RASTER_SPLIT_PERMILLE / 4));
+    TEST_ASSERT_EQUAL_INT(43, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, RASTER_SPLIT_EVEN));
+    TEST_ASSERT_EQUAL_INT(46, r3d_pipeline_draw_split(&mesh, visible, rows, 2, height, RASTER_SPLIT_PERMILLE * 3 / 4));
+}
+
+static void
+test_draw_split_interpolates_the_requested_share_and_clamps_rows(void) {
+    const r3d_lit_cluster_t clusters[] = {{.triangle_count = 10}};
+    const r3d_lit_mesh_t mesh = {.clusters = clusters};
+    const uint16_t visible[] = {0};
+    const r3d_pipeline_rows_t rows[] = {{0, 0, true}};
+    const int height = 640;
+    TEST_ASSERT_EQUAL_INT(height / 4,
+                          r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, RASTER_SPLIT_PERMILLE / 4));
+    TEST_ASSERT_EQUAL_INT(height / 2, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, RASTER_SPLIT_EVEN));
+    TEST_ASSERT_EQUAL_INT(height / 3,
+                          r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, RASTER_SPLIT_PERMILLE / 3));
+    TEST_ASSERT_EQUAL_INT(1, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, 0));
+    TEST_ASSERT_EQUAL_INT(height - 1, r3d_pipeline_draw_split(&mesh, visible, rows, 1, height, RASTER_SPLIT_PERMILLE));
 }
 
 #undef RUN_TEST
@@ -2412,6 +2452,8 @@ test_the_draw_split_falls_inside_the_rows_the_work_covers(void) {
 
 static void
 run_r3d_lit_suite(void) {
+    RUN_TEST(test_draw_split_accumulates_bounded_uneven_buckets);
+    RUN_TEST(test_draw_split_interpolates_the_requested_share_and_clamps_rows);
     RUN_TEST(test_two_triangles_sharing_an_edge_cover_a_square_exactly_once);
     RUN_TEST(test_tiny_and_large_triangles_tile_without_gaps_or_overlap);
     RUN_TEST(test_the_nearer_triangle_wins_in_either_order);

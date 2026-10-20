@@ -15,10 +15,11 @@ from types import SimpleNamespace
 from anim import clip_name
 from build.c_header import read_define
 from asset.asset_pack import NAME_BYTES
+from r3d.scene_name import scene_id
 from gltf.gltf_read import ASSET_SUFFIXES
 
 MESHLET_TRIANGLES = 32
-SCENE_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_internal.h"
+SCENE_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/scene/scene_conventions.h"
 LIGHT_AXIS = read_define(SCENE_OWNER, "SCENE_LIGHT_AXIS")
 SKIN_LIGHTING = ("direct", "renormalised", "table")
 ANIM_WRAPS = ("clamp", "loop")
@@ -102,6 +103,12 @@ def count(value, where):
     return value
 
 
+def pixel_size(value, where) -> tuple[int, int]:
+    if not isinstance(value, list) or len(value) != 2:
+        raise SettingsError(f"{where} must be [width, height]")
+    return tuple(count(component, where) for component in value)
+
+
 def colour_rgb(value, where):
     """A colour as 0xRRGGBB."""
     value = integer(value, where)
@@ -142,8 +149,8 @@ def face_sample_options(value, where):
 
 FIT_GROUPS = {
     "prune": ("budget", "coverage_every_ms"),
-    "poses": ("train_every_ms", "held_out_every_ms"),
-    "optimise": ("steps", "batch", "laplacian", "normal_weight"),
+    "poses": ("size", "train_every_ms", "held_out_every_ms"),
+    "optimise": ("steps", "batch", "laplacian", "normal_weight", "surface_weight", "surface_margin"),
 }
 FIT_KEYS = tuple(key for keys in FIT_GROUPS.values() for key in keys)
 
@@ -171,8 +178,14 @@ def load_fit(value, variant, where):
     fit = SimpleNamespace(**{key: values[key] for key in FIT_KEYS})
     for key in ("budget", "train_every_ms", "held_out_every_ms", "coverage_every_ms", "steps", "batch"):
         setattr(fit, key, count(values[key], f"{where}.{key}"))
+    fit.size = pixel_size(values["size"], f"{where}.poses.size")
     fit.laplacian = number(values["laplacian"], f"{where}.laplacian")
     fit.normal_weight = number(values["normal_weight"], f"{where}.normal_weight")
+    for key in ("surface_weight", "surface_margin"):
+        value = number(values[key], f"{where}.{key}")
+        if value < 0:
+            raise SettingsError(f"{where}.{key} must be nonnegative")
+        setattr(fit, key, value)
     if fit.budget > variant.triangles:
         raise SettingsError(f"{where}.budget cannot exceed the variant's triangles")
     return fit
@@ -213,14 +226,12 @@ def load_visibility(table, where="visibility"):
         check_keys(table, ("rounds",), where, optional=("source",))
         return SimpleNamespace(source=source, rounds=count(table["rounds"], f"{where}.rounds"))
     check_keys(table, ("every_ms", "size"), where, optional=("source", "samples", "margin"))
-    size = table["size"]
-    if not isinstance(size, list) or len(size) != 2:
-        raise SettingsError(f"{where}.size must be [width, height]")
+    size = pixel_size(table["size"], f"{where}.size")
     margin = integer(table.get("margin", 0), f"{where}.margin")
     if margin < 0:
         raise SettingsError(f"{where}.margin cannot be negative")
     return SimpleNamespace(source=source, every_ms=count(table["every_ms"], f"{where}.every_ms"),
-                           size=(count(size[0], f"{where}.size"), count(size[1], f"{where}.size")),
+                           size=size,
                            samples=count(table.get("samples", 3), f"{where}.samples"), margin=margin)
 
 
@@ -668,7 +679,7 @@ def load_scene(path):
     if any(item.component.bake for item in renderers) and bake is None:
         raise SettingsError("scene [bake] is required: a renderer has bake = true")
     jobs = []
-    scene_name = path.name.removesuffix(".scene.toml").removesuffix(".toml")
+    scene_name = scene_id(path)
     for item in renderers:
         component = item.component
         effective = None
@@ -703,6 +714,9 @@ def load_scene(path):
         raise SettingsError("scene sky is read by no placed mesh: only baked renderers read it")
     sources = {item.renderer.visibility.source for item in jobs if item.renderer.visibility}
     camera_path = cameras[0].component.path if cameras else None
+    for item in jobs:
+        if item.renderer.fit and camera_path is None:
+            raise SettingsError(f"scene.objects {item.object.name!r} mesh_renderer.fit needs the scene camera path")
     bounced = bool(bake and bake.indirect and any(item.renderer.indirect for item in jobs if item.renderer.bake))
     if bake and bake.ao:
         scaled = any(light["type"] == "ambient" for light in lights) or (bake.ao.indirect and bounced)

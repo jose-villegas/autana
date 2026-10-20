@@ -1,24 +1,6 @@
-/*
- * sand_swatch - which shade paints which cell of the brush screen's material
- * swatch.
- *
- * Pure, header-only (the same precedent ui_slider.h/gfx/draw/icon.h set): a brush
- * cell spec and a (col, row) in an N x N grid go in, the exact cell byte to
- * paint there comes out - drawn straight from material_palette(), the same
- * table the grid itself renders with, rather than a second, drifting idea
- * of what a material looks like.
- *
- * MUST STAY DETERMINISTIC ACROSS FRAMES
- *
- * ui_end() skips a repaint when microui's command list hashes the same as
- * last frame (see ui.c's own top comment). A swatch that reshuffled itself
- * every frame would emit different colours every frame, defeat that hash
- * unconditionally, and repaint this otherwise-static panel every frame for
- * nothing. The variant returned here is therefore a pure function of
- * (spec, col, row) alone - never sand_t's RNG, never a frame or call
- * counter. Do not "liven it up" with anything that changes without the
- * brush or the grid size changing.
- */
+/* Material swatch shades from material_palette(). The shade depends only
+ * on the brush cell and grid position: frame-dependent randomness would
+ * defeat the UI command hash and force an idle panel to repaint. */
 #pragma once
 
 #include "material.h"

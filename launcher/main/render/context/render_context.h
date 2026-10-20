@@ -48,6 +48,7 @@ typedef struct {
 #define RENDER_DEBUG_VIEW_COUNT   4 /* table rows; views run 0 to this */
 
 typedef struct {
+    raster_split_t split;
     raster_t raster; /* keeps its upscale maps from frame to frame */
     void* scratch;
     size_t scratch_bytes;
@@ -70,6 +71,9 @@ render_context_t* render_context_main(void);
 
 /* Frees the scratch block and returns every setting to its default. */
 void render_context_release(render_context_t* context);
+
+/* Drops feedback after a camera cut. */
+void render_context_forget(render_context_t* context);
 
 /* The share of the destination's size each axis draws at, upscaled on the
  * way out; it holds while dynamic resolution is off. */
@@ -96,7 +100,7 @@ void render_context_print_debug_views(FILE* out);
 bool render_context_draw(render_context_t* context, const r3d_instance_t* instances, int count,
                          const render_view_t* view, uint16_t clear);
 
-/* With `half`, copies an exact-half draw there at its drawn size and
+/* With `half`, expands a compatible draw into the half picture and
  * returns true; otherwise upscales into `destination` at the view's
  * destination size. Either path feeds its cost to dynamic resolution. */
 bool render_context_compose(render_context_t* context, uint16_t* destination, uint16_t* half);

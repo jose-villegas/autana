@@ -46,6 +46,13 @@ cd "$ROOT"
 
 . scripts/lib/run.sh
 . launcher/tools/render/gif_from_avi.sh
+. launcher/tools/build/packages.sh
+
+app_image_scripts=
+for app_dir in $(app_directories launcher); do
+    script="${app_dir}tools/doc_images.sh"
+    [ -f "$script" ] && app_image_scripts="$app_image_scripts $script"
+done
 
 DEMO_SCENE=launcher/demo/sponza/sponza.scene.toml
 DEMO_OBJECT=atrium
@@ -111,7 +118,7 @@ case "${1:-}" in
             stem=$(basename "$image")
             stem=${stem%%.*}
             if ! grep -qF -- "$stem" "$TOOLS_DIR/render_doc_images.sh" "$TOOLS_DIR"/scenes/*.sh "$TOOLS_DIR/doc_images_demo.sh" "$TOOLS_DIR/doc_import_examples.py" \
-                launcher/main/apps/*/tools/doc_images.sh; then
+                $app_image_scripts; then
                 claimed=0
                 for scene in launcher/demo/*/*.scene.toml; do
                     id=$(basename "$scene" .scene.toml)
@@ -135,10 +142,10 @@ case "${1:-}" in
     *) echo "usage: $0 [--check|--orphans]" >&2; exit 2 ;;
 esac
 
-# Windows has a python3 launcher stub that is not Python; ask for Pillow and numpy.
+# Windows has a python3 launcher stub that is not Python; ask for Pillow, numpy and matplotlib.
 # shellcheck source=../../../scripts/lib/python.sh
 . "$(dirname "$0")/../../../scripts/lib/python.sh"
-PYTHON=$(find_python PIL numpy) || exit 2
+PYTHON=$(find_python PIL numpy matplotlib) || exit 2
 export PYTHON
 if ! command -v ffmpeg > /dev/null 2>&1; then
     echo "ffmpeg not found." >&2
@@ -152,7 +159,7 @@ run mkdir -p "$WORK" "$OUT/overview" "$OUT/ui"
 L=$WORK/launcher_home
 run sh launcher/tools/render/scenes/launcher_home_render_host.sh -o "$L" > "$WORK/launcher_home.log"
 set --
-for dir in launcher/main/apps/*/; do
+for dir in $(app_directories launcher); do
     [ -f "${dir}development_only.cmake" ] && continue
     for source in "$dir"app_*.c; do
         names=$(sed -n 's/^ *\.name = "\(.*\)",\r\{0,1\}$/\1/p' "$source")
@@ -192,13 +199,23 @@ for bmp in "$U"/*.bmp; do
 done
 
 # Each app that has doc images makes them.
-for script in launcher/main/apps/*/tools/doc_images.sh; do
+for script in $app_image_scripts; do
     [ -f "$script" ] || continue
     app=$(basename "$(dirname "$(dirname "$script")")")
     run bash "$script" "$OUT" "$WORK/$app"
 done
 
 run bash "$TOOLS_DIR/doc_images_demo.sh" "$OUT" "$WORK/demo" "$DEMO_SCENE" "$DEMO_OBJECT"
+
+# The math reference's figures, from the library's own functions.
+# shellcheck source=../build/find_cc.sh
+. launcher/tools/build/find_cc.sh
+cc=$(find_cc) || exit 2
+run mkdir -p "$OUT/math"
+run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math/trs-order.png" \
+    --pixel "$OUT/math/camera-to-pixel.png" > "$WORK/math_figures.log"
+run "$PYTHON" launcher/tools/math/geometry_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/geometry_figures.log"
+# --orphans scans this runner: rect-queries.png, plane-distance.png, plane-from-points.png, plane-from-rows.png, frustum.png
 
 # Dynamic resolution's tables and chart, from the board capture and the
 # reference scores kept beside its page.

@@ -13,8 +13,8 @@
 
 #include "gfx_shared_state.h"
 
-#include "gfx/present/gfx_dirty.h"
 #include "gfx/present/gfx_present_guard.h"
+#include "gfx/present/send/gfx_dirty.h"
 
 static void
 fixture(void) {

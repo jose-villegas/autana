@@ -77,6 +77,11 @@ render_context_release(render_context_t* c) {
 }
 
 void
+render_context_forget(render_context_t* c) {
+    raster_split_forget(&c->split);
+}
+
+void
 render_context_set_scale(render_context_t* c, int percent) {
     assert(percent > 0 && percent <= 100);
     c->scale_percent = percent;
@@ -169,10 +174,13 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     c->frame.predicted_us = 0;
     const int step = current_step(c);
     raster_t* r = &c->raster;
+    r->split = &c->split;
     r->instances = instances;
     r->instance_count = count;
     r->width = step < 0 ? view->viewport.width * c->scale_percent / 100 : c->ladder.steps[step].width;
     r->height = step < 0 ? view->viewport.height * c->scale_percent / 100 : c->ladder.steps[step].height;
+    r->present = view->present;
+    r->height = raster_present_size((resolution_step_t){r->width, r->height}, r->present).height;
     r->clear = clear;
     r->upscaled = true; /* render_context_compose() names the picture */
     r->destination_width = view->viewport.width;
@@ -194,7 +202,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
             const int chosen = resolution_predict_choose(&c->predict, &c->ladder, c->frame.stats.triangles);
             c->frame.predicted_us = (int32_t)c->predict.chosen_us;
             r->width = c->ladder.steps[chosen].width;
-            r->height = c->ladder.steps[chosen].height;
+            r->height = raster_present_size(c->ladder.steps[chosen], r->present).height;
             c->frame.width = r->width;
             c->frame.height = r->height;
             raster_draw_culled(r, view);
@@ -215,17 +223,16 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
 bool
 render_context_compose(render_context_t* c, uint16_t* destination, uint16_t* half) {
     const raster_t* r = &c->raster;
-    const bool expanded =
-        half != NULL && 2 * r->width == r->destination_width && 2 * r->height == r->destination_height;
+    const resolution_step_t size =
+        half != NULL ? raster_compose_size(r) : (resolution_step_t){r->destination_width, r->destination_height};
+    const bool expanded = half != NULL && size.width != r->destination_width;
     destination = expanded ? half : destination;
-    const int width = expanded ? r->width : r->destination_width;
-    const int height = expanded ? r->height : r->destination_height;
     if (c->policy == RENDER_FIXED) {
-        raster_upscale(&c->raster, destination, width, height);
+        raster_upscale(&c->raster, destination, size.width, size.height);
         return expanded;
     }
     const int64_t began_us = timing_now_us();
-    raster_upscale(&c->raster, destination, width, height);
+    raster_upscale(&c->raster, destination, size.width, size.height);
     c->frame.upscale_us = (int32_t)(timing_now_us() - began_us);
     const int32_t cost_us = c->frame.draw_us + c->frame.upscale_us;
     if (c->policy == RENDER_STEPPED) {

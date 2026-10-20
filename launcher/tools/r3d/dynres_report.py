@@ -24,14 +24,18 @@ import gzip
 import pathlib
 import re
 import statistics
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "perf"))
+from capture import capture_board, require_same_board, QUARTERS, select_quarter
 
 
 DESTINATION = (368, 448)
 
 SPLIT = re.compile(r"scale_split: (\d+)x(\d+) poses=(\d+) tris=(\d+) frame mean/p50/max us (\d+)/(\d+)/(\d+) \| (.*?) \| total")
 STAGE = re.compile(r"(\S+) ([\d.]+)/([\d.]+)")
-SPANS = re.compile(r"scale_spans: (\d+)x(\d+) one core us/pose setup (-?\d+) rows (-?\d+) span_setup (-?\d+) fill (-?\d+) clear (-?\d+)")
-SPAN_FIELDS = ("setup", "rows", "span_setup", "fill", "clear")
+SPANS = re.compile(r"scale_spans: (\d+)x(\d+) one core us/pose setup (-?\d+) edges (-?\d+) carry (-?\d+) fill (-?\d+) clear (-?\d+)")
+SPAN_FIELDS = ("setup", "edges", "carry", "fill", "clear")
 STEP = re.compile(r"dynres_step: (\w+) (\d+) (\d+)x(\d+) upscale")
 FRAMES = re.compile(r"dynres_frames: (\w+) (\w+) (\w+) (\d+) (\d+)((?: -?\d+:\d+:\d+:\d+:\d+)+)(?![\d:])")
 
@@ -39,12 +43,13 @@ _REFIT_COST = re.compile(r"dynres_refit_cost: calls (\d+) mean_us ([\d.]+) max_u
 _REFIT = re.compile(r"dynres_refit: (\w+) (\w+) (\d+) scale ([\d.eE+-]+) offset_us ([\d.eE+-]+)")
 
 
-def read_captures(paths, refit=None):
+def read_captures(paths, refit=None, quarter="portrait"):
+    require_same_board({str(path): capture_board(path) for path in paths})
     splits, spans, ladders, frames = {}, {}, {}, {}
     for path in paths:
         raw = pathlib.Path(path).read_bytes()
         text = (gzip.decompress(raw) if path.endswith(".gz") else raw).decode("utf-8", errors="replace")
-        for line in text.splitlines():
+        for line in select_quarter(text, quarter).splitlines():
             if m := SPLIT.search(line):
                 size = (int(m[1]), int(m[2]))
                 stages = {name: float(avg) for name, avg, _ in STAGE.findall(m[8])}
@@ -97,7 +102,7 @@ def stages_table(splits, spans):
         stages.append(("resolve", "r3d.resolve"))
     stages.append(("upscale", "r3d.upscale"))
     headers = ["Render size", "Divisor", "Pixels", "Frame mean", "p50", "max",
-               *(label for label, _ in stages), "1 core: setup", "rows", "span setup", "fill"]
+               *(label for label, _ in stages), "1 core: setup", "edges", "carry", "fill"]
     lines = ["| " + " | ".join(headers) + " |", "|" + "---|" * len(headers)]
     full = DESTINATION[0] * DESTINATION[1]
     for size, s in splits.items():
@@ -105,13 +110,13 @@ def stages_table(splits, spans):
         cells = [f"{size[0]}x{size[1]}", divisor(size), f"{100 * size[0] * size[1] / full:.0f}%",
                  ms(s['mean']), ms(s['p50']), ms(s['max']),
                  *(f"{s[name]:.1f}" if name in s else "not in capture" for _, name in stages),
-                 *(ms(o[key]) for key in ("setup", "rows", "span_setup", "fill"))]
+                 *(ms(o[key]) for key in ("setup", "edges", "carry", "fill"))]
         lines.append("| " + " | ".join(cells) + " |")
     return "\n".join(lines) + "\n\nMilliseconds; both cores unless marked one core."
 
 
 def findings_table(splits, spans):
-    rows = ["| Question | Compared | Frame | draw | upscale | 1 core: rows | span setup | fill |",
+    rows = ["| Question | Compared | Frame | draw | upscale | 1 core: edges | carry | fill |",
             "|---|---|---|---|---|---|---|---|"]
 
     def row(question, a, b):
@@ -121,7 +126,7 @@ def findings_table(splits, spans):
         delta = lambda key, table_a, table_b: table_a.get(key, 0) - table_b.get(key, 0)  # noqa: E731
         rows.append(f"| {question} | {a[0]}x{a[1]} minus {b[0]}x{b[1]} | {ms(sa['mean'] - sb['mean'])} "
                     f"| {delta('r3d.draw', sa, sb):.1f} | {delta('r3d.upscale', sa, sb):.1f} "
-                    + " ".join(f"| {ms(delta(k, oa, ob))}" for k in ("rows", "span_setup", "fill")) + " |")
+                    + " ".join(f"| {ms(delta(k, oa, ob))}" for k in ("edges", "carry", "fill")) + " |")
 
     for question, a, b in (
         ("half width, more height over half", (184, 298), (184, 224)),
@@ -240,10 +245,11 @@ def main():
     parser.add_argument("captures", nargs="+")
     parser.add_argument("--tables", required=True, type=pathlib.Path)
     parser.add_argument("--chart", required=True)
+    parser.add_argument("--quarter", choices=QUARTERS, default="portrait")
     parser.add_argument("--quality", action="append", default=[], metavar="CAMERA=CSV")
     args = parser.parse_args()
     refit = {}
-    splits, spans, ladders, runs = read_captures(args.captures, refit)
+    splits, spans, ladders, runs = read_captures(args.captures, refit, args.quarter)
     if not splits or not runs:
         parser.error("the captures hold no scale_split or no dynres_frames lines")
     scores = {}
@@ -257,7 +263,8 @@ def main():
     tables = {"dynres-stages": stages_table(splits, spans), "dynres-findings": findings_table(splits, spans),
               "dynres-policies": policies_table(rows), "dynres-prediction": prediction_table(runs, refit)}
     for name, body in tables.items():
-        (args.tables / f"{name}.md").write_text(body + "\n", encoding="utf-8")
+        label = f"Render quarter={args.quarter}.\n\n" if args.quarter != "portrait" else ""
+        (args.tables / f"{name}.md").write_text(label + body + "\n", encoding="utf-8")
     chart(rows, args.chart)
 
 

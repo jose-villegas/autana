@@ -1,5 +1,5 @@
 /*
- * r3d_span: a depth-tested, Gouraud-shaded (docs/Citations.md#31) triangle
+ * r3d_span: a depth-tested, Gouraud-shaded (Gouraud 1971) triangle
  * filled into a caller's window of rows. Coverage is the top-left rule on
  * 1/16-pixel positions, decided in integers: triangles sharing an edge never
  * both fill or both miss a pixel. Depth is inverse depth in (0, 1], larger
@@ -10,7 +10,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "gfx/gfx_render_target.h"
+#include "gfx/target/gfx_render_target.h"
 
 typedef struct r3d_span_writer r3d_span_writer_t;
 
@@ -72,7 +72,10 @@ void r3d_span_triangle_solid(const r3d_span_target_t* target, const r3d_span_ver
                              const r3d_span_vertex_t* c, uint16_t color);
 
 /* Right after either fill of the same triangle into the same target: its
- * writers over the pixels it covers. A caller with no writers never calls
- * it, so the fill itself carries none of their cost. */
+ * writers over the pixels it covers. `solid` must say whether that fill used a
+ * face colour: the small-triangle choice depends on it, and the writers must
+ * take the same path as the fill.
+ * A caller with no writers never calls it, so the fill itself carries none
+ * of their cost. */
 void r3d_span_triangle_write(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
-                             const r3d_span_vertex_t* c);
+                             const r3d_span_vertex_t* c, bool solid);

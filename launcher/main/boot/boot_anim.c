@@ -34,10 +34,12 @@
 #include "build/build_variant.h"
 #include "core/timing.h"
 #include "display/display.h"
-#include "gfx/draw/gfx_draw.h"
-#include "gfx/draw/gfx_font_roles.h"
+#include "draw/draw.h"
+#include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
+#include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
+#include "gfx/target/gfx_segment_clip.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
 
@@ -71,7 +73,7 @@ static boot_anim_backdrop_fn ending_backdrop;
 /* Folds global dissolve into existing alpha. */
 static uint8_t
 scale8(uint8_t a, uint8_t b) {
-    return (uint8_t)(((uint32_t)a * b + 127u) / 255u);
+    return (uint8_t)(((uint32_t)a * b + 127U) / 255U);
 }
 
 /* `rgb` lifted `alpha` of the way off the background. */
@@ -80,227 +82,331 @@ lit(uint32_t rgb, uint8_t alpha) {
     return gfx_color_mix(COL_BG, gfx_rgb(rgb), alpha);
 }
 
-/* The floor needs this extra mix and lit() alone does not: a saturated
- * hue only ever gets more OPAQUE through lit() on its own, never any
- * less colour-muddy, and it is the colour itself moving toward white
- * that is supposed to be doing most of the work of making the grid read
- * here. */
-static gfx_color_t
-lit_whitened(uint32_t rgb, uint8_t whiten, uint8_t alpha) {
-    const gfx_color_t whitened = gfx_color_mix(gfx_rgb(rgb), COL_WHITE, whiten);
-    return gfx_color_mix(COL_BG, whitened, alpha);
-}
-
 /* A whole number of grid units, as a Q12 value. */
 static int32_t
 units(int n) {
     return (int32_t)n * BOOT_ANIM_ONE;
 }
 
-/*
- * The floor
- *
- * Drawn at t = 0 as a POLAR grid (concentric circles + radial spokes),
- * not a square lattice: boot_anim_wave_height() lifts a point by its
- * true distance from the origin, so only a real circle rises as one
- * uniform ring, and only a real circle matches boot_anim_grid_hue()'s
- * one-tone-per-ring colouring.
- */
+/* Camera setup scratch must be released before drawing a mesh row. */
+__attribute__((noinline)) boot_anim_view_t
+boot_anim_view(const boot_anim_motion_t* motion, int w, int h, uint32_t now_ms) {
+    boot_anim_timeline_state_t st = boot_anim_timeline_sample(motion, now_ms);
 
-#define BOOT_ANIM_GRID_CIRCLE_STEPS     12
-
-/* NEAR portion vertices span distance, smooth growth, dashed segments, not
- * wave. */
-#define BOOT_ANIM_GRID_SPOKE_STEPS      32
-
-/* NEAR spoke reach limit, unrelated to grid size. */
-#define BOOT_ANIM_GRID_SPOKE_NEAR_UNITS 10
-
-/* ITS limit is panel edge crossing. Walked as a single extra segment.
- * Clipping handles rest. */
-#define BOOT_ANIM_GRID_SPOKE_FAR_UNITS  500
-
-static void
-polar_point(int32_t radius, uint16_t turn, int32_t* re, int32_t* im) {
-    const int32_t cos_v = trig_cos(turn);
-    const int32_t sin_v = trig_sin(turn);
-    *re = (int32_t)(((int64_t)radius * cos_v) >> TRIG_SIN_SHIFT);
-    *im = (int32_t)(((int64_t)radius * sin_v) >> TRIG_SIN_SHIFT);
+    /* w (the panel's native WIDTH) is narrower than h (its native HEIGHT),
+     * so render_view_make() fits the lens to w; boot's pixels must not move
+     * if that inequality ever changes. */
+    const viewport_t viewport = {.width = w, .height = h, .quarter = 0};
+    const render_view_t view =
+        render_view_make(&st.camera, BOOT_ANIM_CAMERA_HALF_FOV_SHORT_TAN, R3D_LINE_NEAR_Z, viewport);
+    /* Meters per raw unit of (re, t, im): Q12, Q8 climbing 132/512 m a unit, Q12. */
+    const float meters_per_unit[3] = {1.0F / (float)BOOT_ANIM_ONE,
+                                      (float)BOOT_ANIM_SPIRAL_Q9 / (256.0F * (float)R3D_X_UNIT_ONE),
+                                      1.0F / (float)BOOT_ANIM_ONE};
+    return r3d_line_view_x_make(&view, &st.space, meters_per_unit);
 }
 
-/* step == steps closes loop back to step 0, no gap on last edge. */
-static void
-grid_circle_point(int32_t radius, const boot_anim_plane_t* plane, int steps, int step, const boot_anim_view_t* view,
-                  vec3x_t* cs, bool* front, int* sx, int* sy) {
-    const int i = (step == steps) ? 0 : step;
-    const uint16_t turn = (uint16_t)(((uint32_t)i * TRIG_TURN) / (uint32_t)steps);
-    int32_t re, im;
-    polar_point(radius, turn, &re, &im);
-    *cs = boot_anim_plane_point(plane, re, im);
-    *sx = 0;
-    *sy = 0;
-    *front = r3d_project_point_cs_x(*cs, view, sx, sy);
+/* What every node and edge of one frame's mesh shares. */
+typedef struct {
+    uint32_t now_ms;
+    boot_anim_floor_state_t floor;
+    recti_t clip;
+    vec3x_t column;
+    bool stepping;
+    uint8_t ink;
+    int stride;
+    int drawn;          /* the last curve sample the pen has drawn */
+    int32_t colour_pen; /* the curve's colour progress */
+    const boot_anim_view_t* view;
+} mesh_pass_t;
+
+/* A node of the floor mesh, projected. band_q4 is its distance from the
+ * origin in BOOT_ANIM_GRID_STEP_Q12 bands, 4 fractional bits. Screen only:
+ * draw_floor() keeps a row of these on boot's small stack, and the camera
+ * space point an edge needs to clip at the near plane is rebuilt for the few
+ * edges that cross it. */
+typedef struct {
+    int16_t sx, sy;
+    int16_t band_q4;
+    int16_t ripple;
+    uint8_t flags;
+} mesh_node_t;
+
+#define MESH_HALF       (BOOT_ANIM_MESH_CELLS / 2)
+#define MESH_NODE_FRONT (1u << 4)
+#define MESH_NODE_CLIP  (GFX_CLIP_OUT_LEFT | GFX_CLIP_OUT_RIGHT | GFX_CLIP_OUT_TOP | GFX_CLIP_OUT_BOTTOM)
+
+_Static_assert(sizeof(mesh_node_t) == 10, "the mesh row must fit the boot stack");
+
+/* The floor's transform keeps the narrow path's fractional bits until projection. */
+static vec3x_t
+mesh_point(const mesh_pass_t* pass, int i, int j) {
+    const int32_t lift = boot_anim_zeta_to_t_q8(boot_anim_floor_height(i, j, &pass->floor));
+    return boot_anim_to_camera_space(i * BOOT_ANIM_MESH_STEP_Q12, j * BOOT_ANIM_MESH_STEP_Q12, lift, pass->view);
+}
+
+static vec3x_t
+mesh_stepped_point(const mesh_pass_t* pass, int i, int j, vec3x_t plane, int32_t lift) {
+    if (!pass->stepping || (uint32_t)(lift + R3D_X_INPUT_Y_LIMIT) >= 2U * R3D_X_INPUT_Y_LIMIT) {
+        return boot_anim_to_camera_space(i * BOOT_ANIM_MESH_STEP_Q12, j * BOOT_ANIM_MESH_STEP_Q12, lift, pass->view);
+    }
+    return (vec3x_t){
+        (plane.x + (pass->view->units[0][1] * lift)) >> R3D_X_INPUT_SHIFT,
+        (plane.y + (pass->view->units[1][1] * lift)) >> R3D_X_INPUT_SHIFT,
+        (plane.z + (pass->view->units[2][1] * lift)) >> R3D_X_INPUT_SHIFT,
+    };
+}
+
+static mesh_node_t
+mesh_node(const mesh_pass_t* pass, int i, int j, vec3x_t plane) {
+    int sx = 0;
+    int sy = 0;
+    mesh_node_t node;
+    node.ripple = (int16_t)boot_anim_floor_ripple(i, j, &pass->floor);
+    const int32_t lift = boot_anim_zeta_to_t_q8(node.ripple + boot_anim_floor_swell(i, j, &pass->floor));
+    const bool front = r3d_project_point_cs_x(mesh_stepped_point(pass, i, j, plane, lift), pass->view, &sx, &sy);
+    node.sx = (int16_t)sx;
+    node.sy = (int16_t)sy;
+    node.band_q4 = (int16_t)boot_anim_floor_node(i, j)->band_q4;
+    node.flags = (uint8_t)(gfx_clip_outcode(&pass->clip, sx, sy) | (front ? MESH_NODE_FRONT : 0U));
+    return node;
+}
+
+/* Below the crest height's first step the edge is the floor's grey, so
+ * only crests pay for the curve's colour. */
+static gfx_color_t
+mesh_edge_color(const mesh_pass_t* pass, int i, int j, int32_t ripple, bool on_axis) {
+    if (on_axis) {
+        return gfx_rgb(COL_AXIS);
+    }
+    if (boot_anim_crest_amount(ripple) == 0) {
+        return gfx_rgb(BOOT_ANIM_FLOOR_GREY);
+    }
+    const int sample = boot_anim_crest_sample(i, j, pass->drawn);
+    return boot_anim_floor_color(ripple, boot_anim_crest_rgb(sample, pass->colour_pen));
 }
 
 static void
-draw_grid_circle_segment(bool prev_front, bool front, int prev_sx, int prev_sy, int sx, int sy, vec3x_t prev_cs,
-                         vec3x_t cs, gfx_color_t c, const boot_anim_view_t* view) {
-    if (prev_front && front) {
-        gfx_line_ex(prev_sx, prev_sy, sx, sy, c, 0u);
+draw_mesh_edge(const mesh_pass_t* pass, const mesh_node_t* a, int ai, int aj, const mesh_node_t* b, int bi, int bj) {
+    const bool a_front = (a->flags & MESH_NODE_FRONT) != 0;
+    const bool b_front = (b->flags & MESH_NODE_FRONT) != 0;
+    if ((!a_front && !b_front) || (a_front && b_front && (a->flags & b->flags & MESH_NODE_CLIP))) {
         return;
     }
-    if (prev_front != front) {
-        int ax, ay, bx, by;
-        if (r3d_project_segment_cs_x(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
-            gfx_line_ex(ax, ay, bx, by, c, 0u);
-        }
+    const int band = (a->band_q4 + b->band_q4) >> (BOOT_ANIM_FLOOR_BAND_SHIFT + 1);
+    /* The lines on the axes carry the axes' flat colour, not the crests'. */
+    const bool on_axis = (aj == 0 && bj == 0) || (ai == 0 && bi == 0);
+    /* The axis lines run on past the mesh, so they do not fade at its edge. */
+    const uint8_t fade =
+        on_axis ? boot_anim_grid_arrival(pass->now_ms, band) : boot_anim_grid_alpha(pass->now_ms, band);
+    const uint8_t alpha = scale8(scale8(fade, on_axis ? UINT8_MAX : BOOT_ANIM_GRID_LEVEL), pass->ink);
+    if (alpha == 0) {
+        return;
     }
-}
-
-static void
-draw_grid_circle(int32_t radius, const boot_anim_plane_t* plane, gfx_color_t c, int steps,
-                 const boot_anim_view_t* view) {
-    vec3x_t prev_cs;
-    bool prev_front = false;
-    int prev_sx = 0, prev_sy = 0;
-    bool have_prev = false;
-
-    for (int step = 0; step <= steps; step++) {
-        vec3x_t cs;
-        bool front;
-        int sx, sy;
-        grid_circle_point(radius, plane, steps, step, view, &cs, &front, &sx, &sy);
-
-        if (have_prev) {
-            draw_grid_circle_segment(prev_front, front, prev_sx, prev_sy, sx, sy, prev_cs, cs, c, view);
-        }
-        prev_cs = cs;
-        prev_front = front;
-        prev_sx = sx;
-        prev_sy = sy;
-        have_prev = true;
+    const gfx_color_t c =
+        gfx_color_mix(COL_BG, mesh_edge_color(pass, ai, aj, (a->ripple + b->ripple) / 2, on_axis), alpha);
+    const unsigned flags = DRAW_LINE_DASH(BOOT_ANIM_MESH_DASH_ON_PX, BOOT_ANIM_MESH_DASH_OFF_PX);
+    if (a_front && b_front) {
+        draw_line_ex(a->sx, a->sy, b->sx, b->sy, c, flags);
+        return;
     }
-}
-
-#define BOOT_ANIM_GRID_SPOKE_DASH_STEPS 3
-
-/* Drawn FLAT: a spoke is a plane guide line, not the ring data the wave
- * is about. TWO PARTS, ONE reveal: `reach` scales one target radius
- * across the full near..far span: the near portion (stepped, dashable)
- * walks to min(target, near); the tail (one segment, undashed) appears
- * once that is done. Stepping the tail at the near resolution wastes
- * budget nothing is close enough to see. `dash` skips whole segment
- * GROUPS (a full gfx_line_ex() call each), not pixel-thinning, genuinely
- * cheaper. */
-static void
-draw_grid_spoke(uint16_t turn, int32_t near, int32_t far, gfx_color_t c, bool dash, uint8_t reach,
-                const boot_anim_view_t* view) {
-    vec3x_t prev_cs;
-    bool have_prev = false;
-    int32_t last_radius = 0;
-
-    const int32_t target = boot_anim_spoke_reveal_target(near, far, reach);
-    const int32_t near_target = target < near ? target : near;
-    const boot_anim_plane_t floor_plane = boot_anim_plane(0, view);
-    const int max_step = near > 0 ? (int)(((int64_t)BOOT_ANIM_GRID_SPOKE_STEPS * near_target) / near) : 0;
-
-    for (int step = 0; step <= max_step; step++) {
-        const int32_t radius = (near * step) / BOOT_ANIM_GRID_SPOKE_STEPS;
-        int32_t re, im;
-        polar_point(radius, turn, &re, &im);
-        const vec3x_t cs = boot_anim_plane_point(&floor_plane, re, im);
-
-        /* Groups of BOOT_ANIM_GRID_SPOKE_DASH_STEPS alternate on and off to
-         * form a visible dash. */
-        const bool draw_segment = !dash || ((step / BOOT_ANIM_GRID_SPOKE_DASH_STEPS) % 2) == 1;
-        if (have_prev && draw_segment) {
-            int ax, ay, bx, by;
-            if (r3d_project_segment_cs_x(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
-                gfx_line_ex(ax, ay, bx, by, c, 0u);
-            }
-        }
-        prev_cs = cs;
-        have_prev = true;
-        last_radius = radius;
+    int x0;
+    int y0;
+    int x1;
+    int y1;
+    if (!r3d_project_segment_cs_x(mesh_point(pass, ai, aj), mesh_point(pass, bi, bj), pass->view, &x0, &y0, &x1, &y1)) {
+        return;
     }
-
-    if (have_prev && last_radius < target) {
-        int32_t re, im;
-        polar_point(target, turn, &re, &im);
-        const vec3x_t cs = boot_anim_plane_point(&floor_plane, re, im);
-        int ax, ay, bx, by;
-        if (r3d_project_segment_cs_x(prev_cs, cs, view, &ax, &ay, &bx, &by)) {
-            gfx_line_ex(ax, ay, bx, by, c, 0u);
-        }
-    }
+    draw_line_ex(x0, y0, x1, y1, c, flags);
 }
 
 static int
-floor_ring_steps(vec3x_t rim_a, vec3x_t rim_b, int dissolve_level, const boot_anim_view_t* view) {
-    int steps = BOOT_ANIM_GRID_CIRCLE_STEPS;
-    if (boot_anim_screen_chord_lt(rim_a, rim_b, view, 32)) {
-        steps = 4;
-    } else if (boot_anim_screen_chord_lt(rim_a, rim_b, view, 72)) {
-        steps = 6;
-    } else if (boot_anim_screen_chord_lt(rim_a, rim_b, view, 128)) {
-        steps = 8;
-    }
-    if (dissolve_level >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL && steps > 6) {
-        steps = 6;
-    } else if (dissolve_level >= BOOT_ANIM_DISSOLVE_HALF_LEVEL && steps > 8) {
-        steps = 8;
-    }
-    return steps;
+mesh_row_half(int j, int stride) {
+    return boot_anim_mesh_row_half[stride - 1][mathi_abs(j)];
 }
 
-static bool
-draw_floor_ring(int ring, uint32_t now_ms, int32_t amp_q12, int dissolve_level, uint8_t alpha,
-                const boot_anim_view_t* view) {
-    const int32_t d = (int32_t)ring * BOOT_ANIM_GRID_STEP_Q12;
-    const int32_t t =
-        boot_anim_wave_height(d, now_ms, amp_q12, BOOT_ANIM_WAVE_WAVELENGTH_Q12, BOOT_ANIM_WAVE_PERIOD_MS);
+static void
+draw_mesh_row(const mesh_pass_t* pass, int j, int row_half, int above_half, mesh_node_t* above, vec3x_t plane) {
+    const int stride = pass->stride;
+    mesh_node_t left = {0};
+    for (int i = -MESH_HALF; i <= MESH_HALF; i += stride) {
+        const vec3x_t point = plane;
+        plane = (vec3x_t){plane.x + pass->column.x, plane.y + pass->column.y, plane.z + pass->column.z};
+        if (mathi_abs(i) > row_half) {
+            continue;
+        }
+        mesh_node_t node = mesh_node(pass, i, j, point);
+        if (i - stride >= -row_half) {
+            draw_mesh_edge(pass, &left, i - stride, j, &node, i, j);
+        }
+        if (mathi_abs(i) <= above_half) {
+            draw_mesh_edge(pass, &above[i + MESH_HALF], i, j - stride, &node, i, j);
+        }
+        above[i + MESH_HALF] = node;
+        left = node;
+    }
+}
 
-    const boot_anim_plane_t plane = boot_anim_plane(t, view);
-    int32_t rim_re, rim_im;
-    polar_point(d, 0, &rim_re, &rim_im);
-    const vec3x_t rim_a = boot_anim_plane_point(&plane, rim_re, rim_im);
-    polar_point(d, TRIG_TURN / 2, &rim_re, &rim_im);
-    const vec3x_t rim_b = boot_anim_plane_point(&plane, rim_re, rim_im);
+static const int axis_dirs[4][2] = {{1, 0}, {0, 1}, {-1, 0}, {0, -1}};
 
-    const int steps = floor_ring_steps(rim_a, rim_b, dissolve_level, view);
-    const bool tiny = boot_anim_screen_chord_lt(rim_a, rim_b, view, 16);
-    const gfx_color_t c =
-        lit_whitened(gfx_hue_rgb(boot_anim_grid_hue(now_ms, ring)), boot_anim_grid_whiten(now_ms), alpha);
-    draw_grid_circle(d, &plane, c, steps, view);
-    return tiny;
+/* The point of axis sample `n` out along `dir`, in camera space, lifted. */
+static vec3x_t
+axis_far_point(const mesh_pass_t* pass, const int dir[2], int n) {
+    const int32_t r = boot_anim_axis_far[n].r;
+    const int32_t lift = boot_anim_zeta_to_t_q8(boot_anim_axis_far_height(n, dir[0], dir[1], &pass->floor));
+    return boot_anim_to_camera_space(dir[0] * r, dir[1] * r, lift, pass->view);
+}
+
+/* Past the mesh only the lines on the axes go on, still lifted by the ripple
+ * and the swell, out to the floor's reach; the last span is cut there. */
+static void
+draw_axis_lines_far(const mesh_pass_t* pass) {
+    const int32_t reach = pass->floor.far_reach;
+    if (reach <= boot_anim_axis_far[0].r) {
+        return;
+    }
+    const gfx_color_t c = lit(COL_AXIS, pass->ink);
+    const unsigned flags = DRAW_LINE_DASH(BOOT_ANIM_MESH_DASH_ON_PX, BOOT_ANIM_MESH_DASH_OFF_PX);
+    for (int d = 0; d < 4; d++) {
+        vec3x_t prev = axis_far_point(pass, axis_dirs[d], 0);
+        for (int n = 1; n < BOOT_ANIM_AXIS_FAR_SAMPLES; n++) {
+            vec3x_t next = axis_far_point(pass, axis_dirs[d], n);
+            const int32_t r0 = boot_anim_axis_far[n - 1].r;
+            const int32_t r1 = boot_anim_axis_far[n].r;
+            const bool last = r1 >= reach;
+            if (last && r1 > reach) {
+                const int64_t part = reach - r0;
+                const int64_t span = r1 - r0;
+                next = (vec3x_t){prev.x + (int32_t)(((int64_t)(next.x - prev.x) * part) / span),
+                                 prev.y + (int32_t)(((int64_t)(next.y - prev.y) * part) / span),
+                                 prev.z + (int32_t)(((int64_t)(next.z - prev.z) * part) / span)};
+            }
+            int x0;
+            int y0;
+            int x1;
+            int y1;
+            if (r3d_project_segment_cs_x(prev, next, pass->view, &x0, &y0, &x1, &y1)) {
+                draw_line_ex(x0, y0, x1, y1, c, flags);
+            }
+            if (last) {
+                break;
+            }
+            prev = next;
+        }
+    }
+}
+
+/* One far line, the one through `c` along re (along_im false) or im,
+ * between the circles of radius r_in and r_out, both halves; inside the
+ * mesh's own disc the mesh draws instead. */
+static void
+draw_far_ring(const mesh_pass_t* pass, const boot_anim_plane_t* plane, bool along_im, int32_t c, int32_t r_in,
+              int32_t r_out, gfx_color_t col) {
+    const int32_t edge = boot_anim_axis_far[0].r;
+    const int32_t inner = boot_anim_far_chord(mathi_max(r_in, edge), c);
+    const int32_t outer = boot_anim_far_chord(r_out, c);
+    if (outer <= inner) {
+        return;
+    }
+    const unsigned flags = DRAW_LINE_DASH(BOOT_ANIM_MESH_DASH_ON_PX, BOOT_ANIM_MESH_DASH_OFF_PX);
+    for (int half = -1; half <= 1; half += 2) {
+        const int32_t from = half * inner;
+        const int32_t to = half * outer;
+        /* Flat, so the plane's two-term form gives the camera point. */
+        const vec3x_t a = along_im ? boot_anim_plane_point(plane, c, from) : boot_anim_plane_point(plane, from, c);
+        const vec3x_t b = along_im ? boot_anim_plane_point(plane, c, to) : boot_anim_plane_point(plane, to, c);
+        int x0;
+        int y0;
+        int x1;
+        int y1;
+        if (r3d_project_segment_cs_x(a, b, pass->view, &x0, &y0, &x1, &y1)) {
+            draw_line_ex(x0, y0, x1, y1, col, flags);
+        }
+    }
+}
+
+/* The flat plane past the mesh: straight grid lines, unlifted, out to the
+ * floor's reach and cut to its circle so it arrives radially. Its outer
+ * BOOT_ANIM_FAR_FRONT_Q8 share fades in over BOOT_ANIM_FAR_FRONT_STEPS rings
+ * until the reach is complete. The lines on the axes are drawn on their own. */
+static void
+draw_far_grid(const mesh_pass_t* pass) {
+    const int32_t reach = pass->floor.far_reach;
+    if (reach <= boot_anim_axis_far[0].r) {
+        return;
+    }
+    const uint8_t level = scale8(BOOT_ANIM_GRID_LEVEL, pass->ink);
+    const int32_t front = reach >= BOOT_ANIM_FAR_Q12 ? 0 : (int32_t)(((int64_t)reach * BOOT_ANIM_FAR_FRONT_Q8) >> 8);
+    const int32_t solid = reach - front;
+    const boot_anim_plane_t plane = boot_anim_plane(0, pass->view);
+    for (int n = 0; n < BOOT_ANIM_FAR_LINES && boot_anim_far_lines[n] <= reach; n++) {
+        for (int line = 0; line < 4; line++) {
+            const bool along_im = (line & 1) != 0;
+            const int32_t c = (line & 2) != 0 ? -boot_anim_far_lines[n] : boot_anim_far_lines[n];
+            draw_far_ring(pass, &plane, along_im, c, 0, solid, lit(BOOT_ANIM_FLOOR_GREY, level));
+            for (int k = 0; front > 0 && k < BOOT_ANIM_FAR_FRONT_STEPS; k++) {
+                const int32_t r_in = solid + (int32_t)(((int64_t)front * k) / BOOT_ANIM_FAR_FRONT_STEPS);
+                const int32_t r_out = solid + (int32_t)(((int64_t)front * (k + 1)) / BOOT_ANIM_FAR_FRONT_STEPS);
+                const uint8_t fade =
+                    (uint8_t)((UINT8_MAX * (BOOT_ANIM_FAR_FRONT_STEPS - k)) / (BOOT_ANIM_FAR_FRONT_STEPS + 1));
+                draw_far_ring(pass, &plane, along_im, c, r_in, r_out, lit(BOOT_ANIM_FLOOR_GREY, scale8(level, fade)));
+            }
+        }
+    }
+}
+
+/* Deltas retain the narrow transform's rounding and input bounds. */
+static vec3x_t
+mesh_plane(const mesh_pass_t* pass, vec3x_t* row) {
+    if (!pass->stepping) {
+        *row = (vec3x_t){0};
+        return (vec3x_t){0};
+    }
+    const int32_t start = -MESH_HALF * BOOT_ANIM_MESH_STEP_Q12;
+    const int32_t step = pass->stride * BOOT_ANIM_MESH_STEP_Q12;
+    const int32_t (*u)[4] = pass->view->units;
+    *row = (vec3x_t){u[0][2] * step, u[1][2] * step, u[2][2] * step};
+    return (vec3x_t){
+        ((u[0][0] + u[0][2]) * start) + u[0][3],
+        ((u[1][0] + u[1][2]) * start) + u[1][3],
+        ((u[2][0] + u[2][2]) * start) + u[2][3],
+    };
 }
 
 void
 draw_floor(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view) {
-    const int32_t amp_q12 = (int32_t)(((int64_t)BOOT_ANIM_WAVE_HEIGHT_Q12 * boot_anim_wave_envelope(now_ms)) / 255);
-    bool last_ring_tiny = false;
-    const int dissolve_level = gfx_dither_level(reveal);
-
-    for (int ring = 1; ring <= BOOT_ANIM_GRID_RINGS; ring++) {
-        const uint8_t alpha = scale8(boot_anim_grid_alpha(now_ms, ring), ink);
-        if (alpha == 0) {
-            break;
-        }
-        if ((ring & 1) && (last_ring_tiny || dissolve_level >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL)) {
-            continue;
-        }
-        last_ring_tiny = draw_floor_ring(ring, now_ms, amp_q12, dissolve_level, alpha, view);
+    gfx_surface_t surface;
+    if (!gfx_draw_begin(&surface)) {
+        return;
+    }
+    mesh_pass_t pass = {
+        .now_ms = now_ms,
+        .floor = boot_anim_floor_state(now_ms),
+        .clip = surface.clip,
+        .ink = ink,
+        .stride = gfx_dither_level(reveal) >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL ? 2 : 1,
+        .drawn = (int)((boot_anim_pen(now_ms) * (int32_t)(BOOT_ANIM_CURVE_POINTS - 1)) >> BOOT_ANIM_Q),
+        .colour_pen = boot_anim_colour_progress(now_ms),
+        .view = view,
+        .stepping = view->units_ok && ((MESH_HALF + 2) * BOOT_ANIM_MESH_STEP_Q12 < R3D_X_INPUT_XZ_LIMIT),
+    };
+    if (pass.stepping) {
+        const int32_t step = pass.stride * BOOT_ANIM_MESH_STEP_Q12;
+        pass.column = (vec3x_t){view->units[0][0] * step, view->units[1][0] * step, view->units[2][0] * step};
+    }
+    vec3x_t row;
+    vec3x_t plane = mesh_plane(&pass, &row);
+    mesh_node_t above[BOOT_ANIM_MESH_CELLS + 1];
+    int above_half = -1;
+    for (int j = -MESH_HALF; j <= MESH_HALF; j += pass.stride) {
+        const int row_half = mesh_row_half(j, pass.stride);
+        draw_mesh_row(&pass, j, row_half, above_half, above, plane);
+        above_half = row_half;
+        plane = (vec3x_t){plane.x + row.x, plane.y + row.y, plane.z + row.z};
     }
 
-    const gfx_color_t spoke_c = lit(COL_AXIS, ink);
-    const uint8_t spoke_reach = boot_anim_grid_spoke_reach(now_ms);
-    if (spoke_reach > 0) {
-        for (int i = 0; i < BOOT_ANIM_GRID_SPOKES; i++) {
-            const uint16_t turn = (uint16_t)((i * (int)TRIG_TURN) / BOOT_ANIM_GRID_SPOKES);
-            draw_grid_spoke(turn, units(BOOT_ANIM_GRID_SPOKE_NEAR_UNITS), units(BOOT_ANIM_GRID_SPOKE_FAR_UNITS),
-                            spoke_c, BOOT_ANIM_GRID_SPOKE_DASH != 0, spoke_reach, view);
-        }
-    }
+    draw_far_grid(&pass);
+    draw_axis_lines_far(&pass);
 }
 
 /* The axes */
@@ -312,18 +418,21 @@ draw_arm(int32_t re, int32_t im, int32_t t, uint8_t reach, uint8_t ink, const bo
     const int32_t fim = mathi_lerp_u8(0, im, reach);
     const int32_t ft = mathi_lerp_u8(0, t, reach);
 
-    int ax, ay, bx, by;
+    int ax;
+    int ay;
+    int bx;
+    int by;
     if (boot_anim_project_segment(0, 0, 0, fre, fim, ft, view, &ax, &ay, &bx, &by)) {
-        gfx_line_ex(ax, ay, bx, by, lit(COL_AXIS, ink), 0u);
+        draw_line_ex(ax, ay, bx, by, lit(COL_AXIS, ink), 0U);
     }
 }
 
 static void
 draw_label(int x, int y, const char* text, uint8_t ink) {
-    const int w = gfx_font_width(gfx_font_ui(), text, -1, LABEL_SCALE);
-    const int h = gfx_font_height(gfx_font_ui(), LABEL_SCALE);
+    const int w = draw_font_text_width(draw_font_ui(), text, -1, LABEL_SCALE);
+    const int h = draw_font_height(draw_font_ui(), LABEL_SCALE);
 
-    gfx_text_scaled(x - w / 2, y - h / 2, text, lit(COL_TICK, ink), LABEL_SCALE);
+    draw_text_scaled(x - (w / 2), y - (h / 2), text, lit(COL_TICK, ink), LABEL_SCALE);
 }
 
 void
@@ -349,19 +458,24 @@ draw_axes(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
     if (reach == 255 && finale == 0) {
         /* finale == 0 ensures arms stay in front; consistency with other
          * calls. */
-        int re_x, re_y, im_x, im_y, t_x, t_y;
+        int re_x;
+        int re_y;
+        int im_x;
+        int im_y;
+        int t_x;
+        int t_y;
         const bool re_ok = boot_anim_project_point(arm, 0, 0, view, &re_x, &re_y);
         const bool im_ok = boot_anim_project_point(0, arm, 0, view, &im_x, &im_y);
         const bool t_ok = boot_anim_project_point(0, 0, top, view, &t_x, &t_y);
 
         if (re_ok) {
-            draw_label(re_x + LABEL_GAP * 2, re_y + LABEL_GAP, "Re", ink);
+            draw_label(re_x + (LABEL_GAP * 2), re_y + LABEL_GAP, "Re", ink);
         }
         if (im_ok) {
-            draw_label(im_x - LABEL_GAP * 2, im_y + LABEL_GAP, "Im", ink);
+            draw_label(im_x - (LABEL_GAP * 2), im_y + LABEL_GAP, "Im", ink);
         }
         if (t_ok) {
-            draw_label(t_x + LABEL_GAP * 2, t_y - LABEL_GAP, "t", ink);
+            draw_label(t_x + (LABEL_GAP * 2), t_y - LABEL_GAP, "t", ink);
         }
     }
 }
@@ -375,11 +489,12 @@ draw_zeros(int32_t pen_t_q8, uint8_t ink, const boot_anim_view_t* view) {
         if (t > pen_t_q8) {
             break; /* the table is in order, so nothing after it either */
         }
-        int x, y;
+        int x;
+        int y;
         if (!boot_anim_project_point(0, 0, t, view, &x, &y)) {
             continue;
         }
-        gfx_fill_rect(x - ZERO_DOT / 2, y - ZERO_DOT / 2, ZERO_DOT, ZERO_DOT, lit(COL_ZERO, ink));
+        draw_rect(x - (ZERO_DOT / 2), y - (ZERO_DOT / 2), ZERO_DOT, ZERO_DOT, lit(COL_ZERO, ink));
     }
 }
 
@@ -398,7 +513,7 @@ draw_stroke(int x0, int y0, int x1, int y1, gfx_color_t c, int width, bool joine
         const int bx = shallow ? x1 : x1 + off;
         const int by = shallow ? y1 + off : y1;
 
-        gfx_line_ex(ax, ay, bx, by, c, GFX_LINE_ADD | (joined ? GFX_LINE_OPEN : 0u));
+        draw_line_ex(ax, ay, bx, by, c, DRAW_LINE_ADD | (joined ? DRAW_LINE_OPEN : 0U));
     }
 }
 
@@ -411,7 +526,7 @@ draw_disc(int x, int y, int diameter, gfx_color_t c) {
         while (dx > 0 && (dx * dx) + (dy * dy) > r * r) {
             dx--;
         }
-        gfx_fill_rect(x - dx, y + dy, 2 * dx + 1, 1, c);
+        draw_rect(x - dx, y + dy, (2 * dx) + 1, 1, c);
     }
 }
 
@@ -437,7 +552,8 @@ draw_heads(int32_t colour_pen, uint8_t ink, const boot_anim_view_t* view) {
             i = BOOT_ANIM_CURVE_POINTS - 1; /* the table ran out first */
         }
         const boot_anim_pt_t p = boot_anim_sample(i);
-        int x, y;
+        int x;
+        int y;
         if (!boot_anim_project_point(p.re, p.im, p.t, view, &x, &y)) {
             continue;
         }
@@ -456,7 +572,8 @@ typedef struct {
 static void
 draw_curve_segment(curve_segment_t* segment, vec3x_t next_cs, gfx_color_t color, int width,
                    const boot_anim_view_t* view) {
-    int nsx, nsy;
+    int nsx;
+    int nsy;
     const bool next_front = r3d_project_point_cs_x(next_cs, view, &nsx, &nsy);
 
     if (segment->prev_front && next_front) {
@@ -465,7 +582,10 @@ draw_curve_segment(curve_segment_t* segment, vec3x_t next_cs, gfx_color_t color,
         segment->prev_sx = nsx;
         segment->prev_sy = nsy;
     } else if (segment->prev_front != next_front) {
-        int ax, ay, bx, by;
+        int ax;
+        int ay;
+        int bx;
+        int by;
         if (r3d_project_segment_cs_x(segment->prev_cs, next_cs, view, &ax, &ay, &bx, &by)) {
             draw_stroke(ax, ay, bx, by, color, width, segment->joined);
             segment->joined = true;
@@ -486,7 +606,7 @@ draw_curve_segment(curve_segment_t* segment, vec3x_t next_cs, gfx_color_t color,
 /* Re-colours within half the curve's length of the head. No second
  * framebuffer available. */
 int32_t
-draw_curve(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t* view) {
+draw_curve(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
     const int32_t pen = boot_anim_pen(now_ms);
     if (pen <= 0) {
         return 0;
@@ -501,13 +621,6 @@ draw_curve(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t*
     const int32_t phase1_span = (int32_t)(BOOT_ANIM_CURVE_PHASE1_POINTS - 1);
 
     const int stride = boot_anim_curve_stride(view);
-
-    /* BOOT_ANIM_DISSOLVE_HALF_LEVEL halves; COARSE_LEVEL collapses to chord.
-     * Quadratic limits deviation. */
-    const int dissolve_level = gfx_dither_level(reveal);
-    const int max_steps = dissolve_level >= BOOT_ANIM_DISSOLVE_COARSE_LEVEL ? 1
-                          : dissolve_level >= BOOT_ANIM_DISSOLVE_HALF_LEVEL ? 2
-                                                                            : BOOT_ANIM_SPLINE_STEPS;
 
     boot_anim_pt_t s0 = boot_anim_sample(-stride);
     boot_anim_pt_t s1 = boot_anim_sample(0);
@@ -528,23 +641,14 @@ draw_curve(uint32_t now_ms, uint8_t ink, uint8_t reveal, const boot_anim_view_t*
         /* Head jumps from sample to sample without partial span. */
         const int32_t limit = (stride == 1 && i == last) ? part : BOOT_ANIM_ONE;
 
-        /* See boot_anim_curve_lod_steps(). Dissolve cap limits. */
-        int steps = boot_anim_curve_lod_steps(ta, tc, view);
-        if (steps > max_steps) {
-            steps = max_steps;
-        }
-
         const boot_anim_stroke_t s = boot_anim_stroke(a0 + ((a1 - a0) >> 1), colour);
         gfx_color_t span_c = gfx_rgb(gfx_hue_rgb(s.hue));
         span_c = gfx_color_mix(span_c, COL_WHITE, s.bloom);
         span_c = gfx_color_mix(COL_BG, span_c, scale8(s.glow, ink));
 
-        for (int step = 1; step <= steps; step++) {
-            const int32_t t = (limit * step) / steps;
-
-            const vec3x_t next_cs = boot_anim_spline_cs(ta, tb, tc, t);
-            draw_curve_segment(&segment, next_cs, span_c, s.width, view);
-        }
+        /* One chord a span, to where the spline ends it: the samples sit a
+         * few pixels apart, so subdividing showed nothing on the panel. */
+        draw_curve_segment(&segment, boot_anim_spline_cs(ta, tb, tc, limit), span_c, s.width, view);
 
         a0 = a1;
         ta = tb;
@@ -583,9 +687,9 @@ draw_title(uint32_t now_ms, uint8_t ink) {
      * colour, the same way the photograph under it does. */
     const bool dissolve = ending_backdrop != NULL && ink < 255;
     const gfx_color_t c = dissolve ? COL_WHITE : gfx_color_mix(COL_BG, COL_WHITE, ink);
-    const gfx_font_t* font = gfx_font_ui();
-    const int glyph_w = gfx_font_width(font, "A", -1, BOOT_ANIM_TITLE_SCALE);
-    const int glyph_h = gfx_font_height(font, BOOT_ANIM_TITLE_SCALE);
+    const draw_font_t* font = draw_font_ui();
+    const int glyph_w = draw_font_text_width(font, "A", -1, BOOT_ANIM_TITLE_SCALE);
+    const int glyph_h = draw_font_height(font, BOOT_ANIM_TITLE_SCALE);
     char one[2] = {0, 0};
 
     const bool has_shadow =
@@ -593,22 +697,24 @@ draw_title(uint32_t now_ms, uint8_t ink) {
 
     for (int i = 0; i < BOOT_ANIM_TITLE_LEN; i++) {
         const vec2i_t p = boot_anim_title_letter(font, i, now_ms);
-        int px, py;
+        int px;
+        int py;
         title_glyph_origin(p.x, p.y, glyph_w, glyph_h, &px, &py);
 
         one[0] = BOOT_ANIM_TITLE[i];
         if (has_shadow) {
-            int shadow_dx, shadow_dy;
+            int shadow_dx;
+            int shadow_dy;
             boot_anim_title_shadow_offset(BOOT_ANIM_TITLE_SHADOW_DX, BOOT_ANIM_TITLE_SHADOW_DY, &shadow_dx, &shadow_dy);
             const uint8_t shadow_alpha =
                 dissolve ? (uint8_t)(BOOT_ANIM_TITLE_SHADOW_ALPHA * ink / 255) : BOOT_ANIM_TITLE_SHADOW_ALPHA;
-            gfx_text_font_dither(px + shadow_dx, py + shadow_dy, one, COL_BG, BOOT_ANIM_TITLE_SCALE, DISPLAY_LANDSCAPE,
-                                 font, shadow_alpha);
+            draw_text_font_dither(px + shadow_dx, py + shadow_dy, one, COL_BG, BOOT_ANIM_TITLE_SCALE, DISPLAY_LANDSCAPE,
+                                  font, shadow_alpha);
         }
         if (dissolve) {
-            gfx_text_font_dither(px, py, one, c, BOOT_ANIM_TITLE_SCALE, DISPLAY_LANDSCAPE, font, ink);
+            draw_text_font_dither(px, py, one, c, BOOT_ANIM_TITLE_SCALE, DISPLAY_LANDSCAPE, font, ink);
         } else {
-            gfx_text_font(px, py, one, c, BOOT_ANIM_TITLE_SCALE, DISPLAY_LANDSCAPE, font);
+            draw_text_font(px, py, one, c, BOOT_ANIM_TITLE_SCALE, DISPLAY_LANDSCAPE, font);
         }
     }
 }
@@ -622,7 +728,7 @@ draw_title(uint32_t now_ms, uint8_t ink) {
  * scene stays as drawn wherever the reveal does not yet cover it.
  */
 void
-draw_image(const gfx_image_t* photo, uint8_t ink, uint8_t reveal) {
+draw_image(const draw_image_t* photo, uint8_t ink, uint8_t reveal) {
     if (reveal == 0) {
         return;
     }
@@ -631,16 +737,22 @@ draw_image(const gfx_image_t* photo, uint8_t ink, uint8_t reveal) {
      * trade this file makes for the title's shadow (draw_title()). A
      * per-pixel gfx_color_mix() over every pixel was measurably the most
      * expensive part of a crossfade frame; see suite_boot_anim_perf.c. */
-    gfx_blit_dither(0, 0, GFX_WIDTH, GFX_HEIGHT, photo->pixels, (int)photo->stride, reveal < ink ? reveal : ink);
+    draw_blit_dither(0, 0, GFX_WIDTH, GFX_HEIGHT, photo->pixels, (int)photo->stride, reveal < ink ? reveal : ink);
 }
 
 /* The loop */
 
 /* EVERY FRAME IS A FULL REPAINT suite_boot_anim_perf.c times this phase
- * gfx_clear() cost in gfx_draw.c */
+ * draw_clear() cost in draw.c */
 void
 boot_anim_clear_frame(void) {
-    gfx_clear(COL_BG);
+    draw_clear(COL_BG);
+}
+
+/* Core 1 clears each frame once it is sent, so the clear above is free. */
+void
+boot_anim_clear_on_send(bool on) {
+    (void)gfx_set_clear_on_send(on, COL_BG); /* without the double layout, the clear stays on core 0 */
 }
 
 void
@@ -650,7 +762,7 @@ boot_anim_set_ending_backdrop(boot_anim_backdrop_fn paint) {
 
 /* Keep scene scratch off the stack while the ending backdrop repaints. */
 static __attribute__((noinline)) void
-draw_scene(const boot_anim_motion_t* motion, const gfx_image_t* photo, uint32_t now_ms, uint8_t ink) {
+draw_scene(const boot_anim_motion_t* motion, const draw_image_t* photo, uint32_t now_ms, uint8_t ink) {
     const uint8_t reveal = photo->pixels != NULL ? boot_anim_photo_reveal(now_ms) : 0;
     const boot_anim_view_t view = boot_anim_view(motion, GFX_WIDTH, GFX_HEIGHT, now_ms);
 
@@ -659,7 +771,7 @@ draw_scene(const boot_anim_motion_t* motion, const gfx_image_t* photo, uint32_t 
         draw_floor(now_ms, ink, reveal, &view);
         draw_axes(now_ms, ink, &view);
 
-        const int32_t reached = draw_curve(now_ms, ink, reveal, &view);
+        const int32_t reached = draw_curve(now_ms, ink, &view);
         draw_zeros(reached, ink, &view);
     }
 
@@ -672,7 +784,7 @@ draw_scene(const boot_anim_motion_t* motion, const gfx_image_t* photo, uint32_t 
 }
 
 void
-boot_anim_draw_frame(const boot_anim_motion_t* motion, const gfx_image_t* photo, uint32_t now_ms) {
+boot_anim_draw_frame(const boot_anim_motion_t* motion, const draw_image_t* photo, uint32_t now_ms) {
     const uint8_t ink = boot_anim_ink(now_ms);
     if (ending_backdrop != NULL && ink < 255) {
         ending_backdrop();
@@ -704,9 +816,12 @@ boot_anim_run(void) {
     int64_t photo_mount_us = 0;
     int64_t photo_frame_us = 0;
 #endif
+    const gfx_mode_request_t mode = {.layout = GFX_LAYOUT_DOUBLE_FB};
+    gfx_mode_enter(&mode);
+    boot_anim_clear_on_send(true);
     boot_anim_motion_t motion;
     boot_anim_motion_load(&motion);
-    gfx_image_t photo = {0};
+    draw_image_t photo = {0};
     bool photo_tried = false;
     const int64_t started_us = timing_now_us();
     uint32_t frames = 0;
@@ -748,6 +863,7 @@ boot_anim_run(void) {
          * idle task feeds the watchdog. */
         timing_yield();
     }
+    gfx_mode_exit();
     /* Boot plays once and nothing else reads its clip: releasing gives back the
      * pack and its mount slot. */
     boot_anim_motion_release(&motion);

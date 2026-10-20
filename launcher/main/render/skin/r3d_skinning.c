@@ -4,6 +4,7 @@
 #include <string.h>
 #include "math/scalar/mathf_round.h"
 #include "math/scalar/mathi.h"
+#include "render/r3d_skin_format.h"
 #include "render/skin/r3d_skin_light_internal.h"
 
 static inline __attribute__((always_inline)) void
@@ -131,39 +132,7 @@ skin_blend_position_axis(const mat4f_t* joint, const int16_t bind[POSITION_AXES]
 static inline __attribute__((always_inline)) void
 skin_store_position(const float posed[POSITION_AXES], int16_t out[POSITION_AXES]) {
     for (int a = 0; a < POSITION_AXES; a++) {
-        out[a] = (int16_t)mathf_round_i32(mathf_clamp_finite(posed[a], (float)INT16_MIN, (float)INT16_MAX));
-    }
-}
-
-static inline __attribute__((always_inline)) void
-skin_lit_vertex(const uint8_t* record, int influences, const mat4f_t* palette, const int16_t bind[POSITION_AXES],
-                int16_t out[POSITION_AXES], const mat3f_t* normals, vec3f_t* normal) {
-    vec3f_t rows[POSITION_AXES];
-    float posed[POSITION_AXES] = {0};
-    for (int i = 0; i < influences; i++) {
-        const mat4f_t* joint = &palette[record[i]];
-        const float weight = skin_weight(record, influences, i);
-        const mat3f_t* matrix = &normals[record[i]];
-        for (int axis = 0; axis < POSITION_AXES; axis++) {
-            skin_blend_position_axis(joint, bind, axis, weight, &posed[axis]);
-            const vec3f_t row =
-                vec3f_scale((vec3f_t){matrix->m[axis][0], matrix->m[axis][1], matrix->m[axis][2]}, weight);
-            rows[axis] = i == 0 ? row : vec3f_add(rows[axis], row);
-        }
-    }
-    const int8_t* packed = (const int8_t*)(record + (2 * influences));
-    const vec3f_t n = {(float)packed[0] * R3D_SKIN_NORMAL_RECIP, (float)packed[1] * R3D_SKIN_NORMAL_RECIP,
-                       (float)packed[2] * R3D_SKIN_NORMAL_RECIP};
-    *normal = (vec3f_t){vec3f_dot(rows[0], n), vec3f_dot(rows[1], n), vec3f_dot(rows[2], n)};
-    skin_store_position(posed, out);
-}
-
-static inline __attribute__((always_inline)) void
-skin_light_vertex(vec3f_t normal, const r3d_skin_lights_t* lights, const uint8_t albedo[3], uint8_t out[3], int mode) {
-    if (mode == LIGHT_TABLE) {
-        light_shade(r3d_skin_light_table_sample(normal, lights), lights, albedo, out);
-    } else {
-        light_evaluate(mode == LIGHT_RENORMALISED ? light_renormalise(normal) : normal, lights, albedo, out);
+        out[a] = mathf_round_i16(posed[a]);
     }
 }
 
@@ -179,6 +148,34 @@ skin_vertex(const uint8_t* record, int influences, const mat4f_t* palette, const
         }
     }
     skin_store_position(posed, out);
+}
+
+static inline __attribute__((always_inline)) void
+skin_lit_vertex(const uint8_t* record, int influences, const mat4f_t* palette, const int16_t bind[POSITION_AXES],
+                int16_t out[POSITION_AXES], const mat3f_t* normals, vec3f_t* normal) {
+    skin_vertex(record, influences, palette, bind, out);
+    const int8_t* packed = (const int8_t*)(record + (2 * influences));
+    const vec3f_t n = {(float)packed[0] * R3D_SKIN_NORMAL_RECIP, (float)packed[1] * R3D_SKIN_NORMAL_RECIP,
+                       (float)packed[2] * R3D_SKIN_NORMAL_RECIP};
+    float blended[POSITION_AXES] = {0};
+    for (int i = 0; i < influences; i++) {
+        const float weight = skin_weight(record, influences, i);
+        const mat3f_t* matrix = &normals[record[i]];
+        for (int axis = 0; axis < POSITION_AXES; axis++) {
+            const vec3f_t row = {matrix->m[axis][0], matrix->m[axis][1], matrix->m[axis][2]};
+            blended[axis] += vec3f_dot(row, n) * weight;
+        }
+    }
+    *normal = (vec3f_t){blended[0], blended[1], blended[2]};
+}
+
+static inline __attribute__((always_inline)) void
+skin_light_vertex(vec3f_t normal, const r3d_skin_lights_t* lights, const uint8_t albedo[3], uint8_t out[3], int mode) {
+    if (mode == LIGHT_TABLE) {
+        light_shade(r3d_skin_light_table_sample(normal, lights), lights, albedo, out);
+    } else {
+        light_evaluate(mode == LIGHT_RENORMALISED ? light_renormalise(normal) : normal, lights, albedo, out);
+    }
 }
 
 static inline __attribute__((always_inline)) void

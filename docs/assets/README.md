@@ -33,13 +33,14 @@ searching, so no list is kept:
 | `NAME.scene.toml` | `NAME` | its [scene entry](../render/Scene-Files.md#the-scene-entry) `NAME`, every mesh, skin, skeleton and clip it names |
 | `NAME.import.toml` that no scene places | `NAME` | its variants' meshes |
 | `NAME.anim.toml` that no scene names | `NAME` | its one clip, baked from its source |
+| `NAME.sound.toml` | `NAME` | its one [sound](../audio/Sound-Assets.md), baked from the WAV it names |
 | `NAME.image.toml` | `NAME` | its one picture, baked from the PNG it names |
 | `NAME.icons.toml` | `NAME` | an image entry per [icon](../tools/Icon-Baker.md), named by the icon, baked from the set's atlas and SVGs |
 
 A `NAME.pack.toml` makes its folder one pack, `NAME`: every root under that
 folder puts its entries there instead of making a pack of its own, each with
 its stem for id. Folder packs do not nest, and the file holds no settings yet.
-The engine's own artwork, which any app may draw, is the folder pack
+The engine's own content, which any app may use, is the folder pack
 `engine` (`launcher/main/engine/`); an app's artwork is a folder pack the app
 names, mounted while it runs.
 
@@ -103,7 +104,7 @@ byte.
 | 12 | 4 | where the rows start, after the header; 4-aligned for RGB565 |
 | rows | stride x (height - 1) + width pixels | the pixels, top row first |
 
-`gfx_image_open()` returns `ASSET_ERR_VERSION` for another version,
+`draw_image_open()` returns `ASSET_ERR_VERSION` for another version,
 `ASSET_ERR_FORMAT` for a format it does not read, an empty picture, a stride
 shorter than a row or, one bit a pixel, not whole bytes, or rows over the
 header, and `ASSET_ERR_BOUNDS` for rows that leave the entry or RGB565 rows
@@ -148,7 +149,7 @@ directory that says where each lies:
 The partition and every pack start on MMU pages so releasing one mapping
 cannot invalidate another pack. Padding costs less than one MMU page per pack;
 [`asset_directory.py`](../../launcher/tools/asset/asset_directory.py) writes version 2
-using `ASSET_MMU_PAGE_SIZE` from `asset_directory.h`.
+using `ASSET_MMU_PAGE_SIZE` from `asset_directory_format.h`.
 
 ## Checks
 
@@ -240,9 +241,10 @@ renderer.
 `launcher/tools/asset/asset_directory.py` the directory,
 `launcher/tools/r3d/mesh_asset.py` and `lit_mesh.py` the mesh
 entry, `launcher/tools/anim/tracks_asset.py` of the clip entry,
-`launcher/tools/gfx/image_asset.py` of the image entry; `asset_pack.c`,
-`asset_directory.c`, `r3d_lit_mesh.c`, `anim_tracks.c` and `gfx_image.c` are
-the one reader of each.
+`launcher/tools/gfx/image_asset.py` of the image entry, and
+`launcher/tools/audio/sound_asset.py` of the [sound entry](../audio/Sound-Assets.md); `asset_pack.c`,
+`asset_directory.c`, `r3d_lit_mesh.c`, `anim_tracks.c`, `draw_image.c` and
+`sound.c` are the respective readers.
 
 No mesh is committed: each is a bake product, fetched by its lock row; a clip
 or image entry is baked from its source when the packs are built. Packs are never
@@ -281,6 +283,12 @@ held: its bytes were carried over, not made by the code its key names, and
 names its `host`, the system and machine that made the bytes, since a bake
 repeats byte for byte only on one kind of host (a Linux and a Windows Blender
 export of the same `.blend` differ in the last bit of some animation keys).
+A mesh bake differs by CPU vendor too (an AMD and an Intel host trace a few
+rays an ulp apart), so the lock's `mesh_cpu_vendor` line names the vendor its
+meshes were made on. A run records its host's vendor; `lock --from-run` refuses
+a run that made a mesh on another vendor, naming both, and the CPU job fails
+before baking when the hosted runner it got is another vendor's. Either way,
+re-run the failed job until it lands on the lock's vendor.
 
 The lock's `[[poses]]` rows hold the digest and count of each camera-path sampling.
 

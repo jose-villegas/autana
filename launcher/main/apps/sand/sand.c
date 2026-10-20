@@ -57,6 +57,7 @@ sand_skip_sites_report(void) {
 #include "build/build_variant.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
+#include "render/code_layout.h"
 #include "sand_limits.h"
 #include "sand_liquid_move.h"
 
@@ -82,7 +83,7 @@ sand_two_core_step_enabled(void) {
 
 /* tan(22.5 deg) is the boundary between "straight down" and "diagonal"; its
  * reciprocal, 2.4142, is approximated as 29/12 to keep this in integers.
- * The largest operand is a raw accelerometer reading, so 32767 * 29 stays well
+ * The largest operand is an accelerometer reading, so 32767 * 29 stays well
  * inside 32 bits. */
 #define AXIS_NUM         29
 #define AXIS_DEN         12
@@ -321,16 +322,16 @@ sand_lanes(sand_t* s) {
     const size_t rows = (size_t)s->h;
     const size_t blocks = (size_t)s->block_cols * (size_t)s->block_rows;
     uint16_t* const spans = s->lane_scratch;
-    uint8_t* const bytes = (uint8_t*)(spans + (size_t)(2 * SAND_LANE_COUNT) * rows);
+    uint8_t* const bytes = (uint8_t*)(spans + ((size_t)(2 * SAND_LANE_COUNT) * rows));
 
-    uint8_t* const defer = bytes + (size_t)SAND_LANE_COUNT * (blocks + rows);
+    uint8_t* const defer = bytes + ((size_t)SAND_LANE_COUNT * (blocks + rows));
 
     for (int i = 0; i < SAND_LANE_COUNT; i++) {
-        sand_lane_pair[i].x0 = spans + (size_t)(2 * i) * rows;
+        sand_lane_pair[i].x0 = spans + ((size_t)(2 * i) * rows);
         sand_lane_pair[i].x1 = sand_lane_pair[i].x0 + rows;
-        sand_lane_pair[i].blocks = bytes + (size_t)i * (blocks + rows);
+        sand_lane_pair[i].blocks = bytes + ((size_t)i * (blocks + rows));
         sand_lane_pair[i].dirty = sand_lane_pair[i].blocks + blocks;
-        sand_lane_pair[i].defer = defer + (size_t)i * SAND_LANE_DEFER_BYTES;
+        sand_lane_pair[i].defer = defer + ((size_t)i * SAND_LANE_DEFER_BYTES);
     }
     return sand_lane_pair;
 }
@@ -416,7 +417,7 @@ sand_block_settled(const sand_t* s, int bx, int by) {
     if (s->block_state == NULL) {
         return false;
     }
-    return (s->block_state[by * s->block_cols + bx] & (BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER)) != 0;
+    return (s->block_state[(by * s->block_cols) + bx] & (BLOCK_SETTLED_NEAREST | BLOCK_SETTLED_OTHER)) != 0;
 }
 
 void
@@ -476,7 +477,7 @@ sand_at(const sand_t* s, int x, int y) {
          * way through the floor. */
         return CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT);
     }
-    return s->cells[y * s->w + x];
+    return s->cells[(y * s->w) + x];
 }
 
 void
@@ -484,7 +485,7 @@ sand_set(sand_t* s, int x, int y, cell_t cell) {
     if (x < 0 || x >= s->w || y < 0 || y >= s->h) {
         return;
     }
-    s->cells[y * s->w + x] = cell;
+    s->cells[(y * s->w) + x] = cell;
     latch_content_flags(s, cell);
     mark_move(s, x, y, x, y);
 }
@@ -515,7 +516,7 @@ try_spawn_one(sand_t* s, int x, int y, cell_t spec, int band) {
     if (x < 0 || x >= s->w || y < 0 || y >= s->h) {
         return false;
     }
-    if (s->cells[y * s->w + x] != SAND_EMPTY) {
+    if (s->cells[(y * s->w) + x] != SAND_EMPTY) {
         return false; /* never overwrite, so the count cannot drift */
     }
     /* Latched from the finished cell due to variant-dependent flags using
@@ -524,7 +525,7 @@ try_spawn_one(sand_t* s, int x, int y, cell_t spec, int band) {
     const cell_t cell = cell_is_extended(spec)    ? spec
                         : cell_is_gunpowder(spec) ? random_gunpowder(s, band)
                                                   : random_cell(s, (material_id_t)CELL_MATERIAL(spec), band);
-    s->cells[y * s->w + x] = cell;
+    s->cells[(y * s->w) + x] = cell;
     latch_content_flags(s, cell);
     mark_move(s, x, y, x, y);
     return true;
@@ -557,7 +558,7 @@ sand_spawn_cell_share(sand_t* s, int cx, int cy, int radius, cell_t spec, int sh
 
     for (int dy = -radius; dy <= radius; dy++) {
         for (int dx = -radius; dx <= radius; dx++) {
-            if ((dx * dx) + dy * dy > r2) {
+            if ((dx * dx) + (dy * dy) > r2) {
                 continue;
             }
             const int x = cx + dx;
@@ -583,7 +584,7 @@ sand_erase(sand_t* s, int cx, int cy, int radius) {
 
     for (int dy = -radius; dy <= radius; dy++) {
         for (int dx = -radius; dx <= radius; dx++) {
-            if (dx * dx + dy * dy > r2) {
+            if ((dx * dx) + (dy * dy) > r2) {
                 continue;
             }
             const int x = cx + dx;
@@ -591,10 +592,10 @@ sand_erase(sand_t* s, int cx, int cy, int radius) {
             if (x < 0 || x >= s->w || y < 0 || y >= s->h) {
                 continue;
             }
-            if (s->cells[y * s->w + x] == SAND_EMPTY) {
+            if (s->cells[(y * s->w) + x] == SAND_EMPTY) {
                 continue; /* already empty, so nothing changed here */
             }
-            s->cells[y * s->w + x] = SAND_EMPTY;
+            s->cells[(y * s->w) + x] = SAND_EMPTY;
             mark_move(s, x, y, x, y);
             removed++;
         }
@@ -653,7 +654,7 @@ sand_remove_emitters(sand_t* s, int cx, int cy, int radius) {
     for (int i = 0; i < s->emitter_count; i++) {
         const int dx = s->emitters[i].x - cx;
         const int dy = s->emitters[i].y - cy;
-        if (dx * dx + dy * dy <= r2) {
+        if ((dx * dx) + (dy * dy) <= r2) {
             removed++;
             continue;
         }
@@ -715,7 +716,10 @@ gravity_axes(int gx, int gy, int* ax, int* ay, int* sx, int* sy) {
 
 void
 sand_gravity_direction(int gx, int gy, int* dx, int* dy) {
-    int ax, ay, sx, sy;
+    int ax;
+    int ay;
+    int sx;
+    int sy;
     if (!gravity_axes(gx, gy, &ax, &ay, &sx, &sy)) {
         *dx = 0;
         *dy = 0;
@@ -747,7 +751,7 @@ sand_load_above(const sand_t* s, int x, int y, int dx, int dy) {
         if (cx < 0 || cx >= s->w || cy < 0 || cy >= s->h) {
             break;
         }
-        if (s->cells[cy * s->w + cx] == SAND_EMPTY) {
+        if (s->cells[(cy * s->w) + cx] == SAND_EMPTY) {
             break;
         }
         n++;
@@ -758,9 +762,8 @@ sand_load_above(const sand_t* s, int x, int y, int dx, int dy) {
 }
 
 /* True angle's diagonal lean (0-256). `r` is ratio of smaller to larger
- * component (0-256), 0 on axis, 256 at 45 degrees. Angle position: Rajan's
- * approximation (docs/Citations.md#48), atan(r/256) / 45deg,
- * 0.3477 * 256 = 89. Accurate within a degree. */
+ * component (0-256), 0 on axis, 256 at 45 degrees. Angle position: Rajan et al. 2006,
+ * an arctangent approximation, atan(r/256) / 45deg, 0.3477 * 256 = 89. Accurate within a degree. */
 static int
 diagonal_weight(int r) {
     return r + ((89 * r * (256 - r)) >> 16);
@@ -768,7 +771,10 @@ diagonal_weight(int r) {
 
 void
 sand_gravity_direction_dithered(sand_t* s, int gx, int gy, int* dx, int* dy) {
-    int ax, ay, sx, sy;
+    int ax;
+    int ay;
+    int sx;
+    int sy;
     if (!gravity_axes(gx, gy, &ax, &ay, &sx, &sy)) {
         *dx = 0;
         *dy = 0;
@@ -1010,10 +1016,10 @@ build_sweep_tables(void) {
     }
     for (int r = 0; r < MATERIAL_ROWS; r++) {
         if (materials[r].kind == KIND_STATIC || materials[r].kind == KIND_GAS) {
-            sweep_skip_mask |= 1u << r;
+            sweep_skip_mask |= 1U << r;
         }
         if (materials[r].kind == KIND_LIQUID) {
-            sweep_liquid_mask |= 1u << r;
+            sweep_liquid_mask |= 1U << r;
         }
     }
     sweep_cell_liquid_mask = liquid_mask();
@@ -1089,10 +1095,10 @@ step_one_grain(sand_t* s, uint8_t* row, uint8_t* prow, uint8_t* arow, uint8_t* b
      * Only a powder reaches materials[] now, and only for its density and
      * scatter, which no mask can carry. */
     const unsigned mrow = (unsigned)grain >> 3;
-    if (((sweep_skip_mask >> mrow) & 1u) != 0) {
+    if (((sweep_skip_mask >> mrow) & 1U) != 0) {
         return false;
     }
-    if (((sweep_liquid_mask >> mrow) & 1u) != 0) {
+    if (((sweep_liquid_mask >> mrow) & 1U) != 0) {
         return step_one_liquid_grain(s, row, prow, arow, brow, x, y, w, dx, dy, slide_a, slide_b, grain, dest);
     }
 
@@ -1222,13 +1228,15 @@ typedef struct {
 SAND_FACT_WRITER static void
 step_one_block(const sweep_ctx_t* ctx, int bx) {
     const int lo = mathi_max(bx * SAND_BLOCK_W, ctx->x0);
-    const int hi = mathi_min(bx * SAND_BLOCK_W + SAND_BLOCK_W, ctx->x1);
+    const int hi = mathi_min((bx * SAND_BLOCK_W) + SAND_BLOCK_W, ctx->x1);
 
     if (span_is_empty(ctx->row, lo, hi)) {
         return;
     }
 
-    int cx_from, cx_to, cx_step;
+    int cx_from;
+    int cx_to;
+    int cx_step;
     span_x_order(lo, hi, ctx->x_step, &cx_from, &cx_to, &cx_step);
 
     dest_state_t dest = DEST_UNKNOWN;
@@ -1246,7 +1254,7 @@ step_one_block(const sweep_ctx_t* ctx, int bx) {
          * is questioned before it is built. Counted BEFORE the stamped skip:
          * a cell that arrived here this pass is still liquid sitting in this
          * block, and cross-flow looks nowhere the sweep did not mark. */
-        saw_liquid |= (unsigned)(ctx->is_liquid >> CELL_MATERIAL(c)) & 1u;
+        saw_liquid |= (unsigned)(ctx->is_liquid >> CELL_MATERIAL(c)) & 1U;
         if (sand_row_cell_stamped(ctx->stamp_row, x)) {
             continue;
         }
@@ -1257,7 +1265,7 @@ step_one_block(const sweep_ctx_t* ctx, int bx) {
     }
 
     if ((moved_here || saw_liquid) && ctx->s->block_state != NULL) {
-        ctx->s->block_state[ctx->by * ctx->s->block_cols + bx] |=
+        ctx->s->block_state[(ctx->by * ctx->s->block_cols) + bx] |=
             (uint8_t)((moved_here ? BLOCK_ACTIVE : 0) | (saw_liquid ? BLOCK_HAS_LIQUID : 0));
     }
 }
@@ -1271,7 +1279,7 @@ step_one_row(const sweep_ctx_t* ctx) {
         SAND_FORCED_STATE(ctx->s);
         if (SAND_SKIP_IF(
                 SAND_FORCED_IF(ctx->settled_bit != 0
-                               && (ctx->s->block_state[ctx->by * ctx->s->block_cols + bx] & ctx->settled_bit)))) {
+                               && (ctx->s->block_state[(ctx->by * ctx->s->block_cols) + bx] & ctx->settled_bit)))) {
             continue;
         }
         step_one_block(ctx, bx);
@@ -1291,7 +1299,7 @@ SAND_FACT_WRITER static void
 finalize_settling_range(sand_t* s, uint8_t settled_bit, int by_from, int by_to) {
     for (int by = by_from; by < by_to; by++) {
         for (int bx = 0; bx < s->block_cols; bx++) {
-            const int i = by * s->block_cols + bx;
+            const int i = (by * s->block_cols) + bx;
             if (s->block_state[i] & BLOCK_ACTIVE) {
                 continue;
             }
@@ -1344,8 +1352,10 @@ finalize_settling(sand_t* s, uint8_t settled_bit) {
  * gravitational potential. See xflow_t. */
 static void
 build_xflow(xflow_t* f, int gx, int gy) {
-    const int ax = mathi_abs(gx), ay = mathi_abs(gy);
-    const int sx = mathi_sign(gx), sy = mathi_sign(gy);
+    const int ax = mathi_abs(gx);
+    const int ay = mathi_abs(gy);
+    const int sx = mathi_sign(gx);
+    const int sy = mathi_sign(gy);
 
     /* Whichever of gx/gy has the larger magnitude picks the major ray:
      * `ax` runs perpendicular to that axis, `dg` built from the same two
@@ -1388,18 +1398,10 @@ build_xflow(xflow_t* f, int gx, int gy) {
      * agree regardless of which ray got each cell there. */
     const int bx = (MASS_MAX * 256 * gx) / len;
     const int by = (MASS_MAX * 256 * gy) / len;
-    f->bias_ax_q8 = bx * f->ax[0] + by * f->ax[1];
-    f->bias_dg_q8 = bx * f->dg[0] + by * f->dg[1];
+    f->bias_ax_q8 = (bx * f->ax[0]) + (by * f->ax[1]);
+    f->bias_dg_q8 = (bx * f->dg[0]) + (by * f->dg[1]);
 }
 
-/* PINNED at 16, not left to the compiler: an unpinned attribute can bind to
- * whatever definition follows it rather than to this function, letting an
- * unrelated change silently shift sand_step()'s alignment and regress
- * performance. 32 costs about 4.5% on liquid-free controls for nothing; 16 is
- * near-free and still starts within a 32-byte cache block. */
-
-/* CHECK WITH objdump, NOT the diff: .text.sand_step should read 2**4. Binding
- * to the wrong symbol still compiles and passes everything. */
 /* A mobility of 0 or 255 always admits the move; only a value between them
  * draws a roll. Asked of the global override when it is set, and otherwise of
  * every liquid actually present. */
@@ -1409,7 +1411,7 @@ viscous_liquid_possible(const sand_t* s) {
         return s->mobility != 0 && s->mobility < 255;
     }
     for (int m = 0; m < MATERIAL_MAX; m++) {
-        if ((s->may_have_materials & (1u << m)) == 0) {
+        if ((s->may_have_materials & (1U << m)) == 0) {
             continue;
         }
         const material_t* mat = material_by_id((material_id_t)m);
@@ -1555,7 +1557,7 @@ void
 sand_chunk_pass_cells(int cx, int cy, int* x0, int* x1, int* y0, int* y1) {
     sand_chunk_cells(&chunk_plan, cx, cy, x0, x1, y0, y1);
     if (chunk_work_on) {
-        sand_chunk_work_at = cy * chunk_plan.cols + cx;
+        sand_chunk_work_at = (cy * chunk_plan.cols) + cx;
     }
 }
 
@@ -1692,11 +1694,14 @@ chunk_awake_costs(const sand_t* s, const sand_chunk_plan_t* p, uint16_t* cost) {
 
     for (int cy = 0; cy < p->rows; cy++) {
         for (int cx = 0; cx < p->cols; cx++) {
-            int x0, x1, y0, y1;
+            int x0;
+            int x1;
+            int y0;
+            int y1;
 
             sand_chunk_cells(p, cx, cy, &x0, &x1, &y0, &y1);
             const int awake = blocks_settled_over(s, x0, x1, y0, y1, s->settled_bit) ? 0 : (x1 - x0) * (y1 - y0);
-            cost[cy * p->cols + cx] = (uint16_t)awake;
+            cost[(cy * p->cols) + cx] = (uint16_t)awake;
             total += awake;
         }
     }
@@ -1724,7 +1729,8 @@ chunk_pass_divides(const sand_t* s, const sand_chunk_plan_t* p, int tx, int ty) 
 bool
 sand_chunk_pass_ready(const sand_t* s, sand_split_pass_t pass, int tx, int ty) {
     sand_chunk_plan_t fits;
-    int side_x, side_y;
+    int side_x;
+    int side_y;
 
     if (!sand_two_core_step_enabled() || (sand_split_passes & (unsigned)pass) == 0 || s->lane_scratch == NULL) {
         return false;
@@ -1784,8 +1790,8 @@ bool
 sand_chunk_pass_ranks_later(int x0, int y0, int x1, int y1) {
     const int sx = chunk_plan.side_x;
     const int sy = chunk_plan.side_y;
-    const int from = ((y0 + chunk_plan.off_y) / sy) * chunk_plan.cols + (x0 + chunk_plan.off_x) / sx;
-    const int to = ((y1 + chunk_plan.off_y) / sy) * chunk_plan.cols + (x1 + chunk_plan.off_x) / sx;
+    const int from = (((y0 + chunk_plan.off_y) / sy) * chunk_plan.cols) + ((x0 + chunk_plan.off_x) / sx);
+    const int to = (((y1 + chunk_plan.off_y) / sy) * chunk_plan.cols) + ((x1 + chunk_plan.off_x) / sx);
 
     return chunk_sched.order.rank[to] > chunk_sched.order.rank[from];
 }
@@ -1794,7 +1800,8 @@ bool
 sand_chunk_pass_run(sand_t* s, sand_split_pass_t pass_id, int tx, int ty, sand_chunk_pass_stamps_t stamps,
                     sand_chunk_fn_t fn, void* pass) {
     sand_lane_t* const lanes = sand_lanes(s);
-    int side_x, side_y;
+    int side_x;
+    int side_y;
 
     if (!sand_chunk_pass_ready(s, pass_id, tx, ty) || lanes == NULL) {
         return false;
@@ -1858,7 +1865,10 @@ static void
 sweep_one_chunk(void* pass, int lane, int cx, int cy) {
     sweep_pass_t* const c = pass;
     sand_t* const view = &c->lanes[lane].local;
-    int x0, x1, y0, y1;
+    int x0;
+    int x1;
+    int y0;
+    int y1;
 
     sand_chunk_pass_cells(cx, cy, &x0, &x1, &y0, &y1);
     if (SAND_SKIP_IF(blocks_settled_over(view, x0, x1, y0, y1, c->settled_bit))) {
@@ -1885,7 +1895,7 @@ run_sweep_split(sand_t* s, int dx, int dy) {
     }
 }
 
-__attribute__((aligned(16))) void
+CODE_ENTRY_OFFSET(8) void
 sand_step(sand_t* s, int gx, int gy, int jostle) {
     /* Emitters act first per step, before gravity, mimicking
      * sand_spawn_cell() calls. This allows new grains to move immediately.
@@ -1905,7 +1915,8 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
     /* Dithered rather than nearest, so a tilt between two of the eight
      * directions flows at its true angle instead of snapping. Costs one random
      * number per STEP - not per grain - so it is free at this scale. */
-    int dx, dy;
+    int dx;
+    int dy;
     sand_gravity_direction_dithered(s, gx, gy, &dx, &dy);
 
     /* Load measures directionally, ignoring dithering. Grain weight, a pile
@@ -1913,7 +1924,8 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
      * diagonal steps appear empty above vertical columns, treating buried
      * grains as free surface grains roughly one in eight, shifting pile bases
      * sideways. */
-    int load_dx, load_dy;
+    int load_dx;
+    int load_dy;
     sand_gravity_direction(gx, gy, &load_dx, &load_dy);
 
     if (dx == 0 && dy == 0) {
@@ -1945,7 +1957,9 @@ sand_step(sand_t* s, int gx, int gy, int jostle) {
     s->last_step_dx = dx;
     s->last_step_dy = dy;
 
-    int y_from, y_to, y_step;
+    int y_from;
+    int y_to;
+    int y_step;
     sand_choose_sweep_order(s, dy, !SAND_FACT_RULE(s->may_have_liquid), &slide_a, &slide_b, &y_from, &y_to, &y_step);
 
     compute_driven(sweep_driven, slide_a, slide_b, gx, gy);

@@ -590,6 +590,9 @@ class DocCitationTest(unittest.TestCase):
         }])
 
 
+FIX = " (python scripts/gates/check_doc_citations.py --fix)"
+
+
 class PaperCitationTest(unittest.TestCase):
     def problems(self, rows, files):
         with gate_tree.temporary_tree([("docs/Citations.md", rows), *files]) as root:
@@ -597,16 +600,16 @@ class PaperCitationTest(unittest.TestCase):
 
     def test_cited_rows_listing_their_citers_pass(self):
         self.assertEqual(self.problems(
-            '| <a id="1"></a>[1] | [Paper](https://example.org/paper)<br>Cited by: [Guide.md](Guide.md), [tool.py](../scripts/tool.py) |\n',
+            '| <a id="1"></a>[1] | [Paper](https://example.org/paper)<br>Cited by: [Guide.md](Guide.md), [Other.md](Other.md) |\n',
             [("docs/Guide.md", "Text<sup>[[1]](Citations.md#1)</sup>.\n"),
-             ("scripts/tool.py", "# After the paper in docs/Citations.md#1.\n")]), [])
+             ("docs/Other.md", "Again<sup>[[1]](Citations.md#1)</sup>.\n")]), [])
 
     def test_a_number_with_no_row_is_flagged_where_it_is_cited(self):
         found = self.problems('| <a id="1"></a>[1] | Paper<br>Cited by: [Guide.md](Guide.md) |\n',
                               [("docs/Guide.md", "[[1]](Citations.md#1) [[2]](Citations.md#2)\n")])
         self.assertEqual(found, ["docs/Guide.md:1: cites [2], which docs/Citations.md has no row for"])
 
-    def test_a_row_nothing_cites_is_flagged(self):
+    def test_a_row_nothing_cites_or_names_is_flagged(self):
         found = self.problems('| <a id="1"></a>[1] | Paper<br>Cited by: [Guide.md](Guide.md) |\n',
                               [("docs/Guide.md", "No citation.\n")])
         self.assertEqual(found, ["docs/Citations.md:1: [1] is cited nowhere"])
@@ -615,7 +618,7 @@ class PaperCitationTest(unittest.TestCase):
         found = self.problems('| <a id="1"></a>[1] | Paper<br>Cited by: [Other.md](Other.md) |\n',
                               [("docs/Guide.md", "[[1]](Citations.md#1)\n"), ("docs/Other.md", "None.\n")])
         self.assertEqual(found, ["docs/Citations.md:1: [1] cited by, not listed: docs/Guide.md; "
-                                 "listed, does not cite it: docs/Other.md"])
+                                 "listed, does not cite it: docs/Other.md" + FIX])
 
     def test_rows_ascend_may_skip_a_deleted_number_and_anchor_their_number(self):
         found = self.problems('| <a id="1"></a>[1] | A<br>Cited by: [Guide.md](Guide.md) |\n'
@@ -624,6 +627,88 @@ class PaperCitationTest(unittest.TestCase):
                               [("docs/Guide.md", "[[1]](Citations.md#1) [[3]](Citations.md#3) [[2]](Citations.md#2)\n")])
         self.assertEqual(found, ['docs/Citations.md:3: anchor "4" is not its number [2]',
                                  "docs/Citations.md:3: [2] follows [3]; rows ascend"])
+
+    def test_a_source_file_citing_by_number_is_flagged(self):
+        rows = '| <a id="1"></a>[1] | A<br>Cited by: [Guide.md](Guide.md) |\n'
+        guide = ("docs/Guide.md", "[[1]](Citations.md#1)\n")
+        for path, line in [("launcher/main/a.c", "/* Gouraud (docs/Citations.md#1). */\n"),
+                           ("editor/src/a.cpp", "// docs/Citations.md#1\n"),
+                           ("scripts/tool.py", "# After docs/Citations.md#1\n"),
+                           ("launcher/CMakeLists.txt", "# docs/Citations.md#1\n"),
+                           ("launcher/tools/x.sh", 'X="docs/Citations.md#1"\n')]:
+            with self.subTest(path=path):
+                self.assertEqual(self.problems(rows, [guide, (path, line)]), [
+                    f"{path}:1: cites docs/Citations.md by number; "
+                    "name the source (author, year, section) in place"])
+
+    def named(self, listed, **files):
+        """problems() for an entry named `Gouraud 1971` whose Cited by lists `listed`,
+        over files given as dir__name_ext=text."""
+        rows = ('| <a id="1"></a>[1] | A<br>`Gouraud 1971` cited by: '
+                + listed + ' |\n')
+        return self.problems(rows, [(".".join(key.replace("__", "/").rsplit("_", 1)), text)
+                                    for key, text in files.items()])
+
+    GUIDE = "[[1]](Citations.md#1)\n"
+    A_C = "/* Gouraud 1971. */\n"
+    NO_SOURCE = ["docs/Citations.md:1: [1] names `Gouraud 1971` in code, "
+                 "and no source file does; drop the name or the entry"]
+
+    def test_a_source_file_naming_its_source_passes(self):
+        self.assertEqual(self.named("[a.c](../launcher/main/a.c), [a.py](../scripts/a.py)",
+                                    launcher__main__a_c=self.A_C, scripts__a_py="# Gouraud 1971\n"), [])
+
+    def test_a_source_file_with_the_name_must_be_listed(self):
+        found = self.named("[a.c](../launcher/main/a.c)", launcher__main__a_c=self.A_C,
+                           editor__src__b_cpp="// Gouraud 1971\n")
+        self.assertEqual(found, ["docs/Citations.md:1: [1] cited by, not listed: editor/src/b.cpp" + FIX])
+
+    def test_a_listed_file_that_drops_the_name_is_flagged(self):
+        found = self.named("[a.c](../launcher/main/a.c), [b.c](../launcher/main/b.c)",
+                           launcher__main__a_c=self.A_C, launcher__main__b_c="/* Phong. */\n")
+        self.assertEqual(found, ["docs/Citations.md:1: [1] listed, does not cite it: launcher/main/b.c" + FIX])
+
+    def test_a_name_no_source_file_contains_is_flagged(self):
+        self.assertEqual(self.named("[Guide.md](Guide.md)", docs__Guide_md=self.GUIDE,
+                                    launcher__main__a_c="/* Phong. */\n"), self.NO_SOURCE)
+
+    def test_a_name_inside_a_document_is_not_a_source_file(self):
+        self.assertEqual(self.named("[Guide.md](Guide.md)", docs__Guide_md=self.GUIDE + "Gouraud 1971\n"),
+                         self.NO_SOURCE)
+
+    def test_documents_and_sources_list_together(self):
+        self.assertEqual(self.named("[Guide.md](Guide.md), [a.c](../launcher/main/a.c)",
+                                    docs__Guide_md=self.GUIDE, launcher__main__a_c=self.A_C), [])
+
+    def test_the_gates_own_tests_naming_a_source_do_not_list(self):
+        self.assertEqual(self.named("[Guide.md](Guide.md), [a.c](../launcher/main/a.c)",
+                                    docs__Guide_md=self.GUIDE, launcher__main__a_c=self.A_C,
+                                    scripts__gates__tests__test_x_py="# Gouraud 1971\n"), [])
+
+    def test_an_entry_without_a_cited_by_tail_is_flagged(self):
+        rows = '| <a id="1"></a>[1] | A<br>`Gouraud 1971` cited [Guide.md](Guide.md) |'+chr(10)
+        found = self.problems(rows, [("docs/Guide.md", self.GUIDE)])
+        self.assertEqual(found, ['docs/Citations.md:1: entry does not end in "cited by: ..." or "`name` cited by: ..."',
+                          "docs/Guide.md:1: cites [1], which docs/Citations.md has no row for"])
+
+    def test_fix_keeps_the_line_endings(self):
+        rows = '| <a id="1"></a>[1] | A<br>`Gouraud 1971` cited by: none |'+chr(13)+chr(10)
+        with gate_tree.temporary_tree([("docs/Citations.md", rows), ("launcher/main/a.c", self.A_C)]) as root:
+            path = pathlib.Path(root) / "docs/Citations.md"
+            path.write_bytes(rows.encode("utf-8"))
+            self.assertTrue(check_doc_citations.fix_cited_by(root))
+            self.assertTrue(path.read_bytes().endswith(bytes([13, 10])))
+
+    def test_fix_rewrites_the_lists_to_what_the_tree_says(self):
+        rows = ('| <a id="1"></a>[1] | A<br>`Gouraud 1971` cited by: '
+                '[stale.c](../launcher/stale.c) |\n')
+        with gate_tree.temporary_tree([("docs/Citations.md", rows), ("docs/Guide.md", self.GUIDE),
+                                       ("launcher/main/a.c", self.A_C)]) as root:
+            self.assertTrue(check_doc_citations.fix_cited_by(root))
+            self.assertEqual(check_doc_citations.unresolved_papers(root), [])
+            self.assertFalse(check_doc_citations.fix_cited_by(root))
+            self.assertIn("cited by: [docs/Guide.md](Guide.md), [launcher/main/a.c](../launcher/main/a.c) |",
+                          (pathlib.Path(root) / "docs/Citations.md").read_text(encoding="utf-8"))
 
     def test_the_gates_own_test_fixtures_cite_nothing(self):
         found = self.problems('| <a id="1"></a>[1] | A<br>Cited by: [Guide.md](Guide.md) |\n',

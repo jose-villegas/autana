@@ -1,6 +1,6 @@
 /*
  * transform_template: where a thing is, as a position, a rotation and a
- * scale, for one number type; see docs/math/README.md for the macro arguments. Position,
+ * scale, for one number type; see docs/math/Conventions.md#templates for the macro arguments. Position,
  * rotation and scale are the truth; the model matrix is derived and cached.
  *
  * Which matrix call to use:
@@ -73,16 +73,9 @@
         const V##_t origin = {OPS##_zero(), OPS##_zero(), OPS##_zero()};                                               \
         const V##_t one = {OPS##_one(), OPS##_one(), OPS##_one()};                                                     \
         const M##_t pose = M##_from_trs(origin, t->rotation, one);                                                     \
-        M##_t view = M##_identity();                                                                                   \
-        for (int r = 0; r < 3; r++) {                                                                                  \
-            for (int c = 0; c < 3; c++) {                                                                              \
-                view.m[r][c] = pose.m[c][r];                                                                           \
-            }                                                                                                          \
-            view.m[r][3] = OPS##_neg(                                                                                  \
-                OPS##_add(OPS##_add(OPS##_mul(view.m[r][0], t->position.x), OPS##_mul(view.m[r][1], t->position.y)),   \
-                          OPS##_mul(view.m[r][2], t->position.z)));                                                    \
-        }                                                                                                              \
-        return view;                                                                                                   \
+        const V##_t x = {pose.m[0][0], pose.m[1][0], pose.m[2][0]}, y = {pose.m[0][1], pose.m[1][1], pose.m[2][1]},    \
+                    z = {pose.m[0][2], pose.m[1][2], pose.m[2][2]};                                                    \
+        return M##_view_from_axes(x, y, z, t->position);                                                               \
     }                                                                                                                  \
                                                                                                                        \
     /* f = normalize(direction), r = normalize(up x f), u = f x r, */                                                  \

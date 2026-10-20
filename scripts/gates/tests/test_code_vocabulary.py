@@ -43,9 +43,9 @@ class NamesRequireADefinitionTest(unittest.TestCase):
             root = pathlib.Path(temp)
             gate_tree.write(root, "launcher/main/gfx/gfx.h",
                             "/* draws a rectangle */\n"
-                            "void gfx_fill_rect(int x, int y, int w, int h);\n")
+                            "void draw_rect(int x, int y, int w, int h);\n")
             vocab = code_vocabulary.vocabulary(str(root))
-        self.assertIn("gfx_fill_rect", vocab.functions)
+        self.assertIn("draw_rect", vocab.functions)
 
     def test_a_real_call_site_is_still_found(self):
         with tempfile.TemporaryDirectory() as temp:

@@ -14,16 +14,16 @@
 #include "core/timing.h"
 #include "display/display.h"
 #include "display/display_shell.h"
-#include "gfx/draw/gfx_draw.h"
-#include "gfx/draw/gfx_font_roles.h"
+#include "draw/draw.h"
+#include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
-#include "input/gesture.h"
 #include "input/input.h"
 #include "input/input_shell.h"
-#include "input/touch.h"
+#include "input/touch/gesture.h"
+#include "input/touch/touch.h"
 #include "profile/frame_cost.h"
 #include "profile/frame_watch.h"
 #include "services/build_id.h"
@@ -44,6 +44,7 @@
 
 #if CONFIG_LAUNCHER_SELFTEST
 #include "suites.h"
+#include "unity.h"
 #endif
 
 #include "esp_log.h"
@@ -55,6 +56,8 @@ static const char* TAG = "shell";
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* Report throughput on TIMER, not frames. CONFIG_LAUNCHER_DEVELOPMENT only */
+#define SHELL_REPORT_WINDOW_US 1500000
+
 static __attribute__((noinline)) void
 report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
     (*frames)++;
@@ -63,7 +66,9 @@ report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
      * Presents that sent a strip, and the touch samples feeding them, are
      * what a swipe actually sees. */
     static uint32_t drawn;
-    int full = 0, gathered = 0, partial = 0;
+    int full = 0;
+    int gathered = 0;
+    int partial = 0;
     gfx_get_strip_send_counts(&full, &gathered, &partial);
     if (full + gathered + partial > 0) {
         drawn++;
@@ -71,8 +76,9 @@ report_fps(int64_t now_us, int64_t* window_start, uint32_t* frames) {
     }
 
     const int64_t since = now_us - *window_start;
-    if (since >= 1500000) {
-        uint32_t points = 0, moved = 0;
+    if (since >= SHELL_REPORT_WINDOW_US) {
+        uint32_t points = 0;
+        uint32_t moved = 0;
         touch_take_sample_counts(&points, &moved);
         const double per_s = 1000000.0 / (double)since;
         ESP_LOGI(TAG, "%.1f fps, %.1f drawn/s, touch %.1f points/s %.1f moved/s", (double)*frames * per_s,
@@ -164,16 +170,18 @@ run_pending_selftest_suite(const console_frame_request_t* requests) {
         return;
     }
     static suite_run_t run;
+    UNITY_BEGIN();
     suites_run_request(requests->suite, &run);
     if (!run.found) {
         ESP_LOGE(TAG, "no suite named '%s' is registered", run.name);
     }
     suite_report_frame_watch();
+    (void)UNITY_END();
     /* On its own line, so a harness knows the suite ended without having to
      * guess from how long the console has been quiet. */
     suites_print_run(&run);
     console_frame_done(console_frame_mailbox(), CONSOLE_FRAME_RUNSUITE);
-    fflush(stdout);
+    (void)fflush(stdout);
     /* A suite draws, clears and presents on its own, outside the shell's
      * own dirty tracking; the next real frame must repaint in full rather
      * than trust whatever a test left behind. */
@@ -203,7 +211,7 @@ reply_app_err(const char* prefix, const char* reason) {
     }
     upper[i] = '\0';
     printf("%s_ERR %s\n", upper, reason);
-    fflush(stdout);
+    (void)fflush(stdout);
 }
 
 /* Takes at most one line no verb claimed and routes it by prefix: to
@@ -241,10 +249,12 @@ offer_console_line(const app_t* current) {
 static void
 console_list_apps(const app_t* current) {
     for (const app_t* app = app_list(); app != NULL; app = app->next) {
-        printf("APPS name=%s running=%d\n", app->name, app == current ? 1 : 0);
+        const char* prefix = app->console != NULL ? app->console->prefix : NULL;
+        printf("APPS name=%s running=%d%s%s\n", app->name, app == current ? 1 : 0, prefix != NULL ? " console=" : "",
+               prefix != NULL ? prefix : "");
     }
     printf("APPS_END\n");
-    fflush(stdout);
+    (void)fflush(stdout);
 }
 
 static const app_t*
@@ -282,23 +292,23 @@ run_console_navigation(const app_t** current, input_t* input, uint32_t dt_ms, co
         if (*current != NULL) {
             shell_leave_app(current, input, exit_edge, dt_ms);
             printf("HOME_OK\n");
-            fflush(stdout);
+            (void)fflush(stdout);
             return true;
         }
         printf("HOME_OK\n");
-        fflush(stdout);
+        (void)fflush(stdout);
         return false;
     }
     bool ambiguous;
     const app_t* next = console_find_app(name, &ambiguous);
     if (next == NULL) {
         printf("OPEN_ERR %s '%s'\n", ambiguous ? "ambiguous" : "no app", name);
-        fflush(stdout);
+        (void)fflush(stdout);
         return false;
     }
     if (*current == next) {
         printf("OPEN_OK name=%s\n", next->name);
-        fflush(stdout);
+        (void)fflush(stdout);
         return false;
     }
     if (*current != NULL) {
@@ -306,18 +316,18 @@ run_console_navigation(const app_t** current, input_t* input, uint32_t dt_ms, co
     }
     shell_start_app(current, next);
     printf("OPEN_OK name=%s\n", next->name);
-    fflush(stdout);
+    (void)fflush(stdout);
     return false;
 }
 
 static void
 report_gesture_completion(void) {
-    touch_gesture_completion_t completion;
-    if (!touch_gesture_take_completion(&completion)) {
+    touch_inject_completion_t completion;
+    if (!touch_inject_take_completion(&completion)) {
         return;
     }
-    printf("%s_OK\n", touch_gesture_name(completion));
-    fflush(stdout);
+    printf("%s_OK\n", touch_inject_completion_name(completion));
+    (void)fflush(stdout);
 }
 
 static __attribute__((noinline)) void
@@ -381,7 +391,7 @@ shell_run(void) {
      * Serial/JTAG enumerates only about 0.7 s into the new boot, after
      * app_boot_init()'s print. */
     printf("BUILD_ID=%s\n", build_id());
-    fflush(stdout);
+    (void)fflush(stdout);
     frame_watch_start();
 
     while (1) {

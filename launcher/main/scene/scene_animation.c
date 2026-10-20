@@ -3,6 +3,7 @@
 #include <stdalign.h>
 #include <stdlib.h>
 #include <string.h>
+#include "anim/anim_tracks_format.h"
 #include "core/job.h"
 #include "core/memory.h"
 #include "math/scalar/mathi.h"
@@ -581,6 +582,7 @@ scene_animator_seek(scene_t* scene, scene_entity_t entity, scene_animator_slot_t
     if (p == NULL || a->layer.current.clip == ANIM_LAYER_CLIP_NONE) {
         return false;
     }
+    scene_draw_camera_cut(scene, entity);
     p->t_ms = t_ms;
     p->fraction = 0;
     a->dirty = true;

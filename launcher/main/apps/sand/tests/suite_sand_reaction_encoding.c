@@ -354,7 +354,8 @@ test_ice_cracks_hot_glass_and_stays_where_it_is_put(void) {
         sand_set(&s, x, H - 2, CELL_MAKE(MAT_GLASS, MATERIAL_VARIANTS - 1));
         sand_set(&s, x, H - 3, MATX(MATX_ICE));
     }
-    const int ice_x = 1, ice_y = H - 3;
+    const int ice_x = 1;
+    const int ice_y = H - 3;
 
     run_steps(&s, 60, 0, 1000);
 
@@ -516,7 +517,8 @@ test_acid_dissolves_dune_sand_but_not_cullet(void) {
         sand_set(&s, 4, y, GLASS); /* keeps the two acid columns from ever meeting */
     }
 
-    const int dune_x = 2, cullet_x = 6;
+    const int dune_x = 2;
+    const int cullet_x = 6;
     sand_set(&s, dune_x, H - 2, CELL_MAKE(MAT_SAND, 8));
     sand_set(&s, cullet_x, H - 2, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE));
     for (int y = 0; y < H - 2; y++) {
@@ -557,7 +559,7 @@ test_acid_dissolves_dune_sand_but_not_cullet(void) {
  * memory budget. */
 static void
 acid_fizz_fixture(uint8_t* cells) {
-    sand_init(&fx.fizz_sim, cells, FIZZ_W, FIZZ_H, 5u);
+    sand_init(&fx.fizz_sim, cells, FIZZ_W, FIZZ_H, 5U);
     sand_set_evaporates(&fx.fizz_sim, 0); /* isolate fizz, see the tests'
                                           * own comments for why */
     sand_fill_box(&fx.fizz_sim, 0, 4, FIZZ_W, FIZZ_H, CELL_MAKE(MAT_SAND, 8));
@@ -640,7 +642,7 @@ test_the_fizz_rises_out_of_the_acid(void) {
  * memory budget. */
 static void
 acid_water_dilute_fixture(uint8_t* cells) {
-    sand_init(&fx.dilute_sim, cells, DILUTE_W, DILUTE_H, 7u);
+    sand_init(&fx.dilute_sim, cells, DILUTE_W, DILUTE_H, 7U);
     sand_set_evaporates(&fx.dilute_sim, 0); /* isolate dilution from the
                                              * unrelated evaporates roll -
                                              * same reasoning as the fizz
@@ -738,7 +740,7 @@ test_the_dilution_split_favours_neither_side(void) {
  * own comment above for why. */
 static void
 acid_water_separated_fixture(uint8_t* cells) {
-    sand_init(&fx.separated_dilute_sim, cells, SEPARATED_W, SEPARATED_H, 7u);
+    sand_init(&fx.separated_dilute_sim, cells, SEPARATED_W, SEPARATED_H, 7U);
     sand_set_evaporates(&fx.separated_dilute_sim, 0);
     for (int x = 0; x < SEPARATED_W; x++) {
         if (x % 2 == 0) {
@@ -758,7 +760,8 @@ test_water_winning_the_dilution_boils_the_water_cell_to_steam(void) {
     acid_water_separated_fixture(cells);
     sand_step(&fx.separated_dilute_sim, 0, 1000, 0);
 
-    int water_wins = 0, water_wins_with_steam = 0;
+    int water_wins = 0;
+    int water_wins_with_steam = 0;
     for (int x = 0; x < SEPARATED_W; x += 2) {
         if (CELL_MATERIAL(sand_at(&fx.separated_dilute_sim, x, 1)) != MAT_WATER) {
             continue; /* not a water-wins column, see the sibling test */
@@ -787,7 +790,8 @@ test_acid_winning_the_dilution_boils_the_acid_cell_to_gas(void) {
     acid_water_separated_fixture(cells);
     sand_step(&fx.separated_dilute_sim, 0, 1000, 0);
 
-    int acid_wins = 0, acid_wins_with_gas = 0;
+    int acid_wins = 0;
+    int acid_wins_with_gas = 0;
     for (int x = 0; x < SEPARATED_W; x += 2) {
         if (CELL_MATERIAL(sand_at(&fx.separated_dilute_sim, x, 0)) != MAT_ACID) {
             continue; /* not an acid-wins column, see the sibling test */
@@ -816,7 +820,7 @@ test_acid_winning_the_dilution_boils_the_acid_cell_to_gas(void) {
  * own comment above for why. */
 static void
 acid_oil_dilute_fixture(uint8_t* cells) {
-    sand_init(&fx.oil_dilute_sim, cells, OIL_DILUTE_W, OIL_DILUTE_H, 11u);
+    sand_init(&fx.oil_dilute_sim, cells, OIL_DILUTE_W, OIL_DILUTE_H, 11U);
     sand_set_evaporates(&fx.oil_dilute_sim, 0);
     for (int x = 0; x < OIL_DILUTE_W; x++) {
         sand_set(&fx.oil_dilute_sim, x, 0, CELL_MAKE(MAT_OIL, MASS_MAX));
@@ -837,7 +841,8 @@ test_oil_mostly_boils_off_into_gas_not_acid(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(done, "per-column done tracking must fit");
     acid_oil_dilute_fixture(oil_dilute_cells);
 
-    int gas = 0, acid_spread = 0;
+    int gas = 0;
+    int acid_spread = 0;
     for (int i = 0; i < 300; i++) {
         sand_step(&fx.oil_dilute_sim, 0, 1000, 0);
         for (int x = 0; x < OIL_DILUTE_W; x++) {
@@ -908,7 +913,8 @@ test_the_acid_that_ate_oil_can_die_in_a_single_bite(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(done, "per-column done tracking must fit");
     acid_oil_dilute_fixture(oil_dilute_cells);
 
-    int died_outright = 0, chipped_by_one = 0;
+    int died_outright = 0;
+    int chipped_by_one = 0;
     for (int i = 0; i < 300; i++) {
         sand_step(&fx.oil_dilute_sim, 0, 1000, 0);
         for (int x = 0; x < OIL_DILUTE_W; x++) {
@@ -974,7 +980,7 @@ test_acid_evaporates_into_gas_when_forced(void) {
  * the mass-bias override differing, not seed-to-seed noise on top. */
 static void
 acid_water_pour_fixture(uint8_t* cells, material_id_t pool) {
-    sand_init(&fx.dilute_pour_sim, cells, DILUTE_POUR_W, DILUTE_POUR_H, 17u);
+    sand_init(&fx.dilute_pour_sim, cells, DILUTE_POUR_W, DILUTE_POUR_H, 17U);
     sand_set_evaporates(&fx.dilute_pour_sim, 0); /* isolate the mass bias from
                                                 * the unrelated ambient
                                                 * evaporates roll - same
@@ -992,7 +998,8 @@ pour_and_count(material_id_t tap, int* out_pool_mat, int* out_tap_mat) {
         sand_step(&fx.dilute_pour_sim, 0, 1000, 0);
     }
 
-    int pool_mat = 0, tap_mat = 0;
+    int pool_mat = 0;
+    int tap_mat = 0;
     const material_id_t pool = (tap == MAT_ACID) ? MAT_WATER : MAT_ACID;
     for (int y = 0; y < DILUTE_POUR_H - 1; y++) {
         for (int x = 0; x < DILUTE_POUR_W; x++) {
@@ -1019,7 +1026,8 @@ pour_and_measure_tap_gain(material_id_t pool, material_id_t tap, int bias) {
     acid_water_pour_fixture(cells, pool);
     sand_set_acid_dilute_mass_bias(&fx.dilute_pour_sim, bias);
 
-    int pool_left, tap_now;
+    int pool_left;
+    int tap_now;
     pour_and_count(tap, &pool_left, &tap_now);
 
     free(cells);
@@ -1053,7 +1061,8 @@ acid_water_contest_pour(sand_t* g, int tapw, int tap0, int wcols) {
 /* Cell counts of water and acid left on the grid. */
 static void
 acid_water_contest_count(sand_t* g, int gw, int gh, int* water_left, int* acid_left) {
-    int wn = 0, an = 0;
+    int wn = 0;
+    int an = 0;
     for (int y = 0; y < gh; y++) {
         for (int x = 0; x < gw; x++) {
             const int m = CELL_MATERIAL(sand_at(g, x, y));
@@ -1079,7 +1088,7 @@ acid_water_contest(int water_pct, int* water_left, int* acid_left) {
 
     sand_t g;
     memset(&g, 0, sizeof g);
-    sand_init(&g, cells, GW, GH, 5u);
+    sand_init(&g, cells, GW, GH, 5U);
     acid_water_contest_build_walls(&g, GW, GH);
 
     const int wcols = (TAPW * water_pct + 50) / 100;
@@ -1094,11 +1103,14 @@ acid_water_contest(int water_pct, int* water_left, int* acid_left) {
 
 static void
 test_pouring_more_of_a_liquid_wins_the_contest_against_the_other(void) {
-    int last_water = -1, last_acid = INT_MAX - 8;
-    int even_water = 0, even_acid = 0;
+    int last_water = -1;
+    int last_acid = INT_MAX - 8;
+    int even_water = 0;
+    int even_acid = 0;
 
     for (int pct = 10; pct <= 90; pct += 10) {
-        int w = 0, a = 0;
+        int w = 0;
+        int a = 0;
         acid_water_contest(pct, &w, &a);
 
         char why[192];
@@ -1298,7 +1310,7 @@ test_oil_flows_more_slowly_than_water(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(wide_cells, "oil-vs-water flow-rate grid must fit in what the framebuffer "
                                              "leaves");
     for (int k = 0; k < 2; k++) {
-        sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 5u);
+        sand_init(&wide, wide_cells, WIDE_W, WIDE_H, 5U);
         sand_set_mobility(&wide, SAND_MOBILITY_PER_MATERIAL);
         sand_fill_box(&wide, 0, WIDE_H - 1, WIDE_W, WIDE_H, STONE);
         for (int y = 1; y <= WIDE_H - 2; y++) {
@@ -1526,7 +1538,7 @@ test_lava_quenched_into_stone_mid_pass_arms_the_heat_holder_flag(void) {
 static void
 build_lava_shaft(sand_t* p, uint8_t* cells) {
     /* 0u, not 71u: seed 0 exercises SAND_LAVA_COOLOFF_MAX_CHAIN, 71 does not. */
-    sand_init(p, cells, LAVA_SHAFT_W, LAVA_SHAFT_H, 0u);
+    sand_init(p, cells, LAVA_SHAFT_W, LAVA_SHAFT_H, 0U);
     for (int y = 0; y < LAVA_SHAFT_H; y++) {
         sand_set(p, LAVA_SHAFT_X - 1, y, STONE);
         sand_set(p, LAVA_SHAFT_X + 1, y, STONE);
@@ -1920,7 +1932,7 @@ static int
 build_boiler_room(int wall_len) {
     /* Ownership passes to caller of `wide`: see call sites
      * (test_a_thick_wall_still_conducts, steps_to_boil). */
-    wide_open(3u);
+    wide_open(3U);
     sand_set_mobility(&wide, 0);
 
     const int y = 2;
@@ -1979,7 +1991,7 @@ test_conduction_stops_at_the_reach_cap(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(cap_cells, "conduction-reach-cap grid must fit in what the framebuffer "
                                             "leaves");
     sand_t cap;
-    sand_init(&cap, cap_cells, CAP_W, CAP_H, 3u);
+    sand_init(&cap, cap_cells, CAP_W, CAP_H, 3U);
     sand_set_mobility(&cap, 0);
     sand_set_conduction(&cap, 255);
 
@@ -2045,7 +2057,7 @@ test_a_thick_wall_conducts_more_slowly_than_a_thin_one(void) {
  * nowhere to send any mass while conduction does its work. */
 static void
 boiler_column(cell_t liquid, int top) {
-    wide_open(3u);
+    wide_open(3U);
     sand_set_conduction(&wide, 255);
     sand_set_mobility(&wide, 0);
 
@@ -2058,7 +2070,9 @@ boiler_column(cell_t liquid, int top) {
 
 static void
 test_boiling_converts_the_cell_nearest_the_heat(void) {
-    const int x = BOILER_X, water_top = 1, water_bottom = BOILER_BOTTOM;
+    const int x = BOILER_X;
+    const int water_top = 1;
+    const int water_bottom = BOILER_BOTTOM;
     boiler_column(CELL_MAKE(MAT_WATER, MASS_MAX), water_top);
 
     bool boiled = false;
@@ -2089,7 +2103,8 @@ test_boiling_converts_the_cell_nearest_the_heat(void) {
  * other chance fields. */
 static void
 test_sand_set_boils_zero_disables_conducted_heat_boiling(void) {
-    const int x = BOILER_X, water_y = BOILER_BOTTOM;
+    const int x = BOILER_X;
+    const int water_y = BOILER_BOTTOM;
     boiler_column(CELL_MAKE(MAT_WATER, MASS_MAX), water_y);
     sand_set_boils(&wide, 0);
 
@@ -2109,7 +2124,8 @@ test_sand_set_boils_zero_disables_conducted_heat_boiling(void) {
 
 static void
 test_boiled_steam_starts_at_full_life(void) {
-    const int x = BOILER_X, water_y = BOILER_BOTTOM;
+    const int x = BOILER_X;
+    const int water_y = BOILER_BOTTOM;
     boiler_column(CELL_MAKE(MAT_WATER, MASS_MAX), water_y);
     sand_set_boils(&wide, 255);
 
@@ -2133,7 +2149,8 @@ test_boiled_steam_starts_at_full_life(void) {
 
 static void
 test_boiling_acid_produces_gas_not_steam(void) {
-    const int x = BOILER_X, acid_y = BOILER_BOTTOM;
+    const int x = BOILER_X;
+    const int acid_y = BOILER_BOTTOM;
     boiler_column(CELL_MAKE(MAT_ACID, MASS_MAX), acid_y);
     sand_set_boils(&wide, 255);
 
@@ -2153,15 +2170,17 @@ test_boiling_acid_produces_gas_not_steam(void) {
 
 static void
 test_the_boiler_end_to_end(void) {
-    wide_open(3u);
+    wide_open(3U);
 
     const int x = 10;
     const int wood_y = 19;
-    const int slab_top = 8, slab_bottom = 18;  /* 11 rows thick,
+    const int slab_top = 8;
+    const int slab_bottom = 18; /* 11 rows thick,
                                                   * matching the pour
                                                   * brush's real
                                                   * thickness */
-    const int water_top = 5, water_bottom = 7; /* 3 cells of water */
+    const int water_top = 5;
+    const int water_bottom = 7; /* 3 cells of water */
 
     sand_set(&wide, x, wood_y, WOOD);
     for (int y = slab_top; y <= slab_bottom; y++) {

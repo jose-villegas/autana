@@ -28,7 +28,8 @@
 #   cmd /c "set MSYSTEM=&& ..." -> works, but nested quotes reach argv literally
 #   cmd /c shim.bat ...       -> works, argv intact, semicolons survive
 #
-# On Linux none of this applies: export.sh is sourced and idf.py called directly.
+# Linux keeps sourcing export.sh in its own shell; Windows selects Python
+# before export.bat because activation itself needs the paired interpreter.
 
 _IDF_DIR=""
 _IDF_EXPORT=""
@@ -95,6 +96,7 @@ idf_in() {
         # inline quotes reach the batch shim literally and corrupt arguments.
         IDF_SHIM_DIR="$(cygpath -w "$_IDF_IN_DIR")" \
         IDF_SHIM_EXPORT="$_IDF_EXPORT" \
+        IDF_SHIM_PYTHON_DIR="$(cygpath -w "$(dirname "$(cygpath -u "$IDF_PYTHON")")")" \
         cmd //c "$(cygpath -w "$_IDF_SHIM")" "$@"
     else
         ( cd "$_IDF_IN_DIR" && . "$_IDF_EXPORT" >/dev/null 2>&1 && "$@" )

@@ -37,6 +37,7 @@
 #include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "gfx/present/gfx_debug.h"
 #include "test_harness.h"
 #include "unity.h"
 
@@ -66,6 +67,8 @@ static void (*watched_test)(void);
 static suite_test_verdict_t watched_verdict;
 static int tests_run;
 static int tests_judged;
+/* gfx_mode_denials() already in some test's verdict. */
+static unsigned denials_judged;
 
 /* Unity has one abort frame: a TEST_PASS() or a failed assertion jumps
  * straight to it. A frame here ends fn alone, so what follows it still runs.
@@ -148,6 +151,8 @@ run_body(void (*body)(void), suite_test_verdict_t* verdict) {
     UBaseType_t tasks_before = uxTaskGetNumberOfTasks();
     count_idle_passes();
     const size_t stack_free_before = uxTaskGetStackHighWaterMark(NULL);
+    const unsigned denials_before = gfx_mode_denials();
+    const unsigned judged_before = denials_judged;
 
     frame_watch_test_begin();
     call_protected(body);
@@ -169,6 +174,9 @@ run_body(void (*body)(void), suite_test_verdict_t* verdict) {
         /* The second run is for the heap alone; its frames are not judged. */
         (void)frame_watch_test_end();
     }
+    /* Both runs count; a run nested in this one judged its own already. */
+    verdict->layouts_denied = gfx_mode_denials() - denials_before - (denials_judged - judged_before);
+    denials_judged += verdict->layouts_denied;
     verdict->leaked_8bit = drop(free_8bit, heap_caps_get_free_size(MALLOC_CAP_8BIT));
     verdict->leaked_32bit = drop(free_32bit, heap_caps_get_free_size(MALLOC_CAP_32BIT));
 }
@@ -199,6 +207,9 @@ suite_judge_watched_test(void) {
                                   "work repeated frame after frame - see the FRAME_WATCH lines above");
     TEST_ASSERT_EQUAL_UINT32_MESSAGE(0, verdict->watch.dropped,
                                      "the frame watch ran out of room, so it may have missed one");
+    /* A refused layout leaves the test running a fallback it never meant to
+     * test, so it fails here rather than passing on that fallback. */
+    TEST_ASSERT_EQUAL_UINT32_MESSAGE(0, verdict->layouts_denied, "gfx refused a layout the test asked for");
 }
 #endif
 

@@ -28,7 +28,7 @@ saturating_increment(uint8_t v) {
 static bool
 band_due(sand_heal_t* h, int b) {
     h->since_heal[b] = saturating_increment(h->since_heal[b]);
-    if ((h->moved >> b) & 1u) {
+    if ((h->moved >> b) & 1U) {
         h->quiet[b] = 0;
         h->busy[b] = saturating_increment(h->busy[b]);
     } else if (h->busy[b] > 0) {

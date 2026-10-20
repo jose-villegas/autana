@@ -18,8 +18,10 @@ SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 scene_name=render_lab
 
+scene_ui=1
 scene_sources="
 main/app/app_arena.c
+main/app/app_console.c
 main/app/app_registry.c
 main/services/tune.c
 main/core/job.c
@@ -27,6 +29,7 @@ main/render/render_view.c
 main/render/raster.c
 main/render/raster_show.c
 main/render/raster_motion.c
+main/render/raster_split.c
 main/render/raster_meshlets.c
 main/render/r3d_pipeline.c
 main/render/upscale.c
@@ -51,19 +54,8 @@ main/scene/scene_asset.c
 main/scene/scene_draw.c
 main/scene/scene_shell.c
 main/render/r3d_lit_mesh.c
-main/input/gesture.c
-main/input/orbit_motion_touch.c
-main/ui/ui.c
-main/ui/ui_bridge.c
-main/ui/ui_build.c
-main/ui/ui_canvas_marks.c
-main/ui/ui_icons.c
-main/ui/ui_widgets.c
-main/ui/ui_pointer.c
-main/ui/ui_snap.c
-main/ui/ui_scroll.c
-main/console/console_verbs.c
-components/microui/src/microui.c
+main/input/touch/gesture.c
+main/input/mapping/orbit_motion_touch.c
 main/apps/render_lab/tools/render_lab_render_host.c
 $(CDPATH= cd -- "$SCRIPT_DIR/../../../../" &&
     find main/apps/render_lab \( -type d \( -name tools -o -name tests \) -prune \) -o \
@@ -95,6 +87,11 @@ sponza-depth-flipped|--quarter 3 --no-hud --scene sponza --frames 2 --view depth
 sponza-tiles-landscape|--quarter 1 --no-hud --scene sponza --frames 2 --view tiles|448x368|nopin
 sponza-tiles-portrait|--quarter 0 --no-hud --scene sponza --frames 2 --view tiles|368x448|nopin
 sponza-tiles-flipped|--quarter 3 --no-hud --scene sponza --frames 2 --view tiles|448x368|nopin
+menu-sponza-landscape|--quarter 1 --menu --scene sponza --frames 4|448x368
+menu-sponza-portrait|--quarter 0 --menu --scene sponza --frames 4|368x448
+menu-capybara-landscape|--quarter 1 --menu --scene capybara --frames 4|448x368
+menu-capybara-portrait|--quarter 0 --menu --scene capybara --frames 4|368x448
+menu-capybara-clips|--quarter 0 --menu --scene capybara --tap 184,166 --frames 6|368x448
 "
 
 # The scenes read their meshes from asset packs of the baked meshes in the tree.

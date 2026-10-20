@@ -18,6 +18,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 try:
     import numpy as np
     from tests import soup
+    from tests.test_r3d_ray_query import all_hits
 
     from r3d import mesh_import
     from r3d.light import coincident_faces, visible_from_path, visible_from_region
@@ -76,6 +77,72 @@ class CoincidentFaceTests(unittest.TestCase):
         positions, tris, intersector = scene(card([0, 0, 0]), card([0, 0, -0.05]))
         self.assertEqual(visible(positions, tris, intersector, tie=0.1).tolist(), [True] * 4)
         self.assertEqual(visible(positions, tris, intersector, tie=0.01).tolist(), [True, True, False, False])
+
+    def reference(self, positions, tris, double, intersector, poses, tie):
+        normal = np.cross(positions[tris[:, 1]] - positions[tris[:, 0]],
+                          positions[tris[:, 2]] - positions[tris[:, 0]])
+        normal /= np.maximum(np.linalg.norm(normal, axis=1, keepdims=True), 1e-12)
+        twin, group = coincident_faces(positions, tris)
+        seen = np.zeros(len(tris), dtype=bool)
+        for pose in poses:
+            origin, direction = camera_rays(16, 12, 0.62, pose[:3], pose[3:], 2, 0)
+            ahead = pose[3:] / np.linalg.norm(pose[3:])
+            origin += direction * (0.5 / (direction @ ahead))[:, None]
+            hit, ray, where = all_hits(intersector, origin, direction)
+            distance = ((where - origin[ray]) * direction[ray]).sum(axis=1)
+            drawn = double[hit] | ((normal[hit] * direction[ray]).sum(axis=1) < 0)
+            shown = np.where(drawn, hit, twin[hit])
+            nearest = np.full(len(origin), np.inf)
+            np.minimum.at(nearest, ray[shown >= 0], distance[shown >= 0])
+            seen[shown[(shown >= 0) & (distance <= nearest[ray] + tie)]] = True
+        reached = np.zeros(len(tris), dtype=bool)
+        reached[group[seen]] = True
+        return reached[group]
+
+    def test_round_visibility_matches_all_hits_with_ties_twins_and_culling(self):
+        positions, tris, intersector = scene(
+            card([-2, 0, 1], half=0.8, away=True),
+            card([-2, 0, 0], half=0.8), card([-2, 0, 0], half=0.8),
+            card([-2, 0, -0.005], half=0.8), card([-2, 0, -1], half=0.8),
+            card([0, 0, 1], half=0.8, away=True), card([0, 0, 1], half=0.8),
+            card([0, 0, 0], half=0.8),
+            card([2, 0, 1], half=0.8, away=True), card([2, 0, 0], half=0.8))
+        double = np.zeros(len(tris), dtype=bool)
+        double[16:18] = True
+        poses = [np.array([x, 0, 5, 0, 0, -1], dtype=float) for x in (-0.2, 0, 0.2)]
+        for path in [[pose] for pose in poses] + [poses]:
+            for tie in (0.02, 0.1):
+                with self.subTest(path=path, tie=tie):
+                    reference = self.reference(positions, tris, double, intersector, path, tie)
+                    self.assertTrue(reference[2:8].all())
+                    self.assertTrue(reference[12:14].all())
+                    self.assertTrue(reference[16:18].all())
+                    self.assertFalse(reference[:2].any())
+                    self.assertFalse(reference[10:12].any())
+                    self.assertFalse(reference[14:16].any())
+                    actual = visible_from_path(positions, tris, double, intersector, path,
+                                               16, 12, 0.62, 0.5, 2, 0, tie)
+                    np.testing.assert_array_equal(actual, reference)
+
+    def test_visibility_traces_far_fewer_rays_than_all_hits(self):
+        layers = 40
+        positions, tris, intersector = scene(*(card([0, 0, -z], half=100) for z in range(layers)))
+        origin, direction = camera_rays(16, 12, 0.62, EYE[:3], EYE[3:], 2, 0)
+        counted = []
+        first_hits = intersector.first_hits
+
+        def counting(origins, directions):
+            counted.append(len(origins))
+            return first_hits(origins, directions)
+
+        with mock.patch.object(intersector, "first_hits", side_effect=counting):
+            all_hits(intersector, origin, direction)
+            all_rays = sum(counted)
+            counted.clear()
+            kept = visible(positions, tris, intersector)
+        np.testing.assert_array_equal(kept, [True] * 2 + [False] * (len(tris) - 2))
+        self.assertGreaterEqual(all_rays, layers * len(origin))
+        self.assertLess(sum(counted), all_rays / 10)
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
@@ -211,6 +278,33 @@ class RegionTests(unittest.TestCase):
                             *self.BOX)
         self.assertGreater(sum(counted), len(tris), "the huge card got no extra points: the test proves nothing")
         self.assertLessEqual(sum(counted), 2 * len(tris))
+
+
+
+@needs_mitsuba
+@unittest.skipIf(np is None, "the r3d environment is not installed")
+class ExactRegionTests(unittest.TestCase):
+    # Output digest from main e9dc4d138f, including the generator state after every call.
+    REGION_DIGEST = "da968db2e185065b4675f746f9cafa852dd2926702c09c9c14154f5f8dfbc082"
+
+    def test_region_preserves_mask_and_rng_with_unseen_faces(self):
+        from tests.test_r3d_bake import exact_output_digest
+
+        wall = [card([x, y, 0], half=0.5) for x in range(-3, 4) for y in range(-3, 4) if (x, y) != (0, 0)]
+        p, tris, query = scene(*wall, card([0, 0, -5], half=3.5), card([0, 12, 0], away=True),
+                              card([0, 16, 0], away=True))
+        double = np.zeros(len(tris), dtype=bool)
+        double[-2:] = True
+        outputs = []
+        for seed in range(4):
+            for rounds in (0, 1, 4, 16):
+                rng = np.random.default_rng(seed)
+                seen = visible_from_region(p, tris, double, query, rounds, rng, [-0.5, -0.5, 5], [0.5, 0.5, 6])
+                outputs.extend((seen, rng.bit_generator.state))
+                self.assertFalse(seen[-4:-2].any())
+                if rounds:
+                    self.assertTrue(seen[-2:].all())
+        self.assertEqual(exact_output_digest(*outputs), self.REGION_DIGEST)
 
 
 if __name__ == "__main__":

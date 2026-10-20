@@ -33,6 +33,7 @@
 #                   --deps compiles nothing: it prints `flags` and the compile
 #                   flags, then the compiler's -MM list (sources and project
 #                   headers; -MM omits system headers).
+#   scene_ui        OPTIONAL, 1 links the shared host UI sources.
 #   scene_includes  OPTIONAL extra -I directories, relative to launcher/
 #   scene_assets    OPTIONAL folders, relative to launcher/, whose asset roots
 #                   the scene reads as packs: build_pack.py writes them to
@@ -144,6 +145,10 @@ render_scene_build() {
         return 1
     fi
     _rs_tools="$_rs_launcher/tools"
+    if [ "${scene_ui:-0}" = 1 ]; then
+        . "$_rs_tools/build/ui_sources.sh"
+        scene_sources="$scene_sources $UI_SOURCES"
+    fi
 
     # Results belong to whichever tools/ folder owns the scene (the shared
     # one, or an app's) and both are already gitignored there.
@@ -205,8 +210,8 @@ render_scene_build() {
     done
 
     _rs_files="$_rs_tools/render/render_host.c $_rs_tools/render/render_video.c $_rs_tools/render/render_watch.c"
-    # Every scene draws through gfx: all of it but the device-only *_device.c.
-    _rs_files="$_rs_files $(find "$_rs_launcher/main/gfx" -name '*.c' ! -name '*_device.c' | sort | tr '
+    # Every scene uses drawing and presentation, excluding device-only backends.
+    _rs_files="$_rs_files $(find "$_rs_launcher/main/gfx" "$_rs_launcher/main/draw" -name '*.c' ! -name '*_device.c' | sort | tr '
 ' ' ')"
     # And through the packages (tools/build/packages.sh), all of each.
     _rs_files="$_rs_files $(package_sources "$_rs_launcher" | tr '
@@ -233,10 +238,10 @@ render_scene_build() {
     fi
 
     # -lm LAST, after the sources, because GNU ld resolves left to right and
-    # would otherwise discard libm before seeing who needed it. The scroll
-    # view's momentum reaches expf() and lroundf(); the Windows toolchains
-    # this repo also builds on fold those into libc and link clean without
-    # it, which is how a scene that needs them reached CI unlinked. Harmless
+    # would otherwise discard libm before seeing who needed it. A scene
+    # that reaches expf() or lroundf() links clean on the Windows toolchains
+    # this repo also builds on, which fold those into libc, and fails only on
+    # Linux without it. Harmless
     # where libm is already part of libc; run_tests.sh ends its own link
     # line the same way. The --wrap pairs hand every scene allocation to
     # render_watch.c.

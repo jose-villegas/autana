@@ -14,6 +14,7 @@ evidence, the per-app table is a convenience. See device.py's `report`
 subcommand and its call from run_suite().
 """
 
+from datetime import datetime
 import gzip
 import json
 import re
@@ -24,7 +25,9 @@ from pathlib import Path
 
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
-from device_capture import RESULT_RE, results, SELFTEST_COMPLETE_RE  # noqa: E402
+import autana_config
+from device_lock import board_label
+from device_capture import RESULT_RE, results, SELFTEST_COMPLETE_RE, suite_failure_signs  # noqa: E402
 
 # The line a RUNSUITE ends with, read here for the board (device.py) and for
 # QEMU (launcher/test/qemu_run.py). An image that predates --test prints no
@@ -58,6 +61,19 @@ FRAME_TIME_PHASE_RE = re.compile(
 BUDGET_TABLE_HEADER = "| Test | Budget (us) | Measured (us) | Headroom | Status |"
 
 REPORTER_TIMEOUT_SECONDS = 120
+
+
+def records_root():
+    """Where a session's log and manifest are written.
+
+    The project's `records` setting names it, for anyone who keeps their
+    device history elsewhere. Without one, records land in this checkout's
+    own gitignored .records/device, self-contained, and nothing a commit
+    can pick up by accident."""
+    named = autana_config.load().get("records")
+    if named:
+        return autana_config.path_value(named)
+    return Path(__file__).resolve().parents[2] / ".records" / "device"
 
 
 def read_capture_text(path):
@@ -357,6 +373,7 @@ def build_report_markdown(capture_path, index_path):
 
     lines = ["# Device Capture Report", "", f"- Capture: `{capture_path}`"]
     if entry:
+        lines.append(f"- Board: `{board_label(entry['board']) if entry.get('board') else 'unknown'}`")
         lines.append(f"- Suite: `{entry.get('suite') or 'n/a'}`")
         if entry.get("test_filter"):
             lines.append("- Test filter: `" + ", ".join(entry["test_filter"]) + "` - only the "
@@ -382,23 +399,28 @@ def build_report_markdown(capture_path, index_path):
                      "suite/build/worktree unknown")
     lines.append("")
 
-    lines.append("## Suite Results")
-    lines.append("")
-    passed, failed, failures = parse_suite_results(text)
-    if passed or failed:
-        lines.append(f"PASS: {passed}  FAIL: {failed}")
-        lines.append("")
-        if failures:
-            lines.append("### Failures")
-            lines.append("")
-            lines.append("| Test | Message |")
-            lines.append("|---|---|")
-            for name, message in failures:
-                lines.append(f"| `{name}` | {message} |")
-            lines.append("")
+    if entry and entry.get("command") == "selftest":
+        markdown, _, _ = selftest_markdown(results(text), text, capture_path,
+                                          datetime.fromisoformat(entry["started_at"]))
+        lines.append(markdown)
     else:
-        lines.append("No `PASS`/`FAIL` result lines found in this capture.")
+        lines.append("## Suite Results")
         lines.append("")
+        passed, failed, failures = parse_suite_results(text)
+        if passed or failed:
+            lines.append(f"PASS: {passed}  FAIL: {failed}")
+            lines.append("")
+            if failures:
+                lines.append("### Failures")
+                lines.append("")
+                lines.append("| Test | Message |")
+                lines.append("|---|---|")
+                for name, message in failures:
+                    lines.append(f"| `{name}` | {message} |")
+                lines.append("")
+        else:
+            lines.append("No `PASS`/`FAIL` result lines found in this capture.")
+            lines.append("")
 
     targets, summary_unmet = parse_perf_targets(text)
     if targets or summary_unmet is not None:
@@ -458,11 +480,14 @@ def selftest_markdown(parsed, text, capture_path, captured_at):
         lines.append("> **No `SELFTEST_COMPLETE` line found** - the capture may have "
                      "timed out or the device may have crashed mid-run. Treat this "
                      "report as partial.")
-    elif failures_reported != len(failed):
+    elif failures_reported < len(failed):
         lines.append("")
         lines.append(f"> Device reported `failures={failures_reported}` but this report "
                      f"parsed {len(failed)} FAIL lines - a parsing mismatch, not "
                      "necessarily a device problem. Check the raw capture.")
+    for sign in suite_failure_signs(text, len(failed)):
+        lines.append("")
+        lines.append(f"> **Run failed:** `{sign}`")
     lines.append("")
 
     if failed:

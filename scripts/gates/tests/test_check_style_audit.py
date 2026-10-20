@@ -149,8 +149,8 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
-            gate_tree.write(root, "launcher/main/render/r3d_project.h", "#pragma once\n")
-            gate_tree.write(root, "launcher/main/gfx/gfx.c", '#include "render/r3d_project.h"\n')
+            gate_tree.write(root, "launcher/main/scene/scene.h", "#pragma once\n")
+            gate_tree.write(root, "launcher/main/ui/ui.c", '#include "scene/scene.h"\n')
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(len(findings), 1)
@@ -158,8 +158,7 @@ class StyleAuditTest(unittest.TestCase):
 
     def test_include_direction_judges_the_resolved_file_not_the_spelling(self):
         # A relative include from gfx/ into ui/ must be caught before
-        # INCLUDE-LAYER's own --fix ever runs, since it reaches sideways
-        # within the same tier either way.
+        # INCLUDE-LAYER's own --fix ever runs, since it reaches upward either way.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
@@ -179,6 +178,19 @@ class StyleAuditTest(unittest.TestCase):
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(len(findings), 1)
         self.assertIn("apps/", findings[0].message)
+
+    def test_system_apps_use_the_app_layer(self):
+        cases = (
+            ("shell/shell.c", "shell/apps/x/x.h", 1),
+            ("shell/apps/x/x.c", "apps/y/y.h", 0),
+        )
+        for source, target, expected in cases:
+            with self.subTest(source=source):
+                findings = self.audit("INCLUDE-DIRECTION", {
+                    "launcher/main/" + source: f'#include "{target}"\n',
+                    "launcher/main/" + target: "#pragma once\n",
+                })
+                self.assertEqual(len(findings), expected)
 
     def test_apps_own_sources_are_never_a_source_for_include_direction(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -204,8 +216,8 @@ class StyleAuditTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
-            gate_tree.write(root, "launcher/main/gfx/present/gfx_dirty.h", "#pragma once\n")
-            gate_tree.write(root, "launcher/main/gfx/gfx.c", '#include "gfx/present/gfx_dirty.h"\n')
+            gate_tree.write(root, "launcher/main/gfx/present/send/gfx_dirty.h", "#pragma once\n")
+            gate_tree.write(root, "launcher/main/gfx/gfx.c", '#include "gfx/present/send/gfx_dirty.h"\n')
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(findings, [])
@@ -220,8 +232,8 @@ class StyleAuditTest(unittest.TestCase):
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(len(findings), 1)
 
-    def test_display_and_input_may_not_include_each_other_and_gfx_not_display(self):
-        # display/ is handed gravity by the shell; neither it nor input/ reads the other.
+    def test_input_may_include_display_but_display_not_input_and_gfx_not_display(self):
+        # Input maps gestures into the display viewport; display does not read input.
         with tempfile.TemporaryDirectory() as temp:
             root = pathlib.Path(temp)
             self.layer_tree(root)
@@ -235,8 +247,7 @@ class StyleAuditTest(unittest.TestCase):
             gate_tree.commit(root, "launcher")
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(sorted(f.path for f in findings),
-                         ["launcher/main/display/display_device.c", "launcher/main/gfx/gfx.c",
-                          "launcher/main/input/input_device.c"])
+                         ["launcher/main/display/display_device.c", "launcher/main/gfx/gfx.c"])
 
     def test_boot_and_selftest_may_not_include_each_other(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -251,6 +262,78 @@ class StyleAuditTest(unittest.TestCase):
             findings = self.rule_hits(root, "INCLUDE-DIRECTION")
         self.assertEqual(sorted((f.path, f.line) for f in findings),
                          [("launcher/main/boot/boot_anim.c", 1), ("launcher/main/selftest/post.c", 1)])
+
+    def assert_include_cases(self, rule_id, tree, flagged, allowed):
+        """Each case is "source include": `source` holding only that include,
+        over `tree`, draws one finding of `rule_id` when flagged and none when
+        allowed. An include written <...> is kept angled; any other is quoted."""
+        for cases, expected in ((flagged, 1), (allowed, 0)):
+            for case in cases:
+                source, include = case.split()
+                with self.subTest(case=case):
+                    line = f"#include {include}\n" if include.startswith("<") else f'#include "{include}"\n'
+                    findings = self.audit(rule_id, {**tree, source: line})
+                    self.assertEqual(len(findings), expected)
+
+    def test_an_app_or_the_editor_including_the_system_band_is_flagged_but_not_the_app_contract(self):
+        targets = ("shell/shell.h", "console/console_verbs.h", "selftest/post.h", "boot/boot_anim.h",
+                   "app/app.h", "ui/ui.h")
+        self.assert_include_cases("SYSTEM-BAND", {"launcher/main/" + t: "#pragma once\n" for t in targets}, flagged=(
+            "launcher/main/apps/x/x.c shell/shell.h",
+            "launcher/main/apps/x/x.c console/console_verbs.h",
+            "launcher/main/apps/x/x.h boot/boot_anim.h",
+            "launcher/main/apps/x/tests/suite_x.c selftest/post.h",
+            "launcher/main/apps/x/x.c <console/console_verbs.h>",
+            "editor/src/x.cpp shell/shell.h",
+            "editor/src/x.cpp <selftest/post.h>",
+        ), allowed=(
+            "launcher/main/apps/x/x.c app/app.h",
+            "launcher/main/apps/x/x.c ui/ui.h",
+            "editor/src/x.cpp ui/ui.h",
+            "launcher/main/shell/apps/x/x.c selftest/post.h",
+        ))
+
+    def test_the_system_band_refused_follows_the_layer_table(self):
+        system = dict(check_style_audit.LAYER_BANDS)["system"]
+        between = {layer for row in system[1:-1] for layer in row.split()}
+        self.assertEqual(check_style_audit.SYSTEM_BAND_REFUSED, between)
+        self.assertNotIn(system[-1], between)
+
+    BACKEND = {"launcher/components/microui/include/microui.h": "#pragma once\n"}
+
+    def test_the_ui_backend_is_refused_outside_ui(self):
+        self.assert_include_cases("UI-BACKEND", {
+            **self.BACKEND,
+            "launcher/main/ui/ui.h": "#pragma once\n",
+            "launcher/main/ui/ui_internal.h": '#include "microui.h"\n',
+            "launcher/main/ui/deep.h": '#include "ui/ui_internal.h"\n',
+            "launcher/main/ui/deeper.h": '#include "ui/deep.h"\n',
+            "launcher/main/ui/relative.h": '#include "../../components/microui/include/microui.h"\n',
+            "launcher/test/probe.h": '#include "ui/ui_internal.h"\n',
+        }, flagged=(
+            "launcher/main/apps/x/x.c microui.h",
+            "launcher/main/apps/x/x.c <microui.h>",
+            "launcher/main/shell/x.c ../../components/microui/include/microui.h",
+            "launcher/main/shell/x.c ui/relative.h",
+            "launcher/main/shell/x.c ui/ui_internal.h",
+            "launcher/main/shell/x.c ui/deeper.h",
+            "editor/src/x.cpp ui/ui_internal.h",
+            "launcher/main/apps/x/tests/suite_x.c probe.h",
+        ), allowed=(
+            "launcher/main/apps/x/x.c ui/ui.h",
+            "launcher/main/ui/ui.c ui/ui_internal.h",
+            "launcher/test/suites/suite_x.c ui/ui_internal.h",
+            "launcher/tools/render/x.c ui/ui_internal.h",
+        ))
+
+    def test_a_leaking_header_outside_ui_is_reported_once_at_its_own_include(self):
+        findings = self.audit("UI-BACKEND", {
+            **self.BACKEND,
+            "launcher/main/ui/ui_internal.h": '#include "microui.h"\n',
+            "launcher/main/apps/x/leak.h": '#include "ui/ui_internal.h"\n',
+            "launcher/main/apps/x/x.c": '#include "apps/x/leak.h"\n',
+        })
+        self.assertEqual([f.path for f in findings], ["launcher/main/apps/x/leak.h"])
 
     PACKAGE = "launcher/packages/math"
 
@@ -279,6 +362,53 @@ class StyleAuditTest(unittest.TestCase):
             f"{self.PACKAGE}/tests/suite_vec3.c": '#include "suites.h"\n#include "unity.h"\n#include "math/linear/vec3f.h"\n',
         })
         self.assertEqual(findings, [])
+
+    def test_package_config_rejects_product_and_other_package_symbols(self):
+        for name in ("probe.c", "include/math/probe.h", "CMakeLists.txt", "Kconfig"):
+            for symbol in ("CONFIG_LAUNCHER_QEMU", "CONFIG_OTHER_FPU_RECIP"):
+                with self.subTest(name=name, symbol=symbol):
+                    findings = self.audit("PACKAGE-CONFIG", {
+                        f"{self.PACKAGE}/{name}": f"\nif({symbol})\n",
+                    })
+                    self.assertEqual([f.line for f in findings], [2])
+                    self.assertIn(symbol, findings[0].message)
+
+    def test_package_config_accepts_its_own_prefix(self):
+        findings = self.audit("PACKAGE-CONFIG", {
+            f"{self.PACKAGE}/probe.c": "#if CONFIG_MATH_FPU_RECIP\n#endif\n",
+            f"{self.PACKAGE}/include/math/probe.h": "#ifdef CONFIG_MATH_FPU_RECIP\n#endif\n",
+            f"{self.PACKAGE}/CMakeLists.txt": "if(CONFIG_MATH_FPU_RECIP)\nendif()\n",
+            f"{self.PACKAGE}/Kconfig": "config MATH_FPU_RECIP\n    default y\n",
+            "launcher/packages/other/probe.c": "#if CONFIG_OTHER_FEATURE\n#endif\n",
+            "launcher/main/probe.c": "#if CONFIG_LAUNCHER_QEMU\n#endif\n",
+        })
+        self.assertEqual(findings, [])
+
+    def test_package_kconfig_declarations_require_its_prefix(self):
+        findings = self.audit("PACKAGE-CONFIG", {
+            f"{self.PACKAGE}/Kconfig": "config LAUNCHER_FEATURE\nconfig OTHER_FEATURE\n"
+                                      "menuconfig MATH_FEATURE\nmenuconfig FOREIGN_FEATURE\n",
+        })
+        self.assertEqual([f.line for f in findings], [1, 2, 4])
+
+    def test_package_config_ignores_comments_but_checks_code_on_the_same_line(self):
+        findings = self.audit("PACKAGE-CONFIG", {
+            f"{self.PACKAGE}/probe.c": "/* CONFIG_UNITY_ENABLE_64BIT */\n"
+                                      "// CONFIG_LAUNCHER_QEMU\n"
+                                      "/* CONFIG_OTHER_FEATURE */ #if CONFIG_LAUNCHER_QEMU\n",
+            f"{self.PACKAGE}/CMakeLists.txt": "# CONFIG_LAUNCHER_QEMU\n"
+                                             "#[=[\nCONFIG_OTHER_FEATURE\n]=]\n"
+                                             "if(CONFIG_MATH_FPU_RECIP) # CONFIG_OTHER_FEATURE\n",
+            f"{self.PACKAGE}/Kconfig": "# config OTHER_FEATURE CONFIG_OTHER_FEATURE\n"
+                                      "config MATH_FEATURE # CONFIG_LAUNCHER_QEMU\n",
+        })
+        self.assertEqual([(f.path, f.line) for f in findings], [(f"{self.PACKAGE}/probe.c", 3)])
+
+    def test_package_config_checks_symbols_in_build_strings(self):
+        findings = self.audit("PACKAGE-CONFIG", {
+            f"{self.PACKAGE}/CMakeLists.txt": 'message("# ${CONFIG_OTHER_FEATURE}")\n',
+        })
+        self.assertEqual([f.line for f in findings], [1])
 
     def test_a_package_header_is_spelled_from_its_include_root_inside_the_package_too(self):
         findings = self.audit("INCLUDE-LAYER", {

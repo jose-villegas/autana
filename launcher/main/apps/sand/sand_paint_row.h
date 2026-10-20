@@ -4,7 +4,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "gfx/present/gfx_indexed.h"
+#include "gfx/present/gfx_mode.h"
 #include "material_palette.h"
 #include "math/scalar/mathi.h"
 #include "sand_limits.h"

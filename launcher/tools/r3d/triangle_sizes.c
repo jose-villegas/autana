@@ -14,10 +14,10 @@ typedef struct {
 static bool
 project(const r3d_lens_t* lens, const int16_t p[3], point_t* out) {
     const vec3f_t l = mat4f_apply(&lens->m, (vec3f_t){(float)p[0], (float)p[1], (float)p[2]});
-    if (l.z <= lens->near_z) {
+    if (l.z <= lens->project.near_z) {
         return false;
     }
-    *out = (point_t){lens->center_x + (l.x / l.z), lens->center_y + (l.y / l.z)};
+    *out = (point_t){lens->project.cx + (l.x / l.z), lens->project.cy + (l.y / l.z)};
     return true;
 }
 
@@ -39,18 +39,11 @@ first_centre(float lo) {
     return (int)ceilf(lo - 0.5F);
 }
 
-typedef struct {
-    int x0, x1, y0, y1; /* the centres the bounding box holds, half-open */
-} box_t;
-
-static box_t
+static recti_t
 centre_box(const point_t v[3]) {
-    return (box_t){
-        first_centre(fminf(v[0].x, fminf(v[1].x, v[2].x))),
-        first_centre(fmaxf(v[0].x, fmaxf(v[1].x, v[2].x))),
-        first_centre(fminf(v[0].y, fminf(v[1].y, v[2].y))),
-        first_centre(fmaxf(v[0].y, fmaxf(v[1].y, v[2].y))),
-    };
+    return recti_from_edges(
+        first_centre(fminf(v[0].x, fminf(v[1].x, v[2].x))), first_centre(fminf(v[0].y, fminf(v[1].y, v[2].y))),
+        first_centre(fmaxf(v[0].x, fmaxf(v[1].x, v[2].x))), first_centre(fmaxf(v[0].y, fmaxf(v[1].y, v[2].y))));
 }
 
 static int
@@ -60,10 +53,10 @@ clamp_int(int v, int lo, int hi) {
 
 /* Counts the centres a positive-winding triangle owns, stopping past 4. */
 static long
-count_centres(const point_t v[3], box_t b, int width, int height) {
+count_centres(const point_t v[3], recti_t b, int width, int height) {
     long covered = 0;
-    for (int y = clamp_int(b.y0, 0, height); y < clamp_int(b.y1, 0, height) && covered <= 4; y++) {
-        for (int x = clamp_int(b.x0, 0, width); x < clamp_int(b.x1, 0, width) && covered <= 4; x++) {
+    for (int y = clamp_int(b.y, 0, height); y < clamp_int(recti_bottom(b), 0, height) && covered <= 4; y++) {
+        for (int x = clamp_int(b.x, 0, width); x < clamp_int(recti_right(b), 0, width) && covered <= 4; x++) {
             const float px = (float)x + 0.5F;
             const float py = (float)y + 0.5F;
             covered += owns(v[0], v[1], px, py) && owns(v[1], v[2], px, py) && owns(v[2], v[0], px, py);
@@ -83,17 +76,17 @@ size_triangle(point_t v[3], bool double_sided, int width, int height, r3d_sizes_
         v[1] = v[2];
         v[2] = t;
     }
-    const box_t b = centre_box(v);
-    if (b.x1 <= 0 || b.x0 >= width || b.y1 <= 0 || b.y0 >= height) {
+    const recti_t b = centre_box(v);
+    if (recti_right(b) <= 0 || b.x >= width || recti_bottom(b) <= 0 || b.y >= height) {
         return;
     }
     s->drawn++;
-    if (b.x0 >= b.x1 || b.y0 >= b.y1) {
+    if (recti_is_empty(b)) {
         s->box_empty++;
         s->bins[R3D_SIZES_ZERO]++;
         return;
     }
-    s->box_two_by_two += (b.x1 - b.x0 <= 2 && b.y1 - b.y0 <= 2);
+    s->box_two_by_two += (b.w <= 2 && b.h <= 2);
     const long covered = count_centres(v, b, width, height);
     s->bins[covered == 0   ? R3D_SIZES_ZERO
             : covered == 1 ? R3D_SIZES_ONE
@@ -138,14 +131,12 @@ void
 r3d_boxes_count(r3d_boxes_t* out, const r3d_span_target_t* target, const r3d_span_vertex_t* a,
                 const r3d_span_vertex_t* b, const r3d_span_vertex_t* c, bool solid) {
     const r3d_span_extent_t e = r3d_span_extent(a, b, c);
-    const r3d_span_box_t box = e.centres;
-    const bool in_target = box.x0 < target->rows.width && box.x1 > 0 && box.x0 < box.x1 && box.y0 < target->rows.row1
-                           && box.y1 > target->rows.row0 && box.y0 < box.y1;
-    if (!in_target || r3d_span_area2(a, b, c) == 0) {
+    const recti_t box = e.centres;
+    if (recti_is_empty(r3d_span_window_box(target, box)) || r3d_span_area2(a, b, c) == 0) {
         return;
     }
     const int mode = e.flat ? R3D_BOXES_FLAT : (solid ? R3D_BOXES_FACE : R3D_BOXES_SMOOTH);
-    out->boxes[mode][box_side(e.centres.y1 - e.centres.y0)][box_side(e.centres.x1 - e.centres.x0)]++;
+    out->boxes[mode][box_side(e.centres.h)][box_side(e.centres.w)]++;
 }
 
 /* Triangles of `mode`, or of every mode for R3D_BOXES_MODES, whose box is

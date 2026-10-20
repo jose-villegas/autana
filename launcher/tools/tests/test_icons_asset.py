@@ -2,7 +2,7 @@
 its own one-bit image entry, what the baker refuses, what the image reader
 refuses of a one-bit entry, and build_pack putting every root under a
 NAME.pack.toml folder into pack NAME. The firmware reads the same bytes in
-suite_gfx_image.c and the icon suites."""
+suite_draw_image.c and the icon suites."""
 
 import pathlib
 import struct

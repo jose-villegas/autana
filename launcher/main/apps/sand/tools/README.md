@@ -48,7 +48,7 @@ are checked.
 
 ```sh
 ./launcher/main/apps/sand/tools/sand_menu_render_host.sh    # title and options screens
-./launcher/main/apps/sand/tools/brush_screen_render_host.sh # brush screen, both orientations
+./launcher/main/apps/sand/tools/brush_screen_render_host.sh # brush screen and palette, both orientations
 ./launcher/main/apps/sand/tools/sand_sim_render_host.sh --video
 ```
 

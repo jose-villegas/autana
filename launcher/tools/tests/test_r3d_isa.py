@@ -21,6 +21,7 @@ try:
 except ImportError:
     np = None
 
+from bake.bake import cpu_vendor  # noqa: E402
 from tests.r3d_env import HAVE_MITSUBA  # noqa: E402
 
 PINNED = HAVE_MITSUBA and sys.platform == "linux" and platform.machine() == "x86_64" and isa.pin()
@@ -35,14 +36,6 @@ PINNED_SHA256 = {
     "GenuineIntel": ("6e829de472b2bbba8a9b90115f072a73b3f8fa6e44f9476060ef34f8facc7487",
                      "c7032957b091c7ea5737a32bdd4064401bc9ebd59c6a013878daf9f91d786d2b"),
 }
-
-
-def vendor():
-    """The CPU vendor /proc/cpuinfo names, None when it names none."""
-    for line in pathlib.Path("/proc/cpuinfo").read_text().splitlines():
-        if line.startswith("vendor_id"):
-            return line.split(":", 1)[1].strip()
-    return None
 
 
 def digest(*arrays):
@@ -84,9 +77,9 @@ class PinnedIsa(unittest.TestCase):
         self.assertTrue(isa.embree_config().endswith("," + isa.EMBREE_CAP.decode()), isa.embree_config())
 
     def pinned_sha256(self):
-        if vendor() not in PINNED_SHA256:
-            self.skipTest(f"no digests recorded for {vendor()}")
-        return PINNED_SHA256[vendor()]
+        if cpu_vendor() not in PINNED_SHA256:
+            self.skipTest(f"no digests recorded for {cpu_vendor()}")
+        return PINNED_SHA256[cpu_vendor()]
 
     def test_hit_distances_are_the_pinned_bits(self):
         self.assertEqual(digest(*soup_hits()), self.pinned_sha256()[0])

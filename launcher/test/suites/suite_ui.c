@@ -20,10 +20,11 @@
 
 #include "unity.h"
 
-#include "gfx/draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
 #include "ui/ui.h"
+#include "ui/ui_internal.h"
 
 /* Two separate canvases, well apart, each inside its own band. */
 #define TOP_Y    0
@@ -67,7 +68,7 @@ static void
 fixture(void) {
     no_touch = (input_t){0};
     ui_init();
-    gfx_clear_clip();
+    draw_clear_clip();
 }
 
 static void
@@ -109,7 +110,7 @@ test_a_canvas_is_repainted_when_something_draws_over_it(void) {
 
     /* An app drawing underneath an overlay. The UI's description has not
      * changed, but its pixels are gone. */
-    gfx_fill_rect(0, TOP_Y, GFX_WIDTH, TOP_H, gfx_rgb(0x804020));
+    draw_rect(0, TOP_Y, GFX_WIDTH, TOP_H, gfx_rgb(0x804020));
 
     build("one");
     const bool drew = ui_end(UI_NO_BACKGROUND);
@@ -141,22 +142,22 @@ test_invalidate_forces_a_repaint(void) {
 static void
 test_layout_generation_unchanged_by_a_repeated_equal_transform(void) {
     fixture();
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(affine2x_identity());
     const uint32_t gen = ui_layout_generation();
 
-    ui_set_transform(ui_transform_identity());
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(affine2x_identity());
+    ui_set_transform(affine2x_identity());
 
     TEST_ASSERT_EQUAL_UINT32_MESSAGE(gen, ui_layout_generation(),
                                      "setting the transform already in force must not bump the generation "
-                                     "- this is the same transforms_equal() check ui_set_transform() uses "
+                                     "- this is the same affine2x_equal() check ui_set_transform() uses "
                                      "to decide whether to call ui_invalidate()");
 }
 
 static void
 test_layout_generation_increments_by_one_per_genuine_change(void) {
     fixture();
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(affine2x_identity());
     const uint32_t before = ui_layout_generation();
 
     ui_set_transform(ui_transform_quarter_turn(1, GFX_WIDTH, GFX_HEIGHT));
@@ -169,7 +170,7 @@ test_layout_generation_increments_by_one_per_genuine_change(void) {
 static void
 test_layout_generation_counts_a_sequence_of_genuine_changes(void) {
     fixture();
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(affine2x_identity());
     const uint32_t start = ui_layout_generation();
 
     /* Four calls, three of which are genuine changes: the repeat of turn 1
@@ -250,7 +251,7 @@ test_ui_begin_screen_corrects_a_stale_rect_from_a_prior_orientation(void) {
  * repaint_marked_canvases() under an odd quarter
  *
  * The background clear must transform its LOGICAL rect before
- * gfx_fill_rect(). Under an odd quarter (GFX_WIDTH != GFX_HEIGHT), an
+ * draw_rect(). Under an odd quarter (GFX_WIDTH != GFX_HEIGHT), an
  * untransformed rect covers only 368 of the physical framebuffer's 448
  * rows.
  */

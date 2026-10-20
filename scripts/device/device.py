@@ -6,6 +6,7 @@ import collections
 import contextlib
 import errno
 import gzip
+from functools import partial
 import json
 import math
 import os
@@ -21,15 +22,20 @@ from datetime import datetime
 from pathlib import Path
 
 import device_lock
+from device_lock import board_label, short_id
+from device_report import records_root
 import device_report
 import lock_scope
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 import autana_config  # noqa: E402
+import board_serial
+from console_protocol import replies_to, require_development, reply_prefix
 from device_capture import (BOOTS_FROM_RESET, BOOTS_ON_RUNNING, BUILD_ID_BYTES_RE as BUILD_ID, BUILD_ID_REQUEST,
-                            crash_signs)
+                            crash_signs, suite_failure_signs)
 
-from process_tree import stop_process_tree, launch_process_tree, close_process_tree
+from process_tree import (stop_process_tree, launch_process_tree, close_process_tree,
+                          install_console_interrupt_handler)
 SUITE_RESULT = re.compile(rb":\d+:.*:(PASS|FAIL)(?:\r?$|:)", re.MULTILINE)
 BOARD_ENV = autana_config.BOARD_ENV
 TOKEN_ENV = autana_config.TOKEN_ENV
@@ -144,9 +150,52 @@ def plugged_boards():
             if port.vid == ESPRESSIF_VID and port.serial_number]
 
 
-def chosen_board(board=None):
+BOARD_SERIAL_PATTERN = r"(?:[0-9A-F]{2}:){5}[0-9A-F]{2}"
+
+
+def known_boards(store=None):
+    store = store if store is not None else device_lock.LockStore()
+    return sorted(set(found.serial for found in plugged_boards())
+                  | set(store.boards()) | set(store.seen_boards()))
+
+
+def board_selector(value):
+    named = device_lock.normalise_board(value)
+    if (re.fullmatch(BOARD_SERIAL_PATTERN, named)
+            or re.fullmatch(r"[0-9A-F]{%d}" % device_lock.SHORT_ID_DIGITS, named)):
+        return named
+    return None
+
+
+def resolve_board(value, store=None):
+    named = board_selector(value)
+    if named is None:
+        raise RuntimeError("board needs a full USB serial or four-digit short id")
+    if re.fullmatch(BOARD_SERIAL_PATTERN, named):
+        return named
+    known = known_boards(store)
+    matches = [serial for serial in known if short_id(serial) == named]
+    if len(matches) == 1:
+        return matches[0]
+    if matches:
+        raise RuntimeError("ambiguous board " + named + ": " + ", ".join(matches)
+                           + "; use the full serial")
+    raise NoBoard("no board matches " + named + "; known boards: "
+                  + (", ".join(known) or "none"))
+
+
+def chosen_board(board=None, store=None, token=None):
     named = board or os.environ.get(BOARD_ENV)
-    return device_lock.normalise_board(named) if named else None
+    if named:
+        return resolve_board(named, store)
+    token = token or os.environ.get(TOKEN_ENV)
+    if token:
+        store = store if store is not None else device_lock.LockStore()
+        board = store.board_of_token(token)
+        if board is None:
+            raise TokenRefused("lock token is not live on any board (released, lapsed or wrong)")
+        return board
+    return None
 
 
 def find_board(board=None):
@@ -161,12 +210,12 @@ def find_board(board=None):
     if not present:
         raise NoBoard("no USB Serial/JTAG board found (VID 0x303A)")
     if len(present) > 1:
-        raise RuntimeError("several boards are plugged in - name one with --board: "
-                           + ", ".join(sorted(b.serial for b in present)))
+        raise RuntimeError("several boards are plugged in - name one with --board / -b / use: "
+                           + ", ".join(sorted(board_label(b.serial) for b in present)))
     return present[0]
 
 
-def board_for_lock(store, named=None, remembered=False):
+def board_for_lock(store, named=None, remembered=False, auto_pick=False, token=None):
     """The board a command queues for. A lock outlives the board's USB
     presence, so while a holder's reset has the only board off USB a waiter
     still finds it through the lock records; only opening its port needs USB.
@@ -174,23 +223,28 @@ def board_for_lock(store, named=None, remembered=False):
     still, to a board merely seen on USB before, with nothing active
     against it now, since those are the two commands a board dropped off
     USB (and idle) needs."""
-    wanted = chosen_board(named)
+    wanted = chosen_board(named, store, token)
     if wanted:
-        return wanted
+        return wanted, None
     present = sorted(found.serial for found in plugged_boards())
     for serial in present:
         store.note_seen(serial)
+    if auto_pick and len(present) > 1:
+        entries = [entry for entry in board_statuses(store) if entry["port"]]
+        board, reason = pick_board(entries)
+        print(f"picked {board_label(board)}: {reason}", file=sys.stderr)
+        return board, reason
     candidates, source = present, "plugged in"
     if not candidates:
         candidates, source = store.boards(), "known to the lock"
     if not candidates and remembered:
         candidates, source = store.seen_boards(), "known to this machine"
     if len(candidates) == 1:
-        return candidates[0]
+        return candidates[0], None
     if not candidates:
         raise NoBoard("no USB Serial/JTAG board found (VID 0x303A)")
     raise RuntimeError("several boards are " + source
-                       + " - name one with --board: " + ", ".join(candidates))
+                       + " - name one with --board / -b / use: " + ", ".join(board_label(serial) for serial in candidates))
 
 
 # A power-cycling reset takes the USB Serial/JTAG port off the bus about
@@ -236,9 +290,7 @@ def open_serial():
     a second open by itself; POSIX needs `exclusive`, an advisory flock that
     keeps out our readers and esptool but not screen or ModemManager, else two
     readers silently split the byte stream. A refused open is an OSError,
-    which open_when_free treats as busy. DTR low with RTS high resets USB
-    Serial/JTAG, so Windows sets both low before the open, and POSIX, which
-    opens with both raised, lowers RTS before DTR."""
+    which open_when_free treats as busy."""
     port = locked_port()
     try:
         import serial
@@ -270,8 +322,6 @@ def open_serial():
                 time.sleep(FLUSH_POLL_SECONDS)
 
     connection = BoardSerial()
-    if os.name != "nt":
-        connection.exclusive = True
     connection.port = port
     connection.baudrate = BAUD
     connection.timeout = 0.2
@@ -279,18 +329,10 @@ def open_serial():
     # in the OS forever, holding the lock with it. A reading board drains a
     # line at once; the longest a healthy one goes without reading is its boot.
     connection.write_timeout = BOOT_WAIT_SECONDS
-    if os.name == "nt":
-        connection.dtr = connection.rts = False
+    board_serial.before_open(connection)
     try:
         connection.open()
-        if os.name != "nt":
-            try:
-                connection.rts = False
-                connection.dtr = False
-            except OSError as error:
-                # A PTY has no modem lines to lower.
-                if error.errno not in (errno.EINVAL, errno.ENOTTY):
-                    raise
+        board_serial.after_open(connection)
     except BaseException:
         connection.close()
         raise
@@ -299,19 +341,6 @@ def open_serial():
 
 def now():
     return datetime.now()
-
-
-def records_root():
-    """Where a session's log and manifest are written.
-
-    The project's `records` setting names it, for anyone who keeps their
-    device history elsewhere. Without one, records land in this checkout's
-    own gitignored .records/device, self-contained, and nothing a commit
-    can pick up by accident."""
-    named = autana_config.load().get("records")
-    if named:
-        return autana_config.path_value(named)
-    return Path(__file__).resolve().parents[2] / ".records" / "device"
 
 
 def slug(text):
@@ -364,7 +393,7 @@ def append_manifest(entry, root=None):
 
 def record_capture(path, managed, *, started_at, board, owner, purpose, command, commit,
                     suite=None, build_id=None, worktree=None, reason=None, error=None, root=None,
-                    acquired_at=None, test_filter=None):
+                    acquired_at=None, test_filter=None, console_send=None):
     """The permanent trail: written for every flash/run-suite/listen call, so
     even a capture left behind in a doomed worktree still has metadata here."""
     path = Path(path)
@@ -392,6 +421,8 @@ def record_capture(path, managed, *, started_at, board, owner, purpose, command,
     }
     if test_filter:
         entry["test_filter"] = test_filter
+    if console_send:
+        entry["console_send"] = console_send
     append_manifest(entry, root)
     return path
 
@@ -481,11 +512,13 @@ def print_crash_signs(data, boots_allowed):
     signs = crash_signs(data.decode("utf-8", errors="replace"), boots_allowed)
     for sign in signs:
         print(sign)
+    if signs:
+        keep_crashed_elf(data)
     return len(signs)
 
 
 def print_suite_output(data, record_path, command, reason, verbose, boots_allowed):
-    """How many failures and crash signs the capture holds, after printing them."""
+    """Failures, crash signs and missing completion, after printing the verdict."""
     text = data.decode("utf-8", errors="replace")
     if verbose and text:
         print(text, end="" if text.endswith("\n") else "\n")
@@ -499,9 +532,14 @@ def print_suite_output(data, record_path, command, reason, verbose, boots_allowe
         for suite_name, count in failures_by_suite(text):
             print(f"  {suite_name}: {count} FAIL")
     crashed = print_crash_signs(data, boots_allowed)
+    signs = suite_failure_signs(text, failed)
+    for sign in signs:
+        print(sign)
     print(f"{command} capture: {record_path}")
     print(f"{command} capture ended: {reason}")
-    return failed + crashed
+    if reason != "complete":
+        raise RuntimeError(f"no completion line arrived: the capture ended {reason}")
+    return failed + crashed + len(signs)
 
 
 def print_reset_output(data, verbose):
@@ -565,7 +603,7 @@ def wait_notice(store, board, state, ticket):
                   if item["ticket"] == ticket), None)
     if place:
         estimate = device_lock.queue_estimates(
-            status, now, device_lock.duration_history(store.root)).get(ticket)
+            status, now, device_lock.duration_history(store.root, board=board)).get(ticket)
         print(f"waiting for board: queue place {place}; estimated start "
               f"{device_lock.format_estimate(estimate)}", file=sys.stderr)
 
@@ -577,7 +615,7 @@ class HeldLock:
 
     HEARTBEAT_SECONDS = 5
 
-    def __init__(self, store, board, owner, kind, wait, announce_waiters=False):
+    def __init__(self, store, board, owner, kind, wait, announce_waiters=False, estimate=None):
         self.store = store
         self.announce_waiters = announce_waiters
         self.board = board
@@ -592,7 +630,7 @@ class HeldLock:
             self.held = device_lock.Held(record, "")
         else:
             self.held = store.acquire(board, owner, kind, wait=wait, on_wait=self.wait_notice,
-                                      purpose=command_label(kind))
+                                      purpose=command_label(kind), estimate=estimate)
         if not self.held:
             raise LockBusy("device lock was not acquired: "
                            + device_lock.busy_text(store.status(board), store.now()))
@@ -674,7 +712,7 @@ class HeldLock:
             error = (str(error_value) if error_type else
                      str(LockLost()) if lost else self.error)
             device_lock.record_duration(self.kind, time.monotonic() - self.started, error,
-                                        self.store.root)
+                                        self.store.root, board=self.board)
         if lost and error_type is None:
             raise LockLost()
 
@@ -695,8 +733,7 @@ class NestedCommand:
 
 
 def tests_done(data):
-    return (b"TESTS_DONE" in data or b"SELFTEST_COMPLETE" in data or
-            (b"Tests " in data and b"Failures" in data))
+    return device_report.SELFTEST_COMPLETE_RE.search(data.decode("utf-8", errors="replace")) is not None
 
 
 def capture(connection, output, max_seconds, idle_seconds, expected_build_id=None,
@@ -754,7 +791,7 @@ def capture(connection, output, max_seconds, idle_seconds, expected_build_id=Non
                                               "console line: " + text.decode("ascii", "replace"))
                     if (b"no suite named '" + suite_name.encode("ascii") + b"'") in text:
                         raise RuntimeError("no suite named " + suite_name + " on this build")
-                    if b"SUITE_DONE" in text or text.startswith(suite_complete):
+                    if text.startswith(suite_complete):
                         return bytes(data), "complete"
             if complete is not None and complete(data):
                 return bytes(data), "complete"
@@ -788,11 +825,20 @@ def reset(after="hard_reset"):
 
 def reset_and_capture(output, seconds, idle_seconds, expected_build_id=None,
                       complete=tests_done):
-    """A board that says nothing at all after the RTS reset is taken for a chip
-    in download mode, the one case RTS cannot start, and gets the watchdog. One
-    that spoke, even without a BUILD_ID, is left alone."""
+    """The console after an RTS reset, with the download-mode fallback of
+    capture_with_watchdog_fallback."""
+    return capture_with_watchdog_fallback(output, seconds, idle_seconds, expected_build_id,
+                                          complete, connection=reset())
+
+
+def capture_with_watchdog_fallback(output, seconds, idle_seconds, expected_build_id=None,
+                                   complete=tests_done, *, connection):
+    """The console after a reset whose port `connection` is. A board that says
+    nothing at all is taken for a chip in download mode, the one case RTS
+    cannot start, and gets the watchdog. One that spoke, even without a
+    BUILD_ID, is left alone."""
     data, reason = capture_after_reset(output, seconds, idle_seconds, expected_build_id,
-                                       complete, connection=reset())
+                                       complete, connection=connection)
     if reason != "silent":
         return data, reason
     print("board silent after an RTS reset, as from download mode; "
@@ -859,8 +905,8 @@ def await_console(args, board, build_id, acquired_at, connection):
         raise
     data, reason = b"", None
     try:
-        data, reason = capture_after_reset(output, BOOT_WAIT_SECONDS, None, build_id,
-                                           console_up(build_id), connection=connection)
+        data, reason = capture_with_watchdog_fallback(output, BOOT_WAIT_SECONDS, None, build_id,
+                                                      console_up(build_id), connection=connection)
     finally:
         path = record_capture(output, managed, started_at=started_at, board=board,
                               owner=args.owner, purpose=args.purpose, command="boot",
@@ -964,13 +1010,55 @@ def decode_addresses(addresses, elf):
     return [line for line in result.stdout.splitlines() if line.strip()]
 
 
+ELF_ARCHIVE_KEEP = 24
+# The panic handler's own line naming the crashed build (esp_system's panic.c).
+PANIC_ELF_SHA = re.compile(rb"ELF file SHA256: ([0-9a-f]+)")
+
+
+def elf_archive():
+    """Where a capture that saw a crash keeps the crashed build's ELF as
+    <BUILD_ID>.elf, beside the records, so its core dump stays decodable
+    after the build directory has been built over."""
+    return records_root() / "elf"
+
+
+def keep_crashed_elf(data):
+    """Copies the ELF of the build that crashed in capture `data` into
+    elf_archive(), dropping all but the newest ELF_ARCHIVE_KEEP there: the
+    build the panic names, else the capture's BUILD_ID. Nothing when this
+    worktree has no ELF of that build. A convenience: a failure here is one
+    stderr line, never the capture's."""
+    named = PANIC_ELF_SHA.findall(data)
+    build = named[-1].decode("ascii") if named else latest_build_id_from_bytes(data)
+    archive = elf_archive()
+    elf = find_elf_for_build_id(Path.cwd(), build)
+    if elf is None or elf.parent == archive:
+        return
+    try:
+        archive.mkdir(parents=True, exist_ok=True)
+        build_id = (elf.parent / "build_id.txt").read_text(encoding="ascii").strip()
+        shutil.copyfile(elf, archive / (build_id + ".elf"))
+        newest_first = sorted(archive.glob("*.elf"), key=lambda path: path.stat().st_mtime, reverse=True)
+        for stale in newest_first[ELF_ARCHIVE_KEEP:]:
+            stale.unlink(missing_ok=True)
+    except OSError as error:
+        print(f"could not keep the crashed build's ELF: {error}", file=sys.stderr)
+
+
+def same_build(build_id, other):
+    """Whether two build names are one build: a BUILD_ID's hash before its
+    first '-', or a core dump's ELF SHA-256 hex, which may run longer. The
+    variant can be ignored because BUILD_ID's hash is the ELF's own SHA-256."""
+    own, theirs = build_id.split("-", 1)[0], other.split("-", 1)[0]
+    return bool(own and theirs) and (own.startswith(theirs) or theirs.startswith(own))
+
+
 def find_elf_for_build_id(worktree, build_id):
-    """The launcher.elf whose own build_id.txt matches `build_id`, searched
-    across every launcher/build*/ directory, the build actually on the
-    board, not merely the newest one on disk (a `--dev` build built after
-    the board was last flashed `--diag`, say, would otherwise decode
-    against the wrong symbols). None when `build_id` is empty or nothing
-    under this worktree matches."""
+    """The launcher.elf of build `build_id` (a BUILD_ID, or a core dump's ELF
+    hash): a launcher/build*/ directory of this worktree whose build_id.txt
+    names it, else the archive's copy. Matches by name, so a `--dev` build
+    built later than a `--diag` one cannot stand in for it. None when
+    `build_id` is empty or nothing matches."""
     if not build_id:
         return None
     for build_dir in sorted(Path(worktree).glob("launcher/build*")):
@@ -979,10 +1067,13 @@ def find_elf_for_build_id(worktree, build_id):
             seen = id_file.read_text(encoding="ascii").strip()
         except OSError:
             continue
-        if seen != build_id:
+        if not same_build(seen, build_id):
             continue
         elf = build_dir / "launcher.elf"
         if elf.is_file():
+            return elf
+    for elf in sorted(elf_archive().glob("*.elf")):
+        if same_build(elf.stem, build_id):
             return elf
     return None
 
@@ -1004,7 +1095,7 @@ def holding(store, board, args, held_lock, kind):
         raise
     finally:
         device_lock.record_duration(kind, time.monotonic() - nested.started,
-                                    error or nested.error, store.root)
+                                    error or nested.error, store.root, board=board)
 
 
 FLASH_POLL_SECONDS = 0.5
@@ -1082,13 +1173,13 @@ def try_lock_file(handle):
 
 
 @contextlib.contextmanager
-def build_directory_lock(build_dir):
-    """Holds `build_dir` for one build and its snapshot, so two builds of one
-    worktree's variant never interleave in one directory. An OS file lock:
-    the system drops it with the process that held it. Yields the folder
-    build_paths.py prepared, to pass to build.sh as --prepared-build, or None
-    for a project older than build_paths.py, whose build.sh has no such option
-    (autana is one tool for every checkout, perf_compare's old revisions too)."""
+def build_directory_lock(build_dir, timeout=None):
+    """Lock one build directory through its snapshot; yield its prepared path,
+    or None when the checkout has no --prepared-build support."""
+    latest = os.environ.get(autana_config.BUILD_LATEST_START_ENV)
+    if timeout is None and latest:
+        timeout = max(0, float(latest) - time.time())
+    expires = time.monotonic() + timeout if timeout is not None else None
     build_dir = Path(build_dir)
     prepared = None
     if (build_dir.parent / "tools/build/build_paths.py").is_file():
@@ -1099,7 +1190,10 @@ def build_directory_lock(build_dir):
         if not try_lock_file(handle):
             print("waiting for another build in " + str(build_dir), file=sys.stderr)
             while not try_lock_file(handle):
-                time.sleep(BUILD_LOCK_POLL_SECONDS)
+                if expires is not None and time.monotonic() >= expires:
+                    raise TimeoutError("build lock wait exceeded its window")
+                time.sleep(min(BUILD_LOCK_POLL_SECONDS, max(0, expires - time.monotonic()))
+                           if expires is not None else BUILD_LOCK_POLL_SECONDS)
         yield prepared
 
 
@@ -1161,26 +1255,47 @@ def remove_image_directory(image):
     shutil.rmtree(image, ignore_errors=True)
 
 
-def build_snapshot(build, build_dir, image_dir, **popen):
-    """Runs `build` and snapshots its image, holding the build directory
-    throughout and no board lock at all. Returns the build id."""
+BUILD_NICE_INCREMENT = 5
+
+
+@contextlib.contextmanager
+def build_policy(environment):
+    """Private process-tree policy limits compilation, never board captures."""
+    latest = environment.get(autana_config.BUILD_LATEST_START_ENV)
+    latest = float(latest) if latest else None
+    serial = environment.get(autana_config.BUILD_SERIAL_ENV)
+    options = {}
+    if environment.get(autana_config.BUILD_PRIORITY_ENV) == autana_config.BUILD_PRIORITY_BELOW_NORMAL:
+        if os.name == "nt":
+            options["creationflags"] = subprocess.BELOW_NORMAL_PRIORITY_CLASS
+        else:
+            options["preexec_fn"] = partial(os.nice, BUILD_NICE_INCREMENT)
+    with build_directory_lock(serial, timeout=max(0, latest - time.time()) if latest else None) if serial else contextlib.nullcontext():
+        if latest is not None and time.time() > latest:
+            raise TimeoutError("build cannot start inside its window")
+        yield options
+
+
+def build_snapshot(build, build_dir, image_dir=None, **popen):
+    """Compile under the process policy and directory lock; optionally snapshot."""
     with build_directory_lock(build_dir) as prepared:
-        run_to_end(build + (["--prepared-build", prepared.as_posix()] if prepared else []), None, **dict(popen, env=script_environment(popen.get("env"))))
-        return snapshot_image(prepared or build_dir, image_dir)
+        environment = script_environment(popen.pop("env", None))
+        with build_policy(environment) as priority:
+            run_to_end(build + (["--prepared-build", prepared.as_posix()] if prepared else []), None,
+                       **dict(popen, env=environment, **priority))
+        return snapshot_image(prepared or build_dir, image_dir) if image_dir else None
 
 
 def build_worktree(worktree, variant, build_flags=()):
-    """The build half of a flash on its own, for `autana build`: no board and
-    no lock but the build directory's. The build's output goes to this
-    process's; returns its exit status."""
+    """Build one worktree without acquiring a board; return the build's exit status."""
     worktree = Path(worktree).resolve()
     if not (worktree / BUILD_SCRIPT).is_file():
         raise RuntimeError("build tool not found: " + str(worktree / BUILD_SCRIPT))
     build, _ = flash_commands(git_bash(), worktree, variant, build_flags)
     try:
-        with build_directory_lock(build_directory(worktree, variant)) as prepared:
-            run_to_end(build + (["--prepared-build", prepared.as_posix()] if prepared else []), None, cwd=worktree, stdin=subprocess.DEVNULL,
-                       env=script_environment())
+        build_snapshot(build, build_directory(worktree, variant), cwd=worktree, stdin=subprocess.DEVNULL)
+    except TimeoutError:
+        return autana_config.EXIT_BUSY
     except subprocess.CalledProcessError as failed:
         return failed.returncode
     return 0
@@ -1337,13 +1452,12 @@ class NoTestMatched(TestFilterError):
     """A --test pattern selected nothing."""
 
 
-def check_test_filter(data, suite, patterns, reason="complete"):
+def check_test_filter(data, suite, patterns):
     """A filtered run that did not filter, or had a pattern that matched
     nothing, is an error and not a result: the first would report every row
     of the suite as if it had been asked for, the second lists the names to
-    choose from. With `patterns` given, a capture that never printed the
-    completion line is one too: a filter error when the board went on to
-    finish, a capture error, which a batch survives, when it was cut short."""
+    choose from. A completed capture without filter counts cannot verify
+    the requested selection."""
     text = data.decode("utf-8", errors="replace")
     complete = None
     for complete in device_report.SUITE_COMPLETE_RE.finditer(text):
@@ -1354,8 +1468,6 @@ def check_test_filter(data, suite, patterns, reason="complete"):
                               "SUITE_FILTER_LEN - 1 characters, and there are at most "
                               "SUITE_FILTER_MAX (launcher/test/suites.h)")
     if complete is None:
-        if patterns and reason != "complete":
-            raise RuntimeError(f"no RUNSUITE_COMPLETE line arrived: the capture ended {reason}")
         if patterns:
             raise TestFilterError("no RUNSUITE_COMPLETE line arrived: an image that predates --test "
                                   "drops a request this long")
@@ -1386,6 +1498,7 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
         with holding(store, board, args, held_lock, "run-suite") as held:
             with open_when_free() as connection:
                 apply_tunables(connection, getattr(args, "tune_set", None) or [])
+                apply_console_lines(connection, getattr(args, "console_send", None) or [])
                 connection.write(suite_request(args.suite, patterns))
                 data, reason = capture(connection, output, args.max_seconds, args.idle_seconds,
                                        args.expect_build_id, args.suite)
@@ -1400,7 +1513,8 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
             worktree=worktree if worktree is not None else str(Path.cwd()),
             commit=commit if commit is not None else git_commit(), reason=reason, error=error,
             acquired_at=held.held["acquired_at"] if held else None,
-            test_filter=patterns or None)
+            test_filter=patterns or None,
+            console_send=getattr(args, "console_send", None))
         try:
             report_path = device_report.write_report_for_capture(
                 final_path, records_root() / "index.jsonl")
@@ -1408,9 +1522,9 @@ def run_suite(args, store, board, held_lock=None, worktree=None, commit=None):
         except Exception as report_error:  # a report is a convenience, never fails the capture
             print("report generation failed (capture is unaffected): " + str(report_error),
                   file=sys.stderr)
-    if patterns:
-        check_test_filter(data, args.suite, patterns, reason)
     failed = print_suite_output(data, final_path, "suite", reason, getattr(args, "verbose", False), BOOTS_ON_RUNNING)
+    if patterns:
+        check_test_filter(data, args.suite, patterns)
     return 1 if failed else 0
 
 
@@ -1541,65 +1655,76 @@ def listen(args, store, board):
 
 
 COREDUMP_PARTITION = "coredump"
-COREDUMP_BUILD_ID_SECONDS = 5
+# The dump's ESP_CORE_DUMP_INFO note (espcoredump's core_dump_elf.c): a
+# 4-byte version, then the crashed app's ELF SHA-256 as NUL-padded hex in a
+# 64-byte field. ELF pads a note's name to 4 bytes.
+COREDUMP_INFO_NOTE = b"ESP_CORE_DUMP_INFO\0"
+COREDUMP_INFO_VERSION_BYTES = 4
+COREDUMP_INFO_SHA_BYTES = 64
+ELF_NOTE_ALIGN = 4
+# An erased partition: its first word, the dump's total length, still reads
+# as flash's erased state.
+ERASED_FLASH = b"\xff"
+COREDUMP_ERASED_HEADER_BYTES = 4
+
+
+def coredump_build(raw):
+    """The build a raw core dump came from: the hex ELF SHA-256 its app
+    wrote into the dump, as many digits as the app kept. None when `raw`
+    holds no dump."""
+    at = raw.find(COREDUMP_INFO_NOTE)
+    if at < 0:
+        return None
+    name_end = at + -(-len(COREDUMP_INFO_NOTE) // ELF_NOTE_ALIGN) * ELF_NOTE_ALIGN
+    sha_at = name_end + COREDUMP_INFO_VERSION_BYTES
+    sha = raw[sha_at:sha_at + COREDUMP_INFO_SHA_BYTES].split(b"\0", 1)[0]
+    return sha.decode("ascii") if re.fullmatch(rb"[0-9a-f]+", sha) else None
 
 
 def coredump(args, store, board):
-    """The last panic's core dump, read from the board's coredump partition
-    under the lock and decoded against the ELF of the build the board runs
-    (or --elf); --erase clears the partition, so the next crash's dump is
-    told from this one. Either way esptool resets the board."""
+    """The last panic's core dump, read raw from the board's coredump
+    partition under the lock into the records, then decoded with the board
+    free; --erase clears the partition, so the next crash's dump is told
+    from this one. Either way esptool resets the board."""
     with HeldLock(store, board, args.owner, "coredump", args.wait):
-        elf = Path(args.elf) if args.elf else None
-        if elf is None and not args.erase:
-            with open_when_free() as connection:
-                replies, _ = exchange(connection, BUILD_ID_REQUEST, "BUILD_ID=", ("BUILD_ID=",),
-                                      COREDUMP_BUILD_ID_SECONDS)
-            build_id = latest_build_id_from_bytes(" ".join(replies).encode())
-            elf = find_elf_for_build_id(Path.cwd(), build_id)
-            if elf is None:
-                print(f"no launcher.elf under this worktree matches BUILD_ID={build_id}; pass --elf",
-                      file=sys.stderr)
-                return 1
-        port = locked_port()
+        parttool = Path(idf_path()) / "components" / "partition_table" / "parttool.py"
+        command = [idf_python(), str(parttool), "--port", locked_port()]
         if args.erase:
-            parttool = Path(idf_path()) / "components" / "partition_table" / "parttool.py"
-            command = [idf_python(), str(parttool), "--port", port,
-                       "erase_partition", "--partition-name=" + COREDUMP_PARTITION]
+            command += ["erase_partition", "--partition-name=" + COREDUMP_PARTITION]
             run_resetting(lambda: subprocess.run(command, check=True)).close()
             print("coredump partition erased")
             return 0
-        command = [idf_python(), "-m", "esp_coredump", "--chip", "esp32s3", "--port", port, "info_corefile"]
-        gdb = toolchain_tool("xtensa-esp-elf-gdb", "xtensa-esp32s3-elf-gdb")
-        if gdb:
-            command += ["--gdb", str(gdb)]
+        core, _ = resolve_capture_path(None, "coredump", args.owner, now())
+        core = core.with_suffix(".bin")
+        command += ["read_partition", "--partition-name=" + COREDUMP_PARTITION, "--output", str(core)]
         try:
-            run_resetting(lambda: subprocess.run(command + [str(elf)], check=True)).close()
+            run_resetting(lambda: subprocess.run(command, check=True)).close()
         except subprocess.CalledProcessError as failure:
             return failure.returncode
+    if core.read_bytes()[:COREDUMP_ERASED_HEADER_BYTES] == ERASED_FLASH * COREDUMP_ERASED_HEADER_BYTES:
+        core.unlink()
+        print("no core dump in flash")
         return 0
+    return decode_coredump(core, args.elf)
 
 
-def replies_to(data, reply, until):
-    """The device's replies found in console bytes, and whether the last of
-    them has arrived.
-
-    A reply is everything from `reply` to the end of its line: the console
-    also carries the firmware's own log lines, and a reply can come out
-    behind a log prefix. `until` are the prefixes that end an answer;
-    autana console forwards a line under the app's own prefix in capitals,
-    the same convention every built-in verb's own reply already follows.
-    """
-    found = []
-    for raw in data.split(b"\n"):
-        at = raw.find(reply.encode("ascii"))
-        if at < 0:
-            continue
-        text = raw[at:].decode("ascii", errors="replace").strip()
-        found.append(text)
-        if text.startswith(tuple(until)):
-            return found, True
-    return found, False
+def decode_coredump(core, elf=None):
+    """Decodes the raw dump saved at `core`, no board needed, against the
+    ELF of the build that crashed, which the dump itself names, or `elf`.
+    A dump outlives later flashes, so the board's running build is no guide."""
+    build = coredump_build(Path(core).read_bytes())
+    print(f"core dump of build {build or 'unknown'}, saved as {core}")
+    elf = Path(elf) if elf else find_elf_for_build_id(Path.cwd(), build)
+    if elf is None:
+        print(f"no launcher.elf in this worktree or {elf_archive()} is build {build or 'unknown'}: "
+              f"build that commit, then `autana coredump --core {core} --elf PATH`", file=sys.stderr)
+        return 1
+    command = [idf_python(), "-m", "esp_coredump", "--chip", "esp32s3", "info_corefile",
+               "--core", str(core), "--core-format", "raw"]
+    gdb = toolchain_tool("xtensa-esp-elf-gdb", "xtensa-esp32s3-elf-gdb")
+    if gdb:
+        command += ["--gdb", str(gdb)]
+    return subprocess.run(command + [str(elf)]).returncode
 
 
 def exchange(connection, line, reply, until, seconds):
@@ -1616,19 +1741,33 @@ def exchange(connection, line, reply, until, seconds):
         found, complete = replies_to(bytes(data), reply, until)
         if complete:
             return found, True
-        if ("ignoring line: '" + line).encode("ascii") in data:
-            raise RuntimeError("this build does not answer '" + line.split(" ")[0] +
-                               "' - it needs a development build that has it")
+        require_development(data, line)
     return found, False
 
 
 TUNE_REPLY_ENDS = ("TUNE_OK", "TUNE_ERR", "TUNE_END")
-TUNE_SET_SECONDS = 3.0
-TUNE_SET_ATTEMPTS = 3
+EXCHANGE_SECONDS = 3.0
+EXCHANGE_ATTEMPTS = 3
 
 
 class TuneRefused(BatchEnding):
     """A --set the board refused or did not echo."""
+
+
+def exchange_retrying(connection, requests):
+    """Retry an idempotent sequence only on silence; partial replies stop it."""
+    for _ in range(EXCHANGE_ATTEMPTS):
+        replies = []
+        for line, prefix, endings in requests:
+            found, complete = exchange(connection, line, prefix, endings, EXCHANGE_SECONDS)
+            if not found:
+                break
+            replies.extend(found)
+            if not complete or found[-1].startswith(endings[1]):
+                return line, replies, False
+        else:
+            return line, replies, True
+    return line, found, False
 
 
 def apply_tunables(connection, settings):
@@ -1637,18 +1776,37 @@ def apply_tunables(connection, settings):
     echoes each value back."""
     for setting in settings:
         name, _, value = setting.partition("=")
-        # A board still winding down the last suite can drop a line; SET is
-        # idempotent, so silence is asked again before it counts as refusal.
-        for _ in range(TUNE_SET_ATTEMPTS):
-            found, complete = exchange(connection, f"SET {name} {value}", "TUNE", TUNE_REPLY_ENDS,
-                                       TUNE_SET_SECONDS)
-            if complete:
-                break
-        if not found or not found[-1].startswith("TUNE_OK " + name + "="):
+        _, found, complete = exchange_retrying(
+            connection, [(f"SET {name} {value}", "TUNE", TUNE_REPLY_ENDS)])
+        if not complete or not found or not found[-1].startswith("TUNE_OK " + name + "="):
             raise TuneRefused(f"SET {name} {value}: {found[-1] if found else 'no reply'}")
         if found[-1].split("=", 1)[1] != str(int(value, 0)):
             raise TuneRefused(f"SET {name} {value}: board holds {found[-1]}")
         print(found[-1], flush=True)
+
+
+class ConsoleRefused(BatchEnding):
+    """A setup line failed or did not complete its reply."""
+
+
+def apply_console_lines(connection, lines):
+    """Apply an idempotent setup sequence; silence retries it from the start.
+
+    A partial reply or an error refuses the sequence without resending a line.
+    """
+    requests = []
+    for line in lines:
+        try:
+            prefix, endings = reply_prefix(line)
+        except ValueError as error:
+            raise ConsoleRefused(f"{line!r}: {error}") from error
+        requests.append((line, prefix, endings))
+    if not requests:
+        return
+    line, found, complete = exchange_retrying(connection, requests)
+    if not complete:
+        raise ConsoleRefused(f"{line!r}: " + ("\n".join(found) or "no reply"))
+    print("\n".join(found), flush=True)
 
 
 def send(args, store, board):
@@ -1801,7 +1959,8 @@ def batch(args, store, board):
                     owner=args.owner, wait=args.wait, suite=suite_name, out=out, purpose=purpose,
                     max_seconds=args.max_seconds, idle_seconds=args.idle_seconds,
                     expect_build_id=build_id, verbose=getattr(args, "verbose", False),
-                    test_filter=patterns, tune_set=getattr(args, "tune_set", None))
+                    test_filter=patterns, tune_set=getattr(args, "tune_set", None),
+                    console_send=getattr(args, "console_send", None))
                 print(f"batch: {suite_name} run {run}/{args.runs}", flush=True)
                 # A suite FAIL is a result, not a broken run: a perf capture always
                 # carries its budget targets' FAILs, and its duration still counts.
@@ -1843,9 +2002,13 @@ def batch(args, store, board):
     return 1 if any(e["error"] or e["failed"] for e in entries) else 0
 
 
+WAIT_UNIT_SECONDS = {"s": 1, "m": 60, "h": 60 * 60}
+
+
 def human_wait_seconds(value):
     try:
-        seconds = float(value)
+        unit = value[-1:]
+        seconds = float(value[:-1] if unit in WAIT_UNIT_SECONDS else value) * WAIT_UNIT_SECONDS.get(unit, 1)
     except ValueError as error:
         raise argparse.ArgumentTypeError("wait must be a nonnegative number") from error
     if not math.isfinite(seconds) or seconds < 0:
@@ -1890,37 +2053,73 @@ def board_statuses(store, board=None):
     for serial in plugged:
         store.note_seen(serial)
     boards = [board] if board else sorted(set(store.boards()) | set(plugged))
-    durations = device_lock.duration_history(store.root)
-    return [device_lock.status_entry(store, name, plugged.get(name), durations=durations)
+    return [device_lock.status_entry(store, name, plugged.get(name))
             for name in boards]
+
+
+def pick_board(entries):
+    if not entries:
+        raise NoBoard("no board available")
+    free = [entry for entry in entries if device_lock.availability(entry) == "free"]
+    if free:
+        return min(free, key=lambda entry: entry["board"])["board"], "free, nobody queued"
+    available = [entry for entry in entries if device_lock.availability(entry) != "human"] or entries
+    estimated = [entry for entry in available if entry["estimated_start"] is not None]
+    if estimated:
+        chosen = min(estimated, key=lambda entry: (entry["estimated_start"], entry["board"]))
+        return chosen["board"], "earliest estimated start time"
+    chosen = min(available, key=lambda entry: (len(entry["waiting"]), entry["board"]))
+    return chosen["board"], "shortest queue"
+
+
+def board_heading(entry):
+    return f"{short_id(entry['board'])} {entry['board']} {entry['port'] or 'not on USB'}"
+
+
+def print_devices(entries):
+    if not entries:
+        print("no board found")
+    for entry in entries:
+        holder = entry["holder"]
+        available = device_lock.availability(entry)
+        if available == "human":
+            state = f"reserved by a human ({holder['owner']}) until {device_lock.format_estimate(entry['expires_at'])}"
+        elif available == "held":
+            state = f"held by {holder['owner']} until {device_lock.format_estimate(entry['estimated_free'])}"
+        else:
+            state = available
+        print(f"{board_heading(entry)}: {state}")
 
 
 def print_statuses(entries, now):
     if not entries:
         print("no board found")
     for entry in entries:
-        where = "on " + entry["port"] if entry["port"] else "not on USB"
-        print(f"board {entry['board']} ({where})")
+        print(board_heading(entry))
         for line in device_lock.status_lines(entry, now):
             print("  " + line)
 
 
 def main(argv=None):
+    install_console_interrupt_handler()
     try:
         autana_config.load()
     except autana_config.ConfigError as error:
         print("device: " + str(error), file=sys.stderr)
         return 1
     parser = argparse.ArgumentParser()
-    parser.add_argument("--board", help="the board's USB serial number (default: the only "
+    parser.add_argument("--board", "-b", help="full USB serial or short id (default: the only "
                                         "board plugged in, else the only one "
                                         "a lock record names; hand-to-human/take-back also try "
                                         "the only board this machine has ever seen)")
     parser.add_argument("--owner", default=device_lock.default_owner())
     parser.add_argument("--wait", type=float, default=600)
+    parser.set_defaults(auto_pick=False)
     subparsers = parser.add_subparsers(dest="command", required=True)
     status_parser = subparsers.add_parser("status")
     status_parser.add_argument("--json", action="store_true")
+    devices_parser = subparsers.add_parser("devices")
+    devices_parser.add_argument("--json", action="store_true")
     subparsers.add_parser("resolve-port")
     release = subparsers.add_parser("release")
     release.add_argument("--token", required=True)
@@ -1928,13 +2127,17 @@ def main(argv=None):
     hand.add_argument("--note", required=True)
     hand.add_argument("--until-back", type=human_wait_seconds)
     take = subparsers.add_parser("take")
+    take.set_defaults(auto_pick=True)
     duration = take.add_mutually_exclusive_group()
     duration.add_argument("--for", dest="seconds", type=hold_seconds)
     duration.add_argument("--until-released", action="store_true")
     take.add_argument("--pid", type=int)
+    take.add_argument("--estimate", type=human_wait_seconds)
     take.add_argument("note", nargs="+")
     run = subparsers.add_parser("run")
+    run.set_defaults(auto_pick=True)
     run.add_argument("--keep-on-failure", type=hold_seconds)
+    run.add_argument("--estimate", type=human_wait_seconds)
     run.add_argument("child", nargs=argparse.REMAINDER)
     wait_parser = subparsers.add_parser("wait-free")
     wait_parser.add_argument("--cap", type=human_wait_seconds)
@@ -1943,6 +2146,7 @@ def main(argv=None):
         "check-token", help="exit 0 when --token is the live lock on the board, else 1")
     check_token.add_argument("--token", required=True)
     flash_parser = subparsers.add_parser("flash")
+    flash_parser.set_defaults(auto_pick=True)
     flash_parser.add_argument("--variant", choices=("dev", "diag", "release"), required=True)
     flash_parser.add_argument("--worktree", required=True)
     flash_parser.add_argument("--out")
@@ -1962,6 +2166,8 @@ def main(argv=None):
     suite.add_argument("--idle-seconds", type=float, default=300)
     suite.add_argument("--expect-build-id")
     suite.add_argument("--verbose", action="store_true")
+    suite.add_argument("--send", dest="console_send", action="append", metavar="LINE",
+                       help="send before every capture; repeatable, sequence should be idempotent")
     suite.add_argument("--set", dest="tune_set", action="append", metavar="NAME=VALUE",
                        help="SET a tunable under the capture's lock first; repeatable")
     listen_parser = subparsers.add_parser("listen")
@@ -1974,8 +2180,10 @@ def main(argv=None):
                                help="decode any crash addresses seen against this .elf's symbols")
     coredump_parser = subparsers.add_parser(
         "coredump", help="decode the last panic's core dump from flash, or erase it")
-    coredump_parser.add_argument("--erase", action="store_true")
-    coredump_parser.add_argument("--elf", help="decode against this .elf instead of the running build's")
+    coredump_source = coredump_parser.add_mutually_exclusive_group()
+    coredump_source.add_argument("--erase", action="store_true")
+    coredump_source.add_argument("--core", help="decode this saved raw dump; no board")
+    coredump_parser.add_argument("--elf", help="decode against this .elf instead of the crashed build's")
     reset_parser = subparsers.add_parser("reset", help="reboot the board and wait for USB serial")
     reset_parser.add_argument("--capture", action="store_true",
                               help="capture the boot console after the reset")
@@ -1986,6 +2194,7 @@ def main(argv=None):
     selftest_parser = subparsers.add_parser(
         "selftest", help="flash the diagnostics+autorun image and capture the on-device run "
                          "of every registered suite")
+    selftest_parser.set_defaults(auto_pick=True)
     selftest_parser.add_argument("--worktree", required=True)
     selftest_parser.add_argument("--out")
     selftest_parser.add_argument("--verbose", action="store_true")
@@ -2020,6 +2229,7 @@ def main(argv=None):
     screenshot_view.add_argument("--framebuffer", action="store_true")
     batch_parser = subparsers.add_parser(
         "batch", help="capture suites N times under one lock, write one summary")
+    batch_parser.set_defaults(auto_pick=lambda args: args.flash)
     batch_parser.add_argument("--worktree", required=True)
     batch_parser.add_argument("--variant", choices=("dev", "diag", "release"), default="diag")
     batch_parser.add_argument("--suite", action="append", required=True,
@@ -2035,6 +2245,8 @@ def main(argv=None):
     batch_parser.add_argument("--layout-seed", type=int, default=0,
                               help="pad the layout by this seed (needs --flash, the default)")
     batch_parser.add_argument("--max-seconds", type=float, default=1800)
+    batch_parser.add_argument("--send", dest="console_send", action="append", metavar="LINE",
+                              help="send before every capture; repeatable, sequence should be idempotent")
     batch_parser.add_argument("--set", dest="tune_set", action="append", metavar="NAME=VALUE",
                               help="SET a tunable under each capture's lock first; repeatable")
     batch_parser.add_argument("--test", dest="test_filter", action="append", metavar="PATTERN",
@@ -2053,9 +2265,11 @@ def main(argv=None):
     args = parser.parse_args(argv)
     args.purpose = command_label(args.command)
 
-    # Touches no lock and no board; it only reads a capture already on disk,
-    # so it is handled before board discovery even runs, unlike every command
-    # below this.
+    # report and coredump --core touch no lock and no board; each only reads
+    # a file already on disk, so they are handled before board discovery even
+    # runs, unlike every command below this.
+    if args.command == "coredump" and args.core:
+        return decode_coredump(args.core, args.elf)
     if args.command == "report":
         index_path = Path(args.index) if args.index else records_root() / "index.jsonl"
         try:
@@ -2066,20 +2280,28 @@ def main(argv=None):
         print("report: " + str(report_path))
         return 0
 
+    picked_reason = None
+    result = 1
     try:
         store = device_lock.LockStore()
-        if args.command == "status":
-            entries = board_statuses(store, chosen_board(args.board))
+        if args.command in ("status", "devices"):
+            entries = board_statuses(store, chosen_board(args.board, store))
             if args.json:
                 print(json.dumps({"boards": entries}))
+            elif args.command == "devices":
+                print_devices(entries)
             else:
                 print_statuses(entries, store.now())
-            return 0
+            result = 0
+            return result
         if args.command == "resolve-port":
             print(find_board(args.board).port)
-            return 0
-        board = board_for_lock(store, args.board,
-                               remembered=args.command in ("hand-to-human", "take-back"))
+            result = 0
+            return result
+        board, picked_reason = board_for_lock(
+            store, args.board, remembered=args.command in ("hand-to-human", "take-back"),
+            auto_pick=args.auto_pick(args) if callable(args.auto_pick) else args.auto_pick,
+            token=getattr(args, "token", None))
         token = os.environ.get(TOKEN_ENV)
         if token and args.command in ("take", "hand-to-human", "wait-free"):
             record = store.live_lock(board, token)
@@ -2098,15 +2320,19 @@ def main(argv=None):
             while True:
                 state = store.status(board)
                 if not state["lock"] and not state["human"]:
-                    return 0
+                    result = 0
+                    return result
                 if deadline is not None and time.monotonic() >= deadline:
-                    return device_lock.EXIT_BUSY
+                    result = device_lock.EXIT_BUSY
+                    return result
                 time.sleep(device_lock.WAIT_POLL_SECONDS if deadline is None else
                            min(device_lock.WAIT_POLL_SECONDS, max(0, deadline - time.monotonic())))
         if args.command == "release":
-            return 0 if store.release(board, args.token) else 1
+            result = 0 if store.release(board, args.token) else 1
+            return result
         if args.command == "check-token":
-            return 0 if store.check_token(board, args.token) else 1
+            result = 0 if store.check_token(board, args.token) else 1
+            return result
         if args.command == "hand-to-human":
             notice_state = {}
             reservation_id, renewed = store.reserve_human(board, args.owner, args.note,
@@ -2117,12 +2343,15 @@ def main(argv=None):
                 lasts = device_lock.duration_text(device_lock.HUMAN_RESERVATION_SECONDS)
                 print(f"human reservation {'renewed' if renewed else 'recorded'}; it expires "
                       f"in {lasts} unless renewed with `autana lock hand`")
-                return 0
-            return wait_for_human_release(store, board, reservation_id, args.until_back)
+                result = 0
+                return result
+            result = wait_for_human_release(store, board, reservation_id, args.until_back)
+            return result
         if args.command == "take-back":
             store.end_human(board)
             print_statuses(board_statuses(store, board), store.now())
-            return 0
+            result = 0
+            return result
         if args.command == "take":
             if args.pid is not None and (not args.until_released or args.pid <= 0):
                 parser.error("--pid needs --until-released and a positive pid")
@@ -2136,24 +2365,28 @@ def main(argv=None):
             pid = args.pid if args.until_released else None
             seconds = None if args.until_released else (args.seconds if args.seconds is not None
                                                        else device_lock.HOLD_MAX_SECONDS)
-            if not store.hold(board, held["token"], " ".join(args.note), seconds=seconds, pid=pid):
+            if not store.hold(board, held["token"], " ".join(args.note), seconds=seconds, pid=pid, estimate=args.estimate):
                 raise LockBusy("device lock was lost before the hold was recorded")
             print(held["token"])
-            return 0
+            result = 0
+            return result
         if args.command == "run":
             child = args.child[1:] if args.child[:1] == ["--"] else args.child
             if not child:
                 parser.error("run needs -- <command...>")
-            with HeldLock(store, board, args.owner, "run", args.wait) as held:
+            with HeldLock(store, board, args.owner, "run", args.wait, estimate=args.estimate) as held:
                 try:
                     run_to_end(child, held.lost)
-                    return 0
+                    result = 0
+                    return result
                 except subprocess.CalledProcessError as error:
                     held.error = str(error)
                     held.keep_seconds = args.keep_on_failure
-                    return error.returncode
+                    result = error.returncode
+                    return result
                 except KeyboardInterrupt:
-                    return EXIT_INTERRUPTED
+                    result = EXIT_INTERRUPTED
+                    return result
         if args.command == "flash":
             extra_flags = (["--perf-scope"] if args.perf_scope else []) + layout_flags(args)
             with build_image(args, board, extra_flags) as built, \
@@ -2166,21 +2399,31 @@ def main(argv=None):
         elif args.command == "send":
             if not args.until:
                 args.until = [args.reply + "_OK", args.reply + "_ERR", args.reply + "_END"]
-            return send(args, store, board)
+            result = send(args, store, board)
+            return result
         else:
             # Looked up per call, so a test's patch of one of them is the one run.
             board_commands = {"run-suite": run_suite, "selftest": selftest, "coredump": coredump,
                               "reset": reset_device, "batch": batch, "screenshot": screenshot}
-            return board_commands.get(args.command, listen)(args, store, board)
-        return 0
+            result = board_commands.get(args.command, listen)(args, store, board)
+            return result
+        result = 0
+        return result
     except LockBusy as error:
         print("device: " + str(error), file=sys.stderr)
-        return device_lock.EXIT_BUSY
+        result = device_lock.EXIT_BUSY
+        return result
     except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
         print("device: " + str(error), file=sys.stderr)
-        return 1
+        result = 1
+        return result
+    finally:
+        if picked_reason:
+            verdict = "PASS" if result == 0 else f"FAIL ({result})"
+            print(f"{verdict}: board {board_label(board)}", file=sys.stderr)
 
 
 if __name__ == "__main__":
+    install_console_interrupt_handler()
     rerun = rerun_under_idf_python(sys.argv[1:])
     raise SystemExit(main() if rerun is None else rerun)

@@ -18,8 +18,11 @@ The mesh runtime uses baked lighting, span rasterization, clipping and
 visibility data. The mesh raster and the line path project through one
 `render_view_t`, shared with scene loading, camera clips, dynamic resolution
 and the context views. Lines use `render/r3d_project_x.h` for the camera-space
-model matrix and fixed-point projection; the float projection helpers in
-`render/r3d_project.h` provide its test reference.
+model matrix and fixed-point pixel projection; the float projection helpers in
+`render/r3d_project.h` provide its test reference through `projectf_t`.
+`math/linear/projectf.h` owns the pinhole lens, continuous float projection
+and float near clipping; `math/linear/projectx.h` owns fixed near clipping
+without prescribing camera units. Render owns snapping and line-unit scaling.
 
 Bulk memory comes from the [app arena](../Building-an-App.md#app-memory)
 at entry. Internal SRAM is the scarce resource for hot buffers; PSRAM can
@@ -71,7 +74,7 @@ distance-sorted billboard sprites. Begin with flat floor and ceiling
 colours plus a dithered distance gradient; add floor texturing only after
 measuring its cost.
 
-Gyro look uses `input/tilt.h`; buttons move and act. Touch can supply an
+Gyro look uses `input/motion/tilt.h`; buttons move and act. Touch can supply an
 on-screen stick if needed. Cache each column's hit distance, texture
 column and span bounds once per frame so band rendering only fills rows.
 A sector renderer with varying floor heights is a possible extension.

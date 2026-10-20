@@ -29,7 +29,10 @@ static void
 test_targets_reach_every_edge_of_the_allowed_area(void) {
     rng_t rng;
     rng_seed(&rng, 7U);
-    int min_x = 1000, max_x = -1, min_y = 1000, max_y = -1;
+    int min_x = 1000;
+    int max_x = -1;
+    int min_y = 1000;
+    int max_y = -1;
     for (int i = 0; i < 20000; i++) {
         const touch_probe_target_t t = touch_probe_next(&rng, 368, 448, 12, 8);
         min_x = t.x < min_x ? t.x : min_x;
@@ -46,7 +49,8 @@ test_targets_reach_every_edge_of_the_allowed_area(void) {
 static void
 test_a_tap_on_the_centre_has_no_offset(void) {
     const touch_probe_target_t t = {.x = 100, .y = 200, .side = 12};
-    int dx, dy;
+    int dx;
+    int dy;
     touch_probe_offset(t, 106, 206, &dx, &dy);
     TEST_ASSERT_EQUAL_INT(0, dx);
     TEST_ASSERT_EQUAL_INT(0, dy);
@@ -55,7 +59,8 @@ test_a_tap_on_the_centre_has_no_offset(void) {
 static void
 test_a_tap_below_and_left_reads_positive_dy_negative_dx(void) {
     const touch_probe_target_t t = {.x = 100, .y = 200, .side = 12};
-    int dx, dy;
+    int dx;
+    int dy;
     touch_probe_offset(t, 101, 226, &dx, &dy);
     TEST_ASSERT_EQUAL_INT(-5, dx);
     TEST_ASSERT_EQUAL_INT(20, dy);
@@ -82,18 +87,18 @@ test_mean_and_spread_follow_the_taps(void) {
     touch_probe_record(&s, t, 106, 216);
     touch_probe_record(&s, t, 106, 226);
     touch_probe_record(&s, t, 106, 236);
-    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, touch_probe_mean_dx(&s));
-    TEST_ASSERT_FLOAT_WITHIN(0.001f, 20.0f, touch_probe_mean_dy(&s));
-    TEST_ASSERT_FLOAT_WITHIN(0.001f, 0.0f, touch_probe_spread_dx(&s));
-    TEST_ASSERT_FLOAT_WITHIN(0.001f, 10.0f, touch_probe_spread_dy(&s));
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, 0.0F, touch_probe_mean_dx(&s));
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, 20.0F, touch_probe_mean_dy(&s));
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, 0.0F, touch_probe_spread_dx(&s));
+    TEST_ASSERT_FLOAT_WITHIN(0.001F, 10.0F, touch_probe_spread_dy(&s));
     TEST_ASSERT_EQUAL_INT(30 * 30, s.worst_dist2);
 }
 
 static void
 test_no_taps_reads_as_zero_not_nan(void) {
     const touch_probe_stats_t s = {0};
-    TEST_ASSERT_EQUAL_FLOAT(0.0f, touch_probe_mean_dy(&s));
-    TEST_ASSERT_EQUAL_FLOAT(0.0f, touch_probe_spread_dy(&s));
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, touch_probe_mean_dy(&s));
+    TEST_ASSERT_EQUAL_FLOAT(0.0F, touch_probe_spread_dy(&s));
 }
 
 static void
@@ -111,8 +116,8 @@ test_a_grid_spans_the_allowed_area_corner_to_corner(void) {
 static void
 test_a_grid_index_runs_along_a_row_first(void) {
     const touch_probe_target_t t = touch_probe_grid(7, 5, 5, 448, 368, 12, 8);
-    TEST_ASSERT_EQUAL_INT(8 + (448 - 16 - 12) / 2, t.x);
-    TEST_ASSERT_EQUAL_INT(8 + (368 - 16 - 12) / 4, t.y);
+    TEST_ASSERT_EQUAL_INT(8 + ((448 - 16 - 12) / 2), t.x);
+    TEST_ASSERT_EQUAL_INT(8 + ((368 - 16 - 12) / 4), t.y);
 }
 
 static void
@@ -142,7 +147,8 @@ test_the_settled_point_is_the_median_inside_the_window(void) {
         {.x = 0, .y = 0, .t_ms = 0},   {.x = 10, .y = 5, .t_ms = 30},  {.x = 30, .y = 1, .t_ms = 50},
         {.x = 20, .y = 3, .t_ms = 70}, {.x = 99, .y = 99, .t_ms = 90},
     };
-    int x, y;
+    int x;
+    int y;
     touch_probe_settled(s, 5, 30, 80, &x, &y);
     TEST_ASSERT_EQUAL_INT(20, x);
     TEST_ASSERT_EQUAL_INT(3, y);
@@ -153,7 +159,8 @@ test_the_settled_point_is_the_median_inside_the_window(void) {
 static void
 test_a_tap_too_short_for_the_window_settles_on_its_last_sample(void) {
     const touch_probe_sample_t s[] = {{.x = 5, .y = 6, .t_ms = 0}, {.x = 7, .y = 8, .t_ms = 16}};
-    int x, y;
+    int x;
+    int y;
     touch_probe_settled(s, 2, 30, 80, &x, &y);
     TEST_ASSERT_EQUAL_INT(7, x);
     TEST_ASSERT_EQUAL_INT(8, y);
@@ -166,7 +173,8 @@ test_the_settle_window_includes_both_bounds(void) {
         {.x = 1, .y = 1, .t_ms = 29}, {.x = 40, .y = 40, .t_ms = 30}, {.x = 50, .y = 50, .t_ms = 80},
         {.x = 9, .y = 9, .t_ms = 81}, {.x = 45, .y = 45, .t_ms = 55},
     };
-    int x, y;
+    int x;
+    int y;
     touch_probe_settled(s, 5, 30, 80, &x, &y);
     TEST_ASSERT_EQUAL_INT(45, x);
     TEST_ASSERT_EQUAL_INT(45, y);

@@ -25,21 +25,21 @@ from gltf import gltf_read  # noqa: E402
 from anim.clip_name import SUFFIX, clip_id  # noqa: E402
 
 TYPE = b"TRCK"
-VERSION = 2
+OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/anim/anim_tracks_format.h"
+VERSION = read_define(OWNER, "ANIM_TRACKS_VERSION")
 HEADER = struct.Struct("<HHIIIB3x")
 ROW = struct.Struct("<HHIIIHBB4x")
 BINDING_OWNER = pathlib.Path(__file__).resolve().parents[2] / "main/anim/anim_binding.h"
-HEADER_SIZE = 20
-ROW_SIZE = 24
-AT_VERSION, AT_ROOT, AT_PAD = 0, 16, 17
-HEADER_PAD_SIZE = 3
-ROW_PATH, ROW_FIELD, ROW_COMPONENT = 0, 2, 4
-ROW_TIMES, ROW_VALUES, ROW_KEYS = 8, 12, 16
-ROW_TYPE, ROW_INTERP, ROW_PAD = 18, 19, 20
-ROW_PAD_SIZE = 4
-ALIGNMENT, CUBIC_RUNS = 4, 3
-STRING_MAX, STRINGS_MAX, COUNT_MAX, DURATION_MAX = 255, 65535, 65535, 0xFFFFFFFF
-ROOT_SCENE, ROOT_SKELETON = 0, 1
+HEADER_SIZE, ROW_SIZE, AT_VERSION, AT_ROOT, AT_PAD, HEADER_PAD_SIZE = [
+    read_define(OWNER, "ANIM_TRACKS_" + name)
+    for name in ("HEADER_SIZE", "ROW_SIZE", "AT_VERSION", "AT_ROOT", "AT_PAD", "HEADER_PAD_SIZE")]
+ROW_PATH, ROW_FIELD, ROW_COMPONENT, ROW_TIMES, ROW_VALUES, ROW_KEYS, ROW_TYPE, ROW_INTERP, ROW_PAD, ROW_PAD_SIZE = [
+    read_define(OWNER, "ANIM_TRACKS_ROW_" + name)
+    for name in ("PATH", "FIELD", "COMPONENT", "TIMES", "VALUES", "KEYS", "TYPE", "INTERP", "PAD", "PAD_SIZE")]
+ALIGNMENT, CUBIC_RUNS = [read_define(OWNER, "ANIM_TRACKS_" + name) for name in ("ALIGNMENT", "CUBIC_RUNS")]
+STRING_MAX = read_define(OWNER, "ANIM_BINDING_STRING_MAX")
+STRINGS_MAX, COUNT_MAX, DURATION_MAX = 65535, 65535, 0xFFFFFFFF
+ROOT_SCENE, ROOT_SKELETON = [read_define(OWNER, "ANIM_ROOT_" + name) for name in ("SCENE", "SKELETON")]
 VALUE_FLOAT, VALUE_VEC2, VALUE_VEC3, VALUE_QUAT, VALUE_COLOUR = range(5)
 WIDTHS = (1, 2, 3, 4, 3)
 TRANSFORM, CAMERA = (int.from_bytes(tag, "little") for tag in (b"TRNS", b"CAMR"))

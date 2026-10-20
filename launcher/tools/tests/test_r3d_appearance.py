@@ -6,10 +6,13 @@ small synthetic scene the image error falls. What draws on the GPU needs
 CUDA, PyTorch and nvdiffrast and is skipped without them; the rest needs the
 pinned r3d environment (tools/r3d/requirements.txt)."""
 
+import json
 import pathlib
 import sys
 import tempfile
 import unittest
+from unittest import mock
+from types import SimpleNamespace
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
@@ -32,10 +35,14 @@ except ImportError:
     soup = None
 
 try:
-    import nvdiffrast.torch  # noqa: F401
     import torch
+except ImportError:
+    torch = None
 
-    GPU = torch.cuda.is_available()
+try:
+    import nvdiffrast.torch  # noqa: F401
+
+    GPU = torch is not None and torch.cuda.is_available()
 except ImportError:
     GPU = False
 
@@ -91,7 +98,345 @@ def write_flat_start(directory, count=4):
 
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
+class StretchTests(unittest.TestCase):
+    def test_small_part_stretch_is_reported_separately(self):
+        from r3d.appearance_simplify import STRETCH_RATIO, stretch_report
+
+        points = np.array([[0., 0., 0.], [1., 0., 0.], [0., 1., 0.],
+                           [10., 0., 0.], [20., 0., 0.], [10., 10., 0.]])
+        tris = np.array([[0, 1, 2], [3, 4, 5]])
+        mesh = FitMesh(points, np.ones_like(points), tris, np.zeros(len(tris)), 1, np.arange(len(points)))
+        for ratio, expected in ((STRETCH_RATIO - 0.5, 0.0), (STRETCH_RATIO, 0.0), (STRETCH_RATIO + 1, 100.0)):
+            with self.subTest(ratio=ratio):
+                fitted = points * ratio
+                fitted[3:] = points[3:]
+                report = stretch_report(mesh, mesh._replace(points=fitted), np.arange(len(tris)))
+                self.assertEqual(len(report["parts"]), 2)
+                self.assertEqual(report["parts"][0]["stretch"], expected)
+                self.assertEqual(report["parts"][1]["stretch"], 0)
+                self.assertEqual(report["small"]["triangles"], 1)
+                self.assertEqual(report["small"]["stretch"], expected)
+                self.assertEqual(report["rest"]["stretch"], 0)
+                self.assertEqual(report["worst"]["stretch"][0]["part"], report["parts"][0]["part"])
+                self.assertAlmostEqual(report["parts"][0]["mean_start_edge"], (2 + np.sqrt(2)) / 3)
+        report = stretch_report(mesh, mesh._replace(points=fitted, tris=tris[1:]), np.array([1]))
+        self.assertEqual(len(report["parts"]), 1)
+        self.assertEqual(report["parts"][0]["triangles"], 1)
+        self.assertEqual(report["parts"][0]["part"], 1)
+        self.assertEqual(report["small"]["triangles"], 0)
+        self.assertEqual(report["rest"], dict(triangles=1, stretch=0.0, area_growth=0.0, moved=0.0))
+
+    def test_part_size_uses_unique_edges_before_pruning(self):
+        from r3d.appearance_simplify import stretch_report
+
+        points = np.array([[0., 0., 0.], [1., 0., 0.], [0., 1., 0.], [4., 0., 0.],
+                           [10., 0., 0.], [13., 0., 0.], [10., 3., 0.]])
+        tris = np.array([[0, 1, 2], [1, 3, 2], [4, 5, 6]])
+        mesh = FitMesh(points, np.ones_like(points), tris, np.zeros(len(tris)), 1, np.arange(len(points)))
+        expected = (1 + 1 + np.sqrt(2) + 3 + np.sqrt(17)) / 5
+        for kept in (np.arange(len(tris)), np.array([1, 2])):
+            with self.subTest(kept=kept):
+                report = stretch_report(mesh, mesh._replace(tris=tris[kept]), kept)
+                self.assertAlmostEqual(report["parts"][0]["mean_start_edge"], expected)
+                self.assertEqual(report["small"], dict(triangles=len(kept) - 1, stretch=0.0, area_growth=0.0, moved=0.0))
+
+    def test_collapsed_start_triangle_counts_as_stretched(self):
+        from r3d.appearance_simplify import stretch_report, triangle_stretch
+
+        points = np.zeros((2, 3))
+        tris = np.array([[0, 0, 1]])
+        mesh = FitMesh(points, np.ones_like(points), tris, np.zeros(len(tris)), 1, np.arange(len(points)))
+        fitted = points.copy()
+        fitted[1, 0] = 1
+        fitted_mesh = mesh._replace(points=fitted)
+        self.assertTrue(np.isinf(triangle_stretch(points, fitted, mesh)[0]))
+        report = stretch_report(mesh, fitted_mesh, np.array([0]))
+        self.assertEqual(report["parts"][0]["stretch"], 100.0)
+        self.assertEqual(report["rest"], dict(triangles=1, stretch=100.0, area_growth=0.0, moved=100.0))
+
+    def test_area_growth_detects_opening_without_long_edge_stretch(self):
+        from r3d.appearance_simplify import AREA_GROWTH_RATIO, STRETCH_RATIO, stretch_report, triangle_area_growth, triangle_stretch
+
+        points = np.array([[0., 0., 0.], [1., 0., 0.], [0., 1 / (AREA_GROWTH_RATIO * STRETCH_RATIO), 0.]])
+        tris = np.array([[2, 0, 1]])
+        mesh = FitMesh(points, np.ones_like(points), tris, np.zeros(len(tris)), 1, np.array([1, 2, 0]))
+        for ratio, expected in ((AREA_GROWTH_RATIO * 0.99, 0.0), (AREA_GROWTH_RATIO, 0.0),
+                                (AREA_GROWTH_RATIO * 1.01, 100.0)):
+            with self.subTest(ratio=ratio):
+                fitted = points.copy()
+                fitted[2, 1] *= ratio
+                self.assertAlmostEqual(triangle_area_growth(points, fitted, mesh)[0], ratio)
+                self.assertLess(triangle_stretch(points, fitted, mesh)[0], STRETCH_RATIO)
+                report = stretch_report(mesh, mesh._replace(points=fitted), np.array([0]))
+                self.assertEqual(report["rest"]["area_growth"], expected)
+                self.assertEqual(report["parts"][0]["area_growth"], expected)
+                self.assertEqual(report["worst"]["area_growth"][0]["area_growth"], expected)
+                self.assertEqual(report["rest"]["stretch"], 0.0)
+
+    def test_translation_counts_corner_moves_in_mean_start_edges(self):
+        from r3d.appearance_simplify import MOVED_EDGES, stretch_report, triangle_edges, triangle_moved
+
+        points = np.array([[0., 0., 0.], [0.003, 0., 0.], [0., 0.004, 0.]])
+        tris = np.array([[0, 1, 2]])
+        mesh = FitMesh(points, np.ones_like(points), tris, np.zeros(len(tris)), 1, np.arange(len(points)))
+        mean_edge = triangle_edges(points, tris, mesh.vertex_point).mean()
+        for ratio, expected in ((MOVED_EDGES * 0.99, 0.0), (MOVED_EDGES, 0.0), (MOVED_EDGES * 1.01, 100.0)):
+            with self.subTest(ratio=ratio):
+                fitted = points + [0., 0., ratio * mean_edge]
+                self.assertAlmostEqual(triangle_moved(points, fitted, mesh)[0], ratio)
+                report = stretch_report(mesh, mesh._replace(points=fitted), np.array([0]))
+                self.assertEqual(report["rest"], dict(triangles=1, stretch=0.0, area_growth=0.0, moved=expected))
+                self.assertEqual(report["parts"][0]["moved"], expected)
+                self.assertEqual(report["worst"]["moved"][0]["moved"], expected)
+
+    def test_zero_area_start_triangle_that_opens_counts_as_grown(self):
+        from r3d.appearance_simplify import stretch_report, triangle_area_growth, triangle_moved
+
+        points = np.zeros((3, 3))
+        tris = np.array([[0, 1, 2]])
+        mesh = FitMesh(points, np.ones_like(points), tris, np.zeros(len(tris)), 1, np.arange(len(points)))
+        fitted = np.eye(3)
+        self.assertTrue(np.isinf(triangle_area_growth(points, fitted, mesh)[0]))
+        self.assertTrue(np.isinf(triangle_moved(points, fitted, mesh)[0]))
+        report = stretch_report(mesh, mesh._replace(points=fitted), np.array([0]))
+        self.assertEqual(report["rest"]["area_growth"], 100.0)
+        unchanged = stretch_report(mesh, mesh, np.array([0]))
+        self.assertEqual(unchanged["rest"], dict(triangles=1, stretch=0.0, area_growth=0.0, moved=0.0))
+
+
+@unittest.skipIf(torch is None, "needs PyTorch")
+class GatherTests(unittest.TestCase):
+    def test_fixed_point_backward_matches_float_and_repeats(self):
+        from r3d.appearance_gather import gather
+        from r3d.appearance_simplify import deterministic_fit
+
+        for device in (["cpu", "cuda"] if GPU else ["cpu"]):
+            for seed in (1, 7, 19):
+                with self.subTest(device=device, seed=seed), deterministic_fit():
+                    generator = torch.Generator(device=device).manual_seed(seed)
+                    index = torch.randint(8, (4096, 3), device=device, generator=generator)
+                    incoming = torch.randn((*index.shape, 4), device=device, generator=generator)
+                    source = torch.randn((8, 4), device=device, generator=generator, requires_grad=True)
+                    expected = torch.autograd.grad(source[index], source, incoming)[0]
+                    gradients = [torch.autograd.grad(gather(source, index), source, incoming)[0] for _ in range(5)]
+                    torch.testing.assert_close(gradients[0], expected, atol=1e-4, rtol=1e-4)
+                    for actual in gradients[1:]:
+                        self.assertTrue(torch.equal(actual, gradients[0]))
+                    zero = torch.autograd.grad(gather(source, index), source, torch.zeros_like(incoming))[0]
+                    self.assertEqual(torch.count_nonzero(zero).item(), 0)
+                    empty = torch.autograd.grad(gather(source, index[:0]), source, incoming[:0])[0]
+                    self.assertEqual(torch.count_nonzero(empty).item(), 0)
+
+    def test_nonfinite_gradient_propagates_and_restores_deterministic_mode(self):
+        from r3d.appearance_gather import gather
+        from r3d.appearance_simplify import deterministic_fit
+
+        for value in (float("inf"), float("nan")):
+            with self.subTest(value=value), deterministic_fit():
+                source = torch.ones((1, 1), requires_grad=True)
+                gather(source, torch.tensor([0])).backward(torch.tensor([[value]]))
+                self.assertTrue(torch.isnan(source.grad).all())
+                self.assertTrue(torch.are_deterministic_algorithms_enabled())
+
+
+    def test_deterministic_scope_restores_memory_fill_on_exception(self):
+        from r3d.appearance_simplify import deterministic_fit
+
+        previous = torch.utils.deterministic.fill_uninitialized_memory
+        try:
+            for enabled in (True, False):
+                torch.utils.deterministic.fill_uninitialized_memory = enabled
+                with self.assertRaisesRegex(ValueError, "scope"):
+                    with deterministic_fit():
+                        self.assertFalse(torch.utils.deterministic.fill_uninitialized_memory)
+                        raise ValueError("scope")
+                self.assertEqual(torch.utils.deterministic.fill_uninitialized_memory, enabled)
+        finally:
+            torch.utils.deterministic.fill_uninitialized_memory = previous
+
+
+@unittest.skipIf(np is None, "the r3d environment is not installed")
 class AppearanceMeshTests(unittest.TestCase):
+    @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_fit_rejects_nonfinite_loss_without_reporting(self):
+        from r3d import appearance_simplify as appearance
+
+        points, rgb, tris = grid(1)
+        mesh = FitMesh(points, rgb / 255, tris, np.ones(len(tris)), 64, np.arange(len(points)))
+        target = np.full((1, 1, 3), np.nan, dtype=np.float32)
+        render = mock.Mock(side_effect=lambda points, colours, *args: colours.mean(0).reshape(1, 1, 3))
+        with mock.patch.object(appearance, "Renderer", return_value=render):
+            with self.assertRaisesRegex(ValueError, "finite"):
+                appearance.optimise(mesh, [(np.eye(4), target)], (1, 1), steps=2, batch=1,
+                                    lr_position=0, lr_colour=0, laplacian=0, report=0, device="cpu")
+
+    @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_normal_loss_without_angles_handles_empty_masks(self):
+        from r3d import appearance_simplify as appearance
+
+        for covered in (False, True):
+            with self.subTest(covered=covered):
+                normal = torch.tensor([[[1.0, 0, 0], [0, 1.0, 0]]], requires_grad=True)
+                reference = torch.tensor([[[0.0, 1.0, 0], [0, 0, 1.0]]])
+                both = torch.tensor([[covered, False]])
+                with mock.patch.object(appearance, "normal_pairs", return_value=(normal, reference, both)):
+                    distance, angles = appearance.normal_l1(None, None, None, None, angles=False)
+                    self.assertIsNone(angles)
+                    self.assertEqual(distance.item(), 2.0 if covered else 0.0)
+                    distance.backward()
+                    self.assertTrue(torch.isfinite(normal.grad).all())
+                    if not covered:
+                        self.assertEqual(torch.count_nonzero(normal.grad).item(), 0)
+
+    def test_surface_recipe_keys_are_required_and_validated(self):
+        from r3d.import_settings import SettingsError, load_fit
+
+        recipe = dict(prune=dict(budget=1, coverage_every_ms=1),
+                      poses=dict(size=[2, 2], train_every_ms=1, held_out_every_ms=2),
+                      optimise=dict(steps=1, batch=1, laplacian=1, normal_weight=0,
+                                    surface_weight=10.0, surface_margin=0.25))
+        for key in ("surface_weight", "surface_margin"):
+            for value in (None, -1, float("nan"), float("inf"), "bad", True):
+                with self.subTest(key=key, value=value):
+                    options = {group: dict(table) for group, table in recipe.items()}
+                    if value is None:
+                        del options["optimise"][key]
+                    else:
+                        options["optimise"][key] = value
+                    with self.assertRaises(SettingsError):
+                        load_fit(options, SimpleNamespace(triangles=1), "fit")
+        fit = load_fit(recipe, SimpleNamespace(triangles=1), "fit")
+        self.assertEqual((fit.surface_weight, fit.surface_margin), (10.0, 0.25))
+
+    @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_surface_optimise_pulls_to_plane_refreshes_and_repeats(self):
+        from scipy.spatial import cKDTree
+        from r3d import appearance_simplify as appearance
+
+        points, rgb, tris = grid(1)
+        mesh = FitMesh(points + [0, 0, 1], rgb / 255, tris, np.ones(len(tris)), 64, np.arange(len(points)))
+        source = SimpleNamespace(p=points, tri_v=tris)
+        views = [(np.eye(4), np.zeros((1, 1, 3), dtype=np.float32))]
+        options = dict(steps=appearance.SURFACE_QUERY_EVERY + 1, batch=1, lr_position=0.01,
+                       lr_colour=0, laplacian=0, report=0, device="cpu", source=source,
+                       surface_weight=10, surface_margin=0.25)
+        render = mock.Mock(side_effect=lambda points, colours, *args: colours.mean(0).reshape(1, 1, 3))
+        queries = []
+
+        def tree(reference):
+            query = mock.Mock(wraps=cKDTree(reference).query)
+            queries.append(query)
+            return SimpleNamespace(query=query)
+
+        with mock.patch.object(appearance, "Renderer", return_value=render), \
+                mock.patch.object(appearance, "SURFACE_REFERENCE_SAMPLES", appearance.SURFACE_SAMPLES_PER_TRIANGLE ** 4), \
+                mock.patch("scipy.spatial.cKDTree", side_effect=tree):
+            for seed in (1, 7, 19):
+                first = appearance.optimise(mesh, views, (1, 1), seed=seed, **options)
+                second = appearance.optimise(mesh, views, (1, 1), seed=seed, **options)
+                for actual, expected in zip(first, second):
+                    self.assertEqual(np.asarray(actual).tobytes(), np.asarray(expected).tobytes())
+                self.assertLess(first[0][np.unique(tris), 2].mean(), mesh.points[:, 2].mean())
+        for query in queries:
+            self.assertEqual(query.call_count, 2)
+            self.assertEqual(query.call_args.args[0].shape, (len(tris) * appearance.SURFACE_SAMPLES_PER_TRIANGLE, 3))
+
+    @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_local_scale_holds_tiny_edges_against_image_pull(self):
+        from r3d import appearance_simplify as appearance
+
+        tiny_size = 0.05
+        large_ratio = 40
+        target_spread = 8
+        max_stretch = 2
+        tiny = tiny_size * np.array([[-1, 0, 0], [1, 0, 0], [0, 1, 0]])
+        points = np.concatenate([tiny, tiny * large_ratio + [large_ratio * tiny_size, 0, 0]])
+        tris = np.arange(len(points)).reshape(-1, 3)
+        mesh = FitMesh(points, np.full_like(points, 0.5), tris, np.ones(len(tris)), 64, np.arange(len(points)))
+        target = (0.5 + target_spread * tiny).astype(np.float32)[None]
+        views = [(np.eye(4), target)]
+        render = mock.Mock(side_effect=lambda points, colours, *args: (0.5 + points[:len(tiny)])[None])
+        edges = point_edges(tris[:1], mesh.vertex_point)
+        lengths = np.linalg.norm(points[edges[:, 0]] - points[edges[:, 1]], axis=1)
+        with mock.patch.object(appearance, "Renderer", return_value=render):
+            for seed in (1, 7, 19):
+                with self.subTest(seed=seed):
+                    fitted, _, history = appearance.optimise(
+                        mesh, views, (len(tiny), 1), steps=60, batch=1, lr_position=0.001,
+                        lr_colour=0, laplacian=40, report=0, device="cpu", seed=seed)
+                    final = np.linalg.norm(fitted[edges[:, 0]] - fitted[edges[:, 1]], axis=1)
+                    self.assertLess(history[-1], history[0])
+                    np.testing.assert_array_less(final, max_stretch * lengths)
+
+    @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_position_step_uses_capped_local_start_scale(self):
+        from r3d import appearance_simplify as appearance
+
+        large_size = 1.0
+        separation = 2 * large_size
+        triangle = np.array([[0.0, 0, 0], [1.0, 0, 0], [0.0, 1.0, 0]])
+        tiny_count = len(triangle)
+        lr_position = 0.001
+        # The image term pulls only z, so Adam's first step is its per-component bound.
+        render = mock.Mock(side_effect=lambda points, colours, *args: (0.5 + points[:, 2:3]).expand(-1, 3)[None])
+        for tiny_size in (0.01, 0.1):
+            with self.subTest(tiny_size=tiny_size):
+                points = np.concatenate([tiny_size * triangle, large_size * triangle + [separation, 0, 0]])
+                tris = np.arange(len(points)).reshape(-1, 3)
+                mesh = FitMesh(points, np.full_like(points, 0.5), tris, np.ones(len(tris)), 64, np.arange(len(points)))
+                views = [(np.eye(4), np.full((1, len(points), 3), 0.75, dtype=np.float32))]
+                start = torch.as_tensor(points, dtype=torch.float32)
+                scale = appearance.vertex_scale(start, torch.as_tensor(point_edges(tris, mesh.vertex_point))).numpy()
+                step_scale = scale[:, 0] / scale.max()
+                diagonal = np.linalg.norm(points.max(axis=0) - points.min(axis=0))
+                bound = lr_position * diagonal * step_scale
+                tolerance = np.finfo(np.float32).eps * diagonal
+                np.testing.assert_allclose(step_scale[tiny_count:], 1)
+                with mock.patch.object(appearance, "Renderer", return_value=render):
+                    fitted, _, _ = appearance.optimise(
+                        mesh, views, (len(points), 1), steps=1, batch=1, lr_position=lr_position,
+                        lr_colour=0, laplacian=0, report=0, device="cpu")
+                displacement = np.linalg.norm(fitted - points, axis=1)
+                np.testing.assert_array_less(displacement, bound + tolerance)
+                np.testing.assert_array_less(displacement[:tiny_count], bound[tiny_count:])
+                self.assertTrue(np.all(displacement > 0))
+                np.testing.assert_allclose(displacement[tiny_count:], bound[tiny_count:], atol=tolerance)
+
+    @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_surface_envelope_and_tangential_pull(self):
+        from r3d.appearance_simplify import SURFACE_TANGENTIAL_WEIGHT, surface_loss
+
+        margin = 0.25
+        normal = torch.tensor([[0.0, 0.0, 1.0]])
+        centre = torch.zeros_like(normal)
+        for scale in (1.0, 7.0):
+            for offset in (-2 * margin, -margin / 2, margin / 2, 2 * margin):
+                with self.subTest(scale=scale, offset=offset):
+                    point = torch.tensor([[0.0, 0.0, offset * scale]], requires_grad=True)
+                    loss = surface_loss(point, centre, normal, scale, margin)
+                    envelope = loss - SURFACE_TANGENTIAL_WEIGHT * offset ** 2
+                    self.assertAlmostEqual(envelope.item(), max(0, abs(offset) - margin) ** 2)
+                    loss.backward()
+                    self.assertGreater(point.grad[0, 2].item() * offset, 0)
+                    if abs(offset) < margin:
+                        with mock.patch("r3d.appearance_simplify.SURFACE_TANGENTIAL_WEIGHT", 0):
+                            envelope = surface_loss(point, centre, normal, scale, margin)
+                            self.assertEqual(envelope.item(), 0)
+                            self.assertEqual(torch.count_nonzero(torch.autograd.grad(envelope, point)[0]).item(), 0)
+
+    @unittest.skipIf(torch is None, "needs PyTorch")
+    def test_surface_sample_scales_match_scalar_rows(self):
+        from r3d.appearance_simplify import surface_loss
+
+        scales = torch.tensor([[1.0], [7.0]])
+        samples = torch.tensor([[0.5, 0.0, 1.0], [1.0, 0.0, -2.0]])
+        centres = torch.zeros_like(samples)
+        normals = torch.tensor([[0.0, 0.0, 1.0]]).expand_as(samples)
+        margin = 0.25
+        rows = [surface_loss(sample[None], centre[None], normal[None], scale.item(), margin)
+                for sample, centre, normal, scale in zip(samples, centres, normals, scales)]
+        torch.testing.assert_close(surface_loss(samples, centres, normals, scales, margin), torch.stack(rows).mean())
+
     def test_projection_casts_the_reference_pinhole_rays(self):
         try:
             from r3d.reference_render import camera_rays
@@ -119,7 +464,7 @@ class AppearanceMeshTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             mesh = start_mesh(write_start(directory))
             points, rgb = mesh[0] + [0.25, -0.5, 0.125], 1.0 - mesh[1]
-            write_mesh(pathlib.Path(directory) / "out", "card", points, rgb, mesh)
+            write_mesh(pathlib.Path(directory) / "out", "card", mesh._replace(points=points, rgb=rgb))
             back = read_lit_mesh(pathlib.Path(directory) / "out" / "card.mesh")
         q, colours, _tris, _double, _face = finest_triangles(back)
         written = {(tuple(p), tuple(c)) for p, c in zip(q, colours)}
@@ -143,7 +488,7 @@ class AppearanceMeshTests(unittest.TestCase):
             self.assertEqual(len(mesh.rgb), len(mesh.tris))
             self.assertEqual(len(mesh.points), len(mesh.vertex_point), "a flat start welds by position alone")
             points, rgb = mesh.points + [0.25, 0.0, 0.0], 1.0 - mesh.rgb
-            write_mesh(pathlib.Path(directory) / "out", "flat", points, rgb, mesh)
+            write_mesh(pathlib.Path(directory) / "out", "flat", mesh._replace(points=points, rgb=rgb))
             back = read_lit_mesh(pathlib.Path(directory) / "out" / "flat.mesh")
         q, colours, tris, _double, face = finest_triangles(back)
         self.assertIsNone(colours)
@@ -158,7 +503,7 @@ class AppearanceMeshTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             mesh = start_mesh(write_start(directory))
             points, rgb = mesh[0] + np.random.default_rng(3).normal(0.0, 0.05, mesh[0].shape), mesh[1][::-1].copy()
-            count = write_mesh(pathlib.Path(directory) / "out", "card", points, rgb, mesh)
+            count = write_mesh(pathlib.Path(directory) / "out", "card", mesh._replace(points=points, rgb=rgb))
             self.assertLessEqual(count, len(mesh[2]))
             back = read_lit_mesh(pathlib.Path(directory) / "out" / "card.mesh")
             q, _rgb, tris, _double, _face = finest_triangles(back)
@@ -175,20 +520,112 @@ class AppearanceMeshTests(unittest.TestCase):
 
 @unittest.skipIf(np is None, "the r3d environment is not installed")
 class PruneAndCostTests(unittest.TestCase):
+    def test_main_prunes_fitted_geometry_and_colours_before_writing(self):
+        from r3d import appearance_simplify as appearance
+
+        with tempfile.TemporaryDirectory() as directory:
+            for flat in (False, True):
+                with self.subTest(flat=flat):
+                    mesh = start_mesh(write_start(directory))._replace(flat=flat)
+                    if flat:
+                        mesh = mesh._replace(rgb=np.full((len(mesh.tris), 3), 0.5))
+                    points, rgb = mesh.points + 1, mesh.rgb / 2
+                    fitted = mesh._replace(points=points, rgb=rgb)
+                    pruned, _kept = prune(fitted, np.ones(len(mesh.tris)), len(mesh.tris) - 1)
+                    calls = mock.Mock()
+                    with mock.patch.multiple(appearance,
+                            load_scene=mock.Mock(return_value=SimpleNamespace(camera=SimpleNamespace(
+                                component=SimpleNamespace(background=0)))),
+                            start_mesh=mock.Mock(return_value=mesh),
+                            load_views=mock.Mock(return_value=(["training"], (24, 20))),
+                            pose_views=mock.Mock(return_value=(["coverage"], (80, 80))),
+                            optimise=calls.optimise, coverage=calls.coverage, prune=calls.prune,
+                            write_mesh=calls.write_mesh):
+                        calls.optimise.return_value = (points, rgb, [1.0])
+                        calls.coverage.return_value = np.ones(len(mesh.tris))
+                        calls.prune.return_value = (pruned, np.arange(len(pruned.tris)))
+                        calls.write_mesh.return_value = len(pruned.tris)
+                        appearance.main(["--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
+                                         "--reference", "reference", "--coverage-poses", "coverage.txt",
+                                         "--budget", str(len(pruned.tris)), "--out", directory])
+                    self.assertEqual([call[0] for call in calls.mock_calls],
+                                     ["optimise", "coverage", "prune", "write_mesh"])
+                    covered, views, size = calls.coverage.call_args.args
+                    np.testing.assert_array_equal(covered.points, points)
+                    np.testing.assert_array_equal(covered.rgb, rgb)
+                    self.assertEqual((views, size), (["coverage"], (80, 80)))
+                    written = calls.write_mesh.call_args.args
+                    self.assertEqual(len(written), 3)
+                    self.assertIs(written[2], pruned)
+                    pruned_mesh, shown, budget = calls.prune.call_args.args
+                    self.assertIs(pruned_mesh, covered)
+                    self.assertIs(shown, calls.coverage.return_value)
+                    self.assertEqual(budget, len(pruned.tris))
+                    report = json.loads((pathlib.Path(directory) / "stretch.json").read_text())
+                    self.assertEqual(sum(row["triangles"] for row in report["parts"]), len(pruned.tris))
+                    self.assertEqual(report["rest"]["stretch"], 0)
+
+    def test_invalid_surface_flags_fail_before_loading_a_scene(self):
+        from r3d import appearance_simplify as appearance
+
+        for flags in (["--object", "card", "--surface-weight", "-1"], ["--object", "card", "--surface-weight", "nan"],
+                      ["--object", "card", "--surface-margin", "-1"], ["--surface-weight", "1"]):
+            with self.subTest(flags=flags), mock.patch.object(appearance, "load_scene") as scene:
+                with self.assertRaises(SystemExit), mock.patch("sys.stderr"):
+                    appearance.main(["--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
+                                     "--reference", "reference", "--out", "out", *flags])
+                scene.assert_not_called()
+
+    def test_main_without_a_budget_optimises_and_writes_without_pruning(self):
+        from r3d import appearance_simplify as appearance
+
+        source = SimpleNamespace()
+        source_for = mock.Mock(return_value=(source, None))
+        with tempfile.TemporaryDirectory() as directory:
+            mesh = start_mesh(write_start(directory))
+            points, rgb = mesh.points + 1, mesh.rgb / 2
+            with mock.patch.multiple(appearance,
+                    load_scene=mock.Mock(return_value=SimpleNamespace(camera=SimpleNamespace(
+                        component=SimpleNamespace(background=0)))),
+                    start_mesh=mock.Mock(return_value=mesh),
+                    load_views=mock.Mock(return_value=(["training"], (24, 20))),
+                    optimise=mock.DEFAULT, coverage=mock.DEFAULT, prune=mock.DEFAULT,
+                    write_mesh=mock.DEFAULT) as calls, mock.patch.dict(sys.modules, {
+                        "r3d.reference_render": SimpleNamespace(source_for=source_for)}):
+                calls["optimise"].return_value = (points, rgb, [1.0])
+                calls["write_mesh"].return_value = len(mesh.tris)
+                appearance.main(["--scene", "scene.toml", "--start", "start.mesh", "--poses", "poses.txt",
+                                 "--reference", "reference", "--out", directory,
+                                 "--object", "card", "--surface-weight", "10", "--surface-margin", "0.25"])
+            calls["optimise"].assert_called_once()
+            self.assertEqual(source_for.call_args.args[1], "card")
+            self.assertEqual(source_for.call_args.kwargs, {"lit": False})
+            options = calls["optimise"].call_args.kwargs
+            self.assertIs(options["source"], source)
+            self.assertEqual((options["surface_weight"], options["surface_margin"]), (10, 0.25))
+            calls["coverage"].assert_not_called()
+            calls["prune"].assert_not_called()
+            written = calls["write_mesh"].call_args.args
+            self.assertEqual(len(written), 3)
+            np.testing.assert_array_equal(written[2].points, points)
+            np.testing.assert_array_equal(written[2].rgb, rgb)
+            report = json.loads((pathlib.Path(directory) / "stretch.json").read_text())
+            self.assertEqual(sum(row["triangles"] for row in report["parts"]), len(mesh.tris))
+
     def test_pruning_keeps_the_budget_and_what_shows_most(self):
         mesh = FitMesh(np.zeros((9, 3)), np.zeros((9, 3)), np.arange(18).reshape(6, 3) % 9, np.zeros(6), 8, np.arange(9))
         shown = np.array([0, 50, 3, 0, 900, 7])
-        pruned = prune(mesh, shown, 3)
+        pruned, _kept = prune(mesh, shown, 3)
         self.assertEqual(len(pruned[2]), 3)
         kept = {tuple(t) for t in pruned[2]}
         for index in (4, 1, 5):
             self.assertIn(tuple(mesh[2][index]), kept)
-        self.assertEqual(len(prune(mesh, shown, 6)[2]), 4, "a triangle no view shows was kept")
+        self.assertEqual(len(prune(mesh, shown, 6)[0].tris), 4, "a triangle no view shows was kept")
 
     def test_a_flat_mesh_keeps_each_colour_with_its_triangle(self):
         colours = np.arange(18, dtype=float).reshape(6, 3) / 17.0
         mesh = FitMesh(np.zeros((9, 3)), colours, np.arange(18).reshape(6, 3) % 9, np.zeros(6), 8, np.arange(9), True)
-        pruned = prune(mesh, np.array([0, 50, 3, 0, 900, 7]), 3)
+        pruned, _kept = prune(mesh, np.array([0, 50, 3, 0, 900, 7]), 3)
         self.assertEqual(pruned.rgb.tolist(), colours[[1, 4, 5]].tolist())
 
     def terms(self, positions, tris):
@@ -331,6 +768,83 @@ class PathVisibilityTests(unittest.TestCase):
 
 @unittest.skipIf(np is None or not GPU, "needs CUDA, PyTorch and nvdiffrast")
 class AppearanceFitTests(unittest.TestCase):
+    def test_barycentrics_and_antialias_match_reference(self):
+        from r3d.appearance_simplify import Renderer, deterministic_fit
+
+        size = (64, 48)
+        points = cuda([[-0.83, -0.72, 0.1], [0.71, -0.61, -0.2], [0.64, 0.81, 0.2], [-0.69, 0.68, 0]])
+        tris = np.array([[0, 1, 2], [0, 2, 3]])
+        render = Renderer(tris, [True, True], np.arange(4), size, "cuda")
+        colours = cuda([[0.8, 0.2, 0.1]] * 4)
+        matrix = cuda(projection([0, 0, 2], [0, 0, -1], *size, 0.62, 0.5))
+        with deterministic_fit():
+            points.requires_grad_()
+            clip, rast, keep = render.raster(points, matrix)
+            bary = render.barycentrics(clip, rast, keep)
+            covered = rast[0, ..., 3] > 0
+            torch.testing.assert_close(bary[covered][:, :2], rast[0, ..., :2][covered], atol=2e-5, rtol=2e-5)
+            image = render(points, colours, matrix)
+            gradient = torch.autograd.grad(image.double().sum(), points)[0]
+        from r3d.appearance_parity import reference_image
+
+        with torch.no_grad():
+            reference = reference_image(render, points, colours, matrix)
+        torch.testing.assert_close(image, reference, atol=2e-4, rtol=2e-4)
+        epsilon = 1e-4
+        finite = torch.zeros_like(points)
+        with deterministic_fit(), torch.no_grad():
+            for vertex in range(len(points)):
+                for axis in range(points.shape[1]):
+                    plus, minus = points.detach().clone(), points.detach().clone()
+                    plus[vertex, axis] += epsilon
+                    minus[vertex, axis] -= epsilon
+                    finite[vertex, axis] = (render(plus, colours, matrix).double().sum() -
+                                            render(minus, colours, matrix).double().sum()) / (2 * epsilon)
+        # Float32 crossing arithmetic limits central differences at a subpixel displacement.
+        torch.testing.assert_close(gradient, finite, atol=0.1, rtol=0.01)
+        cosine = torch.nn.functional.cosine_similarity(gradient.flatten(), finite.flatten(), dim=0)
+        self.assertGreater(float(cosine), 0.999)
+
+    def test_renderer_backward_is_bitwise_repeatable(self):
+        from r3d.appearance_simplify import Renderer, deterministic_fit
+
+        points, rgb, tris = grid(3)
+        render = Renderer(tris, np.ones(len(tris)), np.arange(len(points)), (48, 40), "cuda")
+        matrix = cuda(projection([0.2, -0.1, 3], [0, 0, -1], 48, 40, 0.62, 0.5))
+        results = []
+        with deterministic_fit():
+            for _ in range(5):
+                positions = cuda(points).requires_grad_()
+                colours = cuda(rgb / 255).requires_grad_()
+                image = render(positions, colours, matrix)
+                normal, _ = render.normals(positions, matrix, [0.2, -0.1, 3])
+                gradients = torch.autograd.grad(image.square().sum() + normal.sum(), (positions, colours))
+                results.append((image.detach(), *gradients))
+        for result in results[1:]:
+            for actual, expected in zip(result, results[0]):
+                self.assertTrue(torch.equal(actual, expected))
+
+    def test_optimise_with_surface_is_bitwise_repeatable(self):
+        from r3d.appearance_simplify import Renderer, optimise, SURFACE_QUERY_EVERY
+
+        points, rgb, tris = grid(2)
+        mesh = FitMesh(points, rgb / 255, tris, np.ones(len(tris)), 64, np.arange(len(points)))
+        size = (32, 24)
+        render = Renderer(tris, mesh.double, mesh.vertex_point, size, "cuda")
+        matrices = [projection([x, 0, 3], [0, 0, -1], *size, 0.62, 0.5) for x in (-0.2, 0.2)]
+        normal = np.broadcast_to(np.array([0, 0, 1], dtype=np.float32), (size[1], size[0], 3)).copy()
+        views = [(matrix, draw(render, points * [1.1, 1, 1], mesh.rgb, matrix), normal, [x, 0, 3])
+                 for matrix, x in zip(matrices, (-0.2, 0.2))]
+        moved = mesh._replace(points=points * [0.8, 1, 1])
+        options = dict(steps=SURFACE_QUERY_EVERY + 1, batch=2, lr_position=0.001, lr_colour=0.01, laplacian=0.1, report=0,
+                       surface_weight=10, surface_margin=0.25, source=SimpleNamespace(p=points, tri_v=tris))
+        for normal_weight in (0, 1):
+            with self.subTest(normal_weight=normal_weight):
+                first = optimise(moved, views, size, normal_weight=normal_weight, **options)
+                second = optimise(moved, views, size, normal_weight=normal_weight, **options)
+                for actual, expected in zip(first, second):
+                    self.assertEqual(np.asarray(actual).tobytes(), np.asarray(expected).tobytes())
+
     def test_image_error_falls(self):
         from r3d.appearance_simplify import Renderer, optimise
 
@@ -454,7 +968,7 @@ class AppearanceFitTests(unittest.TestCase):
             mesh = start_mesh(pathlib.Path(directory) / "pair.mesh")
         matrix = projection([0.0, 0.0, 3.0], [0.0, 0.0, -1.0], 24, 20, 0.62, 0.5)
         shown = coverage(mesh, [(matrix, None)], (48, 40))
-        pruned = prune(mesh, shown, len(front_tris))
+        pruned, _kept = prune(mesh, shown, len(front_tris))
         z = mesh[0][mesh[5]][pruned[2]][..., 2]
         self.assertEqual(len(pruned[2]), len(front_tris))
         self.assertTrue(np.all(np.abs(z) < 1e-6), "a hidden triangle outlived a visible one")

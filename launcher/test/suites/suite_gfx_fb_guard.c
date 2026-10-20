@@ -2,10 +2,10 @@
  * Portable suite: the framebuffer-availability guard (gfx_fb_guard.h) every
  * pixel-writing gfx_* entry point checks before touching the framebuffer,
  * driven directly, the same reason suite_gfx_present_guard.c drives
- * gfx_present_guard.h without gfx_draw.c or a panel.
+ * gfx_present_guard.h without draw.c or a panel.
  *
- * This is the layer gfx_draw.c's real primitives (gfx_clear(), gfx_fill_rect(),
- * gfx_pixel(), the line and text functions, gfx_framebuffer() itself) all
+ * This is the layer draw.c's real primitives (draw_clear(), draw_rect(),
+ * draw_pixel(), the line and text functions, gfx_framebuffer() itself) all
  * delegate to once band mode (gfx_mode.h) has freed the PSRAM framebuffer,
  * proving IT never lets a caller through is what proves none of them can
  * write into a buffer that no longer exists, without needing gfx_mode.c's own

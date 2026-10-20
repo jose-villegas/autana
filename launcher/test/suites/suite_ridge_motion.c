@@ -9,7 +9,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "ui/ridge_motion.h"
+#include "shell/ui/ridge_motion.h"
 
 #define COLUMNS 300
 

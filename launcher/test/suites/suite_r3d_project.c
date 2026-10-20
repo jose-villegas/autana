@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "math/scalar/math_const.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -77,9 +78,9 @@ test_a_point_on_the_optical_axis_lands_on_center(void) {
     const vec3f_t p = {0, 0, 5.0F};
     int x, y;
 
-    TEST_ASSERT_TRUE(r3d_project_point_cs(p, &view, &x, &y));
-    TEST_ASSERT_EQUAL_INT(view.center_x, x);
-    TEST_ASSERT_EQUAL_INT(view.center_y, y);
+    TEST_ASSERT_TRUE(r3d_project_point_cs(p, &view.lens, &x, &y));
+    TEST_ASSERT_EQUAL_INT(view.lens.cx, x);
+    TEST_ASSERT_EQUAL_INT(view.lens.cy, y);
 }
 
 /* Divisions are chosen to be exact, so this is a real cross-check against
@@ -90,13 +91,13 @@ static void
 check_off_axis_point_matches_the_formula(int center_x, int center_y, float pixels_per_unit, int expected_x,
                                          int expected_y) {
     render_view_t view = fixture();
-    view.center_x = center_x;
-    view.center_y = center_y;
-    view.pixels_per_unit = pixels_per_unit;
+    view.lens.cx = center_x;
+    view.lens.cy = center_y;
+    view.lens.fx = view.lens.fy = pixels_per_unit;
     const vec3f_t p = {2.0F, -4.0F, 4.0F};
     int x, y;
 
-    TEST_ASSERT_TRUE(r3d_project_point_cs(p, &view, &x, &y));
+    TEST_ASSERT_TRUE(r3d_project_point_cs(p, &view.lens, &x, &y));
     TEST_ASSERT_EQUAL_INT(expected_x, x);
     TEST_ASSERT_EQUAL_INT(expected_y, y);
 }
@@ -110,10 +111,10 @@ test_an_off_axis_point_lands_where_the_formula_says(void) {
 static void
 test_a_point_exactly_at_near_z_counts_as_behind(void) {
     const render_view_t view = fixture();
-    const vec3f_t p = {0, 0, view.near_z};
+    const vec3f_t p = {0, 0, view.lens.near_z};
     int x = -1, y = -1;
 
-    TEST_ASSERT_FALSE(r3d_project_point_cs(p, &view, &x, &y));
+    TEST_ASSERT_FALSE(r3d_project_point_cs(p, &view.lens, &x, &y));
     TEST_ASSERT_EQUAL_INT(-1, x);
     TEST_ASSERT_EQUAL_INT(-1, y);
 }
@@ -124,33 +125,39 @@ static void
 test_segment_with_both_ends_behind_returns_false(void) {
     const render_view_t view = fixture();
     const vec3f_t p0 = {0, 0, 0};
-    const vec3f_t p1 = {10, 10, view.near_z}; /* AT near_z, not past it */
+    const vec3f_t p1 = {10, 10, view.lens.near_z}; /* AT near_z, not past it */
     int ax, ay, bx, by;
 
-    TEST_ASSERT_FALSE(r3d_project_segment_cs(p0, p1, &view, &ax, &ay, &bx, &by));
+    TEST_ASSERT_FALSE(r3d_project_segment_cs(p0, p1, &view.lens, &ax, &ay, &bx, &by));
 }
 
-/* near_z sits exactly halfway between the two z's, so the crossing point is
- * plain averaging rather than a hand copy of the function's formula. */
+static void
+assert_screen_point(const projectf_t* lens, vec3f_t point, int x, int y) {
+    int expected_x, expected_y;
+    r3d_project_screen(point, lens, &expected_x, &expected_y);
+    TEST_ASSERT_EQUAL_INT(expected_x, x);
+    TEST_ASSERT_EQUAL_INT(expected_y, y);
+}
+
 static void
 test_one_end_behind_clips_to_the_near_plane_crossing(void) {
+    const float near_z = 2.0F;
+    const vec3f_t behind = {7.0F, -5.0F, -2.0F};
+    const vec3f_t front = {-4.0F, 13.0F, 14.0F};
+    const float crossing_parts = 4.0F;
+    const float remaining_parts = 3.0F;
     render_view_t view = fixture();
-    view.near_z = 100.0F;
-    const vec3f_t p0 = {0, 0, 0};
-    const vec3f_t p1 = {200.0F, 100.0F, 200.0F};
-    int ax, ay, bx, by;
-
-    TEST_ASSERT_TRUE(r3d_project_segment_cs(p0, p1, &view, &ax, &ay, &bx, &by));
-
-    const vec3f_t at_near_z = {(p0.x + p1.x) / 2.0F, (p0.y + p1.y) / 2.0F, view.near_z};
-    int ex, ey, fx, fy;
-    r3d_project_screen(at_near_z, &view, &ex, &ey);
-    r3d_project_screen(p1, &view, &fx, &fy);
-
-    TEST_ASSERT_EQUAL_INT(ex, ax);
-    TEST_ASSERT_EQUAL_INT(ey, ay);
-    TEST_ASSERT_EQUAL_INT(fx, bx);
-    TEST_ASSERT_EQUAL_INT(fy, by);
+    view.lens.near_z = near_z;
+    /* The near plane is one quarter of the way from behind to front. */
+    const vec3f_t crossing = {(remaining_parts * behind.x + front.x) / crossing_parts,
+                              (remaining_parts * behind.y + front.y) / crossing_parts, near_z};
+    for (int reverse = 0; reverse < 2; reverse++) {
+        int ax, ay, bx, by;
+        TEST_ASSERT_TRUE(reverse ? r3d_project_segment_cs(front, behind, &view.lens, &ax, &ay, &bx, &by)
+                                 : r3d_project_segment_cs(behind, front, &view.lens, &ax, &ay, &bx, &by));
+        assert_screen_point(&view.lens, crossing, reverse ? bx : ax, reverse ? by : ay);
+        assert_screen_point(&view.lens, front, reverse ? ax : bx, reverse ? ay : by);
+    }
 }
 
 static void
@@ -160,16 +167,10 @@ test_both_ends_in_front_matches_projecting_each_point(void) {
     const vec3f_t p1 = {-80.0F, 60.0F, 500.0F};
     int ax, ay, bx, by;
 
-    TEST_ASSERT_TRUE(r3d_project_segment_cs(p0, p1, &view, &ax, &ay, &bx, &by));
+    TEST_ASSERT_TRUE(r3d_project_segment_cs(p0, p1, &view.lens, &ax, &ay, &bx, &by));
 
-    int ex0, ey0, ex1, ey1;
-    r3d_project_screen(p0, &view, &ex0, &ey0);
-    r3d_project_screen(p1, &view, &ex1, &ey1);
-
-    TEST_ASSERT_EQUAL_INT(ex0, ax);
-    TEST_ASSERT_EQUAL_INT(ey0, ay);
-    TEST_ASSERT_EQUAL_INT(ex1, bx);
-    TEST_ASSERT_EQUAL_INT(ey1, by);
+    assert_screen_point(&view.lens, p0, ax, ay);
+    assert_screen_point(&view.lens, p1, bx, by);
 }
 
 /* A point exactly at the camera plane divides by zero; the pixel is a
@@ -180,10 +181,10 @@ test_a_point_at_the_camera_plane_projects_to_a_far_off_but_defined_pixel(void) {
     const vec3f_t p = {1.0F, 1.0F, 0.0F};
     int x = 0, y = 0;
 
-    r3d_project_screen(p, &view, &x, &y);
+    r3d_project_screen(p, &view.lens, &x, &y);
 
-    TEST_ASSERT_TRUE(x > view.center_x + 10000);
-    TEST_ASSERT_TRUE(y < view.center_y - 10000);
+    TEST_ASSERT_TRUE(x > view.lens.cx + 10000);
+    TEST_ASSERT_TRUE(y < view.lens.cy - 10000);
 }
 
 static void
@@ -191,9 +192,9 @@ test_a_nan_offset_and_a_point_at_the_axis_on_the_camera_plane_clamp(void) {
     TEST_ASSERT_EQUAL_INT((int)R3D_PIXEL_LIMIT, r3d_pixel_offset(NAN));
     render_view_t view = fixture();
     int x = 0, y = 0;
-    r3d_project_screen((vec3f_t){0.0F, 0.0F, 0.0F}, &view, &x, &y); /* 0 * inf is NaN */
-    TEST_ASSERT_EQUAL_INT(view.center_x + (int)R3D_PIXEL_LIMIT, x);
-    TEST_ASSERT_EQUAL_INT(view.center_y - (int)R3D_PIXEL_LIMIT, y);
+    r3d_project_screen((vec3f_t){0.0F, 0.0F, 0.0F}, &view.lens, &x, &y); /* 0 * inf is NaN */
+    TEST_ASSERT_EQUAL_INT(view.lens.cx + (int)R3D_PIXEL_LIMIT, x);
+    TEST_ASSERT_EQUAL_INT(view.lens.cy - (int)R3D_PIXEL_LIMIT, y);
 }
 
 static void
@@ -223,7 +224,7 @@ test_the_fixed_projection_lands_within_two_pixels_of_the_float_one(void) {
             for (int yi = -5; yi <= 5; yi += 2) {
                 const vec3f_t p = {(float)xi * 0.7F, (float)yi * 0.9F, (float)zi * 4.5F};
                 int fx, fy, qx, qy;
-                r3d_project_screen(p, &view, &fx, &fy);
+                r3d_project_screen(p, &view.lens, &fx, &fy);
                 r3d_camera_to_screen_x(q9(p), &view_x, &qx, &qy);
                 TEST_ASSERT_INT_WITHIN(2, fx, qx);
                 TEST_ASSERT_INT_WITHIN(2, fy, qy);
@@ -235,10 +236,10 @@ test_the_fixed_projection_lands_within_two_pixels_of_the_float_one(void) {
 static void
 test_the_fixed_segment_clip_and_point_test_follow_the_near_plane(void) {
     render_view_t float_view = fixture();
-    float_view.near_z = 1.0F;
-    float_view.center_x = 100;
-    float_view.center_y = 100;
-    float_view.pixels_per_unit = 50.0F;
+    float_view.lens.near_z = 1.0F;
+    float_view.lens.cx = 100;
+    float_view.lens.cy = 100;
+    float_view.lens.fx = float_view.lens.fy = 50.0F;
     const transformf_t model = TRANSFORMF_IDENTITY;
     const float meters_per_unit[] = {1.0F, 1.0F, 1.0F};
     const r3d_line_view_x_t view = r3d_line_view_x_make(&float_view, &model, meters_per_unit);
@@ -276,41 +277,41 @@ test_line_points_follow_the_view_and_raster_lens_in_every_quarter(void) {
             const render_view_t view =
                 render_view_make(&pose, half_fov_short_tan, R3D_LINE_NEAR_Z, (viewport_t){368, 448, quarter});
             const r3d_line_view_x_t fixed = r3d_line_view_x_make(&view, &model, meters_per_unit);
-            TEST_ASSERT_EQUAL_INT(mathf_round_i32(view.pixels_per_unit), fixed.pixels_per_unit);
+            TEST_ASSERT_EQUAL_INT(mathf_round_i32(view.lens.fx), fixed.pixels_per_unit);
             const mat4f_t matrix = r3d_line_matrix(&view, &model);
             r3d_lens_t lens;
             r3d_lens_init(&lens, &view, 1);
             /* Dot/scale and affine paths round at most 5+1+1+1 and 6+1+1 times, fused or not.
              * Cancellation requires the pre-divide magnitude rather than the output coordinate. */
             const int projection_roundings = 16;
-            const float center_magnitude = fmaxf(view.center_x, view.center_y);
+            const float center_magnitude = fmaxf(view.lens.cx, view.lens.cy);
             for (int ix = -edge_steps; ix <= edge_steps; ix++) {
                 for (int iy = -edge_steps; iy <= edge_steps; iy++) {
-                    const float dx = view.center_x * (float)ix / (float)edge_steps;
-                    const float dy = view.center_y * (float)iy / (float)edge_steps;
+                    const float dx = view.lens.cx * (float)ix / (float)edge_steps;
+                    const float dy = view.lens.cy * (float)iy / (float)edge_steps;
                     const vec3f_t relative =
                         vec3f_add(vec3f_scale(view.forward, depth),
-                                  vec3f_add(vec3f_scale(view.screen_x, dx * depth / view.pixels_per_unit),
-                                            vec3f_scale(view.screen_y, dy * depth / view.pixels_per_unit)));
+                                  vec3f_add(vec3f_scale(view.screen_x, dx * depth / view.lens.fx),
+                                            vec3f_scale(view.screen_y, dy * depth / view.lens.fx)));
                     const vec3f_t point = vec3f_add(view.position, relative);
                     const vec3f_t delta = vec3f_sub(point, view.position);
                     const float z = vec3f_dot(view.forward, delta);
                     const float point_magnitude = sqrtf(vec3f_dot(point, point));
-                    const float projection_magnitude = center_magnitude + view.pixels_per_unit * point_magnitude / z;
+                    const float projection_magnitude = center_magnitude + view.lens.fx * point_magnitude / z;
                     const float lens_bound_px = FLT_EPSILON * projection_magnitude * (float)projection_roundings;
-                    const float expected_x = view.center_x + view.pixels_per_unit * vec3f_dot(view.screen_x, delta) / z;
-                    const float expected_y = view.center_y + view.pixels_per_unit * vec3f_dot(view.screen_y, delta) / z;
+                    const float expected_x = view.lens.cx + view.lens.fx * vec3f_dot(view.screen_x, delta) / z;
+                    const float expected_y = view.lens.cy + view.lens.fx * vec3f_dot(view.screen_y, delta) / z;
                     int fx, fy, qx, qy;
-                    TEST_ASSERT_TRUE(r3d_project_point_cs(mat4f_apply(&matrix, point), &view, &fx, &fy));
+                    TEST_ASSERT_TRUE(r3d_project_point_cs(mat4f_apply(&matrix, point), &view.lens, &fx, &fy));
                     const vec3x_t camera = mat4x_apply(&fixed.matrix, vec3x_from_vec3f(point));
                     TEST_ASSERT_TRUE(r3d_project_point_cs_x(camera, &fixed, &qx, &qy));
                     TEST_ASSERT_FLOAT_WITHIN(float_bound_px, expected_x, (float)fx);
                     TEST_ASSERT_FLOAT_WITHIN(float_bound_px, expected_y, (float)fy);
                     TEST_ASSERT_FLOAT_WITHIN(fixed_bound_px, expected_x, (float)qx);
                     TEST_ASSERT_FLOAT_WITHIN(fixed_bound_px, expected_y, (float)qy);
-                    const vec3f_t lp = mat4f_apply(&lens.m, point);
-                    TEST_ASSERT_FLOAT_WITHIN(lens_bound_px, expected_x, lens.center_x + lp.x / lp.z);
-                    TEST_ASSERT_FLOAT_WITHIN(lens_bound_px, expected_y, lens.center_y + lp.y / lp.z);
+                    const vec2f_t screen = projectf_screen(&lens.project, mat4f_apply(&lens.m, point));
+                    TEST_ASSERT_FLOAT_WITHIN(lens_bound_px, expected_x, screen.x);
+                    TEST_ASSERT_FLOAT_WITHIN(lens_bound_px, expected_y, screen.y);
                 }
             }
         }

@@ -36,7 +36,7 @@ from r3d.ray_query import RayQuery
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
-from render_compare import expand_565  # noqa: E402
+from colour_maths import expand_565  # noqa: E402
 
 
 def hit_barycentrics(source, hits, locations):

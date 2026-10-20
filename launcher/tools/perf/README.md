@@ -6,6 +6,52 @@ seed sets. Arguments accept revisions or existing project directories.
 The wrapper restores `origin/main`'s release image afterwards;
 `--no-restore` omits that flash.
 
+Capture comparisons require one USB serial throughout the input set.
+A mixed set exits non-zero before comparison and lists each board's short
+id, full serial and captures. A capture without board provenance is unknown:
+unknown captures can be compared together, but cannot be mixed with a known
+board. The shared identity check in `capture.py` reads board fields in saved
+measurement records and the device capture index. Raw captures need matching
+device index entries; seeded measurement and sweep records retain the serial.
+A held comparison job routes every capture through the same board.
+
+`autana status` shows the job name, estimated finish and queued starts.
+Estimates use recorded flash and capture durations, with the configured capture
+deadline and `DEFAULT_FLASH_SECONDS` in `perf_job.py` as fallbacks.
+The comparison estimate covers its first scheduled pass: seeds per side,
+calibration repeats, requests per capture and the restore flash when enabled.
+Adaptive extra seeds can run longer. The sweep estimate uses its planned
+flashes, rounds, knob points and inventory captures, plus the optional restore.
+
+```mermaid
+sequenceDiagram
+    participant S as Shell wrapper
+    participant L as autana lock
+    participant P as perf Python
+    alt No inherited token
+        S->>L: take with owner pid and estimate
+        L-->>S: token after queue wait
+    else Borrowed token
+        Note over S,L: Outer hold remains owned by caller
+    end
+    S->>P: Seed flashes and captures with token
+    alt Success
+        P-->>S: Results
+    else Failure or Ctrl+C during capture
+        P-->>S: Stop acquisition
+    end
+    opt Restore enabled after acquisition
+        S->>P: Restore release image with token
+        P-->>S: Restore finished
+    end
+    alt Token taken by wrapper
+        S->>L: release token
+    else Borrowed token
+        Note over S,L: Caller releases outer hold
+    end
+    Note over S,L: Interrupted queued take skips restore and release
+```
+
 Each `--suite NAME TESTS TABLE` takes a registered suite name, comma-separated
 test patterns (`-` for all), and a table command (`-` reads the capture's
 `<row> both cores: mean <N>us`, `<row> one core: mean <N>us`, or
@@ -20,11 +66,21 @@ for example with `--source @PROJECT@/path/to/suite.c`.
 
 ```sh
 launcher/tools/perf/perf_compare.sh A B -o comparison --rng-seed 42 \
-  --suite run_sponza_perf_suite flythrough -
+  --suite SUITE TESTS -
 
 launcher/tools/perf/perf_compare.sh A A -o calibration \
   --suite run_example_perf_suite frame_budget \
   'python3 path/to/report_performance.py @CAPTURE@ @TABLE@ --source @PROJECT@/path/to/suite.c'
+```
+
+`--send-a LINE` and `--send-b LINE` send console setup before every capture.
+Each side's sequence should be idempotent: stop voices before starting a loop.
+Use the same revision on both sides to measure runtime setup alone:
+
+```sh
+launcher/tools/perf/perf_compare.sh HEAD HEAD -o sound-comparison \
+  --suite run_sponza_perf_suite flythrough - \
+  --send-b 'sound stop all' --send-b 'sound play tap loop'
 ```
 
 `--perf-scope` is forced for every seeded flash.
@@ -183,3 +239,117 @@ agreement and Holm across the table's cells.
 `plan.json` and per-capture JSON retain failures; two consecutive capture
 failures stop acquisition. Rebuild the generated report with
 `python launcher/tools/perf/perf_sweep.py report DIR`.
+
+Render perf captures force every timed render window through portrait and
+landscape. Rows carry `quarter=portrait` or `quarter=landscape`; the quarter
+is part of the metric name in comparisons, layout pilots and sweeps. Stage
+and span metrics retain that identity too. Untagged captures retain their
+unqualified row names, so comparisons do not silently pair them with tagged
+rows. Single-viewport render documentation readers select portrait by default;
+`dynres_report.py --quarter landscape` selects landscape explicitly.
+
+## Nightly scoped chain
+
+The workflow assigns first-parent commits on main by position modulo board
+count. Each board repeats its last measured commit as an anchor and plans
+new steps after `last_attempted`. A fresh board starts at its newest commit.
+
+```mermaid
+flowchart LR
+    Plan[Shared plan] --> A
+    Plan --> B
+    subgraph A[Board A lock]
+        LaneA[Anchor and new steps]
+    end
+    subgraph B[Board B lock]
+        LaneB[Anchor and new steps]
+    end
+    Mutex[Shared build mutex]
+    Mutex -. Checkout and build .-> A
+    Mutex -. Checkout and build .-> B
+    A --> Publish[Publish]
+    B --> Publish
+    Publish --> Data[perf-data reports]
+    Publish --> Artifacts[Raw capture artifacts]
+```
+
+Builds are serialised across lanes and run at below-normal priority so the
+host stays responsive.
+
+A flash is skipped when the commit's image hash equals the same board's
+previous measured image hash. Hashes are compared only within one board's
+series, and an anchor is always measured.
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Planned
+    Planned --> not_run_window: Cannot fit
+    Planned --> not_run_stopped: Failure limit
+    Planned --> Build: Fits
+    Build --> build_failed
+    Build --> skipped_same_image: Same image
+    Build --> Capture: Changed image or anchor
+    Capture --> measured
+    Capture --> capture_failed
+    state "Advance both cursors and hash" as Measured {
+        measured
+    }
+    state "Advance last_attempted" as Attempted {
+        build_failed
+        skipped_same_image
+    }
+    state "Keep both cursors" as Unchanged {
+        capture_failed
+        not_run_window
+        not_run_stopped
+    }
+```
+
+Cursors retain the furthest first-parent position, including explicit ranges.
+`last_measured` and `last_image_hash` identify the board's measured baseline.
+
+The orphan `perf-data` branch stores
+`scoped/<board>/<YYYY-MM-DD>-<HHMM>/night.json` and `<NN>-<sha12>.json` reports.
+The directory uses the plan's local start time; the manifest's `night` is its date.
+
+The manifest records step outcomes, cursors, image hashes, durations, and
+self-test results. LNT v2 reports use the full USB serial as machine name,
+the commit as `run.llvm_project_revision`, and timing samples in seconds.
+
+For a short manual chain, create a data checkout and a shared plan, then run
+each lane under its board's hold. `--from` includes that commit if assigned
+to the lane; `--max-steps` limits new candidates and retains the anchor.
+
+```sh
+python launcher/tools/perf/nightly/scoped_chain.py plan \
+  --boards BOARD_A BOARD_B --data DATA --out plan.json \
+  --from SHA --max-steps 2
+autana --board BOARD_A --wait 3600 lock run -- \
+  python launcher/tools/perf/nightly/scoped_chain.py run \
+  --plan plan.json --data DATA --board BOARD_A --lane 0/2 \
+  --until 07:00 --out captures --suite SUITE - -
+```
+
+`--suite NAME TESTS TABLE` is perf_compare's triplet: suite name,
+comma-separated test patterns or `-` for all, and table command or `-` for raw
+timing lines. The workflow's `NIGHTLY_SUITES` supplies these triplets.
+
+`--lane INDEX/COUNT` is this board's share of the plan. `plan.json` records
+it per board; `lane-info --plan plan.json --board BOARD_A` prints it and its
+estimated duration in seconds.
+
+`QUEUE_AT`, `WINDOW_END`, and `SELFTEST_AT` set local times. Dispatch inputs
+`queue_at`, `window_end`, and `selftest_at` override them; an empty dispatch
+`queue_at` starts immediately. A dispatch holds boards until its window end or `max_steps`.
+
+A step starts only if it fits before `WINDOW_END`, and a lane stops after
+`CAPTURE_FAILURE_LIMIT` consecutive capture failures (`scoped_chain.py`).
+Unattempted commits go to the same board's next night.
+
+One board, named by `SELFTEST_BOARD`, also runs Board CI's steps
+(`scripts/ci/board-steps.sh`: the self-test, then the console tests) at the first step boundary after `SELFTEST_AT`, or after its chain if that
+ends first, inside the same hold.
+
+Partial manifests are written after every step. Raw captures and result
+directories are uploaded even when a lane fails.
