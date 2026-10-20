@@ -62,7 +62,6 @@ planes are not normalized.
 
 The shown depth bounds the drawing; the frustum has no far plane, and every plane must accept a point.
 
-
 ## box3 (`f s`)
 
 `P` is `box3f` or `box3s`. A box stores vec3 corners `lo, hi` and includes
@@ -84,7 +83,7 @@ and union; any crossed axis is empty.
 | `P_centre(b)` | midpoint (`f`) | $`c = 0.5(lo+hi)`$ |
 | `P_half_extent(b)` | half size (`f`) | $`e = 0.5(hi-lo)`$ |
 | `P_segment_hit(b, a, c, &t)` | slab entry in `[0,1]` (`f`); inside starts at zero | $`v=c-a`$; intersect $`[0,1]`$ with each axis's $`[(lo_k-a_k)/v_k,(hi_k-a_k)/v_k]`$, sorted |
-| `P_outside_planes(b, planes, count, &mask)` | reject outside; clear wholly inside bits (`f`) | $`d=n\cdot c+d_{plane},\ r=\sum_k |n_k|e_k`$<br>outside: $`d+r<0`$; clear bit: $`d-r\ge0`$ |
+| `P_outside_planes(b, planes, count, &mask)` | reject outside; clear wholly inside bits (`f`) | $`d=n\cdot c+d_{plane},\ r=\sum_k \lvert n_k\rvert e_k`$<br>outside: $`d+r<0`$; clear bit: $`d-r\ge0`$ |
 | `box3f_from_box3s(b, scale)` | convert position ticks to float units | $`(lo\,scale,hi\,scale)`$ |
 
 Real queries use finite, nonempty bounds, except that `P_segment_hit`
