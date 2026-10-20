@@ -80,19 +80,24 @@ def legend(image, top, text, end):
 
 
 class Clip:
-    """The sheet's clip: its frames' skinned positions and one fixed camera framing all of them."""
+    """The sheet's clip: its name, its frames' poses and skinned positions, and one fixed camera framing all of
+    them."""
 
     def __init__(self, asset, spec):
-        clip, _ = skin_light_data.sheet_frame(asset, spec)
-        count = skin_light_data.frame_count(asset, clip)
+        self.name, _ = skin_light_data.sheet_frame(asset, spec)
+        count = skin_light_data.frame_count(asset, self.name)
         self.asset = asset
-        self.positions = [asset.skin(asset.sample(clip, asset.duration(clip) * i / count))[0] for i in range(count)]
+        self.poses = [asset.sample(self.name, asset.duration(self.name) * i / count) for i in range(count)]
+        self.positions = [asset.skin(pose)[0] for pose in self.poses]
         centre, radius = gltf_preview.bounds([p for frame in self.positions for p in frame])
         self.camera = gltf_preview.Camera(centre, radius * 0.62, *VIEW, TILE[0] * gltf_preview.SUPERSAMPLE,
                                           TILE[1] * gltf_preview.SUPERSAMPLE)
 
     def tile(self, frame, colours, text):
-        return label(gltf_preview.render(self.asset, self.camera, self.positions[frame], TILE, colours), text)
+        return self.tile_at(self.positions[frame], colours, text)
+
+    def tile_at(self, positions, colours, text, camera=None):
+        return label(gltf_preview.render(self.asset, camera or self.camera, positions, TILE, colours), text)
 
     def frames(self):
         return range(0, len(self.positions), STEP)
@@ -207,15 +212,20 @@ def read_tables(bench):
     return cells
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+def parse_clip(doc, *paths):
+    """A figure script's arguments: the asset, each named path, then --sheet; returns them and the sheet's Clip."""
+    parser = argparse.ArgumentParser(description=doc.split("\n\n")[0])
     parser.add_argument("asset")
-    parser.add_argument("bench", type=pathlib.Path)
-    parser.add_argument("out", type=pathlib.Path)
+    for name in paths:
+        parser.add_argument(name, type=pathlib.Path)
     skin_light_data.sheet_argument(parser)
     args = parser.parse_args()
-    asset = gltf_skin.SkinnedAsset(*gltf_skin.load_asset(args.asset))
-    clip = Clip(asset, args.sheet)
+    return args, Clip(gltf_skin.SkinnedAsset(*gltf_skin.load_asset(args.asset)), args.sheet)
+
+
+def main():
+    args, clip = parse_clip(__doc__, "bench", "out")
+    asset = clip.asset
     count, frames = len(asset.positions), len(clip.positions)
     labels, runs = read_runs(args.bench, "sheet", count, frames)
     clip.save(args.out / "skin-light-sheet.gif", sheet(clip, labels, runs))

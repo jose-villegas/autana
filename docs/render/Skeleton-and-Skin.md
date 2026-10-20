@@ -1,152 +1,322 @@
 # Skeleton and skin entries
 
-`anim/skeleton_asset.py` writes and reads SKEL; `r3d/skin_asset.py` writes
-and reads SKIN. `anim/anim_skeleton.c` and `render/r3d_skin.c` validate
-their mapped views without allocation. Integers and floats are little-
-endian; offsets count from the entry start and are four-byte aligned. The
-C views require a little-endian host with IEEE-754 binary32 floats.
-Unknown versions are refused with `ASSET_ERR_VERSION`; bad ranges and
-alignment with `ASSET_ERR_BOUNDS`; bad values with `ASSET_ERR_FORMAT`.
-Failed opens clear the output view. The pack and its bytes must outlive
-the view.
+A skinned mesh is a mesh plus two pack entries. SKEL holds the joint tree and
+its rest pose; SKIN holds, per vertex, which joints move it and by how much.
+
+![A skinned mesh's joints as dots and each joint's link to its parent, in the bind pose and over one clip](../images/render/skin-skeleton.gif)
+
+![Each vertex in its joints' colours blended by weight, the same with the joints drawn, and how much its joints mix: dark where one joint owns it, white where two share it evenly](../images/render/skin-weights.gif)
+
+| Entry | Holds | Writer and reader | C view |
+|---|---|---|---|
+| SKEL v1 | joint parents, rest TRS, joint paths | `anim/skeleton_asset.py` | `anim/anim_skeleton.c` |
+| SKIN v2 | inverse binds; per vertex joints, weights, bind normal | `r3d/skin_asset.py` | `render/r3d_skin.c` |
+
+| Term | Meaning |
+|---|---|
+| LMSH | the baked mesh entry the skin moves ([Mesh import](Mesh-Import.md)) |
+| TRCK | an animation clip entry ([Animation tracks](../Animation-Tracks.md)) |
+| Tick | one int16 step of an LMSH position; the mesh's position scale is ticks per model unit |
+| Palette | one matrix per joint taking a bind position to its posed position |
+| Cluster, node | the mesh's draw clusters and the bounding tree over them |
+
+## How a vertex follows its joints
+
+```mermaid
+flowchart LR
+    subgraph Pose["per entity, when the pose changes"]
+        direction TB
+        Clip["clip sample or blend: local TRS per joint"] --> Model["model matrix per joint: parent x local, parents first"]
+        Model --> Palette["palette: model x inverse bind, translation x position scale"]
+    end
+    subgraph Skin["per vertex"]
+        direction TB
+        Bind["bind position ticks, LMSH"] --> Blend["sum of weight x palette x bind position"]
+        Blend --> Ticks["round to int16 ticks, saturate"]
+    end
+    subgraph Bounds["per mesh"]
+        direction TB
+        Cluster["cluster bounds of output ticks"] --> Nodes["node bounds, reverse pass"]
+    end
+    Pose --> Skin --> Bounds
+```
+
+| Step | Owner | Beyond the diagram |
+|---|---|---|
+| Local TRS | `anim_pose_rest()`, `anim_sample_pose()`, `anim_pose_blend()` | blending in [Animation tracks](../Animation-Tracks.md#scene-playback) |
+| Model matrices | `anim_pose_model()` | each root independent |
+| Palette | the scene | the position scale makes bind ticks map to posed ticks |
+| Blend | `render/skin/r3d_skinning.h` | linear blend skinning (LBS)<sup>[[57]](../Citations.md#57)</sup>; two- and four-influence kernels, picked once per entry, outside the vertex loop |
+| Output | `r3d_lit_mesh_t` view | ties round away from zero; the raster reads it |
+
+A two-joint limb through `r3d_skin_palette()` and `r3d_skin_clusters()`:
+
+![Weight bytes along a two-joint limb, the limb bent 90 degrees by linear blend and by one joint per vertex, with one hinge vertex carried by each joint and their weighted mix, and the hinge's thickness against the bend angle](../images/render/skin-limb.png)
+
+Each joint carries a vertex rigidly; linear blend puts it on the line between
+those copies, by weight. At the hinge the copies fold toward each other, so
+the limb thins as it bends and pinches to nothing at 180 degrees. One joint
+per vertex keeps the thickness but tears the surface where the weight flips.
+
+Lit skins blend normals in the same loop: see [Skinned lighting](Skinned-Lighting.md).
+
+### Two or four influences
+
+`build_pack.py --max-influences 2|4` keeps each vertex's heaviest joints;
+the default is 2. Few vertices have more than two, but cutting the rest can
+move them far:
+
+![The engine's skin at four and at two influences on the clip frame where they differ most, seen from below, whole and zoomed on the vertex that moves most; rings mark the moved vertices, red lines run from their four-influence to their two-influence positions](../images/render/skin-influences.png)
+
+| Influences | Vertex record | Board cost |
+|---|---|---|
+| 2 | 8 bytes | the skin-only bar in [Skinned lighting](Skinned-Lighting.md#lighting-modes) |
+| 4 | 12 bytes | not measured on the board |
+
+<!-- generated: skin-influence-counts sha256=f8bf2db314cc2a12e679c8b68d8b9ec8576f14e8c27744cc97d4b5bc42ef7633 -->
+| Source influences | Vertices | Worst move keeping 2, share of the mesh radius |
+|---:|---:|---:|
+| 1 | 118 | 0.0% |
+| 2 | 484 | 0.0% |
+| 3 | 4 | 4.9% |
+| 4 | 7 | 16.2% |
+<!-- /generated: skin-influence-counts -->
+
+Weights become bytes summing to 255 (`WEIGHT_SUM`). The kept weights are
+renormalised to sum to one, scaled and floored; leftover units go to the
+largest remainders, ties by joint index, so two equal halves give 128 and 127:
+
+<!-- generated: skin-weight-example sha256=a4584998468f8da63325d47156b599c39325aa2554f98d5cf8a46065e5fb70c0 -->
+Vertex 7:
+
+| glTF joint | Source weight | Kept of 4, byte | Kept of 2, byte |
+|---:|---:|---:|---:|
+| 3 | 0.2614 | 67 | 128 |
+| 7 | 0.2614 | 66 | 127 |
+| 4 | 0.2386 | 61 | — |
+| 8 | 0.2386 | 61 | — |
+| sum | 1.0000 | 255 | 255 |
+<!-- /generated: skin-weight-example -->
 
 ## SKEL v1
 
-| Part | Layout |
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 16
+    bitWidth: 52
+---
+packet-beta
+title Header, 16 bytes at 0, one cell a byte
+0-1: "version = 1"
+2: "joints"
+3: "0"
+4-7: "strings_off"
+8-11: "strings_size"
+12-15: "rest_off"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 4
+    bitWidth: 120
+---
+packet-beta
+title Joint registry, one 4-byte row a joint from byte 16
+0-1: "path"
+2: "parent"
+3: "0"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 20
+    bitWidth: 44
+---
+packet-beta
+title Content: rest records, one 40-byte record a joint from rest_off
+0-11: "f32 position[3]"
+12-27: "f32 rotation[4], xyzw"
+28-39: "f32 scale[3]"
+```
+
+| Part | At | Size |
+|---|---|---|
+| Header | 0 | 16 bytes |
+| Joint registry | 16 | 4 bytes a joint; `path` is an offset within the strings |
+| Content: rest records | `rest_off` | 40 bytes a joint |
+| Content: strings | `strings_off` | UTF-8 joint paths, NUL terminated; ends at the entry end |
+
+| Rule | Detail |
 |---|---|
-| Header, 16 bytes | `u16 version=1`, `u8 joint_count`, `u8 zero`, `u32 strings_off`, `u32 strings_size`, `u32 rest_off` |
-| Joint rows, at 16, four bytes each | `u16 path` (offset within strings), `u8 parent`, `u8 zero` |
-| Rest, at rest_off, 40 bytes each | `f32 position[3]`, `f32 rotation[4]` (xyzw), `f32 scale[3]` |
-| Strings, at strings_off | UTF-8 joint paths, NUL terminated |
-
-Joint count is in 1..254. Any joint may be a root (`parent=0xFF`); every
-other parent is below its joint's index. Joint zero is therefore a root,
-and at least one root exists. This supports a rig whose two root joints
-sit under one armature node. Joint paths come from
-`gltf_read.skin_joint_paths`, starting at each root joint. Paths are
-nonempty and unique, and each offset starts a string terminated within the
-table. The table fits a u16 offset. Both Python and C check uniqueness on
-open.
-
-Rest values are finite. Rotations obey `abs(1 - sum(q*q)) <= ANIM_SKELETON_UNIT_TOLERANCE`, defined by the C format owner as `1e-4`
-(`UNIT_TOLERANCE` in Python); boundary tests use adjacent representable
-floats on both sides. Joint rows precede rest data, which precedes
-strings; strings end at the entry end. Gaps and reserved bytes are zero.
+| Joints | 1..254 |
+| Parents | `0xFF` is a root; any other parent is below its joint's index, so joint 0 is a root. Two roots under one armature node are allowed |
+| Paths | from `gltf_read.skin_joint_paths`, starting at each root; nonempty, unique (checked by Python and C), each terminated within the table, which fits a u16 offset |
+| Rest | finite; rotation with `abs(1 - sum(q*q))` at most `ANIM_SKELETON_UNIT_TOLERANCE` (1e-4, Python `UNIT_TOLERANCE`), boundary tests at the adjacent floats |
+| Order | header, joint registry, rest records, strings; gaps and reserved bytes zero |
 
 ## SKIN v2
 
-| Part | Layout |
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 20
+    bitWidth: 44
+---
+packet-beta
+title Header, 20 bytes at 0, one cell a byte
+0-1: "version = 2"
+2: "joints"
+3: "infl."
+4-7: "vertex_count"
+8-11: "inverse_bind_off"
+12-15: "vertices_off"
+16: "light"
+17-19: "0"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 16
+    bitWidth: 52
+---
+packet-beta
+title Content: inverse binds, one 48-byte matrix a joint from inverse_bind_off
+0-15: "row 0: f32[4]"
+16-31: "row 1: f32[4]"
+32-47: "row 2: f32[4]"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 8
+    bitWidth: 84
+---
+packet-beta
+title Content: vertex records, two influences, 8 bytes a vertex from vertices_off
+0: "joint 0"
+1: "joint 1"
+2: "weight 0"
+3: "weight 1"
+4: "normal x"
+5: "normal y"
+6: "normal z"
+7: "0"
+```
+
+| Part | At | Size |
+|---|---|---|
+| Header | 0 | 20 bytes |
+| Content: inverse binds | `inverse_bind_off` | 48 bytes a joint: `f32 matrix[3][4]`, row-major, model units |
+| Content: vertex records | `vertices_off` | `2 * influences + 4` bytes a vertex: joints, then weights, then normal; four influences add two of each |
+
+| Rule | Detail |
 |---|---|
-| Header, 20 bytes | `u16 version=2` at 0, `u8 joint_count` at 2, `u8 influences` at 3, `u32 vertex_count` at 4, `u32 inverse_bind_off` at 8, `u32 vertices_off` at 12, `u8 lighting_mode` at 16, three zero bytes at 17..19 |
-| Inverse binds, at inverse_bind_off, 48 bytes each | `f32 matrix[3][4]`, row-major, model units |
-| Vertex, at vertices_off, 2*influences+4 bytes | `u8 joints[influences]`, `u8 weights[influences]`, `i8 normal[3]`, `u8 zero` |
+| Joints | 1..254, in SKEL order; vertex order is LMSH order |
+| Influences | 2 or 4; joint indices below the joint count; weights sum to 255 |
+| Values | every matrix value finite; normal components in -127..127, nonzero |
+| Lighting | `R3D_SKIN_LIGHT_DIRECT`, `_RENORMALISED` or `_TABLE` from `render/r3d_skin_format.h`, set by the import's `[skin].lighting` (default `direct`) and copied to the renderer's private mode on attachment; unknown codes refused |
+| Order | header, inverse binds, vertex records, ending at the entry end; gaps and padding zero |
+| Binding | each open validates one entry; whoever binds SKIN to SKEL and LMSH checks joint and vertex counts |
 
-Lighting codes are `R3D_SKIN_LIGHT_DIRECT`, `R3D_SKIN_LIGHT_RENORMALISED` and
-`R3D_SKIN_LIGHT_TABLE` in `render/r3d_skin_format.h`; unknown codes are refused.
-The import's `[skin].lighting` selects the mode, default `direct`; skin attachment
-fills the renderer's private mode. SKIN v1 is refused with `ASSET_ERR_VERSION`.
+## Opening an entry
 
-Joint count is in 1..254, influences are 2 or 4, joint indices are below
-the joint count, and weights sum to 255. Every matrix value is finite.
-Each normal component is in -127..127 and the normal is nonzero. Padding
-is zero. Matrices follow the header and precede vertices; vertices end at
-the entry end. Gaps are zero. SKIN joint order is its SKEL order, and
-vertex order is its LMSH order. Each open validates one entry. A consumer
-binding the entries must check joint and vertex counts against SKEL and
-LMSH.
+Integers and floats are little-endian; offsets count from the entry start and
+are four-byte aligned. The C views need a little-endian IEEE-754 binary32 host.
 
-## Model space and matching
+They validate without allocating and borrow the pack's bytes, which must
+outlive the view.
 
-A skinned vertex is in its mesh node's space. For every root joint, the
-world matrix of its non-joint parent must equal the skinned mesh node's
-world matrix within `MODEL_SPACE_TOLERANCE` from `skeleton_asset.py`. A
-root without a parent uses identity. A mismatch fails naming the root and
-mesh node. The stored rest chain starts at root joints; inverse binds
-apply as stored. Source inverse binds must be affine. The mesh node, every
-joint, and their ancestors fail naming the node if they use `matrix`; they
-need TRS before baking.
+| Fault | Result |
+|---|---|
+| Unknown version, including SKIN v1 | `ASSET_ERR_VERSION` |
+| Range or alignment | `ASSET_ERR_BOUNDS` |
+| A value breaking a rule above | `ASSET_ERR_FORMAT` |
 
-The uncached skin pack step reads glTF and the finished LMSH. It uses that
-LMSH's position scale and matches each quantized LMSH position to every
-source vertex quantizing there. `lit_mesh.bake_lit_mesh` owns the rounding
-rule, pinned by `test_quantizer_matches_mesh_owner`. A vertex without a
-source match fails naming its index and position.
+A failed open clears the output view.
 
-For each source vertex, duplicate joint weights are combined, the heaviest
-`max_influences` are kept (ties by joint index), and renormalized. Weights
-are multiplied by 255 and quantized by largest remainder, ties by joint
-index; records are ordered by joint index and padded with zero influences.
-All matching source vertices must yield identical joint and weight
-records. Disagreement fails naming the LMSH vertex and its position. The
-bind normal is their normalized mean, each axis multiplied by 127 and
-rounded. A zero or nonfinite mean fails naming the vertex.
+## Pack step
 
-A model whose welded vertices disagree on weights fails this step.
+```mermaid
+flowchart LR
+    Source["glTF, or a Blender source's locked glTF export"] --> Mesh["LMSH bake"]
+    Source --> Rig["skin pack step, uncached"]
+    Mesh --> Rig
+    Rig --> Skel["SKEL: skeleton id"]
+    Rig --> SkinEntry["SKIN: mesh id .skin"]
+    Source --> Clips["TRCK per source.clips name"]
+```
 
-SKEL and SKIN entries use the [engine frame](Mesh-Import.md#the-offline-tools),
-like the mesh and joint-local clips in their pack. The pack boundary mirrors
-joint rest positions and rotations, inverse binds by `S M S`, and bind normals;
-rest scales stay unchanged. Skin matching reads the source-frame LMSH before
-that boundary.
+The step runs for every skinned mesh in a scene or standalone import pack,
+including imports an app's demo manifest selects.
 
-## Pack step and ids
+Unskinned sources and scenes get no rig entries; a skinned source gets its
+skin or fails.
 
-`r3d/build_pack.py --max-influences 2|4` sets the skin step's parameter;
-its default is 2. The import settings do not hold it. The step adds
-entries for every skinned mesh in a scene or standalone import pack,
-including imports selected by an app's demo manifest, after obtaining its
-LMSH bytes. A scene with no skinned meshes receives no rig entries; an
-unskinned source receives none. A skinned source must produce its skin or
-fail the pack step. A Blender source uses its locked glTF export; a glTF
-source is read directly. A source must identify one skinned mesh node; a
-source with several fails naming those nodes.
+| Entry | Id |
+|---|---|
+| SKIN | `<mesh id>.skin` |
+| SKEL | the glTF skin's name, else the root joints' common non-joint parent's; one per rig shared in a pack |
+| TRCK | each name in `source.clips`, through `tracks_asset` ([layout](../Animation-Tracks.md)); Blender import settings accept the list |
 
-The skin id is `<mesh id>.skin`. The skeleton id is the glTF skin's name,
-or the name of the root joints' common non-joint parent. An unnamed rig
-without that common named parent fails. A rig shared by meshes in one pack
-has one skeleton entry. Each name in `source.clips` becomes a TRCK entry
-with that id through `tracks_asset`, whose layout is owned by [Animation
-tracks](../Animation-Tracks.md). Import settings accept that clip list for
-Blender sources. Ids are ASCII and fit 31 bytes; invalid ids and colliding
-ids fail naming the id and sources.
+Ids are ASCII and fit 31 bytes. `--max-influences` is a pack parameter, not
+an import setting.
 
-## Runtime pose and skinning
+### Matching and frames
 
-The scene owns animator and skinned-renderer component arrays indexed by
-entity. `scene_animator_set_clips()` accepts a skeleton id and clip ids;
-`scene_renderer_set_skin()` binds a skin to that entity's mesh, checking joint
-and vertex counts. Property animators use no skeleton. The scene releases
-component PSRAM storage and each mesh's internal RAM when it unloads.
+The step reads the glTF and the finished LMSH. Each quantized LMSH position,
+at that LMSH's position scale, matches every source vertex that quantizes
+there, by `lit_mesh.bake_lit_mesh`'s
+rounding (pinned by `test_quantizer_matches_mesh_owner`).
 
-`anim_pose_rest()`, `anim_sample_pose()` and `anim_pose_blend()` produce local
-joint TRS. `anim_pose_model()` walks joints once in stored order, multiplying
-parents before children and treating each root independently. A palette is
-model times inverse bind. Its translation is multiplied by the mesh's position
-scale, so bind position ticks map directly to posed position ticks.
+Per source vertex, duplicate joints are summed, the heaviest `max_influences`
+kept (ties by joint index), then quantized as above. Records are ordered by
+joint and padded with zero influences. The bind normal is the matched
+vertices' normalised mean, times 127 per axis, rounded.
 
-`render/skin/r3d_skinning.h` owns linear blend skinning
-(LBS)<sup>[[57]](../Citations.md#57)</sup>: each vertex is the weighted sum of
-its palette-transformed bind position. Separate two- and four-influence kernels
-are selected once per entry. They share the weighted-position operation;
-influence selection is outside the vertex loop. The output rounds to nearest
-int16 ticks, ties away from zero, and saturates at the int16 limits. Cluster
-bounds enclose these output ticks. A reverse node pass unions child bounds.
-The raster reads the output's `r3d_lit_mesh_t` view.
+| Failure | Names |
+|---|---|
+| A root joint's non-joint parent's world matrix differs from the mesh node's beyond `MODEL_SPACE_TOLERANCE` (`skeleton_asset.py`); a parentless root uses identity | the root and mesh node |
+| Non-affine source inverse binds | — |
+| The mesh node, a joint, or an ancestor uses `matrix`, not TRS | the node |
+| An LMSH vertex with no source match | its index and position |
+| Welded source vertices with different joint or weight records | the LMSH vertex and position |
+| A zero or non-finite mean normal | the vertex |
+| Several skinned mesh nodes in one source | those nodes |
+| An unnamed rig without a common named parent; invalid or colliding ids | the id and sources |
 
-One caller-owned buffer block holds positions, cluster bounds and
-node bounds for a mesh. `r3d_skin_output_bytes()` sizes it;
-`r3d_skin_output_init()` carves it. The scene allocates it together with model
-matrices and the palette in internal RAM. A separate block reserves
-`R3D_SKIN_LIGHT_CHANNELS` bytes per vertex for lit colors and a `mat3f_t`
-world-space normal palette per joint when the scene has lights or nonzero
-ambient. Without lights or nonzero ambient the mesh retains its bind-color
-pointer, with no copy. With lights or nonzero ambient, the renderer's lighting
-kernel skins positions and normals together and shades the bind albedo into
-that color buffer.
-The normal palette is the inverse-transpose of entity world times joint palette.
-Scene light directions stay in world space and are shared before cluster
-jobs run; baked renderers keep their pack colors. See [Skinned lighting](Skinned-Lighting.md).
-Pose blending is in [Animation tracks](../Animation-Tracks.md#scene-playback).
+Skinned vertices are in the mesh node's space; the rest chain starts at the
+root joints and inverse binds apply as stored.
+
+SKEL and SKIN use the [engine frame](Mesh-Import.md#the-offline-tools). The
+pack boundary mirrors rest positions and rotations, inverse binds by `S M S`,
+and bind normals; rest scales are unchanged. Matching reads the source-frame
+LMSH first.
+
+## Runtime
+
+The scene owns animator and skinned-renderer components, indexed by entity.
+`scene_animator_set_clips()` takes a skeleton id and clip ids;
+`scene_renderer_set_skin()` binds a skin to the entity's mesh, checking joint
+and vertex counts. Property animators use no skeleton.
+
+| Block | Where | Sized by | Holds |
+|---|---|---|---|
+| Skin output | internal RAM, one per mesh, with model matrices and palette | `r3d_skin_output_bytes()`, carved by `r3d_skin_output_init()` | positions, cluster bounds, node bounds |
+| Lit colours and normal palette | internal RAM, only with lights or nonzero ambient | `R3D_SKIN_LIGHT_CHANNELS` bytes per vertex, a `mat3f_t` per joint | see [Skinned lighting](Skinned-Lighting.md#memory); unlit skins keep the bind-colour pointer |
+| Components | PSRAM | entity count | animators, skinned renderers |
+
+Unloading the scene frees all of them.
 
 ```mermaid
 sequenceDiagram
@@ -171,32 +341,35 @@ sequenceDiagram
     S->>S: draw mesh views through camera pose
 ```
 
-`core/job.h` owns `job_run_split()`, shared with the raster. Core 1 takes the
-second range when available; the fallback runs that range inline before core
-0's first range. Each stage waits before the next consumes its outputs.
-Animator jobs write their own poses and palettes.
-Property clips use `anim_apply()` directly on core 0 after synchronization,
-then the active scene derives placements for renderers whose entities are dirty.
-Inactive scenes do no placement work. Scenes without skeleton animators skip
-the animation split, and no posed clusters means no skin split. Unchanged poses
-skip skinning and node refit. A lit skin runs when its pose changes, or when a
-light entity or its own entity carries `SCENE_FLAG_SKIN_DIRTY`. Light setters,
-`scene_set_transform()`, `scene_entity_set_enabled()` and
-`scene_renderer_set_skin()` set it. The skin stage consumes this bit independently of
-the draw's `SCENE_FLAG_DIRTY`, including for inactive scenes. Skin jobs
-write disjoint cluster vertex ranges. Node refit runs after the skin sync.
-Job contexts are checked against `JOB_CTX_MAX` at compile time.
+`job_run_split()` (`core/job.h`, shared with the raster) gives core 1 the
+second range, or runs it inline first when core 1 is busy. Animator jobs
+write their own poses and palettes; skin jobs write disjoint cluster vertex
+ranges. Job contexts are checked against `JOB_CTX_MAX` at compile time.
 
-The host comparison tool is
-[`skin_frame.py`](../../launcher/tools/r3d/skin/skin_frame.py). It builds SKEL,
-SKIN, TRCK and LMSH entries with their writers, controls the entity
-through scene APIs, and renders its output positions with the preview
-rasterizer beside `gltf_skin.py`. It checks the C result against a reference
-with the packed weights and quantized bind positions; separate sheets compare
-influence limits and crop every requested source vertex. Its options are
-in [the tool's README](../../launcher/tools/r3d/skin/README.md).
-The committed rig in `launcher/test/suites/suite_scene.c` gates both kernels
-through scene attachment, animation, split ranges, bounds and drawing.
+| Stage | Runs when | Skipped when |
+|---|---|---|
+| Animate | skeleton animators exist | none exist |
+| Property clips | always, `anim_apply()` on core 0 after the sync | — |
+| Skin and node refit | the pose changed, or for a lit skin `SCENE_FLAG_SKIN_DIRTY` is set on it or a light | no posed clusters, or an unchanged pose |
+| Placement | the active scene, for renderers with dirty entities | inactive scenes |
+
+Light setters, `scene_set_transform()`, `scene_entity_set_enabled()` and
+`scene_renderer_set_skin()` set `SCENE_FLAG_SKIN_DIRTY`. The skin stage
+consumes it apart from the draw's `SCENE_FLAG_DIRTY`, inactive scenes
+included. What skinning costs on the board is in [Skinned
+lighting](Skinned-Lighting.md#lighting-modes) (the skin-only bar).
+
+## Checking it
+
+| Tool | Checks |
+|---|---|
+| [`skin_frame.py`](../../launcher/tools/r3d/skin/skin_frame.py) | builds the entries with their writers, drives the entity through the scene APIs, and holds the C positions to a packed-weight reference beside `gltf_skin.py`; sheets compare influence limits and crop chosen vertices ([options](../../launcher/tools/r3d/skin/README.md)) |
+| `launcher/test/suites/suite_scene.c` | a committed rig gates both kernels through attachment, animation, split ranges, bounds and drawing |
+| [`skin_sheet.py`](../../launcher/tools/r3d/skin/skin_sheet.py) | draws a skinned glTF's skeleton, weight and influence figures and this page's two generated tables |
+| [`skin_figures.py`](../../launcher/tools/r3d/skin/skin_figures.py) | runs the limb through the kernel in [`skin_figures_probe.c`](../../launcher/tools/r3d/skin/skin_figures_probe.c) and plots it |
+
+[`render_doc_images.sh`](../../launcher/tools/render/render_doc_images.sh)
+runs both, with the model and clip it names, and rewrites the figures and tables.
 
 ## Current limits
 

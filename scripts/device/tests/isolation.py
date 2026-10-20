@@ -9,7 +9,8 @@ folder, where flash snapshots are made, at temporary directories too. A
 project with no lock hook notifies nobody. An audit hook then refuses any
 write this process makes under the roots it replaced, and the run exits
 non-zero if one was attempted, even where the code under test swallowed the
-error, or if a snapshot folder outlived the run. It imports port_guard, so
+error, or if a snapshot folder outlived the run. The per-user lookup log
+(scripts/docs/query_log.py) is one of those roots. It imports port_guard, so
 no test reaches a real board either. IDF_PATH names a missing temporary
 folder, so neither this process nor a child picks up the machine's ESP-IDF
 checkout; a test that wants one sets its own.
@@ -45,6 +46,8 @@ def replaced_roots():
     # was started for, would write to.
     sys.path.insert(0, str(CHECKOUT / "scripts" / "lib"))
     import autana_config
+    # The per-user lookup log; a docs command under test logs to a folder it patches in.
+    roots.append(autana_config.user_cache_dir() / "usage")
     for real in (os.environ.get("_AUTANA_PROJECT"), CHECKOUT):
         try:
             named = autana_config.load(real).get("records") if real else None
