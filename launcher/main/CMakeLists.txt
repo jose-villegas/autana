@@ -144,6 +144,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
     # Acoustic detection belongs to the development console.
     list(APPEND app_srcs
         "audio/audio_loopback.c"
+        "audio/audio_frequency.c"
     )
 endif()
 if(CONFIG_LAUNCHER_SELFTEST)

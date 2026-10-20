@@ -8,6 +8,8 @@
 
 typedef struct {
     float coefficient;
+    float sine;
+    float omega;
     float previous;
     float previous2;
     size_t samples;
@@ -21,6 +23,8 @@ void goertzel_reset(goertzel_t* state);
 void goertzel_feed_s(goertzel_t* state, const int16_t* samples, size_t n);
 void goertzel_feed_f(goertzel_t* state, const float* samples, size_t n);
 float goertzel_power(const goertzel_t* state);
+/* DFT e^{-j w n}, n=0 since init/reset: radians in (-pi, pi], zero before any sample. */
+float goertzel_phase(const goertzel_t* state);
 /* Amplitude of a sine at the bin; 0 before any sample. */
 float goertzel_amplitude(const goertzel_t* state);
 /* A sine of amplitude full_scale reads 0 dB; nothing reads below GOERTZEL_LEVEL_FLOOR_DB. */

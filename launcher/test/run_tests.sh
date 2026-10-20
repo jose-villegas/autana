@@ -122,6 +122,7 @@ $TEST_DIR/test_asset_dir.c
 $TEST_DIR/test_fence.c
 $MAIN_DIR/sound/sound_mixer.c
 $MAIN_DIR/audio/audio_tone.c
+$MAIN_DIR/audio/audio_frequency.c
 $MAIN_DIR/app/app_arena.c
 $MAIN_DIR/app/app_console.c
 $MAIN_DIR/app/app_registry.c
@@ -184,6 +185,7 @@ $MAIN_DIR/scene/scene_shell.c
 $MAIN_DIR/input/mapping/orbit_motion_touch.c
 $MAIN_DIR/services/tune.c
 $MAIN_DIR/console/console_verbs.c
+$MAIN_DIR/console/verbs/console_tone.c
 $MAIN_DIR/console/console_frame_request.c
 $MAIN_DIR/display/panel_clock.c
 $MAIN_DIR/shell/ui/ui_launcher.c
