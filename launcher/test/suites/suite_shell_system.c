@@ -237,6 +237,64 @@ test_the_present_overlaps_when_any_system_asks_and_never_by_default(void) {
     }
 }
 
+/* The band phase takes rows, not time: each fake notes the rows it was given
+ * and leaves its digit on the target's first pixel, to show who ran in what
+ * order over the same band. */
+#define BAND_SYSTEM(id, digit)                                                                                         \
+    static void id##_compose_band(int row0, int row1, gfx_color_t* target) {                                           \
+        note(#id, "band", (uint32_t)(row0 * 1000 + row1));                                                             \
+        target[0] = (gfx_color_t)(target[0] * 10 + digit);                                                             \
+    }
+
+BAND_SYSTEM(a, 1)
+BAND_SYSTEM(b, 2)
+BAND_SYSTEM(c, 3)
+
+#define BAND_ROW0 32
+#define BAND_ROW1 64
+
+static void
+expect_band_calls(const char* what, const char* const* names, int count) {
+    TEST_ASSERT_EQUAL_INT_MESSAGE(count, call_count, what);
+    for (int i = 0; i < count; i++) {
+        char expected[CALL_LEN];
+        snprintf(expected, CALL_LEN, "%s.band@%u", names[i], (unsigned)(BAND_ROW0 * 1000 + BAND_ROW1));
+        TEST_ASSERT_EQUAL_STRING_MESSAGE(expected, calls[i], what);
+    }
+}
+
+static void
+test_the_band_phase_hands_every_system_the_same_rows_and_picture_by_order(void) {
+    fixture();
+    systems[0] = (shell_system_t){.name = "c", .order = 10, .compose_band = c_compose_band};
+    systems[1] = (shell_system_t){.name = "a", .order = 30, .compose_band = a_compose_band};
+    systems[2] = (shell_system_t){.name = "b", .order = 20, .compose_band = b_compose_band};
+    for (int i = 0; i < SYSTEMS_MAX; i++) {
+        shell_system_register(&systems[i]);
+    }
+    gfx_color_t picture[2] = {0, 0};
+    shell_systems_compose_band(BAND_ROW0, BAND_ROW1, picture);
+    static const char* const by_order[] = {"c", "b", "a"};
+    expect_band_calls("band phase", by_order, 3);
+    TEST_ASSERT_EQUAL_UINT16_MESSAGE(321, picture[0], "each system drew over what the one before left");
+}
+
+static void
+test_a_system_without_a_band_phase_is_skipped_by_the_band_phase(void) {
+    fixture();
+    systems[0] = (shell_system_t){.name = "a", .order = 10, .update = a_update, .compose = a_compose};
+    systems[1] = (shell_system_t){.name = "b", .order = 20, .compose_band = b_compose_band};
+    systems[2] = (shell_system_t){.name = "c", .order = 30, .app_exit = c_app_exit};
+    for (int i = 0; i < SYSTEMS_MAX; i++) {
+        shell_system_register(&systems[i]);
+    }
+    gfx_color_t picture[2] = {0, 0};
+    shell_systems_compose_band(BAND_ROW0, BAND_ROW1, picture);
+    static const char* const only_b[] = {"b"};
+    expect_band_calls("band phase", only_b, 1);
+    TEST_ASSERT_EQUAL_UINT16(2, picture[0]);
+}
+
 void
 run_shell_system_suite(void) {
     RUN_TEST(test_every_phase_runs_the_systems_by_order_whatever_order_they_registered_in);
@@ -244,6 +302,8 @@ run_shell_system_suite(void) {
     RUN_TEST(test_each_system_is_given_the_passes_own_time);
     RUN_TEST(test_a_system_whose_phase_is_null_is_skipped_by_that_phase_alone);
     RUN_TEST(test_the_present_overlaps_when_any_system_asks_and_never_by_default);
+    RUN_TEST(test_the_band_phase_hands_every_system_the_same_rows_and_picture_by_order);
+    RUN_TEST(test_a_system_without_a_band_phase_is_skipped_by_the_band_phase);
 }
 
 #else

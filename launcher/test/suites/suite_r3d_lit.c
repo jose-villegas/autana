@@ -1966,6 +1966,130 @@ test_band_rows_draw_what_one_full_draw_does(void) {
     free(upscaled);
 }
 
+/* The buffers the two-instance band tests work in, freed by the cleanup. */
+static struct {
+    void* full_scratch;
+    void* band_scratch;
+    void* banded_scratch;
+    gfx_color_t* want;
+    gfx_color_t* got;
+} band_held;
+
+static void
+free_band_held(void) {
+    free(band_held.full_scratch);
+    free(band_held.band_scratch);
+    free(band_held.banded_scratch);
+    free(band_held.want);
+    free(band_held.got);
+    memset(&band_held, 0, sizeof band_held);
+}
+
+/* The nearer rectangle spans the picture's middle, the farther one lower and
+ * to the right, so they overlap across a band edge; the top and the bottom of
+ * the picture hold neither. */
+static void
+build_two_overlapping_rects(parts_t* nearer, parts_t* farther) {
+    parts_begin(nearer);
+    parts_add_rect(nearer, -200, -40, 60, 120, 0, 200);
+    parts_begin(farther);
+    parts_add_rect(farther, -60, -90, 200, 35, 60, 90);
+}
+
+/* True when rows [row0, row1) of the 2W wide picture are all sky. */
+static bool
+rows_are_sky(const gfx_color_t* picture, int row0, int row1) {
+    for (int i = row0 * 2 * W; i < row1 * 2 * W; i++) {
+        if (picture[i] != SKY) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* The two instances drawn in the given order, once as a full picture and
+ * once a band at a time, upscaled into a destination twice the drawn size:
+ * the same pixels, in bands of 16 rows and in bands of 6 that split the
+ * pixels' runs. `census` prices the frame first and draws from its list. */
+static void
+expect_two_instance_bands_match_the_full_draw(const raster_t* shape, const r3d_instance_t* instances, bool census) {
+    raster_t full = *shape;
+    full.instances = instances;
+    full.instance_count = 2;
+    raster_t banded = full;
+    banded.band_rows = raster_band_source_rows(&banded, 16);
+    band_held.full_scratch = malloc(raster_scratch_bytes(&full));
+    band_held.banded_scratch = malloc(raster_scratch_bytes(&banded));
+    band_held.band_scratch = malloc(raster_band_bytes(&banded));
+    band_held.want = malloc(sizeof(gfx_color_t) * 4 * W * H);
+    band_held.got = malloc(sizeof(gfx_color_t) * 4 * W * H);
+    suite_set_test_cleanup(release_fixture);
+    TEST_ASSERT_NOT_NULL(band_held.full_scratch);
+    TEST_ASSERT_NOT_NULL(band_held.banded_scratch);
+    TEST_ASSERT_NOT_NULL(band_held.band_scratch);
+    TEST_ASSERT_NOT_NULL(band_held.want);
+    TEST_ASSERT_NOT_NULL(band_held.got);
+    full.scratch = band_held.full_scratch;
+    banded.scratch = band_held.banded_scratch;
+    banded.band_scratch = band_held.band_scratch;
+
+    const fixture_camera_t camera = camera_down_plus_z(0.0f, -400, 1.0f);
+    const render_view_t view = render_view_fixture(&camera, &full, 0);
+    (void)raster_draw(&full, &view);
+    raster_upscale(&full, band_held.want, 2 * W, 2 * H);
+    TEST_ASSERT_TRUE_MESSAGE(rows_are_sky(band_held.want, 0, 16) && rows_are_sky(band_held.want, 2 * H - 16, 2 * H),
+                             "the top and bottom bands should hold no instance");
+    TEST_ASSERT_FALSE_MESSAGE(rows_are_sky(band_held.want, 32, 64), "the middle should hold the rectangles");
+
+    if (census) {
+        (void)raster_census(&banded, &view);
+        raster_prepare_culled(&banded, &view);
+    } else {
+        (void)raster_prepare(&banded, &view);
+    }
+    static const int band_heights[] = {16, 6};
+    for (size_t b = 0; b < sizeof band_heights / sizeof band_heights[0]; b++) {
+        memset(band_held.got, 0xA5, sizeof(gfx_color_t) * 4 * W * H);
+        for (int y0 = 0; y0 < 2 * H; y0 += band_heights[b]) {
+            const int rows = band_heights[b] < 2 * H - y0 ? band_heights[b] : 2 * H - y0;
+            const gfx_target_t band = {band_held.got + ((size_t)y0 * 2 * W), y0, rows, 2 * W};
+            (void)raster_compose_rows(&banded, band, 2 * W, 2 * H);
+        }
+        TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(band_held.want, band_held.got, 4 * W * H,
+                                              "bands of two instances differ from one full draw");
+    }
+}
+
+/* Either instance first: the nearer one covers the farther in the overlap,
+ * a band edge running through it. */
+static void
+expect_two_instance_bands(bool census) {
+    parts_t* const nearer = parts_buffer(&shared_parts);
+    parts_t* const farther = parts_buffer(&other_parts);
+    build_two_overlapping_rects(nearer, farther);
+    const raster_t shape = {.width = W,
+                            .height = H,
+                            .clear = SKY,
+                            .upscaled = true,
+                            .destination_width = 2 * W,
+                            .destination_height = 2 * H};
+    const r3d_instance_t near_first[] = {{&nearer->mesh, NULL}, {&farther->mesh, NULL}};
+    const r3d_instance_t far_first[] = {{&farther->mesh, NULL}, {&nearer->mesh, NULL}};
+    expect_two_instance_bands_match_the_full_draw(&shape, near_first, census);
+    free_band_held();
+    expect_two_instance_bands_match_the_full_draw(&shape, far_first, census);
+}
+
+static void
+test_two_overlapping_instances_drawn_a_band_at_a_time_match_one_full_draw(void) {
+    expect_two_instance_bands(false);
+}
+
+static void
+test_two_overlapping_instances_from_a_census_list_draw_the_same_bands(void) {
+    expect_two_instance_bands(true);
+}
+
 static void
 test_a_census_list_draws_what_raster_draw_draws_at_any_size(void) {
     parts_t* const p = parts_buffer(&shared_parts);
@@ -2406,6 +2530,7 @@ release_fixture(void) {
         }
         cull_changed = false;
     }
+    free_band_held();
     free(work);
     work = NULL;
     free(shared_parts);
@@ -2492,6 +2617,73 @@ test_draw_split_interpolates_the_requested_share_and_clamps_rows(void) {
                           r3d_pipeline_draw_split(&mesh, visible, rows, 1, 0, height, RASTER_SPLIT_PERMILLE));
 }
 
+/* A window of rows that does not start at the top: the split is a row of that
+ * window, never of the picture's first rows. */
+static void
+test_a_draw_split_of_a_window_lies_inside_the_window(void) {
+    const r3d_lit_cluster_t clusters[] = {{.triangle_count = 10}, {.triangle_count = 10}};
+    const r3d_lit_mesh_t mesh = {.clusters = clusters};
+    const uint16_t visible[] = {0, 1};
+    const r3d_pipeline_rows_t spread[] = {{50, 80, false}, {0, 0, true}};
+    const int row0 = 40, row1 = 100;
+    const int permille[] = {0, RASTER_SPLIT_PERMILLE / 4, RASTER_SPLIT_EVEN, RASTER_SPLIT_PERMILLE};
+    int previous = row0;
+    for (size_t i = 0; i < sizeof permille / sizeof permille[0]; i++) {
+        const int split = r3d_pipeline_draw_split(&mesh, visible, spread, 2, row0, row1, permille[i]);
+        TEST_ASSERT_TRUE_MESSAGE(split > row0 && split < row1, "the split left its window");
+        TEST_ASSERT_TRUE_MESSAGE(split >= previous, "a larger top share moved the split up");
+        previous = split;
+    }
+    TEST_ASSERT_EQUAL_INT(row0 + 1, r3d_pipeline_draw_split(&mesh, visible, spread, 2, row0, row1, 0));
+    TEST_ASSERT_EQUAL_INT(row1 - 1,
+                          r3d_pipeline_draw_split(&mesh, visible, spread, 2, row0, row1, RASTER_SPLIT_PERMILLE));
+    const r3d_pipeline_rows_t beyond[] = {{0, 0, true}};
+    TEST_ASSERT_EQUAL_INT(row0 + (row1 - row0) / 2,
+                          r3d_pipeline_draw_split(&mesh, visible, beyond, 0, row0, row1, RASTER_SPLIT_EVEN));
+}
+
+/* Heavy clusters above and below the window are not work in it. */
+static void
+test_clusters_wholly_outside_a_split_window_weigh_nothing(void) {
+    const r3d_lit_cluster_t clusters[] = {{.triangle_count = 1000}, {.triangle_count = 1000}, {.triangle_count = 10}};
+    const r3d_lit_mesh_t mesh = {.clusters = clusters};
+    const uint16_t all[] = {0, 1, 2};
+    const uint16_t inside[] = {2};
+    const int row0 = 40, row1 = 100;
+    const r3d_pipeline_rows_t rows[] = {{0, row0 - 1, false}, {row1 + 1, 130, false}, {60, 69, false}};
+    const int permille[] = {RASTER_SPLIT_PERMILLE / 4, RASTER_SPLIT_EVEN, RASTER_SPLIT_PERMILLE * 3 / 4};
+    for (size_t i = 0; i < sizeof permille / sizeof permille[0]; i++) {
+        const int alone = r3d_pipeline_draw_split(&mesh, inside, rows, 1, row0, row1, permille[i]);
+        TEST_ASSERT_TRUE(alone >= 60 && alone <= 69);
+        TEST_ASSERT_EQUAL_INT(alone, r3d_pipeline_draw_split(&mesh, all, rows, 3, row0, row1, permille[i]));
+    }
+    TEST_ASSERT_EQUAL_INT(row0 + (row1 - row0) / 2,
+                          r3d_pipeline_draw_split(&mesh, all, rows, 2, row0, row1, RASTER_SPLIT_EVEN));
+}
+
+/* The same work shifted down by `offset` rows, in a window shifted with it,
+ * splits the same distance from the window's top. */
+static void
+test_a_draw_split_of_shifted_work_in_a_shifted_window_is_the_split_shifted(void) {
+    const r3d_lit_cluster_t clusters[] = {{.triangle_count = 1}, {.triangle_count = 3}};
+    const r3d_lit_mesh_t mesh = {.clusters = clusters};
+    const uint16_t visible[] = {0, 1};
+    const int height = 640;
+    const int permille[] = {RASTER_SPLIT_PERMILLE / 4, RASTER_SPLIT_EVEN, RASTER_SPLIT_PERMILLE * 3 / 4};
+    const int offsets[] = {7, 100, 480};
+    const r3d_pipeline_rows_t zero[] = {{0, 9, false}, {40, 49, false}};
+    for (size_t o = 0; o < sizeof offsets / sizeof offsets[0]; o++) {
+        const float shift = (float)offsets[o];
+        const r3d_pipeline_rows_t moved[] = {{zero[0].y0 + shift, zero[0].y1 + shift, false},
+                                             {zero[1].y0 + shift, zero[1].y1 + shift, false}};
+        for (size_t i = 0; i < sizeof permille / sizeof permille[0]; i++) {
+            const int at_top = r3d_pipeline_draw_split(&mesh, visible, zero, 2, 0, height, permille[i]);
+            TEST_ASSERT_EQUAL_INT(at_top + offsets[o], r3d_pipeline_draw_split(&mesh, visible, moved, 2, offsets[o],
+                                                                               offsets[o] + height, permille[i]));
+        }
+    }
+}
+
 #undef RUN_TEST
 #define RUN_TEST(func)                                                                                                 \
     do {                                                                                                               \
@@ -2551,6 +2743,8 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_cull_off_keeps_every_cluster);
     RUN_TEST(test_a_census_list_draws_what_raster_draw_draws_at_any_size);
     RUN_TEST(test_band_rows_draw_what_one_full_draw_does);
+    RUN_TEST(test_two_overlapping_instances_drawn_a_band_at_a_time_match_one_full_draw);
+    RUN_TEST(test_two_overlapping_instances_from_a_census_list_draw_the_same_bands);
     RUN_TEST(test_a_census_list_steps_by_each_instances_own_mesh);
     RUN_TEST(test_a_destination_of_the_same_size_is_a_copy);
     RUN_TEST(test_a_fractional_destination_upscales_a_drawn_frame);
@@ -2564,6 +2758,9 @@ run_r3d_lit_suite(void) {
     RUN_TEST(test_the_transform_split_is_the_shortest_prefix_holding_half_the_vertices);
     RUN_TEST(test_the_draw_split_of_no_work_is_the_middle_row);
     RUN_TEST(test_the_draw_split_falls_inside_the_rows_the_work_covers);
+    RUN_TEST(test_a_draw_split_of_a_window_lies_inside_the_window);
+    RUN_TEST(test_clusters_wholly_outside_a_split_window_weigh_nothing);
+    RUN_TEST(test_a_draw_split_of_shifted_work_in_a_shifted_window_is_the_split_shifted);
 }
 
 #undef RUN_TEST
