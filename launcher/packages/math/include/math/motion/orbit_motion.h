@@ -3,9 +3,10 @@
  * about the world's up axis (yaw) and tilts above or below the target
  * (pitch), always facing it. Steering turns it directly; let go and it
  * keeps turning, slowing by half every fling half-life; a reset springs it
- * back to its home angles, critically damped so it never overshoots. Every
- * step is solved exactly for its dt, so the motion is the same at any frame
- * rate. Any entity can orbit this way: a camera, a light, a prop.
+ * back to its home angles, critically damped: from rest it never overshoots,
+ * though a fast swing toward home can cross it once. Every step is solved
+ * exactly for its dt, so the motion is the same at any frame rate. Any entity
+ * can orbit this way: a camera, a light, a prop.
  *
  * Pure: steering arrives as turns already in radians, and the result is a
  * transformf_t the caller writes into its entity. Distance is held as its
