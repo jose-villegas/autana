@@ -17,6 +17,7 @@ static const vec3f_t TRIANGLE[] = {{-1.0F, 0.0F, 0.0F}, {1.0F, 0.3F, 0.0F}, {0.0
 static const vec3f_t WORLD_UP = {0.0F, 1.0F, 0.0F};
 static const float SHOWN_DEPTH = 4.5F;
 static const vec3f_t LENS_SAMPLE = {0.0F, 0.0F, 3.0F};
+static const float LEVEL_VALUES[] = {-1.0F, 1.0F};
 static const float SHEET_RADIUS = 2.0F;
 static const vec3f_t DISTANCE_SAMPLES[] = {{-1, -1, -1}, {0, 0, 1}, {1, 1, 2}};
 static const vec3f_t FRUSTUM_SAMPLES[] = {{0, 0, 4}, {4, 2, 0}};
@@ -27,9 +28,9 @@ static const projectf_t FRUSTUM_LENS = {1, 1, 0, 0, 2};
 static const rectf_t FRUSTUM_SCREEN = {-1, -1, 2, 2};
 static const box3f_t FRUSTUM_BOXES[] = {
     {{-0.5F, -0.4F, 3.5F}, {0.5F, 0.4F, 4.5F}},  {{-1.5F, -0.4F, 3.5F}, {-0.5F, 0.4F, 4.5F}},
-    {{3.5F, -0.4F, 0.8F}, {4.5F, 0.4F, 1.8F}},   {{4.8F, -0.4F, 0.1F}, {5.3F, 0.4F, 0.5F}},
-    {{-3.5F, -0.4F, 1.8F}, {-2.5F, 0.4F, 2.5F}}, {{-0.1F, -0.4F, 0.8F}, {0.1F, 0.4F, 1.2F}},
-    {{-0.3F, -0.4F, 2.0F}, {0.3F, 0.4F, 2.6F}},  {{2.5F, -0.4F, 0.6F}, {3.0F, 0.4F, 0.72F}},
+    {{3.5F, -0.4F, 0.8F}, {4.5F, 0.4F, 1.8F}},   {{4.45F, -0.6F, -0.3F}, {5.65F, 0.6F, 0.9F}},
+    {{-3.5F, -0.4F, 1.8F}, {-2.5F, 0.4F, 2.5F}}, {{-0.6F, -0.6F, 0.4F}, {0.6F, 0.6F, 1.6F}},
+    {{-0.5F, -0.5F, 1.8F}, {0.5F, 0.5F, 2.8F}},  {{2.3F, 2.3F, 0.0F}, {3.5F, 3.5F, 0.8F}},
 };
 static const box3f_t QUERY_BOX = {{-1, -1, -1}, {1, 1, 1}};
 static const spheref_t QUERY_SPHERES[] = {{{1.5F, 0, -1.6F}, 1}, {{2, 0, 0.5F}, 1}, {{2.8F, 0, 2.3F}, 0.7F}};
@@ -47,6 +48,16 @@ static const vec3f_t QUERY_SEGMENTS[][2] = {
 static void
 print_vec(vec3f_t p) {
     printf("[%.7g,%.7g,%.7g]", (double)p.x, (double)p.y, (double)p.z);
+}
+
+static void
+print_sheet(vec3f_t centre, vec3f_t tangent, vec3f_t bitangent) {
+    for (size_t i = 0; i < sizeof SHEET_SIGNS / sizeof SHEET_SIGNS[0]; i++) {
+        const vec3f_t delta = vec3f_scale(
+            vec3f_add(vec3f_scale(tangent, SHEET_SIGNS[i].x), vec3f_scale(bitangent, SHEET_SIGNS[i].y)), SHEET_RADIUS);
+        printf("%s", i ? "," : "");
+        print_vec(vec3f_add(centre, delta));
+    }
 }
 
 static void
@@ -165,11 +176,19 @@ main(void) {
     printf("],\"sheet\":[");
     const vec3f_t tangent = vec3f_normalize(vec3f_cross(unit.normal, WORLD_UP));
     const vec3f_t bitangent = vec3f_cross(unit.normal, tangent);
-    for (size_t i = 0; i < sizeof SHEET_SIGNS / sizeof SHEET_SIGNS[0]; i++) {
-        printf("%s", i ? "," : "");
-        print_vec(vec3f_add(DISTANCE_POINT, vec3f_scale(vec3f_add(vec3f_scale(tangent, SHEET_SIGNS[i].x),
-                                                                  vec3f_scale(bitangent, SHEET_SIGNS[i].y)),
-                                                        SHEET_RADIUS)));
+    print_sheet(DISTANCE_POINT, tangent, bitangent);
+    printf("],\"level_sheets\":[");
+    const planef_t distance_planes[] = {raw, unit};
+    for (size_t column = 0; column < sizeof distance_planes / sizeof distance_planes[0]; column++) {
+        const vec3f_t normal = distance_planes[column].normal;
+        printf("%s[", column ? "," : "");
+        for (size_t level = 0; level < sizeof LEVEL_VALUES / sizeof LEVEL_VALUES[0]; level++) {
+            const vec3f_t offset = vec3f_scale(normal, LEVEL_VALUES[level] / vec3f_dot(normal, normal));
+            printf("%s[", level ? "," : "");
+            print_sheet(vec3f_add(DISTANCE_POINT, offset), tangent, bitangent);
+            printf("]");
+        }
+        printf("]");
     }
     printf("],\"point\":");
     print_vec(DISTANCE_POINT);
@@ -256,12 +275,22 @@ main(void) {
     for (unsigned space = 0; space < 2; space++) {
         printf("%s[", space ? "," : "");
         for (size_t i = 0; i < sizeof SHEET_SIGNS / sizeof SHEET_SIGNS[0]; i++) {
-            const float z = LENS_SAMPLE.z + SHEET_SIGNS[i].x;
+            const float z = LENS_SAMPLE.z + SHEET_SIGNS[i].x * SHEET_RADIUS;
             const vec3f_t point = {-lens_plane.normal.z * z, SHEET_SIGNS[i].y * SHEET_RADIUS, z};
             printf("%s", i ? "," : "");
             print_vec(space ? mat4f_apply(&inverse, point) : point);
         }
         printf("]");
+    }
+    printf("]");
+    printf(",\"feet\":[");
+    const planef_t row_planes[] = {lens_plane, world_plane};
+    const vec3f_t row_samples[] = {LENS_SAMPLE, world_sample};
+    for (size_t i = 0; i < sizeof row_planes / sizeof row_planes[0]; i++) {
+        const vec3f_t normal = row_planes[i].normal;
+        const float scale = planef_distance(row_planes[i], row_samples[i]) / vec3f_dot(normal, normal);
+        printf("%s", i ? "," : "");
+        print_vec(vec3f_sub(row_samples[i], vec3f_scale(normal, scale)));
     }
     printf("]");
     printf(",\"distances\":[%.7g,%.7g]}", (double)planef_distance(lens_plane, LENS_SAMPLE),
