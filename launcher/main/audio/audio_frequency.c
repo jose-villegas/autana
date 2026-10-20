@@ -44,6 +44,6 @@ audio_frequency_hz(const audio_frequency_t* state) {
         return NAN;
     }
     return state->nominal_hz
-           + state->phase_error * AUDIO_OUT_SAMPLE_RATE_HZ
-                 / (MATH_TAU * AUDIO_FREQUENCY_WINDOW_SAMPLES * (float)state->advances);
+           + (state->phase_error * AUDIO_OUT_SAMPLE_RATE_HZ
+              / (MATH_TAU * AUDIO_FREQUENCY_WINDOW_SAMPLES * (float)state->advances));
 }
