@@ -184,10 +184,11 @@ Nothing is allocated, and the sampler normalizes quaternion keys.
 
 `anim_bind()` returns a distinct `anim_bind_status_t` for a missing path,
 component or field, a type mismatch, too little storage and a skeleton root.
+Apply only a set that resolved.
+
 Its failed index is -1 on success and for root or storage errors, otherwise
-the failing binding. Apply only a set that resolved. A component's
-declaration sits beside its struct, such as `CAMERA_FIELDS` in
-`scene/camera/camera.h`.
+the failing binding. A component's declaration sits beside its struct, such
+as `CAMERA_FIELDS` in `scene/camera/camera.h`.
 
 ## Sampling
 
@@ -341,7 +342,7 @@ An app plays clips through the scene and includes only `scene/scene.h`;
 | Call | Does |
 |---|---|
 | `scene_animator_set_clips()` | gives an entity its clips, resolving asset ids once; the scene owns the animator, its bindings and buffers |
-| `scene_animator_play()` | starts a clip in the current slot, blending from what is shown over `blend_ms` |
+| `scene_animator_play()` | starts a clip in the current slot at clip time 0, speed 1, unpaused, blending from what is shown over `blend_ms` |
 | `scene_animator_set_speed()`, `scene_animator_set_paused()` | one slot's speed or pause, current or previous ([Sampling](#sampling)) |
 | `scene_animator_seek()` | puts a slot at a clip time and samples at once, without drawing |
 | `scene_animator_clip_count()`, `scene_animator_clip_name()`, `scene_animator_clip_duration_ms()` | the entity's clips |
@@ -397,9 +398,10 @@ stateDiagram-v2
 | Frozen | the new clip, weight rising 0 to 1 | empty: the pose shown when the blend was interrupted, copied into the layer's PSRAM buffer |
 
 A blended play during a blend starts from the pose on screen. Speed
-and pause on an empty or frozen previous slot return false. Below, a skinned
-mesh's clips play first to second, then to a third, interrupted half way by
-a play back to the first:
+and pause on an empty or frozen previous slot return false.
+
+Below, a skinned mesh's clips play first to second, then to a third,
+interrupted half way by a play back to the first:
 
 ![The skeleton through the three blends: the shown pose in black between the current clip alone and the previous slot](images/anim/anim-blend.gif)
 
@@ -409,7 +411,8 @@ a play back to the first:
 
 Position and scale blend linearly. Rotation takes the sign-corrected,
 normalized quaternion sum (nlerp)<sup>[[56]](Citations.md#56)</sup> per joint
-between the two poses, without the paper's dual quaternions. It stays unit
-and takes the short way, but its angular speed peaks mid-blend:
+between the two poses, without the paper's dual quaternions.
+
+It stays unit and takes the short way, but its angular speed peaks mid-blend:
 
 ![A 150 degree turn by blend weight: nlerp lags slerp early and leads it late; its angular speed peaks mid-blend while slerp's is constant](images/anim/anim-nlerp.png)
