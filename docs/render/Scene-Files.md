@@ -125,7 +125,7 @@ spots under overhangs. The sky light is blocked by an occluder at any
 distance; this counts only hits within `D` model units. It scales the
 [ambient](#ambient) light, and with `indirect = true` the bounced
 light. The directional and sky lights are untouched. Every baked renderer gets it. How the factor is computed is in
-[Mesh-Import.md](Mesh-Import.md#local-occlusion-implementation).
+[Bake-Method.md](Bake-Method.md#local-occlusion-implementation).
 
 | Field | Meaning |
 |---|---|
@@ -295,7 +295,7 @@ enters between samples.
 #### shading: smooth
 
 Smooth shading bakes one colour per vertex. It is the normal baked mesh form
-described in [The baked mesh](Mesh-Import.md#the-baked-mesh).
+described in [The baked mesh](Baked-Mesh.md#clusters-and-the-tree).
 
 #### shading: flat
 
