@@ -1,9 +1,9 @@
 /*
  * Scene playback figure numbers from the library, emitted as JSON for playback_figures.py: a skeleton's clips
  * played on a scene entity through scene_animator_play(), scene_animator_set_speed() and
- * scene_animator_set_paused() and stepped by
- * scene_animation_step() frame by frame as a script says, with each slot's clip time, the blend weight, and
- * every joint's pose and position shown, sampled from the current clip alone and held in the previous slot.
+ * scene_animator_set_paused() and stepped by scene_animation_step() frame by frame as a script says, with each
+ * slot's clip time, the blend weight, and every joint's pose and position shown, sampled from the current clip
+ * alone and held in the previous slot.
  *
  *   playback_figures_probe PACK SCENE ENTITY SKELETON SCRIPT
  *   playback_figures_probe --nlerp DEGREES STEPS
