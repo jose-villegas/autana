@@ -72,6 +72,11 @@ That is the difference between the modes:
 | Renormalised | the blended normal scaled back to unit length by `mathf_rsqrt()` |
 | Table | the blended normal's direction only, so length never matters |
 
+![Light against the angle between normal and light: unit length, a normal blended to 0.8 long, and the 16x16 table, with the table's error below](images/skin-light-angle.png)
+
+The table follows N.L to within about 0.02 of full light, except near 90°:
+its bilinear blend carries a little light past the edge, where N.L is zero.
+
 `mathf_rsqrt()` is the S3's reciprocal-square-root seed plus one Newton
 step; host and QEMU use an exact square root. The device tests hold it to
 `MATHF_RSQRT_RELATIVE_LIMIT` and the light-byte limit in `suite_skin_light.c`.
