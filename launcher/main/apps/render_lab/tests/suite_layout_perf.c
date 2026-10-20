@@ -11,6 +11,7 @@
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
+#include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "perf_stats.h"
 #include "render/context/render_context.h"
@@ -22,7 +23,8 @@
 #include "unity.h"
 
 /* Each layout replays the same passes from enter, so its last frame is
- * the same pose and a matching checksum says the layouts look identical. */
+ * the same pose and a matching checksum of what reached the panel says the
+ * layouts look identical. */
 #define LAYOUT_WARMUP  4
 #define LAYOUT_SAMPLES 120
 #define LAYOUT_DT_MS   100
@@ -96,23 +98,60 @@ enter_app(fixture_t* f, const char* scene, int quarter) {
     render_lab_test_hold_quarter(quarter);
 }
 
+typedef struct {
+    int64_t frame_us;
+    int64_t draw_us;
+    int64_t compose_us;
+} pass_t;
+
 /* The shell's pass for an app with update(): last pass's frame is sent
  * while this one updates and renders, then composed and drawn. */
-static int64_t
+static pass_t
 pass(fixture_t* f) {
     const input_t input = {0};
+    pass_t took = {0};
     const int64_t start = timing_now_us();
     if (f->primed) {
         gfx_present_begin();
         app_render_lab.update(LAYOUT_DT_MS, &input);
+        const int64_t render_start = timing_now_us();
         scene_shell_render(LAYOUT_DT_MS);
+        took.draw_us = timing_now_us() - render_start;
         gfx_present_wait();
     }
     ui_clear_band_overlay();
+    const int64_t compose_start = timing_now_us();
     scene_shell_compose(LAYOUT_DT_MS);
+    took.compose_us = timing_now_us() - compose_start;
     app_render_lab.frame(LAYOUT_DT_MS, &input);
+    gfx_band_run(app_render_lab.draw_band, ui_replay_band);
     f->primed = true;
-    return timing_now_us() - start;
+    took.frame_us = timing_now_us() - start;
+    return took;
+}
+
+/* The last frame, sent with clear-on-send off so readback can keep it. */
+static uint32_t
+sent_frame_crc(fixture_t* f) {
+    (void)gfx_set_clear_on_send(false, 0);
+    gfx_present();
+    gfx_readback_t state = gfx_readback_begin();
+    for (int tries = 0; state == GFX_READBACK_PENDING && tries < LAYOUT_WARMUP; tries++) {
+        gfx_readback_end();
+        (void)pass(f);
+        gfx_present();
+        state = gfx_readback_begin();
+    }
+    TEST_ASSERT_EQUAL_INT(GFX_READBACK_READY, state);
+    gfx_color_t* panel = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
+    TEST_ASSERT_NOT_NULL(panel);
+    for (int y = 0; y < GFX_HEIGHT; y++) {
+        gfx_read_panel_row(y, &panel[(size_t)y * GFX_WIDTH]);
+    }
+    gfx_readback_end();
+    const uint32_t crc = asset_crc32(panel, GFX_FRAMEBUFFER_BYTES);
+    memory_free(panel);
+    return crc;
 }
 
 static void
@@ -128,20 +167,23 @@ measure(fixture_t* f, const char* scene, int layout, const r3d_perf_quarter_t* q
     enter_app(f, scene, quarter->quarter);
     TEST_ASSERT_EQUAL_INT(layout, render_lab_layout());
     for (int i = -LAYOUT_WARMUP; i < LAYOUT_SAMPLES; i++) {
-        const int64_t us = pass(f);
+        const pass_t took = pass(f);
         if (i < 0) {
             continue;
         }
-        const render_context_frame_t drawn = render_context_frame(render_context_main());
-        f->frame_us[i] = (int32_t)us;
+        f->frame_us[i] = (int32_t)took.frame_us;
         f->wait_us[i] = gfx_get_present_wait_us();
         f->send_us[i] = gfx_get_present_send_us();
-        f->draw_us[i] = drawn.draw_us;
-        f->compose_us[i] = drawn.upscale_us;
+        f->draw_us[i] = (int32_t)took.draw_us;
+        f->compose_us[i] = (int32_t)took.compose_us;
     }
     /* The top slice is core 1's; its share falls when the send contends. */
     const int core1_share = RASTER_SPLIT_EVEN + render_context_main()->split.top_offset[0];
-    const uint32_t crc = asset_crc32(gfx_framebuffer(), GFX_FRAMEBUFFER_BYTES);
+    const unsigned internal_free = (unsigned)memory_free_bytes(MEMORY_INTERNAL);
+    const unsigned internal_largest = (unsigned)memory_largest_block(MEMORY_INTERNAL);
+    const unsigned psram_free = (unsigned)memory_free_bytes(MEMORY_PSRAM);
+    const unsigned psram_largest = (unsigned)memory_largest_block(MEMORY_PSRAM);
+    const uint32_t crc = sent_frame_crc(f);
     const char* name = layout_names[layout];
     report_row(scene, name, "frame", f->frame_us, quarter->name);
     report_row(scene, name, "wait", f->wait_us, quarter->name);
@@ -151,9 +193,8 @@ measure(fixture_t* f, const char* scene, int layout, const r3d_perf_quarter_t* q
     ESP_LOGI(TAG,
              "LAYOUT scene=%s layout=%s core1_share=%d crc=%08x internal_free=%u internal_largest=%u "
              "psram_free=%u psram_largest=%u" R3D_PERF_QUARTER_FORMAT,
-             scene, name, core1_share, (unsigned)crc, (unsigned)memory_free_bytes(MEMORY_INTERNAL),
-             (unsigned)memory_largest_block(MEMORY_INTERNAL), (unsigned)memory_free_bytes(MEMORY_PSRAM),
-             (unsigned)memory_largest_block(MEMORY_PSRAM), quarter->name);
+             scene, name, core1_share, (unsigned)crc, internal_free, internal_largest, psram_free, psram_largest,
+             quarter->name);
     leave_app(f);
 }
 
