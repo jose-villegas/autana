@@ -388,13 +388,34 @@ far_half_outside(const mesh_pass_t* pass, const boot_anim_far_line_t* line, bool
     return all != 0;
 }
 
+/* One span of a lifted far line, from its projected ends where both are in
+ * front, else clipped at the near plane; see draw_mesh_edge(). */
+static void
+draw_far_swell_span(const mesh_pass_t* pass, const far_swell_node_t* a, const far_swell_node_t* b, gfx_color_t col) {
+    const unsigned flags = DRAW_LINE_DASH(BOOT_ANIM_MESH_DASH_ON_PX, BOOT_ANIM_MESH_DASH_OFF_PX);
+    const uint8_t both = a->node.flags & b->node.flags;
+    if ((both & MESH_NODE_FRONT) != 0) {
+        if ((both & MESH_NODE_CLIP) == 0) {
+            draw_line_ex(a->node.sx, a->node.sy, b->node.sx, b->node.sy, col, flags);
+        }
+        return;
+    }
+    int x0;
+    int y0;
+    int x1;
+    int y1;
+    if (((a->node.flags | b->node.flags) & MESH_NODE_FRONT) != 0
+        && r3d_project_segment_cs_x(a->point, b->point, pass->view, &x0, &y0, &x1, &y1)) {
+        draw_line_ex(x0, y0, x1, y1, col, flags);
+    }
+}
+
 /* Where the swell still lifts it, a far line is a polyline through its baked
  * samples, each projected once; draw_far_ring() draws the flat rest. `lift`
  * bounds the swell's height this frame, in t. */
 static void
 draw_far_swell_line(const mesh_pass_t* pass, const boot_anim_far_line_t* line, bool along_im, int side, int32_t lift,
                     gfx_color_t col) {
-    const unsigned flags = DRAW_LINE_DASH(BOOT_ANIM_MESH_DASH_ON_PX, BOOT_ANIM_MESH_DASH_OFF_PX);
     for (int half = -1; half <= 1; half += 2) {
         if (far_half_outside(pass, line, along_im, side, half, lift)) {
             continue;
@@ -402,22 +423,22 @@ draw_far_swell_line(const mesh_pass_t* pass, const boot_anim_far_line_t* line, b
         far_swell_node_t prev = far_swell_node(pass, line, 0, along_im, side, half);
         for (int n = 1; n < line->count; n++) {
             const far_swell_node_t next = far_swell_node(pass, line, n, along_im, side, half);
-            const uint8_t both = prev.node.flags & next.node.flags;
-            if ((both & MESH_NODE_FRONT) != 0) {
-                if ((both & MESH_NODE_CLIP) == 0) {
-                    draw_line_ex(prev.node.sx, prev.node.sy, next.node.sx, next.node.sy, col, flags);
-                }
-            } else if (((prev.node.flags | next.node.flags) & MESH_NODE_FRONT) != 0) {
-                int x0;
-                int y0;
-                int x1;
-                int y1;
-                if (r3d_project_segment_cs_x(prev.point, next.point, pass->view, &x0, &y0, &x1, &y1)) {
-                    draw_line_ex(x0, y0, x1, y1, col, flags);
-                }
-            }
+            draw_far_swell_span(pass, &prev, &next, col);
             prev = next;
         }
+    }
+}
+
+/* One far line's front, the `front` past `solid`, fading out over
+ * BOOT_ANIM_FAR_FRONT_STEPS rings while the reach grows. */
+static void
+draw_far_front(const mesh_pass_t* pass, const boot_anim_plane_t* plane, bool along_im, int32_t c, int32_t solid,
+               int32_t front, uint8_t level) {
+    for (int k = 0; front > 0 && k < BOOT_ANIM_FAR_FRONT_STEPS; k++) {
+        const int32_t r_in = solid + (int32_t)(((int64_t)front * k) / BOOT_ANIM_FAR_FRONT_STEPS);
+        const int32_t r_out = solid + (int32_t)(((int64_t)front * (k + 1)) / BOOT_ANIM_FAR_FRONT_STEPS);
+        const uint8_t fade = (uint8_t)((UINT8_MAX * (BOOT_ANIM_FAR_FRONT_STEPS - k)) / (BOOT_ANIM_FAR_FRONT_STEPS + 1));
+        draw_far_ring(pass, plane, along_im, c, r_in, r_out, lit(BOOT_ANIM_FLOOR_GREY, scale8(level, fade)));
     }
 }
 
@@ -440,24 +461,18 @@ draw_far_grid(const mesh_pass_t* pass) {
     const gfx_color_t col = lit(BOOT_ANIM_FLOOR_GREY, level);
     /* One more than the swell's height, for zeta_to_t's rounding. */
     const int32_t lift = boot_anim_zeta_to_t_q8(boot_anim_swell_bound(&pass->floor)) + 1;
-    for (int n = 0; n < BOOT_ANIM_FAR_LINES && boot_anim_far_lines[n].c <= reach; n++) {
-        const boot_anim_far_line_t* far_line = &boot_anim_far_lines[n];
-        const bool swelling = pass->floor.swell != 0 && far_line->count != 0;
-        for (int line = 0; line < 4; line++) {
-            const bool along_im = (line & 1) != 0;
-            const int side = (line & 2) != 0 ? -1 : 1;
-            const int32_t c = side * far_line->c;
-            if (swelling) {
-                draw_far_swell_line(pass, far_line, along_im, side, lift, col);
-            }
-            draw_far_ring(pass, &plane, along_im, c, swelling ? BOOT_ANIM_FAR_SWELL_FADE_Q12 : 0, solid, col);
-            for (int k = 0; front > 0 && k < BOOT_ANIM_FAR_FRONT_STEPS; k++) {
-                const int32_t r_in = solid + (int32_t)(((int64_t)front * k) / BOOT_ANIM_FAR_FRONT_STEPS);
-                const int32_t r_out = solid + (int32_t)(((int64_t)front * (k + 1)) / BOOT_ANIM_FAR_FRONT_STEPS);
-                const uint8_t fade =
-                    (uint8_t)((UINT8_MAX * (BOOT_ANIM_FAR_FRONT_STEPS - k)) / (BOOT_ANIM_FAR_FRONT_STEPS + 1));
-                draw_far_ring(pass, &plane, along_im, c, r_in, r_out, lit(BOOT_ANIM_FLOOR_GREY, scale8(level, fade)));
-            }
+    /* Four ways per line, along re or im on either side of the axis. */
+    for (int way = 0; way < 4 * BOOT_ANIM_FAR_LINES && boot_anim_far_lines[way / 4].c <= reach; way++) {
+        const boot_anim_far_line_t* far_line = &boot_anim_far_lines[way / 4];
+        const bool along_im = (way & 1) != 0;
+        const int side = 1 - (way & 2);
+        const int32_t c = side * far_line->c;
+        if (pass->floor.swell != 0 && far_line->count != 0) {
+            draw_far_swell_line(pass, far_line, along_im, side, lift, col);
+            draw_far_ring(pass, &plane, along_im, c, BOOT_ANIM_FAR_SWELL_FADE_Q12, reach, col);
+        } else {
+            draw_far_ring(pass, &plane, along_im, c, 0, solid, col);
+            draw_far_front(pass, &plane, along_im, c, solid, front, level);
         }
     }
 }
