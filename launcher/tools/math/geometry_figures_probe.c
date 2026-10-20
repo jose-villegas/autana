@@ -33,7 +33,10 @@ static const box3f_t FRUSTUM_BOXES[] = {
     {{-3.5F, -0.4F, 1.8F}, {-2.5F, 0.4F, 2.5F}}, {{-0.6F, -0.6F, 0.4F}, {0.6F, 0.6F, 1.6F}},
     {{-0.5F, -0.5F, 1.8F}, {0.5F, 0.5F, 2.8F}},  {{2.3F, 2.3F, 0.0F}, {3.5F, 3.5F, 0.8F}},
 };
-static const size_t FRUSTUM_LOOSE_BOX = 7;
+
+enum { FRUSTUM_LOOSE_BOX = 7 };
+
+_Static_assert(FRUSTUM_LOOSE_BOX < sizeof FRUSTUM_BOXES / sizeof FRUSTUM_BOXES[0], "loose box indexes FRUSTUM_BOXES");
 static const box3f_t QUERY_BOX = {{-1, -1, -1}, {1, 1, 1}};
 static const spheref_t QUERY_SPHERES[] = {{{1.5F, 0, -1.6F}, 1}, {{2, 0, 0.5F}, 1}, {{2.8F, 0, 2.3F}, 0.7F}};
 static const char* const QUERY_SPHERE_NAMES[] = {"overlap", "touch", "miss"};
@@ -92,7 +95,7 @@ print_sphere(spheref_t sphere) {
 
 static void
 print_box_frustum(const planef_t planes[PLANE_FRUSTUM_COUNT]) {
-    printf(",\"box_frustum\":{\"loose_box\":%zu,\"boxes\":[", FRUSTUM_LOOSE_BOX);
+    printf(",\"box_frustum\":{\"loose_box\":%d,\"boxes\":[", FRUSTUM_LOOSE_BOX);
     for (size_t i = 0; i < sizeof FRUSTUM_BOXES / sizeof FRUSTUM_BOXES[0]; i++) {
         unsigned mask = (1U << PLANE_FRUSTUM_COUNT) - 1U;
         const bool outside = box3f_outside_planes(FRUSTUM_BOXES[i], planes, PLANE_FRUSTUM_COUNT, &mask);

@@ -337,13 +337,13 @@ def sphere_queries_figure(data, output):
     sphere_labels = []
     bounds = list(draw_box(left, data["box"]))
     entries = []
-    for (sphere, closest, hit, name), color in zip(data["spheres"], BOX_COLORS):
+    for (sphere, closest, _hit, name), color in zip(data["spheres"], BOX_COLORS):
         centre, radius = sphere
         wire_sphere(left, centre, radius, color)
         left.plot(*np.array([centre, closest]).T, color=color, linestyle="--")
         left.scatter(*closest, color=color, s=POINT_SIZE, depthshade=False)
         bounds.extend([np.array(centre) - radius, np.array(centre) + radius])
-        sphere_labels.append((left, [np.asarray(centre) + [0, radius, 0]], [name if hit else "miss"]))
+        sphere_labels.append((left, [np.asarray(centre) + [0, radius, 0]], [name]))
     fit_space(left, bounds)
     bounds = list(draw_box(right, data["box"]))
     clearance = list(bounds)
@@ -382,11 +382,11 @@ def main():
     data = run_probe(args.cc, [PROBE])
     rect_figure(data["rect"], args.out / "rect-queries.png")
     for name, values, plot in (("plane-distance.png", data["distance"], distance_figure),
-                            ("plane-from-points.png", data["triangle"], points_figure),
-                            ("plane-from-rows.png", data["rows"], rows_figure),
-                            ("frustum.gif", data["frustum"], frustum_figure),
-                            ("box3-frustum.gif", data, box_frustum_figure),
-                            ("box3-sphere-queries.gif", data["queries"], sphere_queries_figure)):
+                              ("plane-from-points.png", data["triangle"], points_figure),
+                              ("plane-from-rows.png", data["rows"], rows_figure),
+                              ("frustum.gif", data["frustum"], frustum_figure),
+                              ("box3-frustum.gif", data, box_frustum_figure),
+                              ("box3-sphere-queries.gif", data["queries"], sphere_queries_figure)):
         plot(values, args.out / name)
     return 0
 
