@@ -194,22 +194,22 @@ test_a_press_that_slides_off_its_tile_selects_nothing(void) {
 }
 
 static void
-test_a_tap_in_the_grout_between_tiles_selects_nothing(void) {
+test_a_tap_in_the_grout_between_tiles_selects_the_nearest_tile(void) {
     sand_ui_t ui = fixture(false, 0);
     settle(&ui, false);
 
+    /* The grout is split evenly by the cell edge, so a pixel inside the edge
+     * is nearer to that cell's tile than to its neighbour's. */
     const recti_t left = cell(1);
-    const recti_t right = cell(2);
-    const vec2i_t between_columns = {right.x, left.y + (left.h / 2)};
-    drag_tap(&ui, false, between_columns, between_columns);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, ui.brush, "the grout between two columns is no tile");
+    const vec2i_t beside_left = {left.x + left.w - 1, left.y + (left.h / 2)};
+    drag_tap(&ui, false, beside_left, beside_left);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, ui.brush, "the grout beside a tile picks that tile");
 
-    const int cols = palette_cols(ui_width());
+    drag_tap(&ui, false, centre(cell(0)), centre(cell(0)));
     const recti_t above = cell(1);
-    const recti_t below = cell(1 + cols);
-    const vec2i_t between_rows = {above.x + (above.w / 2), below.y};
-    drag_tap(&ui, false, between_rows, between_rows);
-    TEST_ASSERT_EQUAL_INT_MESSAGE(0, ui.brush, "the grout between two rows is no tile");
+    const vec2i_t under_above = {above.x + (above.w / 2), above.y + above.h - 1};
+    drag_tap(&ui, false, under_above, under_above);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(1, ui.brush, "the grout under a tile picks that tile");
 }
 
 #ifndef ESP_PLATFORM
@@ -305,7 +305,7 @@ run_palette_screen_suite(void) {
     RUN_TEST(test_the_second_tile_selects_a_different_brush_than_the_first);
     RUN_TEST(test_a_touch_that_opens_with_the_palette_selects_nothing_on_release);
     RUN_TEST(test_a_press_that_slides_off_its_tile_selects_nothing);
-    RUN_TEST(test_a_tap_in_the_grout_between_tiles_selects_nothing);
+    RUN_TEST(test_a_tap_in_the_grout_between_tiles_selects_the_nearest_tile);
 #ifndef ESP_PLATFORM
     RUN_TEST(test_only_the_selected_tile_is_sunken);
     RUN_TEST(test_tile_labels_are_inked_black_not_the_theme_text);

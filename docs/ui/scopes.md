@@ -33,7 +33,6 @@ These are not scopes: each holds until it is set again.
 | Call | Holds |
 |---|---|
 | `ui_theme(&theme)` | for the rest of the frame; `NULL` restores the shell look |
-| `ui_set_button_style(style)` | for the rest of the frame; `ui_begin()` resets it to `UI_BUTTON_FLAT` |
 | `ui_set_text_style(style)` | until set again, across frames; a change needs `ui_invalidate()` |
 | `ui_set_font_scaled(font, scale)` | until set again |
 

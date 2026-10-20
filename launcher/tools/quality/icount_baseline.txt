@@ -80,7 +80,7 @@
 2626	ui_face_text_right
 2166	ui_face_theme
 3801	ui_face_tile
-3808	ui_face_toggle
+3771	ui_face_toggle
 1989	ui_face_window
 3550	ui_mu_button
 2579	ui_mu_caption
@@ -100,5 +100,5 @@
 2580	ui_mu_text_centre
 2578	ui_mu_text_right
 3543	ui_mu_tile
-3341	ui_mu_toggle
+3304	ui_mu_toggle
 1236	ui_mu_window

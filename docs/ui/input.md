@@ -22,9 +22,9 @@ flowchart LR
 |---|---|
 | finger down | the press is held back a frame, until the control under it is hovered, then lands on that control |
 | finger held | the pressed control draws pressed: a button or tile sinks, a toggle shows its flipped value |
-| finger slides off | the control stays pressed but will not fire |
-| finger lifts over it | a button or tile returns true; a toggle writes and returns true |
-| finger lifts elsewhere | nothing fires, and a toggle keeps its old value |
+| finger slides farther than `snap.reach` | the control stays pressed but will not fire |
+| finger lifts over it or within reach | a button or tile returns true; a toggle writes and returns true |
+| finger lifts beyond reach, or nearer another control | nothing fires, and a toggle keeps its old value |
 
 A slider and a dropdown act on the press instead: the slider takes the value
 under the finger and follows it, and the dropdown opens its list. Each
@@ -34,10 +34,10 @@ control's page has a States table that measures when it fires.
 
 A press that lands outside every control is aimed at the nearest control
 edge within reach, the tunable `snap.reach` (40 px by default), so that
-control draws pressed. The release is not aimed: a button, tile or toggle
-fires only when the finger lifts inside it, so a tap in the gap between two
-tiles picks neither. A press farther from every control than the reach
-presses nothing.
+control draws pressed. The release is aimed the same way, so a button, tile
+or toggle fires when the finger lifts within reach of it, and a tap in the
+gap between two tiles picks the nearer one. A tap farther from every control
+than the reach presses and fires nothing.
 
 ## Identity
 
