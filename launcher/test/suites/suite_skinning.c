@@ -110,9 +110,9 @@ test_skin_ranges_two_and_four_influences_and_refit(void) {
         TEST_ASSERT_EQUAL_INT16(expected + POSITION_SCALE, f.out.positions[1][0]);
         TEST_ASSERT_EQUAL_PTR(COLORS, f.out.mesh.colors);
         r3d_skin_refit_nodes(&f.out);
-        TEST_ASSERT_EQUAL_INT16(expected, f.out.nodes[0].lo[0]);
-        TEST_ASSERT_EQUAL_INT16(expected + POSITION_SCALE, f.out.nodes[0].hi[0]);
-        TEST_ASSERT_EQUAL_INT16(POSITION_SCALE, f.out.nodes[0].hi[1]);
+        TEST_ASSERT_EQUAL_INT16(expected, f.out.nodes[0].bounds.lo.x);
+        TEST_ASSERT_EQUAL_INT16(expected + POSITION_SCALE, f.out.nodes[0].bounds.hi.x);
+        TEST_ASSERT_EQUAL_INT16(POSITION_SCALE, f.out.nodes[0].bounds.hi.y);
         TEST_ASSERT_EQUAL_PTR(f.out.positions, f.out.mesh.positions);
         release(&f);
     }

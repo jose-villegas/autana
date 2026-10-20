@@ -71,13 +71,11 @@ grid_open(grid_mesh_t* g) {
         .vertex_count = (uint16_t)(side * side),
         .triangle_first = 0,
         .triangle_count = (uint16_t)t,
-        .lo = {lo[0], lo[1], 0},
-        .hi = {hi[0], hi[1], 0},
+        .bounds = {{lo[0], lo[1], 0}, {hi[0], hi[1], 0}},
         .double_sided = false,
     };
     g->node = (r3d_lit_node_t){
-        .lo = {lo[0], lo[1], 0},
-        .hi = {hi[0], hi[1], 0},
+        .bounds = {{lo[0], lo[1], 0}, {hi[0], hi[1], 0}},
         .first = 0,
         .count = 1,
         .leaf = true,

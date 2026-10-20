@@ -13,24 +13,43 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "asset/asset_pack.h"
-#include "math/linear/vec3f.h"
+#include "math/geometry/spheref.h"
 
 typedef struct {
     uint16_t vertex_first, vertex_count;
     uint16_t triangle_first, triangle_count;
-    int16_t lo[3], hi[3]; /* bounds of its vertices, position ticks */
+    box3s_t bounds; /* bounds of its vertices, position ticks */
     bool double_sided;
 } r3d_lit_cluster_t;
 
 typedef struct {
-    int16_t lo[3], hi[3]; /* bounds of everything below, position ticks */
-    uint16_t first;       /* first child node, or a leaf's first cluster */
-    uint8_t count;        /* children, or a leaf's clusters */
+    box3s_t bounds; /* bounds of everything below, position ticks */
+    uint16_t first; /* first child node, or a leaf's first cluster */
+    uint8_t count;  /* children, or a leaf's clusters */
     bool leaf;
 } r3d_lit_node_t;
+
+/* Asset records are read in place; these offsets are the packed file contract. */
+_Static_assert(sizeof(r3d_lit_cluster_t) == 22, "r3d_lit_cluster_t asset size");
+_Static_assert(offsetof(r3d_lit_cluster_t, vertex_first) == 0, "r3d_lit_cluster_t vertex_first asset offset");
+_Static_assert(offsetof(r3d_lit_cluster_t, vertex_count) == 2, "r3d_lit_cluster_t vertex_count asset offset");
+_Static_assert(offsetof(r3d_lit_cluster_t, triangle_first) == 4, "r3d_lit_cluster_t triangle_first asset offset");
+_Static_assert(offsetof(r3d_lit_cluster_t, triangle_count) == 6, "r3d_lit_cluster_t triangle_count asset offset");
+_Static_assert(offsetof(r3d_lit_cluster_t, bounds) == 8, "r3d_lit_cluster_t bounds asset offset");
+_Static_assert(offsetof(r3d_lit_cluster_t, bounds.lo) == 8, "r3d_lit_cluster_t bounds.lo asset offset");
+_Static_assert(offsetof(r3d_lit_cluster_t, bounds.hi) == 14, "r3d_lit_cluster_t bounds.hi asset offset");
+_Static_assert(offsetof(r3d_lit_cluster_t, double_sided) == 20, "r3d_lit_cluster_t double_sided asset offset");
+_Static_assert(sizeof(r3d_lit_node_t) == 16, "r3d_lit_node_t asset size");
+_Static_assert(offsetof(r3d_lit_node_t, bounds) == 0, "r3d_lit_node_t bounds asset offset");
+_Static_assert(offsetof(r3d_lit_node_t, bounds.lo) == 0, "r3d_lit_node_t bounds.lo asset offset");
+_Static_assert(offsetof(r3d_lit_node_t, bounds.hi) == 6, "r3d_lit_node_t bounds.hi asset offset");
+_Static_assert(offsetof(r3d_lit_node_t, first) == 12, "r3d_lit_node_t first asset offset");
+_Static_assert(offsetof(r3d_lit_node_t, count) == 14, "r3d_lit_node_t count asset offset");
+_Static_assert(offsetof(r3d_lit_node_t, leaf) == 15, "r3d_lit_node_t leaf asset offset");
 
 typedef struct {
     const int16_t (*positions)[3];  /* ticks; position_scale ticks per model unit */
@@ -56,4 +75,4 @@ asset_status_t r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_l
 
 /* A sphere holding every vertex, in model units: centred on the box of them
  * (the root node's bounds), its radius the furthest vertex from that centre. */
-void r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh, vec3f_t* centre, float* radius);
+spheref_t r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh);

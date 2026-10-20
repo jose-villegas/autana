@@ -1,0 +1,107 @@
+/*
+ * box3_template: closed axis-aligned boxes for one number type; see
+ * docs/math/Conventions.md#templates for macro arguments. LOWEST and HIGHEST
+ * bound the scalar type. Real queries take the plane prefix L and require finite, nonempty boxes.
+ */
+#pragma once
+#include <math.h>
+#include <stdbool.h>
+
+#define MATH_DEFINE_BOX3(P, V, T, OPS, LOWEST, HIGHEST)                                                                \
+    typedef struct {                                                                                                   \
+        V##_t lo, hi;                                                                                                  \
+    } P##_t;                                                                                                           \
+                                                                                                                       \
+    /* empty = (HIGHEST, LOWEST), the identity for extend and union. */                                                \
+    static inline P##_t P##_empty(void) { return (P##_t){{HIGHEST, HIGHEST, HIGHEST}, {LOWEST, LOWEST, LOWEST}}; }     \
+                                                                                                                       \
+    /* empty = any lo_k > hi_k. */                                                                                     \
+    static inline bool P##_is_empty(P##_t b) { return b.lo.x > b.hi.x || b.lo.y > b.hi.y || b.lo.z > b.hi.z; }         \
+                                                                                                                       \
+    /* from_point = (p, p). */                                                                                         \
+    static inline P##_t P##_from_point(V##_t p) { return (P##_t){p, p}; }                                              \
+                                                                                                                       \
+    /* extend = (min(lo, p), max(hi, p)). */                                                                           \
+    static inline P##_t P##_extend(P##_t b, V##_t p) { return (P##_t){V##_min(b.lo, p), V##_max(b.hi, p)}; }           \
+                                                                                                                       \
+    /* union = (min(a.lo, b.lo), max(a.hi, b.hi)). */                                                                  \
+    static inline P##_t P##_union(P##_t a, P##_t b) { return (P##_t){V##_min(a.lo, b.lo), V##_max(a.hi, b.hi)}; }      \
+                                                                                                                       \
+    /* intersection = (max(a.lo, b.lo), min(a.hi, b.hi)); crossed edges are empty. */                                  \
+    static inline P##_t P##_intersect(P##_t a, P##_t b) { return (P##_t){V##_max(a.lo, b.lo), V##_min(a.hi, b.hi)}; }  \
+                                                                                                                       \
+    /* contains_point = all lo_k <= p_k <= hi_k. */                                                                    \
+    static inline bool P##_contains_point(P##_t b, V##_t p) {                                                          \
+        return p.x >= b.lo.x && p.x <= b.hi.x && p.y >= b.lo.y && p.y <= b.hi.y && p.z >= b.lo.z && p.z <= b.hi.z;     \
+    }                                                                                                                  \
+                                                                                                                       \
+    /* contains = all outer.lo_k <= inner.lo_k and inner.hi_k <= outer.hi_k. */                                        \
+    static inline bool P##_contains(P##_t outer, P##_t inner) {                                                        \
+        return inner.lo.x >= outer.lo.x && inner.lo.y >= outer.lo.y && inner.lo.z >= outer.lo.z                        \
+               && inner.hi.x <= outer.hi.x && inner.hi.y <= outer.hi.y && inner.hi.z <= outer.hi.z;                    \
+    }                                                                                                                  \
+                                                                                                                       \
+    /* overlaps = all a.lo_k <= b.hi_k and b.lo_k <= a.hi_k, including shared faces. */                                \
+    static inline bool P##_overlaps(P##_t a, P##_t b) {                                                                \
+        return a.lo.x <= b.hi.x && b.lo.x <= a.hi.x && a.lo.y <= b.hi.y && b.lo.y <= a.hi.y && a.lo.z <= b.hi.z        \
+               && b.lo.z <= a.hi.z;                                                                                    \
+    }                                                                                                                  \
+                                                                                                                       \
+    /* closest_point = clamp(p, lo, hi); requires a nonempty box. */                                                   \
+    static inline V##_t P##_closest_point(P##_t b, V##_t p) { return V##_clamp(p, b.lo, b.hi); }
+
+#define MATH_DEFINE_BOX3_REAL(P, V, L, T, OPS)                                                                         \
+                                                                                                                       \
+    /* centre = 0.5 * (lo + hi). */                                                                                    \
+    static inline V##_t P##_centre(P##_t b) { return V##_scale(V##_add(b.lo, b.hi), (T)0.5F); }                        \
+                                                                                                                       \
+    /* half_extent = 0.5 * (hi - lo). */                                                                               \
+    static inline V##_t P##_half_extent(P##_t b) { return V##_scale(V##_sub(b.hi, b.lo), (T)0.5F); }                   \
+                                                                                                                       \
+    /* Slabs intersect [0,1] with [(lo_k-a_k)/v_k, (hi_k-a_k)/v_k]; inside starts at t = 0. */                         \
+    static inline bool P##_segment_hit(P##_t b, V##_t a, V##_t c, T* t) {                                              \
+        if (P##_is_empty(b)) {                                                                                         \
+            return false;                                                                                              \
+        }                                                                                                              \
+        T entry = OPS##_zero(), exit = OPS##_one();                                                                    \
+        const V##_t delta = V##_sub(c, a);                                                                             \
+        const T start[] = {a.x, a.y, a.z}, direction[] = {delta.x, delta.y, delta.z};                                  \
+        const T lo[] = {b.lo.x, b.lo.y, b.lo.z}, hi[] = {b.hi.x, b.hi.y, b.hi.z};                                      \
+        for (unsigned k = 0; k < sizeof(start) / sizeof(start[0]); k++) {                                              \
+            if (direction[k] == OPS##_zero()) {                                                                        \
+                if (start[k] < lo[k] || start[k] > hi[k]) {                                                            \
+                    return false;                                                                                      \
+                }                                                                                                      \
+                continue;                                                                                              \
+            }                                                                                                          \
+            const T first = OPS##_div(OPS##_sub(lo[k], start[k]), direction[k]);                                       \
+            const T last = OPS##_div(OPS##_sub(hi[k], start[k]), direction[k]);                                        \
+            entry = OPS##_max(entry, OPS##_min(first, last));                                                          \
+            exit = OPS##_min(exit, OPS##_max(first, last));                                                            \
+            if (entry > exit) {                                                                                        \
+                return false;                                                                                          \
+            }                                                                                                          \
+        }                                                                                                              \
+        *t = entry;                                                                                                    \
+        return true;                                                                                                   \
+    }                                                                                                                  \
+                                                                                                                       \
+    /* d = plane(centre), r = sum |n_k|*extent_k; d+r < 0 rejects, d-r >= 0 clears the bit. count <= unsigned bits. */ \
+    static inline bool P##_outside_planes(P##_t b, const L##_t* planes, int count, unsigned* mask) {                   \
+        const V##_t c = P##_centre(b), e = P##_half_extent(b);                                                         \
+        for (int p = 0; p < count; p++) {                                                                              \
+            if (!(*mask & (1U << p))) {                                                                                \
+                continue;                                                                                              \
+            }                                                                                                          \
+            const L##_t* plane = &planes[p];                                                                           \
+            const T d = L##_distance(*plane, c);                                                                       \
+            const T r = fabsf(plane->normal.x) * e.x + fabsf(plane->normal.y) * e.y + fabsf(plane->normal.z) * e.z;    \
+            if (d + r < OPS##_zero()) {                                                                                \
+                return true;                                                                                           \
+            }                                                                                                          \
+            if (d - r >= OPS##_zero()) {                                                                               \
+                *mask &= ~(1U << p);                                                                                   \
+            }                                                                                                          \
+        }                                                                                                              \
+        return false;                                                                                                  \
+    }

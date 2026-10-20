@@ -54,41 +54,6 @@ r3d_lens_place(r3d_lens_t* lens, const mat4f_t* model, int position_scale) {
 #define ALL_PLANES     ((1u << PLANE_FRUSTUM_COUNT) - 1u)
 #define WALK_STACK_MAX 256
 
-typedef enum { BOX_OUTSIDE, BOX_CROSSING } box_side_t;
-
-/* Clears from *mask every plane the box lies wholly inside, so a node's
- * children skip it. */
-static box_side_t
-classify_box(const int16_t lo[3], const int16_t hi[3], const planef_t planes[PLANE_FRUSTUM_COUNT], unsigned* mask) {
-    const vec3f_t c = {0.5F * ((float)lo[0] + (float)hi[0]), 0.5F * ((float)lo[1] + (float)hi[1]),
-                       0.5F * ((float)lo[2] + (float)hi[2])};
-    const float e[3] = {0.5F * ((float)hi[0] - (float)lo[0]), 0.5F * ((float)hi[1] - (float)lo[1]),
-                        0.5F * ((float)hi[2] - (float)lo[2])};
-    for (int p = 0; p < PLANE_FRUSTUM_COUNT; p++) {
-        if (!(*mask & (1U << p))) {
-            continue;
-        }
-        const planef_t* plane = &planes[p];
-        const float d = planef_distance(*plane, c);
-        const float r =
-            (fabsf(plane->normal.x) * e[0]) + (fabsf(plane->normal.y) * e[1]) + (fabsf(plane->normal.z) * e[2]);
-        if (d + r < 0.0F) {
-            return BOX_OUTSIDE;
-        }
-        if (d - r >= 0.0F) {
-            *mask &= ~(1U << p);
-        }
-    }
-    return BOX_CROSSING;
-}
-
-static float
-box_depth(const r3d_lens_t* lens, const int16_t lo[3], const int16_t hi[3]) {
-    const float* f = lens->m.m[2];
-    return (f[0] * 0.5F * ((float)lo[0] + (float)hi[0])) + (f[1] * 0.5F * ((float)lo[1] + (float)hi[1]))
-           + (f[2] * 0.5F * ((float)lo[2] + (float)hi[2])) + f[3];
-}
-
 typedef struct {
     uint16_t node;
     uint8_t mask;
@@ -132,7 +97,9 @@ push_children(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_
     int n = 0;
     for (int i = 0; i < node->count; i++) {
         const uint16_t child = (uint16_t)(node->first + i);
-        const float d = box_depth(lens, mesh->nodes[child].lo, mesh->nodes[child].hi);
+        const float* f = lens->m.m[2];
+        const float d = planef_distance((planef_t){{f[0], f[1], f[2]}, f[3]},
+                                        box3f_centre(box3f_from_box3s(mesh->nodes[child].bounds, 1.0F)));
         int slot = n++;
         while (slot > 0 && depth[slot - 1] < d) {
             depth[slot] = depth[slot - 1];
@@ -163,7 +130,8 @@ r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* 
         const walk_entry_t entry = stack[--top];
         const r3d_lit_node_t* node = &mesh->nodes[entry.node];
         unsigned mask = entry.mask;
-        if (mask != 0 && classify_box(node->lo, node->hi, planes, &mask) == BOX_OUTSIDE) {
+        if (mask != 0
+            && box3f_outside_planes(box3f_from_box3s(node->bounds, 1.0F), planes, PLANE_FRUSTUM_COUNT, &mask)) {
             continue;
         }
         if (!node->leaf) {
@@ -174,7 +142,8 @@ r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* 
             const int c = node->first + i;
             unsigned cluster_mask = mask;
             if (cluster_mask == 0
-                || classify_box(mesh->clusters[c].lo, mesh->clusters[c].hi, planes, &cluster_mask) != BOX_OUTSIDE) {
+                || !box3f_outside_planes(box3f_from_box3s(mesh->clusters[c].bounds, 1.0F), planes, PLANE_FRUSTUM_COUNT,
+                                         &cluster_mask)) {
                 out[count++] = (uint16_t)c;
             }
         }

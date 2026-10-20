@@ -99,23 +99,6 @@ r3d_skin_palette(const r3d_skin_t* skin, const mat4f_t* model, int position_scal
     }
 }
 
-static void
-empty_bounds(int16_t lo[POSITION_AXES], int16_t hi[POSITION_AXES]) {
-    for (int a = 0; a < POSITION_AXES; a++) {
-        lo[a] = INT16_MAX;
-        hi[a] = INT16_MIN;
-    }
-}
-
-static void
-grow_bounds(int16_t lo[POSITION_AXES], int16_t hi[POSITION_AXES], const int16_t from_lo[POSITION_AXES],
-            const int16_t from_hi[POSITION_AXES]) {
-    for (int a = 0; a < POSITION_AXES; a++) {
-        lo[a] = (int16_t)(from_lo[a] < lo[a] ? from_lo[a] : lo[a]);
-        hi[a] = (int16_t)(from_hi[a] > hi[a] ? from_hi[a] : hi[a]);
-    }
-}
-
 static inline __attribute__((always_inline)) float
 skin_weight(const uint8_t* record, int influences, int influence) {
     return (float)record[influences + influence] * R3D_SKIN_WEIGHT_RECIP;
@@ -183,12 +166,13 @@ skin_range(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t* pa
            r3d_skin_output_t* out, int influences) {
     for (int c = first; c < first + count; c++) {
         r3d_lit_cluster_t* cluster = &out->clusters[c];
-        empty_bounds(cluster->lo, cluster->hi);
+        cluster->bounds = box3s_empty();
         const int end = cluster->vertex_first + cluster->vertex_count;
         for (int v = cluster->vertex_first; v < end; v++) {
             skin_vertex(skin->vertices + ((size_t)v * skin->vertex_stride), influences, palette, bind->positions[v],
                         out->positions[v]);
-            grow_bounds(cluster->lo, cluster->hi, out->positions[v], out->positions[v]);
+            cluster->bounds = box3s_extend(cluster->bounds,
+                                           (vec3s_t){out->positions[v][0], out->positions[v][1], out->positions[v][2]});
         }
     }
 }
@@ -204,14 +188,14 @@ skin_lit_range(const r3d_skin_t* skin, const r3d_lit_mesh_t* bind, const mat4f_t
     int16_t (*posed)[POSITION_AXES] = out->positions;
     for (int c = first; c < first + count; c++) {
         r3d_lit_cluster_t* cluster = &out->clusters[c];
-        empty_bounds(cluster->lo, cluster->hi);
+        cluster->bounds = box3s_empty();
         const int end = cluster->vertex_first + cluster->vertex_count;
         for (int v = cluster->vertex_first; v < end; v++) {
             vec3f_t normal;
             skin_lit_vertex(vertices + ((size_t)v * stride), influences, palette, positions[v], posed[v], normals,
                             &normal);
             skin_light_vertex(normal, lights, colors[v], light[v], mode);
-            grow_bounds(cluster->lo, cluster->hi, posed[v], posed[v]);
+            cluster->bounds = box3s_extend(cluster->bounds, (vec3s_t){posed[v][0], posed[v][1], posed[v][2]});
         }
     }
 }
@@ -262,11 +246,9 @@ void
 r3d_skin_refit_nodes(r3d_skin_output_t* out) {
     for (int n = out->mesh.node_count - 1; n >= 0; n--) {
         r3d_lit_node_t* node = &out->nodes[n];
-        empty_bounds(node->lo, node->hi);
+        node->bounds = box3s_empty();
         for (int i = node->first; i < node->first + node->count; i++) {
-            const int16_t* lo = node->leaf ? out->clusters[i].lo : out->nodes[i].lo;
-            const int16_t* hi = node->leaf ? out->clusters[i].hi : out->nodes[i].hi;
-            grow_bounds(node->lo, node->hi, lo, hi);
+            node->bounds = box3s_union(node->bounds, node->leaf ? out->clusters[i].bounds : out->nodes[i].bounds);
         }
     }
 }

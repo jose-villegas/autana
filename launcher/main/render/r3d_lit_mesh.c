@@ -6,14 +6,6 @@
 #include "asset/asset_bytes.h"
 #include "asset/asset_entry.h"
 
-/* The entry's bytes are the structs' own layout, written by lit_mesh.py. */
-_Static_assert(sizeof(r3d_lit_cluster_t) == 22 && offsetof(r3d_lit_cluster_t, lo) == 8
-                   && offsetof(r3d_lit_cluster_t, double_sided) == 20,
-               "r3d_lit_cluster_t is not the layout lit_mesh.py writes");
-_Static_assert(sizeof(r3d_lit_node_t) == 16 && offsetof(r3d_lit_node_t, first) == 12
-                   && offsetof(r3d_lit_node_t, leaf) == 15,
-               "r3d_lit_node_t is not the layout lit_mesh.py writes");
-
 enum {
     HEADER_WORDS = 11,
     ENTRY_ALIGNMENT = 4,
@@ -157,13 +149,10 @@ r3d_lit_mesh_open(const asset_pack_t* pack, const char* id, r3d_lit_mesh_t* mesh
     return r3d_lit_mesh_from_asset(&asset, mesh);
 }
 
-void
-r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh, vec3f_t* centre, float* radius) {
+spheref_t
+r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh) {
     const float units = 1.0F / (float)mesh->position_scale;
-    const r3d_lit_node_t* root = &mesh->nodes[0];
-    const vec3f_t mid = {(float)(root->lo[0] + root->hi[0]) * 0.5F * units,
-                         (float)(root->lo[1] + root->hi[1]) * 0.5F * units,
-                         (float)(root->lo[2] + root->hi[2]) * 0.5F * units};
+    const vec3f_t mid = box3f_centre(box3f_from_box3s(mesh->nodes[0].bounds, units));
     float furthest = 0.0F;
     for (int i = 0; i < mesh->vertex_count; i++) {
         const vec3f_t p = {(float)mesh->positions[i][0] * units, (float)mesh->positions[i][1] * units,
@@ -171,6 +160,5 @@ r3d_lit_mesh_bounding_sphere(const r3d_lit_mesh_t* mesh, vec3f_t* centre, float*
         const vec3f_t d = vec3f_sub(p, mid);
         furthest = fmaxf(furthest, vec3f_dot(d, d));
     }
-    *centre = mid;
-    *radius = sqrtf(furthest);
+    return (spheref_t){mid, sqrtf(furthest)};
 }
