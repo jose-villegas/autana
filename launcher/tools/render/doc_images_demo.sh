@@ -122,14 +122,17 @@ small_fill_images
 fi
 
 # One looping flythrough per demo target and view, the same three seconds of
-# it so the GIFs compare, small enough to sit side by side in a table.
+# it so the GIFs compare. A flythrough keeps every rendered frame at the
+# render size, on 128 colours so smooth shading does not band.
+DEMO_GIF_FRAMES=30
+DEMO_GIF_DT=100
 demo_gif() {
     name=$1
     shift
-    run "$HOST" --quarter 1 --frames 30 --dt 100 \
+    run "$HOST" --quarter 1 --frames "$DEMO_GIF_FRAMES" --dt "$DEMO_GIF_DT" \
         -o "$W/$name.bmp" --video "$W/$name.avi" "$@" 2> "$W/$name.log"
-    gif_from_avi "$W/$name.avi" "$RENDER/$name.gif" "${DEMO_GIF_FILTERS:-fps=8,scale=240:-1:flags=lanczos}" \
-        "max_colors=64:stats_mode=diff"
+    gif_from_avi "$W/$name.avi" "$RENDER/$name.gif" "${DEMO_GIF_FILTERS:-fps=$((1000 / DEMO_GIF_DT))}" \
+        "max_colors=128:stats_mode=diff"
 }
 DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-nearest --scene "$ID" --object "${FULL}_fitted_full" --present nearest
 DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-scanline --scene "$ID" --object "${FULL}_fitted_full" --present scanline
@@ -376,6 +379,8 @@ sweep_seconds=$(($(date +%s) - sweep_start))
 echo "CPU flat sampling sweep: $sweep_seconds seconds"
 echo "$sweep_seconds" > "$W/sweep-seconds.txt"
 "$R3D_PYTHON" "launcher/tools/render/doc_tables.py" "$W" "$TABLES" "$ID" "$FULL"
+# The same numbers as charts: ${ID}-fidelity.png, ${ID}-indirect.png, ${ID}-flat-sampling.png, ${ID}-indirect-look.png.
+"$R3D_PYTHON" launcher/tools/render/bake_charts.py "$TABLES" "$RENDER" "$ID"
 tables_seconds=$(($(date +%s) - tables_start))
 echo "CPU table measurements added: $tables_seconds seconds"
 echo "$tables_seconds" > "$W/tables-seconds.txt"
