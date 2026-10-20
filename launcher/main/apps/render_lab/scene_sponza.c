@@ -175,22 +175,25 @@ sponza_status(void) {
     return buf;
 }
 
-/* What every bake's scene shares; each names itself, its key and its bake's enter. */
-#define SPONZA_SCENE_FIELDS .frame = scene_sponza_frame, .exit = scene_sponza_exit, .status = sponza_status
+/* A bake's scene: its title, key, variant and enter, with the family's shared hooks. */
+#define SPONZA_BAKE_SCENE(title_, key_, variant_, enter_)                                                              \
+    {.name = (title_),                                                                                                 \
+     .key = (key_),                                                                                                    \
+     .family = "Sponza",                                                                                               \
+     .variant = (variant_),                                                                                            \
+     .enter = (enter_),                                                                                                \
+     .frame = scene_sponza_frame,                                                                                      \
+     .exit = scene_sponza_exit,                                                                                        \
+     .status = sponza_status}
 
-const render_lab_scene_t scene_sponza = {
-    .name = "Sponza", .key = "sponza", .enter = scene_sponza_enter, SPONZA_SCENE_FIELDS};
-const render_lab_scene_t scene_sponza_lite = {
-    .name = "Sponza Lite", .key = "sponza-lite", .enter = scene_sponza_lite_enter, SPONZA_SCENE_FIELDS};
-const render_lab_scene_t scene_sponza_flat = {
-    .name = "Sponza Flat", .key = "sponza-flat", .enter = scene_sponza_flat_enter, SPONZA_SCENE_FIELDS};
-const render_lab_scene_t scene_sponza_fitted = {
-    .name = "Sponza Fitted", .key = "sponza-fitted", .enter = scene_sponza_fitted_enter, SPONZA_SCENE_FIELDS};
-const render_lab_scene_t scene_sponza_fitted_full = {.name = "Sponza Fitted Full",
-                                                     .key = "sponza-fitted-full",
-                                                     .enter = scene_sponza_fitted_full_enter,
-                                                     SPONZA_SCENE_FIELDS};
-const render_lab_scene_t scene_sponza_flat_fitted = {.name = "Sponza Flat Fitted",
-                                                     .key = "sponza-flat-fitted",
-                                                     .enter = scene_sponza_flat_fitted_enter,
-                                                     SPONZA_SCENE_FIELDS};
+const render_lab_scene_t scene_sponza = SPONZA_BAKE_SCENE("Sponza", "sponza", "Full", scene_sponza_enter);
+const render_lab_scene_t scene_sponza_lite =
+    SPONZA_BAKE_SCENE("Sponza Lite", "sponza-lite", "Lite", scene_sponza_lite_enter);
+const render_lab_scene_t scene_sponza_flat =
+    SPONZA_BAKE_SCENE("Sponza Flat", "sponza-flat", "Flat", scene_sponza_flat_enter);
+const render_lab_scene_t scene_sponza_fitted =
+    SPONZA_BAKE_SCENE("Sponza Fitted", "sponza-fitted", "Fitted", scene_sponza_fitted_enter);
+const render_lab_scene_t scene_sponza_fitted_full =
+    SPONZA_BAKE_SCENE("Sponza Fitted Full", "sponza-fitted-full", "Fitted Full", scene_sponza_fitted_full_enter);
+const render_lab_scene_t scene_sponza_flat_fitted =
+    SPONZA_BAKE_SCENE("Sponza Flat Fitted", "sponza-flat-fitted", "Flat Fitted", scene_sponza_flat_fitted_enter);

@@ -24,7 +24,11 @@ if ! CC_BIN=$(find_cc); then
     exit 1
 fi
 
+<<<<<<< HEAD
 # The probes' own standard (see run_probe in tools/math/math_figures.py), not the tests'.
+=======
+# The probes' own standard (see tools/math/math_figures.py), not the tests'.
+>>>>>>> origin/main
 CFLAGS="-std=gnu2x -Wall -Wextra -Werror -fsyntax-only"
 
 status=0

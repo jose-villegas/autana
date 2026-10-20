@@ -17,6 +17,7 @@ import contextlib
 import gzip
 import importlib
 import json
+import math
 import os
 import re
 import shlex
@@ -31,6 +32,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "launcher" / "tools" / "build"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "device"))
+from c_header import read_define
 from suite_registry import registered_suites  # noqa: E402
 from process_tree import launch_process_tree, close_process_tree, install_console_interrupt_handler  # noqa: E402
 from console_protocol import reply_prefix
@@ -482,18 +484,22 @@ TONE_CAPTURE_COUNT = 2
 TONE_MS_PER_SECOND = 1000
 
 
-def tone(args):
-    usage = "usage: autana tone <hz> <ms> [volume] [--internal] [--json]"
+def read_numeric_options(args, usage, allowed_flags, counts):
     rest = list(args)
     flags = []
     while rest and rest[-1].startswith("--"):
         flags.append(rest.pop())
-    if len(flags) != len(set(flags)) or any(flag not in ("--json", "--internal") for flag in flags):
+    if (len(flags) != len(set(flags)) or any(flag not in allowed_flags for flag in flags)
+            or len(rest) not in counts or any(not re.fullmatch(r"[0-9]+", value) for value in rest)):
         sys.exit(usage)
+    return rest, flags
+
+
+def tone(args):
+    usage = "usage: autana tone <hz> <ms> [volume] [--internal] [--json]"
+    rest, flags = read_numeric_options(args, usage, ("--json", "--internal"), (2, 3))
     json_output = "--json" in flags
     internal = "--internal" in flags
-    if len(rest) not in (2, 3) or any(not re.fullmatch(r"[0-9]+", arg) for arg in rest):
-        sys.exit(usage)
     ms = int(rest[1])
     seconds = TONE_MARGIN_SECONDS + TONE_CAPTURE_COUNT * ms / TONE_MS_PER_SECOND
     code, replies = send("TONE " + " ".join(rest) + (" internal" if internal else ""), reply="TONE", seconds=seconds)
@@ -509,6 +515,69 @@ def tone(args):
         return 1
     print(json.dumps(result) if json_output else replies[-1])
     return 0
+
+
+_MELODY_HEADER = Path(__file__).resolve().parents[2] / "launcher/main/console/verbs/console_melody.h"
+_PITCH_HEADER = Path(__file__).resolve().parents[2] / "launcher/packages/math/include/math/signal/pitch.h"
+
+
+def melody_constants():
+    return {
+        "check_ms": read_define(_MELODY_HEADER, "CONSOLE_MELODY_CHECK_MS"),
+        "notes": read_define(_MELODY_HEADER, "MELODY_PHRASE_NOTES"),
+        "play_max_ms": read_define(_MELODY_HEADER, "CONSOLE_MELODY_PLAY_MAX_MS"),
+        "cents_per_octave": (read_define(_PITCH_HEADER, "PITCH_CENTS_PER_SEMITONE")
+                             * read_define(_PITCH_HEADER, "PITCH_SEMITONES_PER_OCTAVE")),
+    }
+
+
+def parse_melody_note(reply, cents_per_octave=None):
+    match = re.fullmatch(r"MELODY note=([A-G]#?[0-9]+) (TONE .+)", reply)
+    if not match:
+        raise ValueError(f"invalid MELODY note reply: {reply}")
+    note, tone_reply = match.groups()
+    result = parse_tone(tone_reply)
+    measured = result["measured_hz"]
+    if measured is not None and (measured <= 0 or result["hz"] <= 0):
+        raise ValueError(f"invalid MELODY frequency: {reply}")
+    if cents_per_octave is None:
+        cents_per_octave = melody_constants()["cents_per_octave"]
+    return dict(result, note=note, cents_error=None if measured is None else
+                cents_per_octave * math.log2(measured / result["hz"]))
+
+
+def melody(args):
+    usage = "usage: autana melody [volume] [--check] [--internal] [--json]"
+    rest, flags = read_numeric_options(args, usage, ("--check", "--internal", "--json"), (0, 1))
+    if "--internal" in flags and "--check" not in flags:
+        sys.exit(usage)
+    check = "--check" in flags
+    words = ["MELODY"] + (["check"] if check else []) + rest + (["internal"] if "--internal" in flags else [])
+    constants = melody_constants()
+    seconds = (constants["notes"] * (TONE_MARGIN_SECONDS + TONE_CAPTURE_COUNT * constants["check_ms"] / TONE_MS_PER_SECOND)
+               if check else constants["play_max_ms"] / TONE_MS_PER_SECOND)
+    code, replies = send(" ".join(words), reply="MELODY", until=["MELODY_END", "MELODY_ERR"], seconds=seconds)
+    if code or not replies:
+        return code or 1
+    try:
+        if replies[-1].startswith("MELODY_ERR"):
+            raise ValueError(replies[-1])
+        end = re.fullmatch(r"MELODY_END notes=([0-9]+)" + ("" if check else r" ms=([0-9]+)"), replies[-1])
+        if not end or int(end[1]) != constants["notes"]:
+            raise ValueError(f"invalid MELODY end reply: {replies[-1]}")
+        if check:
+            result = [parse_melody_note(line, constants["cents_per_octave"]) for line in replies[:-1]]
+            if len(result) != int(end[1]):
+                raise ValueError("incomplete MELODY check")
+        else:
+            if len(replies) != 1:
+                raise ValueError("unexpected MELODY play replies")
+            result = {"notes": int(end[1]), "ms": int(end[2])}
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 1
+    print(json.dumps(result) if "--json" in flags else "\n".join(replies))
+    return int(check and any(not note["heard"] for note in result))
 
 
 def sound(args):
@@ -1662,6 +1731,8 @@ COMMAND_GROUPS = (
             ("suite list [text] [--json]", "the suites this project registers"))),
         one("selftest", selftest, "selftest [seconds] [--verbose]",
             "build diagnostics+autorun, run every suite on the board"),
+        one("melody", melody, "melody [volume] [--check] [--internal] [--json]",
+            "play a phrase or check each note through loopback; development builds"),
         one("tone", tone, "tone <hz> <ms> [volume] [--internal] [--json]",
             "check a tone through the mic or silent codec feedback; development builds"),
     )),
