@@ -1,6 +1,7 @@
 """doc_images.sh's bake copies keep their import file; physical_scene.py
 drops only the scene's indirect table and occlusion."""
 
+import collections
 import pathlib
 import re
 import shutil
@@ -110,6 +111,33 @@ class DocImageFailureTest(unittest.TestCase):
             self.assertEqual({path.name for path in (work / "tables").iterdir()},
                              {f"gallery-{suffix}.md" for suffix in
                               ("fidelity", "flat-smooth", "flat-sampling", "indirect", "indirect-look")})
+
+    def test_charts_read_the_tables_as_written_and_refuse_a_renamed_column(self):
+        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+        import bake_charts
+        import doc_tables
+        import render_compare
+        import numpy as np
+        from r3d import bake_fidelity
+        values = (1.0, 2.0, 0.5, 3.0, 0.75)
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            (work / "sampling").mkdir()
+            (work / "sampling/table.md").write_text(bake_fidelity.table(
+                [("declared", values), ("fixed4", values), ("sky16", values), ("centroid", values)]) + "\n")
+            pair = SimpleNamespace(mean_delta_e=1, p95_delta_e=2, ssim_luma=0.5, edge_delta_e=3, interior_delta_e=4)
+            # Every comparison log scores the same, whatever row write_tables asks it for.
+            with mock.patch.object(doc_tables, "scores", return_value=collections.defaultdict(lambda: values)), \
+                    mock.patch.object(render_compare, "read_video", return_value=(None, [np.zeros((2, 2, 3), dtype=np.uint8)])), \
+                    mock.patch.object(render_compare, "reference_video", return_value=(None, pair)):
+                doc_tables.write_tables(work, work / "tables", "gallery", "painting")
+            bake_charts.write_charts(work / "tables", work / "render", "gallery")
+            self.assertEqual({path.name for path in (work / "render").iterdir()},
+                             {f"gallery-{name}.png" for name in ("fidelity", "indirect", "flat-sampling", "indirect-look")})
+            fidelity = work / "tables/gallery-fidelity.md"
+            fidelity.write_text(fidelity.read_text().replace("Luma SSIM", "SSIM"))
+            with self.assertRaisesRegex(ValueError, "missing columns: Luma SSIM"):
+                bake_charts.write_charts(work / "tables", work / "render", "gallery")
 
     def test_camera_board_table_reads_flat_and_style_sweeps(self):
         import json

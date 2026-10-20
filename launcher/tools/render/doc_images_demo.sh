@@ -122,7 +122,7 @@ small_fill_images
 fi
 
 # One looping flythrough per demo target and view, the same three seconds of
-# it so the GIFs compare. A flythrough keeps every rendered frame at the
+# it so the GIFs compare. Each keeps every rendered frame at the
 # render size, on 128 colours so smooth shading does not band.
 DEMO_GIF_FRAMES=30
 DEMO_GIF_DT=100
@@ -131,12 +131,12 @@ demo_gif() {
     shift
     run "$HOST" --quarter 1 --frames "$DEMO_GIF_FRAMES" --dt "$DEMO_GIF_DT" \
         -o "$W/$name.bmp" --video "$W/$name.avi" "$@" 2> "$W/$name.log"
-    gif_from_avi "$W/$name.avi" "$RENDER/$name.gif" "${DEMO_GIF_FILTERS:-fps=$((1000 / DEMO_GIF_DT))}" \
+    gif_from_avi "$W/$name.avi" "$RENDER/$name.gif" "fps=$((1000 / DEMO_GIF_DT))" \
         "max_colors=128:stats_mode=diff"
 }
-DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-nearest --scene "$ID" --object "${FULL}_fitted_full" --present nearest
-DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-scanline --scene "$ID" --object "${FULL}_fitted_full" --present scanline
-DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-double --scene "$ID" --object "${FULL}_fitted_full" --present double
+demo_gif ${ID}-present-nearest --scene "$ID" --object "${FULL}_fitted_full" --present nearest
+demo_gif ${ID}-present-scanline --scene "$ID" --object "${FULL}_fitted_full" --present scanline
+demo_gif ${ID}-present-double --scene "$ID" --object "${FULL}_fitted_full" --present double
 [ "${5:-}" != --present-only ] || exit 0
 
 demo_gif ${ID}-full --scene "$ID" --object "$FULL"

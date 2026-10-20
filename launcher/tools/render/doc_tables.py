@@ -12,6 +12,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 VIEW_HEADER = pathlib.Path(__file__).resolve().parents[2] / "main/render/render_view.h"
 SWEEP_GATE_OFF = 64
+# The indirect-look table's columns after Look; the doc charts read them back by these names.
+LOOK_COLUMNS = ("Mean dE76, physical", "Mean dE76, own", "p95, physical", "SSIM, physical")
 MICROSECONDS_PER_MILLISECOND = 1000
 
 SCORE = re.compile(r"^(.+): mean DeltaE76 ([\d.]+), p95 DeltaE76 ([\d.]+), luma SSIM (-?[\d.]+), "
@@ -207,8 +209,7 @@ def write_tables(work, out, scene_id, object_name):
         ("Flat, direct light", scores(work / "direct-flat-compare.log")["frames mean"]),
         ("Flat, indirect light", scores(work / "smooth-flat-compare.log")["frames mean"])]) + "\n", encoding="utf-8")
     look = scores(work / "indirect-look.log")
-    lines = ["| Look | Mean dE76, physical | Mean dE76, own | p95, physical | SSIM, physical |",
-             "|---|---:|---:|---:|---:|"]
+    lines = ["| Look | " + " | ".join(LOOK_COLUMNS) + " |", "|---|" + "---:|" * len(LOOK_COLUMNS)]
     direct = indirect["direct light only"]
     lines.append(f"| Direct light only | {direct[0]:.3f} | | {direct[1]:.3f} | {direct[2]:.4f} |")
     for label in ("intensity 1", "intensity 2", "intensity 3", "albedo boost 2"):
