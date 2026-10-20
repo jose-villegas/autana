@@ -33,7 +33,7 @@ REGENERATE = "python launcher/tools/audio/audio_doc_tables.py --write"
 DEFAULT_VOLUME = read_define(ROOT / "launcher/main/console/verbs/console_tone_parse.h", "CONSOLE_TONE_DEFAULT_VOLUME_PCT")
 
 
-def render(path, internal_required=False):
+def read_capture(path):
     lines = path.read_text(encoding="utf-8").splitlines()
     header = re.fullmatch(r"# autana --json replies on ([\w-]+), ([\d-]+),.*", lines[0])
     if not header:
@@ -43,6 +43,11 @@ def render(path, internal_required=False):
     builds = {reply["build_id"] for command, reply in records if command == ["buildid"]}
     if len(builds) != 1:
         raise ValueError("capture must have one consistent build id")
+    return header, records, builds
+
+
+def render(path, internal_required=False):
+    header, records, builds = read_capture(path)
     heaps = [reply for command, reply in records if command == ["heap"]]
     tones = []
     internal = {}
@@ -221,17 +226,9 @@ def render_mix(path):
 
 
 def render_drc(path):
-    lines = path.read_text(encoding="utf-8").splitlines()
-    header = re.fullmatch(r"# autana --json replies on ([\w-]+), ([\d-]+),.*", lines[0])
-    if not header:
-        raise ValueError("missing DRC board and date")
-    records = [(command.split(), json.loads(reply)) for command, reply in
-               (line.split("\t", 1) for line in lines[1:] if line and not line.startswith("#"))]
+    header, records, builds = read_capture(path)
     if not records or records[0][0] != ["buildid"]:
         raise ValueError("DRC capture must start with buildid")
-    builds = {reply["build_id"] for command, reply in records if command == ["buildid"]}
-    if len(builds) != 1:
-        raise ValueError("DRC build ids disagree")
     state = {}
     groups = {}
     for command, reply in records:
