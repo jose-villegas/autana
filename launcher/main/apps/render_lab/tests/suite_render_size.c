@@ -51,7 +51,8 @@ static void
 test_small_fill_ceiling_range(void) {
     fixture();
     tune_registry_t* registry = tune_shared();
-    const char* name = "render_lab.small_fill_ceiling";
+    const char* reset = "RESET render_lab.small_fill_ceiling";
+    const char* name = reset + sizeof "RESET " - 1;
     TEST_ASSERT_TRUE(tune_set(registry, name, SMALL_FILL_CEILING_MAX));
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_MAX, render_lab_small_fill().ceiling);
     TEST_ASSERT_FALSE(tune_set(registry, name, SMALL_FILL_CEILING_MAX + 1));
@@ -60,7 +61,7 @@ test_small_fill_ceiling_range(void) {
     TEST_ASSERT_TRUE(tune_set(registry, name, 0));
     TEST_ASSERT_EQUAL_INT(0, render_lab_small_fill().ceiling);
     TEST_ASSERT_FALSE(tune_set(registry, name, -1));
-    size_command("RESET render_lab.small_fill_ceiling");
+    size_command(reset);
 }
 
 void
