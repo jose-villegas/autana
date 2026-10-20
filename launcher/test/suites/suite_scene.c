@@ -487,7 +487,8 @@ typedef struct {
     void* raw;      /* what the aligned allocation gave */
     uint8_t* bytes; /* aligned inside it, as a pack must be */
     uint16_t* pixels;
-    uint16_t* held; /* a picture kept to compare the next with */
+    uint16_t* held;    /* a picture kept to compare the next with */
+    gfx_color_t* band; /* one band's rows of the picture */
     r3d_instance_t* instances;
     void* saved_skin[2];
     asset_pack_t pack;
@@ -505,6 +506,7 @@ release_fixture(void) {
     test_free_aligned(fx.raw);
     free(fx.pixels);
     free(fx.held);
+    free(fx.band);
     free(fx.instances);
     free(fx.saved_skin[0]);
     free(fx.saved_skin[1]);
@@ -1924,6 +1926,280 @@ test_band_mode_draws_the_scene_a_band_at_a_time(void) {
     TEST_ASSERT_EQUAL_HEX16_ARRAY(band, again, GFX_BAND_HEIGHT * GFX_WIDTH);
     free(again);
     free(band);
+}
+
+/* Dynamic resolution and bands: a frame composed band by band is one frame to
+ * the policy, fed once by the band reaching the bottom row. A cost no real
+ * frame reaches is put in its totals once drawn, so that a band's cost
+ * replacing the frame's instead of joining it shows. */
+#define BAND_SENTINEL_US 10000000
+
+static const resolution_step_t BAND_LADDER[3] = {
+    {GFX_WIDTH, GFX_HEIGHT}, {GFX_WIDTH * 3 / 4, GFX_HEIGHT * 3 / 4}, {GFX_WIDTH / 4, GFX_HEIGHT / 4}};
+
+/* A band's worth of picture to compose into, freed with the fixture. */
+static gfx_color_t*
+band_buffer(void) {
+    if (fx.band == NULL) {
+        fx.band = malloc(sizeof(*fx.band) * GFX_BAND_HEIGHT * GFX_WIDTH);
+    }
+    TEST_ASSERT_NOT_NULL(fx.band);
+    return fx.band;
+}
+
+/* Draws a frame the scene composes in bands. */
+static void
+band_frame(void) {
+    render_context_set_band_rows(render_context_main(), GFX_BAND_HEIGHT);
+    scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
+}
+
+static void
+compose_band_at(int row0) {
+    memset(band_buffer(), 0xA5, sizeof(gfx_color_t) * GFX_BAND_HEIGHT * GFX_WIDTH);
+    TEST_ASSERT_TRUE(scene_compose_rows((gfx_target_t){band_buffer(), row0, GFX_BAND_HEIGHT, GFX_WIDTH}));
+}
+
+/* Every band of the picture but the one reaching the bottom row. */
+static void
+compose_bands_above_the_last(void) {
+    for (int row0 = 0; row0 + GFX_BAND_HEIGHT < GFX_HEIGHT; row0 += GFX_BAND_HEIGHT) {
+        compose_band_at(row0);
+    }
+}
+
+static void
+compose_last_band(void) {
+    compose_band_at(GFX_HEIGHT - GFX_BAND_HEIGHT);
+}
+
+/* Opts the main context into the stepped controller, or the predictor with
+ * `model`, on a budget no frame passes. */
+static void
+band_policy(const resolution_model_t* model) {
+    const resolution_config_t config = resolution_config(BAND_LADDER, 3, 3, INT32_MAX);
+    render_context_set_dynamic_resolution(render_context_main(), &config, model, 0);
+}
+
+static void
+inflate_the_frames_cost(render_context_t* c) {
+    c->frame.draw_us = BAND_SENTINEL_US;
+    c->frame.upscale_us = BAND_SENTINEL_US;
+}
+
+static void
+test_a_stepped_frame_in_bands_feeds_the_controller_once_from_the_bottom_band_with_the_summed_cost(void) {
+    expanded_fixture();
+    render_context_t* c = render_context_main();
+    band_policy(NULL);
+    band_frame();
+    inflate_the_frames_cost(c);
+    TEST_ASSERT_EQUAL_INT(0, c->control.filled);
+    for (int row0 = 0; row0 + GFX_BAND_HEIGHT < GFX_HEIGHT; row0 += GFX_BAND_HEIGHT) {
+        compose_band_at(row0);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(0, c->control.filled, "a band above the bottom one fed the controller");
+    }
+    compose_last_band();
+    TEST_ASSERT_EQUAL_INT(1, c->control.filled);
+    TEST_ASSERT_EQUAL_INT32(c->frame.draw_us + c->frame.upscale_us, c->control.window_us[0]);
+    TEST_ASSERT_TRUE_MESSAGE(c->control.window_us[0] >= 2 * BAND_SENTINEL_US, "a band's cost replaced the frame's");
+}
+
+static void
+test_bands_composed_again_from_the_same_stepped_frame_feed_nothing_and_add_no_cost(void) {
+    expanded_fixture();
+    render_context_t* c = render_context_main();
+    band_policy(NULL);
+    band_frame();
+    inflate_the_frames_cost(c);
+    compose_bands_above_the_last();
+    compose_last_band();
+    const resolution_control_t fed = c->control;
+    const int32_t draw_us = c->frame.draw_us, upscale_us = c->frame.upscale_us;
+
+    for (int pass = 0; pass < 2; pass++) {
+        compose_bands_above_the_last();
+        compose_last_band();
+        TEST_ASSERT_EQUAL_INT_MESSAGE(fed.filled, c->control.filled, "a paused frame's bands fed the controller");
+        TEST_ASSERT_EQUAL_INT32_ARRAY(fed.window_us, c->control.window_us, RESOLUTION_WINDOW_MAX);
+        TEST_ASSERT_EQUAL_INT32_MESSAGE(draw_us, c->frame.draw_us, "a paused frame's bands added draw cost");
+        TEST_ASSERT_EQUAL_INT32_MESSAGE(upscale_us, c->frame.upscale_us, "a paused frame's bands added upscale cost");
+    }
+}
+
+static void
+test_the_next_drawn_stepped_frame_in_bands_starts_its_cost_from_zero_and_is_fed_in_turn(void) {
+    expanded_fixture();
+    render_context_t* c = render_context_main();
+    band_policy(NULL);
+    band_frame();
+    inflate_the_frames_cost(c);
+    compose_bands_above_the_last();
+    compose_last_band();
+    TEST_ASSERT_EQUAL_INT(1, c->control.filled);
+
+    band_frame();
+    TEST_ASSERT_TRUE_MESSAGE(c->frame.draw_us < BAND_SENTINEL_US, "the last frame's draw cost carried over");
+    TEST_ASSERT_EQUAL_INT32_MESSAGE(0, c->frame.upscale_us, "the last frame's upscale cost carried over");
+    compose_bands_above_the_last();
+    TEST_ASSERT_EQUAL_INT(1, c->control.filled);
+    compose_last_band();
+    TEST_ASSERT_EQUAL_INT(2, c->control.filled);
+    TEST_ASSERT_TRUE_MESSAGE(c->control.window_us[0] < BAND_SENTINEL_US, "the last frame's cost was fed again");
+    TEST_ASSERT_TRUE(c->control.window_us[1] >= 2 * BAND_SENTINEL_US);
+}
+
+static void
+test_a_predicted_frame_in_bands_feeds_the_predictor_once_from_the_bottom_band_and_not_again(void) {
+    expanded_fixture();
+    render_context_t* c = render_context_main();
+    band_policy(&PIXEL_MODEL);
+    band_frame();
+    inflate_the_frames_cost(c);
+    const resolution_predict_t drawn = c->predict;
+    compose_bands_above_the_last();
+    TEST_ASSERT_EQUAL_FLOAT_MESSAGE(drawn.scale, c->predict.scale, "a band above the bottom one fed the predictor");
+    TEST_ASSERT_EQUAL_FLOAT(drawn.offset_us, c->predict.offset_us);
+    compose_last_band();
+    TEST_ASSERT_TRUE_MESSAGE(c->predict.scale != drawn.scale || c->predict.offset_us != drawn.offset_us,
+                             "the bottom band did not feed the predictor");
+
+    const resolution_predict_t fed = c->predict;
+    compose_bands_above_the_last();
+    compose_last_band();
+    TEST_ASSERT_EQUAL_FLOAT_MESSAGE(fed.scale, c->predict.scale, "a paused frame's bands fed the predictor");
+    TEST_ASSERT_EQUAL_FLOAT(fed.offset_us, c->predict.offset_us);
+    TEST_ASSERT_EQUAL_FLOAT(fed.covariance[0][0], c->predict.covariance[0][0]);
+}
+
+/* The size a predicted frame in bands draws at, from a budget that picks
+ * `step`, and the picture it composes against a fixed scale at that size,
+ * drawn whole. */
+static void
+expect_predicted_band_frame(int32_t budget_us, int step, int width, int height, int scale_percent) {
+    render_context_t* c = render_context_main();
+    const resolution_config_t config = resolution_config(BAND_LADDER, 3, 3, budget_us);
+    render_context_set_dynamic_resolution(c, &config, &PIXEL_MODEL, 0);
+    band_frame();
+    TEST_ASSERT_EQUAL_INT(step, c->frame.step);
+    TEST_ASSERT_EQUAL_INT(width, c->frame.width);
+    TEST_ASSERT_EQUAL_INT(height, c->frame.height);
+    TEST_ASSERT_EQUAL_INT(c->frame.width, c->raster.width);
+    TEST_ASSERT_EQUAL_INT(c->frame.height, c->raster.height);
+    for (int row0 = 0; row0 < GFX_HEIGHT; row0 += GFX_BAND_HEIGHT) {
+        compose_band_at(row0);
+        memcpy(fx.pixels + ((size_t)row0 * GFX_WIDTH), band_buffer(),
+               sizeof(gfx_color_t) * GFX_BAND_HEIGHT * GFX_WIDTH);
+    }
+
+    render_context_set_dynamic_resolution(c, NULL, NULL, 0);
+    render_context_set_band_rows(c, 0);
+    render_context_set_scale(c, scale_percent);
+    scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
+    TEST_ASSERT_EQUAL_INT(width, c->raster.width);
+    TEST_ASSERT_EQUAL_INT(height, c->raster.height);
+    (void)render_context_compose(c, fx.held, NULL);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(fx.held, fx.pixels, GFX_WIDTH * GFX_HEIGHT);
+}
+
+static void
+test_a_predicted_step_finer_than_the_band_picture_is_capped_and_composes_the_fixed_scale_picture(void) {
+    expanded_fixture();
+    expect_predicted_band_frame(5000, 0, GFX_WIDTH * RENDER_CONTEXT_BAND_PERCENT / 100,
+                                GFX_HEIGHT * RENDER_CONTEXT_BAND_PERCENT / 100, RENDER_CONTEXT_BAND_PERCENT);
+}
+
+static void
+test_a_predicted_step_within_the_band_picture_is_drawn_at_its_own_size(void) {
+    expanded_fixture();
+    expect_predicted_band_frame(300, 2, GFX_WIDTH / 4, GFX_HEIGHT / 4, 25);
+}
+
+/* Pixels past a band that a write of the wrong length would have reached. */
+#define GUARD_PIXELS 16
+
+static void
+expect_black_band_inside_its_rows(int row0, int row1) {
+    const size_t pixels = (size_t)(row1 - row0) * GFX_WIDTH;
+    gfx_color_t* band = malloc(sizeof(*band) * (pixels + GUARD_PIXELS));
+    TEST_ASSERT_NOT_NULL(band);
+    for (size_t i = 0; i < pixels + GUARD_PIXELS; i++) {
+        band[i] = SENTINEL;
+    }
+    scene_shell_compose_band(row0, row1, band);
+    size_t stale = 0, overrun = 0;
+    for (size_t i = 0; i < pixels; i++) {
+        stale += band[i] != 0;
+    }
+    for (size_t i = pixels; i < pixels + GUARD_PIXELS; i++) {
+        overrun += band[i] != SENTINEL;
+    }
+    free(band);
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0, stale, "a pixel of the band was not painted black");
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0, overrun, "black was written past the band");
+}
+
+static void
+expect_black_bands(void) {
+    expect_black_band_inside_its_rows(0, GFX_BAND_HEIGHT);
+    expect_black_band_inside_its_rows(GFX_BAND_HEIGHT, GFX_BAND_HEIGHT + 5);
+}
+
+static void
+test_a_band_with_no_frame_prepared_is_black_for_exactly_its_rows_after_activating_or_deactivating(void) {
+    expanded_fixture();
+    scene_t* scene = scene_loaded_at(0);
+    expect_black_bands();
+
+    scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
+    scene_shell_compose_band(0, GFX_BAND_HEIGHT, band_buffer());
+    TEST_ASSERT_EQUAL_HEX16_MESSAGE(CLEAR, band_buffer()[0], "a prepared frame should draw its band");
+    TEST_ASSERT_TRUE(scene_activate(scene, "camera"));
+    expect_black_bands();
+
+    scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
+    scene_deactivate();
+    expect_black_bands();
+}
+
+static void
+test_leaving_band_mode_draws_the_whole_picture_and_frees_the_band_block(void) {
+    expanded_fixture();
+    render_context_t* c = render_context_main();
+    render_context_set_scale(c, RENDER_CONTEXT_DEFAULT_SCALE_PERCENT);
+    const size_t internal_before = memory_free_bytes(MEMORY_INTERNAL);
+    scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
+    (void)render_context_compose(c, fx.held, NULL);
+    TEST_ASSERT_NULL(c->band_scratch);
+
+    band_frame();
+    TEST_ASSERT_NOT_NULL(c->band_scratch);
+    TEST_ASSERT_TRUE(c->band_scratch_bytes > 0);
+    TEST_ASSERT_TRUE(c->raster.band_rows > 0);
+    TEST_ASSERT_TRUE(memory_free_bytes(MEMORY_INTERNAL) < internal_before);
+
+    render_context_set_band_rows(c, 0);
+    scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
+    TEST_ASSERT_NULL(c->band_scratch);
+    TEST_ASSERT_EQUAL_UINT(0, c->band_scratch_bytes);
+    TEST_ASSERT_NULL(c->raster.band_scratch);
+    TEST_ASSERT_EQUAL_INT(0, c->raster.band_rows);
+    TEST_ASSERT_EQUAL_UINT(internal_before, memory_free_bytes(MEMORY_INTERNAL));
+    (void)render_context_compose(c, fx.pixels, NULL);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(fx.held, fx.pixels, GFX_WIDTH * GFX_HEIGHT);
+}
+
+static void
+test_releasing_the_context_frees_the_band_block(void) {
+    expanded_fixture();
+    render_context_t* c = render_context_main();
+    const size_t internal_before = memory_free_bytes(MEMORY_INTERNAL);
+    band_frame();
+    TEST_ASSERT_NOT_NULL(c->band_scratch);
+    render_context_release(c);
+    TEST_ASSERT_NULL(c->band_scratch);
+    TEST_ASSERT_EQUAL_UINT(0, c->band_scratch_bytes);
+    TEST_ASSERT_EQUAL_UINT(internal_before, memory_free_bytes(MEMORY_INTERNAL));
 }
 
 static void
@@ -3432,9 +3708,18 @@ run_scene_suite(void) {
     RUN_TEST(test_ui_replay_over_expanded_scene_matches_full_frame);
     RUN_TEST(test_camera_present_composes_half_picture_and_uneven_fallback);
     RUN_TEST(test_camera_present_scanline_and_double_compose_both_quarters);
+    RUN_TEST(test_a_band_with_no_frame_prepared_is_black_for_exactly_its_rows_after_activating_or_deactivating);
     RUN_TEST(test_band_rows_compose_the_full_picture_byte_for_byte);
     RUN_TEST(test_band_mode_draws_the_scene_a_band_at_a_time);
     RUN_TEST(test_band_frame_with_ui_matches_the_framebuffer_frame);
+    RUN_TEST(test_a_stepped_frame_in_bands_feeds_the_controller_once_from_the_bottom_band_with_the_summed_cost);
+    RUN_TEST(test_bands_composed_again_from_the_same_stepped_frame_feed_nothing_and_add_no_cost);
+    RUN_TEST(test_the_next_drawn_stepped_frame_in_bands_starts_its_cost_from_zero_and_is_fed_in_turn);
+    RUN_TEST(test_a_predicted_frame_in_bands_feeds_the_predictor_once_from_the_bottom_band_and_not_again);
+    RUN_TEST(test_a_predicted_step_finer_than_the_band_picture_is_capped_and_composes_the_fixed_scale_picture);
+    RUN_TEST(test_a_predicted_step_within_the_band_picture_is_drawn_at_its_own_size);
+    RUN_TEST(test_leaving_band_mode_draws_the_whole_picture_and_frees_the_band_block);
+    RUN_TEST(test_releasing_the_context_frees_the_band_block);
     RUN_TEST(test_camera_present_default_setter_and_dynamic_size);
     RUN_TEST(test_non_half_compose_upscales_to_the_full_destination);
     RUN_TEST(test_failed_half_allocation_keeps_full_upscale_unexpanded);
