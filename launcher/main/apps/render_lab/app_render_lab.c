@@ -116,7 +116,11 @@ enter_layout(void) {
         .interlace_x = false,
         .interlace_y = false,
     };
-    (void)gfx_mode_enter(&mode_request);
+    /* A framebuffer shows the background until a scene's first frame; band
+     * mode keeps none to clear. */
+    if (gfx_mode_has_framebuffer(gfx_mode_enter(&mode_request))) {
+        draw_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
+    }
     if (chosen->clear_on_send) {
         (void)gfx_set_clear_on_send(true, gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
     }
