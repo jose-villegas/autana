@@ -38,12 +38,12 @@ static const char* const scene_keys[] = {
 
 static const char* const layout_names[RENDER_LAB_LAYOUT_COUNT] = {"full", "double", "double_clear", "bands"};
 
+typedef enum { STAGE_FRAME, STAGE_WAIT, STAGE_SEND, STAGE_DRAW, STAGE_COMPOSE, STAGE_COUNT } stage_t;
+
+static const char* const stage_names[STAGE_COUNT] = {"frame", "wait", "send", "draw", "compose"};
+
 typedef struct {
-    int32_t frame_us[LAYOUT_SAMPLES];
-    int32_t wait_us[LAYOUT_SAMPLES];
-    int32_t send_us[LAYOUT_SAMPLES];
-    int32_t draw_us[LAYOUT_SAMPLES];
-    int32_t compose_us[LAYOUT_SAMPLES];
+    int32_t samples[STAGE_COUNT][LAYOUT_SAMPLES];
     render_lab_test_t saved;
     int32_t saved_layout;
     gfx_band_overlay_fn saved_overlay;
@@ -185,11 +185,11 @@ measure(fixture_t* f, const char* scene, int layout, const r3d_perf_quarter_t* q
         if (i < 0) {
             continue;
         }
-        f->frame_us[i] = (int32_t)took.frame_us;
-        f->wait_us[i] = gfx_get_present_wait_us();
-        f->send_us[i] = gfx_get_present_send_us();
-        f->draw_us[i] = (int32_t)took.draw_us;
-        f->compose_us[i] = (int32_t)took.compose_us;
+        f->samples[STAGE_FRAME][i] = (int32_t)took.frame_us;
+        f->samples[STAGE_WAIT][i] = gfx_get_present_wait_us();
+        f->samples[STAGE_SEND][i] = gfx_get_present_send_us();
+        f->samples[STAGE_DRAW][i] = (int32_t)took.draw_us;
+        f->samples[STAGE_COMPOSE][i] = (int32_t)took.compose_us;
     }
     /* The top slice is core 1's; its share falls when the send contends. */
     const int core1_share = RASTER_SPLIT_EVEN + render_context_main()->split.top_offset[0];
@@ -199,11 +199,9 @@ measure(fixture_t* f, const char* scene, int layout, const r3d_perf_quarter_t* q
     const unsigned psram_largest = (unsigned)memory_largest_block(MEMORY_PSRAM);
     const uint32_t crc = sent_frame_crc(f);
     const char* name = layout_names[layout];
-    report_row(scene, name, "frame", f->frame_us, quarter->name);
-    report_row(scene, name, "wait", f->wait_us, quarter->name);
-    report_row(scene, name, "send", f->send_us, quarter->name);
-    report_row(scene, name, "draw", f->draw_us, quarter->name);
-    report_row(scene, name, "compose", f->compose_us, quarter->name);
+    for (int stage = 0; stage < STAGE_COUNT; stage++) {
+        report_row(scene, name, stage_names[stage], f->samples[stage], quarter->name);
+    }
     ESP_LOGI(TAG,
              "LAYOUT scene=%s layout=%s core1_share=%d crc=%08x internal_free=%u internal_largest=%u "
              "psram_free=%u psram_largest=%u" R3D_PERF_QUARTER_FORMAT,
