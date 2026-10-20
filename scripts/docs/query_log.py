@@ -14,13 +14,17 @@ that writes rows in this format is summarised beside docs_search.py:
     hits      [[label, score], ...]   ms     latency, when known
     weak      true when nothing answered well
     followed  optional: rank of the result opened next, 0 for none
+    session   optional: the AUTANA_SESSION of the process that asked
 
-Other fields are kept but not summarised.
+Other fields are kept but not summarised. To group lookups by session, run
+the session's commands with AUTANA_SESSION=<any label> in their environment
+(set per process; nothing is stored); --session NAME then shows only that one.
 
 A failure to write the log never fails the lookup that made it.
 """
 import argparse
 import json
+import os
 import sys
 import time
 from collections import Counter, defaultdict
@@ -32,6 +36,7 @@ import autana_config  # noqa: E402
 
 LOG_NAME = "queries.jsonl"
 HITS_KEPT = 5
+SESSION_VAR = "AUTANA_SESSION"
 TOP_SHOWN = 15
 
 
@@ -49,6 +54,9 @@ def record(tool, kind, query, hits=(), started=None, **fields):
     row = {"time": iso(), "tool": tool, "kind": kind, "query": query,
            "hits": [[label, None if score is None else round(score, 4)]
                     for label, score in list(hits)[:HITS_KEPT]]}
+    session = os.environ.get(SESSION_VAR)
+    if session:
+        row["session"] = session
     if started is not None:
         row["ms"] = round((time.perf_counter() - started) * 1000)
     row.update(fields)
@@ -98,7 +106,9 @@ def summary(rows):
         return "no lookups logged yet"
     lines = []
     first, last = min(r.get("time") or "~" for r in rows), max(r.get("time") or "" for r in rows)
-    lines.append(f"{len(rows)} lookups, {first[:10]} to {last[:10]}")
+    sessions = {r["session"] for r in rows if r.get("session")}
+    lines.append(f"{len(rows)} lookups, {first[:10]} to {last[:10]}"
+                 + (f", {len(sessions)} sessions" if sessions else ""))
     by_tool = defaultdict(list)
     for row in rows:
         by_tool[row["tool"]].append(row)
@@ -135,10 +145,13 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog="query_log", description=__doc__.split("\n")[0])
     parser.add_argument("--days", type=int, default=0, help="only the last N days")
     parser.add_argument("--tool", help="only this tool's rows")
+    parser.add_argument("--session", help="only this session's rows (the AUTANA_SESSION they ran under)")
     args = parser.parse_args(argv)
     rows = since(read(), args.days)
     if args.tool:
         rows = [r for r in rows if r["tool"] == args.tool]
+    if args.session:
+        rows = [r for r in rows if r.get("session") == args.session]
     print(f"log: {log_dir()}")
     print(summary(rows))
     return 0
