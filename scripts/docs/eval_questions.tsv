@@ -71,3 +71,19 @@ IRAM placement memory map budget linker fragments	docs/memory/Internal-Memory-Ma
 how do I build the firmware and run host tests	docs/testing/Host-Tests.md	Host Tests
 dirty tracking all dirty framebuffer mode ownership	docs/Gfx-and-Presentation.md	Dirty tracking
 fixed point line projection Q16.16 near plane rounding	docs/math/Projection.md	Projection
+which functions should be IRAM_ATTR and what does it cost	docs/c-style/Function-Attributes.md	IRAM_ATTR
+when to use noinline or always_inline on a function	docs/c-style/Function-Attributes.md	noinline and always_inline
+spinlock critical section vs atomic vs mutex which one	docs/c-style/Concurrency.md	Pick the primitive
+which core does the present task run on and at what priority	docs/c-style/Concurrency.md	Who runs where
+how to read or write a peripheral register in firmware	docs/c-style/Register-Access.md	Register access
+wrap a driver function with --wrap and __real_	docs/c-style/Register-Access.md	Wrapping a driver function
+linker fragment lf file place function in IRAM noflash	docs/memory/Linker-Fragments.md	The three entries
+mapping archive entries scheme sections ldgen	docs/memory/Linker-Fragments.md	What a fragment does
+SCREENSHOT_BEGIN SCREENSHOT_END framing on the console	docs/tools/Console-Framing.md	The frame
+how does a verb end a multi-line reply	docs/tools/Console-Framing.md	Other verbs
+why is the panel clock reset between device tests	docs/testing/Test-State-Reset.md	What is reset
+panel_clock_pin and heal defaults in tearDown	docs/testing/Test-State-Reset.md	Pinning a clock for a timing test
+where is the camera lens stored and which fields animate	docs/render/Camera.md	Which lens fields animate
+how does a camera's field of view get animated from a clip	docs/render/Camera.md	How the animation binder finds them
+launch_process_tree job object kill on close child outlives parent	docs/tools/Process-Trees.md	The problem
+how is a whole process tree stopped on Windows and Linux	docs/tools/Process-Trees.md	The functions

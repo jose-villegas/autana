@@ -55,3 +55,12 @@ docs/input/Touch.md	2026-10-20	input split: reviewed against input/ sources, acc
 docs/input/Buttons.md	2026-10-20	input split: reviewed against input/ sources, accurate
 docs/input/Motion-Axes.md	2026-10-20	input split: reviewed against input/ sources, accurate
 docs/input/Tilt.md	2026-10-20	input split: reviewed against input/ sources, accurate
+docs/render/Skeleton-and-Skin.md	2026-10-20	pictures-first rework: reviewed against skeleton_asset.py, skin_asset.py and quantize_weights, accurate
+docs/c-style/Function-Attributes.md	2026-10-20	new; checked against the cited sources
+docs/c-style/Concurrency.md	2026-10-20	new; checked against the cited sources
+docs/c-style/Register-Access.md	2026-10-20	new; checked against the cited sources
+docs/memory/Linker-Fragments.md	2026-10-20	new; checked against the cited sources
+docs/render/Camera.md	2026-10-20	new; checked against the cited sources
+docs/testing/Test-State-Reset.md	2026-10-20	new; checked against the cited sources
+docs/tools/Console-Framing.md	2026-10-20	new; checked against the cited sources
+docs/tools/Process-Trees.md	2026-10-20	new; checked against the cited sources

@@ -11,6 +11,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include "apps/render_lab/capybara_content.h"
 
 #include "app/app.h"
 #include "apps/render_lab/render_lab_clips.h"
@@ -36,9 +37,7 @@
 static const char* TAG = "capybara";
 
 /* The scene's id and pack, its camera, and the entity the camera circles. */
-#define CAPYBARA_SCENE          "capybara"
 #define CAPYBARA_CAMERA         "camera"
-#define CAPYBARA_SUBJECT        "capybara"
 #define CAPYBARA_DEFAULT_CLIP   "idle"
 
 /* Where the view starts: three-quarters from the front, a little above. */
@@ -195,7 +194,7 @@ scene_capybara_controls(int width) {
 }
 
 const render_lab_scene_t scene_capybara = {.name = "Capybara",
-                                           .key = "capybara",
+                                           .key = CAPYBARA_SCENE,
                                            .family = "Capybara",
                                            .enter = scene_capybara_enter,
                                            .frame = scene_capybara_frame,
