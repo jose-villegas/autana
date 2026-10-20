@@ -35,7 +35,7 @@
 #include "apps/sand/sand_palette256.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
-#include "input/tilt.h"
+#include "input/motion/tilt.h"
 #include "math/scalar/fixed.h"
 
 /* The scale JS sends gravity in: one g, matching the IMU's own counts. */
