@@ -46,6 +46,7 @@ typedef struct {
     int32_t compose_us[LAYOUT_SAMPLES];
     render_lab_test_t saved;
     int32_t saved_layout;
+    gfx_band_overlay_fn saved_overlay;
     bool entered;
     bool primed;
 } fixture_t;
@@ -76,6 +77,7 @@ static void
 release_fixture(void) {
     leave_app(active);
     set_layout(active->saved_layout);
+    gfx_set_frame_overlay(active->saved_overlay);
     memory_free(active);
     active = NULL;
 }
@@ -86,6 +88,10 @@ fixture(void) {
     TEST_ASSERT_NOT_NULL(active);
     *active = (fixture_t){0};
     active->saved_layout = (int32_t)render_lab_layout();
+    /* The shell's overlay adds what only its own pass draws in the other
+     * layouts (the build mark); the app's UI alone keeps the look check fair. */
+    active->saved_overlay = gfx_frame_overlay();
+    gfx_set_frame_overlay(ui_replay_band);
     suite_set_test_cleanup(release_fixture);
     return active;
 }
