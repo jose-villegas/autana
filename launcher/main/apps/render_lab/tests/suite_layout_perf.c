@@ -130,16 +130,19 @@ pass(fixture_t* f) {
     return took;
 }
 
-/* The last frame, sent with clear-on-send off so readback can keep it. */
+/* The last pass's frame as the panel gets it. Double holds it in the back
+ * buffer until the next begin, so only double sends it first, with
+ * clear-on-send off so the readback can keep it; the others read it as is. */
 static uint32_t
 sent_frame_crc(fixture_t* f) {
-    (void)gfx_set_clear_on_send(false, 0);
-    gfx_present();
+    if (gfx_mode_current()->layout == GFX_LAYOUT_DOUBLE_FB) {
+        (void)gfx_set_clear_on_send(false, 0);
+        gfx_present_begin();
+    }
     gfx_readback_t state = gfx_readback_begin();
     for (int tries = 0; state == GFX_READBACK_PENDING && tries < LAYOUT_WARMUP; tries++) {
         gfx_readback_end();
         (void)pass(f);
-        gfx_present();
         state = gfx_readback_begin();
     }
     TEST_ASSERT_EQUAL_INT(GFX_READBACK_READY, state);
