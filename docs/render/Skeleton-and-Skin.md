@@ -14,7 +14,7 @@ its rest pose; SKIN holds, per vertex, which joints move it and by how much.
 
 | Term | Meaning |
 |---|---|
-| LMSH | the baked mesh entry the skin moves ([Mesh import](Mesh-Import.md)) |
+| LMSH | the baked mesh entry the skin moves ([Baked mesh](Baked-Mesh.md#lmsh)) |
 | TRCK | an animation clip entry ([Animation tracks](../Animation-Tracks.md)) |
 | Tick | one int16 step of an LMSH position; the mesh's position scale is ticks per model unit |
 | Palette | one matrix per joint taking a bind position to its posed position |

@@ -1,8 +1,8 @@
 # Mesh Rendering
 
 How the runtime draws a baked lit-mesh: the frame view, culling, the rasterizer, the
-two-core frame and the view modes. The mesh's format and how it is made are
-in [Mesh-Import.md](Mesh-Import.md).
+two-core frame and the view modes. The mesh's format is [Baked-Mesh.md](Baked-Mesh.md); how it is made is
+[Mesh-Import.md](Mesh-Import.md).
 
 `launcher/main/render/` is the engine's 3D layer: the frame view, projection, a
 span rasterizer, and a pipeline that draws a mesh whose light was baked
@@ -21,7 +21,7 @@ Both use `render_view_t` for the per-frame perspective fit and picture basis.
 
 | Noun | What it is |
 |---|---|
-| `r3d_lit_mesh_t` | A mesh whose light is baked into its colours, made offline ([Mesh-Import.md](Mesh-Import.md)); a view of arrays that stay in the asset pack ([Mesh-Import.md](Mesh-Import.md#the-baked-mesh)) |
+| `r3d_lit_mesh_t` | A mesh whose light is baked into its colours, made offline ([Mesh-Import.md](Mesh-Import.md)); a view of arrays that stay in the asset pack ([Baked-Mesh.md](Baked-Mesh.md#clusters-and-the-tree)) |
 | `render_view_t` | One frame: eye, picture axes and forward in world units, pixels per unit depth, centre, near plane and picture size |
 | `viewport_t` | The picture's size and the quarter turn the panel is read at; `render_view_make()` and `render_view_refit()` take one |
 | `r3d_instance_t` | One mesh and, optionally, its baked placement: a 3x3 (rotation times a positive scale) and a position. No placement draws the mesh as it is |

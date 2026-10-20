@@ -70,7 +70,7 @@ owns a kind of content defines its type, there is no central list, and
 |---|---|---|---|---|
 | `APAK` pack | 1 | `asset/asset_pack.py` | `asset/asset_pack.c` | [APAK v1](#apak-v1) |
 | `ABDR` directory | 2 | `asset/asset_directory.py` | `asset/asset_directory.c` | [ABDR v2](#abdr-v2) |
-| `LMSH` lit mesh | none | `r3d/lit_mesh.py` | `render/r3d_lit_mesh.c` | [LMSH](../render/Mesh-Import.md#lmsh) |
+| `LMSH` lit mesh | none | `r3d/lit_mesh.py` | `render/r3d_lit_mesh.c` | [LMSH](../render/Baked-Mesh.md#lmsh) |
 | `TRCK` animation tracks | 2 | `anim/tracks_asset.py` | `anim/anim_tracks.c` | [TRCK v2](../Animation-Tracks.md#trck-v2) |
 | `SKEL` skeleton | 1 | `anim/skeleton_asset.py` | `anim/anim_skeleton.c` | [SKEL v1](../render/Skeleton-and-Skin.md#skel-v1) |
 | `SKIN` skin | 2 | `r3d/skin_asset.py` | `render/r3d_skin.c` | [SKIN v2](../render/Skeleton-and-Skin.md#skin-v2) |
