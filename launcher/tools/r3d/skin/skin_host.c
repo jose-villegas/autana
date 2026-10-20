@@ -18,6 +18,12 @@ scene_draw_forget(const scene_t* scene) {
 void
 scene_draw_release(void) {}
 
+void
+scene_draw_camera_cut(const scene_t* scene, scene_entity_t entity) {
+    (void)scene;
+    (void)entity;
+}
+
 static bool
 sample(const asset_pack_t* pack, char** argv) {
     scene_failure_t why;

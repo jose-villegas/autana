@@ -66,7 +66,7 @@ Lit skins blend normals in the same loop: see [Skinned lighting](Skinned-Lightin
 the default is 2. Few vertices have more than two, but cutting the rest can
 move them far:
 
-![The mesh skinned with four influences, with two (moved vertices ringed), and zoomed in, a red line from each moved vertex's four-influence position to its two-influence one, over one clip](../images/render/skin-influences.gif)
+![The engine's skin at four and at two influences on the clip frame where they differ most, seen from below, whole and zoomed on the vertex that moves most; rings mark the moved vertices, red lines run from their four-influence to their two-influence positions](../images/render/skin-influences.png)
 
 | Influences | Vertex record | Board cost |
 |---|---|---|

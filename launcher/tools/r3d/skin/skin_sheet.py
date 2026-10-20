@@ -1,12 +1,13 @@
-"""Draw the skeleton and skin figures of a skinned glTF, each animated over one
-clip: the joints and their parent links over the mesh, every vertex in its
-joints' colours blended by weight, and how far keeping two influences instead
-of four moves each vertex.
+"""Draw the skeleton and skin figures of a skinned glTF over one clip: the
+joints and their parent links over the mesh and every vertex in its joints'
+colours blended by weight, animated; and, from the engine's own skinning
+(skin_frame.EngineSkin), the clip's frame where keeping two influences instead
+of four moves vertices most.
 
     python launcher/tools/r3d/skin/skin_sheet.py ASSET.glb IMAGES TABLES [--sheet CLIP[:PHASE]]
 
-Needs Pillow. --sheet names the clip drawn; the first clip when left out.
-IMAGES receives skin-skeleton.gif, skin-weights.gif and skin-influences.gif.
+Needs Pillow, a C compiler and the mesh baker's dependencies. --sheet names the clip drawn; the first clip when left out.
+IMAGES receives skin-skeleton.gif, skin-weights.gif and skin-influences.png.
 TABLES receives skin-influence-counts.md, how many source influences the
 vertices have, and skin-weight-example.md, one vertex's weights through
 quantize_weights, for generated_blocks.py --tables.
@@ -17,13 +18,15 @@ import colorsys
 import math
 import pathlib
 import sys
+import tempfile
 
 from PIL import ImageDraw
 
 TOOLS = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOLS))
-from r3d import gltf_preview, gltf_skin, skin_asset  # noqa: E402
-from r3d.skin_light.skin_light_sheet import TILE, VIEW, grid, heat, parse_clip  # noqa: E402
+from r3d import gltf_preview, skin_asset  # noqa: E402
+from r3d.skin.skin_frame import DEFAULT_POSITION_SCALE, INFLUENCES, EngineSkin  # noqa: E402
+from r3d.skin_light.skin_light_sheet import TILE, VIEW, grid, heat, label, parse_clip  # noqa: E402
 
 # Joint colours step round the hue circle by the golden angle, so neighbours differ.
 GOLDEN_ANGLE = 0.381966
@@ -36,10 +39,14 @@ BONE = (20, 20, 20)
 MIXED_FULL = 0.5
 # Vertices that keeping two influences moves past this share of the mesh's bounding radius are ringed.
 MOVED_RING = 0.005
+# The influence figure looks up at the mesh from this pitch, degrees: the vertices that move most are underneath.
+UNDER_PITCH = -30.0
+# Its whole-mesh tiles frame this share of the clip's bounding radius.
+WHOLE = 0.9
 RING_RADIUS = 7
 RING = (40, 120, 255)
-# The zoomed tile frames the vertices with more than two influences, its radius this share of the mesh's.
-ZOOM = 0.3
+# The zoomed tiles frame the vertex that moves most, their radius this share of the mesh's.
+ZOOM = 0.25
 MOVE = (220, 30, 30)
 
 
@@ -56,19 +63,6 @@ def blended_colours(asset):
         out.append(tuple(int(round(sum(joint_colour(j)[c] * w for j, w in zip(joints, weights)) / total))
                          for c in range(3)))
     return out
-
-
-def skin_with(asset, pose, records):
-    """Positions skinned with (joints, weights summing to WEIGHT_SUM) per vertex."""
-    matrices = asset.joint_matrices(pose)
-    return [tuple(sum(gltf_skin.transform_point(matrices[j], p)[a] * w for j, w in zip(joints, weights))
-                  / skin_asset.WEIGHT_SUM for a in range(3))
-            for p, (joints, weights) in zip(asset.positions, records)]
-
-
-def records(asset, influences):
-    return [skin_asset.quantize_weights(list(joints), list(weights), influences)
-            for joints, weights in zip(asset.joint_indices, asset.weights)]
 
 
 def screen(camera, point):
@@ -95,12 +89,35 @@ def arrows(tile, camera, start, end, picked):
     return tile
 
 
-def zoom_camera(asset, frames, radius):
-    """Frames every vertex with more than two influences over the clip's frames."""
-    many = [i for i, w in enumerate(asset.weights) if sum(1 for v in w if v > 0) > 2]
-    centre, _ = gltf_preview.bounds([frame[i] for frame in frames for i in many])
-    return gltf_preview.Camera(centre, radius * ZOOM, *VIEW, TILE[0] * gltf_preview.SUPERSAMPLE,
+def below(centre, radius):
+    return gltf_preview.Camera(centre, radius, VIEW[0], UNDER_PITCH, TILE[0] * gltf_preview.SUPERSAMPLE,
                                TILE[1] * gltf_preview.SUPERSAMPLE)
+
+
+def influence_figure(clip, engine, radius):
+    """The engine's skin at two and four influences on the clip's frame where they differ most, seen from below,
+    whole and zoomed on the vertex that moves most; and each source vertex's worst move over the clip."""
+    name, count = clip.name, len(clip.poses)
+    times = {k: int(round(1000 * clip.asset.duration(name) * k / count)) for k in clip.frames()}
+    runs = {k: {n: engine.positions(name, ms, n) for n in INFLUENCES} for k, ms in times.items()}
+    moved = {k: [math.dist(a, b) / radius for a, b in zip(run[2], run[4])] for k, run in runs.items()}
+    frame = max(moved, key=lambda k: max(moved[k]))
+    two, four = runs[frame][2], runs[frame][4]
+    target = max(range(len(four)), key=moved[frame].__getitem__)
+    picked = [v for v, m in enumerate(moved[frame]) if m > MOVED_RING]
+    centre, extent = gltf_preview.bounds([p for frame_positions in clip.positions for p in frame_positions])
+    whole, zoom = below(centre, extent * WHOLE), below(four[target], radius * ZOOM)
+
+    def tile(camera, positions, text):
+        image = gltf_preview.render(engine.rendered, camera, positions, TILE, engine.lit, ground=False)
+        return label(ring(image, camera, positions, picked), text)
+
+    when = f"{name} {times[frame]} ms"
+    tiles = [tile(whole, four, f"engine, 4 influences, {when}"), tile(whole, two, "engine, 2 influences"),
+             tile(zoom, four, "zoomed, 4 influences"),
+             arrows(tile(zoom, two, "zoomed, 2: red from 4 to 2"), zoom, four, two, picked)]
+    worst = [max(m[engine.match(i)] for m in moved.values()) for i in range(len(clip.asset.positions))]
+    return grid(tiles, 2), worst
 
 
 def influence_counts(asset, moved):
@@ -155,13 +172,10 @@ def main():
     colours = asset.colors and [tuple(int(round(255 * gltf_preview.linear_to_srgb(c))) for c in rgb[:3])
                                 for rgb in asset.colors]
     mixed = [heat((1.0 - max(w) / (sum(w) or 1.0)) / MIXED_FULL) for w in asset.weights]
-    two, four = records(asset, 2), records(asset, 4)
     _, radius = gltf_preview.bounds(asset.positions)
-    zoom = zoom_camera(asset, clip.positions, radius)
 
     rest_tile = draw_bones(clip.tile_at(asset.skin(rest)[0], colours, "bind pose"), clip, rest)
-    skeleton, weight_frames, influence_frames = [], [], []
-    worst = [0.0] * len(asset.positions)
+    skeleton, weight_frames = [], []
     for k in clip.frames():
         posed = draw_bones(clip.tile(k, colours, f"{name}"), clip, poses[k])
         skeleton.append(grid([rest_tile, posed], 2))
@@ -169,19 +183,14 @@ def main():
                                    draw_bones(clip.tile(k, weights, "with joints"), clip, poses[k]),
                                    clip.tile(k, mixed, "joints mixing")], 3,
                                   "joints mixing:  one joint", "split evenly"))
-        a, b = skin_with(asset, poses[k], two), skin_with(asset, poses[k], four)
-        moved = [math.dist(p, q) / radius for p, q in zip(a, b)]
-        worst = [max(w, m) for w, m in zip(worst, moved)]
-        picked = [i for i, m in enumerate(moved) if m > MOVED_RING]
-        influence_frames.append(grid([clip.tile_at(b, colours, "4 influences"),
-                                      ring(clip.tile_at(a, colours, "2 influences"), clip.camera, a, picked),
-                                      arrows(clip.tile_at(b, colours, "zoomed: 4 to 2", zoom), zoom, b, a, picked)],
-                                     3))
+    with tempfile.TemporaryDirectory(prefix="skin-sheet-") as scratch:
+        engine = EngineSkin(args.asset, DEFAULT_POSITION_SCALE, pathlib.Path(scratch))
+        influences, worst = influence_figure(clip, engine, radius)
     for directory in (args.images, args.tables):
         directory.mkdir(parents=True, exist_ok=True)
     clip.save(args.images / "skin-skeleton.gif", skeleton)
     clip.save(args.images / "skin-weights.gif", weight_frames)
-    clip.save(args.images / "skin-influences.gif", influence_frames)
+    influences.save(args.images / "skin-influences.png", optimize=True)
     (args.tables / "skin-influence-counts.md").write_text(influence_counts(asset, worst) + "\n", encoding="utf-8")
     (args.tables / "skin-weight-example.md").write_text(weight_example(asset) + "\n", encoding="utf-8")
 

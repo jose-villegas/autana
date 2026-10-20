@@ -232,7 +232,7 @@ run "$PYTHON" launcher/tools/r3d/skin/skin_sheet.py "$skin_asset" "$OUT/render" 
     --sheet "$SKIN_CLIP" > "$WORK/skin_sheet.log"
 run "$PYTHON" launcher/tools/r3d/skin/skin_figures.py --cc "$cc" --out "$OUT/render/skin-limb.png" \
     > "$WORK/skin_figures.log"
-# --orphans scans this runner: skin-skeleton.gif, skin-weights.gif, skin-influences.gif, skin-limb.png
+# --orphans scans this runner: skin-skeleton.gif, skin-weights.gif, skin-influences.png, skin-limb.png
 
 # Dynamic resolution's tables and chart, from the board capture and the
 # reference scores kept beside its page.
