@@ -13,5 +13,54 @@
 
 MATH_DEFINE_VEC3(vec3x, int32_t, int32_t, mathx)
 MATH_DEFINE_VEC_LERP(vec3x, int32_t, mathx, 3)
-MATH_DEFINE_VEC3_NORMALIZE(vec3x, int32_t, mathx)
 MATH_DEFINE_VEC_SWIZZLE(vec3x, vec2x, int32_t)
+
+/* Scaled components have magnitude <= 2^30, so three squares fit uint64.
+ * Reciprocal products are bounded by 2^62, leaving headroom for rounding. */
+enum {
+    VEC3X_NORMALIZE_COMPONENT_SHIFT = 29,
+    VEC3X_NORMALIZE_RECIPROCAL_SHIFT = VEC3X_NORMALIZE_COMPONENT_SHIFT + 2 * MATHX_SHIFT - 1,
+    VEC3X_NORMALIZE_OUTPUT_SHIFT = VEC3X_NORMALIZE_RECIPROCAL_SHIFT - MATHX_SHIFT,
+    VEC3X_NORMALIZE_TOP_BIT = 31,
+    VEC3X_NORMALIZE_RECIPROCAL_MAX = INT32_MAX,
+};
+
+/* out = a/|a|, *q = t/|a|; *q saturates by sign outside Q16.16.
+ * A zero vector gives zero and mathx_div(t, 0). */
+static inline vec3x_t
+vec3x_normalize_divide(vec3x_t a, int32_t t, int32_t* q) {
+    const int32_t components[] = {a.x, a.y, a.z};
+    uint32_t m = 0;
+    for (int i = 0; i < 3; i++) {
+        const uint32_t magnitude = components[i] < 0 ? (uint32_t)-(int64_t)components[i] : (uint32_t)components[i];
+        if (magnitude > m) {
+            m = magnitude;
+        }
+    }
+    if (m == 0) {
+        *q = mathx_div(t, 0);
+        return a;
+    }
+    const int s = VEC3X_NORMALIZE_COMPONENT_SHIFT - (VEC3X_NORMALIZE_TOP_BIT - __builtin_clz(m));
+    int64_t u[3];
+    uint64_t sum = 0;
+    for (int i = 0; i < 3; i++) {
+        u[i] = s >= 0 ? (int64_t)components[i] * ((int64_t)1 << s) : fx_round_shift(components[i], -s);
+        sum += (uint64_t)(u[i] * u[i]);
+    }
+    uint64_t len = mathi_isqrt64(sum);
+    len += sum - len * len > len;
+    const uint64_t reciprocal = ((UINT64_C(1) << VEC3X_NORMALIZE_RECIPROCAL_SHIFT) + len / 2) / len;
+    const int32_t k =
+        (int32_t)(reciprocal > VEC3X_NORMALIZE_RECIPROCAL_MAX ? VEC3X_NORMALIZE_RECIPROCAL_MAX : reciprocal);
+    *q = mathx_saturate(fx_round_shift((int64_t)t * k, VEC3X_NORMALIZE_OUTPUT_SHIFT - s));
+    return (vec3x_t){(int32_t)fx_round_shift(u[0] * k, VEC3X_NORMALIZE_OUTPUT_SHIFT),
+                     (int32_t)fx_round_shift(u[1] * k, VEC3X_NORMALIZE_OUTPUT_SHIFT),
+                     (int32_t)fx_round_shift(u[2] * k, VEC3X_NORMALIZE_OUTPUT_SHIFT)};
+}
+
+static inline vec3x_t
+vec3x_normalize(vec3x_t a) {
+    int32_t quotient;
+    return vec3x_normalize_divide(a, 0, &quotient);
+}

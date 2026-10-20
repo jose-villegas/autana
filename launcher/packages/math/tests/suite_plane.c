@@ -38,6 +38,22 @@ assert_fixed_plane(planef_t f, planex_t x, vec3f_t point) {
 }
 
 static void
+test_fixed_normalize_extreme_normals_and_distance_saturation(void) {
+    static const planex_t cases[] = {{{1, 0, 0}, 1},
+                                     {{30000 * MATHX_ONE, 0, 0}, 30000 * MATHX_ONE},
+                                     {{1, 0, 0}, MATHX_ONE},
+                                     {{1, 0, 0}, -MATHX_ONE}};
+    static const int32_t distances[] = {MATHX_ONE, MATHX_ONE, INT32_MAX, INT32_MIN};
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        const planex_t out = planex_normalize(cases[i]);
+        TEST_ASSERT_EQUAL_INT32(MATHX_ONE, out.normal.x);
+        TEST_ASSERT_EQUAL_INT32(0, out.normal.y);
+        TEST_ASSERT_EQUAL_INT32(0, out.normal.z);
+        TEST_ASSERT_EQUAL_INT32(distances[i], out.d);
+    }
+}
+
+static void
 test_construction_winding_distance_and_normalize(void) {
     const planef_t normal = planef_from_normal_point(PLANE_NORMAL, PLANE_ORIGIN);
     const planef_t points = planef_from_points(PLANE_ORIGIN, PLANE_AXIS_X, PLANE_AXIS_Y);
@@ -243,6 +259,7 @@ test_frustum_corner_rays_lie_on_both_side_planes(void) {
 
 void
 suite_plane(void) {
+    RUN_TEST(test_fixed_normalize_extreme_normals_and_distance_saturation);
     RUN_TEST(test_construction_winding_distance_and_normalize);
     RUN_TEST(test_oblique_normalization_scales_normal_and_distance);
     RUN_TEST(test_from_rows_tests_the_mapped_point);

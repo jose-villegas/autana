@@ -106,6 +106,82 @@ test_vec2_ops_agree_across_every_number_type(void) {
     TEST_ASSERT_FALSE(vec2s_equal((vec2s_t){1, 2}, (vec2s_t){1, 3}));
 }
 
+/* Root and reciprocal relative errors <= 2^-30 leave <= 2^-12 LSB before final rounding. */
+#define NORMALIZE_ROUNDING_ERROR          0.5
+#define NORMALIZE_COMPONENT_ERROR         (NORMALIZE_ROUNDING_ERROR + 0x1p-12)
+#define NORMALIZE_QUOTIENT_RELATIVE_ERROR 0x1p-28
+#define NORMALIZE_WORD_BITS               32
+#define NORMALIZE_SWEEP_SAMPLES           2048
+#define NORMALIZE_LCG_MULTIPLIER          UINT32_C(1664525)
+#define NORMALIZE_LCG_INCREMENT           UINT32_C(1013904223)
+
+static void
+assert_normalize_reference(vec3x_t a) {
+    const double length = sqrt((double)a.x * a.x + (double)a.y * a.y + (double)a.z * a.z);
+    const vec3x_t out = vec3x_normalize(a);
+    static const int32_t numerators[] = {0, 1, -1, MATHX_ONE, -MATHX_ONE, INT32_MAX, INT32_MIN};
+    for (size_t i = 0; i < sizeof(numerators) / sizeof(numerators[0]); i++) {
+        int32_t q;
+        const vec3x_t divided = vec3x_normalize_divide(a, numerators[i], &q);
+        TEST_ASSERT_TRUE(vec3x_equal(out, divided));
+        const double exact = (double)numerators[i] * MATHX_ONE / length;
+        if (exact > INT32_MAX) {
+            TEST_ASSERT_EQUAL_INT32(INT32_MAX, q);
+        } else if (exact < INT32_MIN) {
+            TEST_ASSERT_EQUAL_INT32(INT32_MIN, q);
+        } else {
+            TEST_ASSERT_TRUE(fabs(q - exact)
+                             <= NORMALIZE_ROUNDING_ERROR + fabs(exact) * NORMALIZE_QUOTIENT_RELATIVE_ERROR);
+        }
+    }
+    TEST_ASSERT_TRUE(fabs(out.x - (double)a.x * MATHX_ONE / length) <= NORMALIZE_COMPONENT_ERROR);
+    TEST_ASSERT_TRUE(fabs(out.y - (double)a.y * MATHX_ONE / length) <= NORMALIZE_COMPONENT_ERROR);
+    TEST_ASSERT_TRUE(fabs(out.z - (double)a.z * MATHX_ONE / length) <= NORMALIZE_COMPONENT_ERROR);
+}
+
+static void
+test_normalize_divide_zero_and_float(void) {
+    static const int32_t numerators[] = {INT32_MIN, -1, 0, 1, INT32_MAX};
+    const vec3x_t zero = {0, 0, 0};
+    for (size_t i = 0; i < sizeof(numerators) / sizeof(numerators[0]); i++) {
+        int32_t q;
+        TEST_ASSERT_TRUE(vec3x_equal(zero, vec3x_normalize_divide(zero, numerators[i], &q)));
+        TEST_ASSERT_EQUAL_INT32(mathx_div(numerators[i], 0), q);
+    }
+    const vec3f_t normalized = vec3f_normalize(A);
+    float q;
+    const vec3f_t divided = vec3f_normalize_divide(A, B.x, &q);
+    TEST_ASSERT_TRUE(vec3f_equal(normalized, divided));
+    TEST_ASSERT_FLOAT_WITHIN(FLT_EPSILON, B.x / sqrtf(vec3f_dot(A, A)), q);
+}
+
+static void
+test_fixed_normalize_extreme_magnitudes(void) {
+    static const vec3x_t cases[] = {{200 * MATHX_ONE, 0, 0},           {1, 0, 0},         {1, 1, 0}, {1, 1, 1},
+                                    {INT32_MIN, INT32_MIN, INT32_MIN}, {INT32_MAX, -5, 3}};
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        assert_normalize_reference(cases[i]);
+    }
+    TEST_ASSERT_EQUAL_INT32(MATHX_ONE, vec3x_normalize(cases[0]).x);
+    TEST_ASSERT_EQUAL_INT32(MATHX_ONE, vec3x_normalize(cases[1]).x);
+}
+
+static void
+test_fixed_normalize_every_magnitude(void) {
+    uint32_t state = 1;
+    for (int shift = 0; shift < NORMALIZE_WORD_BITS; shift++) {
+        for (int sample = 0; sample < NORMALIZE_SWEEP_SAMPLES; sample++) {
+            int32_t components[3];
+            for (size_t i = 0; i < sizeof(components) / sizeof(components[0]); i++) {
+                state = state * NORMALIZE_LCG_MULTIPLIER + NORMALIZE_LCG_INCREMENT;
+                const int64_t magnitude = (state >> (NORMALIZE_WORD_BITS - 1 - shift)) | 1;
+                components[i] = mathx_saturate((state & 1) ? -magnitude : magnitude);
+            }
+            assert_normalize_reference((vec3x_t){components[0], components[1], components[2]});
+        }
+    }
+}
+
 static void
 test_fixed_normalize_matches_float_within_its_precision(void) {
     const vec3f_t n = vec3f_normalize(A);
@@ -996,6 +1072,9 @@ suite_math_numbers(void) {
     RUN_TEST(test_looking_keeps_forward_at_large_positions);
     RUN_TEST(test_vec3_add_sub_scale_dot_cross_agree_across_every_number_type);
     RUN_TEST(test_vec2_ops_agree_across_every_number_type);
+    RUN_TEST(test_normalize_divide_zero_and_float);
+    RUN_TEST(test_fixed_normalize_extreme_magnitudes);
+    RUN_TEST(test_fixed_normalize_every_magnitude);
     RUN_TEST(test_fixed_normalize_matches_float_within_its_precision);
     RUN_TEST(test_fixed_quaternion_rotation_matches_float);
     RUN_TEST(test_fixed_view_from_axes_maps_the_eye_and_frame_axes);
