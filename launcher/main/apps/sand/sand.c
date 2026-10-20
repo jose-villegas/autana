@@ -55,6 +55,7 @@ sand_skip_sites_report(void) {
 #include <string.h>
 
 #include "build/build_variant.h"
+#include "input/motion/tilt.h"
 #include "math/scalar/fixed.h"
 #include "math/scalar/mathi.h"
 #include "render/code_layout.h"
@@ -736,6 +737,22 @@ sand_gravity_direction(int gx, int gy, int* dx, int* dy) {
         *dx = sx; /* the diagonal octant */
         *dy = sy;
     }
+}
+
+bool
+sand_gravity_direction_changed(int gx, int gy, int strength, int* dx, int* dy) {
+    if (strength < TILT_MIN_DIRECTION_STRENGTH) {
+        return false;
+    }
+    int next_dx;
+    int next_dy;
+    sand_gravity_direction(gx, gy, &next_dx, &next_dy);
+    if (next_dx == *dx && next_dy == *dy) {
+        return false;
+    }
+    *dx = next_dx;
+    *dy = next_dy;
+    return true;
 }
 
 /* Counts grains above, capped. Does NOT use sand_at() as it reports
