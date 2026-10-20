@@ -66,7 +66,7 @@ board-free preview of its drawing, declare a scene with the
 | `name`, `summary` | yes | - | launcher list text; `name` is also the sort key |
 | `enter()` | yes | once, on launch | reset state, take memory from the app arena, `gfx_mode_enter()`. May have run before. |
 | `frame(dt_ms, input)` | yes | every pass | draw and return. `dt_ms` is clamped to `FRAME_DT_MAX_MS` (250 ms). |
-| `draw_band(row0, row1, target)` | no | each dirty transient band | required with `GFX_LAYOUT_BANDS` (gfx asserts it); after `frame()`, fill full-width rows `[row0, row1)` of `target`, row0 first. gfx replays the UI over them and sends the band. |
+| `draw_band(row0, row1, target)` | no | each dirty transient band | with `GFX_LAYOUT_BANDS`, after `frame()`: draw full-width rows `[row0, row1)` of `target` over what the shell's systems composed there (a scene's picture), row0 first. gfx replays the UI over them and sends the band. An app whose only picture is a scene leaves it NULL. |
 | `exit()` | yes | once, on leave | release what `enter()` acquired, `gfx_mode_exit()` included. Arena memory needs nothing: the shell empties the arena right after `exit()`. |
 | `update(dt_ms, input)` | no | every pass, before `frame()` | state only; **no `draw_*` or `gfx_*`, no framebuffer**; a dev build asserts it |
 | `invalidate()` | no | once per full-redraw request, before the next `frame()` | reset a draw cache the app keeps beyond the framebuffer |
@@ -153,7 +153,7 @@ sequenceDiagram
     S->>A: frame(dt_ms, input)
     A->>G: draw_* calls
     alt band mode: GFX_LAYOUT_BANDS
-        S->>G: gfx_band_run(draw_band, ui_replay_band)
+        S->>G: gfx_band_run(), each band: systems compose_band, app draw_band, ui_replay_band
     end
     alt full-framebuffer mode
         S->>G: draw the home hint strip, home_gesture only
@@ -182,7 +182,7 @@ sequenceDiagram
     Note over S,G: a scene drawn at exactly half marks the frame expanded, so the UI bins for the present to replay
     S->>A: frame(dt_ms, input)
     alt band mode: GFX_LAYOUT_BANDS
-        S->>G: gfx_band_run(draw_band, ui_replay_band)
+        S->>G: gfx_band_run(), each band: systems compose_band, app draw_band, ui_replay_band
     end
     Note over S,P: shell_present_unless_deferred() leaves this frame to the next pass's gfx_present_begin()
 ```

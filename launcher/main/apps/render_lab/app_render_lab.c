@@ -104,6 +104,7 @@ static const layout_choice_t layout_choices[RENDER_LAB_LAYOUT_COUNT] = {
     [RENDER_LAB_LAYOUT_FULL] = {GFX_LAYOUT_FULL_FB, false},
     [RENDER_LAB_LAYOUT_DOUBLE] = {GFX_LAYOUT_DOUBLE_FB, false},
     [RENDER_LAB_LAYOUT_DOUBLE_CLEAR] = {GFX_LAYOUT_DOUBLE_FB, true},
+    [RENDER_LAB_LAYOUT_BANDS] = {GFX_LAYOUT_BANDS, false},
 };
 
 static void

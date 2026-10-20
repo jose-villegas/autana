@@ -100,16 +100,19 @@ without `update()`.
 A paused expanded picture keeps the overlap so each pass composes it again
 without rendering. With no camera active the loop is the plain one.
 
-Unpaused frames redraw the whole picture, including static scenes. A camera
-needs full-framebuffer layout; in band mode the scene draws into scratch
-with no destination for upscaling.
+Unpaused frames redraw the whole picture, including static scenes. In a
+framebuffer layout the picture is drawn whole and upscaled into the
+framebuffer. In band mode `scene_render()` only culls and transforms, and
+the shell's `compose_band` phase (`scene_shell_compose_band()`) draws and
+upscales each band's rows as gfx sends it; see
+[Mesh-Rendering.md](Mesh-Rendering.md#whole-pictures-and-bands).
 
 `scene_render()` runs the animation and skinning stages
 ([Skeleton-and-Skin.md](Skeleton-and-Skin.md#runtime-pose-and-skinning)),
 then rebuilds the placement of each renderer whose entity moved, fills
 `instances[]` from the
 enabled renderers and draws. The raster's scratch block is the engine's, sized
-for the largest enabled mesh's working buffers, every enabled instance's
+for every enabled mesh's working buffers, every enabled instance's
 census slot and the render size. Dynamic resolution reserves the finest
 step's raster block; the census list stays at the same offset across steps.
 The block grows only when the required storage exceeds its capacity.

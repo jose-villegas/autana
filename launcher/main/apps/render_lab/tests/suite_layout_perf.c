@@ -36,7 +36,7 @@ static const char* const scene_keys[] = {
 };
 #define SCENE_KEY_COUNT ((int)(sizeof scene_keys / sizeof scene_keys[0]))
 
-static const char* const layout_names[RENDER_LAB_LAYOUT_COUNT] = {"full", "double", "double_clear"};
+static const char* const layout_names[RENDER_LAB_LAYOUT_COUNT] = {"full", "double", "double_clear", "bands"};
 
 typedef struct {
     int32_t frame_us[LAYOUT_SAMPLES];
@@ -124,7 +124,7 @@ pass(fixture_t* f) {
     scene_shell_compose(LAYOUT_DT_MS);
     took.compose_us = timing_now_us() - compose_start;
     app_render_lab.frame(LAYOUT_DT_MS, &input);
-    gfx_band_run(app_render_lab.draw_band, ui_replay_band);
+    gfx_band_run(scene_shell_compose_band, ui_replay_band);
     f->primed = true;
     took.frame_us = timing_now_us() - start;
     return took;

@@ -278,12 +278,13 @@ their sum. Device timing is required to establish the overlap for a caller;
 host state-machine tests do not measure the panel bus.
 
 A picture is either **persistent**, a framebuffer or index image read by gfx
-on core 1 after `frame()`, or **transient**, an app's `draw_band` callback,
-called for each dirty band. gfx owns every send. A transient app requests
-`GFX_LAYOUT_BANDS` in `enter()` and supplies `draw_band`; gfx calls it once
-per dirty band, replays the UI over it, then submits the finished band.
-An app without `draw_band` keeps its persistent presentation path in
-`GFX_LAYOUT_FULL_FB` or `GFX_LAYOUT_INDEXED`.
+on core 1 after `frame()`, or **transient**, drawn for each dirty band and
+kept nowhere. gfx owns every send. A transient app requests
+`GFX_LAYOUT_BANDS` in `enter()`. For each dirty band the shell fills the
+rows: first each shell system's `compose_band` (a scene draws its picture's
+rows), then the app's `draw_band`, if it has one. gfx replays the UI over
+them, then submits the finished band. An app that keeps a picture stays in
+`GFX_LAYOUT_FULL_FB`, `GFX_LAYOUT_DOUBLE_FB` or `GFX_LAYOUT_INDEXED`.
 
 Two slots, so band k+1 renders while band k is on the wire:
 
@@ -291,7 +292,7 @@ Two slots, so band k+1 renders while band k is on the wire:
 sequenceDiagram
     participant S as shell
     participant G as gfx
-    participant A as app draw_band callback
+    participant A as compose_band, then draw_band
     participant S0 as slot 0
     participant S1 as slot 1
     participant Q as QSPI

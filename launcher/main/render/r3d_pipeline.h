@@ -120,11 +120,12 @@ typedef struct {
     r3d_pipeline_vertex_t* cs;    /* raster_vertex_capacity() entries */
     r3d_pipeline_rows_t* rows;    /* raster_cluster_capacity() entries */
     gfx_render_target_t picture;  /* raster_picture(): every row, or band_rows from band_scratch */
-    uint16_t* maps;               /* the upscale maps: columns, rows, then a window's rows */
+    uint16_t* maps;               /* the upscale maps: columns, then rows */
     r3d_pipeline_work_t* work[2]; /* one block per row slice */
     uint16_t* culled;             /* raster_culled_length() entries */
     void* draw;                   /* raster-owned instance and slice state */
     r3d_lens_t* lenses;           /* one per instance, as raster_prepare() left them */
+    uint16_t* window_rows;        /* a window's row map, destination_height entries */
 } r3d_pipeline_buffers_t;
 
 /* The census list's share of the scratch block: raster_culled_length()
@@ -159,11 +160,12 @@ r3d_pipeline_carve(const raster_t* raster) {
         (void)gfx_render_target_carve(&b.picture, raster->band_scratch);
     }
     b.maps = (uint16_t*)p;
-    p += gfx_attachment_bytes(sizeof(uint16_t), raster->destination_width + (2 * raster->destination_height), 1);
+    p += gfx_attachment_bytes(sizeof(uint16_t), raster->destination_width + raster->destination_height, 1);
     p = (char*)raster->scratch + mathi_size_ceil((size_t)(p - (char*)raster->scratch), R3D_PIPELINE_WORK_ALIGNMENT);
     b.work[0] = (r3d_pipeline_work_t*)p;
     b.work[1] = (r3d_pipeline_work_t*)(p + r3d_pipeline_work_bytes());
     b.draw = p + 2 * r3d_pipeline_work_bytes();
     b.lenses = (r3d_lens_t*)((char*)b.draw + raster_draw_state_bytes(raster));
+    b.window_rows = (uint16_t*)(b.lenses + raster->instance_count);
     return b;
 }

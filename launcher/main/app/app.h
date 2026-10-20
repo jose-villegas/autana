@@ -34,8 +34,9 @@ typedef struct app {
      * not depend on framerate. */
     void (*frame)(uint32_t dt_ms, const input_t* input);
 
-    /* Optional. An app that entered GFX_LAYOUT_BANDS supplies the rows for
-     * each dirty band; gfx replays UI commands and sends the finished band. */
+    /* Optional. In GFX_LAYOUT_BANDS, the app's rows of each dirty band,
+     * drawn over what the shell's systems composed there (a scene's
+     * picture); gfx replays UI commands and sends the finished band. */
     gfx_band_draw_fn draw_band;
 
     /* Optional, NULL unless an app sets it. When present, the shell overlaps

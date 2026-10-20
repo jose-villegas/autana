@@ -425,7 +425,8 @@ ui_end(uint32_t background_rgb) {
     finish_band_stats();
 #endif
     ui_band_fallbacks = 0;
-    if (gfx_frame_expanded()) {
+    /* No framebuffer to paint: the bands replay it as gfx sends them. */
+    if (gfx_frame_expanded() || gfx_mode_current()->layout == GFX_LAYOUT_BANDS) {
         ui_end_for_bands(background_rgb);
         return true;
     }

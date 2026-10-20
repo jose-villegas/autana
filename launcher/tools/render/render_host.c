@@ -1,6 +1,8 @@
 /*
  * render_host: the shared host render procedure. Real scene code draws into
- * gfx-owned pictures; gfx_read_panel_row() supplies completed output.
+ * gfx-owned pictures; gfx_read_panel_row() supplies completed output. In
+ * band mode a frame's bands are drawn as the shell draws them, and the
+ * readback keeps a copy of each one sent.
  * BMP and AVI encoding use console/capture/screenshot.h. No device access.
  */
 
@@ -20,6 +22,7 @@
 #include "render_watch.h"
 #include "services/tune.h"
 #include "ui/layout/ui_transform.h"
+#include "ui/ui.h"
 
 #include "scene/scene_shell.h"
 
@@ -325,11 +328,10 @@ main(int argc, char** argv) {
         return 1;
     }
 
-    if (gfx_readback_begin() != GFX_READBACK_READY) {
-        /* Band mode keeps no retained frame to read back, so there is
-         * nothing to write; the same refusal a device capture makes. A
-         * scene wanting an image asks for the full-framebuffer layout. */
-        fprintf(stderr, "no framebuffer to read: the scene left gfx in band mode\n");
+    /* Band mode keeps no frame: a pending readback has gfx copy every band
+     * of the next frame as it sends it. */
+    if (gfx_readback_begin() == GFX_READBACK_UNAVAILABLE) {
+        fprintf(stderr, "%s: no frame to read back\n", scene->name);
         return 1;
     }
     const affine2x_t t = ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT);
@@ -377,6 +379,7 @@ main(int argc, char** argv) {
         render_watch_frame_begin();
         scene_shell_compose(frame.dt_ms); /* what the shell does before an app's frame() */
         scene->draw(&frame);
+        gfx_band_run(scene_shell_compose_band, ui_replay_band); /* and after it, in band mode */
         render_watch_frame_end();
 
         convert_frame(t, panel, out_w, out_h, stride, frame_buf);
@@ -400,6 +403,7 @@ main(int argc, char** argv) {
         render_watch_frame_begin();
         scene_shell_compose(frame.dt_ms); /* what the shell does before an app's frame() */
         scene->draw(&frame);
+        gfx_band_run(scene_shell_compose_band, ui_replay_band);
         gfx_present();
         render_watch_frame_end();
     }

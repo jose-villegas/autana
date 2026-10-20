@@ -1848,7 +1848,7 @@ test_band_rows_compose_the_full_picture_byte_for_byte(void) {
     render_context_t* c = render_context_main();
     scene_t* scene = scene_loaded_at(0);
     const scene_entity_t camera = scene_find(scene, "camera");
-    const int scales[] = {RENDER_CONTEXT_DEFAULT_SCALE_PERCENT, 100, 37, 25}; /* doubled, kept, mapped, blocks */
+    const int scales[] = {RENDER_CONTEXT_DEFAULT_SCALE_PERCENT, 37, 25}; /* doubled, mapped, blocks */
     const size_t band_bytes = sizeof(gfx_color_t) * GFX_BAND_HEIGHT * GFX_WIDTH;
     gfx_color_t* band = malloc(band_bytes);
     TEST_ASSERT_NOT_NULL(band);
@@ -1872,6 +1872,57 @@ test_band_rows_compose_the_full_picture_byte_for_byte(void) {
             }
         }
     }
+    free(band);
+}
+
+/* With a framebuffer the scene shell draws the whole picture; in band mode
+ * it draws a band at a time from a small block in internal RAM, at most
+ * the band share of the panel's size, marks the frame dirty, keeps
+ * redrawing the same rows while paused, and leaves a band black before any
+ * frame is drawn. */
+static void
+test_band_mode_draws_the_scene_a_band_at_a_time(void) {
+    expanded_fixture();
+    render_context_t* c = render_context_main();
+    const size_t band_bytes = sizeof(gfx_color_t) * GFX_BAND_HEIGHT * GFX_WIDTH;
+    gfx_color_t* band = malloc(band_bytes);
+    gfx_color_t* again = malloc(band_bytes);
+    TEST_ASSERT_NOT_NULL(band);
+    TEST_ASSERT_NOT_NULL(again);
+    render_context_set_scale(c, RENDER_CONTEXT_DEFAULT_SCALE_PERCENT);
+    scene_shell_render(16);
+    TEST_ASSERT_EQUAL_INT(0, c->raster.band_rows);
+    TEST_ASSERT_NULL(c->band_scratch);
+
+    const gfx_mode_request_t bands = {.layout = GFX_LAYOUT_BANDS};
+    TEST_ASSERT_EQUAL_INT(GFX_LAYOUT_BANDS, gfx_mode_enter(&bands)->layout);
+    TEST_ASSERT_TRUE(scene_activate(scene_loaded_at(0), "camera"));
+    memset(band, 0xA5, band_bytes);
+    scene_shell_compose_band(0, GFX_BAND_HEIGHT, band);
+    for (int i = 0; i < GFX_BAND_HEIGHT * GFX_WIDTH; i++) {
+        TEST_ASSERT_EQUAL_HEX16(0, band[i]);
+    }
+    scene_shell_render(16);
+    TEST_ASSERT_EQUAL_INT(GFX_BAND_HEIGHT, c->band_rows);
+
+    TEST_ASSERT_NOT_NULL(c->band_scratch);
+    TEST_ASSERT_TRUE(c->band_scratch_bytes < band_bytes);
+    render_context_set_scale(c, 100);
+    scene_shell_render(16);
+    TEST_ASSERT_EQUAL_INT(GFX_WIDTH * RENDER_CONTEXT_BAND_PERCENT / 100, c->raster.width);
+    TEST_ASSERT_EQUAL_INT(GFX_HEIGHT * RENDER_CONTEXT_BAND_PERCENT / 100, c->raster.height);
+    render_context_set_scale(c, RENDER_CONTEXT_DEFAULT_SCALE_PERCENT);
+    scene_shell_render(16);
+    scene_shell_compose(16);
+    TEST_ASSERT_TRUE(gfx_region_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT));
+    const int middle = (GFX_HEIGHT / 2 / GFX_BAND_HEIGHT) * GFX_BAND_HEIGHT;
+    scene_shell_compose_band(middle, middle + GFX_BAND_HEIGHT, band);
+    scene_set_paused(true);
+    memset(again, 0xA5, band_bytes);
+    scene_shell_compose_band(middle, middle + GFX_BAND_HEIGHT, again);
+    scene_set_paused(false);
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(band, again, GFX_BAND_HEIGHT * GFX_WIDTH);
+    free(again);
     free(band);
 }
 
@@ -1975,6 +2026,43 @@ test_ui_replay_over_expanded_scene_matches_full_frame(void) {
             gfx_present();
         }
     }
+}
+
+/* A frame in band mode, the scene drawn a band at a time and a UI closed
+ * with plain ui_end() over it, reaches the panel as the framebuffer
+ * layout's frame does. */
+static void
+test_band_frame_with_ui_matches_the_framebuffer_frame(void) {
+    expanded_fixture();
+    render_context_set_scale(render_context_main(), RENDER_CONTEXT_DEFAULT_SCALE_PERCENT);
+    scene_shell_render(0);
+    ui_clear_band_overlay();
+    scene_shell_compose(0);
+    ui_init();
+    build_expanded_ui(UI_TEXT_PLAIN);
+    gfx_set_frame_overlay(ui_replay_band);
+    for (int y = 0; y < GFX_HEIGHT; y++) {
+        gfx_read_panel_row(y, fx.held + (size_t)y * GFX_WIDTH);
+    }
+    gfx_set_frame_overlay(NULL);
+    gfx_present();
+
+    const gfx_mode_request_t bands = {.layout = GFX_LAYOUT_BANDS};
+    TEST_ASSERT_EQUAL_INT(GFX_LAYOUT_BANDS, gfx_mode_enter(&bands)->layout);
+    TEST_ASSERT_EQUAL_INT(GFX_READBACK_PENDING, gfx_readback_begin());
+    scene_shell_render(0);
+    ui_clear_band_overlay();
+    scene_shell_compose(0);
+    ui_init();
+    build_expanded_ui(UI_TEXT_PLAIN);
+    gfx_band_run(scene_shell_compose_band, ui_replay_band);
+    TEST_ASSERT_EQUAL_INT(GFX_READBACK_READY, gfx_readback_begin());
+    for (int y = 0; y < GFX_HEIGHT; y++) {
+        gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
+    }
+    gfx_readback_end();
+    gfx_readback_end();
+    TEST_ASSERT_EQUAL_HEX16_ARRAY(fx.held, fx.pixels, GFX_WIDTH * GFX_HEIGHT);
 }
 
 static void
@@ -3345,6 +3433,8 @@ run_scene_suite(void) {
     RUN_TEST(test_camera_present_composes_half_picture_and_uneven_fallback);
     RUN_TEST(test_camera_present_scanline_and_double_compose_both_quarters);
     RUN_TEST(test_band_rows_compose_the_full_picture_byte_for_byte);
+    RUN_TEST(test_band_mode_draws_the_scene_a_band_at_a_time);
+    RUN_TEST(test_band_frame_with_ui_matches_the_framebuffer_frame);
     RUN_TEST(test_camera_present_default_setter_and_dynamic_size);
     RUN_TEST(test_non_half_compose_upscales_to_the_full_destination);
     RUN_TEST(test_failed_half_allocation_keeps_full_upscale_unexpanded);
