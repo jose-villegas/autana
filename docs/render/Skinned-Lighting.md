@@ -84,7 +84,7 @@ The import's [`[skin].lighting`](Mesh-Import.md#skin-lighting) picks the mode.
 |---|---|---|---|
 | **direct** (default) | N.L per light on the blended normal | cheapest; about 23 cycles more per light | the darkening where joints mix does not show |
 | renormalised | the same after `mathf_rsqrt()` | about 40 cycles above direct | normal length must not change brightness |
-| table | one bilinear lookup in a shared irradiance table | flat, about 860 cycles, plus a rebuild per light change | no measured case: direct reaches its cost only near 10 lights, above `R3D_SKIN_LIGHT_MAX` |
+| table | one bilinear lookup in a shared irradiance table | flat, about 860 cycles, plus a rebuild per light change | many lights: it costs more than direct up to the current `R3D_SKIN_LIGHT_MAX`, with the crossover estimated near 10 lights; scenes with many or dynamic lights are not yet measured |
 
 Skinning alone is the first bar; an exact float evaluation costs about
 5,700 cycles per vertex ([every kernel](#board-measurement)):
