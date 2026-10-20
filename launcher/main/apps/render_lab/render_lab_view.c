@@ -10,6 +10,7 @@ TUNE(render_lab, small_fill_ceiling, SMALL_FILL_CEILING_SMOOTH, 0, SMALL_FILL_CE
 TUNE(render_lab, small_fill_gate, SMALL_FILL_GATE_SMOOTH, 0, UINT8_MAX);
 TUNE(render_lab, small_fill_style, SMALL_FILL_FLAT, SMALL_FILL_FLAT, SMALL_FILL_STYLE_COUNT - 1);
 TUNE(render_lab, budget, 0, 0, 200);
+TUNE(render_lab, orbit_ms, 0, 0, RENDER_LAB_ORBIT_MAX_MS);
 
 int
 render_lab_debug_view(void) {
@@ -53,4 +54,9 @@ render_lab_apply_raster_settings(void) {
 int
 render_lab_budget_ms(void) {
     return budget;
+}
+
+int
+render_lab_orbit_ms(void) {
+    return orbit_ms;
 }

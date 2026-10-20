@@ -248,6 +248,9 @@ draw(const render_frame_t* frame) {
         }
     }
     app_list()->frame(frame->dt_ms, &in);
+    /* The shell's update() runs before it composes a frame; this harness has
+     * already composed, so it steers the next one. */
+    app_list()->update(frame->dt_ms, &in);
 }
 
 const render_scene_t render_scene = {
