@@ -83,7 +83,7 @@ flowchart TB
     end
     subgraph Platform["platform"]
         subgraph R9["input and audio"]
-            Input["input/<br/><i>touch, buttons, motion, gesture</i>"]:::hw
+            Input["input/<br/><i>touch/, motion/, buttons/, mapping/</i>"]:::hw
             Audio["audio/<br/><i>codec, PCM output, microphone capture</i>"]:::hw
         end
         subgraph PowerRow["power"]
@@ -408,7 +408,7 @@ free in `exit()`, and keep what a frame needs from one frame to the next. A
 log line belongs to a change: log when a value changes, not every frame it
 holds.
 
-The gates are in [Testing-Guide.md](Testing-Guide.md#the-frame-watch-as-a-gate):
+The gates are in [Performance and budgets](testing/Performance-and-Budgets.md#the-frame-watch-as-a-gate):
 every host render scene, and every on-device test that presents more than
 `FRAME_WATCH_WARMUP` times.
 

@@ -10,7 +10,7 @@ import probe_fit
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIXTURES = os.path.join(HERE, "fixtures")
-TOUCH_C = os.path.join(HERE, "..", "..", "..", "input", "touch.c")
+TOUCH_C = os.path.join(HERE, "..", "..", "..", "input", "touch", "touch.c")
 
 
 def probe_line(ax, ay, fx, fy, q=0, mode="random", cal=0):

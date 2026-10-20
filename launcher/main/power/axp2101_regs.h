@@ -20,7 +20,7 @@
 #define AXP2101_VBAT_HIGH_SHIFT  8
 #define AXP2101_PERCENT_MAX      100U
 /* INTEN2/INTSTS2 hold power-key events: bit 0 rising, 1 falling, 2 long, 3 short.
- * Only short/long are enabled (no down level; see input/buttons.h).
+ * Only short/long are enabled (no down level; see input/buttons/buttons.h).
  * A status bit clears by writing a ONE back. */
 #define AXP2101_REG_INTEN2       0x41
 #define AXP2101_REG_INTSTS2      0x49

@@ -1,5 +1,5 @@
-#include "input/buttons.h"
-#include "input/button_fsm.h"
+#include "input/buttons/buttons.h"
+#include "input/buttons/button_fsm.h"
 
 #include "board/board.h"
 #include "driver/gpio.h"

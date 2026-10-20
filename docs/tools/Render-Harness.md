@@ -342,7 +342,7 @@ refuses one.
 
 Every `draw()` is also a frame to the frame watch (`render_watch.h`), which
 judges it by the board's rule; see
-[Testing-Guide.md](../Testing-Guide.md#the-frame-watch-as-a-gate). A scene
+[Performance and budgets](../testing/Performance-and-Budgets.md#the-frame-watch-as-a-gate). A scene
 declaring fewer frames than a warm-up and a window goes on drawing past its
 image until it has them, so every scene is judged at rest; its pixels and
 pins do not change. A finding fails the render: a heap site's `FRAME_WATCH`

@@ -9,7 +9,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "input/buttons.h"
+#include "input/buttons/buttons.h"
 #include "math/linear/vec3i.h"
 
 /* Touch state for the current frame.
