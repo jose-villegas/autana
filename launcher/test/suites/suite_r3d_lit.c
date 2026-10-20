@@ -1929,14 +1929,10 @@ test_band_rows_draw_what_one_full_draw_does(void) {
     const int band_heights[] = {2, 6, 16};
     gfx_color_t* upscaled = malloc(sizeof(gfx_color_t) * 4 * W * H);
     gfx_color_t* want = malloc(sizeof(gfx_color_t) * 4 * W * H);
-    raster_t raster = {ONE_MESH(&p->mesh),
-                       .width = W,
-                       .height = H,
-                       .clear = SKY,
-                       .upscaled = true,
-                       .destination_width = 2 * W,
-                       .destination_height = 2 * H,
-                       .band_rows = 16};
+    raster_t raster = {
+        ONE_MESH(&p->mesh),         .width = W, .height = H, .clear = SKY, .upscaled = true, .destination_width = 2 * W,
+        .destination_height = 2 * H};
+    raster.band_rows = raster_band_source_rows(&raster, band_heights[sizeof band_heights / sizeof band_heights[0] - 1]);
     char* scratch = malloc(raster_scratch_bytes(&raster));
     void* band_scratch = malloc(raster_band_bytes(&raster));
     TEST_ASSERT_NOT_NULL(upscaled);
@@ -1957,13 +1953,8 @@ test_band_rows_draw_what_one_full_draw_does(void) {
             memset(upscaled, 0xA5, sizeof(gfx_color_t) * 4 * W * H);
             for (int y0 = 0; y0 < 2 * H; y0 += band_heights[b]) {
                 const int rows = band_heights[b] < 2 * H - y0 ? band_heights[b] : 2 * H - y0;
-                int row0;
-                int row1;
-                raster_upscale_source(&raster, 2 * W, 2 * H, y0, y0 + rows, &row0, &row1);
-                TEST_ASSERT_TRUE(row1 - row0 <= raster.band_rows);
-                raster_draw_rows(&raster, row0, row1);
                 const gfx_target_t band = {upscaled + ((size_t)y0 * 2 * W), y0, rows, 2 * W};
-                raster_upscale_rows(&raster, band, 2 * W, 2 * H);
+                (void)raster_compose_rows(&raster, band, 2 * W, 2 * H);
             }
             TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(want, upscaled, 4 * W * H,
                                                   "a frame drawn in bands differs from one full draw");

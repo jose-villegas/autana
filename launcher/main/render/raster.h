@@ -68,10 +68,6 @@ int raster_cluster_capacity(const raster_t* raster);
  * every row (or band_rows of them), not yet carved. */
 gfx_render_target_t raster_picture(const raster_t* raster);
 
-/* Rows [row0, row1) of the picture, carved: a window of a full picture, or
- * the band picture holding them, at most band_rows. */
-gfx_render_target_t raster_rows(const raster_t* raster, int row0, int row1);
-
 /* The picture's colour and depth from its first row, as raster_draw() left
  * them: its first two attachments. */
 gfx_color_t* raster_color(const raster_t* raster);
@@ -118,11 +114,11 @@ resolution_step_t raster_compose_size(const raster_t* raster);
  * half the destination rows. The destination is at least the drawn size. */
 void raster_upscale(raster_t* raster, uint16_t* destination, int width, int height);
 
-/* The source rows [*row0, *row1) that destination rows [first, end) of a
- * `width` by `height` destination are filled from. */
-void raster_upscale_source(raster_t* raster, int width, int height, int first, int end, int* row0, int* row1);
+/* The band_rows a band of `destination_rows` needs at the drawn size: the
+ * nearest-neighbour row map can straddle one source row more. */
+int raster_band_source_rows(const raster_t* raster, int destination_rows);
 
-/* Fills `destination`, rows [y0, y0 + height) of a `width` by
- * `destination_height` picture, from source rows raster_upscale_source()
- * named and raster_draw_rows() drew. */
-void raster_upscale_rows(raster_t* raster, gfx_target_t destination, int width, int destination_height);
+/* Fills `destination`, rows [y0, y0 + height) of a `width` by `height`
+ * picture, drawing their source rows first when the picture holds a band.
+ * Returns the microseconds that drawing took. */
+int32_t raster_compose_rows(raster_t* raster, gfx_target_t destination, int width, int height);

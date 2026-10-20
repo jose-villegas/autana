@@ -8,12 +8,11 @@
 #include "gfx/present/gfx_present.h"
 #include "render/context/render_context.h"
 
-/* A layout with a framebuffer keeps the picture, drawn whole; band mode
- * keeps none, and the scene is drawn as each band is composed. */
+/* Band mode keeps no picture, so the scene is drawn as each band is
+ * composed; any other layout's band height is 0, a whole picture. */
 static void
 follow_layout(void) {
-    const gfx_mode_t* mode = gfx_mode_current();
-    render_context_set_band_rows(render_context_main(), gfx_mode_has_framebuffer(mode) ? 0 : mode->band_height);
+    render_context_set_band_rows(render_context_main(), gfx_mode_current()->band_height);
 }
 
 void

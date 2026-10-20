@@ -56,6 +56,7 @@ typedef struct {
     void* scratch;
     size_t scratch_bytes;
     int band_rows; /* destination rows per band, or 0 for a picture of every row */
+    bool fresh;    /* a frame drawn and not yet fed to dynamic resolution */
     void* band_scratch;
     size_t band_scratch_bytes;
     int scale_percent;

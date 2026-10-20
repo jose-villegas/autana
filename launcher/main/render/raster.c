@@ -57,6 +57,8 @@ typedef struct {
     gfx_render_target_t picture;
     r3d_span_target_t targets[2];
     int32_t mine_us, other_us; /* Draw slices stay far below the int32 microsecond limit of 35 minutes. */
+    r3d_lens_t* lenses;        /* one per instance, as raster_prepare() left them, right after this */
+    uint16_t* window_rows;     /* an upscale window's row map, after the lenses */
 } draw_work_t;
 
 _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
@@ -128,12 +130,6 @@ rows_of(const raster_t* raster, const gfx_render_target_t* picture, int row0, in
     band.row0 = row0;
     band.row1 = row1;
     return band;
-}
-
-gfx_render_target_t
-raster_rows(const raster_t* raster, int row0, int row1) {
-    const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
-    return rows_of(raster, &b.picture, row0, row1);
 }
 
 void
@@ -227,12 +223,6 @@ raster_cluster_capacity(const raster_t* raster) {
 }
 
 size_t
-raster_draw_state_bytes(const raster_t* raster) {
-    (void)raster;
-    return sizeof(draw_work_t);
-}
-
-size_t
 raster_scratch_bytes(const raster_t* raster) {
     assert(raster->instance_count > 0); /* a raster with nothing to draw would clear nothing */
     const gfx_render_target_t picture = raster_picture(raster);
@@ -317,6 +307,8 @@ scratch_draw(const raster_t* raster) {
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
     draw_work_t* work = b.draw;
     work->buffers = b;
+    work->lenses = (r3d_lens_t*)(work + 1);
+    work->window_rows = (uint16_t*)(work->lenses + raster->instance_count);
     return work;
 }
 
@@ -338,7 +330,7 @@ prepared_at(const raster_t* raster, int index, draw_work_t* work) {
         in->rows += last->cluster_count;
     }
     in->mesh = raster->instances[index].mesh;
-    in->lens = &work->buffers.lenses[index];
+    in->lens = &work->lenses[index];
 }
 
 static inline __attribute__((always_inline)) void
@@ -390,7 +382,9 @@ draw_prepared(const raster_t* raster, int index, int row0, int row1, draw_work_t
     other->first = row0;
     other->count = mid - row0;
     job_run_split(draw_slice, mine, other, sizeof *mine);
-    if (retained != NULL) {
+    /* A band's timings say nothing of the frame's balance: bands keep the
+     * share the last whole picture learned. */
+    if (retained != NULL && raster->band_rows == 0) {
         *retained =
             (int16_t)(raster_split_update(share, (int64_t)work->other_us, (int64_t)work->mine_us) - RASTER_SPLIT_EVEN);
     }
@@ -421,7 +415,7 @@ prepare_instances(const raster_t* raster, const render_view_t* view, raster_stat
     uint16_t* culled = work->buffers.culled;
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
-        r3d_lens_t* lens = &work->buffers.lenses[i];
+        r3d_lens_t* lens = &work->lenses[i];
         instance_lens(raster, instance, view, true, lens);
         if (stats != NULL) {
             FRAME_COST_BEGIN(culled_from);
@@ -557,11 +551,11 @@ upscale_maps(raster_t* raster, int width, int height) {
     }
 }
 
-void
-raster_upscale_source(raster_t* raster, int width, int height, int first, int end, int* row0, int* row1) {
-    upscale_maps(raster, width, height);
+/* The source rows [*row0, *row1) destination rows [first, end) read. */
+static void
+upscale_source(const raster_t* raster, int first, int end, int* row0, int* row1) {
     const upscale_t* scale = &raster->upscale;
-    assert(0 <= first && first < end && end <= height);
+    assert(0 <= first && first < end && end <= scale->destination_height);
     if (scale->path == UPSCALE_BLOCKS) {
         *row0 = first / scale->factor;
         *row1 = ((end - 1) / scale->factor) + 1;
@@ -571,16 +565,29 @@ raster_upscale_source(raster_t* raster, int width, int height, int first, int en
     }
 }
 
-void
-raster_upscale_rows(raster_t* raster, gfx_target_t destination, int width, int height) {
+int
+raster_band_source_rows(const raster_t* raster, int destination_rows) {
+    const int height = raster->height;
+    const int destination_height = raster->destination_height;
+    return destination_rows == 0 ? 0
+                                 : (((destination_rows * height) + destination_height - 1) / destination_height) + 1;
+}
+
+int32_t
+raster_compose_rows(raster_t* raster, gfx_target_t destination, int width, int height) {
     assert(destination.buf != NULL && destination.stride == width);
-    FRAME_COST_BEGIN(upscaled_from);
     upscale_maps(raster, width, height);
     const int first = destination.y0;
     const int end = first + destination.height;
     int row0;
     int row1;
-    raster_upscale_source(raster, width, height, first, end, &row0, &row1);
+    upscale_source(raster, first, end, &row0, &row1);
+    const int64_t began_us = timing_now_us();
+    if (raster->band_rows != 0) {
+        raster_draw_rows(raster, row0, row1);
+    }
+    const int32_t drawn_us = (int32_t)(timing_now_us() - began_us);
+    FRAME_COST_BEGIN(upscaled_from);
     /* The window as a scale of its own, from its first row and the first
      * source row it reads. Block and scanline runs restart at the window,
      * so it must start on one. */
@@ -589,14 +596,14 @@ raster_upscale_rows(raster_t* raster, gfx_target_t destination, int width, int h
     assert(window.scanline_run == 0 || first % window.scanline_run == 0);
     window.source_height = row1 - row0;
     window.destination_height = end - first;
+    draw_work_t* work = scratch_draw(raster);
     if (first != 0) {
-        uint16_t* window_rows = r3d_pipeline_carve(raster).window_rows;
         for (int y = first; y < end; y++) {
-            window_rows[y - first] = (uint16_t)(raster->upscale.rows[y] - row0);
+            work->window_rows[y - first] = (uint16_t)(raster->upscale.rows[y] - row0);
         }
-        window.rows = window_rows;
+        window.rows = work->window_rows;
     }
-    const gfx_render_target_t picture = raster_rows(raster, row0, row1);
+    const gfx_render_target_t picture = rows_of(raster, &work->buffers.picture, row0, row1);
     const int mid = destination.height / 2;
     upscale_slice_t mine = {.scale = &window,
                             .picture = &picture,
@@ -610,9 +617,11 @@ raster_upscale_rows(raster_t* raster, gfx_target_t destination, int width, int h
     other.count = mid;
     job_run_split(upscale_slice, &mine, &other, sizeof mine);
     FRAME_COST_END(upscaled_from, "r3d.upscale");
+    return drawn_us;
 }
 
 void
 raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
-    raster_upscale_rows(raster, (gfx_target_t){destination, 0, height, width}, width, height);
+    assert(raster->band_rows == 0);
+    (void)raster_compose_rows(raster, (gfx_target_t){destination, 0, height, width}, width, height);
 }
