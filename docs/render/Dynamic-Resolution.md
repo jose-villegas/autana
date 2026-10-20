@@ -39,6 +39,11 @@ list's offset is independent of render size, so the context reserves only
 the finest step's raster block. Fixed and stepped draws share one fitted lens
 per instance between culling and drawing.
 
+In band mode every step is capped at `RENDER_CONTEXT_BAND_PERCENT` of the
+destination per axis, so steps finer than the cap draw the same size. The
+cost is fed once per drawn frame, after its last band; bands redrawn from
+an older frame, as while paused, feed nothing.
+
 ## Where a frame's time goes at each size
 
 The raster brackets its stages for [frame cost](../tools/Frame-Cost.md):

@@ -264,13 +264,19 @@ r3d_pipeline_transform_split(const r3d_lit_mesh_t* mesh, const uint16_t* cluster
 
 #define DRAW_SPLIT_BUCKETS 64
 
+/* True when a cluster's rows hold none of [row0, row1]. */
+static inline bool
+rows_miss(const r3d_pipeline_rows_t* r, int row0, int row1) {
+    return !r->unbounded && (r->y1 < (float)row0 || r->y0 > (float)row1);
+}
+
 static void
 draw_split_histogram(int* weight, const r3d_lit_mesh_t* mesh, const uint16_t* clusters, const r3d_pipeline_rows_t* rows,
                      int count, int row0, int row1) {
     const int height = row1 - row0;
     for (int i = 0; i < count; i++) {
         const r3d_pipeline_rows_t* r = &rows[clusters[i]];
-        if (!r->unbounded && (r->y1 < (float)row0 || r->y0 > (float)row1)) {
+        if (rows_miss(r, row0, row1)) {
             continue;
         }
         const int first = mathi_clamp(r->unbounded ? 0 : (int)r->y0 - row0, 0, height - 1);
@@ -435,7 +441,7 @@ misses_every_centre(const r3d_pipeline_vertex_t* a, const r3d_pipeline_vertex_t*
 
 static inline bool
 rows_miss_target(const r3d_pipeline_rows_t* r, const r3d_span_target_t* target) {
-    return !r->unbounded && (r->y1 < (float)target->rows.row0 || r->y0 > (float)target->rows.row1);
+    return rows_miss(r, target->rows.row0, target->rows.row1);
 }
 
 /* A triangle with a corner behind the near plane or too far off screen to

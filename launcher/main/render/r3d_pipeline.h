@@ -123,9 +123,7 @@ typedef struct {
     uint16_t* maps;               /* the upscale maps: columns, then rows */
     r3d_pipeline_work_t* work[2]; /* one block per row slice */
     uint16_t* culled;             /* raster_culled_length() entries */
-    void* draw;                   /* raster-owned instance and slice state */
-    r3d_lens_t* lenses;           /* one per instance, as raster_prepare() left them */
-    uint16_t* window_rows;        /* a window's row map, destination_height entries */
+    void* draw;                   /* raster-owned state, to the end of the block */
 } r3d_pipeline_buffers_t;
 
 /* The census list's share of the scratch block: raster_culled_length()
@@ -139,9 +137,6 @@ r3d_pipeline_culled_bytes(const raster_t* raster) {
 /* The lens `raster` draws through: framed on its picture's shape, fitted to
  * the size it renders at, for a mesh of `position_scale`. */
 void raster_lens(const raster_t* raster, const render_view_t* view, int position_scale, r3d_lens_t* lens);
-
-/* What raster-owned instance and slice state takes, after the work blocks. */
-size_t raster_draw_state_bytes(const raster_t* raster);
 
 static inline r3d_pipeline_buffers_t
 r3d_pipeline_carve(const raster_t* raster) {
@@ -165,7 +160,5 @@ r3d_pipeline_carve(const raster_t* raster) {
     b.work[0] = (r3d_pipeline_work_t*)p;
     b.work[1] = (r3d_pipeline_work_t*)(p + r3d_pipeline_work_bytes());
     b.draw = p + 2 * r3d_pipeline_work_bytes();
-    b.lenses = (r3d_lens_t*)((char*)b.draw + raster_draw_state_bytes(raster));
-    b.window_rows = (uint16_t*)(b.lenses + raster->instance_count);
     return b;
 }

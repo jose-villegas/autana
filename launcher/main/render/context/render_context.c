@@ -167,13 +167,6 @@ drawn_size(const render_context_t* c, resolution_step_t size, int destination_wi
     return size;
 }
 
-/* The source rows a band of `rows` destination rows can read at the
- * raster's size: the nearest-neighbour row map can straddle one more. */
-static int
-band_source_rows(const raster_t* r, int rows) {
-    return rows == 0 ? 0 : (((rows * r->height) + r->destination_height - 1) / r->destination_height) + 1;
-}
-
 /* Grows `*block` to at least `needed` bytes of `kind`; false when it cannot. */
 static bool
 fit_block(void** block, size_t* bytes, size_t needed, memory_kind_t kind) {
@@ -186,7 +179,8 @@ fit_block(void** block, size_t* bytes, size_t needed, memory_kind_t kind) {
 }
 
 /* Dynamic resolution needs the finest step's scratch so a step never
- * allocates. A band picture is the one block in internal RAM. */
+ * allocates. A band picture is the one block in internal RAM, freed when
+ * the picture holds every row again. */
 static bool
 fit_scratch(render_context_t* c) {
     raster_t* r = &c->raster;
@@ -197,12 +191,17 @@ fit_scratch(render_context_t* c) {
         r->width = finest.width;
         r->height = finest.height;
     }
-    r->band_rows = band_source_rows(r, c->band_rows);
+    r->band_rows = raster_band_source_rows(r, c->band_rows);
     const size_t needed = raster_scratch_bytes(r);
     const size_t band_needed = r->band_rows == 0 ? 0 : raster_band_bytes(r);
     r->width = width;
     r->height = height;
-    r->band_rows = band_source_rows(r, c->band_rows);
+    r->band_rows = raster_band_source_rows(r, c->band_rows);
+    if (band_needed == 0) {
+        memory_free(c->band_scratch);
+        c->band_scratch = NULL;
+        c->band_scratch_bytes = 0;
+    }
     const bool fits =
         fit_block(&c->scratch, &c->scratch_bytes, needed, MEMORY_PSRAM)
         && (band_needed == 0 || fit_block(&c->band_scratch, &c->band_scratch_bytes, band_needed, MEMORY_INTERNAL));
@@ -258,7 +257,7 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
             drawn_size(c, c->ladder.steps[chosen], r->destination_width, r->destination_height);
         r->width = chosen_size.width;
         r->height = raster_present_size(chosen_size, r->present).height;
-        r->band_rows = band_source_rows(r, c->band_rows);
+        r->band_rows = raster_band_source_rows(r, c->band_rows);
         c->frame.width = r->width;
         c->frame.height = r->height;
         raster_prepare_culled(r, view);
@@ -273,32 +272,27 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     c->frame.draw_us = c->policy == RENDER_FIXED ? 0 : (int32_t)(timing_now_us() - began_us);
     c->frame.upscale_us = 0;
     c->frame.step = current_step(c);
+    c->fresh = true;
     return true;
 }
 
-/* Composes rows of a `width` by `height` destination, drawing them first
- * when the picture holds a band; the last row feeds the frame's cost. */
+/* Composes rows of a `width` by `height` destination. A frame drawn since
+ * the last feed adds their cost, and its last row feeds dynamic
+ * resolution once; bands redrawn from an older frame (a paused scene) add
+ * nothing. */
 static void
 compose_rows(render_context_t* c, gfx_target_t destination, int width, int height) {
-    raster_t* r = &c->raster;
     const int64_t began_us = timing_now_us();
-    if (r->band_rows != 0) {
-        int row0;
-        int row1;
-        raster_upscale_source(r, width, height, destination.y0, destination.y0 + destination.height, &row0, &row1);
-        raster_draw_rows(r, row0, row1);
-        show(r);
-    }
-    const int64_t drawn_us = timing_now_us();
-    raster_upscale_rows(r, destination, width, height);
-    if (c->policy == RENDER_FIXED) {
+    const int32_t drawn_us = raster_compose_rows(&c->raster, destination, width, height);
+    if (c->policy == RENDER_FIXED || !c->fresh) {
         return;
     }
-    c->frame.draw_us += (int32_t)(drawn_us - began_us);
-    c->frame.upscale_us += (int32_t)(timing_now_us() - drawn_us);
+    c->frame.draw_us += drawn_us;
+    c->frame.upscale_us += (int32_t)(timing_now_us() - began_us) - drawn_us;
     if (destination.y0 + destination.height < height) {
         return;
     }
+    c->fresh = false;
     const int32_t cost_us = c->frame.draw_us + c->frame.upscale_us;
     if (c->policy == RENDER_STEPPED) {
         (void)resolution_control_update(&c->control, &c->ladder, cost_us);

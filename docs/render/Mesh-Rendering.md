@@ -161,8 +161,8 @@ manager draws the active camera through the engine's one context,
 ### Whole pictures and bands
 
 A frame is prepared once, culled and transformed, then any window of its
-rows can be drawn and upscaled (`raster_prepare()`, `raster_draw_rows()`,
-`raster_upscale_rows()`). Neither the raster nor the context knows the
+rows can be drawn and upscaled (`raster_prepare()`, then
+`raster_compose_rows()` per window). Neither the raster nor the context knows the
 panel layout; the scene shell picks the band rows from it:
 
 | Layout | Band rows | Picture | Drawn |
