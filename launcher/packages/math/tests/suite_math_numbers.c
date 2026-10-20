@@ -106,7 +106,11 @@ test_vec2_ops_agree_across_every_number_type(void) {
     TEST_ASSERT_FALSE(vec2s_equal((vec2s_t){1, 2}, (vec2s_t){1, 3}));
 }
 
-/* Root and reciprocal relative errors <= 2^-30 leave <= 2^-12 LSB before final rounding. */
+/* The double-precision reference runs on the host only: the device's FPU is single precision. */
+#ifndef DEVICE_BUILD
+/* Prescaling relative length error <= sqrt(3)*2^-30; root rounding adds <= 2^-30.
+ * Reciprocal rounding adds <= sqrt(3)*2^-31 (or clamp <= 2^-31), totaling < 2^-28.
+ * This gives < 2^-12 component LSB before final 0.5 LSB rounding. */
 #define NORMALIZE_ROUNDING_ERROR          0.5
 #define NORMALIZE_COMPONENT_ERROR         (NORMALIZE_ROUNDING_ERROR + 0x1p-12)
 #define NORMALIZE_QUOTIENT_RELATIVE_ERROR 0x1p-28
@@ -116,27 +120,30 @@ test_vec2_ops_agree_across_every_number_type(void) {
 #define NORMALIZE_LCG_INCREMENT           UINT32_C(1013904223)
 
 static void
+assert_normalize_quotient_reference(vec3x_t a, int32_t t) {
+    const double length = sqrt((double)a.x * a.x + (double)a.y * a.y + (double)a.z * a.z);
+    const double exact = (double)t * MATHX_ONE / length;
+    const double expected = fmax(INT32_MIN, fmin(INT32_MAX, exact));
+    int32_t q;
+    vec3x_normalize_divide(a, t, &q);
+    TEST_ASSERT_TRUE(fabs(q - expected)
+                     <= NORMALIZE_ROUNDING_ERROR + fabs(expected) * NORMALIZE_QUOTIENT_RELATIVE_ERROR);
+}
+
+static void
 assert_normalize_reference(vec3x_t a) {
     const double length = sqrt((double)a.x * a.x + (double)a.y * a.y + (double)a.z * a.z);
     const vec3x_t out = vec3x_normalize(a);
     static const int32_t numerators[] = {0, 1, -1, MATHX_ONE, -MATHX_ONE, INT32_MAX, INT32_MIN};
     for (size_t i = 0; i < sizeof(numerators) / sizeof(numerators[0]); i++) {
-        int32_t q;
-        vec3x_normalize_divide(a, numerators[i], &q);
-        const double exact = (double)numerators[i] * MATHX_ONE / length;
-        if (exact > INT32_MAX) {
-            TEST_ASSERT_EQUAL_INT32(INT32_MAX, q);
-        } else if (exact < INT32_MIN) {
-            TEST_ASSERT_EQUAL_INT32(INT32_MIN, q);
-        } else {
-            TEST_ASSERT_TRUE(fabs(q - exact)
-                             <= NORMALIZE_ROUNDING_ERROR + fabs(exact) * NORMALIZE_QUOTIENT_RELATIVE_ERROR);
-        }
+        assert_normalize_quotient_reference(a, numerators[i]);
     }
     TEST_ASSERT_TRUE(fabs(out.x - (double)a.x * MATHX_ONE / length) <= NORMALIZE_COMPONENT_ERROR);
     TEST_ASSERT_TRUE(fabs(out.y - (double)a.y * MATHX_ONE / length) <= NORMALIZE_COMPONENT_ERROR);
     TEST_ASSERT_TRUE(fabs(out.z - (double)a.z * MATHX_ONE / length) <= NORMALIZE_COMPONENT_ERROR);
 }
+
+#endif
 
 static void
 test_normalize_divide_zero_and_float(void) {
@@ -157,34 +164,55 @@ test_normalize_divide_zero_and_float(void) {
     }
 }
 
+/* The double-precision reference runs on the host only: the device's FPU is single precision. */
+#ifndef DEVICE_BUILD
 static void
 test_fixed_normalize_saturation_edges(void) {
+    static const struct {
+        vec3x_t a;
+        int32_t t;
+    } oblique_cases[] = {{{-19370, 18651, -10733}, -948719331}, {{-25384, -6545, 25263}, 1192954874}};
+
+    for (size_t i = 0; i < sizeof(oblique_cases) / sizeof(oblique_cases[0]); i++) {
+        assert_normalize_quotient_reference(oblique_cases[i].a, oblique_cases[i].t);
+    }
+
     enum { EDGE_RADIUS = 2, LENGTH_NUMERATOR = 3, LENGTH_DENOMINATOR = 4 };
 
     const vec3x_t a = {LENGTH_NUMERATOR * (MATHX_ONE / LENGTH_DENOMINATOR), 0, 0};
     for (int offset = -EDGE_RADIUS; offset <= EDGE_RADIUS; offset++) {
         for (int sign = -1; sign <= 1; sign += 2) {
             const int32_t t = sign * LENGTH_NUMERATOR * (INT32_MAX / LENGTH_DENOMINATOR + offset);
-            const int64_t exact = (int64_t)(t / LENGTH_NUMERATOR) * LENGTH_DENOMINATOR;
-            const int32_t expected = exact > INT32_MAX ? INT32_MAX : exact < INT32_MIN ? INT32_MIN : (int32_t)exact;
-            int32_t q;
-            vec3x_normalize_divide(a, t, &q);
-            TEST_ASSERT_EQUAL_INT32(expected, q);
+            assert_normalize_quotient_reference(a, t);
         }
     }
 }
+
+#endif
 
 static void
 test_fixed_normalize_extreme_magnitudes(void) {
     static const vec3x_t cases[] = {{200 * MATHX_ONE, 0, 0},           {1, 0, 0},         {1, 1, 0}, {1, 1, 1},
                                     {INT32_MIN, INT32_MIN, INT32_MIN}, {INT32_MAX, -5, 3}};
+#ifndef DEVICE_BUILD
     for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
         assert_normalize_reference(cases[i]);
     }
+#endif
     TEST_ASSERT_EQUAL_INT32(MATHX_ONE, vec3x_normalize(cases[0]).x);
     TEST_ASSERT_EQUAL_INT32(MATHX_ONE, vec3x_normalize(cases[1]).x);
+    const vec3x_t negative_axis = {INT32_MIN, 0, 0};
+    int32_t q;
+    TEST_ASSERT_TRUE(vec3x_equal((vec3x_t){-MATHX_ONE, 0, 0}, vec3x_normalize_divide(negative_axis, INT32_MIN, &q)));
+    TEST_ASSERT_EQUAL_INT32(-MATHX_ONE, q);
+    vec3x_normalize_divide(cases[1], MATHX_ONE, &q);
+    TEST_ASSERT_EQUAL_INT32(INT32_MAX, q);
+    vec3x_normalize_divide(cases[1], -MATHX_ONE, &q);
+    TEST_ASSERT_EQUAL_INT32(INT32_MIN, q);
 }
 
+/* The double-precision reference runs on the host only: the device's FPU is single precision. */
+#ifndef DEVICE_BUILD
 static void
 test_fixed_normalize_every_magnitude(void) {
     uint32_t state = 1;
@@ -201,6 +229,8 @@ test_fixed_normalize_every_magnitude(void) {
         }
     }
 }
+
+#endif
 
 static void
 test_fixed_normalize_matches_float_within_its_precision(void) {
@@ -1093,9 +1123,13 @@ suite_math_numbers(void) {
     RUN_TEST(test_vec3_add_sub_scale_dot_cross_agree_across_every_number_type);
     RUN_TEST(test_vec2_ops_agree_across_every_number_type);
     RUN_TEST(test_normalize_divide_zero_and_float);
+#ifndef DEVICE_BUILD
     RUN_TEST(test_fixed_normalize_saturation_edges);
+#endif
     RUN_TEST(test_fixed_normalize_extreme_magnitudes);
+#ifndef DEVICE_BUILD
     RUN_TEST(test_fixed_normalize_every_magnitude);
+#endif
     RUN_TEST(test_fixed_normalize_matches_float_within_its_precision);
     RUN_TEST(test_fixed_quaternion_rotation_matches_float);
     RUN_TEST(test_fixed_view_from_axes_maps_the_eye_and_frame_axes);

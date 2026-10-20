@@ -62,6 +62,8 @@ test_fixed_normalize_zero_and_tilted_normals(void) {
         TEST_ASSERT_TRUE(vec3x_equal((vec3x_t){0, 0, 0}, out.normal));
         TEST_ASSERT_EQUAL_INT32(mathx_div(distances[i], 0), out.d);
     }
+    /* The double-precision reference runs on the host only: the device's FPU is single precision. */
+#ifndef DEVICE_BUILD
     static const planex_t cases[] = {{{-3, 4, 12}, -7},
                                      {{-3 * MATHX_ONE, 4 * MATHX_ONE, 12 * MATHX_ONE}, 7 * MATHX_ONE},
                                      {{-3 * (INT32_MAX / 12), 4 * (INT32_MAX / 12), 12 * (INT32_MAX / 12)}, INT32_MIN}};
@@ -78,6 +80,7 @@ test_fixed_normalize_zero_and_tilted_normals(void) {
         const double exact = (double)p.d * MATHX_ONE / length;
         TEST_ASSERT_TRUE(fabs(out.d - exact) <= 0.5 + fabs(exact) * quotient_relative_error);
     }
+#endif
 }
 
 static void
