@@ -210,7 +210,7 @@ test_floor_instruction_rows(void) {
     boot_anim_motion_t motion;
     boot_anim_motion_load(&motion);
     TEST_ASSERT_TRUE(motion.from_pack);
-    static const uint32_t frames_ms[] = {2464, FLOOR_CROSSFADE_MS, FLOOR_EDGE_PEAK_MS, 4372};
+    static const uint32_t frames_ms[] = {2464, FLOOR_CROSSFADE_MS, FLOOR_EDGE_PEAK_MS, 4050, 4372};
     for (unsigned frame = 0; frame < sizeof frames_ms / sizeof frames_ms[0]; frame++) {
         report_total(&motion, frames_ms[frame], false);
         report_total(&motion, frames_ms[frame], true);
