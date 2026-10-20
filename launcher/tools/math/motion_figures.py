@@ -10,6 +10,7 @@ from docs.plot_style import (FAINT, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE,
                              save, save_gif, subplots)
 import numpy as np
 from matplotlib.patches import Circle
+from matplotlib.collections import LineCollection
 
 PROBE = pathlib.Path(__file__).with_name("motion_figures_probe.c")
 SOURCES = (PROBE, ROOT / "launcher/packages/math/src/motion/orbit_motion.c")
@@ -20,31 +21,52 @@ SAMPLE_MARKER_INTERVAL = 5
 FIT_CONE_EXTENSION = 1.3
 WAVE_MARGIN = 1.2
 LEGEND_ANCHOR = (0.5, -0.22)
-DECAY_MARKER_SIZE = 2
+DECAY_MARKER_SIZE = 4
 BUMP_MARKER_SIZE = 3
 COLORBAR_SHRINK = 0.7
 COLUMN_EDGE = 0.5
 OFFSET_COLORMAP = "RdBu_r"
+FLING_HALF_LIVES = 4
+TRAIL_SAMPLES = 5
+ORBIT_MARGIN = 1.1
+ANIMATION_DPI = 80
+DECAY_LABEL_PADDING = 0.15
+WAVE_COLOR_PERCENTILE = 98
+WAVE_PUSH_TICKS = 5
 
 
 def orbit_animation(data, output):
     samples = np.array(data["orbit"])
+    end = data["release"] + FLING_HALF_LIVES * data["half_life"]
+    samples = samples[samples[:, 0] <= end]
     fig, (top, strip) = subplots(PANELS, 1, (PANEL_SIZE * PANELS, PANEL_SIZE * PANELS))
+    fig.set_dpi(ANIMATION_DPI)
     square_axes(top, "Held steering, then fling (top view)")
-    top.plot(samples[:, 1], samples[:, 2], color=FAINT)
+    radius = np.hypot(*samples[0, 1:3])
+    top.add_patch(Circle((0, 0), radius, fill=False, edgecolor=FAINT))
     top.scatter([0], [0], color=INK, label="target")
+    trail = LineCollection([], colors=SLOTS[0], linewidths=2)
+    top.add_collection(trail)
     dot, = top.plot([], [], "o", color=SLOTS[0])
-    top.set(xlabel="x", ylabel="z")
+    bound = radius * ORBIT_MARGIN
+    top.set(xlabel="x", ylabel="z", xlim=(-bound, bound), ylim=(-bound, bound))
     strip.plot(samples[:, 0], samples[:, 3], color=SLOTS[0])
     strip.axvline(data["release"], color=INK, label="release")
-    for time in np.arange(data["release"] + data["half_life"], samples[-1, 0], data["half_life"]):
+    for time in np.arange(data["release"] + data["half_life"], end + data["half_life"] / 2, data["half_life"]):
         strip.axvline(time, color=FAINT, linestyle=":")
     cursor = strip.axvline(0, color=SLOTS[1])
-    strip.set(xlabel="Time (s); dotted marks: fling half-lives", ylabel="Yaw speed (rad/s)", ylim=(0, None))
+    strip.set(xlabel="Time (s); dotted marks: fling half-lives", ylabel="Yaw speed (rad/s)",
+              xlim=(0, end), ylim=(0, None))
     strip.legend(fontsize=LABEL_SIZE)
+    indices = np.linspace(0, len(samples) - 1, GIF_FRAMES).astype(int)
 
-    def draw(index):
+    def draw(frame):
+        index = indices[frame]
         time, x, z, _ = samples[index]
+        points = samples[max(0, index - TRAIL_SAMPLES):index + 1, 1:3]
+        trail.set_segments(np.stack((points[:-1], points[1:]), axis=1))
+        if len(points) > 1:
+            trail.set_alpha(np.linspace(0, 1, len(points) - 1))
         dot.set_data([x], [z])
         cursor.set_xdata([time, time])
         top.set_title(f"{'held' if time < data['release'] else 'fling'} — {time:.1f} s", fontsize=TITLE_SIZE)
@@ -54,11 +76,13 @@ def orbit_animation(data, output):
 
 def decay_figure(data, output):
     fig, axes = subplots(1, PANELS, (PANEL_SIZE * PANELS, PANEL_SIZE + PANEL_TITLE_ROOM))
-    for run, color in zip(data, SLOTS):
+    fig.get_layout_engine().set(w_pad=DECAY_LABEL_PADDING)
+    for index, (run, color) in enumerate(zip(data, SLOTS)):
         samples = np.array(run["samples"])
         for axis, column in zip(axes, (1, 2)):
-            axis.plot(samples[:, 0], samples[:, column], color=color, marker="." if column == 1 else "o",
-                      markersize=DECAY_MARKER_SIZE, markevery=SAMPLE_MARKER_INTERVAL, label=f"dt = {run['dt'] * 1000:g} ms")
+            axis.plot(samples[:, 0], samples[:, column], color=color, linestyle="-" if index == 0 else "none",
+                      marker=None if index == 0 else "o", markerfacecolor="none", markersize=DECAY_MARKER_SIZE,
+                      markevery=SAMPLE_MARKER_INTERVAL, label=f"dt = {run['dt'] * 1000:g} ms")
     axes[1].axhline(data[0]["limit"], color=MUTED, linestyle="--", label=r"limit $v_0 h / \ln 2$")
     for axis, title, ylabel in zip(axes, ("Fling speed", "Angle covered"), ("rad/s", "rad")):
         axis.set(title=title, xlabel="Time after release (s)", ylabel=ylabel, ylim=(0, None))
@@ -116,13 +140,13 @@ def wave_figures(data, output):
         row = runs[index]
         if shade is not None:
             shade.remove()
-        shade = axis.axvspan(row["lo"], row["hi"], color=SLOTS[2], alpha=SHAPE_ALPHA)
+        shade = None if row["rest"] else axis.axvspan(row["lo"], row["hi"], color=SLOTS[2], alpha=SHAPE_ALPHA)
         line.set_ydata(offsets[index])
         axis.set_title(f"Tick {row['tick']} — {'at rest' if row['rest'] else 'active range shaded'}", fontsize=TITLE_SIZE)
 
     save_gif(fig, draw, GIF_FRAMES, output / "spring-line-wave.gif", GIF_FPS)
     fig, (heat, bump) = subplots(1, PANELS, (PANEL_SIZE * PANELS, PANEL_SIZE + PANEL_TITLE_ROOM))
-    bound = abs(offsets).max()
+    bound = np.percentile(abs(offsets[WAVE_PUSH_TICKS:]), WAVE_COLOR_PERCENTILE)
     image = heat.imshow(offsets, aspect="auto", origin="upper", cmap=OFFSET_COLORMAP, vmin=-bound, vmax=bound,
                         extent=(-COLUMN_EDGE, offsets.shape[1] - COLUMN_EDGE, len(runs) - COLUMN_EDGE, -COLUMN_EDGE))
     active = [row for row in runs if not row["rest"]]
@@ -131,9 +155,9 @@ def wave_figures(data, output):
                   linestyle=style, label=label)
     heat.set(xlabel="Column", ylabel=f"Tick ({data['tick_ms']} ms)", title="Offset and active range")
     heat.legend(fontsize=LABEL_SIZE, loc="upper center", bbox_to_anchor=LEGEND_ANCHOR)
-    fig.colorbar(image, ax=heat, shrink=COLORBAR_SHRINK)
+    fig.colorbar(image, ax=heat, shrink=COLORBAR_SHRINK, label="Offset (px, clipped)")
     bump.plot(columns, offsets[0], "o-", color=SLOTS[0], markersize=BUMP_MARKER_SIZE)
-    bump.set(xlabel="Column", ylabel="Offset (px)", ylim=(0, None), title=r"Nudge on still line: $(1-t^2)^2$")
+    bump.set(xlabel="Column", ylabel="Offset (px)", ylim=(0, None), title=r"Nudge: $(1-t^2)^2$")
     save(fig, output / "spring-line-spacetime.png")
 
 

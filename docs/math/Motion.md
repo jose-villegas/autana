@@ -60,7 +60,11 @@ e(t)=(e_0+ct)e^{-t/\tau}, \qquad c=v_0+e_0/\tau
 
 Critical damping prevents oscillation; it does not guarantee no crossing for
 arbitrary initial velocity. For $`e_0>0`$, a velocity $`v_0<-e_0/\tau`$ crosses
-home. Reset snaps home once all offsets and speeds meet the settle threshold.
+home.
+
+Reset snaps home when all angle offsets (rad), log-distance offsets and speeds
+(per second) fall below `ORBIT_MOTION_RESET_SETTLED` ($`10^{-4}`$). This strict
+threshold explains why the dotted settle times follow visibly flat curves.
 
 ![Reset from rest, moving away, and moving quickly toward home; the last crosses home, with dotted settle times](../images/math/orbit-reset-spring.png)
 

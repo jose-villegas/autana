@@ -7,7 +7,7 @@
 #include "math/signal/goertzel.h"
 #include "math/signal/pitch.h"
 
-static const int response_lengths[] = {64, 256, 1024};
+static const int response_lengths[] = {64, 128, 256};
 static const float sample_rate_hz = 8192.0F;
 static const float detector_fraction = 0.125F;
 static const int response_points = 241;
@@ -23,7 +23,7 @@ static const int pitch_subdivisions = 4;
 
 static void
 response_samples(void) {
-    printf("\"response\":[");
+    printf("\"sample_rate_hz\":%.9g,\"response\":[", sample_rate_hz);
     for (size_t j = 0; j < sizeof response_lengths / sizeof response_lengths[0]; j++) {
         const int n = response_lengths[j];
         float* samples = calloc((size_t)n, sizeof *samples);
@@ -64,13 +64,12 @@ sweep_samples(void) {
     printf("],\"sweep\":[");
     for (int frame = 0; frame < sweep_frames; frame++) {
         const float middle_s = ((float)(frame * window_samples) + (float)window_samples / 2) / sample_rate_hz;
-        printf("%s{\"hz\":%.9g,\"wave\":[", frame ? "," : "", sweep_start_hz + slope * middle_s);
+        printf("%s{\"time\":%.9g,\"hz\":%.9g", frame ? "," : "", middle_s, sweep_start_hz + slope * middle_s);
         for (int i = 0; i < window_samples; i++) {
             const float time = (float)(frame * window_samples + i) / sample_rate_hz;
             samples[i] = sinf(MATH_TAU * (sweep_start_hz * time + slope * time * time / 2));
-            printf("%s[%.9g,%.9g]", i ? "," : "", (float)i / sample_rate_hz, samples[i]);
         }
-        printf("],\"amplitude\":[");
+        printf(",\"amplitude\":[");
         for (size_t j = 0; j < sizeof detector_hz / sizeof detector_hz[0]; j++) {
             goertzel_t detector;
             goertzel_init(&detector, detector_hz[j], sample_rate_hz);

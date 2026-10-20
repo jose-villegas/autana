@@ -51,15 +51,16 @@ R_N(d)=\left\lvert\frac{\sin(\pi N d)}{N\sin(\pi d)}\right\rvert, \qquad R_N(0)=
 ```
 
 A real sine also has a negative-frequency term, so the measured response can
-differ slightly from this reference. More samples narrow the main lobe in Hz;
-the horizontal axis here normalizes that width to bins.
+differ slightly from this reference. At a shared sample rate, doubling the
+window length halves the main lobe width in Hz.
 
 ![Goertzel amplitude of a unit sine around a detector bin for three window lengths, with a dashed Dirichlet reference](../images/math/goertzel-response.png)
 
-Each chirp block starts a fresh detector window. The bars show how a finite
-window responds while the tone sweeps past three fixed detector frequencies.
+Each chirp block resets the detectors for a fresh window. The top panel tracks
+chirp frequency and the current block. Below, amplitude curves grow as the tone
+passes each fixed detector frequency.
 
-![A linear chirp block and three fixed-frequency Goertzel amplitude bars as the chirp sweeps past them](../images/math/goertzel-sweep.gif)
+![Chirp frequency over time and progressive amplitude readings for three fixed-frequency detectors](../images/math/goertzel-sweep.gif)
 
 ## Equal-temperament pitch
 
