@@ -230,6 +230,7 @@ as aliases and print the canonical spelling once.
 | `autana docs --section <path:line>` | One section whole, or `path#heading words`; `--deep` adds subsections. |
 | `autana docs --outline <path>` | A document's headings with lines and sizes. |
 | `autana docs --ask <question...>` | A short answer from the local chat model, with sources. |
+| `autana docs --usage [--days N]` | What this machine has looked up: counts, repeats, misses, documents refused whole. |
 
 ## JSON fields
 

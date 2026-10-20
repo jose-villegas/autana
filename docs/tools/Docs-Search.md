@@ -28,8 +28,8 @@ autana docs --ask can an app call vTaskDelay inside frame     # a written answer
 A section copied verbatim into two files is kept once. The index is rebuilt on
 every run, so it is never stale; an edit is searchable at once. It is a plain
 filesystem walk of the checkout, not a VCS index; no git command runs. A
-directory is never walked if it is named `.something`, `managed_components`
-or `results`, if it contains its own `CMakeCache.txt` (a real build tree,
+directory is never walked if it is named `.something`, `managed_components`,
+`node_modules` or `results`, if it contains its own `CMakeCache.txt` (a real build tree,
 wherever it lands), or if it contains its own `.git` (a fetched clone, such
 as a tool pulled straight from GitHub), judged by what the directory itself
 holds, never by its name, so `launcher/tools/build/`, a real source folder
@@ -38,9 +38,9 @@ mistaken for one.
 
 The `docs_extra` key of `autana.local.toml` lets notes kept outside the
 checkout join the index ([Settings](Autana-CLI.md#settings)). It is a list of
-paths, each relative to the checkout unless absolute. A named folder is read in full: every Markdown
-file under it, recursively, with no ignore file of its own consulted, and a
-named file must end in `.md`. A named folder's own `eval_questions.tsv` joins
+paths, each relative to the checkout unless absolute. A named folder is walked
+like the checkout: every Markdown file under it, skipping the same
+directories, with no ignore file consulted. A named file must end in `.md`. A named folder's own `eval_questions.tsv` joins
 `--eval`, its rows citing documents by the path search shows for them.
 
 ## How it ranks
@@ -65,10 +65,43 @@ names every topic and answers none. A question whose words no
 document uses says so, and a result that neither holds most of the question's
 words nor is close in meaning is flagged as a weak match.
 
-`scripts/docs/eval_questions.tsv` pairs questions with the section each should
-retrieve, and `--eval` prints where each one ranks. The unit tests hold
-exact-word retrieval to a floor on that set and check that every row still
-names a real section, so a rename that orphans a question fails too.
+## How well it finds
+
+`scripts/docs/eval_questions.tsv` pairs questions with the section that
+answers each. Most are questions people actually asked, each answer checked
+by hand. `--eval` prints where each one ranks in the top ten. It then scores
+the set:
+
+| Score | Meaning |
+|---|---|
+| MRR | mean of 1/rank, 0 for a miss: 1.0 is every answer first |
+| top-1, top-3 | share of answers ranked first, and in the first three |
+
+Each run appends its scores to `eval-history.jsonl` in the [log
+folder](#what-it-logs) and prints the previous run's, so a ranking change
+shows its effect. With the embeddings cached, a run takes seconds. The unit
+tests hold exact-word top-3 to a floor on the set and check that every row
+still names a real section, so a rename that orphans a question fails too.
+
+## What it logs
+
+Every question, `--ask`, `--section` and `--outline` appends one JSON line to
+`queries.jsonl` in `%LOCALAPPDATA%/autana/usage` (`~/.cache/autana/usage`
+elsewhere): the time, the question, the best results with their scores, how
+long it took, whether meaning was used, and whether the answer was weak. It
+stays on the machine; deleting the folder loses only the history.
+
+`autana docs --usage` summarises every `*.jsonl` in that folder, so rows other
+tools write there count too:
+
+| Part | Shows |
+|---|---|
+| Per tool and kind | count, share weak, share where a result was opened next (when a row records it), median time |
+| Most asked | questions asked more than once |
+| Missed | weak or empty answers: the documents to write or retitle |
+| Refused whole-file reads | documents read whole after a refusal, by count |
+
+`--days N` keeps the last N days.
 
 ## Requirements
 
@@ -90,7 +123,8 @@ bge-small-en-v1.5 embedding model. `setup --chat` adds Qwen3-4B-Instruct for
 Everything installs in `%LOCALAPPDATA%/autana/llama` (`~/.cache/autana/llama`
 elsewhere), shared by every worktree. Setup
 ends by embedding the documentation once; after that only a section whose text
-changed is embedded again.
+changed is embedded again. A cached vector is dropped once no checkout has
+asked for it in 30 days, so worktrees with different documents keep theirs.
 
 One `llama-server` in router mode serves both models on `127.0.0.1:8765`. The first query starts it, it loads a model on first
 use and unloads it after ten idle minutes. `docs_llama.py status` shows what

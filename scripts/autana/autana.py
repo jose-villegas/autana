@@ -1723,7 +1723,8 @@ COMMAND_GROUPS = (
             ("docs <question...>", "the sections that answer it, and where to read on"),
             ("docs --section <path:line>", "one section whole; --deep adds its subsections"),
             ("docs --outline <path>", "a document's headings, with lines and sizes"),
-            ("docs --ask <question...>", "a short answer from the local chat model"))),
+            ("docs --ask <question...>", "a short answer from the local chat model"),
+            ("docs --usage [--days N]", "what has been asked here, and what found nothing"))),
     )),
 )
 

@@ -8,6 +8,7 @@ lexically against eval_questions.tsv.
     python -m unittest discover -s scripts/docs/tests
 """
 import io
+import json
 import os
 import sys
 import tempfile
@@ -162,9 +163,10 @@ class Corpus(unittest.TestCase):
                           "docs/A.md": "# A\n"})
         self.assertEqual({p for p, _ in docs_search.corpus_files(root)}, {"docs/A.md"})
 
-    def test_managed_components_and_results_are_pruned_at_any_depth(self):
+    def test_fetched_packages_and_results_are_pruned_at_any_depth(self):
         root = make_repo({
             "launcher/managed_components/pkg/README.md": "# Pkg\n",
+            "scripts/gates/mermaid/node_modules/pkg/README.md": "# Pkg\n",
             "launcher/main/apps/sand/tools/results/README.md": "# Results\n",
             "docs/A.md": "# A\n",
         })
@@ -318,9 +320,17 @@ class Extra(unittest.TestCase):
         self.set_extra(notes)
         self.assertIn(row, docs_search.load_eval(self.root))
 
-    def test_a_named_folder_is_read_in_full_no_ignore_file_consulted(self):
-        """`docs_extra` is a plain rglob: a folder's own .gitignore, if it has
-        one, is just another file to it, not consulted, unlike the checkout walk."""
+    def test_a_named_folder_is_pruned_like_the_checkout(self):
+        notes = self.outside({"Notes.md": "# Notes\n\n## Bench\n\nKept.\n",
+                              "results/run1/report.md": "# Run\n\n## Log\n\nDropped.\n",
+                              "tool/node_modules/pkg/README.md": "# Pkg\n\n## Use\n\nDropped.\n",
+                              ".cache/x.md": "# X\n\n## Y\n\nDropped.\n"})
+        self.set_extra(notes)
+        self.assertEqual(self.paths(), {"docs/Flashing.md", (notes / "Notes.md").as_posix()})
+
+    def test_a_named_folder_consults_no_ignore_file(self):
+        """A folder's own .gitignore, if it has one, is just another file to
+        the walk, as it is in the checkout."""
         vault = self.outside({
             ".gitignore": "Scratch.md\n",
             "Bench Notes.md": "# Bench\n\n## Spare board\n\nLoose port.\n",
@@ -386,6 +396,29 @@ class Semantic(unittest.TestCase):
         vectors = again.vectors(["a psram note", "an edited note"])
         self.assertEqual(docs_llama.embed.call_args.args[0], ["an edited note"])
         self.assertEqual(list(vectors[0]), [1.0, 0.0])
+
+    def test_a_vector_another_checkout_used_lately_is_kept_and_an_old_one_dropped(self):
+        cache = docs_llama.VectorCache()
+        cache.vectors(["this checkout", "another checkout", "long gone"])
+        cache.seen[cache.key("long gone")] -= docs_llama.VectorCache.KEEP_DAYS + 1
+        cache.seen[cache.key("another checkout")] -= docs_llama.VectorCache.KEEP_DAYS - 1
+        cache.save()
+        again = docs_llama.VectorCache()
+        again.vectors(["this checkout"])
+        again.save()
+        kept = docs_llama.VectorCache()
+        self.assertIn(kept.key("another checkout"), kept.rows)
+        self.assertNotIn(kept.key("long gone"), kept.rows)
+
+    def test_a_cache_written_before_use_days_were_kept_still_serves(self):
+        old = docs_llama.VectorCache()
+        old.vectors(["a psram note"])
+        (Path(self.home) / "cache").mkdir(parents=True, exist_ok=True)
+        old.file.write_text(json.dumps(old.rows), encoding="utf-8")
+        docs_llama.embed.reset_mock()
+        again = docs_llama.VectorCache()
+        self.assertEqual(list(again.vectors(["a psram note"])[0]), [1.0, 0.0])
+        docs_llama.embed.assert_not_called()
 
     def test_a_server_that_fails_leaves_search_lexical(self):
         docs_llama.embed.side_effect = ConnectionRefusedError("gone")
@@ -531,10 +564,10 @@ class RealDocuments(unittest.TestCase):
         with mock.patch.object(docs_llama, "installed", return_value=False):
             index = docs_search.Index(REPO, semantic=False)
         ranks = docs_search.evaluate(index)
-        found = sum(1 for _, rank in ranks if rank)
+        found = sum(1 for _, rank in ranks if rank and rank <= 3)
         self.assertGreaterEqual(len(ranks), 30)
         self.assertGreaterEqual(found / len(ranks), self.FLOOR,
-                                [q for q, rank in ranks if not rank])
+                                [q for q, rank in ranks if not rank or rank > 3])
 
 
 if __name__ == "__main__":
