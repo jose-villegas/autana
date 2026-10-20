@@ -66,9 +66,6 @@ component table: `mesh_renderer`, `skinned_renderer`, `light` or `camera`.
 A skinned renderer may also have an animator. A scene needs a mesh renderer
 or skinned renderer.
 
-List renderers best first. The doc image tools show the first renderer
-when a picture stands for the whole scene.
-
 | Key | Meaning |
 |---|---|
 | `position` | Where the object is, in model units. Default `[0, 0, 0]`. |

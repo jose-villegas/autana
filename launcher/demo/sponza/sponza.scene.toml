@@ -1,5 +1,6 @@
 # The reference scene shares one light rig and camera across its baked variants.
-# Its renderers run best first: the first is the one pictures of the scene show.
+# Fitted renderers come first, the standard fitted full at the top: doc_images_demo.sh
+# draws the first renderer in pictures of the whole scene.
 tonemap_white = 0.35
 
 [sky]
