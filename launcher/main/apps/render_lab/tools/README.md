@@ -33,7 +33,7 @@ match no preset show as CUSTOM.
 
 ![The SMALL FILL list open: SMOOTH, FAST, CUSTOM](images/small-fill-menu/menu-sponza-small-fill.png)
 
- The generic scene viewer accepts `--small-fill CEILING,GATE,STYLE`; its defaults
+The generic scene viewer accepts `--small-fill CEILING,GATE,STYLE`; its defaults
 come from `SMALL_FILL_SMOOTH`. Styles use the `small_fill_style_t` values.
 The [engine feature](../../../../../docs/render/Mesh-Rendering.md#small-fill)
 defines the axes and defaults.
