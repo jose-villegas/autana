@@ -37,7 +37,11 @@ swatches_example(swatches_example_t* s) {
 
 ## Renders
 
-![Sixteen colour swatches in two rows, the first outlined, portrait](../images/ui/swatches.png) ![The same, landscape](../images/ui/swatches-landscape.png)
+<!-- generated: ui-swatches-renders sha256=196c46e09e0a5c85affb28a2fc70fb1ca8480ba13c4db28a23a8c2bac4567dae -->
+| Portrait | Landscape |
+|---|---|
+| ![swatches, portrait](../images/ui/swatches.png) | ![swatches, landscape](../images/ui/swatches-landscape.png) |
+<!-- /generated: ui-swatches-renders -->
 
 ## States
 

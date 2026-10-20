@@ -30,7 +30,11 @@ dropdown_icons_example(dropdown_icons_example_t* s) {
 
 ## Renders
 
-![A dropdown with icons showing HOME, closed, portrait](../images/ui/dropdown_icons.png) ![The same, landscape](../images/ui/dropdown_icons-landscape.png)
+<!-- generated: ui-dropdown-icons-renders sha256=e532f7dcffd87139df9e361e483a85f15402d2efa96c2528f367e027ea1e1518 -->
+| Portrait | Landscape |
+|---|---|
+| ![dropdown_icons, portrait](../images/ui/dropdown_icons.png) | ![dropdown_icons, landscape](../images/ui/dropdown_icons-landscape.png) |
+<!-- /generated: ui-dropdown-icons-renders -->
 
 ## States
 

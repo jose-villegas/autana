@@ -29,7 +29,11 @@ button_example(button_example_t* s) {
 
 ## Renders
 
-![A PLAY button at rest, portrait](../images/ui/button.png) ![The same, landscape](../images/ui/button-landscape.png)
+<!-- generated: ui-button-renders sha256=247982c7bec2fa0f4e1d7737c042135da5e82d78e02dc4522f1b5510f8ea816e -->
+| Portrait | Landscape |
+|---|---|
+| ![button, portrait](../images/ui/button.png) | ![button, landscape](../images/ui/button-landscape.png) |
+<!-- /generated: ui-button-renders -->
 
 ## States
 

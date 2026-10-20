@@ -27,7 +27,11 @@ header_example(header_example_t* s) {
 
 ## Renders
 
-![A SETTINGS title bar, portrait](../images/ui/header.png) ![The same, landscape](../images/ui/header-landscape.png)
+<!-- generated: ui-header-renders sha256=92debfb3b48819671b588dc98e77bf83d653c70b19e17b7c9ee05d73f600632f -->
+| Portrait | Landscape |
+|---|---|
+| ![header, portrait](../images/ui/header.png) | ![header, landscape](../images/ui/header-landscape.png) |
+<!-- /generated: ui-header-renders -->
 
 ## States
 

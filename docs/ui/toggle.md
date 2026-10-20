@@ -24,7 +24,11 @@ toggle_example(toggle_example_t* s) {
 
 ## Renders
 
-![A MUTE toggle, off, portrait](../images/ui/toggle.png) ![The same, landscape](../images/ui/toggle-landscape.png)
+<!-- generated: ui-toggle-renders sha256=7324db013bd80b1a74468f2cb588cb865929df6c677db885899d08782ae6158d -->
+| Portrait | Landscape |
+|---|---|
+| ![toggle, portrait](../images/ui/toggle.png) | ![toggle, landscape](../images/ui/toggle-landscape.png) |
+<!-- /generated: ui-toggle-renders -->
 
 ## States
 

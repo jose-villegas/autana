@@ -7,11 +7,13 @@ control's states table with the renders ui_examples_render_host.sh made.
 The first form writes block ui-<name>-example, wherever a document owns it,
 from ui_examples/<name>.c or ui_examples/screens/<name>.c, with the name's
 underscores as hyphens; --check only reports a stale block. The second turns
-the scene's results in DIR into OUT/ui/*.png and OUT/tables/ui-<name>-states.md
+the scene's results in DIR into OUT/ui/*.png, and OUT/tables/ui-<name>-renders.md
+(a column per orientation, named by the pinned label) and ui-<name>-states.md,
 for render_doc_images.sh.
 A state render with the same pixels as rest is not kept: its row says so.
 """
 import argparse
+import os
 import pathlib
 import sys
 
@@ -21,6 +23,9 @@ HERE = pathlib.Path(__file__).resolve().parent
 ROOT = HERE.parents[2]
 EXAMPLES = HERE / "ui_examples"
 BASELINE = HERE / "scenes" / "ui_examples_render_baseline.txt"
+IMAGES = ROOT / "docs" / "images" / "ui"
+# The scene's rest renders by label suffix, and the column each one heads.
+ORIENTATIONS = {"": "Portrait", "-landscape": "Landscape"}
 CHECK = "python launcher/tools/render/ui_examples_doc.py --check"
 
 
@@ -49,13 +54,28 @@ def write_examples(check):
     return changed
 
 
+def pinned():
+    """The scene's render labels, in the order it renders them."""
+    return [line.split()[0] for line in BASELINE.read_text(encoding="utf-8").splitlines()
+            if line and not line.startswith("#")]
+
+
 def states(name):
-    """Example `name`'s states in the order the scene renders them, read from
-    its pinned labels: `name` is rest, `name-<state>` the others."""
-    labels = [line.split()[0] for line in BASELINE.read_text(encoding="utf-8").splitlines()
-              if line and not line.startswith("#")]
-    found = [label[len(name) + 1:] for label in labels if label.startswith(f"{name}-")]
-    return ["rest", *(state for state in found if state != "landscape")]
+    """Example `name`'s states, read from its pinned labels: `name` is rest,
+    `name-<state>` the others."""
+    found = [label[len(name) + 1:] for label in pinned() if label.startswith(f"{name}-")]
+    return ["rest", *(state for state in found if f"-{state}" not in ORIENTATIONS)]
+
+
+def orientations(name):
+    """(heading, label) for each orientation `name` is pinned at rest in."""
+    labels = set(pinned())
+    return [(heading, name + suffix) for suffix, heading in ORIENTATIONS.items() if name + suffix in labels]
+
+
+def image_dir(owners, name):
+    """The images folder as the document owning block `name` links it."""
+    return pathlib.PurePath(os.path.relpath(IMAGES, (ROOT / owners[name]).parent)).as_posix()
 
 
 def fires(renders, label):
@@ -75,14 +95,22 @@ def write_renders(renders, out):
     def save(label):
         Image.open(renders / f"{label}.bmp").save(out / "ui" / f"{label}.png")
 
+    owners = block_owners(ROOT)
     controls, screens = examples()
-    for path in screens:
-        save(path.stem)
-        save(f"{path.stem}-landscape")
+    for path in controls + screens:
+        name = path.stem
+        table = block(name, "renders")
+        images = image_dir(owners, table)
+        found = orientations(name)
+        for _, label in found:
+            save(label)
+        rows = ["| " + " | ".join(heading for heading, _ in found) + " |", "|---" * len(found) + "|",
+                "| " + " | ".join(f"![{name}, {heading.lower()}]({images}/{label}.png)" for heading, label in found)
+                + " |"]
+        (out / "tables" / f"{table}.md").write_text("\n".join(rows) + "\n", encoding="utf-8")
     for path in controls:
         name = path.stem
-        save(name)
-        save(f"{name}-landscape")
+        images = image_dir(owners, block(name, "states"))
         rest = (renders / f"{name}.bmp").read_bytes()
         rows = ["| State | Render | Fires |", "|---|---|---|"]
         for state in states(name):
@@ -92,7 +120,7 @@ def write_renders(renders, out):
             else:
                 if state != "rest":
                     save(label)
-                render = f"![{name}, {state}](../images/ui/{label}.png)"
+                render = f"![{name}, {state}]({images}/{label}.png)"
             rows.append(f"| {state} | {render} | {fires(renders, label)} |")
         (out / "tables" / f"{block(name, 'states')}.md").write_text("\n".join(rows) + "\n", encoding="utf-8")
 

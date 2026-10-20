@@ -33,7 +33,11 @@ text_example(text_example_t* s) {
 
 ## Renders
 
-![A caption UNREAD at the left and a count at the right, portrait](../images/ui/text.png) ![The same, landscape](../images/ui/text-landscape.png)
+<!-- generated: ui-text-renders sha256=5a69689bccaff49c33b48d905740fbd4fda9696f927ca70c37bdf1a6bffda1ed -->
+| Portrait | Landscape |
+|---|---|
+| ![text, portrait](../images/ui/text.png) | ![text, landscape](../images/ui/text-landscape.png) |
+<!-- /generated: ui-text-renders -->
 
 ## States
 

@@ -28,7 +28,11 @@ dropdown_example(dropdown_example_t* s) {
 
 ## Renders
 
-![A dropdown showing SPEAKER, closed, portrait](../images/ui/dropdown.png) ![The same, landscape](../images/ui/dropdown-landscape.png)
+<!-- generated: ui-dropdown-renders sha256=8b62024607ecdbff0e0c0f937edead8be39de2e62a1cdc34cbf66e093c5876bf -->
+| Portrait | Landscape |
+|---|---|
+| ![dropdown, portrait](../images/ui/dropdown.png) | ![dropdown, landscape](../images/ui/dropdown-landscape.png) |
+<!-- /generated: ui-dropdown-renders -->
 
 ## States
 

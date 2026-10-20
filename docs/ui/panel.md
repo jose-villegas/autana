@@ -30,7 +30,11 @@ panel_example(panel_example_t* s) {
 
 ## Renders
 
-![A BRIGHTNESS panel holding a slider, portrait](../images/ui/panel.png) ![The same, landscape](../images/ui/panel-landscape.png)
+<!-- generated: ui-panel-renders sha256=b6718610f18b7e5862e28a2f98b3855d187c634a21e57df4cd6b752643a5b9ed -->
+| Portrait | Landscape |
+|---|---|
+| ![panel, portrait](../images/ui/panel.png) | ![panel, landscape](../images/ui/panel-landscape.png) |
+<!-- /generated: ui-panel-renders -->
 
 ## States
 

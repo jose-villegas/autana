@@ -42,7 +42,11 @@ tile_example(tile_example_t* s) {
 
 ## Renders
 
-![Three tiles, each a colour above its name, GOLD selected, portrait](../images/ui/tile.png) ![The same, landscape](../images/ui/tile-landscape.png)
+<!-- generated: ui-tile-renders sha256=749aa1b70653ad5baba24fe9841caac08dcb0dcf8d91e7516680917df980f187 -->
+| Portrait | Landscape |
+|---|---|
+| ![tile, portrait](../images/ui/tile.png) | ![tile, landscape](../images/ui/tile-landscape.png) |
+<!-- /generated: ui-tile-renders -->
 
 ## States
 

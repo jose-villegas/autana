@@ -26,7 +26,11 @@ slider_example(slider_example_t* s) {
 
 ## Renders
 
-![A volume slider at its lowest value, portrait](../images/ui/slider.png) ![The same, landscape](../images/ui/slider-landscape.png)
+<!-- generated: ui-slider-renders sha256=ce140c305730342c6d50dfd2f78fb6e999f450ff43bfa18fc788d81e8a75d107 -->
+| Portrait | Landscape |
+|---|---|
+| ![slider, portrait](../images/ui/slider.png) | ![slider, landscape](../images/ui/slider-landscape.png) |
+<!-- /generated: ui-slider-renders -->
 
 ## States
 

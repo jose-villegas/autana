@@ -30,7 +30,11 @@ button_icon_example(button_icon_example_t* s) {
 
 ## Renders
 
-![A HOME button with a house icon at rest, portrait](../images/ui/button_icon.png) ![The same, landscape](../images/ui/button_icon-landscape.png)
+<!-- generated: ui-button-icon-renders sha256=a50579a8acfa40f997ed25819ae95a7a65d1c1735749623762f0fff096af7b5d -->
+| Portrait | Landscape |
+|---|---|
+| ![button_icon, portrait](../images/ui/button_icon.png) | ![button_icon, landscape](../images/ui/button_icon-landscape.png) |
+<!-- /generated: ui-button-icon-renders -->
 
 ## States
 

@@ -33,7 +33,11 @@ icon_example(icon_example_t* s) {
 
 ## Renders
 
-![A WIFI icon, the word NETWORK and a check mark, portrait](../images/ui/icon.png) ![The same, landscape](../images/ui/icon-landscape.png)
+<!-- generated: ui-icon-renders sha256=522eb58a7bd708f1b525f87887bf3ed531b3d4d64e4950b9a3a1ba561300441e -->
+| Portrait | Landscape |
+|---|---|
+| ![icon, portrait](../images/ui/icon.png) | ![icon, landscape](../images/ui/icon-landscape.png) |
+<!-- /generated: ui-icon-renders -->
 
 ## States
 

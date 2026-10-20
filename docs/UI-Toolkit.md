@@ -69,7 +69,11 @@ replays them over each strip it sends.
 
 ## A whole screen
 
-![A settings screen in portrait: a title bar, a volume slider, a MUTE toggle and an output dropdown](images/ui/settings.png) ![The same settings screen in landscape](images/ui/settings-landscape.png)
+<!-- generated: ui-settings-renders sha256=a09dc8ad52b04e3885cafc0e989764e43cff33755dfcd2855a5240b0298b2fc9 -->
+| Portrait | Landscape |
+|---|---|
+| ![settings, portrait](images/ui/settings.png) | ![settings, landscape](images/ui/settings-landscape.png) |
+<!-- /generated: ui-settings-renders -->
 
 The same code draws both orientations, because it measures against
 `ui_width()` rather than a fixed width. The render wraps it in
@@ -160,7 +164,11 @@ frame; `NULL` restores the shell look the pictures here use. `ui_theme_t`:
 
 Those are all of its fields; colours are `0xRRGGBB`.
 
-![A screen in warm colours: a NEW GAME title bar, a DIFFICULTY dropdown and a START button](images/ui/themed.png) ![The same screen in landscape](images/ui/themed-landscape.png)
+<!-- generated: ui-themed-renders sha256=ca5076b7cd77d1b111759662d2a1392aa8755818ea15d00cd945d0b93f2bb9c4 -->
+| Portrait | Landscape |
+|---|---|
+| ![themed, portrait](images/ui/themed.png) | ![themed, landscape](images/ui/themed-landscape.png) |
+<!-- /generated: ui-themed-renders -->
 
 <!-- generated: ui-themed-example check: python launcher/tools/render/ui_examples_doc.py --check -->
 ```c

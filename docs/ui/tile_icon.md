@@ -32,7 +32,11 @@ tile_icon_example(tile_icon_example_t* s) {
 
 ## Renders
 
-![A WIFI tile with its icon, not selected, portrait](../images/ui/tile_icon.png) ![The same, landscape](../images/ui/tile_icon-landscape.png)
+<!-- generated: ui-tile-icon-renders sha256=d5b4c03a8ebc7a61440984a51dbf183ec5aa6a086b009b059417854ec2bfbaba -->
+| Portrait | Landscape |
+|---|---|
+| ![tile_icon, portrait](../images/ui/tile_icon.png) | ![tile_icon, landscape](../images/ui/tile_icon-landscape.png) |
+<!-- /generated: ui-tile-icon-renders -->
 
 ## States
 
