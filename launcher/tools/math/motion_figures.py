@@ -5,12 +5,13 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
-from math_figures import PANEL_SIZE, PANEL_TITLE_ROOM, ROOT, SHAPE_ALPHA, run_probe, square_axes
+from math_figures import (DISPLAY, PANEL_SIZE, PANEL_TITLE_ROOM, ROOT, SHAPE_ALPHA,
+                          VIEW_AZIMUTH, VIEW_ELEVATION, read_define, run_probe)
 from docs.plot_style import (FAINT, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE,
-                             save, save_gif, subplots)
+                             figure, save, save_gif, subplots)
 import numpy as np
-from matplotlib.patches import Circle
-from matplotlib.collections import LineCollection
+from matplotlib.lines import Line2D
+from mpl_toolkits.mplot3d.art3d import Line3DCollection
 
 PROBE = pathlib.Path(__file__).with_name("motion_figures_probe.c")
 SOURCES = (PROBE, ROOT / "launcher/packages/math/src/motion/orbit_motion.c")
@@ -18,7 +19,7 @@ GIF_FRAMES = 60
 GIF_FPS = 10
 PANELS = 2
 SAMPLE_MARKER_INTERVAL = 5
-FIT_CONE_EXTENSION = 1.3
+FIT_CONE_EXTENSION = 1.1
 WAVE_MARGIN = 1.2
 LEGEND_ANCHOR = (0.5, -0.22)
 DECAY_MARKER_SIZE = 4
@@ -26,52 +27,115 @@ BUMP_MARKER_SIZE = 3
 COLORBAR_SHRINK = 0.7
 COLUMN_EDGE = 0.5
 OFFSET_COLORMAP = "RdBu_r"
-FLING_HALF_LIVES = 4
 TRAIL_SAMPLES = 5
-ORBIT_MARGIN = 1.1
+ORBIT_MARGIN = 1.3
+FRAME_AXIS_LENGTH = 0.3
+ORBIT_ZOOM = 1.5
+ORBIT_DPI = 70
+ORBIT_GIF_COLORS = 64
+FRAME_AXIS_WIDTH = 2
+ARROW_HEAD_RATIO = 0.3
+WIRE_SAMPLES = 49
+WIRE_STRIDE = 8
+WIRE_ALPHA = 0.45
+WIRE_WIDTH = 0.6
+ORBIT_PANEL_RATIOS = (3, 1)
+PHASE_LABEL_HEIGHT = 1.04
+SPEED_MARGIN = 1.15
+SPEED_LEGEND_ANCHOR = (0.5, -0.65)
+ORBIT_LEGEND_ANCHOR = (0.5, 0.01)
 ANIMATION_DPI = 80
 PANEL_LABEL_PADDING = 0.15
 WAVE_COLOR_PERCENTILE = 98
 WAVE_PUSH_TICKS = 5
 
 
+def wire_sphere(axis, center, radius, color=FAINT):
+    yaw = np.linspace(0, 2 * np.pi, WIRE_SAMPLES)
+    pitch = np.linspace(-np.pi / 2, np.pi / 2, WIRE_SAMPLES)
+    x = center[0] + radius * np.outer(np.cos(yaw), np.cos(pitch))
+    y = center[1] + radius * np.outer(np.ones_like(yaw), np.sin(pitch))
+    z = center[2] + radius * np.outer(np.sin(yaw), np.cos(pitch))
+    axis.plot_wireframe(x, y, z, rstride=WIRE_STRIDE, cstride=WIRE_STRIDE,
+                        color=color, alpha=WIRE_ALPHA, linewidth=WIRE_WIDTH)
+
+
 def orbit_animation(data, output):
-    samples = np.array(data["orbit"])
-    end = data["release"] + FLING_HALF_LIVES * data["half_life"]
-    samples = samples[samples[:, 0] <= end]
-    fig, (top, strip) = subplots(PANELS, 1, (PANEL_SIZE * PANELS, PANEL_SIZE * PANELS))
-    fig.set_dpi(ANIMATION_DPI)
-    square_axes(top, "Held steering, then fling (top view)")
-    radius = np.hypot(*samples[0, 1:3])
-    top.add_patch(Circle((0, 0), radius, fill=False, edgecolor=FAINT))
-    top.scatter([0], [0], color=INK, label="target")
-    trail = LineCollection([], colors=SLOTS[0], linewidths=2)
-    top.add_collection(trail)
-    dot, = top.plot([], [], "o", color=SLOTS[0])
+    samples = data["orbit"]
+    times = np.array([row["time"] for row in samples])
+    positions = np.array([row["position"] for row in samples])
+    speeds = np.array([row["speed"] for row in samples])
+    target = np.array(data["target"])
+    radius = np.linalg.norm(positions[0] - target)
+    fig = figure((PANEL_SIZE * PANELS, PANEL_SIZE * PANELS))
+    fig.set_dpi(ORBIT_DPI)
+    grid = fig.add_gridspec(PANELS, 1, height_ratios=ORBIT_PANEL_RATIOS)
+    top = fig.add_subplot(grid[0], projection="3d")
+    strip = fig.add_subplot(grid[1])
+    wire_sphere(top, target, radius)
+    yaw = np.linspace(0, 2 * np.pi, WIRE_SAMPLES)
+    for pitch in (-data["pitch_limit"], data["pitch_limit"]):
+        top.plot(target[0] + radius * np.cos(pitch) * np.cos(yaw),
+                 target[1] + radius * np.sin(pitch) * np.ones_like(yaw),
+                 target[2] + radius * np.cos(pitch) * np.sin(yaw), color=MUTED, linestyle="--")
+    top.scatter(*target, color=INK)
+    trail = Line3DCollection([], colors=SLOTS[0], linewidths=2)
+    top.add_collection3d(trail, autolim=False)
+    arrows = []
     bound = radius * ORBIT_MARGIN
-    top.set(xlabel="x", ylabel="z", xlim=(-bound, bound), ylim=(-bound, bound))
-    strip.plot(samples[:, 0], samples[:, 3], color=SLOTS[0])
-    strip.axvline(data["release"], color=INK, label="release")
-    for time in np.arange(data["release"] + data["half_life"], end + data["half_life"] / 2, data["half_life"]):
+    top.set(xlim=(target[0] - bound, target[0] + bound),
+            ylim=(target[1] - bound, target[1] + bound),
+            zlim=(target[2] - bound, target[2] + bound))
+    top.set_box_aspect((1, 1, 1), zoom=ORBIT_ZOOM)
+    top.view_init(elev=VIEW_ELEVATION, azim=VIEW_AZIMUTH, vertical_axis="y")
+    top.set_axis_off()
+    handles = [Line2D([], [], color=color, marker="s", linewidth=FRAME_AXIS_WIDTH, label=label) for color, label in
+               zip(SLOTS, ("+x stays level", "+y", "+z faces target"))]
+    handles.extend((Line2D([], [], marker="o", linestyle="none", color=INK, label="target"),
+                    Line2D([], [], linestyle="--", color=MUTED, label="±pitch limit")))
+    top.legend(handles=handles, fontsize=LABEL_SIZE, loc="lower center",
+               bbox_to_anchor=ORBIT_LEGEND_ANCHOR, ncol=3, frameon=False)
+    for column, label, color in zip(speeds.T, ("yaw", "pitch"), SLOTS):
+        strip.plot(times, column, color=color, label=label)
+    boundaries = (0, data["release"], data["reset_start"], times[-1])
+    for start, end, label in zip(boundaries, boundaries[1:], ("held", "fling", "reset")):
+        strip.axvline(start, color=MUTED, linewidth=WIRE_WIDTH)
+        strip.text((start + end) / 2, PHASE_LABEL_HEIGHT, label, transform=strip.get_xaxis_transform(),
+                   ha="center", fontsize=LABEL_SIZE)
+    for time in np.arange(data["release"] + data["half_life"], data["reset_start"], data["half_life"]):
         strip.axvline(time, color=FAINT, linestyle=":")
-    cursor = strip.axvline(0, color=SLOTS[1])
-    strip.set(xlabel="Time (s); dotted marks: fling half-lives", ylabel="Yaw speed (rad/s)",
-              xlim=(0, end), ylim=(0, None))
-    strip.legend(fontsize=LABEL_SIZE)
-    indices = np.linspace(0, len(samples) - 1, GIF_FRAMES).astype(int)
+    cursor = strip.axvline(0, color=INK)
+    bound = abs(speeds).max() * SPEED_MARGIN
+    strip.axhline(0, color=FAINT, linewidth=WIRE_WIDTH)
+    strip.set(xlabel="Time (s); dotted marks: fling half-lives", ylabel="Speed (rad/s)",
+              xlim=(0, times[-1]), ylim=(-bound, bound))
+    strip.tick_params(labelsize=LABEL_SIZE)
+    strip.legend(fontsize=LABEL_SIZE, ncol=2, loc="upper center", bbox_to_anchor=SPEED_LEGEND_ANCHOR)
 
     def draw(frame):
-        index = indices[frame]
-        time, x, z, _ = samples[index]
-        points = samples[max(0, index - TRAIL_SAMPLES):index + 1, 1:3]
+        for arrow in arrows:
+            arrow.remove()
+        arrows.clear()
+        row = samples[frame]
+        points = positions[max(0, frame - TRAIL_SAMPLES):frame + 1]
         trail.set_segments(np.stack((points[:-1], points[1:]), axis=1))
         if len(points) > 1:
             trail.set_alpha(np.linspace(0, 1, len(points) - 1))
-        dot.set_data([x], [z])
+        for direction, color in zip(row["axes"], SLOTS):
+            arrows.append(top.quiver(*positions[frame], *direction, color=color,
+                                     length=radius * FRAME_AXIS_LENGTH, linewidth=FRAME_AXIS_WIDTH,
+                                     arrow_length_ratio=ARROW_HEAD_RATIO))
+        time = row["time"]
         cursor.set_xdata([time, time])
-        top.set_title(f"{'held' if time < data['release'] else 'fling'} — {time:.1f} s", fontsize=TITLE_SIZE)
+        phase = "held" if time < data["release"] else "fling" if time < data["reset_start"] else "reset"
+        if time >= data["reset_start"] and not row["resetting"]:
+            phase = "reset settled — home"
+        top.set_title(f"3D orbit: {phase} — {time:.1f} s", fontsize=TITLE_SIZE)
 
-    save_gif(fig, draw, GIF_FRAMES, output, GIF_FPS)
+    draw(0)
+    fig.canvas.draw()
+    fig.set_layout_engine("none")
+    save_gif(fig, draw, len(samples), output, GIF_FPS, colors=ORBIT_GIF_COLORS)
 
 
 def decay_figure(data, output):
@@ -104,17 +168,33 @@ def reset_figure(data, output):
 
 
 def fit_figure(data, output):
-    fig, (diagram, axis) = subplots(1, PANELS, (PANEL_SIZE * PANELS, PANEL_SIZE + PANEL_TITLE_ROOM))
-    square_axes(diagram, "Sphere tangent to padded cone")
+    fig = figure((PANEL_SIZE * PANELS, PANEL_SIZE + PANEL_TITLE_ROOM))
+    diagram = fig.add_subplot(1, PANELS, 1, projection="3d")
+    axis = fig.add_subplot(1, PANELS, 2)
     distance, radius = data["distance"], data["radius"]
-    x, y = data["tangent"]
-    diagram.add_patch(Circle((distance, 0), radius, fill=False, edgecolor=SLOTS[0]))
-    diagram.plot([0, x * FIT_CONE_EXTENSION], [0, y * FIT_CONE_EXTENSION], color=MUTED)
-    diagram.plot([0, x * FIT_CONE_EXTENSION], [0, -y * FIT_CONE_EXTENSION], color=MUTED)
-    diagram.plot([distance, x], [0, y], color=SLOTS[1], label="radius r")
-    diagram.plot([0, distance], [0, 0], ":", color=INK, label="fit distance d")
-    diagram.scatter([x], [y], color=SLOTS[1])
-    diagram.set(xlabel="Distance along lens axis", ylabel="Transverse distance")
+    width = read_define(DISPLAY, "BSP_LCD_H_RES")
+    height = read_define(DISPLAY, "BSP_LCD_V_RES")
+    short_tangent = data["padded_tangent"]
+    half_tangents = np.array((width, height)) / min(width, height) * short_tangent
+    depth = distance + radius * FIT_CONE_EXTENSION
+    corners = np.array([(sx * depth * half_tangents[0], sy * depth * half_tangents[1], depth)
+                        for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1), (-1, -1))])
+    for corner in corners[:-1]:
+        diagram.plot(*np.array(((0, 0, 0), corner)).T, color=FAINT)
+    diagram.plot(*corners.T, color=SLOTS[1], label="padded picture")
+    wire_sphere(diagram, (0, 0, distance), radius, color=SLOTS[0])
+    diagram.grid(False)
+    diagram.scatter(0, 0, 0, color=INK, label="camera")
+    tangent_z, tangent_short = data["tangent"]
+    for sign in (-1, 1):
+        contact = (sign * tangent_short, 0, tangent_z) if width < height else (0, sign * tangent_short, tangent_z)
+        diagram.scatter(*contact, color=SLOTS[0])
+    diagram.set_title("Padded view pyramid\nshort axis binds", fontsize=TITLE_SIZE)
+    diagram.set(xlabel="x", ylabel="y", zlabel="z", xlim=(-corners[:, 0].max(), corners[:, 0].max()),
+                ylim=(-corners[:, 1].max(), corners[:, 1].max()), zlim=(0, depth))
+    diagram.set_box_aspect((np.ptp(corners[:, 0]), np.ptp(corners[:, 1]), depth))
+    diagram.view_init(elev=VIEW_ELEVATION, azim=VIEW_AZIMUTH, vertical_axis="y")
+    diagram.tick_params(labelsize=LABEL_SIZE, pad=0)
     diagram.legend(fontsize=LABEL_SIZE, loc="upper center", bbox_to_anchor=LEGEND_ANCHOR)
     samples = np.array(data["samples"])
     for column, label, color in ((1, f"padding p = {data['padding']:g}", SLOTS[0]), (2, "padding p = 0", SLOTS[1])):

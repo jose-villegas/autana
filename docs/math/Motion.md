@@ -36,7 +36,10 @@ follows that turn over the frame time $`\Delta t`$, with half-life $`h_d`$
 v \gets v + (\Delta/\Delta t-v)(1-2^{-\Delta t/h_d})
 ```
 
-![Top view of held orbit steering followed by a slowing fling, with a moving speed cursor and half-life marks](../images/math/orbit-fling.gif)
+The 3D orbit shows held yaw and pitch steering, a released fling, and a reset to home.
+The pose's +z faces the target; the speed strip tracks both turns.
+
+![3D orbit with pose axes, a fading trail and pitch-limit circles through held steering, fling and reset to home; signed yaw and pitch speeds below](../images/math/orbit-fling.gif)
 
 After release, speed halves every $`h`$ seconds (`ORBIT_MOTION_FLING_HALF_LIFE_S`).
 The exact integral gives the angle covered; the same elapsed time gives the same
@@ -78,7 +81,10 @@ the padded cone's tangent is $`t`$:
 t=\tan\theta(1-p), \qquad d=\frac{r\sqrt{1+t^2}}{t}
 ```
 
-![Sphere tangent to a padded lens cone and fit distance per radius against half field of view, with and without padding](../images/math/orbit-fit-distance.png)
+The 3D view shows the camera, padded picture and sphere touching the short-side planes.
+The plot compares fit distance with and without padding.
+
+![3D padded view pyramid with the camera at its apex and a fitted sphere binding the short axis; fit distance per radius against half field of view alongside](../images/math/orbit-fit-distance.png)
 
 ## spring_line.h
 
