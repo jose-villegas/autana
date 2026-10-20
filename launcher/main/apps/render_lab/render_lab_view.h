@@ -33,6 +33,17 @@ bool render_lab_small_fill_select(int index);
 
 bool render_lab_apply_camera_settings(scene_t* scene, scene_entity_t camera);
 
+/* The tunable render_lab.layout, the framebuffer layout render_lab asks for
+ * at enter(); a change takes effect at the next enter or scene switch. */
+typedef enum {
+    RENDER_LAB_LAYOUT_FULL,
+    RENDER_LAB_LAYOUT_DOUBLE,
+    RENDER_LAB_LAYOUT_DOUBLE_CLEAR, /* double, the sent frame filled by core 1 */
+    RENDER_LAB_LAYOUT_COUNT,
+} render_lab_layout_t;
+
+render_lab_layout_t render_lab_layout(void);
+
 /* Applies the tunables to destination dimensions. */
 resolution_step_t render_lab_render_size(int width, int height);
 void render_lab_apply_raster_settings(void);

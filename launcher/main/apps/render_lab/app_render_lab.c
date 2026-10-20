@@ -94,15 +94,30 @@ static float fps_value;
 /* Orientation changes invalidate the HUD layout. */
 static uint32_t last_layout_generation;
 
+typedef struct {
+    gfx_layout_t layout;
+    bool clear_on_send;
+} layout_choice_t;
+
+static const layout_choice_t layout_choices[RENDER_LAB_LAYOUT_COUNT] = {
+    [RENDER_LAB_LAYOUT_FULL] = {GFX_LAYOUT_FULL_FB, false},
+    [RENDER_LAB_LAYOUT_DOUBLE] = {GFX_LAYOUT_DOUBLE_FB, false},
+    [RENDER_LAB_LAYOUT_DOUBLE_CLEAR] = {GFX_LAYOUT_DOUBLE_FB, true},
+};
+
 static void
 enter_layout(void) {
+    const layout_choice_t* chosen = &layout_choices[render_lab_layout()];
     const gfx_mode_request_t mode_request = {
-        .layout = GFX_LAYOUT_FULL_FB,
+        .layout = chosen->layout,
 
         .interlace_x = false,
         .interlace_y = false,
     };
     (void)gfx_mode_enter(&mode_request);
+    if (chosen->clear_on_send) {
+        (void)gfx_set_clear_on_send(true, gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
+    }
 
     gfx_invalidate();
 }
