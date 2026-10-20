@@ -78,14 +78,15 @@ suite or host tool include them.
 ## The maths
 
 `math/linear/projectf.h` owns the pinhole lens value, continuous float
-projection and float near clipping; `math/linear/projectx.h` owns fixed
-near clipping at any common camera-space scale. `render_view_lens()` copies
-the view's isotropic focal length and optical centre into `projectf_t`.
-Render retains pixel snapping, the fixed line path's camera units and its
-32-bit per-point divide followed by the pixel-scale multiply. The fixed
-path truncates each quotient toward zero. The float reference in
-`render/r3d_project.h` biases each pixel offset slightly away from zero,
-then truncates toward zero.
+projection and float near clipping; `projectx_t` holds a Q16.16 lens.
+`render_view_t.lens` holds the view's square-pixel pinhole.
+
+Fixed near clipping accepts any common camera-space scale. Render owns
+pixel snapping and fixed line units; its 32-bit quotient truncates toward
+zero before the pixel-scale multiply.
+
+The float reference in `render/r3d_project.h` biases pixel offsets slightly
+away from zero before truncating toward zero.
 
 Line projection, the animation tracks and the raster all
 take their types from `math/linear/`, documented in

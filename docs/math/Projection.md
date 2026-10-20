@@ -14,9 +14,9 @@ flowchart LR
     O -->|"caller snaps, then cx + x, cy - y"| X["whole pixel"]
 ```
 
-`projectf_t` is the lens: `fx`, `fy` (pixels per camera unit at unit depth,
-may differ), `cx`, `cy` (optical centre, pixels) and `near_z` (camera units).
-The functions below take it by pointer.
+`projectf_t` holds independent `fx`, `fy` (pixels per camera unit at unit depth),
+`cx`, `cy` (optical centre, pixels) and `near_z` (camera units).
+`projectx_t` holds these in Q16.16; projection functions take `projectf_t*`.
 
 | Name | Maps | Inputs | Types | Formula |
 |---|---|---|---|---|

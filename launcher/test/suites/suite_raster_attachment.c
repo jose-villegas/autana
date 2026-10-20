@@ -196,7 +196,8 @@ test_cluster_values_and_constant_writers(void) {
     const raster_attachment_t* both[] = {&per, &constant};
     raster_rig_t* r = rig_open(both, 2);
     r->raster.instance_count = 1;
-    r3d_lit_cluster_t clusters[2];
+    r3d_lit_cluster_t* clusters = calloc(2, sizeof(*clusters));
+    TEST_ASSERT_NOT_NULL(clusters);
     split_quad(r, clusters);
     raster_rig_attach(r, both, 2);
     draw(r);
@@ -237,6 +238,7 @@ test_cluster_values_and_constant_writers(void) {
     TEST_ASSERT_TRUE(drawn > 0);
     TEST_ASSERT_EQUAL_UINT32(17, writers[0].value);
     TEST_ASSERT_EQUAL_UINT32(17, writers[1].value);
+    free(clusters);
 }
 
 static void
