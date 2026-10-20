@@ -381,9 +381,9 @@ shade; one in its bright half gets the darker shade. On overflow, try the
 other direction. If neither fits, use flat; channels never clamp independently.
 
 <table>
-<tr><th>Look</th><th>Picture</th><th>Amplified difference from Ceiling 4, no gate</th></tr>
-<tr><td>SMOOTH (4/0 FLAT)</td><td><img src="../images/render/sponza-small-fill-ceiling-4-no-gate.gif" width="100%" alt="Ceiling 4, no gate"></td><td></td></tr>
-<tr><td>FAST (12/16 FLAT)</td><td><img src="../images/render/sponza-small-fill-default.gif" width="100%" alt="FAST (12/16 FLAT)"></td><td><img src="../images/render/sponza-small-fill-default-diff.gif" width="100%" alt="FAST (12/16 FLAT) difference"></td></tr>
+<tr><th>Look</th><th>Picture</th><th>Amplified difference from SMOOTH</th></tr>
+<tr><td>SMOOTH (4/0 FLAT)</td><td><img src="../images/render/sponza-small-fill-smooth.gif" width="100%" alt="SMOOTH"></td><td></td></tr>
+<tr><td>FAST (12/16 FLAT)</td><td><img src="../images/render/sponza-small-fill-fast.gif" width="100%" alt="FAST (12/16 FLAT)"></td><td><img src="../images/render/sponza-small-fill-fast-diff.gif" width="100%" alt="FAST (12/16 FLAT) difference"></td></tr>
 <tr><td>12/16 GRAIN</td><td><img src="../images/render/sponza-small-fill-grain.gif" width="100%" alt="Hue-safe grain"></td><td><img src="../images/render/sponza-small-fill-grain-diff.gif" width="100%" alt="Grain difference"></td></tr>
 <tr><td>12/16 DITHER</td><td><img src="../images/render/sponza-small-fill-dither.gif" width="100%" alt="Ordered vertex colours"></td><td><img src="../images/render/sponza-small-fill-dither-diff.gif" width="100%" alt="Dither difference"></td></tr>
 </table>
@@ -392,8 +392,8 @@ Clips show the same full renderer frames and camera window, one look per GIF.
 The [temporal method](../tools/Render-Harness.md#temporal-video-columns)
 measures triangle-scale pops; the difference clips also show spatial noise.
 
-<!-- generated: small-fill-temporal sha256=ce7bb0d7021cdff735ebd7c47626c52b52eebf4138fa5982af6b9f9e78e554b3 -->
-| Look vs Ceiling 4, no gate | Extra frame-to-frame change (levels of 255) | Blocks popping (>8/255) |
+<!-- generated: small-fill-temporal sha256=38698541e1b32b9d0b4161461a1905c939ffd8a853aee8e7293b755e40e69535 -->
+| Look vs SMOOTH | Extra frame-to-frame change (levels of 255) | Blocks popping (>8/255) |
 |---|---|---|
 | SMOOTH (4/0 FLAT) | 0.000 | 0.0000% |
 | FAST (12/16 FLAT) | 0.799 | 1.6689% |
@@ -403,44 +403,44 @@ measures triangle-scale pops; the difference clips also show spatial noise.
 
 #### Board frame-cost gains when opted in
 
-The committed [ceiling-by-gate sweep](data/small-fill/p5a-sweep.json)
-measures FLAT on board A308. Its [plan](data/small-fill/p5a-plan.json)
+The committed [ceiling-by-gate sweep](data/small-fill/ceiling-gate-sweep.json)
+measures FLAT on board A308. Its [plan](data/small-fill/ceiling-gate-plan.json)
 records build IDs, captures and layout seeds.
 
 Times are seed means in landscape: the fitted-full mesh frame and the
 animated skinned render. Each sweep's percentages compare with its first row.
-The [camera-style sweep](data/small-fill/p7-sweep.json) compares the styles
-with the baseline on the same build; its [plan](data/small-fill/p7-plan.json)
+The [camera-style sweep](data/small-fill/styles-sweep.json) compares the styles
+with the baseline on the same build; its [plan](data/small-fill/styles-plan.json)
 records both orientations. This table shows landscape.
 
-<!-- generated: small-fill-board sha256=a75ce821fab519f172bd8ade0e3b0ae380e4a19787d8bec0d6cf7901f7bbc7c8 -->
+<!-- generated: small-fill-board sha256=4dd180bc5fba2d920eaa745b8d3f165e67f1440759e319e72ac10d075d2bf5ae -->
 | Ceiling | Gate | Style | Mesh frame ms | vs first row | Skinned render ms | vs first row | Capture |
 |---|---|---|---|---|---|---|---|
-| 4 | 0 | FLAT | 41.103 | +0.00% | 8.743 | +0.00% | p5a, point 0 |
-| 4 | 8 | FLAT | 41.114 | +0.03% | 8.745 | +0.02% | p5a, point 1 |
-| 4 | 16 | FLAT | 41.108 | +0.01% | 8.742 | -0.01% | p5a, point 2 |
-| 4 | 24 | FLAT | 41.109 | +0.01% | 8.739 | -0.05% | p5a, point 3 |
-| 12 | 0 | FLAT | 36.356 | -11.55% | 8.014 | -8.34% | p5a, point 4 |
-| 12 | 8 | FLAT | 37.569 | -8.60% | 8.136 | -6.95% | p5a, point 5 |
-| 12 | 16 | FLAT | 37.355 | -9.12% | 8.115 | -7.19% | p5a, point 6 |
-| 12 | 24 | FLAT | 37.261 | -9.35% | 8.113 | -7.21% | p5a, point 7 |
-| 14 | 0 | FLAT | 35.556 | -13.50% | 7.914 | -9.48% | p5a, point 8 |
-| 14 | 8 | FLAT | 36.866 | -10.31% | 8.034 | -8.10% | p5a, point 9 |
-| 14 | 16 | FLAT | 36.711 | -10.69% | 8.024 | -8.22% | p5a, point 10 |
-| 14 | 24 | FLAT | 36.610 | -10.93% | 8.017 | -8.30% | p5a, point 11 |
-| 16 | 0 | FLAT | 35.043 | -14.74% | 7.856 | -10.14% | p5a, point 12 |
-| 16 | 8 | FLAT | 36.457 | -11.30% | 7.960 | -8.96% | p5a, point 13 |
-| 16 | 16 | FLAT | 36.285 | -11.72% | 7.965 | -8.90% | p5a, point 14 |
-| 16 | 24 | FLAT | 36.159 | -12.03% | 7.961 | -8.95% | p5a, point 15 |
+| 4 | 0 | FLAT | 41.103 | +0.00% | 8.743 | +0.00% | ceiling-gate, point 0 |
+| 4 | 8 | FLAT | 41.114 | +0.03% | 8.745 | +0.02% | ceiling-gate, point 1 |
+| 4 | 16 | FLAT | 41.108 | +0.01% | 8.742 | -0.01% | ceiling-gate, point 2 |
+| 4 | 24 | FLAT | 41.109 | +0.01% | 8.739 | -0.05% | ceiling-gate, point 3 |
+| 12 | 0 | FLAT | 36.356 | -11.55% | 8.014 | -8.34% | ceiling-gate, point 4 |
+| 12 | 8 | FLAT | 37.569 | -8.60% | 8.136 | -6.95% | ceiling-gate, point 5 |
+| 12 | 16 | FLAT | 37.355 | -9.12% | 8.115 | -7.19% | ceiling-gate, point 6 |
+| 12 | 24 | FLAT | 37.261 | -9.35% | 8.113 | -7.21% | ceiling-gate, point 7 |
+| 14 | 0 | FLAT | 35.556 | -13.50% | 7.914 | -9.48% | ceiling-gate, point 8 |
+| 14 | 8 | FLAT | 36.866 | -10.31% | 8.034 | -8.10% | ceiling-gate, point 9 |
+| 14 | 16 | FLAT | 36.711 | -10.69% | 8.024 | -8.22% | ceiling-gate, point 10 |
+| 14 | 24 | FLAT | 36.610 | -10.93% | 8.017 | -8.30% | ceiling-gate, point 11 |
+| 16 | 0 | FLAT | 35.043 | -14.74% | 7.856 | -10.14% | ceiling-gate, point 12 |
+| 16 | 8 | FLAT | 36.457 | -11.30% | 7.960 | -8.96% | ceiling-gate, point 13 |
+| 16 | 16 | FLAT | 36.285 | -11.72% | 7.965 | -8.90% | ceiling-gate, point 14 |
+| 16 | 24 | FLAT | 36.159 | -12.03% | 7.961 | -8.95% | ceiling-gate, point 15 |
 
 | Ceiling | Gate | Style | Mesh frame ms | vs first row | Skinned render ms | vs first row | Capture |
 |---|---|---|---|---|---|---|---|
-| 4 | 16 | FLAT | 40.113 | +0.00% | 8.577 | +0.00% | p7, point 0 |
-| 4 | 16 | GRAIN | 40.116 | +0.01% | 8.579 | +0.01% | p7, point 1 |
-| 4 | 16 | DITHER | 40.119 | +0.02% | 8.575 | -0.02% | p7, point 2 |
-| 12 | 16 | FLAT | 36.972 | -7.83% | 8.038 | -6.29% | p7, point 3 |
-| 12 | 16 | GRAIN | 38.649 | -3.65% | 8.294 | -3.30% | p7, point 4 |
-| 12 | 16 | DITHER | 38.985 | -2.81% | 8.351 | -2.63% | p7, point 5 |
+| 4 | 16 | FLAT | 40.113 | +0.00% | 8.577 | +0.00% | styles, point 0 |
+| 4 | 16 | GRAIN | 40.116 | +0.01% | 8.579 | +0.01% | styles, point 1 |
+| 4 | 16 | DITHER | 40.119 | +0.02% | 8.575 | -0.02% | styles, point 2 |
+| 12 | 16 | FLAT | 36.972 | -7.83% | 8.038 | -6.29% | styles, point 3 |
+| 12 | 16 | GRAIN | 38.649 | -3.65% | 8.294 | -3.30% | styles, point 4 |
+| 12 | 16 | DITHER | 38.985 | -2.81% | 8.351 | -2.63% | styles, point 5 |
 <!-- /generated: small-fill-board -->
 
 ## Memory

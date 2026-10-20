@@ -105,12 +105,12 @@ def sweep_rows(data, name):
 
 
 def small_fill_board(data, scene_id, object_name):
-    """Flat camera settings plus optional camera-style measurements in p7."""
+    """Flat camera settings plus optional camera-style measurements."""
     styles = small_fill_styles()
     mesh = f"run_{scene_id}_perf_suite/{object_name}_fitted_full quarter=landscape"
     tables = []
-    for name in ("p5a", "p7"):
-        if name == "p7" and not (data / f"{name}-plan.json").exists():
+    for name in ("ceiling-gate", "styles"):
+        if name == "styles" and not (data / f"{name}-plan.json").exists():
             continue
         _, rows = sweep_rows(data, name)
         skin = [key for key in rows[0]["metrics"] if re.search(
@@ -121,7 +121,7 @@ def small_fill_board(data, scene_id, object_name):
         measured = []
         for row in rows:
             knobs = row["knobs"]
-            if name == "p5a":
+            if name == "ceiling-gate":
                 ceiling = knobs["r3d_span.small_max_side"]
                 gate = knobs["r3d_span.small_flat_spread_far"]
                 gate = 0 if gate == SWEEP_GATE_OFF else gate
@@ -173,7 +173,7 @@ def write_small_fill(work, out, scene_id, object_name, data):
         temporal.append((label, f'{sum(float(f["extra_change_levels"]) for f in frames) / len(frames):.3f}',
                          f'{sum(float(f["blocks_popping_pct"]) for f in frames) / len(frames):.4f}%'))
     (out / "small-fill-temporal.md").write_text(markdown(
-        ["Look vs Ceiling 4, no gate", "Extra frame-to-frame change (levels of 255)", "Blocks popping (>8/255)"], temporal), encoding="utf-8")
+        ["Look vs SMOOTH", "Extra frame-to-frame change (levels of 255)", "Blocks popping (>8/255)"], temporal), encoding="utf-8")
     (out / "small-fill-board.md").write_text(small_fill_board(data, scene_id, object_name), encoding="utf-8")
 
 

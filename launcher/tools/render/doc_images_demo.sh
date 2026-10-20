@@ -38,8 +38,8 @@ HOST=${build#built }
 
 small_fill_images() {
     cat > "$W/small-fill-looks.tsv" <<EOF
-ceiling-4-no-gate|SMOOTH (4/0 FLAT)|${FULL}_fitted_full|--small-fill 4,0,0|${ID}-small-fill-ceiling-4-no-gate|
-default|FAST (12/16 FLAT)|${FULL}_fitted_full|--small-fill 12,16,0|${ID}-small-fill-default|${ID}-small-fill-default-diff
+smooth|SMOOTH (4/0 FLAT)|${FULL}_fitted_full|--small-fill 4,0,0|${ID}-small-fill-smooth|
+fast|FAST (12/16 FLAT)|${FULL}_fitted_full|--small-fill 12,16,0|${ID}-small-fill-fast|${ID}-small-fill-fast-diff
 grain|12/16 GRAIN|${FULL}_fitted_full|--small-fill 12,16,1|${ID}-small-fill-grain|${ID}-small-fill-grain-diff
 dither|12/16 DITHER|${FULL}_fitted_full|--small-fill 12,16,2|${ID}-small-fill-dither|${ID}-small-fill-dither-diff
 EOF
@@ -59,17 +59,17 @@ EOF
         gif_from_avi "$W/small-fill-$look.avi" "$RENDER/$gif.gif" \
             "$small_fill_window" "$small_fill_palette"
     done 3< "$W/small-fill-looks.tsv"
-    if cmp -s "$W/small-fill-ceiling-4-no-gate.bmp" "$W/small-fill-default.bmp"; then
+    if cmp -s "$W/small-fill-smooth.bmp" "$W/small-fill-fast.bmp"; then
         echo "small-fill: --small-fill did not change the render" >&2
         exit 1
     fi
     while IFS='|' read -r look label object settings gif diff <&3; do
         run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/small-fill-$look.mp4" \
-            --video "$W/small-fill-ceiling-4-no-gate.avi" "$W/small-fill-$look.avi" \
-            --label-a "Ceiling 4, no gate" --label-b "$look" --csv "$W/small-fill-$look.frames.csv" \
+            --video "$W/small-fill-smooth.avi" "$W/small-fill-$look.avi" \
+            --label-a "SMOOTH" --label-b "$label" --csv "$W/small-fill-$look.frames.csv" \
             > "$W/small-fill-$look-compare.log"
         run "$PYTHON" launcher/tools/render/render_temporal.py \
-            --video "$W/small-fill-ceiling-4-no-gate.avi" "$W/small-fill-$look.avi" \
+            --video "$W/small-fill-smooth.avi" "$W/small-fill-$look.avi" \
             --csv "$W/small-fill-$look.frames.csv" >> "$W/small-fill-$look-compare.log"
     done 3< "$W/small-fill-looks.tsv"
     run "$PYTHON" - "$W" <<'PY'
@@ -80,11 +80,11 @@ from PIL import Image
 sys.path.insert(0, "launcher/tools/render")
 from render_compare import GAIN, heatmap, read_video
 work = pathlib.Path(sys.argv[1])
-fps, baseline = read_video(work / "small-fill-ceiling-4-no-gate.avi")
+fps, baseline = read_video(work / "small-fill-smooth.avi")
 baseline = list(baseline)
 for row in (work / "small-fill-looks.tsv").read_text().splitlines():
     look, label, _, _, _, _ = row.split("|")
-    if look == "ceiling-4-no-gate":
+    if look == "smooth":
         continue
     _, variant = read_video(work / f"small-fill-{look}.avi")
     frames = [heatmap(Image.fromarray(a), Image.fromarray(b), None, GAIN)
@@ -95,7 +95,7 @@ for row in (work / "small-fill-looks.tsv").read_text().splitlines():
                    input=b"".join(frame.tobytes() for frame in frames), check=True)
 PY
     while IFS='|' read -r look label object settings gif diff <&3; do
-        [ "$look" != ceiling-4-no-gate ] || continue
+        [ "$look" != smooth ] || continue
         gif_from_avi "$W/small-fill-$look-diff.avi" "$RENDER/$diff.gif" \
             "$small_fill_window" "$small_fill_palette"
     done 3< "$W/small-fill-looks.tsv"

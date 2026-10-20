@@ -129,13 +129,13 @@ class DocImageFailureTest(unittest.TestCase):
                                      for metric in (mesh, skin)}}
                         for index, (knobs, value) in enumerate(zip(points, (1000, 900)))]
                 (data / f"{name}-sweep.json").write_text(json.dumps({"rows": rows}))
-            write_sweep("p5a", points)
+            write_sweep("ceiling-gate", points)
             flat = doc_tables.small_fill_board(data, "gallery", "painting")
             self.assertIn("-10.00%", flat)
             self.assertNotIn("GRAIN", flat)
             points = [{"render_lab.small_fill_ceiling": 12, "render_lab.small_fill_gate": 16,
                        "render_lab.small_fill_style": style} for style in (0, 1)]
-            write_sweep("p7", points)
+            write_sweep("styles", points)
             styles = doc_tables.small_fill_board(data, "gallery", "painting")
             self.assertIn("| 12 | 16 | GRAIN | 0.900 | -10.00% |", styles)
             self.assertEqual(styles.count("| Ceiling |"), 2)
@@ -148,13 +148,13 @@ class DocImageFailureTest(unittest.TestCase):
         import doc_tables
         with tempfile.TemporaryDirectory() as directory:
             data = pathlib.Path(directory)
-            (data / "p7-plan.json").write_text(json.dumps({
+            (data / "styles-plan.json").write_text(json.dumps({
                 "points": [{}], "captures": [{"board": "a"}, {"board": "b"}]}))
-            (data / "p7-sweep.json").write_text(json.dumps({"rows": [{
+            (data / "styles-sweep.json").write_text(json.dumps({"rows": [{
                 "build": "test", "point": 0, "knobs": {},
                 "metrics": {"frame": {"mean": 1, "observations": [1]}}}]}))
             with self.assertRaisesRegex(ValueError, "one board"):
-                doc_tables.sweep_rows(data, "p7")
+                doc_tables.sweep_rows(data, "styles")
 
     def test_small_fill_table_uses_ceiling_bound(self):
         sys.path.insert(0, str(ROOT / "launcher/tools/render"))
@@ -220,7 +220,7 @@ class DocImageFailureTest(unittest.TestCase):
             images = root / "docs/images/render"
             images.mkdir(parents=True)
             for stem in ("gallery-full", "gallery-missing", "unknown-full",
-                         "gallery-small-fill-ceiling-4-no-gate", "gallery-small-fill-default-diff",
+                         "gallery-small-fill-smooth", "gallery-small-fill-fast-diff",
                          "gallery-small-fill-dither-diff", "gallery-small-fill-grain-diff"):
                 (images / f"{stem}.gif").touch()
             done = subprocess.run(["sh", str(tools / "render_doc_images.sh"), "--orphans"],
