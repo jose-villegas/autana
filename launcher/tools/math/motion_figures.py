@@ -11,7 +11,8 @@ from docs.plot_style import (FAINT, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE,
                              figure, save, save_gif, subplots)
 import numpy as np
 from matplotlib.lines import Line2D
-from mpl_toolkits.mplot3d.art3d import Line3DCollection
+from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
+from mpl_toolkits.mplot3d import proj3d
 
 PROBE = pathlib.Path(__file__).with_name("motion_figures_probe.c")
 SOURCES = (PROBE, ROOT / "launcher/packages/math/src/motion/orbit_motion.c")
@@ -20,6 +21,17 @@ GIF_FPS = 10
 PANELS = 2
 SAMPLE_MARKER_INTERVAL = 5
 FIT_CONE_EXTENSION = 1.1
+FIT_VIEW = (24, -125)
+FIT_PLANE_ALPHA = 0.09
+FIT_SPHERE_ALPHA = 0.32
+FIT_SURFACE_SAMPLES = 65
+FIT_LEGEND_ANCHOR = (0.5, -0.06)
+FIT_ZOOM = 1.05
+FIT_TOUCH_LABEL = (0.01, 0.85)
+FIT_ROOM_LABEL = (0.62, 0.93)
+FIT_LENS_LABEL = (0.12, 0.16)
+FIT_CAMERA_LABEL_OFFSET = (-8, -16)
+FIT_DIMENSION_CAP = 0.05
 WAVE_MARGIN = 1.2
 LEGEND_ANCHOR = (0.5, -0.22)
 DECAY_MARKER_SIZE = 4
@@ -29,7 +41,7 @@ COLUMN_EDGE = 0.5
 OFFSET_COLORMAP = "RdBu_r"
 TRAIL_SAMPLES = 5
 ORBIT_MARGIN = 1.3
-FRAME_AXIS_LENGTH = 0.3
+FRAME_AXIS_LENGTH = 0.45
 ORBIT_ZOOM = 1.5
 ORBIT_DPI = 70
 ORBIT_GIF_COLORS = 64
@@ -179,23 +191,65 @@ def fit_figure(data, output):
     depth = distance + radius * FIT_CONE_EXTENSION
     corners = np.array([(sx * depth * half_tangents[0], sy * depth * half_tangents[1], depth)
                         for sx, sy in ((-1, -1), (1, -1), (1, 1), (-1, 1), (-1, -1))])
+    camera = np.zeros(3)
+    center = np.array((0, 0, distance))
+    short_axis = int(width >= height)
+    long_axis = 1 - short_axis
+    for first, second in zip(corners, corners[1:]):
+        face = np.array((camera, first, second))
+        if first[short_axis] == second[short_axis]:
+            diagram.add_collection3d(Poly3DCollection([face], facecolor=SLOTS[1], alpha=FIT_PLANE_ALPHA))
     for corner in corners[:-1]:
-        diagram.plot(*np.array(((0, 0, 0), corner)).T, color=FAINT)
-    diagram.plot(*corners.T, color=SLOTS[1], label="padded picture")
-    wire_sphere(diagram, (0, 0, distance), radius, color=SLOTS[0])
-    diagram.grid(False)
-    diagram.scatter(0, 0, 0, color=INK, label="camera")
-    tangent_z, tangent_short = data["tangent"]
+        diagram.plot(*np.array((camera, corner)).T, color=MUTED, linewidth=WIRE_WIDTH)
+    diagram.plot(*corners.T, color=SLOTS[1])
+    diagram.plot(*np.array((camera, center)).T, color=INK, linestyle=":")
+    yaw = np.linspace(0, 2 * np.pi, FIT_SURFACE_SAMPLES)
+    pitch = np.linspace(-np.pi / 2, np.pi / 2, FIT_SURFACE_SAMPLES)
+    diagram.plot_surface(radius * np.outer(np.cos(yaw), np.cos(pitch)),
+                         radius * np.outer(np.ones_like(yaw), np.sin(pitch)),
+                         distance + radius * np.outer(np.sin(yaw), np.cos(pitch)),
+                         color=SLOTS[0], alpha=FIT_SPHERE_ALPHA, linewidth=0, shade=True)
+    diagram.scatter(*camera, color=INK)
+    tangent_z = distance / (1 + short_tangent ** 2)
+    contacts = []
     for sign in (-1, 1):
-        contact = (sign * tangent_short, 0, tangent_z) if width < height else (0, sign * tangent_short, tangent_z)
-        diagram.scatter(*contact, color=SLOTS[0])
-    diagram.set_title("Padded view pyramid\nshort axis binds", fontsize=TITLE_SIZE)
-    diagram.set(xlabel="x", ylabel="y", zlabel="z", xlim=(-corners[:, 0].max(), corners[:, 0].max()),
+        contact = np.array((0, 0, tangent_z))
+        contact[short_axis] = sign * tangent_z * short_tangent
+        contacts.append(contact)
+        diagram.scatter(*contact, color=SLOTS[1], depthshade=False)
+    long_normal = np.zeros(3)
+    long_normal[long_axis] = 1
+    long_normal[2] = -half_tangents[long_axis]
+    long_normal /= np.linalg.norm(long_normal)
+    plane_distance = -np.dot(center, long_normal)
+    gap = np.array((center + radius * long_normal, center + plane_distance * long_normal))
+    diagram.plot(*gap.T, color=INK)
+    for endpoint in gap:
+        cap = np.zeros(3)
+        cap[short_axis] = radius * FIT_DIMENSION_CAP
+        diagram.plot(*np.array((endpoint - cap, endpoint + cap)).T, color=INK)
+    diagram.set_title("Fit: the short axis binds", fontsize=TITLE_SIZE)
+    diagram.set(xlim=(-corners[:, 0].max(), corners[:, 0].max()),
                 ylim=(-corners[:, 1].max(), corners[:, 1].max()), zlim=(0, depth))
-    diagram.set_box_aspect((np.ptp(corners[:, 0]), np.ptp(corners[:, 1]), depth))
-    diagram.view_init(elev=VIEW_ELEVATION, azim=VIEW_AZIMUTH, vertical_axis="y")
-    diagram.tick_params(labelsize=LABEL_SIZE, pad=0)
-    diagram.legend(fontsize=LABEL_SIZE, loc="upper center", bbox_to_anchor=LEGEND_ANCHOR)
+    diagram.set_box_aspect((np.ptp(corners[:, 0]), np.ptp(corners[:, 1]), depth), zoom=FIT_ZOOM)
+    diagram.view_init(elev=FIT_VIEW[0], azim=FIT_VIEW[1], vertical_axis="y")
+    diagram.set_axis_off()
+    x, y, _ = proj3d.proj_transform(*camera, diagram.get_proj())
+    diagram.annotate("camera", xy=(x, y), xytext=FIT_CAMERA_LABEL_OFFSET,
+                     textcoords="offset points", fontsize=LABEL_SIZE, ha="right")
+    for points, label, location in ((contacts, "touches (short axis)", FIT_TOUCH_LABEL),
+                                    ([gap.mean(axis=0)], "room (long axis)", FIT_ROOM_LABEL),
+                                    ([center / 2], "lens axis (+z)", FIT_LENS_LABEL)):
+        for index, point in enumerate(points):
+            x, y, _ = proj3d.proj_transform(*point, diagram.get_proj())
+            diagram.annotate(label if index == 0 else "", xy=(x, y), xytext=location, textcoords="axes fraction",
+                             fontsize=LABEL_SIZE, arrowprops=dict(arrowstyle="-", color=MUTED))
+    handles = [Line2D([], [], color=color, marker=marker, linestyle=style, label=label)
+               for color, marker, style, label in ((INK, "o", "none", "camera"),
+                                                   (SLOTS[0], "o", "none", "sphere"),
+                                                   (SLOTS[1], None, "-", "padded picture"))]
+    diagram.legend(handles=handles, fontsize=LABEL_SIZE, loc="upper center",
+                   bbox_to_anchor=FIT_LEGEND_ANCHOR, ncol=3, frameon=False)
     samples = np.array(data["samples"])
     for column, label, color in ((1, f"padding p = {data['padding']:g}", SLOTS[0]), (2, "padding p = 0", SLOTS[1])):
         axis.plot(samples[:, 0], samples[:, column], color=color, label=label)
