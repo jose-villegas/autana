@@ -7,8 +7,9 @@ name: Mermaid Diagrams
 # installing mermaid-cli's bundled Chrome is real per-run cost and nothing outside a .md
 # file or the validator itself can change the result, which is also why it is its own
 # workflow: a path filter applies to a whole workflow, never to one job. A weekly run
-# only asks GitHub which mermaid it renders with, so a GitHub upgrade shows up as a red run
-# without waiting for a .md change.
+# asks GitHub which mermaid it renders with and, when that moved, opens the pull request
+# that bumps the pin and lockfile (CI then renders every diagram with it), without waiting
+# for a .md change.
 
 on:
   push:
@@ -60,13 +61,44 @@ jobs:
         run: node scripts/gates/check-mermaid.mjs
 
   github-mermaid-version:
-    name: GitHub's mermaid matches the pin
+    name: Bump the pin to GitHub's mermaid
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REFRESH_BRANCH: feature/mermaid-pin
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/host-tools
 
-      # Exit 1: GitHub moved to another mermaid. Exit 2: its version could not be read.
-      - name: Compare GitHub's mermaid with the pinned one
-        run: node scripts/gates/check-mermaid.mjs --github-version
+      # Exit 2: GitHub's version could not be read, a red run. A moved version is written
+      # into the override; the lockfile follows from it.
+      - name: Write GitHub's mermaid into the pin
+        run: |
+          node scripts/gates/check-mermaid.mjs --github-version --write
+          npm install --package-lock-only --ignore-scripts --prefix scripts/gates/mermaid
+
+      - name: Open or update the bump PR, or close a stale one
+        env:
+          TITLE: "build: pin check-mermaid to GitHub's mermaid"
+        run: |
+          set +e
+          python scripts/ci/refresh_branch.py "$REFRESH_BRANCH" "$TITLE" $(git diff --name-only)
+          code=$?
+          set -e
+          if [ "$code" -eq 3 ]; then
+            python scripts/ci/refresh_pr.py close "The pin already matches GitHub's mermaid."
+            exit 0
+          fi
+          [ "$code" -eq 0 ] || exit "$code"
+          {
+            echo "GitHub renders with mermaid $(node -p "require('./scripts/gates/mermaid/package.json').overrides.mermaid"); this moves the pin and lockfile to it, made by \`.github/workflows/mermaid.yml\` on ${GITHUB_SHA::7}."
+            echo
+            echo "Checks do not start on a PR opened by the workflow: close and reopen it to render every diagram with the new version."
+            echo
+            echo "Ticket: 4bg6"
+          } > "$RUNNER_TEMP/body.md"
+          python scripts/ci/refresh_pr.py sync "$TITLE" "$RUNNER_TEMP/body.md"

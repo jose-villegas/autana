@@ -15,6 +15,7 @@ import {
   mmdcCommand,
   pinnedVersion,
   pinnedMermaidVersion,
+  writePinnedMermaidVersion,
   svgSize,
   isTall,
   TALL_RATIO,
@@ -195,6 +196,19 @@ test('the pinned mermaid is the one package.json overrides it to', () => {
   try {
     writeFileSync(join(dir, 'package.json'), JSON.stringify({ overrides: { mermaid: '12.1.0' } }));
     assert.equal(pinnedMermaidVersion(dir), '12.1.0');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('writing the pinned mermaid changes only the override', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'mermaid-pin-'));
+  try {
+    const pkg = { dependencies: { '@mermaid-js/mermaid-cli': '1.2.3' }, overrides: { mermaid: '12.1.0' } };
+    writeFileSync(join(dir, 'package.json'), JSON.stringify(pkg));
+    writePinnedMermaidVersion('12.2.0', dir);
+    assert.equal(pinnedMermaidVersion(dir), '12.2.0');
+    assert.equal(pinnedVersion(dir), '1.2.3');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
