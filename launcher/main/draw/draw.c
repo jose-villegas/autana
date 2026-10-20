@@ -345,7 +345,7 @@ draw_blit_dither(int x, int y, int w, int h, const gfx_color_t* src, int src_str
         }
 
         gfx_color_t* dst = gfx_target_row(state.target, row);
-        const gfx_color_t* s = src + (size_t)(row - y) * (size_t)src_stride + (rect.x - x);
+        const gfx_color_t* s = src + ((size_t)(row - y) * (size_t)src_stride) + (rect.x - x);
 
         if (p[0] && p[1] && p[2] && p[3]) {
             memcpy(dst + rect.x, s, (size_t)rect.w * sizeof *dst);
@@ -390,7 +390,10 @@ glyph_font(const gfx_surface_t* state, const draw_font_t* font, int x, int y, un
     draw_font_run_box_t boxes[DRAW_FONT_RUN_BOXES_MAX];
     const int n = draw_font_glyph_run_boxes(font, ch, boxes, DRAW_FONT_RUN_BOXES_MAX);
     for (int i = 0; i < n; i++) {
-        int rx, ry, rw, rh;
+        int rx;
+        int ry;
+        int rw;
+        int rh;
         if (halo) {
             draw_font_run_box_rect_dilated(font, x, y, boxes[i].row0, boxes[i].row1, boxes[i].col0, boxes[i].col1,
                                            scale, turn, &rx, &ry, &rw, &rh);
@@ -469,7 +472,8 @@ draw_text_font_halo(int x, int y, const char* text, gfx_color_t color, int scale
 static void
 rotated_font_pixel_dither(const gfx_surface_t* state, const draw_font_t* font, int x, int y, int row, int col,
                           int scale, int turn, gfx_color_t color, uint8_t alpha) {
-    int px, py;
+    int px;
+    int py;
     switch (turn) {
         case 1:
             px = font->cell_h - 1 - row;
@@ -488,7 +492,7 @@ rotated_font_pixel_dither(const gfx_surface_t* state, const draw_font_t* font, i
             py = row;
             break;
     }
-    fill_rect_alpha(state, x + px * scale, y + py * scale, scale, scale, color, alpha, false);
+    fill_rect_alpha(state, x + (px * scale), y + (py * scale), scale, scale, color, alpha, false);
 }
 
 static void
@@ -498,7 +502,7 @@ glyph_font_dither(const gfx_surface_t* state, const draw_font_t* font, int x, in
         return;
     }
 
-    const uint8_t* glyph = font->atlas + (size_t)(ch - font->first) * font->cell_h;
+    const uint8_t* glyph = font->atlas + ((size_t)(ch - font->first) * font->cell_h);
 
     for (int row = 0; row < font->cell_h; row++) {
         const uint8_t bits = glyph[row];

@@ -72,7 +72,7 @@ assert_every_change_is_marked(material_id_t m, int steps, const char* what) {
 
         for (int y = 0; y < H; y++) {
             for (int x = 0; x < W; x++) {
-                if (seen[y * W + x] == s.cells[y * W + x]) {
+                if (seen[(y * W) + x] == s.cells[(y * W) + x]) {
                     continue;
                 }
                 /* The whole byte, not just the material nibble: a cell
@@ -246,7 +246,7 @@ disc_cells(int radius) {
 static int
 share_pour(uint8_t* grid, int radius, uint32_t seed, cell_t spec, int share_pct) {
     memset(grid, SAND_EMPTY, (size_t)REAL_W * REAL_H);
-    sand_init(&fx.loc, grid, REAL_W, REAL_H, seed * 2654435761u);
+    sand_init(&fx.loc, grid, REAL_W, REAL_H, seed * 2654435761U);
     return sand_spawn_cell_share(&fx.loc, REAL_W / 2, REAL_H / 2, radius, spec, share_pct);
 }
 
@@ -264,7 +264,7 @@ test_the_plant_brush_pours_its_share_of_the_disc(void) {
     uint8_t* grid = malloc((size_t)REAL_W * REAL_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(grid, "setup");
 
-    for (unsigned seed = 1u; seed <= 8u; seed++) {
+    for (unsigned seed = 1U; seed <= 8U; seed++) {
         const int filled = share_pour(grid, radius, (uint32_t)seed, MATX(MATX_PLANT), SAND_BRUSH_SHARE_PLANT);
 
         char why[256];
@@ -292,16 +292,17 @@ test_a_sparse_pour_scatters_across_the_whole_disc(void) {
     uint8_t* grid = malloc((size_t)REAL_W * REAL_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(grid, "setup");
 
-    for (unsigned seed = 1u; seed <= 4u; seed++) {
+    for (unsigned seed = 1U; seed <= 4U; seed++) {
         share_pour(grid, radius, (uint32_t)seed, MATX(MATX_PLANT), SAND_BRUSH_SHARE_PLANT);
 
-        int rows = 0, cols = 0;
+        int rows = 0;
+        int cols = 0;
         for (int d = -radius; d <= radius; d++) {
             bool in_row = false;
             bool in_col = false;
             for (int e = -radius; e <= radius; e++) {
-                in_row = in_row || sand_at(&fx.loc, REAL_W / 2 + e, REAL_H / 2 + d) != SAND_EMPTY;
-                in_col = in_col || sand_at(&fx.loc, REAL_W / 2 + d, REAL_H / 2 + e) != SAND_EMPTY;
+                in_row = in_row || sand_at(&fx.loc, (REAL_W / 2) + e, (REAL_H / 2) + d) != SAND_EMPTY;
+                in_col = in_col || sand_at(&fx.loc, (REAL_W / 2) + d, (REAL_H / 2) + e) != SAND_EMPTY;
             }
             rows += in_row ? 1 : 0;
             cols += in_col ? 1 : 0;
@@ -312,9 +313,9 @@ test_a_sparse_pour_scatters_across_the_whole_disc(void) {
                  "seed %u reached %d rows and %d columns of the disc's %d, and at most %d of "
                  "them are short enough to be missed by chance - a pour clumping onto a "
                  "lattice is what leaves whole lines empty",
-                 seed, rows, cols, 2 * radius + 1, thin_lines);
-        TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(2 * radius + 1 - thin_lines, rows, why);
-        TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(2 * radius + 1 - thin_lines, cols, why);
+                 seed, rows, cols, (2 * radius) + 1, thin_lines);
+        TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE((2 * radius) + 1 - thin_lines, rows, why);
+        TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE((2 * radius) + 1 - thin_lines, cols, why);
     }
 
     free(grid);
@@ -331,7 +332,7 @@ test_a_full_share_fills_the_whole_disc(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(grid, "setup");
 
     for (int k = 0; k < SAND_BRUSH_COUNT; k++) {
-        const int filled = share_pour(grid, radius, 1u, sand_brushes[k].cell, SAND_SPAWN_SHARE_FULL);
+        const int filled = share_pour(grid, radius, 1U, sand_brushes[k].cell, SAND_SPAWN_SHARE_FULL);
 
         char why[256];
         snprintf(why, sizeof why,
@@ -354,7 +355,7 @@ test_erase_removes_a_disc(void) {
     TEST_ASSERT_GREATER_THAN_MESSAGE(0, removed, "an erase must remove grains");
     TEST_ASSERT_EQUAL_UINT8_MESSAGE(SAND_EMPTY, sand_at(&s, 4, 4), "the centre is inside the disc");
     TEST_ASSERT_NOT_EQUAL_MESSAGE(SAND_EMPTY, sand_at(&s, 0, 0), "a corner far outside the radius must be untouched");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(W * H - removed, sand_count(&s),
+    TEST_ASSERT_EQUAL_INT_MESSAGE((W * H) - removed, sand_count(&s),
                                   "the reported count must match what actually left the grid");
 }
 
@@ -377,7 +378,8 @@ test_erase_is_clipped_to_the_grid(void) {
     const int removed = sand_erase(&s, 0, 0, 3);
 
     TEST_ASSERT_GREATER_THAN_MESSAGE(0, removed, "the on-grid part must go");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(W * H - removed, sand_count(&s), "cells off the grid must not be counted as removed");
+    TEST_ASSERT_EQUAL_INT_MESSAGE((W * H) - removed, sand_count(&s),
+                                  "cells off the grid must not be counted as removed");
 }
 
 static void
@@ -406,7 +408,7 @@ test_material_counts_tallies_every_cell_by_material(void) {
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(2, counts[MAT_WATER], "two cells were set to water");
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, counts[MAT_STONE], "one cell was set to stone");
-    TEST_ASSERT_EQUAL_INT_MESSAGE(W * H - 3, counts[MAT_EMPTY], "every other cell is still empty");
+    TEST_ASSERT_EQUAL_INT_MESSAGE((W * H) - 3, counts[MAT_EMPTY], "every other cell is still empty");
 }
 
 static void
@@ -648,7 +650,8 @@ test_an_emitted_powder_still_lands_in_a_valid_shade(void) {
  * representatives only ever catches the kinds someone thought to check. */
 static void
 test_an_emitter_and_sand_spawn_cell_agree_about_every_material(void) {
-    const int x = 3, y = 3;
+    const int x = 3;
+    const int y = 3;
 
     for (int m = 1; m < MAT_COUNT; m++) {
         const cell_t placeholder = CELL_MAKE((material_id_t)m, 0);
@@ -793,7 +796,8 @@ test_adding_at_an_existing_emitter_replaces_its_cell(void) {
                                   "the second add must replace the first emitter's cell, not add a "
                                   "second emitter at the same point");
 
-    int x, y;
+    int x;
+    int y;
     cell_t cell;
     TEST_ASSERT_TRUE_MESSAGE(sand_emitter_at(&s, 0, &x, &y, &cell), "setup");
     TEST_ASSERT_EQUAL_INT_MESSAGE(MAT_GAS, CELL_MATERIAL(cell),
@@ -820,7 +824,8 @@ test_the_emitter_cap_is_respected(void) {
                                   "stay exactly at the cap");
 
     for (int i = 0; i < SAND_MAX_EMITTERS; i++) {
-        int x, y;
+        int x;
+        int y;
         cell_t cell;
         TEST_ASSERT_TRUE_MESSAGE(sand_emitter_at(&s, i, &x, &y, &cell),
                                  "every emitter that was already there must still be readable");
@@ -856,7 +861,8 @@ test_remove_emitters_only_removes_those_in_radius(void) {
                                   "same disc test sand_erase() uses");
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, sand_emitter_count(&s), "and exactly one emitter must remain");
 
-    int x, y;
+    int x;
+    int y;
     cell_t cell;
     TEST_ASSERT_TRUE_MESSAGE(sand_emitter_at(&s, 0, &x, &y, &cell), "setup");
     TEST_ASSERT_EQUAL_INT_MESSAGE(4, x, "the survivor must be the one outside the radius");
@@ -913,7 +919,7 @@ test_sand_init_clears_emitters_from_a_previous_use(void) {
     sand_add_emitter(&s, 3, 3, WATER);
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, sand_emitter_count(&s), "setup");
 
-    sand_init(&s, cells, W, H, 12345u);
+    sand_init(&s, cells, W, H, 12345U);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, sand_emitter_count(&s),
                                   "sand_init() must clear emitters left over from a previous use of "

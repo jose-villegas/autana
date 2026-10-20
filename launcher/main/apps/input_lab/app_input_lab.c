@@ -262,10 +262,18 @@ calibration_on(void) {
 static void
 finish_tap(int release_x, int release_y) {
     const touch_probe_sample_t first = tap.samples[0];
-    int settled_x, settled_y;
+    int settled_x;
+    int settled_y;
     touch_probe_settled(tap.samples, tap.count, SETTLE_FROM_MS, SETTLE_TO_MS, &settled_x, &settled_y);
 
-    int fx, fy, sx, sy, rx, ry, aim_panel_x, aim_panel_y;
+    int fx;
+    int fy;
+    int sx;
+    int sy;
+    int rx;
+    int ry;
+    int aim_panel_x;
+    int aim_panel_y;
     to_screen(first.x, first.y, &fx, &fy);
     to_screen(settled_x, settled_y, &sx, &sy);
     to_screen(release_x, release_y, &rx, &ry);
@@ -314,7 +322,9 @@ drag_bezel(const input_t* input) {
     if (!input->down) {
         return;
     }
-    int x, press_y, y;
+    int x;
+    int press_y;
+    int y;
     to_screen(input->press_x, input->press_y, &x, &press_y);
     to_screen(input->x, input->y, &x, &y);
     const int radius = radius_at_press + ((press_y - y) / BEZEL_DRAG_PX);
@@ -395,7 +405,8 @@ hud_line(int row, const char* text) {
 static void
 hud_offset_line(int row, const char* label, float mean, float spread) {
     char line[64];
-    char mean_text[24], spread_text[24];
+    char mean_text[24];
+    char spread_text[24];
     motion_probe_format_fixed(mean_text, sizeof mean_text, (int)lroundf(mean * OFFSET_SCALE), OFFSET_DIGITS, true);
     motion_probe_format_fixed(spread_text, sizeof spread_text, (int)lroundf(spread * OFFSET_SCALE), OFFSET_DIGITS,
                               false);
@@ -444,7 +455,7 @@ static void
 draw_target(void) {
     if (have_last_tap) {
         const uint32_t mark = last_hit ? COL_HIT : COL_MISS;
-        ui_fill((recti_t){last_x - MARK_SIDE / 2, last_y - MARK_SIDE / 2, MARK_SIDE, MARK_SIDE}, mark);
+        ui_fill((recti_t){last_x - (MARK_SIDE / 2), last_y - (MARK_SIDE / 2), MARK_SIDE, MARK_SIDE}, mark);
     }
     ui_fill((recti_t){target.x, target.y, target.side, target.side}, COL_TARGET);
 }
@@ -641,13 +652,13 @@ draw_imu_round(void) {
     if (imu_round.step == IMU_PROBE_POSES) {
         char label[IMU_PROBE_LABEL_SIZE];
         imu_probe_pose_label(imu_round.pose, label, sizeof label);
-        snprintf(line, sizeof line, "%s  POSE %d/%d", label, imu_round.pose + 1, IMU_PROBE_POSE_COUNT);
+        (void)snprintf(line, sizeof line, "%s  POSE %d/%d", label, imu_round.pose + 1, IMU_PROBE_POSE_COUNT);
         hud_line(0, line);
         if (imu_round.settle_ms < IMU_PROBE_SETTLE_MS) {
             hud_line(1, "HOLD STILL");
         } else {
-            snprintf(line, sizeof line, "MEASURING %u%%",
-                     (unsigned)(imu_round.window_ms * IMU_PROBE_PERCENT / IMU_PROBE_WINDOW_MS));
+            (void)snprintf(line, sizeof line, "MEASURING %u%%",
+                           (unsigned)(imu_round.window_ms * IMU_PROBE_PERCENT / IMU_PROBE_WINDOW_MS));
             hud_line(1, line);
         }
         hud_line(3, "BOOT TO LEAVE ROUND");
@@ -660,14 +671,14 @@ draw_imu_round(void) {
     const int gyro[] = {f.gyro_mdps.x, f.gyro_mdps.y, f.gyro_mdps.z};
     static const char* const axes[] = {"X", "Y", "Z"};
     for (int axis = 0; axis < 3; axis++) {
-        snprintf(line, sizeof line, "%s RESID %dMG SCALE %dPPM GYRO %dMDPS", axes[axis], off[axis], scale[axis],
-                 gyro[axis]);
+        (void)snprintf(line, sizeof line, "%s RESID %dMG SCALE %dPPM GYRO %dMDPS", axes[axis], off[axis], scale[axis],
+                       gyro[axis]);
         hud_line(axis, line);
     }
     const int top = HUD_TOP + (MOTION_HUD_ROWS * HUD_LINE_H) + MOTION_MARGIN;
     const int width = (screen_w - 3 * MOTION_MARGIN) / 2;
     const bool saving = ui_button((recti_t){MOTION_MARGIN, top, width, 2 * HUD_LINE_H}, "SAVE");
-    const bool clearing = ui_button((recti_t){2 * MOTION_MARGIN + width, top, width, 2 * HUD_LINE_H}, "CLEAR");
+    const bool clearing = ui_button((recti_t){(2 * MOTION_MARGIN) + width, top, width, 2 * HUD_LINE_H}, "CLEAR");
     hud_line(3, "BOOT TO LEAVE RESULTS");
     return clearing ? IMU_ACTION_CLEAR : saving ? IMU_ACTION_SAVE : IMU_ACTION_NONE;
 }
@@ -777,7 +788,7 @@ draw_motion(void) {
     draw_gravity_line(MOTION_HUD_ROWS - 1);
 
     const vec3i_t offset = input_accel_offset();
-    snprintf(line, sizeof line, "OFFSET %d %d %d Q12", (int)offset.x, (int)offset.y, (int)offset.z);
+    (void)snprintf(line, sizeof line, "OFFSET %d %d %d Q12", (int)offset.x, (int)offset.y, (int)offset.z);
     hud_line(MOTION_HUD_ROWS, line);
     const int top = HUD_TOP + ((MOTION_HUD_ROWS + 1) * HUD_LINE_H) + MOTION_MARGIN;
     const int bottom = screen_h - (2 * MOTION_MARGIN) - (2 * HUD_LINE_H);

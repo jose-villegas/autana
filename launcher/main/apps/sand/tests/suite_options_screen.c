@@ -295,14 +295,14 @@ static void
 test_a_tap_at_the_sliders_right_end_reports_the_finest_quality(void) {
     tap_fixture(SAND_COLOUR_256, false);
     const recti_t s = layout_for(false).quality_slider;
-    TEST_ASSERT_EQUAL_INT(0, tap_at(s.x + s.w - 4, s.y + s.h / 2).quality);
+    TEST_ASSERT_EQUAL_INT(0, tap_at(s.x + s.w - 4, s.y + (s.h / 2)).quality);
 }
 
 static void
 test_a_tap_at_the_sliders_left_end_reports_the_coarsest_quality(void) {
     tap_fixture(SAND_COLOUR_256, false);
     const recti_t s = layout_for(false).quality_slider;
-    TEST_ASSERT_EQUAL_INT(QUALITY_COUNT - 1, tap_at(s.x + 4, s.y + s.h / 2).quality);
+    TEST_ASSERT_EQUAL_INT(QUALITY_COUNT - 1, tap_at(s.x + 4, s.y + (s.h / 2)).quality);
 }
 
 /* Out of line, so the whole layout is off the stack under the taps. */

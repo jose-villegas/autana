@@ -120,7 +120,7 @@ post_layout_capacity(const post_layout_t* l) {
 /* Pixels of this column still able to hold a line. */
 static int
 room_left(const post_layout_t* l, const post_lines_t* lines) {
-    return l->rows * l->line_h - lines->y;
+    return (l->rows * l->line_h) - lines->y;
 }
 
 static bool

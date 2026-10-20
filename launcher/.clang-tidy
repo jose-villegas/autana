@@ -14,3 +14,6 @@ CheckOptions:
     value:           'true'
   - key:             bugprone-unused-return-value.CheckedFunctions
     value:           '^::snprintf$;^::strtol$;^::fread$'
+  # MISRA 17.7 accepts a deliberate (void) cast; cert-err33-c already does.
+  - key:             bugprone-unused-return-value.AllowCastToVoid
+    value:           'true'

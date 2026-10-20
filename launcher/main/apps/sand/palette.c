@@ -75,7 +75,7 @@ palette_hit(int px, int py, int count, int cols, int screen_w, int screen_h) {
     }
     const int col = (px - left) / PALETTE_TILE;
 
-    const int index = row * cols + col;
+    const int index = (row * cols) + col;
     /* Cannot exceed `count`: row_count already clipped the last row to
      * however many tiles it actually holds, and col is bounded by row_w /
      * PALETTE_TILE == row_count above. */
@@ -107,8 +107,8 @@ palette_label_origin(int x, int y, int w, int h, int len, int turn, int* out_x, 
     const int box_w = turned ? DRAW_CHAR_H : len * DRAW_CHAR_W;
     const int box_h = turned ? len * DRAW_CHAR_W : DRAW_CHAR_H;
 
-    const int box_x = x + (w - box_w) / 2;
-    const int box_y = y + (h - box_h) / 2;
+    const int box_x = x + ((w - box_w) / 2);
+    const int box_y = y + ((h - box_h) / 2);
 
     /* draw_text_turned()'s origin is the FIRST GLYPH's cell, not a corner of
      * the box - for turn 0 and turn 1 that is the box's own top-left corner

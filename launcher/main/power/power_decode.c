@@ -19,7 +19,7 @@ power_decode(const power_registers_t* regs, int64_t read_us) {
     out.flow = flows[(regs->charge >> AXP2101_FLOW_SHIFT) & AXP2101_FLOW_MASK];
     out.battery_mv =
         (uint16_t)(((regs->vbat_high & AXP2101_VBAT_HIGH_MASK) << AXP2101_VBAT_HIGH_SHIFT) | regs->vbat_low);
-    out.percent = regs->percent <= AXP2101_PERCENT_MAX ? regs->percent : AXP2101_PERCENT_MAX;
+    out.percent = (regs->percent <= AXP2101_PERCENT_MAX) ? regs->percent : AXP2101_PERCENT_MAX;
     return out;
 }
 

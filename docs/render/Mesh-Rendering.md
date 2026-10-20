@@ -173,10 +173,11 @@ sequenceDiagram
     C0->>J: transform the clusters past the midpoint of the vertex work
     Note over C0: transform the clusters before it
     J-->>C0: job_wait()
-    Note over C0: pick the row that halves the estimated draw cost
+    Note over C0: pick the row at the instance's top share
     C0->>J: clear depth and draw the rows above it
     Note over C0: clear depth and draw the rows below it
     J-->>C0: job_wait()
+    Note over C0: raster_split_update() uses both slice times
     C0->>P: gfx_present_wait()
     Note over C0: frame()
     C0->>J: upscale the top half into the framebuffer
@@ -184,6 +185,8 @@ sequenceDiagram
     J-->>C0: job_wait()
     Note over C0,P: frame N is presented on the next pass
 ```
+
+`raster_split_t` is caller-owned, NULL = even, forget after a cut.
 
 ### View modes
 
@@ -384,14 +387,14 @@ Each heatmap shows absolute RGB difference x8 from defaults over the same full f
 and window. The [temporal method](../tools/Render-Harness.md#temporal-video-columns) measures
 triangle-scale pops; judge dither by eye because it reads as noise here.
 
-<!-- generated: small-fill-temporal sha256=5903d6c98c81ff8bd3e21502700e09a9b8c10474e4eed07458965a25350bd9a4 -->
+<!-- generated: small-fill-temporal sha256=3b0e2bcfaa333d8d9060c51eab98dacc4fe4f5b29f45c215811fc1a3b847119a -->
 | Look vs defaults | Extra frame-to-frame change (levels of 255) | Blocks popping (>8/255) |
 |---|---|---|
 | Defaults | 0.000 | 0.0000% |
-| Flat <=8 | 0.510 | 1.0178% |
-| Gate ramp | 0.382 | 0.6262% |
-| Dither 4, ramp 1 | 0.597 | 1.4627% |
-| Flat bake | 3.447 | 10.5584% |
+| Flat <=8 | 0.478 | 0.9965% |
+| Gate ramp | 0.355 | 0.5990% |
+| Dither 4, ramp 1 | 0.560 | 1.4068% |
+| Flat bake | 3.405 | 10.3885% |
 <!-- /generated: small-fill-temporal -->
 
 #### Board frame cost

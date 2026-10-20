@@ -55,7 +55,8 @@ assert_looks_like(const char* rows[], int count, const char* why) {
 static void
 test_gravity_quantises_to_eight_directions(void) {
     fixture();
-    int dx, dy;
+    int dx;
+    int dy;
 
     sand_gravity_direction(0, 100, &dx, &dy);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, dx, "straight down");
@@ -91,7 +92,8 @@ test_ring_of_matches_the_direction_ring(void) {
 static void
 test_a_slight_tilt_still_reads_as_straight_down(void) {
     fixture();
-    int dx, dy;
+    int dx;
+    int dy;
 
     /* 10 degrees off vertical must not become a diagonal, or the sand would
      * visibly lean while the board looks level. The boundary is 22.5 deg. */
@@ -103,7 +105,8 @@ test_a_slight_tilt_still_reads_as_straight_down(void) {
 static void
 test_no_gravity_has_no_direction(void) {
     fixture();
-    int dx = 9, dy = 9;
+    int dx = 9;
+    int dy = 9;
 
     sand_gravity_direction(0, 0, &dx, &dy);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, dx, "a zero vector has no direction");
@@ -119,7 +122,8 @@ diagonal_share(int gx, int gy, int trials) {
     fixture();
     int diagonals = 0;
     for (int i = 0; i < trials; i++) {
-        int dx, dy;
+        int dx;
+        int dy;
         sand_gravity_direction_dithered(&s, gx, gy, &dx, &dy);
         if (dx != 0 && dy != 0) {
             diagonals++;
@@ -207,7 +211,7 @@ landscape_slide_y(cell_t grain, int gravity_x, bool with_water) {
     fixture();
     sand_set_scatter(&s, 0);
     for (int y = 1; y < H - 1; y++) {
-        const int x = start_x + motion_x * y;
+        const int x = start_x + (motion_x * y);
         sand_set(&s, x, y, STONE);
         sand_set(&s, x, y - 1, STONE);
         sand_set(&s, x - motion_x, y + 1, STONE);
@@ -590,7 +594,7 @@ test_a_buried_grain_will_not_slide(void) {
          * the diagonal - the case that used to let the base walk sideways -
          * some steps, so 200 identically-seeded trials would all replay the
          * same one and prove nothing. */
-        sand_init(&s, cells, W, H, 7000u + (uint32_t)trial);
+        sand_init(&s, cells, W, H, 7000U + (uint32_t)trial);
         load(bed, 8);
         sand_step(&s, 300, 1000, 0);
 
@@ -681,7 +685,7 @@ test_a_flat_bed_does_not_slide_on_a_slight_tilt(void) {
      *
      * Room on both sides to slide into, so staying put is a real result. */
     for (int trial = 0; trial < 20; trial++) {
-        sand_init(&s, cells, W, H, 31u + (uint32_t)trial);
+        sand_init(&s, cells, W, H, 31U + (uint32_t)trial);
         sand_fill_box(&s, 2, H - 1, 6, H, SAND_FIRST_SHADE);
         const long before = centre_of_mass_x();
 
@@ -742,8 +746,8 @@ test_a_deep_bed_is_harder_to_move_than_a_thin_one(void) {
     long thin = 0;
 
     for (int t = 0; t < trials; t++) {
-        deep += settled_base_x(4, 101u + (uint32_t)t);
-        thin += settled_base_x(1, 101u + (uint32_t)t);
+        deep += settled_base_x(4, 101U + (uint32_t)t);
+        thin += settled_base_x(1, 101U + (uint32_t)t);
     }
 
     const int deep_base = (int)(deep / trials);

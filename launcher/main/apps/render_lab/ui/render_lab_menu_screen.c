@@ -29,7 +29,7 @@ render_lab_menu_screen_draw(const render_lab_menu_screen_state_t* state) {
 
     /* The scene name is shown, not part of the identity. */
     char label[48];
-    snprintf(label, sizeof label, "NEXT: %s###next scene", state->scene_name);
+    (void)snprintf(label, sizeof label, "NEXT: %s###next scene", state->scene_name);
     ui_row_centre(MENU_BTN_W, UI_ROW_HEIGHT);
     if (ui_button(ui_next(), label)) {
         result.next_scene_clicked = true;

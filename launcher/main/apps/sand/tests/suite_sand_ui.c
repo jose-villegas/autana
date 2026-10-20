@@ -374,7 +374,8 @@ test_tapping_outside_every_tile_does_nothing(void) {
     ui.brush = 1;
     ui.mode = SAND_MODE_ERASE;
 
-    int px, py;
+    int px;
+    int py;
     outside_every_tile(&px, &py);
     input_t tap = no_input();
     tap.released = true;

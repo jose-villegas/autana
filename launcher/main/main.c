@@ -83,7 +83,7 @@ show_post_failures(void) {
 static __attribute__((noinline)) void
 app_boot_init(void) {
     printf("BUILD_ID=%s\n", build_id());
-    fflush(stdout);
+    (void)fflush(stdout);
     ui_ridge_load();
     shell_init();
     heap_mark("boot");

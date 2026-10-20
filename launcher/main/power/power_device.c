@@ -83,7 +83,7 @@ power_start(void) {
     }
 
     /* A press latched before boot must not arrive as the first event. */
-    pmu_write(AXP2101_REG_INTSTS2, AXP2101_PKEY_SHORT | AXP2101_PKEY_LONG);
+    (void)pmu_write(AXP2101_REG_INTSTS2, AXP2101_PKEY_SHORT | AXP2101_PKEY_LONG);
 
     pmu_ready = true;
     ESP_LOGI(TAG, "PWR button via AXP2101, BOOT button on GPIO %d", BOARD_BOOT_GPIO);
@@ -157,7 +157,7 @@ power_poll(void) {
         }
     }
     const int64_t now_us = timing_now_us();
-    if (pmu != NULL && now_us - last_battery_us >= POWER_BATTERY_PERIOD_US) {
+    if ((pmu != NULL) && ((now_us - last_battery_us) >= POWER_BATTERY_PERIOD_US)) {
         power_battery_t battery;
         (void)power_read_battery_now(&battery, NULL);
         last_battery_us = now_us;

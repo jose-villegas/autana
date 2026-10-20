@@ -352,11 +352,11 @@ static const gfx_color_t palette[256] = {
                                                                   * COLD */
     /* Named entries, not counted. Magenta tail: statics' codes, padding.
      * Non-zero codes block BLACK. */
-    [MAT_EXTENDED * MATERIAL_VARIANTS + MATX_ICE] = GFX_RGB(0xB6E4F2),      /* ice - paler and bluer than snow's
+    [(MAT_EXTENDED * MATERIAL_VARIANTS) + MATX_ICE] = GFX_RGB(0xB6E4F2),      /* ice - paler and bluer than snow's
                                     * white, and flat rather than speckled:
                                     * a block of it should read as solid
                                     * and cold, where snow reads as loose */
-    [MAT_EXTENDED * MATERIAL_VARIANTS + MATX_PLANT] = GFX_RGB(0x55672D),    /* plant
+    [(MAT_EXTENDED * MATERIAL_VARIANTS) + MATX_PLANT] = GFX_RGB(0x55672D),    /* plant
                                                                              * -
                                                                              * OLIVE:
                                                                              * stem
@@ -364,27 +364,27 @@ static const gfx_color_t palette[256] = {
                                                                              * brown,
                                                                              * leaves
                                                                              * green */
-    [MAT_EXTENDED * MATERIAL_VARIANTS + MATX_LEAF] = GFX_RGB(0x69B03A),     /* only
+    [(MAT_EXTENDED * MATERIAL_VARIANTS) + MATX_LEAF] = GFX_RGB(0x69B03A),     /* only
                                                                              * part
                                                                              * meant
                                                                              * to
                                                                              * catch
                                                                              * the
                                                                              * eye */
-    [MAT_EXTENDED * MATERIAL_VARIANTS + MATX_METAL] = GFX_RGB(0x7C8794),    /* Visual
+    [(MAT_EXTENDED * MATERIAL_VARIANTS) + MATX_METAL] = GFX_RGB(0x7C8794),    /* Visual
                                                                              * separation.
                                                                              * See
                                                                              * docs/sand/Metal.md. */
-    [MAT_EXTENDED * MATERIAL_VARIANTS + MATX_ROOT] = GFX_RGB(0xBFA58A),     /* root
+    [(MAT_EXTENDED * MATERIAL_VARIANTS) + MATX_ROOT] = GFX_RGB(0xBFA58A),     /* root
                                                                              * -
                                                                              * matches
                                                                              * trunk,
                                                                              * avoids
                                                                              * dirt's
                                                                              * range */
-    [MAT_EXTENDED * MATERIAL_VARIANTS + MATX_ROOT + 1] = GFX_RGB(0xFF00FF), /* spare static, unclaimed */
-    GFX_RGB(0xFF00FF),                                                      /* spare static, unclaimed */
-    GFX_RGB(0xFF00FF),                                                      /* spare static, unclaimed */
+    [(MAT_EXTENDED * MATERIAL_VARIANTS) + MATX_ROOT + 1] = GFX_RGB(0xFF00FF), /* spare static, unclaimed */
+    GFX_RGB(0xFF00FF),                                                        /* spare static, unclaimed */
+    GFX_RGB(0xFF00FF),                                                        /* spare static, unclaimed */
 
     [GUNPOWDER_CELL(0)] = GFX_RGB(0x141014), /* dry, tone 0 - near-black */
     [GUNPOWDER_CELL(1)] = GFX_RGB(0x2B1410), /* dry, tone 1 - black-red */
@@ -411,7 +411,7 @@ static const gfx_color_t palette[256] = {
  * saturates to an unrelated green, where blending the value first and only
  * then mapping it through GLASS_RGB keeps every edge on COOL/WARM/HOT's own
  * ramp. */
-#define GLASS_EDGE_V_RAW(v) ((v) + (((int)(SAND_AMBIENT_HEAT) - (int)(v)) * 10) / 15)
+#define GLASS_EDGE_V_RAW(v) ((v) + ((((int)(SAND_AMBIENT_HEAT) - (int)(v)) * 10) / 15))
 
 /* Clamped to SAND_SHOCK_HEAT if already HOT. */
 #define GLASS_EDGE_V(v)                                                                                                \
@@ -506,7 +506,7 @@ enum {
 /* 0 or 1: tip; 2: one child; 3: junction; >3: collar or thicket middle. */
 static inline unsigned
 root_shade(unsigned n) {
-    return n <= 1u ? 0u : n == 2u ? 1u : n == 3u ? 2u : (ROOT_SHADES - 1u);
+    return n <= 1U ? 0U : n == 2U ? 1U : n == 3U ? 2U : (ROOT_SHADES - 1U);
 }
 
 static const gfx_color_t plant_grain[8] = GRAIN8_ROW(PLANT_DARK, PLANT_LIGHT);
@@ -543,7 +543,7 @@ liquid_spec_for_mask(unsigned mask, int ux_q8, int uy_q8) {
     if (nx == 0 && ny == 0) {
         return 0;
     }
-    const int raw_q8 = nx * ux_q8 + ny * uy_q8;
+    const int raw_q8 = (nx * ux_q8) + (ny * uy_q8);
     const int norm_q8 = (nx != 0 && ny != 0) ? MATERIAL_Q8_DIAGONAL : MATERIAL_Q8_ONE;
     const int spec_q8 = (raw_q8 * norm_q8) / MATERIAL_Q8_ONE; /* now in [-256,256] */
     /* Rounded, not truncated: truncation weakens one side's rim. */
@@ -619,9 +619,9 @@ material_wood_leaf_top5(int gx, int gy, int* last_down, int8_t top5[5][2]) {
     const int len = mathi_len(gx, gy);
     const long margin = len / 4;
     int down = *last_down & 7;
-    long best = (long)wood_leaf_ring[down][0] * gx + (long)wood_leaf_ring[down][1] * gy;
+    long best = ((long)wood_leaf_ring[down][0] * gx) + ((long)wood_leaf_ring[down][1] * gy);
     for (int i = 0; i < 8; i++) {
-        const long dot = (long)wood_leaf_ring[i][0] * gx + (long)wood_leaf_ring[i][1] * gy;
+        const long dot = ((long)wood_leaf_ring[i][0] * gx) + ((long)wood_leaf_ring[i][1] * gy);
         if (dot > best + margin) {
             best = dot;
             down = i;
@@ -690,27 +690,27 @@ material_wood_leaf_wave(uint32_t time_ms, int pos, int span, unsigned hash) {
     const uint32_t shifted = time_ms + (uint32_t)shift_ms + salt_ms;
     const uint32_t m = shifted % WOOD_LEAF_WAVE_PERIOD_MS;
     if (m >= WOOD_LEAF_WAVE_RISE_MS + WOOD_LEAF_WAVE_FALL_MS) {
-        return 0u;
+        return 0U;
     }
 
     const uint32_t cycle = shifted / WOOD_LEAF_WAVE_PERIOD_MS;
-    if ((hash ^ (cycle * 0x9E3779B1u)) % 100u >= WOOD_LEAF_WAVE_ACTIVATE_PERCENT) {
-        return 0u;
+    if ((hash ^ (cycle * 0x9E3779B1U)) % 100U >= WOOD_LEAF_WAVE_ACTIVATE_PERCENT) {
+        return 0U;
     }
 
     if (m < WOOD_LEAF_WAVE_RISE_MS) {
-        return (unsigned)((m * 255u) / WOOD_LEAF_WAVE_RISE_MS);
+        return (unsigned)((m * 255U) / WOOD_LEAF_WAVE_RISE_MS);
     }
     const uint32_t since_peak = m - WOOD_LEAF_WAVE_RISE_MS;
-    return (unsigned)(255u - (since_peak * 255u) / WOOD_LEAF_WAVE_FALL_MS);
+    return (unsigned)(255U - ((since_peak * 255U) / WOOD_LEAF_WAVE_FALL_MS));
 }
 
 /* No floating point, suitable for water rim cells. See sand_paint_row_n(). */
 static unsigned
 material_popcount8(unsigned mask) {
     unsigned count = 0;
-    for (unsigned bit = 0; bit < 8u; bit++) {
-        count += (mask >> bit) & 1u;
+    for (unsigned bit = 0; bit < 8U; bit++) {
+        count += (mask >> bit) & 1U;
     }
     return count;
 }
@@ -751,8 +751,8 @@ water_foams(const material_frame_t* f, unsigned hash, unsigned mask) {
      * leaving the foam set unchanged on about half of all phase steps;
      * addition has no such alignment to preserve. Safe only because foam is
      * the sole consumer of water's hash. */
-    const unsigned dithered = hash + f->foam_phase * 0x9E37u;
-    return (dithered & 7u) < water_foam_threshold[curvature];
+    const unsigned dithered = hash + (f->foam_phase * 0x9E37U);
+    return (dithered & 7U) < water_foam_threshold[curvature];
 }
 
 /* Rim cell uses fill-indexed lookup shifted by liquid_spec[] indexed by
@@ -792,7 +792,7 @@ sand_colours(const material_frame_t* f, cell_t c, uint8_t v, unsigned hash, gfx_
 
     /* GLINT: Flash white; mix uses hash & phase, not RNG. Rarity
      * controlled by CULLET_GLINT_ONE_IN. */
-    const bool glint = ((hash + f->cullet_phase * 0x9E37u) % CULLET_GLINT_ONE_IN) == 0;
+    const bool glint = ((hash + f->cullet_phase * 0x9E37U) % CULLET_GLINT_ONE_IN) == 0;
     paint_solid(out, glint ? CULLET_GLINT : cullet_cycle[i]);
     return MATERIAL_FLAT;
 }
@@ -804,7 +804,7 @@ sand_colours(const material_frame_t* f, cell_t c, uint8_t v, unsigned hash, gfx_
 static inline __attribute__((always_inline)) material_pattern_t
 extended_colours(cell_t c, uint8_t v, unsigned hash, unsigned depth, gfx_color_t out[3]) {
     if (v == MATX_METAL) {
-        out[0] = metal_grain[hash & 7u];
+        out[0] = metal_grain[hash & 7U];
         out[1] = out[0];
         out[2] = metal_shine;
         return MATERIAL_HATCHED;
@@ -816,17 +816,17 @@ extended_colours(cell_t c, uint8_t v, unsigned hash, unsigned depth, gfx_color_t
          * and the wood beside it catch the same gust together. No stored
          * grain table: LERP8 needs 0xRRGGBB, not a packed gfx_color_t (see
          * glass_colours()'s own note on this exact trap). */
-        const unsigned frac = depth != 0 ? depth - 1u : 0u;
-        const uint32_t base = LERP(LEAF_DARK, LEAF_LIGHT, (hash & 7u) * 15 / 7);
+        const unsigned frac = depth != 0 ? depth - 1U : 0U;
+        const uint32_t base = LERP(LEAF_DARK, LEAF_LIGHT, (hash & 7U) * 15 / 7);
         paint_solid(out, GFX_RGB(LERP8(base, WOOD_LEAF_TINT_HI, frac)));
         return MATERIAL_SPECKLED;
     }
 
     /* Guard-plus-ternary: switch costs 14%, unhinted branch 26%. */
     if (v == MATX_PLANT || v == MATX_ICE || v == MATX_ROOT) {
-        paint_solid(out, (v == MATX_PLANT) ? plant_grain[hash & 7u]
-                         : (v == MATX_ICE) ? ice_grain[hash & 7u]
-                                           : root_grain[root_shade(depth)][hash & 7u]);
+        paint_solid(out, (v == MATX_PLANT) ? plant_grain[hash & 7U]
+                         : (v == MATX_ICE) ? ice_grain[hash & 7U]
+                                           : root_grain[root_shade(depth)][hash & 7U]);
         return MATERIAL_SPECKLED;
     }
     return palette_colours(c, out);
@@ -840,7 +840,7 @@ glass_colours(const material_frame_t* f, uint8_t v, unsigned hash, unsigned mask
     /* glass_phase slides every cell's starting point together, so the whole
      * pane drifts as one rather than each cell wandering on its own; fine
      * enough to move by a small angle without a table. */
-    const unsigned frac = (unsigned)(((int)(hash & 0xFFu) + f->glass_phase) & 0xFF);
+    const unsigned frac = (unsigned)(((int)(hash & 0xFFU) + f->glass_phase) & 0xFF);
 
     /* uint32_t, not gfx_color_t - `base` is 0xRRGGBB, not packed by
      * GFX_RGB(). gfx_color_t drops red byte, causing "glass reads green
@@ -853,8 +853,8 @@ glass_colours(const material_frame_t* f, uint8_t v, unsigned hash, unsigned mask
 static inline __attribute__((always_inline)) material_pattern_t
 stone_colours(uint8_t v, unsigned hash, unsigned mask, gfx_color_t out[3]) {
     /* See MATERIAL_EDGE_CARDINAL's comment in material_palette.h. */
-    paint_solid(out, ((mask & MATERIAL_EDGE_CARDINAL) != 0) ? stone_edge_speckle[v][hash & 7u]
-                                                            : stone_speckle[v][hash & 7u]);
+    paint_solid(out, ((mask & MATERIAL_EDGE_CARDINAL) != 0) ? stone_edge_speckle[v][hash & 7U]
+                                                            : stone_speckle[v][hash & 7U]);
     return MATERIAL_SPECKLED;
 }
 
@@ -870,10 +870,10 @@ wood_colours(cell_t c, uint8_t v, unsigned hash, unsigned depth, gfx_color_t out
          * material_wood_near_leaf() in material_palette.h for the gate. A
          * live LERP8, not a stored step, so the blend is smooth rather than
          * snapping between fixed shades. */
-        paint_solid(out, GFX_RGB(LERP8(WOOD_LEAF_TINT_LO, WOOD_LEAF_TINT_HI, depth - 1u)));
+        paint_solid(out, GFX_RGB(LERP8(WOOD_LEAF_TINT_LO, WOOD_LEAF_TINT_HI, depth - 1U)));
         return MATERIAL_FLAT;
     }
-    paint_solid(out, wood_grain[hash & 7u]);
+    paint_solid(out, wood_grain[hash & 7U]);
     return MATERIAL_SPECKLED;
 }
 

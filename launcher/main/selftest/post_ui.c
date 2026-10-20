@@ -47,7 +47,8 @@ report_text(const report_pen_t* pen, int x, int y, const char* text, int scale, 
     const recti_t box =
         ui_transform_rect(pen->transform, (recti_t){x, y, text_width(text, scale), draw_font_height(font, scale)});
 
-    int gx, gy;
+    int gx;
+    int gy;
     ui_text_glyph0_origin(font, box, pen->quarter, scale, &gx, &gy);
     draw_text_font(gx, gy, text, colour, scale, pen->quarter, font);
 }
@@ -89,7 +90,7 @@ draw_wrapped(report_pen_t* pen, int indent, const char* text, gfx_color_t colour
 
         memcpy(line, text + wrapped.start, (size_t)wrapped.len);
         line[wrapped.len] = '\0';
-        report_text(pen, row.x + indent * pen->layout.glyph_w, row.y, line, POST_LAYOUT_REPORT_SCALE, colour);
+        report_text(pen, row.x + (indent * pen->layout.glyph_w), row.y, line, POST_LAYOUT_REPORT_SCALE, colour);
     }
 }
 
@@ -114,7 +115,7 @@ draw_entry(report_pen_t* pen, const post_result_t* r, bool failed) {
     }
 
     report_text(pen, row.x, row.y, mark, POST_LAYOUT_REPORT_SCALE, mark_colour);
-    report_text(pen, row.x + POST_LAYOUT_MARK_CHARS * pen->layout.glyph_w, row.y, r->name, POST_LAYOUT_REPORT_SCALE,
+    report_text(pen, row.x + (POST_LAYOUT_MARK_CHARS * pen->layout.glyph_w), row.y, r->name, POST_LAYOUT_REPORT_SCALE,
                 gfx_rgb(HEADING_RGB));
 
     if (r->detail[0] == '\0') {
@@ -210,7 +211,7 @@ post_ui_draw_report(const post_ui_report_t* report) {
                  title_colour);
 
     char summary[48];
-    snprintf(summary, sizeof(summary), "%d checks, %d failed", post_result_count(), failures);
+    (void)snprintf(summary, sizeof(summary), "%d checks, %d failed", post_result_count(), failures);
     const int summary_w = text_width(summary, POST_LAYOUT_REPORT_SCALE);
     draw_centred(&pen, post_layout_summary_text(&pen.layout, summary_w), summary, POST_LAYOUT_REPORT_SCALE,
                  failures ? gfx_rgb(FAIL_RGB) : gfx_rgb(OK_RGB));
