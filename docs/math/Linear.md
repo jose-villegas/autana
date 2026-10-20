@@ -3,8 +3,8 @@
 Vectors, rotations, affine maps and cached transforms. [Math index](README.md).
 
 `P` stands for the type's prefix (`vec3f`, `vec3x`, ...). The families pass small
-structs by value, and inputs may alias outputs. Output pointers hold transform
-state, affine2 inverses, and normalization quotients.
+structs by value, and inputs may alias outputs. Output pointers receive
+transform state, affine2 inverses and normalization quotients.
 
 ## vec2 (`f i s x`)
 
@@ -40,22 +40,20 @@ state, affine2 inverses, and normalization quotients.
 | `P_dot(a, b)` | dot product, in the wide type of the number type | $`a \cdot b = a_x b_x + a_y b_y + a_z b_z`$ |
 | `P_equal(a, b)` | exact component equality | $`a_x = b_x \land a_y = b_y \land a_z = b_z`$ |
 | `P_cross(a, b)` | cross product; x × y = z | $`(a \times b)_x = a_y b_z - a_z b_y`$<br> $`(a \times b)_y = a_z b_x - a_x b_z`$<br> $`(a \times b)_z = a_x b_y - a_y b_x`$ |
-| `P_normalize(a)` | unit vector; `f` and `x` only; `a` must not be zero | $`\hat a = \frac{a}{\sqrt{a \cdot a}}`$ |
-| `P_normalize_divide(a, t, &q)` | normalize and divide a scalar by the same length; `f x` | $`\mathrm{out}=a/\lVert a\rVert,\ q=t/\lVert a\rVert`$ |
+| `P_normalize(a)` | unit vector; `f` and `x` only; `f` needs `a` nonzero | $`\hat a = \frac{a}{\sqrt{a \cdot a}}`$ |
+| `P_normalize_divide(a, t, &q)` | `f` and `x` only | $`\mathrm{out}=a/\lVert a\rVert,\ q=t/\lVert a\rVert`$ |
 | `P_<c1><c2><c3>(v)` | swizzle, each `c` one of `x y z`: `vec3f_zyx(v)` reverses | $`(v_{c_1},\ v_{c_2},\ v_{c_3})`$ |
 | `P_<c1><c2>(v)` | swizzle to the vec2 of the same number type, each `c` one of `x y z` | $`(v_{c_1},\ v_{c_2})`$ |
 | `P_from_xy(xy, z)` | the vec3 of a vec2 and a `z` | $`(\mathit{xy}_x,\ \mathit{xy}_y,\ z)`$ |
 | `vec3f_octahedral(n)` | the point of the square $`[-1, 1]^2`$ a direction maps to<sup>[[21]](../Citations.md#21)</sup>, the $`z < 0`$ half folded over the diagonals; any length but zero; `f` only | $`(u, v) = \frac{(n_x,\ n_y)}{\lvert n_x\rvert + \lvert n_y\rvert + \lvert n_z\rvert}`$<br> folded to $`(\mathrm{sign}(u)\,(1 - \lvert v\rvert),\ \mathrm{sign}(v)\,(1 - \lvert u\rvert))`$ when $`n_z < 0`$ |
 | `vec3f_from_octahedral(p)` | the unit direction of a point of the square, the inverse of `vec3f_octahedral`; `f` only | $`z = 1 - \lvert p_x\rvert - \lvert p_y\rvert`$<br> the point unfolded when $`z < 0`$<br> then normalized |
 
-`vec3x_normalize(a)` and `vec3x_normalize_divide(a, t, &q)` accept any
-nonzero int32 vector; normalized components are within $`0.5 + 2^{-12}`$ LSB
-(the nearest value, or its neighbour on a near-tie).
+`vec3x_normalize` and `vec3x_normalize_divide` accept any nonzero int32 vector.
+Components are within $`0.5 + 2^{-12}`$ LSB (nearest value or neighbour on a near-tie).
+For `x`, a zero vector gives zero and `q = mathx_div(t, 0)`.
 
 The quotient has relative error at most $`2^{-28}`$ plus 0.5 LSB rounding,
 and saturates by sign outside Q16.16.
-
-A zero `x` vector returns zero; `q` is `mathx_div(t, 0)`.
 
 A swizzle copies components and does no arithmetic. One that changes dimension
 returns the other vector type of the same number type: `vec3f_xz(v)` is a `vec2f_t`.

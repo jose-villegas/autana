@@ -43,7 +43,7 @@
     MATH_DEFINE_SWIZZLE3(P, P, 3)
 
 #define MATH_DEFINE_VEC3_NORMALIZE(P, T, OPS)                                                                          \
-    /* out = a/|a|, *q = t/|a|. Precondition: a is nonzero; overflow follows the scalar type. */                       \
+    /* out = a/|a|, *q = t/|a|. Precondition: a is nonzero. */                                                         \
     static inline P##_t P##_normalize_divide(P##_t a, T t, T* q) {                                                     \
         const T k = OPS##_div(OPS##_one(), OPS##_sqrt(P##_dot(a, a)));                                                 \
         *q = OPS##_mul(t, k);                                                                                          \

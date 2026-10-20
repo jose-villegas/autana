@@ -36,7 +36,7 @@ enum {
         return OPS##_add(V##_dot(plane.normal, point), plane.d);                                                       \
     }                                                                                                                  \
                                                                                                                        \
-    /* normalize = (normal, d) / |normal|. Precondition: normal is nonzero; d saturates outside the type range. */     \
+    /* normalize = (normal, d) / |normal|. Precondition: normal is nonzero. */                                         \
     static inline P##_t P##_normalize(P##_t plane) {                                                                   \
         T d;                                                                                                           \
         const V##_t normal = V##_normalize_divide(plane.normal, plane.d, &d);                                          \

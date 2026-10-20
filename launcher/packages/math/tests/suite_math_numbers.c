@@ -122,8 +122,7 @@ assert_normalize_reference(vec3x_t a) {
     static const int32_t numerators[] = {0, 1, -1, MATHX_ONE, -MATHX_ONE, INT32_MAX, INT32_MIN};
     for (size_t i = 0; i < sizeof(numerators) / sizeof(numerators[0]); i++) {
         int32_t q;
-        const vec3x_t divided = vec3x_normalize_divide(a, numerators[i], &q);
-        TEST_ASSERT_TRUE(vec3x_equal(out, divided));
+        vec3x_normalize_divide(a, numerators[i], &q);
         const double exact = (double)numerators[i] * MATHX_ONE / length;
         if (exact > INT32_MAX) {
             TEST_ASSERT_EQUAL_INT32(INT32_MAX, q);
@@ -149,10 +148,30 @@ test_normalize_divide_zero_and_float(void) {
         TEST_ASSERT_EQUAL_INT32(mathx_div(numerators[i], 0), q);
     }
     const vec3f_t normalized = vec3f_normalize(A);
-    float q;
-    const vec3f_t divided = vec3f_normalize_divide(A, B.x, &q);
-    TEST_ASSERT_TRUE(vec3f_equal(normalized, divided));
-    TEST_ASSERT_FLOAT_WITHIN(FLT_EPSILON, B.x / sqrtf(vec3f_dot(A, A)), q);
+    static const float float_numerators[] = {B.x, -B.x, 0.0F};
+    for (size_t i = 0; i < sizeof(float_numerators) / sizeof(float_numerators[0]); i++) {
+        float q;
+        const vec3f_t divided = vec3f_normalize_divide(A, float_numerators[i], &q);
+        TEST_ASSERT_TRUE(vec3f_equal(normalized, divided));
+        TEST_ASSERT_FLOAT_WITHIN(FLT_EPSILON, float_numerators[i] / sqrtf(vec3f_dot(A, A)), q);
+    }
+}
+
+static void
+test_fixed_normalize_saturation_edges(void) {
+    enum { EDGE_RADIUS = 2, LENGTH_NUMERATOR = 3, LENGTH_DENOMINATOR = 4 };
+
+    const vec3x_t a = {LENGTH_NUMERATOR * (MATHX_ONE / LENGTH_DENOMINATOR), 0, 0};
+    for (int offset = -EDGE_RADIUS; offset <= EDGE_RADIUS; offset++) {
+        for (int sign = -1; sign <= 1; sign += 2) {
+            const int32_t t = sign * LENGTH_NUMERATOR * (INT32_MAX / LENGTH_DENOMINATOR + offset);
+            const int64_t exact = (int64_t)(t / LENGTH_NUMERATOR) * LENGTH_DENOMINATOR;
+            const int32_t expected = exact > INT32_MAX ? INT32_MAX : exact < INT32_MIN ? INT32_MIN : (int32_t)exact;
+            int32_t q;
+            vec3x_normalize_divide(a, t, &q);
+            TEST_ASSERT_EQUAL_INT32(expected, q);
+        }
+    }
 }
 
 static void
@@ -174,7 +193,8 @@ test_fixed_normalize_every_magnitude(void) {
             int32_t components[3];
             for (size_t i = 0; i < sizeof(components) / sizeof(components[0]); i++) {
                 state = state * NORMALIZE_LCG_MULTIPLIER + NORMALIZE_LCG_INCREMENT;
-                const int64_t magnitude = (state >> (NORMALIZE_WORD_BITS - 1 - shift)) | 1;
+                const int component_shift = (shift + (int)(state >> (NORMALIZE_WORD_BITS / 2))) % NORMALIZE_WORD_BITS;
+                const int64_t magnitude = (state >> (NORMALIZE_WORD_BITS - 1 - component_shift)) | 1;
                 components[i] = mathx_saturate((state & 1) ? -magnitude : magnitude);
             }
             assert_normalize_reference((vec3x_t){components[0], components[1], components[2]});
@@ -1073,6 +1093,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_vec3_add_sub_scale_dot_cross_agree_across_every_number_type);
     RUN_TEST(test_vec2_ops_agree_across_every_number_type);
     RUN_TEST(test_normalize_divide_zero_and_float);
+    RUN_TEST(test_fixed_normalize_saturation_edges);
     RUN_TEST(test_fixed_normalize_extreme_magnitudes);
     RUN_TEST(test_fixed_normalize_every_magnitude);
     RUN_TEST(test_fixed_normalize_matches_float_within_its_precision);

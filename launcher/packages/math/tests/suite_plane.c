@@ -1,3 +1,4 @@
+#include <math.h>
 #include <string.h>
 
 #include "suites.h"
@@ -50,6 +51,32 @@ test_fixed_normalize_extreme_normals_and_distance_saturation(void) {
         TEST_ASSERT_EQUAL_INT32(0, out.normal.y);
         TEST_ASSERT_EQUAL_INT32(0, out.normal.z);
         TEST_ASSERT_EQUAL_INT32(distances[i], out.d);
+    }
+}
+
+static void
+test_fixed_normalize_zero_and_tilted_normals(void) {
+    static const int32_t distances[] = {INT32_MIN, -1, 0, 1, INT32_MAX};
+    for (size_t i = 0; i < sizeof(distances) / sizeof(distances[0]); i++) {
+        const planex_t out = planex_normalize((planex_t){{0, 0, 0}, distances[i]});
+        TEST_ASSERT_TRUE(vec3x_equal((vec3x_t){0, 0, 0}, out.normal));
+        TEST_ASSERT_EQUAL_INT32(mathx_div(distances[i], 0), out.d);
+    }
+    static const planex_t cases[] = {{{-3, 4, 12}, -7},
+                                     {{-3 * MATHX_ONE, 4 * MATHX_ONE, 12 * MATHX_ONE}, 7 * MATHX_ONE},
+                                     {{-3 * (INT32_MAX / 12), 4 * (INT32_MAX / 12), 12 * (INT32_MAX / 12)}, INT32_MIN}};
+    const double component_error = 0.5 + 0x1p-12;
+    const double quotient_relative_error = 0x1p-28;
+    for (size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); i++) {
+        const planex_t p = cases[i];
+        const double length =
+            sqrt((double)p.normal.x * p.normal.x + (double)p.normal.y * p.normal.y + (double)p.normal.z * p.normal.z);
+        const planex_t out = planex_normalize(p);
+        TEST_ASSERT_TRUE(fabs(out.normal.x - (double)p.normal.x * MATHX_ONE / length) <= component_error);
+        TEST_ASSERT_TRUE(fabs(out.normal.y - (double)p.normal.y * MATHX_ONE / length) <= component_error);
+        TEST_ASSERT_TRUE(fabs(out.normal.z - (double)p.normal.z * MATHX_ONE / length) <= component_error);
+        const double exact = (double)p.d * MATHX_ONE / length;
+        TEST_ASSERT_TRUE(fabs(out.d - exact) <= 0.5 + fabs(exact) * quotient_relative_error);
     }
 }
 
@@ -259,6 +286,7 @@ test_frustum_corner_rays_lie_on_both_side_planes(void) {
 
 void
 suite_plane(void) {
+    RUN_TEST(test_fixed_normalize_zero_and_tilted_normals);
     RUN_TEST(test_fixed_normalize_extreme_normals_and_distance_saturation);
     RUN_TEST(test_construction_winding_distance_and_normalize);
     RUN_TEST(test_oblique_normalization_scales_normal_and_distance);
