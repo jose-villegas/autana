@@ -59,6 +59,28 @@ FITTED = (
 )
 
 
+class LightSheet(NamedTuple):
+    """One sheet of what a light option buys, on the scene's showcase fitted under each look of physical_scene.py:
+    the look whose reference heads it, its (label, look) columns, the held-out frames it shows, how many crops it
+    enlarges (0: none) and whether each column also carries its own look's reference."""
+    name: str
+    reference: str
+    columns: tuple
+    frames: str = "0,4"
+    crops: int = 4
+    own_references: bool = False
+
+
+LIGHT_SHEETS = (
+    LightSheet("bake-indirect-compare", "smooth", (("direct light only", "direct"), ("two bounces", "smooth"))),
+    LightSheet("bake-indirect-look", "smooth", (("intensity 1", "smooth"), ("intensity 2", "intensity-2"),
+               ("intensity 3", "intensity-3"), ("albedo boost 2", "boost-2")), frames="4", crops=0, own_references=True),
+    LightSheet("bake-ao-compare", "ao-occluded", (("no occlusion", "ao-flat"), ("occlusion", "ao-occluded"))),
+)
+# The occlusion factor beside the reference, at the occlusion sheet's poses and from its occluded look.
+AO_MAP = SimpleNamespace(name="bake-ao-map", look="ao-occluded", frames=(0, 4))
+
+
 def git_environment():
     gitfile = ROOT / ".git"
     if sys.platform == "linux" and gitfile.is_file():
@@ -463,6 +485,95 @@ def prepare_variants(executor, scene_path, scene, jobs, work, on_ready):
     return ready
 
 
+def write_look_scene(scene_path, look, directory):
+    """The scene in `look` (physical_scene.LOOKS) in `directory`, beside copies of the scene folder's imports and a
+    link to its source folder, so the copy bakes like the scene."""
+    from physical_scene import LOOKS, physical_scene
+    directory.mkdir(parents=True, exist_ok=True)
+    for settings in scene_path.parent.glob("*.import.toml"):
+        shutil.copyfile(settings, directory / settings.name)
+    source = directory / "source"
+    if (scene_path.parent / "source").is_dir() and not source.exists():
+        source.symlink_to((scene_path.parent / "source").resolve(), target_is_directory=True)
+    path = directory / scene_path.name
+    path.write_text(physical_scene(scene_path.read_text(encoding="utf-8"), scene_path.parent, LOOKS[look]),
+                    encoding="utf-8")
+    return path
+
+
+def submit_light_fits(executor, scene_path, work):
+    """{look: (scene file, job, reference inputs, future of the fit)} for every look LIGHT_SHEETS and AO_MAP name: the scene's
+    showcase, its first renderer, prepared and fitted in that look. Each fit is submitted once its prepare is done."""
+    from concurrent.futures import Future
+    from r3d.fitted_variant import fit_point, placed_variant, prepare
+    from r3d.import_settings import load_scene
+    from r3d.process_budget import FIT_BYTES, PREPARE_BYTES
+    looks = dict.fromkeys([sheet.reference for sheet in LIGHT_SHEETS] +
+                          [look for sheet in LIGHT_SHEETS for _label, look in sheet.columns] + [AO_MAP.look])
+    fits = {}
+    for look in looks:
+        directory = work / f"light-{look}"
+        path = write_look_scene(scene_path, look, directory)
+        scene = load_scene(path)
+        job = placed_variant(scene, scene.renderers[0].object.name)
+        inputs = directory / "inputs"
+        fitted = Future()
+
+        def prepared(future, path=path, scene=scene, job=job, inputs=inputs, directory=directory, fitted=fitted):
+            try:
+                future.result()
+                fit = executor.submit(fit_point, {}, directory / "fit", path, scene, job, inputs, False,
+                                      directory / "fitted.mesh", estimates=FIT_BYTES)
+                fit.add_done_callback(lambda done: fitted.set_exception(done.exception()) if done.exception()
+                                      else fitted.set_result(done.result()))
+            except BaseException as error:
+                fitted.set_exception(error)
+        executor.submit(prepare, path, scene, job, inputs, estimates=PREPARE_BYTES).add_done_callback(prepared)
+        fits[look] = (path, job, inputs, fitted)
+    return fits
+
+
+def light_sheets(fits, out, work, measure, comparisons):
+    """LIGHT_SHEETS and the AO_MAP sheet into out/render/gpu from the fits of submit_light_fits; `measure` renders a
+    mesh at the held-out poses and files its frames in `comparisons` under its label."""
+    from PIL import Image
+    frames = {}
+    for look, (_path, job, inputs, fitted) in fits.items():
+        measure(f"light-{look}", job, Path(fitted.result()["mesh"]), inputs)
+        frames[look] = comparisons[f"light-{look}"]
+    for sheet in LIGHT_SHEETS:
+        image = out / "render/gpu" / f"{sheet.name}.png"
+        command = [sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out", image,
+                   "--reference-bakes", fits[sheet.reference][2] / "reference_held_out", "--reference-scale", "2",
+                   "--sheet-frames", sheet.frames]
+        for label, look in sheet.columns:
+            command += ["--bake", label, frames[look]]
+        if sheet.own_references:
+            for label, look in sheet.columns:
+                command += ["--bake-reference", label, fits[look][2] / "reference_held_out"]
+        if sheet.crops:
+            command += ["--crops", sheet.crops]
+        run(command, work / f"{sheet.name}.log")
+        # render_compare.py writes no crops where the bakes do not differ; fail rather than link a missing file.
+        if sheet.crops and not image.with_suffix(".crops.png").exists():
+            raise ValueError(f"{sheet.name}: no crops, the fits do not differ")
+    path, _job, inputs, _fitted = fits[AO_MAP.look]
+    occlusion = work / AO_MAP.name
+    run([sys.executable, ROOT / "launcher/tools/r3d/reference_render.py", path, "--poses", inputs / "held_out.txt",
+         "--occlusion", "--out", occlusion], work / f"{AO_MAP.name}.log")
+    rows = []
+    for frame in AO_MAP.frames:
+        pair = [Image.open(occlusion / f"{frame:04d}{suffix}.png").convert("RGB") for suffix in (".occlusion", "")]
+        rows.append([picture.resize((picture.width * 2, picture.height * 2), Image.Resampling.NEAREST)
+                     for picture in pair])
+    width, height = rows[0][0].size
+    sheet = Image.new("RGB", (width * 2, height * len(rows)))
+    for y, row in enumerate(rows):
+        for x, picture in enumerate(row):
+            sheet.paste(picture, (x * width, y * height))
+    sheet.save(out / "render/gpu" / f"{AO_MAP.name}.png")
+
+
 # Run in a child so the stage's own process never initialises the JIT.
 RAY_TRACING_CHECK = "import drjit as dr; raise SystemExit(0 if dr.has_backend(dr.JitBackend.LLVM) else 3)"
 
@@ -549,6 +660,7 @@ def _gpu(args, out, work, executor):
                              inputs=reference_inputs), executor=executor, deferred=sweep_futures)
 
     ready = prepare_variants(executor, scene_path, scene, jobs, work, prepared)
+    light_fits = submit_light_fits(executor, scene_path, work)
 
     for index, job in enumerate(jobs):
         prepared_result = ready[index].result()
@@ -612,6 +724,7 @@ def _gpu(args, out, work, executor):
 
             run_sweep_points(work, points, run_point)
             sweep = sweep_rows(work, points)
+    light_sheets(light_fits, out, work, measure, comparisons)
     write_sweep_csv(out / "sweep.csv", sweep)
     plot_pareto(out / "render/gpu/appearance-pareto.png", sweep)
     (out / f"tables/{id}-budget.md").write_text(markdown(

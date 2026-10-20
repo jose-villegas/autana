@@ -417,6 +417,47 @@ class PrepareSchedulingTests(unittest.TestCase):
         self.assertEqual(callers, ['gpu'])
 
 
+class LightStudyTests(unittest.TestCase):
+    SCENE = stages.ROOT / "launcher/demo/sponza/sponza.scene.toml"
+
+    def test_each_look_scene_loads_and_fits_the_showcase(self):
+        from r3d.fitted_variant import placed_variant
+        from r3d.import_settings import load_scene
+        showcase = load_scene(self.SCENE).renderers[0].object.name
+        with tempfile.TemporaryDirectory() as directory:
+            for look in ("smooth", "direct", "ao-occluded"):
+                with self.subTest(look=look):
+                    path = stages.write_look_scene(self.SCENE, look, Path(directory) / look)
+                    scene = load_scene(path)
+                    self.assertEqual(scene.renderers[0].object.name, showcase)
+                    self.assertTrue(placed_variant(scene, showcase).renderer.fit)
+                    self.assertEqual(scene.bake.ao is not None, look == "ao-occluded")
+
+    def test_a_fit_is_submitted_only_after_its_prepare_and_its_failure_reaches_the_sheet(self):
+        from concurrent.futures import Future
+        from r3d.fitted_variant import fit_point, prepare
+        submitted = []
+
+        def submit(function, *args, **kwargs):
+            submitted.append((function, Future()))
+            return submitted[-1][1]
+        executor = mock.Mock()
+        executor.submit.side_effect = submit
+        with tempfile.TemporaryDirectory() as directory:
+            fits = stages.submit_light_fits(executor, self.SCENE, Path(directory))
+        self.assertTrue(submitted and all(function is prepare for function, _ in submitted))
+        prepares = len(submitted)
+        self.assertEqual(prepares, len(fits))
+        first, second = list(fits)[:2]
+        submitted[0][1].set_result(None)
+        self.assertIs(submitted[prepares][0], fit_point)
+        submitted[prepares][1].set_result({"mesh": "fitted.mesh"})
+        self.assertEqual(fits[first][3].result(), {"mesh": "fitted.mesh"})
+        submitted[1][1].set_exception(RuntimeError("prepare failure"))
+        with self.assertRaisesRegex(RuntimeError, "prepare failure"):
+            fits[second][3].result()
+
+
 class SmokeAdmissionTests(unittest.TestCase):
     def test_smoke_submits_measured_fit_reservation(self):
         from types import SimpleNamespace
@@ -503,8 +544,10 @@ class FullGpuSchedulingTests(unittest.TestCase):
                     mock.patch.object(cost_model, 'load', return_value=([],)), \
                     mock.patch.object(stages, 'gpu_inputs', return_value={}), \
                     mock.patch.object(stages, 'run') as run, mock.patch.object(stages, 'apply_tables'), \
-                    mock.patch.object(fitted, 'plot_pareto'), mock.patch.object(stages, 'machine_table', return_value='machine fixture'):
+                    mock.patch.object(fitted, 'plot_pareto'), mock.patch.object(stages, 'machine_table', return_value='machine fixture'),                     mock.patch.object(stages, 'submit_light_fits', return_value='light fits') as light,                     mock.patch.object(stages, 'light_sheets') as sheets:
                 stages._gpu(NS(smoke=False, scene=Path("other.scene.toml"), object="hall"), out, root / 'work', Executor())
+            light.assert_called_once_with(mock.ANY, Path('other.scene.toml'), work)
+            self.assertEqual(sheets.call_args.args[0], 'light fits')
             build_host.assert_called_once_with(stages.HOST_SCRIPT, work / 'host', Path('other.scene.toml'))
             self.assertEqual(placed.call_args_list, [mock.call(mock.ANY, "hall_fitted"),
                                                     mock.call(mock.ANY, "hall_fitted_full"),
