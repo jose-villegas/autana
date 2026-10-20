@@ -90,7 +90,6 @@ SAMPLE_SCALE = 2
 NORMAL_COLORS = (SLOTS[0], SLOTS[7])
 LABEL_ALPHA = 0.75
 LABEL_PADDING = 0.3
-LABEL_SEPARATION = (1.05, 1.15)
 AXIS_ZOOM = 1.03
 SUBPLOT_RIGHT = 0.98
 SUBPLOT_BOTTOM = 0.12
@@ -195,7 +194,7 @@ def orbit(fig, axes, output, stills, labels=()):
                     for attempt in range(len(placed) + 1):
                         annotation.update_positions(renderer)
                         annotation.update_bbox_position_size(renderer)
-                        bounds = annotation.get_bbox_patch().get_window_extent(renderer).expanded(*LABEL_SEPARATION)
+                        bounds = annotation.get_bbox_patch().get_window_extent(renderer).padded(LABEL_CLEARANCE / 2)
                         overlaps = [other for other in placed if bounds.overlaps(other)]
                         if not overlaps:
                             break
