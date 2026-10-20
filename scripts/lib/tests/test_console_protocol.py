@@ -13,3 +13,8 @@ class ReplyTests(unittest.TestCase):
                          (["OPEN_OK"], True))
         with self.assertRaisesRegex(RuntimeError, "needs a development image"):
             require_development(b"W console: ignoring line: 'APPS'", "APPS")
+
+    def test_a_line_split_across_reads_completes_only_at_its_newline(self):
+        line = b"TONE heard 1000 Hz: -52.9 dB (silence -109.7 dB), open 1424 B DMA"
+        self.assertEqual(replies_to(line[:40], "TONE", ("TONE",)), ([], False))
+        self.assertEqual(replies_to(line + b"\r\n", "TONE", ("TONE",)), ([line.decode()], True))
