@@ -119,9 +119,9 @@ static void suite_set_test_cleanup(void (*fn)(void)) { cleanup = fn; }
 enum { SPONZA_BAKE_COUNT = 1, SPONZA_BAKE_FULL = 0 };
 static const int meshes[1];
 static const char* const sponza_bakes[] = {"renderer"};
-typedef struct { const int* mesh; void* placement; } r3d_instance_t;
+typedef struct { const int* mesh; void* model; } r3d_instance_t;
 static void open_the_meshes(void) {}
-static void report_frame_cost(const char* label, const char* object_name, const r3d_instance_t* instance, void* a, void* b) {
+static void report_frame_cost(const char* label, const char* object_name, const r3d_instance_t* instance, ...) {
     /* An allocation assertion aborts the measured pass after culling is switched off. */
     TEST_ASSERT_NOT_NULL(strcmp(label, "cull_off") ? instance : 0);
 }
@@ -187,6 +187,22 @@ int main(void) {
         for row, pack in (("16", "a"), ("32", "b"), ("64", "c")):
             path = self.capture(root, row, pack=pack)
         return path
+
+    def test_both_quarter_capture_uses_portrait_stage_means(self):
+        import meshlet_sizes
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            self.capture_rows(root)
+            for row in meshlet_sizes.ROWS:
+                path = root / f"meshlets-{row}-board.log"
+                lines = path.read_text().splitlines()
+                tagged = []
+                for quarter, draw in (("portrait", "3/4"), ("landscape", "30/40")):
+                    tagged.extend(line.replace("r3d.draw 3/4", f"r3d.draw {draw}") + f" quarter={quarter}"
+                                  for line in lines if not line.startswith((":test_", "RUNSUITE_COMPLETE")))
+                path.write_text("\n".join([*tagged, *lines[-2:]]) + "\n")
+            self.assertEqual(meshlet_sizes.capture_means(root, "atrium"),
+                             {key: [1, 2, 3, 8] for key in ("cull-off", *meshlet_sizes.ROWS)})
 
     def test_monitor_capture_is_rejected_and_suite_accepted(self):
         import meshlet_sizes

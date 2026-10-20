@@ -5,7 +5,8 @@ simplification, Hasselgren et al. 2021). A smooth mesh fits a colour per
 vertex, a flat one a colour per triangle.
 
     python launcher/tools/r3d/appearance_simplify.py --scene SCENE.scene.toml --start NAME.mesh \\
-        --poses POSES.txt --reference DIR [--poses ... --reference ...] --out DIR [--per-shot]
+        --poses POSES.txt --reference DIR [--poses ... --reference ...] --out DIR [--per-shot] \\
+        [--object NAME --surface-weight W --surface-margin E] [--coverage-poses POSES.txt]
 
 --start is a baked smooth or flat mesh, usually the simplifier's output at the
 triangle budget. Each --poses file (tools/anim/track_host.py) pairs with
@@ -13,22 +14,29 @@ the --reference directory reference_render.py wrote for it; --scene is the
 scene they were rendered from, whose camera background shows where nothing
 is drawn. All pairs train one mesh; with --per-shot each pair trains its
 own. A mesh is written as NAME.mesh by the same writer as mesh_import.py,
-under DIR, or DIR/shot<k>, and as a coloured OBJ beside it.
+under DIR, or DIR/shot<k>. The surface term anchors the fit to the scene's
+alpha-masked source; --object names its renderer.
 
 The optimiser needs PyTorch with CUDA and nvdiffrast; see the README.
 """
 
 import argparse
+import json
+from contextlib import contextmanager
+import os
 import pathlib
 import sys
 import time
 from typing import NamedTuple
 
 import numpy as np
+from scipy.sparse import coo_matrix
+from scipy.sparse.csgraph import connected_components
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from r3d import log  # noqa: E402
+from r3d.geometry import triangle_areas  # noqa: E402
 from r3d.import_settings import load_scene  # noqa: E402
 from r3d.lit_mesh import finest_triangles, read_lit_mesh  # noqa: E402
 from r3d.cost_model import load as load_cost  # noqa: E402
@@ -36,9 +44,68 @@ from r3d.poses import camera_basis, read_poses  # noqa: E402
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "render"))
 
-from render_compare import lab  # noqa: E402
+from colour_maths import lab  # noqa: E402
 
 FAR = 1.0e5
+SURFACE_QUERY_EVERY = 25
+SURFACE_SAMPLES_PER_TRIANGLE = 6
+SURFACE_REFERENCE_SAMPLES = 4_000_000
+SURFACE_TANGENTIAL_WEIGHT = 0.05
+CUBLAS_WORKSPACE_ENV = "CUBLAS_WORKSPACE_CONFIG"
+CUBLAS_WORKSPACE = ":4096:8"
+RASTER_EPSILON = 1.0 / 16.0
+# A triangle counts as stretched when its longest fitted edge exceeds this many times its longest start edge.
+STRETCH_RATIO = 2.0
+# A triangle counts as grown when its fitted area exceeds this many times its start area.
+AREA_GROWTH_RATIO = 4.0
+# A triangle counts as moved when its largest corner displacement exceeds this many mean start edges.
+MOVED_EDGES = 1.0
+# How many worst parts the log lists.
+STRETCH_WORST = 5
+
+
+@contextmanager
+def deterministic_fit():
+    """Keep CUDA reductions deterministic without changing subsequent in-process bakes."""
+    try:
+        import torch
+    except ModuleNotFoundError as missing:
+        if missing.name != "torch":
+            raise
+        # Argument validation also runs without the optional GPU dependencies.
+        torch = None
+
+    previous = None if torch is None else torch.are_deterministic_algorithms_enabled()
+    warn_only = None if torch is None else torch.is_deterministic_algorithms_warn_only_enabled()
+    fill_memory = None if torch is None else torch.utils.deterministic.fill_uninitialized_memory
+    workspace = os.environ.get(CUBLAS_WORKSPACE_ENV)
+    os.environ[CUBLAS_WORKSPACE_ENV] = CUBLAS_WORKSPACE
+    try:
+        if torch is not None:
+            torch.use_deterministic_algorithms(True)
+            torch.utils.deterministic.fill_uninitialized_memory = False
+        yield
+    finally:
+        if torch is not None:
+            torch.use_deterministic_algorithms(previous, warn_only=warn_only)
+            torch.utils.deterministic.fill_uninitialized_memory = fill_memory
+        if workspace is None:
+            os.environ.pop(CUBLAS_WORKSPACE_ENV, None)
+        else:
+            os.environ[CUBLAS_WORKSPACE_ENV] = workspace
+
+
+def edge_neighbours(tris):
+    """Neighbours by vertex index; edges shared by 3+ triangles have no neighbour."""
+    edges = np.stack([tris, np.roll(tris, -1, axis=1)], axis=-1).reshape(-1, 2)
+    edges.sort(axis=1)
+    order = np.lexsort((edges[:, 1], edges[:, 0]))
+    boundaries = np.r_[0, np.flatnonzero(np.any(np.diff(edges[order], axis=0), axis=1)) + 1, len(edges)]
+    pairs = boundaries[:-1][np.diff(boundaries) == 2]
+    neighbours = np.full(len(edges), -1, dtype=np.int64)
+    a, b = order[pairs], order[pairs + 1]
+    neighbours[a], neighbours[b] = b // 3, a // 3
+    return neighbours.reshape(-1, 3)
 
 
 class FitMesh(NamedTuple):
@@ -74,6 +141,83 @@ def point_edges(tris, vertex_point):
     return np.unique(edges, axis=0)
 
 
+def start_parts(mesh) -> np.ndarray:
+    """Connected-part labels for welded start points, including colour seams."""
+    edges = point_edges(mesh.tris, mesh.vertex_point)
+    graph = coo_matrix((np.ones(len(edges)), (edges[:, 0], edges[:, 1])),
+                       shape=(len(mesh.points), len(mesh.points)))
+    _, labels = connected_components(graph, directed=False)
+    return labels
+
+
+def triangle_edges(points, tris, vertex_point):
+    """Each triangle's edge lengths in corner order, shaped (n, 3)."""
+    corners = vertex_point[tris]
+    return np.stack([np.linalg.norm(points[corners[:, k]] - points[corners[:, (k + 1) % 3]], axis=1) for k in range(3)], axis=1)
+
+
+def ratio_with_inf(value, start):
+    """Ratios with infinity for positive values over zero and unity for zero over zero."""
+    ratio = np.where(value > 0, np.inf, 1.0)
+    return np.divide(value, start, out=ratio, where=start > 0)
+
+
+def triangle_stretch(start_points, fitted_points, mesh) -> np.ndarray:
+    """Each triangle's longest fitted edge relative to its longest start edge."""
+    start_edge = triangle_edges(start_points, mesh.tris, mesh.vertex_point).max(axis=1)
+    fitted_edge = triangle_edges(fitted_points, mesh.tris, mesh.vertex_point).max(axis=1)
+    return ratio_with_inf(fitted_edge, start_edge)
+
+
+def triangle_area_growth(start_points, fitted_points, mesh) -> np.ndarray:
+    """Each triangle's fitted area relative to its start area."""
+    corners = mesh.vertex_point[mesh.tris]
+    return ratio_with_inf(triangle_areas(fitted_points, corners), triangle_areas(start_points, corners))
+
+
+def triangle_moved(start_points, fitted_points, mesh) -> np.ndarray:
+    """Each triangle's largest corner move relative to its mean start edge."""
+    corners = mesh.vertex_point[mesh.tris]
+    moved = np.linalg.norm(fitted_points[corners] - start_points[corners], axis=2).max(axis=1)
+    mean_edge = triangle_edges(start_points, mesh.tris, mesh.vertex_point).mean(axis=1)
+    return ratio_with_inf(moved, mean_edge)
+
+
+def stretch_report(start, fitted, kept) -> dict:
+    """Edge stretch, area growth and displacement by start part, with small-part totals and worst parts."""
+    labels = start_parts(start)
+    parts = labels[start.vertex_point[start.tris[kept, 0]]]
+    flags = {
+        "stretch": triangle_stretch(start.points, fitted.points, fitted) > STRETCH_RATIO,
+        "area_growth": triangle_area_growth(start.points, fitted.points, fitted) > AREA_GROWTH_RATIO,
+        "moved": triangle_moved(start.points, fitted.points, fitted) > MOVED_EDGES,
+    }
+    edges = point_edges(start.tris, start.vertex_point)
+    length = np.linalg.norm(start.points[edges[:, 0]] - start.points[edges[:, 1]], axis=1)
+    global_edge = length.mean()
+    edge_parts = labels[edges[:, 0]]
+    part_count = int(labels.max()) + 1
+    edge_count = np.bincount(edge_parts, minlength=part_count)
+    edge_total = np.bincount(edge_parts, weights=length, minlength=part_count)
+    mean_edge = np.divide(edge_total, edge_count, out=np.zeros(part_count), where=edge_count > 0)
+    count = np.bincount(parts, minlength=part_count)
+    rows = [dict(part=int(part), triangles=int(count[part]), mean_start_edge=float(mean_edge[part]))
+            for part in np.flatnonzero(count)]
+    groups = {"small": mean_edge < global_edge, "rest": mean_edge >= global_edge}
+    report = dict(parts=rows, worst={})
+    for name, mask in groups.items():
+        report[name] = dict(triangles=int(count[mask].sum()))
+    for measure, flagged in flags.items():
+        measured = np.bincount(parts, weights=flagged, minlength=part_count)
+        for row in rows:
+            row[measure] = float(100 * measured[row["part"]] / row["triangles"])
+        for name, mask in groups.items():
+            triangles = report[name]["triangles"]
+            report[name][measure] = float(100 * measured[mask].sum() / triangles) if triangles else 0.0
+        report["worst"][measure] = sorted(rows, key=lambda row: (-row[measure], -row["triangles"], row["part"]))[:STRETCH_WORST]
+    return report
+
+
 def projection(eye, forward, width, height, lens, near):
     """A 4x4 world-to-clip matrix whose pixel centres cast the same rays as
     reference_render.py's pinhole, clip y up."""
@@ -87,10 +231,9 @@ def projection(eye, forward, width, height, lens, near):
 
 
 def pose_views(poses_path, scale):
-    """[(clip matrix, None, None, eye)] for every pose of a poses file: views
-    with no target, for counting what each triangle shows."""
+    """Target-free views and scaled render size for counting shown pixels."""
     width, height, lens, near, poses = read_poses(poses_path)
-    return [(projection(pose[:3], pose[3:], width, height, lens, near), None, None, pose[:3]) for pose in poses]
+    return [(projection(pose[:3], pose[3:], width, height, lens, near), None, None, pose[:3]) for pose in poses], (width * scale, height * scale)
 
 
 def load_views(pairs, scale):
@@ -152,6 +295,7 @@ class Renderer:
         if flat:
             vertex_point = np.asarray(vertex_point)[tris].reshape(-1)
             tris = np.arange(len(vertex_point)).reshape(-1, 3)
+        self.neighbours = torch.as_tensor(edge_neighbours(np.asarray(tris)), device=device)
         self.flat = flat
         self.dr = dr
         self.context = dr.RasterizeCudaContext(device=device)
@@ -184,44 +328,158 @@ class Renderer:
         """The triangle each pixel shows, -1 where none."""
         import torch
 
-        clip = self.clip(points, clip_matrix)
-        keep = torch.nonzero(self.facing(clip))[:, 0]
-        width, height = self.size
-        rast, _ = self.dr.rasterize(self.context, clip[None].contiguous(), self.tris[keep].contiguous(), resolution=[height, width])
+        _clip, rast, keep = self.raster(points, clip_matrix)
         local = rast[0, ..., 3].long() - 1
-        return torch.where(local >= 0, keep[local.clamp_min(0)], local)
+        mapping = torch.cat([keep, keep.new_full((1,), -1)])
+        return mapping[torch.where(local >= 0, local, len(keep))]
 
-    def normals(self, points, clip_matrix, eye, clip=None):
-        """(per-pixel world normal turned toward `eye`, covered mask): the
-        mesh's area-weighted vertex normals, interpolated."""
+
+    def raster(self, points, clip_matrix, clip=None):
+        """Detached visibility from the library; positions retain only torch gradients."""
         import torch
 
         clip = self.clip(points, clip_matrix) if clip is None else clip
-        tris = self.tris[self.facing(clip)].contiguous()
+        keep = torch.nonzero(self.facing(clip))[:, 0]
         width, height = self.size
-        rast, _ = self.dr.rasterize(self.context, clip[None].contiguous(), tris, resolution=[height, width])
-        vertex = vertex_normals(points, self.tris.long(), self.vertex_point)
-        attributes = torch.cat([vertex, points[self.vertex_point]], dim=1)[None].contiguous()
-        values, _ = self.dr.interpolate(attributes, rast, tris)
-        normal = torch.nn.functional.normalize(values[0, ..., :3], dim=-1)
-        towards = torch.as_tensor(eye, dtype=normal.dtype, device=normal.device) - values[0, ..., 3:]
+        with torch.no_grad():
+            rast, _ = self.dr.rasterize(self.context, clip[None].detach().contiguous(),
+                                       self.tris[keep].contiguous(), resolution=[height, width])
+        return clip, rast, keep
+
+    def barycentrics(self, clip, rast, keep, locations=None):
+        """Perspective weights via 2D homogeneous coordinates (Olano and Greer 1997)."""
+        import torch
+
+        from r3d.appearance_gather import gather
+
+        height, width = rast.shape[1:3]
+        local = rast[0, ..., 3].long() - 1
+        compact = locations is not None
+        locations = torch.nonzero(local >= 0) if locations is None else locations
+        y, x = locations.unbind(-1)
+        pixel = torch.stack([(2 * x + 1) / width - 1, (2 * y + 1) / height - 1], dim=-1)
+        corners = gather(clip, self.tris[keep[local[y, x]]].long())
+        relative = corners[..., :2] - pixel[..., None, :] * corners[..., 3:]
+        following = relative.roll(-1, dims=-2)
+        weights = relative[..., 0] * following[..., 1] - relative[..., 1] * following[..., 0]
+        weights = weights.roll(-1, dims=-1)
+        denominator = weights.sum(-1, keepdim=True)
+        valid = denominator != 0
+        weights = torch.where(valid, weights / torch.where(valid, denominator, 1), 0)
+        # Subpixel coverage can include centres just outside the exact triangle.
+        uv = weights[..., :2].clamp(0, 1)
+        weights = torch.cat([uv, torch.where(valid, 1 - uv.sum(-1, keepdim=True), 0)], dim=-1)
+        if compact:
+            return weights
+        return clip.new_zeros((height, width, 3)).index_put((y, x), weights)
+
+    def interpolate(self, attributes, clip, rast, keep):
+        """Interpolate covered pixels, leaving background zero."""
+        import torch
+
+        from r3d.appearance_gather import gather
+
+        local = rast[0, ..., 3].long() - 1
+        locations = torch.nonzero(local >= 0)
+        y, x = locations.unbind(-1)
+        indices = self.tris[keep[local[y, x]]].long()
+        weights = self.barycentrics(clip, rast, keep, locations)
+        values = (weights[..., None] * gather(attributes, indices)).sum(-2)
+        pixels = attributes.new_zeros((local.numel(), attributes.shape[-1]))
+        return pixels.index_copy(0, y * local.shape[1] + x, values).reshape(*local.shape, attributes.shape[-1])
+
+    def antialias(self, image, clip, rast, keep):
+        """Analytic visibility coverage, Laine et al. 2020 section 3.6."""
+        import torch
+
+        from r3d.appearance_gather import gather
+
+        height, width = image.shape[:2]
+        local = rast[0, ..., 3].long() - 1
+        ids = torch.cat([keep, keep.new_full((1,), -1)])[torch.where(local >= 0, local, len(keep))]
+        depth = rast[0, ..., 2]
+        xy = (clip[:, :2] / torch.where(clip[:, 3:] != 0, clip[:, 3:], 1) + 1) * clip.new_tensor([width, height]) / 2
+        with torch.no_grad():
+            corners = xy[self.tris.long()]
+            ab, ac = corners[:, 1] - corners[:, 0], corners[:, 2] - corners[:, 0]
+            area = ab[:, 0] * ac[:, 1] - ab[:, 1] * ac[:, 0]
+            facing = torch.zeros(len(self.tris), dtype=torch.bool, device=clip.device)
+            facing[keep] = True
+            adjacent = self.neighbours.clamp_min(0)
+            silhouette = (self.neighbours < 0) | ~facing[adjacent] | (area[:, None] * area[adjacent] <= 0)
+        with torch.no_grad():
+            horizontal = torch.nn.functional.pad(ids[:, :-1] != ids[:, 1:], (0, 1))
+            vertical = torch.nn.functional.pad(ids[:-1] != ids[1:], (0, 0, 0, 1))
+            axis, y, x = torch.nonzero(torch.stack([horizontal, vertical])).unbind(-1)
+            other_y, other_x = y + axis, x + 1 - axis
+            left, right = ids[y, x], ids[other_y, other_x]
+            near = torch.where((left >= 0) & ((right < 0) | (depth[y, x] <= depth[other_y, other_x])), left, right)
+            edges = self.tris[near].long()
+        start = gather(xy, edges)
+        finish = start.roll(-1, dims=1)
+        direction = finish - start
+        horizontal = (axis == 0)[:, None]
+        along = torch.where(horizontal, direction[..., 0], direction[..., 1])
+        denominator = torch.where(horizontal, direction[..., 1], direction[..., 0])
+        centre_along = torch.where(axis == 0, x, y).to(clip.dtype) + 0.5
+        centre_across = torch.where(axis == 0, y, x).to(clip.dtype) + 0.5
+        start_along = torch.where(horizontal, start[..., 0], start[..., 1])
+        start_across = torch.where(horizontal, start[..., 1], start[..., 0])
+        safe = torch.where(denominator != 0, denominator, 1)
+        fraction = (centre_across[:, None] - start_across) / safe
+        crossing = start_along + fraction * along - centre_along[:, None]
+        with torch.no_grad():
+            valid = silhouette[near] & (denominator.abs() > along.abs())
+            valid &= (fraction >= 0) & (fraction <= 1)
+            valid &= (crossing >= -RASTER_EPSILON) & (crossing <= 1 + RASTER_EPSILON)
+            selected = valid.to(torch.int64).argmax(-1)
+            active = valid.any(-1)
+        selected = torch.arange(crossing.shape[1], device=selected.device) == selected[:, None]
+        crossing = torch.where(selected, crossing, 0).sum(-1).clamp(0, 1)
+        weight = torch.where(active, 0.5 - crossing, 0)
+        pixels = image.reshape(-1, image.shape[-1])
+        pair = gather(pixels, torch.stack([y * width + x, other_y * width + other_x], dim=-1))
+        difference = pair[:, 1] - pair[:, 0]
+        delta = torch.zeros_like(pixels)
+        delta = delta.index_add(0, y * width + x, difference * weight.clamp_min(0)[:, None])
+        delta = delta.index_add(0, other_y * width + other_x, difference * weight.clamp_max(0)[:, None])
+        return image + delta.reshape_as(image) + clip.sum() * 0
+
+    def normals(self, points, clip_matrix, eye, clip=None, raster=None, values=None):
+        """World normals facing the eye and the covered mask, in image row order."""
+        import torch
+
+        clip, rast, keep = self.raster(points, clip_matrix, clip) if raster is None else raster
+        if values is None:
+            vertex = vertex_normals(points, self.tris.long(), self.vertex_point)
+            values = self.interpolate(torch.cat([vertex, points[self.vertex_point]], dim=1), clip, rast, keep)
+        normal = torch.nn.functional.normalize(values[..., :3], dim=-1)
+        towards = torch.as_tensor(eye, dtype=normal.dtype, device=normal.device) - values[..., 3:]
         normal = torch.where((normal * towards).sum(-1, keepdim=True) < 0, -normal, normal)
         return normal.flip(0), (rast[0, ..., 3] > 0).flip(0)
 
-    def __call__(self, points, colours, clip_matrix, clip=None):
+    def __call__(self, points, colours, clip_matrix, clip=None, raster=None, values=None):
         import torch
 
-        clip = self.clip(points, clip_matrix) if clip is None else clip
-        tris = self.tris[self.facing(clip)].contiguous()
-        clip = clip[None].contiguous()
-        width, height = self.size
-        rast, _ = self.dr.rasterize(self.context, clip, tris, resolution=[height, width])
-        if self.flat:
-            colours = colours.repeat_interleave(3, dim=0)
-        colour, _ = self.dr.interpolate(colours[None].contiguous(), rast, tris)
-        colour = torch.where(rast[..., 3:] > 0, colour, self.clear.expand_as(colour))
-        colour = self.dr.antialias(colour.contiguous(), rast, clip, tris)
-        return colour[0].flip(0)
+        clip, rast, keep = self.raster(points, clip_matrix, clip) if raster is None else raster
+        if values is None:
+            attributes = colours.repeat_interleave(3, dim=0) if self.flat else colours
+            values = self.interpolate(attributes, clip, rast, keep)
+        colour = values
+        colour = torch.where(rast[0, ..., 3:] > 0, colour, self.clear.expand_as(colour))
+        return self.antialias(colour, clip, rast, keep).flip(0)
+
+
+def visible(mesh, views, size, device="cuda"):
+    """Visible triangle IDs for each view, without gradients."""
+    import torch
+
+    render = Renderer(mesh.tris, mesh.double, mesh.vertex_point, size, device, flat=mesh.flat)
+    points = torch.as_tensor(mesh.points, dtype=torch.float32, device=device)
+    for matrix, *_rest in views:
+        with torch.no_grad():
+            ids = render.visible_ids(points, torch.as_tensor(matrix, dtype=torch.float32, device=device))
+        yield ids
 
 
 def coverage(mesh, views, size, device="cuda"):
@@ -229,25 +487,21 @@ def coverage(mesh, views, size, device="cuda"):
     triangle no view sees, small for a sliver or a speck."""
     import torch
 
-    render = Renderer(mesh.tris, mesh.double, mesh.vertex_point, size, device, flat=mesh.flat)
-    points = torch.as_tensor(mesh.points, dtype=torch.float32, device=device)
     total = torch.zeros(len(mesh.tris), dtype=torch.int64, device=device)
-    with torch.no_grad():
-        for matrix, *_rest in views:
-            ids = render.visible_ids(points, torch.as_tensor(matrix, dtype=torch.float32, device=device))
-            ids = ids[ids >= 0]
-            total += torch.bincount(ids, minlength=len(mesh.tris))
+    for ids in visible(mesh, views, size, device):
+        total += torch.bincount(ids[ids >= 0], minlength=len(mesh.tris))
     return total.cpu().numpy()
 
 
 def prune(mesh, shown, budget):
-    """The mesh without the triangles that show least, down to `budget`:
-    every triangle no view shows goes first, then those showing fewest
-    pixels. A flat mesh's colours go with their triangles."""
+    """Drop never-shown triangles first, then those showing fewest pixels to
+    meet `budget`. A flat mesh's colours go with their triangles. Return the
+    pruned mesh and the kept start indices."""
     order = np.argsort(-np.asarray(shown), kind="stable")
     keep = np.sort(order[: min(budget, int(np.count_nonzero(shown)))])
-    return mesh._replace(rgb=mesh.rgb[keep] if mesh.flat else mesh.rgb, tris=mesh.tris[keep],
-                         double=np.asarray(mesh.double)[keep])
+    pruned = mesh._replace(rgb=mesh.rgb[keep] if mesh.flat else mesh.rgb, tris=mesh.tris[keep],
+                           double=np.asarray(mesh.double)[keep])
+    return pruned, keep
 
 
 def uniform_laplacian(points, edges):
@@ -262,6 +516,24 @@ def uniform_laplacian(points, edges):
     return points - total / count.clamp_min(1.0)
 
 
+def vertex_scale(start, edges):
+    """Each point's mean start edge length, capped at the start's mean edge length
+    so large parts keep the global hold; points without edges take the global
+    mean (the scale-dependent Laplacian of Desbrun, Meyer, Schröder and Barr,
+    Implicit Fairing of Irregular Meshes, SIGGRAPH 1999)."""
+    import torch
+
+    length = (start[edges[:, 0]] - start[edges[:, 1]]).norm(dim=1)
+    edge_length = float(length.mean())
+    total = start.new_zeros(len(start))
+    count = torch.zeros_like(total)
+    for endpoint in (0, 1):
+        total.index_add_(0, edges[:, endpoint], length)
+        count.index_add_(0, edges[:, endpoint], torch.ones_like(length))
+    local = total / count.clamp_min(1)
+    return torch.where(count > 0, local.clamp_max(edge_length), edge_length)[:, None]
+
+
 def predicted_ms(xp, cost, clip, tris, double, size, scale):
     """cost_model's milliseconds for one view, less the constant and the
     cluster terms, which moving vertices cannot change."""
@@ -271,22 +543,22 @@ def predicted_ms(xp, cost, clip, tris, double, size, scale):
     return variable_ms(cost, drawn, rows, pixels)
 
 
-def normal_pairs(render, points, view, clip):
+def normal_pairs(render, points, view, clip, **samples):
     """(the mesh's normals, the reference's, the pixels both cover) in `view`."""
     matrix, _target, reference, eye = view
-    normal, covered = render.normals(points, matrix, eye, clip)
+    normal, covered = render.normals(points, matrix, eye, clip, **samples)
     return normal, reference, covered & (reference.abs().sum(-1) > 0)
 
 
-def normal_l1(render, points, view, clip):
+def normal_l1(render, points, view, clip, angles=True, **samples):
     """Mean L1 distance between the mesh's and the reference's normals over
-    the pixels both cover, and the angles there in degrees."""
+    the pixels both cover. Optional angles in degrees need pixel compaction."""
     import torch
 
-    normal, reference, both = normal_pairs(render, points, view, clip)
-    if not bool(both.any()):
-        return normal.sum() * 0, normal.new_zeros(0)
-    distance = (normal - reference).abs().sum(-1)[both].mean()
+    normal, reference, both = normal_pairs(render, points, view, clip, **samples)
+    distance = torch.where(both, (normal - reference).abs().sum(-1), 0).sum() / both.sum().clamp_min(1)
+    if not angles:
+        return distance, None
     cosine = (normal * reference).sum(-1)[both].clamp(-1.0, 1.0)
     return distance, torch.rad2deg(torch.acos(cosine.detach()))
 
@@ -344,7 +616,7 @@ def refine(mesh, error, budget):
     positions = points[vertex_point]
     while len(tris) < budget:
         corners = vertex_point[tris]
-        lengths = np.stack([np.linalg.norm(points[corners[:, k]] - points[corners[:, (k + 1) % 3]], axis=1) for k in range(3)], axis=1)
+        lengths = triangle_edges(points, tris, vertex_point)
         longest = lengths.argmax(axis=1)
         marked_points = set()
         for index in np.argsort(-error)[: max(1, (budget - len(tris)) // 2)]:
@@ -370,14 +642,24 @@ def refine(mesh, error, budget):
     return mesh._replace(points=points, rgb=rgb, tris=tris, double=double, vertex_point=vertex_point)
 
 
+def surface_loss(samples, centres, normals, scale, margin):
+    """From the fit to the source: a point-to-plane band of half-width `margin`
+    and a small pull, normalised by scalar or per-sample start geometry scales."""
+    offset = (samples - centres) / scale
+    envelope = ((offset * normals).sum(-1).abs() - margin).clamp_min(0).square()
+    return (envelope + SURFACE_TANGENTIAL_WEIGHT * offset.square().sum(-1)).mean()
+
+
+@deterministic_fit()
 def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian, seed=1, device="cuda", report=100,
-             clear=(0.0, 0.0, 0.0), cost=None, cost_weight=0.0, scale=1, normal_weight=0.0):
-    """(points, rgb 0..1, per-step mean dE) after `steps` Adam steps of
-    `batch` random views; the learning rates decay tenfold over the run and
-    position steps are in bounding diagonals. The loss adds `laplacian` times
-    the drift of the uniform-Laplacian coordinates (in mean edge lengths),
-    `cost_weight` times cost_model's predicted ms at 1 / `scale` of the
-    render size, and `normal_weight` times the L1 normal distance."""
+             clear=(0.0, 0.0, 0.0), cost=None, cost_weight=0.0, scale=1, normal_weight=0.0, surface_weight=0.0,
+             surface_margin=0.0, source=None):
+    """Fit fixed triangles; return positions, colours and colour-only error history.
+    Position steps use bounding diagonals and each vertex's capped local start scale.
+    Laplacian drift and the source envelope use capped local start edge scales,
+    averaged per triangle for the envelope; normals and predicted cost add their
+    weighted penalties.
+    Both learning rates decay tenfold over the run."""
     import torch
 
     points0, rgb0, tris, double, _scale, vertex_point, flat = mesh
@@ -396,53 +678,100 @@ def optimise(mesh, views, size, steps, batch, lr_position, lr_colour, laplacian,
 
     edges = torch.as_tensor(point_edges(tris, vertex_point), device=device)
     start = torch.as_tensor(points0, dtype=torch.float32, device=device)
-    points = start.clone().requires_grad_(True)
+    delta = torch.zeros_like(start).requires_grad_(True)
     colours = torch.as_tensor(rgb0, dtype=torch.float32, device=device).requires_grad_(True)
     rest = uniform_laplacian(start, edges)
-    edge_length = float((start[edges[:, 0]] - start[edges[:, 1]]).norm(dim=1).mean())
+    point_scale = vertex_scale(start, edges)
+    step_scale = point_scale / point_scale.max()
     matrices = [torch.as_tensor(view[0], dtype=torch.float32, device=device) for view in views]
     targets = [torch.as_tensor(view[1], device=device) for view in views]
     normals = [None if len(view) < 3 or view[2] is None else torch.as_tensor(view[2], device=device) for view in views]
     if normal_weight and any(normal is None for normal in normals):
         raise ValueError("a normal term needs the reference's normal buffers: reference_render.py --normals")
-    adam = torch.optim.Adam([{"params": [points], "lr": lr_position * diagonal}, {"params": [colours], "lr": lr_colour}])
+    if surface_weight:
+        from scipy.spatial import cKDTree
+        from r3d.surface_samples import area_samples, uniform_barycentric
+
+        if source is None:
+            raise ValueError("a surface term needs the alpha-masked source")
+        surface_rng = np.random.default_rng(seed)
+        reference, face_normals = area_samples(source, np.arange(len(source.tri_v)),
+                                               SURFACE_REFERENCE_SAMPLES, surface_rng)
+        tree = cKDTree(reference)
+        reference = torch.as_tensor(reference, dtype=start.dtype, device=device)
+        face_normals = torch.as_tensor(face_normals, dtype=start.dtype, device=device)
+        corners = torch.as_tensor(vertex_point[tris], device=device)
+        sample_scale = point_scale[:, 0][corners].mean(1).repeat_interleave(SURFACE_SAMPLES_PER_TRIANGLE)[:, None]
+        barycentric = torch.as_tensor(uniform_barycentric(surface_rng, (len(tris), SURFACE_SAMPLES_PER_TRIANGLE)),
+                                      dtype=start.dtype, device=device)
+    adam = torch.optim.Adam([{"params": [delta], "lr": lr_position * diagonal}, {"params": [colours], "lr": lr_colour}])
     schedule = torch.optim.lr_scheduler.LambdaLR(adam, lambda step: 0.1 ** (step / max(steps, 1)))
-    history = []
+    history = torch.empty(steps, device=device)
+    finite = torch.ones((), dtype=torch.bool, device=device)
     started = time.time()
     for step in range(steps):
         chosen = rng.choice(len(views), size=min(batch, len(views)), replace=False)
         adam.zero_grad()
-        error, predicted = 0.0, 0.0
+        points = start + step_scale * delta
+        error, predicted, colour_error, surface = 0.0, 0.0, 0.0, 0.0
+        if normal_weight:
+            render = renderer_for(chosen[0])
+            vertex = vertex_normals(points, render.tris.long(), render.vertex_point)
+            attributes = colours.repeat_interleave(3, dim=0) if flat else colours
+            attributes = torch.cat([attributes, vertex, points[render.vertex_point]], dim=1)
         for i in chosen:
             render = renderer_for(i)
             clip = render.clip(points, matrices[i])
-            error = error + delta_e76(render(points, colours, matrices[i], clip), targets[i]).mean() / len(chosen)
+            samples = {}
+            if normal_weight:
+                raster = render.raster(points, matrices[i], clip)
+                values = render.interpolate(attributes, *raster)
+                samples = dict(raster=raster, values=values[..., :3])
+            colour = delta_e76(render(points, colours, matrices[i], clip, **samples), targets[i]).mean() / len(chosen)
+            colour_error = colour_error + colour
+            error = error + colour
             if cost is not None:
                 predicted = predicted + predicted_ms(torch, cost, clip, render.tris.long(), render.double, render.size,
                                                      scale) / len(chosen)
             if normal_weight:
-                distance, _angles = normal_l1(render, points, (matrices[i], None, normals[i], views[i][3]), clip)
+                distance, _angles = normal_l1(render, points, (matrices[i], None, normals[i], views[i][3]), clip,
+                                              angles=False, raster=raster, values=values[..., 3:])
                 error = error + normal_weight * distance / len(chosen)
-        drift = ((uniform_laplacian(points, edges) - rest) / edge_length).pow(2).sum(dim=1).mean()
-        (error + laplacian * drift + cost_weight * predicted).backward()
+        drift = ((uniform_laplacian(points, edges) - rest) / point_scale).pow(2).sum(dim=1).mean()
+        if surface_weight:
+            from r3d.appearance_gather import gather
+
+            samples = (gather(points, corners)[:, None, :, :] * barycentric[..., None]).sum(-2).reshape(-1, 3)
+            if step % SURFACE_QUERY_EVERY == 0:
+                nearest = torch.as_tensor(tree.query(samples.detach().cpu().numpy())[1], device=device)
+            surface = surface_weight * surface_loss(samples, reference[nearest], face_normals[nearest],
+                                                     sample_scale, surface_margin)
+        loss = error + laplacian * drift + cost_weight * predicted + surface
+        loss.backward()
         adam.step()
         schedule.step()
         with torch.no_grad():
             colours.clamp_(0.0, 1.0)
-        history.append(float(error))
+        history[step] = colour_error.detach()
+        finite &= torch.isfinite(loss.detach())
+        if (report and step % report == 0) or step == steps - 1:
+            if not (finite & torch.isfinite(delta).all() & torch.isfinite(colours).all()).item():
+                raise ValueError("fit requires finite loss and parameters")
         if report and (step % report == 0 or step == steps - 1):
-            log(f"step {step}: mean dE76 {history[-1]:.3f}, predicted {float(predicted):.2f} ms, drift {float(drift):.3e}, "
-                f"{time.time() - started:.1f} s")
-    return points.detach().cpu().numpy().astype(np.float64), colours.detach().cpu().numpy().astype(np.float64), history
+            log(f"step {step}: mean dE76 {float(history[step]):.3f}, predicted {float(predicted):.2f} ms, drift {float(drift):.3e}, "
+                f"surface {float(surface):.6f}, {time.time() - started:.1f} s")
+    points = start + step_scale * delta
+    return points.detach().cpu().numpy().astype(np.float64), colours.detach().cpu().numpy().astype(np.float64), history.cpu().tolist()
 
 
-def write_mesh(out_dir, name, points, rgb, mesh):
+def write_mesh(out_dir, name, mesh):
     """The fitted mesh as <name>.mesh and <name>.obj, a flat one's OBJ with
     three vertices of each triangle's colour; returns the baked mesh's
     triangle count."""
     from r3d.lit_mesh import write_lit_mesh
 
-    positions = points[mesh.vertex_point]
+    positions = mesh.points[mesh.vertex_point]
+    rgb = mesh.rgb
     colours = np.clip(np.rint(rgb * 255.0), 0, 255)
     out_dir = pathlib.Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -461,6 +790,7 @@ def write_mesh(out_dir, name, points, rgb, mesh):
     return len(baked.tris)
 
 
+@deterministic_fit()
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--scene", required=True, help="the scene file the references were rendered from")
@@ -479,6 +809,9 @@ def main(argv=None):
     parser.add_argument("--coverage-poses", help="a denser poses file to count shown pixels over; the training poses otherwise")
     parser.add_argument("--cost-model", help="a cost_model.py weights file, such as board_cost_weights.txt")
     parser.add_argument("--cost-weight", type=float, default=0.0, help="dE76 per predicted millisecond")
+    parser.add_argument("--object", help="the scene object whose source anchors the fit")
+    parser.add_argument("--surface-weight", type=float, default=0.0, help="weight of the source-surface envelope")
+    parser.add_argument("--surface-margin", type=float, default=0.0, help="source envelope margin in local start edge scales")
     parser.add_argument("--normal-weight", type=float, default=0.0, help="weight of the L1 normal term")
     parser.add_argument("--refine-to", type=int, help="first split the start's worst triangles up to this many")
     parser.add_argument("--score", action="store_true", help="fit nothing: print the start's mean normal error on the poses")
@@ -486,6 +819,11 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if len(args.poses) != len(args.reference):
         parser.error("give one --reference per --poses")
+    if any(not np.isfinite(value) or value < 0 for value in (args.surface_weight, args.surface_margin)):
+        parser.error("surface weight and margin must be finite and nonnegative")
+    if args.surface_weight and not args.score and not args.object:
+        parser.error("a surface term needs --object, the scene object whose source anchors the fit")
+    coverage_views, coverage_size = pose_views(args.coverage_poses, args.scale) if args.coverage_poses else (None, None)
     scene = load_scene(args.scene)
     if scene.camera is None:
         parser.error("--scene needs a camera")
@@ -510,18 +848,34 @@ def main(argv=None):
         if args.refine_to is not None:
             fitted = refine(mesh, triangle_error(mesh, views, size, clear), args.refine_to)
             log(f"refined {len(mesh.tris)} -> {len(fitted.tris)} triangles")
-        if args.budget is not None:
-            shown = coverage(fitted, pose_views(args.coverage_poses, args.scale) if args.coverage_poses else views, size)
-            pruned = prune(fitted, shown, args.budget)
-            log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: {np.count_nonzero(shown == 0)} never shown")
-            fitted = pruned
+        source = None
+        if args.surface_weight:
+            from r3d.reference_render import source_for
+
+            source, _job = source_for(scene, args.object, lit=False)
+        fit_start = fitted
         cost = None if args.cost_model is None else load_cost(args.cost_model)[0]
         points, rgb, history = optimise(fitted, views, size, args.steps, args.batch, args.lr_position, args.lr_colour,
                                         args.laplacian, clear=clear, cost=cost, cost_weight=args.cost_weight,
-                                        scale=args.scale, normal_weight=args.normal_weight)
-        count = write_mesh(out, name, points, rgb, fitted)
-        np.savetxt(out / "loss.txt", np.array(history), fmt="%.4f")
-        print(f"{out}: {count} triangles, mean dE76 {np.mean(history[:20]):.3f} -> {np.mean(history[-20:]):.3f}")
+                                        scale=args.scale, normal_weight=args.normal_weight, source=source,
+                                        surface_weight=args.surface_weight, surface_margin=args.surface_margin)
+        fitted = fitted._replace(points=points, rgb=rgb)
+        kept = np.arange(len(fit_start.tris))
+        if args.budget is not None:
+            shown = coverage(fitted, coverage_views if args.coverage_poses else views,
+                             coverage_size if args.coverage_poses else size)
+            pruned, kept = prune(fitted, shown, args.budget)
+            log(f"pruned {len(fitted.tris) - len(pruned.tris)} triangles: {np.count_nonzero(shown == 0)} never shown")
+            fitted = pruned
+        count = write_mesh(out, name, fitted)
+        report = stretch_report(fit_start, fitted, kept)
+        for measure, threshold in (("stretch", STRETCH_RATIO), ("area_growth", AREA_GROWTH_RATIO), ("moved", MOVED_EDGES)):
+            log(f"{measure} > {threshold:g}x: small parts {report['small'][measure]:.2f}%, rest {report['rest'][measure]:.2f}%")
+            log(f"worst {measure} parts: " + ", ".join(f"{row['part']}: {row[measure]:.2f}% ({row['triangles']} triangles)"
+                                                    for row in report["worst"][measure]))
+        (out / "stretch.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        np.savetxt(out / "loss.txt", np.array(history), fmt="%.4f", header="mean dE76 before pruning")
+        print(f"{out}: {count} triangles, mean dE76 before pruning {np.mean(history[:20]):.3f} -> {np.mean(history[-20:]):.3f}")
     # The fit's cached device memory goes back for a reference set traced next in this process.
     torch = sys.modules.get("torch")
     if torch is not None and torch.cuda.is_available():

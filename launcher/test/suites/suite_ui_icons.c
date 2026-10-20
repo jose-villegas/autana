@@ -14,11 +14,12 @@
 #include "unity.h"
 
 #include "asset/asset_store.h"
-#include "gfx/image/gfx_image.h"
+#include "draw/draw_image.h"
 #include "test_pack.h"
-#include "ui/ui_icons.h"
+#include "ui/controls/ui_icons.h"
 
 #ifndef DEVICE_BUILD
+#include "draw/draw_image_format.h"
 #include "test_asset_dir.h"
 
 #define PACK        "suite_ui_icons"
@@ -27,15 +28,15 @@
 
 /* One image entry of `format`, 1 x 1, its pixel after the header. */
 static void
-put_image(test_pack_t* pack, const char* name, gfx_image_format_t format) {
+put_image(test_pack_t* pack, const char* name, draw_image_format_t format) {
     enum { HEADER = 16 };
 
-    uint8_t* at = test_pack_add(pack, name, GFX_IMAGE_ASSET, IMAGE_BYTES);
-    test_pack_put16(at, GFX_IMAGE_VERSION);
+    uint8_t* at = test_pack_add(pack, name, DRAW_IMAGE_ASSET, IMAGE_BYTES);
+    test_pack_put16(at, DRAW_IMAGE_VERSION);
     test_pack_put16(at + 2, format);
     test_pack_put16(at + 4, 1);
     test_pack_put16(at + 6, 1);
-    test_pack_put32(at + 8, format == GFX_IMAGE_MONO1 ? GFX_IMAGE_MONO1_STRIDE_STEP : 1U);
+    test_pack_put32(at + 8, format == DRAW_IMAGE_MONO1 ? DRAW_IMAGE_MONO1_STRIDE_STEP : 1U);
     test_pack_put32(at + 12, HEADER);
     at[HEADER] = 0x80;
 }
@@ -46,8 +47,8 @@ write_icon_pack(void) {
     uint8_t* bytes = malloc(PACK_BYTES);
     TEST_ASSERT_NOT_NULL(bytes);
     test_pack_t pack = test_pack_begin(bytes, PACK_BYTES, 2);
-    put_image(&pack, "mark", GFX_IMAGE_MONO1);
-    put_image(&pack, "photo", GFX_IMAGE_RGB565);
+    put_image(&pack, "mark", DRAW_IMAGE_MONO1);
+    put_image(&pack, "photo", DRAW_IMAGE_RGB565);
     const uint32_t size = test_pack_finish(&pack);
     test_write_file("./" PACK ".apak", bytes, size);
     free(bytes);
@@ -59,7 +60,7 @@ write_icon_pack(void) {
 static bool
 load_one(const char* pack, const char* name) {
     const ui_icon_name_t names[] = {{name, "m"}};
-    gfx_image_t icons[1];
+    draw_image_t icons[1];
     ui_icon_set_t set = {pack, names, 1, icons, false};
     const int mounted = asset_store_mounted();
     const bool loaded = ui_icon_set_load(&set);

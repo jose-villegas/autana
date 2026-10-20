@@ -12,23 +12,24 @@
 #include "app/app_arena.h"
 #include "core/memory.h"
 #include "display/display.h"
-#include "gfx/draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
-#include "input/gesture.h"
 #include "input/input.h"
-#include "input/tilt.h"
+#include "input/motion/tilt.h"
+#include "input/touch/gesture.h"
 #include "profile/frame_cost.h"
 #include "profile/frame_watch.h"
 #include "shell/shell.h"
 #include "shell/shell_apps.h"
 #include "shell/shell_frame.h"
 #include "shell/shell_system.h"
+#include "shell/ui/ui_launcher.h"
+#include "shell/ui/ui_ridge.h"
+#include "sound/sound_engine.h"
+#include "ui/layout/ui_anchor.h"
 #include "ui/ui.h"
-#include "ui/ui_anchor.h"
-#include "ui/ui_launcher.h"
-#include "ui/ui_ridge.h"
 
 #include "esp_log.h"
 
@@ -90,8 +91,8 @@ home_hint_rect(gesture_edge_t edge, int* x, int* y, int* w, int* h) {
             break;
     }
 
-    const mu_Rect rect =
-        ui_anchor_rect((mu_Rect){0, 0, GFX_WIDTH, GFX_HEIGHT}, anchor, anchor, offset_x, offset_y, width, height);
+    const recti_t rect =
+        ui_anchor_rect((recti_t){0, 0, GFX_WIDTH, GFX_HEIGHT}, anchor, anchor, offset_x, offset_y, width, height);
     *x = rect.x;
     *y = rect.y;
     *w = rect.w;
@@ -100,21 +101,27 @@ home_hint_rect(gesture_edge_t edge, int* x, int* y, int* w, int* h) {
 
 static void
 draw_home_hint(gesture_edge_t edge) {
-    int x, y, w, h;
+    int x;
+    int y;
+    int w;
+    int h;
     home_hint_rect(edge, &x, &y, &w, &h);
 
     if (!gfx_region_dirty(x, y, w, h)) {
         return;
     }
 
-    gfx_fill_rect(x, y, w, h, gfx_rgb(HOME_HINT_RGB));
+    draw_rect(x, y, w, h, gfx_rgb(HOME_HINT_RGB));
 }
 
 /* Transient and expanded pictures need the hint in their overlay command
  * list before frame() bins it. */
 static void
 queue_home_hint(gesture_edge_t edge) {
-    int x, y, w, h;
+    int x;
+    int y;
+    int w;
+    int h;
     home_hint_rect(edge, &x, &y, &w, &h);
     ui_queue_band_overlay_rect(x, y, w, h, HOME_HINT_RGB);
 }
@@ -168,8 +175,10 @@ apply_pending_full_redraw(const app_t* app) {
 void
 shell_exit_app(const app_t** current) {
     ESP_LOGI(TAG, "Leaving %s", (*current)->name);
+    sound_stop_app_voices();
     (*current)->exit();
     shell_systems_app_exit();
+    sound_end_app();
 #if CONFIG_LAUNCHER_DEVELOPMENT
     const size_t internal_after_exit = memory_free_bytes(MEMORY_INTERNAL);
     const size_t eight_bit_after_exit = memory_free_bytes(MEMORY_8BIT);
@@ -216,6 +225,7 @@ shell_start_app(const app_t** current, const app_t* next) {
     app_internal_free_before_enter = memory_free_bytes(MEMORY_INTERNAL);
     app_8bit_free_before_enter = memory_free_bytes(MEMORY_8BIT);
 #endif
+    sound_begin_app();
     (*current)->enter();
     frame_ready = false;
     frame_watch_restart();
@@ -322,7 +332,7 @@ shell_step_app(const app_t** current, input_t* input, uint32_t dt_ms) {
     apply_pending_full_redraw(*current);
     step_running_app(*current, input, dt_ms);
 
-    if ((*current)->home_gesture && gfx_mode_current()->layout == GFX_LAYOUT_FULL_FB && !gfx_frame_expanded()) {
+    if ((*current)->home_gesture && gfx_mode_has_framebuffer(gfx_mode_current()) && !gfx_frame_expanded()) {
         draw_home_hint(exit_edge);
     }
 }

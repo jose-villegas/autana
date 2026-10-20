@@ -9,9 +9,9 @@
  *===========================================================================*/
 #pragma once
 
-#include "gfx/draw/gfx_color.h"
-#include "gfx/present/gfx_indexed.h"
-#include "gfx/draw/gfx_palette.h"
+#include "gfx/target/gfx_color.h"
+#include "gfx/present/gfx_mode.h"
+#include "draw/draw_palette.h"
 
 #define SAND_PALETTE_UI_ENTRIES 16
 
@@ -5043,4 +5043,4 @@ static const gfx_color_t sand_dither_pixel_checker2[GFX_INDEXED_PALETTE_SIZE * G
 
 };
 
-static const gfx_palette_t sand_palette256 = {"sand256", sand_palette256_lut, GFX_INDEXED_PALETTE_SIZE};
+static const draw_palette_t sand_palette256 = {"sand256", sand_palette256_lut, GFX_INDEXED_PALETTE_SIZE};

@@ -3,7 +3,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "ui/ridge_theme.h"
+#include "shell/ui/ridge_theme.h"
 
 static void
 test_seed_keeps_its_hue_and_roles_stay_in_gamut(void) {

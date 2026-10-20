@@ -8,7 +8,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "gfx/present/gfx_heal.h"
+#include "gfx/present/send/gfx_heal.h"
 
 #define WIDTH    368
 #define STRIP_PX (WIDTH * GFX_HEAL_STRIP_ROWS)

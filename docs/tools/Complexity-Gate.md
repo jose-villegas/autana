@@ -24,12 +24,12 @@ file counted twice:
   `--sysroot`/`--gcc-toolchain` pointing at the same `xtensa-esp-elf` GCC
   install ESP-IDF itself uses, found under the ESP-IDF tools root:
   the tools paired with the resolved ESP-IDF checkout; see
-  [Which ESP-IDF](Autana-CLI.md#which-esp-idf)).
+  [Which ESP-IDF](Build-Environment.md#which-esp-idf)).
 - **`launcher/test/run_tests.sh --print-sources`/`--print-flags`**: the
   same host-portable file list and flags that script proves compile,
   used for whatever the diagnostics build's database does not contain: the
   host-only test-runner files (`host_main.c`, `heap_arena.c`) and
-  `gfx/draw/gfx_palette_standard.c`. esp-clang's own default target has no
+  `draw/draw_palette_standard.c`. esp-clang's own default target has no
   usable libc either, so these get the same `--sysroot`/`--gcc-toolchain`
   treatment against the host compiler `tools/build/find_cc.sh` resolves,
   never a second, independently-guessed compiler.
@@ -52,7 +52,7 @@ functions has nothing to say about code it did not write, and it is never
 a source of a coverage gap since it sits outside both. A
 vendored function this project changed is measured; see the end of this
 page. A `static inline` helper defined only in a
-shared header (for example `gfx/present/gfx_band.h`'s `gfx_band_ring_advance()`) is
+shared header (for example `gfx/present/modes/band/gfx_band.h`'s `gfx_band_ring_advance()`) is
 still invisible to this gate: clang-tidy's default scope is the file
 actually being compiled, not headers it pulls in.
 
@@ -108,13 +108,15 @@ python launcher/tools/quality/complexity_gate.py --changed origin/main  # only f
 the build, and a failing ratchet stops it there: the two halves CI's
 `build-diagnostics.yml` workflow decides are one local command. Point it at a
 different ref with `COMPLEXITY_GATE_BASE`. With no `build.diag` on disk
-yet the ratchet has no database to read and runs after that build instead;
-the database is also the previous build's, so a `.c` file added since then
-fails the ratchet as unmeasured until a build catches the database up.
+yet the ratchet has no database to read and runs after that build instead. So it
+does when the database is older than a first-party `.c`, a `CMakeLists.txt`,
+a `.cmake` or a `sdkconfig.defaults*` file: that database is the previous
+build's and cannot know a file added since, so the build runs first and the
+ratchet reads the one it writes.
 
-A file only a build variant compiles (`gfx/present/gfx_null_panel_device.c`, which
+A file only a build variant compiles (`gfx/present/panel/gfx_null_panel_device.c`, which
 exists for `CONFIG_LAUNCHER_QEMU` alone) is in no diagnostics build's database
-at all. `VARIANT_ONLY_FILES` names a sibling in the same folder whose compile command
+at all. `VARIANT_ONLY_FILES` names a sibling file whose compile command
 it borrows, and the variant's own symbol, which is defined for it: what such
 a file calls is often declared only under that symbol, and an undeclared
 function is a parse error the gate never accepts. So such a file is measured

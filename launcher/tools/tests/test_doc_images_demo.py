@@ -25,16 +25,16 @@ class DocImageFailureTest(unittest.TestCase):
         from anim_probe import write_camera_clip
         from r3d.import_settings import load_scene
         from r3d.mesh_import import fidelity_poses
-        from test_r3d_import import HEAD, renderer, sun_object, write_import
+        from test_r3d_import import FIT, HEAD, SIMPLIFY, VARIANT, VARIANT_OUTPUT, renderer, sun_object, write_import
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
             clip = write_camera_clip(work, name="orbit", reach=2.0, degrees=90.0, node="orbit_view")
-            write_import(work)
+            write_import(work, body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT)
             scene_path = work / "gallery.scene.toml"
             scene_path.write_text(HEAD + sun_object() + renderer(name="painting", extra=
-                'bake = true\nvisibility = { source = "camera_path", every_ms = 100, size = [16, 12] }\n') +
+                'variant = "mesh"\nbake = true\nvisibility = { source = "camera_path", every_ms = 100, size = [16, 12] }\n') +
                 renderer(name="painting_fitted", extra=
-                'bake = true\nvisibility = { source = "camera_path", every_ms = 100, size = [8, 6] }\n') +
+                'variant = "mesh"\nbake = true\n' + FIT.replace('[184, 224]', '[8, 6]')) +
                 '[[objects]]\nname = "view"\n[objects.camera]\nhalf_fov_short_tan = 0.62\nnear_z = 6\n'
                 'path = { animation = "orbit.anim.toml", node = "orbit_view" }\n')
             scene = load_scene(scene_path)
@@ -135,17 +135,23 @@ class DocImageFailureTest(unittest.TestCase):
             helper = root / "scripts/lib/run.sh"
             helper.parent.mkdir(parents=True)
             shutil.copyfile(ROOT / "scripts/lib/run.sh", helper)
+            packages = root / "launcher/tools/build/packages.sh"
+            packages.parent.mkdir(parents=True)
+            shutil.copyfile(ROOT / "launcher/tools/build/packages.sh", packages)
             demo = root / "launcher/demo/gallery/gallery.scene.toml"
             demo.parent.mkdir(parents=True)
             demo.touch()
             images = root / "docs/images/render"
             images.mkdir(parents=True)
-            for stem in ("gallery-full", "gallery-missing", "unknown-full"):
+            for stem in ("gallery-full", "gallery-missing", "unknown-full",
+                         "gallery-small-fill-flat8-diff", "gallery-small-fill-gate-diff",
+                         "gallery-small-fill-dither-diff", "gallery-small-fill-bake-diff"):
                 (images / f"{stem}.gif").touch()
             done = subprocess.run(["sh", str(tools / "render_doc_images.sh"), "--orphans"],
                                   cwd=images, capture_output=True, text=True)
             self.assertEqual(done.returncode, 1, done.stdout + done.stderr)
             self.assertNotIn("orphan render/gallery-full.gif", done.stdout)
+            self.assertNotIn("orphan render/gallery-small-fill-", done.stdout)
             self.assertIn("orphan render/gallery-missing.gif", done.stdout)
             self.assertIn("orphan render/unknown-full.gif", done.stdout)
 

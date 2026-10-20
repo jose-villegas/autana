@@ -30,13 +30,24 @@ def is_junction(path):
 
 def remove_output(path):
     """Remove links themselves; never traverse their build targets."""
+    path = os.path.abspath(path)
+    if os.name == 'nt' and not path.startswith('\\\\?\\'):
+        path = '\\\\?\\UNC\\' + path[2:] if path.startswith('\\\\') else '\\\\?\\' + path
     path = Path(path)
     if is_junction(path):
         os.rmdir(path)
     elif path.is_symlink():
         path.unlink()
     elif path.is_dir():
-        shutil.rmtree(path)
+        def writable(function, name, error):
+            if isinstance(error, tuple):
+                error = error[1]
+            if os.name != 'nt' or not isinstance(error, PermissionError):
+                raise error
+            os.chmod(name, os.stat(name).st_mode | stat.S_IWRITE)
+            function(name)
+
+        shutil.rmtree(path, **{'onexc' if sys.version_info >= (3, 12) else 'onerror': writable})
     elif path.exists():
         path.unlink()
 
@@ -60,24 +71,30 @@ def prepare(launcher, name):
     root.mkdir(parents=True, exist_ok=True)
     identity = hashlib.sha256(os.path.normcase(str(launcher)).encode()).hexdigest()[:HASH_LENGTH]
     pruned = 0
+    skipped = 0
     for folder in root.iterdir():
         if folder.name == identity or not re.fullmatch(r'[0-9a-f]{' + str(HASH_LENGTH) + '}', folder.name):
             continue
-        if folder.is_symlink() or (is_junction(folder)):
-            continue
-        owner = folder / OWNER_FILE
-        if owner.is_file():
-            owner_path = owner.read_text(encoding='utf-8').strip()
-            # An owner path from the other OS (WSL and Windows can share this
-            # root) cannot be tested from here; keep its folder.
-            if (os.name != 'nt' and re.match(r'^[A-Za-z]:', owner_path)) or (os.name == 'nt' and owner_path.startswith('/')):
+        try:
+            if folder.is_symlink() or (is_junction(folder)):
                 continue
-            if Path(owner_path).exists():
-                continue
-            remove_output(folder)
-            pruned += 1
+            owner = folder / OWNER_FILE
+            if owner.is_file():
+                owner_path = owner.read_text(encoding='utf-8').strip()
+                # An owner path from the other OS (WSL and Windows can share this
+                # root) cannot be tested from here; keep its folder.
+                if (os.name != 'nt' and re.match(r'^[A-Za-z]:', owner_path)) or (os.name == 'nt' and owner_path.startswith('/')):
+                    continue
+                if Path(owner_path).exists():
+                    continue
+                remove_output(folder)
+                pruned += 1
+        except OSError:
+            skipped += 1
     if pruned:
         print(f'=== pruned {pruned} orphan build folders ===', file=sys.stderr)
+    if skipped:
+        print(f'=== could not prune {skipped} orphan build folders (in use or removed concurrently) ===', file=sys.stderr)
     folder = root / identity
     folder.mkdir(exist_ok=True)
     owner = folder / OWNER_FILE

@@ -7,7 +7,7 @@
 #include <stdio.h>
 
 #include "asset/asset_store.h"
-#include "gfx/draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "render_host.h"
 
 static bool
@@ -28,7 +28,7 @@ options(int argc, char** argv) {
 static void
 draw(const render_frame_t* frame) {
     (void)frame;
-    gfx_clear(GFX_RGB(0x000000));
+    draw_clear(GFX_RGB(0x000000));
 }
 
 const render_scene_t render_scene = {

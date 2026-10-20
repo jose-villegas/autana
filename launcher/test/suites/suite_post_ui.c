@@ -12,7 +12,7 @@
 #include "unity.h"
 
 #include "display/display.h"
-#include "gfx/draw/gfx_font_roles.h"
+#include "draw/draw_font_roles.h"
 #include "selftest/post_layout.h"
 
 /* The panel, and the panel turned on its side. The logical canvas the report
@@ -24,8 +24,8 @@
  * the layout ever gives, and the one every rule below is stated against. */
 static post_layout_t
 full_gap_layout(int screen_w, int screen_h, int columns) {
-    const post_layout_t plain = post_layout_with(gfx_font_ui(), screen_w, screen_h, columns, 0, true);
-    return post_layout_with(gfx_font_ui(), screen_w, screen_h, columns, plain.line_h, true);
+    const post_layout_t plain = post_layout_with(draw_font_ui(), screen_w, screen_h, columns, 0, true);
+    return post_layout_with(draw_font_ui(), screen_w, screen_h, columns, plain.line_h, true);
 }
 
 static post_layout_t
@@ -44,13 +44,13 @@ landscape(void) {
 }
 
 static bool
-contains(mu_Rect outer, mu_Rect inner) {
+contains(recti_t outer, recti_t inner) {
     return inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.w <= outer.x + outer.w
            && inner.y + inner.h <= outer.y + outer.h;
 }
 
 static bool
-overlaps(mu_Rect a, mu_Rect b) {
+overlaps(recti_t a, recti_t b) {
     return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
 
@@ -75,7 +75,7 @@ assert_every_line_inside_the_readable_area(post_layout_t l) {
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, lines, "a report with no room for a line is not a layout");
 
     for (int i = 0; i < lines; i++) {
-        const mu_Rect line = post_layout_line(&l, i);
+        const recti_t line = post_layout_line(&l, i);
         TEST_ASSERT_GREATER_THAN_INT(0, line.w);
         TEST_ASSERT_TRUE_MESSAGE(contains(l.safe, line), "a report line escaped the panel's readable inset");
         TEST_ASSERT_TRUE_MESSAGE(contains(l.body, line), "a report line escaped the column band");
@@ -96,7 +96,7 @@ assert_no_two_lines_overlap(post_layout_t l) {
     TEST_ASSERT_GREATER_THAN_INT(0, lines);
 
     for (int i = 0; i < lines; i++) {
-        const mu_Rect a = post_layout_line(&l, i);
+        const recti_t a = post_layout_line(&l, i);
         for (int j = i + 1; j < lines; j++) {
             TEST_ASSERT_FALSE_MESSAGE(overlaps(a, post_layout_line(&l, j)), "two report lines share pixels");
         }
@@ -133,7 +133,7 @@ test_the_bands_stack_without_touching_in_both_orientations(void) {
 }
 
 static void
-assert_centred_horizontally(mu_Rect band, mu_Rect text) {
+assert_centred_horizontally(recti_t band, recti_t text) {
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, text.w, "centred text was given no width to centre");
 
     const int left = text.x - band.x;
@@ -144,13 +144,13 @@ assert_centred_horizontally(mu_Rect band, mu_Rect text) {
 
 static void
 assert_title_is_centred(post_layout_t l) {
-    const int title_w = gfx_font_text_width(gfx_font_ui(), POST_LAYOUT_TITLE, -1, POST_LAYOUT_TITLE_SCALE);
+    const int title_w = draw_font_text_width(draw_font_ui(), POST_LAYOUT_TITLE, -1, POST_LAYOUT_TITLE_SCALE);
     assert_centred_horizontally(l.safe, post_layout_title_text(&l, title_w));
 
-    const int fault_w = gfx_font_text_width(gfx_font_ui(), POST_LAYOUT_FAULT_TITLE, -1, POST_LAYOUT_TITLE_SCALE);
+    const int fault_w = draw_font_text_width(draw_font_ui(), POST_LAYOUT_FAULT_TITLE, -1, POST_LAYOUT_TITLE_SCALE);
     assert_centred_horizontally(l.safe, post_layout_title_text(&l, fault_w));
 
-    const int footer_w = gfx_font_text_width(gfx_font_ui(), POST_LAYOUT_FAULT_FOOTER, -1, POST_LAYOUT_REPORT_SCALE);
+    const int footer_w = draw_font_text_width(draw_font_ui(), POST_LAYOUT_FAULT_FOOTER, -1, POST_LAYOUT_REPORT_SCALE);
     assert_centred_horizontally(l.safe, post_layout_footer_text(&l, footer_w));
 }
 
@@ -162,14 +162,14 @@ test_the_title_is_horizontally_centred_in_both_orientations(void) {
 
 static void
 assert_widest_line_fits_a_column(post_layout_t l) {
-    const int widest = gfx_font_text_width(gfx_font_ui(), POST_LAYOUT_WIDEST_LINE, -1, POST_LAYOUT_REPORT_SCALE);
+    const int widest = draw_font_text_width(draw_font_ui(), POST_LAYOUT_WIDEST_LINE, -1, POST_LAYOUT_REPORT_SCALE);
 
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(widest, l.column_w, "a column is narrower than the widest report line");
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE((int)strlen(POST_LAYOUT_WIDEST_LINE), l.line_chars,
                                              "a line holds fewer characters than the widest report line");
 
     for (int c = 0; c < l.columns; c++) {
-        const mu_Rect column = post_layout_column(&l, c);
+        const recti_t column = post_layout_column(&l, c);
         TEST_ASSERT_EQUAL_INT(l.column_w, column.w);
         TEST_ASSERT_TRUE_MESSAGE(contains(l.body, column), "a column escaped the band it divides");
     }
@@ -191,7 +191,7 @@ typedef struct {
 } placement_t;
 
 static int
-column_of(const post_layout_t* l, mu_Rect line) {
+column_of(const post_layout_t* l, recti_t line) {
     return (line.x - l->body.x) / (l->column_w + l->column_gap);
 }
 
@@ -206,7 +206,7 @@ place_report(post_layout_t l, int checks, int lines_each) {
     for (int check = 0; check < checks; check++) {
         post_layout_reserve(&l, &lines, lines_each);
         for (int i = 0; i < lines_each; i++) {
-            const mu_Rect line = post_layout_take_line(&l, &lines);
+            const recti_t line = post_layout_take_line(&l, &lines);
             if (line.w <= 0) {
                 return p;
             }
@@ -266,7 +266,7 @@ assert_a_check_ending_on_the_last_row_costs_nothing(post_layout_t l) {
     }
     post_layout_gap(&l, &lines);
 
-    const mu_Rect first = post_layout_take_line(&l, &lines);
+    const recti_t first = post_layout_take_line(&l, &lines);
     TEST_ASSERT_GREATER_THAN_INT(0, first.w);
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, column_of(&l, first), "the pass should have moved on to the second column");
     TEST_ASSERT_EQUAL_INT_MESSAGE(l.body.y, first.y,
@@ -319,8 +319,8 @@ test_the_pass_places_exactly_the_capacity_in_either_orientation(void) {
 /* One check placed the way the drawer places one: its height reserved, then
  * its lines taken. */
 typedef struct {
-    mu_Rect first;
-    mu_Rect last;
+    recti_t first;
+    recti_t last;
     int placed;
 } entry_placement_t;
 
@@ -330,7 +330,7 @@ place_entry(const post_layout_t* l, post_lines_t* lines, int height) {
 
     post_layout_reserve(l, lines, height);
     for (int i = 0; i < height; i++) {
-        const mu_Rect line = post_layout_take_line(l, lines);
+        const recti_t line = post_layout_take_line(l, lines);
         if (line.w <= 0) {
             break;
         }
@@ -577,7 +577,7 @@ typedef struct {
 /* One check's lines, taken the way the drawer takes them. `placed` short of
  * the height asked for means the columns ran out mid-check. */
 typedef struct {
-    mu_Rect first;
+    recti_t first;
     int placed;
 } taken_entry_t;
 
@@ -586,7 +586,7 @@ take_entry(const post_layout_t* l, post_lines_t* lines, int height) {
     taken_entry_t e = {{0, 0, 0, 0}, 0};
 
     for (int line = 0; line < height; line++) {
-        const mu_Rect row = post_layout_take_line(l, lines);
+        const recti_t row = post_layout_take_line(l, lines);
         if (row.w <= 0) {
             break;
         }
@@ -645,7 +645,7 @@ static void
 test_a_short_report_in_landscape_takes_one_wide_column(void) {
     listed_t list = {2, short_details};
     const post_entries_t entries = listed_entries(&list, 2);
-    const post_layout_t chosen = post_layout_for_report(gfx_font_ui(), PANEL_LONG_SIDE, PANEL_SHORT_SIDE, &entries);
+    const post_layout_t chosen = post_layout_for_report(draw_font_ui(), PANEL_LONG_SIDE, PANEL_SHORT_SIDE, &entries);
     const post_layout_t ceiling = landscape();
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(1, chosen.columns, "a two-check report was split into columns it did not need");
@@ -660,7 +660,7 @@ static void
 test_a_tall_report_in_landscape_takes_the_orientation_ceiling(void) {
     listed_t list = {1, tall_details};
     const post_entries_t entries = listed_entries(&list, REPORT_CHECKS);
-    const post_layout_t l = post_layout_for_report(gfx_font_ui(), PANEL_LONG_SIDE, PANEL_SHORT_SIDE, &entries);
+    const post_layout_t l = post_layout_for_report(draw_font_ui(), PANEL_LONG_SIDE, PANEL_SHORT_SIDE, &entries);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(post_layout_max_columns(PANEL_LONG_SIDE, PANEL_SHORT_SIDE), l.columns,
                                   "a report that needs every column did not get them");
@@ -676,14 +676,14 @@ test_spacing_is_preferred_over_fewer_columns(void) {
     const int checks = 12;
     const post_entries_t entries = listed_entries(&list, checks);
 
-    const post_layout_t one_no_gap = post_layout_with(gfx_font_ui(), PANEL_LONG_SIDE, PANEL_SHORT_SIDE, 1, 0, false);
+    const post_layout_t one_no_gap = post_layout_with(draw_font_ui(), PANEL_LONG_SIDE, PANEL_SHORT_SIDE, 1, 0, false);
     const post_layout_t one_gap = full_gap_layout(PANEL_LONG_SIDE, PANEL_SHORT_SIDE, 1);
     TEST_ASSERT_EQUAL_INT_MESSAGE(checks, walk_report(&one_no_gap, &entries).placed_checks,
                                   "the fixture must fit one column without air, or it proves nothing");
     TEST_ASSERT_LESS_THAN_INT_MESSAGE(checks, walk_report(&one_gap, &entries).placed_checks,
                                       "the fixture must NOT fit one column with air, or it proves nothing");
 
-    const post_layout_t chosen = post_layout_for_report(gfx_font_ui(), PANEL_LONG_SIDE, PANEL_SHORT_SIDE, &entries);
+    const post_layout_t chosen = post_layout_for_report(draw_font_ui(), PANEL_LONG_SIDE, PANEL_SHORT_SIDE, &entries);
     TEST_ASSERT_EQUAL_INT_MESSAGE(chosen.line_h, chosen.gap, "fewer columns was preferred over keeping the air");
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(1, chosen.columns, "the air should have been bought with more columns");
     TEST_ASSERT_EQUAL_INT(checks, walk_report(&chosen, &entries).placed_checks);
@@ -691,7 +691,7 @@ test_spacing_is_preferred_over_fewer_columns(void) {
 
 static post_layout_t
 chosen_for(int screen_w, int screen_h, const post_entries_t* entries) {
-    return post_layout_for_report(gfx_font_ui(), screen_w, screen_h, entries);
+    return post_layout_for_report(draw_font_ui(), screen_w, screen_h, entries);
 }
 
 /* A pixel gap can overshoot where a row index could not: the last line's
@@ -705,7 +705,7 @@ assert_every_placed_line_ends_inside_the_body(const post_layout_t* l, const post
         const int height = post_layout_entry_height(l, entries->detail(entries->ctx, i));
         post_layout_reserve(l, &lines, height);
         for (int line = 0; line < height; line++) {
-            const mu_Rect row = post_layout_take_line(l, &lines);
+            const recti_t row = post_layout_take_line(l, &lines);
             if (row.w <= 0) {
                 break;
             }
@@ -756,7 +756,7 @@ test_portrait_takes_the_widest_gap_that_still_fits(void) {
                                   "portrait still truncates the report");
 
     const post_layout_t wider =
-        post_layout_with(gfx_font_ui(), PANEL_SHORT_SIDE, PANEL_LONG_SIDE, l.columns, l.gap + 1, entries.has_footer);
+        post_layout_with(draw_font_ui(), PANEL_SHORT_SIDE, PANEL_LONG_SIDE, l.columns, l.gap + 1, entries.has_footer);
     TEST_ASSERT_LESS_THAN_INT_MESSAGE(REPORT_CHECKS, walk_report(&wider, &entries).placed_checks,
                                       "one pixel more of air would have fitted too - the gap chosen was not the "
                                       "widest");
@@ -798,8 +798,9 @@ test_a_report_with_no_slack_gets_no_air(void) {
 static void
 test_a_report_without_a_footer_gives_that_band_to_the_columns(void) {
     const int ceiling = post_layout_max_columns(PANEL_SHORT_SIDE, PANEL_LONG_SIDE);
-    const post_layout_t with = post_layout_with(gfx_font_ui(), PANEL_SHORT_SIDE, PANEL_LONG_SIDE, ceiling, 0, true);
-    const post_layout_t without = post_layout_with(gfx_font_ui(), PANEL_SHORT_SIDE, PANEL_LONG_SIDE, ceiling, 0, false);
+    const post_layout_t with = post_layout_with(draw_font_ui(), PANEL_SHORT_SIDE, PANEL_LONG_SIDE, ceiling, 0, true);
+    const post_layout_t without =
+        post_layout_with(draw_font_ui(), PANEL_SHORT_SIDE, PANEL_LONG_SIDE, ceiling, 0, false);
 
     TEST_ASSERT_GREATER_THAN_INT(0, with.footer.h);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, without.footer.h, "an empty footer band still took height");

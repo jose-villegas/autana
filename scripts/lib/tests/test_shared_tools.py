@@ -33,6 +33,9 @@ class SharedToolsTests(unittest.TestCase):
             'CLANG_FORMAT_ANY_VERSION': '', 'CLANG_TIDY_ANY_VERSION': ''})
         self.env.start()
         self.addCleanup(self.env.stop)
+        roots = mock.patch.object(pinned_tool, 'pinned_tools_root', lambda: self.root)
+        roots.start()
+        self.addCleanup(roots.stop)
         # The fixtures' own pin, so a bump of launcher/idf-pin.json changes nothing here.
         for name, value in (('PINNED_VERSION', '19.1.2'), ('PINNED_MAJOR', '19')):
             patch = mock.patch.object(pinned_tool, name, value)
@@ -71,6 +74,19 @@ class SharedToolsTests(unittest.TestCase):
                     self.versions[os.path.normcase(versioned)] = 'unparseable'
                     self.versions[os.path.normcase(plain)] = '19'
                     self.assertEqual(pinned_tool.resolve(tool), (plain, '19'))
+
+    def test_the_pinned_install_is_searched_whatever_the_environment_selects(self):
+        pinned = self.root / 'pinned'
+        folder = pinned / 'tools/esp-clang/esp-19.1.2_x/esp-clang/bin'
+        folder.mkdir(parents=True)
+        binary = folder / ('clang-format.exe' if os.name == 'nt' else 'clang-format')
+        binary.write_text('fixture')
+        self.versions[os.path.normcase(str(binary))] = '19'
+        elsewhere = self.root / 'other'
+        with mock.patch.object(pinned_tool, 'espressif_tools_root', lambda: elsewhere), \
+             mock.patch.object(pinned_tool, 'pinned_tools_root', lambda: pinned), \
+             mock.patch.object(subprocess, 'run', side_effect=self.version_run):
+            self.assertEqual(pinned_tool.resolve('clang-format'), (str(binary), '19'))
 
     def test_the_pinned_release_beats_another_patch_of_its_major(self):
         near = self.candidate('clang-format', '19.1.7')
@@ -185,6 +201,33 @@ class CaptureTests(unittest.TestCase):
 CRASH = ('assert failed: gfx_present gfx.c:120 (fb != NULL)\n'
          'abort() was called at PC 0x40376f2b on core 0\n')
 BOOT = 'ESP-ROM:esp32s3-20210327\nrst:0xc (RTC_SW_CPU_RST),boot:0x8 (SPI_FAST_FLASH_BOOT)\n'
+
+
+class SuiteFailureSignTests(unittest.TestCase):
+    def test_no_hidden_failures_show_none(self):
+        for text, failed in [('', 0), ('SELFTEST_COMPLETE', 0),
+                             ('SELFTEST_COMPLETE failures=0 elapsed_ms=30', 0),
+                             ('SELFTEST_COMPLETE failures=1 elapsed_ms=30', 1),
+                             ('SELFTEST_COMPLETE failures=1 elapsed_ms=30', 2)]:
+            with self.subTest(text=text, failed=failed):
+                self.assertEqual(capture.suite_failure_signs(text, failed), [])
+
+    def test_each_prefixed_overflow_line_is_a_sign(self):
+        lines = ['I suites: SUITE OVERFLOW: run_first_suite',
+                 'SUITE OVERFLOW: run_second_suite']
+        self.assertEqual(capture.suite_failure_signs('\r\n'.join(lines), 0), lines)
+
+    def test_sentinel_exceeding_fail_count_is_a_sign(self):
+        for failed in (0, 1):
+            with self.subTest(failed=failed):
+                self.assertEqual(capture.suite_failure_signs(
+                    'I SELFTEST_COMPLETE failures=2 elapsed_ms=30', failed),
+                    [f'SELFTEST_COMPLETE failures=2, but {failed} FAIL lines'])
+
+    def test_overflow_and_sentinel_are_both_reported(self):
+        self.assertEqual(capture.suite_failure_signs(
+            'SUITE OVERFLOW: run_extra_suite\nSELFTEST_COMPLETE failures=2 elapsed_ms=30', 0),
+            ['SUITE OVERFLOW: run_extra_suite', 'SELFTEST_COMPLETE failures=2, but 0 FAIL lines'])
 
 
 class CrashSignTests(unittest.TestCase):

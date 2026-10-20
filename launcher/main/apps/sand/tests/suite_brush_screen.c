@@ -17,10 +17,10 @@
 #include "apps/sand/material.h"
 #include "apps/sand/sand_ui.h"
 #include "apps/sand/ui/brush_screen.h"
-#include "gfx/draw/gfx_font_roles.h"
+#include "draw/draw_font_roles.h"
 #include "input/input.h"
 #include "ui/ui.h"
-#include "ui/ui_transform.h"
+#include "ui_probe.h"
 
 #define PORTRAIT_W  368
 #define PORTRAIT_H  448
@@ -35,17 +35,17 @@ fixture(int screen_w, int screen_h) {
 }
 
 static bool
-inside_canvas(mu_Rect r, int screen_w, int screen_h) {
+inside_canvas(recti_t r, int screen_w, int screen_h) {
     return r.x >= 0 && r.y >= 0 && r.w > 0 && r.h > 0 && r.x + r.w <= screen_w && r.y + r.h <= screen_h;
 }
 
 static bool
-rects_overlap(mu_Rect a, mu_Rect b) {
+rects_overlap(recti_t a, recti_t b) {
     return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
 
 static int
-min_dim(mu_Rect r) {
+min_dim(recti_t r) {
     return (r.w < r.h) ? r.w : r.h;
 }
 
@@ -217,14 +217,14 @@ assert_captions_fit(int screen_w, int screen_h) {
 
     struct {
         const char* str;
-        mu_Rect r;
+        recti_t r;
     } fixed[] = {
         {BRUSH_SCREEN_MATERIAL_CAPTION, l.material_caption},
         {BRUSH_SCREEN_MODE_CAPTION, l.mode_caption},
     };
 
     for (unsigned i = 0; i < sizeof fixed / sizeof fixed[0]; i++) {
-        TEST_ASSERT_TRUE_MESSAGE(gfx_font_text_width(gfx_font_ui(), fixed[i].str, -1, scale) <= fixed[i].r.w,
+        TEST_ASSERT_TRUE_MESSAGE(draw_font_text_width(draw_font_ui(), fixed[i].str, -1, scale) <= fixed[i].r.w,
                                  fixed[i].str);
     }
 
@@ -233,14 +233,14 @@ assert_captions_fit(int screen_w, int screen_h) {
      * the one that happens to show first. */
     for (int seg = 0; seg < BRUSH_SCREEN_SEGMENT_COUNT; seg++) {
         const char* caption = brush_screen_size_caption((brush_screen_segment_t)seg);
-        TEST_ASSERT_TRUE_MESSAGE(gfx_font_text_width(gfx_font_ui(), caption, -1, scale) <= l.size_caption.w, caption);
+        TEST_ASSERT_TRUE_MESSAGE(draw_font_text_width(draw_font_ui(), caption, -1, scale) <= l.size_caption.w, caption);
 
         const char* label = brush_screen_segment_label((brush_screen_segment_t)seg);
-        TEST_ASSERT_TRUE_MESSAGE(gfx_font_text_width(gfx_font_ui(), label, -1, scale) <= l.segments[seg].w, label);
+        TEST_ASSERT_TRUE_MESSAGE(draw_font_text_width(draw_font_ui(), label, -1, scale) <= l.segments[seg].w, label);
     }
 
     /* The widest the value ever gets: two digits, a space and "PX". */
-    TEST_ASSERT_TRUE_MESSAGE(gfx_font_text_width(gfx_font_ui(), "00 PX", -1, scale) <= l.size_value.w,
+    TEST_ASSERT_TRUE_MESSAGE(draw_font_text_width(draw_font_ui(), "00 PX", -1, scale) <= l.size_value.w,
                              "the size value must fit its own box at every radius");
 }
 
@@ -275,31 +275,36 @@ ui_fixture(void) {
 static void
 brush_frame(sand_ui_t* ui, const input_t* in) {
     ui_begin(in);
-    brush_screen_draw(ui_context(), ui);
-    mu_end(ui_context());
+    brush_screen_draw(ui);
+    ui_probe_end_frame();
 }
 
+#define TOUCH_HOLD_FRAMES 4
+
+/* A tap on a segment, asserting it fires on the frame the touch is
+ * released, never on the press or while it is held. */
 static void
-tap_segment(sand_ui_t* ui, mu_Rect r) {
-    const int x = r.x + r.w / 2;
-    const int y = r.y + r.h / 2;
+tap_segment(sand_ui_t* ui, recti_t r) {
+    const int x = r.x + (r.w / 2);
+    const int y = r.y + (r.h / 2);
     const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
     const input_t hold = {.down = true, .x = x, .y = y};
     const input_t release = {.released = true, .x = x, .y = y};
-    const input_t idle = {0};
+    const sand_mode_t before = ui->mode;
 
     brush_frame(ui, &press);
-    for (int i = 0; i < 4; i++) {
+    TEST_ASSERT_EQUAL_INT_MESSAGE(before, ui->mode, "fired on the press");
+    for (int i = 0; i < TOUCH_HOLD_FRAMES; i++) {
         brush_frame(ui, &hold);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(before, ui->mode, "fired while held");
     }
     brush_frame(ui, &release);
-    brush_frame(ui, &idle);
 }
 
 static void
 test_a_tap_on_a_mode_segment_changes_sand_ui_mode(void) {
     ui_init();
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(affine2x_identity());
     sand_ui_t ui = ui_fixture();
     const input_t idle = {0};
     brush_frame(&ui, &idle);
@@ -309,7 +314,7 @@ test_a_tap_on_a_mode_segment_changes_sand_ui_mode(void) {
     const brush_screen_layout_t lay = fixture(PORTRAIT_W, PORTRAIT_H);
     tap_segment(&ui, lay.segments[BRUSH_SCREEN_SEG_ERASE]);
     TEST_ASSERT_EQUAL_INT_MESSAGE(SAND_MODE_ERASE, ui.mode,
-                                  "a tap on the ERASE segment must reach sand_ui_mode_clicked() and switch the mode");
+                                  "a tap on the ERASE segment must reach sand_ui_mode_clicked() on its release");
 }
 
 void

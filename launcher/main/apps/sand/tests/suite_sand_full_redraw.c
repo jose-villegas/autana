@@ -6,7 +6,7 @@
  * app_sand.c is the hardware-facing entry point and stays unlinked on a
  * host build; sand_app_enter_running_for_test() is its own SELFTEST-only
  * hook (like sand_app_alloc_selfcheck() in suite_sand_perf.c) for reaching
- * a running grid without a real touch drag through microui.
+ * a running grid without a real touch drag through the UI.
  */
 
 #include "suites.h"
@@ -18,8 +18,8 @@
 
 #include "app/app.h"
 #include "core/memory.h"
+#include "draw/draw.h"
 #include "esp_log.h"
-#include "gfx/draw/gfx_draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_present.h"
@@ -70,7 +70,7 @@ test_full_redraw_repaints_a_stale_rect_and_sends_every_strip(void) {
     /* Settles on the panel and in gfx's own dirty tracker, exactly like a
      * real overlay's own draw+present would - sand's row-run/dirty-column
      * state never learns this rectangle exists. */
-    gfx_fill_rect(STALE_X, STALE_Y, STALE_W, STALE_H, gfx_rgb(0xFF00FF));
+    draw_rect(STALE_X, STALE_Y, STALE_W, STALE_H, gfx_rgb(0xFF00FF));
     gfx_present();
 
     gfx_request_full_redraw();
@@ -80,7 +80,9 @@ test_full_redraw_repaints_a_stale_rect_and_sends_every_strip(void) {
     app_sand.frame(0, &idle);
     gfx_present();
 
-    int full_bands = 0, gathered = 0, partial_bands = 0;
+    int full_bands = 0;
+    int gathered = 0;
+    int partial_bands = 0;
     gfx_get_strip_send_counts(&full_bands, &gathered, &partial_bands);
     ESP_LOGI(TAG, "strips sent: full=%d gathered=%d partial=%d", full_bands, gathered, partial_bands);
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, gathered, "a full redraw must send whole strips, not gathered runs");

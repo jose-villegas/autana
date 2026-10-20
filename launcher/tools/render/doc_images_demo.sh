@@ -3,12 +3,14 @@
 # The demo scene's images for docs/images/, run by
 # launcher/tools/render/render_doc_images.sh.
 #
-#   doc_images_demo.sh <out-tree> <work-dir> SCENE.scene.toml OBJECT [--meshlets-only]
+#   doc_images_demo.sh <out-tree> <work-dir> SCENE.scene.toml OBJECT [--meshlets-only|--small-fill-only|--present-only]
 #
 # OBJECT is the full renderer; the scene must also place OBJECT_lite,
 # OBJECT_flat, OBJECT_fitted, OBJECT_fitted_full and OBJECT_flat_fitted.
 #
 # <out-tree> holds images in render/ and measured blocks in tables/.
+# --meshlets-only makes only the meshlet sheet; --present-only makes only the
+# three camera present GIFs (nearest, scanline, double) of OBJECT_fitted_full.
 #
 # Run from the repository root with $PYTHON set to a Python that has Pillow and numpy
 # (the fidelity sheet also needs launcher/tools/r3d/requirements.txt, found by find_r3d_python);
@@ -19,8 +21,8 @@ set -eu
 . scripts/lib/run.sh
 . launcher/tools/render/gif_from_avi.sh
 
-[ "$#" = 4 ] || { [ "$#" = 5 ] && [ "$5" = --meshlets-only ]; } || {
-    echo "$0: needs OUT WORK SCENE OBJECT [--meshlets-only]" >&2
+[ "$#" = 4 ] || { [ "$#" = 5 ] && { [ "$5" = --meshlets-only ] || [ "$5" = --small-fill-only ] || [ "$5" = --present-only ]; }; } || {
+    echo "$0: needs OUT WORK SCENE OBJECT [--meshlets-only|--small-fill-only|--present-only]" >&2
     exit 2
 }
 SCENE=$3
@@ -34,6 +36,82 @@ run mkdir -p "$W" "$RENDER"
 build=$(run sh launcher/tools/render/scene_viewer.sh "$SCENE" --build-only -o "$W")
 HOST=${build#built }
 
+small_fill_images() {
+    run "$HOST" --scene "$ID" --object "${FULL}_fitted_full" --frames 1 --tunables \
+        -o "$W/small-fill-tunables.bmp" 2> "$W/small-fill-tunables.log"
+    cat > "$W/small-fill-looks.tsv" <<EOF
+defaults|Defaults|${FULL}_fitted_full||${ID}-small-fill-defaults|
+flat8|Flat <=8|${FULL}_fitted_full|--set r3d_span.small_max_side=8|${ID}-small-fill-flat8|${ID}-small-fill-flat8-diff
+gate|Gate ramp|${FULL}_fitted_full|--set r3d_span.small_max_side=8 --set r3d_span.small_flat_spread_far=4 --set r3d_span.small_flat_spread_near=64|${ID}-small-fill-gate|${ID}-small-fill-gate-diff
+dither|Dither 4, ramp 1|${FULL}_fitted_full|--set r3d_span.small_max_side=8 --set r3d_span.small_dither=4 --set r3d_span.small_dither_ramp=1|${ID}-small-fill-dither|${ID}-small-fill-dither-diff
+bake|Flat bake|${FULL}_flat_fitted||${ID}-small-fill-bake|${ID}-small-fill-bake-diff
+EOF
+    small_fill_first=1
+    small_fill_end=56
+    small_fill_frames=60
+    small_fill_dt=100
+    small_fill_fps=6
+    small_fill_window="trim=start_frame=$small_fill_first:end_frame=$small_fill_end,setpts=PTS-STARTPTS,fps=$small_fill_fps"
+    small_fill_palette="max_colors=256:reserve_transparent=0:stats_mode=full"
+    # The table comes in on fd 3: the renderer and ffmpeg inherit stdin and may read it.
+    while IFS='|' read -r look label object settings gif diff <&3; do
+        # Settings are whitespace-separated command arguments from the table above.
+        set -- $settings
+        run "$HOST" --scene "$ID" --quarter 1 --frames "$small_fill_frames" --dt "$small_fill_dt" --object "$object" "$@" \
+            -o "$W/small-fill-$look.bmp" --video "$W/small-fill-$look.avi" 2> "$W/small-fill-$look.log"
+        gif_from_avi "$W/small-fill-$look.avi" "$RENDER/$gif.gif" \
+            "$small_fill_window" "$small_fill_palette"
+    done 3< "$W/small-fill-looks.tsv"
+    if cmp -s "$W/small-fill-defaults.bmp" "$W/small-fill-flat8.bmp"; then
+        echo "small-fill: --set did not change the render" >&2
+        exit 1
+    fi
+    while IFS='|' read -r look label object settings gif diff <&3; do
+        run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/small-fill-$look.mp4" \
+            --video "$W/small-fill-defaults.avi" "$W/small-fill-$look.avi" \
+            --label-a defaults --label-b "$look" --csv "$W/small-fill-$look.frames.csv" \
+            > "$W/small-fill-$look-compare.log"
+        run "$PYTHON" launcher/tools/render/render_temporal.py \
+            --video "$W/small-fill-defaults.avi" "$W/small-fill-$look.avi" \
+            --csv "$W/small-fill-$look.frames.csv" >> "$W/small-fill-$look-compare.log"
+    done 3< "$W/small-fill-looks.tsv"
+    run "$PYTHON" - "$W" <<'PY'
+import pathlib
+import subprocess
+import sys
+from PIL import Image
+sys.path.insert(0, "launcher/tools/render")
+from render_compare import GAIN, heatmap, read_video
+work = pathlib.Path(sys.argv[1])
+fps, defaults = read_video(work / "small-fill-defaults.avi")
+defaults = list(defaults)
+for row in (work / "small-fill-looks.tsv").read_text().splitlines():
+    look, label, _, _, _, _ = row.split("|")
+    if look == "defaults":
+        continue
+    _, variant = read_video(work / f"small-fill-{look}.avi")
+    frames = [heatmap(Image.fromarray(a), Image.fromarray(b), None, GAIN)
+              for a, b in zip(defaults, variant)]
+    subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo",
+                    "-pix_fmt", "rgb24", "-s", "%dx%d" % frames[0].size, "-r", str(fps), "-i", "-",
+                    "-c:v", "rawvideo", "-pix_fmt", "bgr24", str(work / f"small-fill-{look}-diff.avi")],
+                   input=b"".join(frame.tobytes() for frame in frames), check=True)
+PY
+    while IFS='|' read -r look label object settings gif diff <&3; do
+        [ "$look" != defaults ] || continue
+        gif_from_avi "$W/small-fill-$look-diff.avi" "$RENDER/$diff.gif" \
+            "$small_fill_window" "$small_fill_palette"
+    done 3< "$W/small-fill-looks.tsv"
+    run "$PYTHON" launcher/tools/render/doc_tables.py "$W" "$TABLES" "$ID" "$FULL" \
+        --small-fill-data docs/render/data/small-fill
+}
+
+if [ "${5:-}" = --small-fill-only ]; then
+    small_fill_images
+    exit 0
+fi
+
+if [ "${5:-}" != --present-only ]; then
 for object in "$FULL" "${FULL}_lite" "${FULL}_fitted"; do
     run "$HOST" --quarter 1 --frames 30 --dt 100 -o "$W/meshlets-$object.bmp" \
         --scene "$ID" --object "$object" --view meshlets 2> "$W/meshlets-$object.log"
@@ -43,6 +121,8 @@ run "$PYTHON" launcher/tools/render/render_compare.py --out "$RENDER/${ID}-meshl
     --still-column lite "$W/meshlets-${FULL}_lite.bmp" \
     --still-column fitted "$W/meshlets-${FULL}_fitted.bmp"
 [ "${5:-}" != --meshlets-only ] || exit 0
+small_fill_images
+fi
 
 # One looping flythrough per demo target and view, the same three seconds of
 # it so the GIFs compare, small enough to sit side by side in a table.
@@ -51,9 +131,14 @@ demo_gif() {
     shift
     run "$HOST" --quarter 1 --frames 30 --dt 100 \
         -o "$W/$name.bmp" --video "$W/$name.avi" "$@" 2> "$W/$name.log"
-    gif_from_avi "$W/$name.avi" "$RENDER/$name.gif" "fps=8,scale=240:-1:flags=lanczos" \
+    gif_from_avi "$W/$name.avi" "$RENDER/$name.gif" "${DEMO_GIF_FILTERS:-fps=8,scale=240:-1:flags=lanczos}" \
         "max_colors=64:stats_mode=diff"
 }
+DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-nearest --scene "$ID" --object "${FULL}_fitted_full" --present nearest
+DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-scanline --scene "$ID" --object "${FULL}_fitted_full" --present scanline
+DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-double --scene "$ID" --object "${FULL}_fitted_full" --present double
+[ "${5:-}" != --present-only ] || exit 0
+
 demo_gif ${ID}-full --scene "$ID" --object "$FULL"
 demo_gif ${ID}-lite --scene "$ID" --object "${FULL}_lite"
 demo_gif ${ID}-flat --scene "$ID" --object "${FULL}_flat"

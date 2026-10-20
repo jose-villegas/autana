@@ -1,7 +1,7 @@
 """The image entry (gfx/image_asset.py): what it writes reads back as baked,
 what it refuses to write or read, the colour and the turn it bakes, and
 build_pack finding every .image.toml. The firmware's reader of the same bytes
-is suite_gfx_image.c."""
+is suite_draw_image.c."""
 
 import pathlib
 import struct

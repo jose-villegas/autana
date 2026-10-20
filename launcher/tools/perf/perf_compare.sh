@@ -5,6 +5,8 @@
 #   A and B: revisions or project directories (A A is allowed)
 #   --suite NAME TESTS TABLE  repeatable; '-' selects all tests or raw timings
 #   -o, --out DIR            output directory
+#   --send-a LINE           repeatable setup before each A capture (idempotent sequence)
+#   --send-b LINE           repeatable setup before each B capture (idempotent sequence)
 #   --threshold PCT         equivalence margin
 #   --alpha P               nominal family error rate
 #   --max-seeds N           seed cap per side
@@ -12,6 +14,7 @@
 #   --timeout SECONDS       capture deadline per run
 #   --wait SECONDS          board lock queue time
 #   --autana COMMAND        capture, status and restore command (default: PATH)
+#   --validate-plan         validate without holding the board
 #   --no-restore            omit the origin/main release restore flash
 #   -h, --help              print this header
 
@@ -27,6 +30,11 @@ rev_a=""
 rev_b=""
 out=""
 restore=1
+estimate_restore=""
+validate_only=0
+perf_job_token=""
+restore_tree=""
+. "$TOOLS_DIR/perf_job.sh"
 autana=autana
 wait=3600
 remaining=$#
@@ -37,12 +45,13 @@ while [ "$remaining" -gt 0 ]; do
     case "$arg" in
         -o|--out) out=${1:?output directory required}; shift; remaining=$((remaining - 1)) ;;
         --no-restore) restore=0 ;;
+        --validate-plan) validate_only=1 ;;
         --suite)
             [ "$remaining" -ge 3 ] || { echo "--suite requires NAME TESTS TABLE" >&2; exit 2; }
             name=$1; tests=$2; table=$3
             shift 3; remaining=$((remaining - 3))
             set -- "$@" --suite "$name" "$tests" "$table" ;;
-        --threshold|--alpha|--max-seeds|--rng-seed|--timeout|--wait|--autana)
+        --threshold|--alpha|--max-seeds|--rng-seed|--timeout|--wait|--autana|--send-a|--send-b)
             value=${1:?option value required}; shift; remaining=$((remaining - 1))
             case "$arg" in
                 --autana) autana=$value ;;
@@ -51,7 +60,7 @@ while [ "$remaining" -gt 0 ]; do
             set -- "$@" "$arg" "$value" ;;
         --) ;;
         -h|--help)
-            sed -n '3,16s/^# //p' "$0"
+            sed -n '3,19s/^# //p' "$0"
             exit 0 ;;
         -*) echo "unknown option: $arg" >&2; exit 2 ;;
         *)
@@ -70,8 +79,17 @@ work=$(mktemp -d)
 revision_worktree_setup "$REPO_DIR" "$work"
 # shellcheck disable=SC2329
 cleanup() {
+    result=$?
+    trap - EXIT
+    trap '' INT TERM
+    if [ -n "$restore_tree" ]; then
+        "$PYTHON" "$TOOLS_DIR/perf_compare.py" --restore-project "$restore_tree" \
+            --autana "$autana" --wait "$wait" < /dev/null || result=$?
+    fi
+    perf_job_release || result=$?
     revision_worktree_cleanup
     rm -rf "$work"
+    exit "$result"
 }
 trap cleanup EXIT
 trap 'exit 130' INT TERM
@@ -83,13 +101,16 @@ short_name() {
     fi
 }
 "$PYTHON" "$TOOLS_DIR/perf_compare.py" --validate-plan --project-a "$tree_a" --project-b "$tree_b" "$@"
+[ "$validate_only" -eq 0 ] || exit 0
+if [ "$restore" -eq 1 ]; then
+    restore_project=$(revision_worktree_checkout origin/main restore)
+fi
+[ "$restore" -eq 1 ] || estimate_restore=--no-restore
+estimate=$("$PYTHON" "$TOOLS_DIR/perf_compare.py" --estimate-plan $estimate_restore --project-a "$tree_a" --project-b "$tree_b" "$@")
+perf_job_take "$estimate" "perf_compare $(short_name "$rev_a") vs $(short_name "$rev_b")"
+if [ "$restore" -eq 1 ]; then restore_tree=$restore_project; fi
 status=0
 "$PYTHON" "$TOOLS_DIR/perf_compare.py" --out "$out" --project-a "$tree_a" --project-b "$tree_b" \
     --label-a "$(short_name "$rev_a")" --label-b "$(short_name "$rev_b")" "$@" || status=$?
-if [ "$restore" -eq 1 ]; then
-    restore_tree=$(revision_worktree_checkout origin/main restore)
-    "$PYTHON" "$TOOLS_DIR/perf_compare.py" --restore-project "$restore_tree" \
-        --autana "$autana" --wait "$wait" < /dev/null || status=$?
-fi
 echo "summary $out/summary.md"
 exit "$status"

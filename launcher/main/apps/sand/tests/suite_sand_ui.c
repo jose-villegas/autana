@@ -166,7 +166,7 @@ test_opening_with_no_finger_down_then_tapping_a_tile_selects_that_tile(void) {
     TEST_ASSERT_EQUAL_INT(SAND_UI_PALETTE, ui.screen);
     TEST_ASSERT_FALSE(ui.swallow_release);
 
-    /* microui has already done its own hit-test by the time anything calls
+    /* The UI has already done its own hit-test by the time anything calls
      * this (see sand_ui.h's "WHO HIT-TESTS AND WHO DECIDES"), so this
      * drives sand_ui_tile_clicked() directly rather than feeding
      * sand_ui_step() a touch release at tile 2's coordinates. */
@@ -290,7 +290,7 @@ test_selecting_a_tile_while_detonating_resets_to_paint(void) {
     open_palette_on(&ui, 0);
     ui.mode = SAND_MODE_DETONATE;
 
-    /* microui has already done its own hit-test by the time anything calls
+    /* The UI has already done its own hit-test by the time anything calls
      * this, see sand_ui.h's "WHO HIT-TESTS AND WHO DECIDES" comment, and
      * test_opening_with_no_finger_down_then_tapping_a_tile_selects_that_tile
      * above for the same pattern, so this drives the entry point a real
@@ -362,14 +362,10 @@ test_tapping_the_selected_tile_when_it_cannot_emit_does_nothing(void) {
     TEST_ASSERT_EQUAL_UINT8(BRUSH_POUR, ui.modes[1]);
 }
 
-/* draw_palette()'s mu_button() per tile never returns true for a point
- * outside every tile (see sand_ui.h's "WHO HIT-TESTS AND WHO DECIDES"), so
- * sand_ui_tile_clicked() is never called for one. What this test pins:
- * sand_ui_step() never touches brush/erasing for anything but a BOOT edge
- * while the palette is open - selection only changes through
- * sand_ui_tile_clicked(). Driving it through sand_ui_step() with an
- * ordinary touch frame still exercises that guarantee; the coordinates
- * themselves do no work. */
+/* A tap outside every tile never reaches sand_ui_tile_clicked() (see
+ * sand_ui.h's "WHO HIT-TESTS AND WHO DECIDES"). This pins that
+ * sand_ui_step() changes no selection for anything but a BOOT edge while
+ * the palette is open; the touch frame's coordinates do no work. */
 static void
 test_tapping_outside_every_tile_does_nothing(void) {
     sand_ui_t ui;
@@ -378,7 +374,8 @@ test_tapping_outside_every_tile_does_nothing(void) {
     ui.brush = 1;
     ui.mode = SAND_MODE_ERASE;
 
-    int px, py;
+    int px;
+    int py;
     outside_every_tile(&px, &py);
     input_t tap = no_input();
     tap.released = true;

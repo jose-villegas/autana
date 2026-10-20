@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Sweep console tunables on seeded images; run acquires, report rebuilds the table."""
 import argparse
+from functools import partial
 import itertools
 import json
 from pathlib import Path
@@ -9,18 +10,22 @@ import re
 from statistics import mean
 import sys
 
-from layout_measure import (REPO, MEAN_RE, autana_command, booted_build_id,
-                            capture_metadata, captured_runs, make_table, parse_report,
+from layout_measure import (REPO, autana_command, booted_build_id,
+                            capture_metadata, captured_runs, make_table, parse_report, parse_timings,
                             run_stamped, split_filters, filter_limits, status_snapshot)
+import device_lock
+
+write_json = partial(device_lock.write_json, indent=2)
 from perf_compare import DEFAULT_ALPHA, DEFAULT_THRESHOLD
+from capture import capture_board, require_same_board, quarter_row
 from seed_statistics import compare
+from frame_cost import US_PER_MS
 from device_capture import PERF_SEGMENT
 
 sys.path.insert(0, str(REPO / "launcher/tools/r3d"))
 from dynres_report import SPANS, SPAN_FIELDS, STAGE
 
 DEFAULT_RUNS = 5
-US_PER_MS = 1000
 MAX_CONSECUTIVE_FAILURES = 2
 
 # What device.py prints for a --set the board refused (its TuneRefused).
@@ -63,6 +68,8 @@ def parse_args(argv=None):
     run_parser.add_argument("--alpha", type=float, default=DEFAULT_ALPHA)
     run_parser.add_argument("--autana")
     run_parser.add_argument("--dry-run", action="store_true")
+    run_parser.add_argument("--estimate-plan", action="store_true")
+    run_parser.add_argument("--no-restore", action="store_true")
     args = parser.parse_args(argv)
     if args.command == "run":
         if not 0 < args.threshold < 100 or not 0 < args.alpha < 1 or min(args.runs, args.timeout, args.wait) <= 0:
@@ -128,7 +135,7 @@ def metrics(capture, table):
         values.setdefault(name, []).append(value)
         units[name] = unit
 
-    rows = {match["name"]: int(match["value"]) for match in MEAN_RE.finditer(text)}
+    rows = parse_timings(text)
     rows.update(parse_report(table))
     for name, value in rows.items():
         add(name, value)
@@ -138,14 +145,15 @@ def metrics(capture, table):
         if "scale_split:" in line and " | " in line:
             segment = line.split(" | ", 1)[1]
             for name, average, _ in STAGE.findall(segment.split("| total", 1)[0]):
-                add(name, float(average) * US_PER_MS)
-    for match in SPANS.finditer(text):
-        for field, value in zip(SPAN_FIELDS, match.groups()[2:]):
-            add(f"spans.{match[1]}x{match[2]}.{field}", int(value))
-    for match in PERF_SEGMENT.finditer(text):
-        if int(match[7]) > 0:
-            add(match[1] + ".cycles", int(match[2]), "cycles/call")
-            add(match[1] + "." + match[5], int(match[6]), "events/call")
+                add(quarter_row(name, line), float(average) * US_PER_MS)
+    for line in text.splitlines():
+        if match := SPANS.search(line):
+            for field, value in zip(SPAN_FIELDS, match.groups()[2:]):
+                add(quarter_row(f"spans.{match[1]}x{match[2]}.{field}", line), int(value))
+    for line in text.splitlines():
+        if (match := PERF_SEGMENT.search(line)) and int(match[7]) > 0:
+            add(quarter_row(match[1] + ".cycles", line), int(match[2]), "cycles/call")
+            add(quarter_row(match[1] + "." + match[5], line), int(match[6]), "events/call")
     return {name: mean(samples) for name, samples in values.items()}, units
 
 
@@ -158,14 +166,17 @@ def capture_metrics(item):
             {prefix + key: value for key, value in units.items()})
 
 
-def write_json(path, payload):
-    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-
-
 def run(args, runner=None):
     """Acquire in the foreground; stopped sweeps retain the plan and report."""
     runner = runner or run_stamped
     saved = plan(args)
+    if args.estimate_plan:
+        from perf_job import job_estimate
+        captures = sum(len(flash["suites"]) for flash in saved["flashes"]) * args.runs * len(saved["points"])
+        # Each seeded image also captures its registered tunable inventory.
+        captures += len(saved["flashes"])
+        print(job_estimate(len(saved["flashes"]), captures, args.timeout, not args.no_restore))
+        return 0
     if args.dry_run:
         print(json.dumps(saved, indent=2))
         print(f"{len(saved['flashes'])} flashes; "
@@ -230,6 +241,7 @@ def run(args, runner=None):
                                 captures, _, seconds = captured_runs(lines, suite, 1)
                                 capture = captures[0]
                                 item.update(capture=str(capture), seconds=seconds[0], wall_seconds=wall)
+                                item["board"] = capture_board(capture)
                                 if code or "- Ended: complete" not in capture.with_suffix(".md").read_text(encoding="utf-8", errors="replace"):
                                     raise RuntimeError(f"{suite}: failed or incomplete capture; exit {code}")
                                 table = make_table(template, capture, args.out / (capture_stem + ".md"),
@@ -286,20 +298,19 @@ def report(directory):
     """Use complete seed means, or runs on one seed, in one Holm family."""
     directory = Path(directory)
     saved = json.loads((directory / "plan.json").read_text(encoding="utf-8"))
+    require_same_board({f"{index}: {item.get('capture', 'unnamed')}": item.get("board")
+                        for index, item in enumerate(saved["captures"]) if not item.get("error")})
     multi_seed = len(saved["seeds"]) >= 2
-    gathered, units, shared = {}, {}, None
+    gathered, units = {}, {}
     for capture in saved["captures"]:
         if capture.get("error"):
             continue
         found, found_units = (capture_metrics(capture) if capture.get("table") and Path(capture["capture"]).exists()
                               else (capture.get("metrics", {}), capture.get("units", {})))
         units.update(found_units)
-        # A metric some capture lacks is not the suite's measurement.
-        shared = set(found) if shared is None else shared & set(found)
         for metric, value in found.items():
             key = (capture["build"], capture["point"], metric)
             gathered.setdefault(key, {}).setdefault(capture["seed"], {})[capture["round"]] = value
-    gathered = {key: seeds for key, seeds in gathered.items() if key[2] in (shared or set())}
     # A knob point and its build's baseline run on the same images, so layout
     # is shared and the interleaved run is the unit; two builds differ in
     # layout, so there the seed mean is.

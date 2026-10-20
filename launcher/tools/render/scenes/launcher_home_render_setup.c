@@ -5,10 +5,10 @@
 
 #include "app/app.h"
 #include "gfx/gfx.h"
+#include "shell/ui/ui_launcher.h"
+#include "shell/ui/ui_ridge.h"
+#include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
-#include "ui/ui_launcher.h"
-#include "ui/ui_ridge.h"
-#include "ui/ui_transform.h"
 
 static app_t fixture_alpha = {.name = "Alpha", .summary = "The first fixture row"};
 static app_t fixture_beta = {.name = "Beta", .summary = "The second fixture row"};

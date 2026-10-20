@@ -20,6 +20,7 @@ narration) and whether a comment should exist at all (docs/C-Style-Guide.md
 calls that judgement, not a length or a name). HEADING-COMMENT is WARN for
 the same reason: a worklist, not a verdict.
 """
+import functools
 import pathlib
 import re
 import sys
@@ -35,6 +36,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/t
 from generated_blocks import MARKER as GENERATED_BLOCK  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
 from build import packages  # noqa: E402
+from build.apps import app_part  # noqa: E402
 import strip_comment_rules  # noqa: E402
 from tracked import tracked_files  # noqa: E402
 
@@ -233,6 +235,7 @@ def rule_living_document(root, path, raw_lines):
 # that file actually has.
 
 INCLUDE = re.compile(r'^\s*#include\s+"([^"]+)"')
+ANY_INCLUDE = re.compile(r'^\s*#\s*include\s+[<"]([^>"]+)[>"]')
 
 
 def include_roots(root):
@@ -314,16 +317,27 @@ def _fix_include_layer(root, path, text):
 
 # RULE: a folder may include only a strictly lower tier of
 # docs/Firmware-Architecture.md's "Layers" (LAYER_ROWS below, one string per
-# row, top first; the folders in a row share a tier). A system header such
+# row, top first, grouped into system, engine and platform bands; folders
+# in a row share a tier). A system header such
 # as "driver/temperature_sensor.h" never resolves to a layer, and a package
 # (launcher/packages/) sits under every row: PACKAGE-INCLUDE keeps it there.
 
-LAYER_ROWS = ("apps", "shell", "boot selftest", "ui console scene", "app", "display input", "render", "gfx", "anim",
-              "asset", "services", "profile", "core", "board", "build")
+LAYER_BANDS = (
+    ("system", ("apps", "shell", "boot selftest console", "app")),
+    ("engine", ("ui scene", "render", "draw anim sound", "asset")),
+    ("platform", ("input audio", "display", "gfx", "services", "profile", "core", "board", "build")),
+)
+LAYER_ROWS = tuple(row for _band, rows in LAYER_BANDS for row in rows)
 LAYER_TIER = {layer: tier for tier, row in enumerate(LAYER_ROWS) for layer in row.split()}
 LAYER_DIRS = tuple(layer for layer in LAYER_TIER if layer != "apps")
 
 INCLUDE_DIRECTION_EXCEPTIONS = {}
+
+
+def layer_of(parts):
+    if app_part(pathlib.PurePosixPath("launcher/main", *parts)):
+        return "apps"
+    return parts[0] if parts else None
 
 
 def _layer_dirs_match(root):
@@ -342,9 +356,23 @@ def _layer_dirs_match(root):
     unknown = sorted(found - set(LAYER_TIER))
     if unknown:
         raise ValueError(
-            f"launcher/main has folder(s) {unknown} that LAYER_TIER (check_style_audit.py) "
+            f"launcher/main has folder(s) {unknown} that LAYER_ROWS (check_style_audit.py) "
             "does not know about - add them to the tier table (and to "
-            "Firmware-Architecture.md's diagram) before this rule can trust its own order.")
+            "Firmware-Architecture.md's Layers section) before this rule can trust its own order.")
+
+
+def _main_include_layers(root, path, text):
+    """(line, include, target layer) for each include of `text` that resolves
+    to a folder of launcher/main/, quoted or angled."""
+    main_dir = (pathlib.Path(root) / "launcher/main").resolve()
+    for number, line in enumerate(text.splitlines(), 1):
+        m = ANY_INCLUDE.match(line)
+        if not m:
+            continue
+        resolved = resolve_include(root, path, m.group(1))
+        if resolved is None or not resolved.resolve().is_relative_to(main_dir):
+            continue
+        yield number, m.group(1), layer_of(resolved.resolve().relative_to(main_dir).parts)
 
 
 @c_line_rule("INCLUDE-DIRECTION")
@@ -355,25 +383,13 @@ def rule_include_direction(root, path, text):
     except ValueError:
         return
     parts = rel_to_main.parts
-    if not parts or parts[0] == "apps" or parts[0] not in LAYER_TIER:
+    source_layer = layer_of(parts)
+    if source_layer == "apps" or source_layer not in LAYER_TIER:
         return
     _layer_dirs_match(root)
-    source_layer = parts[0]
     source_tier = LAYER_TIER[source_layer]
     source_base = (rel_to_main.parent / rel_to_main.stem).as_posix()
-    for number, line in enumerate(text.splitlines(), 1):
-        m = INCLUDE.match(line)
-        if not m:
-            continue
-        inc = m.group(1)
-        resolved = resolve_include(root, path, inc)
-        if resolved is None:
-            continue
-        try:
-            target_rel = resolved.relative_to(main_dir.resolve())
-        except ValueError:
-            continue
-        target_layer = target_rel.parts[0] if target_rel.parts else None
+    for number, inc, target_layer in _main_include_layers(root, path, text):
         if target_layer is None or target_layer == source_layer or target_layer not in LAYER_TIER:
             continue
         if LAYER_TIER[target_layer] > source_tier:
@@ -385,6 +401,133 @@ def rule_include_direction(root, path, text):
                        "INCLUDE_DIRECTION_EXCEPTIONS entry citing the doc section that draws it")
 
 
+# RULE: an app (a folder of the top row, launcher/main/apps/) and the
+# editor use the engine, the platform and the app contract, and never the
+# rest of the system band: docs/plans/Engine-Layer-Design-Sketch.md's tier
+# rule. The app contract is the system band's lowest row, so the rule names
+# no folder. A shell app (shell/apps/) shares the apps tier for
+# INCLUDE-DIRECTION but ships with the shell, so it may reach the system
+# band. Both include rules below read C and C++ sources alike.
+
+INCLUDE_RULE_SUFFIXES = (".c", ".h", ".cpp")
+
+SYSTEM_ROWS = dict(LAYER_BANDS)["system"]
+APPS_ROW = SYSTEM_ROWS[0].split()
+SYSTEM_BAND_REFUSED = {layer for row in SYSTEM_ROWS[1:-1] for layer in row.split()}
+
+
+@text_rule("SYSTEM-BAND")
+def rule_system_band(root, path, text):
+    root_path = pathlib.Path(root).resolve()
+    main_dir = root_path / "launcher/main"
+    resolved_path = path.resolve()
+    if path.suffix not in INCLUDE_RULE_SUFFIXES or not resolved_path.is_relative_to(root_path):
+        return
+    parts = resolved_path.relative_to(main_dir).parts if resolved_path.is_relative_to(main_dir) else ()
+    if not (parts[:1] and parts[0] in APPS_ROW) and not resolved_path.is_relative_to(root_path / "editor"):
+        return
+    for number, inc, target_layer in _main_include_layers(root, path, text):
+        if target_layer in SYSTEM_BAND_REFUSED:
+            yield number, (f'"{inc}" reaches into {target_layer}/, the system band - an app or the editor uses '
+                           "the engine, the platform and the app contract (app/)")
+
+
+# RULE: the UI backend stays behind ui/'s face. A header is the backend's
+# when it is one of the vendored backend component's own headers, or
+# includes one, directly or through another header. Outside launcher/main/ui/
+# no firmware source (apps, shell, their tests and tools) and no editor
+# source includes the backend or a header of ui/ or of the harness that is
+# the backend's, so swapping the backend touches ui/ only. A header inside
+# the rule's reach that leaks is reported at its own include, not again at
+# every file including it.
+# launcher/test/ and launcher/tools/ are the engine's own harness and test
+# the seam itself, so they are outside the rule.
+
+UI_BACKEND_COMPONENT = "launcher/components/microui"
+UI_FACE_SCOPES = ("launcher/main", "editor")
+# Where an app's suite finds the harness's own headers (run_tests.sh's -I).
+UI_HARNESS_INCLUDE = "launcher/test"
+
+
+def _resolve_with_harness(root, path, inc):
+    resolved = resolve_include(root, path, inc)
+    harness = pathlib.Path(root) / UI_HARNESS_INCLUDE / inc
+    return resolved if resolved is not None or not harness.is_file() else harness
+
+
+@functools.lru_cache(maxsize=None)
+def _backend_headers(root):
+    return {p.name for p in (pathlib.Path(root) / UI_BACKEND_COMPONENT).rglob("*.h")}
+
+
+# Whether a header reaches the backend, per root, so each header is read
+# once per run however many files include it.
+_BACKEND_REACH = {}
+
+
+def _is_backend(root, resolved, inc, backend):
+    """True if the include `inc`, found at `resolved` (None when it resolves
+    nowhere, as the backend's own include root does not), is a backend header."""
+    if resolved is None:
+        return pathlib.PurePosixPath(inc).name in backend
+    return resolved.resolve().is_relative_to((pathlib.Path(root) / UI_BACKEND_COMPONENT).resolve())
+
+
+def _reaches_backend(root, header, backend, seen):
+    """True if `header` (a resolved path) includes a backend header, at any depth."""
+    key = header.resolve()
+    if key in seen:
+        return seen[key]
+    seen[key] = False
+    try:
+        text = key.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    for line in text.splitlines():
+        m = ANY_INCLUDE.match(line)
+        if not m:
+            continue
+        inc = m.group(1)
+        resolved = _resolve_with_harness(root, key, inc)
+        if _is_backend(root, resolved, inc, backend) or (
+                resolved is not None and _reaches_backend(root, resolved, backend, seen)):
+            seen[key] = True
+            return True
+    return False
+
+
+def _in_face_scope(root_path, path):
+    rel = path.resolve().relative_to(root_path).as_posix()
+    return any(rel.startswith(scope + "/") for scope in UI_FACE_SCOPES) and not rel.startswith("launcher/main/ui/")
+
+
+def _ui_backend_violations(root, path, text):
+    root_path = pathlib.Path(root).resolve()
+    if not path.resolve().is_relative_to(root_path) or not _in_face_scope(root_path, path):
+        return
+    backend = _backend_headers(str(root_path))
+    seen = _BACKEND_REACH.setdefault(root_path, {})
+    for number, line in enumerate(text.splitlines(), 1):
+        m = ANY_INCLUDE.match(line)
+        if not m:
+            continue
+        inc = m.group(1)
+        resolved = _resolve_with_harness(root, path, inc)
+        if _is_backend(root, resolved, inc, backend):
+            yield number, f'"{inc}" is the UI backend - use ui/ui.h, the face'
+        elif resolved is None or _in_face_scope(root_path, resolved):
+            continue
+        elif _reaches_backend(root, resolved, backend, seen):
+            yield number, (f'"{inc}" exposes the UI backend ({relpath(root, resolved)} reaches '
+                           f"{UI_BACKEND_COMPONENT}) - use ui/ui.h, the face")
+
+
+@text_rule("UI-BACKEND")
+def rule_ui_backend(root, path, text):
+    if path.suffix in INCLUDE_RULE_SUFFIXES:
+        yield from _ui_backend_violations(root, path, text)
+
+
 # RULE: a package (launcher/packages/<name>/) sits under every layer, so it
 # includes nothing outside itself: no #include, quoted or angled, may reach a
 # tracked header of the firmware or of another package. A header that resolves
@@ -393,8 +536,10 @@ def rule_include_direction(root, path, text):
 # no firmware include root, so neither resolves and the rule passes both.
 # launcher/test/check_packages_alone.sh compiles each package file with only
 # its own include root, which catches what no resolver here can see.
+# PACKAGE-CONFIG keeps build settings local too: CONFIG_<PACKAGE>_ in C/H,
+# CMakeLists.txt and Kconfig, and <PACKAGE>_ for Kconfig declarations.
+# Comments do not consume settings and are ignored in all these files.
 
-ANY_INCLUDE = re.compile(r'^\s*#\s*include\s+[<"]([^>"]+)[>"]')
 
 
 @c_line_rule("PACKAGE-INCLUDE")
@@ -410,6 +555,34 @@ def rule_package_include(root, path, text):
         if resolved is not None and not resolved.is_relative_to(package):
             yield number, (f'"{m.group(1)}" reaches outside the {package.name} package '
                            f"({relpath(root, resolved)}) - a package includes only itself")
+
+
+PACKAGE_CONFIG_SYMBOL = re.compile(r"\bCONFIG_[A-Za-z0-9_]+\b")
+PACKAGE_KCONFIG_ENTRY = re.compile(r"^\s*(?:menuconfig|config)\s+([A-Za-z0-9_]+)\b")
+PACKAGE_BUILD_TOKEN = re.compile(r'"(?:\\.|[^"\\])*"|#?\[(=*)\[.*?\]\1\]|#[^\n]*', re.DOTALL)
+
+
+@text_rule("PACKAGE-CONFIG")
+def rule_package_config(root, path, text):
+    package = package_of(root, path)
+    if package is None:
+        return
+    if path.suffix in (".c", ".h"):
+        code = blank_comments(text)
+    elif path.name in ("CMakeLists.txt", "Kconfig"):
+        code = PACKAGE_BUILD_TOKEN.sub(
+            lambda m: "".join("\n" if ch == "\n" else " " for ch in m.group())
+            if m.group().startswith("#") else m.group(), text)
+    else:
+        return
+    prefix = package.name.upper() + "_"
+    for number, line in enumerate(code.splitlines(), 1):
+        for symbol in PACKAGE_CONFIG_SYMBOL.findall(line):
+            if not symbol.startswith("CONFIG_" + prefix):
+                yield number, f"{symbol} is outside the {package.name} package - use CONFIG_{prefix} settings"
+        entry = PACKAGE_KCONFIG_ENTRY.match(line) if path.name == "Kconfig" else None
+        if entry and not entry.group(1).startswith(prefix):
+            yield number, f"{entry.group(1)} is outside the {package.name} package - name Kconfig entries {prefix}"
 
 
 # RULE: a personal home-directory path, or one machine's ESP-IDF checkout,
@@ -765,6 +938,8 @@ def rule_heading_comment(root, path, text, comments):
 def run_audit(root, rule_filter=None, file_filter=None, files=None):
     """Run every active rule's walker exactly once per matching file,
     returning (findings, files_scanned)."""
+    _BACKEND_REACH.clear()
+    _backend_headers.cache_clear()
     active = [r for r in RULES if not rule_filter or r.id == rule_filter]
     findings = []
     scanned = set()

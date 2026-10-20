@@ -31,7 +31,7 @@ class DirectoryTests(unittest.TestCase):
         return bytes(image)
 
     def test_directory_struct_sizes_match_the_reader_header(self):
-        header = pathlib.Path(__file__).resolve().parents[2] / "main/asset/asset_directory.h"
+        header = pathlib.Path(__file__).resolve().parents[2] / "main/asset/asset_directory_format.h"
         self.assertEqual(asset_directory.DIRECTORY_HEADER.size, read_define(header, "ASSET_DIRECTORY_HEADER_SIZE"))
         self.assertEqual(asset_directory.DIRECTORY_ROW.size, read_define(header, "ASSET_DIRECTORY_ROW_SIZE"))
 

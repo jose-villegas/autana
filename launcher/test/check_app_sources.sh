@@ -62,7 +62,8 @@ done
 
 status=0
 found=0
-for f in "$MAIN_DIR"/apps/*/app_*.c "$MAIN_DIR"/apps/*/scene_*.c; do
+for app_dir in $(app_directories "$HERE/.."); do
+for f in "$app_dir"app_*.c "$app_dir"scene_*.c; do
     [ -e "$f" ] || continue
     found=$((found + 1))
     # shellcheck disable=SC2086
@@ -72,6 +73,7 @@ for f in "$MAIN_DIR"/apps/*/app_*.c "$MAIN_DIR"/apps/*/scene_*.c; do
         echo "  FAIL $(basename "$f")"
         status=1
     fi
+done
 done
 
 if [ "$found" -eq 0 ]; then

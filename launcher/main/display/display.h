@@ -21,9 +21,10 @@
 
 #include "math/linear/vec2i.h"
 
-/* The cover glass hides roughly this many pixels along every edge of the
- * panel, and more where the corners round off. Anything meant to be read
- * insets by at least this much. Measured on the board. */
+/* How far anything meant to be read sits from every panel edge: a reading
+ * margin, not hidden pixels. The cover glass hides nothing along the straight
+ * edges (an edge ruler read on the board) and only the rounded
+ * corners below. */
 #define DISPLAY_PANEL_SAFE_INSET    15
 
 /* Measured on the panel's cover glass. */
@@ -40,7 +41,7 @@
 
 typedef struct {
     /* Which quarter turn currently reads as "upright", numbered the
-     * same way gfx_text_turned() and ui_transform_quarter_turn() do: 0
+     * same way draw_text_turned() and ui_transform_quarter_turn() do: 0
      * upright, 1 top-to-bottom, 2 upside down, 3 bottom-to-top. The only
      * state this module keeps. The hysteresis test above is a pure
      * function of (quarter, gx, gy); nothing here accumulates over
@@ -61,6 +62,11 @@ typedef struct {
 #define DISPLAY_LANDSCAPE             1
 #define DISPLAY_PORTRAIT_UPSIDE_DOWN  2
 #define DISPLAY_LANDSCAPE_UPSIDE_DOWN 3
+
+#define DISPLAY_PORTRAIT_NAME         "portrait"
+#define DISPLAY_LANDSCAPE_NAME        "landscape"
+
+#define DISPLAY_QUARTER_COUNT         (DISPLAY_LANDSCAPE_UPSIDE_DOWN + 1)
 
 /* The shell starts landscape because that is this board's normal held
  * orientation. display_init() remains neutral; display_reset_quarter()

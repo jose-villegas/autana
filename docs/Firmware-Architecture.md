@@ -18,7 +18,7 @@ home when the app exits. Each frame has one owner per step:
 ![The launcher, rendered on a host with the release build's apps](images/overview/launcher-home.png)
 
 *The launcher on a host render: fixture entries over the ridge backdrop
-(`ui/ui_ridge.c`).*
+(`shell/ui/ui_ridge.c`).*
 
 **Three words that are not interchangeable**, because the code uses all three
 and means something different by each:
@@ -26,7 +26,7 @@ and means something different by each:
 | | |
 |---|---|
 | **shell** | the frame loop and the app switching: `shell/`, whose log tag, shared with `main.c`'s boot lines, is `shell`; `main.c` starts the board and calls `shell_run()` |
-| **launcher** | the home screen the shell draws when no app is running: `ui/ui_launcher.c` |
+| **launcher** | the home screen the shell draws when no app is running: `shell/ui/ui_launcher.c` |
 | **boot** | what runs once before the loop exists: `main.c`'s startup and the animation in `boot/`. The power-on self test and the suite runner in `selftest/` run then too, and an app may run either again later |
 
 The top-level folder `launcher/` is the whole firmware, not the home
@@ -36,78 +36,99 @@ screen.
 
 ## Layers
 
-Each row may include anything in a row below it, never a row above or a
-folder beside it in the same row. The top row is the two callers, and
-neither includes the other: `main.c` starts the board and calls
-`shell_run()`, and the apps. The shell reaches an app only through the
-callbacks `app/app.h` declares. Folders that touch hardware are marked.
-`ls launcher/main/<folder>` is the inventory; this is the shape.
+Each row may include any lower row, never a higher row or another folder in
+its own row. Project apps under `apps/` and system apps under `shell/apps/`
+share the apps tier; other folders use their first path component.
+`main.c` starts the board and calls `shell_run()`; the shell reaches apps
+through `app/app.h` callbacks. The inventory is `launcher/main/`; the
+include gate's order is `LAYER_ROWS` in `scripts/gates/check_style_audit.py`.
+Folders that touch hardware are marked.
 
 ```mermaid
 flowchart TB
     classDef hw fill:#8a3d3d,color:#fff
 
-    subgraph R1["callers"]
-        Apps["apps/<br/><i>one folder per app</i>"]
-        Main["main.c<br/><i>boot order, then shell_run()</i>"]
+    subgraph System["system"]
+        subgraph R1["apps"]
+            Apps["apps/ and shell/apps/<br/><i>one folder per app; system apps stay in the core</i>"]
+        end
+        subgraph R2["the runtime"]
+            Shell["shell/<br/><i>frame loop, app switching, system screens in shell/ui/</i>"]
+        end
+        subgraph R3["boot, self test, console"]
+            Boot["boot/<br/><i>the startup animation</i>"]
+            Selftest["selftest/<br/><i>power-on self test, the on-board suite runner</i>"]:::hw
+            Console["console/<br/><i>serial verbs, dev builds</i>"]:::hw
+        end
+        subgraph R4["the app contract"]
+            App["app/<br/><i>callbacks, the app list, the app arena</i>"]
+        end
     end
-    subgraph R2["the runtime"]
-        Shell["shell/<br/><i>the frame loop, app switching, engine systems</i>"]
+    subgraph Engine["engine"]
+        subgraph R5["UI and scenes"]
+            Ui["ui/<br/><i>the UI toolkit, microui behind its face</i>"]
+            Scene["scene/<br/><i>entities, components, the active camera</i>"]
+        end
+        subgraph R6["rendering"]
+            Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
+        end
+        subgraph R7["drawing, animation and sound"]
+            Draw["draw/<br/><i>shapes, text, images, palettes into a target</i>"]
+            Sound["sound/<br/><i>stored sounds and sample cursors</i>"]
+            Anim["anim/<br/><i>keyed tracks sampled over time, tweens</i>"]
+        end
+        subgraph R8["content"]
+            Asset["asset/<br/><i>content packs, read in place</i>"]:::hw
+        end
     end
-    subgraph R3["boot and self test"]
-        Boot["boot/<br/><i>the startup animation</i>"]
-        Selftest["selftest/<br/><i>power-on self test, the on-board suite runner</i>"]:::hw
+    subgraph Platform["platform"]
+        subgraph R9["input and audio"]
+            Input["input/<br/><i>touch/, motion/, buttons/, mapping/</i>"]:::hw
+            Audio["audio/<br/><i>codec, PCM output, microphone capture</i>"]:::hw
+        end
+        subgraph R10["display"]
+            Display["display/<br/><i>viewport, orientation, panel clock</i>"]:::hw
+        end
+        subgraph R11["presentation"]
+            Gfx["gfx/<br/><i>target types, the framebuffer, present/</i>"]:::hw
+        end
+        subgraph R12["device services"]
+            Services["services/<br/><i>settings, tunables, build id</i>"]:::hw
+        end
+        subgraph R13["frame measurement"]
+            Profile["profile/<br/><i>frame cost, frame watch</i>"]:::hw
+        end
+        subgraph R14["the platform core"]
+            Core["core/<br/><i>two-core jobs, memory placement, time</i>"]:::hw
+        end
+        subgraph R15["board"]
+            Board["board/<br/><i>pins, peripherals, panel link</i>"]:::hw
+        end
+        subgraph R16["the build switch"]
+            Build["build/<br/><i>which build variant this is</i>"]
+        end
     end
-    subgraph R4["UI, console and scenes"]
-        Ui["ui/<br/><i>microui, launcher</i>"]
-        Console["console/<br/><i>serial verbs, dev builds</i>"]:::hw
-        Scene["scene/<br/><i>scenes loaded by name, the active camera</i>"]
-    end
-    subgraph R5["the app contract"]
-        App["app/<br/><i>the shell/app contract, the app list, the app arena</i>"]
-    end
-    subgraph R6["panel and sensors"]
-        Display["display/<br/><i>orientation from the gravity it is handed, panel clock, panel start</i>"]:::hw
-        Input["input/<br/><i>touch, buttons, IMU, gesture</i>"]:::hw
-    end
-    subgraph R7["rendering"]
-        Render["render/<br/><i>3D transform, clip, projection, rasterizer</i>"]
-    end
-    subgraph R7b["drawing"]
-        Gfx["gfx/<br/><i>the one framebuffer, draw/ into it, present/ it</i>"]:::hw
-    end
-    subgraph R8["animation"]
-        Anim["anim/<br/><i>keyed tracks sampled over time, tweens and easing</i>"]
-    end
-    subgraph R9["content"]
-        Asset["asset/<br/><i>content packs, read in place</i>"]:::hw
-    end
-    subgraph R10["device services"]
-        Services["services/<br/><i>settings, tunables, build id</i>"]:::hw
-    end
-    subgraph R11["frame measurement"]
-        Profile["profile/<br/><i>frame cost, frame watch</i>"]:::hw
-    end
-    subgraph R12["the platform core"]
-        Core["core/<br/><i>two-core jobs, memory placement, time</i>"]:::hw
-    end
-    subgraph R13["board"]
-        Board["board/<br/><i>this board's pins, peripherals and panel link</i>"]:::hw
-    end
-    subgraph R14["the build switch"]
-        Build["build/<br/><i>which build variant this is</i>"]
-    end
-    subgraph R15["packages: launcher/packages/"]
-        Math["math/<br/><i>scalars per number type, vectors to transforms, motion</i>"]
+    subgraph R17["packages: launcher/packages/"]
+        Math["math/<br/><i>scalars to transforms, checked by PACKAGE-INCLUDE</i>"]
     end
 
-    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R7b --> R8 --> R9 --> R10 --> R11 --> R12 --> R13 --> R14 --> R15
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> R10 --> R11 --> R12 --> R13 --> R14 --> R15 --> R16 --> R17
     Shell -.->|"calls through app/app.h"| Apps
 ```
+
+Audio layer: [audio docs](audio/README.md).
+The engine sound layer owns [the mixer, voices and buses](audio/Sound-Mixer.md)
+as well as stored sounds and sample cursors.
 
 - **Includes are layer-qualified**: `"gfx/gfx.h"`, not `"gfx.h"`, even
   between two files in the same folder, so an app reaching past `ui` into
   `gfx` is visible at the line that does it.
+- **Apps use the engine, the platform and the app contract.** An app under
+  `apps/` includes nothing else of the system band: the style audit's
+  SYSTEM-BAND rule. A system app under `shell/apps/` is part of the shell.
+- **The UI backend stays inside `ui/`.** Outside it, no firmware or editor
+  source includes microui or a header that reaches it (UI-BACKEND), so a
+  screen sees only `ui/ui.h` and a backend swap touches `ui/` alone.
 - **core/, build/ and the packages are the base.** Every layer above
   `core/` builds on `core/`: `core/job.h` hands one copied job at a time to
   core 1, and runs it inline when core 1 is busy or on a host;
@@ -121,7 +142,10 @@ flowchart TB
   the host tests, the tools and the editor all build it: the style audit's
   PACKAGE-INCLUDE rule names a reach into the firmware, and
   `launcher/test/check_packages_alone.sh` compiles each package file with
-  only its own include root.
+  only its own include root. PACKAGE-CONFIG requires `CONFIG_<PACKAGE>_`
+  settings in C/H sources, `CMakeLists.txt` and `Kconfig`, and `<PACKAGE>_`
+  names for Kconfig entries, with the folder name uppercased. It ignores
+  comments.
 - **Every drawing path ends in gfx.** Nothing else allocates pixels. How a
   draw call becomes pixels on the panel is
   [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path). render/ sits
@@ -165,16 +189,16 @@ flowchart TB
 
 ## Three rules that shape everything
 
-### 1. There is exactly one framebuffer
+### 1. There is exactly one framebuffer by default
 
 368 × 448 × 2 bytes = **322 KiB**, allocated in PSRAM
 (`MEMORY_PSRAM` in `core/memory.h`), so it does not count against the
-internal heap (see [Board-and-Memory.md](notes/Board-and-Memory.md)). There
-is room in PSRAM for a second one; the
-[presentation memory policy](Gfx-and-Presentation.md#presentation-memory-policy)
-explains the copy cost that keeps presentation on one retained framebuffer.
-See [transfer payload](notes/Display-and-Rendering.md#transfer-payload) for
-the QSPI bus budget.
+internal heap (see [Board-and-Memory.md](notes/Board-and-Memory.md)).
+
+`GFX_LAYOUT_DOUBLE_FB` adds a second, back framebuffer while it is on, so a
+front is sent while a back is drawn.
+See the [presentation memory policy](Gfx-and-Presentation.md#presentation-memory-policy)
+and [transfer payload](notes/Display-and-Rendering.md#transfer-payload).
 
 "One framebuffer" is really "one destination at a time": an app may ask at
 `enter()` for a band ring (a few strips of rows, sent as each fills) or an
@@ -367,7 +391,7 @@ frame. A development build watches for that at runtime
 | Watched | Every heap allocation and free, through ESP-IDF's heap hooks (`CONFIG_HEAP_USE_HOOKS`, dev and diag defaults), keyed by the caller's address. Every `ESP_LOG*` line, through `esp_log_set_vprintf()`, keyed by its format string. A plain `printf()` is not watched on the board. |
 | Repeating | The same site in `FRAME_WATCH_REPEATS` of the last `FRAME_WATCH_WINDOW` frames (`profile/frame_watch.h`), a fraction of a second at this board's frame rate. Work done once when something happens, or a report every second or two, never qualifies. The `FRAME_WATCH_WARMUP` frames after an app is entered or left are counted but not judged. |
 | Warning | One line per site, `FRAME_WATCH <alloc\|free\|console> in <n> of <window> frames at 0x<address>`, repeated at most once per `FRAME_WATCH_REPORT_INTERVAL_US` while it lasts. `console` is a log line, and its site also shows its format. `scripts/device/device.py` parses this line, so its shape is fixed by a test. |
-| Counts | `autana debug framewatch`, and the `frame_watch` key of `autana screenshot`'s `.json`: the last frame's allocs, frees and log lines, and the sites repeating now. |
+| Counts | `autana framewatch`, and the `frame_watch` key of `autana screenshot`'s `.json`: the last frame's allocs, frees and log lines, and the sites repeating now. |
 
 A finding shows up in `autana monitor`: live in a terminal, and in a piped or
 scripted run as one of the few lines it echoes, with every heap site decoded
@@ -378,7 +402,7 @@ free in `exit()`, and keep what a frame needs from one frame to the next. A
 log line belongs to a change: log when a value changes, not every frame it
 holds.
 
-The gates are in [Testing-Guide.md](Testing-Guide.md#the-frame-watch-as-a-gate):
+The gates are in [Performance and budgets](testing/Performance-and-Budgets.md#the-frame-watch-as-a-gate):
 every host render scene, and every on-device test that presents more than
 `FRAME_WATCH_WARMUP` times.
 
@@ -387,12 +411,12 @@ every host render scene, and every on-device test that presents more than
 ## Apps in the build
 
 How to write one is [Building-an-App.md](Building-an-App.md). What matters
-architecturally: the build globs `apps/**/*.c` and each app registers itself
-from its own file, so adding or deleting an app touches no other file, and
-the component is linked `WHOLE_ARCHIVE` because nothing references an app by
-name. A bench-only app declares itself the same way: a
-`development_only.cmake` in its folder leaves it out when
-`CONFIG_LAUNCHER_DEVELOPMENT` is off, so the build names no app and deleting
+architecturally: the build globs `apps/**/*.c` and `shell/apps/**/*.c`, and
+each app registers itself from its own file, so adding or deleting an app
+touches no other file. The component is linked `WHOLE_ARCHIVE` because
+nothing references an app by name. A bench-only app declares itself the
+same way: a `development_only.cmake` in its folder leaves it out when
+`CONFIG_LAUNCHER_DEVELOPMENT` is off, so the build names no application and deleting
 the folder deletes the declaration. What each build variant carries is
 [Build-Variants.md](Build-Variants.md).
 
@@ -464,7 +488,7 @@ other's bands stay clean.
 ### The scrim: the one thing drawn outside the command list
 
 A panel over a paused screen dims what is behind it with one full-screen
-`gfx_fill_rect_blend()`. That is a pixel write, not a command, and it has to
+`draw_rect_blend()`. That is a pixel write, not a command, and it has to
 be: everything in the command list is re-emitted on every repaint, and a
 blend fill reads the pixel it writes, so a scrim repeated per repaint walks
 the frozen backdrop toward black. It is applied **once per repaint of what is
@@ -521,10 +545,10 @@ silently.
 control hovered only on a frame where the button is *not* held, and a control
 submits only once focused, so a press needs a frame with the finger present
 and no DOWN before the DOWN. Hover also needs `hover_root`, which `mu_begin()`
-copies from the *previous* frame, so on the press frame `ui/ui_bridge.c` seeds
+copies from the *previous* frame, so on the press frame `ui/input/ui_bridge.c` seeds
 it (`mu_seed_hover_root()`) from the roots the last frame left in `root_list`.
 After the frame it compares the seed with the root microui then found and
-records the result in `hover_unsettled`; `ui/ui_pointer.c` sends the DOWN
+records the result in `hover_unsettled`; `ui/input/ui_pointer.c` sends the DOWN
 only once that is clear.
 
 ```mermaid
@@ -550,9 +574,9 @@ every button draws its pressed look while returning 0. A press and release
 inside one frame resolves at once, so on an unsettled root it is lost.
 A repaint-only frame (`ui_begin(NULL)`, the boot backdrop) feeds no input
 and neither steps nor reports to the pointer. It runs before `input_start()`,
-with no touch in progress. `ui/ui_pointer.c` also owns the held `DOWN` a
+with no touch in progress. `ui/input/ui_pointer.c` also owns the held `DOWN` a
 slider needs to track a drag and the UP owed when a lift never reached the UI
-(`ui/ui_pointer.h`); `suite_ui_pointer_microui.c` and `suite_ui_widgets.c` pin
+(`ui/input/ui_pointer.h`); `suite_ui_pointer_microui.c` and `suite_ui_widgets.c` pin
 it against real microui, since hover is microui's own state and event-list
 tests cannot see it. It applies to every control that reacts to a press, so
 reworking input handling means preserving it. A press within `snap.reach` of a

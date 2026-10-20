@@ -14,7 +14,7 @@
  *   - resource limits: does the framebuffer actually fit?
  *
  * Anything that is pure logic belongs in the host suite instead. See
- * docs/Testing-Guide.md.
+ * docs/testing/Writing-a-Test.md.
  */
 
 #include "suites.h"
@@ -33,16 +33,17 @@
 #include "board/board.h"
 #include "core/memory.h"
 #include "core/timing.h"
-#include "gfx/draw/gfx_draw.h"
-#include "gfx/draw/gfx_font_roles.h"
+#include "draw/draw.h"
+#include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
-#include "gfx/gfx_test.h"
-#include "gfx/present/gfx_band_run.h"
 #include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
-#include "input/touch.h"
-#include "input/touch_fsm.h"
+#include "gfx/present/gfx_test.h"
+#include "gfx/present/modes/band/gfx_band_run.h"
+#include "input/touch/touch.h"
+#include "input/touch/touch_fsm.h"
+#include "math/scalar/mathi.h"
 #include "panel_clock_pin.h"
 #include "profile/frame_cost.h"
 
@@ -61,14 +62,14 @@ static const char* TAG = "device_tests";
 static void
 fixture(void) {
     panel_clock_pin(GFX_PANEL_CLOCK_FAST_HZ);
-    gfx_clear_clip();
+    draw_clear_clip();
     gfx_invalidate();
 }
 
 static void
 clear_fixture(gfx_color_t background) {
     fixture();
-    gfx_clear(background);
+    draw_clear(background);
 }
 
 static void
@@ -197,7 +198,7 @@ test_fill_rect_writes_exactly_its_own_area(void) {
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0xFF00FF);
     clear_fixture(bg);
-    gfx_fill_rect(10, 20, 30, 40, fg);
+    draw_rect(10, 20, 30, 40, fg);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(30 * 40, count_pixels(fg), "a filled rect must cover exactly w*h pixels");
 
@@ -217,13 +218,13 @@ test_dither_at_alpha_zero_draws_nothing(void) {
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0xFF00FF);
     clear_fixture(bg);
-    gfx_fill_rect_dither(10, 10, 40, 40, fg, 0);
+    draw_rect_dither(10, 10, 40, 40, fg, 0);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_pixels(fg), "alpha 0 should draw nothing at all - not even one dither cell");
 }
 
 /* BOOT_ANIM_TITLE_SHADOW_ALPHA defaults to 255, so alpha 255 must stay
- * byte-for-byte the plain gfx_fill_rect() every other caller draws. Full
+ * byte-for-byte the plain draw_rect() every other caller draws. Full
  * coverage plus corner spot checks rather than a framebuffer snapshot
  * compare: a second copy of the 322 KiB framebuffer does not fit (see
  * docs/notes/Board-and-Memory.md). */
@@ -232,11 +233,11 @@ test_dither_at_alpha_255_matches_a_solid_fill_exactly(void) {
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0xFF00FF);
     clear_fixture(bg);
-    gfx_fill_rect_dither(10, 10, 40, 40, fg, 255);
+    draw_rect_dither(10, 10, 40, 40, fg, 255);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(40 * 40, count_pixels(fg),
                                   "alpha 255 should cover every pixel of the rect, same as a solid "
-                                  "gfx_fill_rect() would");
+                                  "draw_rect() would");
     TEST_ASSERT_EQUAL_HEX16(fg, pixel_at(10, 10));
     TEST_ASSERT_EQUAL_HEX16(fg, pixel_at(49, 49));
     TEST_ASSERT_EQUAL_HEX16(bg, pixel_at(9, 10));
@@ -252,8 +253,8 @@ test_dither_coverage_is_monotonic_and_graduated(void) {
 
     int prev = -1;
     for (int a = 0; a <= 255; a += 17) {
-        gfx_clear(bg);
-        gfx_fill_rect_dither(10, 10, 40, 40, fg, (uint8_t)a);
+        draw_clear(bg);
+        draw_rect_dither(10, 10, 40, 40, fg, (uint8_t)a);
         const int n = count_pixels(fg);
         TEST_ASSERT_TRUE_MESSAGE(n >= prev, "coverage should never decrease as alpha climbs");
         TEST_ASSERT_TRUE_MESSAGE(n <= area, "a dithered fill can never draw MORE pixels than a solid one "
@@ -273,7 +274,7 @@ test_dither_stays_in_phase_across_separate_calls(void) {
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0xFF00FF);
     clear_fixture(bg);
-    gfx_fill_rect_dither(10, 10, 80, 40, fg, 128);
+    draw_rect_dither(10, 10, 80, 40, fg, 128);
 
     gfx_color_t one_call[4][8];
     for (int dy = 0; dy < 4; dy++) {
@@ -282,9 +283,9 @@ test_dither_stays_in_phase_across_separate_calls(void) {
         }
     }
 
-    gfx_clear(bg);
-    gfx_fill_rect_dither(10, 10, 40, 40, fg, 128);
-    gfx_fill_rect_dither(50, 10, 40, 40, fg, 128);
+    draw_clear(bg);
+    draw_rect_dither(10, 10, 40, 40, fg, 128);
+    draw_rect_dither(50, 10, 40, 40, fg, 128);
 
     for (int dy = 0; dy < 4; dy++) {
         for (int dx = 0; dx < 8; dx++) {
@@ -297,7 +298,7 @@ test_dither_stays_in_phase_across_separate_calls(void) {
     }
 }
 
-/* gfx_blit_dither: image-over-live-content compositing */
+/* draw_blit_dither: image-over-live-content compositing */
 
 /* One synthetic source pixel per index: every value distinct from its
  * neighbours and never equal to the black background (the | 1), so a blit
@@ -328,8 +329,8 @@ test_blit_dither_at_alpha_zero_changes_nothing(void) {
     const gfx_color_t bg = gfx_rgb(0x000000);
     gfx_color_t* src = make_blit_src();
 
-    gfx_clear(bg);
-    gfx_blit_dither(13, 10, 61, BLIT_SRC_ROWS, src, BLIT_SRC_STRIDE, 0);
+    draw_clear(bg);
+    draw_blit_dither(13, 10, 61, BLIT_SRC_ROWS, src, BLIT_SRC_STRIDE, 0);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(GFX_WIDTH * GFX_HEIGHT, count_pixels(bg),
                                   "alpha 0 should write nothing at all - not even one dither cell");
@@ -343,14 +344,14 @@ test_blit_dither_at_alpha_255_matches_the_source_exactly(void) {
     gfx_color_t* src = make_blit_src();
     const int x = 13, y = 10, w = 61, h = BLIT_SRC_ROWS;
 
-    gfx_clear(bg);
-    gfx_blit_dither(x, y, w, h, src, BLIT_SRC_STRIDE, 255);
+    draw_clear(bg);
+    draw_blit_dither(x, y, w, h, src, BLIT_SRC_STRIDE, 255);
 
     for (int row = 0; row < h; row++) {
         for (int col = 0; col < w; col++) {
             TEST_ASSERT_EQUAL_HEX16_MESSAGE(blit_src_pixel(row * BLIT_SRC_STRIDE + col), pixel_at(x + col, y + row),
                                             "alpha 255 must reproduce the source rect exactly, stride "
-                                            "and all - same guarantee gfx_fill_rect_dither() makes");
+                                            "and all - same guarantee draw_rect_dither() makes");
         }
     }
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(bg, pixel_at(x - 1, y), "a blit must not touch pixels left of its own rect");
@@ -359,30 +360,29 @@ test_blit_dither_at_alpha_255_matches_the_source_exactly(void) {
     free(src);
 }
 
-/* The primitive's whole correctness claim (see its comment in gfx_draw.c): the
- * row-pattern walk, fringes and memcpy shortcuts included, is bit-identical
- * to asking gfx_dither_covers() at every pixel. Checked at a deliberately
- * UNALIGNED rect (x = 13, so the prologue and epilogue of
- * blit_dither_row()'s 4-pixel group loop both run) across alphas that
- * exercise a sparse, a half, and a dense pattern. */
+/* draw_blit_dither() must equal gfx_dither_covers() at every pixel, at
+ * every dither level. x = 13 runs both fringe loops and puts the source
+ * two bytes off the destination's word; the background is not black, so
+ * a pixel-pair merge that zeroes an uncovered pixel shows. */
 void
 test_blit_dither_matches_per_pixel_covers_reference(void) {
     fixture();
-    const gfx_color_t bg = gfx_rgb(0x000000);
+    const gfx_color_t bg = gfx_rgb(0x203040);
     gfx_color_t* src = make_blit_src();
     const int x = 13, y = 10, w = 61, h = BLIT_SRC_ROWS;
-    const uint8_t alphas[3] = {32, 128, 200};
+    const int levels = 16; /* gfx_dither_level()'s steps between nothing and solid */
 
-    for (int a = 0; a < 3; a++) {
-        gfx_clear(bg);
-        gfx_blit_dither(x, y, w, h, src, BLIT_SRC_STRIDE, alphas[a]);
+    for (int a = 0; a <= levels; a++) {
+        const uint8_t alpha = (uint8_t)mathi_min(a * ((UINT8_MAX + 1) / levels), UINT8_MAX);
+        draw_clear(bg);
+        draw_blit_dither(x, y, w, h, src, BLIT_SRC_STRIDE, alpha);
 
         for (int row = 0; row < h; row++) {
             for (int col = 0; col < w; col++) {
                 const gfx_color_t want =
-                    gfx_dither_covers(x + col, y + row, alphas[a]) ? blit_src_pixel(row * BLIT_SRC_STRIDE + col) : bg;
+                    gfx_dither_covers(x + col, y + row, alpha) ? blit_src_pixel(row * BLIT_SRC_STRIDE + col) : bg;
                 TEST_ASSERT_EQUAL_HEX16_MESSAGE(want, pixel_at(x + col, y + row),
-                                                "gfx_blit_dither() must agree with gfx_dither_covers() "
+                                                "draw_blit_dither() must agree with gfx_dither_covers() "
                                                 "at every pixel - fringes and full-row shortcuts "
                                                 "included");
             }
@@ -401,25 +401,25 @@ test_dithered_text_at_alpha_255_matches_solid_text_exactly(void) {
     fixture();
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0xFFFFFF);
-    const gfx_font_t* font = gfx_font_ui();
+    const draw_font_t* font = draw_font_ui();
     const int box = 8 * 5; /* cell_w/cell_h (8) * scale (5) */
 
     for (int row = 0; row < box; row++) {
         gfx_color_t solid_row[8 * 5];
 
-        gfx_clear(bg);
-        gfx_text_font(20, 20, "A", fg, 5, 0, font);
+        draw_clear(bg);
+        draw_text_font(20, 20, "A", fg, 5, 0, font);
         for (int col = 0; col < box; col++) {
             solid_row[col] = pixel_at(20 + col, 20 + row);
         }
 
-        gfx_clear(bg);
-        gfx_text_font_dither(20, 20, "A", fg, 5, 0, font, 255);
+        draw_clear(bg);
+        draw_text_font_dither(20, 20, "A", fg, 5, 0, font, 255);
 
         for (int col = 0; col < box; col++) {
             TEST_ASSERT_EQUAL_HEX16_MESSAGE(solid_row[col], pixel_at(20 + col, 20 + row),
-                                            "gfx_text_font_dither() at alpha 255 must match "
-                                            "gfx_text_font()'s own solid output pixel for pixel");
+                                            "draw_text_font_dither() at alpha 255 must match "
+                                            "draw_text_font()'s own solid output pixel for pixel");
         }
     }
 }
@@ -429,14 +429,14 @@ test_dithered_text_at_low_alpha_draws_fewer_pixels_than_solid(void) {
     fixture();
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0xFFFFFF);
-    const gfx_font_t* font = gfx_font_ui();
+    const draw_font_t* font = draw_font_ui();
 
-    gfx_clear(bg);
-    gfx_text_font(20, 20, "A", fg, 5, 0, font);
+    draw_clear(bg);
+    draw_text_font(20, 20, "A", fg, 5, 0, font);
     const int solid_n = count_pixels(fg);
 
-    gfx_clear(bg);
-    gfx_text_font_dither(20, 20, "A", fg, 5, 0, font, 64);
+    draw_clear(bg);
+    draw_text_font_dither(20, 20, "A", fg, 5, 0, font, 64);
     const int dim_n = count_pixels(fg);
 
     TEST_ASSERT_TRUE_MESSAGE(dim_n > 0 && dim_n < solid_n,
@@ -450,7 +450,7 @@ test_a_horizontal_line_covers_both_endpoints(void) {
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0x00FF00);
     clear_fixture(bg);
-    gfx_line(10, 30, 40, 30, fg);
+    draw_line(10, 30, 40, 30, fg);
 
     /* Inclusive at both ends: 40 - 10 + 1. A line that quietly drops its last
      * pixel leaves a gap at every joint of a polyline, which is what a curve
@@ -473,12 +473,12 @@ test_a_line_is_the_same_line_drawn_backwards(void) {
     /* Same two points, opposite order. Bresenham breaks ties by the direction
      * it steps in, so the two passes can differ, but only where they are
      * already adjacent, never by a pixel's worth of coverage. */
-    gfx_clear(bg);
-    gfx_line(5, 7, 60, 33, fg);
+    draw_clear(bg);
+    draw_line(5, 7, 60, 33, fg);
     const int forward = count_pixels(fg);
 
-    gfx_clear(bg);
-    gfx_line(60, 33, 5, 7, fg);
+    draw_clear(bg);
+    draw_line(60, 33, 5, 7, fg);
     const int backward = count_pixels(fg);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(forward, backward,
@@ -491,7 +491,7 @@ test_a_single_point_line_draws_one_pixel(void) {
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0x00FFFF);
     clear_fixture(bg);
-    gfx_line(100, 100, 100, 100, fg);
+    draw_line(100, 100, 100, 100, fg);
 
     TEST_ASSERT_EQUAL_INT(1, count_pixels(fg));
     TEST_ASSERT_EQUAL_HEX16(fg, pixel_at(100, 100));
@@ -505,7 +505,7 @@ test_a_line_is_clipped_rather_than_wrapped(void) {
     /* Starts off the left edge and off the top, ends on screen. The failure
      * this guards against is not a crash but a wrap: an unclipped write at
      * x = -1 lands at the far end of the previous row. */
-    gfx_line(-50, -20, 20, 15, fg);
+    draw_line(-50, -20, 20, 15, fg);
 
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(fg, pixel_at(20, 15), "the on-screen end of the line should still be drawn");
     for (int y = 0; y < GFX_HEIGHT; y++) {
@@ -519,8 +519,8 @@ test_a_line_entirely_off_screen_draws_nothing(void) {
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0xFFFF00);
     clear_fixture(bg);
-    gfx_line(-100, -100, -10, -40, fg);
-    gfx_line(GFX_WIDTH + 5, 10, GFX_WIDTH + 90, 200, fg);
+    draw_line(-100, -100, -10, -40, fg);
+    draw_line(GFX_WIDTH + 5, 10, GFX_WIDTH + 90, 200, fg);
 
     TEST_ASSERT_EQUAL_INT(0, count_pixels(fg));
 }
@@ -530,9 +530,9 @@ test_a_line_honours_the_clip_rect(void) {
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0x8888FF);
     clear_fixture(bg);
-    gfx_set_clip(20, 20, 10, 10);
-    gfx_line(0, 25, GFX_WIDTH - 1, 25, fg);
-    gfx_clear_clip();
+    draw_set_clip(20, 20, 10, 10);
+    draw_line(0, 25, GFX_WIDTH - 1, 25, fg);
+    draw_clear_clip();
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(10, count_pixels(fg),
                                   "only the part of the line inside the clip rect should be drawn");
@@ -549,9 +549,9 @@ test_an_additive_line_brightens_where_it_crosses_itself(void) {
     const gfx_color_t red = gfx_rgb(0xFF0000);
     const gfx_color_t grn = gfx_rgb(0x00FF00);
 
-    gfx_clear(bg);
-    gfx_line_ex(10, 100, 60, 100, red, GFX_LINE_ADD);
-    gfx_line_ex(35, 80, 35, 120, grn, GFX_LINE_ADD);
+    draw_clear(bg);
+    draw_line_ex(10, 100, 60, 100, red, DRAW_LINE_ADD);
+    draw_line_ex(35, 80, 35, 120, grn, DRAW_LINE_ADD);
 
     /* Where they cross, both channels are lit; where they do not, only one
      * is. Flat writes would have put green over red at the crossing. */
@@ -567,7 +567,7 @@ test_an_open_line_leaves_its_first_pixel_alone(void) {
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0x004000);
     clear_fixture(bg);
-    gfx_line_ex(10, 40, 20, 40, fg, GFX_LINE_ADD | GFX_LINE_OPEN);
+    draw_line_ex(10, 40, 20, 40, fg, DRAW_LINE_ADD | DRAW_LINE_OPEN);
 
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(bg, pixel_at(10, 40), "an open line must not draw its starting pixel");
     TEST_ASSERT_EQUAL_HEX16(fg, pixel_at(11, 40));
@@ -575,7 +575,7 @@ test_an_open_line_leaves_its_first_pixel_alone(void) {
     TEST_ASSERT_EQUAL_INT(10, count_pixels(fg));
 }
 
-/* The reason GFX_LINE_OPEN exists. A polyline drawn as closed segments
+/* The reason DRAW_LINE_OPEN exists. A polyline drawn as closed segments
  * adds the shared pixel at each joint twice, which under additive blending is
  * a brighter dot at every joint; a curve made of a few hundred segments
  * comes out visibly beaded. Chaining open segments puts exactly one
@@ -585,8 +585,8 @@ test_chained_open_segments_do_not_double_their_joints(void) {
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t step = gfx_rgb(0x002000);
     clear_fixture(bg);
-    gfx_line_ex(10, 60, 20, 60, step, GFX_LINE_ADD);
-    gfx_line_ex(20, 60, 30, 60, step, GFX_LINE_ADD | GFX_LINE_OPEN);
+    draw_line_ex(10, 60, 20, 60, step, DRAW_LINE_ADD);
+    draw_line_ex(20, 60, 30, 60, step, DRAW_LINE_ADD | DRAW_LINE_OPEN);
 
     TEST_ASSERT_EQUAL_HEX16_MESSAGE(step, pixel_at(20, 60),
                                     "the joint should carry exactly one stroke's worth of light");
@@ -601,12 +601,12 @@ test_fill_rect_is_clipped_to_the_screen(void) {
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0x00FF00);
 
-    gfx_clear(bg);
-    gfx_fill_rect(-50, -50, 100, 100, fg);
+    draw_clear(bg);
+    draw_rect(-50, -50, 100, 100, fg);
     TEST_ASSERT_EQUAL_INT_MESSAGE(50 * 50, count_pixels(fg), "only the on-screen quarter should be drawn");
 
-    gfx_clear(bg);
-    gfx_fill_rect(GFX_WIDTH - 10, GFX_HEIGHT - 10, 100, 100, fg);
+    draw_clear(bg);
+    draw_rect(GFX_WIDTH - 10, GFX_HEIGHT - 10, 100, 100, fg);
     TEST_ASSERT_EQUAL_INT(10 * 10, count_pixels(fg));
 }
 
@@ -615,9 +615,9 @@ test_fill_rect_entirely_off_screen_draws_nothing(void) {
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0xFF0000);
     clear_fixture(bg);
-    gfx_fill_rect(-200, -200, 50, 50, fg);
-    gfx_fill_rect(GFX_WIDTH + 10, 0, 50, 50, fg);
-    gfx_fill_rect(0, GFX_HEIGHT + 10, 50, 50, fg);
+    draw_rect(-200, -200, 50, 50, fg);
+    draw_rect(GFX_WIDTH + 10, 0, 50, 50, fg);
+    draw_rect(0, GFX_HEIGHT + 10, 50, 50, fg);
 
     TEST_ASSERT_EQUAL_INT(0, count_pixels(fg));
 }
@@ -627,9 +627,9 @@ test_clip_rect_restricts_drawing(void) {
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0xFFFF00);
     clear_fixture(bg);
-    gfx_set_clip(100, 100, 50, 50);
-    gfx_fill_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, fg); /* try to cover everything */
-    gfx_clear_clip();
+    draw_set_clip(100, 100, 50, 50);
+    draw_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, fg); /* try to cover everything */
+    draw_clear_clip();
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(50 * 50, count_pixels(fg), "drawing must be confined to the clip rect");
     TEST_ASSERT_EQUAL_HEX16(fg, pixel_at(100, 100));
@@ -641,10 +641,10 @@ test_pixel_outside_the_screen_is_ignored(void) {
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0xFF0000);
     clear_fixture(bg);
-    gfx_pixel(-1, 0, fg);
-    gfx_pixel(0, -1, fg);
-    gfx_pixel(GFX_WIDTH, 0, fg);
-    gfx_pixel(0, GFX_HEIGHT, fg);
+    draw_pixel(-1, 0, fg);
+    draw_pixel(0, -1, fg);
+    draw_pixel(GFX_WIDTH, 0, fg);
+    draw_pixel(0, GFX_HEIGHT, fg);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, count_pixels(fg), "out-of-bounds pixels must be dropped, not wrapped");
 }
@@ -654,15 +654,15 @@ test_text_draws_and_advances(void) {
     const gfx_color_t bg = gfx_rgb(0x000000);
     const gfx_color_t fg = gfx_rgb(0xFFFFFF);
     clear_fixture(bg);
-    gfx_text(0, 0, "II", fg);
+    draw_text(0, 0, "II", fg);
 
     const int drawn = count_pixels(fg);
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(0, drawn, "text drew nothing at all");
 
     /* Both glyphs rendered, so ink appears in the second cell too. */
     int second_cell = 0;
-    for (int y = 0; y < GFX_CHAR_H; y++) {
-        for (int x = GFX_CHAR_W; x < GFX_CHAR_W * 2; x++) {
+    for (int y = 0; y < DRAW_CHAR_H; y++) {
+        for (int x = DRAW_CHAR_W; x < DRAW_CHAR_W * 2; x++) {
             if (pixel_at(x, y) == fg) {
                 second_cell++;
             }
@@ -676,9 +676,9 @@ test_text_metrics_agree_with_what_is_drawn(void) {
     fixture();
     /* The UI layer lays out from these numbers, so they must match the
      * renderer or every label is subtly misplaced. */
-    TEST_ASSERT_EQUAL_INT(GFX_CHAR_W * 5, gfx_text_width("hello", -1));
-    TEST_ASSERT_EQUAL_INT(GFX_CHAR_W * 2, gfx_text_width("hello", 2));
-    TEST_ASSERT_EQUAL_INT(GFX_CHAR_H, gfx_text_height());
+    TEST_ASSERT_EQUAL_INT(DRAW_CHAR_W * 5, draw_text_width("hello", -1));
+    TEST_ASSERT_EQUAL_INT(DRAW_CHAR_W * 2, draw_text_width("hello", 2));
+    TEST_ASSERT_EQUAL_INT(DRAW_CHAR_H, draw_text_height());
 }
 
 /* DMA */
@@ -693,7 +693,7 @@ test_present_completes(void) {
      *
      * If it ever regresses this call never returns and the harness reports a
      * timeout, which is the correct outcome. */
-    gfx_clear(gfx_rgb(0x001020));
+    draw_clear(gfx_rgb(0x001020));
 
     const int64_t started = timing_now_us();
     gfx_present();
@@ -717,7 +717,7 @@ test_repeated_presents_stay_in_sync(void) {
      * accounting drifted, this would deadlock within a few iterations rather
      * than after hours of running. */
     for (int i = 0; i < 10; i++) {
-        gfx_clear(gfx_rgb(i * 0x101010));
+        draw_clear(gfx_rgb(i * 0x101010));
         gfx_present();
     }
     TEST_PASS();
@@ -802,7 +802,7 @@ test_a_partial_change_costs_less_than_a_full_frame(void) {
     const int64_t full = time_present();
 
     /* One band of seven. */
-    gfx_fill_rect(0, 0, GFX_WIDTH, 64, gfx_rgb(0x204060));
+    draw_rect(0, 0, GFX_WIDTH, 64, gfx_rgb(0x204060));
     const int64_t one_band = time_present();
 
     ESP_LOGI(TAG, "present: full %lld us, one band %lld us", (long long)full, (long long)one_band);
@@ -836,7 +836,7 @@ static int64_t
 present_reference_band(gfx_color_t colour) {
     clear_fixture(gfx_rgb(0x000000));
     (void)time_present();
-    gfx_fill_rect(0, 0, GFX_WIDTH, 64, colour);
+    draw_rect(0, 0, GFX_WIDTH, 64, colour);
     return time_present();
 }
 
@@ -848,12 +848,17 @@ present_reference_band(gfx_color_t colour) {
  * valid. */
 
 /* The narrow strip: a fraction of a band's width, a band's rows. */
-#define NARROW_STRIP_WIDTH 20
-#define NARROW_STRIP_ROWS  64
+#define NARROW_STRIP_WIDTH      20
+#define NARROW_STRIP_ROWS       64
+
+/* Worst of a 5-run capture on each of A308, 20E8 and 2124 (243, 259, 244 us),
+ * + 1%: 259 * 1.01 = 261.6, up to 262. The suite keeps no per-board ceilings,
+ * so the worst board sets the one; the 241 before sat on the noise edge. */
+#define NARROW_STRIP_CEILING_US 262
 
 /* Measures the gather-copy path in gfx_present(): a strip whose
  * real dirty width is only a fraction of the band, written directly (not
- * through gfx_fill_rect(), which always claims the whole band via
+ * through draw_rect(), which always claims the whole band via
  * mark_band() regardless of what it drew; see its comment). */
 static void
 test_a_narrow_change_costs_less_than_a_full_band(void) {
@@ -878,7 +883,7 @@ test_a_narrow_change_costs_less_than_a_full_band(void) {
      * a strip that costs more again likely runs from flash once more. */
     perf_guard("the gathered narrow strip cost more than its observed price - the "
                "gather-copy path may have regressed, or a present's code left IRAM",
-               narrow, 241);
+               narrow, NARROW_STRIP_CEILING_US);
 }
 
 /* An instrument, not a gate: the narrow strip's present, counted alone,
@@ -1049,7 +1054,7 @@ test_two_far_corners_cost_less_than_a_full_band(void) {
      * for the copy-side jitter the single-piece gathers above show. */
     perf_guard("two far corners cost more than their observed price - one of the "
                "two independent gathers may have regressed",
-               two_corners, 306);
+               two_corners, 320);
 }
 
 /* Three separated marks, one more than LEAF_REFINE_MAX_RUNS (gfx_dirty.h)
@@ -1144,7 +1149,7 @@ test_two_marks_in_one_cell_cost_less_than_the_coarse_box(void) {
 /* The drawing calls narrow the dirty region themselves: no app-side
  * gfx_mark_dirty() anywhere in this test, unlike the two above. Text is
  * where it is worth proving: a glyph reaches the tracker as a handful of
- * run-box fills a few pixels wide each (draw_glyph_font()), so a readout
+ * run-box fills a few pixels wide each (glyph_font()), so a readout
  * in one corner either dirties its own box or dirties every column of the
  * strips it sits in, and nothing between. No perf_guard: this states a
  * relationship, and a ceiling here would be a number nobody measured on
@@ -1153,9 +1158,9 @@ static void
 test_a_corner_label_costs_less_than_its_rows_full_width(void) {
     const int64_t full_band = present_reference_band(gfx_rgb(0x406020));
 
-    /* 4 glyphs at GFX_GLYPH_SCALE is 64 px wide and 16 tall, inside one
+    /* 4 glyphs at DRAW_GLYPH_SCALE is 64 px wide and 16 tall, inside one
      * 92 px column, well inside one strip. */
-    gfx_text(8, 8, "59.7", gfx_rgb(0xFFFFFF));
+    draw_text(8, 8, "59.7", gfx_rgb(0xFFFFFF));
     const int64_t label = time_present();
 
     ESP_LOGI(TAG, "present: full band %lld us, corner label %lld us", (long long)full_band, (long long)label);
@@ -1172,7 +1177,7 @@ test_drawing_marks_what_it_touched(void) {
                               "a present must clear the dirty state, or every frame sends the whole "
                               "screen for ever");
 
-    gfx_fill_rect(0, 0, 8, 8, gfx_rgb(0xFFFFFF));
+    draw_rect(0, 0, 8, 8, gfx_rgb(0xFFFFFF));
 
     TEST_ASSERT_TRUE_MESSAGE(gfx_region_dirty(0, 0, GFX_WIDTH, 64), "the band that was drawn into must be marked");
     TEST_ASSERT_FALSE_MESSAGE(gfx_region_dirty(0, GFX_HEIGHT - 64, GFX_WIDTH, 64),

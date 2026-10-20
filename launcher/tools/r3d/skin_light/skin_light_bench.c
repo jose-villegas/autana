@@ -8,8 +8,9 @@
 #include <string.h>
 #include <time.h>
 
-#include "gfx/draw/gfx_color.h"
+#include "gfx/target/gfx_color.h"
 #include "math/linear/vec3f.h"
+#include "render/r3d_skin_format.h"
 #include "skin_light_baseline.h"
 
 #define MAX_JOINTS   64
@@ -125,7 +126,7 @@ reference_light(vec3f_t n, const lights_t* l, uint8_t out[3]) {
  * scales. */
 static const ops_t OPS_RENORMALISE = {6, 2, 1, 1, 0, 0};
 
-/* Octahedral coordinates (docs/Citations.md#21) share the reciprocal and hemisphere fold;
+/* Octahedral coordinates (Cigolle et al. 2014) share the reciprocal and hemisphere fold;
  * nearest lookup adds cell conversion and a power-of-two row offset. */
 static const ops_t OPS_NEAREST = {2 + 2, 4 + 2, 1, 0, 8 + 2, 0};
 

@@ -3,14 +3,14 @@
 
 #include "build/build_variant.h"
 #include "display/display.h"
-#include "gfx/draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "services/build_id.h"
 #include "shell/shell_frame.h"
+#include "ui/layout/ui_anchor.h"
 #include "ui/ui.h"
-#include "ui/ui_anchor.h"
 
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
 #define BUILD_MARK_GLYPH        8
@@ -27,16 +27,16 @@ draw_build_mark(void) {
     const int quarter = display_quarter_now();
     const int screen_w = (quarter % 2 == 0) ? GFX_WIDTH : GFX_HEIGHT;
     const int screen_h = (quarter % 2 == 0) ? GFX_HEIGHT : GFX_WIDTH;
-    const mu_Rect upright =
-        ui_anchor_rect((mu_Rect){0, 0, screen_w, screen_h}, UI_ANCHOR_BOTTOM_RIGHT, UI_ANCHOR_BOTTOM_RIGHT,
+    const recti_t upright =
+        ui_anchor_rect((recti_t){0, 0, screen_w, screen_h}, UI_ANCHOR_BOTTOM_RIGHT, UI_ANCHOR_BOTTOM_RIGHT,
                        -UI_MARGIN - BUILD_MARK_CORNER_SHIFT, -UI_MARGIN, BUILD_MARK_SIZE, BUILD_MARK_GLYPH);
-    const mu_Rect box = ui_transform_rect(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT), upright);
+    const recti_t box = ui_transform_rect(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT), upright);
 
     if (gfx_region_dirty(box.x, box.y, box.w, box.h)) {
         int x = 0;
         int y = 0;
-        ui_text_glyph0_origin(gfx_font_ui(), box, quarter, 1, &x, &y);
-        gfx_text_turned(x, y, build_mark_text, gfx_rgb(BUILD_MARK_RGB), 1, quarter);
+        ui_text_glyph0_origin(draw_font_ui(), box, quarter, 1, &x, &y);
+        draw_text_turned(x, y, build_mark_text, gfx_rgb(BUILD_MARK_RGB), 1, quarter);
     }
 }
 #endif
@@ -64,7 +64,7 @@ shell_frame_overlay(int row0, int row1) {
 void
 shell_frame_extras(void) {
 #if BUILD_VARIANT_DEVELOPMENT_OR_HOST
-    if (gfx_mode_current()->layout == GFX_LAYOUT_FULL_FB && !gfx_frame_expanded()) {
+    if (gfx_mode_has_framebuffer(gfx_mode_current()) && !gfx_frame_expanded()) {
         draw_build_mark();
     }
 #endif

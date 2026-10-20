@@ -10,10 +10,11 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "display/display.h"
 #include "gfx/gfx.h"
 #include "render_host.h"
+#include "ui/layout/ui_transform.h"
 #include "ui/ui.h"
-#include "ui/ui_transform.h"
 
 #include "apps/sand/sand_menu.h"
 #include "apps/sand/sand_mode_swatches.h"
@@ -43,11 +44,11 @@ static bool show_options;
 static sand_colour_mode_t colour = SAND_COLOUR_256;
 static bool pending;
 static bool open_dither;
-static ui_transform_t transform;
+static affine2x_t transform;
 
 int
 display_quarter_now(void) {
-    return 0;
+    return DISPLAY_PORTRAIT;
 }
 
 static bool
@@ -97,7 +98,10 @@ dither_tap(int index) {
     options_screen_layout_t lay;
     options_screen_layout(ui_width(), ui_height(), &lay);
     input_t in = {0};
-    ui_transform_point(transform, lay.dither.x + lay.dither.w / 2, lay.dither.y + lay.dither.h / 2, &in.x, &in.y);
+    const vec2i_t mapped_pixel =
+        affine2x_map_pixel(&transform, (vec2i_t){lay.dither.x + (lay.dither.w / 2), lay.dither.y + (lay.dither.h / 2)});
+    in.x = mapped_pixel.x;
+    in.y = mapped_pixel.y;
     in.down = index >= 2 && index < 7;
     in.pressed = index == 2;
     in.released = index == 7;
@@ -109,9 +113,9 @@ draw(const render_frame_t* frame) {
     const input_t input = open_dither ? dither_tap(frame->index) : frame->input;
     ui_begin(&input);
     if (menu.screen == SAND_MENU_OPTIONS) {
-        options_screen_draw(ui_context(), &menu, committed, &LABELS);
+        options_screen_draw(&menu, committed, &LABELS);
     } else {
-        title_screen_draw(ui_context());
+        title_screen_draw();
     }
     ui_end(BACKGROUND);
 }

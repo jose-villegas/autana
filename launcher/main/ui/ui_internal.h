@@ -1,27 +1,50 @@
-/*
- * ui_internal: the seam between ui_build.c (builds a frame's command list;
- * host-portable) and ui.c (paints one; needs the real framebuffer). Neither
- * half links against gfx without the other, so nothing outside these two
- * files includes this; it is not a third public module, just the state and
- * helpers they share to stay one logical unit split across two link targets.
- */
+/* Private UI state and backend entry points shared by the frame builder,
+ * face and painter. Screens use ui.h. */
 #pragma once
 
 #include <stdbool.h>
 
-#include "gfx/draw/gfx_font.h"
+#include "profile/frame_cost.h"
+
+#if CONFIG_LAUNCHER_SELFTEST_SCOPE_PERF
+#define UI_FACE_COST_BEGIN(mark)     FRAME_COST_BEGIN(mark)
+#define UI_FACE_COST_END(mark, name) FRAME_COST_END(mark, name)
+#else
+#define UI_FACE_COST_BEGIN(mark)     ((void)0)
+#define UI_FACE_COST_END(mark, name) ((void)0)
+#endif
+
+#include "draw/draw_font.h"
+#include "math/geometry/recti.h"
 #include "microui.h"
+#include "ui/controls/ui_style.h"
+#include "ui/input/ui_pointer.h"
+#include "ui/layout/ui_transform.h"
+#include "ui/ui.h"
 #include "ui/ui_canvas_marks.h"
-#include "ui/ui_pointer.h"
-#include "ui/ui_style.h"
-#include "ui/ui_transform.h"
+
+static inline recti_t
+ui_recti_from_mu(mu_Rect r) {
+    return (recti_t){r.x, r.y, r.w, r.h};
+}
+
+static inline mu_Rect
+ui_mu_from_recti(recti_t r) {
+    return (mu_Rect){r.x, r.y, r.w, r.h};
+}
+
+/* ui_transform_rect() on a microui rect. */
+static inline mu_Rect
+ui_transform_mu_rect(affine2x_t t, mu_Rect r) {
+    return ui_mu_from_recti(ui_transform_rect(t, ui_recti_from_mu(r)));
+}
 
 /* What a mu_Font actually points at; see ui_build.c's ui_set_font() comment
  * for why the scale rides inside the font rather than a separate
  * render-time setting. Shared because ui.c's draw_command() and
  * command_row_range() both resolve a command's font the same way. */
 typedef struct {
-    const gfx_font_t* font;
+    const draw_font_t* font;
     int scale;
 } ui_font_scaled_t;
 
@@ -69,7 +92,7 @@ extern ui_canvas_marks_t ui_canvas_marks;
 /* The transform in force, or identity while none set is valid; see
  * ui_set_transform() (ui_build.c). Both draw_command() and
  * canvas_physical_rect()/command_row_range() (ui.c) map through it. */
-ui_transform_t ui_effective_transform(void);
+affine2x_t ui_effective_transform(void);
 
 /* A point on the panel as the logical canvas sees it: what a raw input_t
  * touch needs before it means anything to a screen. */
@@ -84,4 +107,53 @@ ui_font_scaled_t ui_resolve_font_scaled(mu_Font font);
 #ifndef ESP_PLATFORM
 /* Observes completed canvas paints without retaining device-side trace storage. */
 extern void (*ui_canvas_painted_for_test)(const mu_Container*);
+/* Observes face scope and identity misuse in host tests. */
+extern void (*ui_face_misuse_for_test)(void);
+/* Observes each face widget's label and rectangle in host tests. */
+extern void (*ui_face_widget_for_test)(const char* label, recti_t r);
 #endif
+
+/* The microui context, for building the UI between ui_begin and ui_end. */
+mu_Context* ui_context(void);
+
+static inline mu_Color
+ui_rgb(uint32_t rgb) {
+    return (mu_Color)UI_RGB(rgb);
+}
+
+/* Opens a full-screen window sized to THIS FRAME's canvas, fixing a
+ * microui mismatch: mu_begin_window_ex() only trusts its rect the first
+ * time a window (by title) opens, right for a desktop manager
+ * remembering a drag, wrong here, where every window must always BE
+ * (0, 0, ui_width(), ui_height()), which changes at runtime as the
+ * canvas rotates. Uncorrected, a rect pins to the first-open
+ * orientation, and a bigger later orientation leaves part of the screen
+ * uncleared, showing a previous app's frame. */
+int ui_begin_screen(mu_Context* ctx, const char* title, int opt);
+
+/* `icon` filling `r` in `color`, its runs streamed by icon_walk_blocks()
+ * rather than collected, so an icon's run count does not bound artwork. A
+ * NULL `icon` (no pack holds it) draws `text` centred in `r` instead, in the
+ * current font; a control with a label beside its icon passes NULL `text`
+ * and keeps the label alone. */
+void ui_draw_icon(mu_Context* ctx, mu_Rect r, const draw_image_t* icon, const char* text, mu_Color color);
+
+/* An integer-valued slider over the next layout row, shaped like
+ * mu_slider_ex(), but integer: that one's float/"%.2f" thumb is the wrong
+ * shape for a "06 PX" control. Writes through `value`, returns whether it
+ * changed this frame. */
+bool ui_slider_int(mu_Context* ctx, int* value, int lo, int hi, int step);
+
+#define UI_FACE_IDS_MAX 32
+
+void ui_face_init(void);
+void ui_face_begin(const input_t* input);
+void ui_face_end(void);
+
+/* Closes the frame's command list: the open face window, microui's frame and
+ * the pointer frame. Every ui_end*() starts with it; a test reading the list
+ * without painting calls it alone. */
+void ui_end_commands(void);
+bool ui_slider_int_id(mu_Context* ctx, mu_Id id, int* value, int lo, int hi, int step, bool enabled);
+
+#include "ui/controls/ui_widgets.h"

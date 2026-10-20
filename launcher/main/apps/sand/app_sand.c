@@ -44,17 +44,22 @@
 
 #include "app/app.h"
 #include "apps/sand/app_sand_test.h"
+#include "apps/sand/ui/brush_screen.h"
+#include "apps/sand/ui/options_screen.h"
+#include "apps/sand/ui/palette_screen.h"
+#include "apps/sand/ui/sand_icons.h"
+#include "apps/sand/ui/title_screen.h"
 #include "build/build_variant.h"
 #include "core/memory.h"
 #include "core/timing.h"
 #include "display/display.h"
-#include "gfx/draw/gfx_draw.h"
-#include "gfx/draw/gfx_font_roles.h"
+#include "draw/draw.h"
+#include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
 #include "input/input.h"
-#include "input/tilt.h"
+#include "input/motion/tilt.h"
 #include "material_palette.h"
 #include "math/scalar/fixed.h"
 #include "palette.h"
@@ -75,13 +80,7 @@
 #include "sand_palette256.h"
 #include "sand_swatch.h"
 #include "sand_ui.h"
-#include "ui/brush_screen.h"
-#include "ui/options_screen.h"
-#include "ui/palette_screen.h"
-#include "ui/sand_icons.h"
-#include "ui/title_screen.h"
 #include "ui/ui.h"
-#include "ui/ui_anchor.h"
 
 static const char* TAG = "sand";
 
@@ -171,7 +170,7 @@ static bool overlays_skipped_reason_logged;
 /* The START button's own tap, deferred out of draw_menu()'s UI build:
  * start_sim() can free the framebuffer (SAND_GFX_ENTER_INDEXED), and
  * draw_menu()'s own ui_end() - still to come, same call - draws through it
- * once mu_button() returns. sand_frame() applies it at the top of its next
+ * once the button returns. sand_frame() applies it at the top of its next
  * pass instead, a full UI build later. */
 static bool pending_start;
 
@@ -575,6 +574,12 @@ start_sim(void) {
     input_ready = false;
     overlays_skipped_reason_logged = false;
 
+    /* The index image before the sim buffers: it must live in internal RAM
+     * and has no fallback, while the sim buffers are plain malloc and spill
+     * to PSRAM when internal RAM runs short. Asked for the other way round,
+     * the sim buffers take the internal block and the grant is denied. */
+    apply_gfx_action(sand_colour_on_start_sim(&colour_state, (sand_colour_mode_t)color_mode));
+
     const bool buffers_ok = alloc_sim_buffers(&buffers);
     /* LOUD, NOT FATAL, unlike the essential buffers: sand_enable_impulses
      * (NULL, ...) safely disables just DETONATE, so failing here alone
@@ -597,6 +602,8 @@ start_sim(void) {
                  "largest free block is %u",
                  GRID_W_MAX, GRID_H_MAX, GRID_W_MAX * GRID_H_MAX, (unsigned)memory_largest_block(MEMORY_8BIT));
         free_sim_buffers();
+        /* The failure screen, like the menu, has no indexed draw path. */
+        apply_gfx_action(sand_colour_on_enter_menu(&colour_state));
         failed = true;
         ui.screen = SAND_UI_RUNNING;
         return;
@@ -625,10 +632,16 @@ start_sim(void) {
     tilt_reset(&tilt, INPUT_ACCEL_ONE_G);
 
     ESP_LOGI(TAG, "%d x %d grid, %d bytes, %d px cells", grid_w, grid_h, grid_w * grid_h, cell);
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    /* Which sim buffers internal RAM could not hold (the index image is
+     * allocated first): each one here reads at PSRAM speed. */
+    ESP_LOGI(TAG, "sim buffers in PSRAM: grid=%d stamps=%d lanes=%d sleep=%d", memory_in_psram(buffers.grid),
+             memory_in_psram(buffers.step_stamps), memory_in_psram(buffers.lane_scratch),
+             memory_in_psram(buffers.sleep_blocks));
+#endif
 
-    apply_gfx_action(sand_colour_on_start_sim(&colour_state, (sand_colour_mode_t)color_mode));
     if (!sand_colour_indexed_active(&colour_state)) {
-        gfx_clear(material_palette()[SAND_EMPTY]);
+        draw_clear(material_palette()[SAND_EMPTY]);
     }
     /* Explicit full-width spans for the first real draw: the menu that
      * called this can still paint its START button after the clear, and a
@@ -644,7 +657,7 @@ start_sim(void) {
 /* Test-only: starts the simulation and pours one brush's worth of sand at
  * the grid's centre, bypassing the menu's START button and a real touch
  * drag - a device suite exercising sand_frame()'s own dirty tracking has
- * no way to reach either through microui. Forces FULL regardless of
+ * no way to reach either through the UI. Forces FULL regardless of
  * whatever a colour-mode test left color_mode at - a caller wanting the
  * real framebuffer to draw into (suite_sand_full_redraw.c, say) must not
  * silently start indexed instead. Returns the mode to restore afterward. */
@@ -752,7 +765,7 @@ static int
 draw_one_row(gfx_color_t* fb, uint8_t* index_image, int cy, uint16_t* cur_x0, uint16_t* cur_x1, int wx0, int wx1,
              bool force_full) {
     const uint8_t* row = &buffers.grid[cy * grid_w];
-    uint8_t* index_row = index_image != NULL ? index_image + cy * grid_w : NULL;
+    uint8_t* index_row = index_image != NULL ? index_image + (cy * grid_w) : NULL;
 
     paint_row(fb, index_row, cy, row, wx0, wx1, force_full);
     return row_runs_find_or_span(row, grid_w, SAND_EMPTY, cur_x0, cur_x1);
@@ -816,7 +829,8 @@ mark_row_sends(int cy, int wx0, int wx1, const uint16_t* send_x0, const uint16_t
                bool healing) {
     int64_t pixels = 0;
     for (int i = 0; i < send_n; i++) {
-        int sx0, sx1;
+        int sx0;
+        int sx1;
         if (!sand_paint_clip_send(send_x0[i], send_x1[i], wx0, wx1, indexed, paint_row_state.row_changed_x0[cy],
                                   paint_row_state.row_changed_x1[cy], &sx0, &sx1)) {
             continue;
@@ -838,19 +852,22 @@ static int64_t
 draw_dirty_row(gfx_color_t* fb, uint8_t* index_image, int cy, bool force_full, bool indexed, bool healing) {
     buffers.dirty_rows[cy] = 0;
 
-    int wx0, wx1;
+    int wx0;
+    int wx1;
     row_paint_span(cy, &wx0, &wx1);
     buffers.dirty_x0[cy] = (uint16_t)grid_w;
     buffers.dirty_x1[cy] = 0;
 
-    uint16_t cur_x0[ROW_MAX_RUNS], cur_x1[ROW_MAX_RUNS];
+    uint16_t cur_x0[ROW_MAX_RUNS];
+    uint16_t cur_x1[ROW_MAX_RUNS];
     const int cur_n = draw_one_row(fb, index_image, cy, cur_x0, cur_x1, wx0, wx1, force_full);
 
     uint16_t* prev_x0 = &buffers.row_run_x0[cy * ROW_MAX_RUNS];
     uint16_t* prev_x1 = &buffers.row_run_x1[cy * ROW_MAX_RUNS];
     const int prev_n = buffers.row_run_n[cy];
 
-    uint16_t send_x0[2 * ROW_MAX_RUNS], send_x1[2 * ROW_MAX_RUNS];
+    uint16_t send_x0[2 * ROW_MAX_RUNS];
+    uint16_t send_x1[2 * ROW_MAX_RUNS];
     const int send_n = row_runs_reconcile(cur_x0, cur_x1, cur_n, prev_x0, prev_x1, prev_n, send_x0, send_x1);
 
     const int64_t pixels = mark_row_sends(cy, wx0, wx1, send_x0, send_x1, send_n, indexed, healing);
@@ -939,18 +956,19 @@ draw_emitter_markers(void) {
     const int count = sand_emitter_count(&sim);
 
     for (int i = 0; i < count; i++) {
-        int ex, ey;
+        int ex;
+        int ey;
         cell_t ecell;
         if (!sand_emitter_at(&sim, i, &ex, &ey, &ecell)) {
             continue; /* not expected, see sand_emitter_count()'s contract */
         }
         (void)ecell; /* the marker's colour is fixed, not the material's */
 
-        const int mid_x = ex * cell + cell / 2;
-        const int mid_y = ey * cell + cell / 2;
-        const int px = mid_x - EMITTER_MARKER_PX / 2;
-        const int py = mid_y - EMITTER_MARKER_PX / 2;
-        gfx_fill_rect(px, py, EMITTER_MARKER_PX, EMITTER_MARKER_PX, marker);
+        const int mid_x = (ex * cell) + (cell / 2);
+        const int mid_y = (ey * cell) + (cell / 2);
+        const int px = mid_x - (EMITTER_MARKER_PX / 2);
+        const int py = mid_y - (EMITTER_MARKER_PX / 2);
+        draw_rect(px, py, EMITTER_MARKER_PX, EMITTER_MARKER_PX, marker);
         gfx_mark_dirty(px, py, EMITTER_MARKER_PX, EMITTER_MARKER_PX);
     }
 }
@@ -967,9 +985,9 @@ gravity_quarter_turn(int gx, int gy) {
 }
 
 /* Computes its own turn (gravity_quarter_turn()) rather than inheriting the
- * shell's, unlike draw_palette(): that one goes through microui, which the
- * shell's transform reaches; this one calls gfx_text_turned() straight onto
- * the canvas, bypassing microui entirely, the same way the sand grid itself
+ * shell's, unlike draw_palette(): that one goes through the UI, which the
+ * shell's transform reaches; this one calls draw_text_turned() straight onto
+ * the canvas, bypassing the UI entirely, the same way the sand grid itself
  * is painted. Canvas draws don't get the shell's transform for free - only
  * chrome does. */
 static void
@@ -993,13 +1011,12 @@ draw_mode_label(int gx, int gy) {
     const int turn = gravity_quarter_turn(gx, gy);
 
     const int upright_w = (turn % 2 == 0) ? GFX_WIDTH : GFX_HEIGHT;
-    const int upright_h = (turn % 2 == 0) ? GFX_HEIGHT : GFX_WIDTH;
-    const mu_Rect upright = ui_anchor_rect((mu_Rect){0, 0, upright_w, upright_h}, UI_ANCHOR_TOP, UI_ANCHOR_TOP, 0,
-                                           LABEL_MARGIN, span, tall);
-    const mu_Rect box = ui_transform_rect(ui_transform_quarter_turn(turn, GFX_WIDTH, GFX_HEIGHT), upright);
+    const recti_t upright = ui_centered_rect(upright_w, span, tall, LABEL_MARGIN);
+    const affine2x_t t = ui_transform_quarter_turn(turn, GFX_WIDTH, GFX_HEIGHT);
+    const recti_t box = affine2x_map_recti(&t, upright);
     int x = 0;
     int y = 0;
-    ui_text_glyph0_origin(gfx_font_ui(), box, turn, LABEL_SCALE, &x, &y);
+    ui_text_glyph0_origin(draw_font_ui(), box, turn, LABEL_SCALE, &x, &y);
 
     gfx_color_t ink;
     if (ui.mode == SAND_MODE_DETONATE) {
@@ -1010,11 +1027,11 @@ draw_mode_label(int gx, int gy) {
         ink = material_brush_color(sand_brushes[ui.brush].cell);
     }
 
-    gfx_text_turned(x, y, text, ink, LABEL_SCALE, turn);
+    draw_text_turned(x, y, text, ink, LABEL_SCALE, turn);
 }
 
 /* APPLY EXACTLY ONCE PER REPAINT OF WHAT IS UNDERNEATH, never per frame.
- * gfx_fill_rect_blend() mixes with the destination it reads, and the sand
+ * draw_rect_blend() mixes with the destination it reads, and the sand
  * behind a panel is frozen, so a second application lands on the first's own
  * output and the picture walks toward black a frame at a time. The backdrop
  * is only fresh the frame a panel opens and on a turn taken while it is
@@ -1024,22 +1041,20 @@ draw_mode_label(int gx, int gy) {
 
 static void
 dim_backdrop(void) {
-    gfx_fill_rect_blend(0, 0, GFX_WIDTH, GFX_HEIGHT, gfx_rgb(0x000000), PANEL_SCRIM_ALPHA);
+    draw_rect_blend(0, 0, GFX_WIDTH, GFX_HEIGHT, gfx_rgb(0x000000), PANEL_SCRIM_ALPHA);
 }
 
 static void
 draw_palette(const input_t* input) {
-    mu_Context* ctx = ui_context();
     ui_begin(input);
-    palette_screen_draw(ctx, &ui);
+    palette_screen_draw(&ui);
     ui_end(UI_NO_BACKGROUND);
 }
 
 static void
 draw_brush_screen(const input_t* input) {
-    mu_Context* ctx = ui_context();
     ui_begin(input);
-    brush_screen_draw(ctx, &ui);
+    brush_screen_draw(&ui);
     ui_end(UI_NO_BACKGROUND);
 }
 
@@ -1161,8 +1176,10 @@ handle_pour_input(const input_t* input, uint32_t dt_ms) {
  * every frame by design and would be useless to log. */
 static void
 log_direction_change(int gx, int gy, int jostle, const input_motion_t* motion) {
-    static int last_dx = 99, last_dy = 99;
-    int dx, dy;
+    static int last_dx = 99;
+    static int last_dy = 99;
+    int dx;
+    int dy;
     sand_gravity_direction(gx, gy, &dx, &dy);
     if (dx == last_dx && dy == last_dy) {
         return;
@@ -1216,7 +1233,8 @@ count_occupied_in_block(int bx, int by) {
 
 static void
 count_awake(int* out_blocks, int* out_cells) {
-    int blocks = 0, cells = 0;
+    int blocks = 0;
+    int cells = 0;
     for (int by = 0; by < block_rows; by++) {
         for (int bx = 0; bx < block_cols; bx++) {
             if (sand_block_settled(&sim, bx, by)) {
@@ -1288,7 +1306,7 @@ adopt_options(const sand_options_t* options) {
 }
 
 static void
-draw_options(mu_Context* ctx) {
+draw_options(void) {
     if (!mode_swatches_ready) {
         sand_mode_swatches(sand_dither_none_lut, sand_palette256_lut, GFX_INDEXED_PALETTE_SIZE, SAND_PALETTE_UI_ENTRIES,
                            mode_swatches);
@@ -1306,7 +1324,7 @@ draw_options(mu_Context* ctx) {
         .mode_swatches = mode_swatches,
     };
     const sand_options_t committed = current_options();
-    const sand_options_hits_t hits = options_screen_draw(ctx, &menu, committed, &labels);
+    const sand_options_hits_t hits = options_screen_draw(&menu, committed, &labels);
     if (sand_menu_options_step(&menu, committed, hits)) {
         /* Not applied to a running sim - the next start_sim() reads them. */
         adopt_options(&menu.draft);
@@ -1314,8 +1332,8 @@ draw_options(mu_Context* ctx) {
 }
 
 static void
-draw_title(mu_Context* ctx) {
-    switch (sand_menu_title_clicked(&menu, title_screen_draw(ctx), current_options())) {
+draw_title(void) {
+    switch (sand_menu_title_clicked(&menu, title_screen_draw(), current_options())) {
         case SAND_MENU_START:
             /* Not called here, see pending_start's own comment. */
             pending_start = true;
@@ -1327,13 +1345,11 @@ draw_title(mu_Context* ctx) {
 
 static void
 draw_menu(const input_t* input) {
-    mu_Context* ctx = ui_context();
-
     ui_begin(input);
     if (menu.screen == SAND_MENU_OPTIONS) {
-        draw_options(ctx);
+        draw_options();
     } else {
-        draw_title(ctx);
+        draw_title();
     }
     ui_end(COL_BACKGROUND);
 }
@@ -1372,7 +1388,10 @@ sand_update(uint32_t dt_ms, const input_t* input) {
         return;
     }
 
-    int gx, gy, flow, jostle;
+    int gx;
+    int gy;
+    int flow;
+    int jostle;
     input_motion_t motion = {0};
     read_gravity_input(dt_ms, &motion, &gx, &gy, &flow, &jostle);
 
@@ -1478,7 +1497,7 @@ open_overlay_screen(void) {
      * path's own backdrop before that screen dims and draws over it. */
     if (sand_colour_on_open_overlay(&colour_state) == SAND_GFX_EXIT_TO_FULL) {
         gfx_mode_exit();
-        gfx_clear(material_palette()[SAND_EMPTY]);
+        draw_clear(material_palette()[SAND_EMPTY]);
         mark_sand_fully_dirty();
         draw_dirty_rows(false, false, false, false, false);
     }
@@ -1585,8 +1604,8 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
     }
 
     if (failed) {
-        gfx_clear(gfx_rgb(0x1A0C0C));
-        gfx_text(20, GFX_HEIGHT / 2, "no memory for the grid", gfx_rgb(0xFF5C5C));
+        draw_clear(gfx_rgb(0x1A0C0C));
+        draw_text(20, GFX_HEIGHT / 2, "no memory for the grid", gfx_rgb(0xFF5C5C));
         return;
     }
 
@@ -1618,9 +1637,9 @@ sand_frame(uint32_t dt_ms, const input_t* input) {
 
 #if CONFIG_LAUNCHER_SELFTEST
 static void
-sand_app_test_tap_menu_rect(mu_Rect r) {
-    const int x = r.x + r.w / 2;
-    const int y = r.y + r.h / 2;
+sand_app_test_tap_menu_rect(recti_t r) {
+    const int x = r.x + (r.w / 2);
+    const int y = r.y + (r.h / 2);
     const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
     const input_t hold = {.down = true, .x = x, .y = y};
     const input_t release = {.released = true, .x = x, .y = y};
@@ -1636,7 +1655,7 @@ sand_app_test_tap_menu_rect(mu_Rect r) {
 bool
 sand_app_test_options_reach_start(sand_test_start_action_t action) {
     const sand_options_t saved = current_options();
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(affine2x_identity());
     sand_enter();
     const sand_options_t before = current_options();
     sand_menu_title_clicked(&menu, SAND_TITLE_OPTIONS, before);
@@ -1674,8 +1693,8 @@ static __attribute__((noinline)) input_t
 sand_app_test_start_button_touch(void) {
     title_screen_layout_t title;
     title_screen_layout(ui_width(), ui_height(), &title);
-    const mu_Rect start_rect = title.buttons[SAND_TITLE_START];
-    const input_t touch = {.x = start_rect.x + start_rect.w / 2, .y = start_rect.y + start_rect.h / 2};
+    const recti_t start_rect = title.buttons[SAND_TITLE_START];
+    const input_t touch = {.x = start_rect.x + (start_rect.w / 2), .y = start_rect.y + (start_rect.h / 2)};
     ESP_LOGI(TAG, "START tap test: tapping (%d, %d), START rect (%d, %d, %d, %d)", touch.x, touch.y, start_rect.x,
              start_rect.y, start_rect.w, start_rect.h);
     return touch;
@@ -1683,13 +1702,13 @@ sand_app_test_start_button_touch(void) {
 
 /* Unlike sand_app_test_survives_indexed_then_menu() above, this runs the
  * START button itself, through a finger's frames: title built, press
- * (hover only), DOWN (the click). The lift lands on a frame with no UI, so
- * the pointer's idle-frame release leaves no button held. */
+ * (hover only), DOWN (the press lands on START), lift (the tap). The start
+ * the tap queues applies on the next pass, before any UI is built. */
 bool
 sand_app_test_start_button_survives_the_ui_build(int mode) {
     const int previous_mode = color_mode;
     color_mode = (sand_color_mode_t)mode;
-    ui_set_transform(ui_transform_identity());
+    ui_set_transform(affine2x_identity());
     sand_enter();
 
     const input_t touch = sand_app_test_start_button_touch();
@@ -1700,13 +1719,13 @@ sand_app_test_start_button_survives_the_ui_build(int mode) {
     sand_frame(16, &in); /* hover granted on the frame the finger lands */
 
     in = (input_t){.x = touch.x, .y = touch.y};
-    sand_frame(16, &in); /* the DOWN: the click */
+    sand_frame(16, &in); /* the DOWN: the press lands on START */
 
     in = (input_t){.released = true, .x = touch.x, .y = touch.y};
-    sand_frame(16, &in); /* pending_start applies before this frame's UI: no UI is built */
+    sand_frame(16, &in); /* the lift: the tap, queued as pending_start */
 
     in = (input_t){0};
-    sand_frame(16, &in);
+    sand_frame(16, &in); /* pending_start applies before this frame's UI: no UI is built */
 
     const bool ok = sand_colour_indexed_active(&colour_state) && ui.screen == SAND_UI_RUNNING;
     ESP_LOGI(TAG, "START tap test: indexed_active=%d screen=%d -> %s", sand_colour_indexed_active(&colour_state),

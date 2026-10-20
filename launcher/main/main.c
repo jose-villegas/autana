@@ -23,9 +23,10 @@
 #include "selftest/post_ui.h"
 #include "services/build_id.h"
 #include "shell/shell.h"
+#include "shell/ui/ui_launcher.h"
+#include "shell/ui/ui_ridge.h"
+#include "sound/sound_engine.h"
 #include "ui/ui.h"
-#include "ui/ui_launcher.h"
-#include "ui/ui_ridge.h"
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 #include "console/console.h"
@@ -82,7 +83,7 @@ show_post_failures(void) {
 static __attribute__((noinline)) void
 app_boot_init(void) {
     printf("BUILD_ID=%s\n", build_id());
-    fflush(stdout);
+    (void)fflush(stdout);
     ui_ridge_load();
     shell_init();
     heap_mark("boot");
@@ -100,6 +101,7 @@ app_boot_init(void) {
 
     heap_mark("after gfx_init");
     display_load_panel_clock();
+    (void)sound_init();
 
     if (!post_run_after_display()) {
         show_post_failures();

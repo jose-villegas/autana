@@ -14,7 +14,7 @@
 
 #include "esp_log.h"
 
-#include "gfx/draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "gfx/present/gfx_present.h"
 #include "render/context/render_context.h"
 #include "render_lab.h"
@@ -73,7 +73,7 @@ record_failure(const scene_failure_t* why) {
 /* Loads the scene and shows sponza_bakes[shown]. */
 static void
 enter_with(sponza_bake_t shown) {
-    gfx_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
+    draw_clear(gfx_rgb(RENDER_LAB_BACKGROUND_RGB));
     failure[0] = '\0';
     scene_failure_t why;
     sponza = scene_load(SPONZA_SCENE, &why);
@@ -93,7 +93,12 @@ enter_with(sponza_bake_t shown) {
         scene_entity_set_enabled(sponza, bake, i == (int)shown);
     }
     (void)scene_activate(sponza, render_lab_start_camera);
-    render_context_set_scale(render_context_main(), 10000 / render_lab_scale());
+    render_lab_apply_raster_settings();
+    if (sponza != NULL) {
+        (void)scene_camera_set_present(
+            sponza, scene_find(sponza, render_lab_start_camera == NULL ? sponza_cameras[0] : render_lab_start_camera),
+            render_lab_present());
+    }
     applied_budget_ms = -1;
     apply_budget();
 #if TUNE_ENABLED
@@ -142,6 +147,12 @@ scene_sponza_exit(void) {
 static void
 scene_sponza_frame(uint32_t dt_ms) {
     (void)dt_ms;
+    render_lab_apply_raster_settings();
+    if (sponza != NULL) {
+        (void)scene_camera_set_present(
+            sponza, scene_find(sponza, render_lab_start_camera == NULL ? sponza_cameras[0] : render_lab_start_camera),
+            render_lab_present());
+    }
     apply_budget();
 #if TUNE_ENABLED
     render_context_set_debug_view(render_context_main(), render_lab_debug_view());

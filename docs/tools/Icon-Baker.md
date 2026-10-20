@@ -63,9 +63,9 @@ within a set. The baker refuses, naming the file and the place:
 
 ## The pack entry
 
-Each icon is an `IMAG` entry of format `GFX_IMAGE_MONO1`: one bit a pixel,
+Each icon is an `IMAG` entry of format `DRAW_IMAGE_MONO1`: one bit a pixel,
 the most significant bit leftmost, 1 ink, and a stride rounded up to whole
-bytes. The header and the checks `gfx_image_open()` makes are the image
+bytes. The header and the checks `draw_image_open()` makes are the image
 entry's ([the layout](../assets/README.md#the-image-entry)); a loader that
 finds an entry of another format treats the icon as missing.
 
@@ -79,7 +79,7 @@ icon of the set is `NULL`:
 
 - a control with a label beside its icon shows the label alone;
 - an icon-only control draws its icon's short text in the icon's box
-  (`ui_icon_set_draw()`, `ui_draw_system_icon()`): a chevron is `v`, `^` or
+  (`ui_icon()`'s fallback): a chevron is `v`, `^` or
   `>`, an info button `i`. Each set's names table holds the texts.
 
 No control is drawn blank. A render with no packs (`|nopacks` in a scene's
@@ -91,7 +91,7 @@ The suites read the packs the build writes, never the baker: each icon's
 pixels against rows transcribed by hand from the artwork it replaced, its ink
 inside its box, the symmetry it is drawn with, and `icon_walk_blocks()`
 against a reference walk (`suite_icons.c`, `suite_system_icons.c`, an app's
-own `tests/`). `launcher/test/suites/suite_gfx_image.c` holds the reader to
+own `tests/`). `launcher/test/suites/suite_draw_image.c` holds the reader to
 hand-built one-bit entries and `tools/tests/test_icons_asset.py` the baker to
 its refusals. **Do not
 assert the baked bytes against a Python re-implementation of the packer**:

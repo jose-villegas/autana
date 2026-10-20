@@ -20,6 +20,7 @@
 #include "math/linear/transformf.h"
 #include "math/linear/transformx.h"
 #include "math/linear/vec_convert.h"
+#include "math/scalar/math_const.h"
 #include "math/scalar/mathf.h"
 #include "math/scalar/mathi.h"
 #include "math/scalar/units.h"
@@ -121,6 +122,50 @@ test_fixed_quaternion_rotation_matches_float(void) {
     const quatx_t qx = quatx_from_euler(turns);
     const quatf_t qf = quatf_from_euler(radians);
     assert_x_near_f(quatf_rotate(qf, v), quatx_rotate(qx, vec3x_from_vec3f(v)), FIXED_SLACK);
+}
+
+static void
+test_fixed_view_from_axes_maps_the_eye_and_frame_axes(void) {
+    const vec3x_t x = {0, MATHX_ONE, 0}, y = {0, 0, -MATHX_ONE}, z = {-MATHX_ONE, 0, 0};
+    const vec3x_t eye = {2 * MATHX_ONE, -3 * MATHX_ONE, 4 * MATHX_ONE}, origin = {0, 0, 0};
+    const mat4x_t view = mat4x_view_from_axes(x, y, z, eye);
+    TEST_ASSERT_TRUE(vec3x_equal(origin, mat4x_apply(&view, eye)));
+    TEST_ASSERT_TRUE(vec3x_equal((vec3x_t){MATHX_ONE, 0, 0}, mat4x_apply(&view, vec3x_add(eye, x))));
+    TEST_ASSERT_TRUE(vec3x_equal((vec3x_t){0, MATHX_ONE, 0}, mat4x_apply(&view, vec3x_add(eye, y))));
+    TEST_ASSERT_TRUE(vec3x_equal((vec3x_t){0, 0, MATHX_ONE}, mat4x_apply(&view, vec3x_add(eye, z))));
+}
+
+static void
+test_fixed_scale_rows_preserves_the_bottom_row(void) {
+    const vec3x_t scale = {2 * MATHX_ONE, -3 * MATHX_ONE, MATHX_ONE / 2};
+    const mat4x_t m = {{{MATHX_ONE, -MATHX_ONE, MATHX_ONE / 2, 2 * MATHX_ONE},
+                        {0, MATHX_ONE, -MATHX_ONE, 3 * MATHX_ONE},
+                        {-MATHX_ONE, 0, MATHX_ONE, -2 * MATHX_ONE},
+                        {MATHX_ONE, -MATHX_ONE, MATHX_ONE / 2, 0}}};
+    const mat4x_t got = mat4x_scale_rows(m, scale);
+    const int32_t factors[] = {scale.x, scale.y, scale.z, MATHX_ONE};
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            TEST_ASSERT_EQUAL_INT32(mathx_mul(m.m[r][c], factors[r]), got.m[r][c]);
+        }
+    }
+}
+
+static void
+test_fixed_scale_columns_keeps_the_translation(void) {
+    const vec3x_t scale = {2 * MATHX_ONE, -3 * MATHX_ONE, MATHX_ONE / 2};
+    const mat4x_t m = {{{MATHX_ONE, -MATHX_ONE, MATHX_ONE / 2, 2 * MATHX_ONE},
+                        {0, MATHX_ONE, -MATHX_ONE, 3 * MATHX_ONE},
+                        {-MATHX_ONE, 0, MATHX_ONE, -2 * MATHX_ONE},
+                        {0, 0, 0, MATHX_ONE}}};
+    const mat4x_t got = mat4x_scale_columns(m, scale);
+    const int32_t factors[] = {scale.x, scale.y, scale.z, MATHX_ONE};
+    for (int r = 0; r < 4; r++) {
+        for (int c = 0; c < 4; c++) {
+            const int32_t want = r < 3 ? mathx_mul(m.m[r][c], factors[c]) : m.m[r][c];
+            TEST_ASSERT_EQUAL_INT32(want, got.m[r][c]);
+        }
+    }
 }
 
 static void
@@ -663,6 +708,23 @@ test_scalar_rounding_preserves_large_integers_and_half_away_ties(void) {
 }
 
 static void
+test_scalar_int16_rounding_saturates_and_preserves_half_neighbors(void) {
+    static const float edges[] = {NAN, -INFINITY, INFINITY, -FLT_MAX, FLT_MAX, INT16_MIN, INT16_MAX, 0, -0.0F};
+    static const int16_t expected[] = {INT16_MIN, INT16_MIN, INT16_MAX, INT16_MIN, INT16_MAX,
+                                       INT16_MIN, INT16_MAX, 0,         0};
+    for (size_t i = 0; i < sizeof edges / sizeof edges[0]; i++) {
+        TEST_ASSERT_EQUAL_INT16(expected[i], mathf_round_i16(edges[i]));
+    }
+    for (int whole = INT16_MIN; whole < INT16_MAX; whole++) {
+        const float half = (float)whole + 0.5F;
+        const float neighbors[] = {nextafterf(half, -INFINITY), half, nextafterf(half, INFINITY)};
+        for (size_t i = 0; i < sizeof neighbors / sizeof neighbors[0]; i++) {
+            TEST_ASSERT_EQUAL_INT16((int16_t)roundf(neighbors[i]), mathf_round_i16(neighbors[i]));
+        }
+    }
+}
+
+static void
 test_transform_matrix_refusals_and_shear_tolerance_boundary(void) {
     mat4f_t matrix = mat4f_identity();
     transformf_t pose;
@@ -927,6 +989,7 @@ suite_math_numbers(void) {
     RUN_TEST(test_unsigned_64_clamp_covers_extremes_and_crosses_the_word_boundary);
     RUN_TEST(test_scalar_clamp_maps_nonfinite_values_to_bounds);
     RUN_TEST(test_scalar_rounding_preserves_large_integers_and_half_away_ties);
+    RUN_TEST(test_scalar_int16_rounding_saturates_and_preserves_half_neighbors);
     RUN_TEST(test_transform_matrix_refusals_and_shear_tolerance_boundary);
     RUN_TEST(test_integer_repeat_and_wrap_cover_negative_values_and_int_limits);
     RUN_TEST(test_unsigned_repeat_keeps_clock_precision_and_clamp_covers_the_range);
@@ -935,6 +998,9 @@ suite_math_numbers(void) {
     RUN_TEST(test_vec2_ops_agree_across_every_number_type);
     RUN_TEST(test_fixed_normalize_matches_float_within_its_precision);
     RUN_TEST(test_fixed_quaternion_rotation_matches_float);
+    RUN_TEST(test_fixed_view_from_axes_maps_the_eye_and_frame_axes);
+    RUN_TEST(test_fixed_scale_rows_preserves_the_bottom_row);
+    RUN_TEST(test_fixed_scale_columns_keeps_the_translation);
     RUN_TEST(test_fixed_transform_matrix_view_and_look_at_match_float);
     RUN_TEST(test_fixed_transform_builds_once_and_rebuilds_after_each_setter);
     RUN_TEST(test_round_trip_conversions_return_the_original_where_representable);

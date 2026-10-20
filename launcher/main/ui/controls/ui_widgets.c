@@ -1,0 +1,449 @@
+#include "ui/controls/ui_widgets.h"
+
+#include <assert.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "draw/draw.h"
+#include "draw/draw_font_roles.h"
+#include "ui/controls/ui_icons.h"
+#include "ui/controls/ui_style.h"
+#include "ui/ui.h"
+#include "ui/ui_internal.h"
+
+#define BUTTON_PAD      8
+#define BUTTON_ICON_GAP 8
+#define TILE_PAD        8
+#define TILE_LABEL_GAP  4
+#define CHEVRON_SIDE    24
+#define LIST_GAP        4
+
+ui_mu_theme_t
+ui_theme_from_style(const mu_Style* style) {
+    return (ui_mu_theme_t){.button_face = style->colors[MU_COLOR_BUTTON],
+                           .accent_face = style->colors[MU_COLOR_BUTTONFOCUS],
+                           .text = style->colors[MU_COLOR_TEXT],
+                           .on_accent = style->colors[MU_COLOR_TEXT],
+                           .text_scale = DRAW_GLYPH_SCALE,
+                           .native_toggle = true};
+}
+
+static void
+draw_spans(mu_Context* ctx, const ui_span_t* spans, int n) {
+    for (int i = 0; i < n; i++) {
+        mu_draw_rect(ctx, spans[i].rect, spans[i].color);
+    }
+}
+
+void
+ui_mu_panel(mu_Context* ctx, mu_Rect r, const ui_mu_theme_t* theme) {
+    ui_span_t spans[UI_PANEL_MAX_SPANS];
+    draw_spans(ctx, spans, ui_panel_spans(r, theme->panel_face, theme->panel_edge, spans, UI_PANEL_MAX_SPANS));
+}
+
+void
+ui_header_bar(mu_Context* ctx, mu_Rect r, const char* title, int scale, const ui_mu_theme_t* theme) {
+    mu_draw_rect(ctx, r, theme->panel_face);
+    mu_draw_rect(ctx, mu_rect(r.x, r.y + r.h - 2, r.w, 2), theme->panel_edge);
+    ui_text_in(ctx, r, title, theme->accent, scale, UI_ALIGN_CENTRE);
+}
+
+/* `str` aligned in `r` and clipped to `clip`. */
+static void
+text_in_clip(mu_Context* ctx, mu_Rect r, mu_Rect clip, const char* str, int len, mu_Color color, int scale,
+             ui_align_t align) {
+    if (len == 0) {
+        return;
+    }
+    ui_set_font_scaled(draw_font_ui(), scale);
+    const int tw = ctx->text_width(ctx->style->font, str, len);
+    const int th = draw_font_height(draw_font_ui(), scale);
+    int x = r.x;
+    if (align == UI_ALIGN_CENTRE) {
+        x = r.x + ((r.w - tw) / 2);
+    } else if (align == UI_ALIGN_RIGHT) {
+        x = r.x + r.w - tw;
+    }
+
+    mu_push_clip_rect(ctx, clip);
+    mu_draw_text(ctx, ctx->style->font, str, len, mu_vec2(x, r.y + ((r.h - th) / 2)), color);
+    mu_pop_clip_rect(ctx);
+}
+
+static void
+text_in(mu_Context* ctx, mu_Rect r, const char* str, int len, mu_Color color, int scale, ui_align_t align) {
+    text_in_clip(ctx, r, r, str, len, color, scale, align);
+}
+
+/* A label centred in its slot, clipped `pad_left`/`pad_right` beyond it: a
+ * label too wide for its slot shows into the control's padding. */
+static void
+control_label(mu_Context* ctx, mu_Rect slot, int pad_left, int pad_right, const char* str, int len, mu_Color color,
+              int scale) {
+    const mu_Rect clip = {slot.x - pad_left, slot.y, slot.w + pad_left + pad_right, slot.h};
+    text_in_clip(ctx, slot, clip, str, len, color, scale, UI_ALIGN_CENTRE);
+}
+
+void
+ui_text_in(mu_Context* ctx, mu_Rect r, const char* str, mu_Color color, int scale, ui_align_t align) {
+    text_in(ctx, r, str, -1, color, scale, align);
+}
+
+typedef struct {
+    bool pressed;
+    bool clicked;
+    mu_Color ink;
+} control_t;
+
+/* The hit, the face and the ink every button-shaped widget shares. */
+static control_t
+begin_control(mu_Context* ctx, mu_Id mid, mu_Rect r, bool enabled, bool selected, const ui_mu_theme_t* theme) {
+    control_t c = {0};
+    mu_update_control(ctx, mid, r, enabled ? 0 : MU_OPT_NOINTERACT);
+    if (enabled) {
+        /* Focus, not hover: on touch the pointer sits on whatever a drag
+         * crosses, and only a landed press is a press. */
+        c.pressed = ctx->focus == mid;
+        c.clicked = ctx->mouse_pressed == MU_MOUSE_LEFT && ctx->focus == mid;
+    }
+
+    const bool on_accent = enabled && selected;
+    ui_span_t spans[UI_BEZEL_MAX_SPANS];
+    const mu_Color face = on_accent ? theme->accent_face : theme->button_face;
+    draw_spans(ctx, spans, ui_bezel_spans(r, face, c.pressed, spans, UI_BEZEL_MAX_SPANS));
+
+    if (!enabled) {
+        c.ink = theme->muted;
+    } else {
+        c.ink = on_accent ? theme->on_accent : theme->text;
+    }
+    return c;
+}
+
+int
+ui_icon_button_label_width(int button_w, bool has_icon, const ui_mu_theme_t* theme) {
+    return button_w - (2 * BUTTON_PAD) - (has_icon ? theme->icon_side + BUTTON_ICON_GAP : 0);
+}
+
+/* The icon at the left and the label centred in `label_w` after it. */
+static void
+draw_icon_and_label(mu_Context* ctx, mu_Rect r, const draw_image_t* icon, const char* label, int label_len, int label_w,
+                    mu_Color ink, const ui_mu_theme_t* theme) {
+    if (icon != NULL) {
+        const int side = theme->icon_side;
+        ui_draw_icon(ctx, mu_rect(r.x + BUTTON_PAD, r.y + ((r.h - side) / 2), side, side), icon, NULL, ink);
+    }
+    const int label_x = r.x + BUTTON_PAD + (icon != NULL ? theme->icon_side + BUTTON_ICON_GAP : 0);
+    control_label(ctx, mu_rect(label_x, r.y, label_w, r.h), icon != NULL ? 0 : BUTTON_PAD, BUTTON_PAD, label, label_len,
+                  ink, theme->text_scale);
+}
+
+bool
+ui_icon_button_id(mu_Context* ctx, mu_Id id, mu_Rect r, const ui_widget_button_t* button, int label_len,
+                  const ui_mu_theme_t* theme) {
+    const control_t c = begin_control(ctx, id, r, button->enabled, button->selected, theme);
+    const int label_w = ui_icon_button_label_width(r.w, button->icon != NULL, theme);
+    draw_icon_and_label(ctx, r, button->icon, button->label, label_len, label_w, c.ink, theme);
+    return c.clicked;
+}
+
+bool
+ui_icon_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_button_t* button,
+               const ui_mu_theme_t* theme) {
+    return ui_icon_button_id(ctx, mu_get_id(ctx, id, (int)strlen(id)), r, button, -1, theme);
+}
+
+bool
+ui_theme_slider_int(mu_Context* ctx, mu_Rect r, int* value, int lo, int hi, int step, const ui_mu_theme_t* theme) {
+    return ui_theme_slider_int_id(ctx, mu_get_id(ctx, &value, sizeof value), r, value, lo, hi, step, true, theme);
+}
+
+bool
+ui_theme_slider_int_id(mu_Context* ctx, mu_Id id, mu_Rect r, int* value, int lo, int hi, int step, bool enabled,
+                       const ui_mu_theme_t* theme) {
+    mu_Color* colors = ctx->style->colors;
+    const mu_Color base = colors[MU_COLOR_BASE];
+    const mu_Color border = colors[MU_COLOR_BORDER];
+    const mu_Color knob = colors[MU_COLOR_BUTTON];
+    const mu_Color fill = colors[MU_COLOR_BUTTONFOCUS];
+    colors[MU_COLOR_BASE] = theme->button_face;
+    colors[MU_COLOR_BORDER] = theme->panel_edge;
+    colors[MU_COLOR_BUTTON] = theme->text;
+    colors[MU_COLOR_BUTTONFOCUS] = theme->accent_face;
+
+    mu_layout_set_next(ctx, r, 0);
+    const bool changed = ui_slider_int_id(ctx, id, value, lo, hi, step, enabled);
+
+    colors[MU_COLOR_BASE] = base;
+    colors[MU_COLOR_BORDER] = border;
+    colors[MU_COLOR_BUTTON] = knob;
+    colors[MU_COLOR_BUTTONFOCUS] = fill;
+    return changed;
+}
+
+bool
+ui_toggle_id(mu_Context* ctx, mu_Id mid, mu_Rect r, const char* label, int label_len, bool* on, bool enabled,
+             const ui_mu_theme_t* theme) {
+    mu_Style saved = *ctx->style;
+    if (!theme->native_toggle) {
+        ctx->style->colors[MU_COLOR_BASE] = theme->button_face;
+        ctx->style->colors[MU_COLOR_BASEHOVER] = theme->button_face;
+        ctx->style->colors[MU_COLOR_BASEFOCUS] = theme->accent_face;
+        ctx->style->colors[MU_COLOR_BORDER] = theme->panel_edge;
+    }
+    const mu_Color ink = enabled ? theme->text : theme->muted;
+    ctx->style->colors[MU_COLOR_TEXT] = ink;
+    ui_set_font_scaled(ui_resolve_font_scaled(saved.font).font, theme->text_scale);
+    mu_update_control(ctx, mid, r, enabled ? 0 : MU_OPT_NOINTERACT);
+    const bool changed = enabled && ctx->mouse_pressed == MU_MOUSE_LEFT && ctx->focus == mid;
+    if (changed) {
+        *on = !*on;
+    }
+    const mu_Rect box = mu_rect(r.x, r.y, r.h, r.h);
+    mu_draw_control_frame(ctx, mid, box, MU_COLOR_BASE, 0);
+    if (*on) {
+        mu_draw_icon(ctx, MU_ICON_CHECK, box, ink);
+    }
+    const mu_Rect text = mu_rect(r.x + box.w, r.y, r.w - box.w, r.h);
+    const mu_Vec2 pos =
+        mu_vec2(text.x + ctx->style->padding, text.y + ((text.h - ctx->text_height(ctx->style->font)) / 2));
+    mu_push_clip_rect(ctx, text);
+    if (label_len != 0) {
+        mu_draw_text(ctx, ctx->style->font, label, label_len, pos, ink);
+    }
+    mu_pop_clip_rect(ctx);
+    *ctx->style = saved;
+    return changed;
+}
+
+mu_Rect
+ui_dropdown_list_rect(mu_Rect anchor, int count, int row_h, int canvas_h, int margin) {
+    const int h = count * row_h;
+    const int below = anchor.y + anchor.h + LIST_GAP;
+    const int room_below = canvas_h - margin - below;
+    const int room_above = anchor.y - LIST_GAP - margin;
+
+    if (h <= room_below) {
+        return mu_rect(anchor.x, below, anchor.w, h);
+    }
+    if (h <= room_above) {
+        return mu_rect(anchor.x, anchor.y - LIST_GAP - h, anchor.w, h);
+    }
+    const int room = canvas_h - (2 * margin);
+    return mu_rect(anchor.x, margin, anchor.w, h < room ? h : room);
+}
+
+int
+ui_dropdown_list_scroll(int selected, int count, int row_h, int list_h) {
+    const int max_scroll = (count * row_h) - list_h;
+    int scroll = (selected * row_h) - ((list_h - row_h) / 2);
+    if (scroll > max_scroll) {
+        scroll = max_scroll;
+    }
+    return scroll < 0 ? 0 : scroll;
+}
+
+int
+ui_dropdown_label_width(int w, const ui_mu_theme_t* theme) {
+    return ui_icon_button_label_width(w, true, theme) - CHEVRON_SIDE - BUTTON_ICON_GAP;
+}
+
+/* The list's window, or NULL before its first opening. Not
+ * mu_get_container(): that creates a missing container already open. */
+static mu_Container*
+find_list(mu_Context* ctx, const char* list_id) {
+    const mu_Id id = mu_get_id(ctx, list_id, (int)strlen(list_id));
+    const int idx = mu_pool_get(ctx, ctx->container_pool, MU_CONTAINERPOOL_SIZE, id);
+    return idx >= 0 ? &ctx->containers[idx] : NULL;
+}
+
+static void
+list_name(const char* id, char* out, size_t len) {
+    const int written = snprintf(out, len, "%s list", id);
+    assert(written >= 0 && (size_t)written < len); /* a clipped name would address another list */
+    (void)written;
+}
+
+/* The one list that can be open at a time: a microui popup closes on any
+ * tap outside it. `scroll` is re-applied until the list has measured its
+ * content, since microui clamps any scroll before that back to 0, and
+ * `close_in` counts the frames a picked list stays up once the finger lifts. */
+static struct {
+    mu_Container* list;
+    int scroll;
+    bool scroll_pending;
+    bool opening_touch;
+    int close_in;
+    int drawn_frame;
+} live;
+
+const mu_Container*
+ui_dropdown_open_list(void) {
+    return live.list != NULL && live.list->open ? live.list : NULL;
+}
+
+void
+ui_widgets_reset(void) {
+    memset(&live, 0, sizeof live);
+}
+
+static int
+draw_dropdown_list(mu_Context* ctx, const char* id, mu_Rect anchor, const char* const* names,
+                   const draw_image_t* const* icons, int count, int selected, const ui_mu_theme_t* theme) {
+    const mu_Rect list = ui_dropdown_list_rect(anchor, count, anchor.h, ui_height(), UI_MARGIN);
+    mu_Container* cnt = find_list(ctx, id);
+    cnt->rect = list;
+    if (live.close_in > 0 && !ctx->mouse_down && --live.close_in == 0) {
+        cnt->open = 0;
+        live.list = NULL;
+        return -1;
+    }
+    if (live.scroll_pending) {
+        cnt->scroll.y = live.scroll;
+        live.scroll_pending = cnt->content_size.y <= 0;
+    }
+    live.drawn_frame = ctx->frame;
+
+    /* Rows flush with the list's edges: padding would count toward the
+     * content height, and a list that fits would then scroll. */
+    const int saved_padding = ctx->style->padding;
+    ctx->style->padding = 0;
+    const int opt = MU_OPT_POPUP | MU_OPT_NORESIZE | MU_OPT_NOTITLE | MU_OPT_NOFRAME | MU_OPT_CLOSED;
+    if (!mu_begin_window_ex(ctx, id, list, opt)) {
+        ctx->style->padding = saved_padding;
+        return -1;
+    }
+    const int row_w = cnt->body.w;
+    int picked = -1;
+    for (int i = 0; i < count; i++) {
+        char row_id[24];
+        (void)snprintf(row_id, sizeof row_id, "item %d", i);
+        const ui_widget_button_t row = {
+            .icon = icons ? icons[i] : NULL,
+            .label = names[i],
+            .enabled = true,
+            .selected = i == selected,
+        };
+        mu_layout_set_next(ctx, mu_rect(0, i * anchor.h, row_w, anchor.h), 1);
+        if (ui_icon_button(ctx, row_id, mu_layout_next(ctx), &row, theme) && !live.opening_touch) {
+            picked = i;
+            live.close_in = UI_DROPDOWN_CLOSE_FRAMES;
+        }
+    }
+    mu_end_window(ctx);
+    /* A deferred tap can deliver DOWN and UP together while the list opens over its anchor. */
+    if (!ctx->mouse_down) {
+        live.opening_touch = false;
+    }
+    ctx->style->padding = saved_padding;
+    return picked;
+}
+
+bool
+ui_dropdown_is_open(mu_Context* ctx, const char* id) {
+    char list_id[48];
+    list_name(id, list_id, sizeof list_id);
+    const mu_Container* list = find_list(ctx, list_id);
+    return list != NULL && list->open;
+}
+
+/* A list its dropdown stopped drawing (the screen changed, or the app left
+ * mid-close) is closed rather than found open on the next visit. */
+static void
+close_if_abandoned(mu_Context* ctx, mu_Container* list) {
+    if (list == NULL || !list->open) {
+        return;
+    }
+    if (list != live.list || live.drawn_frame != ctx->frame - 1) {
+        list->open = 0;
+        if (list == live.list) {
+            live.list = NULL;
+        }
+    }
+}
+
+int
+ui_mu_dropdown(mu_Context* ctx, const char* id, mu_Rect r, const char* const* names, const draw_image_t* const* icons,
+               int count, int selected, const ui_mu_theme_t* theme) {
+    return ui_dropdown_id(ctx, mu_get_id(ctx, id, (int)strlen(id)), id, r, names, icons, count, selected, true, theme);
+}
+
+int
+ui_dropdown_id(mu_Context* ctx, mu_Id mid, const char* id, mu_Rect r, const char* const* names,
+               const draw_image_t* const* icons, int count, int selected, bool enabled, const ui_mu_theme_t* theme) {
+    assert(count > 0);
+    if (selected < 0 || selected >= count) {
+        selected = 0;
+    }
+    char list_id[48];
+    list_name(id, list_id, sizeof list_id);
+    close_if_abandoned(ctx, find_list(ctx, list_id));
+
+    const bool was_open = ui_dropdown_is_open(ctx, id);
+    const control_t c = begin_control(ctx, mid, r, enabled, false, theme);
+    draw_icon_and_label(ctx, r, icons ? icons[selected] : NULL, names[selected], -1,
+                        ui_dropdown_label_width(r.w, theme), c.ink, theme);
+
+    const mu_Rect chevron_r = {r.x + r.w - BUTTON_PAD - CHEVRON_SIDE, r.y + ((r.h - CHEVRON_SIDE) / 2), CHEVRON_SIDE,
+                               CHEVRON_SIDE};
+    ui_draw_system_icon(ctx, chevron_r, was_open ? UI_ICON_CHEVRON_UP : UI_ICON_CHEVRON_DOWN, c.ink);
+
+    if (c.clicked && !was_open) {
+        mu_open_popup(ctx, list_id);
+        const mu_Rect list = ui_dropdown_list_rect(r, count, r.h, ui_height(), UI_MARGIN);
+        live.list = find_list(ctx, list_id);
+        live.scroll = ui_dropdown_list_scroll(selected, count, r.h, list.h);
+        live.scroll_pending = true;
+        live.close_in = 0;
+        live.opening_touch = true;
+        live.drawn_frame = ctx->frame;
+    }
+    if (!enabled || !ui_dropdown_is_open(ctx, id)) {
+        return -1;
+    }
+    return draw_dropdown_list(ctx, list_id, r, names, icons, count, selected, theme);
+}
+
+mu_Rect
+ui_mu_tile_icon_rect(mu_Rect r, const ui_mu_theme_t* theme) {
+    const int label_h = draw_font_height(draw_font_ui(), theme->text_scale);
+    int side = r.h - (2 * TILE_PAD) - label_h - TILE_LABEL_GAP;
+    if (side > r.w - (2 * TILE_PAD)) {
+        side = r.w - (2 * TILE_PAD);
+    }
+    return mu_rect(r.x + ((r.w - side) / 2), r.y + TILE_PAD, side, side);
+}
+
+void
+ui_swatch_grid(mu_Context* ctx, mu_Rect r, const uint32_t* colors, int cols, int rows) {
+    for (int row = 0; row < rows; row++) {
+        const int y0 = r.y + (row * r.h / rows);
+        const int y1 = r.y + ((row + 1) * r.h / rows);
+        for (int col = 0; col < cols; col++) {
+            const int x0 = r.x + (col * r.w / cols);
+            const int x1 = r.x + ((col + 1) * r.w / cols);
+            mu_draw_rect(ctx, mu_rect(x0, y0, x1 - x0, y1 - y0), ui_rgb(colors[(row * cols) + col]));
+        }
+    }
+}
+
+bool
+ui_tile_button(mu_Context* ctx, const char* id, mu_Rect r, const ui_widget_button_t* button,
+               const ui_mu_theme_t* theme) {
+    return ui_tile_button_id(ctx, mu_get_id(ctx, id, (int)strlen(id)), r, button, -1, theme);
+}
+
+bool
+ui_tile_button_id(mu_Context* ctx, mu_Id id, mu_Rect r, const ui_widget_button_t* button, int label_len,
+                  const ui_mu_theme_t* theme) {
+    const control_t c = begin_control(ctx, id, r, button->enabled, button->selected, theme);
+
+    const mu_Rect icon = ui_mu_tile_icon_rect(r, theme);
+    if (button->icon != NULL) {
+        ui_draw_icon(ctx, icon, button->icon, NULL, c.ink);
+    }
+    const int label_h = draw_font_height(draw_font_ui(), theme->text_scale);
+    const mu_Rect label = {r.x + TILE_PAD, icon.y + icon.h + TILE_LABEL_GAP, r.w - (2 * TILE_PAD), label_h};
+    control_label(ctx, label, TILE_PAD, TILE_PAD, button->label, label_len, c.ink, theme->text_scale);
+    return c.clicked;
+}

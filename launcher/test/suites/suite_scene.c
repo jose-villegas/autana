@@ -11,18 +11,22 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "anim/anim_tracks_format.h"
+#include "math/scalar/math_const.h"
 #include "suites.h"
 #include "unity.h"
 
 #include "anim/anim_tracks.h"
 #include "asset/asset_pack.h"
-#include "gfx/draw/gfx_color.h"
+#include "gfx/target/gfx_color.h"
 #ifndef DEVICE_BUILD
-#include "gfx/draw/gfx_draw.h"
+#include "display/display.h"
+#include "draw/draw.h"
 #include "gfx/gfx.h"
-#include "gfx/gfx_test.h"
+#include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
+#include "gfx/present/gfx_test.h"
 #include "shell/shell_frame.h"
 #include "ui/ui.h"
 #endif
@@ -43,8 +47,11 @@
 #ifndef DEVICE_BUILD
 #include <stdio.h>
 
+#include "anim/anim_skeleton_format.h"
 #include "asset/asset_file.h"
+#include "render/r3d_skin_format.h"
 #include "test_asset_dir.h"
+#include "ui/ui_internal.h"
 #endif
 
 #define SIZE               64
@@ -166,10 +173,10 @@ make_clip_entry(uint8_t* entry, anim_value_t position_type, int track_count) {
     test_pack_put_floats(entry + FLIGHT_TURNS, turns, 8);
 }
 
-#define IDENTITY {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, {0, 0, 0}}
+#define IDENTITY {{{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}}, {0, 0, 0}}
 #define AT(x, y, z)                                                                                                    \
     {                                                                                                                  \
-        {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}, { x, y, z }                                                                 \
+        {{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}}, { x, y, z }                                                               \
     }
 #define CAMERA_AT(x) AT(x, 0, -CAMERA_DISTANCE) /* a camera's pose, x across */
 
@@ -181,7 +188,7 @@ typedef struct {
 
     struct {
         const char* name;
-        scene_placement_t at;
+        scene_asset_transform_t at;
     } entities[3];
 
     struct {
@@ -271,7 +278,7 @@ camera_clip_count(const scene_spec_t* s) {
 
 static uint32_t
 scene_entry_size(const scene_spec_t* s) {
-    return SCENE_ASSET_HEADER_SIZE + ((uint32_t)s->entity_count * (ASSET_NAME_MAX + sizeof(scene_placement_t)))
+    return SCENE_ASSET_HEADER_SIZE + ((uint32_t)s->entity_count * (ASSET_NAME_MAX + sizeof(scene_asset_transform_t)))
            + ((uint32_t)s->renderer_count * sizeof(scene_asset_renderer_t))
            + ((uint32_t)s->camera_count * sizeof(scene_asset_camera_t)) + sizeof(scene_asset_settings_t)
            + camera_clip_count(s) * (sizeof(scene_asset_animator_t) + ASSET_NAME_MAX)
@@ -296,7 +303,7 @@ make_scene_entry_with_skin(uint8_t* entry, const scene_spec_t* s, const skin_fix
                                                      clips,
                                                      1};
     const size_t sizes[SCENE_ASSET_PART_COUNT] = {ASSET_NAME_MAX,
-                                                  sizeof(scene_placement_t),
+                                                  sizeof(scene_asset_transform_t),
                                                   sizeof(scene_asset_renderer_t),
                                                   sizeof(scene_asset_camera_t),
                                                   sizeof(scene_asset_light_t),
@@ -315,8 +322,8 @@ make_scene_entry_with_skin(uint8_t* entry, const scene_spec_t* s, const skin_fix
     for (int i = 0; i < s->entity_count; i++) {
         memcpy(entry + offsets[SCENE_ASSET_NAMES] + ASSET_NAME_MAX * i, s->entities[i].name,
                strlen(s->entities[i].name));
-        memcpy(entry + offsets[SCENE_ASSET_TRANSFORMS] + sizeof(scene_placement_t) * i, &s->entities[i].at,
-               sizeof(scene_placement_t));
+        memcpy(entry + offsets[SCENE_ASSET_TRANSFORMS] + sizeof(scene_asset_transform_t) * i, &s->entities[i].at,
+               sizeof(scene_asset_transform_t));
     }
     for (int i = 0; i < s->renderer_count - skins; i++) {
         const scene_asset_renderer_t row = {.entity = s->renderers[i].entity};
@@ -465,8 +472,9 @@ make_pack(uint8_t* bytes, const skin_fixture_options_t* options) {
     }
     uint8_t* bad = test_pack_add(&pack, BAD_SCENE, SCENE_ASSET, scene_entry_size(&SCENES[0]));
     make_scene_entry(bad, &SCENES[0]);
-    test_pack_put16(
-        bad + SCENE_ASSET_HEADER_SIZE + (3 * (32 + sizeof(scene_placement_t))) + sizeof(scene_asset_renderer_t), 9);
+    test_pack_put16(bad + SCENE_ASSET_HEADER_SIZE + (3 * (32 + sizeof(scene_asset_transform_t)))
+                        + sizeof(scene_asset_renderer_t),
+                    9);
     for (int i = 0; i < CLIP_COUNT; i++) {
         make_clip_entry(test_pack_add(&pack, CLIPS[i].id, ANIM_TRACKS_ASSET, FLIGHT_BYTES), CLIPS[i].position_type,
                         CLIPS[i].track_count);
@@ -735,7 +743,13 @@ test_a_scene_gives_each_entity_s_mesh_id_and_each_camera_s_lens(void) {
     const scene_entity_t camera = scene_find(scene, "camera");
     const scene_transform_t* flight = scene_entity_transform(scene, camera);
     TEST_ASSERT_EQUAL_UINT32(1000, scene_animator_clip_duration_ms(scene, camera, 0));
+    render_context_main()->split.top_offset[0] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
     TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, 500));
+    TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN, render_context_main()->split.top_offset[0]);
+    TEST_ASSERT_TRUE(scene_activate(scene, NULL));
+    render_context_main()->split.top_offset[0] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
+    TEST_ASSERT_TRUE(scene_animator_seek(scene, camera, SCENE_ANIMATOR_CURRENT, 500));
+    TEST_ASSERT_EQUAL_INT(0, render_context_main()->split.top_offset[0]);
     TEST_ASSERT_EQUAL_FLOAT(2.5F, flight->position.x);
     TEST_ASSERT_EQUAL_FLOAT(1.0F, quatf_rotate(flight->rotation, (vec3f_t){0, 0, 1}).z);
 }
@@ -743,7 +757,7 @@ test_a_scene_gives_each_entity_s_mesh_id_and_each_camera_s_lens(void) {
 /* Where the pair's entry puts its parts, as the pack holds it. */
 enum {
     PAIR_NAMES = SCENE_ASSET_HEADER_SIZE,
-    PAIR_RENDERERS = PAIR_NAMES + 3 * (ASSET_NAME_MAX + sizeof(scene_placement_t)),
+    PAIR_RENDERERS = PAIR_NAMES + 3 * (ASSET_NAME_MAX + sizeof(scene_asset_transform_t)),
     PAIR_CAMERA = PAIR_RENDERERS + 2 * sizeof(scene_asset_renderer_t),
     PAIR_BYTES = PAIR_CAMERA + sizeof(scene_asset_camera_t) + sizeof(scene_asset_settings_t)
 };
@@ -803,7 +817,7 @@ test_scene_header_counts_are_independent_of_components(void) {
 
     const uint32_t names = SCENE_ASSET_HEADER_SIZE;
     const uint32_t transforms = names + ROWS * ASSET_NAME_MAX;
-    const uint32_t settings = transforms + ROWS * sizeof(scene_placement_t);
+    const uint32_t settings = transforms + ROWS * sizeof(scene_asset_transform_t);
     const uint32_t size = settings + 2 * sizeof(scene_asset_settings_t);
     uint8_t* entry = fx.bytes;
     memset(entry, 0, size);
@@ -1129,17 +1143,15 @@ test_a_scene_the_tools_bake_loads_as_its_file_says(void) {
     TEST_ASSERT_EQUAL_STRING("green", scene_entity_mesh_id(scene, 2));
     TEST_ASSERT_NULL(scene_entity_mesh_id(scene, 1));
     /* a quarter turn about y, scaled (2, 4, 0.5), at (1, 2, 3) */
-    const scene_placement_t want = {{{0, 0, 0.5F}, {0, 4, 0}, {-2, 0, 0}}, {1, 2, 3}};
-    const scene_placement_t readback = r3d_placement_from(scene_entity_transform(scene, 0));
-    const scene_placement_t* got = &readback;
-    for (int row = 0; row < 3; row++) {
-        for (int column = 0; column < 3; column++) {
-            TEST_ASSERT_FLOAT_WITHIN(1e-6F, want.m[row][column], got->m[row][column]);
+    const mat4f_t want = mat4f_from_trs((vec3f_t){1, 2, 3}, quatf_from_axis_angle((vec3f_t){0, 1, 0}, MATH_PI * 0.5F),
+                                        (vec3f_t){2, 4, 0.5F});
+    const mat4f_t got = transformf_compute_matrix(scene_entity_transform(scene, 0));
+    for (int row = 0; row < MAT3F_AXES; row++) {
+        for (int column = 0; column < MAT3F_AXES; column++) {
+            TEST_ASSERT_FLOAT_WITHIN(1e-6F, want.m[row][column], got.m[row][column]);
         }
+        TEST_ASSERT_EQUAL_FLOAT(want.m[row][MAT3F_AXES], got.m[row][MAT3F_AXES]);
     }
-    TEST_ASSERT_EQUAL_FLOAT(want.position.x, got->position.x);
-    TEST_ASSERT_EQUAL_FLOAT(want.position.y, got->position.y);
-    TEST_ASSERT_EQUAL_FLOAT(want.position.z, got->position.z);
     const camera_t* lens = scene_camera_lens(scene, "camera");
     TEST_ASSERT_EQUAL_FLOAT(0.75F, lens->half_fov_short_tan);
     TEST_ASSERT_EQUAL_FLOAT(1.5F, lens->near_z);
@@ -1337,7 +1349,9 @@ test_two_scenes_are_held_at_once_and_the_active_camera_decides_which_is_seen(voi
     scene_t* solo = load("test_solo");
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0xFF0000), pixel(0.0F));
+    render_context_main()->split.top_offset[0] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
     TEST_ASSERT_TRUE(scene_activate(solo, "eye"));
+    TEST_ASSERT_EQUAL_INT(0, render_context_main()->split.top_offset[0]);
     render_context_set_scale(render_context_main(), 100);
     frame(16);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x0000FF), pixel(0.0F));
@@ -1646,9 +1660,10 @@ test_a_loaded_scene_that_is_not_active_keeps_its_time(void) {
 }
 
 #ifndef DEVICE_BUILD
+
 int
 display_quarter_now(void) {
-    return 0;
+    return DISPLAY_PORTRAIT;
 }
 
 static void
@@ -1705,7 +1720,7 @@ test_expanded_frame_lifecycle_and_raw_draw_guard(void) {
     const unsigned trips = gfx_fb_guard_trips_for_test();
     TEST_ASSERT_NULL(gfx_framebuffer());
     TEST_ASSERT_EQUAL_UINT(trips + 1, gfx_fb_guard_trips_for_test());
-    gfx_pixel(0, 0, 0x5678);
+    draw_pixel(0, 0, 0x5678);
     TEST_ASSERT_EQUAL_UINT(trips + 2, gfx_fb_guard_trips_for_test());
     TEST_ASSERT_EQUAL_HEX16(0x1234, half[0]);
     gfx_present_begin();
@@ -1745,6 +1760,102 @@ test_failed_half_allocation_keeps_full_upscale_unexpanded(void) {
 }
 
 static void
+test_camera_present_composes_half_picture_and_uneven_fallback(void) {
+    expanded_fixture();
+    render_context_t* c = render_context_main();
+    render_context_set_scale(c, RENDER_CONTEXT_DEFAULT_SCALE_PERCENT);
+    TEST_ASSERT_TRUE(scene_camera_set_present(scene_loaded_at(0), scene_find(scene_loaded_at(0), "camera"),
+                                              CAMERA_PRESENT_SCANLINE));
+    const scene_target_t target = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
+    TEST_ASSERT_NOT_NULL(target.half_pixels);
+    for (int quarter = 0; quarter <= 1; quarter++) {
+        scene_render(0, quarter, GFX_WIDTH, GFX_HEIGHT);
+        TEST_ASSERT_EQUAL_INT(GFX_WIDTH / 2, c->raster.width);
+        TEST_ASSERT_EQUAL_INT(GFX_HEIGHT / 4, c->raster.height);
+        TEST_ASSERT_TRUE(raster_fits_half_picture(&c->raster));
+        raster_upscale(&c->raster, fx.held, GFX_WIDTH / 2, GFX_HEIGHT / 2);
+        TEST_ASSERT_TRUE(scene_compose(0, quarter, &target));
+        gfx_expand_frame();
+        for (int y = 0; y < GFX_HEIGHT; y++) {
+            gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
+            for (int x = 0; x < GFX_WIDTH; x++) {
+                TEST_ASSERT_EQUAL_HEX16(fx.held[(y / 2) * (GFX_WIDTH / 2) + x / 2], fx.pixels[y * GFX_WIDTH + x]);
+            }
+        }
+    }
+    const resolution_step_t uneven = {GFX_WIDTH / 2, 179};
+    const resolution_config_t one = resolution_config(&uneven, 1, 1, INT32_MAX);
+    render_context_set_dynamic_resolution(c, &one, NULL, 0);
+    scene_render(0, 0, GFX_WIDTH, GFX_HEIGHT);
+    TEST_ASSERT_EQUAL_INT(uneven.height / 2, c->raster.height);
+    TEST_ASSERT_FALSE(raster_fits_half_picture(&c->raster));
+    c->raster.present = CAMERA_PRESENT_NEAREST;
+    raster_upscale(&c->raster, fx.held, GFX_WIDTH, GFX_HEIGHT);
+    c->raster.present = CAMERA_PRESENT_SCANLINE;
+    target.half_pixels[0] = SENTINEL;
+    TEST_ASSERT_FALSE(scene_compose(0, 0, &target));
+    TEST_ASSERT_EQUAL_HEX16(SENTINEL, target.half_pixels[0]);
+    TEST_ASSERT_EQUAL_MEMORY(fx.held, target.pixels, GFX_FRAMEBUFFER_BYTES);
+}
+
+static void
+assert_composed_scanlines(render_context_t* context, int quarter, camera_present_t present) {
+    scene_render(0, quarter, GFX_WIDTH, GFX_HEIGHT);
+    raster_t* raster = &context->raster;
+    memset(raster_depth(raster), 0, sizeof(uint16_t) * raster->width * raster->height);
+    const scene_target_t target = {gfx_framebuffer(), GFX_WIDTH, GFX_HEIGHT, gfx_half_picture()};
+    const bool half = scene_compose(0, quarter, &target);
+    const resolution_step_t size = raster_compose_size(raster);
+    const int run = size.height / raster->height;
+    TEST_ASSERT_EQUAL_INT(0, run % 2);
+    const uint16_t* pixels = half ? target.half_pixels : target.pixels;
+    const uint16_t bright = pixels[0];
+    TEST_ASSERT_EQUAL_HEX16(raster->clear, bright);
+    for (int y = 0; y < size.height; y++) {
+        const bool dark = y % run >= run / 2;
+        for (int x = 0; x < size.width; x++) {
+            const uint16_t pixel = pixels[y * size.width + x];
+            if (present == CAMERA_PRESENT_SCANLINE && dark) {
+                TEST_ASSERT_TRUE(gfx_color_swap(pixel) < gfx_color_swap(bright));
+                TEST_ASSERT_EQUAL_HEX16(gfx_color_scale(bright, UPSCALE_SCANLINE_KEEP), pixel);
+            } else {
+                TEST_ASSERT_EQUAL_HEX16(bright, pixel);
+            }
+        }
+    }
+}
+
+static void
+test_camera_present_scanline_and_double_compose_both_quarters(void) {
+    expanded_fixture();
+    render_context_t* context = render_context_main();
+    render_context_set_scale(context, RENDER_CONTEXT_DEFAULT_SCALE_PERCENT);
+    for (int quarter = 0; quarter <= 1; quarter++) {
+        for (camera_present_t present = CAMERA_PRESENT_SCANLINE; present <= CAMERA_PRESENT_DOUBLE; present++) {
+            TEST_ASSERT_TRUE(
+                scene_camera_set_present(scene_loaded_at(0), scene_find(scene_loaded_at(0), "camera"), present));
+            assert_composed_scanlines(context, quarter, present);
+        }
+    }
+}
+
+static void
+test_camera_present_default_setter_and_dynamic_size(void) {
+    expanded_fixture();
+    scene_t* scene = scene_loaded_at(0);
+    const scene_entity_t camera = scene_find(scene, "camera");
+    TEST_ASSERT_EQUAL_INT(CAMERA_PRESENT_NEAREST, scene_camera_lens(scene, NULL)->present);
+    TEST_ASSERT_FALSE(scene_camera_set_present(scene, scene_find(scene, "red"), CAMERA_PRESENT_SCANLINE));
+    TEST_ASSERT_FALSE(scene_camera_set_present(scene, SCENE_ENTITY_NONE, CAMERA_PRESENT_SCANLINE));
+    TEST_ASSERT_TRUE(scene_camera_set_present(scene, camera, CAMERA_PRESENT_SCANLINE));
+    assert_composed_scanlines(render_context_main(), 0, CAMERA_PRESENT_SCANLINE);
+    const resolution_step_t step = {GFX_WIDTH, GFX_HEIGHT};
+    const resolution_config_t config = resolution_config(&step, 1, 1, INT32_MAX);
+    render_context_set_dynamic_resolution(render_context_main(), &config, NULL, 0);
+    assert_composed_scanlines(render_context_main(), 0, CAMERA_PRESENT_SCANLINE);
+}
+
+static void
 test_non_half_compose_upscales_to_the_full_destination(void) {
     expanded_fixture();
     render_context_set_scale(render_context_main(), 75);
@@ -1775,11 +1886,11 @@ build_expanded_ui(ui_text_style_t style) {
 
 static void
 clip_overlay(int row0, int row1) {
-    const gfx_box_t actual = gfx_clip_save();
-    const gfx_box_t expected = GFX_SCREEN_BOX;
+    const recti_t actual = gfx_clip_save();
+    const recti_t expected = GFX_SCREEN_RECT;
     TEST_ASSERT_EQUAL_MEMORY(&expected, &actual, sizeof actual);
-    gfx_set_clip(0, row0, GFX_WIDTH, row1 - row0);
-    gfx_fill_rect(0, row0, GFX_WIDTH, row1 - row0, UINT16_MAX);
+    draw_set_clip(0, row0, GFX_WIDTH, row1 - row0);
+    draw_rect(0, row0, GFX_WIDTH, row1 - row0, UINT16_MAX);
 }
 
 static void
@@ -1787,12 +1898,12 @@ test_expanded_overlay_resets_and_restores_clip(void) {
     expanded_fixture();
     TEST_ASSERT_NOT_NULL(gfx_half_picture());
     gfx_expand_frame();
-    const gfx_box_t narrow = {GFX_WIDTH / 4, GFX_HEIGHT / 4, GFX_WIDTH / 2, GFX_HEIGHT / 2};
-    gfx_set_clip(narrow.x0, narrow.y0, narrow.x1 - narrow.x0, narrow.y1 - narrow.y0);
+    const recti_t narrow = {GFX_WIDTH / 4, GFX_HEIGHT / 4, GFX_WIDTH / 4, GFX_HEIGHT / 4};
+    draw_set_clip(narrow.x, narrow.y, narrow.w, narrow.h);
     gfx_set_frame_overlay(clip_overlay);
     for (int y = 0; y < GFX_HEIGHT; y++) {
         gfx_read_panel_row(y, fx.pixels + (size_t)y * GFX_WIDTH);
-        const gfx_box_t actual = gfx_clip_save();
+        const recti_t actual = gfx_clip_save();
         TEST_ASSERT_EQUAL_MEMORY(&narrow, &actual, sizeof actual);
         for (int x = 0; x < GFX_WIDTH; x++) {
             TEST_ASSERT_EQUAL_HEX16(UINT16_MAX, fx.pixels[y * GFX_WIDTH + x]);
@@ -2127,14 +2238,14 @@ test_scene_open_refuses_shear_and_reflection_naming_the_entity(void) {
     TEST_ASSERT_EQUAL_INT(ASSET_OK, asset_pack_find(&fx.pack, "test_pair", SCENE_ASSET, &entry));
     scene_asset_t asset;
     TEST_ASSERT_EQUAL_INT(ASSET_OK, scene_asset_open(entry, &asset));
-    scene_placement_t* placement = (scene_placement_t*)(uintptr_t)&asset.transforms[1];
-    const scene_placement_t saved = *placement;
+    scene_asset_transform_t* placement = (scene_asset_transform_t*)(uintptr_t)&asset.transforms[1];
+    const scene_asset_transform_t saved = *placement;
     for (int reflected = 0; reflected <= 1; reflected++) {
         *placement = saved;
         if (reflected) {
-            placement->m[0][0] = -1;
+            placement->linear.m[0][0] = -1;
         } else {
-            placement->m[0][1] = 0.5F;
+            placement->linear.m[0][1] = 0.5F;
         }
         scene_failure_t why;
         TEST_ASSERT_NULL(scene_load_from(&fx.pack, "test_pair", &why));
@@ -2156,13 +2267,16 @@ test_property_animation_moves_a_drawn_entity(void) {
     TEST_ASSERT_TRUE(scene_animator_set_clips(scene, entity, NULL, clips, 1, NULL));
     TEST_ASSERT_EQUAL_INT(0, scene->animators[entity].layer.shown.joint_count);
     TEST_ASSERT_TRUE(scene_animator_play(scene, entity, 0, 0));
+    render_context_main()->split.top_offset[0] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
+    TEST_ASSERT_TRUE(scene_animator_seek(scene, entity, SCENE_ANIMATOR_CURRENT, 0));
+    TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN, render_context_main()->split.top_offset[0]);
     frame(0);
     const uint16_t red = fx.pixels[CENTER * SIZE + CENTER];
     frame(RIG_DURATION_MS / 2);
     TEST_ASSERT_EQUAL_FLOAT(RIG_TRAVEL / 2, scene_entity_transform(scene, entity)->position.x);
     TEST_ASSERT_EQUAL_HEX16(GFX_RGB(CLEAR_RGB), fx.pixels[CENTER * SIZE + CENTER]);
     TEST_ASSERT_EQUAL_HEX16(red, fx.pixels[CENTER * SIZE + CENTER + GREEN_PIXEL_OFFSET]);
-    TEST_ASSERT_EQUAL_FLOAT(RIG_TRAVEL / 2, scene->instances[0].placement->position.x);
+    TEST_ASSERT_EQUAL_FLOAT(RIG_TRAVEL / 2, scene->instances[0].model->m[0][3]);
 }
 
 static void
@@ -2194,7 +2308,9 @@ test_inactive_property_target_invalidates_its_entity_matrix(void) {
     TEST_ASSERT_TRUE(scene_animator_play(scene, owner, 0, 0));
     TEST_ASSERT_TRUE(scene_entity_transform(scene, target)->cached);
     scene->flags[target] &= (uint8_t)~SCENE_FLAG_DIRTY;
+    render_context_main()->split.top_offset[0] = RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN;
     TEST_ASSERT_TRUE(scene_animator_seek(scene, owner, SCENE_ANIMATOR_CURRENT, RIG_DURATION_MS / 2));
+    TEST_ASSERT_EQUAL_INT(RASTER_SPLIT_MIN - RASTER_SPLIT_EVEN, render_context_main()->split.top_offset[0]);
     scene_transform_t sampled = *scene_entity_transform(scene, target);
     TEST_ASSERT_EQUAL_FLOAT(RIG_TRAVEL / 2, transformf_matrix(&sampled).m[0][3]);
     TEST_ASSERT_TRUE((scene->flags[target] & SCENE_FLAG_DIRTY) != 0);
@@ -2275,10 +2391,10 @@ test_set_transform_reads_back_exactly_and_drives_placement(void) {
     transformf_set_rotation(&pose, quatf_from_axis_angle((vec3f_t){1, 2, 3}, 0.5F));
     scene_set_transform(scene, entity, &pose);
     TEST_ASSERT_EQUAL_MEMORY(&pose, scene_entity_transform(scene, entity), sizeof pose);
-    const scene_placement_t want = r3d_placement_from(&pose);
+    const mat4f_t want = transformf_compute_matrix(&pose);
     frame(0);
-    const scene_placement_t* placement = scene->instances[0].placement;
-    TEST_ASSERT_EQUAL_MEMORY(&want, placement, sizeof want);
+    const mat4f_t* model = scene->instances[0].model;
+    TEST_ASSERT_EQUAL_MEMORY(&want, model, sizeof want);
 }
 
 static void
@@ -2440,7 +2556,7 @@ test_a_camera_view_stands_at_its_pose_looking_down_the_rotated_plus_z(void) {
     transformf_set_position(&pose, (vec3f_t){3.0F, 2.0F, 4.0F});
     transformf_look_at(&pose, (vec3f_t){0.0F, 1.0F, 0.0F}, (vec3f_t){0.0F, 1.0F, 0.0F});
     transformf_set_scale(&pose, (vec3f_t){2.0F, 3.0F, 4.0F});
-    const camera_t camera = {1.0F, 1.0F};
+    const camera_t camera = {.half_fov_short_tan = 1.0F, .near_z = 1.0F};
     const render_view_t view = camera_view(&camera, &pose, (viewport_t){SIZE, SIZE, 0});
     const vec3f_t ahead = quatf_rotate(pose.rotation, (vec3f_t){0.0F, 0.0F, 1.0F});
     TEST_ASSERT_TRUE(vec3f_equal(pose.position, view.position));
@@ -2538,21 +2654,21 @@ test_set_transform_defers_placement_until_the_scene_draws(void) {
     scene_t* scene = load("test_pair");
     const scene_entity_t entity = scene_find(scene, "red");
     const int renderer = scene_renderer_index(scene, entity);
-    const r3d_placement_t before = scene->renderers[renderer].placement;
+    const mat4f_t before = scene->renderers[renderer].model;
     transformf_t pose = TRANSFORMF_IDENTITY;
     transformf_set_position(&pose, (vec3f_t){2, 3, 4});
     scene_set_transform(scene, entity, &pose);
     TEST_ASSERT_TRUE(scene->flags[entity] & SCENE_FLAG_DIRTY);
-    TEST_ASSERT_EQUAL_MEMORY(&before, &scene->renderers[renderer].placement, sizeof before);
+    TEST_ASSERT_EQUAL_MEMORY(&before, &scene->renderers[renderer].model, sizeof before);
     scene->locals[entity].cached = true;
     scene_render(RIG_DURATION_MS / 2, 0, SIZE, SIZE);
     TEST_ASSERT_TRUE(scene->locals[entity].cached);
     TEST_ASSERT_TRUE(scene->flags[entity] & SCENE_FLAG_DIRTY);
-    TEST_ASSERT_EQUAL_MEMORY(&before, &scene->renderers[renderer].placement, sizeof before);
+    TEST_ASSERT_EQUAL_MEMORY(&before, &scene->renderers[renderer].model, sizeof before);
     TEST_ASSERT_TRUE(scene_activate(scene, NULL));
     frame(0);
-    const r3d_placement_t wanted = r3d_placement_from(&pose);
-    TEST_ASSERT_EQUAL_MEMORY(&wanted, &scene->renderers[renderer].placement, sizeof wanted);
+    const mat4f_t wanted = transformf_compute_matrix(&pose);
+    TEST_ASSERT_EQUAL_MEMORY(&wanted, &scene->renderers[renderer].model, sizeof wanted);
     TEST_ASSERT_FALSE(scene->flags[entity] & SCENE_FLAG_DIRTY);
 }
 
@@ -3190,6 +3306,9 @@ run_scene_suite(void) {
     RUN_TEST(test_expanded_frame_lifecycle_and_raw_draw_guard);
     RUN_TEST(test_expanded_overlay_resets_and_restores_clip);
     RUN_TEST(test_ui_replay_over_expanded_scene_matches_full_frame);
+    RUN_TEST(test_camera_present_composes_half_picture_and_uneven_fallback);
+    RUN_TEST(test_camera_present_scanline_and_double_compose_both_quarters);
+    RUN_TEST(test_camera_present_default_setter_and_dynamic_size);
     RUN_TEST(test_non_half_compose_upscales_to_the_full_destination);
     RUN_TEST(test_failed_half_allocation_keeps_full_upscale_unexpanded);
     RUN_TEST(test_expanded_frame_without_ui_does_not_replay_the_previous_hud);

@@ -25,13 +25,13 @@ the shell, not `CMakeLists.txt`:
 
 ```c
 #include "app/app.h"
-#include "gfx/draw/gfx_draw.h"
+#include "draw/draw.h"
 
 static void yours_enter(void) { /* reset state */ }
 
 static void yours_frame(uint32_t dt_ms, const input_t* input) {
-    gfx_clear(gfx_rgb(0x101010));
-    gfx_text(20, 20, "hello", gfx_rgb(0xFFFFFF));
+    draw_clear(gfx_rgb(0x101010));
+    draw_text(20, 20, "hello", gfx_rgb(0xFFFFFF));
 }
 
 static void yours_exit(void) { /* release what enter() took */ }
@@ -68,11 +68,11 @@ board-free preview of its drawing, declare a scene with the
 | `frame(dt_ms, input)` | yes | every pass | draw and return. `dt_ms` is clamped to `FRAME_DT_MAX_MS` (250 ms). |
 | `draw_band(row0, row1, target)` | no | each dirty transient band | required with `GFX_LAYOUT_BANDS` (gfx asserts it); after `frame()`, fill full-width rows `[row0, row1)` of `target`, row0 first. gfx replays the UI over them and sends the band. |
 | `exit()` | yes | once, on leave | release what `enter()` acquired, `gfx_mode_exit()` included. Arena memory needs nothing: the shell empties the arena right after `exit()`. |
-| `update(dt_ms, input)` | no | every pass, before `frame()` | state only; **no `gfx_*`, no framebuffer**; a dev build asserts it |
+| `update(dt_ms, input)` | no | every pass, before `frame()` | state only; **no `draw_*` or `gfx_*`, no framebuffer**; a dev build asserts it |
 | `invalidate()` | no | once per full-redraw request, before the next `frame()` | reset a draw cache the app keeps beyond the framebuffer |
 | `home_gesture` | no (`false`) | - | `true`: shell owns the way home (edge swipe + hint strip) |
 | `diagnostic_json(out, len)` | no | dev builds, on a screenshot capture | write one JSON object; spliced in as the capture's `"app"` key |
-| `console` | no | dev builds, at most once per frame, for a line under this app's own prefix | set with `APP_CONSOLE()`/`APP_CONSOLE_PTR()`; see `docs/tools/Autana-CLI.md`'s "Adding a command from an app" |
+| `console` | no | dev builds, at most once per frame, for a line under this app's own prefix | set with `APP_CONSOLE()`/`APP_CONSOLE_PTR()`; see [App-Commands.md](tools/App-Commands.md) |
 
 The shell calls the three required pointers without a NULL check.
 
@@ -151,7 +151,7 @@ sequenceDiagram
     end
     S->>A: invalidate() if a full redraw is pending
     S->>A: frame(dt_ms, input)
-    A->>G: gfx_* draws
+    A->>G: draw_* calls
     alt band mode: GFX_LAYOUT_BANDS
         S->>G: gfx_band_run(draw_band, ui_replay_band)
     end
@@ -194,7 +194,7 @@ simulation in `update()` and draws the result in `frame()`.
 ## Input
 
 `input_t` arrives in `frame()` and `update()`; an app polls nothing. The
-button fields are `button_t`, from `input/buttons.h`.
+button fields are `button_t`, from `input/buttons/buttons.h`.
 
 | Field | Meaning |
 |---|---|
@@ -325,7 +325,7 @@ An app's `IRAM_ATTR` function needs the comment directly above it to give a reas
 
 ## Related
 
-- [`Building-a-Screen.md`](Building-a-Screen.md): microui screens inside an app
+- [`Building-a-Screen.md`](Building-a-Screen.md): screens built on the `ui/ui.h` face inside an app
 - [`Gfx-and-Presentation.md`](Gfx-and-Presentation.md): draw targets, dirty tracking, the present path, heal
 - [`Firmware-Architecture.md`](Firmware-Architecture.md): why one framebuffer and one frame loop
 - [`Testing-Guide.md`](Testing-Guide.md): suites and runners

@@ -144,9 +144,36 @@ def caller_pid(explicit=None):
     raise OSError("invoking shell exited; use --pid")
 
 
+def write_json(path, value, indent=None):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
+    temporary.write_text(json.dumps(value, sort_keys=True, indent=indent) + "\n", encoding="utf-8")
+    # Windows refuses to replace a file another process has open, and
+    # boards() reads without the guard.
+    for _ in range(250):
+        try:
+            os.replace(temporary, path)
+            return
+        except PermissionError:
+            time.sleep(0.02)
+    os.replace(temporary, path)
+
+
 def normalise_board(serial):
     """A board's USB serial number as every lock file and record spells it."""
     return serial.strip().upper()
+
+
+SHORT_ID_DIGITS = 4
+
+
+def short_id(serial):
+    return normalise_board(serial).replace(":", "")[-SHORT_ID_DIGITS:]
+
+
+def board_label(serial):
+    return f"{short_id(serial)} ({normalise_board(serial)})"
 
 
 def process_alive(pid):
@@ -347,20 +374,6 @@ class LockStore:
                 time.sleep(0.02)
         return None
 
-    def write_json(self, path, value):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
-        temporary.write_text(json.dumps(value, sort_keys=True) + "\n", encoding="utf-8")
-        # Windows refuses to replace a file another process has open, and
-        # boards() reads without the guard.
-        for _ in range(250):
-            try:
-                os.replace(temporary, path)
-                return
-            except PermissionError:
-                time.sleep(0.02)
-        os.replace(temporary, path)
-
     def boards(self):
         """Every board a lock, reservation or waiter in this root names."""
         paths = ([path for path in self.root.glob("*.json")
@@ -381,7 +394,7 @@ class LockStore:
         until seen_boards() needs it, so a repeat sighting is a no-op."""
         path = self.seen_path(board)
         if not self.read_json(path):
-            self.write_json(path, {"board": board})
+            write_json(path, {"board": board})
 
     @contextlib.contextmanager
     def guard(self, board):
@@ -425,7 +438,7 @@ class LockStore:
     def note_last_holder(self, board, lock, how):
         """Keeps who held the board last, for the message a command prints when
         the port stays busy after it won the lock. Under guard()."""
-        self.write_json(self.last_path(board), {
+        write_json(self.last_path(board), {
             "board": board, "owner": lock.get("owner", "unknown"),
             "purpose": lock.get("purpose", "unknown"), "pid": lock.get("pid"),
             "host": lock.get("host"), "token": lock.get("token"),
@@ -443,7 +456,7 @@ class LockStore:
                 sequence = 1
             sequence_path.write_text(str(sequence), encoding="ascii")
             ticket = uuid.uuid4().hex
-            self.write_json(directory / (ticket + ".json"), {
+            write_json(directory / (ticket + ".json"), {
                 "board": board,
                 "created_at": self.now(),
                 "owner": owner,
@@ -503,15 +516,15 @@ class LockStore:
         return not (started is not None and isinstance(acquired, (int, float))
                     and started > acquired + PID_REUSE_SLACK_SECONDS)
 
-    def claim(self, board, ticket, stale_seconds=DEFAULT_STALE_SECONDS):
-        held, evicted, reason = self._claim(board, ticket, stale_seconds)
+    def claim(self, board, ticket, stale_seconds=DEFAULT_STALE_SECONDS, estimate=None):
+        held, evicted, reason = self._claim(board, ticket, stale_seconds, estimate)
         if held and held["kind"] != "hand":
             note = (f"reclaimed from {evicted.get('owner', 'unknown')} ({reason})"
                     if evicted else "")
             device_hook.emit("acquired", board, held["owner"], held["purpose"], note=note)
         return held
 
-    def _claim(self, board, ticket, stale_seconds):
+    def _claim(self, board, ticket, stale_seconds, estimate):
         with self.guard(board):
             self.prune_crashed_waiters(board)
             pending = self.tickets(board)
@@ -549,18 +562,20 @@ class LockStore:
                 "protocol": LOCK_PROTOCOL,
                 "autana_version": __version__,
             }
-            self.write_json(self.lock_path(board), held)
+            if estimate is not None:
+                held["estimated_end"] = now + estimate
+            write_json(self.lock_path(board), held)
             (self.queue_dir(board) / (ticket + ".json")).unlink(missing_ok=True)
             return Held(held, reclaimed), evicted, reason
 
     def acquire(self, board, owner, kind, wait=0, stale_seconds=DEFAULT_STALE_SECONDS,
-                on_wait=None, purpose=None):
+                on_wait=None, purpose=None, estimate=None):
         ticket = self.enqueue(board, owner, kind, purpose=purpose)
         deadline = self.now() + wait
         label = purpose or purpose_of(kind)
         waiting = False
         while True:
-            held = self.claim(board, ticket, stale_seconds)
+            held = self.claim(board, ticket, stale_seconds, estimate)
             if held:
                 return held
             if not self.read_json(self.queue_dir(board) / (ticket + ".json")):
@@ -596,7 +611,7 @@ class LockStore:
             if not lock or lock.get("token") != token or self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
                 return False
             lock["heartbeat_at"] = self.now()
-            self.write_json(self.lock_path(board), lock)
+            write_json(self.lock_path(board), lock)
             return True
 
     def live_lock(self, board, token, stale_seconds=DEFAULT_STALE_SECONDS):
@@ -604,6 +619,12 @@ class LockStore:
             lock = self.read_json(self.lock_path(board))
             return (lock if lock and lock.get("token") == token and
                     not self.reclaim_reason(lock, stale_seconds) else None)
+
+    def board_of_token(self, token):
+        for board in self.boards():
+            if self.live_lock(board, token):
+                return board
+        return None
 
     def check_token(self, board, token, stale_seconds=DEFAULT_STALE_SECONDS):
         return self.live_lock(board, token, stale_seconds) is not None
@@ -623,7 +644,7 @@ class LockStore:
             self.note_last_holder(board, lock, "released")
             return lock
 
-    def hold(self, board, token, note, seconds=None, pid=None, human=False):
+    def hold(self, board, token, note, seconds=None, pid=None, human=False, estimate=None):
         with self.guard(board):
             lock = self.read_json(self.lock_path(board))
             if not lock or lock.get("token") != token or self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
@@ -634,11 +655,13 @@ class LockStore:
             lock.pop("until_released", None)
             lock.pop("expires_at", None)
             lock.update(kind="human" if human else "hold", purpose=note)
+            if estimate is not None:
+                lock["estimated_end"] = now + estimate
             if seconds is not None:
                 lock["expires_at"] = now + seconds
             else:
                 lock["until_released"] = True
-            self.write_json(self.lock_path(board), lock)
+            write_json(self.lock_path(board), lock)
             return True
 
     def reserve_human(self, board, owner, note, wait=0, on_wait=None):
@@ -647,7 +670,7 @@ class LockStore:
             if lock and lock.get("kind") == "human" and not self.reclaim_reason(lock, DEFAULT_STALE_SECONDS):
                 lock.update(owner=owner, purpose=note, heartbeat_at=self.now(),
                             expires_at=self.now() + HUMAN_RESERVATION_SECONDS)
-                self.write_json(self.lock_path(board), lock)
+                write_json(self.lock_path(board), lock)
                 return lock["token"], True
         held = self.acquire(board, owner, "hand", wait=wait, on_wait=on_wait, purpose=note)
         if not held:
@@ -723,27 +746,27 @@ def successful_duration(row):
     return duration if math.isfinite(duration) and duration >= 0 else None
 
 
-def record_duration(kind, seconds, error=None, root=None):
+def record_duration(kind, seconds, error=None, root=None, *, board):
     """A failed run is recorded with its error and never shapes an estimate."""
     path = Path(root or default_root()) / DURATIONS_FILE
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", encoding="utf-8") as stream:
         stream.write(json.dumps({"command": kind, "duration_seconds": seconds,
-                                 "error": error}) + "\n")
+                                 "error": error, "board": normalise_board(board)}) + "\n")
     rows = duration_rows(path.parent)
     if len(rows) > DURATIONS_TRIM_LINES:
         trim_durations(path, rows)
 
 
 def trim_durations(path, rows):
-    """Keeps each kind's last ESTIMATE_RECENT_RUNS successful rows, then the
+    """Keeps each kind and board's last ESTIMATE_RECENT_RUNS successful rows, then the
     newest DURATIONS_TRIM_LINES of those, however many kinds there are. A row
     another process appends during the rewrite can be lost; a median over
     that many runs does not notice."""
     by_kind = {}
     for index, row in enumerate(rows):
         if successful_duration(row) is not None:
-            by_kind.setdefault(row["command"], []).append(index)
+            by_kind.setdefault((row["command"], row.get("board")), []).append(index)
     recent = sorted(index for runs in by_kind.values() for index in runs[-ESTIMATE_RECENT_RUNS:])
     kept = recent[-DURATIONS_TRIM_LINES:]
     temporary = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
@@ -752,14 +775,21 @@ def trim_durations(path, rows):
     os.replace(temporary, path)
 
 
-def duration_history(root=None, minimum=ESTIMATE_MINIMUM_RUNS):
-    history = {}
+def duration_history(root=None, minimum=ESTIMATE_MINIMUM_RUNS, board=None):
+    """Prefer a board's own successful runs once its kind has enough history."""
+    history, own = {}, {}
+    board = normalise_board(board) if board else None
     for row in duration_rows(root):
         duration = successful_duration(row)
         if duration is not None:
-            history.setdefault(row["command"], []).append(duration)
+            kind = row["command"]
+            history.setdefault(kind, []).append(duration)
+            if board and row.get("board") == board:
+                own.setdefault(kind, []).append(duration)
+    selected = {kind: own[kind] if len(own.get(kind, [])) >= minimum else values
+                for kind, values in history.items()}
     return {kind: statistics.median(values[-ESTIMATE_RECENT_RUNS:])
-            for kind, values in history.items() if len(values) >= minimum}
+            for kind, values in selected.items() if len(values) >= minimum}
 
 
 def local_time(timestamp):
@@ -770,17 +800,28 @@ def format_estimate(timestamp):
     return local_time(timestamp) if timestamp is not None else "unknown (no duration history)"
 
 
+def holder_end(lock, durations):
+    """Project completion from an explicit estimate or the holder's duration history."""
+    end = lock.get("estimated_end")
+    if end is not None:
+        return end
+    duration = durations.get(lock.get("kind")) if lock.get("kind") != "hold" else None
+    acquired = lock.get("acquired_at")
+    if duration is not None and acquired is not None:
+        return acquired + duration
+    return None
+
+
 def queue_estimates(status, now, durations):
     """Each waiter's estimated start, by ticket: the holder's own kind sets
-    when the board frees, and each waiter's kind how long it keeps it."""
+    when the board frees, and each waiter's kind how long it keeps it.
+    The None key estimates the start of a new request behind the queue."""
     lock = status.get("lock")
     if status.get("human"):
         start = None
     elif lock:
-        duration = durations.get(lock.get("kind")) if lock.get("kind") != "hold" else None
-        acquired = lock.get("acquired_at")
-        start = (max(now, acquired + duration)
-                if duration is not None and acquired is not None else None)
+        end = holder_end(lock, durations)
+        start = max(now, end) if end is not None else None
     else:
         start = now
     estimates = {}
@@ -788,6 +829,7 @@ def queue_estimates(status, now, durations):
         estimates[ticket["ticket"]] = start
         duration = durations.get(ticket.get("kind"))
         start = start + duration if start is not None and duration is not None else None
+    estimates[None] = start
     return estimates
 
 
@@ -798,7 +840,7 @@ def status_entry(store, board, port=None, now=None, durations=None):
     """One board's state as `status --json` prints it. Times are epoch
     seconds; an estimate with too little history is None."""
     now = store.now() if now is None else now
-    durations = duration_history(store.root) if durations is None else durations
+    durations = duration_history(store.root, board=board) if durations is None else durations
     status = store.status(board)
     entry = {"board": board, "port": port, "state": "unlocked", "holder": None,
              "since": None, "estimated_free": None,
@@ -815,21 +857,20 @@ def status_entry(store, board, port=None, now=None, durations=None):
                      expires_at=human_expires_at(human))
     elif status["lock"]:
         lock = status["lock"]
-        duration = durations.get(lock.get("kind")) if lock.get("kind") != "hold" else None
-        acquired = lock.get("acquired_at")
+        end = holder_end(lock, durations)
         entry.update(state="held",
                      holder={"owner": lock["owner"], "purpose": lock.get("purpose", "unknown"),
                              "protocol": lock.get("protocol", 0),
                              "autana_version": lock.get("autana_version"),
                              **({"kind": "hold"} if lock.get("kind") == "hold" else {})},
-                     since=acquired, expires_at=lock.get("expires_at"),
-                     estimated_free=(max(now, acquired + duration)
-                                     if duration is not None and acquired is not None else None))
+                     since=lock.get("acquired_at"), expires_at=lock.get("expires_at"),
+                     estimated_free=max(now, end) if end is not None else None)
     elif status["reclaimable"]:
         stale = status["reclaimable"]
         entry["lapsed"] = {"owner": stale["owner"], "purpose": stale.get("purpose", "unknown"),
                            "reason": stale["reason"], "at": None}
     estimates = queue_estimates(status, now, durations)
+    entry["estimated_start"] = estimates[None]
     entry["waiting"] = [{"owner": ticket["owner"], "purpose": ticket.get("purpose", "unknown"),
                          "estimated_start": estimates[ticket["ticket"]]}
                         for ticket in status["queue"]]
@@ -919,15 +960,22 @@ def elapsed_seconds(since, now):
     return round(max(0, now - since)) if since is not None else None
 
 
+def availability(entry):
+    if entry["state"] != "unlocked":
+        return entry["state"]
+    return "queued" if entry["waiting"] else "free"
+
+
 def status_lines(entry, now):
     """The human text of one entry; durations are `now` minus its timestamps."""
     holder = entry["holder"]
-    if entry["state"] == "human":
+    available = availability(entry)
+    if available == "human":
         left = (f"; {duration_text(entry['expires_at'] - now)} left, "
                 "`autana lock hand` again renews it") if entry["expires_at"] is not None else ""
         lines = [f"human reservation: {holder['owner']}: {holder['purpose']} "
                  f"(since {local_time(entry['since'])}; {elapsed_seconds(entry['since'], now)}s ago{left})"]
-    elif entry["state"] == "held":
+    elif available == "held":
         hold = (f"{duration_text(entry['expires_at'] - now)} left" if entry["expires_at"] is not None
                 else "until released") if holder.get("kind") == "hold" else ""
         lines = [f"held by {holder['owner']} for {holder['purpose']} since "
@@ -943,6 +991,8 @@ def status_lines(entry, now):
             **entry["lapsed"])]
     else:
         lines = ["unlocked"]
+    if available == "queued":
+        lines[0] += " - queued"
     if entry["waiting"]:
         lines.append("waiting:")
     for place, waiter in enumerate(entry["waiting"], 1):

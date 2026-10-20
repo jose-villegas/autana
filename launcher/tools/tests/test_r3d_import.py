@@ -44,8 +44,8 @@ VARIANT_OUTPUT = '[output]\n'
 FLAT_FIT = ('fit = { budget = 8, train_every_ms = 1000, held_out_every_ms = 5000, coverage_every_ms = 100, steps = 20, '
             'batch = 4, laplacian = 10.0, normal_weight = 1.0 }\n')
 FIT = ('[objects.mesh_renderer.fit.prune]\nbudget = 8\ncoverage_every_ms = 100\n'
-       '[objects.mesh_renderer.fit.poses]\ntrain_every_ms = 1000\nheld_out_every_ms = 5000\n'
-       '[objects.mesh_renderer.fit.optimise]\nsteps = 20\nbatch = 4\nlaplacian = 10.0\nnormal_weight = 1.0\n'
+       '[objects.mesh_renderer.fit.poses]\nsize = [184, 224]\ntrain_every_ms = 1000\nheld_out_every_ms = 5000\n'
+       '[objects.mesh_renderer.fit.optimise]\nsteps = 20\nbatch = 4\nlaplacian = 10.0\nnormal_weight = 1.0\nsurface_weight = 10.0\nsurface_margin = 0.25\n'
        '')
 INDIRECT = 'indirect = { bounces = 2, rays = 8 }\n'
 THIN = '[geometry]\nthin = { material = "m", keep = 0.5 }\n'
@@ -314,6 +314,11 @@ class SceneTests(unittest.TestCase):
         self.lit_rejects("visibility", 'visibility = { source = "camera_path", rounds = 2 }\n')
         self.lit_rejects("margin cannot be negative", PATH.replace("margin = 2", "margin = -1"))
 
+    def test_path_visibility_size_names_the_key_for_invalid_pixels(self):
+        for size in ("[0, 6]", "[8, -1]", "[true, 6]", "[8.0, 6]", "[8]", '"8,6"'):
+            with self.subTest(size=size):
+                self.lit_rejects(r"visibility.size", PATH.replace("[8, 6]", size))
+
     def test_path_visibility_needs_the_camera_path_not_its_region(self):
         self.lit_rejects("camera path is required", PATH, objects=camera(region=False))
         self.lit_rejects("camera region is read by no placed mesh", PATH, objects=camera(path=True))
@@ -326,11 +331,24 @@ class SceneTests(unittest.TestCase):
                 + sun_object() + camera(), HEAD))
         self.assertEqual([item.renderer.visibility is not None for item in scene.renderers], [True, False])
 
+    def test_a_fit_needs_a_camera_path_even_with_region_visibility(self):
+        for objects in (camera(), camera(region=False), ""):
+            with self.subTest(objects=objects):
+                self.lit_rejects(r"mesh.*fit.*camera path", 'variant = "mesh"\n' + REGION + FIT,
+                                 body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT, objects=objects)
+
     def test_a_fit_recipe_reads_and_needs_a_bake_and_room_to_prune(self):
         extra = 'variant = "mesh"\n' + FIT
-        scene = load_scene(self.lit(extra, body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT))
+        scene = load_scene(self.lit(extra, body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT,
+                                         objects=camera(path=True, region=False)))
         fit = scene.renderers[0].renderer.fit
         self.assertEqual((fit.budget, fit.normal_weight), (8, 1.0))
+        self.assertEqual(fit.size, (184, 224))
+        options = {"body": SIMPLIFY + VARIANT, "output": VARIANT_OUTPUT}
+        self.lit_rejects(r"fit.poses.size", extra.replace("size = [184, 224]\n", ""), **options)
+        for size in ("[0, 224]", "[184, -1]", "[true, 224]", "[184.0, 224]", "[184]", '"184,224"'):
+            with self.subTest(size=size):
+                self.lit_rejects(r"fit.poses.size", extra.replace("[184, 224]", size), **options)
         self.lit_rejects("fit.hashes is gone", extra + "[objects.mesh_renderer.fit.hashes]\nsha256 = \"ab\"\n",
                          body=SIMPLIFY + VARIANT, output=VARIANT_OUTPUT)
         options = {"body": SIMPLIFY + VARIANT, "output": VARIANT_OUTPUT}
@@ -974,6 +992,22 @@ class LocalSourceTests(unittest.TestCase):
                 path.write_bytes(path.read_bytes() + b"\n# changed")
                 after = fit_key(job, scene), reference_digest(job, scene)
                 self.assertTrue(all(a != b for a, b in zip(before, after)), name)
+
+    def test_reference_key_reads_fit_size_and_not_path_visibility_size(self):
+        from r3d.fitted_variant import reference_digest
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            write_import(root, output=VARIANT_OUTPUT, body=SIMPLIFY + VARIANT)
+            objects = renderer(extra='variant = "mesh"\nbake = true\n' + PATH + FIT)
+            scene = load_scene(write_scene(root, objects + sun_object() + camera(path=True, region=False), HEAD))
+            job = scene.renderers[0]
+            self.assertNotEqual(job.renderer.fit.size, job.renderer.visibility.size)
+            first = reference_digest(job, scene)
+            job.renderer.visibility.size = (16, 12)
+            self.assertEqual(reference_digest(job, scene), first)
+            job.renderer.fit.size = (92, 112)
+            self.assertNotEqual(reference_digest(job, scene), first)
 
     def test_the_camera_clip_s_keys_and_nothing_else_of_its_file_stamp_recipe_and_reference(self):
         from r3d.fitted_variant import reference_digest

@@ -60,7 +60,7 @@ Every step runs on the CPU except the fit, which needs a CUDA GPU.
 The doc-images GPU stage rebakes the demo scene's meshes on the machine in
 the table below:
 
-<!-- generated: bake-machine sha256=22db5697ef2f286e26c3119383781e5ee8b7157c6eccd77e726db8e96c916eb6 -->
+<!-- generated: bake-machine sha256=23d185bd8bd39958b2336baa15b8d3db3c368ebd0344c0b3af20c58dbc9ec351 -->
 | Machine | Value |
 |---|---|
 | CPU | Intel(R) Core(TM) i7-10750H CPU @ 2.60GHz |
@@ -70,7 +70,7 @@ the table below:
 | VRAM | 6144 MiB |
 | Driver | 617.14 |
 | CUDA | 12.8 |
-| OS | Linux-6.18.40.1-microsoft-standard-WSL2-x86_64-with-glibc2.39 |
+| OS | Linux-6.18.54.1-microsoft-standard-WSL2-x86_64-with-glibc2.39 |
 | Python | 3.12.14 |
 | Mitsuba | 3.9.1 |
 | PyTorch | 2.11.0+cu128 |
@@ -79,62 +79,62 @@ the table below:
 Each step of those bakes, with the triangles it took and left and the memory
 it peaked at:
 
-<!-- generated: bake-steps sha256=fc9888e7a5dc3dd12162390919f7f30c21d46621f647e706eec74ca983cdc60a -->
+<!-- generated: bake-steps sha256=debe9fa09d7a1519ec944c50b89f3668698f5fc7094a0f4e34f9bb5eebef30cc -->
 | Variant | Step | Wall s | Triangles in | Triangles out | Peak RAM MiB | Peak VRAM MiB |
 |---|---|---|---|---|---|---|
-| lite-GI-bake | source load | 6.133 | 0 | 262267 | 1541.1 | not available |
-| lite-GI-bake | alpha mask | 0.218 | 262267 | 245465 | 1511.5 | not available |
-| lite-GI-bake | visibility | 11.790 | 245465 | 211859 | 1807.6 | not available |
-| lite-GI-bake | thin | 0.002 | 211859 | 202188 | 1807.6 | not available |
-| lite-GI-bake | light | 85.391 | 202188 | 681348 | 3334.8 | not available |
-| lite-GI-bake | simplify | 12.776 | 681348 | 8669 | 3459.9 | not available |
-| lite-GI-bake | meshlets | 0.046 | 8669 | 8669 | 3303.7 | not available |
-| lite-GI-bake | write | 0.001 | 8669 | 8669 | 3303.7 | not available |
-| lite-fit-start | source load | 4.660 | 0 | 262267 | 1523.8 | not available |
-| lite-fit-start | alpha mask | 0.142 | 262267 | 245465 | 1496.2 | not available |
-| lite-fit-start | visibility | 431.270 | 245465 | 120792 | 2432.3 | not available |
-| lite-fit-start | thin | 0.002 | 120792 | 114665 | 2087.8 | not available |
-| lite-fit-start | light | 29.146 | 114665 | 288503 | 3405.2 | not available |
-| lite-fit-start | simplify | 11.238 | 288503 | 9972 | 3416.1 | not available |
-| lite-fit-start | meshlets | 0.039 | 9972 | 9972 | 3406.4 | not available |
-| lite-fit-start | write | 0.001 | 9972 | 9972 | 3406.4 | not available |
-| lite-GI-fit | fit | 313.185 | 9972 | 8672 | 1733.5 | 546.0 |
-| full-GI-bake | source load | 5.588 | 0 | 262267 | 1554.9 | not available |
-| full-GI-bake | alpha mask | 0.165 | 262267 | 245465 | 1497.4 | not available |
-| full-GI-bake | visibility | 10.306 | 245465 | 211859 | 1805.4 | not available |
-| full-GI-bake | thin | 0.002 | 211859 | 202188 | 1765.9 | not available |
-| full-GI-bake | light | 57.694 | 202188 | 681348 | 3328.6 | not available |
-| full-GI-bake | simplify | 8.765 | 681348 | 17367 | 3452.5 | not available |
-| full-GI-bake | meshlets | 0.073 | 17367 | 17367 | 3285.9 | not available |
-| full-GI-bake | write | 0.002 | 17367 | 17367 | 3285.9 | not available |
-| full-fit-start | source load | 6.689 | 0 | 262267 | 1556.0 | not available |
-| full-fit-start | alpha mask | 0.169 | 262267 | 245465 | 1498.6 | not available |
-| full-fit-start | visibility | 713.396 | 245465 | 120792 | 2538.3 | not available |
-| full-fit-start | thin | 0.003 | 120792 | 114665 | 2055.7 | not available |
-| full-fit-start | light | 50.996 | 114665 | 288503 | 3390.0 | not available |
-| full-fit-start | simplify | 7.594 | 288503 | 19987 | 3391.2 | not available |
-| full-fit-start | meshlets | 0.115 | 19987 | 19987 | 3391.3 | not available |
-| full-fit-start | write | 0.003 | 19987 | 19987 | 3391.3 | not available |
-| full-GI-fit | fit | 333.345 | 19987 | 17177 | 1742.9 | 560.0 |
-| flat-GI-bake | source load | 5.153 | 0 | 262267 | 1498.6 | not available |
-| flat-GI-bake | alpha mask | 0.140 | 262267 | 245465 | 1499.0 | not available |
-| flat-GI-bake | visibility | 9.647 | 245465 | 211859 | 1815.3 | not available |
-| flat-GI-bake | thin | 0.002 | 211859 | 202188 | 1777.5 | not available |
-| flat-GI-bake | light | 53.539 | 202188 | 681348 | 3326.7 | not available |
-| flat-GI-bake | simplify | 9.379 | 681348 | 17367 | 3458.5 | not available |
-| flat-GI-bake | face colours | 9.031 | 17367 | 17367 | 3303.8 | not available |
-| flat-GI-bake | meshlets | 0.156 | 17367 | 17367 | 3299.0 | not available |
-| flat-GI-bake | write | 0.002 | 17367 | 17367 | 3299.0 | not available |
-| flat-fit-start | source load | 6.013 | 0 | 262267 | 1539.1 | not available |
-| flat-fit-start | alpha mask | 0.189 | 262267 | 245465 | 1500.2 | not available |
-| flat-fit-start | visibility | 581.062 | 245465 | 120792 | 2436.9 | not available |
-| flat-fit-start | thin | 0.002 | 120792 | 114665 | 2063.2 | not available |
-| flat-fit-start | light | 30.504 | 114665 | 288503 | 3393.0 | not available |
-| flat-fit-start | simplify | 4.797 | 288503 | 19987 | 3399.5 | not available |
-| flat-fit-start | face colours | 8.835 | 19987 | 19987 | 3397.1 | not available |
-| flat-fit-start | meshlets | 0.198 | 19987 | 19987 | 3397.2 | not available |
-| flat-fit-start | write | 0.003 | 19987 | 19987 | 3397.2 | not available |
-| flat-GI-fit | fit | 281.863 | 19987 | 17177 | 1760.4 | 588.0 |
+| lite-GI-bake | source load | 11.255 | 0 | 262267 | 1555.1 | not available |
+| lite-GI-bake | alpha mask | 0.313 | 262267 | 245465 | 1509.6 | not available |
+| lite-GI-bake | visibility | 15.696 | 245465 | 211859 | 1906.1 | not available |
+| lite-GI-bake | thin | 0.003 | 211859 | 202188 | 1844.0 | not available |
+| lite-GI-bake | light | 113.732 | 202188 | 681348 | 3294.2 | not available |
+| lite-GI-bake | simplify | 34.405 | 681348 | 8669 | 3435.5 | not available |
+| lite-GI-bake | meshlets | 0.061 | 8669 | 8669 | 3225.9 | not available |
+| lite-GI-bake | write | 0.002 | 8669 | 8669 | 3225.0 | not available |
+| lite-fit-start | source load | 6.324 | 0 | 262267 | 1511.6 | not available |
+| lite-fit-start | alpha mask | 0.179 | 262267 | 245465 | 1497.7 | not available |
+| lite-fit-start | visibility | 11.168 | 245465 | 211859 | 1903.0 | not available |
+| lite-fit-start | thin | 0.002 | 211859 | 202188 | 1833.8 | not available |
+| lite-fit-start | light | 46.680 | 202188 | 681348 | 3302.9 | not available |
+| lite-fit-start | simplify | 17.619 | 681348 | 13494 | 3427.5 | not available |
+| lite-fit-start | meshlets | 0.068 | 13494 | 13494 | 3319.0 | not available |
+| lite-fit-start | write | 0.002 | 13494 | 13494 | 3319.0 | not available |
+| lite-GI-fit | fit | 922.178 | 13494 | 8672 | 2721.3 | 1138.0 |
+| full-GI-bake | source load | 8.393 | 0 | 262267 | 1544.5 | not available |
+| full-GI-bake | alpha mask | 0.216 | 262267 | 245465 | 1508.9 | not available |
+| full-GI-bake | visibility | 14.750 | 245465 | 211859 | 1905.7 | not available |
+| full-GI-bake | thin | 0.005 | 211859 | 202188 | 1823.6 | not available |
+| full-GI-bake | light | 81.568 | 202188 | 681348 | 3303.4 | not available |
+| full-GI-bake | simplify | 15.045 | 681348 | 17367 | 3430.5 | not available |
+| full-GI-bake | meshlets | 0.165 | 17367 | 17367 | 3316.0 | not available |
+| full-GI-bake | write | 0.018 | 17367 | 17367 | 3316.0 | not available |
+| full-fit-start | source load | 6.658 | 0 | 262267 | 1558.2 | not available |
+| full-fit-start | alpha mask | 0.202 | 262267 | 245465 | 1512.7 | not available |
+| full-fit-start | visibility | 11.730 | 245465 | 211859 | 1921.4 | not available |
+| full-fit-start | thin | 0.003 | 211859 | 202188 | 1823.0 | not available |
+| full-fit-start | light | 77.276 | 202188 | 681348 | 3305.2 | not available |
+| full-fit-start | simplify | 34.043 | 681348 | 29995 | 3446.4 | not available |
+| full-fit-start | meshlets | 0.592 | 29995 | 29995 | 3277.5 | not available |
+| full-fit-start | write | 0.013 | 29995 | 29995 | 3277.5 | not available |
+| full-GI-fit | fit | 1051.771 | 29995 | 17381 | 2704.2 | 1164.0 |
+| flat-GI-bake | source load | 7.975 | 0 | 262267 | 1558.9 | not available |
+| flat-GI-bake | alpha mask | 0.341 | 262267 | 245465 | 1501.5 | not available |
+| flat-GI-bake | visibility | 14.769 | 245465 | 211859 | 1936.0 | not available |
+| flat-GI-bake | thin | 0.002 | 211859 | 202188 | 1828.0 | not available |
+| flat-GI-bake | light | 52.463 | 202188 | 681348 | 3293.4 | not available |
+| flat-GI-bake | simplify | 10.523 | 681348 | 17367 | 3414.9 | not available |
+| flat-GI-bake | face colours | 11.829 | 17367 | 17367 | 3215.5 | not available |
+| flat-GI-bake | meshlets | 0.210 | 17367 | 17367 | 3215.6 | not available |
+| flat-GI-bake | write | 0.002 | 17367 | 17367 | 3215.6 | not available |
+| flat-fit-start | source load | 8.514 | 0 | 262267 | 1551.6 | not available |
+| flat-fit-start | alpha mask | 0.204 | 262267 | 245465 | 1511.5 | not available |
+| flat-fit-start | visibility | 15.310 | 245465 | 211859 | 1920.2 | not available |
+| flat-fit-start | thin | 0.003 | 211859 | 202188 | 1837.8 | not available |
+| flat-fit-start | light | 69.413 | 202188 | 681348 | 3304.0 | not available |
+| flat-fit-start | simplify | 13.745 | 681348 | 29995 | 3427.3 | not available |
+| flat-fit-start | face colours | 21.977 | 29995 | 29995 | 3261.8 | not available |
+| flat-fit-start | meshlets | 0.378 | 29995 | 29995 | 3258.1 | not available |
+| flat-fit-start | write | 0.005 | 29995 | 29995 | 3258.1 | not available |
+| flat-GI-fit | fit | 779.912 | 29995 | 17381 | 2703.7 | 1200.0 |
 <!-- /generated: bake-steps -->
 
 ### Geometry
@@ -492,8 +492,12 @@ These stages wait for the last frame's send to finish.
 
 After the frame waits for the previous send, the render context picks a half
 picture or the panel's framebuffer; raster fills it through precomputed row
-and column maps, the two cores taking halves. A frame drawn at exactly half size
-is copied into a half picture instead, and the present doubles it as it sends.
+and column maps, the two cores taking halves.
+
+A frame whose width is exactly half and whose height divides the half height
+expands into a half picture, which present doubles as it sends. A camera's
+present mode uses this to draw half the rows
+([camera presentation](Dynamic-Resolution.md#camera-presentation)).
 
 | Reads | Writes | Settings |
 |---|---|---|

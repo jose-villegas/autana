@@ -1,9 +1,10 @@
 # Engine layer: design sketch
 
-**Status:** every section approved; a final read before it merges.
-The scene transform and animator calls in section 2 exist and the scene camera is in `scene/camera/`; the rest has not moved. `[M]` marks the maintainer's decision or constraint.
+**Status:** approved design. The scene camera is in `scene/camera/`, shell
+screens are in `shell/ui/`, and the L1 folders and include tiers are in place.
+`[M]` marks the maintainer's decision or constraint.
 
-The firmware becomes three bands over the shared packages: the **platform**
+The firmware has three bands over the shared packages: the **platform**
 (board, panel, input, present, core), the **engine** (scene, render, anim,
 asset, 2D drawing, UI toolkit) and the **system** (apps, shell, boot, self
 test, console, app contract). Apps use the engine and the platform's face,
@@ -24,7 +25,7 @@ flowchart TB
         Asset["asset/"]
     end
     subgraph PLAT["platform"]
-        InDisp["input/ then display/"]
+        InDisp["input/ audio/ then display/"]
         Gfx["gfx/<br/><i>present, pixel format</i>"]
         Base["services/ profile/ core/ board/ build/"]
     end
@@ -37,39 +38,33 @@ flowchart TB
 
 ## 1. Shell UI apart from engine and game UI
 
-Today one folder, `ui/`, holds both the toolkit (microui integration,
-widgets, pointer, scroll) and the shell's screens (launcher, ridge backdrop).
-The editor compiles all of it, links the app list and previews the launcher.
-The editor has no authored document.
+The UI toolkit lives in `ui/`; shell screens live in `shell/ui/`. The editor
+links the toolkit, drawing and presentation, with no app registry or shell
+screen. Project loading and authored project screens remain planned.
 
-| | Option | Editor | Shell UI | Cost |
-|---|---|---|---|---|
-| A | one editor with an internal-only shell mode | knows firmware screens | edited in the editor | `[M]` concern: the public editor would carry an internal-only mode |
-| B | shell UI stays code, editor is games-only | names no firmware | hand-written C, as the launcher is today | shell screens never get the editor |
-| **C** | **the shell is one more project on the public toolkit, a privileged client** | **opens a project folder, names no firmware** | **a project at `shell/ui/`, opened internally** | **the toolkit must cover what the shell needs** |
+**Decision: C, with hand-written shell screens until the editor is mature**
+`[M]`. The shell is a privileged project using the same public toolkit.
 
-**Decision: C, with B until the editor is mature** `[M]`, and every item in this section is approved.
+### Project and toolkit boundaries
 
-### What C separates that today's tree does not
-
-| Today | Under C |
+| Owner | Surface |
 |---|---|
-| `ui/` mixes the toolkit and the shell's screens | `ui/` is the toolkit only; the shell's screens live in `shell/ui/` |
-| `ui_launcher.c` includes `app/app.h`, so the toolkit folder knows the app list | the toolkit includes no system header; the tier gate fails it |
-| the editor's runtime includes `app/app.h`, registers apps by name, links `app/app_registry.c`, and previews the launcher | the editor opens a project: a folder of `<screen>_layout.json` plus one registered draw entry per screen; it links no system file |
-| layouts live in `ui/` | each project keeps its layouts: `shell/ui/`, `apps/<game>/ui/` |
+| `ui/` | toolkit only; no system headers |
+| `shell/ui/` | launcher rows, registry access and ridge backdrop |
+| editor project interface | a folder of `<screen>_layout.json` plus one registered draw entry per screen; no system file linked |
+| project layouts | each project's folder, including `shell/ui/` and `apps/<game>/ui/` |
 
 ### What the shell needs that the toolkit lacks
 
 | Need | Becomes | Why |
 |---|---|---|
 | a scrim behind a panel over a paused screen | toolkit feature `ui_scrim_*` `[M]` | a game's pause menu needs the same |
-| scroll with snap and momentum | toolkit (already `ui_scroll`, `ui_snap`) | an app already uses it |
+| scroll with snap | toolkit (already `ui_snap`) | an app already uses it |
 | `ui_invalidate()` | toolkit (already) | any client whose screen another drawer overwrote calls it |
 | baked layout tables | toolkit (already `ui_layout.h`) | the editor's output, the same for every project |
 | the app list, its icons and the launch tap | shell code | only the shell knows the registry |
 | the ridge backdrop and its tuning | shell code | the shell's own art |
-| system gestures (home swipe, edges) | shell code over `input/gesture.h` | a game must not own the way home |
+| system gestures (home swipe, edges) | shell code over `input/touch/gesture.h` | a game must not own the way home |
 
 ### The privileged hooks, kept out of the public SDK
 
@@ -83,15 +78,13 @@ They stay out of the SDK by one tier rule, no list `[M]`: an app may include
 the engine, the app contract and the platform's face, never `shell/`,
 `boot/`, `selftest/` or `console/`.
 
-### What UI-Editor-Plan.md becomes, and what the shell keeps
+### UI editor and shell screens
 
-- **The plan** is retitled "UI editor: authoring a project's screens" `[M]`.
-  Its first document becomes a game screen (the brush screen, already its
-  phase 5); the editor links `ui/` and `gfx/` and no shell or app file, so the
-  launcher preview leaves it until the shell opens as a project.
-- **The shell keeps** (B, the interim): the launcher and the ridge backdrop
-  as hand-written C under `shell/ui/`, drawn with the public toolkit like
-  any app.
+[UI editor: authoring a project's screens](UI-Editor-Plan.md) starts with a
+game screen, the brush screen. The editor links `ui/`, `draw/` and `gfx/`
+and no shell or app file. The launcher has no preview until the shell opens
+as a project. The shell keeps the launcher and ridge as hand-written C
+under `shell/ui/`, drawn with the public toolkit.
 
 ---
 
@@ -118,9 +111,9 @@ Every item in this section is approved.
 | `gfx/present/gfx_mode.h` | `gfx_mode_enter()`, `gfx_mode_exit()` | the platform's gfx face; an app that runs in one mode declares it on `app_t` and the shell enters it `[M]` |
 | `gfx/present/gfx_present.h` | `gfx_request_full_redraw()` | the gfx face |
 | `gfx/present/gfx_present.h` | `gfx_present_begin()`, `gfx_present_wait()` in bench scenes | the scene system, which already overlaps the present |
-| `gfx/present/gfx_indexed.h` | `gfx_indexed_*` (index image mode) | the gfx face |
+| `gfx/present/modes/indexed/gfx_indexed.h` | `gfx_indexed_*` (index image mode) | the gfx face |
 | `gfx/present/gfx_debug.h` | `gfx_debug_overlay()` in diagnostics | system band, with diagnostics (below) |
-| `input/imu.h` | `imu_init()`, `imu_read()`, `imu_gravity_screen()` | `input_start()` (the shell's) and `input_read_motion()` (done in S1); diagnostics' raw reads go to the system band with it |
+| `input/motion/imu.h` | `imu_init()`, `imu_read()`, `imu_gravity_screen()` | `input_start()` (the shell's) and `input_read_motion()` (done in S1); diagnostics' raw reads go to the system band with it |
 | `scene/scene_shell.h` ("Apps never include this") in a host tool | `scene_shell_render()`, `scene_shell_compose()` | one public host-frame call on the scene's face |
 | `render/r3d_pipeline.h` in perf suites | `r3d_pipeline_*` | render's own tests |
 | `selftest/*` in diagnostics | self-test results | diagnostics becomes a system app under `shell/apps/` `[M]` |
@@ -183,15 +176,15 @@ everything fits the ECS paradigm, so a translation layer sits between them
 
 | | Layout | Cost |
 |---|---|---|
-| **L1** | **bands named in the tier table; folders stay under `launcher/main/`; only the splits move (UI, draw)** | **the include path stays one root; bake keys unchanged after S0** |
-| L2 | a new root `launcher/engine/` with its own include root | about fifteen build scripts, gates and the editor spell `launcher/main` as the include path; the bake closure resolves headers through it, so the move re-keys; done once more when the platform splits into components |
+| **L1** | **bands named in the tier table; folders stay under `launcher/main/`; only the splits move (UI, draw)** | **the include path stays one root; bake keys unchanged with the bake-key rules below** |
+| L2 | a new root `launcher/engine/` with its own include root | build scripts, gates and the editor spell `launcher/main` as the include path; the bake closure resolves headers through it, so the move re-keys; done once more when the platform splits into components |
 
 **Decision: L1 now** `[M]`. The physical move to separate roots
 happens once, when the platform and engine become their own ESP-IDF
 components, after one function owns the include path that every build
 script calls.
 
-### The tree after S2 (L1)
+### L1 folders
 
 ```
 launcher/
@@ -199,26 +192,29 @@ launcher/
 └── main/
     ├── main.c  app/  apps/  shell/ (+ ui/, apps/)  boot/  selftest/  console/     system
     ├── ui/  scene/ (+ camera/)  render/  draw/  anim/  asset/                      engine
-    └── input/  display/  gfx/  services/  profile/  core/  board/  build/         platform
+    └── input/  audio/  display/  gfx/  services/  profile/  core/  board/  build/ platform
 ```
 
-`launcher/main/engine/` today is the engine standard pack (`engine.pack.toml`,
+`launcher/main/engine/` is the engine standard pack (`engine.pack.toml`,
 system icons), not code; it keeps its place under L1.
 
-### Each file moves once
+### Folder ownership
 
-| Today | Destination | Slice |
-|---|---|---|
-| `ui_launcher*`, `ui_ridge*`, `ridge_*` | `shell/ui/` | S2 |
-| `ui/` toolkit files | stay | |
-| `apps/diagnostics/` | `shell/apps/diagnostics/` | S2 |
-| `gfx/draw/*`, `gfx/image/*` | `draw/` | S2 |
-| `gfx/draw/gfx_color.h`, `gfx_target.h`, `gfx_box.h` | `gfx/` (present's face: pixel format, target) | S2 |
-| `render/viewport.h` | `display/` | S2 |
-| `render/r3d_project.h`, `r3d_project_x.h` | stay in `render/` for now `[M]`: they include `render/render_view.h`, so the maths package cannot take them until they take plain values | |
-| `render/r3d.h` | deleted, its six includers name what they use | S1 |
+| Files | Owner |
+|---|---|
+| `ui_launcher*`, `ui_ridge*`, `ridge_*` | `shell/ui/` |
+| toolkit | `ui/` |
+| system applications | `shell/apps/` |
+| drawing primitives, images, icons, fonts and palettes | `draw/` |
+| colour, boxes, draw targets and render targets | `gfx/target/` |
+| framebuffer and presentation | `gfx/present/` |
+| band and indexed layout values | `gfx/present/modes/band/`, `gfx/present/modes/indexed/`; apps include `gfx_mode.h` |
+| dirty, heal and full-redraw send policy | `gfx/present/send/` |
+| null panel backend | `gfx/present/panel/` |
+| viewport | `display/` |
+| projection | `math/linear/projectf.h`, `projectx.h` (lens, near clip); `render/r3d_project*.h` (snapping, line units) |
 
-### Untangling gfx first (S1)
+### Drawing and presentation
 
 Present owns the framebuffer, band target and clip. Draw reads them through
 `gfx/present/gfx_present.h`:
@@ -226,8 +222,8 @@ Present owns the framebuffer, band target and clip. Draw reads them through
 ```c
 gfx_target_t gfx_present_target(void);
 bool gfx_present_in_band(void);
-gfx_box_t gfx_clip_save(void);
-void gfx_clip_restore(gfx_box_t clip);
+recti_t gfx_clip_save(void);
+void gfx_clip_restore(recti_t clip);
 ```
 
 `gfx_rgb()` is inline in `gfx_color.h`. Only `gfx/present/` sources include
@@ -245,9 +241,9 @@ The tier key stays the first path part; each row group gets a band label.
 | packages | `math` (PACKAGE-INCLUDE, unchanged) |
 
 `input` sits above `display` `[M]`: once `viewport.h` is in `display/`,
-`input/orbit_motion_touch.h` includes it, and two folders in one row cannot.
-With today's includes and these moves, only the three present-to-draw edges
-S1 removes go upward.
+`input/mapping/orbit_motion_touch.h` includes it, and two folders in one row cannot.
+Presentation includes no drawing header; the include gate checks every
+resolved cross-folder edge against this table.
 
 ### What the engine may include from the platform
 
@@ -258,7 +254,7 @@ rule names only what is refused, derived from the source `[M]`:
 |---|
 | `board/` |
 | any `*_internal.h` outside its own folder |
-| a header whose module's non-device `.c` includes `driver/…`, `bsp/…` or `esp_lcd…` (today `input/touch.h`, `input/imu.h`, `input/buttons.h`) |
+| a header whose module's non-device `.c` includes `driver/…`, `bsp/…` or `esp_lcd…` (today `input/touch/touch.h`, `input/motion/imu.h`, `input/buttons/buttons.h`) |
 
 Everything else in the platform is its face.
 
@@ -276,21 +272,20 @@ flowchart LR
 
 | Slice | What | Proof |
 |---|---|---|
-| S0 | the bake key stops hashing docstrings (`code_tokens()` in `launcher/tools/bake/bake.py`) | mesh, reference and fit re-key once; S0 rides the same Sponza refit as [#835](https://github.com/jose-villegas/autana/pull/835), so one GPU run rebakes both `[M]` |
-| S1 | gfx untangle above; `r3d.h` gone; scene camera component; apps read motion through `input/` | suites green, boot pixels byte-identical |
-| S2 | every move above, CMake, the tier table, the editor's CMake, doc paths, UI-Editor-Plan.md rewrite `[M]` | all variants build, host suites, boot pixels byte-identical, `bake.py check` keys unchanged, perf same |
-| S3 | the face rule and "apps never include the system band" over app sources `[M]`; app tests on the board follow | the gate fails a scratch copy that breaks it |
+| S0, done | the bake key stops hashing docstrings (`code_tokens()` in `launcher/tools/bake/bake.py`) | mesh, reference and fit re-key once; S0 rides the same Sponza refit as [#835](https://github.com/jose-villegas/autana/pull/835), so one GPU run rebakes both `[M]` |
+| S1, done | gfx untangle above; `r3d.h` gone; scene camera component; apps read motion through `input/` | suites green, boot pixels byte-identical |
+| S2, done | every move above, CMake, the tier table, the editor's CMake, doc paths, UI-Editor-Plan.md rewrite `[M]` | all variants build, host suites, boot pixels byte-identical, `bake.py check` keys unchanged, perf same |
+| S3, done | the face rule and "apps never include the system band" over app sources `[M]` (UI-BACKEND, SYSTEM-BAND); app tests on the board follow | the gate fails a scratch copy that breaks it |
 | S4 | the section 2 gaps | per system |
 
 ### The bake closure
 
-Bake keys hash the code of the mesh, reference and fit stages' Python
-closure; a C file counts without its `#include` lines, and comments never
-count. Docstrings do, and closure docstrings under `launcher/tools/` name
-firmware paths (`device/gfx_color.py` names `main/gfx/draw/gfx_color.h`),
-so S2 would re-key all three stages. S0 drops docstrings from the key once
-`[M]`; after it no doc-path edit re-keys. L1 changes no include root and no
-path in closure code, so S2 keys the same.
+The bake key hashes code rather than file locations. Python comments and
+docstrings do not count; C content is hashed without includes, comments or
+blank lines, with literal bytes retained. Included headers count by content.
+The L1 include root stays `launcher/main/`, so these folders share the same
+keys. `python launcher/tools/bake/bake.py check` verifies them against
+`launcher/bakes.lock`.
 
 ### Merge order
 
@@ -300,5 +295,5 @@ The `render_view_t` work is independent and may land any time before S2.
 ## Related
 
 - [Firmware-Architecture.md](../Firmware-Architecture.md): today's layers
-- [UI-Editor-Plan.md](UI-Editor-Plan.md): rewritten in S2
+- [UI-Editor-Plan.md](UI-Editor-Plan.md): project screen authoring
 - [Animation-System-Design-Sketch.md](Animation-System-Design-Sketch.md): the animator component

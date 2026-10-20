@@ -30,7 +30,7 @@ DUMP = """
 
 class SoftDoubleGate(unittest.TestCase):
     def setUp(self):
-        self.bad = gate.offenders(gate.parse_calls(DUMP))
+        self.bad = gate.offenders(gate.parse_calls(DUMP, gate.RELOCATION))
 
     def test_a_soft_double_call_with_no_logging_fails(self):
         self.assertEqual(["__muldf3"], self.bad["hot"])

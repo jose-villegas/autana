@@ -13,7 +13,8 @@
  */
 #pragma once
 
-#include "ui/ui_anchor.h"
+#include "draw/draw_font.h"
+#include "ui/layout/ui_anchor.h"
 
 /* The screen's fixed strings, beside the rects that have to hold them. */
 #define POST_LAYOUT_TITLE             "POWER-ON SELF TEST"
@@ -42,11 +43,11 @@
 #define POST_LAYOUT_TITLE_SCALE       2
 
 typedef struct {
-    mu_Rect safe;    /* what the panel's glass leaves readable */
-    mu_Rect title;   /* full-width band; the text centres within it */
-    mu_Rect summary; /* the same, one report line tall */
-    mu_Rect footer;  /* the same, along the bottom */
-    mu_Rect body;    /* the band the columns divide between them */
+    recti_t safe;    /* what the panel's glass leaves readable */
+    recti_t title;   /* full-width band; the text centres within it */
+    recti_t summary; /* the same, one report line tall */
+    recti_t footer;  /* the same, along the bottom */
+    recti_t body;    /* the band the columns divide between them */
     int columns;
     int column_w;
     int column_gap;
@@ -62,22 +63,22 @@ typedef struct {
  * above are measured in. A column count too wide for the canvas is reduced
  * until POST_LAYOUT_WIDEST_LINE fits. Without a footer, that band takes no
  * height at all and the columns get it. */
-post_layout_t post_layout_with(const gfx_font_t* font, int screen_w, int screen_h, int columns, int gap,
+post_layout_t post_layout_with(const draw_font_t* font, int screen_w, int screen_h, int columns, int gap,
                                bool has_footer);
 
 /* The orientation's column ceiling. */
 int post_layout_max_columns(int screen_w, int screen_h);
 
 /* A `text_w` wide run of text, centred in the band each one names. */
-mu_Rect post_layout_title_text(const post_layout_t* l, int text_w);
-mu_Rect post_layout_summary_text(const post_layout_t* l, int text_w);
-mu_Rect post_layout_footer_text(const post_layout_t* l, int text_w);
+recti_t post_layout_title_text(const post_layout_t* l, int text_w);
+recti_t post_layout_summary_text(const post_layout_t* l, int text_w);
+recti_t post_layout_footer_text(const post_layout_t* l, int text_w);
 
-mu_Rect post_layout_column(const post_layout_t* l, int column);
+recti_t post_layout_column(const post_layout_t* l, int column);
 
 /* Report line `index`, filling one column top to bottom before starting the
  * next. Empty once the columns are full, which is the drawer's cue to stop. */
-mu_Rect post_layout_line(const post_layout_t* l, int index);
+recti_t post_layout_line(const post_layout_t* l, int index);
 
 /* Text lines the columns hold with nothing between them, what
  * post_layout_line() addresses, and the most a report can ever show. */
@@ -94,7 +95,7 @@ typedef struct {
 
 /* The line to draw the next run of text on, advancing the pass. Empty once
  * the columns are full. */
-mu_Rect post_layout_take_line(const post_layout_t* l, post_lines_t* lines);
+recti_t post_layout_take_line(const post_layout_t* l, post_lines_t* lines);
 
 /* Asks for the air between one check and the next, which is nothing at all
  * when the report only fits without it. A gap that would fall at the top of
@@ -151,4 +152,5 @@ typedef struct {
  * wrap the details less. Where no column count affords that, every column is
  * used and the air shrinks to the widest uniform pixel gap that still fits;
  * air thinner than a line beats dropping checks off the end. */
-post_layout_t post_layout_for_report(const gfx_font_t* font, int screen_w, int screen_h, const post_entries_t* entries);
+post_layout_t post_layout_for_report(const draw_font_t* font, int screen_w, int screen_h,
+                                     const post_entries_t* entries);

@@ -28,7 +28,7 @@ Each image has its own build directory so one never reconfigures another:
 | dev | DEVELOPMENT | `autana build dev`, `autana flash dev` | `build.dev/` |
 | diag | DEVELOPMENT + SELFTEST | `autana build diag`, `autana flash diag`, `autana selftest` | `build.diag/` |
 
-See [Where builds live](tools/Autana-CLI.md#where-builds-live) for variant
+See [Where builds live](tools/Build-Environment.md#where-builds-live) for variant
 paths and their ESP-IDF identity stamps.
 
 `autana build` needs no board and takes no board lock; what it runs is
@@ -87,9 +87,10 @@ SELFTEST build (`selftest/selftest.c` is only added to `app_srcs` under
 ## A diagnostics build can be scoped
 
 A diagnostics build compiles **every** suite, and a full run takes the time
-[Testing-Guide.md](Testing-Guide.md#recommended-practice) gives.
+[Device tests: which run, when](testing/Device-Tests.md#which-run-when) gives.
 Perf-scoped compiles only the sources declared in
-`launcher/test/scope_perf.cmake` and `launcher/main/apps/*/scope_perf.cmake`,
+`launcher/test/scope_perf.cmake`, `launcher/main/apps/*/scope_perf.cmake` and
+`launcher/main/shell/apps/*/scope_perf.cmake`,
 so a performance capture does not pay for every other suite too. The same
 glob discovers engine and app manifests; each appends its suite sources and
 link dependencies to `perf_scope_srcs` using `CMAKE_CURRENT_LIST_DIR` paths.
@@ -147,9 +148,9 @@ The S3's FPU has no double: every `double` operation is a libgcc call, about
 ten times a float's cost. The `main` component and each package compile with
 `-Werror=double-promotion` and `-Werror=float-conversion`, so a float widened
 to a double, or a double constant in float maths, does not compile; code that
-needs one on purpose casts it explicitly, in the function that logs it. The host test
-and render builds compile with `-ffp-contract=off`, so a pinned pixel never
-depends on a fused multiply-add; the firmware keeps the fused operations,
+needs one on purpose casts it explicitly, in the function that logs it. The host test,
+render and camera-path sampler builds compile with `-ffp-contract=off`, so a
+pinned pixel or a sampled pose never depends on a fused multiply-add; the firmware keeps the fused operations,
 which are faster. The host never fuses and the device does, so a host pixel
 and a device pixel can differ by one at a truncation boundary. The warning
 flags live only in the firmware build, which compiles every portable source;

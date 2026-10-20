@@ -1,13 +1,14 @@
 #include "gfx/present/gfx_mode.h"
 #include "core/memory.h"
 #include "core/timing.h"
-#include "gfx/gfx_internal.h"
-#include "gfx/gfx_test.h"
-#include "gfx/present/gfx_band_run.h"
+#include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_fb_guard.h"
-#include "gfx/present/gfx_full_redraw.h"
+#include "gfx/present/gfx_internal.h"
 #include "gfx/present/gfx_present.h"
 #include "gfx/present/gfx_present_guard.h"
+#include "gfx/present/gfx_test.h"
+#include "gfx/present/modes/band/gfx_band_run.h"
+#include "gfx/present/send/gfx_full_redraw.h"
 
 #include <assert.h>
 #include <stdlib.h>
@@ -27,6 +28,9 @@ unsigned gfx_fb_guard_trips;
 #endif
 
 gfx_color_t* fb;
+gfx_color_t* present_fb;
+bool fb_filled;
+gfx_color_t fb_fill_colour;
 static gfx_color_t* half_image;
 static bool frame_expanded;
 static gfx_band_overlay_fn frame_overlay;
@@ -45,7 +49,7 @@ static int band_current_slot;
  * has no valid target, matching gfx_fb_guard.h. */
 static bool band_render_active;
 static gfx_target_t strip_target;
-static gfx_box_t clip;
+static recti_t clip;
 
 #ifndef ESP_PLATFORM
 void
@@ -70,14 +74,37 @@ gfx_present_in_band(void) {
     return band_render_active;
 }
 
-gfx_box_t
+recti_t
 gfx_clip_save(void) {
     return clip;
 }
 
 void
-gfx_clip_restore(gfx_box_t saved) {
+gfx_clip_restore(recti_t saved) {
     clip = saved;
+}
+
+/* Here beside the state it reads, so a draw call costs one call to begin:
+ * draw issues thousands of tiny primitives a frame. */
+bool
+gfx_draw_begin(gfx_surface_t* out) {
+    GFX_PRESENT_GUARD();
+    if (!GFX_REQUIRE_FRAMEBUFFER()) {
+        return false;
+    }
+    if (fb_filled) {
+        fb_filled = false;
+    }
+    out->target = band_render_active ? strip_target : (gfx_target_t){fb, 0, GFX_HEIGHT, GFX_WIDTH};
+    out->clip = clip;
+    out->marks = !band_render_active;
+    return true;
+}
+
+void
+gfx_set_clip(recti_t box) {
+    GFX_PRESENT_GUARD();
+    clip = box;
 }
 
 static int band_render_row0;
@@ -151,6 +178,7 @@ bool
 alloc_full_framebuffer(void) {
     const size_t bytes = GFX_FRAMEBUFFER_BYTES;
     fb = memory_alloc(bytes, MEMORY_PSRAM);
+    present_fb = fb;
 #ifdef ESP_PLATFORM
     if (fb == NULL) {
         ESP_LOGE(TAG, "Could not allocate %u byte framebuffer (largest free PSRAM block is %u bytes)", (unsigned)bytes,
@@ -164,6 +192,7 @@ static void
 free_full_framebuffer(void) {
     memory_free(fb);
     fb = NULL;
+    present_fb = NULL;
 }
 
 #ifdef ESP_PLATFORM
@@ -291,7 +320,7 @@ gfx_init(void) {
 #endif
     reset_mode_to_full_fb();
     gfx_fb_guard_set_available(true);
-    gfx_clip_restore(GFX_SCREEN_BOX);
+    gfx_clip_restore(GFX_SCREEN_RECT);
     gfx_mark_all_dirty();
 #ifdef ESP_PLATFORM
     ESP_LOGI(TAG,
@@ -303,11 +332,19 @@ gfx_init(void) {
     return true;
 }
 
+bool
+gfx_framebuffer_holds(gfx_color_t colour) {
+    return fb_filled && fb_fill_colour == colour;
+}
+
 gfx_color_t*
 gfx_framebuffer(void) {
     /* gfx can't guess intent. "Everything" wastes resources. Raw writers use
      * gfx_mark_dirty(). Be cautious. */
     GFX_PRESENT_GUARD();
+    if (fb_filled) {
+        fb_filled = false;
+    }
     /* fb is already NULL in band mode, the right answer for a caller that
      * checks. This call is only the loud dev-time signal that one reached
      * for the framebuffer at all while it does not exist. */
@@ -349,7 +386,7 @@ gfx_set_frame_overlay(gfx_band_overlay_fn overlay) {
 void
 clear_expanded_frame(bool free_picture) {
     frame_expanded = false;
-    gfx_fb_guard_set_available(current_mode.layout == GFX_LAYOUT_FULL_FB && fb != NULL);
+    gfx_fb_guard_set_available(gfx_mode_has_framebuffer(&current_mode) && fb != NULL);
     if (free_picture) {
         memory_free(half_image);
         half_image = NULL;
@@ -361,14 +398,14 @@ expand_rows(int y0, int y1, gfx_color_t* destination) {
     const gfx_target_t target = {destination, y0, y1 - y0, GFX_WIDTH};
     gfx_target_paired_rows(target, half_image, NULL, 0, GFX_WIDTH / 2, NULL, y0, y1 - y0, true);
     if (frame_overlay != NULL) {
-        const gfx_box_t saved_clip = gfx_clip_save();
+        const recti_t saved_clip = gfx_clip_save();
         strip_target = target;
         band_render_active = true;
         gfx_fb_guard_set_available(true);
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
         gfx_present_guard_replaying = true;
 #endif
-        gfx_clip_restore(GFX_SCREEN_BOX);
+        gfx_clip_restore(GFX_SCREEN_RECT);
         frame_overlay(y0, y1);
         gfx_clip_restore(saved_clip);
 #if !defined(ESP_PLATFORM) || CONFIG_LAUNCHER_DEVELOPMENT
@@ -387,6 +424,11 @@ gfx_fb_guard_trips_for_test(void) {
 
 void
 gfx_reset_for_test(void) {
+    if (current_mode.layout == GFX_LAYOUT_DOUBLE_FB) {
+        gfx_mode_exit();
+    }
+    gfx_present_fill_reset_for_test();
+    fb_filled = false;
     clear_expanded_frame(true);
     frame_overlay = NULL;
     band_render_active = false;
@@ -400,8 +442,20 @@ gfx_reset_for_test(void) {
     free_full_framebuffer();
     current_mode = (gfx_mode_t){0};
     gfx_fb_guard_set_available(false);
-    gfx_clip_restore(GFX_SCREEN_BOX);
+    gfx_clip_restore(GFX_SCREEN_RECT);
 }
+#endif
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+static unsigned denials;
+
+static void
+note_denial(void) {
+    denials++;
+}
+#else
+static inline void
+note_denial(void) {}
 #endif
 
 const gfx_mode_t*
@@ -412,10 +466,20 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
     clear_expanded_frame(true);
     const gfx_mode_t granted = gfx_mode_resolve(request, GFX_WIDTH, GFX_HEIGHT, GFX_BAND_HEIGHT);
 
-    if (granted.layout == GFX_LAYOUT_INDEXED) {
+    if (granted.layout == GFX_LAYOUT_DOUBLE_FB) {
+        gfx_color_t* back = memory_alloc(GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM);
+        if (back == NULL) {
+            note_denial();
+            return &current_mode;
+        }
+        fb = back;
+        fb_filled = false;
+        dirty_mark_all();
+    } else if (granted.layout == GFX_LAYOUT_INDEXED) {
         if (granted.index_grid_w <= 0 || granted.index_grid_h <= 0 || granted.cell_size <= 0
             || !alloc_indexed_image(granted.index_grid_w, granted.index_grid_h)) {
             free_indexed_image();
+            note_denial();
             return &current_mode; /* stays GFX_LAYOUT_FULL_FB */
         }
         free_full_framebuffer();
@@ -428,6 +492,7 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
     } else if (granted.layout == GFX_LAYOUT_BANDS) {
         if (!alloc_band_buffers(granted.band_height)) {
             free_band_buffers();
+            note_denial();
             return &current_mode; /* stays GFX_LAYOUT_FULL_FB */
         }
         free_full_framebuffer();
@@ -443,7 +508,19 @@ gfx_mode_enter(const gfx_mode_request_t* request) {
 
 void
 gfx_mode_exit(void) {
+    gfx_present_drain();
     GFX_PRESENT_GUARD();
+    if (current_mode.layout == GFX_LAYOUT_DOUBLE_FB) {
+        (void)gfx_set_clear_on_send(false, 0);
+        memory_free(fb);
+        fb = present_fb;
+        /* A frame cleared on send stays cleared: readback has nothing to read
+         * until the next send, and the next draw_clear() of it is free. */
+        fb_filled = gfx_present_sent_frame_filled();
+        reset_mode_to_full_fb();
+        gfx_clip_restore(GFX_SCREEN_RECT);
+        gfx_mark_all_dirty();
+    }
     clear_expanded_frame(true);
     if (current_mode.layout == GFX_LAYOUT_INDEXED) {
         free_indexed_image();
@@ -473,7 +550,7 @@ gfx_mode_exit(void) {
             }
         }
 #endif
-        gfx_clip_restore(GFX_SCREEN_BOX);
+        gfx_clip_restore(GFX_SCREEN_RECT);
         gfx_mark_all_dirty();
     }
     reset_mode_to_full_fb();
@@ -484,6 +561,13 @@ const gfx_mode_t*
 gfx_mode_current(void) {
     return &current_mode;
 }
+
+#if BUILD_VARIANT_DEVELOPMENT_OR_HOST
+unsigned
+gfx_mode_denials(void) {
+    return denials;
+}
+#endif
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
 /* Bands whose last submit carried overlay borders, and whether the band in
@@ -527,13 +611,14 @@ static bool
 gfx_band_dirty(void) {
     const int row0 = band_render_row0;
     const int row1 = band_render_row0 + band_render_height;
-    int x0, x1;
+    int x0;
+    int x1;
     bool dirty = band_frame_force_all || dirty_band_extent(row0, row1, &x0, &x1);
 #if CONFIG_LAUNCHER_DEVELOPMENT
     /* A border exists only in the band that was sent, and gfx holds no
      * copy to resend: the one way to take it off the panel is to have the
      * app render the band once more. */
-    if (!dirty && (band_overlay_bordered & (1u << (row0 / band_render_height)))) {
+    if (!dirty && (band_overlay_bordered & (1U << (row0 / band_render_height)))) {
         band_overlay_cleanup_only = true;
         dirty = true;
     }
@@ -616,7 +701,7 @@ gfx_band_submit(void) {
 #if CONFIG_LAUNCHER_DEVELOPMENT
     /* Drawn into the buffer about to be sent. A band submitted only to
      * clean last frame's borders (gfx_band_dirty()) goes out bare. */
-    const uint32_t band_bit = 1u << (band_render_row0 / band_render_height);
+    const uint32_t band_bit = 1U << (band_render_row0 / band_render_height);
     if (overlay_any_on() && !band_overlay_cleanup_only) {
         mark_band_overlay(band_buf[band_current_slot], band_render_row0, band_render_height);
         band_overlay_bordered |= band_bit;
@@ -626,7 +711,7 @@ gfx_band_submit(void) {
 #endif
 
     if (band_snapshot_filling || band_snapshot_complete) {
-        memcpy(band_snapshot + (size_t)band_render_row0 * GFX_WIDTH, band_buf[band_current_slot],
+        memcpy(band_snapshot + ((size_t)band_render_row0 * GFX_WIDTH), band_buf[band_current_slot],
                (size_t)band_render_height * GFX_WIDTH * sizeof(gfx_color_t));
     }
     if (band_snapshot_filling) {
@@ -692,7 +777,11 @@ gfx_indexed_image(void) {
 
 gfx_readback_t
 gfx_readback_begin(void) {
+    gfx_present_drain();
     GFX_PRESENT_GUARD();
+    if (gfx_present_sent_frame_filled()) {
+        return GFX_READBACK_UNAVAILABLE; /* the shown frame is already cleared away */
+    }
     if (!band_is_transient()) {
         return GFX_READBACK_READY;
     }
@@ -711,14 +800,14 @@ gfx_read_panel_row(int y, gfx_color_t out_row[GFX_WIDTH]) {
     GFX_PRESENT_GUARD();
     if (frame_expanded) {
         expand_rows(y, y + 1, out_row);
-    } else if (current_mode.layout == GFX_LAYOUT_FULL_FB) {
-        memcpy(out_row, fb + (size_t)y * GFX_WIDTH, GFX_WIDTH * sizeof(gfx_color_t));
+    } else if (gfx_mode_has_framebuffer(&current_mode)) {
+        memcpy(out_row, present_fb + ((size_t)y * GFX_WIDTH), GFX_WIDTH * sizeof(gfx_color_t));
     } else if (current_mode.layout == GFX_LAYOUT_INDEXED) {
         const gfx_indexed_frame_t frame = indexed_frame();
         gfx_indexed_expand_panel_row(&frame, y, out_row, GFX_WIDTH);
     } else {
         assert(band_snapshot_complete);
-        memcpy(out_row, band_snapshot + (size_t)y * GFX_WIDTH, GFX_WIDTH * sizeof(gfx_color_t));
+        memcpy(out_row, band_snapshot + ((size_t)y * GFX_WIDTH), GFX_WIDTH * sizeof(gfx_color_t));
     }
 }
 

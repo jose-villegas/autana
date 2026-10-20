@@ -21,7 +21,7 @@
 # is not much larger on the target. Measured 2026-09-19 with
 # xtensa-esp32s3-elf-gcc over the 1,534 functions present in both builds:
 # median 0.50x, but 67 are LARGER on Xtensa, worst 1.67x (576 -> 960 bytes,
-# suite_gfx_font.c's glyph_run_boxes tests). Nothing crossed the ceiling here
+# suite_draw_font.c's glyph_run_boxes tests). Nothing crossed the ceiling here
 # that the host had not also flagged, except code only a DEVICE_BUILD
 # compiles. So the host is an estimate, not a bound; re-run this after a
 # toolchain or -O-level change, and whenever a host frame nears the ceiling.
@@ -84,7 +84,7 @@ compile_suite() {
         -fstack-usage -c "$2" -o "$BUILD_DIR/$(basename "$2" .c).o" 2>/dev/null
 }
 
-for f in "$MAIN_DIR"/apps/*/tests/suite_*.c "$TEST_DIR"/suites/suite_*.c $(package_suites "$TEST_DIR/.."); do
+for f in $(find $(app_directories "$TEST_DIR/..") -path '*/tests/suite_*.c' | sort) "$TEST_DIR"/suites/suite_*.c $(package_suites "$TEST_DIR/.."); do
     [ -e "$f" ] || continue
     if compile_suite -DDEVICE_BUILD "$f"; then
         continue

@@ -1,4 +1,4 @@
-# Host editor, firmware preview runtime and shared layout baker.
+# Host UI editor and shared layout baker.
 cmake_minimum_required(VERSION 3.24)
 
 project(autana_editor LANGUAGES C CXX)
@@ -47,76 +47,12 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(nlohmann_json)
 
-# Every gfx source but the device-only *_device.c.
-file(GLOB_RECURSE gfx_srcs CONFIGURE_DEPENDS ${LAUNCHER_DIR}/main/gfx/*.c)
-list(FILTER gfx_srcs EXCLUDE REGEX "_device\\.c$")
-
-add_library(editor_runtime STATIC
-    runtime/runtime.c
-    ${gfx_srcs}
-    ${LAUNCHER_DIR}/main/app/app_registry.c
-    ${LAUNCHER_DIR}/main/asset/asset_file.c
-    ${LAUNCHER_DIR}/main/asset/asset_pack.c
-    ${LAUNCHER_DIR}/main/asset/asset_table.c
-    ${LAUNCHER_DIR}/main/asset/asset_store.c
-    ${LAUNCHER_DIR}/main/asset/asset_store_file.c
-    ${LAUNCHER_DIR}/main/input/gesture.c
-    ${LAUNCHER_DIR}/main/ui/ui.c
-    ${LAUNCHER_DIR}/main/ui/ui_bridge.c
-    ${LAUNCHER_DIR}/main/ui/ui_build.c
-    ${LAUNCHER_DIR}/main/ui/ui_canvas_marks.c
-    ${LAUNCHER_DIR}/main/ui/ui_icons.c
-    ${LAUNCHER_DIR}/main/ui/ui_launcher.c
-    ${LAUNCHER_DIR}/main/ui/ui_launcher_draw.c
-    ${LAUNCHER_DIR}/main/ui/ui_pointer.c
-    ${LAUNCHER_DIR}/main/ui/ui_snap.c
-    ${LAUNCHER_DIR}/main/ui/ui_ridge.c
-    ${LAUNCHER_DIR}/main/ui/ui_scroll.c
-    ${LAUNCHER_DIR}/main/ui/ui_widgets.c
-    ${LAUNCHER_DIR}/main/services/tune.c
-    ${LAUNCHER_DIR}/components/microui/src/microui.c
-)
+add_library(editor_runtime STATIC runtime/runtime.c)
 target_include_directories(editor_runtime
     PUBLIC include ${LAUNCHER_DIR}/main
-    PRIVATE
-        runtime/host
-        ${LAUNCHER_DIR}/components/microui/include
+    PRIVATE ${LAUNCHER_DIR}/components/microui/include
 )
 target_link_libraries(editor_runtime PUBLIC ${launcher_packages})
-# ui_scroll.c's momentum uses expf(); only MinGW links libm unasked.
-if(NOT WIN32)
-    target_link_libraries(editor_runtime PUBLIC m)
-endif()
-set(engine_assets "${CMAKE_BINARY_DIR}/assets")
-add_custom_target(editor_engine_assets ALL
-    COMMAND ${Python3_EXECUTABLE} "${LAUNCHER_DIR}/tools/r3d/build_pack.py"
-        -o "${engine_assets}" "${LAUNCHER_DIR}/main/engine"
-    BYPRODUCTS "${engine_assets}/engine.apak"
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/.."
-    VERBATIM
-)
-add_dependencies(editor_runtime editor_engine_assets)
-target_compile_definitions(editor_runtime PRIVATE
-    CONFIG_LAUNCHER_DEVELOPMENT=0
-    ASSET_DIR_DEFAULT_PATH="${engine_assets}"
-)
-
-if(MSVC)
-    target_compile_options(editor_runtime PRIVATE /W4)
-else()
-    # The device-only presentation statics are intentionally unused by a
-    # host build. The atlas stores byte masks in char rows, so signed-char
-    # hosts also warn on the intentional 0xff values.
-    target_compile_options(editor_runtime PRIVATE
-        -Wall
-        -Wextra
-        -Wpedantic
-        -Wno-overflow
-        -Wno-unused-function
-        -Wno-unused-parameter
-        -Wno-unused-variable
-    )
-endif()
 
 add_library(editor_document STATIC
     src/layout_document.cpp
@@ -133,7 +69,7 @@ set_target_properties(editor_layout_bake PROPERTIES
 if(MSVC)
     target_compile_options(editor_document PRIVATE /W4 /permissive-)
 else()
-    target_compile_options(editor_document PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(editor_document PRIVATE -Wall -Wextra -Wpedantic -Werror=pedantic)
 endif()
 
 if(EDITOR_BUILD_GUI)
@@ -182,7 +118,6 @@ if(EDITOR_BUILD_GUI)
 
     add_library(editor_core STATIC
         src/core/dockspace.cpp
-        src/core/rgb565_texture.cpp
     )
     target_include_directories(editor_core PUBLIC src)
     target_link_libraries(editor_core PUBLIC
@@ -231,11 +166,6 @@ if(BUILD_TESTING)
 
     include(GoogleTest)
 
-    add_executable(editor_runtime_smoke tests/runtime_smoke.c)
-    target_link_libraries(editor_runtime_smoke PRIVATE editor_runtime)
-    target_include_directories(editor_runtime_smoke PRIVATE ${LAUNCHER_DIR}/components/microui/include)
-    add_test(NAME editor_runtime_smoke COMMAND editor_runtime_smoke)
-
     set(EDITOR_SAMPLE_LAYOUT "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/sample_layout.json")
     set(EDITOR_SAMPLE_HEADER "${CMAKE_CURRENT_BINARY_DIR}/sample_layout_generated.h")
     add_custom_command(
@@ -246,16 +176,8 @@ if(BUILD_TESTING)
     )
     add_executable(editor_layout_bake_c_test tests/layout_bake_c_test.c "${EDITOR_SAMPLE_HEADER}")
     target_include_directories(editor_layout_bake_c_test PRIVATE "${CMAKE_CURRENT_BINARY_DIR}" ${LAUNCHER_DIR}/main)
+    target_link_libraries(editor_layout_bake_c_test PRIVATE math)
     add_test(NAME editor_layout_bake_c COMMAND editor_layout_bake_c_test)
-
-    add_executable(editor_ridge_backdrop_test tests/ridge_backdrop_test.c)
-    target_include_directories(editor_ridge_backdrop_test PRIVATE
-        runtime/host
-        ${LAUNCHER_DIR}/main
-        ${LAUNCHER_DIR}/components/microui/include
-    )
-    target_link_libraries(editor_ridge_backdrop_test PRIVATE editor_runtime)
-    add_test(NAME editor_ridge_backdrop COMMAND editor_ridge_backdrop_test)
 
     add_executable(editor_layout_document_test tests/layout_document_test.cpp)
     target_link_libraries(editor_layout_document_test PRIVATE editor_document GTest::gmock_main)
@@ -299,7 +221,6 @@ if(EDITOR_ENABLE_COVERAGE)
         editor_runtime
         editor_layout_document_test
         editor_core_test
-        editor_runtime_smoke
     )
     foreach(target IN LISTS EDITOR_COVERAGE_TARGETS)
         target_compile_options(${target} PRIVATE --coverage -O0 -g)
@@ -337,7 +258,7 @@ if(EDITOR_ENABLE_COVERAGE)
             --fail-under-line 80
             --fail-under-branch 70
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/..
-        DEPENDS editor_layout_bake editor_layout_document_test editor_core_test editor_runtime_smoke
+        DEPENDS editor_layout_bake editor_layout_document_test editor_core_test
         USES_TERMINAL
         COMMENT "Running tests and enforcing editor coverage gates"
     )

@@ -6,28 +6,38 @@
  */
 #pragma once
 
+#include "math/geometry/recti.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 
 #include "render/r3d_span.h"
 
-typedef struct {
-    int x0, x1, y0, y1; /* pixel centres, half-open, already inside the window */
-} r3d_span_box_t;
-
 /* An upper bound on the depth a triangle writes inside `box`, as the
  * 16-bit depth, from its depth plane in 16.8: `top` at the centre of pixel
- * (box.x0, box.y0), stepping `dx` a column and `dy` a row. */
-int32_t r3d_span_plane_bound(int32_t top, int32_t dx, int32_t dy, r3d_span_box_t box);
+ * (box.x, box.y), stepping `dx` a column and `dy` a row. */
+int32_t r3d_span_plane_bound(int32_t top, int32_t dx, int32_t dy, recti_t box);
 
 /* True when a plane in the same form stays inside [0, max] at every pixel
  * centre of `box`, so a span there needs no clamp. */
-bool r3d_span_plane_in_range(int32_t top, int32_t dx, int32_t dy, int32_t max, r3d_span_box_t box);
+bool r3d_span_plane_in_range(int32_t top, int32_t dx, int32_t dy, int32_t max, recti_t box);
 
 /* True when every pixel of `box` already holds depth at or nearer than
  * `bound`, so a triangle bounded by it would write none of them. Kept out
  * of line, as its layout is pinned. */
-__attribute__((noinline)) bool r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, r3d_span_box_t box);
+__attribute__((noinline)) bool r3d_span_hidden(const r3d_span_target_t* target, int32_t bound, recti_t box);
+
+/* The part of `centres` inside `target`'s window: its full width, its own
+ * rows. Runs once per triangle, so a miss is left as a size at or below zero
+ * (recti_is_empty reads it as empty) rather than clamped to zero. */
+static inline recti_t
+r3d_span_window_box(const r3d_span_target_t* target, recti_t centres) {
+    const int left = mathi_max(centres.x, 0);
+    const int top = mathi_max(centres.y, target->rows.row0);
+    const recti_t box = {left, top, mathi_min(recti_right(centres), target->rows.width) - left,
+                         mathi_min(recti_bottom(centres), target->rows.row1) - top};
+    return box;
+}
 
 /* Added before truncating, so the sum is positive and truncating floors. */
 #define R3D_SNAP_BIAS ((float)R3D_SPAN_RANGE + 0.5F)
@@ -78,8 +88,8 @@ r3d_span_max3(int32_t a, int32_t b, int32_t c) {
  * not a window's rows: what r3d_span chooses its path by, so every window
  * takes the same path for it. */
 typedef struct {
-    r3d_span_box_t centres; /* x1 - x0 by y1 - y0 centres, not clipped */
-    bool flat;              /* one colour and one depth stand in for its planes */
+    recti_t centres; /* pixel centres, not clipped */
+    bool flat;       /* one colour and one depth stand in for its planes */
 } r3d_span_extent_t;
 
 static inline r3d_span_extent_t
@@ -87,10 +97,12 @@ r3d_span_extent_limits(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, c
                        int max_width) {
     const int32_t lo_x = r3d_span_min3(a->x, b->x, c->x);
     const int32_t hi_x = r3d_span_max3(a->x, b->x, c->x);
-    const r3d_span_box_t centres = {r3d_span_first_centre(lo_x), r3d_span_first_centre(hi_x),
-                                    r3d_span_first_centre(r3d_span_min3(a->y, b->y, c->y)),
-                                    r3d_span_first_centre(r3d_span_max3(a->y, b->y, c->y))};
-    return (r3d_span_extent_t){centres, centres.y1 - centres.y0 <= max_rows && hi_x - lo_x <= max_width};
+    /* first_centre keeps order, so the edges never cross and need no clamp. */
+    const int left = r3d_span_first_centre(lo_x);
+    const int top = r3d_span_first_centre(r3d_span_min3(a->y, b->y, c->y));
+    const recti_t centres = {left, top, r3d_span_first_centre(hi_x) - left,
+                             r3d_span_first_centre(r3d_span_max3(a->y, b->y, c->y)) - top};
+    return (r3d_span_extent_t){centres, centres.h <= max_rows && hi_x - lo_x <= max_width};
 }
 
 static inline r3d_span_extent_t
@@ -105,6 +117,7 @@ r3d_span_area2(const r3d_span_vertex_t* a, const r3d_span_vertex_t* b, const r3d
 }
 
 /* Temporary measurement switch: 0 draws normally; 1 stops after triangle
- * setup, 2 after walking the rows, 3 after each span's setup. A triangle
- * tested centre by centre stops after its setup under any of them. */
+ * setup, 2 after walking only the edges, 3 after the attribute carry, also
+ * stopping attachment writers. A triangle tested centre by centre stops after
+ * its setup under any of them. */
 extern int r3d_span_stop_after;

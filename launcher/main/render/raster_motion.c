@@ -19,18 +19,18 @@ _Static_assert(sizeof(tag_t) == sizeof(raster_motion_px_t), "a tag resolves in p
 #define DEPTH_SCALE (1.0F / (float)R3D_DEPTH_NEAREST)
 
 /* World to lens space for `view`, the raster's own lens at one tick to the
- * unit, then carried by `placement` when it is not NULL, as r3d_lens_place()
+ * unit, then carried by `model` when it is not NULL, as r3d_lens_place()
  * does for a placed mesh. */
 static void
-lens_map(const render_view_t* view, const raster_t* raster, const r3d_placement_t* placement, r3d_lens_t* lens) {
+lens_map(const render_view_t* view, const raster_t* raster, const mat4f_t* model, r3d_lens_t* lens) {
     raster_lens(raster, view, 1, lens);
-    if (placement != NULL) {
-        r3d_lens_place(lens, placement, 1);
+    if (model != NULL) {
+        r3d_lens_place(lens, model, 1);
     }
 }
 
 static int
-seen_index(const raster_motion_t* m, const r3d_placement_t* key) {
+seen_index(const raster_motion_t* m, const mat4f_t* key) {
     for (int i = 0; i < m->seen_count; i++) {
         if (m->seen_key[i] == key) {
             return i;
@@ -43,7 +43,7 @@ seen_index(const raster_motion_t* m, const r3d_placement_t* key) {
 static void
 map_instances(raster_motion_t* m, const raster_t* raster, const render_view_t* view) {
     for (int i = 0; i < raster->instance_count; i++) {
-        const r3d_placement_t* p = raster->instances[i].placement;
+        const mat4f_t* p = raster->instances[i].model;
         const int seen = p == NULL ? -1 : seen_index(m, p);
         if (seen >= 0 && memcmp(&m->seen[seen], p, sizeof(*p)) != 0) {
             r3d_lens_t before;
@@ -57,14 +57,14 @@ map_instances(raster_motion_t* m, const raster_t* raster, const render_view_t* v
     }
 }
 
-/* This picture's view and placements, for the next one. */
+/* This picture's view and models, for the next one. */
 static void
 remember(raster_motion_t* m, const raster_t* raster, const render_view_t* view) {
     m->previous = *view;
     m->has_previous = true;
     m->seen_count = 0;
     for (int i = 0; i < raster->instance_count; i++) {
-        const r3d_placement_t* p = raster->instances[i].placement;
+        const mat4f_t* p = raster->instances[i].model;
         if (p != NULL) {
             m->seen_key[m->seen_count] = p;
             m->seen[m->seen_count++] = *p;
@@ -73,16 +73,14 @@ remember(raster_motion_t* m, const raster_t* raster, const render_view_t* view) 
 }
 
 /* The maps for this picture, then this picture kept as the next one's
- * previous. A placement is known by its address from picture to picture. */
+ * previous. A model is known by its address from picture to picture. */
 static void
 begin(const raster_attachment_t* self, const raster_t* raster, const render_view_t* view) {
     raster_motion_t* m = self->state;
     assert(raster->instance_count <= RASTER_MOTION_INSTANCES_MAX);
     r3d_lens_t now;
     lens_map(view, raster, NULL, &now);
-    m->center_x = now.center_x;
-    m->center_y = now.center_y;
-    m->near_z = now.near_z;
+    m->project = now.project;
     m->known = m->has_previous;
     m->first_moved = -1;
     memset(m->moved, 0, sizeof(m->moved));
@@ -162,12 +160,12 @@ moved(const row_map_t* r, float u, float v, float w) {
 static void
 resolve_row(const raster_motion_t* m, const uint16_t* depth, raster_motion_px_t* out, int width, float v) {
     const tag_t* tag = (const tag_t*)out;
-    const float to_w = DEPTH_SCALE / m->near_z;
+    const float to_w = DEPTH_SCALE / m->project.near_z;
     row_map_t still;
     row_map_t own;
     tag_t own_tag = 0;
     row_map(&m->map[0], v, &still);
-    float u = 0.5F - m->center_x;
+    float u = 0.5F - m->project.cx;
     for (int x = 0; x < width; x++, u += 1.0F) {
         const tag_t t = tag[x];
         if (depth[x] == 0 || t > RASTER_MOTION_INSTANCES_MAX) {
@@ -194,7 +192,7 @@ resolve(const raster_attachment_t* self, const raster_t* raster, const gfx_rende
             }
             continue;
         }
-        resolve_row(m, gfx_render_target_depth(rows, y), out, rows->width, (float)y + 0.5F - m->center_y);
+        resolve_row(m, gfx_render_target_depth(rows, y), out, rows->width, (float)y + 0.5F - m->project.cy);
     }
 }
 

@@ -1,6 +1,6 @@
 """ESP-IDF checkout, paired tools and interpreter resolution.
 
-Process IDF_PATH overrides the pin; Windows installer IDF_PATH is a candidate.
+Process IDF_PATH overrides the pin (pinned_tools_root ignores it); Windows installer IDF_PATH is a candidate.
 
     from espressif import idf_path, espressif_tools_root, idf_python
     checkout = idf_path()           # best effort, may not exist
@@ -14,6 +14,7 @@ import json
 import glob
 import os
 import re
+import shutil
 import sys
 import subprocess
 from pathlib import Path
@@ -32,12 +33,36 @@ def espressif_tools_root():
     return Path(explicit).resolve() if explicit else find_idf()[1]
 
 
+def xtensa_tool(tool):
+    """The ESP32-S3 toolchain's `tool` (objdump, nm, ...): from PATH, else
+    from the tools installation. Exits when neither has it."""
+    name = "xtensa-esp32s3-elf-" + tool
+    found = shutil.which(name)
+    if found:
+        return found
+    pattern = "tools/xtensa-esp-elf/*/xtensa-esp-elf/bin/" + name + "*"
+    for candidate in sorted(espressif_tools_root().glob(pattern)):
+        if candidate.is_file():
+            return str(candidate)
+    sys.exit("no %s on PATH or under the ESP-IDF tools" % name)
+
+
 def idf_path(project=None):
     """The explicit checkout or the first installed checkout matching the pin."""
     return find_idf(project)[0]
 
 
 IDF_PIN = "launcher/idf-pin.json"
+
+
+def pinned_tools_root(project=None, **search):
+    """The tools installation of the ESP-IDF checkout the pin selects, whatever
+    IDF_PATH / IDF_TOOLS_PATH say, so a gate pinned to the CI image's tools
+    still finds them while a session's environment points at another install."""
+    base = search.pop("environ", None)
+    env = {k: v for k, v in (os.environ if base is None else base).items()
+           if k not in ("IDF_PATH", "IDF_TOOLS_PATH")}
+    return find_idf(project, environ=env, **search)[1]
 
 
 def idf_pin(root=Path(__file__).resolve().parents[3]):
@@ -52,7 +77,11 @@ def idf_commit(idf):
     if not (Path(idf) / ".git").exists():
         return None
     try:
-        result = subprocess.run(["git", "-C", str(idf), "rev-parse", "HEAD"], capture_output=True, text=True)
+        # A git hook runs with GIT_DIR and friends set for its own repository,
+        # which would answer for that repository instead of `idf`.
+        local = subprocess.run(["git", "rev-parse", "--local-env-vars"], capture_output=True, text=True).stdout.split()
+        env = {k: v for k, v in os.environ.items() if k not in local}
+        result = subprocess.run(["git", "-C", str(idf), "rev-parse", "HEAD"], capture_output=True, text=True, env=env)
     except OSError:
         return None
     return result.stdout.strip() if result.returncode == 0 else None
@@ -87,15 +116,15 @@ def _version_key(path):
     return tuple(int(g) for g in m.groups()) if m else (0, 0, 0, 0)
 
 
-def idf_python():
+def idf_python(*, project=None, installation=None):
     """`IDF_PYTHON_ENV_PATH` (set once ESP-IDF's export script is sourced)
     when paired with the selected install, then a matching checkout version
-    under espressif_tools_root(), then this interpreter."""
+    under the selected tools, then this interpreter."""
     # POSIX exports put ESP-IDF's Python on PATH before launching this process.
     if os.name != "nt":
         return sys.executable
-    checkout, tools = find_idf()
-    project = idf_project()
+    checkout, tools = installation if installation is not None else find_idf(project)
+    project = Path(project or idf_project())
     pinned_project = (project / IDF_PIN).is_file()
     if pinned_project and (checkout / "tools/cmake/version.cmake").is_file():
         major, minor = checkout_version(checkout)
@@ -111,7 +140,9 @@ def idf_python():
             return str(candidate)
     pattern = str(tools / "python_env" / env_pattern / "Scripts" / "python.exe")
     found = sorted(glob.glob(pattern), key=_version_key)
-    return found[-1] if found else sys.executable
+    if found:
+        return found[-1]
+    return sys.executable
 
 
 REGISTRY_ENV = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
@@ -232,7 +263,9 @@ def require_idf(project=None, **search):
         raise ValueError("No installed ESP-IDF matches the pin. Run:\n" + commands)
     if pin:
         major, minor = checkout_version(checkout)
-        if not any(path.is_dir() for path in (tools / "python_env").glob(f"idf{major}.{minor}_*_env")):
+        environments = (tools / "python_env").glob(f"idf{major}.{minor}_*_env")
+        if not any((path / "Scripts/python.exe").is_file() if os.name == "nt" else path.is_dir()
+                   for path in environments):
             raise ValueError(f"No tools installed for ESP-IDF at {checkout}. Run:\n" +
                              install_commands(pin, search.get("home"), checkout))
     return checkout, tools
@@ -241,7 +274,7 @@ def require_idf(project=None, **search):
 def idf_project():
     """The command's selected project, or this repository for standalone tooling."""
     project = autana_config.project_dir()
-    return project if os.environ.get(autana_config.PROJECT_ENV) or (project / "launcher/CMakeLists.txt").is_file() else PROJECT_ROOT
+    return project if (project / "launcher/CMakeLists.txt").is_file() else PROJECT_ROOT
 
 
 def idf_note_lines(project=None):
@@ -265,8 +298,10 @@ def main():
         verb = sys.argv[1]
         if verb == "env":
             checkout, tools = require_idf(project)
+            python = idf_python(project=project, installation=(checkout, tools))
             print("IDF_PATH=" + shlex.quote(str(checkout)))
             print("IDF_TOOLS_PATH=" + shlex.quote(str(tools)))
+            print("IDF_PYTHON=" + shlex.quote(python))
         elif verb == "tools":
             print(espressif_tools_root())
         elif verb == "note":

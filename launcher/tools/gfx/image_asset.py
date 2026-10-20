@@ -1,6 +1,6 @@
 """The image pack entry (IMAG): a picture baked from the NAME.image.toml beside
 its PNG, and read back. The one writer of the entry, and its reader on the
-host; main/gfx/image/gfx_image.c is the firmware's.
+host; main/draw/draw_image.c is the firmware's.
 
 A NAME.image.toml names its source, a PNG in its own folder, and how many
 quarter turns clockwise take the source to the stored pixels; the pack id is
@@ -20,20 +20,22 @@ TOOLS = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOLS / "device"))
 sys.path.insert(0, str(TOOLS / "render"))
 
+from build.c_header import read_define  # noqa: E402
 import gfx_color  # noqa: E402
 from render_diff import read_png  # noqa: E402
 
+FORMAT_OWNER = TOOLS.parent / "main/draw/draw_image_format.h"
 TYPE = b"IMAG"
-VERSION = 1
+VERSION = read_define(FORMAT_OWNER, "DRAW_IMAGE_VERSION")
 SUFFIX = ".image.toml"
-# gfx_image_format_t: gfx_color_t pixels, byte-swapped RGB565; and one bit a
+# draw_image_format_t: gfx_color_t pixels, byte-swapped RGB565; and one bit a
 # pixel, the most significant leftmost, 1 ink, a row a whole number of bytes.
-FORMAT_RGB565 = 1
-FORMAT_MONO1 = 2
+FORMAT_RGB565 = read_define(FORMAT_OWNER, "DRAW_IMAGE_FORMAT_RGB565")
+FORMAT_MONO1 = read_define(FORMAT_OWNER, "DRAW_IMAGE_FORMAT_MONO1")
 FORMATS = {FORMAT_RGB565: 16, FORMAT_MONO1: 1}  # bits per pixel
-MONO1_STRIDE_STEP = 8  # a MONO1 stride is whole bytes
+MONO1_STRIDE_STEP = read_define(FORMAT_OWNER, "DRAW_IMAGE_MONO1_STRIDE_STEP")
 HEADER = struct.Struct("<HHHHII")
-PIXEL_ALIGN = 4
+PIXEL_ALIGN = read_define(FORMAT_OWNER, "DRAW_IMAGE_PIXEL_ALIGN")
 SIDE_MAX = 0xFFFF
 
 
@@ -69,7 +71,7 @@ def encode_mono(rows):
 
 def decode(entry):
     """(width, height, pixels) of an entry's bytes, after the checks
-    gfx_image_open() makes; pixels as encode() or encode_mono() takes them."""
+    draw_image_open() makes; pixels as encode() or encode_mono() takes them."""
     if len(entry) < HEADER.size:
         raise ImageError("shorter than a header")
     version, fmt, width, height, stride, offset = HEADER.unpack_from(entry)

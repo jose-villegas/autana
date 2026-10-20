@@ -2,7 +2,9 @@
 #ifdef DEVICE_BUILD
 #include <string.h>
 #include "apps/render_lab/render_lab.h"
+#include "apps/render_lab/render_lab_view.h"
 #include "core/timing.h"
+#include "display/display_shell.h"
 #include "gfx/present/gfx_fb_guard.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
@@ -25,12 +27,19 @@ render_lab_test_loaded_scene(const char* key) {
 }
 
 void
+render_lab_test_hold_quarter(int quarter) {
+    display_hold_quarter(quarter);
+    ui_set_transform(ui_transform_quarter_turn(quarter, GFX_WIDTH, GFX_HEIGHT));
+}
+
+void
 render_lab_test_enter(render_lab_test_t* saved, const char* scene) {
     *saved = (render_lab_test_t){render_lab_start_scene_key, render_lab_start_camera, render_lab_show_hud};
     ui_init();
     render_lab_start_scene_key = scene;
     render_lab_start_camera = NULL;
     render_lab_show_hud = false;
+    render_lab_test_hold_quarter(DISPLAY_DEFAULT_QUARTER);
     app_render_lab.enter();
 }
 
@@ -44,10 +53,12 @@ render_lab_test_exit(const render_lab_test_t* saved) {
     render_lab_start_scene_key = saved->scene;
     render_lab_start_camera = saved->camera;
     render_lab_show_hud = saved->hud;
+    display_release_quarter();
 }
 
 int64_t
 render_lab_test_frame(bool switching, const input_t* input) {
+    TEST_ASSERT_TRUE_MESSAGE(display_quarter_held(), "a test frame needs a held quarter");
     const input_t idle = {0};
     if (input == NULL) {
         input = &idle;
@@ -55,7 +66,7 @@ render_lab_test_frame(bool switching, const input_t* input) {
     gfx_present_begin();
     app_render_lab.update(RENDER_LAB_TEST_FRAME_MS, input);
     render_context_set_dynamic_resolution(render_context_main(), NULL, NULL, 0);
-    render_context_set_scale(render_context_main(), RENDER_LAB_TEST_SCALE);
+    render_lab_apply_raster_settings();
     const int64_t render_start = timing_now_us();
     scene_shell_render(RENDER_LAB_TEST_FRAME_MS);
     const int64_t render_us = timing_now_us() - render_start;

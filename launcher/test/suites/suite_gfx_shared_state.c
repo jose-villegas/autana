@@ -1,5 +1,5 @@
 /*
- * Host suite: gfx_draw.c and gfx_present.c / gfx_mode.c share ONE instance of
+ * Host suite: draw.c and gfx_present.c / gfx_mode.c share ONE instance of
  * the dirty tracker, framebuffer guard, present guard and band-force latch.
  * Draw writes through present's target and clip.
  *
@@ -16,13 +16,15 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include "gfx/draw/gfx_draw.h"
-#include "gfx/draw/gfx_font_roles.h"
+#include "core/memory.h"
+#include "draw/draw.h"
+#include "draw/draw_font_roles.h"
 #include "gfx/gfx.h"
-#include "gfx/gfx_test.h"
-#include "gfx/present/gfx_band_run.h"
+#include "gfx/present/gfx_debug.h"
 #include "gfx/present/gfx_mode.h"
 #include "gfx/present/gfx_present.h"
+#include "gfx/present/gfx_test.h"
+#include "gfx/present/modes/band/gfx_band_run.h"
 #include "test_cleanup.h"
 
 #ifndef DEVICE_BUILD
@@ -48,17 +50,29 @@ assert_marked_only_where_drawn(void) {
     TEST_ASSERT_FALSE(gfx_region_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT));
 }
 
+/* A public caller may pass rows past either screen edge; only on-screen
+ * rows are marked. */
+static void
+test_row_marks_outside_the_screen_mark_nothing(void) {
+    fixture();
+    gfx_mark_rows_dirty(-SIZE, 0);
+    gfx_mark_rows_dirty(GFX_HEIGHT, GFX_HEIGHT + SIZE);
+    TEST_ASSERT_FALSE(gfx_region_dirty(0, 0, GFX_WIDTH, GFX_HEIGHT));
+    gfx_mark_rows_dirty(-SIZE, 1);
+    TEST_ASSERT_TRUE(gfx_region_dirty(0, 0, 1, 1));
+}
+
 static void
 test_box_marking_draw_is_seen_by_the_presenter(void) {
     fixture();
-    gfx_fill_rect(DRAWN_X, DRAWN_Y, SIZE, SIZE, 0x1234);
+    draw_rect(DRAWN_X, DRAWN_Y, SIZE, SIZE, 0x1234);
     assert_marked_only_where_drawn();
 }
 
 static void
 test_row_marking_draw_is_seen_by_the_presenter(void) {
     fixture();
-    gfx_pixel(DRAWN_X, DRAWN_Y, 0x1234);
+    draw_pixel(DRAWN_X, DRAWN_Y, 0x1234);
     assert_marked_only_where_drawn();
 }
 
@@ -74,16 +88,71 @@ test_draw_is_refused_while_a_mode_has_freed_the_framebuffer(void) {
     fixture();
     TEST_ASSERT_EQUAL_INT(GFX_LAYOUT_INDEXED, gfx_mode_enter(&indexed_request)->layout);
     const unsigned before = gfx_fb_guard_trips;
-    gfx_fill_rect(DRAWN_X, DRAWN_Y, SIZE, SIZE, 0x1234);
+    draw_rect(DRAWN_X, DRAWN_Y, SIZE, SIZE, 0x1234);
     TEST_ASSERT_EQUAL_UINT(before + 1, gfx_fb_guard_trips);
-    gfx_pixel(DRAWN_X, DRAWN_Y, 0x1234);
+    draw_pixel(DRAWN_X, DRAWN_Y, 0x1234);
     TEST_ASSERT_EQUAL_UINT(before + 2, gfx_fb_guard_trips);
 
     gfx_mode_exit();
     const unsigned after_exit = gfx_fb_guard_trips;
-    gfx_pixel(DRAWN_X, DRAWN_Y, 0x4321);
+    draw_pixel(DRAWN_X, DRAWN_Y, 0x4321);
     TEST_ASSERT_EQUAL_UINT(after_exit, gfx_fb_guard_trips);
     TEST_ASSERT_EQUAL_HEX16(0x4321, gfx_framebuffer()[DRAWN_Y * GFX_WIDTH + DRAWN_X]);
+}
+
+/* Enters `request` while `kind` holds no free block of `block_bytes`: holds
+ * such blocks until no more fit, each keeping the one before it, then gives
+ * them all back. Returns the layout granted. */
+static gfx_layout_t
+enter_with_memory_held(const gfx_mode_request_t* request, size_t block_bytes, memory_kind_t kind) {
+    void* held = NULL;
+    void* block;
+    while ((block = memory_alloc(block_bytes, kind)) != NULL) {
+        *(void**)block = held;
+        held = block;
+    }
+    const gfx_layout_t granted = gfx_mode_enter(request)->layout;
+    while (held != NULL) {
+        void* const next = *(void**)held;
+        memory_free(held);
+        held = next;
+    }
+    return granted;
+}
+
+/* Every gfx_mode_enter() that stays FULL for want of storage counts once, in
+ * any layout; a grant counts nothing. */
+static void
+test_a_refused_layout_counts_once_and_a_granted_one_not_at_all(void) {
+    fixture();
+    const unsigned before = gfx_mode_denials();
+
+    TEST_ASSERT_EQUAL_INT(GFX_LAYOUT_INDEXED, gfx_mode_enter(&indexed_request)->layout);
+    gfx_mode_exit();
+    TEST_ASSERT_EQUAL_UINT(before, gfx_mode_denials());
+
+    const gfx_mode_request_t no_cells = {.layout = GFX_LAYOUT_INDEXED};
+    TEST_ASSERT_EQUAL_INT_MESSAGE(GFX_LAYOUT_FULL_FB, gfx_mode_enter(&no_cells)->layout, "no cells");
+    const gfx_mode_request_t past_the_pool = {
+        .layout = GFX_LAYOUT_INDEXED,
+        .index_grid_w = (int)memory_total_bytes(MEMORY_INTERNAL) + 1,
+        .index_grid_h = 1,
+        .cell_size = 1,
+    };
+    TEST_ASSERT_EQUAL_INT_MESSAGE(GFX_LAYOUT_FULL_FB, gfx_mode_enter(&past_the_pool)->layout, "past the pool");
+    TEST_ASSERT_EQUAL_UINT(before + 2, gfx_mode_denials());
+
+    const gfx_mode_request_t bands = {.layout = GFX_LAYOUT_BANDS};
+    const size_t band_bytes = (size_t)GFX_WIDTH * GFX_BAND_HEIGHT * sizeof(gfx_color_t);
+    TEST_ASSERT_EQUAL_INT_MESSAGE(GFX_LAYOUT_FULL_FB, enter_with_memory_held(&bands, band_bytes, MEMORY_INTERNAL),
+                                  "bands with internal RAM held");
+    TEST_ASSERT_EQUAL_UINT(before + 3, gfx_mode_denials());
+
+    const gfx_mode_request_t double_fb = {.layout = GFX_LAYOUT_DOUBLE_FB};
+    TEST_ASSERT_EQUAL_INT_MESSAGE(GFX_LAYOUT_FULL_FB,
+                                  enter_with_memory_held(&double_fb, GFX_FRAMEBUFFER_BYTES, MEMORY_PSRAM),
+                                  "double framebuffer with PSRAM held");
+    TEST_ASSERT_EQUAL_UINT(before + 4, gfx_mode_denials());
 }
 
 static void
@@ -92,7 +161,7 @@ test_band_mode_refuses_draws_too(void) {
     const gfx_mode_request_t request = {.layout = GFX_LAYOUT_BANDS};
     TEST_ASSERT_EQUAL_INT(GFX_LAYOUT_BANDS, gfx_mode_enter(&request)->layout);
     const unsigned before = gfx_fb_guard_trips;
-    gfx_fill_rect(DRAWN_X, DRAWN_Y, SIZE, SIZE, 0x1234);
+    draw_rect(DRAWN_X, DRAWN_Y, SIZE, SIZE, 0x1234);
     TEST_ASSERT_EQUAL_UINT(before + 1, gfx_fb_guard_trips);
     gfx_mode_exit();
 }
@@ -101,15 +170,17 @@ static void
 test_draw_between_present_begin_and_wait_trips_the_present_guard(void) {
     fixture();
     gfx_present_begin();
-    const unsigned before = gfx_present_guard_trips;
-    gfx_fill_rect(DRAWN_X, DRAWN_Y, SIZE, SIZE, 0x1234);
-    TEST_ASSERT_EQUAL_UINT(before + 1, gfx_present_guard_trips);
-    gfx_pixel(DRAWN_X, DRAWN_Y, 0x1234);
-    TEST_ASSERT_EQUAL_UINT(before + 2, gfx_present_guard_trips);
+    unsigned before = gfx_present_guard_trips;
+    draw_rect(DRAWN_X, DRAWN_Y, SIZE, SIZE, 0x1234);
+    TEST_ASSERT_GREATER_THAN_UINT(before, gfx_present_guard_trips);
+    before = gfx_present_guard_trips;
+    draw_pixel(DRAWN_X, DRAWN_Y, 0x1234);
+    TEST_ASSERT_GREATER_THAN_UINT(before, gfx_present_guard_trips);
     gfx_present_wait();
 
-    gfx_fill_rect(DRAWN_X, DRAWN_Y, SIZE, SIZE, 0x1234);
-    TEST_ASSERT_EQUAL_UINT(before + 2, gfx_present_guard_trips);
+    before = gfx_present_guard_trips;
+    draw_rect(DRAWN_X, DRAWN_Y, SIZE, SIZE, 0x1234);
+    TEST_ASSERT_EQUAL_UINT(before, gfx_present_guard_trips);
 }
 
 enum { INK = UINT16_MAX, BAND_ROW = GFX_BAND_HEIGHT, ALPHA_OPAQUE = UINT8_MAX };
@@ -118,21 +189,21 @@ enum { DRAW_CLEAR, DRAW_PIXEL, DRAW_LINE, DRAW_FILL, DRAW_DITHER, DRAW_BLEND, DR
 
 static void
 primitive(int kind, int y) {
-    const gfx_font_t* font = gfx_font_ui();
+    const draw_font_t* font = draw_font_ui();
     gfx_color_t source[SIZE * SIZE];
     for (size_t i = 0; i < sizeof source / sizeof *source; i++) {
         source[i] = INK;
     }
     switch (kind) {
-        case DRAW_CLEAR: gfx_clear(INK); break;
-        case DRAW_PIXEL: gfx_pixel(DRAWN_X, y, INK); break;
-        case DRAW_LINE: gfx_line(DRAWN_X, y, DRAWN_X + SIZE, y + SIZE, INK); break;
-        case DRAW_FILL: gfx_fill_rect(DRAWN_X, y, SIZE, SIZE, INK); break;
-        case DRAW_DITHER: gfx_fill_rect_dither(DRAWN_X, y, SIZE, SIZE, INK, ALPHA_OPAQUE); break;
-        case DRAW_BLEND: gfx_fill_rect_blend(DRAWN_X, y, SIZE, SIZE, INK, ALPHA_OPAQUE); break;
-        case DRAW_BLIT: gfx_blit_dither(DRAWN_X, y, SIZE, SIZE, source, SIZE, ALPHA_OPAQUE); break;
-        case DRAW_TEXT: gfx_text_font(DRAWN_X, y, "H", INK, 1, 0, font); break;
-        case DRAW_TEXT_DITHER: gfx_text_font_dither(DRAWN_X, y, "H", INK, 1, 0, font, ALPHA_OPAQUE); break;
+        case DRAW_CLEAR: draw_clear(INK); break;
+        case DRAW_PIXEL: draw_pixel(DRAWN_X, y, INK); break;
+        case DRAW_LINE: draw_line(DRAWN_X, y, DRAWN_X + SIZE, y + SIZE, INK); break;
+        case DRAW_FILL: draw_rect(DRAWN_X, y, SIZE, SIZE, INK); break;
+        case DRAW_DITHER: draw_rect_dither(DRAWN_X, y, SIZE, SIZE, INK, ALPHA_OPAQUE); break;
+        case DRAW_BLEND: draw_rect_blend(DRAWN_X, y, SIZE, SIZE, INK, ALPHA_OPAQUE); break;
+        case DRAW_BLIT: draw_blit_dither(DRAWN_X, y, SIZE, SIZE, source, SIZE, ALPHA_OPAQUE); break;
+        case DRAW_TEXT: draw_text_font(DRAWN_X, y, "H", INK, 1, 0, font); break;
+        case DRAW_TEXT_DITHER: draw_text_font_dither(DRAWN_X, y, "H", INK, 1, 0, font, ALPHA_OPAQUE); break;
     }
 }
 
@@ -150,11 +221,11 @@ check_band_marks(int kind) {
 static void
 test_band_target_writes_only_local_rows(void) {
     fixture();
-    gfx_clear(0);
+    draw_clear(0);
     gfx_present();
     gfx_band_begin_for_test(BAND_ROW);
-    gfx_clear(INK);
-    gfx_fill_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, INK);
+    draw_clear(INK);
+    draw_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, INK);
     gfx_band_end_for_test();
     const gfx_color_t* pixels = gfx_framebuffer();
     for (int y = 0; y < GFX_HEIGHT; y++) {
@@ -176,20 +247,22 @@ test_clip_edges_match_independent_clamps(void) {
         for (size_t j = 0; j < sizeof ys / sizeof *ys; j++) {
             for (size_t k = 0; k < sizeof widths / sizeof *widths; k++) {
                 for (size_t l = 0; l < sizeof heights / sizeof *heights; l++) {
-                    gfx_set_clip(xs[i], ys[j], widths[k], heights[l]);
-                    const gfx_box_t actual = gfx_clip_save();
-                    const gfx_box_t expected = {mathi_max(xs[i], 0), mathi_max(ys[j], 0),
-                                                mathi_min(xs[i] + widths[k], GFX_WIDTH),
-                                                mathi_min(ys[j] + heights[l], GFX_HEIGHT)};
+                    draw_set_clip(xs[i], ys[j], widths[k], heights[l]);
+                    gfx_surface_t surface;
+                    TEST_ASSERT_TRUE(gfx_draw_begin(&surface));
+                    const recti_t actual = surface.clip;
+                    const recti_t expected = recti_from_edges(mathi_max(xs[i], 0), mathi_max(ys[j], 0),
+                                                              mathi_min(xs[i] + widths[k], GFX_WIDTH),
+                                                              mathi_min(ys[j] + heights[l], GFX_HEIGHT));
                     TEST_ASSERT_EQUAL_MEMORY(&expected, &actual, sizeof actual);
-                    gfx_clear(0);
-                    gfx_fill_rect(-SIZE, -SIZE, GFX_WIDTH + SIZE * 2, GFX_HEIGHT + SIZE * 2, INK);
+                    draw_clear(0);
+                    draw_rect(-SIZE, -SIZE, GFX_WIDTH + SIZE * 2, GFX_HEIGHT + SIZE * 2, INK);
                     const gfx_color_t* pixels = gfx_framebuffer();
                     for (int y = 0; y < GFX_HEIGHT; y++) {
                         bool row_matches = true;
                         for (int x = 0; x < GFX_WIDTH; x++) {
-                            const bool inside =
-                                x >= expected.x0 && x < expected.x1 && y >= expected.y0 && y < expected.y1;
+                            const bool inside = x >= expected.x && x < recti_right(expected) && y >= expected.y
+                                                && y < recti_bottom(expected);
                             row_matches &= pixels[y * GFX_WIDTH + x] == (inside ? INK : 0);
                         }
                         TEST_ASSERT_TRUE(row_matches);
@@ -214,9 +287,9 @@ draw_text_parameters(bool dither, int scale, int turn) {
     const int x = SIZE * 4;
     const int y = BAND_ROW + SIZE * 4;
     if (dither) {
-        gfx_text_font_dither(x, y, "Fj", INK, scale, turn, gfx_font_ui(), ALPHA_OPAQUE / 2);
+        draw_text_font_dither(x, y, "Fj", INK, scale, turn, draw_font_ui(), ALPHA_OPAQUE / 2);
     } else {
-        gfx_text_font(x, y, "Fj", INK, scale, turn, gfx_font_ui());
+        draw_text_font(x, y, "Fj", INK, scale, turn, draw_font_ui());
     }
 }
 
@@ -236,7 +309,7 @@ check_text_parameters(bool turns) {
     TEST_ASSERT_NOT_NULL(text_pixels);
     for (int dither = 0; dither <= 1; dither++) {
         for (size_t i = 0; i < count; i++) {
-            gfx_clear(0);
+            draw_clear(0);
             draw_text_parameters(dither, turns ? 1 : cases[i][1], turns ? cases[i][1] : 0);
             memcpy(text_pixels, gfx_framebuffer() + BAND_ROW * GFX_WIDTH, TEXT_ROWS * row_bytes);
             int ink = 0;
@@ -244,7 +317,7 @@ check_text_parameters(bool turns) {
                 ink += text_pixels[p] != 0;
             }
             TEST_ASSERT_GREATER_THAN_INT(0, ink);
-            gfx_clear(0);
+            draw_clear(0);
             draw_text_parameters(dither, turns ? 1 : cases[i][0], turns ? cases[i][0] : 0);
             for (int row = 0; row < TEXT_ROWS; row++) {
                 TEST_ASSERT_EQUAL_MEMORY(text_pixels + row * GFX_WIDTH,
@@ -267,10 +340,10 @@ test_text_scale_below_one_matches_one(void) {
 static void
 test_clear_clip_restores_full_screen_draw(void) {
     fixture();
-    gfx_clear(0);
-    gfx_set_clip(DRAWN_X, DRAWN_Y, SIZE, SIZE);
-    gfx_clear_clip();
-    gfx_fill_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, INK);
+    draw_clear(0);
+    draw_set_clip(DRAWN_X, DRAWN_Y, SIZE, SIZE);
+    draw_clear_clip();
+    draw_rect(0, 0, GFX_WIDTH, GFX_HEIGHT, INK);
     for (int y = 0; y < GFX_HEIGHT; y++) {
         bool row_matches = true;
         for (int x = 0; x < GFX_WIDTH; x++) {
@@ -293,10 +366,10 @@ test_primitives_crossing_band_edges_stay_in_strip(void) {
     for (size_t k = 0; k < sizeof kinds / sizeof *kinds; k++) {
         int ink = 0;
         for (size_t i = 0; i < sizeof origins / sizeof *origins; i++) {
-            gfx_clear(0);
+            draw_clear(0);
             primitive(kinds[k], origins[i]);
             memcpy(text_pixels, gfx_framebuffer() + BAND_ROW * GFX_WIDTH, GFX_BAND_HEIGHT * row_bytes);
-            gfx_clear(0);
+            draw_clear(0);
             gfx_present();
             gfx_band_begin_for_test(BAND_ROW);
             primitive(kinds[k], origins[i]);
@@ -325,12 +398,12 @@ test_primitives_crossing_band_edges_stay_in_strip(void) {
 static void
 check_text_clip(int kind) {
     fixture();
-    const gfx_font_t* font = gfx_font_ui();
+    const draw_font_t* font = draw_font_ui();
     const size_t bytes = sizeof *text_pixels * font->cell_w * font->cell_h;
     text_pixels = malloc(bytes);
     suite_set_test_cleanup(release_text_pixels);
     TEST_ASSERT_NOT_NULL(text_pixels);
-    gfx_clear(0);
+    draw_clear(0);
     primitive(kind, BAND_ROW);
     for (int row = 0; row < font->cell_h; row++) {
         memcpy(text_pixels + row * font->cell_w, gfx_framebuffer() + (BAND_ROW + row) * GFX_WIDTH + DRAWN_X,
@@ -338,9 +411,9 @@ check_text_clip(int kind) {
     }
     const int left = DRAWN_X + font->cell_w / 2;
     const int top = BAND_ROW + font->cell_h / 2;
-    gfx_clear(0);
+    draw_clear(0);
     gfx_present();
-    gfx_set_clip(left, top, font->cell_w, font->cell_h);
+    draw_set_clip(left, top, font->cell_w, font->cell_h);
     primitive(kind, BAND_ROW);
     int ink = 0;
     for (int y = 0; y < GFX_HEIGHT; y++) {
@@ -448,10 +521,12 @@ run_gfx_shared_state_suite(void) {
     RUN_TEST(test_band_marks_text_dither);
     RUN_TEST(test_clip_text);
     RUN_TEST(test_clip_text_dither);
+    RUN_TEST(test_row_marks_outside_the_screen_mark_nothing);
     RUN_TEST(test_box_marking_draw_is_seen_by_the_presenter);
     RUN_TEST(test_row_marking_draw_is_seen_by_the_presenter);
     RUN_TEST(test_draw_is_refused_while_a_mode_has_freed_the_framebuffer);
     RUN_TEST(test_band_mode_refuses_draws_too);
+    RUN_TEST(test_a_refused_layout_counts_once_and_a_granted_one_not_at_all);
     RUN_TEST(test_draw_between_present_begin_and_wait_trips_the_present_guard);
     RUN_TEST(test_invalidate_alone_forces_one_full_band_frame);
 #endif

@@ -19,7 +19,7 @@
  */
 #pragma once
 
-#include "gfx/draw/gfx_draw.h"
+#include "draw/draw.h"
 #include "gfx/gfx.h"
 
 /* WHY DERIVED, NOT FIXED: fixing the column count at compile time bakes
@@ -107,9 +107,9 @@ int palette_hit(int px, int py, int count, int cols, int screen_w, int screen_h)
  * canvas - for the caller to clear or restore. */
 void palette_panel_rect(int count, int cols, int screen_w, int screen_h, int* x, int* y, int* w, int* h);
 
-/* Where to start drawing a `len`-character label so gfx_text_turned(), at
+/* Where to start drawing a `len`-character label so draw_text_turned(), at
  * `turn` quarter turns, ends up centred in the rect (x, y, w, h).
- * gfx_text_turned()'s (x, y) is the FIRST GLYPH's cell, not a corner of
+ * draw_text_turned()'s (x, y) is the FIRST GLYPH's cell, not a corner of
  * the string, and runs away in whichever direction the turn implies -
  * getting the corner/direction wrong by even one turn is an off-by-one
  * invisible until the board is turned, why this is host-tested (see

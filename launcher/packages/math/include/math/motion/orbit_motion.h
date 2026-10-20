@@ -15,14 +15,14 @@
 
 #include <stdbool.h>
 
-#include "math/linear/math_const.h"
 #include "math/linear/transformf.h"
 #include "math/linear/vec3f.h"
+#include "math/scalar/math_const.h"
 
 /* The steepest pitch either way. Short of a quarter turn: the pose faces the
  * target with look_at against the world's up, which is undefined straight up
  * or down. */
-#define ORBIT_MOTION_PITCH_LIMIT               (MATH_PI * 85.0F / 180.0F)
+#define ORBIT_MOTION_PITCH_LIMIT               (85.0F * MATH_RADIANS_PER_DEGREE)
 
 /* A fling's speed halves every this many seconds once steering lets go. */
 #define ORBIT_MOTION_FLING_HALF_LIFE_S         0.35F

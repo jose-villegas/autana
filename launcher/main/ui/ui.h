@@ -1,31 +1,25 @@
 /*
- * ui: shared microui integration, for the shell and for apps.
+ * ui: the plain-value UI face, for the shell and for apps. The library
+ * behind it is private to ui/.
  *
  * Everything an app needs to draw a UI, and nothing about any particular UI.
  * The launcher is one caller; an app wanting a settings panel or a readout is
  * another, and gets the same touch handling and the same redraw skipping for
  * free.
  *
- * microui is immediate-mode and does no drawing itself: each frame it turns a
- * UI description into a list of rectangles, text and icons, and this module
- * walks that list painting into the shared framebuffer.
+ * The face is immediate mode and does no drawing itself: each frame a screen
+ * describes its UI again, the frame becomes a list of rectangles, text and
+ * icons, and ui_end() walks that list painting into the shared framebuffer.
+ * A retained-mode toolkit wants to own the display and the refresh cycle,
+ * which fights an app that owns its own drawing. Here a list of primitives is
+ * rendered whenever and into whatever the caller likes.
  *
- * That command-list model is why microui suits this device. A retained-mode
- * toolkit wants to own the display and the refresh cycle, which fights an app
- * that owns its own drawing. Here we render a list of primitives whenever we
- * like, into whatever we like.
- *
- * This module knows about dirty bands because immediate mode rebuilds and
- * repaints the whole UI every frame, which normally means clearing the screen
- * every frame, marking every band dirty and forcing a full-frame transfer,
- * throwing away the saving partial updates exist to provide. That would hit
- * any app that drew a UI, not only the launcher.
- *
- * The fix is that an immediate-mode UI is only *rebuilt* every frame, not
- * necessarily *changed*. microui's command list is a complete description of
- * the output, so if it hashes the same as last frame the picture is identical
- * and both the repaint and the transfer can be skipped. A static menu then
- * costs nothing at all.
+ * The UI is only *rebuilt* every frame, not necessarily *changed*. The list
+ * is a complete description of the output, so if it hashes the same as last
+ * frame the picture is identical and both the repaint and the transfer are
+ * skipped, and a static menu costs nothing at all. Repainting every frame
+ * instead would mark every band dirty and force a full-frame transfer in any
+ * app that drew a UI.
  */
 #pragma once
 
@@ -33,18 +27,21 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "gfx/draw/gfx_font.h"
-#include "gfx/draw/icon.h"
+#include "draw/draw_font.h"
+#include "draw/icon.h"
 #include "input/input.h"
-#include "microui.h"
-#include "ui/ui_style.h"
-#include "ui/ui_transform.h"
+#include "math/geometry/recti.h"
+#include "ui/layout/ui_transform.h"
 
 /* Shared metrics, so the shell and any app UI look like one product. */
 #define UI_TITLE_HEIGHT    56
 #define UI_ROW_HEIGHT      64
 #define UI_ROW_GAP         8
+/* Space above and below a line of text in its row: ui_row(ui_text_height() + UI_TEXT_PAD). */
+#define UI_TEXT_PAD        4
 #define UI_MARGIN          16
+/* A window's inset from its edge to its first row. */
+#define UI_PADDING         12
 
 /* Tap targets, in the smaller dimension. The panel is ~322 px per inch
  * (368x448 on a 1.8" diagonal), so a phone's 44 is only 3.5 mm here: 56 is
@@ -69,13 +66,31 @@
  * over an app's own output rather than replacing it. */
 #define UI_NO_BACKGROUND   0xFFFFFFFFu
 
+/* How button frames are drawn for the rest of this UI frame.
+ *
+ * Buttons only. Checkboxes, sliders and text boxes frame themselves from
+ * the base colour and are left alone; a 3px bezel around a 64px checkbox reads
+ * as a mistake, not as a style. */
+typedef enum {
+    /* A flat fill plus a one-pixel border box. */
+    UI_BUTTON_FLAT = 0,
+
+    /* Lit from the top left, and inverted while a finger is on it, so a
+     * press physically pushes the button in. */
+    UI_BUTTON_BEZEL,
+} ui_button_style_t;
+
+/* How text is drawn: one pass, or a halo behind the ink. */
+typedef enum {
+    UI_TEXT_PLAIN = 0, /* one pass, exactly as today */
+    UI_TEXT_OUTLINED,  /* a halo at all eight neighbouring offsets */
+    UI_TEXT_SHADOWED,  /* a single offset halo, down-right */
+} ui_text_style_t;
+
 void ui_init(void);
 
-/* The microui context, for building the UI between ui_begin and ui_end. */
-mu_Context* ui_context(void);
-
-/* Start a UI frame: touch becomes microui's mouse events, and the button
- * style resets to UI_BUTTON_FLAT (the shell shares one mu_Context). A NULL
+/* Start a UI frame: touch becomes the controls' pointer events, and the
+ * button style resets to UI_BUTTON_FLAT (the shell shares one UI context). A NULL
  * `input` opens a repaint-only boot frame: no input is fed and no pointer
  * state is reported. Use it before input starts, with no touch in progress. */
 void ui_begin(const input_t* input);
@@ -83,11 +98,11 @@ void ui_begin(const input_t* input);
 /* Choose how button frames are drawn for the rest of this frame.
  *
  * Call it after ui_begin() and before the buttons it should apply to; it can
- * be changed again mid-frame, so one UI can mix styles. See ui_style.h for
- * what each style is and why only buttons are affected. */
+ * be changed again mid-frame, so one UI can mix styles; ui_button_style_t
+ * above says what each style is and why only buttons are affected. */
 void ui_set_button_style(ui_button_style_t style);
 
-/* Choose how MU_COMMAND_TEXT is drawn for the rest of this frame. Unlike
+/* Choose how text is drawn for the rest of this frame. Unlike
  * ui_set_button_style(), this is not reset by ui_begin() and is not part
  * of the frame's description in the sense that matters for the repaint
  * hash; see the comment above ui_set_text_style()'s definition in ui.c
@@ -95,20 +110,20 @@ void ui_set_button_style(ui_button_style_t style);
  * does not. */
 void ui_set_text_style(ui_text_style_t style);
 
-/* Choose the font microui measures and draws MU_COMMAND_TEXT with, until
- * called again; ui_init() seeds it with gfx_font_ui(). NULL falls back
- * to gfx_font_ui() rather than being stored. Unlike ui_set_text_style()
+/* Choose the font text is measured and drawn with, until
+ * called again; ui_init() seeds it with draw_font_ui(). NULL falls back
+ * to draw_font_ui() rather than being stored. Unlike ui_set_text_style()
  * and ui_set_transform() below, this does NOT need ui_invalidate(); see
  * ui_set_font()'s ui.c comment for why. Equivalent to
- * ui_set_font_scaled(font, GFX_GLYPH_SCALE). */
-void ui_set_font(const gfx_font_t* font);
+ * ui_set_font_scaled(font, DRAW_GLYPH_SCALE). */
+void ui_set_font(const draw_font_t* font);
 
 /* Like ui_set_font(), but at `scale` glyph cells instead of the fixed
- * GFX_GLYPH_SCALE; see ui_set_font()'s ui.c comment for why carrying the
+ * DRAW_GLYPH_SCALE; see ui_set_font()'s ui.c comment for why carrying the
  * scale inside the font, rather than a separate render-time setting, is
  * what lets a screen mix two text sizes without paying ui_invalidate()
  * every frame. Clamped to at least 1. */
-void ui_set_font_scaled(const gfx_font_t* font, int scale);
+void ui_set_font_scaled(const draw_font_t* font, int scale);
 
 /* The width `str` would measure at the CURRENT font and scale: what
  * ui_set_font()/ui_set_font_scaled() last set. For right-aligning a
@@ -125,10 +140,10 @@ int ui_measure_text(const char* str);
  * byte-identical regardless; see ui_set_text_style()'s ui.c comment for
  * the full argument. */
 
-/* ONE TRANSFORM PER RENDERED PASS, NOT A STACK. microui's command list has no
- * way to carry a transform change partway through it, and components/microui/
+/* ONE TRANSFORM PER RENDERED PASS, NOT A STACK. The frame's command list has
+ * no way to carry a transform change partway through it, and the vendored library
  * is deliberately unpatched, so there is no per-widget nesting. */
-void ui_set_transform(ui_transform_t t);
+void ui_set_transform(affine2x_t t);
 
 /* Increments whenever the canvas shape genuinely changes. THIS IS NOT A
  * CALLBACK, NOBODY SUBSCRIBES TO IT: a caller reads it, remembers it and
@@ -144,51 +159,6 @@ uint32_t ui_layout_generation(void);
  * canvas or leave a gap at it. */
 int ui_width(void);
 int ui_height(void);
-
-/* Opens a full-screen window sized to THIS FRAME's canvas, fixing a
- * microui mismatch: mu_begin_window_ex() only trusts its rect the first
- * time a window (by title) opens, right for a desktop manager
- * remembering a drag, wrong here, where every window must always BE
- * (0, 0, ui_width(), ui_height()), which changes at runtime as the
- * canvas rotates. Uncorrected, a rect pins to the first-open
- * orientation, and a bigger later orientation leaves part of the screen
- * uncleared, showing a previous app's frame. */
-int ui_begin_screen(mu_Context* ctx, const char* title, int opt);
-
-/*
- * FILL content (a banner, a status strip) has no natural width of its own
- * and spans whatever the canvas currently is, which mu_layout_row() with a
- * -1 column already does. FIXED content (a few large tap targets sized to
- * what they need to say) should keep that width and centre instead.
- *
- * ui_centered_rect() is the shared primitive for the fixed case. `canvas_w`
- * is a parameter rather than an internal ui_width() call, which is what
- * keeps it host-testable without reaching the framebuffer.
- */
-
-/* A rect `w` wide, `h` tall, horizontally centred within a canvas
- * `canvas_w` wide, at vertical position `y`. Does not clamp `w` to
- * `canvas_w`: a `w` that exceeds `canvas_w` yields a negative x, which
- * is a caller bug (a button wider than the screen it is centred on)
- * rather than something to paper over silently here. Clamp at the call
- * site if `w` might ever exceed `canvas_w`. */
-static inline mu_Rect
-ui_centered_rect(int canvas_w, int w, int h, int y) {
-    return (mu_Rect){(canvas_w - w) / 2, y, w, h};
-}
-
-/* `icon` filling `r` in `color`, its runs streamed by icon_walk_blocks()
- * rather than collected, so an icon's run count does not bound artwork. A
- * NULL `icon` (no pack holds it) draws `text` centred in `r` instead, in the
- * current font; a control with a label beside its icon passes NULL `text`
- * and keeps the label alone. */
-void ui_draw_icon(mu_Context* ctx, mu_Rect r, const gfx_image_t* icon, const char* text, mu_Color color);
-
-/* An integer-valued slider over the next layout row, shaped like
- * mu_slider_ex(), but integer: that one's float/"%.2f" thumb is the wrong
- * shape for a "06 PX" control. Writes through `value`, returns whether it
- * changed this frame. */
-bool ui_slider_int(mu_Context* ctx, int* value, int lo, int hi, int step);
 
 /* Close the frame and paint it, but only if it would look any different
  * from what is already on screen. Returns whether it drew. It repaints
@@ -239,9 +209,105 @@ void ui_replay_band(int row0, int row1);
 uint32_t ui_band_fallback_count(void);
 
 /* Queues a plain opaque rect for the NEXT ui_end_for_bands() call to bin
- * alongside its own microui commands, for pixels to show in band mode
- * that were never built through microui, such as the shell's own
+ * alongside the frame's own commands, for pixels to show in band mode
+ * that were never built through the face, such as the shell's own
  * home-swipe hint. Drained (and cleared) by that call, so state it every
  * frame it is wanted. `rgb` is plain 0xRRGGBB, not a gfx_color_t; ui.h
  * does not otherwise depend on gfx.h. */
 void ui_queue_band_overlay_rect(int x, int y, int w, int h, uint32_t rgb);
+
+#define UI_FACE_SCOPE_DEPTH 4
+
+/* Colours are 0xRRGGBB. */
+typedef struct {
+    uint32_t panel_face, panel_edge, button_face;
+    uint32_t accent, accent_face, on_accent;
+    uint32_t text, caption, muted;
+    int text_scale;
+    int icon_side;
+} ui_theme_t;
+
+/* The palette for the rest of the frame; NULL restores the shell look. */
+void ui_theme(const ui_theme_t* theme);
+
+/* A rect `w` wide and `h` tall at `y`, centred in a canvas `canvas_w` wide:
+ * fixed-width content, where ui_row() spans the canvas. `w` is not clamped;
+ * one wider than the canvas gets a negative x. */
+static inline recti_t
+ui_centered_rect(int canvas_w, int w, int h, int y) {
+    return (recti_t){(canvas_w - w) / 2, y, w, h};
+}
+
+/* A label is both the visible text and the identity: "Text##key" shows Text
+ * and the whole string is the id; "Text###key" shows Text and only key is the
+ * id. ui_button and ui_tile return true on the frame a tap is released on
+ * them; ui_toggle, ui_slider and ui_dropdown return true when this frame
+ * changed their value. Every _begin pairs with its _end, at most
+ * UI_FACE_SCOPE_DEPTH deep; development builds assert on misuse. Windows
+ * close at the next window verb or ui_end(). */
+void ui_screen(void);
+void ui_window(recti_t r);
+/* A window whose flowed rows scroll vertically once they overflow `r`. */
+void ui_scroll_window(recti_t r);
+/* Flow: ui_next() hands out the rows the window's width wide, or `w` wide and
+ * centred after ui_row_centre(), each row below the last. */
+void ui_row(int h);
+void ui_row_centre(int w, int h);
+recti_t ui_next(void);
+
+bool ui_button(recti_t r, const char* label);
+/* The icon at the left, the label centred in the rest; a NULL icon is
+ * ui_button(). */
+bool ui_button_icon(recti_t r, const char* label, const draw_image_t* icon);
+bool ui_tile(recti_t r, const char* label, bool selected);
+/* The icon above the label, in ui_tile_icon_rect(r); a NULL icon is
+ * ui_tile(). */
+bool ui_tile_icon(recti_t r, const char* label, const draw_image_t* icon, bool selected);
+/* The square a tile `r` gives its icon, for a caller drawing its own
+ * picture of the choice instead. */
+recti_t ui_tile_icon_rect(recti_t r);
+bool ui_toggle(recti_t r, const char* label, bool* on);
+bool ui_slider(recti_t r, const char* label, int* value, int lo, int hi);
+bool ui_dropdown(recti_t r, const char* label, int* index, const char* const* names, int count);
+/* How many frames a dropdown's list stays up after its pick, once the
+ * finger lifts. */
+#define UI_DROPDOWN_CLOSE_FRAMES 4
+bool ui_dropdown_icons(recti_t r, const char* label, int* index, const char* const* names,
+                       const draw_image_t* const* icons, int count);
+
+/* One line's height at the current theme's text scale. */
+int ui_text_height(void);
+/* Text is clipped to its rectangle and centred vertically. */
+void ui_text(recti_t r, const char* s);
+void ui_text_right(recti_t r, const char* s);
+void ui_text_centre(recti_t r, const char* s);
+void ui_caption(recti_t r, const char* s);
+void ui_caption_centre(recti_t r, const char* s);
+void ui_header(recti_t r, const char* title);
+void ui_panel(recti_t r);
+void ui_fill(recti_t r, uint32_t rgb);
+void ui_outline(recti_t r, uint32_t rgb);
+/* The lit and shaded edges of a button's bezel round `r`, shaded off
+ * `face_rgb`; the inside is left as drawn. `sunken` swaps the pair. */
+void ui_bevel(recti_t r, uint32_t face_rgb, bool sunken);
+/* `icon` filling `r` in the text colour; a NULL icon (no pack holds it)
+ * draws `fallback` centred instead, or nothing for a NULL `fallback`. */
+void ui_icon(recti_t r, const draw_image_t* icon, const char* fallback);
+/* The system check mark filling `r` in the text colour: one recorded mark,
+ * painted from the engine pack, however detailed the icon. */
+void ui_check(recti_t r);
+void ui_swatches(recti_t r, const uint32_t* rgb, int cols, int rows);
+
+void ui_disabled_begin(bool disabled);
+void ui_disabled_end(void);
+
+typedef enum { UI_COLOR_FACE, UI_COLOR_TEXT } ui_color_slot_t;
+
+void ui_color_begin(ui_color_slot_t slot, uint32_t rgb);
+void ui_color_end(void);
+void ui_scale_begin(int scale);
+void ui_scale_end(void);
+/* Text verbs inside draw their ink at `alpha`/255 coverage, dithered and
+ * without the outline halo; 0 draws no text, 255 is opaque. */
+void ui_alpha_begin(uint8_t alpha);
+void ui_alpha_end(void);

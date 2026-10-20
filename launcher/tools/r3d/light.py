@@ -48,20 +48,26 @@ def visible_from_region(p, tri_v, double, intersector, rounds, rng, lo, hi):
     normal /= np.maximum(np.linalg.norm(normal, axis=1, keepdims=True), 1e-12)
     points = 1 + (area / max(area.mean(), 1e-12)).astype(np.int64)
     lo, hi = np.array(lo), np.array(hi)
+    packed = np.stack([a, b, c, normal], axis=1)
     seen = np.zeros(len(tri_v), dtype=bool)
+    todo = np.repeat(np.arange(len(tri_v)), points)
+    gathered = packed[todo].transpose(1, 0, 2).copy()
+    gathered_double = double[todo]
     for _ in range(rounds):
-        todo = np.repeat(np.nonzero(~seen)[0], points[~seen])
         if len(todo) == 0:
             break
+        gathered_a, gathered_b, gathered_c, gathered_normal = gathered
         r1, r2 = np.sqrt(rng.random(len(todo)))[:, None], rng.random(len(todo))[:, None]
-        on = (1 - r1) * a[todo] + r1 * (1 - r2) * b[todo] + r1 * r2 * c[todo]
+        on = (1 - r1) * gathered_a
+        on += r1 * (1 - r2) * gathered_b
+        on += r1 * r2 * gathered_c
         eye = lo + rng.random((len(todo), 3)) * (hi - lo)
         d = eye - on
         dist = np.linalg.norm(d, axis=1)
         d /= dist[:, None]
-        side = (d * normal[todo]).sum(axis=1)
-        facing = (side > 0.01) | double[todo]
-        origin = on + normal[todo] * np.where(side >= 0, 0.5, -0.5)[:, None]
+        side = (d * gathered_normal).sum(axis=1)
+        facing = (side > 0.01) | gathered_double
+        origin = on + gathered_normal * np.where(side >= 0, 0.5, -0.5)[:, None]
         hit = np.zeros(len(todo), dtype=bool)
         if np.any(facing):
             f = np.nonzero(facing)[0]
@@ -69,7 +75,13 @@ def visible_from_region(p, tri_v, double, intersector, rounds, rng, lo, hi):
             hit_dist = np.full(len(f), np.inf)
             hit_dist[index_ray] = np.linalg.norm(locations - origin[f][index_ray], axis=1)
             hit[f] = hit_dist < dist[f] - 1.0
-        seen[todo[facing & ~hit]] = True
+        visible = facing & ~hit
+        seen[todo[visible]] = True
+        if np.any(visible):
+            keep = ~seen[todo]
+            todo = todo[keep]
+            gathered = gathered[:, keep].copy()
+            gathered_double = gathered_double[keep]
     log(f"visible from the region: {np.count_nonzero(seen)} of {len(tri_v)} triangles")
     return seen
 
@@ -105,7 +117,8 @@ def visible_from_path(p, tri_v, double, intersector, poses, width, height, lens,
     Rays start at the `near` plane and pass a single-sided face seen from
     behind, as the rasterizer clips and culls; such a face's twin wound the
     other way is what the ray sees. `poses` are (eye, forward) rows; see
-    camera_rays for the rest."""
+    camera_rays for the rest. Each ray stops after a hit beyond its first
+    drawn distance plus `tie`; rays with no drawn hit continue to the query limit."""
     from r3d.poses import camera_rays
 
     a, b, c = p[tri_v[:, 0]], p[tri_v[:, 1]], p[tri_v[:, 2]]
@@ -118,15 +131,17 @@ def visible_from_path(p, tri_v, double, intersector, poses, width, height, lens,
         origin, direction = camera_rays(width, height, lens, pose[:3], pose[3:], samples, margin)
         ahead = pose[3:] / np.linalg.norm(pose[3:])
         origin = origin + direction * (near / (direction @ ahead))[:, None]
-        hit, ray, where = intersector.all_hits(origin, direction)
-        if len(hit) == 0:
-            continue
-        distance = ((where - origin[ray]) * direction[ray]).sum(axis=1)
-        drawn = double[hit] | ((normal[hit] * direction[ray]).sum(axis=1) < 0)
-        shown = np.where(drawn, hit, twin[hit])
         nearest = np.full(len(origin), np.inf)
-        np.minimum.at(nearest, ray[shown >= 0], distance[shown >= 0])
-        seen[shown[(shown >= 0) & (distance <= nearest[ray] + tie)]] = True
+        active = np.ones(len(origin), dtype=bool)
+        for hit, ray, where in intersector.hit_rounds(origin, direction, active):
+            distance = ((where - origin[ray]) * direction[ray]).sum(axis=1)
+            drawn = double[hit] | ((normal[hit] * direction[ray]).sum(axis=1) < 0)
+            shown = np.where(drawn, hit, twin[hit])
+            valid = shown >= 0
+            nearest[ray[valid]] = np.minimum(nearest[ray[valid]], distance[valid])
+            within = distance <= nearest[ray] + tie
+            seen[shown[valid & within]] = True
+            active[ray[~within]] = False
     reached = np.zeros(len(tri_v), dtype=bool)
     reached[group[seen]] = True
     seen = reached[group]

@@ -9,8 +9,11 @@
 #include "anim/anim_tracks.h"
 #include "anim/playback/anim_layer.h"
 #include "core/memory.h"
+#include "math/linear/mat3f.h"
 #include "render/skin/r3d_skin_light.h"
 #include "scene/scene.h"
+#include "scene/scene_conventions.h"
+#include "scene/scene_format.h"
 #include "scene/scene_shell.h"
 
 /* Absent ambient contributes zero. */
@@ -18,7 +21,6 @@
 #define SCENE_TONEMAP_WHITE_NONE      0.0F
 #define SCENE_LIGHT_INTENSITY_DEFAULT 0.0F
 #define SCENE_LIGHT_COLOR_DEFAULT     ((vec3f_t){1.0F, 1.0F, 1.0F})
-#define SCENE_LIGHT_AXIS              ((vec3f_t){0.0F, 1.0F, 0.0F})
 
 typedef enum { SCENE_LIGHT_NONE, SCENE_LIGHT_DIRECTIONAL } scene_light_kind_t;
 
@@ -35,32 +37,13 @@ typedef struct {
 #define SCENE_LIGHT_FAILURE_ALBEDO "skin vertex colors required"
 #define SCENE_LIGHT_FAILURE_NORMAL "skin normal transform invalid"
 
-typedef r3d_placement_t scene_placement_t;
+typedef struct {
+    mat3f_t linear;
+    vec3f_t position;
+} scene_asset_transform_t;
 
-/* The scene pack entry, written by tools/r3d/scene_asset.py; the layout is
- * in docs/render/Scene-Files.md. Its rows are read in place, so they are the
- * entry's bytes, little-endian as the device is. */
-#define SCENE_ASSET                   ASSET_TYPE('S', 'C', 'N', 'E')
-#define SCENE_ASSET_VERSION           2U
-#define SCENE_LIGHT_KIND_DIRECTIONAL  1U
-#define SCENE_ASSET_DEFAULT_CLIP_NONE 0xFFFFU
-#define SCENE_ASSET_HEADER_SIZE       56U
-#define SCENE_ASSET_AT_COUNTS         2U
-#define SCENE_ASSET_AT_OFFSETS        20U
-
-typedef enum {
-    SCENE_ASSET_NAMES,
-    SCENE_ASSET_TRANSFORMS,
-    SCENE_ASSET_RENDERERS,
-    SCENE_ASSET_CAMERAS,
-    SCENE_ASSET_LIGHTS,
-    SCENE_ASSET_SKINS,
-    SCENE_ASSET_ANIMATORS,
-    SCENE_ASSET_CLIPS,
-    SCENE_ASSET_SETTINGS,
-    SCENE_ASSET_PART_COUNT
-} scene_asset_part_t;
-
+/* The rows of the SCNE entry (scene_format.h) are read in place, so they are
+ * the entry's bytes, little-endian as the device is. */
 typedef struct {
     uint16_t entity, pad;
     char mesh[ASSET_NAME_MAX];
@@ -101,7 +84,7 @@ typedef struct {
     uint16_t entity_count, renderer_count, camera_count;
     uint16_t light_count, skinned_renderer_count, animator_count, clip_count;
     const char (*names)[ASSET_NAME_MAX];
-    const scene_placement_t* transforms;
+    const scene_asset_transform_t* transforms;
     const scene_asset_renderer_t* renderers;
     const scene_asset_camera_t* cameras;
     const scene_asset_light_t* lights;
@@ -115,10 +98,10 @@ typedef struct {
  * ASSET_ERR_BOUNDS or ASSET_ERR_FORMAT. Else fills `out`. */
 asset_status_t scene_asset_open(asset_view_t entry, scene_asset_t* out);
 
-/* A mesh view and the placement built from its entity's transform. */
+/* A mesh view and the model matrix built from its entity's transform. */
 typedef struct {
     r3d_lit_mesh_t mesh;
-    r3d_placement_t placement;
+    mat4f_t model;
     scene_entity_t entity;
     bool placed; /* false while the transform is the identity: drawn as it is */
 } scene_renderer_t;
@@ -204,6 +187,10 @@ void* scene_allocate(size_t bytes, memory_kind_t kind);
 int scene_loaded_count(void);
 scene_t* scene_loaded_at(int index);
 
+/* Only activation and a seek of the active camera count as cuts. Other discontinuities,
+ * such as a camera transform teleport or a clip switch, converge within a few frames. */
+void scene_draw_camera_cut(const scene_t* scene, scene_entity_t entity);
+
 /* The index of the scene's camera `camera` (NULL: its first), or -1. */
 int scene_camera_index(const scene_t* scene, const char* camera);
 
@@ -212,7 +199,7 @@ void scene_draw_forget(const scene_t* scene);
 void scene_draw_release(void);
 
 /* True when drawing the mesh as it is gives the same picture. */
-bool scene_transform_is_identity(const scene_placement_t* transform);
+bool scene_transform_is_identity(const mat4f_t* transform);
 
 size_t scene_storage_carve(size_t* end, size_t bytes, size_t align);
 #define SCENE_STORAGE_RESERVE(layout, end, member, type, count)                                                        \

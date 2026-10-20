@@ -3,6 +3,7 @@
 # Build the self-test image for Espressif's QEMU and run it with no board.
 #
 #   ./launcher/test/run_qemu_tests.sh [--perf-scope] [--icount] [--timeout S] [--no-build]
+#   ./launcher/test/run_qemu_tests.sh --icount-ratchet [--no-build]
 #   ./launcher/test/run_qemu_tests.sh --suite <name> [--suite ...] \
 #                                     [--touch <down|up>,<x>,<y> ...] [--screenshot <png>]
 #   ./launcher/test/run_qemu_tests.sh --perf-scope --suite <name> --build-only
@@ -39,12 +40,13 @@ RUN_ARGS=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --perf-scope) PERF=1 ;;
+        --icount-ratchet) AUTORUN=0; RUN_ARGS="$RUN_ARGS --icount-ratchet" ;;
         --icount) RUN_ARGS="$RUN_ARGS --icount" ;;
         --no-build) BUILD=0 ;;
         # One image serves however many instances a driver then starts
         # against it by hand, each with its own qemu_run.py --workdir.
         --build-only) RUN=0 ;;
-        --timeout)
+        --timeout | --log | --workdir)
             [ $# -ge 2 ] || { echo "$1 needs a value" >&2; exit 2; }
             RUN_ARGS="$RUN_ARGS $1 $2"
             shift
@@ -56,7 +58,7 @@ while [ $# -gt 0 ]; do
             shift
             ;;
         *)
-            echo "usage: run_qemu_tests.sh [--perf-scope] [--icount] [--timeout S] [--no-build] [--build-only]" >&2
+            echo "usage: run_qemu_tests.sh [--perf-scope] [--icount | --icount-ratchet] [--timeout S] [--no-build] [--build-only]" >&2
             echo "       run_qemu_tests.sh --suite <name> [--suite ...] [--screenshot <png>]" >&2
             exit 2
             ;;

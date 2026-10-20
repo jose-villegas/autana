@@ -1,7 +1,7 @@
 /*
  * transformx: a transform of a Q16.16: position, rotation, scale and the
  * cached model matrix. The operations, which matrix call to use when, and
- * the axes are transform_template.h's; docs/math/README.md says how they are
+ * the axes are transform_template.h's; docs/math/Linear.md says how they are
  * made.
  */
 #pragma once
@@ -22,5 +22,5 @@ MATH_DEFINE_TRANSFORM(transformx, vec3x, quatx, mat4x, mathx)
     {.position = {0, 0, 0},                                                                                            \
      .rotation = {0, 0, 0, MATHX_ONE},                                                                                 \
      .scale = {MATHX_ONE, MATHX_ONE, MATHX_ONE},                                                                       \
-     .matrix = {{{MATHX_ONE, 0, 0, 0}, {0, MATHX_ONE, 0, 0}, {0, 0, MATHX_ONE, 0}, {0, 0, 0, MATHX_ONE}}},             \
+     .matrix = MAT4X_IDENTITY,                                                                                         \
      .cached = true}

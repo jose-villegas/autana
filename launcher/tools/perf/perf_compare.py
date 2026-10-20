@@ -4,18 +4,22 @@ import argparse
 import json
 import math
 import random
+import shlex
 import sys
 import subprocess
 from pathlib import Path
 from statistics import mean
 from types import SimpleNamespace
 
-from layout_measure import analyse, autana_command, required_seeds, run_flash, filter_limits, validate_filters, FilterOverlap
+from layout_measure import analyse, autana_command, required_seeds, run_flash, filter_limits, validate_filters, split_filters, FilterOverlap
+from capture import require_same_board
 from seed_statistics import compare, minimum_seeds, permutation_samples
 
 DEFAULT_THRESHOLD = 1.0
 DEFAULT_ALPHA = 0.05
 MAX_RUNS = 16
+CALIBRATION_SEEDS = 2
+CALIBRATION_RUNS = 2
 
 
 def schedule(cap, alpha):
@@ -32,6 +36,9 @@ def schedule(cap, alpha):
 
 def observations(records):
     """Complete per-seed rows, counters, and capture test ownership."""
+    require_same_board({f"{index}: " + ", ".join(run.get("capture", "unnamed")
+                        for entry in record["suites"].values() for run in entry["runs"]): record.get("board")
+                        for index, record in enumerate(records)})
     rows, instructions, owners = {}, {}, {}
     for record in records:
         for suite, entry in record["suites"].items():
@@ -169,12 +176,15 @@ def measure(args, runner=None):
                 used.add(seed)
                 repeated = sum(any(len(entry["runs"]) >= 2 for entry in record["suites"].values())
                                for record in records[side])
-                actual_runs = 2 if look == 0 and repeated < 2 else runs
-                item = dict(side=side, seed=seed, runs=actual_runs, suites=suites, look=look + 1)
+                actual_runs = CALIBRATION_RUNS if look == 0 and repeated < CALIBRATION_SEEDS else runs
+                console_lines = getattr(args, "send_" + side, None) or []
+                item = dict(side=side, seed=seed, runs=actual_runs, suites=suites, look=look + 1,
+                            console_send=console_lines)
                 plan.append(item)
                 save_plan()
                 flash_args = SimpleNamespace(out=destination / side,
                     project=getattr(args, "project_" + side), runs=actual_runs, suite=suites,
+                    send=console_lines,
                     timeout=args.timeout, wait=args.wait, autana=getattr(args, "autana", None))
                 try:
                     record = run_flash(flash_args, seed, runner)
@@ -190,6 +200,8 @@ def measure(args, runner=None):
                         break
                     continue
                 failures = 0
+                require_same_board({str(index): item.get("board")
+                                    for index, item in enumerate([record, *records["a"], *records["b"]])})
                 records[side].append(record)
                 silent = [suite for suite, _, _ in args.suite
                           if len(records["a"]) == len(records["b"]) == 1 and
@@ -239,7 +251,9 @@ def measure(args, runner=None):
                  for side in records}
     write_summary(destination / "summary.md", args, records, decisions, estimates, sizes, plan,
                   incomplete=incomplete)
-    payload = dict(threshold=args.threshold, alpha=args.alpha, look_alpha=look_alpha,
+    payload = dict(command=getattr(args, "command", None),
+                   label_a=args.label_a, label_b=args.label_b, threshold=args.threshold,
+                   alpha=args.alpha, look_alpha=look_alpha,
                    rng_seed=args.rng_seed, max_seeds=args.max_seeds, first_pass=sizes[0],
                    max_runs=MAX_RUNS, incomplete=incomplete,
                    rows=decisions, estimates=estimates, plan=plan)
@@ -263,6 +277,10 @@ def write_summary(path, args, records, rows, estimates, sizes, plan, incomplete=
              f"Intervals are {100 * (1 - args.alpha / len(sizes) / 2):g}% two-sided Welch intervals on log seed means. "
              "Holm corrects difference and equivalence tests separately over all rows. "
              "Inconclusive rows alone receive more seeds at the planned looks.", ""]
+    if getattr(args, "send_a", None) or getattr(args, "send_b", None):
+        for side in ("a", "b"):
+            setup = getattr(args, "send_" + side, None) or []
+            lines += [f"{side.upper()} setup: " + (", ".join(f"`{line}`" for line in setup) or "none"), ""]
     lines += ["R by look: " + "; ".join(
         f"{look}: " + ", ".join(str(value) for value in sorted({item["runs"] for item in plan if item["look"] == look}))
         for look in sorted({item["look"] for item in plan})), ""]
@@ -311,10 +329,16 @@ def main(argv=None):
     """Parse a comparison, preflight validation, or restore request."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--validate-plan", action="store_true")
+    parser.add_argument("--estimate-plan", action="store_true")
+    parser.add_argument("--no-restore", action="store_true")
     parser.add_argument("--restore-project", type=Path)
     parser.add_argument("--out", "-o", type=Path)
     parser.add_argument("--project-a", type=Path)
     parser.add_argument("--project-b", type=Path)
+    parser.add_argument("--send-a", action="append", metavar="LINE",
+                        help="A setup before every capture; repeatable, sequence should be idempotent")
+    parser.add_argument("--send-b", action="append", metavar="LINE",
+                        help="B setup before every capture; repeatable, sequence should be idempotent")
     parser.add_argument("--label-a", default="A")
     parser.add_argument("--label-b", default="B")
     parser.add_argument("--suite", nargs=3, action="append", metavar=("NAME", "TESTS", "TABLE"))
@@ -325,13 +349,15 @@ def main(argv=None):
     parser.add_argument("--timeout", type=int, default=1800)
     parser.add_argument("--wait", type=int, default=3600)
     parser.add_argument("--autana", help="inject an autana-compatible command for host replay")
+    argv = list(sys.argv[1:] if argv is None else argv)
     args = parser.parse_args(argv)
+    args.command = shlex.join(["python", "launcher/tools/perf/perf_compare.py", *argv])
     if args.restore_project:
         return subprocess.call(autana_command("--wait", str(args.wait), "flash", "rel",
                                              "--project", str(args.restore_project), override=args.autana))
     if not 0 < args.threshold < 100 or not 0 < args.alpha < 1 or min(args.timeout, args.wait) <= 0:
         parser.error("threshold, alpha and time limits must be positive and in range")
-    if args.validate_plan:
+    if args.validate_plan or args.estimate_plan:
         if not args.suite:
             parser.error("--suite is required")
         try:
@@ -341,6 +367,13 @@ def main(argv=None):
                     validate_filters(args.suite, filter_limits(project))
         except ValueError as error:
             parser.error(str(error))
+        if args.estimate_plan:
+            from perf_job import job_estimate
+            seeds = schedule(args.max_seeds, args.alpha)[0]
+            runs = seeds + min(seeds, CALIBRATION_SEEDS) * (CALIBRATION_RUNS - 1)
+            requests = sum(len(split_filters(args.suite, filter_limits(project)))
+                           for project in (args.project_a, args.project_b))
+            print(job_estimate(2 * seeds, runs * requests, args.timeout, not args.no_restore))
         return 0
     if not all((args.out, args.project_a, args.project_b, args.suite)):
         parser.error("--out, --project-a, --project-b and --suite are required")
