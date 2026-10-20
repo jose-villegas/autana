@@ -9,10 +9,10 @@
 
 #include "esp_log.h"
 
-#include "input/buttons.h"
-#include "input/imu.h"
-#include "input/imu_calib.h"
-#include "input/touch.h"
+#include "input/buttons/buttons.h"
+#include "input/motion/imu.h"
+#include "input/motion/imu_calib.h"
+#include "input/touch/touch.h"
 #include "services/settings.h"
 
 static const char TAG[] = "input";

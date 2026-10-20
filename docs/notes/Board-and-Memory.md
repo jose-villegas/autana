@@ -55,8 +55,8 @@ I2C0 has 2.2 kΩ pull-ups to 3.3 V.<sup>[[81]](../Citations.md#81)</sup> Each de
 | Display | SH8601 (V1) / CO5300 (V2) | ✓ | 368×448 RGB565 |
 | Touch | FT3168 (V1) / CST820 (V2) | ✓ | the address that answers identifies the revision |
 | IO expander | TCA9554 | optional | resets display and touch when fitted |
-| Power management | AXP2101 | ✓ | battery charging, the PWR button ([Input-and-Sensors.md](Input-and-Sensors.md)) |
-| IMU | QMI8658 | ✓ | axes in [Input-and-Sensors.md](Input-and-Sensors.md) |
+| Power management | AXP2101 | ✓ | battery charging, the PWR button ([Buttons.md](../input/Buttons.md)) |
+| IMU | QMI8658 | ✓ | axes in [Motion-Axes.md](../input/Motion-Axes.md) |
 | Real-time clock | PCF85063 | ✓ | |
 | Audio codec | ES8311 | ✓ | datasheet address `0x30` is 8-bit; I2C wants `0x18` |
 | microSD | - | optional | see [SD card](#sd-card) |

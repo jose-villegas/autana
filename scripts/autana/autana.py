@@ -419,6 +419,39 @@ def buildid(args):
     return 0
 
 
+BATTERY_PERCENT_MAX = 100
+BATTERY_VOLTAGE_MAX_MV = 0x3fff
+
+
+def battery(args):
+    reject_unknown("battery", args, ("--json",))
+    json_output = read_json_flag(args, "usage: autana battery [--json]")
+    code, replies = send("BATTERY", reply="BATTERY")
+    if code or not replies:
+        return code or 1
+    try:
+        result = parse_battery(replies[-1])
+    except ValueError as error:
+        print(error, file=sys.stderr)
+        return 1
+    print(json.dumps(result) if json_output else replies[-1])
+    return 0
+
+
+def parse_battery(reply):
+    match = re.fullmatch(
+        r"BATTERY valid=([01]) usb=([01]) battery=([01]) mv=([0-9]+) percent=([0-9]+) "
+        r"charge=(unknown|trickle|pre|cc|cv|done|idle) "
+        r"flow=(unknown|standby|charging|discharging) reg00=0x([0-9a-fA-F]{2}) reg01=0x([0-9a-fA-F]{2})", reply)
+    if not match:
+        raise ValueError(f"invalid BATTERY reply: {reply}")
+    valid, usb, present, mv, percent, charge, flow, reg00, reg01 = match.groups()
+    if int(percent) > BATTERY_PERCENT_MAX or int(mv) > BATTERY_VOLTAGE_MAX_MV:
+        raise ValueError(f"invalid BATTERY reply: {reply}")
+    return dict(valid=valid == "1", usb=usb == "1", battery=present == "1", mv=int(mv),
+                percent=int(percent), charge=charge, flow=flow, reg00=int(reg00, 16), reg01=int(reg01, 16))
+
+
 def framewatch(args):
     """The frame watch's counts for the last frame and the sites repeating
     now, as the board's own JSON, a development build only."""
@@ -450,16 +483,20 @@ TONE_MS_PER_SECOND = 1000
 
 
 def tone(args):
-    usage = "usage: autana tone <hz> <ms> [volume] [--json]"
+    usage = "usage: autana tone <hz> <ms> [volume] [--internal] [--json]"
     rest = list(args)
-    json_output = read_json_flag(rest[-1:] if rest and rest[-1] == "--json" else [], usage)
-    if json_output:
-        rest.pop()
+    flags = []
+    while rest and rest[-1].startswith("--"):
+        flags.append(rest.pop())
+    if len(flags) != len(set(flags)) or any(flag not in ("--json", "--internal") for flag in flags):
+        sys.exit(usage)
+    json_output = "--json" in flags
+    internal = "--internal" in flags
     if len(rest) not in (2, 3) or any(not re.fullmatch(r"[0-9]+", arg) for arg in rest):
         sys.exit(usage)
     ms = int(rest[1])
     seconds = TONE_MARGIN_SECONDS + TONE_CAPTURE_COUNT * ms / TONE_MS_PER_SECOND
-    code, replies = send("TONE " + " ".join(rest), reply="TONE", seconds=seconds)
+    code, replies = send("TONE " + " ".join(rest) + (" internal" if internal else ""), reply="TONE", seconds=seconds)
     if code != 0 or not replies:
         return code or 1
     if replies[-1].startswith(("TONE usage:", "TONE error:")):
@@ -490,12 +527,16 @@ def sound(args):
 def parse_tone(reply):
     match = re.fullmatch(
         r"TONE (heard|not heard) ([0-9]+) Hz: (-?[0-9]+\.[0-9]+) dB "
-        r"\(silence (-?[0-9]+\.[0-9]+) dB\), open ([0-9]+) B DMA", reply)
+        r"\(silence (-?[0-9]+\.[0-9]+) dB\), path (internal|acoustic), "
+        r"measured (-?[0-9]+\.[0-9]+ Hz|n/a), open ([0-9]+) B DMA", reply)
     if not match:
         raise ValueError(f"invalid TONE reply: {reply}")
-    heard, hz, tone_db, silence_db, dma = match.groups()
+    heard, hz, tone_db, silence_db, path, measured_hz, dma = match.groups()
+    measured_hz = None if measured_hz == "n/a" else float(measured_hz.removesuffix(" Hz"))
+    # hz_error is Hz: measured minus requested.
     return {"hz": int(hz), "tone_db": float(tone_db), "silence_db": float(silence_db),
-            "heard": heard == "heard", "open_dma_bytes": int(dma)}
+            "heard": heard == "heard", "open_dma_bytes": int(dma), "path": path,
+            "measured_hz": measured_hz, "hz_error": None if measured_hz is None else measured_hz - int(hz)}
 
 
 def parse_heap(reply):
@@ -1621,8 +1662,8 @@ COMMAND_GROUPS = (
             ("suite list [text] [--json]", "the suites this project registers"))),
         one("selftest", selftest, "selftest [seconds] [--verbose]",
             "build diagnostics+autorun, run every suite on the board"),
-        one("tone", tone, "tone <hz> <ms> [volume] [--json]",
-            "play a tone on the speaker and hear it on the mic; development builds"),
+        one("tone", tone, "tone <hz> <ms> [volume] [--internal] [--json]",
+            "check a tone through the mic or silent codec feedback; development builds"),
     )),
     ("watch", "Watch the board", (
         one("monitor", monitor, "monitor [seconds] [--follow] [--stream] [--elf PATH]",
@@ -1634,6 +1675,7 @@ COMMAND_GROUPS = (
         Command("screenshot", screenshot, (
             ("screenshot [--as-shown|--framebuffer] [-o PATH]", "the panel as PATH.png plus PATH.json"),
             ("screenshot --frames N -o PATH", "N consecutive frames, PATH-00 on, stepped while frozen"),)),
+        one("battery", battery, "battery [--json]", "fresh battery and USB status; development builds"),
         one("heap", heap, "heap [--json]", "free internal heap and largest block (development builds)"),
         Command("perf", perf, (
             ("perf", "the frame_cost names seen and the counter events"),

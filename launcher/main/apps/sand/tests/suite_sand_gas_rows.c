@@ -38,7 +38,7 @@ static void
 gas_rows_fixture(void) {
     gr_cells = malloc((size_t)GASROW_W * (size_t)GASROW_H);
     TEST_ASSERT_NOT_NULL(gr_cells);
-    sand_init(&gr, gr_cells, GASROW_W, GASROW_H, 4242u);
+    sand_init(&gr, gr_cells, GASROW_W, GASROW_H, 4242U);
     sand_clear(&gr);
     sand_gas_row_audit_failures = 0;
     sand_gas_row_audit_enable(true);
@@ -102,7 +102,7 @@ build_mixed_gas_board(bool burnable) {
 
 static void
 assert_no_stranded_gas(const char* why) {
-    TEST_ASSERT_EQUAL_UINT_MESSAGE(0u, sand_gas_row_audit_failures, why);
+    TEST_ASSERT_EQUAL_UINT_MESSAGE(0U, sand_gas_row_audit_failures, why);
 }
 
 static void
@@ -200,7 +200,7 @@ test_the_skip_actually_fires_and_the_audit_sees_it(void) {
 
     run_steps(&gr, 20, 0, 1);
 
-    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0u, sand_gas_row_audit_skippable,
+    TEST_ASSERT_GREATER_THAN_UINT_MESSAGE(0U, sand_gas_row_audit_skippable,
                                           "no row was ever skippable, so the audit checked nothing and the "
                                           "tests above assert nothing - the fixture no longer has gas-free "
                                           "rows, or the map is armed everywhere");

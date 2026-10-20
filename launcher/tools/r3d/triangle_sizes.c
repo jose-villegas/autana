@@ -14,10 +14,10 @@ typedef struct {
 static bool
 project(const r3d_lens_t* lens, const int16_t p[3], point_t* out) {
     const vec3f_t l = mat4f_apply(&lens->m, (vec3f_t){(float)p[0], (float)p[1], (float)p[2]});
-    if (l.z <= lens->near_z) {
+    if (l.z <= lens->project.near_z) {
         return false;
     }
-    *out = (point_t){lens->center_x + (l.x / l.z), lens->center_y + (l.y / l.z)};
+    *out = (point_t){lens->project.cx + (l.x / l.z), lens->project.cy + (l.y / l.z)};
     return true;
 }
 

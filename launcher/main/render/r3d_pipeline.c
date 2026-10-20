@@ -19,14 +19,12 @@ void
 r3d_lens_init(r3d_lens_t* lens, const render_view_t* view, int position_scale) {
     const float ticks_to_units = 1.0F / (float)position_scale;
     const mat4f_t camera = mat4f_view_from_axes(view->screen_x, view->screen_y, view->forward, view->position);
-    const mat4f_t pixels = mat4f_scale_rows(camera, (vec3f_t){view->pixels_per_unit, view->pixels_per_unit, 1.0F});
+    const mat4f_t pixels = mat4f_scale_rows(camera, (vec3f_t){view->lens.fx, view->lens.fy, 1.0F});
     lens->m = mat4f_scale_columns(pixels, (vec3f_t){ticks_to_units, ticks_to_units, ticks_to_units});
-    lens->center_x = view->center_x;
-    lens->center_y = view->center_y;
-    lens->near_z = view->near_z;
-    lens->near_subpixels = view->near_z / (float)R3D_SUBPIXEL;
-    lens->snap_cx = (lens->center_x * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
-    lens->snap_cy = (lens->center_y * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
+    lens->project = (projectf_t){1.0F, -1.0F, view->lens.cx, view->lens.cy, view->lens.near_z};
+    lens->near_subpixels = view->lens.near_z / (float)R3D_SUBPIXEL;
+    lens->snap_cx = (lens->project.cx * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
+    lens->snap_cy = (lens->project.cy * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
     lens->width = view->viewport.width;
     lens->height = view->viewport.height;
 }
@@ -36,10 +34,10 @@ r3d_lens_fit(r3d_lens_t* lens, int width, int height) {
     const float scale_x = (float)width / (float)lens->width;
     const float scale_y = (float)height / (float)lens->height;
     lens->m = mat4f_scale_rows(lens->m, (vec3f_t){scale_x, scale_y, 1.0F});
-    lens->center_x = (float)width * 0.5F;
-    lens->center_y = (float)height * 0.5F;
-    lens->snap_cx = (lens->center_x * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
-    lens->snap_cy = (lens->center_y * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
+    lens->project.cx = (float)width * 0.5F;
+    lens->project.cy = (float)height * 0.5F;
+    lens->snap_cx = (lens->project.cx * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
+    lens->snap_cy = (lens->project.cy * (float)R3D_SUBPIXEL) + R3D_SNAP_BIAS;
     lens->width = width;
     lens->height = height;
 }
@@ -154,8 +152,8 @@ push_children(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_
 int
 r3d_pipeline_cull(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, uint16_t* out, r3d_pipeline_work_t* work) {
     planef_t* planes = work->cull.planes;
-    planef_frustum(&lens->m, lens->near_z, (vec2f_t){lens->center_x, lens->center_y},
-                   rectf_from_edges(0.0F, 0.0F, (float)lens->width, (float)lens->height), planes);
+    planef_frustum(&lens->m, &lens->project, rectf_from_edges(0.0F, 0.0F, (float)lens->width, (float)lens->height),
+                   planes);
 
     walk_entry_t* stack = work->cull.stack;
     int top = 0;
@@ -215,7 +213,7 @@ transform_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_
         const int16_t* p = mesh->positions[v];
         const vec3f_t l = mat4f_apply(&lens->m, (vec3f_t){(float)p[0], (float)p[1], (float)p[2]});
         r3d_pipeline_vertex_t* out = &cs[v];
-        if (l.z <= lens->near_z) {
+        if (l.z <= lens->project.near_z) {
             out->iz = 0.0F;
             unbounded = true;
             continue;
@@ -282,7 +280,7 @@ draw_split_histogram(int* weight, const r3d_lit_mesh_t* mesh, const uint16_t* cl
 }
 
 static int
-draw_split_row(const int* weight, int height) {
+draw_split_row(const int* weight, int height, int top_permille) {
     int total = 0;
     int current = 0;
     for (int bucket = 0; bucket < DRAW_SPLIT_BUCKETS; bucket++) {
@@ -292,24 +290,28 @@ draw_split_row(const int* weight, int height) {
     if (total == 0) {
         return height / 2;
     }
+    const int64_t target = (int64_t)total * top_permille;
     current = 0;
     int prefix = 0;
     for (int bucket = 0; bucket < DRAW_SPLIT_BUCKETS; bucket++) {
         current += weight[bucket];
-        prefix += current;
-        if (2 * prefix >= total) {
-            return mathi_clamp((2 * bucket + 1) * height / (2 * DRAW_SPLIT_BUCKETS), 1, height - 1);
+        if (current > 0 && (int64_t)(prefix + current) * RASTER_SPLIT_PERMILLE >= target) {
+            const int64_t bucket_weight = (int64_t)current * RASTER_SPLIT_PERMILLE;
+            const int64_t position = ((bucket * bucket_weight) + target) - ((int64_t)prefix * RASTER_SPLIT_PERMILLE);
+            return mathi_clamp((int)(position * height / (bucket_weight * DRAW_SPLIT_BUCKETS)), 1, height - 1);
         }
+        prefix += current;
     }
     return height / 2;
 }
 
 int
 r3d_pipeline_draw_split(const r3d_lit_mesh_t* mesh, const uint16_t* clusters, const r3d_pipeline_rows_t* rows,
-                        int count, int height) {
+                        int count, int height, int top_permille) {
+    assert(top_permille >= 0 && top_permille <= RASTER_SPLIT_PERMILLE);
     int weight[DRAW_SPLIT_BUCKETS + 1] = {0};
     draw_split_histogram(weight, mesh, clusters, rows, count, height);
-    return draw_split_row(weight, height);
+    return draw_split_row(weight, height, top_permille);
 }
 
 static r3d_span_vertex_t
@@ -356,19 +358,15 @@ clip_to_plane(const planef_t* p, const clip_vertex_t* in, int n, clip_vertex_t* 
     return m;
 }
 
-/* The identity as a constant, so the guard planes built through it stay in lens
- * space and fold to the values they had when they were written out by hand. */
+/* Guard planes are evaluated in lens space. */
 static const mat4f_t LENS_SPACE = MAT4F_IDENTITY;
 
 /* The near plane, then the screen's guard band: every corner left projects
  * inside what r3d_span takes. */
 static int
-clip_to_guard(const r3d_lens_t* lens, r3d_pipeline_work_t* work, int n) {
+clip_to_guard(r3d_pipeline_work_t* work, int n) {
     clip_vertex_t* poly = work->clip.poly;
-    const float g = (float)GUARD_PIXELS;
-    planef_t* planes = work->clip.planes;
-    planef_frustum(&LENS_SPACE, lens->near_z, (vec2f_t){lens->center_x, lens->center_y}, rectf_from_edges(-g, -g, g, g),
-                   planes);
+    const planef_t* planes = work->clip.planes;
     clip_vertex_t* other = work->clip.other;
     for (int p = 0; p < PLANE_FRUSTUM_COUNT && n >= 3; p++) {
         n = clip_to_plane(&planes[p], poly, n, other);
@@ -396,7 +394,7 @@ static inline __attribute__((always_inline)) void
 draw_clipped(const r3d_lens_t* lens, bool double_sided, const uint16_t* face_color, const r3d_span_target_t* target,
              r3d_pipeline_work_t* work) {
     clip_vertex_t* poly = work->clip.poly;
-    const int n = clip_to_guard(lens, work, 3);
+    const int n = clip_to_guard(work, 3);
     if (n < 3) {
         return;
     }
@@ -452,7 +450,8 @@ draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
 
 static inline __attribute__((always_inline)) void
 draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], const uint16_t* tri,
-              const uint16_t* face_color, bool double_sided, const r3d_span_target_t* target, bool writes) {
+              const uint16_t* face_color, bool double_sided, const r3d_span_target_t* target, bool writes,
+              r3d_pipeline_work_t* work) {
     if (misses_every_centre(v[0], v[1], v[2], target)) {
         return;
     }
@@ -476,7 +475,7 @@ draw_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_c
         const uint16_t* face_color = mesh->face_colors == NULL ? NULL : &mesh->face_colors[t];
         const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
         if (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F) {
-            draw_in_front(mesh, v, tri, face_color, c->double_sided, target, writes);
+            draw_in_front(mesh, v, tri, face_color, c->double_sided, target, writes, work);
         } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
             draw_rebuilt(mesh, lens, tri, face_color, c->double_sided, target, work);
         }
@@ -506,19 +505,34 @@ draw_writing(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
     }
 }
 
-/* Chooses once per draw whether the target's writers follow each fill. */
-RENDER_IRAM_ATTR void
-r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
-                  const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
-                  r3d_pipeline_work_t* work) {
-    if (target->writer_count != 0) {
-        draw_writing(mesh, lens, clusters, count, cs, rows, target, work);
-        return;
-    }
+/* Keep once-per-draw plane setup in flash to preserve the hot-path IRAM budget. */
+static __attribute__((noinline)) void
+build_guard_planes(const r3d_lens_t* lens, r3d_pipeline_work_t* work) {
+    const float g = (float)GUARD_PIXELS;
+    planef_frustum(&LENS_SPACE, &lens->project, rectf_from_edges(-g, -g, g, g), work->clip.planes);
+}
+
+static RENDER_IRAM_ATTR __attribute__((noinline)) void
+draw_reading(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
+             const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
+             r3d_pipeline_work_t* work) {
     for (int i = 0; i < count; i++) {
         if (rows != NULL && rows_miss_target(&rows[clusters[i]], target)) {
             continue;
         }
         draw_cluster(mesh, lens, &mesh->clusters[clusters[i]], cs, target, false, work);
     }
+}
+
+/* Chooses once per draw whether the target's writers follow each fill. */
+void
+r3d_pipeline_draw(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t* clusters, int count,
+                  const r3d_pipeline_vertex_t* cs, const r3d_pipeline_rows_t* rows, const r3d_span_target_t* target,
+                  r3d_pipeline_work_t* work) {
+    build_guard_planes(lens, work);
+    if (target->writer_count != 0) {
+        draw_writing(mesh, lens, clusters, count, cs, rows, target, work);
+        return;
+    }
+    draw_reading(mesh, lens, clusters, count, cs, rows, target, work);
 }

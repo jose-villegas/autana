@@ -69,6 +69,9 @@ const camera_t* scene_camera_lens(const scene_t* scene, const char* camera);
 /* Returns false for a non-camera entity or an invalid presentation. */
 bool scene_camera_set_present(scene_t* scene, scene_entity_t camera, camera_present_t present);
 
+/* Returns false for a non-camera entity or an invalid style. */
+bool scene_camera_set_small_fill(scene_t* scene, scene_entity_t camera, small_fill_t fill);
+
 /* Setters attach a directional light, initially white with zero intensity; refusals change nothing. */
 bool scene_light_set_color(scene_t* scene, scene_entity_t entity, vec3f_t linear_rgb);
 bool scene_light_set_intensity(scene_t* scene, scene_entity_t entity, float intensity);

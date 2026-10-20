@@ -7,8 +7,8 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "input/gravity.h"
-#include "input/imu.h"
+#include "input/motion/gravity.h"
+#include "input/motion/imu.h"
 #include "math/linear/vec_convert.h"
 #include "math/scalar/math_const.h"
 #include "math/scalar/units.h"

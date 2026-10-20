@@ -117,6 +117,14 @@ case "${1:-}" in
             case "$image" in render/gpu/*) continue ;; esac
             stem=$(basename "$image")
             stem=${stem%%.*}
+            # A face example's renders are named after its file.
+            case "$image" in
+                ui/*)
+                    example=${stem%%-*}
+                    if [ -f "$TOOLS_DIR/ui_examples/$example.c" ] || [ -f "$TOOLS_DIR/ui_examples/screens/$example.c" ]; then
+                        continue
+                    fi ;;
+            esac
             if ! grep -qF -- "$stem" "$TOOLS_DIR/render_doc_images.sh" "$TOOLS_DIR"/scenes/*.sh "$TOOLS_DIR/doc_images_demo.sh" "$TOOLS_DIR/doc_import_examples.py" \
                 $app_image_scripts; then
                 claimed=0
@@ -190,13 +198,10 @@ run "$B/boot_anim_render" 0 "$@" --frames "$(((boot_ms + 15) / 16 + 1))" --dt 16
     -o "$B/boot.bmp" --video "$B/boot.avi" 2> "$WORK/boot_anim_video.log"
 gif_from_avi "$B/boot.avi" "$OUT/overview/boot-anim.gif" "transpose=2,fps=15" "stats_mode=full"
 
-# The UI toolkit's gallery views.
-U=$WORK/ui_widgets
-run sh launcher/tools/render/scenes/ui_widgets_render_host.sh -o "$U" > "$WORK/ui_widgets.log"
-for bmp in "$U"/*.bmp; do
-    run "$PYTHON" -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' \
-        "$bmp" "$OUT/ui/$(basename "$bmp" .bmp).png"
-done
+# The face examples: each one's renders, and each control's states table.
+U=$WORK/ui_examples
+run sh launcher/tools/render/scenes/ui_examples_render_host.sh -o "$U" > "$WORK/ui_examples.log"
+run "$PYTHON" "$TOOLS_DIR/ui_examples_doc.py" --renders "$U" --out "$OUT"
 
 # Each app that has doc images makes them.
 for script in $app_image_scripts; do

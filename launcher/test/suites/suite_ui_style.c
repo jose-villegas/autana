@@ -3,7 +3,7 @@
  *
  * ui_style.h splits a style into geometry (ui_bezel_spans() and ui_shade(),
  * `static inline` in the header so they link on a host with neither gfx nor
- * microui.c) and painting (styled_draw_frame() in ui.c, which turns the spans
+ * microui.c) and painting (begin_control() in ui_widgets.c, which turns the spans
  * into mu_draw_rect() calls and so cannot). This suite exercises only the
  * geometry, the same reasoning as suite_icons.c: nobody can eyeball five
  * overlapping rectangles reliably, so the shape is checked here rather than by

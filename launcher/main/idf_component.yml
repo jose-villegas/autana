@@ -10,7 +10,7 @@ dependencies:
   # a private dependency of the vendored BSP.
   waveshare/esp_lcd_sh8601:
     version: "^2.0.0"
-  # input/touch.c calls esp_lcd_touch_*() directly, but this is only a
+  # input/touch/touch.c calls esp_lcd_touch_*() directly, but this is only a
   # private dependency of the vendored BSP's touch drivers, so main declares
   # it directly.
   espressif/esp_lcd_touch:

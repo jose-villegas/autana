@@ -5,7 +5,7 @@
 
 #include "apps/input_lab/imu_probe.h"
 #include "display/display.h"
-#include "input/imu_sample.h"
+#include "input/motion/imu_sample.h"
 #include "math/scalar/mathf_round.h"
 
 #define TEST_DT_MS 20

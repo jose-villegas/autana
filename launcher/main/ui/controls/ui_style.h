@@ -16,9 +16,24 @@
     {(unsigned char)(((rgb) >> UI_RGB_RED_SHIFT) & 0xFF), (unsigned char)(((rgb) >> UI_RGB_GREEN_SHIFT) & 0xFF),       \
      (unsigned char)((rgb) & 0xFF), 255}
 
+/* The shell look, what ui_init() styles and ui_theme(NULL) restores.
+ * Deliberately dark: this is an OLED, so black pixels are off pixels; it
+ * costs less power and looks better than a grey chrome. It has no panel
+ * edge, so a slider there is drawn without a frame. */
+#define UI_SHELL_BACKGROUND   0x0A0C14
+#define UI_SHELL_TEXT         0xE6EAF2
+#define UI_SHELL_BUTTON       0x161A28
+#define UI_SHELL_BUTTON_HOVER 0x232A40
+#define UI_SHELL_ACCENT       0x3DDC97
+#define UI_SHELL_PANEL_FACE   0x10141F
+#define UI_SHELL_CAPTION      0x8C96AA
+#define UI_SHELL_MUTED        0x4B5266
+/* An icon beside a label, in pixels: half again the label's line. */
+#define UI_SHELL_ICON_SIDE    24
+
 /* Where red and green sit in an 0xRRGGBB value; blue is the low byte. */
-#define UI_RGB_RED_SHIFT   (2 * CHAR_BIT)
-#define UI_RGB_GREEN_SHIFT CHAR_BIT
+#define UI_RGB_RED_SHIFT      (2 * CHAR_BIT)
+#define UI_RGB_GREEN_SHIFT    CHAR_BIT
 
 /* UI_RGB()'s inverse: a colour's 0xRRGGBB, alpha dropped. */
 static inline uint32_t
@@ -103,8 +118,7 @@ ui_frame_spans(mu_Rect r, mu_Color face, int thickness, mu_Color top_left, mu_Co
 }
 
 /* `sunken` swaps which edge pair is lit, raised into pressed; see
- * ui_frame_spans() for the shared geometry and its all-or-nothing rule,
- * same as UI_BUTTON_FLAT falls back to when there is no room for edges. */
+ * ui_frame_spans() for the shared geometry and its all-or-nothing rule. */
 static inline int
 ui_bezel_spans(mu_Rect r, mu_Color face, bool sunken, ui_span_t* out, int max) {
     const mu_Color lit = ui_shade(face, UI_BEZEL_HIGHLIGHT);

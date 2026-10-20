@@ -134,7 +134,7 @@ test_dirt_takes_on_moisture_and_dries_out_again(void) {
 static void
 test_water_falling_onto_a_sleeping_dirt_bed_still_wets_it(void) {
     uint8_t* blocks;
-    sand_test_grid_init(&wide, &wide_cells, &blocks, WIDE_W, WIDE_H, 7u);
+    sand_test_grid_init(&wide, &wide_cells, &blocks, WIDE_W, WIDE_H, 7U);
     sand_set_soak(&wide, SAND_SOAK_PER_MATERIAL);
 
     const int floor_y = WIDE_H - 1;
@@ -192,7 +192,7 @@ wide_count_dirt_in_row(int y) {
 static void
 test_dirt_made_from_soaked_sand_still_dries_out_asleep(void) {
     uint8_t* blocks;
-    sand_test_grid_init(&wide, &wide_cells, &blocks, WIDE_W, WIDE_H, 11u);
+    sand_test_grid_init(&wide, &wide_cells, &blocks, WIDE_W, WIDE_H, 11U);
     sand_set_soak(&wide, SAND_SOAK_PER_MATERIAL);
 
     const int floor_y = WIDE_H - 1;
@@ -317,7 +317,7 @@ test_consecutive_dirt_pours_land_on_different_bands(void) {
      * by value with this comment tying the two together, the same
      * discipline MATERIAL_LIQUID_DEPTH_BAND's own comment (material.h)
      * asks of any two constants that have to agree). */
-    s.pour_phase = 1u << 6;
+    s.pour_phase = 1U << 6;
 
     sand_spawn(&s, 6, H / 2, 1, MAT_DIRT);
     const int second_tone = first_dirt_tone_in_columns(W / 2, W);
@@ -356,7 +356,8 @@ test_soil_loses_its_tone_across_a_wetting_and_gets_a_fresh_one_drying(void) {
     fixture();
     sand_clear(&s);
 
-    const int x = W / 2, y = H / 2;
+    const int x = W / 2;
+    const int y = H / 2;
     sand_set(&s, x - 1, y, STONE);
     sand_set(&s, x + 1, y, STONE);
     sand_set(&s, x, y + 1, STONE);
@@ -489,7 +490,7 @@ test_a_watered_bank_does_not_dry_back_to_one_flat_tone(void) {
     uint8_t* grid = malloc((size_t)DRY_BANK_W * DRY_BANK_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(grid, "the drying-bank grid must fit in what the framebuffer leaves");
     sand_t t;
-    sand_init(&t, grid, DRY_BANK_W, DRY_BANK_H, 12345u);
+    sand_init(&t, grid, DRY_BANK_W, DRY_BANK_H, 12345U);
     sand_clear(&t);
     sand_set_soak(&t, SAND_SOAK_PER_MATERIAL);
 
@@ -944,7 +945,8 @@ test_water_percolates_diagonally_as_well_as_straight_down(void) {
     /* One row above the floor, so the grains the water has to reach
      * are resting on it - a grain with empty space under it falls
      * out of the scene before any of this gets a turn. */
-    const int cx = W / 2, cy = H - 3;
+    const int cx = W / 2;
+    const int cy = H - 3;
 
     sand_set(&s, cx, cy, CELL_SOIL(MAT_DIRT, 1, SOIL_MOISTURE_MAX));
     sand_set(&s, cx - 1, cy, STONE); /* no way out sideways */

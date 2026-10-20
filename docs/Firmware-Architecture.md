@@ -83,8 +83,11 @@ flowchart TB
     end
     subgraph Platform["platform"]
         subgraph R9["input and audio"]
-            Input["input/<br/><i>touch, buttons, motion, gesture</i>"]:::hw
+            Input["input/<br/><i>touch/, motion/, buttons/, mapping/</i>"]:::hw
             Audio["audio/<br/><i>codec, PCM output, microphone capture</i>"]:::hw
+        end
+        subgraph PowerRow["power"]
+            Power["power/<br/><i>PMU keys, battery snapshots</i>"]:::hw
         end
         subgraph R10["display"]
             Display["display/<br/><i>viewport, orientation, panel clock</i>"]:::hw
@@ -112,9 +115,12 @@ flowchart TB
         Math["math/<br/><i>scalars to transforms, checked by PACKAGE-INCLUDE</i>"]
     end
 
-    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> R10 --> R11 --> R12 --> R13 --> R14 --> R15 --> R16 --> R17
+    R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9 --> PowerRow --> R10 --> R11 --> R12 --> R13 --> R14 --> R15 --> R16 --> R17
     Shell -.->|"calls through app/app.h"| Apps
 ```
+
+Power layer: [the PMU owner](../launcher/main/power/README.md); `power/` sits
+below `input/` and `audio/`.
 
 Audio layer: [audio docs](audio/README.md).
 The engine sound layer owns [the mixer, voices and buses](audio/Sound-Mixer.md)
@@ -151,10 +157,10 @@ as well as stored sounds and sample cursors.
   [Gfx-and-Presentation.md](Gfx-and-Presentation.md#the-path). render/ sits
   above gfx/ because it draws into gfx's
   [render targets](Gfx-and-Presentation.md#render-targets).
-- **Drivers are split from the logic they feed.** `touch.c`, `buttons.c`
-  and `imu.c` touch hardware; `touch_fsm`, `button_fsm`, `gesture` and
-  `tilt` are pure and tested on a laptop. The same split runs through every
-  folder, and is what the [Testing-Guide.md](Testing-Guide.md) relies on.
+- **Drivers are split from the logic they feed.** `power_device.c`, `touch.c`, `buttons.c`
+  and `imu.c` touch hardware; `power_decode`, `power_cache`, `touch_fsm`,
+  `button_fsm`, `gesture` and `tilt` are pure and tested on a laptop.
+  The same split runs through every folder, and is what the [Testing-Guide.md](Testing-Guide.md) relies on.
 - **The shell names no vendor firmware.** `main.c` and `shell/` reach the
   chip's vendor code only through modules that own it:
   `input/input_shell.h` (`input_start`, `input_poll`, `input_read_gravity`),
@@ -402,7 +408,7 @@ free in `exit()`, and keep what a frame needs from one frame to the next. A
 log line belongs to a change: log when a value changes, not every frame it
 holds.
 
-The gates are in [Testing-Guide.md](Testing-Guide.md#the-frame-watch-as-a-gate):
+The gates are in [Performance and budgets](testing/Performance-and-Budgets.md#the-frame-watch-as-a-gate):
 every host render scene, and every on-device test that presents more than
 `FRAME_WATCH_WARMUP` times.
 
@@ -579,8 +585,8 @@ slider needs to track a drag and the UP owed when a lift never reached the UI
 (`ui/input/ui_pointer.h`); `suite_ui_pointer_microui.c` and `suite_ui_widgets.c` pin
 it against real microui, since hover is microui's own state and event-list
 tests cannot see it. It applies to every control that reacts to a press, so
-reworking input handling means preserving it. A press within `snap.reach` of a
-control is aimed at its nearest edge; its raw position remains the drag
+reworking input handling means preserving it. A press or a lift within `snap.reach` of a
+control is aimed at its nearest edge; the raw press position remains the drag
 origin, and later motion stays raw.
 
 ---
@@ -588,9 +594,9 @@ origin, and later motion stays raw.
 ## Related
 
 - [notes/README.md](notes/README.md): the hardware underneath: memory
-  budget, panel and touch behaviour
-  ([Input-and-Sensors.md](notes/Input-and-Sensors.md)), flashing and
-  recovery.
+  budget, panel behaviour, flashing and recovery.
+- [input/README.md](input/README.md): touch, buttons, motion axes and
+  calibration, tilt and gravity.
 - [render/README.md](render/README.md), `render/`: drawing a baked mesh (cameras,
   the span rasterizer, the two-core frame), making one from a source model, and
   describing a scene of objects.

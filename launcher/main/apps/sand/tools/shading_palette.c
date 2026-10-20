@@ -172,10 +172,10 @@ record(const material_frame_t* mf, cell_t c, unsigned hash, unsigned mask, unsig
     const material_pattern_t pat = material_colours(mf, c, hash, mask, depth, out);
     const group_t g = group_of(c, depth);
     uint8_t bits = PIN_NONE;
-    bits |= base_state ? PIN_STATE : 0u;
-    bits |= (base_state && hash == 0) ? PIN_HASH : 0u;
-    bits |= (base_state && mask == 0) ? PIN_MASK : 0u;
-    bits |= (base_state && depth == 0) ? PIN_DEPTH : 0u;
+    bits |= base_state ? PIN_STATE : 0U;
+    bits |= (base_state && hash == 0) ? PIN_HASH : 0U;
+    bits |= (base_state && mask == 0) ? PIN_MASK : 0U;
+    bits |= (base_state && depth == 0) ? PIN_DEPTH : 0U;
     const int n_out = pat == MATERIAL_HATCHED ? 3 : 1;
     for (int i = 0; i < n_out; i++) {
         seen[g][gfx_color_swap(out[i])] |= bits;
@@ -188,10 +188,10 @@ record(const material_frame_t* mf, cell_t c, unsigned hash, unsigned mask, unsig
 
 static void
 enumerate_full_sweep(const material_frame_t* mf) {
-    for (unsigned c = 0; c < 256u; c++) {
-        for (unsigned depth = 0; depth <= 256u; depth++) {
-            for (unsigned mask = 0; mask < 256u; mask++) {
-                for (unsigned hash = 0; hash < 256u; hash++) {
+    for (unsigned c = 0; c < 256U; c++) {
+        for (unsigned depth = 0; depth <= 256U; depth++) {
+            for (unsigned mask = 0; mask < 256U; mask++) {
+                for (unsigned hash = 0; hash < 256U; hash++) {
                     record(mf, (cell_t)c, hash, mask, depth, true);
                 }
             }
@@ -201,9 +201,9 @@ enumerate_full_sweep(const material_frame_t* mf) {
 
 static void
 enumerate_liquid_masks(const material_frame_t* mf, unsigned c) {
-    for (unsigned mask = 0; mask < 256u; mask++) {
-        for (unsigned hash = 0; hash < 16u; hash++) {
-            record(mf, (cell_t)c, hash, mask, 0u, false);
+    for (unsigned mask = 0; mask < 256U; mask++) {
+        for (unsigned hash = 0; hash < 16U; hash++) {
+            record(mf, (cell_t)c, hash, mask, 0U, false);
         }
     }
 }
@@ -211,7 +211,7 @@ enumerate_liquid_masks(const material_frame_t* mf, unsigned c) {
 static void
 enumerate_liquid_phase(material_frame_t* mf, unsigned phase) {
     mf->foam_phase = phase;
-    for (unsigned c = 0; c < 256u; c++) {
+    for (unsigned c = 0; c < 256U; c++) {
         if (material_of((cell_t)c)->kind == KIND_LIQUID) {
             enumerate_liquid_masks(mf, c);
         }
@@ -224,7 +224,7 @@ enumerate_liquid_gravity_step(material_frame_t* mf, int i) {
     const int gx = i == GRAVITY_RING_STEPS ? 0 : (int)lround(1000.0 * cos(a));
     const int gy = i == GRAVITY_RING_STEPS ? 0 : (int)lround(1000.0 * sin(a));
     material_frame_set_gravity(mf, gx, gy);
-    for (unsigned phase = 0; phase < 16u; phase++) {
+    for (unsigned phase = 0; phase < 16U; phase++) {
         enumerate_liquid_phase(mf, phase);
     }
 }
@@ -240,17 +240,17 @@ enumerate_liquid_gravity(void) {
 static void
 enumerate_glass_cullet(void) {
     material_frame_t mf = base_frame();
-    for (unsigned phase = 0; phase < 64u; phase++) {
+    for (unsigned phase = 0; phase < 64U; phase++) {
         mf.cullet_phase = phase;
         mf.glass_phase = (int)phase * 37;
-        for (unsigned c = 0; c < 256u; c++) {
+        for (unsigned c = 0; c < 256U; c++) {
             const uint8_t m = CELL_MATERIAL(c);
             if (m != MAT_SAND && m != MAT_GLASS) {
                 continue;
             }
-            for (unsigned mask = 0; mask < 16u; mask++) {
-                for (unsigned hash = 0; hash < 256u; hash++) {
-                    record(&mf, (cell_t)c, hash, mask, 0u, false);
+            for (unsigned mask = 0; mask < 16U; mask++) {
+                for (unsigned hash = 0; hash < 256U; hash++) {
+                    record(&mf, (cell_t)c, hash, mask, 0U, false);
                 }
             }
         }
@@ -392,9 +392,9 @@ plant_canopy(sand_t* s, int cx, int top, int ground) {
 static void
 plant_roots(sand_t* s, int cx, int ground, int lean) {
     for (int r = 0; r < 18; r++) {
-        set_v(s, cx + (r * lean) / 3, ground + r, MATX(MATX_ROOT));
-        set_v(s, cx + (r * lean) / 3 + 1, ground + r, MATX(MATX_ROOT));
-        set_v(s, cx - r / 2, ground + r / 2 + 2, MATX(MATX_ROOT));
+        set_v(s, cx + ((r * lean) / 3), ground + r, MATX(MATX_ROOT));
+        set_v(s, cx + ((r * lean) / 3) + 1, ground + r, MATX(MATX_ROOT));
+        set_v(s, cx - (r / 2), ground + (r / 2) + 2, MATX(MATX_ROOT));
     }
 }
 
@@ -413,7 +413,7 @@ scene_plants(sand_t* s) {
     rect_v(s, 0, ground, VIEW_W / CELL_PX, GRID_W, CELL_SOIL(MAT_DIRT, 1, 0));
     rect_v(s, 0, ground + 14, VIEW_W / CELL_PX, GRID_W, CELL_WITH_MOISTURE(CELL_MAKE(MAT_DIRT, 0), 4));
     for (int t = 0; t < 3; t++) {
-        const int cx = 40 + t * 72;
+        const int cx = 40 + (t * 72);
         plant_canopy(s, cx, ground - 80, ground);
         plant_roots(s, cx, ground, t - 1);
     }
@@ -428,8 +428,8 @@ scene_mixed(sand_t* s) {
     rect_v(s, 160, 130, 200, 176, MATX(MATX_ICE));
     spawn_v(s, 110, 170, 22, MAT_STONE);
     for (int i = 0; i < 250; i++) {
-        spawn_cell_v(s, 70 + (i * 3) % 30, 4, 2, CELL_MAKE(MAT_WATER, 0));
-        spawn_cell_v(s, 205 + (i * 3) % 14, 4, 2, CELL_MAKE(MAT_ACID, 0));
+        spawn_cell_v(s, 70 + ((i * 3) % 30), 4, 2, CELL_MAKE(MAT_WATER, 0));
+        spawn_cell_v(s, 205 + ((i * 3) % 14), 4, 2, CELL_MAKE(MAT_ACID, 0));
         if (i > 120) {
             spawn_cell_v(s, 80, 4, 2, CELL_MAKE(MAT_OIL, 0));
         }
@@ -476,7 +476,8 @@ static uint32_t leaf_time_ms;
 
 static void
 paint_begin(material_frame_t* mf, uint32_t time_ms) {
-    const int gx = GRAVITY_X, gy = GRAVITY_Y;
+    const int gx = GRAVITY_X;
+    const int gy = GRAVITY_Y;
     material_frame_set_gravity(mf, gx, gy);
     mf->foam_phase = 7;
     mf->cullet_phase = 5;
@@ -487,10 +488,11 @@ paint_begin(material_frame_t* mf, uint32_t time_ms) {
     material_wood_leaf_top5(gx, gy, &last_down, leaf_top5);
     leaf_time_ms = time_ms;
 
-    const int ax = mathi_abs(gx), ay = mathi_abs(gy);
+    const int ax = mathi_abs(gx);
+    const int ay = mathi_abs(gy);
     depth_vertical_dominant = ay >= ax;
     const unsigned dom = depth_vertical_dominant ? (unsigned)ay : (unsigned)ax;
-    depth_scale_q8 = dom != 0u ? (256u * (unsigned)mathi_len(gx, gy)) / dom : 256u;
+    depth_scale_q8 = dom != 0U ? (256U * (unsigned)mathi_len(gx, gy)) / dom : 256U;
     depth_ax = (unsigned)ax;
     depth_ay = (unsigned)ay;
     depth_v_reverse = gy < 0;
@@ -505,8 +507,8 @@ paint_begin(material_frame_t* mf, uint32_t time_ms) {
 
 static void
 put_px(gfx_color_t* fb, uint8_t* grp, int px, int py, gfx_color_t c, group_t g) {
-    fb[py * PANEL_W + px] = c;
-    grp[py * PANEL_W + px] = (uint8_t)g;
+    fb[(py * PANEL_W) + px] = c;
+    grp[(py * PANEL_W) + px] = (uint8_t)g;
 }
 
 /* row is always non-NULL; above/below are NULL past the grid's top/bottom
@@ -569,7 +571,7 @@ horiz_dominant_step(int* herr, int ysign) {
         return 0;
     }
     *herr += (int)depth_ay;
-    if (depth_ax > 0u && *herr >= (int)depth_ax) {
+    if (depth_ax > 0U && *herr >= (int)depth_ax) {
         *herr -= (int)depth_ax;
         return ysign;
     }
@@ -583,21 +585,21 @@ static unsigned
 liquid_depth_count(int cx, int cy, bool here_liquid, bool same_material, bool cross_row, bool chain_ok,
                    unsigned src_count) {
     if (!here_liquid) {
-        return 0u;
+        return 0U;
     }
     if (same_material) {
         if (!depth_vertical_dominant) {
-            depth_top_row[cx] = 255u;
+            depth_top_row[cx] = 255U;
         }
-        return src_count < MATERIAL_LIQUID_DEPTH_BAND ? src_count + 1u : MATERIAL_LIQUID_DEPTH_BAND;
+        return src_count < MATERIAL_LIQUID_DEPTH_BAND ? src_count + 1U : MATERIAL_LIQUID_DEPTH_BAND;
     }
-    const bool committed = depth_vertical_dominant ? depth_top_row[cx] == (uint8_t)cy : depth_top_row[cx] != 255u;
+    const bool committed = depth_vertical_dominant ? depth_top_row[cx] == (uint8_t)cy : depth_top_row[cx] != 255U;
     if (committed) {
-        return 0u;
+        return 0U;
     }
-    const unsigned carry = (cross_row && !chain_ok) ? 0u : src_count;
-    depth_top_row[cx] = depth_vertical_dominant ? (uint8_t)cy : 0u;
-    return carry < MATERIAL_LIQUID_DEPTH_BAND ? carry + 1u : MATERIAL_LIQUID_DEPTH_BAND;
+    const unsigned carry = (cross_row && !chain_ok) ? 0U : src_count;
+    depth_top_row[cx] = depth_vertical_dominant ? (uint8_t)cy : 0U;
+    return carry < MATERIAL_LIQUID_DEPTH_BAND ? carry + 1U : MATERIAL_LIQUID_DEPTH_BAND;
 }
 
 /* material_colours()'s depth input: root age, wood-leaf gust, or the liquid
@@ -616,7 +618,7 @@ cell_shading_depth(const uint8_t* above, const uint8_t* row, const uint8_t* belo
         return depth_liquid;
     }
     const int wind_pos = (cx * wind_ux_q8 + cy * wind_uy_q8) >> 8;
-    return material_wood_leaf_wave(leaf_time_ms, wind_pos, w, hash) + 1u;
+    return material_wood_leaf_wave(leaf_time_ms, wind_pos, w, hash) + 1U;
 }
 
 static void
@@ -630,10 +632,10 @@ paint_cell_block(gfx_color_t* fb, uint8_t* grp, int px0, int py0, const gfx_colo
         }
         return;
     }
-    const int shine_base_q8 = px0 * shine_ux_q8 + py0 * shine_uy_q8;
+    const int shine_base_q8 = (px0 * shine_ux_q8) + (py0 * shine_uy_q8);
     for (int dy = 0; dy < CELL_PX; dy++) {
         for (int dx = 0; dx < CELL_PX; dx++) {
-            const int shine_q8 = shine_base_q8 + dx * shine_ux_q8 + dy * shine_uy_q8;
+            const int shine_q8 = shine_base_q8 + (dx * shine_ux_q8) + (dy * shine_uy_q8);
             const int along = (shine_q8 >> 8) & (SAND_PAINT_SHINE_PERIOD - 1);
             put_px(fb, grp, px0 + dx, py0 + dy, along < CELL_PX ? col[2] : col[0], g);
         }
@@ -645,7 +647,7 @@ paint_cell_block(gfx_color_t* fb, uint8_t* grp, int px0, int py0, const gfx_colo
  * diagonal sweeps across the grid. */
 static int
 depth_row_step(int cy, int vdir) {
-    if (!depth_vertical_dominant || depth_ay == 0u) {
+    if (!depth_vertical_dominant || depth_ay == 0U) {
         return 0;
     }
     const int xsign = depth_h_reverse ? 1 : -1;
@@ -706,12 +708,13 @@ paint_column(material_frame_t* mf, const paint_row_ctx_t* ctx, int cy, int cx, i
     const int qx = depth_vertical_dominant ? cx + ctx->row_step : cx - ctx->hdir;
     const bool qx_ok = qx >= 0 && qx < ctx->w;
     bool cross_row;
-    const uint8_t *src_ptr, *src_arr;
+    const uint8_t* src_ptr;
+    const uint8_t* src_arr;
     column_liquid_source(ctx, cx, step, &cross_row, &src_ptr, &src_arr);
     const bool here_liquid = material_of(ctx->row[cx])->kind == KIND_LIQUID;
     const bool same_material =
         here_liquid && qx_ok && src_ptr != NULL && CELL_MATERIAL(src_ptr[qx]) == CELL_MATERIAL(ctx->row[cx]);
-    const unsigned src_count = qx_ok ? src_arr[qx] : 0u;
+    const unsigned src_count = qx_ok ? src_arr[qx] : 0U;
 
     const unsigned count = liquid_depth_count(cx, cy, here_liquid, same_material, cross_row, ctx->chain_ok, src_count);
     depth_cur_row[cx] = (uint8_t)count;
@@ -733,7 +736,7 @@ paint_row(material_frame_t* mf, const uint8_t* grid, int cy, gfx_color_t* fb, ui
     int herr = 0;
 
     for (int cx_i = 0; cx_i < ctx.w; cx_i++) {
-        paint_column(mf, &ctx, cy, cx_first + cx_i * cx_step, &herr, fb, grp);
+        paint_column(mf, &ctx, cy, cx_first + (cx_i * cx_step), &herr, fb, grp);
     }
 
     uint8_t* tmp = depth_cur_row;
@@ -759,22 +762,26 @@ paint_frame(const uint8_t* grid, gfx_color_t* fb, uint8_t* grp, uint32_t time_ms
 static double
 linear_to_srgb(double c) {
     c = c < 0.0 ? 0.0 : (c > 1.0 ? 1.0 : c);
-    return c <= 0.0031308 ? c * 12.92 : 1.055 * pow(c, 1.0 / 2.4) - 0.055;
+    return c <= 0.0031308 ? c * 12.92 : (1.055 * pow(c, 1.0 / 2.4)) - 0.055;
 }
 
 static uint16_t
 lab_to_key(gfx_lab_t p) {
-    const double L = p.l / 100.0, A = p.a / 100.0, B = p.b / 100.0;
-    double l = L + 0.3963377774 * A + 0.2158037573 * B;
-    double m = L - 0.1055613458 * A - 0.0638541728 * B;
-    double s = L - 0.0894841775 * A - 1.2914855480 * B;
+    const double L = p.l / 100.0;
+    const double A = p.a / 100.0;
+    const double B = p.b / 100.0;
+    double l = L + (0.3963377774 * A) + (0.2158037573 * B);
+    double m = L - (0.1055613458 * A) - (0.0638541728 * B);
+    double s = L - (0.0894841775 * A) - (1.2914855480 * B);
     l = l * l * l;
     m = m * m * m;
     s = s * s * s;
-    const double r = linear_to_srgb(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s);
-    const double g = linear_to_srgb(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s);
-    const double b = linear_to_srgb(-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s);
-    const unsigned r5 = (unsigned)lround(r * 31.0), g6 = (unsigned)lround(g * 63.0), b5 = (unsigned)lround(b * 31.0);
+    const double r = linear_to_srgb((4.0767416621 * l) - (3.3077115913 * m) + (0.2309699292 * s));
+    const double g = linear_to_srgb((-1.2684380046 * l) + (2.6097574011 * m) - (0.3413193965 * s));
+    const double b = linear_to_srgb((-0.0041960863 * l) - (0.7034186147 * m) + (1.7076147010 * s));
+    const unsigned r5 = (unsigned)lround(r * 31.0);
+    const unsigned g6 = (unsigned)lround(g * 63.0);
+    const unsigned b5 = (unsigned)lround(b * 31.0);
     return (uint16_t)(r5 << 11 | g6 << 5 | b5);
 }
 
@@ -823,7 +830,10 @@ lloyd_assign(const gq_t* q, const gfx_lab_t* c, int k, int* assign, int iter, do
 static void
 lloyd_update_centers(const gq_t* q, gfx_lab_t* c, int k, const int* assign) {
     for (int j = q->fixed; j < k; j++) {
-        double sl = 0, sa = 0, sb = 0, sw = 0;
+        double sl = 0;
+        double sa = 0;
+        double sb = 0;
+        double sw = 0;
         for (int i = 0; i < q->n; i++) {
             if (assign[i] == j) {
                 sl += q->w[i] * q->p[i].l;
@@ -941,13 +951,13 @@ static bool pinned[G_COUNT][KEYS];
 static void
 pin_depth_steps(void) {
     material_frame_t mf = {0};
-    for (unsigned m = MAT_EMPTY + 1u; m < MAT_COUNT; m++) {
+    for (unsigned m = MAT_EMPTY + 1U; m < MAT_COUNT; m++) {
         if (material_by_id((material_id_t)m)->kind != KIND_LIQUID) {
             continue;
         }
         for (unsigned d = 0; d <= MATERIAL_LIQUID_DEPTH_BAND; d++) {
             gfx_color_t out[3];
-            material_colours(&mf, CELL_MAKE(m, MASS_MAX), 0u, 0u, d, out);
+            material_colours(&mf, CELL_MAKE(m, MASS_MAX), 0U, 0U, d, out);
             pinned[group_of(CELL_MAKE(m, MASS_MAX), d)][gfx_color_swap(out[0])] = true;
         }
     }
@@ -979,9 +989,9 @@ quant_group_totals(uint64_t* total_used, int* active) {
 static void
 quant_populate_group(gq_t* q, group_t g, uint64_t total_used, int active) {
     q->n = g == G_SPARE ? 0 : count_seen(g, PIN_NONE);
-    q->key = malloc((size_t)q->n * sizeof *q->key + 1);
-    q->p = malloc((size_t)q->n * sizeof *q->p + 1);
-    q->w = malloc((size_t)q->n * sizeof *q->w + 1);
+    q->key = malloc(((size_t)q->n * sizeof *q->key) + 1);
+    q->p = malloc(((size_t)q->n * sizeof *q->p) + 1);
+    q->w = malloc(((size_t)q->n * sizeof *q->w) + 1);
     q->c = malloc((size_t)(q->n + 1) * sizeof *q->c);
     q->next_c = malloc((size_t)(q->n + 1) * sizeof *q->next_c);
     int i = 0;
@@ -991,8 +1001,8 @@ quant_populate_group(gq_t* q, group_t g, uint64_t total_used, int active) {
         }
         q->key[i] = (uint16_t)k;
         q->p[i] = key_lab[k];
-        q->w[i] =
-            0.5 * (double)used[g][k] / (double)(total_used ? total_used : 1) + 0.5 / ((double)active * (double)q->n);
+        q->w[i] = (0.5 * (double)used[g][k] / (double)(total_used ? total_used : 1))
+                  + (0.5 / ((double)active * (double)q->n));
         i++;
     }
     q->fixed = 0;
@@ -1015,7 +1025,10 @@ quant_seed_centers(gq_t* q) {
     if (q->n == 0) {
         return;
     }
-    double sl = 0, sa = 0, sb = 0, sw = 0;
+    double sl = 0;
+    double sa = 0;
+    double sb = 0;
+    double sw = 0;
     for (int j = 0; j < q->n; j++) {
         sl += q->w[j] * q->p[j].l;
         sa += q->w[j] * q->p[j].a;
@@ -1268,8 +1281,8 @@ ramps_per_material(FILE* f) {
         const bool liquid = material_by_id(m)->kind == KIND_LIQUID;
         snprintf(name, sizeof name, "%s variant 0-15", material_by_id(m)->name);
         ramp_start(name, true);
-        for (unsigned v = (m == MAT_WOOD ? 1u : 0u); v < 16u; v++) {
-            ramp_add(&mf, CELL_MAKE(m, v), 1u, liquid ? MATERIAL_EDGE_UP : 0u, 0u);
+        for (unsigned v = (m == MAT_WOOD ? 1U : 0U); v < 16U; v++) {
+            ramp_add(&mf, CELL_MAKE(m, v), 1U, liquid ? MATERIAL_EDGE_UP : 0U, 0U);
         }
         ramp_finish(f);
         if (!liquid) {
@@ -1278,7 +1291,7 @@ ramps_per_material(FILE* f) {
         snprintf(name, sizeof name, "%s depth 0-24", material_by_id(m)->name);
         ramp_start(name, true);
         for (unsigned d = 0; d <= MATERIAL_LIQUID_DEPTH_BAND; d++) {
-            ramp_add(&mf, CELL_MAKE(m, MASS_MAX), 1u, 0u, d);
+            ramp_add(&mf, CELL_MAKE(m, MASS_MAX), 1U, 0U, d);
         }
         ramp_finish(f);
     }
@@ -1289,14 +1302,14 @@ ramps_sand_and_cullet(FILE* f) {
     material_frame_t mf = base_frame();
     ramp_start("sand dune 0-11", true);
     for (unsigned v = 0; v < SAND_DUNE_SHADES; v++) {
-        ramp_add(&mf, CELL_MAKE(MAT_SAND, v), 0u, 0u, 0u);
+        ramp_add(&mf, CELL_MAKE(MAT_SAND, v), 0U, 0U, 0U);
     }
     ramp_finish(f);
 
     ramp_start("cullet cycle phase 0-15", true);
-    for (unsigned p = 0; p < 16u; p++) {
+    for (unsigned p = 0; p < 16U; p++) {
         mf.cullet_phase = p;
-        ramp_add(&mf, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), 1u, 0u, 0u);
+        ramp_add(&mf, CELL_MAKE(MAT_SAND, SAND_CULLET_BASE), 1U, 0U, 0U);
     }
     ramp_finish(f);
 }
@@ -1304,11 +1317,11 @@ ramps_sand_and_cullet(FILE* f) {
 static void
 ramps_stone_grain_heat(const material_frame_t* mf, FILE* f, int edge, unsigned mask) {
     char name[48];
-    for (unsigned k = 0; k < 8u; k++) {
+    for (unsigned k = 0; k < 8U; k++) {
         snprintf(name, sizeof name, "stone%s grain %u heat 0-15", edge ? " edge" : "", k);
         ramp_start(name, true);
-        for (unsigned v = 0; v < 16u; v++) {
-            ramp_add(mf, CELL_MAKE(MAT_STONE, v), k, mask, 0u);
+        for (unsigned v = 0; v < 16U; v++) {
+            ramp_add(mf, CELL_MAKE(MAT_STONE, v), k, mask, 0U);
         }
         ramp_finish(f);
     }
@@ -1317,11 +1330,11 @@ ramps_stone_grain_heat(const material_frame_t* mf, FILE* f, int edge, unsigned m
 static void
 ramps_stone_heat_grain(const material_frame_t* mf, FILE* f, int edge, unsigned mask) {
     char name[48];
-    for (unsigned v = 0; v < 16u; v++) {
+    for (unsigned v = 0; v < 16U; v++) {
         snprintf(name, sizeof name, "stone%s heat %u grain 0-7", edge ? " edge" : "", v);
         ramp_start(name, true);
-        for (unsigned k = 0; k < 8u; k++) {
-            ramp_add(mf, CELL_MAKE(MAT_STONE, v), k, mask, 0u);
+        for (unsigned k = 0; k < 8U; k++) {
+            ramp_add(mf, CELL_MAKE(MAT_STONE, v), k, mask, 0U);
         }
         ramp_finish(f);
     }
@@ -1332,8 +1345,8 @@ ramps_glass_heat(const material_frame_t* mf, FILE* f, int edge, unsigned mask) {
     char name[48];
     snprintf(name, sizeof name, "glass%s heat 0-15", edge ? " edge" : "");
     ramp_start(name, true);
-    for (unsigned v = 0; v < 16u; v++) {
-        ramp_add(mf, CELL_MAKE(MAT_GLASS, v), 0u, mask, 0u);
+    for (unsigned v = 0; v < 16U; v++) {
+        ramp_add(mf, CELL_MAKE(MAT_GLASS, v), 0U, mask, 0U);
     }
     ramp_finish(f);
 }
@@ -1341,11 +1354,11 @@ ramps_glass_heat(const material_frame_t* mf, FILE* f, int edge, unsigned mask) {
 static void
 ramps_glass_shimmer(const material_frame_t* mf, FILE* f, int edge, unsigned mask) {
     char name[48];
-    for (unsigned v = 0; v < 16u; v++) {
+    for (unsigned v = 0; v < 16U; v++) {
         snprintf(name, sizeof name, "glass%s heat %u shimmer 0-255", edge ? " edge" : "", v);
         ramp_start(name, false);
-        for (unsigned h = 0; h < 256u; h++) {
-            ramp_add(mf, CELL_MAKE(MAT_GLASS, v), h, mask, 0u);
+        for (unsigned h = 0; h < 256U; h++) {
+            ramp_add(mf, CELL_MAKE(MAT_GLASS, v), h, mask, 0U);
         }
         ramp_finish(f);
     }
@@ -1353,7 +1366,7 @@ ramps_glass_shimmer(const material_frame_t* mf, FILE* f, int edge, unsigned mask
 
 static void
 ramps_stone_and_glass_edge(const material_frame_t* mf, FILE* f, int edge) {
-    const unsigned mask = edge ? MATERIAL_EDGE_UP : 0u;
+    const unsigned mask = edge ? MATERIAL_EDGE_UP : 0U;
     ramps_stone_grain_heat(mf, f, edge, mask);
     ramps_stone_heat_grain(mf, f, edge, mask);
     ramps_glass_heat(mf, f, edge, mask);
@@ -1371,13 +1384,13 @@ static void
 ramps_wood_and_leaf(const material_frame_t* mf, FILE* f) {
     char name[48];
     ramp_start("wood grain 0-7", true);
-    for (unsigned k = 0; k < 8u; k++) {
-        ramp_add(mf, CELL_MAKE(MAT_WOOD, 0), k, 0u, 0u);
+    for (unsigned k = 0; k < 8U; k++) {
+        ramp_add(mf, CELL_MAKE(MAT_WOOD, 0), k, 0U, 0U);
     }
     ramp_finish(f);
     ramp_start("wood-leaf gust 0-255", false);
-    for (unsigned d = 1; d <= 256u; d++) {
-        ramp_add(mf, CELL_MAKE(MAT_WOOD, 0), 0u, 0u, d);
+    for (unsigned d = 1; d <= 256U; d++) {
+        ramp_add(mf, CELL_MAKE(MAT_WOOD, 0), 0U, 0U, d);
     }
     ramp_finish(f);
 
@@ -1389,22 +1402,22 @@ ramps_wood_and_leaf(const material_frame_t* mf, FILE* f) {
     for (size_t i = 0; i < sizeof grains / sizeof grains[0]; i++) {
         snprintf(name, sizeof name, "%s grain 0-7", grains[i].name);
         ramp_start(name, true);
-        for (unsigned k = 0; k < 8u; k++) {
-            ramp_add(mf, grains[i].c, k, 0u, 0u);
+        for (unsigned k = 0; k < 8U; k++) {
+            ramp_add(mf, grains[i].c, k, 0U, 0U);
         }
         ramp_finish(f);
     }
-    for (unsigned k = 0; k < 8u; k++) {
+    for (unsigned k = 0; k < 8U; k++) {
         snprintf(name, sizeof name, "leaf grain %u gust 0-255", k);
         ramp_start(name, false);
-        for (unsigned d = 1; d <= 256u; d++) {
-            ramp_add(mf, MATX(MATX_LEAF), k, 0u, d);
+        for (unsigned d = 1; d <= 256U; d++) {
+            ramp_add(mf, MATX(MATX_LEAF), k, 0U, d);
         }
         ramp_finish(f);
     }
     ramp_start("leaf grain 0-7 at rest", true);
-    for (unsigned k = 0; k < 8u; k++) {
-        ramp_add(mf, MATX(MATX_LEAF), k, 0u, 1u);
+    for (unsigned k = 0; k < 8U; k++) {
+        ramp_add(mf, MATX(MATX_LEAF), k, 0U, 1U);
     }
     ramp_finish(f);
 }
@@ -1412,24 +1425,24 @@ ramps_wood_and_leaf(const material_frame_t* mf, FILE* f) {
 static void
 ramps_root_and_gunpowder(const material_frame_t* mf, FILE* f) {
     char name[48];
-    const unsigned root_depths[] = {0u, 2u, 3u, 4u};
-    for (unsigned s = 0; s < 4u; s++) {
+    const unsigned root_depths[] = {0U, 2U, 3U, 4U};
+    for (unsigned s = 0; s < 4U; s++) {
         snprintf(name, sizeof name, "root age %u grain 0-7", s);
         ramp_start(name, true);
-        for (unsigned k = 0; k < 8u; k++) {
-            ramp_add(mf, MATX(MATX_ROOT), k, 0u, root_depths[s]);
+        for (unsigned k = 0; k < 8U; k++) {
+            ramp_add(mf, MATX(MATX_ROOT), k, 0U, root_depths[s]);
         }
         ramp_finish(f);
     }
     ramp_start("root age 0-3", true);
-    for (unsigned s = 0; s < 4u; s++) {
-        ramp_add(mf, MATX(MATX_ROOT), 0u, 0u, root_depths[s]);
+    for (unsigned s = 0; s < 4U; s++) {
+        ramp_add(mf, MATX(MATX_ROOT), 0U, 0U, root_depths[s]);
     }
     ramp_finish(f);
     ramp_start("gunpowder moisture 0-4", true);
-    ramp_add(mf, GUNPOWDER_CELL(2), 0u, 0u, 0u);
-    for (unsigned m = 3; m <= 6u; m++) {
-        ramp_add(mf, GUNPOWDER_CELL(m), 0u, 0u, 0u);
+    ramp_add(mf, GUNPOWDER_CELL(2), 0U, 0U, 0U);
+    for (unsigned m = 3; m <= 6U; m++) {
+        ramp_add(mf, GUNPOWDER_CELL(m), 0U, 0U, 0U);
     }
     ramp_finish(f);
 }
@@ -1457,7 +1470,7 @@ crc_init(void) {
     for (uint32_t n = 0; n < 256; n++) {
         uint32_t c = n;
         for (int k = 0; k < 8; k++) {
-            c = (c & 1) ? 0xEDB88320u ^ (c >> 1) : c >> 1;
+            c = (c & 1) ? 0xEDB88320U ^ (c >> 1) : c >> 1;
         }
         crc_table[n] = c;
     }
@@ -1484,9 +1497,9 @@ png_chunk(FILE* f, const char* type, const uint8_t* data, size_t len) {
     if (len > 0) {
         fwrite(data, 1, len, f);
     }
-    uint32_t crc = crc_update(0xFFFFFFFFu, (const uint8_t*)type, 4);
+    uint32_t crc = crc_update(0xFFFFFFFFU, (const uint8_t*)type, 4);
     crc = crc_update(crc, data, len);
-    put_be32(f, crc ^ 0xFFFFFFFFu);
+    put_be32(f, crc ^ 0xFFFFFFFFU);
 }
 
 static bool
@@ -1512,19 +1525,20 @@ write_png(const char* path, const uint8_t* rgb, int w, int h) {
                               0};
     png_chunk(f, "IHDR", ihdr, sizeof ihdr);
 
-    const size_t raw_len = (size_t)h * (size_t)(w * 3 + 1);
+    const size_t raw_len = (size_t)h * (size_t)((w * 3) + 1);
     uint8_t* raw = malloc(raw_len);
     for (int y = 0; y < h; y++) {
-        raw[(size_t)y * (size_t)(w * 3 + 1)] = 0;
-        memcpy(raw + (size_t)y * (size_t)(w * 3 + 1) + 1, rgb + (size_t)y * (size_t)w * 3, (size_t)w * 3);
+        raw[(size_t)y * (size_t)((w * 3) + 1)] = 0;
+        memcpy(raw + ((size_t)y * (size_t)((w * 3) + 1)) + 1, rgb + ((size_t)y * (size_t)w * 3), (size_t)w * 3);
     }
-    const size_t blocks = raw_len / 65535 + 1;
-    const size_t z_len = 2 + raw_len + blocks * 5 + 4;
+    const size_t blocks = (raw_len / 65535) + 1;
+    const size_t z_len = 2 + raw_len + (blocks * 5) + 4;
     uint8_t* z = malloc(z_len);
     size_t o = 0;
     z[o++] = 0x78;
     z[o++] = 0x01;
-    uint32_t s1 = 1, s2 = 0;
+    uint32_t s1 = 1;
+    uint32_t s2 = 0;
     for (size_t pos = 0; pos < raw_len || pos == 0;) {
         const size_t n = raw_len - pos > 65535 ? 65535 : raw_len - pos;
         z[o++] = pos + n >= raw_len ? 1 : 0;
@@ -1583,12 +1597,12 @@ static void
 draw_glyph(uint8_t* rgb, int w, int x, int y, uint16_t glyph, int scale, uint32_t colour) {
     for (int gy = 0; gy < 5; gy++) {
         for (int gx = 0; gx < 3; gx++) {
-            if (!(glyph & (1u << (14 - (gy * 3 + gx))))) {
+            if (!(glyph & (1U << (14 - (gy * 3 + gx))))) {
                 continue;
             }
             for (int sy = 0; sy < scale; sy++) {
                 for (int sx = 0; sx < scale; sx++) {
-                    uint8_t* p = rgb + ((y + gy * scale + sy) * w + x + gx * scale + sx) * 3;
+                    uint8_t* p = rgb + (((y + gy * scale + sy) * w + x + gx * scale + sx) * 3);
                     p[0] = (uint8_t)(colour >> 16);
                     p[1] = (uint8_t)(colour >> 8);
                     p[2] = (uint8_t)colour;
@@ -1613,7 +1627,7 @@ static void
 fill(uint8_t* rgb, int w, int x0, int y0, int x1, int y1, uint32_t colour) {
     for (int y = y0; y < y1; y++) {
         for (int x = x0; x < x1; x++) {
-            uint8_t* p = rgb + (y * w + x) * 3;
+            uint8_t* p = rgb + ((y * w + x) * 3);
             p[0] = (uint8_t)(colour >> 16);
             p[1] = (uint8_t)(colour >> 8);
             p[2] = (uint8_t)colour;
@@ -1626,10 +1640,12 @@ fill(uint8_t* rgb, int w, int x0, int y0, int x1, int y1, uint32_t colour) {
 
 static void
 write_swatches(const char* dir) {
-    const int w = 16 * SWATCH_W, h = 16 * SWATCH_H;
+    const int w = 16 * SWATCH_W;
+    const int h = 16 * SWATCH_H;
     uint8_t* rgb = calloc((size_t)w * (size_t)h, 3);
     for (int i = 0; i < PALETTE_SIZE; i++) {
-        const int x0 = (i % 16) * SWATCH_W, y0 = (i / 16) * SWATCH_H;
+        const int x0 = (i % 16) * SWATCH_W;
+        const int y0 = (i / 16) * SWATCH_H;
         if (i >= palette_used) {
             fill(rgb, w, x0, y0, x0 + SWATCH_W, y0 + SWATCH_H, 0x202020);
             continue;
@@ -1704,7 +1720,7 @@ static void
 ega_try_pair(const ega_palette_t* pal, gfx_lin_t c, gfx_lab_t target, int i, int j, double* best_cost,
              ega_choice_t* best) {
     const gfx_lin_t d = {pal->lin[j].r - pal->lin[i].r, pal->lin[j].g - pal->lin[i].g, pal->lin[j].b - pal->lin[i].b};
-    const double den = d.r * d.r + d.g * d.g + d.b * d.b;
+    const double den = (d.r * d.r) + (d.g * d.g) + (d.b * d.b);
     if (den <= 0.0) {
         return;
     }
@@ -1716,9 +1732,9 @@ ega_try_pair(const ega_palette_t* pal, gfx_lin_t c, gfx_lab_t target, int i, int
             continue;
         }
         const double f = (double)level / EGA_LEVELS;
-        const gfx_lin_t mix = {pal->lin[i].r + d.r * f, pal->lin[i].g + d.g * f, pal->lin[i].b + d.b * f};
+        const gfx_lin_t mix = {pal->lin[i].r + (d.r * f), pal->lin[i].g + (d.g * f), pal->lin[i].b + (d.b * f)};
         const double e = sqrt(gfx_lab_dist2(target, gfx_lin_to_lab(mix)));
-        const double cost = e + EGA_GRAIN_CHARGE * grain;
+        const double cost = e + (EGA_GRAIN_CHARGE * grain);
         if (cost < *best_cost) {
             *best_cost = cost;
             *best = (ega_choice_t){(uint8_t)i, (uint8_t)j, (uint8_t)level, e, grain};
@@ -1775,7 +1791,10 @@ ega_farthest_seed(gfx_lab_t* c, const ega_points_t* pts) {
 static void
 ega_lloyd(gfx_lab_t* c, const ega_points_t* pts) {
     for (int iter = 0; iter < 40; iter++) {
-        double sl[EGA_ENTRIES] = {0}, sa[EGA_ENTRIES] = {0}, sb[EGA_ENTRIES] = {0}, sw[EGA_ENTRIES] = {0};
+        double sl[EGA_ENTRIES] = {0};
+        double sa[EGA_ENTRIES] = {0};
+        double sb[EGA_ENTRIES] = {0};
+        double sw[EGA_ENTRIES] = {0};
         for (int i = 0; i < pts->n; i++) {
             const gfx_lab_t p = key_lab[pts->key[i]];
             int best = 0;
@@ -1886,7 +1905,7 @@ ega_points(ega_points_t* pts, uint32_t (*counts)[KEYS]) {
         }
         for (int k = 0; k < KEYS; k++) {
             if (counts[g][k] != 0) {
-                w[k] += 0.5 * (double)counts[g][k] / (double)total + 0.5 / ((double)groups * (double)distinct);
+                w[k] += (0.5 * (double)counts[g][k] / (double)total) + (0.5 / ((double)groups * (double)distinct));
             }
         }
     }
@@ -1902,7 +1921,7 @@ ega_points(ega_points_t* pts, uint32_t (*counts)[KEYS]) {
 
 static uint32_t
 ega_pixel(const ega_palette_t* pal, const ega_choice_t* ch, int px, int py) {
-    const uint8_t alpha = ch->level == 0 ? 0u : (uint8_t)(ch->level * 16u);
+    const uint8_t alpha = ch->level == 0 ? 0U : (uint8_t)(ch->level * 16U);
     return key_rgb888(pal->key[gfx_dither_covers(px, py, alpha) ? ch->hi : ch->lo]);
 }
 
@@ -1916,8 +1935,9 @@ static ega_palette_t ega_local[SCENE_COUNT];
 
 static void
 view_put(uint8_t* rgb, int w, int ox, int oy, int px, int py, uint32_t colour) {
-    const int vx = PANEL_H - 1 - py, vy = px;
-    uint8_t* p = rgb + ((oy + vy) * w + ox + vx) * 3;
+    const int vx = PANEL_H - 1 - py;
+    const int vy = px;
+    uint8_t* p = rgb + (((oy + vy) * w + ox + vx) * 3);
     p[0] = (uint8_t)(colour >> 16);
     p[1] = (uint8_t)(colour >> 8);
     p[2] = (uint8_t)colour;
@@ -1934,7 +1954,7 @@ panel_labels(uint8_t* rgb, int w, const char* a, const char* b, const char* c) {
     fill(rgb, w, 0, 0, w, h, 0x101010);
     draw_text(rgb, w, 6, 5, a, 3, 0xFFFFFF);
     draw_text(rgb, w, VIEW_W + PANEL_GAP + 6, 5, b, 3, 0xFFFFFF);
-    draw_text(rgb, w, 2 * (VIEW_W + PANEL_GAP) + 6, 5, c, 3, 0xFFFFFF);
+    draw_text(rgb, w, (2 * (VIEW_W + PANEL_GAP)) + 6, 5, c, 3, 0xFFFFFF);
 }
 
 static uint64_t
@@ -1968,8 +1988,8 @@ typedef struct {
 static void
 scene_plot_pixel(int si, int px, int py, gfx_color_t* fb, uint8_t* grp, const ega_choice_t* choice_global,
                  const ega_choice_t* choice_local, uint8_t* rgb, uint8_t* rgb_local, int w, scene_error_stats_t* st) {
-    const group_t g = (group_t)grp[py * PANEL_W + px];
-    const uint16_t key = gfx_color_swap(fb[py * PANEL_W + px]);
+    const group_t g = (group_t)grp[(py * PANEL_W) + px];
+    const uint16_t key = gfx_color_swap(fb[(py * PANEL_W) + px]);
     const int idx = map_index[g][key];
     const double e = map_error(g, key);
     st->sum += e;
@@ -2027,10 +2047,12 @@ render_scene(const char* dir, int si, FILE* f, gfx_color_t* fb, uint8_t* grp) {
     ega_points(&pts, scene_used);
     ega_build(&ega_local[si], &pts, gfx_color_swap(material_palette()[SAND_EMPTY]));
 
-    static ega_choice_t choice_global[KEYS], choice_local[KEYS];
+    static ega_choice_t choice_global[KEYS];
+    static ega_choice_t choice_local[KEYS];
     scene_build_choices(si, choice_global, choice_local);
 
-    const int w = VIEW_W * 3 + PANEL_GAP * 2, h = VIEW_H + LABEL_H;
+    const int w = (VIEW_W * 3) + (PANEL_GAP * 2);
+    const int h = VIEW_H + LABEL_H;
     uint8_t* rgb = calloc((size_t)w * (size_t)h, 3);
     uint8_t* rgb_local = calloc((size_t)w * (size_t)h, 3);
     panel_labels(rgb, w, "ORIGINAL", "256 COLOURS", "16 COLOURS DITHERED");
@@ -2191,7 +2213,8 @@ write_header_banner(FILE* f) {
 static void
 write_reverse_index(FILE* f) {
     static uint8_t rgb565_to_index[KEYS];
-    int collisions, unswept;
+    int collisions;
+    int unswept;
     build_rgb565_to_index(rgb565_to_index, &collisions, &unswept);
     fprintf(stderr, "reverse index: %d keys, %d group collisions, %d never swept (OKLab-nearest fallback)\n", KEYS,
             collisions, unswept);
@@ -2273,7 +2296,8 @@ write_sand_palette_header(const char* path) {
     validate_palette_or_exit();
 
     uint16_t entry_key[PALETTE_SIZE];
-    gfx_color_t sand256_rgb[PALETTE_SIZE], sand16_rgb[EGA_ENTRIES];
+    gfx_color_t sand256_rgb[PALETTE_SIZE];
+    gfx_color_t sand16_rgb[EGA_ENTRIES];
     build_output_rgb(entry_key, sand256_rgb, sand16_rgb);
 
     write_header_banner(f);
@@ -2313,7 +2337,7 @@ common_setup(void) {
     fprintf(stderr, "settling scenes...\n");
     for (int si = 0; si < SCENE_COUNT; si++) {
         static sand_t sim;
-        sand_init(&sim, grids[si], GRID_W, GRID_H, 0x5A4D0000u + (uint32_t)si);
+        sand_init(&sim, grids[si], GRID_W, GRID_H, 0x5A4D0000U + (uint32_t)si);
         sand_set_scatter(&sim, SAND_SCATTER_PER_MATERIAL);
         sand_set_decay(&sim, SAND_DECAY_PER_MATERIAL);
         sand_set_evaporates(&sim, SAND_EVAPORATES_PER_MATERIAL);
@@ -2325,7 +2349,7 @@ common_setup(void) {
     /* Usage feeds the palette's weights, so scenes are painted once before it
      * is built and again, for the images, after. */
     for (int si = 0; si < SCENE_COUNT; si++) {
-        paint_frame(grids[si], common_fb, common_grp, 1234u + 97u * (uint32_t)si);
+        paint_frame(grids[si], common_fb, common_grp, 1234U + (97U * (uint32_t)si));
         for (int i = 0; i < PANEL_W * PANEL_H; i++) {
             used[common_grp[i]][gfx_color_swap(common_fb[i])]++;
         }
@@ -2440,9 +2464,10 @@ static void
 dp_coarsen_cells(gfx_color_t* fb, uint8_t* grp, int cell, int qgw, int qgh, uint16_t* cell_key, uint8_t* cell_grp) {
     for (int qy = 0; qy < qgh; qy++) {
         for (int qx = 0; qx < qgw; qx++) {
-            const int px = qx * cell, py = qy * cell;
-            cell_key[qy * qgw + qx] = gfx_color_swap(fb[py * PANEL_W + px]);
-            cell_grp[qy * qgw + qx] = grp[py * PANEL_W + px];
+            const int px = qx * cell;
+            const int py = qy * cell;
+            cell_key[(qy * qgw) + qx] = gfx_color_swap(fb[(py * PANEL_W) + px]);
+            cell_grp[(qy * qgw) + qx] = grp[(py * PANEL_W) + px];
         }
     }
 }
@@ -2461,15 +2486,16 @@ dp_draw_labels(uint8_t* rgb, int w) {
     draw_text(rgb, w, 6, 5, "ORIGINAL", 3, 0xFFFFFF);
     draw_text(rgb, w, VIEW_W + PANEL_GAP + 6, 5, "256", 3, 0xFFFFFF);
     for (int v = 0; v < DP_VARIANT_COUNT; v++) {
-        draw_text(rgb, w, (2 + v) * (VIEW_W + PANEL_GAP) + 6, 5, dp_names[v], 2, 0xFFFFFF);
+        draw_text(rgb, w, ((2 + v) * (VIEW_W + PANEL_GAP)) + 6, 5, dp_names[v], 2, 0xFFFFFF);
     }
 }
 
 static void
 dp_plot_pixel(int px, int py, int cell, int qgw, uint8_t* rgb, int w, const uint16_t* cell_key, const uint8_t* cell_grp,
               const ega_choice_t* cell_choice, const ega_choice_t* cell_nearest, double* sum_e, double* max_e) {
-    const int cx = px / cell, cy = py / cell;
-    const int c = cy * qgw + cx;
+    const int cx = px / cell;
+    const int cy = py / cell;
+    const int c = (cy * qgw) + cx;
     const uint16_t key = cell_key[c];
     const int idx = map_index[cell_grp[c]][key];
 
@@ -2506,10 +2532,11 @@ dp_write_stats(FILE* stats, int si, const dp_quality_t* q, const double* sum_e, 
 
 static void
 run_one_dp_case(const char* out_dir, int si, const dp_quality_t* q, FILE* stats) {
-    paint_frame(grids[si], common_fb, common_grp, 1234u + 97u * (uint32_t)si);
+    paint_frame(grids[si], common_fb, common_grp, 1234U + (97U * (uint32_t)si));
 
     const int cell = q->cell;
-    const int qgw = PANEL_W / cell, qgh = PANEL_H / cell;
+    const int qgw = PANEL_W / cell;
+    const int qgh = PANEL_H / cell;
     static uint16_t cell_key[(PANEL_W / CELL_PX) * (PANEL_H / CELL_PX)];
     static uint8_t cell_grp[(PANEL_W / CELL_PX) * (PANEL_H / CELL_PX)];
     dp_coarsen_cells(common_fb, common_grp, cell, qgw, qgh, cell_key, cell_grp);
@@ -2519,11 +2546,13 @@ run_one_dp_case(const char* out_dir, int si, const dp_quality_t* q, FILE* stats)
     dp_choose_cells(qgw * qgh, cell_key, cell_choice, cell_nearest);
 
     const int panels = 2 + DP_VARIANT_COUNT;
-    const int w = VIEW_W * panels + PANEL_GAP * (panels - 1), h = VIEW_H + LABEL_H;
+    const int w = (VIEW_W * panels) + (PANEL_GAP * (panels - 1));
+    const int h = VIEW_H + LABEL_H;
     uint8_t* rgb = calloc((size_t)w * (size_t)h, 3);
     dp_draw_labels(rgb, w);
 
-    double sum_e[DP_VARIANT_COUNT] = {0}, max_e[DP_VARIANT_COUNT] = {0};
+    double sum_e[DP_VARIANT_COUNT] = {0};
+    double max_e[DP_VARIANT_COUNT] = {0};
     dp_plot_panels(cell, qgw, rgb, w, cell_key, cell_grp, cell_choice, cell_nearest, sum_e, max_e);
 
     char path[512];
@@ -2563,7 +2592,9 @@ static void
 report_sweep_group(FILE* f, group_t g, uint8_t* any_seen, uint8_t* any_used, int* total_all, int* total_used) {
     const int n = count_seen(g, PIN_NONE);
     int on_scene = 0;
-    double max_e = 0.0, sum_e = 0.0, scene_sum = 0.0;
+    double max_e = 0.0;
+    double sum_e = 0.0;
+    double scene_sum = 0.0;
     uint64_t scene_px = 0;
     for (int k = 0; k < KEYS; k++) {
         if (seen[g][k] & PIN_NONE) {
@@ -2598,12 +2629,15 @@ report_sweep_table(FILE* f) {
     fprintf(f, "SWEEP: distinct RGB565 colours per group\n");
     fprintf(f, "  %-10s %8s %8s %8s %8s %8s %8s %8s %8s %9s %9s\n", "group", "all", "hash=0", "mask=0", "depth=0",
             "S0 only", "on-scene", "budget", "maxdE", "meandE", "scenedE");
-    int total_all = 0, total_used = 0;
-    static uint8_t any_seen[KEYS], any_used[KEYS];
+    int total_all = 0;
+    int total_used = 0;
+    static uint8_t any_seen[KEYS];
+    static uint8_t any_used[KEYS];
     for (int g = 0; g < G_COUNT; g++) {
         report_sweep_group(f, (group_t)g, any_seen, any_used, &total_all, &total_used);
     }
-    int union_all = 0, union_used = 0;
+    int union_all = 0;
+    int union_used = 0;
     for (int k = 0; k < KEYS; k++) {
         union_all += any_seen[k];
         union_used += any_used[k];
@@ -2619,7 +2653,7 @@ report_scenes(const char* dir, FILE* f, gfx_color_t* fb, uint8_t* grp) {
     memset(used, 0, sizeof used);
     for (int si = 0; si < SCENE_COUNT; si++) {
         fprintf(stderr, "rendering %s...\n", scenes[si].name);
-        paint_frame(grids[si], fb, grp, 1234u + 97u * (uint32_t)si);
+        paint_frame(grids[si], fb, grp, 1234U + (97U * (uint32_t)si));
         render_scene(dir, si, f, fb, grp);
     }
     write_swatches(dir);

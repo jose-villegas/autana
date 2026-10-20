@@ -50,26 +50,23 @@ settings_frame(const input_t* input, settings_state_t* s) {
 | a frame | `ui_begin()`, then `ui_end()`, `ui_end_over()` or `ui_end_for_bands()` |
 | a window | `ui_screen()`, `ui_window(r)`, `ui_scroll_window(r)` |
 | rows that flow down the window | `ui_row(h)` or `ui_row_centre(w, h)`, then `ui_next()` for the rect |
-| controls | `ui_button`, `ui_button_icon`, `ui_tile`, `ui_tile_icon`, `ui_toggle`, `ui_slider`, `ui_dropdown`, `ui_dropdown_icons` |
-| text | `ui_text`, `ui_text_right`, `ui_text_centre`, `ui_caption`, `ui_caption_centre`, `ui_header` |
-| marks | `ui_panel`, `ui_fill`, `ui_outline`, `ui_bevel`, `ui_icon`, `ui_check`, `ui_swatches` |
+| controls | [`ui_button`](ui/button.md), [`ui_button_icon`](ui/button_icon.md), [`ui_tile`](ui/tile.md), [`ui_tile_icon`](ui/tile_icon.md), [`ui_toggle`](ui/toggle.md), [`ui_slider`](ui/slider.md), [`ui_dropdown`](ui/dropdown.md), [`ui_dropdown_icons`](ui/dropdown_icons.md) |
+| text | [`ui_text`, `ui_text_right`, `ui_text_centre`, `ui_caption`, `ui_caption_centre`](ui/text.md), [`ui_header`](ui/header.md) |
+| marks | [`ui_panel`](ui/panel.md), `ui_fill`, `ui_outline`, `ui_bevel`, [`ui_icon`, `ui_check`](ui/icon.md), [`ui_swatches`](ui/swatches.md) |
 | a look for the screen | `ui_theme(&theme)` once per screen; `NULL` restores the shell look |
-| a look for a few widgets | `ui_color_begin/end`, `ui_scale_begin/end`, `ui_alpha_begin/end`, `ui_disabled_begin/end` |
+| a look for a few widgets | [scopes](ui/scopes.md): `ui_color_begin/end`, `ui_scale_begin/end`, `ui_alpha_begin/end`, `ui_disabled_begin/end` |
 
 - **Rect first.** Every widget takes its rect. A screen with fixed geometry
   passes rects from its layout module; a flowed screen passes `ui_next()`.
 - **The caller owns every value.** A toggle, slider or dropdown writes
   through its pointer and returns true on the frame it changed. A button or
   tile returns true on the frame a tap is released on it.
-- **A label is the identity.** Two widgets in one window with the same label
-  are told apart by their order. `"Text##key"` shows `Text` and keys on the
-  whole string; `"Text###key"` shows `Text` and keys on `key` alone, so a
-  label can change without the widget losing its press.
-- **Scopes balance.** Every `_begin` pairs with its `_end` before
-  `ui_end()`, at most `UI_FACE_SCOPE_DEPTH` deep. A development build
-  asserts on an unbalanced frame.
+- **A label is the identity.** See [identity](ui/input.md#identity).
+- **Scopes balance.** See [scopes](ui/scopes.md).
 
-The verbs and their arguments are in [`ui/ui.h`](../launcher/main/ui/ui.h).
+The verbs and their arguments are in [`ui/ui.h`](../launcher/main/ui/ui.h);
+each control's page, with its example, renders and states, is listed in
+[`UI-Toolkit.md`](UI-Toolkit.md#controls).
 
 ## The loop
 
@@ -172,8 +169,9 @@ logical canvas, then map it with `ui_transform_rect()`.
 
 Add it to `ui/` as a face verb in `ui/ui.h`, not as a private copy in one
 screen. It takes a rect and plain values, draws in the theme's colours,
-and gets a host test and a gallery view; [`UI-Toolkit.md`](UI-Toolkit.md)
-lists what a new control must have. Hand its result to the state module;
+and gets a host test, an example and a page;
+[`UI-Toolkit.md`](UI-Toolkit.md#adding-to-the-toolkit) lists what a new
+control must have. Hand its result to the state module;
 let that decide what it means.
 
 ### More than one text size
@@ -197,19 +195,8 @@ Face text is one clipped line per rect. Fonts, scales and text styles are in
 ### A list of rows that may overflow
 
 Open the window with `ui_scroll_window(r)` and flow the rows with `ui_row()`
-and `ui_next()`. A flowed row counts toward the window's content and
-follows its scroll; a widget placed at a fixed rect does not, and is never
-reachable once the stack overflows.
-
-```c
-ui_scroll_window((recti_t){0, 0, ui_width(), ui_height()});
-for (int i = 0; i < count; i++) {
-    ui_row_centre(ROW_W, UI_ROW_HEIGHT);
-    if (ui_button(ui_next(), labels[i])) {
-        chosen = i;
-    }
-}
-```
+and `ui_next()`; [scrolling](ui/scrolling.md) has the example and when a
+moving finger is a drag.
 
 ### Artwork
 

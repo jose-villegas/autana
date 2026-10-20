@@ -198,7 +198,8 @@ static void
 test_watered_dirt_steaming_precedes_resolving_when_it_happens(void) {
     lava_beside_dirt(SOIL_MOISTURE_MAX);
 
-    int steamed_at = -1, resolved_at = -1;
+    int steamed_at = -1;
+    int resolved_at = -1;
     for (int i = 0; i < 4000 && resolved_at < 0; i++) {
         sand_step(&s, 0, 1000, 0);
         if (steamed_at < 0 && count_cells_of(MAT_STEAM) > 0) {
@@ -249,7 +250,7 @@ test_wet_dirt_can_still_steam_before_spoiling_at_least_sometimes(void) {
     uint8_t* steam_cells = malloc((size_t)STEAM_TEST_W * STEAM_TEST_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(steam_cells, "wet-dirt steam-pods grid must fit in what the framebuffer leaves");
     sand_t st;
-    sand_init(&st, steam_cells, STEAM_TEST_W, STEAM_TEST_H, 3u);
+    sand_init(&st, steam_cells, STEAM_TEST_W, STEAM_TEST_H, 3U);
     sand_set_mobility(&st, 0);
 
     const int y = 2;
@@ -257,7 +258,7 @@ test_wet_dirt_can_still_steam_before_spoiling_at_least_sometimes(void) {
         sand_set(&st, x, y + 1, STONE); /* one shared floor */
     }
     for (int k = 0; k < STEAM_TEST_PODS; k++) {
-        const int lava_x = 2 + STEAM_TEST_SPACING * k;
+        const int lava_x = 2 + (STEAM_TEST_SPACING * k);
         sand_set(&st, lava_x - 1, y, STONE);
         sand_set(&st, lava_x, y - 1, STONE);
         sand_set(&st, lava_x, y, CELL_MAKE(MAT_LAVA, MASS_MAX));
@@ -301,7 +302,7 @@ test_wet_dirt_can_still_steam_before_spoiling_at_least_sometimes(void) {
 
 static void
 test_wet_dirt_can_spoil_into_sand_instead_of_smelting(void) {
-    wide_open(3u);
+    wide_open(3U);
     sand_set_mobility(&wide, 0);
 
     const int y = 2;
@@ -309,7 +310,7 @@ test_wet_dirt_can_spoil_into_sand_instead_of_smelting(void) {
         sand_set(&wide, x, y + 1, STONE); /* one shared floor */
     }
     for (int k = 0; k < SPOILS_TEST_PODS; k++) {
-        const int lava_x = 2 + 4 * k;
+        const int lava_x = 2 + (4 * k);
         sand_set(&wide, lava_x - 1, y, STONE);
         sand_set(&wide, lava_x, y - 1, STONE);
         sand_set(&wide, lava_x, y, CELL_MAKE(MAT_LAVA, MASS_MAX));
@@ -320,7 +321,7 @@ test_wet_dirt_can_spoil_into_sand_instead_of_smelting(void) {
     for (int i = 0; i < 8000 && !spoiled; i++) {
         sand_step(&wide, 0, 1000, 0);
         for (int k = 0; k < SPOILS_TEST_PODS && !spoiled; k++) {
-            const int lava_x = 2 + 4 * k;
+            const int lava_x = 2 + (4 * k);
             spoiled = CELL_MATERIAL(sand_at(&wide, lava_x + 1, y)) == MAT_SAND;
         }
     }
@@ -347,7 +348,7 @@ test_wet_dirt_can_spoil_into_sand_instead_of_smelting(void) {
  * real regression, not bad luck. */
 #define FLAW_TEST_PODS    400
 #define FLAW_TEST_SPACING 4
-#define FLAW_TEST_W       (2 + FLAW_TEST_SPACING * FLAW_TEST_PODS + 2)
+#define FLAW_TEST_W       (2 + 2 + (FLAW_TEST_SPACING * FLAW_TEST_PODS))
 #define FLAW_TEST_H       6
 
 static void
@@ -358,7 +359,7 @@ test_dry_dirt_smelting_reaches_both_metal_and_stone(void) {
     uint8_t* flaw_cells = malloc((size_t)FLAW_TEST_W * FLAW_TEST_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(flaw_cells, "dry-dirt flaw-pods grid must fit in what the framebuffer leaves");
     sand_t flaw;
-    sand_init(&flaw, flaw_cells, FLAW_TEST_W, FLAW_TEST_H, 3u);
+    sand_init(&flaw, flaw_cells, FLAW_TEST_W, FLAW_TEST_H, 3U);
     sand_set_mobility(&flaw, 0);
 
     const int y = 2;
@@ -366,7 +367,7 @@ test_dry_dirt_smelting_reaches_both_metal_and_stone(void) {
         sand_set(&flaw, x, y + 1, STONE); /* one shared floor */
     }
     for (int k = 0; k < FLAW_TEST_PODS; k++) {
-        const int lava_x = 2 + FLAW_TEST_SPACING * k;
+        const int lava_x = 2 + (FLAW_TEST_SPACING * k);
         sand_set(&flaw, lava_x - 1, y, STONE);
         sand_set(&flaw, lava_x, y - 1, STONE);
         sand_set(&flaw, lava_x, y, CELL_MAKE(MAT_LAVA, MASS_MAX));
@@ -375,9 +376,10 @@ test_dry_dirt_smelting_reaches_both_metal_and_stone(void) {
 
     run_steps(&flaw, 6000, 0, 1000);
 
-    int stone_count = 0, metal_count = 0;
+    int stone_count = 0;
+    int metal_count = 0;
     for (int k = 0; k < FLAW_TEST_PODS; k++) {
-        const int lava_x = 2 + FLAW_TEST_SPACING * k;
+        const int lava_x = 2 + (FLAW_TEST_SPACING * k);
         const cell_t c = sand_at(&flaw, lava_x + 1, y);
         if (CELL_MATERIAL(c) == MAT_STONE) {
             stone_count++;
@@ -570,7 +572,7 @@ steps_to_boil_through(int wall_len, cell_t wall_cell, int budget) {
     /* Self-contained, like steps_to_boil() above: malloc, use, free, all
      * within one call - the test below calls this twice and gets a
      * fresh grid each time. */
-    wide_open(3u);
+    wide_open(3U);
     sand_set_mobility(&wide, 0);
     /* This measures CONDUCTION speed, not water's own new resistance to
      * boiling once heat arrives - forced to 255 so a slow real `boils`
@@ -659,7 +661,7 @@ test_the_rod_terminates_at_conduct_reach_not_the_far_wall(void) {
     uint8_t* rod_cells = malloc((size_t)ROD_W * ROD_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(rod_cells, "metal-rod grid must fit in what the framebuffer leaves");
     sand_t rod;
-    sand_init(&rod, rod_cells, ROD_W, ROD_H, 3u);
+    sand_init(&rod, rod_cells, ROD_W, ROD_H, 3U);
     sand_set_mobility(&rod, 0);
     sand_set_conduction(&rod, 255);
     /* The lava source sits boxed in on 3-4 sides for the whole run - more
@@ -997,7 +999,7 @@ count_room_wall_stone(void) {
 static void
 test_a_rained_acid_cell_keeps_dissolving_after_the_collapse(void) {
     bool found_acid_seed = false;
-    for (unsigned seed = 1u; seed < 64u && !found_acid_seed; seed++) {
+    for (unsigned seed = 1U; seed < 64U && !found_acid_seed; seed++) {
         build_sealed_dissolve_room(seed);
 
         sand_step(&s, 0, 1000, 0);
@@ -1083,7 +1085,8 @@ test_acid_rain_resolves_to_both_acid_and_water(void) {
     sand_set(&s, 2, 4, STONE);
     sand_set(&s, 5, 4, STONE);
 
-    int acid_seen = 0, water_seen = 0;
+    int acid_seen = 0;
+    int water_seen = 0;
     for (int trial = 0; trial < ACID_RAIN_TRIALS; trial++) {
         sand_set(&s, 3, 3, STEAM);
         sand_set(&s, 3, 4, STEAM);

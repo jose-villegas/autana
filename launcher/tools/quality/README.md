@@ -29,5 +29,5 @@ integer expressions as booleans and the internal linkage rules.
 `--update-baseline` writes sorted, rounded entries from the capture.
 `ICOUNT_INFO` rows have a third `info` field in the baseline; their counts
 feed reports but changes, additions and omissions never fail the ratchet.
-See [the testing guide](../../../docs/Testing-Guide.md#qemu-the-device-image-with-no-board)
+See [the testing guide](../../../docs/testing/QEMU.md)
 for capture commands and the ratchet policy.

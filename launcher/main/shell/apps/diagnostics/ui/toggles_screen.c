@@ -52,11 +52,11 @@ draw_orientation_readout(const toggles_screen_state_t* state) {
         };
 
         for (size_t i = 0; i < sizeof readings / sizeof readings[0]; i++) {
-            snprintf(line, sizeof line, "%s=%d", readings[i].name, readings[i].value);
+            (void)snprintf(line, sizeof line, "%s=%d", readings[i].name, readings[i].value);
             draw_text_row(TEXT_ROW_HEIGHT, line);
         }
     }
-    snprintf(line, sizeof line, "shell quarter=%d", state->shell_quarter);
+    (void)snprintf(line, sizeof line, "shell quarter=%d", state->shell_quarter);
     draw_text_row(TEXT_ROW_HEIGHT, line);
 }
 
@@ -73,11 +73,11 @@ draw_selftest_controls(const toggles_screen_state_t* state, toggles_screen_resul
 
     char selftest_line[48];
     if (state->selftest_failures < 0) {
-        snprintf(selftest_line, sizeof selftest_line, "self test: not run yet");
+        (void)snprintf(selftest_line, sizeof selftest_line, "self test: not run yet");
     } else if (state->selftest_failures == 0) {
-        snprintf(selftest_line, sizeof selftest_line, "self test: all passed");
+        (void)snprintf(selftest_line, sizeof selftest_line, "self test: all passed");
     } else {
-        snprintf(selftest_line, sizeof selftest_line, "self test: %d failure(s)", state->selftest_failures);
+        (void)snprintf(selftest_line, sizeof selftest_line, "self test: %d failure(s)", state->selftest_failures);
     }
     draw_text_row(TEXT_ROW_HEIGHT, selftest_line);
 }

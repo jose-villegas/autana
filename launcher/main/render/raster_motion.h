@@ -10,6 +10,7 @@
 #include <stdint.h>
 
 #include "math/linear/mat4f.h"
+#include "math/linear/projectf.h"
 #include "render/r3d_instance.h"
 #include "render/raster_attachment.h"
 #include "render/render_view.h"
@@ -41,7 +42,7 @@ typedef struct {
     int first_moved; /* the first instance that moved, or -1 */
     bool moved[RASTER_MOTION_INSTANCES_MAX];
     mat4f_t map[RASTER_MOTION_INSTANCES_MAX + 1];
-    float center_x, center_y, near_z;
+    projectf_t project;
 } raster_motion_t;
 
 /* The attachment, storing its state in `state`. */

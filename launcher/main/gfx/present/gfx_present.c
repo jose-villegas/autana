@@ -253,7 +253,7 @@ present_task_fn(void* arg) {
 
     /* Sized for STRIP_COUNT * GRID_COLS: see send_one_row(). Undersizing
      * blocks this task's own send loop forever. */
-    strip_sent = xSemaphoreCreateCounting(STRIP_COUNT * GRID_COLS + 2, 0);
+    strip_sent = xSemaphoreCreateCounting((STRIP_COUNT * GRID_COLS) + 2, 0);
     if (strip_sent == NULL) {
         ESP_LOGE(TAG, "Could not create the strip-transfer semaphore");
         present_bringup_ok = false;
@@ -470,7 +470,8 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
     gfx_color_t* const slot = strip_bounce[strip_bounce_next];
     strip_bounce_next = (strip_bounce_next + 1) % STRIP_BOUNCE_SLOTS;
     for (int r = 0; r < h; r++) {
-        memcpy(slot + (size_t)r * w, present_fb + (size_t)(y0 + r) * GFX_WIDTH + x0, (size_t)w * sizeof(gfx_color_t));
+        memcpy(slot + ((size_t)r * w), present_fb + ((size_t)(y0 + r) * GFX_WIDTH) + x0,
+               (size_t)w * sizeof(gfx_color_t));
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
     send_audit_capture(x0, y0, w, h, slot);
@@ -479,8 +480,8 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
         mark_rect_border(slot, w, w, h, border);
     } else if (debug_overlay_on) {
         for (int col = run_start; col < run_end; col++) {
-            const int idx = row * GRID_COLS + col;
-            gfx_color_t* at = slot + (size_t)(cell_y0[idx] - y0) * w + (cell_x0[idx] - x0);
+            const int idx = (row * GRID_COLS) + col;
+            gfx_color_t* at = slot + ((size_t)(cell_y0[idx] - y0) * w) + (cell_x0[idx] - x0);
             mark_rect_border(at, w, cell_x1[idx] - cell_x0[idx], cell_y1[idx] - cell_y0[idx], border);
         }
     }
@@ -489,7 +490,7 @@ gather_and_send(int x0, int y0, int x1, int y1, int row, int run_start, int run_
             dirty_leaf_rects(row, recti_from_edges(x0, y0, x1, y1), leaf_rect_scratch, LEAF_RECTS_PER_ROW_MAX);
         for (int i = 0; i < n; i++) {
             const recti_t* r = &leaf_rect_scratch[i];
-            gfx_color_t* at = slot + (size_t)(r->y - y0) * w + (r->x - x0);
+            gfx_color_t* at = slot + ((size_t)(r->y - y0) * w) + (r->x - x0);
             mark_rect_border(at, w, r->w, r->h, gfx_rgb(0x00FF00));
         }
     }
@@ -518,7 +519,7 @@ bool GFX_PRESENT_IRAM_ATTR
 send_fb_rows(int y0, int y1) {
     gfx_color_t* const slot = strip_bounce[strip_bounce_next];
     strip_bounce_next = (strip_bounce_next + 1) % STRIP_BOUNCE_SLOTS;
-    memcpy(slot, present_fb + (size_t)y0 * GFX_WIDTH, (size_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t));
+    memcpy(slot, present_fb + ((size_t)y0 * GFX_WIDTH), (size_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t));
 #if CONFIG_LAUNCHER_DEVELOPMENT
     send_audit_capture(0, y0, GFX_WIDTH, y1 - y0, slot);
     dev_bytes_sent += (int64_t)(y1 - y0) * GFX_WIDTH * sizeof(gfx_color_t);
@@ -550,7 +551,7 @@ send_picture_rows(int y0, int y1) {
     } else {
         const gfx_indexed_frame_t frame = indexed_frame();
         for (int y = y0; y < y1; y++) {
-            gfx_indexed_expand_panel_row(&frame, y, slot + (size_t)(y - y0) * GFX_WIDTH, GFX_WIDTH);
+            gfx_indexed_expand_panel_row(&frame, y, slot + ((size_t)(y - y0) * GFX_WIDTH), GFX_WIDTH);
         }
     }
 #if CONFIG_LAUNCHER_DEVELOPMENT
@@ -625,9 +626,12 @@ send_run(int row, int run_start, int run_end, int box_x0, int box_x1, int box_y0
  * large parts. */
 static void
 send_one_row(int row, int* queued) {
-    int run_start[GRID_COLS], run_end[GRID_COLS];
-    int box_x0[GRID_COLS], box_x1[GRID_COLS];
-    int box_y0[GRID_COLS], box_y1[GRID_COLS];
+    int run_start[GRID_COLS];
+    int run_end[GRID_COLS];
+    int box_x0[GRID_COLS];
+    int box_x1[GRID_COLS];
+    int box_y0[GRID_COLS];
+    int box_y1[GRID_COLS];
     int split_n[GRID_COLS];
     int split_x0[GRID_COLS][LEAF_REFINE_MAX_RUNS];
     int split_x1[GRID_COLS][LEAF_REFINE_MAX_RUNS];
@@ -701,7 +705,7 @@ run_present_strips(bool (*send_rows)(int y0, int y1)) {
      * quiet need the clean resend. */
     for (int row = 0; row < STRIP_COUNT; row++) {
         if (dirty_row_is_dirty(row)) {
-            overlay_bordered_rows &= ~(1u << row);
+            overlay_bordered_rows &= ~(1U << row);
         }
     }
     send_overlay_bordered_rows_clean(send_rows, &queued);
@@ -712,7 +716,7 @@ run_present_strips(bool (*send_rows)(int y0, int y1)) {
         }
 #if CONFIG_LAUNCHER_DEVELOPMENT
         if (overlay_any_on()) {
-            overlay_bordered_rows |= 1u << row;
+            overlay_bordered_rows |= 1U << row;
             strip_overlay_row = row;
         }
 #endif
@@ -746,13 +750,13 @@ send_dirty_rows(int* queued) {
         }
 
         if (interlace_on && (row % 2) != frame_parity) {
-            remaining_cell_dirty |= cell_dirty & (((1u << GRID_COLS) - 1u) << (row * GRID_COLS));
+            remaining_cell_dirty |= cell_dirty & (((1U << GRID_COLS) - 1U) << (row * GRID_COLS));
             continue;
         }
 
 #if CONFIG_LAUNCHER_DEVELOPMENT
         if (overlay_any_on()) {
-            overlay_bordered_rows |= 1u << row;
+            overlay_bordered_rows |= 1U << row;
         }
 #endif
         send_one_row(row, queued);

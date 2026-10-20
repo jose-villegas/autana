@@ -1,5 +1,6 @@
 /* One codec lifetime with persistent transmit DMA and capture-owned receive DMA. */
 #include "audio/audio_codec.h"
+#include "audio/audio_codec_device.h"
 
 #include <assert.h>
 
@@ -10,8 +11,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "audio/audio_codec_feedback.h"
 #include "audio/audio_out.h"
 #include "board/board.h"
+#include "build/build_variant.h"
 #include "profile/frame_watch.h"
 
 #define AUDIO_CODEC_PROBE_TIMEOUT_MS 100
@@ -30,6 +33,32 @@ static const audio_codec_if_t* codec;
 static esp_codec_dev_handle_t input_device;
 static unsigned references;
 static const char* failed_step;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+static audio_codec_feedback_t feedback;
+
+static int
+feedback_get(void* context, int reg, int* value) {
+    (void)context;
+    return codec->get_reg(codec, reg, value);
+}
+
+static int
+feedback_set(void* context, int reg, int value) {
+    (void)context;
+    return codec->set_reg(codec, reg, value);
+}
+
+bool
+audio_codec_dac_feedback(bool on) {
+    if (!codec || (on && !input_device)) {
+        return false;
+    }
+    return audio_codec_check("DAC feedback", audio_codec_feedback_set(&feedback, NULL, feedback_get, feedback_set, on)
+                                                 ? ESP_CODEC_DEV_OK
+                                                 : ESP_CODEC_DEV_DRV_ERR);
+}
+
+#endif
 
 const char*
 audio_codec_failure(void) {

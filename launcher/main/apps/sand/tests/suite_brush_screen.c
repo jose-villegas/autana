@@ -285,8 +285,8 @@ brush_frame(sand_ui_t* ui, const input_t* in) {
  * released, never on the press or while it is held. */
 static void
 tap_segment(sand_ui_t* ui, recti_t r) {
-    const int x = r.x + r.w / 2;
-    const int y = r.y + r.h / 2;
+    const int x = r.x + (r.w / 2);
+    const int y = r.y + (r.h / 2);
     const input_t press = {.down = true, .pressed = true, .x = x, .y = y};
     const input_t hold = {.down = true, .x = x, .y = y};
     const input_t release = {.released = true, .x = x, .y = y};

@@ -48,6 +48,7 @@ typedef struct {
 #define RENDER_DEBUG_VIEW_COUNT   4 /* table rows; views run 0 to this */
 
 typedef struct {
+    raster_split_t split;
     raster_t raster; /* keeps its upscale maps from frame to frame */
     void* scratch;
     size_t scratch_bytes;
@@ -70,6 +71,9 @@ render_context_t* render_context_main(void);
 
 /* Frees the scratch block and returns every setting to its default. */
 void render_context_release(render_context_t* context);
+
+/* Drops feedback after a camera cut. */
+void render_context_forget(render_context_t* context);
 
 /* The share of the destination's size each axis draws at, upscaled on the
  * way out; it holds while dynamic resolution is off. */

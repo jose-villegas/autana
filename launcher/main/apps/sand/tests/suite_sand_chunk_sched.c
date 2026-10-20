@@ -32,7 +32,7 @@ static const int cs_grids[][4] = {
 
 static const int cs_dirs[][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}, {1, 1}, {1, -1}, {-1, 1}, {-1, -1}};
 
-static const uint32_t cs_seeds[] = {1u, 7u, 12345u};
+static const uint32_t cs_seeds[] = {1U, 7U, 12345U};
 
 #define CS_GRIDS ((int)(sizeof cs_grids / sizeof cs_grids[0]))
 #define CS_DIRS  ((int)(sizeof cs_dirs / sizeof cs_dirs[0]))
@@ -103,7 +103,8 @@ static void
 cs_build(cs_case_t* c, int grid, int which_off) {
     const int side_x = cs_grids[grid][2];
     const int side_y = cs_grids[grid][3];
-    int off_x, off_y;
+    int off_x;
+    int off_y;
 
     cs_offset(which_off, side_x, side_y, &off_x, &off_y);
     TEST_ASSERT_TRUE_MESSAGE(
@@ -128,7 +129,7 @@ cs_sweep(int grids, cs_check_fn check, void* ctx) {
             cs_case_t c;
             cs_build(&c, g, oi);
             for (int d = 0; d < CS_DIRS; d++) {
-                for (unsigned phase = 0; phase < 2u; phase++) {
+                for (unsigned phase = 0; phase < 2U; phase++) {
                     cs_set_pass(&c, d, phase);
                     check(&c, ctx);
                 }
@@ -164,7 +165,10 @@ cs_downstream(int c, int n, int t) {
 
 static void
 cs_tally_chunk(const cs_case_t* c, uint8_t* seen, int cx, int cy, const char* label) {
-    int x0, x1, y0, y1;
+    int x0;
+    int x1;
+    int y0;
+    int y1;
     sand_chunk_cells(&c->plan, cx, cy, &x0, &x1, &y0, &y1);
 
     if (cx > 0 && cx < c->plan.cols - 1) {
@@ -175,7 +179,7 @@ cs_tally_chunk(const cs_case_t* c, uint8_t* seen, int cx, int cy, const char* la
     }
     for (int y = y0; y < y1; y++) {
         for (int x = x0; x < x1; x++) {
-            seen[y * c->plan.w + x]++;
+            seen[(y * c->plan.w) + x]++;
         }
     }
 }
@@ -245,12 +249,12 @@ cs_assert_earlier(const cs_case_t* c, int idx, int nx, int ny) {
     if ((unsigned)nx >= (unsigned)c->plan.cols || (unsigned)ny >= (unsigned)c->plan.rows) {
         return;
     }
-    TEST_ASSERT_LESS_THAN_INT_MESSAGE(c->order.rank[idx], c->order.rank[ny * c->plan.cols + nx], c->label);
+    TEST_ASSERT_LESS_THAN_INT_MESSAGE(c->order.rank[idx], c->order.rank[(ny * c->plan.cols) + nx], c->label);
 }
 
 static void
 cs_check_chunk_downstream(const cs_case_t* c, int cx, int cy) {
-    const int idx = cy * c->plan.cols + cx;
+    const int idx = (cy * c->plan.cols) + cx;
 
     cs_assert_earlier(c, idx, cx + c->tx, cy + c->ty);
     if (c->tx != 0 && c->ty != 0) {
@@ -296,7 +300,7 @@ cs_run_begin(cs_run_t* r, const cs_case_t* c, bool reenter) {
 
 static void
 cs_assert_free_to_run(const cs_run_t* r, int cx, int cy) {
-    const int idx = cy * r->c->plan.cols + cx;
+    const int idx = (cy * r->c->plan.cols) + cx;
     int nb[8];
     const int n = cs_neighbours(r->c->plan.cols, r->c->plan.rows, cx, cy, nb);
 
@@ -311,7 +315,7 @@ cs_assert_free_to_run(const cs_run_t* r, int cx, int cy) {
 static void
 cs_run_fn(void* pass, int lane, int cx, int cy) {
     cs_run_t* r = (cs_run_t*)pass;
-    const int idx = cy * r->c->plan.cols + cx;
+    const int idx = (cy * r->c->plan.cols) + cx;
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(r->k.order.rank[idx] & 1, lane, r->c->label);
     r->running[idx] = 1;
@@ -336,15 +340,15 @@ cs_pick_lane(int which, int step, uint32_t* rnd) {
     if (which == 2) {
         return step & 1;
     }
-    *rnd = (*rnd * 1664525u) + 1013904223u;
-    return (int)((*rnd >> 16) & 1u);
+    *rnd = (*rnd * 1664525U) + 1013904223U;
+    return (int)((*rnd >> 16) & 1U);
 }
 
 /* Drives both lanes by hand, re-entering the other lane from inside the
  * chunk body so an overlap would really happen if the order permitted one. */
 static void
 cs_interleave(cs_run_t* r, const cs_case_t* c, int which) {
-    uint32_t rnd = (which < 3) ? 0u : cs_seeds[which - 3];
+    uint32_t rnd = (which < 3) ? 0U : cs_seeds[which - 3];
     const int count = c->order.count;
 
     cs_run_begin(r, c, true);
@@ -353,7 +357,7 @@ cs_interleave(cs_run_t* r, const cs_case_t* c, int which) {
         if (!sand_chunk_step_lane(&r->k, lane, cs_run_fn, r)) {
             sand_chunk_step_lane(&r->k, 1 - lane, cs_run_fn, r);
         }
-        TEST_ASSERT_LESS_THAN_INT_MESSAGE(4 * count + 64, step, c->label);
+        TEST_ASSERT_LESS_THAN_INT_MESSAGE((4 * count) + 64, step, c->label);
     }
 }
 
@@ -382,7 +386,7 @@ cs_check_complete(const cs_run_t* r) {
 
 static void
 cs_assert_ranked_neighbours_ran_first(const cs_run_t* r, int cx, int cy, const uint8_t* when) {
-    const int idx = cy * r->c->plan.cols + cx;
+    const int idx = (cy * r->c->plan.cols) + cx;
     int nb[8];
     const int n = cs_neighbours(r->c->plan.cols, r->c->plan.rows, cx, cy, nb);
 
@@ -429,7 +433,7 @@ cs_check_lone_lane_gives_up(const cs_case_t* c, void* ctx) {
     cs_run_t* r = (cs_run_t*)ctx;
 
     cs_run_begin(r, c, false);
-    sand_chunk_run_lane(&r->k, 1, 2u, cs_run_fn, r);
+    sand_chunk_run_lane(&r->k, 1, 2U, cs_run_fn, r);
 
     TEST_ASSERT_NOT_EQUAL_UINT8_MESSAGE(0, r->k.abort, c->label);
     TEST_ASSERT_LESS_THAN_INT_MESSAGE(c->order.count, r->seq_n, c->label);
@@ -461,7 +465,7 @@ cs_check_uniform_makespan(const cs_case_t* c, void* ctx) {
     for (int i = 0; i < SAND_CHUNKS_MAX; i++) {
         cost[i] = 1;
     }
-    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(6 * n / 10 + 2, cs_makespan(c, cost), c->label);
+    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE((6 * n / 10) + 2, cs_makespan(c, cost), c->label);
 }
 
 static void
@@ -490,7 +494,7 @@ cs_cost_one_line(const cs_case_t* c, uint16_t* cost) {
     for (int cy = 0; cy < c->plan.rows; cy++) {
         for (int cx = 0; cx < c->plan.cols; cx++) {
             if (cs_on_line(c, cx, cy)) {
-                cost[cy * c->plan.cols + cx] = CS_LINE_COST;
+                cost[(cy * c->plan.cols) + cx] = CS_LINE_COST;
                 n++;
             }
         }
@@ -508,7 +512,7 @@ cs_check_line_makespan(const cs_case_t* c, void* ctx) {
     (void)ctx;
 
     TEST_ASSERT_GREATER_THAN_INT_MESSAGE(CS_LINE_COST, line_cost, c->label);
-    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE(6 * line_cost / 10 + 10, cs_makespan(c, cost), c->label);
+    TEST_ASSERT_LESS_OR_EQUAL_INT_MESSAGE((6 * line_cost / 10) + 10, cs_makespan(c, cost), c->label);
 }
 
 static void

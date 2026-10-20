@@ -12,8 +12,8 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "input/imu_sample.h"
-#include "input/tilt.h"
+#include "input/motion/imu_sample.h"
+#include "input/motion/tilt.h"
 
 /* Roughly 1 g in the units the QMI8658 reports, which is what the filter sees
  * in the app. The exact value does not matter (the filter is unit-agnostic),
