@@ -37,7 +37,7 @@ play_note(melody_note_t note, uint8_t volume_pct) {
     if (!console_tone_start(&voice, melody_note_hz(note), volume_pct)) {
         return "tone start failed";
     }
-    timing_sleep_ms(note.steps * MELODY_STEP_MS - MELODY_GAP_MS);
+    timing_sleep_ms((note.steps * MELODY_STEP_MS) - MELODY_GAP_MS);
     const bool stopped = console_tone_stop(&voice);
     timing_sleep_ms(MELODY_GAP_MS);
     return stopped ? NULL : "tone stop failed";

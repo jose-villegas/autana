@@ -134,7 +134,8 @@ static struct {
     size_t melody_starts;
     size_t melody_results;
     unsigned melody_sleep_ms;
-    const char* reply;
+    bool replied;
+    bool tone_error;
 } device;
 
 static console_registry_t registry;
@@ -272,7 +273,8 @@ audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, float* measured_hz) 
 
 static void
 tone_collect(const char* reply) {
-    device.reply = reply;
+    device.replied = true;
+    device.tone_error = strstr(reply, "TONE error:") != NULL;
 }
 
 static void
@@ -349,8 +351,8 @@ test_tone_capture_restores_every_exit(void) {
         TEST_ASSERT_EQUAL_UINT(1, device.closes);
         if (failure == TEST_TONE_RESTORE_FAIL) {
             TEST_ASSERT_TRUE(device.feedback.restore_pending);
-            TEST_ASSERT_NOT_NULL(device.reply);
-            TEST_ASSERT_NOT_NULL(strstr(device.reply, "TONE error:"));
+            TEST_ASSERT_TRUE(device.replied);
+            TEST_ASSERT_TRUE(device.tone_error);
             continue;
         }
         TEST_ASSERT_EQUAL_HEX(TEST_TONE_REGISTER_OLD, device.reg);
@@ -362,10 +364,10 @@ test_tone_capture_restores_every_exit(void) {
             TEST_ASSERT_GREATER_OR_EQUAL_UINT(2, device.stops);
         }
         if (failure == TEST_TONE_OK || failure == TEST_TONE_STOP_DROPPED) {
-            TEST_ASSERT_NULL(device.reply);
+            TEST_ASSERT_FALSE(device.replied);
         } else {
-            TEST_ASSERT_NOT_NULL(device.reply);
-            TEST_ASSERT_NOT_NULL(strstr(device.reply, "TONE error:"));
+            TEST_ASSERT_TRUE(device.replied);
+            TEST_ASSERT_TRUE(device.tone_error);
         }
     }
 }
@@ -377,24 +379,24 @@ test_tone_pending_restore_blocks_both_modes(void) {
     device.reg = TEST_TONE_REGISTER_OLD;
     device.failure = TEST_TONE_RESTORE_FAIL;
     TEST_ASSERT_TRUE(console_registry_handle_line(&registry, "tone 1000 100 internal", tone_collect));
-    TEST_ASSERT_NOT_NULL(device.reply);
-    TEST_ASSERT_NOT_NULL(strstr(device.reply, "TONE error:"));
+    TEST_ASSERT_TRUE(device.replied);
+    TEST_ASSERT_TRUE(device.tone_error);
     TEST_ASSERT_TRUE(device.feedback.restore_pending);
     const unsigned measures = device.measures;
     static const char* const commands[] = {"tone 1000 100", "tone 1000 100 internal"};
     device.internal = false;
     for (size_t i = 0; i < sizeof commands / sizeof commands[0]; i++) {
-        device.reply = NULL;
+        device.replied = false;
         TEST_ASSERT_TRUE(console_registry_handle_line(&registry, commands[i], tone_collect));
-        TEST_ASSERT_NOT_NULL(device.reply);
-        TEST_ASSERT_NOT_NULL(strstr(device.reply, "TONE error:"));
+        TEST_ASSERT_TRUE(device.replied);
+        TEST_ASSERT_TRUE(device.tone_error);
         TEST_ASSERT_EQUAL_UINT(measures, device.measures);
         TEST_ASSERT_TRUE(device.feedback.restore_pending);
     }
     device.failure = TEST_TONE_OK;
-    device.reply = NULL;
+    device.replied = false;
     TEST_ASSERT_TRUE(console_registry_handle_line(&registry, commands[0], tone_collect));
-    TEST_ASSERT_NULL(device.reply);
+    TEST_ASSERT_FALSE(device.replied);
     TEST_ASSERT_FALSE(device.feedback.restore_pending);
     TEST_ASSERT_EQUAL_UINT(measures + 2, device.measures);
 }
@@ -408,7 +410,7 @@ test_tone_acoustic_has_no_feedback(void) {
     TEST_ASSERT_EQUAL_UINT(1, device.closes);
     TEST_ASSERT_EQUAL_HEX(TEST_TONE_REGISTER_OLD, device.reg);
     TEST_ASSERT_FALSE(device.feedback.restore_pending);
-    TEST_ASSERT_NULL(device.reply);
+    TEST_ASSERT_FALSE(device.replied);
 }
 #endif
 
