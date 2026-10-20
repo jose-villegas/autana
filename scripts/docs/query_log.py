@@ -4,12 +4,18 @@
     python scripts/docs/query_log.py [--days N] [--tool NAME]   summarise the log
 
 Each lookup appends one JSON line to queries.jsonl in the per-user autana
-cache (%LOCALAPPDATA%/autana/usage, or ~/.cache/autana/usage): the time, the
-tool, the question, its best results with their scores, how long it took,
-whether meaning-based ranking was on, and whether the answer was weak. The
-summary reads every *.jsonl in that folder, so rows recovered from elsewhere
-can sit beside the live ones. Nothing leaves the machine; deleting the folder
-loses only the history.
+cache (%LOCALAPPDATA%/autana/usage, else $XDG_CACHE_HOME or ~/.cache, then
+autana/usage). Nothing leaves the machine; deleting the folder loses only
+the history. The summary reads every *.jsonl in that folder, so any tool
+that writes rows in this format is summarised beside docs_search.py:
+
+    time      ISO 8601 UTC            tool   which tool asked
+    kind      what was asked for      query  the question or reference
+    hits      [[label, score], ...]   ms     latency, when known
+    weak      true when nothing answered well
+    followed  optional: rank of the result opened next, 0 for none
+
+Other fields are kept but not summarised.
 
 A failure to write the log never fails the lookup that made it.
 """
@@ -52,10 +58,10 @@ def record(tool, kind, query, hits=(), started=None, **fields):
 def append(name, row):
     """One JSON line onto log_dir()/name; a write that fails is dropped, never raised."""
     try:
-        folder = log_dir()
-        folder.mkdir(parents=True, exist_ok=True)
-        with open(folder / name, "a", encoding="utf-8") as stream:
-            stream.write(json.dumps(row, ensure_ascii=False) + "\n")
+        file = log_dir() / name
+        file.parent.mkdir(parents=True, exist_ok=True)
+        with open(file, "a", encoding="utf-8") as stream:
+            stream.write(json.dumps(row) + "\n")
     except OSError:
         pass
 
@@ -87,7 +93,7 @@ def percent(part, whole):
 
 def summary(rows):
     """Plain-text report: use per tool and kind, follow-through, the commonest
-    and the missed questions, and the documents most often refused whole."""
+    questions, and the missed ones of every kind."""
     if not rows:
         return "no lookups logged yet"
     lines = []
@@ -109,21 +115,17 @@ def summary(rows):
             median = str(times[len(times) // 2]) if times else "-"
             lines.append(f"{tool:<10} {kind:<9} {count:>6} {percent(weak, count):>6} "
                          f"{percent(opened, len(judged)):>7} {median:>10}")
-    searches = [r for r in rows if r.get("kind") in ("search", "ask") and r.get("query")]
-    if searches:
+    asked = Counter((r["tool"], r.get("kind", "?"), r["query"].lower()) for r in rows if r.get("query"))
+    repeated = [(key, count) for key, count in asked.most_common(TOP_SHOWN) if count > 1]
+    if repeated:
         lines += ["", "most asked:"]
-        for query, count in Counter((r["tool"], r["query"].lower()) for r in searches).most_common(TOP_SHOWN):
-            if count > 1:
-                lines.append(f"  {count:>3}  {query[0]}: {query[1][:90]}")
-        missed = Counter((r["tool"], r["query"].lower()) for r in searches if r.get("weak"))
-        if missed:
-            lines += ["", "missed (weak or no result):"]
-            lines += [f"  {count:>3}  {tool}: {query[:90]}" for (tool, query), count in missed.most_common(TOP_SHOWN)]
-    refused = Counter(r["query"] for r in rows if r.get("kind") == "refused")
-    if refused:
-        bypassed = Counter(r["query"] for r in rows if r.get("kind") == "bypass")
-        lines += ["", "refused whole-file reads (then read whole anyway):"]
-        lines += [f"  {count:>3}  {path}  ({bypassed.get(path, 0)})" for path, count in refused.most_common(TOP_SHOWN)]
+        lines += [f"  {count:>3}  {tool} {kind}: {query[:90]}" for (tool, kind, query), count in repeated]
+    missed = Counter((r["tool"], r.get("kind", "?"), r["query"].lower())
+                     for r in rows if r.get("weak") and r.get("query"))
+    if missed:
+        lines += ["", "missed (weak or no result):"]
+        lines += [f"  {count:>3}  {tool} {kind}: {query[:90]}"
+                  for (tool, kind, query), count in missed.most_common(TOP_SHOWN)]
     return "\n".join(lines)
 
 

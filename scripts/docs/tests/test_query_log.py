@@ -67,8 +67,12 @@ class Logged(unittest.TestCase):
             self.run_search("--eval")
         self.assertEqual(self.rows(), [])
         history = [json.loads(line) for line in
-                   (self.folder / "eval-history.jsonl").read_text(encoding="utf-8").splitlines()]
+                   (self.folder / "eval" / "history.jsonl").read_text(encoding="utf-8").splitlines()]
         self.assertEqual((history[0]["suite"], history[0]["rows"], history[0]["mrr"]), ("docs", 1, 1.0))
+
+    def test_a_question_that_is_not_valid_utf8_is_still_logged(self):
+        self.run_search("port" + "\udcff")
+        self.assertEqual(self.rows()[0]["query"], "port\udcff")
 
     def test_a_log_that_cannot_be_written_never_fails_the_lookup(self):
         blocker = self.folder / "file"
@@ -95,16 +99,17 @@ class Summary(unittest.TestCase):
         {"time": "2026-10-03T11:00:00+00:00", "tool": "read-hook", "kind": "refused",
          "query": "docs/Big.md", "hits": []},
         {"time": "2026-10-03T11:01:00+00:00", "tool": "read-hook", "kind": "bypass",
-         "query": "docs/Big.md", "hits": []},
+         "query": "docs/Big.md", "hits": [], "weak": True},
     ]
 
     def test_counts_followthrough_repeats_misses_and_refusals(self):
         text = query_log.summary(self.ROWS)
         self.assertIn("5 lookups, 2026-10-01 to 2026-10-03", text)
         self.assertRegex(text, r"docs\s+search\s+3\s+33%\s+50%\s+50")
-        self.assertIn("2  docs: lock protocol", text)
-        self.assertIn("1  docs: bluetooth pairing", text.split("missed")[1])
-        self.assertIn("1  docs/Big.md  (1)", text)
+        self.assertIn("2  docs search: lock protocol", text)
+        missed = text.split("missed")[1]
+        self.assertIn("1  docs search: bluetooth pairing", missed)
+        self.assertIn("1  read-hook bypass: docs/big.md", missed)
 
     def test_rows_without_a_tool_are_not_lookups(self):
         folder = Path(tempfile.mkdtemp())

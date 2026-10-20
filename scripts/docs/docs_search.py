@@ -631,8 +631,11 @@ def scores(ranks):
             "top3": round(sum(1 for _, r in ranks if r and r <= 3) / count, 3)}
 
 
+EVAL_HISTORY = "eval/history.jsonl"
+
+
 def eval_history():
-    return query_log.log_dir() / "eval-history.jsonl"
+    return query_log.log_dir() / EVAL_HISTORY
 
 
 def run_eval(index):
@@ -650,12 +653,13 @@ def run_eval(index):
         earlier = []
     print(f"{result['mode']}: MRR {result['mrr']:.3f}, top-1 {result['top1']:.0%}, "
           f"top-3 {result['top3']:.0%} of {result['rows']} questions in {result['seconds']} s")
-    previous = next((e for e in reversed(earlier) if e.get("suite", "docs") == "docs"
-                     and e.get("mode") == result["mode"]), None)
+    # Every checkout shares the history; only a run over the same set compares.
+    previous = next((e for e in reversed(earlier) if e.get("suite") == "docs"
+                     and e.get("mode") == result["mode"] and e.get("rows") == result["rows"]), None)
     if previous:
         print(f"last {previous['time'][:10]}: MRR {previous['mrr']:.3f}, top-3 {previous['top3']:.0%}"
               f" of {previous['rows']}")
-    query_log.append(history.name, result)
+    query_log.append(EVAL_HISTORY, result)
     return result
 
 
