@@ -16,6 +16,15 @@ int render_lab_scale(void);
 
 camera_present_t render_lab_present(void);
 small_fill_t render_lab_small_fill(void);
+
+/* The menu's small-fill choice: every SMALL_FILL_ preset, then "CUSTOM" for
+ * tunables that match none. selected is the index the tunables are at now;
+ * select moves the tunables to a preset and ignores CUSTOM. Development
+ * builds only, where the tunables can move. */
+const char* const* render_lab_small_fill_names(int* count);
+int render_lab_small_fill_selected(void);
+void render_lab_small_fill_select(int index);
+
 bool render_lab_apply_camera_settings(scene_t* scene, scene_entity_t camera);
 
 /* Applies the tunables to destination dimensions. */

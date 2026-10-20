@@ -2,6 +2,8 @@
 
 #include <stdio.h>
 
+#include "apps/render_lab/render_lab_view.h"
+#include "services/tune.h"
 #include "ui/ui.h"
 
 #define MENU_BTN_W 300
@@ -34,6 +36,18 @@ render_lab_menu_screen_draw(const render_lab_menu_screen_state_t* state) {
     if (ui_button(ui_next(), label)) {
         result.next_scene_clicked = true;
     }
+
+#if TUNE_ENABLED
+    int count = 0;
+    const char* const* names = render_lab_small_fill_names(&count);
+    int fill = render_lab_small_fill_selected();
+    ui_row_centre(MENU_BTN_W, ui_text_height() + UI_TEXT_PAD);
+    ui_text(ui_next(), "SMALL FILL");
+    ui_row_centre(MENU_BTN_W, UI_ROW_HEIGHT);
+    if (ui_dropdown(ui_next(), "SMALL FILL", &fill, names, count)) {
+        render_lab_small_fill_select(fill);
+    }
+#endif
 
     if (state->controls != NULL) {
         state->controls(MENU_BTN_W);
