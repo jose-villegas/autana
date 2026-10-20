@@ -26,10 +26,10 @@ extern const render_lab_scene_t scene_sponza_fitted;
 extern const render_lab_scene_t scene_sponza_fitted_full;
 extern const render_lab_scene_t scene_sponza_flat_fitted;
 
+/* Index 0 is the scene a start with no key shows; a family's scenes keep this order in its dropdown. */
 static const render_lab_scene_t* const scenes[] = {
-    &scene_sponza,        &scene_sponza_lite,        &scene_sponza_flat,
-    &scene_sponza_fitted, &scene_sponza_fitted_full, &scene_sponza_flat_fitted,
-    &scene_capybara,
+    &scene_sponza_fitted_full, &scene_sponza_fitted,      &scene_sponza,   &scene_sponza_lite,
+    &scene_sponza_flat,        &scene_sponza_flat_fitted, &scene_capybara,
 };
 #define SCENE_COUNT ((int)(sizeof(scenes) / sizeof(scenes[0])))
 static int current_scene_index;
@@ -79,8 +79,6 @@ scene_title_alpha(void) {
  * else lives behind BOOT. */
 static bool menu_open;
 
-static bool scene_switch_pending;
-
 /* A scene the console asked for by key, switched to at the next frame like
  * a menu tap; -1 for none. */
 static int scene_requested = -1;
@@ -124,7 +122,6 @@ render_lab_enter(void) {
      * happened while some OTHER app was showing does not read as "changed
      * since last frame" on the very first frame back here. */
     menu_open = false;
-    scene_switch_pending = false;
     scene_requested = -1;
     last_layout_generation = ui_layout_generation();
 }
@@ -142,9 +139,49 @@ switch_to_scene(int index) {
     scene_title_remaining_ms = SCENE_TITLE_MS;
 }
 
-static void
-switch_to_next_scene(void) {
-    switch_to_scene((current_scene_index + 1) % SCENE_COUNT);
+/* Scene families in the order their first scene appears. */
+static int
+family_names(const char* names[SCENE_COUNT]) {
+    int count = 0;
+    for (int i = 0; i < SCENE_COUNT; i++) {
+        int seen = 0;
+        while (seen < count && strcmp(names[seen], scenes[i]->family) != 0) {
+            seen++;
+        }
+        if (seen == count) {
+            names[count++] = scenes[i]->family;
+        }
+    }
+    return count;
+}
+
+int
+render_lab_family_variants(const char* family, const char* const** names, int* selected) {
+    static const char* variants[SCENE_COUNT];
+    int count = 0;
+    *selected = -1;
+    for (int i = 0; i < SCENE_COUNT; i++) {
+        if (strcmp(scenes[i]->family, family) == 0) {
+            if (i == current_scene_index) {
+                *selected = count;
+            }
+            variants[count++] = scenes[i]->variant;
+        }
+    }
+    *names = variants;
+    return count;
+}
+
+bool
+render_lab_request_variant(const char* family, int index) {
+    int count = 0;
+    for (int i = 0; i < SCENE_COUNT; i++) {
+        if (strcmp(scenes[i]->family, family) == 0 && count++ == index) {
+            scene_requested = i;
+            return true;
+        }
+    }
+    return false;
 }
 
 static void
@@ -168,14 +205,22 @@ static void
 draw_menu(const input_t* input) {
     ui_begin(input);
 
+    const char* families[SCENE_COUNT];
+    const int family_count = family_names(families);
+    int family = 0;
+    while (strcmp(families[family], current_scene()->family) != 0) {
+        family++;
+    }
     const render_lab_menu_screen_state_t state = {
-        .scene_name = current_scene()->name,
+        .families = families,
+        .family_count = family_count,
+        .family = family,
         .controls = current_scene()->controls,
     };
     const render_lab_menu_screen_result_t result = render_lab_menu_screen_draw(&state);
 
-    if (result.next_scene_clicked) {
-        scene_switch_pending = true;
+    if (result.family_picked >= 0 && result.family_picked != family) {
+        (void)render_lab_request_variant(families[result.family_picked], 0);
     }
 
     ui_end(RENDER_LAB_BACKGROUND_RGB);
@@ -206,10 +251,6 @@ update_fps_counter(uint32_t dt_ms) {
 
 static void
 render_lab_frame(uint32_t dt_ms, const input_t* input) {
-    if (scene_switch_pending) {
-        scene_switch_pending = false;
-        switch_to_next_scene();
-    }
     if (scene_requested >= 0) {
         if (scene_requested != current_scene_index) {
             switch_to_scene(scene_requested);

@@ -14,6 +14,7 @@
 
 #include "esp_log.h"
 
+#include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "draw/draw.h"
 #include "gfx/present/gfx_present.h"
 #include "render/context/render_context.h"
@@ -23,6 +24,7 @@
 #include "scene/scene.h"
 #include "services/tune.h"
 #include "sponza_content.h"
+#include "ui/ui.h"
 
 static const char* TAG = "sponza";
 
@@ -175,22 +177,51 @@ sponza_status(void) {
     return buf;
 }
 
-/* What every bake's scene shares; each names itself, its key and its bake's enter. */
-#define SPONZA_SCENE_FIELDS .frame = scene_sponza_frame, .exit = scene_sponza_exit, .status = sponza_status
+#define SPONZA_FAMILY "Sponza"
+
+/* The menu's Mesh dropdown: the bake the scene shows. */
+static void
+scene_sponza_controls(int width) {
+    const char* const* names = NULL;
+    int selected = -1;
+    const int count = render_lab_family_variants(SPONZA_FAMILY, &names, &selected);
+    render_lab_menu_caption(width, "MESH");
+    ui_row_centre(width, UI_ROW_HEIGHT);
+    int picked = selected;
+    if (ui_dropdown(ui_next(), "MESH", &picked, names, count) && picked != selected) {
+        (void)render_lab_request_variant(SPONZA_FAMILY, picked);
+    }
+}
+
+/* What every bake's scene shares; each names itself, its key, its variant and its bake's enter. */
+#define SPONZA_SCENE_FIELDS                                                                                            \
+    .family = SPONZA_FAMILY, .frame = scene_sponza_frame, .exit = scene_sponza_exit, .status = sponza_status,          \
+    .controls = scene_sponza_controls
 
 const render_lab_scene_t scene_sponza = {
-    .name = "Sponza", .key = "sponza", .enter = scene_sponza_enter, SPONZA_SCENE_FIELDS};
-const render_lab_scene_t scene_sponza_lite = {
-    .name = "Sponza Lite", .key = "sponza-lite", .enter = scene_sponza_lite_enter, SPONZA_SCENE_FIELDS};
-const render_lab_scene_t scene_sponza_flat = {
-    .name = "Sponza Flat", .key = "sponza-flat", .enter = scene_sponza_flat_enter, SPONZA_SCENE_FIELDS};
-const render_lab_scene_t scene_sponza_fitted = {
-    .name = "Sponza Fitted", .key = "sponza-fitted", .enter = scene_sponza_fitted_enter, SPONZA_SCENE_FIELDS};
+    .name = "Sponza", .key = "sponza", .variant = "Full", .enter = scene_sponza_enter, SPONZA_SCENE_FIELDS};
+const render_lab_scene_t scene_sponza_lite = {.name = "Sponza Lite",
+                                              .key = "sponza-lite",
+                                              .variant = "Lite",
+                                              .enter = scene_sponza_lite_enter,
+                                              SPONZA_SCENE_FIELDS};
+const render_lab_scene_t scene_sponza_flat = {.name = "Sponza Flat",
+                                              .key = "sponza-flat",
+                                              .variant = "Flat",
+                                              .enter = scene_sponza_flat_enter,
+                                              SPONZA_SCENE_FIELDS};
+const render_lab_scene_t scene_sponza_fitted = {.name = "Sponza Fitted",
+                                                .key = "sponza-fitted",
+                                                .variant = "Fitted",
+                                                .enter = scene_sponza_fitted_enter,
+                                                SPONZA_SCENE_FIELDS};
 const render_lab_scene_t scene_sponza_fitted_full = {.name = "Sponza Fitted Full",
                                                      .key = "sponza-fitted-full",
+                                                     .variant = "Fitted Full",
                                                      .enter = scene_sponza_fitted_full_enter,
                                                      SPONZA_SCENE_FIELDS};
 const render_lab_scene_t scene_sponza_flat_fitted = {.name = "Sponza Flat Fitted",
                                                      .key = "sponza-flat-fitted",
+                                                     .variant = "Flat Fitted",
                                                      .enter = scene_sponza_flat_fitted_enter,
                                                      SPONZA_SCENE_FIELDS};
