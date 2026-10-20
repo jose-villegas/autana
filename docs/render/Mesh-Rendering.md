@@ -172,8 +172,8 @@ panel layout; the scene shell picks the band rows from it:
 
 A band redraws from the prepared frame, so a paused scene still fills its
 bands. The pixels match the whole picture's byte for byte. Bands draw at
-most `RENDER_CONTEXT_BAND_PERCENT` of the destination per axis (a 12.5 KB
-band picture on this panel), shaded only: no view mode.
+most `RENDER_CONTEXT_BAND_PERCENT` of the destination per axis, shaded only:
+no view mode.
 
 ### On both cores
 
