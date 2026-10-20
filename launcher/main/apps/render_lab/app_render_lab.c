@@ -273,7 +273,7 @@ render_lab_update(uint32_t dt_ms, const input_t* input) {
 }
 
 /* "render scenes" lists each scene's key and name and which one shows; "render scene <key>" switches to that exact key at the next frame. Replies are "RENDER ..." lines then "RENDER_END", or "RENDER_ERR <why>". Other words go to the showing scene's console hook, if it has one. */
-static bool
+bool
 render_lab_console(const char* args) {
     if (strcmp(args, "scenes") == 0) {
         for (int i = 0; i < SCENE_COUNT; i++) {
