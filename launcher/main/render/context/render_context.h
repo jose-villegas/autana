@@ -25,6 +25,8 @@
 
 /* The share of the destination a frame draws at until set. */
 #define RENDER_CONTEXT_DEFAULT_SCALE_PERCENT 50
+/* The most of the destination's size each axis draws at with band rows. */
+#define RENDER_CONTEXT_BAND_PERCENT          50
 
 /* The last frame: its step (-1 at the fixed scale), the size it drew at,
  * what culling kept and, under dynamic resolution only, what its draw (with
@@ -100,8 +102,9 @@ int render_context_debug_view_named(const char* name);
 void render_context_print_debug_views(FILE* out);
 
 /* Composes `rows` destination rows at a time, drawing the picture a band at
- * a time into internal RAM as render_context_compose_rows() asks for it;
- * 0 draws every row in render_context_draw(). */
+ * a time into internal RAM as render_context_compose_rows() asks for it, at
+ * most RENDER_CONTEXT_BAND_PERCENT of the destination's size; 0 draws every
+ * row in render_context_draw(). Shaded only: no debug view with band rows. */
 void render_context_set_band_rows(render_context_t* context, int rows);
 
 /* Draws `count` instances through `view`; false when there is no scratch for

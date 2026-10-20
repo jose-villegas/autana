@@ -21,6 +21,7 @@ typedef enum {
     RENDER_LAB_LAYOUT_FULL,
     RENDER_LAB_LAYOUT_DOUBLE,
     RENDER_LAB_LAYOUT_DOUBLE_CLEAR, /* double, the sent frame filled by core 1 */
+    RENDER_LAB_LAYOUT_BANDS,        /* no framebuffer: each band drawn into internal RAM as it is sent */
     RENDER_LAB_LAYOUT_COUNT,
 } render_lab_layout_t;
 

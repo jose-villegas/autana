@@ -3,7 +3,9 @@ indirect boot_anim_draw_frame : shell_paint_home_under_boot
 root scene_render system
 root test_options_band_frame_cost test
 root test_menu_band_frame_cost test
-indirect gfx_band_run : paint_menu_band paint_options_band
+indirect gfx_band_run : paint_menu_band paint_options_band shell_apps.c:draw_band_layers scene_shell_compose_band
+indirect shell_apps.c:draw_band_layers : shell_test_draw_band
+indirect shell_systems_compose_band : scene_shell_compose_band
 indirect ui_draw_icon : measure_text_width measure_text_height
 indirect text_in_clip : measure_text_width
 root test_the_two_core_frame_matches_one_full_draw test
@@ -12,8 +14,8 @@ root test_a_triangle_over_any_side_of_the_screen_is_drawn test
 root test_a_census_list_draws_what_raster_draw_draws_at_any_size test
 indirect writer_rows r3d_span_triangle_write : raster_attachment_tag
 indirect shell_systems_update : scene_shell_render
-indirect instance_writers : raster_motion.c:writer raster_meshlets.c:writer
-indirect raster_draw raster_draw_culled : raster_motion.c:begin raster_meshlets.c:begin
+indirect raster_draw_rows : raster_motion.c:writer raster_meshlets.c:writer
+indirect raster_prepare raster_prepare_culled raster_draw raster_draw_culled : raster_motion.c:begin raster_meshlets.c:begin
 indirect resolve_slice : raster_motion.c:resolve
 indirect draw_slice : clear_color clear_depth raster_motion.c:clear raster_meshlets.c:clear
 indirect raster_show : raster_motion.c:show raster_meshlets.c:show depth_show tiles_show

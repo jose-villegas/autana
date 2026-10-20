@@ -155,6 +155,18 @@ current_step(const render_context_t* c) {
     return c->policy == RENDER_STEPPED ? c->control.step : c->predict.step;
 }
 
+/* The size a frame draws at, from a step or the fixed scale. Bands draw at
+ * most RENDER_CONTEXT_BAND_PERCENT of the destination on each axis, which
+ * keeps the band picture a small block of internal RAM. */
+static resolution_step_t
+drawn_size(const render_context_t* c, resolution_step_t size, int destination_width, int destination_height) {
+    if (c->band_rows != 0) {
+        size.width = mathi_min(size.width, destination_width * RENDER_CONTEXT_BAND_PERCENT / 100);
+        size.height = mathi_min(size.height, destination_height * RENDER_CONTEXT_BAND_PERCENT / 100);
+    }
+    return size;
+}
+
 /* The source rows a band of `rows` destination rows can read at the
  * raster's size: the nearest-neighbour row map can straddle one more. */
 static int
@@ -181,8 +193,9 @@ fit_scratch(render_context_t* c) {
     const int width = r->width;
     const int height = r->height;
     if (c->policy != RENDER_FIXED) {
-        r->width = c->ladder.steps[0].width;
-        r->height = c->ladder.steps[0].height;
+        const resolution_step_t finest = drawn_size(c, c->ladder.steps[0], r->destination_width, r->destination_height);
+        r->width = finest.width;
+        r->height = finest.height;
     }
     r->band_rows = band_source_rows(r, c->band_rows);
     const size_t needed = raster_scratch_bytes(r);
@@ -219,10 +232,13 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
     r->split = &c->split;
     r->instances = instances;
     r->instance_count = count;
-    r->width = step < 0 ? view->viewport.width * c->scale_percent / 100 : c->ladder.steps[step].width;
-    r->height = step < 0 ? view->viewport.height * c->scale_percent / 100 : c->ladder.steps[step].height;
+    const resolution_step_t scaled = {view->viewport.width * c->scale_percent / 100,
+                                      view->viewport.height * c->scale_percent / 100};
+    const resolution_step_t size =
+        drawn_size(c, step < 0 ? scaled : c->ladder.steps[step], view->viewport.width, view->viewport.height);
+    r->width = size.width;
     r->present = view->present;
-    r->height = raster_present_size((resolution_step_t){r->width, r->height}, r->present).height;
+    r->height = raster_present_size(size, r->present).height;
     r->clear = clear;
     r->upscaled = true; /* render_context_compose() names the picture */
     r->destination_width = view->viewport.width;
@@ -238,8 +254,10 @@ render_context_draw(render_context_t* c, const r3d_instance_t* instances, int co
         c->frame.stats = raster_census(r, view);
         const int chosen = resolution_predict_choose(&c->predict, &c->ladder, c->frame.stats.triangles);
         c->frame.predicted_us = (int32_t)c->predict.chosen_us;
-        r->width = c->ladder.steps[chosen].width;
-        r->height = raster_present_size(c->ladder.steps[chosen], r->present).height;
+        const resolution_step_t chosen_size =
+            drawn_size(c, c->ladder.steps[chosen], r->destination_width, r->destination_height);
+        r->width = chosen_size.width;
+        r->height = raster_present_size(chosen_size, r->present).height;
         r->band_rows = band_source_rows(r, c->band_rows);
         c->frame.width = r->width;
         c->frame.height = r->height;

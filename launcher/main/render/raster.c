@@ -107,6 +107,7 @@ gfx_render_target_t
 raster_picture(const raster_t* raster) {
     assert(raster->attachment_count >= 0 && raster->attachment_count <= GFX_ATTACHMENTS_MAX - GFX_ATTACHMENT_FURTHER);
     assert(raster->band_rows >= 0);
+    assert(raster->band_rows == 0 || raster->attachment_count == 0); /* bands draw shaded only */
     const int rows = raster->band_rows == 0 ? raster->height : raster->band_rows;
     gfx_render_target_t picture = {raster->width, 0, rows, GFX_ATTACHMENT_FURTHER + raster->attachment_count, {{0}}};
     for (int i = 0; i < picture.count; i++) {
@@ -239,9 +240,10 @@ raster_scratch_bytes(const raster_t* raster) {
         (sizeof(r3d_pipeline_vertex_t) * (size_t)raster_vertex_capacity(raster))
         + (sizeof(r3d_pipeline_rows_t) * (size_t)raster_cluster_capacity(raster)) + r3d_pipeline_culled_bytes(raster)
         + (raster->band_rows == 0 ? gfx_render_target_bytes(&picture) : 0)
-        + gfx_attachment_bytes(sizeof(uint16_t), raster->destination_width + (2 * raster->destination_height), 1);
+        + gfx_attachment_bytes(sizeof(uint16_t), raster->destination_width + raster->destination_height, 1);
     return mathi_size_ceil(prefix, R3D_PIPELINE_WORK_ALIGNMENT) + (2 * r3d_pipeline_work_bytes()) + sizeof(draw_work_t)
-           + (sizeof(r3d_lens_t) * (size_t)raster->instance_count);
+           + (sizeof(r3d_lens_t) * (size_t)raster->instance_count)
+           + (sizeof(uint16_t) * (size_t)raster->destination_height);
 }
 
 size_t
@@ -466,7 +468,9 @@ raster_prepare_culled(const raster_t* raster, const render_view_t* view) {
     prepare_instances(raster, view, NULL);
 }
 
-void
+/* Its own frame, so a whole draw's chain is the deeper of the two stages,
+ * not their sum. */
+__attribute__((noinline)) void
 raster_draw_rows(const raster_t* raster, int row0, int row1) {
     draw_rows(raster, row0, row1);
 }
@@ -475,7 +479,7 @@ raster_stats_t
 raster_draw(const raster_t* raster, const render_view_t* view) {
     raster_stats_t stats = {0, 0};
     prepare_instances(raster, view, &stats);
-    draw_rows(raster, 0, raster->height);
+    raster_draw_rows(raster, 0, raster->height);
     return stats;
 }
 
@@ -510,7 +514,7 @@ raster_census(const raster_t* raster, const render_view_t* view) {
 void
 raster_draw_culled(const raster_t* raster, const render_view_t* view) {
     prepare_instances(raster, view, NULL);
-    draw_rows(raster, 0, raster->height);
+    raster_draw_rows(raster, 0, raster->height);
 }
 
 resolution_step_t
@@ -535,8 +539,8 @@ raster_compose_size(const raster_t* raster) {
 }
 
 /* Builds the maps for a `width` by `height` destination unless they are
- * already for it; returns where a window's row map goes. */
-static uint16_t*
+ * already for it. */
+static void
 upscale_maps(raster_t* raster, int width, int height) {
     assert(raster->upscaled);
     assert(raster->width > 0 && raster->height > 0);
@@ -551,12 +555,11 @@ upscale_maps(raster_t* raster, int width, int height) {
             upscale_init(&raster->upscale, raster->width, raster->height, width, height, columns, rows);
         assert(initialized);
     }
-    return rows + height;
 }
 
 void
 raster_upscale_source(raster_t* raster, int width, int height, int first, int end, int* row0, int* row1) {
-    (void)upscale_maps(raster, width, height);
+    upscale_maps(raster, width, height);
     const upscale_t* scale = &raster->upscale;
     assert(0 <= first && first < end && end <= height);
     if (scale->path == UPSCALE_BLOCKS) {
@@ -572,7 +575,7 @@ void
 raster_upscale_rows(raster_t* raster, gfx_target_t destination, int width, int height) {
     assert(destination.buf != NULL && destination.stride == width);
     FRAME_COST_BEGIN(upscaled_from);
-    uint16_t* window_rows = upscale_maps(raster, width, height);
+    upscale_maps(raster, width, height);
     const int first = destination.y0;
     const int end = first + destination.height;
     int row0;
@@ -587,6 +590,7 @@ raster_upscale_rows(raster_t* raster, gfx_target_t destination, int width, int h
     window.source_height = row1 - row0;
     window.destination_height = end - first;
     if (first != 0) {
+        uint16_t* window_rows = r3d_pipeline_carve(raster).window_rows;
         for (int y = first; y < end; y++) {
             window_rows[y - first] = (uint16_t)(raster->upscale.rows[y] - row0);
         }

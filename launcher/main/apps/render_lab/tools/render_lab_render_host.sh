@@ -6,7 +6,7 @@
 #
 # Each declared render starts on one scene (--scene) via
 # render_lab_start_scene_key and steps 16 ms frames, full-framebuffer
-# layout. Landscape is the shipping orientation, so it leads; a panel-native
+# layout (--tune render_lab.layout=N renders another). Landscape is the shipping orientation, so it leads; a panel-native
 # render is the shape tools/render/render_diff.sh compares a device capture against.
 #
 # Everything beyond the declarations below - finding a compiler, building,

@@ -155,7 +155,25 @@ manager draws the active camera through the engine's one context,
 | `render_context_set_scale()` | the share of the destination each axis draws at; half until set |
 | `render_context_set_dynamic_resolution(config, model, step)` | opt-in: each frame draws at a step of `config` to hold its budget ([Dynamic-Resolution.md](Dynamic-Resolution.md)); NULL returns to the fixed scale |
 | `render_context_set_debug_view()` | a [view mode](#view-modes), development builds only |
+| `render_context_set_band_rows(rows)` | 0: the picture holds every row and is drawn whole; otherwise it is drawn `rows` destination rows at a time, as `render_context_compose_rows()` asks |
 | `render_context_frame()` | the last frame: its step, size, what culling kept, and what its draw and upscale cost |
+
+### Whole pictures and bands
+
+A frame is prepared once, culled and transformed, then any window of its
+rows can be drawn and upscaled (`raster_prepare()`, `raster_draw_rows()`,
+`raster_upscale_rows()`). Neither the raster nor the context knows the
+panel layout; the scene shell picks the band rows from it:
+
+| Layout | Band rows | Picture | Drawn |
+|---|---|---|---|
+| a framebuffer, one or two | 0 | every row, PSRAM | whole, while the last frame is sent |
+| bands | the band height | one band's source rows, internal RAM | per band, as gfx asks for it |
+
+A band redraws from the prepared frame, so a paused scene still fills its
+bands. The pixels match the whole picture's byte for byte. Bands draw at
+most `RENDER_CONTEXT_BAND_PERCENT` of the destination per axis (a 12.5 KB
+band picture on this panel), shaded only: no view mode.
 
 ### On both cores
 
