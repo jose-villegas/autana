@@ -1,7 +1,9 @@
 # Gfx and Presentation
 
 How a draw call becomes pixels on the panel: the three draw targets, the dirty
-tracker, and the present path. A caller includes the header for what it does:
+tracker, and the present path. Which layout and present option to pick, and
+when each pays, is [Rendering Options](render/Rendering-Options.md).
+A caller includes the header for what it does:
 
 | Header | What it declares |
 | --- | --- |
