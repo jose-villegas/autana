@@ -146,8 +146,8 @@ def write_small_fill(work, out, scene_id, object_name, data):
     from ctypes import c_uint8
     styles = small_fill_styles()
     header = VIEW_HEADER.read_text()
-    defaults = dict(re.findall(r"#define SMALL_FILL_(CEILING|GATE)_DEFAULT\s+(\d+)", header))
-    style = re.search(r"#define SMALL_FILL_STYLE_DEFAULT\s+SMALL_FILL_(\w+)", header).group(1)
+    defaults = dict(re.findall(r"#define SMALL_FILL_(CEILING|GATE)_SMOOTH\s+(\d+)", header))
+    style = re.search(r"#define SMALL_FILL_SMOOTH[\s\\]*\(\(small_fill_t\)\{[^}]+SMALL_FILL_(\w+)\}\)", header).group(1)
     maxima = dict(re.findall(r"#define SMALL_FILL_(CEILING|GATE)_MAX\s+(\d+)", header))
     catalog = {name.lower(): (int(default), 0, int(maxima.get(name, c_uint8(-1).value)))
                for name, default in defaults.items()}

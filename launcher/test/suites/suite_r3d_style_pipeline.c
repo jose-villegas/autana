@@ -130,7 +130,7 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
     uint32_t checksums[SMALL_FILL_STYLE_COUNT];
     for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
         r3d_span_small_fill_t* resolved = &clipped->resolved;
-        r3d_span_small_fill_resolve(resolved, (small_fill_t){SMALL_FILL_CEILING_DEFAULT, 0, style});
+        r3d_span_small_fill_resolve(resolved, (small_fill_t){SMALL_FILL_CEILING_FAST, 0, style});
         expected.small_fill = actual.small_fill = resolved;
         for (int mixed = 0; mixed < 2; mixed++) {
             memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));

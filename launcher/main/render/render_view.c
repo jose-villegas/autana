@@ -20,7 +20,7 @@ render_view_make(const transformf_t* pose, float half_fov_short_tan, float near_
         .position = pose->position,
         .forward = quatf_rotate(pose->rotation, (vec3f_t){0.0F, 0.0F, 1.0F}),
         .near_z = near_z,
-        .small_fill = SMALL_FILL_DEFAULT,
+        .small_fill = SMALL_FILL_SMOOTH,
     };
     view_frame(&view, right, down, half_fov_short_tan, viewport);
     return view;

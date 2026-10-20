@@ -38,10 +38,10 @@ HOST=${build#built }
 
 small_fill_images() {
     cat > "$W/small-fill-looks.tsv" <<EOF
-ceiling-4-no-gate|Ceiling 4, no gate|${FULL}_fitted_full|--small-fill 4,0,0|${ID}-small-fill-ceiling-4-no-gate|
-default|Default|${FULL}_fitted_full||${ID}-small-fill-default|${ID}-small-fill-default-diff
-grain|Grain|${FULL}_fitted_full|--small-fill 12,16,1|${ID}-small-fill-grain|${ID}-small-fill-grain-diff
-dither|Dither|${FULL}_fitted_full|--small-fill 12,16,2|${ID}-small-fill-dither|${ID}-small-fill-dither-diff
+ceiling-4-no-gate|SMOOTH (4/0 FLAT)|${FULL}_fitted_full|--small-fill 4,0,0|${ID}-small-fill-ceiling-4-no-gate|
+default|FAST (12/16 FLAT)|${FULL}_fitted_full|--small-fill 12,16,0|${ID}-small-fill-default|${ID}-small-fill-default-diff
+grain|12/16 GRAIN|${FULL}_fitted_full|--small-fill 12,16,1|${ID}-small-fill-grain|${ID}-small-fill-grain-diff
+dither|12/16 DITHER|${FULL}_fitted_full|--small-fill 12,16,2|${ID}-small-fill-dither|${ID}-small-fill-dither-diff
 EOF
     small_fill_first=1
     small_fill_end=56

@@ -15,7 +15,7 @@ static int object_count;
 static int shell_quarter;
 static int size_width, size_height;
 static camera_present_t present;
-static small_fill_t small_fill = SMALL_FILL_DEFAULT;
+static small_fill_t small_fill = SMALL_FILL_SMOOTH;
 static int view = RENDER_DEBUG_VIEW_SHADED;
 
 static bool

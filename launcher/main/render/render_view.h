@@ -15,12 +15,13 @@ typedef enum { CAMERA_PRESENT_NEAREST, CAMERA_PRESENT_SCANLINE, CAMERA_PRESENT_D
 
 typedef enum { SMALL_FILL_FLAT, SMALL_FILL_GRAIN, SMALL_FILL_DITHER, SMALL_FILL_STYLE_COUNT } small_fill_style_t;
 
-#define SMALL_FILL_CEILING_MAX     16
-#define SMALL_FILL_CEILING_DEFAULT 12
-#define SMALL_FILL_GATE_DEFAULT    16
-#define SMALL_FILL_STYLE_DEFAULT   SMALL_FILL_FLAT
-#define SMALL_FILL_DEFAULT                                                                                             \
-    ((small_fill_t){SMALL_FILL_CEILING_DEFAULT, SMALL_FILL_GATE_DEFAULT, SMALL_FILL_STYLE_DEFAULT})
+#define SMALL_FILL_CEILING_MAX    16
+#define SMALL_FILL_CEILING_SMOOTH 4
+#define SMALL_FILL_GATE_SMOOTH    0
+#define SMALL_FILL_CEILING_FAST   12
+#define SMALL_FILL_GATE_FAST      16
+#define SMALL_FILL_SMOOTH         ((small_fill_t){SMALL_FILL_CEILING_SMOOTH, SMALL_FILL_GATE_SMOOTH, SMALL_FILL_FLAT})
+#define SMALL_FILL_FAST           ((small_fill_t){SMALL_FILL_CEILING_FAST, SMALL_FILL_GATE_FAST, SMALL_FILL_FLAT})
 
 typedef struct {
     uint8_t ceiling;          /* largest bounding-box side in pixel centres; 0 disables small fill */

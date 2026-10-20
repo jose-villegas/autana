@@ -557,13 +557,13 @@ assert_small_fill_sequence(raster_rig_t* r, small_fill_t fill) {
 static void
 test_view_small_fill_styles_and_frame_isolation(void) {
     raster_rig_t* r = small_fill_fixture(false);
-    TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_DEFAULT, r->view.small_fill.ceiling);
-    TEST_ASSERT_EQUAL_INT(SMALL_FILL_GATE_DEFAULT, r->view.small_fill.gate);
-    TEST_ASSERT_EQUAL_INT(SMALL_FILL_STYLE_DEFAULT, r->view.small_fill.style);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.ceiling, r->view.small_fill.ceiling);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.gate, r->view.small_fill.gate);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_FLAT, r->view.small_fill.style);
     uint16_t* frames = (uint16_t*)r->own;
     const size_t bytes = W * H * sizeof(*frames);
     for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
-        r->view.small_fill = (small_fill_t){SMALL_FILL_CEILING_DEFAULT, 0, style};
+        r->view.small_fill = (small_fill_t){SMALL_FILL_CEILING_FAST, 0, style};
         raster_draw(&r->raster, &r->view);
         memcpy(frames + style * W * H, raster_color(&r->raster), bytes);
         for (int previous = SMALL_FILL_FLAT; previous < (int)style; previous++) {
@@ -571,7 +571,7 @@ test_view_small_fill_styles_and_frame_isolation(void) {
         }
     }
     for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
-        r->view.small_fill = (small_fill_t){SMALL_FILL_CEILING_DEFAULT, 0, style};
+        r->view.small_fill = (small_fill_t){SMALL_FILL_CEILING_FAST, 0, style};
         raster_census(&r->raster, &r->view);
         raster_draw_culled(&r->raster, &r->view);
         TEST_ASSERT_EQUAL_MEMORY(frames + style * W * H, raster_color(&r->raster), bytes);
@@ -582,7 +582,7 @@ static void
 test_view_small_fill_frame_transition_limits(void) {
     raster_rig_t* r = small_fill_fixture(true);
     static const uint8_t ceilings[] = {0, R3D_SPAN_SMALL_MAX_SIDE, R3D_SPAN_SMALL_MAX_SIDE + 1, UINT8_MAX};
-    static const uint8_t gates[] = {0, SMALL_FILL_GATE_DEFAULT, UINT8_MAX};
+    static const uint8_t gates[] = {0, SMALL_FILL_GATE_FAST, UINT8_MAX};
     for (size_t ceiling = 0; ceiling < sizeof ceilings / sizeof ceilings[0]; ceiling++) {
         for (size_t gate = 0; gate < sizeof gates / sizeof gates[0]; gate++) {
             for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {

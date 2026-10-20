@@ -1867,13 +1867,12 @@ test_camera_small_fill_changes_scene_pixels(void) {
     render_context_t* context = render_context_main();
     scene_render(0, 0, SIZE, SIZE);
     memcpy(fx.held, raster_color(&context->raster), SIZE * SIZE * sizeof(*fx.held));
-    TEST_ASSERT_TRUE(scene_camera_set_small_fill(scene, camera, SMALL_FILL_DEFAULT));
+    TEST_ASSERT_TRUE(scene_camera_set_small_fill(scene, camera, SMALL_FILL_SMOOTH));
     scene_render(0, 0, SIZE, SIZE);
     TEST_ASSERT_EQUAL_MEMORY(fx.held, raster_color(&context->raster), SIZE * SIZE * sizeof(*fx.held));
     uint32_t checksums[SMALL_FILL_STYLE_COUNT];
     for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
-        TEST_ASSERT_TRUE(
-            scene_camera_set_small_fill(scene, camera, (small_fill_t){SMALL_FILL_CEILING_DEFAULT, 0, style}));
+        TEST_ASSERT_TRUE(scene_camera_set_small_fill(scene, camera, (small_fill_t){SMALL_FILL_CEILING_FAST, 0, style}));
         scene_render(0, 0, SIZE, SIZE);
         checksums[style] = asset_crc32(raster_color(&context->raster), SIZE * SIZE * sizeof(uint16_t));
         for (int previous = SMALL_FILL_FLAT; previous < (int)style; previous++) {
@@ -1888,8 +1887,8 @@ test_camera_small_fill_default_setter_and_view(void) {
     scene_t* scene = scene_loaded_at(0);
     const scene_entity_t camera = scene_find(scene, "camera");
     const camera_t* lens = scene_camera_lens(scene, NULL);
-    TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_DEFAULT, lens->small_fill.ceiling);
-    TEST_ASSERT_EQUAL_INT(SMALL_FILL_GATE_DEFAULT, lens->small_fill.gate);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.ceiling, lens->small_fill.ceiling);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.gate, lens->small_fill.gate);
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_FLAT, lens->small_fill.style);
     const small_fill_t limit = {SMALL_FILL_CEILING_MAX, 0, SMALL_FILL_DITHER};
     TEST_ASSERT_TRUE(scene_camera_set_small_fill(scene, camera, limit));
@@ -1898,7 +1897,7 @@ test_camera_small_fill_default_setter_and_view(void) {
     TEST_ASSERT_FALSE(scene_camera_set_small_fill(scene, camera, (small_fill_t){UINT8_MAX, 0, SMALL_FILL_DITHER}));
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_MAX, lens->small_fill.ceiling);
     TEST_ASSERT_TRUE(scene_camera_set_small_fill(scene, camera, (small_fill_t){0, 0, SMALL_FILL_FLAT}));
-    const small_fill_t fill = {4, 0, SMALL_FILL_DITHER};
+    const small_fill_t fill = SMALL_FILL_FAST;
     TEST_ASSERT_FALSE(scene_camera_set_small_fill(NULL, camera, fill));
     TEST_ASSERT_FALSE(scene_camera_set_small_fill(scene, scene_find(scene, "red"), fill));
     TEST_ASSERT_FALSE(scene_camera_set_small_fill(scene, SCENE_ENTITY_NONE, fill));

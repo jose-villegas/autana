@@ -342,25 +342,25 @@ fills its spans without those clamps, which would change nothing there.
 
 ### Small fill
 
-Small triangles skip plane setup and use one depth, with colour from the camera's style.
+Cameras start with `SMALL_FILL_SMOOTH` (4/0 FLAT), preserving the smooth rendering checksum.
+Apps opt into `SMALL_FILL_FAST` (12/16 FLAT) for the measured frame-cost gains.
+Eligible triangles skip plane setup and use one depth, with colour from the camera's style.
 The camera owns the bounding-box ceiling, colour gate and style;
 `render_view_t.small_fill` carries them to the frame's row workers.
 
-<!-- generated: small-fill-levers sha256=7d6ce185e798232e948ed6bacd9694ed9d98e8ded6bbfea7e585847cb243f552 -->
+<!-- generated: small-fill-levers sha256=46ed813c7858d86cdd5da15850ac97079edbfa75daf563de4d3405d5a429d84d -->
 | Camera field | Range | Default | Effect |
 |---|---|---|---|
-| `ceiling` | 0..16 | 12 | Largest bounding-box side in pixel centres; 0 disables small fill |
-| `gate` | 0..255 | 16 | Vertex RGB565 spread limit at the ceiling; 0 disables the colour gate |
+| `ceiling` | 0..16 | 4 | Largest bounding-box side in pixel centres; 0 disables small fill |
+| `gate` | 0..255 | 0 | Vertex RGB565 spread limit at the ceiling; 0 disables the colour gate |
 | `style` | 0..2 | 0 | FLAT (0), GRAIN (1), DITHER (2) |
 <!-- /generated: small-fill-levers -->
 
-Camera defaults are `SMALL_FILL_DEFAULT`, defined in `render_view.h`.
-Change any axis with the [scene camera API](Scene-Manager.md#what-an-app-calls):
+Both presets are defined in `render_view.h`. Opt in with the
+[scene camera API](Scene-Manager.md#what-an-app-calls), or pass custom `small_fill_t` values:
 
 ```c
-small_fill_t fill = SMALL_FILL_DEFAULT;
-fill.style = SMALL_FILL_GRAIN;
-scene_camera_set_small_fill(scene, camera, fill);
+scene_camera_set_small_fill(scene, camera, SMALL_FILL_FAST);
 ```
 
 One gate limit applies to all packed RGB565 per-channel spreads: green's
@@ -381,26 +381,26 @@ other direction. If neither fits, use flat; channels never clamp independently.
 
 <table>
 <tr><th>Look</th><th>Picture</th><th>Amplified difference from Ceiling 4, no gate</th></tr>
-<tr><td>Ceiling 4, no gate</td><td><img src="../images/render/sponza-small-fill-ceiling-4-no-gate.gif" width="100%" alt="Ceiling 4, no gate"></td><td></td></tr>
-<tr><td>Default</td><td><img src="../images/render/sponza-small-fill-default.gif" width="100%" alt="Default flat fill"></td><td><img src="../images/render/sponza-small-fill-default-diff.gif" width="100%" alt="Default difference"></td></tr>
-<tr><td>Grain</td><td><img src="../images/render/sponza-small-fill-grain.gif" width="100%" alt="Hue-safe grain"></td><td><img src="../images/render/sponza-small-fill-grain-diff.gif" width="100%" alt="Grain difference"></td></tr>
-<tr><td>Dither</td><td><img src="../images/render/sponza-small-fill-dither.gif" width="100%" alt="Ordered vertex colours"></td><td><img src="../images/render/sponza-small-fill-dither-diff.gif" width="100%" alt="Dither difference"></td></tr>
+<tr><td>SMOOTH (4/0 FLAT)</td><td><img src="../images/render/sponza-small-fill-ceiling-4-no-gate.gif" width="100%" alt="Ceiling 4, no gate"></td><td></td></tr>
+<tr><td>FAST (12/16 FLAT)</td><td><img src="../images/render/sponza-small-fill-default.gif" width="100%" alt="FAST (12/16 FLAT)"></td><td><img src="../images/render/sponza-small-fill-default-diff.gif" width="100%" alt="FAST (12/16 FLAT) difference"></td></tr>
+<tr><td>12/16 GRAIN</td><td><img src="../images/render/sponza-small-fill-grain.gif" width="100%" alt="Hue-safe grain"></td><td><img src="../images/render/sponza-small-fill-grain-diff.gif" width="100%" alt="Grain difference"></td></tr>
+<tr><td>12/16 DITHER</td><td><img src="../images/render/sponza-small-fill-dither.gif" width="100%" alt="Ordered vertex colours"></td><td><img src="../images/render/sponza-small-fill-dither-diff.gif" width="100%" alt="Dither difference"></td></tr>
 </table>
 
 Clips show the same full renderer frames and camera window, one look per GIF.
 The [temporal method](../tools/Render-Harness.md#temporal-video-columns)
 measures triangle-scale pops; the difference clips also show spatial noise.
 
-<!-- generated: small-fill-temporal sha256=4428b8304d2599d663cd519706d0ce9596db0453bb56179e3ee8167edc366bc2 -->
+<!-- generated: small-fill-temporal sha256=ce7bb0d7021cdff735ebd7c47626c52b52eebf4138fa5982af6b9f9e78e554b3 -->
 | Look vs Ceiling 4, no gate | Extra frame-to-frame change (levels of 255) | Blocks popping (>8/255) |
 |---|---|---|
-| Ceiling 4, no gate | 0.000 | 0.0000% |
-| Default | 0.799 | 1.6689% |
-| Grain | 0.904 | 1.8737% |
-| Dither | 1.052 | 3.0096% |
+| SMOOTH (4/0 FLAT) | 0.000 | 0.0000% |
+| FAST (12/16 FLAT) | 0.799 | 1.6689% |
+| 12/16 GRAIN | 0.904 | 1.8737% |
+| 12/16 DITHER | 1.052 | 3.0096% |
 <!-- /generated: small-fill-temporal -->
 
-#### Board frame cost
+#### Board frame-cost gains when opted in
 
 The committed [ceiling-by-gate sweep](data/small-fill/p5a-sweep.json)
 measures FLAT on board A308. Its [plan](data/small-fill/p5a-plan.json)

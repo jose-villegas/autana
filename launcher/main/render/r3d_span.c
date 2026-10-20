@@ -518,19 +518,10 @@ colours_within_spread(uint16_t a, uint16_t b, uint16_t c, int limit) {
                                     limit);
 }
 
-#define DEFAULT_SPREAD(side)                                                                                           \
-    [(side)] = (SMALL_SPREAD_OFF                                                                                       \
-                + (((SMALL_FILL_GATE_DEFAULT - SMALL_SPREAD_OFF) * ((side) - SMALL_MAX_SIDE - 1))                      \
-                   / (SMALL_FILL_CEILING_DEFAULT - SMALL_MAX_SIDE - 1)))
 const r3d_span_small_fill_t r3d_span_small_fill_default = {
-    .ceiling = SMALL_FILL_CEILING_DEFAULT,
-    .style = SMALL_FILL_STYLE_DEFAULT,
-    .spread = {DEFAULT_SPREAD(SMALL_MAX_SIDE + 1), DEFAULT_SPREAD(SMALL_MAX_SIDE + 2),
-               DEFAULT_SPREAD(SMALL_MAX_SIDE + 3), DEFAULT_SPREAD(SMALL_MAX_SIDE + 4),
-               DEFAULT_SPREAD(SMALL_MAX_SIDE + 5), DEFAULT_SPREAD(SMALL_MAX_SIDE + 6),
-               DEFAULT_SPREAD(SMALL_MAX_SIDE + 7), DEFAULT_SPREAD(SMALL_MAX_SIDE + 8)},
+    .ceiling = SMALL_FILL_CEILING_SMOOTH,
+    .style = SMALL_FILL_FLAT,
 };
-_Static_assert(SMALL_FILL_CEILING_DEFAULT == SMALL_MAX_SIDE + 8, "default spread table covers the ceiling");
 
 void
 r3d_span_small_fill_resolve(r3d_span_small_fill_t* resolved, small_fill_t fill) {
@@ -691,14 +682,13 @@ small_dither_pick(const uint16_t colors[TRIANGLE_VERTICES], uint16_t flat, int32
 }
 
 /* Barycentric ordered picks share the screen-anchored graphics pattern. */
-static __attribute__((noinline)) void
+static __attribute__((noinline)) bool
 fill_small_dither(const r3d_span_target_t* target, const r3d_span_vertex_t* a, const r3d_span_vertex_t* b,
                   const r3d_span_vertex_t* c, bool positive, recti_t box) {
     const uint16_t colors[TRIANGLE_VERTICES] = {
         r3d_span_pack_rgb(a->r, a->g, a->b), r3d_span_pack_rgb(b->r, b->g, b->b), r3d_span_pack_rgb(c->r, c->g, c->b)};
     if (colors[0] == colors[1] && colors[1] == colors[2]) {
-        fill_small(target, a, b, c, positive, box, NULL);
-        return;
+        return true;
     }
     const r3d_span_vertex_t* p = positive ? b : c;
     const r3d_span_vertex_t* q = positive ? c : b;
@@ -709,7 +699,7 @@ fill_small_dither(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
     fill_t f;
     set_flat(&f, a, b, c);
     if (r3d_span_stop_after != 0) {
-        return;
+        return false;
     }
     for (int y = box.y; y < recti_bottom(box); y++) {
         const small_row_t row = small_row(target, y);
@@ -726,6 +716,7 @@ fill_small_dither(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
             }
         }
     }
+    return false;
 }
 
 static __attribute__((noinline)) void
@@ -733,8 +724,8 @@ fill_small_styled(const r3d_span_target_t* target, const r3d_span_vertex_t* a, c
                   const r3d_span_vertex_t* c, bool positive, recti_t box, int style) {
     if (style == SMALL_FILL_GRAIN) {
         fill_small_grain(target, a, b, c, positive, box);
-    } else {
-        fill_small_dither(target, a, b, c, positive, box);
+    } else if (fill_small_dither(target, a, b, c, positive, box)) {
+        fill_small(target, a, b, c, positive, box, NULL);
     }
 }
 

@@ -63,7 +63,7 @@ fixture(void) {
     memset(pixels, 0, sizeof(*pixels) * TEST_PIXELS * 4);
     resolved = malloc(sizeof(*resolved));
     TEST_ASSERT_NOT_NULL(resolved);
-    resolve_fill(SMALL_FILL_DEFAULT);
+    resolve_fill(SMALL_FILL_SMOOTH);
     r3d_span_target_t target = r3d_span_target(pixels, pixels + TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
     target.small_fill = resolved;
     return target;
@@ -96,8 +96,9 @@ draw_triangle(const r3d_span_target_t* target, const r3d_span_vertex_t v[TRIANGL
 static uint32_t
 span_checksum(bool dither) {
     const r3d_span_target_t target = fixture();
-    resolve_fill((small_fill_t){dither ? ORACLE_MAX_SIDE : R3D_SPAN_SMALL_MAX_SIDE, 0,
-                                dither ? SMALL_FILL_DITHER : SMALL_FILL_FLAT});
+    if (dither) {
+        resolve_fill((small_fill_t){ORACLE_MAX_SIDE, 0, SMALL_FILL_DITHER});
+    }
     uint32_t checksum = ORACLE_SEED;
     for (int side = 1; side <= ORACLE_MAX_SIDE; side++) {
         for (int sample = 0; sample < ORACLE_SAMPLES; sample++) {
@@ -123,6 +124,8 @@ span_checksum(bool dither) {
 
 static void
 test_ceiling_four_flat_is_bit_identical(void) {
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.ceiling, hot_default.ceiling);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.style, hot_default.style);
     TEST_ASSERT_EQUAL_HEX32(CEILING_FOUR_FLAT_CHECKSUM, span_checksum(false));
 }
 
@@ -164,7 +167,7 @@ reference_selector(const r3d_span_vertex_t v[TRIANGLE_VERTICES], int side, bool 
 static void
 test_selector_random_triangles_and_gate_boundaries(void) {
     (void)fixture();
-    static const uint8_t gates[] = {0, 1, 8, SMALL_FILL_GATE_DEFAULT, GFX_RGB565_G6_MAX, UINT8_MAX};
+    static const uint8_t gates[] = {0, 1, 8, SMALL_FILL_GATE_FAST, GFX_RGB565_G6_MAX, UINT8_MAX};
     rng_t random;
     rng_seed(&random, ORACLE_SEED);
     for (int ceiling = 0; ceiling <= ORACLE_MAX_SIDE; ceiling++) {
@@ -195,7 +198,7 @@ test_selector_random_triangles_and_gate_boundaries(void) {
             }
         }
     }
-    resolve_fill((small_fill_t){UINT8_MAX, SMALL_FILL_GATE_DEFAULT, SMALL_FILL_GRAIN});
+    resolve_fill((small_fill_t){UINT8_MAX, SMALL_FILL_GATE_FAST, SMALL_FILL_GRAIN});
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_MAX, resolved->ceiling);
     const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {{0}};
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_GRAIN,
@@ -316,7 +319,7 @@ test_style_kernels_randomized_reference(void) {
     r3d_span_target_t expected =
         r3d_span_target(pixels + 2 * TEST_PIXELS, pixels + 3 * TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
     expected.small_fill = resolved;
-    static const uint8_t gates[] = {0, SMALL_FILL_GATE_DEFAULT, 1};
+    static const uint8_t gates[] = {0, SMALL_FILL_GATE_FAST, 1};
     for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
         for (size_t gate = 0; gate < sizeof gates / sizeof gates[0]; gate++) {
             resolve_fill((small_fill_t){ORACLE_MAX_SIDE, gates[gate], style});
@@ -411,11 +414,11 @@ test_writer_and_draw_select_the_same_depth_under_every_style(void) {
     target.writer_count = 1;
     target.rows.attachment[GFX_ATTACHMENT_FURTHER] = (gfx_attachment_t){pixels + TEST_PIXELS * 2, sizeof(*pixels)};
     target.rows.count = GFX_ATTACHMENT_FURTHER + 1;
-    static const uint8_t gates[] = {0, SMALL_FILL_GATE_DEFAULT, UINT8_MAX};
+    static const uint8_t gates[] = {0, SMALL_FILL_GATE_FAST, UINT8_MAX};
     for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
         for (size_t gate = 0; gate < sizeof gates / sizeof gates[0]; gate++) {
             resolve_fill((small_fill_t){ORACLE_MAX_SIDE, gates[gate], style});
-            for (int spread = SMALL_FILL_GATE_DEFAULT - 1; spread <= SMALL_FILL_GATE_DEFAULT + 1; spread++) {
+            for (int spread = SMALL_FILL_GATE_FAST - 1; spread <= SMALL_FILL_GATE_FAST + 1; spread++) {
                 memset(pixels, 0, TEST_PIXELS * 4 * sizeof(*pixels));
                 const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {
                     {0, 0, 0.25F, 80, 0, 80},
