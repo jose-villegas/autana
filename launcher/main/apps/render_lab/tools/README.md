@@ -29,7 +29,11 @@ entry, so the frame hook changes the next frame without reloading the scene.
 `render_lab.small_fill_style` apply to the scene camera each frame.
 On a development build the BOOT menu has a SMALL FILL dropdown with every
 `SMALL_FILL_` preset; picking one sets the three tunables, and tunables that
-match no preset show as CUSTOM. The generic scene viewer accepts `--small-fill CEILING,GATE,STYLE`; its defaults
+match no preset show as CUSTOM.
+
+![The SMALL FILL list open: SMOOTH, FAST, CUSTOM](images/small-fill-menu/menu-sponza-small-fill.png)
+
+ The generic scene viewer accepts `--small-fill CEILING,GATE,STYLE`; its defaults
 come from `SMALL_FILL_SMOOTH`. Styles use the `small_fill_style_t` values.
 The [engine feature](../../../../../docs/render/Mesh-Rendering.md#small-fill)
 defines the axes and defaults.
