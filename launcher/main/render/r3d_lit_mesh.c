@@ -6,6 +6,14 @@
 #include "asset/asset_bytes.h"
 #include "asset/asset_entry.h"
 
+/* The entry's bytes are the structs' own layout, written by lit_mesh.py. */
+_Static_assert(sizeof(r3d_lit_cluster_t) == 22 && offsetof(r3d_lit_cluster_t, bounds) == 8
+                   && offsetof(r3d_lit_cluster_t, double_sided) == 20,
+               "r3d_lit_cluster_t is not the layout lit_mesh.py writes");
+_Static_assert(sizeof(r3d_lit_node_t) == 16 && offsetof(r3d_lit_node_t, first) == 12
+                   && offsetof(r3d_lit_node_t, leaf) == 15,
+               "r3d_lit_node_t is not the layout lit_mesh.py writes");
+
 enum {
     HEADER_WORDS = 11,
     ENTRY_ALIGNMENT = 4,

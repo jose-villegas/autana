@@ -299,7 +299,7 @@ test_a_tiny_triangle_takes_the_average_of_its_corners(void) {
     for (int i = 0; i < W * H; i++) {
         if (depth[i] != 0) {
             TEST_ASSERT_EQUAL_HEX16(GFX_RGB(0x555555), color[i]);
-            TEST_ASSERT_UINT16_WITHIN(1, 32767, depth[i]);
+            TEST_ASSERT_UINT16_WITHIN(1, R3D_DEPTH_NEAREST / 2, depth[i]);
         }
     }
 }
@@ -1044,8 +1044,8 @@ screen_mesh(screen_mesh_t* m, int vertices, int triangles) {
         m->colors[v][0] = m->colors[v][1] = m->colors[v][2] = 200;
     }
     m->cluster = (r3d_lit_cluster_t){
-        0, (uint16_t)vertices, 0, (uint16_t)triangles, {{-32767, -32767, -8}, {32767, 32767, 8}}, true};
-    m->node = (r3d_lit_node_t){{{-32767, -32767, -8}, {32767, 32767, 8}}, 0, 1, true};
+        0, (uint16_t)vertices, 0, (uint16_t)triangles, {{-INT16_MAX, -INT16_MAX, -8}, {INT16_MAX, INT16_MAX, 8}}, true};
+    m->node = (r3d_lit_node_t){{{-INT16_MAX, -INT16_MAX, -8}, {INT16_MAX, INT16_MAX, 8}}, 0, 1, true};
     return (r3d_lit_mesh_t){.positions = m->positions,
                             .colors = m->colors,
                             .triangles = m->triangles,
