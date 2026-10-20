@@ -11,11 +11,15 @@ typedef struct {
     render_lab_controls_fn controls;
     const char* const* families; /* the Scene dropdown's entries; none = no Scene row */
     int family_count;
-    int family; /* index of the showing one */
+    int family;                  /* index of the showing one */
+    const char* const* variants; /* the showing family's scenes, drawn when it has more than one */
+    int variant_count;
+    int variant; /* index of the showing one */
 } render_lab_menu_screen_state_t;
 
 typedef struct {
-    int family_picked; /* a family the user chose this frame, else -1 */
+    int family_picked;  /* a family the user chose this frame, else -1 */
+    int variant_picked; /* a variant likewise */
 } render_lab_menu_screen_result_t;
 
 /* A caption row, `width` wide and centred, above a widget. */

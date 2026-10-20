@@ -34,12 +34,22 @@ render_lab_menu_screen_draw(const render_lab_menu_screen_state_t* state) {
     ui_scroll_window((recti_t){0, 0, ui_width(), footer_top()});
 
     result.family_picked = -1;
+    result.variant_picked = -1;
     if (state->family_count > 0) {
         int family = state->family;
         render_lab_menu_caption(MENU_BTN_W, "SCENE");
         ui_row_centre(MENU_BTN_W, UI_ROW_HEIGHT);
         if (ui_dropdown(ui_next(), "SCENE", &family, state->families, state->family_count)) {
             result.family_picked = family;
+        }
+    }
+
+    if (state->variant_count > 1) {
+        int variant = state->variant;
+        render_lab_menu_caption(MENU_BTN_W, "VARIANT");
+        ui_row_centre(MENU_BTN_W, UI_ROW_HEIGHT);
+        if (ui_dropdown(ui_next(), "VARIANT", &variant, state->variants, state->variant_count)) {
+            result.variant_picked = variant;
         }
     }
 

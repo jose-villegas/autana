@@ -11,8 +11,9 @@ typedef struct {
     const char* name; /* the HUD title */
     const char* key;
     /* The Scene dropdown's entry; scenes of one family are listed together.
-     * variant names this scene in the family's own dropdown, NULL if it is
-     * the family's only one. A scene's `controls` draws that dropdown. */
+     * variant names this scene in the menu's VARIANT dropdown, drawn when
+     * the family has more than one scene (then every one needs it).
+     * name, the HUD title, is family and variant spelled out. */
     const char* family;
     const char* variant;
     void (*enter)(void);
