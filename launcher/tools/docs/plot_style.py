@@ -1,7 +1,7 @@
-"""The one matplotlib setup of the doc-figure generators: palette, sizes, save options and the bar chart.
+"""The one matplotlib setup of the doc-figure generators: palette, sizes and save options.
 
-Importing this module selects the headless backend, so a generator imports it where it draws
-(from docs.plot_style import ...) and the report scripts that only print tables never need matplotlib.
+Importing this module selects the headless backend. A bar chart added here must start its value axis at 0
+and keep its category labels from overlapping (grouped bars or turned labels).
 """
 
 import pathlib
@@ -17,9 +17,6 @@ SLOTS = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3
 DPI = 110
 TITLE_SIZE = 10
 LABEL_SIZE = 8
-BAR_GROUP_WIDTH = 0.8  # share of the space between category ticks the bars of one category fill
-LABEL_GAP = 0.9  # a category label wider than this share of its tick spacing turns the labels
-LABEL_ANGLE = 30  # degrees, the turned labels
 
 
 def figure(size, **options):
@@ -38,25 +35,3 @@ def save(fig, path, dpi=DPI):
     fig.savefig(path, dpi=dpi, metadata={"Software": None})
     plt.close(fig)
 
-
-def bars(axis, categories, series, ylabel=None):
-    """Grouped vertical bars: one group per category, one bar per series name in `series`.
-
-    The value axis starts at 0, so a bar's height is its value. The category labels turn
-    when the longest would run into its neighbour, so none overlap.
-    """
-    width = BAR_GROUP_WIDTH / len(series)
-    for index, (name, values) in enumerate(series.items()):
-        offsets = [position + (index - (len(series) - 1) / 2) * width for position in range(len(categories))]
-        axis.bar(offsets, values, width, label=name, color=SLOTS[index % len(SLOTS)])
-    axis.set_xticks(range(len(categories)), categories)
-    axis.set_ylim(bottom=0)
-    if ylabel:
-        axis.set_ylabel(ylabel)
-    axis.figure.canvas.draw()
-    spacing = axis.transData.transform((1, 0))[0] - axis.transData.transform((0, 0))[0]
-    widest = max(label.get_window_extent().width for label in axis.get_xticklabels())
-    if widest > LABEL_GAP * spacing:
-        axis.tick_params(axis="x", labelrotation=LABEL_ANGLE)
-        for label in axis.get_xticklabels():
-            label.set_horizontalalignment("right")
