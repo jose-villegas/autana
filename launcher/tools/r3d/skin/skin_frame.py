@@ -59,6 +59,52 @@ def run_pose(target, directory, entries, skeleton, clip, ms):
     return [tuple(int(v) for v in line.split()) for line in result.stdout.splitlines()]
 
 
+class EngineSkin:
+    """A glTF model packed by the entry writers and posed by the scene's animation and skin systems in skin_host.c,
+    at each of INFLUENCES. `mesh` is its LMSH bake, `rendered` its triangles for gltf_preview.render."""
+
+    def __init__(self, model, scale, directory):
+        self.document, self.binary = gltf_read.load_glb(model)
+        self.asset = gltf_skin.SkinnedAsset(self.document, self.binary)
+        self.mesh_node = next(i for i, n in enumerate(self.document["nodes"]) if "skin" in n and "mesh" in n)
+        self.ordered, _, self.skeleton_name = skeleton_asset.rig(self.document, self.mesh_node)
+        self.colors = [tuple(round(gltf_preview.linear_to_srgb(c) * 255) for c in rgb[:3])
+                       for rgb in (self.asset.colors or [(0.6,) * 3] * len(self.asset.positions))]
+        self.scale = scale
+        self.mesh = lit_mesh.bake_lit_mesh(self.asset.positions, self.colors, self.asset.triangles,
+                                           [True] * len(self.asset.triangles), position_scale=scale)
+        self.mesh_bytes = lit_mesh.mesh_blob(self.mesh)
+        subject = SimpleNamespace(name="subject", kind="mesh_renderer", position=(0, 0, 0),
+                                  matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)))
+        self.scene_bytes = scene_asset.encode(SimpleNamespace(objects=[subject], renderers=[
+            SimpleNamespace(object=subject, asset_name=MESH_ID)]))
+        self.variants = {n: skin_asset.bake(self.document, self.binary, self.mesh_node, self.mesh_bytes, n)
+                         for n in INFLUENCES}
+        self.rendered = SimpleNamespace(triangles=self.mesh.tris.tolist())
+        self.lit = [tuple(rgb) for rgb in self.mesh.rgb.tolist()]
+        self.directory = directory
+        self.target = program(directory)
+        self._clips = {}
+
+    def match(self, source_vertex):
+        """The LMSH vertex a source vertex quantizes to."""
+        if not hasattr(self, "_by_position"):
+            self._by_position = {tuple(p): i for i, p in enumerate(self.mesh.pos.tolist())}
+        return self._by_position[skin_asset.quantize_position(self.asset.positions[source_vertex], self.scale)]
+
+    def positions(self, clip, ms, influences):
+        """Model-space positions of every LMSH vertex, as the engine skins them at `ms` into `clip`."""
+        if clip not in self._clips:
+            tracks, duration, root = tracks_asset.clip_tracks(self.document, self.binary, self.asset.animations[clip])
+            self._clips[clip] = tracks_asset.encode(tracks, duration, root)
+        _, skeleton, skin = self.variants[influences]
+        entries = [(MESH_ID, b"LMSH", self.mesh_bytes), (self.skeleton_name, b"SKEL", skeleton),
+                   (SKIN_ID, b"SKIN", skin), (CLIP_ID, b"TRCK", self._clips[clip]), ("scene", b"SCNE", self.scene_bytes)]
+        ticks = run_pose(self.target, self.directory, entries, self.skeleton_name, clip, ms)
+        world = self.asset.world_matrices(self.asset.sample(clip, ms / 1000))[self.mesh_node]
+        return [gltf_skin.transform_point(world, tuple(v / self.scale for v in p)) for p in ticks]
+
+
 def quantized_reference(asset, pose, ordered, records, positions, scale):
     matrices = asset.joint_matrices(pose)
     palette = [matrices[asset.joints.index(node)] for node in ordered]
@@ -86,52 +132,31 @@ def crops(rows, clip, ms, camera, reference, indices, images, variant_positions,
         rows.append((label, *[render_compare.captioned(tile, label, width=CROP_CAPTION_WIDTH) for tile in tiles]))
 
 
-def compare(args, target, directory):
-    document, binary = gltf_read.load_glb(args.model)
-    asset = gltf_skin.SkinnedAsset(document, binary)
-    mesh_node = next(i for i, n in enumerate(document["nodes"]) if "skin" in n and "mesh" in n)
-    ordered, _, skeleton_name = skeleton_asset.rig(document, mesh_node)
-    colors = [tuple(round(gltf_preview.linear_to_srgb(c) * 255) for c in rgb[:3])
-              for rgb in (asset.colors or [(0.6,) * 3] * len(asset.positions))]
-    mesh = lit_mesh.bake_lit_mesh(asset.positions, colors, asset.triangles,
-                                [True] * len(asset.triangles), position_scale=args.scale)
-    mesh_bytes = lit_mesh.mesh_blob(mesh)
-    by_position = {tuple(p): i for i, p in enumerate(mesh.pos.tolist())}
-    matches = {i: by_position[skin_asset.quantize_position(asset.positions[i], args.scale)] for i in args.vertices}
-    subject = SimpleNamespace(name="subject", kind="mesh_renderer", position=(0, 0, 0),
-                              matrix=((1, 0, 0), (0, 1, 0), (0, 0, 1)))
-    scene_bytes = scene_asset.encode(SimpleNamespace(objects=[subject], renderers=[
-        SimpleNamespace(object=subject, asset_name=MESH_ID)]))
-    variants = [skin_asset.bake(document, binary, mesh_node, mesh_bytes, n) for n in INFLUENCES]
+def compare(args, engine):
+    asset, mesh, colors = engine.asset, engine.mesh, engine.colors
+    matches = {i: engine.match(i) for i in args.vertices}
     rest_positions, _ = asset.skin(asset.sample(None, 0))
     source = SimpleNamespace(positions=rest_positions, triangles=asset.triangles)
     size = (args.size,) * 2
     camera = gltf_preview.make_camera(source, args.view, size)
-    rendered = SimpleNamespace(triangles=mesh.tris.tolist())
+    rendered = engine.rendered
     reference_rows, influence_rows, crop_rows, stats = [], [], [], []
     args.out.mkdir(parents=True, exist_ok=True)
     for clip, ms in args.poses:
-        animation = asset.animations[clip]
-        tracks, duration, root = tracks_asset.clip_tracks(document, binary, animation)
-        clip_bytes = tracks_asset.encode(tracks, duration, root)
         reference_pose = asset.sample(clip, ms / 1000)
         reference, _ = asset.skin(reference_pose)
         reference_image = gltf_preview.render(source, camera, reference, size, lit=colors)
         images, variant_positions = [], []
-        for influences, (_, skeleton, skin) in zip(INFLUENCES, variants):
-            entries = [(MESH_ID, b"LMSH", mesh_bytes), (skeleton_name, b"SKEL", skeleton),
-                       (SKIN_ID, b"SKIN", skin), (CLIP_ID, b"TRCK", clip_bytes), ("scene", b"SCNE", scene_bytes)]
-            ticks = run_pose(target, directory, entries, skeleton_name, clip, ms)
-            world = asset.world_matrices(reference_pose)[mesh_node]
-            positions = [gltf_skin.transform_point(world, tuple(v / args.scale for v in p)) for p in ticks]
-            image = gltf_preview.render(rendered, camera, positions, size, lit=[tuple(rgb) for rgb in mesh.rgb.tolist()])
+        for influences in INFLUENCES:
+            positions = engine.positions(clip, ms, influences)
+            image = gltf_preview.render(rendered, camera, positions, size, lit=engine.lit)
             images.append(image)
             variant_positions.append(positions)
-            _, records, _, _ = skin_asset.decode(skin)
-            packed_reference = quantized_reference(asset, reference_pose, ordered, records, mesh.pos, args.scale)
+            _, records, _, _ = skin_asset.decode(engine.variants[influences][2])
+            packed_reference = quantized_reference(asset, reference_pose, engine.ordered, records, mesh.pos, args.scale)
             error = max(math.dist(a, b) for a, b in zip(positions, packed_reference))
             stats.append(dict(clip=clip, ms=ms, influences=influences, max_position_error=error,
-                              position_tick=1 / args.scale, vertices=len(ticks)))
+                              position_tick=1 / args.scale, vertices=len(positions)))
             if error > 2 / args.scale:
                 raise ValueError(f"C kernel differs from packed-weight reference by {error}")
             stem = f"{clip}-{ms}-{influences}"
@@ -167,7 +192,7 @@ def main():
     args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="skin-frame-") as scratch:
         directory = pathlib.Path(scratch)
-        compare(args, program(directory), directory)
+        compare(args, EngineSkin(args.model, args.scale, directory))
 
 
 if __name__ == "__main__":

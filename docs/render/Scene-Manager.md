@@ -107,7 +107,7 @@ needs full-framebuffer layout; in band mode the scene draws into scratch
 with no destination for upscaling.
 
 `scene_render()` runs the animation and skinning stages
-([Skeleton-and-Skin.md](Skeleton-and-Skin.md#runtime-pose-and-skinning)),
+([Skeleton-and-Skin.md](Skeleton-and-Skin.md#runtime)),
 then rebuilds the placement of each renderer whose entity moved, fills
 `instances[]` from the
 enabled renderers and draws. The raster's scratch block is the engine's, sized
