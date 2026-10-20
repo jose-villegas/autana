@@ -51,3 +51,7 @@ docs/math/README.md	2026-10-18	split into an index; links checked against every 
 docs/math/Projection.md	2026-10-18	moved from the math README; checked against projectf.h and projectx.h
 docs/math/Geometry.md	2026-10-18	moved from the math README plus five generated figures; checked against rect and plane templates
 docs/math/Motion.md	2026-10-18	new; checked against orbit_motion.h and spring_line.h
+docs/input/Touch.md	2026-10-20	input split: reviewed against input/ sources, accurate
+docs/input/Buttons.md	2026-10-20	input split: reviewed against input/ sources, accurate
+docs/input/Motion-Axes.md	2026-10-20	input split: reviewed against input/ sources, accurate
+docs/input/Tilt.md	2026-10-20	input split: reviewed against input/ sources, accurate
