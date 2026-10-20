@@ -26,6 +26,7 @@
 #include "apps/render_lab/render_lab_view.h"
 #include "apps/render_lab/sponza_content.h"
 #include "apps/render_lab/tests/r3d_perf_quarters.h"
+#include "apps/render_lab/tests/sponza_perf_log.h"
 #include "asset/asset_store.h"
 #include "core/job.h"
 #include "core/memory.h"
@@ -44,8 +45,6 @@
 #include "services/build_id.h"
 #include "services/tune.h"
 #include "sponza_suite.h"
-
-#define PERF_ROW_NAME_SIZE 96
 
 static const r3d_perf_quarter_t* perf_quarter;
 
@@ -340,8 +339,8 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
         const resolution_step_t composed = raster_compose_size(&b->raster);
         raster_upscale(&b->raster, b->panel, composed.width, composed.height);
         const int64_t us = timing_now_us() - start;
-        ESP_LOGI(TAG, "%s t=%6ums clusters=%4d tris=%5d | both cores: frame %7lldus" R3D_PERF_QUARTER_FORMAT, label,
-                 (unsigned)t_ms, stats.clusters, stats.triangles, (long long)us, perf_quarter->name);
+        ESP_LOGI(TAG, SPONZA_PERF_POSE_FORMAT R3D_PERF_QUARTER_FORMAT, label, (unsigned)t_ms, stats.clusters,
+                 stats.triangles, (long long)us, perf_quarter->name);
         (void)frame_cost_take_report(1, report, FRAME_COST_REPORT_MAX);
         ESP_LOGI(TAG, "ms/frame avg/worst: %s" R3D_PERF_QUARTER_FORMAT, report, perf_quarter->name);
         frame_sum += us;
@@ -351,17 +350,11 @@ report_frame_cost(const char* label, const char* object_name, const r3d_instance
     }
     const perf_stats_t stats = perf_stats_compute(frame_us, samples);
     memory_free(frame_us);
-    ESP_LOGI(TAG,
-             "%s both cores: mean %lldus (%.1f fps before present), worst %lldus, med %lldus, p95 "
-             "%lldus" R3D_PERF_QUARTER_FORMAT,
-             label, (long long)stats.avg, 1e6 * samples / (double)frame_sum, (long long)stats.max, (long long)stats.med,
-             (long long)stats.p95, perf_quarter->name);
+    ESP_LOGI(TAG, SPONZA_PERF_SUMMARY R3D_PERF_QUARTER_FORMAT, label, (long long)stats.avg,
+             1e6 * samples / (double)frame_sum, (long long)stats.max, (long long)stats.med, (long long)stats.p95,
+             perf_quarter->name);
     const size_t q = (size_t)(perf_quarter - r3d_perf_quarters);
-    char name[PERF_ROW_NAME_SIZE];
-    const int length = snprintf(name, sizeof name, "%s %s", label, perf_quarter->name);
-    TEST_ASSERT_TRUE(length > 0 && (size_t)length < sizeof name);
-    (void)perf_goal(name, stats.avg, budget[q].mean_goal_us);
-    perf_guard(name, stats.p95, budget[q].p95_ceiling_us);
+    r3d_perf_budget(label, perf_quarter, stats.avg, stats.p95, &budget[q]);
     memory_free(report);
     bench_close(b);
     memory_free(b);

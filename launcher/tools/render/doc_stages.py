@@ -21,6 +21,8 @@ sys.path.insert(0, str(ROOT / "launcher/tools"))
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from capture import capture_board, require_same_board
+from frame_profile import poses
+from frame_cost import US_PER_MS
 from build import compile_db
 from generated_blocks import apply_tables, tracked_files
 from doc_tables import markdown
@@ -292,18 +294,19 @@ def capture_pose_every_ms(paths) -> int:
 
 def board_frames(captures, expected, id, object_name, every_ms):
     require_same_board({str(path): capture_board(path) for path in captures})
-    pattern = rf"({re.escape(id)}|lite|{re.escape(object_name)}|{re.escape(object_name + '_lite')}) t=\s*(\d+)(ms|s) .*?both cores: frame\s+(\d+)us"
     values = {}
     for capture in captures:
         from capture import select_quarter
         text = select_quarter(capture.read_text(encoding="utf-8", errors="replace"))
         parsed = []
-        for name, time, unit, value in re.findall(pattern, text):
-            name = {object_name: id, object_name + "_lite": "lite"}.get(name, name)
-            time_ms = int(time) * (1000 if unit == "s" else 1)
+        for row in poses(text):
+            name = {object_name: id, object_name + "_lite": "lite"}.get(row["row"], row["row"])
+            if name not in (id, "lite"):
+                continue
+            time_ms = row["time_ms"]
             if time_ms % every_ms:
                 raise ValueError(f"{capture}: needs each full/lite pose exactly once")
-            parsed.append((name, time_ms, int(value) / 1000))
+            parsed.append((name, time_ms, row["frame_us"] / US_PER_MS))
         keys = [(name, time) for name, time, _ in parsed]
         if len(keys) != len(expected) or set(keys) != set(expected):
             raise ValueError(f"{capture}: needs each full/lite pose exactly once")

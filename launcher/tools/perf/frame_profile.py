@@ -13,16 +13,28 @@ PROFILE_RE = re.compile(
     + rf" \| {TOKENS['FPS']} {TOKENS['MEAN']} (?P<fps_mean>[\d.]+) "
       rf"{TOKENS['LOW']} (?P<fps_low>[\d.]+) {TOKENS['WORST']} (?P<fps_worst>[\d.]+) "
       rf"{TOKENS['QUARTER']}(?P<quarter>\w+)")
-SUMMARY_RE = re.compile(
-    r"(?P<row>\S+) both cores: mean (?P<mean>\d+)us \((?P<fps_mean>[\d.]+) fps before present\), "
-    r"worst (?P<worst>\d+)us, med (?P<med>\d+)us, p95 (?P<p95>\d+)us quarter=(?P<quarter>\w+)")
-POSE_RE = re.compile(
-    r"(?P<row>\S+) t=\s*(?P<time_ms>\d+)ms clusters=\s*(?P<clusters>\d+) tris=\s*(?P<triangles>\d+) "
-    r"\| both cores: frame\s+(?P<frame_us>\d+)us quarter=(?P<quarter>\w+)")
+LOG_HEADER = HEADER.parents[1] / "main/apps/render_lab/tests/sponza_perf_log.h"
+QUARTER_FORMAT = read_define(LOG_HEADER.with_name("r3d_perf_quarters.h"), "R3D_PERF_QUARTER_FORMAT")
+
+
+def _log_pattern(name, fields):
+    parts = re.split(r"%[\d.]*(?:ll)?[sudf]", read_define(LOG_HEADER, name) + QUARTER_FORMAT)
+    if len(parts) != len(fields) + 1:
+        raise ValueError(f"{name}: format fields differ from parser")
+    return "".join(re.escape(part) + rf"\s*(?P<{field}>{pattern})"
+                   for part, (field, pattern) in zip(parts, fields)) + re.escape(parts[-1])
+
+
+SUMMARY_RE = re.compile(_log_pattern("SPONZA_PERF_SUMMARY", (
+    ("row", r"\S+"), ("mean", r"\d+"), ("fps_mean", r"[\d.]+"),
+    *((name, r"\d+") for name in ("worst", "med", "p95")), ("quarter", r"\w+"))))
+POSE_RE = re.compile(_log_pattern("SPONZA_PERF_POSE_FORMAT", (
+    ("row", r"\S+"), *((name, r"\d+") for name in ("time_ms", "clusters", "triangles", "frame_us")),
+    ("quarter", r"\w+"))).replace(")ms", ")(?P<time_unit>ms|s)", 1))
 
 
 def _records(pattern, text):
-    return [{key: value if key in ("row", "quarter") else float(value) if key.startswith("fps_") else int(value)
+    return [{key: value if key in ("row", "quarter", "time_unit") else float(value) if key.startswith("fps_") else int(value)
              for key, value in match.groupdict().items()} for match in pattern.finditer(text)]
 
 
@@ -35,4 +47,9 @@ def summaries(text):
 
 
 def poses(text):
-    return _records(POSE_RE, text)
+    from frame_cost import MS_PER_SECOND
+    rows = _records(POSE_RE, text)
+    for row in rows:
+        if row.pop("time_unit") == "s":
+            row["time_ms"] *= MS_PER_SECOND
+    return rows

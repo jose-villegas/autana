@@ -199,6 +199,12 @@ def budget(text, repeat="autana suite run_capybara_perf_suite --flash --perf-sco
     return "\n".join(table)
 
 
+def budget_row(name, goal, measured):
+    headroom = f"{(goal - measured) * PERCENT_SCALE / goal:+.1f}%" if goal else "n/a"
+    status = "MET" if measured <= goal else "UNMET"
+    return f"| {name} | {goal:g} | {measured:g} | {headroom} | {status} |"
+
+
 def frame_report(text, rows, playback):
     if playback:
         lines = ["## Frame rate", "",
@@ -220,9 +226,7 @@ def frame_report(text, rows, playback):
     targets, _ = parse_perf_targets(text)
     for target in targets:
         measured, goal = int(target["measured"]), int(target["goal"])
-        headroom = f"{(goal - measured) * PERCENT_SCALE / goal:+.1f}%" if goal else "n/a"
-        status = "MET" if measured <= goal else "UNMET"
-        lines.append(f"| {target['name']} | {goal} | {measured} | {headroom} | {status} |")
+        lines.append(budget_row(target["name"], goal, measured))
     return "\n".join(lines) + "\n"
 
 
@@ -240,9 +244,7 @@ def performance_report(text):
     lines = [BUDGET_TABLE_HEADER, "|---|---:|---:|---:|---|"]
     for core in (CORES_ONE, CORES_TWO):
         measured = data["stages"][(STAGE_SKIN, core)]
-        headroom = (goal - measured) * PERCENT_SCALE / goal
-        status = "MET" if measured <= goal else "UNMET"
-        lines.append(f"| Skin, {core} core(s) | {goal:g} | {measured:g} | {headroom:+.1f}% | {status} |")
+        lines.append(budget_row(f"Skin, {core} core(s)", goal, measured))
     return "\n".join(lines) + "\n\n" + budget(text) + "\n"
 
 

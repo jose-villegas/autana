@@ -67,18 +67,55 @@ class FrameReports(unittest.TestCase):
         self.assertEqual(poses(pose)[0], dict(row="probe", time_ms=500, clusters=123, triangles=456,
                                            frame_us=52365, quarter="landscape"))
 
+    def test_legacy_pose_seconds(self):
+        from frame_profile import poses
+        row = poses("probe t= 2s clusters=4 tris=5 | both cores: frame 51000us quarter=portrait")[0]
+        self.assertEqual(row["time_ms"], 2000)
+
+    def test_budget_rows(self):
+        self.assertIn("| zero | 0 | 1 | n/a | UNMET |", report_performance.budget_row("zero", 0, 1))
+        self.assertIn("| equal | 1 | 1 | +0.0% | MET |", report_performance.budget_row("equal", 1, 1))
+
     def test_generated_check_detects_edit(self):
-        from frame_profile_tables import CHECK_COMMAND, DOCUMENT
+        import frame_profile_tables as tables
         import shlex
-        command = [sys.executable, *shlex.split(CHECK_COMMAND)[1:]]
-        result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
         with tempfile.TemporaryDirectory() as tmp:
-            document = pathlib.Path(tmp) / "doc.md"
-            body = (ROOT / DOCUMENT).read_text(encoding="utf-8")
-            document.write_text(body.replace("20.4 /", "99.9 /", 1), encoding="utf-8")
-            result = subprocess.run([*command, "--document", str(document)], cwd=ROOT, capture_output=True)
+            data = pathlib.Path(tmp)
+            document = data / "doc.md"
+            document.write_text("<!-- generated: frame-timing-profiles -->\n<!-- /generated: frame-timing-profiles -->\n")
+            for board in ("alpha", "beta"):
+                (data / f"frame-profile-{board}-board.log").write_text(
+                    f"BUILD_ID={board}-diag\n" + "\n".join(profile("gallery", q) for q in tables.QUARTERS))
+            pose = data / "poses-gamma-board.log"
+            pose.write_text("BUILD_ID=pose-diag\npose_every_ms=500\n" + "\n".join(
+                f"gallery t={t}ms clusters=4 tris=5 | both cores: frame 51000us quarter={q}"
+                for q in tables.QUARTERS for t in (0, 1000)))
+            argv = ["--data-dir", str(data), "--document", str(document),
+                    "--pose-capture", str(pose), "--pose-row", "gallery"]
+            command = [sys.executable, str(pathlib.Path(tables.__file__)), *argv]
+            result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+            body = document.read_text()
+            self.assertIn("Cells list ALPHA / BETA", body)
+            self.assertIn("on GAMMA", body)
+            self.assertIn("sampled every 0.5 s", body)
+            for build in ("alpha-diag", "beta-diag", "pose-diag"):
+                self.assertIn(f"build `{build}`", body)
+            self.assertNotIn("Regenerate with", body)
+            marker = next(line for line in body.splitlines() if "check: " in line)
+            self.assertIn(shlex.join(["python", tables.SCRIPT, *argv]), marker)
+            result = subprocess.run([*command, "--check"], cwd=ROOT, capture_output=True)
+            self.assertEqual(result.returncode, 0)
+            document.write_text(body.replace("20.7 /", "99.9 /", 1))
+            result = subprocess.run([*command, "--check"], cwd=ROOT, capture_output=True)
             self.assertEqual(result.returncode, 1)
+            selected = tables.timing_tables(data, None, "gallery", ["beta"], pose, "custom")
+            self.assertIn("Cells list BETA.", selected)
+            self.assertIn("on CUSTOM", selected)
+            self.assertNotIn("alpha-diag", selected)
+            (data / "frame-profile-beta-board.log").write_text(profile("gallery"))
+            with self.assertRaisesRegex(ValueError, "frame-profile-beta-board.log.*missing build id"):
+                tables.timing_tables(data, None, "gallery", ["beta"], pose)
 
 
 if __name__ == "__main__":
