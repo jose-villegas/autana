@@ -18,10 +18,10 @@ int render_lab_scale(void);
 camera_present_t render_lab_present(void);
 small_fill_t render_lab_small_fill(void);
 
-/* The menu's small-fill choice: every SMALL_FILL_ preset, plus "CUSTOM" as
- * the last entry only while the tunables match none. selected is the index the tunables are at now;
- * select moves the tunables to a preset and ignores CUSTOM. Development
- * builds only, where the tunables can move. */
+/* The menu's small-fill choice: every SMALL_FILL_ preset. select writes its
+ * three tunables, which the scene camera reads every frame, so a console SET
+ * or a saved tune takes effect too; selected is the preset last picked.
+ * Development builds only, where the tunables can move. */
 #if TUNE_ENABLED
 const char* const* render_lab_small_fill_names(int* count);
 int render_lab_small_fill_selected(void);
