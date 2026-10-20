@@ -521,8 +521,9 @@ _MELODY_HEADER = Path(__file__).resolve().parents[2] / "launcher/main/console/ve
 _PITCH_HEADER = Path(__file__).resolve().parents[2] / "launcher/packages/math/include/math/signal/pitch.h"
 _UNITS_HEADER = Path(__file__).resolve().parents[2] / "launcher/packages/math/include/math/scalar/units.h"
 MELODY_CHECK_MS = read_define(_MELODY_HEADER, "CONSOLE_MELODY_CHECK_MS")
-MELODY_NOTE_COUNT = _MELODY_HEADER.read_text(encoding="utf-8").split(
-    "melody_notes[] = {", 1)[1].split("};", 1)[0].count("MELODY_NOTE(")
+_MELODY_TABLE = _MELODY_HEADER.read_text(encoding="utf-8").split("melody_notes[] = {", 1)[1].split("};", 1)[0]
+MELODY_NOTE_COUNT = (_MELODY_TABLE.count("MELODY_NOTE(") + _MELODY_TABLE.count("MELODY_PAIR(")
+                     * read_define(_MELODY_HEADER, "MELODY_NOTES_PER_PAIR"))
 MELODY_CENTS_PER_OCTAVE = (read_define(_PITCH_HEADER, "PITCH_CENTS_PER_SEMITONE")
                           * read_define(_PITCH_HEADER, "PITCH_SEMITONES_PER_OCTAVE"))
 MELODY_MAX_NOTE_MS = (read_define(_MELODY_HEADER, "MELODY_FINAL") * read_define(_UNITS_HEADER, "MATH_S_PER_MIN")
