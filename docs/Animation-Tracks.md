@@ -146,7 +146,7 @@ title Binding registry, one 24-byte row a binding from byte 20
 | Owners | `ANIM_TRACKS_VERSION`, `_HEADER_SIZE` (20), `_ROW_SIZE` (24), `_ALIGNMENT` (4), `_CUBIC_RUNS` (3), `ANIM_BINDING_STRING_MAX` (255), `ANIM_ROOT_SCENE` (0), `ANIM_ROOT_SKELETON` (1) in `anim_tracks_format.h` |
 | Header | `root` is `ANIM_ROOT_SCENE` or `ANIM_ROOT_SKELETON`; the 3 pad bytes are zero; `binding_count` at most 65535 |
 | Strings | `strings_off` a multiple of 4, at or after the registry's end; a path or field is nonempty, at most `ANIM_BINDING_STRING_MAX` bytes, with no NUL, and ends inside the table, which fits a 16-bit offset |
-| Component | `u32` code, nonzero; written as `ASSET_TYPE` tags such as `ANIM_COMPONENT_TRANSFORM` (`TRNS`); one binding per path, component and field |
+| Component | `u32` code, nonzero; written as `ASSET_TYPE` tags such as `ANIM_COMPONENT_TRANSFORM` (`TRNS`); the writer allows one binding per path, component and field |
 | Type | an `anim_value_t` code (float, vec2, vec3, quaternion, colour) with width 1, 2, 3, 4 and 3 |
 | Interp | an `anim_interp_t` code: step, linear or cubic |
 | Keys | at least 1, at most 65535; times finite and strictly increasing, values finite, in seconds and the field's units |

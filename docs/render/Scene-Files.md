@@ -802,10 +802,10 @@ title Content: settings, 20 bytes at settings off, exactly one
 | Rule | Detail |
 |---|---|
 | Owners | `SCENE_ASSET_VERSION`, `_HEADER_SIZE` (56), `_AT_COUNTS`, `_AT_OFFSETS`, `SCENE_ASSET_DEFAULT_CLIP_NONE` (0xFFFF), `SCENE_LIGHT_KIND_DIRECTIONAL` (1) in `scene_format.h`; row structs in `scene_internal.h`, checked against the sizes above by `_Static_assert` |
-| Layout | little-endian; every part offset is a multiple of 4, at least 56, and the part ends inside the entry; parts follow in header order |
+| Layout | little-endian; every part offset is a multiple of 4, at least 56, and the part ends inside the entry; the writer lays parts out in header order |
 | Counts | each at most 65535; names equals transforms; settings is exactly 1 |
 | Entities | every `entity` is below the names' count; at most one light, one skinned renderer and one animator an entity |
-| Text | `name`, `mesh_id`, `skin_id`, `skeleton_id` and clip ids are nonempty, NUL terminated, zero after the NUL; the bake allows letters, digits and `_`, not starting with a digit, at most 31 bytes |
+| Text | `name`, `mesh_id`, `skin_id`, `skeleton_id` and clip ids are nonempty, NUL terminated, zero after the NUL; the bake limits names as stated above |
 | Padding | every `0` above is zero |
 | Camera | `half_fov_short_tan` and `near_z` finite and positive; `clear_rgb` at most `0xFFFFFF` |
 | Light | `kind` is `SCENE_LIGHT_KIND_DIRECTIONAL`; colour in 0..1; intensity finite and at least 0 |
