@@ -72,6 +72,11 @@ That is the difference between the modes:
 | Renormalised | the blended normal scaled back to unit length by `mathf_rsqrt()` |
 | Table | the blended normal's direction only, so length never matters |
 
+![Light against the angle between normal and light: unit length, a normal blended to 0.8 long, and the 16x16 table, with the table's error below](images/skin-light-angle.png)
+
+The table follows N.L to within about 0.02 of full light, except near 90°:
+its bilinear blend carries a little light past the edge, where N.L is zero.
+
 `mathf_rsqrt()` is the S3's reciprocal-square-root seed plus one Newton
 step; host and QEMU use an exact square root. The device tests hold it to
 `MATHF_RSQRT_RELATIVE_LIMIT` and the light-byte limit in `suite_skin_light.c`.
@@ -91,10 +96,10 @@ Skinning alone is the first bar; an exact float evaluation costs about
 
 <!-- generated: skin-light-chart check: python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md --check -->
 ```mermaid
-xychart-beta
+xychart-beta horizontal
     title "Cycles per vertex: mode and light count"
-    x-axis ["skin only", "direct 1", "direct 2", "direct 4", "renormalised 1", "renormalised 2", "renormalised 4", "table 1", "table 2", "table 4"]
-    y-axis "cycles"
+    x-axis ["skin only", "direct, 1 light", "direct, 2 lights", "direct, 4 lights", "renormalised, 1 light", "renormalised, 2 lights", "renormalised, 4 lights", "table, 1 light", "table, 2 lights", "table, 4 lights"]
+    y-axis "cycles" 0 --> 900
     bar [353, 640, 664, 709, 680, 703, 748, 865, 861, 861]
 ```
 <!-- /generated: skin-light-chart -->
