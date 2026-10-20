@@ -387,8 +387,17 @@ test_sponza_frame_cost_along_the_flythrough(void) {
     saved_cull = *culling->value;
     suite_set_test_cleanup(restore_culling);
     (void)tune_handle_line("RESET render.cull", cull_reply);
-    static const perf_budget_t bake_budgets[SPONZA_BAKE_COUNT][R3D_PERF_QUARTER_COUNT] = {0};
-    static const perf_budget_t cull_off_budget[R3D_PERF_QUARTER_COUNT] = {0};
+    /* Worst of a 5-seed capture on A308 (before and after its move), 20E8 and
+     * 2124, + 1%; per quarter, portrait then landscape. */
+    static const perf_budget_t bake_budgets[SPONZA_BAKE_COUNT][R3D_PERF_QUARTER_COUNT] = {
+        [SPONZA_BAKE_FULL] = {{41041, 52072}, {38765, 47432}},
+        [SPONZA_BAKE_FLAT] = {{32168, 40942}, {31418, 38734}},
+        [SPONZA_BAKE_LITE] = {{33499, 39169}, {31676, 36473}},
+        [SPONZA_BAKE_FITTED] = {{32882, 40125}, {30706, 37015}},
+        [SPONZA_BAKE_FITTED_FULL] = {{41877, 53439}, {39437, 49049}},
+        [SPONZA_BAKE_FLAT_FITTED] = {{32106, 42281}, {30639, 38440}},
+    };
+    static const perf_budget_t cull_off_budget[R3D_PERF_QUARTER_COUNT] = {{61138, 67896}, {58104, 66246}};
     for (int i = 0; i < (int)SPONZA_BAKE_COUNT; i++) {
         const r3d_instance_t instance = {&meshes[i], NULL};
         report_frame_cost(sponza_bakes[i], sponza_bakes[i], &instance, NULL, NULL, NULL, bake_budgets[i]);
@@ -409,9 +418,11 @@ test_sponza_frame_cost_with_motion(void) {
     *motion = (raster_motion_t){0};
     const raster_attachment_t attachment = raster_motion_view(motion);
     const raster_attachment_t* const attached[] = {&attachment};
-    static const perf_budget_t motion_budget[R3D_PERF_QUARTER_COUNT] = {0};
-    static const perf_budget_t moving_budget[R3D_PERF_QUARTER_COUNT] = {0};
-    static const perf_budget_t placed_budget[R3D_PERF_QUARTER_COUNT] = {0};
+    /* Worst of a 5-seed capture on A308 (before and after its move), 20E8 and
+     * 2124, + 1%; per quarter, portrait then landscape. */
+    static const perf_budget_t motion_budget[R3D_PERF_QUARTER_COUNT] = {{56316, 67715}, {53984, 62771}};
+    static const perf_budget_t moving_budget[R3D_PERF_QUARTER_COUNT] = {{77597, 95705}, {73747, 87554}};
+    static const perf_budget_t placed_budget[R3D_PERF_QUARTER_COUNT] = {{41115, 52181}, {38830, 47638}};
     const r3d_instance_t still = {&meshes[0], NULL};
     report_frame_cost("motion", sponza_bakes[0], &still, attached, NULL, NULL, motion_budget);
     raster_motion_forget(motion);

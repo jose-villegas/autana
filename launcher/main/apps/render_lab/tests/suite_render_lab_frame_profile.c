@@ -20,14 +20,16 @@ typedef struct {
     perf_budget_t quarters[R3D_PERF_QUARTER_COUNT];
 } profile_scenario_t;
 
+/* Worst of a 5-seed capture on A308 (before and after its move), 20E8 and
+ * 2124, + 1%; per quarter, portrait then landscape. */
 static const profile_scenario_t profile_scenarios[] = {
-    {.scene = &scene_sponza},
-    {.scene = &scene_sponza_lite},
-    {.scene = &scene_sponza_flat},
-    {.scene = &scene_sponza_fitted},
-    {.scene = &scene_sponza_fitted_full},
-    {.scene = &scene_sponza_flat_fitted},
-    {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, {{0}}},
+    {.scene = &scene_sponza, .quarters = {{48953, 59273}, {47229, 56329}}},
+    {.scene = &scene_sponza_lite, .quarters = {{41957, 47931}, {40738, 46118}}},
+    {.scene = &scene_sponza_flat, .quarters = {{40902, 49780}, {40227, 48295}}},
+    {.scene = &scene_sponza_fitted, .quarters = {{41341, 49565}, {39726, 46664}}},
+    {.scene = &scene_sponza_fitted_full, .quarters = {{49536, 62165}, {47469, 58108}}},
+    {.scene = &scene_sponza_flat_fitted, .quarters = {{40285, 50300}, {39053, 48179}}},
+    {&scene_capybara, CAPYBARA_SCENE, CAPYBARA_SUBJECT, {{20941, 21286}, {21500, 21803}}},
 };
 
 static render_lab_test_t saved;
