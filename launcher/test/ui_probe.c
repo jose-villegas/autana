@@ -125,9 +125,9 @@ ui_probe_button_label_width(int w, bool has_icon, const ui_theme_t* theme) {
 }
 
 int
-ui_probe_dropdown_label_width(int w, const ui_theme_t* theme) {
+ui_probe_dropdown_label_width(int w, bool has_icons, const ui_theme_t* theme) {
     const ui_mu_theme_t t = UI_THEME_FROM_FACE(theme);
-    return ui_dropdown_label_width(w, &t);
+    return ui_dropdown_label_width(w, has_icons, &t);
 }
 
 recti_t

@@ -42,7 +42,7 @@ int ui_probe_bevel_index(recti_t r, uint32_t face_rgb, bool sunken);
 /* How wide a label may be inside a button, or a dropdown, `w` wide under
  * `theme`. */
 int ui_probe_button_label_width(int w, bool has_icon, const ui_theme_t* theme);
-int ui_probe_dropdown_label_width(int w, const ui_theme_t* theme);
+int ui_probe_dropdown_label_width(int w, bool has_icons, const ui_theme_t* theme);
 
 /* Where a dropdown at `anchor` opens its list of `count` rows `row_h` tall. */
 recti_t ui_probe_dropdown_list_rect(recti_t anchor, int count, int row_h, int canvas_h);

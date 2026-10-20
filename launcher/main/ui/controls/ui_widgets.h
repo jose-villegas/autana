@@ -88,7 +88,7 @@ mu_Rect ui_dropdown_list_rect(mu_Rect anchor, int count, int row_h, int canvas_h
 int ui_dropdown_list_scroll(int selected, int count, int row_h, int list_h);
 
 /* How wide the chosen item's label may be inside a `w` dropdown. */
-int ui_dropdown_label_width(int w, const ui_mu_theme_t* theme);
+int ui_dropdown_label_width(int w, bool has_icons, const ui_mu_theme_t* theme);
 
 /* The chosen item with a chevron; a tap opens the rest as a list over the
  * screen, placed by ui_dropdown_list_rect(). Returns the index picked this
