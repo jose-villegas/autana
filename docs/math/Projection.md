@@ -20,7 +20,7 @@ flowchart LR
 
 | Name | Maps | Inputs | Types | Formula |
 |---|---|---|---|---|
-| `projectx_from_projectf(lens)` | float lens ? Q16.16 lens | `projectf_t*` | `f ? x` | `mathf_to_x` on each field |
+| `projectx_from_projectf(lens)` | float lens → Q16.16 lens | `projectf_t*` | `f → x` | `mathf_to_x` on each field |
 | `projectf_offset(lens, p)` | camera → offset from the centre, +y up | lens, camera point with $`z > 0`$ | `f` | $`(f_x\,x/z,\ f_y\,y/z)`$ |
 | `projectf_screen(lens, p)` | camera → picture, y down, not snapped | lens, camera point with $`z > 0`$ | `f` | $`(c_x + o_x,\ c_y - o_y)`$, $`o`$ the offset |
 | `projectf_clip_near`, `projectx_clip_near` | camera segment → its part in front of `near_z`; false when none is | `near_z`, then both endpoints by pointer; only the one behind the plane moves | `f x` | $`t = \frac{\mathit{near\_z} - z_{\text{behind}}}{z_{\text{front}} - z_{\text{behind}}}`$<br>behind $`\leftarrow`$ behind $`+\,t\,(\text{front} - \text{behind})`$<br>behind.z $`\leftarrow`$ `near_z` |
