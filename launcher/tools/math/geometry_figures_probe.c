@@ -38,7 +38,7 @@ enum { FRUSTUM_LOOSE_BOX = 7 };
 
 _Static_assert(FRUSTUM_LOOSE_BOX < sizeof FRUSTUM_BOXES / sizeof FRUSTUM_BOXES[0], "loose box indexes FRUSTUM_BOXES");
 static const box3f_t QUERY_BOX = {{-1, -1, -1}, {1, 1, 1}};
-static const spheref_t QUERY_SPHERES[] = {{{1.5F, 0, -1.6F}, 1}, {{2, 0, 0.5F}, 1}, {{2.8F, 0, 2.3F}, 0.7F}};
+static const spheref_t QUERY_SPHERES[] = {{{1.2F, 0, -1.5F}, 1}, {{2, 0, 0.5F}, 1}, {{2.8F, 0, 2.3F}, 0.7F}};
 static const char* const QUERY_SPHERE_NAMES[] = {"overlap", "touch", "miss"};
 static const spheref_t SEGMENT_SPHERE = {{3, 0, 0}, 1};
 
