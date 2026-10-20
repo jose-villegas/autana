@@ -8,7 +8,7 @@
 vec3f_t
 skin_light_baseline_normal(const mat4f_t* palette, const uint8_t* joints, const float* weights, int influences,
                            vec3f_t normal) {
-    assert(influences > 0 && influences <= R3D_SKIN_INFLUENCES_MAX);
+    assert(influences > 0 && influences <= (int)R3D_SKIN_INFLUENCES_MAX);
     return light_normal(palette, joints, weights, influences, normal);
 }
 

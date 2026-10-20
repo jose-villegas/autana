@@ -1,5 +1,6 @@
 """Generate the board table from committed suite result lines without measuring the host."""
 import argparse
+import math
 import pathlib
 import re
 import statistics
@@ -9,6 +10,9 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "render"))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "perf"))
 from capture import build_ids
 from generated_blocks import replace_block
+
+# The chart's cycle axis ends at the next multiple of this above the costliest bar.
+CHART_STEP = 100
 
 
 def samples(text):
@@ -93,6 +97,23 @@ def lighting_modes(text):
     return f"Build `{build}`.\n\n" + "\n".join(table)
 
 
+def cost_chart(text):
+    """A horizontal bar chart of the modes' cycles per vertex at each light count, after skinning alone,
+    one row per bar so no label overlaps another, on an axis from zero; the last captured build wins."""
+    measured = {row[1]: row for row in rows(text) if row[3] == "vertex"}
+    bars = [("skin only", measured["skin_only"])]
+    for mode in ("direct", "renormalised", "table"):
+        bars += sorted(((f"{mode}, {match[1]} light" + "s" * (match[1] != "1"), row) for name, row in measured.items()
+                        if (match := re.fullmatch(rf"fused_{mode}_(\d+)", name))),
+                       key=lambda bar: int(bar[1][1].rsplit("_", 1)[1]))
+    cycles = [float(row[2]) for _, row in bars]
+    top = CHART_STEP * math.ceil(max(cycles) / CHART_STEP)
+    labels = ", ".join(f'"{label}"' for label, _ in bars)
+    values = ", ".join(f"{value:.0f}" for value in cycles)
+    return "\n".join(["```mermaid", "xychart-beta horizontal", '    title "Cycles per vertex: mode and light count"',
+                      f"    x-axis [{labels}]", f'    y-axis "cycles" 0 --> {top}', f"    bar [{values}]", "```"])
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("capture", type=pathlib.Path)
@@ -114,6 +135,7 @@ def main():
     changed = False
     for document, name, body in ((args.document, "skin-light-board", "\n".join(table)),
                                  (args.document, "skin-light-modes", modes),
+                                 (args.document, "skin-light-chart", cost_chart(capture)),
                                  (args.import_document, "skin-light-import", modes)):
         changed |= replace_block(document, name, body, check=args.check, command=command)
     return int(args.check and changed)

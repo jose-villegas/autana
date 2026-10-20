@@ -33,6 +33,7 @@ typedef mat4f_t rotation_t;
 
 typedef struct {
     unsigned vertices, joints, frames, sheet_frame;
+    unsigned clip_first, clip_frames; /* the sheet frame's clip, which the figures animate */
     vertex_t* vertex;
     rotation_t* rotation; /* frames * joints */
 } data_t;
@@ -402,14 +403,17 @@ load(const char* path, data_t* d) {
         return 0;
     }
     char magic[4];
-    uint32_t head[4];
-    int ok = fread(magic, 1, 4, f) == 4 && memcmp(magic, "SKLT", 4) == 0 && fread(head, 4, 4, f) == 4;
+    uint32_t head[6];
+    int ok = fread(magic, 1, 4, f) == 4 && memcmp(magic, "SKLT", 4) == 0 && fread(head, 4, 6, f) == 6;
     if (ok) {
         d->vertices = head[0];
         d->joints = head[1];
         d->frames = head[2];
         d->sheet_frame = head[3];
-        ok = d->joints <= MAX_JOINTS && d->sheet_frame < d->frames;
+        d->clip_first = head[4];
+        d->clip_frames = head[5];
+        ok = d->joints <= MAX_JOINTS && d->sheet_frame < d->frames && d->clip_frames > 0
+             && d->clip_first + d->clip_frames <= d->frames;
     }
     if (ok) {
         d->vertex = calloc(d->vertices, sizeof(vertex_t));
@@ -455,6 +459,96 @@ open_out(const char* dir, const char* name, const char* mode) {
     return f;
 }
 
+static const uint8_t WHITE[3] = {255, 255, 255};
+
+/* Light bytes to the RGB565 every vertex shows over every frame of the sheet's clip: on its own albedo, or
+ * on white to show the light alone. */
+static void
+write_clip(FILE* f, const data_t* d, uint8_t (*light)[3], int on_albedo) {
+    for (unsigned k = 0; k < d->clip_frames; k++) {
+        for (unsigned i = 0; i < d->vertices; i++) {
+            const uint8_t* albedo = on_albedo ? d->vertex[i].color : WHITE;
+            const uint16_t c = shade(albedo, light[(size_t)(d->clip_first + k) * d->vertices + i]);
+            fwrite(&c, sizeof c, 1, f);
+        }
+    }
+}
+
+/* The figures' term runs: the albedo, the light of the sheet's ambient and of each of its lights alone, and
+ * the albedo lit by their sum, each lighting the renormalised normal over the sheet's clip. */
+static void
+write_terms(const data_t* d, const char* dir, uint8_t (*light)[3]) {
+    const lights_t all = lights_prepare(SHEET_LIGHTS, 1.0F);
+    /* A light alone keeps the half byte the ambient carries, so it rounds like the sum. */
+    const vec3f_t rounding = {0.5F, 0.5F, 0.5F};
+    lights_t terms[SHEET_LIGHTS + 2] = {{.count = 0, .ambient = all.ambient}};
+    for (unsigned t = 0; t < SHEET_LIGHTS; t++) {
+        terms[t + 1] = (lights_t){.count = 1, .dir = {all.dir[t]}, .color = {all.color[t]}, .ambient = rounding};
+    }
+    terms[SHEET_LIGHTS + 1] = all;
+    FILE* bin = open_out(dir, "terms.bin", "wb");
+    FILE* txt = open_out(dir, "terms.txt", "w");
+    /* Full light shows the albedo itself. */
+    memset(light, R3D_SKIN_LIGHT_BYTE_SCALE, (size_t)d->frames * d->vertices * sizeof *light);
+    write_clip(bin, d, light, 1);
+    fprintf(txt, "albedo\nambient light\n");
+    for (unsigned t = 0; t < SHEET_LIGHTS + 2; t++) {
+        for (unsigned k = d->clip_first; k < d->clip_first + d->clip_frames; k++) {
+            const rotation_t* rot = &d->rotation[(size_t)k * d->joints];
+            for (unsigned i = 0; i < d->vertices; i++) {
+                const vertex_t* vx = &d->vertex[i];
+                reference_light(vec3f_normalize(skin(rot, vx, vx->normal)), &terms[t],
+                                light[(size_t)k * d->vertices + i]);
+            }
+        }
+        write_clip(bin, d, light, t == SHEET_LIGHTS + 1);
+        if (t > 0 && t <= SHEET_LIGHTS) {
+            fprintf(txt, "light %u\n", t);
+        }
+    }
+    fprintf(txt, "albedo x sum\n");
+    fclose(bin);
+    fclose(txt);
+}
+
+/* The skinned float normal before renormalising, every vertex of every frame of the sheet's clip. */
+static void
+write_normals(const data_t* d, const char* dir) {
+    FILE* f = open_out(dir, "normals.bin", "wb");
+    for (unsigned k = d->clip_first; k < d->clip_first + d->clip_frames; k++) {
+        const rotation_t* rot = &d->rotation[(size_t)k * d->joints];
+        for (unsigned i = 0; i < d->vertices; i++) {
+            const vec3f_t n = skin(rot, &d->vertex[i], d->vertex[i].normal);
+            const float xyz[3] = {n.x, n.y, n.z};
+            fwrite(xyz, sizeof(float), 3, f);
+        }
+    }
+    fclose(f);
+}
+
+/* Each table size's cells under the sheet's lights: u32 size, then per cell f32 direction[3], u8 light[4]. */
+static void
+write_tables(const char* dir) {
+    static lut_t lut;
+    const lights_t lights = lights_prepare(SHEET_LIGHTS, 1.0F);
+    FILE* f = open_out(dir, "tables.bin", "wb");
+    for (unsigned vi = 0; vi < VARIANT_N; vi++) {
+        if (VARIANTS[vi].kind != K_LUT) {
+            continue;
+        }
+        lut_init(&lut, VARIANTS[vi].lut);
+        lut_build(&lut, &lights);
+        const uint32_t size = lut.size;
+        fwrite(&size, sizeof size, 1, f);
+        for (unsigned c = 0; c < size * size; c++) {
+            const float xyz[3] = {lut.dir[c].x, lut.dir[c].y, lut.dir[c].z};
+            fwrite(xyz, sizeof(float), 3, f);
+            fwrite(lut.rgb[c], 1, 4, f);
+        }
+    }
+    fclose(f);
+}
+
 static void
 ops_cell(FILE* f, ops_t o) {
     fprintf(f, " %u | %u | %u | %u | %u | %u |", o.mul, o.add, o.div, o.sqrt, o.other, o.imul);
@@ -474,7 +568,7 @@ main(int argc, char** argv) {
     const size_t n = (size_t)d.frames * d.vertices;
     uint8_t (*ref)[3] = malloc(n * 3);
     uint8_t (*got)[3] = malloc(n * 3);
-    uint16_t* sheet = malloc(VARIANT_N * d.vertices * sizeof(uint16_t));
+    FILE* sheet = open_out(argv[2], "sheet.bin", "wb");
     static result_t results[VARIANT_N][LIGHT_COUNT_N];
     unsigned reference = 0;
     while (VARIANTS[reference].kind != K_REFERENCE) {
@@ -497,10 +591,7 @@ main(int argc, char** argv) {
             score(&d, mine, ref, &results[vi][li]);
             if (LIGHT_COUNTS[li] == SHEET_LIGHTS) {
                 const unsigned run = vi == reference ? 0 : sheet_runs++;
-                for (unsigned i = 0; i < d.vertices; i++) {
-                    sheet[run * d.vertices + i] =
-                        shade(d.vertex[i].color, mine[(size_t)d.sheet_frame * d.vertices + i]);
-                }
+                write_clip(sheet, &d, mine, 1);
                 labels[run] = VARIANTS[vi].label;
             }
         }
@@ -579,9 +670,10 @@ main(int argc, char** argv) {
     }
     fclose(f);
 
-    f = open_out(argv[2], "sheet.bin", "wb");
-    fwrite(sheet, sizeof(uint16_t), (size_t)sheet_runs * d.vertices, f);
-    fclose(f);
+    fclose(sheet);
+    write_terms(&d, argv[2], got);
+    write_normals(&d, argv[2]);
+    write_tables(argv[2]);
     printf("wrote %s\n", argv[2]);
     return 0;
 }
