@@ -12,7 +12,15 @@ Every row plays the same stretch of the flythrough, so the rows compare. The
 rows are ranked best first: fitted variants, then the rest, each by mean ΔE in
 [Fidelity against the source](#fidelity-against-the-source).
 
-<!-- generated: sponza-variants -->
+<!-- generated: sponza-variants sha256=4bd8db81d1a49a8cdcaabe26582dcb281dba50a82e8424b5662b0630b83ad5f4 -->
+| Flythrough | Variant | Mesh entry | Fitted |
+|---|---|---|---|
+| ![flat fitted flythrough](../images/render/sponza-flat-fitted.gif) | **flat fitted** | `sponza.atrium_flat_fitted` | yes |
+| ![fitted full flythrough](../images/render/sponza-fitted-full.gif) | **fitted full** | `sponza.atrium_fitted_full` | yes |
+| ![fitted flythrough](../images/render/sponza-fitted.gif) | **fitted** | `sponza.atrium_fitted` | yes |
+| ![full flythrough](../images/render/sponza-full.gif) | **full** | `sponza.atrium` | no |
+| ![lite flythrough](../images/render/sponza-lite.gif) | **lite** | `sponza.atrium_lite` | no |
+| ![flat flythrough](../images/render/sponza-flat.gif) | **flat** | `sponza.atrium_flat` | no |
 <!-- /generated: sponza-variants -->
 
 | Variant | What it is |
@@ -59,12 +67,15 @@ triangles and one colour per face both cost most at edges.
 <details>
 <summary>Fidelity scores</summary>
 
-<!-- generated: sponza-fidelity sha256=5fe775feba523dbf98b7b54d6bcb48e2c6bcfab2be824c32b8b866d6a185dc6e -->
+<!-- generated: sponza-fidelity sha256=83292cd3516c4161eaff2e369862eae26c1b9b971ac1532636ab29a45effa465 -->
 | Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
 |---|---:|---:|---:|---:|---:|
-| Full smooth | 9.520 | 28.185 | 0.5890 | 16.469 | 7.951 |
-| Lite smooth | 11.507 | 34.231 | 0.5270 | 19.777 | 9.682 |
-| Flat, committed | 12.859 | 45.674 | 0.4398 | 22.576 | 10.661 |
+| flat fitted | 5.333 | 15.098 | 0.7519 | 9.823 | 4.311 |
+| fitted full | 5.351 | 14.143 | 0.7672 | 9.335 | 4.453 |
+| fitted | 6.115 | 17.343 | 0.7140 | 11.088 | 5.003 |
+| full | 9.520 | 28.185 | 0.5890 | 16.469 | 7.951 |
+| lite | 11.507 | 34.231 | 0.5270 | 19.777 | 9.682 |
+| flat | 12.859 | 45.674 | 0.4398 | 22.576 | 10.661 |
 <!-- /generated: sponza-fidelity -->
 
 </details>
@@ -239,15 +250,15 @@ scene without its `[indirect]` table and occlusion.
 <details>
 <summary>Indirect light scores</summary>
 
-<!-- generated: sponza-indirect sha256=e4949e99efbce1bab1ea6a991aa4c5ad55673965113a33c50a36ed94ff9bf5c6 -->
+<!-- generated: sponza-indirect sha256=20f0af999ae2af7ed708a008d19f036241efb7dff64681aeb7f1c701c6c71cce -->
 | Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |
 |---|---:|---:|---:|---:|---:|
-| Full smooth, indirect light | 8.069 | 25.348 | 0.6454 | 16.771 | 6.419 |
-| Lite smooth, indirect light | 9.844 | 32.285 | 0.5915 | 20.095 | 7.920 |
-| Flat, indirect light | 10.561 | 41.396 | 0.5393 | 22.112 | 8.352 |
-| Full smooth, direct light | 10.794 | 28.118 | 0.5919 | 18.395 | 9.343 |
-| Lite smooth, direct light | 11.996 | 32.712 | 0.5521 | 21.325 | 10.237 |
-| Flat, direct light | 12.171 | 39.817 | 0.5377 | 22.945 | 10.107 |
+| full, direct light | 10.794 | 28.118 | 0.5919 | 18.395 | 9.343 |
+| full, indirect light | 8.069 | 25.348 | 0.6454 | 16.771 | 6.419 |
+| lite, direct light | 11.996 | 32.712 | 0.5521 | 21.325 | 10.237 |
+| lite, indirect light | 9.844 | 32.285 | 0.5915 | 20.095 | 7.920 |
+| flat, direct light | 12.171 | 39.817 | 0.5377 | 22.945 | 10.107 |
+| flat, indirect light | 10.561 | 41.396 | 0.5393 | 22.112 | 8.352 |
 <!-- /generated: sponza-indirect -->
 
 </details>

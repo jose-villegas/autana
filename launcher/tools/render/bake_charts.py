@@ -61,7 +61,7 @@ def legend_below(axis, columns):
 
 def fidelity_chart(table, path):
     variants = list(table)
-    fig, (error_axis, ssim_axis) = subplots(1, 2, (PANEL[0] * 2, PANEL[1]), width_ratios=(2, 1))
+    fig, (error_axis, ssim_axis) = subplots(1, 2, (PANEL[0] * 2.6, PANEL[1]), width_ratios=(3, 2))
     grouped_bars(error_axis, variants, DELTA_E, {name: [number(table[v][name]) for v in variants] for name in DELTA_E},
                  SLOTS, "Colour error against the reference (lower is better)", "dE76")
     legend_below(error_axis, len(DELTA_E))
