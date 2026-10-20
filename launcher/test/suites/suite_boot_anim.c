@@ -217,10 +217,8 @@ identity_view(void) {
     for (int i = 0; i < 4; i++) {
         v.matrix.m[i][i] = R3D_X_UNIT_ONE;
     }
-    v.near_z = mathf_round_i32(R3D_LINE_NEAR_Z * (float)R3D_X_UNIT_ONE);
-    v.center_x = PANEL_W / 2;
-    v.center_y = PANEL_H / 2;
-    v.pixels_per_unit = PANEL_W / 2;
+    v.lens = (projectx_t){PANEL_W / 2 * MATHX_ONE, PANEL_W / 2 * MATHX_ONE, PANEL_W / 2 * MATHX_ONE,
+                          PANEL_H / 2 * MATHX_ONE, mathf_to_x(R3D_LINE_NEAR_Z)};
     v.units_ok = false;
     return v;
 }
@@ -274,7 +272,7 @@ test_a_point_further_from_the_camera_projects_smaller(void) {
 static void
 test_project_point_rejects_a_point_at_the_near_plane(void) {
     boot_anim_view_t view = identity_view();
-    view.near_z = 64; /* 0.125 m */
+    view.lens.near_z = MATHX_ONE / 8; /* 0.125 m */
     int x = -1, y = -1;
 
     const bool ok = boot_anim_project_point(0, 512, 0, &view, &x, &y);
@@ -294,7 +292,7 @@ static void
 test_project_segment_cs_rejects_a_segment_entirely_behind(void) {
     const boot_anim_view_t view = identity_view();
     const vec3x_t p0 = {100, 200, 0};
-    const vec3x_t p1 = {-100, -200, view.near_z};
+    const vec3x_t p1 = {-100, -200, r3d_line_near_z(&view)};
     int ax, ay, bx, by;
 
     const bool ok = r3d_project_segment_cs_x(p0, p1, &view, &ax, &ay, &bx, &by);
@@ -321,10 +319,10 @@ test_project_segment_cs_clips_asymmetric_coordinates(void) {
     /* Double-precision reference for the clip itself: p0 is BEHIND, so
      * IT is what gets replaced by the near-plane crossing point. */
     const int64_t span = (int64_t)p1.z - p0.z;
-    const int64_t reach = (int64_t)view.near_z - p0.z;
+    const int64_t reach = (int64_t)r3d_line_near_z(&view) - p0.z;
     int ex, ey;
     const vec3x_t exact_clip = {(int32_t)(p0.x + ((((int64_t)p1.x - p0.x) * reach) / span)),
-                                (int32_t)(p0.y + ((((int64_t)p1.y - p0.y) * reach) / span)), view.near_z};
+                                (int32_t)(p0.y + ((((int64_t)p1.y - p0.y) * reach) / span)), r3d_line_near_z(&view)};
     r3d_camera_to_screen_x(exact_clip, &view, &ex, &ey);
 
     const int tolerance = 6;

@@ -218,7 +218,7 @@ test_the_fixed_projection_lands_within_two_pixels_of_the_float_one(void) {
     const render_view_t view = fixture();
     const transformf_t model = TRANSFORMF_IDENTITY;
     const float meters_per_unit[] = {1.0F, 1.0F, 1.0F};
-    const r3d_line_view_x_t view_x = r3d_line_view_x_make(&view, &model, meters_per_unit);
+    const r3d_line_projector_t view_x = r3d_line_projector_make(&view, &model, meters_per_unit);
     for (int zi = 1; zi <= 8; zi++) {
         for (int xi = -5; xi <= 5; xi++) {
             for (int yi = -5; yi <= 5; yi += 2) {
@@ -242,7 +242,7 @@ test_the_fixed_segment_clip_and_point_test_follow_the_near_plane(void) {
     float_view.lens.fx = float_view.lens.fy = 50.0F;
     const transformf_t model = TRANSFORMF_IDENTITY;
     const float meters_per_unit[] = {1.0F, 1.0F, 1.0F};
-    const r3d_line_view_x_t view = r3d_line_view_x_make(&float_view, &model, meters_per_unit);
+    const r3d_line_projector_t view = r3d_line_projector_make(&float_view, &model, meters_per_unit);
     int ax, ay, bx, by;
     TEST_ASSERT_FALSE(r3d_project_point_cs_x(q9((vec3f_t){0.0F, 0.0F, 1.0F}), &view, &ax, &ay));
     TEST_ASSERT_TRUE(r3d_project_point_cs_x(q9((vec3f_t){0.0F, 0.0F, 2.0F}), &view, &ax, &ay));
@@ -256,14 +256,41 @@ test_the_fixed_segment_clip_and_point_test_follow_the_near_plane(void) {
     TEST_ASSERT_INT_WITHIN(2, 100 + (int)(4.0F / 3.0F * 50.0F), bx);
 }
 
+static __attribute__((noinline)) void
+check_line_point(const render_view_t* view, const r3d_line_projector_t* fixed, const mat4f_t* matrix,
+                 const r3d_lens_t* lens, vec3f_t point) {
+    const float float_bound_px = 1.0F;
+    const float fixed_bound_px = 1.5F;
+    /* Dot/scale and affine paths round at most 5+1+1+1 and 6+1+1 times, fused or not.
+     * Cancellation requires the pre-divide magnitude rather than the output coordinate. */
+    const int projection_roundings = 16;
+    const float center_magnitude = fmaxf(view->lens.cx, view->lens.cy);
+    const vec3f_t delta = vec3f_sub(point, view->position);
+    const float z = vec3f_dot(view->forward, delta);
+    const float point_magnitude = sqrtf(vec3f_dot(point, point));
+    const float projection_magnitude = center_magnitude + view->lens.fx * point_magnitude / z;
+    const float lens_bound_px = FLT_EPSILON * projection_magnitude * (float)projection_roundings;
+    const float expected_x = view->lens.cx + view->lens.fx * vec3f_dot(view->screen_x, delta) / z;
+    const float expected_y = view->lens.cy + view->lens.fx * vec3f_dot(view->screen_y, delta) / z;
+    int fx, fy, qx, qy;
+    TEST_ASSERT_TRUE(r3d_project_point_cs(mat4f_apply(matrix, point), &view->lens, &fx, &fy));
+    const vec3x_t camera = mat4x_apply(&fixed->matrix, vec3x_from_vec3f(point));
+    TEST_ASSERT_TRUE(r3d_project_point_cs_x(camera, fixed, &qx, &qy));
+    TEST_ASSERT_FLOAT_WITHIN(float_bound_px, expected_x, (float)fx);
+    TEST_ASSERT_FLOAT_WITHIN(float_bound_px, expected_y, (float)fy);
+    TEST_ASSERT_FLOAT_WITHIN(fixed_bound_px, expected_x, (float)qx);
+    TEST_ASSERT_FLOAT_WITHIN(fixed_bound_px, expected_y, (float)qy);
+    const vec2f_t screen = projectf_screen(&lens->project, mat4f_apply(&lens->m, point));
+    TEST_ASSERT_FLOAT_WITHIN(lens_bound_px, expected_x, screen.x);
+    TEST_ASSERT_FLOAT_WITHIN(lens_bound_px, expected_y, screen.y);
+}
+
 /* Float stays within one pixel of the continuous lens; fixed within 1.5
  * pixels, including Q9 position, quotient and rounded lens quantization. */
 static void
 test_line_points_follow_the_view_and_raster_lens_in_every_quarter(void) {
     const float half_fov_short_tan = 0.7F;
     const float depth = 8.0F;
-    const float float_bound_px = 1.0F;
-    const float fixed_bound_px = 1.5F;
     const int edge_steps = 8;
     const transformf_t model = TRANSFORMF_IDENTITY;
     const float meters_per_unit[] = {1.0F, 1.0F, 1.0F};
@@ -276,15 +303,11 @@ test_line_points_follow_the_view_and_raster_lens_in_every_quarter(void) {
             }
             const render_view_t view =
                 render_view_make(&pose, half_fov_short_tan, R3D_LINE_NEAR_Z, (viewport_t){368, 448, quarter});
-            const r3d_line_view_x_t fixed = r3d_line_view_x_make(&view, &model, meters_per_unit);
-            TEST_ASSERT_EQUAL_INT(mathf_round_i32(view.lens.fx), fixed.pixels_per_unit);
+            const r3d_line_projector_t fixed = r3d_line_projector_make(&view, &model, meters_per_unit);
+            TEST_ASSERT_EQUAL_INT32(mathf_to_x(view.lens.fx), fixed.lens.fx);
             const mat4f_t matrix = r3d_line_matrix(&view, &model);
             r3d_lens_t lens;
             r3d_lens_init(&lens, &view, 1);
-            /* Dot/scale and affine paths round at most 5+1+1+1 and 6+1+1 times, fused or not.
-             * Cancellation requires the pre-divide magnitude rather than the output coordinate. */
-            const int projection_roundings = 16;
-            const float center_magnitude = fmaxf(view.lens.cx, view.lens.cy);
             for (int ix = -edge_steps; ix <= edge_steps; ix++) {
                 for (int iy = -edge_steps; iy <= edge_steps; iy++) {
                     const float dx = view.lens.cx * (float)ix / (float)edge_steps;
@@ -294,24 +317,7 @@ test_line_points_follow_the_view_and_raster_lens_in_every_quarter(void) {
                                   vec3f_add(vec3f_scale(view.screen_x, dx * depth / view.lens.fx),
                                             vec3f_scale(view.screen_y, dy * depth / view.lens.fx)));
                     const vec3f_t point = vec3f_add(view.position, relative);
-                    const vec3f_t delta = vec3f_sub(point, view.position);
-                    const float z = vec3f_dot(view.forward, delta);
-                    const float point_magnitude = sqrtf(vec3f_dot(point, point));
-                    const float projection_magnitude = center_magnitude + view.lens.fx * point_magnitude / z;
-                    const float lens_bound_px = FLT_EPSILON * projection_magnitude * (float)projection_roundings;
-                    const float expected_x = view.lens.cx + view.lens.fx * vec3f_dot(view.screen_x, delta) / z;
-                    const float expected_y = view.lens.cy + view.lens.fx * vec3f_dot(view.screen_y, delta) / z;
-                    int fx, fy, qx, qy;
-                    TEST_ASSERT_TRUE(r3d_project_point_cs(mat4f_apply(&matrix, point), &view.lens, &fx, &fy));
-                    const vec3x_t camera = mat4x_apply(&fixed.matrix, vec3x_from_vec3f(point));
-                    TEST_ASSERT_TRUE(r3d_project_point_cs_x(camera, &fixed, &qx, &qy));
-                    TEST_ASSERT_FLOAT_WITHIN(float_bound_px, expected_x, (float)fx);
-                    TEST_ASSERT_FLOAT_WITHIN(float_bound_px, expected_y, (float)fy);
-                    TEST_ASSERT_FLOAT_WITHIN(fixed_bound_px, expected_x, (float)qx);
-                    TEST_ASSERT_FLOAT_WITHIN(fixed_bound_px, expected_y, (float)qy);
-                    const vec2f_t screen = projectf_screen(&lens.project, mat4f_apply(&lens.m, point));
-                    TEST_ASSERT_FLOAT_WITHIN(lens_bound_px, expected_x, screen.x);
-                    TEST_ASSERT_FLOAT_WITHIN(lens_bound_px, expected_y, screen.y);
+                    check_line_point(&view, &fixed, &matrix, &lens, point);
                 }
             }
         }
@@ -329,7 +335,7 @@ test_narrow_matrix_rejects_entries_at_the_limits(void) {
                 float meters_per_unit[] = {0.0F, 0.0F, 0.0F};
                 meters_per_unit[axis] = (float)(sign * (limit + side)) / narrow_scale;
                 const transformf_t model = TRANSFORMF_IDENTITY;
-                const r3d_line_view_x_t fixed = r3d_line_view_x_make(&view, &model, meters_per_unit);
+                const r3d_line_projector_t fixed = r3d_line_projector_make(&view, &model, meters_per_unit);
                 TEST_ASSERT_EQUAL(side < 0, fixed.units_ok);
             }
         }
@@ -350,7 +356,7 @@ test_narrow_matrix_rejects_translation_at_the_limits(void) {
                                                    : nextafterf((float)R3D_X_TRANSLATION_LIMIT / narrow_scale,
                                                                 side < 0 ? 0.0F : INFINITY)),
                                   0.0F, 0.0F});
-            const r3d_line_view_x_t fixed = r3d_line_view_x_make(&view, &model, meters_per_unit);
+            const r3d_line_projector_t fixed = r3d_line_projector_make(&view, &model, meters_per_unit);
             TEST_ASSERT_EQUAL(side < 0, fixed.units_ok);
         }
     }
@@ -358,7 +364,7 @@ test_narrow_matrix_rejects_translation_at_the_limits(void) {
 
 static void
 test_narrow_transform_at_the_sum_bound_matches_the_wide_one(void) {
-    r3d_line_view_x_t view = {0};
+    r3d_line_projector_t view = {0};
     for (int row = 0; row < 3; row++) {
         for (int axis = 0; axis < 3; axis++) {
             const int32_t limit = axis == 1 ? R3D_X_ENTRY_Y_LIMIT : R3D_X_ENTRY_XZ_LIMIT;
