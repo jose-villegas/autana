@@ -19,7 +19,7 @@
 #include "esp_log.h"
 #include "gfx/gfx.h"
 #include "gfx/present/gfx_present.h"
-#include "input/orbit_motion_touch.h"
+#include "input/mapping/orbit_motion_touch.h"
 #include "math/motion/orbit_motion.h"
 #include "math/scalar/math_const.h"
 #include "math/scalar/units.h"

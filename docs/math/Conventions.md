@@ -49,7 +49,8 @@ The macro arguments:
 | Argument | What it is |
 |---|---|
 | `P` | The type being made, e.g. `vec3f` (its functions are `vec3f_add`, ...) |
-| `V`, `V2`, `R`, `Q`, `M` | The vector, optional vec2, rectangle, quaternion and matrix types a family builds on |
+| `V`, `R`, `Q`, `M` | The vector, rectangle, quaternion and matrix types a family builds on |
+| `L` | The projection lens type used by `MATH_DEFINE_PLANE`, e.g. `projectf` |
 | `T` | The scalar (`float`, `int`, `int32_t`, `int16_t`); `recti` keeps plain `int` |
 | `W` | The type a dot product sums in (wider than `T` for an integer) |
 | `OPS` | The scalar operations' prefix (`mathf`, `mathi`, `maths`, `mathx`): the static inline functions `OPS_add`, `OPS_mul`, `OPS_one` and the rest in `mathf.h`, `mathi.h`, `maths.h` and `mathx.h`. A family names only the ones it uses, so a type without `OPS_div` or `OPS_sqrt` gets no normalize. |

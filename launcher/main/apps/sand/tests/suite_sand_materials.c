@@ -303,7 +303,7 @@ pour_free(void) {
 /* An open-topped stone basin, filled with water and settled level. */
 static void
 build_full_basin(void) {
-    sand_init(pour_p, pour_cells, POUR_W, POUR_H, 9u);
+    sand_init(pour_p, pour_cells, POUR_W, POUR_H, 9U);
 
     for (int y = POUR_H - 6; y < POUR_H; y++) {
         sand_set(pour_p, 5, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
@@ -404,7 +404,7 @@ test_a_tipped_basin_keeps_its_sand(void) {
      * be measuring gravity rather than the difference between a liquid and a
      * powder. */
     pour_alloc();
-    sand_init(pour_p, pour_cells, POUR_W, POUR_H, 9u);
+    sand_init(pour_p, pour_cells, POUR_W, POUR_H, 9U);
     for (int y = POUR_H - 6; y < POUR_H; y++) {
         sand_set(pour_p, 5, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
         sand_set(pour_p, 12, y, CELL_MAKE(MAT_STONE, SAND_AMBIENT_HEAT));
@@ -436,7 +436,7 @@ poured_height(material_id_t m) {
     /* Self-contained: malloc, use, free, all within one call - the two
      * callers below each get their own fresh grid rather than sharing
      * one across both pours. */
-    wide_open(3u);
+    wide_open(3U);
 
     /* Measured shortly after the pour, not once everything has long since
      * settled. The mound is a TRANSIENT - water arriving faster than it can
@@ -502,7 +502,7 @@ test_a_large_body_of_water_levels(void) {
      * The volume here is deliberately much wider than a cell can see, which is
      * the whole point: it must level by looking further than one step's worth
      * of travel. */
-    wide_open(3u);
+    wide_open(3U);
 
     for (int i = 0; i < 90; i++) {
         sand_spawn(&wide, WIDE_W / 2, 1, 3, MAT_WATER);
@@ -559,9 +559,10 @@ test_a_settled_pool_does_not_flicker(void) {
      * since a hand is never perfectly level. A pool level along one axis
      * can read as wildly unbalanced along the other, and colour comes
      * straight off fill level, so the swing is visible as flicker. */
-    const int gx = 60, gy = 1000;
+    const int gx = 60;
+    const int gy = 1000;
 
-    wide_open(3u);
+    wide_open(3U);
     for (int i = 0; i < 90; i++) {
         sand_spawn(&wide, WIDE_W / 2, 1, 3, MAT_WATER);
         sand_step(&wide, gx, gy, 0);
@@ -646,7 +647,7 @@ settled_surface_slope_q10(int w, int h, int gx, int gy, int steps) {
     }
 
     sand_t s;
-    sand_init(&s, cells, w, h, 41u);
+    sand_init(&s, cells, w, h, 41U);
     sand_enable_sleeping(&s, blocks);
 
     /* The bottom h/3 rows, full width, at MASS_MAX, and then ONE more row
@@ -702,7 +703,8 @@ test_a_pool_settles_at_the_angle_it_is_tilted_to(void) {
     const int steps = 2500;
 
     for (size_t i = 0; i < sizeof fixtures / sizeof fixtures[0]; i++) {
-        const int w = fixtures[i].w, h = fixtures[i].h;
+        const int w = fixtures[i].w;
+        const int h = fixtures[i].h;
         char why[256];
 
         /* 20 degrees: true slope 0.364, 373 in q10. */
@@ -751,7 +753,7 @@ test_water_falling_onto_water_also_queues_a_small_displacement(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(drop_impulse_buf, "the splash impulse queue must fit in what the framebuffer leaves");
     uint8_t* splash_cells = malloc((size_t)SPLASH_W * SPLASH_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(splash_cells, "splash column grid must fit in what the framebuffer leaves");
-    sand_init(&fx.splash_sim, splash_cells, SPLASH_W, SPLASH_H, 1u);
+    sand_init(&fx.splash_sim, splash_cells, SPLASH_W, SPLASH_H, 1U);
     sand_enable_impulses(&fx.splash_sim, drop_impulse_buf, 4096);
 
     sand_fill_box(&fx.splash_sim, 0, POOL_TOP + 1, SPLASH_W, SPLASH_H, CELL_MAKE(MAT_WATER, MASS_MAX));
@@ -806,7 +808,7 @@ test_a_water_splash_actually_opens_a_gap(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(buf, "the crater impulse queue must fit in what the framebuffer leaves");
     uint8_t* crater_cells = malloc((size_t)CRATER_W * CRATER_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(crater_cells, "crater grid must fit in what the framebuffer leaves");
-    sand_init(&fx.crater_sim, crater_cells, CRATER_W, CRATER_H, 1u);
+    sand_init(&fx.crater_sim, crater_cells, CRATER_W, CRATER_H, 1U);
     sand_enable_impulses(&fx.crater_sim, buf, 4096);
 
     for (int y = POOL_TOP; y < CRATER_H; y++) {
@@ -872,7 +874,7 @@ test_a_cascading_impulse_moves_more_than_one_cell(void) {
     impulse_t buf[64];
     uint8_t* cascade_test_cells = malloc((size_t)CASCADE_TEST_W * CASCADE_TEST_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(cascade_test_cells, "cascade column grid must fit in what the framebuffer leaves");
-    sand_init(&fx.cascade_test_sim, cascade_test_cells, CASCADE_TEST_W, CASCADE_TEST_H, 1u);
+    sand_init(&fx.cascade_test_sim, cascade_test_cells, CASCADE_TEST_W, CASCADE_TEST_H, 1U);
     sand_enable_impulses(&fx.cascade_test_sim, buf, 64);
 
     sand_fill_box(&fx.cascade_test_sim, COL, TOP, COL + 1, TOP + COL_LEN, CELL_MAKE(MAT_WATER, MASS_MAX));
@@ -975,7 +977,7 @@ test_pouring_water_over_a_dirt_bed_never_moves_a_dirt_cell(void) {
     TEST_ASSERT_NOT_NULL_MESSAGE(buf, "the pour impulse queue must fit in what the framebuffer leaves");
     uint8_t* stir_cells = malloc((size_t)STIR_W * STIR_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(stir_cells, "stir basin grid must fit in what the framebuffer leaves");
-    sand_init(&fx.stir_sim, stir_cells, STIR_W, STIR_H, 0xC0FFEEu);
+    sand_init(&fx.stir_sim, stir_cells, STIR_W, STIR_H, 0xC0FFEEU);
     sand_enable_impulses(&fx.stir_sim, buf, 4096);
 
     build_dirt_stir_basin(&fx.stir_sim, FLOOR, DIRT_TOP, POOL_TOP);
@@ -990,7 +992,8 @@ test_pouring_water_over_a_dirt_bed_never_moves_a_dirt_cell(void) {
 
     free(buf);
 
-    int left_its_cell = 0, arrived_elsewhere = 0;
+    int left_its_cell = 0;
+    int arrived_elsewhere = 0;
     count_dirt_movement(&fx.stir_sim, was_dirt, STIR_W * STIR_H, &left_its_cell, &arrived_elsewhere);
 
     TEST_ASSERT_EQUAL_INT_MESSAGE(0, left_its_cell,
@@ -1086,7 +1089,7 @@ test_a_water_into_water_cascade_is_untouched_by_the_liquid_fix(void) {
     uint8_t* liq_cascade_cells = malloc((size_t)LIQ_CASCADE_W * LIQ_CASCADE_H);
     TEST_ASSERT_NOT_NULL_MESSAGE(liq_cascade_cells,
                                  "liquid cascade column grid must fit in what the framebuffer leaves");
-    sand_init(&fx.liq_cascade_sim, liq_cascade_cells, LIQ_CASCADE_W, LIQ_CASCADE_H, 1u);
+    sand_init(&fx.liq_cascade_sim, liq_cascade_cells, LIQ_CASCADE_W, LIQ_CASCADE_H, 1U);
     sand_enable_impulses(&fx.liq_cascade_sim, buf, 64);
 
     sand_fill_box(&fx.liq_cascade_sim, COL, TOP, COL + 1, TOP + COL_LEN, CELL_MAKE(MAT_WATER, MASS_MAX));

@@ -71,7 +71,7 @@ text_in_clip(mu_Context* ctx, mu_Rect r, mu_Rect clip, const char* str, int len,
     }
 
     mu_push_clip_rect(ctx, clip);
-    mu_draw_text(ctx, ctx->style->font, str, len, mu_vec2(x, r.y + (r.h - th) / 2), color);
+    mu_draw_text(ctx, ctx->style->font, str, len, mu_vec2(x, r.y + ((r.h - th) / 2)), color);
     mu_pop_clip_rect(ctx);
 }
 
@@ -136,7 +136,7 @@ draw_icon_and_label(mu_Context* ctx, mu_Rect r, const draw_image_t* icon, const 
                     mu_Color ink, const ui_mu_theme_t* theme) {
     if (icon != NULL) {
         const int side = theme->icon_side;
-        ui_draw_icon(ctx, mu_rect(r.x + BUTTON_PAD, r.y + (r.h - side) / 2, side, side), icon, NULL, ink);
+        ui_draw_icon(ctx, mu_rect(r.x + BUTTON_PAD, r.y + ((r.h - side) / 2), side, side), icon, NULL, ink);
     }
     const int label_x = r.x + BUTTON_PAD + (icon != NULL ? theme->icon_side + BUTTON_ICON_GAP : 0);
     control_label(ctx, mu_rect(label_x, r.y, label_w, r.h), icon != NULL ? 0 : BUTTON_PAD, BUTTON_PAD, label, label_len,
@@ -211,7 +211,7 @@ ui_toggle_id(mu_Context* ctx, mu_Id mid, mu_Rect r, const char* label, int label
     }
     const mu_Rect text = mu_rect(r.x + box.w, r.y, r.w - box.w, r.h);
     const mu_Vec2 pos =
-        mu_vec2(text.x + ctx->style->padding, text.y + (text.h - ctx->text_height(ctx->style->font)) / 2);
+        mu_vec2(text.x + ctx->style->padding, text.y + ((text.h - ctx->text_height(ctx->style->font)) / 2));
     mu_push_clip_rect(ctx, text);
     if (label_len != 0) {
         mu_draw_text(ctx, ctx->style->font, label, label_len, pos, ink);
@@ -240,8 +240,8 @@ ui_dropdown_list_rect(mu_Rect anchor, int count, int row_h, int canvas_h, int ma
 
 int
 ui_dropdown_list_scroll(int selected, int count, int row_h, int list_h) {
-    const int max_scroll = count * row_h - list_h;
-    int scroll = selected * row_h - (list_h - row_h) / 2;
+    const int max_scroll = (count * row_h) - list_h;
+    int scroll = (selected * row_h) - ((list_h - row_h) / 2);
     if (scroll > max_scroll) {
         scroll = max_scroll;
     }
@@ -264,7 +264,9 @@ find_list(mu_Context* ctx, const char* list_id) {
 
 static void
 list_name(const char* id, char* out, size_t len) {
-    snprintf(out, len, "%s list", id);
+    const int written = snprintf(out, len, "%s list", id);
+    assert(written >= 0 && (size_t)written < len); /* a clipped name would address another list */
+    (void)written;
 }
 
 /* The one list that can be open at a time: a microui popup closes on any
@@ -320,7 +322,7 @@ draw_dropdown_list(mu_Context* ctx, const char* id, mu_Rect anchor, const char* 
     int picked = -1;
     for (int i = 0; i < count; i++) {
         char row_id[24];
-        snprintf(row_id, sizeof row_id, "item %d", i);
+        (void)snprintf(row_id, sizeof row_id, "item %d", i);
         const ui_widget_button_t row = {
             .icon = icons ? icons[i] : NULL,
             .label = names[i],
@@ -387,7 +389,7 @@ ui_dropdown_id(mu_Context* ctx, mu_Id mid, const char* id, mu_Rect r, const char
     draw_icon_and_label(ctx, r, icons ? icons[selected] : NULL, names[selected], -1,
                         ui_dropdown_label_width(r.w, icons != NULL, theme), c.ink, theme);
 
-    const mu_Rect chevron_r = {r.x + r.w - BUTTON_PAD - CHEVRON_SIDE, r.y + (r.h - CHEVRON_SIDE) / 2, CHEVRON_SIDE,
+    const mu_Rect chevron_r = {r.x + r.w - BUTTON_PAD - CHEVRON_SIDE, r.y + ((r.h - CHEVRON_SIDE) / 2), CHEVRON_SIDE,
                                CHEVRON_SIDE};
     ui_draw_system_icon(ctx, chevron_r, was_open ? UI_ICON_CHEVRON_UP : UI_ICON_CHEVRON_DOWN, c.ink);
 
@@ -410,22 +412,22 @@ ui_dropdown_id(mu_Context* ctx, mu_Id mid, const char* id, mu_Rect r, const char
 mu_Rect
 ui_mu_tile_icon_rect(mu_Rect r, const ui_mu_theme_t* theme) {
     const int label_h = draw_font_height(draw_font_ui(), theme->text_scale);
-    int side = r.h - 2 * TILE_PAD - label_h - TILE_LABEL_GAP;
+    int side = r.h - (2 * TILE_PAD) - label_h - TILE_LABEL_GAP;
     if (side > r.w - (2 * TILE_PAD)) {
         side = r.w - (2 * TILE_PAD);
     }
-    return mu_rect(r.x + (r.w - side) / 2, r.y + TILE_PAD, side, side);
+    return mu_rect(r.x + ((r.w - side) / 2), r.y + TILE_PAD, side, side);
 }
 
 void
 ui_swatch_grid(mu_Context* ctx, mu_Rect r, const uint32_t* colors, int cols, int rows) {
     for (int row = 0; row < rows; row++) {
-        const int y0 = r.y + row * r.h / rows;
-        const int y1 = r.y + (row + 1) * r.h / rows;
+        const int y0 = r.y + (row * r.h / rows);
+        const int y1 = r.y + ((row + 1) * r.h / rows);
         for (int col = 0; col < cols; col++) {
-            const int x0 = r.x + col * r.w / cols;
-            const int x1 = r.x + (col + 1) * r.w / cols;
-            mu_draw_rect(ctx, mu_rect(x0, y0, x1 - x0, y1 - y0), ui_rgb(colors[row * cols + col]));
+            const int x0 = r.x + (col * r.w / cols);
+            const int x1 = r.x + ((col + 1) * r.w / cols);
+            mu_draw_rect(ctx, mu_rect(x0, y0, x1 - x0, y1 - y0), ui_rgb(colors[(row * cols) + col]));
         }
     }
 }
@@ -446,7 +448,7 @@ ui_tile_button_id(mu_Context* ctx, mu_Id id, mu_Rect r, const ui_widget_button_t
         ui_draw_icon(ctx, icon, button->icon, NULL, c.ink);
     }
     const int label_h = draw_font_height(draw_font_ui(), theme->text_scale);
-    const mu_Rect label = {r.x + TILE_PAD, icon.y + icon.h + TILE_LABEL_GAP, r.w - 2 * TILE_PAD, label_h};
+    const mu_Rect label = {r.x + TILE_PAD, icon.y + icon.h + TILE_LABEL_GAP, r.w - (2 * TILE_PAD), label_h};
     control_label(ctx, label, TILE_PAD, TILE_PAD, button->label, label_len, c.ink, theme->text_scale);
     return c.clicked;
 }

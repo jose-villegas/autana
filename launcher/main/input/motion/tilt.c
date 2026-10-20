@@ -1,4 +1,4 @@
-#include "input/tilt.h"
+#include "input/motion/tilt.h"
 
 #include "math/scalar/mathi.h"
 
@@ -9,7 +9,7 @@
  * once per frame where the width costs nothing. */
 static bool
 magnitude_within(int x, int y, int z, int counts_per_g, int lo_pct, int hi_pct) {
-    const int64_t mag2 = (int64_t)x * x + (int64_t)y * y + (int64_t)z * z;
+    const int64_t mag2 = ((int64_t)x * x) + ((int64_t)y * y) + ((int64_t)z * z);
     const int64_t g2 = (int64_t)counts_per_g * counts_per_g;
 
     return mag2 * 10000 >= g2 * lo_pct * lo_pct && mag2 * 10000 <= g2 * hi_pct * hi_pct;
@@ -17,7 +17,7 @@ magnitude_within(int x, int y, int z, int counts_per_g, int lo_pct, int hi_pct) 
 
 static bool
 magnitude_below(int x, int y, int z, int counts_per_g, int pct) {
-    const int64_t mag2 = (int64_t)x * x + (int64_t)y * y + (int64_t)z * z;
+    const int64_t mag2 = ((int64_t)x * x) + ((int64_t)y * y) + ((int64_t)z * z);
     const int64_t g2 = (int64_t)counts_per_g * counts_per_g;
 
     return mag2 * 10000 < g2 * pct * pct;
@@ -57,7 +57,7 @@ approach(int32_t current_q8, int target, int tau_ms, uint32_t dt_ms) {
  * needs the root: squares do not subtract. */
 static int
 shake_from_sample(const tilt_t* t, int gx, int gy, int gz) {
-    const int64_t mag2 = (int64_t)gx * gx + (int64_t)gy * gy + (int64_t)gz * gz;
+    const int64_t mag2 = ((int64_t)gx * gx) + ((int64_t)gy * gy) + ((int64_t)gz * gz);
     const int32_t mag = (int32_t)mathi_isqrt64((uint64_t)mag2);
 
     const int32_t departure = mathi_abs(mag - t->counts_per_g);
@@ -137,7 +137,7 @@ tilt_update(tilt_t* t, vec3i_t accel, int turn_speed, uint32_t dt_ms) {
      *
      * Safe only because the trust gate above has already thrown out the samples
      * where "moving" meant "being shoved" rather than "being turned". */
-    const int tau = TILT_TAU_STILL_MS - ((TILT_TAU_STILL_MS - TILT_TAU_MOVING_MS) * rotation) / 255;
+    const int tau = TILT_TAU_STILL_MS - (((TILT_TAU_STILL_MS - TILT_TAU_MOVING_MS) * rotation) / 255);
 
     t->gx_q8 = approach(t->gx_q8, gx, tau, dt_ms);
     t->gy_q8 = approach(t->gy_q8, gy, tau, dt_ms);

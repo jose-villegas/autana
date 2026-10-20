@@ -15,8 +15,8 @@
 #include <stdint.h>
 
 #include "display/viewport.h"
-#include "input/gesture.h"
 #include "input/input.h"
+#include "input/touch/gesture.h"
 #include "math/motion/orbit_motion.h"
 #include "math/scalar/math_const.h"
 
