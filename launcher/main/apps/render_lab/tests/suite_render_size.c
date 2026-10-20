@@ -67,27 +67,40 @@ test_small_fill_ceiling_range(void) {
     size_command(reset);
 }
 
+static int
+preset_index(const char* const* names, int count, const char* name) {
+    for (int i = 0; i < count; i++) {
+        if (strcmp(names[i], name) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
 static void
 test_small_fill_menu_choice_moves_the_tunables(void) {
     fixture();
     int count = 0;
     const char* const* names = render_lab_small_fill_names(&count);
-    TEST_ASSERT_EQUAL_INT(3, count);
-    TEST_ASSERT_EQUAL_STRING("CUSTOM", names[count - 1]);
-    TEST_ASSERT_EQUAL_INT(0, render_lab_small_fill_selected());
+    const int smooth = preset_index(names, count, "SMOOTH");
+    const int fast = preset_index(names, count, "FAST");
+    const int custom = count - 1;
+    TEST_ASSERT_EQUAL_STRING("CUSTOM", names[custom]);
+    TEST_ASSERT_TRUE(smooth >= 0 && fast >= 0);
+    TEST_ASSERT_EQUAL_INT(smooth, render_lab_small_fill_selected());
 
-    render_lab_small_fill_select(1);
-    TEST_ASSERT_EQUAL_STRING("FAST", names[render_lab_small_fill_selected()]);
+    TEST_ASSERT_TRUE(render_lab_small_fill_select(fast));
+    TEST_ASSERT_EQUAL_INT(fast, render_lab_small_fill_selected());
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_FAST, render_lab_small_fill().ceiling);
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_GATE_FAST, render_lab_small_fill().gate);
 
     size_command("SET render_lab.small_fill_gate 3");
-    TEST_ASSERT_EQUAL_INT(count - 1, render_lab_small_fill_selected());
-    render_lab_small_fill_select(count - 1);
-    TEST_ASSERT_EQUAL_INT(count - 1, render_lab_small_fill_selected());
+    TEST_ASSERT_EQUAL_INT(custom, render_lab_small_fill_selected());
+    TEST_ASSERT_FALSE(render_lab_small_fill_select(custom));
+    TEST_ASSERT_EQUAL_INT(custom, render_lab_small_fill_selected());
 
-    render_lab_small_fill_select(0);
-    TEST_ASSERT_EQUAL_INT(0, render_lab_small_fill_selected());
+    TEST_ASSERT_TRUE(render_lab_small_fill_select(smooth));
+    TEST_ASSERT_EQUAL_INT(smooth, render_lab_small_fill_selected());
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_SMOOTH, render_lab_small_fill().ceiling);
     fixture();
 }

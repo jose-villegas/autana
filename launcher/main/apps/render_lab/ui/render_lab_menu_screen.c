@@ -23,6 +23,12 @@ draw_hint(void) {
     ui_text((recti_t){(ui_width() - MENU_BTN_W) / 2, top, MENU_BTN_W, ui_text_height()}, "BOOT to close");
 }
 
+void
+render_lab_menu_caption(int width, const char* text) {
+    ui_row_centre(width, ui_text_height() + UI_TEXT_PAD);
+    ui_text(ui_next(), text);
+}
+
 render_lab_menu_screen_result_t
 render_lab_menu_screen_draw(const render_lab_menu_screen_state_t* state) {
     render_lab_menu_screen_result_t result = {0};
@@ -41,11 +47,10 @@ render_lab_menu_screen_draw(const render_lab_menu_screen_state_t* state) {
     int count = 0;
     const char* const* names = render_lab_small_fill_names(&count);
     int fill = render_lab_small_fill_selected();
-    ui_row_centre(MENU_BTN_W, ui_text_height() + UI_TEXT_PAD);
-    ui_text(ui_next(), "SMALL FILL");
+    render_lab_menu_caption(MENU_BTN_W, "SMALL FILL");
     ui_row_centre(MENU_BTN_W, UI_ROW_HEIGHT);
     if (ui_dropdown(ui_next(), "SMALL FILL", &fill, names, count)) {
-        render_lab_small_fill_select(fill);
+        (void)render_lab_small_fill_select(fill);
     }
 #endif
 

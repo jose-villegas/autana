@@ -31,15 +31,11 @@ render_lab_small_fill(void) {
     return (small_fill_t){(uint8_t)small_fill_ceiling, (uint8_t)small_fill_gate, (small_fill_style_t)small_fill_style};
 }
 
-typedef struct {
-    const char* name;
-    small_fill_t fill;
-} small_fill_preset_t;
-
-#define SMALL_FILL_PRESET_ROW(name) {#name, SMALL_FILL_##name},
-static const small_fill_preset_t small_fill_presets[] = {SMALL_FILL_PRESETS(SMALL_FILL_PRESET_ROW)};
-#define SMALL_FILL_PRESET_COUNT      ((int)(sizeof small_fill_presets / sizeof small_fill_presets[0]))
+#if TUNE_ENABLED
+#define SMALL_FILL_PRESET_ROW(name)  SMALL_FILL_##name,
 #define SMALL_FILL_PRESET_NAME(name) #name,
+static const small_fill_t small_fill_presets[] = {SMALL_FILL_PRESETS(SMALL_FILL_PRESET_ROW)};
+#define SMALL_FILL_PRESET_COUNT ((int)(sizeof small_fill_presets / sizeof small_fill_presets[0]))
 static const char* const small_fill_names[] = {SMALL_FILL_PRESETS(SMALL_FILL_PRESET_NAME) "CUSTOM"};
 
 const char* const*
@@ -52,7 +48,7 @@ int
 render_lab_small_fill_selected(void) {
     const small_fill_t now = render_lab_small_fill();
     for (int i = 0; i < SMALL_FILL_PRESET_COUNT; i++) {
-        const small_fill_t fill = small_fill_presets[i].fill;
+        const small_fill_t fill = small_fill_presets[i];
         if (fill.ceiling == now.ceiling && fill.gate == now.gate && fill.style == now.style) {
             return i;
         }
@@ -60,21 +56,18 @@ render_lab_small_fill_selected(void) {
     return SMALL_FILL_PRESET_COUNT;
 }
 
-void
+bool
 render_lab_small_fill_select(int index) {
-#if TUNE_ENABLED
     if (index < 0 || index >= SMALL_FILL_PRESET_COUNT) {
-        return;
+        return false;
     }
-    const small_fill_t fill = small_fill_presets[index].fill;
+    const small_fill_t fill = small_fill_presets[index];
     tune_registry_t* registry = tune_shared();
-    (void)tune_set(registry, "render_lab.small_fill_ceiling", fill.ceiling);
-    (void)tune_set(registry, "render_lab.small_fill_gate", fill.gate);
-    (void)tune_set(registry, "render_lab.small_fill_style", fill.style);
-#else
-    (void)index;
-#endif
+    return tune_set(registry, small_fill_ceiling_tunable.name, fill.ceiling)
+           && tune_set(registry, small_fill_gate_tunable.name, fill.gate)
+           && tune_set(registry, small_fill_style_tunable.name, fill.style);
 }
+#endif
 
 bool
 render_lab_apply_camera_settings(scene_t* scene, scene_entity_t camera) {

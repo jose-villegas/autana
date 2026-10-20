@@ -3,6 +3,7 @@
 
 #include "render/context/render_context.h"
 #include "scene/scene.h"
+#include "services/tune.h"
 
 #define RENDER_LAB_SCALE_UNIT    100
 #define RENDER_LAB_SCALE_DEFAULT (2 * RENDER_LAB_SCALE_UNIT)
@@ -21,9 +22,11 @@ small_fill_t render_lab_small_fill(void);
  * tunables that match none. selected is the index the tunables are at now;
  * select moves the tunables to a preset and ignores CUSTOM. Development
  * builds only, where the tunables can move. */
+#if TUNE_ENABLED
 const char* const* render_lab_small_fill_names(int* count);
 int render_lab_small_fill_selected(void);
-void render_lab_small_fill_select(int index);
+bool render_lab_small_fill_select(int index);
+#endif
 
 bool render_lab_apply_camera_settings(scene_t* scene, scene_entity_t camera);
 
