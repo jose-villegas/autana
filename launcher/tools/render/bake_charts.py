@@ -12,6 +12,7 @@ import sys
 import textwrap
 
 import numpy as np
+from matplotlib.lines import Line2D
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
@@ -22,7 +23,7 @@ DELTA_E = ("Mean dE76", "p95 dE76", "Edge dE76", "Interior dE76")
 SSIM = "Luma SSIM"
 PANEL = (3.6, 2.8)  # inches per panel
 BAR_SPAN = 0.8
-# Category labels wrap at this many characters so neighbours never overlap.
+# Category labels wrap between words past this many characters, so neighbours never overlap.
 LABEL_WRAP = 8
 # A sampling variant's kind is its label up to the first digit; the declared bake is its own kind.
 SAMPLING_KINDS = ("declared", "fixed", "min", "max", "area", "sky", "centroid")
@@ -49,7 +50,7 @@ def grouped_bars(axis, groups, series, values, colours, title, ylabel):
     for index, name in enumerate(series):
         offset = (index - (len(series) - 1) / 2) * width
         axis.bar(x + offset, values[name], width, label=name, color=colours[index])
-    axis.set_xticks(x, [textwrap.fill(group.replace(",", ""), LABEL_WRAP) for group in groups])
+    axis.set_xticks(x, [textwrap.fill(group.replace(",", ""), LABEL_WRAP, break_long_words=False) for group in groups])
     axis.set_ylim(bottom=0)
     axis.set_title(title, fontsize=TITLE_SIZE)
     axis.set_ylabel(ylabel, fontsize=LABEL_SIZE)
@@ -95,13 +96,18 @@ def sampling_chart(table, path):
     y = np.arange(len(variants))
     for axis, metric in zip(axes, ("Mean dE76", "p95 dE76")):
         values = [number(table[label][metric]) for label in variants]
-        axis.hlines(y, min(values), values, color=colours, alpha=0.35)
+        axis.hlines(y, 0, values, color=colours, alpha=0.35)
         axis.scatter(values, y, color=colours, zorder=3)
+        axis.set_xlim(left=0)
         axis.set_title(f"{metric} (lower is better)", fontsize=TITLE_SIZE)
         axis.tick_params(labelsize=LABEL_SIZE)
         axis.grid(axis="x", color=MUTED, alpha=0.2)
     axes[0].set_yticks(y, variants)
     axes[0].invert_yaxis()
+    kinds = [k for k in SAMPLING_KINDS if any(kind(label) == k for label in variants)]
+    handles = [Line2D([], [], marker="o", linestyle="none", color=SLOTS[SAMPLING_KINDS.index(k)], label=k)
+               for k in kinds]
+    fig.legend(handles=handles, fontsize=LABEL_SIZE, ncol=len(kinds), loc="outside lower center", frameon=False)
     save(fig, path)
 
 
@@ -109,7 +115,7 @@ def look_chart(table, path):
     """Each look's mean error against the physical reference and against its own."""
     looks = list(table)
     columns = {"against the physical reference": "Mean dE76, physical", "against its own reference": "Mean dE76, own"}
-    fig, axis = subplots(1, 1, (PANEL[0] * 1.6, PANEL[1]))
+    fig, axis = subplots(1, 1, (PANEL[0] * 1.6, PANEL[1] * 1.25))
     grouped_bars(axis, looks, list(columns), {name: [number(table[look][column]) for look in looks]
                                               for name, column in columns.items()},
                  (MUTED, SLOTS[0]), "Mean dE76 per look (lower is better)", "dE76")

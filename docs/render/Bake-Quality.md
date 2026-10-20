@@ -65,7 +65,7 @@ triangles and one colour per face both cost most at edges.
 </details>
 
 The flat bake's error, left to right: the reference, the bake, the ΔE heatmap
-and the reference's edge pixels (magenta). It sits at lit arch edges, shadow
+and the reference's edge pixels (magenta). The error sits at lit arch edges, shadow
 boundaries and the foreground drapery.
 
 ![Reference, flat bake, error heatmap and edge pixels](../images/render/bake-fidelity-sheet.png)
@@ -85,13 +85,14 @@ runtime work.
 
 | Label | Changes |
 |---|---|
+| `declared` | The committed flat bake's own settings, the "Flat, committed" row above |
 | `fixedN` | N samples on every face |
 | `minN`, `maxN` | The automatic count's lower or upper bound |
 | `areaX` | The automatic count's area per sample, times the median face area |
 | `skyN` | The sky light's ray count |
 | `centroid` | One sample at each face's centroid |
 
-![Mean and p95 error of each flat sampling variant, best first](../images/render/sponza-flat-sampling.png)
+![Mean and p95 error of each flat sampling variant from 0, best first, coloured by kind](../images/render/sponza-flat-sampling.png)
 
 <details>
 <summary>Every sampling variant</summary>
@@ -261,6 +262,8 @@ colour on the column beside it, and the lit ceiling.
 
 The bounce itself is checked in linear light by a floor beside a sunlit wall
 in [`test_r3d_path_bake.py`](../../launcher/tools/tests/test_r3d_path_bake.py).
+A Sponza bounce measurement needs the alpha-masked source and linear radiance,
+not encoded vertex colours.
 
 ### Indirect look
 
@@ -268,11 +271,12 @@ The scene's [`[indirect]` table](Scene-Files.md#indirect) sets `intensity`, a
 multiplier on bounced light, and `albedo_boost`, a multiplier on the
 reflectance bounces use. The reference reads it too, so each look is scored
 twice: against the physical reference (look and bake error together) and
-against its own (bake error alone).
+against its own (bake error alone). The sheet shows the physical reference
+above the bakes and each look's own reference below.
 
 ![Physical reference and each look's own, with the bakes and their error heatmaps](../images/render/bake-indirect-look.png)
 
-![Mean error of each look against the physical reference and its own](../images/render/sponza-indirect-look.png)
+![Mean error of each look against the physical reference and its own; direct light has no look of its own, so one bar](../images/render/sponza-indirect-look.png)
 
 <details>
 <summary>Look scores</summary>
