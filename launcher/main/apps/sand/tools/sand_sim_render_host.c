@@ -134,7 +134,7 @@ setup(int quarter) {
     if (quarter != 1) {
         return false;
     }
-    sand_init(&sim, cells, GRID_W, GRID_H, 0x564f4c43u);
+    sand_init(&sim, cells, GRID_W, GRID_H, 0x564f4c43U);
     sand_paint_row_state_init(&paint);
     sand_set_scatter(&sim, SAND_SCATTER_PER_MATERIAL);
     sand_set_decay(&sim, SAND_DECAY_PER_MATERIAL);
@@ -154,7 +154,7 @@ setup(int quarter) {
 static double
 board_angle(int frame) {
     const double t = (double)frame / 239.0;
-    return 7.0 * sin(t * 6.283185307179586) + 36.0 * (0.5 - 0.5 * cos(t * 6.283185307179586));
+    return (7.0 * sin(t * 6.283185307179586)) + (36.0 * (0.5 - 0.5 * cos(t * 6.283185307179586)));
 }
 
 /* How fast the simulated board turns, for tilt's filter only. */
@@ -188,7 +188,7 @@ paint_grid(const render_frame_t* frame, int gx, int gy) {
     material_wood_leaf_top5(gx, gy, &wood_top_down, pf.wood_leaf_top5);
     sand_paint_update_local_depth_gravity(&paint, gx, gy, GRID_W, GRID_H);
     for (int cy = 0; cy < GRID_H; cy++) {
-        sand_paint_row_n(&paint, &pf, gfx_framebuffer(), NULL, cy, sim.cells + cy * GRID_W, CELL_SIZE, GRID_W, GRID_H,
+        sand_paint_row_n(&paint, &pf, gfx_framebuffer(), NULL, cy, sim.cells + (cy * GRID_W), CELL_SIZE, GRID_W, GRID_H,
                          0, GRID_W, true);
     }
 }

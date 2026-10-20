@@ -49,7 +49,7 @@ test_palette_cols_spans_the_tile_size_boundary(void) {
 
     /* ...and a width one pixel short of the next multiple must NOT round up
      * to it - the boundary this whole test exists to pin. */
-    TEST_ASSERT_EQUAL_INT(4, palette_cols(5 * PALETTE_TILE - 1));
+    TEST_ASSERT_EQUAL_INT(4, palette_cols((5 * PALETTE_TILE) - 1));
 }
 
 static void
@@ -78,11 +78,14 @@ test_centre_of_every_tile_hits_its_own_index(void) {
     const int count = 14;
     const int cols = palette_cols(GFX_WIDTH);
     for (int i = 0; i < count; i++) {
-        int x, y, w, h;
+        int x;
+        int y;
+        int w;
+        int h;
         palette_tile_rect(i, count, cols, GFX_WIDTH, GFX_HEIGHT, &x, &y, &w, &h);
 
-        const int cx = x + w / 2;
-        const int cy = y + h / 2;
+        const int cx = x + (w / 2);
+        const int cy = y + (h / 2);
 
         TEST_ASSERT_EQUAL_INT_MESSAGE(i, palette_hit(cx, cy, count, cols, GFX_WIDTH, GFX_HEIGHT),
                                       "the centre of a tile's own rect must hit that tile's index");
@@ -95,11 +98,14 @@ test_centre_of_every_tile_hits_its_own_index_at_brush_count(void) {
     const int count = SAND_BRUSH_COUNT;
     const int cols = palette_cols(GFX_WIDTH);
     for (int i = 0; i < count; i++) {
-        int x, y, w, h;
+        int x;
+        int y;
+        int w;
+        int h;
         palette_tile_rect(i, count, cols, GFX_WIDTH, GFX_HEIGHT, &x, &y, &w, &h);
 
-        const int cx = x + w / 2;
-        const int cy = y + h / 2;
+        const int cx = x + (w / 2);
+        const int cy = y + (h / 2);
 
         TEST_ASSERT_EQUAL_INT_MESSAGE(i, palette_hit(cx, cy, count, cols, GFX_WIDTH, GFX_HEIGHT),
                                       "the centre of a tile's own rect must hit that tile's index");
@@ -118,11 +124,14 @@ check_hit_round_trips_against_tile_rect_for_every_tile(int screen_w, int screen_
     const int cols = palette_cols(screen_w);
     for (int count = 1; count <= 16; count++) {
         for (int i = 0; i < count; i++) {
-            int x, y, w, h;
+            int x;
+            int y;
+            int w;
+            int h;
             palette_tile_rect(i, count, cols, screen_w, screen_h, &x, &y, &w, &h);
 
-            const int xs[] = {x, x + w / 2, x + w - 1};
-            const int ys[] = {y, y + h / 2, y + h - 1};
+            const int xs[] = {x, x + (w / 2), x + w - 1};
+            const int ys[] = {y, y + (h / 2), y + h - 1};
             for (int xi = 0; xi < 3; xi++) {
                 for (int yi = 0; yi < 3; yi++) {
                     TEST_ASSERT_EQUAL_INT_MESSAGE(i, palette_hit(xs[xi], ys[yi], count, cols, screen_w, screen_h),
@@ -158,11 +167,14 @@ test_empty_region_beside_centred_partial_row_misses(void) {
      * point in either empty strip, at the row's own y, must miss. */
     const int count = 14;
     const int cols = palette_cols(GFX_WIDTH);
-    int x, y, w, h;
+    int x;
+    int y;
+    int w;
+    int h;
     palette_tile_rect(12, count, cols, GFX_WIDTH, GFX_HEIGHT, &x, &y, &w, &h); /* first tile, last row */
     TEST_ASSERT_EQUAL_INT(92, x);
 
-    const int row_y = y + h / 2;
+    const int row_y = y + (h / 2);
 
     TEST_ASSERT_EQUAL_INT(-1, palette_hit(0, row_y, count, cols, GFX_WIDTH, GFX_HEIGHT));
     TEST_ASSERT_EQUAL_INT(-1, palette_hit(x - 1, row_y, count, cols, GFX_WIDTH, GFX_HEIGHT));
@@ -175,13 +187,16 @@ static void
 test_points_outside_the_panel_miss(void) {
     const int count = 14;
     const int cols = palette_cols(GFX_WIDTH);
-    int px, py, pw, ph;
+    int px;
+    int py;
+    int pw;
+    int ph;
     palette_panel_rect(count, cols, GFX_WIDTH, GFX_HEIGHT, &px, &py, &pw, &ph);
 
-    TEST_ASSERT_EQUAL_INT(-1, palette_hit(px + pw / 2, py - 1, count, cols, GFX_WIDTH, GFX_HEIGHT));  /* above */
-    TEST_ASSERT_EQUAL_INT(-1, palette_hit(px + pw / 2, py + ph, count, cols, GFX_WIDTH, GFX_HEIGHT)); /* below */
-    TEST_ASSERT_EQUAL_INT(-1, palette_hit(px - 1, py + ph / 2, count, cols, GFX_WIDTH, GFX_HEIGHT));  /* left */
-    TEST_ASSERT_EQUAL_INT(-1, palette_hit(px + pw, py + ph / 2, count, cols, GFX_WIDTH, GFX_HEIGHT)); /* right */
+    TEST_ASSERT_EQUAL_INT(-1, palette_hit(px + (pw / 2), py - 1, count, cols, GFX_WIDTH, GFX_HEIGHT));  /* above */
+    TEST_ASSERT_EQUAL_INT(-1, palette_hit(px + (pw / 2), py + ph, count, cols, GFX_WIDTH, GFX_HEIGHT)); /* below */
+    TEST_ASSERT_EQUAL_INT(-1, palette_hit(px - 1, py + (ph / 2), count, cols, GFX_WIDTH, GFX_HEIGHT));  /* left */
+    TEST_ASSERT_EQUAL_INT(-1, palette_hit(px + pw, py + (ph / 2), count, cols, GFX_WIDTH, GFX_HEIGHT)); /* right */
 }
 
 static void
@@ -212,7 +227,10 @@ check_tile_rects_never_overlap_and_stay_on_screen(int screen_w, int screen_h) {
     for (int count = 1; count <= 16; count++) {
         int rects[16][4];
         for (int i = 0; i < count; i++) {
-            int x, y, w, h;
+            int x;
+            int y;
+            int w;
+            int h;
             palette_tile_rect(i, count, cols, screen_w, screen_h, &x, &y, &w, &h);
             rects[i][0] = x;
             rects[i][1] = y;
@@ -255,7 +273,10 @@ static void
 test_full_grid_of_sixteen_leaves_no_gap(void) {
     const int count = 16;
     const int cols = palette_cols(GFX_WIDTH);
-    int px, py, pw, ph;
+    int px;
+    int py;
+    int pw;
+    int ph;
     palette_panel_rect(count, cols, GFX_WIDTH, GFX_HEIGHT, &px, &py, &pw, &ph);
 
     TEST_ASSERT_EQUAL_INT(cols * PALETTE_TILE, pw);
@@ -267,8 +288,8 @@ test_full_grid_of_sixteen_leaves_no_gap(void) {
     bool seen[16] = {false};
     for (int row = 0; row < PALETTE_ROWS(count, cols); row++) {
         for (int col = 0; col < cols; col++) {
-            const int cx = px + col * PALETTE_TILE + PALETTE_TILE / 2;
-            const int cy = py + row * PALETTE_TILE + PALETTE_TILE / 2;
+            const int cx = px + (col * PALETTE_TILE) + (PALETTE_TILE / 2);
+            const int cy = py + (row * PALETTE_TILE) + (PALETTE_TILE / 2);
             const int hit = palette_hit(cx, cy, count, cols, GFX_WIDTH, GFX_HEIGHT);
 
             TEST_ASSERT_TRUE_MESSAGE(hit >= 0 && hit < count, "every cell of a full grid must hit a valid tile");
@@ -283,7 +304,10 @@ test_full_grid_of_sixteen_leaves_no_gap(void) {
 static void
 test_count_of_one_lands_sensibly(void) {
     const int cols = palette_cols(GFX_WIDTH);
-    int x, y, w, h;
+    int x;
+    int y;
+    int w;
+    int h;
     palette_tile_rect(0, 1, cols, GFX_WIDTH, GFX_HEIGHT, &x, &y, &w, &h);
 
     TEST_ASSERT_EQUAL_INT(PALETTE_TILE, w);
@@ -293,7 +317,7 @@ test_count_of_one_lands_sensibly(void) {
 
     /* A single tile is its own (trivially centred) partial row, so its
      * centre must hit it and its own top-left corner must too. */
-    TEST_ASSERT_EQUAL_INT(0, palette_hit(x + w / 2, y + h / 2, 1, cols, GFX_WIDTH, GFX_HEIGHT));
+    TEST_ASSERT_EQUAL_INT(0, palette_hit(x + (w / 2), y + (h / 2), 1, cols, GFX_WIDTH, GFX_HEIGHT));
     TEST_ASSERT_EQUAL_INT(0, palette_hit(x, y, 1, cols, GFX_WIDTH, GFX_HEIGHT));
     TEST_ASSERT_EQUAL_INT(-1, palette_hit(x - 1, y, 1, cols, GFX_WIDTH, GFX_HEIGHT));
 }
@@ -315,7 +339,10 @@ test_panel_never_overflows_the_canvas_across_a_width_sweep(void) {
                                  "palette_cols() must stay within its own documented clamp");
 
         for (int count = 1; count <= 16; count++) {
-            int px, py, pw, ph;
+            int px;
+            int py;
+            int pw;
+            int ph;
             palette_panel_rect(count, cols, screen_w, screen_h, &px, &py, &pw, &ph);
 
             TEST_ASSERT_TRUE_MESSAGE(px >= 0 && py >= 0 && px + pw <= screen_w && py + ph <= screen_h,
@@ -382,18 +409,25 @@ test_label_centred_in_rect_at_every_turn(void) {
     };
 
     for (size_t c = 0; c < sizeof(cases) / sizeof(cases[0]); c++) {
-        const int x = cases[c].x, y = cases[c].y;
-        const int w = cases[c].w, h = cases[c].h, len = cases[c].len;
+        const int x = cases[c].x;
+        const int y = cases[c].y;
+        const int w = cases[c].w;
+        const int h = cases[c].h;
+        const int len = cases[c].len;
 
         for (int turn = 0; turn < 4; turn++) {
-            int ox, oy;
+            int ox;
+            int oy;
             palette_label_origin(x, y, w, h, len, turn, &ox, &oy);
 
-            int bx, by, bw, bh;
+            int bx;
+            int by;
+            int bw;
+            int bh;
             label_bbox(ox, oy, len, turn, &bx, &by, &bw, &bh);
 
-            TEST_ASSERT_EQUAL_INT_MESSAGE(x + (w - bw) / 2, bx, "label box must be horizontally centred in the rect");
-            TEST_ASSERT_EQUAL_INT_MESSAGE(y + (h - bh) / 2, by, "label box must be vertically centred in the rect");
+            TEST_ASSERT_EQUAL_INT_MESSAGE(x + ((w - bw) / 2), bx, "label box must be horizontally centred in the rect");
+            TEST_ASSERT_EQUAL_INT_MESSAGE(y + ((h - bh) / 2), by, "label box must be vertically centred in the rect");
         }
     }
 }
@@ -401,7 +435,12 @@ test_label_centred_in_rect_at_every_turn(void) {
 static void
 test_label_box_swaps_dimensions_at_turns_one_and_three(void) {
     const int len = 5;
-    int ox, oy, bx, by, bw, bh;
+    int ox;
+    int oy;
+    int bx;
+    int by;
+    int bw;
+    int bh;
 
     palette_label_origin(0, 40, 92, 92, len, 1, &ox, &oy);
     label_bbox(ox, oy, len, 1, &bx, &by, &bw, &bh);
@@ -417,7 +456,10 @@ test_label_box_swaps_dimensions_at_turns_one_and_three(void) {
 static void
 test_turn_zero_and_two_share_a_box_but_not_an_origin(void) {
     const int len = 5;
-    int ox0, oy0, ox2, oy2;
+    int ox0;
+    int oy0;
+    int ox2;
+    int oy2;
 
     palette_label_origin(0, 40, 92, 92, len, 0, &ox0, &oy0);
     palette_label_origin(0, 40, 92, 92, len, 2, &ox2, &oy2);
@@ -427,7 +469,14 @@ test_turn_zero_and_two_share_a_box_but_not_an_origin(void) {
      * cannot be the thing under test above. */
     TEST_ASSERT_NOT_EQUAL_INT(ox0, ox2);
 
-    int bx0, by0, bw0, bh0, bx2, by2, bw2, bh2;
+    int bx0;
+    int by0;
+    int bw0;
+    int bh0;
+    int bx2;
+    int by2;
+    int bw2;
+    int bh2;
     label_bbox(ox0, oy0, len, 0, &bx0, &by0, &bw0, &bh0);
     label_bbox(ox2, oy2, len, 2, &bx2, &by2, &bw2, &bh2);
 

@@ -27,7 +27,7 @@ sand_t wide;
 
 void
 fixture(void) {
-    sand_init(&s, cells, W, H, 12345u);
+    sand_init(&s, cells, W, H, 12345U);
 }
 
 void
@@ -179,7 +179,7 @@ assert_nothing_left_to_do(int gx, int gy) {
 
     /* Same grid, same rules, but every row examined every step. */
     sand_t awake;
-    sand_init(&awake, cells, W, H, 999u);
+    sand_init(&awake, cells, W, H, 999U);
     memcpy(cells, settled, sizeof(settled));
 
     run_steps(&awake, 60, gx, gy);
@@ -359,10 +359,10 @@ acid_tank(int sand_rows, int acid_rows) {
 int
 panel_luminance(gfx_color_t c) {
     const uint16_t v = gfx_color_swap(c);
-    const unsigned r = gfx_rgb565_r5(v) * 255u / 31u;
-    const unsigned g = gfx_rgb565_g6(v) * 255u / 63u;
-    const unsigned b = gfx_rgb565_b5(v) * 255u / 31u;
-    return (int)((299u * r + 587u * g + 114u * b) / 1000u);
+    const unsigned r = gfx_rgb565_r5(v) * 255U / 31U;
+    const unsigned g = gfx_rgb565_g6(v) * 255U / 63U;
+    const unsigned b = gfx_rgb565_b5(v) * 255U / 31U;
+    return (int)((299U * r + 587U * g + 114U * b) / 1000U);
 }
 
 int
