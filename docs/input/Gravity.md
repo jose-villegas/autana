@@ -5,7 +5,7 @@ gyro bias in deg/s, tilt strength and free fall. Gyro predicts motion;
 trusted acceleration corrects drift.
 
 Acceleration cannot distinguish gravity from other forces. Axes, scales and
-calibration are described in [Input-and-Sensors.md](../notes/Input-and-Sensors.md#the-imus-axes-do-not-match-the-screens).
+calibration are described in [Motion-Axes.md](Motion-Axes.md) and [Motion-Calibration.md](Motion-Calibration.md).
 
 ## Update
 
