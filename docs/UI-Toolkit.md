@@ -214,12 +214,9 @@ themed_example(themed_example_t* s) {
 ```
 <!-- /generated: ui-themed-example -->
 
-### Button styles
+### Bezels
 
-`ui_set_button_style()` chooses `UI_BUTTON_FLAT` (the default) or
-`UI_BUTTON_BEZEL`, for the rest of the frame; `ui_begin()` resets it. Every
-face control draws a bezel, sunk while pressed, whatever the style, so the
-style changes nothing a face control draws. `ui_bezel_spans()` and
+Every face control draws a bezel, sunk while pressed. `ui_bezel_spans()` and
 `ui_panel_spans()` in `ui/controls/ui_style.h` are pure geometry, so
 `test/suites/suite_ui_style.c` checks the shapes without linking `draw.c`.
 

@@ -46,11 +46,9 @@ draw_app_rows(void) {
 
 const app_t*
 ui_launcher_draw(void) {
-    /* Bezelled buttons, stated every frame because style does not persist (see
-     * ui.h). One full-screen window with no chrome, sized from
+    /* One full-screen window with no chrome, sized from
      * ui_width()/ui_height() rather than GFX_WIDTH/GFX_HEIGHT so it still
      * fits after a quarter turn swaps which one is larger. */
-    ui_set_button_style(UI_BUTTON_BEZEL);
     ui_scroll_window((recti_t){0, 0, ui_width(), ui_height()});
     draw_banner();
     return draw_app_rows();

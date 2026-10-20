@@ -1,19 +1,28 @@
-# autana --json replies on A308, 2026-10-17, one command per line: <command>	<reply>
-# Command column renamed with the CLI to autana tone.
-buildid	{"build_id": "2521fd82ef55-dev"}
-heap	{"free": 98223, "largest": 65536, "total": 284771}
-tone 300 500	{"hz": 300, "tone_db": -31.2, "silence_db": -110.3, "heard": true, "open_dma_bytes": 3096}
-tone 1000 500	{"hz": 1000, "tone_db": -14.9, "silence_db": -117.4, "heard": true, "open_dma_bytes": 3040}
-tone 3000 500	{"hz": 3000, "tone_db": -30.0, "silence_db": -120.0, "heard": true, "open_dma_bytes": 3040}
-heap	{"free": 98167, "largest": 63488, "total": 284771}
-tone 1000 500 1	{"hz": 1000, "tone_db": -42.5, "silence_db": -120.0, "heard": true, "open_dma_bytes": 3040}
-tone 1000 500 3	{"hz": 1000, "tone_db": -33.0, "silence_db": -120.0, "heard": true, "open_dma_bytes": 3040}
-tone 1000 500 10	{"hz": 1000, "tone_db": -22.5, "silence_db": -120.0, "heard": true, "open_dma_bytes": 3040}
-tone 1000 500 30	{"hz": 1000, "tone_db": -14.9, "silence_db": -120.0, "heard": true, "open_dma_bytes": 3040}
-tone 1000 500 100	{"hz": 1000, "tone_db": -14.1, "silence_db": -117.9, "heard": true, "open_dma_bytes": 3040}
-tone 1000 20	{"hz": 1000, "tone_db": -14.8, "silence_db": -89.0, "heard": true, "open_dma_bytes": 3040}
-tone 1000 50	{"hz": 1000, "tone_db": -14.8, "silence_db": -95.2, "heard": true, "open_dma_bytes": 3040}
-tone 1000 100	{"hz": 1000, "tone_db": -14.9, "silence_db": -100.9, "heard": true, "open_dma_bytes": 3040}
-tone 1000 200	{"hz": 1000, "tone_db": -14.9, "silence_db": -108.3, "heard": true, "open_dma_bytes": 3040}
-heap	{"free": 98167, "largest": 63488, "total": 284771}
-buildid	{"build_id": "2521fd82ef55-dev"}
+# autana --json replies on A308, 2026-10-20, one command per line: <command>	<reply>
+# tone 1000 500 3 was re-read after a reflash of the same build: a host serial read truncated the first reply.
+buildid	{"build_id": "164511c54388-dev"}
+heap	{"free": 91391, "largest": 57344, "total": 282483}
+tone 300 500	{"hz": 300, "tone_db": -51.8, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1448, "path": "acoustic", "measured_hz": null, "hz_error": null}
+tone 500 500 --internal	{"hz": 500, "tone_db": -10.5, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "measured_hz": 500.02, "hz_error": 0.01999999999998181}
+tone 1000 500 --internal	{"hz": 1000, "tone_db": -10.5, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "measured_hz": 1000.0, "hz_error": 0.0}
+tone 2000 500 --internal	{"hz": 2000, "tone_db": -10.5, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "measured_hz": 2000.0, "hz_error": 0.0}
+tone 4000 500 --internal	{"hz": 4000, "tone_db": -10.5, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "measured_hz": 4000.0, "hz_error": 0.0}
+tone 8000 500 --internal	{"hz": 8000, "tone_db": -10.5, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "internal", "measured_hz": 8000.0, "hz_error": 0.0}
+tone 1000 500	{"hz": 1000, "tone_db": -32.9, "silence_db": -106.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "measured_hz": 1000.0, "hz_error": 0.0}
+tone 3000 500	{"hz": 3000, "tone_db": -50.1, "silence_db": -119.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "measured_hz": 3000.0, "hz_error": 0.0}
+heap	{"free": 91367, "largest": 57344, "total": 282483}
+tone 1000 500 1	{"hz": 1000, "tone_db": -62.5, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 3	{"hz": 1000, "tone_db": -52.8, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1448, "path": "acoustic", "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 10	{"hz": 1000, "tone_db": -42.4, "silence_db": -107.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 30	{"hz": 1000, "tone_db": -32.9, "silence_db": -118.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 500 100	{"hz": 1000, "tone_db": -22.5, "silence_db": -119.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "measured_hz": 1000.0, "hz_error": 0.0}
+tone 1000 20	{"hz": 1000, "tone_db": -32.9, "silence_db": -98.5, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "measured_hz": null, "hz_error": null}
+tone 1000 50	{"hz": 1000, "tone_db": -32.9, "silence_db": -105.2, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "measured_hz": 1000.01, "hz_error": 0.009999999999990905}
+tone 1000 100	{"hz": 1000, "tone_db": -32.9, "silence_db": -98.6, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "measured_hz": 1000.02, "hz_error": 0.01999999999998181}
+tone 1000 200	{"hz": 1000, "tone_db": -32.9, "silence_db": -113.4, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "measured_hz": 1000.0, "hz_error": 0.0}
+tone 500 500	{"hz": 500, "tone_db": -40.3, "silence_db": -116.8, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "measured_hz": 500.01, "hz_error": 0.009999999999990905}
+tone 2000 500	{"hz": 2000, "tone_db": -39.6, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "measured_hz": 2000.0, "hz_error": 0.0}
+tone 4000 500	{"hz": 4000, "tone_db": -45.6, "silence_db": -120.0, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "measured_hz": 4000.0, "hz_error": 0.0}
+tone 8000 500	{"hz": 8000, "tone_db": -46.2, "silence_db": -112.3, "heard": true, "open_dma_bytes": 1424, "path": "acoustic", "measured_hz": 8000.0, "hz_error": 0.0}
+heap	{"free": 91367, "largest": 57344, "total": 282483}
+buildid	{"build_id": "164511c54388-dev"}

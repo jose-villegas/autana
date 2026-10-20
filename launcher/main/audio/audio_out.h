@@ -22,6 +22,21 @@ audio_out_args_valid(uint32_t hz, uint32_t ms, uint32_t volume_pct) {
            && volume_pct <= AUDIO_OUT_VOLUME_MAX_PCT;
 }
 
+typedef struct {
+    bool requested;
+    bool held;
+} audio_out_amp_t;
+
+static inline bool
+audio_out_amp_update(audio_out_amp_t* state, bool hold, bool enabled) {
+    if (hold) {
+        state->held = enabled;
+    } else {
+        state->requested = enabled;
+    }
+    return state->requested && !state->held;
+}
+
 bool audio_out_open(void);
 /* Output belongs to the mixer for the lifetime of the firmware. */
 void audio_out_close(void);

@@ -12,16 +12,19 @@ import sys
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT / "launcher/tools/render"))
 from doc_tables import markdown
-from generated_blocks import replace_block
+sys.path.insert(0, str(ROOT / "launcher/tools"))
+from build.c_header import read_define
+from generated_blocks import replace_block, blocks
 sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
 from frame_cost import frame_cost_window, US_PER_MS
 
 CAPTURE = Path("docs/audio/data/audio_capture.txt")
 DOCUMENT = Path("docs/audio/Audio-Path.md")
 REGENERATE = "python launcher/tools/audio/audio_doc_tables.py --write"
+DEFAULT_VOLUME = read_define(ROOT / "launcher/main/console/verbs/console_tone_parse.h", "CONSOLE_TONE_DEFAULT_VOLUME_PCT")
 
 
-def render(path):
+def render(path, internal_required=False):
     lines = path.read_text(encoding="utf-8").splitlines()
     header = re.fullmatch(r"# autana --json replies on ([\w-]+), ([\d-]+),.*", lines[0])
     if not header:
@@ -32,8 +35,25 @@ def render(path):
     if len(builds) != 1:
         raise ValueError("capture must have one consistent build id")
     heaps = [reply for command, reply in records if command == ["heap"]]
-    tones = [(tuple(map(int, command[1:])), reply) for command, reply in records
-             if command[:1] == ["tone"]]
+    tones = []
+    internal = {}
+    for command, reply in records:
+        if command[:1] != ["tone"]:
+            continue
+        flags = [arg for arg in command[1:] if arg.startswith("--")]
+        if any(flag not in ("--internal", "--json") for flag in flags) or len(flags) != len(set(flags)):
+            raise ValueError("invalid tone capture flags")
+        args = tuple(int(arg) for arg in command[1:] if not arg.startswith("--"))
+        path_name = "internal" if "--internal" in flags else "acoustic"
+        if reply.get("path", "acoustic") != path_name:
+            raise ValueError("tone command and reply path disagree")
+        if path_name == "internal":
+            point = args if len(args) == 3 else (*args, DEFAULT_VOLUME)
+            if point in internal:
+                raise ValueError("duplicate internal tone point")
+            internal[point] = reply
+        else:
+            tones.append((args, reply))
     if len(heaps) < 2 or len(tones) < 2:
         raise ValueError("capture needs idle/closed heaps and repeated tone opens")
     idle, closed = heaps[0], heaps[-1]
@@ -73,6 +93,33 @@ def render(path):
                 for value, reply in sorted(samples)]
         tables[name] = prefix + context + "\n\n" + markdown(
             [column, "Tone (dBFS)", "Silence (dBFS)", "Margin (dB)", "Heard"], rows)
+    if internal or internal_required:
+        if not internal:
+            raise ValueError("missing internal loopback records")
+        settings = {args[1:] for args in internal}
+        if len(settings) != 1:
+            raise ValueError("paired loopback sweep must hold duration and volume constant")
+        acoustic = {}
+        for args, reply in tones:
+            point = args if len(args) == 3 else (*args, DEFAULT_VOLUME)
+            if point[1:] in settings:
+                acoustic.setdefault(point, reply)
+        if not internal.keys() <= acoustic.keys():
+            raise ValueError("internal and acoustic frequency points must be paired")
+        rows = []
+        for args in sorted(internal):
+            outside = acoustic[args]
+            inside = internal[args]
+            if any("hz_error" not in reply or "measured_hz" not in reply for reply in (outside, inside)):
+                raise ValueError("paired loopback records need measured_hz and hz_error")
+            rows.append((args[0], f"{outside['tone_db']:.1f}", f"{inside['tone_db']:.1f}",
+                         "n/a" if outside['hz_error'] is None else f"{outside['hz_error']:+.2f}",
+                         "n/a" if inside['hz_error'] is None else f"{inside['hz_error']:+.2f}"))
+        duration_ms, volume_pct = next(iter(settings))
+        context = f"Duration {duration_ms} ms; volume {volume_pct}%.\n\n"
+        tables["audio-loopback"] = prefix + context + markdown(
+            ["Frequency (Hz)", "Acoustic level (dBFS)", "Internal level (dBFS)",
+             "Acoustic error (Hz)", "Internal error (Hz)"], rows)
     return tables
 
 
@@ -166,7 +213,8 @@ def render_mix(path):
 
 def update(capture, document, check=False, mix_captures=None, mix_document=None):
     changed = False
-    for name, body in render(capture).items():
+    internal_required = "audio-loopback" in blocks(document.read_text(encoding="utf-8"))
+    for name, body in render(capture, internal_required=internal_required).items():
         changed |= replace_block(document, name, body, check=check)
     if mix_captures is not None:
         captures = sorted(Path(mix_captures).glob("sound_mix_capture*.txt"))
