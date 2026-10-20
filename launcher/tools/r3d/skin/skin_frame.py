@@ -49,7 +49,8 @@ def program(directory):
 def run_pose(target, directory, entries, skeleton, clip, ms):
     pack = directory / "pose.pack"
     pack.write_bytes(build_pack(entries))
-    result = subprocess.run([str(target), str(pack), skeleton, SKIN_ID, MESH_ID, CLIP_ID, str(ms)],
+    result = subprocess.run([str(target), str(pack), scene_host.SCENE_ID, scene_host.ENTITY_NAME, skeleton, SKIN_ID,
+                             MESH_ID, CLIP_ID, str(ms)],
                             text=True, capture_output=True, check=True)
     return [tuple(int(v) for v in line.split()) for line in result.stdout.splitlines()]
 
