@@ -363,7 +363,7 @@ view is built is in [Mesh-Rendering.md](Mesh-Rendering.md#what-a-scene-uses).
 
 Cost: part of `frame.rest` in the frame-stages chart.
 
-![The demo scene along its flythrough](../images/render/sponza-full.gif)
+![The demo scene along its flythrough](../images/render/sponza-fitted-full.gif)
 
 Reference: [Scene-Manager.md](Scene-Manager.md#each-frame).
 

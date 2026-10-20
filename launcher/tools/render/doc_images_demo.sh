@@ -7,10 +7,12 @@
 #
 # OBJECT is the full renderer; the scene must also place OBJECT_lite,
 # OBJECT_flat, OBJECT_fitted, OBJECT_fitted_full and OBJECT_flat_fitted.
+# The scene's first renderer is its showcase: the images that show the
+# scene rather than compare its variants draw that one.
 #
 # <out-tree> holds images in render/ and measured blocks in tables/.
 # --meshlets-only makes only the meshlet sheet; --present-only makes only the
-# three camera present GIFs (nearest, scanline, double) of OBJECT_fitted_full.
+# three camera present GIFs (nearest, scanline, double) of the showcase.
 #
 # Run from the repository root with $PYTHON set to a Python that has Pillow and numpy
 # (the fidelity sheet also needs launcher/tools/r3d/requirements.txt, found by find_r3d_python);
@@ -35,13 +37,14 @@ W=$2
 run mkdir -p "$W" "$RENDER"
 build=$(run sh launcher/tools/render/scene_viewer.sh "$SCENE" --build-only -o "$W")
 HOST=${build#built }
+SHOWCASE=$(run "$PYTHON" -c 'import sys; from pathlib import Path; sys.path.insert(0, "launcher/tools"); from r3d.import_settings import load_scene; print(load_scene(Path(sys.argv[1])).renderers[0].object.name)' "$SCENE")
 
 small_fill_images() {
     cat > "$W/small-fill-looks.tsv" <<EOF
-smooth|SMOOTH (4/0 FLAT)|${FULL}_fitted_full|--small-fill 4,0,0|${ID}-small-fill-smooth|
-fast|FAST (12/16 FLAT)|${FULL}_fitted_full|--small-fill 12,16,0|${ID}-small-fill-fast|${ID}-small-fill-fast-diff
-grain|12/16 GRAIN|${FULL}_fitted_full|--small-fill 12,16,1|${ID}-small-fill-grain|${ID}-small-fill-grain-diff
-dither|12/16 DITHER|${FULL}_fitted_full|--small-fill 12,16,2|${ID}-small-fill-dither|${ID}-small-fill-dither-diff
+smooth|SMOOTH (4/0 FLAT)|${SHOWCASE}|--small-fill 4,0,0|${ID}-small-fill-smooth|
+fast|FAST (12/16 FLAT)|${SHOWCASE}|--small-fill 12,16,0|${ID}-small-fill-fast|${ID}-small-fill-fast-diff
+grain|12/16 GRAIN|${SHOWCASE}|--small-fill 12,16,1|${ID}-small-fill-grain|${ID}-small-fill-grain-diff
+dither|12/16 DITHER|${SHOWCASE}|--small-fill 12,16,2|${ID}-small-fill-dither|${ID}-small-fill-dither-diff
 EOF
     small_fill_first=1
     small_fill_end=56
@@ -131,9 +134,9 @@ demo_gif() {
     gif_from_avi "$W/$name.avi" "$RENDER/$name.gif" "${DEMO_GIF_FILTERS:-fps=8,scale=240:-1:flags=lanczos}" \
         "max_colors=64:stats_mode=diff"
 }
-DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-nearest --scene "$ID" --object "${FULL}_fitted_full" --present nearest
-DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-scanline --scene "$ID" --object "${FULL}_fitted_full" --present scanline
-DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-double --scene "$ID" --object "${FULL}_fitted_full" --present double
+DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-nearest --scene "$ID" --object "$SHOWCASE" --present nearest
+DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-scanline --scene "$ID" --object "$SHOWCASE" --present scanline
+DEMO_GIF_FILTERS=fps=8 demo_gif ${ID}-present-double --scene "$ID" --object "$SHOWCASE" --present double
 [ "${5:-}" != --present-only ] || exit 0
 
 demo_gif ${ID}-full --scene "$ID" --object "$FULL"
@@ -142,10 +145,10 @@ demo_gif ${ID}-flat --scene "$ID" --object "${FULL}_flat"
 demo_gif ${ID}-fitted --scene "$ID" --object "${FULL}_fitted"
 demo_gif ${ID}-fitted-full --scene "$ID" --object "${FULL}_fitted_full"
 demo_gif ${ID}-flat-fitted --scene "$ID" --object "${FULL}_flat_fitted"
-demo_gif ${ID}-depth --scene "$ID" --object "$FULL" --view depth
-demo_gif ${ID}-tiles --scene "$ID" --object "$FULL" --view tiles
-demo_gif ${ID}-motion-vectors --scene "$ID" --object "$FULL" --view motion
-demo_gif ${ID}-meshlets --scene "$ID" --object "$FULL" --view meshlets
+demo_gif ${ID}-depth --scene "$ID" --object "$SHOWCASE" --view depth
+demo_gif ${ID}-tiles --scene "$ID" --object "$SHOWCASE" --view tiles
+demo_gif ${ID}-motion-vectors --scene "$ID" --object "$SHOWCASE" --view motion
+demo_gif ${ID}-meshlets --scene "$ID" --object "$SHOWCASE" --view meshlets
 
 # The targets' differences at the pose the GIFs end on: each pair side by side
 # with the amplified difference, and the places they differ most, enlarged.
