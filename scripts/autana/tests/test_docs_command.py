@@ -39,7 +39,8 @@ class DocsCommandTests(unittest.TestCase):
         with mock.patch.object(autana, "resolve_project", return_value=str(root)), \
                 mock.patch.object(autana, "send", side_effect=AssertionError("board")), \
                 mock.patch.object(autana, "device_command", side_effect=AssertionError("board")), \
-                mock.patch.object(docs_llama, "installed", return_value=False),                 mock.patch.object(query_log, "log_dir", return_value=root / "usage"), \
+                mock.patch.object(docs_llama, "installed", return_value=False), \
+                mock.patch.object(query_log, "log_dir", return_value=root / "usage"), \
                 contextlib.redirect_stdout(stream):
             code = autana.COMMANDS["docs"](list(args))
         return code, stream.getvalue()
