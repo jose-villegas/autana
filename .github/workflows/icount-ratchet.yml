@@ -1,7 +1,7 @@
 name: QEMU Ratchet and Console Tests
 
 # Pins named serial simulation steps and raster span kernels to instruction
-# budgets. Scope, tolerance and local captures: docs/Testing-Guide.md.
+# budgets. Scope, tolerance and local captures: docs/testing/Performance-and-Budgets.md.
 on:
   push:
     branches: [main]
