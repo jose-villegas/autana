@@ -30,7 +30,7 @@ block transactionally; attachment failure preserves the scene.
 | names | entity | the scene entry's, read in the pack, looked up only by `scene_find()` |
 
 Array lengths come from the scene's `SCNE` entry
-([Scene-Files.md](Scene-Files.md#the-scene-entry)). SCNE v2 carries authored lights, lighting settings, skins and animators.
+([Scene-Files.md](Scene-Files.md#scne-v2)). SCNE v2 carries authored lights, lighting settings, skins and animators.
 Authored lights attach at load, and `scene_light_set_*()` attaches or changes
 them at run time; only skinned renderers are lit at run time, baked renderers
 keep their pack colors. Names and immutable mesh and track views point into
@@ -47,6 +47,8 @@ on the camera's entity whose tracks bind to that entity through
 | `scene_find(scene, name)` | the entity with that name: look it up once, after the load, and keep it |
 | `scene_entity_mesh_id(scene, entity)` | the pack id of the mesh the entity draws, or NULL |
 | `scene_camera_lens(scene, camera)` | a camera's lens (NULL: the first); its pose is its entity's transform |
+| `scene_camera_set_present(scene, camera, present)` | sets the camera's presentation; false for a non-camera entity or invalid mode |
+| `scene_camera_set_small_fill(scene, camera, fill)` | sets its `small_fill_t` ceiling, colour gate and style; defaults are `SMALL_FILL_SMOOTH`; pass `SMALL_FILL_FAST` to opt into tuned filling; false for a non-camera entity or invalid ceiling or style ([Small fill](Mesh-Rendering.md#small-fill)) |
 | `scene_set_transform()` / `scene_entity_set_enabled()` | set an entity's TRS value, hide or show a renderer |
 | `scene_entity_transform(scene, entity)` | reads the entity's TRS component |
 | `scene_animator_set_clips()` / `scene_renderer_set_skin()` | attach clips and a skeleton, or a skin, by asset id |
@@ -105,7 +107,7 @@ needs full-framebuffer layout; in band mode the scene draws into scratch
 with no destination for upscaling.
 
 `scene_render()` runs the animation and skinning stages
-([Skeleton-and-Skin.md](Skeleton-and-Skin.md#runtime-pose-and-skinning)),
+([Skeleton-and-Skin.md](Skeleton-and-Skin.md#runtime)),
 then rebuilds the placement of each renderer whose entity moved, fills
 `instances[]` from the
 enabled renderers and draws. The raster's scratch block is the engine's, sized

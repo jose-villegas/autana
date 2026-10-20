@@ -24,11 +24,11 @@
  * (irqlevel/offlevel/onlevel) sets that at 4-10 s, independently of the
  * 1-2.5 s long-press *interrupt* in the same register, and REG 0x22 bit 1
  * (btn_pwroff_en) is what turns the power-off behaviour on at all. Firmware
- * enables the long-press interrupt (see buttons.c) but does not touch
+ * enables the long-press interrupt (see power/power_device.c) but does not touch
  * btn_pwroff_en, so both fire from the same hold: this module reports it as
  * `held` well before the PMU's own, longer power-off threshold is ever
  * reached (1-2.5 s long-press vs 4-10 s power-off; see the levels
- * pmu_init() logs at boot for what this board actually has both set to).
+ * power_start() logs at boot for what this board actually has both set to).
  */
 #pragma once
 

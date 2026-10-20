@@ -383,6 +383,11 @@ gfx_set_frame_overlay(gfx_band_overlay_fn overlay) {
     frame_overlay = overlay;
 }
 
+gfx_band_overlay_fn
+gfx_frame_overlay(void) {
+    return frame_overlay;
+}
+
 void
 clear_expanded_frame(bool free_picture) {
     frame_expanded = false;

@@ -37,14 +37,11 @@ build=$(run sh launcher/tools/render/scene_viewer.sh "$SCENE" --build-only -o "$
 HOST=${build#built }
 
 small_fill_images() {
-    run "$HOST" --scene "$ID" --object "${FULL}_fitted_full" --frames 1 --tunables \
-        -o "$W/small-fill-tunables.bmp" 2> "$W/small-fill-tunables.log"
     cat > "$W/small-fill-looks.tsv" <<EOF
-defaults|Defaults|${FULL}_fitted_full||${ID}-small-fill-defaults|
-flat8|Flat <=8|${FULL}_fitted_full|--set r3d_span.small_max_side=8|${ID}-small-fill-flat8|${ID}-small-fill-flat8-diff
-gate|Gate ramp|${FULL}_fitted_full|--set r3d_span.small_max_side=8 --set r3d_span.small_flat_spread_far=4 --set r3d_span.small_flat_spread_near=64|${ID}-small-fill-gate|${ID}-small-fill-gate-diff
-dither|Dither 4, ramp 1|${FULL}_fitted_full|--set r3d_span.small_max_side=8 --set r3d_span.small_dither=4 --set r3d_span.small_dither_ramp=1|${ID}-small-fill-dither|${ID}-small-fill-dither-diff
-bake|Flat bake|${FULL}_flat_fitted||${ID}-small-fill-bake|${ID}-small-fill-bake-diff
+smooth|SMOOTH (4/0 FLAT)|${FULL}_fitted_full|--small-fill 4,0,0|${ID}-small-fill-smooth|
+fast|FAST (12/16 FLAT)|${FULL}_fitted_full|--small-fill 12,16,0|${ID}-small-fill-fast|${ID}-small-fill-fast-diff
+grain|12/16 GRAIN|${FULL}_fitted_full|--small-fill 12,16,1|${ID}-small-fill-grain|${ID}-small-fill-grain-diff
+dither|12/16 DITHER|${FULL}_fitted_full|--small-fill 12,16,2|${ID}-small-fill-dither|${ID}-small-fill-dither-diff
 EOF
     small_fill_first=1
     small_fill_end=56
@@ -62,17 +59,17 @@ EOF
         gif_from_avi "$W/small-fill-$look.avi" "$RENDER/$gif.gif" \
             "$small_fill_window" "$small_fill_palette"
     done 3< "$W/small-fill-looks.tsv"
-    if cmp -s "$W/small-fill-defaults.bmp" "$W/small-fill-flat8.bmp"; then
-        echo "small-fill: --set did not change the render" >&2
+    if cmp -s "$W/small-fill-smooth.bmp" "$W/small-fill-fast.bmp"; then
+        echo "small-fill: --small-fill did not change the render" >&2
         exit 1
     fi
     while IFS='|' read -r look label object settings gif diff <&3; do
         run "$PYTHON" launcher/tools/render/render_compare.py --out "$W/small-fill-$look.mp4" \
-            --video "$W/small-fill-defaults.avi" "$W/small-fill-$look.avi" \
-            --label-a defaults --label-b "$look" --csv "$W/small-fill-$look.frames.csv" \
+            --video "$W/small-fill-smooth.avi" "$W/small-fill-$look.avi" \
+            --label-a "SMOOTH" --label-b "$label" --csv "$W/small-fill-$look.frames.csv" \
             > "$W/small-fill-$look-compare.log"
         run "$PYTHON" launcher/tools/render/render_temporal.py \
-            --video "$W/small-fill-defaults.avi" "$W/small-fill-$look.avi" \
+            --video "$W/small-fill-smooth.avi" "$W/small-fill-$look.avi" \
             --csv "$W/small-fill-$look.frames.csv" >> "$W/small-fill-$look-compare.log"
     done 3< "$W/small-fill-looks.tsv"
     run "$PYTHON" - "$W" <<'PY'
@@ -83,22 +80,22 @@ from PIL import Image
 sys.path.insert(0, "launcher/tools/render")
 from render_compare import GAIN, heatmap, read_video
 work = pathlib.Path(sys.argv[1])
-fps, defaults = read_video(work / "small-fill-defaults.avi")
-defaults = list(defaults)
+fps, baseline = read_video(work / "small-fill-smooth.avi")
+baseline = list(baseline)
 for row in (work / "small-fill-looks.tsv").read_text().splitlines():
     look, label, _, _, _, _ = row.split("|")
-    if look == "defaults":
+    if look == "smooth":
         continue
     _, variant = read_video(work / f"small-fill-{look}.avi")
     frames = [heatmap(Image.fromarray(a), Image.fromarray(b), None, GAIN)
-              for a, b in zip(defaults, variant)]
+              for a, b in zip(baseline, variant)]
     subprocess.run(["ffmpeg", "-hide_banner", "-loglevel", "error", "-y", "-f", "rawvideo",
                     "-pix_fmt", "rgb24", "-s", "%dx%d" % frames[0].size, "-r", str(fps), "-i", "-",
                     "-c:v", "rawvideo", "-pix_fmt", "bgr24", str(work / f"small-fill-{look}-diff.avi")],
                    input=b"".join(frame.tobytes() for frame in frames), check=True)
 PY
     while IFS='|' read -r look label object settings gif diff <&3; do
-        [ "$look" != defaults ] || continue
+        [ "$look" != smooth ] || continue
         gif_from_avi "$W/small-fill-$look-diff.avi" "$RENDER/$diff.gif" \
             "$small_fill_window" "$small_fill_palette"
     done 3< "$W/small-fill-looks.tsv"

@@ -33,6 +33,9 @@ set(app_srcs
     "input/buttons/buttons.c"
     "input/touch/gesture.c"
     "input/motion/imu.c"
+    "power/power_decode.c"
+    "power/power_cache.c"
+    "power/power_device.c"
     "input/input_device.c"
     "input/motion/tilt.c"
     "input/motion/gravity.c"
@@ -129,8 +132,10 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
         "console/console_verbs.c"
         "console/console.c"
         "console/verbs/console_buildid.c"
+        "console/verbs/console_battery.c"
         "console/verbs/console_heap.c"
         "console/verbs/console_tone.c"
+        "console/verbs/console_melody.c"
         "console/verbs/console_sound.c"
         "console/verbs/console_freeze.c"
         "console/console_frame_request.c"
@@ -144,6 +149,7 @@ if(CONFIG_LAUNCHER_DEVELOPMENT)
     # Acoustic detection belongs to the development console.
     list(APPEND app_srcs
         "audio/audio_loopback.c"
+        "audio/audio_frequency.c"
     )
 endif()
 if(CONFIG_LAUNCHER_SELFTEST)
@@ -286,6 +292,7 @@ if(CONFIG_LAUNCHER_SELFTEST)
         "../test/suites.c"
         "../test/timing.c"
         "../test/test_cleanup.c"
+        "../test/frame_profile.c"
         "../test/ui_probe.c"
         ${suite_srcs}
         ${app_suites}

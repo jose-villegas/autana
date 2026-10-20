@@ -14,9 +14,10 @@ def reply_prefix(line):
 
 
 def replies_to(data, reply, until):
-    """Extract replies even when firmware logging prefixes their lines."""
+    """Extract replies even when firmware logging prefixes their lines.
+    Only newline-terminated lines count: a read can end mid-line."""
     found = []
-    for raw in data.split(b"\n"):
+    for raw in data.split(b"\n")[:-1]:
         at = raw.find(reply.encode("ascii"))
         if at < 0:
             continue

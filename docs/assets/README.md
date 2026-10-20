@@ -30,7 +30,7 @@ searching, so no list is kept:
 
 | Root | Pack | Holds |
 |---|---|---|
-| `NAME.scene.toml` | `NAME` | its [scene entry](../render/Scene-Files.md#the-scene-entry) `NAME`, every mesh, skin, skeleton and clip it names |
+| `NAME.scene.toml` | `NAME` | its [scene entry](../render/Scene-Files.md#scne-v2) `NAME`, every mesh, skin, skeleton and clip it names |
 | `NAME.import.toml` that no scene places | `NAME` | its variants' meshes |
 | `NAME.anim.toml` that no scene names | `NAME` | its one clip, baked from its source |
 | `NAME.sound.toml` | `NAME` | its one [sound](../audio/Sound-Assets.md), baked from the WAV it names |
@@ -61,95 +61,246 @@ entry.
 
 All integers in the pack format are little-endian. An entry never holds a
 pointer: it names its own parts by offset from its own first byte, so the
-bytes are usable as mapped and there is no fix-up pass.
+bytes are usable as mapped and there is no fix-up pass. An entry's type is
+four characters stored in the registry, so a hex dump reads it; the module that
+owns a kind of content defines its type, there is no central list, and
+`asset_pack_find()` returns an entry's bytes only for the type asked for.
 
-| Part | Size | Holds |
+| Format | Version | Writer (Python) | Reader (C) | Layout |
+|---|---|---|---|---|
+| `APAK` pack | 1 | `asset/asset_pack.py` | `asset/asset_pack.c` | [APAK v1](#apak-v1) |
+| `ABDR` directory | 2 | `asset/asset_directory.py` | `asset/asset_directory.c` | [ABDR v2](#abdr-v2) |
+| `LMSH` lit mesh | none | `r3d/lit_mesh.py` | `render/r3d_lit_mesh.c` | [LMSH](../render/Baked-Mesh.md#lmsh) |
+| `TRCK` animation tracks | 2 | `anim/tracks_asset.py` | `anim/anim_tracks.c` | [TRCK v2](../Animation-Tracks.md#trck-v2) |
+| `SKEL` skeleton | 1 | `anim/skeleton_asset.py` | `anim/anim_skeleton.c` | [SKEL v1](../render/Skeleton-and-Skin.md#skel-v1) |
+| `SKIN` skin | 2 | `r3d/skin_asset.py` | `render/r3d_skin.c` | [SKIN v2](../render/Skeleton-and-Skin.md#skin-v2) |
+| `SCNE` scene | 2 | `r3d/scene_asset.py` | `scene/scene_asset.c` | [SCNE v2](../render/Scene-Files.md#scne-v2) |
+| `SOND` sound | 1 | `audio/sound_asset.py` | `sound/sound.c` | [SOND v1](../audio/Sound-Assets.md#sond-v1) |
+| `IMAG` picture | 1 | `gfx/image_asset.py` | `draw/draw_image.c` | [IMAG v1](#imag-v1) |
+| `TABL` named int16 rows | 1 | `asset/table_asset.py` | `asset/asset_table.c` | [TABL v1](#tabl-v1) |
+
+Writers are under `launcher/tools/`, readers under `launcher/main/`.
+
+## APAK v1
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 16
+    bitWidth: 44
+---
+packet-beta
+title Header, 32 bytes at 0, one cell a byte
+0-3: "magic APAK"
+4-7: "version = 1"
+8-11: "entry_count"
+12-15: "total_size"
+16-19: "crc32"
+20-31: "0 (reserved)"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 16
+    bitWidth: 44
+---
+packet-beta
+title Entry registry, one 48-byte row an entry from byte 32
+0-31: "name, NUL padded"
+32-35: "type"
+36-39: "offset"
+40-43: "size"
+44-47: "align"
+```
+
+| Part | At | Size |
 |---|---|---|
-| Header | 32 bytes | `"APAK"`, format version, entry count, total size, CRC-32 of every byte after the header, 12 reserved bytes that must be zero |
-| Entry table | 48 bytes per entry | name (32 bytes, NUL padded, so at most 31 characters), type, offset, size, alignment |
-| Entry data | each at an offset that is a multiple of its alignment, after the table | the entry's bytes |
+| Header | 0 | 32 bytes |
+| Entry registry | 32 | 48 bytes an entry |
+| Content: entry data | each row's `offset` | each row's `size`; zero padding up to the next entry's alignment |
 
-Offsets in the table count from the start of the pack. The writer pads each
-entry to its alignment (16 by default), and the pack must itself start on a
-16-byte boundary, which a page-aligned mapping and `aligned_alloc()` both
-give. The entry rows are read in one place, `asset_pack_entry()`.
+| Rule | Detail |
+|---|---|
+| Owners | `ASSET_PACK_MAGIC`, `ASSET_PACK_VERSION`, `ASSET_PACK_HEADER_SIZE` (32), `ASSET_PACK_ENTRY_SIZE` (48), `ASSET_NAME_MAX` (32, with the NUL), all in `asset_pack.h`; Python reads the layout from its own `HEADER` and `ENTRY` structs |
+| Header | `total_size` is the pack's size and at most the buffer's (a partition may be larger, never smaller); `crc32` is zlib's CRC-32 of every byte from 32 to `total_size` (`asset_crc32()`); the 12 reserved bytes are zero |
+| Base | the pack starts on `ASSET_PACK_BASE_ALIGN` (16) bytes, which a page-aligned mapping and `aligned_alloc()` both give |
+| Names | unique, ASCII, 1 to 31 characters; entries are found by name, then checked for their type |
+| Type | four ASCII bytes, `ASSET_TYPE(a, b, c, d)` of the owning module |
+| Alignment | `align` is a power of two, 16 by default; `offset` is a multiple of it and at or after the registry's end; `offset + size` stays inside `total_size` |
+| Order | header, registry, entry data in registry order; gaps zero |
+| Errors | the status each failure returns is under [Checks](#checks); `asset_pack_entry()` is the one place a row's offset becomes bytes |
 
-An entry's type is four characters stored in the table, so a hex dump reads it.
-The module that owns a kind of content defines its type, and there is no central
-list; `asset_pack_find()` returns an entry's bytes only for the type asked for.
+## ABDR v2
 
-| Type | Entry | Defined by |
+A region that holds several packs, the device's partition, starts with a
+directory that says where each lies.
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 16
+    bitWidth: 44
+---
+packet-beta
+title Header, 16 bytes at 0, one cell a byte
+0-3: "magic ABDR"
+4-7: "crc32"
+8-11: "version = 2"
+12-15: "pack_count"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 16
+    bitWidth: 44
+---
+packet-beta
+title Pack registry, one 40-byte row a pack from byte 16
+0-31: "name, NUL padded"
+32-35: "offset"
+36-39: "size"
+```
+
+| Part | At | Size |
 |---|---|---|
-| `LMSH` | A lit mesh | [The baked mesh](../render/Mesh-Import.md#the-baked-mesh) |
-| `TRCK` | The tracks of one animation | [The pack entry](../Animation-Tracks.md#the-pack-entry) |
-| `IMAG` | A picture | [The image entry](#the-image-entry) |
-| `TABL` | Named int16 rows | [The table entry](#the-table-entry) |
+| Header | 0 | 16 bytes |
+| Pack registry | 16 | 40 bytes a pack |
+| Content: packs | each row's `offset` | each row's `size`; each pack starts on its own MMU page, after the registry, in row order |
 
-### The image entry
+| Rule | Detail |
+|---|---|
+| Owners | `ASSET_DIRECTORY_MAGIC`, `_VERSION`, `_HEADER_SIZE` (16), `_ROW_SIZE` (40) and `ASSET_MMU_PAGE_SIZE` (65536) in `asset_directory_format.h`; Python reads them with `read_define()` |
+| Header | `crc32` is zlib's CRC-32 of the bytes from 8 (the version) to the registry's end |
+| Rows | name nonempty with room for its NUL, unique; `offset` a multiple of `ASSET_MMU_PAGE_SIZE`, past the registry and the previous pack; `offset + size` inside the region |
+| Pages | the partition and every pack start on MMU pages, so releasing one mapping cannot invalidate another; padding costs less than a page a pack |
+| Order | header, registry, then the packs in row order; gaps zero |
+
+## The entry types
+
+An entry is read in place and an offset counts from its first byte. The mesh,
+animation, skeleton, skin, scene and sound layouts are in the documents the
+table above links.
+
+### IMAG v1
 
 `NAME.image.toml` names a PNG in its own folder (`source = "x.png"`) and how
-many quarter turns clockwise take it to the stored pixels
-(`quarter_turns`, 0 to 3; a picture drawn in a landscape frame is turned
-into the panel's portrait one once, here, so drawing it reads rows in
-order). The source must be opaque. Offsets count from the entry's first
-byte.
+many quarter turns clockwise take it to the stored pixels (`quarter_turns`, 0
+to 3; a picture drawn in a landscape frame is turned into the panel's portrait
+one once, here, so drawing it reads rows in order). The source must be opaque.
 
-| Offset | Size | Holds |
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 16
+    bitWidth: 44
+---
+packet-beta
+title Header, 16 bytes at 0, one cell a byte
+0-1: "version = 1"
+2-3: "format"
+4-5: "width"
+6-7: "height"
+8-11: "stride"
+12-15: "pixels_off"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 8
+    bitWidth: 84
+---
+packet-beta
+title Content: one RGB565 pixel (format 1), 2 bytes from pixels_off
+0-1: "gfx_color_t, byte-swapped RGB565"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 8
+    bitWidth: 84
+---
+packet-beta
+title Content: eight 1-bit pixels (format 2), 1 byte from pixels_off
+0: "bit 7 leftmost pixel, 1 = ink"
+```
+
+| Part | At | Size |
 |---|---|---|
-| 0 | 2 | version, 1 |
-| 2 | 2 | format: 1 is `gfx_color_t`, byte-swapped RGB565 as the panel takes it; 2 is one bit a pixel, the most significant bit leftmost and 1 ink, for [icons](../tools/Icon-Baker.md) |
-| 4 | 2 | width |
-| 6 | 2 | height |
-| 8 | 4 | stride: pixels from one row's start to the next, at least the width; a whole number of bytes for one bit a pixel |
-| 12 | 4 | where the rows start, after the header; 4-aligned for RGB565 |
-| rows | stride x (height - 1) + width pixels | the pixels, top row first |
+| Header | 0 | 16 bytes |
+| Content: pixel rows | `pixels_off` | `stride * (height - 1) + width` pixels, top row first; 2 bytes each in format 1, one bit each in format 2 |
 
-`draw_image_open()` returns `ASSET_ERR_VERSION` for another version,
-`ASSET_ERR_FORMAT` for a format it does not read, an empty picture, a stride
-shorter than a row or, one bit a pixel, not whole bytes, or rows over the
-header, and `ASSET_ERR_BOUNDS` for rows that leave the entry or RGB565 rows
-that are misaligned. The pixels it returns point into the
-entry.
+| Rule | Detail |
+|---|---|
+| Owners | `DRAW_IMAGE_VERSION`, `_FORMAT_RGB565` (1), `_FORMAT_MONO1` (2, for [icons](../tools/Icon-Baker.md)), `_HEADER_SIZE` (16), `_PIXEL_ALIGN` (4), `_MONO1_STRIDE_STEP` (8) in `draw_image_format.h` |
+| Size | `width` and `height` are 1 to 65535 |
+| Stride | pixels from one row's start to the next, at least `width`; a multiple of `DRAW_IMAGE_MONO1_STRIDE_STEP` in format 2, so a row is whole bytes |
+| Pixels | `pixels_off` at least the header size; 4-aligned in format 1 |
+| Errors | `ASSET_ERR_VERSION` for another version; `ASSET_ERR_FORMAT` for an unknown format, an empty picture, a short stride, a stride off its step or `pixels_off` inside the header; `ASSET_ERR_BOUNDS` for rows that leave the entry or misaligned RGB565 rows |
+| View | the pixels `draw_image_open()` returns point into the entry |
 
-### The table entry
+### TABL v1
 
 [`table_asset.py`](../../launcher/tools/asset/table_asset.py) writes generic
-numeric tables. All fields are little-endian and offsets start at the entry's
-first byte.
-
-| Part | Size | Holds |
-|---|---|---|
-| Header | 8 bytes | u16 version (1), u16 rows, u16 columns, u8 fractional bits, u8 reserved (0) |
-| Row | 24 + 2 x columns bytes | NUL-padded name[24], then int16 values[columns] |
-
-Row i starts at `8 + i * (24 + 2 * columns)`. `asset_table_open()` requires
-a 2-byte-aligned base and a complete header (`ASSET_ERR_BOUNDS`), version 1
-(`ASSET_ERR_VERSION`), nonempty dimensions, zero reserved byte, exact entry
-size and a NUL in every name (`ASSET_ERR_FORMAT`). `asset_table_row()` checks
-the requested column count (`ASSET_ERR_FORMAT`) and looks up a name
-(`ASSET_ERR_NOT_FOUND` when absent). Its values point into the mounted pack;
-the reader allocates nothing.
-
-[`curve_asset.py`](../../launcher/tools/gfx/curve_asset.py) bakes a
-`NAME.curve.toml` and the PNG it names into entry NAME: one bright line
+numeric tables. [`curve_asset.py`](../../launcher/tools/gfx/curve_asset.py)
+bakes a `NAME.curve.toml` and the PNG it names into one: one bright line
 crossing every column of the panel's landscape frame, stored as row `y` of
 brightness-weighted heights.
 
-## The pack directory
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 8
+    bitWidth: 84
+---
+packet-beta
+title Header, 8 bytes at 0, one cell a byte
+0-1: "version = 1"
+2-3: "rows"
+4-5: "columns"
+6: "frac"
+7: "0"
+```
 
-A region that holds several packs, the device's partition, starts with a
-directory that says where each lies:
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 14
+    bitWidth: 56
+---
+packet-beta
+title Content: row, two columns shown, 24 + 2 bytes a column from byte 8
+0-23: "name, NUL padded"
+24-25: "int16 value[0]"
+26-27: "int16 value[1]"
+```
 
-| Part | Size | Holds |
+| Part | At | Size |
 |---|---|---|
-| Header | 16 bytes | `"ABDR"`, CRC-32 of every byte after it to the end of the rows, format version, pack count |
-| Rows | 40 bytes per pack | name (32 bytes, NUL padded), offset from the region's start, size |
-| Packs | each starting on its own 64 KB MMU page, after the rows, in row order | the pack's bytes |
+| Header | 0 | 8 bytes |
+| Content: rows | `8 + i * (24 + 2 * columns)` | `24 + 2 * columns` bytes a row, in the order written |
 
-The partition and every pack start on MMU pages so releasing one mapping
-cannot invalidate another pack. Padding costs less than one MMU page per pack;
-[`asset_directory.py`](../../launcher/tools/asset/asset_directory.py) writes version 2
-using `ASSET_MMU_PAGE_SIZE` from `asset_directory_format.h`.
+| Rule | Detail |
+|---|---|
+| Owners | `ASSET_TABLE_VERSION`, `_HEADER_SIZE` (8), `_NAME_SIZE` (24) in `asset_table_format.h` |
+| Header | `frac` is the fractional bits of every value (0 to 255); the reserved byte is zero |
+| Dimensions | 1 to 65535 rows and columns; the entry is exactly `8 + rows * (24 + 2 * columns)` bytes |
+| Names | at most 23 UTF-8 bytes, then the NUL, in the 24-byte field |
+| Values | int16, `VALUE_MIN` to `VALUE_MAX` in `table_asset.py` |
+| Errors | `asset_table_open()`: `ASSET_ERR_BOUNDS` for an unaligned (2-byte) base or a short header; `ASSET_ERR_VERSION`; `ASSET_ERR_FORMAT` for empty dimensions, the reserved byte, a size off by a byte or an unterminated name. `asset_table_row()`: `ASSET_ERR_FORMAT` for another column count, `ASSET_ERR_NOT_FOUND` for an absent name |
+| View | values point into the mounted pack; the reader allocates nothing |
 
 ## Checks
 

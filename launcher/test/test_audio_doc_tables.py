@@ -18,16 +18,33 @@ SPEC.loader.exec_module(audio)
 class AudioTablesTest(unittest.TestCase):
     def test_capture_tables(self):
         tables = audio.render(ROOT / audio.CAPTURE)
-        self.assertEqual(set(tables), {"audio-ram", "audio-frequency", "audio-volume", "audio-duration"})
-        self.assertIn("56", tables["audio-ram"])
-        self.assertIn("3096", tables["audio-ram"])
-        self.assertIn("3040", tables["audio-ram"])
-        self.assertIn("63488", tables["audio-ram"])
-        self.assertIn("500 | -14.9", tables["audio-duration"])
-        self.assertIn("100 | -14.1", tables["audio-volume"])
+        self.assertEqual(set(tables), {"audio-ram", "audio-frequency", "audio-volume", "audio-duration", "audio-loopback"})
+        self.assertIn("24", tables["audio-ram"])
+        self.assertIn("1448", tables["audio-ram"])
+        self.assertIn("1424", tables["audio-ram"])
+        self.assertIn("57344", tables["audio-ram"])
+        self.assertIn("500 | -32.9", tables["audio-duration"])
+        self.assertIn("100 | -22.5", tables["audio-volume"])
         for body in tables.values():
             self.assertIn("A308", body)
-            self.assertIn("2521fd82ef55-dev", body)
+            self.assertIn("164511c54388-dev", body)
+
+    def test_acoustic_sweep_can_extend_beyond_internal(self):
+        tables = audio.render(ROOT / audio.CAPTURE)
+        for hz in (300, 3000):
+            self.assertIn(f"| {hz} |", tables["audio-frequency"])
+            self.assertNotIn(f"| {hz} |", tables["audio-loopback"])
+        for hz in (500, 1000, 2000, 4000, 8000):
+            self.assertIn(f"| {hz} |", tables["audio-loopback"])
+
+    def test_internal_point_without_acoustic_partner_is_rejected(self):
+        lines = (ROOT / audio.CAPTURE).read_text().splitlines()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "capture.txt"
+            path.write_text("\n".join(line for line in lines
+                                      if not line.startswith("tone 500 500\t")))
+            with self.assertRaisesRegex(ValueError, "paired"):
+                audio.render(path)
 
     def test_capture_header_comments_are_optional(self):
         capture = ROOT / audio.CAPTURE
@@ -41,14 +58,14 @@ class AudioTablesTest(unittest.TestCase):
         capture = (ROOT / audio.CAPTURE).read_text()
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "capture.txt"
-            path.write_text(capture.replace('"tone_db": -31.2', '"tone_db": -32.7'))
+            path.write_text(capture.replace('"tone_db": -51.8', '"tone_db": -32.7'))
             self.assertIn("-32.7", audio.render(path)["audio-frequency"])
 
     def test_build_mismatch_is_rejected(self):
         capture = (ROOT / audio.CAPTURE).read_text()
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "capture.txt"
-            path.write_text(capture.replace('2521fd82ef55-dev', 'other-dev', 1))
+            path.write_text(capture.replace('164511c54388-dev', 'other-dev', 1))
             with self.assertRaisesRegex(ValueError, "build"):
                 audio.render(path)
 
@@ -57,12 +74,129 @@ class AudioTablesTest(unittest.TestCase):
             path = Path(directory) / "Audio.md"
             path.write_bytes((ROOT / audio.DOCUMENT).read_bytes())
             self.assertFalse(audio.update(ROOT / audio.CAPTURE, path, check=True))
-            original = path.read_bytes().replace(b"-31.2", b"-32.7")
+            original = path.read_bytes().replace(b"-51.8", b"-32.7")
             path.write_bytes(original)
             self.assertTrue(audio.update(ROOT / audio.CAPTURE, path, check=True))
             self.assertEqual(path.read_bytes(), original)
             audio.update(ROOT / audio.CAPTURE, path, check=False)
             self.assertFalse(audio.update(ROOT / audio.CAPTURE, path, check=True))
+
+
+class AudioLoopbackTablesTest(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.capture = Path(temporary.name) / "capture.txt"
+        self.document = Path(temporary.name) / "Audio.md"
+        self.records = [("buildid", {"build_id": "fixture-dev"}),
+                        ("heap", {"free": 10000, "largest": 8000})]
+        for command, hz, path in (("tone 300 500", 300, "acoustic"),
+                                   ("tone 1000 500", 1000, "acoustic"),
+                                   ("tone 1000 500 30", 1000, "acoustic"),
+                                   ("tone 300 500 --internal", 300, "internal"),
+                                   ("tone 1000 500 --json --internal", 1000, "internal")):
+            internal = path == "internal"
+            self.records.append((command, dict(hz=hz, tone_db=-12.3 if internal else -21.5,
+                silence_db=-110.0, heard=True, open_dma_bytes=3040, path=path,
+                measured_hz=hz + (0.02 if internal else -0.03), hz_error=0.02 if internal else -0.03)))
+        self.records.append(("heap", {"free": 10000, "largest": 8000}))
+        self.save()
+
+    def save(self):
+        self.capture.write_text("# autana --json replies on TEST, 2026-10-19, fixture\n" +
+            "\n".join(command + "\t" + json.dumps(reply) for command, reply in self.records))
+
+    def test_comparison_and_regeneration(self):
+        rendered = audio.render(self.capture)
+        comparison = rendered["audio-loopback"]
+        self.assertIn("Duration 500 ms; volume 30%.", comparison)
+        self.assertNotIn("Internal vs acoustic loopback", comparison)
+        self.assertIn("| Frequency (Hz) | Acoustic level (dBFS) | Internal level (dBFS) | "
+                      "Acoustic error (Hz) | Internal error (Hz) |", comparison)
+        self.assertIn("| 300 | -21.5 | -12.3 | -0.03 | +0.02 |", comparison)
+        self.assertIn("| 1000 | -21.5 | -12.3 | -0.03 | +0.02 |", comparison)
+        self.document.write_bytes("\r\n".join(f"<!-- generated: {name} -->\r\n<!-- /generated: {name} -->"
+            for name in rendered).encode())
+        self.assertTrue(audio.update(self.capture, self.document))
+        self.assertFalse(audio.update(self.capture, self.document, check=True))
+        self.assertNotIn(b"\n", self.document.read_bytes().replace(b"\r\n", b""))
+
+    def test_missing_internal_is_rejected_when_block_exists(self):
+        self.records = [(command, reply) for command, reply in self.records if "--internal" not in command]
+        self.save()
+        self.document.write_text("<!-- generated: audio-loopback -->\n<!-- /generated: audio-loopback -->\n")
+        with self.assertRaisesRegex(ValueError, "internal"):
+            audio.update(self.capture, self.document)
+
+    def test_explicit_default_volume_matches_implicit(self):
+        self.records = [(command.replace("tone 300 500 --internal", "tone 300 500 30 --internal"), reply)
+                        for command, reply in self.records]
+        self.save()
+        self.assertIn("| 300 |", audio.render(self.capture)["audio-loopback"])
+
+    def test_null_frequency_is_rendered_as_unavailable(self):
+        for command, reply in self.records:
+            if command.startswith("tone"):
+                reply["measured_hz"] = None
+                reply["hz_error"] = None
+        self.save()
+        self.assertIn("| 300 | -21.5 | -12.3 | n/a | n/a |", audio.render(self.capture)["audio-loopback"])
+
+    def test_invalid_comparison_records(self):
+        original = json.loads(json.dumps(self.records))
+        cases = [("duplicate", "duplicate internal"), ("path", "path disagree"),
+                 ("unknown", "flags"), ("flag_duplicate", "flags"),
+                 ("duration", "duration and volume"), ("volume", "duration and volume"),
+                 ("volume_sweep", "volume sweep"), ("heaps", "heaps"),
+                 ("header", "header"), ("build", "build id"),
+                 ("measured_hz", "measured_hz"), ("hz_error", "hz_error")]
+        for case, error in cases:
+            with self.subTest(case=case):
+                self.records = json.loads(json.dumps(original))
+                if case == "duplicate":
+                    self.records.append(self.records[5])
+                elif case == "path":
+                    self.records[5][1]["path"] = "acoustic"
+                elif case in ("unknown", "flag_duplicate"):
+                    self.records[5][0] += " --bad" if case == "unknown" else " --internal"
+                elif case in ("duration", "volume"):
+                    self.records[5][0] = "tone 300 600 --internal" if case == "duration" else "tone 300 500 31 --internal"
+                elif case == "volume_sweep":
+                    self.records.append(["tone 1000 600 30", self.records[4][1]])
+                elif case == "heaps":
+                    self.records.pop()
+                elif case == "build":
+                    self.records.append(["buildid", {"build_id": "other-dev"}])
+                elif case in ("measured_hz", "hz_error"):
+                    del self.records[5][1][case]
+                self.save()
+                if case == "header":
+                    self.capture.write_text(self.capture.read_text().replace("# autana", "# invalid"))
+                with self.assertRaisesRegex(ValueError, error):
+                    audio.render(self.capture)
+
+    def test_null_frequency_is_independent_for_each_path(self):
+        for path, expected in (("internal", "| 300 | -21.5 | -12.3 | -0.03 | n/a |"),
+                               ("acoustic", "| 300 | -21.5 | -12.3 | n/a | +0.02 |")):
+            with self.subTest(path=path):
+                for command, reply in self.records:
+                    if command.startswith("tone"):
+                        missing = reply["path"] == path
+                        reply["hz_error"] = None if missing else (0.02 if path == "acoustic" else -0.03)
+                        reply["measured_hz"] = None if missing else reply["hz"] + reply["hz_error"]
+                self.save()
+                self.assertIn(expected, audio.render(self.capture)["audio-loopback"])
+
+    def test_capture_without_internal_omits_loopback(self):
+        self.records = [(command, reply) for command, reply in self.records if "--internal" not in command]
+        self.save()
+        rendered = audio.render(self.capture)
+        self.assertNotIn("audio-loopback", rendered)
+        self.document.write_text("\n".join(f"<!-- generated: {name} -->\n<!-- /generated: {name} -->"
+                                           for name in rendered))
+        self.assertTrue(audio.update(self.capture, self.document))
+        self.assertFalse(audio.update(self.capture, self.document, check=True))
+        self.assertNotIn("audio-loopback", self.document.read_text())
 
 
 class SoundMixTablesTest(unittest.TestCase):

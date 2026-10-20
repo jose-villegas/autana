@@ -11,6 +11,9 @@
 //                                                         # reported under <label>
 //   node scripts/gates/check-mermaid.mjs --github-version
 //        # exit 0 when GitHub's renderer runs the pinned mermaid, 1 when not, 2 when unreadable
+//   node scripts/gates/check-mermaid.mjs --github-version --write
+//        # the same, but a moved version is written into the override (exit 0), for the
+//        # weekly bump pull request
 //
 // Renders the way GitHub does. GitHub draws each block in an iframe from VIEWSCREEN_URL,
 // whose mermaidMarkdown bundle carries its own mermaid and options. package.json overrides
@@ -36,7 +39,7 @@
 // differ; see docs/tools/Mermaid-Diagrams.md.
 
 import { execFile } from 'node:child_process';
-import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, posix, relative, resolve, win32 } from 'node:path';
@@ -143,7 +146,15 @@ export async function githubMermaidVersion() {
   return version;
 }
 
-async function checkGithubVersion() {
+export function writePinnedMermaidVersion(version, pinnedDir = PINNED_DIR) {
+  const file = join(pinnedDir, 'package.json');
+  const pkg = pinnedPackage(pinnedDir);
+  pkg.overrides.mermaid = version;
+  writeFileSync(file, `${JSON.stringify(pkg, null, 2)}
+`);
+}
+
+async function checkGithubVersion(write) {
   const pinned = pinnedMermaidVersion();
   let github;
   try {
@@ -155,6 +166,11 @@ async function checkGithubVersion() {
   }
   if (github === pinned) {
     console.log(`GitHub runs mermaid ${github}, the pinned version.`);
+    return;
+  }
+  if (write) {
+    writePinnedMermaidVersion(github);
+    console.log(`GitHub runs mermaid ${github}, pinned ${pinned}: wrote ${github} into the override.`);
     return;
   }
   console.log(`GitHub runs mermaid ${github}, pinned ${pinned}: bump the override in scripts/gates/mermaid/package.json.`);
@@ -381,7 +397,7 @@ async function main() {
     return;
   }
   if (argv.includes('--github-version')) {
-    await checkGithubVersion();
+    await checkGithubVersion(argv.includes('--write'));
     return;
   }
   const verbose = argv.includes('--verbose');

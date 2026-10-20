@@ -51,3 +51,19 @@ docs/math/README.md	2026-10-18	split into an index; links checked against every 
 docs/math/Projection.md	2026-10-18	moved from the math README; checked against projectf.h and projectx.h
 docs/math/Geometry.md	2026-10-18	moved from the math README plus five generated figures; checked against rect and plane templates
 docs/math/Motion.md	2026-10-18	new; checked against orbit_motion.h and spring_line.h
+docs/input/Touch.md	2026-10-20	input split: reviewed against input/ sources, accurate
+docs/input/Buttons.md	2026-10-20	input split: reviewed against input/ sources, accurate
+docs/input/Motion-Axes.md	2026-10-20	input split: reviewed against input/ sources, accurate
+docs/input/Tilt.md	2026-10-20	input split: reviewed against input/ sources, accurate
+docs/render/Skeleton-and-Skin.md	2026-10-20	pictures-first rework: reviewed against skeleton_asset.py, skin_asset.py and quantize_weights, accurate
+docs/c-style/Function-Attributes.md	2026-10-20	new; checked against the cited sources
+docs/c-style/Concurrency.md	2026-10-20	new; checked against the cited sources
+docs/c-style/Register-Access.md	2026-10-20	new; checked against the cited sources
+docs/memory/Linker-Fragments.md	2026-10-20	new; checked against the cited sources
+docs/render/Camera.md	2026-10-20	new; checked against the cited sources
+docs/testing/Test-State-Reset.md	2026-10-20	new; checked against the cited sources
+docs/tools/Console-Framing.md	2026-10-20	new; checked against the cited sources
+docs/tools/Process-Trees.md	2026-10-20	new; checked against the cited sources
+docs/render/Baked-Mesh.md	2026-10-20	split out of Mesh-Import.md: moved text, LMSH layout unchanged
+docs/render/Bake-Method.md	2026-10-20	split out of Mesh-Import.md: moved text
+docs/Animation-Tracks.md	2026-10-20	scene playback pictures first: reviewed against anim_layer.c, anim_playhead.c and scene_animation.c, accurate

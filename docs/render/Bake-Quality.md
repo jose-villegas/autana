@@ -66,7 +66,7 @@ back.
 The source model is lit per pixel at the same camera-path poses as the
 doc images. The generated fidelity table scores the committed bakes against
 that reference. Metric definitions are in
-[Mesh-Import.md](Mesh-Import.md#fidelity-against-a-reference).
+[Bake-Method.md](Bake-Method.md#fidelity-against-a-reference).
 
 <!-- generated: sponza-fidelity sha256=5fe775feba523dbf98b7b54d6bcb48e2c6bcfab2be824c32b8b866d6a185dc6e -->
 | Variant | Mean dE76 | p95 dE76 | Luma SSIM | Edge dE76 | Interior dE76 |

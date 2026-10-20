@@ -23,6 +23,36 @@ capture.
 enters; repeat it for more settings. `--live-tune NAME=VALUE` applies it after
 entry, so the frame hook changes the next frame without reloading the scene.
 
+### Menu
+
+The BOOT menu has a SCENE dropdown of scene families (`family` in
+`render_lab_scene_t`), then a VARIANT dropdown when the family has several scenes (Sponza's
+bakes, from `variant`), then the rows the showing scene declares in its
+`controls` (Capybara's CLIP and BLEND). Order in `scenes[]` is the order of every list, and
+index 0 (Sponza Fitted Full) is the scene a start with no key shows. Console
+and host scene keys are unchanged.
+
+### Small fill
+
+`render_lab.small_fill_ceiling`, `render_lab.small_fill_gate` and
+`render_lab.small_fill_style` apply to the scene camera each frame.
+On a development build the BOOT menu has a SMALL FILL dropdown with every
+`SMALL_FILL_` preset; picking one sets the three tunables.
+
+![The Sponza menu closed, then the SCENE, VARIANT and SMALL FILL lists open](images/scene-menu/scene-menu.png)
+
+The generic scene viewer accepts `--small-fill CEILING,GATE,STYLE`; its defaults
+come from `SMALL_FILL_SMOOTH`. Styles use the `small_fill_style_t` values.
+The [engine feature](../../../../../docs/render/Mesh-Rendering.md#small-fill)
+defines the axes and defaults.
+
+```sh
+sh launcher/tools/render/scene_viewer.sh launcher/demo/sponza/sponza.scene.toml \
+    --object atrium_fitted_full --small-fill 12,16,1 -o grain.bmp
+```
+
+The app host accepts `--tune` before entry or `--live-tune` after entry.
+
 ### Menu renders
 
 `--menu` presses BOOT on the first frame, so the render shows the scene menu
@@ -97,6 +127,8 @@ cluster a flat hue, with disjoint IDs across instances.
 
 A pose of a camera path is `--frames` times `--dt`. `--camera NAME`
 selects a scene camera; omitted, it draws the first camera.
+`--console FRAME:WORDS` runs the board's `render WORDS` command, such as
+`clip walk 400`, before frame FRAME draws; repeat it for a sequence.
 
 `dynres_quality.sh WORK OUT.csv CAMERA WxH [WxH ...]` scores each size
 against the reference along that camera's clip, at intervals taken from
@@ -125,6 +157,7 @@ its scene by name rather than through the menu:
 | `autana render scene <key>` | switches to the scene with exactly that key, such as `sponza`, `sponza-lite` or `sponza-flat-fitted` |
 | `autana tune render_lab.scale <n>` | the fixed render scale in hundredths of the panel: 200 is half size |
 | `autana tune render_lab.budget <ms>` | dynamic resolution on a lit-mesh scene; 0 turns it off |
+| `autana tune render_lab.orbit_ms <ms>` | turns the Capybara scene's camera once about the capybara every that many milliseconds; 0 stops it |
 
 The Capybara scene's BOOT menu holds the same clip picker: the CLIP
 dropdown plays the chosen clip over the BLEND slider's time.
@@ -145,6 +178,7 @@ be checked to have measured the same thing.
 |---|---|
 | `render-lab-sponza.gif` | the start of the Sponza flythrough, on the fitted full mesh |
 | `render-lab-sponza-flat.gif` | the flythrough with the fitted flat-shaded bake |
+| `render-lab-capybara.gif` | the capybara's idle, walk, walk_fast and gallop clips in turn, each blended into the next, as the camera turns once around it |
 
 Run the app shots from the repository root with Python, Pillow, numpy and ffmpeg:
 
@@ -162,14 +196,17 @@ named by `launcher/demo/sponza/flythrough.anim.toml`. Its poses for
 [`report_triangle_sizes.sh`](../../../../tools/r3d/README.md#triangle-sizes)
 come from [`tools/anim/track_host.py`](../../../../tools/anim/README.md),
 which runs the device's track sampler over the clip, at the poses
-`suite_sponza_perf.c` times (every `SPONZA_POSE_EVERY_MS`) and the size
+`suite_sponza_perf.c` times (every `SPONZA_PERF_POSE_EVERY_MS`) and the size
 `sponza_content.h` names and the lens of the scene's camera object
 (`launcher/demo/sponza/sponza.scene.toml`):
 
 ```sh
+pose_every_ms=$(python -c \
+    'import sys; sys.path.insert(0, "launcher/tools"); from build.c_header import read_define; print(read_define("launcher/main/apps/render_lab/sponza_content.h", "SPONZA_PERF_POSE_EVERY_MS"))')
 python launcher/tools/anim/track_host.py \
     launcher/demo/sponza/flythrough.anim.toml \
-    --every 5000 --poses camera 184 224 0.62 6 |
+    --every "$pose_every_ms" \
+    --poses camera 184 224 0.62 6 |
     ./launcher/tools/r3d/report_triangle_sizes.sh \
         --mesh sponza.atrium -
 ```
@@ -252,3 +289,22 @@ axes; the camera viewport applies the quarter turn.
 budget is `SKIN_PERF_BUDGET_NS_PER_VERTEX` in `tests/skin_perf_log.h`.
 Meshlet and reference-quality report readers select portrait for their
 matching reference views.
+
+## Frame timing profiles
+
+`run_sponza_perf_suite` measures fixed camera poses at the spacing in
+`SPONZA_PERF_POSE_EVERY_MS`. Each frame-cost row reports mean, worst,
+median and p95 before presentation, with stage splits at those same poses.
+The pixel-equivalence checks in that suite and the camera checks in
+`suite_sponza.c` use `SPONZA_POSE_EVERY_MS`.
+
+`run_render_lab_frame_profile_suite` plays each Sponza scene's camera clip
+and the capybara gallop for one clip period in each perf quarter. It times
+update, render, compose and present with the HUD hidden.
+
+The [perf tools](../../../../tools/perf/README.md#real-time-playback)
+define playback timing and the `frame_profile:` line format.
+
+Each suite owns a table of mean goals and p95 ceilings per row and quarter.
+Zero means unpegged: it logs without enforcing a budget. Board ceilings
+are reported without enforcement under QEMU.
