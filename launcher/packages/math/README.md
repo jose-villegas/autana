@@ -102,4 +102,5 @@ header's opening comment; `--check` verifies it.
 | [include/math/scalar/trig.h](include/math/scalar/trig.h) | trig, sine and cosine of a 16-bit phase, in integers: TRIG_TURN is one turn and the result has TRIG_SIN_SHIFT fractional bits, at most TRIG_SIN_MAX. |
 | [include/math/scalar/units.h](include/math/scalar/units.h) | units: integer time conversion scales. |
 | [include/math/signal/goertzel.h](include/math/signal/goertzel.h) | Streaming single-bin detection (Goertzel, 1958). |
+| [include/math/signal/pitch.h](include/math/signal/pitch.h) | pitch: equal-temperament offsets relative to a caller's reference frequency. |
 <!-- /generated: package-headers -->

@@ -23,10 +23,24 @@ capture.
 enters; repeat it for more settings. `--live-tune NAME=VALUE` applies it after
 entry, so the frame hook changes the next frame without reloading the scene.
 
+### Menu
+
+The BOOT menu has a SCENE dropdown of scene families (`family` in
+`render_lab_scene_t`), then a VARIANT dropdown when the family has several scenes (Sponza's
+bakes, from `variant`), then the rows the showing scene declares in its
+`controls` (Capybara's CLIP and BLEND). Order in `scenes[]` is the order of every list, and
+index 0 (Sponza Fitted Full) is the scene a start with no key shows. Console
+and host scene keys are unchanged.
+
 ### Small fill
 
 `render_lab.small_fill_ceiling`, `render_lab.small_fill_gate` and
 `render_lab.small_fill_style` apply to the scene camera each frame.
+On a development build the BOOT menu has a SMALL FILL dropdown with every
+`SMALL_FILL_` preset; picking one sets the three tunables.
+
+![The Sponza menu closed, then the SCENE, VARIANT and SMALL FILL lists open](images/scene-menu/scene-menu.png)
+
 The generic scene viewer accepts `--small-fill CEILING,GATE,STYLE`; its defaults
 come from `SMALL_FILL_SMOOTH`. Styles use the `small_fill_style_t` values.
 The [engine feature](../../../../../docs/render/Mesh-Rendering.md#small-fill)

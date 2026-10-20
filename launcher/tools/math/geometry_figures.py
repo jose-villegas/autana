@@ -4,16 +4,13 @@
     python launcher/tools/math/geometry_figures.py --cc CC --out DIR
 """
 import argparse
-import json
 import pathlib
-import subprocess
-import tempfile
+import sys
 
-from math_figures import (DPI, FAINT, INK, LABEL_SIZE, MUTED, PANEL_SIZE, PANEL_TITLE_ROOM,
-                          PIXEL_FILL, POINT, POINT_SIZE, SHAPE_ALPHA, SHAPE_FILL,
-                          TITLE_SIZE, include_roots, square_axes)
-
-import matplotlib.pyplot as plt
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+from math_figures import (PANEL_SIZE, PANEL_TITLE_ROOM, PIXEL_FILL, POINT, POINT_SIZE, SHAPE_ALPHA, SHAPE_FILL,
+                          run_probe, square_axes)
+from docs.plot_style import FAINT, INK, LABEL_SIZE, MUTED, TITLE_SIZE, figure as new_figure, save
 import numpy as np
 from matplotlib.patches import Circle, Patch, Rectangle
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -28,24 +25,10 @@ INSIDE_SHADE_DEPTH = 0.6
 RECT_LABEL_OFFSET = (4, -13)
 
 
-def probe(cc):
-    with tempfile.TemporaryDirectory() as work:
-        binary = pathlib.Path(work) / "geometry_figures_probe.exe"
-        includes = [flag for root in include_roots() for flag in ("-I", str(root))]
-        subprocess.run([cc, "-std=gnu2x", "-O1", *includes, str(PROBE), "-lm", "-o", str(binary)], check=True)
-        result = subprocess.run([str(binary)], check=True, capture_output=True, text=True)
-    return json.loads(result.stdout)
-
-
 def panels(projection=None):
-    figure = plt.figure(figsize=(PANEL_SIZE * PANELS, PANEL_SIZE + PANEL_TITLE_ROOM), layout="constrained")
+    figure = new_figure((PANEL_SIZE * PANELS, PANEL_SIZE + PANEL_TITLE_ROOM))
     axes = [figure.add_subplot(1, PANELS, i + 1, projection=projection) for i in range(PANELS)]
     return figure, axes
-
-
-def save(figure, output):
-    figure.savefig(output, dpi=DPI, metadata={"Software": None})
-    plt.close(figure)
 
 
 def rect_figure(data, output):
@@ -180,8 +163,7 @@ def rows_figure(data, output):
 
 
 def frustum_figure(data, output):
-    figure = plt.figure(figsize=(PANEL_SIZE * PANELS * 1.3, PANEL_SIZE * 1.3 + PANEL_TITLE_ROOM),
-                         layout="constrained")
+    figure = new_figure((PANEL_SIZE * PANELS * 1.3, PANEL_SIZE * 1.3 + PANEL_TITLE_ROOM))
     axis = figure.add_subplot(1, PANELS, 1, projection="3d")
     slice_axis = figure.add_subplot(1, PANELS, 2)
     space_axes(axis, f"Frustum; shown to depth {data['shown_depth']:g}")
@@ -331,7 +313,7 @@ def main():
     parser.add_argument("--out", type=pathlib.Path, required=True)
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
-    data = probe(args.cc)
+    data = run_probe(args.cc, [PROBE])
     for name, key, plot in (("rect-queries", "rect", rect_figure),
                             ("plane-distance", "distance", distance_figure),
                             ("plane-from-points", "triangle", points_figure),

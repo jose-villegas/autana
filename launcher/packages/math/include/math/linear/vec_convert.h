@@ -1,6 +1,11 @@
 /*
  * vec_convert: explicit vector conversions; narrowing saturates, rounding ties away from zero. Int16
  * conversions take a scale: one integer step is scale units. Header-only and static inline.
+ * Per component, by suffix pair:
+ *   f_from_i = v               i_from_f = sat(round(v))
+ *   f_from_s = v * scale       s_from_f = sat(round(v / scale))
+ *   f_from_x = v / MATHX_ONE   x_from_f = sat(round(v * MATHX_ONE))
+ *   i_from_s = v               s_from_i = sat(v)
  */
 #pragma once
 

@@ -114,6 +114,7 @@ registered suite, for a full pre-merge pass.
 | `autana suite <name> --send LINE` | Send a console line after tunables, before every capture; `--send` repeats in order. The sequence should be idempotent; an error or incomplete reply stops the batch. |
 | `autana suite list [text] [--json]` | The registered suites; `[on request]` ones run only by name. |
 | `autana selftest [seconds] [--verbose] [--perf-scope] [--out PATH]` | Build the autorun diagnostics image, flash, run every suite; 3000 s when omitted. |
+| `autana melody [volume] [--check] [--internal] [--json]` | Development builds: play the phrase, or check every note with `--check`. `--internal` selects silent codec feedback for checks. [Audio path](../audio/Audio-Path.md#melody) documents replies and JSON. |
 | `autana tone <hz> <ms> [volume] [--internal] [--json]` | Development builds only: plays `<hz>` for `<ms>` at `[volume]` % (firmware default 30) and reports the tone level against a silence baseline in dBFS, whether it was heard, and the DMA bytes held while open. `--internal` uses silent codec feedback. Both paths report measured frequency; JSON adds `path`, `measured_hz`, and `hz_error` (Hz, measured minus requested). Fewer than two analysis windows gives `measured n/a` and null JSON frequency fields. |
 
 A run prints report and capture paths, PASS/FAIL counts and failures. A
@@ -230,6 +231,7 @@ as aliases and print the canonical spelling once.
 | `autana docs --section <path:line>` | One section whole, or `path#heading words`; `--deep` adds subsections. |
 | `autana docs --outline <path>` | A document's headings with lines and sizes. |
 | `autana docs --ask <question...>` | A short answer from the local chat model, with sources. |
+| `autana docs --usage [--days N]` | What this machine has looked up: counts, repeats, misses, documents refused whole. |
 
 ## JSON fields
 
