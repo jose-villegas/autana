@@ -37,11 +37,11 @@ until the plane is normalized.
 | `P_from_rows(&m, a, b, c, e)` | the plane $`a x + b y + c z + e \ge 0`$ of affine m's target, in m's source space | $`n_j = a m_{0j} + b m_{1j} + c m_{2j},\ d = a m_{03} + b m_{13} + c m_{23} + e`$ |
 | `P_frustum(&m, &lens, screen, out)` | near and screen side planes in affine m's source space | See [frustum](#frustum) |
 
-![Orbiting 3D views of a tilted plane sheet and signed sample points before and after normalization, with the same zero set](../images/math/plane-distance.gif)
+![3D views of a tilted plane sheet and signed sample points before and after normalization, with the same zero set](../images/math/plane-distance.png)
 
-![Orbiting 3D triangles with opposite winding arrows and opposite normals](../images/math/plane-from-points.gif)
+![3D triangles with opposite winding arrows and opposite normals](../images/math/plane-from-points.png)
 
-![Orbiting 3D lens-space plane and sample beside their world-space transforms, with equal signed values](../images/math/plane-from-rows.gif)
+![3D lens-space plane and sample beside their world-space transforms, with equal signed values](../images/math/plane-from-rows.png)
 
 ## frustum
 

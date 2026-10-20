@@ -14,7 +14,7 @@ from docs.plot_style import (FAINT, INK, LABEL_SIZE, MUTED, TITLE_SIZE, SLOTS,
                              GIF_FRAMES, GIF_FPS, ORBIT_GIF_COLORS, wire_sphere,
                              figure as new_figure, save, save_gif)
 import numpy as np
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Patch, Rectangle
 from matplotlib.lines import Line2D
 from mpl_toolkits.mplot3d import proj3d
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -81,6 +81,10 @@ GRID_WIDTH = 0.4
 GRID_STEPS = 6
 LABEL_OFFSET = (5, 5)
 STILL_QUARTERS = 4
+PLANE_AZIMUTH = -125
+LABEL_CLEARANCE = 10
+POINTS_PER_INCH = 72
+LABEL_LEADER_WIDTH = 0.5
 NORMAL_DEPTH_RATIO = 0.25
 SAMPLE_SCALE = 2
 NORMAL_COLORS = (SLOTS[0], SLOTS[7])
@@ -143,8 +147,9 @@ def arrow(axis, origin, normal, color=INK, length=NORMAL_ARROW_LENGTH):
     return np.asarray(origin) + normal
 
 
-def legend(fig, entries):
-    handles = [Line2D([], [], color=color, marker=marker, linestyle=style, label=label)
+def legend(fig, entries, patches=False):
+    handles = [Patch(facecolor=color, edgecolor=color, alpha=FACE_ALPHA, label=label)
+               if patches else Line2D([], [], color=color, marker=marker, linestyle=style, label=label)
                for label, color, marker, style in entries]
     fig.legend(handles=handles, loc="lower center", bbox_to_anchor=(0.5, LEGEND_Y),
                fontsize=LABEL_SIZE, ncol=PANELS, frameon=False)
@@ -159,29 +164,51 @@ def orbit(fig, axes, output, stills, labels=()):
         annotations.clear()
         for axis in axes:
             axis.view_init(elev=VIEW_ELEVATION,
-                           azim=ORBIT_AZIMUTH + ORBIT_TURN * frame / GIF_FRAMES,
+                           azim=(PLANE_AZIMUTH if output.suffix == ".png" else
+                                 ORBIT_AZIMUTH + ORBIT_TURN * frame / GIF_FRAMES),
                            vertical_axis="y")
         fig.canvas.draw()
         renderer = fig.canvas.get_renderer()
         for axis in axes:
-            points = [point for owner, points, texts in labels if owner is axis for point in points]
-            texts = [text for owner, points, texts in labels if owner is axis for text in texts]
-            projected = [proj3d.proj_transform(*point, axis.get_proj())[:2] for point in points]
             placed = []
-            for point, text in zip(projected, texts):
-                offset = np.array(LABEL_OFFSET)
-                annotation = axis.annotate(text, point, xytext=offset,
-                    textcoords="offset points", fontsize=LABEL_SIZE, color=INK,
-                    va="bottom", annotation_clip=False,
-                    bbox=dict(facecolor="white", edgecolor="none", alpha=LABEL_ALPHA, pad=LABEL_PADDING))
-                for attempt in range(len(texts)):
-                    bounds = annotation.get_window_extent(renderer).expanded(*LABEL_SEPARATION)
-                    if not any(bounds.overlaps(other) for other in placed):
-                        break
-                    offset[1] += LABEL_SIZE + LABEL_OFFSET[1]
-                    annotation.set_position(offset)
-                placed.append(annotation.get_window_extent(renderer))
-                annotations.append(annotation)
+            for owner, points, texts, *clearance in labels:
+                if owner is not axis:
+                    continue
+                projected = [proj3d.proj_transform(*point, axis.get_proj())[:2] for point in points]
+                for point, text in zip(projected, texts):
+                    offset = list(LABEL_OFFSET)
+                    align = "left"
+                    if clearance:
+                        outline = np.array([proj3d.proj_transform(*vertex, axis.get_proj())[:2]
+                                            for vertex in clearance[0]])
+                        low, high = axis.transData.transform(outline).min(axis=0), axis.transData.transform(outline).max(axis=0)
+                        anchor = axis.transData.transform(point)
+                        on_right = anchor[0] >= (low[0] + high[0]) / 2
+                        edge = high[0] + LABEL_CLEARANCE if on_right else low[0] - LABEL_CLEARANCE
+                        offset[0] = (edge - anchor[0]) * POINTS_PER_INCH / fig.dpi
+                        align = "left" if on_right else "right"
+                    annotation = axis.annotate(text, point, xytext=tuple(offset),
+                        textcoords="offset points", fontsize=LABEL_SIZE, color=INK,
+                        va="bottom", ha=align, annotation_clip=False,
+                        arrowprops=dict(arrowstyle="-", color=MUTED, linewidth=LABEL_LEADER_WIDTH),
+                        bbox=dict(facecolor="white", edgecolor="none", alpha=LABEL_ALPHA, pad=LABEL_PADDING))
+                    for attempt in range(len(placed) + 1):
+                        annotation.update_positions(renderer)
+                        annotation.update_bbox_position_size(renderer)
+                        bounds = annotation.get_bbox_patch().get_window_extent(renderer).expanded(*LABEL_SEPARATION)
+                        overlaps = [other for other in placed if bounds.overlaps(other)]
+                        if not overlaps:
+                            break
+                        shift = max(other.y1 for other in overlaps) - bounds.y0 + LABEL_CLEARANCE
+                        offset[1] += shift * POINTS_PER_INCH / fig.dpi
+                        annotation.set_position(tuple(offset))
+                    placed.append(bounds)
+                    annotations.append(annotation)
+
+    if output.suffix == ".png":
+        draw(0)
+        save(fig, output, dpi=ANIMATION_DPI)
+        return
 
     if stills is not None:
         stills.mkdir(parents=True, exist_ok=True)
@@ -200,7 +227,7 @@ def distance_figure(data, output, stills):
         sheet(axis, data["sheet"])
         for vertices, value in zip(data["level_sheets"][column], (-1, 1)):
             sheet(axis, vertices, SAMPLE_COLORS[value + 1])
-            labels.append((axis, [vertices[0]], [f"value {value:+d}"]))
+            labels.append((axis, [vertices[0 if value < 0 else 2]], [f"value {value:+d}"]))
         arrow(axis, data["point"], data["planes"][column][:3])
         for point, *values in data["samples"]:
             value = values[column]
@@ -210,7 +237,8 @@ def distance_figure(data, output, stills):
                          *np.asarray(data["level_sheets"][column]).reshape(-1, 3)])
         labels.append((axis, points, [f"{sample[column + 1]:.3g}" for sample in data["samples"]]))
     legend(fig, [("Zero sheet", SHAPE_FILL, "", "-"),
-                 ("Signed value −1 / +1 sheets", MUTED, "", "--")])
+                 ("Value −1 sheet", SAMPLE_COLORS[0], "", "-"),
+                 ("Value +1 sheet", SAMPLE_COLORS[2], "", "-")], patches=True)
     orbit(fig, axes, output, stills, labels)
 
 
@@ -325,8 +353,12 @@ def sphere_queries_figure(data, output, stills):
         sphere_labels.append((left, [np.asarray(centre) + [0, radius, 0]], [name]))
     fit_space(left, bounds)
     bounds = list(draw_box(right, data["box"]))
+    clearance = list(bounds)
     centre, radius = data["segment_sphere"]
     wire_sphere(right, centre, radius, POINT)
+    clearance.extend(np.asarray(centre) + radius * np.array([
+        (x, y, z) for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)]))
+    entry_labels = []
     bounds.extend([np.array(centre) - radius, np.array(centre) + radius])
     entries.extend([("Closest point / entry", INK, "o", ""),
                     ("Centre to closest point", MUTED, "", "--"),
@@ -339,12 +371,13 @@ def sphere_queries_figure(data, output, stills):
         for target, (hit, t, point) in enumerate(results):
             if hit:
                 right.scatter(*point, color=color, s=POINT_SIZE, depthshade=False)
-                labels.append((point, f"t={t:.3g}"))
+                entry_labels.append((point, f"t={t:.3g}"))
         labels.append((a, str(index + 1)))
     fit_space(right, bounds)
     legend(fig, entries)
     orbit(fig, [left, right], output, stills,
-          [*sphere_labels, (right, [point for point, _ in labels], [text for _, text in labels])])
+          [*sphere_labels, (right, [point for point, _ in labels], [text for _, text in labels]),
+           (right, [point for point, _ in entry_labels], [text for _, text in entry_labels], clearance)])
 
 
 def main():
@@ -363,7 +396,8 @@ def main():
                             ("frustum", "frustum", frustum_figure),
                             ("box3-frustum", "box_frustum", box_frustum_figure),
                             ("box3-sphere-queries", "queries", sphere_queries_figure)):
-        plot(data[key], args.out / (name + ".gif"), args.stills)
+        extension = ".png" if key in ("distance", "triangle", "rows") else ".gif"
+        plot(data[key], args.out / (name + extension), args.stills)
     return 0
 
 
