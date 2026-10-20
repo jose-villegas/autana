@@ -15,7 +15,7 @@ The caller supplies frequency and sample rate in Hz, with $`0 < hz < sample\_rat
 | `goertzel_phase` | DFT phase in radians, sign $`e^{-j\omega n}`$, referenced to the first sample since init/reset; $`(-\pi, \pi]`$, zero for an empty stream |
 | `goertzel_power` | Squared unnormalized DFT magnitude, clamped to zero |
 | `goertzel_amplitude` | Sine amplitude $`2\sqrt{P}/N`$; zero before any sample |
-| `goertzel_level_db` | Sine level relative to full scale; floored at `GOERTZEL_LEVEL_FLOOR_DB` |
+| `goertzel_level_db` | Sine level relative to full scale; floored at `MATH_DB_FLOOR` |
 
 Phase accuracy is about 0.001 rad on short records and up to 0.03 rad at
 65,537 off-bin samples. The error comes from the float recurrence, not the
@@ -34,7 +34,7 @@ P = \max(0, s_1^2 + s_2^2 - c s_1 s_2), \qquad S = NF/2
 ```
 
 ```math
-L = \max(\mathrm{GOERTZEL\_LEVEL\_FLOOR\_DB}, 10\log_{10}(P/S^2))
+L = \max(\mathrm{MATH\_DB\_FLOOR}, 10\log_{10}(P/S^2))
 ```
 
 An empty stream or zero power returns the level floor. A sine of amplitude
