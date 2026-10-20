@@ -325,6 +325,13 @@ feed_input(const input_t* input) {
         const mu_Vec2 aim = ui_snap_point(snap_rects, snap_rect_count, mu_vec2(logical.x, logical.y), reach);
         ui_pointer_aim(&ui_pointer_state, (vec2i_t){aim.x, aim.y});
     }
+    /* The lift snaps like the press, so a control pressed by a snap fires on
+     * its release; a stroke that turned into a drag lifts where it is. */
+    if (logical.released && !ui_pointer_state.dragging) {
+        const mu_Vec2 lift = ui_snap_point(snap_rects, snap_rect_count, mu_vec2(logical.x, logical.y), reach);
+        logical.x = lift.x;
+        logical.y = lift.y;
+    }
     ui_bridge_feed(&ui_ctx, &ui_pointer_state, &logical);
 }
 

@@ -579,8 +579,8 @@ slider needs to track a drag and the UP owed when a lift never reached the UI
 (`ui/input/ui_pointer.h`); `suite_ui_pointer_microui.c` and `suite_ui_widgets.c` pin
 it against real microui, since hover is microui's own state and event-list
 tests cannot see it. It applies to every control that reacts to a press, so
-reworking input handling means preserving it. A press within `snap.reach` of a
-control is aimed at its nearest edge; its raw position remains the drag
+reworking input handling means preserving it. A press or a lift within `snap.reach` of a
+control is aimed at its nearest edge; the raw press position remains the drag
 origin, and later motion stays raw.
 
 ---
