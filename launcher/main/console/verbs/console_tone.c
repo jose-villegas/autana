@@ -1,4 +1,6 @@
 /* Development-only tone check on the console task. */
+#include "console/verbs/console_tone.h"
+
 #include <math.h>
 #include <stdio.h>
 
@@ -13,8 +15,8 @@
 #include "core/timing.h"
 #include "sound/sound_engine.h"
 
-static bool
-stop_tone(sound_voice_t* voice) {
+bool
+console_tone_stop(sound_voice_t* voice) {
     const int64_t deadline = timing_now_us() + ((int64_t)SOUND_CAPTURE_TIMEOUT_MS * MATH_US_PER_MS);
     while (sound_is_playing(*voice) && timing_now_us() < deadline) {
         sound_stop(*voice);
@@ -25,18 +27,51 @@ stop_tone(sound_voice_t* voice) {
     return stopped;
 }
 
-static bool
-start_tone(sound_voice_t* voice, uint16_t hz, uint8_t gain) {
+bool
+console_tone_start(sound_voice_t* voice, uint16_t hz, uint8_t gain) {
     *voice = sound_play_tone(hz, gain);
     const int64_t deadline = timing_now_us() + ((int64_t)SOUND_CAPTURE_TIMEOUT_MS * MATH_US_PER_MS);
     while (sound_is_playing(*voice) && !sound_voice_audible(*voice) && timing_now_us() < deadline) {
         timing_sleep_ms(SOUND_CONTROL_POLL_MS);
     }
     if (!sound_voice_audible(*voice)) {
-        stop_tone(voice);
+        console_tone_stop(voice);
         return false;
     }
     return true;
+}
+
+const char*
+console_tone_check(const console_tone_args_t* args, char result[CONSOLE_TONE_REPLY_BYTES]) {
+    const size_t dma_before = memory_free_bytes(MEMORY_DMA);
+    const bool opened = sound_capture_open();
+    const size_t dma_open = dma_before - memory_free_bytes(MEMORY_DMA);
+    float silence_db = 0;
+    float tone_db = 0;
+    float measured_hz = args->hz;
+    sound_voice_t voice = SOUND_VOICE_NULL;
+    bool held = false;
+    bool ok = opened && audio_codec_dac_feedback(false)
+              && (!args->internal || ((held = audio_out_amp_hold(true)) && audio_codec_dac_feedback(true)))
+              && audio_loopback_measure(args->hz, args->ms, &silence_db, NULL)
+              && console_tone_start(&voice, args->hz, args->volume_pct)
+              && audio_loopback_measure(args->hz, args->ms, &tone_db, &measured_hz);
+    ok = console_tone_stop(&voice) && ok;
+    if (held) {
+        timing_sleep_ms(AUDIO_OUT_DMA_DRAIN_MS);
+    }
+    const bool heard = tone_db - silence_db >= AUDIO_LOOPBACK_HEARD_MARGIN_DB;
+    ok = audio_codec_dac_feedback(false) && ok;
+    ok = audio_out_amp_hold(false) && ok;
+    ok = sound_capture_close() && ok;
+    if (!ok) {
+        return opened ? "loopback failed" : "codec open failed";
+    }
+    if (!console_tone_reply(result, CONSOLE_TONE_REPLY_BYTES, args, heard, tone_db, silence_db, measured_hz,
+                            dma_open)) {
+        return "frequency formatting failed";
+    }
+    return NULL;
 }
 
 static void
@@ -46,34 +81,11 @@ console_verb_tone(const char* args, console_reply_fn reply) {
         reply("TONE usage: tone <hz> <ms> [volume] [internal]");
         return;
     }
-    const size_t dma_before = memory_free_bytes(MEMORY_DMA);
-    const bool opened = sound_capture_open();
-    const size_t dma_open = dma_before - memory_free_bytes(MEMORY_DMA);
-    float silence_db = 0;
-    float tone_db = 0;
-    float measured_hz = parsed.hz;
-    sound_voice_t voice = SOUND_VOICE_NULL;
-    bool held = false;
-    bool ok = opened && audio_codec_dac_feedback(false)
-              && (!parsed.internal || ((held = audio_out_amp_hold(true)) && audio_codec_dac_feedback(true)))
-              && audio_loopback_measure(parsed.hz, parsed.ms, &silence_db, NULL)
-              && start_tone(&voice, parsed.hz, parsed.volume_pct)
-              && audio_loopback_measure(parsed.hz, parsed.ms, &tone_db, &measured_hz);
-    ok = stop_tone(&voice) && ok;
-    if (held) {
-        timing_sleep_ms(AUDIO_OUT_DMA_DRAIN_MS);
-    }
-    const bool heard = tone_db - silence_db >= AUDIO_LOOPBACK_HEARD_MARGIN_DB;
-    ok = audio_codec_dac_feedback(false) && ok;
-    ok = audio_out_amp_hold(false) && ok;
-    ok = sound_capture_close() && ok;
-    if (!ok) {
-        reply(opened ? "TONE error: loopback failed" : "TONE error: codec open failed");
-        return;
-    }
     char line[CONSOLE_TONE_REPLY_BYTES];
-    if (!console_tone_reply(line, sizeof line, &parsed, heard, tone_db, silence_db, measured_hz, dma_open)) {
-        reply("TONE error: frequency formatting failed");
+    const char* error = console_tone_check(&parsed, line);
+    if (error) {
+        (void)snprintf(line, sizeof line, "TONE error: %s", error);
+        reply(line);
         return;
     }
     (void)printf("%s\n", line);
