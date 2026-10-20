@@ -92,7 +92,10 @@ class Clip:
                                           TILE[1] * gltf_preview.SUPERSAMPLE)
 
     def tile(self, frame, colours, text):
-        return label(gltf_preview.render(self.asset, self.camera, self.positions[frame], TILE, colours), text)
+        return self.tile_at(self.positions[frame], colours, text)
+
+    def tile_at(self, positions, colours, text):
+        return label(gltf_preview.render(self.asset, self.camera, positions, TILE, colours), text)
 
     def frames(self):
         return range(0, len(self.positions), STEP)
