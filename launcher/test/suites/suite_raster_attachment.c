@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "math/scalar/mathf_round.h"
 #include "raster_rig.h"
 #include "render_view_fixture.h"
 #include "suites.h"
@@ -88,8 +89,8 @@ rig_open(const raster_attachment_t* const* attachments, int count) {
 
 static void
 draw(raster_rig_t* r) {
-    const render_view_t frame_view = render_view_fixture(&camera, &r->raster, 0);
-    raster_draw(&r->raster, &frame_view);
+    r->view = render_view_fixture(&camera, &r->raster, 0);
+    raster_draw(&r->raster, &r->view);
 }
 
 static void
@@ -222,8 +223,7 @@ test_cluster_values_and_constant_writers(void) {
         TEST_ASSERT_TRUE(both[k]->writer(both[k], 0, &writers[k]));
         writers[k].attachment = GFX_ATTACHMENT_FURTHER + k;
     }
-    const r3d_span_target_t target = {buffers.picture, writers, 2};
-    r->view = render_view_fixture(&camera, &r->raster, 0);
+    const r3d_span_target_t target = {buffers.picture, writers, 2, &r3d_span_small_fill_default};
     raster_lens(&r->raster, &r->view, 1, &r->lens);
     const uint16_t visible = 1;
     r3d_pipeline_transform(&r->quad[0].mesh, &r->lens, &visible, 1, buffers.cs, buffers.rows);
@@ -482,6 +482,118 @@ test_meshlet_writer_accepts_the_last_uint16_id(void) {
     TEST_ASSERT_EQUAL_UINT32((uint32_t)UINT16_MAX + 1, state.next);
 }
 
+#define SMALL_FILL_CAMERA_DISTANCE 8
+
+static raster_rig_t*
+small_fill_fixture(bool at_gate) {
+    static const int16_t corners[4][3] = {{-1, -1, 0}, {1, -1, 0}, {1, 1, 0}, {-1, 1, 0}};
+    static const int16_t gate_corners[4][3] = {{0, 0, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0}};
+    const int16_t (*const positions[])[3] = {at_gate ? gate_corners : corners};
+    static const uint8_t colors[4][3] = {{32, 80, 96}, {128, 112, 48}, {224, 160, 144}, {48, 96, 80}};
+    const float tangent = at_gate ? H / (2.0F * SMALL_FILL_CAMERA_DISTANCE * (R3D_SPAN_SMALL_MAX_SIDE + 1)) : 1.0F;
+    const fixture_camera_t close = {{0, 0, -SMALL_FILL_CAMERA_DISTANCE}, {0, 0, 1}, tangent, 1};
+    raster_rig_t* r = raster_rig_open(positions, 1, 0, W, H, W * H * sizeof(uint16_t) * SMALL_FILL_STYLE_COUNT);
+    r->quad[0].mesh.colors = colors;
+    r->view = render_view_fixture(&close, &r->raster, 0);
+    return r;
+}
+
+static __attribute__((noinline)) void
+small_fill_reference(raster_rig_t* r, small_fill_t fill) {
+    uint16_t* color = (uint16_t*)r->own;
+    uint16_t* depth = color + W * H;
+    for (int i = 0; i < W * H; i++) {
+        color[i] = r->raster.clear;
+        depth[i] = R3D_DEPTH_EMPTY;
+    }
+    r3d_span_small_fill_t resolved;
+    r3d_span_small_fill_resolve(&resolved, fill);
+    r3d_span_target_t target = r3d_span_target(color, depth, W, 0, H);
+    target.small_fill = &resolved;
+    r3d_span_vertex_t vertices[4];
+    const float pixels_per_unit = r->view.lens.fx / SMALL_FILL_CAMERA_DISTANCE;
+    for (int k = 0; k < 4; k++) {
+        const int16_t* position = r->quad[0].mesh.positions[k];
+        const uint8_t* rgb = r->quad[0].mesh.colors[k];
+        vertices[k] = (r3d_span_vertex_t){mathf_round_i32((W / 2.0F + position[0] * pixels_per_unit) * R3D_SUBPIXEL),
+                                          mathf_round_i32((H / 2.0F - position[1] * pixels_per_unit) * R3D_SUBPIXEL),
+                                          1.0F / SMALL_FILL_CAMERA_DISTANCE,
+                                          rgb[0],
+                                          rgb[1],
+                                          rgb[2]};
+    }
+    for (int triangle = 0; triangle < 2; triangle++) {
+        const uint16_t* indices = r->quad[0].mesh.triangles[triangle];
+        r3d_span_triangle(&target, vertices + indices[0], vertices + indices[1], vertices + indices[2]);
+    }
+}
+
+static void
+assert_small_fill_sequence(raster_rig_t* r, small_fill_t fill) {
+    render_view_t a = r->view;
+    a.small_fill = fill;
+    small_fill_reference(r, fill);
+    const size_t bytes = W * H * sizeof(uint16_t);
+    uint16_t* expected = (uint16_t*)r->own + 2 * W * H;
+    memcpy(expected, r->own, bytes);
+    raster_draw(&r->raster, &a);
+    TEST_ASSERT_EQUAL_MEMORY(expected, raster_color(&r->raster), bytes);
+    for (int axis = 0; axis < 2; axis++) {
+        render_view_t b = a;
+        if (axis == 0) {
+            b.small_fill.gate = fill.gate == 0 ? UINT8_MAX : 0;
+        } else {
+            b.small_fill.style = (fill.style + 1) % SMALL_FILL_STYLE_COUNT;
+        }
+        small_fill_reference(r, b.small_fill);
+        raster_draw(&r->raster, &b);
+        TEST_ASSERT_EQUAL_MEMORY(r->own, raster_color(&r->raster), bytes);
+        raster_census(&r->raster, &a);
+        raster_draw_culled(&r->raster, &a);
+        TEST_ASSERT_EQUAL_MEMORY(expected, raster_color(&r->raster), bytes);
+        raster_draw(&r->raster, &a);
+        TEST_ASSERT_EQUAL_MEMORY(expected, raster_color(&r->raster), bytes);
+    }
+}
+
+static void
+test_view_small_fill_styles_and_frame_isolation(void) {
+    raster_rig_t* r = small_fill_fixture(false);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.ceiling, r->view.small_fill.ceiling);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.gate, r->view.small_fill.gate);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_FLAT, r->view.small_fill.style);
+    uint16_t* frames = (uint16_t*)r->own;
+    const size_t bytes = W * H * sizeof(*frames);
+    for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
+        r->view.small_fill = (small_fill_t){SMALL_FILL_CEILING_FAST, 0, style};
+        raster_draw(&r->raster, &r->view);
+        memcpy(frames + style * W * H, raster_color(&r->raster), bytes);
+        for (int previous = SMALL_FILL_FLAT; previous < (int)style; previous++) {
+            TEST_ASSERT_NOT_EQUAL(0, memcmp(frames + previous * W * H, frames + style * W * H, bytes));
+        }
+    }
+    for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
+        r->view.small_fill = (small_fill_t){SMALL_FILL_CEILING_FAST, 0, style};
+        raster_census(&r->raster, &r->view);
+        raster_draw_culled(&r->raster, &r->view);
+        TEST_ASSERT_EQUAL_MEMORY(frames + style * W * H, raster_color(&r->raster), bytes);
+    }
+}
+
+static void
+test_view_small_fill_frame_transition_limits(void) {
+    raster_rig_t* r = small_fill_fixture(true);
+    static const uint8_t ceilings[] = {0, R3D_SPAN_SMALL_MAX_SIDE, R3D_SPAN_SMALL_MAX_SIDE + 1, UINT8_MAX};
+    static const uint8_t gates[] = {0, SMALL_FILL_GATE_FAST, UINT8_MAX};
+    for (size_t ceiling = 0; ceiling < sizeof ceilings / sizeof ceilings[0]; ceiling++) {
+        for (size_t gate = 0; gate < sizeof gates / sizeof gates[0]; gate++) {
+            for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
+                assert_small_fill_sequence(r, (small_fill_t){ceilings[ceiling], gates[gate], style});
+            }
+        }
+    }
+}
+
 static void
 test_split_feedback_converges_clamps_and_forgets(void) {
     const int damped = raster_split_update(RASTER_SPLIT_EVEN, RASTER_SPLIT_EVEN, 3 * RASTER_SPLIT_EVEN);
@@ -671,6 +783,8 @@ run_raster_attachment_suite(void) {
 #endif
     RUN_TEST(test_split_feedback_converges_clamps_and_forgets);
     RUN_TEST(test_split_feedback_preserves_pixels_and_null_uses_even_rows);
+    RUN_TEST(test_view_small_fill_styles_and_frame_isolation);
+    RUN_TEST(test_view_small_fill_frame_transition_limits);
 #ifndef DEVICE_BUILD
     RUN_TEST(test_printed_views_match_the_declared_names);
 #endif

@@ -315,6 +315,16 @@ def _fix_include_layer(root, path, text):
     return "".join(lines) if changed else None
 
 
+@c_line_rule("PMU-OWNER")
+def pmu_owner(root, path, text):
+    rel = pathlib.PurePosixPath(relpath(root, path))
+    if rel.parts[:2] != ("launcher", "main") or len(rel.parts) < 3 or rel.parts[2] in ("power", "board"):
+        return
+    for number, line in enumerate(text.splitlines(), 1):
+        if re.search(r"\b(?:BOARD_PMU_I2C_ADDR|AXP2101_[A-Za-z0-9_]*)\b", line):
+            yield number, "PMU registers and address belong to power/"
+
+
 # RULE: a folder may include only a strictly lower tier of
 # docs/Firmware-Architecture.md's "Layers" (LAYER_ROWS below, one string per
 # row, top first, grouped into system, engine and platform bands; folders
@@ -325,7 +335,7 @@ def _fix_include_layer(root, path, text):
 LAYER_BANDS = (
     ("system", ("apps", "shell", "boot selftest console", "app")),
     ("engine", ("ui scene", "render", "draw anim sound", "asset")),
-    ("platform", ("input audio", "display", "gfx", "services", "profile", "core", "board", "build")),
+    ("platform", ("input audio", "power", "display", "gfx", "services", "profile", "core", "board", "build")),
 )
 LAYER_ROWS = tuple(row for _band, rows in LAYER_BANDS for row in rows)
 LAYER_TIER = {layer: tier for tier, row in enumerate(LAYER_ROWS) for layer in row.split()}
