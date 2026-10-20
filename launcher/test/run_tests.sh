@@ -507,7 +507,7 @@ PYTHON=$(find_python) || exit 1
 # The asset packs the suites read, one per root asset in the tree. A pack
 # whose bakes only lack their lock rows (a re-keyed bake not yet locked) is
 # left out, and host_tests skips the suites that name it in SUITE_READS and
-# prints them (docs/Testing-Guide.md, "Adding a suite"). Any other build
+# prints them (docs/testing/Writing-a-Test.md, "Adding a suite"). Any other build
 # failure fails here.
 AUTANA_ASSET_DIR="$BUILD_DIR/assets"
 export AUTANA_ASSET_DIR
