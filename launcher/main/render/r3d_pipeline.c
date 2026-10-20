@@ -450,7 +450,8 @@ draw_rebuilt(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const uint16_t*
 
 static inline __attribute__((always_inline)) void
 draw_in_front(const r3d_lit_mesh_t* mesh, const r3d_pipeline_vertex_t* const v[3], const uint16_t* tri,
-              const uint16_t* face_color, bool double_sided, const r3d_span_target_t* target, bool writes) {
+              const uint16_t* face_color, bool double_sided, const r3d_span_target_t* target, bool writes,
+              r3d_pipeline_work_t* work) {
     if (misses_every_centre(v[0], v[1], v[2], target)) {
         return;
     }
@@ -474,7 +475,7 @@ draw_cluster(const r3d_lit_mesh_t* mesh, const r3d_lens_t* lens, const r3d_lit_c
         const uint16_t* face_color = mesh->face_colors == NULL ? NULL : &mesh->face_colors[t];
         const r3d_pipeline_vertex_t* const v[3] = {&cs[tri[0]], &cs[tri[1]], &cs[tri[2]]};
         if (v[0]->iz > 0.0F && v[1]->iz > 0.0F && v[2]->iz > 0.0F) {
-            draw_in_front(mesh, v, tri, face_color, c->double_sided, target, writes);
+            draw_in_front(mesh, v, tri, face_color, c->double_sided, target, writes, work);
         } else if (v[0]->iz != 0.0F || v[1]->iz != 0.0F || v[2]->iz != 0.0F) {
             draw_rebuilt(mesh, lens, tri, face_color, c->double_sided, target, work);
         }

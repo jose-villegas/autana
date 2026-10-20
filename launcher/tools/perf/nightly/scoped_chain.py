@@ -334,11 +334,23 @@ def run_chain(steps, args, runner=None, clock=None):
     return results
 
 
+def plugged_boards(autana=None):
+    """Short ids of the boards on this machine's USB, in `autana devices` order."""
+    listing = subprocess.check_output(autana_command("devices", "--json", override=autana), text=True)
+    return [short_id(board["board"]) for board in json.loads(listing)["boards"] if board["port"]]
+
+
 def plan(args, clock=None):
     clock = clock or Clock()
     now = clock.now()
     if args.queue_at:
         clock.sleep(max(0, (local_time(args.queue_at, now) - now).total_seconds()))
+    if not args.boards:
+        args.boards = plugged_boards()
+        if not args.boards:
+            raise SystemExit("plan: no board is plugged in")
+        # The self-test runs on one board, whichever is plugged in first.
+        args.selftest_board = args.selftest_board or args.boards[0]
     tip = git(args.repo, "rev-parse", args.tip + "^{commit}")
     lanes = {}
     for lane, board in enumerate(args.boards):
@@ -351,6 +363,9 @@ def plan(args, clock=None):
                             + (SELFTEST_ALLOWANCE_SECONDS if args.selftest_board and board == short_id(args.selftest_board) else 0))
     write_json(Path(args.out), dict(tip=tip, night=clock.now().date().isoformat(),
                                     started=clock.now().isoformat(), lanes=lanes))
+    # For the workflow's later steps, which run one lane per board.
+    print("SCOPED_BOARDS=" + " ".join(lanes))
+    print("SELFTEST_BOARD=" + (short_id(args.selftest_board) if args.selftest_board else ""))
 
 
 def lane_of(plan, board):
@@ -366,7 +381,7 @@ def main():
     info.add_argument("--plan", type=Path, required=True)
     info.add_argument("--board", required=True)
     planning = commands.add_parser("plan")
-    planning.add_argument("--boards", nargs="+", required=True)
+    planning.add_argument("--boards", nargs="+", help="default: every board `autana devices` lists as plugged in")
     planning.add_argument("--tip", default="origin/main")
     planning.add_argument("--queue-at")
     planning.add_argument("--selftest-board")

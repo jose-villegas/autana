@@ -11,7 +11,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "math/scalar/mathf.h"
 #include "render/r3d_span.h"
+
+#define R3D_SPAN_COLOR_SCALE 256.0F
 
 /* An upper bound on the depth a triangle writes inside `box`, as the
  * 16-bit depth, from its depth plane in 16.8: `top` at the centre of pixel
@@ -67,6 +70,13 @@ static inline uint16_t
 r3d_span_pack(int32_t r, int32_t g, int32_t b) {
     const uint32_t native = ((uint32_t)r & 0xF800U) | (((uint32_t)g >> 5) & 0x07E0U) | ((uint32_t)b >> 11);
     return (uint16_t)((native >> 8) | (native << 8));
+}
+
+static inline uint16_t
+r3d_span_pack_rgb(float r, float g, float b) {
+    return r3d_span_pack((int32_t)(mathf_clamp(r, 0.0F, UINT8_MAX) * R3D_SPAN_COLOR_SCALE),
+                         (int32_t)(mathf_clamp(g, 0.0F, UINT8_MAX) * R3D_SPAN_COLOR_SCALE),
+                         (int32_t)(mathf_clamp(b, 0.0F, UINT8_MAX) * R3D_SPAN_COLOR_SCALE));
 }
 
 static inline int32_t

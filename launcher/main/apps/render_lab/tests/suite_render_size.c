@@ -25,6 +25,9 @@ static void
 fixture(void) {
     size_command("RESET render_lab.scale");
     size_command("RESET render_lab.present");
+    size_command("RESET render_lab.small_fill_ceiling");
+    size_command("RESET render_lab.small_fill_gate");
+    size_command("RESET render_lab.small_fill_style");
 }
 
 static void
@@ -47,8 +50,51 @@ test_render_size_and_percent_follow_and_clamp(void) {
     fixture();
 }
 
+static void
+test_small_fill_ceiling_range(void) {
+    fixture();
+    tune_registry_t* registry = tune_shared();
+    const char* reset = "RESET render_lab.small_fill_ceiling";
+    const char* name = reset + sizeof "RESET " - 1;
+    TEST_ASSERT_TRUE(tune_set(registry, name, SMALL_FILL_CEILING_MAX));
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_MAX, render_lab_small_fill().ceiling);
+    TEST_ASSERT_FALSE(tune_set(registry, name, SMALL_FILL_CEILING_MAX + 1));
+    TEST_ASSERT_FALSE(tune_set(registry, name, UINT8_MAX));
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_MAX, render_lab_small_fill().ceiling);
+    TEST_ASSERT_TRUE(tune_set(registry, name, 0));
+    TEST_ASSERT_EQUAL_INT(0, render_lab_small_fill().ceiling);
+    TEST_ASSERT_FALSE(tune_set(registry, name, -1));
+    size_command(reset);
+}
+
+static void
+test_small_fill_menu_choice_moves_the_tunables(void) {
+    fixture();
+    int count = 0;
+    const char* const* names = render_lab_small_fill_names(&count);
+    TEST_ASSERT_EQUAL_STRING("SMOOTH", names[0]);
+    TEST_ASSERT_EQUAL_STRING("FAST", names[1]);
+    TEST_ASSERT_EQUAL_INT(0, render_lab_small_fill_selected());
+
+    TEST_ASSERT_TRUE(render_lab_small_fill_select(1));
+    TEST_ASSERT_EQUAL_INT(1, render_lab_small_fill_selected());
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_FAST, render_lab_small_fill().ceiling);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_GATE_FAST, render_lab_small_fill().gate);
+
+    size_command("SET render_lab.small_fill_gate 3");
+    TEST_ASSERT_EQUAL_INT(3, render_lab_small_fill().gate);
+    TEST_ASSERT_FALSE(render_lab_small_fill_select(count));
+    TEST_ASSERT_EQUAL_INT(1, render_lab_small_fill_selected());
+
+    TEST_ASSERT_TRUE(render_lab_small_fill_select(0));
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_SMOOTH, render_lab_small_fill().ceiling);
+    fixture();
+}
+
 void
 run_render_size_suite(void) {
+    RUN_TEST(test_small_fill_menu_choice_moves_the_tunables);
+    RUN_TEST(test_small_fill_ceiling_range);
     RUN_TEST(test_render_size_and_percent_follow_and_clamp);
 }
 

@@ -38,6 +38,7 @@ typedef struct {
     slice_t mine, other;
     r3d_pipeline_buffers_t buffers;
     r3d_span_target_t targets[2];
+    r3d_span_small_fill_t small_fill;
     int32_t mine_us, other_us; /* Draw slices stay far below the int32 microsecond limit of 35 minutes. */
 } draw_work_t;
 
@@ -126,8 +127,10 @@ draw_slice(void* ctx) {
     const raster_t* r = s->raster;
     const r3d_pipeline_buffers_t* b = s->buffers;
     r3d_span_target_t* target = s->target;
-    *target = (r3d_span_target_t){gfx_render_target_window(&b->picture, s->first, s->first + s->count), s->writers,
-                                  s->writer_count};
+    gfx_render_target_window(&target->rows, &b->picture, s->first, s->first + s->count);
+    target->writers = s->writers;
+    target->writer_count = s->writer_count;
+    target->small_fill = &((const draw_work_t*)b->draw)->small_fill;
 
     if (s->clear) {
         const size_t pixels = (size_t)s->count * (size_t)r->width;
@@ -148,7 +151,8 @@ resolve_slice(void* ctx) {
     const slice_t* s = ctx;
     const raster_t* r = s->raster;
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(r);
-    const gfx_render_target_t rows = gfx_render_target_window(&b.picture, s->first, s->first + s->count);
+    gfx_render_target_t rows;
+    gfx_render_target_window(&rows, &b.picture, s->first, s->first + s->count);
     for (int i = GFX_ATTACHMENT_FURTHER; i < rows.count; i++) {
         const raster_attachment_t* a = attachment_at(r, i);
         if (a->resolve != NULL) {
@@ -338,6 +342,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
         resolves = resolves || a->resolve != NULL;
     }
     draw_work_t* work = scratch_draw(raster);
+    r3d_span_small_fill_resolve(&work->small_fill, view->small_fill);
     uint16_t* culled = work->buffers.culled;
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
