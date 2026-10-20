@@ -1,8 +1,5 @@
-/*
- * render_view: one frame's world-to-picture basis and perspective fit.
- * The pose looks down its +z with +y up; picture y points down,
- * and the pose's scale does not affect the view.
- */
+/* render_view: one frame's world-to-picture basis and perspective fit.
+ * Pose: +z forward, +y up, scale ignored. Picture: +y down. */
 #pragma once
 
 #include "display/viewport.h"
@@ -13,16 +10,10 @@ typedef enum { CAMERA_PRESENT_NEAREST, CAMERA_PRESENT_SCANLINE, CAMERA_PRESENT_D
 
 typedef struct {
     vec3f_t position, screen_x, screen_y, forward;
-    float pixels_per_unit, center_x, center_y, near_z;
+    projectf_t lens; /* Square pixels: fx == fy. */
     viewport_t viewport;
     camera_present_t present;
 } render_view_t;
-
-/* The view as a pinhole lens: one focal length on both axes. */
-static inline projectf_t
-render_view_lens(const render_view_t* view) {
-    return (projectf_t){view->pixels_per_unit, view->pixels_per_unit, view->center_x, view->center_y, view->near_z};
-}
 
 render_view_t render_view_make(const transformf_t* pose, float half_fov_short_tan, float near_z, viewport_t viewport);
 

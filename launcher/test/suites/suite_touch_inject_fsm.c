@@ -1,6 +1,6 @@
 /* touch_inject_fsm: scripted contacts driven with a supplied clock. */
 
-#include "input/touch_inject_fsm.h"
+#include "input/touch/touch_inject_fsm.h"
 #include "suites.h"
 #include "unity.h"
 
@@ -38,10 +38,24 @@ test_a_drag_reports_intermediate_points_then_its_endpoint(void) {
     TEST_ASSERT_FALSE(touch_inject_step(&inject, 360000, &x, &y));
 }
 
+static void
+test_each_completion_has_its_console_word(void) {
+    TEST_ASSERT_EQUAL_STRING("TAP", touch_inject_completion_name(TOUCH_INJECT_TAP));
+    TEST_ASSERT_EQUAL_STRING("PRESS", touch_inject_completion_name(TOUCH_INJECT_PRESS));
+    TEST_ASSERT_EQUAL_STRING("DRAG", touch_inject_completion_name(TOUCH_INJECT_DRAG));
+}
+
+static void
+test_no_completion_has_no_word(void) {
+    TEST_ASSERT_NULL(touch_inject_completion_name(TOUCH_INJECT_NONE));
+}
+
 void
 suite_touch_inject_fsm(void) {
     RUN_TEST(test_a_tap_reports_contact_before_its_lift);
     RUN_TEST(test_a_drag_reports_intermediate_points_then_its_endpoint);
+    RUN_TEST(test_each_completion_has_its_console_word);
+    RUN_TEST(test_no_completion_has_no_word);
 }
 
 SUITE_REGISTER(suite_touch_inject_fsm)
