@@ -135,8 +135,8 @@ draw_half(half_job_t* j) {
     const raster_t* f = j->raster;
     const int64_t start = timing_now_us();
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(f);
-    const r3d_span_target_t target = {gfx_render_target_window(&b.picture, j->row0, j->row1), NULL, 0,
-                                      &r3d_span_small_fill_default};
+    r3d_span_target_t target = {.small_fill = &r3d_span_small_fill_default};
+    gfx_render_target_window(&target.rows, &b.picture, j->row0, j->row1);
     memset(gfx_render_target_depth(&target.rows, j->row0), 0,
            (size_t)(j->row1 - j->row0) * (size_t)f->width * sizeof(uint16_t));
     r3d_pipeline_draw(f->instances[0].mesh, j->lens, b.culled + 1, j->visible, b.cs, b.rows, &target,

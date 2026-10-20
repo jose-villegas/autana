@@ -534,6 +534,7 @@ _Static_assert(SMALL_FILL_CEILING_DEFAULT == SMALL_MAX_SIDE + 8, "default spread
 
 void
 r3d_span_small_fill_resolve(r3d_span_small_fill_t* resolved, small_fill_t fill) {
+    fill.ceiling = (uint8_t)mathi_min(fill.ceiling, SMALL_FILL_CEILING_MAX);
     resolved->ceiling = fill.ceiling;
     resolved->style = fill.style;
     const int intervals = fill.ceiling - (SMALL_MAX_SIDE + 1);

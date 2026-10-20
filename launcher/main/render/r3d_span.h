@@ -20,7 +20,7 @@
 typedef struct {
     uint8_t ceiling;
     small_fill_style_t style;
-    uint8_t spread[UINT8_MAX + 1];
+    uint8_t spread[SMALL_FILL_CEILING_MAX + 1];
 } r3d_span_small_fill_t;
 
 extern const r3d_span_small_fill_t r3d_span_small_fill_default;

@@ -1891,6 +1891,13 @@ test_camera_small_fill_default_setter_and_view(void) {
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_DEFAULT, lens->small_fill.ceiling);
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_GATE_DEFAULT, lens->small_fill.gate);
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_FLAT, lens->small_fill.style);
+    const small_fill_t limit = {SMALL_FILL_CEILING_MAX, 0, SMALL_FILL_DITHER};
+    TEST_ASSERT_TRUE(scene_camera_set_small_fill(scene, camera, limit));
+    TEST_ASSERT_FALSE(
+        scene_camera_set_small_fill(scene, camera, (small_fill_t){SMALL_FILL_CEILING_MAX + 1, 0, SMALL_FILL_DITHER}));
+    TEST_ASSERT_FALSE(scene_camera_set_small_fill(scene, camera, (small_fill_t){UINT8_MAX, 0, SMALL_FILL_DITHER}));
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_MAX, lens->small_fill.ceiling);
+    TEST_ASSERT_TRUE(scene_camera_set_small_fill(scene, camera, (small_fill_t){0, 0, SMALL_FILL_FLAT}));
     const small_fill_t fill = {4, 0, SMALL_FILL_DITHER};
     TEST_ASSERT_FALSE(scene_camera_set_small_fill(NULL, camera, fill));
     TEST_ASSERT_FALSE(scene_camera_set_small_fill(scene, scene_find(scene, "red"), fill));

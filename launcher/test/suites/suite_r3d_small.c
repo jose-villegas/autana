@@ -28,7 +28,7 @@
 
 #define ORACLE_SEED                937U
 #define ORACLE_SAMPLES             32
-#define ORACLE_MAX_SIDE            16
+#define ORACLE_MAX_SIDE            SMALL_FILL_CEILING_MAX
 #define CEILING_FOUR_FLAT_CHECKSUM 0x57208113U
 #define VERTEX_DITHER_CHECKSUM     0xDA4716C8U
 #define TEST_SOLID_COLOR           GFX_RGB(0x123456)
@@ -196,9 +196,11 @@ test_selector_random_triangles_and_gate_boundaries(void) {
         }
     }
     resolve_fill((small_fill_t){UINT8_MAX, SMALL_FILL_GATE_DEFAULT, SMALL_FILL_GRAIN});
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_MAX, resolved->ceiling);
     const r3d_span_vertex_t v[TRIANGLE_VERTICES] = {{0}};
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_GRAIN,
-                          select_small(v, v + 1, v + 2, (recti_t){0, 0, UINT8_MAX, UINT8_MAX}, false, NULL, resolved));
+                          select_small(v, v + 1, v + 2, (recti_t){0, 0, SMALL_FILL_CEILING_MAX, SMALL_FILL_CEILING_MAX},
+                                       false, NULL, resolved));
     TEST_ASSERT_EQUAL_INT(SMALL_FILL_WALK, select_small(v, v + 1, v + 2, (recti_t){0, 0, UINT8_MAX + 1, UINT8_MAX},
                                                         false, NULL, resolved));
 }

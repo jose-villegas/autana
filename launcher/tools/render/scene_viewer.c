@@ -44,10 +44,10 @@ options(int argc, char** argv) {
         } else if (strcmp(flag, "--small-fill") == 0) {
             unsigned ceiling, gate, style;
             char trailing;
-            if (sscanf(value, "%u,%u,%u%c", &ceiling, &gate, &style, &trailing) != 3 || ceiling > UINT8_MAX
+            if (sscanf(value, "%u,%u,%u%c", &ceiling, &gate, &style, &trailing) != 3 || ceiling > SMALL_FILL_CEILING_MAX
                 || gate > UINT8_MAX || style >= SMALL_FILL_STYLE_COUNT) {
                 fprintf(stderr, "scene_viewer: --small-fill is CEILING,GATE,STYLE within 0..%u,0..%u,0..%u\n",
-                        UINT8_MAX, UINT8_MAX, SMALL_FILL_STYLE_COUNT - 1);
+                        SMALL_FILL_CEILING_MAX, UINT8_MAX, SMALL_FILL_STYLE_COUNT - 1);
                 return false;
             }
             small_fill = (small_fill_t){(uint8_t)ceiling, (uint8_t)gate, (small_fill_style_t)style};
