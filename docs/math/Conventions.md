@@ -43,6 +43,7 @@ any type-specific operations.
 | `project_template.h` | `MATH_DEFINE_CLIP_NEAR` | near-plane segment clipping, no type | `projectf`, `projectx` |
 | `rect_template.h` | `MATH_DEFINE_RECT` | half-open rectangles | `rectf`, `recti`, `rects`, `rectx` |
 | `box3_template.h` | `MATH_DEFINE_BOX3`, `MATH_DEFINE_BOX3_REAL` | closed boxes; real queries take a plane type | `box3s`, `box3f`; real `f` |
+| `circle_template.h` | `MATH_DEFINE_CIRCLE`, `MATH_DEFINE_CIRCLE_REAL` | closed discs; real rect/segment queries | `circlef`, `circlex`, `circlei`; real `f x` |
 | `sphere_template.h` | `MATH_DEFINE_SPHERE` | closed spheres and box/segment queries | `spheref` |
 | `plane_template.h` | `MATH_DEFINE_PLANE` | planes, signed distance, frustum planes from a matrix's rows | `planef`, `planex` |
 
@@ -53,6 +54,7 @@ The macro arguments:
 | `P` | The type being made, e.g. `vec3f` (its functions are `vec3f_add`, ...) |
 | `V`, `R`, `Q`, `M`, `B` | The vector, rectangle, quaternion, matrix and box types a family builds on |
 | `L` | The projection lens prefix for `MATH_DEFINE_PLANE`, e.g. `projectf`; the plane prefix for `MATH_DEFINE_BOX3_REAL`, e.g. `planef` |
+| `EDGE` | `MATH_DEFINE_CIRCLE` takes this extra argument: one cell for integers, zero for real rect closures and bounds |
 | `LOWEST`, `HIGHEST` | The box scalar bounds, e.g. `INT16_MIN`, `INT16_MAX` or `-INFINITY`, `INFINITY` |
 | `T` | The scalar (`float`, `int`, `int32_t`, `int16_t`); `recti` keeps plain `int` |
 | `W` | The type a dot product sums in (wider than `T` for an integer) |

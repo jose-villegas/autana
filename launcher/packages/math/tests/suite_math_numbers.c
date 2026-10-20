@@ -1096,8 +1096,50 @@ test_scalar_half_and_absolute_value(void) {
     TEST_ASSERT_EQUAL_INT32(INT32_MAX, mathx_abs(INT32_MIN));
 }
 
+static void
+test_integer_square_root32(void) {
+    enum { ROOT_LIMIT = 65535 };
+
+    TEST_ASSERT_EQUAL_UINT32(0, mathi_isqrt32(0));
+    TEST_ASSERT_EQUAL_UINT32(ROOT_LIMIT, mathi_isqrt32(UINT32_MAX));
+    for (uint32_t n = 1; n <= ROOT_LIMIT; n++) {
+        const uint32_t square = n * n;
+        TEST_ASSERT_EQUAL_UINT32(n, mathi_isqrt32(square));
+        TEST_ASSERT_EQUAL_UINT32(n - 1, mathi_isqrt32(square - 1));
+        TEST_ASSERT_EQUAL_UINT32(mathi_isqrt64(square + n), mathi_isqrt32(square + n));
+    }
+}
+
+static void
+test_integer_half_chords(void) {
+    enum { FLOOR_LIMIT = 64, ROUND_LIMIT = 512, RANGE_LIMIT = 32767 };
+
+    for (int r = 0; r <= ROUND_LIMIT; r++) {
+        for (int d = -r - 1; d <= r + 1; d++) {
+            const int h = r * r - d * d;
+            const int want = h > 0 ? (int)lroundf(sqrtf((float)h)) : 0;
+            TEST_ASSERT_EQUAL_INT(want, mathi_half_chord_round(r, d));
+            if (r <= FLOOR_LIMIT) {
+                const int x = mathi_half_chord(r, d);
+                TEST_ASSERT_EQUAL_INT(x, mathi_half_chord(r, -d));
+                if (h <= 0) {
+                    TEST_ASSERT_EQUAL_INT(0, x);
+                } else {
+                    TEST_ASSERT_TRUE(x * x <= h);
+                    TEST_ASSERT_TRUE((x + 1) * (x + 1) > h);
+                }
+            }
+        }
+    }
+    TEST_ASSERT_EQUAL_INT(RANGE_LIMIT, mathi_half_chord(RANGE_LIMIT, 0));
+    TEST_ASSERT_EQUAL_INT(RANGE_LIMIT, mathi_half_chord_round(RANGE_LIMIT, 0));
+    TEST_ASSERT_EQUAL_INT(0, mathi_half_chord(-RANGE_LIMIT, 0));
+}
+
 void
 suite_math_numbers(void) {
+    RUN_TEST(test_integer_square_root32);
+    RUN_TEST(test_integer_half_chords);
     RUN_TEST(test_scalar_half_and_absolute_value);
     RUN_TEST(test_mathf_lerp);
     RUN_TEST(test_mathi_lerp);

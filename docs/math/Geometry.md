@@ -1,6 +1,6 @@
 # Geometry
 
-Half-open rectangles, oriented planes, closed boxes and spheres. [Math index](README.md).
+Half-open rectangles, oriented planes, closed boxes, spheres and circles. [Math index](README.md).
 
 ## rect (`f i s x`)
 
@@ -127,3 +127,32 @@ the point is inside. A tangent counts as a hit.
 ![Box-sphere overlap, touch and miss with closest points beside segment entry points on a box and sphere, an inside start and a miss](../images/math/box3-sphere-queries.png)
 
 Closest points decide sphere overlap; marked segment entries include a start inside the sphere at t = 0.
+
+## circle (`f`, `x`, `i`)
+
+`P` is `circlef`, `circlex` or `circlei`. A closed disc stores vec2 `centre`
+and nonnegative `radius`. Arithmetic must fit the number type; real values
+and segment endpoints must be finite.
+
+`P_overlaps_rect` uses Arvo 1990<sup>[[83]](../Citations.md#83)</sup> in two
+dimensions. Rectangles must be nonempty. Integer edges end at `right-1`
+and `bottom-1`; real queries include the closure at `right` and `bottom`.
+
+`P_segment_hit` uses the perpendicular-distance discriminant of Haines,
+Günther and Akenine-Möller<sup>[[84]](../Citations.md#84)</sup>.
+The real queries below are available for `f` and `x` only.
+
+| Function | Meaning | Formula |
+|---|---|---|
+| `P_contains_point(c, p)` | point inside or on the disc | $`\lVert p-c_c\rVert^2\le r^2`$ |
+| `P_overlaps(a, b)` | discs share points, including tangency | $`\lVert c_a-c_b\rVert^2\le(r_a+r_b)^2`$ |
+| `P_overlaps_rect(c, rect)` | closest covered coordinate is inside | $`q=\mathrm{clamp}(c_c,lo,hi)`$<br>$`\lVert q-c_c\rVert^2\le r^2`$ |
+| `P_bounds(c)` | enclosing rect; integer cells include both extremes | $`(c_x-r,c_y-r,2r+e,2r+e)`$, $`e=1`$ for `i`, $`e=0`$ for real |
+| `P_from_rect(rect)` | circumscribed disc (`f x`) | $`e=(w,h)/2,\ c=(x,y)+e,\ r=\lVert e\rVert`$ |
+| `P_closest_point(c, p)` | p inside; nearest boundary point outside (`f x`) | $`p`$ if inside, else $`c_c+(p-c_c)r/\lVert p-c_c\rVert`$ |
+| `P_segment_hit(c, a, b, &t)` | first entry in `[0,1]`, inside starts at zero (`f x`) | $`m=a-c_c,\ v=b-a,\ A=v\cdot v,\ B=m\cdot v`$<br>$`f=m-(B/A)v,\ D=r^2-f\cdot f`$<br>$`t=(-B-\sqrt{AD})/A`$ |
+| `circlei_cell_count(r)` | exact integer disc size; negative radius gives zero, result must fit int | $`\sum_{d=-r}^{r}(2\lfloor\sqrt{r^2-d^2}\rfloor+1)`$ |
+
+Segment queries write `t` only on a hit. A zero-length segment hits when
+its point is inside; tangency counts as a hit. Fixed-point results have
+Q16.16 rounding and range limits.
