@@ -168,7 +168,7 @@ def main():
         weight_frames.append(grid([clip.tile(k, weights, "joint colours by weight"),
                                    draw_bones(clip.tile(k, weights, "with joints"), clip, poses[k]),
                                    clip.tile(k, mixed, "joints mixing")], 3,
-                                  "joints mixing:  one joint", f"{1 - MIXED_FULL:.0%} / {MIXED_FULL:.0%} or more even"))
+                                  "joints mixing:  one joint", "split evenly"))
         a, b = skin_with(asset, poses[k], two), skin_with(asset, poses[k], four)
         moved = [math.dist(p, q) / radius for p, q in zip(a, b)]
         worst = [max(w, m) for w, m in zip(worst, moved)]
