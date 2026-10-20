@@ -16,9 +16,10 @@ flowchart LR
     Sum["sum the light"] --> Albedo["times the albedo"] --> Tone["tone map"] --> Encode["gamma 2.2, 8 bits"]
 ```
 
-The sky, occlusion and bounce rays share one fixed list of directions, laid
-out in each point's own tangent frame. The list is cosine-weighted, so it is
-even on the disc seen from above, and any first $R$ of it is evenly spread.
+The sun is a point source, so it casts hard shadows. The sky, occlusion and
+bounce rays each take the first $R$ of one fixed list of directions, $R$ their
+own setting, laid out in each point's tangent frame. The list is
+cosine-weighted, so it is even on the disc seen from above, for any $R$.
 
 ![The first 8, 32 and 128 fixed directions seen from above](../images/render/bake-directions.png)
 
@@ -37,7 +38,7 @@ With strength $s$ the factor is
 f(x) = 1 - \frac{s}{R} \sum_{i=1}^{R} w_i
 ```
 
-![A hit's weight against its distance, and f along the floor for three reaches](../images/render/bake-ao-falloff.png)
+![A hit's weight against its distance, and f along the floor for three reaches; the dashed line marks the point shown above](../images/render/bake-ao-falloff.png)
 
 A point farther than $D$ from everything keeps $f = 1$. A double-sided surface
 has no side it is meant to be seen from, so it takes the larger $f$ of its two
@@ -53,14 +54,15 @@ so frame cost and mesh size do not change; only the bake takes longer.
 
 The bake exports the full-detail source mesh, its textures at full resolution,
 and the scene's sun and sky to Mitsuba<sup>[[15]](../Citations.md#15)</sup> once.
+
 Each ray from a point is a path<sup>[[16]](../Citations.md#16)</sup>: Mitsuba
 follows it for up to $K$ bounces, with a shadow ray toward the lights at every
 hit. What comes back holds the hit's own shadow, albedo and further bounces.
 
 ![A floor point's rays, each coloured by the light its path gathers off the sunlit wall](../images/render/bake-bounce-rays.gif)
 
-The mean of the $R$ rays is the bounced light, and it adds to the direct light
-before the albedo, as in the diagram above:
+The mean of the $R$ rays is the bounced light (irradiance over $\pi$). It adds
+to the direct light before the albedo, as in the diagram above:
 
 ```math
 E_{\mathrm{ind}}(x) = \frac{1}{R} \sum_{i=1}^{R} L_i(x),
@@ -70,10 +72,11 @@ L(x) = a(x)\,\bigl(E_{\mathrm{direct}}(x) + E_{\mathrm{ind}}(x)\bigr)
 
 A ray that escapes adds nothing, because the sky light already counts the sky.
 Each bounce adds less than the one before, since every albedo is below 1: pick
-$K$ where the next bounce is negligible beside the direct light. The paths'
-noise falls as $1/\sqrt{R}$.
+$K$ where the next bounce is negligible beside the direct light.
 
-![Bounced light along the floor for one to three bounces beside the direct light, and its error against the ray count](../images/render/bake-bounce-sweep.png)
+The paths' noise falls as $1/\sqrt{R}$.
+
+![The light each of three bounces adds along the floor, and the relative error against the ray count](../images/render/bake-bounce-sweep.png)
 
 | Rule | Why |
 |---|---|
@@ -83,9 +86,11 @@ noise falls as $1/\sqrt{R}$.
 | A ray reaching a one-sided triangle from behind finds no light | Light does not pass through shells |
 
 The [indirect look](Scene-Files.md#indirect) controls bounced intensity and
-bounce reflectance. The cost is $R$ paths of up to $K+1$ segments per baked
-point. The light's resolution is the vertex or face spacing of the baked mesh:
-bounce detail smaller than a triangle is lost.
+bounce reflectance. The cost is $R$ paths of up to $K+1$ segments per baked point.
+
+The light's resolution is the baked mesh's vertex or face spacing: bounce detail
+smaller than a triangle is lost, and a coloured surface tints only the triangles
+it reaches.
 
 ![Where bounce light changes the picture](../images/render/bake-indirect-crops.png)
 
@@ -106,8 +111,8 @@ changes, scored by the same code:
 
 | Number | Meaning | Catches |
 |---|---|---|
-| Mean ΔE76 | CIE76 colour difference per pixel, averaged; about 2 is just visible, 20 a clearly different colour | An overall shift, such as a brighter bake |
-| p95 ΔE76 | The 95th percentile of the pixels' ΔE: how bad the worst places are | Errors packed into few pixels, such as a blurred shadow |
+| Mean ΔE76 | CIE76 colour difference per pixel, averaged per frame, then over the frames; about 2 is just visible, 20 a clearly different colour | An overall shift, such as a brighter bake |
+| p95 ΔE76 | The 95th percentile of the pixels' ΔE in each frame, averaged over the frames: how bad the worst places are | Errors packed into few pixels, such as a blurred shadow |
 | Luma SSIM | Structural similarity of luma, 1 for identical | Lost shape and contrast, such as blocky colour |
 | Edge and interior ΔE76 | ΔE on the pixels at a sharp luma step of the reference (silhouettes, shadow boundaries), and on the rest | Whether the error is at edges or across surfaces |
 
@@ -118,8 +123,7 @@ a scene's scores live beside its own tools.
 
 The ceiling for a flat bake is the smooth bake's own error. Smooth, one colour
 per vertex, is not exact either, and flat adds the colour gradient across each
-triangle, which no face sampling brings back. Face sampling changes only how
-well the one colour represents the face.
+triangle, which no face sampling brings back.
 
 ### The scores, exactly
 
@@ -135,7 +139,7 @@ loss read:
 | To CIELAB | Relative to the D65 white $(0.95047, 1, 1.08883)$ | Same |
 | Distance | $`\Delta E_{76} = \lVert \mathrm{Lab}(R_p) - \mathrm{Lab}(T_p) \rVert`$ for render $R$, reference $T$ | Same |
 
-Mean ΔE averages it over the frame and p95 is its 95th percentile. Luma
+Each frame's mean and p95 of it are averaged over the frames. Luma
 SSIM<sup>[[9]](../Citations.md#9)</sup> is the paper's formula with these
 choices:
 

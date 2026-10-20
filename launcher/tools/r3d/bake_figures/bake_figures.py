@@ -7,7 +7,7 @@ test picture under three changes, scored by render_compare.py's own ΔE, SSIM an
 
     python launcher/tools/r3d/bake_figures/bake_figures.py --out DIR
 
-Needs launcher/tools/r3d/requirements.txt and matplotlib. launcher/tools/render/render_doc_images.sh runs it.
+Needs launcher/tools/r3d/requirements.txt. launcher/tools/render/render_doc_images.sh runs it.
 """
 
 import argparse
@@ -27,24 +27,18 @@ sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS / "render"))
 from docs.plot_style import FAINT, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE, figure, save, save_gif, subplots  # noqa: E402
 from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection  # noqa: E402
-from r3d import ray_query  # noqa: E402
-from r3d.geometry import corner_normals  # noqa: E402
-from r3d.light import light, local_occlusion, sky_directions, tangent_frame  # noqa: E402
-from r3d.path_bake import PathLight  # noqa: E402
-from r3d.ray_query import RayQuery  # noqa: E402
+from r3d import path_bake  # noqa: E402
+from r3d.light import LIGHT_GAMMA, light, local_occlusion, sky_directions, tangent_frame  # noqa: E402
 import render_compare  # noqa: E402
+# The bounce tests' floor and wall; importing it traces one ray at a time, no libLLVM needed.
+from tests import soup  # noqa: E402
+from tests.soup import SUN, corridor, floor_points, path_light  # noqa: E402
 
-# One ray at a time, as the bake's tests trace: no libLLVM, and the same bytes on every machine.
-VARIANT = "scalar_rgb"
 RAY_OFFSET = 0.01
-# The scene, in bake units: a floor (y = 0) and a wall (x = 0) facing it, both much larger than anything drawn.
-EXTENT = 400.0
+# The tests' corridor with a wall low enough that its bounced light falls off along the floor.
 WALL_HEIGHT = 4.0
-CEILING = 20.0
 WALL_ALBEDO = (0.9, 0.5, 0.15)
-FLOOR_ALBEDO = 0.5
-DISPLAY_GAMMA = 2.2
-SUN = {"type": "directional", "direction": [0.6, 1.0, 0.25], "color": [1.0, 1.0, 1.0], "intensity": 2.0}
+CEILING = 20.0
 # The drawn point, its distance from the wall, and the occlusion settings it is shown with.
 POINT_X = 2.0
 SHOWN_RAYS = 48
@@ -78,29 +72,25 @@ BRIGHTNESS_STEP = 18
 BLUR_RADIUS = 2
 FLAT_BLOCK = 8
 SCALE_ROWS = 6
+# The test picture, in picture widths: a floor lit brighter toward the bottom, a ball lit from the upper left, and
+# its shadow on the floor.
+FLOOR_COLOUR = (0.55, 0.5, 0.42)
+FLOOR_TOP_LIGHT = 0.6
+BALL_CENTRE = (0.45, 0.45)
+BALL_RADIUS = 0.27
+BALL_COLOUR = (0.85, 0.3, 0.2)
+BALL_LIGHT = (-0.5, -0.6, 0.6)
+BALL_AMBIENT = 0.05
+SHADOW_CENTRE = (0.62, 0.8)
+SHADOW_RADII = (0.3, 0.09)
+SHADOW_LIGHT = 0.45
+DIRECTION_COUNTS = (8, 32, 128)
 
 
-def corridor_source():
-    """The floor (material 0) and the wall facing it (material 1), as the bake's source mesh and its ray queries."""
-    floor = [[-EXTENT, 0, EXTENT], [EXTENT, 0, EXTENT], [EXTENT, 0, -EXTENT], [-EXTENT, 0, -EXTENT]]
-    wall = [[0, WALL_HEIGHT, -EXTENT], [0, WALL_HEIGHT, EXTENT], [0, 0, EXTENT], [0, 0, -EXTENT]]
-    p = np.array(floor + wall, dtype=float)
-    tri_v = np.array([[0, 1, 2], [0, 2, 3], [4, 5, 6], [4, 6, 7]])
-    # Only the floor's +x half is drawn and lit: the wall stands on it.
-    p[[0, 3], 0] = 0.0
-    kd = lambda albedo: tuple(value ** (1 / DISPLAY_GAMMA) for value in albedo)  # noqa: E731
-    source = SimpleNamespace(colors=None, p=p, uv=np.zeros((len(p), 2)), tri_v=tri_v, tri_t=tri_v,
-                             tri_m=np.array([0, 0, 1, 1]), names=["floor", "wall"],
-                             materials={"floor": {"Kd": kd((FLOOR_ALBEDO,) * 3)}, "wall": {"Kd": kd(WALL_ALBEDO)}},
-                             textures=[None, None])
-    source.corner_normals = corner_normals(p, tri_v)
-    return source, RayQuery(p, tri_v, VARIANT)
-
-
-def floor_points(xs, height=0.0):
-    xs = np.asarray(xs, dtype=float)
-    points = np.stack([xs, np.broadcast_to(height, xs.shape), np.zeros_like(xs)], axis=1)
-    return points, np.tile([0.0, 1.0, 0.0], (len(points), 1))
+def source():
+    """The corridor as the bake's source mesh, and its ray queries."""
+    mesh = corridor(wall_kd=tuple(value ** (1 / LIGHT_GAMMA) for value in WALL_ALBEDO), wall_height=WALL_HEIGHT)
+    return mesh, soup.rays(soup.Soup(mesh.p, mesh.tri_v))
 
 
 def occlusion_settings(distance, rays):
@@ -117,7 +107,7 @@ def point_rays(rays):
 
 def occlusion_data(rays):
     """Each ray of the drawn point: where it stops (the hit, or AO_DISTANCE out) and its weight 1 - t / D."""
-    source, query = corridor_source()
+    _, query = source()
     origin = floor_points([POINT_X])[0] + np.array([0.0, RAY_OFFSET, 0.0])
     directions = point_rays(SHOWN_RAYS)
     hit, distance, _ = query.first_hits(np.repeat(origin, len(directions), axis=0), directions)
@@ -125,10 +115,13 @@ def occlusion_data(rays):
     weight = np.where(hit, np.clip(1.0 - distance / AO_DISTANCE, 0.0, 1.0), 0.0)
     factor = local_occlusion(*floor_points([POINT_X]), query, occlusion_settings(AO_DISTANCE, SHOWN_RAYS),
                              RAY_OFFSET)[0]
+    # The drawn weights are the factor's own: f = 1 - s * mean(w).
+    assert np.isclose(factor, 1.0 - AO_STRENGTH * weight.mean())
     xs = np.linspace(0.0, FLOOR_REACH, FLOOR_SAMPLES)[1:]
-    # One ray straight at a ceiling: its weight is 1 - f, at the distance the ray travels to it.
-    ceiling = RayQuery(np.array([[-EXTENT, CEILING, -EXTENT], [EXTENT, CEILING, -EXTENT], [EXTENT, CEILING, EXTENT],
-                                 [-EXTENT, CEILING, EXTENT]]), np.array([[0, 1, 2], [0, 2, 3]]), VARIANT)
+    # The weight curve: one ray straight at a ceiling, the point moved to distance t below it, so 1 - f is that ray's w.
+    big = soup.BIG
+    ceiling = soup.rays(soup.Soup([[-big, CEILING, -big], [big, CEILING, -big], [big, CEILING, big],
+                                   [-big, CEILING, big]], [[0, 1, 2], [0, 2, 3]]))
     up = sky_directions(1)[0][2]
     t = np.linspace(0.0, max(AO_DISTANCES) * 1.25, FLOOR_SAMPLES)[1:]
     weights = {d: 1.0 - local_occlusion(*floor_points(np.zeros(len(t)), CEILING - t * up), ceiling,
@@ -143,7 +136,7 @@ def draw_corridor(axis):
     half = BOX / 2
     floor = [[0, 0, -half], [BOX, 0, -half], [BOX, 0, half], [0, 0, half]]
     wall = [[0, 0, -half], [0, 0, half], [0, WALL_HEIGHT, half], [0, WALL_HEIGHT, -half]]
-    wall_colour = tuple(value ** (1 / DISPLAY_GAMMA) for value in WALL_ALBEDO)
+    wall_colour = tuple(value ** (1 / LIGHT_GAMMA) for value in WALL_ALBEDO)
     axis.add_collection3d(Poly3DCollection([floor], facecolor=FAINT, alpha=0.35, edgecolor=MUTED))
     axis.add_collection3d(Poly3DCollection([wall], facecolor=wall_colour, alpha=0.3, edgecolor=MUTED))
     axis.set(xlim=(0, BOX), ylim=(0, BOX), zlim=(-half, half))
@@ -210,7 +203,7 @@ def occlusion_falloff(data, path):
 
 def directions_figure(path):
     """The fixed directions seen from above (cosine-weighted: even on the disc) for three prefix lengths."""
-    counts = (8, 32, 128)
+    counts = DIRECTION_COUNTS
     fig, axes = subplots(1, len(counts), (PANEL[0] * len(counts) * 0.75, PANEL[1] * 0.85))
     circle = np.linspace(0, 2 * math.pi, 200)
     for axis, count in zip(axes, counts):
@@ -224,30 +217,25 @@ def directions_figure(path):
 
 
 def bounce_data():
-    source, query = corridor_source()
-    lights = [SUN]
-    gathered = PathLight(source, lights, set(), SimpleNamespace(bounces=BOUNCES[-1], rays=SHOWN_RAYS), 1.0,
-                         variant=VARIANT)
-    origin = floor_points([POINT_X])[0] + np.array([0.0, RAY_OFFSET, 0.0])
+    mesh, query = source()
+    bounced = lambda bounces, rays: path_light(source()[0], bounces=bounces, rays=rays)  # noqa: E731
+    gathered = bounced(BOUNCES[-1], SHOWN_RAYS)
+    point, normal = floor_points([POINT_X])
+    origin = point + normal * RAY_OFFSET
     directions = point_rays(SHOWN_RAYS)
-    per_ray = gathered._radiance(np.repeat(origin, SHOWN_RAYS, axis=0), directions, 0)
+    per_ray = gathered._radiance(np.repeat(origin, SHOWN_RAYS, axis=0), directions, path_bake.SEED)
+    # The drawn rays are bounce()'s own: its first chunk is seeded SEED as well.
+    assert np.allclose(per_ray.mean(axis=0), gathered.bounce(point, normal, RAY_OFFSET)[0])
     hit, distance, _ = query.first_hits(np.repeat(origin, SHOWN_RAYS, axis=0), directions)
     xs = np.linspace(0.0, FLOOR_REACH, FLOOR_SAMPLES // 2)[1:]
     points, normals = floor_points(xs)
-    direct = light(points, normals, np.zeros(len(xs), bool), query, lights, RAY_OFFSET)
-    sweep = {}
-    for bounces in BOUNCES:
-        path = PathLight(corridor_source()[0], lights, set(), SimpleNamespace(bounces=bounces, rays=SWEEP_RAYS), 1.0,
-                         variant=VARIANT)
-        sweep[bounces] = path.bounce(points, normals, RAY_OFFSET)
+    direct = light(points, normals, np.zeros(len(xs), bool), query, [SUN], RAY_OFFSET)
+    sweep = {bounces: bounced(bounces, SWEEP_RAYS).bounce(points, normals, RAY_OFFSET) for bounces in BOUNCES}
     noise_points, noise_normals = floor_points(NOISE_POINTS)
-    reference = PathLight(corridor_source()[0], lights, set(),
-                          SimpleNamespace(bounces=BOUNCES[0], rays=NOISE_REFERENCE_RAYS), 1.0,
-                          variant=VARIANT).bounce(noise_points, noise_normals, RAY_OFFSET)
+    reference = bounced(BOUNCES[0], NOISE_REFERENCE_RAYS).bounce(noise_points, noise_normals, RAY_OFFSET)
     noise = []
     for rays in NOISE_RAYS:
-        got = PathLight(corridor_source()[0], lights, set(), SimpleNamespace(bounces=BOUNCES[0], rays=rays), 1.0,
-                        variant=VARIANT).bounce(noise_points, noise_normals, RAY_OFFSET)
+        got = bounced(BOUNCES[0], rays).bounce(noise_points, noise_normals, RAY_OFFSET)
         noise.append(float(np.mean(np.abs(got - reference).sum(axis=1) / reference.sum(axis=1))))
     return SimpleNamespace(origin=origin[0], directions=directions, per_ray=per_ray, hit=hit, distance=distance,
                            xs=xs, direct=direct, sweep=sweep, noise=noise)
@@ -258,7 +246,7 @@ def bounce_rays_gif(data, path):
     axis = fig.add_subplot(projection="3d")
     draw_corridor(axis)
     lit = data.per_ray.sum(axis=1) > 0
-    shade = np.clip(data.per_ray / max(data.per_ray.max(), 1e-9), 0.0, 1.0) ** (1 / DISPLAY_GAMMA)
+    shade = np.clip(data.per_ray / max(data.per_ray.max(), 1e-9), 0.0, 1.0) ** (1 / LIGHT_GAMMA)
     draw_rays(axis, data.origin, data.directions, np.where(data.hit, data.distance, np.inf), shade[lit], lit)
     sun = np.array(SUN["direction"]) / np.linalg.norm(SUN["direction"])
     tip = np.array([BOX * 0.7, WALL_HEIGHT, 0.0])
@@ -272,20 +260,23 @@ def bounce_rays_gif(data, path):
 
 def bounce_figure(data, path):
     fig, (sweep_axis, noise_axis) = subplots(1, 2, (PANEL[0] * 2, PANEL[1]))
-    total = lambda rgb: rgb.mean(axis=1)  # noqa: E731
-    sweep_axis.plot(data.xs, total(data.direct), color=INK, linestyle="--", label="direct")
-    for bounces, colour in zip(BOUNCES, SLOTS):
-        sweep_axis.plot(data.xs, total(data.sweep[bounces]), color=colour, label=f"K = {bounces}")
-    sweep_axis.set(xlabel="distance from the wall", ylabel="light / pi, mean of r, g, b", xlim=(0, data.xs[-1]))
+    previous = np.zeros(len(data.xs))
+    for bounces, colour, name in zip(BOUNCES, SLOTS, ("first", "second", "third")):
+        reached = data.sweep[bounces].mean(axis=1)
+        sweep_axis.plot(data.xs, reached - previous, color=colour, label=f"{name} bounce")
+        previous = reached
+    sweep_axis.set(xlabel="distance from the wall", ylabel="light / pi it adds (mean of r, g, b)",
+                   xlim=(0, data.xs[-1]))
     sweep_axis.set_ylim(bottom=0)
-    sweep_axis.set_title("Each bounce adds less than the one before", fontsize=TITLE_SIZE)
+    sweep_axis.set_title(f"Each bounce adds less than the one before\n(direct light here: "
+                         f"{data.direct.mean():.2f})", fontsize=TITLE_SIZE)
     sweep_axis.legend(fontsize=LABEL_SIZE, loc="upper right")
     rays = np.array(NOISE_RAYS)
     fit = data.noise[0] * math.sqrt(rays[0]) / np.sqrt(rays)
     noise_axis.plot(rays, data.noise, color=SLOTS[0], marker="o", label="measured")
     noise_axis.plot(rays, fit, color=MUTED, linestyle="--", label="1 / sqrt(R)")
     noise_axis.set_xscale("log", base=2)
-    noise_axis.set(xlabel="rays per point R", ylabel=f"error vs {NOISE_REFERENCE_RAYS} rays", ylim=(0, None))
+    noise_axis.set(xlabel="rays per point R", ylabel=f"relative error vs {NOISE_REFERENCE_RAYS} rays")
     noise_axis.set_ylim(bottom=0)
     noise_axis.set_title("Noise falls as 1 / sqrt(R)", fontsize=TITLE_SIZE)
     noise_axis.legend(fontsize=LABEL_SIZE, loc="upper right")
@@ -298,14 +289,14 @@ def test_picture():
     """A lit ball on a floor with a hard shadow: smooth shading, a silhouette and a shadow edge."""
     y, x = np.mgrid[0:SCORE_SIZE, 0:SCORE_SIZE] / SCORE_SIZE
     image = np.zeros((SCORE_SIZE, SCORE_SIZE, 3))
-    image[:] = (0.55, 0.5, 0.42) * (0.6 + 0.4 * y[..., None])
-    shadow = ((x - 0.62) / 0.3) ** 2 + ((y - 0.8) / 0.09) ** 2 < 1
-    image[shadow] *= 0.45
-    r = np.hypot(x - 0.45, y - 0.45)
-    ball = r < 0.27
-    nz = np.sqrt(np.clip(1 - (r / 0.27) ** 2, 0, 1))
-    shade = np.clip(((x - 0.45) * -0.5 + (y - 0.45) * -0.6) / 0.27 + nz * 0.6, 0.05, 1.0)
-    image[ball] = (np.array([0.85, 0.3, 0.2]) * shade[..., None])[ball]
+    image[:] = np.array(FLOOR_COLOUR) * (FLOOR_TOP_LIGHT + (1 - FLOOR_TOP_LIGHT) * y[..., None])
+    shadow = ((x - SHADOW_CENTRE[0]) / SHADOW_RADII[0]) ** 2 + ((y - SHADOW_CENTRE[1]) / SHADOW_RADII[1]) ** 2 < 1
+    image[shadow] *= SHADOW_LIGHT
+    nx, ny = (x - BALL_CENTRE[0]) / BALL_RADIUS, (y - BALL_CENTRE[1]) / BALL_RADIUS
+    ball = nx ** 2 + ny ** 2 < 1
+    nz = np.sqrt(np.clip(1 - nx ** 2 - ny ** 2, 0, 1))
+    shade = np.clip(nx * BALL_LIGHT[0] + ny * BALL_LIGHT[1] + nz * BALL_LIGHT[2], BALL_AMBIENT, 1.0)
+    image[ball] = (np.array(BALL_COLOUR) * shade[..., None])[ball]
     return Image.fromarray(np.round(image * 255).astype(np.uint8))
 
 
@@ -351,7 +342,6 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--out", type=pathlib.Path, required=True, help="the folder the figures go to")
     args = parser.parse_args()
-    ray_query.VARIANT = VARIANT
     occlusion = occlusion_data(SHOWN_RAYS)
     occlusion_rays_gif(occlusion, args.out / "bake-ao-rays.gif")
     occlusion_falloff(occlusion, args.out / "bake-ao-falloff.png")
