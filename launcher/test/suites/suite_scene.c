@@ -2219,6 +2219,64 @@ test_camera_present_default_setter_and_dynamic_size(void) {
 }
 
 static void
+test_camera_small_fill_changes_scene_pixels(void) {
+    expanded_fixture();
+    scene_t* scene = scene_loaded_at(0);
+    const scene_entity_t camera = scene_find(scene, "camera");
+    static const uint8_t colors[QUAD_VERTICES][3] = {{32, 80, 96}, {128, 112, 48}, {224, 160, 144}, {48, 96, 80}};
+    for (int i = 0; i < scene->renderer_count; i++) {
+        scene->renderers[i].mesh.colors = colors;
+    }
+    render_context_t* context = render_context_main();
+    scene_render(0, 0, SIZE, SIZE);
+    memcpy(fx.held, raster_color(&context->raster), SIZE * SIZE * sizeof(*fx.held));
+    TEST_ASSERT_TRUE(scene_camera_set_small_fill(scene, camera, SMALL_FILL_SMOOTH));
+    scene_render(0, 0, SIZE, SIZE);
+    TEST_ASSERT_EQUAL_MEMORY(fx.held, raster_color(&context->raster), SIZE * SIZE * sizeof(*fx.held));
+    uint32_t checksums[SMALL_FILL_STYLE_COUNT];
+    for (small_fill_style_t style = SMALL_FILL_FLAT; style < SMALL_FILL_STYLE_COUNT; style++) {
+        TEST_ASSERT_TRUE(scene_camera_set_small_fill(scene, camera, (small_fill_t){SMALL_FILL_CEILING_FAST, 0, style}));
+        scene_render(0, 0, SIZE, SIZE);
+        checksums[style] = asset_crc32(raster_color(&context->raster), SIZE * SIZE * sizeof(uint16_t));
+        for (int previous = SMALL_FILL_FLAT; previous < (int)style; previous++) {
+            TEST_ASSERT_NOT_EQUAL(checksums[previous], checksums[style]);
+        }
+    }
+}
+
+static void
+test_camera_small_fill_default_setter_and_view(void) {
+    expanded_fixture();
+    scene_t* scene = scene_loaded_at(0);
+    const scene_entity_t camera = scene_find(scene, "camera");
+    const camera_t* lens = scene_camera_lens(scene, NULL);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.ceiling, lens->small_fill.ceiling);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.gate, lens->small_fill.gate);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_FLAT, lens->small_fill.style);
+    const small_fill_t limit = {SMALL_FILL_CEILING_MAX, 0, SMALL_FILL_DITHER};
+    TEST_ASSERT_TRUE(scene_camera_set_small_fill(scene, camera, limit));
+    TEST_ASSERT_FALSE(
+        scene_camera_set_small_fill(scene, camera, (small_fill_t){SMALL_FILL_CEILING_MAX + 1, 0, SMALL_FILL_DITHER}));
+    TEST_ASSERT_FALSE(scene_camera_set_small_fill(scene, camera, (small_fill_t){UINT8_MAX, 0, SMALL_FILL_DITHER}));
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_MAX, lens->small_fill.ceiling);
+    TEST_ASSERT_TRUE(scene_camera_set_small_fill(scene, camera, (small_fill_t){0, 0, SMALL_FILL_FLAT}));
+    const small_fill_t fill = SMALL_FILL_FAST;
+    TEST_ASSERT_FALSE(scene_camera_set_small_fill(NULL, camera, fill));
+    TEST_ASSERT_FALSE(scene_camera_set_small_fill(scene, scene_find(scene, "red"), fill));
+    TEST_ASSERT_FALSE(scene_camera_set_small_fill(scene, SCENE_ENTITY_NONE, fill));
+    TEST_ASSERT_FALSE(scene_camera_set_small_fill(scene, camera, (small_fill_t){4, 0, SMALL_FILL_STYLE_COUNT}));
+    TEST_ASSERT_TRUE(scene_camera_set_small_fill(scene, camera, fill));
+    const transformf_t pose = TRANSFORMF_IDENTITY;
+    const render_view_t view = camera_view(lens, &pose, (viewport_t){64, 48, 0});
+    TEST_ASSERT_EQUAL_INT(fill.ceiling, view.small_fill.ceiling);
+    TEST_ASSERT_EQUAL_INT(fill.gate, view.small_fill.gate);
+    TEST_ASSERT_EQUAL_INT(fill.style, view.small_fill.style);
+    TEST_ASSERT_EQUAL_INT(fill.ceiling, lens->small_fill.ceiling);
+    TEST_ASSERT_EQUAL_INT(fill.gate, lens->small_fill.gate);
+    TEST_ASSERT_EQUAL_INT(fill.style, lens->small_fill.style);
+}
+
+static void
 test_non_half_compose_upscales_to_the_full_destination(void) {
     expanded_fixture();
     render_context_set_scale(render_context_main(), 75);
@@ -3721,6 +3779,8 @@ run_scene_suite(void) {
     RUN_TEST(test_leaving_band_mode_draws_the_whole_picture_and_frees_the_band_block);
     RUN_TEST(test_releasing_the_context_frees_the_band_block);
     RUN_TEST(test_camera_present_default_setter_and_dynamic_size);
+    RUN_TEST(test_camera_small_fill_default_setter_and_view);
+    RUN_TEST(test_camera_small_fill_changes_scene_pixels);
     RUN_TEST(test_non_half_compose_upscales_to_the_full_destination);
     RUN_TEST(test_failed_half_allocation_keeps_full_upscale_unexpanded);
     RUN_TEST(test_expanded_frame_without_ui_does_not_replay_the_previous_hud);

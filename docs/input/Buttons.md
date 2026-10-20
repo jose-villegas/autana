@@ -7,13 +7,14 @@ The two buttons are different kinds of device.
 | BOOT | active-low GPIO 0 | level debounced into edges by `input/buttons/button_fsm.c`; also selects the ROM bootloader |
 | PWR | AXP2101 latched interrupt status over I2C | completed event, not a readable finger-down level |
 
-`input/buttons/buttons.c` enables the PMU's short-press interrupt and polls
-independently of rendering. Its `POLL_HZ` controls shared-bus traffic.
+[power/](../../launcher/main/power/README.md) owns the PMU handle and key
+interrupts. The input polling task calls `power_poll()` at `POLL_HZ`,
+independently of rendering; its battery cache adds one refresh per second.
 
 | PMU register | Rule |
 |---|---|
-| `0x41`, bit 3 | enables the short-press interrupt |
-| `0x49`, bit 3 | latched short-press status; write one to clear only the consumed bit |
+| `0x41`, bits 3/2 | enable short/long-press interrupts |
+| `0x49`, bits 3/2 | latched short/long-press status; write one to clear only consumed bits |
 | `0x27` | independent long-press IRQ, power-off and power-on thresholds |
 | `0x22`, bit 1 | enables button power-off; bit 0 selects power-off or restart |
 

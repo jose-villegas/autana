@@ -257,12 +257,12 @@ test_menu_calls_optional_controls(void) {
     ui_init();
     controls_drawn = 0;
     ui_begin(NULL);
-    const render_lab_menu_screen_state_t state = {.scene_name = "Test", .controls = controls};
+    const render_lab_menu_screen_state_t state = {.controls = controls};
     (void)render_lab_menu_screen_draw(&state);
     ui_end(UI_NO_BACKGROUND);
     TEST_ASSERT_EQUAL_INT(1, controls_drawn);
     ui_begin(NULL);
-    const render_lab_menu_screen_state_t plain = {.scene_name = "Plain"};
+    const render_lab_menu_screen_state_t plain = {0};
     (void)render_lab_menu_screen_draw(&plain);
     ui_end(UI_NO_BACKGROUND);
     TEST_ASSERT_EQUAL_INT(1, controls_drawn);
@@ -285,7 +285,7 @@ clip_controls(int width) {
 static void
 menu_frame(const input_t* input) {
     ui_begin(input);
-    const render_lab_menu_screen_state_t state = {.scene_name = "Animated", .controls = clip_controls};
+    const render_lab_menu_screen_state_t state = {.controls = clip_controls};
     (void)render_lab_menu_screen_draw(&state);
     ui_end(UI_NO_BACKGROUND);
     TEST_ASSERT_TRUE(ui_probe_widget("CLIP", &clip_rect));

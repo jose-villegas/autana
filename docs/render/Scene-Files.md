@@ -471,6 +471,14 @@ where $`w`$ is `surface_weight`, $`\epsilon`$ is `surface_margin`, and $`t`$
 is `SURFACE_TANGENTIAL_WEIGHT`. Both distances are measured in $`e_x`$.
 The plane envelope is zero inside the margin; the small pull remains active there.
 
+The fit also holds seams between parts. A start border point within
+`SEAM_MARGIN` × its capped local start edge scale of another part's triangle
+is moved onto that triangle.
+
+It then follows the triangle at fixed start barycentrics, so parts that
+overlapped in the start cannot pull apart into cracks. Nearest contacts win,
+and a held point never anchors another hold.
+
 Colour history, `loss.txt` and the printed mean ΔE76 exclude surface, normal,
 Laplacian and cost penalties. The surface loss is reported beside drift.
 Pruning counts shown pixels at the recipe's coverage spacing; this sampling is

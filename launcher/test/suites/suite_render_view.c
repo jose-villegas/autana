@@ -42,6 +42,9 @@ static void
 test_basis_is_orthonormal_and_picture_right_is_pose_plus_x(void) {
     const transformf_t pose = fixture();
     const render_view_t view = view_of(&pose, 0);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.ceiling, view.small_fill.ceiling);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.gate, view.small_fill.gate);
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_SMOOTH.style, view.small_fill.style);
     expect_vector((vec3f_t){1.0F, 1.0F, 1.0F},
                   (vec3f_t){vec3f_dot(view.screen_x, view.screen_x), vec3f_dot(view.screen_y, view.screen_y),
                             vec3f_dot(view.forward, view.forward)});

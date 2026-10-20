@@ -47,6 +47,8 @@ on the camera's entity whose tracks bind to that entity through
 | `scene_find(scene, name)` | the entity with that name: look it up once, after the load, and keep it |
 | `scene_entity_mesh_id(scene, entity)` | the pack id of the mesh the entity draws, or NULL |
 | `scene_camera_lens(scene, camera)` | a camera's lens (NULL: the first); its pose is its entity's transform |
+| `scene_camera_set_present(scene, camera, present)` | sets the camera's presentation; false for a non-camera entity or invalid mode |
+| `scene_camera_set_small_fill(scene, camera, fill)` | sets its `small_fill_t` ceiling, colour gate and style; defaults are `SMALL_FILL_SMOOTH`; pass `SMALL_FILL_FAST` to opt into tuned filling; false for a non-camera entity or invalid ceiling or style ([Small fill](Mesh-Rendering.md#small-fill)) |
 | `scene_set_transform()` / `scene_entity_set_enabled()` | set an entity's TRS value, hide or show a renderer |
 | `scene_entity_transform(scene, entity)` | reads the entity's TRS component |
 | `scene_animator_set_clips()` / `scene_renderer_set_skin()` | attach clips and a skeleton, or a skin, by asset id |
