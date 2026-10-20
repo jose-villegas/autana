@@ -21,7 +21,9 @@ the [demo assets](../../launcher/demo/README.md).
 | [Scene-Files.md](Scene-Files.md) | The scene file: objects with a transform and one component (mesh renderer, directional light, camera), sky and ambient, what a scene must carry, and the scene entry (`SCNE`) the pack build bakes from it. |
 | [Scene-Manager.md](Scene-Manager.md) | The runtime side of a scene: load by name, the packed component arrays, the one active camera, what the shell does each frame and who owns what. |
 | [Camera.md](Camera.md) | A scene camera: the pose on the entity, the lens beside it, how a view is built, and which lens fields animate. |
-| [Mesh-Import.md](Mesh-Import.md) | The import file and the bake stages: opt-in processing steps, simplify, light, meshlets, and the baked format a renderer consumes. |
+| [Mesh-Import.md](Mesh-Import.md) | The import file and the bake stages: opt-in processing steps, simplify, light, and the offline tools. |
+| [Baked-Mesh.md](Baked-Mesh.md) | The baked mesh a renderer consumes: clusters and the tree, the `LMSH` entry layout, meshlets. |
+| [Bake-Method.md](Bake-Method.md) | How a bake's light is computed and scored: local occlusion, bounced light, the fidelity numbers. |
 | [Bake-Quality.md](Bake-Quality.md) | What each bake option buys, measured against the source: the variants, the appearance fit, indirect light, local occlusion and their board cost. |
 | [Skinned-Meshes.md](Skinned-Meshes.md) | **Animated characters**: import a rigged model with its clips, the skin options, the animator and skinned-renderer calls, the board budget and current limits. |
 | [Skinned-Lighting.md](Skinned-Lighting.md) | Lighting a skinned mesh every frame: direct N.L against a per-object lookup table, measured, and the recommended path. |
