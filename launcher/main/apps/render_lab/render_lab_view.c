@@ -7,6 +7,7 @@ TUNE(render_lab, view, RENDER_DEBUG_VIEW_SHADED, RENDER_DEBUG_VIEW_SHADED, RENDE
 TUNE(render_lab, scale, RENDER_LAB_SCALE_DEFAULT, RENDER_LAB_SCALE_UNIT, RENDER_LAB_SCALE_MAX);
 TUNE(render_lab, present, CAMERA_PRESENT_NEAREST, CAMERA_PRESENT_NEAREST, CAMERA_PRESENT_DOUBLE);
 TUNE(render_lab, budget, 0, 0, 200);
+TUNE(render_lab, layout, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_FULL, RENDER_LAB_LAYOUT_COUNT - 1);
 
 int
 render_lab_debug_view(void) {
@@ -21,6 +22,11 @@ render_lab_scale(void) {
 camera_present_t
 render_lab_present(void) {
     return (camera_present_t)present;
+}
+
+render_lab_layout_t
+render_lab_layout(void) {
+    return (render_lab_layout_t)layout;
 }
 
 resolution_step_t

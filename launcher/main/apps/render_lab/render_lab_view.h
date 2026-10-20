@@ -15,6 +15,17 @@ int render_lab_scale(void);
 
 camera_present_t render_lab_present(void);
 
+/* The tunable render_lab.layout, the framebuffer layout render_lab asks for
+ * at enter(); a change takes effect at the next enter or scene switch. */
+typedef enum {
+    RENDER_LAB_LAYOUT_FULL,
+    RENDER_LAB_LAYOUT_DOUBLE,
+    RENDER_LAB_LAYOUT_DOUBLE_CLEAR, /* double, the sent frame filled by core 1 */
+    RENDER_LAB_LAYOUT_COUNT,
+} render_lab_layout_t;
+
+render_lab_layout_t render_lab_layout(void);
+
 /* Applies the tunables to destination dimensions. */
 resolution_step_t render_lab_render_size(int width, int height);
 void render_lab_apply_raster_settings(void);
