@@ -31,7 +31,6 @@ from c_comments import EXCLUDED, blank_comments, scan  # noqa: E402
 from check_doc_citations import documentation  # noqa: E402
 from check_doc_constants import ESCAPE as DOC_CONSTANTS_ESCAPE  # noqa: E402
 from check_doc_index import blank_fences  # noqa: E402
-from check_doc_vocabulary import ESCAPE as DOC_VOCABULARY_ESCAPE  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools/render"))
 from generated_blocks import MARKER as GENERATED_BLOCK  # noqa: E402
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2] / "launcher/tools"))
@@ -653,7 +652,7 @@ def rule_model_named_tool(root, path, text):
 HTML_COMMENT = re.compile(r"<!--.*?-->", re.S)
 KNOWN_MARKERS = re.compile(
     re.escape(DOC_CONSTANTS_ESCAPE) + "|" +
-    re.escape(DOC_VOCABULARY_ESCAPE) + r"|(?:BEGIN|END)\s+GENERATED|" + GENERATED_BLOCK.pattern)
+    r"(?:BEGIN|END)\s+GENERATED|" + GENERATED_BLOCK.pattern)
 
 
 # RULE: a working copy written with CRLF. .gitattributes normalises it on
