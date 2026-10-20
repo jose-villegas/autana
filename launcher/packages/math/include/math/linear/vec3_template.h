@@ -43,6 +43,13 @@
     MATH_DEFINE_SWIZZLE3(P, P, 3)
 
 #define MATH_DEFINE_VEC3_NORMALIZE(P, T, OPS)                                                                          \
+    /* out = a/|a|, *q = t/|a|. Precondition: a is nonzero. */                                                         \
+    static inline P##_t P##_normalize_divide(P##_t a, T t, T* q) {                                                     \
+        const T k = OPS##_div(OPS##_one(), OPS##_sqrt(P##_dot(a, a)));                                                 \
+        *q = OPS##_mul(t, k);                                                                                          \
+        return P##_scale(a, k);                                                                                        \
+    }                                                                                                                  \
+                                                                                                                       \
     /* normalize = a * (1 / sqrt(dot(a, a))). Precondition: `a` is not the zero vector. */                             \
     static inline P##_t P##_normalize(P##_t a) {                                                                       \
         return P##_scale(a, OPS##_div(OPS##_one(), OPS##_sqrt(P##_dot(a, a))));                                        \

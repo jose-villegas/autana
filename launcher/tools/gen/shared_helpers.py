@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / "launcher/tools"))
 
 from build.packages import package_part
 from c_comments import EXCLUDED, blank_comments, file_header
+from c_constants import file_scope
 from check_style_audit import resolve_include
 from check_doc_constants import sentences
 from generated_blocks import replace_block
@@ -90,7 +91,8 @@ def describe(path, text):
         prose = header.text if header else ""
         pasted = {name.replace("##", "__"): name
                   for name in re.findall(r"\b\w+(?:##\w+)+", blank_comments(text, "code"))}
-        declarations = c_declarations(text.replace("##", "__").replace("\\\n", "\n"))
+        code = blank_comments(text.replace("##", "__").replace("\\\n", "\n"), "code")
+        declarations = c_declarations(file_scope(code))
         declarations[2].update(re.findall(r"\bclass\s+([A-Za-z_]\w*)", blank_comments(text, "code")))
         guards = {name for name in re.findall(
             r"^\s*#\s*ifndef\s+(\w+)\s*\n\s*#\s*define\s+\1[ \t]*$",
