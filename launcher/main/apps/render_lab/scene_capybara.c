@@ -198,6 +198,7 @@ scene_capybara_controls(int width) {
 
 const render_lab_scene_t scene_capybara = {.name = "Capybara",
                                            .key = "capybara",
+                                           .family = "Capybara",
                                            .enter = scene_capybara_enter,
                                            .frame = scene_capybara_frame,
                                            .exit = scene_capybara_exit,

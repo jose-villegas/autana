@@ -55,9 +55,8 @@ static void
 test_menu_screen_command_list_fits_budget(void) {
     fixture();
 
-    const render_lab_menu_screen_state_t state = {
-        .scene_name = "Sponza Fitted Full",
-    };
+    const char* const families[] = {"Sponza", "Capybara"};
+    const render_lab_menu_screen_state_t state = {.families = families, .family_count = 2};
 
     const input_t input = {0};
     ui_begin(&input);
@@ -89,7 +88,7 @@ budget_controls(int width) {
 static void
 budget_menu_frame(const input_t* input) {
     ui_begin(input);
-    const render_lab_menu_screen_state_t state = {.scene_name = menu_budget->names[0], .controls = budget_controls};
+    const render_lab_menu_screen_state_t state = {.controls = budget_controls};
     (void)render_lab_menu_screen_draw(&state);
     ui_probe_budget_assert("animated menu with clip list");
 }

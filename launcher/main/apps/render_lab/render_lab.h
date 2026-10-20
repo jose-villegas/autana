@@ -7,6 +7,7 @@
 #define RENDER_LAB_STATUS_LEN     48
 
 extern const char* render_lab_start_scene_key;
+
 extern bool render_lab_show_hud;
 
 /* NULL selects the scene's first camera. */
