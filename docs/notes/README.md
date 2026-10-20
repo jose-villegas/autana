@@ -7,6 +7,7 @@ owners of settings; device tools provide measurements for the running image.
 | Reference | Scope |
 |---|---|
 | [../memory/Internal-Memory-Map.md](../memory/Internal-Memory-Map.md) | internal pool, IRAM placement budgets, variant differences and isolated experiments |
+| [../memory/Linker-Fragments.md](../memory/Linker-Fragments.md) | placing code or data with an ESP-IDF linker fragment, and when an attribute is better |
 | [Board-and-Memory.md](Board-and-Memory.md) | hardware inventory, memory placement, caches, static and heap budgets, storage |
 | [Display-and-Rendering.md](Display-and-Rendering.md) | panel initialization, DMA lifetime, clocks, dirty sends, screenshots and tearing |
 | [../audio/README.md](../audio/README.md) | audio path, sound assets and captured loopback measurements; the board's audio wiring is in [Board-and-Memory.md](Board-and-Memory.md#audio) |

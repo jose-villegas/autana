@@ -26,6 +26,17 @@ does not override this repository's established C: four spaces, attached
 braces, pointer-left declarations, plain names, and declarations near first
 use.
 
+## Low-level topics
+
+These sit beside the guide because each needs call sites and numbers, not only rules.
+
+| Topic | Page |
+|---|---|
+| `IRAM_ATTR`, `noinline`, `always_inline`, constructors | [Function attributes](c-style/Function-Attributes.md) |
+| Tasks, cores, spinlocks, atomics, queues | [Concurrency](c-style/Concurrency.md) |
+| Driver, HAL and register access, wrapping a driver function | [Register access](c-style/Register-Access.md) |
+| Placing code or data with a linker fragment | [Linker fragments](memory/Linker-Fragments.md) |
+
 ## Mechanical rules
 
 These rules are decidable. `.clang-format` is their definition and
