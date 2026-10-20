@@ -7,9 +7,9 @@
 #define MENU_BTN_W       300
 
 /* Each row's caption, and the dropdown identity under it. */
-#define SCENE_LABEL      "SCENE"
-#define VARIANT_LABEL    "VARIANT"
-#define SMALL_FILL_LABEL "SMALL FILL"
+#define SCENE_LABEL      "SCENE:"
+#define VARIANT_LABEL    "VARIANT:"
+#define SMALL_FILL_LABEL "SMALL FILL:"
 
 /* The hint is a footer window across the canvas bottom, outside the scrolled
  * rows, so a dropdown list opened over them leaves it showing unless the list
