@@ -14,6 +14,7 @@ static const vec2i_t RECT_SAMPLES[] = {{1, 3}, {3, 1}, {6, 3}, {3, 5}};
 static const vec3f_t DISTANCE_NORMAL = {2.0F, 1.0F, 2.0F};
 static const vec3f_t DISTANCE_POINT = {0.0F, 0.0F, 1.0F};
 static const vec3f_t TRIANGLE[] = {{-1.0F, 0.0F, 0.0F}, {1.0F, 0.3F, 0.0F}, {0.0F, 0.7F, 2.0F}};
+static const unsigned WINDING_ORDERS[][3] = {{0, 1, 2}, {0, 2, 1}};
 static const vec3f_t WORLD_UP = {0.0F, 1.0F, 0.0F};
 static const float SHOWN_DEPTH = 4.5F;
 static const vec3f_t LENS_SAMPLE = {0.0F, 0.0F, 3.0F};
@@ -32,8 +33,10 @@ static const box3f_t FRUSTUM_BOXES[] = {
     {{-3.5F, -0.4F, 1.8F}, {-2.5F, 0.4F, 2.5F}}, {{-0.6F, -0.6F, 0.4F}, {0.6F, 0.6F, 1.6F}},
     {{-0.5F, -0.5F, 1.8F}, {0.5F, 0.5F, 2.8F}},  {{2.3F, 2.3F, 0.0F}, {3.5F, 3.5F, 0.8F}},
 };
+static const size_t FRUSTUM_LOOSE_BOX = 7;
 static const box3f_t QUERY_BOX = {{-1, -1, -1}, {1, 1, 1}};
 static const spheref_t QUERY_SPHERES[] = {{{1.5F, 0, -1.6F}, 1}, {{2, 0, 0.5F}, 1}, {{2.8F, 0, 2.3F}, 0.7F}};
+static const char* const QUERY_SPHERE_NAMES[] = {"overlap", "touch", "miss"};
 static const spheref_t SEGMENT_SPHERE = {{3, 0, 0}, 1};
 
 enum { QUERY_BOX_TARGET, QUERY_SPHERE_TARGET, QUERY_TARGET_COUNT };
@@ -51,12 +54,13 @@ print_vec(vec3f_t p) {
 }
 
 static void
-print_sheet(vec3f_t centre, vec3f_t tangent, vec3f_t bitangent) {
+print_sheet(vec3f_t centre, vec3f_t tangent, vec3f_t bitangent, const mat4f_t* matrix) {
     for (size_t i = 0; i < sizeof SHEET_SIGNS / sizeof SHEET_SIGNS[0]; i++) {
         const vec3f_t delta = vec3f_scale(
             vec3f_add(vec3f_scale(tangent, SHEET_SIGNS[i].x), vec3f_scale(bitangent, SHEET_SIGNS[i].y)), SHEET_RADIUS);
         printf("%s", i ? "," : "");
-        print_vec(vec3f_add(centre, delta));
+        const vec3f_t point = vec3f_add(centre, delta);
+        print_vec(matrix ? mat4f_apply(matrix, point) : point);
     }
 }
 
@@ -87,15 +91,8 @@ print_sphere(spheref_t sphere) {
 }
 
 static void
-print_box_frustum(void) {
-    planef_t planes[PLANE_FRUSTUM_COUNT];
-    planef_frustum(&FRUSTUM_VIEW, &FRUSTUM_LENS, FRUSTUM_SCREEN, planes);
-    printf(",\"box_frustum\":{\"planes\":[");
-    for (int p = 0; p < PLANE_FRUSTUM_COUNT; p++) {
-        printf("%s", p ? "," : "");
-        print_plane(planes[p]);
-    }
-    printf("],\"boxes\":[");
+print_box_frustum(const planef_t planes[PLANE_FRUSTUM_COUNT]) {
+    printf(",\"box_frustum\":{\"loose_box\":%zu,\"boxes\":[", FRUSTUM_LOOSE_BOX);
     for (size_t i = 0; i < sizeof FRUSTUM_BOXES / sizeof FRUSTUM_BOXES[0]; i++) {
         unsigned mask = (1U << PLANE_FRUSTUM_COUNT) - 1U;
         const bool outside = box3f_outside_planes(FRUSTUM_BOXES[i], planes, PLANE_FRUSTUM_COUNT, &mask);
@@ -117,7 +114,7 @@ print_queries(void) {
         print_sphere(sphere);
         printf(",");
         print_vec(box3f_closest_point(QUERY_BOX, sphere.centre));
-        printf(",%s]", spheref_overlaps_box(sphere, QUERY_BOX) ? "true" : "false");
+        printf(",%s,\"%s\"]", spheref_overlaps_box(sphere, QUERY_BOX) ? "true" : "false", QUERY_SPHERE_NAMES[i]);
     }
     printf("],\"segment_sphere\":");
     print_sphere(SEGMENT_SPHERE);
@@ -176,7 +173,11 @@ main(void) {
     printf("],\"sheet\":[");
     const vec3f_t tangent = vec3f_normalize(vec3f_cross(unit.normal, WORLD_UP));
     const vec3f_t bitangent = vec3f_cross(unit.normal, tangent);
-    print_sheet(DISTANCE_POINT, tangent, bitangent);
+    print_sheet(DISTANCE_POINT, tangent, bitangent, NULL);
+    printf("],\"levels\":[");
+    for (size_t i = 0; i < sizeof LEVEL_VALUES / sizeof LEVEL_VALUES[0]; i++) {
+        printf("%s%.7g", i ? "," : "", (double)LEVEL_VALUES[i]);
+    }
     printf("],\"level_sheets\":[");
     const planef_t distance_planes[] = {raw, unit};
     for (size_t column = 0; column < sizeof distance_planes / sizeof distance_planes[0]; column++) {
@@ -185,7 +186,7 @@ main(void) {
         for (size_t level = 0; level < sizeof LEVEL_VALUES / sizeof LEVEL_VALUES[0]; level++) {
             const vec3f_t offset = vec3f_scale(normal, LEVEL_VALUES[level] / vec3f_dot(normal, normal));
             printf("%s[", level ? "," : "");
-            print_sheet(vec3f_add(DISTANCE_POINT, offset), tangent, bitangent);
+            print_sheet(vec3f_add(DISTANCE_POINT, offset), tangent, bitangent, NULL);
             printf("]");
         }
         printf("]");
@@ -204,32 +205,33 @@ main(void) {
         printf("%s", i ? "," : "");
         print_vec(TRIANGLE[i]);
     }
-    const planef_t forward = planef_from_points(TRIANGLE[0], TRIANGLE[1], TRIANGLE[2]);
-    const planef_t reverse = planef_from_points(TRIANGLE[0], TRIANGLE[2], TRIANGLE[1]);
     const vec3f_t centroid = vec3f_scale(vec3f_add(vec3f_add(TRIANGLE[0], TRIANGLE[1]), TRIANGLE[2]),
                                          1.0F / (float)(sizeof TRIANGLE / sizeof TRIANGLE[0]));
     printf("],\"centroid\":");
     print_vec(centroid);
     printf(",\"normals\":[");
-    print_vec(forward.normal);
-    printf(",");
-    print_vec(reverse.normal);
+    for (size_t i = 0; i < sizeof WINDING_ORDERS / sizeof WINDING_ORDERS[0]; i++) {
+        const unsigned* order = WINDING_ORDERS[i];
+        printf("%s", i ? "," : "");
+        print_vec(planef_from_points(TRIANGLE[order[0]], TRIANGLE[order[1]], TRIANGLE[order[2]]).normal);
+    }
+    printf("],\"orders\":[");
+    for (size_t i = 0; i < sizeof WINDING_ORDERS / sizeof WINDING_ORDERS[0]; i++) {
+        printf("%s[%u,%u,%u]", i ? "," : "", WINDING_ORDERS[i][0], WINDING_ORDERS[i][1], WINDING_ORDERS[i][2]);
+    }
     printf("]},\"frustum\":{");
 
-    const mat4f_t view = FRUSTUM_VIEW;
-    const mat4f_t lens = mat4f_scale_rows(view, (vec3f_t){FRUSTUM_LENS.fx, -FRUSTUM_LENS.fy, 1.0F});
+    const mat4f_t lens = mat4f_scale_rows(FRUSTUM_VIEW, (vec3f_t){FRUSTUM_LENS.fx, -FRUSTUM_LENS.fy, 1.0F});
     const mat4f_t inverse = mat4f_invert_affine(lens);
-    const rectf_t screen = FRUSTUM_SCREEN;
     planef_t planes[PLANE_FRUSTUM_COUNT];
-    const projectf_t pinhole = FRUSTUM_LENS;
-    planef_frustum(&view, &pinhole, screen, planes);
-    printf("\"camera\":");
+    planef_frustum(&FRUSTUM_VIEW, &FRUSTUM_LENS, FRUSTUM_SCREEN, planes);
+    printf("\"plane_count\":%d,\"camera\":", PLANE_FRUSTUM_COUNT);
     print_vec(mat4f_apply(&inverse, (vec3f_t){0}));
     printf(",\"near\":%.7g,\"shown_depth\":%.7g,\"corners\":[", (double)FRUSTUM_LENS.near_z, (double)SHOWN_DEPTH);
-    const vec2f_t picture[] = {{screen.x, screen.y},
-                               {rectf_right(screen), screen.y},
-                               {rectf_right(screen), rectf_bottom(screen)},
-                               {screen.x, rectf_bottom(screen)}};
+    const vec2f_t picture[] = {{FRUSTUM_SCREEN.x, FRUSTUM_SCREEN.y},
+                               {rectf_right(FRUSTUM_SCREEN), FRUSTUM_SCREEN.y},
+                               {rectf_right(FRUSTUM_SCREEN), rectf_bottom(FRUSTUM_SCREEN)},
+                               {FRUSTUM_SCREEN.x, rectf_bottom(FRUSTUM_SCREEN)}};
     const float depths[] = {FRUSTUM_LENS.near_z, SHOWN_DEPTH};
     bool comma = false;
     for (size_t k = 0; k < sizeof depths / sizeof depths[0]; k++) {
@@ -250,16 +252,13 @@ main(void) {
     printf("],\"samples\":[");
     for (size_t k = 0; k < sizeof FRUSTUM_SAMPLES / sizeof FRUSTUM_SAMPLES[0]; k++) {
         const vec3f_t point = FRUSTUM_SAMPLES[k];
-        bool inside = true;
-        for (int i = 0; i < PLANE_FRUSTUM_COUNT; i++) {
-            const float distance = planef_distance(planes[i], point);
-            inside = inside && distance >= 0.0F;
-        }
+        unsigned mask = (1U << PLANE_FRUSTUM_COUNT) - 1U;
+        const bool inside = !box3f_outside_planes((box3f_t){point, point}, planes, PLANE_FRUSTUM_COUNT, &mask);
         printf("%s[", k ? "," : "");
         print_vec(point);
         printf(",%s]", inside ? "true" : "false");
     }
-    const planef_t lens_plane = {{1.0F, 0.0F, FRUSTUM_LENS.cx - screen.x}, 0.0F};
+    const planef_t lens_plane = {{1.0F, 0.0F, FRUSTUM_LENS.cx - FRUSTUM_SCREEN.x}, 0.0F};
     const planef_t world_plane =
         planef_from_rows(&lens, lens_plane.normal.x, lens_plane.normal.y, lens_plane.normal.z, lens_plane.d);
     const vec3f_t world_sample = mat4f_apply(&inverse, LENS_SAMPLE);
@@ -272,14 +271,11 @@ main(void) {
     printf(",\"world_sample\":");
     print_vec(world_sample);
     printf(",\"sheets\":[");
-    for (unsigned space = 0; space < 2; space++) {
+    const mat4f_t* sheet_spaces[] = {NULL, &inverse};
+    const vec3f_t sheet_centre = {-lens_plane.normal.z * LENS_SAMPLE.z, 0, LENS_SAMPLE.z};
+    for (size_t space = 0; space < sizeof sheet_spaces / sizeof sheet_spaces[0]; space++) {
         printf("%s[", space ? "," : "");
-        for (size_t i = 0; i < sizeof SHEET_SIGNS / sizeof SHEET_SIGNS[0]; i++) {
-            const float z = LENS_SAMPLE.z + SHEET_SIGNS[i].x * SHEET_RADIUS;
-            const vec3f_t point = {-lens_plane.normal.z * z, SHEET_SIGNS[i].y * SHEET_RADIUS, z};
-            printf("%s", i ? "," : "");
-            print_vec(space ? mat4f_apply(&inverse, point) : point);
-        }
+        print_sheet(sheet_centre, (vec3f_t){-lens_plane.normal.z, 0, 1}, (vec3f_t){0, 1, 0}, sheet_spaces[space]);
         printf("]");
     }
     printf("]");
@@ -295,7 +291,7 @@ main(void) {
     printf("]");
     printf(",\"distances\":[%.7g,%.7g]}", (double)planef_distance(lens_plane, LENS_SAMPLE),
            (double)planef_distance(world_plane, world_sample));
-    print_box_frustum();
+    print_box_frustum(planes);
     print_queries();
     printf("}\n");
     return 0;
