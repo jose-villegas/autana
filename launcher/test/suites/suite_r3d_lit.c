@@ -1781,18 +1781,19 @@ test_the_two_core_frame_matches_one_full_draw(void) {
     build_wall_and_stack(p);
     gfx_color_t* upscaled = malloc(sizeof(gfx_color_t) * 4 * W * H);
     gfx_color_t* want = malloc(sizeof(gfx_color_t) * 4 * W * H);
-    char* scratch = malloc(raster_scratch_bytes(&(raster_t){ONE_MESH(&p->mesh), .width = W, .height = H,
-                                                            .destination_width = 2 * W, .destination_height = 2 * H}));
+    raster_t* raster = malloc(sizeof *raster);
     TEST_ASSERT_NOT_NULL(upscaled);
     TEST_ASSERT_NOT_NULL(want);
-    TEST_ASSERT_NOT_NULL(scratch);
-    raster_t raster = {
+    TEST_ASSERT_NOT_NULL(raster);
+    *raster = (raster_t){
         ONE_MESH(&p->mesh),         .width = W, .height = H, .clear = SKY, .upscaled = true, .destination_width = 2 * W,
         .destination_height = 2 * H};
-    raster.scratch = scratch;
+    char* scratch = malloc(raster_scratch_bytes(raster));
+    TEST_ASSERT_NOT_NULL(scratch);
+    raster->scratch = scratch;
     raster_t* banded = malloc(sizeof *banded);
     TEST_ASSERT_NOT_NULL(banded);
-    *banded = raster;
+    *banded = *raster;
     banded->band_rows = raster_band_source_rows(banded, 16);
     banded->scratch = malloc(raster_scratch_bytes(banded));
     banded->band_scratch = malloc(raster_band_bytes(banded));
@@ -1804,11 +1805,11 @@ test_the_two_core_frame_matches_one_full_draw(void) {
         const fixture_camera_t camera = camera_down_plus_z(eye_heights[e], -400, 1.0f);
         const r3d_lens_t lens = look_down_plus_z(eye_heights[e], -400, 1.0f);
         for (int i = 0; i < W * H; i++) {
-            raster_color(&raster)[i] = 0xBEEF;
+            raster_color(raster)[i] = 0xBEEF;
         }
-        const render_view_t frame_view = render_view_fixture(&camera, &raster, 0);
-        raster_draw(&raster, &frame_view);
-        raster_upscale(&raster, upscaled, raster.destination_width, raster.destination_height);
+        const render_view_t frame_view = render_view_fixture(&camera, raster, 0);
+        raster_draw(raster, &frame_view);
+        raster_upscale(raster, upscaled, raster->destination_width, raster->destination_height);
         reference_frame(p, &lens, want);
         TEST_ASSERT_EQUAL_HEX16_ARRAY_MESSAGE(want, upscaled, 4 * W * H,
                                               "the upscaled frame differs from one full draw");
@@ -1819,18 +1820,19 @@ test_the_two_core_frame_matches_one_full_draw(void) {
     free(banded);
 
     /* With nothing to upscale into, the raster clears its own colour target. */
-    raster.upscaled = false;
+    raster->upscaled = false;
     const fixture_camera_t camera = camera_down_plus_z(150.0f, -400, 1.0f);
     const r3d_lens_t lens = look_down_plus_z(150.0f, -400, 1.0f);
-    const render_view_t frame_view = render_view_fixture(&camera, &raster, 0);
-    raster_draw(&raster, &frame_view);
+    const render_view_t frame_view = render_view_fixture(&camera, raster, 0);
+    raster_draw(raster, &frame_view);
     reference_frame(p, &lens, want);
     for (int y = 0; y < H; y++) {
         for (int x = 0; x < W; x++) {
-            TEST_ASSERT_EQUAL_HEX16(want[2 * y * 2 * W + 2 * x], raster_color(&raster)[y * W + x]);
+            TEST_ASSERT_EQUAL_HEX16(want[2 * y * 2 * W + 2 * x], raster_color(raster)[y * W + x]);
         }
     }
     free(scratch);
+    free(raster);
     free(want);
     free(upscaled);
 }
