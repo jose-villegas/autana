@@ -50,8 +50,8 @@ startup keeps short tones at the same level as long tones.
 Run `autana tone <hz> <ms> [volume] [--internal] [--json]`, or the console verb
 `tone <hz> <ms> [volume] [internal]`.
 
-`console_verb_tone()` opens capture, measures its DMA-capable heap cost, runs
-the check, and closes capture
+`console_tone_check()` opens capture, measures its DMA-capable heap cost,
+runs the check, and closes capture. Both development verbs use this path
 (`launcher/main/console/verbs/console_tone.c`).
 
 The console uses `audio_loopback_measure()` for a baseline, starts a SYSTEM-bus
@@ -224,3 +224,24 @@ self-test checks a floor for the largest DMA block, owned by
 must not fragment the largest block below that requirement. The [RAM table](#ram)
 identifies its capture image. `autana heap` reports the headroom with the
 mixer running.
+
+### Melody
+
+`autana melody [volume]` plays the Gran Vals phrase in rhythm.
+`autana melody [volume] --check [--internal]` checks each note out of rhythm
+through the same loopback path as `tone`. Volume defaults to the tone default.
+
+The console forms are `melody [volume]` and
+`melody check [volume] [internal]`. They block the console task.
+`console_melody.h` owns the phrase, reference pitch, rhythm and check duration.
+
+Play mode returns `MELODY_END notes=<count> ms=<elapsed>`.
+With `--json`, the host prints `{"notes": <count>, "ms": <elapsed>}`.
+
+Check mode prints `MELODY note=<name> ` followed by the exact `TONE` reply,
+then `MELODY_END notes=<count>`. A failure returns `MELODY_ERR <reason>`.
+The host exits with status 1 if any note is not heard.
+
+Check JSON is a list of tone result objects, each with `note` and
+`cents_error` added. Cents error is `1200 * log2(measured_hz / hz)`;
+it is null when the frequency estimate is unavailable.

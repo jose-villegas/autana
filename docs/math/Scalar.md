@@ -106,3 +106,4 @@ integers with `TRIG_SIN_SHIFT` fractional bits, at most `TRIG_SIN_MAX`.
 
 `MATH_MS_PER_S`, `MATH_US_PER_MS` and `MATH_US_PER_S` own integer time conversion
 factors between seconds, milliseconds and microseconds.
+`MATH_S_PER_MIN` and `MATH_MS_PER_MIN` convert minutes to seconds and milliseconds.
