@@ -23,6 +23,22 @@ capture.
 enters; repeat it for more settings. `--live-tune NAME=VALUE` applies it after
 entry, so the frame hook changes the next frame without reloading the scene.
 
+### Small fill
+
+`render_lab.small_fill_ceiling`, `render_lab.small_fill_gate` and
+`render_lab.small_fill_style` apply to the scene camera each frame.
+The generic scene viewer accepts `--small-fill CEILING,GATE,STYLE`; its defaults
+come from `SMALL_FILL_SMOOTH`. Styles use the `small_fill_style_t` values.
+The [engine feature](../../../../../docs/render/Mesh-Rendering.md#small-fill)
+defines the axes and defaults.
+
+```sh
+sh launcher/tools/render/scene_viewer.sh launcher/demo/sponza/sponza.scene.toml \
+    --object atrium_fitted_full --small-fill 12,16,1 -o grain.bmp
+```
+
+The app host accepts `--tune` before entry or `--live-tune` after entry.
+
 ### Menu renders
 
 `--menu` presses BOOT on the first frame, so the render shows the scene menu

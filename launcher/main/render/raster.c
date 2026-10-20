@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "core/job.h"
+#include "core/timing.h"
 #include "profile/frame_cost.h"
 #include "render/r3d_pipeline.h"
 #include "render/upscale.h"
@@ -28,6 +29,7 @@ typedef struct {
     int work_index;
     const r3d_pipeline_buffers_t* buffers;
     r3d_span_target_t* target;
+    int32_t* elapsed_us;
 } slice_t;
 
 typedef struct {
@@ -36,6 +38,8 @@ typedef struct {
     slice_t mine, other;
     r3d_pipeline_buffers_t buffers;
     r3d_span_target_t targets[2];
+    r3d_span_small_fill_t small_fill;
+    int32_t mine_us, other_us; /* Draw slices stay far below the int32 microsecond limit of 35 minutes. */
 } draw_work_t;
 
 _Static_assert(sizeof(slice_t) <= JOB_CTX_MAX, "slice_t must fit JOB_CTX_MAX");
@@ -118,12 +122,15 @@ raster_depth(const raster_t* raster) {
 
 static void
 draw_slice(void* ctx) {
+    const int64_t began_us = timing_now_us();
     const slice_t* s = ctx;
     const raster_t* r = s->raster;
     const r3d_pipeline_buffers_t* b = s->buffers;
     r3d_span_target_t* target = s->target;
-    *target = (r3d_span_target_t){gfx_render_target_window(&b->picture, s->first, s->first + s->count), s->writers,
-                                  s->writer_count};
+    gfx_render_target_window(&target->rows, &b->picture, s->first, s->first + s->count);
+    target->writers = s->writers;
+    target->writer_count = s->writer_count;
+    target->small_fill = &((const draw_work_t*)b->draw)->small_fill;
 
     if (s->clear) {
         const size_t pixels = (size_t)s->count * (size_t)r->width;
@@ -135,6 +142,8 @@ draw_slice(void* ctx) {
         }
     }
     r3d_pipeline_draw(s->mesh, s->lens, s->visible, s->visible_count, b->cs, b->rows, target, b->work[s->work_index]);
+    const int64_t elapsed_us = timing_now_us() - began_us;
+    *s->elapsed_us = (int32_t)elapsed_us;
 }
 
 static void
@@ -142,7 +151,8 @@ resolve_slice(void* ctx) {
     const slice_t* s = ctx;
     const raster_t* r = s->raster;
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(r);
-    const gfx_render_target_t rows = gfx_render_target_window(&b.picture, s->first, s->first + s->count);
+    gfx_render_target_t rows;
+    gfx_render_target_window(&rows, &b.picture, s->first, s->first + s->count);
     for (int i = GFX_ATTACHMENT_FURTHER; i < rows.count; i++) {
         const raster_attachment_t* a = attachment_at(r, i);
         if (a->resolve != NULL) {
@@ -270,7 +280,14 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     const int half = r3d_pipeline_transform_split(mesh, visible, count);
     slice_t* mine = &work->mine;
     slice_t* other = &work->other;
-    *mine = (slice_t){raster, mesh, lens, visible, count, 0, half, clear, NULL, 0, NULL, 0, &work->buffers, NULL};
+    *mine = (slice_t){.raster = raster,
+                      .mesh = mesh,
+                      .lens = lens,
+                      .visible = visible,
+                      .visible_count = count,
+                      .count = half,
+                      .clear = clear,
+                      .buffers = &work->buffers};
     *other = *mine;
     other->first = half;
     other->count = count - half;
@@ -278,7 +295,12 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     FRAME_COST_END(transformed_from, "r3d.transform");
 
     FRAME_COST_BEGIN(drawn_from);
-    const int mid = r3d_pipeline_draw_split(mesh, visible, work->buffers.rows, count, raster->height);
+    int16_t* retained =
+        raster->split != NULL && index < RASTER_SPLIT_INSTANCES ? &raster->split->top_offset[index] : NULL;
+    const int share = RASTER_SPLIT_EVEN + (retained == NULL ? 0 : *retained);
+    const int mid = r3d_pipeline_draw_split(mesh, visible, work->buffers.rows, count, raster->height, share);
+    mine->elapsed_us = &work->mine_us;
+    other->elapsed_us = &work->other_us;
     mine->writers = other->writers = work->writers;
     mine->writer_count = other->writer_count = writer_count;
     mine->work_index = 1;
@@ -290,6 +312,10 @@ draw_visible(const raster_t* raster, int index, const r3d_lens_t* lens, const ui
     other->first = 0;
     other->count = mid;
     job_run_split(draw_slice, mine, other, sizeof *mine);
+    if (retained != NULL) {
+        *retained =
+            (int16_t)(raster_split_update(share, (int64_t)work->other_us, (int64_t)work->mine_us) - RASTER_SPLIT_EVEN);
+    }
     FRAME_COST_END(drawn_from, "r3d.draw");
 }
 
@@ -316,6 +342,7 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
         resolves = resolves || a->resolve != NULL;
     }
     draw_work_t* work = scratch_draw(raster);
+    r3d_span_small_fill_resolve(&work->small_fill, view->small_fill);
     uint16_t* culled = work->buffers.culled;
     for (int i = 0; i < raster->instance_count; i++) {
         const r3d_instance_t* instance = &raster->instances[i];
@@ -332,9 +359,8 @@ draw_instances(const raster_t* raster, const render_view_t* view, raster_stats_t
     if (resolves) {
         FRAME_COST_BEGIN(resolved_from);
         const int mid = raster->height / 2;
-        work->mine =
-            (slice_t){raster, NULL, NULL, NULL, 0, mid, raster->height - mid, false, NULL, 0, NULL, 0, NULL, NULL};
-        work->other = (slice_t){raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0, NULL, 0, NULL, NULL};
+        work->mine = (slice_t){.raster = raster, .first = mid, .count = raster->height - mid};
+        work->other = (slice_t){.raster = raster, .count = mid};
         job_run_split(resolve_slice, &work->mine, &work->other, sizeof work->mine);
         FRAME_COST_END(resolved_from, "r3d.resolve");
     }
@@ -424,8 +450,8 @@ raster_upscale(raster_t* raster, uint16_t* destination, int width, int height) {
         assert(initialized);
     }
     const int mid = height / 2;
-    slice_t mine = {raster, NULL, NULL, NULL, 0, mid, height - mid, false, NULL, 0, destination, 0, NULL, NULL};
-    const slice_t other = {raster, NULL, NULL, NULL, 0, 0, mid, false, NULL, 0, destination, 0, NULL, NULL};
+    slice_t mine = {.raster = raster, .first = mid, .count = height - mid, .destination = destination};
+    const slice_t other = {.raster = raster, .count = mid, .destination = destination};
     job_run_split(upscale_slice, &mine, &other, sizeof mine);
     FRAME_COST_END(upscaled_from, "r3d.upscale");
 }

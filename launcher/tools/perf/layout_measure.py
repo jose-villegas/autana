@@ -12,6 +12,7 @@ from pathlib import Path
 from statistics import mean, stdev
 
 from capture import capture_board, require_same_board, quarter_row
+from device_report import read_capture_text, report_path_for
 from seed_statistics import t_quantile
 
 REPO = Path(__file__).resolve().parents[3]
@@ -49,27 +50,29 @@ def parse_markdown(text):
     return collected
 
 
-def parse_timings(text):
-    """Quarter is part of each rendered row's identity, including structured rows."""
-    rows = {}
+def timing_samples(text, *, identity_fields=("cores", "paused"), percentiles=False):
+    """Yield each observation; rendered quarters and selected setup fields identify it."""
     for line in text.splitlines():
         if match := MEAN_RE.search(line):
-            rows[quarter_row(match["name"], line)] = int(match["value"])
+            yield quarter_row(match["name"], line), int(match["value"])
         elif "stage=" in line and "mean_us=" in line:
             fields = dict(re.findall(r"(\w+)=([^\s]+)", line))
-            name = fields["stage"]
-            for field in ("cores", "paused"):
-                if field in fields:
-                    name += f" {field}={fields[field]}"
-            rows[quarter_row(name, line)] = int(fields["mean_us"])
+            identity = "".join(f" {field}={fields[field]}" for field in identity_fields if field in fields)
+            yield quarter_row(fields["stage"] + identity, line), int(fields["mean_us"])
+            if percentiles and "p95_us" in fields:
+                yield quarter_row(fields["stage"] + ".p95" + identity, line), int(fields["p95_us"])
         elif match := re.search(r"scale_split: (\d+x\d+).*frame mean/p50/max us (\d+)/", line):
-            rows[quarter_row("scale_split " + match[1], line)] = int(match[2])
-    return rows
+            yield quarter_row("scale_split " + match[1], line), int(match[2])
+
+
+def parse_timings(text):
+    """Return the last observation of each named timing row."""
+    return dict(timing_samples(text))
 
 
 def parse_report(path):
     """Return named microsecond rows from a report table or suite capture."""
-    text = Path(path).read_text(encoding="utf-8", errors="replace")
+    text = read_capture_text(path)
     rows = parse_markdown(text)
     if rows:
         return rows
@@ -149,7 +152,14 @@ def captured_runs(lines, suite_name, runs):
         raise RuntimeError(f"{suite_name}: wanted {runs} runs, saw {len(starts)} starts and "
                            f"{len(reports)} reports")
     seconds = [(starts[i + 1] if i + 1 < runs else end) - starts[i] for i in range(runs)]
-    return [report.with_suffix(".log") for report in reports], starts[0], seconds
+    return [capture_for(report) for report in reports], starts[0], seconds
+
+
+def capture_for(report):
+    """The capture beside a report: the device tool gzips a large one in place."""
+    log = report.with_suffix(".log")
+    compressed = log.with_name(log.name + ".gz")
+    return compressed if compressed.is_file() else log
 
 
 def capture_refusal(lines):
@@ -158,9 +168,9 @@ def capture_refusal(lines):
     for _, line in lines:
         match = REPORT_LINE.match(line)
         if match:
-            path = Path(match.group(1)).with_suffix(".log")
+            path = capture_for(Path(match.group(1)))
             if path.is_file():
-                refused.extend(line for line in path.read_text(encoding="utf-8", errors="replace").splitlines()
+                refused.extend(line for line in read_capture_text(path).splitlines()
                                if "SUITE_FILTER_REFUSED" in line)
     return "\n".join(dict.fromkeys(refused))
 
@@ -239,7 +249,7 @@ def shapiro(values):
 
 
 def capture_metadata(capture, rows):
-    text = Path(capture).read_text(encoding="utf-8", errors="replace")
+    text = read_capture_text(capture)
     owners, instructions = {}, {}
     pending_rows, pending_insn = [], {}
     insn = re.compile(r"xtperf: scene=(\S+) event=insn .*value_per_step=(\d+)")
@@ -350,7 +360,7 @@ def run_flash(args, seed, runner=None):
                 record["board"] = require_same_board(boards)
                 runs = []
                 for number, capture in enumerate(captures):
-                    completion = capture.with_suffix(".md").read_text(encoding="utf-8", errors="replace")
+                    completion = report_path_for(capture).read_text(encoding="utf-8", errors="replace")
                     if "- Ended: complete" not in completion:
                         raise RuntimeError(f"incomplete capture: {capture}")
                     table = make_table(template, capture, out / f"{stem}_{name}_{index}_{number + 1}.md", project, getattr(args, "timeout", 1800))
@@ -427,7 +437,7 @@ def split_filters(suites, limits):
 
 def capture_tests(capture, include_ignored=True):
     """List all tests reported by the capture, including tests without timings."""
-    text = Path(capture).read_text(encoding="utf-8", errors="replace")
+    text = read_capture_text(capture)
     return [match.group("name") for line in text.splitlines()
             if (match := RESULT_RE.match(line.strip())) and
             (include_ignored or match.group("status") != "IGNORE")]

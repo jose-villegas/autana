@@ -8,7 +8,7 @@
 #include "suites.h"
 #include "unity.h"
 
-#include "input/button_fsm.h"
+#include "input/buttons/button_fsm.h"
 
 #define MS 1000 /* microseconds per millisecond */
 

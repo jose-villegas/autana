@@ -1,11 +1,11 @@
 # Gravity
 
-`gravity_t` (`input/gravity.h`) estimates unit down, linear acceleration in g,
+`gravity_t` (`input/motion/gravity.h`) estimates unit down, linear acceleration in g,
 gyro bias in deg/s, tilt strength and free fall. Gyro predicts motion;
 trusted acceleration corrects drift.
 
 Acceleration cannot distinguish gravity from other forces. Axes, scales and
-calibration are described in [Input-and-Sensors.md](../notes/Input-and-Sensors.md#the-imus-axes-do-not-match-the-screens).
+calibration are described in [Motion-Axes.md](Motion-Axes.md) and [Motion-Calibration.md](Motion-Calibration.md).
 
 ## Update
 
@@ -13,7 +13,7 @@ calibration are described in [Input-and-Sensors.md](../notes/Input-and-Sensors.m
 `gravity_update_batch()` predicts and corrects once per sample, using microseconds.
 Gyro prediction is minus angular velocity crossed with down in screen axes.
 
-The nominal ODR and interval are `IMU_ODR_HZ` and `IMU_SAMPLE_US` in `input/imu.h`.
+The nominal ODR and interval are `IMU_ODR_HZ` and `IMU_SAMPLE_US` in `input/motion/imu.h`.
 Matching CTRL2/CTRL3 codes follow QMI8658A Rev A and SensorLib.<sup>[[80]](../Citations.md#80)</sup><sup>[[79]](../Citations.md#79)</sup>
 
 Every delivered and lost sample integrates at `INPUT_MOTION_SAMPLE_US`.
@@ -98,7 +98,7 @@ the settling target applies to accepted acceleration at full trust.
 
 ## Constants
 
-The constants are owned by `launcher/main/input/gravity.h`:
+The constants are owned by `launcher/main/input/motion/gravity.h`:
 
 | Constant | Value | Source |
 |---|---|---|

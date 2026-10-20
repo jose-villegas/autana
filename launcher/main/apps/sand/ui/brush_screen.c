@@ -60,23 +60,23 @@ _Static_assert(BLOCK_H <= 368 - (2 * UI_MARGIN), "the brush screen's three panel
 static void
 lay_out_segments(recti_t row, int gap, int n, recti_t* out) {
     const int seg_w = (row.w - (n - 1) * gap) / n;
-    const int used = n * seg_w + (n - 1) * gap;
-    const int start_x = row.x + (row.w - used) / 2;
+    const int used = (n * seg_w) + ((n - 1) * gap);
+    const int start_x = row.x + ((row.w - used) / 2);
 
     for (int i = 0; i < n; i++) {
-        out[i] = (recti_t){start_x + i * (seg_w + gap), row.y, seg_w, row.h};
+        out[i] = (recti_t){start_x + (i * (seg_w + gap)), row.y, seg_w, row.h};
     }
 }
 
 static void
 layout_header(recti_t panel, brush_screen_layout_t* out) {
-    const int content_h = panel.h - 2 * BRUSH_SCREEN_PAD;
+    const int content_h = panel.h - (2 * BRUSH_SCREEN_PAD);
 
     out->swatch = (recti_t){panel.x + BRUSH_SCREEN_PAD, panel.y + BRUSH_SCREEN_PAD, SWATCH_SIDE, SWATCH_SIDE};
 
     out->info_button = (recti_t){
         panel.x + panel.w - BRUSH_SCREEN_PAD - INFO_BTN_SIDE,
-        panel.y + BRUSH_SCREEN_PAD + (content_h - INFO_BTN_SIDE) / 2,
+        panel.y + BRUSH_SCREEN_PAD + ((content_h - INFO_BTN_SIDE) / 2),
         INFO_BTN_SIDE,
         INFO_BTN_SIDE,
     };
@@ -95,8 +95,8 @@ layout_header(recti_t panel, brush_screen_layout_t* out) {
 
 static void
 layout_mode(recti_t panel, brush_screen_layout_t* out) {
-    const int content_w = panel.w - 2 * BRUSH_SCREEN_PAD;
-    const int content_h = panel.h - 2 * BRUSH_SCREEN_PAD;
+    const int content_w = panel.w - (2 * BRUSH_SCREEN_PAD);
+    const int content_h = panel.h - (2 * BRUSH_SCREEN_PAD);
 
     out->mode_caption = (recti_t){panel.x + BRUSH_SCREEN_PAD, panel.y + BRUSH_SCREEN_PAD, content_w, CAPTION_ROW_H};
 
@@ -111,8 +111,8 @@ layout_mode(recti_t panel, brush_screen_layout_t* out) {
 
 static void
 layout_size(recti_t panel, brush_screen_layout_t* out) {
-    const int content_w = panel.w - 2 * BRUSH_SCREEN_PAD;
-    const int content_h = panel.h - 2 * BRUSH_SCREEN_PAD;
+    const int content_w = panel.w - (2 * BRUSH_SCREEN_PAD);
+    const int content_h = panel.h - (2 * BRUSH_SCREEN_PAD);
 
     out->size_value = (recti_t){
         panel.x + panel.w - BRUSH_SCREEN_PAD - SIZE_VALUE_W,
@@ -138,12 +138,12 @@ layout_size(recti_t panel, brush_screen_layout_t* out) {
 void
 brush_screen_layout(int screen_w, int screen_h, brush_screen_layout_t* out) {
     const int panel_x = UI_MARGIN;
-    const int panel_w = screen_w - 2 * UI_MARGIN;
+    const int panel_w = screen_w - (2 * UI_MARGIN);
 
     /* Any slack left by BLOCK_H under the taller of the two real canvases
      * (448px, the portrait height) is split evenly above and below rather
      * than left pinned to the top - see BLOCK_H's own _Static_assert. */
-    const int top_y = UI_MARGIN + (screen_h - 2 * UI_MARGIN - BLOCK_H) / 2;
+    const int top_y = UI_MARGIN + ((screen_h - 2 * UI_MARGIN - BLOCK_H) / 2);
 
     out->header_panel = (recti_t){panel_x, top_y, panel_w, HEADER_H};
     out->mode_panel = (recti_t){
@@ -203,7 +203,7 @@ draw_brush_swatch(recti_t r, cell_t spec) {
     for (int row = 0; row < BRUSH_SWATCH_CELLS; row++) {
         for (int col = 0; col < BRUSH_SWATCH_CELLS; col++) {
             const cell_t cell = sand_swatch_cell(spec, col, row, BRUSH_SWATCH_CELLS);
-            colors[row * BRUSH_SWATCH_CELLS + col] = gfx_color_rgb888(palette[cell]);
+            colors[(row * BRUSH_SWATCH_CELLS) + col] = gfx_color_rgb888(palette[cell]);
         }
     }
     ui_swatches(r, colors, BRUSH_SWATCH_CELLS, BRUSH_SWATCH_CELLS);
@@ -220,8 +220,8 @@ draw_brush_info(recti_t button) {
     const recti_t icon_r = {
         button.x + BRUSH_INFO_ICON_PAD,
         button.y + BRUSH_INFO_ICON_PAD,
-        button.w - 2 * BRUSH_INFO_ICON_PAD,
-        button.h - 2 * BRUSH_INFO_ICON_PAD,
+        button.w - (2 * BRUSH_INFO_ICON_PAD),
+        button.h - (2 * BRUSH_INFO_ICON_PAD),
     };
     ui_icon(icon_r, sand_icon(SAND_ICON_INFO), sand_icon_set.names[SAND_ICON_INFO].text);
 }

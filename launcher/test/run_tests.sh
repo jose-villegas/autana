@@ -121,23 +121,24 @@ $TEST_DIR/job_calls.c
 $TEST_DIR/test_asset_dir.c
 $TEST_DIR/test_fence.c
 $MAIN_DIR/sound/sound_mixer.c
+$MAIN_DIR/power/power_decode.c
+$MAIN_DIR/power/power_cache.c
 $MAIN_DIR/audio/audio_tone.c
+$MAIN_DIR/audio/audio_frequency.c
 $MAIN_DIR/app/app_arena.c
 $MAIN_DIR/app/app_console.c
 $MAIN_DIR/app/app_registry.c
 $MAIN_DIR/shell/shell_system.c
 $MAIN_DIR/shell/shell_home_edge.c
 $MAIN_DIR/shell/shell_frame.c
-$MAIN_DIR/input/touch_fsm.c
-$MAIN_DIR/input/imu_calib.c
-$MAIN_DIR/input/touch_calib.c
-$MAIN_DIR/input/touch_point.c
-$MAIN_DIR/input/touch_inject_fsm.c
-$MAIN_DIR/input/gesture.c
-$MAIN_DIR/input/touch_gesture.c
-$MAIN_DIR/input/tilt.c
-$MAIN_DIR/input/gravity.c
-$MAIN_DIR/input/button_fsm.c
+$MAIN_DIR/input/touch/touch_fsm.c
+$MAIN_DIR/input/motion/imu_calib.c
+$MAIN_DIR/input/touch/touch_calib.c
+$MAIN_DIR/input/touch/touch_inject_fsm.c
+$MAIN_DIR/input/touch/gesture.c
+$MAIN_DIR/input/motion/tilt.c
+$MAIN_DIR/input/motion/gravity.c
+$MAIN_DIR/input/buttons/button_fsm.c
 $MAIN_DIR/display/display.c
 $MAIN_DIR/boot/boot_anim.c
 $MAIN_DIR/boot/boot_anim_motion.c
@@ -167,6 +168,7 @@ $MAIN_DIR/asset/asset_store_file.c
 $MAIN_DIR/render/r3d_lit_mesh.c
 $MAIN_DIR/render/render_view.c
 $MAIN_DIR/render/raster.c
+$MAIN_DIR/render/raster_split.c
 $MAIN_DIR/render/raster_show.c
 $MAIN_DIR/render/raster_motion.c
 $MAIN_DIR/render/raster_meshlets.c
@@ -182,9 +184,10 @@ $MAIN_DIR/scene/scene_light.c
 $MAIN_DIR/scene/scene_asset.c
 $MAIN_DIR/scene/scene_draw.c
 $MAIN_DIR/scene/scene_shell.c
-$MAIN_DIR/input/orbit_motion_touch.c
+$MAIN_DIR/input/mapping/orbit_motion_touch.c
 $MAIN_DIR/services/tune.c
 $MAIN_DIR/console/console_verbs.c
+$MAIN_DIR/console/verbs/console_tone.c
 $MAIN_DIR/console/console_frame_request.c
 $MAIN_DIR/display/panel_clock.c
 $MAIN_DIR/shell/ui/ui_launcher.c
@@ -317,6 +320,7 @@ fi
 if [ "$BUILD_ONLY" != 1 ]; then
     "$TEST_DIR/check_app_sources.sh"
     "$TEST_DIR/check_packages_alone.sh"
+    "$TEST_DIR/check_tool_probes.sh"
     "$TEST_DIR/check_inline_owners.sh"
 
     # The bootloader hook lives outside SOURCES too: a separate header world
@@ -508,7 +512,7 @@ PYTHON=$(find_python) || exit 1
 # The asset packs the suites read, one per root asset in the tree. A pack
 # whose bakes only lack their lock rows (a re-keyed bake not yet locked) is
 # left out, and host_tests skips the suites that name it in SUITE_READS and
-# prints them (docs/Testing-Guide.md, "Adding a suite"). Any other build
+# prints them (docs/testing/Writing-a-Test.md, "Adding a suite"). Any other build
 # failure fails here.
 AUTANA_ASSET_DIR="$BUILD_DIR/assets"
 export AUTANA_ASSET_DIR

@@ -1,4 +1,4 @@
-/* Acoustic tone detection against a same-frequency microphone baseline. */
+/* Tone detection and phase-difference frequency measurement. */
 #pragma once
 #include <stdbool.h>
 #include <stdint.h>
@@ -15,4 +15,4 @@ audio_loopback_sample_budget(uint32_t ms) {
 }
 
 /* Blocking; call from a worker or console task, never the frame loop. */
-bool audio_loopback_measure(uint16_t hz, uint16_t ms, float* db);
+bool audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, float* measured_hz);

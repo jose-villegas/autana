@@ -47,8 +47,26 @@ test_render_size_and_percent_follow_and_clamp(void) {
     fixture();
 }
 
+static void
+test_small_fill_ceiling_range(void) {
+    fixture();
+    tune_registry_t* registry = tune_shared();
+    const char* reset = "RESET render_lab.small_fill_ceiling";
+    const char* name = reset + sizeof "RESET " - 1;
+    TEST_ASSERT_TRUE(tune_set(registry, name, SMALL_FILL_CEILING_MAX));
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_MAX, render_lab_small_fill().ceiling);
+    TEST_ASSERT_FALSE(tune_set(registry, name, SMALL_FILL_CEILING_MAX + 1));
+    TEST_ASSERT_FALSE(tune_set(registry, name, UINT8_MAX));
+    TEST_ASSERT_EQUAL_INT(SMALL_FILL_CEILING_MAX, render_lab_small_fill().ceiling);
+    TEST_ASSERT_TRUE(tune_set(registry, name, 0));
+    TEST_ASSERT_EQUAL_INT(0, render_lab_small_fill().ceiling);
+    TEST_ASSERT_FALSE(tune_set(registry, name, -1));
+    size_command(reset);
+}
+
 void
 run_render_size_suite(void) {
+    RUN_TEST(test_small_fill_ceiling_range);
     RUN_TEST(test_render_size_and_percent_follow_and_clamp);
 }
 

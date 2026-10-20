@@ -73,7 +73,7 @@ static boot_anim_backdrop_fn ending_backdrop;
 /* Folds global dissolve into existing alpha. */
 static uint8_t
 scale8(uint8_t a, uint8_t b) {
-    return (uint8_t)(((uint32_t)a * b + 127u) / 255u);
+    return (uint8_t)(((uint32_t)a * b + 127U) / 255U);
 }
 
 /* `rgb` lifted `alpha` of the way off the background. */
@@ -147,7 +147,7 @@ mesh_point(const mesh_pass_t* pass, int i, int j) {
 
 static vec3x_t
 mesh_stepped_point(const mesh_pass_t* pass, int i, int j, vec3x_t plane, int32_t lift) {
-    if (!pass->stepping || (uint32_t)(lift + R3D_X_INPUT_Y_LIMIT) >= 2u * R3D_X_INPUT_Y_LIMIT) {
+    if (!pass->stepping || (uint32_t)(lift + R3D_X_INPUT_Y_LIMIT) >= 2U * R3D_X_INPUT_Y_LIMIT) {
         return boot_anim_to_camera_space(i * BOOT_ANIM_MESH_STEP_Q12, j * BOOT_ANIM_MESH_STEP_Q12, lift, pass->view);
     }
     return (vec3x_t){
@@ -168,7 +168,7 @@ mesh_node(const mesh_pass_t* pass, int i, int j, vec3x_t plane) {
     node.sx = (int16_t)sx;
     node.sy = (int16_t)sy;
     node.band_q4 = (int16_t)boot_anim_floor_node(i, j)->band_q4;
-    node.flags = (uint8_t)(gfx_clip_outcode(&pass->clip, sx, sy) | (front ? MESH_NODE_FRONT : 0u));
+    node.flags = (uint8_t)(gfx_clip_outcode(&pass->clip, sx, sy) | (front ? MESH_NODE_FRONT : 0U));
     return node;
 }
 
@@ -210,7 +210,10 @@ draw_mesh_edge(const mesh_pass_t* pass, const mesh_node_t* a, int ai, int aj, co
         draw_line_ex(a->sx, a->sy, b->sx, b->sy, c, flags);
         return;
     }
-    int x0, y0, x1, y1;
+    int x0;
+    int y0;
+    int x1;
+    int y1;
     if (!r3d_project_segment_cs_x(mesh_point(pass, ai, aj), mesh_point(pass, bi, bj), pass->view, &x0, &y0, &x1, &y1)) {
         return;
     }
@@ -278,7 +281,10 @@ draw_axis_lines_far(const mesh_pass_t* pass) {
                                  prev.y + (int32_t)(((int64_t)(next.y - prev.y) * part) / span),
                                  prev.z + (int32_t)(((int64_t)(next.z - prev.z) * part) / span)};
             }
-            int x0, y0, x1, y1;
+            int x0;
+            int y0;
+            int x1;
+            int y1;
             if (r3d_project_segment_cs_x(prev, next, pass->view, &x0, &y0, &x1, &y1)) {
                 draw_line_ex(x0, y0, x1, y1, c, flags);
             }
@@ -309,7 +315,10 @@ draw_far_ring(const mesh_pass_t* pass, const boot_anim_plane_t* plane, bool alon
         /* Flat, so the plane's two-term form gives the camera point. */
         const vec3x_t a = along_im ? boot_anim_plane_point(plane, c, from) : boot_anim_plane_point(plane, from, c);
         const vec3x_t b = along_im ? boot_anim_plane_point(plane, c, to) : boot_anim_plane_point(plane, to, c);
-        int x0, y0, x1, y1;
+        int x0;
+        int y0;
+        int x1;
+        int y1;
         if (r3d_project_segment_cs_x(a, b, pass->view, &x0, &y0, &x1, &y1)) {
             draw_line_ex(x0, y0, x1, y1, col, flags);
         }
@@ -409,9 +418,12 @@ draw_arm(int32_t re, int32_t im, int32_t t, uint8_t reach, uint8_t ink, const bo
     const int32_t fim = mathi_lerp_u8(0, im, reach);
     const int32_t ft = mathi_lerp_u8(0, t, reach);
 
-    int ax, ay, bx, by;
+    int ax;
+    int ay;
+    int bx;
+    int by;
     if (boot_anim_project_segment(0, 0, 0, fre, fim, ft, view, &ax, &ay, &bx, &by)) {
-        draw_line_ex(ax, ay, bx, by, lit(COL_AXIS, ink), 0u);
+        draw_line_ex(ax, ay, bx, by, lit(COL_AXIS, ink), 0U);
     }
 }
 
@@ -446,7 +458,12 @@ draw_axes(uint32_t now_ms, uint8_t ink, const boot_anim_view_t* view) {
     if (reach == 255 && finale == 0) {
         /* finale == 0 ensures arms stay in front; consistency with other
          * calls. */
-        int re_x, re_y, im_x, im_y, t_x, t_y;
+        int re_x;
+        int re_y;
+        int im_x;
+        int im_y;
+        int t_x;
+        int t_y;
         const bool re_ok = boot_anim_project_point(arm, 0, 0, view, &re_x, &re_y);
         const bool im_ok = boot_anim_project_point(0, arm, 0, view, &im_x, &im_y);
         const bool t_ok = boot_anim_project_point(0, 0, top, view, &t_x, &t_y);
@@ -472,7 +489,8 @@ draw_zeros(int32_t pen_t_q8, uint8_t ink, const boot_anim_view_t* view) {
         if (t > pen_t_q8) {
             break; /* the table is in order, so nothing after it either */
         }
-        int x, y;
+        int x;
+        int y;
         if (!boot_anim_project_point(0, 0, t, view, &x, &y)) {
             continue;
         }
@@ -495,7 +513,7 @@ draw_stroke(int x0, int y0, int x1, int y1, gfx_color_t c, int width, bool joine
         const int bx = shallow ? x1 : x1 + off;
         const int by = shallow ? y1 + off : y1;
 
-        draw_line_ex(ax, ay, bx, by, c, DRAW_LINE_ADD | (joined ? DRAW_LINE_OPEN : 0u));
+        draw_line_ex(ax, ay, bx, by, c, DRAW_LINE_ADD | (joined ? DRAW_LINE_OPEN : 0U));
     }
 }
 
@@ -534,7 +552,8 @@ draw_heads(int32_t colour_pen, uint8_t ink, const boot_anim_view_t* view) {
             i = BOOT_ANIM_CURVE_POINTS - 1; /* the table ran out first */
         }
         const boot_anim_pt_t p = boot_anim_sample(i);
-        int x, y;
+        int x;
+        int y;
         if (!boot_anim_project_point(p.re, p.im, p.t, view, &x, &y)) {
             continue;
         }
@@ -553,7 +572,8 @@ typedef struct {
 static void
 draw_curve_segment(curve_segment_t* segment, vec3x_t next_cs, gfx_color_t color, int width,
                    const boot_anim_view_t* view) {
-    int nsx, nsy;
+    int nsx;
+    int nsy;
     const bool next_front = r3d_project_point_cs_x(next_cs, view, &nsx, &nsy);
 
     if (segment->prev_front && next_front) {
@@ -562,7 +582,10 @@ draw_curve_segment(curve_segment_t* segment, vec3x_t next_cs, gfx_color_t color,
         segment->prev_sx = nsx;
         segment->prev_sy = nsy;
     } else if (segment->prev_front != next_front) {
-        int ax, ay, bx, by;
+        int ax;
+        int ay;
+        int bx;
+        int by;
         if (r3d_project_segment_cs_x(segment->prev_cs, next_cs, view, &ax, &ay, &bx, &by)) {
             draw_stroke(ax, ay, bx, by, color, width, segment->joined);
             segment->joined = true;
@@ -674,12 +697,14 @@ draw_title(uint32_t now_ms, uint8_t ink) {
 
     for (int i = 0; i < BOOT_ANIM_TITLE_LEN; i++) {
         const vec2i_t p = boot_anim_title_letter(font, i, now_ms);
-        int px, py;
+        int px;
+        int py;
         title_glyph_origin(p.x, p.y, glyph_w, glyph_h, &px, &py);
 
         one[0] = BOOT_ANIM_TITLE[i];
         if (has_shadow) {
-            int shadow_dx, shadow_dy;
+            int shadow_dx;
+            int shadow_dy;
             boot_anim_title_shadow_offset(BOOT_ANIM_TITLE_SHADOW_DX, BOOT_ANIM_TITLE_SHADOW_DY, &shadow_dx, &shadow_dy);
             const uint8_t shadow_alpha =
                 dissolve ? (uint8_t)(BOOT_ANIM_TITLE_SHADOW_ALPHA * ink / 255) : BOOT_ANIM_TITLE_SHADOW_ALPHA;
