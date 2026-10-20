@@ -143,7 +143,9 @@ def write_small_fill(work, out, scene_id, object_name, data):
     header = VIEW_HEADER.read_text()
     defaults = dict(re.findall(r"#define SMALL_FILL_(CEILING|GATE)_DEFAULT\s+(\d+)", header))
     style = re.search(r"#define SMALL_FILL_STYLE_DEFAULT\s+SMALL_FILL_(\w+)", header).group(1)
-    catalog = {name.lower(): (int(default), 0, c_uint8(-1).value) for name, default in defaults.items()}
+    maxima = dict(re.findall(r"#define SMALL_FILL_(CEILING|GATE)_MAX\s+(\d+)", header))
+    catalog = {name.lower(): (int(default), 0, int(maxima.get(name, c_uint8(-1).value)))
+               for name, default in defaults.items()}
     catalog["style"] = (SMALL_FILL_STYLES.index(style), 0, len(SMALL_FILL_STYLES) - 1)
     effects = {
         "ceiling": "Largest bounding-box side in pixel centres; 0 disables small fill",

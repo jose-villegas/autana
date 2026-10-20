@@ -346,10 +346,10 @@ Small triangles skip plane setup and use one depth, with colour from the camera'
 The camera owns the bounding-box ceiling, colour gate and style;
 `render_view_t.small_fill` carries them to the frame's row workers.
 
-<!-- generated: small-fill-levers sha256=2144b93939ba49b1ccbbd0e25826f8c0ec7bed0791c80c3fcaa2f1f01bfc96fa -->
+<!-- generated: small-fill-levers sha256=7d6ce185e798232e948ed6bacd9694ed9d98e8ded6bbfea7e585847cb243f552 -->
 | Camera field | Range | Default | Effect |
 |---|---|---|---|
-| `ceiling` | 0..255 | 12 | Largest bounding-box side in pixel centres; 0 disables small fill |
+| `ceiling` | 0..16 | 12 | Largest bounding-box side in pixel centres; 0 disables small fill |
 | `gate` | 0..255 | 16 | Vertex RGB565 spread limit at the ceiling; 0 disables the colour gate |
 | `style` | 0..2 | 0 | FLAT (0), GRAIN (1), DITHER (2) |
 <!-- /generated: small-fill-levers -->
