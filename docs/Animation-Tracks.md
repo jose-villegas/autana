@@ -88,22 +88,74 @@ source = "NAME.glb"     # a .glb, .fbx or .keys.toml beside this one
 animation = "walk"      # the animation's name in the glTF
 ```
 
-[anim_tracks_format.h](../launcher/main/anim/anim_tracks_format.h) owns the
-`TRCK` layout. It is little-endian, and every offset counts from
-the entry's first byte:
+### TRCK v2
 
-| Part | Layout |
+| Format | Version | Writer (Python) | Reader (C) |
+|---|---|---|---|
+| TRCK | 2 | `anim/tracks_asset.py` | `anim/anim_tracks.c` |
+
+Little-endian; every offset counts from the entry's first byte.
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 20
+    bitWidth: 44
+---
+packet-beta
+title Header, 20 bytes at 0, one cell a byte
+0-1: "version = 2"
+2-3: "binding_count"
+4-7: "duration_ms"
+8-11: "strings_off"
+12-15: "strings_size"
+16: "root"
+17-19: "0"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 12
+    bitWidth: 56
+---
+packet-beta
+title Binding registry, one 24-byte row a binding from byte 20
+0-1: "path"
+2-3: "field"
+4-7: "component"
+8-11: "times_off"
+12-15: "values_off"
+16-17: "keys"
+18: "type"
+19: "interp"
+20-23: "0"
+```
+
+| Part | At | Size |
+|---|---|---|
+| Header | 0 | 20 bytes |
+| Binding registry | 20 | 24 bytes a binding; `path` and `field` are offsets within the strings |
+| Content: strings | `strings_off` | `strings_size` bytes: deduplicated UTF-8 object paths and field names, each NUL terminated |
+| Content: key arrays | each row's `times_off` and `values_off` | per binding, `keys` times (`f32`), then `keys * width` values (`f32`); a cubic binding holds in-tangent, value and out-tangent per key, so `3 * keys * width` |
+
+| Rule | Detail |
 |---|---|
-| header, 20 bytes | `u16 version` (2), `u16 binding_count`, `u32 duration_ms`, `u32 strings_off`, `u32 strings_size`, `u8 root` (0 scene, 1 skeleton), 3 zero bytes |
-| row per binding, 24 bytes | `u16 path`, `u16 field` (offsets within the string table), `u32 component` (nonzero code), `u32 times_off`, `u32 values_off`, `u16 count`, `u8 type`, `u8 interp`, 4 zero bytes |
-| string table | deduplicated, NUL-terminated UTF-8 object paths and field names |
-| data | each track's `f32` times, then its `f32` values (cubic: in-tangent, value, out-tangent per key), 4-byte aligned |
+| Owners | `ANIM_TRACKS_VERSION`, `_HEADER_SIZE` (20), `_ROW_SIZE` (24), `_ALIGNMENT` (4), `_CUBIC_RUNS` (3), `ANIM_BINDING_STRING_MAX` (255), `ANIM_ROOT_SCENE` (0), `ANIM_ROOT_SKELETON` (1) in `anim_tracks_format.h` |
+| Header | `root` is `ANIM_ROOT_SCENE` or `ANIM_ROOT_SKELETON`; the 3 pad bytes are zero; `binding_count` at most 65535 |
+| Strings | `strings_off` a multiple of 4, at or after the registry's end; a path or field is nonempty, at most `ANIM_BINDING_STRING_MAX` bytes, with no NUL, and ends inside the table, which fits a 16-bit offset |
+| Component | `u32` code, nonzero; written as `ASSET_TYPE` tags such as `ANIM_COMPONENT_TRANSFORM` (`TRNS`); one binding per path, component and field |
+| Type | an `anim_value_t` code (float, vec2, vec3, quaternion, colour) with width 1, 2, 3, 4 and 3 |
+| Interp | an `anim_interp_t` code: step, linear or cubic |
+| Keys | at least 1, at most 65535; times finite and strictly increasing, values finite, in seconds and the field's units |
+| Arrays | 4-aligned, after the strings, inside the entry |
+| Order | header, registry, strings, key arrays in registry order; all pad and gap bytes zero |
+| Errors | `ASSET_ERR_VERSION` for another version; `ASSET_ERR_BOUNDS` for an unaligned base, a short header or registry, or strings or arrays out of place; `ASSET_ERR_FORMAT` for an unknown root, type or interpolation, a zero component or key count, nonzero padding, an unterminated string, or a time or value that is not finite or not increasing |
+| Python | the reader makes the same layout and curve checks |
 
-Value type codes follow `anim_value_t`: float, vec2, vec3, quaternion and
-colour, with widths 1, 2, 3, 4 and 3. Interpolation codes follow
-`anim_interp_t`. The bake keeps path and field strings nonempty and at most
-`ANIM_BINDING_STRING_MAX` (255) UTF-8 bytes; the string table fits its 16-bit
-offsets. `strings_off` must be a multiple of 4.
+### Reading a clip
 
 ```c
 anim_tracks_t clip;
@@ -116,15 +168,6 @@ if (anim_tracks_from_pack(pack, "NAME", &clip) == ASSET_OK
     anim_playhead_init(&playhead, ANIM_LOOP);
 }
 ```
-
-`anim_tracks_open()` rejects other versions (`ASSET_ERR_VERSION`). It checks
-the aligned entry base, header, row table, aligned string table and every
-aligned key array inside the entry; arrays must follow the string table
-(`ASSET_ERR_BOUNDS`). Each row requires terminated strings inside that table,
-a nonzero component code, known value type and interpolation, at least one key, all four
-padding bytes zero, finite values and finite strictly increasing times.
-The header requires a known root and zero padding (`ASSET_ERR_FORMAT`).
-The Python reader performs the same layout and curve checks.
 
 `anim_tracks_binding_at()` returns the path, component, field, type and
 curve for a row; `anim_tracks_find()` selects that tuple. Curves and strings
