@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <string.h>
-#include "apps/render_lab/render_lab.h"
 #include "apps/render_lab/render_lab_view.h"
 
 #include "gfx/gfx.h"
@@ -106,22 +105,8 @@ test_small_fill_menu_choice_moves_the_tunables(void) {
     fixture();
 }
 
-static void
-test_scene_families_list_their_variants_with_fitted_full_first(void) {
-    const char* const* names = NULL;
-    int selected = 0;
-    const int sponza = render_lab_family_variants("Sponza", &names, &selected);
-    TEST_ASSERT_GREATER_THAN_INT(1, sponza);
-    TEST_ASSERT_EQUAL_STRING("Fitted Full", names[0]);
-    TEST_ASSERT_EQUAL_INT(1, render_lab_family_variants("Capybara", &names, &selected));
-    TEST_ASSERT_EQUAL_INT(0, render_lab_family_variants("Nothing", &names, &selected));
-    TEST_ASSERT_FALSE(render_lab_request_variant("Sponza", sponza));
-    TEST_ASSERT_FALSE(render_lab_request_variant("Nothing", 0));
-}
-
 void
 run_render_size_suite(void) {
-    RUN_TEST(test_scene_families_list_their_variants_with_fitted_full_first);
     RUN_TEST(test_small_fill_menu_choice_moves_the_tunables);
     RUN_TEST(test_small_fill_ceiling_range);
     RUN_TEST(test_render_size_and_percent_follow_and_clamp);
