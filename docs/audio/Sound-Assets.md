@@ -16,50 +16,81 @@ Channels are averaged before a Hann-windowed sinc filter resamples to mono
 22,050 Hz. The filter spans 32 zero crossings on either side and widens for
 downsampling. Matching-rate sources skip it; samples round and clamp to int16.
 
-The 32-byte header is little-endian; offsets count from the entry's first byte.
+## SOND v1
 
-| At | Type | Holds |
+| Format | Version | Writer (Python) | Reader (C) |
+|---|---|---|---|
+| SOND | 1 | `audio/sound_asset.py` | `sound/sound.c` |
+
+Little-endian; offsets count from the entry's first byte.
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 16
+    bitWidth: 44
+---
+packet-beta
+title Header, 32 bytes at 0, one cell a byte
+0-1: "version = 1"
+2: "format"
+3: "channels"
+4-7: "sample_rate"
+8-11: "frames"
+12-15: "loop_start"
+16-19: "loop_end"
+20-21: "block_frames"
+22-23: "0"
+24-27: "0"
+28-31: "data_off"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 8
+    bitWidth: 84
+---
+packet-beta
+title Content: PCM16 sample, 2 bytes a frame from data_off
+0-1: "int16 sample"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 8
+    bitWidth: 84
+---
+packet-beta
+title Content: ADPCM block, 4 + (block_frames - 1) / 2 bytes from data_off
+0-1: "int16 predictor"
+2: "step index"
+3: "0"
+4-7: "codes, two a byte, low nibble first"
+```
+
+| Part | At | Size |
 |---|---|---|
-| 0 | u16 | version 1 |
-| 2 | u8 | format 0 PCM16 or 1 IMA-ADPCM |
-| 3 | u8 | channels 1 |
-| 4 | u32 | sample rate 22,050 Hz |
-| 8 | u32 | nonzero frame count |
-| 12 | u32 | loop start |
-| 16 | u32 | loop end, exclusive; 0 means one-shot |
-| 20 | u16 | block frames, 0 for PCM16; odd for ADPCM |
-| 22 | u16 | reserved 0 |
-| 24 | u32 | reserved 0 |
-| 28 | u32 | data offset, at least 32 and 4-aligned |
+| Header | 0 | 32 bytes |
+| Content: samples | `data_off` | PCM16: `2 * frames` bytes. ADPCM: `ceil(frames / block_frames)` blocks of `4 + (block_frames - 1) / 2` bytes |
 
-PCM16 data is signed little-endian samples. Each ADPCM block holds an int16
-predictor, u8 step index in 0..88 and u8 reserved zero, then low-nibble-first
-IMA codes. Its byte size is `4 + (block_frames - 1) / 2`.
-
-Every value in the header table comes from `sound/sound_format.h`, the SOND
-file layout, which the baker and the reader both read. The stored sample rate
-is `AUDIO_OUT_SAMPLE_RATE_HZ`, so the mixer needs no resampling.
-
-The first ADPCM block starts at step index zero; later blocks carry the
-previous ending index. Each block opens with its first sample stored exactly
-as the predictor. The last block is padded by repeating its final sample, and
-`frames` tells the reader where to stop.
+| Rule | Detail |
+|---|---|
+| Owners | `sound_format.h`: `SOUND_VERSION`, `SOUND_HEADER_SIZE` (32), `SOUND_ALIGNMENT` (4), `SOUND_CHANNELS` (1), `SOUND_PCM_BYTES` (2), `SOUND_DEFAULT_BLOCK_FRAMES` (505), the `SOUND_AT_*` offsets and the format codes `SOUND_FORMAT_PCM16` (0) and `SOUND_FORMAT_IMA_ADPCM` (1). ADPCM block bytes and the step limit come from `audio_adpcm.h`. The baker and the reader both read these |
+| Rate | `sample_rate` is `AUDIO_OUT_SAMPLE_RATE_HZ` (22050), so the mixer needs no resampling |
+| Frames | nonzero; the last ADPCM block is padded by repeating its final sample and `frames` tells the reader where to stop |
+| Data | `data_off` at least 32, a multiple of 4; the samples end inside the entry; the gap between header and data is zero |
+| Reserved | the two reserved fields are zero |
+| Blocks | PCM16 has `block_frames` 0; ADPCM has it odd, `SOUND_DEFAULT_BLOCK_FRAMES` by default |
+| Loop | `loop_end` 0 means one-shot, with `loop_start` 0; a loop has `start < end <= frames`, and an ADPCM `loop_start` sits on a block boundary (the baker rejects a misaligned start and names its two neighbours) |
+| ADPCM block | step index at most 88 (`AUDIO_ADPCM_STEP_INDEX_MAX`), reserved byte zero; the first block starts at step index 0 and later blocks carry the previous ending index; each block opens with its first sample stored exactly as the predictor |
+| Errors | `ASSET_ERR_VERSION` for another version, checked by `asset_entry_validate()`; `ASSET_ERR_BOUNDS` for `data_off` below 32 or misaligned, or data past the entry; `ASSET_ERR_FORMAT` for the rest (unknown format, channels, rate, zero frames, nonzero reserved fields or gap, a `block_frames` the format forbids, a bad loop, a bad block header). A failed open zeroes the view |
 
 `sound_open()` maps the samples in place through `asset_entry_read()`.
-Failed opens zero the view.
-
-| Status | Cause |
-|---|---|
-| `ASSET_ERR_VERSION` | Another version, checked by `asset_entry_validate()` |
-| `ASSET_ERR_BOUNDS` | Data offset below 32 or misaligned, or data past the entry |
-| `ASSET_ERR_FORMAT` | Unknown format, channels other than 1, rate other than 22,050 Hz, or zero frames |
-| `ASSET_ERR_FORMAT` | Nonzero reserved fields or header gap |
-| `ASSET_ERR_FORMAT` | PCM16 block_frames nonzero, or ADPCM block_frames even (including zero) |
-| `ASSET_ERR_FORMAT` | Loop end 0 with start nonzero, or a loop without `start < end <= frames` |
-| `ASSET_ERR_FORMAT` | ADPCM loop start off a block boundary |
-| `ASSET_ERR_FORMAT` | ADPCM block header step index above 88 or reserved byte nonzero |
-
-The baker rejects misaligned starts and names their two neighbours.
 
 A mixer reads a sound through `sound_cursor_t`.
 `sound_seek()` selects a stored frame; ADPCM seeks must be block-aligned,
