@@ -48,7 +48,7 @@ typedef struct {
     int32_t units[3][4]; /* the matrix scaled for whole-unit inputs, see below */
     bool units_ok;       /* every entry is small enough for a 32-bit sum */
     mat4x_t matrix;      /* view * model, entries Q9: a Q16.16 point comes out in 1/512 m */
-    projectx_t lens;
+    projectx_t lens;     /* Q16.16 pixels; near_z in Q16.16 m, read via r3d_line_near_z() */
 } r3d_line_projector_t;
 
 /* units[r][c] is matrix entry [r][c] times meters_per_unit[c], and
@@ -111,7 +111,7 @@ r3d_camera_to_screen_x(vec3x_t p, const r3d_line_projector_t* view, int* screen_
 
 static inline int32_t
 r3d_line_near_z(const r3d_line_projector_t* view) {
-    return view->lens.near_z >> (MATHX_SHIFT - R3D_X_UNIT_SHIFT);
+    return fx_round_shift32(view->lens.near_z, MATHX_SHIFT - R3D_X_UNIT_SHIFT);
 }
 
 static inline bool

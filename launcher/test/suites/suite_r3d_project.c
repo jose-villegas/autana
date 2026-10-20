@@ -233,6 +233,18 @@ test_the_fixed_projection_lands_within_two_pixels_of_the_float_one(void) {
     }
 }
 
+/* The near plane rounds to the nearest 1/512 m, as the float lens would. */
+static void
+test_the_line_near_plane_rounds_to_the_camera_unit(void) {
+    render_view_t float_view = fixture();
+    const transformf_t model = TRANSFORMF_IDENTITY;
+    const float meters_per_unit[] = {1.0F, 1.0F, 1.0F};
+    const int whole_units = 51;
+    float_view.lens.near_z = ((float)whole_units + 0.75F) / (float)R3D_X_UNIT_ONE;
+    const r3d_line_projector_t view = r3d_line_projector_make(&float_view, &model, meters_per_unit);
+    TEST_ASSERT_EQUAL_INT32(whole_units + 1, r3d_line_near_z(&view));
+}
+
 static void
 test_the_fixed_segment_clip_and_point_test_follow_the_near_plane(void) {
     render_view_t float_view = fixture();
@@ -401,6 +413,7 @@ run_r3d_project_suite(void) {
     RUN_TEST(test_a_nan_offset_and_a_point_at_the_axis_on_the_camera_plane_clamp);
     RUN_TEST(test_a_pixel_offset_truncates_toward_zero_on_both_sides);
     RUN_TEST(test_the_fixed_projection_lands_within_two_pixels_of_the_float_one);
+    RUN_TEST(test_the_line_near_plane_rounds_to_the_camera_unit);
     RUN_TEST(test_the_fixed_segment_clip_and_point_test_follow_the_near_plane);
     RUN_TEST(test_a_point_at_the_camera_plane_projects_to_a_far_off_but_defined_pixel);
 
