@@ -138,6 +138,8 @@ class MeshletReportTests(unittest.TestCase):
     def test_assertion_after_cull_switch_restores_the_prior_setting(self):
         source = (TOOLS.parents[1] / "launcher/main/apps/render_lab/tests/suite_sponza_perf.c").read_text()
         body = source[source.index("static int32_t saved_cull;"):source.index("/* The full bake with motion")]
+        content = (TOOLS.parents[1] / "launcher/main/apps/render_lab/sponza_content.h").read_text()
+        bakes = content[content.index("typedef enum {"):content.index("} sponza_bake_t;") + len("} sponza_bake_t;")]
         with tempfile.TemporaryDirectory() as directory:
             work = pathlib.Path(directory)
             probe = work / "probe.c"
@@ -155,10 +157,11 @@ static void suite_set_test_cleanup(void (*fn)(void)) { cleanup = fn; }
 #define TEST_ASSERT_NOT_NULL(p) do { if ((p) == 0) longjmp(aborted, 1); } while (0)
 #define TEST_PASS() ((void)0)
 #define ESP_LOGI(...) ((void)0)
-enum { SPONZA_BAKE_COUNT = 1, SPONZA_BAKE_FULL = 0, R3D_PERF_QUARTER_COUNT = 2 };
+''' + bakes + '''
+enum { R3D_PERF_QUARTER_COUNT = 2 };
 typedef struct { int mean_goal_us, p95_ceiling_us; } perf_budget_t;
-static const int meshes[1];
-static const char* const sponza_bakes[] = {"renderer"};
+static const int meshes[SPONZA_BAKE_COUNT];
+static const char* const sponza_bakes[SPONZA_BAKE_COUNT] = {[0 ... SPONZA_BAKE_COUNT - 1] = "renderer"};
 typedef struct { const int* mesh; void* model; } r3d_instance_t;
 static void open_the_meshes(void) {}
 static void report_frame_cost(const char* label, const char* object_name, const r3d_instance_t* instance, ...) {
