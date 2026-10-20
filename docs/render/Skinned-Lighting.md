@@ -91,10 +91,10 @@ Skinning alone is the first bar; an exact float evaluation costs about
 
 <!-- generated: skin-light-chart check: python launcher/tools/r3d/skin_light/report_skin_light_board.py docs/render/data/skin-light-board.txt docs/render/Skinned-Lighting.md --check -->
 ```mermaid
-xychart-beta
+xychart-beta horizontal
     title "Cycles per vertex: mode and light count"
-    x-axis ["skin only", "direct 1", "direct 2", "direct 4", "renormalised 1", "renormalised 2", "renormalised 4", "table 1", "table 2", "table 4"]
-    y-axis "cycles"
+    x-axis ["skin only", "direct, 1 light", "direct, 2 lights", "direct, 4 lights", "renormalised, 1 light", "renormalised, 2 lights", "renormalised, 4 lights", "table, 1 light", "table, 2 lights", "table, 4 lights"]
+    y-axis "cycles" 0 --> 900
     bar [353, 640, 664, 709, 680, 703, 748, 865, 861, 861]
 ```
 <!-- /generated: skin-light-chart -->
