@@ -7,12 +7,54 @@
 #include "freertos/semphr.h"
 
 #include "audio/audio_codec_device.h"
+#include "audio/audio_codec_drc.h"
 #include "audio/audio_out_device.h"
 #include "board/board.h"
 #include "build/build_variant.h"
+#include "services/tune.h"
 
 #define AUDIO_OUT_CODEC_VOLUME 30
+TUNE_OWNER(audio);
+TUNE(audio, codec_volume, AUDIO_OUT_CODEC_VOLUME, 0, AUDIO_OUT_VOLUME_MAX_PCT);
+TUNE(audio, drc, 0, 0, 1);
+TUNE(audio, drc_max, 0, 0, AUDIO_CODEC_DRC_FIELD_MAX);
+TUNE(audio, drc_min, 0, 0, AUDIO_CODEC_DRC_FIELD_MAX);
+TUNE(audio, drc_win, 0, 0, AUDIO_CODEC_DRC_FIELD_MAX);
+TUNE(audio, drc_ramp, 0, 0, AUDIO_CODEC_DRC_FIELD_MAX);
 static esp_codec_dev_handle_t output;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+static uint32_t applied_generation;
+static bool drc_applied;
+#endif
+
+static bool
+apply(void) {
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    const uint32_t generation = TUNE_GENERATION(audio);
+#endif
+    if (!audio_codec_check("volume", esp_codec_dev_set_out_vol(output, codec_volume))) {
+        return false;
+    }
+    const audio_codec_drc_t config = {.on = drc,
+                                      .winsize = (uint8_t)drc_win,
+                                      .max_level = (uint8_t)drc_max,
+                                      .min_level = (uint8_t)drc_min,
+                                      .ramp = (uint8_t)drc_ramp};
+    bool write_drc = config.on;
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    write_drc = write_drc || drc_applied;
+    /* A failed transaction may enable DRC before another register write fails. */
+    drc_applied = write_drc;
+#endif
+    if (write_drc && !audio_codec_drc_set(&config)) {
+        return false;
+    }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    drc_applied = config.on;
+    applied_generation = generation;
+#endif
+    return true;
+}
 #if CONFIG_LAUNCHER_DEVELOPMENT
 static audio_out_amp_t amp;
 static StaticSemaphore_t amp_mutex_storage;
@@ -63,7 +105,7 @@ audio_out_open(void) {
     if (!output) {
         return false;
     }
-    if (!audio_codec_check("volume", esp_codec_dev_set_out_vol(output, AUDIO_OUT_CODEC_VOLUME))) {
+    if (!apply()) {
         audio_out_close();
         return false;
     }
@@ -76,6 +118,11 @@ audio_out_write(const int16_t* samples, size_t count) {
     if (!output || !samples || count > INT_MAX / sizeof *samples) {
         return false;
     }
+#if CONFIG_LAUNCHER_DEVELOPMENT
+    if (applied_generation != TUNE_GENERATION(audio) && !apply()) {
+        return false;
+    }
+#endif
     return audio_codec_check("write", esp_codec_dev_write(output, (void*)samples, (int)(count * sizeof *samples)));
 }
 

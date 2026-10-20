@@ -237,7 +237,7 @@ sound_stop(sound_voice_t voice) {
 }
 
 bool
-audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, float* measured_hz) {
+audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, audio_loopback_result_t* result) {
     TEST_ASSERT_EQUAL_UINT16(TEST_TARGET_HZ, hz);
     TEST_ASSERT_EQUAL_UINT16(TEST_DURATION_MS, ms);
     if (device.internal) {
@@ -246,8 +246,10 @@ audio_loopback_measure(uint16_t hz, uint16_t ms, float* db, float* measured_hz) 
     }
     device.measures++;
     *db = device.measures == 1 ? -100.0F : -12.0F;
-    if (measured_hz) {
-        *measured_hz = hz;
+    if (result) {
+        result->measured_hz = hz;
+        result->thd_db = -40.0F;
+        result->peak_dbfs = -6.0F;
     }
     return !((device.measures == 1 && device.failure == TEST_TONE_BASELINE_FAIL)
              || (device.measures == 2 && device.failure == TEST_TONE_MEASURE_FAIL));
@@ -341,7 +343,11 @@ test_tone_reply_frequency(void) {
     char expected[CONSOLE_TONE_MEASURED_BYTES];
     snprintf(expected, sizeof expected, "measured %.2f Hz", (double)TEST_TARGET_HZ);
     for (size_t i = 0; i < sizeof values / sizeof values[0]; i++) {
-        TEST_ASSERT_TRUE(console_tone_reply(line, sizeof line, &args, true, -12, -100, values[i], 0));
+        const audio_loopback_result_t result = {.measured_hz = values[i], .thd_db = values[i], .peak_dbfs = -6};
+        TEST_ASSERT_TRUE(console_tone_reply(line, sizeof line, &args, true, -12, -100, &result, 0));
+        TEST_ASSERT_NOT_NULL(strstr(line, i == 0 ? "thd 1000.0 dB" : "thd n/a dB"));
+        TEST_ASSERT_NOT_NULL(strstr(line, "peak -6.0 dBFS"));
+        TEST_ASSERT_FALSE(console_tone_reply(line, strlen(line), &args, true, -12, -100, &result, 0));
         TEST_ASSERT_NOT_NULL(strstr(line, i == 0 ? expected : "measured n/a"));
         puts(line);
     }

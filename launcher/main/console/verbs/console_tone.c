@@ -51,14 +51,14 @@ console_verb_tone(const char* args, console_reply_fn reply) {
     const size_t dma_open = dma_before - memory_free_bytes(MEMORY_DMA);
     float silence_db = 0;
     float tone_db = 0;
-    float measured_hz = parsed.hz;
+    audio_loopback_result_t result = {0};
     sound_voice_t voice = SOUND_VOICE_NULL;
     bool held = false;
     bool ok = opened && audio_codec_dac_feedback(false)
               && (!parsed.internal || ((held = audio_out_amp_hold(true)) && audio_codec_dac_feedback(true)))
               && audio_loopback_measure(parsed.hz, parsed.ms, &silence_db, NULL)
               && start_tone(&voice, parsed.hz, parsed.volume_pct)
-              && audio_loopback_measure(parsed.hz, parsed.ms, &tone_db, &measured_hz);
+              && audio_loopback_measure(parsed.hz, parsed.ms, &tone_db, &result);
     ok = stop_tone(&voice) && ok;
     if (held) {
         timing_sleep_ms(AUDIO_OUT_DMA_DRAIN_MS);
@@ -72,7 +72,7 @@ console_verb_tone(const char* args, console_reply_fn reply) {
         return;
     }
     char line[CONSOLE_TONE_REPLY_BYTES];
-    if (!console_tone_reply(line, sizeof line, &parsed, heard, tone_db, silence_db, measured_hz, dma_open)) {
+    if (!console_tone_reply(line, sizeof line, &parsed, heard, tone_db, silence_db, &result, dma_open)) {
         reply("TONE error: frequency formatting failed");
         return;
     }

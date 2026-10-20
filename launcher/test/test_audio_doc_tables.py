@@ -415,5 +415,71 @@ class SoundMixToolsTest(unittest.TestCase):
         self.capture_fake_autana_sequence(leftovers=100)
 
 
+sweep = load_tool("audio_drc_sweep")
+
+
+class DrcSweepTest(unittest.TestCase):
+    def test_default_plan(self):
+        args = sweep.parser().parse_args(["--board", "TEST"])
+        configs = list(sweep.configurations(args))
+        self.assertEqual(len(configs), 7 + 3 * 4 * 2)
+        self.assertEqual(configs[0], dict(codec_volume=30, drc=0, drc_max=0, drc_min=0, drc_win=4, drc_ramp=2))
+        self.assertEqual(list(sweep.tones(args)), [(1000, 10), (1000, 30), (1000, 100), (500, 100), (2000, 100)])
+        self.assertEqual(args.runs, 3)
+        self.assertEqual(configs[-1]["drc_min"], 0)
+
+    def test_capture_and_cleanup_after_failure(self):
+        for fail in (False, True):
+            with self.subTest(fail=fail), tempfile.TemporaryDirectory() as directory:
+                out = Path(directory) / "capture.txt"
+                args = sweep.parser().parse_args(["--board", "TEST", "--out", str(out),
+                    "--autana", 'python "path with spaces/autana.py"', "--baseline", "30", "--codec", "50",
+                    "--max-levels", "15", "--volumes", "10,30,100", "--extra-hz", "", "--runs", "1"])
+                calls = []
+                def run(command, **kwargs):
+                    calls.append(command)
+                    self.assertEqual(command[:2], [sweep.shutil.which("python") or "python", "path with spaces/autana.py"])
+                    if command[2] == "tone":
+                        if fail:
+                            raise RuntimeError("tone failed")
+                        payload = dict(hz=int(command[3]), tone_db=-12.0, thd_db=-40.0, peak_dbfs=-0.4)
+                    elif command[2] == "buildid":
+                        payload = dict(build_id="test-dev")
+                    else:
+                        return mock.Mock(stdout="audio.test=0\n")
+                    return mock.Mock(stdout=json.dumps(payload))
+                with mock.patch.object(sweep.subprocess, "run", side_effect=run):
+                    if fail:
+                        with self.assertRaisesRegex(RuntimeError, "tone failed"):
+                            sweep.capture(args)
+                    else:
+                        sweep.capture(args)
+                self.assertEqual(calls[-len(sweep.TUNABLES):],
+                    [[sweep.shutil.which("python") or "python", "path with spaces/autana.py", "tune", "reset", "audio." + name] for name in sweep.TUNABLES])
+                records = out.read_text().splitlines()
+                self.assertTrue(records[0].startswith("# autana --json replies on TEST,"))
+                self.assertTrue(records[1].startswith("buildid\t"))
+                if not fail:
+                    self.assertIn("-6.0", audio.render_drc(out))
+                    self.assertIn("yes", audio.render_drc(out))
+
+    def test_fixture_medians(self):
+        body = audio.render_drc(ROOT / "launcher/test/fixtures/audio_drc_capture.txt")
+        self.assertIn("| 30 | off | -40.0 | -30.0 | -20.0 | -45.0 | -0.4 | yes |", body)
+        self.assertIn("max -6.0 / min -30.1", body)
+
+    def test_absent_capture_and_block_creation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            doc = Path(directory) / "Audio.md"
+            doc.write_bytes(b"# Audio\r\n\r\n## Output limiter (DRC)\r\n\r\n## Next\r\n")
+            missing = Path(directory) / "missing.txt"
+            self.assertFalse(audio.update_drc(missing, doc, check=True))
+            fixture = ROOT / "launcher/test/fixtures/audio_drc_capture.txt"
+            self.assertTrue(audio.update_drc(fixture, doc, check=True))
+            self.assertTrue(audio.update_drc(fixture, doc))
+            self.assertFalse(audio.update_drc(fixture, doc, check=True))
+            self.assertNotIn(b"\n", doc.read_bytes().replace(b"\r\n", b""))
+
+
 if __name__ == "__main__":
     unittest.main()

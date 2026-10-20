@@ -1,0 +1,110 @@
+"""Capture the DAC limiter sweep on a flashed development image.
+
+Run the entire capture inside one autana lock run:
+autana --wait 3600 lock run -- python launcher/tools/audio/audio_drc_sweep.py --board A308
+"""
+import argparse
+from datetime import date
+import itertools
+import json
+from pathlib import Path
+import shlex
+import shutil
+import subprocess
+
+ROOT = Path(__file__).resolve().parents[3]
+CAPTURE = ROOT / "docs/audio/data/audio_drc_capture.txt"
+DRC_LEVEL_DB = (-30.1, -24.1, -20.6, -18.1, -16.1, -14.5, -13.2, -12.0,
+                -11.0, -10.1, -9.3, -8.5, -7.8, -7.2, -6.6, -6.0)
+DRC_FIELD_MAX = len(DRC_LEVEL_DB) - 1
+VOLUME_MAX = 100
+PRIMARY_HZ = 1000
+TUNABLES = ("codec_volume", "drc", "drc_max", "drc_min", "drc_win", "drc_ramp")
+
+
+def numbers(text):
+    return tuple(int(value) for value in text.split(",") if value)
+
+
+def parser():
+    result = argparse.ArgumentParser(description=__doc__)
+    result.add_argument("--autana", default="autana")
+    result.add_argument("--board", required=True)
+    result.add_argument("--out", type=Path, default=CAPTURE)
+    result.add_argument("--baseline", type=numbers, default=numbers("30,40,50,60,70,85,100"))
+    result.add_argument("--codec", type=numbers, default=numbers("50,70,100"))
+    result.add_argument("--max-levels", type=numbers, default=numbers("15,10,7,3"))
+    result.add_argument("--winsize", type=int, default=4)
+    result.add_argument("--ramp", type=int, default=2)
+    result.add_argument("--hz", type=int, default=PRIMARY_HZ)
+    result.add_argument("--extra-hz", type=numbers, default=numbers("500,2000"))
+    result.add_argument("--volumes", type=numbers, default=numbers("10,30,100"))
+    result.add_argument("--ms", type=int, default=500)
+    result.add_argument("--runs", type=int, default=3)
+    return result
+
+
+def configurations(args):
+    if (not args.baseline or not args.codec or not args.max_levels
+            or any(not 0 <= value <= VOLUME_MAX for value in (*args.baseline, *args.codec, *args.volumes))
+            or any(not 0 <= value <= DRC_FIELD_MAX for value in (*args.max_levels, args.winsize, args.ramp))):
+        raise ValueError("invalid codec volumes or DRC fields")
+    for volume in args.baseline:
+        yield dict(codec_volume=volume, drc=0, drc_max=0, drc_min=0, drc_win=args.winsize, drc_ramp=args.ramp)
+    for volume, maximum in itertools.product(args.codec, args.max_levels):
+        for minimum in dict.fromkeys((maximum, 0)):
+            yield dict(codec_volume=volume, drc=1, drc_max=maximum, drc_min=minimum,
+                       drc_win=args.winsize, drc_ramp=args.ramp)
+
+
+def tones(args):
+    yield from ((args.hz, volume) for volume in args.volumes)
+    yield from ((hz, VOLUME_MAX) for hz in args.extra_hz)
+
+
+def capture(args):
+    configs = list(configurations(args))
+    points = list(tones(args))
+    if args.runs <= 0 or args.ms <= 0 or not points or any(hz <= 0 for hz, _ in points):
+        raise ValueError("positive runs, duration and tone frequencies are required")
+    command = shlex.split(args.autana)
+    if not command:
+        raise ValueError("empty autana command")
+    command[0] = shutil.which(command[0]) or command[0]
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+    with args.out.open("w", encoding="utf-8", newline="\n") as output:
+        output.write(f"# autana --json replies on {args.board}, {date.today()}, DRC sweep\n")
+        def record(*words):
+            reply = subprocess.run([*command, *map(str, words)], check=True,
+                                   capture_output=True, text=True).stdout.strip()
+            payload = json.loads(reply) if words[0] in ("tone", "buildid") else reply
+            output.write(" ".join(map(str, words)).removesuffix(" --json")
+                         + "\t" + json.dumps(payload, allow_nan=False) + "\n")
+            output.flush()
+        record("buildid", "--json")
+        try:
+            for config in configs:
+                for name, value in config.items():
+                    record("tune", "audio." + name, value)
+                for hz, volume in points:
+                    for _ in range(args.runs):
+                        record("tone", hz, args.ms, volume, "--json")
+        finally:
+            failures = []
+            for name in TUNABLES:
+                try:
+                    record("tune", "reset", "audio." + name)
+                except (OSError, subprocess.CalledProcessError) as error:
+                    failures.append(error)
+            if failures:
+                raise RuntimeError("audio tunable reset failed") from failures[0]
+
+
+def main():
+    args = parser().parse_args()
+    capture(args)
+    print(f"DRC capture: {args.out}")
+
+
+if __name__ == "__main__":
+    main()

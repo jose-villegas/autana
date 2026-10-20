@@ -87,6 +87,10 @@ The nominal frequency must be at least `AUDIO_FREQUENCY_MIN_CYCLES` cycles per w
 Below `AUDIO_FREQUENCY_MIN_SAMPLES`, the reply says `measured n/a`
 and both JSON frequency fields are null.
 
+`thd_db` reports harmonic power relative to the fundamental in dB; null means unavailable.
+
+`peak_dbfs` reports the largest absolute microphone sample in dBFS.
+
 The detector discards `AUDIO_LOOPBACK_SETTLE_MS` of capture before measuring.
 Heard means tone minus silence is at least `AUDIO_LOOPBACK_HEARD_MARGIN_DB`
 (`launcher/main/audio/audio_loopback.h`). Playback and capture buffers have
@@ -214,6 +218,27 @@ considered when comparing captures.
 
 DAC and ADC share one clock, so the estimate checks the tone generator and
 capture path, not the crystal.
+
+## Output limiter (DRC)
+
+The ES8311 DAC limiter is controlled by `audio.drc`, `audio.drc_max`,
+`audio.drc_min`, `audio.drc_win`, and `audio.drc_ramp`.
+Level fields are datasheet indices; window and ramp fields are nibbles.
+
+`audio.codec_volume` sets codec output gain and the limiter's maximum gain.
+Defaults keep DRC off and codec volume at 30; release applies constants at open.
+Development builds apply changed tunables on the next PCM write.
+
+Capture on a development image inside one board lock:
+
+```sh
+autana --wait 3600 lock run -- python launcher/tools/audio/audio_drc_sweep.py --board A308
+python launcher/tools/audio/audio_doc_tables.py --write
+```
+
+The sweep resets every audio tunable at exit. Its arguments select codec gains,
+limiter fields, tone points, duration, and repeats. The generated table appears
+when `docs/audio/data/audio_drc_capture.txt` exists.
 
 ## Constraint for held-open audio
 
