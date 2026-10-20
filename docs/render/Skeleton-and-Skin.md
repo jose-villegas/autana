@@ -3,9 +3,9 @@
 A skinned mesh is a mesh plus two pack entries. SKEL holds the joint tree and
 its rest pose; SKIN holds, per vertex, which joints move it and by how much.
 
-![A skinned mesh's joints as dots and each joint's link to its parent, in the bind pose and over one clip](images/skin-skeleton.gif)
+![A skinned mesh's joints as dots and each joint's link to its parent, in the bind pose and over one clip](../images/render/skin-skeleton.gif)
 
-![Each vertex in its joints' colours blended by weight, the same with the joints drawn, and how much its joints mix: dark where one joint owns it, white where two share it evenly](images/skin-weights.gif)
+![Each vertex in its joints' colours blended by weight, the same with the joints drawn, and how much its joints mix: dark where one joint owns it, white where two share it evenly](../images/render/skin-weights.gif)
 
 | Entry | Holds | Writer and reader | C view |
 |---|---|---|---|
@@ -49,6 +49,15 @@ flowchart LR
 | Blend | `render/skin/r3d_skinning.h` | linear blend skinning (LBS)<sup>[[57]](../Citations.md#57)</sup>; two- and four-influence kernels, picked once per entry, outside the vertex loop |
 | Output | `r3d_lit_mesh_t` view | ties round away from zero; the raster reads it |
 
+A two-joint limb through `r3d_skin_palette()` and `r3d_skin_clusters()`:
+
+![Weight bytes along a two-joint limb, the limb bent 90 degrees by linear blend and by one joint per vertex, with one hinge vertex carried by each joint and their weighted mix, and the hinge's thickness against the bend angle](../images/render/skin-limb.png)
+
+Each joint carries a vertex rigidly; linear blend puts it on the line between
+those copies, by weight. At the hinge the copies fold toward each other, so
+the limb thins as it bends and pinches to nothing at 180 degrees. One joint
+per vertex keeps the thickness but tears the surface where the weight flips.
+
 Lit skins blend normals in the same loop: see [Skinned lighting](Skinned-Lighting.md).
 
 ### Two or four influences
@@ -57,7 +66,7 @@ Lit skins blend normals in the same loop: see [Skinned lighting](Skinned-Lightin
 the default is 2. Few vertices have more than two, but cutting the rest can
 move them far:
 
-![The mesh skinned with four influences, with two (moved vertices ringed), and zoomed in, a red line from each moved vertex's four-influence position to its two-influence one, over one clip](images/skin-influences.gif)
+![The mesh skinned with four influences, with two (moved vertices ringed), and zoomed in, a red line from each moved vertex's four-influence position to its two-influence one, over one clip](../images/render/skin-influences.gif)
 
 | Influences | Vertex record | Board cost |
 |---|---|---|
@@ -331,16 +340,11 @@ lighting](Skinned-Lighting.md#lighting-modes) (the skin-only bar).
 |---|---|
 | [`skin_frame.py`](../../launcher/tools/r3d/skin/skin_frame.py) | builds the entries with their writers, drives the entity through the scene APIs, and holds the C positions to a packed-weight reference beside `gltf_skin.py`; sheets compare influence limits and crop chosen vertices ([options](../../launcher/tools/r3d/skin/README.md)) |
 | `launcher/test/suites/suite_scene.c` | a committed rig gates both kernels through attachment, animation, split ranges, bounds and drawing |
-| [`skin_sheet.py`](../../launcher/tools/r3d/skin/skin_sheet.py) | draws this page's figures and tables |
+| [`skin_sheet.py`](../../launcher/tools/r3d/skin/skin_sheet.py) | draws a skinned glTF's skeleton, weight and influence figures and this page's two generated tables |
+| [`skin_figures.py`](../../launcher/tools/r3d/skin/skin_figures.py) | runs the limb through the kernel in [`skin_figures_probe.c`](../../launcher/tools/r3d/skin/skin_figures_probe.c) and plots it |
 
-From `launcher/`, with `ASSET.glb` a skinned glTF and `CLIP` one of its animations:
-
-```sh
-python tools/r3d/skin/skin_sheet.py ASSET.glb ../docs/render/images ../docs/render/Skeleton-and-Skin.md --sheet CLIP
-```
-
-The figures here are the capybara's export at `gallop`; `python
-tools/bake/bake.py path capybara.glb` prints the export's cached path.
+[`render_doc_images.sh`](../../launcher/tools/render/render_doc_images.sh)
+runs both, with the model and clip it names, and rewrites the figures and tables.
 
 ## Current limits
 

@@ -3,13 +3,14 @@ clip: the joints and their parent links over the mesh, every vertex in its
 joints' colours blended by weight, and how far keeping two influences instead
 of four moves each vertex.
 
-    python tools/r3d/skin/skin_sheet.py ASSET.glb OUT_DIR DOC [--sheet CLIP[:PHASE]]
+    python launcher/tools/r3d/skin/skin_sheet.py ASSET.glb IMAGES TABLES [--sheet CLIP[:PHASE]]
 
-Run from launcher/. Needs Pillow. --sheet names the clip drawn; the first clip
-when left out. OUT_DIR receives skin-skeleton.gif, skin-weights.gif and
-skin-influences.gif. DOC's generated blocks skin-influence-counts and
-skin-weight-example receive how many source influences the vertices have and
-one vertex's weights through quantize_weights.
+Needs Pillow. --sheet names the clip drawn; the first clip when left out.
+IMAGES receives skin-skeleton.gif, skin-weights.gif and skin-influences.gif.
+TABLES receives skin-influence-counts.md, how many source influences the
+vertices have, and skin-weight-example.md, one vertex's weights through
+quantize_weights, for generated_blocks.py --tables.
+launcher/tools/render/render_doc_images.sh runs it.
 """
 
 import colorsys
@@ -21,8 +22,6 @@ from PIL import ImageDraw
 
 TOOLS = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOLS))
-sys.path.insert(0, str(TOOLS / "render"))
-import generated_blocks  # noqa: E402
 from r3d import gltf_preview, gltf_skin, skin_asset  # noqa: E402
 from r3d.skin_light.skin_light_sheet import TILE, VIEW, grid, heat, parse_clip  # noqa: E402
 
@@ -149,7 +148,7 @@ def draw_bones(tile, clip, pose):
 
 
 def main():
-    args, clip = parse_clip(__doc__, "out", "doc")
+    args, clip = parse_clip(__doc__, "images", "tables")
     asset, name, poses = clip.asset, clip.name, clip.poses
     rest = asset.sample(None, 0)
     weights = blended_colours(asset)
@@ -169,7 +168,7 @@ def main():
         weight_frames.append(grid([clip.tile(k, weights, "joint colours by weight"),
                                    draw_bones(clip.tile(k, weights, "with joints"), clip, poses[k]),
                                    clip.tile(k, mixed, "joints mixing")], 3,
-                                  "heaviest joint's share: 100%", f"{1 - MIXED_FULL:.0%} or less"))
+                                  "joints mixing:  one joint", f"{1 - MIXED_FULL:.0%} / {MIXED_FULL:.0%} or more even"))
         a, b = skin_with(asset, poses[k], two), skin_with(asset, poses[k], four)
         moved = [math.dist(p, q) / radius for p, q in zip(a, b)]
         worst = [max(w, m) for w, m in zip(worst, moved)]
@@ -178,12 +177,13 @@ def main():
                                       ring(clip.tile_at(a, colours, "2 influences"), clip.camera, a, picked),
                                       arrows(clip.tile_at(b, colours, "zoomed: 4 to 2", zoom), zoom, b, a, picked)],
                                      3))
-    args.out.mkdir(parents=True, exist_ok=True)
-    clip.save(args.out / "skin-skeleton.gif", skeleton)
-    clip.save(args.out / "skin-weights.gif", weight_frames)
-    clip.save(args.out / "skin-influences.gif", influence_frames)
-    generated_blocks.replace_block(args.doc, "skin-influence-counts", influence_counts(asset, worst))
-    generated_blocks.replace_block(args.doc, "skin-weight-example", weight_example(asset))
+    for directory in (args.images, args.tables):
+        directory.mkdir(parents=True, exist_ok=True)
+    clip.save(args.images / "skin-skeleton.gif", skeleton)
+    clip.save(args.images / "skin-weights.gif", weight_frames)
+    clip.save(args.images / "skin-influences.gif", influence_frames)
+    (args.tables / "skin-influence-counts.md").write_text(influence_counts(asset, worst) + "\n", encoding="utf-8")
+    (args.tables / "skin-weight-example.md").write_text(weight_example(asset) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
