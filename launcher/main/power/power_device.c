@@ -9,6 +9,7 @@
 #include "power/power.h"
 #include "power/power_cache.h"
 #include "power/power_decode.h"
+#include "power/power_log.h"
 
 static const char* TAG = "power";
 static i2c_master_dev_handle_t pmu;
@@ -99,6 +100,7 @@ power_start(void) {
     power_battery_t first;
     (void)power_read_battery_now(&first, NULL);
     last_battery_us = timing_now_us();
+    power_log_start(&first, last_battery_us);
 
     /* 0x22/0x27 default from EFUSE/POR: ask this board once, log, never write. */
     uint8_t levels = 0;
@@ -161,6 +163,7 @@ power_poll(void) {
         power_battery_t battery;
         (void)power_read_battery_now(&battery, NULL);
         last_battery_us = now_us;
+        power_log_poll(&battery, now_us);
     }
     return events;
 }
