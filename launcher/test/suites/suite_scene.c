@@ -109,11 +109,11 @@ make_quad_entry(uint8_t* entry, uint8_t red, uint8_t green, uint8_t blue, int co
                                 corners[t][axis] + c * QUAD_VERTICES);
             }
         }
-        const r3d_lit_cluster_t cluster = {
-            c * QUAD_VERTICES, QUAD_VERTICES, c * QUAD_TRIANGLES, QUAD_TRIANGLES, {-1, -1, 0}, {1, 1, 0}, true};
+        const r3d_lit_cluster_t cluster = {c * QUAD_VERTICES,        QUAD_VERTICES, c * QUAD_TRIANGLES, QUAD_TRIANGLES,
+                                           {{-1, -1, 0}, {1, 1, 0}}, true};
         memcpy(entry + clusters + c * sizeof cluster, &cluster, sizeof cluster);
     }
-    const r3d_lit_node_t node = {{-1, -1, 0}, {1, 1, 0}, 0, copies, true};
+    const r3d_lit_node_t node = {{{-1, -1, 0}, {1, 1, 0}}, 0, copies, true};
     memcpy(entry + nodes, &node, sizeof node);
 }
 
@@ -2227,8 +2227,8 @@ test_skinned_scene_draws_clip_output_and_reskins_from_bind(void) {
         for (int step = 1; step <= 3; step++) {
             scene_animation_step(scene, RIG_DURATION_MS / RIG_TRAVEL);
             TEST_ASSERT_EQUAL_INT16(step - 1, drawn->positions[0][0]);
-            TEST_ASSERT_EQUAL_INT16(step - 1, drawn->nodes[0].lo[0]);
-            TEST_ASSERT_EQUAL_INT16(step + 1, drawn->nodes[0].hi[0]);
+            TEST_ASSERT_EQUAL_INT16(step - 1, drawn->nodes[0].bounds.lo.x);
+            TEST_ASSERT_EQUAL_INT16(step + 1, drawn->nodes[0].bounds.hi.x);
             frame(0);
             TEST_ASSERT_EQUAL_PTR(drawn, scene->instances[0].mesh);
             const int shifted = CENTER + step * SIZE / 20;
@@ -2652,7 +2652,7 @@ test_skin_step_skips_unposed_entities_before_posed_clusters(void) {
     TEST_ASSERT_TRUE(scene->animators[green].posed);
     TEST_ASSERT_EQUAL_INT16(-1, scene_entity_mesh(scene, red)->positions[0][0]);
     TEST_ASSERT_EQUAL_INT16(1, scene_entity_mesh(scene, green)->positions[0][0]);
-    TEST_ASSERT_EQUAL_INT16(1, scene_entity_mesh(scene, green)->nodes[0].lo[0]);
+    TEST_ASSERT_EQUAL_INT16(1, scene_entity_mesh(scene, green)->nodes[0].bounds.lo.x);
 }
 
 static void
