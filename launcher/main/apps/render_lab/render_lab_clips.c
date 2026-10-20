@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "apps/render_lab/ui/render_lab_menu_screen.h"
 #include "core/memory.h"
 #include "esp_log.h"
 #include "ui/ui.h"
@@ -144,18 +145,12 @@ render_lab_clips_reply(render_lab_clips_t* choice, const char* args, console_rep
     return true;
 }
 
-static void
-draw_caption(int width, const char* text) {
-    ui_row_centre(width, ui_text_height() + UI_TEXT_PAD);
-    ui_text(ui_next(), text);
-}
-
 void
 render_lab_clips_draw(int width, render_lab_clips_t* choice) {
     if (choice->count == 0) {
         return;
     }
-    draw_caption(width, "CLIP");
+    render_lab_menu_caption(width, "CLIP");
     ui_row_centre(width, UI_ROW_HEIGHT);
     int picked = choice->selected;
     if (ui_dropdown(ui_next(), "CLIP", &picked, choice->items, choice->count)) {
@@ -165,7 +160,7 @@ render_lab_clips_draw(int width, render_lab_clips_t* choice) {
     if (snprintf(label, sizeof label, "BLEND: %d ms", choice->blend_ms) < 0) {
         label[0] = '\0';
     }
-    draw_caption(width, label);
+    render_lab_menu_caption(width, label);
     /* The slider moves in whole steps, so it counts steps, not milliseconds. */
     ui_row_centre(width, UI_ROW_HEIGHT);
     int steps = choice->blend_ms / RENDER_LAB_BLEND_STEP_MS;
