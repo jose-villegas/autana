@@ -9,6 +9,7 @@
 #include <stdint.h>
 
 #include "app/app.h"
+#include "gfx/present/modes/band/gfx_band_run.h"
 #include "math/geometry/recti.h"
 
 /* What one frame of a scene is handed. `input` is synthesised from the
@@ -59,6 +60,12 @@ typedef struct {
     bool (*setup)(int quarter);
 
     void (*draw)(const render_frame_t* frame);
+
+    /* In band mode, after draw(): each band's rows and what goes over them,
+     * as the shell's frame fills them. NULL for a scene that never enters
+     * band mode; gfx asserts if it does. */
+    gfx_band_draw_fn draw_band;
+    gfx_band_overlay_fn band_overlay;
 } render_scene_t;
 
 /* Fully qualified tunable names use the same validation as the console. */

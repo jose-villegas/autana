@@ -1,8 +1,8 @@
 /*
  * render_host: the shared host render procedure. Real scene code draws into
  * gfx-owned pictures; gfx_read_panel_row() supplies completed output. In
- * band mode a frame's bands are drawn as the shell draws them, and the
- * readback keeps a copy of each one sent.
+ * band mode the scene's own band hooks draw each band, and the readback
+ * keeps a copy of each one sent.
  * BMP and AVI encoding use console/capture/screenshot.h. No device access.
  */
 
@@ -22,7 +22,6 @@
 #include "render_watch.h"
 #include "services/tune.h"
 #include "ui/layout/ui_transform.h"
-#include "ui/ui.h"
 
 #include "scene/scene_shell.h"
 
@@ -200,20 +199,6 @@ crop_box(recti_t box, int margin, int out_w, int out_h) {
 __attribute__((weak)) void
 scene_shell_compose(uint32_t dt_ms) {
     (void)dt_ms;
-}
-
-/* And its band, and a UI's replay, where a scene linked neither. */
-__attribute__((weak)) void
-scene_shell_compose_band(int row0, int row1, gfx_color_t* target) {
-    (void)row0;
-    (void)row1;
-    (void)target;
-}
-
-__attribute__((weak)) void
-ui_replay_band(int row0, int row1) {
-    (void)row0;
-    (void)row1;
 }
 
 /* The declared steps turned into one frame's input_t. `down` holds from
@@ -394,7 +379,7 @@ main(int argc, char** argv) {
         scene_shell_compose(frame.dt_ms); /* what the shell does before an app's frame() */
         scene->draw(&frame);
         /* Band mode draws and sends its rows here; any other layout does nothing. */
-        gfx_band_run(scene_shell_compose_band, ui_replay_band);
+        gfx_band_run(scene->draw_band, scene->band_overlay);
         render_watch_frame_end();
 
         convert_frame(t, panel, out_w, out_h, stride, frame_buf);
@@ -418,7 +403,7 @@ main(int argc, char** argv) {
         render_watch_frame_begin();
         scene_shell_compose(frame.dt_ms); /* what the shell does before an app's frame() */
         scene->draw(&frame);
-        gfx_band_run(scene_shell_compose_band, ui_replay_band);
+        gfx_band_run(scene->draw_band, scene->band_overlay);
         gfx_present();
         render_watch_frame_end();
     }
