@@ -17,8 +17,8 @@ import tempfile
 TOOLS = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(TOOLS))
 sys.path.insert(0, str(TOOLS / "math"))
-from math_figures import run_probe, square_axes  # noqa: E402
-from docs.plot_style import FAINT, INK, LABEL_SIZE, MUTED, SLOTS, TITLE_SIZE, subplots, save  # noqa: E402
+from math_figures import run_probe  # noqa: E402
+from docs.plot_style import FAINT, INK, LABEL_SIZE, MUTED, SLOTS, style_axes, subplots, save  # noqa: E402
 from r3d import skin_asset  # noqa: E402
 
 PROBE = pathlib.Path(__file__).with_name("skin_figures_probe.c")
@@ -86,17 +86,10 @@ def outline(vertices, positions):
     return [p[0] for p in points], [p[1] for p in points]
 
 
-def plain_axes(axis, title):
-    axis.set_title(title, fontsize=TITLE_SIZE, color=INK)
-    axis.tick_params(labelsize=LABEL_SIZE, colors=MUTED)
-    for spine in axis.spines.values():
-        spine.set_color(FAINT)
-
-
 def figure(blend, rigid, vertices, weights, output):
     fig, (weight_axis, bend_axis, sweep_axis) = subplots(1, 3, (3 * PANEL[0], PANEL[1]))
 
-    plain_axes(weight_axis, "weight bytes along the limb")
+    style_axes(weight_axis, "weight bytes along the limb")
     xs = [x for x, _, _ in vertices[:COLUMNS]]
     order = sorted(range(COLUMNS), key=lambda i: xs[i])
     for joint, colour in ((0, BLEND), (1, RIGID)):
@@ -109,7 +102,7 @@ def figure(blend, rigid, vertices, weights, output):
 
     shown = next(p for p in blend["poses"] if p["angle"] == SHOWN_ANGLE)
     shown_rigid = next(p for p in rigid["poses"] if p["angle"] == SHOWN_ANGLE)
-    square_axes(bend_axis, f"bent {SHOWN_ANGLE} degrees at the hinge")
+    style_axes(bend_axis, f"bent {SHOWN_ANGLE} degrees at the hinge", square=True)
     bend_axis.plot(*outline(vertices, shown_rigid["positions"]), color=RIGID, linestyle="--", label="one joint per vertex")
     bend_axis.plot(*outline(vertices, shown["positions"]), color=BLEND, label="linear blend")
     turn = math.radians(SHOWN_ANGLE)
@@ -123,7 +116,7 @@ def figure(blend, rigid, vertices, weights, output):
     bend_axis.scatter(*shown["positions"][0], color=BLEND, zorder=3)
     bend_axis.legend(fontsize=LABEL_SIZE, loc="upper left")
 
-    plain_axes(sweep_axis, "hinge thickness as it bends")
+    style_axes(sweep_axis, "hinge thickness as it bends")
     for data, colour, name in ((blend, BLEND, "linear blend"), (rigid, RIGID, "one joint per vertex")):
         thickness = [abs(complex(*p["positions"][0]) - complex(*p["positions"][COLUMNS])) / (2 * HALF_THICKNESS)
                      for p in data["poses"]]

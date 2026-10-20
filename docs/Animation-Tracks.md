@@ -169,29 +169,26 @@ if (anim_tracks_from_pack(pack, "NAME", &clip) == ASSET_OK
 }
 ```
 
-`anim_tracks_binding_at()` returns the path, component, field, type and
-curve for a row; `anim_tracks_find()` selects that tuple. Curves and strings
-point into the pack, so the pack must outlive them. Nothing is allocated.
-`anim_tracks_find_node()` finds a node's `TRNS` fields into an
-`anim_node_tracks_t`, which `anim_transform_sample()` turns into a transform.
-Position and rotation are required, with vec3 and quaternion types; absent
-scale keeps unit scale.
+| Call | Gives |
+|---|---|
+| `anim_tracks_binding_at()` | one row's path, component, field, type and curve |
+| `anim_tracks_find()` | the curve of one path, component and field |
+| `anim_tracks_find_node()`, `anim_transform_sample()` | a node's `TRNS` tracks as an `anim_node_tracks_t`, sampled into a transform; position (vec3) and rotation (quaternion) are required, absent scale stays unit |
+| `anim_bind()` | every scene binding resolved against the caller's `anim_target_t` objects into caller-owned `anim_bound_t` storage ([Binding any field](#binding-any-field)) |
+| `anim_bind_field()` | one binding resolved against component references, without a path lookup |
+| `anim_apply(bound, count, seconds)` | a contiguous range sampled into its target fields, setting each target's dirty bit when supplied; `bound + first` starts a later range |
+| `anim_binding_describe()` | a binding's name, as `path:CCCC.field` |
 
-`anim_bind()` resolves every scene binding against `anim_target_t` objects
-and their `anim_component_ref_t` pairs of field declarations and bases into
-caller-owned `anim_bound_t` storage. Missing paths, components, fields, type mismatches,
-insufficient storage and skeleton roots return distinct `anim_bind_status_t`
-errors. The failing index and `anim_binding_describe()` identify the binding
-as `path:CCCC.field`. The failed index is -1 on success and root or storage
-errors; otherwise it identifies the failed binding. `anim_bind_field()` resolves a binding
-against component references without a path lookup. Apply only a successfully
-resolved set.
-`anim_apply(bound, count, seconds)` samples a contiguous range into its target
-fields and sets each target's dirty bit when supplied. Pass `bound + first`
-to apply a range starting later in the array. The sampler normalizes quaternion
-keys. A component's declaration sits beside its struct, for example
-`CAMERA_FIELDS` in `scene/camera/camera.h`; [Binding any field](#binding-any-field)
-says how resolution works.
+Curves and strings point into the pack, so the pack must outlive them.
+Nothing is allocated, and the sampler normalizes quaternion keys.
+
+`anim_bind()` returns a distinct `anim_bind_status_t` for a missing path,
+component or field, a type mismatch, too little storage and a skeleton root.
+Apply only a set that resolved.
+
+Its failed index is -1 on success and for root or storage errors, otherwise
+the failing binding. A component's declaration sits beside its struct, such
+as `CAMERA_FIELDS` in `scene/camera/camera.h`.
 
 ## Sampling
 
@@ -200,14 +197,24 @@ anim_playhead_advance(&playhead, &clip.clip, dt_ms);
 anim_track_sample(&move, anim_playhead_seconds(&playhead), out);
 ```
 
-`anim_playhead_t` (`anim/playback/anim_playhead.h`) owns clip time in integer
-milliseconds. `anim_playhead_advance()` wraps it at the clip's duration for
-`ANIM_LOOP`, holds it there for `ANIM_CLAMP` and keeps an empty clip at zero, so
-`anim_playhead_seconds()` keeps millisecond resolution over a long run.
-A loop authors its first key again as its last. `anim_track_sample()` holds
-the first value before its first key and the last after its last, as glTF defines.
-`anim_quat_rotate()` turns a vector by a sampled rotation, such as a
-camera's look direction.
+`anim_playhead_t` (`anim/playback/anim_playhead.h`) owns clip time in
+integer milliseconds; `anim_playhead_advance()` moves it by each frame's
+`dt_ms`. Below, a real clip played through the scene's calls:
+
+![Clip time against app time: a loop wraps at the clip's duration and a clamp holds there; speed 0.5 halves the slope, a pause holds it flat and speed 2 doubles it](images/anim/anim-playhead.png)
+
+| Setting | Clip time |
+|---|---|
+| `ANIM_LOOP` | wraps at the clip's duration; a loop authors its first key again as its last |
+| `ANIM_CLAMP` | holds at the duration |
+| Speed | Q16.16: the step widens `dt_ms` times speed to 64 bits and carries the sub-millisecond rest, so a slow speed still moves |
+| Pause | holds; it resumes where it held |
+| Empty clip | stays at zero |
+
+Integer milliseconds keep `anim_playhead_seconds()` at millisecond resolution
+over a long run. `anim_track_sample()` holds the first value before its first
+key and the last after its last, as glTF defines. `anim_quat_rotate()` turns
+a vector by a sampled rotation, such as a camera's look direction.
 
 ## Authoring
 
@@ -329,37 +336,86 @@ build it, the compiler or the flags change.
 
 ## Scene playback
 
-Apps configure an entity with `scene_animator_set_clips()` and control it with
-`scene_animator_play()`, `scene_animator_set_speed()` and
-`scene_animator_set_paused()`. Clip count and names come from scene queries.
-Asset ids are resolved once; the scene owns the animator, binding arrays and
-buffers. A camera `path` loads as an animator on the camera's entity; the
-pack build keeps the path node's tracks and names them `ANIM_TARGET_SELF`,
-which binds to the animator's own entity.
+An app plays clips through the scene and includes only `scene/scene.h`;
+`anim/pose/` and `anim/playback/` stay engine-private behind it.
 
-Property clips bind strictly against scene transforms and camera lens fields;
-every binding must resolve, and unkeyed fields retain their values. They require
-`blend_ms == 0`. Skeleton clips bind joint paths with `anim_bind_skeleton()`
-and support a transition blend. Both use the same animator component and
-per-slot playheads. Engine-private declarations
-live in `anim/pose/` and `anim/playback/`; apps include `scene/scene.h`.
+| Call | Does |
+|---|---|
+| `scene_animator_set_clips()` | gives an entity its clips, resolving asset ids once; the scene owns the animator, its bindings and buffers |
+| `scene_animator_play()` | starts a clip in the current slot at clip time 0, speed 1, unpaused, blending from what is shown over `blend_ms` |
+| `scene_animator_set_speed()`, `scene_animator_set_paused()` | one slot's speed or pause, current or previous ([Sampling](#sampling)) |
+| `scene_animator_seek()` | puts a slot at a clip time and samples at once, without drawing |
+| `scene_animator_clip_count()`, `scene_animator_clip_name()`, `scene_animator_clip_duration_ms()` | the entity's clips |
 
-A skeleton layer samples each active clip onto the skeleton's rest pose, so an
-unkeyed channel retains rest TRS. Position and scale blend linearly. Rotation
-uses normalized linear interpolation, with a hemisphere check before the sum
-(nlerp)<sup>[[56]](Citations.md#56)</sup>. This uses only the paper's
-sign-corrected normalized quaternion sum, applied per joint between two
-poses; no dual quaternions. This preserves unit rotations and takes
-the short quaternion path; its angular speed is not constant. An interrupted
-transition blend copies the last displayed pose into the layer's frozen PSRAM
-buffer and starts the new blend from it. Interrupting that blend also freezes
-the currently displayed result.
+The scene file's `wrap` sets loop or clamp. A camera `path` loads as an
+animator on the camera's entity: the pack build keeps the path node's tracks
+and names them `ANIM_TARGET_SELF`, which binds to the animator's own entity.
 
-Each slot has its own speed and pause. Speed has Q16.16 precision; advancement
-widens the millisecond product, and a fractional accumulator retains
-sub-millisecond steps.
+### Two kinds of clip
 
-A scene animator loops or clamps, as its scene file's `wrap` sets.
-Each entity has one animator of one clip kind; a property clip (NULL skeleton)
-cannot replace the skeleton animator on a skinned entity. Controls on an empty
-or frozen PREVIOUS slot return false.
+| | Property clip | Skeleton clip |
+|---|---|---|
+| `skeleton_id` | `NULL` | the skeleton's asset id |
+| Binds | scene transforms and camera lens fields, strictly: every binding resolves | joint paths, with `anim_bind_skeleton()` |
+| Unkeyed fields | keep their values | keep the rest pose |
+| Transition blend | none: `blend_ms` is 0 | over `blend_ms` |
+| Each frame | `anim_apply()` writes the current slot into its fields | the pose below, then the skin palette |
+
+Each entity has one animator, of one kind: a property clip cannot replace the
+skeleton animator on a skinned entity. Both kinds keep a playhead per slot.
+
+### Each frame of a skeleton clip
+
+```mermaid
+flowchart LR
+    Advance["advance<br/><i>each slot's playhead</i>"] --> Changed{"anything moved?"}
+    Changed -- no --> Kept["pose kept<br/><i>nothing sampled</i>"]
+    Changed -- yes --> Current["sample the current clip<br/><i>onto the rest pose</i>"]
+    Current --> Blending{"blending?"}
+    Blending -- no --> Shown["shown pose<br/><i>model matrices, skin palette</i>"]
+    Blending -- yes --> Previous["the previous slot<br/><i>sampled, or the frozen pose</i>"]
+    Previous --> Blend["blend by weight<br/><i>linear position and scale, nlerp rotation</i>"]
+    Blend --> Shown
+```
+
+### Transition blends
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> Playing: play
+    Playing --> Playing: play with 0 ms
+    Playing --> Blending: play with blend_ms
+    Blending --> Playing: weight reaches 1
+    Blending --> Frozen: play with blend_ms
+    Frozen --> Frozen: play with blend_ms
+    Frozen --> Playing: weight reaches 1
+    Blending --> Playing: play with 0 ms
+    Frozen --> Playing: play with 0 ms
+```
+
+| State | Current slot | Previous slot |
+|---|---|---|
+| Playing | the clip shown | empty |
+| Blending | the new clip, weight rising 0 to 1 over `blend_ms` | the old clip, still playing at its own speed |
+| Frozen | the new clip, weight rising 0 to 1 | empty: the pose shown when the blend was interrupted, copied into the layer's PSRAM buffer |
+
+A blended play during a blend starts from the pose on screen. Speed
+and pause on an empty or frozen previous slot return false.
+
+Below, a skinned mesh's clips play first to second, then to a third,
+interrupted half way by a play back to the first:
+
+![The skeleton through the three blends: the shown pose in black between the current clip alone and the previous slot](images/anim/anim-blend.gif)
+
+![Blend weight against app time, ramping 0 to 1 after each play and restarting from the frozen pose at the interruption; below, one joint's turn as shown, as the current clip alone and in the previous slot](images/anim/anim-blend.png)
+
+### Blending rotations
+
+Position and scale blend linearly. Rotation takes the sign-corrected,
+normalized quaternion sum (nlerp)<sup>[[56]](Citations.md#56)</sup> per joint
+between the two poses, without the paper's dual quaternions.
+
+It stays unit and takes the short way, but its angular speed peaks mid-blend:
+
+![A 150 degree turn by blend weight: nlerp lags slerp early and leads it late; its angular speed peaks mid-blend while slerp's is constant](images/anim/anim-nlerp.png)
