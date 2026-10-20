@@ -37,8 +37,8 @@ and host scene keys are unchanged.
 `render_lab.small_fill_ceiling`, `render_lab.small_fill_gate` and
 `render_lab.small_fill_style` apply to the scene camera each frame.
 On a development build the BOOT menu has a SMALL FILL dropdown with every
-`SMALL_FILL_` preset; picking one sets the three tunables, and tunables that
-match no preset show as CUSTOM.
+`SMALL_FILL_` preset; picking one sets the three tunables, and a CUSTOM entry
+appears only while the tunables match no preset.
 
 ![The Sponza menu closed, then the SCENE, VARIANT and SMALL FILL lists open](images/scene-menu/scene-menu.png)
 

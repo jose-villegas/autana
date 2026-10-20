@@ -40,7 +40,7 @@ static const char* const small_fill_names[] = {SMALL_FILL_PRESETS(SMALL_FILL_PRE
 
 const char* const*
 render_lab_small_fill_names(int* count) {
-    *count = SMALL_FILL_PRESET_COUNT + 1;
+    *count = SMALL_FILL_PRESET_COUNT + (render_lab_small_fill_selected() == SMALL_FILL_PRESET_COUNT ? 1 : 0);
     return small_fill_names;
 }
 

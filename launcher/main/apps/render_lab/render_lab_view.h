@@ -18,8 +18,8 @@ int render_lab_scale(void);
 camera_present_t render_lab_present(void);
 small_fill_t render_lab_small_fill(void);
 
-/* The menu's small-fill choice: every SMALL_FILL_ preset, then "CUSTOM" for
- * tunables that match none. selected is the index the tunables are at now;
+/* The menu's small-fill choice: every SMALL_FILL_ preset, plus "CUSTOM" as
+ * the last entry only while the tunables match none. selected is the index the tunables are at now;
  * select moves the tunables to a preset and ignores CUSTOM. Development
  * builds only, where the tunables can move. */
 #if TUNE_ENABLED
