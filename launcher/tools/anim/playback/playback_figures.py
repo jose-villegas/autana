@@ -64,6 +64,7 @@ SHOWN, CURRENT, PREVIOUS = SLOTS[0], SLOTS[1], SLOTS[2]
 GIF_STEP = 2
 GIF_SIZE = (4.4, 3.6)
 GIF_DPI = 80
+MILLISECONDS_PER_SECOND = 1000
 GHOST_WIDTH, SHOWN_WIDTH = 1.0, 2.0
 ORBIT_DEGREES = 40
 GIF_ZOOM = 1.5  # the 3D box fills more of the frame with its axes hidden
@@ -219,19 +220,21 @@ KEY = [Line2D([], [], color=INK, linewidth=SHOWN_WIDTH, label="shown"), Line2D([
        Line2D([], [], color=PREVIOUS, label="previous slot")]
 
 
-def blend_frames(run):
-    """One figure per GIF frame, made as the GIF writer asks for it."""
+def blend_gif(run, output):
     frames = run["frames"][::GIF_STEP]
     points = [up(p) for f in frames for key in ("joints", "current_joints") for p in f[key]]
     low = [min(p[a] for p in points) for a in range(3)]
     high = [max(p[a] for p in points) for a in range(3)]
     half = max(h - l for l, h in zip(low, high)) / 2
     centre = [(l + h) / 2 for l, h in zip(low, high)]
-    for index, frame in enumerate(frames):
-        fig = new_figure(GIF_SIZE)
-        axis = fig.add_subplot(projection="3d")
+    fig = new_figure(GIF_SIZE, dpi=GIF_DPI)
+    fig.legend(handles=KEY, fontsize=LABEL_SIZE, loc="lower center", ncols=len(KEY), frameon=False)
+    axis = fig.add_subplot(projection="3d")
+
+    def draw(index):
+        frame = frames[index]
+        axis.clear()
         axis.set_title(f"{frame['ms']} ms: {describe(run, frame)}", fontsize=TITLE_SIZE, color=INK)
-        fig.legend(handles=KEY, fontsize=LABEL_SIZE, loc="lower center", ncols=len(KEY), frameon=False)
         ghosts = [("current_joints", CURRENT, GHOST_WIDTH)]
         if frame["previous_joints"] is not None:
             ghosts.append(("previous_joints", PREVIOUS, GHOST_WIDTH))
@@ -245,7 +248,8 @@ def blend_frames(run):
         axis.set_axis_off()
         axis.set_box_aspect((1, 1, 1), zoom=GIF_ZOOM)
         axis.view_init(elev=VIEW_ELEVATION, azim=VIEW_AZIMUTH + ORBIT_DEGREES * index / max(len(frames) - 1, 1))
-        yield fig
+
+    save_gif(fig, draw, len(frames), output, MILLISECONDS_PER_SECOND / (FRAME_MS * GIF_STEP))
 
 
 def main():
@@ -267,7 +271,7 @@ def main():
     playhead_figure(runs, args.out / "anim-playhead.png")
     blend_figure(blend, args.out / "anim-blend.png")
     nlerp_figure(nlerp, args.out / "anim-nlerp.png")
-    save_gif(blend_frames(blend), args.out / "anim-blend.gif", FRAME_MS * GIF_STEP, dpi=GIF_DPI)
+    blend_gif(blend, args.out / "anim-blend.gif")
     return 0
 
 
