@@ -8,31 +8,28 @@
 #include "console/verbs/console_tone.h"
 #include "core/timing.h"
 
-#define MELODY_PHRASE(NOTE)                                                                                            \
-    NOTE(E, 5, MELODY_SHORT)                                                                                           \
-    NOTE(D, 5, MELODY_SHORT)                                                                                           \
-    NOTE(FS, 4, MELODY_LONG)                                                                                           \
-    NOTE(GS, 4, MELODY_LONG)                                                                                           \
-    NOTE(CS, 5, MELODY_SHORT)                                                                                          \
-    NOTE(B, 4, MELODY_SHORT)                                                                                           \
-    NOTE(D, 4, MELODY_LONG)                                                                                            \
-    NOTE(E, 4, MELODY_LONG)                                                                                            \
-    NOTE(B, 4, MELODY_SHORT)                                                                                           \
-    NOTE(A, 4, MELODY_SHORT)                                                                                           \
-    NOTE(CS, 4, MELODY_LONG)                                                                                           \
-    NOTE(E, 4, MELODY_LONG)                                                                                            \
-    NOTE(A, 4, MELODY_FINAL)
+#define MELODY_BAR_SSLL(NOTE, first, first_octave, second, second_octave, third, third_octave, fourth, fourth_octave,  \
+                        ...)                                                                                           \
+    NOTE(first, first_octave, MELODY_SHORT) __VA_ARGS__ NOTE(second, second_octave, MELODY_SHORT)                      \
+    __VA_ARGS__                                                                                                        \
+    NOTE(third, third_octave, MELODY_LONG) __VA_ARGS__ NOTE(fourth, fourth_octave, MELODY_LONG)
+#define MELODY_PHRASE(NOTE, ...)                                                                                       \
+    MELODY_BAR_SSLL(NOTE, E, 5, D, 5, FS, 4, GS, 4, __VA_ARGS__)                                                       \
+    __VA_ARGS__ MELODY_BAR_SSLL(NOTE, CS, 5, B, 4, D, 4, E, 4, __VA_ARGS__)                                            \
+    __VA_ARGS__                                                                                                        \
+    MELODY_BAR_SSLL(NOTE, B, 4, A, 4, CS, 4, E, 4, __VA_ARGS__) __VA_ARGS__ NOTE(A, 4, MELODY_FINAL)
 
 #define MELODY_NOTE(cls, octave, length)                                                                               \
-    {.semitones = ((octave) - MELODY_REFERENCE_OCTAVE) * PITCH_SEMITONES_PER_OCTAVE + MELODY_CLASS_##cls               \
+    {.semitones = (((octave) - MELODY_REFERENCE_OCTAVE) * PITCH_SEMITONES_PER_OCTAVE) + MELODY_CLASS_##cls             \
                   - MELODY_REFERENCE_CLASS,                                                                            \
-     .steps = (length)},
-#define MELODY_NOTE_STEPS(cls, octave, length) +(length)
+     .steps = (length)}
+#define MELODY_NOTE_STEPS(cls, octave, length) (length)
+#define MELODY_COMMA()                         ,
 
 /* Gran Vals, Francisco Tarrega, 1902; public domain. */
-const melody_note_t melody_notes[] = {MELODY_PHRASE(MELODY_NOTE)};
+const melody_note_t melody_notes[] = {MELODY_PHRASE(MELODY_NOTE, MELODY_COMMA())};
 _Static_assert(sizeof melody_notes / sizeof melody_notes[0] == MELODY_PHRASE_NOTES, "phrase note count");
-_Static_assert((0 MELODY_PHRASE(MELODY_NOTE_STEPS)) * MELODY_STEP_MS < CONSOLE_MELODY_PLAY_MAX_MS,
+_Static_assert((MELODY_PHRASE(MELODY_NOTE_STEPS, +)) * MELODY_STEP_MS < CONSOLE_MELODY_PLAY_MAX_MS,
                "phrase fits play timeout");
 
 #define MELODY_CHECK_TOKEN "check"
@@ -69,7 +66,7 @@ play_note(melody_note_t note, uint8_t volume_pct, int64_t boundary_us) {
     if (!console_tone_start(&voice, melody_note_hz(note), volume_pct)) {
         return "tone start failed";
     }
-    sleep_until(boundary_us - (int64_t)MELODY_GAP_MS * MATH_US_PER_MS);
+    sleep_until(boundary_us - ((int64_t)MELODY_GAP_MS * MATH_US_PER_MS));
     const bool stopped = console_tone_stop(&voice);
     sleep_until(boundary_us);
     return stopped ? NULL : "tone stop failed";
@@ -105,7 +102,7 @@ console_verb_melody(const char* args, console_reply_fn reply) {
         const melody_note_t note = melody_notes[i];
         parsed.hz = melody_note_hz(note);
         cumulative_steps += note.steps;
-        const int64_t boundary_us = started + (int64_t)cumulative_steps * MELODY_STEP_MS * MATH_US_PER_MS;
+        const int64_t boundary_us = started + ((int64_t)cumulative_steps * MELODY_STEP_MS * MATH_US_PER_MS);
         const char* error = check ? check_note(note, &parsed, reply) : play_note(note, parsed.volume_pct, boundary_us);
         if (error) {
             (void)snprintf(line, sizeof line, "MELODY_ERR %s", error);
