@@ -1,0 +1,141 @@
+# autana sound-onset capture on 20E8, 2026-10-20, one record per line: <arm>	<command>	<reply>
+meta	status	{"boards": [{"board": "44:BD:8D:78:20:E8", "port": "COM3", "state": "held", "holder": {"owner": "ville@JV:board-job:10704", "purpose": "autana lock run", "protocol": 3, "autana_version": "0.1.0"}, "since": 1792491195.6953685, "estimated_free": 1792492995.6953685, "lapsed": null, "expires_at": null, "waiting": [], "estimated_start": 1792492995.6953685}]}
+meta	buildid	{"build_id": "c191f7dc6b07-dev"}
+meta	runs	5
+off	tune sound.declick_us 0	sound.declick_us=0
+off	settings	{"sound.declick_us": 0}
+off	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-51.8 peak_db=-48.4 excess_db=3.5 at_ms=184
+off	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-51.3 peak_db=-49.5 excess_db=1.8 at_ms=182
+off	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-51.9 peak_db=-48.2 excess_db=3.8 at_ms=179
+off	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-48.7 peak_db=-37.8 excess_db=10.9 at_ms=307
+off	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-52.9 peak_db=-48.4 excess_db=4.6 at_ms=179
+off	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-52.7 peak_db=-51.4 excess_db=1.3 at_ms=15
+off	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-52.0 peak_db=-51.2 excess_db=0.8 at_ms=148
+off	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-52.2 peak_db=-51.3 excess_db=0.9 at_ms=234
+off	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-52.9 peak_db=-52.4 excess_db=0.6 at_ms=123
+off	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-52.1 peak_db=-51.6 excess_db=0.5 at_ms=191
+off	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-51.6 peak_db=-52.6 excess_db=-1.0 at_ms=216
+off	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-51.8 peak_db=-40.8 excess_db=11.0 at_ms=27
+off	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-51.0 peak_db=-40.8 excess_db=10.2 at_ms=28
+off	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-52.6 peak_db=-40.7 excess_db=11.9 at_ms=29
+off	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-51.2 peak_db=-40.9 excess_db=10.3 at_ms=30
+off	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-51.4 peak_db=-52.4 excess_db=-0.9 at_ms=37
+off	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-51.3 peak_db=-51.4 excess_db=-0.1 at_ms=193
+off	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-52.8 peak_db=-40.6 excess_db=12.2 at_ms=27
+off	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-52.1 peak_db=-40.5 excess_db=11.6 at_ms=27
+off	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-51.7 peak_db=-40.8 excess_db=10.9 at_ms=28
+off	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-51.9 peak_db=-51.2 excess_db=0.7 at_ms=11
+off	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-51.7 peak_db=-50.1 excess_db=1.6 at_ms=1751
+off	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-50.9 peak_db=-48.9 excess_db=2.0 at_ms=1751
+off	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-52.2 peak_db=-49.6 excess_db=2.6 at_ms=1751
+off	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-52.0 peak_db=-48.0 excess_db=4.0 at_ms=1751
+500us	tune sound.declick_us 500	sound.declick_us=500
+500us	settings	{"sound.declick_us": 500}
+500us	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-52.1 peak_db=-51.5 excess_db=0.6 at_ms=404
+500us	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-48.7 peak_db=-47.7 excess_db=1.0 at_ms=181
+500us	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-52.4 peak_db=-48.7 excess_db=3.6 at_ms=177
+500us	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-48.6 peak_db=-45.3 excess_db=3.3 at_ms=180
+500us	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-51.2 peak_db=-41.1 excess_db=10.1 at_ms=182
+500us	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-52.1 peak_db=-51.5 excess_db=0.6 at_ms=4
+500us	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-52.1 peak_db=-51.1 excess_db=1.0 at_ms=52
+500us	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-52.9 peak_db=-52.1 excess_db=0.8 at_ms=22
+500us	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-51.8 peak_db=-51.6 excess_db=0.2 at_ms=173
+500us	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-52.6 peak_db=-51.4 excess_db=1.2 at_ms=245
+500us	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-51.1 peak_db=-52.5 excess_db=-1.3 at_ms=176
+500us	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-52.1 peak_db=-51.6 excess_db=0.5 at_ms=17
+500us	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-52.1 peak_db=-51.8 excess_db=0.3 at_ms=75
+500us	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-51.2 peak_db=-51.7 excess_db=-0.5 at_ms=204
+500us	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-52.1 peak_db=-52.1 excess_db=0.0 at_ms=158
+500us	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-51.2 peak_db=-51.2 excess_db=0.0 at_ms=8
+500us	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-51.7 peak_db=-52.1 excess_db=-0.4 at_ms=92
+500us	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-51.9 peak_db=-50.7 excess_db=1.3 at_ms=241
+500us	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-51.9 peak_db=-52.1 excess_db=-0.2 at_ms=3
+500us	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-51.6 peak_db=-51.3 excess_db=0.3 at_ms=108
+500us	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-52.1 peak_db=-50.0 excess_db=2.2 at_ms=1753
+500us	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-51.8 peak_db=-49.1 excess_db=2.7 at_ms=1751
+500us	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-53.2 peak_db=-48.9 excess_db=4.2 at_ms=1751
+500us	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-51.6 peak_db=-51.6 excess_db=0.0 at_ms=732
+500us	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-52.7 peak_db=-48.4 excess_db=4.3 at_ms=1751
+1ms	tune sound.declick_us 1000	sound.declick_us=1000
+1ms	settings	{"sound.declick_us": 1000}
+1ms	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-52.0 peak_db=-49.6 excess_db=2.5 at_ms=181
+1ms	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-50.5 peak_db=-48.0 excess_db=2.5 at_ms=181
+1ms	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-52.2 peak_db=-38.9 excess_db=13.3 at_ms=176
+1ms	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-49.2 peak_db=-48.3 excess_db=0.9 at_ms=179
+1ms	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-47.8 peak_db=-47.1 excess_db=0.7 at_ms=181
+1ms	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-51.8 peak_db=-50.7 excess_db=1.2 at_ms=129
+1ms	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-52.0 peak_db=-51.9 excess_db=0.1 at_ms=259
+1ms	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-51.8 peak_db=-51.8 excess_db=0.0 at_ms=141
+1ms	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-51.2 peak_db=-52.7 excess_db=-1.5 at_ms=268
+1ms	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-52.2 peak_db=-51.9 excess_db=0.3 at_ms=75
+1ms	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-51.3 peak_db=-52.9 excess_db=-1.6 at_ms=120
+1ms	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-52.7 peak_db=-52.8 excess_db=-0.1 at_ms=196
+1ms	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-51.4 peak_db=-52.6 excess_db=-1.2 at_ms=172
+1ms	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-51.7 peak_db=-52.8 excess_db=-1.1 at_ms=225
+1ms	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-51.7 peak_db=-51.4 excess_db=0.3 at_ms=125
+1ms	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-51.7 peak_db=-51.9 excess_db=-0.2 at_ms=86
+1ms	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-52.2 peak_db=-52.6 excess_db=-0.3 at_ms=98
+1ms	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-51.6 peak_db=-52.6 excess_db=-1.0 at_ms=42
+1ms	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-51.5 peak_db=-51.2 excess_db=0.3 at_ms=16
+1ms	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-49.7 peak_db=-52.9 excess_db=-3.2 at_ms=268
+1ms	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-52.5 peak_db=-48.4 excess_db=4.1 at_ms=1755
+1ms	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-51.8 peak_db=-48.0 excess_db=3.9 at_ms=1751
+1ms	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-52.4 peak_db=-50.9 excess_db=1.4 at_ms=1751
+1ms	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-52.9 peak_db=-50.1 excess_db=2.8 at_ms=1751
+1ms	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-51.4 peak_db=-51.1 excess_db=0.3 at_ms=830
+2ms	tune sound.declick_us 2000	sound.declick_us=2000
+2ms	settings	{"sound.declick_us": 2000}
+2ms	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-52.7 peak_db=-49.5 excess_db=3.2 at_ms=180
+2ms	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-49.8 peak_db=-49.7 excess_db=0.1 at_ms=179
+2ms	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-52.4 peak_db=-49.8 excess_db=2.6 at_ms=175
+2ms	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-48.0 peak_db=-39.5 excess_db=8.5 at_ms=180
+2ms	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-52.2 peak_db=-47.3 excess_db=4.9 at_ms=177
+2ms	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-51.7 peak_db=-51.8 excess_db=-0.1 at_ms=72
+2ms	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-51.5 peak_db=-52.7 excess_db=-1.2 at_ms=173
+2ms	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-52.8 peak_db=-51.8 excess_db=1.0 at_ms=154
+2ms	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-51.9 peak_db=-52.0 excess_db=-0.1 at_ms=244
+2ms	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-52.0 peak_db=-51.5 excess_db=0.5 at_ms=62
+2ms	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-50.2 peak_db=-51.5 excess_db=-1.3 at_ms=31
+2ms	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-52.0 peak_db=-52.0 excess_db=0.0 at_ms=59
+2ms	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-51.7 peak_db=-51.1 excess_db=0.6 at_ms=248
+2ms	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-51.8 peak_db=-51.5 excess_db=0.3 at_ms=51
+2ms	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-51.4 peak_db=-51.8 excess_db=-0.4 at_ms=44
+2ms	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-51.5 peak_db=-52.0 excess_db=-0.5 at_ms=137
+2ms	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-51.9 peak_db=-52.1 excess_db=-0.2 at_ms=67
+2ms	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-51.8 peak_db=-49.8 excess_db=2.0 at_ms=26
+2ms	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-52.2 peak_db=-51.5 excess_db=0.7 at_ms=146
+2ms	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-52.5 peak_db=-52.6 excess_db=-0.1 at_ms=146
+2ms	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-51.8 peak_db=-47.8 excess_db=4.0 at_ms=1750
+2ms	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-51.1 peak_db=-50.0 excess_db=1.2 at_ms=1804
+2ms	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-51.7 peak_db=-48.1 excess_db=3.6 at_ms=1751
+2ms	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-53.0 peak_db=-48.8 excess_db=4.2 at_ms=1750
+2ms	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-51.0 peak_db=-49.1 excess_db=1.9 at_ms=1754
+5ms	tune sound.declick_us 5000	sound.declick_us=5000
+5ms	settings	{"sound.declick_us": 5000}
+5ms	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-52.4 peak_db=-49.7 excess_db=2.6 at_ms=180
+5ms	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-48.9 peak_db=-47.8 excess_db=1.1 at_ms=180
+5ms	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-52.6 peak_db=-49.8 excess_db=2.8 at_ms=181
+5ms	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-49.0 peak_db=-40.9 excess_db=8.1 at_ms=180
+5ms	sound onset amp-on	SOUND onset event=amp-on hz=500 gain=33 pre_db=-51.4 peak_db=-40.9 excess_db=10.5 at_ms=179
+5ms	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-51.6 peak_db=-52.6 excess_db=-1.0 at_ms=38
+5ms	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-52.6 peak_db=-52.1 excess_db=0.4 at_ms=112
+5ms	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-52.5 peak_db=-51.9 excess_db=0.5 at_ms=146
+5ms	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-52.1 peak_db=-52.2 excess_db=-0.1 at_ms=124
+5ms	sound onset start	SOUND onset event=start hz=500 gain=33 pre_db=-52.5 peak_db=-52.8 excess_db=-0.3 at_ms=19
+5ms	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-52.5 peak_db=-51.0 excess_db=1.4 at_ms=70
+5ms	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-51.4 peak_db=-50.9 excess_db=0.5 at_ms=32
+5ms	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-51.5 peak_db=-51.6 excess_db=-0.1 at_ms=99
+5ms	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-52.9 peak_db=-51.3 excess_db=1.6 at_ms=36
+5ms	sound onset stop	SOUND onset event=stop hz=500 gain=33 pre_db=-53.2 peak_db=-51.1 excess_db=2.0 at_ms=11
+5ms	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-53.0 peak_db=-51.4 excess_db=1.6 at_ms=270
+5ms	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-51.6 peak_db=-50.8 excess_db=0.9 at_ms=27
+5ms	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-52.9 peak_db=-52.6 excess_db=0.3 at_ms=109
+5ms	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-51.8 peak_db=-52.0 excess_db=-0.2 at_ms=207
+5ms	sound onset steal	SOUND onset event=steal hz=500 gain=33 pre_db=-52.4 peak_db=-52.7 excess_db=-0.3 at_ms=8
+5ms	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-51.9 peak_db=-48.4 excess_db=3.6 at_ms=1751
+5ms	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-52.0 peak_db=-50.4 excess_db=1.6 at_ms=1751
+5ms	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-52.6 peak_db=-48.7 excess_db=3.9 at_ms=1751
+5ms	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-52.8 peak_db=-49.7 excess_db=3.1 at_ms=1754
+5ms	sound onset amp-off	SOUND onset event=amp-off hz=500 gain=33 pre_db=-52.1 peak_db=-48.3 excess_db=3.8 at_ms=1751
+meta	status	{"boards": [{"board": "44:BD:8D:78:20:E8", "port": "COM3", "state": "held", "holder": {"owner": "ville@JV:board-job:10704", "purpose": "autana lock run", "protocol": 3, "autana_version": "0.1.0"}, "since": 1792491195.6953685, "estimated_free": 1792492995.6953685, "lapsed": null, "expires_at": null, "waiting": [], "estimated_start": 1792492995.6953685}]}
+meta	buildid	{"build_id": "c191f7dc6b07-dev"}
