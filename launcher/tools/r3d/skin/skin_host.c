@@ -9,7 +9,8 @@ enum { ARG_COUNT = 7, ARG_PACK = 1, ARG_SKELETON, ARG_SKIN, ARG_MESH, ARG_CLIP, 
 #define HOST_SCENE_ID    "scene"
 #define HOST_ENTITY_NAME "subject"
 
-/* This host tool reads positions; it creates no draw context to release. */
+/* scene_draw.c stand-ins: without its scene_activate() no scene is active, where its versions do nothing too;
+ * linking scene_draw.c needs the whole renderer source list. Any drawing call still fails to link. */
 void
 scene_draw_forget(const scene_t* scene) {
     (void)scene;
@@ -17,6 +18,12 @@ scene_draw_forget(const scene_t* scene) {
 
 void
 scene_draw_release(void) {}
+
+void
+scene_draw_camera_cut(const scene_t* scene, scene_entity_t entity) {
+    (void)scene;
+    (void)entity;
+}
 
 static bool
 sample(const asset_pack_t* pack, char** argv) {

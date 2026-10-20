@@ -95,6 +95,7 @@ bool gfx_frame_expanded(void);
 
 /* Replayed over each expanded strip, after its picture is doubled. */
 void gfx_set_frame_overlay(gfx_band_overlay_fn overlay);
+gfx_band_overlay_fn gfx_frame_overlay(void);
 
 /*
  * GFX_LAYOUT_INDEXED: a persistent index image gfx owns instead of the

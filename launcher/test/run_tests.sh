@@ -189,6 +189,7 @@ $MAIN_DIR/input/mapping/orbit_motion_touch.c
 $MAIN_DIR/services/tune.c
 $MAIN_DIR/console/console_verbs.c
 $MAIN_DIR/console/verbs/console_tone.c
+$MAIN_DIR/console/verbs/console_melody.c
 $MAIN_DIR/console/console_frame_request.c
 $MAIN_DIR/display/panel_clock.c
 $MAIN_DIR/shell/ui/ui_launcher.c
@@ -321,6 +322,7 @@ fi
 if [ "$BUILD_ONLY" != 1 ]; then
     "$TEST_DIR/check_app_sources.sh"
     "$TEST_DIR/check_packages_alone.sh"
+    "$TEST_DIR/check_tool_probes.sh"
     "$TEST_DIR/check_inline_owners.sh"
 
     # The bootloader hook lives outside SOURCES too: a separate header world
@@ -401,6 +403,11 @@ done
 COMMON_INC="-I $MAIN_N$PACKAGE_INC -I $TEST_N -I $TEST_N/framework -I $TEST_N/stubs"
 TEST_INC="$COMMON_INC -I $LAUNCHER_N/components/microui/include -I $LAUNCHER_N/tools/gen -I $LAUNCHER_N/tools/r3d"
 LDFLAGS="-Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free -Wl,--wrap=asset_store_pack -Wl,--wrap=job_try_core1 -Wl,--wrap=draw_line_ex -pthread -lm"
+
+case "$(uname -s)" in
+    MINGW* | MSYS* | CYGWIN*) LDFLAGS="$LDFLAGS -Wl,--wrap=_timespec64_get" ;;
+    *) LDFLAGS="$LDFLAGS -Wl,--wrap=timespec_get" ;;
+esac
 
 # The source lists, one native path per line. Test code (test/'s own
 # drivers, test/suites/*.c and each app's suite_*.c) also gets the

@@ -33,6 +33,9 @@ import zipfile
 from array import array
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "lib"))
+import autana_config  # noqa: E402
+
 RELEASE = "b11188"
 RELEASE_URL = "https://github.com/ggml-org/llama.cpp/releases/download/" + RELEASE + "/"
 BUILDS = {
@@ -68,8 +71,7 @@ INTEGRATED = re.compile(r"Radeon\(TM\) (\d+M|Graphics)|Intel\(R\) (UHD|HD|Iris|A
 
 
 def home():
-    base = os.environ.get("LOCALAPPDATA") or Path.home() / ".cache"
-    return Path(base) / "autana" / "llama"
+    return autana_config.user_cache_dir() / "llama"
 
 
 def port():
@@ -287,18 +289,23 @@ class VectorCache:
     """Vectors keyed by a hash of the model and the text, so an edit re-embeds only itself.
 
     One cache serves every worktree, so a vector this run did not ask for may be
-    another branch's; unused ones are dropped only once they outnumber the used
-    two to one.
+    another checkout's; a vector is dropped only once no run has asked for it in
+    KEEP_DAYS. A cache from before last-use days were kept counts as used today.
     """
+    KEEP_DAYS = 30
 
     def __init__(self, kind="embed"):
         self.model = MODELS[kind]["file"]
         self.file = home() / "cache" / (Path(self.model).stem + ".json")
         try:
-            self.rows = json.loads(self.file.read_text(encoding="utf-8"))
+            stored = json.loads(self.file.read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            self.rows = {}
-        self.used = set()
+            stored = {}
+        self.today = int(time.time() // 86400)
+        if "vectors" in stored:
+            self.rows, self.seen = stored["vectors"], stored["seen"]
+        else:
+            self.rows, self.seen = stored, dict.fromkeys(stored, self.today)
         self.dirty = False
 
     def key(self, text):
@@ -306,24 +313,27 @@ class VectorCache:
 
     def vectors(self, texts):
         keys = [self.key(text) for text in texts]
-        self.used.update(keys)
         missing = sorted({k: t for k, t in zip(keys, texts) if k not in self.rows}.items())
         if missing:
             print(f"embedding {len(missing)} new sections", file=sys.stderr)
             for (k, _), vector in zip(missing, embed([t for _, t in missing])):
                 self.rows[k] = base64.b64encode(vector.tobytes()).decode("ascii")
-            self.dirty = True
+        for k in keys:
+            if self.seen.get(k) != self.today:
+                self.seen[k] = self.today
+                self.dirty = True
         return [array("f", base64.b64decode(self.rows[k])) for k in keys]
 
     def save(self):
-        if len(self.rows) > 3 * len(self.used):
-            self.rows = {k: v for k, v in self.rows.items() if k in self.used}
-            self.dirty = True
-        if not self.dirty:
+        stale = [k for k in self.rows if self.today - self.seen.get(k, self.today) > self.KEEP_DAYS]
+        for k in stale:
+            del self.rows[k]
+            self.seen.pop(k, None)
+        if not (self.dirty or stale):
             return
         self.file.parent.mkdir(parents=True, exist_ok=True)
         partial = self.file.with_suffix(".part")
-        partial.write_text(json.dumps(self.rows), encoding="utf-8")
+        partial.write_text(json.dumps({"vectors": self.rows, "seen": self.seen}), encoding="utf-8")
         partial.replace(self.file)
         self.dirty = False
 
