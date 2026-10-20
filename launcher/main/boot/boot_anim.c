@@ -348,13 +348,57 @@ far_swell_node(const mesh_pass_t* pass, const boot_anim_far_line_t* line, int n,
     return at;
 }
 
+/* r3d_camera_to_screen_x() truncates x / z to 1/512 and then the pixel, both
+ * toward the centre: well under two pixels at boot's lens. */
+#define FAR_CULL_MARGIN_PX 2
+
+/* Which sides of the view a camera-space point is past, FAR_CULL_MARGIN_PX
+ * beyond the clip, as linear tests: the near plane and the four planes
+ * through the camera and the clip's edges. */
+static unsigned
+far_view_outcode(const mesh_pass_t* pass, vec3x_t p) {
+    const r3d_line_view_x_t* v = pass->view;
+    const int64_t x = (int64_t)p.x * v->pixels_per_unit;
+    const int64_t y = (int64_t)p.y * v->pixels_per_unit;
+    unsigned code = p.z <= v->near_z ? MESH_NODE_FRONT : 0U;
+    code |= x < (int64_t)(pass->clip.x - FAR_CULL_MARGIN_PX - v->center_x) * p.z ? GFX_CLIP_OUT_LEFT : 0U;
+    code |= x > (int64_t)(recti_right(pass->clip) + FAR_CULL_MARGIN_PX - v->center_x) * p.z ? GFX_CLIP_OUT_RIGHT : 0U;
+    code |= y > (int64_t)(v->center_y - pass->clip.y + FAR_CULL_MARGIN_PX) * p.z ? GFX_CLIP_OUT_TOP : 0U;
+    code |= y < (int64_t)(v->center_y - recti_bottom(pass->clip) - FAR_CULL_MARGIN_PX) * p.z ? GFX_CLIP_OUT_BOTTOM : 0U;
+    return code;
+}
+
+/* Whether a far line's half lies wholly past one side of the view. Each of
+ * its samples is a point of the flat chord lifted at most `lift` either way,
+ * so all of them lie in the parallelogram of the chord's ends at +-lift; the
+ * view's sides are planes, so its four corners decide. */
+static bool
+far_half_outside(const mesh_pass_t* pass, const boot_anim_far_line_t* line, bool along_im, int side, int half,
+                 int32_t lift) {
+    const boot_anim_far_sample_t* run = &boot_anim_far_samples[line->first];
+    const int32_t c = side * line->c;
+    unsigned all = ~0U;
+    for (int corner = 0; corner < 4 && all != 0; corner++) {
+        const int32_t s = half * run[(corner & 1) != 0 ? line->count - 1 : 0].s;
+        const int32_t t = (corner & 2) != 0 ? -lift : lift;
+        const vec3x_t p =
+            along_im ? boot_anim_to_camera_space(c, s, t, pass->view) : boot_anim_to_camera_space(s, c, t, pass->view);
+        all &= far_view_outcode(pass, p);
+    }
+    return all != 0;
+}
+
 /* Where the swell still lifts it, a far line is a polyline through its baked
- * samples, each projected once; draw_far_ring() draws the flat rest. */
+ * samples, each projected once; draw_far_ring() draws the flat rest. `lift`
+ * bounds the swell's height this frame, in t. */
 static void
-draw_far_swell_line(const mesh_pass_t* pass, const boot_anim_far_line_t* line, bool along_im, int side,
+draw_far_swell_line(const mesh_pass_t* pass, const boot_anim_far_line_t* line, bool along_im, int side, int32_t lift,
                     gfx_color_t col) {
     const unsigned flags = DRAW_LINE_DASH(BOOT_ANIM_MESH_DASH_ON_PX, BOOT_ANIM_MESH_DASH_OFF_PX);
     for (int half = -1; half <= 1; half += 2) {
+        if (far_half_outside(pass, line, along_im, side, half, lift)) {
+            continue;
+        }
         far_swell_node_t prev = far_swell_node(pass, line, 0, along_im, side, half);
         for (int n = 1; n < line->count; n++) {
             const far_swell_node_t next = far_swell_node(pass, line, n, along_im, side, half);
@@ -394,6 +438,8 @@ draw_far_grid(const mesh_pass_t* pass) {
     const int32_t solid = reach - front;
     const boot_anim_plane_t plane = boot_anim_plane(0, pass->view);
     const gfx_color_t col = lit(BOOT_ANIM_FLOOR_GREY, level);
+    /* One more than the swell's height, for zeta_to_t's rounding. */
+    const int32_t lift = boot_anim_zeta_to_t_q8(boot_anim_swell_bound(&pass->floor)) + 1;
     for (int n = 0; n < BOOT_ANIM_FAR_LINES && boot_anim_far_lines[n].c <= reach; n++) {
         const boot_anim_far_line_t* far_line = &boot_anim_far_lines[n];
         const bool swelling = pass->floor.swell != 0 && far_line->count != 0;
@@ -402,7 +448,7 @@ draw_far_grid(const mesh_pass_t* pass) {
             const int side = (line & 2) != 0 ? -1 : 1;
             const int32_t c = side * far_line->c;
             if (swelling) {
-                draw_far_swell_line(pass, far_line, along_im, side, col);
+                draw_far_swell_line(pass, far_line, along_im, side, lift, col);
             }
             draw_far_ring(pass, &plane, along_im, c, swelling ? BOOT_ANIM_FAR_SWELL_FADE_Q12 : 0, solid, col);
             for (int k = 0; front > 0 && k < BOOT_ANIM_FAR_FRONT_STEPS; k++) {

@@ -89,6 +89,8 @@ generator rejects a fade past the point where those samples are more than
 half the shortest swell wavelength apart. The swell starts only once the
 reach is complete, so the far front stays flat.
 
+![Main (left) and the swell over the far grid (right), 2.55 to 4.2 s](far_swell/main-vs-far-swell.gif)
+
 The camera-plane walk retains fractional bits until projection. Views
 outside its input bounds use the full transform. The comparison below aligns
 the float reference's camera, photograph timing, swell start and constant grey

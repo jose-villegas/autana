@@ -587,6 +587,8 @@ test_baked_far_swell_matches_direct_float(void) {
                     const double baked =
                         (double)boot_anim_far_line_swell(line, k, along_im, side, half, &state) / BOOT_ANIM_ONE;
                     maximum_error = fmax(maximum_error, fabs(baked - expect));
+                    TEST_ASSERT_TRUE(mathi_abs(boot_anim_far_line_swell(line, k, along_im, side, half, &state))
+                                     <= boot_anim_swell_bound(&state));
                 }
             }
         }

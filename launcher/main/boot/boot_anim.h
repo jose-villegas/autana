@@ -267,6 +267,16 @@ boot_anim_swell_at(const uint16_t place[BOOT_ANIM_SWELL_COUNT], const boot_anim_
     return (swell * state->swell) >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
 }
 
+/* The most the swell can lift or lower any place at this moment. */
+static inline int32_t
+boot_anim_swell_bound(const boot_anim_floor_state_t* state) {
+    int32_t bound = 0;
+    for (int k = 0; k < BOOT_ANIM_SWELL_COUNT; k++) {
+        bound += mathi_abs(boot_anim_swell_weights[k]);
+    }
+    return (bound * state->swell) >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
+}
+
 static inline int32_t
 boot_anim_floor_swell(int i, int j, const boot_anim_floor_state_t* state) {
     uint16_t place[BOOT_ANIM_SWELL_COUNT];
