@@ -383,7 +383,7 @@ class PrepareSchedulingTests(unittest.TestCase):
         executor = mock.Mock()
         executor.submit.side_effect = futures
         seen = []
-        ready = stages.prepare_variants(executor, Path('other.scene.toml'), 'scene', jobs, Path('work'),
+        ready = stages.prepare_variants(executor, [(Path('other.scene.toml'), 'scene', job, Path('work') / job) for job in jobs],
                                         lambda index, job: seen.append((index, job)))
         self.assertEqual(executor.submit.call_count, 2)
         self.assertTrue(all(call.args[0].func is stages.recorded_call and call.args[0].args == (prepare,)
@@ -402,7 +402,7 @@ class PrepareSchedulingTests(unittest.TestCase):
         executor = mock.Mock()
         executor.submit.side_effect = futures
         callback = mock.Mock()
-        ready = stages.prepare_variants(executor, Path('other.scene.toml'), None, [None, None], Path('work'), callback)
+        ready = stages.prepare_variants(executor, [(Path('other.scene.toml'), None, None, Path('work'))] * 2, callback)
         futures[0].set_exception(RuntimeError('prepare failure'))
         with self.assertRaisesRegex(RuntimeError, 'prepare failure'):
             ready[0].result()
@@ -439,23 +439,22 @@ class LightStudyTests(unittest.TestCase):
         submitted = []
 
         def submit(function, *args, **kwargs):
-            submitted.append((function, Future()))
+            submitted.append((getattr(function, "args", (function,))[0], Future()))
             return submitted[-1][1]
         executor = mock.Mock()
         executor.submit.side_effect = submit
         with tempfile.TemporaryDirectory() as directory:
-            fits = stages.submit_light_fits(executor, self.SCENE, Path(directory))
-        self.assertTrue(submitted and all(function is prepare for function, _ in submitted))
-        prepares = len(submitted)
-        self.assertEqual(prepares, len(fits))
-        first, second = list(fits)[:2]
-        submitted[0][1].set_result(None)
-        self.assertIs(submitted[prepares][0], fit_point)
-        submitted[prepares][1].set_result({"mesh": "fitted.mesh"})
-        self.assertEqual(fits[first][3].result(), {"mesh": "fitted.mesh"})
+            studies, ready, fits = stages.submit_light_fits(executor, self.SCENE, Path(directory))
+        self.assertEqual(len(submitted), len(studies))
+        self.assertTrue(all(function is prepare for function, _ in submitted))
+        self.assertEqual(fits, {})
+        submitted[0][1].set_result((None, []))
+        self.assertIs(submitted[-1][0], fit_point)
+        self.assertEqual(list(fits), [studies[0][0]])
         submitted[1][1].set_exception(RuntimeError("prepare failure"))
         with self.assertRaisesRegex(RuntimeError, "prepare failure"):
-            fits[second][3].result()
+            ready[1].result()
+        self.assertNotIn(studies[1][0], fits)
 
 
 class SmokeAdmissionTests(unittest.TestCase):

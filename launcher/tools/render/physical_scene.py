@@ -38,30 +38,39 @@ LOOKS = {
 
 def physical_scene(text, base=None, look=Look()):
     """`text` without its look, then with `look`; with `base`, the scene's folder, relative animation paths
-    become absolute."""
+    become absolute. A look whose option finds nothing to change in `text` is an error, not a copy that studies
+    nothing."""
     if base is not None:
         text = ANIMATION.sub(lambda match: match.group(1) + (pathlib.Path(base) / match.group(2)).resolve().as_posix()
                              + match.group(3), text)
-    out, table, placed = [], None, False
+    out, table = [], None
+    # Each place the look changes, and whether the look still has to find it.
+    missing = {"[[objects]]": bool(look.table), "[bake] indirect": look.direct or bool(look.bake),
+               "[ambient] intensity": look.ambient is not None}
     for line in text.splitlines(keepends=True):
         stripped = line.strip()
         if stripped.startswith("["):
             table = stripped
-        if stripped == "[[objects]]" and look.table and not placed:
+        if stripped == "[[objects]]" and missing["[[objects]]"]:
             out.append(look.table + "\n\n")
-            placed = True
+            missing["[[objects]]"] = False
         if table == "[indirect]":
             continue
         if table == "[bake]" and re.match(r"ao\s*=", stripped):
             continue
         if table == "[bake]" and re.match(r"indirect\s*=", stripped):
+            missing["[bake] indirect"] = False
             if look.direct:
                 continue
             if look.bake:
                 line += look.bake + "\n"
         if table == "[ambient]" and look.ambient is not None and re.match(r"intensity\s*=", stripped):
             line = f"intensity = {look.ambient}\n"
+            missing["[ambient] intensity"] = False
         out.append(line)
+    absent = [place for place, needed in missing.items() if needed]
+    if absent:
+        raise ValueError(f"the look changes {', '.join(absent)}, which the scene does not have")
     return "".join(out)
 
 

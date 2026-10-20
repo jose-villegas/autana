@@ -77,8 +77,8 @@ LIGHT_SHEETS = (
                ("intensity 3", "intensity-3"), ("albedo boost 2", "boost-2")), frames="4", crops=0, own_references=True),
     LightSheet("bake-ao-compare", "ao-occluded", (("no occlusion", "ao-flat"), ("occlusion", "ao-occluded"))),
 )
-# The occlusion factor beside the reference, at the occlusion sheet's poses and from its occluded look.
-AO_MAP = SimpleNamespace(name="bake-ao-map", look="ao-occluded", frames=(0, 4))
+# The occlusion factor beside the reference, at the poses and from the reference look of the occlusion sheet.
+AO_MAP = SimpleNamespace(name="bake-ao-map", sheet=next(sheet for sheet in LIGHT_SHEETS if sheet.name == "bake-ao-compare"))
 
 
 def git_environment():
@@ -464,15 +464,18 @@ def smoke_prepare(scene_path, scene, job, inputs):
         reference_main([str(scene_path), "--object", job.object.name, "--poses", str(inputs / "train.txt"),
                         "--out", str(inputs / name), "--normals"])
 
-def prepare_variants(executor, scene_path, scene, jobs, work, on_ready):
+def prepare_variants(executor, preparations, on_ready):
+    """Submits a prepare per (scene file, scene, job, inputs folder) of `preparations`; on_ready(index, job) runs as
+    each finishes, so its fit can start. Returns a future per preparation of its (result, steps)."""
     from functools import partial
     from concurrent.futures import Future
     from r3d.fitted_variant import prepare
     from r3d.process_budget import PREPARE_BYTES
-    ready = [Future() for job in jobs]
-    prepares = [executor.submit(partial(recorded_call, prepare), scene_path, scene, job, work / f"inputs-{fitted.prefix}", estimates=PREPARE_BYTES,
+    ready = [Future() for _ in preparations]
+    prepares = [executor.submit(partial(recorded_call, prepare), scene_path, scene, job, inputs, estimates=PREPARE_BYTES,
                                 priority=True)
-                for fitted, job in zip(FITTED, jobs)]
+                for scene_path, scene, job, inputs in preparations]
+    jobs = [job for _scene_path, _scene, job, _inputs in preparations]
     for index, (job, future) in enumerate(zip(jobs, prepares)):
         def completed(future, index=index, job=job):
             try:
@@ -502,68 +505,69 @@ def write_look_scene(scene_path, look, directory):
 
 
 def submit_light_fits(executor, scene_path, work):
-    """{look: (scene file, job, reference inputs, future of the fit)} for every look LIGHT_SHEETS and AO_MAP name: the scene's
-    showcase, its first renderer, prepared and fitted in that look. Each fit is submitted once its prepare is done."""
-    from concurrent.futures import Future
-    from r3d.fitted_variant import fit_point, placed_variant, prepare
+    """[(look, scene file, scene, job, inputs folder)] for every look LIGHT_SHEETS names, and the futures that finish once
+    each is prepared and {look: future of its fit}, filled as they do: the scene's showcase, its first renderer,
+    prepared and fitted in that look."""
+    from r3d.fitted_variant import fit_point, placed_variant
     from r3d.import_settings import load_scene
-    from r3d.process_budget import FIT_BYTES, PREPARE_BYTES
+    from r3d.process_budget import FIT_BYTES
     looks = dict.fromkeys([sheet.reference for sheet in LIGHT_SHEETS] +
-                          [look for sheet in LIGHT_SHEETS for _label, look in sheet.columns] + [AO_MAP.look])
-    fits = {}
+                          [look for sheet in LIGHT_SHEETS for _label, look in sheet.columns])
+    studies = []
     for look in looks:
-        directory = work / f"light-{look}"
-        path = write_look_scene(scene_path, look, directory)
+        path = write_look_scene(scene_path, look, work / f"look-{look}")
         scene = load_scene(path)
-        job = placed_variant(scene, scene.renderers[0].object.name)
-        inputs = directory / "inputs"
-        fitted = Future()
+        studies.append((look, path, scene, placed_variant(scene, scene.renderers[0].object.name), path.parent / "inputs"))
+    fits = {}
 
-        def prepared(future, path=path, scene=scene, job=job, inputs=inputs, directory=directory, fitted=fitted):
-            try:
-                future.result()
-                fit = executor.submit(fit_point, {}, directory / "fit", path, scene, job, inputs, False,
-                                      directory / "fitted.mesh", estimates=FIT_BYTES)
-                fit.add_done_callback(lambda done: fitted.set_exception(done.exception()) if done.exception()
-                                      else fitted.set_result(done.result()))
-            except BaseException as error:
-                fitted.set_exception(error)
-        executor.submit(prepare, path, scene, job, inputs, estimates=PREPARE_BYTES).add_done_callback(prepared)
-        fits[look] = (path, job, inputs, fitted)
-    return fits
+    def prepared(index, job):
+        look, path, scene, _job, inputs = studies[index]
+        fits[look] = executor.submit(fit_point, {}, inputs.parent / "fit", path, scene, job, inputs, False,
+                                     inputs.parent / "fitted.mesh", estimates=FIT_BYTES)
+    ready = prepare_variants(executor, [study[1:] for study in studies], prepared)
+    return studies, ready, fits
 
 
-def light_sheets(fits, out, work, measure, comparisons):
-    """LIGHT_SHEETS and the AO_MAP sheet into out/render/gpu from the fits of submit_light_fits; `measure` renders a
-    mesh at the held-out poses and files its frames in `comparisons` under its label."""
+def light_sheets(light, out, work, measure, comparisons):
+    """LIGHT_SHEETS and the AO_MAP sheet into out/render/gpu from submit_light_fits; `measure` renders a mesh at the
+    held-out poses and files its frames in `comparisons` under its label."""
     from PIL import Image
-    frames = {}
-    for look, (_path, job, inputs, fitted) in fits.items():
-        measure(f"light-{look}", job, Path(fitted.result()["mesh"]), inputs)
-        frames[look] = comparisons[f"light-{look}"]
+    from r3d.fitted_variant import poses_text
+    from r3d.poses import read_poses
+    studies, ready, fits = light
+    frames, inputs = {}, {}
+    for (look, _path, _scene, job, look_inputs), prepared in zip(studies, ready):
+        prepared.result()
+        measure(f"light-{look}", job, Path(fits[look].result()["mesh"]), look_inputs)
+        frames[look], inputs[look] = comparisons[f"light-{look}"], look_inputs
     for sheet in LIGHT_SHEETS:
         image = out / "render/gpu" / f"{sheet.name}.png"
         command = [sys.executable, ROOT / "launcher/tools/render/render_compare.py", "--out", image,
-                   "--reference-bakes", fits[sheet.reference][2] / "reference_held_out", "--reference-scale", "2",
+                   "--reference-bakes", inputs[sheet.reference] / "reference_held_out", "--reference-scale", "2",
                    "--sheet-frames", sheet.frames]
         for label, look in sheet.columns:
             command += ["--bake", label, frames[look]]
         if sheet.own_references:
             for label, look in sheet.columns:
-                command += ["--bake-reference", label, fits[look][2] / "reference_held_out"]
+                command += ["--bake-reference", label, inputs[look] / "reference_held_out"]
         if sheet.crops:
             command += ["--crops", sheet.crops]
         run(command, work / f"{sheet.name}.log")
-        # render_compare.py writes no crops where the bakes do not differ; fail rather than link a missing file.
+        # render_compare.py writes no crops where the fits do not differ; fail rather than link a missing file.
         if sheet.crops and not image.with_suffix(".crops.png").exists():
             raise ValueError(f"{sheet.name}: no crops, the fits do not differ")
-    path, _job, inputs, _fitted = fits[AO_MAP.look]
+    look = AO_MAP.sheet.reference
+    path, job = next((path, job) for name, path, _scene, job, _inputs in studies if name == look)
+    width, height, lens, near, poses = read_poses(inputs[look] / "held_out.txt")
+    shown = [int(frame) for frame in AO_MAP.sheet.frames.split(",")]
     occlusion = work / AO_MAP.name
-    run([sys.executable, ROOT / "launcher/tools/r3d/reference_render.py", path, "--poses", inputs / "held_out.txt",
-         "--occlusion", "--out", occlusion], work / f"{AO_MAP.name}.log")
+    occlusion.mkdir(parents=True, exist_ok=True)
+    (occlusion / "poses.txt").write_text(poses_text(width, height, lens, near, [poses[frame] for frame in shown]))
+    run([sys.executable, ROOT / "launcher/tools/r3d/reference_render.py", path, "--object", job.object.name,
+         "--poses", occlusion / "poses.txt", "--occlusion", "--out", occlusion], work / f"{AO_MAP.name}.log")
     rows = []
-    for frame in AO_MAP.frames:
-        pair = [Image.open(occlusion / f"{frame:04d}{suffix}.png").convert("RGB") for suffix in (".occlusion", "")]
+    for index in range(len(shown)):
+        pair = [Image.open(occlusion / f"{index:04d}{suffix}.png").convert("RGB") for suffix in (".occlusion", "")]
         rows.append([picture.resize((picture.width * 2, picture.height * 2), Image.Resampling.NEAREST)
                      for picture in pair])
     width, height = rows[0][0].size
@@ -659,8 +663,9 @@ def _gpu(args, out, work, executor):
             run_sweep_points(work, unfinished, partial(fit_point, scene_path=scene_path, scene=scene, job=job,
                              inputs=reference_inputs), executor=executor, deferred=sweep_futures)
 
-    ready = prepare_variants(executor, scene_path, scene, jobs, work, prepared)
-    light_fits = submit_light_fits(executor, scene_path, work)
+    ready = prepare_variants(executor, [(scene_path, scene, job, work / f"inputs-{entry.prefix}")
+                                        for entry, job in zip(FITTED, jobs)], prepared)
+    light = submit_light_fits(executor, scene_path, work)
 
     for index, job in enumerate(jobs):
         prepared_result = ready[index].result()
@@ -724,7 +729,7 @@ def _gpu(args, out, work, executor):
 
             run_sweep_points(work, points, run_point)
             sweep = sweep_rows(work, points)
-    light_sheets(light_fits, out, work, measure, comparisons)
+    light_sheets(light, out, work, measure, comparisons)
     write_sweep_csv(out / "sweep.csv", sweep)
     plot_pareto(out / "render/gpu/appearance-pareto.png", sweep)
     (out / f"tables/{id}-budget.md").write_text(markdown(

@@ -329,9 +329,13 @@ class PhysicalSceneTests(unittest.TestCase):
     def test_every_gpu_light_sheet_names_a_look(self):
         sys.path.insert(0, str(ROOT / "launcher/tools/render"))
         import doc_stages
-        named = {sheet.reference for sheet in doc_stages.LIGHT_SHEETS} | {doc_stages.AO_MAP.look}
+        named = {sheet.reference for sheet in doc_stages.LIGHT_SHEETS}
         named |= {look for sheet in doc_stages.LIGHT_SHEETS for _label, look in sheet.columns}
         self.assertLessEqual(named, set(self.module.LOOKS))
+
+    def test_a_look_the_scene_cannot_take_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "ambient"):
+            self.module.physical_scene("[bake]\nindirect = { bounces = 1, rays = 4 }\n", look=self.module.LOOKS["ao-occluded"])
 
     def test_a_copy_in_another_folder_still_reaches_the_camera_animation(self):
         from r3d.import_settings import load_scene
