@@ -326,13 +326,12 @@ ui_init(void) {
      * "no genuine transform change has happened yet this run". */
     layout_generation = 0;
 
-    /* Palette. Deliberately dark: this is an OLED, so black pixels are off
-     * pixels; it costs less power and looks better than a grey chrome. */
-    ui_ctx.style->colors[MU_COLOR_WINDOWBG] = (mu_Color){0x0A, 0x0C, 0x14, 255};
-    ui_ctx.style->colors[MU_COLOR_TEXT] = (mu_Color){0xE6, 0xEA, 0xF2, 255};
-    ui_ctx.style->colors[MU_COLOR_BUTTON] = (mu_Color){0x16, 0x1A, 0x28, 255};
-    ui_ctx.style->colors[MU_COLOR_BUTTONHOVER] = (mu_Color){0x23, 0x2A, 0x40, 255};
-    ui_ctx.style->colors[MU_COLOR_BUTTONFOCUS] = (mu_Color){0x3D, 0xDC, 0x97, 255};
+    /* The shell look (ui_style.h). */
+    ui_ctx.style->colors[MU_COLOR_WINDOWBG] = (mu_Color)UI_RGB(UI_SHELL_BACKGROUND);
+    ui_ctx.style->colors[MU_COLOR_TEXT] = (mu_Color)UI_RGB(UI_SHELL_TEXT);
+    ui_ctx.style->colors[MU_COLOR_BUTTON] = (mu_Color)UI_RGB(UI_SHELL_BUTTON);
+    ui_ctx.style->colors[MU_COLOR_BUTTONHOVER] = (mu_Color)UI_RGB(UI_SHELL_BUTTON_HOVER);
+    ui_ctx.style->colors[MU_COLOR_BUTTONFOCUS] = (mu_Color)UI_RGB(UI_SHELL_ACCENT);
     ui_ctx.style->padding = UI_PADDING;
     ui_ctx.style->spacing = UI_ROW_GAP;
     ui_ctx.style->indent = 0;

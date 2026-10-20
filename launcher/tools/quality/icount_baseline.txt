@@ -55,7 +55,7 @@
 43670	span_gouraud
 16007	span_solid
 2106	ui_face_alpha
-3805	ui_face_button
+3824	ui_face_button
 2626	ui_face_caption
 2196	ui_face_color
 2107	ui_face_disabled
