@@ -9,8 +9,8 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from math_figures import (PANEL_SIZE, PANEL_TITLE_ROOM, PIXEL_FILL, POINT, POINT_SIZE, SHAPE_ALPHA, SHAPE_FILL,
-                          run_probe, square_axes)
-from docs.plot_style import FAINT, INK, LABEL_SIZE, MUTED, TITLE_SIZE, figure as new_figure, save
+                          run_probe)
+from docs.plot_style import FAINT, INK, LABEL_SIZE, MUTED, TITLE_SIZE, style_axes, figure as new_figure, save
 import numpy as np
 from matplotlib.patches import Rectangle
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
@@ -33,7 +33,7 @@ def panels(projection=None):
 
 def rect_figure(data, output):
     figure, (axis, empty_axis) = panels()
-    square_axes(axis, "Half-open pixel rectangles")
+    style_axes(axis, "Half-open pixel rectangles", square=True)
     for key, color, fill, style in (("a", SHAPE_FILL, False, "-"), ("b", POINT, False, "-"),
                                      ("intersect", PIXEL_FILL, True, "-"), ("union", MUTED, False, "--")):
         x, y, w, h = data[key]
@@ -52,7 +52,7 @@ def rect_figure(data, output):
     axis.set_ylim(y + h + 1, y - 1)
     axis.grid(color=FAINT, linewidth=0.5)
     axis.legend(fontsize=LABEL_SIZE, loc="upper left", bbox_to_anchor=(0, -0.13), ncol=2)
-    square_axes(empty_axis, "Crossed edges")
+    style_axes(empty_axis, "Crossed edges", square=True)
     left, top, right, bottom = data["edges"]
     empty_axis.plot([left, right], [top, bottom], "--", color=MUTED)
     empty_axis.scatter([left, right], [top, bottom], color=POINT)
@@ -75,7 +75,7 @@ def distance_figure(data, output):
     span = min(abs(v).max() for v in values)
     levels = np.linspace(-span, span, BAND_COUNT)
     for axis, value, title in zip(axes, values, ("Before normalize", "After normalize")):
-        square_axes(axis, title)
+        style_axes(axis, title, square=True)
         bands = axis.contourf(x, z, value, levels=levels, cmap="RdBu", extend="both")
         axis.contour(x, z, value, levels=[0], colors=INK)
         axis.set_xlabel("x", fontsize=LABEL_SIZE)
@@ -143,7 +143,7 @@ def rows_figure(data, output):
     for axis, key, title, distance in zip(axes, ("lens", "world"), ("Lens space", "World space"), data["distances"]):
         point = np.array(data[key + "_sample"])
         plane = data[key + "_plane"]
-        square_axes(axis, title)
+        style_axes(axis, title, square=True)
         radius = np.linalg.norm(point) + NORMAL_ARROW_LENGTH
         axis.set_xlim(-radius, radius)
         axis.set_ylim(-radius, radius)
@@ -187,7 +187,7 @@ def frustum_figure(data, output):
     bounds = np.vstack([corners, camera, np.column_stack([x, z, np.zeros_like(x)])])
     for setter, dim in ((axis.set_xlim, 0), (axis.set_ylim, 1), (axis.set_zlim, 2)):
         setter(bounds[:, dim].min(), bounds[:, dim].max())
-    square_axes(slice_axis, "slice y = 0 (ground)")
+    style_axes(slice_axis, "slice y = 0 (ground)", square=True)
     slice_axis.scatter(x, z, c=colors, s=8)
     slice_axis.set_xlim(x.min(), x.max())
     slice_axis.set_ylim(z.min(), z.max())
