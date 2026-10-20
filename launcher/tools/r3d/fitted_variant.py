@@ -328,11 +328,11 @@ def board_poses(work):
 
 def plot_pareto(path, rows):
     """Draw the sweep points, the non-dominated front and its chord-distance knee."""
-    from docs.plot_style import save, subplots
+    import matplotlib.pyplot as plt
     from matplotlib import patheffects
 
     front, knee = non_dominated_front(rows)
-    figure, axis = subplots(1, 1, (8, 5))
+    figure, axis = plt.subplots(figsize=(8, 5), layout="constrained")
     for row in rows:
         axis.scatter(row["predicted_ms"], row["mean_delta_e"], color="tab:blue", zorder=2)
         label = "%d, %g" % (row["budget"], row["cost_weight"])
@@ -346,7 +346,8 @@ def plot_pareto(path, rows):
         axis.legend()
     axis.set_xlabel("Predicted frame time (ms)")
     axis.set_ylabel("Held-out mean $\\Delta E_{76}$")
-    save(figure, path, dpi=160)
+    figure.savefig(path, dpi=160)
+    plt.close(figure)
 
 
 def comma_numbers(text, cast):
