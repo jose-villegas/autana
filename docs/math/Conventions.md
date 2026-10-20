@@ -43,8 +43,9 @@ any type-specific operations.
 | `project_template.h` | `MATH_DEFINE_CLIP_NEAR` | near-plane segment clipping, no type | `projectf`, `projectx` |
 | `rect_template.h` | `MATH_DEFINE_RECT` | half-open rectangles | `rectf`, `recti`, `rects`, `rectx` |
 | `box3_template.h` | `MATH_DEFINE_BOX3`, `MATH_DEFINE_BOX3_REAL` | closed boxes; real queries take a plane type | `box3s`, `box3f`; real `f` |
-| `circle_template.h` | `MATH_DEFINE_CIRCLE`, `MATH_DEFINE_CIRCLE_REAL` | closed discs; real rect/segment queries | `circlef`, `circlex`, `circlei`; real `f x` |
-| `sphere_template.h` | `MATH_DEFINE_SPHERE` | closed spheres and box/segment queries | `spheref` |
+| `ball_template.h` | `MATH_DEFINE_BALL`, `MATH_DEFINE_BALL_REAL` | closed balls; real closest-point/segment queries | via circle and sphere templates |
+| `circle_template.h` | `MATH_DEFINE_CIRCLE`, `MATH_DEFINE_CIRCLE_REAL` | ball queries, disc bounds and rect queries | `circlef`, `circlex`, `circlei`; real `f x` |
+| `sphere_template.h` | `MATH_DEFINE_SPHERE` | ball queries and sphere box queries | `spheref` |
 | `plane_template.h` | `MATH_DEFINE_PLANE` | planes, signed distance, frustum planes from a matrix's rows | `planef`, `planex` |
 
 The macro arguments:
