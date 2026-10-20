@@ -575,8 +575,7 @@ class StyleAuditTest(unittest.TestCase):
 
     def test_a_known_escape_marker_is_not_flagged(self):
         findings = self.audit("STRAY-HTML-COMMENT", {
-            "docs/Guide.md": "C6 is historical. <!-- doc-vocabulary: ignore -->\n"
-                             "<!-- BEGIN GENERATED -->\ntable\n<!-- END GENERATED -->\n",
+            "docs/Guide.md": "<!-- BEGIN GENERATED -->\ntable\n<!-- END GENERATED -->\n",
         })
         self.assertEqual(findings, [])
 

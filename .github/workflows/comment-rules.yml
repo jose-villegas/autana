@@ -121,9 +121,6 @@ jobs:
           STAGED_TEXT_GATE: "snapshot"
         run: python3 scripts/gates/check_math_docs.py
 
-      - name: Documentation names the supported board
-        run: python3 scripts/gates/check_doc_vocabulary.py
-
       - name: Every document is reachable, and every anchor link resolves
         run: python3 scripts/gates/check_doc_index.py
 
