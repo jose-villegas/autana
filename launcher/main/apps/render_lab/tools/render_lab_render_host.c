@@ -223,4 +223,6 @@ const render_scene_t render_scene = {
     .options = options,
     .setup = setup,
     .draw = draw,
+    .draw_band = scene_shell_compose_band,
+    .band_overlay = ui_replay_band,
 };
