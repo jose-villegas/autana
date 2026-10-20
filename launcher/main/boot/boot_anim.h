@@ -277,6 +277,17 @@ boot_anim_floor_swell(int i, int j, const boot_anim_floor_state_t* state) {
     return boot_anim_swell_at(place, state);
 }
 
+/* The swell past the mesh, `gain` of it kept (BOOT_ANIM_FLOOR_GAIN_SHIFT):
+ * it eases out toward BOOT_ANIM_FAR_SWELL_FADE_Q12 so the horizon stays flat. */
+static inline int32_t
+boot_anim_far_swell_at(const uint16_t place[BOOT_ANIM_SWELL_COUNT], uint16_t gain,
+                       const boot_anim_floor_state_t* state) {
+    if (gain == 0) {
+        return 0;
+    }
+    return (boot_anim_swell_at(place, state) * gain) >> BOOT_ANIM_FLOOR_GAIN_SHIFT;
+}
+
 /* The height of axis sample `n` out along (dir_re, dir_im), one of the four
  * unit directions: past the mesh only the lines on the axes go on. */
 static inline int32_t
@@ -286,7 +297,23 @@ boot_anim_axis_far_height(int n, int dir_re, int dir_im, const boot_anim_floor_s
     for (int k = 0; k < BOOT_ANIM_SWELL_COUNT; k++) {
         place[k] = (uint16_t)((dir_re * sample->swell_re[k]) + (dir_im * sample->swell_im[k]));
     }
-    return boot_anim_ripple_at(&sample->node, state) + boot_anim_swell_at(place, state);
+    return boot_anim_ripple_at(&sample->node, state) + boot_anim_far_swell_at(place, sample->swell_gain, state);
+}
+
+/* The swell at sample `n` of far line `line`: the line runs along im
+ * (along_im) or re, at `side` (+1 or -1) times its distance from the axis,
+ * and the sample is on its `half` (+1 or -1) of it. */
+static inline int32_t
+boot_anim_far_line_swell(const boot_anim_far_line_t* line, int n, bool along_im, int side, int half,
+                         const boot_anim_floor_state_t* state) {
+    const boot_anim_far_sample_t* sample = &boot_anim_far_samples[line->first + n];
+    const uint16_t* across = along_im ? line->swell_re : line->swell_im;
+    const uint16_t* along = along_im ? sample->swell_im : sample->swell_re;
+    uint16_t place[BOOT_ANIM_SWELL_COUNT];
+    for (int k = 0; k < BOOT_ANIM_SWELL_COUNT; k++) {
+        place[k] = (uint16_t)((side * across[k]) + (half * along[k]));
+    }
+    return boot_anim_far_swell_at(place, sample->swell_gain, state);
 }
 
 static inline int32_t
