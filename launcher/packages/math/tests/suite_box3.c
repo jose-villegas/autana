@@ -20,6 +20,13 @@ static const box3f_t BOX_ASYMMETRIC_UNITS = {{-2, 1, 3}, {1, 3, 5}};
 static const vec3f_t BOX_ASYMMETRIC_CENTRE = {-0.5F, 2, 4};
 static const vec3f_t BOX_ASYMMETRIC_HALF_EXTENT = {1.5F, 1, 1};
 
+#define EXPECT_BOX3_EQUAL(P, V, want, got)                                                                             \
+    do {                                                                                                               \
+        const P##_t expected_box = (want);                                                                             \
+        const P##_t actual_box = (got);                                                                                \
+        TEST_ASSERT_TRUE(V##_equal(expected_box.lo, actual_box.lo) && V##_equal(expected_box.hi, actual_box.hi));      \
+    } while (0)
+
 static void
 test_box3_closed_queries_and_empty_identity(void) {
     const box3s_t empty = box3s_empty();
@@ -173,18 +180,18 @@ test_box3_set_operations_each_axis(void) {
     const box3s_t si = box3s_intersect(BOX_TICKS, other);
     const box3s_t su = box3s_union(BOX_TICKS, other);
     const box3s_t se = box3s_extend(BOX_TICKS, grow);
-    TEST_ASSERT_TRUE(vec3s_equal(intersection.lo, si.lo) && vec3s_equal(intersection.hi, si.hi));
-    TEST_ASSERT_TRUE(vec3s_equal(joined.lo, su.lo) && vec3s_equal(joined.hi, su.hi));
-    TEST_ASSERT_TRUE(vec3s_equal(joined.lo, se.lo) && vec3s_equal(joined.hi, se.hi));
+    EXPECT_BOX3_EQUAL(box3s, vec3s, intersection, si);
+    EXPECT_BOX3_EQUAL(box3s, vec3s, joined, su);
+    EXPECT_BOX3_EQUAL(box3s, vec3s, joined, se);
     const box3f_t b = box3f_from_box3s(BOX_TICKS, BOX_SCALE);
     const box3f_t fi = box3f_intersect(b, box3f_from_box3s(other, BOX_SCALE));
     const box3f_t fu = box3f_union(b, box3f_from_box3s(other, BOX_SCALE));
     const box3f_t fe = box3f_extend(b, vec3f_from_vec3s(grow, BOX_SCALE));
     const box3f_t want_i = box3f_from_box3s(intersection, BOX_SCALE);
     const box3f_t want_u = box3f_from_box3s(joined, BOX_SCALE);
-    TEST_ASSERT_TRUE(vec3f_equal(want_i.lo, fi.lo) && vec3f_equal(want_i.hi, fi.hi));
-    TEST_ASSERT_TRUE(vec3f_equal(want_u.lo, fu.lo) && vec3f_equal(want_u.hi, fu.hi));
-    TEST_ASSERT_TRUE(vec3f_equal(want_u.lo, fe.lo) && vec3f_equal(want_u.hi, fe.hi));
+    EXPECT_BOX3_EQUAL(box3f, vec3f, want_i, fi);
+    EXPECT_BOX3_EQUAL(box3f, vec3f, want_u, fu);
+    EXPECT_BOX3_EQUAL(box3f, vec3f, want_u, fe);
     for (unsigned i = 0; i < sizeof outside / sizeof outside[0]; i++) {
         const box3s_t point = box3s_from_point(outside[i]);
         TEST_ASSERT_FALSE(box3s_contains_point(BOX_TICKS, outside[i]));
