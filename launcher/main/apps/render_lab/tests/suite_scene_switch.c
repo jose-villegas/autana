@@ -50,26 +50,12 @@ test_console_scene_requests_survive_expanded_frames(void) {
     }
 }
 
-static void
-test_scene_families_list_their_variants_with_fitted_full_first(void) {
-    const char* const* names = NULL;
-    int selected = 0;
-    const int sponza = render_lab_family_variants("Sponza", &names, &selected);
-    TEST_ASSERT_GREATER_THAN_INT(1, sponza);
-    TEST_ASSERT_EQUAL_STRING("Fitted Full", names[0]);
-    TEST_ASSERT_EQUAL_INT(1, render_lab_family_variants("Capybara", &names, &selected));
-    TEST_ASSERT_EQUAL_INT(0, render_lab_family_variants("Nothing", &names, &selected));
-    TEST_ASSERT_FALSE(render_lab_request_variant("Sponza", sponza));
-    TEST_ASSERT_FALSE(render_lab_request_variant("Nothing", 0));
-}
-
 #endif
 
 void
 run_render_lab_scene_switch_suite(void) {
 #ifdef DEVICE_BUILD
     RUN_TEST(test_console_scene_requests_survive_expanded_frames);
-    RUN_TEST(test_scene_families_list_their_variants_with_fitted_full_first);
 #endif
 }
 

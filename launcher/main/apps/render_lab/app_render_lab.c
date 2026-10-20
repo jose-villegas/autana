@@ -1,4 +1,5 @@
 /* app_render_lab: mesh scenes behind a shared HUD and scene picker. */
+#include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -144,6 +145,7 @@ static int
 family_names(const char* names[SCENE_COUNT]) {
     int count = 0;
     for (int i = 0; i < SCENE_COUNT; i++) {
+        assert(scenes[i]->family != NULL);
         int seen = 0;
         while (seen < count && strcmp(names[seen], scenes[i]->family) != 0) {
             seen++;
@@ -155,9 +157,9 @@ family_names(const char* names[SCENE_COUNT]) {
     return count;
 }
 
-int
-render_lab_family_variants(const char* family, const char* const** names, int* selected) {
-    static const char* variants[SCENE_COUNT];
+/* The family's scenes: their variant names, the index of the showing one (-1 if another family shows). */
+static int
+family_variants(const char* family, const char* variants[SCENE_COUNT], int* selected) {
     int count = 0;
     *selected = -1;
     for (int i = 0; i < SCENE_COUNT; i++) {
@@ -168,12 +170,15 @@ render_lab_family_variants(const char* family, const char* const** names, int* s
             variants[count++] = scenes[i]->variant;
         }
     }
-    *names = variants;
+    for (int i = 0; count > 1 && i < count; i++) {
+        assert(variants[i] != NULL);
+    }
     return count;
 }
 
-bool
-render_lab_request_variant(const char* family, int index) {
+/* Switches to the family's index-th scene at the next frame. */
+static bool
+request_variant(const char* family, int index) {
     int count = 0;
     for (int i = 0; i < SCENE_COUNT; i++) {
         if (strcmp(scenes[i]->family, family) == 0 && count++ == index) {
@@ -211,16 +216,25 @@ draw_menu(const input_t* input) {
     while (strcmp(families[family], current_scene()->family) != 0) {
         family++;
     }
+    const char* variants[SCENE_COUNT];
+    int variant = 0;
+    const int variant_count = family_variants(families[family], variants, &variant);
     const render_lab_menu_screen_state_t state = {
         .families = families,
         .family_count = family_count,
         .family = family,
+        .variants = variants,
+        .variant_count = variant_count,
+        .variant = variant,
         .controls = current_scene()->controls,
     };
     const render_lab_menu_screen_result_t result = render_lab_menu_screen_draw(&state);
 
     if (result.family_picked >= 0 && result.family_picked != family) {
-        (void)render_lab_request_variant(families[result.family_picked], 0);
+        (void)request_variant(families[result.family_picked], 0);
+    }
+    if (result.variant_picked >= 0 && result.variant_picked != variant) {
+        (void)request_variant(families[family], result.variant_picked);
     }
 
     ui_end(RENDER_LAB_BACKGROUND_RGB);
