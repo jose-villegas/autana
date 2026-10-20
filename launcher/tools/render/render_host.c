@@ -379,7 +379,8 @@ main(int argc, char** argv) {
         render_watch_frame_begin();
         scene_shell_compose(frame.dt_ms); /* what the shell does before an app's frame() */
         scene->draw(&frame);
-        gfx_band_run(scene_shell_compose_band, ui_replay_band); /* and after it, in band mode */
+        /* Band mode draws and sends its rows here; any other layout does nothing. */
+        gfx_band_run(scene_shell_compose_band, ui_replay_band);
         render_watch_frame_end();
 
         convert_frame(t, panel, out_w, out_h, stride, frame_buf);

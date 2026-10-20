@@ -104,6 +104,7 @@ raster_stats_t raster_draw(const raster_t* raster, const render_view_t* view);
  * rasters must keep the census size. */
 size_t raster_culled_length(const raster_t* raster);
 raster_stats_t raster_census(const raster_t* raster, const render_view_t* view);
+/* raster_prepare() from the census list, without culling again. */
 void raster_prepare_culled(const raster_t* raster, const render_view_t* view);
 void raster_draw_culled(const raster_t* raster, const render_view_t* view);
 
