@@ -7,6 +7,8 @@
 
 #define GOERTZEL_POWER_DB_SCALE  10.0F
 #define GOERTZEL_SINE_COMPONENTS 2.0F
+#define GOERTZEL_ROTATION_BITS   12u
+#define GOERTZEL_ROTATION_RADIX  (1u << GOERTZEL_ROTATION_BITS)
 
 void
 goertzel_init(goertzel_t* state, float hz, float sample_rate_hz) {
@@ -71,7 +73,18 @@ goertzel_phase(const goertzel_t* state) {
     }
     const float real = state->previous - (cosf(state->omega) * state->previous2);
     const float imaginary = sinf(state->omega) * state->previous2;
-    const float rotation = (float)remainder((double)state->omega * (double)(state->samples - 1), (double)MATH_TAU);
+    /* Rotation error < 8e-6 rad relative to stored omega and MATH_TAU for up to 64-bit counts. */
+    const float expanded = (GOERTZEL_ROTATION_RADIX + 1.0F) * state->omega;
+    float high = expanded - (expanded - state->omega);
+    float low = state->omega - high;
+    float rotation = 0.0F;
+    for (size_t count = state->samples - 1; count; count >>= GOERTZEL_ROTATION_BITS) {
+        const float digit = (float)(count % GOERTZEL_ROTATION_RADIX);
+        rotation =
+            remainderf(rotation + remainderf(high * digit, MATH_TAU) + remainderf(low * digit, MATH_TAU), MATH_TAU);
+        high *= GOERTZEL_ROTATION_RADIX;
+        low *= GOERTZEL_ROTATION_RADIX;
+    }
     const float phase = remainderf(atan2f(imaginary, real) - rotation, MATH_TAU);
     return phase <= -MATH_PI ? MATH_PI : phase;
 }

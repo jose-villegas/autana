@@ -238,47 +238,82 @@ test_goertzel_amplitude_and_scale(void) {
 }
 
 #define TEST_PHASE_SAMPLES        441u
+#define TEST_PHASE_LONG_SAMPLES   65537u
+#define TEST_PHASE_LONG_TOLERANCE 0.03F
+#define TEST_ROTATION_TOLERANCE   0.00001F
+#define TEST_ROTATION_LARGE_COUNT 16777218u
 #define TEST_PHASE_TOLERANCE      0.001F
 #define TEST_SINE_PHASE_TOLERANCE 0.02F
+
+static void
+assert_phase_record(int16_t* samples, size_t count, float hz, float phase, float tolerance) {
+    goertzel_t state, split;
+    goertzel_init(&state, hz, TEST_SAMPLE_RATE_HZ);
+    goertzel_init(&split, hz, TEST_SAMPLE_RATE_HZ);
+    TEST_ASSERT_EQUAL_FLOAT(0, goertzel_phase(&state));
+    double re = 0, im = 0;
+    for (size_t i = 0; i < count; i++) {
+        const double angle = (double)MATH_TAU * TEST_TARGET_HZ * i / TEST_SAMPLE_RATE_HZ;
+        samples[i % TEST_SAMPLES] = (int16_t)lround(TRIG_SIN_MAX * cos(angle + (double)phase));
+        const double bin_angle = (double)MATH_TAU * (double)hz * i / TEST_SAMPLE_RATE_HZ;
+        re += samples[i % TEST_SAMPLES] * cos(bin_angle);
+        im -= samples[i % TEST_SAMPLES] * sin(bin_angle);
+        if ((i + 1) % TEST_SAMPLES == 0 || i + 1 == count) {
+            const size_t n = i % TEST_SAMPLES + 1;
+            goertzel_feed_s(&state, samples, n);
+            goertzel_feed_s(&split, samples, TEST_ODD_BLOCK);
+            goertzel_feed_s(&split, samples + TEST_ODD_BLOCK, n - TEST_ODD_BLOCK);
+        }
+    }
+    TEST_ASSERT_FLOAT_WITHIN(tolerance, 0, remainderf(goertzel_phase(&state) - (float)atan2(im, re), MATH_TAU));
+    TEST_ASSERT_EQUAL_FLOAT(goertzel_phase(&state), goertzel_phase(&split));
+    if (hz == TEST_TARGET_HZ) {
+        TEST_ASSERT_FLOAT_WITHIN(tolerance, 0, remainderf(goertzel_phase(&state) - phase, MATH_TAU));
+    }
+    goertzel_reset(&state);
+    for (size_t i = 0; i < count; i++) {
+        samples[i % TEST_SAMPLES] = (int16_t)lround(
+            TRIG_SIN_MAX * sin((double)MATH_TAU * (double)hz * i / TEST_SAMPLE_RATE_HZ + (double)phase));
+        if ((i + 1) % TEST_SAMPLES == 0 || i + 1 == count) {
+            goertzel_feed_s(&state, samples, i % TEST_SAMPLES + 1);
+        }
+    }
+    TEST_ASSERT_FLOAT_WITHIN(TEST_SINE_PHASE_TOLERANCE, 0,
+                             remainderf(goertzel_phase(&state) - phase + MATH_PI / 2, MATH_TAU));
+}
 
 static void
 test_goertzel_phase(void) {
     static const float phases[] = {-2.0F, 0.0F, 1.2F, MATH_PI - TEST_PHASE_TOLERANCE * 2,
                                    MATH_PI + TEST_PHASE_TOLERANCE * 2};
     static const float bins[] = {TEST_TARGET_HZ, TEST_TARGET_HZ + 3.7F};
-    const size_t count = TEST_PHASE_SAMPLES;
+    static const size_t counts[] = {TEST_PHASE_SAMPLES, TEST_PHASE_LONG_SAMPLES};
     int16_t* samples = fixture();
-    for (size_t b = 0; b < sizeof bins / sizeof bins[0]; b++) {
-        for (size_t p = 0; p < sizeof phases / sizeof phases[0]; p++) {
-            goertzel_t state, split;
-            goertzel_init(&state, bins[b], TEST_SAMPLE_RATE_HZ);
-            goertzel_init(&split, bins[b], TEST_SAMPLE_RATE_HZ);
-            TEST_ASSERT_EQUAL_FLOAT(0, goertzel_phase(&state));
-            double re = 0, im = 0;
-            for (size_t i = 0; i < count; i++) {
-                const double angle = (double)MATH_TAU * TEST_TARGET_HZ * i / TEST_SAMPLE_RATE_HZ;
-                samples[i] = (int16_t)lround(TRIG_SIN_MAX * cos(angle + (double)phases[p]));
-                const double bin_angle = (double)MATH_TAU * (double)bins[b] * i / TEST_SAMPLE_RATE_HZ;
-                re += samples[i] * cos(bin_angle);
-                im -= samples[i] * sin(bin_angle);
+    for (size_t c = 0; c < sizeof counts / sizeof counts[0]; c++) {
+        const size_t count = counts[c];
+        const float tolerance = count == TEST_PHASE_SAMPLES ? TEST_PHASE_TOLERANCE : TEST_PHASE_LONG_TOLERANCE;
+        for (size_t b = 0; b < sizeof bins / sizeof bins[0]; b++) {
+            for (size_t p = 0; p < sizeof phases / sizeof phases[0]; p++) {
+                assert_phase_record(samples, count, bins[b], phases[p], tolerance);
             }
-            goertzel_feed_s(&state, samples, count);
-            goertzel_feed_s(&split, samples, TEST_ODD_BLOCK);
-            goertzel_feed_s(&split, samples + TEST_ODD_BLOCK, count - TEST_ODD_BLOCK);
-            TEST_ASSERT_FLOAT_WITHIN(TEST_PHASE_TOLERANCE, (float)atan2(im, re), goertzel_phase(&state));
-            TEST_ASSERT_EQUAL_FLOAT(goertzel_phase(&state), goertzel_phase(&split));
-            if (b == 0) {
-                TEST_ASSERT_FLOAT_WITHIN(TEST_PHASE_TOLERANCE, remainderf(phases[p], MATH_TAU), goertzel_phase(&state));
-            }
-            for (size_t i = 0; i < count; i++) {
-                samples[i] = (int16_t)lround(
-                    TRIG_SIN_MAX
-                    * sin((double)MATH_TAU * (double)bins[b] * i / TEST_SAMPLE_RATE_HZ + (double)phases[p]));
-            }
-            goertzel_reset(&state);
-            goertzel_feed_s(&state, samples, count);
-            TEST_ASSERT_FLOAT_WITHIN(TEST_SINE_PHASE_TOLERANCE, 0,
-                                     remainderf(goertzel_phase(&state) - phases[p] + MATH_PI / 2, MATH_TAU));
+        }
+    }
+}
+
+static void
+test_goertzel_phase_long_rotation(void) {
+    static const size_t counts[] = {TEST_PHASE_LONG_SAMPLES, TEST_ROTATION_LARGE_COUNT, UINT32_MAX};
+    static const float frequencies[] = {TEST_TARGET_HZ, TEST_SAMPLE_RATE_HZ / 2.0F - TEST_TARGET_HZ};
+    for (size_t c = 0; c < sizeof counts / sizeof counts[0]; c++) {
+        for (size_t f = 0; f < sizeof frequencies / sizeof frequencies[0]; f++) {
+            goertzel_t state;
+            goertzel_init(&state, frequencies[f], TEST_SAMPLE_RATE_HZ);
+            state.samples = counts[c];
+            state.previous = 1.0F;
+            const float reference =
+                (float)remainder(-(double)state.omega * (double)(state.samples - 1), (double)MATH_TAU);
+            TEST_ASSERT_FLOAT_WITHIN(TEST_ROTATION_TOLERANCE, 0,
+                                     remainderf(goertzel_phase(&state) - reference, MATH_TAU));
         }
     }
 }
@@ -294,6 +329,7 @@ run_goertzel_suite(void) {
 #ifndef DEVICE_BUILD
     RUN_TEST(test_goertzel_phase);
     RUN_TEST(test_goertzel_phase_negative_pi);
+    RUN_TEST(test_goertzel_phase_long_rotation);
     RUN_TEST(test_goertzel_reference);
     RUN_TEST(test_goertzel_noninteger_bins);
     RUN_TEST(test_goertzel_max_record);

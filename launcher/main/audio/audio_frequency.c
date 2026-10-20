@@ -23,7 +23,11 @@ audio_frequency_feed(audio_frequency_t* state, const int16_t* samples, size_t co
             if (state->has_phase) {
                 const float expected =
                     MATH_TAU * state->nominal_hz * AUDIO_FREQUENCY_WINDOW_SAMPLES / AUDIO_OUT_SAMPLE_RATE_HZ;
-                state->phase_error += (double)remainderf(phase - state->previous_phase - expected, MATH_TAU);
+                const float error =
+                    remainderf(phase - state->previous_phase - expected, MATH_TAU) - state->phase_error_correction;
+                const float sum = state->phase_error + error;
+                state->phase_error_correction = (sum - state->phase_error) - error;
+                state->phase_error = sum;
                 state->advances++;
             }
             state->has_phase = true;
@@ -40,6 +44,6 @@ audio_frequency_hz(const audio_frequency_t* state) {
         return NAN;
     }
     return state->nominal_hz
-           + (float)(state->phase_error * AUDIO_OUT_SAMPLE_RATE_HZ
-                     / ((double)MATH_TAU * AUDIO_FREQUENCY_WINDOW_SAMPLES * (double)state->advances));
+           + state->phase_error * AUDIO_OUT_SAMPLE_RATE_HZ
+                 / (MATH_TAU * AUDIO_FREQUENCY_WINDOW_SAMPLES * (float)state->advances);
 }

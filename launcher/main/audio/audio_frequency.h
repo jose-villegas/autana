@@ -20,7 +20,8 @@ typedef struct {
     goertzel_t bin;
     float nominal_hz;
     float previous_phase;
-    double phase_error;
+    float phase_error;
+    float phase_error_correction;
     size_t advances;
     bool has_phase;
 } audio_frequency_t;
