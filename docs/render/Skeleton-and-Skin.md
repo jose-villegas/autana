@@ -104,20 +104,31 @@ Vertex 7:
 ---
 config:
   packet:
-    bitsPerRow: 20
-    bitWidth: 44
+    bitsPerRow: 16
+    bitWidth: 52
 ---
 packet-beta
-title SKEL header and joint row 0, one cell a byte
+title Header, 16 bytes at 0, one cell a byte
 0-1: "version = 1"
 2: "joints"
 3: "0"
 4-7: "strings_off"
 8-11: "strings_size"
 12-15: "rest_off"
-16-17: "path"
-18: "parent"
-19: "0"
+```
+
+```mermaid
+---
+config:
+  packet:
+    bitsPerRow: 4
+    bitWidth: 120
+---
+packet-beta
+title Joint registry, one 4-byte row a joint from byte 16
+0-1: "path"
+2: "parent"
+3: "0"
 ```
 
 ```mermaid
@@ -128,7 +139,7 @@ config:
     bitWidth: 44
 ---
 packet-beta
-title Rest record, 40 bytes a joint from rest_off
+title Content: rest records, one 40-byte record a joint from rest_off
 0-11: "f32 position[3]"
 12-27: "f32 rotation[4], xyzw"
 28-39: "f32 scale[3]"
@@ -137,9 +148,9 @@ title Rest record, 40 bytes a joint from rest_off
 | Part | At | Size |
 |---|---|---|
 | Header | 0 | 16 bytes |
-| Joint rows | 16 | 4 bytes each, `path` is an offset within strings |
-| Rest TRS | `rest_off` | 40 bytes each |
-| Strings | `strings_off` | UTF-8 joint paths, NUL terminated; ends at the entry end |
+| Joint registry | 16 | 4 bytes a joint; `path` is an offset within the strings |
+| Content: rest records | `rest_off` | 40 bytes a joint |
+| Content: strings | `strings_off` | UTF-8 joint paths, NUL terminated; ends at the entry end |
 
 | Rule | Detail |
 |---|---|
@@ -147,7 +158,7 @@ title Rest record, 40 bytes a joint from rest_off
 | Parents | `0xFF` is a root; any other parent is below its joint's index, so joint 0 is a root. Two roots under one armature node are allowed |
 | Paths | from `gltf_read.skin_joint_paths`, starting at each root; nonempty, unique (checked by Python and C), each terminated within the table, which fits a u16 offset |
 | Rest | finite; rotation with `abs(1 - sum(q*q))` at most `ANIM_SKELETON_UNIT_TOLERANCE` (1e-4, Python `UNIT_TOLERANCE`), boundary tests at the adjacent floats |
-| Order | joint rows, rest, strings; gaps and reserved bytes zero |
+| Order | header, joint registry, rest records, strings; gaps and reserved bytes zero |
 
 ## SKIN v2
 
@@ -159,7 +170,7 @@ config:
     bitWidth: 44
 ---
 packet-beta
-title SKIN header, one cell a byte
+title Header, 20 bytes at 0, one cell a byte
 0-1: "version = 2"
 2: "joints"
 3: "infl."
@@ -174,11 +185,25 @@ title SKIN header, one cell a byte
 ---
 config:
   packet:
+    bitsPerRow: 16
+    bitWidth: 52
+---
+packet-beta
+title Content: inverse binds, one 48-byte matrix a joint from inverse_bind_off
+0-15: "row 0: f32[4]"
+16-31: "row 1: f32[4]"
+32-47: "row 2: f32[4]"
+```
+
+```mermaid
+---
+config:
+  packet:
     bitsPerRow: 8
     bitWidth: 84
 ---
 packet-beta
-title Vertex record, two influences, 8 bytes a vertex from vertices_off
+title Content: vertex records, two influences, 8 bytes a vertex from vertices_off
 0: "joint 0"
 1: "joint 1"
 2: "weight 0"
@@ -192,8 +217,8 @@ title Vertex record, two influences, 8 bytes a vertex from vertices_off
 | Part | At | Size |
 |---|---|---|
 | Header | 0 | 20 bytes |
-| Inverse binds | `inverse_bind_off` | 48 bytes each: `f32 matrix[3][4]`, row-major, model units |
-| Vertices | `vertices_off` | `2 * influences + 4` bytes: joints, then weights, then normal; four influences add two of each |
+| Content: inverse binds | `inverse_bind_off` | 48 bytes a joint: `f32 matrix[3][4]`, row-major, model units |
+| Content: vertex records | `vertices_off` | `2 * influences + 4` bytes a vertex: joints, then weights, then normal; four influences add two of each |
 
 | Rule | Detail |
 |---|---|
@@ -201,7 +226,7 @@ title Vertex record, two influences, 8 bytes a vertex from vertices_off
 | Influences | 2 or 4; joint indices below the joint count; weights sum to 255 |
 | Values | every matrix value finite; normal components in -127..127, nonzero |
 | Lighting | `R3D_SKIN_LIGHT_DIRECT`, `_RENORMALISED` or `_TABLE` from `render/r3d_skin_format.h`, set by the import's `[skin].lighting` (default `direct`) and copied to the renderer's private mode on attachment; unknown codes refused |
-| Order | matrices after the header, vertices after the matrices, ending at the entry end; gaps and padding zero |
+| Order | header, inverse binds, vertex records, ending at the entry end; gaps and padding zero |
 | Binding | each open validates one entry; whoever binds SKIN to SKEL and LMSH checks joint and vertex counts |
 
 ## Opening an entry
