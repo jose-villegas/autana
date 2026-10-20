@@ -1,0 +1,143 @@
+/* motion_figures_probe: library trajectories for the motion reference. */
+#include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+#include "math/motion/orbit_motion.h"
+#include "math/motion/spring_line.h"
+
+static const float frame_s = 0.1F;
+static const int orbit_frames = 60;
+static const int held_frames = 15;
+static const float steering_rate = 1.5F;
+static const float decay_steps[] = {0.016F, 0.050F};
+static const float decay_duration_s = 2.8F;
+static const float reset_step_s = 0.01F;
+static const float reset_duration_s = 2.0F;
+static const float reset_offset = 1.0F;
+static const float reset_speeds[] = {0.0F, 6.0F, -20.0F};
+static const float sphere_radius = 1.0F;
+static const float diagram_half_angle_deg = 30.0F;
+static const int fit_min_deg = 10;
+static const int fit_max_deg = 80;
+static const int fit_step_deg = 2;
+static const int line_columns = 41;
+static const int line_ticks = 252;
+static const int bump_half_width = 4;
+static const int bump_pixels = 20;
+static const int tension = 180;
+static const int stiffness = 2;
+static const int damping = 12;
+static const orbit_motion_state_t home = {0};
+static const orbit_motion_limits_t limits = {-ORBIT_MOTION_PITCH_LIMIT, ORBIT_MOTION_PITCH_LIMIT, 0, 0};
+static const vec3f_t target = {0};
+
+static orbit_motion_t
+new_orbit(void) {
+    orbit_motion_t orbit;
+    orbit_motion_init(&orbit, target, home, limits);
+    return orbit;
+}
+
+static void
+orbit_samples(void) {
+    orbit_motion_t orbit = new_orbit();
+    printf("\"half_life\":%.9g,\"release\":%.9g,\"orbit\":[", ORBIT_MOTION_FLING_HALF_LIFE_S, held_frames * frame_s);
+    for (int i = 0; i < orbit_frames; i++) {
+        const transformf_t pose = orbit_motion_pose(&orbit);
+        printf("%s[%.9g,%.9g,%.9g,%.9g]", i ? "," : "", i * frame_s, pose.position.x, pose.position.z,
+               orbit.velocity.yaw);
+        const orbit_motion_input_t input = {.held = i < held_frames, .yaw_turn = steering_rate * frame_s};
+        orbit_motion_update(&orbit, &input, frame_s);
+    }
+    printf("],\"decay\":[");
+    for (size_t j = 0; j < sizeof decay_steps / sizeof decay_steps[0]; j++) {
+        orbit = new_orbit();
+        orbit.velocity.yaw = steering_rate;
+        const float step = decay_steps[j];
+        printf("%s{\"dt\":%.9g,\"limit\":%.9g,\"samples\":[", j ? "," : "", step,
+               steering_rate * orbit.fling_half_life_s / MATH_LN2);
+        for (int i = 0; i <= (int)(decay_duration_s / step); i++) {
+            printf("%s[%.9g,%.9g,%.9g]", i ? "," : "", i * step, orbit.velocity.yaw, orbit.at.yaw);
+            orbit_motion_update(&orbit, &(orbit_motion_input_t){0}, step);
+        }
+        printf("]}");
+    }
+    printf("],\"reset\":[");
+    for (size_t j = 0; j < sizeof reset_speeds / sizeof reset_speeds[0]; j++) {
+        orbit = new_orbit();
+        orbit.at.yaw = reset_offset;
+        orbit.velocity.yaw = reset_speeds[j];
+        float settle = -1;
+        float minimum = reset_offset;
+        printf("%s{\"speed\":%.9g,\"samples\":[", j ? "," : "", reset_speeds[j]);
+        for (int i = 0; i <= (int)(reset_duration_s / reset_step_s); i++) {
+            printf("%s[%.9g,%.9g]", i ? "," : "", i * reset_step_s, orbit.at.yaw);
+            if (orbit.at.yaw < minimum) {
+                minimum = orbit.at.yaw;
+            }
+            orbit_motion_update(&orbit, &(orbit_motion_input_t){.reset = i == 0}, reset_step_s);
+            if (!orbit.resetting && settle < 0) {
+                settle = (i + 1) * reset_step_s;
+            }
+        }
+        printf("],\"settle\":%.9g,\"minimum\":%.9g}", settle, minimum);
+    }
+    printf("]");
+}
+
+static void
+fit_samples(void) {
+    const float tangent = tanf(diagram_half_angle_deg * MATH_RADIANS_PER_DEGREE);
+    const float padded = tangent * (1 - ORBIT_MOTION_FRAME_PADDING);
+    const float distance = orbit_motion_fit_distance(sphere_radius, tangent, ORBIT_MOTION_FRAME_PADDING);
+    const float tangent_x = distance / (1 + padded * padded);
+    const float tangent_y = tangent_x * padded;
+    printf(",\"fit\":{\"radius\":%.9g,\"distance\":%.9g,\"tangent\":[%.9g,%.9g],"
+           "\"padding\":%.9g,\"samples\":[",
+           sphere_radius, distance, tangent_x, tangent_y, ORBIT_MOTION_FRAME_PADDING);
+    for (int angle = fit_min_deg; angle <= fit_max_deg; angle += fit_step_deg) {
+        const float t = tanf(angle * MATH_RADIANS_PER_DEGREE);
+        printf("%s[%d,%.9g,%.9g]", angle == fit_min_deg ? "" : ",", angle,
+               orbit_motion_fit_distance(sphere_radius, t, ORBIT_MOTION_FRAME_PADDING) / sphere_radius,
+               orbit_motion_fit_distance(sphere_radius, t, 0) / sphere_radius);
+    }
+    printf("]}");
+}
+
+static void
+line_samples(void) {
+    int32_t* offset = calloc((size_t)line_columns, sizeof *offset);
+    int32_t* velocity = calloc((size_t)line_columns, sizeof *velocity);
+    if (!offset || !velocity) {
+        free(offset);
+        free(velocity);
+        exit(EXIT_FAILURE);
+    }
+    spring_line_t line;
+    spring_line_init(&line, offset, velocity, line_columns, tension, stiffness, damping);
+    spring_line_nudge(&line, line_columns / 2, bump_half_width, bump_pixels * MATHX_ONE);
+    printf(",\"line\":{\"tick_ms\":%d,\"samples\":[", SPRING_LINE_TICK_MS);
+    for (int tick = 0; tick <= line_ticks; tick++) {
+        printf("%s{\"tick\":%d,\"lo\":%d,\"hi\":%d,\"rest\":%s,\"offset\":[", tick ? "," : "", tick, line.active_lo,
+               line.active_hi, spring_line_at_rest(&line) ? "true" : "false");
+        for (int x = 0; x < line_columns; x++) {
+            printf("%s%.9g", x ? "," : "", (double)offset[x] / MATHX_ONE);
+        }
+        printf("]}");
+        spring_line_advance(&line, SPRING_LINE_TICK_MS);
+    }
+    printf("]}");
+    free(offset);
+    free(velocity);
+}
+
+int
+main(void) {
+    printf("{");
+    orbit_samples();
+    fit_samples();
+    line_samples();
+    puts("}");
+    return 0;
+}

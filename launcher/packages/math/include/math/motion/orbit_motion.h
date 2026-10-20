@@ -1,15 +1,9 @@
 /*
- * orbit_motion: moves a transform around a target, turntable style: it turns
- * about the world's up axis (yaw) and tilts above or below the target
- * (pitch), always facing it. Steering turns it directly; let go and it
- * keeps turning, slowing by half every fling half-life; a reset springs it
- * back to its home angles, critically damped so it never overshoots. Every
- * step is solved exactly for its dt, so the motion is the same at any frame
- * rate. Any entity can orbit this way: a camera, a light, a prop.
- *
- * Pure: steering arrives as turns already in radians, and the result is a
- * transformf_t the caller writes into its entity. Distance is held as its
- * logarithm, so a zoom scales it by the same ratio at any distance.
+ * Orbit about the world's up axis and tilt above or below a target while
+ * facing it. Held steering turns directly; a released fling halves its speed
+ * each half-life. Reset is critically damped, but a fast initial velocity
+ * toward home can cross it. Each step is solved exactly for its elapsed time.
+ * Distance is logarithmic, so zoom scales by the same ratio at any distance.
  */
 #pragma once
 

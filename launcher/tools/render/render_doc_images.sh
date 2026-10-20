@@ -221,6 +221,10 @@ run "$PYTHON" launcher/tools/math/math_figures.py --cc "$cc" --trs "$OUT/math/tr
     --pixel "$OUT/math/camera-to-pixel.png" > "$WORK/math_figures.log"
 run "$PYTHON" launcher/tools/math/geometry_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/geometry_figures.log"
 # --orphans scans this runner: rect-queries.png, plane-distance.png, plane-from-points.png, plane-from-rows.png, frustum.png
+run "$PYTHON" launcher/tools/math/motion_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/motion_figures.log"
+# --orphans scans this runner: orbit-fling.gif, orbit-fling-decay.png, orbit-reset-spring.png, orbit-fit-distance.png, spring-line-wave.gif, spring-line-spacetime.png
+run "$PYTHON" launcher/tools/math/signal_figures.py --cc "$cc" --out "$OUT/math" > "$WORK/signal_figures.log"
+# --orphans scans this runner: goertzel-response.png, goertzel-sweep.gif, pitch-curve.png
 
 # Dynamic resolution's tables and chart, from the board capture and the
 # reference scores kept beside its page.

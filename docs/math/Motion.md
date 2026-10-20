@@ -26,6 +26,55 @@ A transform orbits a target, with direct steering, a decaying fling and a critic
 | `ORBIT_MOTION_RESET_SETTLED` | Home distance and speed threshold for settling |
 | `ORBIT_MOTION_FRAME_PADDING` | Fraction of each picture half-axis left clear |
 
+### Steering and fling
+
+Held steering applies the frame's turn $`\Delta`$ directly. Its smoothed speed
+follows that turn over the frame time $`\Delta t`$, with half-life $`h_d`$:
+
+```math
+v \gets v + (\Delta/\Delta t-v)(1-2^{-\Delta t/h_d})
+```
+
+![Top view of held orbit steering followed by a slowing fling, with a moving speed cursor and half-life marks](../images/math/orbit-fling.gif)
+
+After release, speed halves every $`h`$ seconds. The exact integral gives the
+angle covered; the same elapsed time gives the same result at either frame step.
+
+```math
+v(t)=v_0 2^{-t/h}, \qquad x(t)=\frac{v_0 h}{\ln 2}(1-2^{-t/h})
+```
+
+![Fling speed and covered angle at 16 and 50 millisecond frame steps, approaching the same limiting angle](../images/math/orbit-fling-decay.png)
+
+Zoom stores $`\ell=\ln d`$. A zoom turn $`z`$ adds to $`\ell`$, so
+$`d_{\mathrm{new}}/d_{\mathrm{old}}=e^z`$ at any starting distance.
+
+### Reset spring
+
+Reset solves the critically damped spring exactly, with time constant $`\tau`$.
+For yaw, $`e_0`$ is the shortest signed angular offset from home.
+
+```math
+e(t)=(e_0+ct)e^{-t/\tau}, \qquad c=v_0+e_0/\tau
+```
+
+Critical damping prevents oscillation; it does not guarantee no crossing for
+arbitrary initial velocity. For $`e_0>0`$, a velocity $`v_0<-e_0/\tau`$ crosses
+home. Reset snaps home once all offsets and speeds meet the settle threshold.
+
+![Reset from rest, moving away, and moving quickly toward home; the last crosses home, with dotted settle times](../images/math/orbit-reset-spring.png)
+
+### Fitting a sphere
+
+For sphere radius $`r`$, lens half-angle $`\theta`$ and padding fraction $`p`$,
+the padded cone's tangent is $`t`$:
+
+```math
+t=\tan\theta(1-p), \qquad d=\frac{r\sqrt{1+t^2}}{t}
+```
+
+![Sphere tangent to a padded lens cone and fit distance per radius against half field of view, with and without padding](../images/math/orbit-fit-distance.png)
+
 ## spring_line.h
 
 A row of points on springs carries a wave along caller-owned Q16 pixel offsets and velocities.
@@ -53,3 +102,32 @@ A row of points on springs carries a wave along caller-owned Q16 pixel offsets a
 | `SPRING_LINE_REST_OFFSET`, `SPRING_LINE_REST_VELOCITY` | Thresholds for putting the line to rest |
 | `SPRING_LINE_MAX_OFFSET` | Maximum offset magnitude |
 | `SPRING_LINE_OUT_SHIFT`, `SPRING_LINE_OUT_ONE` | Fractional bits and units per output pixel |
+
+
+### Wave tick and bump
+
+For offsets $`u_i`$ and velocities $`v_i`$ in Q16 units, tension $`T`$,
+stiffness $`K`$ and damping $`D`$ are shares out of 256. A tick first computes
+all velocities from the old offsets:
+
+```math
+a_i=v_i+\mathrm{trunc}\!\left(\frac{T(u_{i-1}-2u_i+u_{i+1})}{256}\right)
+-\mathrm{trunc}\!\left(\frac{Ku_i}{256}\right)
+```
+
+```math
+v_i' = a_i-\mathrm{trunc}\!\left(\frac{Da_i}{256}\right), \qquad
+u_i' = \mathrm{clamp}(u_i+v_i',-U_{\max},U_{\max})
+```
+
+The free ends mirror their own offset for the missing neighbour. Without
+stiffness or damping, the long-wavelength speed is $`\sqrt{T/256}`$ columns per
+tick. `SPRING_LINE_TICK_MS` sets the tick duration.
+
+![One central nudge sends a wave toward both free ends and fades to rest; the active half-open range is shaded](../images/math/spring-line-wave.gif)
+
+The active range expands at most one column per tick and trims quiet ends.
+A nudge or poke uses the compact bump $`(1-t^2)^2`$ for $`\lvert t\rvert<1`$,
+with $`t`$ the distance from the centre divided by the half-width; outside it is zero.
+
+![Offset heatmap by column and tick with active range edges, beside the integer-sampled bump from the initial nudge](../images/math/spring-line-spacetime.png)

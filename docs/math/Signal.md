@@ -41,6 +41,26 @@ An empty stream or zero power returns the level floor. A sine of amplitude
 $`F`$ reads 0 dB; doubling the reference full scale lowers its level by
 $`20\log_{10}(2)`$ dB.
 
+### Frequency response
+
+A finite rectangular window spreads a tone across nearby bins. For normalized
+frequency offset $`d=(f-f_0)/f_s`$, the positive-frequency Dirichlet reference is:
+
+```math
+R_N(d)=\left\lvert\frac{\sin(\pi N d)}{N\sin(\pi d)}\right\rvert, \qquad R_N(0)=1
+```
+
+A real sine also has a negative-frequency term, so the measured response can
+differ slightly from this reference. More samples narrow the main lobe in Hz;
+the horizontal axis here normalizes that width to bins.
+
+![Goertzel amplitude of a unit sine around a detector bin for three window lengths, with a dashed Dirichlet reference](../images/math/goertzel-response.png)
+
+Each chirp block starts a fresh detector window. The bars show how a finite
+window responds while the tone sweeps past three fixed detector frequencies.
+
+![A linear chirp block and three fixed-frequency Goertzel amplitude bars as the chirp sweeps past them](../images/math/goertzel-sweep.gif)
+
 ## Equal-temperament pitch
 
 `pitch.h` converts offsets relative to a caller-supplied reference frequency.
@@ -51,3 +71,12 @@ converts semitone errors to cents.
 |---|---|
 | `pitch_semitone_hz(reference_hz, semitones)` | `reference_hz * exp2f(semitones / PITCH_SEMITONES_PER_OCTAVE)` |
 | `pitch_hz_semitones(reference_hz, hz)` | `PITCH_SEMITONES_PER_OCTAVE * log2f(hz / reference_hz)`; `NAN` if either frequency is nonpositive |
+
+
+For reference frequency $`f_r`$ and semitone offset $`s`$, with octave scale $`O`$:
+
+```math
+f=f_r 2^{s/O}, \qquad s=O\log_2(f/f_r)
+```
+
+![Equal-temperament frequency from 440 Hz across two octaves either way, with octave marks doubling frequency](../images/math/pitch-curve.png)
