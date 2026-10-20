@@ -14,12 +14,12 @@ void
 goertzel_init(goertzel_t* state, float hz, float sample_rate_hz) {
     /* Q15 table coefficients detune long records; cosf preserves the requested bin. */
     const float omega = MATH_TAU * hz / sample_rate_hz;
-    *state = (goertzel_t){.coefficient = GOERTZEL_SINE_COMPONENTS * cosf(omega), .omega = omega};
+    *state = (goertzel_t){.coefficient = GOERTZEL_SINE_COMPONENTS * cosf(omega), .sine = sinf(omega), .omega = omega};
 }
 
 void
 goertzel_reset(goertzel_t* state) {
-    *state = (goertzel_t){.coefficient = state->coefficient, .omega = state->omega};
+    *state = (goertzel_t){.coefficient = state->coefficient, .sine = state->sine, .omega = state->omega};
 }
 
 static void
@@ -71,8 +71,8 @@ goertzel_phase(const goertzel_t* state) {
     if (!state->samples) {
         return 0.0F;
     }
-    const float real = state->previous - (cosf(state->omega) * state->previous2);
-    const float imaginary = sinf(state->omega) * state->previous2;
+    const float real = state->previous - ((state->coefficient / GOERTZEL_SINE_COMPONENTS) * state->previous2);
+    const float imaginary = state->sine * state->previous2;
     /* Rotation error < 8e-6 rad relative to stored omega and MATH_TAU for up to 64-bit counts. */
     const float expanded = (GOERTZEL_ROTATION_RADIX + 1.0F) * state->omega;
     float high = expanded - (expanded - state->omega);

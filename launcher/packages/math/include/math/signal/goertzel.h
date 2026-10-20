@@ -8,6 +8,7 @@
 
 typedef struct {
     float coefficient;
+    float sine;
     float omega;
     float previous;
     float previous2;
