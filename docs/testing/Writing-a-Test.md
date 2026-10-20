@@ -116,7 +116,7 @@ A trimmed real one, `launcher/test/suites/suite_button_fsm.c`:
 ```c
 #include "suites.h"
 #include "unity.h"
-#include "input/button_fsm.h"
+#include "input/buttons/button_fsm.h"
 
 static button_fsm_t b;
 static int64_t now;
@@ -133,7 +133,7 @@ void run_button_fsm_suite(void) { RUN_TEST(test_a_held_press_is_reported_once); 
 SUITE_REGISTER(run_button_fsm_suite);
 ```
 
-The module under test (`input/button_fsm.c`) is ordinary firmware source next
+The module under test (`input/buttons/button_fsm.c`) is ordinary firmware source next
 to its neighbours; only the suite is auto-discovered. Run it with
 `launcher/test/run_tests.sh` (host) or `autana suite run_button_fsm_suite`
 (board). See [Building-an-App.md](../Building-an-App.md) for app layout.
