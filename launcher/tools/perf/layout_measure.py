@@ -55,24 +55,26 @@ def parse_markdown(text):
     return collected
 
 
-def parse_timings(text):
-    """Quarter is part of each rendered row's identity, including structured rows."""
-    rows = {}
+def timing_samples(text, *, identity_fields=("cores", "paused"), percentiles=False):
+    """Yield each observation; rendered quarters and selected setup fields identify it."""
     for line in text.splitlines():
         if match := PROFILE_RE.search(line):
-            rows[quarter_row(match[1], line)] = int(match[2])
+            yield quarter_row(match[1], line), int(match[2])
         elif match := MEAN_RE.search(line):
-            rows[quarter_row(match["name"], line)] = int(match["value"])
+            yield quarter_row(match["name"], line), int(match["value"])
         elif "stage=" in line and "mean_us=" in line:
             fields = dict(re.findall(r"(\w+)=([^\s]+)", line))
-            name = fields["stage"]
-            for field in ("cores", "paused"):
-                if field in fields:
-                    name += f" {field}={fields[field]}"
-            rows[quarter_row(name, line)] = int(fields["mean_us"])
+            identity = "".join(f" {field}={fields[field]}" for field in identity_fields if field in fields)
+            yield quarter_row(fields["stage"] + identity, line), int(fields["mean_us"])
+            if percentiles and "p95_us" in fields:
+                yield quarter_row(fields["stage"] + ".p95" + identity, line), int(fields["p95_us"])
         elif match := re.search(r"scale_split: (\d+x\d+).*frame mean/p50/max us (\d+)/", line):
-            rows[quarter_row("scale_split " + match[1], line)] = int(match[2])
-    return rows
+            yield quarter_row("scale_split " + match[1], line), int(match[2])
+
+
+def parse_timings(text):
+    """Return the last observation of each named timing row."""
+    return dict(timing_samples(text))
 
 
 def parse_report(path):

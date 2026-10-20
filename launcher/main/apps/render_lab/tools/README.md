@@ -23,6 +23,36 @@ capture.
 enters; repeat it for more settings. `--live-tune NAME=VALUE` applies it after
 entry, so the frame hook changes the next frame without reloading the scene.
 
+### Menu
+
+The BOOT menu has a SCENE dropdown of scene families (`family` in
+`render_lab_scene_t`), then a VARIANT dropdown when the family has several scenes (Sponza's
+bakes, from `variant`), then the rows the showing scene declares in its
+`controls` (Capybara's CLIP and BLEND). Order in `scenes[]` is the order of every list, and
+index 0 (Sponza Fitted Full) is the scene a start with no key shows. Console
+and host scene keys are unchanged.
+
+### Small fill
+
+`render_lab.small_fill_ceiling`, `render_lab.small_fill_gate` and
+`render_lab.small_fill_style` apply to the scene camera each frame.
+On a development build the BOOT menu has a SMALL FILL dropdown with every
+`SMALL_FILL_` preset; picking one sets the three tunables.
+
+![The Sponza menu closed, then the SCENE, VARIANT and SMALL FILL lists open](images/scene-menu/scene-menu.png)
+
+The generic scene viewer accepts `--small-fill CEILING,GATE,STYLE`; its defaults
+come from `SMALL_FILL_SMOOTH`. Styles use the `small_fill_style_t` values.
+The [engine feature](../../../../../docs/render/Mesh-Rendering.md#small-fill)
+defines the axes and defaults.
+
+```sh
+sh launcher/tools/render/scene_viewer.sh launcher/demo/sponza/sponza.scene.toml \
+    --object atrium_fitted_full --small-fill 12,16,1 -o grain.bmp
+```
+
+The app host accepts `--tune` before entry or `--live-tune` after entry.
+
 ### Menu renders
 
 `--menu` presses BOOT on the first frame, so the render shows the scene menu
@@ -97,6 +127,8 @@ cluster a flat hue, with disjoint IDs across instances.
 
 A pose of a camera path is `--frames` times `--dt`. `--camera NAME`
 selects a scene camera; omitted, it draws the first camera.
+`--console FRAME:WORDS` runs the board's `render WORDS` command, such as
+`clip walk 400`, before frame FRAME draws; repeat it for a sequence.
 
 `dynres_quality.sh WORK OUT.csv CAMERA WxH [WxH ...]` scores each size
 against the reference along that camera's clip, at intervals taken from
@@ -125,6 +157,7 @@ its scene by name rather than through the menu:
 | `autana render scene <key>` | switches to the scene with exactly that key, such as `sponza`, `sponza-lite` or `sponza-flat-fitted` |
 | `autana tune render_lab.scale <n>` | the fixed render scale in hundredths of the panel: 200 is half size |
 | `autana tune render_lab.budget <ms>` | dynamic resolution on a lit-mesh scene; 0 turns it off |
+| `autana tune render_lab.orbit_ms <ms>` | turns the Capybara scene's camera once about the capybara every that many milliseconds; 0 stops it |
 
 The Capybara scene's BOOT menu holds the same clip picker: the CLIP
 dropdown plays the chosen clip over the BLEND slider's time.
@@ -145,6 +178,7 @@ be checked to have measured the same thing.
 |---|---|
 | `render-lab-sponza.gif` | the start of the Sponza flythrough, on the fitted full mesh |
 | `render-lab-sponza-flat.gif` | the flythrough with the fitted flat-shaded bake |
+| `render-lab-capybara.gif` | the capybara's idle, walk, walk_fast and gallop clips in turn, each blended into the next, as the camera turns once around it |
 
 Run the app shots from the repository root with Python, Pillow, numpy and ffmpeg:
 

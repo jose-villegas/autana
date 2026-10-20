@@ -69,17 +69,16 @@ gfx_render_target_carve(gfx_render_target_t* target, void* block) {
 }
 
 /* The same picture's rows [row0, row1), inside the target's own. */
-static inline gfx_render_target_t
-gfx_render_target_window(const gfx_render_target_t* target, int row0, int row1) {
-    gfx_render_target_t window = *target;
+static inline void
+gfx_render_target_window(gfx_render_target_t* window, const gfx_render_target_t* target, int row0, int row1) {
+    *window = *target;
     for (int i = 0; i < target->count; i++) {
         const size_t skip =
             (size_t)(row0 - target->row0) * (size_t)target->width * (size_t)target->attachment[i].bytes_per_pixel;
-        window.attachment[i].pixels = (char*)target->attachment[i].pixels + skip;
+        window->attachment[i].pixels = (char*)target->attachment[i].pixels + skip;
     }
-    window.row0 = row0;
-    window.row1 = row1;
-    return window;
+    window->row0 = row0;
+    window->row1 = row1;
 }
 
 /* Attachment `index`'s first pixel of absolute row `y`, inside [row0, row1). */

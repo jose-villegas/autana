@@ -118,8 +118,7 @@ ui_frame_spans(mu_Rect r, mu_Color face, int thickness, mu_Color top_left, mu_Co
 }
 
 /* `sunken` swaps which edge pair is lit, raised into pressed; see
- * ui_frame_spans() for the shared geometry and its all-or-nothing rule,
- * same as UI_BUTTON_FLAT falls back to when there is no room for edges. */
+ * ui_frame_spans() for the shared geometry and its all-or-nothing rule. */
 static inline int
 ui_bezel_spans(mu_Rect r, mu_Color face, bool sunken, ui_span_t* out, int max) {
     const mu_Color lit = ui_shade(face, UI_BEZEL_HIGHLIGHT);

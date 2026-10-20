@@ -104,7 +104,8 @@ main(void) {
     const mat4f_t inverse = mat4f_invert_affine(lens);
     const rectf_t screen = rectf_from_edges(SCREEN_LEFT, SCREEN_TOP, SCREEN_RIGHT, SCREEN_BOTTOM);
     planef_t planes[PLANE_FRUSTUM_COUNT];
-    planef_frustum(&lens, NEAR_DEPTH, PICTURE_CENTER, screen, planes);
+    const projectf_t pinhole = {LENS_FOCAL, LENS_FOCAL, PICTURE_CENTER.x, PICTURE_CENTER.y, NEAR_DEPTH};
+    planef_frustum(&view, &pinhole, screen, planes);
     printf("\"camera\":");
     print_vec(CAMERA_POSITION);
     printf(",\"near\":%.7g,\"shown_depth\":%.7g,\"corners\":[", (double)NEAR_DEPTH, (double)SHOWN_DEPTH);

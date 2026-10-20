@@ -62,6 +62,8 @@ typedef struct {
     void* scratch;
     gfx_color_t* panel;
     raster_t raster;
+    r3d_lens_t lens;
+    r3d_pipeline_buffers_t buffers;
 } bench_t;
 
 static void
@@ -84,6 +86,7 @@ bench_open(bench_t* b, const r3d_instance_t* instance, const raster_attachment_t
     TEST_ASSERT_NOT_NULL(b->scratch);
     TEST_ASSERT_NOT_NULL(b->panel);
     b->raster.scratch = b->scratch;
+    b->buffers = r3d_pipeline_carve(&b->raster);
     ESP_LOGI(TAG, "raster=%dx%d present=%d" R3D_PERF_QUARTER_FORMAT, b->raster.width, b->raster.height,
              render_lab_present(), perf_quarter->name);
     ESP_LOGI(TAG, "heap after setup: internal free %u largest %u, psram free %u largest %u" R3D_PERF_QUARTER_FORMAT,
@@ -98,15 +101,13 @@ bench_close(bench_t* b) {
     memory_free(b->panel);
 }
 
-static r3d_lens_t
-view_at(const r3d_lit_mesh_t* mesh, uint32_t t_ms) {
+static __attribute__((noinline)) void
+view_at(const r3d_lit_mesh_t* mesh, uint32_t t_ms, r3d_lens_t* lens) {
     (void)scene_animator_seek(sponza, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
     const resolution_step_t size = render_lab_render_size(GFX_WIDTH, GFX_HEIGHT);
     const render_view_t view = camera_view(flythrough, scene_entity_transform(sponza, camera_entity),
                                            (viewport_t){size.width, size.height, perf_quarter->quarter});
-    r3d_lens_t lens;
-    r3d_lens_init(&lens, &view, mesh->position_scale);
-    return lens;
+    r3d_lens_init(lens, &view, mesh->position_scale);
 }
 
 static void
@@ -118,7 +119,7 @@ clear_and_draw(const raster_t* raster, const r3d_lens_t* lens, int visible) {
         color[i] = raster->clear;
     }
     memset(gfx_render_target_depth(&b.picture, 0), 0, pixels * sizeof(uint16_t));
-    const r3d_span_target_t target = {b.picture, NULL, 0};
+    const r3d_span_target_t target = {b.picture, NULL, 0, &r3d_span_small_fill_default};
     r3d_pipeline_draw(raster->instances[0].mesh, lens, b.culled + 1, visible, b.cs, b.rows, &target, b.work[0]);
 }
 
@@ -136,7 +137,8 @@ draw_half(half_job_t* j) {
     const raster_t* f = j->raster;
     const int64_t start = timing_now_us();
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(f);
-    const r3d_span_target_t target = {gfx_render_target_window(&b.picture, j->row0, j->row1), NULL, 0};
+    r3d_span_target_t target = {.small_fill = &r3d_span_small_fill_default};
+    gfx_render_target_window(&target.rows, &b.picture, j->row0, j->row1);
     memset(gfx_render_target_depth(&target.rows, j->row0), 0,
            (size_t)(j->row1 - j->row0) * (size_t)f->width * sizeof(uint16_t));
     r3d_pipeline_draw(f->instances[0].mesh, j->lens, b.culled + 1, j->visible, b.cs, b.rows, &target,
@@ -194,7 +196,7 @@ stopped_draw_us(const raster_t* raster, const r3d_lens_t* lens, int visible, int
     const r3d_pipeline_buffers_t b = r3d_pipeline_carve(raster);
     memset(gfx_render_target_depth(&b.picture, 0), 0,
            (size_t)raster->width * (size_t)raster->height * sizeof(uint16_t));
-    const r3d_span_target_t target = {b.picture, NULL, 0};
+    const r3d_span_target_t target = {b.picture, NULL, 0, &r3d_span_small_fill_default};
     r3d_span_stop_after = stop;
     const int64_t start = timing_now_us();
     r3d_pipeline_draw(raster->instances[0].mesh, lens, b.culled + 1, visible, b.cs, b.rows, &target, b.work[0]);
@@ -216,7 +218,8 @@ report_stage_split(int bake) {
     int64_t stopped[4] = {0};
     int poses = 0;
     for (uint32_t t_ms = 0; t_ms < period; t_ms += SPONZA_POSE_EVERY_MS) {
-        const r3d_lens_t lens = view_at(&meshes[bake], t_ms);
+        r3d_lens_t lens;
+        view_at(&meshes[bake], t_ms, &lens);
         const int visible = r3d_pipeline_cull(&meshes[bake], &lens, parts.culled + 1, parts.work[0]);
         r3d_pipeline_transform(&meshes[bake], &lens, parts.culled + 1, visible, parts.cs, parts.rows);
         for (int stop = 0; stop <= 3; stop++) {
@@ -246,11 +249,12 @@ test_sponza_draw_stage_breakdown(void) {
     TEST_ASSERT_NOT_NULL(b);
     const r3d_instance_t atrium = {&meshes[SPONZA_BAKE_FULL], NULL};
     bench_open(b, &atrium, NULL);
-    const r3d_lens_t lens = view_at(atrium.mesh, 0);
-    const r3d_pipeline_buffers_t parts = r3d_pipeline_carve(&b->raster);
-    const int visible = r3d_pipeline_cull(atrium.mesh, &lens, parts.culled + 1, parts.work[0]);
+    view_at(atrium.mesh, 0, &b->lens);
+    const r3d_lens_t* lens = &b->lens;
+    const r3d_pipeline_buffers_t* parts = &b->buffers;
+    const int visible = r3d_pipeline_cull(atrium.mesh, lens, parts->culled + 1, parts->work[0]);
     int64_t start = timing_now_us();
-    r3d_pipeline_transform(atrium.mesh, &lens, parts.culled + 1, visible, parts.cs, parts.rows);
+    r3d_pipeline_transform(atrium.mesh, lens, parts->culled + 1, visible, parts->cs, parts->rows);
     ESP_LOGI(TAG, "stage, one core: %-22s %7lldus" R3D_PERF_QUARTER_FORMAT, "transform",
              (long long)(timing_now_us() - start), perf_quarter->name);
 
@@ -259,12 +263,12 @@ test_sponza_draw_stage_breakdown(void) {
     for (int stop = 0; stop <= 3; stop++) {
         r3d_span_stop_after = stop;
         start = timing_now_us();
-        clear_and_draw(&b->raster, &lens, visible);
+        clear_and_draw(&b->raster, lens, visible);
         ESP_LOGI(TAG, "stage, one core: %-22s %7lldus" R3D_PERF_QUARTER_FORMAT, names[stop],
                  (long long)(timing_now_us() - start), perf_quarter->name);
     }
     r3d_span_stop_after = 0;
-    report_core_contention(&b->raster, &lens, visible);
+    report_core_contention(&b->raster, lens, visible);
 
     /* A view of nothing but sky: what a frame costs before any geometry. */
     const transformf_t sky_pose =
@@ -442,7 +446,7 @@ run_sponza_perf_suite(void) {
     pack = loaded.pack;
     flythrough = loaded.lens;
     camera_entity = sponza == NULL ? SCENE_ENTITY_NONE : scene_find(sponza, sponza_cameras[0]);
-    (void)scene_camera_set_present(sponza, camera_entity, render_lab_present());
+    (void)render_lab_apply_camera_settings(sponza, camera_entity);
     for (size_t q = 0; q < R3D_PERF_QUARTER_COUNT; q++) {
         perf_quarter = &r3d_perf_quarters[q];
         RUN_TEST(test_sponza_draw_stage_breakdown);
