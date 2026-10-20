@@ -86,9 +86,4 @@ render_lab_test_frame_dt(uint32_t dt_ms, bool switching, const input_t* input) {
     return render_us;
 }
 
-int64_t
-render_lab_test_frame(bool switching, const input_t* input) {
-    return render_lab_test_frame_dt(RENDER_LAB_TEST_FRAME_MS, switching, input);
-}
-
 #endif
