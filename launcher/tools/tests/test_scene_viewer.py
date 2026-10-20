@@ -169,6 +169,19 @@ path = { animation = "fly.anim.toml", node = "camera" }
         self.assertEqual(small.size, first.size)
         self.assertNotEqual(first.tobytes(), small.tobytes())
 
+    def test_small_fill_ceiling_range(self):
+        header = (TOOLS.parent / "main/render/render_view.h").read_text()
+        maximum = int(re.search(r"#define SMALL_FILL_CEILING_MAX\s+(\d+)", header)[1])
+        for ceiling in (0, maximum):
+            with self.subTest(ceiling=ceiling):
+                run, _ = self.render("--small-fill", f"{ceiling},16,0")
+                self.assertEqual(run.returncode, 0, run.stderr)
+        for ceiling in (maximum + 1, 255, -1):
+            with self.subTest(ceiling=ceiling):
+                run, _ = self.render("--small-fill", f"{ceiling},16,0")
+                self.assertNotEqual(run.returncode, 0)
+                self.assertIn("--small-fill", run.stderr)
+
     def test_unknown_camera_and_invalid_options_fail(self):
         for args, word in ((["--camera", "absent"], "absent"), (["--view", "invalid"], "invalid"),
                            (["--size", "80x64junk"], "--size"), (["--object"], "needs a value")):

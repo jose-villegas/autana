@@ -89,9 +89,10 @@ instantiate(const scene_asset_t* asset) {
     memset(scene->flags, SCENE_FLAG_ENABLED | SCENE_FLAG_CHANGED, asset->entity_count);
     for (int i = 0; i < asset->camera_count; i++) {
         const scene_asset_camera_t* c = &asset->cameras[i];
-        scene->cameras[i] = (scene_camera_t){.lens = {.half_fov_short_tan = c->half_fov_short_tan, .near_z = c->near_z},
-                                             .entity = c->entity,
-                                             .clear = GFX_RGB(c->clear_rgb)};
+        scene->cameras[i] = (scene_camera_t){
+            .lens = {.half_fov_short_tan = c->half_fov_short_tan, .near_z = c->near_z, .small_fill = SMALL_FILL_SMOOTH},
+            .entity = c->entity,
+            .clear = GFX_RGB(c->clear_rgb)};
     }
     for (int i = 0; i < asset->renderer_count; i++) {
         scene->renderers[i].entity = asset->renderers[i].entity;
@@ -426,18 +427,37 @@ scene_camera_lens(const scene_t* scene, const char* camera) {
     return index < 0 ? NULL : &scene->cameras[index].lens;
 }
 
-bool
-scene_camera_set_present(scene_t* scene, scene_entity_t camera, camera_present_t present) {
-    if (scene == NULL || present < CAMERA_PRESENT_NEAREST || present > CAMERA_PRESENT_DOUBLE) {
-        return false;
-    }
-    for (int i = 0; i < scene->asset.camera_count; i++) {
-        if (scene->cameras[i].entity == camera) {
-            scene->cameras[i].lens.present = present;
-            return true;
+static camera_t*
+camera_by_entity(scene_t* scene, scene_entity_t entity) {
+    if (scene != NULL) {
+        for (int i = 0; i < scene->asset.camera_count; i++) {
+            if (scene->cameras[i].entity == entity) {
+                return &scene->cameras[i].lens;
+            }
         }
     }
-    return false;
+    return NULL;
+}
+
+bool
+scene_camera_set_present(scene_t* scene, scene_entity_t camera, camera_present_t present) {
+    camera_t* found = camera_by_entity(scene, camera);
+    if (found == NULL || present < CAMERA_PRESENT_NEAREST || present > CAMERA_PRESENT_DOUBLE) {
+        return false;
+    }
+    found->present = present;
+    return true;
+}
+
+bool
+scene_camera_set_small_fill(scene_t* scene, scene_entity_t camera, small_fill_t fill) {
+    camera_t* found = camera_by_entity(scene, camera);
+    if (found == NULL || fill.ceiling > SMALL_FILL_CEILING_MAX || fill.style < SMALL_FILL_FLAT
+        || fill.style >= SMALL_FILL_STYLE_COUNT) {
+        return false;
+    }
+    found->small_fill = fill;
+    return true;
 }
 
 const scene_transform_t*

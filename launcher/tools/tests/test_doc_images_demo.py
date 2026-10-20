@@ -2,6 +2,7 @@
 drops only the scene's indirect table and occlusion."""
 
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -110,6 +111,81 @@ class DocImageFailureTest(unittest.TestCase):
                              {f"gallery-{suffix}.md" for suffix in
                               ("fidelity", "flat-smooth", "flat-sampling", "indirect", "indirect-look")})
 
+    def test_camera_board_table_reads_flat_and_style_sweeps(self):
+        import json
+        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+        import doc_tables
+        mesh = "run_gallery_perf_suite/painting_fitted_full quarter=landscape"
+        skin = "run_character_perf_suite/render paused=0 joints=7 quarter=landscape"
+        with tempfile.TemporaryDirectory() as directory:
+            data = pathlib.Path(directory)
+            points = [{"r3d_span.small_max_side": side, "r3d_span.small_flat_spread_far": 16,
+                       "r3d_span.small_flat_spread_near": 64} for side in (4, 12)]
+            def write_sweep(name, points):
+                (data / f"{name}-plan.json").write_text(json.dumps({
+                    "points": points, "captures": [{"board": "test-board"}]}))
+                rows = [{"build": "test", "point": index, "knobs": knobs,
+                         "metrics": {metric: {"mean": value, "observations": [value]}
+                                     for metric in (mesh, skin)}}
+                        for index, (knobs, value) in enumerate(zip(points, (1000, 900)))]
+                (data / f"{name}-sweep.json").write_text(json.dumps({"rows": rows}))
+            write_sweep("ceiling-gate", points)
+            flat = doc_tables.small_fill_board(data, "gallery", "painting")
+            self.assertIn("-10.00%", flat)
+            self.assertNotIn("GRAIN", flat)
+            points = [{"render_lab.small_fill_ceiling": 12, "render_lab.small_fill_gate": 16,
+                       "render_lab.small_fill_style": style} for style in (0, 1)]
+            write_sweep("styles", points)
+            styles = doc_tables.small_fill_board(data, "gallery", "painting")
+            self.assertIn("| 12 | 16 | GRAIN | 0.900 | -10.00% |", styles)
+            self.assertEqual(styles.count("| Ceiling |"), 2)
+            self.assertNotIn(next(iter(points[0])).split(".")[0], styles)
+
+
+    def test_board_sweep_refuses_multiple_boards(self):
+        import json
+        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+        import doc_tables
+        with tempfile.TemporaryDirectory() as directory:
+            data = pathlib.Path(directory)
+            (data / "styles-plan.json").write_text(json.dumps({
+                "points": [{}], "captures": [{"board": "a"}, {"board": "b"}]}))
+            (data / "styles-sweep.json").write_text(json.dumps({"rows": [{
+                "build": "test", "point": 0, "knobs": {},
+                "metrics": {"frame": {"mean": 1, "observations": [1]}}}]}))
+            with self.assertRaisesRegex(ValueError, "one board"):
+                doc_tables.sweep_rows(data, "styles")
+
+    def test_small_fill_table_uses_ceiling_bound(self):
+        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+        import doc_tables
+        maximum = int(re.search(r"#define SMALL_FILL_CEILING_MAX\s+(\d+)", doc_tables.VIEW_HEADER.read_text())[1])
+        with tempfile.TemporaryDirectory() as directory:
+            work = pathlib.Path(directory)
+            (work / "small-fill-looks.tsv").write_text("")
+            with mock.patch.object(doc_tables, "small_fill_board", return_value=""):
+                doc_tables.write_small_fill(work, work / "tables", "gallery", "painting", work)
+            rows = list(doc_tables.table_rows((work / "tables/small-fill-levers.md").read_text()))
+            ceiling = next(cells for _, _, cells in rows if cells[0] == "`ceiling`")
+            self.assertEqual(ceiling[1], f"0..{maximum}")
+
+    def test_small_fill_header_lists_only_selectable_styles(self):
+        sys.path.insert(0, str(ROOT / "launcher/tools/render"))
+        import doc_tables
+        self.assertEqual(doc_tables.small_fill_styles(), ["FLAT", "GRAIN", "DITHER"])  # magic: independent expected enum spellings.
+
+    def test_timing_samples_preserves_requested_identity_fields(self):
+        sys.path.insert(0, str(ROOT / "launcher/tools/perf"))
+        from layout_measure import timing_samples
+        text = ("stage=render cores=2 paused=0 joints=22 quarter=portrait mean_us=123 p95_us=150\n"
+                "stage=render cores=1 paused=1 joints=7 quarter=landscape mean_us=90 p95_us=100")
+        self.assertEqual(list(timing_samples(
+            text, identity_fields=("cores", "paused", "joints"), percentiles=True)), [
+                ("render cores=2 paused=0 joints=22 quarter=portrait", 123),
+                ("render.p95 cores=2 paused=0 joints=22 quarter=portrait", 150),
+                ("render cores=1 paused=1 joints=7 quarter=landscape", 90),
+                ("render.p95 cores=1 paused=1 joints=7 quarter=landscape", 100)])
+
     def test_driver_supplies_all_four_demo_arguments(self):
         source = (ROOT / "launcher/tools/render/render_doc_images.sh").read_text()
         assignments = [line for line in source.splitlines() if line.startswith(("DEMO_SCENE=", "DEMO_OBJECT="))]
@@ -144,8 +220,8 @@ class DocImageFailureTest(unittest.TestCase):
             images = root / "docs/images/render"
             images.mkdir(parents=True)
             for stem in ("gallery-full", "gallery-missing", "unknown-full",
-                         "gallery-small-fill-flat8-diff", "gallery-small-fill-gate-diff",
-                         "gallery-small-fill-dither-diff", "gallery-small-fill-bake-diff"):
+                         "gallery-small-fill-smooth", "gallery-small-fill-fast-diff",
+                         "gallery-small-fill-dither-diff", "gallery-small-fill-grain-diff"):
                 (images / f"{stem}.gif").touch()
             done = subprocess.run(["sh", str(tools / "render_doc_images.sh"), "--orphans"],
                                   cwd=images, capture_output=True, text=True)

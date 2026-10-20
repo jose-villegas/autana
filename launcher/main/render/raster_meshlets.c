@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <string.h>
 
+#include "render/r3d_span.h"
 #include "render/raster.h"
 #include "render/raster_show.h"
 

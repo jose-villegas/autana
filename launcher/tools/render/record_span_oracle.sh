@@ -1,5 +1,5 @@
 #!/bin/sh
-# Record the default-image checksum using a revision's span source and header.
+# Record a revision's default-image checksum using its span source and suite.
 # Run through quiet.py; a checksum assertion failure reports the recorded value.
 # Usage: bash launcher/tools/render/record_span_oracle.sh REVISION
 set -eu
@@ -16,6 +16,27 @@ git show "$REVISION:launcher/main/render/r3d_span_internal.h" |
 git show "$REVISION:launcher/main/render/r3d_span.c" |
     sed -e 's@"render/r3d_span.h"@"oracle-base.h"@' \
         -e 's@"render/r3d_span_internal.h"@"oracle-internal.h"@' > "$SCRATCH/oracle-base.c"
-sed "s@\$MAIN_DIR/render/r3d_span.c@$SCRATCH/oracle-base.c@" launcher/test/run_tests.sh > "$RUNNER"
+git show "$REVISION:launcher/test/suites/suite_r3d_small.c" |
+    sed -e 's@"render/r3d_span.h"@"oracle-base.h"@' \
+        -e 's@"render/r3d_span.c"@"oracle-base.c"@' > "$SCRATCH/oracle-suite.c"
+python - "$SCRATCH" "$RUNNER" <<'PY'
+from pathlib import Path
+import sys
+scratch, runner = sys.argv[1:]
+source = Path("launcher/test/run_tests.sh").read_text()
+loop = 'for suite_src in "$TEST_DIR"/suites/suite_*.c; do'
+replacement = (f'for suite_src in "$TEST_DIR"/suites/suite_*.c "{scratch}/oracle-suite.c"; do\n'
+               '    [ "$suite_src" != "$TEST_DIR/suites/suite_r3d_small.c" ] || continue')
+if loop not in source:
+    raise SystemExit("record_span_oracle: host suite discovery loop not found")
+Path(runner).write_text(source.replace(loop, replacement))
+PY
 bash "$RUNNER" --build-dir "$SCRATCH" --build-only
-"$SCRATCH/host_tests" --run 'run_r3d_small_suite defaults'
+if grep -q test_ceiling_four_flat_is_bit_identical "$SCRATCH/oracle-suite.c"; then
+    pattern=ceiling_four_flat
+elif grep -q test_old_look_flat_is_bit_identical "$SCRATCH/oracle-suite.c"; then
+    pattern=old_look_flat
+else
+    pattern=defaults
+fi
+"$SCRATCH/host_tests" --run "run_r3d_small_suite $pattern"

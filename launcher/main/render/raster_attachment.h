@@ -10,12 +10,13 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #include "gfx/target/gfx_render_target.h"
-#include "render/r3d_span.h"
 #include "render/render_view.h"
 
 typedef struct raster raster_t;
+typedef struct r3d_span_writer r3d_span_writer_t;
 typedef struct raster_attachment raster_attachment_t;
 
 struct raster_attachment {
