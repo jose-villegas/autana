@@ -17,6 +17,7 @@
 
 #include "display/viewport.h"
 #include "math/linear/mat4f.h"
+#include "math/linear/projectf.h"
 #include "math/scalar/mathi.h"
 #include "render/r3d_instance.h"
 #include "render/r3d_lit_mesh.h"
@@ -28,13 +29,10 @@
 #include "sdkconfig.h"
 #endif
 
-/* A view made ready for one viewport and one mesh's position scale.
- * Lens space: x and y are already pixels at unit depth, turned for the
- * panel's quarter, so a screen position is centre + (x, y) / z. */
+/* A view made ready for one viewport and one mesh's position scale. */
 typedef struct {
-    mat4f_t m; /* position ticks to lens space */
-    float center_x, center_y;
-    float near_z; /* model units */
+    mat4f_t m;          /* position ticks to lens space */
+    projectf_t project; /* m already applies the focal lengths and turn, so lens space's pinhole is {1, -1}. */
     int width, height;
     float snap_cx, snap_cy; /* the centre in subpixels, plus R3D_SNAP_BIAS */
     float near_subpixels;   /* near_z / R3D_SUBPIXEL */

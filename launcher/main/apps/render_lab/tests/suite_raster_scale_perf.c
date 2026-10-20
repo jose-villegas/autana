@@ -116,10 +116,12 @@ typedef struct {
 static __attribute__((noinline)) void
 add_span_split(raster_t* raster, uint32_t t_ms, span_split_t* sum) {
     (void)scene_animator_seek(scene, camera_entity, SCENE_ANIMATOR_CURRENT, t_ms);
-    const render_view_t view = camera_view(lens, scene_entity_transform(scene, camera_entity),
-                                           (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
     r3d_lens_t* draw_lens = &sum->lens;
-    r3d_lens_init(draw_lens, &view, mesh.position_scale);
+    {
+        const render_view_t view = camera_view(lens, scene_entity_transform(scene, camera_entity),
+                                               (viewport_t){GFX_WIDTH, GFX_HEIGHT, perf_quarter->quarter});
+        r3d_lens_init(draw_lens, &view, mesh.position_scale);
+    }
     r3d_lens_fit(draw_lens, raster->width, raster->height);
     sum->buffers = r3d_pipeline_carve(raster);
     const r3d_pipeline_buffers_t* b = &sum->buffers;

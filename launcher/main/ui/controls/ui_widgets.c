@@ -20,11 +20,16 @@
 
 ui_mu_theme_t
 ui_theme_from_style(const mu_Style* style) {
-    return (ui_mu_theme_t){.button_face = style->colors[MU_COLOR_BUTTON],
+    return (ui_mu_theme_t){.panel_face = UI_RGB(UI_SHELL_PANEL_FACE),
+                           .button_face = style->colors[MU_COLOR_BUTTON],
+                           .accent = style->colors[MU_COLOR_BUTTONFOCUS],
                            .accent_face = style->colors[MU_COLOR_BUTTONFOCUS],
                            .text = style->colors[MU_COLOR_TEXT],
                            .on_accent = style->colors[MU_COLOR_TEXT],
+                           .caption = UI_RGB(UI_SHELL_CAPTION),
+                           .muted = UI_RGB(UI_SHELL_MUTED),
                            .text_scale = DRAW_GLYPH_SCALE,
+                           .icon_side = UI_SHELL_ICON_SIDE,
                            .native_toggle = true};
 }
 
@@ -244,8 +249,8 @@ ui_dropdown_list_scroll(int selected, int count, int row_h, int list_h) {
 }
 
 int
-ui_dropdown_label_width(int w, const ui_mu_theme_t* theme) {
-    return ui_icon_button_label_width(w, true, theme) - CHEVRON_SIDE - BUTTON_ICON_GAP;
+ui_dropdown_label_width(int w, bool has_icons, const ui_mu_theme_t* theme) {
+    return ui_icon_button_label_width(w, has_icons, theme) - CHEVRON_SIDE - BUTTON_ICON_GAP;
 }
 
 /* The list's window, or NULL before its first opening. Not
@@ -382,7 +387,7 @@ ui_dropdown_id(mu_Context* ctx, mu_Id mid, const char* id, mu_Rect r, const char
     const bool was_open = ui_dropdown_is_open(ctx, id);
     const control_t c = begin_control(ctx, mid, r, enabled, false, theme);
     draw_icon_and_label(ctx, r, icons ? icons[selected] : NULL, names[selected], -1,
-                        ui_dropdown_label_width(r.w, theme), c.ink, theme);
+                        ui_dropdown_label_width(r.w, icons != NULL, theme), c.ink, theme);
 
     const mu_Rect chevron_r = {r.x + r.w - BUTTON_PAD - CHEVRON_SIDE, r.y + ((r.h - CHEVRON_SIDE) / 2), CHEVRON_SIDE,
                                CHEVRON_SIDE};

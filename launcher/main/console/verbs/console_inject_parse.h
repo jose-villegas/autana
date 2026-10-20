@@ -7,7 +7,7 @@
 
 #include "display/display.h"
 #include "display/viewport.h"
-#include "input/imu_sample.h"
+#include "input/motion/imu_sample.h"
 
 #include <stdbool.h>
 #include <stdint.h>

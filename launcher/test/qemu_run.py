@@ -47,7 +47,7 @@ performance monitor, a touch controller that physically answers) skip
 themselves. With
 --icount virtual time advances one nanosecond per executed instruction, so a
 "us per step" line times 1000 is instructions per step, never a time;
-docs/Testing-Guide.md's QEMU section covers repeatability and the limits of
+docs/testing/QEMU.md covers repeatability and the limits of
 shared-core counts.
 
 Several instances run at once; give each its own build directory copy or

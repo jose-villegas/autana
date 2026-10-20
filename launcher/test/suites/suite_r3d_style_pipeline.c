@@ -64,7 +64,7 @@ test_styles_match_pipeline_colours(void) {
     const r3d_lit_cluster_t cluster = {.vertex_count = 3};
     const r3d_lit_mesh_t mesh = {.positions = positions, .colors = (const uint8_t (*)[3])colours};
     const r3d_lens_t lens = {.m = MAT4F_IDENTITY,
-                             .near_z = 1,
+                             .project = {1.0F, -1.0F, 0.0F, 0.0F, 1.0F},
                              .near_subpixels = 1.0F / R3D_SUBPIXEL,
                              .snap_cx = R3D_SNAP_BIAS,
                              .snap_cy = R3D_SNAP_BIAS};
@@ -112,7 +112,7 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
     const r3d_lit_mesh_t mesh = {
         .positions = positions, .colors = colors, .triangles = triangles, .clusters = &cluster};
     const r3d_lens_t lens = {.m = MAT4F_IDENTITY,
-                             .near_z = 1,
+                             .project = {1.0F, -1.0F, 0.0F, 0.0F, 1.0F},
                              .near_subpixels = 1.0F / R3D_SUBPIXEL,
                              .snap_cx = R3D_SNAP_BIAS,
                              .snap_cy = R3D_SNAP_BIAS};
@@ -120,6 +120,7 @@ test_clipped_and_mixed_clusters_keep_the_target_style(void) {
     TEST_ASSERT_NOT_NULL(clipped);
     r3d_pipeline_vertex_t* transformed = clipped->transformed;
     (void)transform_cluster(&mesh, &lens, &cluster, transformed);
+    build_guard_planes(&lens, work);
     r3d_span_target_t expected = r3d_span_target(pixels, pixels + TEST_PIXELS, TEST_SIDE, 0, TEST_SIDE);
     r3d_span_target_t actual =
         r3d_span_target(pixels + TEST_PIXELS * 2, pixels + TEST_PIXELS * 3, TEST_SIDE, 0, TEST_SIDE);

@@ -197,7 +197,8 @@ test_cluster_values_and_constant_writers(void) {
     const raster_attachment_t* both[] = {&per, &constant};
     raster_rig_t* r = rig_open(both, 2);
     r->raster.instance_count = 1;
-    r3d_lit_cluster_t clusters[2];
+    r3d_lit_cluster_t* clusters = calloc(2, sizeof(*clusters));
+    TEST_ASSERT_NOT_NULL(clusters);
     split_quad(r, clusters);
     raster_rig_attach(r, both, 2);
     draw(r);
@@ -237,6 +238,7 @@ test_cluster_values_and_constant_writers(void) {
     TEST_ASSERT_TRUE(drawn > 0);
     TEST_ASSERT_EQUAL_UINT32(17, writers[0].value);
     TEST_ASSERT_EQUAL_UINT32(17, writers[1].value);
+    free(clusters);
 }
 
 static void
@@ -509,7 +511,7 @@ small_fill_reference(raster_rig_t* r, small_fill_t fill) {
     r3d_span_target_t target = r3d_span_target(color, depth, W, 0, H);
     target.small_fill = &resolved;
     r3d_span_vertex_t vertices[4];
-    const float pixels_per_unit = r->view.pixels_per_unit / SMALL_FILL_CAMERA_DISTANCE;
+    const float pixels_per_unit = r->view.lens.fx / SMALL_FILL_CAMERA_DISTANCE;
     for (int k = 0; k < 4; k++) {
         const int16_t* position = r->quad[0].mesh.positions[k];
         const uint8_t* rgb = r->quad[0].mesh.colors[k];

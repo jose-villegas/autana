@@ -1,5 +1,5 @@
 /*
- * projectx: near-plane segment clipping in any fixed camera-space scale.
+ * projectx: Q16.16 pinhole lens and near clipping in any fixed camera-space scale.
  * Endpoints and near_z share a scale; the crossing ratio is Q16.16.
  * Points at or behind the near plane are excluded.
  */
@@ -10,6 +10,11 @@
 #include "math/linear/project_template.h"
 #include "math/linear/vec3x.h"
 #include "math/scalar/mathx.h"
+
+/* Q16.16 pinhole values, camera +y up and picture y down. */
+typedef struct {
+    int32_t fx, fy, cx, cy, near_z;
+} projectx_t;
 
 static inline void
 _projectx_cross_near(int32_t near_z, vec3x_t* behind, const vec3x_t* front) {
