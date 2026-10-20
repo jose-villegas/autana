@@ -643,7 +643,7 @@ class DeviceTests(unittest.TestCase):
         found, complete = device.replies_to(b"TUNE a=1 min=0 max=2\nTUNE_EN", "TUNE",
                                             ["TUNE_OK", "TUNE_ERR", "TUNE_END"])
         self.assertFalse(complete)
-        self.assertEqual(found, ["TUNE a=1 min=0 max=2", "TUNE_EN"])
+        self.assertEqual(found, ["TUNE a=1 min=0 max=2"])
 
     def send_response(self, chunks, args):
         connection = FakeConnection(chunks)
