@@ -5,6 +5,10 @@ from pathlib import Path
 
 import host_runner
 
+sys.path.insert(0, str(host_runner.REPO / "scripts/device"))
+sys.path.insert(0, str(host_runner.REPO / "scripts/device/tests"))
+import port_guard  # noqa: E402,F401  (before device: no test reaches a real board)
+
 sys.path.insert(0, str(host_runner.REPO / "scripts/autana"))
 import autana
 
